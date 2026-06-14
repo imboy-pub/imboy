@@ -17,7 +17,7 @@
 -export([list_public_keys/1]).
 -export([list_public_keys_by_uids/1]).
 -export([count_other_device_keys/2]).
--export([get_public_by_uid/1, get_private_key/2, update_private_key/3]).
+-export([get_public_by_uid/1]).
 
 %% 设备会话管理使用 imboy_syn，无需数据库扩展
 
@@ -49,7 +49,7 @@ page(Uid, Limit, Offset) ->
 -spec list_public_keys(integer()) -> {ok, list(map())} | {error, any()}.
 list_public_keys(Uid) ->
     Tb = tablename(),
-    Column = <<"device_id, device_type, public_key, last_active_at">>,
+    Column = <<"device_id, device_type, public_key, key_id, last_active_at">>,
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE status = 1 AND user_id = $1 AND public_key IS NOT NULL AND public_key <> ''",
@@ -70,8 +70,11 @@ count_other_device_keys(Uid, DeviceId) ->
         <<"SELECT count(*) AS count FROM ", Tb/binary,
             " WHERE status = 1 AND user_id = $1 AND device_id <> $2",
             " AND public_key IS NOT NULL AND public_key <> ''">>,
+    %% elib_pg:query/2 返回二元组 {ok, [map()]}（已 rows_to_maps），
+    %% 此前用三元组 {ok, _, [...]} 匹配恒失败 → 静默返回 0，
+    %% 导致"换设备/重装"检测永久失效（E2EE 恢复横幅永不显示）。
     case elib_pg:query(Sql, [Uid, DeviceId]) of
-        {ok, _, [#{<<"count">> := Count}]} when is_integer(Count) ->
+        {ok, [#{<<"count">> := Count}]} when is_integer(Count) ->
             Count;
         _ ->
             0
@@ -82,7 +85,7 @@ list_public_keys_by_uids([]) ->
     {ok, []};
 list_public_keys_by_uids(Uids) when is_list(Uids) ->
     Tb = tablename(),
-    Column = <<"user_id, device_id, device_type, public_key, last_active_at">>,
+    Column = <<"user_id, device_id, device_type, public_key, key_id, last_active_at">>,
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE status = 1 AND user_id = ANY($1)",
             " AND public_key IS NOT NULL AND public_key <> ''",
@@ -167,48 +170,13 @@ update_by_did(Uid, DID, Set, SetArgs) ->
 -spec get_public_by_uid(integer()) -> {ok, [map()]} | {error, term()}.
 get_public_by_uid(Uid) ->
     Tb = tablename(),
-    Column = <<"device_id, device_type, public_key, private_key, last_active_at">>,
+    %% 私钥永不落库（user_device 表无 private_key 列）：仅返回公钥相关字段。
+    Column = <<"device_id, device_type, public_key, key_id, last_active_at">>,
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE status = 1 AND user_id = $1 "
             " ORDER BY last_active_at desc">>,
     elib_pg:query(Sql, [Uid]).
-
-%% @doc 获取用户指定设备的私钥
-%% @param Uid 用户ID
-%% @param DeviceId 设备ID
-%% @return {ok, PrivateKeyPem} | {error, Reason}
--spec get_private_key(integer(), binary()) -> {ok, binary()} | {error, term()}.
-get_private_key(Uid, DeviceId) ->
-    Tb = tablename(),
-    Sql =
-        <<"SELECT private_key FROM ", Tb/binary,
-            " WHERE status = 1 AND user_id = $1 AND device_id = $2">>,
-    case elib_pg:query(Sql, [Uid, DeviceId]) of
-        {ok, _, [{PrivateKey}]} when PrivateKey =/= undefined, PrivateKey =/= <<>> ->
-            {ok, PrivateKey};
-        {ok, _, [_]} ->
-            {error, private_key_not_found};
-        {ok, _, []} ->
-            {error, device_not_found};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%% @doc 更新用户设备的私钥
-%% @param Uid 用户ID
-%% @param DeviceId 设备ID
-%% @param PrivateKeyPem PEM 格式的私钥
-%% @return {ok, Count} | {error, Reason}
--spec update_private_key(integer(), binary(), binary()) ->
-    {ok, non_neg_integer()} | {error, term()}.
-update_private_key(Uid, DeviceId, PrivateKeyPem) ->
-    Tb = tablename(),
-    Sql =
-        <<"UPDATE ", Tb/binary,
-            " SET private_key = $1 "
-            " WHERE status = 1 AND user_id = $2 AND device_id = $3">>,
-    elib_pg:execute(Sql, [PrivateKeyPem, Uid, DeviceId]).
 
 -spec save(binary(), integer(), map(), binary(), integer()) -> {ok, term()} | {error, term()}.
 save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0 ->

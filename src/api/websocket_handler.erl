@@ -29,10 +29,26 @@ init(Req0, State0) ->
     % DID: 设备 ID
     % DType: 设备类型 (ios/android/web)
     % Auth: JWT token
-    AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
-    DID = cowboy_req:header(<<"did">>, Req0, undefined),
-    DType = cowboy_req:header(<<"cos">>, Req0, undefined),
-    Auth = cowboy_req:header(<<"authorization">>, Req0, undefined),
+    Qs = cowboy_req:parse_qs(Req0),
+    AppVsn = cowboy_req:header(<<"vsn">>, Req0, proplists:get_value(<<"vsn">>, Qs, undefined)),
+    DIDHeader = cowboy_req:header(<<"did">>, Req0, undefined),
+    DID =
+        case DIDHeader of
+            undefined -> proplists:get_value(<<"did">>, Qs, undefined);
+            _ -> DIDHeader
+        end,
+    DType = cowboy_req:header(<<"cos">>, Req0, proplists:get_value(<<"cos">>, Qs, undefined)),
+    AuthHeader = cowboy_req:header(<<"authorization">>, Req0, undefined),
+    Auth =
+        case AuthHeader of
+            undefined ->
+                case proplists:get_value(<<"token">>, Qs, undefined) of
+                    undefined -> undefined;
+                    QsToken -> <<"Bearer ", QsToken/binary>>
+                end;
+            _ ->
+                AuthHeader
+        end,
     SubPt = cowboy_req:parse_header(<<"sec-websocket-protocol">>, Req0),
     % [<<"sip">>,<<"text">>] = Subprotocols
 

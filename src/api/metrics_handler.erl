@@ -102,7 +102,7 @@ collect_system_metrics() ->
         end,
     %% WebSocket 在线用户数（syn 注册的唯一用户）
     OnlineCount =
-        try syn:count(imboy) of
+        try syn:registry_count(imboy) of
             Count when is_integer(Count) -> Count;
             _ -> 0
         catch

@@ -115,15 +115,23 @@ find_by_schedule_id(_, _) ->
 %% @doc 查询群组的日程列表（默认字段）
 -spec list_by_group_id(integer(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
 list_by_group_id(GroupId, Page, Size) ->
-    list_by_group_id(GroupId, <<"id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at">>, Page, Size).
+    list_by_group_id(
+        GroupId,
+        <<"id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at">>,
+        Page,
+        Size
+    ).
 
 %% @doc 查询群组的日程列表
--spec list_by_group_id(integer(), binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_group_id(integer(), binary(), integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
 list_by_group_id(GroupId, Column, Page, Size) when GroupId > 0 ->
     Tb = tablename(),
     Where = #{group_id => GroupId},
     OrderBy = [{start_at, asc}, {id, desc}],
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, Where, #{order_by => OrderBy, limit => Size, offset => (Page - 1) * Size}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, Where, #{
+        order_by => OrderBy, limit => Size, offset => (Page - 1) * Size
+    }),
     elib_pg:query(Sql, Params);
 list_by_group_id(_, _, _, _) ->
     {ok, []}.
@@ -133,19 +141,21 @@ list_by_group_id(_, _, _, _) ->
 %% - StartAt: 只返回结束时间 >= StartAt 的日程
 %% - EndAt: 只返回开始时间 <= EndAt 的日程
 %% 两者同时存在时表示与 [StartAt, EndAt] 时间窗有交集
--spec list_by_group_id(integer(), binary() | undefined, binary() | undefined, integer(), integer()) -> {ok, list(map())} | {error, term()}.
-list_by_group_id(GroupId, StartAt, EndAt, Page, Size)
-    when GroupId > 0, is_integer(Page), Page > 0, is_integer(Size), Size > 0 ->
+-spec list_by_group_id(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
+list_by_group_id(GroupId, StartAt, EndAt, Page, Size) when
+    GroupId > 0, is_integer(Page), Page > 0, is_integer(Size), Size > 0
+->
     Tb = tablename(),
-    Column = <<"id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at">>,
+    Column =
+        <<"id,schedule_id,group_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at">>,
     OrderBy = <<"start_at ASC, id DESC">>,
     Offset = (Page - 1) * Size,
     {WhereSql, Params} = build_group_time_where(GroupId, StartAt, EndAt),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE ", WhereSql/binary,
-            " ORDER BY ", OrderBy/binary,
-            " LIMIT ", (integer_to_binary(Size))/binary,
-            " OFFSET ", (integer_to_binary(Offset))/binary>>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", WhereSql/binary, " ORDER BY ",
+            OrderBy/binary, " LIMIT ", (integer_to_binary(Size))/binary, " OFFSET ",
+            (integer_to_binary(Offset))/binary>>,
     elib_pg:query(Sql, Params);
 list_by_group_id(_, _, _, _, _) ->
     {ok, []}.
@@ -156,7 +166,8 @@ list_by_user_id(UserId, Page, Size) ->
     list_by_user_id(UserId, undefined, undefined, Page, Size).
 
 %% @doc 查询用户参与的日程列表
--spec list_by_user_id(integer(), binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_user_id(integer(), binary(), integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
 list_by_user_id(UserId, Column, Page, Size) when UserId > 0 ->
     list_by_user_id_with_column(UserId, Column, undefined, undefined, Page, Size);
 list_by_user_id(_, _, _, _) ->
@@ -167,25 +178,28 @@ list_by_user_id(_, _, _, _) ->
 %% - StartAt: 只返回结束时间 >= StartAt 的日程
 %% - EndAt: 只返回开始时间 <= EndAt 的日程
 %% 两者同时存在时表示与 [StartAt, EndAt] 时间窗有交集
--spec list_by_user_id(integer(), binary() | undefined, binary() | undefined, integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_user_id(integer(), binary() | undefined, binary() | undefined, integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
 list_by_user_id(UserId, StartAt, EndAt, Page, Size) ->
     Column = <<"gs.id,gs.schedule_id,gs.group_id,gs.title,gs.start_at,gs.end_at,gs.status">>,
     list_by_user_id_with_column(UserId, Column, StartAt, EndAt, Page, Size).
 
--spec list_by_user_id_with_column(integer(), binary(), binary() | undefined, binary() | undefined, integer(), integer()) ->
+-spec list_by_user_id_with_column(
+    integer(), binary(), binary() | undefined, binary() | undefined, integer(), integer()
+) ->
     {ok, list(map())} | {error, term()}.
-list_by_user_id_with_column(UserId, Column, StartAt, EndAt, Page, Size)
-    when UserId > 0, is_integer(Page), Page > 0, is_integer(Size), Size > 0 ->
+list_by_user_id_with_column(UserId, Column, StartAt, EndAt, Page, Size) when
+    UserId > 0, is_integer(Page), Page > 0, is_integer(Size), Size > 0
+->
     Tb = <<(tablename())/binary, " gs">>,
     PTb = participant_tablename(),
     Offset = (Page - 1) * Size,
     {WhereSql, Params} = build_user_time_where(UserId, StartAt, EndAt),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " INNER JOIN ", PTb/binary, " p ON gs.schedule_id = p.schedule_id",
-            " WHERE ", WhereSql/binary,
-            " ORDER BY gs.start_at ASC",
-            " LIMIT ", (integer_to_binary(Size))/binary,
-            " OFFSET ", (integer_to_binary(Offset))/binary>>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " INNER JOIN ", PTb/binary,
+            " p ON gs.schedule_id = p.schedule_id", " WHERE ", WhereSql/binary,
+            " ORDER BY gs.start_at ASC", " LIMIT ", (integer_to_binary(Size))/binary, " OFFSET ",
+            (integer_to_binary(Offset))/binary>>,
     elib_pg:query(Sql, Params);
 list_by_user_id_with_column(_, _, _, _, _, _) ->
     {ok, []}.
@@ -207,11 +221,14 @@ count_by_group_id(_) ->
     {ok, 0}.
 
 %% @doc 统计群组的日程数量（支持时间窗口筛选）
--spec count_by_group_id(integer(), binary() | undefined, binary() | undefined) -> {ok, non_neg_integer()} | {error, term()}.
+-spec count_by_group_id(integer(), binary() | undefined, binary() | undefined) ->
+    {ok, non_neg_integer()} | {error, term()}.
 count_by_group_id(GroupId, StartAt, EndAt) when GroupId > 0 ->
     Tb = tablename(),
     {WhereSql, Params} = build_group_time_where(GroupId, StartAt, EndAt),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE ", WhereSql/binary, " AND status != 4">>,
+    Sql =
+        <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE ", WhereSql/binary,
+            " AND status != 4">>,
     case elib_pg:one(Sql, Params) of
         {ok, #{<<"count">> := Count}} -> {ok, Count};
         {error, Reason} -> {error, Reason}
@@ -241,8 +258,11 @@ insert_participant(Data) ->
     end.
 
 %% @doc 更新参与人状态
--spec update_participant_status(binary(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
-update_participant_status(ScheduleId, UserId, Status) when is_integer(Status), Status >= 0, Status =< 2 ->
+-spec update_participant_status(binary(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+update_participant_status(ScheduleId, UserId, Status) when
+    is_integer(Status), Status >= 0, Status =< 2
+->
     Tb = participant_tablename(),
     Data = #{status => Status, updated_at => elib_dt:now()},
     elib_pg:update(Tb, Data, <<"schedule_id = $1 AND user_id = $2">>, [ScheduleId, UserId]);
@@ -258,7 +278,9 @@ list_participants(ScheduleId) ->
 -spec list_participants(binary(), binary()) -> {ok, list(map())} | {error, term()}.
 list_participants(ScheduleId, Column) when is_binary(ScheduleId) ->
     Tb = participant_tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{schedule_id => ScheduleId}, #{order_by => [{id, asc}]}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{schedule_id => ScheduleId}, #{
+        order_by => [{id, asc}]
+    }),
     elib_pg:query(Sql, Params);
 list_participants(_, _) ->
     {ok, []}.
@@ -279,7 +301,8 @@ count_participants(_) ->
 -spec delete_participant(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_participant(ScheduleId, UserId) ->
     Tb = participant_tablename(),
-    elib_pg:delete(Tb, <<"schedule_id = $1 AND user_id = $2">>, [ScheduleId, UserId]).
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE schedule_id = $1 AND user_id = $2">>,
+    elib_pg:query(Sql, [ScheduleId, UserId]).
 
 %% ===================================================================
 %% API functions - 提醒表
@@ -313,7 +336,9 @@ list_pending_reminds(Column) ->
     Tb = remind_tablename(),
     Now = elib_dt:now(),
     Where = #{is_sent => false, remind_at => {op, <<"<=">>, Now}},
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, Where, #{order_by => [{remind_at, asc}], limit => 100}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, Where, #{
+        order_by => [{remind_at, asc}], limit => 100
+    }),
     elib_pg:query(Sql, Params).
 
 %% @doc 更新提醒为已发送
@@ -329,44 +354,55 @@ update_remind_sent(_) ->
 -spec delete_remind(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_remind(Id) ->
     Tb = remind_tablename(),
-    elib_pg:delete(Tb, <<"id = $1">>, [Id]).
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
+    elib_pg:query(Sql, [Id]).
 
 %% ===================================================================
 %% Internal functions
 %% ===================================================================
 
--spec build_group_time_where(integer(), binary() | undefined, binary() | undefined) -> {binary(), list()}.
+-spec build_group_time_where(integer(), binary() | undefined, binary() | undefined) ->
+    {binary(), list()}.
 build_group_time_where(GroupId, StartAt, EndAt) ->
     BaseSql = <<"group_id = $1">>,
     BaseParams = [GroupId],
-    {Sql1, Params1} = case StartAt of
-        StartValue when is_binary(StartValue), StartValue =/= <<>> ->
-            {<<BaseSql/binary, " AND end_at >= $2">>, BaseParams ++ [StartValue]};
-        _ ->
-            {BaseSql, BaseParams}
-    end,
+    {Sql1, Params1} =
+        case StartAt of
+            StartValue when is_binary(StartValue), StartValue =/= <<>> ->
+                {<<BaseSql/binary, " AND end_at >= $2">>, BaseParams ++ [StartValue]};
+            _ ->
+                {BaseSql, BaseParams}
+        end,
     case EndAt of
         EndValue when is_binary(EndValue), EndValue =/= <<>> ->
             Index = length(Params1) + 1,
-            {<<Sql1/binary, " AND start_at <= $", (integer_to_binary(Index))/binary>>, Params1 ++ [EndValue]};
+            {
+                <<Sql1/binary, " AND start_at <= $", (integer_to_binary(Index))/binary>>,
+                Params1 ++ [EndValue]
+            };
         _ ->
             {Sql1, Params1}
     end.
 
--spec build_user_time_where(integer(), binary() | undefined, binary() | undefined) -> {binary(), list()}.
+-spec build_user_time_where(integer(), binary() | undefined, binary() | undefined) ->
+    {binary(), list()}.
 build_user_time_where(UserId, StartAt, EndAt) ->
     BaseSql = <<"p.user_id = $1">>,
     BaseParams = [UserId],
-    {Sql1, Params1} = case StartAt of
-        StartValue when is_binary(StartValue), StartValue =/= <<>> ->
-            {<<BaseSql/binary, " AND gs.end_at >= $2">>, BaseParams ++ [StartValue]};
-        _ ->
-            {BaseSql, BaseParams}
-    end,
+    {Sql1, Params1} =
+        case StartAt of
+            StartValue when is_binary(StartValue), StartValue =/= <<>> ->
+                {<<BaseSql/binary, " AND gs.end_at >= $2">>, BaseParams ++ [StartValue]};
+            _ ->
+                {BaseSql, BaseParams}
+        end,
     case EndAt of
         EndValue when is_binary(EndValue), EndValue =/= <<>> ->
             Index = length(Params1) + 1,
-            {<<Sql1/binary, " AND gs.start_at <= $", (integer_to_binary(Index))/binary>>, Params1 ++ [EndValue]};
+            {
+                <<Sql1/binary, " AND gs.start_at <= $", (integer_to_binary(Index))/binary>>,
+                Params1 ++ [EndValue]
+            };
         _ ->
             {Sql1, Params1}
     end.
@@ -377,8 +413,7 @@ validate_schedule_data(Data) ->
     case schedule_field(Data, <<"title">>, title, <<>>) of
         <<>> -> {error, {missing_field, title}};
         Title when byte_size(Title) > 200 -> {error, {field_too_long, title}};
-        _ ->
-            validate_time_range(Data)
+        _ -> validate_time_range(Data)
     end.
 
 %% @doc 验证时间范围
@@ -387,8 +422,10 @@ validate_time_range(Data) ->
     StartAt = normalize_datetime(schedule_field(Data, <<"start_at">>, start_at, undefined)),
     EndAt = normalize_datetime(schedule_field(Data, <<"end_at">>, end_at, undefined)),
     case {StartAt, EndAt} of
-        {undefined, _} -> {error, {missing_field, start_at}};
-        {_, undefined} -> {error, {missing_field, end_at}};
+        {undefined, _} ->
+            {error, {missing_field, start_at}};
+        {_, undefined} ->
+            {error, {missing_field, end_at}};
         {_, _} ->
             try
                 StartTs = elib_dt:rfc3339_to(StartAt),

@@ -121,7 +121,7 @@ update(Id, Data) ->
             _ -> maps:put(<<"expired_at">>, ExpiredAt, Updates4)
         end,
 
-    case elib_pg:update(Tb, Updates5, #{id => Id}) of
+    case elib_pg:update(Tb, Updates5, <<"id = $1">>, [Id]) of
         {ok, _} ->
             {ok, #{<<"id">> => Id}};
         {error, Reason} ->
@@ -133,7 +133,9 @@ update(Id, Data) ->
 delete_by_id(Id) ->
     Tb = announcement_repo:tablename(),
     case
-        elib_pg:update(Tb, #{<<"status">> => -1, <<"updated_at">> => elib_dt:now()}, #{id => Id})
+        elib_pg:update(
+            Tb, #{<<"status">> => -1, <<"updated_at">> => elib_dt:now()}, <<"id = $1">>, [Id]
+        )
     of
         {ok, _} ->
             {ok, #{<<"id">> => Id}};
@@ -153,7 +155,8 @@ publish(Id) ->
                 <<"published_at">> => elib_dt:now(),
                 <<"updated_at">> => elib_dt:now()
             },
-            #{id => Id}
+            <<"id = $1">>,
+            [Id]
         )
     of
         {ok, _} ->
@@ -166,7 +169,11 @@ publish(Id) ->
 -spec unpublish(integer()) -> {ok, map()} | {error, binary()}.
 unpublish(Id) ->
     Tb = announcement_repo:tablename(),
-    case elib_pg:update(Tb, #{<<"status">> => 2, <<"updated_at">> => elib_dt:now()}, #{id => Id}) of
+    case
+        elib_pg:update(Tb, #{<<"status">> => 2, <<"updated_at">> => elib_dt:now()}, <<"id = $1">>, [
+            Id
+        ])
+    of
         {ok, _} ->
             {ok, #{<<"id">> => Id}};
         {error, Reason} ->

@@ -24,9 +24,12 @@
 send_to_user(Uid, Title, Body) ->
     case push_token_repo:list_by_uid(Uid) of
         {ok, Rows} when is_list(Rows), length(Rows) > 0 ->
-            lists:foreach(fun(Row) ->
-                do_send_push(Row, Title, Body)
-            end, Rows),
+            lists:foreach(
+                fun(Row) ->
+                    do_send_push(Row, Title, Body)
+                end,
+                Rows
+            ),
             ok;
         {ok, _} ->
             ?DEBUG_LOG(["push_notification_ds: no push token for uid", Uid]),
@@ -43,9 +46,12 @@ send_to_users([], _Title, _Body) ->
 send_to_users(Uids, Title, Body) ->
     case push_token_repo:list_by_uids(Uids) of
         {ok, Rows} when is_list(Rows), length(Rows) > 0 ->
-            lists:foreach(fun(Row) ->
-                do_send_push(Row, Title, Body)
-            end, Rows),
+            lists:foreach(
+                fun(Row) ->
+                    do_send_push(Row, Title, Body)
+                end,
+                Rows
+            ),
             ok;
         {ok, _} ->
             ok;
@@ -60,20 +66,22 @@ send_to_users(Uids, Title, Body) ->
 send_fcm(Token, Title, Body) ->
     case get_fcm_config() of
         {ok, ProjectId, AccessToken} ->
-            Url = <<"https://fcm.googleapis.com/v1/projects/",
-                    ProjectId/binary, "/messages:send">>,
-            Payload = jsone:encode(#{
-                <<"message">> => #{
-                    <<"token">> => Token,
-                    <<"notification">> => #{
-                        <<"title">> => Title,
-                        <<"body">> => Body
-                    },
-                    <<"android">> => #{
-                        <<"priority">> => <<"high">>
+            Url = <<"https://fcm.googleapis.com/v1/projects/", ProjectId/binary, "/messages:send">>,
+            Payload = jsone:encode(
+                #{
+                    <<"message">> => #{
+                        <<"token">> => Token,
+                        <<"notification">> => #{
+                            <<"title">> => Title,
+                            <<"body">> => Body
+                        },
+                        <<"android">> => #{
+                            <<"priority">> => <<"high">>
+                        }
                     }
-                }
-            }, [native_utf8]),
+                },
+                [native_utf8]
+            ),
             Headers = [
                 {<<"authorization">>, <<"Bearer ", AccessToken/binary>>},
                 {<<"content-type">>, <<"application/json">>}
@@ -103,17 +111,20 @@ send_fcm(Token, Title, Body) ->
 send_apns(Token, Title, Body) ->
     case get_apns_config() of
         {ok, KeyId, TeamId, BundleId} ->
-            Payload = jsone:encode(#{
-                <<"aps">> => #{
-                    <<"alert">> => #{
-                        <<"title">> => Title,
-                        <<"body">> => Body
-                    },
-                    <<"sound">> => <<"default">>,
-                    <<"badge">> => 1,
-                    <<"mutable-content">> => 1
-                }
-            }, [native_utf8]),
+            Payload = jsone:encode(
+                #{
+                    <<"aps">> => #{
+                        <<"alert">> => #{
+                            <<"title">> => Title,
+                            <<"body">> => Body
+                        },
+                        <<"sound">> => <<"default">>,
+                        <<"badge">> => 1,
+                        <<"mutable-content">> => 1
+                    }
+                },
+                [native_utf8]
+            ),
             case get_apns_jwt(KeyId, TeamId) of
                 {ok, Jwt} ->
                     Host = get_apns_host(),
@@ -151,12 +162,19 @@ send_apns(Token, Title, Body) ->
 cleanup_inactive_tokens(InactiveDays) when InactiveDays > 0 ->
     case push_token_repo:deactivate_inactive(InactiveDays) of
         {ok, Count} ->
-            ?DEBUG_LOG(["push_notification_ds: cleaned up inactive tokens",
-                        InactiveDays, <<"days">>, Count, <<"deactivated">>]),
+            ?DEBUG_LOG([
+                "push_notification_ds: cleaned up inactive tokens",
+                InactiveDays,
+                <<"days">>,
+                Count,
+                <<"deactivated">>
+            ]),
             {ok, Count};
         {error, Reason} = Err ->
-            ?ERROR_LOG(["push_notification_ds: cleanup_inactive_tokens failed",
-                        Reason]),
+            ?ERROR_LOG([
+                "push_notification_ds: cleanup_inactive_tokens failed",
+                Reason
+            ]),
             Err
     end.
 
@@ -167,28 +185,37 @@ cleanup_inactive_tokens(InactiveDays) when InactiveDays > 0 ->
 %% @doc 根据平台选择推送方式（带重试）
 do_send_push(Row, Title, Body) ->
     {Platform, Token} = extract_push_info(Row),
-    elib_async:async_retry(fun() ->
-        case Platform of
-            <<"fcm">> ->
-                case send_fcm(Token, Title, Body) of
-                    ok -> ok;
-                    {error, not_configured} -> ok; % 不重试配置缺失
-                    {error, {fcm_error, 404}} -> ok; % token 不存在，不重试
-                    {error, {fcm_error, 410}} -> ok; % token 已注销，不重试
-                    {error, Reason} -> error({push_failed, Reason})
-                end;
-            <<"apns">> ->
-                case send_apns(Token, Title, Body) of
-                    ok -> ok;
-                    {error, not_configured} -> ok;
-                    {error, {apns_error, 410}} -> ok; % token 无效，不重试
-                    {error, Reason} -> error({push_failed, Reason})
-                end;
-            _ ->
-                ?DEBUG_LOG(["Unknown push platform", Platform]),
-                ok
-        end
-    end, 2, 3000). % 最多重试 2 次，间隔 3 秒
+    elib_async:async_retry(
+        fun() ->
+            case Platform of
+                <<"fcm">> ->
+                    case send_fcm(Token, Title, Body) of
+                        ok -> ok;
+                        % 不重试配置缺失
+                        {error, not_configured} -> ok;
+                        % token 不存在，不重试
+                        {error, {fcm_error, 404}} -> ok;
+                        % token 已注销，不重试
+                        {error, {fcm_error, 410}} -> ok;
+                        {error, Reason} -> error({push_failed, Reason})
+                    end;
+                <<"apns">> ->
+                    case send_apns(Token, Title, Body) of
+                        ok -> ok;
+                        {error, not_configured} -> ok;
+                        % token 无效，不重试
+                        {error, {apns_error, 410}} -> ok;
+                        {error, Reason} -> error({push_failed, Reason})
+                    end;
+                _ ->
+                    ?DEBUG_LOG(["Unknown push platform", Platform]),
+                    ok
+            end
+        % 最多重试 2 次，间隔 3 秒
+        end,
+        2,
+        3000
+    ).
 
 %% @doc 从查询结果行提取推送信息
 %% elib_pg:query 返回 [map()]，每个 map 包含 <<"platform">> 和 <<"token">> 键
@@ -203,7 +230,7 @@ get_fcm_config() ->
             AccessToken = proplists:get_value(fcm_access_token, PushConfig),
             case ProjectId =/= undefined andalso AccessToken =/= undefined of
                 true ->
-                    {ok, elib_cnv:to_binary(ProjectId), elib_cnv:to_binary(AccessToken)};
+                    {ok, elib_cnv:safe_to_binary(ProjectId), elib_cnv:safe_to_binary(AccessToken)};
                 false ->
                     {error, not_configured}
             end;
@@ -220,9 +247,8 @@ get_apns_config() ->
             BundleId = proplists:get_value(apns_bundle_id, PushConfig),
             case KeyId =/= undefined andalso TeamId =/= undefined andalso BundleId =/= undefined of
                 true ->
-                    {ok, elib_cnv:to_binary(KeyId),
-                         elib_cnv:to_binary(TeamId),
-                         elib_cnv:to_binary(BundleId)};
+                    {ok, elib_cnv:safe_to_binary(KeyId), elib_cnv:safe_to_binary(TeamId),
+                        elib_cnv:safe_to_binary(BundleId)};
                 false ->
                     {error, not_configured}
             end;
@@ -265,7 +291,8 @@ get_or_open_conn(Host, Port) ->
     case get(Key) of
         Pid when is_pid(Pid) ->
             case is_process_alive(Pid) of
-                true -> Pid;
+                true ->
+                    Pid;
                 false ->
                     erase(Key),
                     open_and_cache_conn(Key, Host, Port)
@@ -275,13 +302,18 @@ get_or_open_conn(Host, Port) ->
     end.
 
 open_and_cache_conn(Key, Host, Port) ->
-    case gun:open(binary_to_list(Host), Port, #{
-        transport => tls,
-        protocols => [http2],
-        tls_opts => [{verify, verify_peer},
-                     {customize_hostname_check,
-                      [{match_fun, public_key:pkix_verify_hostname_match_fun(https)}]}]
-    }) of
+    case
+        gun:open(binary_to_list(Host), Port, #{
+            transport => tls,
+            protocols => [http2],
+            tls_opts => [
+                {verify, verify_peer},
+                {customize_hostname_check, [
+                    {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
+                ]}
+            ]
+        })
+    of
         {ok, ConnPid} ->
             case gun:await_up(ConnPid, 5000) of
                 {ok, http2} ->
@@ -329,7 +361,8 @@ get_apns_jwt(KeyId, TeamId) ->
         _ ->
             case generate_apns_jwt(KeyId, TeamId) of
                 {ok, Jwt} ->
-                    imboy_cache:set(CacheKey, Jwt, 3000), % 缓存 50 分钟
+                    % 缓存 50 分钟
+                    imboy_cache:set(CacheKey, Jwt, 3000),
                     {ok, Jwt};
                 {error, Reason} ->
                     {error, Reason}
@@ -341,14 +374,18 @@ get_apns_jwt(KeyId, TeamId) ->
 -spec generate_apns_jwt(binary(), binary()) -> {ok, binary()} | {error, term()}.
 generate_apns_jwt(KeyId, TeamId) ->
     Now = erlang:system_time(second),
-    Header = base64url_encode(jsone:encode(#{
-        <<"alg">> => <<"ES256">>,
-        <<"kid">> => KeyId
-    })),
-    Claims = base64url_encode(jsone:encode(#{
-        <<"iss">> => TeamId,
-        <<"iat">> => Now
-    })),
+    Header = base64url_encode(
+        jsone:encode(#{
+            <<"alg">> => <<"ES256">>,
+            <<"kid">> => KeyId
+        })
+    ),
+    Claims = base64url_encode(
+        jsone:encode(#{
+            <<"iss">> => TeamId,
+            <<"iat">> => Now
+        })
+    ),
     SignInput = <<Header/binary, ".", Claims/binary>>,
     case get_apns_private_key() of
         {ok, PrivateKey} ->
@@ -368,7 +405,7 @@ get_apns_private_key() ->
                 undefined ->
                     {error, no_key_path};
                 KeyPath ->
-                    case file:read_file(elib_cnv:to_list(KeyPath)) of
+                    case file:read_file(elib_cnv:safe_to_binary(KeyPath)) of
                         {ok, PemBin} ->
                             [Entry] = public_key:pem_decode(PemBin),
                             Key = public_key:pem_entry_decode(Entry),
@@ -385,8 +422,17 @@ get_apns_private_key() ->
 %% @doc base64url 编码（无填充）
 base64url_encode(Data) ->
     B64 = base64:encode(Data),
-    << <<(case C of $+ -> $-; $/ -> $_; $= -> <<>>; _ -> C end)>>
-       || <<C>> <= B64, C =/= $= >>.
+    <<
+        <<
+            (case C of
+                $+ -> $-;
+                $/ -> $_;
+                $= -> <<>>;
+                _ -> C
+            end)
+        >>
+     || <<C>> <= B64, C =/= $=
+    >>.
 
 %% @doc 根据 HTTP 状态码决定是否使 token 失效
 %% FCM 404 = token 不存在，410 = token 已注销

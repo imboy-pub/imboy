@@ -68,8 +68,8 @@ ice_servers() ->
 normalize_ice_server(S) when is_map(S) ->
     maps:fold(
         fun(K, V, Acc) ->
-            BinK = elib_cnv:to_binary(K),
-            BinV = elib_cnv:to_binary(V),
+            BinK = elib_cnv:safe_to_binary(K),
+            BinV = elib_cnv:safe_to_binary(V),
             Acc#{BinK => BinV}
         end,
         #{},

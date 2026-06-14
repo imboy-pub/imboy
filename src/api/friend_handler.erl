@@ -118,7 +118,7 @@ reject(Req0, State) ->
 delete_friend(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
-    Uid = maps:get(<<"uid">>, PostVals, undefined),
+    Uid = maps:get(<<"user_id">>, PostVals, maps:get(<<"uid">>, PostVals, undefined)),
     friend_logic:delete_friend(CurrentUid, Uid),
     elib_response:success(Req0, #{}).
 
@@ -166,7 +166,7 @@ list_transfer(User, Friends) ->
 move(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
-    Uid = maps:get(<<"uid">>, PostVals, undefined),
+    Uid = maps:get(<<"user_id">>, PostVals, maps:get(<<"uid">>, PostVals, undefined)),
     CategoryId = ec_cnv:to_integer(maps:get(<<"category_id">>, PostVals, 0)),
 
     friend_logic:move_to_category(CurrentUid, Uid, CategoryId),
@@ -229,7 +229,7 @@ information_transfer(CurrentUid, Type, User, UserSetting) ->
 change_remark(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
-    Uid = maps:get(<<"uid">>, PostVals, undefined),
+    Uid = maps:get(<<"user_id">>, PostVals, maps:get(<<"uid">>, PostVals, undefined)),
     Remark = maps:get(<<"remark">>, PostVals, ""),
     % 【优化】使用统一的 ID 验证函数
     case imboy_error:validate_id(Req0, Uid) of
