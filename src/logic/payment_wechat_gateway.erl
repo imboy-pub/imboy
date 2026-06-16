@@ -30,11 +30,14 @@ pay(OrderNo, Amount, _Opts) ->
                 amount_fen => to_fen(Amount),
                 description => <<"充值"/utf8>>
             },
+            PayNo = <<"WECHAT_", OrderNo/binary>>,
             case erlang_pay:create_payment(wechat, Cfg, Order) of
                 {ok, #{code_url := CodeUrl}} ->
-                    {ok, <<"WECHAT_", OrderNo/binary>>, #{<<"code_url">> => CodeUrl}};
+                    %% Native(扫码)：仅透传 code_url，前端展示二维码，无需二次签名。
+                    {ok, PayNo, #{<<"code_url">> => CodeUrl}};
                 {ok, #{prepay_id := PrepayId}} ->
-                    {ok, <<"WECHAT_", OrderNo/binary>>, #{<<"prepay_id">> => PrepayId}};
+                    %% JSAPI/App：拿 prepay_id 后做二次签名(paySign)，组前端唤起参数。
+                    build_jsapi_pay_params(Cfg, PayNo, PrepayId);
                 {error, Err} ->
                     {error, err_msg(Err)}
             end;
@@ -79,12 +82,40 @@ cfg() ->
             {ok, #{
                 mch_id => MchId,
                 app_id => AppId,
-                api_v3 => ApiV3,
+                api_v3_key => ApiV3,
                 mch_serial_no => Serial,
                 private_key => PriKey,
                 platform_public_key => PlatPub,
                 notify_url => NotifyUrl
             }}
+    end.
+
+%% @doc JSAPI/App 二次签名：调 erlang_pay:build_pay_sign(能力门控)生成 paySign，
+%% 组装成 Flutter payment_launcher 期望的 snake_case pay_params。
+%% build_pay_sign 返回 v3 camelCase 标准字段(appId/timeStamp/nonceStr/package/
+%% signType/paySign)，此处映射为前端读取的 key 并补 partnerid(商户号)、裸 prepay_id。
+%% fail-closed：能力不可用/凭据缺失/签名失败时整体返回 {error,_}，不输出半成品签名。
+-spec build_jsapi_pay_params(map(), binary(), binary()) ->
+    {ok, binary(), map()} | {error, binary()}.
+build_jsapi_pay_params(Cfg, PayNo, PrepayId) ->
+    case erlang_pay:build_pay_sign(wechat, Cfg, #{prepay_id => PrepayId}) of
+        {ok, Sign} ->
+            MchId = maps:get(mch_id, Cfg, <<>>),
+            PayParams = #{
+                <<"appid">> => maps:get(<<"appId">>, Sign, <<>>),
+                <<"partnerid">> => MchId,
+                <<"prepay_id">> => PrepayId,
+                <<"package">> => maps:get(
+                    <<"package">>, Sign, <<"prepay_id=", PrepayId/binary>>
+                ),
+                <<"noncestr">> => maps:get(<<"nonceStr">>, Sign, <<>>),
+                <<"timestamp">> => maps:get(<<"timeStamp">>, Sign, <<>>),
+                <<"sign">> => maps:get(<<"paySign">>, Sign, <<>>),
+                <<"signtype">> => maps:get(<<"signType">>, Sign, <<"RSA">>)
+            },
+            {ok, PayNo, PayParams};
+        {error, Err} ->
+            {error, err_msg(Err)}
     end.
 
 -spec strip_prefix(binary()) -> binary().

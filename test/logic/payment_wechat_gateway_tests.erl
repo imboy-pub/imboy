@@ -39,8 +39,10 @@ cleanup(_) ->
 wechat_gateway_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
         fun cfg_carries_notify_url/0,
+        fun cfg_carries_api_v3_key/0,
         fun pay_carries_code_url/0,
-        fun pay_carries_prepay_id/0,
+        fun pay_jsapi_carries_full_pay_sign/0,
+        fun pay_jsapi_sign_failure_is_fail_closed/0,
         fun pay_amount_is_minor_unit/0,
         fun pay_maps_gateway_error_to_binary/0,
         fun missing_credential_rejected/0
@@ -68,15 +70,66 @@ pay_carries_code_url() ->
         Result
     ).
 
-%% JSAPI 下单：prepay_id 经 3 元组 Extra 透传（二次签名为遗留 TODO，库直返 prepay_id）
-pay_carries_prepay_id() ->
+%% cfg/0 把 api_v3_key 读入 Cfg（atom key api_v3_key，与 erlang_pay epay_wechat 契约一致）
+cfg_carries_api_v3_key() ->
+    meck:expect(erlang_pay, create_payment, fun(wechat, Cfg, _Order) ->
+        ?assertEqual(
+            <<"testtesttesttesttesttesttesttest">>,
+            maps:get(api_v3_key, Cfg)
+        ),
+        {ok, #{code_url => <<"u">>}}
+    end),
+    _ = payment_wechat_gateway:pay(<<"ORD_W7">>, 100, #{}).
+
+%% JSAPI 下单：拿到 prepay_id 后调 build_pay_sign 生成完整二次签名，
+%% 组装成前端 payment_launcher 期望的 snake_case pay_params。
+pay_jsapi_carries_full_pay_sign() ->
     meck:expect(erlang_pay, create_payment, fun(wechat, _Cfg, _Order) ->
         {ok, #{prepay_id => <<"wx20210000">>}}
     end),
-    Result = payment_wechat_gateway:pay(<<"ORD_W3">>, 1999, #{}),
+    %% erlang_pay build_pay_sign 返回 v3 camelCase 标准字段
+    meck:expect(erlang_pay, build_pay_sign, fun(wechat, Cfg, Args) ->
+        %% 适配器必须把 prepay_id 传入 build_pay_sign
+        ?assertEqual(<<"wx20210000">>, maps:get(prepay_id, Args)),
+        %% Cfg 仍是含商户私钥等的下单同款 Cfg
+        ?assertEqual(<<"wxappid">>, maps:get(app_id, Cfg)),
+        {ok, #{
+            <<"appId">> => <<"wxappid">>,
+            <<"timeStamp">> => <<"1700000000">>,
+            <<"nonceStr">> => <<"abc123nonce">>,
+            <<"package">> => <<"prepay_id=wx20210000">>,
+            <<"signType">> => <<"RSA">>,
+            <<"paySign">> => <<"BASE64SIGN==">>
+        }}
+    end),
+    {ok, PayNo, Params} = payment_wechat_gateway:pay(<<"ORD_W3">>, 1999, #{}),
+    ?assertEqual(<<"WECHAT_ORD_W3">>, PayNo),
+    %% 前端 payment_launcher.parseWechatParams 读取的 snake_case key 全部齐备
+    ?assertEqual(<<"wxappid">>, maps:get(<<"appid">>, Params)),
+    %% partnerid = 商户号 mch_id（build_pay_sign 返回不含，由适配器补）
+    ?assertEqual(<<"1900000000">>, maps:get(<<"partnerid">>, Params)),
+    %% 裸 prepay_id（前端读 prepay_id/prepayid）
+    ?assertEqual(<<"wx20210000">>, maps:get(<<"prepay_id">>, Params)),
+    %% package = prepay_id=xxx（JSAPI 唤起约定，非默认 Sign=WXPay）
+    ?assertEqual(<<"prepay_id=wx20210000">>, maps:get(<<"package">>, Params)),
+    ?assertEqual(<<"abc123nonce">>, maps:get(<<"noncestr">>, Params)),
+    ?assertEqual(<<"1700000000">>, maps:get(<<"timestamp">>, Params)),
+    %% sign = paySign（前端读 sign）
+    ?assertEqual(<<"BASE64SIGN==">>, maps:get(<<"sign">>, Params)),
+    ?assertEqual(<<"RSA">>, maps:get(<<"signtype">>, Params)).
+
+%% build_pay_sign 失败（能力不可用/凭据缺失/签名失败）→ fail-closed，
+%% 整体返回 {error, _}，绝不输出半成品签名 pay_params。
+pay_jsapi_sign_failure_is_fail_closed() ->
+    meck:expect(erlang_pay, create_payment, fun(wechat, _Cfg, _Order) ->
+        {ok, #{prepay_id => <<"wx20210000">>}}
+    end),
+    meck:expect(erlang_pay, build_pay_sign, fun(wechat, _Cfg, _Args) ->
+        {error, {sign_failed, <<"微信 paySign 签名失败"/utf8>>}}
+    end),
     ?assertEqual(
-        {ok, <<"WECHAT_ORD_W3">>, #{<<"prepay_id">> => <<"wx20210000">>}},
-        Result
+        {error, <<"微信 paySign 签名失败"/utf8>>},
+        payment_wechat_gateway:pay(<<"ORD_W8">>, 1999, #{})
     ).
 
 %% 金额已是最小货币单位（分），原样作 amount_fen
