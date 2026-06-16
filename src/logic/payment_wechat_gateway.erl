@@ -70,6 +70,8 @@ cfg() ->
     Serial = application:get_env(imboy, wechat_cert_serial, <<>>),
     PriKey = application:get_env(imboy, wechat_private_key, <<>>),
     PlatPub = application:get_env(imboy, wechat_platform_public_key, <<>>),
+    %% 异步回调地址（APIv3 Native 下单必填项之一，由 erlang_pay 组进请求体）。
+    NotifyUrl = application:get_env(imboy, wechat_notify_url, <<>>),
     case lists:member(<<>>, [MchId, AppId, ApiV3, Serial, PriKey]) of
         true ->
             {error, <<"支付网关未配置真实凭据"/utf8>>};
@@ -80,7 +82,8 @@ cfg() ->
                 api_v3 => ApiV3,
                 mch_serial_no => Serial,
                 private_key => PriKey,
-                platform_public_key => PlatPub
+                platform_public_key => PlatPub,
+                notify_url => NotifyUrl
             }}
     end.
 

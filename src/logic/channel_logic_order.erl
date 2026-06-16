@@ -87,7 +87,13 @@ do_create_order(ChannelId, Uid) ->
             end
     end.
 
--spec pay_order(integer(), binary()) -> ok | {error, binary()}.
+%% @returns {ok, Envelope} | {error, binary()}
+%% Envelope 为统一支付信封（binary key）：
+%%   #{<<"payment_method">>, <<"payment_no">>, <<"pay_params">>}
+%%   pay_params 透传网关支付参数：
+%%     alipay #{<<"order_str">>}，wechat #{<<"prepay_id">>|<<"code_url">>}，
+%%     wallet/mock #{}（即时入账，无第三方拉起）。
+-spec pay_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 pay_order(Uid, OrderNo) ->
     case channel_order_ds:find_by_order_no(OrderNo) of
         {ok, Order} when is_map(Order) ->
@@ -118,15 +124,29 @@ pay_order(Uid, OrderNo) ->
                                         uid => Uid,
                                         amount => to_gateway_amount(Method, Amount)
                                     },
-                                    case payment_gateway:pay(Method, OrderNo, PayOpts) of
-                                        {ok, PayNo} ->
+                                    case
+                                        normalize_pay_result(
+                                            payment_gateway:pay(Method, OrderNo, PayOpts)
+                                        )
+                                    of
+                                        {ok, PayNo, Extra} ->
                                             PaymentData = #{
                                                 payment_no => PayNo,
                                                 payment_method => Method
                                             },
-                                            do_pay_order(
-                                                ChannelId, Uid, OrderNo, PaymentData, Order
-                                            );
+                                            Envelope = #{
+                                                <<"payment_method">> => Method,
+                                                <<"payment_no">> => PayNo,
+                                                <<"pay_params">> => Extra
+                                            },
+                                            case
+                                                do_pay_order(
+                                                    ChannelId, Uid, OrderNo, PaymentData, Order
+                                                )
+                                            of
+                                                ok -> {ok, Envelope};
+                                                {error, _} = Err -> Err
+                                            end;
                                         {error, PayReason} ->
                                             {error, PayReason}
                                     end
@@ -144,6 +164,18 @@ pay_order(Uid, OrderNo) ->
         _Other ->
             {error, elib_cnv:safe_to_binary(_Other)}
     end.
+
+%% @doc 归一网关返回：兼容 {ok, PayNo} 与 {ok, PayNo, Extra}，
+%% 统一成 {ok, PayNo, Extra::map()}，错误原样透传（wallet/mock 无第三元组 → 空 map）。
+-spec normalize_pay_result(term()) -> {ok, binary(), map()} | {error, term()}.
+normalize_pay_result({ok, PayNo, Extra}) when is_map(Extra) ->
+    {ok, PayNo, Extra};
+normalize_pay_result({ok, PayNo}) ->
+    {ok, PayNo, #{}};
+normalize_pay_result({error, _} = Err) ->
+    Err;
+normalize_pay_result(Other) ->
+    {error, elib_cnv:safe_to_binary(Other)}.
 
 -spec do_pay_order(integer(), integer(), binary(), map(), map()) -> ok | {error, binary()}.
 do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->

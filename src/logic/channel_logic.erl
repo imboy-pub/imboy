@@ -58,7 +58,7 @@
 
 %% channel_logic_order delegates
 -spec create_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
--spec pay_order(integer(), binary()) -> ok | {error, binary()}.
+-spec pay_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 -spec get_my_orders(integer()) -> {ok, [map()]} | {error, binary()}.
 -spec get_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 

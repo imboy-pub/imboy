@@ -152,14 +152,19 @@ do_pay(Uid, OrderNo, Method, Amount) ->
     PayOpts = #{uid => Uid, amount => Amount, currency => order_currency(OrderNo)},
     case normalize_pay_result(payment_gateway:pay(Method, OrderNo, PayOpts)) of
         {ok, PaymentNo, Extra} ->
-            %% payment_no 由回调/入账(credit_in_tx)回填；下单阶段不改订单状态
-            %% Extra：网关向客户端透传的支付参数（Stripe client_secret 等），并入响应
-            Result0 = maps:merge(Extra, #{
-                <<"order_no">> => OrderNo,
-                <<"payment_no">> => PaymentNo,
+            %% payment_no 由回调/入账(credit_in_tx)回填；下单阶段不改订单状态。
+            %% 统一信封契约：payment_method / payment_no / pay_params（binary key，
+            %% 前端 dart 收 string key）。pay_params 透传网关支付参数：
+            %%   alipay #{<<"order_str">>}，wechat #{<<"prepay_id">>|<<"code_url">>}，
+            %%   wallet/mock #{}（即时入账无需拉起第三方）。
+            %% 另保留 recharge 业务字段 order_no/amount/status 供前端轮询。
+            Result0 = #{
                 <<"payment_method">> => Method,
+                <<"payment_no">> => PaymentNo,
+                <<"pay_params">> => Extra,
+                <<"order_no">> => OrderNo,
                 <<"amount">> => Amount
-            }),
+            },
             %% 沙箱(mock)网关即时入账，便于本地联调
             case Method of
                 <<"mock">> ->

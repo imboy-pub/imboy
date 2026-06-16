@@ -59,8 +59,9 @@ pay_order(Req0, State) ->
             elib_response:error(Req0, <<"订单号不能为空"/utf8>>);
         _ ->
             case channel_logic:pay_order(Uid, OrderNo) of
-                ok ->
-                    elib_response:success(Req0, #{});
+                {ok, Envelope} ->
+                    %% 统一支付信封：payment_method / payment_no / pay_params（binary key）
+                    elib_response:success(Req0, Envelope);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end

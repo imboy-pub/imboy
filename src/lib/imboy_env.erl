@@ -271,10 +271,12 @@ override_payment() ->
     ok = override_binary_key("IMBOY_WECHAT_CERT_SERIAL", wechat_cert_serial),
     ok = override_binary_key("IMBOY_WECHAT_PRIVATE_KEY", wechat_private_key),
     ok = override_binary_key("IMBOY_WECHAT_PLATFORM_PUBLIC_KEY", wechat_platform_public_key),
+    ok = override_binary_key("IMBOY_WECHAT_NOTIFY_URL", wechat_notify_url),
     %% 支付宝
     ok = override_binary_key("IMBOY_ALIPAY_APP_ID", alipay_app_id),
     ok = override_binary_key("IMBOY_ALIPAY_PRIVATE_KEY", alipay_private_key),
     ok = override_binary_key("IMBOY_ALIPAY_PUBLIC_KEY", alipay_public_key),
+    ok = override_binary_key("IMBOY_ALIPAY_NOTIFY_URL", alipay_notify_url),
     %% Stripe
     ok = override_binary_key("IMBOY_STRIPE_SECRET_KEY", stripe_secret_key),
     ok = override_binary_key("IMBOY_STRIPE_WEBHOOK_SECRET", stripe_webhook_secret),

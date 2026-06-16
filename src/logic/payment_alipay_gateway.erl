@@ -58,9 +58,16 @@ cfg() ->
     AppId = application:get_env(imboy, alipay_app_id, <<>>),
     PriKey = application:get_env(imboy, alipay_private_key, <<>>),
     PubKey = application:get_env(imboy, alipay_public_key, <<>>),
+    %% 异步回调地址（可选）：erlang_pay 经 maybe_put 处理，空值不下发 notify_url。
+    NotifyUrl = application:get_env(imboy, alipay_notify_url, <<>>),
     case AppId =/= <<>> andalso PriKey =/= <<>> andalso PubKey =/= <<>> of
         true ->
-            {ok, #{app_id => AppId, private_key => PriKey, public_key => PubKey}};
+            {ok, #{
+                app_id => AppId,
+                private_key => PriKey,
+                public_key => PubKey,
+                notify_url => NotifyUrl
+            }};
         false ->
             {error, <<"支付网关未配置真实凭据"/utf8>>}
     end.
