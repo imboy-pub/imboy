@@ -21,7 +21,9 @@ publish_message_with_admin_role_succeeds_test_() ->
             {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
         {channel_ds, [
-            {'publish_message', 5, fun(11, 1001, <<"hello"/utf8>>, <<"text">>, #{<<"ext">> := <<"1">>}) ->
+            {'publish_message', 5, fun(
+                11, 1001, <<"hello"/utf8>>, <<"text">>, #{<<"ext">> := <<"1">>}
+            ) ->
                 {ok, 99}
             end},
             {'subscriber_uids', 1, fun(11) -> [2001, 2002] end}
@@ -42,7 +44,9 @@ publish_message_with_admin_role_succeeds_test_() ->
             {'list_unread_counts_by_channel', 1, fun(11) -> {ok, []} end}
         ]},
         {msg_s2c_ds, [
-            {'send', 7, fun(0, [2001, 2002], <<"channel_message">>, <<>>, null, BroadcastPayload, save) ->
+            {'send', 7, fun(
+                0, [2001, 2002], <<"channel_message">>, <<>>, null, BroadcastPayload, save
+            ) ->
                 ?assertEqual(11, maps:get(<<"channel_id">>, BroadcastPayload)),
                 ?assertEqual(<<"CHANNEL">>, maps:get(<<"type">>, BroadcastPayload)),
                 ?assertEqual(99, maps:get(<<"id">>, BroadcastPayload)),
@@ -50,27 +54,23 @@ publish_message_with_admin_role_succeeds_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:publish_message(
-                    1001,
-                    ChannelIdBin,
-                    <<"hello"/utf8>>,
-                    <<"text">>,
-                    #{<<"ext">> => <<"1">>}
-                ),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:publish_message(
+                1001,
+                ChannelIdBin,
+                <<"hello"/utf8>>,
+                <<"text">>,
+                #{<<"ext">> => <<"1">>}
+            ),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Message} = Result,
-                ?assertEqual(99, maps:get(<<"id">>, Message)),
-                ?assertEqual(1001, maps:get(<<"author_id">>, Message)),
-                ?assertEqual(<<"hello"/utf8>>, maps:get(<<"content">>, Message))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Message} = Result,
+            ?assertEqual(99, maps:get(<<"id">>, Message)),
+            ?assertEqual(1001, maps:get(<<"author_id">>, Message)),
+            ?assertEqual(<<"hello"/utf8>>, maps:get(<<"content">>, Message))
+        end)
+    end}.
 
 publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -100,32 +100,30 @@ publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_() 
             {'list_unread_counts_by_channel', 1, fun(11) -> {ok, []} end}
         ]},
         {msg_s2c_ds, [
-            {'send', 7, fun(0, [2001, 2002], <<"channel_message">>, <<>>, null, BroadcastPayload, save) ->
+            {'send', 7, fun(
+                0, [2001, 2002], <<"channel_message">>, <<>>, null, BroadcastPayload, save
+            ) ->
                 ?assertEqual(11, maps:get(<<"channel_id">>, BroadcastPayload)),
                 erlang:error(mock_notify_crash)
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:publish_message(
-                    1001,
-                    ChannelIdBin,
-                    <<"hello"/utf8>>,
-                    <<"text">>,
-                    #{}
-                ),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:publish_message(
+                1001,
+                ChannelIdBin,
+                <<"hello"/utf8>>,
+                <<"text">>,
+                #{}
+            ),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Message} = Result,
-                ?assertEqual(109, maps:get(<<"id">>, Message)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Message} = Result,
+            ?assertEqual(109, maps:get(<<"id">>, Message)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 publish_message_with_non_admin_role_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -142,24 +140,20 @@ publish_message_with_non_admin_role_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:publish_message(
-                    1001,
-                    ChannelIdBin,
-                    <<"hello"/utf8>>,
-                    <<"text">>,
-                    #{}
-                ),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:publish_message(
+                1001,
+                ChannelIdBin,
+                <<"hello"/utf8>>,
+                <<"text">>,
+                #{}
+            ),
 
-                ?assertEqual({error, <<"只有管理员可以发布消息"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_ds, publish_message, 5))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"只有管理员可以发布消息"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_ds, publish_message, 5))
+        end)
+    end}.
 
 publish_message_when_storage_fails_returns_error_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -179,25 +173,21 @@ publish_message_when_storage_fails_returns_error_test_() ->
             {'send', 7, fun(_, _, _, _, _, _, _) -> erlang:error(should_not_broadcast) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:publish_message(
-                    1001,
-                    ChannelIdBin,
-                    <<"hello"/utf8>>,
-                    <<"text">>,
-                    #{}
-                ),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:publish_message(
+                1001,
+                ChannelIdBin,
+                <<"hello"/utf8>>,
+                <<"text">>,
+                #{}
+            ),
 
-                ?assertEqual({error, <<"db_error">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_error">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 publish_message_returns_error_when_loading_new_message_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -214,26 +204,24 @@ publish_message_returns_error_when_loading_new_message_fails_test_() ->
             {'find_by_id', 1, fun(99) -> {error, db_down} end}
         ]},
         {msg_s2c_ds, [
-            {'send', 7, fun(_, _, _, _, _, _, _) -> erlang:error(should_not_broadcast_when_load_failed) end}
+            {'send', 7, fun(_, _, _, _, _, _, _) ->
+                erlang:error(should_not_broadcast_when_load_failed)
+            end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:publish_message(
-                    1001,
-                    ChannelIdBin,
-                    <<"hello"/utf8>>,
-                    <<"text">>,
-                    #{}
-                ),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:publish_message(
+                1001,
+                ChannelIdBin,
+                <<"hello"/utf8>>,
+                <<"text">>,
+                #{}
+            ),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 publish_message_accepts_custom_id_fallback_test_() ->
     MockConfigs = [
@@ -268,24 +256,20 @@ publish_message_accepts_custom_id_fallback_test_() ->
             {'send', 7, fun(_, _, _, _, _, _, _) -> ok end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:publish_message(
-                    1001,
-                    <<"tech_daily">>,
-                    <<"hello"/utf8>>,
-                    <<"text">>,
-                    #{}
-                ),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:publish_message(
+                1001,
+                <<"tech_daily">>,
+                <<"hello"/utf8>>,
+                <<"text">>,
+                #{}
+            ),
 
-                ?assertMatch({ok, _}, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, find_by_custom_id, 1))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, find_by_custom_id, 1))
+        end)
+    end}.
 
 get_channel_by_custom_id_includes_role_for_admin_test_() ->
     MockConfigs = [
@@ -305,21 +289,17 @@ get_channel_by_custom_id_includes_role_for_admin_test_() ->
             {'is_subscribed', 2, fun(_, _) -> erlang:error(should_not_check_subscription) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 1001),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 1001),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Channel} = Result,
-                ?assertEqual(2, maps:get(user_role, Channel)),
-                ?assertEqual(true, maps:get(is_subscribed, Channel)),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Channel} = Result,
+            ?assertEqual(2, maps:get(user_role, Channel)),
+            ?assertEqual(true, maps:get(is_subscribed, Channel)),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
+        end)
+    end}.
 
 get_channel_by_custom_id_checks_subscription_for_non_admin_test_() ->
     MockConfigs = [
@@ -342,21 +322,17 @@ get_channel_by_custom_id_checks_subscription_for_non_admin_test_() ->
             {'is_subscribed', 2, fun(11, 2002) -> true end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 2002),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Channel} = Result,
-                ?assertEqual(0, maps:get(user_role, Channel)),
-                ?assertEqual(true, maps:get(is_subscribed, Channel)),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Channel} = Result,
+            ?assertEqual(0, maps:get(user_role, Channel)),
+            ?assertEqual(true, maps:get(is_subscribed, Channel)),
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
+        end)
+    end}.
 
 get_channel_by_custom_id_checks_subscription_when_admin_role_unexpected_test_() ->
     MockConfigs = [
@@ -379,20 +355,16 @@ get_channel_by_custom_id_checks_subscription_when_admin_role_unexpected_test_() 
             {'is_subscribed', 2, fun(11, 2002) -> false end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 2002),
-                ?assertMatch({ok, _}, Result),
-                {ok, Channel} = Result,
-                ?assertEqual(0, maps:get(user_role, Channel)),
-                ?assertEqual(false, maps:get(is_subscribed, Channel)),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 2002),
+            ?assertMatch({ok, _}, Result),
+            {ok, Channel} = Result,
+            ?assertEqual(0, maps:get(user_role, Channel)),
+            ?assertEqual(false, maps:get(is_subscribed, Channel)),
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
+        end)
+    end}.
 
 get_channel_returns_error_when_repo_returns_non_map_payload_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -411,17 +383,13 @@ get_channel_returns_error_when_repo_returns_non_map_payload_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel(ChannelIdBin, 1001),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel(ChannelIdBin, 1001),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2))
+        end)
+    end}.
 
 get_channel_by_custom_id_returns_error_when_repo_returns_non_map_payload_test_() ->
     MockConfigs = [
@@ -439,17 +407,13 @@ get_channel_by_custom_id_returns_error_when_repo_returns_non_map_payload_test_()
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 1001),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 1001),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2))
+        end)
+    end}.
 
 get_channel_by_custom_id_returns_error_when_channel_id_invalid_test_() ->
     MockConfigs = [
@@ -473,17 +437,13 @@ get_channel_by_custom_id_returns_error_when_channel_id_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 1001),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_by_custom_id(<<"tech_daily">>, 1001),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2))
+        end)
+    end}.
 
 update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -513,21 +473,17 @@ update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:update_channel(1001, ChannelIdBin, #{
-                    <<"name">> => <<"Channel X">>,
-                    <<"ignored">> => <<"noop">>
-                }),
-                ?assertMatch({ok, _}, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, update, 2)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_channel(1001, ChannelIdBin, #{
+                <<"name">> => <<"Channel X">>,
+                <<"ignored">> => <<"noop">>
+            }),
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, update, 2)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 update_channel_returns_permission_denied_when_admin_role_unexpected_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -544,19 +500,15 @@ update_channel_returns_permission_denied_when_admin_role_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:update_channel(1001, ChannelIdBin, #{
-                    <<"name">> => <<"Channel X">>
-                }),
-                ?assertEqual({error, <<"无权限操作"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, update, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_channel(1001, ChannelIdBin, #{
+                <<"name">> => <<"Channel X">>
+            }),
+            ?assertEqual({error, <<"无权限操作"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, update, 2))
+        end)
+    end}.
 
 update_channel_success_still_returns_ok_when_notify_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -586,21 +538,17 @@ update_channel_success_still_returns_ok_when_notify_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:update_channel(1001, ChannelIdBin, #{
-                    <<"name">> => <<"Channel X">>,
-                    <<"ignored">> => <<"noop">>
-                }),
-                ?assertMatch({ok, _}, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, update, 2)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_channel(1001, ChannelIdBin, #{
+                <<"name">> => <<"Channel X">>,
+                <<"ignored">> => <<"noop">>
+            }),
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, update, 2)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 update_channel_returns_error_when_reload_payload_not_map_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -618,20 +566,16 @@ update_channel_returns_error_when_reload_payload_not_map_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:update_channel(1001, ChannelIdBin, #{
-                    <<"name">> => <<"Channel X">>
-                }),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, update, 2)),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_update, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_channel(1001, ChannelIdBin, #{
+                <<"name">> => <<"Channel X">>
+            }),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, update, 2)),
+            ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_update, 2))
+        end)
+    end}.
 
 delete_channel_success_still_returns_ok_when_notify_crashes_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -649,18 +593,14 @@ delete_channel_success_still_returns_ok_when_notify_crashes_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_channel(1001, ChannelIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_channel(1001, ChannelIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_channel_success_still_returns_ok_when_notify_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -678,18 +618,14 @@ delete_channel_success_still_returns_ok_when_notify_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_channel(1001, ChannelIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_channel(1001, ChannelIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_channel_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -707,18 +643,14 @@ delete_channel_still_returns_ok_when_subscriber_lookup_crashes_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_channel(1001, ChannelIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_channel(1001, ChannelIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, delete, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 get_messages_paid_channel_requires_purchase_or_subscription_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -748,18 +680,14 @@ get_messages_paid_channel_requires_purchase_or_subscription_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
 
-                ?assertEqual({error, <<"付费频道需要先购买"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"付费频道需要先购买"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
+        end)
+    end}.
 
 get_messages_paid_channel_allows_purchased_user_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -796,18 +724,14 @@ get_messages_paid_channel_allows_purchased_user_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
 
-                ?assertMatch({ok, [_]}, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+            ?assertMatch({ok, [_]}, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, list_by_channel, 3))
+        end)
+    end}.
 
 get_messages_returns_error_when_repo_query_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -824,16 +748,12 @@ get_messages_returns_error_when_repo_query_fails_test_() ->
             {'list_by_channel', 3, fun(11, 0, 20) -> {error, db_down} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
-                ?assertEqual({error, <<"db_down">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
+            ?assertEqual({error, <<"db_down">>}, Result)
+        end)
+    end}.
 
 get_messages_returns_error_when_repo_payload_not_list_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -850,16 +770,12 @@ get_messages_returns_error_when_repo_payload_not_list_test_() ->
             {'list_by_channel', 3, fun(11, 0, 20) -> {ok, invalid_payload} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
-                ?assertEqual({error, <<"invalid_payload">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
+            ?assertEqual({error, <<"invalid_payload">>}, Result)
+        end)
+    end}.
 
 get_messages_filters_non_map_entries_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -886,18 +802,14 @@ get_messages_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, Messages} = Result,
-                ?assertEqual(1, length(Messages))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, Messages} = Result,
+            ?assertEqual(1, length(Messages))
+        end)
+    end}.
 
 get_messages_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -911,27 +823,24 @@ get_messages_returns_error_when_channel_payload_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
+        end)
+    end}.
 
 pin_message_returns_error_when_reload_after_update_fails_test_() ->
     MessageIdBin = integer_to_binary(99),
     MockConfigs = [
         {channel_message_repo, [
             {'find_by_id', 1, fun(99) ->
-                Calls = case erlang:get(pin_find_call_count) of
-                    undefined -> 0;
-                    V -> V
-                end,
+                Calls =
+                    case erlang:get(pin_find_call_count) of
+                        undefined -> 0;
+                        V -> V
+                    end,
                 erlang:put(pin_find_call_count, Calls + 1),
                 case Calls of
                     0 -> #{<<"id">> => 99, <<"channel_id">> => 11, <<"author_id">> => 1001};
@@ -959,8 +868,7 @@ pin_message_returns_error_when_reload_after_update_fails_test_() ->
                 ?assertEqual({error, <<"db_down">>}, Result),
                 ?assertEqual(2, meck:num_calls(channel_message_repo, find_by_id, 1))
             end)
-        end
-    }.
+        end}.
 
 pin_message_returns_error_when_repo_returns_non_map_payload_test_() ->
     MessageIdBin = integer_to_binary(198),
@@ -975,18 +883,14 @@ pin_message_returns_error_when_repo_returns_non_map_payload_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pin_message(1001, MessageIdBin, true),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2)),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pin_message(1001, MessageIdBin, true),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2)),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
+        end)
+    end}.
 
 pin_message_returns_error_when_message_id_decode_unexpected_test_() ->
     MessageIdBin = <<"msg_hash_unexpected">>,
@@ -1005,19 +909,15 @@ pin_message_returns_error_when_message_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pin_message(1001, MessageIdBin, true),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2)),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pin_message(1001, MessageIdBin, true),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2)),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
+        end)
+    end}.
 
 pin_message_returns_error_when_channel_id_type_invalid_test_() ->
     MessageIdBin = integer_to_binary(199),
@@ -1038,18 +938,14 @@ pin_message_returns_error_when_channel_id_type_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pin_message(1001, MessageIdBin, true),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2)),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pin_message(1001, MessageIdBin, true),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2)),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
+        end)
+    end}.
 
 delete_message_author_success_still_returns_ok_when_notify_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1072,25 +968,23 @@ delete_message_author_success_still_returns_ok_when_notify_fails_test_() ->
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save) ->
+            {'send', 7, fun(
+                0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save
+            ) ->
                 ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
                 ?assertEqual(MessageIdBin, maps:get(<<"message_id">>, Payload)),
                 {error, notify_failed}
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_message_admin_success_still_returns_ok_when_notify_crashes_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1113,24 +1007,22 @@ delete_message_admin_success_still_returns_ok_when_notify_crashes_test_() ->
             {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
         ]},
         {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save) ->
+            {'send', 7, fun(
+                0, [1001, 2002], <<"channel_message_deleted">>, <<>>, null, Payload, save
+            ) ->
                 ?assertEqual(ChannelIdBin, maps:get(<<"channel_id">>, Payload)),
                 erlang:error(mock_notify_crash)
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_message_returns_permission_denied_when_not_author_or_admin_test_() ->
     MessageIdBin = integer_to_binary(101),
@@ -1149,7 +1041,9 @@ delete_message_returns_permission_denied_when_not_author_or_admin_test_() ->
             {'get_user_role', 2, fun(11, 1001) -> 0 end}
         ]},
         {channel_ds, [
-            {'subscriber_uids', 1, fun(_) -> erlang:error(should_not_load_subscribers_without_permission) end}
+            {'subscriber_uids', 1, fun(_) ->
+                erlang:error(should_not_load_subscribers_without_permission)
+            end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
@@ -1157,18 +1051,14 @@ delete_message_returns_permission_denied_when_not_author_or_admin_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual({error, <<"无权限删除此消息"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual({error, <<"无权限删除此消息"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_message_returns_error_when_message_not_found_test_() ->
     MessageIdBin = integer_to_binary(404),
@@ -1188,18 +1078,14 @@ delete_message_returns_error_when_message_not_found_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_message_returns_repo_error_as_binary_test_() ->
     MessageIdBin = integer_to_binary(102),
@@ -1228,18 +1114,14 @@ delete_message_returns_repo_error_as_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_message_returns_error_when_repo_returns_non_map_payload_test_() ->
     MessageIdBin = integer_to_binary(103),
@@ -1259,18 +1141,14 @@ delete_message_returns_error_when_repo_returns_non_map_payload_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_message_returns_error_when_required_fields_missing_test_() ->
     MessageIdBin = integer_to_binary(104),
@@ -1282,7 +1160,9 @@ delete_message_returns_error_when_required_fields_missing_test_() ->
                     <<"channel_id">> => 11
                 }
             end},
-            {'delete', 1, fun(_) -> erlang:error(should_not_delete_when_required_fields_missing) end}
+            {'delete', 1, fun(_) ->
+                erlang:error(should_not_delete_when_required_fields_missing)
+            end}
         ]},
         {channel_logic_common, [
             {'get_user_role', 2, fun(_, _) ->
@@ -1300,18 +1180,14 @@ delete_message_returns_error_when_required_fields_missing_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 delete_message_returns_error_when_required_fields_type_invalid_test_() ->
     MessageIdBin = integer_to_binary(105),
@@ -1342,18 +1218,14 @@ delete_message_returns_error_when_required_fields_type_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:delete_message(1001, MessageIdBin),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:delete_message(1001, MessageIdBin),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, get_user_role, 2))
+        end)
+    end}.
 
 create_invitation_success_notifies_invitee_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1383,20 +1255,16 @@ create_invitation_success_notifies_invitee_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Invitation} = Result,
-                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Invitation} = Result,
+            ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 create_invitation_rejects_non_private_channel_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1410,18 +1278,14 @@ create_invitation_rejects_non_private_channel_test_() ->
             {'create_invitation', 3, fun(_, _, _) -> erlang:error(should_not_create_invitation) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"只有私有频道支持邀请功能"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"只有私有频道支持邀请功能"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+        end)
+    end}.
 
 create_invitation_returns_error_when_channel_not_found_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1432,21 +1296,19 @@ create_invitation_returns_error_when_channel_not_found_test_() ->
             end}
         ]},
         {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(_, _, _) -> erlang:error(should_not_create_invitation_when_channel_missing) end}
+            {'create_invitation', 3, fun(_, _, _) ->
+                erlang:error(should_not_create_invitation_when_channel_missing)
+            end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+        end)
+    end}.
 
 create_invitation_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -1462,18 +1324,14 @@ create_invitation_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+        end)
+    end}.
 
 create_invitation_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1487,17 +1345,13 @@ create_invitation_returns_error_when_channel_payload_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+        end)
+    end}.
 
 create_invitation_rejects_disabled_channel_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1508,21 +1362,19 @@ create_invitation_rejects_disabled_channel_test_() ->
             end}
         ]},
         {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(_, _, _) -> erlang:error(should_not_create_invitation_when_channel_disabled) end}
+            {'create_invitation', 3, fun(_, _, _) ->
+                erlang:error(should_not_create_invitation_when_channel_disabled)
+            end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"频道已禁用或删除"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"频道已禁用或删除"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+        end)
+    end}.
 
 create_invitation_ds_binary_error_passthrough_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1548,19 +1400,15 @@ create_invitation_ds_binary_error_passthrough_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"邀请创建失败"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"邀请创建失败"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 create_invitation_ds_atom_error_converted_to_binary_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1586,19 +1434,15 @@ create_invitation_ds_atom_error_converted_to_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"db_timeout">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_timeout">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1624,18 +1468,14 @@ create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
-                ?assertEqual({error, <<"unexpected_result">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+            ?assertEqual({error, <<"unexpected_result">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1657,20 +1497,16 @@ create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"not_found">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"not_found">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 create_invitation_returns_error_when_loading_created_invitation_payload_not_map_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1692,19 +1528,15 @@ create_invitation_returns_error_when_loading_created_invitation_payload_not_map_
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 get_my_invitations_success_transfers_ids_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1712,30 +1544,28 @@ get_my_invitations_success_transfers_ids_test_() ->
     MockConfigs = [
         {channel_invitation_repo, [
             {'list_pending_by_invitee', 1, fun(2002) ->
-                {ok, [#{
-                    <<"id">> => 501,
-                    <<"channel_id">> => 11,
-                    <<"inviter_uid">> => 1001,
-                    <<"invitee_uid">> => 2002
-                }]}
+                {ok, [
+                    #{
+                        <<"id">> => 501,
+                        <<"channel_id">> => 11,
+                        <<"inviter_uid">> => 1001,
+                        <<"invitee_uid">> => 2002
+                    }
+                ]}
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_invitations(2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_invitations(2002),
 
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Invitation]} = Result,
-                ?assertEqual(501, maps:get(<<"id">>, Invitation)),
-                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_pending_by_invitee, 1))
-            end)
-        end
-    }.
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Invitation]} = Result,
+            ?assertEqual(501, maps:get(<<"id">>, Invitation)),
+            ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_pending_by_invitee, 1))
+        end)
+    end}.
 
 get_my_invitations_returns_error_on_repo_error_test_() ->
     MockConfigs = [
@@ -1745,18 +1575,14 @@ get_my_invitations_returns_error_on_repo_error_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_invitations(2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_invitations(2002),
 
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_pending_by_invitee, 1))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_pending_by_invitee, 1))
+        end)
+    end}.
 
 get_my_invitations_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -1764,16 +1590,12 @@ get_my_invitations_returns_error_when_repo_payload_not_list_test_() ->
             {'list_pending_by_invitee', 1, fun(2002) -> {ok, invalid_payload} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_invitations(2002),
-                ?assertEqual({error, <<"invalid_payload">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_invitations(2002),
+            ?assertEqual({error, <<"invalid_payload">>}, Result)
+        end)
+    end}.
 
 get_my_invitations_filters_non_map_entries_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1793,19 +1615,15 @@ get_my_invitations_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_invitations(2002),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Invitation]} = Result,
-                ?assertEqual(501, maps:get(<<"id">>, Invitation)),
-                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_invitations(2002),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Invitation]} = Result,
+            ?assertEqual(501, maps:get(<<"id">>, Invitation)),
+            ?assertEqual(11, maps:get(<<"channel_id">>, Invitation))
+        end)
+    end}.
 
 get_sent_invitations_returns_error_on_repo_error_test_() ->
     MockConfigs = [
@@ -1815,18 +1633,14 @@ get_sent_invitations_returns_error_on_repo_error_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_sent_invitations(1001),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_sent_invitations(1001),
 
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_by_inviter, 2))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_by_inviter, 2))
+        end)
+    end}.
 
 get_sent_invitations_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -1834,16 +1648,12 @@ get_sent_invitations_returns_error_when_repo_payload_not_list_test_() ->
             {'list_by_inviter', 2, fun(1001, 50) -> {ok, invalid_payload} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_sent_invitations(1001),
-                ?assertEqual({error, <<"invalid_payload">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_sent_invitations(1001),
+            ?assertEqual({error, <<"invalid_payload">>}, Result)
+        end)
+    end}.
 
 get_sent_invitations_success_transfers_ids_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1851,30 +1661,28 @@ get_sent_invitations_success_transfers_ids_test_() ->
     MockConfigs = [
         {channel_invitation_repo, [
             {'list_by_inviter', 2, fun(1001, 50) ->
-                {ok, [#{
-                    <<"id">> => 701,
-                    <<"channel_id">> => 11,
-                    <<"inviter_uid">> => 1001,
-                    <<"invitee_uid">> => 3003
-                }]}
+                {ok, [
+                    #{
+                        <<"id">> => 701,
+                        <<"channel_id">> => 11,
+                        <<"inviter_uid">> => 1001,
+                        <<"invitee_uid">> => 3003
+                    }
+                ]}
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_sent_invitations(1001),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_sent_invitations(1001),
 
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Invitation]} = Result,
-                ?assertEqual(701, maps:get(<<"id">>, Invitation)),
-                ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_by_inviter, 2))
-            end)
-        end
-    }.
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Invitation]} = Result,
+            ?assertEqual(701, maps:get(<<"id">>, Invitation)),
+            ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, list_by_inviter, 2))
+        end)
+    end}.
 
 accept_invitation_already_accepted_is_idempotent_and_silent_test_() ->
     MockConfigs = [
@@ -1892,20 +1700,16 @@ accept_invitation_already_accepted_is_idempotent_and_silent_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 501),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 501),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_success_notifies_inviter_and_invitee_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -1940,20 +1744,16 @@ accept_invitation_success_notifies_inviter_and_invitee_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 501),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 501),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_success_still_returns_ok_when_notify_fails_test_() ->
     MockConfigs = [
@@ -1976,20 +1776,16 @@ accept_invitation_success_still_returns_ok_when_notify_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 511),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 511),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_success_still_returns_ok_when_notify_crashes_test_() ->
     MockConfigs = [
@@ -2012,20 +1808,16 @@ accept_invitation_success_still_returns_ok_when_notify_crashes_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 512),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 512),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_when_invitation_load_fails_still_returns_ok_test_() ->
     MockConfigs = [
@@ -2041,20 +1833,16 @@ accept_invitation_when_invitation_load_fails_still_returns_ok_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 502),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 502),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_with_invalid_invitation_payload_still_returns_ok_without_notify_test_() ->
     MockConfigs = [
@@ -2076,19 +1864,15 @@ accept_invitation_with_invalid_invitation_payload_still_returns_ok_without_notif
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 505),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 505),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_binary_error_passthrough_test_() ->
     MockConfigs = [
@@ -2106,20 +1890,16 @@ accept_invitation_binary_error_passthrough_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 503),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 503),
 
-                ?assertEqual({error, <<"邀请不存在或已过期"/utf8>>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"邀请不存在或已过期"/utf8>>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_atom_error_is_converted_to_binary_test_() ->
     MockConfigs = [
@@ -2137,20 +1917,16 @@ accept_invitation_atom_error_is_converted_to_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 504),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 504),
 
-                ?assertEqual({error, <<"db_timeout">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_timeout">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 accept_invitation_unexpected_result_converted_to_binary_test_() ->
     MockConfigs = [
@@ -2168,19 +1944,15 @@ accept_invitation_unexpected_result_converted_to_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:accept_invitation(2002, 506),
-                ?assertEqual({error, <<"unexpected_result">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-                ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:accept_invitation(2002, 506),
+            ?assertEqual({error, <<"unexpected_result">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
+            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 reject_invitation_atom_error_is_converted_to_binary_test_() ->
     MockConfigs = [
@@ -2188,18 +1960,14 @@ reject_invitation_atom_error_is_converted_to_binary_test_() ->
             {'reject_invitation', 2, fun(501, 2002) -> {error, db_timeout} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:reject_invitation(2002, 501),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:reject_invitation(2002, 501),
 
-                ?assertEqual({error, <<"db_timeout">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_timeout">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
+        end)
+    end}.
 
 reject_invitation_success_returns_ok_test_() ->
     MockConfigs = [
@@ -2212,19 +1980,15 @@ reject_invitation_success_returns_ok_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:reject_invitation(2002, 502),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:reject_invitation(2002, 502),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 reject_invitation_binary_error_passthrough_test_() ->
     MockConfigs = [
@@ -2232,18 +1996,14 @@ reject_invitation_binary_error_passthrough_test_() ->
             {'reject_invitation', 2, fun(503, 2002) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:reject_invitation(2002, 503),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:reject_invitation(2002, 503),
 
-                ?assertEqual({error, <<"邀请不存在或已过期"/utf8>>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"邀请不存在或已过期"/utf8>>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
+        end)
+    end}.
 
 reject_invitation_unexpected_return_converted_to_binary_test_() ->
     MockConfigs = [
@@ -2251,17 +2011,13 @@ reject_invitation_unexpected_return_converted_to_binary_test_() ->
             {'reject_invitation', 2, fun(504, 2002) -> unexpected_result end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:reject_invitation(2002, 504),
-                ?assertEqual({error, <<"unexpected_result">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:reject_invitation(2002, 504),
+            ?assertEqual({error, <<"unexpected_result">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
+        end)
+    end}.
 
 create_order_success_returns_transferred_order_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2285,20 +2041,16 @@ create_order_success_returns_transferred_order_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_order(2002, ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_order(2002, ChannelIdBin),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Order} = Result,
-                ?assertEqual(11, maps:get(<<"channel_id">>, Order)),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_order, 3))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Order} = Result,
+            ?assertEqual(11, maps:get(<<"channel_id">>, Order)),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_order, 3))
+        end)
+    end}.
 
 create_order_rejects_non_paid_channel_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2312,18 +2064,14 @@ create_order_rejects_non_paid_channel_test_() ->
             {'create_order', 3, fun(_, _, _) -> erlang:error(should_not_create_order) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_order(2002, ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_order(2002, ChannelIdBin),
 
-                ?assertEqual({error, <<"只有付费频道支持购买"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"只有付费频道支持购买"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+        end)
+    end}.
 
 create_order_propagates_channel_lookup_error_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2334,21 +2082,19 @@ create_order_propagates_channel_lookup_error_test_() ->
             end}
         ]},
         {channel_subscribe_ds, [
-            {'create_order', 3, fun(_, _, _) -> erlang:error(should_not_create_order_when_channel_lookup_failed) end}
+            {'create_order', 3, fun(_, _, _) ->
+                erlang:error(should_not_create_order_when_channel_lookup_failed)
+            end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_order(2002, ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_order(2002, ChannelIdBin),
 
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+        end)
+    end}.
 
 create_order_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2362,17 +2108,13 @@ create_order_returns_error_when_channel_payload_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_order(2002, ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_order(2002, ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+        end)
+    end}.
 
 create_order_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -2388,18 +2130,14 @@ create_order_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_order(2002, ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_order(2002, ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+        end)
+    end}.
 
 create_order_returns_not_found_when_order_reload_returns_non_map_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2416,16 +2154,12 @@ create_order_returns_not_found_when_order_reload_returns_non_map_test_() ->
             {'find_by_order_no', 1, fun(<<"ORD_NEW_BAD_PAYLOAD">>) -> {ok, []} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_order(2002, ChannelIdBin),
-                ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_order(2002, ChannelIdBin),
+            ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
+        end)
+    end}.
 
 create_order_unexpected_ds_result_converted_to_binary_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2444,17 +2178,13 @@ create_order_unexpected_ds_result_converted_to_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_order(2002, ChannelIdBin),
-                ?assertEqual({error, <<"unexpected_result">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_order(2002, ChannelIdBin),
+            ?assertEqual({error, <<"unexpected_result">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
+        end)
+    end}.
 
 pay_order_requires_owner_test_() ->
     MockConfigs = [
@@ -2471,18 +2201,14 @@ pay_order_requires_owner_test_() ->
             {'pay_order', 2, fun(_, _) -> erlang:error(should_not_pay_order) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD001">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD001">>),
 
-                ?assertEqual({error, <<"无权操作此订单"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"无权操作此订单"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+        end)
+    end}.
 
 pay_order_propagates_lookup_error_before_owner_check_test_() ->
     MockConfigs = [
@@ -2495,18 +2221,14 @@ pay_order_propagates_lookup_error_before_owner_check_test_() ->
             {'pay_order', 2, fun(_, _) -> erlang:error(should_not_pay_order_when_lookup_failed) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD_DB_ERR">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD_DB_ERR">>),
 
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+        end)
+    end}.
 
 pay_order_returns_not_found_when_repo_returns_non_map_payload_test_() ->
     MockConfigs = [
@@ -2519,17 +2241,13 @@ pay_order_returns_not_found_when_repo_returns_non_map_payload_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD_BAD_PAYLOAD">>),
-                ?assertEqual({error, <<"订单不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD_BAD_PAYLOAD">>),
+            ?assertEqual({error, <<"订单不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+        end)
+    end}.
 
 pay_order_returns_not_found_when_required_fields_invalid_test_() ->
     MockConfigs = [
@@ -2548,20 +2266,15 @@ pay_order_returns_not_found_when_required_fields_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD_BAD_FIELDS">>),
-                ?assertEqual({error, <<"订单不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD_BAD_FIELDS">>),
+            ?assertEqual({error, <<"订单不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+        end)
+    end}.
 
 pay_order_success_sends_paid_and_subscribed_notifications_test_() ->
-    ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_order_repo, [
             {'find_by_order_no', 1, fun(<<"ORD001">>) ->
@@ -2570,16 +2283,21 @@ pay_order_success_sends_paid_and_subscribed_notifications_test_() ->
                     <<"channel_id">> => 11,
                     <<"user_id">> => 2002
                 }}
-            end}
-        ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(<<"ORD001">>, PaymentData) ->
-                ?assertEqual(<<"mock">>, maps:get(payment_method, PaymentData)),
+            end},
+            {'pay', 2, fun(<<"ORD001">>, PaymentData) ->
+                ?assertEqual(<<"wallet">>, maps:get(payment_method, PaymentData)),
                 PaymentNo = maps:get(payment_no, PaymentData),
-                ?assert(is_binary(PaymentNo)),
-                ?assertEqual(<<"MOCK_">>, binary:part(PaymentNo, 0, 5)),
+                ?assertEqual(<<"WALLET_PAYNO">>, PaymentNo),
                 ok
             end}
+        ]},
+        {payment_gateway, [
+            {'pay', 3, fun(<<"wallet">>, <<"ORD001">>, _Opts) ->
+                {ok, <<"WALLET_PAYNO">>}
+            end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2002], Action, <<>>, null, Payload, no_save) ->
@@ -2589,19 +2307,19 @@ pay_order_success_sends_paid_and_subscribed_notifications_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD001">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD001">>),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
-                ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Envelope} = Result,
+            ?assertEqual(<<"wallet">>, maps:get(<<"payment_method">>, Envelope)),
+            ?assertEqual(<<"WALLET_PAYNO">>, maps:get(<<"payment_no">>, Envelope)),
+            ?assert(is_map(maps:get(<<"pay_params">>, Envelope))),
+            ?assertEqual(1, meck:num_calls(channel_order_repo, pay, 2)),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 pay_order_success_still_returns_ok_when_notify_fails_test_() ->
     MockConfigs = [
@@ -2612,12 +2330,18 @@ pay_order_success_still_returns_ok_when_notify_fails_test_() ->
                     <<"channel_id">> => 11,
                     <<"user_id">> => 2002
                 }}
-            end}
-        ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(<<"ORD001_NOTIFY_ERR">>, _PaymentData) ->
+            end},
+            {'pay', 2, fun(<<"ORD001_NOTIFY_ERR">>, _PaymentData) ->
                 ok
             end}
+        ]},
+        {payment_gateway, [
+            {'pay', 3, fun(<<"wallet">>, <<"ORD001_NOTIFY_ERR">>, _Opts) ->
+                {ok, <<"WALLET_PAYNO">>}
+            end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2002], Action, <<>>, null, _Payload, no_save) ->
@@ -2628,19 +2352,15 @@ pay_order_success_still_returns_ok_when_notify_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD001_NOTIFY_ERR">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD001_NOTIFY_ERR">>),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
-                ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(channel_order_repo, pay, 2)),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 pay_order_success_still_returns_ok_when_notify_crashes_test_() ->
     MockConfigs = [
@@ -2651,12 +2371,18 @@ pay_order_success_still_returns_ok_when_notify_crashes_test_() ->
                     <<"channel_id">> => 11,
                     <<"user_id">> => 2002
                 }}
-            end}
-        ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(<<"ORD001_NOTIFY_CRASH">>, _PaymentData) ->
+            end},
+            {'pay', 2, fun(<<"ORD001_NOTIFY_CRASH">>, _PaymentData) ->
                 ok
             end}
+        ]},
+        {payment_gateway, [
+            {'pay', 3, fun(<<"wallet">>, <<"ORD001_NOTIFY_CRASH">>, _Opts) ->
+                {ok, <<"WALLET_PAYNO">>}
+            end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, [2002], _Action, <<>>, null, _Payload, no_save) ->
@@ -2664,19 +2390,15 @@ pay_order_success_still_returns_ok_when_notify_crashes_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD001_NOTIFY_CRASH">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD001_NOTIFY_CRASH">>),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
-                ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(channel_order_repo, pay, 2)),
+            ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 pay_order_already_paid_does_not_send_duplicate_notifications_test_() ->
     MockConfigs = [
@@ -2687,11 +2409,19 @@ pay_order_already_paid_does_not_send_duplicate_notifications_test_() ->
                     <<"channel_id">> => 11,
                     <<"user_id">> => 2002
                 }}
+            end},
+            {'pay', 2, fun(<<"ORD002">>, _PaymentData) ->
+                {error, already_paid}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(<<"ORD002">>, _PaymentData) ->
-                {error, already_paid}
+        {payment_gateway, [
+            {'pay', 3, fun(<<"wallet">>, <<"ORD002">>, _Opts) ->
+                {ok, <<"WALLET_PAYNO">>}
+            end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(_, _) ->
+                erlang:error(should_not_subscribe_when_pay_already_paid)
             end}
         ]},
         {msg_s2c_ds, [
@@ -2700,19 +2430,15 @@ pay_order_already_paid_does_not_send_duplicate_notifications_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD002">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD002">>),
 
-                ?assertEqual({error, <<"订单已支付"/utf8>>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"already_paid">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_order_repo, pay, 2)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 pay_order_not_found_or_expired_returns_readable_error_test_() ->
     MockConfigs = [
@@ -2723,11 +2449,19 @@ pay_order_not_found_or_expired_returns_readable_error_test_() ->
                     <<"channel_id">> => 11,
                     <<"user_id">> => 2002
                 }}
+            end},
+            {'pay', 2, fun(<<"ORD009">>, _PaymentData) ->
+                {error, not_found_or_expired}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(<<"ORD009">>, _PaymentData) ->
-                {error, not_found_or_expired}
+        {payment_gateway, [
+            {'pay', 3, fun(<<"wallet">>, <<"ORD009">>, _Opts) ->
+                {ok, <<"WALLET_PAYNO">>}
+            end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(_, _) ->
+                erlang:error(should_not_subscribe_when_order_expired)
             end}
         ]},
         {msg_s2c_ds, [
@@ -2736,21 +2470,17 @@ pay_order_not_found_or_expired_returns_readable_error_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD009">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD009">>),
 
-                ?assertEqual({error, <<"订单不存在或已过期"/utf8>>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"订单不存在或已过期"/utf8>>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_order_repo, pay, 2)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
-pay_order_unexpected_ds_result_converted_to_binary_test_() ->
+pay_order_unexpected_gateway_result_converted_to_binary_test_() ->
     MockConfigs = [
         {channel_order_repo, [
             {'find_by_order_no', 1, fun(<<"ORD_UNEXPECTED_DS">>) ->
@@ -2759,10 +2489,13 @@ pay_order_unexpected_ds_result_converted_to_binary_test_() ->
                     <<"channel_id">> => 11,
                     <<"user_id">> => 2002
                 }}
+            end},
+            {'pay', 2, fun(_, _) ->
+                erlang:error(should_not_pay_when_gateway_returns_unexpected)
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(<<"ORD_UNEXPECTED_DS">>, _PaymentData) ->
+        {payment_gateway, [
+            {'pay', 3, fun(<<"wallet">>, <<"ORD_UNEXPECTED_DS">>, _Opts) ->
                 unexpected_result
             end}
         ]},
@@ -2772,17 +2505,14 @@ pay_order_unexpected_ds_result_converted_to_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:pay_order(2002, <<"ORD_UNEXPECTED_DS">>),
-                ?assertEqual({error, <<"unexpected_result">>}, Result),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:pay_order(2002, <<"ORD_UNEXPECTED_DS">>),
+            ?assertEqual({error, <<"unexpected_result">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_order_repo, pay, 2)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 get_order_returns_transferred_order_for_owner_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2798,19 +2528,15 @@ get_order_returns_transferred_order_for_owner_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_order(2002, <<"ORD010">>),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_order(2002, <<"ORD010">>),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Order} = Result,
-                ?assertEqual(11, maps:get(<<"channel_id">>, Order))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Order} = Result,
+            ?assertEqual(11, maps:get(<<"channel_id">>, Order))
+        end)
+    end}.
 
 get_order_rejects_non_owner_test_() ->
     MockConfigs = [
@@ -2825,16 +2551,12 @@ get_order_rejects_non_owner_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_order(2002, <<"ORD011">>),
-                ?assertEqual({error, <<"无权查看此订单"/utf8>>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_order(2002, <<"ORD011">>),
+            ?assertEqual({error, <<"无权查看此订单"/utf8>>}, Result)
+        end)
+    end}.
 
 get_order_returns_not_found_message_test_() ->
     MockConfigs = [
@@ -2844,16 +2566,12 @@ get_order_returns_not_found_message_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_order(2002, <<"ORD404">>),
-                ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_order(2002, <<"ORD404">>),
+            ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
+        end)
+    end}.
 
 get_order_propagates_lookup_error_test_() ->
     MockConfigs = [
@@ -2863,16 +2581,12 @@ get_order_propagates_lookup_error_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_order(2002, <<"ORD_DB_ERR">>),
-                ?assertEqual({error, <<"db_down">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_order(2002, <<"ORD_DB_ERR">>),
+            ?assertEqual({error, <<"db_down">>}, Result)
+        end)
+    end}.
 
 get_order_returns_error_when_repo_returns_unexpected_term_test_() ->
     MockConfigs = [
@@ -2882,16 +2596,12 @@ get_order_returns_error_when_repo_returns_unexpected_term_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_order(2002, <<"ORD_UNEXPECTED_LOOKUP">>),
-                ?assertEqual({error, <<"unexpected_lookup">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_order(2002, <<"ORD_UNEXPECTED_LOOKUP">>),
+            ?assertEqual({error, <<"unexpected_lookup">>}, Result)
+        end)
+    end}.
 
 get_order_returns_not_found_when_repo_returns_non_map_payload_test_() ->
     MockConfigs = [
@@ -2899,16 +2609,12 @@ get_order_returns_not_found_when_repo_returns_non_map_payload_test_() ->
             {'find_by_order_no', 1, fun(<<"ORD_BAD_PAYLOAD">>) -> {ok, []} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_order(2002, <<"ORD_BAD_PAYLOAD">>),
-                ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_order(2002, <<"ORD_BAD_PAYLOAD">>),
+            ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
+        end)
+    end}.
 
 get_order_returns_not_found_when_required_fields_invalid_test_() ->
     MockConfigs = [
@@ -2923,16 +2629,12 @@ get_order_returns_not_found_when_required_fields_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_order(2002, <<"ORD_BAD_FIELDS">>),
-                ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_order(2002, <<"ORD_BAD_FIELDS">>),
+            ?assertEqual({error, <<"订单不存在"/utf8>>}, Result)
+        end)
+    end}.
 
 get_my_orders_returns_transferred_orders_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2950,19 +2652,15 @@ get_my_orders_returns_transferred_orders_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_orders(2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_orders(2002),
 
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Order]} = Result,
-                ?assertEqual(11, maps:get(<<"channel_id">>, Order))
-            end)
-        end
-    }.
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Order]} = Result,
+            ?assertEqual(11, maps:get(<<"channel_id">>, Order))
+        end)
+    end}.
 
 get_my_orders_filters_non_map_entries_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -2981,18 +2679,14 @@ get_my_orders_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_orders(2002),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Order]} = Result,
-                ?assertEqual(11, maps:get(<<"channel_id">>, Order))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_orders(2002),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Order]} = Result,
+            ?assertEqual(11, maps:get(<<"channel_id">>, Order))
+        end)
+    end}.
 
 get_my_orders_propagates_repo_error_test_() ->
     MockConfigs = [
@@ -3002,16 +2696,12 @@ get_my_orders_propagates_repo_error_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_orders(2002),
-                ?assertEqual({error, <<"db_down">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_orders(2002),
+            ?assertEqual({error, <<"db_down">>}, Result)
+        end)
+    end}.
 
 get_my_orders_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -3019,16 +2709,12 @@ get_my_orders_returns_error_when_repo_payload_not_list_test_() ->
             {'list_by_user', 2, fun(2002, 50) -> {ok, invalid_payload} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_orders(2002),
-                ?assertEqual({error, <<"invalid_payload">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_orders(2002),
+            ?assertEqual({error, <<"invalid_payload">>}, Result)
+        end)
+    end}.
 
 get_my_orders_returns_error_when_repo_returns_unexpected_term_test_() ->
     MockConfigs = [
@@ -3036,16 +2722,12 @@ get_my_orders_returns_error_when_repo_returns_unexpected_term_test_() ->
             {'list_by_user', 2, fun(2002, 50) -> unexpected_lookup end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_my_orders(2002),
-                ?assertEqual({error, <<"unexpected_lookup">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_my_orders(2002),
+            ?assertEqual({error, <<"unexpected_lookup">>}, Result)
+        end)
+    end}.
 
 get_admins_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
@@ -3053,16 +2735,12 @@ get_admins_returns_error_when_repo_fails_test_() ->
             {'list_by_channel', 1, fun(11) -> {error, db_down} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_admins(11),
-                ?assertEqual({error, <<"db_down">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_admins(11),
+            ?assertEqual({error, <<"db_down">>}, Result)
+        end)
+    end}.
 
 get_admins_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -3070,16 +2748,12 @@ get_admins_returns_error_when_repo_payload_not_list_test_() ->
             {'list_by_channel', 1, fun(11) -> {ok, invalid_payload} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_admins(11),
-                ?assertEqual({error, <<"invalid_payload">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_admins(11),
+            ?assertEqual({error, <<"invalid_payload">>}, Result)
+        end)
+    end}.
 
 get_admins_filters_non_map_entries_test_() ->
     MockConfigs = [
@@ -3092,18 +2766,14 @@ get_admins_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_admins(11),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, Admins} = Result,
-                ?assertEqual(1, length(Admins))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_admins(11),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, Admins} = Result,
+            ?assertEqual(1, length(Admins))
+        end)
+    end}.
 
 get_admins_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -3114,17 +2784,13 @@ get_admins_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_admins(ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, list_by_channel, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_admins(ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, list_by_channel, 1))
+        end)
+    end}.
 
 update_admin_role_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -3138,18 +2804,14 @@ update_admin_role_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:update_admin_role(1001, ChannelIdBin, 2002, 2),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, update_role, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_admin_role(1001, ChannelIdBin, 2002, 2),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, update_role, 3))
+        end)
+    end}.
 
 update_admin_role_requires_creator_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3164,18 +2826,14 @@ update_admin_role_requires_creator_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:update_admin_role(1001, ChannelIdBin, 2002, 2),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_admin_role(1001, ChannelIdBin, 2002, 2),
 
-                ?assertEqual({error, <<"无权限操作，仅创建者可修改角色"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, update_role, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"无权限操作，仅创建者可修改角色"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, update_role, 3))
+        end)
+    end}.
 
 update_admin_role_creator_success_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3185,18 +2843,14 @@ update_admin_role_creator_success_test_() ->
             {'update_role', 3, fun(11, 2002, 2) -> {ok, 1} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:update_admin_role(1001, ChannelIdBin, 2002, 2),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:update_admin_role(1001, ChannelIdBin, 2002, 2),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role, 3))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role, 3))
+        end)
+    end}.
 
 remove_subscriber_admin_success_updates_counter_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3223,20 +2877,16 @@ remove_subscriber_admin_success_updates_counter_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
-                ?assertEqual(1, meck:num_calls(channel_repo, increment_subscribers, 3)),
-                ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
+            ?assertEqual(1, meck:num_calls(channel_repo, increment_subscribers, 3)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1))
+        end)
+    end}.
 
 remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3265,20 +2915,16 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
-                ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
-                ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
+            ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
+            ?assertEqual(2, meck:num_calls(imboy_cache, flush, 1))
+        end)
+    end}.
 
 remove_subscriber_tx_error_returns_failure_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3307,19 +2953,15 @@ remove_subscriber_tx_error_returns_failure_test_() ->
             {'flush', 1, fun(_Key) -> ok end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"移除订阅者失败"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
-                ?assertEqual(0, meck:num_calls(imboy_cache, flush, 1))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"移除订阅者失败"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
+            ?assertEqual(0, meck:num_calls(imboy_cache, flush, 1))
+        end)
+    end}.
 
 remove_subscriber_requires_admin_role_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3336,18 +2978,14 @@ remove_subscriber_requires_admin_role_test_() ->
             {'delete', 3, fun(_, _, _) -> erlang:error(should_not_delete_subscriber) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:remove_subscriber(1001, ChannelIdBin, 2002),
 
-                ?assertEqual({error, <<"无权限操作，需要管理员及以上权限"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, delete, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"无权限操作，需要管理员及以上权限"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, delete, 3))
+        end)
+    end}.
 
 get_messages_private_channel_requires_subscription_test_() ->
     ChannelIdBin = integer_to_binary(12),
@@ -3374,18 +3012,14 @@ get_messages_private_channel_requires_subscription_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
 
-                ?assertEqual({error, <<"私有频道仅限订阅用户访问"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+            ?assertEqual({error, <<"私有频道仅限订阅用户访问"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
+        end)
+    end}.
 
 get_messages_private_channel_allows_subscriber_test_() ->
     ChannelIdBin = integer_to_binary(12),
@@ -3408,27 +3042,25 @@ get_messages_private_channel_allows_subscriber_test_() ->
         ]},
         {channel_message_repo, [
             {'list_by_channel', 3, fun(12, 0, 20) ->
-                {ok, [#{
-                    <<"id">> => 991,
-                    <<"channel_id">> => 12,
-                    <<"author_id">> => 1001,
-                    <<"content">> => <<"private content"/utf8>>
-                }]}
+                {ok, [
+                    #{
+                        <<"id">> => 991,
+                        <<"channel_id">> => 12,
+                        <<"author_id">> => 1001,
+                        <<"content">> => <<"private content"/utf8>>
+                    }
+                ]}
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
 
-                ?assertMatch({ok, [_]}, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+            ?assertMatch({ok, [_]}, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, list_by_channel, 3))
+        end)
+    end}.
 
 get_messages_returns_error_when_channel_type_invalid_test_() ->
     ChannelIdBin = integer_to_binary(12),
@@ -3462,19 +3094,15 @@ get_messages_returns_error_when_channel_type_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
-                ?assertEqual({error, <<"频道类型无效"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
+            ?assertEqual({error, <<"频道类型无效"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
+        end)
+    end}.
 
 get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() ->
     ChannelIdBin = integer_to_binary(13),
@@ -3499,29 +3127,27 @@ get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() -
         ]},
         {channel_message_repo, [
             {'list_by_channel', 3, fun(13, 0, 20) ->
-                {ok, [#{
-                    <<"id">> => 992,
-                    <<"channel_id">> => 13,
-                    <<"author_id">> => 1001,
-                    <<"content">> => <<"admin content"/utf8>>
-                }]}
+                {ok, [
+                    #{
+                        <<"id">> => 992,
+                        <<"channel_id">> => 13,
+                        <<"author_id">> => 1001,
+                        <<"content">> => <<"admin content"/utf8>>
+                    }
+                ]}
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_messages(1001, ChannelIdBin, 0, 20),
 
-                ?assertMatch({ok, [_]}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+            ?assertMatch({ok, [_]}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, list_by_channel, 3))
+        end)
+    end}.
 
 subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3539,20 +3165,16 @@ subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
             {'notify_channel_subscribed', 2, fun(11, 2002) -> ok end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, is_invited, 2)),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, subscribe_private, 3)),
-                ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, is_invited, 2)),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, subscribe_private, 3)),
+            ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
+        end)
+    end}.
 
 subscribe_public_channel_already_subscribed_is_idempotent_test_() ->
     ChannelIdBin = integer_to_binary(12),
@@ -3567,19 +3189,15 @@ subscribe_public_channel_already_subscribed_is_idempotent_test_() ->
             {'notify_channel_subscribed', 2, fun(12, 2002) -> ok end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
-                ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
+            ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
+        end)
+    end}.
 
 subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
     ChannelIdBin = integer_to_binary(13),
@@ -3597,20 +3215,16 @@ subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
             {'notify_channel_subscribed', 2, fun(13, 2002) -> ok end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
 
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
-                ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
-                ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
+            ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
+        end)
+    end}.
 
 subscribe_public_channel_propagates_ds_atom_error_as_binary_test_() ->
     ChannelIdBin = integer_to_binary(14),
@@ -3630,17 +3244,13 @@ subscribe_public_channel_propagates_ds_atom_error_as_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
+        end)
+    end}.
 
 subscribe_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(14),
@@ -3657,18 +3267,14 @@ subscribe_returns_error_when_channel_payload_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-                ?assertEqual(0, meck:num_calls(channel_ds, subscribe, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
+            ?assertEqual(0, meck:num_calls(channel_ds, subscribe, 2))
+        end)
+    end}.
 
 subscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -3689,19 +3295,15 @@ subscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-                ?assertEqual(0, meck:num_calls(channel_ds, subscribe, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
+            ?assertEqual(0, meck:num_calls(channel_ds, subscribe, 2))
+        end)
+    end}.
 
 subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
     ChannelIdBin = integer_to_binary(11),
@@ -3721,17 +3323,13 @@ subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"私有频道需要邀请才能订阅"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscribe_ds, subscribe_private, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"私有频道需要邀请才能订阅"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, subscribe_private, 3))
+        end)
+    end}.
 
 subscribe_returns_error_when_ds_subscribe_fails_test_() ->
     ChannelIdBin = integer_to_binary(14),
@@ -3748,17 +3346,13 @@ subscribe_returns_error_when_ds_subscribe_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"unexpected_state">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"unexpected_state">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2))
+        end)
+    end}.
 
 unsubscribe_propagates_ds_atom_error_as_binary_test_() ->
     ChannelIdBin = integer_to_binary(15),
@@ -3772,17 +3366,13 @@ unsubscribe_propagates_ds_atom_error_as_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:unsubscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_unsubscribed, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:unsubscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_unsubscribed, 2))
+        end)
+    end}.
 
 unsubscribe_propagates_unexpected_ds_result_as_binary_test_() ->
     ChannelIdBin = integer_to_binary(16),
@@ -3796,17 +3386,13 @@ unsubscribe_propagates_unexpected_ds_result_as_binary_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:unsubscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"unexpected_result">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_unsubscribed, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:unsubscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"unexpected_result">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_unsubscribed, 2))
+        end)
+    end}.
 
 unsubscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -3822,18 +3408,14 @@ unsubscribe_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:unsubscribe(2002, ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_ds, unsubscribe, 2)),
-                ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_unsubscribed, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:unsubscribe(2002, ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_ds, unsubscribe, 2)),
+            ?assertEqual(0, meck:num_calls(channel_logic_notify, notify_channel_unsubscribed, 2))
+        end)
+    end}.
 
 %% ===================================================================
 %% P0-1: mark_as_read 测试 - 验证仅清除当前用户的未读计数
@@ -3871,19 +3453,15 @@ mark_as_read_clears_unread_only_for_current_user_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:mark_as_read(Uid, ChannelIdBin, MessageIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:mark_as_read(Uid, ChannelIdBin, MessageIdBin),
 
-                ?assertEqual(ok, Result),
-                %% 验证调用的是 clear_unread/2 而不是 clear_unread/1
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, clear_unread, 2))
-            end)
-        end
-    }.
+            ?assertEqual(ok, Result),
+            %% 验证调用的是 clear_unread/2 而不是 clear_unread/1
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, clear_unread, 2))
+        end)
+    end}.
 
 mark_as_read_returns_error_when_channel_not_found_test_() ->
     ChannelIdBin = <<"invalid_channel_id">>,
@@ -3895,16 +3473,12 @@ mark_as_read_returns_error_when_channel_not_found_test_() ->
             {'find_by_custom_id', 1, fun(_) -> {error, not_found} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:mark_as_read(Uid, ChannelIdBin, MessageIdBin),
-                ?assertMatch({error, _}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:mark_as_read(Uid, ChannelIdBin, MessageIdBin),
+            ?assertMatch({error, _}, Result)
+        end)
+    end}.
 
 mark_as_read_falls_back_to_custom_id_when_decode_returns_unexpected_term_test_() ->
     ChannelId = 13,
@@ -3945,18 +3519,14 @@ mark_as_read_falls_back_to_custom_id_when_decode_returns_unexpected_term_test_()
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:mark_as_read(Uid, ChannelIdBin, MessageIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, find_by_custom_id, 1)),
-                ?assertEqual(1, meck:num_calls(channel_subscription_repo, clear_unread, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:mark_as_read(Uid, ChannelIdBin, MessageIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, find_by_custom_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, clear_unread, 2))
+        end)
+    end}.
 
 mark_as_read_returns_error_when_custom_id_payload_invalid_after_decode_unexpected_test_() ->
     ChannelIdBin = <<"tech_daily">>,
@@ -3977,19 +3547,15 @@ mark_as_read_returns_error_when_custom_id_payload_invalid_after_decode_unexpecte
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:mark_as_read(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, find_by_custom_id, 1)),
-                ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, clear_unread, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:mark_as_read(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, find_by_custom_id, 1)),
+            ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, clear_unread, 2))
+        end)
+    end}.
 
 create_channel_returns_error_when_managed_query_fails_test_() ->
     MockConfigs = [
@@ -4000,17 +3566,13 @@ create_channel_returns_error_when_managed_query_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_channel(1001, <<"my-channel">>, 0, #{}, 10),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_channel(1001, <<"my-channel">>, 0, #{}, 10),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 4))
+        end)
+    end}.
 
 create_channel_returns_error_when_managed_payload_not_list_test_() ->
     MockConfigs = [
@@ -4021,17 +3583,13 @@ create_channel_returns_error_when_managed_payload_not_list_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_channel(1001, <<"my-channel">>, 0, #{}, 10),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_channel(1001, <<"my-channel">>, 0, #{}, 10),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_ds, create_channel, 4))
+        end)
+    end}.
 
 create_channel_returns_error_when_reload_payload_not_map_test_() ->
     MockConfigs = [
@@ -4041,18 +3599,14 @@ create_channel_returns_error_when_reload_payload_not_map_test_() ->
             {'find_by_id', 2, fun(11, <<"*">>) -> invalid_payload end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:create_channel(1001, <<"my-channel">>, 0, #{}, 10),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_ds, create_channel, 4)),
-                ?assertEqual(1, meck:num_calls(channel_ds, find_by_id, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_channel(1001, <<"my-channel">>, 0, #{}, 10),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_ds, create_channel, 4)),
+            ?assertEqual(1, meck:num_calls(channel_ds, find_by_id, 2))
+        end)
+    end}.
 
 %% ===================================================================
 %% get_channel_stats/1 测试 - P0-3 统计准确性修复
@@ -4085,23 +3639,19 @@ get_channel_stats_uses_aggregation_query_test_() ->
             {'tablename', 0, fun() -> <<"public.channel_message">> end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_stats(ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_stats(ChannelIdBin),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Stats} = Result,
-                %% 验证统计结果是聚合查询的结果（而非列表长度）
-                ?assertEqual(5000, maps:get(<<"total_messages">>, Stats)),
-                ?assertEqual(15000, maps:get(<<"total_views">>, Stats)),
-                ?assertEqual(100, maps:get(<<"subscriber_count">>, Stats)),
-                ?assertEqual(50, maps:get(<<"total_reactions">>, Stats))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Stats} = Result,
+            %% 验证统计结果是聚合查询的结果（而非列表长度）
+            ?assertEqual(5000, maps:get(<<"total_messages">>, Stats)),
+            ?assertEqual(15000, maps:get(<<"total_views">>, Stats)),
+            ?assertEqual(100, maps:get(<<"subscriber_count">>, Stats)),
+            ?assertEqual(50, maps:get(<<"total_reactions">>, Stats))
+        end)
+    end}.
 
 %% P0-3: 验证统计在频道不存在时返回错误
 get_channel_stats_returns_error_when_channel_not_found_test_() ->
@@ -4112,16 +3662,12 @@ get_channel_stats_returns_error_when_channel_not_found_test_() ->
             {'find_by_id', 2, fun(_, _) -> {error, not_found} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_stats(ChannelIdBin),
-                ?assertMatch({error, _}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            ?assertMatch({error, _}, Result)
+        end)
+    end}.
 
 get_channel_stats_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(99998),
@@ -4133,17 +3679,13 @@ get_channel_stats_returns_error_when_channel_payload_invalid_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_stats(ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, get_reaction_count, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, get_reaction_count, 1))
+        end)
+    end}.
 
 get_channel_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -4157,18 +3699,14 @@ get_channel_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_stats(ChannelIdBin),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
-                ?assertEqual(0, meck:num_calls(channel_repo, get_reaction_count, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
+            ?assertEqual(0, meck:num_calls(channel_repo, get_reaction_count, 1))
+        end)
+    end}.
 
 %% P0-3: 验证统计在无消息时返回 0
 get_channel_stats_returns_zero_when_no_messages_test_() ->
@@ -4191,20 +3729,16 @@ get_channel_stats_returns_zero_when_no_messages_test_() ->
             {'tablename', 0, fun() -> <<"public.channel_message">> end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_stats(ChannelIdBin),
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_stats(ChannelIdBin),
 
-                ?assertMatch({ok, _}, Result),
-                {ok, Stats} = Result,
-                ?assertEqual(0, maps:get(<<"total_messages">>, Stats)),
-                ?assertEqual(0, maps:get(<<"total_views">>, Stats))
-            end)
-        end
-    }.
+            ?assertMatch({ok, _}, Result),
+            {ok, Stats} = Result,
+            ?assertEqual(0, maps:get(<<"total_messages">>, Stats)),
+            ?assertEqual(0, maps:get(<<"total_views">>, Stats))
+        end)
+    end}.
 
 get_channel_stats_returns_error_when_message_aggregation_fails_test_() ->
     ChannelId = 13,
@@ -4225,17 +3759,13 @@ get_channel_stats_returns_error_when_message_aggregation_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_stats(ChannelIdBin),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_ds, get_reaction_count, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_ds, get_reaction_count, 1))
+        end)
+    end}.
 
 get_channel_stats_returns_error_when_reaction_query_fails_test_() ->
     ChannelId = 14,
@@ -4244,7 +3774,11 @@ get_channel_stats_returns_error_when_reaction_query_fails_test_() ->
     MockConfigs = [
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
-                #{<<"id">> => ChannelId, <<"name">> => <<"reaction_err">>, <<"subscriber_count">> => 12}
+                #{
+                    <<"id">> => ChannelId,
+                    <<"name">> => <<"reaction_err">>,
+                    <<"subscriber_count">> => 12
+                }
             end},
             {'get_reaction_count', 1, fun(_) -> {error, timeout} end}
         ]},
@@ -4257,16 +3791,12 @@ get_channel_stats_returns_error_when_reaction_query_fails_test_() ->
             {'tablename', 0, fun() -> <<"public.channel_message">> end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_channel_stats(ChannelIdBin),
-                ?assertEqual({error, <<"timeout">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            ?assertEqual({error, <<"timeout">>}, Result)
+        end)
+    end}.
 
 get_daily_stats_returns_error_when_repo_payload_not_list_test_() ->
     ChannelIdBin = integer_to_binary(14),
@@ -4275,16 +3805,12 @@ get_daily_stats_returns_error_when_repo_payload_not_list_test_() ->
             {'get_daily_stats', 2, fun(14, 7) -> {ok, invalid_payload} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
-                ?assertEqual({error, <<"invalid_payload">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
+            ?assertEqual({error, <<"invalid_payload">>}, Result)
+        end)
+    end}.
 
 get_daily_stats_filters_non_map_entries_test_() ->
     ChannelIdBin = integer_to_binary(14),
@@ -4298,18 +3824,14 @@ get_daily_stats_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Item]} = Result,
-                ?assertEqual(14, maps:get(<<"channel_id">>, Item))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Item]} = Result,
+            ?assertEqual(14, maps:get(<<"channel_id">>, Item))
+        end)
+    end}.
 
 get_daily_stats_returns_error_when_repo_returns_unexpected_term_test_() ->
     ChannelIdBin = integer_to_binary(14),
@@ -4318,16 +3840,12 @@ get_daily_stats_returns_error_when_repo_returns_unexpected_term_test_() ->
             {'get_daily_stats', 2, fun(14, 7) -> unexpected_lookup end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
-                ?assertEqual({error, <<"unexpected_lookup">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
+            ?assertEqual({error, <<"unexpected_lookup">>}, Result)
+        end)
+    end}.
 
 get_daily_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
     ChannelIdBin = <<"ch_hash_unexpected">>,
@@ -4338,17 +3856,13 @@ get_daily_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, get_daily_stats, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, get_daily_stats, 2))
+        end)
+    end}.
 
 record_message_view_returns_error_when_message_id_decode_unexpected_test_() ->
     MockConfigs = [
@@ -4367,19 +3881,17 @@ record_message_view_returns_error_when_message_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"msg_hash_unexpected">>),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, ensure_channel_content_access, 2)),
-                ?assertEqual(0, meck:num_calls(channel_repo, has_viewed_message, 2)),
-                ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:record_message_view(
+                1001, <<"ch_hash_11">>, <<"msg_hash_unexpected">>
+            ),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, ensure_channel_content_access, 2)),
+            ?assertEqual(0, meck:num_calls(channel_repo, has_viewed_message, 2)),
+            ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
+        end)
+    end}.
 
 add_reaction_returns_error_when_message_id_decode_unexpected_test_() ->
     MockConfigs = [
@@ -4395,18 +3907,16 @@ add_reaction_returns_error_when_message_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:add_reaction(1001, <<"ch_hash_11">>, <<"msg_hash_unexpected">>, <<"like">>),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, ensure_channel_content_access, 2)),
-                ?assertEqual(0, meck:num_calls(channel_repo, insert_reaction, 5))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:add_reaction(
+                1001, <<"ch_hash_11">>, <<"msg_hash_unexpected">>, <<"like">>
+            ),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, ensure_channel_content_access, 2)),
+            ?assertEqual(0, meck:num_calls(channel_repo, insert_reaction, 5))
+        end)
+    end}.
 
 remove_reaction_returns_error_when_message_id_decode_unexpected_test_() ->
     MockConfigs = [
@@ -4422,18 +3932,16 @@ remove_reaction_returns_error_when_message_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:remove_reaction(1001, <<"ch_hash_11">>, <<"msg_hash_unexpected">>, <<"like">>),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, ensure_channel_content_access, 2)),
-                ?assertEqual(0, meck:num_calls(channel_repo, delete_reaction, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:remove_reaction(
+                1001, <<"ch_hash_11">>, <<"msg_hash_unexpected">>, <<"like">>
+            ),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, ensure_channel_content_access, 2)),
+            ?assertEqual(0, meck:num_calls(channel_repo, delete_reaction, 4))
+        end)
+    end}.
 
 record_message_view_returns_error_when_has_viewed_message_fails_test_() ->
     MockConfigs = [
@@ -4448,18 +3956,14 @@ record_message_view_returns_error_when_has_viewed_message_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
-                ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
+            ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
+        end)
+    end}.
 
 record_message_view_returns_error_when_has_viewed_message_returns_unexpected_test_() ->
     MockConfigs = [
@@ -4474,18 +3978,14 @@ record_message_view_returns_error_when_has_viewed_message_returns_unexpected_tes
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
-                ?assertEqual({error, <<"unexpected_lookup">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
-                ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
+            ?assertEqual({error, <<"unexpected_lookup">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
+            ?assertEqual(0, meck:num_calls(channel_repo, insert_message_view, 4))
+        end)
+    end}.
 
 record_message_view_returns_error_when_insert_message_view_returns_unexpected_test_() ->
     MockConfigs = [
@@ -4498,18 +3998,14 @@ record_message_view_returns_error_when_insert_message_view_returns_unexpected_te
             {'insert_message_view', 4, fun(11, 99, 1001, _) -> unexpected_insert_result end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
-                ?assertEqual({error, <<"unexpected_insert_result">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
-                ?assertEqual(1, meck:num_calls(channel_repo, insert_message_view, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:record_message_view(1001, <<"ch_hash_11">>, <<"99">>),
+            ?assertEqual({error, <<"unexpected_insert_result">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, has_viewed_message, 2)),
+            ?assertEqual(1, meck:num_calls(channel_repo, insert_message_view, 4))
+        end)
+    end}.
 
 add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_() ->
     MockConfigs = [
@@ -4521,17 +4017,13 @@ add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_() ->
             {'insert_reaction', 5, fun(11, 99, 1001, <<"like">>, _) -> unexpected_insert_result end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:add_reaction(1001, <<"ch_hash_11">>, <<"99">>, <<"like">>),
-                ?assertEqual({error, <<"unexpected_insert_result">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, insert_reaction, 5))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:add_reaction(1001, <<"ch_hash_11">>, <<"99">>, <<"like">>),
+            ?assertEqual({error, <<"unexpected_insert_result">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, insert_reaction, 5))
+        end)
+    end}.
 
 remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
     MockConfigs = [
@@ -4543,17 +4035,13 @@ remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
             {'delete_reaction', 4, fun(11, 99, 1001, <<"like">>) -> unexpected_delete_result end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:remove_reaction(1001, <<"ch_hash_11">>, <<"99">>, <<"like">>),
-                ?assertEqual({error, <<"unexpected_delete_result">>}, Result),
-                ?assertEqual(1, meck:num_calls(channel_repo, delete_reaction, 4))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:remove_reaction(1001, <<"ch_hash_11">>, <<"99">>, <<"like">>),
+            ?assertEqual({error, <<"unexpected_delete_result">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_repo, delete_reaction, 4))
+        end)
+    end}.
 
 %% ===================================================================
 %% revoke_message/3 测试 - P1 撤回能力
@@ -4598,7 +4086,9 @@ revoke_message_author_success_within_window_test_() ->
             {'now', 0, fun() -> <<"2026-02-22T10:01:00Z">> end}
         ]},
         {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, Payload, save) ->
+            {'send', 7, fun(
+                0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, Payload, save
+            ) ->
                 ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
                 ?assertEqual(991, maps:get(<<"message_id">>, Payload)),
                 ?assertEqual(1001, maps:get(<<"revoked_by">>, Payload)),
@@ -4607,18 +4097,14 @@ revoke_message_author_success_within_window_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, revoke, 3)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, revoke, 3)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 revoke_message_author_success_still_returns_ok_when_notify_crashes_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4659,23 +4145,21 @@ revoke_message_author_success_still_returns_ok_when_notify_crashes_test_() ->
             {'now', 0, fun() -> <<"2026-02-22T10:01:00Z">> end}
         ]},
         {msg_s2c_ds, [
-            {'send', 7, fun(0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, _Payload, save) ->
+            {'send', 7, fun(
+                0, [1001, 2002], <<"channel_message_revoked">>, <<>>, null, _Payload, save
+            ) ->
                 erlang:error(mock_notify_crash)
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, revoke, 3)),
-                ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, revoke, 3)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 revoke_message_returns_timeout_error_when_window_expired_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4712,17 +4196,13 @@ revoke_message_returns_timeout_error_when_window_expired_test_() ->
             {'millisecond', 0, fun() -> 1708597000000 end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual({error, <<"撤回时间已超出限制"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual({error, <<"撤回时间已超出限制"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
+        end)
+    end}.
 
 revoke_message_is_idempotent_when_already_revoked_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4750,18 +4230,14 @@ revoke_message_is_idempotent_when_already_revoked_test_() ->
             {'send', 7, fun(_, _, _, _, _, _, _) -> erlang:error(should_not_send_event_again) end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3)),
-                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3)),
+            ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
 
 revoke_message_returns_permission_denied_for_non_author_non_admin_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4786,17 +4262,13 @@ revoke_message_returns_permission_denied_for_non_author_non_admin_test_() ->
             {'find_by_id', 2, fun(11, <<"*">>) -> #{<<"id">> => 11, <<"creator_uid">> => 3003} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual({error, <<"无权限撤回此消息"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual({error, <<"无权限撤回此消息"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
+        end)
+    end}.
 
 revoke_message_returns_error_when_repo_returns_non_map_payload_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4807,24 +4279,24 @@ revoke_message_returns_error_when_repo_returns_non_map_payload_test_() ->
             {'revoke', 3, fun(_, _, _) -> erlang:error(should_not_revoke_when_message_invalid) end}
         ]},
         {channel_admin_repo, [
-            {'get_role', 2, fun(_, _) -> erlang:error(should_not_check_role_when_message_invalid) end}
+            {'get_role', 2, fun(_, _) ->
+                erlang:error(should_not_check_role_when_message_invalid)
+            end}
         ]},
         {channel_repo, [
-            {'find_by_id', 2, fun(_, _) -> erlang:error(should_not_load_channel_when_message_invalid) end}
+            {'find_by_id', 2, fun(_, _) ->
+                erlang:error(should_not_load_channel_when_message_invalid)
+            end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
+        end)
+    end}.
 
 revoke_message_returns_error_when_required_fields_missing_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4838,27 +4310,29 @@ revoke_message_returns_error_when_required_fields_missing_test_() ->
                     <<"revoked">> => false
                 }
             end},
-            {'revoke', 3, fun(_, _, _) -> erlang:error(should_not_revoke_when_required_fields_missing) end}
+            {'revoke', 3, fun(_, _, _) ->
+                erlang:error(should_not_revoke_when_required_fields_missing)
+            end}
         ]},
         {channel_admin_repo, [
-            {'get_role', 2, fun(_, _) -> erlang:error(should_not_check_role_when_required_fields_missing) end}
+            {'get_role', 2, fun(_, _) ->
+                erlang:error(should_not_check_role_when_required_fields_missing)
+            end}
         ]},
         {channel_repo, [
-            {'find_by_id', 2, fun(_, _) -> erlang:error(should_not_load_channel_when_required_fields_missing) end}
+            {'find_by_id', 2, fun(_, _) ->
+                erlang:error(should_not_load_channel_when_required_fields_missing)
+            end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
+        end)
+    end}.
 
 revoke_message_returns_error_when_required_fields_type_invalid_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4874,27 +4348,29 @@ revoke_message_returns_error_when_required_fields_type_invalid_test_() ->
                     <<"revoked">> => false
                 }
             end},
-            {'revoke', 3, fun(_, _, _) -> erlang:error(should_not_revoke_when_fields_type_invalid) end}
+            {'revoke', 3, fun(_, _, _) ->
+                erlang:error(should_not_revoke_when_fields_type_invalid)
+            end}
         ]},
         {channel_admin_repo, [
-            {'get_role', 2, fun(_, _) -> erlang:error(should_not_check_role_when_fields_type_invalid) end}
+            {'get_role', 2, fun(_, _) ->
+                erlang:error(should_not_check_role_when_fields_type_invalid)
+            end}
         ]},
         {channel_repo, [
-            {'find_by_id', 2, fun(_, _) -> erlang:error(should_not_load_channel_when_fields_type_invalid) end}
+            {'find_by_id', 2, fun(_, _) ->
+                erlang:error(should_not_load_channel_when_fields_type_invalid)
+            end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual({error, <<"消息不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, get_role, 2)),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
+        end)
+    end}.
 
 revoke_message_treats_non_boolean_revoked_field_as_not_revoked_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4932,17 +4408,13 @@ revoke_message_treats_non_boolean_revoked_field_as_not_revoked_test_() ->
             {'now', 0, fun() -> <<"2026-02-22T10:01:00Z">> end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_message_repo, revoke, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, revoke, 3))
+        end)
+    end}.
 
 revoke_message_returns_timeout_error_when_created_at_invalid_test_() ->
     ChannelIdBin = <<"11">>,
@@ -4958,7 +4430,9 @@ revoke_message_returns_timeout_error_when_created_at_invalid_test_() ->
                     <<"revoked">> => false
                 }
             end},
-            {'revoke', 3, fun(_, _, _) -> erlang:error(should_not_revoke_when_created_at_invalid) end}
+            {'revoke', 3, fun(_, _, _) ->
+                erlang:error(should_not_revoke_when_created_at_invalid)
+            end}
         ]},
         {channel_admin_repo, [
             {'get_role', 2, fun(11, 1001) -> 0 end}
@@ -4979,17 +4453,13 @@ revoke_message_returns_timeout_error_when_created_at_invalid_test_() ->
             {'millisecond', 0, fun() -> 1708596060000 end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
-                ?assertEqual({error, <<"撤回时间已超出限制"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:revoke_message(1001, ChannelIdBin, MessageIdBin),
+            ?assertEqual({error, <<"撤回时间已超出限制"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, revoke, 3))
+        end)
+    end}.
 
 %% ===================================================================
 %% facade delegation tests
@@ -5002,17 +4472,13 @@ subscribe_delegates_to_subscription_module_test_() ->
             {'subscribe', 2, fun(1001, <<"ch_hash_11">>) -> ok end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:subscribe(1001, ChannelIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_logic_subscription, subscribe, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:subscribe(1001, ChannelIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_logic_subscription, subscribe, 2))
+        end)
+    end}.
 
 unsubscribe_delegates_to_subscription_module_test_() ->
     ChannelIdBin = <<"ch_hash_11">>,
@@ -5021,17 +4487,13 @@ unsubscribe_delegates_to_subscription_module_test_() ->
             {'unsubscribe', 2, fun(1001, <<"ch_hash_11">>) -> ok end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:unsubscribe(1001, ChannelIdBin),
-                ?assertEqual(ok, Result),
-                ?assertEqual(1, meck:num_calls(channel_logic_subscription, unsubscribe, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:unsubscribe(1001, ChannelIdBin),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_logic_subscription, unsubscribe, 2))
+        end)
+    end}.
 
 sync_channels_delegates_to_sync_module_test_() ->
     MockConfigs = [
@@ -5041,20 +4503,16 @@ sync_channels_delegates_to_sync_module_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:sync_channels(1001, 1700000000000),
-                ?assertEqual(
-                    {ok, #{channels => [], server_time => 1700000000123}},
-                    Result
-                ),
-                ?assertEqual(1, meck:num_calls(channel_logic_sync, sync_channels, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:sync_channels(1001, 1700000000000),
+            ?assertEqual(
+                {ok, #{channels => [], server_time => 1700000000123}},
+                Result
+            ),
+            ?assertEqual(1, meck:num_calls(channel_logic_sync, sync_channels, 2))
+        end)
+    end}.
 
 sync_channels_returns_empty_when_user_has_no_subscriptions_test_() ->
     MockConfigs = [
@@ -5067,20 +4525,16 @@ sync_channels_returns_empty_when_user_has_no_subscriptions_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertMatch({ok, _}, Result),
-                {ok, Payload} = Result,
-                ?assertEqual([], maps:get(channels, Payload)),
-                ?assert(is_integer(maps:get(server_time, Payload))),
-                ?assertEqual(0, meck:num_calls(channel_repo, list_by_ids_since, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertMatch({ok, _}, Result),
+            {ok, Payload} = Result,
+            ?assertEqual([], maps:get(channels, Payload)),
+            ?assert(is_integer(maps:get(server_time, Payload))),
+            ?assertEqual(0, meck:num_calls(channel_repo, list_by_ids_since, 2))
+        end)
+    end}.
 
 sync_channels_returns_error_when_subscription_query_fails_test_() ->
     MockConfigs = [
@@ -5088,16 +4542,12 @@ sync_channels_returns_error_when_subscription_query_fails_test_() ->
             {'list_by_uid', 1, fun(1001) -> {error, db_down} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertEqual({error, <<"db_down">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertEqual({error, <<"db_down">>}, Result)
+        end)
+    end}.
 
 sync_channels_returns_error_when_subscription_payload_not_list_test_() ->
     MockConfigs = [
@@ -5110,17 +4560,13 @@ sync_channels_returns_error_when_subscription_payload_not_list_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_repo, list_by_ids_since, 2))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_repo, list_by_ids_since, 2))
+        end)
+    end}.
 
 sync_channels_filters_invalid_subscription_entries_test_() ->
     MockConfigs = [
@@ -5147,20 +4593,16 @@ sync_channels_filters_invalid_subscription_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertMatch({ok, _}, Result),
-                {ok, Payload} = Result,
-                Channels = maps:get(channels, Payload),
-                ?assertEqual(1, length(Channels)),
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels)))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertMatch({ok, _}, Result),
+            {ok, Payload} = Result,
+            Channels = maps:get(channels, Payload),
+            ?assertEqual(1, length(Channels)),
+            ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels)))
+        end)
+    end}.
 
 sync_channels_returns_error_when_delta_query_fails_test_() ->
     MockConfigs = [
@@ -5171,16 +4613,12 @@ sync_channels_returns_error_when_delta_query_fails_test_() ->
             {'list_by_ids_since', 2, fun([11], 1700000000000) -> {error, timeout} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertEqual({error, <<"timeout">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertEqual({error, <<"timeout">>}, Result)
+        end)
+    end}.
 
 sync_channels_returns_error_when_delta_payload_not_list_test_() ->
     MockConfigs = [
@@ -5196,17 +4634,13 @@ sync_channels_returns_error_when_delta_payload_not_list_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertEqual({error, <<"invalid_delta_payload">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertEqual({error, <<"invalid_delta_payload">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 sync_channels_filters_non_map_delta_entries_test_() ->
     MockConfigs = [
@@ -5235,22 +4669,18 @@ sync_channels_filters_non_map_delta_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertMatch({ok, _}, Result),
-                {ok, Payload} = Result,
-                Channels = maps:get(channels, Payload),
-                ?assertEqual(2, length(Channels)),
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels))),
-                ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, lists:nth(2, Channels))),
-                ?assertEqual(2, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertMatch({ok, _}, Result),
+            {ok, Payload} = Result,
+            Channels = maps:get(channels, Payload),
+            ?assertEqual(2, length(Channels)),
+            ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels))),
+            ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, lists:nth(2, Channels))),
+            ?assertEqual(2, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 sync_channels_success_transfers_channels_test_() ->
     MockConfigs = [
@@ -5278,22 +4708,18 @@ sync_channels_success_transfers_channels_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_sync:sync_channels(1001, 1700000000000),
-                ?assertMatch({ok, _}, Result),
-                {ok, Payload} = Result,
-                Channels = maps:get(channels, Payload),
-                ?assertEqual(2, length(Channels)),
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels))),
-                ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, lists:nth(2, Channels))),
-                ?assert(is_integer(maps:get(server_time, Payload)))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_sync:sync_channels(1001, 1700000000000),
+            ?assertMatch({ok, _}, Result),
+            {ok, Payload} = Result,
+            Channels = maps:get(channels, Payload),
+            ?assertEqual(2, length(Channels)),
+            ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels))),
+            ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, lists:nth(2, Channels))),
+            ?assert(is_integer(maps:get(server_time, Payload)))
+        end)
+    end}.
 
 get_subscribed_channels_delegates_to_subscription_module_test_() ->
     MockConfigs = [
@@ -5303,17 +4729,13 @@ get_subscribed_channels_delegates_to_subscription_module_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_subscribed_channels(1001),
-                ?assertEqual({ok, [#{<<"id">> => <<"ch_1">>}]}, Result),
-                ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_subscribed_channels, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_subscribed_channels(1001),
+            ?assertEqual({ok, [#{<<"id">> => <<"ch_1">>}]}, Result),
+            ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_subscribed_channels, 1))
+        end)
+    end}.
 
 get_managed_channels_delegates_to_subscription_module_test_() ->
     MockConfigs = [
@@ -5323,17 +4745,13 @@ get_managed_channels_delegates_to_subscription_module_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_managed_channels(1001),
-                ?assertEqual({ok, [#{<<"id">> => <<"ch_admin_1">>}]}, Result),
-                ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_managed_channels, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_managed_channels(1001),
+            ?assertEqual({ok, [#{<<"id">> => <<"ch_admin_1">>}]}, Result),
+            ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_managed_channels, 1))
+        end)
+    end}.
 
 get_subscribers_delegates_to_subscription_module_test_() ->
     MockConfigs = [
@@ -5343,17 +4761,13 @@ get_subscribers_delegates_to_subscription_module_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic:get_subscribers(<<"ch_hash_11">>, 10, 20),
-                ?assertEqual({ok, [#{<<"user_id">> => <<"u_1">>}]}, Result),
-                ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_subscribers, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:get_subscribers(<<"ch_hash_11">>, 10, 20),
+            ?assertEqual({ok, [#{<<"user_id">> => <<"u_1">>}]}, Result),
+            ?assertEqual(1, meck:num_calls(channel_logic_subscription, get_subscribers, 3))
+        end)
+    end}.
 
 get_subscribed_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
@@ -5366,17 +4780,13 @@ get_subscribed_channels_returns_error_when_repo_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_subscribed_channels(1001),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_subscribed_channels(1001),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 get_subscribed_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -5389,17 +4799,13 @@ get_subscribed_channels_returns_error_when_repo_payload_not_list_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_subscribed_channels(1001),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_subscribed_channels(1001),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 get_subscribed_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
@@ -5418,18 +4824,14 @@ get_subscribed_channels_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_subscribed_channels(1001),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Channel]} = Result,
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, Channel))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_subscribed_channels(1001),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Channel]} = Result,
+            ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, Channel))
+        end)
+    end}.
 
 get_managed_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
@@ -5442,17 +4844,13 @@ get_managed_channels_returns_error_when_repo_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_managed_channels(1001),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_managed_channels(1001),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 get_managed_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -5465,17 +4863,13 @@ get_managed_channels_returns_error_when_repo_payload_not_list_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_managed_channels(1001),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_managed_channels(1001),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 get_managed_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
@@ -5494,18 +4888,14 @@ get_managed_channels_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_managed_channels(1001),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Channel]} = Result,
-                ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, Channel))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_managed_channels(1001),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Channel]} = Result,
+            ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, Channel))
+        end)
+    end}.
 
 get_subscribers_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
@@ -5513,16 +4903,12 @@ get_subscribers_returns_error_when_repo_fails_test_() ->
             {'list_by_channel', 3, fun(11, 10, 20) -> {error, db_down} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
-                ?assertEqual({error, <<"db_down">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
+            ?assertEqual({error, <<"db_down">>}, Result)
+        end)
+    end}.
 
 get_subscribers_returns_error_when_channel_id_decode_unexpected_test_() ->
     MockConfigs = [
@@ -5532,17 +4918,13 @@ get_subscribers_returns_error_when_channel_id_decode_unexpected_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_subscribers(<<"ch_hash_unexpected">>, 10, 20),
-                ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_subscription_repo, list_by_channel, 3))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_subscribers(<<"ch_hash_unexpected">>, 10, 20),
+            ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_subscription_repo, list_by_channel, 3))
+        end)
+    end}.
 
 get_subscribers_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -5550,16 +4932,12 @@ get_subscribers_returns_error_when_repo_payload_not_list_test_() ->
             {'list_by_channel', 3, fun(11, 10, 20) -> {ok, invalid_payload} end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
-                ?assertEqual({error, <<"invalid_payload">>}, Result)
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
+            ?assertEqual({error, <<"invalid_payload">>}, Result)
+        end)
+    end}.
 
 get_subscribers_filters_non_map_entries_test_() ->
     MockConfigs = [
@@ -5572,19 +4950,15 @@ get_subscribers_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, [Subscriber]} = Result,
-                ?assert(maps:is_key(<<"id">>, Subscriber)),
-                ?assert(maps:is_key(<<"user_id">>, Subscriber))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_subscription:get_subscribers(<<"11">>, 10, 20),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, [Subscriber]} = Result,
+            ?assert(maps:is_key(<<"id">>, Subscriber)),
+            ?assert(maps:is_key(<<"user_id">>, Subscriber))
+        end)
+    end}.
 
 search_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
@@ -5597,17 +4971,13 @@ search_channels_returns_error_when_repo_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_message:search_channels(<<"ops">>, 20),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:search_channels(<<"ops">>, 20),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 search_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -5620,17 +4990,13 @@ search_channels_returns_error_when_repo_payload_not_list_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_message:search_channels(<<"ops">>, 20),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:search_channels(<<"ops">>, 20),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 search_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
@@ -5649,20 +5015,16 @@ search_channels_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_message:search_channels(<<"ops">>, 20),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, Channels} = Result,
-                ?assertEqual(1, length(Channels)),
-                ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels))),
-                ?assertEqual(1, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:search_channels(<<"ops">>, 20),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, Channels} = Result,
+            ?assertEqual(1, length(Channels)),
+            ?assertEqual(<<"ch_hash_11">>, maps:get(<<"id">>, lists:nth(1, Channels))),
+            ?assertEqual(1, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 get_discover_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
@@ -5675,17 +5037,13 @@ get_discover_channels_returns_error_when_repo_fails_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_message:get_discover_channels(15),
-                ?assertEqual({error, <<"db_down">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:get_discover_channels(15),
+            ?assertEqual({error, <<"db_down">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 get_discover_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
@@ -5698,17 +5056,13 @@ get_discover_channels_returns_error_when_repo_payload_not_list_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_message:get_discover_channels(15),
-                ?assertEqual({error, <<"invalid_payload">>}, Result),
-                ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:get_discover_channels(15),
+            ?assertEqual({error, <<"invalid_payload">>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 get_discover_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
@@ -5727,33 +5081,35 @@ get_discover_channels_filters_non_map_entries_test_() ->
             end}
         ]}
     ],
-    {setup,
-        fun() -> setup_mocks(MockConfigs) end,
-        fun(_) -> cleanup_mocks(MockConfigs) end,
-        fun(_) ->
-            ?_test(begin
-                Result = channel_logic_message:get_discover_channels(15),
-                ?assertMatch({ok, [_]}, Result),
-                {ok, Channels} = Result,
-                ?assertEqual(1, length(Channels)),
-                ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, lists:nth(1, Channels))),
-                ?assertEqual(1, meck:num_calls(channel_logic_common, channel_transfer, 1))
-            end)
-        end
-    }.
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:get_discover_channels(15),
+            ?assertMatch({ok, [_]}, Result),
+            {ok, Channels} = Result,
+            ?assertEqual(1, length(Channels)),
+            ?assertEqual(<<"ch_hash_12">>, maps:get(<<"id">>, lists:nth(1, Channels))),
+            ?assertEqual(1, meck:num_calls(channel_logic_common, channel_transfer, 1))
+        end)
+    end}.
 
 %% ===================================================================
 %% Internal helpers
 %% ===================================================================
 
 setup_mocks(MockConfigs) ->
-    lists:foreach(fun({Module, Expectations}) ->
-        {ok, _} = meck_helper:setup_mock(Module, [no_link, unstick], Expectations)
-    end, MockConfigs),
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            {ok, _} = meck_helper:setup_mock(Module, [no_link, unstick], Expectations)
+        end,
+        MockConfigs
+    ),
     ok.
 
 cleanup_mocks(MockConfigs) ->
-    lists:foreach(fun({Module, _}) ->
-        meck_helper:cleanup_mock(Module)
-    end, MockConfigs),
+    lists:foreach(
+        fun({Module, _}) ->
+            meck_helper:cleanup_mock(Module)
+        end,
+        MockConfigs
+    ),
     ok.
