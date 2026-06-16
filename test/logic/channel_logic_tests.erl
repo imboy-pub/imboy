@@ -671,7 +671,7 @@ get_messages_paid_channel_requires_purchase_or_subscription_test_() ->
         {channel_subscription_repo, [
             {'is_subscribed', 2, fun(11, 2002) -> false end}
         ]},
-        {channel_subscribe_ds, [
+        {channel_order_ds, [
             {'has_purchased', 2, fun(11, 2002) -> false end}
         ]},
         {channel_message_repo, [
@@ -708,7 +708,7 @@ get_messages_paid_channel_allows_purchased_user_test_() ->
         {channel_subscription_repo, [
             {'is_subscribed', 2, fun(11, 2002) -> false end}
         ]},
-        {channel_subscribe_ds, [
+        {channel_order_ds, [
             {'has_purchased', 2, fun(11, 2002) -> true end}
         ]},
         {channel_message_repo, [
@@ -1235,10 +1235,13 @@ create_invitation_success_notifies_invitee_test_() ->
                 #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(11, 1001, 2002) -> {ok, 501} end}
+        {channel_subscription_ds, [
+            {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
+            {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
+                {ok, 501}
+            end},
             {'find_by_id', 1, fun(501) ->
                 {ok, #{
                     <<"id">> => 501,
@@ -1262,6 +1265,7 @@ create_invitation_success_notifies_invitee_test_() ->
             ?assertMatch({ok, _}, Result),
             {ok, Invitation} = Result,
             ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, create, 1)),
             ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -1274,8 +1278,8 @@ create_invitation_rejects_non_private_channel_test_() ->
                 #{<<"id">> => 11, <<"type">> => 0, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(_, _, _) -> erlang:error(should_not_create_invitation) end}
+        {channel_invitation_ds, [
+            {'create', 1, fun(_) -> erlang:error(should_not_create_invitation) end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -1283,7 +1287,7 @@ create_invitation_rejects_non_private_channel_test_() ->
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
             ?assertEqual({error, <<"只有私有频道支持邀请功能"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, create, 1))
         end)
     end}.
 
@@ -1295,8 +1299,8 @@ create_invitation_returns_error_when_channel_not_found_test_() ->
                 {error, not_found}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(_, _, _) ->
+        {channel_invitation_ds, [
+            {'create', 1, fun(_) ->
                 erlang:error(should_not_create_invitation_when_channel_missing)
             end}
         ]}
@@ -1306,7 +1310,7 @@ create_invitation_returns_error_when_channel_not_found_test_() ->
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
             ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, create, 1))
         end)
     end}.
 
@@ -1318,8 +1322,8 @@ create_invitation_returns_error_when_channel_id_decode_unexpected_test_() ->
                 erlang:error(should_not_lookup_channel_when_channel_id_decode_unexpected)
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(_, _, _) ->
+        {channel_invitation_ds, [
+            {'create', 1, fun(_) ->
                 erlang:error(should_not_create_invitation_when_channel_id_decode_unexpected)
             end}
         ]}
@@ -1329,7 +1333,7 @@ create_invitation_returns_error_when_channel_id_decode_unexpected_test_() ->
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
             ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, create, 1))
         end)
     end}.
 
@@ -1339,8 +1343,8 @@ create_invitation_returns_error_when_channel_payload_invalid_test_() ->
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(_, _, _) ->
+        {channel_invitation_ds, [
+            {'create', 1, fun(_) ->
                 erlang:error(should_not_create_invitation_when_channel_payload_invalid)
             end}
         ]}
@@ -1349,7 +1353,7 @@ create_invitation_returns_error_when_channel_payload_invalid_test_() ->
         ?_test(begin
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
             ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, create, 1))
         end)
     end}.
 
@@ -1361,8 +1365,8 @@ create_invitation_rejects_disabled_channel_test_() ->
                 #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 0}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(_, _, _) ->
+        {channel_invitation_ds, [
+            {'create', 1, fun(_) ->
                 erlang:error(should_not_create_invitation_when_channel_disabled)
             end}
         ]}
@@ -1372,7 +1376,7 @@ create_invitation_rejects_disabled_channel_test_() ->
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
             ?assertEqual({error, <<"频道已禁用或删除"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3))
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, create, 1))
         end)
     end}.
 
@@ -1384,12 +1388,13 @@ create_invitation_ds_binary_error_passthrough_test_() ->
                 #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(11, 1001, 2002) ->
-                {error, <<"邀请创建失败"/utf8>>}
-            end}
+        {channel_subscription_ds, [
+            {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
+            {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
+                {error, <<"邀请创建失败"/utf8>>}
+            end},
             {'find_by_id', 1, fun(_) ->
                 erlang:error(should_not_load_invitation_when_create_failed)
             end}
@@ -1405,7 +1410,7 @@ create_invitation_ds_binary_error_passthrough_test_() ->
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
             ?assertEqual({error, <<"邀请创建失败"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -1418,12 +1423,13 @@ create_invitation_ds_atom_error_converted_to_binary_test_() ->
                 #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(11, 1001, 2002) ->
-                {error, db_timeout}
-            end}
+        {channel_subscription_ds, [
+            {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
+            {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
+                {error, db_timeout}
+            end},
             {'find_by_id', 1, fun(_) ->
                 erlang:error(should_not_load_invitation_when_create_failed)
             end}
@@ -1439,7 +1445,7 @@ create_invitation_ds_atom_error_converted_to_binary_test_() ->
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
             ?assertEqual({error, <<"db_timeout">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -1452,12 +1458,13 @@ create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
                 #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(11, 1001, 2002) ->
-                unexpected_result
-            end}
+        {channel_subscription_ds, [
+            {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
+            {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
+                unexpected_result
+            end},
             {'find_by_id', 1, fun(_) ->
                 erlang:error(should_not_load_invitation_when_create_returns_unexpected)
             end}
@@ -1472,7 +1479,7 @@ create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
         ?_test(begin
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
             ?assertEqual({error, <<"unexpected_result">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -1485,10 +1492,13 @@ create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
                 #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(11, 1001, 2002) -> {ok, 501} end}
+        {channel_subscription_ds, [
+            {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
+            {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
+                {ok, 501}
+            end},
             {'find_by_id', 1, fun(501) -> {error, not_found} end}
         ]},
         {msg_s2c_ds, [
@@ -1502,8 +1512,8 @@ create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
             ?assertEqual({error, <<"not_found">>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
-            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, create, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -1516,10 +1526,13 @@ create_invitation_returns_error_when_loading_created_invitation_payload_not_map_
                 #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_invitation', 3, fun(11, 1001, 2002) -> {ok, 501} end}
+        {channel_subscription_ds, [
+            {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
+            {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
+                {ok, 501}
+            end},
             {'find_by_id', 1, fun(501) -> {ok, invalid_payload} end}
         ]},
         {msg_s2c_ds, [
@@ -1532,8 +1545,8 @@ create_invitation_returns_error_when_loading_created_invitation_payload_not_map_
         ?_test(begin
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
             ?assertEqual({error, <<"invalid_payload">>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
-            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, create, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -1686,13 +1699,16 @@ get_sent_invitations_success_transfers_ids_test_() ->
 
 accept_invitation_already_accepted_is_idempotent_and_silent_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(501, 2002) -> {error, already_accepted} end}
-        ]},
-        {channel_invitation_repo, [
-            {'find_by_id', 1, fun(_) ->
-                erlang:error(should_not_load_invitation_when_already_accepted)
-            end}
+        {channel_invitation_ds, [
+            {'find_by_id', 1, fun(501) ->
+                {ok, #{
+                    <<"id">> => 501,
+                    <<"channel_id">> => 11,
+                    <<"inviter_uid">> => 1001,
+                    <<"invitee_uid">> => 2002
+                }}
+            end},
+            {'accept', 2, fun(501, 2002) -> {error, already_accepted} end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
@@ -1705,8 +1721,8 @@ accept_invitation_already_accepted_is_idempotent_and_silent_test_() ->
             Result = channel_logic:accept_invitation(2002, 501),
 
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
@@ -1715,10 +1731,7 @@ accept_invitation_success_notifies_inviter_and_invitee_test_() ->
     ChannelIdBin = integer_to_binary(11),
     InviteeUidBin = integer_to_binary(2002),
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(501, 2002) -> ok end}
-        ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
             {'find_by_id', 1, fun(501) ->
                 {ok, #{
                     <<"id">> => 501,
@@ -1726,7 +1739,11 @@ accept_invitation_success_notifies_inviter_and_invitee_test_() ->
                     <<"inviter_uid">> => 1001,
                     <<"invitee_uid">> => 2002
                 }}
-            end}
+            end},
+            {'accept', 2, fun(501, 2002) -> ok end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, Uids, Action, <<>>, null, Payload, no_save) ->
@@ -1749,18 +1766,15 @@ accept_invitation_success_notifies_inviter_and_invitee_test_() ->
             Result = channel_logic:accept_invitation(2002, 501),
 
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
 accept_invitation_success_still_returns_ok_when_notify_fails_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(511, 2002) -> ok end}
-        ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
             {'find_by_id', 1, fun(511) ->
                 {ok, #{
                     <<"id">> => 511,
@@ -1768,7 +1782,11 @@ accept_invitation_success_still_returns_ok_when_notify_fails_test_() ->
                     <<"inviter_uid">> => 1001,
                     <<"invitee_uid">> => 2002
                 }}
-            end}
+            end},
+            {'accept', 2, fun(511, 2002) -> ok end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, _Uids, _Action, <<>>, null, _Payload, no_save) ->
@@ -1781,18 +1799,15 @@ accept_invitation_success_still_returns_ok_when_notify_fails_test_() ->
             Result = channel_logic:accept_invitation(2002, 511),
 
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
 accept_invitation_success_still_returns_ok_when_notify_crashes_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(512, 2002) -> ok end}
-        ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
             {'find_by_id', 1, fun(512) ->
                 {ok, #{
                     <<"id">> => 512,
@@ -1800,7 +1815,11 @@ accept_invitation_success_still_returns_ok_when_notify_crashes_test_() ->
                     <<"inviter_uid">> => 1001,
                     <<"invitee_uid">> => 2002
                 }}
-            end}
+            end},
+            {'accept', 2, fun(512, 2002) -> ok end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(0, _Uids, _Action, <<>>, null, _Payload, no_save) ->
@@ -1813,19 +1832,19 @@ accept_invitation_success_still_returns_ok_when_notify_crashes_test_() ->
             Result = channel_logic:accept_invitation(2002, 512),
 
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
-accept_invitation_when_invitation_load_fails_still_returns_ok_test_() ->
+accept_invitation_when_invitation_load_fails_returns_not_found_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(502, 2002) -> ok end}
-        ]},
-        {channel_invitation_repo, [
-            {'find_by_id', 1, fun(502) -> {error, not_found} end}
+        {channel_invitation_ds, [
+            {'find_by_id', 1, fun(502) -> {error, not_found} end},
+            {'accept', 2, fun(_, _) ->
+                erlang:error(should_not_accept_when_invitation_missing)
+            end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
@@ -1837,51 +1856,60 @@ accept_invitation_when_invitation_load_fails_still_returns_ok_test_() ->
         ?_test(begin
             Result = channel_logic:accept_invitation(2002, 502),
 
-            ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual({error, <<"邀请不存在"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
-accept_invitation_with_invalid_invitation_payload_still_returns_ok_without_notify_test_() ->
+accept_invitation_rejects_when_invitee_uid_mismatch_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(505, 2002) -> ok end}
-        ]},
-        {channel_invitation_repo, [
+        {channel_invitation_ds, [
             {'find_by_id', 1, fun(505) ->
                 {ok, #{
                     <<"id">> => 505,
-                    <<"channel_id">> => <<"11">>,
-                    <<"inviter_uid">> => <<"1001">>
+                    <<"channel_id">> => 11,
+                    <<"inviter_uid">> => 1001,
+                    <<"invitee_uid">> => 3003
                 }}
+            end},
+            {'accept', 2, fun(_, _) ->
+                erlang:error(should_not_accept_when_invitee_uid_mismatch)
             end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
-                erlang:error(should_not_notify_when_invitation_payload_invalid)
+                erlang:error(should_not_notify_when_invitee_uid_mismatch)
             end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
             Result = channel_logic:accept_invitation(2002, 505),
-            ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual({error, <<"无权接受此邀请"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
 accept_invitation_binary_error_passthrough_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(503, 2002) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
+        {channel_invitation_ds, [
+            {'find_by_id', 1, fun(503) ->
+                {ok, #{
+                    <<"id">> => 503,
+                    <<"channel_id">> => 11,
+                    <<"inviter_uid">> => 1001,
+                    <<"invitee_uid">> => 2002
+                }}
+            end},
+            {'accept', 2, fun(503, 2002) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
         ]},
-        {channel_invitation_repo, [
-            {'find_by_id', 1, fun(_) ->
-                erlang:error(should_not_load_invitation_when_accept_failed)
+        {channel_ds, [
+            {'subscribe', 2, fun(_, _) ->
+                erlang:error(should_not_subscribe_when_accept_failed)
             end}
         ]},
         {msg_s2c_ds, [
@@ -1895,20 +1923,28 @@ accept_invitation_binary_error_passthrough_test_() ->
             Result = channel_logic:accept_invitation(2002, 503),
 
             ?assertEqual({error, <<"邀请不存在或已过期"/utf8>>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
 accept_invitation_atom_error_is_converted_to_binary_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(504, 2002) -> {error, db_timeout} end}
+        {channel_invitation_ds, [
+            {'find_by_id', 1, fun(504) ->
+                {ok, #{
+                    <<"id">> => 504,
+                    <<"channel_id">> => 11,
+                    <<"inviter_uid">> => 1001,
+                    <<"invitee_uid">> => 2002
+                }}
+            end},
+            {'accept', 2, fun(504, 2002) -> {error, db_timeout} end}
         ]},
-        {channel_invitation_repo, [
-            {'find_by_id', 1, fun(_) ->
-                erlang:error(should_not_load_invitation_when_accept_failed)
+        {channel_ds, [
+            {'subscribe', 2, fun(_, _) ->
+                erlang:error(should_not_subscribe_when_accept_failed)
             end}
         ]},
         {msg_s2c_ds, [
@@ -1922,42 +1958,48 @@ accept_invitation_atom_error_is_converted_to_binary_test_() ->
             Result = channel_logic:accept_invitation(2002, 504),
 
             ?assertEqual({error, <<"db_timeout">>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
-accept_invitation_unexpected_result_converted_to_binary_test_() ->
+accept_invitation_subscribe_error_converted_to_binary_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'accept_invitation', 2, fun(506, 2002) -> unexpected_result end}
+        {channel_invitation_ds, [
+            {'find_by_id', 1, fun(506) ->
+                {ok, #{
+                    <<"id">> => 506,
+                    <<"channel_id">> => 11,
+                    <<"inviter_uid">> => 1001,
+                    <<"invitee_uid">> => 2002
+                }}
+            end},
+            {'accept', 2, fun(506, 2002) -> ok end}
         ]},
-        {channel_invitation_repo, [
-            {'find_by_id', 1, fun(_) ->
-                erlang:error(should_not_load_invitation_when_accept_returns_unexpected)
-            end}
+        {channel_ds, [
+            {'subscribe', 2, fun(11, 2002) -> {error, db_timeout} end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
-                erlang:error(should_not_notify_when_accept_returns_unexpected)
+                erlang:error(should_not_notify_when_subscribe_failed)
             end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
             Result = channel_logic:accept_invitation(2002, 506),
-            ?assertEqual({error, <<"unexpected_result">>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
-            ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
+            ?assertEqual({error, <<"db_timeout">>}, Result),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, find_by_id, 1)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
 reject_invitation_atom_error_is_converted_to_binary_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'reject_invitation', 2, fun(501, 2002) -> {error, db_timeout} end}
+        {channel_invitation_ds, [
+            {'reject', 2, fun(501, 2002) -> {error, db_timeout} end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -1965,14 +2007,14 @@ reject_invitation_atom_error_is_converted_to_binary_test_() ->
             Result = channel_logic:reject_invitation(2002, 501),
 
             ?assertEqual({error, <<"db_timeout">>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, reject, 2))
         end)
     end}.
 
 reject_invitation_success_returns_ok_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'reject_invitation', 2, fun(502, 2002) -> ok end}
+        {channel_invitation_ds, [
+            {'reject', 2, fun(502, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
             {'send', 7, fun(_, _, _, _, _, _, _) ->
@@ -1985,15 +2027,15 @@ reject_invitation_success_returns_ok_test_() ->
             Result = channel_logic:reject_invitation(2002, 502),
 
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, reject, 2)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
         end)
     end}.
 
 reject_invitation_binary_error_passthrough_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'reject_invitation', 2, fun(503, 2002) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
+        {channel_invitation_ds, [
+            {'reject', 2, fun(503, 2002) -> {error, <<"邀请不存在或已过期"/utf8>>} end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -2001,21 +2043,21 @@ reject_invitation_binary_error_passthrough_test_() ->
             Result = channel_logic:reject_invitation(2002, 503),
 
             ?assertEqual({error, <<"邀请不存在或已过期"/utf8>>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, reject, 2))
         end)
     end}.
 
 reject_invitation_unexpected_return_converted_to_binary_test_() ->
     MockConfigs = [
-        {channel_subscribe_ds, [
-            {'reject_invitation', 2, fun(504, 2002) -> unexpected_result end}
+        {channel_invitation_ds, [
+            {'reject', 2, fun(504, 2002) -> unexpected_result end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
             Result = channel_logic:reject_invitation(2002, 504),
             ?assertEqual({error, <<"unexpected_result">>}, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, reject_invitation, 2))
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, reject, 2))
         end)
     end}.
 
@@ -2027,10 +2069,14 @@ create_order_success_returns_transferred_order_test_() ->
                 #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_order', 3, fun(11, 2002, #{}) -> {ok, <<"ORD001">>} end}
-        ]},
-        {channel_order_repo, [
+        {channel_order_ds, [
+            {'has_purchased', 2, fun(11, 2002) -> false end},
+            {'get_price', 1, fun(11) ->
+                {ok, #{<<"price">> => 100, <<"currency">> => <<"CNY">>}}
+            end},
+            {'create_order', 1, fun(#{channel_id := 11, user_id := 2002}) ->
+                {ok, <<"ORD001">>}
+            end},
             {'find_by_order_no', 1, fun(<<"ORD001">>) ->
                 {ok, #{
                     <<"id">> => 601,
@@ -2048,7 +2094,7 @@ create_order_success_returns_transferred_order_test_() ->
             ?assertMatch({ok, _}, Result),
             {ok, Order} = Result,
             ?assertEqual(11, maps:get(<<"channel_id">>, Order)),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_order, 3))
+            ?assertEqual(1, meck:num_calls(channel_order_ds, create_order, 1))
         end)
     end}.
 
@@ -2060,8 +2106,8 @@ create_order_rejects_non_paid_channel_test_() ->
                 #{<<"id">> => 11, <<"type">> => 0, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_order', 3, fun(_, _, _) -> erlang:error(should_not_create_order) end}
+        {channel_order_ds, [
+            {'create_order', 1, fun(_) -> erlang:error(should_not_create_order) end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -2069,7 +2115,7 @@ create_order_rejects_non_paid_channel_test_() ->
             Result = channel_logic:create_order(2002, ChannelIdBin),
 
             ?assertEqual({error, <<"只有付费频道支持购买"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, create_order, 1))
         end)
     end}.
 
@@ -2081,8 +2127,8 @@ create_order_propagates_channel_lookup_error_test_() ->
                 {error, db_down}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_order', 3, fun(_, _, _) ->
+        {channel_order_ds, [
+            {'create_order', 1, fun(_) ->
                 erlang:error(should_not_create_order_when_channel_lookup_failed)
             end}
         ]}
@@ -2092,7 +2138,7 @@ create_order_propagates_channel_lookup_error_test_() ->
             Result = channel_logic:create_order(2002, ChannelIdBin),
 
             ?assertEqual({error, <<"db_down">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, create_order, 1))
         end)
     end}.
 
@@ -2102,8 +2148,8 @@ create_order_returns_error_when_channel_payload_invalid_test_() ->
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_order', 3, fun(_, _, _) ->
+        {channel_order_ds, [
+            {'create_order', 1, fun(_) ->
                 erlang:error(should_not_create_order_when_channel_payload_invalid)
             end}
         ]}
@@ -2112,7 +2158,7 @@ create_order_returns_error_when_channel_payload_invalid_test_() ->
         ?_test(begin
             Result = channel_logic:create_order(2002, ChannelIdBin),
             ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, create_order, 1))
         end)
     end}.
 
@@ -2124,8 +2170,8 @@ create_order_returns_error_when_channel_id_decode_unexpected_test_() ->
                 erlang:error(should_not_lookup_channel_when_channel_id_decode_unexpected)
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_order', 3, fun(_, _, _) ->
+        {channel_order_ds, [
+            {'create_order', 1, fun(_) ->
                 erlang:error(should_not_create_order_when_channel_id_decode_unexpected)
             end}
         ]}
@@ -2135,7 +2181,7 @@ create_order_returns_error_when_channel_id_decode_unexpected_test_() ->
             Result = channel_logic:create_order(2002, ChannelIdBin),
             ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, create_order, 1))
         end)
     end}.
 
@@ -2147,10 +2193,14 @@ create_order_returns_not_found_when_order_reload_returns_non_map_test_() ->
                 #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_order', 3, fun(11, 2002, #{}) -> {ok, <<"ORD_NEW_BAD_PAYLOAD">>} end}
-        ]},
-        {channel_order_repo, [
+        {channel_order_ds, [
+            {'has_purchased', 2, fun(11, 2002) -> false end},
+            {'get_price', 1, fun(11) ->
+                {ok, #{<<"price">> => 100, <<"currency">> => <<"CNY">>}}
+            end},
+            {'create_order', 1, fun(#{channel_id := 11, user_id := 2002}) ->
+                {ok, <<"ORD_NEW_BAD_PAYLOAD">>}
+            end},
             {'find_by_order_no', 1, fun(<<"ORD_NEW_BAD_PAYLOAD">>) -> {ok, []} end}
         ]}
     ],
@@ -2169,10 +2219,12 @@ create_order_unexpected_ds_result_converted_to_binary_test_() ->
                 #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
             end}
         ]},
-        {channel_subscribe_ds, [
-            {'create_order', 3, fun(11, 2002, #{}) -> unexpected_result end}
-        ]},
-        {channel_order_repo, [
+        {channel_order_ds, [
+            {'has_purchased', 2, fun(11, 2002) -> false end},
+            {'get_price', 1, fun(11) ->
+                {ok, #{<<"price">> => 100, <<"currency">> => <<"CNY">>}}
+            end},
+            {'create_order', 1, fun(#{channel_id := 11, user_id := 2002}) -> unexpected_result end},
             {'find_by_order_no', 1, fun(_) ->
                 erlang:error(should_not_load_order_when_create_order_returns_unexpected)
             end}
@@ -2182,23 +2234,21 @@ create_order_unexpected_ds_result_converted_to_binary_test_() ->
         ?_test(begin
             Result = channel_logic:create_order(2002, ChannelIdBin),
             ?assertEqual({error, <<"unexpected_result">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, find_by_order_no, 1))
         end)
     end}.
 
 pay_order_requires_owner_test_() ->
     MockConfigs = [
-        {channel_order_repo, [
+        {channel_order_ds, [
             {'find_by_order_no', 1, fun(<<"ORD001">>) ->
                 {ok, #{
                     <<"order_no">> => <<"ORD001">>,
                     <<"channel_id">> => 11,
                     <<"user_id">> => 3003
                 }}
-            end}
-        ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(_, _) -> erlang:error(should_not_pay_order) end}
+            end},
+            {'pay', 2, fun(_, _) -> erlang:error(should_not_pay_order) end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -2206,19 +2256,17 @@ pay_order_requires_owner_test_() ->
             Result = channel_logic:pay_order(2002, <<"ORD001">>),
 
             ?assertEqual({error, <<"无权操作此订单"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, pay, 2))
         end)
     end}.
 
 pay_order_propagates_lookup_error_before_owner_check_test_() ->
     MockConfigs = [
-        {channel_order_repo, [
+        {channel_order_ds, [
             {'find_by_order_no', 1, fun(<<"ORD_DB_ERR">>) ->
                 {error, db_down}
-            end}
-        ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(_, _) -> erlang:error(should_not_pay_order_when_lookup_failed) end}
+            end},
+            {'pay', 2, fun(_, _) -> erlang:error(should_not_pay_order_when_lookup_failed) end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -2226,17 +2274,15 @@ pay_order_propagates_lookup_error_before_owner_check_test_() ->
             Result = channel_logic:pay_order(2002, <<"ORD_DB_ERR">>),
 
             ?assertEqual({error, <<"db_down">>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, pay, 2))
         end)
     end}.
 
 pay_order_returns_not_found_when_repo_returns_non_map_payload_test_() ->
     MockConfigs = [
-        {channel_order_repo, [
-            {'find_by_order_no', 1, fun(<<"ORD_BAD_PAYLOAD">>) -> {ok, []} end}
-        ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(_, _) ->
+        {channel_order_ds, [
+            {'find_by_order_no', 1, fun(<<"ORD_BAD_PAYLOAD">>) -> {ok, []} end},
+            {'pay', 2, fun(_, _) ->
                 erlang:error(should_not_pay_order_when_order_payload_invalid)
             end}
         ]}
@@ -2245,23 +2291,21 @@ pay_order_returns_not_found_when_repo_returns_non_map_payload_test_() ->
         ?_test(begin
             Result = channel_logic:pay_order(2002, <<"ORD_BAD_PAYLOAD">>),
             ?assertEqual({error, <<"订单不存在"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, pay, 2))
         end)
     end}.
 
 pay_order_returns_not_found_when_required_fields_invalid_test_() ->
     MockConfigs = [
-        {channel_order_repo, [
+        {channel_order_ds, [
             {'find_by_order_no', 1, fun(<<"ORD_BAD_FIELDS">>) ->
                 {ok, #{
                     <<"order_no">> => <<"ORD_BAD_FIELDS">>,
                     <<"channel_id">> => <<"11">>,
                     <<"user_id">> => <<"2002">>
                 }}
-            end}
-        ]},
-        {channel_subscribe_ds, [
-            {'pay_order', 2, fun(_, _) ->
+            end},
+            {'pay', 2, fun(_, _) ->
                 erlang:error(should_not_pay_order_when_required_fields_invalid)
             end}
         ]}
@@ -2270,7 +2314,7 @@ pay_order_returns_not_found_when_required_fields_invalid_test_() ->
         ?_test(begin
             Result = channel_logic:pay_order(2002, <<"ORD_BAD_FIELDS">>),
             ?assertEqual({error, <<"订单不存在"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
+            ?assertEqual(0, meck:num_calls(channel_order_ds, pay, 2))
         end)
     end}.
 
@@ -3083,7 +3127,7 @@ get_messages_returns_error_when_channel_type_invalid_test_() ->
                 erlang:error(should_not_check_subscription_when_channel_type_invalid)
             end}
         ]},
-        {channel_subscribe_ds, [
+        {channel_order_ds, [
             {'has_purchased', 2, fun(_, _) ->
                 erlang:error(should_not_check_purchase_when_channel_type_invalid)
             end}
@@ -3099,7 +3143,7 @@ get_messages_returns_error_when_channel_type_invalid_test_() ->
             Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
             ?assertEqual({error, <<"频道类型无效"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
+            ?assertEqual(0, meck:num_calls(channel_order_ds, has_purchased, 2)),
             ?assertEqual(0, meck:num_calls(channel_message_repo, list_by_channel, 3))
         end)
     end}.
@@ -3120,7 +3164,7 @@ get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() -
                 erlang:error(should_not_check_subscription_for_admin)
             end}
         ]},
-        {channel_subscribe_ds, [
+        {channel_order_ds, [
             {'has_purchased', 2, fun(_, _) ->
                 erlang:error(should_not_check_purchase_for_admin)
             end}
@@ -3144,7 +3188,7 @@ get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() -
 
             ?assertMatch({ok, [_]}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2)),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
+            ?assertEqual(0, meck:num_calls(channel_order_ds, has_purchased, 2)),
             ?assertEqual(1, meck:num_calls(channel_message_repo, list_by_channel, 3))
         end)
     end}.
@@ -3152,14 +3196,18 @@ get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() -
 subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
-        {channel_repo, [
+        {channel_ds, [
             {'find_by_id', 2, fun(11, <<"id,type">>) ->
                 #{<<"id">> => 11, <<"type">> => 1}
-            end}
+            end},
+            {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
-        {channel_subscribe_ds, [
+        {channel_invitation_ds, [
             {'is_invited', 2, fun(11, 2002) -> true end},
-            {'subscribe_private', 3, fun(11, 2002, undefined) -> ok end}
+            {'find_pending_by_channel_and_invitee', 2, fun(11, 2002) ->
+                {ok, #{<<"id">> => 501, <<"channel_id">> => 11, <<"invitee_uid">> => 2002}}
+            end},
+            {'accept', 2, fun(501, 2002) -> ok end}
         ]},
         {channel_logic_notify, [
             {'notify_channel_subscribed', 2, fun(11, 2002) -> ok end}
@@ -3170,8 +3218,9 @@ subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
             Result = channel_logic:subscribe(2002, ChannelIdBin),
 
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, is_invited, 2)),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, subscribe_private, 3)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, is_invited, 2)),
+            ?assertEqual(1, meck:num_calls(channel_invitation_ds, accept, 2)),
+            ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
             ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
         end)
     end}.
@@ -3208,7 +3257,7 @@ subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
             end},
             {'subscribe', 2, fun(13, 2002) -> ok end}
         ]},
-        {channel_subscribe_ds, [
+        {channel_order_ds, [
             {'has_purchased', 2, fun(13, 2002) -> true end}
         ]},
         {channel_logic_notify, [
@@ -3220,7 +3269,7 @@ subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
             Result = channel_logic:subscribe(2002, ChannelIdBin),
 
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(channel_subscribe_ds, has_purchased, 2)),
+            ?assertEqual(1, meck:num_calls(channel_order_ds, has_purchased, 2)),
             ?assertEqual(1, meck:num_calls(channel_ds, subscribe, 2)),
             ?assertEqual(1, meck:num_calls(channel_logic_notify, notify_channel_subscribed, 2))
         end)
@@ -3316,10 +3365,10 @@ subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
         {channel_subscription_repo, [
             {'is_subscribed', 2, fun(11, 2002) -> false end}
         ]},
-        {channel_subscribe_ds, [
+        {channel_invitation_ds, [
             {'is_invited', 2, fun(11, 2002) -> {error, db_down} end},
-            {'subscribe_private', 3, fun(_, _, _) ->
-                erlang:error(should_not_subscribe_private_when_invitation_state_unexpected)
+            {'find_pending_by_channel_and_invitee', 2, fun(_, _) ->
+                erlang:error(should_not_load_pending_when_invitation_state_unexpected)
             end}
         ]}
     ],
@@ -3327,7 +3376,9 @@ subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
         ?_test(begin
             Result = channel_logic:subscribe(2002, ChannelIdBin),
             ?assertEqual({error, <<"私有频道需要邀请才能订阅"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscribe_ds, subscribe_private, 3))
+            ?assertEqual(
+                0, meck:num_calls(channel_invitation_ds, find_pending_by_channel_and_invitee, 2)
+            )
         end)
     end}.
 
