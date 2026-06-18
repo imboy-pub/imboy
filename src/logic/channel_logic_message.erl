@@ -81,15 +81,17 @@ get_channel(ChannelIdBin, Uid) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_ds:find_by_id(ChannelId, <<"*">>) of
-                {error, _} -> {error, <<"频道不存在"/utf8>>};
+            case channel_ds:find_by_id_with_price(ChannelId) of
+                {error, _} ->
+                    {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel), map_size(Channel) =:= 0 -> {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
-                    IsSubscribed = case UserRole of
-                        0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
-                        _ -> true
-                    end,
+                    IsSubscribed =
+                        case UserRole of
+                            0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
+                            _ -> true
+                        end,
                     Channel2 = Channel#{
                         user_role => UserRole,
                         is_subscribed => IsSubscribed
@@ -103,7 +105,8 @@ get_channel(ChannelIdBin, Uid) ->
 -spec get_channel_by_custom_id(binary(), integer()) -> {ok, map()} | {error, binary()}.
 get_channel_by_custom_id(CustomId, Uid) ->
     case channel_ds:find_by_custom_id(CustomId) of
-        {error, _} -> {error, <<"频道不存在"/utf8>>};
+        {error, _} ->
+            {error, <<"频道不存在"/utf8>>};
         Channel when is_map(Channel), map_size(Channel) =:= 0 ->
             {error, <<"频道不存在"/utf8>>};
         Channel when is_map(Channel) ->
@@ -113,10 +116,11 @@ get_channel_by_custom_id(CustomId, Uid) ->
                     {error, <<"频道不存在"/utf8>>};
                 true ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
-                    IsSubscribed = case UserRole of
-                        0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
-                        _ -> true
-                    end,
+                    IsSubscribed =
+                        case UserRole of
+                            0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
+                            _ -> true
+                        end,
                     Channel2 = Channel#{
                         user_role => UserRole,
                         is_subscribed => IsSubscribed
@@ -140,11 +144,14 @@ update_channel(Uid, ChannelIdBin, Data) ->
                     {error, <<"无权限操作"/utf8>>};
                 true ->
                     AllowedFields = [<<"name">>, <<"description">>, <<"avatar">>, <<"tags">>],
-                    FilteredData = maps:filter(fun(K, _) -> lists:member(K, AllowedFields) end, Data),
+                    FilteredData = maps:filter(
+                        fun(K, _) -> lists:member(K, AllowedFields) end, Data
+                    ),
                     case channel_ds:update(ChannelId, FilteredData#{updated_at => elib_dt:now()}) of
                         {ok, _} ->
                             case channel_ds:find_by_id(ChannelId, <<"*">>) of
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                                {error, Reason} ->
+                                    {error, elib_cnv:safe_to_binary(Reason)};
                                 Channel when is_map(Channel) ->
                                     channel_logic_notify:notify_channel_update(ChannelId, Channel),
                                     {ok, channel_transfer(Channel)};
@@ -170,13 +177,13 @@ delete_channel(Uid, ChannelIdBin) ->
                     {error, <<"只有创建者可以删除频道"/utf8>>};
                 true ->
                     SubscriberUids = safe_subscriber_uids(ChannelId),
-                        case channel_ds:delete(ChannelId) of
-                            {ok, _} ->
-                                channel_logic_notify:notify_channel_deleted(ChannelId, SubscriberUids),
-                                ok;
-                            {error, Reason} ->
-                                {error, elib_cnv:safe_to_binary(Reason)}
-                        end
+                    case channel_ds:delete(ChannelId) of
+                        {ok, _} ->
+                            channel_logic_notify:notify_channel_deleted(ChannelId, SubscriberUids),
+                            ok;
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end
             end
     end.
 
@@ -200,7 +207,9 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
                                     {error, elib_cnv:safe_to_binary(Reason)};
                                 Message when is_map(Message) ->
                                     Message2 = message_transfer(Message),
-                                    channel_logic_notify:broadcast_channel_message(ChannelId, Message2),
+                                    channel_logic_notify:broadcast_channel_message(
+                                        ChannelId, Message2
+                                    ),
                                     push_unread_updates(ChannelId),
                                     {ok, Message2};
                                 _Other ->
@@ -212,7 +221,8 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
             end
     end.
 
--spec get_messages(integer(), binary(), integer(), integer()) -> {ok, list(map())} | {error, binary()}.
+-spec get_messages(integer(), binary(), integer(), integer()) ->
+    {ok, list(map())} | {error, binary()}.
 get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
@@ -246,7 +256,8 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
                     case channel_subscription_ds:clear_unread(ChannelId, Uid) of
-                        {ok, _} -> ok;
+                        {ok, _} ->
+                            ok;
                         {error, ClearReason} ->
                             ?ERROR_LOG(["channel_clear_unread_failed", ChannelId, Uid, ClearReason])
                     end,
@@ -348,10 +359,12 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                                     {error, <<"只有管理员可以置顶消息"/utf8>>};
                                 false ->
                                     Now = elib_dt:now(),
-                                    case channel_message_ds:update(MessageId, #{
-                                        is_pinned => IsPinned,
-                                        updated_at => Now
-                                    }) of
+                                    case
+                                        channel_message_ds:update(MessageId, #{
+                                            is_pinned => IsPinned,
+                                            updated_at => Now
+                                        })
+                                    of
                                         {ok, _} ->
                                             case channel_message_ds:find_by_id(MessageId) of
                                                 {error, Reason} ->
@@ -386,10 +399,12 @@ delete_message(Uid, MessageIdBin) ->
                 Message when is_map(Message) ->
                     ChannelId = maps:get(<<"channel_id">>, Message, 0),
                     AuthorId = maps:get(<<"author_id">>, Message, 0),
-                    case is_integer(ChannelId)
-                        andalso ChannelId > 0
-                        andalso is_integer(AuthorId)
-                        andalso AuthorId > 0 of
+                    case
+                        is_integer(ChannelId) andalso
+                            ChannelId > 0 andalso
+                            is_integer(AuthorId) andalso
+                            AuthorId > 0
+                    of
                         false ->
                             {error, <<"消息不存在"/utf8>>};
                         true ->
@@ -400,7 +415,9 @@ delete_message(Uid, MessageIdBin) ->
                                 true ->
                                     case channel_message_ds:delete(MessageId) of
                                         {ok, _} ->
-                                            channel_logic_notify:notify_message_deleted(ChannelId, MessageId),
+                                            channel_logic_notify:notify_message_deleted(
+                                                ChannelId, MessageId
+                                            ),
                                             ok;
                                         {error, Reason} ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -417,68 +434,82 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
     StartMs = elib_dt:millisecond(),
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     MessageId = decode_positive_id(MessageIdBin),
-    Result = case ChannelId of
-        0 ->
-            {error, <<"频道不存在"/utf8>>};
-        _ when MessageId =:= 0 ->
-            {error, <<"消息不存在"/utf8>>};
-        _ ->
-            case channel_message_ds:find_by_id(MessageId) of
-                {error, _} ->
-                    {error, <<"消息不存在"/utf8>>};
-                Message when is_map(Message) ->
-                    MessageChannelId = maps:get(<<"channel_id">>, Message, 0),
-                    MessageAuthorId = maps:get(<<"author_id">>, Message, 0),
-                    case is_integer(MessageChannelId)
-                        andalso MessageChannelId > 0
-                        andalso is_integer(MessageAuthorId)
-                        andalso MessageAuthorId > 0 of
-                        false ->
-                            {error, <<"消息不存在"/utf8>>};
-                        true ->
-                            case MessageChannelId =:= ChannelId of
-                                false ->
-                                    {error, <<"消息不存在"/utf8>>};
-                                true ->
-                                    Role = channel_logic_common:get_user_role(ChannelId, Uid),
-                                    case Role >= 2 orelse MessageAuthorId =:= Uid of
-                                        false ->
-                                            {error, <<"无权限撤回此消息"/utf8>>};
-                                        true ->
-                                            Revoked = maps:get(<<"revoked">>, Message, false),
-                                            case Revoked =:= true of
-                                                true ->
-                                                    ok;
-                                                false ->
-                                                    case is_within_revoke_window(Message) of
-                                                        false ->
-                                                            {error, <<"撤回时间已超出限制"/utf8>>};
-                                                        true ->
-                                                            RevokedAt = elib_dt:now(),
-                                                            case channel_message_ds:revoke(MessageId, Uid, RevokedAt) of
-                                                                {ok, Affected} when Affected > 0 ->
-                                                                    channel_logic_notify:notify_message_revoked(
-                                                                        ChannelId,
-                                                                        MessageId,
-                                                                        Uid,
-                                                                        RevokedAt
-                                                                    ),
-                                                                    ok;
-                                                                {ok, 0} ->
-                                                                    ok;
-                                                                {error, Reason} ->
-                                                                    {error, elib_cnv:safe_to_binary(Reason)}
-                                                            end
-                                                    end
-                                            end
-                                    end
-                            end
-                    end;
-                _ ->
-                    {error, <<"消息不存在"/utf8>>}
-            end
-    end,
-    channel_logic_common:log_channel_action(Uid, ChannelId, MessageId, <<"revoke_message">>, Result, StartMs),
+    Result =
+        case ChannelId of
+            0 ->
+                {error, <<"频道不存在"/utf8>>};
+            _ when MessageId =:= 0 ->
+                {error, <<"消息不存在"/utf8>>};
+            _ ->
+                case channel_message_ds:find_by_id(MessageId) of
+                    {error, _} ->
+                        {error, <<"消息不存在"/utf8>>};
+                    Message when is_map(Message) ->
+                        MessageChannelId = maps:get(<<"channel_id">>, Message, 0),
+                        MessageAuthorId = maps:get(<<"author_id">>, Message, 0),
+                        case
+                            is_integer(MessageChannelId) andalso
+                                MessageChannelId > 0 andalso
+                                is_integer(MessageAuthorId) andalso
+                                MessageAuthorId > 0
+                        of
+                            false ->
+                                {error, <<"消息不存在"/utf8>>};
+                            true ->
+                                case MessageChannelId =:= ChannelId of
+                                    false ->
+                                        {error, <<"消息不存在"/utf8>>};
+                                    true ->
+                                        Role = channel_logic_common:get_user_role(ChannelId, Uid),
+                                        case Role >= 2 orelse MessageAuthorId =:= Uid of
+                                            false ->
+                                                {error, <<"无权限撤回此消息"/utf8>>};
+                                            true ->
+                                                Revoked = maps:get(<<"revoked">>, Message, false),
+                                                case Revoked =:= true of
+                                                    true ->
+                                                        ok;
+                                                    false ->
+                                                        case is_within_revoke_window(Message) of
+                                                            false ->
+                                                                {error, <<"撤回时间已超出限制"/utf8>>};
+                                                            true ->
+                                                                RevokedAt = elib_dt:now(),
+                                                                case
+                                                                    channel_message_ds:revoke(
+                                                                        MessageId, Uid, RevokedAt
+                                                                    )
+                                                                of
+                                                                    {ok, Affected} when
+                                                                        Affected > 0
+                                                                    ->
+                                                                        channel_logic_notify:notify_message_revoked(
+                                                                            ChannelId,
+                                                                            MessageId,
+                                                                            Uid,
+                                                                            RevokedAt
+                                                                        ),
+                                                                        ok;
+                                                                    {ok, 0} ->
+                                                                        ok;
+                                                                    {error, Reason} ->
+                                                                        {error,
+                                                                            elib_cnv:safe_to_binary(
+                                                                                Reason
+                                                                            )}
+                                                                end
+                                                        end
+                                                end
+                                        end
+                                end
+                        end;
+                    _ ->
+                        {error, <<"消息不存在"/utf8>>}
+                end
+        end,
+    channel_logic_common:log_channel_action(
+        Uid, ChannelId, MessageId, <<"revoke_message">>, Result, StartMs
+    ),
     Result.
 
 -spec get_admins(integer() | binary()) -> {ok, list(map())} | {error, binary()}.
@@ -504,7 +535,8 @@ get_admins(ChannelId) ->
             {error, elib_cnv:safe_to_binary(_Reason)}
     end.
 
--spec update_admin_role(integer(), integer() | binary(), integer(), integer()) -> ok | {error, binary()}.
+-spec update_admin_role(integer(), integer() | binary(), integer(), integer()) ->
+    ok | {error, binary()}.
 update_admin_role(Uid, ChannelId, TargetUid, Role) when is_binary(ChannelId) ->
     case decode_positive_id(ChannelId) of
         0 ->
@@ -512,7 +544,9 @@ update_admin_role(Uid, ChannelId, TargetUid, Role) when is_binary(ChannelId) ->
         DecodedChannelId ->
             update_admin_role(Uid, DecodedChannelId, TargetUid, Role)
     end;
-update_admin_role(_Uid, ChannelId, _TargetUid, _Role) when not is_integer(ChannelId); ChannelId =< 0 ->
+update_admin_role(_Uid, ChannelId, _TargetUid, _Role) when
+    not is_integer(ChannelId); ChannelId =< 0
+->
     {error, <<"频道不存在"/utf8>>};
 update_admin_role(Uid, ChannelId, TargetUid, Role) ->
     case channel_logic_common:get_user_role(ChannelId, Uid) of
@@ -538,17 +572,22 @@ decode_positive_id(Value) ->
 push_unread_updates(ChannelId) ->
     case channel_subscription_ds:list_unread_counts_by_channel(ChannelId) of
         {ok, Rows} when is_list(Rows) ->
-            lists:foreach(fun(Row) ->
-                case {
-                    maps:get(<<"user_id">>, Row, 0),
-                    maps:get(<<"unread_count">>, Row, 0)
-                } of
-                    {Uid, Count} when is_integer(Uid), Uid > 0, is_integer(Count), Count >= 0 ->
-                        channel_logic_notify:notify_channel_unread_count(ChannelId, Uid, Count);
-                    _ ->
-                        ok
-                end
-            end, Rows),
+            lists:foreach(
+                fun(Row) ->
+                    case
+                        {
+                            maps:get(<<"user_id">>, Row, 0),
+                            maps:get(<<"unread_count">>, Row, 0)
+                        }
+                    of
+                        {Uid, Count} when is_integer(Uid), Uid > 0, is_integer(Count), Count >= 0 ->
+                            channel_logic_notify:notify_channel_unread_count(ChannelId, Uid, Count);
+                        _ ->
+                            ok
+                    end
+                end,
+                Rows
+            ),
             ok;
         _ ->
             ok
@@ -562,17 +601,18 @@ is_within_revoke_window(Message) ->
             true;
         false ->
             CreatedAt = maps:get(<<"created_at">>, Message, undefined),
-            CreatedAtMs = case catch elib_dt:rfc3339_to(CreatedAt, millisecond) of
-                Value when is_integer(Value) ->
-                    Value;
-                _ ->
-                    0
-            end,
+            CreatedAtMs =
+                case catch elib_dt:rfc3339_to(CreatedAt, millisecond) of
+                    Value when is_integer(Value) ->
+                        Value;
+                    _ ->
+                        0
+                end,
             NowMs = elib_dt:millisecond(),
-            is_integer(CreatedAtMs)
-                andalso CreatedAtMs > 0
-                andalso NowMs >= CreatedAtMs
-                andalso (NowMs - CreatedAtMs =< WindowSecs * 1000)
+            is_integer(CreatedAtMs) andalso
+                CreatedAtMs > 0 andalso
+                NowMs >= CreatedAtMs andalso
+                (NowMs - CreatedAtMs =< WindowSecs * 1000)
     end.
 
 -spec safe_subscriber_uids(integer()) -> list(integer()).

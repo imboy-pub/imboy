@@ -737,6 +737,7 @@ get_routes() ->
         {"/adm/channel/:channel_id/message/:message_id/delete", adm_channel_handler, #{
             action => delete_message
         }},
+        {"/adm/channel/:channel_id/price", adm_channel_handler, #{action => set_price}},
         {"/adm/channel/search", adm_channel_handler, #{action => search}},
         {"/adm/channel/delete", adm_channel_handler, #{action => delete}},
         % 运营财务 API（跨用户钱包/充值/支付/SaaS 计费查询）

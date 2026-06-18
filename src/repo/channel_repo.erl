@@ -9,6 +9,7 @@
 -export([add/1]).
 -export([add/2]).
 -export([find_by_id/2]).
+-export([find_by_id_with_price/1]).
 -export([find_by_custom_id/1]).
 -export([list_by_ids/2]).
 -export([list_by_ids_since/2]).
@@ -82,8 +83,40 @@ find_by_id(ChannelId, Column) when is_list(ChannelId); is_binary(ChannelId) ->
     find_by_id(ec_cnv:to_integer(ChannelId), Column);
 find_by_id(ChannelId, Column) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => ChannelId, status => 1}, #{limit => 1}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => ChannelId, status => 1}, #{
+        limit => 1
+    }),
     case elib_pg:one(Sql, Params) of
+        {ok, Row} -> Row;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 查找频道详情并 LEFT JOIN channel_price（付费频道价格）
+%% @param ChannelId 频道ID（integer 或 binary）
+%% @return map() | {error, Reason}
+-spec find_by_id_with_price(integer() | binary()) -> map() | {error, any()}.
+find_by_id_with_price(ChannelId) when is_list(ChannelId); is_binary(ChannelId) ->
+    find_by_id_with_price(ec_cnv:to_integer(ChannelId));
+find_by_id_with_price(ChannelId) ->
+    Tb = tablename(),
+    PriceTb = elib_pg_sql:public_tablename(<<"channel_price">>),
+    %% price 在 DB 以「元」存储（numeric 10,2），前端期望「分」，乘 100 转换
+    Sql =
+        <<
+            "SELECT c.*, ",
+            "COALESCE(ROUND(cp.price * 100)::int, 0) AS price, ",
+            "COALESCE(cp.currency, 'CNY') AS currency, ",
+            "COALESCE(ROUND(cp.original_price * 100)::int, 0) AS original_price, ",
+            "COALESCE(cp.subscription_type, 1) AS subscription_type ",
+            "FROM ",
+            Tb/binary,
+            " c ",
+            "LEFT JOIN ",
+            PriceTb/binary,
+            " cp ON cp.channel_id = c.id AND cp.status = 1 ",
+            "WHERE c.id = $1 AND c.status = 1 LIMIT 1"
+        >>,
+    case elib_pg:one(Sql, [ChannelId]) of
         {ok, Row} -> Row;
         {error, Reason} -> {error, Reason}
     end.
@@ -113,15 +146,21 @@ list_by_ids([], _Column) ->
     {ok, []}.
 
 %% @doc 查询指定 ID 列表中 updated_at > Since 的频道（增量同步）
--spec list_by_ids_since(list(integer()), integer() | binary()) -> {ok, list(map())} | {error, any()}.
+-spec list_by_ids_since(list(integer()), integer() | binary()) ->
+    {ok, list(map())} | {error, any()}.
 list_by_ids_since(Ids, Since) when length(Ids) > 0 ->
     Tb = tablename(),
-    Placeholders = iolist_to_binary(lists:join(<<",">>,
-        [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Ids))])),
+    Placeholders = iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Ids))]
+        )
+    ),
     NextIdx = length(Ids) + 1,
     SinceTs = normalize_since_param(Since),
-    Sql = <<"SELECT * FROM ", Tb/binary,
-            " WHERE id IN (", Placeholders/binary, ")"
+    Sql =
+        <<"SELECT * FROM ", Tb/binary, " WHERE id IN (", Placeholders/binary,
+            ")"
             " AND updated_at > $", (integer_to_binary(NextIdx))/binary,
             " AND status = 1"
             " ORDER BY updated_at DESC">>,
@@ -138,12 +177,17 @@ list_subscribed(Uid, Column) ->
     Tb = tablename(),
     SubTb = channel_subscription_repo:tablename(),
     AdminTb = channel_admin_repo:tablename(),
-    Sql = <<"SELECT ", Column/binary, ", "
+    Sql =
+        <<"SELECT ", Column/binary,
+            ", "
             "COALESCE(a.role, 0) as user_role, "
             "true as is_subscribed "
-            "FROM ", Tb/binary, " c "
-            "INNER JOIN ", SubTb/binary, " s ON c.id = s.channel_id "
-            "LEFT JOIN ", AdminTb/binary, " a ON c.id = a.channel_id AND a.user_id = s.user_id "
+            "FROM ", Tb/binary,
+            " c "
+            "INNER JOIN ", SubTb/binary,
+            " s ON c.id = s.channel_id "
+            "LEFT JOIN ", AdminTb/binary,
+            " a ON c.id = a.channel_id AND a.user_id = s.user_id "
             "WHERE s.user_id = $1 AND s.status = 1 AND c.status = 1 "
             "ORDER BY s.is_pinned DESC, s.subscribed_at DESC">>,
     elib_pg:query(Sql, [Uid]).
@@ -155,11 +199,17 @@ list_subscribed(Uid, Column) ->
 list_managed(Uid) ->
     Tb = tablename(),
     AdminTb = channel_admin_repo:tablename(),
-    Sql = <<"SELECT c.*, a.role as user_role, true as is_subscribed "
-            "FROM ", Tb/binary, " c "
-            "INNER JOIN ", AdminTb/binary, " a ON c.id = a.channel_id "
-            "WHERE a.user_id = $1 AND c.status = 1 "
-            "ORDER BY a.role DESC, c.created_at DESC">>,
+    Sql = <<
+        "SELECT c.*, a.role as user_role, true as is_subscribed "
+        "FROM ",
+        Tb/binary,
+        " c "
+        "INNER JOIN ",
+        AdminTb/binary,
+        " a ON c.id = a.channel_id "
+        "WHERE a.user_id = $1 AND c.status = 1 "
+        "ORDER BY a.role DESC, c.created_at DESC"
+    >>,
     elib_pg:query(Sql, [Uid]).
 
 %% @doc 更新频道信息
@@ -187,21 +237,32 @@ delete(ChannelId) ->
 -spec increment_subscribers(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 increment_subscribers(ChannelId, Delta) ->
     Tb = tablename(),
-    Op = if Delta > 0 -> <<"+">>; true -> <<"-">> end,
+    Op =
+        if
+            Delta > 0 -> <<"+">>;
+            true -> <<"-">>
+        end,
     DeltaAbs = abs(Delta),
-    Sql = <<"UPDATE ", Tb/binary,
-            " SET subscriber_count = subscriber_count ", Op/binary, " $1, "
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET subscriber_count = subscriber_count ", Op/binary,
+            " $1, "
             "updated_at = CURRENT_TIMESTAMP "
             "WHERE id = $2 AND status = 1">>,
     elib_pg:execute(Sql, [DeltaAbs, ChannelId]).
 
--spec increment_subscribers(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+-spec increment_subscribers(any(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
 increment_subscribers(Conn, ChannelId, Delta) ->
     Tb = tablename(),
-    Op = if Delta > 0 -> <<"+">>; true -> <<"-">> end,
+    Op =
+        if
+            Delta > 0 -> <<"+">>;
+            true -> <<"-">>
+        end,
     DeltaAbs = abs(Delta),
-    Sql = <<"UPDATE ", Tb/binary,
-            " SET subscriber_count = subscriber_count ", Op/binary, " $1, "
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET subscriber_count = subscriber_count ", Op/binary,
+            " $1, "
             "updated_at = CURRENT_TIMESTAMP "
             "WHERE id = $2 AND status = 1">>,
     elib_pg:execute(Conn, Sql, [DeltaAbs, ChannelId]).
@@ -215,7 +276,8 @@ increment_subscribers(Conn, ChannelId, Delta) ->
 search(Keyword, Limit, Column) ->
     Tb = tablename(),
     Pattern = <<"%", Keyword/binary, "%">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE status = 1 AND (name LIKE $1 OR description LIKE $1 OR custom_id LIKE $1) "
             "ORDER BY subscriber_count DESC LIMIT $2">>,
     elib_pg:query(Sql, [Pattern, Limit]).
@@ -228,8 +290,10 @@ search(Keyword, Limit, Column) ->
 -spec list_discover(integer(), binary()) -> {ok, list(map())} | {error, any()}.
 list_discover(Limit, Column) ->
     Tb = tablename(),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE status = 1 AND type = 0 "  % status=1 表示正常，type=0 表示公开频道
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            % status=1 表示正常，type=0 表示公开频道
+            " WHERE status = 1 AND type = 0 "
             "ORDER BY subscriber_count DESC, created_at DESC LIMIT $1">>,
     elib_pg:query(Sql, [Limit]).
 
@@ -256,44 +320,55 @@ has_viewed_message(MessageId, UserId) ->
     end.
 
 %% @doc 插入消息阅读记录
--spec insert_message_view(integer(), integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
+-spec insert_message_view(integer(), integer(), integer(), integer()) ->
+    {ok, integer()} | {error, term()}.
 insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
     Id = elib_tsid:generate(channel_message_view),
-    Sql = <<"INSERT INTO channel_message_view (id, channel_id, message_id, user_id, viewed_at) "
-            "VALUES ($1, $2, $3, $4, $5) "
-            "ON CONFLICT (message_id, user_id) DO NOTHING">>,
+    Sql = <<
+        "INSERT INTO channel_message_view (id, channel_id, message_id, user_id, viewed_at) "
+        "VALUES ($1, $2, $3, $4, $5) "
+        "ON CONFLICT (message_id, user_id) DO NOTHING"
+    >>,
     case elib_pg:execute(Sql, [Id, ChannelId, MessageId, UserId, ViewedAt]) of
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
     end.
 
 %% @doc 插入消息反应
--spec insert_reaction(integer(), integer(), integer(), binary(), integer()) -> {ok, integer()} | {error, term()}.
+-spec insert_reaction(integer(), integer(), integer(), binary(), integer()) ->
+    {ok, integer()} | {error, term()}.
 insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     Id = elib_tsid:generate(channel),
-    Sql = <<"INSERT INTO channel_reaction (id, channel_id, message_id, user_id, reaction_type, created_at) "
-            "VALUES ($1, $2, $3, $4, $5, $6) "
-            "ON CONFLICT (message_id, user_id, reaction_type) DO NOTHING">>,
+    Sql = <<
+        "INSERT INTO channel_reaction (id, channel_id, message_id, user_id, reaction_type, created_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6) "
+        "ON CONFLICT (message_id, user_id, reaction_type) DO NOTHING"
+    >>,
     case elib_pg:execute(Sql, [Id, ChannelId, MessageId, UserId, ReactionType, CreatedAt]) of
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
     end.
 
 %% @doc 删除消息反应
--spec delete_reaction(integer(), integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec delete_reaction(integer(), integer(), integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
 delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
-    Sql = <<"DELETE FROM channel_reaction "
-            "WHERE channel_id = $1 AND message_id = $2 AND user_id = $3 AND reaction_type = $4">>,
+    Sql = <<
+        "DELETE FROM channel_reaction "
+        "WHERE channel_id = $1 AND message_id = $2 AND user_id = $3 AND reaction_type = $4"
+    >>,
     elib_pg:execute(Sql, [ChannelId, MessageId, UserId, ReactionType]).
 
 %% @doc 获取频道每日统计数据
 -spec get_daily_stats(integer(), integer()) -> {ok, list(map())} | {error, term()}.
 get_daily_stats(ChannelId, Days) ->
-    Sql = <<"SELECT channel_id, stats_date, new_subscribers, unsubscribers, net_subscribers, "
-            "messages_count, total_views, total_reactions, active_viewers "
-            "FROM channel_stats_daily "
-            "WHERE channel_id = $1 AND stats_date >= CURRENT_DATE - INTERVAL '1 day' * $2 "
-            "ORDER BY stats_date DESC">>,
+    Sql = <<
+        "SELECT channel_id, stats_date, new_subscribers, unsubscribers, net_subscribers, "
+        "messages_count, total_views, total_reactions, active_viewers "
+        "FROM channel_stats_daily "
+        "WHERE channel_id = $1 AND stats_date >= CURRENT_DATE - INTERVAL '1 day' * $2 "
+        "ORDER BY stats_date DESC"
+    >>,
     elib_pg:query(Sql, [ChannelId, Days]).
 
 %% ===================================================================

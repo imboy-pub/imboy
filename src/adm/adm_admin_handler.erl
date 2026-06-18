@@ -516,8 +516,9 @@ flush_admin_permission_cache(AdminId) ->
 muted_users_list_action(<<"GET">>, Req0, State) ->
     case ensure_permission(State, <<"settings:view">>, Req0) of
         ok ->
+            {Page, Size} = elib_param:page(Req0),
             Now = erlang:system_time(millisecond),
-            MutedList =
+            AllMuted =
                 case ets:whereis(msg_rate_muted) of
                     undefined ->
                         [];
@@ -544,7 +545,22 @@ muted_users_list_action(<<"GET">>, Req0, State) ->
                             msg_rate_muted
                         )
                 end,
-            elib_response:success(Req0, #{<<"list">> => MutedList});
+            %% sort by remaining_seconds desc (longest muted first)
+            Sorted = lists:sort(
+                fun(A, B) ->
+                    maps:get(<<"remaining_seconds">>, A) >= maps:get(<<"remaining_seconds">>, B)
+                end,
+                AllMuted
+            ),
+            Total = length(Sorted),
+            Offset = (Page - 1) * Size,
+            PageItems = lists:sublist(Sorted, Offset + 1, Size),
+            elib_response:success(Req0, #{
+                <<"list">> => PageItems,
+                <<"total">> => Total,
+                <<"page">> => Page,
+                <<"size">> => Size
+            });
         {error, Req1} ->
             Req1
     end;

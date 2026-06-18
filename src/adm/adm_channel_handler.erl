@@ -61,6 +61,7 @@ dispatch(pin_message, Method, Req0, State) -> pin_message_action(Method, Req0, S
 dispatch(delete_message, Method, Req0, State) -> delete_message_action(Method, Req0, State);
 dispatch(search, Method, Req0, _State) -> search(Method, Req0);
 dispatch(delete, Method, Req0, _State) -> delete_action(Method, Req0);
+dispatch(set_price, Method, Req0, _State) -> set_price_action(Method, Req0);
 dispatch(false, _Method, Req0, _State) -> Req0.
 
 %% @doc 获取频道列表
@@ -70,15 +71,18 @@ list(<<"GET">>, Req0) ->
     Qs = cowboy_req:parse_qs(Req0),
     StatusFilter = proplists:get_value(<<"status">>, Qs, <<"-1">>),
 
-    Column = <<"id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
-               "subscriber_count, status, created_at, updated_at">>,
+    Column = <<
+        "id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
+        "subscriber_count, status, created_at, updated_at"
+    >>,
 
-    Where = case StatusFilter of
-        <<"-1">> -> #{};
-        <<"1">> -> #{status => 1};
-        <<"0">> -> #{status => 0};
-        _ -> #{}
-    end,
+    Where =
+        case StatusFilter of
+            <<"-1">> -> #{};
+            <<"1">> -> #{status => 1};
+            <<"0">> -> #{status => 0};
+            _ -> #{}
+        end,
 
     case channel_ds:page(Column, Where, <<"id desc">>, Page, Size) of
         {ok, Payload} ->
@@ -98,8 +102,10 @@ detail(<<"GET">>, Req0) ->
         {error, Msg} ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
-            Column = <<"id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
-                      "tags, subscriber_count, status, created_at, updated_at">>,
+            Column = <<
+                "id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
+                "tags, subscriber_count, status, created_at, updated_at"
+            >>,
             case channel_ds:find_by_id(ChannelId, Column) of
                 {error, _} ->
                     elib_response:error(Req0, <<"频道不存在"/utf8>>, ?ERR_NOT_FOUND);
@@ -138,8 +144,10 @@ messages(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Column = <<"id, channel_id, author_id, author_name, content, msg_type, "
-                       "is_pinned, view_count, created_at, updated_at">>,
+            Column = <<
+                "id, channel_id, author_id, author_name, content, msg_type, "
+                "is_pinned, view_count, created_at, updated_at"
+            >>,
             Where = #{channel_id => ChannelId},
             case channel_message_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload} ->
@@ -161,8 +169,10 @@ subscribers(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Column = <<"id, channel_id, user_id, is_pinned, unread_count, "
-                       "last_read_at, subscribed_at">>,
+            Column = <<
+                "id, channel_id, user_id, is_pinned, unread_count, "
+                "last_read_at, subscribed_at"
+            >>,
             Where = #{channel_id => ChannelId, status => 1},
             case channel_subscription_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload} ->
@@ -260,7 +270,9 @@ update_admin_role_action(<<"PUT">>, Req0, State) ->
                             CurrentRole = maps:get(<<"role">>, AdminRow, 0),
                             case CurrentRole =:= 3 andalso Role =/= 3 of
                                 true ->
-                                    elib_response:error(Req0, <<"创建者角色不可修改"/utf8>>, ?ERR_BAD_REQUEST);
+                                    elib_response:error(
+                                        Req0, <<"创建者角色不可修改"/utf8>>, ?ERR_BAD_REQUEST
+                                    );
                                 false ->
                                     case channel_admin_ds:update_role(ChannelId, UserId, Role) of
                                         {ok, _} ->
@@ -274,7 +286,9 @@ update_admin_role_action(<<"PUT">>, Req0, State) ->
                                             elib_response:success(Req0, #{}, <<"管理员角色已更新"/utf8>>);
                                         {error, Reason} ->
                                             ?DEBUG_LOG("更新频道管理员角色失败: ~p", [Reason]),
-                                            elib_response:error(Req0, <<"更新失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                                            elib_response:error(
+                                                Req0, <<"更新失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                            )
                                     end
                             end
                     end
@@ -311,7 +325,9 @@ remove_admin_action(<<"DELETE">>, Req0, State) ->
                                     elib_response:success(Req0, #{}, <<"管理员已移除"/utf8>>);
                                 {error, Reason} ->
                                     ?DEBUG_LOG("移除频道管理员失败: ~p", [Reason]),
-                                    elib_response:error(Req0, <<"移除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                                    elib_response:error(
+                                        Req0, <<"移除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                    )
                             end
                     end
             end
@@ -327,8 +343,10 @@ invitations(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Column = <<"id, channel_id, inviter_uid, invitee_uid, invitation_code, status, "
-                       "message, expires_at, accepted_at, created_at, updated_at">>,
+            Column = <<
+                "id, channel_id, inviter_uid, invitee_uid, invitation_code, status, "
+                "message, expires_at, accepted_at, created_at, updated_at"
+            >>,
             Where = #{channel_id => ChannelId},
             case channel_invitation_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload0} ->
@@ -351,9 +369,11 @@ orders(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             {Page, Size} = elib_param:page(Req0),
-            Column = <<"id, channel_id, user_id, order_no, amount, currency, status, payment_method, "
-                       "payment_no, payment_at, subscription_start_at, subscription_end_at, expires_at, "
-                       "refund_reason, refund_at, created_at, updated_at">>,
+            Column = <<
+                "id, channel_id, user_id, order_no, amount, currency, status, payment_method, "
+                "payment_no, payment_at, subscription_start_at, subscription_end_at, expires_at, "
+                "refund_reason, refund_at, created_at, updated_at"
+            >>,
             Where = #{channel_id => ChannelId},
             case channel_order_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload} ->
@@ -405,10 +425,12 @@ pin_message_action(<<"PUT">>, Req0, State) ->
             IsPinned = parse_pinned(maps:get(<<"pinned">>, PostVals, true)),
             case ensure_message_belongs_to_channel(ChannelId, MessageId) of
                 ok ->
-                    case channel_message_ds:update(
-                        MessageId,
-                        #{is_pinned => IsPinned, updated_at => elib_dt:now()}
-                    ) of
+                    case
+                        channel_message_ds:update(
+                            MessageId,
+                            #{is_pinned => IsPinned, updated_at => elib_dt:now()}
+                        )
+                    of
                         {ok, _} ->
                             _ = audit_channel_governance(
                                 maps:get(adm_user_id, State, 0),
@@ -464,21 +486,26 @@ delete_message_action(_, Req0, _State) ->
 search(<<"GET">>, Req0) ->
     Qs = cowboy_req:parse_qs(Req0),
     Keyword = proplists:get_value(<<"keyword">>, Qs, <<>>),
-    Limit = case proplists:get_value(<<"limit">>, Qs) of
-        undefined -> 20;
-        LimitBin -> binary_to_integer(LimitBin)
-    end,
+    Limit =
+        case proplists:get_value(<<"limit">>, Qs) of
+            undefined -> 20;
+            LimitBin -> binary_to_integer(LimitBin)
+        end,
 
     case Keyword of
         <<>> ->
             elib_response:success(Req0, #{list => [], page => 1, size => Limit, total => 0});
         _ ->
-            Column = <<"id, name, type, creator_uid as owner_id, custom_id, description, "
-                      "subscriber_count, status, created_at">>,
+            Column = <<
+                "id, name, type, creator_uid as owner_id, custom_id, description, "
+                "subscriber_count, status, created_at"
+            >>,
             case channel_ds:search(Keyword, Limit, Column) of
                 {ok, Channels} ->
                     Channels2 = [normalize_channel(Channel) || Channel <- Channels],
-                    elib_response:success(Req0, #{list => Channels2, page => 1, size => Limit, total => length(Channels2)});
+                    elib_response:success(Req0, #{
+                        list => Channels2, page => 1, size => Limit, total => length(Channels2)
+                    });
                 {error, _} ->
                     elib_response:success(Req0, #{list => [], page => 1, size => Limit, total => 0})
             end
@@ -488,6 +515,54 @@ search(_, Req0) ->
 
 %% @doc 删除频道（软删除）
 -spec delete_action(binary(), cowboy_req:req()) -> cowboy_req:req().
+%% @doc 设置/更新付费频道价格（UPSERT）
+%% PUT /adm/channel/:channel_id/price
+%% Body: {price_fen, currency, subscription_type, original_price_fen, description}
+%% price_fen/original_price_fen 单位为分，存入 DB 时转换为元
+-spec set_price_action(binary(), cowboy_req:req()) -> cowboy_req:req().
+set_price_action(<<"PUT">>, Req0) ->
+    ChannelIdBin = cowboy_req:binding(channel_id, Req0, undefined),
+    PostVals = elib_param:post(Req0),
+    PriceFen = maps:get(<<"price_fen">>, PostVals, undefined),
+    case {ChannelIdBin, PriceFen} of
+        {undefined, _} ->
+            elib_response:error(Req0, <<"channel_id 不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+        {_, undefined} ->
+            elib_response:error(Req0, <<"price_fen 不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+        _ ->
+            ChannelId = ec_cnv:to_integer(ChannelIdBin),
+            PriceYuan = ec_cnv:to_float(PriceFen) / 100.0,
+            OrigFen = maps:get(<<"original_price_fen">>, PostVals, 0),
+            OrigYuan = ec_cnv:to_float(OrigFen) / 100.0,
+            Currency = maps:get(<<"currency">>, PostVals, <<"CNY">>),
+            SubType = ec_cnv:to_integer(maps:get(<<"subscription_type">>, PostVals, 1)),
+            Desc = maps:get(<<"description">>, PostVals, <<>>),
+            Now = elib_dt:now(),
+            PriceTb = elib_pg_sql:public_tablename(<<"channel_price">>),
+            NewId = elib_tsid:generate(channel_price),
+            Sql =
+                <<"INSERT INTO ", PriceTb/binary,
+                    " (id, channel_id, price, currency, subscription_type, original_price,"
+                    " description, status, created_at, updated_at)"
+                    " VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$8)"
+                    " ON CONFLICT (channel_id) DO UPDATE SET"
+                    " price=$3, currency=$4, subscription_type=$5, original_price=$6,"
+                    " description=$7, status=1, updated_at=$8">>,
+            case
+                elib_pg:query(Sql, [
+                    NewId, ChannelId, PriceYuan, Currency, SubType, OrigYuan, Desc, Now
+                ])
+            of
+                {ok, _} ->
+                    elib_response:success(Req0, #{}, <<"频道价格已更新"/utf8>>);
+                {error, Reason} ->
+                    ?DEBUG_LOG("设置频道价格失败: ~p", [Reason]),
+                    elib_response:error(Req0, <<"设置价格失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+            end
+    end;
+set_price_action(_, Req0) ->
+    Req0.
+
 delete_action(<<"DELETE">>, Req0) ->
     PostVals = elib_param:post(Req0),
     ChannelId = maps:get(<<"id">>, PostVals, undefined),
@@ -530,7 +605,9 @@ build_update_data(PostVals) ->
                 {error, _} = Err2 ->
                     Err2;
                 {ok, TypeVal} ->
-                    StatusResult = parse_enum_field(PostVals, <<"status">>, [0, 1], <<"频道状态无效"/utf8>>),
+                    StatusResult = parse_enum_field(
+                        PostVals, <<"status">>, [0, 1], <<"频道状态无效"/utf8>>
+                    ),
                     case StatusResult of
                         {error, _} = Err3 ->
                             Err3;
@@ -539,8 +616,12 @@ build_update_data(PostVals) ->
                             Data1 = maybe_put(Data0, name, NameBin),
                             Data2 = maybe_put(Data1, type, TypeVal),
                             Data3 = maybe_put(Data2, status, StatusVal),
-                            Data4 = maybe_put_binary_non_empty(PostVals, Data3, <<"custom_id">>, custom_id),
-                            Data5 = maybe_put_binary(PostVals, Data4, <<"description">>, description),
+                            Data4 = maybe_put_binary_non_empty(
+                                PostVals, Data3, <<"custom_id">>, custom_id
+                            ),
+                            Data5 = maybe_put_binary(
+                                PostVals, Data4, <<"description">>, description
+                            ),
                             Data6 = maybe_put_binary(PostVals, Data5, <<"avatar">>, avatar),
                             case map_size(Data6) > 0 of
                                 true -> {ok, Data6};
@@ -628,21 +709,28 @@ enrich_payload_users(Payload, UserIdFields) ->
     List = maps:get(list, Payload, []),
     UserIds = collect_user_ids(List, UserIdFields, []),
     UserMap = fetch_users_map(UserIds),
-    List2 = lists:map(fun(Item) ->
-        attach_users(Item, UserIdFields, UserMap)
-    end, List),
+    List2 = lists:map(
+        fun(Item) ->
+            attach_users(Item, UserIdFields, UserMap)
+        end,
+        List
+    ),
     maps:remove(items, Payload#{list => List2}).
 
 -spec collect_user_ids([map()], [binary()], [integer()]) -> [integer()].
 collect_user_ids([], _Fields, Acc) ->
     lists:usort(Acc);
 collect_user_ids([Item | Rest], Fields, Acc0) ->
-    Acc1 = lists:foldl(fun(Field, Acc) ->
-        case maps:get(Field, Item, 0) of
-            Uid when is_integer(Uid), Uid > 0 -> [Uid | Acc];
-            _ -> Acc
-        end
-    end, Acc0, Fields),
+    Acc1 = lists:foldl(
+        fun(Field, Acc) ->
+            case maps:get(Field, Item, 0) of
+                Uid when is_integer(Uid), Uid > 0 -> [Uid | Acc];
+                _ -> Acc
+            end
+        end,
+        Acc0,
+        Fields
+    ),
     collect_user_ids(Rest, Fields, Acc1).
 
 -spec fetch_users_map([integer()]) -> map().
@@ -652,30 +740,38 @@ fetch_users_map(UserIds) ->
     Column = <<"id,account,nickname,avatar,status">>,
     case user_ds:list_by_ids(UserIds, Column) of
         {ok, Rows} ->
-            lists:foldl(fun(Row, Acc) ->
-                Uid = maps:get(<<"id">>, Row, 0),
-                case Uid of
-                    Id when is_integer(Id), Id > 0 -> Acc#{Id => Row};
-                    _ -> Acc
-                end
-            end, #{}, Rows);
+            lists:foldl(
+                fun(Row, Acc) ->
+                    Uid = maps:get(<<"id">>, Row, 0),
+                    case Uid of
+                        Id when is_integer(Id), Id > 0 -> Acc#{Id => Row};
+                        _ -> Acc
+                    end
+                end,
+                #{},
+                Rows
+            );
         _ ->
             #{}
     end.
 
 -spec attach_users(map(), [binary()], map()) -> map().
 attach_users(Item, Fields, UserMap) ->
-    lists:foldl(fun(Field, Acc) ->
-        case maps:get(Field, Acc, 0) of
-            Uid when is_integer(Uid), Uid > 0 ->
-                UserKey = user_field_to_key(Field),
-                User = maps:get(Uid, UserMap, #{}),
-                % 编码 ID 字段并附加用户对象
-                Acc#{Field => Uid, UserKey => User};
-            _ ->
-                Acc
-        end
-    end, Item, Fields).
+    lists:foldl(
+        fun(Field, Acc) ->
+            case maps:get(Field, Acc, 0) of
+                Uid when is_integer(Uid), Uid > 0 ->
+                    UserKey = user_field_to_key(Field),
+                    User = maps:get(Uid, UserMap, #{}),
+                    % 编码 ID 字段并附加用户对象
+                    Acc#{Field => Uid, UserKey => User};
+                _ ->
+                    Acc
+            end
+        end,
+        Item,
+        Fields
+    ).
 
 -spec user_field_to_key(binary()) -> binary().
 user_field_to_key(<<"inviter_uid">>) ->
@@ -752,7 +848,15 @@ parse_pinned(_) ->
 
 -spec to_lower_binary(binary()) -> binary().
 to_lower_binary(Bin) when is_binary(Bin) ->
-    << <<(if C >= $A, C =< $Z -> C + 32; true -> C end)>> || <<C>> <= Bin >>.
+    <<
+        <<
+            (if
+                C >= $A, C =< $Z -> C + 32;
+                true -> C
+            end)
+        >>
+     || <<C>> <= Bin
+    >>.
 
 -spec flush_channel_cache(integer()) -> ok.
 flush_channel_cache(ChannelId) ->

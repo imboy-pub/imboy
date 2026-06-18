@@ -13,6 +13,7 @@
 -export([list_by_ids_since/2]).
 %% G3 thin wrappers for channel_logic_*
 -export([find_by_id/2]).
+-export([find_by_id_with_price/1]).
 -export([list_managed/1]).
 -export([find_by_custom_id/1]).
 -export([update/2]).
@@ -275,6 +276,10 @@ list_by_ids_since(ChannelIds, Since) -> channel_repo:list_by_ids_since(ChannelId
 %% G3 thin wrappers: channel_logic_* 不应直调 channel_repo
 -spec find_by_id(integer(), binary()) -> map() | {error, any()}.
 find_by_id(ChannelId, Column) -> channel_repo:find_by_id(ChannelId, Column).
+
+%% @doc 查找频道详情并包含 price/currency（付费频道展示用）
+-spec find_by_id_with_price(integer() | binary()) -> map() | {error, any()}.
+find_by_id_with_price(ChannelId) -> channel_repo:find_by_id_with_price(ChannelId).
 
 -spec list_managed(integer()) -> {ok, list(map())} | {error, any()}.
 list_managed(Uid) -> channel_repo:list_managed(Uid).
