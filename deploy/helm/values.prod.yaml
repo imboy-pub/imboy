@@ -64,3 +64,20 @@ hpa:
     maxReplicas: 5
 
 # secrets.* 字段由 CI/CD 注入，不在此文件中填写
+#
+# 典型注入方式（helm upgrade 时追加 --set）：
+#   --set secrets.paymentMode=live
+#   --set secrets.wechatMchId="$(cat /run/secrets/wechat_mch_id)"
+#   --set secrets.wechatApiV3Key="$(cat /run/secrets/wechat_api_v3_key)"
+#   --set secrets.wechatPrivateKey="$(cat /run/secrets/wechat_private_key)"
+#   --set secrets.wechatPlatformPublicKey="$(cat /run/secrets/wechat_platform_pub)"
+#   --set secrets.wechatCertSerial="$(cat /run/secrets/wechat_cert_serial)"
+#   --set secrets.wechatAppId="$(cat /run/secrets/wechat_app_id)"
+#   --set secrets.wechatNotifyUrl="https://api.example.com/v1/payment/callback/wechat"
+#   --set secrets.alipayAppId="$(cat /run/secrets/alipay_app_id)"
+#   --set secrets.alipayPrivateKey="$(cat /run/secrets/alipay_private_key)"
+#   --set secrets.alipayPublicKey="$(cat /run/secrets/alipay_public_key)"
+#   --set secrets.alipayNotifyUrl="https://api.example.com/v1/payment/callback/alipay"
+#   --set secrets.stripeSecretKey="$(cat /run/secrets/stripe_secret_key)"
+#   --set secrets.stripeWebhookSecret="$(cat /run/secrets/stripe_webhook_secret)"
+#   --set secrets.licenseFile="/opt/imboy/license.imboy"  # 社区版留空

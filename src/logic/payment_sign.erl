@@ -49,7 +49,7 @@ sandbox_verify(_Gateway, _RawBody, _Headers) ->
 
 %% live 验签全部复用 erlang_pay:verify_notify（真实密码学验签/解密在 erlang_pay）。
 %% imboy 侧只读凭据、组 Cfg/Ctx、归一返回，不再自实现验签（剔除重复）。
--spec live_verify(binary(), binary(), map()) -> ok | {error, atom()}.
+-spec live_verify(binary(), binary(), map()) -> {ok, map()} | {error, atom()}.
 live_verify(<<"alipay">>, RawBody, _Headers) ->
     PubKey = cfg(alipay_public_key),
     case is_blank(PubKey) of
@@ -67,10 +67,9 @@ live_verify(<<"wechat">>, RawBody, Headers) ->
         true ->
             {error, no_credential};
         false ->
-            %% 经 erlang_pay 平台公钥验签 + AES-256-GCM 解密。
-            %% ⚠️ 微信回调体加密，入账所需明文字段在 verify_notify 返回值中；
-            %%   当前 verify/3 仅返回 ok/error，明文未透出 —— 微信回调入账完整
-            %%   需把 verify_notify 解密结果传给 payment_callback（callback 流程待重构）。
+            %% 经 erlang_pay 平台公钥验签 + AES-256-GCM 解密；
+            %% 解密后的明文 map 通过 normalize_verify({ok, Data}) 透出，
+            %% payment_callback_logic 会以 map_size(Verified)>0 优先使用此明文。
             Cfg = #{api_v3 => ApiV3Key, platform_public_key => PlatPub},
             Ctx = #{headers => Headers, body => RawBody},
             normalize_verify(erlang_pay:verify_notify(wechat, Cfg, Ctx))

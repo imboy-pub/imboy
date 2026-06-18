@@ -86,6 +86,53 @@ else
     ok "SENTRY_DSN 已设置"
 fi
 
+# ── 2b. 支付模式与凭据检查 / Payment mode & credentials ───────────────────────
+echo ""
+echo "▶ 2b. 检查支付配置 / Checking payment configuration"
+
+PAYMENT_MODE="${IMBOY_PAYMENT_MODE:-sandbox}"
+if [[ "$PAYMENT_MODE" == "live" ]]; then
+    ok "IMBOY_PAYMENT_MODE=live（真实扣款模式）"
+    # 检查至少一个网关凭据完整
+    WECHAT_OK=false
+    ALIPAY_OK=false
+    STRIPE_OK=false
+    [[ -n "${IMBOY_WECHAT_MCH_ID:-}" && -n "${IMBOY_WECHAT_API_V3_KEY:-}" && -n "${IMBOY_WECHAT_PLATFORM_PUBLIC_KEY:-}" ]] && WECHAT_OK=true
+    [[ -n "${IMBOY_ALIPAY_APP_ID:-}" && -n "${IMBOY_ALIPAY_PRIVATE_KEY:-}" && -n "${IMBOY_ALIPAY_PUBLIC_KEY:-}" ]] && ALIPAY_OK=true
+    [[ -n "${IMBOY_STRIPE_SECRET_KEY:-}" && -n "${IMBOY_STRIPE_WEBHOOK_SECRET:-}" ]] && STRIPE_OK=true
+    if $WECHAT_OK; then ok "微信支付凭据完整"; fi
+    if $ALIPAY_OK; then ok "支付宝凭据完整"; fi
+    if $STRIPE_OK; then ok "Stripe 凭据完整"; fi
+    if ! $WECHAT_OK && ! $ALIPAY_OK && ! $STRIPE_OK; then
+        err "IMBOY_PAYMENT_MODE=live 但没有任何网关填写完整凭据 — 启动将 fail-fast"
+        info "至少配置以下其一："
+        info "  微信：IMBOY_WECHAT_MCH_ID + IMBOY_WECHAT_API_V3_KEY + IMBOY_WECHAT_PLATFORM_PUBLIC_KEY（+其余5项）"
+        info "  支付宝：IMBOY_ALIPAY_APP_ID + IMBOY_ALIPAY_PRIVATE_KEY + IMBOY_ALIPAY_PUBLIC_KEY"
+        info "  Stripe：IMBOY_STRIPE_SECRET_KEY + IMBOY_STRIPE_WEBHOOK_SECRET"
+    fi
+else
+    warn "IMBOY_PAYMENT_MODE=${PAYMENT_MODE}（沙箱模式，回调不验签）— 上线前须改为 live"
+fi
+
+# License 检查
+LICENSE_FILE="${IMBOY_LICENSE_FILE:-}"
+EDITION="${IMBOY_EDITION:-community}"
+if [[ "$EDITION" != "community" ]]; then
+    if [[ -z "$LICENSE_FILE" ]]; then
+        err "IMBOY_EDITION=${EDITION} 但 IMBOY_LICENSE_FILE 未设置"
+    elif [[ ! -f "$LICENSE_FILE" ]]; then
+        err "IMBOY_LICENSE_FILE=$LICENSE_FILE 文件不存在"
+    else
+        ok "License 文件存在：$LICENSE_FILE"
+    fi
+else
+    if [[ -n "$LICENSE_FILE" ]]; then
+        ok "IMBOY_LICENSE_FILE 已设置（将升级授权）"
+    else
+        info "社区版运行中，无需 License 文件"
+    fi
+fi
+
 # ── 3. 系统资源 ───────────────────────────────────────────────────────────────
 echo ""
 echo "▶ 3. 检查系统资源 / Checking system resources"

@@ -303,6 +303,8 @@ validate_runtime_config() ->
             %% 验证数据库密码不是默认值（pg_conf + super_account 同步检查）
             ok = ensure_pg_password_not_default(),
             ok = ensure_super_account_password_not_default(),
+            %% live 支付模式必须配置至少一个网关的完整凭据
+            ok = ensure_payment_live_credentials_if_live(),
             ok;
         false ->
             ok
@@ -364,6 +366,54 @@ ensure_super_account_password_not_default() ->
             end;
         _ ->
             ok
+    end.
+
+%% @doc live 支付模式下，至少一个网关必须配置完整凭据，否则 fail-fast。
+%% sandbox 模式直通，无需检查，不影响开发和测试。
+-spec ensure_payment_live_credentials_if_live() -> ok.
+ensure_payment_live_credentials_if_live() ->
+    case application:get_env(imboy, payment_mode, sandbox) of
+        live ->
+            AlipayOk = payment_gateway_has_credentials(alipay),
+            WechatOk = payment_gateway_has_credentials(wechat),
+            StripeOk = payment_gateway_has_credentials(stripe),
+            case AlipayOk orelse WechatOk orelse StripeOk of
+                true ->
+                    ok;
+                false ->
+                    erlang:error(
+                        {missing_required_config,
+                            "IMBOY_PAYMENT_MODE=live but no payment gateway has complete credentials. "
+                            "Configure at least one of: "
+                            "IMBOY_ALIPAY_APP_ID+IMBOY_ALIPAY_PRIVATE_KEY+IMBOY_ALIPAY_PUBLIC_KEY, "
+                            "IMBOY_WECHAT_MCH_ID+IMBOY_WECHAT_API_V3_KEY+IMBOY_WECHAT_PLATFORM_PUBLIC_KEY, "
+                            "IMBOY_STRIPE_SECRET_KEY+IMBOY_STRIPE_WEBHOOK_SECRET"}
+                    )
+            end;
+        _ ->
+            ok
+    end.
+
+-spec payment_gateway_has_credentials(alipay | wechat | stripe) -> boolean().
+payment_gateway_has_credentials(alipay) ->
+    not is_blank_cfg(alipay_app_id) andalso
+        not is_blank_cfg(alipay_private_key) andalso
+        not is_blank_cfg(alipay_public_key);
+payment_gateway_has_credentials(wechat) ->
+    not is_blank_cfg(wechat_mch_id) andalso
+        not is_blank_cfg(wechat_api_v3_key) andalso
+        not is_blank_cfg(wechat_platform_public_key);
+payment_gateway_has_credentials(stripe) ->
+    not is_blank_cfg(stripe_secret_key) andalso
+        not is_blank_cfg(stripe_webhook_secret).
+
+-spec is_blank_cfg(atom()) -> boolean().
+is_blank_cfg(Key) ->
+    case application:get_env(imboy, Key, <<>>) of
+        <<>> -> true;
+        "" -> true;
+        undefined -> true;
+        _ -> false
     end.
 
 %% @doc 生产环境要求 api_auth_switch 显式设置为 <<"on">>

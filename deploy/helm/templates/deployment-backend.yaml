@@ -91,6 +91,82 @@ spec:
                 secretKeyRef:
                   name: {{ include "imboy.secretName" . }}
                   key: SENTRY_DSN
+            # ── 支付 / Payment ──────────────────────────────────────────────
+            - name: IMBOY_PAYMENT_MODE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_PAYMENT_MODE
+            - name: IMBOY_WECHAT_MCH_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_WECHAT_MCH_ID
+            - name: IMBOY_WECHAT_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_WECHAT_APP_ID
+            - name: IMBOY_WECHAT_API_V3_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_WECHAT_API_V3_KEY
+            - name: IMBOY_WECHAT_CERT_SERIAL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_WECHAT_CERT_SERIAL
+            - name: IMBOY_WECHAT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_WECHAT_PRIVATE_KEY
+            - name: IMBOY_WECHAT_PLATFORM_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_WECHAT_PLATFORM_PUBLIC_KEY
+            - name: IMBOY_WECHAT_NOTIFY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_WECHAT_NOTIFY_URL
+            - name: IMBOY_ALIPAY_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_APP_ID
+            - name: IMBOY_ALIPAY_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_PRIVATE_KEY
+            - name: IMBOY_ALIPAY_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_PUBLIC_KEY
+            - name: IMBOY_ALIPAY_NOTIFY_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_NOTIFY_URL
+            - name: IMBOY_STRIPE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_STRIPE_SECRET_KEY
+            - name: IMBOY_STRIPE_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_STRIPE_WEBHOOK_SECRET
+            - name: IMBOY_LICENSE_FILE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_LICENSE_FILE
 
           # ---------- 资源 ----------
           resources:
