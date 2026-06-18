@@ -77,7 +77,38 @@ check_var "POSTGRES_DB"
 check_var "JWT_KEY"
 check_var "POSTGRE_AES_KEY"
 check_var "ADM_COOKIE_SECRET"
+check_var "IMBOY_SOLIDIFIED_KEY"
+check_var "IMBOY_SOLIDIFIED_KEY_IV"
 check_var "GRAFANA_ADMIN_PASSWORD"
+
+# RSA 密钥文件（检查路径已设置且文件存在）
+check_rsa_key() {
+    local var_name="$1"
+    local path="${!var_name:-}"
+    if [[ -z "$path" ]]; then
+        err "$var_name 未设置（生产 fail-fast）"
+    elif [[ ! -f "$path" ]]; then
+        err "$var_name=$path 文件不存在（生成方式见 .env.example）"
+    else
+        ok "$var_name 文件存在"
+    fi
+}
+check_rsa_key "IMBOY_LOGIN_RSA_PUB_KEY_FILE"
+check_rsa_key "IMBOY_LOGIN_RSA_PRIV_KEY_FILE"
+
+# API_AUTH_SWITCH 必须是 on
+if [[ "${IMBOY_API_AUTH_SWITCH:-}" != "on" ]]; then
+    err "IMBOY_API_AUTH_SWITCH 未设置为 on（生产环境 fail-fast）"
+else
+    ok "IMBOY_API_AUTH_SWITCH=on"
+fi
+
+# Garage S3（附件存储，不配置则文件上传失败）
+if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
+    warn "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY），文件上传将失败"
+else
+    ok "Garage S3 已配置"
+fi
 
 # SENTRY_DSN 是可选的，但警告
 if [[ -z "${SENTRY_DSN:-}" ]]; then
