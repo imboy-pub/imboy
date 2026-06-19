@@ -1,6 +1,5 @@
 -module(elib_param).
 
-
 -export([page/1]).
 
 -export([int/3]).
@@ -13,16 +12,12 @@
 
 -export([param/3]).
 
-
 -include("imboy_const.hrl").
 
 %% 参数验证辅助函数
 -export([get_required/2, get_optional/3, validate_required/2]).
 
-
 -include("log.hrl").
-
-
 
 %% ===================================================================
 %% API
@@ -84,7 +79,6 @@ int(Key, Req, Def) ->
             end
     end.
 
-
 %% @doc 从请求中获取二进制参数
 %% 优先从POST参数获取，如果没有则从GET参数获取
 %% @param Key 参数名
@@ -108,10 +102,12 @@ binary(Key, Req, Def) ->
             end;
         true ->
             KeyBin = ec_cnv:to_binary(Key),
-            Val = maps:get(KeyBin, qs_map(Req), Def),
-            {ok, ec_cnv:to_binary(Val)}
+            Val = maps:get(KeyBin, qs_map(Req), undefined),
+            case Val of
+                undefined -> {ok, Def};
+                V -> {ok, ec_cnv:to_binary(V)}
+            end
     end.
-
 
 %% @doc 从请求体中解析POST参数
 %% 支持 application/x-www-form-urlencoded 和 application/json 格式
@@ -130,8 +126,10 @@ post(Req) ->
                 case ContentType of
                     {<<"application">>, <<"x-www-form-urlencoded">>, _} ->
                         {ok, Params, _Req} =
-                            cowboy_req:read_urlencoded_body(Req, #{length => 640000000, period => 50000}),
-                            urlencoded_to_map(Params);
+                            cowboy_req:read_urlencoded_body(Req, #{
+                                length => 640000000, period => 50000
+                            }),
+                        urlencoded_to_map(Params);
                     {<<"application">>, <<"json">>, _} ->
                         {ok, Body, _Req} = cowboy_req:read_body(Req),
                         try
@@ -144,16 +142,17 @@ post(Req) ->
                                 #{}
                         end;
                     _ ->
-                        ok = elib_log:error(io_lib:format(
-                            "elib_param:post error: ContentType ~p; ~p ~n",
-                            [ContentType, Req]
-                        )),
+                        ok = elib_log:error(
+                            io_lib:format(
+                                "elib_param:post error: ContentType ~p; ~p ~n",
+                                [ContentType, Req]
+                            )
+                        ),
                         #{}
                 end,
             erlang:put({?MODULE, post_vals}, PostVals),
             PostVals
     end.
-
 
 %% @doc 获取GET参数
 %% @param Key 参数名
@@ -199,7 +198,6 @@ param(Key, Req, Default) ->
             end
     end.
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -208,7 +206,8 @@ param(Key, Req, Default) ->
 %% @param Page 页码
 %% @param Size 每页大小
 %% @returns {Page, Size} 规范化后的分页参数
--spec pase_page_size(number() | binary(), number() | binary()) -> {non_neg_integer(), pos_integer()}.
+-spec pase_page_size(number() | binary(), number() | binary()) ->
+    {non_neg_integer(), pos_integer()}.
 
 pase_page_size(Page, Size) when Page < 1; Page =:= error; Page =:= undefined ->
     pase_page_size(1, Size);
@@ -255,7 +254,6 @@ qs_map(Req) ->
             QsVals
     end.
 
-
 %% ===================================================================
 %% 参数验证辅助函数
 %% ===================================================================
@@ -293,12 +291,17 @@ get_optional(Key, Params, Default) ->
 %% @returns ok | {error, {missing_param, binary()}}
 -spec validate_required([binary()], map()) -> ok | {error, {missing_param, binary()}}.
 validate_required(RequiredKeys, Params) when is_list(RequiredKeys) ->
-    case lists:filtermap(fun(Key) ->
-        case get_required(Key, Params) of
-            {ok, _} -> false;
-            {error, _} -> {true, Key}
-        end
-    end, RequiredKeys) of
+    case
+        lists:filtermap(
+            fun(Key) ->
+                case get_required(Key, Params) of
+                    {ok, _} -> false;
+                    {error, _} -> {true, Key}
+                end
+            end,
+            RequiredKeys
+        )
+    of
         [] -> ok;
         [MissingKey | _] -> {error, {missing_param, MissingKey}}
     end.
