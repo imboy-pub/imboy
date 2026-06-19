@@ -53,9 +53,9 @@ init(Req0, State0) ->
 -spec index(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 index(<<"GET">>, Req0, _State) ->
     {Page, Size} = elib_param:page(Req0),
-    Status = elib_param:int(<<"status">>, Req0, undefined),
-    Type = elib_param:binary(<<"type">>, Req0, undefined),
-    Keyword = elib_param:binary(<<"keyword">>, Req0, undefined),
+    {ok, Status} = elib_param:int(<<"status">>, Req0, undefined),
+    {ok, Type} = elib_param:binary(<<"type">>, Req0, undefined),
+    {ok, Keyword} = elib_param:binary(<<"keyword">>, Req0, undefined),
     Filters = filter_opts(Status, Type, Keyword),
     {ok, P} = announcement_ds:list(Page, Size, Filters),
     elib_response:success(Req0, P);

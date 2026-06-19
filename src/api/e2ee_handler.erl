@@ -244,7 +244,7 @@ pull_notifications(Req0, State) ->
 do_pull_notifications(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     Since = elib_param:get(<<"since">>, Req0, <<"0">>),
-    Limit = elib_param:get(<<"limit">>, Req0, 50),
+    {ok, Limit} = elib_param:int(<<"limit">>, Req0, 50),
 
     case e2ee_logic:pull_key_notifications(CurrentUid, Since, Limit) of
         {ok, Notifications} ->
