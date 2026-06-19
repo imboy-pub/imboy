@@ -1,6 +1,10 @@
 # IMBoy 生产部署指南
 
-> 🆕 **5 分钟跑起来 / 5-min quickstart**：先看 [DAY1-QUICKSTART.md](./DAY1-QUICKSTART.md)（双语），本文是完整参考。
+> - **自动化部署脚本**（推荐）：[DEPLOY-SCRIPT.md](./DEPLOY-SCRIPT.md) — 配置一次 `.env.deploy`，一条命令完成全量或增量部署
+> - **5 分钟快速上手**：[DAY1-QUICKSTART.md](./DAY1-QUICKSTART.md) — 从零搭建最小生产环境
+> - **生产架构图**：[production-architecture.md](./production-architecture.md) — 服务分布与端口一览
+>
+> 本文是完整参考手册，适合定制化配置场景。
 
 ## 环境要求
 

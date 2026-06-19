@@ -27,7 +27,10 @@
 ### 2. 功能开关与部署指引
 
 - `guides/module-feature-flag-config.md`
-- `guides/deployment.md`
+- `operations/deployment/DEPLOY-SCRIPT.md` — 自动化部署脚本（全量/增量，`.env.deploy` 驱动）
+- `operations/deployment/DEPLOYMENT.md` — 完整部署参考手册
+- `operations/deployment/DAY1-QUICKSTART.md` — 5 分钟快速上手
+- `operations/deployment/production-architecture.md` — 生产服务器架构与端口分布
 
 ### 3. API 与三端契约
 
