@@ -31,6 +31,10 @@ init(Req0, State0) ->
                 config_policy_saved_action(Method, Req0, State);
             config_policy ->
                 config_policy_action(Method, Req0, State);
+            config_sidebar ->
+                config_sidebar_action(Method, Req0, State);
+            config_feedback_workflow ->
+                config_feedback_workflow_action(Method, Req0, State);
             muted_users_list ->
                 muted_users_list_action(Method, Req0, State);
             muted_users_unmute ->
@@ -738,6 +742,215 @@ disable_action(<<"POST">>, Req0, State) ->
     end;
 disable_action(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% ===================================================================
+%% 侧边栏配置
+%% ===================================================================
+
+-spec config_sidebar_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+config_sidebar_action(<<"GET">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:view">>, Req0) of
+        ok ->
+            elib_response:success(Req0, default_sidebar_config());
+        {error, Req1} ->
+            Req1
+    end;
+config_sidebar_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% ===================================================================
+%% 反馈工作流配置
+%% ===================================================================
+
+-spec config_feedback_workflow_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+config_feedback_workflow_action(<<"GET">>, Req0, State) ->
+    case ensure_permission(State, <<"feedback:read">>, Req0) of
+        ok ->
+            elib_response:success(Req0, get_feedback_workflow_config());
+        {error, Req1} ->
+            Req1
+    end;
+config_feedback_workflow_action(<<"PUT">>, Req0, State) ->
+    save_feedback_workflow_action(Req0, State);
+config_feedback_workflow_action(<<"POST">>, Req0, State) ->
+    save_feedback_workflow_action(Req0, State);
+config_feedback_workflow_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec save_feedback_workflow_action(cowboy_req:req(), map()) -> cowboy_req:req().
+save_feedback_workflow_action(Req0, State) ->
+    case ensure_permission(State, <<"feedback:reply">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            Templates = maps:get(<<"reply_templates">>, PostVals, []),
+            RawSla = normalize_positive_int(maps:get(<<"sla_hours">>, PostVals, 24)),
+            SlaHours = max(1, min(720, RawSla)),
+            Config = #{
+                <<"reply_templates">> => Templates,
+                <<"sla_hours">> => SlaHours
+            },
+            application:set_env(imboy, feedback_workflow_config, Config),
+            elib_response:success(Req0, Config);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec get_feedback_workflow_config() -> map().
+get_feedback_workflow_config() ->
+    case application:get_env(imboy, feedback_workflow_config) of
+        {ok, Config} when is_map(Config) ->
+            Config;
+        _ ->
+            default_feedback_workflow_config()
+    end.
+
+-spec default_feedback_workflow_config() -> map().
+default_feedback_workflow_config() ->
+    #{
+        <<"reply_templates">> => [
+            <<"感谢反馈，我们已收到并会尽快处理。"/utf8>>,
+            <<"问题已记录到修复队列，预计将在后续版本优化。"/utf8>>,
+            <<"请补充相关截图和复现步骤，便于我们进一步排查。"/utf8>>,
+            <<"该反馈已转交对应业务负责人处理，请留意后续通知。"/utf8>>
+        ],
+        <<"sla_hours">> => 24
+    }.
+
+-spec default_sidebar_config() -> map().
+default_sidebar_config() ->
+    #{
+        <<"title">> => <<"Imboy Admin">>,
+        <<"items">> => [
+            #{
+                <<"path">> => <<"/dashboard">>,
+                <<"icon">> => <<"LayoutDashboard">>,
+                <<"label">> => <<"仪表盘"/utf8>>,
+                <<"roles">> => [1, 2, 3],
+                <<"permission">> => <<"dashboard:view">>
+            },
+            #{
+                <<"label">> => <<"运营中心"/utf8>>,
+                <<"icon">> => <<"Users">>,
+                <<"children">> => [
+                    #{
+                        <<"path">> => <<"/users">>,
+                        <<"icon">> => <<"Users">>,
+                        <<"label">> => <<"用户管理"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"users:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/groups">>,
+                        <<"icon">> => <<"UsersRound">>,
+                        <<"label">> => <<"群组管理"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"groups:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/channels">>,
+                        <<"icon">> => <<"Radio">>,
+                        <<"label">> => <<"频道管理"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"channels:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/moments">>,
+                        <<"icon">> => <<"Camera">>,
+                        <<"label">> => <<"朋友圈管理"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"moments:read">>
+                    }
+                ]
+            },
+            #{
+                <<"label">> => <<"治理中心"/utf8>>,
+                <<"icon">> => <<"FileText">>,
+                <<"children">> => [
+                    #{
+                        <<"path">> => <<"/reports">>,
+                        <<"icon">> => <<"FileText">>,
+                        <<"label">> => <<"举报中心"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"reports:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/feedback">>,
+                        <<"icon">> => <<"MessageCircle">>,
+                        <<"label">> => <<"反馈处理"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"feedback:read">>
+                    }
+                ]
+            },
+            #{
+                <<"label">> => <<"审计中心"/utf8>>,
+                <<"icon">> => <<"FileText">>,
+                <<"children">> => [
+                    #{
+                        <<"path">> => <<"/groups/context">>,
+                        <<"icon">> => <<"UsersRound">>,
+                        <<"label">> => <<"群上下文入口"/utf8>>,
+                        <<"roles">> => [1, 2, 3]
+                    },
+                    #{
+                        <<"path">> => <<"/messages">>,
+                        <<"icon">> => <<"MessageSquare">>,
+                        <<"label">> => <<"消息管理"/utf8>>,
+                        <<"roles">> => [1, 2, 3],
+                        <<"permission">> => <<"messages:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/logout-applications">>,
+                        <<"icon">> => <<"UserMinus">>,
+                        <<"label">> => <<"注销申请"/utf8>>,
+                        <<"roles">> => [1, 2, 3],
+                        <<"permission">> => <<"logout_applications:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/logs">>,
+                        <<"icon">> => <<"FileText">>,
+                        <<"label">> => <<"日志审计"/utf8>>,
+                        <<"roles">> => [1, 3],
+                        <<"permission">> => <<"logs:view">>
+                    }
+                ]
+            },
+            #{
+                <<"label">> => <<"系统配置"/utf8>>,
+                <<"icon">> => <<"Settings">>,
+                <<"children">> => [
+                    #{
+                        <<"path">> => <<"/settings">>,
+                        <<"icon">> => <<"Settings">>,
+                        <<"label">> => <<"系统设置"/utf8>>,
+                        <<"roles">> => [1],
+                        <<"permission">> => <<"settings:view">>
+                    },
+                    #{
+                        <<"path">> => <<"/admins">>,
+                        <<"icon">> => <<"Shield">>,
+                        <<"label">> => <<"管理员"/utf8>>,
+                        <<"roles">> => [1],
+                        <<"permission">> => <<"admins:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/roles">>,
+                        <<"icon">> => <<"KeyRound">>,
+                        <<"label">> => <<"角色权限"/utf8>>,
+                        <<"roles">> => [1, 3],
+                        <<"permission">> => <<"roles:view">>
+                    },
+                    #{
+                        <<"path">> => <<"/plugins">>,
+                        <<"icon">> => <<"Puzzle">>,
+                        <<"label">> => <<"插件管理"/utf8>>,
+                        <<"roles">> => [1, 2],
+                        <<"permission">> => <<"plugins:read">>
+                    }
+                ]
+            }
+        ]
+    }.
 
 -spec compliance_key_revoke_handle(cowboy_req:req(), map()) -> cowboy_req:req().
 compliance_key_revoke_handle(Req0, State) ->

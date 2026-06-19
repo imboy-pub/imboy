@@ -74,8 +74,8 @@ overview(<<"GET">>, Req0, _State) ->
     OnlineDevices = imboy_syn:count(),
 
     % 今日消息
-    TodayC2C = count_today_messages(<<"msg_c2c">>),
-    TodayC2G = count_today_messages(<<"msg_c2g">>),
+    TodayC2C = count_today(<<"msg_c2c">>),
+    TodayC2G = count_today(<<"msg_c2g">>),
     TodayMessages = TodayC2C + TodayC2G,
 
     Result = #{
@@ -209,50 +209,49 @@ ux_events(_, Req0, _State) ->
 %% Helper Functions
 %% ===================================================================
 
+%% @doc 将表名转为带模式限定和双引号的形式，避免 user/group 等保留字冲突
+quoted_tb(Table) ->
+    <<"public.\"", Table/binary, "\"">>.
+
 %% @doc 统计表总数
 count_table(Table) ->
-    Sql = <<"SELECT COUNT(*) FROM ", Table/binary>>,
+    Sql = <<"SELECT COUNT(*) FROM ", (quoted_tb(Table))/binary>>,
     case elib_pg:one(Sql, []) of
         {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
     end.
 
-%% @doc 统计今日新增
+%% @doc 统计今日新增（created_at 为 timestamptz，与 CURRENT_DATE 比较自动转换）
 count_today(Table) ->
-    Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE created_at >= CURRENT_DATE">>,
+    Sql =
+        <<"SELECT COUNT(*) FROM ", (quoted_tb(Table))/binary, " WHERE created_at >= CURRENT_DATE">>,
     case elib_pg:one(Sql, []) of
         {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
     end.
 
-%% @doc 统计今日消息数
-count_today_messages(Table) ->
-    Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE created_at >= CURRENT_DATE">>,
-    case elib_pg:one(Sql, []) of
-        {ok, Row} when is_map(Row) -> map_count(Row);
-        _ -> 0
-    end.
-
-%% @doc 统计每日新增
+%% @doc 统计每日新增（Days 天内，按日分组）
 count_daily_new(Table, Days) ->
     Sql = iolist_to_binary([
-        <<"SELECT DATE(created_at) as date, COUNT(*) as count FROM ", Table/binary>>,
-        <<" WHERE created_at >= CURRENT_DATE - ">>,
+        <<"SELECT DATE(created_at) as date, COUNT(*) as count FROM ">>,
+        quoted_tb(Table),
+        <<" WHERE created_at >= CURRENT_DATE - INTERVAL '">>,
         integer_to_binary(Days),
-        <<"' GROUP BY DATE(created_at) ORDER BY date">>
+        <<" days' GROUP BY DATE(created_at) ORDER BY date">>
     ]),
     case elib_pg:query(Sql, []) of
         {ok, Rows} -> Rows;
         _ -> []
     end.
 
-%% @doc 统计每日消息
+%% @doc 统计每日消息（Days 天内，按日分组）
 count_daily_messages(Table, Days) ->
     Sql = iolist_to_binary([
-        <<"SELECT DATE(created_at) as date, COUNT(*) as count FROM ", Table/binary>>,
-        <<" WHERE created_at >= CURRENT_DATE - ">>,
+        <<"SELECT DATE(created_at) as date, COUNT(*) as count FROM ">>,
+        quoted_tb(Table),
+        <<" WHERE created_at >= CURRENT_DATE - INTERVAL '">>,
         integer_to_binary(Days),
-        <<"' GROUP BY DATE(created_at) ORDER BY date">>
+        <<" days' GROUP BY DATE(created_at) ORDER BY date">>
     ]),
     case elib_pg:query(Sql, []) of
         {ok, Rows} -> Rows;
@@ -261,7 +260,7 @@ count_daily_messages(Table, Days) ->
 
 %% @doc 按状态统计
 count_by_status(Table, Status) ->
-    Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE status = $1">>,
+    Sql = <<"SELECT COUNT(*) FROM ", (quoted_tb(Table))/binary, " WHERE status = $1">>,
     case elib_pg:one(Sql, [Status]) of
         {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
@@ -269,7 +268,7 @@ count_by_status(Table, Status) ->
 
 %% @doc 按类型统计
 count_by_type(Table, Type) ->
-    Sql = <<"SELECT COUNT(*) FROM ", Table/binary, " WHERE type = $1">>,
+    Sql = <<"SELECT COUNT(*) FROM ", (quoted_tb(Table))/binary, " WHERE type = $1">>,
     case elib_pg:one(Sql, [Type]) of
         {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
@@ -293,14 +292,16 @@ map_count(Row) ->
 
 %% @doc 用户消息量排名
 get_user_message_ranking(Limit) ->
-    % 统计单聊和群聊消息总数
+    % UNION ALL 后须二次聚合，否则同一用户 C2C+C2G 各占一行导致重复JOIN
     Sql = <<
         "SELECT u.id, u.nickname, u.account, COALESCE(m.msg_count, 0) as metric "
         "FROM \"user\" u "
         "LEFT JOIN ("
-        "    SELECT from_id as user_id, COUNT(*) as msg_count FROM msg_c2c GROUP BY from_id"
-        "    UNION ALL"
-        "    SELECT from_id as user_id, COUNT(*) as msg_count FROM msg_c2g GROUP BY from_id"
+        "    SELECT user_id, SUM(msg_count) as msg_count FROM ("
+        "        SELECT from_id as user_id, COUNT(*) as msg_count FROM msg_c2c GROUP BY from_id"
+        "        UNION ALL"
+        "        SELECT from_id as user_id, COUNT(*) as msg_count FROM msg_c2g GROUP BY from_id"
+        "    ) t GROUP BY user_id"
         ") m ON u.id = m.user_id "
         "WHERE u.status = 1 "
         "ORDER BY metric DESC "

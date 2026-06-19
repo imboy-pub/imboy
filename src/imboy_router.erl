@@ -612,6 +612,10 @@ get_routes() ->
         {"/adm/admin/config/policy/preview", adm_admin_handler, #{action => config_policy_preview}},
         {"/adm/admin/config/policy/saved", adm_admin_handler, #{action => config_policy_saved}},
         {"/adm/admin/config/policy", adm_admin_handler, #{action => config_policy}},
+        {"/adm/admin/config/sidebar", adm_admin_handler, #{action => config_sidebar}},
+        {"/adm/admin/config/feedback-workflow", adm_admin_handler, #{
+            action => config_feedback_workflow
+        }},
         % 禁言用户管理 API
         {"/adm/admin/muted_users/list", adm_admin_handler, #{action => muted_users_list}},
         {"/adm/admin/muted_users/unmute", adm_admin_handler, #{action => muted_users_unmute}},
