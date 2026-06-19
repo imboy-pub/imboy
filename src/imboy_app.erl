@@ -550,21 +550,34 @@ ensure_dev_rsa_keypair() ->
     PrivPath = filename:join(DevDir, "login_rsa_priv.pem"),
     case {file:read_file(PubPath), file:read_file(PrivPath)} of
         {{ok, PubPem}, {ok, PrivPem}} ->
-            {PubPem, PrivPem};
+            %% Reject old PKCS#1 (BEGIN RSA PUBLIC KEY) keys — Web Crypto API needs PKCS#8.
+            case binary:match(PubPem, <<"-----BEGIN PUBLIC KEY-----">>) of
+                nomatch ->
+                    logger:warning(
+                        "[imboy] dev_keys: old PKCS#1 public key detected, regenerating."
+                    ),
+                    regen_dev_rsa_keypair(DevDir, PubPath, PrivPath);
+                _ ->
+                    {PubPem, PrivPem}
+            end;
         _ ->
-            ok = filelib:ensure_dir(filename:join(DevDir, ".keep")),
-            {PubPem, PrivPem} = generate_rsa_keypair(),
-            ok = file:write_file(PubPath, PubPem),
-            ok = file:write_file(PrivPath, PrivPem),
-            logger:warning(
-                "[imboy] login_rsa_*_key_file not configured — "
-                "generated stable dev RSA-2048 keypair at ~ts. "
-                "Set IMBOY_LOGIN_RSA_PUB_KEY_FILE / IMBOY_LOGIN_RSA_PRIV_KEY_FILE "
-                "in production (fail-fast rejects blank values).",
-                [DevDir]
-            ),
-            {PubPem, PrivPem}
+            regen_dev_rsa_keypair(DevDir, PubPath, PrivPath)
     end.
+
+-spec regen_dev_rsa_keypair(string(), string(), string()) -> {binary(), binary()}.
+regen_dev_rsa_keypair(DevDir, PubPath, PrivPath) ->
+    ok = filelib:ensure_dir(filename:join(DevDir, ".keep")),
+    {PubPem, PrivPem} = generate_rsa_keypair(),
+    ok = file:write_file(PubPath, PubPem),
+    ok = file:write_file(PrivPath, PrivPem),
+    logger:warning(
+        "[imboy] login_rsa_*_key_file not configured — "
+        "generated stable dev RSA-2048 keypair (SubjectPublicKeyInfo) at ~ts. "
+        "Set IMBOY_LOGIN_RSA_PUB_KEY_FILE / IMBOY_LOGIN_RSA_PRIV_KEY_FILE "
+        "in production (fail-fast rejects blank values).",
+        [DevDir]
+    ),
+    {PubPem, PrivPem}.
 
 %% @doc 生成 RSA-2048 密钥对，返回 {PubPem, PrivPem}
 -spec generate_rsa_keypair() -> {binary(), binary()}.
@@ -573,7 +586,9 @@ generate_rsa_keypair() ->
     #'RSAPrivateKey'{modulus = Mod, publicExponent = Exp} = PrivKey,
     PubKey = #'RSAPublicKey'{modulus = Mod, publicExponent = Exp},
     PrivPem = public_key:pem_encode([public_key:pem_entry_encode('RSAPrivateKey', PrivKey)]),
-    PubPem = public_key:pem_encode([public_key:pem_entry_encode('RSAPublicKey', PubKey)]),
+    %% Use SubjectPublicKeyInfo (BEGIN PUBLIC KEY) for Web Crypto API 'spki' format compatibility.
+    %% PKCS#1 (BEGIN RSA PUBLIC KEY) is NOT accepted by subtle.importKey('spki', ...).
+    PubPem = public_key:pem_encode([public_key:pem_entry_encode('SubjectPublicKeyInfo', PubKey)]),
     {PubPem, PrivPem}.
 
 %% @doc 生产环境：确保指定的文件路径配置项非空

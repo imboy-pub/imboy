@@ -64,8 +64,9 @@ list(<<"GET">>, Req0, State) ->
             {Page, Size} = elib_param:page(Req0),
             {ok, Status} = elib_param:int(status, Req0, -1),
             {ok, Type} = elib_param:int(type, Req0, -1),
+            {ok, Keyword} = elib_param:binary(keyword, Req0, <<>>),
 
-            Where = build_where(Status, Type),
+            Where = build_where(Status, Type, Keyword),
             {ok, P} = group_ds:page(Page, Size, Where, <<"created_at DESC">>),
             P2 = normalize_group_payload(P),
             elib_response:success(Req0, P2)
@@ -241,7 +242,14 @@ kick_member(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, <<"参数错误"/utf8>>);
                 true ->
-                    ok = group_member_logic:leave(Uid, Gid, AdminUid),
+                    case group_member_logic:leave(Uid, Gid, AdminUid) of
+                        ok ->
+                            ok;
+                        {error, LeaveErr} ->
+                            ?ERROR_LOG("kick_member leave failed gid=~p uid=~p err=~p", [
+                                Gid, Uid, LeaveErr
+                            ])
+                    end,
                     _ = audit_group_governance(
                         AdminUid,
                         Gid,
@@ -260,10 +268,28 @@ maybe_put(Data, _Key, undefined) -> Data;
 maybe_put(Data, _Key, <<>>) -> Data;
 maybe_put(Data, Key, Value) -> Data#{Key => Value}.
 
-build_where(Status, Type) when Status >= 0, Type >= 0 -> #{status => Status, type => Type};
-build_where(Status, _Type) when Status >= 0 -> #{status => Status};
-build_where(_Status, Type) when Type >= 0 -> #{type => Type};
-build_where(_Status, _Type) -> #{}.
+build_where(Status, Type, Keyword) ->
+    Base = build_where_status_type(Status, Type),
+    case byte_size(Keyword) > 0 of
+        true ->
+            Esc = elib_pg:escape_like(Keyword),
+            Like = <<"%", Esc/binary, "%">>,
+            Base#{
+                'or' => [
+                    #{title => {like, Like}},
+                    #{introduction => {like, Like}}
+                ]
+            };
+        false ->
+            Base
+    end.
+
+build_where_status_type(Status, Type) when Status >= 0, Type >= 0 ->
+    #{status => Status, type => Type};
+build_where_status_type(Status, _Type) when Status >= 0 -> #{status => Status};
+build_where_status_type(_Status, Type) when Type >= 0 -> #{type => Type};
+build_where_status_type(_Status, _Type) ->
+    #{}.
 
 normalize_group_payload(Payload) ->
     List = maps:get(list, Payload, []),

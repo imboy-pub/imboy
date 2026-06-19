@@ -59,7 +59,7 @@ detail(<<"GET">>, Req0, _State) ->
     case Uid > 0 of
         true ->
             Column =
-                <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at">>,
+                <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at,updated_at">>,
             User = user_ds:find_by_id(Uid, Column),
             case map_size(User) > 0 of
                 true ->
@@ -157,8 +157,11 @@ tag_list(<<"GET">>, Req0, _State) ->
             Where0 = #{creator_user_id => Uid, scene => Scene},
             Where =
                 case byte_size(Keyword) > 0 of
-                    true -> Where0#{name => {op, <<"LIKE">>, <<"%", Keyword/binary, "%">>}};
-                    false -> Where0
+                    true ->
+                        EscKw = elib_pg:escape_like(Keyword),
+                        Where0#{name => {op, <<"LIKE">>, <<"%", EscKw/binary, "%">>}};
+                    false ->
+                        Where0
                 end,
             Payload = user_tag_logic:page(Scene, Page, Size, Where, <<"id desc">>),
             elib_response:success(Req0, maps:remove(items, Payload))
@@ -213,14 +216,16 @@ collect_list(<<"GET">>, Req0, _State) ->
             Where2 =
                 case byte_size(Tag) > 0 of
                     true ->
-                        Where1#{tag => {op, <<"LIKE">>, <<"%", Tag/binary, ",%">>}};
+                        EscTag = elib_pg:escape_like(Tag),
+                        Where1#{tag => {op, <<"LIKE">>, <<"%", EscTag/binary, ",%">>}};
                     false ->
                         Where1
                 end,
             Where =
                 case byte_size(Keyword) > 0 of
                     true ->
-                        Like = <<"%", Keyword/binary, "%">>,
+                        EscKw2 = elib_pg:escape_like(Keyword),
+                        Like = <<"%", EscKw2/binary, "%">>,
                         Where2#{
                             <<"__or">> => [
                                 #{source => {op, <<"LIKE">>, Like}},

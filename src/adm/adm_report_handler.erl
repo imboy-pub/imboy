@@ -149,6 +149,10 @@ batch_resolve_action(<<"POST">>, Req0, State, TargetOverride) ->
                             elib_response:error(
                                 Req0, <<"report_ids is empty"/utf8>>, ?ERR_BAD_REQUEST
                             );
+                        {_, false} ->
+                            elib_response:error(
+                                Req0, <<"result must be 1 or 2"/utf8>>, ?ERR_BAD_REQUEST
+                            );
                         _ ->
                             case
                                 report_logic:admin_batch_resolve(

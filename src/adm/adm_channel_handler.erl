@@ -102,11 +102,7 @@ detail(<<"GET">>, Req0) ->
         {error, Msg} ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
-            Column = <<
-                "id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
-                "tags, subscriber_count, status, created_at, updated_at"
-            >>,
-            case channel_ds:find_by_id(ChannelId, Column) of
+            case channel_ds:find_by_id_with_price(ChannelId) of
                 {error, _} ->
                     elib_response:error(Req0, <<"频道不存在"/utf8>>, ?ERR_NOT_FOUND);
                 Channel ->

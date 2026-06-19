@@ -83,7 +83,7 @@ reply(<<"POST">>, Req0, State) ->
     AdmUserId = maps:get(adm_user_id, State),
     Key = {adm_user_sample, AdmUserId},
     U = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
-    Nickname = maps:get(<<"nickname">>, U),
+    Nickname = maps:get(<<"nickname">>, U, <<"">>),
     % replier_user_id
     PostVals = elib_param:post(Req0),
     % FeedbackId = proplists:get_value(<<"feedback_id">>, PostVals),
@@ -105,15 +105,16 @@ reply(<<"POST">>, Req0, State) ->
     if
         is_integer(FeedbackId), FeedbackId > 0 ->
             ReplyPid = ec_cnv:to_integer(maps:get(<<"feedback_reply_pid">>, PostVals, 0)),
-            feedback_ds:add_reply(#{
+            Body = maps:get(<<"body">>, PostVals, ""),
+            ok = feedback_ds:add_reply(#{
                 <<"feedback_id">> => FeedbackId,
                 <<"feedback_reply_pid">> => ReplyPid,
                 <<"replier_user_id">> => AdmUserId,
                 <<"replier_name">> => Nickname,
-                <<"body">> => maps:get(<<"body">>, PostVals, ""),
+                <<"body">> => Body,
                 <<"created_at">> => elib_dt:now()
             }),
-            elib_response:success(Req0, PostVals, "success.");
+            elib_response:success(Req0, #{}, "success.");
         true ->
             elib_response:error(Req0)
     end.
@@ -204,7 +205,8 @@ normalize_feedback_payload(Payload) ->
 %% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
 -spec normalize_feedback(map()) -> map().
 normalize_feedback(Feedback) ->
-    elib_id:tsid_keys_to_bin(Feedback, [<<"id">>, <<"uid">>]).
+    %% `user_id` not `uid` — feedback table column is user_id
+    elib_id:tsid_keys_to_bin(Feedback, [<<"id">>, <<"user_id">>]).
 
 %% ===================================================================
 %% Feedback Workflow Config

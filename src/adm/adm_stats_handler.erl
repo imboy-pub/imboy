@@ -156,7 +156,7 @@ ranking(<<"GET">>, Req0, _State) ->
     Type = proplists:get_value(<<"type">>, Qs, <<"user">>),
     Metric = proplists:get_value(<<"metric">>, Qs, <<"count">>),
     LimitBin = proplists:get_value(<<"limit">>, Qs, <<"10">>),
-    Limit = binary_to_integer(LimitBin),
+    Limit = safe_to_integer(LimitBin, 10),
 
     Result =
         case {Type, Metric} of
@@ -208,6 +208,16 @@ ux_events(_, Req0, _State) ->
 %% ===================================================================
 %% Helper Functions
 %% ===================================================================
+
+%% @doc 安全整数转换，非法输入返回默认值
+-spec safe_to_integer(binary(), integer()) -> integer().
+safe_to_integer(Bin, Default) ->
+    try binary_to_integer(Bin) of
+        N when is_integer(N), N > 0 -> N;
+        _ -> Default
+    catch
+        _:_ -> Default
+    end.
 
 %% @doc 将表名转为带模式限定和双引号的形式，避免 user/group 等保留字冲突
 quoted_tb(Table) ->

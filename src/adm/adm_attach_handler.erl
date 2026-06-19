@@ -45,24 +45,34 @@ init(Req0, State0) ->
 %% ===================================================================
 
 -spec stats(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-stats(<<"GET">>, Req0, _State) ->
-    Result = attachment_ds:stats(),
-    elib_response:success(Req0, Result, "success.");
+stats(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"storage:view">>, Req0) of
+        ok ->
+            Result = attachment_ds:stats(),
+            elib_response:success(Req0, Result, "success.");
+        {error, Req1} ->
+            Req1
+    end;
 stats(_, Req0, _State) ->
     Req0.
 
 -spec index(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-index(<<"GET">>, Req0, _State) ->
-    {Page, Size} = elib_param:page(Req0),
-    Qs = cowboy_req:parse_qs(Req0),
-    MimeType = proplists:get_value(<<"mime_type">>, Qs, undefined),
-    Keyword = proplists:get_value(<<"keyword">>, Qs, undefined),
-    Opts = #{mime_type => MimeType, keyword => Keyword},
-    case attachment_ds:page(Page, Size, Opts) of
-        {ok, Result} ->
-            elib_response:success(Req0, Result, "success.");
-        {error, _Reason} ->
-            elib_response:error(Req0, <<"查询失败"/utf8>>)
+index(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"storage:view">>, Req0) of
+        ok ->
+            {Page, Size} = elib_param:page(Req0),
+            Qs = cowboy_req:parse_qs(Req0),
+            MimeType = proplists:get_value(<<"mime_type">>, Qs, undefined),
+            Keyword = proplists:get_value(<<"keyword">>, Qs, undefined),
+            Opts = #{mime_type => MimeType, keyword => Keyword},
+            case attachment_ds:page(Page, Size, Opts) of
+                {ok, Result} ->
+                    elib_response:success(Req0, Result, "success.");
+                {error, _Reason} ->
+                    elib_response:error(Req0, <<"查询失败"/utf8>>)
+            end;
+        {error, Req1} ->
+            Req1
     end;
 index(_, Req0, _State) ->
     Req0.
@@ -90,22 +100,29 @@ delete(_, Req0, _State) ->
 %% 前端拿到 url 后 window.open 触发浏览器直连 Garage 下载；
 %% presign 实时签发，避免列表预签导致的批量过期与性能开销。
 -spec download(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-download(<<"GET">>, Req0, _State) ->
-    Qs = cowboy_req:parse_qs(Req0),
-    IdRaw = proplists:get_value(<<"id">>, Qs, <<"0">>),
-    case safe_int(IdRaw, 0) of
-        Id when Id > 0 ->
-            case attachment_ds:find_path_by_id(Id) of
-                {ok, Path} ->
-                    Url = elib_oss:presign_get_for_key(Path, 600),
-                    elib_response:success(Req0, #{<<"url">> => Url}, "success.");
-                {error, not_found} ->
-                    elib_response:error(Req0, <<"附件不存在"/utf8>>, ?ERR_BAD_REQUEST);
-                {error, R} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(R), ?ERR_INTERNAL_SERVER_ERROR)
+download(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"storage:view">>, Req0) of
+        ok ->
+            Qs = cowboy_req:parse_qs(Req0),
+            IdRaw = proplists:get_value(<<"id">>, Qs, <<"0">>),
+            case safe_int(IdRaw, 0) of
+                Id when Id > 0 ->
+                    case attachment_ds:find_path_by_id(Id) of
+                        {ok, Path} ->
+                            Url = elib_oss:presign_get_for_key(Path, 600),
+                            elib_response:success(Req0, #{<<"url">> => Url}, "success.");
+                        {error, not_found} ->
+                            elib_response:error(Req0, <<"附件不存在"/utf8>>, ?ERR_BAD_REQUEST);
+                        {error, R} ->
+                            elib_response:error(
+                                Req0, ec_cnv:to_binary(R), ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end;
+                _ ->
+                    elib_response:error(Req0, <<"id 无效"/utf8>>, ?ERR_BAD_REQUEST)
             end;
-        _ ->
-            elib_response:error(Req0, <<"id 无效"/utf8>>, ?ERR_BAD_REQUEST)
+        {error, Req1} ->
+            Req1
     end;
 download(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
