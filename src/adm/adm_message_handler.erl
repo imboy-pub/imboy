@@ -65,9 +65,14 @@ list(<<"GET">>, Req0, _State) ->
                             OffsetPos = integer_to_binary(length(Params) + 2),
                             DataSql = iolist_to_binary([
                                 <<"SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts ">>,
-                                <<"FROM (">>, UnionSql, <<") m ">>,
+                                <<"FROM (">>,
+                                UnionSql,
+                                <<") m ">>,
                                 <<"ORDER BY created_at DESC, msg_id DESC ">>,
-                                <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+                                <<"LIMIT $">>,
+                                LimitPos,
+                                <<" OFFSET $">>,
+                                OffsetPos
                             ]),
                             case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
                                 {ok, Rows} ->
@@ -116,8 +121,12 @@ detail(<<"GET">>, Req0, _State) ->
                     Filters = Filters0#{msg_id => MsgId},
                     Params = build_params(Filters),
                     UnionSql = build_union_sql(Filters),
-                    DataSql = <<"SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts "
-                                "FROM (", UnionSql/binary, ") m ORDER BY created_at DESC LIMIT 1">>,
+                    DataSql = <<
+                        "SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts "
+                        "FROM (",
+                        UnionSql/binary,
+                        ") m ORDER BY created_at DESC LIMIT 1"
+                    >>,
                     case elib_pg:query(DataSql, Params) of
                         {ok, [Row | _]} ->
                             elib_response:success(
@@ -164,15 +173,22 @@ export(<<"GET">>, Req0, _State) ->
 export(_, Req0, _State) ->
     Req0.
 
--spec stream_export_rows(cowboy_req:req(), binary(), list(), pos_integer(), non_neg_integer(), none | metadata | full) -> ok.
+-spec stream_export_rows(
+    cowboy_req:req(), binary(), list(), pos_integer(), non_neg_integer(), none | metadata | full
+) -> ok.
 stream_export_rows(Req, UnionSql, Params, Limit, Offset, AuditMode) ->
     LimitPos = integer_to_binary(length(Params) + 1),
     OffsetPos = integer_to_binary(length(Params) + 2),
     DataSql = iolist_to_binary([
         <<"SELECT scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts ">>,
-        <<"FROM (">>, UnionSql, <<") m ">>,
+        <<"FROM (">>,
+        UnionSql,
+        <<") m ">>,
         <<"ORDER BY created_at DESC, msg_id DESC ">>,
-        <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+        <<"LIMIT $">>,
+        LimitPos,
+        <<" OFFSET $">>,
+        OffsetPos
     ]),
     case elib_pg:query(DataSql, Params ++ [Limit, Offset]) of
         {ok, []} ->
@@ -219,14 +235,15 @@ row_to_csv_line(Row) ->
 
 -spec csv_escape(term()) -> binary().
 csv_escape(Value) ->
-    Bin = case Value of
-        V when is_binary(V) -> V;
-        V when is_integer(V) -> integer_to_binary(V);
-        V when is_float(V) -> ec_cnv:to_binary(V);
-        null -> <<>>;
-        undefined -> <<>>;
-        _ -> ec_cnv:to_binary(Value)
-    end,
+    Bin =
+        case Value of
+            V when is_binary(V) -> V;
+            V when is_integer(V) -> integer_to_binary(V);
+            V when is_float(V) -> ec_cnv:to_binary(V);
+            null -> <<>>;
+            undefined -> <<>>;
+            _ -> ec_cnv:to_binary(Value)
+        end,
     Escaped = binary:replace(Bin, <<"\"">>, <<"\"\"">>, [global]),
     case needs_quote(Escaped) of
         true -> <<"\"", Escaped/binary, "\"">>;
@@ -236,9 +253,9 @@ csv_escape(Value) ->
 -spec needs_quote(binary()) -> boolean().
 needs_quote(Bin) ->
     binary:match(Bin, <<",">>) =/= nomatch orelse
-    binary:match(Bin, <<"\"">>) =/= nomatch orelse
-    binary:match(Bin, <<"\n">>) =/= nomatch orelse
-    binary:match(Bin, <<"\r">>) =/= nomatch.
+        binary:match(Bin, <<"\"">>) =/= nomatch orelse
+        binary:match(Bin, <<"\n">>) =/= nomatch orelse
+        binary:match(Bin, <<"\r">>) =/= nomatch.
 
 -spec extract_filters(cowboy_req:req()) -> map().
 extract_filters(Req0) ->
@@ -268,17 +285,20 @@ build_params(Filters) ->
         maps:get(conv_a, Filters, 0),
         maps:get(conv_b, Filters, 0),
         maps:get(conv_gid, Filters, 0),
-        maps:get(from_ts, Filters, <<>>),
-        maps:get(to_ts, Filters, <<>>),
-        maps:get(keyword_like, Filters, <<>>),
-        maps:get(msg_id, Filters, <<>>)
+        null_if_empty(maps:get(from_ts, Filters, <<>>)),
+        null_if_empty(maps:get(to_ts, Filters, <<>>)),
+        null_if_empty(maps:get(keyword_like, Filters, <<>>)),
+        null_if_empty(maps:get(msg_id, Filters, <<>>))
     ].
+
+-spec null_if_empty(binary()) -> null | binary().
+null_if_empty(<<>>) -> null;
+null_if_empty(V) -> V.
 
 -spec build_union_sql(map()) -> binary().
 build_union_sql(Filters) ->
     Scopes = scopes_for(maps:get(scope, Filters, <<"all">>)),
     message_ds:build_adm_union_sql(Scopes).
-
 
 -spec normalize_scope(binary()) -> binary().
 normalize_scope(Scope0) ->
@@ -414,11 +434,11 @@ ensure_message_export_enabled(Req0) ->
 -spec feature_disabled(cowboy_req:req()) -> {error, cowboy_req:req()}.
 feature_disabled(Req0) ->
     {error,
-     elib_response:error(
-         Req0,
-         imboy_error:error_msg(?ERR_FEATURE_DISABLED),
-         ?ERR_FEATURE_DISABLED
-     )}.
+        elib_response:error(
+            Req0,
+            imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+            ?ERR_FEATURE_DISABLED
+        )}.
 
 -spec sanitize_row_by_audit_mode(map(), none | metadata | full) -> map().
 sanitize_row_by_audit_mode(Row, full) ->
@@ -464,7 +484,8 @@ row_get(Row, Key, Default) ->
 -spec get_count(map()) -> integer().
 get_count(Row) ->
     case maps:find(<<"count">>, Row) of
-        {ok, Val} -> ec_cnv:to_integer(Val);
+        {ok, Val} ->
+            ec_cnv:to_integer(Val);
         error ->
             case maps:find(count, Row) of
                 {ok, Val2} -> ec_cnv:to_integer(Val2);

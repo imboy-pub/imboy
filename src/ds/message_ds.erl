@@ -735,14 +735,14 @@ adm_scope_sql(c2c, Tbc2c, _Tbc2g, _Tbc2s, _Tbs2c, _TbTimeline) ->
         <<" m ">>,
         <<"WHERE ($1 = 0 OR from_id = $1 OR to_id = $1) ">>,
         <<"AND ($2 = 0 OR ((from_id = $2 AND to_id = $3) OR (from_id = $3 AND to_id = $2))) ">>,
-        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
-        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
-        <<"AND ($8 = '' OR msg_id = $8)">>
+        <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
+        <<"AND ($8 IS NULL OR msg_id = $8)">>
     ]);
 adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
     iolist_to_binary([
-        <<"SELECT 'c2g' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, server_ts ">>,
+        <<"SELECT 'c2g' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload::text AS payload, created_at, server_ts ">>,
         <<"FROM ">>,
         Tbc2g,
         <<" m ">>,
@@ -751,10 +751,10 @@ adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
         TbTimeline,
         <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
         <<"AND ($4 = 0 OR to_id = $4) ">>,
-        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
-        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
-        <<"AND ($8 = '' OR msg_id = $8)">>
+        <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
+        <<"AND ($8 IS NULL OR msg_id = $8)">>
     ]);
 adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbs2c, TbTimeline) ->
     iolist_to_binary([
@@ -767,21 +767,21 @@ adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbs2c, TbTimeline) ->
         TbTimeline,
         <<" t WHERE t.msg_id = m.msg_id AND t.to_uid = $1)) ">>,
         <<"AND ($4 = 0 OR to_id = $4) ">>,
-        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
-        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
-        <<"AND ($8 = '' OR msg_id = $8)">>
+        <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
+        <<"AND ($8 IS NULL OR msg_id = $8)">>
     ]);
 adm_scope_sql(s2c, _Tbc2c, _Tbc2g, _Tbc2s, Tbs2c, _TbTimeline) ->
     iolist_to_binary([
-        <<"SELECT 's2c' AS scope, msg_id, from_id, to_id, msg_type, action, payload, created_at, server_ts ">>,
+        <<"SELECT 's2c' AS scope, msg_id, from_id, to_id, msg_type, action, payload::text AS payload, created_at, server_ts ">>,
         <<"FROM ">>,
         Tbs2c,
         <<" m ">>,
         <<"WHERE ($1 = 0 OR from_id = $1 OR to_id = $1) ">>,
         <<"AND ($4 = 0 OR from_id = $4 OR to_id = $4) ">>,
-        <<"AND ($5 = '' OR created_at >= $5::timestamptz) ">>,
-        <<"AND ($6 = '' OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 = '' OR payload ILIKE $7) ">>,
-        <<"AND ($8 = '' OR msg_id = $8)">>
+        <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
+        <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
+        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
+        <<"AND ($8 IS NULL OR msg_id = $8)">>
     ]).

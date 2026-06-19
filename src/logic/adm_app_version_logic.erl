@@ -4,9 +4,9 @@
 % adm_app_version business logic module
 %%%
 
--export ([delete/1]).
--export ([delete_by_id/1]).
--export ([save/1]).
+-export([delete/1]).
+-export([delete_by_id/1]).
+-export([save/1]).
 
 -export([vsn_sort/1]).
 
@@ -26,8 +26,21 @@
 %% @example adm_app_version_logic:save(#{<<"id">> => 1, <<"vsn">> => <<"1.0.0">>}).
 -spec save(map()) -> {ok, any()} | {error, any()}.
 save(Data) ->
-    % 使用 DS 层接口
-    app_version_ds:save(Data).
+    Result = app_version_ds:save(Data),
+    %% 同步更新签名 key 缓存（config_ds），供 auth_ds:verify_sign 使用
+    SKey = maps:get(<<"sign_key">>, Data, <<>>),
+    Vsn = maps:get(<<"vsn">>, Data, <<>>),
+    Type = maps:get(<<"type">>, Data, <<>>),
+    Pkg = maps:get(<<"package_name">>, Data, <<>>),
+    case {SKey, Vsn, Type, Pkg} of
+        {SK, V, T, P} when
+            SK =/= <<>>, V =/= <<>>, T =/= <<>>, P =/= <<>>
+        ->
+            app_version_ds:set_sign_key(T, V, P, SK);
+        _ ->
+            ok
+    end,
+    Result.
 
 %% @doc 删除应用版本记录
 %% 根据 WHERE 条件删除对应的版本记录
@@ -57,18 +70,19 @@ delete_by_id(_Id) ->
 %% @return integer() 转换后的数值，用于排序比较
 -spec vsn_sort(binary()) -> integer().
 vsn_sort(Vsn) ->
-    {Major2, Minor2, Patch2} = case ec_semver:parse(Vsn) of
-        {{Major, Minor, Patch, _}, _} ->
-            {Major, Minor, Patch};
-        {{Major, Minor, Patch}, _} ->
-            {Major, Minor, Patch};
-        {{Major, Minor}, _} ->
-            {Major, Minor, 0};
-        {Major, _} when is_integer(Major) ->
-            {Major, 0, 0};
-        {_, _} ->
-            {0, 0, 0}
-    end,
+    {Major2, Minor2, Patch2} =
+        case ec_semver:parse(Vsn) of
+            {{Major, Minor, Patch, _}, _} ->
+                {Major, Minor, Patch};
+            {{Major, Minor, Patch}, _} ->
+                {Major, Minor, Patch};
+            {{Major, Minor}, _} ->
+                {Major, Minor, 0};
+            {Major, _} when is_integer(Major) ->
+                {Major, 0, 0};
+            {_, _} ->
+                {0, 0, 0}
+        end,
     Major2 * 1_000_000 + Minor2 * 1_000 + Patch2.
 
 %% ===================================================================
