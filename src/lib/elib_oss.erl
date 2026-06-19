@@ -42,6 +42,8 @@
     <<"image/gif">>,
     <<"image/bmp">>,
     <<"image/webp">>,
+    <<"image/heic">>,
+    <<"image/heif">>,
     <<"video/mp4">>,
     <<"video/avi">>,
     <<"video/quicktime">>,

@@ -38,7 +38,9 @@ list(Page, Size, Filters) ->
             undefined ->
                 Where2;
             K when is_binary(K), byte_size(K) > 0 ->
-                maps:put(title, {like, <<"%", (elib_pg:escape_like(K))/binary, "%">>}, Where2);
+                maps:put(
+                    title, {op, <<"ILIKE">>, <<"%", (elib_pg:escape_like(K))/binary, "%">>}, Where2
+                );
             _ ->
                 Where2
         end,

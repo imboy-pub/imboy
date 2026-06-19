@@ -184,13 +184,18 @@ get_active_compliance_key() ->
 %% @param Since 起始时间戳（毫秒）
 %% @param Limit 返回数量限制
 %% @returns {ok, [Notification]}
--spec pull_key_notifications(integer(), binary() | integer(), integer()) ->
+-spec pull_key_notifications(integer(), binary() | integer(), binary() | integer()) ->
     {ok, [map()]} | {error, term()}.
 pull_key_notifications(Uid, Since, Limit) when is_integer(Uid) ->
     SinceTs =
         case is_binary(Since) of
             true -> binary_to_integer(Since);
             false -> Since
+        end,
+    LimitInt =
+        case is_binary(Limit) of
+            true -> binary_to_integer(Limit);
+            false -> Limit
         end,
 
     % 获取好友列表
@@ -201,7 +206,7 @@ pull_key_notifications(Uid, Since, Limit) when is_integer(Uid) ->
             {ok, []};
         _ ->
             % 从数据库查询好友的密钥变更记录
-            pull_key_changes_from_db(FriendUids, SinceTs, Limit)
+            pull_key_changes_from_db(FriendUids, SinceTs, LimitInt)
     end.
 
 %% @doc 从数据库拉取密钥变更

@@ -89,7 +89,7 @@ RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
 
 # 规范化 STOP_OLD：接受 true/1/yes（大小写不敏感）
 # Normalize STOP_OLD: accept true/1/yes case-insensitively
-case "${STOP_OLD,,}" in true|1|yes) STOP_OLD=true ;; *) STOP_OLD=false ;; esac
+case "$(echo "$STOP_OLD" | tr '[:upper:]' '[:lower:]')" in true|1|yes) STOP_OLD=true ;; *) STOP_OLD=false ;; esac
 
 # ---------- 日志函数 / Log helpers ----------
 log()  { echo -e "\033[36m[$(date '+%H:%M:%S')] $*\033[0m"; }
@@ -200,6 +200,14 @@ ssh_exec "
     RELX_DEV_MODE=false \
     RELX_INCLUDE_ERTS=true \
     make rel
+  # 用服务器实际 sys.pro.config（含生产凭证）覆盖编译产物里的占位符 sys.config
+  # Overlay generated sys.config with server's authoritative pro config (real credentials)
+  REL_SYS_CONFIG='$PROJECT_DIR/_rel/imboy/releases/$VSN/sys.config'
+  if [ -f '$PROJECT_DIR/config/sys.pro.config' ] && [ -f \"\$REL_SYS_CONFIG\" ]; then
+    cp '$PROJECT_DIR/config/sys.pro.config' \"\$REL_SYS_CONFIG\"
+    # 将 sys.config 中的 http_port 动态改为本次目标端口（蓝绿切换时端口不同）
+    sed -i \"s/{http_port,[ ]*[0-9]\\+}/{http_port, $APP_PORT}/\" \"\$REL_SYS_CONFIG\"
+  fi
 "
 ok "release 编译完成 / Release built"
 

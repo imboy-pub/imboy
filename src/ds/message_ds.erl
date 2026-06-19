@@ -737,8 +737,8 @@ adm_scope_sql(c2c, Tbc2c, _Tbc2g, _Tbc2s, _Tbs2c, _TbTimeline) ->
         <<"AND ($2 = 0 OR ((from_id = $2 AND to_id = $3) OR (from_id = $3 AND to_id = $2))) ">>,
         <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
         <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
-        <<"AND ($8 IS NULL OR msg_id = $8)">>
+        <<"AND ($7::text IS NULL OR payload::text ILIKE $7::text) ">>,
+        <<"AND ($8::text IS NULL OR msg_id::text = $8::text)">>
     ]);
 adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
     iolist_to_binary([
@@ -753,10 +753,10 @@ adm_scope_sql(c2g, _Tbc2c, Tbc2g, _Tbc2s, _Tbs2c, TbTimeline) ->
         <<"AND ($4 = 0 OR to_id = $4) ">>,
         <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
         <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
-        <<"AND ($8 IS NULL OR msg_id = $8)">>
+        <<"AND ($7::text IS NULL OR payload::text ILIKE $7::text) ">>,
+        <<"AND ($8::text IS NULL OR msg_id::text = $8::text)">>
     ]);
-adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbs2c, TbTimeline) ->
+adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbc2s, TbTimeline) ->
     iolist_to_binary([
         <<"SELECT 'c2s' AS scope, msg_id, from_id, to_id, msg_type, ''::text AS action, payload, created_at, COALESCE(server_ts, created_at) AS server_ts ">>,
         <<"FROM ">>,
@@ -769,8 +769,8 @@ adm_scope_sql(c2s, _Tbc2c, _Tbc2g, Tbc2s, _Tbs2c, TbTimeline) ->
         <<"AND ($4 = 0 OR to_id = $4) ">>,
         <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
         <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
-        <<"AND ($8 IS NULL OR msg_id = $8)">>
+        <<"AND ($7::text IS NULL OR payload::text ILIKE $7::text) ">>,
+        <<"AND ($8::text IS NULL OR msg_id::text = $8::text)">>
     ]);
 adm_scope_sql(s2c, _Tbc2c, _Tbc2g, _Tbc2s, Tbs2c, _TbTimeline) ->
     iolist_to_binary([
@@ -782,6 +782,6 @@ adm_scope_sql(s2c, _Tbc2c, _Tbc2g, _Tbc2s, Tbs2c, _TbTimeline) ->
         <<"AND ($4 = 0 OR from_id = $4 OR to_id = $4) ">>,
         <<"AND ($5::timestamptz IS NULL OR created_at >= $5::timestamptz) ">>,
         <<"AND ($6::timestamptz IS NULL OR created_at <= $6::timestamptz) ">>,
-        <<"AND ($7 IS NULL OR payload::text ILIKE $7) ">>,
-        <<"AND ($8 IS NULL OR msg_id = $8)">>
+        <<"AND ($7::text IS NULL OR payload::text ILIKE $7::text) ">>,
+        <<"AND ($8::text IS NULL OR msg_id::text = $8::text)">>
     ]).
