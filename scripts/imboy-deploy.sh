@@ -76,109 +76,25 @@ ssh_cap()  { ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" | tr -d '\r';
 # deploy_api — 蓝绿零停机部署 Erlang 后端
 # =============================================================================
 deploy_api() {
-  log "▶ 部署 Erlang 后端 (蓝绿) ..."
+  log "▶ 部署 Erlang 后端 (蓝绿) — 委托 deploy.sh ..."
 
-  # 自动生成节点序号（yyyymmddHHMM）
   local NODE_ID; NODE_ID="$(date '+%m%d%H%M')"
-  local RELEASE_DIR="/usr/local/imboy-${DEPLOY_VSN}-${NODE_ID}"
-  local TARBALL="${DEPLOY_PROJECT_DIR}/_rel/imboy/imboy-${DEPLOY_VSN}.tar.gz"
 
-  # 1. 检测当前活跃色
-  local CURRENT_COLOR
-  CURRENT_COLOR="$(ssh_cap "
-    if   ss -tlnH 'sport = :${DEPLOY_BLUE_PORT}'  2>/dev/null | grep -q .; then echo blue
-    elif ss -tlnH 'sport = :${DEPLOY_GREEN_PORT}' 2>/dev/null | grep -q .; then echo green
-    else echo none
-    fi
-  ")"
-  local TARGET_COLOR APP_PORT OLD_PORT
-  case "$CURRENT_COLOR" in
-    blue)  TARGET_COLOR=green; APP_PORT=$DEPLOY_GREEN_PORT; OLD_PORT=$DEPLOY_BLUE_PORT  ;;
-    green) TARGET_COLOR=blue;  APP_PORT=$DEPLOY_BLUE_PORT;  OLD_PORT=$DEPLOY_GREEN_PORT ;;
-    *)     TARGET_COLOR=blue;  APP_PORT=$DEPLOY_BLUE_PORT;  OLD_PORT=""                 ;;
-  esac
-  ok "当前: $CURRENT_COLOR → 目标: $TARGET_COLOR (port=$APP_PORT)"
+  # 将 .env.deploy 变量映射为 deploy.sh 的 IMBOY_DEPLOY_* 环境变量，
+  # 传 --no-migrate 让迁移由 deploy_migrate() 统一负责（避免 all 模式重复执行）
+  IMBOY_DEPLOY_PORT="$SERVER_PORT" \
+  IMBOY_DEPLOY_USER="$SERVER_USER" \
+  IMBOY_DEPLOY_PROJECT_DIR="$DEPLOY_PROJECT_DIR" \
+  IMBOY_DEPLOY_NGINX_CONF="$NGINX_CONF" \
+  IMBOY_DEPLOY_BLUE_PORT="$DEPLOY_BLUE_PORT" \
+  IMBOY_DEPLOY_GREEN_PORT="$DEPLOY_GREEN_PORT" \
+  IMBOY_DEPLOY_COOKIE="$DEPLOY_COOKIE" \
+  IMBOY_DEPLOY_BRANCH="$DEPLOY_BRANCH" \
+  IMBOY_DEPLOY_STOP_OLD="${DEPLOY_STOP_OLD:-true}" \
+    bash "$SCRIPT_DIR/deploy.sh" --no-migrate \
+      "$SERVER_HOST" "$DEPLOY_VSN" "$NODE_ID"
 
-  # 2. 服务器拉代码 + 编译
-  log "拉取代码并编译 release ..."
-  ssh_exec "
-    set -e
-    cd '${DEPLOY_PROJECT_DIR}'
-    git fetch origin
-    git checkout '${DEPLOY_BRANCH}'
-    git reset --hard origin/'${DEPLOY_BRANCH}'
-    IMBOYENV=pro RELX_REL_VSN='${DEPLOY_VSN}' \
-      RELX_DEV_MODE=false RELX_INCLUDE_ERTS=true \
-      make rel
-  "
-  ok "release 编译完成"
-
-  # 3. 解包 + vm.args
-  log "解包 release + 写入 vm.args ..."
-  ssh_exec "
-    set -e
-    mkdir -p '${RELEASE_DIR}'
-    cd '${RELEASE_DIR}' && tar -xzf '${TARBALL}'
-    VSN_DIR=\$(find '${RELEASE_DIR}/releases' -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
-    cat > \"\$VSN_DIR/vm.args\" <<'VMARGS'
--name ${NODE_ID}@127.0.0.1
--setcookie ${DEPLOY_COOKIE}
--heart
--kernel inet_dist_use_interface '{127,0,0,1}'
-+K true
-+A 256
-+P 1048576
-+Q 1048576
-VMARGS
-  "
-  ok "vm.args 写入完成，节点名: ${NODE_ID}@127.0.0.1"
-
-  # 4. 启动新节点
-  log "启动新节点 (port=$APP_PORT) ..."
-  ssh_exec "
-    cd '${RELEASE_DIR}'
-    IMBOYENV=pro IMBOY_HTTP_PORT='${APP_PORT}' ./bin/imboy daemon
-  "
-
-  # 5. 轮询等待就绪（最多 40s）
-  log "等待新节点就绪 ..."
-  ssh_exec "
-    for i in \$(seq 1 20); do
-      ss -tlnH 'sport = :${APP_PORT}' 2>/dev/null | grep -q . && exit 0
-      sleep 2
-    done
-    exit 1
-  " || fail "新节点 40s 内未就绪 (port=$APP_PORT)"
-  ok "新节点已就绪"
-
-  # 6. 切换 Nginx
-  if [[ -n "$OLD_PORT" ]]; then
-    log "切换 Nginx upstream: $OLD_PORT → $APP_PORT ..."
-    ssh_exec "
-      cp '${NGINX_CONF}' '${NGINX_CONF}.bak'
-      sed -i 's|server 127.0.0.1:${OLD_PORT};|server 127.0.0.1:${APP_PORT};|g' '${NGINX_CONF}'
-      grep -q 'server 127.0.0.1:${APP_PORT};' '${NGINX_CONF}' \
-        || { cp '${NGINX_CONF}.bak' '${NGINX_CONF}'; echo 'upstream 替换失败已回滚' >&2; exit 1; }
-      nginx -t && nginx -s reload
-    "
-    ok "Nginx 已切换至 $TARGET_COLOR (port=$APP_PORT)"
-  else
-    warn "首次部署：请手动将 Nginx upstream 设为 127.0.0.1:$APP_PORT 后执行 nginx -s reload"
-  fi
-
-  # 7. 停旧节点（可选）
-  if [[ "${DEPLOY_STOP_OLD:-true}" == "true" ]] && [[ -n "$OLD_PORT" ]]; then
-    log "停止旧节点 (port=$OLD_PORT) ..."
-    local OLD_DIR
-    OLD_DIR="$(ssh_cap \
-      "find /usr/local -maxdepth 1 -name 'imboy-*' -type d ! -path '${RELEASE_DIR}' | sort -V | tail -1")" || OLD_DIR=""
-    if [[ -n "$OLD_DIR" ]]; then
-      ssh_exec "$OLD_DIR/bin/imboy stop || true"
-      ok "旧节点已停止: $OLD_DIR"
-    fi
-  fi
-
-  ok "▶ Erlang 后端部署完成 → port=$APP_PORT, dir=$RELEASE_DIR"
+  ok "▶ Erlang 后端部署完成"
 }
 
 # =============================================================================

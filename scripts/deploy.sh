@@ -21,11 +21,14 @@ set -Eeuo pipefail
 #   9. 停止旧节点（可选）       Stop old node (optional, STOP_OLD=false 跳过)
 #
 # 用法 / Usage:
-#   bash ./script/deploy.sh [-v|--verbose] <SERVER_HOST> <VSN> <NODE_NAME>
+#   bash ./scripts/deploy.sh [-v|--verbose] [-l|--local] [-M|--no-migrate] <SERVER_HOST> <VSN> <NODE_NAME>
 #
 # 示例 / Examples:
-#   bash ./script/deploy.sh 10.0.0.10 1.0.0-rc.1 001
-#   bash ./script/deploy.sh -v 10.0.0.10 1.0.0-rc.1 002
+#   bash ./scripts/deploy.sh 10.0.0.10 1.0.0-rc.1 001              # git pull + 编译
+#   bash ./scripts/deploy.sh -v 10.0.0.10 1.0.0-rc.1 002           # 详细输出
+#   bash ./scripts/deploy.sh -l 10.0.0.10 1.0.0-rc.1 dbg           # 本地源码 rsync（无需推 tag）
+#   bash ./scripts/deploy.sh -v -l 10.0.0.10 1.0.0-rc.1 dbg        # 本地 rsync + 详细输出
+#   bash ./scripts/deploy.sh -M 10.0.0.10 1.0.0-rc.1 001           # 跳过迁移（由上层调用方负责）
 #
 # 环境变量（均可选）/ Environment variables (all optional):
 #   IMBOY_DEPLOY_USER        SSH 用户       SSH user            (default: root)
@@ -44,10 +47,14 @@ set -Eeuo pipefail
 # 默认静默；-v/--verbose 透传远端命令输出
 # Quiet by default; -v/--verbose passes SSH output through
 SILENT=1
+LOCAL_MODE=0
+SKIP_MIGRATE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -v|--verbose) SILENT=0; shift ;;
-    -s|--silent)  SILENT=1; shift ;;
+    -v|--verbose)    SILENT=0; shift ;;
+    -s|--silent)     SILENT=1; shift ;;
+    -l|--local)      LOCAL_MODE=1; shift ;;
+    -M|--no-migrate) SKIP_MIGRATE=1; shift ;;
     --) shift; break ;;
     -*) echo "未知参数 / Unknown flag: $1" >&2; exit 1 ;;
     *)  break ;;
@@ -74,6 +81,10 @@ NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
 COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy}"
 BRANCH="${IMBOY_DEPLOY_BRANCH:-main}"
 STOP_OLD="${IMBOY_DEPLOY_STOP_OLD:-true}"
+# --local 模式：从本地 rsync 源码到远端，跳过 git pull
+# --local mode: rsync local source to remote, skip git pull
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_SRC_DIR="${IMBOY_LOCAL_SRC_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 RELEASE_DIR="/usr/local/imboy-${VSN}-${NODE_NAME}"
 RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
@@ -188,13 +199,38 @@ fi
 # RELX_DEV_MODE=false 确保产物不含符号链接，RELX_INCLUDE_ERTS=true 内嵌运行时
 # RELX_DEV_MODE=false: no symlinks in tarball; RELX_INCLUDE_ERTS=true: embed ERTS
 # =============================================================================
-log "拉取代码并编译 release... / Pulling code and building release..."
+if [ "$LOCAL_MODE" -eq 1 ]; then
+  log "[--local] 同步本地源码到远端 $PROJECT_DIR ... / Syncing local source to remote..."
+  rsync -az --delete \
+    --exclude='.git/' \
+    --exclude='_build/' \
+    --exclude='_rel/' \
+    --exclude='deps/' \
+    --exclude='log/' \
+    --exclude='*.beam' \
+    --exclude='config/sys.pro.config' \
+    --exclude='config/sys.runtime.config' \
+    --exclude='scripts/.env.deploy' \
+    -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL -o StrictHostKeyChecking=accept-new" \
+    "$LOCAL_SRC_DIR/" \
+    "$SERVER_USER@$SERVER_HOST:$PROJECT_DIR/"
+  ok "本地源码已同步 / Local source synced"
+else
+  log "拉取代码... / Pulling code from git..."
+  ssh_exec "
+    set -e
+    cd '$PROJECT_DIR'
+    git fetch origin
+    git checkout '$BRANCH'
+    git reset --hard origin/'$BRANCH'
+  "
+  ok "代码已拉取 / Code pulled"
+fi
+
+log "编译 release... / Building release..."
 ssh_exec "
   set -e
   cd '$PROJECT_DIR'
-  git fetch origin
-  git checkout '$BRANCH'
-  git reset --hard origin/'$BRANCH'
   IMBOYENV=pro \
     RELX_REL_VSN='$VSN' \
     RELX_DEV_MODE=false \
@@ -205,7 +241,6 @@ ssh_exec "
   REL_SYS_CONFIG='$PROJECT_DIR/_rel/imboy/releases/$VSN/sys.config'
   if [ -f '$PROJECT_DIR/config/sys.pro.config' ] && [ -f \"\$REL_SYS_CONFIG\" ]; then
     cp '$PROJECT_DIR/config/sys.pro.config' \"\$REL_SYS_CONFIG\"
-    # 将 sys.config 中的 http_port 动态改为本次目标端口（蓝绿切换时端口不同）
     sed -i \"s/{http_port,[ ]*[0-9]\\+}/{http_port, $APP_PORT}/\" \"\$REL_SYS_CONFIG\"
   fi
 "
@@ -259,9 +294,13 @@ ok "新节点已就绪 (port=$APP_PORT) / New node ready"
 # =============================================================================
 # 6️⃣ 数据库迁移 / Run DB migrations
 # =============================================================================
-log "执行数据库迁移... / Running DB migrations..."
-ssh_exec "cd '$PROJECT_DIR' && make ctl ARGS='db migrate'"
-ok "数据库迁移完成 / DB migrations applied"
+if [ "$SKIP_MIGRATE" -eq 1 ]; then
+  log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
+else
+  log "执行数据库迁移... / Running DB migrations..."
+  ssh_exec "cd '$PROJECT_DIR' && make ctl ARGS='db migrate'"
+  ok "数据库迁移完成 / DB migrations applied"
+fi
 
 # =============================================================================
 # 7️⃣ 切换 Nginx upstream / Switch Nginx upstream
