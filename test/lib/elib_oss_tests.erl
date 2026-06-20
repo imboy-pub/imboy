@@ -448,6 +448,26 @@ parse_head_response_header_case_insensitive_test_() ->
         )
     end).
 
+parse_head_response_206_range_extracts_total_size_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% presigned GET + Range: bytes=0-0 → 206，真实总大小取自 content-range
+        %% （绕开 header 鉴权 HEAD 被 Garage 当 GET 致 Invalid signature 的坑）
+        Resp =
+            {ok, {
+                {<<"HTTP/1.1">>, 206, <<"Partial Content">>},
+                [
+                    {"content-length", "1"},
+                    {"content-range", "bytes 0-0/22"},
+                    {"content-type", "image/jpeg"}
+                ],
+                <<>>
+            }},
+        ?assertEqual(
+            {ok, #{size => 22, content_type => <<"image/jpeg">>}},
+            elib_oss:parse_head_response(Resp)
+        )
+    end).
+
 parse_head_response_404_returns_not_found_test_() ->
     ?TEST_SIMPLE(fun() ->
         Resp = {ok, {{<<"HTTP/1.1">>, 404, <<"Not Found">>}, [], <<>>}},

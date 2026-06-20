@@ -199,33 +199,21 @@ head_object(ObjectKey) ->
 -spec head_object(binary(), binary()) -> {ok, map()} | {error, not_found | term()}.
 head_object(Bucket, ObjectKey) ->
     ok = assert_garage_configured(),
-    Cfg = garage_config(),
-    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
-    AccessKey = maps:get(access_key, Cfg, <<>>),
-    SecretKey = maps:get(secret_key, Cfg, <<>>),
-
-    Url =
-        <<Endpoint/binary, "/", Bucket/binary, "/",
-            (elib_s3_sign:uri_encode_path(ObjectKey))/binary>>,
-    Now = calendar:universal_time(),
-    AmzDate = elib_s3_sign:format_amz_date(Now),
-    AuthHeader = elib_s3_sign:authorization_header(
-        <<"HEAD">>, Bucket, ObjectKey, <<>>, AmzDate, AccessKey, SecretKey
-    ),
-    Headers = [
-        {"x-amz-date", binary_to_list(AmzDate)},
-        {"x-amz-content-sha256", "UNSIGNED-PAYLOAD"},
-        {"authorization", binary_to_list(AuthHeader)}
-    ],
+    Endpoint = endpoint(),
+    %% 用 presigned GET（query 签名，仅签 host）+ Range: bytes=0-0 核实对象。
+    %% 不走 header 鉴权 HEAD：经 nginx 反代后 HEAD 在 Garage 端按 GET 校验，
+    %% 方法行与签名不符 → "Invalid signature" 403（query 预签名链路同 PUT 已验证可用）。
+    Url = elib_s3_sign:presign_get(Endpoint, Bucket, ObjectKey, 60),
+    Headers = [{"range", "bytes=0-0"}],
     parse_head_response(
-        httpc:request(head, {binary_to_list(Url), Headers}, [{timeout, 10000}], [])
+        httpc:request(get, {binary_to_list(Url), Headers}, [{timeout, 10000}], [])
     ).
 
 %% @doc 解析 HEAD 响应为 {ok, #{size, content_type}}（纯函数，便于单测）
 -spec parse_head_response(term()) -> {ok, map()} | {error, not_found | term()}.
-parse_head_response({ok, {{_, 200, _}, Headers, _}}) ->
+parse_head_response({ok, {{_, Code, _}, Headers, _}}) when Code =:= 200; Code =:= 206 ->
     {ok, #{
-        size => head_int(Headers, "content-length", 0),
+        size => head_object_size(Headers),
         content_type => head_bin(Headers, "content-type", <<"application/octet-stream">>)
     }};
 parse_head_response({ok, {{_, 404, _}, _, _}}) ->
@@ -254,6 +242,28 @@ head_int(Headers, Key, Default) ->
                 list_to_integer(string:trim(V))
             catch
                 _:_ -> Default
+            end
+    end.
+
+%% @doc 对象真实大小：优先取 content-range 的总长（Range 请求返回 206 时），
+%% 回退 content-length（完整 200 响应时）。
+-spec head_object_size([{string(), string()}]) -> integer().
+head_object_size(Headers) ->
+    Fallback = head_int(Headers, "content-length", 0),
+    case head_lookup(Headers, "content-range") of
+        undefined ->
+            Fallback;
+        Range ->
+            %% 形如 "bytes 0-0/22" → 取 "/" 后总长；"bytes 0-0/*" 则回退
+            case string:split(Range, "/") of
+                [_, Total] ->
+                    try
+                        list_to_integer(string:trim(Total))
+                    catch
+                        _:_ -> Fallback
+                    end;
+                _ ->
+                    Fallback
             end
     end.
 
