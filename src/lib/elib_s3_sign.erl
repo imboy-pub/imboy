@@ -7,7 +7,7 @@
 % 不是 AWS 的 virtual-hosted-style (bucket.endpoint/key)
 %%%
 
--export([presign_put/5, presign_get/4, authorization_header/7]).
+-export([presign_put/5, presign_get/4, presign_delete/4, authorization_header/7]).
 -export([format_date/1, format_amz_date/1]).
 -export([uri_encode_path/1]).
 
@@ -79,6 +79,13 @@ presign_url(Method, Endpoint, Bucket, ObjectKey, MimeType, Expires) ->
 -spec presign_get(binary(), binary(), binary(), pos_integer()) -> binary().
 presign_get(Endpoint, Bucket, ObjectKey, Expires) ->
     presign_url(<<"GET">>, Endpoint, Bucket, ObjectKey, <<>>, Expires).
+
+%% @doc 生成 presigned DELETE URL（服务端删除对象用）
+%% query 签名仅签 host+方法，规避经 nginx 反代后 Garage 对 header 鉴权
+%% "Invalid signature" 的坑（与 head_object 改 presigned GET 同源）。
+-spec presign_delete(binary(), binary(), binary(), pos_integer()) -> binary().
+presign_delete(Endpoint, Bucket, ObjectKey, Expires) ->
+    presign_url(<<"DELETE">>, Endpoint, Bucket, ObjectKey, <<>>, Expires).
 
 %% @doc 生成 Authorization Header（服务端 PUT/DELETE 用）
 -spec authorization_header(binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->

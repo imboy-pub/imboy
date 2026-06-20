@@ -283,27 +283,11 @@ delete_object(ObjectKey) ->
 -spec delete_object(binary(), binary()) -> ok | {error, term()}.
 delete_object(Bucket, ObjectKey) ->
     ok = assert_garage_configured(),
-    Cfg = garage_config(),
-    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
-    AccessKey = maps:get(access_key, Cfg, <<>>),
-    SecretKey = maps:get(secret_key, Cfg, <<>>),
-
-    %% 请求 URL 的对象路径必须与签名 Canonical URI 编码方式一致
-    Url =
-        <<Endpoint/binary, "/", Bucket/binary, "/",
-            (elib_s3_sign:uri_encode_path(ObjectKey))/binary>>,
-    Now = calendar:universal_time(),
-    AmzDate = elib_s3_sign:format_amz_date(Now),
-    AuthHeader = elib_s3_sign:authorization_header(
-        <<"DELETE">>, Bucket, ObjectKey, <<>>, AmzDate, AccessKey, SecretKey
-    ),
-
-    Headers = [
-        {"x-amz-date", binary_to_list(AmzDate)},
-        {"x-amz-content-sha256", "UNSIGNED-PAYLOAD"},
-        {"authorization", binary_to_list(AuthHeader)}
-    ],
-    case httpc:request(delete, {binary_to_list(Url), Headers}, [{timeout, 10000}], []) of
+    Endpoint = endpoint(),
+    %% 用 presigned DELETE（query 签名，仅签 host+方法）替代 header 鉴权：
+    %% 经 nginx 反代后 header 鉴权会被 Garage 判 "Invalid signature"（同 head_object 的坑）。
+    Url = elib_s3_sign:presign_delete(Endpoint, Bucket, ObjectKey, 60),
+    case httpc:request(delete, {binary_to_list(Url), []}, [{timeout, 10000}], []) of
         {ok, {{_, Code, _}, _, _}} when Code =:= 204; Code =:= 200 ->
             ok;
         {ok, {{_, Code, _}, _, Body}} ->
