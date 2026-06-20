@@ -37,11 +37,17 @@ presign(<<"GET">>, Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
     FileName = proplists:get_value(<<"filename">>, Qs, <<"file">>),
     MimeType = proplists:get_value(<<"mime_type">>, Qs, <<"application/octet-stream">>),
-    case attach_logic:presign(Uid, FileName, MimeType) of
+    Scope = proplists:get_value(<<"scope">>, Qs, <<"private">>),
+    ScopeRef = proplists:get_value(<<"scope_ref">>, Qs, undefined),
+    case attach_logic:presign(Uid, FileName, MimeType, Scope, ScopeRef) of
         {ok, Data} ->
             elib_response:success(Req0, Data, "success.");
         {error, invalid_file_type} ->
-            elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST)
+            elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, upload_not_supported} ->
+            elib_response:error(Req0, <<"该资源类型暂不支持上传"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, forbidden} ->
+            elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN)
     end;
 presign(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
@@ -54,11 +60,17 @@ confirm(<<"POST">>, Req0, State) ->
     Uid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     ObjectKey = maps:get(<<"object_key">>, PostVals, <<>>),
-    case attach_logic:confirm(Uid, ObjectKey, PostVals) of
+    Scope = maps:get(<<"scope">>, PostVals, <<"private">>),
+    ScopeRef = maps:get(<<"scope_ref">>, PostVals, undefined),
+    case attach_logic:confirm(Uid, ObjectKey, Scope, ScopeRef, PostVals) of
         {ok, Data} ->
             elib_response:success(Req0, Data, "success.");
         {error, forbidden_key} ->
             elib_response:error(Req0, <<"非法对象归属"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, forbidden} ->
+            elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
+        {error, upload_not_supported} ->
+            elib_response:error(Req0, <<"该资源类型暂不支持上传"/utf8>>, ?ERR_BAD_REQUEST);
         {error, invalid_key} ->
             elib_response:error(Req0, <<"非法对象键"/utf8>>, ?ERR_BAD_REQUEST);
         {error, object_not_found} ->

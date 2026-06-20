@@ -14,10 +14,11 @@
 
 -export([upload/2, upload/3]).
 -export([get_url/1]).
--export([presign_put/3, presign_put_for_key/3]).
--export([presign_get_for_key/2]).
--export([build_object_key/2, owner_of_key/1]).
--export([delete_object/1, head_object/1, parse_head_response/1]).
+-export([presign_put/3, presign_put_for_key/3, presign_put_for_key/4]).
+-export([presign_get_for_key/2, presign_get_for_key/3]).
+-export([build_object_key/2, build_object_key/4, owner_of_key/1]).
+-export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
+-export([delete_object/1, delete_object/2, head_object/1, head_object/2, parse_head_response/1]).
 -export([max_file_size/0]).
 -export([generate_file_id/0]).
 -export([validate_file_id/1]).
@@ -96,28 +97,65 @@ presign_put(FileName, MimeType, ExpiresSeconds) ->
     ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
     elib_s3_sign:presign_put(Endpoint, Bucket, ObjectKey, MimeType, ExpiresSeconds).
 
-%% @doc 用指定 ObjectKey 生成 presigned PUT URL（attach_handler 用，避免双重生成 FileId）
+%% @doc 用指定 ObjectKey 生成 presigned PUT URL（默认私桶，向后兼容入口）
 -spec presign_put_for_key(binary(), binary(), pos_integer()) -> binary().
 presign_put_for_key(ObjectKey, MimeType, ExpiresSeconds) ->
-    Cfg = garage_config(),
-    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
-    Bucket = maps:get(bucket, Cfg, <<"imboy">>),
+    presign_put_for_key(default_bucket(), ObjectKey, MimeType, ExpiresSeconds).
+
+%% @doc 指定桶 + ObjectKey 生成 presigned PUT URL（多桶上传链路用）
+-spec presign_put_for_key(binary(), binary(), binary(), pos_integer()) -> binary().
+presign_put_for_key(Bucket, ObjectKey, MimeType, ExpiresSeconds) ->
+    Endpoint = endpoint(),
     elib_s3_sign:presign_put(Endpoint, Bucket, ObjectKey, MimeType, ExpiresSeconds).
 
-%% @doc 生成绑定 uid 的 ObjectKey：u<Uid>/<FileId>/<SafeName>
-%% FileId 使用加密强随机，避免可预测/碰撞；前缀 u<Uid> 用于归属判定与命名空间隔离
+%% @doc 生成绑定 uid 的 ObjectKey（向后兼容入口，等价 scope=private）。
 -spec build_object_key(integer() | binary(), binary()) -> binary().
 build_object_key(Uid, FileName) ->
-    Ts = integer_to_binary(erlang:system_time(millisecond)),
-    Rand = binary:encode_hex(crypto:strong_rand_bytes(8)),
-    FileId = <<?FILE_ID_PREFIX, "_", Ts/binary, "_", Rand/binary>>,
-    SafeName = filename:basename(FileName),
-    UidBin =
-        if
-            is_integer(Uid) -> integer_to_binary(Uid);
-            is_binary(Uid) -> Uid
-        end,
-    <<"u", UidBin/binary, "/", FileId/binary, "/", SafeName/binary>>.
+    build_object_key(Uid, <<"private">>, undefined, FileName).
+
+%% @doc 生成绑定 uid + scope 的 ObjectKey。
+%% 不变量：第一段恒为 u<Uid>/（兼容 owner_of_key/1 写归属判定），scope 段、<Ymd>
+%% 日期目录一律放其后。各 scope 命名规范见 docs/architecture/resource-access-control.md。
+%%   public  -> u<Uid>/avatar/<Ymd>/<hex>.<ext>
+%%   private -> u<Uid>/file/<Ymd>/<FileId>/<SafeName>
+%%   c2c     -> u<Uid>/c2c/<Ymd>/<FileId>/<SafeName>
+%%   group   -> u<Uid>/g<Gid>/<Ymd>/<FileId>/<SafeName>   (Gid 来自 ScopeRef)
+-spec build_object_key(integer() | binary(), binary(), binary() | undefined, binary()) -> binary().
+build_object_key(Uid, Scope, ScopeRef, FileName) ->
+    UidBin = to_bin(Uid),
+    Ymd = ymd(),
+    Seg = scope_segment(Scope, ScopeRef),
+    case Scope of
+        <<"public">> ->
+            %% 头像等公开资源：随机名 + 原扩展名，无内层 FileId 目录
+            Ext = filename:extension(filename:basename(FileName)),
+            Hex = binary:encode_hex(crypto:strong_rand_bytes(8)),
+            <<"u", UidBin/binary, "/", Seg/binary, "/", Ymd/binary, "/", Hex/binary, Ext/binary>>;
+        _ ->
+            Ts = integer_to_binary(erlang:system_time(millisecond)),
+            Rand = binary:encode_hex(crypto:strong_rand_bytes(8)),
+            FileId = <<?FILE_ID_PREFIX, "_", Ts/binary, "_", Rand/binary>>,
+            SafeName = filename:basename(FileName),
+            <<"u", UidBin/binary, "/", Seg/binary, "/", Ymd/binary, "/", FileId/binary, "/",
+                SafeName/binary>>
+    end.
+
+%% @doc scope → object_key 第二段。group 用 g<Gid> 实体段（Gid 取自 ScopeRef）。
+-spec scope_segment(binary(), binary() | undefined) -> binary().
+scope_segment(<<"public">>, _) -> <<"avatar">>;
+scope_segment(<<"private">>, _) -> <<"file">>;
+scope_segment(<<"c2c">>, _) -> <<"c2c">>;
+scope_segment(<<"group">>, ScopeRef) -> <<"g", (to_bin(ScopeRef))/binary>>.
+
+%% @doc 当日 UTC 日期目录 <Ymd>（YYYYMMDD）。
+-spec ymd() -> binary().
+ymd() ->
+    {{Y, M, D}, _} = calendar:universal_time(),
+    iolist_to_binary(io_lib:format("~4..0w~2..0w~2..0w", [Y, M, D])).
+
+-spec to_bin(integer() | binary()) -> binary().
+to_bin(V) when is_integer(V) -> integer_to_binary(V);
+to_bin(V) when is_binary(V) -> V.
 
 %% @doc 从 ObjectKey 反解归属 uid（u<Uid>/... → Uid），用于 confirm 防越权
 -spec owner_of_key(binary()) -> {ok, integer()} | {error, invalid_key}.
@@ -135,12 +173,15 @@ owner_of_key(<<"u", Rest/binary>>) ->
 owner_of_key(_) ->
     {error, invalid_key}.
 
-%% @doc 生成短时下载 presigned GET URL（替代 bucket 公开读直链）
+%% @doc 生成短时下载 presigned GET URL（默认私桶，向后兼容入口）
 -spec presign_get_for_key(binary(), pos_integer()) -> binary().
 presign_get_for_key(ObjectKey, ExpiresSeconds) ->
-    Cfg = garage_config(),
-    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
-    Bucket = maps:get(bucket, Cfg, <<"imboy">>),
+    presign_get_for_key(default_bucket(), ObjectKey, ExpiresSeconds).
+
+%% @doc 指定桶生成短时下载 presigned GET URL（受限资源读鉴权链路用）
+-spec presign_get_for_key(binary(), binary(), pos_integer()) -> binary().
+presign_get_for_key(Bucket, ObjectKey, ExpiresSeconds) ->
+    Endpoint = endpoint(),
     elib_s3_sign:presign_get(Endpoint, Bucket, ObjectKey, ExpiresSeconds).
 
 %% @doc 单文件最大尺寸（字节），供 confirm 阶段服务端核实真实大小复用
@@ -152,10 +193,14 @@ max_file_size() ->
 %% 用于 confirm 阶段不信任客户端自报 size/mime_type 的服务端校验。
 -spec head_object(binary()) -> {ok, map()} | {error, not_found | term()}.
 head_object(ObjectKey) ->
+    head_object(default_bucket(), ObjectKey).
+
+%% @doc 指定桶向 Garage 发 HEAD 核实对象（多桶 confirm 链路用）
+-spec head_object(binary(), binary()) -> {ok, map()} | {error, not_found | term()}.
+head_object(Bucket, ObjectKey) ->
     ok = assert_garage_configured(),
     Cfg = garage_config(),
     Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
-    Bucket = maps:get(bucket, Cfg, <<"imboy">>),
     AccessKey = maps:get(access_key, Cfg, <<>>),
     SecretKey = maps:get(secret_key, Cfg, <<>>),
 
@@ -222,10 +267,14 @@ head_bin(Headers, Key, Default) ->
 %% @doc 物理删除存储桶中的对象
 -spec delete_object(binary()) -> ok | {error, term()}.
 delete_object(ObjectKey) ->
+    delete_object(default_bucket(), ObjectKey).
+
+%% @doc 指定桶物理删除存储对象（多桶孤儿清理/校验失败回滚用）
+-spec delete_object(binary(), binary()) -> ok | {error, term()}.
+delete_object(Bucket, ObjectKey) ->
     ok = assert_garage_configured(),
     Cfg = garage_config(),
     Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
-    Bucket = maps:get(bucket, Cfg, <<"imboy">>),
     AccessKey = maps:get(access_key, Cfg, <<>>),
     SecretKey = maps:get(secret_key, Cfg, <<>>),
 
@@ -348,6 +397,34 @@ public_url(Endpoint, Bucket, ObjectKey) ->
 -spec garage_config() -> map().
 garage_config() ->
     application:get_env(imboy, garage, #{}).
+
+%% @doc Garage S3 端点（私桶/公桶共用同一 endpoint，仅 bucket 不同）
+-spec endpoint() -> binary().
+endpoint() ->
+    maps:get(endpoint, garage_config(), <<"http://127.0.0.1:3900">>).
+
+%% @doc 默认（私有）bucket
+-spec default_bucket() -> binary().
+default_bucket() ->
+    maps:get(bucket, garage_config(), <<"imboy">>).
+
+%% @doc 按 scope 选桶：public → 公开读桶，其余 → 私有桶。
+%% bucket 完全由 scope 派生，不落库（见设计文档第 6 节）。
+-spec get_bucket(binary()) -> binary().
+get_bucket(<<"public">>) ->
+    maps:get(public_bucket, garage_config(), <<"imboy-public">>);
+get_bucket(_Scope) ->
+    default_bucket().
+
+%% @doc 公开资源访问基址（如 https://s3.imboy.pub），客户端直读/可 CDN
+-spec public_base_url() -> binary().
+public_base_url() ->
+    maps:get(public_base_url, garage_config(), <<"https://s3.imboy.pub">>).
+
+%% @doc 由 object_key 拼接公开资源完整 URL（纯字符串，零 DB/网络）
+-spec public_url_for_key(binary()) -> binary().
+public_url_for_key(ObjectKey) ->
+    <<(public_base_url())/binary, "/", ObjectKey/binary>>.
 
 %% @doc 校验 Garage 配置完整性，access_key/secret_key 不得为空
 -spec assert_garage_configured() -> ok.

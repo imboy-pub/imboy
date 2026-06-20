@@ -259,6 +259,77 @@ get_url_has_garage_path_format_test_() ->
     end).
 
 %% ===================================================================
+%% build_object_key/4 测试（scope 命名规范 + 写归属兼容）
+%% ===================================================================
+
+build_object_key_public_segment_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Key = elib_oss:build_object_key(52278, <<"public">>, undefined, <<"head.jpg">>),
+        %% 第一段恒为 u<Uid>/，第二段为 avatar，含 <Ymd> 日期目录，保留扩展名
+        ?assertMatch(<<"u52278/avatar/", _/binary>>, Key),
+        ?assertEqual(<<".jpg">>, filename:extension(Key)),
+        %% owner_of_key 仍能解出 uid（写归属兼容）
+        ?assertEqual({ok, 52278}, elib_oss:owner_of_key(Key))
+    end).
+
+build_object_key_private_segment_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Key = elib_oss:build_object_key(1, <<"private">>, undefined, <<"a.png">>),
+        ?assertMatch(<<"u1/file/", _/binary>>, Key),
+        ?assertEqual(<<"a.png">>, filename:basename(Key)),
+        ?assertEqual({ok, 1}, elib_oss:owner_of_key(Key))
+    end).
+
+build_object_key_c2c_segment_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Key = elib_oss:build_object_key(1, <<"c2c">>, <<"c2c:1:2">>, <<"a.png">>),
+        ?assertMatch(<<"u1/c2c/", _/binary>>, Key),
+        ?assertEqual({ok, 1}, elib_oss:owner_of_key(Key))
+    end).
+
+build_object_key_group_segment_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% group 段为 g<Gid>，Gid 取自 ScopeRef
+        Key = elib_oss:build_object_key(1, <<"group">>, <<"66">>, <<"a.png">>),
+        ?assertMatch(<<"u1/g66/", _/binary>>, Key),
+        ?assertEqual({ok, 1}, elib_oss:owner_of_key(Key))
+    end).
+
+build_object_key_backward_compat_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% /2 入口等价 scope=private
+        Key = elib_oss:build_object_key(7, <<"a.png">>),
+        ?assertMatch(<<"u7/file/", _/binary>>, Key)
+    end).
+
+%% ===================================================================
+%% get_bucket/1 + public_url_for_key/1 测试
+%% ===================================================================
+
+get_bucket_public_uses_public_bucket_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        application:set_env(imboy, garage, #{
+            bucket => <<"imboy">>,
+            public_bucket => <<"imboy-public">>
+        }),
+        ?assertEqual(<<"imboy-public">>, elib_oss:get_bucket(<<"public">>)),
+        ?assertEqual(<<"imboy">>, elib_oss:get_bucket(<<"private">>)),
+        ?assertEqual(<<"imboy">>, elib_oss:get_bucket(<<"c2c">>)),
+        ?assertEqual(<<"imboy">>, elib_oss:get_bucket(<<"group">>))
+    end).
+
+public_url_for_key_concats_base_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        application:set_env(imboy, garage, #{
+            public_base_url => <<"https://s3.imboy.pub">>
+        }),
+        ?assertEqual(
+            <<"https://s3.imboy.pub/u1/avatar/20260620/abc.jpg">>,
+            elib_oss:public_url_for_key(<<"u1/avatar/20260620/abc.jpg">>)
+        )
+    end).
+
+%% ===================================================================
 %% delete_object/1 测试（mock httpc）
 %% ===================================================================
 

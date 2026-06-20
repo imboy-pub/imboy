@@ -16,6 +16,7 @@
 -export([disable/1, enable/1, soft_delete/1]).
 -export([orphan_stats/1, orphan_cleanup/1]).
 -export([find_by_path_and_uid/2]).
+-export([find_by_path/1]).
 
 -export([find_path_by_id/1]).
 
@@ -93,6 +94,11 @@ orphan_cleanup(Opts) ->
 -spec find_by_path_and_uid(binary(), integer()) -> {ok, map()} | {error, not_found | term()}.
 find_by_path_and_uid(ObjectKey, Uid) ->
     attachment_repo:find_by_path_and_uid(ObjectKey, Uid).
+
+%% @doc 根据 object_key(path) 查找附件元数据（读鉴权 authorize/2 用）
+-spec find_by_path(binary()) -> {ok, map()} | {error, not_found | term()}.
+find_by_path(ObjectKey) ->
+    attachment_repo:find_by_path(ObjectKey).
 
 %% @doc 按 id 查询附件 path（admin 下载端点签发 presign GET 用）
 -spec find_path_by_id(integer() | binary()) -> {ok, binary()} | {error, not_found | term()}.

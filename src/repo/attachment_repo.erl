@@ -42,6 +42,9 @@
 %% @doc 根据 object_key(path) 和上传者 uid 查找附件（用于归属校验）
 -export([find_by_path_and_uid/2]).
 
+%% @doc 根据 object_key(path) 查找附件（不带 uid，读鉴权按 scope 在 logic 层判定）
+-export([find_by_path/1]).
+
 -export([find_path_by_id/1]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -68,6 +71,9 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     Path = maps:get(<<"path">>, Attach),
     Url = maps:get(<<"url">>, Attach),
     Size = maps:get(<<"size">>, Attach),
+    %% 读鉴权范围与绑定实体（缺省 private/NULL，兼容历史调用）
+    Scope = maps:get(<<"scope">>, Attach, <<"private">>),
+    ScopeRef = maps:get(<<"scope_ref">>, Attach, null),
     Ext = filename:extension(Path),
 
     Ext2 = ec_cnv:to_binary(Ext),
@@ -110,6 +116,8 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         % 使用原生时间格式
         <<"last_referer_at">> => CreatedAt,
         <<"creator_user_id">> => Uid,
+        <<"scope">> => Scope,
+        <<"scope_ref">> => ScopeRef,
         <<"updated_at">> => CreatedAt,
         <<"created_at">> => CreatedAt,
         <<"status">> => 1
@@ -327,6 +335,20 @@ find_by_path_and_uid(ObjectKey, Uid) ->
         <<"SELECT id, path, creator_user_id FROM ", Tb/binary,
             " WHERE path = $1 AND creator_user_id = $2 AND status >= 0 LIMIT 1">>,
     case elib_pg:query(Sql, [ObjectKey, Uid]) of
+        {ok, [Row]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
+
+%% @doc 根据 object_key(path) 查找附件元数据（scope/scope_ref/creator），供读鉴权
+%% authorize/2 使用。不带 uid 条件——读归属按 scope 区分，由 logic 层裁决。
+-spec find_by_path(binary()) -> {ok, map()} | {error, not_found | term()}.
+find_by_path(ObjectKey) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT id, path, creator_user_id, scope, scope_ref FROM ", Tb/binary,
+            " WHERE path = $1 AND status >= 0 LIMIT 1">>,
+    case elib_pg:query(Sql, [ObjectKey]) of
         {ok, [Row]} -> {ok, Row};
         {ok, []} -> {error, not_found};
         {error, R} -> {error, R}

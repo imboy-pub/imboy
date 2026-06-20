@@ -53,11 +53,13 @@ api_init(Req0) ->
         #{
             <<"ws_url">> => config_ds:env(ws_url, <<>>),
             %% 旧字段保留空值，供旧版 Flutter 客户端过渡期使用
-            <<"upload_url">> => config_ds:env(upload_url, <<>>),
+            <<"upload_url">> => config_ds:env(upload_url, <<"https://s3.imboy.pub">>),
             <<"upload_key">> => <<>>,
             <<"upload_scene">> => <<>>,
             %% 新附件直传接口（Garage S3 presigned URL）
             <<"attach_presign_endpoint">> => <<"/v1/attachment/presign">>,
+            %% 公开资源（scope=public，如头像）直读基址，客户端直拼 object_key（见 resource-access-control.md §9）
+            <<"public_base_url">> => elib_oss:public_base_url(),
             <<"login_pwd_rsa_encrypt">> => config_ds:env(login_pwd_rsa_encrypt, <<"off">>),
             <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key)
         },

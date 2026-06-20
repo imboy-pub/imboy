@@ -1,58 +1,80 @@
 -module(attach_logic).
 %%%
-% 附件业务逻辑层（Garage S3 直传链路）
+% 附件业务逻辑层（Garage S3 多桶直传链路 + 统一资源访问控制）
 %
 % 三条职责：
-%   presign/3   生成绑定 uid 的上传 presigned PUT URL
-%   confirm/3   客户端 PUT 成功后回调，落 attachment 表（孤儿清理依赖此表）
-%   view_url/2  签发短时下载 presigned GET URL（替代 bucket 公开读）
+%   presign/5   按 scope 选桶 + 校验上传权 + 生成绑定 uid 的 presigned PUT URL
+%   confirm/5   PUT 成功回调：写归属守卫 + 上传权校验 + HEAD 核实 + 落库(含 scope)
+%   view_url/2  读鉴权 authorize/2（六分支）后，public 直读公开 URL，受限资源签短时 GET
+%
+% 归属两件独立的事：
+%   写归属(上传权) = object_key 的 u<Uid>/ 前缀 + can_upload/3 的 scope 权限
+%   读归属(访问权) = authorize/2 按 scope 分发（public/private/c2c/group/channel/moment）
+% 详见 docs/architecture/resource-access-control.md。
 %%%
 
--export([presign/3, confirm/3, view_url/2]).
+-export([presign/5, confirm/5, view_url/2]).
 
 -include("log.hrl").
 
 %% 上传 URL 有效期：1 小时（足够单文件上传）
 -define(PUT_EXPIRES, 3600).
-%% 下载 URL 有效期：10 分钟（客户端可在临近过期前缓存复用）
+%% 下载 URL 有效期：受限资源统一 600s（不分级，见设计文档第 8 节）
 -define(GET_EXPIRES, 600).
 
-%% @doc 生成上传 presigned PUT URL（ObjectKey 绑定 uid）
--spec presign(integer(), binary(), binary()) -> {ok, map()} | {error, invalid_file_type}.
-presign(Uid, FileName, MimeType) ->
+%% ===================================================================
+%% presign：选桶 + 上传权校验 + 生成 PUT URL
+%% ===================================================================
+
+-spec presign(integer(), binary(), binary(), binary(), binary() | undefined) ->
+    {ok, map()} | {error, invalid_file_type | forbidden | upload_not_supported}.
+presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
     case elib_oss:validate_file_type(MimeType) of
         false ->
             {error, invalid_file_type};
         true ->
-            ObjectKey = elib_oss:build_object_key(Uid, FileName),
-            PutUrl = elib_oss:presign_put_for_key(ObjectKey, MimeType, ?PUT_EXPIRES),
-            {ok, #{
-                <<"put_url">> => PutUrl,
-                <<"object_key">> => ObjectKey,
-                <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-            }}
+            case can_upload(Uid, Scope, ScopeRef) of
+                ok ->
+                    ObjectKey = elib_oss:build_object_key(Uid, Scope, ScopeRef, FileName),
+                    Bucket = elib_oss:get_bucket(Scope),
+                    PutUrl = elib_oss:presign_put_for_key(
+                        Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
+                    ),
+                    Base = #{
+                        <<"put_url">> => PutUrl,
+                        <<"object_key">> => ObjectKey,
+                        <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
+                    },
+                    {ok, maybe_public_url(Scope, ObjectKey, Base)};
+                {error, _} = E ->
+                    E
+            end
     end.
 
-%% @doc 客户端 PUT 成功后回调，落库附件元数据
-%% Meta: #{<<"md5">>, <<"mime_type">>, <<"size">>}（仅 md5 取自客户端，size/mime 以服务端核实为准）
-%%
-%% 两道防线：
-%%   1) 越权守卫：仅允许上报自己命名空间（u<Uid>/...）下的 ObjectKey
-%%   2) 真实性校验：向 Garage 发 HEAD 核实对象真实存在、真实大小≤上限、真实类型在白名单，
-%%      用真实值落库；不一致则删除对象并拒绝。杜绝客户端伪造 size/mime 或 confirm 不存在的 key。
--spec confirm(integer(), binary(), map()) ->
+%% ===================================================================
+%% confirm：写归属守卫 + 上传权校验 + HEAD 核实 + 落库
+%% ===================================================================
+
+-spec confirm(integer(), binary(), binary(), binary() | undefined, map()) ->
     {ok, map()}
     | {error,
         forbidden_key
+        | forbidden
+        | upload_not_supported
         | invalid_key
         | object_not_found
         | file_too_large
         | invalid_file_type
         | term()}.
-confirm(Uid, ObjectKey, Meta) ->
+confirm(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
     case elib_oss:owner_of_key(ObjectKey) of
         {ok, Uid} ->
-            verify_and_save(Uid, ObjectKey, Meta);
+            case can_upload(Uid, Scope, ScopeRef) of
+                ok ->
+                    verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta);
+                {error, _} = E ->
+                    E
+            end;
         {ok, _Other} ->
             {error, forbidden_key};
         {error, R} ->
@@ -60,9 +82,11 @@ confirm(Uid, ObjectKey, Meta) ->
     end.
 
 %% @doc 服务端 HEAD 核实真实性后落库（真实值覆盖客户端自报值）
--spec verify_and_save(integer(), binary(), map()) -> {ok, map()} | {error, term()}.
-verify_and_save(Uid, ObjectKey, Meta) ->
-    case elib_oss:head_object(ObjectKey) of
+-spec verify_and_save(integer(), binary(), binary(), binary() | undefined, map()) ->
+    {ok, map()} | {error, term()}.
+verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
+    Bucket = elib_oss:get_bucket(Scope),
+    case elib_oss:head_object(Bucket, ObjectKey) of
         {error, not_found} ->
             {error, object_not_found};
         {error, R} ->
@@ -70,61 +94,101 @@ verify_and_save(Uid, ObjectKey, Meta) ->
         {ok, #{size := RealSize, content_type := RealType}} ->
             case RealSize > elib_oss:max_file_size() of
                 true ->
-                    _ = (catch elib_oss:delete_object(ObjectKey)),
+                    _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
                     {error, file_too_large};
                 false ->
                     case elib_oss:validate_file_type(RealType) of
                         false ->
-                            _ = (catch elib_oss:delete_object(ObjectKey)),
+                            _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
                             {error, invalid_file_type};
                         true ->
-                            do_save(Uid, ObjectKey, Meta, RealSize, RealType)
+                            do_save(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType)
                     end
             end
     end.
 
--spec do_save(integer(), binary(), map(), non_neg_integer(), binary()) ->
+-spec do_save(
+    integer(), binary(), binary(), binary() | undefined, map(), non_neg_integer(), binary()
+) ->
     {ok, map()} | {error, term()}.
-do_save(Uid, ObjectKey, Meta, RealSize, RealType) ->
+do_save(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType) ->
     Attach = #{
         %% md5 仅作完整性参考，不作安全边界
         <<"md5">> => maps:get(<<"md5">>, Meta, <<>>),
         %% mime_type/size 一律采用服务端 HEAD 核实的真实值
         <<"mime_type">> => RealType,
         <<"name">> => filename:basename(ObjectKey),
-        %% path 存 ObjectKey，供孤儿清理 delete_object 使用
+        %% path/url 存 ObjectKey（受限读取经 view_url 签发，public 直读公开 URL）
         <<"path">> => ObjectKey,
-        %% url 同存 ObjectKey（不再落公开直链），读取时经 view_url 签发
         <<"url">> => ObjectKey,
-        <<"size">> => RealSize
+        <<"size">> => RealSize,
+        <<"scope">> => Scope,
+        <<"scope_ref">> => normalize_ref(ScopeRef)
     },
     Now = elib_dt:now(),
     try
         ok = elib_pg:with_tx(fun(Conn) ->
             attachment_ds:save(Conn, Now, Uid, [Attach])
         end),
-        {ok, #{<<"object_key">> => ObjectKey}}
+        {ok, maybe_public_url(Scope, ObjectKey, #{<<"object_key">> => ObjectKey})}
     catch
         Class:Reason ->
             ?ERROR_LOG(["attach_logic confirm save failed: ", Class, Reason]),
             {error, Reason}
     end.
 
-%% @doc 签发短时下载 URL（替代公开读），附带归属验证
-%% 验证 ObjectKey 是否由 Uid 上传（creator_user_id = Uid）。
-%% 未来可扩展：验证 ObjectKey 是否出现在 Uid 可见的会话消息中。
+%% ===================================================================
+%% 上传权校验 can_upload/3（confirm/presign 共用）
+%% ===================================================================
+
+-spec can_upload(integer(), binary(), binary() | undefined) ->
+    ok | {error, forbidden | upload_not_supported}.
+can_upload(_Uid, <<"public">>, _ScopeRef) ->
+    ok;
+can_upload(_Uid, <<"private">>, _ScopeRef) ->
+    ok;
+can_upload(Uid, <<"c2c">>, ScopeRef) ->
+    case conv_key_vo:c2c_members(ScopeRef) of
+        {ok, {A, B}} when Uid =:= A; Uid =:= B -> ok;
+        _ -> {error, forbidden}
+    end;
+can_upload(Uid, <<"group">>, ScopeRef) ->
+    case to_int(ScopeRef) of
+        {ok, Gid} ->
+            case group_member_ds:is_member(Gid, Uid) of
+                true -> ok;
+                false -> {error, forbidden}
+            end;
+        error ->
+            {error, forbidden}
+    end;
+%% channel/moment 上传侧本期未上线，dispatch 占位（读鉴权 authorize/2 已就位）
+can_upload(_Uid, <<"channel">>, _ScopeRef) ->
+    {error, upload_not_supported};
+can_upload(_Uid, <<"moment">>, _ScopeRef) ->
+    {error, upload_not_supported};
+can_upload(_Uid, _Scope, _ScopeRef) ->
+    {error, forbidden}.
+
+%% ===================================================================
+%% 读取鉴权 view_url/2 + authorize/2（六分支全就位）
+%% ===================================================================
+
 -spec view_url(integer(), binary()) -> {ok, binary()} | {error, forbidden}.
 view_url(Uid, ObjectKey) ->
-    case attachment_ds:find_by_path_and_uid(ObjectKey, Uid) of
-        {ok, _} ->
-            {ok, elib_oss:presign_get_for_key(ObjectKey, ?GET_EXPIRES)};
+    case attachment_ds:find_by_path(ObjectKey) of
+        {ok, Rec} ->
+            case authorize(Uid, Rec) of
+                true -> sign_view(Rec, ObjectKey);
+                false -> {error, forbidden}
+            end;
         {error, not_found} ->
             {error, forbidden};
         {error, Reason} ->
-            %% fail-closed：归属查询失败时拒绝签发（不再降级放行），
-            %% 避免存储/DB 故障成为越权下载他人附件的入口。
+            %% fail-closed：归属查询失败时拒绝签发（不降级放行），
+            %% 避免存储/DB 故障成为越权下载入口。
             ?ERROR_LOG([
-                "attach_logic:view_url ownership check failed (deny), uid=",
+                "attach_logic:view_url lookup failed (deny), uid=",
                 Uid,
                 " key=",
                 ObjectKey,
@@ -133,3 +197,89 @@ view_url(Uid, ObjectKey) ->
             ]),
             {error, forbidden}
     end.
+
+%% @doc 鉴权通过后出 URL：public 直读公开 URL（不签名），受限资源签短时 GET。
+-spec sign_view(map(), binary()) -> {ok, binary()}.
+sign_view(#{<<"scope">> := <<"public">>}, ObjectKey) ->
+    {ok, elib_oss:public_url_for_key(ObjectKey)};
+sign_view(Rec, ObjectKey) ->
+    Scope = maps:get(<<"scope">>, Rec, <<"private">>),
+    Bucket = elib_oss:get_bucket(Scope),
+    {ok, elib_oss:presign_get_for_key(Bucket, ObjectKey, ?GET_EXPIRES)}.
+
+%% @doc 读归属鉴权分发：Rec = #{scope, scope_ref, creator_user_id}
+-spec authorize(integer(), map()) -> boolean().
+authorize(Uid, Rec) ->
+    authorize(maps:get(<<"scope">>, Rec, <<"private">>), Uid, Rec).
+
+-spec authorize(binary(), integer(), map()) -> boolean().
+authorize(<<"public">>, _Uid, _Rec) ->
+    true;
+authorize(<<"private">>, Uid, Rec) ->
+    Uid =:= maps:get(<<"creator_user_id">>, Rec, 0);
+authorize(<<"c2c">>, Uid, Rec) ->
+    case conv_key_vo:c2c_members(scope_ref(Rec)) of
+        {ok, {A, B}} -> Uid =:= A orelse Uid =:= B;
+        _ -> false
+    end;
+authorize(<<"group">>, Uid, Rec) ->
+    case to_int(scope_ref(Rec)) of
+        {ok, Gid} -> group_member_ds:is_member(Gid, Uid);
+        error -> false
+    end;
+authorize(<<"channel">>, Uid, Rec) ->
+    case to_int(scope_ref(Rec)) of
+        {ok, ChannelId} -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
+        error -> false
+    end;
+authorize(<<"moment">>, Uid, Rec) ->
+    case to_int(scope_ref(Rec)) of
+        {ok, MomentId} -> authorize_moment(Uid, MomentId);
+        error -> false
+    end;
+authorize(_Scope, _Uid, _Rec) ->
+    false.
+
+%% @doc 朋友圈动态：先取 Post 再按可见性规则判定（复用 moment_ds 现成 ACL）
+-spec authorize_moment(integer(), integer()) -> boolean().
+authorize_moment(Uid, MomentId) ->
+    case moment_ds:get_post(MomentId) of
+        Post when is_map(Post), map_size(Post) > 0 ->
+            moment_ds:can_view_post(Uid, Post);
+        _ ->
+            false
+    end.
+
+%% ===================================================================
+%% 内部辅助
+%% ===================================================================
+
+-spec maybe_public_url(binary(), binary(), map()) -> map().
+maybe_public_url(<<"public">>, ObjectKey, Map) ->
+    Map#{<<"public_url">> => elib_oss:public_url_for_key(ObjectKey)};
+maybe_public_url(_Scope, _ObjectKey, Map) ->
+    Map.
+
+-spec scope_ref(map()) -> binary() | undefined.
+scope_ref(Rec) ->
+    case maps:get(<<"scope_ref">>, Rec, undefined) of
+        null -> undefined;
+        V -> V
+    end.
+
+-spec to_int(binary() | integer() | undefined) -> {ok, integer()} | error.
+to_int(I) when is_integer(I) ->
+    {ok, I};
+to_int(B) when is_binary(B) ->
+    try
+        {ok, binary_to_integer(B)}
+    catch
+        _:_ -> error
+    end;
+to_int(_) ->
+    error.
+
+-spec normalize_ref(binary() | undefined) -> binary() | null.
+normalize_ref(undefined) -> null;
+normalize_ref(<<>>) -> null;
+normalize_ref(R) -> R.

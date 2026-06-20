@@ -11,6 +11,7 @@
 -module(conv_key_vo).
 
 -export([c2c/2, c2g/1, parse/1, value/1, type/1, equal/2]).
+-export([c2c_members/1]).
 
 -export_type([t/0, conv_type/0]).
 
@@ -71,6 +72,19 @@ value(#conv_key{v = V}) ->
 -spec type(t()) -> conv_type().
 type(#conv_key{type = T}) ->
     T.
+
+%% @doc 解析 c2c 持久化键并取回两个会话方 uid（升序 min/max）。
+%% 供资源读鉴权判定 "Uid 是否会话方" 复用；非合法 c2c 键一律拒绝。
+-spec c2c_members(binary()) -> {ok, {pos_integer(), pos_integer()}} | {error, invalid_conv_key}.
+c2c_members(Bin) ->
+    case parse(Bin) of
+        {ok, #conv_key{type = c2c, v = V}} ->
+            <<"c2c:", Rest/binary>> = V,
+            [MinBin, MaxBin] = binary:split(Rest, <<":">>),
+            {ok, {binary_to_integer(MinBin), binary_to_integer(MaxBin)}};
+        _ ->
+            {error, invalid_conv_key}
+    end.
 
 %% @doc 等值比较（按规范化后的键值）。
 -spec equal(t(), t()) -> boolean().

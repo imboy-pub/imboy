@@ -56,3 +56,13 @@ parse_c2c_normalizes_test() ->
 parse_invalid_test() ->
     ?assertEqual({error, invalid_conv_key}, conv_key_vo:parse(<<"foo">>)),
     ?assertEqual({error, invalid_conv_key}, conv_key_vo:parse(<<"c2c:1">>)).
+
+%% c2c_members 取回两会话方 uid（升序 min/max）。
+c2c_members_returns_min_max_test() ->
+    ?assertEqual({ok, {2, 9}}, conv_key_vo:c2c_members(<<"c2c:9:2">>)),
+    ?assertEqual({ok, {2, 9}}, conv_key_vo:c2c_members(<<"c2c:2:9">>)).
+
+%% c2c_members 拒绝 c2g 与非法键。
+c2c_members_rejects_non_c2c_test() ->
+    ?assertEqual({error, invalid_conv_key}, conv_key_vo:c2c_members(<<"c2g:100">>)),
+    ?assertEqual({error, invalid_conv_key}, conv_key_vo:c2c_members(<<"foo">>)).
