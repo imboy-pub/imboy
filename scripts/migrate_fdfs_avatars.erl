@@ -18,8 +18,9 @@
 %%%
 %%% 待确认点（运行前核对）：
 %%%   1. FdfsBase：fastdfs 实际可下载基址
-%%%   2. elib_oss:upload/3 是否落入 public(头像)桶且返回客户端可直读 URL
-%%%   3. 客户端是否识别返回的 Garage URL 格式（完整 http URL 通常直接用）
+%%%   2. public 桶（get_bucket(<<"public">>) = imboy-public）在 prod 已建好且 public_url 可直读
+%%%   3. 客户端是否识别返回的 Garage public_url 格式（完整 http URL 通常直接用）
+%%% 落桶已显式走 public：put_object(get_bucket(public), u<Uid>/avatar/..., Body, Mime)
 
 -module(migrate_fdfs_avatars).
 -export([run/2]).
@@ -49,7 +50,12 @@ migrate_one(FdfsBase, Mode, #{<<"id">> := Uid, <<"avatar">> := Av}) ->
                 {ok, {{_, 200, _}, _, Body}} =
                     httpc:request(get, {binary_to_list(Url), []}, [], [{body_format, binary}]),
                 Name = filename:basename(Av),
-                {ok, NewUrl, _Fid} = elib_oss:upload(Body, Name, #{}),
+                Mime = avatar_mime(Name),
+                %% public 头像桶 + u<Uid>/avatar/<Ymd>/<hex>.<ext>，与新头像链路一致
+                ObjectKey = elib_oss:build_object_key(Uid, <<"public">>, undefined, Name),
+                Bucket = elib_oss:get_bucket(<<"public">>),
+                ok = elib_oss:put_object(Bucket, ObjectKey, Body, Mime),
+                NewUrl = elib_oss:public_url_for_key(ObjectKey),
                 error_logger:info_msg("avatar_migrate uid=~p old=~s new=~s~n", [Uid, Av, NewUrl]),
                 {ok, 1} = elib_pg:execute(
                     <<"UPDATE public.\"user\" SET avatar=$1 WHERE id=$2">>, [NewUrl, Uid]
@@ -61,4 +67,12 @@ migrate_one(FdfsBase, Mode, #{<<"id">> := Uid, <<"avatar">> := Av}) ->
                     io:format("  [skip] uid=~p err=~p:~p~n", [Uid, C, R]),
                     skip
             end
+    end.
+
+avatar_mime(Name) ->
+    case filename:extension(Name) of
+        <<".png">> -> <<"image/png">>;
+        <<".gif">> -> <<"image/gif">>;
+        <<".webp">> -> <<"image/webp">>;
+        _ -> <<"image/jpeg">>
     end.

@@ -15,6 +15,7 @@
 -export([upload/2, upload/3]).
 -export([get_url/1]).
 -export([presign_put/3, presign_put_for_key/3, presign_put_for_key/4]).
+-export([put_object/4]).
 -export([presign_get_for_key/2, presign_get_for_key/3]).
 -export([build_object_key/2, build_object_key/4, owner_of_key/1]).
 -export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
@@ -84,6 +85,22 @@ upload(FileBinary, FileName, Options) ->
                         {error, Reason} -> {error, Reason}
                     end
             end
+    end.
+
+%% @doc 服务端把 binary 直接 PUT 到指定桶（头像迁移等服务端写入场景）。
+%% 复用 presign_put 短时签名 URL + httpc PUT，避免重复签名逻辑。
+-spec put_object(binary(), binary(), binary(), binary()) -> ok | {error, term()}.
+put_object(Bucket, ObjectKey, Bin, MimeType) ->
+    Endpoint = endpoint(),
+    Url = elib_s3_sign:presign_put(Endpoint, Bucket, ObjectKey, MimeType, 300),
+    Req = {binary_to_list(Url), [], binary_to_list(MimeType), Bin},
+    case httpc:request(put, Req, [], []) of
+        {ok, {{_, S, _}, _, _}} when S >= 200, S < 300 ->
+            ok;
+        {ok, {{_, S, _}, _, Body}} ->
+            {error, {http_status, S, Body}};
+        {error, R} ->
+            {error, R}
     end.
 
 %% @doc 生成 presigned PUT URL（Flutter 直传，不经 Erlang 代理）
