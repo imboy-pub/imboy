@@ -91,9 +91,13 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
                 MimeType
         end,
 
-    % 拼接ON CONFLICT子句
+    % 拼接 ON CONFLICT 子句。
+    % 去重键用 path(object_key)，非 md5：object_key 由 build_object_key 构造，
+    % 含毫秒时间戳 + 随机串，每次上传天然唯一，仅 confirm 重试/同附件收藏会命中
+    % → DO UPDATE 递增 referer（幂等）。md5 仅作文件 hash 完整性参考，不再做全局唯一去重
+    % （旧 md5 唯一约束在多 scope/多 owner 下会把 path/scope 锁死成首条，导致越权/孤儿，见迁移 000015）。
     OnConflictUpdate = <<
-        "ON CONFLICT (md5) DO UPDATE SET "
+        "ON CONFLICT (path) DO UPDATE SET "
         "last_referer_user_id = EXCLUDED.last_referer_user_id, "
         "last_referer_at = EXCLUDED.last_referer_at, "
         "updated_at = EXCLUDED.updated_at, "

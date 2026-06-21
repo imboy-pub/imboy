@@ -946,6 +946,20 @@ default_sidebar_config() ->
                         <<"label">> => <<"插件管理"/utf8>>,
                         <<"roles">> => [1, 2],
                         <<"permission">> => <<"plugins:read">>
+                    },
+                    #{
+                        <<"path">> => <<"/storage">>,
+                        <<"icon">> => <<"HardDrive">>,
+                        <<"label">> => <<"存储管理"/utf8>>,
+                        <<"roles">> => [1],
+                        <<"permission">> => <<"storage:view">>
+                    },
+                    #{
+                        <<"path">> => <<"/system-health">>,
+                        <<"icon">> => <<"HeartPulse">>,
+                        <<"label">> => <<"系统健康"/utf8>>,
+                        <<"roles">> => [1],
+                        <<"permission">> => <<"settings:view">>
                     }
                 ]
             }
