@@ -88,6 +88,17 @@
   .cta.ghost { border: 1px solid var(--line); color: var(--ink); }
   .cta.ghost:hover { border-color: var(--accent); color: var(--accent-deep); }
 
+  section.why { padding: calc(var(--space) * .55) 0 0; }
+  .why-grid { display: grid; gap: 1.2rem; grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 880px) { .why-grid { grid-template-columns: 1fr 1fr; } }
+  .why-tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.5rem 1.3rem; box-shadow: var(--shadow); }
+  .why-tile h4 { margin: 0 0 .4rem; font-size: 1.02rem; }
+  .why-tile p { margin: 0; font-size: .88rem; color: var(--muted); }
+  .cost { margin-top: 1.4rem; background: linear-gradient(135deg, var(--accent), var(--accent-deep)); color: #fff; border-radius: var(--radius); padding: 1.5rem 1.8rem; text-align: center; box-shadow: var(--shadow-lift); }
+  .cost strong { font-size: 1.4rem; }
+  #contact { text-align: center; padding: var(--space) 0; }
+  #contact .box { display: inline-block; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.6rem 2.2rem; box-shadow: var(--shadow); }
+
   section.compare { padding: var(--space) 0; }
   section.compare h2 { font-size: clamp(1.6rem, 1.1rem + 2vw, 2.4rem); text-align: center; margin: 0 0 2.5rem; letter-spacing: -.01em; }
   table { width: 100%; border-collapse: collapse; font-size: .94rem; background: var(--surface); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
@@ -113,6 +124,18 @@
       <p class="sub">开箱即用的 IM 内核：C2C/C2G 消息、E2EE 端对端加密、付费频道、钱包支付、可观测部署栈。开源即用，按规模升级。</p>
     </div>
   </header>
+
+  <section class="why">
+    <div class="wrap">
+      <div class="why-grid">
+        <div class="why-tile"><h4>🔒 端到端加密</h4><p>RSA-OAEP-256 + AES-256-GCM，服务端不解密密文，数据主权完全自主。</p></div>
+        <div class="why-tile"><h4>⚡ Erlang 高并发</h4><p>OTP 28 内核，单机支撑上万并发长连接，比 Java 系显著省服务器。</p></div>
+        <div class="why-tile"><h4>💰 内置钱包支付</h4><p>金融级钱包 + 付费频道 + 订阅，原生支撑创作者经济与付费社群。</p></div>
+        <div class="why-tile"><h4>🚀 一键部署白标</h4><p>一条命令拉起全栈 + Grafana 可观测；改一处配置即可换牌定制。</p></div>
+      </div>
+      <div class="cost">同等规模商业 IM（如 Slack / 企微 200 人）约 <strong>$21,000 / 年</strong>，自托管 imboy 硬件成本 <strong>&lt; ¥3,000 / 年</strong>，且数据不出私网。</div>
+    </div>
+  </section>
 
   <div class="wrap">
     <div class="grid">
@@ -149,7 +172,7 @@
           <li>优先技术支持 SLA</li>
           <li class="off">信创国产化 / SSO 审计</li>
         </ul>
-        <a class="cta solid" href="#">联系销售</a>
+        <a class="cta solid" href="#contact">联系销售</a>
       </div>
 
       <!-- 企业版 -->
@@ -167,7 +190,7 @@
           <li>定制开发与集成</li>
           <li>数据不出境保障</li>
         </ul>
-        <a class="cta ghost" href="#">商务洽谈</a>
+        <a class="cta ghost" href="#contact">商务洽谈</a>
       </div>
     </div>
   </div>
@@ -199,6 +222,16 @@
         </tbody>
       </table>
       <p class="note">价格为建议参考价（专业版对标主流私有化 IM 终身授权区间）。最终授权方式、规模上限与信创适配范围以商务报价为准。社区版规模上限由 License 授权层控制，购买专业版/企业版解锁更高上限。</p>
+    </div>
+  </section>
+
+  <section id="contact">
+    <div class="wrap">
+      <div class="box">
+        <p style="margin:0 0 .5rem;font-weight:600;font-size:1.1rem">私有化授权 / 定制开发咨询</p>
+        <!-- TODO 联系方式由项目方人工填写，勿用占位值对外发布 -->
+        <p style="margin:0;color:var(--muted)">联系方式：______________（待填）</p>
+      </div>
     </div>
   </section>
 
