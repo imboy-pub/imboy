@@ -615,3 +615,63 @@ upload_garage_not_configured_test_() ->
             elib_oss:upload(<<"data">>, <<"photo.jpg">>, #{mime_type => <<"image/jpeg">>})
         )
     end).
+
+%%%===================================================================
+%%% put_object/4 —— 服务端 PUT 到指定桶（头像迁移用），mock S3 与 httpc
+%%%===================================================================
+
+put_object_2xx_returns_ok_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [{'presign_put', 5, fun(_, _, _, _, _) -> <<"http://h/b/k">> end}]},
+            {httpc, [
+                {'request', 4, fun(put, _, _, _) ->
+                    {ok, {{<<"HTTP/1.1">>, 200, <<"OK">>}, [], <<>>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                elib_oss:put_object(
+                    <<"imboy-public">>, <<"u3/avatar/x.jpg">>, <<"bin">>, <<"image/jpeg">>
+                )
+            )
+        end
+    ).
+
+put_object_non2xx_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [{'presign_put', 5, fun(_, _, _, _, _) -> <<"http://h/b/k">> end}]},
+            {httpc, [
+                {'request', 4, fun(put, _, _, _) ->
+                    {ok, {{<<"HTTP/1.1">>, 403, <<"Forbidden">>}, [], <<"AccessDenied">>}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, {http_status, 403, <<"AccessDenied">>}},
+                elib_oss:put_object(
+                    <<"imboy-public">>, <<"u3/avatar/x.jpg">>, <<"bin">>, <<"image/jpeg">>
+                )
+            )
+        end
+    ).
+
+put_object_httpc_error_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_s3_sign, [{'presign_put', 5, fun(_, _, _, _, _) -> <<"http://h/b/k">> end}]},
+            {httpc, [{'request', 4, fun(put, _, _, _) -> {error, timeout} end}]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, timeout},
+                elib_oss:put_object(
+                    <<"imboy-public">>, <<"u3/avatar/x.jpg">>, <<"bin">>, <<"image/jpeg">>
+                )
+            )
+        end
+    ).
