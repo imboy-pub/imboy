@@ -200,8 +200,19 @@ view_url(Uid, ObjectKey) ->
 
 %% @doc 鉴权通过后出 URL：public 直读公开 URL（不签名），受限资源签短时 GET。
 -spec sign_view(map(), binary()) -> {ok, binary()}.
-sign_view(#{<<"scope">> := <<"public">>}, ObjectKey) ->
+sign_view(#{<<"scope">> := <<"public">>}, <<"u", _/binary>> = ObjectKey) ->
     {ok, elib_oss:public_url_for_key(ObjectKey)};
+sign_view(Rec, <<"/", _/binary>> = ObjectKey) ->
+    %% 旧 go-fastdfs 历史附件：path 以 / 开头，非 Garage object_key（Garage key 恒为 u<Uid>/）。
+    %% Garage 无此对象，签 GET 必 404 → 回退返回存储 url（经 nginx 反代可达）；
+    %% url 缺失则用 path 本身（相对 fastdfs URL）。
+    Url =
+        case maps:get(<<"url">>, Rec, null) of
+            null -> ObjectKey;
+            <<>> -> ObjectKey;
+            U -> U
+        end,
+    {ok, Url};
 sign_view(Rec, ObjectKey) ->
     Scope = maps:get(<<"scope">>, Rec, <<"private">>),
     Bucket = elib_oss:get_bucket(Scope),

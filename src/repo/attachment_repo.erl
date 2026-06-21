@@ -350,7 +350,7 @@ find_by_path_and_uid(ObjectKey, Uid) ->
 find_by_path(ObjectKey) ->
     Tb = tablename(),
     Sql =
-        <<"SELECT id, path, creator_user_id, scope, scope_ref FROM ", Tb/binary,
+        <<"SELECT id, path, url, creator_user_id, scope, scope_ref FROM ", Tb/binary,
             " WHERE path = $1 AND status >= 0 LIMIT 1">>,
     case elib_pg:query(Sql, [ObjectKey]) of
         {ok, [Row]} -> {ok, Row};
