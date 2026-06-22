@@ -150,7 +150,7 @@ wait_for_port() {
   local port=$1
   ssh_exec "
     for i in \$(seq 1 20); do
-      ss -tlnH "sport = :$port" 2>/dev/null | grep -q . && exit 0
+      ss -tlnH \"sport = :$port\" 2>/dev/null | grep -q . && exit 0
       sleep 2
     done
     exit 1
@@ -208,6 +208,7 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
     --exclude='deps/' \
     --exclude='log/' \
     --exclude='*.beam' \
+    --exclude='*.d' \
     --exclude='config/sys.pro.config' \
     --exclude='config/sys.runtime.config' \
     --exclude='scripts/.env.deploy' \
