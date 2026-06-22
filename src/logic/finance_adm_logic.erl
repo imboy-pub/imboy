@@ -19,6 +19,9 @@
 -export([list_wallet_transactions/3]).
 -export([list_recharge_orders/3]).
 -export([list_payment_transactions/3]).
+-export([list_withdrawals/3]).
+-export([complete_withdrawal/1]).
+-export([reject_withdrawal/1]).
 
 -include("log.hrl").
 
@@ -82,6 +85,29 @@ list_payment_transactions(Filter, Page, Size) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+%% @doc 提现流水分页（运营，跨用户，tx_type=10）
+%% @param Filter map，可选 user_id / status
+-spec list_withdrawals(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+list_withdrawals(Filter, Page, Size) ->
+    WhereMap = build_where(Filter, [user_id, status]),
+    case wallet_ds:page_withdrawals(WhereMap, Page, Size) of
+        {ok, Payload} ->
+            {ok, normalize_payload(Payload, [<<"id">>, <<"wallet_id">>, <<"user_id">>])};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 标记提现完成（admin 已手动转账后调用）
+%% 仅操作 status=0 的待处理记录，防止重复操作。
+-spec complete_withdrawal(integer()) -> {ok, non_neg_integer()} | {error, term()}.
+complete_withdrawal(TxId) ->
+    wallet_ds:update_tx_status(TxId, 1).
+
+%% @doc 拒绝提现并原子退款：status=2 + 余额还原 + 写退款流水
+-spec reject_withdrawal(integer()) -> {ok, 0 | 1} | {error, term()}.
+reject_withdrawal(TxId) ->
+    wallet_ds:reject_and_refund(TxId).
 
 %% ===================================================================
 %% Internal

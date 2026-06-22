@@ -94,32 +94,38 @@ signup(Mobile, Pwd, Email, PostVals) when
         ok ->
             case prepare_compat_mobile(Mobile) of
                 ok ->
-                    Nickname = compat_signup_nickname(Mobile, PostVals),
-                    Email2 = compat_signup_email(Email),
-                    PostVals2 = PostVals#{
-                        <<"nickname">> => Nickname
-                    },
-                    BaseData0 = #{
-                        <<"password">> => elib_password:generate(Pwd),
-                        <<"mobile">> => Mobile,
-                        <<"account">> => Mobile
-                    },
-                    BaseData =
-                        case Email2 of
-                            undefined ->
-                                BaseData0;
-                            _ ->
-                                BaseData0#{<<"email">> => Email2}
-                        end,
-                    Data = pick_data_for_insert(BaseData, PostVals2),
-                    case user_ds:insert_and_get_id(Data) of
-                        {ok, Uid} ->
-                            User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
-                            {ok, login_resp(User, #{})};
-                        {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                            {error, <<"账号已被占用"/utf8>>, 400};
-                        {error, Reason} ->
-                            {error, compat_error_message(Reason), 400}
+                    case quota_guard() of
+                        {error, _, _} = QErr ->
+                            QErr;
+                        ok ->
+                            Nickname = compat_signup_nickname(Mobile, PostVals),
+                            Email2 = compat_signup_email(Email),
+                            PostVals2 = PostVals#{
+                                <<"nickname">> => Nickname
+                            },
+                            BaseData0 = #{
+                                <<"password">> => elib_password:generate(Pwd),
+                                <<"mobile">> => Mobile,
+                                <<"account">> => Mobile
+                            },
+                            BaseData =
+                                case Email2 of
+                                    undefined ->
+                                        BaseData0;
+                                    _ ->
+                                        BaseData0#{<<"email">> => Email2}
+                                end,
+                            Data = pick_data_for_insert(BaseData, PostVals2),
+                            case user_ds:insert_and_get_id(Data) of
+                                {ok, Uid} ->
+                                    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+                                    {ok, login_resp(User, #{})};
+                                {error,
+                                    {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+                                    {error, <<"账号已被占用"/utf8>>, 400};
+                                {error, Reason} ->
+                                    {error, compat_error_message(Reason), 400}
+                            end
                     end;
                 {error, Msg, Code} ->
                     {error, Msg, Code}

@@ -32,7 +32,7 @@ withdraw(Uid, Amount, Method, Account) ->
                         % 提现
                         <<"tx_type">> => 10,
                         <<"remark">> => Remark,
-                        <<"status">> => 1
+                        <<"status">> => 0
                     },
                     RefNo = gen_ref_no(),
                     case wallet_ds:atomic_balance_change(-Amount, Uid, TxData, RefNo) of

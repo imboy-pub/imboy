@@ -9,6 +9,9 @@
 -export([find_transaction_by_ref/1]).
 -export([page_transactions/3]).
 -export([page/3]).
+-export([page_withdrawals/3]).
+-export([update_tx_status/2]).
+-export([reject_and_refund/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -159,6 +162,72 @@ atomic_balance_change(Amount, Uid, TxData, RefNo) ->
             {ok, 0} ->
                 %% 余额不足或用户不存在
                 throw({rollback, insufficient_balance});
+            {error, Reason} ->
+                throw({rollback, Reason})
+        end
+    end).
+
+%% @doc 提现流水分页（运营后台跨用户，固定 tx_type=10）
+-spec page_withdrawals(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page_withdrawals(WhereMap, Page, Size) ->
+    Tb = tx_tablename(),
+    Column =
+        <<"id, wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark, status, created_at">>,
+    Where2 = WhereMap#{tx_type => 10},
+    elib_pg:page_with_total(Tb, Column, Where2, <<"id desc">>, Page, Size).
+
+%% @doc 更新提现流水状态（仅操作 tx_type=10 且 status=0 的待处理记录）
+%% Status: 1=完成 2=拒绝
+-spec update_tx_status(integer(), 1 | 2) -> {ok, non_neg_integer()} | {error, term()}.
+update_tx_status(TxId, Status) ->
+    Tb = tx_tablename(),
+    elib_pg:update(Tb, #{<<"status">> => Status}, <<"id = $1 AND tx_type = 10 AND status = 0">>, [
+        TxId
+    ]).
+
+%% @doc 原子拒绝提现并退款：status=2 + 退还余额 + 写退款流水（tx_type=11）
+%% 返回 {ok,1} 成功，{ok,0} 记录不存在或已处理，{error,Reason} DB 错误
+-spec reject_and_refund(integer()) -> {ok, 0 | 1} | {error, term()}.
+reject_and_refund(TxId) ->
+    Tb = tablename(),
+    TxTb = tx_tablename(),
+    elib_pg:with_tx(fun(Conn) ->
+        MarkSql =
+            <<"UPDATE ", TxTb/binary,
+                " SET status = 2 WHERE id = $1 AND tx_type = 10 AND status = 0"
+                " RETURNING amount, user_id, wallet_id">>,
+        case elib_pg:execute(Conn, MarkSql, [TxId]) of
+            {ok, 0} ->
+                {ok, 0};
+            {ok, 1, [{Amount, Uid, WalletId}]} ->
+                Refund = erlang:abs(Amount),
+                BalSql =
+                    <<"UPDATE ", Tb/binary,
+                        " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
+                        " WHERE user_id = $2"
+                        " RETURNING balance">>,
+                case elib_pg:execute(Conn, BalSql, [Refund, Uid]) of
+                    {ok, 1, [{NewBalance}]} ->
+                        RefNo = <<"WRF_", (integer_to_binary(TxId))/binary>>,
+                        RefundTxId = elib_tsid:generate(wallet_transaction),
+                        {TxSql, TxParams} = elib_pg_sql:insert(TxTb, #{
+                            <<"id">> => RefundTxId,
+                            <<"wallet_id">> => WalletId,
+                            <<"user_id">> => Uid,
+                            <<"amount">> => Refund,
+                            <<"balance_after">> => NewBalance,
+                            <<"tx_type">> => 11,
+                            <<"reference_no">> => RefNo,
+                            <<"remark">> => <<"提现拒绝退款"/utf8>>,
+                            <<"status">> => 1
+                        }),
+                        case elib_pg:execute(Conn, TxSql, TxParams) of
+                            {ok, _} -> {ok, 1};
+                            {error, Reason2} -> throw({rollback, Reason2})
+                        end;
+                    {error, Reason} ->
+                        throw({rollback, Reason})
+                end;
             {error, Reason} ->
                 throw({rollback, Reason})
         end

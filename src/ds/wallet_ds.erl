@@ -24,6 +24,8 @@
 -export([atomic_balance_change/4]).
 %% 幂等查询：payment_wallet_gateway 用 reference_no 防止重复入账
 -export([find_transaction_by_ref/1]).
+%% 运营后台：提现流水分页 + 状态更新
+-export([page_withdrawals/3, update_tx_status/2, reject_and_refund/1]).
 
 -include("log.hrl").
 
@@ -107,3 +109,17 @@ find_transaction_by_ref(RefNo) ->
 %% G3: wallet_handler 不应直调 wallet_repo:create
 -spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data) -> wallet_repo:create(Data).
+
+%% @doc 提现流水分页（运营后台，跨用户，固定 tx_type=10）
+-spec page_withdrawals(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page_withdrawals(WhereMap, Page, Size) ->
+    wallet_repo:page_withdrawals(WhereMap, Page, Size).
+
+%% @doc 更新提现流水状态（1=完成，2=拒绝；仅操作 status=0 的待处理记录）
+-spec update_tx_status(integer(), 1 | 2) -> {ok, non_neg_integer()} | {error, term()}.
+update_tx_status(TxId, Status) ->
+    wallet_repo:update_tx_status(TxId, Status).
+
+-spec reject_and_refund(integer()) -> {ok, 0 | 1} | {error, term()}.
+reject_and_refund(TxId) ->
+    wallet_repo:reject_and_refund(TxId).

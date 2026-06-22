@@ -15,6 +15,12 @@
 {$API_DOMAIN} {
 	encode gzip zstd
 
+	# 指标端点禁止公网访问：Prometheus 走 docker 内网 imboy_backend:9800/metrics 抓取，
+	# 不经 Caddy。后端 is_internal_ip 校验 TCP peer，反代后 peer 是内网 IP 会被放行，
+	# 故必须在入口拦截，否则泄露 License/用户数/系统指标。
+	@metrics path /metrics /v1/metrics
+	respond @metrics 403
+
 	# WebSocket + REST 同源转发
 	reverse_proxy imboy_backend:9800 {
 		header_up Host {host}

@@ -760,6 +760,9 @@ get_routes() ->
             action => billing_subscriptions
         }},
         {"/adm/finance/billing/invoices", adm_finance_handler, #{action => billing_invoices}},
+        {"/adm/finance/withdrawals", adm_finance_handler, #{action => withdrawals}},
+        {"/adm/finance/withdrawals/complete", adm_finance_handler, #{action => withdrawal_complete}},
+        {"/adm/finance/withdrawals/reject", adm_finance_handler, #{action => withdrawal_reject}},
         % Moment 与举报治理 API
         {"/adm/moment/list", adm_moment_handler, #{action => list}},
         {"/adm/moment/detail/:moment_id", adm_moment_handler, #{action => detail}},
@@ -808,6 +811,8 @@ get_routes() ->
         {"/adm/stats/group", adm_stats_handler, #{action => group}},
         {"/adm/stats/ranking", adm_stats_handler, #{action => ranking}},
         {"/adm/stats/license", adm_stats_handler, #{action => license}},
+        {"/adm/stats/finance", adm_stats_handler, #{action => finance_summary}},
+        {"/adm/stats/finance/report", adm_stats_handler, #{action => finance_report}},
         {"/static/admin/[...]", cowboy_static,
             {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
     ],

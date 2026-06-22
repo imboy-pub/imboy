@@ -31,7 +31,7 @@ start(_Type, _Args) ->
         dc_bits => TsidDcBits,
         names => tsid_generator_names()
     }),
-    % 初始化集群管理
+    % 初始化集群管理（join_cluster 内部已含 License 节点数告警）
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
     _ = simple_captcha_ets:init(),

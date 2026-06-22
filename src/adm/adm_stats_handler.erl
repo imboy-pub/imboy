@@ -30,6 +30,8 @@ init(Req0, State0) ->
             group -> group(Method, Req0, State);
             ranking -> ranking(Method, Req0, State);
             license -> license(Method, Req0, State);
+            finance_summary -> finance_summary(Method, Req0, State);
+            finance_report -> finance_report(Method, Req0, State);
             ux_events -> ux_events(Method, Req0, State);
             _ -> Req0
         end,
@@ -55,8 +57,54 @@ license(<<"GET">>, Req0, _State) ->
         expires_at => maps:get(expires_at, Info, 0)
     },
     elib_response:success(Req0, Result);
+license(<<"POST">>, Req0, _State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Params = jsone:decode(Body, [{keys, binary}, {object_format, map}]),
+    LicenseText = maps:get(<<"license_text">>, Params, <<>>),
+    case byte_size(LicenseText) of
+        0 ->
+            elib_response:error(Req1, <<"license_text 不能为空"/utf8>>, 400);
+        _ ->
+            case license_write_and_reload(LicenseText) of
+                ok ->
+                    Info = imboy_license:info(),
+                    Result = #{
+                        edition => maps:get(edition, Info, <<"community">>),
+                        valid => maps:get(valid, Info, false),
+                        status => atom_to_binary(maps:get(status, Info, community), utf8),
+                        max_users => maps:get(max_users, Info, 0),
+                        max_nodes => maps:get(max_nodes, Info, 0),
+                        licensee => maps:get(licensee, Info, <<>>),
+                        expires_at => maps:get(expires_at, Info, 0)
+                    },
+                    elib_response:success(Req1, Result);
+                {error, Msg} ->
+                    elib_response:error(Req1, Msg, 400)
+            end
+    end;
 license(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 将 license 文本写入文件并热加载（无需重启）
+-spec license_write_and_reload(binary()) -> ok | {error, binary()}.
+license_write_and_reload(Text) ->
+    Path =
+        case os:getenv("IMBOY_LICENSE_FILE") of
+            P when is_list(P), P =/= "" ->
+                P;
+            _ ->
+                filename:join(code:priv_dir(imboy), "license.key")
+        end,
+    case file:write_file(Path, Text) of
+        ok ->
+            ok = imboy_license:load_and_validate(),
+            ok;
+        {error, Reason} ->
+            Msg = unicode:characters_to_binary(
+                io_lib:format("写入 license 文件失败: ~p", [Reason])
+            ),
+            {error, Msg}
+    end.
 
 %% @doc 总览统计
 -spec overview(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -184,6 +232,62 @@ ranking(<<"GET">>, Req0, _State) ->
         end,
     elib_response:success(Req0, #{list => Result}).
 
+%% @doc 财务概览 GET /adm/stats/finance
+%% 返回当前有效订阅数与待处理提现数，供 Dashboard 展示商业化健康度。
+-spec finance_summary(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+finance_summary(<<"GET">>, Req0, _State) ->
+    ActiveSubs = count_by_status(<<"billing_subscription">>, 1),
+    PendingWd = count_pending_withdrawals(),
+    elib_response:success(Req0, #{
+        active_subscriptions => ActiveSubs,
+        pending_withdrawals => PendingWd
+    });
+finance_summary(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 财务月度报表 GET /adm/stats/finance/report?months=6
+-spec finance_report(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+finance_report(<<"GET">>, Req0, _State) ->
+    {ok, Months0} = elib_param:int(months, Req0, 6),
+    Months = min(max(Months0, 1), 24),
+    Sql = <<
+        "WITH months AS ("
+        "  SELECT TO_CHAR(d, 'YYYY-MM') AS month"
+        "  FROM generate_series("
+        "    DATE_TRUNC('month', NOW()) - ($1::int - 1) * INTERVAL '1 month',"
+        "    DATE_TRUNC('month', NOW()),"
+        "    INTERVAL '1 month'"
+        "  ) d"
+        "),"
+        "r AS ("
+        "  SELECT TO_CHAR(DATE_TRUNC('month', paid_at), 'YYYY-MM') AS month,"
+        "    SUM(amount) AS amount, COUNT(*) AS cnt"
+        "  FROM recharge_order WHERE status = 2 GROUP BY 1"
+        "),"
+        "s AS ("
+        "  SELECT TO_CHAR(DATE_TRUNC('month', paid_at), 'YYYY-MM') AS month,"
+        "    SUM(amount) AS amount, COUNT(*) AS cnt"
+        "  FROM billing_invoice WHERE status = 1 GROUP BY 1"
+        ")"
+        "SELECT m.month,"
+        "  COALESCE(r.amount, 0) AS recharge_amount,"
+        "  COALESCE(r.cnt, 0) AS recharge_count,"
+        "  COALESCE(s.amount, 0) AS subscription_amount,"
+        "  COALESCE(s.cnt, 0) AS subscription_count"
+        " FROM months m"
+        " LEFT JOIN r ON m.month = r.month"
+        " LEFT JOIN s ON m.month = s.month"
+        " ORDER BY m.month"
+    >>,
+    Rows =
+        case elib_pg:query(Sql, [Months]) of
+            {ok, R} -> R;
+            _ -> []
+        end,
+    elib_response:success(Req0, #{data => Rows, months => Months});
+finance_report(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
 %% @doc UX 埋点事件上报接收端
 -spec ux_events(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 ux_events(<<"POST">>, Req0, State) ->
@@ -272,6 +376,16 @@ count_daily_messages(Table, Days) ->
 count_by_status(Table, Status) ->
     Sql = <<"SELECT COUNT(*) FROM ", (quoted_tb(Table))/binary, " WHERE status = $1">>,
     case elib_pg:one(Sql, [Status]) of
+        {ok, Row} when is_map(Row) -> map_count(Row);
+        _ -> 0
+    end.
+
+%% @doc 统计待处理提现（tx_type=10, status=0）
+count_pending_withdrawals() ->
+    Sql =
+        <<"SELECT COUNT(*) FROM ", (quoted_tb(<<"wallet_transaction">>))/binary,
+            " WHERE tx_type = 10 AND status = 0">>,
+    case elib_pg:one(Sql, []) of
         {ok, Row} when is_map(Row) -> map_count(Row);
         _ -> 0
     end.

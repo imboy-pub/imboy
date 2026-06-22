@@ -125,17 +125,49 @@ collect_system_metrics() ->
                 0
         end,
 
+    %% License 指标（fail-safe，避免 metrics 因 License 异常不可用）
+    LicenseMetrics = license_metrics(),
     maps:merge(
-        #{
-            erlang_process_count => ProcessCount,
-            erlang_memory_total_bytes => MemTotal,
-            erlang_memory_processes_bytes => MemProc,
-            erlang_memory_ets_bytes => MemEts,
-            imboy_online_users => OnlineCount,
-            ws_connections_current => WsConnections
-        },
-        PoolStatus
+        maps:merge(
+            #{
+                erlang_process_count => ProcessCount,
+                erlang_memory_total_bytes => MemTotal,
+                erlang_memory_processes_bytes => MemProc,
+                erlang_memory_ets_bytes => MemEts,
+                imboy_online_users => OnlineCount,
+                ws_connections_current => WsConnections
+            },
+            PoolStatus
+        ),
+        LicenseMetrics
     ).
+
+-spec license_metrics() -> map().
+license_metrics() ->
+    try imboy_license:info() of
+        Info ->
+            Valid =
+                case maps:get(valid, Info, false) of
+                    true -> 1;
+                    false -> 0
+                end,
+            CurUsers =
+                try
+                    user_ds:count()
+                catch
+                    _:_ -> 0
+                end,
+            #{
+                imboy_license_valid => Valid,
+                imboy_license_users_current => CurUsers,
+                imboy_license_users_max => maps:get(max_users, Info, 0),
+                imboy_license_nodes_current => length(nodes()) + 1,
+                imboy_license_nodes_max => maps:get(max_nodes, Info, 0),
+                imboy_license_expires_at => maps:get(expires_at, Info, 0)
+            }
+    catch
+        _:_ -> #{}
+    end.
 
 %% @doc 将指标格式化为 Prometheus text exposition format
 %% 支持带标签的计数器：metric_name{plugin="channel"} 42

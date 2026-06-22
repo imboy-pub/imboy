@@ -63,6 +63,9 @@ dispatch(billing_plan_create, Method, Req0, State) -> billing_plan_create(Method
 dispatch(billing_plan_update, Method, Req0, State) -> billing_plan_update(Method, Req0, State);
 dispatch(billing_subscriptions, Method, Req0, State) -> billing_subscriptions(Method, Req0, State);
 dispatch(billing_invoices, Method, Req0, State) -> billing_invoices(Method, Req0, State);
+dispatch(withdrawals, Method, Req0, State) -> withdrawals(Method, Req0, State);
+dispatch(withdrawal_complete, Method, Req0, State) -> withdrawal_complete(Method, Req0, State);
+dispatch(withdrawal_reject, Method, Req0, State) -> withdrawal_reject(Method, Req0, State);
 dispatch(_, _Method, Req0, _State) -> Req0.
 
 %% -------------------------------------------------------------------
@@ -266,6 +269,79 @@ billing_invoices(<<"GET">>, Req0, State) ->
         end
     end);
 billing_invoices(_, Req0, _State) ->
+    Req0.
+
+%% -------------------------------------------------------------------
+%% 提现列表 GET /adm/finance/withdrawals
+%% 筛选 user_id / status[0=待处理,1=已完成,2=已拒绝]
+%% -------------------------------------------------------------------
+-spec withdrawals(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+withdrawals(<<"GET">>, Req0, State) ->
+    with_read_perm(State, Req0, fun() ->
+        {Page, Size} = elib_param:page(Req0),
+        Qs = cowboy_req:parse_qs(Req0),
+        Filter = collect_filters(Qs, [
+            {<<"user_id">>, user_id, int},
+            {<<"status">>, status, int}
+        ]),
+        respond_list(Req0, finance_adm_logic:list_withdrawals(Filter, Page, Size))
+    end);
+withdrawals(_, Req0, _State) ->
+    Req0.
+
+%% -------------------------------------------------------------------
+%% 标记提现完成 POST /adm/finance/withdrawals/complete
+%% body: {"id": <tx_id>}
+%% -------------------------------------------------------------------
+-spec withdrawal_complete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+withdrawal_complete(<<"POST">>, Req0, State) ->
+    with_write_perm(State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        case parse_required_id(PostVals, <<"id">>) of
+            {error, Msg} ->
+                elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+            {ok, TxId} ->
+                case finance_adm_logic:complete_withdrawal(TxId) of
+                    {ok, 1} ->
+                        elib_response:success(Req0, #{}, <<"提现已标记完成"/utf8>>);
+                    {ok, 0} ->
+                        elib_response:error(
+                            Req0, <<"提现记录不存在或已处理"/utf8>>, ?ERR_BAD_REQUEST
+                        );
+                    {error, Reason} ->
+                        fail(Req0, <<"标记完成失败"/utf8>>, Reason)
+                end
+        end
+    end);
+withdrawal_complete(_, Req0, _State) ->
+    Req0.
+
+%% -------------------------------------------------------------------
+%% 拒绝提现 POST /adm/finance/withdrawals/reject
+%% body: {"id": <tx_id>}
+%% 原子操作：status=2 + 退还余额 + 写退款流水（tx_type=11）
+%% -------------------------------------------------------------------
+-spec withdrawal_reject(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+withdrawal_reject(<<"POST">>, Req0, State) ->
+    with_write_perm(State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        case parse_required_id(PostVals, <<"id">>) of
+            {error, Msg} ->
+                elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+            {ok, TxId} ->
+                case finance_adm_logic:reject_withdrawal(TxId) of
+                    {ok, 1} ->
+                        elib_response:success(Req0, #{}, <<"提现已拒绝"/utf8>>);
+                    {ok, 0} ->
+                        elib_response:error(
+                            Req0, <<"提现记录不存在或已处理"/utf8>>, ?ERR_BAD_REQUEST
+                        );
+                    {error, Reason} ->
+                        fail(Req0, <<"拒绝操作失败"/utf8>>, Reason)
+                end
+        end
+    end);
+withdrawal_reject(_, Req0, _State) ->
     Req0.
 
 %% ===================================================================
