@@ -24,7 +24,10 @@ license_test_() ->
         fun accessors_/0,
         fun valid_license_roundtrip_/0,
         fun tampered_license_downgrade_/0,
-        fun expired_license_downgrade_/0
+        fun expired_license_downgrade_/0,
+        fun trial_fresh_/0,
+        fun trial_expired_/0,
+        fun trial_file_init_/0
     ]}.
 
 setup() ->
@@ -150,6 +153,41 @@ expired_license_downgrade_() ->
         ?assertEqual(false, imboy_license:is_valid()),
         ?assertEqual(<<"community">>, imboy_license:edition())
     end).
+
+%%%===================================================================
+%%% 试用期自动签发（无 license 文件时）
+%%%===================================================================
+
+trial_fresh_() ->
+    Now = erlang:system_time(millisecond),
+    S = imboy_license:evaluate_trial(Now, Now),
+    ?assertEqual(true, maps:get(valid, S)),
+    ?assertEqual(<<"trial">>, maps:get(edition, S)),
+    %% 试用配额高于社区版（>100）
+    ?assert(maps:get(max_users, S) > 100).
+
+trial_expired_() ->
+    Now = erlang:system_time(millisecond),
+    %% 起始时间在 9999 天前 → 必然超过试用期 → 降级社区版
+    S = imboy_license:evaluate_trial(Now, Now - 9999 * 86400000),
+    ?assertEqual(false, maps:get(valid, S)),
+    ?assertEqual(<<"community">>, maps:get(edition, S)).
+
+trial_file_init_() ->
+    Tmp = write_tmp("trial", <<>>),
+    catch file:delete(Tmp),
+    Old = os:getenv("IMBOY_TRIAL_FILE"),
+    os:putenv("IMBOY_TRIAL_FILE", Tmp),
+    try
+        {ok, S1} = imboy_license:trial_start_ms(),
+        %% 二次读回一致（不重置起始时间）
+        {ok, S2} = imboy_license:trial_start_ms(),
+        ?assertEqual(S1, S2),
+        ?assert(S1 > 0)
+    after
+        restore_env("IMBOY_TRIAL_FILE", Old),
+        catch file:delete(Tmp)
+    end.
 
 %%%===================================================================
 %%% Helpers

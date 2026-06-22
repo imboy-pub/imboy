@@ -34,6 +34,7 @@ docker/pg_jieba
 docker/timescaledb
 priv/ssl
 priv/dev_keys/
+priv/trial_start.epoch
 install_erlang_for_m1.sh
 docker/img_fastdfs_data
 docker/pgsql15data

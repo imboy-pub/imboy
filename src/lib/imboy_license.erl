@@ -33,6 +33,8 @@
 -export([check_user_quota/1]).
 -export([check_node_quota/0]).
 -export([licensee/0, expires_at/0, info/0]).
+%% 供测试与内部：试用期判定纯函数 + 试用起始时间读取
+-export([evaluate_trial/2, trial_start_ms/0]).
 
 -include("log.hrl").
 
@@ -41,6 +43,11 @@
 -define(DEFAULT_COMMUNITY_MAX_USERS, 100).
 %% 到期宽限天数：过期后 N 天内仍按授权运行（仅告警），之后降级社区版
 -define(GRACE_DAYS, 7).
+%% 无 license 文件时自动签发的专业版试用期天数（可被 sys.config {trial_days,N} 覆盖）
+-define(DEFAULT_TRIAL_DAYS, 30).
+%% 试用期配额（可被 sys.config 覆盖）
+-define(DEFAULT_TRIAL_MAX_USERS, 500).
+-define(DEFAULT_TRIAL_MAX_NODES, 3).
 
 %%===================================================================
 %%% 启动加载
@@ -52,7 +59,7 @@ load_and_validate() ->
     State =
         case license_file_path() of
             undefined ->
-                community_state(<<"未配置 license，按社区版运行"/utf8>>);
+                trial_or_community_state();
             Path ->
                 load_from_file(Path)
         end,
@@ -182,6 +189,66 @@ community_state(Reason) ->
         reason => Reason
     }.
 
+%% @doc 无 license 文件时：首次启动自动进入专业版试用期，记录起始时间到试用
+%% 标记文件；试用期内按试用配额运行，过期后降级社区版。标记文件不可写时不阻断
+%% 启动（降级社区版）。删除标记文件可重置试用——试用仅放宽配额、不锁功能，
+%% 不做强防滥用（社区版本身免费且功能完整）。
+-spec trial_or_community_state() -> map().
+trial_or_community_state() ->
+    case trial_start_ms() of
+        {ok, StartMs} ->
+            evaluate_trial(erlang:system_time(millisecond), StartMs);
+        {error, _} ->
+            community_state(<<"无 license 且试用标记不可用，按社区版运行"/utf8>>)
+    end.
+
+%% @doc 由当前时间与试用起始时间判定试用状态（纯函数，便于测试）。
+%% 试用期内返回 trial 授权态，过期返回社区版态。
+-spec evaluate_trial(integer(), integer()) -> map().
+evaluate_trial(Now, StartMs) ->
+    ExpiresAt = StartMs + trial_days() * 86400000,
+    case Now =< ExpiresAt of
+        true -> trial_state(ExpiresAt);
+        false -> community_state(<<"试用期已结束，降级社区版"/utf8>>)
+    end.
+
+%% @doc 读取试用起始时间（毫秒）；标记文件不存在或内容损坏时写入当前时间并返回。
+-spec trial_start_ms() -> {ok, integer()} | {error, term()}.
+trial_start_ms() ->
+    Path = trial_file_path(),
+    case file:read_file(Path) of
+        {ok, Bin} ->
+            case catch binary_to_integer(string:trim(Bin)) of
+                I when is_integer(I), I > 0 -> {ok, I};
+                _ -> init_trial_file(Path)
+            end;
+        {error, enoent} ->
+            init_trial_file(Path);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec init_trial_file(string()) -> {ok, integer()} | {error, term()}.
+init_trial_file(Path) ->
+    Now = erlang:system_time(millisecond),
+    case file:write_file(Path, integer_to_binary(Now)) of
+        ok -> {ok, Now};
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec trial_state(integer()) -> map().
+trial_state(ExpiresAt) ->
+    #{
+        valid => true,
+        status => trial,
+        edition => <<"trial">>,
+        max_users => trial_max_users(),
+        max_nodes => trial_max_nodes(),
+        licensee => <<"试用"/utf8>>,
+        expires_at => ExpiresAt,
+        reason => <<>>
+    }.
+
 %%===================================================================
 %%% 运行时查询（走 persistent_term 缓存，零 IO）
 %%===================================================================
@@ -270,6 +337,27 @@ vendor_pubkey_path() ->
 -spec community_max_users() -> integer().
 community_max_users() ->
     application:get_env(imboy, community_max_users, ?DEFAULT_COMMUNITY_MAX_USERS).
+
+-spec trial_days() -> integer().
+trial_days() ->
+    application:get_env(imboy, trial_days, ?DEFAULT_TRIAL_DAYS).
+
+-spec trial_max_users() -> integer().
+trial_max_users() ->
+    application:get_env(imboy, trial_max_users, ?DEFAULT_TRIAL_MAX_USERS).
+
+-spec trial_max_nodes() -> integer().
+trial_max_nodes() ->
+    application:get_env(imboy, trial_max_nodes, ?DEFAULT_TRIAL_MAX_NODES).
+
+-spec trial_file_path() -> string().
+trial_file_path() ->
+    case os:getenv("IMBOY_TRIAL_FILE") of
+        P when is_list(P), P =/= "" ->
+            P;
+        _ ->
+            filename:join(code:priv_dir(imboy), "trial_start.epoch")
+    end.
 
 -spec to_int(term()) -> integer().
 to_int(V) when is_integer(V) -> V;
