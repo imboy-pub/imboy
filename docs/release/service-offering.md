@@ -74,8 +74,10 @@ IMBoy 是开箱即用的 IM 内核：C2C/C2G 消息、E2EE 端对端加密、付
 
 ## 联系方式
 
-<!-- TODO 由项目方人工填写，确认后替换下方占位，勿对外发布占位值 -->
-- 商务咨询：______________（待填）
-- 开源仓库：______________（待填，如 GitCode / Gitee / GitHub 地址）
+- 商务咨询：leeyisoft@qq.com
+- 开源仓库：
+  - GitHub：https://github.com/imboy-pub/imboy
+  - Gitee：https://gitee.com/imboy-pub/imboy
+  - GitCode：https://gitcode.com/imboy/imboy
 
 > 本文为对外服务说明草案，价格与授权范围以正式商务报价为准。
