@@ -33,7 +33,7 @@ This repository is a **multi-project workspace** (not a single Git repo). All th
 - **Strict message ordering**: Persistent messages use a `conv_seq` cursor (monotonically increasing per conversation). Strict replay is guaranteed across data centers and nodes without relying on TSID for ordering.
 - **High-concurrency foundation**: Erlang/OTP is inherently distributed. "1M concurrent on a single node" is an architectural design target pending a reproducible third-party benchmark; single-node deployment is currently recommended (multi-node horizontal scaling is on the roadmap — cross-node ACK dedup state migration is in progress).
 - **Complete three-component delivery**: Flutter client (including 12 E2EE settings pages) + React admin console (27 unit + 4 E2E tests) + Erlang backend (382 files, 90k+ lines, 0 functional TODOs).
-- **One-command self-hosting**: `deploy/docker-compose.prod.yml` starts PG18 + backend + admin + Caddy (auto-TLS) in one command. A `/setup` wizard creates the super admin — no `erl shell` needed.
+- **One-command self-hosting**: `deploy/docker-compose.prod.yml` starts PG18 + backend + admin + an nginx reverse proxy (`nginx:1.27-alpine`) + certbot (automatic Let's Encrypt issuance/renewal) in one command. Run `bash nginx/init-letsencrypt.sh` once on first deploy to issue certificates. A `/setup` wizard creates the super admin — no `erl shell` needed.
 - **MulanPSL-2.0 open source**: Business-friendly Chinese open-source license, unified across all three components.
 
 ## 10 Feature Lines
@@ -65,7 +65,7 @@ See [`IMBOY_FEATURE_PROGRESS.md`](./IMBOY_FEATURE_PROGRESS.md) for details.
                             │ WSS + HTTPS     │ HTTPS
                             ▼                 ▼
                    ┌─────────────────────────────────────┐
-                   │          Caddy (auto TLS)           │
+                   │    nginx (TLS via certbot/ACME)     │
                    └────────────────┬────────────────────┘
                                     ▼
                    ┌─────────────────────────────────────┐
@@ -96,7 +96,7 @@ For detailed layers, module index and Mermaid diagrams see [`imboy/CLAUDE.md`](.
 | [`imboy-admin-frontend/`](./imboy-admin-frontend) | React admin console | React 19.2 · TypeScript · Vite · Bun |
 | [`elib/`](./elib) | Shared Erlang library | Erlang/OTP |
 | [`go-fastdfs/`](./go-fastdfs) | File storage component | Go |
-| [`deploy/`](./deploy) | One-command production deployment | Docker Compose · Caddy |
+| [`deploy/`](./deploy) | One-command production deployment | Docker Compose · nginx · certbot |
 
 ## Quick Start (Production)
 

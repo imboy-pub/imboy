@@ -121,7 +121,7 @@ admin:
     initialDelaySeconds: 5
     periodSeconds: 10
 
-# ---------- Ingress（对应 Caddyfile 的路由规则）----------
+# ---------- Ingress（对应 Compose nginx 反向代理的路由规则）----------
 ingress:
   enabled: true
   className: nginx

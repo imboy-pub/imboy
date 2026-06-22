@@ -11,6 +11,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+**imboy（部署 / Deploy）**
+- 生产反向代理从 Caddy 迁移到 nginx（`nginx:1.27-alpine`）+ certbot（`certbot/certbot` 自动签发/续期 Let's Encrypt）；首次部署执行一次 `bash nginx/init-letsencrypt.sh` 签发证书，`.env` 新增 `CERTBOT_EMAIL`；`deploy/caddy/Caddyfile` 已删除
+  - Migrated the production reverse proxy from Caddy to nginx (`nginx:1.27-alpine`) + certbot (`certbot/certbot`, automatic Let's Encrypt issuance/renewal); run `bash nginx/init-letsencrypt.sh` once on first deploy to issue certificates; added `CERTBOT_EMAIL` to `.env`; removed `deploy/caddy/Caddyfile`
+
 ### Fixed
 
 **imboy（后端 / Backend）**

@@ -1,9 +1,10 @@
 {{- if .Values.ingress.enabled -}}
-# Ingress 对应原 Caddyfile 的路由规则：
+# Ingress 对应 Compose 部署中 nginx 反向代理的路由规则：
 #   {$API_DOMAIN}   → imboy_backend:9800   （REST + WebSocket /ws）
 #   {$ADMIN_DOMAIN} → imboy_admin:80       （React 静态前端）
 #
 # 前提：集群已安装 nginx ingress controller + cert-manager（letsencrypt-prod ClusterIssuer）
+# 注：Compose 用 certbot 自动签发 TLS；K8s 下由 cert-manager 接管证书生命周期。
 
 # ===== 后端 API + WebSocket =====
 apiVersion: networking.k8s.io/v1
@@ -28,9 +29,9 @@ metadata:
       proxy_set_header X-Real-IP $remote_addr;
       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
       proxy_set_header X-Forwarded-Proto $scheme;
-    # gzip 压缩（对应 Caddyfile 的 encode gzip zstd）
+    # gzip 压缩（对应 nginx 反向代理的 gzip 配置）
     nginx.ingress.kubernetes.io/enable-compression: "true"
-    # 安全响应头（对应 Caddyfile header 块）
+    # 安全响应头（对应 nginx 反向代理的 add_header 块）
     nginx.ingress.kubernetes.io/custom-headers: |
       Strict-Transport-Security: max-age=31536000; includeSubDomains
       X-Content-Type-Options: nosniff

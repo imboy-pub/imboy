@@ -74,7 +74,7 @@
 
 在报告问题前，请先阅读 `imboy/doc/operations/security.md` 了解当前版本已声明的安全边界：
 
-- 传输层强制 TLS（生产部署通过 Caddy 自动签发 Let's Encrypt）
+- 传输层强制 TLS（生产部署通过 nginx 反代 + certbot 自动签发/续期 Let's Encrypt）
 - 密码使用 **HMAC-SHA512 + 随机盐**存储（`elib_password` 内置 dual-verify，兼容早期 MD5 格式并在登录时自然淘汰）
 - JWT + 刷新 token 机制
 - E2EE 采用 RSA-OAEP-256 + AES-256-GCM，服务端不持有私钥、不解密 `ciphertext`

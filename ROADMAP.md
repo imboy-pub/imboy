@@ -23,7 +23,7 @@
 | Tag 标签系统 / 收藏系统 / 频道系统 / 朋友圈 | ✅ |
 | Flutter 客户端（iOS / Android / macOS）| ✅ |
 | React 管理后台 | ✅ |
-| Docker Compose 一键生产部署 + Caddy 自动 TLS | ✅ |
+| Docker Compose 一键生产部署 + nginx 反代 + certbot 自动 TLS | ✅ |
 | 首启初始化向导（消除默认密码风险）| ✅ |
 | Prometheus + Grafana 可观测性包（13 条 SLO 告警规则）| ✅ |
 | CI/CD 三端自动化（ci + release + codeql + trivy）| ✅ |

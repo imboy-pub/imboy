@@ -3,7 +3,7 @@
 #
 # 用法 / Usage（从任意目录）:
 #   bash scripts/sanity_check.sh            # 完整 8 项校验
-#   bash scripts/sanity_check.sh --skip-tls # 本地无 TLS/域名时跳过 Caddy/Grafana 严格项
+#   bash scripts/sanity_check.sh --skip-tls # 本地无 TLS/域名时跳过 nginx/Grafana 严格项
 #
 # 退出码 / Exit code: 任一 [ERROR] -> 1；全部通过 -> 0
 set -uo pipefail
@@ -86,14 +86,20 @@ else
     warn "管理后台 /health 未返回 ok（检查 imboy_admin 容器）"
 fi
 
-# 7/8. Caddy TLS 与 Grafana（本地无域名时降级）
+# 7/8. nginx TLS 与 Grafana（本地无域名时降级）
 if [ "$SKIP_TLS" = "1" ]; then
-    warn "已跳过 Caddy 443 / Grafana 严格校验（--skip-tls）"
+    warn "已跳过 nginx 443 / Grafana 严格校验（--skip-tls）"
 else
-    if $COMPOSE exec -T imboy_caddy sh -c 'wget -qO- --no-check-certificate https://localhost/ >/dev/null 2>&1'; then
-        ok "Caddy 443 响应"
+    if $COMPOSE exec -T imboy_nginx sh -c 'wget -qO- --no-check-certificate https://localhost/ >/dev/null 2>&1'; then
+        ok "nginx 443 响应"
     else
-        err "Caddy 443 无响应（DNS/证书/端口）"
+        err "nginx 443 无响应（DNS/证书/端口）"
+    fi
+    # certbot 容器存在性（自动续期 TLS 证书）
+    if $COMPOSE ps --status running 2>/dev/null | grep -q imboy_certbot; then
+        ok "certbot 容器在运行（TLS 自动续期）"
+    else
+        warn "certbot 容器未运行（证书将无法自动续期）"
     fi
     GCODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${GRAFANA_PORT}/" 2>/dev/null || echo "000")
     if [ "$GCODE" != "000" ]; then

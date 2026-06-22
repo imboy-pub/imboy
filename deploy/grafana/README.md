@@ -16,7 +16,7 @@ deploy/grafana/
 └── README.md                       # 本文件
 
 deploy/prometheus/
-└── prometheus.yml                  # 抓取配置（imboy_backend / pg / node / caddy）
+└── prometheus.yml                  # 抓取配置（imboy_backend / pg / node）
 ```
 
 ## 覆盖指标
@@ -68,7 +68,7 @@ deploy/prometheus/
       - "3000:3000"
 ```
 
-**暴露方式**：生产环境建议在 Caddyfile 增加 `grafana.example.com` 反向代理到 `grafana:3000`，而非直接映射 `3000:3000` 到公网。
+**暴露方式**：生产环境建议在 nginx 配置（`deploy/nginx/templates/imboy.conf.template`）增加 `grafana.example.com` 反向代理到 `grafana:3000`，而非直接映射 `3000:3000` 到公网。
 
 ## 手动导入
 

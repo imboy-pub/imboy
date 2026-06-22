@@ -26,7 +26,7 @@
 |---|---|---|
 | imboy 后端（Docker） | 容器内 `/app/imboy/log/` → 宿主映射 `./log/imboy/` | Erlang lager 按级别分文件 |
 | imboy 后端（裸机） | `$IMBOY_HOME/log/` | 同上 |
-| Caddy 反代 | `docker logs imboy_caddy` | JSON 访问日志 |
+| nginx 反代 | `docker logs imboy_nginx` | access/error 访问日志 |
 | PostgreSQL | `docker logs imboy_pg18` | 慢查询与错误 |
 
 ### 2.2 级别
@@ -76,7 +76,7 @@ curl -fsS https://$API_DOMAIN/healthcheck
 # → 200 OK（body 可忽略）
 ```
 
-Caddy / 负载均衡探针应使用此端点，超时 3s、间隔 10s。
+nginx / 负载均衡探针应使用此端点，超时 3s、间隔 10s。
 
 ### 3.2 数据库
 

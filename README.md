@@ -33,7 +33,7 @@ IMBoy 是一款以「**单机百万并发**」为目标设计的开源即时通�
 - **严格顺序保障**：消息永久存储采用 `conv_seq` 游标（per-conversation 单调递增），跨数据中心、跨节点依然可严格重放，不依赖 `TSID` 做顺序依据。
 - **高并发底座**：Erlang/OTP 天然分布式。「单机百万并发」为架构设计目标，待发布可复现的第三方压测报告佐证；当前推荐单节点部署（多节点水平扩展见路线图，跨节点 ACK 去重状态迁移开发中）。
 - **完整三端交付**：Flutter 客户端（含 12 个 E2EE 设置页）+ React 管理后台（27 单元 + 4 E2E 测试）+ Erlang 后端（382 文件、90k+ 行、0 功能性 TODO）。
-- **一键自托管**：`deploy/docker-compose.prod.yml` 一键起 PG18+后端+管理后台+Caddy（自动 TLS），通过 `/setup` 向导创建超级管理员，无需 `erl shell`。
+- **一键自托管**：`deploy/docker-compose.prod.yml` 一键起 PG18+后端+管理后台+nginx 反代（`nginx:1.27-alpine`）+ certbot（Let's Encrypt 自动签发/续期），首次部署执行一次 `bash nginx/init-letsencrypt.sh` 签发证书，通过 `/setup` 向导创建超级管理员，无需 `erl shell`。
 - **MulanPSL-2.0 开源**：商业友好的中国本土开源协议，三端统一授权。
 
 ## 10 条功能线
@@ -65,7 +65,7 @@ IMBoy 是一款以「**单机百万并发**」为目标设计的开源即时通�
                             │ WSS + HTTPS     │ HTTPS
                             ▼                 ▼
                    ┌─────────────────────────────────────┐
-                   │          Caddy (auto TLS)           │
+                   │    nginx (TLS via certbot/ACME)     │
                    └────────────────┬────────────────────┘
                                     ▼
                    ┌─────────────────────────────────────┐
@@ -96,7 +96,7 @@ IMBoy 是一款以「**单机百万并发**」为目标设计的开源即时通�
 | [`imboy-admin-frontend/`](./imboy-admin-frontend) | React 管理后台 | React 19.2 · TypeScript · Vite · Bun |
 | [`elib/`](./elib) | 共享 Erlang 基础库 | Erlang/OTP |
 | [`go-fastdfs/`](./go-fastdfs) | 附件存储组件 | Go |
-| [`deploy/`](./deploy) | 一键生产部署包 | Docker Compose · Caddy |
+| [`deploy/`](./deploy) | 一键生产部署包 | Docker Compose · nginx · certbot |
 
 ## 快速开始（生产部署）
 

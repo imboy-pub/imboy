@@ -105,7 +105,7 @@ deploy/helm/
 │   ├── deployment-admin.yaml     # React 前端 Deployment
 │   ├── service-backend.yaml      # ClusterIP Service（后端）
 │   ├── service-admin.yaml        # ClusterIP Service（前端）
-│   ├── ingress.yaml              # nginx Ingress（对应 Caddyfile）
+│   ├── ingress.yaml              # nginx Ingress（对应 Compose 的 nginx 反向代理配置）
 │   └── hpa.yaml                  # 自动扩缩容
 └── README.md
 ```
@@ -117,6 +117,6 @@ deploy/helm/
 | `imboy_backend` | Deployment `*-backend` + Service + Ingress |
 | `imboy_admin` | Deployment `*-admin` + Service + Ingress |
 | `imboy_pg18` | 不部署（外部 managed DB） |
-| `imboy_caddy` | nginx Ingress Controller 替代 |
+| `imboy_nginx` + `imboy_certbot` | nginx Ingress Controller + cert-manager 替代 |
 | `imboy_prometheus` | 建议使用 kube-prometheus-stack |
 | `imboy_grafana` | 建议使用 kube-prometheus-stack |

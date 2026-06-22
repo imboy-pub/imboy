@@ -77,10 +77,11 @@ _rel/imboy/bin/imboy remote_console
 For zero-downtime hot upgrade, drain traffic from the node being upgraded first:
 
 ```bash
-# 方式 A：Caddy upstream 标记节点不可用（若使用 Caddy 负载均衡多节点）
-# Option A: Mark the node as unhealthy in Caddy upstream (multi-node setup)
-# 编辑 Caddyfile，注释目标节点，reload:
-docker exec imboy_caddy caddy reload --config /etc/caddy/Caddyfile
+# 方式 A：nginx upstream 标记节点不可用（若使用 nginx 负载均衡多节点）
+# Option A: Mark the node as unhealthy in nginx upstream (multi-node setup)
+# 编辑 nginx 配置注释/下线目标 upstream 节点，校验并 reload:
+docker exec imboy_nginx nginx -t
+docker exec imboy_nginx nginx -s reload
 
 # 方式 B：单节点部署 — 通知用户维护窗口后直接继续
 # Option B: Single-node — announce maintenance window, then proceed
@@ -582,8 +583,8 @@ cat ~/.erlang.cookie
 **症状 / Symptom**: App 显示"连接失败"，WebSocket 握手被拒绝
 
 ```bash
-# 1. 检查 Caddy 反向代理是否正常
-docker logs imboy_caddy --tail 50
+# 1. 检查 nginx 反向代理是否正常
+docker logs imboy_nginx --tail 50
 
 # 2. 确认 WebSocket 端点可达
 curl -v --include \

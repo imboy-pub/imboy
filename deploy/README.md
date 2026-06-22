@@ -7,13 +7,15 @@ One-command deployment of IMBoy to a Linux server.
 
 ```
 deploy/
-├── docker-compose.prod.yml      # 6 服务编排：pg18 + backend + admin + caddy + prometheus + grafana
-│                                # 6-service orchestration: pg18 + backend + admin + caddy + prometheus + grafana
+├── docker-compose.prod.yml      # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
+│                                # 7-service orchestration: pg18 + backend + admin + nginx + certbot + prometheus + grafana
 ├── .env.example                 # 环境变量模板 / Environment variables template
-├── caddy/
-│   └── Caddyfile                # 反向代理 + 自动 TLS / Reverse proxy + auto-TLS
+├── nginx/
+│   ├── templates/
+│   │   └── imboy.conf.template  # nginx 反向代理（envsubst 渲染）/ nginx reverse proxy (envsubst-rendered)
+│   └── init-letsencrypt.sh      # 首次签发 Let's Encrypt 证书 / First-time Let's Encrypt issuance
 ├── prometheus/
-│   ├── prometheus.yml           # 抓取配置（4 job）/ Scrape config (4 jobs)
+│   ├── prometheus.yml           # 抓取配置（3 job）/ Scrape config (3 jobs)
 │   └── rules/                   # 告警规则目录（见 imboy-alerts.yml）/ Alert rules
 ├── grafana/
 │   ├── provisioning/            # 自动装配 datasource + dashboard provider
@@ -30,7 +32,7 @@ deploy/
 - 内存 ≥ 8 GB，磁盘 ≥ 20 GB（生产建议 ≥ 32 GB 内存 / ≥ 100 GB 盘）
 - Docker 24+ 与 `docker compose` 插件
 - 已解析到本机的两个域名：`api.example.com`、`admin.example.com`
-- 80 / 443 端口可公网访问（Let's Encrypt HTTP-01 签发）
+- 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
 
 ## 五步部署
 
@@ -62,6 +64,7 @@ $EDITOR .env
 | `POSTGRE_AES_KEY` | 32 字节随机：`openssl rand -hex 16` |
 | `ADM_COOKIE_SECRET` | 32 字节随机 / 32-byte random |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana 仪表盘登录密码 / Grafana dashboard password |
+| `CERTBOT_EMAIL` | Let's Encrypt 账号邮箱（证书到期提醒）/ Let's Encrypt account email |
 | `SENTRY_DSN` | 可选，生产错误监控 / Optional, production error monitoring |
 
 ### 3. 创建网络 & 启动
@@ -70,6 +73,14 @@ $EDITOR .env
 docker network create imboy-network 2>/dev/null || true
 docker compose -f docker-compose.prod.yml up -d
 ```
+
+**首次部署需一次性签发 TLS 证书**（域名 A 记录须先指向本机，80 端口可公网访问）：
+
+```bash
+bash nginx/init-letsencrypt.sh
+```
+
+签发成功后，`imboy_certbot` 会在后台自动续期，nginx 定期 reload 加载新证书，无需再手动执行。
 
 ### 4. 查看启动状态
 
@@ -147,8 +158,9 @@ deploy/data/
 ├── pg18/           # PostgreSQL 数据
 ├── backend_log/    # imboy 后端日志
 ├── backend_priv/   # 运行时私有文件（证书等）
-├── caddy_data/     # Caddy TLS 证书 & ACME 状态
-└── caddy_config/   # Caddy 运行时配置缓存
+└── certbot/
+    ├── conf/       # Let's Encrypt 证书 & ACME 账号状态（/etc/letsencrypt）
+    └── www/        # HTTP-01 challenge webroot（/var/www/certbot）
 ```
 
 生产建议将 `data/` 放到独立挂载点（SSD），并做快照 + 异地备份。
@@ -213,9 +225,9 @@ Prometheus is accessible at `http://<server-ip>:9090` (recommended: restrict to 
 | 现象 / Symptom | 排查 / Troubleshooting |
 |------|------|
 | `imboy_backend` 反复重启 / keeps restarting | `docker compose logs imboy_backend` 查看 PG 连接 / 配置 / 迁移冲突 / Check PG connection, config, migration conflicts |
-| Caddy 证书签发失败 / TLS cert fails | DNS 未指向本机 / 80 端口被占用 / Let's Encrypt 限流 / DNS not pointing here, port 80 blocked, LE rate-limit |
+| certbot 证书签发失败 / TLS cert fails | DNS 未指向本机 / 80 端口被占用 / Let's Encrypt 限流 / `CERTBOT_EMAIL` 未填；查 `docker compose logs imboy_certbot` / DNS not pointing here, port 80 blocked, LE rate-limit, missing CERTBOT_EMAIL |
 | 管理后台 404 或白屏 / Admin 404 or blank | 检查 `VITE_API_BASE` 是否指向 `https://${API_DOMAIN}` / Check `VITE_API_BASE` |
-| WebSocket 连接 403 / WS 403 | `JWT_KEY` 不一致 / Caddy WS transport 未配置 / `JWT_KEY` mismatch, check Caddy WS transport |
+| WebSocket 连接 403 / WS 403 | `JWT_KEY` 不一致 / nginx WS 升级（Upgrade/Connection）头未透传 / `JWT_KEY` mismatch, check nginx WebSocket upgrade headers |
 | PG 启动失败 / PG fails to start | 扩展安装失败：`bash ../script/preflight.sh` / Extension install failed |
 | Grafana 无数据 / Grafana no data | 检查 Prometheus target：`http://<ip>:9090/targets` / Check targets at `http://<ip>:9090/targets` |
 

@@ -81,7 +81,7 @@ execute(Req0, Env) ->
         end,
 
     % 安全响应头（防止 MIME 嗅探、点击劫持、XSS）
-    % 注意：Strict-Transport-Security (HSTS) 应在 Caddy/Nginx 层配置，不在此处设置
+    % 注意：Strict-Transport-Security (HSTS) 应在 nginx 层配置，不在此处设置
     Req7 = cowboy_req:set_resp_header(
         <<"x-content-type-options">>,
         <<"nosniff">>,

@@ -67,7 +67,7 @@ docker build --build-arg VITE_API_BASE=https://api.yourdomain.com -t imboy/imboy
 bash scripts/sanity_check.sh            # 完整 8 项
 bash scripts/sanity_check.sh --skip-tls # 本地无域名/TLS 时
 ```
-任一 `[ERROR]` 退出码非 0。校验项：容器/PG/后端 HTTP/启动日志/迁移/admin/Caddy/Grafana。
+任一 `[ERROR]` 退出码非 0。校验项：容器/PG/后端 HTTP/启动日志/迁移/admin/nginx/Grafana。
 
 ---
 

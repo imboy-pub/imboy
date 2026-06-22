@@ -292,4 +292,4 @@ groups:
           description: >
             WebSocket 在线连接数为 {{ $value }}，较 10 分钟前下降超过 50%，可能发生批量断线。
             WebSocket connections are at {{ $value }}, a drop of more than 50% from 10 minutes ago — possible mass disconnect.
-          runbook: "检查 Caddy WS 代理和后端日志 / Check Caddy WS proxy and backend logs"
+          runbook: "检查 nginx WS 代理和后端日志 / Check nginx WS proxy and backend logs"
