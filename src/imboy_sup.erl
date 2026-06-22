@@ -122,6 +122,16 @@ init([]) ->
         modules => [user_deletion_logic]
     },
 
+    % License 到期提醒定时 worker（默认禁用 + 收件人空 = 不发，需 sys.config 显式启用）
+    LicenseNoticeWorker = #{
+        id => license_notice_worker,
+        start => {license_notice_worker, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [license_notice_worker]
+    },
+
     % 登录失败次数限制（ETS 表 login_attempt_ets 由此 gen_server 创建）
     LoginAttemptServer = #{
         id => login_attempt_ds,
@@ -185,7 +195,8 @@ init([]) ->
             MsgWriteQueueSup,
             E2eeCleanupWorker,
             MsgBurnWorker,
-            UserDeletionWorker
+            UserDeletionWorker,
+            LicenseNoticeWorker
         ] ++ CacheSyncSpec,
     Restart = #{strategy => one_for_one, intensity => 5, period => 50},
     {ok, {Restart, Specs}}.
