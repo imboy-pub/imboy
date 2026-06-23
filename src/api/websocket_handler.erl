@@ -225,29 +225,32 @@ handle_v2_binary(Msg, State) ->
     case imboy_codec:unwrap_v2_frame(Msg) of
         {ok, Frame} ->
             Type = imboy_frame:type(Frame),
+            Flags = imboy_frame:flags(Frame),
             Payload = imboy_frame:payload(Frame),
-            dispatch_v2_frame(Type, Payload, State);
+            dispatch_v2_frame(Type, Flags, Payload, State);
         {error, Reason} ->
             ok = ?WARN_LOG({v2_frame_decode_failed, Reason, byte_size(Msg)}),
             {ok, State, hibernate}
     end.
 
-%% @doc 根据 v2 帧 Type 分派处理
-dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, <<Seq:16/big-unsigned>>, State) ->
+%% @doc 根据 v2 帧 Type 分派处理（Flags 仅 ACK 帧用于解析消息方向）
+dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, _Flags, <<Seq:16/big-unsigned>>, State) ->
     ok = ?DEBUG_LOG({v2_heartbeat_ping, Seq}),
     Pong = imboy_frame:heartbeat_pong(Seq),
     {reply, {binary, Pong}, State, hibernate};
-dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, _Bad, State) ->
+dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, _Flags, _Bad, State) ->
     ok = ?WARN_LOG({v2_heartbeat_ping_bad_payload}),
     {ok, State, hibernate};
-dispatch_v2_frame(?FRAME_TYPE_ACK, <<MsgIdInt:64/big-unsigned>>, State) ->
-    ok = ?DEBUG_LOG({v2_ack, MsgIdInt}),
+dispatch_v2_frame(?FRAME_TYPE_ACK, Flags, <<MsgIdInt:64/big-unsigned>>, State) ->
+    %% 方向编码在 flags bit4-3，修复此前硬编码 C2C 导致 C2G/S2C 走错清理路径的 bug
+    Direction = ack_dir_to_binary(imboy_frame:ack_direction(Flags)),
+    ok = ?DEBUG_LOG({v2_ack, MsgIdInt, Direction}),
     %% 将 msg_id 适配为现有 protobuf ACK 处理管道
     MsgIdBin = integer_to_binary(MsgIdInt),
     AckPayload = #{
         <<"msg_id">> => MsgIdBin,
         <<"did">> => maps:get(did, State, <<>>),
-        <<"msg_direction">> => <<"C2C">>
+        <<"msg_direction">> => Direction
     },
     %% 构造 payload bytes：重用 protobuf 子消息，交给 handle_protobuf_client_ack
     EncodedPayload = imboy_codec:encode_payload(protobuf, <<"client_ack">>, AckPayload),
@@ -256,14 +259,14 @@ dispatch_v2_frame(?FRAME_TYPE_ACK, <<MsgIdInt:64/big-unsigned>>, State) ->
         <<"payload">> => EncodedPayload
     },
     handle_protobuf_client_ack(Data, <<>>, State);
-dispatch_v2_frame(?FRAME_TYPE_NACK, <<MsgIdInt:64/big-unsigned>>, State) ->
+dispatch_v2_frame(?FRAME_TYPE_NACK, _Flags, <<MsgIdInt:64/big-unsigned>>, State) ->
     ok = ?WARN_LOG({v2_nack_received, MsgIdInt}),
     {ok, State, hibernate};
-dispatch_v2_frame(?FRAME_TYPE_MSG_C2S, <<"CLIENT_ACK,", Tail/binary>>, State) ->
+dispatch_v2_frame(?FRAME_TYPE_MSG_C2S, _Flags, <<"CLIENT_ACK,", Tail/binary>>, State) ->
     %% msg_c2s 帧中的纯文本 CLIENT_ACK（Dart 客户端兼容路径）
     %% 等价于老的 websocket_handle({text, <<"CLIENT_ACK,...">>}, State)
     handle_client_ack(Tail, State);
-dispatch_v2_frame(Type, Payload, State) when
+dispatch_v2_frame(Type, _Flags, Payload, State) when
     Type =:= ?FRAME_TYPE_MSG_C2C;
     Type =:= ?FRAME_TYPE_MSG_C2G;
     Type =:= ?FRAME_TYPE_MSG_C2S
@@ -281,9 +284,16 @@ dispatch_v2_frame(Type, Payload, State) when
         _ ->
             dispatch_v2_business_payload(Type, Payload, State)
     end;
-dispatch_v2_frame(Type, _Payload, State) ->
+dispatch_v2_frame(Type, _Flags, _Payload, State) ->
     ok = ?WARN_LOG({v2_frame_unsupported_type, Type}),
     {ok, State, hibernate}.
+
+%% @doc ACK 方向 atom → 处理管道使用的 type binary
+-spec ack_dir_to_binary(imboy_frame:ack_dir()) -> binary().
+ack_dir_to_binary(c2c) -> <<"C2C">>;
+ack_dir_to_binary(c2g) -> <<"C2G">>;
+ack_dir_to_binary(s2c) -> <<"S2C">>;
+ack_dir_to_binary(c2s) -> <<"C2S">>.
 
 %% @doc 业务消息 payload 宽容解码：先尝试 JSON 文本，再回退 protobuf
 %% Dart 客户端当前使用 UTF-8(JSON string) 作为 v2 frame payload；

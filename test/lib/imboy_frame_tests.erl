@@ -16,16 +16,18 @@
 %% Type 常量 (与 imboy_frame.hrl 对齐)
 -define(TYPE_HEARTBEAT_PING, 16#01).
 -define(TYPE_HEARTBEAT_PONG, 16#02).
--define(TYPE_ACK,            16#03).
--define(TYPE_MSG_C2C,        16#20).
+-define(TYPE_ACK, 16#03).
+-define(TYPE_MSG_C2C, 16#20).
 
 %% Flags
 -define(FLAG_NONE, 0).
--define(FLAG_ACK,  16#20).
--define(FLAG_CMP,  16#80).
--define(FLAG_PING, 16#E0).  %% CMP=0 ENC=0 ACK=1 PRI=7
+-define(FLAG_ACK, 16#20).
+-define(FLAG_CMP, 16#80).
+%% CMP=0 ENC=0 ACK=1 PRI=7
+-define(FLAG_PING, 16#E0).
 
--define(MAGIC, 16#4942).  %% "IB"
+%% "IB"
+-define(MAGIC, 16#4942).
 -define(VERSION, 2).
 
 %%%===================================================================
@@ -104,13 +106,16 @@ decode_roundtrip_test() ->
         {?TYPE_MSG_C2C, ?FLAG_ACK, <<"短消息">>},
         {?TYPE_MSG_C2C, ?FLAG_CMP bor ?FLAG_ACK, binary:copy(<<0>>, 1000)}
     ],
-    lists:foreach(fun({T, F, P}) ->
-        Bin = imboy_frame:encode(T, F, P),
-        {ok, Frame, <<>>} = imboy_frame:decode(Bin),
-        ?assertEqual(T, imboy_frame:type(Frame)),
-        ?assertEqual(F, imboy_frame:flags(Frame)),
-        ?assertEqual(P, imboy_frame:payload(Frame))
-    end, Cases).
+    lists:foreach(
+        fun({T, F, P}) ->
+            Bin = imboy_frame:encode(T, F, P),
+            {ok, Frame, <<>>} = imboy_frame:decode(Bin),
+            ?assertEqual(T, imboy_frame:type(Frame)),
+            ?assertEqual(F, imboy_frame:flags(Frame)),
+            ?assertEqual(P, imboy_frame:payload(Frame))
+        end,
+        Cases
+    ).
 
 %%%===================================================================
 %%% 不完整帧处理
@@ -118,10 +123,14 @@ decode_roundtrip_test() ->
 
 decode_incomplete_header_test() ->
     %% 少于 9 字节头 → {more, Buf}
-    ?assertMatch({more, <<?MAGIC:16>>},
-                 imboy_frame:decode(<<?MAGIC:16>>)),
-    ?assertMatch({more, _},
-                 imboy_frame:decode(<<?MAGIC:16, ?VERSION:8, 0:8, 1:8>>)).
+    ?assertMatch(
+        {more, <<?MAGIC:16>>},
+        imboy_frame:decode(<<?MAGIC:16>>)
+    ),
+    ?assertMatch(
+        {more, _},
+        imboy_frame:decode(<<?MAGIC:16, ?VERSION:8, 0:8, 1:8>>)
+    ).
 
 decode_incomplete_payload_test() ->
     %% 头部 OK 但 payload 不完整 → {more, Buf}
@@ -167,8 +176,10 @@ encode_oversized_payload_test() ->
     %% 编码时超出 MAX_FRAME_SIZE 应 crash（badarg 或类似）
     %% 使用较小的 payload 验证正常路径；超限路径用 catch 包裹
     TooBig = binary:copy(<<0>>, 16#1000001),
-    ?assertError(frame_too_large,
-                 imboy_frame:encode(?TYPE_MSG_C2C, 0, TooBig)).
+    ?assertError(
+        frame_too_large,
+        imboy_frame:encode(?TYPE_MSG_C2C, 0, TooBig)
+    ).
 
 %%%===================================================================
 %%% 流式解码 (粘包拆分)
@@ -243,6 +254,46 @@ ack_helper_test() ->
     {ok, Frame, <<>>} = imboy_frame:decode(Bin),
     ?assertEqual(?TYPE_ACK, imboy_frame:type(Frame)),
     ?assertEqual(<<MsgId:64>>, imboy_frame:payload(Frame)).
+
+%%%===================================================================
+%%% ACK 方向编码 (flags bit4-3) — 修复 v2 二进制 ACK 方向硬编码 C2C 的 bug
+%%%===================================================================
+
+ack_direction_default_c2c_test() ->
+    %% 旧版 ack/1 默认 C2C，向后兼容
+    Bin = imboy_frame:ack(123),
+    {ok, Frame, <<>>} = imboy_frame:decode(Bin),
+    ?assertEqual(c2c, imboy_frame:ack_direction(Frame)).
+
+ack_direction_flags_zero_is_c2c_test() ->
+    %% flags=0（旧客户端）解析为 c2c，零回归
+    Frame = make_frame(?TYPE_ACK, 0, <<123:64>>),
+    ?assertEqual(c2c, imboy_frame:ack_direction(Frame)).
+
+ack2_roundtrip_test() ->
+    Cases = [{c2c, 1}, {c2g, 2}, {s2c, 3}, {c2s, 4}],
+    lists:foreach(
+        fun({Dir, MsgId}) ->
+            Bin = imboy_frame:ack(MsgId, Dir),
+            {ok, Frame, <<>>} = imboy_frame:decode(Bin),
+            ?assertEqual(?TYPE_ACK, imboy_frame:type(Frame)),
+            ?assertEqual(<<MsgId:64>>, imboy_frame:payload(Frame)),
+            ?assertEqual(Dir, imboy_frame:ack_direction(Frame))
+        end,
+        Cases
+    ).
+
+ack2_does_not_corrupt_payload_test() ->
+    %% 方向位不影响 8 字节 msgid payload
+    Bin = imboy_frame:ack(16#DEADBEEFCAFEBABE, s2c),
+    {ok, Frame, <<>>} = imboy_frame:decode(Bin),
+    ?assertEqual(<<16#DEADBEEFCAFEBABE:64>>, imboy_frame:payload(Frame)).
+
+ack2_preserves_priority_bits_test() ->
+    %% 方向位 (bit4-3) 与优先级位 (bit2-0) 互不干扰
+    Bin = imboy_frame:ack(1, c2s),
+    {ok, Frame, <<>>} = imboy_frame:decode(Bin),
+    ?assertEqual(0, imboy_frame:priority(Frame)).
 
 %%%===================================================================
 %%% Helpers

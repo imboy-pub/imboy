@@ -54,8 +54,14 @@
     heartbeat_ping/1,
     heartbeat_pong/1,
     ack/1,
+    ack/2,
+    ack_direction/1,
     nack/1
 ]).
+
+-export_type([ack_dir/0]).
+
+-type ack_dir() :: c2c | c2g | s2c | c2s.
 
 -export_type([frame/0]).
 
@@ -75,21 +81,22 @@
 %% @param Payload 载荷二进制
 %% @returns 完整帧二进制
 -spec encode(0..255, 0..255, binary()) -> binary().
-encode(Type, Flags, Payload)
-  when is_integer(Type), Type >= 0, Type =< 255,
-       is_integer(Flags), Flags >= 0, Flags =< 255,
-       is_binary(Payload) ->
+encode(Type, Flags, Payload) when
+    is_integer(Type),
+    Type >= 0,
+    Type =< 255,
+    is_integer(Flags),
+    Flags >= 0,
+    Flags =< 255,
+    is_binary(Payload)
+->
     Len = byte_size(Payload),
     case Len > ?IMBOY_FRAME_MAX_PAYLOAD of
-        true  -> error(frame_too_large);
+        true -> error(frame_too_large);
         false -> ok
     end,
-    <<?IMBOY_FRAME_MAGIC:16,
-      ?IMBOY_FRAME_VERSION:8,
-      Flags:8,
-      Type:8,
-      Len:32/big-unsigned,
-      Payload/binary>>.
+    <<?IMBOY_FRAME_MAGIC:16, ?IMBOY_FRAME_VERSION:8, Flags:8, Type:8, Len:32/big-unsigned,
+        Payload/binary>>.
 
 %% @doc 解码一个帧
 %%
@@ -101,22 +108,26 @@ encode(Type, Flags, Payload)
 %% 注意：本函数不处理 CMP/ENC，payload 原样返回。
 -spec decode(binary()) ->
     {ok, frame(), binary()} | {more, binary()} | {error, atom()}.
-decode(<<?IMBOY_FRAME_MAGIC:16, Ver:8, Flags:8, Type:8, Len:32/big-unsigned, Rest/binary>> = Buf)
-  when Len =< ?IMBOY_FRAME_MAX_PAYLOAD ->
+decode(
+    <<?IMBOY_FRAME_MAGIC:16, Ver:8, Flags:8, Type:8, Len:32/big-unsigned, Rest/binary>> = Buf
+) when
+    Len =< ?IMBOY_FRAME_MAX_PAYLOAD
+->
     case Rest of
         <<Payload:Len/binary, Tail/binary>> ->
             Frame = #imboy_frame{
                 version = Ver,
-                flags   = Flags,
-                type    = Type,
+                flags = Flags,
+                type = Type,
                 payload = Payload
             },
             {ok, Frame, Tail};
         _ ->
             {more, Buf}
     end;
-decode(<<?IMBOY_FRAME_MAGIC:16, _Ver:8, _Flags:8, _Type:8, Len:32/big-unsigned, _/binary>>)
-  when Len > ?IMBOY_FRAME_MAX_PAYLOAD ->
+decode(<<?IMBOY_FRAME_MAGIC:16, _Ver:8, _Flags:8, _Type:8, Len:32/big-unsigned, _/binary>>) when
+    Len > ?IMBOY_FRAME_MAX_PAYLOAD
+->
     {error, frame_too_large};
 decode(<<?IMBOY_FRAME_MAGIC:16, _/binary>> = Buf) ->
     %% 魔数匹配但头部/载荷不完整
@@ -206,15 +217,51 @@ heartbeat_ping(Seq) when is_integer(Seq), Seq >= 0, Seq =< 65535 ->
 %% @doc 心跳 Pong 帧（回显 seq）
 -spec heartbeat_pong(0..65535) -> binary().
 heartbeat_pong(Seq) when is_integer(Seq), Seq >= 0, Seq =< 65535 ->
-    Flags = 7,  %% PRI=7 无 ACK
+    %% PRI=7 无 ACK
+    Flags = 7,
     encode(?FRAME_TYPE_HEARTBEAT_PONG, Flags, <<Seq:16/big-unsigned>>).
 
-%% @doc ACK 帧
+%% @doc ACK 帧（默认 C2C 方向，向后兼容）
 -spec ack(non_neg_integer()) -> binary().
-ack(MsgId) when is_integer(MsgId), MsgId >= 0 ->
-    encode(?FRAME_TYPE_ACK, 0, <<MsgId:64/big-unsigned>>).
+ack(MsgId) ->
+    ack(MsgId, c2c).
+
+%% @doc 带方向的 ACK 帧
+%%
+%% 方向编码进 flags 的 bit4-3（见 imboy_frame.hrl），payload 仍为 8 字节 msg_id，
+%% 因此旧解码器（仅读 payload）完全兼容；新解码器用 ack_direction/1 取回方向。
+-spec ack(non_neg_integer(), ack_dir()) -> binary().
+ack(MsgId, Dir) when is_integer(MsgId), MsgId >= 0 ->
+    Flags = dir_to_flag(Dir),
+    encode(?FRAME_TYPE_ACK, Flags, <<MsgId:64/big-unsigned>>).
+
+%% @doc 从 ACK 帧（或 flags 整数）解析方向；flags=0（旧客户端）→ c2c
+-spec ack_direction(frame() | 0..255) -> ack_dir().
+ack_direction(#imboy_frame{flags = F}) ->
+    flag_to_dir(F);
+ack_direction(F) when is_integer(F) ->
+    flag_to_dir(F).
 
 %% @doc NACK 帧
 -spec nack(non_neg_integer()) -> binary().
 nack(MsgId) when is_integer(MsgId), MsgId >= 0 ->
     encode(?FRAME_TYPE_NACK, 0, <<MsgId:64/big-unsigned>>).
+
+%%%===================================================================
+%%% 内部：ACK 方向 <-> flags 编解码
+%%%===================================================================
+
+-spec dir_to_flag(ack_dir()) -> 0..255.
+dir_to_flag(c2c) -> ?FRAME_DIR_C2C bsl ?FRAME_FLAG_DIR_SHIFT;
+dir_to_flag(c2g) -> ?FRAME_DIR_C2G bsl ?FRAME_FLAG_DIR_SHIFT;
+dir_to_flag(s2c) -> ?FRAME_DIR_S2C bsl ?FRAME_FLAG_DIR_SHIFT;
+dir_to_flag(c2s) -> ?FRAME_DIR_C2S bsl ?FRAME_FLAG_DIR_SHIFT.
+
+-spec flag_to_dir(0..255) -> ack_dir().
+flag_to_dir(F) ->
+    case (F band ?FRAME_FLAG_DIR_MASK) bsr ?FRAME_FLAG_DIR_SHIFT of
+        ?FRAME_DIR_C2C -> c2c;
+        ?FRAME_DIR_C2G -> c2g;
+        ?FRAME_DIR_S2C -> s2c;
+        ?FRAME_DIR_C2S -> c2s
+    end.

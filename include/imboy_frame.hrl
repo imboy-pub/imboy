@@ -30,13 +30,21 @@
 %% bit7 CMP   : 载荷是否 zstd 压缩
 %% bit6 ENC   : 载荷是否端到端加密 (预留)
 %% bit5 ACK   : 是否需要 ACK
-%% bit4-3 RSV : 保留
+%% bit4-3 DIR : ACK 帧方向 (0=C2C 1=C2G 2=S2C 3=C2S)，仅 ACK 帧使用，其余帧保留 0
 %% bit2-0 PRI : 优先级 0-7
 
 -define(FRAME_FLAG_CMP,       16#80).
 -define(FRAME_FLAG_ENC,       16#40).
 -define(FRAME_FLAG_ACK,       16#20).
+-define(FRAME_FLAG_DIR_MASK,  16#18).
+-define(FRAME_FLAG_DIR_SHIFT, 3).
 -define(FRAME_FLAG_PRI_MASK,  16#07).
+
+%% ACK 方向编码值（写入 flags bit4-3）
+-define(FRAME_DIR_C2C, 0).
+-define(FRAME_DIR_C2G, 1).
+-define(FRAME_DIR_S2C, 2).
+-define(FRAME_DIR_C2S, 3).
 
 %%%===================================================================
 %%% Type 枚举
