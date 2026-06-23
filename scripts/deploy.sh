@@ -232,6 +232,10 @@ log "编译 release... / Building release..."
 ssh_exec "
   set -e
   cd '$PROJECT_DIR'
+  # 全量清理后重编：-l 模式 rsync 会同步本地自动生成的 ebin/imboy.app（已列新模块），
+  # 但 --exclude='*.beam' 排除了对应 beam，致 erlang.mk 因 .app mtime 较新而跳过重建，
+  # release 组装时报 module_not_found。make clean 强制从源码全量重编，规避此陷阱。
+  make clean
   IMBOYENV=pro \
     RELX_REL_VSN='$VSN' \
     RELX_DEV_MODE=false \
@@ -285,7 +289,7 @@ ok "release 已解包，vm.args 已写入 / Release extracted, vm.args written"
 # 5️⃣ 启动新节点 + 轮询确认就绪 / Start new node + poll for readiness
 # =============================================================================
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
-ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_HTTP_PORT='$APP_PORT' ./bin/imboy daemon"
+ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' ./bin/imboy daemon"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers
