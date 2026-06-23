@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 BASE_URL="${IMBOY_FEATURE_BASE_URL:-}"
-PUBLIC_PATH="${IMBOY_FEATURE_PUBLIC_PATH:-/v1/app/features}"
-ADMIN_PATH="${IMBOY_FEATURE_ADMIN_PATH:-/adm/admin/config/features}"
+PUBLIC_PATH="${IMBOY_FEATURE_PUBLIC_PATH:-/api/v1/app/features}"
+ADMIN_PATH="${IMBOY_FEATURE_ADMIN_PATH:-/api/adm/admin/config/features}"
 TIMEOUT="${IMBOY_FEATURE_TIMEOUT:-15}"
 INSECURE=0
 SHOW_BODY=0

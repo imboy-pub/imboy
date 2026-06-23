@@ -54,7 +54,7 @@ tags:
     description: 品牌配置（运行时白标，公开端点）
 
 paths:
-  /adm/setup/status:
+  /api/adm/setup/status:
     get:
       tags: [admin-setup]
       summary: 查询首启向导状态
@@ -79,7 +79,7 @@ paths:
                             type: boolean
                             description: true 表示系统已初始化，不应再进入向导
 
-  /adm/setup/init:
+  /api/adm/setup/init:
     post:
       tags: [admin-setup]
       summary: 执行首启初始化
@@ -119,7 +119,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Envelope'
 
-  /passport/login:
+  /api/passport/login:
     post:
       tags: [auth]
       summary: 账号密码登录
@@ -153,7 +153,7 @@ paths:
                           refresh_token: { type: string }
                           expires_in: { type: integer, description: 秒 }
 
-  /passport/refresh:
+  /api/passport/refresh:
     post:
       tags: [auth]
       summary: 刷新 token
@@ -176,7 +176,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Envelope'
 
-  /user/current:
+  /api/user/current:
     get:
       tags: [user]
       summary: 当前登录用户资料
@@ -194,7 +194,7 @@ paths:
                       payload:
                         $ref: '#/components/schemas/User'
 
-  /user/{uid}:
+  /api/user/{uid}:
     get:
       tags: [user]
       summary: 按 uid 查询用户
@@ -213,7 +213,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Envelope'
 
-  /msg/history:
+  /api/msg/history:
     get:
       tags: [msg]
       summary: 按 conv_seq 游标拉取历史消息
@@ -251,7 +251,7 @@ paths:
                         items:
                           $ref: '#/components/schemas/Message'
 
-  /adm/users:
+  /api/adm/users:
     get:
       tags: [admin]
       summary: 管理后台用户列表（分页）
@@ -341,7 +341,7 @@ paths:
                   theme: light
                   edition: community
 
-  /v1/wallet/balance:
+  /api/v1/wallet/balance:
     get:
       tags: [wallet]
       summary: 查询钱包余额
@@ -368,7 +368,7 @@ paths:
                   balance_yuan: 59.99
                   frozen: 0
 
-  /v1/wallet/transactions:
+  /api/v1/wallet/transactions:
     get:
       tags: [wallet]
       summary: 分页查询钱包流水
@@ -410,7 +410,7 @@ paths:
                           page_size:
                             type: integer
 
-  /v1/wallet/topup:
+  /api/v1/wallet/topup:
     post:
       tags: [wallet]
       summary: Mock 直接充值（仅非生产环境）
@@ -457,7 +457,7 @@ paths:
                             type: string
                             description: 本次流水幂等键
 
-  /v1/wallet/recharge/order:
+  /api/v1/wallet/recharge/order:
     post:
       tags: [wallet]
       summary: 创建充值订单（真实网关链路第一步）
@@ -499,7 +499,7 @@ paths:
                       payload:
                         $ref: '#/components/schemas/RechargeOrder'
 
-  /v1/wallet/recharge/pay:
+  /api/v1/wallet/recharge/pay:
     post:
       tags: [wallet]
       summary: 拉起支付（充值第二步）
@@ -551,7 +551,7 @@ paths:
                             format: int64
                             description: mock 即时入账后新余额，单位分；真实网关无此字段
 
-  /v1/wallet/recharge/{order_no}:
+  /api/v1/wallet/recharge/{order_no}:
     get:
       tags: [wallet]
       summary: 查询充值订单状态
@@ -577,7 +577,7 @@ paths:
                       payload:
                         $ref: '#/components/schemas/RechargeOrder'
 
-  /v1/payment/callback/{gateway}:
+  /api/v1/payment/callback/{gateway}:
     post:
       tags: [payment-callback]
       summary: 统一支付回调 webhook（免 JWT）
@@ -651,7 +651,7 @@ paths:
               schema:
                 type: object
 
-  /v1/billing/plan:
+  /api/v1/billing/plan:
     post:
       tags: [billing]
       summary: 创建套餐（管理端）
@@ -707,7 +707,7 @@ paths:
                             type: integer
                             format: int64
 
-  /v1/billing/plan/update:
+  /api/v1/billing/plan/update:
     post:
       tags: [billing]
       summary: 更新套餐（管理端）
@@ -759,7 +759,7 @@ paths:
                             type: integer
                             format: int64
 
-  /v1/billing/plan/list:
+  /api/v1/billing/plan/list:
     get:
       tags: [billing]
       summary: 获取上架套餐列表
@@ -783,7 +783,7 @@ paths:
                             items:
                               $ref: '#/components/schemas/BillingPlan'
 
-  /v1/billing/subscribe:
+  /api/v1/billing/subscribe:
     post:
       tags: [billing]
       summary: 订阅套餐
@@ -826,7 +826,7 @@ paths:
                             type: integer
                             format: int64
 
-  /v1/billing/renew:
+  /api/v1/billing/renew:
     post:
       tags: [billing]
       summary: 续费订阅
@@ -864,7 +864,7 @@ paths:
                             format: int64
                             description: 到期时间戳（毫秒）
 
-  /v1/billing/cancel:
+  /api/v1/billing/cancel:
     post:
       tags: [billing]
       summary: 取消订阅（不立即退款）
@@ -898,7 +898,7 @@ paths:
                             type: integer
                             format: int64
 
-  /v1/billing/subscription:
+  /api/v1/billing/subscription:
     get:
       tags: [billing]
       summary: 查询当前租户订阅
@@ -923,7 +923,7 @@ paths:
                       payload:
                         $ref: '#/components/schemas/BillingSubscription'
 
-  /v1/billing/usage:
+  /api/v1/billing/usage:
     post:
       tags: [billing]
       summary: 上报用量（增量累加）
@@ -978,7 +978,7 @@ paths:
                             format: int64
                             description: 当前周期累计总量
 
-  /v1/billing/quota:
+  /api/v1/billing/quota:
     get:
       tags: [billing]
       summary: 查询配额使用情况
@@ -1009,7 +1009,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Envelope'
 
-  /v1/billing/invoice/generate:
+  /api/v1/billing/invoice/generate:
     post:
       tags: [billing]
       summary: 生成账单
@@ -1047,7 +1047,7 @@ paths:
                           already_generated:
                             type: [boolean, 'null']
 
-  /v1/billing/invoice/pay:
+  /api/v1/billing/invoice/pay:
     post:
       tags: [billing]
       summary: 支付账单
@@ -1076,7 +1076,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Envelope'
 
-  /v1/billing/invoice/list:
+  /api/v1/billing/invoice/list:
     get:
       tags: [billing]
       summary: 账单列表
@@ -1106,7 +1106,7 @@ paths:
                             items:
                               $ref: '#/components/schemas/BillingInvoice'
 
-  /v1/channel/{channel_id}/order:
+  /api/v1/channel/{channel_id}/order:
     post:
       tags: [channel-order]
       summary: 创建频道付费订单
@@ -1135,7 +1135,7 @@ paths:
                       payload:
                         $ref: '#/components/schemas/ChannelOrder'
 
-  /v1/channel/order/pay:
+  /api/v1/channel/order/pay:
     post:
       tags: [channel-order]
       summary: 支付频道订单
@@ -1167,7 +1167,7 @@ paths:
                       payload:
                         type: object
 
-  /v1/channel/order/refund:
+  /api/v1/channel/order/refund:
     post:
       tags: [channel-order]
       summary: 申请频道订单退款
@@ -1203,7 +1203,7 @@ paths:
                       payload:
                         type: object
 
-  /v1/channel/orders/{order_no}:
+  /api/v1/channel/orders/{order_no}:
     get:
       tags: [channel-order]
       summary: 查询频道订单详情
@@ -1228,7 +1228,7 @@ paths:
                       payload:
                         $ref: '#/components/schemas/ChannelOrder'
 
-  /v1/channel/orders/my:
+  /api/v1/channel/orders/my:
     get:
       tags: [channel-order]
       summary: 查询当前用户的频道订单列表

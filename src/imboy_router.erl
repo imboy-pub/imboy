@@ -816,7 +816,30 @@ get_routes() ->
         {"/static/admin/[...]", cowboy_static,
             {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
     ],
-    [{Host, MainRoutes ++ ApiV1Routes ++ AdmRoutes ++ plugin_routes()}].
+    CoreRoutes = MainRoutes ++ ApiV1Routes ++ AdmRoutes,
+    %% 统一 /api 命名空间：为所有 API 路由（排除网站/静态白名单）生成 /api 前缀副本，
+    %% 与旧路由并存（双路过渡，老客户端不断线）。详见 plan unify-api-prefix。
+    ApiAliasRoutes = api_alias_routes(CoreRoutes),
+    [{Host, CoreRoutes ++ ApiAliasRoutes ++ plugin_routes()}].
+
+%% @doc 为核心路由生成 /api 前缀别名（统一命名空间 + 流量分流）。
+%% 网站页面与静态资源保留根路径，不加 /api。
+-spec api_alias_routes(list()) -> list().
+api_alias_routes(Routes) ->
+    [{"/api" ++ Path, Handler, Opts}
+     || {Path, Handler, Opts} <- Routes, should_alias_path(Path)].
+
+%% @doc 网站/静态白名单：这些路径保留在根路径，不生成 /api 别名。
+-spec should_alias_path(string()) -> boolean().
+should_alias_path("/") -> false;
+should_alias_path("/help") -> false;
+should_alias_path("/brand") -> false;
+should_alias_path("/metrics") -> false;
+should_alias_path("/privacy-policy") -> false;
+should_alias_path("/account-deletion") -> false;
+should_alias_path("/static/[...]") -> false;
+should_alias_path("/static/admin/[...]") -> false;
+should_alias_path(_) -> true.
 
 %% @doc Phase 2 切片 2：从 imboy_router_registry ETS 读取所有插件路由并转 cowboy 格式。
 %% Phase 2 slice 2: read all plugin routes from imboy_router_registry ETS and convert.
@@ -852,7 +875,7 @@ route_spec_to_cowboy(#{path := Path, handler := Handler, action := Action} = Spe
 %% auth_middleware 去除了path 最后的斜杆，所以不用以 / 结尾了
 -spec option() -> [binary()].
 option() ->
-    [
+    Base = [
         % 没有登录也可以提交反馈建议
         <<"/feedback/add">>,
         <<"/app_version/check">>,
@@ -861,14 +884,16 @@ option() ->
         <<"/v1/feedback/add">>,
         <<"/v1/app_version/check">>,
         <<"/v1/app_upgrade/report">>
-    ].
+    ],
+    %% 统一 /api 前缀：为每个可选鉴权端点生成 /api 别名，与旧路径并存。
+    Base ++ [<<"/api", P/binary>> || P <- Base].
 
 %% @doc 不需要认证的API
 %% 列表元素必须为binary
 %% auth_middleware 去除了path 最后的斜杆，所以不用以 / 结尾了
 -spec open() -> [binary()].
 open() ->
-    [
+    Base = [
         <<"/help">>,
         <<"/brand">>,
         <<"/privacy-policy">>,
@@ -916,7 +941,19 @@ open() ->
         <<"/adm/setup/init">>,
 
         <<"/">>
-    ] ++ test_open_routes().
+    ] ++ test_open_routes(),
+    %% 统一 /api 前缀：为每个免鉴权 API 端点生成 /api 别名（网站白名单除外），与旧路径并存。
+    Base ++ [<<"/api", P/binary>> || P <- Base, is_api_open_path(P)].
+
+%% @doc open/0 中需要生成 /api 别名的条目（排除网站/静态白名单，与 should_alias_path/1 对齐）。
+-spec is_api_open_path(binary()) -> boolean().
+is_api_open_path(<<"/help">>) -> false;
+is_api_open_path(<<"/brand">>) -> false;
+is_api_open_path(<<"/privacy-policy">>) -> false;
+is_api_open_path(<<"/account-deletion">>) -> false;
+is_api_open_path(<<"/metrics">>) -> false;
+is_api_open_path(<<"/">>) -> false;
+is_api_open_path(_) -> true.
 
 %% ===================================================================
 %% 测试路由（仅非生产环境注册）

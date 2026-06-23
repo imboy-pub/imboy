@@ -3,7 +3,7 @@
 c2c_ws_smoke.py — Tier-0 WebSocket round-trip 冒烟
 
 流程：
-  1. Bob (env BOB_UID / BOB_TOKEN) 连 ws://127.0.0.1:9800/ws 订阅
+  1. Bob (env BOB_UID / BOB_TOKEN) 连 ws://127.0.0.1:9800/api/ws 订阅
   2. 启动后作为子进程调用 imboy_ctl msg send，从 Alice (BOB 外的 FROM uid) 向 Bob 发 1 条 C2C
   3. 在 TIMEOUT 秒内等 Bob WS 收到含 MSG_ID 的文本帧
   4. 退出码：
@@ -16,7 +16,7 @@ c2c_ws_smoke.py — Tier-0 WebSocket round-trip 冒烟
   ESCRIPT_PATH   imboy_ctl 绝对路径
 
 可选环境变量：
-  WS_URL         默认 ws://127.0.0.1:9800/ws
+  WS_URL         默认 ws://127.0.0.1:9800/api/ws
   TIMEOUT_SEC    默认 5
   DID            默认 smoke-bob-ws
 """
@@ -36,7 +36,7 @@ except ImportError:
     sys.exit(127)
 
 
-WS_URL = os.environ.get("WS_URL", "ws://127.0.0.1:9800/ws")
+WS_URL = os.environ.get("WS_URL", "ws://127.0.0.1:9800/api/ws")
 TIMEOUT_SEC = float(os.environ.get("TIMEOUT_SEC", "5"))
 DID = os.environ.get("DID", "smoke-bob-ws")
 

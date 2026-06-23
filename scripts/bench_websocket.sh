@@ -12,13 +12,13 @@
 # 用法 / Usage:
 #   TOKEN=<jwt> bash scripts/bench_websocket.sh                  # 默认 100 连接，保持 10s
 #   TOKEN=<jwt> CONNS=500 HOLD=30 bash scripts/bench_websocket.sh
-#   WS_URL=ws://host:9800/ws TOKEN=<jwt> bash scripts/bench_websocket.sh
+#   WS_URL=ws://host:9800/api/ws TOKEN=<jwt> bash scripts/bench_websocket.sh
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 : "${TOKEN:?需要 TOKEN（取法：escript scripts/imboy_ctl user token <uid>）}"
-export WS_URL="${WS_URL:-ws://127.0.0.1:9800/ws}"
+export WS_URL="${WS_URL:-ws://127.0.0.1:9800/api/ws}"
 export CONNS="${CONNS:-100}"
 export HOLD="${HOLD:-10}"
 export TOKEN

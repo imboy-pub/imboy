@@ -2,10 +2,10 @@
 # Garage S3 附件直传端到端测试 / Garage S3 attachment upload E2E test
 #
 # 串起完整链路 / Exercises the full chain:
-#   1. GET  /v1/attachment/presign   → 取上传 presigned PUT URL
+#   1. GET  /api/v1/attachment/presign   → 取上传 presigned PUT URL
 #   2. PUT  <put_url>                 → 直传对象到 Garage（不经 Erlang）
-#   3. POST /v1/attachment/confirm    → 回调落库 attachment 表
-#   4. GET  /v1/attachment/view_url   → 签发短时 presigned GET URL
+#   3. POST /api/v1/attachment/confirm    → 回调落库 attachment 表
+#   4. GET  /api/v1/attachment/view_url   → 签发短时 presigned GET URL
 #   5. GET  <view_url>                → 读回对象，校验内容一致
 #   6. GET  <endpoint>/<bucket>/<key> → 无签名直链应 403（确认未开公开读）
 #
@@ -35,7 +35,7 @@ fail() { echo "✗ $1" >&2; exit 1; }
 
 echo "==> 1. presign"
 PRE=$(curl -sf "${auth[@]}" \
-  "$API_BASE/v1/attachment/presign?filename=e2e.png&mime_type=$MIME") || fail "presign 请求失败"
+  "$API_BASE/api/v1/attachment/presign?filename=e2e.png&mime_type=$MIME") || fail "presign 请求失败"
 PUT_URL=$(echo "$PRE" | jq -r '.payload.put_url // .data.put_url')
 KEY=$(echo "$PRE" | jq -r '.payload.object_key // .data.object_key')
 [ -n "$PUT_URL" ] && [ "$PUT_URL" != "null" ] || fail "presign 未返回 put_url: $PRE"
@@ -52,7 +52,7 @@ echo "==> 3. confirm 落库"
 MD5=$(openssl md5 -r "$SRC" 2>/dev/null | awk '{print $1}' || md5 -q "$SRC")
 SIZE=$(wc -c < "$SRC" | tr -d ' ')
 CONFIRM=$(curl -sf "${auth[@]}" -H "Content-Type: application/json" -X POST \
-  "$API_BASE/v1/attachment/confirm" \
+  "$API_BASE/api/v1/attachment/confirm" \
   -d "{\"object_key\":\"$KEY\",\"md5\":\"$MD5\",\"mime_type\":\"$MIME\",\"size\":$SIZE}") \
   || fail "confirm 请求失败"
 echo "$CONFIRM" | jq -e '.code == 0 or .code == 200' >/dev/null || fail "confirm 落库失败: $CONFIRM"
@@ -60,7 +60,7 @@ pass "confirm ok"
 
 echo "==> 4+5. view_url 签发 + 读回"
 VIEW=$(curl -sf "${auth[@]}" \
-  "$API_BASE/v1/attachment/view_url?object_key=$KEY") || fail "view_url 请求失败"
+  "$API_BASE/api/v1/attachment/view_url?object_key=$KEY") || fail "view_url 请求失败"
 VURL=$(echo "$VIEW" | jq -r '.payload.url // .data.url')
 [ -n "$VURL" ] && [ "$VURL" != "null" ] || fail "view_url 未返回 url: $VIEW"
 curl -sf "$VURL" -o "$TMP/got.png" || fail "presigned GET 读回失败"
