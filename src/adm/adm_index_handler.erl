@@ -225,6 +225,7 @@ role_acl(1) ->
         <<"channels:create">>,
         <<"channels:update">>,
         <<"channels:delete">>,
+        <<"channel_order_refund">>,
         %% finance 运营财务（钱包/充值/支付/SaaS 计费）
         %% TODO: finance 细粒度权限当前仅 read/write 两级，后续按需细化
         %% （如 finance:wallet:read / finance:billing:write）由 RBAC 补充。
@@ -332,6 +333,7 @@ role_acl(2) ->
         <<"channels:create">>,
         <<"channels:update">>,
         <<"channels:delete">>,
+        <<"channel_order_refund">>,
         %% finance 运营财务（钱包/充值/支付/SaaS 计费）
         %% TODO: finance 细粒度权限当前仅 read/write 两级，后续按需细化由 RBAC 补充。
         <<"finance:read">>,

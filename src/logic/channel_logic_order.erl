@@ -9,6 +9,7 @@
 -export([to_gateway_amount/2, yuan_to_fen/1]).
 -endif.
 -export([refund_order/2]).
+-export([admin_refund_order/2]).
 
 %% 生产环境允许的支付方式白名单（不含 mock）
 -define(ALLOWED_PAYMENT_METHODS, [<<"wallet">>, <<"alipay">>, <<"wechat">>, <<"stripe">>]).
@@ -299,6 +300,48 @@ refund_order(Uid, OrderNo, Reason0) ->
                             {error, <<"订单已退款"/utf8>>};
                         1 ->
                             do_refund_order(ChannelId, Uid, OrderNo, Order, Reason);
+                        _ ->
+                            {error, <<"订单状态不允许退款"/utf8>>}
+                    end
+            end;
+        {ok, _} ->
+            {error, <<"订单不存在"/utf8>>};
+        {error, not_found} ->
+            {error, <<"订单不存在"/utf8>>};
+        {error, Reason1} when is_binary(Reason1) ->
+            {error, Reason1};
+        {error, Reason1} ->
+            {error, elib_cnv:safe_to_binary(Reason1)};
+        _Other ->
+            {error, elib_cnv:safe_to_binary(_Other)}
+    end.
+
+%% @doc 管理端代发退款：不做订单归属校验，管理员可退任意订单。
+%% 复用 do_refund_order 原语；注意取消订阅与退款流水用的是**订单买家的 user_id**，
+%% 而非管理员 id（管理员身份仅用于 handler 层权限门控）。
+-spec admin_refund_order(binary(), binary()) -> ok | {error, binary()}.
+admin_refund_order(OrderNo, Reason0) ->
+    Reason = normalize_refund_reason(Reason0),
+    case channel_order_ds:find_by_order_no(OrderNo) of
+        {ok, Order} when is_map(Order) ->
+            OrderUserId = maps:get(<<"user_id">>, Order, 0),
+            ChannelId = maps:get(<<"channel_id">>, Order, 0),
+            Status = maps:get(<<"status">>, Order, 0),
+            case
+                is_integer(OrderUserId) andalso
+                    OrderUserId > 0 andalso
+                    is_integer(ChannelId) andalso
+                    ChannelId > 0
+            of
+                false ->
+                    {error, <<"订单不存在"/utf8>>};
+                true ->
+                    %% 幂等：已退款订单直接返回提示，不重复退
+                    case Status of
+                        2 ->
+                            {error, <<"订单已退款"/utf8>>};
+                        1 ->
+                            do_refund_order(ChannelId, OrderUserId, OrderNo, Order, Reason);
                         _ ->
                             {error, <<"订单状态不允许退款"/utf8>>}
                     end

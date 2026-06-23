@@ -721,6 +721,8 @@ get_routes() ->
         {"/adm/message/export", adm_message_handler, #{action => export}},
         % 频道管理 API
         {"/adm/channel/list", adm_channel_handler, #{action => list}},
+        %% 固定段路由置于 :channel_id 通配之前，避免 order 被当作 channel_id
+        {"/adm/channel/order/refund", adm_channel_handler, #{action => refund_order}},
         {"/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
         {"/adm/channel/:channel_id/messages", adm_channel_handler, #{action => messages}},
         {"/adm/channel/:channel_id/subscribers", adm_channel_handler, #{action => subscribers}},
@@ -826,8 +828,10 @@ get_routes() ->
 %% 网站页面与静态资源保留根路径，不加 /api。
 -spec api_alias_routes(list()) -> list().
 api_alias_routes(Routes) ->
-    [{"/api" ++ Path, Handler, Opts}
-     || {Path, Handler, Opts} <- Routes, should_alias_path(Path)].
+    [
+        {"/api" ++ Path, Handler, Opts}
+     || {Path, Handler, Opts} <- Routes, should_alias_path(Path)
+    ].
 
 %% @doc 网站/静态白名单：这些路径保留在根路径，不生成 /api 别名。
 -spec should_alias_path(string()) -> boolean().
@@ -893,55 +897,56 @@ option() ->
 %% auth_middleware 去除了path 最后的斜杆，所以不用以 / 结尾了
 -spec open() -> [binary()].
 open() ->
-    Base = [
-        <<"/help">>,
-        <<"/brand">>,
-        <<"/privacy-policy">>,
-        <<"/account-deletion">>,
-        % /ws 有自己的auth
-        <<"/ws">>,
-        <<"/conversation/online">>,
-        <<"/init">>,
-        <<"/user/show">>,
-        <<"/refreshtoken">>,
-        <<"/passport/login">>,
-        <<"/passport/quick_login">>,
-        <<"/passport/signup">>,
-        <<"/passport/getcode">>,
-        <<"/passport/findpassword">>,
-        <<"/passport/bind_mail">>,
+    Base =
+        [
+            <<"/help">>,
+            <<"/brand">>,
+            <<"/privacy-policy">>,
+            <<"/account-deletion">>,
+            % /ws 有自己的auth
+            <<"/ws">>,
+            <<"/conversation/online">>,
+            <<"/init">>,
+            <<"/user/show">>,
+            <<"/refreshtoken">>,
+            <<"/passport/login">>,
+            <<"/passport/quick_login">>,
+            <<"/passport/signup">>,
+            <<"/passport/getcode">>,
+            <<"/passport/findpassword">>,
+            <<"/passport/bind_mail">>,
 
-        <<"/v1/ws">>,
-        <<"/v1/conversation/online">>,
-        <<"/v1/init">>,
-        <<"/v1/app/features">>,
-        <<"/v1/app/manifest">>,
-        <<"/v1/app/policy">>,
-        <<"/v1/user/show">>,
-        <<"/v1/refreshtoken">>,
-        <<"/v1/passport/login">>,
-        <<"/v1/passport/quick_login">>,
-        <<"/v1/passport/signup">>,
-        <<"/v1/passport/getcode">>,
-        <<"/v1/passport/findpassword">>,
-        <<"/v1/passport/bind_mail">>,
-        <<"/v1/passport/qr_login/create">>,
-        <<"/v1/passport/qr_login/status">>,
-        <<"/v1/passport/qr_login/scan">>,
-        <<"/v1/passport/qr_login/confirm">>,
-        <<"/v1/passport/qr_login/cancel">>,
-        %% PR-3β: SSE 端点免登录（EventSource 在握手完成前没有 token）
-        <<"/v1/passport/qr_login/subscribe">>,
+            <<"/v1/ws">>,
+            <<"/v1/conversation/online">>,
+            <<"/v1/init">>,
+            <<"/v1/app/features">>,
+            <<"/v1/app/manifest">>,
+            <<"/v1/app/policy">>,
+            <<"/v1/user/show">>,
+            <<"/v1/refreshtoken">>,
+            <<"/v1/passport/login">>,
+            <<"/v1/passport/quick_login">>,
+            <<"/v1/passport/signup">>,
+            <<"/v1/passport/getcode">>,
+            <<"/v1/passport/findpassword">>,
+            <<"/v1/passport/bind_mail">>,
+            <<"/v1/passport/qr_login/create">>,
+            <<"/v1/passport/qr_login/status">>,
+            <<"/v1/passport/qr_login/scan">>,
+            <<"/v1/passport/qr_login/confirm">>,
+            <<"/v1/passport/qr_login/cancel">>,
+            %% PR-3β: SSE 端点免登录（EventSource 在握手完成前没有 token）
+            <<"/v1/passport/qr_login/subscribe">>,
 
-        <<"/metrics">>,
-        <<"/v1/metrics">>,
+            <<"/metrics">>,
+            <<"/v1/metrics">>,
 
-        %% 首启初始化向导（P0-5）— 部署后首次访问必须免鉴权
-        <<"/adm/setup/status">>,
-        <<"/adm/setup/init">>,
+            %% 首启初始化向导（P0-5）— 部署后首次访问必须免鉴权
+            <<"/adm/setup/status">>,
+            <<"/adm/setup/init">>,
 
-        <<"/">>
-    ] ++ test_open_routes(),
+            <<"/">>
+        ] ++ test_open_routes(),
     %% 统一 /api 前缀：为每个免鉴权 API 端点生成 /api 别名（网站白名单除外），与旧路径并存。
     Base ++ [<<"/api", P/binary>> || P <- Base, is_api_open_path(P)].
 

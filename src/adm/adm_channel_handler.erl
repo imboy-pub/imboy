@@ -62,7 +62,36 @@ dispatch(delete_message, Method, Req0, State) -> delete_message_action(Method, R
 dispatch(search, Method, Req0, _State) -> search(Method, Req0);
 dispatch(delete, Method, Req0, _State) -> delete_action(Method, Req0);
 dispatch(set_price, Method, Req0, _State) -> set_price_action(Method, Req0);
+dispatch(refund_order, Method, Req0, State) -> refund_order_action(Method, Req0, State);
 dispatch(false, _Method, Req0, _State) -> Req0.
+
+%% @doc 管理端代发退款：对任意频道订单发起退款（需 channel_order_refund 权限）。
+%%      区别于买家本人退款 /v1/channel/order/refund：此处不校验订单归属。
+-spec refund_order_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+refund_order_action(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"channel_order_refund">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            OrderNo = maps:get(<<"order_no">>, PostVals, <<>>),
+            Reason = maps:get(<<"refund_reason">>, PostVals, <<>>),
+            case {OrderNo, Reason} of
+                {<<>>, _} ->
+                    elib_response:error(Req0, <<"缺少订单号"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, <<>>} ->
+                    elib_response:error(Req0, <<"退款原因必填"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                    case channel_logic_order:admin_refund_order(OrderNo, Reason) of
+                        ok ->
+                            elib_response:success(Req0, #{<<"order_no">> => OrderNo});
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg, ?ERR_BUSINESS_FAILED)
+                    end
+            end
+    end;
+refund_order_action(_, Req0, _State) ->
+    elib_response:error(Req0, <<"方法不允许"/utf8>>, ?ERR_BAD_REQUEST).
 
 %% @doc 获取频道列表
 -spec list(binary(), cowboy_req:req()) -> cowboy_req:req().
@@ -76,12 +105,21 @@ list(<<"GET">>, Req0) ->
         "subscriber_count, status, created_at, updated_at"
     >>,
 
-    Where =
+    StatusWhere =
         case StatusFilter of
             <<"-1">> -> #{};
             <<"1">> -> #{status => 1};
             <<"0">> -> #{status => 0};
             _ -> #{}
+        end,
+
+    %% 可选 type 过滤（付费频道 type=2 等）下沉到服务端分页，
+    %% 避免前端按 type 过滤导致 total/page 与可见行数不一致
+    Where =
+        case proplists:get_value(<<"type">>, Qs) of
+            undefined -> StatusWhere;
+            <<>> -> StatusWhere;
+            TypeBin -> StatusWhere#{type => ec_cnv:to_integer(TypeBin)}
         end,
 
     case channel_ds:page(Column, Where, <<"id desc">>, Page, Size) of
