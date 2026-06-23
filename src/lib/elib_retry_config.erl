@@ -1,7 +1,14 @@
 -module(elib_retry_config).
 %%%
-% elib_retry_config 是消息重试间隔配置模块
+% elib_retry_config 是【服务端投递重试】间隔配置模块（按消息类型）
 % 提供统一的重试间隔管理，支持通过宏定义默认值
+%
+% 语义边界（勿与客户端侧重试混淆）：
+% 本模块 = 服务端「投递消息给接收端 → 等接收端 CLIENT_ACK → 超时重投」的节奏。
+% 客户端侧重试是另一套语义，见 imboyapp/lib/service/retry_policy.dart：
+%   - messageSendRetryIntervals：客户端发消息等服务端确认（4 次 3/5/10/20s）
+%   - ackConfirmRetryIntervals：客户端发 ACK 等服务端 confirm（4 次 3/5/10/15s）
+% 两套节奏各自独立，互不镜像。
 %%%
 
 -include("chat.hrl").
@@ -34,4 +41,5 @@ intervals(<<"c2s">>) -> ?MSG_RETRY_DELAYS_C2S;
 intervals(<<"s2c">>) -> ?MSG_RETRY_DELAYS_S2C;
 intervals(<<"pull">>) -> ?MSG_RETRY_DELAYS_PULL;
 intervals(<<"notice">>) -> ?MSG_RETRY_DELAYS_NOTICE;
-intervals(_) -> [0, 5000, 7000, 11000].  % 默认值
+% 默认值
+intervals(_) -> [0, 5000, 7000, 11000].

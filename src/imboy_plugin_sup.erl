@@ -39,6 +39,7 @@ init([]) ->
     },
     Children = [
         router_registry_spec(),
+        ws_action_registry_spec(),
         plugin_sup_spec(channel_sup),
         plugin_sup_spec(moment_sup),
         plugin_sup_spec(location_sup),
@@ -57,6 +58,17 @@ router_registry_spec() ->
         modules => [imboy_router_registry]
     }.
 
+%% @doc WS action 注册表 child spec：WS 路由查表的前置依赖，必须在消息路由前启动。
+ws_action_registry_spec() ->
+    #{
+        id => imboy_ws_action_registry,
+        start => {imboy_ws_action_registry, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [imboy_ws_action_registry]
+    }.
+
 %% @doc 通用 plugin sup child spec：复用 imboy_plugin_generic_sup 注册不同 local name。
 plugin_sup_spec(Name) when is_atom(Name) ->
     #{
@@ -73,15 +85,22 @@ plugin_sup_spec(Name) when is_atom(Name) ->
 -spec collect_metrics() -> ok.
 collect_metrics() ->
     PluginNames = [channel, moment, location, group_collab],
-    lists:foreach(fun(Plugin) ->
-        SupName = list_to_atom(atom_to_list(Plugin) ++ "_sup"),
-        case whereis(SupName) of
-            undefined -> ok;
-            _Pid ->
-                Children = supervisor:count_children(SupName),
-                Active = proplists:get_value(active, Children, 0),
-                elib_metric:increment(plugin_sup_active, Active,
-                    #{plugin => Plugin})
-        end
-    end, PluginNames),
+    lists:foreach(
+        fun(Plugin) ->
+            SupName = list_to_atom(atom_to_list(Plugin) ++ "_sup"),
+            case whereis(SupName) of
+                undefined ->
+                    ok;
+                _Pid ->
+                    Children = supervisor:count_children(SupName),
+                    Active = proplists:get_value(active, Children, 0),
+                    elib_metric:increment(
+                        plugin_sup_active,
+                        Active,
+                        #{plugin => Plugin}
+                    )
+            end
+        end,
+        PluginNames
+    ),
     ok.

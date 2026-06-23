@@ -14,7 +14,6 @@
 %% ===================================================================
 -export([route/5]).
 
-
 %% ===================================================================
 %% API 函数
 %% ===================================================================
@@ -49,7 +48,6 @@ route(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
             %% 普通消息（无 action）
             route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg)
     end.
-
 
 %% ===================================================================
 %% 内部函数
@@ -90,7 +88,6 @@ route_normal_message(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
             ok
     end.
 
-
 %% @doc 路由 action 消息
 %%
 %% 根据 Type 和 Action 分发到对应的处理函数。
@@ -117,40 +114,37 @@ route_action_message(Action, MsgId, CurrentUid, Data, Type) ->
             {reply, message_ds:assemble_s2c(MsgId, <<"invalid_message_type">>, <<>>)}
     end.
 
-
-%% @doc 路由 C2C action 消息
+%% @doc 路由 C2C action 消息（查表 dispatch，action 注册见 imboy_ws_action_registry）
 %%
 %% @private
 -spec route_c2c_action(binary(), binary(), integer(), map()) -> ok | {reply, map()}.
-route_c2c_action(<<"message_revoke">>, MsgId, CurrentUid, Data) ->
-    msg_c2c_logic:c2c_revoke(MsgId, CurrentUid, Data);
-route_c2c_action(<<"message_revoke_ack">>, MsgId, CurrentUid, Data) ->
-    msg_c2c_logic:c2c_revoke_ack(MsgId, CurrentUid, Data);
-route_c2c_action(<<"message_edit">>, MsgId, CurrentUid, Data) ->
-    msg_c2c_logic:c2c_edit(MsgId, CurrentUid, Data);
-route_c2c_action(<<"message_edit_ack">>, MsgId, CurrentUid, Data) ->
-    msg_c2c_logic:c2c_edit_ack(MsgId, CurrentUid, Data);
-route_c2c_action(<<"message_read">>, MsgId, CurrentUid, Data) ->
-    msg_c2c_logic:c2c_read(MsgId, CurrentUid, Data);
-route_c2c_action(<<"message_read_ack">>, MsgId, CurrentUid, Data) ->
-    msg_c2c_logic:c2c_read_ack(MsgId, CurrentUid, Data);
-route_c2c_action(Action, MsgId, _CurrentUid, _Data) ->
-    _ = ?WARN_LOG({unknown_c2c_action, Action, MsgId}),
-    {reply, message_ds:assemble_s2c(MsgId, <<"unknown_action">>, <<>>)}.
+route_c2c_action(Action, MsgId, CurrentUid, Data) ->
+    route_action(<<"c2c">>, Action, MsgId, CurrentUid, Data).
 
-
-%% @doc 路由 C2G action 消息
+%% @doc 路由 C2G action 消息（查表 dispatch，action 注册见 imboy_ws_action_registry）
 %%
 %% @private
 -spec route_c2g_action(binary(), binary(), integer(), map()) -> ok | {reply, map()}.
-route_c2g_action(<<"message_revoke">>, MsgId, CurrentUid, Data) ->
-    msg_c2g_logic:c2g_revoke(MsgId, CurrentUid, Data);
-route_c2g_action(<<"message_revoke_ack">>, MsgId, CurrentUid, Data) ->
-    msg_c2g_logic:c2g_revoke_ack(MsgId, CurrentUid, Data);
-route_c2g_action(<<"message_edit">>, MsgId, CurrentUid, Data) ->
-    msg_c2g_logic:c2g_edit(MsgId, CurrentUid, Data);
-route_c2g_action(<<"message_edit_ack">>, MsgId, CurrentUid, Data) ->
-    msg_c2g_logic:c2g_edit_ack(MsgId, CurrentUid, Data);
-route_c2g_action(Action, MsgId, _CurrentUid, _Data) ->
-    _ = ?WARN_LOG({unknown_c2g_action, Action, MsgId}),
-    {reply, message_ds:assemble_s2c(MsgId, <<"unknown_action">>, <<>>)}.
+route_c2g_action(Action, MsgId, CurrentUid, Data) ->
+    route_action(<<"c2g">>, Action, MsgId, CurrentUid, Data).
+
+%% @doc 按 {Type, Action} 查注册表分派到对应 {Module, Function}；
+%% 未注册则回 unknown_action。内置 action 由 imboy_ws_action_registry 启动注册，
+%% 插件可通过 imboy_ws_action_registry:register/3 扩展。
+%%
+%% @private
+-spec route_action(binary(), binary(), binary(), integer(), map()) -> ok | {reply, map()}.
+route_action(Type, Action, MsgId, CurrentUid, Data) ->
+    case imboy_ws_action_registry:lookup(Type, Action) of
+        {ok, {Module, Function}} ->
+            Module:Function(MsgId, CurrentUid, Data);
+        undefined ->
+            %% 注册表未启动（单元测试）或 action 未注册——回退内置映射
+            case imboy_ws_action_registry:builtin_lookup(Type, Action) of
+                {ok, {Module, Function}} ->
+                    Module:Function(MsgId, CurrentUid, Data);
+                undefined ->
+                    _ = ?WARN_LOG({unknown_action, Type, Action, MsgId}),
+                    {reply, message_ds:assemble_s2c(MsgId, <<"unknown_action">>, <<>>)}
+            end
+    end.
