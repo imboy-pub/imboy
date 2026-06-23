@@ -30,6 +30,17 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_c2g">>).
 
+%% @doc 幂等写入主表 msg_c2g：INSERT 追加 ON CONFLICT (msg_id, created_at) DO NOTHING
+%%
+%% 与 msg_c2c 主表对齐，防止 msg_store_worker 写入成功后、标记 processed_at
+%% 前崩溃，重启重新处理 staging 行导致主表重复入库。
+%% 依赖唯一索引 uk_c2g_msgid_createdat (msg_id, created_at)（见迁移 00000016）。
+-spec insert_msg_idempotent(term(), binary(), map()) -> {ok, term()} | {error, term()}.
+insert_msg_idempotent(Conn, TbMsg, MsgData) ->
+    {Sql0, Params} = elib_pg_sql:insert(TbMsg, MsgData),
+    Sql = iolist_to_binary([Sql0, <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>]),
+    elib_pg:execute(Conn, Sql, Params).
+
 % msg_c2g_repo:write_msg(1707686743435, <<"msg_id_1">>,  <<"{\"a\":1}">>,  1, [2,3,107], 7, <<"text">>, <<>>).
 % msg_c2g_repo:write_msg(<<"2026-01-01 05:50:28.465444+00:00">>, <<"msg_id_1">>, <<"{\"a\":1}">>, 1, [2,3,107], 7, <<"image">>, <<"{\"key\":\"...\"}">>).
 %%====================================================================
@@ -106,8 +117,7 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
             end,
         GenId = elib_tsid:generate(msg_c2g),
         MsgData3 = MsgData2#{id => GenId},
-        {MsgSql, MsgParams} = elib_pg_sql:insert(TbMsg, MsgData3),
-        case elib_pg:execute(Conn, MsgSql, MsgParams) of
+        case insert_msg_idempotent(Conn, TbMsg, MsgData3) of
             {ok, _} ->
                 ok;
             {error, InsertReason} ->
@@ -353,8 +363,7 @@ write_msg_with_mentions(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgTy
                     _ -> jsone:encode(Mentions, [native_utf8])
                 end
         },
-        {MentionSql, MentionParams} = elib_pg_sql:insert(TbMsg, MentionMsgData),
-        case elib_pg:execute(Conn, MentionSql, MentionParams) of
+        case insert_msg_idempotent(Conn, TbMsg, MentionMsgData) of
             {ok, _} ->
                 ok;
             {error, InsertReason} ->
