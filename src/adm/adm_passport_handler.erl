@@ -67,7 +67,7 @@ captcha(Req, _State) ->
                 CryptKey,
                 Req,
                 #{
-                    path => <<"/adm/passport">>,
+                    path => <<"/">>,
                     http_only => true,
                     same_site => lax,
                     secure => cookie_secure()
@@ -147,7 +147,7 @@ login(<<"POST">>, Req0, _State) ->
                                         AdmUserIdBin,
                                         Req0,
                                         #{
-                                            path => <<"/adm">>,
+                                            path => <<"/">>,
                                             http_only => true,
                                             same_site => lax,
                                             secure => cookie_secure()
@@ -161,7 +161,7 @@ login(<<"POST">>, Req0, _State) ->
                                         AdmUserSig,
                                         Req1,
                                         #{
-                                            path => <<"/adm">>,
+                                            path => <<"/">>,
                                             http_only => true,
                                             same_site => lax,
                                             secure => cookie_secure()
@@ -174,7 +174,7 @@ login(<<"POST">>, Req0, _State) ->
                                             _ ->
                                                 <<"/adm/">>
                                         end,
-                                    Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/adm">>),
+                                    Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/">>),
                                     RespData = maps:put(<<"next">>, Next, AdmUser),
                                     elib_response:success(Req3, RespData, "操作成功.");
                                 {error, Msg} ->
@@ -234,9 +234,9 @@ meta(_, Req0, _State) ->
 %% 清理管理后台认证相关 Cookie，并返回成功响应
 -spec logout(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 logout(<<"POST">>, Req0, _State) ->
-    Req1 = clear_cookie(<<"adm_user_id">>, Req0, <<"/adm">>),
-    Req2 = clear_cookie(<<"adm_user_sig">>, Req1, <<"/adm">>),
-    Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/adm">>),
+    Req1 = clear_cookie(<<"adm_user_id">>, Req0, <<"/">>),
+    Req2 = clear_cookie(<<"adm_user_sig">>, Req1, <<"/">>),
+    Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/">>),
     elib_response:success(Req3, #{}, <<"退出成功"/utf8>>);
 logout(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).

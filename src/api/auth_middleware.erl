@@ -27,6 +27,10 @@ execute(Req, Env) ->
         <<"/adm/", _Tail/binary>> ->
             % Admin 路由委托给 adm_auth_middleware
             adm_auth_middleware:execute(Req, Env);
+        <<"/api/adm/", _Tail/binary>> ->
+            % /api 前缀的 Admin 路由同样委托给 adm_auth_middleware，
+            % 避免落入客户端默认分支误走 verify_sign 客户端签名门（902）
+            adm_auth_middleware:execute(Req, Env);
         <<"/v1/", _Tail/binary>> ->
             % API v1 路由委托给 auth_middleware_api_v1
             auth_middleware_api_v1:execute(Req, Env);

@@ -18,6 +18,7 @@
 #   3. 确保本机已配置 SSH 免密登录（ssh-copy-id）
 #
 # 示例 / Examples:
+#
 #   bash scripts/imboy-deploy.sh all
 #   bash scripts/imboy-deploy.sh api
 #   bash scripts/imboy-deploy.sh admin
@@ -117,7 +118,7 @@ deploy_admin() {
   # 上传（rsync 增量，比 scp 快）
   log "上传至 $SERVER_USER@$SERVER_HOST:$ADMIN_REMOTE_DIR ..."
   if command -v rsync &>/dev/null; then
-    rsync -az --delete -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL" \
+    rsync -az --delete --exclude='.user.ini' -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL" \
       "$BUILD_DIR/dist/" \
       "$SERVER_USER@$SERVER_HOST:$ADMIN_REMOTE_DIR/"
   else

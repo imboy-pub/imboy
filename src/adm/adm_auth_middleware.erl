@@ -23,6 +23,10 @@ execute(Req, Env) ->
         <<"/adm/passport/", _Tail/binary>> ->
             % elib_log:info("passport xxxxxxxxxxxxxx\n"),
             {ok, Req, Env};
+        <<"/api/adm/passport/", _Tail/binary>> ->
+            % /api 前缀的登录前 passport 接口（captcha/meta/login）同样开放，
+            % 与 /adm/passport/ 行为一致；其余 /api/adm/* 仍落 _ 分支校验 admin cookie
+            {ok, Req, Env};
         _ ->
             % {ok, Req, Env} | {stop, Req}
             Method = cowboy_req:method(Req),
@@ -76,7 +80,7 @@ handle_unauthorized(<<"GET">>, Req) ->
                 Uri,
                 Req0,
                 #{
-                    path => <<"/adm">>,
+                    path => <<"/">>,
                     http_only => true,
                     same_site => lax,
                     secure => cookie_secure()
@@ -109,7 +113,7 @@ clear_cookie(Name, Req) ->
         <<>>,
         Req,
         #{
-            path => <<"/adm">>,
+            path => <<"/">>,
             max_age => 0,
             http_only => true,
             same_site => lax,
