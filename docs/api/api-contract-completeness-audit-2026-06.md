@@ -125,3 +125,111 @@ api_alias_routes(Routes) -> [{"/api" ++ Path, H, O} || {Path,H,O} <- Routes, sho
 - app 群组协作域(album/task/vote/schedule) 响应字段逐字段（06-02 已覆盖部分）。
 - WebSocket 消息 envelope 字段（见 `websocket-api-2.md`，本轮未触及）。
 - 方法级歧义：多个 adm 端点同路径承载 GET+POST/PUT（如 `/stats/license` GET 查询+POST 应用、`/channel/detail/:id` GET+PUT），Cowboy 路由方法无关、由 handler 内部分发——工作正常但未按方法文档化(INFO)。
+
+---
+
+# 第二轮补充审计（2026-06-23，§5 遗留域）
+
+> 覆盖 §5 列出的未穷尽域：imboyadmin 群组/消息/插件、app 群组协作、WebSocket envelope。仅审计不改码。
+> **⚠️ 复核提醒**：本轮部分行号/字段来自子代理取证，修复前须对涉及文件单点 `Read` 复核精确位置。尤其"时间字段类型"存在子代理分歧（见 §6.0），结论需后端验证。
+
+## 6. imboyadmin 群组/消息/插件域响应字段
+
+### 6.0 关键机制（已核实，纠正一处普遍误判）
+
+**adm 域所有 handler 走 `elib_response:success/2,3,4`，该函数无条件调用 `elib_cnv:convert_at_timestamps`**（`src/lib/elib_response.erl:30,40,52`），把**以 `_at`/`_ts` 结尾的字段**经 `elib_dt:rfc3339_to` 转成**毫秒整数 number**（`src/lib/elib_cnv.erl:136-137`）。DB codec 先解出 RFC3339 binary，响应层又转回毫秒整数。
+
+> ⚠️ 边界：`convert_at_timestamps` **只转 `_at`/`_ts` 结尾字段**。不以此结尾的时间字段（如 `deadline`）不被转、仍是 RFC3339 字符串——这正是 §7 app 域 `deadline` 与本节 `*_at` 表现不同的原因。两轮结论不矛盾，但**修复前须按字段名逐个确认走哪条路径**。
+
+### 6.1 发现清单
+
+| # | 端点 | 字段 | 后端实际 | 前端期望 | 风险 | 说明 |
+|---|------|------|----------|----------|------|------|
+| A1 | **全 adm 域** `*_at`/`*_ts` | created_at/updated_at/start_at/end_at/subscribed_at/expires_at… | **毫秒整数 number** | 多数声明 `string` | **HIGH** | 系统性。前端把毫秒整数当 ISO 字符串渲染→错误/空日期。需统一：前端改 `number`(毫秒) 或后端 adm 域停用该转换。**需后端确认覆盖范围**。 |
+| A2 | plugin/logs | 包裹键 | 后端 `{list, limit, offset}`(`adm_plugin_handler.erl:367`) | 前端读 `{items, page, size, total, total_pages}`(`plugins.ts:215`) | **HIGH** | 键错位→`items` 恒 undefined→**日志列表永远空、total 恒 0**。 |
+| A3 | plugin/logs | `action` | 表字段是 `event`，无 `action` | `action`(兜底 `'enable'`) | **HIGH** | 字段名不符→所有日志动作恒显示 `'enable'`。 |
+| A4 | 群组子域(vote/notice/schedule/tag/category/file/album/task) | `id`/`group_id`/`creator_id` 等 TSID | **裸 JSON integer**（未调 tsid_keys_to_bin，与 group 主体不同） | `EntityId`=string | **HIGH** | 类型谎报，靠 safeParseBigIntJson(≥16位) 兜底；TSID<16位或 id=0 不触发→前端拿 number。 |
+| A5 | group/category/list | `id`(默认"未分类"项=0) | integer `0` | `EntityId`=string | **HIGH** | id=0 必然不被兜底转 string，确证 A4 类型谎报。 |
+| A6 | group/members | `joined_at` | 疑 SELECT 取不存在列（应为 created_at），`adm_group_handler.erl:215` | `joined_at: string`(必填) | **HIGH** | **须后端 Read 复核 SQL 列名**：若取不存在列→端点失败；若实为 created_at→入群时间恒空。 |
+| A7 | channel/stats | `channel_id` | integer（未 normalize，`adm_channel_handler.erl:392`） | `EntityId`=string | HIGH | 该端点唯一 ID 靠兜底；边界短 ID 类型错。 |
+| A8 | plugin/logs | `result` | `ok/failed/cancelled/timeout` | `'success'/'failure'`(兜底 success) | MED | 枚举不对齐→结果状态全显示 success。 |
+| A9 | plugin/list·detail | `description`/`installed_at`/`config`/`state` 枚举 | 多数不返回；state=`installed/enabled/disabled/unknown/failed` | 前端声明全字段；枚举含 `error/installing/upgrading` | MED | UI 列恒空；后端 `failed/unknown` 被前端 normalize 误兜底成 `disabled`(隐藏失败态)。 |
+
+一致项（无问题）：消息域 from_id/to_id（显式转 string）、msg_id(varchar 非 TSID)、group 主体 ID（显式 tsid_keys_to_bin）、channel amount/status。
+
+## 7. imboyapp 群组协作域响应字段（相册/任务/投票/日程/公告/分类标签）
+
+> app 普遍用双键兜底（`A ?? B`）吸收后端字段名不一致，掩盖后端命名混乱根因。TSID 处理整体健壮（`_toInt`/`_toText`/toString），仅一处脆弱。
+
+| # | 端点 | 字段 | 后端 | app期望 | 风险 | 说明 |
+|---|------|------|------|---------|------|------|
+| B1 | group_task list/detail | `deadline` | **RFC3339 字符串**（不以 _at 结尾，未被转毫秒） | 当 epoch int 处理(`_toInt`×1000) | **HIGH** | `group_task_page.dart:207`/`detail_page:76` 对 RFC3339 解析失败返 0→截止时间显示错误。 |
+| B2 | group_vote my_vote | 外层结构 | 返单对象 `{ok, Map}` | api:204 硬包成 `[Map]` 数组 | **HIGH** | 协议层结构错配，调用方被迫 `.first`。 |
+| B3 | group_vote list | `participant_count` | **不返回** | `group_vote_page.dart:216` 读取(默认0) | **HIGH** | 列表参与人数永远显示 0。 |
+| B4 | group_category/list、group_tag/list | `category_name`/`tag_name` | 返 `category_name`/`tag_name` | 读 `name`(双键兜底) | **HIGH** | 后端字段名与 app 不符，靠 `name ?? category_name` 掩盖根因(后端 DS)。 |
+| B5 | group_notice | edit/publish/pin/unpin/mark_read | 后端实现 11 个 action | app 仅消费 list 展示 + add/delete | **严重(功能缺口)** | 大量后端公告能力 app 未接入。 |
+| B6 | group_category | `id` | TSID integer | `sortCategories(List<int>)`/`deleteCategory(int)` 直接用 int | MED | **唯一脆弱 int 读法**；若 id 以 string 返回会类型崩溃。 |
+| B7 | group_schedule my_list | 字段集 | Repo:184 仅返 id/schedule_id/group_id/title/start_at/end_at/status | 期望同 list(含 location/description/remind_before) | MED | my_list 字段比 list 少，UI 这些字段恒 null。 |
+| B8 | group_schedule detail、group_notice/list | 参与者 `nickname`/`publisher_name` | SELECT 不含昵称 | 读 nickname/publisher_name 降级 uid | MED | 显示 uid 而非昵称，app 被迫 N+1 查本地群成员补昵称。 |
+| B9 | group_task my_tasks | `assignment_status` | 未返回 | app 读取 | MED | app 读不到。 |
+| B10 | group_album list_comments | 整端点 | 实现了但返 `{comments:[...]}` 无分页 | **无 app 调用方** | LOW | dead endpoint，结构也与其它端点不一致。 |
+
+死代码：相册 `url` fallback、日程 `start_time` 双键、投票 `end_at` 均为无效/未用分支。
+
+## 8. WebSocket Envelope 三方对账（文档↔后端↔app）
+
+### 8.0 关键背景
+
+存在**两份互相矛盾的 WS 文档**：
+- **`websocket-api-2.md`（权威，1600+行）** — 实际冻结契约，字段 `id/type/from/to/msg_type/action/e2ee/payload/created_at/server_ts`。
+- **`asyncapi.yaml`（自称"冻结契约"）** — 字段 `msg_id/content_type/content/ciphertext/conv_seq/at_uids`，**与权威文档+后端代码几乎逐项不符**，疑似按理想模型手写、从未对账。
+
+权威实现：`message_ds:assemble_msg/8`(`src/ds/message_ds.erl:199`) + `encode_websocket_message/1`(:262)。
+
+### 8.1 字段对照（只列不一致/可疑）
+
+| # | 字段 | 权威文档 | asyncapi.yaml | 后端实发 | app读取 | 风险 | 说明 |
+|---|------|----------|---------------|----------|---------|------|------|
+| W1 | 消息ID | `id`(string) | **`msg_id`**(int64) | `id`(binary) | `id`(String) | HIGH | asyncapi 字段名+类型双错。 |
+| W2 | `from` | `from`(string示例) | `from`(int64) | `from`(**integer**=CurrentUid) | parseModelInt | **HIGH(TSID)** | 后端发 integer；JS SDK(Number 53位) 大 TSID 丢精度。app Dart int 安全。 |
+| W3 | `to` | `to`(string示例) | `to`(int64) | `to`(**透传客户端原值**, binary 或 integer) | parseModelInt | **HIGH(TSID)** | 类型不固定，与 from 不对称。 |
+| W4 | 消息类型字段 | `msg_type` | **`content_type`** | `msg_type` | `msg_type` | HIGH | asyncapi 字段名错。 |
+| W5 | E2EE 载体 | 顶层 `e2ee`(map) + 密文入 `payload` | **`ciphertext`**(string) | `e2ee`(map\|null)+`payload` | `e2ee`(Map) | HIGH | asyncapi 命名+结构双错。 |
+| W6 | 业务体 | `payload`(object) | **`content`** | `payload` | `payload` | HIGH | asyncapi 字段名错。 |
+| W7 | `action` | `action`(S2C分发) | **未声明** | `action`(顶层) | `action`(强依赖) | MED | asyncapi 缺 S2C/撤回/编辑/已读核心分发字段。 |
+| W8 | `server_ts` | int 毫秒 | **未声明** | int 毫秒(`elib_dt:millisecond()`) | int(S2C去重) | MED | asyncapi 完全没有。 |
+| W9 | `created_at` | RFC3339 串(示例) | **int 毫秒** | **RFC3339 binary**(`to_rfc3339`) | int\|RFC3339 容错 | **HIGH** | 同信封内 created_at(字符串) 与 server_ts(毫秒int) 时间格式混用；asyncapi 又标 int。 |
+| W10 | `conv_seq` | 未在示例 | **声明**(服务端回填) | **WS下行不发**(仅 msg_archive 游标用) | 不读 | MED | 文档承诺了实际不存在的字段。 |
+| W11 | `at_uids` | (C2G mentions) | **声明**顶层 int64数组 | **未发**(改用 `payload.mentions`) | 经 payload 读 | MED | asyncapi 顶层 at_uids 不存在。 |
+
+### 8.2 消息 type 枚举：三方不一致
+
+| 来源 | type 值域 |
+|------|-----------|
+| asyncapi.yaml | **小写** c2c/c2g/ack/s_ack/ping/pong/token_refresh/revoke/edit |
+| 后端实发 | **大写** C2C/C2G/S2C/C2S + C2G_ERROR/C2C_SERVER_ACK/C2G_SERVER_ACK |
+| app 识别 | 大写 C2C/C2G/C2S/S2C/CHANNEL（`type.toUpperCase()` 强制） |
+
+- 大小写整体冲突（app `toUpperCase()` 容错，但 asyncapi 值域错）。
+- ACK：asyncapi 建模独立 type `ack/s_ack`；后端实际服务端 ACK 用 `*_SERVER_ACK` type、客户端 ACK 走文本协议 `CLIENT_ACK,...`。
+- 撤回/编辑：asyncapi 用顶层 `type:revoke/edit`；后端用 `type:C2C/S2C` + `action:message_revoke_ack/message_edit_ack`。
+- 后端/app 共享 20+ 个 S2C `action` 值，asyncapi 完全未覆盖。
+
+## 9. 更新后的修复优先级（合并两轮，待确认）
+
+### CRITICAL
+- 无（均不阻断，但有功能性错误）。
+
+### HIGH（新增，按影响面排序）
+- **W-doc**：`asyncapi.yaml` 几乎逐项与实现脱节，是 WS 契约最大噪音源 → **建议以 `websocket-api-2.md` 为准重写或废弃 asyncapi.yaml**（纯文档，无代码风险，应最先做）。
+- **A1/A2/A3**：adm 域时间字段毫秒-vs-string（系统性，需后端确认范围）；plugin/logs 契约全断（日志页恒空，改动小）。
+- **A4/A5**：群组子域 TSID 未转 string + category id=0 → 后端补 `tsid_keys_to_bin` 与 group 主体看齐。
+- **A6**：group/members `joined_at` 列名需后端先 Read 复核真伪。
+- **B1/B2/B3/B4**：app 任务 deadline 类型错配、投票 my_vote 结构错配、participant_count 恒0、分类/标签字段名错配。
+- **W2/W3/W9**：WS envelope from/to TSID 类型不统一（JS SDK 精度风险）+ created_at/server_ts 时间格式混用。
+
+### MED / 功能缺口
+- A8/A9（plugin 枚举与字段缺失）、B5（公告 11 能力 app 未接入）、B6-B9、W7/W8/W10/W11。
+
+### 复核要求
+本轮 HIGH 项落地前，**逐一对涉及文件 Read 复核**（特别是 A1 转换覆盖范围、A6 SQL 列名、B1 deadline 实际格式、W2/W3 from/to 序列化）。子代理曾在"时间字段类型"上互相纠正，证明此域需代码级确认而非二手结论。
