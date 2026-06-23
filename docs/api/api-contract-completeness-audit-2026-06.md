@@ -180,9 +180,14 @@ api_alias_routes(Routes) -> [{"/api" ++ Path, H, O} || {Path,H,O} <- Routes, sho
 
 ### 8.0 关键背景
 
-存在**两份互相矛盾的 WS 文档**：
-- **`websocket-api-2.md`（权威，1600+行）** — 实际冻结契约，字段 `id/type/from/to/msg_type/action/e2ee/payload/created_at/server_ts`。
-- **`asyncapi.yaml`（自称"冻结契约"）** — 字段 `msg_id/content_type/content/ciphertext/conv_seq/at_uids`，**与权威文档+后端代码几乎逐项不符**，疑似按理想模型手写、从未对账。
+> **⚠️ 2026-06-23 复核修正（重要）**：子代理审计的 `asyncapi.yaml` 是 **`docs/api/asyncapi.yaml`——一份 251 行的人类可读历史快照**。据 `imboy/api/README.md` 与 `imboy/api/asyncapi.yaml` 文件头：codegen 真源（Source of Truth）是 **`imboy/api/asyncapi.yaml`（AsyncAPI 3.0，v2 二进制帧协议）+ `imboy/api/proto/*.proto`**，`docs/api/asyncapi.yaml` 已被提升到 `api/` 后保留为"设计参考"。
+> 因此下表 W1–W11 中标"asyncapi 偏差"的项，**多数是历史快照过时**，而非 codegen 真源缺陷——**`api/asyncapi.yaml` + proto 本轮未对账**，其与后端/app 的一致性是独立的待办（见 §9 W-doc 修正）。
+> WS 真源对账应以 `api/proto/imboy_v2_frame.proto` + `api/proto/imboy_s2c.proto` 为字节级基准，下表仅反映"历史快照 vs 后端 vs app"，**勿据此直接改 codegen 真源**。
+
+参与方：
+- **`websocket-api-2.md`（1600+行）** — 人类可读设计文档，字段 `id/type/from/to/msg_type/action/e2ee/payload/created_at/server_ts`，与后端代码一致。
+- **`docs/api/asyncapi.yaml`（历史快照，非真源）** — 字段 `msg_id/content_type/content/ciphertext/conv_seq/at_uids`，与后端代码逐项不符（已过时）。
+- **`api/asyncapi.yaml` + `api/proto/*.proto`（codegen 真源，本轮未审）** — 待独立对账。
 
 权威实现：`message_ds:assemble_msg/8`(`src/ds/message_ds.erl:199`) + `encode_websocket_message/1`(:262)。
 
@@ -221,7 +226,7 @@ api_alias_routes(Routes) -> [{"/api" ++ Path, H, O} || {Path,H,O} <- Routes, sho
 - 无（均不阻断，但有功能性错误）。
 
 ### HIGH（新增，按影响面排序）
-- **W-doc**：`asyncapi.yaml` 几乎逐项与实现脱节，是 WS 契约最大噪音源 → **建议以 `websocket-api-2.md` 为准重写或废弃 asyncapi.yaml**（纯文档，无代码风险，应最先做）。
+- **W-doc（已修正）**：噪音源是 **`docs/api/asyncapi.yaml`（历史快照）**——它与实现逐项脱节但**非 codegen 真源**。建议：① 给 `docs/api/asyncapi.yaml` 加显著"历史快照，已被 `api/asyncapi.yaml` 取代，勿据此实现"头注，或直接删除（纯文档，零代码风险，可最先做，但需确认无 docs 渲染引用）；② **真正的 codegen 真源 `api/asyncapi.yaml` + `api/proto/*.proto` 与后端/app 的一致性本轮未对账，是独立的下一轮工作**（涉及 proto 字节级基准，工作量较大）。
 - **A1/A2/A3**：adm 域时间字段毫秒-vs-string（系统性，需后端确认范围）；plugin/logs 契约全断（日志页恒空，改动小）。
 - **A4/A5**：群组子域 TSID 未转 string + category id=0 → 后端补 `tsid_keys_to_bin` 与 group 主体看齐。
 - **A6**：group/members `joined_at` 列名需后端先 Read 复核真伪。
