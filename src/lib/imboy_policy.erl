@@ -25,10 +25,8 @@
     saved_view/0,
     effective_capabilities/0,
     effective_features/0,
-    effective_plugins/0,
     preview_admin_config/1,
     save_admin_config/1,
-    save_config/1,
     message_search_enabled/0,
     message_export_enabled/0,
     message_audit_mode/0,
@@ -202,9 +200,6 @@ save_admin_config(P) -> imboy_policy_persistence:save_admin_config(P).
 -spec preview_admin_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
 preview_admin_config(P) -> imboy_policy_persistence:preview_admin_config(P).
 
--spec save_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
-save_config(P) -> imboy_policy_persistence:save_config(P).
-
 load_profile_config() -> imboy_policy_persistence:load_profile_config().
 load_capability_config() -> imboy_policy_persistence:load_capability_config().
 load_feature_config() -> imboy_policy_persistence:load_feature_config().
@@ -225,16 +220,6 @@ effective_features() ->
         load_feature_config()
     ),
     Features.
-
--spec effective_plugins() -> map().
-effective_plugins() ->
-    Profile = current_profile(),
-    {_, _, Plugins} = effective_policy_components(
-        Profile,
-        load_capability_config(),
-        load_feature_config()
-    ),
-    Plugins.
 
 -spec effective_plugins(map()) -> map().
 effective_plugins(Features) ->
