@@ -5,7 +5,7 @@
 %%%
 
 -export([tablename/0]).
--export ([add/2]).
+-export([add/2]).
 -export([create/1, find_by_gid/1]).
 -export([find_by_id/2]).
 -export([list_by_ids/2]).
@@ -84,7 +84,6 @@ find_by_id(Gid, Column) ->
         {error, Reason} -> {error, Reason}
     end.
 
-
 %% @doc 根据群组ID列表批量查询群组信息
 %% @param Ids 群组ID列表
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
@@ -121,7 +120,9 @@ list_by_uid(Uid, Column) ->
 -spec list_by_uid(integer(), binary(), integer()) -> {ok, list(map())} | {error, any()}.
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{owner_uid => Uid, status => 1}, #{limit => Limit}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{owner_uid => Uid, status => 1}, #{
+        limit => Limit
+    }),
     elib_pg:query(Sql, Params).
 
 %% @doc 分页查询群组
@@ -133,7 +134,8 @@ page(Page, Size) ->
 -spec page(integer(), integer(), map(), binary()) -> {ok, map()} | {error, any()}.
 page(Page, Size, Where, OrderBy) ->
     Tb = tablename(),
-    Column = <<"id,title,avatar,owner_uid,creator_uid,type,join_limit,member_count,introduction,status,created_at">>,
+    Column =
+        <<"id,title,avatar,owner_uid,creator_uid,type,join_limit,member_count,introduction,status,created_at">>,
     elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
 
 %% @doc 更新群组信息
@@ -143,22 +145,6 @@ update(Data) ->
     Id = maps:get(<<"id">>, Data),
     UpdateData = maps:without([<<"id">>], Data),
     elib_pg:update(Tb, UpdateData, <<"id = $1">>, [Id]).
-
-%% @doc 删除群组（软删除，设置 status 为 0）
--spec delete(integer()) -> {ok, non_neg_integer()} | {error, any()}.
-delete(Id) ->
-    Tb = tablename(),
-    elib_pg:update(Tb, #{status => 0}, <<"id = $1">>, [Id]).
-
-%% @doc 统计群组总数
--spec count() -> {ok, non_neg_integer()} | {error, any()}.
-count() ->
-    Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE status = 1">>,
-    case elib_pg:one(Sql, []) of
-        {ok, #{<<"count">> := Count}} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end.
 
 %% @doc 在事务中更新群主
 %% 更新指定群组的群主ID

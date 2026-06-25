@@ -434,15 +434,6 @@ parse_id(Value) when is_binary(Value), Value =/= <<>> ->
 parse_id(_) ->
     0.
 
--spec get_count(map()) -> integer().
-get_count(Row) ->
-    case maps:get(<<"count">>, Row, 0) of
-        Val when is_integer(Val), Val >= 0 ->
-            Val;
-        Val ->
-            normalize_positive_int(Val)
-    end.
-
 -spec to_error_binary(term()) -> binary().
 to_error_binary(Reason) when is_binary(Reason) ->
     Reason;

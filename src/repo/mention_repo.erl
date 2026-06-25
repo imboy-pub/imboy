@@ -36,7 +36,9 @@ tablename() ->
 %% @param FromUid 发送者ID
 %% @return ok | {error, Reason}
 -spec insert(binary(), integer(), integer(), integer()) -> ok | {error, term()}.
-insert(MsgId, Gid, MentionedUid, FromUid) when MsgId =:= <<>>; Gid =:= 0; MentionedUid =:= 0; FromUid =:= 0 ->
+insert(MsgId, Gid, MentionedUid, FromUid) when
+    MsgId =:= <<>>; Gid =:= 0; MentionedUid =:= 0; FromUid =:= 0
+->
     {error, invalid_params};
 insert(MsgId, Gid, MentionedUid, FromUid) ->
     Tb = tablename(),
@@ -90,13 +92,15 @@ find_msg_id_by_mention_id(_, _) ->
 find_by_uid(Uid, undefined) ->
     Tb = tablename(),
     Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE mentioned_uid = $1 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Uid]);
 find_by_uid(Uid, IsRead) ->
     Tb = tablename(),
     Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE mentioned_uid = $1 AND is_read = $2 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Uid, IsRead]).
 
@@ -105,17 +109,20 @@ find_by_uid(Uid, IsRead) ->
 %% @param Uid 用户ID
 %% @param IsRead 已读状态（true/false/undefined 表示全部）
 %% @return {ok, list(map())} | {error, Reason}
--spec find_by_group_and_uid(integer(), integer(), boolean() | undefined) -> {ok, list(map())} | {error, term()}.
+-spec find_by_group_and_uid(integer(), integer(), boolean() | undefined) ->
+    {ok, list(map())} | {error, term()}.
 find_by_group_and_uid(Gid, Uid, undefined) ->
     Tb = tablename(),
     Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE group_id = $1 AND mentioned_uid = $2 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Gid, Uid]);
 find_by_group_and_uid(Gid, Uid, IsRead) ->
     Tb = tablename(),
     Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = $3 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Gid, Uid, IsRead]).
 
@@ -138,7 +145,9 @@ mark_as_read(MsgId, Uid) ->
 -spec mark_all_as_read(integer()) -> ok | {error, term()}.
 mark_all_as_read(Uid) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET is_read = true WHERE mentioned_uid = $1 AND is_read = false">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET is_read = true WHERE mentioned_uid = $1 AND is_read = false">>,
     case elib_pg:execute(Sql, [Uid]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -151,7 +160,9 @@ mark_all_as_read(Uid) ->
 -spec mark_group_as_read(integer(), integer()) -> ok | {error, term()}.
 mark_group_as_read(Gid, Uid) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET is_read = true WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = false">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET is_read = true WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = false">>,
     case elib_pg:execute(Sql, [Gid, Uid]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -163,7 +174,9 @@ mark_group_as_read(Gid, Uid) ->
 -spec count_unread(integer()) -> non_neg_integer().
 count_unread(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE mentioned_uid = $1 AND is_read = false">>,
+    Sql =
+        <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
+            " WHERE mentioned_uid = $1 AND is_read = false">>,
     case elib_pg:one(Sql, [Uid]) of
         {ok, #{<<"count">> := Count}} -> Count;
         _ -> 0
@@ -176,7 +189,8 @@ count_unread(Uid) ->
 -spec count_unread_in_group(integer(), integer()) -> non_neg_integer().
 count_unread_in_group(Uid, Gid) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
+    Sql =
+        <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
             " WHERE mentioned_uid = $1 AND group_id = $2 AND is_read = false">>,
     case elib_pg:one(Sql, [Uid, Gid]) of
         {ok, #{<<"count">> := Count}} -> Count;
@@ -191,12 +205,3 @@ delete_by_msg_id(MsgId) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id = $1">>,
     elib_pg:execute(Sql, [MsgId]).
-
-%% @doc 删除用户的所有@提及记录
-%% @param Uid 用户ID
-%% @return {ok, Count} | {error, Reason}
--spec delete_by_uid(integer()) -> {ok, non_neg_integer()} | {error, term()}.
-delete_by_uid(Uid) ->
-    Tb = tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE mentioned_uid = $1">>,
-    elib_pg:execute(Sql, [Uid]).

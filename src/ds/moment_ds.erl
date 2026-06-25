@@ -366,10 +366,6 @@ list_post_acl(PostId) ->
     end,
     imboy_cache:memo(Fun, Key, 300).
 
--spec list_post_likes(integer(), integer()) -> {ok, [map()]} | {error, any()}.
-list_post_likes(PostId, Limit) ->
-    moment_like_repo:list_by_post(PostId, Limit).
-
 -spec can_view_by_visibility(integer(), integer(), integer(), map()) -> boolean().
 can_view_by_visibility(ViewerUid, AuthorUid, 0, _Post) ->
     ViewerUid > 0 andalso AuthorUid > 0;

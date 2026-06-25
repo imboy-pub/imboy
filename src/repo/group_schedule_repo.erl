@@ -350,13 +350,6 @@ update_remind_sent(Id) when Id > 0 ->
 update_remind_sent(_) ->
     {error, invalid_id}.
 
-%% @doc 删除提醒记录
--spec delete_remind(integer()) -> {ok, non_neg_integer()} | {error, term()}.
-delete_remind(Id) ->
-    Tb = remind_tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg:query(Sql, [Id]).
-
 %% ===================================================================
 %% Internal functions
 %% ===================================================================

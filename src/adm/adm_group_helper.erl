@@ -183,17 +183,6 @@ keyword_like(<<>>) ->
 keyword_like(Keyword) ->
     <<"%", Keyword/binary, "%">>.
 
--spec governance_log_count(term()) -> non_neg_integer().
-governance_log_count(Row) when is_map(Row) ->
-    case maps:get(<<"count">>, Row, maps:get(count, Row, 0)) of
-        Count when is_integer(Count), Count >= 0 ->
-            Count;
-        Count ->
-            ec_cnv:to_integer(Count)
-    end;
-governance_log_count(_) ->
-    0.
-
 -spec normalize_governance_log_row(map()) -> map().
 normalize_governance_log_row(Row) ->
     BodyBin = row_value(Row, <<"body">>, <<"{}">>),
@@ -247,17 +236,6 @@ maybe_existing_atom(Key) ->
         _:_ ->
             undefined
     end.
-
-%% @doc 构建查询条件
--spec build_where(integer(), integer()) -> map().
-build_where(Status, Type) when Status >= 0, Type >= 0 ->
-    #{status => Status, type => Type};
-build_where(Status, _Type) when Status >= 0 ->
-    #{status => Status};
-build_where(_Status, Type) when Type >= 0 ->
-    #{type => Type};
-build_where(_Status, _Type) ->
-    #{}.
 
 -spec list_tasks_with_total(integer(), integer(), integer(), integer(), integer()) ->
     {ok, map()} | {error, term()}.
@@ -938,75 +916,3 @@ audit_group_governance(AdmUserId, GroupId, Action, TargetId, Extra) ->
             ?DEBUG_LOG("群治理审计日志写入失败: ~p", [{Class, Reason, Stacktrace}]),
             ok
     end.
-
-%% ===================================================================
-%% 数据规范化函数（ID编码）
-%% ===================================================================
-
-%% @doc 规范化群组分页数据（编码ID字段）
--spec normalize_group_payload(map()) -> map().
-normalize_group_payload(Payload) ->
-    List = maps:get(list, Payload, []),
-    List2 = [normalize_group(Item) || Item <- List],
-    maps:remove(items, Payload#{list => List2}).
-
-%% @doc 规范化单条群组数据（编码ID字段）
-%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
--spec normalize_group(map()) -> map().
-normalize_group(Group) ->
-    elib_id:tsid_keys_to_bin(Group, [<<"id">>, <<"owner_uid">>, <<"creator_uid">>]).
-
-%% @doc 规范化群成员分页数据（编码ID字段）
--spec normalize_member_payload(map()) -> map().
-normalize_member_payload(Payload) ->
-    List = maps:get(list, Payload, []),
-    List2 = [normalize_member(Item) || Item <- List],
-    maps:remove(items, Payload#{list => List2}).
-
-%% @doc 规范化单条群成员数据（编码ID字段）
-%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
--spec normalize_member(map()) -> map().
-normalize_member(Member) ->
-    elib_id:tsid_keys_to_bin(Member, [<<"id">>, <<"group_id">>, <<"user_id">>]).
-
-%% @doc 规范化用户数据（编码ID字段）
-%% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
--spec normalize_user(map()) -> map().
-normalize_user(User) ->
-    elib_id:tsid_keys_to_bin(User, [<<"id">>]).
-
-%% @doc 管理员踢出群成员
--spec kick_member(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-kick_member(<<"POST">>, Req0, State) ->
-    case adm_acl:ensure_permission(State, <<"groups:delete">>, Req0) of
-        {error, RespReq} ->
-            RespReq;
-        ok ->
-            PostVals = elib_param:post(Req0),
-            GidRaw = maps:get(<<"gid">>, PostVals, <<>>),
-            UidRaw = maps:get(<<"uid">>, PostVals, <<>>),
-            Gid = normalize_positive_int(GidRaw),
-            Uid = normalize_positive_int(UidRaw),
-            AdminUid = maps:get(adm_user_id, State, 0),
-            case Gid > 0 andalso Uid > 0 of
-                false ->
-                    elib_response:error(Req0, <<"参数错误"/utf8>>);
-                true ->
-                    ok = group_member_logic:leave(Uid, Gid, AdminUid),
-                    _ = audit_group_governance(
-                        AdminUid,
-                        Gid,
-                        <<"kick_member">>,
-                        Uid,
-                        #{<<"scope">> => <<"member">>}
-                    ),
-                    elib_response:success(Req0, #{gid => Gid, uid => Uid}, "操作成功")
-            end
-    end;
-kick_member(_, Req0, _State) ->
-    Req0.
-
--spec maybe_put(map(), atom(), term()) -> map().
-maybe_put(Data, _Key, undefined) -> Data;
-maybe_put(Data, _Key, <<>>) -> Data;
-maybe_put(Data, Key, Value) -> Data#{Key => Value}.

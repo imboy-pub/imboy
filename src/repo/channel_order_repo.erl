@@ -91,20 +91,6 @@ create_order(Data) ->
             {error, Reason}
     end.
 
-%% @doc 根据ID查找订单
--spec find_by_id(integer()) -> {ok, map()} | {error, not_found}.
-find_by_id(Id) ->
-    Sql =
-        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
-            "payment_method, payment_no, payment_at, subscription_start_at, subscription_end_at, ",
-            "expires_at, refund_reason, refund_at, extra_data, created_at, updated_at ",
-            "FROM channel_order WHERE id = $1">>,
-    case elib_pg:query(Sql, [Id]) of
-        {ok, []} -> {error, not_found};
-        {ok, [Row | _]} -> {ok, Row};
-        {error, Reason} -> {error, Reason}
-    end.
-
 %% @doc 根据订单号查找订单
 -spec find_by_order_no(binary()) -> {ok, map()} | {error, not_found}.
 find_by_order_no(OrderNo) ->
@@ -114,21 +100,6 @@ find_by_order_no(OrderNo) ->
             "expires_at, refund_reason, refund_at, extra_data, created_at, updated_at ",
             "FROM channel_order WHERE order_no = $1">>,
     case elib_pg:query(Sql, [OrderNo]) of
-        {ok, []} -> {error, not_found};
-        {ok, [Row | _]} -> {ok, Row};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 根据频道和用户查找最近的订单
--spec find_by_channel_and_user(integer(), integer()) -> {ok, map()} | {error, not_found}.
-find_by_channel_and_user(ChannelId, UserId) ->
-    Sql =
-        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
-            "payment_method, payment_no, payment_at, subscription_start_at, subscription_end_at, ",
-            "expires_at, refund_reason, refund_at, extra_data, created_at, updated_at ",
-            "FROM channel_order ", "WHERE channel_id = $1 AND user_id = $2 ",
-            "ORDER BY created_at DESC LIMIT 1">>,
-    case elib_pg:query(Sql, [ChannelId, UserId]) of
         {ok, []} -> {error, not_found};
         {ok, [Row | _]} -> {ok, Row};
         {error, Reason} -> {error, Reason}
@@ -200,18 +171,6 @@ list_by_user(UserId, Limit) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 获取频道的订单列表
--spec list_by_channel(integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_channel(ChannelId, Limit) ->
-    Sql =
-        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
-            "payment_method, payment_at, created_at ", "FROM channel_order ",
-            "WHERE channel_id = $1 ", "ORDER BY created_at DESC LIMIT $2">>,
-    case elib_pg:query(Sql, [ChannelId, Limit]) of
-        {ok, Rows} -> {ok, Rows};
-        {error, Reason} -> {error, Reason}
-    end.
-
 %% @doc 检查用户是否已购买频道
 -spec has_purchased(integer(), integer()) -> boolean().
 has_purchased(ChannelId, UserId) ->
@@ -236,19 +195,6 @@ get_active_subscription(ChannelId, UserId) ->
         {ok, []} -> {error, not_found};
         {ok, [Row | _]} -> {ok, Row};
         {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 清理过期订单
--spec cleanup_expired() -> {ok, non_neg_integer()} | {error, term()}.
-cleanup_expired() ->
-    Sql = <<"SELECT cleanup_expired_channel_orders() AS count">>,
-    case elib_pg:query(Sql, []) of
-        {ok, [#{<<"count">> := Count}]} ->
-            ?INFO_LOG([channel_order_cleanup, count, Count]),
-            {ok, Count};
-        {error, Reason} ->
-            ?ERROR_LOG([channel_order_cleanup, failed, Reason]),
-            {error, Reason}
     end.
 
 %%===================================================================

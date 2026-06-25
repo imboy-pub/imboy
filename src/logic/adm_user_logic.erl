@@ -4,9 +4,9 @@
 % adm_user business logic module
 %%%
 
--export ([find/3]).
--export ([save/1, update/2, delete/1]).
--export ([assign_roles/2, update_status/2, reset_password/2]).
+-export([find/3]).
+-export([save/1, update/2, delete/1]).
+-export([assign_roles/2, update_status/2, reset_password/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -30,16 +30,6 @@ find(Uid, Column, Key) ->
         adm_user_ds:find_by_id(Uid, Column)
     end,
     imboy_cache:memo(Fun, Key, 7200).
-
-%% @doc 获取管理员用户列表（分页）
--spec list(pos_integer(), pos_integer()) -> {ok, [map()]} | {error, term()}.
-list(Page, Size) ->
-    adm_user_ds:list(Page, Size).
-
-%% @doc 统计管理员用户总数
--spec count() -> {ok, integer()}.
-count() ->
-    adm_user_ds:count().
 
 %% @doc 保存管理员用户（创建或更新）
 -spec save(map()) -> {ok, integer()} | {error, any()}.
@@ -146,4 +136,3 @@ reset_password(_, _) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

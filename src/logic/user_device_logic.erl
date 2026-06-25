@@ -9,9 +9,11 @@
 % - 登录冲突检测
 %%%
 
--export([device_name/2,
-         change_name/3,
-         delete/2]).
+-export([
+    device_name/2,
+    change_name/3,
+    delete/2
+]).
 -export([page/3]).
 
 % 设备类型验证
@@ -44,7 +46,6 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 获取设备名称
 %% 获取设备的显示名称，支持缓存
 %% @param Uid 用户ID
@@ -62,7 +63,6 @@ device_name(Uid, DID) ->
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
 
-
 %% @doc 修改设备名称
 %% 修改设备的显示名称
 %% @param Uid 用户ID
@@ -79,7 +79,6 @@ change_name(Uid, DID, Name) ->
     imboy_cache:flush(Key),
     ok.
 
-
 %% @doc 删除设备
 %% 删除指定设备记录
 %% @param Uid 用户ID
@@ -91,7 +90,6 @@ delete(Uid, DID) ->
     Key = {user_device_name, 2, Uid, DID},
     imboy_cache:flush(Key),
     ok.
-
 
 %% @doc 获取用户设备列表（分页）
 %% 获取用户的所有设备，包含在线状态
@@ -108,20 +106,24 @@ page(Uid, Page, Size) when Page > 0 ->
             #{total => Total, page => Page, size => Size, list => []};
         {ok, Items0} ->
             OnlineDids = online_dids(Uid),
-            Items2 = [elib_response:json_decode_field(
-                         #{<<"online">> => lists:member(maps:get(<<"device_id">>, Row), OnlineDids),
-                           <<"device_id">> => maps:get(<<"device_id">>, Row),
-                           <<"device_name">> => maps:get(<<"device_name">>, Row, <<>>),
-                           <<"device_type">> => maps:get(<<"device_type">>, Row, <<>>),
-                           <<"last_active_at">> => maps:get(<<"last_active_at">>, Row, <<>>),
-                           <<"device_vsn">> => maps:get(<<"device_vsn">>, Row, <<>>)},
-                         <<"device_vsn">>)
-                      || Row <- Items0],
+            Items2 = [
+                elib_response:json_decode_field(
+                    #{
+                        <<"online">> => lists:member(maps:get(<<"device_id">>, Row), OnlineDids),
+                        <<"device_id">> => maps:get(<<"device_id">>, Row),
+                        <<"device_name">> => maps:get(<<"device_name">>, Row, <<>>),
+                        <<"device_type">> => maps:get(<<"device_type">>, Row, <<>>),
+                        <<"last_active_at">> => maps:get(<<"last_active_at">>, Row, <<>>),
+                        <<"device_vsn">> => maps:get(<<"device_vsn">>, Row, <<>>)
+                    },
+                    <<"device_vsn">>
+                )
+             || Row <- Items0
+            ],
             #{total => Total, page => Page, size => Size, list => Items2};
         _ ->
             #{total => Total, page => Page, size => Size, list => []}
     end.
-
 
 %% ===================================================================
 %% Device Session Management (基于 imboy_syn)
@@ -167,33 +169,6 @@ check_login_conflict(Uid, DType) when is_integer(Uid), is_binary(DType) ->
 check_login_conflict(_Uid, _DType) ->
     {error, <<"参数类型错误"/utf8>>}.
 
-%% @doc 检查设备是否可以登录（返回所有活跃设备）
--spec check_device_can_login(integer(), binary()) -> {ok, [map()]} | {error, binary()}.
-check_device_can_login(Uid, _DType) when is_integer(Uid) ->
-    Devices = imboy_syn:list_by_uid(Uid),
-    ActiveDevices = [format_device_info({Pid, Meta}) || {Pid, Meta} <- Devices],
-    {ok, ActiveDevices};
-check_device_can_login(_Uid, _DType) ->
-    {error, <<"用户ID必须是整数"/utf8>>}.
-
-%% @doc 注册设备会话
--spec register_device_session(integer(), binary(), pid(), binary()) -> ok | {error, binary()}.
-register_device_session(Uid, DType, Pid, DID) when is_integer(Uid), is_binary(DType), is_pid(Pid), is_binary(DID) ->
-    case validate_device_type(DType) of
-        false ->
-            {error, <<"无效的设备类型"/utf8>>};
-        true ->
-            case imboy_syn:join(Uid, DType, Pid, DID) of
-                ok ->
-                    ok;
-                {error, Reason} ->
-                    ?ERROR_LOG([device_session_register_failed, Uid, DType, DID, Reason]),
-                    {error, Reason}
-            end
-    end;
-register_device_session(_Uid, _DType, _Pid, _DID) ->
-    {error, <<"参数类型错误"/utf8>>}.
-
 %% @doc 踢出指定设备
 -spec kick_device(integer(), binary(), binary()) -> ok | {error, binary()}.
 kick_device(Uid, DType, DID) when is_integer(Uid), is_binary(DType), is_binary(DID) ->
@@ -209,32 +184,22 @@ kick_device(Uid, DType, DID) when is_integer(Uid), is_binary(DType), is_binary(D
 kick_device(_Uid, _DType, _DID) ->
     {error, <<"参数类型错误"/utf8>>}.
 
-%% @doc 踢出指定类型的所有设备
--spec kick_device_by_type(integer(), binary()) -> ok | {error, binary()}.
-kick_device_by_type(Uid, DType) when is_integer(Uid), is_binary(DType) ->
-    Devices = imboy_syn:list_by_uid(Uid),
-    MatchedDevices = [{Pid, DID} || {Pid, {DT, DID}} <- Devices, DT =:= DType],
-    lists:foreach(fun({Pid, _DID}) ->
-        send_kick_message(Pid, #{<<"reason">> => <<"同类型设备在其他地方登录"/utf8>>}),
-        imboy_syn:leave(Uid, Pid)
-    end, MatchedDevices),
-    ok;
-kick_device_by_type(_Uid, _DType) ->
-    {error, <<"参数类型错误"/utf8>>}.
-
 %% @doc 踢出所有其他设备（保留当前设备）
 -spec kick_all_other_devices(integer(), {binary(), binary()}) -> ok | {error, binary()}.
 kick_all_other_devices(Uid, {CurrentDType, CurrentDID}) when is_integer(Uid) ->
     Devices = imboy_syn:list_by_uid(Uid),
-    lists:foreach(fun({Pid, {DType, DID}}) ->
-        case {DType, DID} of
-            {CurrentDType, CurrentDID} ->
-                ok;
-            _ ->
-                send_kick_message(Pid, #{<<"reason">> => <<"账号在其他设备登录"/utf8>>}),
-                imboy_syn:leave(Uid, Pid)
-        end
-    end, Devices),
+    lists:foreach(
+        fun({Pid, {DType, DID}}) ->
+            case {DType, DID} of
+                {CurrentDType, CurrentDID} ->
+                    ok;
+                _ ->
+                    send_kick_message(Pid, #{<<"reason">> => <<"账号在其他设备登录"/utf8>>}),
+                    imboy_syn:leave(Uid, Pid)
+            end
+        end,
+        Devices
+    ),
     ok;
 kick_all_other_devices(_Uid, _CurrentDevice) ->
     {error, <<"参数类型错误"/utf8>>}.
@@ -322,4 +287,3 @@ send_kick_message(Pid, ReasonMap) when is_pid(Pid), is_map(ReasonMap) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

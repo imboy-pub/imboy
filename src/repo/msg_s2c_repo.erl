@@ -27,15 +27,15 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_s2c">>).
 
-
 %% @doc 兼容旧入口：按接收者读取离线 S2C 消息
 -spec read(integer(), integer()) -> {ok, list(map())} | {error, any()}.
 read(ToUid, Limit) ->
-    Column = <<"id, payload, from_id, to_id,
-        created_at, server_ts, msg_id, msg_type, action, e2ee">>,
+    Column = <<
+        "id, payload, from_id, to_id,\n"
+        "        created_at, server_ts, msg_id, msg_type, action, e2ee"
+    >>,
     Where = <<"WHERE to_id = $1">>,
     read_msg(Where, [ToUid], Column, Limit).
-
 
 -spec read_msg(binary(), list(), binary(), integer()) -> {ok, list(map())} | {error, any()}.
 read_msg(Where, Vals, Column, Limit) ->
@@ -43,11 +43,10 @@ read_msg(Where, Vals, Column, Limit) ->
     % use index i_ToId
     % 动态计算 LIMIT 参数索引，并构建完整 SQL
     LimitIndex = length(Vals) + 1,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " ", Where/binary, " ORDER BY id ASC LIMIT $",
-            (integer_to_binary(LimitIndex))/binary>>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " ", Where/binary,
+            " ORDER BY id ASC LIMIT $", (integer_to_binary(LimitIndex))/binary>>,
     elib_pg:query(Sql, Vals ++ [Limit]).
-
 
 %% @doc 写入S2C离线消息
 %% @param CreatedAt 消息创建时间（RFC3339 binary）
@@ -60,7 +59,9 @@ read_msg(Where, Vals, Column, Limit) ->
 %% @param MsgType 消息类型（可选，默认为空）
 %% @param E2EE 端到端加密信息（JSON map 或 null，S2C 消息通常为 null）
 %% @return {ok, Result} | {error, Reason}
--spec write_msg(binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary(), map() | null) -> {ok, any()} | {error, any()}.
+-spec write_msg(
+    binary(), binary(), binary(), integer(), integer(), binary(), binary(), binary(), map() | null
+) -> {ok, any()} | {error, any()}.
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE) ->
     %% from_id 和 to_id 是 bigint 类型，需要传入 integer
     GenId = elib_tsid:generate(msg_s2c),
@@ -73,17 +74,21 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, Action, MsgType, E2EE)
         server_ts => ServerTS,
         msg_id => Id,
         action => Action,
-        msg_type => case MsgType of
-            <<>> -> <<>>;
-            _ -> MsgType
-        end,
-        e2ee => case E2EE of
-            <<>> -> null;
-            null -> null;
-            Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);  % map 需要 encode
-            Bin when is_binary(Bin) -> Bin;  % 已经是 JSON binary（避免双重编码）
-            _ -> null
-        end
+        msg_type =>
+            case MsgType of
+                <<>> -> <<>>;
+                _ -> MsgType
+            end,
+        e2ee =>
+            case E2EE of
+                <<>> -> null;
+                null -> null;
+                % map 需要 encode
+                Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+                % 已经是 JSON binary（避免双重编码）
+                Bin when is_binary(Bin) -> Bin;
+                _ -> null
+            end
     },
     {Sql, Params} = elib_pg_sql:insert(tablename(), Data),
     case elib_pg:query(Sql, Params) of
@@ -98,7 +103,6 @@ delete_msg(Id) when is_integer(Id) ->
 delete_msg(Id) ->
     Where = <<"WHERE msg_id = $1">>,
     delete_msg(Where, [Id]).
-
 
 -spec delete_msg(binary(), list()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_msg(Where, Val) when is_list(Val) ->
@@ -118,14 +122,12 @@ delete_msg(Where, Val) ->
         {error, Reason} -> {error, Reason}
     end.
 
-
 % msg_s2c_repo:count_by_to_id(1).
 -spec count_by_to_id(integer()) -> non_neg_integer().
 count_by_to_id(ToUid) ->
     % use index i_ToId
     % to_id 是 bigint 类型，需要传入 integer，不能转换成 binary
     elib_pg:pluck_value(tablename(), <<"count(*)">>, #{to_id => ToUid}, #{}, 0).
-
 
 -spec delete_overflow_msg(integer(), integer()) -> ok.
 delete_overflow_msg(ToUid, Limit) ->
@@ -136,18 +138,13 @@ delete_overflow_msg(ToUid, Limit) ->
         {ok, []} ->
             ok;
         {ok, Rows} ->
-            _ = [ delete_msg(Id) || #{<<"id">> := Id} <- Rows ],
+            _ = [delete_msg(Id) || #{<<"id">> := Id} <- Rows],
             ok
     end.
 
-% 删除用户的所有系统消息
--spec delete_by_to_id(integer() | binary()) -> ok | {ok, non_neg_integer()} | {error, term()}.
-delete_by_to_id(ToUid) ->
-    Where = <<"WHERE to_id = $1">>,
-    delete_msg(Where, [ToUid]).
-
 % 根据消息ID和接收者ID删除特定系统消息
--spec delete_by_msg_id_and_to_id(binary(), integer()) -> ok | {ok, non_neg_integer()} | {error, term()}.
+-spec delete_by_msg_id_and_to_id(binary(), integer()) ->
+    ok | {ok, non_neg_integer()} | {error, term()}.
 delete_by_msg_id_and_to_id(MsgId, ToUid) ->
     Where = <<"WHERE msg_id = $1 AND to_id = $2">>,
     delete_msg(Where, [MsgId, ToUid]).

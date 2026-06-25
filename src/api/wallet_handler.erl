@@ -122,11 +122,6 @@ do_topup(Req0, Uid, Amount) ->
             elib_response:error(Req0, <<"充值失败，请稍后再试"/utf8>>)
     end.
 
-%% @doc 确保钱包存在，不存在则创建后返回
--spec ensure_wallet(integer()) -> map().
-ensure_wallet(Uid) ->
-    wallet_logic:ensure_wallet(Uid).
-
 %% @doc 生成唯一充值单号（使用 crypto 强随机数避免碰撞）
 -spec gen_reference_no() -> binary().
 gen_reference_no() ->

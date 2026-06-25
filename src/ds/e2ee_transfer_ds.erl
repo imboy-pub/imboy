@@ -242,17 +242,6 @@ clear_session_cache(SessionId) ->
 clear_all_session_cache() ->
     ok.
 
-%% @doc 清除用户待处理会话缓存
--spec clear_pending_sessions_cache(integer()) -> ok.
-clear_pending_sessions_cache(ToUid) ->
-    CacheKey = {e2ee_pending_sessions, ToUid},
-    imboy_cache:delete(CacheKey),
-    ok.
-
-%% G3: e2ee_cleanup_worker 不应直调 e2ee_transfer_repo
--spec get_stalled_sessions() -> {ok, [map()]} | {error, term()}.
-get_stalled_sessions() -> e2ee_transfer_repo:get_stalled_sessions().
-
 %% G3 thin wrappers: e2ee_transfer_logic 不应直调 e2ee_transfer_repo
 -spec generate_session_id() -> binary().
 generate_session_id() -> elib_uuid:gen_v7().

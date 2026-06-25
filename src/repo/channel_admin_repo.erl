@@ -79,13 +79,6 @@ list_by_channel(ChannelId) ->
     >>,
     elib_pg:query(Sql, [ChannelId]).
 
-%% @doc 查询用户管理的频道
--spec list_by_uid(integer()) -> {ok, list(map())} | {error, any()}.
-list_by_uid(Uid) ->
-    Tb = tablename(),
-    Sql = <<"SELECT * FROM ", Tb/binary, " WHERE user_id = $1">>,
-    elib_pg:query(Sql, [Uid]).
-
 %% @doc 删除管理员
 -spec delete(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 delete(ChannelId, Uid) ->

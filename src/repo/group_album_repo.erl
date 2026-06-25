@@ -122,8 +122,11 @@ find_album_by_album_id(AlbumId) ->
 -spec list_albums(integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
 list_albums(Gid, Page, Size) ->
     Tb = tablename(),
-    Column = <<"id, group_id, album_id, album_name, album_cover, creator_id, photo_count, created_at">>,
-    elib_pg:page_with_total(Tb, Column, #{group_id => Gid, status => 1}, <<"created_at DESC">>, Page, Size).
+    Column =
+        <<"id, group_id, album_id, album_name, album_cover, creator_id, photo_count, created_at">>,
+    elib_pg:page_with_total(
+        Tb, Column, #{group_id => Gid, status => 1}, <<"created_at DESC">>, Page, Size
+    ).
 
 %% @doc 更新相册
 %% @param Data 包含更新数据的map（必须包含id字段）
@@ -150,7 +153,9 @@ delete_album(Id) ->
 -spec increment_photo_count(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 increment_photo_count(Id) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET photo_count = photo_count + 1, updated_at = $1 WHERE id = $2">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET photo_count = photo_count + 1, updated_at = $1 WHERE id = $2">>,
     elib_pg:execute(Sql, [elib_dt:now(), Id]).
 
 %% @doc 减少相册照片计数
@@ -159,7 +164,9 @@ increment_photo_count(Id) ->
 -spec decrement_photo_count(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 decrement_photo_count(Id) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET photo_count = GREATEST(photo_count - 1, 0), updated_at = $1 WHERE id = $2">>,
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET photo_count = GREATEST(photo_count - 1, 0), updated_at = $1 WHERE id = $2">>,
     elib_pg:execute(Sql, [elib_dt:now(), Id]).
 
 %% ===================================================================
@@ -201,7 +208,9 @@ find_photo_by_id(Id) ->
 -spec list_photos(binary(), integer(), integer(), binary()) -> {ok, map()} | {error, term()}.
 list_photos(AlbumId, Page, Size, Column) ->
     Tb = photo_tablename(),
-    elib_pg:page_with_total(Tb, Column, #{album_id => AlbumId, status => 1}, <<"created_at DESC">>, Page, Size).
+    elib_pg:page_with_total(
+        Tb, Column, #{album_id => AlbumId, status => 1}, <<"created_at DESC">>, Page, Size
+    ).
 
 %% @doc 删除图片（软删除）
 %% @param Id 图片ID
@@ -252,7 +261,9 @@ unlike_photo(PhotoId, UserId) ->
     case elib_pg:execute(Sql, [PhotoId, UserId]) of
         {ok, _} ->
             % 减少点赞计数
-            Sql2 = <<"UPDATE ", TbPhoto/binary, " SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1">>,
+            Sql2 =
+                <<"UPDATE ", TbPhoto/binary,
+                    " SET like_count = GREATEST(like_count - 1, 0) WHERE id = $1">>,
             elib_pg:execute(Sql2, [PhotoId]);
         {error, Reason} ->
             {error, Reason}
@@ -288,12 +299,20 @@ add_comment(PhotoId, UserId, Content) ->
 
     % 插入评论记录
     CommentId = elib_tsid:generate(group_album_comment),
-    CommentData = #{id => CommentId, photo_id => PhotoId, user_id => UserId, content => Content, created_at => Now},
+    CommentData = #{
+        id => CommentId,
+        photo_id => PhotoId,
+        user_id => UserId,
+        content => Content,
+        created_at => Now
+    },
     {SqlInsert, ParamsInsert} = elib_pg_sql:insert(TbComment, CommentData),
     case elib_pg:query(SqlInsert, ParamsInsert) of
         {ok, _Count} ->
             % 增加评论计数
-            Sql = <<"UPDATE ", TbPhoto/binary, " SET comment_count = comment_count + 1 WHERE id = $1">>,
+            Sql =
+                <<"UPDATE ", TbPhoto/binary,
+                    " SET comment_count = comment_count + 1 WHERE id = $1">>,
             elib_pg:execute(Sql, [PhotoId]);
         {error, Reason} ->
             {error, Reason}
@@ -306,17 +325,10 @@ add_comment(PhotoId, UserId, Content) ->
 -spec list_comments(binary(), integer()) -> {ok, list(map())} | {error, term()}.
 list_comments(PhotoId, Limit) ->
     Tb = comment_tablename(),
-    Sql = <<"SELECT id, photo_id, user_id, content, created_at FROM ", Tb/binary,
+    Sql =
+        <<"SELECT id, photo_id, user_id, content, created_at FROM ", Tb/binary,
             " WHERE photo_id = $1 AND status = 1 ORDER BY created_at ASC LIMIT $2">>,
     elib_pg:query(Sql, [PhotoId, Limit]).
-
-%% @doc 删除评论
-%% @param Id 评论ID
-%% @return {ok, Count} | {error, Reason}
--spec delete_comment(integer()) -> {ok, non_neg_integer()} | {error, term()}.
-delete_comment(Id) ->
-    Tb = comment_tablename(),
-    elib_pg:update(Tb, #{status => 0}, <<"id = $1">>, [Id]).
 
 %% ===================================================================
 %% Internal Function Definitions

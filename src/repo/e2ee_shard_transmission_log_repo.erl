@@ -39,11 +39,6 @@
 %%% API Implementation
 %%===================================================================
 
-%% @doc 返回表名
--spec tablename() -> binary().
-tablename() ->
-    <<"e2ee_shard_transmission_log">>.
-
 %% @doc 插入分片传输日志
 %% @param Data 日志数据 map，包含：
 %%   - shard_id: 分片唯一标识符
@@ -70,14 +65,26 @@ insert(Data) ->
     CreatedAt = maps:get(created_at, Data, elib_dt:now()),
 
     Id = elib_tsid:generate(e2ee_shard_transmission_log),
-    Sql = <<"INSERT INTO e2ee_shard_transmission_log ",
+    Sql =
+        <<"INSERT INTO e2ee_shard_transmission_log ",
             "(id, shard_id, key_version, uid, proxy_uid, action, direction, ",
             "metadata, ip_address, user_agent, created_at) ",
             "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, to_timestamp($11/1000))">>,
-    case elib_pg:execute(Sql, [
-        Id, ShardId, KeyVersion, Uid, ProxyUid, Action, Direction,
-        Metadata, IpAddress, UserAgent, CreatedAt
-    ]) of
+    case
+        elib_pg:execute(Sql, [
+            Id,
+            ShardId,
+            KeyVersion,
+            Uid,
+            ProxyUid,
+            Action,
+            Direction,
+            Metadata,
+            IpAddress,
+            UserAgent,
+            CreatedAt
+        ])
+    of
         {ok, _Count} ->
             {ok, Id};
         {error, Reason} ->
@@ -85,33 +92,15 @@ insert(Data) ->
             {error, Reason}
     end.
 
-%% @doc 查询用户的分片传输日志
-%% @param Uid 用户 ID
-%% @param Limit 返回数量限制
-%% @returns {ok, [Log]} | {error, Reason}
--spec list_by_uid(integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_uid(Uid, Limit) ->
-    Sql = <<"SELECT id, shard_id, key_version, uid, proxy_uid, action, direction, ",
-            "metadata, ip_address, user_agent, created_at ",
-            "FROM e2ee_shard_transmission_log ",
-            "WHERE uid = $1 OR proxy_uid = $1 ",
-            "ORDER BY created_at DESC ",
-            "LIMIT $2">>,
-    case elib_pg:query(Sql, [Uid, Limit]) of
-        {ok, Rows} -> {ok, Rows};
-        {error, Reason} -> {error, Reason}
-    end.
-
 %% @doc 查询分片的完整传输链路
 %% @param ShardId 分片 ID
 %% @returns {ok, [Log]} | {error, Reason}
 -spec list_by_shard_id(binary()) -> {ok, [map()]} | {error, term()}.
 list_by_shard_id(ShardId) ->
-    Sql = <<"SELECT id, shard_id, key_version, uid, proxy_uid, action, direction, ",
-            "metadata, ip_address, user_agent, created_at ",
-            "FROM e2ee_shard_transmission_log ",
-            "WHERE shard_id = $1 ",
-            "ORDER BY created_at ASC">>,
+    Sql =
+        <<"SELECT id, shard_id, key_version, uid, proxy_uid, action, direction, ",
+            "metadata, ip_address, user_agent, created_at ", "FROM e2ee_shard_transmission_log ",
+            "WHERE shard_id = $1 ", "ORDER BY created_at ASC">>,
     case elib_pg:query(Sql, [ShardId]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -123,12 +112,10 @@ list_by_shard_id(ShardId) ->
 %% @returns {ok, [Log]} | {error, Reason}
 -spec list_by_action(binary(), integer()) -> {ok, [map()]} | {error, term()}.
 list_by_action(Action, Limit) ->
-    Sql = <<"SELECT id, shard_id, key_version, uid, proxy_uid, action, direction, ",
-            "metadata, ip_address, user_agent, created_at ",
-            "FROM e2ee_shard_transmission_log ",
-            "WHERE action = $1 ",
-            "ORDER BY created_at DESC ",
-            "LIMIT $2">>,
+    Sql =
+        <<"SELECT id, shard_id, key_version, uid, proxy_uid, action, direction, ",
+            "metadata, ip_address, user_agent, created_at ", "FROM e2ee_shard_transmission_log ",
+            "WHERE action = $1 ", "ORDER BY created_at DESC ", "LIMIT $2">>,
     case elib_pg:query(Sql, [Action, Limit]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -140,10 +127,10 @@ list_by_action(Action, Limit) ->
 %% @returns {ok, Stats} | {error, Reason}
 -spec get_transmission_stats(binary()) -> {ok, map()} | {error, term()}.
 get_transmission_stats(ShardId) ->
-    Sql = <<"SELECT key_version, shard_id, uid, ",
+    Sql =
+        <<"SELECT key_version, shard_id, uid, ",
             "created_count, sent_count, stored_count, decrypted_count, recovered_count, ",
-            "first_transmission_at, last_transmission_at ",
-            "FROM v_e2ee_shard_transmission_stats ",
+            "first_transmission_at, last_transmission_at ", "FROM v_e2ee_shard_transmission_stats ",
             "WHERE shard_id = $1">>,
     case elib_pg:query(Sql, [ShardId]) of
         {ok, []} -> {error, not_found};
@@ -158,24 +145,10 @@ get_transmission_stats(ShardId) ->
 %% @returns {ok, [Anomaly]} | {error, Reason}
 -spec check_anomaly(binary(), binary()) -> {ok, [map()]} | {error, term()}.
 check_anomaly(KeyVersion, ShardId) ->
-    Sql = <<"SELECT anomaly_type, description, details ",
+    Sql =
+        <<"SELECT anomaly_type, description, details ",
             "FROM check_e2ee_shard_transmission_anomaly($1, $2)">>,
     case elib_pg:query(Sql, [KeyVersion, ShardId]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 清理旧的传输日志（90 天前）
-%% 使用数据库函数 cleanup_old_shard_transmission_logs
-%% @returns {ok, DeletedCount} | {error, Reason}
--spec cleanup_old_logs() -> {ok, non_neg_integer()} | {error, term()}.
-cleanup_old_logs() ->
-    Sql = <<"SELECT cleanup_old_shard_transmission_logs() AS deleted_count">>,
-    case elib_pg:query(Sql, []) of
-        {ok, [#{<<"deleted_count">> := Count}]} ->
-            ?INFO_LOG([e2ee_shard_transmission_log_cleanup, deleted_count, Count]),
-            {ok, Count};
-        {error, Reason} ->
-            ?ERROR_LOG([e2ee_shard_transmission_log_cleanup, failed, Reason]),
-            {error, Reason}
     end.

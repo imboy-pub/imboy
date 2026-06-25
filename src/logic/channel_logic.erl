@@ -9,8 +9,6 @@
 %% ==================== Specs ====================
 
 %% channel_logic_message delegates
--spec channel_transfer(map()) -> map().
--spec message_transfer(map()) -> map().
 -spec create_channel(integer(), binary(), integer(), map(), integer()) ->
     {ok, map()} | {error, binary()}.
 -spec get_channel(binary(), integer()) -> {ok, map()} | {error, binary()}.
@@ -118,12 +116,6 @@
 -export([get_order/2]).
 
 -export([sync_channels/2]).
-
-channel_transfer(Channel) ->
-    channel_logic_message:channel_transfer(Channel).
-
-message_transfer(Message) ->
-    channel_logic_message:message_transfer(Message).
 
 create_channel(Uid, Name, Type, Opts, MaxChannels) ->
     channel_logic_message:create_channel(Uid, Name, Type, Opts, MaxChannels).

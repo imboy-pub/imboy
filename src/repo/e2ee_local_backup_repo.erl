@@ -100,12 +100,14 @@ create(BackupMap) ->
 %% @returns {ok, Backup} | {error, not_found}
 -spec find_latest(integer()) -> repo_result().
 find_latest(Uid) ->
-    Sql = <<"SELECT id, uid, device_id, backup_version, key_checksum,
-                    file_size, user_notes, created_at
-             FROM e2ee_local_backups
-             WHERE uid = $1
-             ORDER BY backup_version DESC, created_at DESC
-             LIMIT 1">>,
+    Sql = <<
+        "SELECT id, uid, device_id, backup_version, key_checksum,\n"
+        "                    file_size, user_notes, created_at\n"
+        "             FROM e2ee_local_backups\n"
+        "             WHERE uid = $1\n"
+        "             ORDER BY backup_version DESC, created_at DESC\n"
+        "             LIMIT 1"
+    >>,
 
     case elib_pg:query(Sql, [Uid]) of
         {ok, _, [Result]} ->
@@ -123,10 +125,12 @@ find_latest(Uid) ->
 %% @returns {ok, Backup} | {error, not_found}
 -spec find_by_version(integer(), integer()) -> repo_result().
 find_by_version(Uid, Version) ->
-    Sql = <<"SELECT id, uid, device_id, backup_version, key_checksum,
-                    file_size, user_notes, created_at
-             FROM e2ee_local_backups
-             WHERE uid = $1 AND backup_version = $2">>,
+    Sql = <<
+        "SELECT id, uid, device_id, backup_version, key_checksum,\n"
+        "                    file_size, user_notes, created_at\n"
+        "             FROM e2ee_local_backups\n"
+        "             WHERE uid = $1 AND backup_version = $2"
+    >>,
 
     case elib_pg:query(Sql, [Uid, Version]) of
         {ok, _, [Result]} ->
@@ -142,48 +146,17 @@ find_by_version(Uid, Version) ->
 %% @returns {ok, [Backup]} | {error, Reason}
 -spec list_by_uid(integer()) -> {ok, [backup()]} | {error, term()}.
 list_by_uid(Uid) ->
-    Sql = <<"SELECT id, uid, device_id, backup_version, key_checksum,
-                    file_size, user_notes, created_at
-             FROM e2ee_local_backups
-             WHERE uid = $1
-             ORDER BY backup_version DESC, created_at DESC">>,
+    Sql = <<
+        "SELECT id, uid, device_id, backup_version, key_checksum,\n"
+        "                    file_size, user_notes, created_at\n"
+        "             FROM e2ee_local_backups\n"
+        "             WHERE uid = $1\n"
+        "             ORDER BY backup_version DESC, created_at DESC"
+    >>,
 
     case elib_pg:query(Sql, [Uid]) of
         {ok, _, Results} ->
             {ok, lists:map(fun row_to_map/1, Results)};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%% @doc 统计用户的备份数量
-%% @param Uid 用户 ID
-%% @returns {ok, Count} | {error, Reason}
--spec count_by_uid(integer()) -> {ok, non_neg_integer()} | {error, term()}.
-count_by_uid(Uid) ->
-    Sql = <<"SELECT COUNT(*) as count
-             FROM e2ee_local_backups
-             WHERE uid = $1">>,
-
-    case elib_pg:query(Sql, [Uid]) of
-        {ok, _, [{Result}]} ->
-            {ok, maps:get(<<"count">>, Result)};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%% @doc 更新备份文件大小
-%% @param Uid 用户 ID
-%% @param FileSize 文件大小（bytes）
-%% @returns ok | {error, Reason}
--spec update_file_size(integer(), integer()) -> ok | {error, term()}.
-update_file_size(Uid, FileSize) ->
-    Sql = <<"UPDATE e2ee_local_backups
-             SET file_size = $1
-             WHERE uid = $2">>,
-
-    case elib_pg:query(Sql, [FileSize, Uid]) of
-        {ok, _, _} ->
-            ok;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -237,15 +210,26 @@ insert_new(BackupMap) ->
     UserNotes = maps:get(<<"user_notes">>, BackupMap, <<>>),
 
     Id = elib_tsid:generate(e2ee_local_backup),
-    Sql = <<"INSERT INTO e2ee_local_backups (
-                id, uid, device_id, backup_version, key_checksum,
-                file_size, user_notes
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, uid, device_id, backup_version, key_checksum,
-                      file_size, user_notes, created_at">>,
+    Sql = <<
+        "INSERT INTO e2ee_local_backups (\n"
+        "                id, uid, device_id, backup_version, key_checksum,\n"
+        "                file_size, user_notes\n"
+        "            ) VALUES ($1, $2, $3, $4, $5, $6, $7)\n"
+        "            RETURNING id, uid, device_id, backup_version, key_checksum,\n"
+        "                      file_size, user_notes, created_at"
+    >>,
 
-    case elib_pg:query(Sql, [Id, Uid, DeviceId, BackupVersion, KeyChecksum,
-                            FileSize, UserNotes]) of
+    case
+        elib_pg:query(Sql, [
+            Id,
+            Uid,
+            DeviceId,
+            BackupVersion,
+            KeyChecksum,
+            FileSize,
+            UserNotes
+        ])
+    of
         {ok, _, [{Result}]} ->
             ?INFO_LOG([e2ee_local_backup_repo, backup_created, Uid, DeviceId, BackupVersion]),
             {ok, row_to_map(Result)};
@@ -262,11 +246,13 @@ update_existing(BackupMap) ->
     FileSize = maps:get(<<"file_size">>, BackupMap, 0),
     UserNotes = maps:get(<<"user_notes">>, BackupMap, <<>>),
 
-    Sql = <<"UPDATE e2ee_local_backups
-             SET key_checksum = $1, file_size = $2, user_notes = $3
-             WHERE uid = $4 AND backup_version = $5
-             RETURNING id, uid, device_id, backup_version, key_checksum,
-                      file_size, user_notes, created_at">>,
+    Sql = <<
+        "UPDATE e2ee_local_backups\n"
+        "             SET key_checksum = $1, file_size = $2, user_notes = $3\n"
+        "             WHERE uid = $4 AND backup_version = $5\n"
+        "             RETURNING id, uid, device_id, backup_version, key_checksum,\n"
+        "                      file_size, user_notes, created_at"
+    >>,
 
     case elib_pg:query(Sql, [KeyChecksum, FileSize, UserNotes, Uid, BackupVersion]) of
         {ok, _, [{Result}]} ->

@@ -217,15 +217,6 @@ update_status(Uid, Status) when Status >= -1, Status =< 2 ->
 update_friends_last_seen_at(Uid, Timestamp) ->
     user_repo:update_friends_last_seen_at(Uid, Timestamp).
 
-%% @doc 删除用户（通过ID）
-%% @param Uid 用户ID
-%% @return {ok, Count} | {error, Reason}
--spec delete_by_id(integer()) -> {ok, integer()} | {error, any()}.
-delete_by_id(Uid) ->
-    Tb = user_repo:tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg:execute(Sql, [Uid]).
-
 %% @doc 删除用户相关的所有数据
 %% 该函数会删除用户的所有关联数据，包括好友关系、设备信息、群组成员等。
 %% 注意：此操作是破坏性的，通常只在用户注销账户时使用。

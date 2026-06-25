@@ -316,22 +316,6 @@ confirm_participation(ScheduleId, UserId, Accept) ->
             end
     end.
 
-%% @doc 添加参与人
--spec add_participants(binary(), [integer()]) -> ok | {error, term()}.
-add_participants(ScheduleId, UserIds) ->
-    Now = elib_dt:now(),
-    insert_participants(ScheduleId, UserIds, Now),
-    ok.
-
-%% @doc 移除参与人
--spec remove_participant(binary(), integer()) -> ok | {error, term()}.
-remove_participant(ScheduleId, UserId) ->
-    case group_schedule_ds:delete_participant(ScheduleId, UserId) of
-        {ok, 1} -> ok;
-        {ok, 0} -> {error, participant_not_found};
-        {error, Reason} -> {error, Reason}
-    end.
-
 %% ===================================================================
 %% 提醒管理 API
 %% ===================================================================

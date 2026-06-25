@@ -4,10 +4,10 @@
 % 群组成员数据仓库层，提供群组成员信息的基础数据库操作
 %%%
 -export([tablename/0]).
--export ([add/1]).
--export ([add/2]).
--export ([find/3]).
--export ([list_same_group/2]).
+-export([add/1]).
+-export([add/2]).
+-export([find/3]).
+-export([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).
 -export([page_by_gid/4]).
@@ -24,13 +24,11 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 获取群组成员表的表名
 %% @return 返回群组成员表的完整表名
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"group_member">>).
-
 
 %% @doc 添加群组成员
 %% @param Data 包含群组成员信息的map
@@ -72,7 +70,8 @@ find(Gid, Uid, Column) ->
     Tb = tablename(),
     % use index uk_Gid_Uid
     % 使用安全的参数化查询，避免SQL注入
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE group_id = $1 AND user_id = $2">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE group_id = $1 AND user_id = $2">>,
     % ?DEBUG_LOG([Sql]),
     case elib_pg:one(Sql, [Gid, Uid]) of
         {ok, Row} -> Row;
@@ -87,7 +86,6 @@ find(Gid, Uid, Column) ->
 list_by_gid(Gid, Column) ->
     list_by_gid(Gid, Column, 10000).
 
-
 %% @doc 查询群组成员列表（指定限制数量）
 %% @param Gid 群组ID
 %% @param Column 要查询的列名，支持多个列用逗号分隔
@@ -99,7 +97,6 @@ list_by_gid(Gid, Column, Limit) ->
     Where = <<" WHERE group_id = $1 AND status = 1 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     elib_pg:query(Sql, [Gid, Limit]).
-
 
 %% @doc 分页查询群组成员列表
 %% @param Gid 群组ID
@@ -113,20 +110,24 @@ page_by_gid(Gid, Page, Size, Column) ->
     % 计算偏移量
     Offset = (Page - 1) * Size,
     % 查询总数
-    CountSql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1">>,
-    Total = case elib_pg:one(CountSql, [Gid]) of
-        {ok, #{<<"count">> := C}} -> C;
-        _ -> 0
-    end,
+    CountSql =
+        <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1">>,
+    Total =
+        case elib_pg:one(CountSql, [Gid]) of
+            {ok, #{<<"count">> := C}} -> C;
+            _ -> 0
+        end,
     % 查询数据
-    DataSql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-        " WHERE group_id = $1 AND status = 1 ORDER BY role DESC, joined_at ASC LIMIT $2 OFFSET $3">>,
+    DataSql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " WHERE group_id = $1 AND status = 1 ORDER BY role DESC, joined_at ASC LIMIT $2 OFFSET $3">>,
     case elib_pg:query(DataSql, [Gid, Size, Offset]) of
         {ok, Items} ->
-            TotalPage = case Total > 0 of
-                true -> ((Total - 1) div Size) + 1;
-                false -> 0
-            end,
+            TotalPage =
+                case Total > 0 of
+                    true -> ((Total - 1) div Size) + 1;
+                    false -> 0
+                end,
             {ok, #{
                 list => Items,
                 page => Page,
@@ -137,7 +138,6 @@ page_by_gid(Gid, Page, Size, Column) ->
         {error, Reason} ->
             {error, Reason}
     end.
-
 
 %% @doc 统计用户加入的群组数量
 %% @param Uid 用户ID
@@ -151,7 +151,6 @@ count_by_uid(Uid) ->
         _ -> 0
     end.
 
-
 %% @doc 查询用户加入的群组列表（使用默认限制10000）
 %% @param Uid 用户ID
 %% @param Column 要查询的列名，支持多个列用逗号分隔
@@ -159,7 +158,6 @@ count_by_uid(Uid) ->
 -spec list_by_uid(integer(), binary()) -> {ok, list(map())} | {error, any()}.
 list_by_uid(Uid, Column) ->
     list_by_uid(Uid, Column, 10000).
-
 
 %% @doc 查询用户加入的群组列表（指定限制数量）
 %% @param Uid 用户ID
@@ -170,25 +168,10 @@ list_by_uid(Uid, Column) ->
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     % use index i_Uid_Status
-    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{user_id => Uid, status => 1}, #{limit => Limit}),
+    {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{user_id => Uid, status => 1}, #{
+        limit => Limit
+    }),
     elib_pg:query(Sql, Params).
-
-%% @doc 更新群成员禁言状态
-%% @param Conn 数据库连接（可选）
-%% @param Gid 群组ID
-%% @param UserId 用户ID
-%% @param MuteUntil 禁言到期时间戳（null 表示取消禁言）
-%% @return {ok, Count} | {error, Reason}
--spec update_mute(pid() | undefined, integer(), integer(), integer() | null) -> {ok, integer()} | {error, term()}.
-update_mute(Conn, Gid, UserId, MuteUntil) ->
-    Tb = tablename(),
-    Data = #{mute_until => MuteUntil, updated_at => elib_dt:now()},
-    case Conn of
-        undefined ->
-            elib_pg:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]);
-        _ ->
-            elib_pg:update(Conn, Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId])
-    end.
 
 %% @doc 查询两个用户共同加入的群组ID列表
 %% @param Uid1 用户1的ID
@@ -203,50 +186,28 @@ list_same_group(_, 0) ->
 list_same_group(Uid1, Uid2) ->
     % use index i_Uid_Status
     % T1 = elib_dt:microsecond(),
-    Sql = <<"SELECT group_id
-        FROM (
-            SELECT group_id
-            FROM public.group_member
-            WHERE user_id = $1 AND status = 1
-        ) AS subquery
-        WHERE EXISTS (
-            SELECT 1
-              FROM public.group_member gm2
-             WHERE gm2.group_id = subquery.group_id
-               AND gm2.user_id = $2 AND gm2.status = 1
-        );">>,
+    Sql = <<
+        "SELECT group_id\n"
+        "        FROM (\n"
+        "            SELECT group_id\n"
+        "            FROM public.group_member\n"
+        "            WHERE user_id = $1 AND status = 1\n"
+        "        ) AS subquery\n"
+        "        WHERE EXISTS (\n"
+        "            SELECT 1\n"
+        "              FROM public.group_member gm2\n"
+        "             WHERE gm2.group_id = subquery.group_id\n"
+        "               AND gm2.user_id = $2 AND gm2.status = 1\n"
+        "        );"
+    >>,
     case elib_pg:query(Sql, [Uid1, Uid2]) of
         {ok, []} ->
             [];
         {ok, Rows} ->
             [Gid || #{<<"group_id">> := Gid} <- Rows]
     end.
-    % T2 = elib_dt:microsecond(),
+% T2 = elib_dt:microsecond(),
     % {T2-T1, Res}.
-
-%% @doc 更新群成员角色
-%% @param Conn 数据库连接（可选）
-%% @param Gid 群组ID
-%% @param UserId 用户ID
-%% @param Role 角色值
-%% @return ok | {error, Reason}
--spec update_role(pid() | undefined, integer(), integer(), integer() | binary()) -> ok | {error, term()}.
-update_role(undefined, Gid, UserId, Role) ->
-    Tb = tablename(),
-    Data = #{role => Role, updated_at => elib_dt:now()},
-    case elib_pg:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end;
-update_role(Conn, Gid, UserId, Role) ->
-    Tb = tablename(),
-    Data = #{role => Role, updated_at => elib_dt:now()},
-    {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"group_id = $1 AND user_id = $2">>, [Gid, UserId]),
-    case elib_pg:execute(Conn, Sql, Params) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
-
 
 %% ===================================================================
 %% Internal Function Definitions

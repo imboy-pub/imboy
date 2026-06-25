@@ -315,18 +315,6 @@ row_get(Row, Key, Default) ->
             maps:get(AtomKey, Row, Default)
     end.
 
--spec get_count(map()) -> integer().
-get_count(Row) ->
-    case maps:find(<<"count">>, Row) of
-        {ok, Val} ->
-            ec_cnv:to_integer(Val);
-        error ->
-            case maps:find(count, Row) of
-                {ok, Val2} -> ec_cnv:to_integer(Val2);
-                error -> 0
-            end
-    end.
-
 -spec csv_header_with_bom() -> binary().
 csv_header_with_bom() ->
     <<239, 187, 191, "uid,account,nickname,app_vsn,did,dtype,ip,created_at,body\n">>.

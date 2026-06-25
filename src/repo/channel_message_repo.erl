@@ -130,12 +130,6 @@ increment_view_count(MessageId) ->
     Sql = <<"UPDATE ", Tb/binary, " SET view_count = view_count + 1 WHERE id = $1">>,
     elib_pg:execute(Sql, [MessageId]).
 
-%% @doc 删除频道的所有消息
--spec delete_by_channel(integer()) -> {ok, non_neg_integer()} | {error, any()}.
-delete_by_channel(ChannelId) ->
-    Tb = tablename(),
-    elib_pg:update(Tb, #{status => -1}, <<"channel_id = $1">>, [ChannelId]).
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================

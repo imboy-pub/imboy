@@ -60,37 +60,6 @@ create(Data) ->
         {error, _} = Err -> Err
     end.
 
-%% @doc 用乐观锁更新余额
-%% @param NewBalance 新余额（分）
-%% @param Uid 用户ID
-%% @param Version 当前版本号（乐观锁）
-%% @return {ok, Count} Count=1表示成功，Count=0表示版本冲突 | {error, Reason}
--spec update_balance(integer(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
-update_balance(NewBalance, Uid, Version) ->
-    Tb = tablename(),
-    Sql =
-        <<"UPDATE ", Tb/binary,
-            " SET balance = $1, version = version + 1, updated_at = NOW()"
-            " WHERE user_id = $2 AND version = $3">>,
-    case elib_pg:execute(Sql, [NewBalance, Uid, Version]) of
-        {ok, Count} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 插入钱包流水记录
-%% @param Data 流水数据map，包含 wallet_id, user_id, amount, balance_after, tx_type, reference_no, remark
-%% @return {ok, Count} | {error, Reason}
--spec add_transaction(map()) -> {ok, integer()} | {error, term()}.
-add_transaction(Data) ->
-    Tb = tx_tablename(),
-    Id = elib_tsid:generate(wallet_transaction),
-    Data2 = Data#{<<"id">> => Id},
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Sql, Params) of
-        {ok, _Count} -> {ok, Id};
-        {error, _} = Err -> Err
-    end.
-
 %% @doc 根据流水单号查询流水记录（用于退款查询原始支付）
 %% @param RefNo 流水参考单号（如 WPY_xxxxx）
 %% @return map | #{} 不存在时返回空map

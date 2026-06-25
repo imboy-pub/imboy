@@ -87,12 +87,6 @@ resolve(ReportId, Result, _Note, AdmUid) ->
             " WHERE id = $3">>,
     elib_pg:execute(Sql, [Result, AdmUid, ReportId]).
 
--spec delete_by_id(integer()) -> {ok, non_neg_integer()} | {error, any()}.
-delete_by_id(ReportId) ->
-    Tb = tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-    elib_pg:execute(Sql, [ReportId]).
-
 -spec build_where(map()) -> {binary(), list()}.
 build_where(Filter) ->
     Status = maps:get(status, Filter, -1),

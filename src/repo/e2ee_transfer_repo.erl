@@ -119,17 +119,6 @@ get_pending_sessions(Uid) ->
 %%% Utility Functions
 %%===================================================================
 
-%% @doc 检查会话是否过期
--spec is_expired(map()) -> boolean().
-is_expired(Session) ->
-    ExpiresAt = maps:get(<<"expires_at">>, Session),
-    case elib_dt:rfc3339_to(ExpiresAt, second) of
-        ExpTime when is_integer(ExpTime) ->
-            erlang:system_time(second) > ExpTime;
-        _ ->
-            true
-    end.
-
 %% @doc 清理过期的传输会话
 %% 删除所有已过期的 pending 和 accepted 状态的会话
 %% @returns {ok, DeletedCount} | {error, Reason}
@@ -162,22 +151,6 @@ get_stalled_sessions() ->
     case elib_pg:query(Sql1, []) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
-    end.
-
-%% @doc 检查用户是否有进行中的传输会话
-%% 用于并发保护，防止同时创建多个传输
-%% @param FromUid 发送方用户 ID
-%% @param ToUid 接收方用户 ID
-%% @returns true | false
--spec has_pending_session(integer(), integer()) -> boolean().
-has_pending_session(FromUid, ToUid) ->
-    Sql1 =
-        <<"SELECT EXISTS(", "SELECT 1 FROM e2ee_transfer_sessions ",
-            "WHERE from_uid = $1 AND to_uid = $2 ",
-            "AND status IN ('pending', 'accepted') AND expires_at > NOW()", ")">>,
-    case elib_pg:query(Sql1, [FromUid, ToUid]) of
-        {ok, [#{<<"exists">> := true}]} -> true;
-        _ -> false
     end.
 
 %% @doc 取消传输会话

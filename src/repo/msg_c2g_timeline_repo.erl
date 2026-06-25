@@ -92,14 +92,6 @@ delete_overflow_timeline(ToUid, Limit) ->
             {msg_ids, [MsgId || #{<<"msg_id">> := MsgId} <- Rows]}
     end.
 
-% 删除用户的所有群消息时间线记录
--spec delete_by_to_uid(integer()) -> {ok, non_neg_integer()} | {error, term()}.
-delete_by_to_uid(ToUid) ->
-    Tb = tablename(),
-    Where = <<"WHERE to_uid = $1">>,
-    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary>>,
-    elib_pg:execute(Sql, [ToUid]).
-
 % 根据消息ID删除群消息时间线记录
 -spec delete_by_msg_id(binary()) -> {ok, 1} | {error, term()}.
 delete_by_msg_id(MsgId) ->
@@ -107,21 +99,6 @@ delete_by_msg_id(MsgId) ->
     Where = <<"WHERE msg_id = $1">>,
     Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary, " RETURNING to_uid">>,
     case elib_pg:execute(Sql, [MsgId]) of
-        {ok, _Count, _Rows} ->
-            {ok, 1};
-        {ok, _Count} ->
-            {ok, 1};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-% 根据消息ID和接收者ID删除特定群消息
--spec delete_by_msg_id_and_to_id(binary(), integer()) -> {ok, 1} | {error, term()}.
-delete_by_msg_id_and_to_id(MsgId, ToUid) ->
-    Tb = tablename(),
-    Where = <<"WHERE msg_id = $1 AND to_uid = $2">>,
-    Sql = <<"DELETE FROM ", Tb/binary, " ", Where/binary, " RETURNING to_uid">>,
-    case elib_pg:execute(Sql, [MsgId, ToUid]) of
         {ok, _Count, _Rows} ->
             {ok, 1};
         {ok, _Count} ->

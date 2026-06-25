@@ -35,13 +35,16 @@ page(Scene, Page, Size, Where, _OrderBy) when Page > 0 ->
     case elib_pg:page_with_total(Tb, Where, Page, Size) of
         {ok, #{total := Total, page := Page, size := Size, list := Items2}} ->
             % 丰富数据：添加 subtitle
-            Items3 = [ maps:merge(Item, #{
-                <<"subtitle">> => user_tag_relation_repo:tag_subtitle(
-                    Scene,
-                    maps:get(<<"id">>, Item, 0),
-                    maps:get(<<"referer_time">>, Item, 0)
-                )
-            }) || Item <- Items2 ],
+            Items3 = [
+                maps:merge(Item, #{
+                    <<"subtitle">> => user_tag_relation_repo:tag_subtitle(
+                        Scene,
+                        maps:get(<<"id">>, Item, 0),
+                        maps:get(<<"referer_time">>, Item, 0)
+                    )
+                })
+             || Item <- Items2
+            ],
             #{total => Total, page => Page, size => Size, list => Items3};
         {error, Reason} ->
             #{total => 0, page => Page, size => Size, list => [], error => Reason}
@@ -61,15 +64,19 @@ delete(Uid, Scene, Tag) ->
                 % 删除 public.user_tag_relation
                 UserTagTb = user_tag_relation_repo:tablename(),
                 DelWhere = <<"scene = $1 AND user_id = $2 AND tag_id = $3">>,
-                {ok, _} = elib_pg:execute(Conn,
+                {ok, _} = elib_pg:execute(
+                    Conn,
                     <<"DELETE FROM ", UserTagTb/binary, " WHERE ", DelWhere/binary>>,
-                    [Scene, Uid, TagId]),
+                    [Scene, Uid, TagId]
+                ),
 
                 % 删除 public.user_tag
                 TagTb = user_tag_repo:tablename(),
-                {ok, _} = elib_pg:execute(Conn,
+                {ok, _} = elib_pg:execute(
+                    Conn,
                     <<"DELETE FROM ", TagTb/binary, " WHERE id = $1">>,
-                    [TagId]),
+                    [TagId]
+                ),
 
                 % 更新相关表的 tag 字段
                 update_tag_in_objects(Conn, Scene, Tag, TagId),
@@ -100,15 +107,25 @@ change_name(0, Uid, Scene, TagId, TagName) ->
             % 使用事务更新
             elib_pg:with_tx(fun(Conn) ->
                 % 更新 user_tag
-                UpdateResult = user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt),
+                UpdateResult = user_tag_relation_repo:update_tag(
+                    Conn, TagId, TagName, Uid, CreatedAt
+                ),
                 case UpdateResult of
-                    {ok, _} -> ok;
-                    {error, Reason} -> ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason]);
-                    {_Count, _} -> ok
+                    {ok, _} ->
+                        ok;
+                    {error, Reason} ->
+                        ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason]);
+                    {_Count, _} ->
+                        ok
                 end,
 
                 % 更新所有关联对象的 tag
-                [ change_scene_tag(Conn, Scene, Uid, maps:get(<<"object_id">>, Row), [{TagId, TagName}]) || Row <- Rows ],
+                [
+                    change_scene_tag(Conn, Scene, Uid, maps:get(<<"object_id">>, Row), [
+                        {TagId, TagName}
+                    ])
+                 || Row <- Rows
+                ],
                 ok
             end);
         _ ->
@@ -129,8 +146,7 @@ add(Uid, Scene, Tag) ->
     case {Scene, Tag} of
         {0, _} -> {error, <<"invalid_scene">>};
         {_, <<>>} -> {error, <<"invalid_tag">>};
-        _ ->
-            add_internal(Uid, Scene, Tag)
+        _ -> add_internal(Uid, Scene, Tag)
     end.
 
 %% @doc 查找标签ID
@@ -141,24 +157,14 @@ add(Uid, Scene, Tag) ->
 -spec find_tag_id(integer(), integer(), binary()) -> {ok, integer()}.
 find_tag_id(Uid, Scene, Tag) ->
     Tb = user_tag_repo:tablename(),
-    TagId = elib_pg:pluck_value(Tb, <<"id">>,
-        #{creator_user_id => Uid, scene => Scene, name => Tag}, #{}, 0),
+    TagId = elib_pg:pluck_value(
+        Tb,
+        <<"id">>,
+        #{creator_user_id => Uid, scene => Scene, name => Tag},
+        #{},
+        0
+    ),
     {ok, TagId}.
-
-%% @doc 更新标签
-%% @param Conn 数据库连接
-%% @param TagId 标签ID
-%% @param TagName 标签名称
-%% @param Uid 用户ID
-%% @param CreatedAt 创建时间
-%% @return ok
--spec update_tag(pid(), integer(), binary(), integer(), binary()) -> ok.
-update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
-    case user_tag_relation_repo:update_tag(Conn, TagId, TagName, Uid, CreatedAt) of
-        {ok, _} -> ok;
-        {error, Reason} -> ?ERROR_LOG([user_tag_update_failed, TagId, TagName, Uid, Reason])
-    end,
-    ok.
 
 %% @doc 获取标签关联的对象列表
 %% @param Scene 场景
@@ -167,8 +173,10 @@ update_tag(Conn, TagId, TagName, Uid, CreatedAt) ->
 %% @return {ok, Rows}
 -spec get_relation_objects(integer(), integer(), integer()) -> {ok, list()}.
 get_relation_objects(Scene, Uid, TagId) ->
-    Sql = <<"SELECT object_id FROM public.user_tag_relation
-             WHERE scene = $1 AND user_id = $2 AND tag_id = $3">>,
+    Sql = <<
+        "SELECT object_id FROM public.user_tag_relation\n"
+        "             WHERE scene = $1 AND user_id = $2 AND tag_id = $3"
+    >>,
     case elib_pg:query(Sql, [Scene, Uid, TagId]) of
         {ok, Rows} -> {ok, Rows};
         {error, _} -> {ok, []}
@@ -194,12 +202,15 @@ change_scene_tag(_Conn, Scene, Uid, ObjectId, Tag) when is_list(Tag) ->
     % 合并新旧tag，排重，不修改tag顺序
     TagBin = merge_tag(Tag, Scene, Uid, ObjectId),
 
-    Sql = case Scene of
-        1 ->
-            <<"UPDATE ", Table/binary, " SET tag = $1 WHERE user_id = $2 AND ", WhereColumn/binary, " = $3">>;
-        2 ->
-            <<"UPDATE ", Table/binary, " SET tag = $1 WHERE from_user_id = $2 AND ", WhereColumn/binary, " = $3">>
-    end,
+    Sql =
+        case Scene of
+            1 ->
+                <<"UPDATE ", Table/binary, " SET tag = $1 WHERE user_id = $2 AND ",
+                    WhereColumn/binary, " = $3">>;
+            2 ->
+                <<"UPDATE ", Table/binary, " SET tag = $1 WHERE from_user_id = $2 AND ",
+                    WhereColumn/binary, " = $3">>
+        end,
 
     TagBinWithComma = <<TagBin/binary, ",">>,
     ObjectId2 = normalize_scene_object_id(Scene, ObjectId),
@@ -238,8 +249,13 @@ normalize_scene_object_id(_Scene, ObjectId) ->
 -spec add_internal(integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 add_internal(Uid, Scene, Tag) ->
     Tb = elib_pg_sql:public_tablename(<<"user_tag">>),
-    TagId = elib_pg:pluck_value(Tb, <<"id">>,
-        #{scene => Scene, creator_user_id => Uid, name => Tag}, #{}, 0),
+    TagId = elib_pg:pluck_value(
+        Tb,
+        <<"id">>,
+        #{scene => Scene, creator_user_id => Uid, name => Tag},
+        #{},
+        0
+    ),
     case TagId of
         0 ->
             Data = #{
@@ -253,8 +269,13 @@ add_internal(Uid, Scene, Tag) ->
                 {ok, Id, _} ->
                     {ok, Id};
                 {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
-                    TagId2 = elib_pg:pluck_value(Tb, <<"id">>,
-                        #{scene => Scene, creator_user_id => Uid, name => Tag}, #{}, 0),
+                    TagId2 = elib_pg:pluck_value(
+                        Tb,
+                        <<"id">>,
+                        #{scene => Scene, creator_user_id => Uid, name => Tag},
+                        #{},
+                        0
+                    ),
                     case TagId2 of
                         0 ->
                             {error, <<"tag_already_exists">>};
@@ -297,22 +318,31 @@ update_tag_in_objects(Conn, Scene, Tag, _TagId) ->
 -spec merge_tag(list(), integer(), integer(), any()) -> binary().
 merge_tag(Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
     % 获取现有标签
-    Sql = <<"SELECT t.id, t.name FROM public.user_tag_relation ut
-             INNER JOIN public.user_tag t ON t.id = ut.tag_id
-             WHERE ut.scene = $1 AND ut.user_id = $2 AND ut.object_id = $3">>,
+    Sql = <<
+        "SELECT t.id, t.name FROM public.user_tag_relation ut\n"
+        "             INNER JOIN public.user_tag t ON t.id = ut.tag_id\n"
+        "             WHERE ut.scene = $1 AND ut.user_id = $2 AND ut.object_id = $3"
+    >>,
 
-    TagOldLi = case elib_pg:query(Sql, [Scene, Uid, ObjectId]) of
-        {ok, Rows} -> Rows;
-        _ -> []
-    end,
+    TagOldLi =
+        case elib_pg:query(Sql, [Scene, Uid, ObjectId]) of
+            {ok, Rows} -> Rows;
+            _ -> []
+        end,
 
     % 合并新旧标签，去重
-    TagOld = elib_cnv:implode(",",
-        [ maps:get(<<"name">>, Row)
-          || Row <- TagOldLi, lists:keymember(
-                integer_to_binary(maps:get(<<"id">>, Row)), 1, Tag) == false ]),
+    TagOld = elib_cnv:implode(
+        ",",
+        [
+            maps:get(<<"name">>, Row)
+         || Row <- TagOldLi,
+            lists:keymember(
+                integer_to_binary(maps:get(<<"id">>, Row)), 1, Tag
+            ) == false
+        ]
+    ),
 
-    TagBin = elib_cnv:implode(",", [ Name || {_, Name} <- Tag ]),
+    TagBin = elib_cnv:implode(",", [Name || {_, Name} <- Tag]),
     MergedTag = binary:split(<<TagBin/binary, ",", TagOld/binary>>, <<",">>, [global]),
     elib_cnv:implode(",", elib_cnv:remove_dups(MergedTag)).
 
@@ -324,9 +354,15 @@ find_name_by_id(TagId, CreatorUid) ->
 -spec find_name_by_id(integer(), integer(), integer()) -> binary().
 find_name_by_id(TagId, CreatorUid, Scene) ->
     Tb = user_tag_repo:tablename(),
-    case elib_pg:pluck_value(Tb, <<"name">>,
-                             #{id => TagId, creator_user_id => CreatorUid, scene => Scene},
-                             #{}, <<>>) of
+    case
+        elib_pg:pluck_value(
+            Tb,
+            <<"name">>,
+            #{id => TagId, creator_user_id => CreatorUid, scene => Scene},
+            #{},
+            <<>>
+        )
+    of
         <<>> -> <<>>;
         Name -> Name
     end.
