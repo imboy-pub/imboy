@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "postgres": {
+    "local_imboy": {
       "command": "npx",
       "args": ["-y", "@neverinfamous/postgres-mcp", "--tool-filter", "codemode"],
       "env": {
