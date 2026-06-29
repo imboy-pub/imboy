@@ -15,12 +15,15 @@
 %% @return 中间件执行结果
 %% @end
 -spec execute(cowboy_req:req(), map()) ->
-                 {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 execute(Req, Env) ->
     Path = cowboy_req:path(Req),
     case is_whitelisted(Path) of
         true ->
             {ok, Req, Env};
+        passport ->
+            % GAP-09: passport 路径使用专用宽松限流（5 req/min/IP），不再完全豁免
+            do_throttle_passport(Req, Env);
         false ->
             do_throttle(Req, Env)
     end.
@@ -29,10 +32,35 @@ execute(Req, Env) ->
 %%% 内部函数
 %%%===================================================================
 
+%% @doc passport 路径专用宽松限流（登录/注册接口）
+%% 基于 IP，使用 passport_per_ip 规则（宽松于通用规则）
+%% GAP-09: 修复原有完全豁免导致暴力破解无 HTTP 层防护的问题
+%% @private
+-spec do_throttle_passport(cowboy_req:req(), map()) ->
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+do_throttle_passport(Req, Env) ->
+    Ip = elib_req:get_client_ip(Req),
+    case throttle:check(passport_per_ip, Ip) of
+        {ok, _Remaining, _RetryAfter} ->
+            {ok, Req, Env};
+        {limit_exceeded, _, _} ->
+            ?WARN_LOG([
+                passport_rate_limited, #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}
+            ]),
+            reply_429(Req);
+        rate_not_set ->
+            %% passport_per_ip 规则未初始化时 fail-open（不阻断登录）
+            %% 此时 login_attempt_ds 暴力破解保护仍有效
+            ?WARN_LOG([
+                throttle_rate_not_set, #{scope => passport_per_ip, path => cowboy_req:path(Req)}
+            ]),
+            {ok, Req, Env}
+    end.
+
 %% @doc 执行限流检查
 %% @private
 -spec do_throttle(cowboy_req:req(), map()) ->
-                     {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 do_throttle(Req, Env) ->
     case get_current_uid(Env) of
         0 ->
@@ -42,11 +70,15 @@ do_throttle(Req, Env) ->
                 {ok, _Remaining, _RetryAfter} ->
                     {ok, Req, Env};
                 {limit_exceeded, _, _} ->
-                    ?WARN_LOG([rate_limited, #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}]),
+                    ?WARN_LOG([
+                        rate_limited, #{key_type => ip, key => Ip, path => cowboy_req:path(Req)}
+                    ]),
                     reply_429(Req);
                 rate_not_set ->
                     %% 速率规则未初始化，放行并告警（fail-open）
-                    ?WARN_LOG([throttle_rate_not_set, #{scope => api_per_ip, path => cowboy_req:path(Req)}]),
+                    ?WARN_LOG([
+                        throttle_rate_not_set, #{scope => api_per_ip, path => cowboy_req:path(Req)}
+                    ]),
                     {ok, Req, Env}
             end;
         Uid ->
@@ -56,11 +88,16 @@ do_throttle(Req, Env) ->
                 {ok, _Remaining, _RetryAfter} ->
                     {ok, Req, Env};
                 {limit_exceeded, _, _} ->
-                    ?WARN_LOG([rate_limited, #{key_type => uid, key => Uid, path => cowboy_req:path(Req)}]),
+                    ?WARN_LOG([
+                        rate_limited, #{key_type => uid, key => Uid, path => cowboy_req:path(Req)}
+                    ]),
                     reply_429(Req);
                 rate_not_set ->
                     %% 速率规则未初始化，放行并告警（fail-open）
-                    ?WARN_LOG([throttle_rate_not_set, #{scope => api_per_user, uid => Uid, path => cowboy_req:path(Req)}]),
+                    ?WARN_LOG([
+                        throttle_rate_not_set,
+                        #{scope => api_per_user, uid => Uid, path => cowboy_req:path(Req)}
+                    ]),
                     {ok, Req, Env}
             end
     end.
@@ -92,10 +129,12 @@ reply_429(Req) ->
     ),
     {stop, Req1}.
 
-%% @doc 判断路径是否在白名单中（跳过限流）
+%% @doc 判断路径的限流策略
+%% 返回 true（完全豁免）| passport（专用宽松限流）| false（通用限流）
+%% GAP-09: /v1/passport/ 从完全豁免改为专用宽松限流
 %% @private
--spec is_whitelisted(binary()) -> boolean().
-is_whitelisted(<<"/v1/passport/", _/binary>>) -> true;
+-spec is_whitelisted(binary()) -> true | passport | false.
+is_whitelisted(<<"/v1/passport/", _/binary>>) -> passport;
 is_whitelisted(<<"/v1/init">>) -> true;
 is_whitelisted(<<"/v1/ws">>) -> true;
 is_whitelisted(<<"/health">>) -> true;

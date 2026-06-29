@@ -28,12 +28,18 @@ execute(Req, Env) ->
             % 与 /adm/passport/ 行为一致；其余 /api/adm/* 仍落 _ 分支校验 admin cookie
             {ok, Req, Env};
         _ ->
-            % {ok, Req, Env} | {stop, Req}
-            Method = cowboy_req:method(Req),
-            Uid = elib_req:cookie(<<"adm_user_id">>, Req),
-            UidSig = elib_req:cookie(<<"adm_user_sig">>, Req),
-            % elib_log:info([Method, Uid]),
-            condition(Method, Uid, UidSig, Req, Env)
+            % GAP-12: 在认证前先校验 IP 白名单（配置 adm_ip_allowlist）
+            case check_ip_allowlist(Req) of
+                deny ->
+                    reply_ip_forbidden(Req);
+                allow ->
+                    % {ok, Req, Env} | {stop, Req}
+                    Method = cowboy_req:method(Req),
+                    Uid = elib_req:cookie(<<"adm_user_id">>, Req),
+                    UidSig = elib_req:cookie(<<"adm_user_sig">>, Req),
+                    % elib_log:info([Method, Uid]),
+                    condition(Method, Uid, UidSig, Req, Env)
+            end
     end.
 
 %% ===================================================================
@@ -223,6 +229,61 @@ normalize_binary(Value) when is_list(Value) ->
     unicode:characters_to_binary(Value);
 normalize_binary(Value) ->
     ec_cnv:to_binary(Value).
+
+%% @doc GAP-12: 检查请求 IP 是否在管理后台访问白名单中
+%% 从 config_ds 读取 adm_ip_allowlist（字符串 CIDR 列表），空列表表示不启用 IP 限制。
+%% CIDR 支持：精确 IP（"192.168.1.1"）和前缀匹配（"192.168.1."）。
+%% 如需完整 CIDR 解析，可替换为 inet_cidr 库。
+-spec check_ip_allowlist(cowboy_req:req()) -> allow | deny.
+check_ip_allowlist(Req) ->
+    Allowlist = config_ds:env(adm_ip_allowlist, []),
+    case Allowlist of
+        [] ->
+            %% 未配置白名单，不启用 IP 限制（向下兼容）
+            allow;
+        _ ->
+            ClientIp = elib_req:get_client_ip(Req),
+            case ip_in_allowlist(ClientIp, Allowlist) of
+                true ->
+                    allow;
+                false ->
+                    ok = ?WARN_LOG([adm_ip_blocked, #{ip => ClientIp, path => cowboy_req:path(Req)}]),
+                    deny
+            end
+    end.
+
+%% @doc 判断 IP 是否在白名单内（精确匹配或前缀匹配）
+-spec ip_in_allowlist(binary() | undefined, [binary() | list()]) -> boolean().
+ip_in_allowlist(undefined, _) ->
+    false;
+ip_in_allowlist(Ip, Allowlist) when is_binary(Ip) ->
+    lists:any(
+        fun(Cidr) ->
+            CidrBin = normalize_binary(Cidr),
+            Ip =:= CidrBin orelse
+                %% 简单前缀匹配（如 "10.0.0." 匹配 "10.0.0.1"）
+                (binary:longest_common_prefix([Ip, CidrBin]) =:= byte_size(CidrBin))
+        end,
+        Allowlist
+    ).
+
+%% @doc 返回 403 Forbidden（IP 不在白名单）
+-spec reply_ip_forbidden(cowboy_req:req()) -> {stop, cowboy_req:req()}.
+reply_ip_forbidden(Req) ->
+    Body = jsone:encode(
+        #{
+            <<"code">> => 403,
+            <<"msg">> => <<"Access denied: IP not in allowlist">>
+        },
+        [native_utf8]
+    ),
+    Req1 = cowboy_req:reply(
+        403,
+        #{<<"content-type">> => <<"application/json; charset=utf-8">>},
+        Body,
+        Req
+    ),
+    {stop, Req1}.
 
 %% @doc 仅页面入口使用 302 跳转，API 统一返回 401 JSON
 -spec should_redirect_to_login(binary()) -> boolean().

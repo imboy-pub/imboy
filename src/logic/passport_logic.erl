@@ -233,6 +233,18 @@ do_login_by_code_verify(User, DType, Did) ->
             Data = login_resp(User, #{}),
             UidHashed = maps:get(<<"uid">>, Data),
             Uid = ec_cnv:to_integer(UidHashed),
+            % GAP-01: 异步写验证码登录成功审计日志（type=100）
+            _ = elib_async:run(fun() ->
+                {ok, LogBody} = jsone_encode:encode(
+                    #{
+                        <<"account">> => Account,
+                        <<"dtype">> => DType,
+                        <<"login_method">> => <<"code">>
+                    },
+                    [native_utf8]
+                ),
+                _ = user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
+            end),
             case user_device_logic:check_login_conflict(Uid, DType) of
                 {ok, no_conflict} -> {ok, Data};
                 {ok, conflict, ConflictInfo} -> {{error, conflict}, ConflictInfo};
@@ -271,6 +283,18 @@ do_login_verify(Pwd, User, DType, _Did) ->
                     % 从 uid (字符串格式) 转换为整数 ID
                     UidHashed = maps:get(<<"uid">>, Data),
                     Uid = ec_cnv:to_integer(UidHashed),
+                    % GAP-01: 异步写登录成功审计日志（type=100），fire-and-forget 不阻塞登录
+                    _ = elib_async:run(fun() ->
+                        {ok, LogBody} = jsone_encode:encode(
+                            #{
+                                <<"account">> => Account,
+                                <<"dtype">> => DType,
+                                <<"ip">> => Ip
+                            },
+                            [native_utf8]
+                        ),
+                        _ = user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
+                    end),
                     % 检查设备类型是否有效
                     case user_device_logic:validate_device_type(DType) of
                         false when DType =/= <<>> ->

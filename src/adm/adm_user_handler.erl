@@ -27,6 +27,7 @@ init(Req0, State0) ->
             detail -> detail(Method, Req0, State);
             ban -> ban(Method, Req0, State);
             unban -> unban(Method, Req0, State);
+            force_logout -> force_logout(Method, Req0, State);
             search -> search(Method, Req0, State);
             tag_list -> tag_list(Method, Req0, State);
             tag_delete -> tag_delete(Method, Req0, State);
@@ -116,6 +117,33 @@ unban(<<"POST">>, Req0, _State) ->
         false ->
             elib_response:error(Req0, "参数错误")
     end.
+
+%% @doc 强制下线用户所有设备（GAP-06）
+%% POST /adm/user/force_logout?uid=<uid>
+-spec force_logout(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+force_logout(<<"POST">>, Req0, State) ->
+    Uid = parse_uid_param(Req0),
+    AdmUserId = maps:get(adm_user_id, State, 0),
+    case Uid > 0 of
+        true ->
+            _ = user_device_logic:kick_all_other_devices(Uid, {<<"all">>, <<"admin_action">>}),
+            % GAP-01 关联：写强制下线审计日志（type=120）
+            _ = elib_async:run(fun() ->
+                {ok, LogBody} = jsone_encode:encode(
+                    #{
+                        <<"operator">> => AdmUserId,
+                        <<"reason">> => <<"admin_force_logout">>
+                    },
+                    [native_utf8]
+                ),
+                _ = user_log_ds:add_internal(undefined, 120, Uid, LogBody, elib_dt:now())
+            end),
+            elib_response:success(Req0, #{}, "操作成功");
+        false ->
+            elib_response:error(Req0, "参数错误")
+    end;
+force_logout(_, Req0, _State) ->
+    elib_response:error(Req0, "Method Not Allowed").
 
 %% @doc 搜索用户
 -spec search(binary(), cowboy_req:req(), map()) -> cowboy_req:req().

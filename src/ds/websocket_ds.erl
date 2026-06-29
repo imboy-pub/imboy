@@ -162,6 +162,7 @@ auth_after(Uid, Req, State, Opt) ->
 %% @returns integer() 超时时间（毫秒）
 % 设置用户websocket超时时间，默认60秒
 % Cowboy关闭连接空闲180秒（客户端心跳60秒，3倍余量） 默认值为 60000
+% GAP-07: 从 config_ds 读取可配置超时，支持管理员通过 /adm/config 热更新
 -spec idle_timeout(integer()) -> integer().
 idle_timeout(_Uid) ->
-    180000.
+    config_ds:env(ws_idle_timeout_ms, 180000).

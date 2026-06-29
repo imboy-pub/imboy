@@ -277,6 +277,9 @@ init_throttle_rates() ->
     ok = throttle:setup(api_per_user, 120, per_minute),
     %% 每 IP 每分钟 API 调用上限（与 sys.config 保持一致）
     ok = throttle:setup(api_per_ip, 60, per_minute),
+    %% GAP-09: passport 路径专用限流（登录/注册，宽松于通用 IP 限流，严于完全豁免）
+    %% 每 IP 每分钟最多 10 次 passport 请求（兼容短时间内正常登录重试）
+    ok = throttle:setup(passport_per_ip, 10, per_minute),
     ok.
 
 -spec validate_runtime_config() -> ok.

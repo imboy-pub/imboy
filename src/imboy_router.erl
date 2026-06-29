@@ -667,6 +667,7 @@ get_routes() ->
         {"/adm/user/detail", adm_user_handler, #{action => detail}},
         {"/adm/user/ban", adm_user_handler, #{action => ban}},
         {"/adm/user/unban", adm_user_handler, #{action => unban}},
+        {"/adm/user/force_logout", adm_user_handler, #{action => force_logout}},
         {"/adm/user/search", adm_user_handler, #{action => search}},
         {"/adm/user/tag/list", adm_user_handler, #{action => tag_list}},
         {"/adm/user/tag/delete", adm_user_handler, #{action => tag_delete}},
