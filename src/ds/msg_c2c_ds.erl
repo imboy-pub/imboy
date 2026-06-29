@@ -304,13 +304,19 @@ read_offline_msg(MsgId, FromId, ToId, ReadAt, Action) ->
 %% @returns ok
 -spec check_and_delete_overflow(integer()) -> ok.
 check_and_delete_overflow(ToUid) ->
-    Count = msg_c2c_repo:count_by_to_id(ToUid),
-    case Count >= ?SAVE_MSG_LIMIT of
+    % ponytail: 1/20 采样，避免每次写消息都 COUNT；溢出最多延迟 ~20 条被清理
+    case rand:uniform(20) =:= 1 of
         true ->
-            Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            _ = elib_async:async_retry(
-                fun() -> msg_c2c_repo:delete_overflow_msg(ToUid, Limit) end
-            );
+            Count = msg_c2c_repo:count_by_to_id(ToUid),
+            case Count >= ?SAVE_MSG_LIMIT of
+                true ->
+                    Limit = Count - ?SAVE_MSG_LIMIT + 1,
+                    _ = elib_async:async_retry(
+                        fun() -> msg_c2c_repo:delete_overflow_msg(ToUid, Limit) end
+                    );
+                false ->
+                    ok
+            end;
         false ->
             ok
     end,

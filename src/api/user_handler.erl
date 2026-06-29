@@ -328,7 +328,7 @@ show(Req0, _State) ->
 convert_user_id(User) ->
     case maps:find(<<"id">>, User) of
         {ok, Id} when is_integer(Id) ->
-            maps:put(<<"id">>, Id, User);
+            maps:put(<<"id">>, integer_to_binary(Id), User);
         _ ->
             User
     end.
