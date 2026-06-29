@@ -22,6 +22,9 @@
 -export([update_pinned/3]).
 -export([update_payload_by_msg_id/2]).
 -export([find_by_reply_to_msg_id/1]).
+-export([count_unread_since/1, count_unread_since/2]).
+-export([set_expire_at/2]).
+-export([delete_expired/1]).
 
 %% ===================================================================
 %% API functions
@@ -446,3 +449,41 @@ find_by_reply_to_msg_id(ReplyToMsgId) ->
         " WHERE reply_to_msg_id = $1 ORDER BY id ASC"
     >>,
     elib_pg:query(Sql, [ReplyToMsgId]).
+
+count_unread_since(ToId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1">>,
+    case elib_pg:query(Sql, [ToId]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end.
+
+count_unread_since(ToId, Since) ->
+    Tb = tablename(),
+    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND created_at >= $2">>,
+    case elib_pg:query(Sql, [ToId, Since]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end.
+
+set_expire_at(MsgId, ExpireAt) ->
+    Tb = tablename(),
+    Sql = <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2">>,
+    case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
+        {ok, _} -> ok;
+        {error, _} -> ok
+    end.
+
+%% ponytail: NOW() 避免 epgsql 对 RFC3339 binary 的 timestamptz 转换
+delete_expired(BatchSize) ->
+    Tb = tablename(),
+    Sql =
+        <<"DELETE FROM ", Tb/binary,
+            " WHERE id IN ("
+            "  SELECT id FROM ", Tb/binary,
+            "  WHERE expire_at IS NOT NULL AND expire_at <= NOW()"
+            "  ORDER BY expire_at ASC LIMIT $1)">>,
+    case elib_pg:execute(Sql, [BatchSize]) of
+        {ok, Count} when is_integer(Count) -> Count;
+        _ -> 0
+    end.

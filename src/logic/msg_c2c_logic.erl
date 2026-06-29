@@ -328,7 +328,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
     Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
     ToId = ec_cnv:to_integer(To),
     FromId = ec_cnv:to_integer(From),
     % ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
@@ -436,7 +436,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
 -spec c2c_revoke_ack(binary(), integer(), Data :: map()) -> ok.
 c2c_revoke_ack(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
     ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
     AckPayload = Payload#{
         <<"action">> => <<"message_revoke_ack">>,
@@ -453,7 +453,7 @@ c2c_edit(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
     Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
     NewContent = maps:get(<<"content">>, Payload),
     MsgType = maps:get(<<"msg_type">>, Payload),
     E2EE = maps:get(<<"e2ee">>, Data, null),
@@ -529,7 +529,7 @@ c2c_edit(MsgId, CurrentUid, Data) ->
 -spec c2c_edit_ack(binary(), integer(), Data :: map()) -> ok.
 c2c_edit_ack(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
     NewContent = maps:get(<<"content">>, Payload),
     EditedAt = maps:get(<<"edited_at">>, Payload),
     ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),

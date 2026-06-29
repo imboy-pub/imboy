@@ -192,21 +192,7 @@ find_msg_by_id(MsgId) ->
 revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
     % 存储消息
     _ = msg_c2c_ds:write_msg(NowTs, MsgId, Payload, FromId, ToId, NowTs),
-    % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    case
-        elib_pg:update(
-            msg_c2c_repo:tablename(),
-            #{<<"payload">> => Payload},
-            <<"msg_id = $1">>,
-            [MsgId]
-        )
-    of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            ?LOG_ERROR("Failed to update msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
-            {error, Reason}
-    end.
+    msg_c2c_repo:update_payload_by_msg_id(MsgId, Payload).
 
 %% @doc 撤回离线消息（v2.0 格式，支持 msg_type 和 action）
 %%
@@ -230,21 +216,7 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action, E2EE) -
     PayloadBin = imboy_message_helper:encode_json(PayloadWithAction),
     % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
     _ = msg_c2c_ds:write_msg(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
-    % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    case
-        elib_pg:update(
-            msg_c2c_repo:tablename(),
-            #{<<"payload">> => Payload},
-            <<"msg_id = $1">>,
-            [MsgId]
-        )
-    of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            ?LOG_ERROR("Failed to update msg_c2c payload for msg_id ~p: ~p", [MsgId, Reason]),
-            {error, Reason}
-    end.
+    msg_c2c_repo:update_payload_by_msg_id(MsgId, PayloadBin).
 
 %% @doc 编辑离线消息
 %% @returns ok | {error, Reason}
@@ -430,45 +402,16 @@ update_payload_by_msg_id(MsgId, PayloadJson) ->
 -spec delete_by_msg_ids_and_to_id(list(binary()), integer()) -> {ok, integer()} | {error, any()}.
 delete_by_msg_ids_and_to_id(MsgIds, Uid) -> msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid).
 
-%% G3: messaging_logic 不应直调 msg_c2c_repo:tablename()
 -spec count_unread_since(integer(), binary() | undefined) -> non_neg_integer().
 count_unread_since(ToId, undefined) ->
-    Tb = msg_c2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1">>,
-    case elib_pg:query(Sql, [ToId]) of
-        {ok, [#{<<"count">> := Count}]} -> Count;
-        _ -> 0
-    end;
+    msg_c2c_repo:count_unread_since(ToId);
 count_unread_since(ToId, Since) ->
-    Tb = msg_c2c_repo:tablename(),
-    Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND created_at >= $2">>,
-    case elib_pg:query(Sql, [ToId, Since]) of
-        {ok, [#{<<"count">> := Count}]} -> Count;
-        _ -> 0
-    end.
+    msg_c2c_repo:count_unread_since(ToId, Since).
 
-%% G3: msg_c2c_logic 不应直调 msg_c2c_repo:tablename()
 -spec set_expire_at(binary(), binary()) -> ok.
 set_expire_at(MsgId, ExpireAt) ->
-    Tb = msg_c2c_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2">>,
-    case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
-        {ok, _} -> ok;
-        {error, _Reason} -> ok
-    end.
+    msg_c2c_repo:set_expire_at(MsgId, ExpireAt).
 
-%% G3: msg_burn_logic 不应直调 msg_c2c_repo:tablename()
-%% 使用 NOW() 替代参数化时间戳，避免 epgsql 无法编码 RFC3339 binary 为 timestamptz
 -spec delete_expired(binary(), pos_integer()) -> non_neg_integer().
 delete_expired(_Now, BatchSize) ->
-    Tb = msg_c2c_repo:tablename(),
-    Sql =
-        <<"DELETE FROM ", Tb/binary,
-            " WHERE id IN ("
-            "  SELECT id FROM ", Tb/binary,
-            "  WHERE expire_at IS NOT NULL AND expire_at <= NOW()"
-            "  ORDER BY expire_at ASC LIMIT $1)">>,
-    case elib_pg:execute(Sql, [BatchSize]) of
-        {ok, Count} when is_integer(Count) -> Count;
-        _ -> 0
-    end.
+    msg_c2c_repo:delete_expired(BatchSize).
