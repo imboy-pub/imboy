@@ -240,7 +240,7 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
                     case channel_subscription_ds:clear_unread(ChannelId, Uid) of
-                        ok ->
+                        {ok, _} ->
                             ok;
                         {error, ClearReason} ->
                             ?ERROR_LOG(["channel_clear_unread_failed", ChannelId, Uid, ClearReason])
@@ -450,7 +450,7 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
                                                                         MessageId, Uid, RevokedAt
                                                                     )
                                                                 of
-                                                                    ok ->
+                                                                    {ok, _} ->
                                                                         channel_logic_notify:notify_message_revoked(
                                                                             ChannelId,
                                                                             MessageId,

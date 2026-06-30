@@ -43,7 +43,7 @@ list_by_channel(ChannelId, Cursor, Limit) ->
 -spec delete(epgsql:connection(), integer(), integer()) -> {ok, integer()} | {error, any()}.
 delete(Conn, ChannelId, Uid) -> channel_subscription_repo:delete(Conn, ChannelId, Uid).
 
--spec clear_unread(integer(), integer()) -> ok | {error, any()}.
+-spec clear_unread(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
 clear_unread(ChannelId, Uid) -> channel_subscription_repo:clear_unread(ChannelId, Uid).
 
 -spec list_unread_counts_by_channel(integer()) -> {ok, list(map())} | {error, any()}.

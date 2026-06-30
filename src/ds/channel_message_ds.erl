@@ -29,7 +29,7 @@ update(MessageId, Data) -> channel_message_repo:update(MessageId, Data).
 -spec delete(integer()) -> {ok, integer()} | {error, any()}.
 delete(MessageId) -> channel_message_repo:delete(MessageId).
 
--spec revoke(integer(), integer(), binary()) -> ok | {error, any()}.
+-spec revoke(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
 revoke(MessageId, RevokedBy, RevokedAt) ->
     channel_message_repo:revoke(MessageId, RevokedBy, RevokedAt).
 

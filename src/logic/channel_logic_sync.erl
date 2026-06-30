@@ -15,32 +15,28 @@ sync_channels(Uid, Since) ->
                     case channel_ds:list_by_ids_since(ChannelIds, Since) of
                         {ok, Channels} when is_list(Channels) ->
                             Transferred =
-                                [channel_logic_common:channel_transfer(C)
-                                    || C <- Channels, is_map(C)],
+                                [
+                                    channel_logic_common:channel_transfer(C)
+                                 || C <- Channels, is_map(C)
+                                ],
                             {ok, #{channels => Transferred, server_time => Now}};
-                        {ok, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)};
-                        _Reason ->
-                            {error, elib_cnv:safe_to_binary(_Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)}
                     end
             end;
-        {ok, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec extract_channel_ids(list()) -> list(integer()).
 extract_channel_ids(Subscriptions) ->
     lists:usort(
-        [ChannelId
-            || S <- Subscriptions,
-                is_map(S),
-                ChannelId <- [maps:get(<<"channel_id">>, S, 0)],
-                is_integer(ChannelId),
-                ChannelId > 0]
+        [
+            ChannelId
+         || S <- Subscriptions,
+            is_map(S),
+            ChannelId <- [maps:get(<<"channel_id">>, S, 0)],
+            is_integer(ChannelId),
+            ChannelId > 0
+        ]
     ).
