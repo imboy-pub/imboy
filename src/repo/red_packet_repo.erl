@@ -81,7 +81,7 @@ find_receive_by_user(PacketId, ReceiverUid) ->
     end.
 
 %% @doc 抢红包：悲观锁事务
--spec grab(integer(), integer()) -> {ok, integer()} | {error, term()}.
+-spec grab(integer(), integer()) -> {ok, integer()} | {rollback, term()} | {error, term()}.
 grab(PacketId, ReceiverUid) ->
     Tb = tablename(),
     RecvTb = receive_tablename(),
