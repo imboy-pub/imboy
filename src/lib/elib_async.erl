@@ -10,6 +10,8 @@
 
 -export([async/1]).
 -export([async/2]).
+% ponytail: backward-compat alias for async/1, remove after next full deploy
+-export([run/1]).
 -export([async_retry/1]).
 -export([async_retry/2]).
 -export([async_retry/3]).
@@ -34,6 +36,9 @@
 -spec async(fun(() -> term())) -> pid().
 async(Fun) ->
     spawn(Fun).
+
+% ponytail: backward-compat alias — old beams call run/1, remove after next full redeploy
+run(Fun) -> async(Fun).
 
 %% @doc 异步执行函数（带超时监控）
 %%
@@ -117,7 +122,8 @@ async_retry(Fun, RetryCount, DelayMs) ->
 %% ```
 %% elib_async:async_retry(Fun, 3, 1000, exponential).
 %% ```
--spec async_retry(fun(() -> term()), pos_integer(), pos_integer(), fixed | exponential | linear) -> pid().
+-spec async_retry(fun(() -> term()), pos_integer(), pos_integer(), fixed | exponential | linear) ->
+    pid().
 async_retry(Fun, RetryCount, DelayMs, BackoffType) ->
     spawn(fun() ->
         case elib_retry:with_retry(Fun, RetryCount, DelayMs, BackoffType) of
@@ -164,12 +170,13 @@ async_with_timeout(Fun, TimeoutMs) ->
 -spec async_with_callback(fun(() -> term()), pid()) -> pid().
 async_with_callback(Fun, CallbackPid) ->
     spawn(fun() ->
-        Result = try
-            {ok, Fun()}
-        catch
-            _:Error:_ ->
-                {error, Error}
-        end,
+        Result =
+            try
+                {ok, Fun()}
+            catch
+                _:Error:_ ->
+                    {error, Error}
+            end,
         CallbackPid ! {async_result, Result}
     end).
 

@@ -234,7 +234,7 @@ do_login_by_code_verify(User, DType, Did) ->
             UidHashed = maps:get(<<"uid">>, Data),
             Uid = ec_cnv:to_integer(UidHashed),
             % GAP-01: 异步写验证码登录成功审计日志（type=100）
-            _ = elib_async:run(fun() ->
+            _ = elib_async:async(fun() ->
                 {ok, LogBody} = jsone_encode:encode(
                     #{
                         <<"account">> => Account,
@@ -284,7 +284,7 @@ do_login_verify(Pwd, User, DType, _Did) ->
                     UidHashed = maps:get(<<"uid">>, Data),
                     Uid = ec_cnv:to_integer(UidHashed),
                     % GAP-01: 异步写登录成功审计日志（type=100），fire-and-forget 不阻塞登录
-                    _ = elib_async:run(fun() ->
+                    _ = elib_async:async(fun() ->
                         {ok, LogBody} = jsone_encode:encode(
                             #{
                                 <<"account">> => Account,
