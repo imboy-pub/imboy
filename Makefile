@@ -71,8 +71,9 @@ include include/cli.mk
 
 APP_VERSION = $(shell cat $(RELX_OUTPUT_DIR)/$(RELX_REL_NAME)/version)
 
-# Dialyzer
-DIALYZER_DIRS = -r ebin deps
+# Dialyzer — EUnit test beams land in ebin/ after `make eunit`; scan only non-test beams.
+DIALYZER_EBIN_BEAMS = $(filter-out %_tests.beam, $(wildcard ebin/*.beam))
+DIALYZER_DIRS = $(DIALYZER_EBIN_BEAMS) deps
 DIALYZER_OPTS = -Wunmatched_returns --plt $(DIALYZER_PLT) -I $(CURDIR)/include $(DIALYZER_DIRS)
 DIALYZER_WARNINGS ?= 50
 
