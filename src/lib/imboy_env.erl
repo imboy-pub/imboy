@@ -53,15 +53,20 @@
 
 %% @doc 返回当前运行环境（binary，已 normalize）。
 %% 优先 OS env `IMBOYENV`（部署期覆盖），其次 application env `imboy.env`
-%% （sys.config 默认值），最终空 binary（按生产环境严格对待）。
+%% （sys.config 默认值），最终 <<"prod">>（fail-safe：未设置即视为生产）。
 %%
 %% 不做缓存：调用点都不在热路径（admin/router/passport），os:getenv 自身
 %% 是 ~50ns 量级。如未来出现热点，再迁 persistent_term。
 -spec current() -> binary().
 current() ->
     case normalize(os:getenv("IMBOYENV")) of
-        <<>> -> normalize(application:get_env(imboy, env, undefined));
-        Bin -> Bin
+        <<>> ->
+            case normalize(application:get_env(imboy, env, undefined)) of
+                <<>> -> <<"prod">>;
+                Bin -> Bin
+            end;
+        Bin ->
+            Bin
     end.
 
 -spec normalize(term()) -> binary().
