@@ -397,7 +397,7 @@ write_msg_with_reply(
     ).
 
 %% G3: msg_forward_logic / msg_c2g_logic 查找原始群消息记录，不应直调 timeline repo
--spec timeline_find_by_msg_id(binary()) -> {ok, map()} | {error, term()}.
+-spec timeline_find_by_msg_id(binary()) -> {ok, [map()]} | {error, term()}.
 timeline_find_by_msg_id(MsgId) ->
     msg_c2g_timeline_repo:find_by_msg_id(MsgId).
 

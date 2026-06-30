@@ -5,27 +5,27 @@
 % 群投票数据仓库层，提供群投票信息的基础数据库操作
 %%%
 
--export ([tablename/0]).
+-export([tablename/0]).
 
--export ([insert_vote/1]).
--export ([find_by_vote_id/1]).
--export ([list_votes_by_group_id/3]).
--export ([count_votes_by_group_id/1]).
--export ([update_vote_status/2]).
--export ([update_vote/2]).
+-export([insert_vote/1]).
+-export([find_by_vote_id/1]).
+-export([list_votes_by_group_id/3]).
+-export([count_votes_by_group_id/1]).
+-export([update_vote_status/2]).
+-export([update_vote/2]).
 
--export ([insert_option/1]).
--export ([insert_options_batch/1]).
--export ([list_options_by_vote_id/1]).
--export ([delete_vote_option_by_option_id/1]).
+-export([insert_option/1]).
+-export([insert_options_batch/1]).
+-export([list_options_by_vote_id/1]).
+-export([delete_vote_option_by_option_id/1]).
 
--export ([insert_record/1]).
--export ([find_record_by_vote_and_user/2]).
--export ([update_record/2]).
--export ([delete_record/1]).
+-export([insert_record/1]).
+-export([find_record_by_vote_and_user/2]).
+-export([update_record/2]).
+-export([delete_record/1]).
 
--export ([count_votes_by_option_id/1]).
--export ([count_total_votes_by_vote_id/1]).
+-export([count_votes_by_option_id/1]).
+-export([count_total_votes_by_vote_id/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -64,8 +64,14 @@ tablename_record() ->
 insert_vote(Data) ->
     Tb = tablename(),
     % 验证必填字段
-    case {maps:get(group_id, Data, undefined), maps:get(vote_id, Data, undefined),
-          maps:get(title, Data, undefined), maps:get(creator_id, Data, undefined)} of
+    case
+        {
+            maps:get(group_id, Data, undefined),
+            maps:get(vote_id, Data, undefined),
+            maps:get(title, Data, undefined),
+            maps:get(creator_id, Data, undefined)
+        }
+    of
         {undefined, _, _, _} ->
             {error, {missing_field, group_id}};
         {_, undefined, _, _} ->
@@ -74,8 +80,12 @@ insert_vote(Data) ->
             {error, {missing_field, title}};
         {_, _, _, undefined} ->
             {error, {missing_field, creator_id}};
-        {Gid, VoteId, Title, CreatorId} when is_integer(Gid), is_binary(VoteId),
-                                             is_binary(Title), is_integer(CreatorId) ->
+        {Gid, VoteId, Title, CreatorId} when
+            is_integer(Gid),
+            is_binary(VoteId),
+            is_binary(Title),
+            is_integer(CreatorId)
+        ->
             % 设置默认值
             Now = elib_dt:now(),
             Data2 = Data#{
@@ -123,19 +133,24 @@ find_by_vote_id(_VoteId) ->
 %% @param Size 每页数量
 %% @return {ok, [Vote]} | {error, Reason}
 -spec list_votes_by_group_id(integer(), integer(), integer()) ->
-                                     {ok, [map()]} | {error, term()}.
-list_votes_by_group_id(GroupId, Page, Size)
-  when is_integer(GroupId), GroupId > 0, is_integer(Page), Page > 0,
-       is_integer(Size), Size > 0 ->
+    {ok, [map()]} | {error, term()}.
+list_votes_by_group_id(GroupId, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0
+->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
-    Column = <<"id, group_id, vote_id, title, description, creator_id, vote_type, is_anonymous, status, end_at, created_at">>,
+    Column =
+        <<"id, group_id, vote_id, title, description, creator_id, vote_type, is_anonymous, status, end_at, created_at">>,
     Where = <<"group_id = $1">>,
     Order = <<"created_at DESC">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE ", Where/binary,
-            " ORDER BY ", Order/binary,
-            " LIMIT $2 OFFSET $3">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ",
+            Order/binary, " LIMIT $2 OFFSET $3">>,
     elib_pg:query(Sql, [GroupId, Size, Offset]);
 list_votes_by_group_id(_GroupId, _Page, _Size) ->
     {error, invalid_param}.
@@ -148,11 +163,7 @@ count_votes_by_group_id(GroupId) when is_integer(GroupId), GroupId > 0 ->
     Tb = tablename(),
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE group_id = $1">>,
     case elib_pg:query(Sql, [GroupId]) of
-        {ok, [{#{<<"count">> := Count}}]} ->
-            {ok, Count};
         {ok, [#{<<"count">> := Count}]} ->
-            {ok, Count};
-        {ok, [[{<<"count">>, Count}]]} when is_integer(Count) ->
             {ok, Count};
         {error, Reason} ->
             {error, Reason}
@@ -165,8 +176,9 @@ count_votes_by_group_id(_GroupId) ->
 %% @param Status 新状态 (1=进行中, 2=已结束, 3=已取消)
 %% @return {ok, Count} | {error, Reason}
 -spec update_vote_status(binary(), integer()) -> {ok, integer()} | {error, term()}.
-update_vote_status(VoteId, Status)
-  when is_binary(VoteId), byte_size(VoteId) > 0, is_integer(Status), Status > 0 ->
+update_vote_status(VoteId, Status) when
+    is_binary(VoteId), byte_size(VoteId) > 0, is_integer(Status), Status > 0
+->
     Tb = tablename(),
     Where = <<"vote_id = $1">>,
     Data = #{status => Status, updated_at => elib_dt:now()},
@@ -198,16 +210,24 @@ update_vote(_VoteId, _Data) ->
 insert_option(Data) ->
     Tb = tablename_option(),
     % 验证必填字段
-    case {maps:get(vote_id, Data, undefined), maps:get(option_id, Data, undefined),
-          maps:get(option_text, Data, undefined)} of
+    case
+        {
+            maps:get(vote_id, Data, undefined),
+            maps:get(option_id, Data, undefined),
+            maps:get(option_text, Data, undefined)
+        }
+    of
         {undefined, _, _} ->
             {error, {missing_field, vote_id}};
         {_, undefined, _} ->
             {error, {missing_field, option_id}};
         {_, _, undefined} ->
             {error, {missing_field, option_text}};
-        {VoteId, OptionId, OptionText} when is_binary(VoteId), is_binary(OptionId),
-                                             is_binary(OptionText) ->
+        {VoteId, OptionId, OptionText} when
+            is_binary(VoteId),
+            is_binary(OptionId),
+            is_binary(OptionText)
+        ->
             Now = elib_dt:now(),
             Data2 = Data#{
                 created_at => maps:get(created_at, Data, Now),
@@ -233,23 +253,31 @@ insert_options_batch(Options) when is_list(Options), length(Options) > 0 ->
     Now = elib_dt:now(),
 
     % 构建批量插入SQL
-    {ValuesList, Params} = lists:foldl(fun(Option, {ValsAcc, ParamsAcc}) ->
-        VoteId = maps:get(vote_id, Option),
-        OptionId = maps:get(option_id, Option),
-        OptionText = maps:get(option_text, Option),
-        SortOrder = maps:get(sort_order, Option, 0),
-        Placeholder = io_lib:format("($~p, $~p, $~p, $~p, $~p)",
-                                    [length(ParamsAcc) + 1,
-                                     length(ParamsAcc) + 2,
-                                     length(ParamsAcc) + 3,
-                                     length(ParamsAcc) + 4,
-                                     length(ParamsAcc) + 5]),
-        {[Placeholder | ValsAcc],
-         ParamsAcc ++ [VoteId, OptionId, OptionText, SortOrder, Now]}
-    end, {[], []}, Options),
+    {ValuesList, Params} = lists:foldl(
+        fun(Option, {ValsAcc, ParamsAcc}) ->
+            VoteId = maps:get(vote_id, Option),
+            OptionId = maps:get(option_id, Option),
+            OptionText = maps:get(option_text, Option),
+            SortOrder = maps:get(sort_order, Option, 0),
+            Placeholder = io_lib:format(
+                "($~p, $~p, $~p, $~p, $~p)",
+                [
+                    length(ParamsAcc) + 1,
+                    length(ParamsAcc) + 2,
+                    length(ParamsAcc) + 3,
+                    length(ParamsAcc) + 4,
+                    length(ParamsAcc) + 5
+                ]
+            ),
+            {[Placeholder | ValsAcc], ParamsAcc ++ [VoteId, OptionId, OptionText, SortOrder, Now]}
+        end,
+        {[], []},
+        Options
+    ),
 
     ValuesStr = lists:join(<<",">>, lists:reverse(ValuesList)),
-    Sql = <<"INSERT INTO ", Tb/binary,
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
             " (vote_id, option_id, option_text, sort_order, created_at) VALUES ",
             (iolist_to_binary(ValuesStr))/binary>>,
 
@@ -269,9 +297,9 @@ list_options_by_vote_id(VoteId) when is_binary(VoteId), byte_size(VoteId) > 0 ->
     Column = <<"id, vote_id, option_id, option_text, sort_order, created_at">>,
     Where = <<"vote_id = $1">>,
     Order = <<"sort_order ASC">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE ", Where/binary,
-            " ORDER BY ", Order/binary>>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ",
+            Order/binary>>,
     case elib_pg:query(Sql, [VoteId]) of
         {ok, Options} ->
             {ok, Options};
@@ -307,8 +335,13 @@ delete_vote_option_by_option_id(_OptionId) ->
 insert_record(Data) ->
     Tb = tablename_record(),
     % 验证必填字段
-    case {maps:get(vote_id, Data, undefined), maps:get(user_id, Data, undefined),
-          maps:get(option_ids, Data, undefined)} of
+    case
+        {
+            maps:get(vote_id, Data, undefined),
+            maps:get(user_id, Data, undefined),
+            maps:get(option_ids, Data, undefined)
+        }
+    of
         {undefined, _, _} ->
             {error, {missing_field, vote_id}};
         {_, undefined, _} ->
@@ -334,9 +367,10 @@ insert_record(Data) ->
 %% @param UserId 用户ID (整数)
 %% @return {ok, Record} | {error, not_found}
 -spec find_record_by_vote_and_user(binary(), integer()) ->
-                                        {ok, map()} | {error, not_found | term()}.
-find_record_by_vote_and_user(VoteId, UserId)
-  when is_binary(VoteId), byte_size(VoteId) > 0, is_integer(UserId), UserId > 0 ->
+    {ok, map()} | {error, not_found | term()}.
+find_record_by_vote_and_user(VoteId, UserId) when
+    is_binary(VoteId), byte_size(VoteId) > 0, is_integer(UserId), UserId > 0
+->
     Tb = tablename_record(),
     Column = <<"*">>,
     Where = <<"vote_id = $1 AND user_id = $2">>,
@@ -389,14 +423,9 @@ delete_record(_RecordId) ->
 count_votes_by_option_id(OptionId) when is_binary(OptionId), byte_size(OptionId) > 0 ->
     Tb = tablename_record(),
     % option_ids 是 JSON 数组，使用 PostgreSQL 的 JSON 操作符
-    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
-            " WHERE option_ids::jsonb ? $1">>,
+    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE option_ids::jsonb ? $1">>,
     case elib_pg:query(Sql, [OptionId]) of
-        {ok, [{#{<<"count">> := Count}}]} ->
-            {ok, Count};
         {ok, [#{<<"count">> := Count}]} ->
-            {ok, Count};
-        {ok, [[{<<"count">>, Count}]]} when is_integer(Count) ->
             {ok, Count};
         {error, Reason} ->
             {error, Reason}
@@ -412,11 +441,7 @@ count_total_votes_by_vote_id(VoteId) when is_binary(VoteId), byte_size(VoteId) >
     Tb = tablename_record(),
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE vote_id = $1">>,
     case elib_pg:query(Sql, [VoteId]) of
-        {ok, [{#{<<"count">> := Count}}]} ->
-            {ok, Count};
         {ok, [#{<<"count">> := Count}]} ->
-            {ok, Count};
-        {ok, [[{<<"count">>, Count}]]} when is_integer(Count) ->
             {ok, Count};
         {error, Reason} ->
             {error, Reason}

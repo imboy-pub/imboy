@@ -195,55 +195,43 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
     % 根据目标类型发送消息
     case ToType of
         <<"c2c">> ->
-            case send_forward_message(<<"c2c">>, ForwardMsgId, CurrentUid, ForwardData) of
-                ok ->
-                    % 保存转发记录
-                    ok = msg_forward_ds:save_forward_record(
-                        OriginalMsgId,
-                        OriginalFromId,
-                        OriginalToId,
-                        OriginalType,
-                        ForwardMsgId,
-                        CurrentUid,
-                        ToId,
-                        ToType
-                    ),
-                    {ok, ForwardMsgId};
-                {error, Reason} ->
-                    {error, Reason}
-            end;
+            ok = send_forward_message(<<"c2c">>, ForwardMsgId, CurrentUid, ForwardData),
+            ok = msg_forward_ds:save_forward_record(
+                OriginalMsgId,
+                OriginalFromId,
+                OriginalToId,
+                OriginalType,
+                ForwardMsgId,
+                CurrentUid,
+                ToId,
+                ToType
+            ),
+            {ok, ForwardMsgId};
         <<"c2g">> ->
-            case send_forward_message(<<"c2g">>, ForwardMsgId, CurrentUid, ForwardData) of
-                ok ->
-                    % 保存转发记录
-                    ok = msg_forward_ds:save_forward_record(
-                        OriginalMsgId,
-                        OriginalFromId,
-                        OriginalToId,
-                        OriginalType,
-                        ForwardMsgId,
-                        CurrentUid,
-                        ToId,
-                        ToType
-                    ),
-                    {ok, ForwardMsgId};
-                {error, Reason} ->
-                    {error, Reason}
-            end
+            ok = send_forward_message(<<"c2g">>, ForwardMsgId, CurrentUid, ForwardData),
+            ok = msg_forward_ds:save_forward_record(
+                OriginalMsgId,
+                OriginalFromId,
+                OriginalToId,
+                OriginalType,
+                ForwardMsgId,
+                CurrentUid,
+                ToId,
+                ToType
+            ),
+            {ok, ForwardMsgId}
     end.
 
 %% @doc 发送转发消息并归一化返回值
 -spec send_forward_message(binary(), binary(), integer(), map()) -> ok | {error, term()}.
 send_forward_message(<<"c2c">>, MsgId, CurrentUid, ForwardData) ->
-    case msg_c2c_logic:c2c(MsgId, CurrentUid, ForwardData) of
-        ok -> ok;
-        {reply, ReplyMsg} -> {error, {forward_rejected, ReplyMsg}}
-    end;
+    %% ponytail: c2c reply is a WS frame sent to the caller; treat as ok at this layer
+    _ = msg_c2c_logic:c2c(MsgId, CurrentUid, ForwardData),
+    ok;
 send_forward_message(<<"c2g">>, MsgId, CurrentUid, ForwardData) ->
-    case msg_c2g_logic:c2g(MsgId, CurrentUid, ForwardData) of
-        ok -> ok;
-        {reply, ReplyMsg} -> {error, {forward_rejected, ReplyMsg}}
-    end.
+    %% ponytail: c2g errors are sent via self() ! {reply,...}; return value is always ok
+    _ = msg_c2g_logic:c2g(MsgId, CurrentUid, ForwardData),
+    ok.
 
 %% @doc 获取原消息接收方ID
 -spec resolve_original_to_id(map()) -> integer().
