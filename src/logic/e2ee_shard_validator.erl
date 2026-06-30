@@ -53,7 +53,8 @@ log_shard_transmission(FromUid, ToUid, ShardId, Action, Metadata) ->
         proxy_uid => ToUid,
         action => Action,
         direction => ?DIRECTION_SERVER_TO_PROXY,
-        metadata => Metadata,
+        % ponytail: encode map→jsonb, same pattern as channel_ds tags fix
+        metadata => jsone:encode(Metadata),
         created_at => elib_dt:now()
     },
     case e2ee_shard_transmission_log_ds:insert(Data) of
@@ -61,8 +62,11 @@ log_shard_transmission(FromUid, ToUid, ShardId, Action, Metadata) ->
             ok;
         {error, Reason} ->
             % 日志记录失败不影响主流程，仅记录错误
-            ?ERROR_LOG([log_shard_transmission, failed, Reason,
-                       #{from_uid => FromUid, to_uid => ToUid, shard_id => ShardId}]),
+            ?ERROR_LOG([
+                log_shard_transmission,
+                failed,
+                Reason,
+                #{from_uid => FromUid, to_uid => ToUid, shard_id => ShardId}
+            ]),
             ok
     end.
-

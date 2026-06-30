@@ -323,7 +323,8 @@ audit_transition(Name, FromState, ToState, Result, Meta) ->
             from_state => state_to_bin(FromState),
             to_state => state_to_bin(ToState),
             result => result_to_bin(Result),
-            metadata => Meta
+            % ponytail: encode map→jsonb
+            metadata => jsone:encode(Meta)
         }).
 
 state_to_bin(S) -> atom_to_binary(S).
