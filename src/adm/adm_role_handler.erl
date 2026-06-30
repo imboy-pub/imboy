@@ -161,9 +161,7 @@ fetch_role_rows_from_db() ->
         {ok, Rows} when is_list(Rows) ->
             {ok, Rows};
         {error, Reason} ->
-            {error, Reason};
-        _ ->
-            {ok, []}
+            {error, Reason}
     end.
 
 -spec builtin_role_rows() -> [map()].
@@ -207,9 +205,7 @@ normalize_role_row(Row) ->
     DefaultName =
         case adm_index_handler:role_acl(RoleId) of
             {AclRoleName, _Perms, _Paths} ->
-                AclRoleName;
-            _ ->
-                <<"readonly">>
+                AclRoleName
         end,
     RoleName0 = normalize_binary(maps:get(<<"role_name">>, Row, DefaultName)),
     RoleName =
@@ -241,9 +237,7 @@ role_permissions(RoleId) ->
         undefined ->
             case adm_index_handler:role_acl(RoleId) of
                 {_RoleName, Permissions, _MenuPaths} when is_list(Permissions) ->
-                    normalize_permissions(Permissions);
-                _ ->
-                    []
+                    normalize_permissions(Permissions)
             end;
         Value ->
             normalize_permissions(Value)
@@ -362,9 +356,7 @@ create_role_record(RoleName, Status) ->
                     {error, <<"create role failed">>}
             end;
         {error, Reason} ->
-            {error, Reason};
-        _Other ->
-            {error, _Other}
+            {error, Reason}
     end.
 
 -spec next_role_sort() -> integer().
@@ -571,9 +563,7 @@ resolve_permissions_by_adm_user_id(AdmUserId) ->
 role_acl_permissions(RoleId) ->
     try adm_index_handler:role_acl(RoleId) of
         {_RoleName, Permissions, _MenuPaths} when is_list(Permissions) ->
-            Permissions;
-        _ ->
-            []
+            Permissions
     catch
         _:_ ->
             []

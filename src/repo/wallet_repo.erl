@@ -105,7 +105,7 @@ page(WhereMap, Page, Size) ->
 %% @param TxData 流水数据 map（不含 balance_after，由事务内计算）
 %% @return {ok, NewBalance} | {error, insufficient_balance} | {error, term()}
 -spec atomic_balance_change(integer(), integer(), map(), binary()) ->
-    {ok, integer()} | {error, term()}.
+    {ok, integer()} | {rollback, term()} | {error, term()}.
 atomic_balance_change(Amount, Uid, TxData, RefNo) ->
     Tb = tablename(),
     TxTb = tx_tablename(),

@@ -91,9 +91,7 @@ live_verify(_Gateway, _RawBody, _Headers) ->
 %% erlang_pay:verify_notify 返回归一：透出解密/验签后的明文 map；失败提取错误码
 -spec normalize_verify(term()) -> {ok, map()} | {error, atom()}.
 normalize_verify({ok, Data}) when is_map(Data) -> {ok, Data};
-normalize_verify({ok, _}) -> {ok, #{}};
 normalize_verify({error, {Code, _Msg}}) when is_atom(Code) -> {error, Code};
-normalize_verify({error, Code}) when is_atom(Code) -> {error, Code};
 normalize_verify({error, _}) -> {error, bad_signature}.
 
 %% 支付宝 form 串(a=1&b=2&sign=...) → map，交 erlang_pay 按字典序验签
@@ -117,6 +115,4 @@ cfg(Key) ->
 
 -spec is_blank(term()) -> boolean().
 is_blank(<<>>) -> true;
-is_blank("") -> true;
-is_blank(undefined) -> true;
 is_blank(_) -> false.
