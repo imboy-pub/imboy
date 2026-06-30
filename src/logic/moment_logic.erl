@@ -1,5 +1,5 @@
 -module(moment_logic).
--compile([nowarn_deprecated_catch]).
+-compile([nowarn_deprecated_catch, nowarn_export_var_subexpr]).
 %%%
 % moment business logic
 %%%

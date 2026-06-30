@@ -139,6 +139,10 @@ force_logout(<<"POST">>, Req0, State) ->
                 ),
                 _ = user_log_ds:add_internal(undefined, 120, Uid, LogBody, elib_dt:now())
             end),
+            Ip = elib_req:peer_ip(Req0),
+            _ = adm_operation_log_ds:insert(
+                AdmUserId, <<"force_logout">>, Uid, <<"user">>, #{}, Ip
+            ),
             elib_response:success(Req0, #{}, "操作成功");
         false ->
             elib_response:error(Req0, "参数错误")
