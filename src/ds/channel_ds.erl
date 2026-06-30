@@ -310,17 +310,19 @@ list_subscribed(Uid, Column) -> channel_repo:list_subscribed(Uid, Column).
 increment_subscribers(Conn, ChannelId, Delta) ->
     channel_repo:increment_subscribers(Conn, ChannelId, Delta).
 
--spec get_reaction_count(integer()) -> {ok, map()} | {error, any()}.
+-spec get_reaction_count(integer()) -> {ok, integer()}.
 get_reaction_count(ChannelId) -> channel_repo:get_reaction_count(ChannelId).
 
 -spec has_viewed_message(integer(), integer()) -> boolean().
 has_viewed_message(MessageId, UserId) -> channel_repo:has_viewed_message(MessageId, UserId).
 
--spec insert_message_view(integer(), integer(), integer(), binary()) -> ok | {error, any()}.
+-spec insert_message_view(integer(), integer(), integer(), integer()) ->
+    {ok, integer()} | {error, term()}.
 insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
     channel_repo:insert_message_view(ChannelId, MessageId, UserId, ViewedAt).
 
--spec insert_reaction(integer(), integer(), integer(), binary(), binary()) -> ok | {error, any()}.
+-spec insert_reaction(integer(), integer(), integer(), binary(), integer()) ->
+    {ok, integer()} | {error, term()}.
 insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     channel_repo:insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt).
 

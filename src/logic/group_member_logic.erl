@@ -180,6 +180,8 @@ update_role(CurrentUid, Gid, UserId, Role) ->
                     % 发送角色变更通知
                     role_change_notice(CurrentUid, Gid, UserId, Role),
                     ok;
+                {rollback, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)};
                 {error, Reason} ->
                     {error, Reason}
             end
@@ -416,8 +418,8 @@ validate_group_limit(_, _) -> ok.
 %% ===================================================================
 
 %% @doc 内部角色更新操作（事务内）
--spec update_role_internal(pid(), integer(), integer(), integer(), integer(), integer()) ->
-    {ok, integer()} | {error, any()}.
+-spec update_role_internal(pid(), integer(), integer(), integer(), binary() | integer(), binary()) ->
+    ok | {error, any()}.
 update_role_internal(Conn, _CurrentUid, Gid, UserId, Role, Now) ->
     % 使用 DS 层接口执行角色更新
     group_member_ds:update_role(Conn, Gid, UserId, Role, Now).

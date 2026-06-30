@@ -294,7 +294,8 @@ get_member_info(Gid, UserId, Column) ->
 %% @param Role 角色值（1-普通成员，2-管理员，3-群主）
 %% @param UpdatedAt 更新时间
 %% @return ok | {error, Reason}
--spec update_role(pid() | undefined, integer(), integer(), integer()) -> ok | {error, any()}.
+-spec update_role(pid() | undefined, integer(), integer(), binary() | integer()) ->
+    ok | {rollback, term()} | {error, any()}.
 update_role(undefined, Gid, UserId, Role) ->
     elib_pg:with_tx(fun(Conn) -> update_role(Conn, Gid, UserId, Role, elib_dt:now()) end);
 update_role(Conn, Gid, UserId, Role) ->
@@ -308,7 +309,8 @@ update_role(Conn, Gid, UserId, Role) ->
 %% @param Role 角色值（1-普通成员，2-管理员，3-群主）
 %% @param UpdatedAt 更新时间
 %% @return ok | {error, Reason}
--spec update_role(pid(), integer(), integer(), integer(), integer()) -> ok | {error, any()}.
+-spec update_role(pid(), integer(), integer(), binary() | integer(), binary()) ->
+    ok | {error, any()}.
 update_role(Conn, Gid, UserId, Role, UpdatedAt) ->
     GMTb = group_member_repo:tablename(),
     Data = #{role => Role, updated_at => UpdatedAt},
