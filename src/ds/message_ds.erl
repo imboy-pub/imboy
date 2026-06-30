@@ -165,7 +165,7 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
 %% @param Action 系统操作类型（如 pull_offline_msg、please_refresh_token 等）
 %% @param To 目标用户ID或ID列表
 %% @returns v2.0 格式的消息（action 在顶层）
--spec assemble_s2c(binary(), binary(), binary()) -> map().
+-spec assemble_s2c(binary(), binary(), integer() | binary()) -> map().
 assemble_s2c(MsgId, Action, To) ->
     %% v2.0: S2C 消息使用 action 字段，直接使用 assemble_msg/8
     Payload = #{},
@@ -654,9 +654,7 @@ is_webrtc_type(Type) when is_binary(Type) ->
     case cowboy_bstr:to_lower(Type) of
         <<"webrtc_", _Rest/binary>> -> true;
         _ -> false
-    end;
-is_webrtc_type(_) ->
-    false.
+    end.
 
 %% @private
 %% @doc 判断字段是否为非空 binary

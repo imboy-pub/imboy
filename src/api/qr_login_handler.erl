@@ -219,7 +219,7 @@ handle_scan(Req, State) ->
                                                     %% PR-2β: 广播 scanned 事件给该会话的 SSE 订阅者
                                                     %% （Web 端立即感知，无需等下一轮轮询）。
                                                     %% notify/2 内部已 try/catch 兜底，不影响主流程。
-                                                    qr_login_event_ds:notify(
+                                                    _ = qr_login_event_ds:notify(
                                                         SessionToken,
                                                         qr_login_event_ds:event(scanned, undefined)
                                                     ),
@@ -319,7 +319,7 @@ handle_confirm(Req, State) ->
                                                     cache_session(SessionToken, UpdatedSession),
                                                     %% PR-2β: 广播 confirmed + login_token 给 SSE 订阅者
                                                     %% Web 端收到后调 _completeLogin 落地 token，无需轮询。
-                                                    qr_login_event_ds:notify(
+                                                    _ = qr_login_event_ds:notify(
                                                         SessionToken,
                                                         qr_login_event_ds:event(
                                                             confirmed, LoginToken
