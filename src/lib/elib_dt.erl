@@ -4,10 +4,12 @@
 % datetime 工具箱
 %%%
 
--export([microsecond/0,
-         millisecond/0,
-         second/0,
-         timestamp/0]).
+-export([
+    microsecond/0,
+    millisecond/0,
+    second/0,
+    timestamp/0
+]).
 -export([utc/1]).
 
 -export([add/2, minus/2]).
@@ -21,7 +23,8 @@
 %% @param Dt Datetime value (timestamp or RFC3339 string)
 %% @param Duration {Num, Unit} where Unit is minute | second | millisecond
 %% @returns New datetime value as RFC3339 binary
--spec add(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, invalid_datetime}.
+-spec add(integer() | binary(), {pos_integer(), minute | second | millisecond}) ->
+    binary() | {error, invalid_datetime}.
 % elib_dt:add(Dt, {10, minute}).
 % elib_dt:add(Dt, {600, second}).
 add(Dt, {Num, minute}) ->
@@ -32,7 +35,7 @@ add(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
     Result = rfc3339_to(Dt, microsecond),
     if
         is_integer(Result) ->
-            Val = Result + Num*1000,
+            Val = Result + Num * 1000,
             to_rfc3339(Val, microsecond);
         true ->
             {error, invalid_datetime}
@@ -42,7 +45,8 @@ add(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
 %% @param Dt Datetime value (timestamp or RFC3339 string)
 %% @param Duration {Num, Unit} where Unit is minute | second | millisecond
 %% @returns New datetime value as RFC3339 binary
--spec minus(integer() | binary(), {pos_integer(), minute | second | millisecond}) -> binary() | {error, invalid_datetime}.
+-spec minus(integer() | binary(), {pos_integer(), minute | second | millisecond}) ->
+    binary() | {error, invalid_datetime}.
 minus(Dt, {Num, minute}) ->
     minus(Dt, {Num * 60, second});
 minus(Dt, {Num, second}) ->
@@ -51,7 +55,7 @@ minus(Dt, {Num, millisecond}) when is_binary(Dt); is_integer(Dt) ->
     Result = rfc3339_to(Dt, microsecond),
     if
         is_integer(Result) ->
-            Val = Result - Num*1000,
+            Val = Result - Num * 1000,
             to_rfc3339(Val, microsecond);
         true ->
             {error, invalid_datetime}
@@ -104,7 +108,6 @@ timestamp() ->
 millisecond() ->
     erlang:system_time(millisecond).
 
-
 %% 返回当前Erlang系统时间微秒
 -spec microsecond() -> integer().
 microsecond() ->
@@ -122,7 +125,6 @@ now(millisecond) ->
     to_rfc3339(erlang:system_time(millisecond), millisecond);
 now(microsecond) ->
     to_rfc3339(erlang:system_time(microsecond), microsecond).
-
 
 %%%===================================================================
 %%% @doc 将整数时间戳（秒/毫秒/微秒/纳秒）自动转换为 RFC3339 binary
@@ -154,7 +156,8 @@ to_rfc3339(Bin) when is_binary(Bin) ->
             case elib_type:is_numeric(Bin) of
                 true ->
                     to_rfc3339(binary_to_integer(Bin));
-                false -> % 假设已经是 RFC3339 格式
+                % 假设已经是 RFC3339 格式
+                false ->
                     Bin
             end
     end.
@@ -185,19 +188,28 @@ to_rfc3339(Num, nanosecond) ->
 to_rfc3339(Num, Unit, Offset) when is_integer(Num) andalso Num >= 0 ->
     % 值验证：拒绝超出合理范围的时间戳（防止数据库损坏值导致崩溃）
     % 合理范围：1970-01-01 ~ 2100-01-01
-    MaxSeconds = 4102444800,  % 2100-01-01 00:00:00 UTC
-    MaxValue = case Unit of
-        second -> MaxSeconds;
-        millisecond -> MaxSeconds * 1000;
-        microsecond -> MaxSeconds * 1000000;
-        nanosecond -> MaxSeconds * 1000000000
-    end,
+
+    % 2100-01-01 00:00:00 UTC
+    MaxSeconds = 4102444800,
+    MaxValue =
+        case Unit of
+            second -> MaxSeconds;
+            millisecond -> MaxSeconds * 1000;
+            microsecond -> MaxSeconds * 1000000;
+            nanosecond -> MaxSeconds * 1000000000
+        end,
     case Num =< MaxValue of
         true ->
-            list_to_binary(calendar:system_time_to_rfc3339(Num, [{unit, Unit}, {time_designator, $T}, {offset, Offset}]));
+            list_to_binary(
+                calendar:system_time_to_rfc3339(Num, [
+                    {unit, Unit}, {time_designator, $T}, {offset, Offset}
+                ])
+            );
         false ->
-            error_logger:warning_msg("Invalid timestamp value exceeds maximum: ~p ~p (max: ~p)~n",
-                                   [Num, Unit, MaxValue]),
+            error_logger:warning_msg(
+                "Invalid timestamp value exceeds maximum: ~p ~p (max: ~p)~n",
+                [Num, Unit, MaxValue]
+            ),
             % 返回 epoch 时间作为安全默认值
             <<"1970-01-01T00:00:00Z">>
     end;
@@ -205,42 +217,34 @@ to_rfc3339(Num, _Unit, _Offset) ->
     error_logger:warning_msg("Invalid timestamp value type or negative: ~p~n", [Num]),
     <<"1970-01-01T00:00:00Z">>.
 
-
 % elib_dt:datetime_to({{2024,10,29},{2,34,30.776}}, millisecond).
--spec datetime_to({{integer(), integer(), integer()}, {integer(), integer(), float()}}, second | millisecond | microsecond | nanosecond) -> integer() | {error, term()}.
-datetime_to({{Y,Mo,D}, {H,Mi,S}}, Unit) when is_number(S) ->
-    % Handle Erlang datetime tuple like {{2024,10,29},{2,34,30.776}}
+-spec datetime_to(
+    {{integer(), integer(), integer()}, {integer(), integer(), float()}},
+    millisecond
+) -> integer() | {error, term()}.
+datetime_to({{Y, Mo, D}, {H, Mi, S}}, millisecond) when is_number(S) ->
     try
-        % 分离整数秒和小数秒
         IntS = trunc(S),
         FracS = S - IntS,
-        % 计算整数秒部分的时间戳
-        GregorianSecs = calendar:datetime_to_gregorian_seconds({{Y,Mo,D}, {H,Mi,IntS}}),
-        UnixEpochSecs = GregorianSecs - 62167219200,  % 从1970-01-01开始计算
-        % 根据单位处理小数部分
-        case Unit of
-            second ->
-                UnixEpochSecs + FracS;
-            millisecond ->
-                UnixEpochSecs * 1000 + round(FracS * 1000);
-            microsecond ->
-                UnixEpochSecs * 1000000 + round(FracS * 1000000);
-            nanosecond ->
-                UnixEpochSecs * 1000000000 + round(FracS * 1000000000);
-            _ ->
-                {error, "unsupported unit"}
-        end
+        GregorianSecs = calendar:datetime_to_gregorian_seconds({{Y, Mo, D}, {H, Mi, IntS}}),
+        UnixEpochSecs = GregorianSecs - 62167219200,
+        UnixEpochSecs * 1000 + round(FracS * 1000)
     catch
         _:_ -> {error, "invalid datetime tuple"}
     end.
 
--spec rfc3339_to(integer() | tuple() | list() | binary() | undefined | atom()) -> integer() | binary() | null | term().
+-spec rfc3339_to(integer() | tuple() | list() | binary() | undefined | atom()) ->
+    integer() | binary() | null | term().
 %% 空值提前返回 null：避免 <<>>/[]/undefined/null 流入 /2 报错路径，
 %% 进而被 JSON 序列化为 "{error,empty_input}" 污染客户端数据（参见 friend list last_seen_at）。
-rfc3339_to(<<>>) -> null;
-rfc3339_to([]) -> null;
-rfc3339_to(undefined) -> null;
-rfc3339_to(null) -> null;
+rfc3339_to(<<>>) ->
+    null;
+rfc3339_to([]) ->
+    null;
+rfc3339_to(undefined) ->
+    null;
+rfc3339_to(null) ->
+    null;
 rfc3339_to(Val) when is_integer(Val) ->
     Val;
 rfc3339_to(Val) when is_tuple(Val) ->
@@ -251,12 +255,14 @@ rfc3339_to(Val) when is_list(Val); is_binary(Val) ->
             ec_cnv:to_integer(Val);
         false ->
             case rfc3339_to(Val, millisecond) of
-                {error, _} -> null;  %% 解析失败亦返回 null，防止 tuple 穿透到 JSON
+                %% 解析失败亦返回 null，防止 tuple 穿透到 JSON
+                {error, _} -> null;
                 Ms -> Ms
             end
     end;
-rfc3339_to(Value) -> Value.  % 非时间字符串保持原样
-
+% 非时间字符串保持原样
+rfc3339_to(Value) ->
+    Value.
 
 % Dt = elib_dt:now(),
 % elib_dt:rfc3339_to(Dt, millisecond).

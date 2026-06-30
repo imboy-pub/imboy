@@ -5,25 +5,25 @@
 % 群作业数据仓库层，提供群作业信息的基础数据库操作
 %%%
 
--export ([tablename/0]).
--export ([insert/1]).
--export ([update/2]).
--export ([find_by_id/1]).
--export ([find_by_task_id/1]).
--export ([find_any_by_id/1]).
--export ([find_any_by_task_id/1]).
--export ([list_by_group_id/3]).
--export ([list_by_group_id/4]).
--export ([list_deleted_by_group_id/3]).
--export ([list_deleted_by_group_id/4]).
--export ([list_by_group_and_user/4]).
--export ([list_by_group_and_user/5]).
--export ([count_by_group_id/1]).
--export ([count_by_group_id/2]).
--export ([count_deleted_by_group_id/1]).
--export ([count_deleted_by_group_id/2]).
--export ([soft_delete/1]).
--export ([restore/1]).
+-export([tablename/0]).
+-export([insert/1]).
+-export([update/2]).
+-export([find_by_id/1]).
+-export([find_by_task_id/1]).
+-export([find_any_by_id/1]).
+-export([find_any_by_task_id/1]).
+-export([list_by_group_id/3]).
+-export([list_by_group_id/4]).
+-export([list_deleted_by_group_id/3]).
+-export([list_deleted_by_group_id/4]).
+-export([list_by_group_and_user/4]).
+-export([list_by_group_and_user/5]).
+-export([count_by_group_id/1]).
+-export([count_by_group_id/2]).
+-export([count_deleted_by_group_id/1]).
+-export([count_deleted_by_group_id/2]).
+-export([soft_delete/1]).
+-export([restore/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -49,7 +49,13 @@ tablename() ->
 insert(Data) ->
     Tb = tablename(),
     % 验证必填字段
-    case {maps:get(group_id, Data, undefined), maps:get(task_id, Data, undefined), maps:get(title, Data, undefined)} of
+    case
+        {
+            maps:get(group_id, Data, undefined),
+            maps:get(task_id, Data, undefined),
+            maps:get(title, Data, undefined)
+        }
+    of
         {undefined, _, _} ->
             {error, {missing_field, group_id}};
         {_, undefined, _} ->
@@ -58,7 +64,9 @@ insert(Data) ->
             {error, {missing_field, title}};
         {_, _, undefined} ->
             {error, {missing_field, title}};
-        {Gid, TaskId, Title} when is_integer(Gid), is_binary(TaskId), is_binary(Title), byte_size(Title) > 0 ->
+        {Gid, TaskId, Title} when
+            is_integer(Gid), is_binary(TaskId), is_binary(Title), byte_size(Title) > 0
+        ->
             % 设置默认值
             Now = elib_dt:now(),
             Data2 = Data#{
@@ -178,10 +186,15 @@ find_any_by_task_id(_TaskId) ->
 %% @param Size 每页数量
 %% @return {ok, [Task]} | {error, Reason}
 -spec list_by_group_id(integer(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_group_id(GroupId, Page, Size)
-    when is_integer(GroupId), GroupId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+list_by_group_id(GroupId, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     list_by_group_id(GroupId, undefined, Page, Size);
 list_by_group_id(_GroupId, _Page, _Size) ->
     {error, invalid_param}.
@@ -192,23 +205,29 @@ list_by_group_id(_GroupId, _Page, _Size) ->
 %% @param Page 页码（从1开始）
 %% @param Size 每页数量
 %% @return {ok, [Task]} | {error, Reason}
--spec list_by_group_id(integer(), integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_group_id(GroupId, Status, Page, Size)
-    when is_integer(GroupId), GroupId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+-spec list_by_group_id(integer(), integer() | undefined, integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_by_group_id(GroupId, Status, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     case group_status_condition(GroupId, Status) of
         {error, Reason} ->
             {error, Reason};
         {Where, Params} ->
             Tb = tablename(),
-            Column = <<"id, group_id, task_id, title, description, creator_id, deadline, status, attachment, created_at, updated_at">>,
+            Column =
+                <<"id, group_id, task_id, title, description, creator_id, deadline, status, attachment, created_at, updated_at">>,
             OrderBy = <<"id DESC">>,
             Offset = (Page - 1) * Size,
-            Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-                    " WHERE ", Where/binary,
-                    " ORDER BY ", OrderBy/binary,
-                    " LIMIT ", (integer_to_binary(Size))/binary,
+            Sql =
+                <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary,
+                    " ORDER BY ", OrderBy/binary, " LIMIT ", (integer_to_binary(Size))/binary,
                     " OFFSET ", (integer_to_binary(Offset))/binary>>,
             elib_pg:query(Sql, Params)
     end;
@@ -221,10 +240,15 @@ list_by_group_id(_GroupId, _Status, _Page, _Size) ->
 %% @param Size 每页数量
 %% @return {ok, [Task]} | {error, Reason}
 -spec list_deleted_by_group_id(integer(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_deleted_by_group_id(GroupId, Page, Size)
-    when is_integer(GroupId), GroupId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+list_deleted_by_group_id(GroupId, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     list_deleted_by_group_id(GroupId, undefined, Page, Size);
 list_deleted_by_group_id(_GroupId, _Page, _Size) ->
     {error, invalid_param}.
@@ -235,23 +259,29 @@ list_deleted_by_group_id(_GroupId, _Page, _Size) ->
 %% @param Page 页码（从1开始）
 %% @param Size 每页数量
 %% @return {ok, [Task]} | {error, Reason}
--spec list_deleted_by_group_id(integer(), integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_deleted_by_group_id(GroupId, Status, Page, Size)
-    when is_integer(GroupId), GroupId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+-spec list_deleted_by_group_id(integer(), integer() | undefined, integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_deleted_by_group_id(GroupId, Status, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     case group_status_condition(GroupId, Status, true) of
         {error, Reason} ->
             {error, Reason};
         {Where, Params} ->
             Tb = tablename(),
-            Column = <<"id, group_id, task_id, title, description, creator_id, deadline, status, attachment, deleted_at, created_at, updated_at">>,
+            Column =
+                <<"id, group_id, task_id, title, description, creator_id, deadline, status, attachment, deleted_at, created_at, updated_at">>,
             OrderBy = <<"id DESC">>,
             Offset = (Page - 1) * Size,
-            Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-                    " WHERE ", Where/binary,
-                    " ORDER BY ", OrderBy/binary,
-                    " LIMIT ", (integer_to_binary(Size))/binary,
+            Sql =
+                <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary,
+                    " ORDER BY ", OrderBy/binary, " LIMIT ", (integer_to_binary(Size))/binary,
                     " OFFSET ", (integer_to_binary(Offset))/binary>>,
             elib_pg:query(Sql, Params)
     end;
@@ -265,7 +295,8 @@ list_deleted_by_group_id(_GroupId, _Status, _Page, _Size) ->
 %% status 统一输出为 0/1：
 %% - 0: 未完成
 %% - 1: 已完成（assignment.status >= 2）
--spec list_by_group_and_user(integer(), integer(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+-spec list_by_group_and_user(integer(), integer(), integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
 list_by_group_and_user(GroupId, UserId, Page, Size) ->
     list_by_group_and_user(GroupId, UserId, undefined, Page, Size).
 
@@ -275,12 +306,19 @@ list_by_group_and_user(GroupId, UserId, Page, Size) ->
 %% - 0: 未完成（assignment.status < 2 或无 assignment）
 %% - 1: 已完成（assignment.status >= 2）
 %% - 2/3: 按 assignment.status 精确匹配
--spec list_by_group_and_user(integer(), integer(), integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_group_and_user(GroupId, UserId, Status, Page, Size)
-    when is_integer(GroupId), GroupId > 0,
-         is_integer(UserId), UserId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+-spec list_by_group_and_user(integer(), integer(), integer() | undefined, integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_by_group_and_user(GroupId, UserId, Status, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(UserId),
+    UserId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     Tb = tablename(),
     ATb = group_task_assignment_repo:tablename(),
     Column = <<
@@ -288,7 +326,8 @@ list_by_group_and_user(GroupId, UserId, Status, Page, Size)
         "CASE WHEN a.status IS NULL THEN 0 WHEN a.status >= 2 THEN 1 ELSE 0 END AS status, "
         "a.status AS assignment_status, t.created_at, t.updated_at"
     >>,
-    Where = <<"t.group_id = $1 AND t.deleted_at IS NULL AND (a.user_id IS NOT NULL OR t.creator_id = $2)">>,
+    Where =
+        <<"t.group_id = $1 AND t.deleted_at IS NULL AND (a.user_id IS NOT NULL OR t.creator_id = $2)">>,
     OrderBy = <<"id DESC">>,
     Offset = (Page - 1) * Size,
     case user_status_filter(Status) of
@@ -296,13 +335,23 @@ list_by_group_and_user(GroupId, UserId, Status, Page, Size)
             {error, Reason};
         StatusWhere ->
             Sql = <<
-                "SELECT ", Column/binary,
-                " FROM ", Tb/binary, " t",
-                " LEFT JOIN ", ATb/binary, " a ON t.task_id = a.task_id AND a.user_id = $2",
-                " WHERE ", Where/binary, StatusWhere/binary,
-                " ORDER BY ", OrderBy/binary,
-                " LIMIT ", (integer_to_binary(Size))/binary,
-                " OFFSET ", (integer_to_binary(Offset))/binary
+                "SELECT ",
+                Column/binary,
+                " FROM ",
+                Tb/binary,
+                " t",
+                " LEFT JOIN ",
+                ATb/binary,
+                " a ON t.task_id = a.task_id AND a.user_id = $2",
+                " WHERE ",
+                Where/binary,
+                StatusWhere/binary,
+                " ORDER BY ",
+                OrderBy/binary,
+                " LIMIT ",
+                (integer_to_binary(Size))/binary,
+                " OFFSET ",
+                (integer_to_binary(Offset))/binary
             >>,
             elib_pg:query(Sql, [GroupId, UserId])
     end;
@@ -344,7 +393,8 @@ count_deleted_by_group_id(GroupId) ->
 %% @param GroupId 群组ID
 %% @param Status 任务状态（1/2/3）或 undefined
 %% @return {ok, Count} | {error, Reason}
--spec count_deleted_by_group_id(integer(), integer() | undefined) -> {ok, integer()} | {error, term()}.
+-spec count_deleted_by_group_id(integer(), integer() | undefined) ->
+    {ok, integer()} | {error, term()}.
 count_deleted_by_group_id(GroupId, Status) when is_integer(GroupId), GroupId > 0 ->
     case group_status_condition(GroupId, Status, true) of
         {error, Reason} ->
@@ -390,11 +440,13 @@ restore(_TaskId) ->
 %% Internal Function Definitions
 %% ===================================================================
 
--spec group_status_condition(integer(), integer() | undefined) -> {binary(), list()} | {error, term()}.
+-spec group_status_condition(integer(), integer() | undefined) ->
+    {binary(), list()} | {error, term()}.
 group_status_condition(GroupId, Status) ->
     group_status_condition(GroupId, Status, false).
 
--spec group_status_condition(integer(), integer() | undefined, boolean()) -> {binary(), list()} | {error, term()}.
+-spec group_status_condition(integer(), integer() | undefined, boolean()) ->
+    {binary(), list()} | {error, term()}.
 group_status_condition(GroupId, undefined, false) ->
     {<<"group_id = $1 AND deleted_at IS NULL">>, [GroupId]};
 group_status_condition(GroupId, Status, false) when is_integer(Status), Status >= 1, Status =< 3 ->
@@ -421,13 +473,7 @@ user_status_filter(_Status) ->
     {error, invalid_status}.
 
 -spec parse_count_result(term()) -> {ok, integer()} | {error, term()}.
-parse_count_result({ok, [[{<<"count">>, Count}]]}) when is_integer(Count) ->
-    {ok, Count};
-parse_count_result({ok, [{[{<<"count">>, Count}]}]}) when is_integer(Count) ->
-    {ok, Count};
 parse_count_result({ok, [#{<<"count">> := Count}]}) when is_integer(Count) ->
-    {ok, Count};
-parse_count_result({ok, #{<<"count">> := Count}}) when is_integer(Count) ->
     {ok, Count};
 parse_count_result({error, Reason}) ->
     {error, Reason};

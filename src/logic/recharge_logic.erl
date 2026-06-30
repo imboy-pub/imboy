@@ -92,12 +92,7 @@ pay(Uid, OrderNo) ->
                 Status =/= ?STATUS_PENDING ->
                     {error, <<"订单状态不允许支付"/utf8>>};
                 true ->
-                    case is_order_expired(Order) of
-                        true ->
-                            {error, <<"订单已过期"/utf8>>};
-                        false ->
-                            do_pay(Uid, OrderNo, Method, Amount)
-                    end
+                    do_pay(Uid, OrderNo, Method, Amount)
             end
     end.
 
@@ -184,9 +179,7 @@ do_pay(Uid, OrderNo, Method, Amount) ->
                     {ok, Result0#{<<"status">> => ?STATUS_PENDING}}
             end;
         {error, PayReason} when is_binary(PayReason) ->
-            {error, PayReason};
-        {error, PayReason} ->
-            {error, elib_cnv:safe_to_binary(PayReason)}
+            {error, PayReason}
     end.
 
 %% @doc 归一网关返回：兼容 {ok, PaymentNo} 与 {ok, PaymentNo, Extra}，
@@ -198,9 +191,7 @@ normalize_pay_result({ok, PaymentNo, Extra}) when is_map(Extra) ->
 normalize_pay_result({ok, PaymentNo}) ->
     {ok, PaymentNo, #{}};
 normalize_pay_result({error, _} = Err) ->
-    Err;
-normalize_pay_result(Other) ->
-    {error, elib_cnv:safe_to_binary(Other)}.
+    Err.
 
 %% @doc 取订单币种（透传给网关用于换算与下单），缺省 CNY。
 -spec order_currency(binary()) -> binary().
@@ -304,8 +295,6 @@ load_order_raw(OrderNo) ->
     case recharge_order_ds:find_by_order_no(OrderNo) of
         {ok, Order} when is_map(Order) ->
             {ok, Order};
-        {ok, _} ->
-            {error, <<"订单不存在"/utf8>>};
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
         {error, Reason} when is_binary(Reason) ->

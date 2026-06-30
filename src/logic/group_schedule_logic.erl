@@ -123,7 +123,7 @@ do_create_schedule(
                 created_at => Now,
                 updated_at => Now
             },
-            group_schedule_ds:insert_participant(CreatorParticipantData),
+            _ = group_schedule_ds:insert_participant(CreatorParticipantData),
 
             % 插入其他参与人
             insert_participants(ScheduleId, ParticipantIds, Now),
@@ -345,7 +345,7 @@ process_remind_list([Remind | Rest], Acc) ->
     send_remind_notification(ScheduleId, UserId),
 
     % 标记为已发送
-    group_schedule_ds:update_remind_sent(RemindId),
+    _ = group_schedule_ds:update_remind_sent(RemindId),
 
     process_remind_list(Rest, Acc + 1).
 
@@ -382,7 +382,7 @@ create_remind_records(ScheduleId, [UserId | Rest], RemindAt) ->
         remind_at => RemindAt,
         is_sent => false
     },
-    group_schedule_ds:insert_remind(RemindData),
+    _ = group_schedule_ds:insert_remind(RemindData),
     create_remind_records(ScheduleId, Rest, RemindAt).
 
 %% @doc 发送提醒通知
@@ -423,7 +423,7 @@ insert_participants(ScheduleId, [UserId | Rest], Now) ->
         created_at => Now,
         updated_at => Now
     },
-    group_schedule_ds:insert_participant(ParticipantData),
+    _ = group_schedule_ds:insert_participant(ParticipantData),
     insert_participants(ScheduleId, Rest, Now).
 
 %% @doc 生成日程ID

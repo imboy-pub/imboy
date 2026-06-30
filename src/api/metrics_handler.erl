@@ -92,9 +92,7 @@ collect_system_metrics() ->
                 #{
                     db_pool_free => proplists:get_value(free_count, Stats, 0),
                     db_pool_in_use => proplists:get_value(in_use_count, Stats, 0)
-                };
-            _ ->
-                #{}
+                }
         catch
             _:_:Err1 ->
                 logger:warning(#{event => metrics_pool_stats_failed, error => Err1}),
@@ -103,8 +101,7 @@ collect_system_metrics() ->
     %% WebSocket 在线用户数（syn 注册的唯一用户）
     OnlineCount =
         try syn:registry_count(imboy) of
-            Count when is_integer(Count) -> Count;
-            _ -> 0
+            Count when is_integer(Count) -> Count
         catch
             _:_:Err2 ->
                 logger:warning(#{event => metrics_syn_count_failed, error => Err2}),
@@ -114,11 +111,7 @@ collect_system_metrics() ->
     WsConnections =
         try ranch:info(imboy_listener) of
             Info when is_map(Info) ->
-                maps:get(active_connections, Info, 0);
-            _Info when is_list(_Info) ->
-                proplists:get_value(active_connections, _Info, 0);
-            _ ->
-                0
+                maps:get(active_connections, Info, 0)
         catch
             _:_:Err3 ->
                 logger:warning(#{event => metrics_ranch_info_failed, error => Err3}),

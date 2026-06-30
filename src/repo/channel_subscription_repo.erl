@@ -64,14 +64,8 @@ upsert_active(Conn, ChannelId, Uid) ->
             {ok, false};
         {ok, [_ | _]} ->
             {ok, true};
-        {ok, _Count, _Cols, []} ->
-            {ok, false};
-        {ok, _Count, _Cols, [_ | _]} ->
-            {ok, true};
         {error, Reason} ->
-            {error, Reason};
-        Other ->
-            {error, {unexpected_result, Other}}
+            {error, Reason}
     end.
 
 %% @doc 查找订阅关系

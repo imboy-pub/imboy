@@ -5,17 +5,17 @@
 % 群公告数据仓库层，提供群公告信息的基础数据库操作
 %%%
 
--export ([tablename/0]).
--export ([insert/1]).
--export ([update/2]).
--export ([find_by_id/1]).
--export ([list_by_group_id/3]).
--export ([count_by_group_id/1]).
--export ([soft_delete/1]).
--export ([pin/1]).
--export ([unpin/1]).
--export ([increment_read_count/1]).
--export ([get_pinned_notices/1]).
+-export([tablename/0]).
+-export([insert/1]).
+-export([update/2]).
+-export([find_by_id/1]).
+-export([list_by_group_id/3]).
+-export([count_by_group_id/1]).
+-export([soft_delete/1]).
+-export([pin/1]).
+-export([unpin/1]).
+-export([increment_read_count/1]).
+-export([get_pinned_notices/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -104,21 +104,27 @@ find_by_id(_NoticeId) ->
 %% @param Size 每页数量
 %% @return {ok, [Notice]} | {error, Reason}
 -spec list_by_group_id(integer(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_group_id(GroupId, Page, Size)
-    when is_integer(GroupId), GroupId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+list_by_group_id(GroupId, Page, Size) when
+    is_integer(GroupId),
+    GroupId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     Tb = tablename(),
-    Column = <<"id, group_id, user_id, edit_user_id, title, body, status, ",
-               "pinned, read_count, expired_at, updated_at, created_at">>,
+    Column =
+        <<"id, group_id, user_id, edit_user_id, title, body, status, ",
+            "pinned, read_count, expired_at, updated_at, created_at">>,
     Where = <<"group_id = $1 AND deleted_at IS NULL">>,
-    OrderBy = <<"pinned DESC, id DESC">>,  % 置顶排在前面
+    % 置顶排在前面
+    OrderBy = <<"pinned DESC, id DESC">>,
     Offset = (Page - 1) * Size,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE ", Where/binary,
-            " ORDER BY ", OrderBy/binary,
-            " LIMIT ", (integer_to_binary(Size))/binary,
-            " OFFSET ", (integer_to_binary(Offset))/binary>>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ",
+            OrderBy/binary, " LIMIT ", (integer_to_binary(Size))/binary, " OFFSET ",
+            (integer_to_binary(Offset))/binary>>,
     elib_pg:query(Sql, [GroupId]);
 list_by_group_id(_GroupId, _Page, _Size) ->
     {error, invalid_param}.
@@ -132,10 +138,6 @@ count_by_group_id(GroupId) when is_integer(GroupId), GroupId > 0 ->
     Where = <<"group_id = $1 AND deleted_at IS NULL">>,
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [GroupId]) of
-        {ok, [[{<<"count">>, Count}]]} ->
-            {ok, Count};
-        {ok, [{#{<<"count">> := Count}}]} ->
-            {ok, Count};
         {ok, [#{<<"count">> := Count}]} ->
             {ok, Count};
         {error, Reason} ->
@@ -187,10 +189,9 @@ unpin(_NoticeId) ->
 -spec increment_read_count(integer()) -> {ok, map()} | {error, term()}.
 increment_read_count(NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
-            " SET read_count = read_count + 1 ",
-            " WHERE id = $1 AND deleted_at IS NULL ",
-            " RETURNING *">>,
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET read_count = read_count + 1 ",
+            " WHERE id = $1 AND deleted_at IS NULL ", " RETURNING *">>,
     case elib_pg:query(Sql, [NoticeId]) of
         {ok, []} ->
             {error, not_found};
@@ -208,13 +209,14 @@ increment_read_count(_NoticeId) ->
 -spec get_pinned_notices(integer()) -> {ok, [map()]} | {error, term()}.
 get_pinned_notices(GroupId) when is_integer(GroupId), GroupId > 0 ->
     Tb = tablename(),
-    Column = <<"id, group_id, user_id, edit_user_id, title, body, status, ",
-               "pinned, read_count, expired_at, updated_at, created_at">>,
+    Column =
+        <<"id, group_id, user_id, edit_user_id, title, body, status, ",
+            "pinned, read_count, expired_at, updated_at, created_at">>,
     Where = <<"group_id = $1 AND pinned = true AND deleted_at IS NULL">>,
     OrderBy = <<"id DESC">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE ", Where/binary,
-            " ORDER BY ", OrderBy/binary>>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ",
+            OrderBy/binary>>,
     elib_pg:query(Sql, [GroupId]);
 get_pinned_notices(_GroupId) ->
     {error, invalid_param}.
