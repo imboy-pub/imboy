@@ -33,9 +33,7 @@ get_channel_stats(ChannelIdBin) ->
                                     },
                                     {ok, Stats};
                                 {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                _Other ->
-                                    {error, elib_cnv:safe_to_binary(_Other)}
+                                    {error, elib_cnv:safe_to_binary(Reason)}
                             end;
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -69,13 +67,10 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
                             Now = elib_dt:now(),
                             case channel_ds:insert_message_view(ChannelId, MessageId, Uid, Now) of
                                 {ok, _} -> ok;
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                                _Other -> {error, elib_cnv:safe_to_binary(_Other)}
+                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                             end;
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)};
-                        _Other ->
-                            {error, elib_cnv:safe_to_binary(_Other)}
+                            {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
@@ -97,8 +92,7 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
                     Now = elib_dt:now(),
                     case channel_ds:insert_reaction(ChannelId, MessageId, Uid, ReactionType, Now) of
                         {ok, _} -> ok;
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                        _Other -> {error, elib_cnv:safe_to_binary(_Other)}
+                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
@@ -119,8 +113,7 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
                 ok ->
                     case channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
                         {ok, _} -> ok;
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                        _Other -> {error, elib_cnv:safe_to_binary(_Other)}
+                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
@@ -140,9 +133,7 @@ get_daily_stats(ChannelIdBin, Days) ->
                 {ok, Other} ->
                     {error, elib_cnv:safe_to_binary(Other)};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)};
-                _Other ->
-                    {error, elib_cnv:safe_to_binary(_Other)}
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 

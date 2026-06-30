@@ -50,17 +50,13 @@ do_create_invitation(ChannelId, InviterUid, InviteeUid) ->
                             Invitation2 = invitation_transfer(Invitation),
                             channel_logic_notify:notify_invitation_created(ChannelId, InviteeUid),
                             {ok, Invitation2};
-                        {ok, Other} ->
-                            {error, elib_cnv:safe_to_binary(Other)};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} when is_binary(Reason) ->
                     {error, Reason};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)};
-                _Other ->
-                    {error, elib_cnv:safe_to_binary(_Other)}
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end;
         false ->
             {error, <<"您不是频道订阅者，无法邀请他人"/utf8>>}
@@ -127,9 +123,7 @@ reject_invitation(Uid, InvitationId) ->
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec get_my_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -143,9 +137,7 @@ get_my_invitations(Uid) ->
         {ok, Other} ->
             {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec get_sent_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -159,9 +151,7 @@ get_sent_invitations(Uid) ->
         {ok, Other} ->
             {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec decode_positive_id(term()) -> integer().
