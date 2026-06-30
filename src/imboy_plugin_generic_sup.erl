@@ -32,7 +32,7 @@ start_link(Name) when is_atom(Name) ->
     supervisor:start_link({local, Name}, ?MODULE, [Name]).
 
 init([Name]) ->
-    elib_metric:increment(plugin_sup_starts, 1, #{plugin => Name}),
+    _ = elib_metric:increment(plugin_sup_starts, 1, #{plugin => Name}),
     SupFlags = #{
         strategy => one_for_one,
         intensity => 5,
