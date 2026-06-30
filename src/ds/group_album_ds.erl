@@ -25,7 +25,8 @@
 -include("cache.hrl").
 -include("log.hrl").
 
--define(MAX_PHOTO_SIZE, 10 * 1024 * 1024). % 10MB
+% 10MB
+-define(MAX_PHOTO_SIZE, 10 * 1024 * 1024).
 -define(ALLOWED_IMAGE_TYPES, [
     <<"image/jpeg">>,
     <<"image/png">>,
@@ -43,7 +44,8 @@
 %% @param AlbumName 相册名称
 %% @param CoverPhotoId 封面图片ID（可选）
 %% @return {ok, AlbumData} | {error, Reason}
--spec create_album(integer(), integer(), binary(), binary() | undefined) -> {ok, map()} | {error, term()}.
+-spec create_album(integer(), integer(), binary(), binary() | undefined) ->
+    {ok, map()} | {error, term()}.
 create_album(Gid, CreatorId, AlbumName, CoverPhotoId) ->
     % 1. 验证群成员身份
     case group_ds:is_member(CreatorId, Gid) of
@@ -83,7 +85,8 @@ create_album(Gid, CreatorId, AlbumName, CoverPhotoId) ->
 %% @param PhotoBinary 图片二进制数据
 %% @param PhotoName 图片名称
 %% @return {ok, PhotoData} | {error, Reason}
--spec upload_photo(integer(), integer(), binary(), binary(), binary()) -> {ok, map()} | {error, term()}.
+-spec upload_photo(integer(), integer(), binary(), binary(), binary()) ->
+    {ok, map()} | {error, term()}.
 upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
     % 1. 验证群成员身份
     case group_ds:is_member(UploaderId, Gid) of
@@ -103,7 +106,9 @@ upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
                             {error, <<"图片类型无效"/utf8>>};
                         true ->
                             % 4. 上传到OSS
-                            case elib_oss:upload(PhotoBinary, PhotoName, #{mime_type => MimeType}) of
+                            case
+                                elib_oss:upload(PhotoBinary, PhotoName, #{mime_type => MimeType})
+                            of
                                 {error, Reason} ->
                                     {error, Reason};
                                 {ok, PhotoUrl, FileId} ->
@@ -122,8 +127,10 @@ upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
                                         photo_url => PhotoUrl,
                                         thumbnail_url => ThumbnailUrl,
                                         photo_size => PhotoSize,
-                                        width => 0,  % 占位符，实际应从图片中提取
-                                        height => 0, % 占位符，实际应从图片中提取
+                                        % 占位符，实际应从图片中提取
+                                        width => 0,
+                                        % 占位符，实际应从图片中提取
+                                        height => 0,
                                         uploader_id => UploaderId
                                     },
 
@@ -132,7 +139,9 @@ upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
                                             % 8. 增加相册照片计数（通过相册ID查找）
                                             case group_album_repo:find_album_by_album_id(AlbumId) of
                                                 #{<<"id">> := AlbumRecordId} ->
-                                                    group_album_repo:increment_photo_count(AlbumRecordId);
+                                                    group_album_repo:increment_photo_count(
+                                                        AlbumRecordId
+                                                    );
                                                 _ ->
                                                     ok
                                             end,
@@ -165,14 +174,17 @@ upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
     {ok, list(map())} | {error, term()}.
 batch_upload_photos(Photos, UploaderId) ->
     % 逐个上传图片
-    Results = lists:map(fun({Gid, AlbumId, PhotoBinary, PhotoName}) ->
-        case upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) of
-            {ok, PhotoData} ->
-                {ok, PhotoData};
-            {error, Reason} ->
-                {error, Reason}
-        end
-    end, Photos),
+    Results = lists:map(
+        fun({Gid, AlbumId, PhotoBinary, PhotoName}) ->
+            case upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) of
+                {ok, PhotoData} ->
+                    {ok, PhotoData};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+        end,
+        Photos
+    ),
 
     % 检查是否有失败的情况
     Failed = [R || R <- Results, element(1, R) =:= error],
@@ -180,7 +192,8 @@ batch_upload_photos(Photos, UploaderId) ->
         [] ->
             {ok, Results};
         _ ->
-            {ok, Results}  % 返回所有结果，包括失败的
+            % 返回所有结果，包括失败的
+            {ok, Results}
     end.
 
 %% @doc 删除图片
@@ -191,7 +204,12 @@ batch_upload_photos(Photos, UploaderId) ->
 delete_photo(PhotoId, CurrentUid) ->
     % 1. 查询图片信息
     case group_album_repo:find_photo_by_id(PhotoId) of
-        #{<<"id">> := _, <<"group_id">> := Gid, <<"uploader_id">> := UploaderId, <<"album_id">> := AlbumId} ->
+        #{
+            <<"id">> := _,
+            <<"group_id">> := Gid,
+            <<"uploader_id">> := UploaderId,
+            <<"album_id">> := AlbumId
+        } ->
             % 2. 验证权限
             case check_delete_permission(CurrentUid, UploaderId, Gid) of
                 {ok, true} ->
@@ -276,7 +294,7 @@ list_albums(Gid, CurrentUid, Page, Size) ->
             {error, <<"非群组成员"/utf8>>};
         true ->
             case group_album_repo:list_albums(Gid, Page, Size) of
-                {ok, #{<<"list">> := List, <<"total">> := Total}} ->
+                {ok, #{list := List, total := Total}} ->
                     AlbumList = #{
                         <<"items">> => List,
                         <<"total">> => Total,
@@ -306,7 +324,7 @@ list_photos(AlbumId, CurrentUid, Page, Size) ->
                     {error, <<"非群组成员"/utf8>>};
                 true ->
                     case group_album_repo:list_photos(AlbumId, Page, Size, <<"*">>) of
-                        {ok, #{<<"list">> := List, <<"total">> := Total}} ->
+                        {ok, #{list := List, total := Total}} ->
                             PhotoList = #{
                                 <<"items">> => List,
                                 <<"total">> => Total,
@@ -392,7 +410,8 @@ check_delete_permission(CurrentUid, UploaderId, _Gid) when CurrentUid =:= Upload
 check_delete_permission(CurrentUid, _UploaderId, Gid) ->
     % 检查是否为群主或管理员
     case group_member_repo:find(Gid, CurrentUid, <<"role">>) of
-        #{<<"role">> := Role} when Role >= 3 -> % 管理员或群主
+        % 管理员或群主
+        #{<<"role">> := Role} when Role >= 3 ->
             {ok, true};
         _ ->
             {error, <<"相册权限不足"/utf8>>}
@@ -416,7 +435,6 @@ guess_mime_type(FileName) ->
         <<".webp">> -> <<"image/webp">>;
         _ -> <<"image/jpeg">>
     end.
-
 
 %% @doc 生成缩略图URL（占位符实现）
 -spec generate_thumbnail_url(binary()) -> binary().

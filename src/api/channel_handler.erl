@@ -493,9 +493,8 @@ normalize_error_binary(Msg, Default) ->
             _ ->
                 elib_cnv:safe_to_binary(Msg)
         end,
-    case normalize_non_empty_binary(Bin0) of
-        <<>> ->
-            Default;
-        Bin ->
-            Bin
+    % ponytail: Bin0 is always binary here; skip normalize_non_empty_binary to avoid dead-pattern warnings
+    case Bin0 of
+        <<>> -> Default;
+        Bin -> Bin
     end.

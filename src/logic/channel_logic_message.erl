@@ -290,7 +290,7 @@ add_admin(Uid, ChannelIdBin, NewAdminUid, Role) ->
                         created_at => Now
                     },
                     case channel_admin_ds:add(Data) of
-                        {ok, _} -> ok;
+                        {ok, _, _} -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end
             end
