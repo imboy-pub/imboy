@@ -18,11 +18,11 @@
 -export([page_active/2]).
 -export([page_by_uid/3]).
 
--spec find_by_id(binary() | integer()) -> {ok, map()} | {error, term()}.
+-spec find_by_id(binary() | integer()) -> map() | {error, term()}.
 find_by_id(Id) ->
     live_room_repo:find_by_id(Id).
 
--spec create(map()) -> {ok, term()} | {error, term()}.
+-spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data) ->
     live_room_repo:create(Data).
 
@@ -30,10 +30,10 @@ create(Data) ->
 update(Id, Data) ->
     live_room_repo:update(Id, Data).
 
--spec page_active(integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec page_active(integer(), integer()) -> {ok, map()} | {error, term()}.
 page_active(Page, Size) ->
     live_room_repo:page_active(Page, Size).
 
--spec page_by_uid(integer(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec page_by_uid(integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
 page_by_uid(Uid, Page, Size) ->
     live_room_repo:page_by_uid(Uid, Page, Size).

@@ -90,7 +90,7 @@ create(Req0, State) ->
                         updated_at => Now
                     },
                     case live_room_logic:create(Data) of
-                        {ok, RoomId, _Row} ->
+                        {ok, RoomId} ->
                             Room = Data#{
                                 <<"id">> => RoomId,
                                 <<"user_id">> => CurrentUid,

@@ -41,9 +41,7 @@ subscribe(Uid, ChannelIdBin) ->
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)}
                             end
-                    end;
-                _ ->
-                    {error, <<"频道不存在"/utf8>>}
+                    end
             end
     end.
 
@@ -109,9 +107,7 @@ unsubscribe(Uid, ChannelIdBin) ->
                     channel_logic_notify:notify_channel_unsubscribed(ChannelId, Uid),
                     ok;
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)};
-                _Other ->
-                    {error, elib_cnv:safe_to_binary(_Other)}
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 
@@ -120,12 +116,8 @@ get_subscribed_channels(Uid) ->
     case channel_ds:list_subscribed(Uid, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
-        {ok, Other} ->
-            {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec get_managed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
@@ -133,12 +125,8 @@ get_managed_channels(Uid) ->
     case channel_ds:list_managed(Uid) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
-        {ok, Other} ->
-            {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec get_unread_summary(integer()) -> {ok, map()} | {error, binary()}.
@@ -167,9 +155,7 @@ get_unread_summary(Uid) ->
                 <<"channels">> => ChannelUnreadList
             }};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec get_subscribers(binary(), integer(), integer()) -> {ok, list(map())} | {error, binary()}.
@@ -182,12 +168,8 @@ get_subscribers(ChannelIdBin, Cursor, Limit) ->
             case channel_subscription_ds:list_by_channel(ChannelId, Cursor, Limit) of
                 {ok, Subscribers} when is_list(Subscribers) ->
                     {ok, [S || S <- Subscribers, is_map(S)]};
-                {ok, Other} ->
-                    {error, elib_cnv:safe_to_binary(Other)};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)};
-                _Reason ->
-                    {error, elib_cnv:safe_to_binary(_Reason)}
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 

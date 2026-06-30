@@ -19,7 +19,7 @@ page_active(Page, Size) ->
 page_by_uid(Uid, Page, Size) ->
     live_room_ds:page_by_uid(Uid, Page, Size).
 
--spec create(map()) -> {ok, term(), map()} | {error, term()}.
+-spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data) ->
     live_room_ds:create(Data).
 
