@@ -57,8 +57,9 @@ create_order(Data) ->
     ExtraData =
         case maps:get(extra_data, Data, null) of
             null -> null;
-            % ponytail: encode map→jsonb, guard against future callers passing a map
-            M when is_map(M) -> jsone:encode(M);
+            % ponytail: encode map/list→jsonb, guard against future callers
+            M when is_map(M) -> jsone:encode(M, [native_utf8]);
+            L when is_list(L) -> jsone:encode(L, [native_utf8]);
             B when is_binary(B) -> B
         end,
     CreatedAt = maps:get(created_at, Data, elib_dt:millisecond()),

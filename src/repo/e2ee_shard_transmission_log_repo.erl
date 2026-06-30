@@ -62,7 +62,8 @@ insert(Data) ->
     Metadata = maps:get(metadata, Data, null),
     IpAddress = maps:get(ip_address, Data, null),
     UserAgent = maps:get(user_agent, Data, null),
-    CreatedAt = maps:get(created_at, Data, elib_dt:now()),
+    % ponytail: to_timestamp($11::bigint/1000) expects ms integer, not RFC3339 binary
+    CreatedAt = maps:get(created_at, Data, elib_dt:millisecond()),
 
     Id = elib_tsid:generate(e2ee_shard_transmission_log),
     Sql =

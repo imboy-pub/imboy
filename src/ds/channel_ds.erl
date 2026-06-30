@@ -94,7 +94,7 @@ add_optional_fields(Data, Opts) ->
                 undefined -> Acc;
                 % ponytail: [] → DB default '[]'::jsonb
                 [] when Field =:= tags -> Acc;
-                Val when Field =:= tags -> Acc#{Field => jsone:encode(Val)};
+                Val when Field =:= tags -> Acc#{Field => jsone:encode(Val, [native_utf8])};
                 Val -> Acc#{Field => Val}
             end
         end,

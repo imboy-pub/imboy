@@ -55,7 +55,8 @@ log_shard_transmission(FromUid, ToUid, ShardId, Action, Metadata) ->
         direction => ?DIRECTION_SERVER_TO_PROXY,
         % ponytail: encode map→jsonb, same pattern as channel_ds tags fix
         metadata => jsone:encode(Metadata),
-        created_at => elib_dt:now()
+        % ponytail: repo expects ms integer for to_timestamp($11::bigint/1000)
+        created_at => elib_dt:millisecond()
     },
     case e2ee_shard_transmission_log_ds:insert(Data) of
         {ok, _} ->
