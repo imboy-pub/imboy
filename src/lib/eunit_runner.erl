@@ -1,4 +1,5 @@
 -module(eunit_runner).
+-compile([nowarn_deprecated_catch]).
 -export([
     run/0,
     run/1,
@@ -66,19 +67,20 @@ ensure_config_loaded() ->
     % 检查 pg_conf 是否已加载
     case application:get_env(imboy, pg_conf) of
         {ok, _PgConf} ->
-            ok; % 配置已从文件加载
+            % 配置已从文件加载
+            ok;
         undefined ->
-            error({missing_config, pg_conf,
-                "配置文件中未找到 pg_conf，请确保通过 -config 参数指定正确的配置文件\n"
-                "使用示例: make eunit CONFIG=config/sys"})
+            error(
+                {missing_config, pg_conf,
+                    "配置文件中未找到 pg_conf，请确保通过 -config 参数指定正确的配置文件\n"
+                    "使用示例: make eunit CONFIG=config/sys"}
+            )
     end,
 
     % 确保其他必要配置存在
     case application:get_env(imboy, http_port) of
         {ok, _} -> ok;
-        undefined ->
-            error({missing_config, http_port,
-                "配置文件中未找到 http_port，请检查配置文件"})
+        undefined -> error({missing_config, http_port, "配置文件中未找到 http_port，请检查配置文件"})
     end,
     ok.
 
@@ -98,18 +100,23 @@ start_applications() ->
 
     % 启动核心依赖
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone],
-    lists:foreach(fun(App) ->
-        case application:ensure_all_started(App) of
-            {ok, _} -> ok;
-            {error, {already_started, _}} -> ok;
-            _ -> ok
-        end
-    end, CoreApps),
+    lists:foreach(
+        fun(App) ->
+            case application:ensure_all_started(App) of
+                {ok, _} -> ok;
+                {error, {already_started, _}} -> ok;
+                _ -> ok
+            end
+        end,
+        CoreApps
+    ),
 
     % 尝试启动主应用
     case application:ensure_all_started(imboy) of
-        {ok, _} -> ok;
-        {error, {already_started, _}} -> ok;
+        {ok, _} ->
+            ok;
+        {error, {already_started, _}} ->
+            ok;
         {error, Reason} ->
             io:format("Warning: Failed to start imboy app: ~p~n", [Reason]),
             ok
@@ -118,7 +125,8 @@ start_applications() ->
 
 %% @doc 启动所有必要的应用
 %% @return {app_started, imboy} | {app_already_started, imboy} | {app_not_started, test_continues}
--spec eunit_setup() -> {app_started, imboy} | {app_already_started, imboy} | {app_not_started, test_continues}.
+-spec eunit_setup() ->
+    {app_started, imboy} | {app_already_started, imboy} | {app_not_started, test_continues}.
 eunit_setup() ->
     % ⚠️ 重要：必须在启动应用之前设置配置
     % 设置测试环境变量
@@ -133,13 +141,16 @@ eunit_setup() ->
 
     % 启动核心依赖应用
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone],
-    lists:foreach(fun(App) ->
-        case application:ensure_all_started(App) of
-            {ok, _} -> ok;
-            {error, {already_started, _}} -> ok;
-            _ -> ok
-        end
-    end, CoreApps),
+    lists:foreach(
+        fun(App) ->
+            case application:ensure_all_started(App) of
+                {ok, _} -> ok;
+                {error, {already_started, _}} -> ok;
+                _ -> ok
+            end
+        end,
+        CoreApps
+    ),
 
     % 确保 depcache 已启动并初始化
     case whereis(depcache) of
@@ -150,7 +161,8 @@ eunit_setup() ->
                 {error, {already_started, depcache}} -> ok;
                 _ -> ok
             end;
-        _ -> ok
+        _ ->
+            ok
     end,
 
     % 尝试启动主应用

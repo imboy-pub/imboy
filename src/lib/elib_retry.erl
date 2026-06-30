@@ -1,4 +1,5 @@
 -module(elib_retry).
+-compile([nowarn_deprecated_catch]).
 -author("imboy").
 -vsn("0.1.0").
 
@@ -49,7 +50,10 @@ with_retry(Fun, RetryCount) ->
 %% ```
 %% elib_retry:with_retry(Fun, 3, 2000).
 %% ```
--spec with_retry(fun(() -> T), non_neg_integer(), non_neg_integer()) -> {ok, T} | {error, any()} when T :: term().
+-spec with_retry(fun(() -> T), non_neg_integer(), non_neg_integer()) ->
+    {ok, T} | {error, any()}
+when
+    T :: term().
 with_retry(Fun, RetryCount, DelayMs) ->
     with_retry(Fun, RetryCount, DelayMs, exponential).
 
@@ -64,8 +68,12 @@ with_retry(Fun, RetryCount, DelayMs) ->
 %% ```
 %% elib_retry:with_retry(Fun, 3, 1000, exponential).
 %% ```
--spec with_retry(fun(() -> T), non_neg_integer(), non_neg_integer(), fixed | exponential | linear) ->
-          {ok, T} | {error, any()} when T :: term().
+-spec with_retry(
+    fun(() -> T), non_neg_integer(), non_neg_integer(), fixed | exponential | linear
+) ->
+    {ok, T} | {error, any()}
+when
+    T :: term().
 with_retry(Fun, RetryCount, DelayMs, BackoffType) ->
     do_retry(Fun, RetryCount, DelayMs, BackoffType, 1).
 
@@ -78,7 +86,9 @@ with_retry(Fun, RetryCount, DelayMs, BackoffType) ->
 %% elib_retry:with_retry_and_timeout(Fun, 5000, 3).
 %% ```
 -spec with_retry_and_timeout(fun(() -> T), non_neg_integer(), non_neg_integer()) ->
-          {ok, T} | {error, any()} when T :: term().
+    {ok, T} | {error, any()}
+when
+    T :: term().
 with_retry_and_timeout(Fun, TimeoutMs, RetryCount) ->
     with_retry_and_timeout(Fun, TimeoutMs, RetryCount, 1000).
 
@@ -88,8 +98,12 @@ with_retry_and_timeout(Fun, TimeoutMs, RetryCount) ->
 %% ```
 %% elib_retry:with_retry_and_timeout(Fun, 5000, 3, 2000).
 %% ```
--spec with_retry_and_timeout(fun(() -> T), non_neg_integer(), non_neg_integer(), non_neg_integer()) ->
-          {ok, T} | {error, any()} when T :: term().
+-spec with_retry_and_timeout(
+    fun(() -> T), non_neg_integer(), non_neg_integer(), non_neg_integer()
+) ->
+    {ok, T} | {error, any()}
+when
+    T :: term().
 with_retry_and_timeout(Fun, TimeoutMs, RetryCount, DelayMs) ->
     do_retry_with_timeout(Fun, TimeoutMs, RetryCount, DelayMs, exponential, 1).
 
@@ -108,14 +122,21 @@ do_retry(Fun, RetryCount, DelayMs, BackoffType, Attempt) ->
         {ok, Result}
     catch
         Type:Error:Stacktrace ->
-            ok = ?ERROR_LOG("[RETRY_FAILED] "
-                       "尝试: ~p/~p, "
-                       "错误: ~p:~p, "
-                       "下次重试延迟: ~pms~n"
-                       "堆栈: ~p~n",
-                       [Attempt, RetryCount + 1, Type, Error,
-                        calculate_delay(DelayMs, BackoffType, Attempt),
-                        Stacktrace]),
+            ok = ?ERROR_LOG(
+                "[RETRY_FAILED] "
+                "尝试: ~p/~p, "
+                "错误: ~p:~p, "
+                "下次重试延迟: ~pms~n"
+                "堆栈: ~p~n",
+                [
+                    Attempt,
+                    RetryCount + 1,
+                    Type,
+                    Error,
+                    calculate_delay(DelayMs, BackoffType, Attempt),
+                    Stacktrace
+                ]
+            ),
 
             % 计算下次重试延迟
             NextDelay = calculate_delay(DelayMs, BackoffType, Attempt),
@@ -132,39 +153,55 @@ do_retry_with_timeout(_Fun, _TimeoutMs, 0, _DelayMs, _BackoffType, _Attempt) ->
 do_retry_with_timeout(Fun, TimeoutMs, RetryCount, DelayMs, BackoffType, Attempt) ->
     try
         % 设置超时执行
-        Result = case catch erlang:spawn_monitor(fun() ->
-            % 在新进程中执行，支持超时
-            exit(Fun())
-        end) of
-            {Pid, Ref} ->
-                receive
-                    {'DOWN', Ref, process, Pid, Result2} ->
-                        Result2
-                after TimeoutMs ->
-                    erlang:demonitor(Ref, [flush]),
-                    erlang:exit(Pid, kill),
-                    erlang:error(timeout)
-                end
-        end,
+        Result =
+            case
+                catch erlang:spawn_monitor(fun() ->
+                    % 在新进程中执行，支持超时
+                    exit(Fun())
+                end)
+            of
+                {Pid, Ref} ->
+                    receive
+                        {'DOWN', Ref, process, Pid, Result2} ->
+                            Result2
+                    after TimeoutMs ->
+                        erlang:demonitor(Ref, [flush]),
+                        erlang:exit(Pid, kill),
+                        erlang:error(timeout)
+                    end
+            end,
         {ok, Result}
     catch
         Type:Error:Stacktrace ->
-            ok = ?ERROR_LOG("[RETRY_WITH_TIMEOUT_FAILED] "
-                       "尝试: ~p/~p, "
-                       "错误: ~p:~p, "
-                       "下次重试延迟: ~pms~n"
-                       "堆栈: ~p~n",
-                       [Attempt, RetryCount + 1, Type, Error,
-                        calculate_delay(DelayMs, BackoffType, Attempt),
-                        Stacktrace]),
+            ok = ?ERROR_LOG(
+                "[RETRY_WITH_TIMEOUT_FAILED] "
+                "尝试: ~p/~p, "
+                "错误: ~p:~p, "
+                "下次重试延迟: ~pms~n"
+                "堆栈: ~p~n",
+                [
+                    Attempt,
+                    RetryCount + 1,
+                    Type,
+                    Error,
+                    calculate_delay(DelayMs, BackoffType, Attempt),
+                    Stacktrace
+                ]
+            ),
 
             % 计算下次重试延迟
             NextDelay = calculate_delay(DelayMs, BackoffType, Attempt),
 
             % 等待后重试
             timer:sleep(NextDelay),
-            do_retry_with_timeout(Fun, TimeoutMs, RetryCount - 1,
-                                DelayMs, BackoffType, Attempt + 1)
+            do_retry_with_timeout(
+                Fun,
+                TimeoutMs,
+                RetryCount - 1,
+                DelayMs,
+                BackoffType,
+                Attempt + 1
+            )
     end.
 
 %% @private 计算延迟时间
@@ -172,7 +209,7 @@ do_retry_with_timeout(Fun, TimeoutMs, RetryCount, DelayMs, BackoffType, Attempt)
 %% linear: 线性增长 (Delay * Attempt)
 %% exponential: 指数增长 (Delay * 2^(Attempt-1))
 -spec calculate_delay(non_neg_integer(), fixed | exponential | linear, pos_integer()) ->
-          non_neg_integer().
+    non_neg_integer().
 calculate_delay(BaseDelay, fixed, _Attempt) ->
     BaseDelay;
 calculate_delay(BaseDelay, linear, Attempt) ->

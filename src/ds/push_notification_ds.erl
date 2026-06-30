@@ -1,4 +1,5 @@
 -module(push_notification_ds).
+-compile([nowarn_deprecated_catch]).
 %%%
 % push_notification_ds 是 push notification domain service 缩写
 % 推送通知数据服务层，封装 FCM / APNs 推送发送逻辑

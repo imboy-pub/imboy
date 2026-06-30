@@ -1,4 +1,5 @@
 -module(payment_wechat_gateway).
+-compile([nowarn_deprecated_catch]).
 -behaviour(payment_gateway).
 
 %%%===================================================================

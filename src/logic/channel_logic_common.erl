@@ -1,4 +1,5 @@
 -module(channel_logic_common).
+-compile([nowarn_deprecated_catch]).
 
 -export([channel_transfer/1]).
 -export([resolve_channel_id/1]).

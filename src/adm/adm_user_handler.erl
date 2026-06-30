@@ -1,4 +1,5 @@
 -module(adm_user_handler).
+-compile([nowarn_deprecated_catch]).
 %%%
 % adm_user 控制器模块
 % 用户管理 API

@@ -1,4 +1,5 @@
 -module(adm_index_handler).
+-compile([nowarn_deprecated_catch]).
 %%%
 % adm_index 控制器模块
 % adm_index controller module

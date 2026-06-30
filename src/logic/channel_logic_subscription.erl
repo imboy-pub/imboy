@@ -1,4 +1,5 @@
 -module(channel_logic_subscription).
+-compile([nowarn_deprecated_catch]).
 %% Internal channel_content subscription/application logic.
 
 -export([subscribe/2]).

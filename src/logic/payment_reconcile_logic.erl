@@ -1,4 +1,5 @@
 -module(payment_reconcile_logic).
+-compile([nowarn_deprecated_catch]).
 %%%===================================================================
 %%% @doc 支付对账逻辑 / Payment reconciliation logic
 %%%

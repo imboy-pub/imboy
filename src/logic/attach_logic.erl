@@ -1,4 +1,5 @@
 -module(attach_logic).
+-compile([nowarn_deprecated_catch]).
 %%%
 % 附件业务逻辑层（Garage S3 多桶直传链路 + 统一资源访问控制）
 %

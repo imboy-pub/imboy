@@ -1,4 +1,5 @@
 -module(channel_logic_stats).
+-compile([nowarn_deprecated_catch]).
 
 -export([get_channel_stats/1]).
 -export([record_message_view/3]).
@@ -23,7 +24,9 @@ get_channel_stats(ChannelIdBin) ->
                                 {ok, Reactions} ->
                                     Stats = #{
                                         <<"channel_id">> => ChannelIdBin,
-                                        <<"subscriber_count">> => maps:get(<<"subscriber_count">>, Channel, 0),
+                                        <<"subscriber_count">> => maps:get(
+                                            <<"subscriber_count">>, Channel, 0
+                                        ),
                                         <<"total_messages">> => TotalMessages,
                                         <<"total_views">> => TotalViews,
                                         <<"total_reactions">> => Reactions

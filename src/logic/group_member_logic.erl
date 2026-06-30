@@ -2,6 +2,7 @@
 %% @doc 群组成员业务逻辑模块
 %%--------------------------------------------------------------------
 -module(group_member_logic).
+-compile([nowarn_deprecated_catch]).
 
 %% API 导出
 -export([

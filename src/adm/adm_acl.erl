@@ -1,4 +1,5 @@
 -module(adm_acl).
+-compile([nowarn_deprecated_catch]).
 
 %%%
 % adm 后台 RBAC 权限校验共享模块

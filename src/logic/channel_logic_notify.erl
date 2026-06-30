@@ -1,4 +1,5 @@
 -module(channel_logic_notify).
+-compile([nowarn_deprecated_catch]).
 
 -include("log.hrl").
 
@@ -115,13 +116,19 @@ send_safe(Uids, Action, Payload, SaveMode) when is_list(Uids) ->
                 ok ->
                     ok;
                 {error, Reason} ->
-                    ?WARN_LOG([channel_logic_notify_send_failed, Action, {uid_count, UidCount}, Reason]),
+                    ?WARN_LOG([
+                        channel_logic_notify_send_failed, Action, {uid_count, UidCount}, Reason
+                    ]),
                     ok;
                 {'EXIT', Reason} ->
-                    ?ERROR_LOG([channel_logic_notify_send_crashed, Action, {uid_count, UidCount}, Reason]),
+                    ?ERROR_LOG([
+                        channel_logic_notify_send_crashed, Action, {uid_count, UidCount}, Reason
+                    ]),
                     ok;
                 Other ->
-                    ?WARN_LOG([channel_logic_notify_send_unexpected, Action, {uid_count, UidCount}, Other]),
+                    ?WARN_LOG([
+                        channel_logic_notify_send_unexpected, Action, {uid_count, UidCount}, Other
+                    ]),
                     ok
             end
     end;
@@ -149,6 +156,10 @@ normalize_uids(Uids) ->
         true ->
             ValidUids;
         false ->
-            ?WARN_LOG([channel_logic_notify_filtered_invalid_uids, {raw_count, length(Uids)}, {valid_count, length(ValidUids)}]),
+            ?WARN_LOG([
+                channel_logic_notify_filtered_invalid_uids,
+                {raw_count, length(Uids)},
+                {valid_count, length(ValidUids)}
+            ]),
             ValidUids
     end.

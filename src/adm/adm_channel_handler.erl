@@ -1,4 +1,5 @@
 -module(adm_channel_handler).
+-compile([nowarn_deprecated_catch]).
 
 %%%
 % adm_channel 控制器模块

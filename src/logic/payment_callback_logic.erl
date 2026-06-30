@@ -1,4 +1,5 @@
 -module(payment_callback_logic).
+-compile([nowarn_deprecated_catch]).
 %%%===================================================================
 %%% @doc 统一支付回调处理逻辑 / Unified payment webhook handler logic
 %%%

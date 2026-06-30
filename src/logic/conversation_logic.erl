@@ -1,4 +1,5 @@
 -module(conversation_logic).
+-compile([nowarn_deprecated_catch]).
 %%%
 % conversation 业务逻辑模块
 % conversation business logic module

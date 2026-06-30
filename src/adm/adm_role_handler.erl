@@ -1,4 +1,5 @@
 -module(adm_role_handler).
+-compile([nowarn_deprecated_catch]).
 
 -behavior(cowboy_rest).
 
@@ -53,7 +54,9 @@ create_action(<<"POST">>, Req0, State) ->
     case ensure_permission(State, <<"roles:create">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            RoleName = normalize_binary(maps:get(<<"name">>, PostVals, maps:get(<<"role_name">>, PostVals, <<>>))),
+            RoleName = normalize_binary(
+                maps:get(<<"name">>, PostVals, maps:get(<<"role_name">>, PostVals, <<>>))
+            ),
             Description = normalize_binary(maps:get(<<"description">>, PostVals, <<>>)),
             Status = normalize_status(maps:get(<<"status">>, PostVals, 1)),
             Permissions = normalize_permissions(maps:get(<<"permissions">>, PostVals, [])),
@@ -68,9 +71,13 @@ create_action(<<"POST">>, Req0, State) ->
                                     _ = save_role_name(RoleId, RoleName),
                                     _ = save_role_description(RoleId, Description),
                                     _ = save_role_permissions(RoleId, Permissions),
-                                    elib_response:success(Req0, #{<<"role_id">> => RoleId, <<"id">> => RoleId});
+                                    elib_response:success(Req0, #{
+                                        <<"role_id">> => RoleId, <<"id">> => RoleId
+                                    });
                                 {error, Reason} ->
-                                    elib_response:error(Req0, to_error_binary(Reason), ?ERR_BAD_REQUEST)
+                                    elib_response:error(
+                                        Req0, to_error_binary(Reason), ?ERR_BAD_REQUEST
+                                    )
                             end
                     end;
                 {error, Msg} ->
@@ -117,7 +124,8 @@ save_permissions_handle(Req0, State) ->
             Req1
     end.
 
--spec build_role_page(pos_integer(), pos_integer(), integer(), binary()) -> {ok, map()} | {error, term()}.
+-spec build_role_page(pos_integer(), pos_integer(), integer(), binary()) ->
+    {ok, map()} | {error, term()}.
 build_role_page(Page, Size, Status, Keyword) ->
     case fetch_roles() of
         {ok, Roles} ->
@@ -540,7 +548,9 @@ ensure_permission(State, Permission, Req0) ->
     end.
 
 -spec has_permission(term(), binary()) -> boolean().
-has_permission(AdmUserId, Permission) when is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission) ->
+has_permission(AdmUserId, Permission) when
+    is_integer(AdmUserId), AdmUserId > 0, is_binary(Permission)
+->
     UserPermissions = resolve_permissions_by_adm_user_id(AdmUserId),
     lists:member(Permission, UserPermissions);
 has_permission(_, _) ->

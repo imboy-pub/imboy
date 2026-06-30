@@ -1,4 +1,5 @@
 -module(imboy_license).
+-compile([nowarn_deprecated_catch]).
 %%%===================================================================
 %%% @doc License 授权层 —— 规模/配额授权（锁规模上限，不锁功能）
 %%%

@@ -1,4 +1,5 @@
 -module(adm_admin_handler).
+-compile([nowarn_deprecated_catch]).
 
 -behavior(cowboy_rest).
 

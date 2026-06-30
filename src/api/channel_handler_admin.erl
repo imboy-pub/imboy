@@ -1,4 +1,5 @@
 -module(channel_handler_admin).
+-compile([nowarn_deprecated_catch]).
 -behavior(cowboy_rest).
 -export([init/2, handle_action/3]).
 -export([

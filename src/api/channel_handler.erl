@@ -1,4 +1,5 @@
 -module(channel_handler).
+-compile([nowarn_deprecated_catch]).
 %% Thin HTTP adapter for the channel_content domain.
 %% Message/order/admin functions split into sub-handlers (H4):
 %%   channel_handler_message  (消息/置顶/反应/订阅者)

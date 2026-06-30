@@ -11,6 +11,7 @@
 %%% events; the imperative shell publishes them after commit, and subscribers
 %%% perform side effects. Keeps the domain core testable without I/O.
 -module(imboy_domain_event).
+-compile([nowarn_deprecated_catch]).
 
 -export([start_link/0]).
 -export([publish/1, publish/2]).

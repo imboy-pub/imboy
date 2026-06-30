@@ -1,4 +1,5 @@
 -module(payment_stripe_gateway).
+-compile([nowarn_deprecated_catch]).
 -behaviour(payment_gateway).
 
 %%%===================================================================

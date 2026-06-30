@@ -1,4 +1,5 @@
 -module(moment_logic_notify).
+-compile([nowarn_deprecated_catch]).
 %%%
 % moment notification helpers
 %%%
@@ -63,12 +64,13 @@ notify_post_commented(FromUid, PostId, CommentId, AuthorUid) ->
 
 -spec resolve_post_recipients(integer()) -> [integer()].
 resolve_post_recipients(AuthorUid) ->
-    Friends = case catch friend_ds:list_by_uid(AuthorUid) of
-        List when is_list(List) ->
-            [Uid || Uid <- List, is_integer(Uid), Uid > 0];
-        _ ->
-            []
-    end,
+    Friends =
+        case catch friend_ds:list_by_uid(AuthorUid) of
+            List when is_list(List) ->
+                [Uid || Uid <- List, is_integer(Uid), Uid > 0];
+            _ ->
+                []
+        end,
     lists:usort([AuthorUid | Friends]).
 
 -spec safe_send([integer()], binary(), map(), atom()) -> ok.

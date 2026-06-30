@@ -1,4 +1,5 @@
 -module(moment_handler).
+-compile([nowarn_deprecated_catch]).
 %% Thin HTTP adapter for the moment_social domain.
 %% Keep transport parsing here and route business work through moment_logic.
 
@@ -105,10 +106,11 @@ user_posts(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
     Cursor = decode_cursor_id(proplists:get_value(<<"cursor">>, Qs, 0)),
     Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs, 20), 20, 1, 100),
-    TargetUid = case cowboy_req:binding(uid, Req0) of
-        undefined -> proplists:get_value(<<"uid">>, Qs, <<>>);
-        Value -> Value
-    end,
+    TargetUid =
+        case cowboy_req:binding(uid, Req0) of
+            undefined -> proplists:get_value(<<"uid">>, Qs, <<>>);
+            Value -> Value
+        end,
     case moment_logic:user_posts(Uid, TargetUid, Cursor, Limit) of
         {ok, Payload} ->
             elib_response:success(Req0, Payload);
@@ -278,7 +280,10 @@ decode_positive_id(Value) when is_binary(Value), Value =/= <<>> ->
     case elib_type:is_numeric(Value) of
         true ->
             Int = ec_cnv:to_integer(Value),
-            case Int > 0 of true -> Int; false -> 0 end;
+            case Int > 0 of
+                true -> Int;
+                false -> 0
+            end;
         false ->
             case catch ec_cnv:to_integer(Value) of
                 Id when is_integer(Id), Id > 0 -> Id;

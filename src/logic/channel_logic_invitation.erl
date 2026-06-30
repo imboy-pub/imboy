@@ -1,4 +1,5 @@
 -module(channel_logic_invitation).
+-compile([nowarn_deprecated_catch]).
 
 -export([create_invitation/3]).
 -export([accept_invitation/2]).

@@ -1,4 +1,5 @@
 -module(channel_logic_order).
+-compile([nowarn_deprecated_catch]).
 
 -export([create_order/2]).
 -export([pay_order/2]).

@@ -1,4 +1,5 @@
 -module(imboy_plugin_manager).
+-compile([nowarn_deprecated_catch]).
 
 %% @status FROZEN (roadmap-only, 2026-06)：v2 动态加载子系统暂停投入。
 %% 当前生产走配置驱动模块化单体路线（见 product-profile-and-plugin-registry-design.md §3.1）。
