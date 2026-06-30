@@ -9,7 +9,7 @@
 -ifdef(TEST).
 -export([to_gateway_amount/2, yuan_to_fen/1]).
 -endif.
--export([refund_order/2]).
+-export([refund_order/2, refund_order/3]).
 -export([admin_refund_order/2]).
 
 %% 生产环境允许的支付方式白名单（不含 mock）
