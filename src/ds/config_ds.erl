@@ -27,11 +27,11 @@
 env(Attr) ->
     env(Attr, undefined).
 
--spec env(atom() | binary(), term()) -> any().
+-spec env(atom() | binary() | [atom() | binary()], term()) -> any().
 env(Attr, Def) ->
     env(imboy, Attr, Def).
 
--spec env(atom(), atom() | binary() | [binary()], term()) -> any().
+-spec env(atom(), atom() | binary() | [atom() | binary()], term()) -> any().
 env(App, [Attr], Def) ->
     %% Single-element list case
     env(App, Attr, Def);

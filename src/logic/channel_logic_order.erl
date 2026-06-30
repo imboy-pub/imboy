@@ -148,9 +148,7 @@ pay_order(Uid, OrderNo) ->
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>};
-        {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, <<"订单不存在"/utf8>>}
     end.
 
 %% @doc 归一网关返回：兼容 {ok, PayNo} 与 {ok, PayNo, Extra}，
@@ -161,9 +159,7 @@ normalize_pay_result({ok, PayNo, Extra}) when is_map(Extra) ->
 normalize_pay_result({ok, PayNo}) ->
     {ok, PayNo, #{}};
 normalize_pay_result({error, _} = Err) ->
-    Err;
-normalize_pay_result(Other) ->
-    {error, elib_cnv:safe_to_binary(Other)}.
+    Err.
 
 -spec do_pay_order(integer(), integer(), binary(), map(), map()) -> ok | {error, binary()}.
 do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->
@@ -243,9 +239,7 @@ get_order(Uid, OrderNo) ->
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>};
-        {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, <<"订单不存在"/utf8>>}
     end.
 
 -spec refund_order(integer(), binary()) -> ok | {error, binary()}.
@@ -282,9 +276,7 @@ refund_order(Uid, OrderNo, Reason0) ->
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>};
-        {error, Reason1} ->
-            {error, elib_cnv:safe_to_binary(Reason1)}
+            {error, <<"订单不存在"/utf8>>}
     end.
 
 %% @doc 管理端代发退款：不做订单归属校验，管理员可退任意订单。
@@ -318,9 +310,7 @@ admin_refund_order(OrderNo, Reason0) ->
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>};
-        {error, Reason1} ->
-            {error, elib_cnv:safe_to_binary(Reason1)}
+            {error, <<"订单不存在"/utf8>>}
     end.
 
 %% @doc 退款执行：网关退款 → 改订单状态为已退款(2) → 取消频道订阅
