@@ -428,7 +428,8 @@ check_deadline(undefined) ->
 check_deadline(Deadline) ->
     try
         DeadlineTs = elib_dt:rfc3339_to(Deadline),
-        NowTs = elib_dt:now(),
+        % ponytail: rfc3339_to returns integer(ms); use millisecond() for same type
+        NowTs = elib_dt:millisecond(),
         NowTs > DeadlineTs
     catch
         _:_ ->
