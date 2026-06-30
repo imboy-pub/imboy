@@ -10,8 +10,6 @@
 
 -export([async/1]).
 -export([async/2]).
-% ponytail: backward-compat alias for async/1, remove after next full deploy
--export([run/1]).
 -export([async_retry/1]).
 -export([async_retry/2]).
 -export([async_retry/3]).
@@ -36,9 +34,6 @@
 -spec async(fun(() -> term())) -> pid().
 async(Fun) ->
     spawn(Fun).
-
-% ponytail: backward-compat alias — old beams call run/1, remove after next full redeploy
-run(Fun) -> async(Fun).
 
 %% @doc 异步执行函数（带超时监控）
 %%
