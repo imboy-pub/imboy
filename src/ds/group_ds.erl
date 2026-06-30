@@ -145,8 +145,7 @@ dissolve(Gid) ->
 % group_ds:gid().
 -spec gid() -> integer().
 gid() ->
-    {ok, [#{<<"gid">> := Gid}]} = elib_pg:query("select nextval('public.group_id_seq') as gid", []),
-    Gid.
+    elib_tsid:generate(group_info).
 
 %% @doc 检查和设置群组头像
 %%
