@@ -39,7 +39,7 @@ tablename() ->
 count() ->
     Tb = tablename(),
     case elib_pg:query(<<"SELECT COUNT(*) FROM ", Tb/binary>>, []) of
-        {ok, _, [{N}]} when is_integer(N) -> N;
+        {ok, [#{<<"count">> := N}]} when is_integer(N) -> N;
         _ -> 0
     end.
 
@@ -74,9 +74,7 @@ find_by_uid(Uid) ->
         #{} = Row when map_size(Row) > 0 ->
             {ok, Row};
         #{} ->
-            {error, not_found};
-        {error, Reason} ->
-            {error, Reason}
+            {error, not_found}
     end.
 
 %% @doc 根据邮箱查找用户
@@ -164,7 +162,7 @@ may_exist(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = tablename(),
     Sql = <<"SELECT id FROM ", Tb/binary, " WHERE id = $1 AND status >= 0 LIMIT 1">>,
     case elib_pg:query(Sql, [Uid]) of
-        {ok, _, [_]} -> true;
+        {ok, [_ | _]} -> true;
         _ -> false
     end;
 may_exist(_) ->

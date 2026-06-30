@@ -22,7 +22,6 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"user_setting">>).
 
-
 %% @doc 根据用户ID查找用户设置
 %% @doc 兼容旧接口，返回 setting_key / setting_value 元组列表
 %% @param Uid 用户ID（支持binary或integer类型）
@@ -35,7 +34,9 @@ find_by_uid(Uid) when is_integer(Uid) ->
     Sql = <<
         "/* SELECT.*FROM.*user_setting WHERE.*user_id */ "
         "SELECT user_id, kv.key AS setting_key, kv.value AS setting_value "
-        "FROM ", Tb/binary, ", json_each_text(COALESCE(setting::json, '{}'::json)) AS kv "
+        "FROM ",
+        Tb/binary,
+        ", json_each_text(COALESCE(setting::json, '{}'::json)) AS kv "
         "WHERE user_id = $1"
     >>,
     case elib_pg:query(Sql, [Uid]) of
@@ -57,13 +58,13 @@ get(Uid, Key) when is_integer(Uid) ->
     Sql = <<
         "/* SELECT.*FROM.*user_setting WHERE.*user_id.*AND.*setting_key */ "
         "SELECT user_id, $2 AS setting_key, setting::jsonb->>$2 AS setting_value "
-        "FROM ", Tb/binary, " "
+        "FROM ",
+        Tb/binary,
+        " "
         "WHERE user_id = $1 AND setting::jsonb ? $2"
     >>,
     case elib_pg:query(Sql, [Uid, Key]) of
         {ok, [#{<<"setting_value">> := Value} | _]} ->
-            {ok, Value};
-        {ok, [{_, _, Value} | _]} ->
             {ok, Value};
         {ok, []} ->
             {error, not_found};
@@ -84,10 +85,14 @@ save(Uid, Key, Value) when is_integer(Uid) ->
     Now = elib_dt:now(),
     Sql = <<
         "/* INSERT.*INTO.*user_setting ON CONFLICT.*DO UPDATE */ "
-        "INSERT INTO ", Tb/binary, " (user_id, setting, updated_at) "
+        "INSERT INTO ",
+        Tb/binary,
+        " (user_id, setting, updated_at) "
         "VALUES ($1, jsonb_build_object($2, $3)::json, $4) "
         "ON CONFLICT (user_id) DO UPDATE SET "
-        "setting = (COALESCE(", Tb/binary, ".setting, '{}'::json)::jsonb || "
+        "setting = (COALESCE(",
+        Tb/binary,
+        ".setting, '{}'::json)::jsonb || "
         "jsonb_build_object($2, $3))::json, "
         "updated_at = EXCLUDED.updated_at"
     >>,
@@ -110,7 +115,6 @@ find_by_uid(Uid, Column) when is_integer(Uid) ->
         _ -> #{}
     end.
 
-
 %% @doc 更新用户设置
 %% @param Uid 用户ID（支持binary或integer类型）
 %% @param Setting 设置数据map
@@ -122,12 +126,16 @@ update(Uid, Setting) when is_binary(Uid) ->
     update(ec_cnv:to_integer(Uid), Setting);
 update(Uid, Setting) when is_integer(Uid) ->
     Data = #{
-        <<"user_id">> => Uid,  % 用户ID
+        % 用户ID
+        <<"user_id">> => Uid,
         <<"setting">> => jsone:encode(Setting, [
-            native_utf8,         % 保持UTF8编码
-            {float_format, [{decimals, 4}, compact]}  % 优化浮点数格式
+            % 保持UTF8编码
+            native_utf8,
+            % 优化浮点数格式
+            {float_format, [{decimals, 4}, compact]}
         ]),
-        <<"updated_at">> => elib_dt:now()  % 自动格式化为数据库时间
+        % 自动格式化为数据库时间
+        <<"updated_at">> => elib_dt:now()
     },
     %% ON CONFLICT 子句
     %% 使用EXCLUDED引用新插入的值
@@ -144,12 +152,15 @@ update(Uid, Setting) when is_integer(Uid) ->
     ok.
 
 normalize_setting_rows(Rows) ->
-    lists:map(fun
-        (#{<<"user_id">> := UserId, <<"setting_key">> := Key, <<"setting_value">> := Value}) ->
-            {UserId, Key, Value};
-        (Row) ->
-            Row
-    end, Rows).
+    lists:map(
+        fun
+            (#{<<"user_id">> := UserId, <<"setting_key">> := Key, <<"setting_value">> := Value}) ->
+                {UserId, Key, Value};
+            (Row) ->
+                Row
+        end,
+        Rows
+    ).
 
 execute_compat(Sql, Params) ->
     case whereis(pooler) of

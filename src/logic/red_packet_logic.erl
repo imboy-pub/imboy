@@ -36,7 +36,7 @@ send(SenderUid, Type, Amount, Count, Greeting) ->
                     case wallet_ds:atomic_balance_change(-Amount, SenderUid, TxData, RefNo) of
                         {ok, _} ->
                             %% 创建红包（有效期 24 小时：86400 秒）
-                            ExpiresAt = elib_time:timestamp() + 86400,
+                            ExpiresAt = elib_dt:second() + 86400,
                             case
                                 red_packet_repo:create(
                                     SenderUid, Type, Amount, Count, Greeting, ExpiresAt

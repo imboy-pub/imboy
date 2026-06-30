@@ -36,9 +36,7 @@ create(SenderUid, Type, Amount, Count, Greeting, ExpiresAt) ->
         <<"remain_count">> => Count,
         <<"greeting">> => Greeting,
         <<"status">> => <<"active">>,
-        <<"expires_at">> => elib_time:datetime_to_iso8601(
-            elib_time:timestamp_to_datetime(ExpiresAt)
-        )
+        <<"expires_at">> => elib_dt:to_rfc3339(ExpiresAt)
     },
     {Sql, Params} = elib_pg_sql:insert(Tb, Data),
     case elib_pg:query(Sql, Params) of

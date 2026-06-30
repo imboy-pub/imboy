@@ -126,7 +126,10 @@ atomic_balance_change(Amount, Uid, TxData, RefNo) ->
                 TxId = elib_tsid:generate(wallet_transaction),
                 TxData3 = TxData2#{<<"id">> => TxId},
                 {TxSql, TxParams} = elib_pg_sql:insert(TxTb, TxData3),
-                elib_pg:execute(Conn, TxSql, TxParams),
+                case elib_pg:execute(Conn, TxSql, TxParams) of
+                    {ok, _} -> ok;
+                    {error, TxReason} -> throw({rollback, TxReason})
+                end,
                 {ok, NewBalance};
             {ok, 0} ->
                 %% 余额不足或用户不存在
