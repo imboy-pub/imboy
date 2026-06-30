@@ -124,7 +124,7 @@ grab(PacketId, ReceiverUid) ->
                                 CreditSql =
                                     <<"UPDATE ", WalletTb/binary,
                                         " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
-                                {ok, 1, [[NewBalance, WalletId]]} = elib_pg:execute(
+                                {ok, 1, [{NewBalance, WalletId}]} = elib_pg:execute(
                                     Conn, CreditSql, [GrabAmount, ReceiverUid]
                                 ),
                                 %% 7. 写入钱包流水（tx_type=8：领红包） / Add wallet tx (tx_type=8)

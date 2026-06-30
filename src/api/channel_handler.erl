@@ -473,10 +473,8 @@ decode_positive_id(Value) ->
     end.
 
 -spec normalize_non_empty_binary(binary()) -> binary().
-normalize_non_empty_binary(Value) when is_binary(Value) ->
-    list_to_binary(string:trim(binary_to_list(Value)));
-normalize_non_empty_binary(_) ->
-    <<>>.
+normalize_non_empty_binary(Value) ->
+    list_to_binary(string:trim(binary_to_list(Value))).
 
 -spec normalize_error_binary(term(), binary()) -> binary().
 normalize_error_binary(Msg, Default) ->
