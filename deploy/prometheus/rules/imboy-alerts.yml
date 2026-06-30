@@ -9,6 +9,10 @@
 #   6. PostgreSQL 连接/事务异常 / PostgreSQL connectivity & transaction anomaly
 #   7. 消息积压 / Message backlog
 #   8. WebSocket 连接陡降 / WebSocket connection drop
+#   9. 主机资源 / Host resources (memory / disk)
+#  10. Erlang 节点宕机 / Erlang node down
+#  11. PG 连接池耗尽 / PG connection pool exhausted
+#  12. 备份健康 / Backup health
 #
 # 接入告警渠道 / Alert routing:
 #   在 Prometheus alertmanager.yml 中配置 receiver（钉钉 / Slack / PagerDuty 等）
@@ -293,3 +297,197 @@ groups:
             WebSocket 在线连接数为 {{ $value }}，较 10 分钟前下降超过 50%，可能发生批量断线。
             WebSocket connections are at {{ $value }}, a drop of more than 50% from 10 minutes ago — possible mass disconnect.
           runbook: "检查 nginx WS 代理和后端日志 / Check nginx WS proxy and backend logs"
+
+  # ============================================================
+  # 9. 主机资源 / Host Resources (node_exporter 需部署)
+  # node_exporter 部署：docker run -d --net="host" --pid="host" \
+  #   -v "/:/host:ro,rslave" prom/node-exporter --path.rootfs=/host
+  # ============================================================
+  - name: imboy.host_resources
+    interval: 60s
+    rules:
+
+      # 系统内存使用率 > 85% 持续 5min → WARNING（等保2.0 资源可用性基线）
+      # Host memory usage > 85% for 5min → WARNING (MLPS 2.0 resource availability baseline)
+      - alert: IMBoyHighMemoryUsage
+        expr: >
+          (
+            1 - (
+              node_memory_MemAvailable_bytes
+              / node_memory_MemTotal_bytes
+            )
+          ) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "主机内存使用率过高 / Host memory usage too high"
+          description: >
+            主机内存使用率为 {{ $value | humanizePercentage }}，超过 85% 警戒线（已持续 5 分钟）。
+            Host memory usage is {{ $value | humanizePercentage }}, exceeding the 85% threshold (for 5 minutes).
+          runbook: "执行 free -h 和 docker stats 定位高内存容器 / Run free -h and docker stats to identify high-memory containers"
+
+      # 系统内存使用率 > 95% 持续 2min → CRITICAL
+      - alert: IMBoyHighMemoryUsageCritical
+        expr: >
+          (
+            1 - (
+              node_memory_MemAvailable_bytes
+              / node_memory_MemTotal_bytes
+            )
+          ) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "主机内存严重不足 / Host memory critically low"
+          description: >
+            主机内存使用率为 {{ $value | humanizePercentage }}，系统即将 OOM（持续 2 分钟）。
+            Host memory usage is {{ $value | humanizePercentage }}; system is near OOM (for 2 minutes).
+
+      # 磁盘使用率 > 80% → WARNING（等保2.0 日志留存 180 天要求）
+      # Disk usage > 80% → WARNING (MLPS 2.0 180-day log retention requirement)
+      - alert: IMBoyHighDiskUsage
+        expr: >
+          (
+            1 - (
+              node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"}
+              / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}
+            )
+          ) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "磁盘使用率过高 / High disk usage"
+          description: >
+            根分区磁盘使用率为 {{ $value | humanizePercentage }}，超过 80% 警戒线（已持续 5 分钟）。
+            Root partition disk usage is {{ $value | humanizePercentage }}, exceeding the 80% threshold (for 5 minutes).
+          runbook: "执行 df -h 和 du -sh /var/lib/docker 检查空间分布 / Run df -h and du -sh /var/lib/docker to check space usage"
+
+      # 磁盘使用率 > 90% → CRITICAL
+      - alert: IMBoyHighDiskUsageCritical
+        expr: >
+          (
+            1 - (
+              node_filesystem_avail_bytes{mountpoint="/", fstype!="tmpfs"}
+              / node_filesystem_size_bytes{mountpoint="/", fstype!="tmpfs"}
+            )
+          ) > 0.90
+        for: 2m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "磁盘严重不足 / Disk critically full"
+          description: >
+            根分区磁盘使用率为 {{ $value | humanizePercentage }}，服务即将因磁盘满而崩溃（持续 2 分钟）。
+            Root partition disk usage is {{ $value | humanizePercentage }}; services may crash due to full disk (for 2 minutes).
+
+  # ============================================================
+  # 10. Erlang 节点宕机检测 / Erlang Node Down
+  # 补充 imboy.availability 组中 up==0 的 5min 节点级告警
+  # ============================================================
+  - name: imboy.node_down
+    interval: 30s
+    rules:
+
+      # Erlang 后端节点 5 分钟无心跳 → CRITICAL
+      # Erlang backend node has no heartbeat for 5 minutes → CRITICAL
+      - alert: IMBoyNodeDown
+        expr: up{job="imboy_backend"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Erlang 节点宕机 / Erlang node is down"
+          description: >
+            imboy_backend 节点（{{ $labels.instance }}）已 5 分钟无 Prometheus 心跳，判定节点宕机。
+            imboy_backend node ({{ $labels.instance }}) has had no Prometheus heartbeat for 5 minutes; node is considered down.
+          runbook: >
+            1. docker compose -f docker-compose.prod.yml logs imboy_backend
+            2. docker compose -f docker-compose.prod.yml restart imboy_backend
+            3. 确认 BEAM 崩溃原因后再重启 / Investigate BEAM crash before restarting
+
+  # ============================================================
+  # 11. PG 连接池耗尽 / PostgreSQL Connection Pool Exhausted
+  # 基于 pg_stat_database.numbackends 与 max_connections 对比
+  # ============================================================
+  - name: imboy.pg_pool
+    interval: 30s
+    rules:
+
+      # PG 连接池使用率 > 90% 持续 5min → WARNING
+      # PG connection usage > 90% for 5min → WARNING
+      - alert: IMBoyDatabasePoolExhausted
+        expr: >
+          sum(pg_stat_database_numbackends{datname="imboy_pro"})
+          /
+          pg_settings_max_connections > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: data
+        annotations:
+          summary: "PG 连接池使用率过高 / PG connection pool near exhaustion"
+          description: >
+            PostgreSQL 连接池使用率为 {{ $value | humanizePercentage }}，超过 90% 警戒线（已持续 5 分钟）。
+            当前连接数接近 max_connections 上限，可能导致新连接被拒绝。
+            PostgreSQL connection usage is {{ $value | humanizePercentage }}, exceeding the 90% threshold (for 5 minutes).
+            New connections may be rejected as max_connections is nearly reached.
+          runbook: >
+            1. SELECT count(*), state FROM pg_stat_activity GROUP BY state;
+            2. SELECT * FROM pg_stat_activity WHERE state = 'idle' ORDER BY state_change;
+            3. 检查 pooler 配置是否需要扩容 / Check if pooler needs scaling
+
+      # PG 连接池使用率 > 95% 持续 2min → CRITICAL
+      - alert: IMBoyDatabasePoolExhaustedCritical
+        expr: >
+          sum(pg_stat_database_numbackends{datname="imboy_pro"})
+          /
+          pg_settings_max_connections > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          team: data
+        annotations:
+          summary: "PG 连接池即将耗尽 / PG connection pool critically exhausted"
+          description: >
+            PostgreSQL 连接池使用率为 {{ $value | humanizePercentage }}，新连接即将被拒绝（持续 2 分钟）。
+            PostgreSQL connection usage is {{ $value | humanizePercentage }}; new connections will be rejected (for 2 minutes).
+
+  # ============================================================
+  # 12. 备份健康 / Backup Health
+  # 依赖：imboy/scripts/backup_pg.sh 执行成功后写入 Prometheus Pushgateway
+  # 在 backup_pg.sh 末尾添加：
+  #   echo "imboy_backup_last_success_timestamp $(date +%s)" | \
+  #     curl --data-binary @- http://pushgateway:9091/metrics/job/imboy_backup
+  # ============================================================
+  - name: imboy.backup
+    interval: 300s
+    rules:
+
+      # 24 小时内无成功备份记录 → CRITICAL（等保2.0 数据备份恢复要求）
+      # No successful backup in past 24 hours → CRITICAL (MLPS 2.0 data backup requirement)
+      - alert: IMBoyBackupNotRunning
+        expr: >
+          (time() - imboy_backup_last_success_timestamp) > 86400
+          or absent(imboy_backup_last_success_timestamp)
+        for: 0m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "备份超过 24 小时未运行 / Backup has not run in the past 24 hours"
+          description: >
+            距离最后一次成功备份已超过 24 小时（或从未有备份记录），违反等保2.0 数据备份恢复要求。
+            The last successful backup was more than 24 hours ago (or no backup record exists).
+            This violates the MLPS 2.0 data backup and recovery requirement.
+          runbook: >
+            1. 手动触发备份：bash imboy/scripts/backup_pg.sh
+            2. 检查 cron 任务是否正常：crontab -l | grep backup
+            3. 检查 Pushgateway 是否在线：curl http://pushgateway:9091/metrics
