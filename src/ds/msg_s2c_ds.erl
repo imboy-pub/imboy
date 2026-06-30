@@ -49,21 +49,21 @@ send(FromId, [ToUid | Tail], Action, MsgType, E2EE, Payload, Save) ->
         E2EE
     ),
     EncodedMsg = jsone:encode(Msg, [native_utf8]),
-    case Save of
-        save ->
-            CreatedAt = elib_dt:now(),
-            % 只存储实际的 payload 数据，而不是整个消息对象
-            % 避免 API 返回时出现 payload 嵌套问题
-            PayloadJson = jsone:encode(Payload, [native_utf8]),
-            _ = write_msg(
-                CreatedAt, MsgId, PayloadJson, FromId, ToUid, CreatedAt, Action, MsgType, null
-            ),
-            MsLi = [0, 1_000_000, 1_000_000],
-            _ = message_ds:send_next(ToUid, MsgId, EncodedMsg, MsLi),
-            ok;
-        _ ->
-            imboy_syn:publish(ToUid, EncodedMsg)
-    end,
+    _ =
+        case Save of
+            save ->
+                CreatedAt = elib_dt:now(),
+                % 只存储实际的 payload 数据，而不是整个消息对象
+                % 避免 API 返回时出现 payload 嵌套问题
+                PayloadJson = jsone:encode(Payload, [native_utf8]),
+                _ = write_msg(
+                    CreatedAt, MsgId, PayloadJson, FromId, ToUid, CreatedAt, Action, MsgType, null
+                ),
+                MsLi = [0, 1_000_000, 1_000_000],
+                message_ds:send_next(ToUid, MsgId, EncodedMsg, MsLi);
+            _ ->
+                imboy_syn:publish(ToUid, EncodedMsg)
+        end,
     send(FromId, Tail, Action, MsgType, E2EE, Payload, Save).
 
 %% @doc 存储服务端到客户端的消息
@@ -100,21 +100,17 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
 
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
     Count = msg_s2c_repo:count_by_to_id(To),
-    case Count >= ?SAVE_MSG_LIMIT of
-        true ->
-            Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            elib_async:async_retry(fun() ->
-                case msg_s2c_repo:delete_overflow_msg(To, Limit) of
-                    {ok, _} ->
-                        ok;
-                    {error, Reason} ->
-                        ?ERROR_LOG([msg_s2c_delete_overflow_failed, To, Limit, Reason]),
-                        {error, Reason}
-                end
-            end);
-        false ->
-            ok
-    end,
+    _ =
+        case Count >= ?SAVE_MSG_LIMIT of
+            true ->
+                Limit = Count - ?SAVE_MSG_LIMIT + 1,
+                elib_async:async_retry(fun() ->
+                    ok = msg_s2c_repo:delete_overflow_msg(To, Limit),
+                    ok
+                end);
+            false ->
+                ok
+        end,
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, null).
 
 %% @doc 存储服务端到客户端的消息（8 参数版本，E2EE 默认为 null）
@@ -185,21 +181,17 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) whe
 write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE) ->
     % 检查消息存储数量，如果数量大于limit 删除旧数据、插入新数据
     Count = msg_s2c_repo:count_by_to_id(To),
-    case Count >= ?SAVE_MSG_LIMIT of
-        true ->
-            Limit = Count - ?SAVE_MSG_LIMIT + 1,
-            elib_async:async_retry(fun() ->
-                case msg_s2c_repo:delete_overflow_msg(To, Limit) of
-                    {ok, _} ->
-                        ok;
-                    {error, Reason} ->
-                        ?ERROR_LOG([msg_s2c_delete_overflow_failed, To, Limit, Reason]),
-                        {error, Reason}
-                end
-            end);
-        false ->
-            ok
-    end,
+    _ =
+        case Count >= ?SAVE_MSG_LIMIT of
+            true ->
+                Limit = Count - ?SAVE_MSG_LIMIT + 1,
+                elib_async:async_retry(fun() ->
+                    ok = msg_s2c_repo:delete_overflow_msg(To, Limit),
+                    ok
+                end);
+            false ->
+                ok
+        end,
     msg_s2c_repo:write_msg(CreatedAt, Id, Payload, From, To, ServerTS, Action, MsgType, E2EE).
 
 %% @doc 读取服务端到客户端的消息
