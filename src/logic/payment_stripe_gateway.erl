@@ -85,7 +85,6 @@ safe_int(B) ->
         _ -> 0
     end.
 
--spec err_msg(term()) -> binary().
+-spec err_msg({term(), binary()} | term()) -> binary().
 err_msg({_Code, M}) when is_binary(M) -> M;
-err_msg(M) when is_binary(M) -> M;
 err_msg(O) -> elib_cnv:safe_to_binary(O).

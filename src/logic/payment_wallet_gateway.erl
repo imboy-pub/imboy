@@ -70,9 +70,7 @@ charge(_OrderNo, Uid, Fen, RefNo) ->
                 {rollback, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)};
-                Other ->
-                    {error, elib_cnv:safe_to_binary(Other)}
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 
@@ -114,8 +112,7 @@ do_refund(PaymentNo, Fen, RefundRef) ->
             case wallet_ds:atomic_balance_change(Fen, Uid, TxData, RefundRef) of
                 {ok, _} -> ok;
                 {rollback, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                Other -> {error, elib_cnv:safe_to_binary(Other)}
+                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
             end;
         _ ->
             {error, <<"原支付流水不存在"/utf8>>}
