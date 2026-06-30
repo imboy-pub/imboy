@@ -18,26 +18,18 @@ get_channel_stats(ChannelIdBin) ->
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
-                    case get_message_stats(ChannelId) of
-                        {ok, TotalMessages, TotalViews} ->
-                            case channel_ds:get_reaction_count(ChannelId) of
-                                {ok, Reactions} ->
-                                    Stats = #{
-                                        <<"channel_id">> => ChannelIdBin,
-                                        <<"subscriber_count">> => maps:get(
-                                            <<"subscriber_count">>, Channel, 0
-                                        ),
-                                        <<"total_messages">> => TotalMessages,
-                                        <<"total_views">> => TotalViews,
-                                        <<"total_reactions">> => Reactions
-                                    },
-                                    {ok, Stats};
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)}
-                            end;
-                        {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
-                    end
+                    {ok, TotalMessages, TotalViews} = get_message_stats(ChannelId),
+                    {ok, Reactions} = channel_ds:get_reaction_count(ChannelId),
+                    Stats = #{
+                        <<"channel_id">> => ChannelIdBin,
+                        <<"subscriber_count">> => maps:get(
+                            <<"subscriber_count">>, Channel, 0
+                        ),
+                        <<"total_messages">> => TotalMessages,
+                        <<"total_views">> => TotalViews,
+                        <<"total_reactions">> => Reactions
+                    },
+                    {ok, Stats}
             end
     end.
 
@@ -62,9 +54,9 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
                         true ->
                             ok;
                         false ->
-                            Now = elib_dt:now(),
+                            Now = elib_dt:millisecond(),
                             case channel_ds:insert_message_view(ChannelId, MessageId, Uid, Now) of
-                                ok -> ok;
+                                {ok, _} -> ok;
                                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                             end
                     end;
@@ -85,9 +77,9 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    Now = elib_dt:now(),
+                    Now = elib_dt:millisecond(),
                     case channel_ds:insert_reaction(ChannelId, MessageId, Uid, ReactionType, Now) of
-                        ok -> ok;
+                        {ok, _} -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->
@@ -108,7 +100,7 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
                     case channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
-                        ok -> ok;
+                        {ok, _} -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->

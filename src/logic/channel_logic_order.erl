@@ -149,8 +149,6 @@ pay_order(Uid, OrderNo) ->
             end;
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
-        {error, Reason} when is_binary(Reason) ->
-            {error, Reason};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
@@ -246,8 +244,6 @@ get_order(Uid, OrderNo) ->
             end;
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
-        {error, Reason} when is_binary(Reason) ->
-            {error, Reason};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
@@ -287,8 +283,6 @@ refund_order(Uid, OrderNo, Reason0) ->
             end;
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
-        {error, Reason1} when is_binary(Reason1) ->
-            {error, Reason1};
         {error, Reason1} ->
             {error, elib_cnv:safe_to_binary(Reason1)}
     end.
@@ -325,8 +319,6 @@ admin_refund_order(OrderNo, Reason0) ->
             end;
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
-        {error, Reason1} when is_binary(Reason1) ->
-            {error, Reason1};
         {error, Reason1} ->
             {error, elib_cnv:safe_to_binary(Reason1)}
     end.
