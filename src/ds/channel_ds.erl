@@ -92,6 +92,9 @@ add_optional_fields(Data, Opts) ->
         fun(Field, Acc) ->
             case maps:get(Field, Opts, undefined) of
                 undefined -> Acc;
+                % ponytail: [] → DB default '[]'::jsonb
+                [] when Field =:= tags -> Acc;
+                Val when Field =:= tags -> Acc#{Field => jsone:encode(Val)};
                 Val -> Acc#{Field => Val}
             end
         end,
