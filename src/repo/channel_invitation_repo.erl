@@ -56,13 +56,13 @@ create(Data) ->
     InvitationCode = maps:get(invitation_code, Data, generate_invitation_code()),
     Message = maps:get(message, Data, <<>>),
     ExpiresAt = maps:get(expires_at, Data, default_expire_time()),
-    CreatedAt = maps:get(created_at, Data, elib_dt:now()),
+    CreatedAt = maps:get(created_at, Data, elib_dt:millisecond()),
 
     Id = elib_tsid:generate(channel_invitation),
     Sql =
         <<"INSERT INTO channel_invitation ",
             "(id, channel_id, inviter_uid, invitee_uid, invitation_code, message, status, expires_at, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8/1000), to_timestamp($9/1000))">>,
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8::bigint/1000), to_timestamp($9::bigint/1000))">>,
     case
         elib_pg:execute(Sql, [
             Id,
@@ -212,4 +212,4 @@ generate_code_chars(N, Chars, Acc) ->
 %% @doc 默认过期时间（7天后）
 -spec default_expire_time() -> integer().
 default_expire_time() ->
-    elib_dt:now() + (?INVITATION_EXPIRE_DAYS * 24 * 60 * 60 * 1000).
+    elib_dt:millisecond() + (?INVITATION_EXPIRE_DAYS * 24 * 60 * 60 * 1000).

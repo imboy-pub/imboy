@@ -69,7 +69,7 @@ insert(Data) ->
         <<"INSERT INTO e2ee_shard_transmission_log ",
             "(id, shard_id, key_version, uid, proxy_uid, action, direction, ",
             "metadata, ip_address, user_agent, created_at) ",
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, to_timestamp($11/1000))">>,
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, to_timestamp($11::bigint/1000))">>,
     case
         elib_pg:execute(Sql, [
             Id,

@@ -104,8 +104,8 @@ renew(Id, PeriodStart, PeriodEnd) ->
     Tb = tablename(),
     Sql =
         <<"UPDATE ", Tb/binary, " SET status = $1,",
-            " current_period_start = to_timestamp($2/1000),",
-            " current_period_end = to_timestamp($3/1000),", " updated_at = NOW()",
+            " current_period_start = to_timestamp($2::bigint/1000),",
+            " current_period_end = to_timestamp($3::bigint/1000),", " updated_at = NOW()",
             " WHERE id = $4">>,
     case elib_pg:execute(Sql, [?STATUS_ACTIVE, PeriodStart, PeriodEnd, Id]) of
         {ok, Count} -> {ok, Count};
@@ -119,7 +119,7 @@ list_expiring(BeforeTs) ->
     Sql =
         <<"SELECT ", ?COLUMNS/binary, " FROM ", Tb/binary,
             " WHERE status IN ($1, $2) AND current_period_end IS NOT NULL",
-            " AND current_period_end <= to_timestamp($3/1000)",
+            " AND current_period_end <= to_timestamp($3::bigint/1000)",
             " ORDER BY current_period_end ASC">>,
     case elib_pg:query(Sql, [?STATUS_TRIAL, ?STATUS_ACTIVE, BeforeTs]) of
         {ok, Rows} when is_list(Rows) -> Rows;

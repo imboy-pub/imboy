@@ -55,7 +55,8 @@ create(Data) ->
     Sql =
         <<"INSERT INTO ", Tb/binary, " (id, invoice_no, subscription_id, amount, currency, status,",
             " period_start, period_end, created_at)", " VALUES ($1, $2, $3, $4, $5, $6,",
-            " to_timestamp($7/1000), to_timestamp($8/1000), NOW())", " RETURNING id">>,
+            " to_timestamp($7::bigint/1000), to_timestamp($8::bigint/1000), NOW())",
+            " RETURNING id">>,
     case
         elib_pg:execute(Sql, [
             Id, InvoiceNo, SubId, Amount, Currency, ?STATUS_UNPAID, PeriodStart, PeriodEnd
