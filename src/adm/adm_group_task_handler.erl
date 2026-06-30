@@ -110,8 +110,6 @@ task_detail(<<"GET">>, Req0, State) ->
                     case group_task_logic:detail(TaskPk) of
                         {ok, Payload} ->
                             elib_response:success(Req0, Payload);
-                        {error, Msg, _Code} ->
-                            elib_response:error(Req0, Msg);
                         {error, _Reason} ->
                             elib_response:error(Req0, "查询失败")
                     end
@@ -159,17 +157,12 @@ task_pending_review(<<"GET">>, Req0, State) ->
                                                 total_pages => calc_total_pages(FallbackTotal, Size)
                                             })
                                     end;
-                                {error, Msg, _Code} ->
-                                    elib_response:error(Req0, Msg);
                                 {error, Reason} ->
                                     ?ERROR_LOG(["adm task pending_review list error: ", Reason]),
                                     elib_response:error(Req0, "查询失败")
                             end;
                         {error, not_found} ->
-                            elib_response:error(Req0, "任务不存在");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm task pending_review task query error: ", Reason]),
-                            elib_response:error(Req0, "查询失败")
+                            elib_response:error(Req0, "任务不存在")
                     end
             end
     end;
@@ -225,17 +218,12 @@ task_review(<<"POST">>, Req0, State) ->
                                         Extra
                                     ),
                                     elib_response:success(Req0, #{}, "操作成功");
-                                {error, Msg, _Code} ->
-                                    elib_response:error(Req0, Msg);
                                 {error, Reason} ->
                                     ?ERROR_LOG(["adm task review error: ", Reason]),
                                     elib_response:error(Req0, "操作失败")
                             end;
                         {error, not_found} ->
-                            elib_response:error(Req0, "作业分配不存在");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm task review assignment query error: ", Reason]),
-                            elib_response:error(Req0, "操作失败")
+                            elib_response:error(Req0, "作业分配不存在")
                     end
             end
     end;
@@ -320,10 +308,7 @@ task_restore(<<"POST">>, Req0, State) ->
                                     end
                             end;
                         {error, not_found} ->
-                            elib_response:error(Req0, "任务不存在");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm task restore query error: ", Reason]),
-                            elib_response:error(Req0, "操作失败")
+                            elib_response:error(Req0, "任务不存在")
                     end
             end
     end.
@@ -371,10 +356,7 @@ task_close(<<"POST">>, Req0, State) ->
                                     elib_response:error(Req0, "操作失败")
                             end;
                         {error, not_found} ->
-                            elib_response:error(Req0, "任务不存在");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm task close query error: ", Reason]),
-                            elib_response:error(Req0, "操作失败")
+                            elib_response:error(Req0, "任务不存在")
                     end
             end
     end.

@@ -222,7 +222,7 @@ update_friends_last_seen_at(Uid, Timestamp) ->
 %% 注意：此操作是破坏性的，通常只在用户注销账户时使用。
 %% @param Uid 用户ID
 %% @return ok
--spec delete_all_related_data(integer()) -> ok.
+-spec delete_all_related_data(integer()) -> ok | {rollback, term()}.
 delete_all_related_data(Uid) ->
     % 使用事务删除所有相关数据
     elib_pg:with_tx(fun(Conn) ->
@@ -292,13 +292,9 @@ delete_from_table_if_exists(Conn, Table0, WhereSql, Params) ->
 -spec table_exists(pid(), binary()) -> boolean().
 table_exists(Conn, Table) ->
     Sql = <<"SELECT to_regclass($1) IS NOT NULL AS present">>,
-    case elib_pg:one(Conn, Sql, [Table]) of
-        {ok, #{<<"present">> := true}} ->
-            true;
-        {ok, #{<<"present">> := <<"t">>}} ->
-            true;
-        _ ->
-            false
+    case elib_pg:execute(Conn, Sql, [Table]) of
+        {ok, _Cols, [{true}]} -> true;
+        _ -> false
     end.
 
 -spec qualify_table(binary()) -> binary().
@@ -406,7 +402,7 @@ update_allow_search(Uid, AllowSearch) when AllowSearch >= 1, AllowSearch =< 2 ->
 may_exist(Uid) -> user_repo:may_exist(Uid).
 
 %% G3: adm_user_handler 不应直调 user_repo
--spec page(integer(), integer(), binary(), binary()) -> {ok, map()} | {error, any()}.
+-spec page(integer(), integer(), map(), binary()) -> {ok, map()} | {error, any()}.
 page(Page, Size, Where, OrderBy) -> user_repo:page(Page, Size, Where, OrderBy).
 
 %% G3: user_deletion_logic 不应直调 *_repo:tablename()

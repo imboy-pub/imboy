@@ -88,8 +88,8 @@ create(BackupMap) ->
     % 检查是否已存在相同版本的备份
     case find_by_version(Uid, BackupVersion) of
         {ok, _Existing} ->
-            % 更新现有记录
-            update_existing(BackupMap);
+            % 版本已存在，直接返回已有记录
+            find_by_version(Uid, BackupVersion);
         {error, not_found} ->
             % 创建新记录
             insert_new(BackupMap)
@@ -110,9 +110,9 @@ find_latest(Uid) ->
     >>,
 
     case elib_pg:query(Sql, [Uid]) of
-        {ok, _, [Result]} ->
+        {ok, [Result | _]} ->
             {ok, row_to_map(Result)};
-        {ok, _, []} ->
+        {ok, []} ->
             {error, not_found};
         {error, Reason} ->
             ?ERROR_LOG([e2ee_local_backup_repo, find_latest_failed, Reason]),
@@ -133,9 +133,9 @@ find_by_version(Uid, Version) ->
     >>,
 
     case elib_pg:query(Sql, [Uid, Version]) of
-        {ok, _, [Result]} ->
+        {ok, [Result | _]} ->
             {ok, row_to_map(Result)};
-        {ok, _, []} ->
+        {ok, []} ->
             {error, not_found};
         {error, Reason} ->
             {error, Reason}
@@ -155,7 +155,7 @@ list_by_uid(Uid) ->
     >>,
 
     case elib_pg:query(Sql, [Uid]) of
-        {ok, _, Results} ->
+        {ok, Results} ->
             {ok, lists:map(fun row_to_map/1, Results)};
         {error, Reason} ->
             {error, Reason}
@@ -168,8 +168,8 @@ list_by_uid(Uid) ->
 delete(BackupId) ->
     Sql = <<"DELETE FROM e2ee_local_backups WHERE id = $1">>,
 
-    case elib_pg:query(Sql, [BackupId]) of
-        {ok, _, _} ->
+    case elib_pg:execute(Sql, [BackupId]) of
+        {ok, _} ->
             ?INFO_LOG([e2ee_local_backup_repo, backup_deleted, BackupId]),
             ok;
         {error, Reason} ->
@@ -185,11 +185,11 @@ delete(BackupId) ->
 delete_by_id_and_uid(BackupId, Uid) ->
     Sql = <<"DELETE FROM e2ee_local_backups WHERE id = $1 AND uid = $2">>,
 
-    case elib_pg:query(Sql, [BackupId, Uid]) of
-        {ok, 1, _} ->
+    case elib_pg:execute(Sql, [BackupId, Uid]) of
+        {ok, 1} ->
             ?INFO_LOG([e2ee_local_backup_repo, backup_deleted_by_owner, BackupId, Uid]),
             ok;
-        {ok, 0, _} ->
+        {ok, 0} ->
             {error, not_found};
         {error, Reason} ->
             ?ERROR_LOG([e2ee_local_backup_repo, delete_failed, Reason]),
@@ -230,36 +230,14 @@ insert_new(BackupMap) ->
             UserNotes
         ])
     of
-        {ok, _, [{Result}]} ->
+        {ok, [Result | _]} ->
             ?INFO_LOG([e2ee_local_backup_repo, backup_created, Uid, DeviceId, BackupVersion]),
             {ok, row_to_map(Result)};
+        {ok, []} ->
+            ?ERROR_LOG([e2ee_local_backup_repo, create_failed, empty_result]),
+            {error, empty_result};
         {error, Reason} ->
             ?ERROR_LOG([e2ee_local_backup_repo, create_failed, Reason]),
-            {error, Reason}
-    end.
-
-%% @private
-update_existing(BackupMap) ->
-    Uid = maps:get(<<"uid">>, BackupMap),
-    BackupVersion = maps:get(<<"backup_version">>, BackupMap),
-    KeyChecksum = maps:get(<<"key_checksum">>, BackupMap),
-    FileSize = maps:get(<<"file_size">>, BackupMap, 0),
-    UserNotes = maps:get(<<"user_notes">>, BackupMap, <<>>),
-
-    Sql = <<
-        "UPDATE e2ee_local_backups\n"
-        "             SET key_checksum = $1, file_size = $2, user_notes = $3\n"
-        "             WHERE uid = $4 AND backup_version = $5\n"
-        "             RETURNING id, uid, device_id, backup_version, key_checksum,\n"
-        "                      file_size, user_notes, created_at"
-    >>,
-
-    case elib_pg:query(Sql, [KeyChecksum, FileSize, UserNotes, Uid, BackupVersion]) of
-        {ok, _, [{Result}]} ->
-            ?INFO_LOG([e2ee_local_backup_repo, backup_updated, Uid, BackupVersion]),
-            {ok, row_to_map(Result)};
-        {error, Reason} ->
-            ?ERROR_LOG([e2ee_local_backup_repo, update_failed, Reason]),
             {error, Reason}
     end.
 
