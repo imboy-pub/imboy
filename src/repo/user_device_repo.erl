@@ -136,7 +136,7 @@ delete(Uid, DID) ->
     ok.
 
 % user_device_repo:save(1, 1, <<"3f039a2b4724a5b7">>, [{<<"ip">>, <<"127.0.0.1">>}]).
--spec save(binary(), integer(), binary(), map()) -> {ok, term()} | {error, term()}.
+-spec save(binary() | integer(), integer(), binary(), map()) -> {ok, term()} | {error, term()}.
 save(Now, Uid, DID, PostVals) when is_binary(DID), bit_size(DID) > 0 ->
     % 调用之前判断一次 DID不为空，可以减少一个数据库count查询
     LoginCount = user_device_repo:login_count(Uid, DID),
@@ -178,7 +178,8 @@ get_public_by_uid(Uid) ->
             " ORDER BY last_active_at desc">>,
     elib_pg:query(Sql, [Uid]).
 
--spec save(binary(), integer(), map(), binary(), integer()) -> {ok, term()} | {error, term()}.
+-spec save(binary() | integer(), integer(), map(), binary(), integer()) ->
+    {ok, term()} | {error, term()}.
 save(Now, Uid, PostVals, DID, LoginCount) when bit_size(DID) > 0, LoginCount > 0 ->
     % 更新登录次数，最近登录时间、IP
     Ip = maps:get(<<"ip">>, PostVals, <<>>),

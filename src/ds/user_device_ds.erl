@@ -101,7 +101,7 @@ login_count(Uid, DID) ->
 %% @param DID 设备ID
 %% @param PostVals 请求参数
 %% @return {ok, term()} | {error, any()}
--spec save(integer(), integer(), binary(), map()) -> {ok, term()} | {error, any()}.
+-spec save(binary() | integer(), integer(), binary(), map()) -> {ok, term()} | {error, any()}.
 save(Now, Uid, DID, PostVals) ->
     user_device_repo:save(Now, Uid, DID, PostVals).
 
