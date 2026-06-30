@@ -17,7 +17,8 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"transfer_order">>).
 
 %% @doc 创建转账（原子扣减发送者钱包 + 创单）
--spec create(integer(), integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
+-spec create(integer(), integer(), integer(), binary()) ->
+    {ok, integer()} | {rollback, term()} | {error, term()}.
 create(SenderUid, ReceiverUid, Amount, Remark) ->
     Tb = tablename(),
     WalletTb = elib_pg_sql:public_tablename(<<"wallet">>),
@@ -73,7 +74,7 @@ find_by_id(Id) ->
     end.
 
 %% @doc 接收转账（原子更新转账单 + 充值接收方钱包）
--spec accept(integer(), integer()) -> {ok, integer()} | {error, term()}.
+-spec accept(integer(), integer()) -> {ok, integer()} | {rollback, term()} | {error, term()}.
 accept(TransferId, ReceiverUid) ->
     Tb = tablename(),
     WalletTb = elib_pg_sql:public_tablename(<<"wallet">>),
@@ -122,7 +123,7 @@ accept(TransferId, ReceiverUid) ->
     end).
 
 %% @doc 退回转账（逾期退回 / 拒收退回）
--spec refund(integer()) -> {ok, integer()} | {error, term()}.
+-spec refund(integer()) -> {ok, integer()} | {rollback, term()} | {error, term()}.
 refund(TransferId) ->
     Tb = tablename(),
     WalletTb = elib_pg_sql:public_tablename(<<"wallet">>),
