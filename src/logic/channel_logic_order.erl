@@ -147,8 +147,6 @@ pay_order(Uid, OrderNo) ->
                             end
                     end
             end;
-        {ok, _} ->
-            {error, <<"订单不存在"/utf8>>};
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
         {error, Reason} when is_binary(Reason) ->
@@ -246,8 +244,6 @@ get_order(Uid, OrderNo) ->
                             {ok, order_transfer(Order)}
                     end
             end;
-        {ok, _} ->
-            {error, <<"订单不存在"/utf8>>};
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
         {error, Reason} when is_binary(Reason) ->
@@ -289,8 +285,6 @@ refund_order(Uid, OrderNo, Reason0) ->
                             {error, <<"订单状态不允许退款"/utf8>>}
                     end
             end;
-        {ok, _} ->
-            {error, <<"订单不存在"/utf8>>};
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
         {error, Reason1} when is_binary(Reason1) ->
@@ -329,8 +323,6 @@ admin_refund_order(OrderNo, Reason0) ->
                             {error, <<"订单状态不允许退款"/utf8>>}
                     end
             end;
-        {ok, _} ->
-            {error, <<"订单不存在"/utf8>>};
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>};
         {error, Reason1} when is_binary(Reason1) ->
@@ -361,10 +353,8 @@ do_refund_order(ChannelId, Uid, OrderNo, Order, Reason) ->
                 {error, RefReason} ->
                     {error, elib_cnv:safe_to_binary(RefReason)}
             end;
-        {error, PayReason} when is_binary(PayReason) ->
-            {error, PayReason};
         {error, PayReason} ->
-            {error, elib_cnv:safe_to_binary(PayReason)}
+            {error, PayReason}
     end.
 
 %% @doc 按目标网关期望单位适配金额（修复 channel 第三方支付收款/退款 100 倍偏差）：

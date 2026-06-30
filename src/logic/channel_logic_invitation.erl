@@ -27,9 +27,7 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                             {error, <<"只有私有频道支持邀请功能"/utf8>>};
                         true ->
                             do_create_invitation(ChannelId, Uid, InviteeUid)
-                    end;
-                _ ->
-                    {error, <<"频道不存在"/utf8>>}
+                    end
             end
     end.
 
@@ -74,8 +72,6 @@ accept_invitation(Uid, InvitationId) ->
                 true ->
                     do_accept_invitation(ChannelId, Uid, InvitationId, Invitation)
             end;
-        {ok, _} ->
-            {error, <<"邀请不存在"/utf8>>};
         {error, not_found} ->
             {error, <<"邀请不存在"/utf8>>};
         {error, Reason} ->
@@ -134,8 +130,6 @@ get_my_invitations(Uid) ->
                 fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]
             ),
             {ok, Invitations2};
-        {ok, Other} ->
-            {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
@@ -148,8 +142,6 @@ get_sent_invitations(Uid) ->
                 fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]
             ),
             {ok, Invitations2};
-        {ok, Other} ->
-            {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.

@@ -31,7 +31,7 @@ create(SenderUid, ReceiverUid, Amount, Remark) ->
             <<"UPDATE ", WalletTb/binary,
                 " SET balance = balance - $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 AND balance >= $1 RETURNING balance, id">>,
         case elib_pg:execute(Conn, DeductSql, [Amount, SenderUid]) of
-            {ok, 1, [[NewBalance, WalletId]]} ->
+            {ok, 1, [{NewBalance, WalletId}]} ->
                 %% 2. 写入发送方钱包流水（tx_type=5：转账转出）
                 TxSql =
                     <<"INSERT INTO ", TxTb/binary,
@@ -86,7 +86,7 @@ accept(TransferId, ReceiverUid) ->
             <<"SELECT sender_uid, receiver_uid, amount, status FROM ", Tb/binary,
                 " WHERE id = $1 FOR UPDATE">>,
         case elib_pg:execute(Conn, LockSql, [TransferId]) of
-            {ok, 1, [[_SenderUid, TargetReceiverUid, Amount, Status]]} ->
+            {ok, 1, [{_SenderUid, TargetReceiverUid, Amount, Status}]} ->
                 %% 2. 验证合法性
                 case Status =:= <<"pending">> andalso TargetReceiverUid =:= ReceiverUid of
                     true ->
@@ -100,7 +100,7 @@ accept(TransferId, ReceiverUid) ->
                         CreditSql =
                             <<"UPDATE ", WalletTb/binary,
                                 " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
-                        {ok, 1, [[NewBalance, WalletId]]} = elib_pg:execute(Conn, CreditSql, [
+                        {ok, 1, [{NewBalance, WalletId}]} = elib_pg:execute(Conn, CreditSql, [
                             Amount, ReceiverUid
                         ]),
 
@@ -134,7 +134,7 @@ refund(TransferId) ->
         LockSql =
             <<"SELECT sender_uid, amount, status FROM ", Tb/binary, " WHERE id = $1 FOR UPDATE">>,
         case elib_pg:execute(Conn, LockSql, [TransferId]) of
-            {ok, 1, [[SenderUid, Amount, Status]]} ->
+            {ok, 1, [{SenderUid, Amount, Status}]} ->
                 case Status =:= <<"pending">> of
                     true ->
                         %% 2. 更新状态
@@ -147,7 +147,7 @@ refund(TransferId) ->
                         RefundSql =
                             <<"UPDATE ", WalletTb/binary,
                                 " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
-                        {ok, 1, [[NewBalance, WalletId]]} = elib_pg:execute(Conn, RefundSql, [
+                        {ok, 1, [{NewBalance, WalletId}]} = elib_pg:execute(Conn, RefundSql, [
                             Amount, SenderUid
                         ]),
 

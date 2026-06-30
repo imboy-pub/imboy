@@ -92,9 +92,7 @@ get_channel(ChannelIdBin, Uid) ->
                         user_role => UserRole,
                         is_subscribed => IsSubscribed
                     },
-                    {ok, channel_transfer(Channel2)};
-                _ ->
-                    {error, <<"频道不存在"/utf8>>}
+                    {ok, channel_transfer(Channel2)}
             end
     end.
 
@@ -122,9 +120,7 @@ get_channel_by_custom_id(CustomId, Uid) ->
                         is_subscribed => IsSubscribed
                     },
                     {ok, channel_transfer(Channel2)}
-            end;
-        _ ->
-            {error, <<"频道不存在"/utf8>>}
+            end
     end.
 
 -spec update_channel(integer(), binary(), map()) -> {ok, map()} | {error, binary()}.
@@ -244,7 +240,7 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
                     case channel_subscription_ds:clear_unread(ChannelId, Uid) of
-                        {ok, _} ->
+                        ok ->
                             ok;
                         {error, ClearReason} ->
                             ?ERROR_LOG(["channel_clear_unread_failed", ChannelId, Uid, ClearReason])
@@ -261,12 +257,8 @@ search_channels(Keyword, Limit) ->
     case channel_ds:search(Keyword, Limit, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
-        {ok, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec get_discover_channels(integer()) -> {ok, list(map())} | {error, binary()}.
@@ -274,12 +266,8 @@ get_discover_channels(Limit) ->
     case channel_ds:list_discover(Limit, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
-        {ok, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec add_admin(integer(), binary(), integer(), integer()) -> ok | {error, binary()}.
@@ -358,9 +346,7 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                                                 {error, Reason} ->
                                                     {error, elib_cnv:safe_to_binary(Reason)};
                                                 Message2 when is_map(Message2) ->
-                                                    {ok, message_transfer(Message2)};
-                                                _Other ->
-                                                    {error, elib_cnv:safe_to_binary(_Other)}
+                                                    {ok, message_transfer(Message2)}
                                             end;
                                         {error, Reason} ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -368,9 +354,7 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                             end;
                         false ->
                             {error, <<"消息不存在"/utf8>>}
-                    end;
-                _ ->
-                    {error, <<"消息不存在"/utf8>>}
+                    end
             end
     end.
 
@@ -411,9 +395,7 @@ delete_message(Uid, MessageIdBin) ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
                                     end
                             end
-                    end;
-                _ ->
-                    {error, <<"消息不存在"/utf8>>}
+                    end
             end
     end.
 
@@ -468,17 +450,13 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
                                                                         MessageId, Uid, RevokedAt
                                                                     )
                                                                 of
-                                                                    {ok, Affected} when
-                                                                        Affected > 0
-                                                                    ->
+                                                                    ok ->
                                                                         channel_logic_notify:notify_message_revoked(
                                                                             ChannelId,
                                                                             MessageId,
                                                                             Uid,
                                                                             RevokedAt
                                                                         ),
-                                                                        ok;
-                                                                    {ok, 0} ->
                                                                         ok;
                                                                     {error, Reason} ->
                                                                         {error,
@@ -490,9 +468,7 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
                                                 end
                                         end
                                 end
-                        end;
-                    _ ->
-                        {error, <<"消息不存在"/utf8>>}
+                        end
                 end
         end,
     channel_logic_common:log_channel_action(
@@ -515,12 +491,8 @@ get_admins(ChannelId) ->
     case channel_admin_ds:list_by_channel(ChannelId) of
         {ok, Admins} when is_list(Admins) ->
             {ok, [A || A <- Admins, is_map(A)]};
-        {ok, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec update_admin_role(integer(), integer() | binary(), integer(), integer()) ->

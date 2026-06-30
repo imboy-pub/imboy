@@ -79,28 +79,15 @@ notice_list(<<"GET">>, Req0, State) ->
                     elib_response:error(Req0, "参数错误");
                 true ->
                     case group_notice_ds:list_by_group_id(Gid, Page, Size) of
-                        {ok, List} ->
+                        {ok, {Total, List}} ->
                             NoticeList = [normalize_notice_row(Item) || Item <- List],
-                            case group_notice_ds:count_by_group_id(Gid) of
-                                {ok, Total} ->
-                                    elib_response:success(Req0, #{
-                                        list => NoticeList,
-                                        total => Total,
-                                        page => Page,
-                                        size => Size,
-                                        total_pages => calc_total_pages(Total, Size)
-                                    });
-                                {error, Reason} ->
-                                    ?ERROR_LOG(["adm notice list count error: ", Reason]),
-                                    FallbackTotal = length(NoticeList),
-                                    elib_response:success(Req0, #{
-                                        list => NoticeList,
-                                        total => FallbackTotal,
-                                        page => Page,
-                                        size => Size,
-                                        total_pages => calc_total_pages(FallbackTotal, Size)
-                                    })
-                            end;
+                            elib_response:success(Req0, #{
+                                list => NoticeList,
+                                total => Total,
+                                page => Page,
+                                size => Size,
+                                total_pages => calc_total_pages(Total, Size)
+                            });
                         {error, Reason} ->
                             ?ERROR_LOG(["adm notice list error: ", Reason]),
                             elib_response:error(Req0, "查询失败")
@@ -125,10 +112,7 @@ notice_detail(<<"GET">>, Req0, State) ->
                         {ok, Notice} ->
                             elib_response:success(Req0, normalize_notice_row(Notice));
                         {error, not_found} ->
-                            elib_response:error(Req0, "公告不存在");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm notice detail error: ", Reason]),
-                            elib_response:error(Req0, "查询失败")
+                            elib_response:error(Req0, "公告不存在")
                     end
             end
     end.
@@ -151,7 +135,7 @@ notice_delete(<<"POST">>, Req0, State) ->
                         {ok, Notice} ->
                             GroupId = maps:get(<<"group_id">>, Notice, 0),
                             case group_notice_ds:soft_delete(NoticePk) of
-                                {ok, Affected} when Affected > 0 ->
+                                ok ->
                                     _ = audit_group_governance(
                                         maps:get(adm_user_id, State, 0),
                                         GroupId,
@@ -160,17 +144,12 @@ notice_delete(<<"POST">>, Req0, State) ->
                                         #{<<"scope">> => <<"notice">>}
                                     ),
                                     elib_response:success(Req0, #{}, "操作成功");
-                                {ok, 0} ->
-                                    elib_response:error(Req0, "公告不存在");
                                 {error, Reason} ->
                                     ?ERROR_LOG(["adm notice delete error: ", Reason]),
                                     elib_response:error(Req0, "操作失败")
                             end;
                         {error, not_found} ->
-                            elib_response:error(Req0, "公告不存在");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm notice delete query error: ", Reason]),
-                            elib_response:error(Req0, "操作失败")
+                            elib_response:error(Req0, "公告不存在")
                     end
             end
     end.

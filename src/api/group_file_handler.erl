@@ -1,6 +1,16 @@
 -module(group_file_handler).
 
--dialyzer({nowarn_function, [handle_action/3, parse_multipart/1]}).
+-dialyzer(
+    {nowarn_function, [
+        handle_action/3,
+        upload/2,
+        download/2,
+        parse_multipart/1,
+        parse_multipart/5,
+        normalize_file_part/3,
+        choose_binary/2
+    ]}
+).
 
 -behavior(cowboy_rest).
 

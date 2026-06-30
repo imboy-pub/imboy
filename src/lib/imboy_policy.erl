@@ -209,8 +209,6 @@ saved_feature_overrides() -> imboy_policy_persistence:saved_feature_overrides().
 flatten_saved_feature_config(C) -> imboy_policy_persistence:flatten_saved_feature_config(C).
 compact_saved_plugin_overrides(F) -> imboy_policy_persistence:compact_saved_plugin_overrides(F).
 maybe_put_saved_section(S, K, V) -> imboy_policy_persistence:maybe_put_saved_section(S, K, V).
-normalize_config_sections(P) -> imboy_policy_persistence:normalize_config_sections(P).
-persist_config_sections(S) -> imboy_policy_persistence:persist_config_sections(S).
 -spec effective_features() -> map().
 effective_features() ->
     Profile = current_profile(),
@@ -267,15 +265,6 @@ public_effective_policy(Policy) ->
         Plugins0
     ),
     imboy_policy_codec:public_term(Policy#{plugins => Plugins}).
-
--spec preview_view(term()) -> map().
-preview_view(S) -> imboy_policy_view:preview_view(S).
-
--spec preview_saved_view(term()) -> map().
-preview_saved_view(S) -> imboy_policy_view:preview_saved_view(S).
-
--spec preview_effective_view(term()) -> map().
-preview_effective_view(S) -> imboy_policy_view:preview_effective_view(S).
 
 -spec capability_adjustments(map(), map()) -> map().
 capability_adjustments(SavedCapabilities, EffectiveCapabilities) ->
@@ -862,7 +851,6 @@ normalize_capabilities(C, D) -> imboy_policy_normalize:normalize_capabilities(C,
 normalize_capability_payload(V) -> imboy_policy_normalize:normalize_capability_payload(V).
 normalize_feature_payload(V) -> imboy_policy_normalize:normalize_feature_payload(V).
 
-normalize_map(V) -> imboy_policy_codec:normalize_map(V).
 normalize_profile_input(V) -> imboy_policy_normalize:normalize_profile_input(V).
 
 preview_adjustments_view(S, E) -> imboy_policy_view:preview_adjustments_view(S, E).

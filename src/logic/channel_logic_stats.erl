@@ -37,9 +37,7 @@ get_channel_stats(ChannelIdBin) ->
                             end;
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
-                    end;
-                _ ->
-                    {error, <<"频道不存在"/utf8>>}
+                    end
             end
     end.
 
@@ -66,11 +64,9 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
                         false ->
                             Now = elib_dt:now(),
                             case channel_ds:insert_message_view(ChannelId, MessageId, Uid, Now) of
-                                {ok, _} -> ok;
+                                ok -> ok;
                                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
-                            end;
-                        {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            end
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
@@ -91,7 +87,7 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
                 ok ->
                     Now = elib_dt:now(),
                     case channel_ds:insert_reaction(ChannelId, MessageId, Uid, ReactionType, Now) of
-                        {ok, _} -> ok;
+                        ok -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->
@@ -112,7 +108,7 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
                     case channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
-                        {ok, _} -> ok;
+                        ok -> ok;
                         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->
@@ -130,8 +126,6 @@ get_daily_stats(ChannelIdBin, Days) ->
             case channel_ds:get_daily_stats(ChannelId, Days) of
                 {ok, Stats} when is_list(Stats) ->
                     {ok, [S || S <- Stats, is_map(S)]};
-                {ok, Other} ->
-                    {error, elib_cnv:safe_to_binary(Other)};
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
             end
