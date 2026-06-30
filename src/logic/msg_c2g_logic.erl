@@ -181,7 +181,7 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
     binary(),
     term(),
     binary(),
-    term(),
+    binary(),
     integer(),
     binary()
 ) -> ok | {reply, map()}.
@@ -245,23 +245,6 @@ do_stage_and_send_c2g(
                         ok = ?ERROR_LOG(
                             "[C2G_REPLY_LOOKUP_FAILED] MsgId=~s, ReplyToMsgId=~s, Reason=~p~n",
                             [MsgId, ReplyToMsgId, Reason]
-                        ),
-                        msg_store_ds:stage(
-                            <<"c2g">>,
-                            MsgId,
-                            MsgType,
-                            Action,
-                            E2EE,
-                            Msg2,
-                            CurrentUid,
-                            MemberUids,
-                            CreatedAtRfc,
-                            CreatedAtRfc
-                        );
-                    _Other ->
-                        ok = ?ERROR_LOG(
-                            "[C2G_REPLY_LOOKUP_UNEXPECTED] MsgId=~s, ReplyToMsgId=~s, Result=~p~n",
-                            [MsgId, ReplyToMsgId, _Other]
                         ),
                         msg_store_ds:stage(
                             <<"c2g">>,
@@ -350,7 +333,7 @@ do_stage_and_send_c2g(
             Mentions = mentions_from_payload(Payload),
             case Mentions of
                 [] -> ok;
-                _ -> mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
+                _ -> _ = mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
             end,
 
             ok;
@@ -466,8 +449,10 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                             NowMS = elib_dt:millisecond(),
 
                             % 编辑沿用权限校验，但不受撤回时限约束
+                            % ponytail: guard on integer to avoid badarith when CreatedAt is empty/invalid
                             case
                                 ActionType =:= revoke andalso
+                                    is_integer(CreatedAtMs) andalso
                                     NowMS - CreatedAtMs > ?REVOKE_TIMEOUT_MS
                             of
                                 true ->
