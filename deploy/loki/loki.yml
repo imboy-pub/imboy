@@ -49,7 +49,7 @@ ruler:
 
 # 保留 30 天日志（与 Prometheus 保留期一致）
 limits_config:
-  retention_period: 720h      # 30d
+  retention_period: 4320h     # 180d（等保2.0三级要求）
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32
   # 防止单个查询拖垮服务

@@ -1,0 +1,50 @@
+# Alertmanager 配置 —— IMBoy 生产部署
+#
+# 配置说明：
+#   1. 默认 receiver 为 "null"（仅接收，不发送通知）
+#   2. 启用邮件通知：填写 smtp_* 参数并将 route.receiver 改为 "email"
+#   3. 启用钉钉通知：填写 dingtalk_api_url 并将 route.receiver 改为 "dingtalk"
+#
+# 部署后验证：
+#   docker exec imboy_alertmanager wget -qO- http://localhost:9093/-/healthy
+
+global:
+  resolve_timeout: 5m
+  # smtp_smarthost: 'smtp.example.com:587'
+  # smtp_from: 'alertmanager@example.com'
+  # smtp_auth_username: 'alertmanager@example.com'
+  # smtp_auth_password: 'YOUR_SMTP_PASSWORD'
+
+route:
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'null'
+
+  routes:
+    - match:
+        severity: critical
+      group_wait: 10s
+      repeat_interval: 1h
+      receiver: 'null'   # 生产环境改为 'email' 或 'dingtalk'
+
+receivers:
+  - name: 'null'
+
+  # - name: 'email'
+  #   email_configs:
+  #     - to: 'ops-team@example.com'
+  #       send_resolved: true
+
+  # - name: 'dingtalk'
+  #   webhook_configs:
+  #     - url: 'http://dingtalk-webhook:8060/dingtalk/ops/send'
+  #       send_resolved: true
+
+inhibit_rules:
+  - source_match:
+      alertname: IMBoyNodeDown
+    target_match_re:
+      alertname: '.+'
+    equal: ['instance']
