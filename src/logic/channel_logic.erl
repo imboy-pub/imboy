@@ -238,7 +238,7 @@ sync_channels(Uid, Since) ->
 get_pinned_messages(ChannelId) ->
     channel_message_ds:list_pinned(ChannelId).
 
--spec get_message_reactions(integer(), binary()) -> {ok, list(map())} | {error, binary()}.
+-spec get_message_reactions(binary(), binary()) -> {ok, list(map())} | {error, binary()}.
 get_message_reactions(_ChannelId, MessageId) ->
     msg_reaction_ds:get_reactions(MessageId, <<"channel">>).
 

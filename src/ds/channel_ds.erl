@@ -324,7 +324,8 @@ insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
 insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     channel_repo:insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt).
 
--spec delete_reaction(integer(), integer(), integer(), binary()) -> ok | {error, any()}.
+-spec delete_reaction(integer(), integer(), integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, any()}.
 delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
     channel_repo:delete_reaction(ChannelId, MessageId, UserId, ReactionType).
 

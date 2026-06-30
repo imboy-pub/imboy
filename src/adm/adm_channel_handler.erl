@@ -428,11 +428,11 @@ stats(<<"GET">>, Req0) ->
         {error, Msg} ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
-            ChannelIdBin = ChannelId,
+            ChannelIdBin = integer_to_binary(ChannelId),
             case channel_logic:get_channel_stats(ChannelIdBin) of
                 {ok, Stats} ->
                     Payload = #{
-                        <<"channel_id">> => ChannelIdBin,
+                        <<"channel_id">> => ChannelId,
                         <<"subscriber_count">> => maps:get(<<"subscriber_count">>, Stats, 0),
                         <<"total_messages">> => maps:get(<<"total_messages">>, Stats, 0),
                         <<"total_views">> => maps:get(<<"total_views">>, Stats, 0),
