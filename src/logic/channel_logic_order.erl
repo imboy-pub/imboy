@@ -41,9 +41,7 @@ create_order(Uid, ChannelIdBin) ->
                             {error, <<"只有付费频道支持购买"/utf8>>};
                         true ->
                             do_create_order(ChannelId, Uid)
-                    end;
-                _ ->
-                    {error, <<"频道不存在"/utf8>>}
+                    end
             end
     end.
 
@@ -68,19 +66,13 @@ do_create_order(ChannelId, Uid) ->
                             case channel_order_ds:find_by_order_no(OrderNo) of
                                 {ok, Order} when is_map(Order) ->
                                     {ok, order_transfer(Order)};
-                                {ok, _} ->
-                                    {error, <<"订单不存在"/utf8>>};
                                 {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                Other ->
-                                    {error, elib_cnv:safe_to_binary(Other)}
+                                    {error, elib_cnv:safe_to_binary(Reason)}
                             end;
                         {error, Reason} when is_binary(Reason) ->
                             {error, Reason};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)};
-                        _Other ->
-                            {error, elib_cnv:safe_to_binary(_Other)}
+                            {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, not_found} ->
                     {error, <<"频道价格未配置"/utf8>>};
@@ -162,9 +154,7 @@ pay_order(Uid, OrderNo) ->
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 归一网关返回：兼容 {ok, PayNo} 与 {ok, PayNo, Extra}，
@@ -234,14 +224,10 @@ get_my_orders(Uid) ->
         {ok, Orders} when is_list(Orders) ->
             Orders2 = lists:map(fun order_transfer/1, [O || O <- Orders, is_map(O)]),
             {ok, Orders2};
-        {ok, Other} ->
-            {error, elib_cnv:safe_to_binary(Other)};
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec get_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
@@ -267,9 +253,7 @@ get_order(Uid, OrderNo) ->
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec refund_order(integer(), binary()) -> ok | {error, binary()}.
@@ -312,9 +296,7 @@ refund_order(Uid, OrderNo, Reason0) ->
         {error, Reason1} when is_binary(Reason1) ->
             {error, Reason1};
         {error, Reason1} ->
-            {error, elib_cnv:safe_to_binary(Reason1)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason1)}
     end.
 
 %% @doc 管理端代发退款：不做订单归属校验，管理员可退任意订单。
@@ -354,9 +336,7 @@ admin_refund_order(OrderNo, Reason0) ->
         {error, Reason1} when is_binary(Reason1) ->
             {error, Reason1};
         {error, Reason1} ->
-            {error, elib_cnv:safe_to_binary(Reason1)};
-        _Other ->
-            {error, elib_cnv:safe_to_binary(_Other)}
+            {error, elib_cnv:safe_to_binary(Reason1)}
     end.
 
 %% @doc 退款执行：网关退款 → 改订单状态为已退款(2) → 取消频道订阅

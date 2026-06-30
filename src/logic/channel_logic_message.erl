@@ -55,12 +55,8 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
                             do_create_channel(Uid, Name, Type, Opts)
                     end
             end;
-        {ok, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)};
-        _Reason ->
-            {error, elib_cnv:safe_to_binary(_Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 do_create_channel(Uid, Name, Type, Opts) ->
@@ -68,8 +64,7 @@ do_create_channel(Uid, Name, Type, Opts) ->
         {ok, ChannelId} ->
             case channel_ds:find_by_id(ChannelId, <<"*">>) of
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                Channel when is_map(Channel) -> {ok, channel_transfer(Channel)};
-                _Other -> {error, elib_cnv:safe_to_binary(_Other)}
+                Channel when is_map(Channel) -> {ok, channel_transfer(Channel)}
             end;
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
@@ -155,9 +150,7 @@ update_channel(Uid, ChannelIdBin, Data) ->
                                     {error, elib_cnv:safe_to_binary(Reason)};
                                 Channel when is_map(Channel) ->
                                     channel_logic_notify:notify_channel_update(ChannelId, Channel),
-                                    {ok, channel_transfer(Channel)};
-                                _Other ->
-                                    {error, elib_cnv:safe_to_binary(_Other)}
+                                    {ok, channel_transfer(Channel)}
                             end;
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -212,9 +205,7 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
                                         ChannelId, Message2
                                     ),
                                     push_unread_updates(ChannelId),
-                                    {ok, Message2};
-                                _Other ->
-                                    {error, elib_cnv:safe_to_binary(_Other)}
+                                    {ok, Message2}
                             end;
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
@@ -235,12 +226,8 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
                     case channel_message_ds:list_by_channel(ChannelId, Cursor, Limit) of
                         {ok, Messages} when is_list(Messages) ->
                             {ok, [message_transfer(M) || M <- Messages, is_map(M)]};
-                        {ok, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)};
-                        _Reason ->
-                            {error, elib_cnv:safe_to_binary(_Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)}
                     end;
                 {error, Reason} ->
                     {error, Reason}
