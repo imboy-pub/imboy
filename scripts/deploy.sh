@@ -263,6 +263,8 @@ ssh_exec "
   mkdir -p '$RELEASE_DIR'
   cd '$RELEASE_DIR' && tar -xzf '$RELEASE_TARBALL'
   REL_VSN_DIR=\$(find '$RELEASE_DIR/releases' -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
+  # 解包后覆盖 http_port（tarball 内含旧值，必须在这里改）
+  sed -i \"s/{http_port,[ ]*[0-9]\\+}/{http_port, $APP_PORT}/\" \"\$REL_VSN_DIR/sys.config\"
   cat > \"\$REL_VSN_DIR/vm.args\" <<'VMARGS'
 -name ${NODE_NAME}@${NODE_HOST}
 -setcookie ${COOKIE}
