@@ -257,8 +257,7 @@ credit_wallet_in_tx(Conn, WalletTb, TxTb, Uid, Amount, RefNo) ->
 
 %% @doc 判断是否 PG 唯一约束冲突(23505)
 -spec is_unique_violation(term()) -> boolean().
-is_unique_violation({pgsql_error, #{code := <<"23505">>}}) -> true;
-is_unique_violation({error, {pgsql_error, #{code := <<"23505">>}}}) -> true;
+is_unique_violation({error, error, _, unique_violation, _, _}) -> true;
 is_unique_violation(_) -> false.
 
 %% @doc 生成充值订单号

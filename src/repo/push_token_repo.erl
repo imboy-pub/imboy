@@ -32,9 +32,10 @@ upsert(Uid, DeviceId, DeviceType, Platform, Token) ->
     Tb = tablename(),
     Now = elib_dt:now(),
     %% 先将该设备旧 token 置为无效
-    DeactivateSql = <<"UPDATE ", Tb/binary,
-                      " SET status = 0, updated_at = $1"
-                      " WHERE user_id = $2 AND device_id = $3 AND status = 1">>,
+    DeactivateSql =
+        <<"UPDATE ", Tb/binary,
+            " SET status = 0, updated_at = $1"
+            " WHERE user_id = $2 AND device_id = $3 AND status = 1">>,
     _ = elib_pg:execute(DeactivateSql, [Now, Uid, DeviceId]),
     %% 插入新 token
     Id = elib_tsid:generate(push_token),
@@ -60,7 +61,8 @@ upsert(Uid, DeviceId, DeviceType, Platform, Token) ->
 deactivate(Uid, DeviceId) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET status = 0, updated_at = $1"
             " WHERE user_id = $2 AND device_id = $3 AND status = 1">>,
     elib_pg:execute(Sql, [Now, Uid, DeviceId]).
@@ -70,7 +72,8 @@ deactivate(Uid, DeviceId) ->
 deactivate_by_token(Token) ->
     Tb = tablename(),
     Now = elib_dt:now(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET status = 0, updated_at = $1"
             " WHERE token = $2 AND status = 1">>,
     elib_pg:execute(Sql, [Now, Token]).
@@ -80,10 +83,11 @@ deactivate_by_token(Token) ->
 -spec deactivate_inactive(pos_integer()) -> {ok, integer()} | {error, term()}.
 deactivate_inactive(InactiveDays) ->
     Tb = tablename(),
-    Now = elib_dt:now(),
+    Now = erlang:system_time(millisecond),
     %% 计算截止时间：当前时间减去 InactiveDays 天（毫秒）
     CutoffMs = Now - InactiveDays * 86400000,
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET status = 0, updated_at = $1"
             " WHERE status = 1 AND updated_at < $2">>,
     elib_pg:execute(Sql, [Now, CutoffMs]).
@@ -92,9 +96,12 @@ deactivate_inactive(InactiveDays) ->
 -spec list_by_uid(integer()) -> {ok, list()} | {error, term()}.
 list_by_uid(Uid) ->
     Tb = tablename(),
-    Sql = <<"SELECT device_id, device_type, platform, token"
-            " FROM ", Tb/binary,
-            " WHERE user_id = $1 AND status = 1">>,
+    Sql = <<
+        "SELECT device_id, device_type, platform, token"
+        " FROM ",
+        Tb/binary,
+        " WHERE user_id = $1 AND status = 1"
+    >>,
     elib_pg:query(Sql, [Uid]).
 
 %% @doc 批量查询多个用户的活跃推送 token
@@ -103,9 +110,12 @@ list_by_uids([]) ->
     {ok, []};
 list_by_uids(Uids) when is_list(Uids) ->
     Tb = tablename(),
-    Sql = <<"SELECT user_id, device_id, device_type, platform, token"
-            " FROM ", Tb/binary,
-            " WHERE user_id = ANY($1) AND status = 1">>,
+    Sql = <<
+        "SELECT user_id, device_id, device_type, platform, token"
+        " FROM ",
+        Tb/binary,
+        " WHERE user_id = ANY($1) AND status = 1"
+    >>,
     elib_pg:query(Sql, [Uids]).
 
 %% @doc 分页查询推送 token（Admin 管理用）
@@ -117,11 +127,14 @@ list_page(Page, Size) ->
     case elib_pg:one(CountSql, []) of
         {ok, #{<<"count">> := Total}} ->
             Offset = (Page - 1) * Size,
-            DataSql = <<"SELECT user_id, device_id, device_type, platform, token, created_at, updated_at"
-                        " FROM ", Tb/binary,
-                        " WHERE status = 1"
-                        " ORDER BY updated_at DESC"
-                        " LIMIT $1 OFFSET $2">>,
+            DataSql = <<
+                "SELECT user_id, device_id, device_type, platform, token, created_at, updated_at"
+                " FROM ",
+                Tb/binary,
+                " WHERE status = 1"
+                " ORDER BY updated_at DESC"
+                " LIMIT $1 OFFSET $2"
+            >>,
             case elib_pg:query(DataSql, [Size, Offset]) of
                 {ok, Rows} ->
                     {ok, #{list => Rows, total => Total}};

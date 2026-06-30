@@ -163,8 +163,6 @@ trim_binary(Bin) ->
     list_to_binary(string:trim(binary_to_list(Bin))).
 
 -spec join_binary([binary()], binary()) -> binary().
-join_binary([], _Sep) ->
-    <<>>;
 join_binary([One], _Sep) ->
     One;
 join_binary([H | T], Sep) ->

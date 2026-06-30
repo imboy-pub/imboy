@@ -472,15 +472,9 @@ decode_positive_id(Value) ->
             0
     end.
 
--spec normalize_non_empty_binary(term()) -> binary().
-normalize_non_empty_binary(undefined) ->
-    <<>>;
+-spec normalize_non_empty_binary(binary()) -> binary().
 normalize_non_empty_binary(Value) when is_binary(Value) ->
     list_to_binary(string:trim(binary_to_list(Value)));
-normalize_non_empty_binary(Value) when is_list(Value) ->
-    list_to_binary(string:trim(Value));
-normalize_non_empty_binary(Value) when is_integer(Value) ->
-    integer_to_binary(Value);
 normalize_non_empty_binary(_) ->
     <<>>.
 

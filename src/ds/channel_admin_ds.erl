@@ -16,10 +16,10 @@
 -export([find/2]).
 -export([page/5]).
 
--spec add(map()) -> {ok, integer(), map()} | {error, any()}.
+-spec add(map()) -> {ok, integer()} | {error, any()}.
 add(Data) -> channel_admin_repo:add(Data).
 
--spec add(epgsql:connection(), map()) -> {ok, integer(), map()} | {error, any()}.
+-spec add(epgsql:connection(), map()) -> {ok, integer()} | {error, any()}.
 add(Conn, Data) -> channel_admin_repo:add(Conn, Data).
 
 -spec delete(integer(), integer()) -> {ok, integer()} | {error, any()}.
