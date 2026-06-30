@@ -47,8 +47,22 @@ server {
         return 403;
     }
 
+    # passport 登录接口：10 req/min/IP，burst=5（宽容短暂集中请求，超出立即 429）
+    location ~ ^/v1/passport/ {
+        limit_req zone=passport_per_ip burst=5 nodelay;
+        limit_req_status 429;
+        proxy_pass http://imboy_backend:9800;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # WebSocket + REST 同源转发到后端 Cowboy
     location / {
+        limit_req zone=api_per_ip burst=20 nodelay;
+        limit_req_status 429;
         proxy_pass http://imboy_backend:9800;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
