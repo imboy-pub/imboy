@@ -15,12 +15,15 @@
 | `/v1/wallet/recharge/:order_no` | 2026-07-01 | 安全通过（IDOR 防护 `order.user_id==current_uid` + SQL 全 `$N` 参数化 + JWT 鉴权）；补 openapi spec（路由原先未文档化）；加 `recharge_logic_query_tests` 本人/非本人/不存在 三用例。输入校验 LOW：order_no 仅校验非空无格式上限（IDOR+参数化已挡实质风险，暂不改） | 4c9b5a36 |
 | `/v1/wallet/recharge/order` | 2026-07-01 | 安全通过（金额 `[Min,Max]` 区间校验 + 支付方式白名单[生产排除 mock] + `user_id` 来自 JWT 无 mass-assignment + SQL 全参数化 + JWT 鉴权）；补 openapi spec（路由原先未文档化）；加 `recharge_logic_create_tests` 正常/金额越界/方式非法 三用例 | 44782764 |
 | `/v1/wallet/recharge/pay` | 2026-07-01 | 安全通过（IDOR 防护 `order.user_id==current_uid` + 状态必须待支付 + 金额/方式取自订单快照防篡改 + SQL 全参数化 + JWT）；补 openapi spec；加 `recharge_logic_pay_access_tests` 非本人/非待支付 两拒绝用例（happy path 已由 `envelope_tests` 覆盖） | 760d67e7 |
+| `/v1/wallet/topup` | 2026-07-01 | 🚨 **CRITICAL 已修**：mock 充值原先三层（handler/logic/ds）均无生产门禁，生产可凭空生成余额。修复：新增 `wallet_logic:topup_enabled_for_env/1`（pro/prod/production/未配置→拒绝）+ `wallet_handler:topup/2` 入口拦截；加 `wallet_logic_topup_tests` 7 用例；更新 topup.yaml | 3b940688 |
 
 ---
 
 ## 待人工确认
 
 _（loop 遇到不确定改动时追加到此处）_
+
+- **[加固建议] `/v1/wallet/topup` 路由级 dev-only 注册**：当前修复已在 handler 入口拦截生产请求（CRITICAL 已堵，见 3b940688），但路由仍于 `get_routes()` 在生产注册（仅返回错误）。可进一步加固：仿 `test_routes()` 用 `is_dev_env()` 把 topup 移到 dev-only 注册段，生产连路由都不暴露（彻底消除攻击面）。需先评估是否有运维脚本/监控依赖该端点。— 2026-07-01
 
 ---
 
@@ -33,7 +36,7 @@ _（loop 遇到不确定改动时追加到此处）_
 - [x] `/v1/wallet/recharge/:order_no` (#4c9b5a36)
 - [x] `/v1/wallet/recharge/order` (#44782764)
 - [x] `/v1/wallet/recharge/pay` (#760d67e7)
-- [ ] `/v1/wallet/topup`
+- [x] `/v1/wallet/topup` (#3b940688 🚨CRITICAL 已修)
 - [ ] `/v1/wallet/withdraw`
 - [ ] `/v1/wallet/transfer/send`
 - [ ] `/v1/wallet/transfer/accept`
