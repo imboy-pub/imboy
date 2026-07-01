@@ -61,22 +61,28 @@ create_schedule(
     RemindBefore,
     ParticipantIds
 ) ->
-    % 验证参与人数量
-    case length(ParticipantIds) > ?MAX_PARTICIPANTS of
-        true ->
-            {error, too_many_participants};
+    % 验证发起人是否为该群成员，防止对任意群创建骚扰日程
+    case group_ds:is_member(CreatorId, GroupId) of
         false ->
-            do_create_schedule(
-                GroupId,
-                CreatorId,
-                Title,
-                Description,
-                Location,
-                StartAt,
-                EndAt,
-                RemindBefore,
-                ParticipantIds
-            )
+            {error, not_group_member};
+        true ->
+            % 验证参与人数量
+            case length(ParticipantIds) > ?MAX_PARTICIPANTS of
+                true ->
+                    {error, too_many_participants};
+                false ->
+                    do_create_schedule(
+                        GroupId,
+                        CreatorId,
+                        Title,
+                        Description,
+                        Location,
+                        StartAt,
+                        EndAt,
+                        RemindBefore,
+                        ParticipantIds
+                    )
+            end
     end.
 
 %% @doc 内部创建日程实现
