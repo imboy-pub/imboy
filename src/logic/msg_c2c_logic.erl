@@ -345,8 +345,10 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
             case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
                 {ok, MsgData} ->
                     %% 【新增】检查消息撤回时间限制
+                    %% 用 CurrentUid（鉴权得到）而非客户端自报的 FromId 做归属比对，
+                    %% 消除"影子信任"：即便未来误删了外层等值校验，这里仍然安全
                     case MsgData of
-                        #{<<"from_id">> := FromId} ->
+                        #{<<"from_id">> := CurrentUid} ->
                             CreatedAt = maps:get(<<"created_at">>, MsgData),
                             CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
                             NowMs = elib_dt:millisecond(),
@@ -412,7 +414,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                                     RevokePayload,
                                                     NowTs,
                                                     MsgId,
-                                                    FromId,
+                                                    CurrentUid,
                                                     ToId,
                                                     <<"custom">>,
                                                     <<"message_revoke_ack">>,
@@ -514,7 +516,7 @@ c2c_edit(MsgId, CurrentUid, Data) ->
                         false ->
                             case
                                 msg_c2c_ds:edit_offline_msg(
-                                    EditPayloadJson, NowTs, MsgId, FromId, ToId
+                                    EditPayloadJson, NowTs, MsgId, CurrentUid, ToId
                                 )
                             of
                                 ok ->
