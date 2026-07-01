@@ -60,20 +60,36 @@ init(Req0, State0) ->
 %% @param State 状态映射
 %% @return cowboy_req:req() 更新后的请求对象
 -spec index(binary(), integer(), cowboy_req:req(), map()) -> cowboy_req:req().
-index(<<"GET">>, _Ajax, Req0, _State) ->
-    {Page, Size} = elib_param:page(Req0),
-    Where = #{},
-    Column = <<"*">>,
-    OrderBy = <<"sort desc, updated_at desc">>,
-    {ok, P} = app_version_ds:page(Column, Where, OrderBy, Page, Size),
-    elib_response:success(Req0, P);
+index(<<"GET">>, _Ajax, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"settings:version:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            {Page, Size} = elib_param:page(Req0),
+            Where = #{},
+            Column = <<"*">>,
+            OrderBy = <<"sort desc, updated_at desc">>,
+            {ok, P} = app_version_ds:page(Column, Where, OrderBy, Page, Size),
+            elib_response:success(Req0, P)
+    end;
 index(_Method, _Ajax, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 保存应用版本信息
 %% 处理 POST 请求，保存或更新应用版本配置
 -spec save(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-save(<<"POST">>, Req0, _State) ->
+save(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"settings:version:create">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            save_channel_version(Req0)
+    end;
+save(_, Req0, _State) ->
+    Req0.
+
+-spec save_channel_version(cowboy_req:req()) -> cowboy_req:req().
+save_channel_version(Req0) ->
     PostVals = elib_param:post(Req0),
 
     RCode = maps:get(<<"region_code">>, PostVals, <<"cn">>),
@@ -119,23 +135,26 @@ save(<<"POST">>, Req0, _State) ->
             file_hash => FileHash
         },
     _ = adm_app_version_logic:save(Data),
-    elib_response:success(Req0, PostVals, <<"success."/utf8>>);
-save(_, Req0, _State) ->
-    Req0.
+    elib_response:success(Req0, PostVals, <<"success."/utf8>>).
 
 %% @doc 删除应用版本信息
 %% 处理 DELETE 请求，删除指定的应用版本配置
 -spec delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-delete(<<"DELETE">>, Req0, _State) ->
-    PostVals = elib_param:post(Req0),
-    Id = ec_cnv:to_integer(maps:get(<<"id">>, PostVals, 0)),
-    case adm_app_version_logic:delete_by_id(Id) of
-        {ok, _} ->
-            elib_response:success(Req0, PostVals, <<"success."/utf8>>);
-        {error, invalid_id} ->
-            elib_response:error(Req0, <<"无效的版本ID"/utf8>>);
-        {error, _Reason} ->
-            elib_response:error(Req0, <<"删除失败"/utf8>>)
+delete(<<"DELETE">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"settings:version:delete">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            Id = ec_cnv:to_integer(maps:get(<<"id">>, PostVals, 0)),
+            case adm_app_version_logic:delete_by_id(Id) of
+                {ok, _} ->
+                    elib_response:success(Req0, PostVals, <<"success."/utf8>>);
+                {error, invalid_id} ->
+                    elib_response:error(Req0, <<"无效的版本ID"/utf8>>);
+                {error, _Reason} ->
+                    elib_response:error(Req0, <<"删除失败"/utf8>>)
+            end
     end;
 delete(_, Req0, _State) ->
     Req0.
@@ -147,16 +166,21 @@ delete(_, Req0, _State) ->
 %%   distribution - 各版本设备数分布
 %%   events       - 近7天升级事件统计
 -spec version_stats(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-version_stats(<<"GET">>, Req0, _State) ->
-    Distribution = app_upgrade_log_ds:version_distribution(),
-    %% 近7天事件统计
-    Now = elib_dt:now(),
-    SevenDaysAgo = elib_dt:minus(Now, {7 * 86400, second}),
-    Events = app_upgrade_log_ds:event_stats(SevenDaysAgo, Now),
-    elib_response:success(Req0, #{
-        <<"distribution">> => Distribution,
-        <<"events">> => Events
-    });
+version_stats(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"settings:version:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            Distribution = app_upgrade_log_ds:version_distribution(),
+            %% 近7天事件统计
+            Now = elib_dt:now(),
+            SevenDaysAgo = elib_dt:minus(Now, {7 * 86400, second}),
+            Events = app_upgrade_log_ds:event_stats(SevenDaysAgo, Now),
+            elib_response:success(Req0, #{
+                <<"distribution">> => Distribution,
+                <<"events">> => Events
+            })
+    end;
 version_stats(_, Req0, _State) ->
     Req0.
 

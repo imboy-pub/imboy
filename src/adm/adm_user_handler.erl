@@ -87,65 +87,82 @@ detail(<<"GET">>, Req0, _State) ->
 
 %% @doc 封禁用户
 -spec ban(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-ban(<<"POST">>, Req0, _State) ->
-    Uid = parse_uid_param(Req0),
-    case Uid > 0 of
-        true ->
-            case user_ds:update(Uid, #{status => 0}) of
-                {ok, _} ->
-                    elib_response:success(Req0, #{}, "操作成功");
-                {error, Reason} ->
-                    ?ERROR_LOG(["ban user error: ", Reason]),
-                    elib_response:error(Req0, "操作失败")
-            end;
-        false ->
-            elib_response:error(Req0, "参数错误")
+ban(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"users:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            Uid = parse_uid_param(Req0),
+            case Uid > 0 of
+                true ->
+                    case user_ds:update(Uid, #{status => 0}) of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{}, "操作成功");
+                        {error, Reason} ->
+                            ?ERROR_LOG(["ban user error: ", Reason]),
+                            elib_response:error(Req0, "操作失败")
+                    end;
+                false ->
+                    elib_response:error(Req0, "参数错误")
+            end
     end.
 
 %% @doc 解封用户
 -spec unban(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-unban(<<"POST">>, Req0, _State) ->
-    Uid = parse_uid_param(Req0),
-    case Uid > 0 of
-        true ->
-            case user_ds:update(Uid, #{status => 1}) of
-                {ok, _} ->
-                    elib_response:success(Req0, #{}, "操作成功");
-                {error, Reason} ->
-                    ?ERROR_LOG(["unban user error: ", Reason]),
-                    elib_response:error(Req0, "操作失败")
-            end;
-        false ->
-            elib_response:error(Req0, "参数错误")
+unban(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"users:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            Uid = parse_uid_param(Req0),
+            case Uid > 0 of
+                true ->
+                    case user_ds:update(Uid, #{status => 1}) of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{}, "操作成功");
+                        {error, Reason} ->
+                            ?ERROR_LOG(["unban user error: ", Reason]),
+                            elib_response:error(Req0, "操作失败")
+                    end;
+                false ->
+                    elib_response:error(Req0, "参数错误")
+            end
     end.
 
 %% @doc 强制下线用户所有设备（GAP-06）
 %% POST /adm/user/force_logout?uid=<uid>
 -spec force_logout(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 force_logout(<<"POST">>, Req0, State) ->
-    Uid = parse_uid_param(Req0),
-    AdmUserId = maps:get(adm_user_id, State, 0),
-    case Uid > 0 of
-        true ->
-            _ = user_device_logic:kick_all_other_devices(Uid, {<<"all">>, <<"admin_action">>}),
-            % GAP-01 关联：写强制下线审计日志（type=120）
-            _ = elib_async:async(fun() ->
-                {ok, LogBody} = jsone_encode:encode(
-                    #{
-                        <<"operator">> => AdmUserId,
-                        <<"reason">> => <<"admin_force_logout">>
-                    },
-                    [native_utf8]
-                ),
-                _ = user_log_ds:add_internal(undefined, 120, Uid, LogBody, elib_dt:now())
-            end),
-            Ip = elib_req:peer_ip(Req0),
-            _ = adm_operation_log_ds:insert(
-                AdmUserId, <<"force_logout">>, Uid, <<"user">>, #{}, Ip
-            ),
-            elib_response:success(Req0, #{}, "操作成功");
-        false ->
-            elib_response:error(Req0, "参数错误")
+    case adm_acl:ensure_permission(State, <<"users:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            Uid = parse_uid_param(Req0),
+            AdmUserId = maps:get(adm_user_id, State, 0),
+            case Uid > 0 of
+                true ->
+                    _ = user_device_logic:kick_all_other_devices(
+                        Uid, {<<"all">>, <<"admin_action">>}
+                    ),
+                    % GAP-01 关联：写强制下线审计日志（type=120）
+                    _ = elib_async:async(fun() ->
+                        {ok, LogBody} = jsone_encode:encode(
+                            #{
+                                <<"operator">> => AdmUserId,
+                                <<"reason">> => <<"admin_force_logout">>
+                            },
+                            [native_utf8]
+                        ),
+                        _ = user_log_ds:add_internal(undefined, 120, Uid, LogBody, elib_dt:now())
+                    end),
+                    Ip = elib_req:peer_ip(Req0),
+                    _ = adm_operation_log_ds:insert(
+                        AdmUserId, <<"force_logout">>, Uid, <<"user">>, #{}, Ip
+                    ),
+                    elib_response:success(Req0, #{}, "操作成功");
+                false ->
+                    elib_response:error(Req0, "参数错误")
+            end
     end;
 force_logout(_, Req0, _State) ->
     elib_response:error(Req0, "Method Not Allowed").
@@ -202,29 +219,34 @@ tag_list(<<"GET">>, Req0, _State) ->
 
 %% @doc 删除用户标签
 -spec tag_delete(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-tag_delete(<<"POST">>, Req0, _State) ->
-    PostVals = elib_param:post(Req0),
-    Uid = parse_id(maps:get(<<"uid">>, PostVals, 0)),
-    Scene = parse_scene(maps:get(<<"scene">>, PostVals, <<"friend">>)),
-    TagFromBody = maps:get(<<"tag">>, PostVals, <<>>),
-    TagId = parse_id(maps:get(<<"tag_id">>, PostVals, 0)),
-    Tag =
-        case {TagFromBody, TagId > 0, Uid > 0, Scene > 0} of
-            {<<>>, true, true, true} ->
-                user_tag_ds:find_name_by_id(TagId, Uid, Scene);
-            _ ->
-                TagFromBody
-        end,
-    case {Uid > 0, Scene > 0, Tag =/= <<>>} of
-        {false, _, _} ->
-            elib_response:error(Req0, "参数错误");
-        {_, false, _} ->
-            elib_response:error(Req0, "不支持的 Scene");
-        {_, _, false} ->
-            elib_response:error(Req0, "tag不能为空");
-        _ ->
-            _ = user_tag_logic:delete(Uid, Scene, Tag),
-            elib_response:success(Req0, #{}, "操作成功")
+tag_delete(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"users:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            Uid = parse_id(maps:get(<<"uid">>, PostVals, 0)),
+            Scene = parse_scene(maps:get(<<"scene">>, PostVals, <<"friend">>)),
+            TagFromBody = maps:get(<<"tag">>, PostVals, <<>>),
+            TagId = parse_id(maps:get(<<"tag_id">>, PostVals, 0)),
+            Tag =
+                case {TagFromBody, TagId > 0, Uid > 0, Scene > 0} of
+                    {<<>>, true, true, true} ->
+                        user_tag_ds:find_name_by_id(TagId, Uid, Scene);
+                    _ ->
+                        TagFromBody
+                end,
+            case {Uid > 0, Scene > 0, Tag =/= <<>>} of
+                {false, _, _} ->
+                    elib_response:error(Req0, "参数错误");
+                {_, false, _} ->
+                    elib_response:error(Req0, "不支持的 Scene");
+                {_, _, false} ->
+                    elib_response:error(Req0, "tag不能为空");
+                _ ->
+                    _ = user_tag_logic:delete(Uid, Scene, Tag),
+                    elib_response:success(Req0, #{}, "操作成功")
+            end
     end.
 
 %% @doc 用户收藏列表
@@ -291,18 +313,23 @@ collect_list(<<"GET">>, Req0, _State) ->
 
 %% @doc 删除用户收藏
 -spec collect_remove(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-collect_remove(<<"POST">>, Req0, _State) ->
-    PostVals = elib_param:post(Req0),
-    Uid = parse_id(maps:get(<<"uid">>, PostVals, 0)),
-    KindId = maps:get(<<"kind_id">>, PostVals, <<>>),
-    case {Uid > 0, KindId =/= <<>>} of
-        {false, _} ->
-            elib_response:error(Req0, "参数错误");
-        {_, false} ->
-            elib_response:error(Req0, "kind_id不能为空");
-        _ ->
-            _ = user_collect_logic:remove(Uid, KindId),
-            elib_response:success(Req0, #{}, "操作成功")
+collect_remove(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"users:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            Uid = parse_id(maps:get(<<"uid">>, PostVals, 0)),
+            KindId = maps:get(<<"kind_id">>, PostVals, <<>>),
+            case {Uid > 0, KindId =/= <<>>} of
+                {false, _} ->
+                    elib_response:error(Req0, "参数错误");
+                {_, false} ->
+                    elib_response:error(Req0, "kind_id不能为空");
+                _ ->
+                    _ = user_collect_logic:remove(Uid, KindId),
+                    elib_response:success(Req0, #{}, "操作成功")
+            end
     end.
 
 %% @doc 构建查询条件

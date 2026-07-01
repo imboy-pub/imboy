@@ -12,6 +12,9 @@
 init_index_pagination_success_test_() ->
     ?WITH_MECKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, _Permission, _Req) -> ok end}
+            ]},
             {elib_param, [
                 {'int', 3, fun(Key, _Req, Default) ->
                     ?assertEqual(ajax, Key),
@@ -61,6 +64,9 @@ init_index_pagination_success_test_() ->
 init_save_converts_payload_and_calls_logic_test_() ->
     ?WITH_MECKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, _Permission, _Req) -> ok end}
+            ]},
             {elib_param, [
                 {'post', 1, fun(_Req) ->
                     #{
@@ -111,6 +117,9 @@ init_save_converts_payload_and_calls_logic_test_() ->
 init_delete_calls_logic_with_expected_where_test_() ->
     ?WITH_MECKS(
         [
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, _Permission, _Req) -> ok end}
+            ]},
             {elib_param, [
                 {'post', 1, fun(_Req) ->
                     #{<<"id">> => 88}
@@ -134,5 +143,22 @@ init_delete_calls_logic_with_expected_where_test_() ->
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(<<"success.">>, maps:get(msg, RespReq)),
             ?assertEqual(1, meck:num_calls(adm_app_version_logic, delete_by_id, 1))
+        end
+    ).
+
+%% 安全回归：无 settings:version:delete 权限的管理员不能删除版本记录（曾经零权限校验）
+init_delete_permission_denied_test_() ->
+    ?WITH_MECKS(
+        [
+            {adm_acl, [
+                {'ensure_permission', 3, fun(_State, <<"settings:version:delete">>, Req) ->
+                    {error, Req#{response_status => 403}}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"DELETE">>},
+            {ok, RespReq, _State} = adm_app_version_handler:init(Req, #{action => delete}),
+            ?assertEqual(403, maps:get(response_status, RespReq))
         end
     ).

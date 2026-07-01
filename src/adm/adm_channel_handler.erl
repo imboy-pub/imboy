@@ -48,7 +48,7 @@ init(Req0, State0) ->
 
 -spec dispatch(atom() | false, binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 dispatch(list, Method, Req0, _State) -> list(Method, Req0);
-dispatch(detail, Method, Req0, _State) -> detail(Method, Req0);
+dispatch(detail, Method, Req0, State) -> detail(Method, Req0, State);
 dispatch(messages, Method, Req0, _State) -> messages(Method, Req0);
 dispatch(subscribers, Method, Req0, _State) -> subscribers(Method, Req0);
 dispatch(remove_subscriber, Method, Req0, State) -> remove_subscriber_action(Method, Req0, State);
@@ -61,8 +61,8 @@ dispatch(stats, Method, Req0, _State) -> stats(Method, Req0);
 dispatch(pin_message, Method, Req0, State) -> pin_message_action(Method, Req0, State);
 dispatch(delete_message, Method, Req0, State) -> delete_message_action(Method, Req0, State);
 dispatch(search, Method, Req0, _State) -> search(Method, Req0);
-dispatch(delete, Method, Req0, _State) -> delete_action(Method, Req0);
-dispatch(set_price, Method, Req0, _State) -> set_price_action(Method, Req0);
+dispatch(delete, Method, Req0, State) -> delete_action(Method, Req0, State);
+dispatch(set_price, Method, Req0, State) -> set_price_action(Method, Req0, State);
 dispatch(refund_order, Method, Req0, State) -> refund_order_action(Method, Req0, State);
 dispatch(false, _Method, Req0, _State) -> Req0.
 
@@ -135,8 +135,8 @@ list(_, Req0) ->
     Req0.
 
 %% @doc 获取频道详情
--spec detail(binary(), cowboy_req:req()) -> cowboy_req:req().
-detail(<<"GET">>, Req0) ->
+-spec detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+detail(<<"GET">>, Req0, _State) ->
     case parse_channel_id(Req0) of
         {error, Msg} ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
@@ -149,26 +149,37 @@ detail(<<"GET">>, Req0) ->
                     elib_response:success(Req0, Channel2)
             end
     end;
-detail(<<"PUT">>, Req0) ->
-    case parse_channel_id(Req0) of
-        {error, Msg} ->
-            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-        {ok, ChannelId} ->
-            PostVals = elib_param:post(Req0),
-            case build_update_data(PostVals) of
+detail(<<"PUT">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"channels:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_channel_id(Req0) of
                 {error, Msg} ->
                     elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-                {ok, UpdateData} ->
-                    case channel_ds:update(ChannelId, UpdateData#{updated_at => elib_dt:now()}) of
-                        {ok, _} ->
-                            elib_response:success(Req0, #{}, <<"频道已更新"/utf8>>);
-                        {error, Reason} ->
-                            ?DEBUG_LOG("更新频道失败: ~p", [Reason]),
-                            elib_response:error(Req0, <<"更新失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {ok, ChannelId} ->
+                    PostVals = elib_param:post(Req0),
+                    case build_update_data(PostVals) of
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                        {ok, UpdateData} ->
+                            case
+                                channel_ds:update(
+                                    ChannelId, UpdateData#{updated_at => elib_dt:now()}
+                                )
+                            of
+                                {ok, _} ->
+                                    elib_response:success(Req0, #{}, <<"频道已更新"/utf8>>);
+                                {error, Reason} ->
+                                    ?DEBUG_LOG("更新频道失败: ~p", [Reason]),
+                                    elib_response:error(
+                                        Req0, <<"更新失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                    )
+                            end
                     end
             end
     end;
-detail(_, Req0) ->
+detail(_, Req0, _State) ->
     Req0.
 
 %% @doc 获取频道消息列表（分页）
@@ -223,42 +234,49 @@ subscribers(_, Req0) ->
 %% @doc 管理后台移除订阅者
 -spec remove_subscriber_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 remove_subscriber_action(<<"DELETE">>, Req0, State) ->
-    case parse_channel_user_ids(Req0) of
-        {error, Msg} ->
-            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-        {ok, ChannelId, UserId} ->
-            Result = elib_pg:with_tx(fun(Conn) ->
-                case channel_subscription_ds:delete(Conn, ChannelId, UserId) of
-                    {ok, Affected} when Affected > 0 ->
-                        case channel_ds:increment_subscribers(Conn, ChannelId, -1) of
-                            {ok, _} ->
-                                changed;
+    case adm_acl:ensure_permission(State, <<"channels:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_channel_user_ids(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ChannelId, UserId} ->
+                    Result = elib_pg:with_tx(fun(Conn) ->
+                        case channel_subscription_ds:delete(Conn, ChannelId, UserId) of
+                            {ok, Affected} when Affected > 0 ->
+                                case channel_ds:increment_subscribers(Conn, ChannelId, -1) of
+                                    {ok, _} ->
+                                        changed;
+                                    {error, Reason} ->
+                                        throw({abort_tx, Reason})
+                                end;
+                            {ok, 0} ->
+                                noop;
                             {error, Reason} ->
                                 throw({abort_tx, Reason})
-                        end;
-                    {ok, 0} ->
-                        noop;
-                    {error, Reason} ->
-                        throw({abort_tx, Reason})
-                end
-            end),
-            case Result of
-                changed ->
-                    flush_channel_cache(ChannelId),
-                    _ = audit_channel_governance(
-                        maps:get(adm_user_id, State, 0),
-                        ChannelId,
-                        <<"remove_subscriber">>,
-                        UserId,
-                        #{<<"scope">> => <<"subscription">>}
-                    ),
-                    elib_response:success(Req0, #{}, <<"订阅者已移除"/utf8>>);
-                noop ->
-                    flush_channel_cache(ChannelId),
-                    elib_response:success(Req0, #{}, <<"订阅者已移除"/utf8>>);
-                {error, Reason} ->
-                    ?DEBUG_LOG("移除频道订阅者失败: ~p", [Reason]),
-                    elib_response:error(Req0, <<"移除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                        end
+                    end),
+                    case Result of
+                        changed ->
+                            flush_channel_cache(ChannelId),
+                            _ = audit_channel_governance(
+                                maps:get(adm_user_id, State, 0),
+                                ChannelId,
+                                <<"remove_subscriber">>,
+                                UserId,
+                                #{<<"scope">> => <<"subscription">>}
+                            ),
+                            elib_response:success(Req0, #{}, <<"订阅者已移除"/utf8>>);
+                        noop ->
+                            flush_channel_cache(ChannelId),
+                            elib_response:success(Req0, #{}, <<"订阅者已移除"/utf8>>);
+                        {error, Reason} ->
+                            ?DEBUG_LOG("移除频道订阅者失败: ~p", [Reason]),
+                            elib_response:error(
+                                Req0, <<"移除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end
             end
     end;
 remove_subscriber_action(_, Req0, _State) ->
@@ -288,42 +306,61 @@ admins(_, Req0) ->
 %% @doc 管理后台更新频道管理员角色
 -spec update_admin_role_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 update_admin_role_action(<<"PUT">>, Req0, State) ->
-    case parse_channel_user_ids(Req0) of
-        {error, Msg} ->
-            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-        {ok, ChannelId, UserId} ->
-            PostVals = elib_param:post(Req0),
-            Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 0)),
-            case Role < 1 orelse Role > 3 of
-                true ->
-                    elib_response:error(Req0, <<"角色值必须在1-3之间"/utf8>>, ?ERR_BAD_REQUEST);
-                false ->
-                    case channel_admin_ds:find(ChannelId, UserId) of
-                        AdminRow when map_size(AdminRow) =:= 0 ->
-                            elib_response:error(Req0, <<"用户不是该频道管理员"/utf8>>, ?ERR_BAD_REQUEST);
-                        AdminRow ->
-                            CurrentRole = maps:get(<<"role">>, AdminRow, 0),
-                            case CurrentRole =:= 3 andalso Role =/= 3 of
-                                true ->
+    case adm_acl:ensure_permission(State, <<"channels:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_channel_user_ids(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ChannelId, UserId} ->
+                    PostVals = elib_param:post(Req0),
+                    Role = ec_cnv:to_integer(maps:get(<<"role">>, PostVals, 0)),
+                    case Role < 1 orelse Role > 3 of
+                        true ->
+                            elib_response:error(
+                                Req0, <<"角色值必须在1-3之间"/utf8>>, ?ERR_BAD_REQUEST
+                            );
+                        false ->
+                            case channel_admin_ds:find(ChannelId, UserId) of
+                                AdminRow when map_size(AdminRow) =:= 0 ->
                                     elib_response:error(
-                                        Req0, <<"创建者角色不可修改"/utf8>>, ?ERR_BAD_REQUEST
+                                        Req0, <<"用户不是该频道管理员"/utf8>>, ?ERR_BAD_REQUEST
                                     );
-                                false ->
-                                    case channel_admin_ds:update_role(ChannelId, UserId, Role) of
-                                        {ok, _} ->
-                                            _ = audit_channel_governance(
-                                                maps:get(adm_user_id, State, 0),
-                                                ChannelId,
-                                                <<"update_admin_role">>,
-                                                UserId,
-                                                #{<<"role">> => Role}
-                                            ),
-                                            elib_response:success(Req0, #{}, <<"管理员角色已更新"/utf8>>);
-                                        {error, Reason} ->
-                                            ?DEBUG_LOG("更新频道管理员角色失败: ~p", [Reason]),
+                                AdminRow ->
+                                    CurrentRole = maps:get(<<"role">>, AdminRow, 0),
+                                    case CurrentRole =:= 3 andalso Role =/= 3 of
+                                        true ->
                                             elib_response:error(
-                                                Req0, <<"更新失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
-                                            )
+                                                Req0, <<"创建者角色不可修改"/utf8>>, ?ERR_BAD_REQUEST
+                                            );
+                                        false ->
+                                            case
+                                                channel_admin_ds:update_role(
+                                                    ChannelId, UserId, Role
+                                                )
+                                            of
+                                                {ok, _} ->
+                                                    _ = audit_channel_governance(
+                                                        maps:get(adm_user_id, State, 0),
+                                                        ChannelId,
+                                                        <<"update_admin_role">>,
+                                                        UserId,
+                                                        #{<<"role">> => Role}
+                                                    ),
+                                                    elib_response:success(
+                                                        Req0, #{}, <<"管理员角色已更新"/utf8>>
+                                                    );
+                                                {error, Reason} ->
+                                                    ?DEBUG_LOG(
+                                                        "更新频道管理员角色失败: ~p", [Reason]
+                                                    ),
+                                                    elib_response:error(
+                                                        Req0,
+                                                        <<"更新失败"/utf8>>,
+                                                        ?ERR_INTERNAL_SERVER_ERROR
+                                                    )
+                                            end
                                     end
                             end
                     end
@@ -335,34 +372,43 @@ update_admin_role_action(_, Req0, _State) ->
 %% @doc 管理后台移除频道管理员
 -spec remove_admin_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 remove_admin_action(<<"DELETE">>, Req0, State) ->
-    case parse_channel_user_ids(Req0) of
-        {error, Msg} ->
-            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-        {ok, ChannelId, UserId} ->
-            case channel_admin_ds:find(ChannelId, UserId) of
-                AdminRow when map_size(AdminRow) =:= 0 ->
-                    elib_response:error(Req0, <<"用户不是该频道管理员"/utf8>>, ?ERR_BAD_REQUEST);
-                AdminRow ->
-                    CurrentRole = maps:get(<<"role">>, AdminRow, 0),
-                    case CurrentRole =:= 3 of
-                        true ->
-                            elib_response:error(Req0, <<"创建者不可移除"/utf8>>, ?ERR_BAD_REQUEST);
-                        false ->
-                            case channel_admin_ds:delete(ChannelId, UserId) of
-                                {ok, _} ->
-                                    _ = audit_channel_governance(
-                                        maps:get(adm_user_id, State, 0),
-                                        ChannelId,
-                                        <<"remove_admin">>,
-                                        UserId,
-                                        #{<<"scope">> => <<"admin">>}
-                                    ),
-                                    elib_response:success(Req0, #{}, <<"管理员已移除"/utf8>>);
-                                {error, Reason} ->
-                                    ?DEBUG_LOG("移除频道管理员失败: ~p", [Reason]),
+    case adm_acl:ensure_permission(State, <<"channels:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_channel_user_ids(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ChannelId, UserId} ->
+                    case channel_admin_ds:find(ChannelId, UserId) of
+                        AdminRow when map_size(AdminRow) =:= 0 ->
+                            elib_response:error(
+                                Req0, <<"用户不是该频道管理员"/utf8>>, ?ERR_BAD_REQUEST
+                            );
+                        AdminRow ->
+                            CurrentRole = maps:get(<<"role">>, AdminRow, 0),
+                            case CurrentRole =:= 3 of
+                                true ->
                                     elib_response:error(
-                                        Req0, <<"移除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
-                                    )
+                                        Req0, <<"创建者不可移除"/utf8>>, ?ERR_BAD_REQUEST
+                                    );
+                                false ->
+                                    case channel_admin_ds:delete(ChannelId, UserId) of
+                                        {ok, _} ->
+                                            _ = audit_channel_governance(
+                                                maps:get(adm_user_id, State, 0),
+                                                ChannelId,
+                                                <<"remove_admin">>,
+                                                UserId,
+                                                #{<<"scope">> => <<"admin">>}
+                                            ),
+                                            elib_response:success(Req0, #{}, <<"管理员已移除"/utf8>>);
+                                        {error, Reason} ->
+                                            ?DEBUG_LOG("移除频道管理员失败: ~p", [Reason]),
+                                            elib_response:error(
+                                                Req0, <<"移除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                            )
+                                    end
                             end
                     end
             end
@@ -452,35 +498,42 @@ stats(_, Req0) ->
 %% @doc 管理后台置顶/取消置顶频道消息
 -spec pin_message_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 pin_message_action(<<"PUT">>, Req0, State) ->
-    case parse_message_scope_ids(Req0) of
-        {error, Msg} ->
-            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-        {ok, ChannelId, MessageId} ->
-            PostVals = elib_param:post(Req0),
-            IsPinned = parse_pinned(maps:get(<<"pinned">>, PostVals, true)),
-            case ensure_message_belongs_to_channel(ChannelId, MessageId) of
-                ok ->
-                    case
-                        channel_message_ds:update(
-                            MessageId,
-                            #{is_pinned => IsPinned, updated_at => elib_dt:now()}
-                        )
-                    of
-                        {ok, _} ->
-                            _ = audit_channel_governance(
-                                maps:get(adm_user_id, State, 0),
-                                ChannelId,
-                                <<"pin_message">>,
-                                MessageId,
-                                #{<<"pinned">> => IsPinned}
-                            ),
-                            elib_response:success(Req0, #{}, <<"消息状态已更新"/utf8>>);
-                        {error, Reason} ->
-                            ?DEBUG_LOG("更新消息置顶状态失败: ~p", [Reason]),
-                            elib_response:error(Req0, <<"更新失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
-                    end;
-                {error, Msg2} ->
-                    elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST)
+    case adm_acl:ensure_permission(State, <<"channels:pin">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_message_scope_ids(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ChannelId, MessageId} ->
+                    PostVals = elib_param:post(Req0),
+                    IsPinned = parse_pinned(maps:get(<<"pinned">>, PostVals, true)),
+                    case ensure_message_belongs_to_channel(ChannelId, MessageId) of
+                        ok ->
+                            case
+                                channel_message_ds:update(
+                                    MessageId,
+                                    #{is_pinned => IsPinned, updated_at => elib_dt:now()}
+                                )
+                            of
+                                {ok, _} ->
+                                    _ = audit_channel_governance(
+                                        maps:get(adm_user_id, State, 0),
+                                        ChannelId,
+                                        <<"pin_message">>,
+                                        MessageId,
+                                        #{<<"pinned">> => IsPinned}
+                                    ),
+                                    elib_response:success(Req0, #{}, <<"消息状态已更新"/utf8>>);
+                                {error, Reason} ->
+                                    ?DEBUG_LOG("更新消息置顶状态失败: ~p", [Reason]),
+                                    elib_response:error(
+                                        Req0, <<"更新失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                    )
+                            end;
+                        {error, Msg2} ->
+                            elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST)
+                    end
             end
     end;
 pin_message_action(_, Req0, _State) ->
@@ -489,28 +542,35 @@ pin_message_action(_, Req0, _State) ->
 %% @doc 管理后台删除频道消息
 -spec delete_message_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 delete_message_action(<<"DELETE">>, Req0, State) ->
-    case parse_message_scope_ids(Req0) of
-        {error, Msg} ->
-            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-        {ok, ChannelId, MessageId} ->
-            case ensure_message_belongs_to_channel(ChannelId, MessageId) of
-                ok ->
-                    case channel_message_ds:delete(MessageId) of
-                        {ok, _} ->
-                            _ = audit_channel_governance(
-                                maps:get(adm_user_id, State, 0),
-                                ChannelId,
-                                <<"delete_message">>,
-                                MessageId,
-                                #{<<"scope">> => <<"message">>}
-                            ),
-                            elib_response:success(Req0, #{}, <<"消息已删除"/utf8>>);
-                        {error, Reason} ->
-                            ?DEBUG_LOG("删除频道消息失败: ~p", [Reason]),
-                            elib_response:error(Req0, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
-                    end;
-                {error, Msg2} ->
-                    elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST)
+    case adm_acl:ensure_permission(State, <<"channels:delete">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_message_scope_ids(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ChannelId, MessageId} ->
+                    case ensure_message_belongs_to_channel(ChannelId, MessageId) of
+                        ok ->
+                            case channel_message_ds:delete(MessageId) of
+                                {ok, _} ->
+                                    _ = audit_channel_governance(
+                                        maps:get(adm_user_id, State, 0),
+                                        ChannelId,
+                                        <<"delete_message">>,
+                                        MessageId,
+                                        #{<<"scope">> => <<"message">>}
+                                    ),
+                                    elib_response:success(Req0, #{}, <<"消息已删除"/utf8>>);
+                                {error, Reason} ->
+                                    ?DEBUG_LOG("删除频道消息失败: ~p", [Reason]),
+                                    elib_response:error(
+                                        Req0, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                    )
+                            end;
+                        {error, Msg2} ->
+                            elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST)
+                    end
             end
     end;
 delete_message_action(_, Req0, _State) ->
@@ -549,73 +609,87 @@ search(_, Req0) ->
     Req0.
 
 %% @doc 删除频道（软删除）
--spec delete_action(binary(), cowboy_req:req()) -> cowboy_req:req().
+-spec delete_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 %% @doc 设置/更新付费频道价格（UPSERT）
 %% PUT /adm/channel/:channel_id/price
 %% Body: {price_fen, currency, subscription_type, original_price_fen, description}
 %% price_fen/original_price_fen 单位为分，存入 DB 时转换为元
--spec set_price_action(binary(), cowboy_req:req()) -> cowboy_req:req().
-set_price_action(<<"PUT">>, Req0) ->
-    ChannelIdBin = cowboy_req:binding(channel_id, Req0, undefined),
-    PostVals = elib_param:post(Req0),
-    PriceFen = maps:get(<<"price_fen">>, PostVals, undefined),
-    case {ChannelIdBin, PriceFen} of
-        {undefined, _} ->
-            elib_response:error(Req0, <<"channel_id 不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        {_, undefined} ->
-            elib_response:error(Req0, <<"price_fen 不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            ChannelId = ec_cnv:to_integer(ChannelIdBin),
-            PriceYuan = ec_cnv:to_float(PriceFen) / 100.0,
-            OrigFen = maps:get(<<"original_price_fen">>, PostVals, 0),
-            OrigYuan = ec_cnv:to_float(OrigFen) / 100.0,
-            Currency = maps:get(<<"currency">>, PostVals, <<"CNY">>),
-            SubType = ec_cnv:to_integer(maps:get(<<"subscription_type">>, PostVals, 1)),
-            Desc = maps:get(<<"description">>, PostVals, <<>>),
-            Now = elib_dt:now(),
-            PriceTb = elib_pg_sql:public_tablename(<<"channel_price">>),
-            NewId = elib_tsid:generate(channel_price),
-            Sql =
-                <<"INSERT INTO ", PriceTb/binary,
-                    " (id, channel_id, price, currency, subscription_type, original_price,"
-                    " description, status, created_at, updated_at)"
-                    " VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$8)"
-                    " ON CONFLICT (channel_id) DO UPDATE SET"
-                    " price=$3, currency=$4, subscription_type=$5, original_price=$6,"
-                    " description=$7, status=1, updated_at=$8">>,
-            case
-                elib_pg:query(Sql, [
-                    NewId, ChannelId, PriceYuan, Currency, SubType, OrigYuan, Desc, Now
-                ])
-            of
-                {ok, _} ->
-                    elib_response:success(Req0, #{}, <<"频道价格已更新"/utf8>>);
-                {error, Reason} ->
-                    ?DEBUG_LOG("设置频道价格失败: ~p", [Reason]),
-                    elib_response:error(Req0, <<"设置价格失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+-spec set_price_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+set_price_action(<<"PUT">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"channels:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            ChannelIdBin = cowboy_req:binding(channel_id, Req0, undefined),
+            PostVals = elib_param:post(Req0),
+            PriceFen = maps:get(<<"price_fen">>, PostVals, undefined),
+            case {ChannelIdBin, PriceFen} of
+                {undefined, _} ->
+                    elib_response:error(Req0, <<"channel_id 不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, undefined} ->
+                    elib_response:error(Req0, <<"price_fen 不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                    ChannelId = ec_cnv:to_integer(ChannelIdBin),
+                    PriceYuan = ec_cnv:to_float(PriceFen) / 100.0,
+                    OrigFen = maps:get(<<"original_price_fen">>, PostVals, 0),
+                    OrigYuan = ec_cnv:to_float(OrigFen) / 100.0,
+                    Currency = maps:get(<<"currency">>, PostVals, <<"CNY">>),
+                    SubType = ec_cnv:to_integer(maps:get(<<"subscription_type">>, PostVals, 1)),
+                    Desc = maps:get(<<"description">>, PostVals, <<>>),
+                    Now = elib_dt:now(),
+                    PriceTb = elib_pg_sql:public_tablename(<<"channel_price">>),
+                    NewId = elib_tsid:generate(channel_price),
+                    Sql =
+                        <<"INSERT INTO ", PriceTb/binary,
+                            " (id, channel_id, price, currency, subscription_type, original_price,"
+                            " description, status, created_at, updated_at)"
+                            " VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$8)"
+                            " ON CONFLICT (channel_id) DO UPDATE SET"
+                            " price=$3, currency=$4, subscription_type=$5, original_price=$6,"
+                            " description=$7, status=1, updated_at=$8">>,
+                    case
+                        elib_pg:query(Sql, [
+                            NewId, ChannelId, PriceYuan, Currency, SubType, OrigYuan, Desc, Now
+                        ])
+                    of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{}, <<"频道价格已更新"/utf8>>);
+                        {error, Reason} ->
+                            ?DEBUG_LOG("设置频道价格失败: ~p", [Reason]),
+                            elib_response:error(
+                                Req0, <<"设置价格失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end
             end
     end;
-set_price_action(_, Req0) ->
+set_price_action(_, Req0, _State) ->
     Req0.
 
-delete_action(<<"DELETE">>, Req0) ->
-    PostVals = elib_param:post(Req0),
-    ChannelId = maps:get(<<"id">>, PostVals, undefined),
+delete_action(<<"DELETE">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"channels:delete">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            ChannelId = maps:get(<<"id">>, PostVals, undefined),
 
-    case ChannelId of
-        undefined ->
-            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            ChannelIdInt = ec_cnv:to_integer(ChannelId),
-            case channel_ds:delete(ChannelIdInt) of
-                {ok, _} ->
-                    elib_response:success(Req0, #{}, <<"频道已删除"/utf8>>);
-                {error, Reason} ->
-                    ?DEBUG_LOG("删除频道失败: ~p", [Reason]),
-                    elib_response:error(Req0, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+            case ChannelId of
+                undefined ->
+                    elib_response:error(Req0, <<"频道ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                    ChannelIdInt = ec_cnv:to_integer(ChannelId),
+                    case channel_ds:delete(ChannelIdInt) of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{}, <<"频道已删除"/utf8>>);
+                        {error, Reason} ->
+                            ?DEBUG_LOG("删除频道失败: ~p", [Reason]),
+                            elib_response:error(
+                                Req0, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end
             end
     end;
-delete_action(_, Req0) ->
+delete_action(_, Req0, _State) ->
     Req0.
 
 -spec build_update_data(map()) -> {ok, map()} | {error, binary()}.

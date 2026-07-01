@@ -47,8 +47,8 @@ init(Req0, State0) ->
 
 %% @doc 消息列表
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-list(<<"GET">>, Req0, _State) ->
-    case ensure_message_audit_enabled(Req0) of
+list(<<"GET">>, Req0, State) ->
+    case ensure_permission_and_audit_enabled(State, Req0) of
         ok ->
             AuditMode = imboy_policy:message_audit_mode(),
             {Page, Size} = elib_param:page(Req0),
@@ -110,8 +110,8 @@ list(_, Req0, _State) ->
 
 %% @doc 消息详情
 -spec detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-detail(<<"GET">>, Req0, _State) ->
-    case ensure_message_audit_enabled(Req0) of
+detail(<<"GET">>, Req0, State) ->
+    case ensure_permission_and_audit_enabled(State, Req0) of
         ok ->
             AuditMode = imboy_policy:message_audit_mode(),
             {ok, MsgId} = elib_param:binary(msg_id, Req0, <<>>),
@@ -148,8 +148,8 @@ detail(_, Req0, _State) ->
     Req0.
 
 -spec export(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-export(<<"GET">>, Req0, _State) ->
-    case ensure_message_export_enabled(Req0) of
+export(<<"GET">>, Req0, State) ->
+    case ensure_permission_and_export_enabled(State, Req0) of
         ok ->
             Filters = extract_filters(Req0),
             Params = build_params(Filters),
@@ -414,6 +414,26 @@ parse_id(_) ->
 -spec to_lower_binary(binary()) -> binary().
 to_lower_binary(Bin) ->
     list_to_binary(string:lowercase(ec_cnv:to_list(Bin))).
+
+-spec ensure_permission_and_audit_enabled(map(), cowboy_req:req()) ->
+    ok | {error, cowboy_req:req()}.
+ensure_permission_and_audit_enabled(State, Req0) ->
+    case adm_acl:ensure_permission(State, <<"messages:read">>, Req0) of
+        {error, RespReq} ->
+            {error, RespReq};
+        ok ->
+            ensure_message_audit_enabled(Req0)
+    end.
+
+-spec ensure_permission_and_export_enabled(map(), cowboy_req:req()) ->
+    ok | {error, cowboy_req:req()}.
+ensure_permission_and_export_enabled(State, Req0) ->
+    case adm_acl:ensure_permission(State, <<"messages:read">>, Req0) of
+        {error, RespReq} ->
+            {error, RespReq};
+        ok ->
+            ensure_message_export_enabled(Req0)
+    end.
 
 -spec ensure_message_audit_enabled(cowboy_req:req()) -> ok | {error, cowboy_req:req()}.
 ensure_message_audit_enabled(Req0) ->

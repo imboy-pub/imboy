@@ -12,7 +12,6 @@
 
 -include("log.hrl").
 
-
 -include("common.hrl").
 
 -include("error_code.hrl").
@@ -41,7 +40,7 @@ init(Req0, State0) ->
             save ->
                 save(Method, Req0, State);
             delete ->
-                delete_action(Method, Req0);
+                delete_action(Method, Req0, State);
             false ->
                 Req0
         end,
@@ -58,12 +57,17 @@ init(Req0, State0) ->
 %% @param State 状态映射
 %% @return cowboy_req:req() 更新后的请求对象
 -spec index(binary(), integer(), cowboy_req:req(), map()) -> cowboy_req:req().
-index(<<"GET">>, _Ajax, Req0, _State) ->
-    {Page, Size} = elib_param:page(Req0),
-    Where = #{},
-    Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,status,updated_at,created_at">>,
-    {ok, Payload} = app_ddl_ds:page(Column, Where, <<"id desc">>, Page, Size),
-    elib_response:success(Req0, Payload);
+index(<<"GET">>, _Ajax, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"settings:ddl:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            {Page, Size} = elib_param:page(Req0),
+            Where = #{},
+            Column = <<"id, ddl, down_ddl,old_vsn,new_vsn,status,updated_at,created_at">>,
+            {ok, Payload} = app_ddl_ds:page(Column, Where, <<"id desc">>, Page, Size),
+            elib_response:success(Req0, Payload)
+    end;
 index(_Method, _Ajax, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
@@ -71,17 +75,21 @@ index(_Method, _Ajax, Req0, _State) ->
 %% 处理 POST 请求，保存新的 DDL 配置信息
 -spec save(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 save(<<"POST">>, Req0, State) ->
-    % CurrentUid = auth_ds:current_uid(State),
-    AdmUserId = maps:get(adm_user_id, State),
+    case adm_acl:ensure_permission(State, <<"settings:ddl:create">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            AdmUserId = maps:get(adm_user_id, State),
 
-    PostVals = elib_param:post(Req0),
-    NewVsn = maps:get(<<"new_vsn">>, PostVals, 0),
-    OldVsn = maps:get(<<"old_vsn">>, PostVals, 0),
-    Status = maps:get(<<"status">>, PostVals, 0),
-    Ddl = maps:get(<<"ddl">>, PostVals, <<>>),
-    DownDdl = maps:get(<<"down_ddl">>, PostVals, <<>>),
-    _ = app_ddl_ds:save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl),
-    elib_response:success(Req0, PostVals, <<"success."/utf8>>);
+            PostVals = elib_param:post(Req0),
+            NewVsn = maps:get(<<"new_vsn">>, PostVals, 0),
+            OldVsn = maps:get(<<"old_vsn">>, PostVals, 0),
+            Status = maps:get(<<"status">>, PostVals, 0),
+            Ddl = maps:get(<<"ddl">>, PostVals, <<>>),
+            DownDdl = maps:get(<<"down_ddl">>, PostVals, <<>>),
+            _ = app_ddl_ds:save(AdmUserId, NewVsn, OldVsn, Status, Ddl, DownDdl),
+            elib_response:success(Req0, PostVals, <<"success."/utf8>>)
+    end;
 save(_, Req0, _State) ->
     Req0.
 
@@ -89,19 +97,25 @@ save(_, Req0, _State) ->
 %% 处理 DELETE 请求，删除指定的 DDL 配置
 %% @param Method HTTP 方法
 %% @param Req0 Cowboy 请求对象
+%% @param State 状态映射（由 adm_auth_middleware 注入 adm_user_id）
 %% @return cowboy_req:req() 更新后的请求对象
--spec delete_action(binary(), cowboy_req:req()) -> cowboy_req:req().
-delete_action(<<"DELETE">>, Req0) ->
-    PostVals = elib_param:post(Req0),
-    Id = maps:get(<<"id">>, PostVals, ""),
+-spec delete_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+delete_action(<<"DELETE">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"settings:ddl:delete">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            Id = maps:get(<<"id">>, PostVals, ""),
 
-    % 使用安全的参数化查询，避免 SQL 注入
-    case app_ddl_ds:delete(Id) of
-        {ok, _Count} ->
-            elib_response:success(Req0, PostVals, <<"success."/utf8>>);
-        {error, Reason} ->
-            ?DEBUG_LOG("删除 DDL 失败: ~p", [Reason]),
-            elib_response:error(Req0, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+            % 使用安全的参数化查询，避免 SQL 注入
+            case app_ddl_ds:delete(Id) of
+                {ok, _Count} ->
+                    elib_response:success(Req0, PostVals, <<"success."/utf8>>);
+                {error, Reason} ->
+                    ?DEBUG_LOG("删除 DDL 失败: ~p", [Reason]),
+                    elib_response:error(Req0, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+            end
     end;
-delete_action(_Method, Req0) ->
+delete_action(_Method, Req0, _State) ->
     Req0.

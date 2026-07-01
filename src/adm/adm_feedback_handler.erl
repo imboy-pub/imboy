@@ -80,43 +80,50 @@ index(_, _Ajax, Req0, _State) ->
 %% @return cowboy_req:req() 更新后的请求对象
 -spec reply(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 reply(<<"POST">>, Req0, State) ->
-    AdmUserId = maps:get(adm_user_id, State),
-    Key = {adm_user_sample, AdmUserId},
-    U = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
-    Nickname = maps:get(<<"nickname">>, U, <<"">>),
-    % replier_user_id
-    PostVals = elib_param:post(Req0),
-    % FeedbackId = proplists:get_value(<<"feedback_id">>, PostVals),
-    % FeedbackId = elib_param:int(<<"FeedbackId">>, Req0, 0),
-    {ok, FeedbackId} =
-        case
-            string:to_integer(
-                ec_cnv:to_list(
-                    maps:get(<<"feedback_id">>, PostVals, <<"0">>)
-                )
-            )
-        of
-            {error, _} ->
-                {ok, 0};
-            {Val2, _} ->
-                {ok, Val2}
-        end,
-    % ?DEBUG_LOG(["FeedbackId", FeedbackId, PostVals]),
-    if
-        is_integer(FeedbackId), FeedbackId > 0 ->
-            ReplyPid = ec_cnv:to_integer(maps:get(<<"feedback_reply_pid">>, PostVals, 0)),
-            Body = maps:get(<<"body">>, PostVals, ""),
-            ok = feedback_ds:add_reply(#{
-                <<"feedback_id">> => FeedbackId,
-                <<"feedback_reply_pid">> => ReplyPid,
-                <<"replier_user_id">> => AdmUserId,
-                <<"replier_name">> => Nickname,
-                <<"body">> => Body,
-                <<"created_at">> => elib_dt:now()
-            }),
-            elib_response:success(Req0, #{}, "success.");
-        true ->
-            elib_response:error(Req0)
+    case adm_acl:ensure_permission(State, <<"feedback:reply">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            AdmUserId = maps:get(adm_user_id, State),
+            Key = {adm_user_sample, AdmUserId},
+            U = adm_user_logic:find(AdmUserId, <<"id,nickname">>, Key),
+            Nickname = maps:get(<<"nickname">>, U, <<"">>),
+            % replier_user_id
+            PostVals = elib_param:post(Req0),
+            % FeedbackId = proplists:get_value(<<"feedback_id">>, PostVals),
+            % FeedbackId = elib_param:int(<<"FeedbackId">>, Req0, 0),
+            {ok, FeedbackId} =
+                case
+                    string:to_integer(
+                        ec_cnv:to_list(
+                            maps:get(<<"feedback_id">>, PostVals, <<"0">>)
+                        )
+                    )
+                of
+                    {error, _} ->
+                        {ok, 0};
+                    {Val2, _} ->
+                        {ok, Val2}
+                end,
+            % ?DEBUG_LOG(["FeedbackId", FeedbackId, PostVals]),
+            if
+                is_integer(FeedbackId), FeedbackId > 0 ->
+                    ReplyPid = ec_cnv:to_integer(
+                        maps:get(<<"feedback_reply_pid">>, PostVals, 0)
+                    ),
+                    Body = maps:get(<<"body">>, PostVals, ""),
+                    ok = feedback_ds:add_reply(#{
+                        <<"feedback_id">> => FeedbackId,
+                        <<"feedback_reply_pid">> => ReplyPid,
+                        <<"replier_user_id">> => AdmUserId,
+                        <<"replier_name">> => Nickname,
+                        <<"body">> => Body,
+                        <<"created_at">> => elib_dt:now()
+                    }),
+                    elib_response:success(Req0, #{}, "success.");
+                true ->
+                    elib_response:error(Req0)
+            end
     end.
 
 %% @doc 软删除反馈（status => -1）

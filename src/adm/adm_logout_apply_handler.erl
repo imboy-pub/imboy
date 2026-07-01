@@ -44,88 +44,111 @@ init(Req0, State0) ->
 %% ===================================================================
 
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-list(<<"GET">>, Req0, _State) ->
-    {Page, Size} = elib_param:page(Req0),
-    Filters = extract_filters(Req0),
-    {WhereSql, Params} = build_where_sql(Filters),
+list(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"logout_applications:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            {Page, Size} = elib_param:page(Req0),
+            Filters = extract_filters(Req0),
+            {WhereSql, Params} = build_where_sql(Filters),
 
-    case user_log_ds:page_logout_apply_log(WhereSql, Params, Page, Size) of
-        {ok, #{total := Total, list := Rows}} ->
-            Items = [normalize_row(Row) || Row <- Rows],
-            elib_response:success(Req0, #{
-                list => Items,
-                total => Total,
-                page => Page,
-                size => Size
-            });
-        {error, _Reason} ->
-            elib_response:error(Req0, "查询失败")
+            case user_log_ds:page_logout_apply_log(WhereSql, Params, Page, Size) of
+                {ok, #{total := Total, list := Rows}} ->
+                    Items = [normalize_row(Row) || Row <- Rows],
+                    elib_response:success(Req0, #{
+                        list => Items,
+                        total => Total,
+                        page => Page,
+                        size => Size
+                    });
+                {error, _Reason} ->
+                    elib_response:error(Req0, "查询失败")
+            end
     end;
 list(_, Req0, _State) ->
     Req0.
 
 %% @doc 驳回注销申请：将用户状态从 2（申请注销中）恢复为 1（正常）
 -spec reject(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-reject(<<"POST">>, Req0, _State) ->
-    {ok, Body, Req1} = cowboy_req:read_body(Req0),
-    Data = jsone:decode(Body, [{object_format, map}]),
-    UidRaw = maps:get(<<"uid">>, Data, <<>>),
-    Uid = parse_id(UidRaw),
-    Reason = maps:get(<<"reason">>, Data, <<>>),
-    case Uid > 0 of
-        true ->
-            case user_ds:reject_logout_apply(Uid) of
-                {ok, [_]} ->
-                    %% 记录驳回日志
-                    ok = ?INFO_LOG([logout_apply_rejected, #{uid => Uid, reason => Reason}]),
-                    elib_response:success(Req1, #{uid => Uid, status => <<"rejected">>});
-                {ok, []} ->
-                    elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"操作失败"/utf8>>)
-            end;
-        false ->
-            elib_response:error(Req1, <<"无效的用户ID"/utf8>>)
+reject(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"logout_applications:approve">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            {ok, Body, Req1} = cowboy_req:read_body(Req0),
+            Data = jsone:decode(Body, [{object_format, map}]),
+            UidRaw = maps:get(<<"uid">>, Data, <<>>),
+            Uid = parse_id(UidRaw),
+            Reason = maps:get(<<"reason">>, Data, <<>>),
+            case Uid > 0 of
+                true ->
+                    case user_ds:reject_logout_apply(Uid) of
+                        {ok, [_]} ->
+                            %% 记录驳回日志
+                            ok = ?INFO_LOG([
+                                logout_apply_rejected, #{uid => Uid, reason => Reason}
+                            ]),
+                            elib_response:success(Req1, #{uid => Uid, status => <<"rejected">>});
+                        {ok, []} ->
+                            elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
+                        {error, _Reason} ->
+                            elib_response:error(Req1, <<"操作失败"/utf8>>)
+                    end;
+                false ->
+                    elib_response:error(Req1, <<"无效的用户ID"/utf8>>)
+            end
     end;
 reject(_, Req0, _State) ->
     Req0.
 
 %% @doc 审批通过注销申请：将用户状态设为 -1（已注销）
 -spec approve(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-approve(<<"POST">>, Req0, _State) ->
-    {ok, Body, Req1} = cowboy_req:read_body(Req0),
-    Data = jsone:decode(Body, [{object_format, map}]),
-    UidRaw = maps:get(<<"uid">>, Data, <<>>),
-    Uid = parse_id(UidRaw),
-    case Uid > 0 of
-        true ->
-            case user_ds:approve_logout_apply(Uid) of
-                {ok, [_]} ->
-                    ok = ?INFO_LOG([logout_apply_approved, #{uid => Uid}]),
-                    elib_response:success(Req1, #{uid => Uid, status => <<"approved">>});
-                {ok, []} ->
-                    elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"操作失败"/utf8>>)
-            end;
-        false ->
-            elib_response:error(Req1, <<"无效的用户ID"/utf8>>)
+approve(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"logout_applications:approve">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            {ok, Body, Req1} = cowboy_req:read_body(Req0),
+            Data = jsone:decode(Body, [{object_format, map}]),
+            UidRaw = maps:get(<<"uid">>, Data, <<>>),
+            Uid = parse_id(UidRaw),
+            case Uid > 0 of
+                true ->
+                    case user_ds:approve_logout_apply(Uid) of
+                        {ok, [_]} ->
+                            ok = ?INFO_LOG([logout_apply_approved, #{uid => Uid}]),
+                            elib_response:success(Req1, #{uid => Uid, status => <<"approved">>});
+                        {ok, []} ->
+                            elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
+                        {error, _Reason} ->
+                            elib_response:error(Req1, <<"操作失败"/utf8>>)
+                    end;
+                false ->
+                    elib_response:error(Req1, <<"无效的用户ID"/utf8>>)
+            end
     end;
 approve(_, Req0, _State) ->
     Req0.
 
 -spec export(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-export(<<"GET">>, Req0, _State) ->
-    Filters = extract_filters(Req0),
-    {WhereSql, Params} = build_where_sql(Filters),
-    Headers = #{
-        <<"content-type">> => <<"text/csv; charset=utf-8">>,
-        <<"content-disposition">> => <<"attachment; filename=\"logout_applications.csv\"">>,
-        <<"cache-control">> => <<"no-store">>
-    },
-    Req1 = cowboy_req:stream_reply(200, Headers, Req0),
-    ok = cowboy_req:stream_body(csv_header_with_bom(), nofin, Req1),
-    stream_export_rows(Req1, WhereSql, Params, ?EXPORT_CHUNK_SIZE, 0);
+export(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"logout_applications:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            Filters = extract_filters(Req0),
+            {WhereSql, Params} = build_where_sql(Filters),
+            Headers = #{
+                <<"content-type">> => <<"text/csv; charset=utf-8">>,
+                <<"content-disposition">> =>
+                    <<"attachment; filename=\"logout_applications.csv\"">>,
+                <<"cache-control">> => <<"no-store">>
+            },
+            Req1 = cowboy_req:stream_reply(200, Headers, Req0),
+            ok = cowboy_req:stream_body(csv_header_with_bom(), nofin, Req1),
+            stream_export_rows(Req1, WhereSql, Params, ?EXPORT_CHUNK_SIZE, 0)
+    end;
 export(_, Req0, _State) ->
     Req0.
 

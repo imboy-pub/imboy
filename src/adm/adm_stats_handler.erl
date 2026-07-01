@@ -57,29 +57,36 @@ license(<<"GET">>, Req0, _State) ->
         expires_at => maps:get(expires_at, Info, 0)
     },
     elib_response:success(Req0, Result);
-license(<<"POST">>, Req0, _State) ->
-    {ok, Body, Req1} = cowboy_req:read_body(Req0),
-    Params = jsone:decode(Body, [{keys, binary}, {object_format, map}]),
-    LicenseText = maps:get(<<"license_text">>, Params, <<>>),
-    case byte_size(LicenseText) of
-        0 ->
-            elib_response:error(Req1, <<"license_text 不能为空"/utf8>>, 400);
-        _ ->
-            case license_write_and_reload(LicenseText) of
-                ok ->
-                    Info = imboy_license:info(),
-                    Result = #{
-                        edition => maps:get(edition, Info, <<"community">>),
-                        valid => maps:get(valid, Info, false),
-                        status => atom_to_binary(maps:get(status, Info, community), utf8),
-                        max_users => maps:get(max_users, Info, 0),
-                        max_nodes => maps:get(max_nodes, Info, 0),
-                        licensee => maps:get(licensee, Info, <<>>),
-                        expires_at => maps:get(expires_at, Info, 0)
-                    },
-                    elib_response:success(Req1, Result);
-                {error, Msg} ->
-                    elib_response:error(Req1, Msg, 400)
+license(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"license:write">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            {ok, Body, Req1} = cowboy_req:read_body(Req0),
+            Params = jsone:decode(Body, [{keys, binary}, {object_format, map}]),
+            LicenseText = maps:get(<<"license_text">>, Params, <<>>),
+            case byte_size(LicenseText) of
+                0 ->
+                    elib_response:error(Req1, <<"license_text 不能为空"/utf8>>, 400);
+                _ ->
+                    case license_write_and_reload(LicenseText) of
+                        ok ->
+                            Info = imboy_license:info(),
+                            Result = #{
+                                edition => maps:get(edition, Info, <<"community">>),
+                                valid => maps:get(valid, Info, false),
+                                status => atom_to_binary(
+                                    maps:get(status, Info, community), utf8
+                                ),
+                                max_users => maps:get(max_users, Info, 0),
+                                max_nodes => maps:get(max_nodes, Info, 0),
+                                licensee => maps:get(licensee, Info, <<>>),
+                                expires_at => maps:get(expires_at, Info, 0)
+                            },
+                            elib_response:success(Req1, Result);
+                        {error, Msg} ->
+                            elib_response:error(Req1, Msg, 400)
+                    end
             end
     end;
 license(_, Req0, _State) ->
@@ -199,55 +206,76 @@ group(<<"GET">>, Req0, _State) ->
 
 %% @doc 排名统计
 -spec ranking(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-ranking(<<"GET">>, Req0, _State) ->
-    Qs = cowboy_req:parse_qs(Req0),
-    Type = proplists:get_value(<<"type">>, Qs, <<"user">>),
-    Metric = proplists:get_value(<<"metric">>, Qs, <<"count">>),
-    LimitBin = proplists:get_value(<<"limit">>, Qs, <<"10">>),
-    Limit = safe_to_integer(LimitBin, 10),
+ranking(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"stats:ranking:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            Qs = cowboy_req:parse_qs(Req0),
+            Type = proplists:get_value(<<"type">>, Qs, <<"user">>),
+            Metric = proplists:get_value(<<"metric">>, Qs, <<"count">>),
+            LimitBin = proplists:get_value(<<"limit">>, Qs, <<"10">>),
+            Limit = safe_to_integer(LimitBin, 10),
 
-    Result =
-        case {Type, Metric} of
-            {<<"user">>, <<"message">>} ->
-                % 用户消息量排名
-                get_user_message_ranking(Limit);
-            {<<"user">>, <<"friend">>} ->
-                % 用户好友数排名
-                get_user_friend_ranking(Limit);
-            {<<"group">>, <<"member">>} ->
-                % 群组成员数排名
-                get_group_member_ranking(Limit);
-            {<<"group">>, <<"message">>} ->
-                % 群组消息量排名
-                get_group_message_ranking(Limit);
-            {<<"channel">>, <<"subscriber">>} ->
-                % 频道订阅数排名
-                get_channel_subscriber_ranking(Limit);
-            {<<"channel">>, <<"message">>} ->
-                % 频道消息量排名
-                get_channel_message_ranking(Limit);
-            _ ->
-                % 默认返回用户消息排名
-                get_user_message_ranking(Limit)
-        end,
-    elib_response:success(Req0, #{list => Result}).
+            Result =
+                case {Type, Metric} of
+                    {<<"user">>, <<"message">>} ->
+                        % 用户消息量排名
+                        get_user_message_ranking(Limit);
+                    {<<"user">>, <<"friend">>} ->
+                        % 用户好友数排名
+                        get_user_friend_ranking(Limit);
+                    {<<"group">>, <<"member">>} ->
+                        % 群组成员数排名
+                        get_group_member_ranking(Limit);
+                    {<<"group">>, <<"message">>} ->
+                        % 群组消息量排名
+                        get_group_message_ranking(Limit);
+                    {<<"channel">>, <<"subscriber">>} ->
+                        % 频道订阅数排名
+                        get_channel_subscriber_ranking(Limit);
+                    {<<"channel">>, <<"message">>} ->
+                        % 频道消息量排名
+                        get_channel_message_ranking(Limit);
+                    _ ->
+                        % 默认返回用户消息排名
+                        get_user_message_ranking(Limit)
+                end,
+            elib_response:success(Req0, #{list => Result})
+    end.
 
 %% @doc 财务概览 GET /adm/stats/finance
 %% 返回当前有效订阅数与待处理提现数，供 Dashboard 展示商业化健康度。
 -spec finance_summary(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-finance_summary(<<"GET">>, Req0, _State) ->
-    ActiveSubs = count_by_status(<<"billing_subscription">>, 1),
-    PendingWd = count_pending_withdrawals(),
-    elib_response:success(Req0, #{
-        active_subscriptions => ActiveSubs,
-        pending_withdrawals => PendingWd
-    });
+finance_summary(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"finance:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            ActiveSubs = count_by_status(<<"billing_subscription">>, 1),
+            PendingWd = count_pending_withdrawals(),
+            elib_response:success(Req0, #{
+                active_subscriptions => ActiveSubs,
+                pending_withdrawals => PendingWd
+            })
+    end;
 finance_summary(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 财务月度报表 GET /adm/stats/finance/report?months=6
 -spec finance_report(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-finance_report(<<"GET">>, Req0, _State) ->
+finance_report(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"finance:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            finance_report_data(Req0)
+    end;
+finance_report(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+-spec finance_report_data(cowboy_req:req()) -> cowboy_req:req().
+finance_report_data(Req0) ->
     {ok, Months0} = elib_param:int(months, Req0, 6),
     Months = min(max(Months0, 1), 24),
     Sql = <<
@@ -284,9 +312,7 @@ finance_report(<<"GET">>, Req0, _State) ->
             {ok, R} -> R;
             _ -> []
         end,
-    elib_response:success(Req0, #{data => Rows, months => Months});
-finance_report(_, Req0, _State) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+    elib_response:success(Req0, #{data => Rows, months => Months}).
 
 %% @doc UX 埋点事件上报接收端
 -spec ux_events(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
