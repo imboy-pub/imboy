@@ -1,4 +1,5 @@
 -module(group_schedule_handler).
+-dialyzer({nowarn_function, [list/2]}).
 %% Thin HTTP adapter for the group_collab schedule boundary.
 %% Keep feature-gated request parsing here and route schedule rules via group_schedule_logic.
 

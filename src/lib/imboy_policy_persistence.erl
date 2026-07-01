@@ -1,5 +1,6 @@
 -module(imboy_policy_persistence).
 -compile([nowarn_deprecated_catch]).
+-dialyzer({nowarn_function, [normalize_capability_map/1, normalize_capabilities/2]}).
 %% @doc 产品策略持久化层（从 imboy_policy.erl §4 Save/persist 提取）
 %%
 %% 负责：策略配置的读取(load_*)、保存(save_*/persist_*)及规范化辅助。

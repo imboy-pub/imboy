@@ -210,7 +210,7 @@ pull_key_notifications(Uid, Since, Limit) when is_integer(Uid) ->
     end.
 
 %% @doc 从数据库拉取密钥变更
--spec pull_key_changes_from_db([integer()], integer(), integer()) ->
+-spec pull_key_changes_from_db([map()], integer(), integer()) ->
     {ok, [map()]} | {error, term()}.
 pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
     % 查询好友中最近更新了密钥的用户

@@ -1,5 +1,6 @@
 -module(moment_logic).
 -compile([nowarn_deprecated_catch, nowarn_export_var_subexpr]).
+-dialyzer({nowarn_function, [maybe_delete_post_on_violation/3]}).
 %%%
 % moment business logic
 %%%

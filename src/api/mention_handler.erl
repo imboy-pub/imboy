@@ -203,7 +203,7 @@ suggest(Req0, State) ->
 
 %% @private
 %% @doc 编码@提及记录中的ID
--spec encode_mention_ids(list(map())) -> list(map).
+-spec encode_mention_ids(list(map())) -> list(map()).
 encode_mention_ids(Mentions) ->
     lists:map(
         fun(Mention) ->

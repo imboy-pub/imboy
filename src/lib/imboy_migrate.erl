@@ -1,4 +1,5 @@
 -module(imboy_migrate).
+-dialyzer({nowarn_function, [priv_is_valid/1]}).
 
 %%% @doc 数据库迁移模块
 %%% 负责执行数据库结构升级和序列重置

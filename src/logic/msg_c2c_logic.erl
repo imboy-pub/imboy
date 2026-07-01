@@ -22,7 +22,11 @@
 -define(REVOKE_TIMEOUT_MS, 120000).
 
 %% 抑制 Dialyzer 警告 - 内部辅助函数
--dialyzer({nowarn_function, [c2c/3, c2c/4, prepare_c2c_data/2, stage_and_send_c2c/11]}).
+-dialyzer(
+    {nowarn_function, [
+        c2c/3, c2c/4, prepare_c2c_data/2, stage_and_send_c2c/11, set_c2c_expire_at/2
+    ]}
+).
 
 %% ===================================================================
 %% API

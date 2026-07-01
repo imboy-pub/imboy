@@ -1,4 +1,5 @@
 -module(adm_announcement_handler).
+-dialyzer({nowarn_function, [filter_opts/3]}).
 
 %%%
 % 全局公告管理控制器模块
