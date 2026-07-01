@@ -163,8 +163,8 @@ alias(Uid, Gid, Alias, Description) ->
 %% @end
 -spec update_role(integer(), integer(), integer(), integer()) -> ok | {error, binary()}.
 update_role(CurrentUid, Gid, UserId, Role) ->
-    % 验证操作权限
-    case validate_role_permission(CurrentUid, Gid) of
+    % 验证操作权限（含目标成员等级不得高于/等于操作者，防止管理员罢免群主/副群主）
+    case validate_role_permission(CurrentUid, Gid, UserId) of
         {error, Reason} ->
             {error, Reason};
         ok ->
@@ -425,18 +425,32 @@ update_role_internal(Conn, _CurrentUid, Gid, UserId, Role, Now) ->
     group_member_ds:update_role(Conn, Gid, UserId, Role, Now).
 
 %% @doc 验证角色更新权限
--spec validate_role_permission(integer(), integer()) -> ok | {error, binary()}.
-validate_role_permission(CurrentUid, Gid) ->
+-spec validate_role_permission(integer(), integer(), integer()) -> ok | {error, binary()}.
+validate_role_permission(CurrentUid, Gid, TargetUid) ->
     % 检查当前用户是否是群管理员或群主
     case group_member_ds:get_member_info(Gid, CurrentUid, <<"role">>) of
         {ok, MemberInfo} ->
-            Role = maps:get(<<"role">>, MemberInfo, 0),
-            case Role >= ?ROLE_ADMIN andalso Role =< ?ROLE_VICE_OWNER of
-                true -> ok;
+            CallerRole = maps:get(<<"role">>, MemberInfo, 0),
+            case CallerRole >= ?ROLE_ADMIN andalso CallerRole =< ?ROLE_VICE_OWNER of
+                true -> validate_target_role(Gid, TargetUid, CallerRole);
                 false -> {error, <<"你没有权限修改群成员角色"/utf8>>}
             end;
         {error, _} ->
             {error, <<"你不是群成员"/utf8>>}
+    end.
+
+%% @doc 目标成员当前等级必须严格低于操作者，防止管理员罢免/降级群主、副群主或同级管理员
+-spec validate_target_role(integer(), integer(), integer()) -> ok | {error, binary()}.
+validate_target_role(Gid, TargetUid, CallerRole) ->
+    case group_member_ds:get_member_info(Gid, TargetUid, <<"role">>) of
+        {ok, TargetInfo} ->
+            TargetRole = maps:get(<<"role">>, TargetInfo, 0),
+            case TargetRole < CallerRole of
+                true -> ok;
+                false -> {error, <<"无权修改同级或更高权限成员的角色"/utf8>>}
+            end;
+        {error, _} ->
+            {error, <<"目标用户不是群成员"/utf8>>}
     end.
 
 %% @doc 发送角色变更通知
