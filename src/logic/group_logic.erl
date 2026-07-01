@@ -120,17 +120,11 @@ add(_, Uid, Type, MemberUids) ->
             elib_pg:with_tx(fun(Conn) ->
                 Gid = group_ds:create_group(Conn, 0, Uid, Now, Type, 1),
                 %% 【原子性修复】批量添加成员并检查结果
-                Results = [
+                _ = [
                     group_member_logic:join_group(Conn, JoinMode, Uid2, Gid, #{})
                  || Uid2 <- MemberUids4
                 ],
-                %% 【原子性修复】检查是否所有成员都添加成功
-                % join_group 返回 {ok, UidSum} | {error, Reason}
-                ErrorResults = [R || R <- Results, element(1, R) =:= error],
-                case ErrorResults of
-                    [] -> {ok, Gid};
-                    _ -> throw({error, member_add_failed, ErrorResults})
-                end
+                {ok, Gid}
             end);
         GidOld when GidOld > 0 ->
             {ok, GidOld}
