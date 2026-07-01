@@ -68,12 +68,14 @@ update_status(SessionId, Status) ->
     end.
 
 %% @doc 更新会话状态（同时设置 to_device_id）
+%% 仅当当前状态仍为 pending 时才允许转移（CAS），防止并发 accept 请求互相覆盖 to_device_id
 -spec update_status_and_device(binary(), binary(), binary()) -> ok | {error, term()}.
 update_status_and_device(SessionId, Status, ToDeviceId) ->
     Sql1 =
         <<"UPDATE e2ee_transfer_sessions ", "SET status = $1, to_device_id = $2 ",
-            "WHERE session_id = $3 ", "AND expires_at > NOW()">>,
+            "WHERE session_id = $3 ", "AND status = 'pending' ", "AND expires_at > NOW()">>,
     case elib_pg:execute(Sql1, [Status, ToDeviceId, SessionId]) of
+        {ok, 0} -> {error, conflict};
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.

@@ -98,28 +98,39 @@ accept_transfer(SessionId, ToUid, ToDeviceId) ->
                 false ->
                     {error, {<<"会话不属于该用户"/utf8>>, ?ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH}};
                 true ->
-                    % 3. 检查状态
-                    Status = maps:get(<<"status">>, Session),
-                    case Status of
-                        <<"pending">> ->
-                            % 4. 更新状态为 accepted
-                            case
-                                e2ee_transfer_ds:update_status_and_device(
-                                    SessionId, <<"accepted">>, ToDeviceId
-                                )
-                            of
-                                ok ->
-                                    {ok, Session#{
-                                        <<"status">> => <<"accepted">>,
-                                        <<"to_device_id">> => ToDeviceId
-                                    }};
-                                {error, UpdateReason} ->
-                                    {error, UpdateReason}
-                            end;
-                        <<"accepted">> ->
-                            {error, {<<"会话已被接受"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_ACCEPTED}};
-                        _ ->
-                            {error, {<<"会话状态无效"/utf8>>, ?ERR_E2EE_TRANSFER_STATUS_INVALID}}
+                    % 3. 验证接收设备确实归属当前用户，防止伪造 device_id 冒领转移
+                    case user_device_ds:device_name(ToUid, ToDeviceId) of
+                        <<>> ->
+                            {error, {<<"设备不存在或不属于当前用户"/utf8>>, ?ERR_E2EE_TRANSFER_INVALID_DEVICE}};
+                        _DeviceName ->
+                            % 4. 检查状态
+                            Status = maps:get(<<"status">>, Session),
+                            case Status of
+                                <<"pending">> ->
+                                    % 5. 更新状态为 accepted（CAS，防止并发覆盖 to_device_id）
+                                    case
+                                        e2ee_transfer_ds:update_status_and_device(
+                                            SessionId, <<"accepted">>, ToDeviceId
+                                        )
+                                    of
+                                        ok ->
+                                            {ok, Session#{
+                                                <<"status">> => <<"accepted">>,
+                                                <<"to_device_id">> => ToDeviceId
+                                            }};
+                                        {error, conflict} ->
+                                            {error,
+                                                {<<"会话已被接受"/utf8>>,
+                                                    ?ERR_E2EE_TRANSFER_ALREADY_ACCEPTED}};
+                                        {error, UpdateReason} ->
+                                            {error, UpdateReason}
+                                    end;
+                                <<"accepted">> ->
+                                    {error,
+                                        {<<"会话已被接受"/utf8>>, ?ERR_E2EE_TRANSFER_ALREADY_ACCEPTED}};
+                                _ ->
+                                    {error, {<<"会话状态无效"/utf8>>, ?ERR_E2EE_TRANSFER_STATUS_INVALID}}
+                            end
                     end
             end
     end.

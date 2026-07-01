@@ -1,6 +1,7 @@
 -module(e2ee_transfer_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("error_code.hrl").
+-include("eunit_setup.hrl").
 
 %%%===================================================================
 %%% @doc E2EE 设备传输 Logic 层测试
@@ -57,3 +58,83 @@ recovery_logic_exports_test() ->
     ?assert(lists:member({get_recovery_options, 1}, Exports)),
     ?assert(lists:member({recommend_method, 1}, Exports)),
     ?assert(lists:member({start_auto_recovery, 3}, Exports)).
+
+%% ===================================================================
+%% accept_transfer/3 安全回归测试
+%% 防止伪造 device_id 冒领他人转移会话 + 并发覆盖 to_device_id
+%% ===================================================================
+
+accept_transfer_success_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_transfer_ds, [
+                {get_by_session_id, 1, fun(_SessionId) ->
+                    {ok, #{
+                        <<"session_id">> => <<"sess-1">>,
+                        <<"from_uid">> => 10001,
+                        <<"to_uid">> => 10002,
+                        <<"status">> => <<"pending">>
+                    }}
+                end},
+                {update_status_and_device, 3, fun(_SessionId, _Status, _ToDeviceId) -> ok end}
+            ]},
+            {user_device_ds, [
+                {device_name, 2, fun(_Uid, _Did) -> <<"我的手机"/utf8>> end}
+            ]}
+        ],
+        fun() ->
+            Result = e2ee_transfer_logic:accept_transfer(<<"sess-1">>, 10002, <<"device-002">>),
+            ?assertMatch({ok, #{<<"status">> := <<"accepted">>}}, Result)
+        end
+    ).
+
+accept_transfer_rejects_device_not_owned_by_current_user_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_transfer_ds, [
+                {get_by_session_id, 1, fun(_SessionId) ->
+                    {ok, #{
+                        <<"session_id">> => <<"sess-2">>,
+                        <<"from_uid">> => 10001,
+                        <<"to_uid">> => 10002,
+                        <<"status">> => <<"pending">>
+                    }}
+                end}
+            ]},
+            {user_device_ds, [
+                % 该 device_id 不属于 10002（伪造/不存在的设备）
+                {device_name, 2, fun(_Uid, _Did) -> <<>> end}
+            ]}
+        ],
+        fun() ->
+            Result = e2ee_transfer_logic:accept_transfer(<<"sess-2">>, 10002, <<"fake-device">>),
+            ?assertMatch({error, {_, ?ERR_E2EE_TRANSFER_INVALID_DEVICE}}, Result)
+        end
+    ).
+
+accept_transfer_conflict_on_concurrent_accept_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_transfer_ds, [
+                {get_by_session_id, 1, fun(_SessionId) ->
+                    {ok, #{
+                        <<"session_id">> => <<"sess-3">>,
+                        <<"from_uid">> => 10001,
+                        <<"to_uid">> => 10002,
+                        <<"status">> => <<"pending">>
+                    }}
+                end},
+                % 模拟并发场景下 CAS 更新失败（其他请求已抢先 accept）
+                {update_status_and_device, 3, fun(_SessionId, _Status, _ToDeviceId) ->
+                    {error, conflict}
+                end}
+            ]},
+            {user_device_ds, [
+                {device_name, 2, fun(_Uid, _Did) -> <<"我的手机"/utf8>> end}
+            ]}
+        ],
+        fun() ->
+            Result = e2ee_transfer_logic:accept_transfer(<<"sess-3">>, 10002, <<"device-002">>),
+            ?assertMatch({error, {_, ?ERR_E2EE_TRANSFER_ALREADY_ACCEPTED}}, Result)
+        end
+    ).
