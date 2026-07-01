@@ -17,6 +17,7 @@
 | `/v1/wallet/recharge/pay` | 2026-07-01 | 安全通过（IDOR 防护 `order.user_id==current_uid` + 状态必须待支付 + 金额/方式取自订单快照防篡改 + SQL 全参数化 + JWT）；补 openapi spec；加 `recharge_logic_pay_access_tests` 非本人/非待支付 两拒绝用例（happy path 已由 `envelope_tests` 覆盖） | 760d67e7 |
 | `/v1/wallet/topup` | 2026-07-01 | 🚨 **CRITICAL 已修**：mock 充值原先三层（handler/logic/ds）均无生产门禁，生产可凭空生成余额。修复：新增 `wallet_logic:topup_enabled_for_env/1`（pro/prod/production/未配置→拒绝）+ `wallet_handler:topup/2` 入口拦截；加 `wallet_logic_topup_tests` 7 用例；更新 topup.yaml | 3b940688 |
 | `/v1/wallet/withdraw` | 2026-07-01 | 安全通过（JWT + IDOR 操作本人钱包 + 金额整数≥100 + 渠道白名单 alipay/wechat + 账号非空 + 原子事务 `balance-$1>=0` 防透支双花 + 全参数化 SQL + 管理员审批流 reject 则退款）；补 openapi spec；加 `withdrawal_logic_tests` 正常/余额不足/金额越界 三用例 | 0ae2d186 |
+| `/v1/wallet/transfer/send` | 2026-07-01 | 核心安全通过（`sender_uid` 来自 JWT 防伪造 + 自转 `sender==receiver` 拒绝 + 金额≥100 + 原子 `balance>=amount` 防透支双花 + 全参数化 SQL + 托管 accept/refund 模式）；**修健壮性**：handler `binary_to_integer` 非数字原 badarg 500，改 `try-of-catch` 优雅报错（OTP29 `catch` 已废弃）；加 `transfer_logic_tests` 自转/金额越界/正常 三用例 + 补 openapi spec | e7f17dc3 |
 
 ---
 
@@ -39,7 +40,7 @@ _（loop 遇到不确定改动时追加到此处）_
 - [x] `/v1/wallet/recharge/pay` (#760d67e7)
 - [x] `/v1/wallet/topup` (#3b940688 🚨CRITICAL 已修)
 - [x] `/v1/wallet/withdraw` (#0ae2d186)
-- [ ] `/v1/wallet/transfer/send`
+- [x] `/v1/wallet/transfer/send` (#e7f17dc3)
 - [ ] `/v1/wallet/transfer/accept`
 - [ ] `/v1/wallet/balance`
 - [ ] `/v1/wallet/transactions`
