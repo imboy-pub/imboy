@@ -3,8 +3,12 @@ post:
   tags: [user]
   summary: 充值
   description: |
-    ## 中文 / English
-    充值
+    ## 中文
+    mock 充值（仅非生产环境）。生产环境（pro/prod/production，及未配置）直接拒绝，
+    防止凭空生成钱包余额。真实充值请走 /v1/wallet/recharge/*。
+    ## English
+    Mock topup (non-production only). Rejected in prod / when env unset,
+    to prevent minting wallet balance. Use /v1/wallet/recharge/* for real recharges.
   operationId: walletTopup
   requestBody:
     required: true
@@ -36,6 +40,6 @@ post:
                       balance_yuan: { type: number, description: 余额（元） }
                       frozen: { type: integer, description: 冻结金额（分） }
     '4XX':
-      description: 参数非法 / 无权限
+      description: 参数非法 / 无权限 / 生产环境拒绝
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

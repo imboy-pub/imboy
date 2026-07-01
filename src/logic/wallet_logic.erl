@@ -10,7 +10,7 @@
 % enforcing the Handler→Logic→DS→Repo single-direction dependency rule.
 %%%
 
--export([find_by_uid/1, ensure_wallet/1, page_transactions/3, topup/3]).
+-export([find_by_uid/1, ensure_wallet/1, page_transactions/3, topup/3, topup_enabled_for_env/1]).
 
 -include("log.hrl").
 -include("common.hrl").
@@ -38,3 +38,10 @@ page_transactions(Page, Size, Uid) ->
     {ok, integer()} | {rollback, term()} | {error, term()}.
 topup(Uid, Amount, RefNo) ->
     wallet_ds:topup(Uid, Amount, RefNo).
+
+%% @doc mock 充值环境门禁：仅非生产环境允许。
+%% 生产（pro/prod/production）及未配置（<<>>，按生产对待）一律拒绝，
+%% 防止 /v1/wallet/topup 在生产被用于凭空生成钱包余额。
+-spec topup_enabled_for_env(binary()) -> boolean().
+topup_enabled_for_env(Env) ->
+    not lists:member(Env, [<<"pro">>, <<"prod">>, <<"production">>, <<>>]).

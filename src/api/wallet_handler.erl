@@ -94,6 +94,16 @@ transactions(Req0, State) ->
 %% 参数: amount（分），范围 100-1000000
 -spec topup(cowboy_req:req(), map()) -> cowboy_req:req().
 topup(Req0, State) ->
+    %% 安全门禁：mock 充值仅非生产环境可用；生产环境直接拒绝，防资金凭空生成。
+    case wallet_logic:topup_enabled_for_env(imboy_env:current()) of
+        false ->
+            elib_response:error(Req0, <<"mock 充值仅非生产环境可用"/utf8>>);
+        true ->
+            topup_dispatch(Req0, State)
+    end.
+
+-spec topup_dispatch(cowboy_req:req(), map()) -> cowboy_req:req().
+topup_dispatch(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     Amount = maps:get(<<"amount">>, PostVals, 0),
