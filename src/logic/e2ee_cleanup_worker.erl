@@ -22,7 +22,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--define(DEFAULT_INTERVAL, 300000). % 5 minutes
+% 5 minutes
+-define(DEFAULT_INTERVAL, 300000).
 
 -record(state, {
     interval :: pos_integer(),
@@ -82,7 +83,7 @@ handle_info(_Info, State) ->
 terminate(_Reason, #state{timer_ref = undefined}) ->
     ok;
 terminate(_Reason, #state{timer_ref = Ref}) ->
-    erlang:cancel_timer(Ref),
+    _ = erlang:cancel_timer(Ref),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

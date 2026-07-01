@@ -331,10 +331,11 @@ do_stage_and_send_c2g(
             % ④ 创建@提及记录（如果有）
             Payload = maps:get(<<"payload">>, Data, #{}),
             Mentions = mentions_from_payload(Payload),
-            case Mentions of
-                [] -> ok;
-                _ -> _ = mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
-            end,
+            _ =
+                case Mentions of
+                    [] -> ok;
+                    _ -> _ = mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
+                end,
 
             ok;
         error ->

@@ -97,7 +97,7 @@ send_apply_friend(CurrentUid, To, ToId, FromBin, Payload, CreatedAt) ->
         end,
     Payload2 = maps:without([<<"action">>], PayloadMap),
     % 存储消息（v2.0: 使用 write_msg/8 API）
-    msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
+    _ = msg_s2c_ds:write_msg(CreatedAt, MsgId, Payload2, CurrentUid, ToId, NowTs, Action, <<>>),
     %% FIX: 使用 FromBin (binary) 而非 CurrentUid (integer)，确保客户端收到字符串类型的 from
     Msg = message_ds:assemble_msg(<<"S2C">>, FromBin, To, Payload2, MsgId, <<>>, Action, null),
     MsLi = elib_retry_config:intervals(<<"s2c">>),

@@ -45,19 +45,25 @@ init(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
     case proplists:get_value(<<"session_token">>, Qs) of
         SessionToken when is_binary(SessionToken), byte_size(SessionToken) > 0 ->
-            Req = cowboy_req:stream_reply(200, #{
-                <<"content-type">> => <<"text/event-stream">>,
-                <<"cache-control">> => <<"no-cache">>,
-                <<"connection">> => <<"keep-alive">>
-            }, Req0),
+            Req = cowboy_req:stream_reply(
+                200,
+                #{
+                    <<"content-type">> => <<"text/event-stream">>,
+                    <<"cache-control">> => <<"no-cache">>,
+                    <<"connection">> => <<"keep-alive">>
+                },
+                Req0
+            ),
             %% 加入 syn group。失败也继续 loop（订阅丢失 ≈ 0 投递，与 PR-2α
             %% notify 兜底语义一致；客户端有降级轮询兜底）。
             _ = qr_login_event_ds:subscribe(SessionToken, self()),
             %% 启动 heartbeat 防 cowboy idle_timeout 自动断连
             %% Start heartbeat to prevent cowboy idle_timeout disconnect
             Timer = erlang:send_after(?HEARTBEAT_INTERVAL_MS, self(), qr_sse_heartbeat),
-            {cowboy_loop, Req, #{session_token => SessionToken,
-                                 heartbeat_timer => Timer}};
+            {cowboy_loop, Req, #{
+                session_token => SessionToken,
+                heartbeat_timer => Timer
+            }};
         _ ->
             Req = cowboy_req:reply(400, #{}, <<"missing session_token">>, Req0),
             {ok, Req, #{}}
@@ -74,9 +80,9 @@ init(Req0, _State) ->
 %%   - status=expired   → stop（QR 失效，Web 端应刷新）
 %%   - 其他             → 继续 loop
 -spec info(any(), cowboy_req:req(), any()) ->
-    {ok, cowboy_req:req(), any()} |
-    {ok, cowboy_req:req(), any(), hibernate} |
-    {stop, cowboy_req:req(), any()}.
+    {ok, cowboy_req:req(), any()}
+    | {ok, cowboy_req:req(), any(), hibernate}
+    | {stop, cowboy_req:req(), any()}.
 info(qr_sse_heartbeat, Req0, State) ->
     %% Heartbeat：发 SSE comment "\: heartbeat\n\n"（浏览器 EventSource 自动过滤
     %% 不触发 onmessage），重启 timer。维持 TCP keepalive 防 cowboy idle_timeout。
@@ -91,8 +97,8 @@ info(Event, Req0, State) when is_map(Event) ->
     Req = cowboy_req:stream_body(Chunk, nofin, Req0),
     case maps:get(<<"status">>, Event, undefined) of
         <<"confirmed">> -> {stop, Req, State};
-        <<"expired">>   -> {stop, Req, State};
-        _               -> {ok, Req, State}
+        <<"expired">> -> {stop, Req, State};
+        _ -> {ok, Req, State}
     end;
 info(_Other, Req, State) ->
     %% 非 map 消息（system / tcp / 其他）容错：保持 loop，不中断
@@ -106,12 +112,14 @@ info(_Other, Req, State) ->
 terminate(_Reason, _Req, State) when is_map(State) ->
     %% 先 cancel heartbeat timer 防止心跳消息发到已死进程
     %% Cancel heartbeat timer first to prevent send-to-dead-process
-    case maps:get(heartbeat_timer, State, undefined) of
-        undefined -> ok;
-        Timer -> erlang:cancel_timer(Timer)
-    end,
+    _ =
+        case maps:get(heartbeat_timer, State, undefined) of
+            undefined -> ok;
+            Timer -> erlang:cancel_timer(Timer)
+        end,
     case maps:get(session_token, State, undefined) of
-        undefined -> ok;
+        undefined ->
+            ok;
         SessionToken ->
             _ = qr_login_event_ds:unsubscribe(SessionToken, self()),
             ok

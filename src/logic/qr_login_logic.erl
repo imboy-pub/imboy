@@ -24,6 +24,6 @@ log_device_login(Uid, DeviceId, DeviceName, Platform) ->
         <<"platform">> => Platform,
         <<"login_type">> => <<"qr_scan">>
     },
-    user_device_ds:save(Now, Uid, DeviceId, PostVals),
+    _ = user_device_ds:save(Now, Uid, DeviceId, PostVals),
     ?INFO_LOG([qr_login_device, Uid, DeviceId, DeviceName]),
     ok.

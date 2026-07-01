@@ -92,7 +92,7 @@ send_fcm(Token, Title, Body) ->
                     ok;
                 {ok, StatusCode, RespBody} ->
                     ?ERROR_LOG(["FCM push failed", StatusCode, RespBody]),
-                    maybe_deactivate_token(StatusCode, Token),
+                    _ = maybe_deactivate_token(StatusCode, Token),
                     {error, {fcm_error, StatusCode}};
                 {error, Reason} ->
                     ?ERROR_LOG(["FCM push request failed", Reason]),

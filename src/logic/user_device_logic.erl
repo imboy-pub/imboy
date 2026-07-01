@@ -176,7 +176,7 @@ kick_device(Uid, DType, DID) when is_integer(Uid), is_binary(DType), is_binary(D
     case find_device_by_did(Devices, DID) of
         {ok, Pid, _DType} ->
             send_kick_message(Pid, #{<<"reason">> => <<"在其他设备登录"/utf8>>}),
-            imboy_syn:leave(Uid, Pid),
+            _ = imboy_syn:leave(Uid, Pid),
             ok;
         not_found ->
             {error, <<"设备不存在"/utf8>>}

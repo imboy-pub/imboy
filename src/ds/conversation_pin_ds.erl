@@ -40,7 +40,7 @@ pin_conversation(Uid, ConversationId, Type) ->
 %% @return ok 成功
 -spec unpin_conversation(integer(), integer(), binary()) -> ok.
 unpin_conversation(Uid, ConversationId, Type) ->
-    conversation_pin_repo:unpin(Uid, ConversationId, Type),
+    _ = conversation_pin_repo:unpin(Uid, ConversationId, Type),
     ok.
 
 %% @doc 获取用户的置顶会话列表

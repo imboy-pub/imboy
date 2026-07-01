@@ -338,31 +338,33 @@ face2face_save(Code, Gid, Uid) ->
         end,
 
         % 群不存在就创建
-        case group_repo:find_by_id(Gid, <<"id">>) of
-            #{<<"id">> := _} ->
-                ok;
-            {error, Reason1} ->
-                ?ERROR_LOG([group_find_by_id_failed, Gid, Reason1]),
-                Now = elib_dt:now(),
-                create_group(Conn, Gid, Uid, Now, 2, 1);
-            _ ->
-                Now = elib_dt:now(),
-                create_group(Conn, Gid, Uid, Now, 2, 1)
-        end,
+        _ =
+            case group_repo:find_by_id(Gid, <<"id">>) of
+                #{<<"id">> := _} ->
+                    ok;
+                {error, Reason1} ->
+                    ?ERROR_LOG([group_find_by_id_failed, Gid, Reason1]),
+                    Now = elib_dt:now(),
+                    create_group(Conn, Gid, Uid, Now, 2, 1);
+                _ ->
+                    Now = elib_dt:now(),
+                    create_group(Conn, Gid, Uid, Now, 2, 1)
+            end,
 
         % 不是群成员则加入
-        case group_member_repo:find(Gid, Uid, <<"id">>) of
-            #{<<"id">> := _} ->
-                ok;
-            _ ->
-                group_member_ds:join_group(
-                    Conn,
-                    <<"face2face_join">>,
-                    Uid,
-                    Gid,
-                    #{}
-                )
-        end,
+        _ =
+            case group_member_repo:find(Gid, Uid, <<"id">>) of
+                #{<<"id">> := _} ->
+                    ok;
+                _ ->
+                    group_member_ds:join_group(
+                        Conn,
+                        <<"face2face_join">>,
+                        Uid,
+                        Gid,
+                        #{}
+                    )
+            end,
         {ok, <<"success">>}
     end).
 

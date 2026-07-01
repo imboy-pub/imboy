@@ -44,7 +44,7 @@ delete_conversation(Uid, ConversationId, Type) ->
 %% @return ok 成功
 -spec restore_conversation(integer(), integer(), binary()) -> ok.
 restore_conversation(Uid, ConversationId, Type) ->
-    conversation_delete_repo:restore(Uid, ConversationId, Type),
+    _ = conversation_delete_repo:restore(Uid, ConversationId, Type),
     imboy_cache:flush({conv_deleted, Uid, ConversationId, Type}),
     ok.
 

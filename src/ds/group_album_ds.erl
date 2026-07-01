@@ -137,14 +137,17 @@ upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
                                     case group_album_repo:insert_photo(PhotoData) of
                                         {ok, InsertId} ->
                                             % 8. 增加相册照片计数（通过相册ID查找）
-                                            case group_album_repo:find_album_by_album_id(AlbumId) of
-                                                #{<<"id">> := AlbumRecordId} ->
-                                                    group_album_repo:increment_photo_count(
-                                                        AlbumRecordId
-                                                    );
-                                                _ ->
-                                                    ok
-                                            end,
+                                            _ =
+                                                case
+                                                    group_album_repo:find_album_by_album_id(AlbumId)
+                                                of
+                                                    #{<<"id">> := AlbumRecordId} ->
+                                                        group_album_repo:increment_photo_count(
+                                                            AlbumRecordId
+                                                        );
+                                                    _ ->
+                                                        ok
+                                                end,
 
                                             Result = #{
                                                 <<"id">> => InsertId,
@@ -217,12 +220,13 @@ delete_photo(PhotoId, CurrentUid) ->
                     case group_album_repo:delete_photo(PhotoId) of
                         {ok, _} ->
                             % 4. 减少相册照片计数（通过相册ID查找）
-                            case group_album_repo:find_album_by_album_id(AlbumId) of
-                                #{<<"id">> := AlbumRecordId} ->
-                                    group_album_repo:decrement_photo_count(AlbumRecordId);
-                                _ ->
-                                    ok
-                            end,
+                            _ =
+                                case group_album_repo:find_album_by_album_id(AlbumId) of
+                                    #{<<"id">> := AlbumRecordId} ->
+                                        group_album_repo:decrement_photo_count(AlbumRecordId);
+                                    _ ->
+                                        ok
+                                end,
                             ok;
                         {error, Reason} ->
                             {error, Reason}

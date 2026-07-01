@@ -454,10 +454,11 @@ delete(FromID, ToID) ->
 -spec move_to_category(integer(), integer(), integer()) -> ok | {error, any()}.
 move_to_category(FromUID, ToUID, CategoryId) ->
     Result = friend_repo:move_to_category(FromUID, ToUID, CategoryId),
-    case Result of
-        ok -> invalidate_cache(FromUID, ToUID);
-        _ -> Result
-    end,
+    _ =
+        case Result of
+            ok -> invalidate_cache(FromUID, ToUID);
+            _ -> Result
+        end,
     Result.
 
 %% @doc 主动失效好友关系缓存

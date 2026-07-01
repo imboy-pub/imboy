@@ -106,7 +106,7 @@ update(TaskId, CreatorId, Data) when
                                 0 ->
                                     {error, <<"没有要更新的字段"/utf8>>, ?ERR_BAD_REQUEST};
                                 _ ->
-                                    group_task_ds:update_task(TaskId, UpdateData),
+                                    _ = group_task_ds:update_task(TaskId, UpdateData),
                                     ok
                             end
                     end;
@@ -199,7 +199,7 @@ submit(TaskId, UserId, Data) when
                                         submitted_at => Now
                                     },
                                     SubmitData2 = maps:merge(SubmitData, Data),
-                                    group_task_ds:assignment_update(AssignmentId, SubmitData2),
+                                    _ = group_task_ds:assignment_update(AssignmentId, SubmitData2),
                                     ok
                             end;
                         {error, not_found} ->
@@ -237,7 +237,7 @@ review(AssignmentId, ReviewerId, Data) when
                         reviewed_at => Now
                     },
                     ReviewData2 = maps:merge(ReviewData, Data),
-                    group_task_ds:assignment_update(AssignmentId, ReviewData2),
+                    _ = group_task_ds:assignment_update(AssignmentId, ReviewData2),
                     ok;
                 3 ->
                     {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),

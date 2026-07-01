@@ -29,14 +29,22 @@
 -export([reset_counters/0]).
 
 %% 阈值默认值（可通过 sys.config 覆盖）
--define(DEFAULT_WARN_THRESHOLD, 30).       % 每分钟超过 30 条触发警告
--define(DEFAULT_MUTE_THRESHOLD, 60).       % 每分钟超过 60 条自动禁言
--define(DEFAULT_MUTE_DURATION_MS, 300000). % 禁言持续 5 分钟 (毫秒)
--define(WINDOW_MS, 60000).                 % 统计窗口 1 分钟 (毫秒)
+
+% 每分钟超过 30 条触发警告
+-define(DEFAULT_WARN_THRESHOLD, 30).
+% 每分钟超过 60 条自动禁言
+-define(DEFAULT_MUTE_THRESHOLD, 60).
+% 禁言持续 5 分钟 (毫秒)
+-define(DEFAULT_MUTE_DURATION_MS, 300000).
+% 统计窗口 1 分钟 (毫秒)
+-define(WINDOW_MS, 60000).
 
 %% ETS 表名
--define(MSG_RATE_TAB, msg_rate_counter).   % {Uid, Count}  — 原子计数器
--define(MSG_MUTE_TAB, msg_rate_muted).     % {Uid, MuteUntil}
+
+% {Uid, Count}  — 原子计数器
+-define(MSG_RATE_TAB, msg_rate_counter).
+% {Uid, MuteUntil}
+-define(MSG_MUTE_TAB, msg_rate_muted).
 
 %%%===================================================================
 %%% API 函数
@@ -64,13 +72,17 @@ check_and_record(Uid) ->
                     %% 超过禁言阈值，自动禁言
                     Now = erlang:system_time(millisecond),
                     do_mute(Uid, Now),
-                    ?WARN_LOG("User ~p auto-muted: ~p msgs/min exceeded threshold ~p",
-                              [Uid, Count, MuteThreshold]),
+                    ?WARN_LOG(
+                        "User ~p auto-muted: ~p msgs/min exceeded threshold ~p",
+                        [Uid, Count, MuteThreshold]
+                    ),
                     {error, muted};
                 Count > WarnThreshold ->
                     %% 超过警告阈值
-                    ?WARN_LOG("User ~p msg rate warning: ~p msgs/min exceeded threshold ~p",
-                              [Uid, Count, WarnThreshold]),
+                    ?WARN_LOG(
+                        "User ~p msg rate warning: ~p msgs/min exceeded threshold ~p",
+                        [Uid, Count, WarnThreshold]
+                    ),
                     {warning, Count};
                 true ->
                     ok
@@ -108,11 +120,19 @@ unmute(Uid) ->
 %% MSG_RATE_TAB 存储 {Uid, Count}，每分钟由 reset_counters 定时器清零
 -spec init_table() -> ok.
 init_table() ->
-    create_table_if_not_exists(?MSG_RATE_TAB, [set, public, named_table,
-                                                {write_concurrency, true}]),
-    create_table_if_not_exists(?MSG_MUTE_TAB, [set, public, named_table,
-                                                {read_concurrency, true},
-                                                {write_concurrency, true}]),
+    create_table_if_not_exists(?MSG_RATE_TAB, [
+        set,
+        public,
+        named_table,
+        {write_concurrency, true}
+    ]),
+    create_table_if_not_exists(?MSG_MUTE_TAB, [
+        set,
+        public,
+        named_table,
+        {read_concurrency, true},
+        {write_concurrency, true}
+    ]),
     %% 每分钟清零计数器（滑动窗口近似为固定窗口，简单且无竞态）
     %% 先取消旧定时器（防止多次 init_table 导致多个定时器）
     case persistent_term:get(msg_rate_timer, undefined) of
@@ -154,11 +174,19 @@ mute_duration_ms() ->
 %% @private
 -spec ensure_tables() -> ok.
 ensure_tables() ->
-    create_table_if_not_exists(?MSG_RATE_TAB, [set, public, named_table,
-                                                {write_concurrency, true}]),
-    create_table_if_not_exists(?MSG_MUTE_TAB, [set, public, named_table,
-                                                {read_concurrency, true},
-                                                {write_concurrency, true}]),
+    create_table_if_not_exists(?MSG_RATE_TAB, [
+        set,
+        public,
+        named_table,
+        {write_concurrency, true}
+    ]),
+    create_table_if_not_exists(?MSG_MUTE_TAB, [
+        set,
+        public,
+        named_table,
+        {read_concurrency, true},
+        {write_concurrency, true}
+    ]),
     ok.
 
 %% @doc 如果 ETS 表不存在则创建
@@ -168,7 +196,7 @@ create_table_if_not_exists(Name, Options) ->
     case ets:whereis(Name) of
         undefined ->
             try
-                ets:new(Name, Options),
+                _ = ets:new(Name, Options),
                 ok
             catch
                 error:badarg ->
