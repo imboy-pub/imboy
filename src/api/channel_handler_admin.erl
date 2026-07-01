@@ -127,18 +127,25 @@ sent_invitations(Req0, State) ->
 %% 管理员列表与角色更新 API
 %% ===================================================================
 
-%% @doc 获取频道管理员列表
+%% @doc 获取频道管理员列表（仅频道订阅者可查看）
 -spec admins(cowboy_req:req(), map()) -> cowboy_req:req().
-admins(Req0, _State) ->
+admins(Req0, State) ->
+    Uid = maps:get(current_uid, State, 0),
     case cowboy_req:binding(channel_id, Req0) of
         undefined ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
-            case channel_logic:get_admins(ChannelId) of
-                {ok, Admins} ->
-                    elib_response:success(Req0, #{list => Admins});
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+            ChannelIdInt = elib_cnv:safe_to_integer(ChannelId),
+            case channel_logic_subscription:is_subscribed(ChannelIdInt, Uid) of
+                false ->
+                    elib_response:error(Req0, <<"无权限查看该频道管理员"/utf8>>, 403);
+                true ->
+                    case channel_logic:get_admins(ChannelId) of
+                        {ok, Admins} ->
+                            elib_response:success(Req0, #{list => Admins});
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end
             end
     end.
 
