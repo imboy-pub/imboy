@@ -77,9 +77,10 @@ do_verify_sign(undefined, _, _, _Method) ->
 do_verify_sign(_Sign, _, undefined, _Method) ->
     false;
 do_verify_sign(Sign, PlainText, Key, <<"sha256">>) ->
-    elib_hasher:hmac_sha256(PlainText, Key) == Sign;
+    % 常数时间比较，防止逐字节比对泄露时序信息（HMAC 签名校验覆盖几乎所有API请求）
+    crypto:hash_equals(elib_hasher:hmac_sha256(PlainText, Key), Sign);
 do_verify_sign(Sign, PlainText, Key, <<"sha512">>) ->
-    elib_hasher:hmac_sha512(PlainText, Key) == Sign;
+    crypto:hash_equals(elib_hasher:hmac_sha512(PlainText, Key), Sign);
 do_verify_sign(_, _, _, _) ->
     false.
 

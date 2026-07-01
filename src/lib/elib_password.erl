@@ -112,7 +112,8 @@ verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
 
 -spec eq(binary(), binary()) -> {ok, []} | {error, binary()}.
 eq(Ciphertext, Ciphertext2) ->
-    case crypto:hash(sha256, Ciphertext) =:= crypto:hash(sha256, Ciphertext2) of
+    % 常数时间比较，避免逐字节比对泄露时序信息（原用 =:= 直接比较存在时序攻击风险）
+    case crypto:hash_equals(crypto:hash(sha256, Ciphertext), crypto:hash(sha256, Ciphertext2)) of
         true -> {ok, []};
         false -> {error, <<"errorPassword">>}
     end.
