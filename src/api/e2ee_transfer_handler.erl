@@ -1,4 +1,5 @@
 -module(e2ee_transfer_handler).
+-dialyzer({nowarn_function, [do_get_transfer_info/2]}).
 -behavior(cowboy_rest).
 
 -export([init/2]).

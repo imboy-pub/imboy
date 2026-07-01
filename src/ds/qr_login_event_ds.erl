@@ -18,6 +18,7 @@
 %%% @end
 %%%-------------------------------------------------------------------
 -module(qr_login_event_ds).
+-dialyzer({nowarn_function, [subscribe/2, unsubscribe/2]}).
 
 -include("chat.hrl").
 

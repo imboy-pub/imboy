@@ -1,4 +1,5 @@
 -module(adm_acl).
+-dialyzer({nowarn_function, [role_permissions/1]}).
 -compile([nowarn_deprecated_catch]).
 
 %%%

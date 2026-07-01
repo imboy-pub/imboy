@@ -1,4 +1,5 @@
 -module(conversation_handler).
+-dialyzer({nowarn_function, [mine/2, pin_conversation/2, delete_conversation/2]}).
 
 -behavior(cowboy_rest).
 
@@ -61,26 +62,35 @@ online(Req0, _State) ->
     {ok, Vsn} = application:get_key(imboy, vsn),
     CountUser = imboy_syn:count_user(),
     Count = imboy_syn:count(),
-    Msg = io_lib:format("vsn ~s, node ~p, 在线总人数: ~p, 在线设备数~p",
-                        [Vsn, node(), CountUser, Count]),
+    Msg = io_lib:format(
+        "vsn ~s, node ~p, 在线总人数: ~p, 在线设备数~p",
+        [Vsn, node(), CountUser, Count]
+    ),
     Qs = cowboy_req:parse_qs(Req0),
     Type = proplists:get_value(<<"type">>, Qs, undefined),
     % ?DEBUG_LOG(Res),
-    List2 = case Type of
-        <<"list">> ->
-            LimitBin = proplists:get_value(<<"limit">>, Qs, <<"10">>),
-            % ?DEBUG_LOG([limit, Limit]),
-            {Limit2, _} = string:to_integer(binary_to_list(LimitBin)),
-            % imboy_syn:list_by_limit(Limit);
-            List1 = imboy_syn:list_by_limit(Limit2),
-            Column = [<<"uid">>, <<"pid">>, <<"dtype">>, <<"did">>, <<"time">>, <<"ref">>, <<"node">>],
-            [lists:zipwith(fun(X, Y) -> {X, Y} end,
-                           Column,
-                    [Uid, Pid, DType, DID, elib_dt:to_rfc3339(Nano), Ref, Node])
-              || {{Uid, Pid}, {DType, DID}, Nano, Ref, Node} <- List1 ];
-        _ ->
-            []
-    end,
+    List2 =
+        case Type of
+            <<"list">> ->
+                LimitBin = proplists:get_value(<<"limit">>, Qs, <<"10">>),
+                % ?DEBUG_LOG([limit, Limit]),
+                {Limit2, _} = string:to_integer(binary_to_list(LimitBin)),
+                % imboy_syn:list_by_limit(Limit);
+                List1 = imboy_syn:list_by_limit(Limit2),
+                Column = [
+                    <<"uid">>, <<"pid">>, <<"dtype">>, <<"did">>, <<"time">>, <<"ref">>, <<"node">>
+                ],
+                [
+                    lists:zipwith(
+                        fun(X, Y) -> {X, Y} end,
+                        Column,
+                        [Uid, Pid, DType, DID, elib_dt:to_rfc3339(Nano), Ref, Node]
+                    )
+                 || {{Uid, Pid}, {DType, DID}, Nano, Ref, Node} <- List1
+                ];
+            _ ->
+                []
+        end,
     elib_response:success(Req0, List2, Msg).
 
 %% @doc 获取我的会话列表
@@ -95,10 +105,12 @@ mine(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
     ServerTS = proplists:get_value(<<"last_server_ts">>, Qs, undefined),
     CurrentUid = auth_ds:current_uid(State),
-    case conversation_logic:list(CurrentUid, #{
-        limit => 1000,
-        last_server_ts => ServerTS
-    }) of
+    case
+        conversation_logic:list(CurrentUid, #{
+            limit => 1000,
+            last_server_ts => ServerTS
+        })
+    of
         {ok, List} ->
             elib_response:success(Req0, List);
         {error, Reason} ->
@@ -116,10 +128,11 @@ mine(Req0, State) ->
 -spec pin_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 pin_conversation(Req0, State) ->
     {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload = case Body of
-        <<>> -> #{};
-        _ -> jsone:decode(Body, [{object_format, map}])
-    end,
+    Payload =
+        case Body of
+            <<>> -> #{};
+            _ -> jsone:decode(Body, [{object_format, map}])
+        end,
 
     CurrentUid = auth_ds:current_uid(State),
     ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),
@@ -144,10 +157,11 @@ pin_conversation(Req0, State) ->
 -spec unpin_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 unpin_conversation(Req0, State) ->
     {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload = case Body of
-        <<>> -> #{};
-        _ -> jsone:decode(Body, [{object_format, map}])
-    end,
+    Payload =
+        case Body of
+            <<>> -> #{};
+            _ -> jsone:decode(Body, [{object_format, map}])
+        end,
 
     CurrentUid = auth_ds:current_uid(State),
     ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),
@@ -184,10 +198,11 @@ pinned_list(Req0, State) ->
 -spec delete_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 delete_conversation(Req0, State) ->
     {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload = case Body of
-        <<>> -> #{};
-        _ -> jsone:decode(Body, [{object_format, map}])
-    end,
+    Payload =
+        case Body of
+            <<>> -> #{};
+            _ -> jsone:decode(Body, [{object_format, map}])
+        end,
 
     CurrentUid = auth_ds:current_uid(State),
     ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),
@@ -212,10 +227,11 @@ delete_conversation(Req0, State) ->
 -spec restore_conversation(cowboy_req:req(), map()) -> cowboy_req:req().
 restore_conversation(Req0, State) ->
     {ok, Body, _Req1} = cowboy_req:read_body(Req0),
-    Payload = case Body of
-        <<>> -> #{};
-        _ -> jsone:decode(Body, [{object_format, map}])
-    end,
+    Payload =
+        case Body of
+            <<>> -> #{};
+            _ -> jsone:decode(Body, [{object_format, map}])
+        end,
 
     CurrentUid = auth_ds:current_uid(State),
     ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),

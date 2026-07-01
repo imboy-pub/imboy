@@ -1,4 +1,5 @@
 -module(group_handler).
+-dialyzer({nowarn_function, [add/2, payload_list_key/1]}).
 %% Thin HTTP adapter for the core group_collab boundary.
 %% Keep transport parsing here and route domain work through group_logic.
 

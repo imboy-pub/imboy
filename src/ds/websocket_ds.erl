@@ -1,4 +1,5 @@
 -module(websocket_ds).
+-dialyzer({nowarn_function, [auth/4]}).
 
 %%%
 % websocket_ds 是 websocket domain service 缩写

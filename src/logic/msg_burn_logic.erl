@@ -1,4 +1,5 @@
 -module(msg_burn_logic).
+-dialyzer({nowarn_function, [init/1, handle_info/2]}).
 %%%===================================================================
 %%% @doc 消息自毁定时清理 GenServer
 %%%

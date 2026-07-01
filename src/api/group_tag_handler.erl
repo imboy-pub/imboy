@@ -1,4 +1,5 @@
 -module(group_tag_handler).
+-dialyzer({nowarn_function, [hot/2]}).
 
 %%%
 % group_tag_handler 是群组标签 API 处理器
@@ -57,7 +58,9 @@ add(Req0, State) ->
                 _ ->
                     case group_tag_logic:add(Gid3, Uid, TagName2) of
                         {ok, TagId} ->
-                            elib_response:success(Req0, #{<<"tag_id">> => TagId}, <<"标签添加成功"/utf8>>);
+                            elib_response:success(
+                                Req0, #{<<"tag_id">> => TagId}, <<"标签添加成功"/utf8>>
+                            );
                         {error, Reason} ->
                             elib_response:error(Req0, Reason)
                     end
@@ -116,7 +119,9 @@ list(Req0, State) ->
                         {ok, Tags} ->
                             % 编码标签ID
                             Tags2 = Tags,
-                            elib_response:success(Req0, #{<<"list">> => Tags2}, <<"success."/utf8>>);
+                            elib_response:success(
+                                Req0, #{<<"list">> => Tags2}, <<"success."/utf8>>
+                            );
                         {error, Reason} ->
                             elib_response:error(Req0, Reason)
                     end
@@ -150,10 +155,11 @@ search(Req0, _State) ->
 hot(Req0, _State) ->
     _Qs = cowboy_req:parse_qs(Req0),
 
-    Limit = case elib_param:int(limit, Req0, 20) of
-        {ok, Val} when Val > 0, Val =< 100 -> Val;
-        _ -> 20
-    end,
+    Limit =
+        case elib_param:int(limit, Req0, 20) of
+            {ok, Val} when Val > 0, Val =< 100 -> Val;
+            _ -> 20
+        end,
 
     case group_tag_logic:hot_tags(Limit) of
         {ok, Tags} ->

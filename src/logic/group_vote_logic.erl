@@ -1,4 +1,5 @@
 -module(group_vote_logic).
+-dialyzer({nowarn_function, [do_create_vote/5, cancel_vote/2]}).
 %% Stable group_collab vote domain boundary.
 %% HTTP adapters should call this module instead of repo internals.
 

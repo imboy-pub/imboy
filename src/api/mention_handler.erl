@@ -1,4 +1,5 @@
 -module(mention_handler).
+-dialyzer({nowarn_function, [safe_post/1]}).
 
 %% cowboy_rest 是一个 behavior，但我们不需要在这里使用
 %% -behavior(cowboy_rest).

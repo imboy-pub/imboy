@@ -1,4 +1,5 @@
 -module(push_notification_logic).
+-dialyzer({nowarn_function, [unregister_token/2]}).
 %%%
 % push_notification_logic 推送通知业务逻辑层
 % 负责判断用户在线状态并触发离线推送
@@ -22,7 +23,8 @@
     ok | {error, term()}.
 register_token(Uid, DeviceId, DeviceType, Platform, Token) ->
     case push_token_ds:upsert(Uid, DeviceId, DeviceType, Platform, Token) of
-        {ok, _} -> ok;
+        {ok, _} ->
+            ok;
         {error, Reason} ->
             ?ERROR_LOG(["push token register failed", Uid, DeviceId, Reason]),
             {error, Reason}
@@ -32,8 +34,10 @@ register_token(Uid, DeviceId, DeviceType, Platform, Token) ->
 -spec unregister_token(integer(), binary()) -> ok.
 unregister_token(Uid, DeviceId) ->
     case push_token_ds:deactivate(Uid, DeviceId) of
-        {ok, _} -> ok;
-        ok -> ok;
+        {ok, _} ->
+            ok;
+        ok ->
+            ok;
         {error, Reason} ->
             ?ERROR_LOG(["push_token_deactivate_failed", Uid, DeviceId, Reason]),
             ok
@@ -92,7 +96,8 @@ maybe_push_for_c2g(FromUid, GroupId, MsgType, MemberUids) ->
         OtherUids = [Uid || Uid <- MemberUids, Uid =/= FromUid],
         OfflineUids = [Uid || Uid <- OtherUids, imboy_syn:count_user(Uid) =:= 0],
         case OfflineUids of
-            [] -> ok;
+            [] ->
+                ok;
             _ ->
                 Title = get_group_push_title(FromUid, GroupId),
                 Body = get_push_body(MsgType),
@@ -117,10 +122,11 @@ get_push_title(FromUid) ->
 %% @doc 获取群组推送标题
 get_group_push_title(FromUid, GroupId) ->
     SenderName = get_push_title(FromUid),
-    GroupName = case group_ds:find_by_id(GroupId, <<"title">>) of
-        #{<<"title">> := Name} when is_binary(Name), byte_size(Name) > 0 -> Name;
-        _ -> <<"群聊"/utf8>>
-    end,
+    GroupName =
+        case group_ds:find_by_id(GroupId, <<"title">>) of
+            #{<<"title">> := Name} when is_binary(Name), byte_size(Name) > 0 -> Name;
+            _ -> <<"群聊"/utf8>>
+        end,
     <<SenderName/binary, " [", GroupName/binary, "]">>.
 
 %% @doc 根据消息类型生成推送正文

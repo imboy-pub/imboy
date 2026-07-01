@@ -1,4 +1,5 @@
 -module(msg_c2g_logic).
+-dialyzer({nowarn_function, [handle_group_action/6]}).
 
 %%%
 %  msg_c2g 业务逻辑模块

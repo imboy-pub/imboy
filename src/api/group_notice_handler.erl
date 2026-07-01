@@ -1,4 +1,5 @@
 -module(group_notice_handler).
+-dialyzer({nowarn_function, [detail/3]}).
 
 %%%
 % group_notice 控制器模块

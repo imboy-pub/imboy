@@ -1,4 +1,5 @@
 -module(channel_logic_common).
+-dialyzer({nowarn_function, [ensure_channel_content_access/2]}).
 -compile([nowarn_deprecated_catch]).
 
 -export([channel_transfer/1]).

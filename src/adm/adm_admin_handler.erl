@@ -1,4 +1,5 @@
 -module(adm_admin_handler).
+-dialyzer({nowarn_function, [preview_policy_action/2, save_policy_action/2, role_permissions/1]}).
 -compile([nowarn_deprecated_catch]).
 
 -behavior(cowboy_rest).

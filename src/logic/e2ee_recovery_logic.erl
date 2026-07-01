@@ -1,4 +1,5 @@
 -module(e2ee_recovery_logic).
+-dialyzer({nowarn_function, [check_local_backup_available/1]}).
 %%%===================================================================
 %%% @doc E2EE 自动恢复决策逻辑
 %%%
@@ -55,42 +56,63 @@ get_recovery_options(Uid) when is_integer(Uid) ->
     Options = [],
 
     % 1. 检查设备间传输（最高优先级）
-    Options1 = case check_device_transfer_available(Uid) of
-        {ok, true, Details1} ->
-            [#{<<"method">> => <<"device_transfer">>,
-               <<"available">> => true,
-               <<"priority">> => 1,
-               <<"details">> => Details1} | Options];
-        _ ->
-            Options
-    end,
+    Options1 =
+        case check_device_transfer_available(Uid) of
+            {ok, true, Details1} ->
+                [
+                    #{
+                        <<"method">> => <<"device_transfer">>,
+                        <<"available">> => true,
+                        <<"priority">> => 1,
+                        <<"details">> => Details1
+                    }
+                    | Options
+                ];
+            _ ->
+                Options
+        end,
 
     % 2. 检查社交恢复
-    Options2 = case check_social_recovery_available(Uid) of
-        {ok, true, Details2} ->
-            [#{<<"method">> => <<"social_recovery">>,
-               <<"available">> => true,
-               <<"priority">> => 2,
-               <<"details">> => Details2} | Options1];
-        _ ->
-            Options1
-    end,
+    Options2 =
+        case check_social_recovery_available(Uid) of
+            {ok, true, Details2} ->
+                [
+                    #{
+                        <<"method">> => <<"social_recovery">>,
+                        <<"available">> => true,
+                        <<"priority">> => 2,
+                        <<"details">> => Details2
+                    }
+                    | Options1
+                ];
+            _ ->
+                Options1
+        end,
 
     % 3. 检查本地备份
-    Options3 = case check_local_backup_available(Uid) of
-        {ok, true, Details3} ->
-            [#{<<"method">> => <<"local_backup">>,
-               <<"available">> => true,
-               <<"priority">> => 3,
-               <<"details">> => Details3} | Options2];
-        _ ->
-            Options2
-    end,
+    Options3 =
+        case check_local_backup_available(Uid) of
+            {ok, true, Details3} ->
+                [
+                    #{
+                        <<"method">> => <<"local_backup">>,
+                        <<"available">> => true,
+                        <<"priority">> => 3,
+                        <<"details">> => Details3
+                    }
+                    | Options2
+                ];
+            _ ->
+                Options2
+        end,
 
     % 按优先级排序
-    lists:sort(fun(A, B) ->
-        maps:get(<<"priority">>, A) < maps:get(<<"priority">>, B)
-    end, Options3).
+    lists:sort(
+        fun(A, B) ->
+            maps:get(<<"priority">>, A) < maps:get(<<"priority">>, B)
+        end,
+        Options3
+    ).
 
 %% @doc 推荐恢复方式
 %% @param Options 恢复选项列表
@@ -127,16 +149,21 @@ start_auto_recovery(Uid, DeviceId, Method) ->
 check_device_has_key(Uid, DeviceId) ->
     case user_device_ds:list_public_keys(Uid) of
         {ok, Devices} ->
-            lists:any(fun(D) ->
-                case maps:get(<<"device_id">>, D, <<>>) of
-                    DeviceId ->
-                        PublicKey = maps:get(<<"public_key">>, D, <<>>),
-                        KeyId = maps:get(<<"key_id">>, D, <<>>),
-                        PublicKey =/= <<>> andalso KeyId =/= <<>>;
-                    _ -> false
-                end
-            end, Devices);
-        _ -> false
+            lists:any(
+                fun(D) ->
+                    case maps:get(<<"device_id">>, D, <<>>) of
+                        DeviceId ->
+                            PublicKey = maps:get(<<"public_key">>, D, <<>>),
+                            KeyId = maps:get(<<"key_id">>, D, <<>>),
+                            PublicKey =/= <<>> andalso KeyId =/= <<>>;
+                        _ ->
+                            false
+                    end
+                end,
+                Devices
+            );
+        _ ->
+            false
     end.
 
 %% @doc 检查设备间传输是否可用
@@ -169,7 +196,8 @@ check_social_recovery_available(Uid) ->
             {ok, Contacts} ->
                 % 可信联系人由服务端维护，默认视作可参与恢复
                 ActiveCount = length(Contacts),
-                CanRecover = ActiveCount >= 2,  % 至少需要 2 个可信联系人
+                % 至少需要 2 个可信联系人
+                CanRecover = ActiveCount >= 2,
                 {ok, CanRecover, #{
                     <<"contact_count">> => length(Contacts),
                     <<"active_count">> => ActiveCount

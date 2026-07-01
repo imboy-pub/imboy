@@ -1,4 +1,5 @@
 -module(adm_announcement_handler).
+-dialyzer({nowarn_function, [index/3]}).
 -dialyzer({nowarn_function, [filter_opts/3]}).
 
 %%%

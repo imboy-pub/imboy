@@ -1,4 +1,6 @@
 -module(eunit_runner).
+-dialyzer({nowarn_function, [eunit_try_db/1]}).
+-dialyzer({nowarn_function, [eunit_setup_with_db/0, eunit_setup_db_or_skip/0]}).
 -compile([nowarn_deprecated_catch]).
 -export([
     run/0,

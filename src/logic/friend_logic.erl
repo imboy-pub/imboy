@@ -122,8 +122,7 @@ confirm_friend(_, _, _, undefined) ->
 confirm_friend(_MsgId, CurrentUid, From, Payload) when
     is_integer(CurrentUid), is_binary(From), is_binary(Payload)
 ->
-    To = CurrentUid,
-    confirm_friend(CurrentUid, From, To, Payload);
+    confirm_friend(CurrentUid, From, integer_to_binary(CurrentUid), Payload);
 confirm_friend(CurrentUid, From, To, Payload) ->
     FromBin = ec_cnv:to_binary(From),
     ToBin = ec_cnv:to_binary(To),

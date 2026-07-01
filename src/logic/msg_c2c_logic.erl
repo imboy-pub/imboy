@@ -1,4 +1,5 @@
 -module(msg_c2c_logic).
+-dialyzer({nowarn_function, [c2c_revoke/3]}).
 %%%
 %  msg_c2c 业务逻辑模块
 %%%

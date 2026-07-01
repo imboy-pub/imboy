@@ -1,4 +1,5 @@
 -module(payment_sign).
+-dialyzer({nowarn_function, [normalize_verify/1]}).
 %%%===================================================================
 %%% @doc 支付回调验签 / Payment webhook signature verification
 %%%

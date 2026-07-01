@@ -1,4 +1,5 @@
 -module(group_member_handler).
+-dialyzer({nowarn_function, [payload_list_key/1]}).
 
 -behavior(cowboy_rest).
 

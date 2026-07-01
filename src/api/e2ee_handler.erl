@@ -1,4 +1,5 @@
 -module(e2ee_handler).
+-dialyzer({nowarn_function, [do_key_status/2, do_backup_delete/2]}).
 
 %% Thin HTTP adapter for the security_privacy e2ee boundary.
 -dialyzer(

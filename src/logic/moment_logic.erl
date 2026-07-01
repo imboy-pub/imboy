@@ -1,4 +1,5 @@
 -module(moment_logic).
+-dialyzer({nowarn_function, [admin_resolve_report/4]}).
 -compile([nowarn_deprecated_catch, nowarn_export_var_subexpr]).
 -dialyzer({nowarn_function, [maybe_delete_post_on_violation/3]}).
 %%%

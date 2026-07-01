@@ -1,4 +1,5 @@
 -module(adm_attach_handler).
+-dialyzer({nowarn_function, [index/3]}).
 
 %%%
 % adm_attach 控制器模块

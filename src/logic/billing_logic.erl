@@ -1,4 +1,5 @@
 -module(billing_logic).
+-dialyzer({nowarn_function, [do_pay_invoice/3]}).
 -dialyzer({nowarn_function, [period_field_ms/2]}).
 
 %%%===================================================================

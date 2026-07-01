@@ -1,4 +1,5 @@
 -module(group_tag_ds).
+-dialyzer({nowarn_function, [count/1]}).
 %%%
 % group_tag_ds 是群组标签数据服务层
 % 封装群组标签的数据操作和业务逻辑
@@ -86,7 +87,9 @@ list(_) ->
 search(TagName) when TagName =:= <<>> ->
     {error, <<"标签名不能为空"/utf8>>};
 search(TagName) ->
-    case group_tag_repo:list_by_tag_name(TagName, <<"group_id, tag_name, created_by, created_at">>) of
+    case
+        group_tag_repo:list_by_tag_name(TagName, <<"group_id, tag_name, created_by, created_at">>)
+    of
         {ok, Rows} -> {ok, Rows};
         {error, _Reason} -> {ok, []}
     end.

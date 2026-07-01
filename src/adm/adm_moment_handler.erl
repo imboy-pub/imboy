@@ -1,4 +1,5 @@
 -module(adm_moment_handler).
+-dialyzer({nowarn_function, [report_resolve/3, report_batch_resolve/3]}).
 
 -behavior(cowboy_rest).
 

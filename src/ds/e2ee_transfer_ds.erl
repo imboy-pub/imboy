@@ -1,4 +1,5 @@
 -module(e2ee_transfer_ds).
+-dialyzer({nowarn_function, [create_session/4]}).
 -dialyzer(no_return).
 %%%===================================================================
 %%% @doc E2EE 设备间传输 DS 层

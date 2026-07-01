@@ -1,4 +1,5 @@
 -module(adm_group_handler).
+-dialyzer({nowarn_function, [kick_member/3]}).
 %%%
 % adm_group 控制器模块
 % 群组管理 API

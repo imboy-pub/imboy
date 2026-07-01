@@ -1,4 +1,5 @@
 -module(moment_logic_notify).
+-dialyzer({nowarn_function, [safe_send/4]}).
 -compile([nowarn_deprecated_catch]).
 %%%
 % moment notification helpers

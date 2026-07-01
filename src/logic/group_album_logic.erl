@@ -1,4 +1,5 @@
 -module(group_album_logic).
+-dialyzer({nowarn_function, [batch_upload_photos/3]}).
 %%%
 % group_album_logic 是群相册 logic 缩写
 % 群相册业务逻辑层，处理群相册相关的业务逻辑

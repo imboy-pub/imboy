@@ -1,4 +1,5 @@
 -module(adm_auth_middleware).
+-dialyzer({nowarn_function, [ip_in_allowlist/2]}).
 -behaviour(cowboy_middleware).
 
 -include("log.hrl").

@@ -1,4 +1,5 @@
 -module(feedback_ds).
+-dialyzer({nowarn_function, [add/10]}).
 %%%
 % feedback 领域服务模块
 % feedback domain service 缩写
@@ -26,7 +27,7 @@
 %% @param Uid 用户ID
 %% @param FeedbackId 反馈ID
 %% @returns ok
--export ([remove/2]).
+-export([remove/2]).
 
 %% @doc 添加反馈回复
 %% 为反馈添加回复，并更新反馈状态
@@ -43,25 +44,56 @@
 %% API
 %% ===================================================================
 
-
 %%% add方法
 %%% 新增用户反馈
--spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
+-spec add(
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary()
+) ->
     ok | {ok, non_neg_integer()}.
 % feedback_ds:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
-    FeedbackMd5 = elib_hasher:md5(elib_cnv:implode("", [
-        Uid, Did, AppVsn, Type, Body
-        ])),
+    FeedbackMd5 = elib_hasher:md5(
+        elib_cnv:implode("", [
+            Uid, Did, AppVsn, Type, Body
+        ])
+    ),
 
     % 使用安全的参数化查询，避免SQL注入
-    Count = elib_pg:pluck_value(<<"feedback">>,
-       <<"count(*)">>,
-       #{<<"feedback_md5">> => FeedbackMd5}, #{}, 0),
-    if Count > 0 ->
+    Count = elib_pg:pluck_value(
+        <<"feedback">>,
+        <<"count(*)">>,
+        #{<<"feedback_md5">> => FeedbackMd5},
+        #{},
+        0
+    ),
+    if
+        Count > 0 ->
             ok;
         true ->
-            case feedback_repo:add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5) of
+            case
+                feedback_repo:add(
+                    Uid,
+                    Did,
+                    COS,
+                    COSV,
+                    AppVsn,
+                    Type,
+                    Rating,
+                    ContactDetail,
+                    Body,
+                    Attach,
+                    FeedbackMd5
+                )
+            of
                 {ok, _} -> ok;
                 {error, Reason} -> ?ERROR_LOG([feedback_add_failed, Uid, Reason])
             end,
@@ -73,10 +105,17 @@ remove(Uid, FeedbackId) ->
     % 状态: -1 删除  0 禁用  1 启用 (待回复）  2 已回复  3 已完结（不允许回复了）
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"user_id = $1 AND id = $2">>,
-    case elib_pg:update(feedback_repo:tablename(), #{
-        <<"status">> => -1,
-        <<"updated_at">> => elib_dt:now()
-    }, Where, [Uid, FeedbackId]) of
+    case
+        elib_pg:update(
+            feedback_repo:tablename(),
+            #{
+                <<"status">> => -1,
+                <<"updated_at">> => elib_dt:now()
+            },
+            Where,
+            [Uid, FeedbackId]
+        )
+    of
         {ok, _} -> ok;
         {error, Reason} -> ?ERROR_LOG([feedback_status_update_failed, Uid, FeedbackId, Reason])
     end,
@@ -84,7 +123,6 @@ remove(Uid, FeedbackId) ->
     % Key = {user_device_name, Uid, FeedbackId},
     % imboy_cache:flush(Key),
     ok.
-
 
 % feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => elib_dt:now()})
 -spec add_reply(map()) -> ok.
@@ -97,11 +135,18 @@ add_reply(Data) ->
         {error, Reason1} -> ?ERROR_LOG([feedback_reply_add_failed, FeedbackId, Reason1])
     end,
     % 使用安全的参数化查询，避免SQL注入
-    case elib_pg:update(feedback_repo:tablename(), #{
-        <<"status">> => 2,
-        <<"reply_count">> => {raw, <<"reply_count + 1">>},
-        <<"updated_at">> => elib_dt:now()
-    }, <<"id = $1">>, [FeedbackId]) of
+    case
+        elib_pg:update(
+            feedback_repo:tablename(),
+            #{
+                <<"status">> => 2,
+                <<"reply_count">> => {raw, <<"reply_count + 1">>},
+                <<"updated_at">> => elib_dt:now()
+            },
+            <<"id = $1">>,
+            [FeedbackId]
+        )
+    of
         {ok, _} -> ok;
         {error, Reason2} -> ?ERROR_LOG([feedback_status_update_failed, FeedbackId, Reason2])
     end,

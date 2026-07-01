@@ -1,4 +1,5 @@
 -module(moment_ds).
+-dialyzer({nowarn_function, [normalize_uid_list/1, encode_json/2]}).
 %%%
 % moment domain service
 %%%

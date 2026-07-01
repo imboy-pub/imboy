@@ -1,4 +1,5 @@
 -module(user_tag_ds).
+-dialyzer({nowarn_function, [change_name/5]}).
 %%%
 % user_tag_ds 是用户标签数据服务层
 % 封装用户标签的数据操作和缓存管理

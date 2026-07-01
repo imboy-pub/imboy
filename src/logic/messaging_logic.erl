@@ -1,4 +1,5 @@
 -module(messaging_logic).
+-dialyzer({nowarn_function, [offline_ack/2]}).
 
 -export([
     handle_rest_action/3,
@@ -122,7 +123,9 @@ read_stats(Req0, State) ->
                         {error, permission_denied} ->
                             elib_response:error(Req0, <<"无权限访问该消息"/utf8>>, ?ERR_ACCESS_DENIED);
                         {error, Reason} ->
-                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                            elib_response:error(
+                                Req0, elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end
             end
     end.
@@ -339,7 +342,9 @@ reaction_remove(Req0, State) ->
                         {error, msg_not_found} ->
                             elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_MESSAGE_NOT_FOUND);
                         {error, Reason} ->
-                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                            elib_response:error(
+                                Req0, elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end
             end
     end.

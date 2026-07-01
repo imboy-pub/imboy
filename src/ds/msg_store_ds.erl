@@ -1,4 +1,5 @@
 -module(msg_store_ds).
+-dialyzer({nowarn_function, [init/1]}).
 -dialyzer({nowarn_function, [staging_pending/1, pending_from_row/1]}).
 %%%-------------------------------------------------------------------
 %%% @doc  消息写入队列管理服务（gen_server）

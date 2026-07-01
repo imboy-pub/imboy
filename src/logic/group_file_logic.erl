@@ -1,4 +1,5 @@
 -module(group_file_logic).
+-dialyzer({nowarn_function, [upload/5]}).
 %%%
 % group_file_logic 是 group file logic 缩写
 % 群文件业务逻辑层，处理群文件相关的业务逻辑
@@ -89,9 +90,12 @@ list(Gid, CurrentUid, Page, Size, Options) ->
     case group_file_ds:list_files(Gid2, CurrentUid, Page, Size, Options) of
         {ok, Files} ->
             % 3. 编码ID字段
-            Files2 = lists:map(fun(File) ->
-                File
-            end, Files),
+            Files2 = lists:map(
+                fun(File) ->
+                    File
+                end,
+                Files
+            ),
 
             % 4. 查询总数
             {ok, Total} = group_file_ds:count_by_group(Gid2),
@@ -123,9 +127,12 @@ search(Gid, Keyword, Page, Size) ->
     case group_file_ds:search_files(Gid2, Keyword, Page, Size) of
         {ok, Files} ->
             % 3. 编码ID字段
-            Files2 = lists:map(fun(File) ->
-                File
-            end, Files),
+            Files2 = lists:map(
+                fun(File) ->
+                    File
+                end,
+                Files
+            ),
             {ok, Files2};
         {error, Reason} ->
             {error, Reason}
@@ -149,13 +156,16 @@ get_categories(Gid, CurrentUid) ->
             case group_file_ds:get_file_categories(Gid2) of
                 {ok, Stats} ->
                     % 4. 格式化结果
-                    CategoryStats = lists:map(fun({Category, Count, TotalSize}) ->
-                        #{
-                            <<"category">> => Category,
-                            <<"count">> => Count,
-                            <<"total_size">> => TotalSize
-                        }
-                    end, Stats),
+                    CategoryStats = lists:map(
+                        fun({Category, Count, TotalSize}) ->
+                            #{
+                                <<"category">> => Category,
+                                <<"count">> => Count,
+                                <<"total_size">> => TotalSize
+                            }
+                        end,
+                        Stats
+                    ),
                     {ok, CategoryStats};
                 {error, Reason} ->
                     {error, Reason}

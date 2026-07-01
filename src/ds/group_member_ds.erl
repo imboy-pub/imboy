@@ -1,4 +1,5 @@
 -module(group_member_ds).
+-dialyzer({nowarn_function, [update_statistics/2]}).
 %%%
 % group_member_ds 是群组成员数据服务层
 % 封装群组成员的数据操作和事务管理

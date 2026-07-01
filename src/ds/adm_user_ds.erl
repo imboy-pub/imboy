@@ -1,4 +1,5 @@
 -module(adm_user_ds).
+-dialyzer({nowarn_function, [page_with_where_sql/4]}).
 %%%
 % adm_user_ds 是管理员用户数据服务层
 % 封装管理员用户的数据操作

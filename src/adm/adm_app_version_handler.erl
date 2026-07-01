@@ -1,4 +1,5 @@
 -module(adm_app_version_handler).
+-dialyzer({nowarn_function, [version_stats/3]}).
 
 %%%
 % adm_app_version 控制器模块
@@ -132,9 +133,9 @@ delete(<<"DELETE">>, Req0, _State) ->
         {ok, _} ->
             elib_response:success(Req0, PostVals, <<"success."/utf8>>);
         {error, invalid_id} ->
-            elib_response:error(Req0, PostVals, <<"无效的版本ID"/utf8>>);
+            elib_response:error(Req0, <<"无效的版本ID"/utf8>>);
         {error, _Reason} ->
-            elib_response:error(Req0, PostVals, <<"删除失败"/utf8>>)
+            elib_response:error(Req0, <<"删除失败"/utf8>>)
     end;
 delete(_, Req0, _State) ->
     Req0.

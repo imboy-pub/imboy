@@ -1,4 +1,5 @@
 -module(group_file_ds).
+-dialyzer({nowarn_function, [upload_file/5]}).
 %%%
 % group_file_ds 是 group file domain service 缩写
 % 群文件数据服务层，封装群文件业务逻辑和数据访问

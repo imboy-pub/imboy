@@ -1,4 +1,5 @@
 -module(group_task_handler).
+-dialyzer({nowarn_function, [maybe_assign_task/2]}).
 %% Thin HTTP adapter for the group_collab task boundary.
 %% Keep transport concerns here and delegate task rules to group_task_logic.
 

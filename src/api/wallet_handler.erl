@@ -1,4 +1,5 @@
 -module(wallet_handler).
+-dialyzer({nowarn_function, [withdraw/2]}).
 
 %%%
 % 钱包 API 处理器

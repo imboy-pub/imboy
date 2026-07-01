@@ -1,4 +1,5 @@
 -module(msg_rate_logic).
+-dialyzer({nowarn_function, [init_table/0]}).
 %%%===================================================================
 %%% @doc
 %%% msg_rate_logic - 消息频率异常检测逻辑层

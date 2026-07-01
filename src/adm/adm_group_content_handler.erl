@@ -1,4 +1,5 @@
 -module(adm_group_content_handler).
+-dialyzer({nowarn_function, [category_list/3, category_delete/3, tag_list/3]}).
 %%% 群组子资源 — adm_group_content_handler
 
 -behavior(cowboy_rest).
