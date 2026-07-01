@@ -97,16 +97,18 @@ init(Req0, State0) ->
 %% 连接建立后的初始化处理，用户上线
 %%
 %% @param State 状态映射，包含 current_uid 等信息
-%% @return {ok, State, hibernate} 或 {reply, {text, binary()}, State, hibernate}
+%% @return {ok, State, hibernate} 或 {reply, [{text, binary()}, close], State, hibernate}
 %% @end
--spec websocket_init(map()) -> {ok, map(), hibernate} | {reply, {text, binary()}, map(), hibernate}.
+-spec websocket_init(map()) ->
+    {ok, map(), hibernate} | {reply, [{text, binary()} | close], map(), hibernate}.
 websocket_init(State) ->
     case is_error_state(State) of
         true ->
             Code = maps:get(error, State),
             Msg = #{<<"code">> => Code, <<"msg">> => <<>>, <<"server_ts">> => elib_dt:now()},
-            %% 连接级错误始终使用 JSON text frame（非 IM 消息格式）
-            {reply, {text, jsone:encode(Msg)}, State, hibernate};
+            %% 连接级错误：发送 JSON text frame 后立即关闭连接，
+            %% 避免无效连接占用连接位直到 idle_timeout（180s）才释放
+            {reply, [{text, jsone:encode(Msg)}, close], State, hibernate};
         false ->
             CurrentUid = auth_ds:current_uid(State),
             % 用户上线
