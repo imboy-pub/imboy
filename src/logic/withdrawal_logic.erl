@@ -42,7 +42,10 @@ withdraw(Uid, Amount, Method, Account) ->
                                 <<"balance_yuan">> => NewBalance / 100.0,
                                 <<"reference_no">> => RefNo
                             }};
-                        {error, insufficient_balance} ->
+                        %% atomic_balance_change 余额不足时抛 {rollback, insufficient_balance}
+                        %% （wallet_repo.erl 内 throw），不是 {error, insufficient_balance}；
+                        %% 旧写法这里恒不匹配 → 提现余额不足时必现 case_clause 崩溃。
+                        {rollback, insufficient_balance} ->
                             {error, <<"钱包余额不足"/utf8>>};
                         {error, Reason} ->
                             {error, Reason}

@@ -47,9 +47,12 @@ withdraw_success_returns_balance() ->
     ?assert(is_binary(maps:get(<<"reference_no">>, Result))).
 
 %% 非法输入：余额不足（repo 守卫触发）→ 拒绝
+%% 回归：wallet_repo:atomic_balance_change 真实余额不足时抛 {rollback, insufficient_balance}
+%% （经 elib_pg:with_tx 原样返回），不是 {error, insufficient_balance}；
+%% 曾错误按后者匹配，导致提现余额不足时必现 case_clause 崩溃而非友好错误。
 withdraw_insufficient_balance_rejected() ->
     meck:expect(wallet_ds, atomic_balance_change, fun(-99999, ?UID, _TxData, _RefNo) ->
-        {error, insufficient_balance}
+        {rollback, insufficient_balance}
     end),
     ?assertEqual(
         {error, <<"钱包余额不足"/utf8>>},

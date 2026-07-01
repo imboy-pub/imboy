@@ -58,7 +58,10 @@ send(SenderUid, Type, Amount, Count, Greeting) ->
                                     ),
                                     {error, Reason}
                             end;
-                        {error, insufficient_balance} ->
+                        %% atomic_balance_change 余额不足时抛 {rollback, insufficient_balance}
+                        %% （wallet_repo.erl 内 throw），不是 {error, insufficient_balance}；
+                        %% 旧写法这里恒不匹配 → 发红包余额不足时必现 case_clause 崩溃。
+                        {rollback, insufficient_balance} ->
                             {error, <<"钱包余额不足"/utf8>>};
                         {error, Reason} ->
                             {error, Reason}

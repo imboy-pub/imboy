@@ -1902,6 +1902,62 @@ with_tx_with_opts_test_() ->
             end)
         end}.
 
+%% 回归：with_tx 内业务 throw({rollback, Reason})（wallet_repo/transfer_repo 等钱路径
+%% 广泛使用）必须原样返回 {rollback, Reason}，不能被 with_conn 通用异常分支误判成
+%% "未知运行时异常"重试后错落为三元组 {error, throw, {rollback, Reason}}。
+%%
+%% 与上面 with_tx_rollback_test_ 的关键区别：那里直接把 epgsql:with_transaction/3
+%% mock 成"直接返回 {rollback, Reason}"，完全绕过了 reraise/erlang:raise 语义，
+%% 测不出这个 bug（历史上这个 bug 正是因为所有测试都这样 mock 掉 with_transaction
+%% 才被完全掩盖）。这里改为如实复现 epgsql:with_transaction 在 reraise=true 时的
+%% 真实合同：F 抛出的异常先 squery ROLLBACK，再原样重新抛出（而不是转成返回值），
+%% 从而真正打到 with_conn 的 catch 分支，验证新增的 throw:{rollback,_} 处理。
+%% （不直接调真实 epgsql:with_transaction 的原因：其内部对 squery/2 是模块内本地调用，
+%% meck 的 passthrough 无法拦截本地调用，必须连真实 socket，只能用真实 PG 才能测。）
+with_tx_business_rollback_surfaces_test_() ->
+    {setup,
+        fun() ->
+            FakeConn = setup_pooler_mock(),
+            meck:new(config_ds, [no_link, passthrough]),
+            meck:expect(config_ds, env, 1, fun
+                (sql_driver) -> pgsql;
+                (_) -> undefined
+            end),
+            meck:new(epgsql, [no_link, passthrough]),
+            meck:expect(
+                epgsql,
+                with_transaction,
+                3,
+                fun(Conn, F, Opts) ->
+                    try
+                        F(Conn)
+                    catch
+                        Type:Reason ->
+                            _ = epgsql:squery(Conn, <<"ROLLBACK">>),
+                            case proplists:get_value(reraise, Opts, true) of
+                                true -> erlang:raise(Type, Reason, []);
+                                false -> {rollback, Reason}
+                            end
+                    end
+                end
+            ),
+            meck:expect(epgsql, squery, 2, fun(_Conn, _Sql) -> {ok, [], []} end),
+            FakeConn
+        end,
+        fun(FakeConn) ->
+            catch meck:unload(epgsql),
+            catch meck:unload(config_ds),
+            teardown_pooler_mock(FakeConn),
+            stop_fake_conn(FakeConn)
+        end,
+        fun(_FakeConn) ->
+            ?_test(begin
+                Fun = fun(_Conn) -> throw({rollback, insufficient_balance}) end,
+                Result = elib_pg:with_tx(Fun),
+                ?assertEqual({rollback, insufficient_balance}, Result)
+            end)
+        end}.
+
 %% ===================================================================
 %% escape_like/1 测试
 %% ===================================================================

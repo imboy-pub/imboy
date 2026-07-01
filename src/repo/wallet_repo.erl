@@ -103,7 +103,7 @@ page(WhereMap, Page, Size) ->
 %% @param Amount 变动金额（正=增加，负=扣减）
 %% @param Uid 用户ID
 %% @param TxData 流水数据 map（不含 balance_after，由事务内计算）
-%% @return {ok, NewBalance} | {error, insufficient_balance} | {error, term()}
+%% @return {ok, NewBalance} | {rollback, insufficient_balance} | {error, term()}
 -spec atomic_balance_change(integer(), integer(), map(), binary()) ->
     {ok, integer()} | {rollback, term()} | {error, term()}.
 atomic_balance_change(Amount, Uid, TxData, RefNo) ->

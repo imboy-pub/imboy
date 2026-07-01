@@ -106,6 +106,19 @@ with_conn(Driver, Fun, Retries, Delay) ->
                         %% 回滚事务，使得调用方返回二元组 {error, Reason};
                         _ = epgsql:squery(Conn, <<"ROLLBACK">>),
                         {error, Reason};
+                    %% 接受 throw({rollback, Reason})：with_tx 内业务主动回滚信号
+                    %% （wallet_repo/transfer_repo/recharge_order_repo/red_packet_repo 等
+                    %%  钱路径广泛使用，如 insufficient_balance/already_credited）。
+                    %% with_tx 默认 reraise=true：epgsql:with_transaction 会先 ROLLBACK
+                    %% 再把该 throw 原样重新抛出；若不在此拦截，会落入下面的通用异常分支
+                    %% 被当成"未知运行时异常"重试 3 次，最终返回三元组
+                    %% {error, throw, {rollback, Reason}}——与调用方处处期望匹配的二元组
+                    %% {rollback, Reason} 完全对不上，导致 case_clause 崩溃（曾在
+                    %% withdraw/transfer/recharge/red_packet 的余额不足等路径必现）。
+                    %% 此处直接按业务回滚原样返回，不重试。
+                    throw:{rollback, Reason} ->
+                        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
+                        {rollback, Reason};
                     %% 其他 DB / 运行时异常
                     Class:Reason:Stacktrace ->
                         ok = ?ERROR_LOG(
