@@ -1,0 +1,48 @@
+# POST /v1/wallet/withdraw
+post:
+  tags: [wallet]
+  summary: 发起提现（需管理员审批）
+  description: |
+    ## 中文
+    发起提现请求：原子扣减本人钱包余额（status=0 待审批），记录提现流水。
+    余额在**单事务内**条件扣减（`balance - amount >= 0` 守卫），防透支与并发双花。
+    提现到账需管理员在 `/adm/finance/withdrawals/complete` 审批；拒绝则
+    `/adm/finance/withdrawals/reject` 原子退款。`user_id` 取自 JWT。
+    金额单位「分」，整数，下限 100；渠道白名单 alipay/wechat；账号非空。
+    需 Bearer JWT。
+    ## English
+    Create a withdrawal: atomically debits the caller's wallet in a single tx
+    guarded by `balance - amount >= 0` (no overdraft, no double-spend). Disbursement
+    requires admin approval; rejection refunds atomically. Requires Bearer JWT.
+  operationId: walletWithdraw
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [amount, payment_method, account]
+          properties:
+            amount: { type: integer, minimum: 100, description: 提现金额（分） }
+            payment_method: { type: string, enum: [alipay, wechat] }
+            account: { type: string, description: 收款账号 }
+  responses:
+    '200':
+      description: 成功；payload 为提现后余额与流水号（status=0 待审批）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      balance: { type: integer, description: 扣款后余额（分） }
+                      balance_yuan: { type: number, description: 余额（元） }
+                      reference_no: { type: string, description: 提现流水号 }
+    '4XX':
+      description: 未登录 / 参数非法 / 渠道或账号不合法 / 钱包不可用 / 余额不足
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
