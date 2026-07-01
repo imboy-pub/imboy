@@ -265,14 +265,24 @@ transfer_send(Req0, State) ->
         false ->
             elib_response:error(Req0, <<"接收者ID不能为空"/utf8>>);
         true ->
-            ReceiverUid = binary_to_integer(ReceiverUidStr),
-            case transfer_logic:send(CurrentUid, ReceiverUid, Amount, Remark) of
-                {ok, TransferId} ->
-                    elib_response:success(
-                        Req0, #{<<"transfer_id">> => integer_to_binary(TransferId)}, "success."
-                    );
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+            %% 安全解析接收者 ID：非数字 / 0 / 负数 → 优雅报错，避免 badarg 500
+            try binary_to_integer(ReceiverUidStr) of
+                ReceiverUid when is_integer(ReceiverUid), ReceiverUid > 0 ->
+                    case transfer_logic:send(CurrentUid, ReceiverUid, Amount, Remark) of
+                        {ok, TransferId} ->
+                            elib_response:success(
+                                Req0,
+                                #{<<"transfer_id">> => integer_to_binary(TransferId)},
+                                "success."
+                            );
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end;
+                _ ->
+                    elib_response:error(Req0, <<"接收者ID不合法"/utf8>>)
+            catch
+                error:badarg ->
+                    elib_response:error(Req0, <<"接收者ID不合法"/utf8>>)
             end
     end.
 

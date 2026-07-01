@@ -851,6 +851,8 @@ paths:
     $ref: './paths/wallet/topup.yaml'
   /v1/wallet/withdraw:
     $ref: './paths/wallet/withdraw.yaml'
+  /v1/wallet/transfer/send:
+    $ref: './paths/wallet/transfer_send.yaml'
   /v1/wallet/recharge/{order_no}:
     $ref: './paths/wallet/recharge_order.yaml'
   /v1/wallet/recharge/order:

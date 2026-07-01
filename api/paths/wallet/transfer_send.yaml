@@ -1,0 +1,45 @@
+# POST /v1/wallet/transfer/send
+post:
+  tags: [wallet]
+  summary: 发起转账（托管模式）
+  description: |
+    ## 中文
+    发起 P2P 转账：单事务内原子扣减发送方余额（`balance - amount` 且 `balance >= amount`
+    守卫，防透支/双花）并创建 pending 转账单。收款方经 `/v1/wallet/transfer/accept`
+    收取后入账；逾期/拒收经 `refund` 退回。
+    `sender_uid` 取自 JWT（不可伪造）；阻断自转（`sender==receiver` 拒绝）；
+    金额整数≥100。需 Bearer JWT。
+    ## English
+    Initiate a P2P transfer: atomically debits the sender in a single tx guarded by
+    `balance >= amount`, creating a pending order. Receiver claims via accept; expired
+    / rejected orders refund. sender_uid from JWT; self-transfer blocked; amount>=100.
+  operationId: walletTransferSend
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [receiver_uid, amount]
+          properties:
+            receiver_uid: { type: integer, minimum: 1, description: 收款用户 TSID }
+            amount: { type: integer, minimum: 100, description: 转账金额（分） }
+            remark: { type: string, description: 转账备注 }
+  responses:
+    '200':
+      description: 成功；payload 为转账单 ID
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      transfer_id: { type: string, description: 转账单 TSID（字符串） }
+    '4XX':
+      description: 未登录 / 接收者ID为空或不合法 / 金额非法 / 自转 / 余额不足
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
