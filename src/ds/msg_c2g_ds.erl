@@ -147,12 +147,14 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, MemberUids, Gid, MsgType, _Act
     % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
     write_msg(NowTs, MsgId, Payload, FromId, MemberUids, Gid, MsgType, E2EE),
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
+    % 纵深防御：加 from_id 限定，与 edit_offline_msg/6 保持一致，
+    % 防止未来新增调用方跳过 Logic 层归属校验时可改写任意群消息
     case
         elib_pg:update(
             msg_c2g_repo:tablename(),
             #{payload => Payload},
-            <<"msg_id = $1">>,
-            [MsgId]
+            <<"msg_id = $1 AND from_id = $2">>,
+            [MsgId, FromId]
         )
     of
         {ok, _} -> ok;
