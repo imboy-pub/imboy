@@ -312,11 +312,18 @@ build_vote_detail(Vote, VoteId) ->
             % 获取总投票人数
             {ok, TotalVotes} = group_vote_ds:count_total_votes_by_vote_id(VoteId),
 
-            % 为每个选项添加得票数
+            % 一次性查出所有选项的得票数（避免逐选项 N+1 查询）
+            {ok, CountRows} = group_vote_ds:count_votes_grouped_by_vote_id(VoteId),
+            CountByOptionId = maps:from_list([
+                {maps:get(<<"option_id">>, Row), maps:get(<<"vote_count">>, Row)}
+             || Row <- CountRows
+            ]),
+
+            % 为每个选项补上得票数
             OptionsWithCount = lists:map(
                 fun(Option) ->
                     OptionId = maps:get(<<"option_id">>, Option),
-                    {ok, Count} = group_vote_ds:count_votes_by_option_id(OptionId),
+                    Count = maps:get(OptionId, CountByOptionId, 0),
                     Option#{<<"vote_count">> => Count}
                 end,
                 Options

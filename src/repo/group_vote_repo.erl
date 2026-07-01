@@ -26,6 +26,7 @@
 
 -export([count_votes_by_option_id/1]).
 -export([count_total_votes_by_vote_id/1]).
+-export([count_votes_grouped_by_vote_id/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -447,4 +448,36 @@ count_total_votes_by_vote_id(VoteId) when is_binary(VoteId), byte_size(VoteId) >
             {error, Reason}
     end;
 count_total_votes_by_vote_id(_VoteId) ->
+    {error, invalid_param}.
+
+%% @doc 一次性统计某投票下所有选项的得票数（避免逐选项 N+1 查询）
+%% option_ids 是 jsonb 数组（允许多选），用子查询 unnest 后按 option_id 聚合，
+%% 用 LEFT JOIN 保证零票选项也会出现在结果中
+%% @param VoteId 投票ID (字符串)
+%% @return {ok, [#{<<"option_id">> => binary(), <<"vote_count">> => integer()}]} | {error, Reason}
+-spec count_votes_grouped_by_vote_id(binary()) -> {ok, [map()]} | {error, term()}.
+count_votes_grouped_by_vote_id(VoteId) when is_binary(VoteId), byte_size(VoteId) > 0 ->
+    OptTb = tablename_option(),
+    RecTb = tablename_record(),
+    Sql = <<
+        "SELECT o.option_id AS option_id, COUNT(v.chosen_option_id) AS vote_count",
+        " FROM ",
+        OptTb/binary,
+        " o",
+        " LEFT JOIN (",
+        "   SELECT jsonb_array_elements_text(option_ids) AS chosen_option_id",
+        "   FROM ",
+        RecTb/binary,
+        "   WHERE vote_id = $1",
+        " ) v ON v.chosen_option_id = o.option_id",
+        " WHERE o.vote_id = $1",
+        " GROUP BY o.option_id"
+    >>,
+    case elib_pg:query(Sql, [VoteId]) of
+        {ok, Rows} ->
+            {ok, Rows};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+count_votes_grouped_by_vote_id(_VoteId) ->
     {error, invalid_param}.

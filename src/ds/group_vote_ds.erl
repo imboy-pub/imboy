@@ -25,7 +25,8 @@
     insert_options_batch/1,
     list_options_by_vote_id/1,
     count_votes_by_option_id/1,
-    count_total_votes_by_vote_id/1
+    count_total_votes_by_vote_id/1,
+    count_votes_grouped_by_vote_id/1
 ]).
 
 %% G3：记录子表 pass-through
@@ -66,6 +67,9 @@ count_votes_by_option_id(OptionId) ->
 
 count_total_votes_by_vote_id(VoteId) ->
     group_vote_repo:count_total_votes_by_vote_id(VoteId).
+
+count_votes_grouped_by_vote_id(VoteId) ->
+    group_vote_repo:count_votes_grouped_by_vote_id(VoteId).
 
 %% ===================================================================
 %% records
