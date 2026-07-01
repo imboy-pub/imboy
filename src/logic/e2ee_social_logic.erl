@@ -25,7 +25,6 @@
 -export([create_shards/3]).
 -export([get_user_shards/2]).
 -export([get_proxy_shards/1]).
--export([recover_key/2]).
 -export([validate_shards/2]).
 -export([can_recover/2]).
 -export([get_proxy_shard/2]).
@@ -165,34 +164,6 @@ get_user_shards(Uid, KeyVersion) ->
 -spec get_proxy_shards(integer()) -> {ok, list(map())} | {error, term()}.
 get_proxy_shards(ProxyUid) ->
     e2ee_social_ds:get_proxy_shards(ProxyUid).
-
-%% @doc 恢复密钥
-%% @param Uid 用户 ID
-%% @param DecryptedShards 已解密的分片列表（从代理获取）
-%% @returns {ok, PrivateKeyPem} | {error, Reason}
-%% @doc 零信任架构：恢复时客户端从代理获取解密后的分片，服务端只负责重组
--spec recover_key(integer(), list(binary())) -> {ok, binary()} | {error, term()}.
-recover_key(_Uid, DecryptedShards) ->
-    try
-        % 1. 验证分片数量
-        case length(DecryptedShards) < ?MIN_THRESHOLD of
-            true -> throw({error, {<<"分片数量不足，至少需要 2 个分片"/utf8>>, ?ERR_BAD_REQUEST}});
-            false -> ok
-        end,
-
-        % 2. 使用 Shamir Secret Sharing 重组密钥
-        PrivateKeyPem = shamir_secret_sharing:combine_shares(DecryptedShards),
-
-        {ok, PrivateKeyPem}
-    catch
-        {error, {Msg, Code}} when is_binary(Msg), is_integer(Code) ->
-            {error, {Msg, Code}};
-        {error, Reason} when is_binary(Reason) ->
-            {error, {Reason, ?ERR_INTERNAL_SERVER_ERROR}};
-        _:Reason:_Stack ->
-            ?ERROR_LOG([e2ee_social_logic, recover_key_failed, Reason]),
-            {error, {<<"密钥恢复失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR}}
-    end.
 
 %% @doc C1 FIX: 验证分片列表并原样返回，不在服务端重组私钥
 %% 客户端在本地完成 Shamir 重组，服务端只校验数量合法性

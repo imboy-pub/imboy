@@ -19,8 +19,6 @@
 -export([get_proxy_shards/1]).
 -export([get_proxy_shard/2]).
 -export([get_shard_by_id/2]).
--export([decrypt_shard/2]).
--export([recover_key/3]).
 -export([can_recover/2]).
 -export([delete_restored_shards/2]).
 -export([create_shard/1]).
@@ -249,56 +247,6 @@ get_proxy_shard(ShardId, ProxyUid) ->
             end;
         {error, Reason} ->
             {error, Reason}
-    end.
-
-%% @doc 解密分片（需要代理私钥）
-%% 注意：这个函数需要代理提供私钥，实际实现中应该通过 API 调用
--spec decrypt_shard(binary(), binary()) -> {ok, binary()} | {error, term()}.
-decrypt_shard(EncryptedShard, PrivateKeyPem) ->
-    try
-        {ok, Decrypted} = elib_cipher:decrypt_rsa_oaep(EncryptedShard, PrivateKeyPem),
-        ShareMap = jsx:decode(Decrypted, [return_maps]),
-        {ok, ShareMap}
-    catch
-        _:_ ->
-            {error, decryption_failed}
-    end.
-
-%% @doc 恢复密钥
--spec recover_key(integer(), binary(), list(binary())) -> {ok, binary()} | {error, term()}.
-recover_key(Uid, KeyVersion, ShardIds) ->
-    try
-        % 1. 获取用户的所有分片
-        {ok, AllShards} = get_user_shards(Uid, KeyVersion),
-
-        % 2. 过滤出要使用的分片
-        SelectedShards = lists:filter(
-            fun(Shard) ->
-                ShardId = maps:get(<<"shard_id">>, Shard),
-                lists:member(ShardId, ShardIds)
-            end,
-            AllShards
-        ),
-
-        % 3. 验证分片数量
-        Threshold =
-            case AllShards of
-                [S | _] -> maps:get(<<"threshold">>, S);
-                [] -> throw({error, no_shares})
-            end,
-
-        case length(SelectedShards) < Threshold of
-            true -> throw({error, insufficient_shares});
-            false -> ok
-        end,
-
-        % 4. 抛出错误，因为需要代理解密
-        throw({error, proxy_decrypt_required})
-    catch
-        throw:{error, ErrorReason} ->
-            {error, ErrorReason};
-        _:Error:Stack ->
-            {error, {Error, Stack}}
     end.
 
 %% @doc 检查用户是否可以恢复密钥
