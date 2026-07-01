@@ -16,6 +16,7 @@
 | `/v1/wallet/recharge/order` | 2026-07-01 | 安全通过（金额 `[Min,Max]` 区间校验 + 支付方式白名单[生产排除 mock] + `user_id` 来自 JWT 无 mass-assignment + SQL 全参数化 + JWT 鉴权）；补 openapi spec（路由原先未文档化）；加 `recharge_logic_create_tests` 正常/金额越界/方式非法 三用例 | 44782764 |
 | `/v1/wallet/recharge/pay` | 2026-07-01 | 安全通过（IDOR 防护 `order.user_id==current_uid` + 状态必须待支付 + 金额/方式取自订单快照防篡改 + SQL 全参数化 + JWT）；补 openapi spec；加 `recharge_logic_pay_access_tests` 非本人/非待支付 两拒绝用例（happy path 已由 `envelope_tests` 覆盖） | 760d67e7 |
 | `/v1/wallet/topup` | 2026-07-01 | 🚨 **CRITICAL 已修**：mock 充值原先三层（handler/logic/ds）均无生产门禁，生产可凭空生成余额。修复：新增 `wallet_logic:topup_enabled_for_env/1`（pro/prod/production/未配置→拒绝）+ `wallet_handler:topup/2` 入口拦截；加 `wallet_logic_topup_tests` 7 用例；更新 topup.yaml | 3b940688 |
+| `/v1/wallet/withdraw` | 2026-07-01 | 安全通过（JWT + IDOR 操作本人钱包 + 金额整数≥100 + 渠道白名单 alipay/wechat + 账号非空 + 原子事务 `balance-$1>=0` 防透支双花 + 全参数化 SQL + 管理员审批流 reject 则退款）；补 openapi spec；加 `withdrawal_logic_tests` 正常/余额不足/金额越界 三用例 | 0ae2d186 |
 
 ---
 
@@ -37,7 +38,7 @@ _（loop 遇到不确定改动时追加到此处）_
 - [x] `/v1/wallet/recharge/order` (#44782764)
 - [x] `/v1/wallet/recharge/pay` (#760d67e7)
 - [x] `/v1/wallet/topup` (#3b940688 🚨CRITICAL 已修)
-- [ ] `/v1/wallet/withdraw`
+- [x] `/v1/wallet/withdraw` (#0ae2d186)
 - [ ] `/v1/wallet/transfer/send`
 - [ ] `/v1/wallet/transfer/accept`
 - [ ] `/v1/wallet/balance`
