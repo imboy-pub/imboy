@@ -75,6 +75,15 @@ create_transfer(Req0, State) ->
 -spec do_create_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 do_create_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
+    case throttle:check(e2ee_transfer, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"操作过于频繁，请稍后再试"/utf8>>, 429);
+        _ ->
+            do_create_transfer2(Req0, CurrentUid)
+    end.
+
+-spec do_create_transfer2(cowboy_req:req(), integer()) -> cowboy_req:req().
+do_create_transfer2(Req0, CurrentUid) ->
     {ok, Body, _} = cowboy_req:read_body(Req0),
     Data =
         try jsx:decode(Body, [return_maps]) of
@@ -140,6 +149,15 @@ accept_transfer(Req0, State) ->
 -spec do_accept_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 do_accept_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
+    case throttle:check(e2ee_transfer, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"操作过于频繁，请稍后再试"/utf8>>, 429);
+        _ ->
+            do_accept_transfer2(Req0, CurrentUid)
+    end.
+
+-spec do_accept_transfer2(cowboy_req:req(), integer()) -> cowboy_req:req().
+do_accept_transfer2(Req0, CurrentUid) ->
     case decode_json_body(Req0) of
         {error, _} ->
             elib_response:error(Req0, <<"无效的请求体"/utf8>>, ?ERR_BAD_REQUEST);
@@ -184,6 +202,15 @@ confirm_transfer(Req0, State) ->
 -spec do_confirm_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 do_confirm_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
+    case throttle:check(e2ee_transfer, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"操作过于频繁，请稍后再试"/utf8>>, 429);
+        _ ->
+            do_confirm_transfer2(Req0, CurrentUid)
+    end.
+
+-spec do_confirm_transfer2(cowboy_req:req(), integer()) -> cowboy_req:req().
+do_confirm_transfer2(Req0, CurrentUid) ->
     case decode_json_body(Req0) of
         {error, _} ->
             elib_response:error(Req0, <<"无效的请求体"/utf8>>, ?ERR_BAD_REQUEST);
@@ -218,6 +245,15 @@ cancel_transfer(Req0, State) ->
 -spec do_cancel_transfer(cowboy_req:req(), map()) -> cowboy_req:req().
 do_cancel_transfer(Req0, State) ->
     CurrentUid = maps:get(current_uid, State, 0),
+    case throttle:check(e2ee_transfer, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"操作过于频繁，请稍后再试"/utf8>>, 429);
+        _ ->
+            do_cancel_transfer2(Req0, CurrentUid)
+    end.
+
+-spec do_cancel_transfer2(cowboy_req:req(), integer()) -> cowboy_req:req().
+do_cancel_transfer2(Req0, CurrentUid) ->
     case decode_json_body(Req0) of
         {error, _} ->
             elib_response:error(Req0, <<"无效的请求体"/utf8>>, ?ERR_BAD_REQUEST);

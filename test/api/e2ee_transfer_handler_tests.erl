@@ -30,6 +30,9 @@ init_with_false_action_removes_action_from_state_test_() ->
 create_transfer_accepts_legacy_to_uid_test_() ->
     ?WITH_MECKS(
         [
+            {throttle, [
+                {'check', 2, fun(e2ee_transfer, _Uid) -> ok end}
+            ]},
             {imboy_policy, [
                 {'e2ee_enabled', 0, fun() -> true end}
             ]},
@@ -105,6 +108,9 @@ create_transfer_accepts_legacy_to_uid_test_() ->
 accept_transfer_missing_session_id_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {throttle, [
+                {'check', 2, fun(e2ee_transfer, _Uid) -> ok end}
+            ]},
             {imboy_policy, [
                 {'e2ee_enabled', 0, fun() -> true end}
             ]},
@@ -131,6 +137,9 @@ accept_transfer_missing_session_id_returns_400_test_() ->
 confirm_transfer_missing_session_id_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {throttle, [
+                {'check', 2, fun(e2ee_transfer, _Uid) -> ok end}
+            ]},
             {imboy_policy, [
                 {'e2ee_enabled', 0, fun() -> true end}
             ]},
@@ -157,6 +166,9 @@ confirm_transfer_missing_session_id_returns_400_test_() ->
 cancel_transfer_missing_session_id_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {throttle, [
+                {'check', 2, fun(e2ee_transfer, _Uid) -> ok end}
+            ]},
             {imboy_policy, [
                 {'e2ee_enabled', 0, fun() -> true end}
             ]},
@@ -189,6 +201,9 @@ cancel_transfer_missing_session_id_returns_400_test_() ->
 accept_transfer_invalid_json_body_returns_400_test_() ->
     ?WITH_MECKS(
         [
+            {throttle, [
+                {'check', 2, fun(e2ee_transfer, _Uid) -> ok end}
+            ]},
             {imboy_policy, [
                 {'e2ee_enabled', 0, fun() -> true end}
             ]},
