@@ -74,38 +74,63 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 s2c(<<"C2G_DEL_FOR_ME">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     Gid = maps:get(<<"to">>, Data),
-    From = CurrentUid,
+    ToGID = ec_cnv:to_integer(Gid),
     OldMsgId = maps:get(<<"old_msg_id">>, Payload),
-    % 使用 DS 层接口删除时间线
-    ok = msg_operation_ds:delete_c2g_timeline(CurrentUid, OldMsgId),
-    % 给操作者回复消息
-    Action = <<"C2G_DEL_FOR_ME">>,
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null),
-    {reply, Msg};
+    % 【权限验证】必须是群成员才能删除自己的时间线记录
+    case group_ds:is_member(CurrentUid, ToGID) of
+        false ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, Gid)};
+        true ->
+            From = CurrentUid,
+            % 使用 DS 层接口删除时间线
+            ok = msg_operation_ds:delete_c2g_timeline(CurrentUid, OldMsgId),
+            % 给操作者回复消息
+            Action = <<"C2G_DEL_FOR_ME">>,
+            Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null),
+            {reply, Msg}
+    end;
 s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     Gid = maps:get(<<"to">>, Data),
     ToGID = ec_cnv:to_integer(Gid),
-    MemberUids = group_ds:member_uids(ToGID),
-
     OldMsgId = maps:get(<<"old_msg_id">>, Payload),
-    NowTs = elib_dt:now(),
 
-    % 删除原有消息 - 使用 DS 层接口
-    ok = msg_operation_ds:delete_c2c_msg(OldMsgId, CurrentUid),
+    % 【权限验证】必须是群成员，且只能删除自己发送的消息（对齐 c2g_revoke 的权限模型）
+    % 注意：短路求值，非成员时不查询原消息，避免不必要的 DB 访问
+    case group_ds:is_member(CurrentUid, ToGID) of
+        false ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, Gid)};
+        true ->
+            case msg_c2g_ds:find_msg_by_id(OldMsgId) of
+                {ok, #{<<"from_id">> := CurrentUid}} ->
+                    MemberUids = group_ds:member_uids(ToGID),
+                    NowTs = elib_dt:now(),
 
-    From = CurrentUid,
+                    % 删除原有消息 - 使用 DS 层接口（此前误用了单聊删除函数，导致群消息实际未被删除）
+                    ok = msg_operation_ds:delete_c2g_msg(
+                        <<"C2G_DEL_EVERYONE">>, CurrentUid, OldMsgId
+                    ),
 
-    % 存储s2c消息
-    [
-        s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload)
-     || Uid <- MemberUids, CurrentUid /= Uid
-    ],
+                    From = CurrentUid,
 
-    % 给操作者回复消息
-    Action = <<"C2G_DEL_EVERYONE">>,
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null),
-    {reply, Msg};
+                    % 存储s2c消息
+                    [
+                        s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload)
+                     || Uid <- MemberUids, CurrentUid /= Uid
+                    ],
+
+                    % 给操作者回复消息
+                    Action = <<"C2G_DEL_EVERYONE">>,
+                    Msg = message_ds:assemble_msg(
+                        <<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null
+                    ),
+                    {reply, Msg};
+                {ok, #{<<"from_id">> := _OtherId}} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, Gid)};
+                {error, _} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, Gid)}
+            end
+    end;
 %% ===================================================================
 %% E2EE 社交恢复 - 零信任架构
 %% ===================================================================
