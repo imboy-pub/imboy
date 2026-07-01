@@ -1,0 +1,49 @@
+# POST /v1/wallet/recharge/pay
+post:
+  tags: [wallet]
+  summary: 拉起充值订单支付（仅本人 + 待支付）
+  description: |
+    ## 中文
+    对一笔待支付（status=0）的充值订单拉起第三方支付。服务端三重校验：
+    ① 订单 `user_id == JWT.current_uid`（IDOR，非本人返「无权操作此订单」）；
+    ② `status == 待支付`（否则「订单状态不允许支付」）；
+    ③ 金额/方式取自订单快照，**不取请求体**（防篡改金额）。
+    成功返回统一支付信封 `payment_method/payment_no/pay_params`（binary key），
+    并保留 `order_no/amount/status` 供前端轮询。需 Bearer JWT。
+    ## English
+    Initiate third-party payment for a pending recharge order. Server enforces
+    ownership + pending-state; amount/method come from the stored order snapshot,
+    not the request body. Returns the unified payment envelope. Requires JWT.
+  operationId: walletRechargePay
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [order_no]
+          properties:
+            order_no: { type: string, description: 待支付的充值订单号 }
+  responses:
+    '200':
+      description: 成功；payload 为统一支付信封
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      payment_method: { type: string, description: alipay/wechat/stripe/mock }
+                      payment_no: { type: string, nullable: true, description: 第三方支付单号 }
+                      pay_params: { type: object, description: 网关支付参数（alipay order_str / wechat prepay_id 等） }
+                      order_no: { type: string }
+                      amount: { type: integer, description: 金额（分），取自订单快照 }
+                      status: { type: integer, description: '0=待支付（真实网关下单阶段不入账）' }
+    '4XX':
+      description: 未登录 / 订单号为空 / 订单不存在 / 无权操作 / 订单状态不允许支付 / 网关错误
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

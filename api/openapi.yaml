@@ -853,6 +853,8 @@ paths:
     $ref: './paths/wallet/recharge_order.yaml'
   /v1/wallet/recharge/order:
     $ref: './paths/wallet/recharge_create.yaml'
+  /v1/wallet/recharge/pay:
+    $ref: './paths/wallet/recharge_pay.yaml'
   /adm:
     $ref: './paths/adm-index/index.yaml'
   /adm/index:
