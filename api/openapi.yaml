@@ -849,6 +849,8 @@ paths:
     $ref: './paths/wallet/transactions.yaml'
   /v1/wallet/topup:
     $ref: './paths/wallet/topup.yaml'
+  /v1/wallet/recharge/{order_no}:
+    $ref: './paths/wallet/recharge_order.yaml'
   /adm:
     $ref: './paths/adm-index/index.yaml'
   /adm/index:

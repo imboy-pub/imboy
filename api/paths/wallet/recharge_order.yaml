@@ -1,0 +1,51 @@
+# GET /v1/wallet/recharge/{order_no}
+get:
+  tags: [wallet]
+  summary: 查询充值订单状态（仅本人可查）
+  description: |
+    ## 中文
+    按订单号查询充值订单详情。**仅订单本人可查**：服务端校验
+    `order.user_id == JWT.current_uid`，非本人返回 `无权查看此订单`。
+    需 Bearer JWT。
+    ## English
+    Query a recharge order by order_no. **Owner-only**: server enforces
+    `order.user_id == JWT.current_uid`; non-owner gets `无权查看此订单`.
+    Requires Bearer JWT.
+  operationId: walletRechargeQuery
+  parameters:
+    - in: path
+      name: order_no
+      required: true
+      schema:
+        type: string
+      description: 充值订单号 / Recharge order number.
+  responses:
+    '200':
+      description: 成功；payload 为订单详情（仅本人可见）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer, description: 订单主键 TSID }
+                      order_no: { type: string, description: 订单号 }
+                      user_id: { type: integer, description: 归属用户 TSID }
+                      amount: { type: integer, description: 金额（分） }
+                      currency: { type: string, description: 币种，如 CNY }
+                      payment_method: { type: string, description: 支付方式 alipay/wechat/wallet/mock }
+                      payment_no: { type: string, nullable: true, description: 第三方支付单号，下单阶段可能为空 }
+                      status: { type: integer, description: '0=待支付, 1=已支付' }
+                      paid_at: { type: string, nullable: true, format: date-time }
+                      expires_at: { type: string, nullable: true, format: date-time }
+                      extra_data: { type: object, nullable: true }
+                      created_at: { type: string, format: date-time }
+                      updated_at: { type: string, format: date-time }
+    '4XX':
+      description: 订单号为空 / 未登录 / 订单不存在 / 无权查看
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
