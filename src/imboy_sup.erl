@@ -198,5 +198,7 @@ init([]) ->
             UserDeletionWorker,
             LicenseNoticeWorker
         ] ++ CacheSyncSpec,
-    Restart = #{strategy => one_for_one, intensity => 5, period => 50},
+    % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
+    % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出
+    Restart = #{strategy => one_for_one, intensity => 10, period => 60},
     {ok, {Restart, Specs}}.
