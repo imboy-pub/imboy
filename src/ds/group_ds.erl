@@ -293,10 +293,12 @@ nearby_gid(Lng, Lat, Radius, _Unit, Limit, Code) ->
 face2face_create(Conn, Uid, Code, Lng, Lat) ->
     Now = elib_dt:now(),
     Gid = gid(),
+    Id = elib_tsid:generate(group_random_code),
     {Sql, Params} =
         elib_pg_sql:insert_with_params(
             group_random_code_repo:tablename(),
             #{
+                id => Id,
                 group_id => Gid,
                 user_id => Uid,
                 code => Code,
