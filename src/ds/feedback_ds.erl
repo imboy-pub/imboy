@@ -21,6 +21,7 @@
 -export([add/10]).
 -export([page/5]).
 -export([page_reply/5]).
+-export([find_owner/1]).
 
 %% @doc 删除用户反馈
 %% 软删除反馈，将状态更新为 -1
@@ -177,6 +178,11 @@ page(Column, Where, Order, Page, Size) ->
 page_reply(Column, Where, Order, Page, Size) ->
     Tb = feedback_reply_repo:tablename(),
     elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
+
+%% @doc 查询反馈提交者，供上层做归属校验
+-spec find_owner(integer()) -> {ok, integer()} | {error, not_found}.
+find_owner(FeedbackId) ->
+    feedback_repo:find_owner(FeedbackId).
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -183,8 +183,9 @@ remove_subscriber(Uid, ChannelId, TargetUid) when is_binary(ChannelId) ->
     end;
 remove_subscriber(Uid, ChannelId, TargetUid) ->
     StartMs = elib_dt:millisecond(),
+    TargetRole = channel_logic_common:get_user_role(ChannelId, TargetUid),
     case channel_logic_common:get_user_role(ChannelId, Uid) of
-        Role when Role >= 2 ->
+        Role when Role >= 2, TargetRole < Role ->
             Result = elib_pg:with_tx(fun(Conn) ->
                 case channel_subscription_ds:delete(Conn, ChannelId, TargetUid) of
                     {ok, Affected} when Affected > 0 ->

@@ -11,7 +11,7 @@
 %% 更新作业
 -export([update/3]).
 %% 分配作业
--export([assign/2]).
+-export([assign/3]).
 %% 提交作业
 -export([submit/3]).
 %% 批改作业
@@ -124,39 +124,50 @@ update(_TaskId, _CreatorId, _Data) ->
 %% @param TaskId 作业ID
 %% @param UserIds 用户ID列表
 %% @return ok | {error, Reason}
--spec assign(integer(), [integer()]) -> ok | {error, binary()}.
-assign(TaskId, UserIds) when is_integer(TaskId), TaskId > 0, is_list(UserIds) ->
+-spec assign(integer(), [integer()], integer()) -> ok | {error, binary()}.
+assign(TaskId, UserIds, CurrentUid) when
+    is_integer(TaskId), TaskId > 0, is_list(UserIds), is_integer(CurrentUid), CurrentUid > 0
+->
     case length(UserIds) of
         0 ->
             {error, <<"成员列表不能为空"/utf8>>, ?ERR_BAD_REQUEST};
         _ ->
             case group_task_ds:find_by_id(TaskId) of
                 {ok, Task} ->
-                    TaskIdStr = maps:get(<<"task_id">>, Task, <<>>),
-                    % 批量插入作业分配
-                    lists:foreach(
-                        fun(UserId) ->
-                            case
-                                group_task_ds:assignment_find_by_task_and_user(TaskIdStr, UserId)
-                            of
-                                {error, not_found} ->
-                                    group_task_ds:assignment_insert(#{
-                                        task_id => TaskIdStr,
-                                        user_id => UserId,
-                                        status => 0
-                                    });
-                                _ ->
-                                    ok
-                            end
-                        end,
-                        UserIds
-                    ),
-                    ok;
+                    CreatorId = maps:get(<<"creator_id">>, Task, 0),
+                    case CreatorId of
+                        CurrentUid ->
+                            TaskIdStr = maps:get(<<"task_id">>, Task, <<>>),
+                            % 批量插入作业分配
+                            lists:foreach(
+                                fun(UserId) ->
+                                    case
+                                        group_task_ds:assignment_find_by_task_and_user(
+                                            TaskIdStr, UserId
+                                        )
+                                    of
+                                        {error, not_found} ->
+                                            group_task_ds:assignment_insert(#{
+                                                task_id => TaskIdStr,
+                                                user_id => UserId,
+                                                status => 0
+                                            });
+                                        _ ->
+                                            ok
+                                    end
+                                end,
+                                UserIds
+                            ),
+                            ok;
+                        _ ->
+                            {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
+                                ?ERR_TASK_PERMISSION_DENIED}
+                    end;
                 {error, not_found} ->
                     {error, imboy_error:error_msg(?ERR_TASK_NOT_FOUND), ?ERR_TASK_NOT_FOUND}
             end
     end;
-assign(_TaskId, _UserIds) ->
+assign(_TaskId, _UserIds, _CurrentUid) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
 %% @doc 提交作业
@@ -227,23 +238,29 @@ review(AssignmentId, ReviewerId, Data) when
 ->
     case group_task_ds:assignment_find_by_id(AssignmentId) of
         {ok, Assignment} ->
-            Status = maps:get(<<"status">>, Assignment, 0),
-            case Status of
-                2 ->
-                    Now = elib_dt:now(),
-                    ReviewData = #{
-                        status => 3,
-                        reviewed_by => ReviewerId,
-                        reviewed_at => Now
-                    },
-                    ReviewData2 = maps:merge(ReviewData, Data),
-                    _ = group_task_ds:assignment_update(AssignmentId, ReviewData2),
-                    ok;
-                3 ->
-                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),
-                        ?ERR_TASK_ALREADY_REVIEWED};
-                _ ->
-                    {error, <<"作业未提交，无法批改"/utf8>>, ?ERR_BAD_REQUEST}
+            TaskIdStr = maps:get(<<"task_id">>, Assignment, <<>>),
+            case ensure_task_creator(TaskIdStr, ReviewerId) of
+                {error, _Msg, _Code} = Err ->
+                    Err;
+                ok ->
+                    Status = maps:get(<<"status">>, Assignment, 0),
+                    case Status of
+                        2 ->
+                            Now = elib_dt:now(),
+                            ReviewData = #{
+                                status => 3,
+                                reviewed_by => ReviewerId,
+                                reviewed_at => Now
+                            },
+                            ReviewData2 = maps:merge(ReviewData, Data),
+                            _ = group_task_ds:assignment_update(AssignmentId, ReviewData2),
+                            ok;
+                        3 ->
+                            {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),
+                                ?ERR_TASK_ALREADY_REVIEWED};
+                        _ ->
+                            {error, <<"作业未提交，无法批改"/utf8>>, ?ERR_BAD_REQUEST}
+                    end
             end;
         {error, not_found} ->
             {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND),
@@ -434,6 +451,22 @@ check_deadline(Deadline) ->
     catch
         _:_ ->
             false
+    end.
+
+%% @doc 校验 ReviewerId 是否为该作业（task_id 为业务外部标识）的创建者
+-spec ensure_task_creator(binary(), integer()) -> ok | {error, binary(), integer()}.
+ensure_task_creator(TaskIdStr, ReviewerId) ->
+    case group_task_ds:find_by_task_id(TaskIdStr) of
+        {ok, Task} ->
+            case maps:get(<<"creator_id">>, Task, 0) of
+                ReviewerId ->
+                    ok;
+                _ ->
+                    {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
+                        ?ERR_TASK_PERMISSION_DENIED}
+            end;
+        {error, not_found} ->
+            {error, imboy_error:error_msg(?ERR_TASK_NOT_FOUND), ?ERR_TASK_NOT_FOUND}
     end.
 
 -spec normalize_update_data(map()) -> map().

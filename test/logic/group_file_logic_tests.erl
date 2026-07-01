@@ -14,364 +14,416 @@
 %% ===================================================================
 
 upload_success_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'upload_file', 5, fun(_, _, _, _, _) ->
-                {ok, <<"file_123">>}
-            end}
-        ]},
-        {elib_oss, [
-            {'get_file_category', 1, fun(_) -> <<"document">> end}
-        ]},
-        {elib_dt, [
-            {'timestamp', 0, fun() -> 1700000000 end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 100,
-        FileName = <<"test.pdf"/utf8>>,
-        FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
-        FileType = <<"application/pdf">>,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'upload_file', 5, fun(_, _, _, _, _) ->
+                    {ok, <<"file_123">>}
+                end}
+            ]},
+            {elib_oss, [
+                {'get_file_category', 1, fun(_) -> <<"document">> end}
+            ]},
+            {elib_dt, [
+                {'timestamp', 0, fun() -> 1700000000 end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 100,
+            FileName = <<"test.pdf"/utf8>>,
+            FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
+            FileType = <<"application/pdf">>,
 
-        Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
+            Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
-        case Result of
-            {ok, FileData} when is_map(FileData) ->
-                ?assertMatch(#{<<"file_id">> := _}, FileData);
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, FileData} when is_map(FileData) ->
+                    ?assertMatch(#{<<"file_id">> := _}, FileData);
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 upload_not_member_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'upload_file', 5, fun(_, _, _, _, _) ->
-                {error, not_member}
-            end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 999,
-        FileName = <<"test.pdf"/utf8>>,
-        FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
-        FileType = <<"application/pdf">>,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'upload_file', 5, fun(_, _, _, _, _) ->
+                    {error, not_member}
+                end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 999,
+            FileName = <<"test.pdf"/utf8>>,
+            FileBinary = <<<<"test">> || _ <- lists:seq(1, 100)>>,
+            FileType = <<"application/pdf">>,
 
-        Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
+            Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
-        ?assertMatch({error, not_member}, Result)
-    end).
+            ?assertMatch({error, not_member}, Result)
+        end
+    ).
 
 upload_file_too_large_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'upload_file', 5, fun(_, _, _, _, _) ->
-                {error, file_too_large}
-            end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 100,
-        FileName = <<"large.pdf"/utf8>>,
-        FileBinary = <<0:100102400>>,
-        FileType = <<"application/pdf">>,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'upload_file', 5, fun(_, _, _, _, _) ->
+                    {error, file_too_large}
+                end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 100,
+            FileName = <<"large.pdf"/utf8>>,
+            FileBinary = <<0:100102400>>,
+            FileType = <<"application/pdf">>,
 
-        Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
+            Result = group_file_logic:upload(Gid, CurrentUid, FileName, FileBinary, FileType),
 
-        ?assertMatch({error, file_too_large}, Result)
-    end).
+            ?assertMatch({error, file_too_large}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% download/2 测试
 %% ===================================================================
 
 download_success_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'download_file', 2, fun(_, _) ->
-                {ok, <<"http://example.com/file.pdf">>}
-            end}
-        ]}
-    ], fun() ->
-        FileId = 1,
-        CurrentUid = 100,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'download_file', 2, fun(_, _) ->
+                    {ok, <<"http://example.com/file.pdf">>}
+                end}
+            ]}
+        ],
+        fun() ->
+            FileId = 1,
+            CurrentUid = 100,
 
-        Result = group_file_logic:download(FileId, CurrentUid),
+            Result = group_file_logic:download(FileId, CurrentUid),
 
-        case Result of
-            {ok, FileUrl} when is_binary(FileUrl) ->
-                ?assert(is_binary(FileUrl));
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, FileUrl} when is_binary(FileUrl) ->
+                    ?assert(is_binary(FileUrl));
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 download_not_member_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'download_file', 2, fun(_, _) ->
-                {error, not_member}
-            end}
-        ]}
-    ], fun() ->
-        FileId = 1,
-        CurrentUid = 999,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'download_file', 2, fun(_, _) ->
+                    {error, not_member}
+                end}
+            ]}
+        ],
+        fun() ->
+            FileId = 1,
+            CurrentUid = 999,
 
-        Result = group_file_logic:download(FileId, CurrentUid),
+            Result = group_file_logic:download(FileId, CurrentUid),
 
-        ?assertMatch({error, not_member}, Result)
-    end).
+            ?assertMatch({error, not_member}, Result)
+        end
+    ).
 
 download_not_found_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'download_file', 2, fun(_, _) ->
-                {error, not_found}
-            end}
-        ]}
-    ], fun() ->
-        FileId = 999999,
-        CurrentUid = 100,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'download_file', 2, fun(_, _) ->
+                    {error, not_found}
+                end}
+            ]}
+        ],
+        fun() ->
+            FileId = 999999,
+            CurrentUid = 100,
 
-        Result = group_file_logic:download(FileId, CurrentUid),
+            Result = group_file_logic:download(FileId, CurrentUid),
 
-        ?assertMatch({error, not_found}, Result)
-    end).
+            ?assertMatch({error, not_found}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% delete/2 测试
 %% ===================================================================
 
 delete_success_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'delete_file', 2, fun(_, _) -> ok end}
-        ]}
-    ], fun() ->
-        FileId = 1,
-        CurrentUid = 100,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'delete_file', 2, fun(_, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            FileId = 1,
+            CurrentUid = 100,
 
-        Result = group_file_logic:delete(FileId, CurrentUid),
+            Result = group_file_logic:delete(FileId, CurrentUid),
 
-        ?assertMatch(ok, Result)
-    end).
+            ?assertMatch(ok, Result)
+        end
+    ).
 
 delete_permission_denied_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'delete_file', 2, fun(_, _) ->
-                {error, permission_denied}
-            end}
-        ]}
-    ], fun() ->
-        FileId = 1,
-        CurrentUid = 999,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'delete_file', 2, fun(_, _) ->
+                    {error, permission_denied}
+                end}
+            ]}
+        ],
+        fun() ->
+            FileId = 1,
+            CurrentUid = 999,
 
-        Result = group_file_logic:delete(FileId, CurrentUid),
+            Result = group_file_logic:delete(FileId, CurrentUid),
 
-        ?assertMatch({error, permission_denied}, Result)
-    end).
+            ?assertMatch({error, permission_denied}, Result)
+        end
+    ).
 
 delete_not_found_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'delete_file', 2, fun(_, _) ->
-                {error, not_found}
-            end}
-        ]}
-    ], fun() ->
-        FileId = 999999,
-        CurrentUid = 100,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'delete_file', 2, fun(_, _) ->
+                    {error, not_found}
+                end}
+            ]}
+        ],
+        fun() ->
+            FileId = 999999,
+            CurrentUid = 100,
 
-        Result = group_file_logic:delete(FileId, CurrentUid),
+            Result = group_file_logic:delete(FileId, CurrentUid),
 
-        ?assertMatch({error, not_found}, Result)
-    end).
+            ?assertMatch({error, not_found}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% list/4 测试
 %% ===================================================================
 
 list_success_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'list_files', 5, fun(_, _, _, _, _) ->
-                {ok, [
-                    #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
-                ]}
-            end},
-            {'count_by_group', 1, fun(_) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 100,
-        Page = 1,
-        Size = 20,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'list_files', 5, fun(_, _, _, _, _) ->
+                    {ok, [
+                        #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
+                    ]}
+                end},
+                {'count_by_group', 1, fun(_) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 100,
+            Page = 1,
+            Size = 20,
 
-        Result = group_file_logic:list(Gid, CurrentUid, Page, Size),
+            Result = group_file_logic:list(Gid, CurrentUid, Page, Size),
 
-        case Result of
-            {ok, FileList} when is_map(FileList) ->
-                ?assertMatch(#{<<"items">> := _, <<"total">> := _}, FileList);
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, FileList} when is_map(FileList) ->
+                    ?assertMatch(#{<<"items">> := _, <<"total">> := _}, FileList);
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 list_not_member_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'list_files', 5, fun(_, _, _, _, _) ->
-                {error, not_member}
-            end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 999,
-        Page = 1,
-        Size = 20,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'list_files', 5, fun(_, _, _, _, _) ->
+                    {error, not_member}
+                end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 999,
+            Page = 1,
+            Size = 20,
 
-        Result = group_file_logic:list(Gid, CurrentUid, Page, Size),
+            Result = group_file_logic:list(Gid, CurrentUid, Page, Size),
 
-        ?assertMatch({error, not_member}, Result)
-    end).
+            ?assertMatch({error, not_member}, Result)
+        end
+    ).
 
 list_with_category_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'list_files', 5, fun(_, _, _, _, _) ->
-                {ok, [
-                    #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>, <<"file_category">> => <<"document">>}
-                ]}
-            end},
-            {'count_by_group', 1, fun(_) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 100,
-        Page = 1,
-        Size = 20,
-        Options = #{category => <<"document">>},
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'list_files', 5, fun(_, _, _, _, _) ->
+                    {ok, [
+                        #{
+                            <<"id">> => 1,
+                            <<"file_name">> => <<"test.pdf"/utf8>>,
+                            <<"file_category">> => <<"document">>
+                        }
+                    ]}
+                end},
+                {'count_by_group', 1, fun(_) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 100,
+            Page = 1,
+            Size = 20,
+            Options = #{category => <<"document">>},
 
-        Result = group_file_logic:list(Gid, CurrentUid, Page, Size, Options),
+            Result = group_file_logic:list(Gid, CurrentUid, Page, Size, Options),
 
-        case Result of
-            {ok, FileList} when is_map(FileList) ->
-                ?assertMatch(#{<<"items">> := _, <<"total">> := _}, FileList);
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, FileList} when is_map(FileList) ->
+                    ?assertMatch(#{<<"items">> := _, <<"total">> := _}, FileList);
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 %% ===================================================================
 %% search/4 测试
 %% ===================================================================
 
 search_success_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'search_files', 4, fun(_, _, _, _) ->
-                {ok, [
-                    #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
-                ]}
-            end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        Keyword = <<"test"/utf8>>,
-        Page = 1,
-        Size = 20,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'search_files', 5, fun(_, _, _, _, _) ->
+                    {ok, [
+                        #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            Keyword = <<"test"/utf8>>,
+            Page = 1,
+            Size = 20,
 
-        Result = group_file_logic:search(Gid, Keyword, Page, Size),
+            Result = group_file_logic:search(Gid, Keyword, Page, Size, 42),
 
-        case Result of
-            {ok, Files} when is_list(Files) ->
-                ?assert(is_list(Files));
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, Files} when is_list(Files) ->
+                    ?assert(is_list(Files));
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 search_empty_result_test_() ->
-    ?WITH_MECKS([
-        {group_file_ds, [
-            {'search_files', 4, fun(_, _, _, _) ->
-                {ok, []}
-            end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        Keyword = <<"nonexistent"/utf8>>,
-        Page = 1,
-        Size = 20,
+    ?WITH_MECKS(
+        [
+            {group_file_ds, [
+                {'search_files', 5, fun(_, _, _, _, _) ->
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            Keyword = <<"nonexistent"/utf8>>,
+            Page = 1,
+            Size = 20,
 
-        Result = group_file_logic:search(Gid, Keyword, Page, Size),
+            Result = group_file_logic:search(Gid, Keyword, Page, Size, 42),
 
-        case Result of
-            {ok, []} ->
-                ok;
-            {ok, Files} when is_list(Files) ->
-                ?assertEqual([], Files);
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, []} ->
+                    ok;
+                {ok, Files} when is_list(Files) ->
+                    ?assertEqual([], Files);
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 %% ===================================================================
 %% get_categories/2 测试
 %% ===================================================================
 
 get_categories_success_test_() ->
-    ?WITH_MECKS([
-        {group_ds, [
-            {'is_member', 2, fun(100, 1) -> true end}
-        ]},
-        {group_file_ds, [
-            {'get_file_categories', 1, fun(_) ->
-                {ok, [
-                    {<<"document">>, 10, 1024000}
-                ]}
-            end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 100,
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'is_member', 2, fun(100, 1) -> true end}
+            ]},
+            {group_file_ds, [
+                {'get_file_categories', 1, fun(_) ->
+                    {ok, [
+                        {<<"document">>, 10, 1024000}
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 100,
 
-        Result = group_file_logic:get_categories(Gid, CurrentUid),
+            Result = group_file_logic:get_categories(Gid, CurrentUid),
 
-        case Result of
-            {ok, Stats} when is_list(Stats) ->
-                ?assert(is_list(Stats));
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, Stats} when is_list(Stats) ->
+                    ?assert(is_list(Stats));
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 get_categories_empty_test_() ->
-    ?WITH_MECKS([
-        {group_ds, [
-            {'is_member', 2, fun(100, 1) -> true end}
-        ]},
-        {group_file_ds, [
-            {'get_file_categories', 1, fun(_) ->
-                {ok, []}
-            end}
-        ]}
-    ], fun() ->
-        Gid = <<"1">>,
-        CurrentUid = 100,
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'is_member', 2, fun(100, 1) -> true end}
+            ]},
+            {group_file_ds, [
+                {'get_file_categories', 1, fun(_) ->
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            Gid = <<"1">>,
+            CurrentUid = 100,
 
-        Result = group_file_logic:get_categories(Gid, CurrentUid),
+            Result = group_file_logic:get_categories(Gid, CurrentUid),
 
-        case Result of
-            {ok, []} ->
-                ok;
-            {ok, Stats} when is_list(Stats) ->
-                ?assertEqual([], Stats);
-            {error, Reason} ->
-                assert_reason(Reason)
+            case Result of
+                {ok, []} ->
+                    ok;
+                {ok, Stats} when is_list(Stats) ->
+                    ?assertEqual([], Stats);
+                {error, Reason} ->
+                    assert_reason(Reason)
+            end
         end
-    end).
+    ).
 
 assert_reason(Reason) ->
     ?assert(is_atom(Reason) orelse is_binary(Reason) orelse is_tuple(Reason)).

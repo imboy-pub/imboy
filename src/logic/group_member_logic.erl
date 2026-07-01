@@ -110,7 +110,20 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
 %% leave 群组成员
 %% ===================================================================
 -spec leave(integer(), integer(), integer()) -> ok.
+leave(Uid, Gid, CurrentUid) when CurrentUid =:= Uid ->
+    %% 自己主动退群，无需权限校验
+    leave_execute(Uid, Gid, CurrentUid);
 leave(Uid, Gid, CurrentUid) ->
+    %% 踢除他人：必须是管理员及以上，且目标当前等级严格低于操作者
+    %% （复用 validate_role_permission，与 update_role 同一套群角色权限矩阵，
+    %% 防止普通成员/低等级管理员越权踢除同级或更高等级成员）
+    case validate_role_permission(CurrentUid, Gid, Uid) of
+        ok -> leave_execute(Uid, Gid, CurrentUid);
+        {error, _Reason} -> ok
+    end.
+
+-spec leave_execute(integer(), integer(), integer()) -> ok.
+leave_execute(Uid, Gid, CurrentUid) ->
     % 使用事务执行离开操作
     case elib_pg:with_tx(fun(Conn) -> leave_internal(Conn, Uid, Gid, CurrentUid) end) of
         {ok, _UidSum, _GM} ->

@@ -114,7 +114,7 @@ add(<<"POST">>, Req0, State) ->
                     expired_at => ExpiredAt,
                     created_at => Now
                 },
-            case group_notice_logic:insert(Data) of
+            case group_notice_logic:insert(Uid, Data) of
                 {ok, NoticeId} ->
                     elib_response:success(Req0, #{<<"notice_id">> => NoticeId});
                 {error, _} ->
@@ -165,7 +165,7 @@ edit(<<"POST">>, Req0, State) ->
                     expired_at => elib_dt:rfc3339_to(ExpiredAt),
                     updated_at => Now
                 },
-            case group_notice_logic:update(Id2, Data) of
+            case group_notice_logic:update(Uid, Id2, Data) of
                 {ok, _} ->
                     elib_response:success(Req0, #{<<"notice_id">> => Id});
                 {error, not_found} ->
@@ -207,7 +207,7 @@ publish(<<"POST">>, Req0, State) ->
                     status => 1,
                     updated_at => Now
                 },
-            case group_notice_logic:update(Id2, Data) of
+            case group_notice_logic:update(Uid, Id2, Data) of
                 {ok, _} ->
                     %% W1.1：持久化成功后向群内所有成员广播 S2C
                     %% `group_notice_published`，客户端据此刷新公告列表或展示

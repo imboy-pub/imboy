@@ -7,7 +7,7 @@
 
 -export([add/10]).
 -export([page/5]).
--export([page_reply/5]).
+-export([page_reply/7]).
 -export([remove/2]).
 
 -include("log.hrl").
@@ -45,11 +45,18 @@ remove(Uid, FeedbackId) ->
 page(Column, Where, Order, Page, Size) ->
     feedback_ds:page(Column, Where, Order, Page, Size).
 
-%% @doc 分页查询反馈回复列表
--spec page_reply(binary(), map(), binary(), pos_integer(), pos_integer()) ->
+%% @doc 分页查询反馈回复列表（仅反馈提交者本人可查看）
+-spec page_reply(integer(), integer(), binary(), map(), binary(), pos_integer(), pos_integer()) ->
     {ok, map()} | {error, term()}.
-page_reply(Column, Where, Order, Page, Size) ->
-    feedback_ds:page_reply(Column, Where, Order, Page, Size).
+page_reply(CurrentUid, FeedbackId, Column, Where, Order, Page, Size) ->
+    case feedback_ds:find_owner(FeedbackId) of
+        {ok, CurrentUid} ->
+            feedback_ds:page_reply(Column, Where, Order, Page, Size);
+        {ok, _OtherUid} ->
+            {error, forbidden};
+        {error, not_found} ->
+            {error, not_found}
+    end.
 
 %% ===================================================================
 %% EUnit tests.

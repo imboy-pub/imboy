@@ -1,14 +1,15 @@
--module (feedback_repo).
+-module(feedback_repo).
 %%%
 % feedback 相关操作都放到该模块，存储库模块
 % feedback related operations are put in this module, repository module
 % 用户反馈数据仓库层，提供用户反馈信息的基础数据库操作
 %%%
 
--export ([tablename/0]).
+-export([tablename/0]).
 
--export ([add/11]).
+-export([add/11]).
 -export([delete/2]).
+-export([find_owner/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -25,32 +26,57 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"feedback">>).
 
-
 %%% 新增用户反馈
--spec add(integer(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary(), binary()) ->
+-spec add(
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    binary()
+) ->
     ok | {error, any()}.
 % feedback_repo:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach, FeedbackMd5)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach, FeedbackMd5) ->
     Id = elib_tsid:generate(feedback),
     Data = #{
         <<"id">> => Id,
-        <<"user_id">> => Uid,  % 用户ID (整型)
-        <<"device_id">> => Did,  % 设备ID (字符串)
-        <<"client_operating_system">> => COS,  % 客户端操作系统 (字符串)
-        <<"client_operating_system_vsn">> => COSV,  % 系统版本 (字符串)
-        <<"app_vsn">> => AppVsn,  % 应用版本 (字符串)
-        <<"type">> => Type,  % 反馈类型 (字符串)
-        <<"rating">> => Rating,  % 评分 (原始数值，需保留类型)
-        <<"contact_detail">> => ContactDetail,  % 联系方式 (字符串)
-        <<"body">> => Body,  % 反馈内容 (字符串)
-        <<"attach">> => Attach,  % 附件信息 (JSON字符串)
-        <<"feedback_md5">> => FeedbackMd5,  % MD5校验值 (字符串)
-        <<"status">> => 1,  % 状态 (整型 1-有效)
-        <<"created_at">> => elib_dt:now()  % 创建时间 (使用原生时间函数)
+        % 用户ID (整型)
+        <<"user_id">> => Uid,
+        % 设备ID (字符串)
+        <<"device_id">> => Did,
+        % 客户端操作系统 (字符串)
+        <<"client_operating_system">> => COS,
+        % 系统版本 (字符串)
+        <<"client_operating_system_vsn">> => COSV,
+        % 应用版本 (字符串)
+        <<"app_vsn">> => AppVsn,
+        % 反馈类型 (字符串)
+        <<"type">> => Type,
+        % 评分 (原始数值，需保留类型)
+        <<"rating">> => Rating,
+        % 联系方式 (字符串)
+        <<"contact_detail">> => ContactDetail,
+        % 反馈内容 (字符串)
+        <<"body">> => Body,
+        % 附件信息 (JSON字符串)
+        <<"attach">> => Attach,
+        % MD5校验值 (字符串)
+        <<"feedback_md5">> => FeedbackMd5,
+        % 状态 (整型 1-有效)
+        <<"status">> => 1,
+        % 创建时间 (使用原生时间函数)
+        <<"created_at">> => elib_dt:now()
     },
     {Sql, Params} = elib_pg_sql:insert(tablename(), Data),
     case elib_pg:query(Sql, Params) of
-        {ok, _} -> ok;
+        {ok, _} ->
+            ok;
         {error, Reason} ->
             ?ERROR_LOG({feedback_insert_failed, Uid, Reason}),
             {error, Reason}
@@ -66,6 +92,18 @@ delete(Uid, FeedbackId) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% @doc 查询反馈提交者，供上层做归属校验
+%% @param FeedbackId 反馈ID
+%% @return {ok, UserId} | {error, not_found}
+-spec find_owner(integer()) -> {ok, integer()} | {error, not_found}.
+find_owner(FeedbackId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT user_id FROM ", Tb/binary, " WHERE id = $1">>,
+    case elib_pg:one(Sql, [FeedbackId]) of
+        {ok, #{<<"user_id">> := UserId}} -> {ok, UserId};
+        _ -> {error, not_found}
+    end.
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
@@ -75,4 +113,3 @@ delete(Uid, FeedbackId) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

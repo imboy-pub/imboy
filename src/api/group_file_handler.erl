@@ -181,7 +181,8 @@ delete(Req0, State) ->
 %% @doc 搜索文件
 %% GET /v1/group/file/search?gid=xxx&keyword=xxx&page=1&size=20
 -spec search(cowboy_req:req(), map()) -> cowboy_req:req().
-search(Req0, _State) ->
+search(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
     Keyword = proplists:get_value(<<"keyword">>, Qs, <<>>),
@@ -198,10 +199,12 @@ search(Req0, _State) ->
             Page = safe_page(PageStr, 1),
             Size = safe_page(SizeStr, 20),
 
-            % 调用 Logic 层搜索文件
-            case group_file_logic:search(Gid, Keyword, Page, Size) of
+            % 调用 Logic 层搜索文件（内部校验群成员身份）
+            case group_file_logic:search(Gid, Keyword, Page, Size, CurrentUid) of
                 {ok, Files} ->
                     elib_response:success(Req0, #{<<"items">> => Files});
+                {error, not_member} ->
+                    elib_response:error(Req0, <<"你不是该群成员"/utf8>>, ?ERR_FORBIDDEN);
                 {error, _Reason} ->
                     elib_response:error(Req0, <<"服务器内部错误"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
             end

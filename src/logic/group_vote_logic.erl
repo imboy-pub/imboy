@@ -17,7 +17,7 @@
 -export([cancel_vote/2]).
 -export([get_vote_detail/1]).
 -export([list_votes/3]).
--export([close_vote/1]).
+-export([close_vote/2]).
 -export([get_my_vote/2]).
 
 %% ===================================================================
@@ -363,28 +363,36 @@ list_votes(Gid, Page, Size) ->
             {error, Reason}
     end.
 
-%% @doc 结束投票
+%% @doc 结束投票（仅创建者或群主/管理员可操作）
 %% @param VoteId 投票ID (字符串)
+%% @param CurrentUid 当前用户ID
 %% @return ok | {error, Reason}
--spec close_vote(binary()) -> ok | {error, term()}.
-close_vote(VoteId) ->
+-spec close_vote(binary(), integer()) -> ok | {error, term()}.
+close_vote(VoteId, CurrentUid) ->
     case group_vote_ds:find_by_vote_id(VoteId) of
         {error, not_found} ->
             {error, vote_not_found};
         {ok, Vote} ->
-            Status = maps:get(<<"status">>, Vote),
-            case Status of
-                2 ->
-                    {error, vote_already_closed};
-                1 ->
-                    case group_vote_ds:update_vote_status(VoteId, 2) of
-                        {ok, _Count} ->
-                            ok;
-                        {error, Reason} ->
-                            {error, Reason}
-                    end;
-                _ ->
-                    {error, invalid_vote_status}
+            CreatorId = maps:get(<<"creator_id">>, Vote, 0),
+            Gid = maps:get(<<"group_id">>, Vote, 0),
+            case CurrentUid =:= CreatorId orelse group_member_ds:check_admin(CurrentUid, Gid) of
+                false ->
+                    {error, permission_denied};
+                true ->
+                    Status = maps:get(<<"status">>, Vote),
+                    case Status of
+                        2 ->
+                            {error, vote_already_closed};
+                        1 ->
+                            case group_vote_ds:update_vote_status(VoteId, 2) of
+                                {ok, _Count} ->
+                                    ok;
+                                {error, Reason} ->
+                                    {error, Reason}
+                            end;
+                        _ ->
+                            {error, invalid_vote_status}
+                    end
             end
     end.
 

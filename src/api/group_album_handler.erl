@@ -115,7 +115,8 @@ list_albums(Req0, State) ->
 %% @param State 状态映射
 %% @return 处理后的请求对象
 -spec rename_album(cowboy_req:req(), map()) -> cowboy_req:req().
-rename_album(Req0, _State) ->
+rename_album(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     {ok, Body, Req1} = elib_req:body(Req0, []),
 
     AlbumId = maps:get(<<"album_id">>, Body, <<>>),
@@ -128,7 +129,7 @@ rename_album(Req0, _State) ->
         {_, <<>>} ->
             elib_response:error(Req1, <<"相册名称不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case group_album_logic:rename_album(AlbumId, NewName) of
+            case group_album_logic:rename_album(AlbumId, NewName, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"重命名成功"/utf8>>);
                 {error, Reason} when is_binary(Reason) ->
@@ -545,7 +546,8 @@ list_comments(Req0, _State) ->
 %% @param State 状态映射
 %% @return 处理后的请求对象
 -spec update_cover(cowboy_req:req(), map()) -> cowboy_req:req().
-update_cover(Req0, _State) ->
+update_cover(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     {ok, Body, Req1} = elib_req:body(Req0, []),
 
     AlbumId = maps:get(<<"album_id">>, Body, <<>>),
@@ -558,7 +560,7 @@ update_cover(Req0, _State) ->
         {_, <<>>} ->
             elib_response:error(Req1, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case group_album_logic:update_album_cover(AlbumId, PhotoId) of
+            case group_album_logic:update_album_cover(AlbumId, PhotoId, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"更新封面成功"/utf8>>);
                 {error, Reason} when is_binary(Reason) ->

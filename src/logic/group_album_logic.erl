@@ -16,8 +16,8 @@
 -export([list_albums/4]).
 -export([list_photos/4]).
 -export([get_photo_detail/2]).
--export([update_album_cover/2]).
--export([rename_album/2]).
+-export([update_album_cover/3]).
+-export([rename_album/3]).
 -export([list_comments/2]).
 
 -include("log.hrl").
@@ -161,7 +161,10 @@ delete_photo(PhotoId, CurrentUid) ->
 %% @return ok | {error, Reason}
 -spec like_photo(binary(), integer()) -> ok | {error, term()}.
 like_photo(PhotoId, CurrentUid) ->
-    group_album_ds:like_photo(PhotoId, CurrentUid).
+    case ensure_photo_group_member(PhotoId, CurrentUid) of
+        ok -> group_album_ds:like_photo(PhotoId, CurrentUid);
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 取消点赞
 %% @param PhotoId 图片ID
@@ -169,7 +172,25 @@ like_photo(PhotoId, CurrentUid) ->
 %% @return ok | {error, Reason}
 -spec unlike_photo(binary(), integer()) -> ok | {error, term()}.
 unlike_photo(PhotoId, CurrentUid) ->
-    group_album_ds:unlike_photo(PhotoId, CurrentUid).
+    case ensure_photo_group_member(PhotoId, CurrentUid) of
+        ok -> group_album_ds:unlike_photo(PhotoId, CurrentUid);
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 校验当前用户是否为图片所在群组的成员
+%% 注意：group_ds:is_member/2 参数顺序为 (Uid, Gid)，与 group_member_ds/group_logic
+%% 同名函数的参数顺序不同，调用时务必确认。
+-spec ensure_photo_group_member(binary(), integer()) -> ok | {error, binary()}.
+ensure_photo_group_member(PhotoId, CurrentUid) ->
+    case group_album_ds:find_photo_group_id(PhotoId) of
+        {ok, Gid} ->
+            case group_ds:is_member(CurrentUid, Gid) of
+                true -> ok;
+                false -> {error, <<"你不是该群成员"/utf8>>}
+            end;
+        {error, not_found} ->
+            {error, <<"图片不存在"/utf8>>}
+    end.
 
 %% @doc 添加评论
 %% @param PhotoId 图片ID
@@ -178,7 +199,12 @@ unlike_photo(PhotoId, CurrentUid) ->
 %% @return ok | {error, Reason}
 -spec add_comment(binary(), integer(), binary()) -> ok | {error, term()}.
 add_comment(PhotoId, CurrentUid, Content) ->
-    group_album_ds:add_comment(PhotoId, CurrentUid, Content).
+    case ensure_photo_group_member(PhotoId, CurrentUid) of
+        {error, Reason} ->
+            {error, Reason};
+        ok ->
+            group_album_ds:add_comment(PhotoId, CurrentUid, Content)
+    end.
 
 %% @doc 查询相册列表
 %% @param Gid 群组ID（整数）
@@ -215,23 +241,38 @@ get_photo_detail(PhotoId, CurrentUid) ->
 %% @doc 更新相册封面
 %% @param AlbumId 相册ID
 %% @param PhotoId 图片ID
+%% @param CurrentUid 当前用户ID
 %% @return ok | {error, Reason}
--spec update_album_cover(binary(), binary()) -> ok | {error, term()}.
-update_album_cover(AlbumId, PhotoId) ->
-    group_album_ds:update_album_cover(AlbumId, PhotoId).
+-spec update_album_cover(binary(), binary(), integer()) -> ok | {error, term()}.
+update_album_cover(AlbumId, PhotoId, CurrentUid) ->
+    case group_album_ds:find_album_by_album_id(AlbumId) of
+        #{<<"group_id">> := Gid, <<"creator_id">> := CreatorId} ->
+            case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
+                ok -> group_album_ds:update_album_cover(AlbumId, PhotoId);
+                {error, Reason} -> {error, Reason}
+            end;
+        _ ->
+            {error, <<"相册不存在"/utf8>>}
+    end.
 
 %% @doc 重命名相册
 %% @param AlbumId 相册ID
 %% @param NewName 新相册名称
+%% @param CurrentUid 当前用户ID
 %% @return ok | {error, Reason}
--spec rename_album(binary(), binary()) -> ok | {error, term()}.
-rename_album(AlbumId, NewName) ->
+-spec rename_album(binary(), binary(), integer()) -> ok | {error, term()}.
+rename_album(AlbumId, NewName, CurrentUid) ->
     case group_album_ds:find_album_by_album_id(AlbumId) of
-        #{<<"id">> := Id} ->
-            UpdateData = #{id => Id, album_name => NewName},
-            case group_album_ds:update_album(UpdateData) of
-                {ok, _} -> ok;
-                {error, Reason} -> {error, Reason}
+        #{<<"id">> := Id, <<"group_id">> := Gid, <<"creator_id">> := CreatorId} ->
+            case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
+                ok ->
+                    UpdateData = #{id => Id, album_name => NewName},
+                    case group_album_ds:update_album(UpdateData) of
+                        {ok, _} -> ok;
+                        {error, Reason} -> {error, Reason}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         _ ->
             {error, <<"相册不存在"/utf8>>}

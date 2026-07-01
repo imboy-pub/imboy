@@ -10,7 +10,7 @@
 -export([delete/2]).
 -export([list/4]).
 -export([list/5]).
--export([search/4]).
+-export([search/5]).
 -export([get_categories/2]).
 
 -include("log.hrl").
@@ -118,13 +118,14 @@ list(Gid, CurrentUid, Page, Size, Options) ->
 %% @param Page 页码
 %% @param Size 每页数量
 %% @return {ok, Files} | {error, Reason}
--spec search(binary(), binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
-search(Gid, Keyword, Page, Size) ->
+-spec search(binary(), binary(), integer(), integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
+search(Gid, Keyword, Page, Size, CurrentUid) ->
     % 1. 解码群组ID
     Gid2 = ec_cnv:to_integer(Gid),
 
-    % 2. 调用DS层搜索文件
-    case group_file_ds:search_files(Gid2, Keyword, Page, Size) of
+    % 2. 调用DS层搜索文件（内部校验群成员身份）
+    case group_file_ds:search_files(Gid2, Keyword, Page, Size, CurrentUid) of
         {ok, Files} ->
             % 3. 编码ID字段
             Files2 = lists:map(

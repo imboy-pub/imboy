@@ -10,7 +10,7 @@
 -export([delete_file/2]).
 -export([list_files/4]).
 -export([list_files/5]).
--export([search_files/4]).
+-export([search_files/5]).
 -export([get_file_categories/1]).
 -export([count_by_group/1]).
 %% G3 thin wrappers for adm_group_handler
@@ -178,12 +178,17 @@ list_files(Gid, CurrentUid, Page, Size, Options) ->
 %% @param Page 页码
 %% @param Size 每页数量
 %% @return {ok, [FileMap]} | {error, Reason}
--spec search_files(integer(), binary(), integer(), integer()) ->
+-spec search_files(integer(), binary(), integer(), integer(), integer()) ->
     {ok, list(map())} | {error, term()}.
-search_files(Gid, Keyword, Page, Size) ->
-    % 1. 验证群成员身份（这里需要CurrentUid，暂时跳过）
-    % 2. 搜索文件
-    group_file_repo:search_by_name(Gid, Keyword, Page, Size).
+search_files(Gid, Keyword, Page, Size, CurrentUid) ->
+    % 1. 验证群成员身份
+    case group_ds:is_member(CurrentUid, Gid) of
+        false ->
+            {error, not_member};
+        true ->
+            % 2. 搜索文件
+            group_file_repo:search_by_name(Gid, Keyword, Page, Size)
+    end.
 
 %% @doc 获取群文件分类统计
 %% @param Gid 群组ID

@@ -157,8 +157,12 @@ handle_scan(Req, State) ->
 
     QRToken = maps:get(<<"qr_token">>, Data, <<>>),
 
-    case QRToken of
-        <<>> ->
+    case {Uid, QRToken} of
+        {0, _} ->
+            %% 扫码必须是已登录的手机端用户；匿名请求（未带/带无效 token）会把
+            %% scanned_by 写成 0，导致真实用户随后确认登录时被误判为无权限。
+            elib_response:error(Req, <<"未登录"/utf8>>, ?ERR_UNAUTHORIZED);
+        {_, <<>>} ->
             elib_response:error(Req, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
             % 从 QR Token 解析 session_token

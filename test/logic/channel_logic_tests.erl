@@ -2903,7 +2903,10 @@ remove_subscriber_admin_success_updates_counter_test_() ->
             {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
         ]},
         {channel_admin_repo, [
-            {'get_role', 2, fun(11, 1001) -> 2 end}
+            {'get_role', 2, fun
+                (11, 1001) -> 2;
+                (11, 2002) -> 1
+            end}
         ]},
         {channel_subscription_repo, [
             {'delete', 3, fun(fake_conn, 11, 2002) -> {ok, 1} end}
@@ -2939,7 +2942,10 @@ remove_subscriber_is_idempotent_when_target_already_inactive_test_() ->
             {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
         ]},
         {channel_admin_repo, [
-            {'get_role', 2, fun(11, 1001) -> 2 end}
+            {'get_role', 2, fun
+                (11, 1001) -> 2;
+                (11, 2002) -> 1
+            end}
         ]},
         {channel_subscription_repo, [
             {'delete', 3, fun(fake_conn, 11, 2002) -> {ok, 0} end}
@@ -2983,7 +2989,10 @@ remove_subscriber_tx_error_returns_failure_test_() ->
             end}
         ]},
         {channel_admin_repo, [
-            {'get_role', 2, fun(11, 1001) -> 2 end}
+            {'get_role', 2, fun
+                (11, 1001) -> 2;
+                (11, 2002) -> 1
+            end}
         ]},
         {channel_subscription_repo, [
             {'delete', 3, fun(fake_conn, 11, 2002) -> {error, db_error} end}
@@ -3011,7 +3020,7 @@ remove_subscriber_requires_admin_role_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_admin_repo, [
-            {'get_role', 2, fun(11, 1001) -> 0 end}
+            {'get_role', 2, fun(11, _Uid) -> 0 end}
         ]},
         {channel_repo, [
             {'find_by_id', 2, fun(11, <<"*">>) ->
@@ -3669,6 +3678,9 @@ get_channel_stats_uses_aggregation_query_test_() ->
     ChannelIdBin = integer_to_binary(ChannelId),
 
     MockConfigs = [
+        {channel_admin_ds, [
+            {'get_role', 2, fun(_ChannelId, _Uid) -> 3 end}
+        ]},
         {channel_repo, [
             {'find_by_id', 2, fun(_, _) ->
                 #{<<"id">> => ChannelId, <<"name">> => <<"test">>, <<"subscriber_count">> => 100}
@@ -3692,7 +3704,7 @@ get_channel_stats_uses_aggregation_query_test_() ->
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            Result = channel_logic:get_channel_stats(1001, ChannelIdBin),
 
             ?assertMatch({ok, _}, Result),
             {ok, Stats} = Result,
@@ -3715,7 +3727,7 @@ get_channel_stats_returns_error_when_channel_not_found_test_() ->
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            Result = channel_logic:get_channel_stats(1001, ChannelIdBin),
             ?assertMatch({error, _}, Result)
         end)
     end}.
@@ -3752,7 +3764,7 @@ get_channel_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            Result = channel_logic:get_channel_stats(1001, ChannelIdBin),
             ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_repo, find_by_id, 2)),
             ?assertEqual(0, meck:num_calls(channel_repo, get_reaction_count, 1))
@@ -3782,7 +3794,7 @@ get_channel_stats_returns_zero_when_no_messages_test_() ->
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:get_channel_stats(ChannelIdBin),
+            Result = channel_logic:get_channel_stats(1001, ChannelIdBin),
 
             ?assertMatch({ok, _}, Result),
             {ok, Stats} = Result,
@@ -3866,7 +3878,13 @@ get_daily_stats_returns_error_when_repo_payload_not_list_test_() ->
 get_daily_stats_filters_non_map_entries_test_() ->
     ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
+        {channel_admin_ds, [
+            {'get_role', 2, fun(_ChannelId, _Uid) -> 3 end}
+        ]},
         {channel_repo, [
+            {'find_by_id', 2, fun(_, _) ->
+                #{<<"id">> => 14, <<"status">> => 1}
+            end},
             {'get_daily_stats', 2, fun(14, 7) ->
                 {ok, [
                     #{<<"channel_id">> => 14, <<"day">> => <<"2026-02-24">>, <<"messages">> => 12},
@@ -3877,7 +3895,7 @@ get_daily_stats_filters_non_map_entries_test_() ->
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
+            Result = channel_logic:get_daily_stats(1001, ChannelIdBin, 7),
             ?assertMatch({ok, [_]}, Result),
             {ok, [Item]} = Result,
             ?assertEqual(14, maps:get(<<"channel_id">>, Item))
@@ -3909,7 +3927,7 @@ get_daily_stats_returns_error_when_channel_id_decode_unexpected_test_() ->
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
         ?_test(begin
-            Result = channel_logic:get_daily_stats(ChannelIdBin, 7),
+            Result = channel_logic:get_daily_stats(1001, ChannelIdBin, 7),
             ?assertEqual({error, <<"频道不存在"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_repo, get_daily_stats, 2))
         end)

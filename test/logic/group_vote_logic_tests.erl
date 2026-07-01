@@ -420,14 +420,19 @@ close_vote_success_test_() ->
         group_vote_repo,
         [
             {'find_by_vote_id', 1, fun(_VoteId) ->
-                {ok, #{<<"vote_id">> => <<"vote123">>, <<"status">> => 1}}
+                {ok, #{
+                    <<"vote_id">> => <<"vote123">>,
+                    <<"status">> => 1,
+                    <<"creator_id">> => 456,
+                    <<"group_id">> => 101
+                }}
             end},
             {'update_vote_status', 2, fun(_VoteId, _Status) ->
                 {ok, 1}
             end}
         ],
         fun() ->
-            Result = group_vote_logic:close_vote(<<"vote123">>),
+            Result = group_vote_logic:close_vote(<<"vote123">>, 456),
             ?assertEqual(ok, Result)
         end
     ).
@@ -437,12 +442,41 @@ close_vote_already_closed_test_() ->
         group_vote_repo,
         [
             {'find_by_vote_id', 1, fun(_VoteId) ->
-                {ok, #{<<"vote_id">> => <<"vote123">>, <<"status">> => 2}}
+                {ok, #{
+                    <<"vote_id">> => <<"vote123">>,
+                    <<"status">> => 2,
+                    <<"creator_id">> => 456,
+                    <<"group_id">> => 101
+                }}
             end}
         ],
         fun() ->
-            Result = group_vote_logic:close_vote(<<"vote123">>),
+            Result = group_vote_logic:close_vote(<<"vote123">>, 456),
             ?assertEqual({error, vote_already_closed}, Result)
+        end
+    ).
+
+%% 安全回归：非创建者/非群管理员不能强制结束投票（曾经零权限校验）
+close_vote_permission_denied_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_vote_repo, [
+                {'find_by_vote_id', 1, fun(_VoteId) ->
+                    {ok, #{
+                        <<"vote_id">> => <<"vote123">>,
+                        <<"status">> => 1,
+                        <<"creator_id">> => 456,
+                        <<"group_id">> => 101
+                    }}
+                end}
+            ]},
+            {group_member_ds, [
+                {'check_admin', 2, fun(_Uid, _Gid) -> false end}
+            ]}
+        ],
+        fun() ->
+            Result = group_vote_logic:close_vote(<<"vote123">>, 999),
+            ?assertEqual({error, permission_denied}, Result)
         end
     ).
 

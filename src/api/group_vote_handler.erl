@@ -267,7 +267,8 @@ cancel(Req0, State) ->
 %% @return 返回成功或错误响应
 %% @end
 -spec close(cowboy_req:req(), map()) -> cowboy_req:req().
-close(Req0, _State) ->
+close(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     VoteId = maps:get(<<"vote_id">>, PostVals, <<>>),
 
@@ -275,13 +276,15 @@ close(Req0, _State) ->
         <<>> ->
             elib_response:error(Req0, "vote_id 必须");
         _ ->
-            case group_vote_logic:close_vote(VoteId) of
+            case group_vote_logic:close_vote(VoteId, CurrentUid) of
                 ok ->
                     elib_response:success(Req0, #{<<"vote_id">> => VoteId}, <<"结束投票成功"/utf8>>);
                 {error, vote_not_found} ->
                     elib_response:error(Req0, "投票不存在");
                 {error, vote_already_closed} ->
                     elib_response:error(Req0, "投票已结束");
+                {error, permission_denied} ->
+                    elib_response:error(Req0, "无权限结束该投票");
                 {error, Reason} ->
                     elib_response:error(Req0, ec_cnv:to_binary(Reason))
             end

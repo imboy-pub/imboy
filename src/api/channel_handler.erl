@@ -385,7 +385,7 @@ stats(Req0, State) ->
                 false ->
                     elib_response:error(Req0, <<"无权限查看该频道统计"/utf8>>, 403);
                 true ->
-                    case channel_logic:get_channel_stats(ChannelId) of
+                    case channel_logic:get_channel_stats(Uid, ChannelId) of
                         {ok, Stats} ->
                             elib_response:success(Req0, Stats);
                         {error, Msg} ->
@@ -395,14 +395,15 @@ stats(Req0, State) ->
     end.
 
 -spec stats_daily(cowboy_req:req(), map()) -> cowboy_req:req().
-stats_daily(Req0, _State) ->
+stats_daily(Req0, State) ->
+    Uid = maps:get(current_uid, State, 0),
     case cowboy_req:binding(channel_id, Req0) of
         undefined ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
             Qs = cowboy_req:parse_qs(Req0),
             Days = parse_qs_int(proplists:get_value(<<"days">>, Qs), 7, 1, 365),
-            case channel_logic:get_daily_stats(ChannelId, Days) of
+            case channel_logic:get_daily_stats(Uid, ChannelId, Days) of
                 {ok, Stats} ->
                     elib_response:success(Req0, #{list => Stats});
                 {error, Msg} ->

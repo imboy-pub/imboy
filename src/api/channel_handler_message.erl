@@ -76,12 +76,13 @@ unpin_message(Req0, State) ->
     end.
 
 -spec pinned_messages(cowboy_req:req(), map()) -> cowboy_req:req().
-pinned_messages(Req0, _State) ->
+pinned_messages(Req0, State) ->
+    Uid = maps:get(current_uid, State),
     case cowboy_req:binding(channel_id, Req0) of
         undefined ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
-            case channel_logic:get_pinned_messages(ChannelId) of
+            case channel_logic:get_pinned_messages(Uid, ChannelId) of
                 {ok, Messages} ->
                     elib_response:success(Req0, #{list => Messages});
                 {error, Msg} ->
@@ -217,7 +218,8 @@ react_message(Req0, State) ->
     add_reaction(Req0, State).
 
 -spec message_reactions(cowboy_req:req(), map()) -> cowboy_req:req().
-message_reactions(Req0, _State) ->
+message_reactions(Req0, State) ->
+    Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     ChannelId = resolve_channel_id(Req0, PostVals),
     MessageId = resolve_message_id(Req0, PostVals),
@@ -227,7 +229,7 @@ message_reactions(Req0, _State) ->
         _ when MessageId == <<>> ->
             elib_response:error(Req0, <<"消息ID不能为空"/utf8>>);
         _ ->
-            case channel_logic:get_message_reactions(ChannelId, MessageId) of
+            case channel_logic:get_message_reactions(Uid, ChannelId, MessageId) of
                 {ok, Reactions} ->
                     elib_response:success(Req0, #{list => Reactions});
                 {error, Msg} ->

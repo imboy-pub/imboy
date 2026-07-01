@@ -1,5 +1,5 @@
 -module(group_task_handler).
--dialyzer({nowarn_function, [maybe_assign_task/2]}).
+-dialyzer({nowarn_function, [maybe_assign_task/3]}).
 %% Thin HTTP adapter for the group_collab task boundary.
 %% Keep transport concerns here and delegate task rules to group_task_logic.
 
@@ -85,7 +85,7 @@ create(Req0, State) ->
             },
             case group_task_logic:create(Gid2, CurrentUid, Title, Data) of
                 {ok, TaskId} ->
-                    maybe_assign_task(TaskId, UserIds),
+                    maybe_assign_task(TaskId, UserIds, CurrentUid),
                     TaskId2 = TaskId,
                     elib_response:success(Req0, #{<<"task_id">> => TaskId2}, <<"作业创建成功"/utf8>>);
                 {error, Msg, Code} ->
@@ -129,7 +129,7 @@ update(Req0, State) ->
 %% @doc 分配作业
 -spec assign(cowboy_req:req(), map()) -> cowboy_req:req().
 assign(Req0, State) ->
-    _CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     TaskId = maps:get(<<"task_id">>, PostVals, <<>>),
     TaskId2 = normalize_id(TaskId),
@@ -141,7 +141,7 @@ assign(Req0, State) ->
         _ ->
             % 解码用户ID列表
             UserIds2 = [elib_cnv:safe_to_integer(Uid) || Uid <- UserIds],
-            case group_task_logic:assign(TaskId2, UserIds2) of
+            case group_task_logic:assign(TaskId2, UserIds2, CurrentUid) of
                 ok ->
                     elib_response:success(Req0, #{<<"task_id">> => TaskId}, <<"作业分配成功"/utf8>>);
                 {error, Msg, Code} ->
@@ -469,14 +469,16 @@ normalize_attachment(Value) when is_list(Value); is_map(Value) ->
 normalize_attachment(Value) ->
     ec_cnv:to_binary(Value).
 
--spec maybe_assign_task(integer(), list()) -> ok.
-maybe_assign_task(TaskId, UserIds) when is_integer(TaskId), TaskId > 0, is_list(UserIds) ->
+-spec maybe_assign_task(integer(), list(), integer()) -> ok.
+maybe_assign_task(TaskId, UserIds, CurrentUid) when
+    is_integer(TaskId), TaskId > 0, is_list(UserIds)
+->
     UserIds2 = lists:usort([Id || Id <- [normalize_id(Uid) || Uid <- UserIds], Id > 0]),
     case UserIds2 of
         [] ->
             ok;
         _ ->
-            case group_task_logic:assign(TaskId, UserIds2) of
+            case group_task_logic:assign(TaskId, UserIds2, CurrentUid) of
                 ok ->
                     ok;
                 {error, Msg, Code} ->
@@ -484,5 +486,5 @@ maybe_assign_task(TaskId, UserIds) when is_integer(TaskId), TaskId > 0, is_list(
                     ok
             end
     end;
-maybe_assign_task(_TaskId, _UserIds) ->
+maybe_assign_task(_TaskId, _UserIds, _CurrentUid) ->
     ok.

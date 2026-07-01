@@ -41,11 +41,11 @@
 -spec remove_subscriber(integer(), integer() | binary(), integer()) -> ok | {error, binary()}.
 
 %% channel_logic_stats delegates
--spec get_channel_stats(binary()) -> {ok, map()} | {error, binary()}.
+-spec get_channel_stats(integer(), binary()) -> {ok, map()} | {error, binary()}.
 -spec record_message_view(integer(), binary(), binary()) -> ok | {error, binary()}.
 -spec add_reaction(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
 -spec remove_reaction(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
--spec get_daily_stats(binary(), integer()) -> {ok, list(map())} | {error, binary()}.
+-spec get_daily_stats(integer(), binary(), integer()) -> {ok, list(map())} | {error, binary()}.
 
 %% channel_logic_invitation delegates
 -spec create_invitation(integer(), binary(), integer()) -> {ok, map()} | {error, binary()}.
@@ -94,13 +94,13 @@
 -export([get_admins/1]).
 -export([update_admin_role/4]).
 
--export([get_channel_stats/1]).
+-export([get_channel_stats/2]).
 -export([record_message_view/3]).
 -export([add_reaction/4]).
 -export([remove_reaction/4]).
--export([get_daily_stats/2]).
--export([get_pinned_messages/1]).
--export([get_message_reactions/2]).
+-export([get_daily_stats/3]).
+-export([get_pinned_messages/2]).
+-export([get_message_reactions/3]).
 -export([refund_order/2]).
 -export([refund_order/3]).
 
@@ -189,8 +189,8 @@ get_admins(ChannelId) ->
 update_admin_role(Uid, ChannelId, TargetUid, Role) ->
     channel_logic_message:update_admin_role(Uid, ChannelId, TargetUid, Role).
 
-get_channel_stats(ChannelIdBin) ->
-    channel_logic_stats:get_channel_stats(ChannelIdBin).
+get_channel_stats(Uid, ChannelIdBin) ->
+    channel_logic_stats:get_channel_stats(Uid, ChannelIdBin).
 
 record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
     channel_logic_stats:record_message_view(Uid, ChannelIdBin, MessageIdBin).
@@ -201,8 +201,8 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
 remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
     channel_logic_stats:remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType).
 
-get_daily_stats(ChannelIdBin, Days) ->
-    channel_logic_stats:get_daily_stats(ChannelIdBin, Days).
+get_daily_stats(Uid, ChannelIdBin, Days) ->
+    channel_logic_stats:get_daily_stats(Uid, ChannelIdBin, Days).
 
 create_invitation(Uid, ChannelIdBin, InviteeUid) ->
     channel_logic_invitation:create_invitation(Uid, ChannelIdBin, InviteeUid).
@@ -234,13 +234,40 @@ get_order(Uid, OrderNo) ->
 sync_channels(Uid, Since) ->
     channel_logic_sync:sync_channels(Uid, Since).
 
--spec get_pinned_messages(integer()) -> {ok, list(map())} | {error, binary()}.
-get_pinned_messages(ChannelId) ->
-    channel_message_ds:list_pinned(ChannelId).
+-spec get_pinned_messages(integer(), binary() | integer()) ->
+    {ok, list(map())} | {error, binary()}.
+get_pinned_messages(Uid, ChannelIdBin) ->
+    ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
+    case ChannelId of
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
+        _ ->
+            case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
+                ok -> channel_message_ds:list_pinned(ChannelId);
+                {error, Reason} -> {error, Reason}
+            end
+    end.
 
--spec get_message_reactions(binary(), binary()) -> {ok, list(map())} | {error, binary()}.
-get_message_reactions(_ChannelId, MessageId) ->
-    msg_reaction_ds:get_reactions(MessageId, <<"channel">>).
+-spec get_message_reactions(integer(), binary(), binary()) ->
+    {ok, list(map())} | {error, binary()}.
+get_message_reactions(Uid, ChannelIdBin, MessageId) ->
+    ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
+    case ChannelId of
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
+        _ ->
+            case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
+                {error, Reason} ->
+                    {error, Reason};
+                ok ->
+                    case channel_message_ds:find_by_id(MessageId) of
+                        #{<<"channel_id">> := MsgChannelId} when MsgChannelId =:= ChannelId ->
+                            msg_reaction_ds:get_reactions(MessageId, <<"channel">>);
+                        _ ->
+                            {error, <<"消息不属于该频道"/utf8>>}
+                    end
+            end
+    end.
 
 -spec refund_order(integer(), binary()) -> ok | {error, binary()}.
 refund_order(Uid, OrderNo) ->

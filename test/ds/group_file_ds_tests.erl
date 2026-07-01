@@ -167,7 +167,11 @@ download_file_not_member_test_() ->
 
         meck:new(group_file_repo, [passthrough]),
         meck:expect(group_file_repo, find_by_id, fun(_) ->
-            #{<<"id">> => 1, <<"group_id">> => 1, <<"file_url">> => <<"http://example.com/file.pdf">>}
+            #{
+                <<"id">> => 1,
+                <<"group_id">> => 1,
+                <<"file_url">> => <<"http://example.com/file.pdf">>
+            }
         end),
 
         meck:new(group_ds, [passthrough]),
@@ -231,7 +235,8 @@ delete_file_as_admin_test_() ->
 
         meck:new(group_member_repo, [passthrough]),
         meck:expect(group_member_repo, find, fun(_, _, _) ->
-            #{<<"role">> => 3} % 管理员
+            % 管理员
+            #{<<"role">> => 3}
         end),
 
         Result = group_file_ds:delete_file(FileId, CurrentUid),
@@ -254,7 +259,8 @@ delete_file_permission_denied_test_() ->
 
         meck:new(group_member_repo, [passthrough]),
         meck:expect(group_member_repo, find, fun(_, _, _) ->
-            #{<<"role">> => 1} % 普通成员
+            % 普通成员
+            #{<<"role">> => 1}
         end),
 
         Result = group_file_ds:delete_file(FileId, CurrentUid),
@@ -324,7 +330,11 @@ list_files_with_category_test_() ->
         Size = 20,
         Options = #{category => <<"document">>},
         ExpectedFiles = [
-            #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>, <<"file_category">> => <<"document">>}
+            #{
+                <<"id">> => 1,
+                <<"file_name">> => <<"test.pdf"/utf8>>,
+                <<"file_category">> => <<"document">>
+            }
         ],
 
         meck:new(group_ds, [passthrough]),
@@ -357,11 +367,14 @@ search_files_success_test_() ->
         Keyword = <<"test"/utf8>>,
         Page = 1,
         Size = 20,
+        CurrentUid = 42,
         ExpectedFiles = [
             #{<<"id">> => 1, <<"file_name">> => <<"test.pdf"/utf8>>}
         ],
 
         meck:new(group_file_repo, [passthrough]),
+        meck:new(group_ds, [passthrough]),
+        meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> true end),
         meck:expect(group_file_repo, search_by_name, fun(Gid0, Keyword0, Page0, Size0) ->
             ?assertEqual(Gid, Gid0),
             ?assertEqual(Keyword, Keyword0),
@@ -370,11 +383,25 @@ search_files_success_test_() ->
             {ok, ExpectedFiles}
         end),
 
-        Result = group_file_ds:search_files(Gid, Keyword, Page, Size),
+        Result = group_file_ds:search_files(Gid, Keyword, Page, Size, CurrentUid),
 
         meck:unload(group_file_repo),
+        meck:unload(group_ds),
 
         ?assertEqual({ok, ExpectedFiles}, Result)
+    end.
+
+%% 安全回归：非群成员不能搜索群文件（曾经代码注释承认跳过成员校验）
+search_files_not_member_test_() ->
+    fun() ->
+        meck:new(group_ds, [passthrough]),
+        meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> false end),
+
+        Result = group_file_ds:search_files(1, <<"test"/utf8>>, 1, 20, 999),
+
+        meck:unload(group_ds),
+
+        ?assertEqual({error, not_member}, Result)
     end.
 
 search_files_repo_error_test_() ->
@@ -385,11 +412,14 @@ search_files_repo_error_test_() ->
         Size = 20,
 
         meck:new(group_file_repo, [passthrough]),
+        meck:new(group_ds, [passthrough]),
+        meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> true end),
         meck:expect(group_file_repo, search_by_name, fun(_, _, _, _) -> {error, db_unavailable} end),
 
-        Result = group_file_ds:search_files(Gid, Keyword, Page, Size),
+        Result = group_file_ds:search_files(Gid, Keyword, Page, Size, 42),
 
         meck:unload(group_file_repo),
+        meck:unload(group_ds),
 
         ?assertEqual({error, db_unavailable}, Result)
     end.

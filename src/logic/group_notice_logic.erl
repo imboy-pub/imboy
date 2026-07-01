@@ -12,8 +12,8 @@
 -export([delete/2]).
 -export([mark_as_read/2]).
 -export([publish_notice/3]).
--export([insert/1]).
--export([update/2]).
+-export([insert/2]).
+-export([update/3]).
 -export([page/4]).
 -export([latest_published/2]).
 
@@ -204,20 +204,35 @@ publish_notice(Uid, Gid, NoticeId) ->
     _ = msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
     ok.
 
-%% @doc 插入新群公告，委托 DS 层持久化
-%% @param Data 公告数据 Map
+%% @doc 插入新群公告（仅群主和管理员），委托 DS 层持久化
+%% @param CurrentUid 当前用户ID
+%% @param Data 公告数据 Map（须含 group_id）
 %% @return {ok, NoticeId} | {error, Reason}
--spec insert(map()) -> {ok, integer()} | {error, term()}.
-insert(Data) ->
-    group_notice_ds:insert(Data).
+-spec insert(integer(), map()) -> {ok, integer()} | {error, term()}.
+insert(CurrentUid, Data) ->
+    Gid = maps:get(group_id, Data, 0),
+    case check_admin_permission(CurrentUid, Gid) of
+        ok -> group_notice_ds:insert(Data);
+        {error, Reason} -> {error, Reason}
+    end.
 
-%% @doc 更新群公告字段，委托 DS 层持久化
+%% @doc 更新群公告字段（仅群主和管理员），委托 DS 层持久化
+%% @param CurrentUid 当前用户ID
 %% @param NoticeId 公告ID
 %% @param Data 待更新字段 Map
 %% @return {ok, integer()} | {error, term()}
--spec update(integer(), map()) -> {ok, integer()} | {error, term()}.
-update(NoticeId, Data) ->
-    group_notice_ds:update(NoticeId, Data).
+-spec update(integer(), integer(), map()) -> {ok, integer()} | {error, term()}.
+update(CurrentUid, NoticeId, Data) ->
+    case group_notice_ds:find_by_id(NoticeId) of
+        {ok, Notice} ->
+            Gid = maps:get(<<"group_id">>, Notice),
+            case check_admin_permission(CurrentUid, Gid) of
+                ok -> group_notice_ds:update(NoticeId, Data);
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, _Reason} ->
+            {error, not_found}
+    end.
 
 %% @doc 分页查询群公告列表，同时校验当前用户是否为群成员
 %% @param CurrentUid 当前用户ID

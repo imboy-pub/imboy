@@ -21,6 +21,7 @@
 -export([list_comments/2]).
 -export([find_album_by_id/1]).
 -export([list_albums/3]).
+-export([find_photo_group_id/1]).
 
 -include("cache.hrl").
 -include("log.hrl").
@@ -236,6 +237,16 @@ delete_photo(PhotoId, CurrentUid) ->
             end;
         _ ->
             {error, <<"图片不存在"/utf8>>}
+    end.
+
+%% @doc 查询图片所属的群组ID，供上层做群成员校验
+%% @param PhotoId 图片ID
+%% @return {ok, GroupId} | {error, not_found}
+-spec find_photo_group_id(binary()) -> {ok, integer()} | {error, not_found}.
+find_photo_group_id(PhotoId) ->
+    case group_album_repo:find_photo_by_id(PhotoId) of
+        #{<<"group_id">> := Gid} -> {ok, Gid};
+        _ -> {error, not_found}
     end.
 
 %% @doc 点赞图片

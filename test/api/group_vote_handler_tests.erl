@@ -8,120 +8,135 @@
 %%%===================================================================
 
 create_missing_gid_returns_validation_error_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{
-                    <<"title">> => <<"午餐投票"/utf8>>,
-                    <<"options">> => [#{<<"option_text">> => <<"火锅"/utf8>>}]
-                }
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, Msg) ->
-                self() ! {resp_msg, Msg},
-                req_error
-            end}
-        ]}
-    ], fun() ->
-        Result = group_vote_handler:handle_action(create, req_mock(), #{current_uid => 101}),
-        ?assertEqual(req_error, Result),
-        ?assertEqual(<<"gid 必须"/utf8>>, msg_to_binary(receive_resp_msg()))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"title">> => <<"午餐投票"/utf8>>,
+                        <<"options">> => [#{<<"option_text">> => <<"火锅"/utf8>>}]
+                    }
+                end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Msg) ->
+                    self() ! {resp_msg, Msg},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = group_vote_handler:handle_action(create, req_mock(), #{current_uid => 101}),
+            ?assertEqual(req_error, Result),
+            ?assertEqual(<<"gid 必须"/utf8>>, msg_to_binary(receive_resp_msg()))
+        end
+    ).
 
 create_invalid_vote_type_returns_validation_error_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{
-                    <<"gid">> => <<"1">>,
-                    <<"title">> => <<"午餐投票"/utf8>>,
-                    <<"options">> => [#{<<"option_text">> => <<"火锅"/utf8>>}],
-                    <<"vote_type">> => 9
-                }
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, Msg) ->
-                self() ! {resp_msg, Msg},
-                req_error
-            end}
-        ]}
-    ], fun() ->
-        Result = group_vote_handler:handle_action(create, req_mock(), #{current_uid => 101}),
-        ?assertEqual(req_error, Result),
-        ?assertEqual(<<"vote_type 必须是 1 或 2"/utf8>>, msg_to_binary(receive_resp_msg()))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"gid">> => <<"1">>,
+                        <<"title">> => <<"午餐投票"/utf8>>,
+                        <<"options">> => [#{<<"option_text">> => <<"火锅"/utf8>>}],
+                        <<"vote_type">> => 9
+                    }
+                end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Msg) ->
+                    self() ! {resp_msg, Msg},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = group_vote_handler:handle_action(create, req_mock(), #{current_uid => 101}),
+            ?assertEqual(req_error, Result),
+            ?assertEqual(<<"vote_type 必须是 1 或 2"/utf8>>, msg_to_binary(receive_resp_msg()))
+        end
+    ).
 
 cast_missing_option_ids_returns_validation_error_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{<<"vote_id">> => <<"vote_1">>}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, Msg) ->
-                self() ! {resp_msg, Msg},
-                req_error
-            end}
-        ]}
-    ], fun() ->
-        Result = group_vote_handler:handle_action(cast, req_mock(), #{current_uid => 101}),
-        ?assertEqual(req_error, Result),
-        ?assertEqual(<<"option_ids 必须"/utf8>>, msg_to_binary(receive_resp_msg()))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"vote_id">> => <<"vote_1">>}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Msg) ->
+                    self() ! {resp_msg, Msg},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = group_vote_handler:handle_action(cast, req_mock(), #{current_uid => 101}),
+            ?assertEqual(req_error, Result),
+            ?assertEqual(<<"option_ids 必须"/utf8>>, msg_to_binary(receive_resp_msg()))
+        end
+    ).
 
 cast_vote_closed_maps_error_message_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{
-                    <<"vote_id">> => <<"vote_1">>,
-                    <<"option_ids">> => [<<"opt_1">>]
-                }
-            end}
-        ]},
-        {group_vote_logic, [
-            {'cast_vote', 3, fun(_VoteId, _Uid, _OptionIds) ->
-                {error, vote_is_closed}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, Msg) ->
-                self() ! {resp_msg, Msg},
-                req_error
-            end}
-        ]}
-    ], fun() ->
-        Result = group_vote_handler:handle_action(cast, req_mock(), #{current_uid => 101}),
-        ?assertEqual(req_error, Result),
-        ?assertEqual(<<"投票已结束"/utf8>>, msg_to_binary(receive_resp_msg()))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"vote_id">> => <<"vote_1">>,
+                        <<"option_ids">> => [<<"opt_1">>]
+                    }
+                end}
+            ]},
+            {group_vote_logic, [
+                {'cast_vote', 3, fun(_VoteId, _Uid, _OptionIds) ->
+                    {error, vote_is_closed}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Msg) ->
+                    self() ! {resp_msg, Msg},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = group_vote_handler:handle_action(cast, req_mock(), #{current_uid => 101}),
+            ?assertEqual(req_error, Result),
+            ?assertEqual(<<"投票已结束"/utf8>>, msg_to_binary(receive_resp_msg()))
+        end
+    ).
 
 close_vote_not_found_maps_error_message_test_() ->
-    ?WITH_MECKS([
-        {elib_param, [
-            {'post', 1, fun(_Req) ->
-                #{<<"vote_id">> => <<"vote_404">>}
-            end}
-        ]},
-        {group_vote_logic, [
-            {'close_vote', 1, fun(_VoteId) ->
-                {error, vote_not_found}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 2, fun(_Req, Msg) ->
-                self() ! {resp_msg, Msg},
-                req_error
-            end}
-        ]}
-    ], fun() ->
-        Result = group_vote_handler:handle_action(close, req_mock(), #{current_uid => 101}),
-        ?assertEqual(req_error, Result),
-        ?assertEqual(<<"投票不存在"/utf8>>, msg_to_binary(receive_resp_msg()))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"vote_id">> => <<"vote_404">>}
+                end}
+            ]},
+            {group_vote_logic, [
+                {'close_vote', 2, fun(_VoteId, _CurrentUid) ->
+                    {error, vote_not_found}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Msg) ->
+                    self() ! {resp_msg, Msg},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = group_vote_handler:handle_action(close, req_mock(), #{current_uid => 101}),
+            ?assertEqual(req_error, Result),
+            ?assertEqual(<<"投票不存在"/utf8>>, msg_to_binary(receive_resp_msg()))
+        end
+    ).
 
 req_mock() ->
     #{mock_req => true}.

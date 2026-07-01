@@ -420,22 +420,29 @@ edit(Uid, Gid, Data) ->
     Now = elib_dt:now(),
     case group_ds:exists(Gid) of
         true ->
-            case group_ds:update_by_id(Gid, Data#{updated_at => Now}) of
-                {ok, _} ->
-                    ToUidLi = group_ds:member_uids(Gid),
-                    Action = <<"group_edit">>,
-                    msg_s2c_ds:send(
-                        Uid,
-                        ToUidLi,
-                        Action,
-                        <<>>,
-                        null,
-                        Data#{<<"gid">> => Gid},
-                        save
-                    ),
-                    ok;
-                {error, _} = Err ->
-                    Err
+            Member = group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"role">>),
+            Role = maps:get(<<"role">>, Member, 0),
+            case ?IS_OWNER_OR_VICE_OWNER(Role) of
+                false ->
+                    {error, <<"只有群主或副群主才能修改群信息"/utf8>>};
+                true ->
+                    case group_ds:update_by_id(Gid, Data#{updated_at => Now}) of
+                        {ok, _} ->
+                            ToUidLi = group_ds:member_uids(Gid),
+                            Action = <<"group_edit">>,
+                            msg_s2c_ds:send(
+                                Uid,
+                                ToUidLi,
+                                Action,
+                                <<>>,
+                                null,
+                                Data#{<<"gid">> => Gid},
+                                save
+                            ),
+                            ok;
+                        {error, _} = Err ->
+                            Err
+                    end
             end;
         false ->
             M3 = group_random_code_ds:find_by_gid(Gid, <<"user_id, created_at">>),

@@ -1,35 +1,40 @@
 -module(channel_logic_stats).
 -compile([nowarn_deprecated_catch]).
 
--export([get_channel_stats/1]).
+-export([get_channel_stats/2]).
 -export([record_message_view/3]).
 -export([add_reaction/4]).
 -export([remove_reaction/4]).
--export([get_daily_stats/2]).
+-export([get_daily_stats/3]).
 
--spec get_channel_stats(binary()) -> {ok, map()} | {error, binary()}.
-get_channel_stats(ChannelIdBin) ->
+-spec get_channel_stats(integer(), binary()) -> {ok, map()} | {error, binary()}.
+get_channel_stats(Uid, ChannelIdBin) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_ds:find_by_id(ChannelId, <<"id,name,subscriber_count">>) of
-                {error, _} ->
-                    {error, <<"频道不存在"/utf8>>};
-                Channel when is_map(Channel) ->
-                    {ok, TotalMessages, TotalViews} = get_message_stats(ChannelId),
-                    {ok, Reactions} = channel_ds:get_reaction_count(ChannelId),
-                    Stats = #{
-                        <<"channel_id">> => ChannelIdBin,
-                        <<"subscriber_count">> => maps:get(
-                            <<"subscriber_count">>, Channel, 0
-                        ),
-                        <<"total_messages">> => TotalMessages,
-                        <<"total_views">> => TotalViews,
-                        <<"total_reactions">> => Reactions
-                    },
-                    {ok, Stats}
+            case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
+                {error, Reason} ->
+                    {error, Reason};
+                ok ->
+                    case channel_ds:find_by_id(ChannelId, <<"id,name,subscriber_count">>) of
+                        {error, _} ->
+                            {error, <<"频道不存在"/utf8>>};
+                        Channel when is_map(Channel) ->
+                            {ok, TotalMessages, TotalViews} = get_message_stats(ChannelId),
+                            {ok, Reactions} = channel_ds:get_reaction_count(ChannelId),
+                            Stats = #{
+                                <<"channel_id">> => ChannelIdBin,
+                                <<"subscriber_count">> => maps:get(
+                                    <<"subscriber_count">>, Channel, 0
+                                ),
+                                <<"total_messages">> => TotalMessages,
+                                <<"total_views">> => TotalViews,
+                                <<"total_reactions">> => Reactions
+                            },
+                            {ok, Stats}
+                    end
             end
     end.
 
@@ -108,18 +113,23 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
             end
     end.
 
--spec get_daily_stats(binary(), integer()) -> {ok, list(map())} | {error, binary()}.
-get_daily_stats(ChannelIdBin, Days) ->
+-spec get_daily_stats(integer(), binary(), integer()) -> {ok, list(map())} | {error, binary()}.
+get_daily_stats(Uid, ChannelIdBin, Days) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_ds:get_daily_stats(ChannelId, Days) of
-                {ok, Stats} when is_list(Stats) ->
-                    {ok, [S || S <- Stats, is_map(S)]};
+            case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+                    {error, Reason};
+                ok ->
+                    case channel_ds:get_daily_stats(ChannelId, Days) of
+                        {ok, Stats} when is_list(Stats) ->
+                            {ok, [S || S <- Stats, is_map(S)]};
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end
             end
     end.
 

@@ -17,6 +17,7 @@
 -include_lib("kernel/include/logger.hrl").
 
 -include("common.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -83,13 +84,13 @@ page(Req0, State) ->
 %% @return 返回包含分页数据的响应
 %% @end
 -spec page_reply(cowboy_req:req(), map()) -> cowboy_req:req().
-page_reply(Req0, _State) ->
+page_reply(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
     Def = 0,
     case elib_param:int(feedback_id, Req0, Def) of
         {ok, 0} ->
             elib_response:error(Req0, <<"反馈ID必须是整数"/utf8>>);
         {ok, FeedbackId} ->
-            % CurrentUid = auth_ds:current_uid(State),
             {Page, Size} = elib_param:page(Req0),
             Where = #{feedback_id => FeedbackId},
 
@@ -98,9 +99,19 @@ page_reply(Req0, _State) ->
                     "id as feedback_reply_id, feedback_id, feedback_reply_pid, replier_us"
                     "er_id, replier_name, body, status, updated_at, created_at"
                 >>,
-            {ok, Payload} = feedback_logic:page_reply(Column, Where, <<"id desc">>, Page, Size),
-            Payload2 = normalize_reply_payload(Payload),
-            elib_response:success(Req0, Payload2)
+            case
+                feedback_logic:page_reply(
+                    CurrentUid, FeedbackId, Column, Where, <<"id desc">>, Page, Size
+                )
+            of
+                {ok, Payload} ->
+                    Payload2 = normalize_reply_payload(Payload),
+                    elib_response:success(Req0, Payload2);
+                {error, forbidden} ->
+                    elib_response:error(Req0, <<"无权限查看该反馈的回复"/utf8>>, ?ERR_FORBIDDEN);
+                {error, not_found} ->
+                    elib_response:error(Req0, <<"反馈不存在"/utf8>>, ?ERR_NOT_FOUND)
+            end
     end.
 
 %% @doc 添加用户反馈
