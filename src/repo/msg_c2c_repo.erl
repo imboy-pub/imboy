@@ -180,7 +180,8 @@ delete_msg(Id) ->
     delete_msg(Where, [Id]).
 
 %% @doc 根据WHERE条件删除C2C离线消息
-%% @param Where SQL WHERE子句
+%% @param Where SQL WHERE子句，必须是调用方硬编码的字面量（含 $1/$2 占位符），
+%%        禁止拼接用户输入，实际数据一律通过 Params 传递（SQL 注入防线）
 %% @param Params 参数列表
 %% @return {ok, Count} | {error, Reason}
 -spec delete_msg(binary(), list()) -> {ok, non_neg_integer()} | {error, any()}.

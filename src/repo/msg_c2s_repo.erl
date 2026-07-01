@@ -16,13 +16,11 @@
 %% API
 %% ===================================================================
 
-
 %% @doc 获取C2S消息表的表名
 %% @return 返回C2S消息表的完整表名
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_c2s">>).
-
 
 %% @doc 根据消息ID列表查询机器人消息
 %% @param Ids 消息ID列表
@@ -36,9 +34,10 @@ list_by_ids(Ids, Column) ->
     Tb = tablename(),
     % 使用安全的参数化查询，避免SQL注入
     {InClause, Params} = elib_pg_sql:in(<<"msg_id">>, Ids),
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", InClause/binary, " ORDER BY created_at ASC">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", InClause/binary,
+            " ORDER BY created_at ASC">>,
     elib_pg:query(Sql, Params).
-
 
 %% @doc 删除机器人消息（根据消息ID）
 %% @param Id 消息ID
@@ -49,19 +48,19 @@ delete_msg(Id) ->
     Where = <<"WHERE msg_id = $1">>,
     delete_msg(Where, Id).
 
-
 %% @doc 根据WHERE条件删除机器人消息
-%% @param Where SQL WHERE子句
+%% @param Where SQL WHERE子句，必须是调用方硬编码的字面量（含 $1/$2 占位符），
+%%        禁止拼接用户输入，实际数据一律通过 Val 传递（SQL 注入防线）
 %% @param Val 参数（支持list或binary）
 %% @return {ok, Count} 删除成功 | {error, Reason} 删除失败
--spec delete_msg(binary(), list()) -> {ok, non_neg_integer()} | {error, term()};
-             (binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+-spec delete_msg
+    (binary(), list()) -> {ok, non_neg_integer()} | {error, term()};
+    (binary(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_msg(Where, Val) when is_list(Val) ->
     % 支持参数列表的安全版本（修复 SQL 注入风险）
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE ", Where/binary>>,
     elib_pg:execute(Sql, Val);
-
 delete_msg(Where, Val) ->
     % 兼容旧版本（单值）
     Tb = tablename(),
