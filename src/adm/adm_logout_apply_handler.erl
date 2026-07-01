@@ -1,5 +1,6 @@
 -module(adm_logout_apply_handler).
 -compile([nowarn_deprecated_catch]).
+-dialyzer({nowarn_function, [normalize_ts/1]}).
 %%%
 % adm_logout_apply 控制器模块
 % 注销申请审计 API

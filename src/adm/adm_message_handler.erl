@@ -1,5 +1,6 @@
 -module(adm_message_handler).
 -compile([nowarn_deprecated_catch]).
+-dialyzer({nowarn_function, [normalize_ts/1]}).
 %%%
 % adm_message 控制器模块
 % 消息管理 API

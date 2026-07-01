@@ -2,6 +2,7 @@
 %%% 群组管理共用工具函数 — 由 adm_group_handler 和 adm_group_sub_handler 共享
 %%% 从 adm_group_handler.erl 提取 (2026-06-03)
 -compile([nowarn_deprecated_catch]).
+-dialyzer({nowarn_function, [normalize_audit_ts/1]}).
 
 -define(ADM_GROUP_AUDIT_TYPE, 902).
 

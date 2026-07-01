@@ -141,7 +141,7 @@ send_apns(Token, Title, Body) ->
                             ok;
                         {ok, StatusCode, RespBody} ->
                             ?ERROR_LOG(["APNs push failed", StatusCode, RespBody]),
-                            maybe_deactivate_token(StatusCode, Token),
+                            _ = maybe_deactivate_token(StatusCode, Token),
                             {error, {apns_error, StatusCode}};
                         {error, Reason} ->
                             ?ERROR_LOG(["APNs push request failed", Reason]),

@@ -1,4 +1,5 @@
 -module(billing_logic).
+-dialyzer({nowarn_function, [period_field_ms/2]}).
 
 %%%===================================================================
 %%% @doc SaaS 计费业务逻辑 / SaaS billing business logic

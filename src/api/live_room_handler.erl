@@ -146,7 +146,7 @@ stop(Req0, State) ->
             case live_room_logic:find_by_id(RoomId) of
                 #{<<"user_id">> := OwnerId} = _Room when OwnerId =:= CurrentUid ->
                     Now = elib_dt:now(),
-                    live_room_logic:update(RoomId, #{status => 2, updated_at => Now}),
+                    _ = live_room_logic:update(RoomId, #{status => 2, updated_at => Now}),
                     elib_response:success(Req0, #{}, "success.");
                 #{<<"user_id">> := _OtherUid} ->
                     elib_response:error(Req0, <<"无权操作此直播间"/utf8>>);

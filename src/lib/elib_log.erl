@@ -120,12 +120,13 @@ safe_log(Level, Msg, Module, Line) ->
             _:_ ->
                 "INVALID_MESSAGE"
         end,
-    try
-        _ = lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
-    catch
-        _:_ ->
-            ok
-    end,
+    _ =
+        try
+            lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
+        catch
+            _:_ ->
+                ok
+        end,
     ok.
 
 safe_log(Level, Fmt, Args, Module, Line) ->
@@ -137,12 +138,13 @@ safe_log(Level, Fmt, Args, Module, Line) ->
             _:_ ->
                 io_lib:format("INVALID_FORMAT: ~ts ARGS: ~p", [Fmt, Args])
         end,
-    try
-        _ = lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
-    catch
-        _:_ ->
-            ok
-    end,
+    _ =
+        try
+            lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
+        catch
+            _:_ ->
+                ok
+        end,
     ok.
 
 ensure_string(Msg) when is_binary(Msg) ->
