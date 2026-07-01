@@ -14,6 +14,7 @@
 | `auth_middleware` / `auth_middleware_api_v1` | 2026-05-27 | 见 security-auth-middleware-audit.md | — |
 | `/v1/wallet/recharge/:order_no` | 2026-07-01 | 安全通过（IDOR 防护 `order.user_id==current_uid` + SQL 全 `$N` 参数化 + JWT 鉴权）；补 openapi spec（路由原先未文档化）；加 `recharge_logic_query_tests` 本人/非本人/不存在 三用例。输入校验 LOW：order_no 仅校验非空无格式上限（IDOR+参数化已挡实质风险，暂不改） | 4c9b5a36 |
 | `/v1/wallet/recharge/order` | 2026-07-01 | 安全通过（金额 `[Min,Max]` 区间校验 + 支付方式白名单[生产排除 mock] + `user_id` 来自 JWT 无 mass-assignment + SQL 全参数化 + JWT 鉴权）；补 openapi spec（路由原先未文档化）；加 `recharge_logic_create_tests` 正常/金额越界/方式非法 三用例 | 44782764 |
+| `/v1/wallet/recharge/pay` | 2026-07-01 | 安全通过（IDOR 防护 `order.user_id==current_uid` + 状态必须待支付 + 金额/方式取自订单快照防篡改 + SQL 全参数化 + JWT）；补 openapi spec；加 `recharge_logic_pay_access_tests` 非本人/非待支付 两拒绝用例（happy path 已由 `envelope_tests` 覆盖） | 760d67e7 |
 
 ---
 
@@ -31,7 +32,7 @@ _（loop 遇到不确定改动时追加到此处）_
 
 - [x] `/v1/wallet/recharge/:order_no` (#4c9b5a36)
 - [x] `/v1/wallet/recharge/order` (#44782764)
-- [ ] `/v1/wallet/recharge/pay`
+- [x] `/v1/wallet/recharge/pay` (#760d67e7)
 - [ ] `/v1/wallet/topup`
 - [ ] `/v1/wallet/withdraw`
 - [ ] `/v1/wallet/transfer/send`
