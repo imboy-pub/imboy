@@ -39,23 +39,22 @@ insert(Data) ->
 version_distribution() ->
     Tb = tablename(),
     %% 取每个 did 最后一次 check 事件的版本
-    Sql = <<"WITH latest AS ( "
-            "  SELECT DISTINCT ON (did) did, client_vsn, cos "
-            "  FROM ", Tb/binary,
-            "  WHERE event = 'check' "
-            "    AND created_at > now() - interval '30 days' "
-            "  ORDER BY did, created_at DESC "
-            ") "
-            "SELECT client_vsn, cos, COUNT(*) AS device_count "
-            "FROM latest "
-            "GROUP BY client_vsn, cos "
-            "ORDER BY device_count DESC">>,
+    Sql = <<
+        "WITH latest AS ( "
+        "  SELECT DISTINCT ON (did) did, client_vsn, cos "
+        "  FROM ",
+        Tb/binary,
+        "  WHERE event = 'check' "
+        "    AND created_at > now() - interval '30 days' "
+        "  ORDER BY did, created_at DESC "
+        ") "
+        "SELECT client_vsn, cos, COUNT(*) AS device_count "
+        "FROM latest "
+        "GROUP BY client_vsn, cos "
+        "ORDER BY device_count DESC"
+    >>,
     case elib_pg:query(Sql, []) of
-        {ok, _, Rows} ->
-            [#{<<"client_vsn">> => Vsn,
-               <<"cos">> => Cos,
-               <<"device_count">> => Count}
-             || {Vsn, Cos, Count} <- Rows];
+        {ok, Rows} -> Rows;
         _ -> []
     end.
 
@@ -66,18 +65,16 @@ version_distribution() ->
 -spec event_stats(binary(), binary()) -> [map()].
 event_stats(StartTime, EndTime) ->
     Tb = tablename(),
-    Sql = <<"SELECT event, target_vsn, upgrade_type, COUNT(*) AS cnt "
-            "FROM ", Tb/binary,
-            " WHERE created_at >= $1 AND created_at <= $2 "
-            "GROUP BY event, target_vsn, upgrade_type "
-            "ORDER BY cnt DESC">>,
+    Sql = <<
+        "SELECT event, target_vsn, upgrade_type, COUNT(*) AS count "
+        "FROM ",
+        Tb/binary,
+        " WHERE created_at >= $1 AND created_at <= $2 "
+        "GROUP BY event, target_vsn, upgrade_type "
+        "ORDER BY count DESC"
+    >>,
     case elib_pg:query(Sql, [StartTime, EndTime]) of
-        {ok, _, Rows} ->
-            [#{<<"event">> => Event,
-               <<"target_vsn">> => TargetVsn,
-               <<"upgrade_type">> => UpgradeType,
-               <<"count">> => Count}
-             || {Event, TargetVsn, UpgradeType, Count} <- Rows];
+        {ok, Rows} -> Rows;
         _ -> []
     end.
 

@@ -48,7 +48,7 @@ create_transfer(FromUid, FromDeviceId, ToUid, EncryptedBundle) ->
                 % 4. 直接使用客户端预加密的密钥包（服务端不加密）
 
                 % 5. 设置过期时间（5 分钟后）
-                ExpiresAt = calendar:universal_time() + 300,
+                ExpiresAt = erlang:system_time(second) + 300,
                 ExpiresAtStr = calendar:system_time_to_rfc3339(ExpiresAt),
 
                 % 6. 创建会话记录

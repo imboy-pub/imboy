@@ -36,7 +36,7 @@
 -record(state, {
     interval :: non_neg_integer(),
     retention_days :: pos_integer(),
-    batch_size :: pos_integer(),
+    batch_size :: non_neg_integer(),
     last_cleanup :: erlang:timestamp() | undefined,
     total_deleted :: non_neg_integer()
 }).

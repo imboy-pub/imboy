@@ -5,15 +5,15 @@
 % 群作业分配数据仓库层，提供群作业分配信息的基础数据库操作
 %%%
 
--export ([tablename/0]).
--export ([insert/1]).
--export ([update/2]).
--export ([find_by_id/1]).
--export ([find_by_task_and_user/2]).
--export ([list_by_task_id/3]).
--export ([list_by_user_id/3]).
--export ([list_by_user_id/4]).
--export ([count_by_status/2]).
+-export([tablename/0]).
+-export([insert/1]).
+-export([update/2]).
+-export([find_by_id/1]).
+-export([find_by_task_and_user/2]).
+-export([list_by_task_id/3]).
+-export([list_by_user_id/3]).
+-export([list_by_user_id/4]).
+-export([count_by_status/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -102,9 +102,12 @@ find_by_id(_AssignmentId) ->
 %% @param UserId 用户ID
 %% @return {ok, Assignment} | {error, not_found}
 -spec find_by_task_and_user(binary(), integer()) -> {ok, map()} | {error, not_found}.
-find_by_task_and_user(TaskId, UserId)
-    when is_binary(TaskId), byte_size(TaskId) > 0,
-         is_integer(UserId), UserId > 0 ->
+find_by_task_and_user(TaskId, UserId) when
+    is_binary(TaskId),
+    byte_size(TaskId) > 0,
+    is_integer(UserId),
+    UserId > 0
+->
     Tb = tablename(),
     Column = <<"*">>,
     Where = <<"task_id = $1 AND user_id = $2">>,
@@ -126,20 +129,25 @@ find_by_task_and_user(_TaskId, _UserId) ->
 %% @param Size 每页数量
 %% @return {ok, [Assignment]} | {error, Reason}
 -spec list_by_task_id(binary(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_task_id(TaskId, Page, Size)
-    when is_binary(TaskId), byte_size(TaskId) > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+list_by_task_id(TaskId, Page, Size) when
+    is_binary(TaskId),
+    byte_size(TaskId) > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     Tb = tablename(),
-    Column = <<"id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at, created_at, updated_at">>,
+    Column =
+        <<"id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at, created_at, updated_at">>,
     Where = <<"task_id = $1">>,
     OrderBy = <<"id DESC">>,
     Offset = (Page - 1) * Size,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE ", Where/binary,
-            " ORDER BY ", OrderBy/binary,
-            " LIMIT ", (integer_to_binary(Size))/binary,
-            " OFFSET ", (integer_to_binary(Offset))/binary>>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary, " ORDER BY ",
+            OrderBy/binary, " LIMIT ", (integer_to_binary(Size))/binary, " OFFSET ",
+            (integer_to_binary(Offset))/binary>>,
     elib_pg:query(Sql, [TaskId]);
 list_by_task_id(_TaskId, _Page, _Size) ->
     {error, invalid_param}.
@@ -150,10 +158,15 @@ list_by_task_id(_TaskId, _Page, _Size) ->
 %% @param Size 每页数量
 %% @return {ok, [Assignment]} | {error, Reason}
 -spec list_by_user_id(integer(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_user_id(UserId, Page, Size)
-    when is_integer(UserId), UserId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+list_by_user_id(UserId, Page, Size) when
+    is_integer(UserId),
+    UserId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     list_by_user_id(UserId, undefined, Page, Size);
 list_by_user_id(_UserId, _Page, _Size) ->
     {error, invalid_param}.
@@ -164,13 +177,20 @@ list_by_user_id(_UserId, _Page, _Size) ->
 %% - 0: 未完成（status < 2）
 %% - 1: 已完成（status >= 2）
 %% - 2/3: 精确匹配 status
--spec list_by_user_id(integer(), integer() | undefined, integer(), integer()) -> {ok, [map()]} | {error, term()}.
-list_by_user_id(UserId, Status, Page, Size)
-    when is_integer(UserId), UserId > 0,
-         is_integer(Page), Page > 0,
-         is_integer(Size), Size > 0, Size =< 100 ->
+-spec list_by_user_id(integer(), integer() | undefined, integer(), integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_by_user_id(UserId, Status, Page, Size) when
+    is_integer(UserId),
+    UserId > 0,
+    is_integer(Page),
+    Page > 0,
+    is_integer(Size),
+    Size > 0,
+    Size =< 100
+->
     Tb = tablename(),
-    Column = <<"id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at, created_at, updated_at">>,
+    Column =
+        <<"id, task_id, user_id, status, submitted_at, content, attachment, score, comment, reviewed_by, reviewed_at, created_at, updated_at">>,
     case user_status_where(Status) of
         {error, Reason} ->
             {error, Reason};
@@ -178,10 +198,9 @@ list_by_user_id(UserId, Status, Page, Size)
             Where = <<"user_id = $1", StatusWhere/binary>>,
             OrderBy = <<"id DESC">>,
             Offset = (Page - 1) * Size,
-            Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-                    " WHERE ", Where/binary,
-                    " ORDER BY ", OrderBy/binary,
-                    " LIMIT ", (integer_to_binary(Size))/binary,
+            Sql =
+                <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary,
+                    " ORDER BY ", OrderBy/binary, " LIMIT ", (integer_to_binary(Size))/binary,
                     " OFFSET ", (integer_to_binary(Offset))/binary>>,
             elib_pg:query(Sql, [UserId])
     end;
@@ -193,17 +212,17 @@ list_by_user_id(_UserId, _Status, _Page, _Size) ->
 %% @param Status 状态
 %% @return {ok, Count} | {error, Reason}
 -spec count_by_status(binary(), integer()) -> {ok, integer()} | {error, term()}.
-count_by_status(TaskId, Status)
-    when is_binary(TaskId), byte_size(TaskId) > 0,
-         is_integer(Status), Status >= 0, Status =< 3 ->
+count_by_status(TaskId, Status) when
+    is_binary(TaskId),
+    byte_size(TaskId) > 0,
+    is_integer(Status),
+    Status >= 0,
+    Status =< 3
+->
     Tb = tablename(),
     Where = <<"task_id = $1 AND status = $2">>,
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [TaskId, Status]) of
-        {ok, [[{<<"count">>, Count}]]} ->
-            {ok, Count};
-        {ok, [{#{<<"count">> := Count}}]} ->
-            {ok, Count};
         {ok, [#{<<"count">> := Count}]} ->
             {ok, Count};
         {error, Reason} ->

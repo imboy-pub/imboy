@@ -27,14 +27,15 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--define(DEFAULT_INTERVAL, 60000).    % 60 秒
+% 60 秒
+-define(DEFAULT_INTERVAL, 60000).
 -define(DEFAULT_BATCH_SIZE, 500).
 %% 允许的自毁秒数：5s / 30s / 1m / 5m / 1h / 24h
 -define(ALLOWED_EXPIRE_SECS, [5, 30, 60, 300, 3600, 86400]).
 
 -record(state, {
     interval :: pos_integer(),
-    batch_size :: pos_integer(),
+    batch_size :: non_neg_integer(),
     last_cleanup :: erlang:timestamp() | undefined,
     total_cleaned :: non_neg_integer()
 }).
@@ -60,21 +61,27 @@ get_status() ->
 %% @doc 根据 expire_secs 计算 expire_at（RFC3339 格式）
 %% 返回 null 表示不自毁
 -spec calc_expire_at(binary(), integer() | undefined) -> binary() | null.
-calc_expire_at(_CreatedAt, undefined) -> null;
-calc_expire_at(_CreatedAt, 0) -> null;
+calc_expire_at(_CreatedAt, undefined) ->
+    null;
+calc_expire_at(_CreatedAt, 0) ->
+    null;
 calc_expire_at(CreatedAt, ExpireSecs) when is_integer(ExpireSecs), ExpireSecs > 0 ->
     CreatedAtMs = elib_dt:rfc3339_to(CreatedAt),
     ExpireAtMs = CreatedAtMs + (ExpireSecs * 1000),
     elib_dt:to_rfc3339(ExpireAtMs);
-calc_expire_at(_CreatedAt, _) -> null.
+calc_expire_at(_CreatedAt, _) ->
+    null.
 
 %% @doc 验证 expire_secs 是否在允许范围内
 -spec valid_expire_secs(integer() | undefined) -> boolean().
-valid_expire_secs(undefined) -> true;
-valid_expire_secs(0) -> true;
+valid_expire_secs(undefined) ->
+    true;
+valid_expire_secs(0) ->
+    true;
 valid_expire_secs(Secs) when is_integer(Secs) ->
     lists:member(Secs, ?ALLOWED_EXPIRE_SECS);
-valid_expire_secs(_) -> false.
+valid_expire_secs(_) ->
+    false.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -94,7 +101,9 @@ init([]) ->
             },
             %% 首次延迟 30 秒执行
             erlang:send_after(30000, self(), do_cleanup),
-            ok = ?INFO_LOG([msg_burn_logic, started, #{interval => Interval, batch_size => BatchSize}]),
+            ok = ?INFO_LOG([
+                msg_burn_logic, started, #{interval => Interval, batch_size => BatchSize}
+            ]),
             {ok, State};
         false ->
             ok = ?INFO_LOG([msg_burn_logic, disabled]),
@@ -104,7 +113,6 @@ init([]) ->
 handle_call(cleanup_now, _From, State) ->
     {Result, NewState} = do_cleanup_internal(State),
     {reply, Result, NewState};
-
 handle_call(get_status, _From, State) ->
     Status = #{
         interval => State#state.interval,
@@ -113,7 +121,6 @@ handle_call(get_status, _From, State) ->
         total_cleaned => State#state.total_cleaned
     },
     {reply, Status, State};
-
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -127,7 +134,6 @@ handle_info(do_cleanup, State) ->
     {_Result, NewState} = do_cleanup_internal(State),
     erlang:send_after(State#state.interval, self(), do_cleanup),
     {noreply, NewState};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -152,7 +158,9 @@ do_cleanup_internal(State) ->
         Total = C2CCount + C2GCount,
         case Total > 0 of
             true ->
-                ok = ?INFO_LOG([msg_burn_cleanup, #{c2c => C2CCount, c2g => C2GCount, total => Total}]);
+                ok = ?INFO_LOG([
+                    msg_burn_cleanup, #{c2c => C2CCount, c2g => C2GCount, total => Total}
+                ]);
             false ->
                 ok
         end,
