@@ -1,0 +1,59 @@
+# POST /v1/wallet/recharge/order
+post:
+  tags: [wallet]
+  summary: 创建充值订单
+  description: |
+    ## 中文
+    为当前登录用户创建一笔充值订单（status=0 待支付）。`user_id` 取自 JWT，
+    **不接受请求体传入**（防 mass-assignment）。金额单位「分」，整数，受
+    `[recharge_min_amount, recharge_max_amount]` 区间约束（默认 100–1000000）。
+    支付方式白名单：生产 `[alipay, wechat, stripe]`，开发环境额外允许 `mock`。
+    需 Bearer JWT。
+    ## English
+    Create a recharge order (status=0 pending) for the authenticated user.
+    `user_id` comes from JWT, **never from the request body**.
+    Amount is an integer in fen, bounded by min/max env config.
+    Payment method whitelisted per environment. Requires Bearer JWT.
+  operationId: walletRechargeOrder
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [amount, payment_method]
+          properties:
+            amount: { type: integer, minimum: 100, maximum: 1000000, description: 金额（分） }
+            payment_method:
+              type: string
+              enum: [alipay, wechat, stripe, mock]
+              description: 生产环境不允许 mock。
+  responses:
+    '200':
+      description: 成功；payload 为新建订单（仅含本人 user_id）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      order_no: { type: string }
+                      user_id: { type: integer, description: 归属用户 TSID（来自 JWT） }
+                      amount: { type: integer, description: 金额（分） }
+                      currency: { type: string, description: 币种，如 CNY }
+                      payment_method: { type: string }
+                      payment_no: { type: string, nullable: true }
+                      status: { type: integer, description: '0=待支付' }
+                      paid_at: { type: string, nullable: true, format: date-time }
+                      expires_at: { type: string, nullable: true, format: date-time }
+                      created_at: { type: string, format: date-time }
+                      updated_at: { type: string, format: date-time }
+    '4XX':
+      description: 未登录 / 金额非法 / 支付方式不支持
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
