@@ -16,7 +16,6 @@
 %% API
 %% ===================================================================
 
-
 %% @doc C2S 消息入口
 -spec c2s(binary(), integer(), map()) -> ok | {reply, map()}.
 c2s(MsgId, CurrentUid, Data) ->
@@ -28,13 +27,20 @@ c2s(MsgId, CurrentUid, Data) ->
             Cursors = maps:get(<<"cursors">>, Payload, []),
             Limit = maps:get(<<"limit">>, Payload, 50),
             Result = handle_sync(CurrentUid, Cursors, Limit),
-            {reply, #{<<"id">> => MsgId,
-                      <<"type">> => <<"C2S">>,
-                      <<"action">> => <<"sync_resp">>,
-                      <<"payload">> => Result}};
+            {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2S">>,
+                <<"action">> => <<"sync_resp">>,
+                <<"payload">> => Result
+            }};
         <<"bot_qian_fan">> ->
-            c2s_to_external(MsgId, CurrentUid, <<"bot_qian_fan">>, Data,
-                           fun qianfan_api:create_chat/3);
+            c2s_to_external(
+                MsgId,
+                CurrentUid,
+                <<"bot_qian_fan">>,
+                Data,
+                fun qianfan_api:create_chat/3
+            );
         % 【扩展点】未来添加其他外部服务
         % <<"bot_openai">> ->
         %     c2s_to_external(MsgId, CurrentUid, <<"bot_openai">>, Data,
@@ -56,17 +62,14 @@ c2s(MsgId, CurrentUid, Data) ->
             end
     end.
 
-
 %% @doc 客户端确认 C2S 投递消息
 -spec c2s_client_ack(binary(), integer(), binary()) -> ok.
 c2s_client_ack(MsgId, CurrentUid, DID) ->
     msg_ack_logic:client_ack(<<"c2s">>, MsgId, CurrentUid, DID).
 
-
 %% ===================================================================
 %% 外部服务处理函数
 %% ===================================================================
-
 
 %% @doc C2S 消息发送到外部服务（AI/Bot/第三方 API）
 %% @param MsgId 消息ID
@@ -97,15 +100,28 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
 
     % 【关键修复】先备份到 staging 表（同步，检查返回值）
     % v2.0: C2S 消息使用 text 类型，无 action 和 e2ee
-    case msg_store_ds:stage(<<"c2s">>, MsgId, <<"text">>, <<>>, #{}, Payload0Bin,
-                              CurrentUid, 0, CreatedAt, CreatedAt) of
+    case
+        msg_store_ds:stage(
+            <<"c2s">>,
+            MsgId,
+            <<"text">>,
+            <<>>,
+            #{},
+            Payload0Bin,
+            CurrentUid,
+            0,
+            CreatedAt,
+            CreatedAt
+        )
+    of
         ok ->
             % 备份成功，立即响应
-            self() ! {reply, #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2S_SERVER_ACK">>,
-                <<"server_ts">> => elib_dt:millisecond()
-            }},
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2S_SERVER_ACK">>,
+                    <<"server_ts">> => elib_dt:millisecond()
+                }},
 
             % ① 先入队（异步，非阻塞）
             msg_store_ds:enqueue(<<"c2s">>, MsgId, #{
@@ -119,21 +135,34 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
             }),
 
             % ② 异步调用外部 API + 投递响应（带重试）
-            elib_async:async_retry(fun() ->
-                % 使用回调调用外部 API
-                RespMap = ApiCallback(CurrentUid, Text, []),
-                send_service_response(To, MsgId, CurrentUid, From, Payload0,
-                                     RespMap, TopicId, CreatedAt)
-            end, 3, 2000),
+            elib_async:async_retry(
+                fun() ->
+                    % 使用回调调用外部 API
+                    RespMap = ApiCallback(CurrentUid, Text, []),
+                    send_service_response(
+                        To,
+                        MsgId,
+                        CurrentUid,
+                        From,
+                        Payload0,
+                        RespMap,
+                        TopicId,
+                        CreatedAt
+                    )
+                end,
+                3,
+                2000
+            ),
             ok;
         error ->
             % 备份失败，返回错误
-            ok = ?ERROR_LOG("[C2S_STAGE_FAILED] MsgId=~s, Uid=~p, To=~p~n",
-                      [MsgId, CurrentUid, To]),
+            ok = ?ERROR_LOG(
+                "[C2S_STAGE_FAILED] MsgId=~s, Uid=~p, To=~p~n",
+                [MsgId, CurrentUid, To]
+            ),
             Msg = message_ds:assemble_s2c(MsgId, <<"internal_error">>, To),
             {reply, Msg}
     end.
-
 
 %% @doc AI 角色聊天处理
 %% 从 config_ds:env(ai_roles) 读取角色 system_prompt，通过千帆 API 回复
@@ -144,32 +173,42 @@ c2s_to_role_chat(MsgId, CurrentUid, Data) ->
     RoleId = maps:get(<<"role_id">>, Payload, <<"doctor">>),
     % 从配置读取角色 system_prompt；未配置时使用通用助手提示
     Roles = config_ds:env(ai_roles, #{}),
-    SystemPrompt = maps:get(RoleId, Roles,
-                            <<"你是一个有帮助的AI助手，请专业、友善地回答用户问题。"/utf8>>),
+    SystemPrompt = maps:get(
+        RoleId,
+        Roles,
+        <<"你是一个有帮助的AI助手，请专业、友善地回答用户问题。"/utf8>>
+    ),
     % 将 system_prompt 注入为开场历史，使千帆 API 持有角色上下文
     RoleCallback = fun(Uid, Content, _Opts) ->
         History = [
-            #{<<"role">> => <<"user">>,      <<"content">> => SystemPrompt},
+            #{<<"role">> => <<"user">>, <<"content">> => SystemPrompt},
             #{<<"role">> => <<"assistant">>, <<"content">> => <<"好的，我会按照这个角色来回答您的问题。"/utf8>>}
         ],
         qianfan_api:create_chat(Uid, Content, History)
     end,
     c2s_to_external(MsgId, CurrentUid, <<"bot_role_chat">>, Data, RoleCallback).
 
-
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
 
-
 %% @doc 发送外部服务响应消息（内部辅助函数）
--spec send_service_response(binary(), binary(), integer(), binary(), map(),
-                             map(), integer(), binary()) -> ok.
+-spec send_service_response(
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    map(),
+    map(),
+    integer(),
+    binary()
+) -> ok.
 send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, CreatedAt) ->
     % 更新消息状态
     _Payload2 = Payload0#{
         <<"bot_response">> => RespMap,
-        <<"status">> => 12  % 状态：12 收到三方结果
+        % 状态：12 收到三方结果
+        <<"status">> => 12
     },
 
     % 构建响应消息（v2.0 格式）
@@ -191,11 +230,9 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
     MsLi = elib_retry_config:intervals(<<"c2s">>),
     message_ds:send_next(CurrentUid, MsgId2, MsgJson, MsLi).
 
-
 %% ===================================================================
 %% Sync — 客户端增量同步（基于 conv_seq 游标）
 %% ===================================================================
-
 
 %% @doc 处理客户端 sync 请求
 %% 客户端传入多个会话的游标 [{conv_key, seq}...]，服务端返回每个会话的增量消息
@@ -217,22 +254,27 @@ handle_sync(CurrentUid, Cursors, Limit) when is_list(Cursors) ->
                         {ok, []} ->
                             false;
                         {ok, Rows} ->
-                            Messages = [messaging_logic:encode_history_msg(CurrentUid, R)
-                                        || R <- Rows],
+                            Messages = [
+                                messaging_logic:encode_history_msg(CurrentUid, R)
+                             || R <- Rows
+                            ],
                             NextSeq = messaging_logic:next_seq_from_rows(Rows, Seq),
-                            {true, #{<<"conv_key">> => ConvKey,
-                                     <<"messages">> => Messages,
-                                     <<"next_seq">> => NextSeq,
-                                     <<"has_more">> => length(Rows) >= ClampedLimit}};
+                            {true, #{
+                                <<"conv_key">> => ConvKey,
+                                <<"messages">> => Messages,
+                                <<"next_seq">> => NextSeq,
+                                <<"has_more">> => length(Rows) >= ClampedLimit
+                            }};
                         {error, _} ->
                             false
                     end
             end
-        end, Cursors),
+        end,
+        Cursors
+    ),
     #{<<"results">> => Results};
 handle_sync(_CurrentUid, _Cursors, _Limit) ->
     #{<<"results">> => []}.
-
 
 %% @doc 验证用户是否有权访问该会话
 %% conv_key 格式: "c2c:{min_uid}:{max_uid}" 或 "c2g:{group_id}"
@@ -251,7 +293,6 @@ authorize_conv(CurrentUid, <<"c2g:", GidBin/binary>>) ->
     group_ds:is_member(CurrentUid, Gid);
 authorize_conv(_CurrentUid, _ConvKey) ->
     false.
-
 
 %% ===================================================================
 %% E2EE 社交恢复 - 零信任架构
@@ -288,7 +329,9 @@ handle_e2ee_social_shard(MsgId, CurrentUid, Data) ->
             ),
 
             % 构造转发消息
-            Msg = message_ds:assemble_msg(<<"C2C">>, From, To, Payload, MsgId, <<>>, <<"decrypt_shard">>, null),
+            Msg = message_ds:assemble_msg(
+                <<"C2C">>, From, To, Payload, MsgId, <<>>, <<"decrypt_shard">>, null
+            ),
 
             % 转发给代理
             MsLi = elib_retry_config:intervals(<<"c2c">>),

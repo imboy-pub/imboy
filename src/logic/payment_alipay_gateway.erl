@@ -1,5 +1,6 @@
 -module(payment_alipay_gateway).
 -compile([nowarn_deprecated_catch]).
+-dialyzer({nowarn_function, [err_msg/1]}).
 -behaviour(payment_gateway).
 
 %%%===================================================================

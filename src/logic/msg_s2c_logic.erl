@@ -43,14 +43,29 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 
     % 写入备份表（同步，快速）
     % v2.0: S2C 消息使用 action 字段
-    msg_store_ds:stage(<<"s2c">>, MsgId, <<>>, <<"C2C_DEL_EVERYONE">>, #{},
-                          PayloadJson, CurrentUid, To, CreatedAtRfc, CreatedAtRfc),
+    msg_store_ds:stage(
+        <<"s2c">>,
+        MsgId,
+        <<>>,
+        <<"C2C_DEL_EVERYONE">>,
+        #{},
+        PayloadJson,
+        CurrentUid,
+        To,
+        CreatedAtRfc,
+        CreatedAtRfc
+    ),
 
     % ① 先入队（异步，非阻塞）
-    msg_store_ds:enqueue(<<"s2c">>, MsgId,
-                            #{payload => PayloadJson,
-                              from_id => CurrentUid,
-                              to_id => To}),
+    msg_store_ds:enqueue(
+        <<"s2c">>,
+        MsgId,
+        #{
+            payload => PayloadJson,
+            from_id => CurrentUid,
+            to_id => To
+        }
+    ),
 
     % ② 后投递
     message_ds:send_next(To, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
@@ -82,14 +97,15 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     From = CurrentUid,
 
     % 存储s2c消息
-    [s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload)
-     || Uid <- MemberUids, CurrentUid /= Uid],
+    [
+        s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload)
+     || Uid <- MemberUids, CurrentUid /= Uid
+    ],
 
     % 给操作者回复消息
     Action = <<"C2G_DEL_EVERYONE">>,
     Msg = message_ds:assemble_msg(<<"S2C">>, From, Gid, Payload, MsgId, <<>>, Action, null),
     {reply, Msg};
-
 %% ===================================================================
 %% E2EE 社交恢复 - 零信任架构
 %% ===================================================================
@@ -133,7 +149,6 @@ s2c(<<"store_shard">>, MsgId, CurrentUid, Data) ->
 
     % 给发送者回复确认
     {reply, Msg};
-
 %% @doc E2EE 社交恢复 - 分片已存储确认
 %% 代理确认已存储分片
 s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
@@ -169,7 +184,6 @@ s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
     message_ds:send_next(ToUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
 
     {reply, Msg};
-
 %% ===================================================================
 %% E2EE 密钥变更确认
 %% ===================================================================
@@ -182,11 +196,14 @@ s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
     KeyId = maps:get(<<"key_id">>, Payload, <<>>),
 
     % 记录确认日志
-    ok = ?INFO_LOG([e2ee_key_changed_ack, #{
-        from_uid => FromUid,
-        acknowledged_by => CurrentUid,
-        key_id => KeyId
-    }]),
+    ok = ?INFO_LOG([
+        e2ee_key_changed_ack,
+        #{
+            from_uid => FromUid,
+            acknowledged_by => CurrentUid,
+            key_id => KeyId
+        }
+    ]),
 
     % 返回空回复（仅确认，无需转发）
     {reply, #{
@@ -202,7 +219,7 @@ s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
 %% @param Uid 接收者用户ID（integer）
 %% @param Payload 消息内容
 %% @private
--spec s2c_for_c2g(binary() | integer(), integer(), binary(), integer(), map()) -> ok.
+-spec s2c_for_c2g(binary() | integer(), integer(), integer(), integer(), map()) -> ok.
 s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
     % Uid 已经是 integer（来自 group_ds:member_uids），直接编码即可
     To = Uid,
@@ -221,14 +238,29 @@ s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
 
     % 写入备份表（同步，快速）
     % v2.0: S2C 消息使用 action 字段
-    msg_store_ds:stage(<<"s2c">>, MsgId, <<>>, <<"C2G_DEL_EVERYONE">>, #{},
-                          PayloadJson, CurrentUid, Uid, CreatedAtRfc2, CreatedAtRfc2),
+    msg_store_ds:stage(
+        <<"s2c">>,
+        MsgId,
+        <<>>,
+        <<"C2G_DEL_EVERYONE">>,
+        #{},
+        PayloadJson,
+        CurrentUid,
+        Uid,
+        CreatedAtRfc2,
+        CreatedAtRfc2
+    ),
 
     % ① 先入队（异步，非阻塞）
-    msg_store_ds:enqueue(<<"s2c">>, MsgId,
-                            #{payload => PayloadJson,
-                              from_id => CurrentUid,
-                              to_id => Uid}),
+    msg_store_ds:enqueue(
+        <<"s2c">>,
+        MsgId,
+        #{
+            payload => PayloadJson,
+            from_id => CurrentUid,
+            to_id => Uid
+        }
+    ),
 
     % ② 后投递
     message_ds:send_next(Uid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),

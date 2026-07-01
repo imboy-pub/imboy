@@ -47,20 +47,20 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% @doc 增加计数器（默认增加 1）
--spec increment(atom()) -> ok.
+-spec increment(term()) -> ok.
 increment(Name) ->
     increment(Name, 1).
 
 %% @doc 增加计数器（指定增量）
--spec increment(atom(), integer()) -> ok.
-increment(Name, Delta) when is_atom(Name), is_integer(Delta), Delta > 0 ->
+-spec increment(term(), pos_integer()) -> ok.
+increment(Name, Delta) when is_integer(Delta), Delta > 0 ->
     gen_server:cast(?MODULE, {increment, Name, Delta}).
 
 %% @doc 增加带标签的计数器
 %% Labels 是 map，如 #{plugin => channel}
 %% Delta 固定为 1；自定义 delta 请用 increment/3
--spec increment(atom(), integer(), map()) -> ok | {error, invalid_delta}.
-increment(Name, Delta, Labels) when is_atom(Name), is_integer(Delta), Delta > 0, is_map(Labels) ->
+-spec increment(term(), pos_integer(), map()) -> ok | {error, invalid_delta}.
+increment(Name, Delta, Labels) when is_integer(Delta), Delta > 0, is_map(Labels) ->
     gen_server:cast(?MODULE, {increment_labeled, Name, Delta, Labels});
 increment(_Name, Delta, _Labels) when is_integer(Delta), Delta =< 0 ->
     {error, invalid_delta}.
@@ -71,10 +71,11 @@ record(Name, Value) when is_atom(Name), is_number(Value) ->
     gen_server:cast(?MODULE, {record, Name, Value}).
 
 %% @doc 获取所有指标
--spec get_all_metrics() -> #{
-    counters => #{atom() => integer()},
-    histograms => #{atom() => [map()]}
-}.
+-spec get_all_metrics() ->
+    #{
+        counters => #{atom() => integer()},
+        histograms => #{atom() => [map()]}
+    }.
 get_all_metrics() ->
     gen_server:call(?MODULE, get_all_metrics).
 
@@ -107,10 +108,11 @@ log_message_format(Direction, Msg) when is_binary(Direction), is_map(Msg) ->
     Type = maps:get(<<"type">>, Msg, <<"unknown">>),
     MsgType = maps:get(<<"msg_type">>, Msg, none),
     Action = maps:get(<<"action">>, Msg, none),
-    E2EE = case maps:get(<<"e2ee">>, Msg, null) of
-               null -> no_e2ee;
-               _ -> has_e2ee
-           end,
+    E2EE =
+        case maps:get(<<"e2ee">>, Msg, null) of
+            null -> no_e2ee;
+            _ -> has_e2ee
+        end,
 
     % 记录消息类型计数
     TypeAtom = binary_to_existing_atom(Type, utf8),
@@ -118,20 +120,24 @@ log_message_format(Direction, Msg) when is_binary(Direction), is_map(Msg) ->
 
     % 记录 msg_type �计数
     case MsgType of
-        none -> ok;
+        none ->
+            ok;
         _ when is_binary(MsgType) ->
             MsgTypeAtom = binary_to_existing_atom(MsgType, utf8),
             increment({msg_content_type, MsgTypeAtom});
-        _ -> ok
+        _ ->
+            ok
     end,
 
     % 记录 action 计数
     case Action of
-        none -> ok;
+        none ->
+            ok;
         _ when is_binary(Action) ->
             ActionAtom = binary_to_existing_atom(Action, utf8),
             increment({msg_action, ActionAtom});
-        _ -> ok
+        _ ->
+            ok
     end,
 
     % 记录 E2EE 状态计数
@@ -164,10 +170,11 @@ init([]) ->
 handle_call(get_all_metrics, _From, State) ->
     % 获取所有计数器（无标签）
     Counters = ets:foldl(
-        fun({{counter, Name}, Value}, Acc) ->
-            Acc#{Name => Value};
-           (_, Acc) ->
-            Acc
+        fun
+            ({{counter, Name}, Value}, Acc) ->
+                Acc#{Name => Value};
+            (_, Acc) ->
+                Acc
         end,
         #{},
         ?METRICS_ETS
@@ -175,11 +182,12 @@ handle_call(get_all_metrics, _From, State) ->
 
     % 获取所有带标签计数器（将排序列表转回 map 作为 key）
     LabeledCounters = ets:foldl(
-        fun({{labeled_counter, Name, SortedLabels}, Value}, Acc) ->
-            LabelsMap = maps:from_list(SortedLabels),
-            Acc#{{Name, LabelsMap} => Value};
-           (_, Acc) ->
-            Acc
+        fun
+            ({{labeled_counter, Name, SortedLabels}, Value}, Acc) ->
+                LabelsMap = maps:from_list(SortedLabels),
+                Acc#{{Name, LabelsMap} => Value};
+            (_, Acc) ->
+                Acc
         end,
         #{},
         ?METRICS_ETS
@@ -189,51 +197,48 @@ handle_call(get_all_metrics, _From, State) ->
 
     % 获取所有直方图
     Histograms = ets:foldl(
-        fun({{histogram, Name}, Buckets}, Acc) ->
-            Acc#{Name => lists:reverse(Buckets)};
-           (_, Acc) ->
-            Acc
+        fun
+            ({{histogram, Name}, Buckets}, Acc) ->
+                Acc#{Name => lists:reverse(Buckets)};
+            (_, Acc) ->
+                Acc
         end,
         #{},
         ?METRICS_ETS
     ),
 
     {reply, #{counters => AllCounters, histograms => Histograms}, State};
-
 handle_call(reset, _From, State) ->
     ets:delete_all_objects(?METRICS_ETS),
     {reply, ok, State};
-
 handle_call({reset_counter, Name}, _From, State) ->
     ets:delete(?METRICS_ETS, {counter, Name}),
     {reply, ok, State};
-
 handle_call({reset_histogram, Name}, _From, State) ->
     ets:delete(?METRICS_ETS, {histogram, Name}),
     {reply, ok, State};
-
 handle_call(_Request, _From, State) ->
     {reply, {error, unknown_request}, State}.
 
 %% @private
 handle_cast({increment, Name, Delta}, State) ->
     Key = {counter, Name},
-    NewValue = case ets:lookup(?METRICS_ETS, Key) of
-        [{Key, Value}] -> Value + Delta;
-        [] -> Delta
-    end,
+    NewValue =
+        case ets:lookup(?METRICS_ETS, Key) of
+            [{Key, Value}] -> Value + Delta;
+            [] -> Delta
+        end,
     ets:insert(?METRICS_ETS, {Key, NewValue}),
     {noreply, State};
-
 handle_cast({increment_labeled, Name, Delta, Labels}, State) ->
     Key = {labeled_counter, Name, sort_labels(Labels)},
-    NewValue = case ets:lookup(?METRICS_ETS, Key) of
-        [{Key, Value}] -> Value + Delta;
-        [] -> Delta
-    end,
+    NewValue =
+        case ets:lookup(?METRICS_ETS, Key) of
+            [{Key, Value}] -> Value + Delta;
+            [] -> Delta
+        end,
     ets:insert(?METRICS_ETS, {Key, NewValue}),
     {noreply, State};
-
 handle_cast({record, Name, Value}, State) ->
     Key = {histogram, Name},
     % 简单的桶实现：记录值和计数
@@ -242,13 +247,13 @@ handle_cast({record, Name, Value}, State) ->
         count => 1,
         timestamp => erlang:system_time(millisecond)
     },
-    NewBuckets = case ets:lookup(?METRICS_ETS, Key) of
-        [{Key, Buckets}] -> [Bucket | Buckets];
-        [] -> [Bucket]
-    end,
+    NewBuckets =
+        case ets:lookup(?METRICS_ETS, Key) of
+            [{Key, Buckets}] -> [Bucket | Buckets];
+            [] -> [Bucket]
+        end,
     ets:insert(?METRICS_ETS, {Key, NewBuckets}),
     {noreply, State};
-
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

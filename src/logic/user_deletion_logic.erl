@@ -28,7 +28,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
--define(DEFAULT_INTERVAL, 86400000).   % 24 小时
+% 24 小时
+-define(DEFAULT_INTERVAL, 86400000).
 -define(DEFAULT_RETENTION_DAYS, 60).
 -define(DEFAULT_BATCH_SIZE, 10).
 
@@ -74,7 +75,9 @@ init([]) ->
     case Enabled of
         true ->
             Interval = application:get_env(imboy, user_deletion_interval, ?DEFAULT_INTERVAL),
-            RetDays = application:get_env(imboy, user_deletion_retention_days, ?DEFAULT_RETENTION_DAYS),
+            RetDays = application:get_env(
+                imboy, user_deletion_retention_days, ?DEFAULT_RETENTION_DAYS
+            ),
             BatchSize = application:get_env(imboy, user_deletion_batch_size, ?DEFAULT_BATCH_SIZE),
             State = #state{
                 interval = Interval,
@@ -85,11 +88,15 @@ init([]) ->
             },
             %% 首次延迟 60 秒执行
             erlang:send_after(60000, self(), do_cleanup),
-            ok = ?INFO_LOG([user_deletion_logic, started, #{
-                interval => Interval,
-                retention_days => RetDays,
-                batch_size => BatchSize
-            }]),
+            ok = ?INFO_LOG([
+                user_deletion_logic,
+                started,
+                #{
+                    interval => Interval,
+                    retention_days => RetDays,
+                    batch_size => BatchSize
+                }
+            ]),
             {ok, State};
         false ->
             ok = ?INFO_LOG([user_deletion_logic, disabled]),
@@ -105,7 +112,6 @@ init([]) ->
 handle_call(cleanup_now, _From, State) ->
     {Result, NewState} = do_cleanup_internal(State),
     {reply, Result, NewState};
-
 handle_call(get_status, _From, State) ->
     Status = #{
         interval => State#state.interval,
@@ -115,7 +121,6 @@ handle_call(get_status, _From, State) ->
         total_deleted => State#state.total_deleted
     },
     {reply, Status, State};
-
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -128,7 +133,6 @@ handle_info(do_cleanup, State) ->
     {_Result, NewState} = do_cleanup_internal(State),
     erlang:send_after(State#state.interval, self(), do_cleanup),
     {noreply, NewState};
-
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -149,7 +153,9 @@ do_cleanup_internal(State) ->
         Deleted = delete_expired_users(RetDays, BatchSize),
         case Deleted > 0 of
             true ->
-                ok = ?INFO_LOG([user_deletion_cleanup, #{deleted => Deleted, retention_days => RetDays}]);
+                ok = ?INFO_LOG([
+                    user_deletion_cleanup, #{deleted => Deleted, retention_days => RetDays}
+                ]);
             false ->
                 ok
         end,
@@ -166,22 +172,28 @@ do_cleanup_internal(State) ->
 
 %% @doc 查找并删除超过保留期的注销申请用户
 delete_expired_users(RetentionDays, BatchSize) ->
-    case user_ds:find_expired_logout_users(integer_to_binary(RetentionDays), BatchSize) of
+    case user_ds:find_expired_logout_users(RetentionDays, BatchSize) of
         {ok, Rows} when is_list(Rows), length(Rows) > 0 ->
-            lists:foldl(fun(#{<<"id">> := Uid}, Acc) ->
-                try
-                    ok = user_ds:delete_all_related_data(Uid),
-                    ok = ?INFO_LOG([user_deleted, #{uid => Uid}]),
-                    Acc + 1
-                catch
-                    _:Err ->
-                        ok = ?ERROR_LOG([user_deletion_failed, #{uid => Uid, error => Err}]),
-                        Acc
-                end
-            end, 0, Rows);
+            lists:foldl(
+                fun(#{<<"id">> := Uid}, Acc) ->
+                    try
+                        ok = user_ds:delete_all_related_data(Uid),
+                        ok = ?INFO_LOG([user_deleted, #{uid => Uid}]),
+                        Acc + 1
+                    catch
+                        _:Err ->
+                            ok = ?ERROR_LOG([user_deletion_failed, #{uid => Uid, error => Err}]),
+                            Acc
+                    end
+                end,
+                0,
+                Rows
+            );
         {ok, []} ->
             0;
         {error, Reason} ->
-            ok = ?ERROR_LOG([user_deletion_query_failed, #{retention_days => RetentionDays, error => Reason}]),
+            ok = ?ERROR_LOG([
+                user_deletion_query_failed, #{retention_days => RetentionDays, error => Reason}
+            ]),
             0
     end.

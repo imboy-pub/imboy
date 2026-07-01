@@ -347,7 +347,10 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                             NowMs = elib_dt:millisecond(),
 
                             % 检查是否超过撤回时间限制（2分钟）
-                            case NowMs - CreatedAtMs > ?REVOKE_TIMEOUT_MS of
+                            case
+                                is_integer(CreatedAtMs) andalso
+                                    NowMs - CreatedAtMs > ?REVOKE_TIMEOUT_MS
+                            of
                                 true ->
                                     % 超过撤回时间限制
                                     ErrorMsg = #{

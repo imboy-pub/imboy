@@ -112,7 +112,7 @@ c2g(MsgId, CurrentUid, Data) ->
     ok | {reply, map()}.
 do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
     NowTs = elib_dt:now(),
-    NowMS = elib_dt:rfc3339_to(NowTs, millisecond),
+    NowMS = elib_dt:millisecond(),
     CreatedAt = maps:get(<<"created_at">>, Data),
     CreatedAtRfc = elib_dt:to_rfc3339(CreatedAt),
 

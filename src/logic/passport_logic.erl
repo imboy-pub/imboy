@@ -1,7 +1,7 @@
 -module(passport_logic).
 %% Stable identity passport domain boundary.
 %% API adapters should call this module instead of reaching auth/user internals directly.
--dialyzer({nowarn_function, [{send_email_code, 1}, {send_sms_code, 1}]}).
+-dialyzer({nowarn_function, [{send_email_code, 1}, {send_sms_code, 1}, {do_login_verify, 4}]}).
 %%%
 % passport_logic 是 passport application logic 缩写
 %%%
@@ -546,15 +546,13 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
 -spec quota_guard() -> ok | {error, binary(), integer()}.
 quota_guard() ->
     try user_ds:count() of
-        Count when is_integer(Count) ->
+        Count ->
             case imboy_license:check_user_quota(Count) of
                 ok ->
                     ok;
                 {error, quota_exceeded} ->
                     {error, <<"用户数已达授权上限，请联系管理员升级 License 后再注册"/utf8>>, ?ERR_PAYMENT_REQUIRED}
-            end;
-        _ ->
-            ok
+            end
     catch
         _:_ -> ok
     end.
