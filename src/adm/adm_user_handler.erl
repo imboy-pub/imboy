@@ -129,7 +129,7 @@ force_logout(<<"POST">>, Req0, State) ->
         true ->
             _ = user_device_logic:kick_all_other_devices(Uid, {<<"all">>, <<"admin_action">>}),
             % GAP-01 关联：写强制下线审计日志（type=120）
-            _ = elib_async:run(fun() ->
+            _ = elib_async:async(fun() ->
                 {ok, LogBody} = jsone_encode:encode(
                     #{
                         <<"operator">> => AdmUserId,

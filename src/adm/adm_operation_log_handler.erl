@@ -31,14 +31,16 @@ list(<<"GET">>, Req0, State) ->
             Req1;
         ok ->
             Qs = cowboy_req:parse_qs(Req0),
-            Page = elib_cnv:to_integer(proplists:get_value(<<"page">>, Qs, <<"1">>)),
-            Size = min(elib_cnv:to_integer(proplists:get_value(<<"size">>, Qs, <<"20">>)), 100),
+            Page = elib_cnv:safe_to_integer(proplists:get_value(<<"page">>, Qs, <<"1">>)),
+            Size = min(
+                elib_cnv:safe_to_integer(proplists:get_value(<<"size">>, Qs, <<"20">>)), 100
+            ),
             Offset = (max(Page, 1) - 1) * Size,
             Opts0 = #{limit => Size, offset => Offset},
             Opts1 =
                 case proplists:get_value(<<"adm_user_id">>, Qs) of
                     undefined -> Opts0;
-                    V -> Opts0#{adm_user_id => elib_cnv:to_integer(V)}
+                    V -> Opts0#{adm_user_id => elib_cnv:safe_to_integer(V)}
                 end,
             Opts2 =
                 case proplists:get_value(<<"action">>, Qs) of

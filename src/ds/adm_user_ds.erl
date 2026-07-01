@@ -9,6 +9,7 @@
 
 %% ==================== API ====================
 
+-export([count/0]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_mobile/2, find_by_account/2]).
 -export([save/1, update/2, delete/1]).
@@ -17,6 +18,10 @@
 %% ===================================================================
 %% API Functions
 %% ===================================================================
+
+-spec count() -> {ok, integer()} | {error, any()}.
+count() ->
+    adm_user_repo:count().
 
 %% @doc 根据ID查找管理员用户（默认列）
 -spec find_by_id(integer()) -> map().

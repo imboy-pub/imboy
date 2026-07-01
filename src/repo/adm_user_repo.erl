@@ -9,11 +9,14 @@
 
 -export([tablename/0]).
 -export([save/1, update/2, delete/1]).
+-export([count/0]).
 -export([count_by_role_id/1]).
 
--export([find_by_email/2,
-         find_by_mobile/2,
-         find_by_account/2]).
+-export([
+    find_by_email/2,
+    find_by_mobile/2,
+    find_by_account/2
+]).
 -export([find_by_id/1, find_by_id/2]).
 -export([list_by_ids/2]).
 -export([select_by_where/4]).
@@ -30,10 +33,18 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"adm_user">>).
 
-
 %% @doc 统计指定角色的用户数量
 %% @param RoleId 角色ID
 %% @return {ok, Count} 用户数量 | {error, Reason} 查询失败
+-spec count() -> {ok, integer()} | {error, any()}.
+count() ->
+    Tb = tablename(),
+    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE status >= 0">>,
+    case elib_pg:query(Sql, []) of
+        {ok, [#{<<"count">> := Count}]} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
 %% @example adm_user_repo:count_by_role_id(1).
 -spec count_by_role_id(integer()) -> {ok, integer()} | {error, any()}.
 count_by_role_id(RoleId) ->
@@ -44,14 +55,14 @@ count_by_role_id(RoleId) ->
         {error, Reason} -> {error, Reason}
     end.
 
-
 %% @doc 根据WHERE条件查询管理员用户列表（使用默认列）
 %% @param Where SQL WHERE子句条件
 %% @param Limit 查询结果数量限制
 %% @param Offset 查询结果偏移量
 %% @param OrderBy 排序字段
 %% @return {ok, [map()]} 查询成功返回map列表 | {error, Reason} 查询失败
--spec select_by_where(binary() | map(), integer(), integer(), binary()) -> {ok, [map()]} | {error, any()}.
+-spec select_by_where(binary() | map(), integer(), integer(), binary()) ->
+    {ok, [map()]} | {error, any()}.
 select_by_where(Where, Limit, Offset, OrderBy) when is_binary(Where) ->
     select_by_where(?DEF_USER_COLUMN, Where, Limit, Offset, OrderBy);
 select_by_where(WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
@@ -64,10 +75,12 @@ select_by_where(WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
 %% @param Offset 查询结果偏移量
 %% @param OrderBy 排序字段
 %% @return {ok, [map()]} 查询成功返回map列表 | {error, Reason} 查询失败
--spec select_by_where(binary(), binary() | map(), integer(), integer(), binary()) -> {ok, [map()]} | {error, any()}.
+-spec select_by_where(binary(), binary() | map(), integer(), integer(), binary()) ->
+    {ok, [map()]} | {error, any()}.
 select_by_where(Column, Where, Limit, Offset, OrderBy) when is_binary(Where) ->
     case Limit > 0 of
-        false -> {ok, []};
+        false ->
+            {ok, []};
         true ->
             Tb = tablename(),
             Page = (Offset div Limit) + 1,
@@ -75,7 +88,8 @@ select_by_where(Column, Where, Limit, Offset, OrderBy) when is_binary(Where) ->
     end;
 select_by_where(Column, WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) ->
     case Limit > 0 of
-        false -> {ok, []};
+        false ->
+            {ok, []};
         true ->
             Tb = tablename(),
             Page = (Offset div Limit) + 1,
@@ -90,21 +104,27 @@ select_by_where(Column, WhereMap, Limit, Offset, OrderBy) when is_map(WhereMap) 
 %% @param OrderSpec 排序规范 [{Field, asc|desc}]
 %% @param ValidFields 白名单字段 [binary()]
 %% @return {ok, [map()]} | {error, Reason}
--spec select_by_where_safe(binary(), map(), integer(), integer(), [{atom() | binary(), asc | desc}], [binary()]) ->
+-spec select_by_where_safe(
+    binary(), map(), integer(), integer(), [{atom() | binary(), asc | desc}], [binary()]
+) ->
     {ok, [map()]} | {error, any()}.
 select_by_where_safe(Column, WhereMap, Limit, Offset, OrderSpec, ValidFields) ->
     case Limit > 0 of
-        false -> {ok, []};
+        false ->
+            {ok, []};
         true ->
             Tb = tablename(),
             {Sql, Params} =
                 elib_pg_sql:build_select_safe(
-                    Tb, Column, WhereMap, OrderSpec, ValidFields,
+                    Tb,
+                    Column,
+                    WhereMap,
+                    OrderSpec,
+                    ValidFields,
                     #{limit => Limit, offset => Offset}
                 ),
             elib_pg:query(Sql, Params)
     end.
-
 
 %% @doc 根据邮箱查找管理员用户
 %% @param Email 用户邮箱地址
@@ -115,7 +135,6 @@ find_by_email(Email, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE email = $1">>,
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Email])).
-
 
 %% @doc 根据手机号查找管理员用户
 %% @param Mobile 用户手机号码，支持binary或string类型
@@ -128,7 +147,6 @@ find_by_mobile(Mobile, Column) when is_binary(Mobile); is_list(Mobile) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE mobile = $1">>,
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Mobile])).
 
-
 %% @doc 根据用户账号查找管理员用户
 %% @param Account 用户账号（字符串或binary类型）
 %% @param Column 要查询的列名，支持多个列用逗号分隔，或使用 "*" 查询所有列
@@ -139,7 +157,6 @@ find_by_account(Account, Column) ->
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE account = $1">>,
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Account])).
 
-
 %% @doc 根据管理员用户ID查找用户基本信息（使用默认列）
 %% @param Uid 管理员用户ID
 %% @return {ok, Columns, Rows} 查询成功返回列和行数据 | {error, Reason} 查询失败
@@ -147,7 +164,6 @@ find_by_account(Account, Column) ->
 find_by_id(Uid) ->
     Column = <<"id,account,avatar,role_id,email,status">>,
     find_by_id(Uid, Column).
-
 
 %% @doc 根据管理员用户ID查找用户（指定列）
 %% @param Uid 管理员用户ID
@@ -158,7 +174,6 @@ find_by_id(Uid, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
     elib_pg_sql:value_or_empty(elib_pg:one(Sql, [Uid])).
-
 
 %% @doc 根据管理员用户ID列表批量查询用户信息
 %% @param Uids 管理员用户ID列表，元素类型为integer或binary
@@ -172,12 +187,17 @@ list_by_ids(Uids, Column) ->
         _ ->
             Tb = tablename(),
             % 构建参数化占位符: $1, $2, $3, ...
-            Placeholders = iolist_to_binary(lists:join(<<",">>,
-                [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Uids))])),
-            Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id IN (", Placeholders/binary, ")">>,
+            Placeholders = iolist_to_binary(
+                lists:join(
+                    <<",">>,
+                    [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Uids))]
+                )
+            ),
+            Sql =
+                <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id IN (",
+                    Placeholders/binary, ")">>,
             elib_pg:query(Sql, Uids)
     end.
-
 
 %% @doc 保存新管理员用户记录
 %% @param Data 包含管理员用户信息的map，必须包含mobile、password、account等必要字段
@@ -193,7 +213,6 @@ save(Data) ->
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
     end.
-
 
 %% @doc 更新管理员用户信息
 %% @param Id 管理员用户ID
