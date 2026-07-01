@@ -269,18 +269,6 @@ is_payment_method_allowed(Method) when is_binary(Method) ->
 is_payment_method_allowed(_) ->
     false.
 
-%% @doc 判断订单是否已过期（基于 expires_at）
--spec is_order_expired(map()) -> boolean().
-is_order_expired(Order) ->
-    case maps:get(<<"expires_at">>, Order, null) of
-        null ->
-            false;
-        _ExpiresAt ->
-            %% 以 DB NOW() 为准更可靠：mark_paid 的 WHERE expires_at > NOW() 已做硬约束。
-            %% 此处为快速失败的软校验，过期判定最终以 DB 条件更新为准。
-            false
-    end.
-
 %% @doc 加载订单并做面向前端的字段整形
 -spec load_order(binary()) -> {ok, map()} | {error, binary()}.
 load_order(OrderNo) ->

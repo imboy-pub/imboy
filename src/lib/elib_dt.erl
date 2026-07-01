@@ -23,7 +23,7 @@
 %% @param Dt Datetime value (timestamp or RFC3339 string)
 %% @param Duration {Num, Unit} where Unit is minute | second | millisecond
 %% @returns New datetime value as RFC3339 binary
--spec add(integer() | binary(), {pos_integer(), minute | second | millisecond}) ->
+-spec add(integer() | binary(), {integer(), minute | second | millisecond}) ->
     binary() | {error, invalid_datetime}.
 % elib_dt:add(Dt, {10, minute}).
 % elib_dt:add(Dt, {600, second}).
