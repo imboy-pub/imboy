@@ -25,16 +25,22 @@ client_ack(Type, MsgId, CurrentUid, DID) ->
     % 【P0-1】C2C/S2C 按设备送达：DID 有效时只标记该设备已确认，
     % 主行等全部活跃设备确认后才删，避免"一端 ACK、另一端离线永丢"。
     % C2G timeline 仍为 per-uid 标记（V7 多端未读串扰另行立项）。
-    case Type of
-        <<"c2c">> -> msg_operation_ds:ack_c2c_msg(MsgId, CurrentUid, DID);
-        <<"c2g">> -> msg_operation_ds:ack_c2g_timeline(MsgId, CurrentUid);
-        <<"s2c">> -> msg_operation_ds:ack_s2c_msg(MsgId, CurrentUid, DID);
-        <<"c2s">> -> msg_operation_ds:ack_c2s_msg(MsgId, CurrentUid);
-        _ -> ok = ?ERROR_LOG({unknown_msg_type_for_ack, Type})
-    end,
+    AckResult =
+        case Type of
+            <<"c2c">> -> msg_operation_ds:ack_c2c_msg(MsgId, CurrentUid, DID);
+            <<"c2g">> -> msg_operation_ds:ack_c2g_timeline(MsgId, CurrentUid);
+            <<"s2c">> -> msg_operation_ds:ack_s2c_msg(MsgId, CurrentUid, DID);
+            <<"c2s">> -> msg_operation_ds:ack_c2s_msg(MsgId, CurrentUid);
+            _ -> ok = ?ERROR_LOG({unknown_msg_type_for_ack, Type})
+        end,
 
     %% 消息投递确认计数
-    elib_metric:increment(msg_delivered_total),
+    %% 【MSG-P2-1】{ok, 0} = 重复 ACK（送达标记已存在），不自增防指标虚高；
+    %% legacy/c2g/c2s 路径返回 ok，维持原计数行为
+    case AckResult of
+        {ok, 0} -> ok;
+        _ -> elib_metric:increment(msg_delivered_total)
+    end,
 
     %% 【P0-2】staging 生命周期完全交给 msg_store_worker：仅当 worker do_write
     %% 成功后才 unstage（见 msg_store_worker.erl:167）。此处不得提前 unstage——

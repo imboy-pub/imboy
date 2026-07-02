@@ -236,6 +236,43 @@ client_ack_does_not_unstage_test_() ->
     ).
 
 %% ===================================================================
+%% 【MSG-P2-1】重复 ACK 不虚高投递指标（纯 meck，不依赖 DB）
+%% ===================================================================
+
+duplicate_ack_does_not_inflate_metric_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_operation_ds, [
+                %% {ok, 0} = 送达标记已存在（重复 ACK）
+                {'ack_c2c_msg', 3, fun(_MsgId, _Uid, _DID) -> {ok, 0} end}
+            ]},
+            {elib_metric, [
+                {'increment', 1, fun(_) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ok = msg_ack_logic:client_ack(<<"c2c">>, <<"msg_dup">>, 1001, <<"did-1">>),
+            ?assertEqual(0, meck:num_calls(elib_metric, increment, 1))
+        end
+    ).
+
+effective_ack_increments_metric_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_operation_ds, [
+                {'ack_c2c_msg', 3, fun(_MsgId, _Uid, _DID) -> {ok, 1} end}
+            ]},
+            {elib_metric, [
+                {'increment', 1, fun(_) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ok = msg_ack_logic:client_ack(<<"c2c">>, <<"msg_new">>, 1001, <<"did-1">>),
+            ?assertEqual(1, meck:num_calls(elib_metric, increment, 1))
+        end
+    ).
+
+%% ===================================================================
 %% Setup 和 Teardown
 %% ===================================================================
 

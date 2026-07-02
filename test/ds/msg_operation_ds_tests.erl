@@ -613,7 +613,7 @@ ack_c2c_msg_per_device_marks_and_cleans_test_() ->
             ]}
         ],
         fun() ->
-            ?assertEqual(ok, msg_operation_ds:ack_c2c_msg(<<"msg123">>, 100, <<"did-a">>)),
+            ?assertEqual({ok, 1}, msg_operation_ds:ack_c2c_msg(<<"msg123">>, 100, <<"did-a">>)),
             ?assertEqual(1, meck:num_calls(msg_delivery_repo, mark_acked_batch, 4)),
             ?assertEqual(1, meck:num_calls(msg_delivery_repo, delete_delivered_batch, 4)),
             %% 按设备路径不得按 uid 删行
@@ -647,7 +647,7 @@ ack_c2c_msg_mark_failure_skips_cleanup_test_() ->
             {'delete_delivered_batch', 4, fun(_K, _M, _U, _A) -> ok end}
         ],
         fun() ->
-            ?assertEqual(ok, msg_operation_ds:ack_c2c_msg(<<"msg123">>, 100, <<"did-a">>)),
+            ?assertEqual({ok, 0}, msg_operation_ds:ack_c2c_msg(<<"msg123">>, 100, <<"did-a">>)),
             ?assertEqual(0, meck:num_calls(msg_delivery_repo, delete_delivered_batch, 4))
         end
     ).
@@ -667,7 +667,7 @@ ack_s2c_msg_per_device_test_() ->
             end}
         ],
         fun() ->
-            ?assertEqual(ok, msg_operation_ds:ack_s2c_msg(<<"msg9">>, 7, <<"did-b">>))
+            ?assertEqual({ok, 1}, msg_operation_ds:ack_s2c_msg(<<"msg9">>, 7, <<"did-b">>))
         end
     ).
 
@@ -686,7 +686,9 @@ ack_c2c_batch_per_device_test_() ->
             end}
         ],
         fun() ->
-            ?assertEqual(ok, msg_operation_ds:ack_c2c_batch([<<"m1">>, <<"m2">>], 100, <<"did-a">>))
+            ?assertEqual(
+                {ok, 2}, msg_operation_ds:ack_c2c_batch([<<"m1">>, <<"m2">>], 100, <<"did-a">>)
+            )
         end
     ).
 

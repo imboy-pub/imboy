@@ -11,6 +11,7 @@
 -export([find_msg_by_id/1]).
 -export([write_msg/8]).
 -export([write_msg/9]).
+-export([write_msg_if_absent/8]).
 -export([write_msg_with_reply/11]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
@@ -114,6 +115,43 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
         Tb,
         <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee)">>,
         <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)">>,
+        <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
+    ],
+    case
+        elib_pg:query(Sql, [
+            GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue
+        ])
+    of
+        {ok, _Rows} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 写入C2C离线消息（按 (msg_id, to_id) 判重，MSG-P2-2）
+%% 撤回/已读等旁路写点绕开 staging 幂等层，重试时 created_at 不同会绕过
+%% (msg_id, created_at) 唯一约束产生重复行；此函数用 WHERE NOT EXISTS
+%% 按 (msg_id, to_id) 判重，保证同一消息对同一接收人只落一行。
+-spec write_msg_if_absent(
+    binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null
+) -> ok | {error, term()}.
+write_msg_if_absent(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
+    Tb = tablename(),
+    E2EEValue =
+        case E2EE of
+            null -> null;
+            <<>> -> null;
+            Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+            Bin when is_binary(Bin) -> Bin;
+            _ -> null
+        end,
+    GenId = elib_tsid:generate(msg_c2c),
+    Sql = [
+        <<"INSERT INTO ">>,
+        Tb,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee)">>,
+        <<" SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9">>,
+        <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
+        Tb,
+        <<" WHERE msg_id = $7 AND to_id = $4)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case

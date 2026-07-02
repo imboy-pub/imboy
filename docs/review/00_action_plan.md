@@ -31,8 +31,12 @@
 > ✅ P2 backlog 部分完成：[MSG-P2-6] 已修——⚠️盘点建议的三列唯一约束在 msg_read
 >   （hypertable，按 created_at 分区）上不可行（唯一索引必须含分区列），改为 save_read
 >   SQL 内 WHERE NOT EXISTS 三列应用层去重 + 原四列 ON CONFLICT 兜并发竞态，零 DDL。
+>   [MSG-P2-1] 已修——重复 ACK（送达标记已存在 {ok,0}）不再自增 msg_delivered_total；
+>   [MSG-P2-2] 已修——撤回/已读旁路写点改 write_msg_if_absent 按 (msg_id,to_id) 判重
+>   （revoke_offline_msg/9 与 read_offline_msg 两个活跃点；/5 为零调用遗留未动）。
 >   其余 P2 项处置：[MSG-P2-4] 已随 T06 完成；[WS-P1-7] 格式位——flags 位已占满
->   （bit4-3 被 DIR 占用），无安全空位，维持嗅探；[MSG-P2-1/2/5][E2EE-P2-15/16/17] 留后续批次
+>   （bit4-3 被 DIR 占用），无安全空位，维持嗅探；[MSG-P2-5]（自愈型瞬时窗口）与
+>   [E2EE-P2-15/16/17]（P2-16 设备上限拒登录属产品决策）留后续批次
 > ⏳ 待做：T10（D4=删孤岛，⚠️涉及 imboy_router.erl——该文件现有并发未提交改动，须等其
 >   落地后再做）、T19（D6=接线，升 L 需 admin 联动且 src/adm/* 同样有并发改动）、
 >   T20（D5=保持开启，前置三项属归档架构级大改）——均需独立立项/协调

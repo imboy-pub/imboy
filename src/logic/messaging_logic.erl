@@ -423,10 +423,10 @@ process_message(Msg) when is_map(Msg) ->
 -spec process_offline_ack(integer(), binary(), list(), binary()) ->
     {ok, integer()} | {error, binary()}.
 process_offline_ack(Uid, <<"c2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<>> ->
-    ok = msg_operation_ds:ack_c2c_batch(MsgIds, Uid, DID),
+    _ = msg_operation_ds:ack_c2c_batch(MsgIds, Uid, DID),
     {ok, length(MsgIds)};
 process_offline_ack(Uid, <<"s2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<>> ->
-    ok = msg_operation_ds:ack_s2c_batch(MsgIds, Uid, DID),
+    _ = msg_operation_ds:ack_s2c_batch(MsgIds, Uid, DID),
     {ok, length(MsgIds)};
 process_offline_ack(Uid, Type, MsgIds, _DID) ->
     case Type of

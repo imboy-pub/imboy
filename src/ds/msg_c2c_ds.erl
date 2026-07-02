@@ -243,8 +243,10 @@ revoke_offline_msg(Payload, NowTs, MsgId, OriginalMsgId, FromId, ToId, MsgType, 
     % 将 Action 包含在 Payload 中（因为 write_msg/8 不支持单独的 Action 参数）
     PayloadWithAction = Payload#{<<"action">> => Action},
     PayloadBin = imboy_message_helper:encode_json(PayloadWithAction),
-    % 存储撤回通知消息（v2.0: 使用 write_msg/8 显式传递参数）
-    _ = msg_c2c_ds:write_msg(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
+    % 存储撤回通知消息（v2.0）
+    % 【MSG-P2-2】旁路写点绕开 staging 幂等层，重试时 created_at 不同会绕过
+    % (msg_id, created_at) 约束落重复行，改用 (msg_id, to_id) 判重写入
+    _ = write_msg_once(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
     % 覆盖离线队列中原消息 payload，避免离线接收方上线仍收到完整原文
     msg_c2c_repo:update_payload_by_msg_id(OriginalMsgId, PayloadBin).
 
@@ -290,13 +292,32 @@ read_offline_msg(MsgId, FromId, ToId, ReadAt, Action) ->
     PayloadBin = jsone:encode(Payload, [native_utf8]),
 
     % 存储到 msg_c2c 表
-    % 使用 write_msg/8 显式传递参数
+    % 【MSG-P2-2】NowTs 在函数内生成，重试必然产生新 created_at，
+    % 旁路 staging 幂等层会落重复行，改用 (msg_id, to_id) 判重写入
     NowTs = elib_dt:now(),
-    msg_c2c_ds:write_msg(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, <<"custom">>, null).
+    write_msg_once(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, <<"custom">>, null).
 
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 按 (msg_id, to_id) 判重写入（MSG-P2-2，撤回/已读旁路写点专用）
+%% 与 write_msg/8 相同的时间戳转换，落库走 msg_c2c_repo:write_msg_if_absent；
+%% 低频通知行，不做溢出采样检查。
+-spec write_msg_once(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary() | integer(),
+    binary(),
+    map() | null
+) -> ok | {error, term()}.
+write_msg_once(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
+    CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
+    ServerTS2 = elib_dt:to_rfc3339(ServerTS),
+    msg_c2c_repo:write_msg_if_absent(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
 
 %% @doc 检查并清理溢出消息（公共逻辑，DRY）
 %%
