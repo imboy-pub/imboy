@@ -4018,6 +4018,9 @@ record_message_view_returns_error_when_has_viewed_message_fails_test_() ->
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
+        ]},
         {channel_repo, [
             {'has_viewed_message', 2, fun(99, 1001) -> {error, db_down} end},
             {'insert_message_view', 4, fun(_, _, _, _) ->
@@ -4039,6 +4042,9 @@ record_message_view_returns_error_when_has_viewed_message_returns_unexpected_tes
         {channel_logic_common, [
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
+        ]},
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
         ]},
         {channel_repo, [
             {'has_viewed_message', 2, fun(99, 1001) -> unexpected_lookup end},
@@ -4062,6 +4068,9 @@ record_message_view_returns_error_when_insert_message_view_returns_unexpected_te
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
+        ]},
         {channel_repo, [
             {'has_viewed_message', 2, fun(99, 1001) -> false end},
             {'insert_message_view', 4, fun(11, 99, 1001, _) -> unexpected_insert_result end}
@@ -4082,6 +4091,9 @@ add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_() ->
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
         ]},
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
+        ]},
         {channel_repo, [
             {'insert_reaction', 5, fun(11, 99, 1001, <<"like">>, _) -> unexpected_insert_result end}
         ]}
@@ -4099,6 +4111,9 @@ remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
         {channel_logic_common, [
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
             {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
+        ]},
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
         ]},
         {channel_repo, [
             {'delete_reaction', 4, fun(11, 99, 1001, <<"like">>) -> unexpected_delete_result end}

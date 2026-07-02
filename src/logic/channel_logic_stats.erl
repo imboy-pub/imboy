@@ -55,14 +55,23 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_ds:has_viewed_message(MessageId, Uid) of
-                        true ->
-                            ok;
-                        false ->
-                            Now = elib_dt:millisecond(),
-                            case channel_ds:insert_message_view(ChannelId, MessageId, Uid, Now) of
-                                {ok, _} -> ok;
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                    case ensure_message_in_channel(MessageId, ChannelId) of
+                        {error, Reason} ->
+                            {error, Reason};
+                        ok ->
+                            case channel_ds:has_viewed_message(MessageId, Uid) of
+                                true ->
+                                    ok;
+                                false ->
+                                    Now = elib_dt:millisecond(),
+                                    case
+                                        channel_ds:insert_message_view(
+                                            ChannelId, MessageId, Uid, Now
+                                        )
+                                    of
+                                        {ok, _} -> ok;
+                                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                                    end
                             end
                     end;
                 {error, Reason} ->
@@ -82,10 +91,19 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    Now = elib_dt:millisecond(),
-                    case channel_ds:insert_reaction(ChannelId, MessageId, Uid, ReactionType, Now) of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                    case ensure_message_in_channel(MessageId, ChannelId) of
+                        {error, Reason} ->
+                            {error, Reason};
+                        ok ->
+                            Now = elib_dt:millisecond(),
+                            case
+                                channel_ds:insert_reaction(
+                                    ChannelId, MessageId, Uid, ReactionType, Now
+                                )
+                            of
+                                {ok, _} -> ok;
+                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                            end
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
@@ -104,13 +122,35 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                    case ensure_message_in_channel(MessageId, ChannelId) of
+                        {error, Reason} ->
+                            {error, Reason};
+                        ok ->
+                            case
+                                channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType)
+                            of
+                                {ok, _} -> ok;
+                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                            end
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
             end
+    end.
+
+%% @doc IDOR 防御：校验 MessageId 确实属于 ChannelId，防止调用者用自己有权访问
+%% 的频道 A 的 ChannelId，配合猜测/枚举到的另一频道 B 的 MessageId，对 B 里
+%% 自己无权访问的消息插入反应/浏览记录（channel_ds:insert_reaction /
+%% insert_message_view 本身不做归属校验，需要调用方在此收口）。
+%% 参考 get_message_reactions/3、channel_logic_message:revoke_message/3
+%% 已有的同款校验模式。
+-spec ensure_message_in_channel(integer(), integer()) -> ok | {error, binary()}.
+ensure_message_in_channel(MessageId, ChannelId) ->
+    case channel_message_ds:find_by_id(MessageId) of
+        #{<<"channel_id">> := MsgChannelId} when MsgChannelId =:= ChannelId ->
+            ok;
+        _ ->
+            {error, <<"消息不属于该频道"/utf8>>}
     end.
 
 -spec get_daily_stats(integer(), binary(), integer()) -> {ok, list(map())} | {error, binary()}.
