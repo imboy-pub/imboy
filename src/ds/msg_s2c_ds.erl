@@ -11,10 +11,11 @@
 -export([write_msg/9]).
 -export([read_msg/2]).
 -export([read_msg/3]).
+-export([read_msg_for_device/4]).
 -export([delete_msg/1]).
 -export([send/7]).
 -export([delete_by_msg_ids_and_to_id/2]).
--export([count_since/2]).
+-export([count_since/2, count_since/3]).
 
 %% @doc 发送服务端到客户端的消息（v2.0 格式，完整参数）
 %%
@@ -233,6 +234,29 @@ read_msg(ToUid, Limit, Ts) ->
     Vals = [ToUid, FixedTs],
     read_msg(Where, Vals, Column, Limit).
 
+%% @doc 读取指定设备尚未确认的 S2C 消息（T03/P0-1 按设备送达）
+%% DID 为空时退回 read_msg/3 的按 uid 语义。
+-spec read_msg_for_device(any(), binary(), integer(), undefined | integer() | binary()) -> [map()].
+read_msg_for_device(ToUid, DID, Limit, Ts) when is_binary(DID), DID =/= <<>> ->
+    Column = <<
+        "id, payload, from_id, to_id,\n"
+        "        created_at, server_ts, msg_id, msg_type, action, e2ee"
+    >>,
+    case Ts of
+        undefined ->
+            Where =
+                <<"WHERE to_id = $1", (msg_delivery_repo:pending_filter(<<"s2c">>, 1, 2))/binary>>,
+            read_msg(Where, [ToUid, DID], Column, Limit);
+        _ ->
+            FixedTs = elib_dt:to_rfc3339(Ts),
+            Where =
+                <<"WHERE to_id = $1 AND created_at >= $2",
+                    (msg_delivery_repo:pending_filter(<<"s2c">>, 1, 3))/binary>>,
+            read_msg(Where, [ToUid, FixedTs, DID], Column, Limit)
+    end;
+read_msg_for_device(ToUid, _DID, Limit, Ts) ->
+    read_msg(ToUid, Limit, Ts).
+
 %% @doc 删除指定的服务端到客户端的消息
 %%
 %% 根据消息ID从数据库中删除消息
@@ -336,3 +360,27 @@ count_since(ToId, Since) ->
         {ok, [#{<<"count">> := Count}]} -> Count;
         _ -> 0
     end.
+
+%% @doc 按设备统计未确认 S2C 消息数（T03/P0-1），与 read_msg/4 过滤一致；
+%% DID 为空退回 uid 语义
+-spec count_since(integer(), binary() | undefined, binary()) -> non_neg_integer().
+count_since(ToId, undefined, DID) when is_binary(DID), DID =/= <<>> ->
+    Tb = msg_s2c_repo:tablename(),
+    Sql =
+        <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1",
+            (msg_delivery_repo:pending_filter(<<"s2c">>, 1, 2))/binary>>,
+    case elib_pg:query(Sql, [ToId, DID]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end;
+count_since(ToId, Since, DID) when is_binary(DID), DID =/= <<>> ->
+    Tb = msg_s2c_repo:tablename(),
+    Sql =
+        <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND created_at >= $2",
+            (msg_delivery_repo:pending_filter(<<"s2c">>, 1, 3))/binary>>,
+    case elib_pg:query(Sql, [ToId, Since, DID]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end;
+count_since(ToId, Since, _DID) ->
+    count_since(ToId, Since).

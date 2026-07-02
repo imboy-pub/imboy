@@ -75,8 +75,8 @@ handle_cast({login_success, Uid, PostVals}, State) ->
     DID = maps:get(<<"did">>, PostMap, <<"">>),
     _ = user_device_ds:save(Now, Uid2, DID, PostMap),
     _ = user_ds:update_friends_last_seen_at(Uid2, Now),
-    % 分别计算c2c c2g s2c 相关消息类型的表里面是否有离线消息
-    _ = message_ds:check_and_notify_offline_msgs(Uid2),
+    % 分别计算c2c c2g s2c 相关消息类型的表里面是否有离线消息（按设备维度）
+    _ = message_ds:check_and_notify_offline_msgs(Uid2, DID),
 
     % 记录设备信息 END
     {noreply, State, hibernate};
@@ -98,16 +98,18 @@ handle_cast({online, Uid, _Pid, _DType, DID}, State) ->
     Set = <<"last_active_at = $1::timestamptz">>,
     _ = user_device_ds:update_by_did(Uid, DID, Set, [Now]),
 
-    % 2. 检查离线消息（合并原 ws_online 逻辑）
-    _ = message_ds:check_and_notify_offline_msgs(Uid),
+    % 2. 检查离线消息（合并原 ws_online 逻辑，按设备维度）
+    _ = message_ds:check_and_notify_offline_msgs(Uid, DID),
 
     % 3. 在其他设备登录了（原 online 逻辑）
     DName = user_device_logic:device_name(Uid, DID),
     MsgId = elib_id:gen("logged_another_device"),
     Action = <<"logged_another_device">>,
     Payload =
-        #{<<"did">> => DID,
-          <<"dname">> => DName},
+        #{
+            <<"did">> => DID,
+            <<"dname">> => DName
+        },
     Msg = message_ds:assemble_msg(<<"S2C">>, <<>>, Uid, Payload, MsgId, <<>>, Action, null),
 
     MsLi = elib_retry_config:intervals(<<"notice">>),
@@ -198,9 +200,11 @@ cancel(Uid, CreatedAt, Opt) ->
     Setting = user_setting_ds:find_by_uid(Uid),
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     % 记录用户注销日志
-    Body = jsone:encode(#{<<"user">> => User,
-                          <<"setting">> => Setting,
-                          <<"client_opt">> => Opt}),
+    Body = jsone:encode(#{
+        <<"user">> => User,
+        <<"setting">> => Setting,
+        <<"client_opt">> => Opt
+    }),
     _ = user_log_ds:add_internal(undefined, 100, Uid, Body, CreatedAt2),
     % 删除用户所有相关数据（user_ds 内部处理事务）
     _ = user_ds:delete_all_related_data(Uid),

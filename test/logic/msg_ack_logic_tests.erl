@@ -219,7 +219,7 @@ client_ack_does_not_unstage_test_() ->
     ?WITH_MECKS(
         [
             {msg_operation_ds, [
-                {'ack_c2c_msg', 2, fun(_MsgId, _Uid) -> {ok, 1} end}
+                {'ack_c2c_msg', 3, fun(_MsgId, _Uid, _DID) -> ok end}
             ]},
             {elib_metric, [
                 {'increment', 1, fun(_) -> ok end}

@@ -10,10 +10,13 @@
 -export([delete_c2g_msg/3]).
 -export([delete_c2c_timeline/2]).
 -export([delete_c2g_timeline/2]).
--export([ack_c2c_msg/2]).
+-export([ack_c2c_msg/2, ack_c2c_msg/3]).
 -export([ack_c2g_timeline/2]).
--export([ack_s2c_msg/2]).
+-export([ack_s2c_msg/2, ack_s2c_msg/3]).
 -export([ack_c2s_msg/2]).
+-export([ack_c2c_batch/3]).
+-export([ack_s2c_batch/3]).
+-export([maybe_clean_delivered/3]).
 
 %% ===================================================================
 %% API functions
@@ -73,8 +76,7 @@ delete_c2g_timeline(Uid, MsgId) ->
         {error, _} -> ok
     end.
 
-%% @doc C2C 消息 ACK 处理
-%% 使用原子操作删除消息，避免竞态条件
+%% @doc C2C 消息 ACK 处理（legacy：无设备维度，按 uid 删行）
 %% @param MsgId 消息ID
 %% @param Uid 用户ID
 %% @return ok
@@ -84,6 +86,22 @@ ack_c2c_msg(MsgId, Uid) ->
         {ok, _} -> ok;
         {error, _} -> ok
     end.
+
+%% @doc C2C 消息 ACK 处理（按设备送达，T03/P0-1）
+%% DID 有效时只标记"该设备已确认"，主行等全部活跃设备确认后才删，
+%% 双端登录场景下另一台离线设备重连仍能拉到该消息。
+%% DID 为空（旧客户端）退回 legacy 按 uid 删行语义。
+-spec ack_c2c_msg(binary(), integer(), binary()) -> ok.
+ack_c2c_msg(MsgId, Uid, DID) ->
+    ack_per_device(<<"c2c">>, [MsgId], Uid, DID, fun() -> ack_c2c_msg(MsgId, Uid) end).
+
+%% @doc C2C 消息批量 ACK（REST offline_ack 按设备送达路径）
+-spec ack_c2c_batch([binary()], integer(), binary()) -> ok.
+ack_c2c_batch(MsgIds, Uid, DID) ->
+    ack_per_device(<<"c2c">>, MsgIds, Uid, DID, fun() ->
+        _ = msg_c2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+        ok
+    end).
 
 %% @doc C2G 消息 ACK 处理
 %% 注意：C2G 不删除离线消息，只标记 timeline
@@ -97,8 +115,7 @@ ack_c2g_timeline(MsgId, Uid) ->
         {error, _} -> ok
     end.
 
-%% @doc S2C 消息 ACK 处理
-%% 使用原子操作删除消息，避免竞态条件
+%% @doc S2C 消息 ACK 处理（legacy：无设备维度，按 uid 删行）
 %% @param MsgId 消息ID
 %% @param Uid 用户ID
 %% @return ok
@@ -108,6 +125,36 @@ ack_s2c_msg(MsgId, Uid) ->
         {ok, _} -> ok;
         {error, _} -> ok
     end.
+
+%% @doc S2C 消息 ACK 处理（按设备送达，语义同 ack_c2c_msg/3）
+-spec ack_s2c_msg(binary(), integer(), binary()) -> ok.
+ack_s2c_msg(MsgId, Uid, DID) ->
+    ack_per_device(<<"s2c">>, [MsgId], Uid, DID, fun() -> ack_s2c_msg(MsgId, Uid) end).
+
+%% @doc S2C 消息批量 ACK（REST offline_ack 按设备送达路径）
+-spec ack_s2c_batch([binary()], integer(), binary()) -> ok.
+ack_s2c_batch(MsgIds, Uid, DID) ->
+    ack_per_device(<<"s2c">>, MsgIds, Uid, DID, fun() ->
+        _ = msg_s2c_repo:delete_by_msg_ids_and_to_id(MsgIds, Uid),
+        ok
+    end).
+
+%% @doc worker 落库成功后的清理钩子（Kind ∈ c2c | s2c）
+%% 处理"ACK 先于落库"竞态：接收方在线秒回 ACK 时主行尚未写入，
+%% ACK 路径的清理删不到行；落库后再查一次标记，已全端确认则立即清除。
+%% 任何异常只记日志，不阻塞 worker 投递流程。
+-spec maybe_clean_delivered(atom(), binary(), integer()) -> ok.
+maybe_clean_delivered(Kind, MsgId, Uid) when Kind =:= c2c; Kind =:= s2c ->
+    KindBin = erlang:atom_to_binary(Kind),
+    try
+        msg_delivery_repo:delete_delivered(KindBin, MsgId, Uid, delivery_active_days())
+    catch
+        Class:Reason ->
+            ok = ?ERROR_LOG({maybe_clean_delivered_error, Kind, MsgId, Uid, Class, Reason})
+    end,
+    ok;
+maybe_clean_delivered(_Kind, _MsgId, _Uid) ->
+    ok.
 
 %% @doc C2S 消息 ACK 处理
 %% @param MsgId 消息ID
@@ -124,3 +171,25 @@ ack_c2s_msg(MsgId, Uid) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 按设备 ACK 公共流程：标记 → 全端确认则清主行；DID 为空走 legacy 回调
+-spec ack_per_device(binary(), [binary()], integer(), binary(), fun(() -> ok)) -> ok.
+ack_per_device(_Kind, [], _Uid, _DID, _LegacyFun) ->
+    ok;
+ack_per_device(Kind, MsgIds, Uid, DID, _LegacyFun) when is_binary(DID), DID =/= <<>> ->
+    case msg_delivery_repo:mark_acked_batch(Kind, MsgIds, Uid, DID) of
+        {ok, _} ->
+            msg_delivery_repo:delete_delivered_batch(Kind, MsgIds, Uid, delivery_active_days());
+        {error, Reason} ->
+            %% 标记失败不删主行（宁可重复投递，不可丢消息），交给下次 ACK/重试
+            ok = ?ERROR_LOG({mark_acked_failed, Kind, Uid, DID, Reason})
+    end,
+    ok;
+ack_per_device(_Kind, _MsgIds, _Uid, _DID, LegacyFun) ->
+    LegacyFun().
+
+%% @doc 设备活跃窗口（天）：超过窗口未活跃的设备不阻塞主行清理，
+%% 即离线消息按设备保留期为该窗口（与 C2G timeline 30 天 retention 对齐）
+-spec delivery_active_days() -> non_neg_integer().
+delivery_active_days() ->
+    application:get_env(imboy, msg_delivery_active_days, 30).

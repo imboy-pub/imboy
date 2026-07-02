@@ -18,14 +18,17 @@
 %% @param CurrentUid 当前用户ID
 %% @param DID 设备ID
 -spec client_ack(binary(), binary(), integer(), binary()) -> ok.
-client_ack(Type, MsgId, CurrentUid, _DID) ->
-    ok = ?DEBUG_LOG({unified_ack, Type, MsgId, CurrentUid}),
+client_ack(Type, MsgId, CurrentUid, DID) ->
+    ok = ?DEBUG_LOG({unified_ack, Type, MsgId, CurrentUid, DID}),
 
     % 根据类型执行相应的 ACK 处理 - 使用 DS 层接口
+    % 【P0-1】C2C/S2C 按设备送达：DID 有效时只标记该设备已确认，
+    % 主行等全部活跃设备确认后才删，避免"一端 ACK、另一端离线永丢"。
+    % C2G timeline 仍为 per-uid 标记（V7 多端未读串扰另行立项）。
     case Type of
-        <<"c2c">> -> msg_operation_ds:ack_c2c_msg(MsgId, CurrentUid);
+        <<"c2c">> -> msg_operation_ds:ack_c2c_msg(MsgId, CurrentUid, DID);
         <<"c2g">> -> msg_operation_ds:ack_c2g_timeline(MsgId, CurrentUid);
-        <<"s2c">> -> msg_operation_ds:ack_s2c_msg(MsgId, CurrentUid);
+        <<"s2c">> -> msg_operation_ds:ack_s2c_msg(MsgId, CurrentUid, DID);
         <<"c2s">> -> msg_operation_ds:ack_c2s_msg(MsgId, CurrentUid);
         _ -> ok = ?ERROR_LOG({unknown_msg_type_for_ack, Type})
     end,

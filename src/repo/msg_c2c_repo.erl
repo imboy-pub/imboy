@@ -22,7 +22,7 @@
 -export([update_pinned/3]).
 -export([update_payload_by_msg_id/2]).
 -export([find_by_reply_to_msg_id/1]).
--export([count_unread_since/1, count_unread_since/2]).
+-export([count_unread_since/1, count_unread_since/2, count_unread_since/3]).
 -export([set_expire_at/2]).
 -export([delete_expired/1]).
 
@@ -463,6 +463,28 @@ count_unread_since(ToId, Since) ->
     Tb = tablename(),
     Sql = <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND created_at >= $2">>,
     case elib_pg:query(Sql, [ToId, Since]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end.
+
+%% @doc 按设备统计未确认消息数（T03/P0-1），与 read_msg 的按设备过滤保持一致，
+%% 否则 has_more 会因计入已确认消息而虚高，导致客户端空拉循环
+-spec count_unread_since(integer(), binary() | undefined, binary()) -> non_neg_integer().
+count_unread_since(ToId, undefined, DID) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1",
+            (msg_delivery_repo:pending_filter(<<"c2c">>, 1, 2))/binary>>,
+    case elib_pg:query(Sql, [ToId, DID]) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end;
+count_unread_since(ToId, Since, DID) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND created_at >= $2",
+            (msg_delivery_repo:pending_filter(<<"c2c">>, 1, 3))/binary>>,
+    case elib_pg:query(Sql, [ToId, Since, DID]) of
         {ok, [#{<<"count">> := Count}]} -> Count;
         _ -> 0
     end.

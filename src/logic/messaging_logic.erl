@@ -48,6 +48,9 @@ offline(Req0, State) ->
     {ok, C2CLastMsgAtInt} = elib_param:int(c2c_last_msg_at, Req0, 0),
     {ok, C2GLastMsgAtInt} = elib_param:int(c2g_last_msg_at, Req0, 0),
     {ok, S2CLastMsgAtInt} = elib_param:int(s2c_last_msg_at, Req0, 0),
+    %% 【P0-1】可选 did：客户端携带时 C2C/S2C 按设备过滤（排除本设备已确认的消息）；
+    %% 缺省保持按 uid 的旧语义（旧客户端零破坏）
+    DID = proplists:get_value(<<"did">>, cowboy_req:parse_qs(Req0), <<>>),
 
     C2CLastMsgAt = ms_to_since_ts(C2CLastMsgAtInt),
     C2GLastMsgAt = ms_to_since_ts(C2GLastMsgAtInt),
@@ -57,13 +60,13 @@ offline(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
         CurrentUid ->
-            CountC2CMsg = get_c2c_msg_count(CurrentUid, C2CLastMsgAt),
+            CountC2CMsg = msg_c2c_ds:count_unread_since(CurrentUid, C2CLastMsgAt, DID),
             CountC2GMsg = get_c2g_msg_count(CurrentUid, C2GLastMsgAt),
-            CountS2CMsg = get_s2c_msg_count(CurrentUid, S2CLastMsgAt),
+            CountS2CMsg = msg_s2c_ds:count_since(CurrentUid, S2CLastMsgAt, DID),
 
-            C2CMsgs = msg_c2c_ds:read_msg(CurrentUid, Limit, C2CLastMsgAt),
+            C2CMsgs = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2CLastMsgAt),
             C2GMsgs = msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt),
-            S2CMsgs = msg_s2c_ds:read_msg(CurrentUid, Limit, S2CLastMsgAt),
+            S2CMsgs = msg_s2c_ds:read_msg_for_device(CurrentUid, DID, Limit, S2CLastMsgAt),
 
             ProcessedC2CMsgs = [process_message(Msg) || Msg <- C2CMsgs],
             ProcessedC2GMsgs = [process_message(Msg) || Msg <- C2GMsgs],
@@ -236,14 +239,17 @@ offline_ack(Req0, State) ->
     PostVals = elib_param:post(Req0),
     Type = string:lowercase(maps:get(<<"type">>, PostVals, <<>>)),
     MsgIds = maps:get(<<"msg_ids">>, PostVals, []),
+    %% 【P0-1】可选 did：携带时 C2C/S2C 走按设备送达标记（不按 uid 删行），
+    %% 缺省保持旧删行语义（旧客户端不受影响，但存在多端丢消息风险，客户端应尽快带 did）
+    DID = maps:get(<<"did">>, PostVals, <<>>),
 
     ok =
         ?INFO_LOG(
-            "Processing offline_ack for user: ~p, type: ~p, msg_count: ~p",
-            [CurrentUid, Type, length(MsgIds)]
+            "Processing offline_ack for user: ~p, type: ~p, msg_count: ~p, did: ~p",
+            [CurrentUid, Type, length(MsgIds), DID]
         ),
 
-    case process_offline_ack(CurrentUid, Type, MsgIds) of
+    case process_offline_ack(CurrentUid, Type, MsgIds, DID) of
         {ok, ProcessedCount} ->
             Payload =
                 #{
@@ -385,17 +391,9 @@ get_created_at(Msg) when is_map(Msg) ->
 ms_to_since_ts(0) -> undefined;
 ms_to_since_ts(Ms) -> elib_dt:to_rfc3339(Ms, millisecond).
 
--spec get_c2c_msg_count(binary() | integer(), binary() | undefined) -> integer().
-get_c2c_msg_count(Uid, LastMsgAt) ->
-    msg_c2c_ds:count_unread_since(Uid, LastMsgAt).
-
 -spec get_c2g_msg_count(integer(), binary() | undefined) -> integer().
 get_c2g_msg_count(Uid, LastMsgAt) ->
     msg_c2g_ds:count_unread_timeline_since(Uid, LastMsgAt).
-
--spec get_s2c_msg_count(integer(), binary() | undefined) -> integer().
-get_s2c_msg_count(Uid, LastMsgAt) ->
-    msg_s2c_ds:count_since(Uid, LastMsgAt).
 
 -spec process_message(map()) -> map().
 process_message(Msg) when is_map(Msg) ->
@@ -422,8 +420,15 @@ process_message(Msg) when is_map(Msg) ->
             Msg4#{<<"to">> => ToId}
     end.
 
--spec process_offline_ack(integer(), binary(), list()) -> {ok, integer()} | {error, binary()}.
-process_offline_ack(Uid, Type, MsgIds) ->
+-spec process_offline_ack(integer(), binary(), list(), binary()) ->
+    {ok, integer()} | {error, binary()}.
+process_offline_ack(Uid, <<"c2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<>> ->
+    ok = msg_operation_ds:ack_c2c_batch(MsgIds, Uid, DID),
+    {ok, length(MsgIds)};
+process_offline_ack(Uid, <<"s2c">>, MsgIds, DID) when is_binary(DID), DID =/= <<>> ->
+    ok = msg_operation_ds:ack_s2c_batch(MsgIds, Uid, DID),
+    {ok, length(MsgIds)};
+process_offline_ack(Uid, Type, MsgIds, _DID) ->
     case Type of
         <<"c2c">> ->
             Count = msg_c2c_ds:delete_by_msg_ids_and_to_id(MsgIds, Uid),

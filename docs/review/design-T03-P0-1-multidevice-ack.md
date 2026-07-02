@@ -1,7 +1,8 @@
 # T03 剩余 P0-1 落地设计：多端 ACK 按设备送达
 
-> 设计日期：2026-07-02 ｜ 状态：设计稿（未改生产代码）｜ 关联：00_action_plan 根因 R2、[MSG-P0-1]
+> 设计日期：2026-07-02 ｜ 状态：**已实施**（见文末第 9 节实施记录）｜ 关联：00_action_plan 根因 R2、[MSG-P0-1]
 > 前置：T03/P0-2（ACK 与 staging 解耦）已完成（commit 78d29ccd）。本文档处理 R2 的另一半。
+> **拍板（2026-07-02 用户）：V-A = (b) per-device 各自送达**，按方案 A 实施（实现采用"ACK 标记"变体，见第 9 节）。
 
 ## 1. 问题复述（P0-1）
 
@@ -104,3 +105,50 @@ ACK 时查该 uid 所有在线设备是否都 ACK，全 ACK 才删。**离线设
 
 - 设备集动态性（V-B）是最大不确定点：新设备如何界定"应收历史"。建议 MVP 先只对**消息创建时刻在线 + 已注册**的设备写 delivery，历史补拉另设机制。
 - 行数膨胀：msg_delivery 行数 = 消息数 × 设备数，需 TTL/归档控制（C2G timeline 已有 30 天 retention 可参照）。
+
+## 9. 实施记录（2026-07-02，方案 A 的"ACK 标记"变体）
+
+### 9.1 与第 4 节草案的差异及理由
+
+实施保留了方案 A 的核心（新建 `msg_delivery` 表、per-device 语义、主行延迟清理、读路径反连接），
+但把行的写入时机从**投递时**反转为 **ACK 时**：
+
+- **行语义反转**：`msg_delivery` 一行 = "该设备已确认"（草案是 "待投递 + acked_at 标记"）。
+  **无行 = 未确认**。
+- **为什么**：草案在投递时只给"当前活跃设备集"写行，发送时刻离线的设备**没有行**，
+  按 `acked_at IS NULL` JOIN 拉取会拉不到 → V-B 的洞仍在（草案第 8 节自认"最大不确定点"）。
+  反转后离线设备/新设备天然无标记 → 仍能拉到未清理的主行，V-B 消解；且投递路径零改动（省掉草案第 6 节最大改造项）。
+
+### 9.2 核实结论
+
+- **V-C**：`msg_c2c`/`msg_s2c` 均为 TimescaleDB hypertable，PK `(id, created_at)`，
+  接收人列均为 `to_id`，压缩 3 天 / 保留 1 年（`00000005`/`00000008` 迁移）。
+- **V-B（新设备语义，实施后）**：新设备注册后可拉到**尚未被全端确认清理**的存量主行（无标记即未确认）；
+  已清理的消息走 `msg_archive` history API（生产归档已开启）。新设备注册后即加入活跃设备集，
+  后续消息清理需等它确认（受活跃窗口约束）。
+- **活跃窗口**：`msg_delivery_active_days`（默认 30 天）。超窗未活跃设备不阻塞主行清理，
+  即按设备离线消息保留期 = 30 天（与 C2G timeline retention 对齐）。
+
+### 9.3 实际改造点
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| 迁移 | `priv/migrations/00000019_msg_delivery.{up,down}.sql` | 建表 PK `(msg_kind,msg_id,to_uid,to_did)` + `(to_uid,to_did)` 索引 |
+| Repo | `msg_delivery_repo`（新） | `mark_acked[_batch]`（幂等 upsert）/ `delete_delivered[_batch]`（全端确认→删主行+清标记，`make_interval` 活跃窗口）/ `pending_filter`（反连接片段） |
+| Repo | `msg_c2c_repo` | `count_unread_since/3`（带 DID 反连接，保证 has_more 与读一致，防空拉循环） |
+| DS | `msg_operation_ds` | `ack_c2c_msg/3`、`ack_s2c_msg/3`、`ack_{c2c,s2c}_batch/3`、`maybe_clean_delivered/3`；DID 空 → legacy 按 uid 删行 |
+| DS | `msg_c2c_ds`/`msg_s2c_ds` | `read_msg_for_device/4`、`count_unread_since/3`/`count_since/3` |
+| DS | `message_ds` | `check_and_notify_offline_msgs/2`（按设备读 + `send_next/6` 白名单定向推送） |
+| DS | `msg_store_worker` | c2c/s2c 落库后 `maybe_clean_delivered`（关掉"ACK 先于落库→主行永不清理"竞态） |
+| Logic | `msg_ack_logic` | `client_ack/4` 的 DID 接入（原 `_DID` 忽略） |
+| Logic | `messaging_logic` | REST `/offline`、`offline_ack` 可选 `did` 参数（带 did 走按设备；缺省 legacy） |
+| Logic | `user_server`/`passport_logic` | 3 处 reconnect 调用点透传 DID |
+
+### 9.4 兼容性与遗留
+
+- 线上 CLIENT_ACK 格式不变（`CLIENT_ACK,type,msgid,did` 本就带 did），WS 路径立即生效。
+- **跨仓跟进（imboyapp）**：REST `/offline` 与 `offline_ack` 需带 `did` 参数才获得按设备语义；
+  未带时保持旧 per-uid 删行（存在多端丢消息风险，与现状相同、不更差）。
+- **C2G 未动**：timeline 仍 per-uid `client_ack`（V7 多端未读串扰随后续任务处理，可复用本表 kind='c2g'）。
+- 孤儿标记（ACK 后主行始终未落库的错误路径）体量 ≈ staging 失败率，暂不专设清理；
+  `delete_delivered_batch` 清标记时会顺带清除同批消息的历史遗留孤儿标记。

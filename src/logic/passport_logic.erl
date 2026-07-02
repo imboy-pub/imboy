@@ -772,7 +772,7 @@ record_compat_login_success(Data, PostVals) ->
     Now = elib_dt:now(),
     _ = user_device_ds:save(Now, Uid, Did, PostVals),
     _ = user_ds:update_friends_last_seen_at(Uid, Now),
-    _ = message_ds:check_and_notify_offline_msgs(Uid),
+    _ = message_ds:check_and_notify_offline_msgs(Uid, Did),
     ok.
 
 %% @doc 获取用户登录后的设置信息

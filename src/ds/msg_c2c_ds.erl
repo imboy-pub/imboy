@@ -16,13 +16,14 @@
 -export([read_offline_msg/5]).
 -export([read_msg/2]).
 -export([read_msg/3]).
+-export([read_msg_for_device/4]).
 -export([read_msg_for_conversation/3]).
 -export([find_msg_by_id/1]).
 -export([delete_msg/1]).
 -export([update_pinned/3]).
 -export([update_payload_by_msg_id/2]).
 -export([delete_by_msg_ids_and_to_id/2]).
--export([count_unread_since/2]).
+-export([count_unread_since/2, count_unread_since/3]).
 -export([set_expire_at/2]).
 -export([delete_expired/2]).
 
@@ -137,6 +138,25 @@ read_msg(ToUid, Limit, Ts) ->
     % 使用安全的参数化查询，避免SQL注入
     Where = <<"to_id = $1 AND created_at >= $2">>,
     read_msg_filter(Where, Limit, [ToUid, FixedTs]).
+
+%% @doc 读取指定设备尚未确认的离线消息（T03/P0-1 按设备送达）
+%% 通过 msg_delivery 反连接过滤掉该设备已 ACK 的消息；
+%% DID 为空时退回 read_msg/3 的按 uid 语义。
+-spec read_msg_for_device(any(), binary(), integer(), undefined | integer() | binary()) -> [map()].
+read_msg_for_device(ToUid, DID, Limit, Ts) when is_binary(DID), DID =/= <<>> ->
+    case Ts of
+        undefined ->
+            Where = <<"to_id = $1", (msg_delivery_repo:pending_filter(<<"c2c">>, 1, 2))/binary>>,
+            read_msg_filter(Where, Limit, [ToUid, DID]);
+        _ ->
+            FixedTs = elib_dt:to_rfc3339(Ts),
+            Where =
+                <<"to_id = $1 AND created_at >= $2",
+                    (msg_delivery_repo:pending_filter(<<"c2c">>, 1, 3))/binary>>,
+            read_msg_filter(Where, Limit, [ToUid, FixedTs, DID])
+    end;
+read_msg_for_device(ToUid, _DID, Limit, Ts) ->
+    read_msg(ToUid, Limit, Ts).
 
 %% @doc 为会话列表读取消息：同时返回「自己收到」与「自己发出」的 c2c 消息。
 %%
@@ -418,6 +438,13 @@ count_unread_since(ToId, undefined) ->
     msg_c2c_repo:count_unread_since(ToId);
 count_unread_since(ToId, Since) ->
     msg_c2c_repo:count_unread_since(ToId, Since).
+
+%% @doc 按设备统计未确认消息数（T03/P0-1）；DID 为空退回 uid 语义
+-spec count_unread_since(integer(), binary() | undefined, binary()) -> non_neg_integer().
+count_unread_since(ToId, Since, DID) when is_binary(DID), DID =/= <<>> ->
+    msg_c2c_repo:count_unread_since(ToId, Since, DID);
+count_unread_since(ToId, Since, _DID) ->
+    count_unread_since(ToId, Since).
 
 -spec set_expire_at(binary(), binary()) -> ok.
 set_expire_at(MsgId, ExpireAt) ->

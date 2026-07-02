@@ -211,7 +211,10 @@ do_write(c2c, Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
-    msg_c2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE);
+    Res = msg_c2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE),
+    %% 【P0-1】ACK 先于落库竞态：落库后若该消息已被全部活跃设备确认则立即清理
+    ok = msg_operation_ds:maybe_clean_delivered(c2c, MsgId, ToId),
+    Res;
 do_write(c2g, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),
@@ -233,7 +236,10 @@ do_write(s2c, Row) ->
     ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
     MsgId = maps:get(<<"msg_id">>, Row),
     Action = maps:get(<<"action">>, Row, <<>>),
-    msg_s2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, Action, <<>>);
+    Res = msg_s2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, Action, <<>>),
+    %% 【P0-1】同 c2c：处理 ACK 先于落库的竞态
+    ok = msg_operation_ds:maybe_clean_delivered(s2c, MsgId, ToId),
+    Res;
 do_write(c2s, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),

@@ -15,7 +15,7 @@
 -export([validate_message/1]).
 -export([convert_v1_to_v2/1]).
 -export([send_next/4, send_next/6]).
--export([check_and_notify_offline_msgs/1]).
+-export([check_and_notify_offline_msgs/1, check_and_notify_offline_msgs/2]).
 -export([inject_sender_device/2]).
 -export([build_adm_union_sql/1]).
 
@@ -345,11 +345,19 @@ decode_websocket_message(Data) ->
 % message_ds:check_and_notify_offline_msgs(1).
 -spec check_and_notify_offline_msgs(integer() | binary()) -> ok.
 check_and_notify_offline_msgs(Uid) ->
-    % ?DEBUG_LOG([check_and_notify_offline_msgs, 1, Uid]),
+    check_and_notify_offline_msgs(Uid, <<>>).
+
+%% @doc 检查并通知离线消息（按设备维度，T03/P0-1）
+%% DID 有效时：C2C/S2C 只取该设备尚未确认的消息，且只推送给该设备
+%% （其他在线设备已走实时投递，各自的送达状态由 msg_delivery 跟踪）。
+%% DID 为空：退回按 uid 读取 + 全设备广播的旧语义。
+%% C2G 仍按 uid timeline 读取（V7 另行立项）。
+-spec check_and_notify_offline_msgs(integer() | binary(), binary()) -> ok.
+check_and_notify_offline_msgs(Uid, DID) ->
     % 检查各类型离线消息数量
-    C2CMsgs = msg_c2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
+    C2CMsgs = msg_c2c_ds:read_msg_for_device(Uid, DID, ?SAVE_MSG_LIMIT, undefined),
     C2GMsgs = msg_c2g_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
-    S2CMsgs = msg_s2c_ds:read_msg(Uid, ?SAVE_MSG_LIMIT),
+    S2CMsgs = msg_s2c_ds:read_msg_for_device(Uid, DID, ?SAVE_MSG_LIMIT, undefined),
 
     % 计算各类型消息数量
     C2CCount = length(C2CMsgs),
@@ -359,16 +367,16 @@ check_and_notify_offline_msgs(Uid) ->
     %             <<": C2C=">>, C2CCount, <<", C2G=">>, C2GCount, <<", S2C=">>, S2CCount]),
     % 处理各类型离线消息，收集是否需要发送pull通知
     {NeedPull1, NeedPull2, NeedPull3} = {
-        handle_offline_msgs(Uid, <<"C2C">>, C2CMsgs, C2CCount),
-        handle_offline_msgs(Uid, <<"C2G">>, C2GMsgs, C2GCount),
-        handle_offline_msgs(Uid, <<"S2C">>, S2CMsgs, S2CCount)
+        handle_offline_msgs(Uid, DID, <<"C2C">>, C2CMsgs, C2CCount),
+        handle_offline_msgs(Uid, DID, <<"C2G">>, C2GMsgs, C2GCount),
+        handle_offline_msgs(Uid, DID, <<"S2C">>, S2CMsgs, S2CCount)
     },
 
     % 如果任意类型需要发送pull通知，则只发送一次
     case NeedPull1 orelse NeedPull2 orelse NeedPull3 of
         true ->
-            ok = ?DEBUG_LOG(["check_and_notify_offline_msgs", Uid]),
-            send_pull_offline_msg(Uid);
+            ok = ?DEBUG_LOG(["check_and_notify_offline_msgs", Uid, DID]),
+            send_pull_offline_msg(Uid, DID);
         false ->
             ok
     end,
@@ -383,12 +391,12 @@ check_and_notify_offline_msgs(Uid) ->
 %% @param Msgs 消息列表
 %% @param Count 消息数量
 %% @returns 是否需要发送pull通知
--spec handle_offline_msgs(pos_integer() | binary(), binary(), [map()], non_neg_integer()) ->
+-spec handle_offline_msgs(pos_integer() | binary(), binary(), binary(), [map()], non_neg_integer()) ->
     boolean().
-handle_offline_msgs(_Uid, _Type, [], _Count) ->
+handle_offline_msgs(_Uid, _DID, _Type, [], _Count) ->
     % 没有离线消息
     false;
-handle_offline_msgs(Uid, Type, Msgs, Count) when Count > 0 ->
+handle_offline_msgs(Uid, DID, Type, Msgs, Count) when Count > 0 ->
     Threshold = get_offline_msg_threshold(),
     case Count > Threshold of
         true ->
@@ -398,29 +406,35 @@ handle_offline_msgs(Uid, Type, Msgs, Count) when Count > 0 ->
         false ->
             % 消息数量在阈值内，直接发送离线消息
             % ?DEBUG_LOG([Type, <<"OFFLINE_MSG_THRESHOLD">>, Count, Threshold, Uid]),
-            sent_offline_msg(Uid, Type, Msgs),
+            sent_offline_msg(Uid, DID, Type, Msgs),
             false
     end.
 
 %% 检查并通知离线消息
 
+%% @doc DID 有效时定向白名单，只推给当前连接设备；为空则不过滤（全设备广播）
+-spec did_whitelist(binary()) -> [binary()].
+did_whitelist(<<>>) -> [];
+did_whitelist(DID) when is_binary(DID) -> [DID];
+did_whitelist(_) -> [].
+
 %% 发送pull_offline_msg通知（v2.0 格式）
--spec send_pull_offline_msg(integer()) -> ok.
-send_pull_offline_msg(Uid) ->
+-spec send_pull_offline_msg(integer(), binary()) -> ok.
+send_pull_offline_msg(Uid, DID) ->
     MsgId = elib_id:gen("pull_offline"),
     %% v2.0: S2C 消息使用 action 字段
     Msg = assemble_s2c(MsgId, <<"pull_offline_msg">>, Uid),
     MsgJson = jsone:encode(Msg, [native_utf8]),
     MsLi = elib_retry_config:intervals(<<"pull">>),
-    send_next(Uid, MsgId, MsgJson, MsLi),
+    send_next(Uid, MsgId, MsgJson, MsLi, did_whitelist(DID), true),
     % ?DEBUG_LOG(["send_pull_offline_msg", Uid, MsgId]),
     ok.
 
 %% 发送离线消息（v2.0 格式）
--spec sent_offline_msg(integer(), binary(), list()) -> ok.
-sent_offline_msg(_Uid, _Type, []) ->
+-spec sent_offline_msg(integer(), binary(), binary(), list()) -> ok.
+sent_offline_msg(_Uid, _DID, _Type, []) ->
     ok;
-sent_offline_msg(Uid, Type, [Row | Tail]) ->
+sent_offline_msg(Uid, DID, Type, [Row | Tail]) ->
     ok = ?DEBUG_LOG([<<"Sending offline msg ">>, Type, <<" to Uid ">>, Uid]),
     % 统一从 from_id 和 to_id 获取（确保是 integer）
     MsgId = maps:get(<<"id">>, Row),
@@ -456,8 +470,8 @@ sent_offline_msg(Uid, Type, [Row | Tail]) ->
 
     MsgJson = jsone:encode(Msg, [native_utf8]),
     MsLi = elib_retry_config:intervals(<<"pull">>),
-    send_next(Uid, MsgId, MsgJson, MsLi),
-    sent_offline_msg(Uid, Type, Tail).
+    send_next(Uid, MsgId, MsgJson, MsLi, did_whitelist(DID), true),
+    sent_offline_msg(Uid, DID, Type, Tail).
 
 %% @doc 将发送者设备信息注入到消息 payload 中
 %%
