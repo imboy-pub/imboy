@@ -101,8 +101,8 @@ do_create_transfer2(Req0, CurrentUid) ->
             elib_response:error(Req0, <<"缺少 to_uid 参数"/utf8>>, ?ERR_BAD_REQUEST);
         {error, invalid} ->
             elib_response:error(Req0, <<"to_uid 参数无效"/utf8>>, ?ERR_BAD_REQUEST);
-        {ok, ToUid} when ToUid =:= CurrentUid ->
-            elib_response:error(Req0, <<"不能给自己创建传输会话"/utf8>>, ?ERR_BAD_REQUEST);
+        %% 同账号换机（ToUid==CurrentUid）是最常见恢复场景，允许创建会话；
+        %% 源设备==目标设备的无意义转移在 accept 阶段按 device_id 拦截。
         {ok, _ToUid} when FromDeviceId =:= <<>> ->
             elib_response:error(Req0, <<"缺少 from_device_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
         {ok, _ToUid} when EncryptedBundle =:= <<>> ->

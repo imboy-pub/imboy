@@ -102,6 +102,12 @@ accept_transfer(SessionId, ToUid, ToDeviceId) ->
                     case user_device_ds:device_name(ToUid, ToDeviceId) of
                         <<>> ->
                             {error, {<<"设备不存在或不属于当前用户"/utf8>>, ?ERR_E2EE_TRANSFER_INVALID_DEVICE}};
+                        _DeviceName when
+                            ToDeviceId =:= map_get(<<"from_device_id">>, Session)
+                        ->
+                            % 同账号换机允许（ToUid==FromUid），但源设备与目标设备相同的
+                            % 转移无意义且会覆盖自身 bundle，拒绝
+                            {error, {<<"不能转移到源设备本身"/utf8>>, ?ERR_E2EE_TRANSFER_INVALID_DEVICE}};
                         _DeviceName ->
                             % 4. 检查状态
                             Status = maps:get(<<"status">>, Session),

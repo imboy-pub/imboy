@@ -38,11 +38,28 @@ create_transfer_accepts_legacy_to_uid_test_() ->
             ]},
             {cowboy_req, [
                 {'read_body', 1, fun(_Req) ->
-                    {ok, <<"{\"to_uid\":\"12345\"}">>, req_after_body}
+                    %% 零信任契约：客户端上传 from_device_id + encrypted_key_bundle 密文
+                    {ok,
+                        <<
+                            "{\"to_uid\":\"12345\",\"from_device_id\":\"sender_device_1\","
+                            "\"encrypted_key_bundle\":\"cipher-bundle\"}"
+                        >>,
+                        req_after_body}
                 end}
             ]},
             {user_ds, [
                 {'may_exist', 1, fun(12345) -> true end}
+            ]},
+            {e2ee_transfer_logic, [
+                {'validate_receiver', 1, fun(12345) -> true end},
+                {'create_transfer', 4, fun(
+                    100, <<"sender_device_1">>, 12345, <<"cipher-bundle">>
+                ) ->
+                    {ok, #{
+                        <<"session_id">> => <<"session-1">>,
+                        <<"expires_at">> => <<"2026-02-25T00:00:00Z">>
+                    }}
+                end}
             ]},
             {user_device_ds, [
                 {'get_public_by_uid', 1, fun(Uid) ->
@@ -65,16 +82,6 @@ create_transfer_accepts_legacy_to_uid_test_() ->
                 end},
                 {'get_private_key', 2, fun(100, <<"sender_device_1">>) ->
                     {ok, <<"sender_private">>}
-                end}
-            ]},
-            {e2ee_transfer_logic, [
-                {'create_transfer', 5, fun(
-                    100, <<"sender_device_1">>, 12345, <<"sender_private">>, <<"receiver_public">>
-                ) ->
-                    {ok, #{
-                        <<"session_id">> => <<"session-1">>,
-                        <<"expires_at">> => <<"2026-02-25T00:00:00Z">>
-                    }}
                 end}
             ]},
             {elib_response, [

@@ -112,6 +112,35 @@ accept_transfer_rejects_device_not_owned_by_current_user_test_() ->
         end
     ).
 
+%% D3 同账号换机：允许 ToUid==FromUid，但目标设备==源设备的无意义转移被拒
+accept_transfer_rejects_same_device_as_source_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_transfer_ds, [
+                {get_by_session_id, 1, fun(_SessionId) ->
+                    {ok, #{
+                        <<"session_id">> => <<"sess-same-dev">>,
+                        <<"from_uid">> => 10001,
+                        %% 同账号换机：to_uid 与 from_uid 相同
+                        <<"to_uid">> => 10001,
+                        <<"from_device_id">> => <<"device-001">>,
+                        <<"status">> => <<"pending">>
+                    }}
+                end}
+            ]},
+            {user_device_ds, [
+                {device_name, 2, fun(10001, <<"device-001">>) -> <<"旧手机"/utf8>> end}
+            ]}
+        ],
+        fun() ->
+            %% accept 到源设备本身
+            Result = e2ee_transfer_logic:accept_transfer(
+                <<"sess-same-dev">>, 10001, <<"device-001">>
+            ),
+            ?assertMatch({error, {_, ?ERR_E2EE_TRANSFER_INVALID_DEVICE}}, Result)
+        end
+    ).
+
 accept_transfer_conflict_on_concurrent_accept_test_() ->
     ?WITH_MECKS(
         [
