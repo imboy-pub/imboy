@@ -231,8 +231,9 @@ handle_v2_binary(Msg, State) ->
             Payload = imboy_frame:payload(Frame),
             dispatch_v2_frame(Type, Flags, Payload, State);
         {error, Reason} ->
+            %% 【T14/P1-3】协议错误不再静默丢弃，回 ERROR 帧供对端排障
             ok = ?WARN_LOG({v2_frame_decode_failed, Reason, byte_size(Msg)}),
-            {ok, State, hibernate}
+            {reply, {binary, imboy_frame:error_frame(Reason)}, State, hibernate}
     end.
 
 %% @doc 根据 v2 帧 Type 分派处理（Flags 仅 ACK 帧用于解析消息方向）
@@ -287,8 +288,10 @@ dispatch_v2_frame(Type, _Flags, Payload, State) when
             dispatch_v2_business_payload(Type, Payload, State)
     end;
 dispatch_v2_frame(Type, _Flags, _Payload, State) ->
+    %% 【T14/P1-3】未知帧类型回 ERROR 帧（原为静默丢弃）
     ok = ?WARN_LOG({v2_frame_unsupported_type, Type}),
-    {ok, State, hibernate}.
+    Reason = <<"unsupported_frame_type:", (integer_to_binary(Type))/binary>>,
+    {reply, {binary, imboy_frame:error_frame(Reason)}, State, hibernate}.
 
 %% @doc ACK 方向 atom → 处理管道使用的 type binary
 -spec ack_dir_to_binary(imboy_frame:ack_dir()) -> binary().
@@ -312,12 +315,15 @@ dispatch_v2_business_payload(Type, Payload, State) ->
                 Data0 when is_map(Data0), map_size(Data0) > 0 ->
                     handle_protobuf_message_decoded(Data0, State);
                 _ ->
+                    %% 【T14/P1-3】JSON/protobuf 双路解码均失败，回 ERROR 帧
                     ok = ?WARN_LOG({v2_msg_decode_empty, Type, byte_size(Payload)}),
-                    {ok, State, hibernate}
+                    {reply, {binary, imboy_frame:error_frame(<<"payload_decode_failed">>)}, State,
+                        hibernate}
             catch
                 Class:Reason ->
                     ok = ?WARN_LOG({v2_msg_decode_failed, Class, Reason, Type, byte_size(Payload)}),
-                    {ok, State, hibernate}
+                    {reply, {binary, imboy_frame:error_frame(<<"payload_decode_failed">>)}, State,
+                        hibernate}
             end
     end.
 

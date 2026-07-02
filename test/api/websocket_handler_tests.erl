@@ -722,8 +722,9 @@ v2_msg_c2s_text_client_ack_test_() ->
         end
     ).
 
-%% v2 MSG_C2C 帧，payload 为损坏数据（既非 JSON 也非 protobuf） —— 不应 crash
-v2_msg_c2c_garbage_payload_tolerated_test_() ->
+%% v2 MSG_C2C 帧，payload 为损坏数据（既非 JSON 也非 protobuf）
+%% 【T14/P1-3】不应 crash，且应回 ERROR 帧（原为静默丢弃）
+v2_msg_c2c_garbage_payload_replies_error_frame_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
@@ -743,8 +744,57 @@ v2_msg_c2c_garbage_payload_tolerated_test_() ->
             },
             Garbage = <<16#FF, 16#FE, "not-json-not-pb">>,
             Frame = imboy_codec:wrap_v2_frame(16#20, 0, Garbage),
-            {ok, State2, hibernate} = websocket_handler:websocket_handle({binary, Frame}, State),
-            ?assertEqual(State, State2)
+            {reply, {binary, RespBin}, State2, hibernate} =
+                websocket_handler:websocket_handle({binary, Frame}, State),
+            ?assertEqual(State, State2),
+            {ok, RespFrame, <<>>} = imboy_frame:decode(RespBin),
+            %% FRAME_TYPE_ERROR = 0x06
+            ?assertEqual(16#06, imboy_frame:type(RespFrame)),
+            ?assertEqual(<<"payload_decode_failed">>, imboy_frame:payload(RespFrame))
+        end
+    ).
+
+%% 【T14/P1-3】未知 v2 帧类型应回 ERROR 帧（原为静默丢弃）
+v2_unknown_frame_type_replies_error_frame_test_() ->
+    ?WITH_MECKS(
+        log_mocks(),
+        fun() ->
+            State = #{
+                did => <<"did_x">>,
+                current_uid => 123,
+                protocol => protobuf,
+                framing => v2
+            },
+            %% 0xEF 未定义的帧类型
+            Frame = imboy_codec:wrap_v2_frame(16#EF, 0, <<"whatever">>),
+            {reply, {binary, RespBin}, _, hibernate} =
+                websocket_handler:websocket_handle({binary, Frame}, State),
+            {ok, RespFrame, <<>>} = imboy_frame:decode(RespBin),
+            ?assertEqual(16#06, imboy_frame:type(RespFrame)),
+            ?assertEqual(
+                <<"unsupported_frame_type:239">>, imboy_frame:payload(RespFrame)
+            )
+        end
+    ).
+
+%% 【T14/P1-5】版本不匹配的帧应回 ERROR 帧（unsupported_version）
+v2_bad_version_frame_replies_error_frame_test_() ->
+    ?WITH_MECKS(
+        log_mocks(),
+        fun() ->
+            State = #{
+                did => <<"did_x">>,
+                current_uid => 123,
+                protocol => protobuf,
+                framing => v2
+            },
+            %% 手工构造 Ver=3 的帧（Magic 0x4942）
+            BadFrame = <<16#4942:16, 3:8, 0:8, 16#20:8, 0:32>>,
+            {reply, {binary, RespBin}, _, hibernate} =
+                websocket_handler:websocket_handle({binary, BadFrame}, State),
+            {ok, RespFrame, <<>>} = imboy_frame:decode(RespBin),
+            ?assertEqual(16#06, imboy_frame:type(RespFrame)),
+            ?assertEqual(<<"unsupported_version">>, imboy_frame:payload(RespFrame))
         end
     ).
 

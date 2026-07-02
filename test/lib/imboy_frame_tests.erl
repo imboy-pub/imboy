@@ -160,11 +160,24 @@ decode_single_non_magic_byte_test() ->
     %% 单字节且不是魔数高字节 → 直接 bad_magic
     ?assertEqual({error, bad_magic}, imboy_frame:decode(<<16#FF>>)).
 
-decode_version_tolerance_test() ->
-    %% 解码器对 version 字段不做校验，向前兼容
+decode_version_rejected_test() ->
+    %% 【T14/P1-5】版本守护断言：Ver ≠ 2 拒收，防止 v3 帧被按 v2 语义误解析
     Buf = <<?MAGIC:16, 99:8, 0:8, ?TYPE_ACK:8, 0:32>>,
-    {ok, Frame, <<>>} = imboy_frame:decode(Buf),
-    ?assertEqual(99, imboy_frame:version(Frame)).
+    ?assertEqual({error, unsupported_version}, imboy_frame:decode(Buf)).
+
+decode_version_rejected_with_partial_header_test() ->
+    %% 只要读到版本字节即可拒收，无需完整帧头
+    ?assertEqual({error, unsupported_version}, imboy_frame:decode(<<?MAGIC:16, 3:8>>)).
+
+error_frame_roundtrip_test() ->
+    %% 【T14/P1-3】ERROR 帧：类型 0x06，负载为 UTF-8 原因文本
+    Bin = imboy_frame:error_frame(unsupported_version),
+    {ok, Frame, <<>>} = imboy_frame:decode(Bin),
+    ?assertEqual(16#06, imboy_frame:type(Frame)),
+    ?assertEqual(<<"unsupported_version">>, imboy_frame:payload(Frame)),
+    BinText = imboy_frame:error_frame(<<"payload_decode_failed">>),
+    {ok, Frame2, <<>>} = imboy_frame:decode(BinText),
+    ?assertEqual(<<"payload_decode_failed">>, imboy_frame:payload(Frame2)).
 
 decode_frame_too_large_test() ->
     %% PayloadLen > 16MB 应直接报错

@@ -56,7 +56,8 @@
     ack/1,
     ack/2,
     ack_direction/1,
-    nack/1
+    nack/1,
+    error_frame/1
 ]).
 
 -export_type([ack_dir/0]).
@@ -109,14 +110,15 @@ encode(Type, Flags, Payload) when
 -spec decode(binary()) ->
     {ok, frame(), binary()} | {more, binary()} | {error, atom()}.
 decode(
-    <<?IMBOY_FRAME_MAGIC:16, Ver:8, Flags:8, Type:8, Len:32/big-unsigned, Rest/binary>> = Buf
+    <<?IMBOY_FRAME_MAGIC:16, ?IMBOY_FRAME_VERSION:8, Flags:8, Type:8, Len:32/big-unsigned,
+        Rest/binary>> = Buf
 ) when
     Len =< ?IMBOY_FRAME_MAX_PAYLOAD
 ->
     case Rest of
         <<Payload:Len/binary, Tail/binary>> ->
             Frame = #imboy_frame{
-                version = Ver,
+                version = ?IMBOY_FRAME_VERSION,
                 flags = Flags,
                 type = Type,
                 payload = Payload
@@ -125,6 +127,10 @@ decode(
         _ ->
             {more, Buf}
     end;
+%% 【T14/P1-5】版本守护断言：Ver ≠ 2 直接拒收，防止未来 v3 帧被按 v2 语义误解析。
+%% 版本协商仍走 WebSocket 子协议字符串（imboy.v3），帧内版本号只做一致性校验。
+decode(<<?IMBOY_FRAME_MAGIC:16, Ver:8, _/binary>>) when Ver =/= ?IMBOY_FRAME_VERSION ->
+    {error, unsupported_version};
 decode(<<?IMBOY_FRAME_MAGIC:16, _Ver:8, _Flags:8, _Type:8, Len:32/big-unsigned, _/binary>>) when
     Len > ?IMBOY_FRAME_MAX_PAYLOAD
 ->
@@ -246,6 +252,15 @@ ack_direction(F) when is_integer(F) ->
 -spec nack(non_neg_integer()) -> binary().
 nack(MsgId) when is_integer(MsgId), MsgId >= 0 ->
     encode(?FRAME_TYPE_NACK, 0, <<MsgId:64/big-unsigned>>).
+
+%% @doc ERROR 帧（T14/P1-3）：负载为 UTF-8 错误原因文本
+%% 用于服务端向对端反馈协议级错误（解码失败/未知帧类型/载荷不可解析），
+%% 替代此前的静默丢弃。旧客户端对未知下行类型按其现有丢弃逻辑处理，不 break。
+-spec error_frame(atom() | binary()) -> binary().
+error_frame(Reason) when is_atom(Reason) ->
+    error_frame(atom_to_binary(Reason, utf8));
+error_frame(Reason) when is_binary(Reason) ->
+    encode(?FRAME_TYPE_ERROR, 0, Reason).
 
 %%%===================================================================
 %%% 内部：ACK 方向 <-> flags 编解码
