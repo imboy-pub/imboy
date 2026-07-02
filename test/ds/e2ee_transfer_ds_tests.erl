@@ -299,17 +299,5 @@ is_valid_session_test_() ->
         end
     ).
 
-cleanup_expired_sessions_test_() ->
-    ?WITH_MECK(
-        elib_pg,
-        [
-            {execute, 2, fun(_Sql, _Params) ->
-                {ok, 3, [{1}, {2}, {3}]}
-            end}
-        ],
-        fun() ->
-            Result = e2ee_transfer_ds:cleanup_expired_sessions(),
-
-            ?assertMatch({ok, 3}, Result)
-        end
-    ).
+%% 【E2EE-P2-17】cleanup_expired_sessions 测试已随 DS 双实现删除；
+%% 生产清理路径 = e2ee_cleanup_worker → e2ee_transfer_repo:cleanup_expired_sessions/0

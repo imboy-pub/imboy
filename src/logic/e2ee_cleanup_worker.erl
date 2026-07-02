@@ -92,7 +92,27 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal
 
 do_cleanup() ->
-    e2ee_transfer_repo:cleanup_expired_sessions().
+    Result = e2ee_transfer_repo:cleanup_expired_sessions(),
+    %% 【E2EE-P2-15】清理失败此前无任何告警，只静默累加失败
+    _ =
+        case Result of
+            {error, Reason} -> ?WARN_LOG({e2ee_session_cleanup_failed, Reason});
+            _ -> ok
+        end,
+    %% 【E2EE-P2-15】传输审计日志按保留期清理（此前无任何清理机制）；
+    %% 配置 {e2ee_transmission_log_retention_days, 180}，<= 0 表示不清理
+    RetentionDays = application:get_env(imboy, e2ee_transmission_log_retention_days, 180),
+    _ =
+        case RetentionDays > 0 of
+            true ->
+                case e2ee_shard_transmission_log_repo:delete_older_than(RetentionDays) of
+                    {ok, _} -> ok;
+                    {error, LogReason} -> ?WARN_LOG({e2ee_transmission_log_purge_failed, LogReason})
+                end;
+            false ->
+                ok
+        end,
+    Result.
 
 increment_count(State, {ok, Count}) ->
     State#state{total_cleaned = State#state.total_cleaned + Count};

@@ -34,9 +34,15 @@
 >   [MSG-P2-1] 已修——重复 ACK（送达标记已存在 {ok,0}）不再自增 msg_delivered_total；
 >   [MSG-P2-2] 已修——撤回/已读旁路写点改 write_msg_if_absent 按 (msg_id,to_id) 判重
 >   （revoke_offline_msg/9 与 read_offline_msg 两个活跃点；/5 为零调用遗留未动）。
+>   [E2EE-P2-17] 已修——删除 e2ee_transfer_ds:cleanup_expired_sessions DS 层双实现
+>   （零生产调用+直连 SQL 违反分层+条件不等价：status != 'confirmed' 会误删终态记录且无
+>   LIMIT），生产清理唯一路径 = e2ee_cleanup_worker → repo 版。
+>   [E2EE-P2-15] 部分修——①worker 清理失败补 WARN 告警；②transmission_log 增保留期清理
+>   （新 repo delete_older_than/1，批量 LIMIT 1000，配置 e2ee_transmission_log_retention_days
+>   默认 180 天，<=0 不清理）；create_shards 幂等键需契约设计，留后续。
 >   其余 P2 项处置：[MSG-P2-4] 已随 T06 完成；[WS-P1-7] 格式位——flags 位已占满
 >   （bit4-3 被 DIR 占用），无安全空位，维持嗅探；[MSG-P2-5]（自愈型瞬时窗口）与
->   [E2EE-P2-15/16/17]（P2-16 设备上限拒登录属产品决策）留后续批次
+>   [E2EE-P2-16]（设备上限拒登录属产品决策）留后续批次
 > ⏳ 待做：T10（D4=删孤岛，⚠️涉及 imboy_router.erl——该文件现有并发未提交改动，须等其
 >   落地后再做）、T19（D6=接线，升 L 需 admin 联动且 src/adm/* 同样有并发改动）、
 >   T20（D5=保持开启，前置三项属归档架构级大改）——均需独立立项/协调

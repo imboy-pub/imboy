@@ -15,6 +15,7 @@
 
 %% 导出函数
 -export([insert/1]).
+-export([delete_older_than/1]).
 -export([list_by_shard_id/1]).
 -export([list_by_action/2]).
 -export([get_transmission_stats/1]).
@@ -153,3 +154,14 @@ check_anomaly(KeyVersion, ShardId) ->
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
+
+%% @doc 清理超过保留期的传输日志（E2EE-P2-15，e2ee_cleanup_worker 定时调用）
+%% 审计日志按天保留；批量 LIMIT 1000 防长事务，残余量下轮扫描继续
+-spec delete_older_than(pos_integer()) -> {ok, non_neg_integer()} | {error, term()}.
+delete_older_than(Days) when is_integer(Days), Days > 0 ->
+    Sql = <<
+        "DELETE FROM e2ee_shard_transmission_log WHERE id IN ("
+        " SELECT id FROM e2ee_shard_transmission_log"
+        " WHERE created_at < now() - make_interval(days => $1) LIMIT 1000)"
+    >>,
+    elib_pg:execute(Sql, [Days]).

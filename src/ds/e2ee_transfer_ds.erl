@@ -19,7 +19,6 @@
 -export([confirm_session/2]).
 -export([get_pending_sessions/1]).
 -export([cancel_session/2]).
--export([cleanup_expired_sessions/0]).
 -export([is_valid_session/1]).
 %% G3 thin wrappers: e2ee_transfer_logic 不应直调 e2ee_transfer_repo
 -export([generate_session_id/0]).
@@ -197,25 +196,11 @@ cancel_session(SessionId, FromUid) ->
             end
     end.
 
-%% @doc 清理过期的传输会话（定时任务调用）
--spec cleanup_expired_sessions() -> {ok, integer()} | {error, term()}.
-cleanup_expired_sessions() ->
-    Sql = <<
-        "DELETE FROM e2ee_transfer_sessions\n"
-        "              WHERE expires_at < CURRENT_TIMESTAMP\n"
-        "              AND status != 'confirmed'\n"
-        "              RETURNING id"
-    >>,
-    case elib_pg:execute(Sql, []) of
-        {ok, Count, _Rows} ->
-            % 清除所有会话缓存
-            clear_all_session_cache(),
-            {ok, Count};
-        {ok, 0} ->
-            {ok, 0};
-        {error, Reason} ->
-            {error, Reason}
-    end.
+%% 【E2EE-P2-17】cleanup_expired_sessions/0 已删除：与
+%% e2ee_transfer_repo:cleanup_expired_sessions/0（e2ee_cleanup_worker 定时调用的
+%% 唯一生产实现）双实现且条件不等价（此处 status != 'confirmed' 会误删
+%% cancelled/rejected 等终态记录且无 LIMIT），并且 DS 层直连 SQL 违反分层。
+%% 生产清理一律走 repo 版。
 
 %% @doc 检查会话是否有效（未过期且状态正确）
 -spec is_valid_session(binary()) -> boolean().
@@ -231,16 +216,6 @@ is_valid_session(SessionId) ->
 clear_session_cache(SessionId) ->
     CacheKey = {e2ee_transfer_session, SessionId},
     imboy_cache:delete(CacheKey),
-    ok.
-
-%% @doc 清除所有 E2EE 传输会话缓存（intentional no-op）
-%%
-%% depcache 不支持按前缀枚举键，无法批量删除 {e2ee_transfer_session, _} 形式的键。
-%% 全量 flush（imboy_cache:flush/0）会影响整个应用的缓存，代价过高。
-%% 各 session 缓存条目会在 TTL 到期后自动失效，此函数保留为接口占位。
-%% 如需精确清除，应维护一个 session ID 注册表并逐一调用 clear_session_cache/1。
--spec clear_all_session_cache() -> ok.
-clear_all_session_cache() ->
     ok.
 
 %% G3 thin wrappers: e2ee_transfer_logic 不应直调 e2ee_transfer_repo
