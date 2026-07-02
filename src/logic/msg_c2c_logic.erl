@@ -641,6 +641,18 @@ handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
     ReadAtRfc = elib_dt:to_rfc3339(ReadAt),
     case msg_read_ds:save_read(MsgId, ToId, CurrentUid, ToDid, ReadAtRfc) of
         ok ->
+            % 【T18/MSG-P1-6】已读状态同步给阅读者自己的其他设备（多端未读数一致）。
+            % save 落 msg_s2c：离线设备按 per-device 送达语义（T03）重连后仍可拉到；
+            % 阅读设备自身也会收到并 ACK（客户端按已读状态幂等忽略），单设备用户
+            % 全端 ACK 后该行随即被清理。新增 S2C action，旧客户端按未知 action 忽略。
+            ReadSyncPayload = #{
+                <<"msg_id">> => MsgId,
+                <<"peer">> => To,
+                <<"read_at">> => ReadAt
+            },
+            _ = msg_s2c_ds:send(
+                0, [CurrentUid], <<"message_read_sync">>, <<>>, null, ReadSyncPayload, save
+            ),
             % 构建已读回执消息（v2.0 格式）
             ReadPayload = #{
                 <<"read_at">> => ReadAt

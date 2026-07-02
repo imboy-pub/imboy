@@ -26,6 +26,9 @@ c2c_read_with_valid_data_succeeds_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
             ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
+            ]},
             {elib_dt, [
                 {'to_rfc3339', 1, fun(_Ts) -> <<"2025-01-22T00:00:00Z">> end},
                 {'millisecond', 0, fun() -> 1737513600000 end}
@@ -116,6 +119,9 @@ c2c_read_with_offline_sender_stores_notification_test_() ->
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> false end}
             ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
+            ]},
             {elib_dt, [
                 {'to_rfc3339', 1, fun(_Ts) -> <<"2025-01-22T00:00:00Z">> end},
                 {'millisecond', 0, fun() -> 1737513600000 end}
@@ -135,6 +141,54 @@ c2c_read_with_offline_sender_stores_notification_test_() ->
 
             Result = msg_c2c_logic:c2c_read(MsgId, CurrentUid, Data),
             ?assertMatch({reply, #{<<"type">> := <<"C2C">>}}, Result)
+        end
+    ).
+
+%% ===================================================================
+%% 【T18/MSG-P1-6】已读同步到阅读者自己的其他设备
+%% ===================================================================
+
+c2c_read_syncs_to_own_devices_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {msg_read_repo, [
+                {'save_read', 5, fun(_MsgId, _FromUid, _ToUid, _ToDid, _ReadAt) -> ok end}
+            ]},
+            {user_logic, [
+                {'is_online', 1, fun(_Uid) -> true end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(FromId, ToLi, Action, _MsgType, _E2EE, Payload, Save) ->
+                    %% 同步目标 = 阅读者本人；action = message_read_sync；save 保证离线设备可拉
+                    ?assertEqual(0, FromId),
+                    ?assertEqual([456], ToLi),
+                    ?assertEqual(<<"message_read_sync">>, Action),
+                    ?assertEqual(save, Save),
+                    ?assertEqual(<<"msg_123">>, maps:get(<<"msg_id">>, Payload)),
+                    ?assertEqual(<<"789">>, maps:get(<<"peer">>, Payload)),
+                    ok
+                end}
+            ]},
+            {elib_dt, [
+                {'to_rfc3339', 1, fun(_Ts) -> <<"2025-01-22T00:00:00Z">> end},
+                {'millisecond', 0, fun() -> 1737513600000 end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(_ToUid, _MsgId, _Msg, _MsLi) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"789">>,
+                <<"from">> => <<"456">>,
+                <<"payload">> => #{<<"read_at">> => 1737513600000}
+            },
+            Result = msg_c2c_logic:c2c_read(<<"msg_123">>, 456, Data),
+            ?assertMatch({reply, #{<<"type">> := <<"C2C">>}}, Result),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
         end
     ).
 
@@ -179,6 +233,9 @@ c2c_read_with_empty_msg_id_test_() ->
             ]},
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
             ]},
             {elib_dt, [
                 {'to_rfc3339', 1, fun(_Ts) -> <<"2025-01-22T00:00:00Z">> end},
@@ -243,6 +300,9 @@ c2c_read_with_duplicate_read_is_idempotent_test_() ->
             ]},
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
             ]},
             {elib_dt, [
                 {'to_rfc3339', 1, fun(_Ts) -> <<"2025-01-22T00:00:00Z">> end},

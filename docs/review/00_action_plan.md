@@ -18,8 +18,12 @@
 >   ⚠️字段名未按盘点原议用 reply_to——该名已被引用回复占用（上行顶层 map `#{msg_id,from_id}`，
 >   三端已消费），同名不同型会撞车，改用 IETF 惯例 in_reply_to；⚠️protobuf 通路经 to_pb_map
 >   只保留 schema 字段，in_reply_to 现仅 JSON 通路生效，proto 增字段为三端共享契约跨仓跟进
-> ⏳ 待做：T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T17/T18（T13 已消解并入 T17；
->   T17 文档收敛现已解锁，需写入 in_reply_to 语义与 ERROR 帧）、
+> ✅ T18（已读同步到自己其他设备，后端先行）已实施：C2C 已读落库后向阅读者本人
+>   推送新增 S2C action **message_read_sync**（payload=msg_id/peer/read_at，save 落 msg_s2c，
+>   离线设备按 T03 per-device 语义重连可拉；阅读设备收到后幂等忽略）；旧客户端按未知
+>   action 忽略不 break；⚠️跨仓跟进：imboyapp 消费该 action 更新未读数 + 真机双端回归
+> ⏳ 待做：T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T17（文档收敛，现已解锁：
+>   需写入 in_reply_to / ERROR 帧 / message_read_sync / 重试真值 / FLAG_ACK 标注）、
 >   T19（D6=接线，升 L 需 admin 联动）、T20（D5=保持开启，前置三项属归档架构级大改）
 > 裁决状态：D1/D2 已被 T00 核实消解；**D3/D4/D5/D6 已拍板（见第 4 节选中项）**
 >
