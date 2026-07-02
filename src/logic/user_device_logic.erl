@@ -80,7 +80,9 @@ change_name(Uid, DID, Name) ->
     ok.
 
 %% @doc 删除设备
-%% 删除指定设备记录
+%% 删除指定设备记录，并联动断开该设备的 WS 会话（在线时）。
+%% ponytail: token 为 uid 级非设备级，无法按设备 revoke；
+%% 被踢设备重连须重新认证，且设备记录已删（E2EE 公钥随之失效）。
 %% @param Uid 用户ID
 %% @param DID 设备ID
 %% @return ok
@@ -89,7 +91,14 @@ delete(Uid, DID) ->
     user_device_ds:delete(Uid, DID),
     Key = {user_device_name, 2, Uid, DID},
     imboy_cache:flush(Key),
-    ok.
+    case find_device_by_did(imboy_syn:list_by_uid(Uid), DID) of
+        {ok, Pid, _DType} ->
+            send_kick_message(Pid, #{<<"reason">> => <<"设备已被移除"/utf8>>}),
+            _ = imboy_syn:leave(Uid, Pid),
+            ok;
+        not_found ->
+            ok
+    end.
 
 %% @doc 获取用户设备列表（分页）
 %% 获取用户的所有设备，包含在线状态

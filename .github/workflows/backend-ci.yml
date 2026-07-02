@@ -50,6 +50,9 @@ jobs:
             ~/.cache/rebar3
           key: ${{ runner.os }}-otp${{ matrix.otp }}-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
+      - name: Check duplicate module names
+        run: bash scripts/check_duplicate_modules.sh
+
       - name: Compile
         run: IMBOYENV=local make test-build
 

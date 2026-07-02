@@ -33,7 +33,9 @@ list_by_uid(Uid, Column) ->
 list_by_uid(Uid, Column, Limit) ->
     Tb = tablename(),
     % use index idx_c2g_timeline_to_uid_pending
-    Where = <<" WHERE to_uid = $1 AND client_ack = false LIMIT $2">>,
+    % 必须先排序再截断：待确认消息堆积超过 Limit 时，
+    % 无 ORDER BY 会选中不确定子集且成员间顺序可能相反
+    Where = <<" WHERE to_uid = $1 AND client_ack = false ORDER BY created_at ASC LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     elib_pg:query(Sql, [Uid, Limit]).
 

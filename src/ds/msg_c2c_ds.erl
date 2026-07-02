@@ -11,7 +11,7 @@
 -export([write_msg/8]).
 -export([write_msg_with_reply/11]).
 -export([revoke_offline_msg/5]).
--export([revoke_offline_msg/8]).
+-export([revoke_offline_msg/9]).
 -export([edit_offline_msg/5]).
 -export([read_offline_msg/5]).
 -export([read_msg/2]).
@@ -200,7 +200,8 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
 %%
 %% @param Payload 撤回消息的新内容（不包含 msg_type/action）
 %% @param NowTs 当前时间戳
-%% @param MsgId 原消息ID
+%% @param MsgId 撤回通知消息ID（新插入的通知行）
+%% @param OriginalMsgId 被撤回的原消息ID（离线队列中原文行）
 %% @param FromId 发送方用户ID
 %% @param ToId 接收方用户ID
 %% @param MsgType 消息类型（custom, text 等）
@@ -208,15 +209,24 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId) ->
 %% @param E2EE 端到端加密信息
 %% @returns ok | {error, Reason}
 -spec revoke_offline_msg(
-    map(), binary() | integer(), binary(), integer(), integer(), binary(), binary(), map() | null
+    map(),
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    map() | null
 ) -> ok | {error, any()}.
-revoke_offline_msg(Payload, NowTs, MsgId, FromId, ToId, MsgType, Action, E2EE) ->
+revoke_offline_msg(Payload, NowTs, MsgId, OriginalMsgId, FromId, ToId, MsgType, Action, E2EE) ->
     % 将 Action 包含在 Payload 中（因为 write_msg/8 不支持单独的 Action 参数）
     PayloadWithAction = Payload#{<<"action">> => Action},
     PayloadBin = imboy_message_helper:encode_json(PayloadWithAction),
-    % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
+    % 存储撤回通知消息（v2.0: 使用 write_msg/8 显式传递参数）
     _ = msg_c2c_ds:write_msg(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
-    msg_c2c_repo:update_payload_by_msg_id(MsgId, PayloadBin).
+    % 覆盖离线队列中原消息 payload，避免离线接收方上线仍收到完整原文
+    msg_c2c_repo:update_payload_by_msg_id(OriginalMsgId, PayloadBin).
 
 %% @doc 编辑离线消息
 %% @returns ok | {error, Reason}

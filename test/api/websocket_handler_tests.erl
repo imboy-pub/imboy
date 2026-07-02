@@ -14,6 +14,8 @@ init_device_throttle_exceeded_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
+                {'parse_qs', 1, fun(_) -> [] end},
+                {'peer', 1, fun(_) -> {{127, 0, 0, 1}, 12345} end},
                 {'header', 3, fun(_, _, _) -> undefined end},
                 {'parse_header', 2, fun(_, _) -> undefined end},
                 {'reply', 2, fun(429, _Req) -> req_429 end}
@@ -35,6 +37,8 @@ init_subprotocol_ok_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
+                {'parse_qs', 1, fun(_) -> [] end},
+                {'peer', 1, fun(_) -> {{127, 0, 0, 1}, 12345} end},
                 {'header', 3, fun
                     (<<"vsn">>, _, _) -> <<"1.0.0">>;
                     (<<"did">>, _, _) -> <<"did_1">>;
@@ -63,6 +67,8 @@ init_auth_path_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
+                {'parse_qs', 1, fun(_) -> [] end},
+                {'peer', 1, fun(_) -> {{127, 0, 0, 1}, 12345} end},
                 {'header', 3, fun
                     (<<"vsn">>, _, _) -> <<"1.0.0">>;
                     (<<"did">>, _, _) -> <<"did_2">>;
@@ -298,6 +304,8 @@ init_stores_protocol_json_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
+                {'parse_qs', 1, fun(_) -> [] end},
+                {'peer', 1, fun(_) -> {{127, 0, 0, 1}, 12345} end},
                 {'header', 3, fun
                     (<<"vsn">>, _, _) -> <<"1.0.0">>;
                     (<<"did">>, _, _) -> <<"did_proto">>;
@@ -333,6 +341,8 @@ init_stores_protocol_protobuf_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
+                {'parse_qs', 1, fun(_) -> [] end},
+                {'peer', 1, fun(_) -> {{127, 0, 0, 1}, 12345} end},
                 {'header', 3, fun
                     (<<"vsn">>, _, _) -> <<"1.0.0">>;
                     (<<"did">>, _, _) -> <<"did_proto">>;

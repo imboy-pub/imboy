@@ -203,7 +203,7 @@ s2c_sends_to_user_test_() ->
                     _CreatedAt,
                     _ServerTs
                 ) ->
-                    ok
+                    {ok, new}
                 end},
                 {'enqueue', 3, fun(_T, _MsgId, _Data) -> ok end}
             ]},
@@ -454,7 +454,7 @@ c2g_del_everyone_allows_owner_and_uses_group_delete_test_() ->
                 {'send_next', 4, fun(_Uid, _MsgId, _Msg, _MsLi) -> ok end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_A, _B, _C, _D, _E, _F, _G, _H, _I, _J) -> ok end},
+                {'stage', 10, fun(_A, _B, _C, _D, _E, _F, _G, _H, _I, _J) -> {ok, new} end},
                 {'enqueue', 3, fun(_A, _B, _C) -> ok end}
             ]}
         ],
@@ -472,5 +472,47 @@ c2g_del_everyone_allows_owner_and_uses_group_delete_test_() ->
                 ])
             ),
             ?assertNot(meck:called(msg_operation_ds, delete_c2c_msg, '_'))
+        end
+    ).
+
+%% 兜底回归：未注册的 S2C action 必须返回 unknown_action，
+%% 而不是 function_clause 崩溃被外层 catch 误报为 invalid_json
+s2c_unknown_action_returns_unknown_action_test_() ->
+    ?WITH_MECKS(
+        [
+            {message_ds, [
+                {'assemble_s2c', 3, fun(MsgId, <<"unknown_action">>, _To) ->
+                    #{<<"id">> => MsgId, <<"action">> => <<"unknown_action">>}
+                end}
+            ]}
+        ],
+        fun() ->
+            {reply, Reply} = msg_s2c_logic:s2c(
+                <<"totally_unknown_action">>, <<"msg_x_001">>, 42, #{}
+            ),
+            ?assertEqual(<<"unknown_action">>, maps:get(<<"action">>, Reply))
+        end
+    ).
+
+%% 归属校验回归：非可信联系人不得被投递 store_shard
+s2c_store_shard_rejects_untrusted_proxy_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_social_ds, [
+                {'is_trusted_contact', 2, fun(42, 999) -> false end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(MsgId, Reason, _To) ->
+                    #{<<"id">> => MsgId, <<"action">> => Reason}
+                end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"999">>,
+                <<"payload">> => #{<<"shard_id">> => <<"s1">>}
+            },
+            {reply, Reply} = msg_s2c_logic:s2c(<<"store_shard">>, <<"msg_x_002">>, 42, Data),
+            ?assertEqual(<<"not_trusted_contact">>, maps:get(<<"action">>, Reply))
         end
     ).

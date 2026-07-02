@@ -14,7 +14,7 @@
 %% 导出函数
 -export([create/1]).
 -export([update_status/2]).
--export([update_status_and_device/3]).
+-export([update_status_and_device/4]).
 -export([get_by_session_id/1]).
 -export([get_pending_sessions/1]).
 -export([is_valid_session/1]).
@@ -67,14 +67,18 @@ update_status(SessionId, Status) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 更新会话状态（同时设置 to_device_id）
-%% 仅当当前状态仍为 pending 时才允许转移（CAS），防止并发 accept 请求互相覆盖 to_device_id
--spec update_status_and_device(binary(), binary(), binary()) -> ok | {error, term()}.
-update_status_and_device(SessionId, Status, ToDeviceId) ->
+%% @doc 更新会话状态（同时设置 to_device_id，并延长过期时间）
+%% 仅当当前状态仍为 pending 时才允许转移（CAS），防止并发 accept 请求互相覆盖 to_device_id。
+%% ExtendSeconds：accept 后重置有效期窗口，修复"accept 后 300s 硬过期，
+%% 用户犹豫超时导致 confirm 必失败 / accepted 会话被 cleanup 误清"。
+-spec update_status_and_device(binary(), binary(), binary(), pos_integer()) ->
+    ok | {error, term()}.
+update_status_and_device(SessionId, Status, ToDeviceId, ExtendSeconds) ->
     Sql1 =
-        <<"UPDATE e2ee_transfer_sessions ", "SET status = $1, to_device_id = $2 ",
-            "WHERE session_id = $3 ", "AND status = 'pending' ", "AND expires_at > NOW()">>,
-    case elib_pg:execute(Sql1, [Status, ToDeviceId, SessionId]) of
+        <<"UPDATE e2ee_transfer_sessions ", "SET status = $1, to_device_id = $2, ",
+            "expires_at = NOW() + make_interval(secs => $4) ", "WHERE session_id = $3 ",
+            "AND status = 'pending' ", "AND expires_at > NOW()">>,
+    case elib_pg:execute(Sql1, [Status, ToDeviceId, SessionId, ExtendSeconds]) of
         {ok, 0} -> {error, conflict};
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}

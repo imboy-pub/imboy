@@ -70,7 +70,7 @@
 -export([start_link/0]).
 
 %% 备份与入队
--export([stage/10, enqueue/3, unstage/1]).
+-export([stage/10, enqueue/3, unstage/1, find_staged/1]).
 
 %% 状态查询
 -export([len/0, status/0]).
@@ -142,7 +142,7 @@ start_link() ->
     integer() | [integer()],
     binary(),
     binary()
-) -> ok | error.
+) -> {ok, new} | {ok, duplicate} | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
     case
         msg_store_repo:stage(
@@ -151,15 +151,22 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     of
         {ok, _} ->
             _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
-            ok;
+            {ok, new};
         {error, {unique_violation, _MsgId}} ->
-            %% 【幂等性修复】消息已存在（客户端重发），返回 ok
+            %% 消息已存在（客户端重发）。显式区分 duplicate，
+            %% 调用方据此跳过投递管道，避免接收端重复推送
             _ = ?INFO_LOG([msg_store_ds, stage_duplicate, Type, MsgId]),
-            ok;
+            {ok, duplicate};
         {error, Reason} ->
             _ = ?ERROR_LOG([msg_store_ds, stage_error, Type, MsgId, Reason]),
             error
     end.
+
+%%-------------------------------------------------------------------
+%% @doc 按消息 ID 查 staging 行（秒撤兜底）
+-spec find_staged(binary()) -> {ok, map()} | {error, term()}.
+find_staged(MsgId) ->
+    msg_store_repo:find_by_msg_id(MsgId).
 
 %%-------------------------------------------------------------------
 %% @doc  入队并触发 Worker 处理（异步操作）

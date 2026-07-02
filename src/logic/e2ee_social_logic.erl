@@ -22,12 +22,13 @@
 -define(MAX_THRESHOLD, 3).
 
 %% API 导出
--export([create_shards/3]).
+-export([create_shards/4]).
 -export([get_user_shards/2]).
 -export([get_proxy_shards/1]).
 -export([validate_shards/2]).
 -export([can_recover/2]).
 -export([get_proxy_shard/2]).
+-export([consume_proxy_shard/2]).
 -export([list_trusted_contacts/1]).
 -export([add_trusted_contact/3]).
 -export([remove_trusted_contact/2]).
@@ -35,14 +36,16 @@
 %% @doc 创建恢复分片（C1 FIX：客户端已完成 Shamir 分割和代理公钥加密，服务端只存储）
 %% @param Uid 用户 ID
 %% @param KeyVersion 密钥版本号
+%% @param Threshold 恢复门限（客户端 Shamir 分割时的 K 值，落库供 can_recover 判定）
 %% @param Shards 客户端预加密分片列表 [{proxy_uid, encrypted_shard}]
 %% @returns {ok, StoredShards} | {error, Reason}
 -spec create_shards(
     integer(),
     binary(),
+    integer(),
     list(map())
 ) -> {ok, list(map())} | {error, term()}.
-create_shards(Uid, KeyVersion, Shards) ->
+create_shards(Uid, KeyVersion, Threshold, Shards) ->
     try
         % 1. 验证分片列表
         TotalShards = length(Shards),
@@ -55,6 +58,15 @@ create_shards(Uid, KeyVersion, Shards) ->
         case TotalShards > ?MAX_SHARDS of
             true -> throw({error, {<<"分片数不能超过 5"/utf8>>, ?ERR_BAD_REQUEST}});
             false -> ok
+        end,
+
+        % 验证恢复门限：曾硬编码 0 落库导致 can_recover 门限形同虚设
+        case
+            is_integer(Threshold) andalso Threshold >= ?MIN_THRESHOLD andalso
+                Threshold =< TotalShards
+        of
+            true -> ok;
+            false -> throw({error, {<<"恢复门限必须在 [2, 分片总数] 内"/utf8>>, ?ERR_BAD_REQUEST}})
         end,
 
         % 验证每个分片有必填字段
@@ -97,7 +109,7 @@ create_shards(Uid, KeyVersion, Shards) ->
                     <<"key_version">> => KeyVersion,
                     <<"shard_index">> => Index,
                     <<"total_shards">> => TotalShards,
-                    <<"threshold">> => 0,
+                    <<"threshold">> => Threshold,
                     <<"encrypted_shard">> => maps:get(<<"encrypted_shard">>, Shard)
                 }
             end,
@@ -185,6 +197,26 @@ can_recover(Uid, KeyVersion) ->
 -spec get_proxy_shard(binary(), integer()) -> {ok, map()} | {error, term()}.
 get_proxy_shard(ShardId, ProxyUid) ->
     e2ee_social_ds:get_proxy_shard(ShardId, ProxyUid).
+
+%% @doc 取用代理分片（一次性语义）：成功即置 used 并写审计日志
+%% 已取用/已撤销的分片不可重复取用，封堵"代理任意时间合谋重放重建私钥"
+-spec consume_proxy_shard(binary(), integer()) -> {ok, map()} | {error, term()}.
+consume_proxy_shard(ShardId, ProxyUid) ->
+    case e2ee_social_ds:consume_proxy_shard(ShardId, ProxyUid) of
+        {ok, Shard} ->
+            e2ee_shard_validator:log_shard_transmission(
+                shard_decrypted,
+                ShardId,
+                #{
+                    <<"uid">> => maps:get(<<"uid">>, Shard),
+                    <<"proxy_uid">> => ProxyUid,
+                    <<"key_version">> => maps:get(<<"key_version">>, Shard, <<"latest">>)
+                }
+            ),
+            {ok, Shard};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @doc 列出当前用户的所有可信联系人
 -spec list_trusted_contacts(integer()) -> {ok, [map()]} | {error, term()}.

@@ -246,12 +246,17 @@ stage_and_send_c2c(
                 {reply, ErrMsg} ->
                     % 被引用消息不存在等业务错误，直接返回错误响应
                     {reply, ErrMsg};
-                ok ->
+                {ok, duplicate} ->
+                    % 客户端重发（未收到 SERVER_ACK）：只补发 ACK，
+                    % 跳过整条投递管道，避免接收端重复推送
+                    self() ! {reply, message_policy:build_server_ack(MsgId, NowMS)},
+                    ok;
+                {ok, new} ->
                     % 立即响应和投递
                     % T1.2：ACK 构建退化为外壳调用 message_policy:build_server_ack/2
                     self() ! {reply, message_policy:build_server_ack(MsgId, NowMS)},
 
-                    % 异步处理：入队 + 投递消息（带重试）
+                    % 持久化侧（可安全重放：staging/正式表写入均幂等）
                     elib_async:async_retry(
                         fun() ->
                             % ① 先入队（异步，立即返回）
@@ -291,12 +296,7 @@ stage_and_send_c2c(
                                     )
                             end,
 
-                            % ③ 后投递（使用 MsgType/Action/E2EE 参数，不解析 Payload）
-                            Msg = message_ds:assemble_msg(
-                                <<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE
-                            ),
-                            imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
-                            % ④ 消息自毁：设置 expire_at（如果客户端指定了 expire_secs）
+                            % ③ 消息自毁：设置 expire_at（如果客户端指定了 expire_secs）
                             ExpireSecs = maps:get(<<"expire_secs">>, Data, undefined),
                             case msg_burn_logic:valid_expire_secs(ExpireSecs) of
                                 true when is_integer(ExpireSecs), ExpireSecs > 0 ->
@@ -306,14 +306,25 @@ stage_and_send_c2c(
                                     set_c2c_expire_at(MsgId, ExpireAt);
                                 _ ->
                                     ok
-                            end,
-                            % ⑤ 离线推送（异步，不阻塞消息投递）
-                            push_notification_logic:maybe_push_for_c2c(
-                                CurrentUid, ToId, MsgType, Payload
-                            )
+                            end
                         end,
                         3,
                         1000
+                    ),
+
+                    % 投递侧（不纳入重放边界：QoS 有自己的 ACK 重试链，
+                    % 与持久化同闭包整体重放会把已成功的实时投递再推一次）
+                    elib_async:async(
+                        fun() ->
+                            Msg = message_ds:assemble_msg(
+                                <<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE
+                            ),
+                            imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
+                            % 离线推送（异步，不阻塞消息投递）
+                            push_notification_logic:maybe_push_for_c2c(
+                                CurrentUid, ToId, MsgType, Payload
+                            )
+                        end
                     ),
                     ok
                 % end case StageResult
@@ -341,8 +352,14 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
     %% 【权限验证】只能撤销自己发送的消息
     case CurrentUid =:= FromId of
         true ->
-            %% 【新增】检查消息是否存在
-            case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
+            %% 【新增】检查消息是否存在；正式表查不到时兜底查 staging，
+            %% 修复"秒撤"竞态：消息仍在异步管道内被误判 msg_not_found
+            FindResult =
+                case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
+                    {ok, Found} -> {ok, Found};
+                    _ -> msg_store_ds:find_staged(OriginalMsgId)
+                end,
+            case FindResult of
                 {ok, MsgData} ->
                     %% 【新增】检查消息撤回时间限制
                     %% 用 CurrentUid（鉴权得到）而非客户端自报的 FromId 做归属比对，
@@ -380,6 +397,13 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                     % 未超过时间限制，继续原有逻辑
                                     NowTs = elib_dt:now(),
 
+                                    % 取消原消息在接收方各在线设备上的投递重试定时器，
+                                    % 避免撤回后重试窗口内原文仍被再投递一次
+                                    _ = [
+                                        websocket_logic:cancel_timer(ToId, DID, OriginalMsgId)
+                                     || DID <- user_device_logic:online_dids(ToId)
+                                    ],
+
                                     % 构建撤销确认消息（v2.0 格式）
                                     %% msg_type 和 action 在顶层，不在 payload 中
                                     RevokePayload = #{
@@ -408,12 +432,13 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
                                             ok;
                                         % 对端离线处理
                                         false ->
-                                            % v2.0: 使用 revoke_offline_msg/8 显式传递 msg_type 和 action
+                                            % v2.0: 使用 revoke_offline_msg/9 显式传递 msg_type 和 action
                                             case
                                                 msg_c2c_ds:revoke_offline_msg(
                                                     RevokePayload,
                                                     NowTs,
                                                     MsgId,
+                                                    OriginalMsgId,
                                                     CurrentUid,
                                                     ToId,
                                                     <<"custom">>,

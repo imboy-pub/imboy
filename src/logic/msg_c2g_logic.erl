@@ -264,7 +264,17 @@ do_stage_and_send_c2g(
 
     % 【关键修复】先备份到 staging 表（同步，确保消息安全）
     case StageResult of
-        ok ->
+        {ok, duplicate} ->
+            % 客户端重发（未收到 SERVER_ACK）：只补发 ACK，
+            % 跳过投递管道，避免全群成员重复推送
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_SERVER_ACK">>,
+                    <<"server_ts">> => NowMS
+                }},
+            ok;
+        {ok, new} ->
             % 备份成功，继续处理
             MsLi = elib_retry_config:intervals(<<"c2g">>),
             % 立即响应
@@ -441,7 +451,13 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                     edit -> maps:get(<<"original_msg_id">>, maps:get(<<"payload">>, Data))
                 end,
 
-            case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
+            %% 正式表查不到时兜底查 staging（秒撤竞态：消息仍在异步管道内）
+            FindResult =
+                case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
+                    {ok, Found} -> {ok, Found};
+                    _ -> msg_store_ds:find_staged(OriginalMsgId)
+                end,
+            case FindResult of
                 {ok, MsgData} ->
                     %% 检查消息的发送者是否为当前用户
                     case MsgData of
@@ -509,6 +525,16 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                                             ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
                                             MsLi = elib_retry_config:intervals(<<"c2g">>),
 
+                                            % 取消原消息在各成员在线设备上的投递重试定时器
+                                            _ = [
+                                                websocket_logic:cancel_timer(
+                                                    Uid, DID, OriginalMsgId
+                                                )
+                                             || Uid <- MemberUids,
+                                                CurrentUid /= Uid,
+                                                DID <- user_device_logic:online_dids(Uid)
+                                            ],
+
                                             % 发送给群组其他成员
                                             [
                                                 message_ds:send_next(
@@ -522,6 +548,7 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                                                 ActionPayloadJson,
                                                 NowTs,
                                                 MsgId,
+                                                OriginalMsgId,
                                                 CurrentUid,
                                                 MemberUids,
                                                 ToGID,

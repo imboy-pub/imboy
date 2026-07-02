@@ -29,8 +29,22 @@
 %% 查询操作
 -export([get_unstaged/1]).
 -export([get_staging_stats/0]).
+-export([find_by_msg_id/1]).
 
 %% ==================== API Functions ====================
+
+%% @doc 按消息 ID 查 staging 行（秒撤兜底：消息可能仍在异步管道未落正式表）
+-spec find_by_msg_id(binary()) -> {ok, map()} | {error, not_found} | {error, term()}.
+find_by_msg_id(MsgId) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT msg_id, from_id, to_id, created_at FROM ", Tb/binary,
+            " WHERE msg_id = $1 LIMIT 1">>,
+    case elib_pg:query(Sql, [MsgId]) of
+        {ok, []} -> {error, not_found};
+        {ok, [Row | _]} -> {ok, Row};
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 获取备份表名
 -spec tablename() -> binary().

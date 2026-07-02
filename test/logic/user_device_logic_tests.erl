@@ -12,30 +12,50 @@
 %% ===================================================================
 
 save_device_success_test_() ->
-    ?WITH_MECK(user_device_ds, [
-        {'count_by_uid', 1, fun(_Uid) -> 1 end},
-        {'page', 3, fun(_Uid, _Limit, _Offset) ->
-            {ok, [#{<<"device_id">> => <<"device1">>, <<"device_name">> => <<"iPhone">>,
-                    <<"device_type">> => <<"ios">>, <<"last_active_at">> => <<>>,
-                    <<"device_vsn">> => <<"1.0">>}]}
-        end}
-    ], fun() ->
-        Result = user_device_logic:page(100, 1, 10),
-        ?assertMatch(#{list := [_ | _]}, Result)
-    end).
+    ?WITH_MECK(
+        user_device_ds,
+        [
+            {'count_by_uid', 1, fun(_Uid) -> 1 end},
+            {'page', 3, fun(_Uid, _Limit, _Offset) ->
+                {ok, [
+                    #{
+                        <<"device_id">> => <<"device1">>,
+                        <<"device_name">> => <<"iPhone">>,
+                        <<"device_type">> => <<"ios">>,
+                        <<"last_active_at">> => <<>>,
+                        <<"device_vsn">> => <<"1.0">>
+                    }
+                ]}
+            end}
+        ],
+        fun() ->
+            Result = user_device_logic:page(100, 1, 10),
+            ?assertMatch(#{list := [_ | _]}, Result)
+        end
+    ).
 
 get_devices_success_test_() ->
-    ?WITH_MECK(user_device_ds, [
-        {'count_by_uid', 1, fun(_Uid) -> 1 end},
-        {'page', 3, fun(_Uid, _Limit, _Offset) ->
-            {ok, [#{<<"device_id">> => <<"d1">>, <<"device_name">> => <<"Test">>,
-                    <<"device_type">> => <<"android">>, <<"last_active_at">> => <<>>,
-                    <<"device_vsn">> => <<"1.0">>}]}
-        end}
-    ], fun() ->
-        Result = user_device_logic:page(100, 1, 10),
-        ?assertMatch(#{list := [_ | _]}, Result)
-    end).
+    ?WITH_MECK(
+        user_device_ds,
+        [
+            {'count_by_uid', 1, fun(_Uid) -> 1 end},
+            {'page', 3, fun(_Uid, _Limit, _Offset) ->
+                {ok, [
+                    #{
+                        <<"device_id">> => <<"d1">>,
+                        <<"device_name">> => <<"Test">>,
+                        <<"device_type">> => <<"android">>,
+                        <<"last_active_at">> => <<>>,
+                        <<"device_vsn">> => <<"1.0">>
+                    }
+                ]}
+            end}
+        ],
+        fun() ->
+            Result = user_device_logic:page(100, 1, 10),
+            ?assertMatch(#{list := [_ | _]}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 设备会话管理测试
@@ -45,18 +65,24 @@ get_devices_success_test_() ->
 validate_device_type_valid_types_test_() ->
     ?TEST_SIMPLE(fun() ->
         ValidTypes = [<<"ios">>, <<"android">>, <<"macos">>, <<"windows">>, <<"linux">>, <<"web">>],
-        lists:foreach(fun(Type) ->
-            ?assertEqual(true, user_device_logic:validate_device_type(Type))
-        end, ValidTypes)
+        lists:foreach(
+            fun(Type) ->
+                ?assertEqual(true, user_device_logic:validate_device_type(Type))
+            end,
+            ValidTypes
+        )
     end).
 
 %% @doc 验证无效的设备类型
 validate_device_type_invalid_types_test_() ->
     ?TEST_SIMPLE(fun() ->
         InvalidTypes = [<<"invalid">>, <<>>, <<"IOS">>, <<"Android">>, undefined],
-        lists:foreach(fun(Type) ->
-            ?assertEqual(false, user_device_logic:validate_device_type(Type))
-        end, InvalidTypes)
+        lists:foreach(
+            fun(Type) ->
+                ?assertEqual(false, user_device_logic:validate_device_type(Type))
+            end,
+            InvalidTypes
+        )
     end).
 
 %% @doc 验证设备类型枚举
@@ -85,7 +111,8 @@ check_login_conflict_no_conflict_test_() ->
         % 结果应该是 {ok, no_conflict} 或者 {error, _}（取决于 syn 状态）
         case Result of
             {ok, no_conflict} -> ok;
-            {error, _} -> ok  % syn 未初始化时可能返回错误
+            % syn 未初始化时可能返回错误
+            {error, _} -> ok
         end
     end).
 
@@ -173,3 +200,51 @@ online_dids_test_() ->
 
         ?assertEqual([], Result)
     end).
+
+%% 删设备联动踢下线：设备在线时必须断开其 WS 会话
+delete_kicks_online_device_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [
+                {delete, 2, fun(42, <<"did-1">>) -> ok end}
+            ]},
+            {imboy_cache, [
+                {flush, 1, fun(_) -> ok end}
+            ]},
+            {imboy_syn, [
+                {list_by_uid, 1, fun(42) -> [{self(), {<<"ios">>, <<"did-1">>}}] end},
+                {leave, 2, fun(42, _Pid) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ok = user_device_logic:delete(42, <<"did-1">>),
+            %% 本进程即被踢设备的 WS 进程，应收到 kick_device 消息
+            Kicked =
+                receive
+                    {kick_device, _ReasonMap} -> true
+                after 500 -> false
+                end,
+            ?assert(Kicked),
+            ?assertEqual(1, meck:num_calls(imboy_syn, leave, 2))
+        end
+    ).
+
+delete_offline_device_is_noop_kick_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_ds, [
+                {delete, 2, fun(42, <<"did-2">>) -> ok end}
+            ]},
+            {imboy_cache, [
+                {flush, 1, fun(_) -> ok end}
+            ]},
+            {imboy_syn, [
+                {list_by_uid, 1, fun(42) -> [] end},
+                {leave, 2, fun(_, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ok = user_device_logic:delete(42, <<"did-2">>),
+            ?assertEqual(0, meck:num_calls(imboy_syn, leave, 2))
+        end
+    ).

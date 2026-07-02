@@ -12,6 +12,8 @@
 -export([get_user_shards/2]).
 -export([get_proxy_shards/1]).
 -export([find_shard_by_id/1]).
+-export([mark_shard_used/2]).
+-export([revoke_shards_by_proxy/2]).
 -export([delete_restored_shards/2]).
 -export([can_recover/2]).
 -export([add_contact/1]).
@@ -81,6 +83,23 @@ get_proxy_shards(ProxyUid) ->
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
     end.
+
+%% @doc 分片取用（一次性语义）：仅当分片仍为 active 时 CAS 置为 used
+%% 返回受影响行数，0 行表示已被并发取用或状态已变更
+-spec mark_shard_used(binary(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+mark_shard_used(ShardId, ProxyUid) ->
+    Sql1 =
+        <<"UPDATE e2ee_social_shards SET status = 'used', used_at = NOW() ",
+            "WHERE shard_id = $1 AND proxy_uid = $2 AND status = 'active'">>,
+    elib_pg:execute(Sql1, [ShardId, ProxyUid]).
+
+%% @doc 撤销可信联系人时级联失效其持有的活跃分片
+-spec revoke_shards_by_proxy(integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+revoke_shards_by_proxy(Uid, ProxyUid) ->
+    Sql1 =
+        <<"UPDATE e2ee_social_shards SET status = 'revoked' ",
+            "WHERE uid = $1 AND proxy_uid = $2 AND status = 'active'">>,
+    elib_pg:execute(Sql1, [Uid, ProxyUid]).
 
 %% @doc 删除已恢复的分片
 -spec delete_restored_shards(integer(), binary()) -> ok | {error, term()}.

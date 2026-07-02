@@ -201,7 +201,7 @@ handle_legacy_binary(Msg, Protocol, State) ->
                                 <<"rate_limited">>,
                                 <<"消息发送过于频繁，请稍后再试"/utf8>>
                             ),
-                            {reply, ws_reply(protobuf, RateLimitMsg), State, hibernate};
+                            {reply, reply_frame(RateLimitMsg, State), State, hibernate};
                         _ ->
                             handle_protobuf_message_decoded(Data0, State)
                     end
@@ -211,7 +211,7 @@ handle_legacy_binary(Msg, Protocol, State) ->
                     ErrorMsg = ws_validation_error(
                         <<>>, <<"invalid_protobuf">>, <<"decode_error">>
                     ),
-                    {reply, ws_reply(protobuf, ErrorMsg), State, hibernate}
+                    {reply, reply_frame(ErrorMsg, State), State, hibernate}
             end;
         _ ->
             %% JSON 协议不应收到 binary 帧，忽略
@@ -362,9 +362,7 @@ handle_client_ack(Tail, State) ->
                         <<"server_ts">> => elib_dt:millisecond()
                     },
                     process_ack_type(Type, MsgId, CurrentUid, DID),
-                    %% 协议感知的响应帧
-                    Protocol = maps:get(protocol, State, json),
-                    {reply, ws_reply(Protocol, AckConfirmMsg), State, hibernate};
+                    {reply, reply_frame(AckConfirmMsg, State), State, hibernate};
                 {error, Reason} ->
                     ok = ?WARN_LOG({client_ack_invalid_params, Reason, Type, MsgId, DID}),
                     ErrorMsg = #{
@@ -372,8 +370,7 @@ handle_client_ack(Tail, State) ->
                         <<"reason">> => Reason,
                         <<"server_ts">> => elib_dt:millisecond()
                     },
-                    Protocol = maps:get(protocol, State, json),
-                    {reply, ws_reply(Protocol, ErrorMsg), State, hibernate}
+                    {reply, reply_frame(ErrorMsg, State), State, hibernate}
             end
     catch
         Class:CatchReason2:_Stacktrace ->
@@ -383,8 +380,7 @@ handle_client_ack(Tail, State) ->
                 <<"reason">> => <<"parse_error">>,
                 <<"server_ts">> => elib_dt:millisecond()
             },
-            Protocol2 = maps:get(protocol, State, json),
-            {reply, ws_reply(Protocol2, ErrorMsg2), State, hibernate}
+            {reply, reply_frame(ErrorMsg2, State), State, hibernate}
     end.
 
 %% @doc 处理 protobuf 格式的 CLIENT_ACK 消息
@@ -430,7 +426,7 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
                     <<"server_ts">> => elib_dt:millisecond()
                 },
                 process_ack_type(Type, MsgId, CurrentUid, DID),
-                {reply, ws_reply(protobuf, AckConfirmMsg), State, hibernate};
+                {reply, reply_frame(AckConfirmMsg, State), State, hibernate};
             {error, Reason} ->
                 ok = ?WARN_LOG({protobuf_client_ack_invalid, Reason, MsgId}),
                 ErrorMsg = #{
@@ -438,7 +434,7 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
                     <<"reason">> => Reason,
                     <<"server_ts">> => elib_dt:millisecond()
                 },
-                {reply, ws_reply(protobuf, ErrorMsg), State, hibernate}
+                {reply, reply_frame(ErrorMsg, State), State, hibernate}
         end
     catch
         Class:CatchReason:Stacktrace ->
@@ -448,7 +444,7 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
                 <<"reason">> => <<"decode_error">>,
                 <<"server_ts">> => elib_dt:millisecond()
             },
-            {reply, ws_reply(protobuf, ErrorMsg2), State, hibernate}
+            {reply, reply_frame(ErrorMsg2, State), State, hibernate}
     end.
 
 %% @doc 将 protobuf MsgDirection 枚举转为 ACK 处理使用的 type binary
@@ -711,7 +707,6 @@ handle_protobuf_message_decoded(Data0, State) ->
     ok = ?DEBUG_LOG({protobuf_message, Data0}),
     try
         CurrentUid = auth_ds:current_uid(State),
-        Protocol = maps:get(protocol, State, protobuf),
 
         %% 解码 payload 子消息（bytes → map）
         MsgType = maps:get(<<"msg_type">>, Data0, <<>>),
@@ -727,7 +722,7 @@ handle_protobuf_message_decoded(Data0, State) ->
                 MsgId0 = maps:get(<<"id">>, Data, <<>>),
                 ok = ?WARN_LOG({protobuf_message_invalid, Reason, MsgId0}),
                 ErrorMsg = ws_validation_error(MsgId0, <<"invalid_message">>, Reason),
-                {reply, ws_reply(Protocol, ErrorMsg), State, hibernate};
+                {reply, reply_frame(ErrorMsg, State), State, hibernate};
             {ok, ValidatedData} ->
                 MsgId = maps:get(<<"id">>, ValidatedData, <<>>),
                 Type = maps:get(<<"type">>, ValidatedData, <<>>),
@@ -744,15 +739,14 @@ handle_protobuf_message_decoded(Data0, State) ->
                     ok ->
                         {ok, State, hibernate};
                     {reply, Msg2} ->
-                        {reply, ws_reply(Protocol, Msg2), State, hibernate}
+                        {reply, reply_frame(Msg2, State), State, hibernate}
                 end
         end
     catch
         Class:CatchReason:Stacktrace ->
             ok = ?ERROR_LOG({protobuf_message_error, Class, CatchReason, Stacktrace}),
-            Protocol2 = maps:get(protocol, State, protobuf),
             ErrorMsg2 = ws_validation_error(<<>>, <<"invalid_protobuf">>, <<"decode_error">>),
-            {reply, ws_reply(Protocol2, ErrorMsg2), State, hibernate}
+            {reply, reply_frame(ErrorMsg2, State), State, hibernate}
     end.
 
 %% @doc 根据客户端子协议列表确定编码协议与 framing
@@ -765,10 +759,12 @@ negotiate_protocol(SubPt) when is_list(SubPt), length(SubPt) > 0 ->
 negotiate_protocol(_) ->
     {json, none}.
 
-%% @doc 根据协议编码并包装为 WebSocket 帧（非 v2 framing）
--spec ws_reply(imboy_codec:protocol(), map()) -> {text, binary()} | {binary, binary()}.
-ws_reply(Protocol, Msg) when is_map(Msg) ->
-    ws_reply(Protocol, none, Msg).
+%% @doc 同步响应统一入口：协议与 framing 一律取自连接 State。
+%% 修复 v2 连接的同步响应（CLIENT_ACK_CONFIRM 等）丢帧头
+%% 以裸 protobuf 下发、客户端解帧失败被丢弃的问题。
+-spec reply_frame(map(), map()) -> {text, binary()} | {binary, binary()}.
+reply_frame(Msg, State) when is_map(Msg) ->
+    ws_reply(maps:get(protocol, State, json), maps:get(framing, State, none), Msg).
 
 %% @doc 根据协议与 framing 编码并包装为 WebSocket 帧
 %% v2 framing：protobuf 序列化后用 imboy_frame 包裹，类型默认 MSG_S2C

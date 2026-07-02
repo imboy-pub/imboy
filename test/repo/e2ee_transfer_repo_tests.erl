@@ -4,11 +4,13 @@
 
 %%%===================================================================
 %%% @doc e2ee_transfer_repo 基础测试
+%%% 会话 ID 生成已迁移至 elib_uuid:gen_v7（repo 不再提供 generate_session_id），
+%%% 保留 UUID v7 格式/唯一性/时序性质断言
 %%%===================================================================
 
 generate_session_id_is_uuid_v7_format_test_() ->
     ?TEST_SIMPLE(fun() ->
-        SessionId = e2ee_transfer_repo:generate_session_id(),
+        SessionId = elib_uuid:gen_v7(),
         ?assert(is_binary(SessionId)),
         ?assertEqual(36, byte_size(SessionId)),
         ?assert(is_uuid_v7(SessionId))
@@ -16,16 +18,16 @@ generate_session_id_is_uuid_v7_format_test_() ->
 
 generate_session_id_is_unique_across_batch_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Ids = [e2ee_transfer_repo:generate_session_id() || _ <- lists:seq(1, 100)],
+        Ids = [elib_uuid:gen_v7() || _ <- lists:seq(1, 100)],
         UniqueCount = length(lists:usort(Ids)),
         ?assertEqual(length(Ids), UniqueCount)
     end).
 
 generate_session_id_cross_ms_ordered_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Id1 = e2ee_transfer_repo:generate_session_id(),
+        Id1 = elib_uuid:gen_v7(),
         timer:sleep(10),
-        Id2 = e2ee_transfer_repo:generate_session_id(),
+        Id2 = elib_uuid:gen_v7(),
         ?assert(Id1 < Id2)
     end).
 

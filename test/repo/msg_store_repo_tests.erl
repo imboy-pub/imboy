@@ -18,708 +18,914 @@
 %% ===================================================================
 
 tablename_returns_qualified_table_name_test_() ->
-    ?WITH_MECK(elib_pg_sql, [
-        {'public_tablename', 1, fun(<<"msg_store_staging">>) ->
-            <<"public.msg_store_staging">>
-        end}
-    ], fun() ->
-        Result = msg_store_repo:tablename(),
-        ?assertEqual(<<"public.msg_store_staging">>, Result),
-        ?assert(is_binary(Result)),
-        ?assert(Result =/= <<>>)
-    end).
+    ?WITH_MECK(
+        elib_pg_sql,
+        [
+            {'public_tablename', 1, fun(<<"msg_store_staging">>) ->
+                <<"public.msg_store_staging">>
+            end}
+        ],
+        fun() ->
+            Result = msg_store_repo:tablename(),
+            ?assertEqual(<<"public.msg_store_staging">>, Result),
+            ?assert(is_binary(Result)),
+            ?assert(Result =/= <<>>)
+        end
+    ).
 
 %% ===================================================================
 %% stage/10 测试 - 单聊消息 (integer ToId)
 %% ===================================================================
 
 stage_with_integer_toid_validates_all_fields_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(<<"msg_store_staging">>) ->
-                <<"public.msg_store_staging">>
-            end},
-            {'insert', 2, fun(_Tb, Data) ->
-                % 验证必需字段存在
-                RequiredFields = [type, msg_id, msg_type, action, payload,
-                                 from_id, to_id, created_at, server_ts, retry_count],
-                lists:foreach(fun(Field) ->
-                    ?assert(maps:is_key(Field, Data),
-                            io_lib:format("Missing field: ~p", [Field]))
-                end, RequiredFields),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"msg_store_staging">>) ->
+                    <<"public.msg_store_staging">>
+                end},
+                {'insert', 2, fun(_Tb, Data) ->
+                    % 验证必需字段存在
+                    RequiredFields = [
+                        type,
+                        msg_id,
+                        msg_type,
+                        action,
+                        payload,
+                        from_id,
+                        to_id,
+                        created_at,
+                        server_ts,
+                        retry_count
+                    ],
+                    lists:foreach(
+                        fun(Field) ->
+                            ?assert(
+                                maps:is_key(Field, Data),
+                                io_lib:format("Missing field: ~p", [Field])
+                            )
+                        end,
+                        RequiredFields
+                    ),
 
-                % 验证字段值正确性
-                ?assertEqual(<<"c2c">>, maps:get(type, Data)),
-                ?assertEqual(<<"msg123">>, maps:get(msg_id, Data)),
-                ?assertEqual(100, maps:get(from_id, Data)),
-                ?assertEqual(200, maps:get(to_id, Data)),
-                ?assertEqual(0, maps:get(retry_count, Data)),
+                    % 验证字段值正确性
+                    ?assertEqual(<<"c2c">>, maps:get(type, Data)),
+                    ?assertEqual(<<"msg123">>, maps:get(msg_id, Data)),
+                    ?assertEqual(100, maps:get(from_id, Data)),
+                    ?assertEqual(200, maps:get(to_id, Data)),
+                    ?assertEqual(0, maps:get(retry_count, Data)),
 
-                {<<"SELECT 1">>, []}
-            end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2c">>, <<"msg123">>, <<"text">>, <<"send">>, <<>>,
-            <<"{\"body\": \"hello\"}">>, 100, 200,
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertEqual({ok, 12345}, Result)
-    end).
+                    {<<"SELECT 1">>, []}
+                end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2c">>,
+                <<"msg123">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{\"body\": \"hello\"}">>,
+                100,
+                200,
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertEqual({ok, 12345}, Result)
+        end
+    ).
 
 stage_with_empty_e2ee_converts_to_null_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-            {'insert', 2, fun(_Tb, Data) ->
-                E2EE = maps:get(e2ee, Data),
-                ?assertEqual(null, E2EE),
-                {<<"SELECT 1">>, []}
-            end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2c">>, <<"msg456">>, <<"text">>, <<"send">>, <<>>,
-            <<"{}">>, 100, 200,
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertEqual({ok, 12345}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                {'insert', 2, fun(_Tb, Data) ->
+                    E2EE = maps:get(e2ee, Data),
+                    ?assertEqual(null, E2EE),
+                    {<<"SELECT 1">>, []}
+                end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2c">>,
+                <<"msg456">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{}">>,
+                100,
+                200,
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertEqual({ok, 12345}, Result)
+        end
+    ).
 
 stage_with_e2ee_data_preserves_value_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-            {'insert', 2, fun(_Tb, Data) ->
-                E2EE = maps:get(e2ee, Data),
-                ?assertEqual(<<"e2ee_data">>, E2EE),
-                {<<"SELECT 1">>, []}
-            end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2c">>, <<"msg789">>, <<"text">>, <<"send">>, <<"e2ee_data">>,
-            <<"{}">>, 100, 200,
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertEqual({ok, 12345}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                {'insert', 2, fun(_Tb, Data) ->
+                    E2EE = maps:get(e2ee, Data),
+                    %% e2ee 列是 JSONB：裸 binary 会被包装为 JSON 字符串落库
+                    ?assertEqual(<<"\"e2ee_data\"">>, E2EE),
+                    {<<"SELECT 1">>, []}
+                end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2c">>,
+                <<"msg789">>,
+                <<"text">>,
+                <<"send">>,
+                <<"e2ee_data">>,
+                <<"{}">>,
+                100,
+                200,
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertEqual({ok, 12345}, Result)
+        end
+    ).
 
 stage_unique_violation_converts_to_business_error_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) ->
-                {error, {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2c">>, <<"msg_duplicate">>, <<"text">>, <<"send">>, <<>>,
-            <<"{}">>, 100, 200,
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertMatch({error, {unique_violation, <<"msg_duplicate">>}}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) ->
+                    {error,
+                        {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2c">>,
+                <<"msg_duplicate">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{}">>,
+                100,
+                200,
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertMatch({error, {unique_violation, <<"msg_duplicate">>}}, Result)
+        end
+    ).
 
 stage_with_zero_from_id_accepted_test_() ->
     % 边界测试：from_id = 0 当前源码不拒绝
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2c">>, <<"msg_zero">>, <<"text">>, <<"send">>, <<>>,
-            <<"{}">>, 0, 200,
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2c">>,
+                <<"msg_zero">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{}">>,
+                0,
+                200,
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 stage_with_negative_from_id_accepted_test_() ->
     % 边界测试：负数 from_id 当前源码不拒绝
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2c">>, <<"msg_negative">>, <<"text">>, <<"send">>, <<>>,
-            <<"{}">>, -1, 200,
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2c">>,
+                <<"msg_negative">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{}">>,
+                -1,
+                200,
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% stage/10 测试 - 群聊消息 (list ToIdList)
 %% ===================================================================
 
 stage_with_list_toidlist_validates_structure_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
-            {'insert', 2, fun(_Tb, Data) ->
-                ?assert(maps:is_key(to_id_list, Data)),
-                ?assertNot(maps:is_key(to_id, Data)),
-                ToIdList = maps:get(to_id_list, Data),
-                ?assertEqual([100, 200, 300], ToIdList),
-                ?assertEqual(<<"c2g">>, maps:get(type, Data)),
-                {<<"SELECT 1">>, []}
-            end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2g">>, <<"msg_group">>, <<"text">>, <<"send">>, <<>>,
-            <<"{}">>, 50, [100, 200, 300],
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertEqual({ok, 12345}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                {'insert', 2, fun(_Tb, Data) ->
+                    ?assert(maps:is_key(to_id_list, Data)),
+                    ?assertNot(maps:is_key(to_id, Data)),
+                    ToIdList = maps:get(to_id_list, Data),
+                    ?assertEqual([100, 200, 300], ToIdList),
+                    ?assertEqual(<<"c2g">>, maps:get(type, Data)),
+                    {<<"SELECT 1">>, []}
+                end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2g">>,
+                <<"msg_group">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{}">>,
+                50,
+                [100, 200, 300],
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertEqual({ok, 12345}, Result)
+        end
+    ).
 
 stage_with_empty_toidlist_accepted_test_() ->
     % 边界测试：空成员列表当前源码不拒绝
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2g">>, <<"msg_empty_group">>, <<"text">>, <<"send">>, <<>>,
-            <<"{}">>, 50, [],
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2g">>,
+                <<"msg_empty_group">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{}">>,
+                50,
+                [],
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 stage_with_list_unique_violation_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_tsid, [
-            {'generate', 1, fun(msg_store) -> 12345 end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) ->
-                {error, {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:stage(
-            <<"c2g">>, <<"msg_group_dup">>, <<"text">>, <<"send">>, <<>>,
-            <<"{}">>, 50, [100, 200],
-            <<"2024-01-01T00:00:00Z">>, <<"2024-01-01T00:00:01Z">>
-        ),
-        ?assertMatch({error, {unique_violation, <<"msg_group_dup">>}}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12345 end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) ->
+                    {error,
+                        {error, {error, <<"23505">>, unique_violation, <<"duplicate key">>, []}}}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:stage(
+                <<"c2g">>,
+                <<"msg_group_dup">>,
+                <<"text">>,
+                <<"send">>,
+                <<>>,
+                <<"{}">>,
+                50,
+                [100, 200],
+                <<"2024-01-01T00:00:00Z">>,
+                <<"2024-01-01T00:00:01Z">>
+            ),
+            ?assertMatch({error, {unique_violation, <<"msg_group_dup">>}}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% unstage/2 测试
 %% ===================================================================
 
 unstage_validates_sql_parameters_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(<<"msg_store_staging">>) ->
-                <<"public.msg_store_staging">>
-            end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(Sql, [Type, MsgId]) ->
-                % 验证 SQL 结构
-                ?assert(is_binary(Sql)),
-                ?assert(Sql =/= <<>>),
-                ?assertNotEqual(0, byte_size(Sql)),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"msg_store_staging">>) ->
+                    <<"public.msg_store_staging">>
+                end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(Sql, [Type, MsgId]) ->
+                    % 验证 SQL 结构
+                    ?assert(is_binary(Sql)),
+                    ?assert(Sql =/= <<>>),
+                    ?assertNotEqual(0, byte_size(Sql)),
 
-                % 验证 SQL 包含关键部分
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"DELETE FROM">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE type =">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"AND msg_id =">>)),
+                    % 验证 SQL 包含关键部分
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"DELETE FROM">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE type =">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"AND msg_id =">>)),
 
-                % 验证参数类型和值
-                ?assert(is_binary(Type)),
-                ?assertEqual(<<"c2c">>, Type),
-                ?assert(is_binary(MsgId)),
-                ?assertEqual(<<"msg123">>, MsgId),
+                    % 验证参数类型和值
+                    ?assert(is_binary(Type)),
+                    ?assertEqual(<<"c2c">>, Type),
+                    ?assert(is_binary(MsgId)),
+                    ?assertEqual(<<"msg123">>, MsgId),
 
-                {ok, 1}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:unstage(<<"c2c">>, <<"msg123">>),
-        ?assertEqual({ok, 1}, Result)
-    end).
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:unstage(<<"c2c">>, <<"msg123">>),
+            ?assertEqual({ok, 1}, Result)
+        end
+    ).
 
 unstage_nonexistent_returns_zero_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:unstage(<<"c2c">>, <<"nonexistent">>),
-        ?assertEqual({ok, 0}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:unstage(<<"c2c">>, <<"nonexistent">>),
+            ?assertEqual({ok, 0}, Result)
+        end
+    ).
 
 unstage_with_empty_type_accepted_test_() ->
     % 边界测试：空 Type 被传递到数据库（源码不验证）
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:unstage(<<>>, <<"msg123">>),
-        % 源码不验证空 Type，直接传到数据库
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:unstage(<<>>, <<"msg123">>),
+            % 源码不验证空 Type，直接传到数据库
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% claim_pending/2 测试
 %% ===================================================================
 
 claim_pending_validates_transaction_logic_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'with_tx', 1, fun(TxFun) ->
-                % 验证事务函数被调用
-                ?assert(is_function(TxFun, 1)),
-                % 执行事务函数
-                TxFun(self())
-            end},
-            {'query', 3, fun(_Conn, Sql, [Limit]) ->
-                % 验证 SQL 包含 SKIP LOCKED
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"FOR UPDATE SKIP LOCKED">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NULL">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"available_at <= NOW()">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"ORDER BY created_at ASC">>)),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(TxFun) ->
+                    % 验证事务函数被调用
+                    ?assert(is_function(TxFun, 1)),
+                    % 执行事务函数
+                    TxFun(self())
+                end},
+                {'query', 3, fun(_Conn, Sql, [Limit]) ->
+                    % 验证 SQL 包含 SKIP LOCKED
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"FOR UPDATE SKIP LOCKED">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NULL">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"available_at <= NOW()">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"ORDER BY created_at ASC">>)),
 
-                % 验证 LIMIT 参数
-                ?assert(is_integer(Limit)),
-                ?assertEqual(10, Limit),
-                ?assert(Limit > 0),
+                    % 验证 LIMIT 参数
+                    ?assert(is_integer(Limit)),
+                    ?assertEqual(10, Limit),
+                    ?assert(Limit > 0),
 
-                {ok, [
-                    #{<<"id">> => 1, <<"msg_id">> => <<"msg1">>, <<"payload">> => <<"{}">>},
-                    #{<<"id">> => 2, <<"msg_id">> => <<"msg2">>, <<"payload">> => <<"{}">>}
-                ]}
-            end},
-            {'execute', 3, fun(_Conn, LeaseSql, [_LeaseSeconds, Ids]) ->
-                % 验证租约 SQL
-                ?assertNotEqual(nomatch, binary:match(LeaseSql, <<"UPDATE ">>)),
-                ?assertNotEqual(nomatch, binary:match(LeaseSql, <<"SET available_at = NOW()">>)),
-                ?assertNotEqual(nomatch, binary:match(LeaseSql, <<"INTERVAL '1 second' * ">>)),
+                    {ok, [
+                        #{<<"id">> => 1, <<"msg_id">> => <<"msg1">>, <<"payload">> => <<"{}">>},
+                        #{<<"id">> => 2, <<"msg_id">> => <<"msg2">>, <<"payload">> => <<"{}">>}
+                    ]}
+                end},
+                {'execute', 3, fun(_Conn, LeaseSql, [_LeaseSeconds, Ids]) ->
+                    % 验证租约 SQL
+                    ?assertNotEqual(nomatch, binary:match(LeaseSql, <<"UPDATE ">>)),
+                    ?assertNotEqual(
+                        nomatch, binary:match(LeaseSql, <<"SET available_at = NOW()">>)
+                    ),
+                    ?assertNotEqual(nomatch, binary:match(LeaseSql, <<"INTERVAL '1 second' * ">>)),
 
-                % 验证 ID 列表
-                ?assert(is_list(Ids)),
-                ?assert(lists:all(fun(Id) -> is_integer(Id) end, Ids)),
-                ?assertEqual([1, 2], Ids),
+                    % 验证 ID 列表
+                    ?assert(is_list(Ids)),
+                    ?assert(lists:all(fun(Id) -> is_integer(Id) end, Ids)),
+                    ?assertEqual([1, 2], Ids),
 
-                {ok, 2}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:claim_pending(10, 60),
-        ?assertMatch({ok, [_, _]}, Result),
-        case Result of
-            {ok, Rows} ->
-                % 验证返回的行包含必要字段
-                lists:foreach(fun(Row) ->
-                    ?assert(maps:is_key(<<"id">>, Row)),
-                    ?assert(maps:is_key(<<"msg_id">>, Row)),
-                    ?assert(maps:is_key(<<"payload">>, Row))
-                end, Rows);
-            _ ->
-                ?assert(false)
+                    {ok, 2}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:claim_pending(10, 60),
+            ?assertMatch({ok, [_, _]}, Result),
+            case Result of
+                {ok, Rows} ->
+                    % 验证返回的行包含必要字段
+                    lists:foreach(
+                        fun(Row) ->
+                            ?assert(maps:is_key(<<"id">>, Row)),
+                            ?assert(maps:is_key(<<"msg_id">>, Row)),
+                            ?assert(maps:is_key(<<"payload">>, Row))
+                        end,
+                        Rows
+                    );
+                _ ->
+                    ?assert(false)
+            end
         end
-    end).
+    ).
 
 claim_pending_empty_returns_empty_list_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'with_tx', 1, fun(TxFun) -> TxFun(self()) end},
-            {'query', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:claim_pending(10, 60),
-        ?assertEqual({ok, []}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(TxFun) -> TxFun(self()) end},
+                {'query', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:claim_pending(10, 60),
+            ?assertEqual({ok, []}, Result)
+        end
+    ).
 
 claim_pending_with_zero_limit_test_() ->
     % 边界测试：Limit = 0 应该返回空列表
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'with_tx', 1, fun(TxFun) -> TxFun(self()) end},
-            {'query', 3, fun(_Conn, _Sql, [Limit]) ->
-                ?assertEqual(0, Limit),
-                {ok, []}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:claim_pending(0, 60),
-        ?assertEqual({ok, []}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(TxFun) -> TxFun(self()) end},
+                {'query', 3, fun(_Conn, _Sql, [Limit]) ->
+                    ?assertEqual(0, Limit),
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:claim_pending(0, 60),
+            ?assertEqual({ok, []}, Result)
+        end
+    ).
 
 %% ===================================================================
-%% mark_processed/2 测试
+%% mark_processed/1 测试（实现已从 /2 收敛为按 msg_id 单参）
 %% ===================================================================
 
 mark_processed_validates_sql_structure_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(Sql, [Type, MsgId]) ->
-                % 验证 SQL 结构
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE ">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"SET processed_at = NOW()">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg = NULL">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE type = $1">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"AND msg_id = $2">>)),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(Sql, [MsgId]) ->
+                    % 验证 SQL 结构
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE ">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"SET processed_at = NOW()">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg = NULL">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE msg_id = $1">>)),
 
-                % 验证参数
-                ?assertEqual(<<"c2c">>, Type),
-                ?assertEqual(<<"msg123">>, MsgId),
+                    % 验证参数
+                    ?assertEqual(<<"msg123">>, MsgId),
 
-                {ok, 1}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:mark_processed(<<"c2c">>, <<"msg123">>),
-        ?assertEqual({ok, 1}, Result)
-    end).
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:mark_processed(<<"msg123">>),
+            ?assertEqual({ok, 1}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% mark_failed/4 测试
 %% ===================================================================
 
 mark_failed_validates_parameters_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(Sql, [Type, MsgId, ErrorMsg, DelaySeconds]) ->
-                % 验证 SQL 结构
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"retry_count = retry_count + 1">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg = $3">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"available_at = NOW() + INTERVAL">>)),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(Sql, [Type, MsgId, ErrorMsg, DelaySeconds]) ->
+                    % 验证 SQL 结构
+                    ?assertNotEqual(
+                        nomatch, binary:match(Sql, <<"retry_count = retry_count + 1">>)
+                    ),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg = $3">>)),
+                    ?assertNotEqual(
+                        nomatch, binary:match(Sql, <<"available_at = NOW() + INTERVAL">>)
+                    ),
 
-                % 验证参数类型
-                ?assert(is_binary(Type)),
-                ?assertEqual(<<"c2c">>, Type),
-                ?assert(is_binary(MsgId)),
-                ?assertEqual(<<"msg123">>, MsgId),
-                ?assert(is_binary(ErrorMsg)),
-                ?assertEqual(<<"connection failed"/utf8>>, ErrorMsg),
-                ?assert(is_integer(DelaySeconds)),
-                ?assert(DelaySeconds > 0),
-                ?assertEqual(60, DelaySeconds),
+                    % 验证参数类型
+                    ?assert(is_binary(Type)),
+                    ?assertEqual(<<"c2c">>, Type),
+                    ?assert(is_binary(MsgId)),
+                    ?assertEqual(<<"msg123">>, MsgId),
+                    ?assert(is_binary(ErrorMsg)),
+                    ?assertEqual(<<"connection failed"/utf8>>, ErrorMsg),
+                    ?assert(is_integer(DelaySeconds)),
+                    ?assert(DelaySeconds > 0),
+                    ?assertEqual(60, DelaySeconds),
 
-                {ok, 1}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:mark_failed(
-            <<"c2c">>, <<"msg123">>, <<"connection failed"/utf8>>, 60
-        ),
-        ?assertEqual({ok, 1}, Result)
-    end).
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:mark_failed(
+                <<"c2c">>, <<"msg123">>, <<"connection failed"/utf8>>, 60
+            ),
+            ?assertEqual({ok, 1}, Result)
+        end
+    ).
 
 mark_failed_with_zero_delay_test_() ->
     % 边界测试：Delay = 0 可能是无效的
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(_Sql, [_Type, _MsgId, _ErrorMsg, Delay]) ->
-                ?assert(Delay >= 0, "Delay should be non-negative"),
-                {ok, 1}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:mark_failed(
-            <<"c2c">>, <<"msg123">>, <<"error"/utf8>>, 0
-        ),
-        ?assertEqual({ok, 1}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, [_Type, _MsgId, _ErrorMsg, Delay]) ->
+                    ?assert(Delay >= 0, "Delay should be non-negative"),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:mark_failed(
+                <<"c2c">>, <<"msg123">>, <<"error"/utf8>>, 0
+            ),
+            ?assertEqual({ok, 1}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% get_unstaged/1 测试
 %% ===================================================================
 
 get_unstaged_validates_limit_parameter_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(Sql, [Limit]) ->
-                % 验证 SQL 结构
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"SELECT ">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE processed_at IS NULL">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"ORDER BY created_at ASC">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"LIMIT $1">>)),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, [Limit]) ->
+                    % 验证 SQL 结构
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"SELECT ">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE processed_at IS NULL">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"ORDER BY created_at ASC">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"LIMIT $1">>)),
 
-                % 验证 LIMIT 参数
-                ?assert(is_integer(Limit)),
-                ?assertEqual(100, Limit),
-                ?assert(Limit > 0),
+                    % 验证 LIMIT 参数
+                    ?assert(is_integer(Limit)),
+                    ?assertEqual(100, Limit),
+                    ?assert(Limit > 0),
 
-                {ok, [
-                    #{<<"msg_id">> => <<"msg1">>, <<"from_id">> => 100},
-                    #{<<"msg_id">> => <<"msg2">>, <<"from_id">> => 200}
-                ]}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:get_unstaged(100),
-        ?assertMatch({ok, [_, _]}, Result),
-        case Result of
-            {ok, Rows} ->
-                ?assertEqual(2, length(Rows));
-            _ ->
-                ?assert(false)
+                    {ok, [
+                        #{<<"msg_id">> => <<"msg1">>, <<"from_id">> => 100},
+                        #{<<"msg_id">> => <<"msg2">>, <<"from_id">> => 200}
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:get_unstaged(100),
+            ?assertMatch({ok, [_, _]}, Result),
+            case Result of
+                {ok, Rows} ->
+                    ?assertEqual(2, length(Rows));
+                _ ->
+                    ?assert(false)
+            end
         end
-    end).
+    ).
 
 get_unstaged_with_negative_limit_accepted_test_() ->
     % 边界测试：负数 Limit 被传递到数据库（源码不验证）
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:get_unstaged(-1),
-        % 源码不验证负数 Limit，直接传到数据库
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:get_unstaged(-1),
+            % 源码不验证负数 Limit，直接传到数据库
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% delete_processed/1 测试 - **发现源码 Bug！**
 %% ===================================================================
 
 delete_processed_validates_sql_correctness_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(Sql, [Seconds]) ->
-                % 验证 SQL 结构
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"DELETE FROM ">>)),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(Sql, [Seconds]) ->
+                    % 验证 SQL 结构
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"DELETE FROM ">>)),
 
-                % **关键测试**：发现源码 bug
-                % 源码 line 191: " WHERE processed_at IS NULL " 是错误的！
-                % 正确应该是: " WHERE processed_at IS NOT NULL "
-                % 因为我们要删除已处理的记录，而不是未处理的
+                    % **关键测试**：发现源码 bug
+                    % 源码 line 191: " WHERE processed_at IS NULL " 是错误的！
+                    % 正确应该是: " WHERE processed_at IS NOT NULL "
+                    % 因为我们要删除已处理的记录，而不是未处理的
 
-                % 检查是否有 IS NULL（这是 bug）
-                case binary:match(Sql, <<"processed_at IS NULL">>) of
-                    nomatch ->
-                        % 正确：删除已处理的记录
-                        ok;
-                    _ ->
-                        % Bug：当前实现会删除未处理的记录！
-                        ?assert(false, "BUG: Should use IS NOT NULL, not IS NULL")
-                end,
+                    % 检查是否有 IS NULL（这是 bug）
+                    case binary:match(Sql, <<"processed_at IS NULL">>) of
+                        nomatch ->
+                            % 正确：删除已处理的记录
+                            ok;
+                        _ ->
+                            % Bug：当前实现会删除未处理的记录！
+                            ?assert(false, "BUG: Should use IS NOT NULL, not IS NULL")
+                    end,
 
-                % 验证 IS NOT NULL 存在
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NOT NULL">>),
-                    "Should delete processed records, not unprocessed"),
+                    % 验证 IS NOT NULL 存在
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(Sql, <<"processed_at IS NOT NULL">>),
+                        "Should delete processed records, not unprocessed"
+                    ),
 
-                % 验证时间条件
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at < NOW() - INTERVAL">>)),
+                    % 验证时间条件
+                    ?assertNotEqual(
+                        nomatch, binary:match(Sql, <<"processed_at < NOW() - INTERVAL">>)
+                    ),
 
-                % 验证参数
-                ?assert(is_integer(Seconds)),
-                ?assert(Seconds > 0),
-                ?assertEqual(3600, Seconds),
+                    % 验证参数
+                    ?assert(is_integer(Seconds)),
+                    ?assert(Seconds > 0),
+                    ?assertEqual(3600, Seconds),
 
-                {ok, 100}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:delete_processed(3600),
-        ?assertEqual({ok, 100}, Result)
-    end).
+                    {ok, 100}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:delete_processed(3600),
+            ?assertEqual({ok, 100}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% get_staging_stats/0 测试
 %% ===================================================================
 
 get_staging_stats_validates_aggregation_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(Sql, []) ->
-                % 验证 SQL 包含聚合函数
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"COUNT(*) FILTER">>)),
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NULL">>)),  % pending
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NOT NULL">>)),  % processed
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg IS NOT NULL">>)),  % failed
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"COUNT(*) as total">>)),
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, []) ->
+                    % 验证 SQL 包含聚合函数
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"COUNT(*) FILTER">>)),
+                    % pending
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NULL">>)),
+                    % processed
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NOT NULL">>)),
+                    % failed
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"error_msg IS NOT NULL">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"COUNT(*) as total">>)),
 
-                {ok, [[
-                    #{<<"pending">> => 10, <<"processed">> => 100, <<"failed">> => 2, <<"total">> => 112}
-                ]]}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:get_staging_stats(),
-        %% epgsql returns list-of-lists: {ok, [[#{...}]]}
-        ?assertMatch({ok, [[#{
-            <<"pending">> := 10,
-            <<"processed">> := 100,
-            <<"failed">> := 2,
-            <<"total">> := 112
-        }]]}, Result)
-    end).
+                    {ok, [
+                        [
+                            #{
+                                <<"pending">> => 10,
+                                <<"processed">> => 100,
+                                <<"failed">> => 2,
+                                <<"total">> => 112
+                            }
+                        ]
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:get_staging_stats(),
+            %% epgsql returns list-of-lists: {ok, [[#{...}]]}
+            ?assertMatch(
+                {ok, [
+                    [
+                        #{
+                            <<"pending">> := 10,
+                            <<"processed">> := 100,
+                            <<"failed">> := 2,
+                            <<"total">> := 112
+                        }
+                    ]
+                ]},
+                Result
+            )
+        end
+    ).
 
 %% ===================================================================
 %% truncate_processed/0 测试
 %% ===================================================================
 
 truncate_processed_validates_sql_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(Sql, []) ->
-                % 验证 TRUNCATE 命令
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"TRUNCATE TABLE ">>)),
-                {ok, [], []}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:truncate_processed(),
-        ?assertEqual({ok, [], []}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, []) ->
+                    % 验证 TRUNCATE 命令
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"TRUNCATE TABLE ">>)),
+                    {ok, [], []}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:truncate_processed(),
+            ?assertEqual({ok, [], []}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% vacuum_table/0 测试
 %% ===================================================================
 
 vacuum_table_validates_sql_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'query', 2, fun(Sql, []) ->
-                % 验证 VACUUM 命令
-                ?assertNotEqual(nomatch, binary:match(Sql, <<"VACUUM ANALYZE ">>)),
-                {ok, [], []}
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:vacuum_table(),
-        ?assertEqual({ok, [], []}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, []) ->
+                    % 验证 VACUUM 命令
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"VACUUM ANALYZE ">>)),
+                    {ok, [], []}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:vacuum_table(),
+            ?assertEqual({ok, [], []}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% ensure_table_exists/0 测试
 %% ===================================================================
 
 ensure_table_exists_validates_ddl_test_() ->
-    ?WITH_MECKS([
-        {elib_pg_sql, [
-            {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(Sql, []) ->
-                case binary:match(Sql, <<"CREATE TABLE IF NOT EXISTS ">>) of
-                    nomatch ->
-                        % Index creation calls -- just return ok
-                        {ok, []};
-                    _ ->
-                        % 验证 CREATE TABLE 语句
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"id BIGINT PRIMARY KEY">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"type VARCHAR(10) NOT NULL">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"msg_id VARCHAR(50) NOT NULL">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"payload JSONB NOT NULL">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"from_id BIGINT NOT NULL">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"retry_count INTEGER NOT NULL DEFAULT 0">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at TIMESTAMPTZ">>)),
-                        ?assertNotEqual(nomatch, binary:match(Sql, <<"UNIQUE (type, msg_id)">>)),
-                        {ok, []}
-                end
-            end}
-        ]}
-    ], fun() ->
-        Result = msg_store_repo:ensure_table_exists(),
-        ?assertEqual(ok, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(Sql, []) ->
+                    case binary:match(Sql, <<"CREATE TABLE IF NOT EXISTS ">>) of
+                        nomatch ->
+                            % Index creation calls -- just return ok
+                            {ok, []};
+                        _ ->
+                            % 验证 CREATE TABLE 语句
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"id BIGINT PRIMARY KEY">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"type VARCHAR(10) NOT NULL">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"msg_id VARCHAR(50) NOT NULL">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"payload JSONB NOT NULL">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"from_id BIGINT NOT NULL">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(Sql, <<"retry_count INTEGER NOT NULL DEFAULT 0">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"processed_at TIMESTAMPTZ">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch, binary:match(Sql, <<"UNIQUE (type, msg_id)">>)
+                            ),
+                            {ok, []}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_store_repo:ensure_table_exists(),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% create_indexes/1 测试
@@ -728,24 +934,28 @@ ensure_table_exists_validates_ddl_test_() ->
 create_indexes_validates_index_ddl_test_() ->
     % Source calls elib_pg:execute 3 times (one per index), so we collect
     % all SQL statements and verify each index name appears at least once.
-    ?WITH_MECK(elib_pg, [
-        {'execute', 2, fun(Sql, []) ->
-            % Accumulate SQL statements in process dictionary
-            Prev = get(create_idx_sqls),
-            put(create_idx_sqls, [Sql | Prev]),
-            {ok, [], []}
-        end}
-    ], fun() ->
-        put(create_idx_sqls, []),
-        Result = msg_store_repo:create_indexes(<<"msg_store_staging">>),
-        AllSql = get(create_idx_sqls),
-        Combined = iolist_to_binary(lists:reverse(AllSql)),
-        % 验证索引创建语句
-        ?assertNotEqual(nomatch, binary:match(Combined, <<"CREATE INDEX IF NOT EXISTS ">>)),
-        ?assertNotEqual(nomatch, binary:match(Combined, <<"_processed_at_idx">>)),
-        ?assertNotEqual(nomatch, binary:match(Combined, <<"_available_at_idx">>)),
-        ?assertNotEqual(nomatch, binary:match(Combined, <<"_created_at_idx">>)),
-        ?assertEqual(ok, Result),
-        erase(create_idx_sqls),
-        ok
-    end).
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'execute', 2, fun(Sql, []) ->
+                % Accumulate SQL statements in process dictionary
+                Prev = get(create_idx_sqls),
+                put(create_idx_sqls, [Sql | Prev]),
+                {ok, [], []}
+            end}
+        ],
+        fun() ->
+            put(create_idx_sqls, []),
+            Result = msg_store_repo:create_indexes(<<"msg_store_staging">>),
+            AllSql = get(create_idx_sqls),
+            Combined = iolist_to_binary(lists:reverse(AllSql)),
+            % 验证索引创建语句
+            ?assertNotEqual(nomatch, binary:match(Combined, <<"CREATE INDEX IF NOT EXISTS ">>)),
+            ?assertNotEqual(nomatch, binary:match(Combined, <<"_processed_at_idx">>)),
+            ?assertNotEqual(nomatch, binary:match(Combined, <<"_available_at_idx">>)),
+            ?assertNotEqual(nomatch, binary:match(Combined, <<"_created_at_idx">>)),
+            ?assertEqual(ok, Result),
+            erase(create_idx_sqls),
+            ok
+        end
+    ).

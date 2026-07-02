@@ -104,8 +104,8 @@ accept_session(SessionId, ToUid, ToDeviceId) ->
                     Status = maps:get(<<"status">>, Session),
                     case Status of
                         <<"pending">> ->
-                            % 4. 更新设备 ID 和状态
-                            ok = e2ee_transfer_repo:update_status_and_device(
+                            % 4. 更新设备 ID 和状态（经统一入口，一并延长有效期）
+                            ok = update_status_and_device(
                                 SessionId, <<"accepted">>, ToDeviceId
                             ),
                             % 清除缓存
@@ -255,7 +255,10 @@ get_by_session_id(SessionId) -> e2ee_transfer_repo:get_by_session_id(SessionId).
 
 -spec update_status_and_device(binary(), binary(), binary()) -> ok | {error, term()}.
 update_status_and_device(SessionId, Status, ToDeviceId) ->
-    e2ee_transfer_repo:update_status_and_device(SessionId, Status, ToDeviceId).
+    %% accept 后重置有效期窗口（配置项 e2ee_transfer_accept_grace_seconds，默认 300s），
+    %% 避免 accepted 会话沿用创建时的 300s 硬过期被 cleanup 误清、confirm 必失败
+    Grace = config_ds:env(e2ee_transfer_accept_grace_seconds, 300),
+    e2ee_transfer_repo:update_status_and_device(SessionId, Status, ToDeviceId, Grace).
 
 -spec update_status(binary(), binary()) -> ok | {error, term()}.
 update_status(SessionId, Status) -> e2ee_transfer_repo:update_status(SessionId, Status).

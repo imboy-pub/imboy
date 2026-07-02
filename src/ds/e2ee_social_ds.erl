@@ -18,6 +18,7 @@
 -export([get_user_shards/2]).
 -export([get_proxy_shards/1]).
 -export([get_proxy_shard/2]).
+-export([consume_proxy_shard/2]).
 -export([get_shard_by_id/2]).
 -export([can_recover/2]).
 -export([delete_restored_shards/2]).
@@ -57,13 +58,23 @@ add_trusted_contact(Uid, ContactUid, Nickname) ->
     end.
 
 %% @doc 移除可信联系人
+%% 级联失效该联系人持有的活跃分片，防止撤销信任后其仍可参与恢复合谋。
+%% 先撤分片再删联系人：分片撤销失败时整体失败，联系人保留可重试，
+%% 避免出现"联系人已删但分片仍活跃"的不一致。
 -spec remove_trusted_contact(integer(), integer()) -> ok | {error, term()}.
 remove_trusted_contact(Uid, ContactUid) ->
-    case e2ee_social_repo:remove_contact(Uid, ContactUid) of
-        ok ->
-            % 清除缓存
-            clear_trusted_contacts_cache(Uid),
-            ok;
+    case e2ee_social_repo:revoke_shards_by_proxy(Uid, ContactUid) of
+        {ok, _} ->
+            case e2ee_social_repo:remove_contact(Uid, ContactUid) of
+                ok ->
+                    % 清除缓存
+                    clear_trusted_contacts_cache(Uid),
+                    clear_user_shards_cache(Uid),
+                    clear_proxy_shards_cache(ContactUid),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -249,6 +260,26 @@ get_proxy_shard(ShardId, ProxyUid) ->
             {error, Reason}
     end.
 
+%% @doc 取用代理分片（一次性语义）
+%% 读取并校验归属后，CAS 将分片置为 used；已取用/已撤销的分片不可再取。
+%% CAS 影响 0 行 = 并发取用竞争失败，按 shard_not_active 处理。
+-spec consume_proxy_shard(binary(), integer()) -> {ok, map()} | {error, term()}.
+consume_proxy_shard(ShardId, ProxyUid) ->
+    case get_proxy_shard(ShardId, ProxyUid) of
+        {ok, Shard} ->
+            case e2ee_social_repo:mark_shard_used(ShardId, ProxyUid) of
+                {ok, N} when N > 0 ->
+                    clear_proxy_shards_cache(ProxyUid),
+                    {ok, Shard};
+                {ok, _} ->
+                    {error, shard_not_active};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 %% @doc 检查用户是否可以恢复密钥
 -spec can_recover(integer(), binary()) -> {ok, boolean()} | {error, term()}.
 can_recover(Uid, KeyVersion) ->
@@ -280,6 +311,13 @@ clear_trusted_contacts_cache(Uid) ->
 -spec clear_user_shards_cache(integer()) -> ok.
 clear_user_shards_cache(Uid) ->
     CacheKey = {e2ee_user_shards, Uid, <<"latest">>},
+    imboy_cache:delete(CacheKey),
+    ok.
+
+%% @doc 清除代理分片缓存（分片取用/撤销后失效）
+-spec clear_proxy_shards_cache(integer()) -> ok.
+clear_proxy_shards_cache(ProxyUid) ->
+    CacheKey = {e2ee_proxy_shards, ProxyUid},
     imboy_cache:delete(CacheKey),
     ok.
 

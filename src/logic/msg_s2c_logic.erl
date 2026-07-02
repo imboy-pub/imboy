@@ -41,36 +41,42 @@ s2c(<<"C2C_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
     % 【修复】将 Payload 转换为 JSON binary
     PayloadJson = jsone:encode(Payload, [native_utf8]),
 
-    % 写入备份表（同步，快速）
+    % 写入备份表（同步，快速；备份失败不再静默继续投递，与 c2c/c2g/c2s 对齐）
     % v2.0: S2C 消息使用 action 字段
-    msg_store_ds:stage(
-        <<"s2c">>,
-        MsgId,
-        <<>>,
-        <<"C2C_DEL_EVERYONE">>,
-        #{},
-        PayloadJson,
-        CurrentUid,
-        To,
-        CreatedAtRfc,
-        CreatedAtRfc
-    ),
+    case
+        msg_store_ds:stage(
+            <<"s2c">>,
+            MsgId,
+            <<>>,
+            <<"C2C_DEL_EVERYONE">>,
+            #{},
+            PayloadJson,
+            CurrentUid,
+            To,
+            CreatedAtRfc,
+            CreatedAtRfc
+        )
+    of
+        error ->
+            _ = ?ERROR_LOG([s2c_stage_failed, <<"C2C_DEL_EVERYONE">>, MsgId]),
+            {reply, message_ds:assemble_s2c(MsgId, <<"internal_error">>, To)};
+        {ok, _} ->
+            % ① 先入队（异步，非阻塞）
+            msg_store_ds:enqueue(
+                <<"s2c">>,
+                MsgId,
+                #{
+                    payload => PayloadJson,
+                    from_id => CurrentUid,
+                    to_id => To
+                }
+            ),
 
-    % ① 先入队（异步，非阻塞）
-    msg_store_ds:enqueue(
-        <<"s2c">>,
-        MsgId,
-        #{
-            payload => PayloadJson,
-            from_id => CurrentUid,
-            to_id => To
-        }
-    ),
-
-    % ② 后投递
-    message_ds:send_next(To, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
-    % 给操作者回复消息
-    {reply, Msg};
+            % ② 后投递
+            message_ds:send_next(To, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+            % 给操作者回复消息
+            {reply, Msg}
+    end;
 s2c(<<"C2G_DEL_FOR_ME">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     Gid = maps:get(<<"to">>, Data),
@@ -141,81 +147,90 @@ s2c(<<"C2G_DEL_EVERYONE">>, MsgId, CurrentUid, Data) ->
 s2c(<<"store_shard">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     To = maps:get(<<"to">>, Data),
-
-    % 零信任架构：服务端不存储分片，直接转发给代理
-    % 代理将在本地安全存储中保存分片
-
-    From = CurrentUid,
-    Action = <<"store_shard">>,
-
-    % 构造转发消息
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
-
-    % 获取分片信息用于日志和审计
-    ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
-    KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
-    Uid = maps:get(<<"uid">>, Payload, 0),
     ProxyUid = ec_cnv:to_integer(To),
 
-    % 记录分片传输日志（持久化到数据库）
-    e2ee_shard_validator:log_shard_transmission(
-        shard_sent,
-        ShardId,
-        #{
-            <<"uid">> => Uid,
-            <<"proxy_uid">> => ProxyUid,
-            <<"key_version">> => KeyVersion
-        }
-    ),
+    % 归属校验：只能向自己的可信联系人转发分片，
+    % 防止任意登录用户向任意人投递伪造分片消息（骚扰/状态混淆）
+    case e2ee_social_ds:is_trusted_contact(CurrentUid, ProxyUid) of
+        false ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"not_trusted_contact">>, To)};
+        true ->
+            % 零信任架构：服务端不存储分片，直接转发给代理
+            % 代理将在本地安全存储中保存分片
+            From = CurrentUid,
+            Action = <<"store_shard">>,
 
-    % 转发给代理
-    MsLi = elib_retry_config:intervals(<<"s2c">>),
-    message_ds:send_next(ProxyUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+            % 构造转发消息
+            Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
 
-    % 给发送者回复确认
-    {reply, Msg};
+            % 获取分片信息用于日志和审计
+            ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
+            KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
+
+            % 记录分片传输日志（uid 取鉴权身份，不信客户端自报）
+            e2ee_shard_validator:log_shard_transmission(
+                shard_sent,
+                ShardId,
+                #{
+                    <<"uid">> => CurrentUid,
+                    <<"proxy_uid">> => ProxyUid,
+                    <<"key_version">> => KeyVersion
+                }
+            ),
+
+            % 转发给代理
+            MsLi = elib_retry_config:intervals(<<"s2c">>),
+            message_ds:send_next(ProxyUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+
+            % 给发送者回复确认
+            {reply, Msg}
+    end;
 %% @doc E2EE 社交恢复 - 分片已存储确认
 %% 代理确认已存储分片
 s2c(<<"shard_stored">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     To = maps:get(<<"to">>, Data),
-
-    From = CurrentUid,
-    Action = <<"shard_stored">>,
-
-    % 构造确认消息
-    Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
-
-    % 获取分片信息用于日志和审计
-    ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
-    KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
-    Uid = maps:get(<<"uid">>, Payload, 0),
-    ProxyUid = CurrentUid,
-
-    % 记录分片存储日志（持久化到数据库）
-    e2ee_shard_validator:log_shard_transmission(
-        shard_stored,
-        ShardId,
-        #{
-            <<"uid">> => Uid,
-            <<"proxy_uid">> => ProxyUid,
-            <<"key_version">> => KeyVersion
-        }
-    ),
-
-    % 转发给原始发送者
     ToUid = ec_cnv:to_integer(To),
-    MsLi = elib_retry_config:intervals(<<"s2c">>),
-    message_ds:send_next(ToUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
 
-    {reply, Msg};
+    % 归属校验：只有分片所有者(To)的可信联系人（即代理本人）才能回执
+    case e2ee_social_ds:is_trusted_contact(ToUid, CurrentUid) of
+        false ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"not_trusted_contact">>, To)};
+        true ->
+            From = CurrentUid,
+            Action = <<"shard_stored">>,
+
+            % 构造确认消息
+            Msg = message_ds:assemble_msg(<<"S2C">>, From, To, Payload, MsgId, <<>>, Action, null),
+
+            % 获取分片信息用于日志和审计
+            ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
+            KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
+
+            % 记录分片存储日志（uid=分片所有者，proxy=鉴权身份）
+            e2ee_shard_validator:log_shard_transmission(
+                shard_stored,
+                ShardId,
+                #{
+                    <<"uid">> => ToUid,
+                    <<"proxy_uid">> => CurrentUid,
+                    <<"key_version">> => KeyVersion
+                }
+            ),
+
+            % 转发给原始发送者
+            MsLi = elib_retry_config:intervals(<<"s2c">>),
+            message_ds:send_next(ToUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+
+            {reply, Msg}
+    end;
 %% ===================================================================
 %% E2EE 密钥变更确认
 %% ===================================================================
 
 %% @doc E2EE 密钥变更确认
 %% 好友确认已收到并更新密钥
-s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
+s2c(<<"e2ee_key_changed_ack">>, MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     FromUid = ec_cnv:to_integer(maps:get(<<"uid">>, Payload, <<"0">>)),
     KeyId = maps:get(<<"key_id">>, Payload, <<>>),
@@ -230,11 +245,23 @@ s2c(<<"e2ee_key_changed_ack">>, _MsgId, CurrentUid, Data) ->
         }
     ]),
 
-    % 返回空回复（仅确认，无需转发）
+    % 返回确认（套用统一消息信封：id/type/action/payload/server_ts 必需顶层字段）
     {reply, #{
-        <<"status">> => <<"acknowledged">>,
-        <<"uid">> => FromUid
-    }}.
+        <<"id">> => MsgId,
+        <<"type">> => <<"S2C">>,
+        <<"action">> => <<"e2ee_key_changed_ack">>,
+        <<"payload">> => #{
+            <<"status">> => <<"acknowledged">>,
+            <<"uid">> => FromUid
+        },
+        <<"server_ts">> => elib_dt:millisecond()
+    }};
+%% 兜底：未注册的 S2C action 返回 unknown_action（与 message_router_logic
+%% 的 route_action 兜底语义对齐），避免 function_clause 被外层 catch
+%% 误报为 invalid_json、把客户端排障引向完全错误的方向
+s2c(Action, MsgId, _CurrentUid, _Data) ->
+    _ = ?WARN_LOG({unknown_s2c_action, Action, MsgId}),
+    {reply, message_ds:assemble_s2c(MsgId, <<"unknown_action">>, <<>>)}.
 
 %% 1 存储s2c消息
 %% 2 按策略发送消息
@@ -261,35 +288,41 @@ s2c_for_c2g(NowTs, CurrentUid, From, Uid, Payload) ->
     % 【修复】将 Payload 转换为 JSON binary
     PayloadJson = jsone:encode(Payload, [native_utf8]),
 
-    % 写入备份表（同步，快速）
+    % 写入备份表（同步，快速；失败则跳过该成员的投递并记日志，不静默继续）
     % v2.0: S2C 消息使用 action 字段
-    msg_store_ds:stage(
-        <<"s2c">>,
-        MsgId,
-        <<>>,
-        <<"C2G_DEL_EVERYONE">>,
-        #{},
-        PayloadJson,
-        CurrentUid,
-        Uid,
-        CreatedAtRfc2,
-        CreatedAtRfc2
-    ),
+    case
+        msg_store_ds:stage(
+            <<"s2c">>,
+            MsgId,
+            <<>>,
+            <<"C2G_DEL_EVERYONE">>,
+            #{},
+            PayloadJson,
+            CurrentUid,
+            Uid,
+            CreatedAtRfc2,
+            CreatedAtRfc2
+        )
+    of
+        error ->
+            _ = ?ERROR_LOG([s2c_stage_failed, <<"C2G_DEL_EVERYONE">>, MsgId, Uid]),
+            ok;
+        {ok, _} ->
+            % ① 先入队（异步，非阻塞）
+            msg_store_ds:enqueue(
+                <<"s2c">>,
+                MsgId,
+                #{
+                    payload => PayloadJson,
+                    from_id => CurrentUid,
+                    to_id => Uid
+                }
+            ),
 
-    % ① 先入队（异步，非阻塞）
-    msg_store_ds:enqueue(
-        <<"s2c">>,
-        MsgId,
-        #{
-            payload => PayloadJson,
-            from_id => CurrentUid,
-            to_id => Uid
-        }
-    ),
-
-    % ② 后投递
-    message_ds:send_next(Uid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
-    ok.
+            % ② 后投递
+            message_ds:send_next(Uid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
+            ok
+    end.
 
 %% 客户端确认S2C投递消息
 -spec s2c_client_ack(binary(), integer(), binary()) -> ok.

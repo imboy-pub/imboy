@@ -79,128 +79,152 @@ map_decrypt_shard_error_decryption_failed_test_() ->
         ?assert(is_binary(Msg))
     end).
 
+%% 零信任 + 一次性语义：服务端只返回加密分片（不解密），
+%% 取用走 consume_proxy_shard（成功即置 used）。
 decrypt_shard_prefers_encrypted_shard_test_() ->
-    ?WITH_MECKS([
-        {cowboy_req, [
-            {'read_body', 1, fun(_Req) ->
-                {ok, <<"{\"shard_id\":\"shard-1\"}">>, req_after_body}
-            end}
-        ]},
-        {e2ee_social_ds, [
-            {'get_proxy_shard', 2, fun(<<"shard-1">>, 100) ->
-                {ok, #{
-                    <<"encrypted_shard">> => <<"cipher-new">>,
-                    <<"encrypted_data">> => <<"cipher-legacy">>
-                }}
-            end}
-        ]},
-        {user_device_repo, [
-            {'get_public_by_uid', 1, fun(100) ->
-                {ok, [#{<<"device_id">> => <<"device-1">>}]}
-            end},
-            {'get_private_key', 2, fun(100, <<"device-1">>) ->
-                {ok, <<"private-key">>}
-            end}
-        ]},
-        {elib_cipher, [
-            {'decrypt_rsa_oaep', 2, fun(CipherText, <<"private-key">>) ->
-                self() ! {cipher_used, CipherText},
-                {ok, <<"decrypted-shard">>}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Data) ->
-                self() ! {resp_data, Data},
-                req_ok
-            end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_h:new(#{}),
-        Result = e2ee_social_handler:decrypt_shard(Req0, #{current_uid => 100}),
-        ?assertEqual(req_ok, Result),
-        ?assertEqual(<<"cipher-new">>, receive_cipher_used()),
-        ?assertMatch(
-            #{<<"decrypted_shard">> := <<"decrypted-shard">>},
-            receive_resp_data()
-        )
-    end).
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'read_body', 1, fun(_Req) ->
+                    {ok, <<"{\"shard_id\":\"shard-1\"}">>, req_after_body}
+                end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(e2ee_decrypt_shard, _) -> ok end}
+            ]},
+            {e2ee_social_ds, [
+                {'consume_proxy_shard', 2, fun(<<"shard-1">>, 100) ->
+                    {ok, #{
+                        <<"uid">> => 9999,
+                        <<"encrypted_shard">> => <<"cipher-new">>,
+                        <<"encrypted_data">> => <<"cipher-legacy">>
+                    }}
+                end}
+            ]},
+            {e2ee_shard_validator, [
+                {'log_shard_transmission', 3, fun(shard_decrypted, _, _) -> ok end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Data) ->
+                    self() ! {resp_data, Data},
+                    req_ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_h:new(#{}),
+            Result = e2ee_social_handler:decrypt_shard(Req0, #{current_uid => 100}),
+            ?assertEqual(req_ok, Result),
+            ?assertMatch(
+                #{<<"encrypted_shard">> := <<"cipher-new">>},
+                receive_resp_data()
+            ),
+            %% 取用必须写审计日志
+            ?assertEqual(1, meck:num_calls(e2ee_shard_validator, log_shard_transmission, 3))
+        end
+    ).
 
 decrypt_shard_supports_legacy_encrypted_data_test_() ->
-    ?WITH_MECKS([
-        {cowboy_req, [
-            {'read_body', 1, fun(_Req) ->
-                {ok, <<"{\"shard_id\":\"shard-legacy\"}">>, req_after_body}
-            end}
-        ]},
-        {e2ee_social_ds, [
-            {'get_proxy_shard', 2, fun(<<"shard-legacy">>, 100) ->
-                {ok, #{
-                    <<"encrypted_data">> => <<"cipher-legacy">>
-                }}
-            end}
-        ]},
-        {user_device_repo, [
-            {'get_public_by_uid', 1, fun(100) ->
-                {ok, [#{<<"device_id">> => <<"device-1">>}]}
-            end},
-            {'get_private_key', 2, fun(100, <<"device-1">>) ->
-                {ok, <<"private-key">>}
-            end}
-        ]},
-        {elib_cipher, [
-            {'decrypt_rsa_oaep', 2, fun(CipherText, <<"private-key">>) ->
-                self() ! {cipher_used, CipherText},
-                {ok, <<"decrypted-shard">>}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, Data) ->
-                self() ! {resp_data, Data},
-                req_ok
-            end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_h:new(#{}),
-        Result = e2ee_social_handler:decrypt_shard(Req0, #{current_uid => 100}),
-        ?assertEqual(req_ok, Result),
-        ?assertEqual(<<"cipher-legacy">>, receive_cipher_used()),
-        ?assertMatch(
-            #{<<"decrypted_shard">> := <<"decrypted-shard">>},
-            receive_resp_data()
-        )
-    end).
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'read_body', 1, fun(_Req) ->
+                    {ok, <<"{\"shard_id\":\"shard-legacy\"}">>, req_after_body}
+                end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(e2ee_decrypt_shard, _) -> ok end}
+            ]},
+            {e2ee_social_ds, [
+                {'consume_proxy_shard', 2, fun(<<"shard-legacy">>, 100) ->
+                    {ok, #{
+                        <<"uid">> => 9999,
+                        <<"encrypted_data">> => <<"cipher-legacy">>
+                    }}
+                end}
+            ]},
+            {e2ee_shard_validator, [
+                {'log_shard_transmission', 3, fun(shard_decrypted, _, _) -> ok end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Data) ->
+                    self() ! {resp_data, Data},
+                    req_ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_h:new(#{}),
+            Result = e2ee_social_handler:decrypt_shard(Req0, #{current_uid => 100}),
+            ?assertEqual(req_ok, Result),
+            ?assertMatch(
+                #{<<"encrypted_shard">> := <<"cipher-legacy">>},
+                receive_resp_data()
+            )
+        end
+    ).
 
 decrypt_shard_not_found_maps_to_not_found_code_test_() ->
-    ?WITH_MECKS([
-        {cowboy_req, [
-            {'read_body', 1, fun(_Req) ->
-                {ok, <<"{\"shard_id\":\"not-exist\"}">>, req_after_body}
-            end}
-        ]},
-        {e2ee_social_ds, [
-            {'get_proxy_shard', 2, fun(<<"not-exist">>, 100) ->
-                {error, not_found}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, Code) ->
-                self() ! {resp_code, Code},
-                req_error
-            end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_h:new(#{}),
-        Result = e2ee_social_handler:decrypt_shard(Req0, #{current_uid => 100}),
-        ?assertEqual(req_error, Result),
-        ?assertEqual(?ERR_NOT_FOUND, receive_resp_code())
-    end).
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'read_body', 1, fun(_Req) ->
+                    {ok, <<"{\"shard_id\":\"not-exist\"}">>, req_after_body}
+                end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(e2ee_decrypt_shard, _) -> ok end}
+            ]},
+            {e2ee_social_ds, [
+                {'consume_proxy_shard', 2, fun(<<"not-exist">>, 100) ->
+                    {error, not_found}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, Code) ->
+                    self() ! {resp_code, Code},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_h:new(#{}),
+            Result = e2ee_social_handler:decrypt_shard(Req0, #{current_uid => 100}),
+            ?assertEqual(req_error, Result),
+            ?assertEqual(?ERR_NOT_FOUND, receive_resp_code())
+        end
+    ).
 
-receive_cipher_used() ->
-    receive
-        {cipher_used, Value} -> Value
-    after 1000 ->
-        timeout
-    end.
+decrypt_shard_already_used_is_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'read_body', 1, fun(_Req) ->
+                    {ok, <<"{\"shard_id\":\"shard-used\"}">>, req_after_body}
+                end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(e2ee_decrypt_shard, _) -> ok end}
+            ]},
+            {e2ee_social_ds, [
+                {'consume_proxy_shard', 2, fun(<<"shard-used">>, 100) ->
+                    {error, shard_not_active}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, Code) ->
+                    self() ! {resp_code, Code},
+                    req_error
+                end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_h:new(#{}),
+            Result = e2ee_social_handler:decrypt_shard(Req0, #{current_uid => 100}),
+            ?assertEqual(req_error, Result),
+            ?assertEqual(?ERR_BAD_REQUEST, receive_resp_code())
+        end
+    ).
 
 receive_resp_data() ->
     receive

@@ -262,6 +262,23 @@ delete_all_related_data(Conn, Uid) ->
     ok = delete_from_table_if_exists(
         Conn, group_random_code_repo:tablename(), <<"user_id = $1">>, [Uid]
     ),
+    % E2EE 级联清理（被遗忘权 + 防止历史代理合谋重建已注销用户的私钥）：
+    % 分片按 uid（作为密钥所有者）与 proxy_uid（作为他人代理）两个维度清理
+    ok = delete_from_table_if_exists(Conn, <<"public.e2ee_social_shards">>, <<"uid = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(
+        Conn, <<"public.e2ee_social_shards">>, <<"proxy_uid = $1">>, [Uid]
+    ),
+    ok = delete_from_table_if_exists(Conn, <<"public.e2ee_trusted_contacts">>, <<"uid = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(
+        Conn, <<"public.e2ee_trusted_contacts">>, <<"contact_uid = $1">>, [Uid]
+    ),
+    ok = delete_from_table_if_exists(
+        Conn, <<"public.e2ee_transfer_sessions">>, <<"from_uid = $1">>, [Uid]
+    ),
+    ok = delete_from_table_if_exists(
+        Conn, <<"public.e2ee_transfer_sessions">>, <<"to_uid = $1">>, [Uid]
+    ),
+    ok = delete_from_table_if_exists(Conn, <<"public.e2ee_local_backups">>, <<"uid = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_repo:tablename(), <<"id = $1">>, [Uid]),
     ok.
 

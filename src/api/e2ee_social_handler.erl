@@ -104,17 +104,25 @@ do_create_shards(Req0, State) ->
                     % C1 FIX: 客户端传入已用代理公钥加密好的分片，服务端只负责存储
                     KeyVersion = maps:get(<<"key_version">>, Data, generate_key_version()),
                     Shards = maps:get(<<"shards">>, Data, []),
+                    % 恢复门限取客户端真值（Shamir K 值），logic 层校验范围
+                    Threshold = maps:get(<<"threshold">>, Data, 0),
 
                     case Shards of
                         [] ->
                             elib_response:error(Req0, <<"分片列表不能为空"/utf8>>, ?ERR_BAD_REQUEST);
                         _ ->
-                            case e2ee_social_logic:create_shards(CurrentUid, KeyVersion, Shards) of
+                            case
+                                e2ee_social_logic:create_shards(
+                                    CurrentUid, KeyVersion, Threshold, Shards
+                                )
+                            of
                                 {ok, StoredShards} ->
                                     elib_response:success(Req0, #{
                                         <<"key_version">> => KeyVersion,
                                         <<"shards">> => StoredShards
                                     });
+                                {error, {Msg, Code}} when is_binary(Msg), is_integer(Code) ->
+                                    elib_response:error(Req0, Msg, Code);
                                 {error, Reason} ->
                                     elib_response:error(
                                         Req0, format_error(Reason), ?ERR_INTERNAL_SERVER_ERROR
@@ -243,7 +251,8 @@ do_decrypt_shard(Req0, State) ->
                         <<>> ->
                             elib_response:error(Req0, <<"缺少 shard_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
                         _ ->
-                            case e2ee_social_logic:get_proxy_shard(ShardId, CurrentUid) of
+                            %% 一次性语义：成功取用即置 used，不可重复取用
+                            case e2ee_social_logic:consume_proxy_shard(ShardId, CurrentUid) of
                                 {ok, Shard} ->
                                     case extract_encrypted_shard(Shard) of
                                         {ok, EncryptedShard} ->

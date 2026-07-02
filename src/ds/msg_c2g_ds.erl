@@ -5,7 +5,7 @@
 -export([write_msg/6]).
 -export([write_msg/8]).
 -export([write_msg_with_reply/11]).
--export([revoke_offline_msg/9]).
+-export([revoke_offline_msg/10]).
 -export([edit_offline_msg/6]).
 -export([read_msg/1]).
 -export([read_msg/3]).
@@ -124,7 +124,8 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
 %%
 %% @param Payload 撤回消息的新内容（不包含 msg_type/action）
 %% @param NowTs 当前时间戳
-%% @param MsgId 原消息ID
+%% @param MsgId 撤回通知消息ID（新插入的通知行）
+%% @param OriginalMsgId 被撤回的原消息ID（payload 覆盖与 ACK 重置的目标）
 %% @param FromId 发送方用户ID
 %% @param MemberUids 群组成员用户ID列表
 %% @param Gid 群组ID
@@ -136,6 +137,7 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     binary(),
     binary() | integer(),
     binary(),
+    binary(),
     integer(),
     list(),
     integer(),
@@ -143,9 +145,12 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     binary(),
     binary()
 ) -> ok.
-revoke_offline_msg(Payload, NowTs, MsgId, FromId, MemberUids, Gid, MsgType, _Action, E2EE) ->
-    % 存储消息（v2.0: 使用 write_msg/8 显式传递参数）
+revoke_offline_msg(
+    Payload, NowTs, MsgId, OriginalMsgId, FromId, MemberUids, Gid, MsgType, _Action, E2EE
+) ->
+    % 存储撤回通知消息（v2.0: 使用 write_msg/8 显式传递参数）
     write_msg(NowTs, MsgId, Payload, FromId, MemberUids, Gid, MsgType, E2EE),
+    % 覆盖原消息 payload，避免离线成员上线仍收到完整原文
     % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
     % 纵深防御：加 from_id 限定，与 edit_offline_msg/6 保持一致，
     % 防止未来新增调用方跳过 Logic 层归属校验时可改写任意群消息
@@ -154,24 +159,24 @@ revoke_offline_msg(Payload, NowTs, MsgId, FromId, MemberUids, Gid, MsgType, _Act
             msg_c2g_repo:tablename(),
             #{payload => Payload},
             <<"msg_id = $1 AND from_id = $2">>,
-            [MsgId, FromId]
+            [OriginalMsgId, FromId]
         )
     of
         {ok, _} -> ok;
-        {error, Reason1} -> ?ERROR_LOG([msg_c2g_payload_update_failed, MsgId, Reason1])
+        {error, Reason1} -> ?ERROR_LOG([msg_c2g_payload_update_failed, OriginalMsgId, Reason1])
     end,
-    % 已确认的消息需要重新确认
+    % 已确认的原消息需要重新确认
     % 使用安全的参数化查询，避免SQL注入
     case
         elib_pg:update(
             msg_c2g_timeline_repo:tablename(),
             #{client_ack => false},
             <<"msg_id = $1">>,
-            [MsgId]
+            [OriginalMsgId]
         )
     of
         {ok, _} -> ok;
-        {error, Reason2} -> ?ERROR_LOG([msg_c2g_ack_update_failed, MsgId, Reason2])
+        {error, Reason2} -> ?ERROR_LOG([msg_c2g_ack_update_failed, OriginalMsgId, Reason2])
     end,
     ok.
 

@@ -44,7 +44,7 @@ recovery_error_codes_defined_test() ->
 exports_test() ->
     % 验证所有必要的函数都已导出
     Exports = e2ee_transfer_logic:module_info(exports),
-    ?assert(lists:member({create_transfer, 5}, Exports)),
+    ?assert(lists:member({create_transfer, 4}, Exports)),
     ?assert(lists:member({accept_transfer, 3}, Exports)),
     ?assert(lists:member({confirm_transfer, 2}, Exports)),
     ?assert(lists:member({cancel_transfer, 2}, Exports)),

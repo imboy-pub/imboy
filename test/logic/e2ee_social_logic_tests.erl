@@ -30,12 +30,15 @@ shamir_split_and_combine_test_() ->
         ?assertEqual(length(Shares), TotalShards),
 
         % 验证分片结构
-        lists:foreach(fun(Share) ->
-            ?assert(is_map(Share)),
-            ?assert(maps:is_key(index, Share)),
-            ?assert(maps:is_key(x, Share)),
-            ?assert(maps:is_key(y, Share))
-        end, Shares),
+        lists:foreach(
+            fun(Share) ->
+                ?assert(is_map(Share)),
+                ?assert(maps:is_key(index, Share)),
+                ?assert(maps:is_key(x, Share)),
+                ?assert(maps:is_key(y, Share))
+            end,
+            Shares
+        ),
 
         % 使用 2 个分片恢复
         SharesToCombine = lists:sublist(Shares, Threshold),
@@ -63,12 +66,15 @@ shamir_different_combinations_test_() ->
             {1, 5}
         ],
 
-        lists:foreach(fun({I, J}) ->
-            S1 = lists:nth(I, Shares),
-            S2 = lists:nth(J, Shares),
-            RecoveredKey = shamir_secret_sharing:combine_shares([S1, S2]),
-            ?assertEqual(RecoveredKey, PrivateKey)
-        end, Combinations)
+        lists:foreach(
+            fun({I, J}) ->
+                S1 = lists:nth(I, Shares),
+                S2 = lists:nth(J, Shares),
+                RecoveredKey = shamir_secret_sharing:combine_shares([S1, S2]),
+                ?assertEqual(RecoveredKey, PrivateKey)
+            end,
+            Combinations
+        )
     end).
 
 shamir_insufficient_shards_test_() ->
@@ -96,7 +102,8 @@ invalid_parameters_total_shards_lt_threshold_test_() ->
         % 测试 Shamir 层的参数验证
         Secret = <<"test">>,
         N = 2,
-        K = 3,  % K > N，应该失败
+        % K > N，应该失败
+        K = 3,
 
         ?assertError(
             {invalid_parameters, "N must be greater than K"},
@@ -109,7 +116,8 @@ invalid_parameters_threshold_lt_2_test_() ->
         % 测试 Shamir 层的参数验证
         Secret = <<"test">>,
         N = 3,
-        K = 1,  % K < 2，应该失败
+        % K < 2，应该失败
+        K = 1,
 
         ?assertError(
             {invalid_parameters, "K must be at least 2"},
@@ -124,82 +132,111 @@ invalid_parameters_insufficient_proxies_test_() ->
         ?assert(true)
     end).
 
-create_shards_accepts_map_proxy_contract_test_() ->
-    ?WITH_MECKS([
-        {e2ee_social_repo, [
-            {'create', 1, fun(_ShardRecord) ->
-                {ok, erlang:unique_integer([positive])}
-            end}
-        ]},
-        {elib_cipher, [
-            {'encrypt_rsa_oaep', 2, fun(ShardPayload, ProxyPublicKey) when is_binary(ShardPayload),
-                    is_binary(ProxyPublicKey) ->
-                {ok, <<"encrypted-shard">>}
-            end}
-        ]},
-        {e2ee_shard_validator, [
-            {'log_shard_transmission', 3, fun(_Action, _ShardId, _Meta) ->
-                ok
-            end}
-        ]}
-    ], fun() ->
-        PrivateKey = crypto:strong_rand_bytes(32),
-        Proxies = [
-            #{<<"proxy_uid">> => 1001, <<"encrypted_public_key">> => <<"pub-key-1">>},
-            #{<<"proxy_uid">> => 1002, <<"encrypted_public_key">> => <<"pub-key-2">>},
-            #{<<"proxy_uid">> => 1003, <<"encrypted_public_key">> => <<"pub-key-3">>}
+%% 零信任契约：客户端已完成 Shamir 分割与加密，服务端只存储密文分片。
+%% 旧的 create_shards/6（服务端接收明文私钥做分割）已删除，
+%% 本测试对应现行 create_shards/3。
+create_shards_stores_client_split_shards_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_social_ds, [
+                {'is_trusted_contact', 2, fun(9999, ProxyUid) ->
+                    lists:member(ProxyUid, [1001, 1002, 1003])
+                end},
+                {'create_shard', 1, fun(_ShardRecord) ->
+                    {ok, erlang:unique_integer([positive])}
+                end}
+            ]},
+            {e2ee_shard_validator, [
+                {'log_shard_transmission', 3, fun(shard_created, _ShardId, Meta) when
+                    is_map(Meta)
+                ->
+                    ok
+                end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> erlang:unique_integer([positive]) end}
+            ]}
         ],
+        fun() ->
+            Shards = [
+                #{<<"proxy_uid">> => 1001, <<"encrypted_shard">> => <<"cipher-1">>},
+                #{<<"proxy_uid">> => 1002, <<"encrypted_shard">> => <<"cipher-2">>},
+                #{<<"proxy_uid">> => 1003, <<"encrypted_shard">> => <<"cipher-3">>}
+            ],
 
-        {ok, Shards} = e2ee_social_logic:create_shards(
-            9999, <<"key-v1">>, 3, 2, PrivateKey, Proxies
-        ),
+            {ok, Persisted} = e2ee_social_logic:create_shards(9999, <<"key-v1">>, 2, Shards),
 
-        ?assertEqual(3, length(Shards)),
-        ?assertEqual(
-            [1001, 1002, 1003],
-            [maps:get(<<"proxy_uid">>, Shard) || Shard <- Shards]
-        ),
-        lists:foreach(fun(Shard) ->
-            ?assertEqual(<<"encrypted-shard">>, maps:get(<<"encrypted_shard">>, Shard))
-        end, Shards)
-    end).
+            ?assertEqual(3, length(Persisted)),
+            ?assertEqual(
+                [1001, 1002, 1003],
+                [maps:get(<<"proxy_uid">>, S) || S <- Persisted]
+            ),
+            %% 恢复门限必须落库真值（曾硬编码 0 使 can_recover 门限形同虚设）
+            ?assertEqual([2, 2, 2], [maps:get(<<"threshold">>, S) || S <- Persisted]),
+            %% 每个分片都必须写审计日志
+            ?assertEqual(3, meck:num_calls(e2ee_shard_validator, log_shard_transmission, 3))
+        end
+    ).
 
-create_shards_accepts_tuple_proxy_contract_test_() ->
-    ?WITH_MECKS([
-        {e2ee_social_repo, [
-            {'create', 1, fun(_ShardRecord) ->
-                {ok, erlang:unique_integer([positive])}
-            end}
-        ]},
-        {elib_cipher, [
-            {'encrypt_rsa_oaep', 2, fun(ShardPayload, ProxyPublicKey) when is_binary(ShardPayload),
-                    is_binary(ProxyPublicKey) ->
-                {ok, <<"encrypted-shard">>}
-            end}
-        ]},
-        {e2ee_shard_validator, [
-            {'log_shard_transmission', 3, fun(_Action, _ShardId, _Meta) ->
-                ok
-            end}
-        ]}
-    ], fun() ->
-        PrivateKey = crypto:strong_rand_bytes(32),
-        Proxies = [
-            {2001, <<"legacy-pub-key-1">>},
-            {2002, <<"legacy-pub-key-2">>},
-            {2003, <<"legacy-pub-key-3">>}
+create_shards_rejects_untrusted_proxy_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_social_ds, [
+                {'is_trusted_contact', 2, fun(_, _) -> false end}
+            ]}
         ],
+        fun() ->
+            Shards = [#{<<"proxy_uid">> => 8888, <<"encrypted_shard">> => <<"cipher">>}],
+            ?assertMatch(
+                {error, {_, _}}, e2ee_social_logic:create_shards(9999, <<"key-v1">>, 2, Shards)
+            )
+        end
+    ).
 
-        {ok, Shards} = e2ee_social_logic:create_shards(
-            9999, <<"key-v1">>, 3, 2, PrivateKey, Proxies
-        ),
-
-        ?assertEqual(3, length(Shards)),
-        ?assertEqual(
-            [2001, 2002, 2003],
-            [maps:get(<<"proxy_uid">>, Shard) || Shard <- Shards]
+create_shards_rejects_invalid_threshold_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Shards = [
+            #{<<"proxy_uid">> => 1001, <<"encrypted_shard">> => <<"c1">>},
+            #{<<"proxy_uid">> => 1002, <<"encrypted_shard">> => <<"c2">>}
+        ],
+        %% 门限 0（旧硬编码值）、1、超过分片总数 均拒绝
+        lists:foreach(
+            fun(BadThreshold) ->
+                ?assertMatch(
+                    {error, {_, _}},
+                    e2ee_social_logic:create_shards(9999, <<"key-v1">>, BadThreshold, Shards)
+                )
+            end,
+            [0, 1, 3, <<"2">>]
         )
     end).
+
+consume_proxy_shard_marks_used_and_audits_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_social_ds, [
+                {'consume_proxy_shard', 2, fun(<<"shard-777">>, 1001) ->
+                    {ok, #{
+                        <<"uid">> => 9999,
+                        <<"key_version">> => <<"key-v1">>,
+                        <<"encrypted_shard">> => <<"cipher">>
+                    }}
+                end}
+            ]},
+            {e2ee_shard_validator, [
+                {'log_shard_transmission', 3, fun(shard_decrypted, <<"shard-777">>, Meta) ->
+                    ?assertEqual(9999, maps:get(<<"uid">>, Meta)),
+                    ?assertEqual(1001, maps:get(<<"proxy_uid">>, Meta)),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Shard} = e2ee_social_logic:consume_proxy_shard(<<"shard-777">>, 1001),
+            ?assertEqual(<<"cipher">>, maps:get(<<"encrypted_shard">>, Shard)),
+            ?assertEqual(1, meck:num_calls(e2ee_shard_validator, log_shard_transmission, 3))
+        end
+    ).
 
 %% ===================================================================
 %% Shamir 边界条件测试
@@ -239,7 +276,8 @@ shamir_max_threshold_test_() ->
     ?TEST_SIMPLE(fun() ->
         Secret = crypto:strong_rand_bytes(32),
         N = 5,
-        K = 4,  % 需要所有分片中的 4 个
+        % 需要所有分片中的 4 个
+        K = 4,
 
         Shares = shamir_secret_sharing:split_secret(Secret, N, K),
         RecoveredSecret = shamir_secret_sharing:combine_shares(
