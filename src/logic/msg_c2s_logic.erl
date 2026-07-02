@@ -31,6 +31,7 @@ c2s(MsgId, CurrentUid, Data) ->
                 <<"id">> => MsgId,
                 <<"type">> => <<"C2S">>,
                 <<"action">> => <<"sync_resp">>,
+                <<"in_reply_to">> => MsgId,
                 <<"payload">> => Result
             }};
         <<"bot_qian_fan">> ->
@@ -120,6 +121,7 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
                 {reply, #{
                     <<"id">> => MsgId,
                     <<"type">> => <<"C2S_SERVER_ACK">>,
+                    <<"in_reply_to">> => MsgId,
                     <<"server_ts">> => elib_dt:millisecond()
                 }},
             ok;
@@ -129,6 +131,7 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
                 {reply, #{
                     <<"id">> => MsgId,
                     <<"type">> => <<"C2S_SERVER_ACK">>,
+                    <<"in_reply_to">> => MsgId,
                     <<"server_ts">> => elib_dt:millisecond()
                 }},
 

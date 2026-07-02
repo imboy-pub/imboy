@@ -364,6 +364,7 @@ handle_client_ack(Tail, State) ->
                     AckConfirmMsg = #{
                         <<"id">> => MsgId,
                         <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
+                        <<"in_reply_to">> => MsgId,
                         <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
                         <<"server_ts">> => elib_dt:millisecond()
                     },
@@ -428,6 +429,7 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
                 AckConfirmMsg = #{
                     <<"id">> => MsgId,
                     <<"type">> => <<"CLIENT_ACK_CONFIRM">>,
+                    <<"in_reply_to">> => MsgId,
                     <<"action">> => <<"CLIENT_ACK_CONFIRM">>,
                     <<"server_ts">> => elib_dt:millisecond()
                 },
@@ -627,13 +629,18 @@ is_error_state(State) ->
 %% @return map()
 -spec ws_validation_error(binary(), binary(), binary()) -> map().
 ws_validation_error(MsgId, Action, Reason) ->
-    #{
+    Base = #{
         <<"id">> => MsgId,
         <<"type">> => <<"S2C">>,
         <<"action">> => Action,
         <<"payload">> => #{<<"reason">> => Reason},
         <<"server_ts">> => elib_dt:millisecond()
-    }.
+    },
+    %% 【T15/R9】in_reply_to 标注被响应的请求 id（请求 id 未知时省略，纯加性）
+    case MsgId of
+        <<>> -> Base;
+        _ -> Base#{<<"in_reply_to">> => MsgId}
+    end.
 
 %% @doc 验证 CLIENT_ACK 参数
 %% 验证规则:

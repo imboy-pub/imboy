@@ -63,10 +63,14 @@ reply_mode({MsgId, FromId, Snippet}) ->
     {reply, MsgId, FromId, Snippet}.
 
 %% @doc 【构建】组装 C2C_SERVER_ACK 响应 map（纯，时间戳由外壳注入）。
+%% 【T15/R9】in_reply_to = 被响应的请求消息 id（纯加性字段，旧客户端忽略）；
+%% 客户端凭 in_reply_to 存在即可判定"这是对某请求的响应"，长期让 type 回归纯方向枚举。
+%% 注意：不能叫 reply_to——该名已被上行消息的引用回复占用（map 类型，见 extract_reply_info/1）。
 -spec build_server_ack(MsgId :: binary(), ServerTs :: integer()) -> map().
 build_server_ack(MsgId, ServerTs) ->
     #{
         <<"id">> => MsgId,
         <<"type">> => <<"C2C_SERVER_ACK">>,
+        <<"in_reply_to">> => MsgId,
         <<"server_ts">> => ServerTs
     }.

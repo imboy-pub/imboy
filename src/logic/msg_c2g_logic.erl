@@ -271,6 +271,7 @@ do_stage_and_send_c2g(
                 {reply, #{
                     <<"id">> => MsgId,
                     <<"type">> => <<"C2G_SERVER_ACK">>,
+                    <<"in_reply_to">> => MsgId,
                     <<"server_ts">> => NowMS
                 }},
             ok;
@@ -282,6 +283,7 @@ do_stage_and_send_c2g(
                 {reply, #{
                     <<"id">> => MsgId,
                     <<"type">> => <<"C2G_SERVER_ACK">>,
+                    <<"in_reply_to">> => MsgId,
                     <<"server_ts">> => NowMS
                 }},
 

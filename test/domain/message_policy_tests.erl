@@ -67,3 +67,9 @@ server_ack_shape_test() ->
     ?assertEqual(<<"m1">>, maps:get(<<"id">>, Ack)),
     ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Ack)),
     ?assertEqual(1700000000000, maps:get(<<"server_ts">>, Ack)).
+
+%% 【T15/R9】响应显式标注被响应的请求 id；字段名避开引用回复占用的 reply_to
+server_ack_carries_in_reply_to_test() ->
+    Ack = message_policy:build_server_ack(<<"m1">>, 1700000000000),
+    ?assertEqual(<<"m1">>, maps:get(<<"in_reply_to">>, Ack)),
+    ?assertEqual(false, maps:is_key(<<"reply_to">>, Ack)).

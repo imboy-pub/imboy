@@ -13,7 +13,13 @@
 > ✅ T14（帧层健壮性包）已实施：decode 拒收 Ver≠2（unsupported_version）+ 三处静默丢弃
 >   （帧解码失败/未知帧类型/payload 双路解码失败）改回 ERROR 帧(0x06,负载=UTF-8 原因文本)；
 >   帧头 9 字节布局未动；[WS-P1-8] 已随 T21 完成不重复；FLAG_ACK 文档化留 T17
-> ⏳ 待做：T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T15/T17/T18（T13 已消解并入 T17）、
+> ✅ T15（响应显式标注，后端先行）已实施：全部同步响应组装点（C2C/C2G/C2S_SERVER_ACK、
+>   sync_resp、CLIENT_ACK_CONFIRM、ws_validation_error）加纯加性字段 **in_reply_to**=请求消息 id。
+>   ⚠️字段名未按盘点原议用 reply_to——该名已被引用回复占用（上行顶层 map `#{msg_id,from_id}`，
+>   三端已消费），同名不同型会撞车，改用 IETF 惯例 in_reply_to；⚠️protobuf 通路经 to_pb_map
+>   只保留 schema 字段，in_reply_to 现仅 JSON 通路生效，proto 增字段为三端共享契约跨仓跟进
+> ⏳ 待做：T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T17/T18（T13 已消解并入 T17；
+>   T17 文档收敛现已解锁，需写入 in_reply_to 语义与 ERROR 帧）、
 >   T19（D6=接线，升 L 需 admin 联动）、T20（D5=保持开启，前置三项属归档架构级大改）
 > 裁决状态：D1/D2 已被 T00 核实消解；**D3/D4/D5/D6 已拍板（见第 4 节选中项）**
 >
