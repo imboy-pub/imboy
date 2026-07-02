@@ -4,7 +4,7 @@
 > 本文是速查契约表，不重复 API 用法（见 [websocket-api-2.md](./websocket-api-2.md)）
 > 与帧格式设计（见 `../../../.claude/plans/imboy-frame-protocol.md`）。
 >
-> 最后更新：2026-06-23
+> 最后更新：2026-07-02
 
 ---
 
@@ -23,7 +23,13 @@
 | 控制帧 | heartbeatPing / heartbeatPong / ack / nack / close / error | 0x01 / 0x02 / 0x03 / 0x04 / 0x05 / 0x06 |
 | 握手 | handshakeHello / handshakeAuth / handshakeOk | 0x10 / 0x11 / 0x12 |
 | 业务 | msgC2C / msgC2G / msgC2S / msgS2C / msgSync / msgTyping / msgRead / msgRecall | 0x20 / 0x21 / 0x22 / 0x23 / 0x24 / 0x25 / 0x26 / 0x27 |
-| RPC | rpcReq / rpcRsp | 0x80 / 0x81 |
+| RPC | rpcReq / rpcRsp（**deprecated**，无落地计划，RPC 语义由信封 `in_reply_to` 承担，见 §9） | 0x80 / 0x81 |
+
+> 2026-07-02 起：`error`(0x06) 已实现——服务端对协议错误（帧解码失败 / 未知帧类型 /
+> payload 双路解码失败）回 ERROR 帧，负载为 UTF-8 原因文本（`unsupported_version` /
+> `unsupported_frame_type:N` / `payload_decode_failed` / `bad_magic`）；同时
+> `imboy_frame:decode` 拒收 `Ver ≠ 2`（`{error, unsupported_version}`，版本协商仍走
+> 子协议字符串，帧内版本号为守护断言）。旧客户端对未知下行类型按现有丢弃逻辑处理。
 
 ## 3. Flags 位定义
 
@@ -93,3 +99,35 @@ ack msgId=0x1234567890ABCDEF (默认方向 C2C):
 ## 8. 变更协议
 
 修改任一协议常量前，必须同时更新三端实现 + 三端守护测试，并更新本表的「最后更新」日期。
+
+## 9. 语义类型总表（RPC vs 推送 vs 回执，2026-07-02 新增）
+
+`type` 字段历史上背了方向、类别、响应标记三份职责。自 2026-07-02 起，**响应类消息以可选
+顶层字段 `in_reply_to`（= 被响应请求的 `id`）显式标注**；客户端凭其存在即可判定
+"这是对我某个请求的响应"，无需为越界 type 值写特判。纯加性，旧客户端忽略零破坏。
+
+> ⚠️ 命名辨析：`in_reply_to`（下行响应，binary=请求 id）≠ `reply_to`（上行引用回复，
+> map `#{msg_id, from_id}`）。两者永不混用。
+> ⚠️ 生效范围：protobuf 下行经 `to_pb_map` 只保留 schema 字段，`in_reply_to` 当前仅
+> JSON 通路生效；proto 增字段需三端同步（待办）。
+
+| 交互 | 请求方 | 响应/推送 | 带 `in_reply_to` | 超时/重试契约 |
+|------|--------|-----------|------------------|---------------|
+| 发消息（RPC 式） | 客户端 C2C/C2G/C2S 消息 | `C2C_SERVER_ACK` / `C2G_SERVER_ACK` / `C2S_SERVER_ACK` | ✅ | 客户端按 §5.2 `messageSendRetryIntervals` 重发；服务端幂等短路（stage duplicate 只补 ACK） |
+| 增量同步（RPC 式） | C2S `sync` | `sync_resp` | ✅ | 客户端自行超时重试 |
+| 投递回执 | 客户端 `CLIENT_ACK,type,msgid,did` | `CLIENT_ACK_CONFIRM`（失败为 `CLIENT_ACK_ERROR`） | ✅（ERROR 在请求 id 可知时带） | 客户端按 §5.2 `ackConfirmRetryIntervals` 重发 ACK；**消费语义 per-device**：服务端按 (msg_id, uid, did) 写送达标记（`msg_delivery`），全部活跃设备确认后才清主行 |
+| 校验/限流错误 | 任意非法请求 | `ws_validation_error`（S2C + action=错误码） | ✅（请求 id 可知时） | 一次性，无重试 |
+| 服务端推送 | —（服务端发起） | C2C/C2G/S2C 下行消息 | ❌（无 in_reply_to 即推送） | 服务端按 §5.1 投递重试，等 CLIENT_ACK |
+| 帧层协议错误 | 任意非法帧 | `FRAME_TYPE_ERROR`(0x06) 帧 | —（帧层，无信封） | 一次性，连接保持 |
+
+### 2026-07-02 新增下行 action
+
+| action | 触发 | payload | 消费方 |
+|--------|------|---------|--------|
+| `message_read_sync` | C2C 已读落库后，同步给**阅读者本人**（含其离线设备，save 落 msg_s2c） | `msg_id` / `peer` / `read_at` | 客户端更新对应会话未读数；阅读设备自身收到时按已读状态幂等忽略；旧客户端按未知 action 忽略 |
+
+### REST 离线接口的设备维度（2026-07-02）
+
+`GET /offline` 与 `POST /offline_ack` 新增**可选** `did` 参数：携带时 C2C/S2C 按设备
+过滤/标记（配合 `msg_delivery`）；缺省保持按 uid 的旧语义（旧客户端零破坏，但多端
+场景存在丢消息风险，客户端应尽快带 `did`）。

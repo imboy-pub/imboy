@@ -121,7 +121,7 @@ make new t=imboy.ds n=demo_ds
 
 ## 关键特性
 
-**消息 QoS 投递**：在线立即投递 → 未确认重试 2s/5s/7s/11s → 4 次失败转离线消息 → 客户端 ACK 后清理。
+**消息 QoS 投递**：消息先落存储（staging → msg_c2c/msg_s2c，离线是存储常态而非"重试失败后转存"）；在线设备按类型节奏推送重试（真值见 `src/lib/elib_retry_config.erl`：C2C `[0,3s]`、C2G `[0]`、S2C `[0,1.5s,...]`）；CLIENT_ACK 按设备送达标记（`msg_delivery` 表），全部活跃设备确认后清理主行，离线设备重连仍可拉取。
 
 **消息永久存储（conv_seq 游标）**：配置 `{msg_archive_enabled, true}`（默认 false）。严格顺序以 `conv_seq` 为准，不用 `msg_id`/`TSID`。conv_key 格式：C2C=`"c2c:{min_uid}:{max_uid}"`，C2G=`"c2g:{group_id}"`。相关模块：`msg_archive_repo`, `msg_archive_ds`, `msg_store_worker`。
 
@@ -150,9 +150,9 @@ make new t=imboy.ds n=demo_ds
 - 架构：[docs/architecture/overview.md](./docs/architecture/overview.md)
 - 数据库访问：[docs/architecture/database-access.md](./docs/architecture/database-access.md)
 - DDD 充血模型落地现状：[docs/architecture/ddd-rich-model-status.md](./docs/architecture/ddd-rich-model-status.md)
-- WebSocket API：[docs/api/websocket-api-2.md](./docs/api/websocket-api-2.md)
+- WebSocket API：[docs/analysis/websocket-api-2.md](./docs/analysis/websocket-api-2.md)（协议契约速查：[docs/analysis/ws-protocol-contract.md](./docs/analysis/ws-protocol-contract.md)）
 - UTF-8 规范：[docs/standards/utf8-encoding.md](./docs/standards/utf8-encoding.md)
 - 错误码：[docs/standards/error-codes.md](./docs/standards/error-codes.md)
-- TSID 规范：[docs/api/tsid-field-convention.md](./docs/api/tsid-field-convention.md)
+- TSID 规范：[docs/analysis/tsid-field-convention.md](./docs/analysis/tsid-field-convention.md)
 - API 格式：[docs/standards/api-format.md](./docs/standards/api-format.md)
-- /v1/* 端点总目录：[docs/api/rest-api-v1-catalog.md](./docs/api/rest-api-v1-catalog.md)
+- /v1/* 端点总目录：[docs/analysis/rest-api-v1-catalog.md](./docs/analysis/rest-api-v1-catalog.md)

@@ -22,9 +22,14 @@
 >   推送新增 S2C action **message_read_sync**（payload=msg_id/peer/read_at，save 落 msg_s2c，
 >   离线设备按 T03 per-device 语义重连可拉；阅读设备收到后幂等忽略）；旧客户端按未知
 >   action 忽略不 break；⚠️跨仓跟进：imboyapp 消费该 action 更新未读数 + 真机双端回归
-> ⏳ 待做：T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T17（文档收敛，现已解锁：
->   需写入 in_reply_to / ERROR 帧 / message_read_sync / 重试真值 / FLAG_ACK 标注）、
->   T19（D6=接线，升 L 需 admin 联动）、T20（D5=保持开启，前置三项属归档架构级大改）
+> ✅ T17（文档收敛）已实施：websocket-api-2.md 修订 6 处过时点（Flags DIR 位/ACK 方向/
+>   重试真值/RPC deprecated/FLAG_ACK 装饰性/ERROR 帧与错误处理表）+ 2026-07-02 changelog；
+>   ws-protocol-contract.md 新增 §9 语义类型总表（RPC vs 推送 vs 回执 + in_reply_to 辨析 +
+>   message_read_sync + REST did 参数）；CLAUDE.md 修正 QoS 神话（重试真值+离线=存储常态+
+>   per-device ACK）并修复 4 处失效文档路径（websocket-api-2/tsid/rest-api-v1 均实际在
+>   docs/analysis/）；引用路径已 ls 全量核验可达
+> ⏳ 待做：T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T19（D6=接线，升 L 需 admin 联动）、
+>   T20（D5=保持开启，前置三项属归档架构级大改）——均需独立立项/协调，后端独立任务已清零
 > 裁决状态：D1/D2 已被 T00 核实消解；**D3/D4/D5/D6 已拍板（见第 4 节选中项）**
 >
 > **绿灯门结果**：`make app` 编译通过；触碰面全部测试模块单独重跑全绿（msg_c2c/c2g/c2s/s2c_logic、e2ee_social_logic/handler/shard_validator、e2ee_transfer_ds/logic/repo、e2ee_social_repo、msg_store_ds/repo、msg_c2c_ds、user_ds、user_device_logic、websocket_handler）；`make dialyze` 仅剩预存基线 warning（jsx/gen_statem 类型缺失，本会话 diff 零 jsx 调用，CI 中 dialyze 为 continue-on-error 基线 job）。全量 `make eunit` 的其余失败为 DB 未起（missing_config pg_conf / econnrefused）与若干预存测试漂移，均非本轮引入——本轮顺带修复了因签名/返回值变更连带的旧测试：ws handler 补 parse_qs/peer 桩、stage 返回值断言、transfer/social repo 的 UUID 生成迁移测试、mark_processed/1 签名、e2ee 列 JSONB 包装断言。

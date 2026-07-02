@@ -1,6 +1,6 @@
 # ImBoy WebSocket API 规范 v2.0
 
-> Last Updated: 2026-04-10  
+> Last Updated: 2026-07-02  
 > Status: 长期协议契约文档  
 > Scope: WebSocket 连接、消息结构、错误约定与迁移说明  
 > Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl` + `src/ds/websocket_ds.erl` + `src/lib/imboy_codec.erl` + `src/lib/imboy_frame.erl` + `include/imboy_frame.hrl`  
@@ -11,6 +11,7 @@
 
 | 日期 | 说明 |
 |------|------|
+| 2026-07-02 | ①帧层健壮性：`decode` 拒收 `Ver≠2`；协议错误（解码失败/未知帧类型/payload 双路解码失败）回 `FRAME_TYPE_ERROR`(0x06) 帧（负载=UTF-8 原因文本）。②同步响应新增可选字段 `in_reply_to`=被响应请求的 `id`（勿与引用回复的 `reply_to` 混淆；暂仅 JSON 通路生效）。③新增 S2C action `message_read_sync`（C2C 已读同步到阅读者自己的其他设备）。④CLIENT_ACK 消费语义升级为按设备送达标记（`msg_delivery` 表），线上格式不变；REST `/offline`、`offline_ack` 新增可选 `did` 参数。⑤修订本文档 6 处过时点（Flags DIR 位 / ACK 方向 / 重试真值 / RPC deprecated / FLAG_ACK 装饰性 / 文档路径）。 |
 | 2026-04-10 | 引入 `imboy.v2` 分层二进制帧协议：新增 9 字节 frame header、帧类型枚举、Flags 位图、心跳 ping/pong、frame 层 ACK/NACK；`Sec-WebSocket-Protocol` 新增 `imboy.v2` 优先项；前后端双层心跳（WS 传输层 + IMBoy frame 层）；保留现有 `imboy-protobuf` / `imboy-json` / `text` 子协议回退路径。详见 [v2 二进制帧协议（imboy.v2）](#v2-二进制帧协议imboyv2)。 |
 | 2025-01-19 | 消息结构 v2.0：`msg_type` / `action` / `e2ee` 字段从 payload 提升到顶层。 |
 | 2025-01-06 | 初版发布。 |
@@ -371,8 +372,8 @@ IMBoyMessage {
 |----|------|------|------|------|
 | bit7 | `FRAME_FLAG_CMP` / `FrameFlags.cmp` | `0x80` | payload 是否经过 zstd 压缩 | 保留，当前双端均不设置 |
 | bit6 | `FRAME_FLAG_ENC` / `FrameFlags.enc` | `0x40` | payload 是否为帧级 E2EE 密文 | 保留，业务层 E2EE 仍走 JSON `e2ee` 字段 |
-| bit5 | `FRAME_FLAG_ACK` / `FrameFlags.ack` | `0x20` | 对端是否需要回 frame 层 ACK | 心跳 ping 使用；业务帧当前不使用 |
-| bit4-3 | — | `0x18` | 保留 | 必须填 0 |
+| bit5 | `FRAME_FLAG_ACK` / `FrameFlags.ack` | `0x20` | 对端是否需要回 frame 层 ACK | **仅心跳 ping 装饰性使用**：服务端不读取该位、不据此回 ACK；业务帧不设置 |
+| bit4-3 | `FRAME_FLAG_DIR_MASK` | `0x18` | ACK 帧方向 DIR（c2c=0 / c2g=1 / s2c=2 / c2s=3），仅 ACK 帧使用 | 其余帧保留填 0（2026-06-23 起启用） |
 | bit2-0 | `FRAME_FLAG_PRI_MASK` / `FrameFlags.priorityMask` | `0x07` | 优先级 0-7，数值越大越优先 | 心跳使用 7，业务帧当前填 0 |
 
 Erlang 访问器：`imboy_frame:is_compressed/1`、`is_encrypted/1`、`needs_ack/1`、`priority/1`。Dart 等价访问器：`ImboyFrame.isCompressed` / `isEncrypted` / `needsAck` / `priority`。
@@ -383,17 +384,17 @@ Erlang 访问器：`imboy_frame:is_compressed/1`、`is_encrypted/1`、`needs_ack
 |------|------|------|------|--------------|
 | 控制 | `0x01` | `FRAME_TYPE_HEARTBEAT_PING` | 双向 | `uint16` big-endian `Seq`，uint16 回绕 |
 | 控制 | `0x02` | `FRAME_TYPE_HEARTBEAT_PONG` | 双向 | `uint16` big-endian，回显对应 ping 的 `Seq` |
-| 控制 | `0x03` | `FRAME_TYPE_ACK` | 服务端→客户端 | `uint64` big-endian `MsgId`（**frame 层** ACK，见后文辨析） |
-| 控制 | `0x04` | `FRAME_TYPE_NACK` | 服务端→客户端 | `uint64` big-endian `MsgId` |
+| 控制 | `0x03` | `FRAME_TYPE_ACK` | **客户端→服务端**（服务端实现的是入站处理，下行从未发送过 ACK 帧） | `uint64` big-endian `MsgId`，方向编码在 flags bit4-3（**frame 层** ACK，见后文辨析） |
+| 控制 | `0x04` | `FRAME_TYPE_NACK` | 客户端→服务端（服务端仅记日志） | `uint64` big-endian `MsgId` |
 | 控制 | `0x05` | `FRAME_TYPE_CLOSE` | _预留_ | _未实现_ |
-| 控制 | `0x06` | `FRAME_TYPE_ERROR` | _预留_ | _未实现_ |
+| 控制 | `0x06` | `FRAME_TYPE_ERROR` | 服务端→客户端（2026-07-02 起已实现） | UTF-8 错误原因文本（`unsupported_version` / `unsupported_frame_type:N` / `payload_decode_failed` / `bad_magic` 等）；旧客户端按未知类型丢弃即可 |
 | 握手 | `0x10`–`0x12` | `FRAME_TYPE_HANDSHAKE_HELLO` / `AUTH` / `OK` | _预留_ | _未实现，握手仍走 HTTP upgrade + Authorization header_ |
 | 业务 | `0x20` | `FRAME_TYPE_MSG_C2C` | 双向 | UTF-8 JSON 字符串 或 Protobuf `IMBoyMessage` 字节，详见 [上行帧分派规则](#上行帧分派规则) |
 | 业务 | `0x21` | `FRAME_TYPE_MSG_C2G` | 双向 | 同上 |
 | 业务 | `0x22` | `FRAME_TYPE_MSG_C2S` | 双向 | 同上；额外兼容 `CLIENT_ACK,...` 纯文本载荷 |
 | 业务 | `0x23` | `FRAME_TYPE_MSG_S2C` | 服务端→客户端 | 同上；投递管道默认封装到该类型 |
 | 业务 | `0x24`–`0x27` | `MSG_SYNC` / `MSG_TYPING` / `MSG_READ` / `MSG_RECALL` | _预留_ | _常量已定义，业务分派暂未接入_ |
-| 扩展 | `0x80`–`0x81` | `FRAME_TYPE_RPC_REQ` / `RPC_RSP` | _预留_ | _未实现_ |
+| 扩展 | `0x80`–`0x81` | `FRAME_TYPE_RPC_REQ` / `RPC_RSP` | **deprecated**（无落地计划；RPC 语义由消息信封 `in_reply_to` 字段承担，勿在此扩展） | _未实现_ |
 
 > 标注为 **预留** 的类型仅定义了数值常量，尚未接入业务分派路径；实现路线见下文的「路线图」。
 
@@ -527,14 +528,14 @@ Seq 语义：
 |------|---------------------|-------------------|
 | 帧 Type | `FRAME_TYPE_ACK` (`0x03`) / `FRAME_TYPE_NACK` (`0x04`) | `FRAME_TYPE_MSG_C2S` (`0x22`) |
 | Payload | `uint64` big-endian `MsgId` | UTF-8 文本 `"CLIENT_ACK,<type>,<msg_id>,<did>"` |
-| 方向 | 仅用于**服务端下发**确认（预留） | **客户端→服务端** 主动确认收到下行消息 |
+| 方向 | **客户端→服务端**（服务端 `dispatch_v2_frame` 入站处理；下行从未发送过） | **客户端→服务端** 主动确认收到下行消息 |
 | Dart 客户端是否发送 | **否** | **是**（`AckManager` 正常发送） |
 | TSID 兼容性 | `uint64` 字节级可承载 TSID（64-bit 有符号正数），但 Dart Web 平台 `int` 为 double，超过 2^53 丢精度 | 文本格式直接承载 TSID 十进制字符串，跨平台无歧义 |
 | Throttle | — | 被特判为不受 `msg_per_user` 限制 |
 
 **为什么 Dart 客户端不使用 frame 层 ACK？**（2026-04-10 事实复核后的权威结论）
 
-1. **`msg_direction` 信息无处安放（决定性原因）**：`AckManager` 实际发送 4 种方向的 ACK —— `C2C` / `C2G` / `S2C` / `WEBRTC`（见 `lib/service/websocket.dart:521-532` 和 `lib/service/ack_manager.dart:261`）。frame 层 ACK payload 固定 8 字节 `uint64`，无法携带 direction；服务端 `handle_protobuf_client_ack` 需要 `msg_direction` 路由到正确的清理管道（`msg_c2c` / `msg_c2g` 等）。现行 `dispatch_v2_frame(?FRAME_TYPE_ACK, ...)` 分支不得已把 `msg_direction` **硬编码为 `C2C`**（`websocket_handler.erl:215`）。若 Dart 全量切到 frame ack，`C2G` / `S2C` / `WEBRTC` 的 ACK 将被错误路由，破坏重试闭环。
+1. **`did` 与方向信息受限（历史决定性原因，2026-06-23 后部分缓解）**：frame 层 ACK payload 固定 8 字节 `uint64`，无法携带 `did`；方向自 2026-06-23 起已可编码在 flags bit4-3（`imboy_frame:ack/2` + `ack_direction/1`，服务端 `dispatch_v2_frame(?FRAME_TYPE_ACK, ...)` 从 flags 读取方向，**不再硬编码 C2C**）。但 `did` 缺失意味着多设备场景下服务端只能回退用连接态 `State.did`，且按设备送达标记（`msg_delivery`，2026-07-02）依赖 ACK 携带准确 `did`——文本 CLIENT_ACK 仍是语义完整的唯一通道。
 2. **扩展 payload 不可行**：升级约束明令禁止修改 `imboy_frame.erl/dart` 及其 26+26 个跨语言字节 fixture 测试，因此无法在 frame ack payload 追加 direction 字段。
 3. **Web 平台精度风险**：TSID 是 64-bit 有符号正数（首 bit=0，最大 ~9.2e18），字节级可无损填进 `uint64`；但 Dart 在 Web / JS 平台 `int` 编译为 `double`，`int.parse("1838294017982464")` 超过 `Number.MAX_SAFE_INTEGER`（2^53）会丢精度，`ImboyFrame.ack(int)` 下的 `setUint64` 在 dart2js 无法可靠承载全量 TSID。文本 CLIENT_ACK 路径天然规避此问题。
 4. **`AckManager` 重构成本不对等**：`_pendingAcks` 是 `Map<String, _PendingAck>`，`_PendingAck.content` 存储预格式化的 `"CLIENT_ACK,type,msgId,did"` 字符串，RTT 统计 / 重试上限事件 / 测试 mock 均基于 String key。切到 int64 涉及 30+ 处改动，而回报仅是每 ACK 省 ~30 字节文本开销，性价比极低。
@@ -542,7 +543,7 @@ Seq 语义：
 
 因此当前版本的选择是：
 
-- **下行**：frame 层 ACK 通道保留给服务端未来的纯数字 ID / RPC 场景；现阶段若触发 `dispatch_v2_frame(?FRAME_TYPE_ACK, ...)`（例如未来服务端向客户端推送 frame ACK），服务端会把 `uint64` 适配成 `PayloadClientAck { msg_id = integer_to_binary(...), did = State.did, msg_direction = C2C }` 交给 `handle_protobuf_client_ack/3`，复用同一套 ACK 流水线。
+- **上行帧级 ACK 的适配**：若客户端发送 frame ACK，服务端把 `uint64` 适配成 `PayloadClientAck { msg_id = integer_to_binary(...), did = State.did, msg_direction = flags bit4-3 解出的方向 }` 交给 `handle_protobuf_client_ack/3`，复用同一套 ACK 流水线（方向不再硬编码 C2C，2026-06-23 修复）。
 - **上行**：Dart 客户端仍然发送 `msg_c2s` 帧 + `"CLIENT_ACK,..."` 文本载荷；服务端在 `dispatch_v2_frame` 里对这个前缀做特判，旁路 throttle。
 
 ### 跨语言字节样例
@@ -592,12 +593,17 @@ Erlang 与 Dart 构造同一帧时必须输出完全相同的字节序列，任�
 
 ### 错误处理
 
+> 2026-07-02 起，帧层协议错误不再静默丢弃：服务端回 `FRAME_TYPE_ERROR`(0x06) 帧，
+> 负载为 UTF-8 原因文本；同时 `imboy_frame:decode/1` 拒收 `Ver ≠ 2`（`unsupported_version`，
+> 版本守护断言，版本协商仍走子协议字符串）。连接保持不关闭。
+
 | 错误 | 触发点 | 服务端行为 | 客户端行为 |
 |------|--------|-----------|-----------|
-| `bad_magic` | `imboy_frame:decode/1` 匹配不到 `0x4942` | 记录 `v2_frame_decode_failed` warn，当前**保持连接**并丢弃本帧 | Dart 端 `tryDecode` 抛 `FormatException`，`_handleV2Binary` 捕获后只记日志，不关闭连接 |
-| `frame_too_large` | `PayloadLen > 16 MiB` | 同上 | 同上 |
-| v2 帧类型未注册 | `dispatch_v2_frame` fall-through | 记录 `v2_frame_unsupported_type` warn，丢弃 | 记录 `v2 未知 frame type` 日志，丢弃 |
-| 业务 payload 无法解码为 JSON 或 Protobuf | `dispatch_v2_business_payload` 两路均失败 | 记录 `v2_msg_decode_failed` / `v2_msg_decode_empty` warn，丢弃 | N/A |
+| `bad_magic` | `imboy_frame:decode/1` 匹配不到 `0x4942` | 记录 `v2_frame_decode_failed` warn，**回 ERROR 帧**（负载 `bad_magic`），保持连接 | Dart 端 `tryDecode` 抛 `FormatException`，`_handleV2Binary` 捕获后只记日志，不关闭连接 |
+| `unsupported_version` | 帧内 `Ver ≠ 2` | 同上（负载 `unsupported_version`） | 同上 |
+| `frame_too_large` | `PayloadLen > 16 MiB` | 同上（负载 `frame_too_large`） | 同上 |
+| v2 帧类型未注册 | `dispatch_v2_frame` fall-through | 记录 `v2_frame_unsupported_type` warn，**回 ERROR 帧**（负载 `unsupported_frame_type:N`） | 记录 `v2 未知 frame type` 日志，丢弃 |
+| 业务 payload 无法解码为 JSON 或 Protobuf | `dispatch_v2_business_payload` 两路均失败 | 记录 `v2_msg_decode_failed` / `v2_msg_decode_empty` warn，**回 ERROR 帧**（负载 `payload_decode_failed`） | N/A |
 | 业务消息校验失败 | `message_ds:validate_message/1` | 返回 `invalid_message` / `invalid_json` S2C 错误 | 走原有 S2C 错误处理分支 |
 | Rate limit | `throttle:check(msg_per_user, Uid)` | 返回 `rate_limited` 校验错误，格式沿用 `ws_validation_error/3` | 走原有错误处理分支 |
 
@@ -611,7 +617,7 @@ Erlang 与 Dart 构造同一帧时必须输出完全相同的字节序列，任�
 - *`FRAME_FLAG_ENC` 帧级 E2EE*：业务层 E2EE 仍走 JSON `e2ee` 字段，frame 层加密留作未来 TCP 直连场景。
 - *握手帧 `HANDSHAKE_HELLO` / `AUTH` / `OK`*：常量已定义，当前握手仍依赖 HTTP upgrade + `Authorization` header。
 - *`MSG_SYNC` / `MSG_TYPING` / `MSG_READ` / `MSG_RECALL`*：枚举值已占位，`dispatch_v2_frame` 尚未实现分派；暂仍通过业务 JSON 顶层 `type` / `msg_type` 表达。
-- *`RPC_REQ` / `RPC_RSP`*：为未来纯 RPC 调用预留。
+- *`RPC_REQ` / `RPC_RSP`*：**deprecated，无落地计划**——"这是对某请求的响应"语义改由消息信封可选字段 `in_reply_to`（= 被响应请求的 `id`，2026-07-02 起服务端在 `*_SERVER_ACK` / `sync_resp` / `CLIENT_ACK_CONFIRM` / 校验错误中下发）承担，后来者勿在帧层扩展 RPC。注意与引用回复的 `reply_to`（上行顶层 map `#{msg_id, from_id}`）是两个不同字段。in_reply_to 当前仅 JSON 通路生效（protobuf schema 尚无该字段）。
 - *TCP 直连 framing*：header 设计已兼容字节流，但 `decode_stream/2` 的 `bad_magic` 语义目前是"立即关闭"而非"resync"，TCP 场景需要额外工作。
 
 ---
@@ -916,11 +922,20 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 
 #### 重试策略
 
-| 消息类型 | 重试间隔 (毫秒) |
+真值以 `src/lib/elib_retry_config.erl` 为准（下表同步于 2026-07-02），完整两套语义
+（服务端投递重试 vs 客户端发送/ACK 重试，**互不镜像**）见
+[ws-protocol-contract.md §5](./ws-protocol-contract.md)。
+
+| 消息类型 | 服务端投递重试间隔 (毫秒) |
 |---------|---------------|
-| C2C 单聊 | `[0, 5000, 7000, 11000, 17000]` |
-| C2G 群聊 | `[0, 3500, 3500, 3000, 5000]` |
+| C2C 单聊 | `[0, 3000]`（立即 + 3s 重试一次） |
+| C2G 群聊 | `[0]`（仅立即投递一次，在线成员 best-effort） |
+| C2S | `[0, 5000, 7000, 11000]` |
 | S2C 系统消息 | `[0, 1500, 1500, 3000, 5000, 7000]` |
+
+> **离线不是"转存动作"而是存储常态**：消息先落存储（staging → msg_c2c/msg_s2c），
+> 投递重试只是给在线设备的推送节奏；未确认设备重连后按设备送达标记
+> （`msg_delivery`，2026-07-02 起）拉取仍未确认的消息。不存在"重试 N 次失败后才转离线"。
 
 ---
 
