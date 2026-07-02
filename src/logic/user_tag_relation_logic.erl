@@ -118,8 +118,14 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
             ],
             Tb = elib_pg_sql:public_tablename(<<"user_friend">>),
             % 使用安全的参数化查询，避免SQL注入
-            OldSql = <<"SELECT to_user_id::text FROM ", Tb/binary, " WHERE tag LIKE $1">>,
-            {ok, OldObjectIds} = elib_pg:query(OldSql, [<<TagName/binary, ",%">>]),
+            %% IDOR 防御：必须按 from_user_id = Uid 限定，否则会跨用户读取
+            %% 其他用户 user_friend.tag 命中同一标签名的好友关系，混入本次
+            %% 新旧对象差异计算（DelObjectId），导致多用户使用同名标签时
+            %% 增删逻辑计算错乱。
+            OldSql =
+                <<"SELECT to_user_id::text FROM ", Tb/binary,
+                    " WHERE from_user_id = $1 AND tag LIKE $2">>,
+            {ok, OldObjectIds} = elib_pg:query(OldSql, [Uid, <<TagName/binary, ",%">>]),
             OldObjectIds2 = [maps:get(<<"to_user_id">>, Row) || Row <- OldObjectIds],
 
             DelObjectId = OldObjectIds2 -- ObjectIds2,
