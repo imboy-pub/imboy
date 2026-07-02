@@ -4,10 +4,12 @@
 > 输入：`docs/review/01_ws_protocol.md`、`docs/review/02_message_stability.md`、`docs/review/03_e2ee.md`
 > 条目引用记法：[WS-*]=01 号文档、[MSG-*]=02 号文档、[E2EE-*]=03 号文档
 
-> **执行进度（2026-07-02 当日实施，未提交）**：
-> ✅ 已完成并过绿灯门：T00（核实回填第 5 节）、T01、T02、T04、T05、T06、T07、T08、T11、T12、T16、T21（含 [WS-P1-8] e2ee_key_changed_ack 信封，原属 T14）
-> ⏳ 待做：T03（ACK 语义重构，L）、T09/T10（等 D3/D4 拍板）、T13（已随 T00 降级，随 T17 文档化）、T14 余项、T15、T17、T18、T19、T20（等 D5，注意 V4 已证实生产归档开启）
-> 裁决状态：D1/D2 已被 T00 核实结果消解；D3/D4/D5/D6 仍待拍板
+> **执行进度（2026-07-02 当日实施，已提交至 imboy dev/main 本地，未 push）**：
+> ✅ 已完成并过绿灯门：T00、T01、T02、T04、T05、T06、T07、T08、T09、T11、T12、T16、T21（含 [WS-P1-8]）
+>   提交：`3e9caabc`（代码批次）、`4732f448`（本文档）、`ce1cab1e`（T09/D3）
+> ⏳ 待做：T03（ACK 语义重构，L）、T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T13/T14余/T15/T17/T18、
+>   T19（D6=接线，升 L 需 admin 联动）、T20（D5=保持开启，前置三项属归档架构级大改）
+> 裁决状态：D1/D2 已被 T00 核实消解；**D3/D4/D5/D6 已拍板（见第 4 节选中项）**
 >
 > **绿灯门结果**：`make app` 编译通过；触碰面全部测试模块单独重跑全绿（msg_c2c/c2g/c2s/s2c_logic、e2ee_social_logic/handler/shard_validator、e2ee_transfer_ds/logic/repo、e2ee_social_repo、msg_store_ds/repo、msg_c2c_ds、user_ds、user_device_logic、websocket_handler）；`make dialyze` 仅剩预存基线 warning（jsx/gen_statem 类型缺失，本会话 diff 零 jsx 调用，CI 中 dialyze 为 continue-on-error 基线 job）。全量 `make eunit` 的其余失败为 DB 未起（missing_config pg_conf / econnrefused）与若干预存测试漂移，均非本轮引入——本轮顺带修复了因签名/返回值变更连带的旧测试：ws handler 补 parse_qs/peer 桩、stage 返回值断言、transfer/social repo 的 UUID 生成迁移测试、mark_processed/1 签名、e2ee 列 JSONB 包装断言。
 
@@ -328,7 +330,15 @@
 
 ## 4. 待裁决冲突 / 决策项（等你拍板，未擅自合并）
 
-> 严格意义的"跨域相反改法"为 0；以下 6 项是单点二选一决策，均给出推荐但不代拍板。
+> 严格意义的"跨域相反改法"为 0；以下 6 项是单点二选一决策。
+>
+> **拍板结果（2026-07-02 用户已裁决）**：
+> - **D1**：已被 T00 核实消解（ack_manager 已不发 WEBRTC ACK），无需后端加白名单
+> - **D2**：已被 T00 核实消解（webrtc 信令不挂重试），按 fire-and-forget 文档化（并入 T17）
+> - **D3 ✅ 选中【放开同账号跨设备】**：已实施（T09，提交 `ce1cab1e`）
+> - **D4 ✅ 选中【删除 backup 孤岛】**：待做 T10 —— ⚠️破坏性 DDL（删表迁移）+ 跨仓（imboyapp 仍调 list/delete），需两仓协调后独立执行
+> - **D5 ✅ 选中【保持归档开启 + 尽快修前置】**：待做 T20 前置三项（按 conv_key 单一归档点路由 / msg_burn 触及归档表 / next_conv_seq 失败不烧号）—— 归档架构级大改，需独立立项
+> - **D6 ✅ 选中【接线激活 msg_rate_logic】**：待做 T19 —— 规模升 L，需与 admin 解禁言路径联动，独立立项
 
 | # | 决策 | 选项 A | 选项 B | 推荐及理由 | 阻塞 |
 |---|---|---|---|---|---|
