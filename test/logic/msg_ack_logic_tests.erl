@@ -25,8 +25,10 @@ c2c_ack_deletes_offline_msg_test_() ->
         meck:expect(elib_metric, increment, 1, ok),
 
         % 准备测试数据：插入离线消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
-        Sql = <<"INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
+        Sql = <<
+            "INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)\n"
+            "                VALUES ($1, $2, $3, $4, $5, $6, NOW())"
+        >>,
         Payload = <<"{\"content\":\"test message\"}">>,
         {ok, _} = elib_pg:execute(Sql, [9001, 999, Uid, MsgId, <<"text">>, Payload]),
 
@@ -103,8 +105,10 @@ s2c_ack_deletes_offline_msg_test_() ->
         meck:expect(elib_metric, increment, 1, ok),
 
         % 准备测试数据：插入离线消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
-        Sql = <<"INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
+        Sql = <<
+            "INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)\n"
+            "                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
+        >>,
         Payload = <<"{\"msg_type\":\"system\"}">>,
         {ok, _} = elib_pg:execute(Sql, [9002, 0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
 
@@ -141,8 +145,10 @@ c2s_ack_uses_parameterized_query_test_() ->
         meck:expect(elib_metric, increment, 1, ok),
 
         % 准备测试数据：插入消息（id 列在 TSID 迁移后为 BIGINT NOT NULL，需显式提供）
-        Sql = <<"INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
+        Sql = <<
+            "INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)\n"
+            "                VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())"
+        >>,
         Payload = <<"{\"text\":\"hello\"}">>,
         {ok, _} = elib_pg:execute(Sql, [9003, Uid, 0, 123, MsgId, <<"text">>, Payload]),
 
@@ -203,6 +209,31 @@ unknown_msg_type_handles_gracefully_test_() ->
         % 应该正常完成，记录错误日志
         ?assert(true)
     end).
+
+%% ===================================================================
+%% P0-2 回归：ACK 不得提前 unstage（staging 由 worker 落库后清理）
+%% 不依赖 DB，纯 meck 验证
+%% ===================================================================
+
+client_ack_does_not_unstage_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_operation_ds, [
+                {'ack_c2c_msg', 2, fun(_MsgId, _Uid) -> {ok, 1} end}
+            ]},
+            {elib_metric, [
+                {'increment', 1, fun(_) -> ok end}
+            ]},
+            {msg_store_ds, [
+                {'unstage', 1, fun(_MsgId) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ok = msg_ack_logic:client_ack(<<"c2c">>, <<"msg_p0_2">>, 1001, <<"did-1">>),
+            %% ACK 只标记送达，不得触碰 staging 生命周期
+            ?assertEqual(0, meck:num_calls(msg_store_ds, unstage, 1))
+        end
+    ).
 
 %% ===================================================================
 %% Setup 和 Teardown
