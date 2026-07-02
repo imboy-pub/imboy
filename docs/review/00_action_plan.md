@@ -28,8 +28,14 @@
 >   message_read_sync + REST did 参数）；CLAUDE.md 修正 QoS 神话（重试真值+离线=存储常态+
 >   per-device ACK）并修复 4 处失效文档路径（websocket-api-2/tsid/rest-api-v1 均实际在
 >   docs/analysis/）；引用路径已 ls 全量核验可达
-> ⏳ 待做：T10（D4=删孤岛，跨仓破坏性 DDL 需协调）、T19（D6=接线，升 L 需 admin 联动）、
->   T20（D5=保持开启，前置三项属归档架构级大改）——均需独立立项/协调，后端独立任务已清零
+> ✅ P2 backlog 部分完成：[MSG-P2-6] 已修——⚠️盘点建议的三列唯一约束在 msg_read
+>   （hypertable，按 created_at 分区）上不可行（唯一索引必须含分区列），改为 save_read
+>   SQL 内 WHERE NOT EXISTS 三列应用层去重 + 原四列 ON CONFLICT 兜并发竞态，零 DDL。
+>   其余 P2 项处置：[MSG-P2-4] 已随 T06 完成；[WS-P1-7] 格式位——flags 位已占满
+>   （bit4-3 被 DIR 占用），无安全空位，维持嗅探；[MSG-P2-1/2/5][E2EE-P2-15/16/17] 留后续批次
+> ⏳ 待做：T10（D4=删孤岛，⚠️涉及 imboy_router.erl——该文件现有并发未提交改动，须等其
+>   落地后再做）、T19（D6=接线，升 L 需 admin 联动且 src/adm/* 同样有并发改动）、
+>   T20（D5=保持开启，前置三项属归档架构级大改）——均需独立立项/协调
 > 裁决状态：D1/D2 已被 T00 核实消解；**D3/D4/D5/D6 已拍板（见第 4 节选中项）**
 >
 > **绿灯门结果**：`make app` 编译通过；触碰面全部测试模块单独重跑全绿（msg_c2c/c2g/c2s/s2c_logic、e2ee_social_logic/handler/shard_validator、e2ee_transfer_ds/logic/repo、e2ee_social_repo、msg_store_ds/repo、msg_c2c_ds、user_ds、user_device_logic、websocket_handler）；`make dialyze` 仅剩预存基线 warning（jsx/gen_statem 类型缺失，本会话 diff 零 jsx 调用，CI 中 dialyze 为 continue-on-error 基线 job）。全量 `make eunit` 的其余失败为 DB 未起（missing_config pg_conf / econnrefused）与若干预存测试漂移，均非本轮引入——本轮顺带修复了因签名/返回值变更连带的旧测试：ws handler 补 parse_qs/peer 桩、stage 返回值断言、transfer/social repo 的 UUID 生成迁移测试、mark_processed/1 签名、e2ee 列 JSONB 包装断言。

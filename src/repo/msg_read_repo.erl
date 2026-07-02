@@ -38,11 +38,18 @@ save_read(MsgId, FromUid, ToUid, ToDid, ReadAt) ->
     %%   - 写 id 触发 SQLSTATE 42703 column "id" of relation "msg_read" does not exist
     %%   - 三列冲突子句也对不上唯一约束
     %% 这里去掉 id 列、对齐唯一约束的四列子句。
+    %% 【MSG-P2-6】三列去重（msg_id, to_uid, to_did）：两次独立上报时间戳不同会
+    %% 绕过四列唯一约束产生重复已读行。msg_read 是 hypertable（按 created_at 分区），
+    %% 唯一索引必须含分区列，无法直接建三列唯一约束，故用 WHERE NOT EXISTS 应用层
+    %% 去重；ON CONFLICT 兜住同时间戳的并发竞态。
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
         <<" (msg_id, from_uid, to_uid, to_did, read_at, created_at)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $5)">>,
+        <<" SELECT $1, $2, $3, $4, $5, $5">>,
+        <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
+        Tb,
+        <<" WHERE msg_id = $1 AND to_uid = $3 AND to_did = $4)">>,
         <<" ON CONFLICT (msg_id, to_uid, to_did, created_at) DO NOTHING">>
     ],
     case elib_pg:query(Sql, [MsgId, FromUid, ToUid, ToDid, ReadAt]) of
