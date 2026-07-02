@@ -514,7 +514,8 @@ add_comment(Req0, State) ->
 %% @param State 状态映射
 %% @return 处理后的请求对象
 -spec list_comments(cowboy_req:req(), map()) -> cowboy_req:req().
-list_comments(Req0, _State) ->
+list_comments(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
 
     PhotoId = proplists:get_value(<<"photo_id">>, Qs, <<>>),
@@ -525,7 +526,7 @@ list_comments(Req0, _State) ->
         <<>> ->
             elib_response:error(Req0, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case group_album_logic:list_comments(PhotoId, Limit) of
+            case group_album_logic:list_comments(PhotoId, CurrentUid, Limit) of
                 {ok, Comments} ->
                     % 编码用户ID
                     Comments2 = lists:map(
@@ -536,6 +537,10 @@ list_comments(Req0, _State) ->
                         Comments
                     ),
                     elib_response:success(Req0, #{comments => Comments2}, <<"查询成功"/utf8>>);
+                {error, <<"你不是该群成员"/utf8>>} ->
+                    elib_response:error(Req0, <<"你不是该群成员"/utf8>>, ?ERR_FORBIDDEN);
+                {error, <<"图片不存在"/utf8>>} ->
+                    elib_response:error(Req0, <<"图片不存在"/utf8>>, ?ERR_NOT_FOUND);
                 {error, _Reason} ->
                     elib_response:error(Req0, <<"查询失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
             end

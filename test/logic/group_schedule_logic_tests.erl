@@ -347,6 +347,35 @@ get_schedule_detail_not_found_test() ->
     ?assertEqual({error, schedule_not_found}, Result),
     meck:unload(group_schedule_repo).
 
+%% 回归（IDOR）：get_schedule_detail/2 用户侧入口，非该群成员 → 拒绝
+%% （管理端 get_schedule_detail/1 保持不做该校验，由 adm_acl 权限门控收口）
+get_schedule_detail_2_non_member_rejected_test() ->
+    _ = catch meck:unload(group_schedule_repo),
+    _ = catch meck:unload(group_ds),
+    meck:new(group_schedule_repo, [passthrough, no_link]),
+    meck:new(group_ds, [passthrough, no_link]),
+    meck:expect(group_schedule_repo, find_by_schedule_id, fun(_ScheduleId) ->
+        #{
+            <<"id">> => 1001,
+            <<"schedule_id">> => <<"sched_123">>,
+            <<"group_id">> => 101,
+            <<"title">> => <<"会议"/utf8>>
+        }
+    end),
+    meck:expect(group_schedule_repo, list_participants, fun(_ScheduleId) ->
+        {ok, []}
+    end),
+    meck:expect(group_schedule_repo, count_participants, fun(_ScheduleId) ->
+        {ok, 0}
+    end),
+    meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> false end),
+
+    Result = group_schedule_logic:get_schedule_detail(<<"sched_123">>, 999),
+
+    ?assertEqual({error, unauthorized}, Result),
+    meck:unload(group_schedule_repo),
+    meck:unload(group_ds).
+
 %% ===================================================================
 %% list_group_schedules/3 测试 - 查询群组日程
 %% ===================================================================
@@ -395,6 +424,18 @@ list_group_schedules_with_time_filter_success_test() ->
 
     ?assertMatch({ok, #{list := [_], total := 1}}, Result),
     meck:unload(group_schedule_repo).
+
+%% 回归（IDOR）：list_group_schedules/6 用户侧入口，非该群成员 → 拒绝
+%% （管理端 list_group_schedules/5 保持不做该校验，由 adm_acl 权限门控收口）
+list_group_schedules_6_non_member_rejected_test() ->
+    _ = catch meck:unload(group_ds),
+    meck:new(group_ds, [passthrough, no_link]),
+    meck:expect(group_ds, is_member, fun(_Uid, _Gid) -> false end),
+
+    Result = group_schedule_logic:list_group_schedules(123, 999, undefined, undefined, 1, 20),
+
+    ?assertEqual({error, unauthorized}, Result),
+    meck:unload(group_ds).
 
 %% ===================================================================
 %% list_my_schedules/3 测试 - 查询我的日程

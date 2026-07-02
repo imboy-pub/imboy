@@ -231,7 +231,7 @@ list(Req0, State) ->
         {_, _, invalid} ->
             elib_response:error(Req0, <<"执行人ID非法"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case group_task_logic:list(Gid2, Status, AssigneeId, Page, Size) of
+            case group_task_logic:list(Gid2, CurrentUid, Status, AssigneeId, Page, Size) of
                 {ok, Tasks} ->
                     % 转换数据格式
                     Tasks2 = [task_transfer(Task) || Task <- Tasks],
@@ -246,7 +246,7 @@ list(Req0, State) ->
 %% @doc 查询作业详情
 -spec detail(cowboy_req:req(), map()) -> cowboy_req:req().
 detail(Req0, State) ->
-    _CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     TaskId = proplists:get_value(<<"task_id">>, Qs, <<>>),
     TaskId2 = normalize_id(TaskId),
@@ -255,7 +255,7 @@ detail(Req0, State) ->
         0 ->
             elib_response:error(Req0, <<"作业ID必填"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            case group_task_logic:detail(TaskId2) of
+            case group_task_logic:detail(TaskId2, CurrentUid) of
                 {ok, Task} ->
                     Task2 = task_transfer(Task),
                     elib_response:success(Req0, Task2);
@@ -291,7 +291,7 @@ my_tasks(Req0, State) ->
 %% @doc 查询待批改作业
 -spec pending_review(cowboy_req:req(), map()) -> cowboy_req:req().
 pending_review(Req0, State) ->
-    _CurrentUid = maps:get(current_uid, State),
+    CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     TaskId = proplists:get_value(<<"task_id">>, Qs, <<>>),
     TaskUid = normalize_task_uid(TaskId),
@@ -301,7 +301,7 @@ pending_review(Req0, State) ->
         undefined ->
             elib_response:error(Req0, <<"作业ID必填"/utf8>>, ?ERR_BAD_REQUEST);
         TaskUid2 ->
-            case group_task_logic:pending_review(TaskUid2, Page, Size) of
+            case group_task_logic:pending_review(TaskUid2, CurrentUid, Page, Size) of
                 {ok, Assignments} ->
                     % 转换数据格式
                     Assignments2 = [assignment_transfer(Assignment) || Assignment <- Assignments],

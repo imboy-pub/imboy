@@ -16,7 +16,9 @@
 -export([update_vote/3]).
 -export([cancel_vote/2]).
 -export([get_vote_detail/1]).
+-export([get_vote_detail/2]).
 -export([list_votes/3]).
+-export([list_votes/4]).
 -export([close_vote/2]).
 -export([get_my_vote/2]).
 
@@ -48,7 +50,13 @@ create_vote(Gid, CreatorId, Title, Options, Extra, _ExtConfig) ->
                 _ when length(Options) > 20 ->
                     {error, {invalid_param, too_many_options}};
                 _ ->
-                    do_create_vote(Gid, CreatorId, Title, Options, Extra)
+                    %% IDOR 防御：创建者必须是该群成员，防止对任意群创建投票
+                    case group_ds:is_member(CreatorId, Gid) of
+                        false ->
+                            {error, not_group_member};
+                        true ->
+                            do_create_vote(Gid, CreatorId, Title, Options, Extra)
+                    end
             end
     end.
 
@@ -125,7 +133,15 @@ cast_vote(VoteId, UserId, OptionIds) ->
         {error, not_found} ->
             {error, vote_not_found};
         {ok, Vote} ->
-            validate_and_cast_vote(Vote, VoteId, UserId, OptionIds)
+            %% IDOR 防御：投票人必须是该投票所属群的成员，防止跨群用户
+            %% 污染他群的投票结果统计
+            GroupId = maps:get(<<"group_id">>, Vote, 0),
+            case group_ds:is_member(UserId, GroupId) of
+                false ->
+                    {error, not_group_member};
+                true ->
+                    validate_and_cast_vote(Vote, VoteId, UserId, OptionIds)
+            end
     end.
 
 %% @doc 验证并执行投票
@@ -226,7 +242,14 @@ update_vote(VoteId, UserId, OptionIds) ->
                 {error, not_found} ->
                     {error, vote_not_found};
                 {ok, Vote} ->
-                    validate_and_update_vote(Vote, Record, VoteId, UserId, OptionIds)
+                    %% IDOR 防御：改票人必须是该投票所属群的成员
+                    GroupId = maps:get(<<"group_id">>, Vote, 0),
+                    case group_ds:is_member(UserId, GroupId) of
+                        false ->
+                            {error, not_group_member};
+                        true ->
+                            validate_and_update_vote(Vote, Record, VoteId, UserId, OptionIds)
+                    end
             end
     end.
 
@@ -304,6 +327,28 @@ get_vote_detail(VoteId) ->
             build_vote_detail(Vote, VoteId)
     end.
 
+%% @doc 获取投票详情（用户侧入口）
+%% IDOR 防御：ViewerUid 必须是该投票所属群的成员，否则任意登录用户传任意
+%% vote_id 都能读取标题/选项/得票数等内容。管理端 get_vote_detail/1
+%% 保持不做该校验（由 adm_acl 权限门控收口）。
+%% @param VoteId 投票ID (字符串)
+%% @param ViewerUid 查看者用户ID
+%% @return {ok, VoteDetail} | {error, Reason}
+-spec get_vote_detail(binary(), integer()) -> {ok, map()} | {error, term()}.
+get_vote_detail(VoteId, ViewerUid) ->
+    case group_vote_ds:find_by_vote_id(VoteId) of
+        {error, not_found} ->
+            {error, vote_not_found};
+        {ok, Vote} ->
+            GroupId = maps:get(<<"group_id">>, Vote, 0),
+            case group_ds:is_member(ViewerUid, GroupId) of
+                false ->
+                    {error, permission_denied};
+                true ->
+                    build_vote_detail(Vote, VoteId)
+            end
+    end.
+
 %% @doc 构建投票详情
 build_vote_detail(Vote, VoteId) ->
     % 获取选项列表
@@ -361,6 +406,23 @@ list_votes(Gid, Page, Size) ->
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% @doc 查询群投票列表（用户侧入口）
+%% IDOR 防御：ViewerUid 必须是 Gid 的成员，否则任意登录用户传任意 group_id
+%% 都能分页拉取该群全部投票列表。管理端 list_votes/3 保持不做该校验
+%% （由 adm_acl 权限门控收口）。
+%% @param Gid 群组ID
+%% @param ViewerUid 查看者用户ID
+%% @param Page 页码
+%% @param Size 每页数量
+-spec list_votes(integer(), integer(), integer(), integer()) -> {ok, map()} | {error, term()}.
+list_votes(Gid, ViewerUid, Page, Size) ->
+    case group_ds:is_member(ViewerUid, Gid) of
+        false ->
+            {error, permission_denied};
+        true ->
+            list_votes(Gid, Page, Size)
     end.
 
 %% @doc 结束投票（仅创建者或群主/管理员可操作）

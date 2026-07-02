@@ -18,7 +18,7 @@
 -export([get_photo_detail/2]).
 -export([update_album_cover/3]).
 -export([rename_album/3]).
--export([list_comments/2]).
+-export([list_comments/3]).
 
 -include("log.hrl").
 
@@ -279,12 +279,19 @@ rename_album(AlbumId, NewName, CurrentUid) ->
     end.
 
 %% @doc 查询图片评论列表
+%% IDOR 防御：CurrentUid 必须是该图片所属群的成员，否则任意登录用户传任意
+%% photo_id 都能读取评论内容（该函数唯一调用方为用户侧 handler，无管理端
+%% 用例，故直接在此收口，无需另设无鉴权变体）。
 %% @param PhotoId 图片ID
+%% @param CurrentUid 当前用户ID
 %% @param Limit 返回条数上限
 %% @return {ok, CommentList} | {error, Reason}
--spec list_comments(binary(), integer()) -> {ok, list(map())} | {error, term()}.
-list_comments(PhotoId, Limit) ->
-    group_album_ds:list_comments(PhotoId, Limit).
+-spec list_comments(binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+list_comments(PhotoId, CurrentUid, Limit) ->
+    case ensure_photo_group_member(PhotoId, CurrentUid) of
+        ok -> group_album_ds:list_comments(PhotoId, Limit);
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 检查相册删除权限
 -spec check_album_delete_permission(integer(), integer(), integer()) -> ok | {error, binary()}.

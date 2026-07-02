@@ -97,6 +97,8 @@ create(Req0, State) ->
                     elib_response:error(Req0, <<"缺少必填参数: ", (ec_cnv:to_binary(Field))/binary>>);
                 {error, {invalid_param, Reason}} ->
                     elib_response:error(Req0, <<"参数错误: ", (ec_cnv:to_binary(Reason))/binary>>);
+                {error, not_group_member} ->
+                    elib_response:error(Req0, "您不是该群成员");
                 {error, Reason} ->
                     elib_response:error(Req0, ec_cnv:to_binary(Reason))
             end
@@ -110,7 +112,8 @@ create(Req0, State) ->
 %% @return 返回包含投票列表的响应
 %% @end
 -spec list(cowboy_req:req(), map()) -> cowboy_req:req().
-list(Req0, _State) ->
+list(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
     Gid2 = elib_cnv:safe_to_integer(Gid),
@@ -120,9 +123,11 @@ list(Req0, _State) ->
         0 ->
             elib_response:error(Req0, "gid 必须");
         _ ->
-            case group_vote_logic:list_votes(Gid2, Page, Size) of
+            case group_vote_logic:list_votes(Gid2, CurrentUid, Page, Size) of
                 {ok, Votes} ->
                     elib_response:success(Req0, Votes, "success.");
+                {error, permission_denied} ->
+                    elib_response:error(Req0, "无权限查看该群投票");
                 {error, Reason} ->
                     elib_response:error(Req0, ec_cnv:to_binary(Reason))
             end
@@ -136,7 +141,8 @@ list(Req0, _State) ->
 %% @return 返回包含投票详情的响应
 %% @end
 -spec detail(cowboy_req:req(), map()) -> cowboy_req:req().
-detail(Req0, _State) ->
+detail(Req0, State) ->
+    CurrentUid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     VoteId = proplists:get_value(<<"vote_id">>, Qs, <<>>),
 
@@ -144,11 +150,13 @@ detail(Req0, _State) ->
         <<>> ->
             elib_response:error(Req0, "vote_id 必须");
         _ ->
-            case group_vote_logic:get_vote_detail(VoteId) of
+            case group_vote_logic:get_vote_detail(VoteId, CurrentUid) of
                 {ok, VoteDetail} ->
                     elib_response:success(Req0, VoteDetail, "success.");
                 {error, vote_not_found} ->
                     elib_response:error(Req0, "投票不存在");
+                {error, permission_denied} ->
+                    elib_response:error(Req0, "无权限查看该投票");
                 {error, Reason} ->
                     elib_response:error(Req0, ec_cnv:to_binary(Reason))
             end
@@ -191,6 +199,8 @@ cast(Req0, State) ->
                     elib_response:error(Req0, "单选投票只能选择一个选项");
                 {error, multiple_choice_requires_at_least_two_options} ->
                     elib_response:error(Req0, "多选投票至少选择两个选项");
+                {error, not_group_member} ->
+                    elib_response:error(Req0, "您不是该群成员");
                 {error, Reason} ->
                     elib_response:error(Req0, ec_cnv:to_binary(Reason))
             end
@@ -227,6 +237,8 @@ update(Req0, State) ->
                     elib_response:error(Req0, "投票已结束");
                 {error, invalid_option} ->
                     elib_response:error(Req0, "无效的选项");
+                {error, not_group_member} ->
+                    elib_response:error(Req0, "您不是该群成员");
                 {error, Reason} ->
                     elib_response:error(Req0, ec_cnv:to_binary(Reason))
             end

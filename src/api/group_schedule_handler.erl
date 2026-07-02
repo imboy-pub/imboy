@@ -216,7 +216,8 @@ cancel(Req0, State) ->
 
 %% @doc 查询日程详情
 -spec detail(cowboy_req:req(), map()) -> cowboy_req:req().
-detail(Req0, _State) ->
+detail(Req0, State) ->
+    Uid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     ScheduleId0 = proplists:get_value(<<"schedule_id">>, Qs, undefined),
     ScheduleId = normalize_schedule_id(ScheduleId0),
@@ -225,11 +226,13 @@ detail(Req0, _State) ->
         undefined ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
-            case group_schedule_logic:get_schedule_detail(ScheduleId) of
+            case group_schedule_logic:get_schedule_detail(ScheduleId, Uid) of
                 {ok, Result} ->
                     elib_response:success(Req0, Result);
                 {error, schedule_not_found} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
+                {error, unauthorized} ->
+                    elib_response:error(Req0, error_msg(?ERR_FORBIDDEN), ?ERR_FORBIDDEN);
                 {error, Reason} ->
                     ?LOG_ERROR("查询日程详情失败: ~p", [Reason]),
                     elib_response:error(Req0, <<"查询日程详情失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
@@ -238,7 +241,8 @@ detail(Req0, _State) ->
 
 %% @doc 查询群组日程列表
 -spec list(cowboy_req:req(), map()) -> cowboy_req:req().
-list(Req0, _State) ->
+list(Req0, State) ->
+    Uid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
     GroupId = proplists:get_value(<<"group_id">>, Qs, undefined),
     StartAt = normalize_time_value(proplists:get_value(<<"start_at">>, Qs, undefined)),
@@ -252,9 +256,13 @@ list(Req0, _State) ->
         0 ->
             elib_response:error(Req0, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST);
         _ ->
-            case group_schedule_logic:list_group_schedules(GroupId2, StartAt, EndAt, Page, Size) of
+            case
+                group_schedule_logic:list_group_schedules(GroupId2, Uid, StartAt, EndAt, Page, Size)
+            of
                 {ok, Result} ->
                     elib_response:success(Req0, Result);
+                {error, unauthorized} ->
+                    elib_response:error(Req0, error_msg(?ERR_FORBIDDEN), ?ERR_FORBIDDEN);
                 {error, Reason} ->
                     ?LOG_ERROR("查询群组日程列表失败: ~p", [Reason]),
                     elib_response:error(Req0, <<"查询日程列表失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)

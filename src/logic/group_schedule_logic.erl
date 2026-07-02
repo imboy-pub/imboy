@@ -14,8 +14,10 @@
 -export([update_schedule/7]).
 -export([cancel_schedule/2]).
 -export([get_schedule_detail/1]).
+-export([get_schedule_detail/2]).
 -export([list_group_schedules/3]).
 -export([list_group_schedules/5]).
+-export([list_group_schedules/6]).
 -export([list_my_schedules/3]).
 -export([list_my_schedules/5]).
 
@@ -233,7 +235,7 @@ cancel_schedule(ScheduleId, CreatorId) ->
             end
     end.
 
-%% @doc 获取日程详情
+%% @doc 获取日程详情（内部/管理端原语，不做群成员校验，调用方需自行鉴权）
 -spec get_schedule_detail(binary()) -> {ok, map()} | {error, term()}.
 get_schedule_detail(ScheduleId) ->
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
@@ -253,13 +255,32 @@ get_schedule_detail(ScheduleId) ->
             end
     end.
 
+%% @doc 获取日程详情（用户侧入口）
+%% IDOR 防御：ViewerUid 必须是该日程所属群的成员，否则任意登录用户传任意
+%% schedule_id 都能读取标题/地点/时间/完整参与人名单等内容。管理端
+%% get_schedule_detail/1 保持不做该校验（由 adm_acl 权限门控收口）。
+%% @param ScheduleId 日程ID
+%% @param ViewerUid 查看者用户ID
+-spec get_schedule_detail(binary(), integer()) -> {ok, map()} | {error, term()}.
+get_schedule_detail(ScheduleId, ViewerUid) ->
+    case get_schedule_detail(ScheduleId) of
+        {ok, #{schedule := Schedule}} = Ok ->
+            GroupId = maps:get(<<"group_id">>, Schedule, 0),
+            case group_ds:is_member(ViewerUid, GroupId) of
+                true -> Ok;
+                false -> {error, unauthorized}
+            end;
+        {error, _} = Err ->
+            Err
+    end.
+
 %% @doc 查询群组日程列表
 -spec list_group_schedules(integer(), integer(), integer()) ->
     {ok, map()} | {error, term()}.
 list_group_schedules(GroupId, Page, Size) ->
     list_group_schedules(GroupId, undefined, undefined, Page, Size).
 
-%% @doc 查询群组日程列表（支持时间窗口）
+%% @doc 查询群组日程列表（支持时间窗口，内部/管理端原语，不做群成员校验）
 -spec list_group_schedules(
     integer(), binary() | undefined, binary() | undefined, integer(), integer()
 ) ->
@@ -276,6 +297,22 @@ list_group_schedules(GroupId, StartAt, EndAt, Page, Size) ->
             }};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% @doc 查询群组日程列表（用户侧入口，支持时间窗口）
+%% IDOR 防御：ViewerUid 必须是 GroupId 的成员，否则任意登录用户传任意
+%% group_id 都能分页拉取该群全部日程（含地点/时间）。管理端
+%% list_group_schedules/5 保持不做该校验（由 adm_acl 权限门控收口）。
+-spec list_group_schedules(
+    integer(), integer(), binary() | undefined, binary() | undefined, integer(), integer()
+) ->
+    {ok, map()} | {error, term()}.
+list_group_schedules(GroupId, ViewerUid, StartAt, EndAt, Page, Size) ->
+    case group_ds:is_member(ViewerUid, GroupId) of
+        false ->
+            {error, unauthorized};
+        true ->
+            list_group_schedules(GroupId, StartAt, EndAt, Page, Size)
     end.
 
 %% @doc 查询我的日程列表

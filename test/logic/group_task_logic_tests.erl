@@ -15,12 +15,14 @@
 %% ===================================================================
 
 create_success_test_() ->
-    ?WITH_MECK(
-        group_task_repo,
+    ?WITH_MECKS(
         [
-            {'insert', 1, fun(_Data) ->
-                {ok, 1001, [{<<"id">>, 1001}]}
-            end}
+            {group_task_repo, [
+                {'insert', 1, fun(_Data) ->
+                    {ok, 1001, [{<<"id">>, 1001}]}
+                end}
+            ]},
+            {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
         ],
         fun() ->
             Result = group_task_logic:create(123, 456, <<"完成第一章练习"/utf8>>, #{
@@ -36,6 +38,17 @@ create_with_missing_title_test_() ->
         Result = group_task_logic:create(123, 456, <<>>, #{}),
         ?assertMatch({error, _, _}, Result)
     end).
+
+%% 回归（IDOR）：创建者不是该群成员 → 拒绝，防止对任意 group_id 创建作业
+create_non_member_rejected_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [{'is_member', 2, fun(_Uid, _Gid) -> false end}],
+        fun() ->
+            Result = group_task_logic:create(123, 456, <<"标题"/utf8>>, #{}),
+            ?assertMatch({error, _, _}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% update/3 测试 - 更新作业

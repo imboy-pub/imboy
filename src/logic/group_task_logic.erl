@@ -16,17 +16,22 @@
 -export([submit/3]).
 %% 批改作业
 -export([review/3]).
-%% 查询作业详情
+%% 查询作业详情（内部/管理端原语，不做群成员校验，调用方需自行鉴权）
 -export([detail/1]).
-%% 查询群作业列表
+%% 查询作业详情（用户侧：额外校验 ViewerUid 为该作业所属群成员）
+-export([detail/2]).
+%% 查询群作业列表（内部/管理端原语，不做群成员校验）
 -export([list/3]).
-%% 查询群作业列表（带筛选）
 -export([list/5]).
+%% 查询群作业列表（用户侧：额外校验 ViewerUid 为该群成员）
+-export([list/6]).
 %% 查询我的作业
 -export([my_tasks/3]).
 -export([my_tasks/4]).
-%% 查询待批改作业
+%% 查询待批改作业（内部/管理端原语，不做创建者校验）
 -export([pending_review/3]).
+%% 查询待批改作业（用户侧：额外校验 ReviewerId 为该作业创建者）
+-export([pending_review/4]).
 %% 按对外 task_uid（binary）验证并返回 task_uid
 -export([task_uid_by_task_id/1]).
 %% 按内部主键查询并返回 task_uid
@@ -57,22 +62,30 @@ create(GroupId, CreatorId, Title, Data) when
     is_binary(Title),
     byte_size(Title) > 0
 ->
-    % 生成唯一的作业ID（使用TSID）
-    TaskId = GroupId + CreatorId + erlang:unique_integer([positive]),
-    TaskData = #{
-        group_id => GroupId,
-        task_id => TaskId,
-        title => Title,
-        creator_id => CreatorId
-    },
-    TaskData2 = maps:merge(TaskData, Data),
-    case group_task_ds:insert_task(TaskData2) of
-        {ok, Id, _} ->
-            {ok, Id};
-        {error, {missing_field, _Field}} ->
-            {error, imboy_error:error_msg(?ERR_TASK_TITLE_REQUIRED), ?ERR_TASK_TITLE_REQUIRED};
-        {error, Reason} ->
-            {error, io_lib:format("~p", [Reason]), ?ERR_INTERNAL_SERVER_ERROR}
+    %% IDOR 防御：创建者必须是该群成员，防止对任意群创建作业
+    case group_ds:is_member(CreatorId, GroupId) of
+        false ->
+            {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
+                ?ERR_TASK_PERMISSION_DENIED};
+        true ->
+            % 生成唯一的作业ID（使用TSID）
+            TaskId = GroupId + CreatorId + erlang:unique_integer([positive]),
+            TaskData = #{
+                group_id => GroupId,
+                task_id => TaskId,
+                title => Title,
+                creator_id => CreatorId
+            },
+            TaskData2 = maps:merge(TaskData, Data),
+            case group_task_ds:insert_task(TaskData2) of
+                {ok, Id, _} ->
+                    {ok, Id};
+                {error, {missing_field, _Field}} ->
+                    {error, imboy_error:error_msg(?ERR_TASK_TITLE_REQUIRED),
+                        ?ERR_TASK_TITLE_REQUIRED};
+                {error, Reason} ->
+                    {error, io_lib:format("~p", [Reason]), ?ERR_INTERNAL_SERVER_ERROR}
+            end
     end;
 create(_GroupId, _CreatorId, Title, _Data) when is_binary(Title), byte_size(Title) =:= 0 ->
     {error, imboy_error:error_msg(?ERR_TASK_TITLE_REQUIRED), ?ERR_TASK_TITLE_REQUIRED};
@@ -283,6 +296,32 @@ detail(TaskId) when is_integer(TaskId), TaskId > 0 ->
 detail(_TaskId) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
+%% @doc 查询作业详情（用户侧入口）
+%% IDOR 防御：ViewerUid 必须是该作业所属群的成员，否则任意登录用户传任意
+%% task_id 都能读取跨群的作业标题/描述/附件等内容。
+%% @param TaskId 作业ID
+%% @param ViewerUid 查看者用户ID
+%% @return {ok, Task} | {error, Reason}
+-spec detail(integer(), integer()) -> {ok, map()} | {error, binary()}.
+detail(TaskId, ViewerUid) when
+    is_integer(TaskId), TaskId > 0, is_integer(ViewerUid), ViewerUid > 0
+->
+    case detail(TaskId) of
+        {ok, Task} = Ok ->
+            GroupId = maps:get(<<"group_id">>, Task, 0),
+            case group_ds:is_member(ViewerUid, GroupId) of
+                true ->
+                    Ok;
+                false ->
+                    {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
+                        ?ERR_TASK_PERMISSION_DENIED}
+            end;
+        {error, _Msg, _Code} = Err ->
+            Err
+    end;
+detail(_TaskId, _ViewerUid) ->
+    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
 %% @doc 查询群作业列表
 %% @param GroupId 群组ID
 %% @param Page 页码
@@ -343,6 +382,32 @@ list(GroupId, Status, AssigneeId, Page, Size) when
             {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}
     end;
 list(_GroupId, _Status, _AssigneeId, _Page, _Size) ->
+    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
+%% @doc 查询群作业列表（用户侧入口，支持状态与执行人筛选）
+%% IDOR 防御：ViewerUid 必须是 GroupId 的成员，否则任意登录用户传任意
+%% group_id 都能分页拉取该群全部作业列表（含标题/描述/状态）。
+%% @param GroupId 群组ID
+%% @param ViewerUid 查看者用户ID
+%% @param Status 状态（undefined/0/1/2/3）
+%% @param AssigneeId 执行人ID（undefined 表示群全量视角）
+%% @param Page 页码
+%% @param Size 每页数量
+-spec list(
+    integer(), integer(), integer() | undefined, integer() | undefined, integer(), integer()
+) ->
+    {ok, [map()]} | {error, binary()}.
+list(GroupId, ViewerUid, Status, AssigneeId, Page, Size) when
+    is_integer(GroupId), GroupId > 0, is_integer(ViewerUid), ViewerUid > 0
+->
+    case group_ds:is_member(ViewerUid, GroupId) of
+        false ->
+            {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
+                ?ERR_TASK_PERMISSION_DENIED};
+        true ->
+            list(GroupId, Status, AssigneeId, Page, Size)
+    end;
+list(_GroupId, _ViewerUid, _Status, _AssigneeId, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
 %% @doc 查询我的作业
@@ -418,6 +483,32 @@ pending_review(TaskId, Page, Size) when
             {error, Reason}
     end;
 pending_review(_TaskId, _Page, _Size) ->
+    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
+%% @doc 查询待批改作业（用户侧入口）
+%% CRITICAL IDOR 防御：ReviewerId 必须是该作业的创建者，否则任意登录用户传
+%% 任意 task_id 都能读取其他学生已提交的作业内容（含文本与附件），无需是
+%% 该群成员更无需是批改人。复用 review/3 已有的 ensure_task_creator/2。
+%% @param TaskId 作业唯一标识
+%% @param ReviewerId 批改人用户ID
+%% @param Page 页码
+%% @param Size 每页数量
+%% @return {ok, List} | {error, Reason}
+-spec pending_review(binary(), integer(), integer(), integer()) ->
+    {ok, [map()]} | {error, binary()}.
+pending_review(TaskId, ReviewerId, Page, Size) when
+    is_binary(TaskId),
+    byte_size(TaskId) > 0,
+    is_integer(ReviewerId),
+    ReviewerId > 0
+->
+    case ensure_task_creator(TaskId, ReviewerId) of
+        {error, _Msg, _Code} = Err ->
+            Err;
+        ok ->
+            pending_review(TaskId, Page, Size)
+    end;
+pending_review(_TaskId, _ReviewerId, _Page, _Size) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
 %% @doc 按对外 task_uid（binary 字符串）验证作业是否存在，存在则返回该 uid

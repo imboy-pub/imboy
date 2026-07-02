@@ -403,7 +403,7 @@ init_detail_legacy_schedule_id_compatible_test_() ->
                     end}
                 ]},
                 {group_schedule_logic, [
-                    {'get_schedule_detail', 1, fun(<<"sched_66">>) ->
+                    {'get_schedule_detail', 2, fun(<<"sched_66">>, 300) ->
                         {ok, #{schedule => #{<<"schedule_id">> => <<"sched_66">>}}}
                     end}
                 ]},
@@ -450,7 +450,7 @@ init_list_with_time_range_query_compatible_test_() ->
                     end}
                 ]},
                 {group_schedule_logic, [
-                    {'list_group_schedules', 5, fun(9, StartAt, EndAt, 1, 20) ->
+                    {'list_group_schedules', 6, fun(9, 300, StartAt, EndAt, 1, 20) ->
                         ?assert(is_binary(StartAt)),
                         ?assert(is_binary(EndAt)),
                         {ok, #{list => [], total => 0, page => 1, size => 20}}

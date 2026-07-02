@@ -439,7 +439,7 @@ detail_legacy_task_id_compatible_test_() ->
                 {'parse_qs', 1, fun(_Req) -> [{<<"task_id">>, <<"88">>}] end}
             ]},
             {group_task_logic, [
-                {'detail', 1, fun(88) ->
+                {'detail', 2, fun(88, 200) ->
                     {ok, #{<<"task_id">> => <<"task_uid_88">>}}
                 end}
             ]},
@@ -509,7 +509,7 @@ pending_review_numeric_task_id_compatible_test_() ->
                 end}
             ]},
             {group_task_logic, [
-                {'pending_review', 3, fun(<<"task_uid_123">>, 1, 20) ->
+                {'pending_review', 4, fun(<<"task_uid_123">>, 200, 1, 20) ->
                     {ok, []}
                 end}
             ]},
@@ -544,7 +544,7 @@ list_defaults_to_current_uid_assignee_test_() ->
                 {'page', 1, fun(_Req) -> {1, 20} end}
             ]},
             {group_task_logic, [
-                {'list', 5, fun(12, undefined, 200, 1, 20) ->
+                {'list', 6, fun(12, 200, undefined, 200, 1, 20) ->
                     {ok, []}
                 end}
             ]},
@@ -579,7 +579,7 @@ list_status_filter_uses_current_uid_assignee_test_() ->
                 {'page', 1, fun(_Req) -> {1, 20} end}
             ]},
             {group_task_logic, [
-                {'list', 5, fun(12, 1, 200, 1, 20) ->
+                {'list', 6, fun(12, 200, 1, 200, 1, 20) ->
                     {ok, []}
                 end}
             ]},
@@ -614,7 +614,7 @@ list_legacy_assignee_compatible_test_() ->
                 {'page', 1, fun(_Req) -> {1, 20} end}
             ]},
             {group_task_logic, [
-                {'list', 5, fun(12, undefined, 321, 1, 20) ->
+                {'list', 6, fun(12, 200, undefined, 321, 1, 20) ->
                     {ok, []}
                 end}
             ]},
@@ -649,7 +649,7 @@ list_assignee_all_uses_group_view_test_() ->
                 {'page', 1, fun(_Req) -> {1, 20} end}
             ]},
             {group_task_logic, [
-                {'list', 5, fun(12, undefined, undefined, 1, 20) ->
+                {'list', 6, fun(12, 200, undefined, undefined, 1, 20) ->
                     {ok, []}
                 end}
             ]},
