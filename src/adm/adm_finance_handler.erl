@@ -303,6 +303,17 @@ withdrawal_complete(<<"POST">>, Req0, State) ->
             {ok, TxId} ->
                 case finance_adm_logic:complete_withdrawal(TxId) of
                     {ok, 1} ->
+                        _ = adm_operation_log_ds:insert(
+                            maps:get(adm_user_id, State, 0),
+                            <<"withdrawal_complete">>,
+                            TxId,
+                            <<"payment_transaction">>,
+                            #{
+                                <<"before">> => #{<<"status">> => 0},
+                                <<"after">> => #{<<"status">> => 1}
+                            },
+                            elib_req:peer_ip(Req0)
+                        ),
                         elib_response:success(Req0, #{}, <<"提现已标记完成"/utf8>>);
                     {ok, 0} ->
                         elib_response:error(
@@ -331,6 +342,18 @@ withdrawal_reject(<<"POST">>, Req0, State) ->
             {ok, TxId} ->
                 case finance_adm_logic:reject_withdrawal(TxId) of
                     {ok, 1} ->
+                        _ = adm_operation_log_ds:insert(
+                            maps:get(adm_user_id, State, 0),
+                            <<"withdrawal_reject">>,
+                            TxId,
+                            <<"payment_transaction">>,
+                            #{
+                                <<"before">> => #{<<"status">> => 0},
+                                <<"after">> => #{<<"status">> => 2},
+                                <<"note">> => <<"refund tx_type=11">>
+                            },
+                            elib_req:peer_ip(Req0)
+                        ),
                         elib_response:success(Req0, #{}, <<"提现已拒绝"/utf8>>);
                     {ok, 0} ->
                         elib_response:error(

@@ -92,19 +92,7 @@ ban(<<"POST">>, Req0, State) ->
         {error, RespReq} ->
             RespReq;
         ok ->
-            Uid = parse_uid_param(Req0),
-            case Uid > 0 of
-                true ->
-                    case user_ds:update(Uid, #{status => 0}) of
-                        {ok, _} ->
-                            elib_response:success(Req0, #{}, "操作成功");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["ban user error: ", Reason]),
-                            elib_response:error(Req0, "操作失败")
-                    end;
-                false ->
-                    elib_response:error(Req0, "参数错误")
-            end
+            set_user_status(Req0, State, 0, <<"ban_user">>)
     end.
 
 %% @doc 解封用户
@@ -114,19 +102,38 @@ unban(<<"POST">>, Req0, State) ->
         {error, RespReq} ->
             RespReq;
         ok ->
-            Uid = parse_uid_param(Req0),
-            case Uid > 0 of
-                true ->
-                    case user_ds:update(Uid, #{status => 1}) of
-                        {ok, _} ->
-                            elib_response:success(Req0, #{}, "操作成功");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["unban user error: ", Reason]),
-                            elib_response:error(Req0, "操作失败")
-                    end;
-                false ->
-                    elib_response:error(Req0, "参数错误")
-            end
+            set_user_status(Req0, State, 1, <<"unban_user">>)
+    end.
+
+%% @doc 封禁/解封共用：更新用户 status 并写管理员操作审计日志（含前后值与原因）
+-spec set_user_status(cowboy_req:req(), map(), integer(), binary()) -> cowboy_req:req().
+set_user_status(Req0, State, NewStatus, Action) ->
+    Uid = parse_uid_param(Req0),
+    case Uid > 0 of
+        true ->
+            {ok, OpReason} = elib_param:binary(reason, Req0, <<>>),
+            OldStatus = maps:get(<<"status">>, user_ds:find_by_id(Uid, <<"status">>), null),
+            case user_ds:update(Uid, #{status => NewStatus}) of
+                {ok, _} ->
+                    _ = adm_operation_log_ds:insert(
+                        maps:get(adm_user_id, State, 0),
+                        Action,
+                        Uid,
+                        <<"user">>,
+                        #{
+                            <<"before">> => #{<<"status">> => OldStatus},
+                            <<"after">> => #{<<"status">> => NewStatus},
+                            <<"reason">> => OpReason
+                        },
+                        elib_req:peer_ip(Req0)
+                    ),
+                    elib_response:success(Req0, #{}, "操作成功");
+                {error, Reason} ->
+                    ?ERROR_LOG(["set user status error: ", Action, Reason]),
+                    elib_response:error(Req0, "操作失败")
+            end;
+        false ->
+            elib_response:error(Req0, "参数错误")
     end.
 
 %% @doc 强制下线用户所有设备（GAP-06）

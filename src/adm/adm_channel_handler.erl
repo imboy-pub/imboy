@@ -85,6 +85,14 @@ refund_order_action(<<"POST">>, Req0, State) ->
                 _ ->
                     case channel_logic_order:admin_refund_order(OrderNo, Reason) of
                         ok ->
+                            _ = adm_operation_log_ds:insert(
+                                maps:get(adm_user_id, State, 0),
+                                <<"channel_order_refund">>,
+                                0,
+                                <<"channel_order">>,
+                                #{<<"order_no">> => OrderNo, <<"reason">> => Reason},
+                                elib_req:peer_ip(Req0)
+                            ),
                             elib_response:success(Req0, #{<<"order_no">> => OrderNo});
                         {error, Msg} ->
                             elib_response:error(Req0, Msg, ?ERR_BUSINESS_FAILED)

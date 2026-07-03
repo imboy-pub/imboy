@@ -136,7 +136,8 @@ init_ban_updates_status_to_zero_test_() ->
     ?WITH_MECKS(
         [
             {elib_param, [
-                {'int', 3, fun(uid, _Req, _Default) -> {ok, 1001} end}
+                {'int', 3, fun(uid, _Req, _Default) -> {ok, 1001} end},
+                {'binary', 3, fun(reason, _Req, _Default) -> {ok, <<"violation">>} end}
             ]},
             {adm_user_logic, [
                 {'find', 3, fun(1, <<"id,role_id">>, _Key) ->
@@ -147,11 +148,27 @@ init_ban_updates_status_to_zero_test_() ->
                 {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"users:update">>], []} end}
             ]},
             {user_repo, [
+                {'find_by_id', 2, fun(1001, <<"status">>) -> #{<<"status">> => 1} end},
                 {'update', 2, fun(Uid, Data) ->
                     ?assertEqual(1001, Uid),
                     ?assertEqual(0, maps:get(status, Data)),
                     {ok, 1}
                 end}
+            ]},
+            {adm_operation_log_ds, [
+                {'insert', 6, fun(AdmUid, Action, TargetId, TargetType, Detail, _Ip) ->
+                    ?assertEqual(1, AdmUid),
+                    ?assertEqual(<<"ban_user">>, Action),
+                    ?assertEqual(1001, TargetId),
+                    ?assertEqual(<<"user">>, TargetType),
+                    ?assertEqual(#{<<"status">> => 1}, maps:get(<<"before">>, Detail)),
+                    ?assertEqual(#{<<"status">> => 0}, maps:get(<<"after">>, Detail)),
+                    ?assertEqual(<<"violation">>, maps:get(<<"reason">>, Detail)),
+                    ok
+                end}
+            ]},
+            {elib_req, [
+                {'peer_ip', 1, fun(_Req) -> <<"127.0.0.1">> end}
             ]},
             {elib_response, [
                 {'success', 3, fun(Req, Payload, Msg) ->
@@ -194,7 +211,8 @@ init_unban_updates_status_to_one_test_() ->
     ?WITH_MECKS(
         [
             {elib_param, [
-                {'int', 3, fun(uid, _Req, _Default) -> {ok, 1001} end}
+                {'int', 3, fun(uid, _Req, _Default) -> {ok, 1001} end},
+                {'binary', 3, fun(reason, _Req, _Default) -> {ok, <<>>} end}
             ]},
             {adm_user_logic, [
                 {'find', 3, fun(1, <<"id,role_id">>, _Key) ->
@@ -205,11 +223,23 @@ init_unban_updates_status_to_one_test_() ->
                 {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"users:update">>], []} end}
             ]},
             {user_repo, [
+                {'find_by_id', 2, fun(1001, <<"status">>) -> #{<<"status">> => 0} end},
                 {'update', 2, fun(Uid, Data) ->
                     ?assertEqual(1001, Uid),
                     ?assertEqual(1, maps:get(status, Data)),
                     {ok, 1}
                 end}
+            ]},
+            {adm_operation_log_ds, [
+                {'insert', 6, fun(_AdmUid, Action, 1001, <<"user">>, Detail, _Ip) ->
+                    ?assertEqual(<<"unban_user">>, Action),
+                    ?assertEqual(#{<<"status">> => 0}, maps:get(<<"before">>, Detail)),
+                    ?assertEqual(#{<<"status">> => 1}, maps:get(<<"after">>, Detail)),
+                    ok
+                end}
+            ]},
+            {elib_req, [
+                {'peer_ip', 1, fun(_Req) -> <<"127.0.0.1">> end}
             ]},
             {elib_response, [
                 {'success', 3, fun(Req, Payload, Msg) ->

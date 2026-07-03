@@ -118,6 +118,14 @@ approve(<<"POST">>, Req0, State) ->
                     case user_ds:approve_logout_apply(Uid) of
                         {ok, [_]} ->
                             ok = ?INFO_LOG([logout_apply_approved, #{uid => Uid}]),
+                            _ = adm_operation_log_ds:insert(
+                                maps:get(adm_user_id, State, 0),
+                                <<"logout_apply_approve">>,
+                                Uid,
+                                <<"user">>,
+                                #{<<"after">> => #{<<"status">> => -1}},
+                                elib_req:peer_ip(Req1)
+                            ),
                             elib_response:success(Req1, #{uid => Uid, status => <<"approved">>});
                         {ok, []} ->
                             elib_response:error(Req1, <<"用户不在注销申请状态"/utf8>>);
