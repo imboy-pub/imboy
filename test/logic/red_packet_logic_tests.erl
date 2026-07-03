@@ -42,3 +42,63 @@ send_insufficient_balance_rejected() ->
         {error, <<"钱包余额不足"/utf8>>},
         red_packet_logic:send(?UID, <<"fixed">>, 100000, 1, <<"恭喜发财"/utf8>>)
     ).
+
+%%%===================================================================
+%%% @doc SEC-03: red_packet_logic:detail/2 归属校验回归测试。
+%%% 仅发送者或已领取者可读红包详情，防任意登录用户凭红包 id 越权读
+%%% 发送者/祝福语/金额/领取名单。手法：meck red_packet_repo，不触真实 PG。
+%%% @end
+%%%===================================================================
+
+-define(SENDER_UID, 1001).
+-define(RECEIVER_UID, 2002).
+-define(STRANGER_UID, 3003).
+-define(PACKET_ID, 77001).
+
+detail_setup() ->
+    application:set_env(imboy, env, test),
+    meck:new(red_packet_repo, [no_link, passthrough]),
+    meck:expect(red_packet_repo, find_by_id, fun(?PACKET_ID) ->
+        #{
+            <<"id">> => ?PACKET_ID,
+            <<"sender_uid">> => ?SENDER_UID,
+            <<"greeting">> => <<"恭喜发财"/utf8>>,
+            <<"amount">> => 100
+        }
+    end),
+    meck:expect(red_packet_repo, get_receivers, fun(?PACKET_ID) -> [] end),
+    ok.
+
+detail_cleanup(_) ->
+    meck:unload(red_packet_repo),
+    ok.
+
+detail_test_() ->
+    {foreach, fun detail_setup/0, fun detail_cleanup/1, [
+        fun detail_rejects_stranger/0,
+        fun detail_allows_sender/0,
+        fun detail_allows_receiver/0
+    ]}.
+
+detail_rejects_stranger() ->
+    %% 陌生人（非发送者、未领取）→ 越权拒绝
+    meck:expect(red_packet_repo, find_receive_by_user, fun(?PACKET_ID, ?STRANGER_UID) ->
+        #{}
+    end),
+    ?assertEqual(
+        {error, <<"无权查看该红包详情"/utf8>>},
+        red_packet_logic:detail(?PACKET_ID, ?STRANGER_UID)
+    ).
+
+detail_allows_sender() ->
+    meck:expect(red_packet_repo, find_receive_by_user, fun(?PACKET_ID, ?SENDER_UID) ->
+        #{}
+    end),
+    ?assertMatch({ok, _}, red_packet_logic:detail(?PACKET_ID, ?SENDER_UID)).
+
+detail_allows_receiver() ->
+    %% 已领取者 → 放行
+    meck:expect(red_packet_repo, find_receive_by_user, fun(?PACKET_ID, ?RECEIVER_UID) ->
+        #{<<"id">> => 9001, <<"receiver_uid">> => ?RECEIVER_UID, <<"amount">> => 50}
+    end),
+    ?assertMatch({ok, _}, red_packet_logic:detail(?PACKET_ID, ?RECEIVER_UID)).

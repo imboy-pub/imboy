@@ -5,7 +5,7 @@
 
 -include("log.hrl").
 
--export([send/5, open/2, detail/1]).
+-export([send/5, open/2, detail/2]).
 
 %% @doc 发送红包（原子扣减钱包余额 + 创建红包）
 -spec send(integer(), binary(), integer(), integer(), binary()) ->
@@ -86,19 +86,28 @@ open(PacketId, ReceiverUid) ->
     end.
 
 %% @doc 红包详情页（红包元数据 + 已领取明细列表）
--spec detail(integer()) -> {ok, map()} | {error, term()}.
-detail(PacketId) ->
+%% SEC-03：仅发送者或已领取者可查看，防止任意登录用户凭红包 id
+%% 越权读发送者/祝福语/金额/领取名单。
+-spec detail(integer(), integer()) -> {ok, map()} | {error, term()}.
+detail(PacketId, ViewerUid) ->
     Packet = red_packet_repo:find_by_id(PacketId),
     case map_size(Packet) =:= 0 of
         true ->
             {error, <<"红包不存在"/utf8>>};
         false ->
-            Receivers = red_packet_repo:get_receivers(PacketId),
-            Payload = #{
-                <<"packet">> => Packet,
-                <<"receivers">> => Receivers
-            },
-            {ok, Payload}
+            SenderUid = maps:get(<<"sender_uid">>, Packet, 0),
+            IsReceiver = red_packet_repo:find_receive_by_user(PacketId, ViewerUid),
+            case ViewerUid =:= SenderUid orelse map_size(IsReceiver) > 0 of
+                false ->
+                    {error, <<"无权查看该红包详情"/utf8>>};
+                true ->
+                    Receivers = red_packet_repo:get_receivers(PacketId),
+                    Payload = #{
+                        <<"packet">> => Packet,
+                        <<"receivers">> => Receivers
+                    },
+                    {ok, Payload}
+            end
     end.
 
 %% ===================================================================

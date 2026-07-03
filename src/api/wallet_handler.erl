@@ -237,14 +237,14 @@ red_packet_open(Req0, State) ->
 %% GET /v1/wallet/red_packet/:id/detail
 -spec red_packet_detail(cowboy_req:req(), map()) -> cowboy_req:req().
 red_packet_detail(Req0, State) ->
-    _CurrentUid = auth_ds:current_uid(State),
+    CurrentUid = auth_ds:current_uid(State),
     IdStr = cowboy_req:binding(id, Req0, <<>>),
     case is_binary(IdStr) andalso byte_size(IdStr) > 0 of
         false ->
             elib_response:error(Req0, <<"红包ID不能为空"/utf8>>);
         true ->
             Id = binary_to_integer(IdStr),
-            case red_packet_logic:detail(Id) of
+            case red_packet_logic:detail(Id, CurrentUid) of
                 {ok, Detail} ->
                     elib_response:success(Req0, Detail, "success.");
                 {error, Msg} ->
