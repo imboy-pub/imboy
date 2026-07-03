@@ -91,7 +91,8 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS) ->
             _ ->
                 #{}
         catch
-            _:_ ->
+            Class:Reason ->
+                ok = ?ERROR_LOG([msg_s2c_write_payload_decode_failed, Id, Class, Reason]),
                 #{}
         end,
 

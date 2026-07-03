@@ -150,7 +150,7 @@ leave_removes_uid_from_cache_test_() ->
         [
             {imboy_cache, [
                 {'get', 1, fun({group, 12}) -> {ok, [1, 2, 3]} end},
-                {'set', 2, fun({group, 12}, [2, 3]) ->
+                {'set', 3, fun({group, 12}, [2, 3], 3600) ->
                     ok
                 end}
             ]}

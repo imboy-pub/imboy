@@ -5,6 +5,8 @@
 % config domain service 缩写
 %%%
 
+-include("log.hrl").
+
 %
 %% API
 -export([init/0]).
@@ -15,7 +17,8 @@
 %% 使用public模式显式创建序列，避免受search_path影响。
 -spec init() -> ok.
 -define(ACCOUNT_SEQ, <<"public.imboy_account_id_seq">>).
--define(ACCOUNT_ID_CACHE_TTL, 8640000). % 100天
+% 100天
+-define(ACCOUNT_ID_CACHE_TTL, 8640000).
 
 %% @doc 初始化：显式在 public 模式下创建序列，避免受 search_path 影响。
 %% 注意：此函数始终返回 ok，即使数据库操作失败
@@ -25,7 +28,8 @@ init() ->
         _ ->
             ok
     catch
-        _:_ ->
+        Class:Reason ->
+            ok = ?ERROR_LOG([account_ds_init_failed, Class, Reason]),
             ok
     end.
 
@@ -33,7 +37,7 @@ init() ->
 %% 从缓存或数据库中分配一个唯一的账户ID。
 %% 使用Depcache的get_wait机制避免竞争条件，确保ID的唯一性。
 %% 当缓存为空或数据库无法获取ID时，返回{error, no_ids}。
--spec allocate() -> {ok, non_neg_integer()} | {error, term() | no_ids}.
+-spec allocate() -> non_neg_integer() | {error, term() | no_ids}.
 allocate() ->
     Key = {local_cache, account_list},
     % 使用 Depcache 的 get_wait 机制避免竞争条件
@@ -87,10 +91,12 @@ safe_get_max_account_id() ->
     try elib_pg:query(Q, []) of
         {ok, Res} ->
             create_rand_list(Res);
-        _Error ->
+        Error ->
+            ok = ?ERROR_LOG([safe_get_max_account_id_failed, Error]),
             []
     catch
-        _:_ ->
+        Class:Reason ->
+            ok = ?ERROR_LOG([safe_get_max_account_id_failed, Class, Reason]),
             []
     end.
 

@@ -53,7 +53,9 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid) ->
             Map when is_map(Map) -> Map;
             _ -> #{}
         catch
-            _:_ -> #{}
+            Class:Reason ->
+                ok = ?ERROR_LOG([msg_c2g_write_payload_decode_failed, Id, Class, Reason]),
+                #{}
         end,
 
     MsgType = maps:get(<<"msg_type">>, PayloadMap, <<>>),

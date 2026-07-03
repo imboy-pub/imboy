@@ -122,7 +122,7 @@ leave(Uid, Gid) ->
         [] ->
             ok;
         Li ->
-            imboy_cache:set(CacheKey, lists:delete(Uid, Li))
+            imboy_cache:set(CacheKey, lists:delete(Uid, Li), ?HOUR)
     end.
 
 %% @doc 解散群组
