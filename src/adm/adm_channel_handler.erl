@@ -591,8 +591,14 @@ search(<<"GET">>, Req0) ->
     Keyword = proplists:get_value(<<"keyword">>, Qs, <<>>),
     Limit =
         case proplists:get_value(<<"limit">>, Qs) of
-            undefined -> 20;
-            LimitBin -> binary_to_integer(LimitBin)
+            undefined ->
+                20;
+            LimitBin ->
+                try binary_to_integer(LimitBin) of
+                    L -> L
+                catch
+                    error:badarg -> 20
+                end
         end,
 
     case Keyword of

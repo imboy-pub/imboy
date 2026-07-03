@@ -2,6 +2,8 @@
 -dialyzer({nowarn_function, [role_permissions/1]}).
 -compile([nowarn_deprecated_catch]).
 
+-include("log.hrl").
+
 %%%
 % adm 后台 RBAC 权限校验共享模块
 % Shared RBAC permission helper for admin handlers
@@ -82,6 +84,9 @@ permissions(AdmUserId) ->
         AdmUser when is_map(AdmUser) ->
             RoleIds = normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0)),
             lists:usort(lists:append([role_permissions(RoleId) || RoleId <- RoleIds]));
+        {'EXIT', Reason} ->
+            ok = ?ERROR_LOG([adm_acl_permissions_lookup_failed, AdmUserId, Reason]),
+            [];
         _ ->
             []
     end.
@@ -94,7 +99,8 @@ role_permissions(RoleId) ->
         _ ->
             []
     catch
-        _:_ ->
+        Class:Reason ->
+            ok = ?ERROR_LOG([adm_acl_role_permissions_failed, RoleId, Class, Reason]),
             []
     end.
 
