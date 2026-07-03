@@ -1,5 +1,4 @@
 -module(e2ee_recovery_logic).
--dialyzer({nowarn_function, [check_local_backup_available/1]}).
 %%%===================================================================
 %%% @doc E2EE 自动恢复决策逻辑
 %%%
@@ -11,7 +10,9 @@
 %%% 恢复方式优先级：
 %%% 1. 设备间传输（最快，最安全）
 %%% 2. 社交恢复（零信任，需要代理配合）
-%%% 3. 本地备份（完全离线）
+%%%
+%%% 【T10/D4】本地备份（local_backup）已删除：create 端点从未实现过，
+%%% 该路径实为孤岛，且同账号换机 transfer 已是主恢复路径，符合 YAGNI。
 %%%===================================================================
 
 -include("log.hrl").
@@ -89,29 +90,12 @@ get_recovery_options(Uid) when is_integer(Uid) ->
                 Options1
         end,
 
-    % 3. 检查本地备份
-    Options3 =
-        case check_local_backup_available(Uid) of
-            {ok, true, Details3} ->
-                [
-                    #{
-                        <<"method">> => <<"local_backup">>,
-                        <<"available">> => true,
-                        <<"priority">> => 3,
-                        <<"details">> => Details3
-                    }
-                    | Options2
-                ];
-            _ ->
-                Options2
-        end,
-
     % 按优先级排序
     lists:sort(
         fun(A, B) ->
             maps:get(<<"priority">>, A) < maps:get(<<"priority">>, B)
         end,
-        Options3
+        Options2
     ).
 
 %% @doc 推荐恢复方式
@@ -134,8 +118,6 @@ start_auto_recovery(Uid, DeviceId, Method) ->
             start_device_transfer_recovery(Uid, DeviceId);
         <<"social_recovery">> ->
             start_social_recovery(Uid, DeviceId);
-        <<"local_backup">> ->
-            {ok, #{<<"message">> => <<"请使用本地备份文件恢复"/utf8>>}};
         _ ->
             {error, {<<"不支持的恢复方式"/utf8>>, ?ERR_E2EE_OPERATION_NOT_SUPPORTED}}
     end.
@@ -209,23 +191,6 @@ check_social_recovery_available(Uid) ->
     catch
         _:Error ->
             ok = ?ERROR_LOG([check_social_recovery_available, {'catch', Error}]),
-            {ok, false, #{}}
-    end.
-
-%% @doc 检查本地备份是否可用
--spec check_local_backup_available(integer()) ->
-    {ok, boolean(), map()} | {error, term()}.
-check_local_backup_available(Uid) ->
-    case e2ee_local_backup_ds:find_latest(Uid) of
-        {ok, []} ->
-            {ok, false, #{}};
-        {ok, Backup} ->
-            {ok, true, #{
-                <<"backup_version">> => maps:get(<<"backup_version">>, Backup, 0),
-                <<"created_at">> => maps:get(<<"created_at">>, Backup, <<>>)
-            }};
-        {error, Reason} ->
-            ok = ?ERROR_LOG([check_local_backup_available, Reason]),
             {ok, false, #{}}
     end.
 

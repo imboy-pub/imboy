@@ -1,5 +1,5 @@
 -module(e2ee_handler).
--dialyzer({nowarn_function, [do_key_status/2, do_backup_delete/2]}).
+-dialyzer({nowarn_function, [do_key_status/2]}).
 
 %% Thin HTTP adapter for the security_privacy e2ee boundary.
 -dialyzer(
@@ -31,10 +31,6 @@ init(Req0, State0) ->
                 pull_notifications(Req0, State);
             start_recovery ->
                 start_recovery(Req0, State);
-            backup_list ->
-                backup_list(Req0, State);
-            backup_delete ->
-                backup_delete(Req0, State);
             compliance_key ->
                 compliance_key(Req0, State);
             _ ->
@@ -310,65 +306,6 @@ do_start_recovery(Req0, Uid, DeviceId, Method) ->
             elib_response:error(Req0, Msg, Code);
         {error, Reason} ->
             elib_response:error(Req0, Reason, ?ERR_E2EE_RECOVERY_FAILED)
-    end.
-
-%% @doc 获取当前用户的备份历史列表
-%% GET /v1/e2ee/backup/list
--spec backup_list(cowboy_req:req(), map()) -> cowboy_req:req().
-backup_list(Req0, State) ->
-    case ensure_e2ee_enabled(Req0) of
-        ok ->
-            do_backup_list(Req0, State);
-        {error, Req1} ->
-            Req1
-    end.
-
--spec do_backup_list(cowboy_req:req(), map()) -> cowboy_req:req().
-do_backup_list(Req0, State) ->
-    CurrentUid = auth_ds:current_uid(State),
-    case e2ee_logic:list_backups(CurrentUid) of
-        {ok, Backups} ->
-            elib_response:success(Req0, #{<<"list">> => Backups});
-        {error, Reason} ->
-            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
-    end.
-
-%% @doc 删除指定备份记录（仅允许删除自己的备份）
-%% DELETE /v1/e2ee/backup/delete
-%% Body: {"backup_id": 1}
--spec backup_delete(cowboy_req:req(), map()) -> cowboy_req:req().
-backup_delete(Req0, State) ->
-    case ensure_e2ee_enabled(Req0) of
-        ok ->
-            do_backup_delete(Req0, State);
-        {error, Req1} ->
-            Req1
-    end.
-
--spec do_backup_delete(cowboy_req:req(), map()) -> cowboy_req:req().
-do_backup_delete(Req0, State) ->
-    CurrentUid = auth_ds:current_uid(State),
-    {ok, Body, _} = cowboy_req:read_body(Req0),
-    Data =
-        try jsx:decode(Body, [return_maps]) of
-            D when is_map(D) -> D
-        catch
-            _:_ -> #{}
-        end,
-    BackupId = maps:get(<<"backup_id">>, Data, 0),
-
-    case is_integer(BackupId) andalso BackupId > 0 of
-        false ->
-            elib_response:error(Req0, <<"缺少或无效的 backup_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
-        true ->
-            case e2ee_logic:delete_backup(BackupId, CurrentUid) of
-                ok ->
-                    elib_response:success(Req0, #{<<"deleted">> => true});
-                {error, not_found} ->
-                    elib_response:error(Req0, <<"备份记录不存在或无权限删除"/utf8>>, ?ERR_NOT_FOUND);
-                {error, Reason} ->
-                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
-            end
     end.
 
 %% @doc 获取当前活跃的合规公钥
