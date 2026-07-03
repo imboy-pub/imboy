@@ -531,8 +531,11 @@ set_expire_at(MsgId, ExpireAt) ->
     Tb = tablename(),
     Sql = <<"UPDATE ", Tb/binary, " SET expire_at = $1 WHERE msg_id = $2">>,
     case elib_pg:execute(Sql, [ExpireAt, MsgId]) of
-        {ok, _} -> ok;
-        {error, _} -> ok
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([msg_c2c_set_expire_at_failed, MsgId, Reason]),
+            ok
     end.
 
 %% ponytail: NOW() 避免 epgsql 对 RFC3339 binary 的 timestamptz 转换

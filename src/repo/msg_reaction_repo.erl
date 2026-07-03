@@ -7,14 +7,22 @@
 -include("log.hrl").
 
 -export([tablename/0]).
--export([add/4]).              % (MsgId, MsgType, UserId, Emoji)
--export([remove/4]).           % (MsgId, MsgType, UserId, Emoji)
--export([find_by_msg/2]).      % (MsgId, MsgType)
--export([find_by_msg_emoji/3]).% (MsgId, MsgType, Emoji)
--export([count_by_msg/2]).     % (MsgId, MsgType)
--export([count_by_emoji/3]).   % (MsgId, MsgType, Emoji)
--export([find_user_reactions/3]). % (UserId, Page, Size)
--export([remove_all_by_msg/2]). % (MsgId, MsgType) - 用于测试
+% (MsgId, MsgType, UserId, Emoji)
+-export([add/4]).
+% (MsgId, MsgType, UserId, Emoji)
+-export([remove/4]).
+% (MsgId, MsgType)
+-export([find_by_msg/2]).
+% (MsgId, MsgType, Emoji)
+-export([find_by_msg_emoji/3]).
+% (MsgId, MsgType)
+-export([count_by_msg/2]).
+% (MsgId, MsgType, Emoji)
+-export([count_by_emoji/3]).
+% (UserId, Page, Size)
+-export([find_user_reactions/3]).
+% (MsgId, MsgType) - 用于测试
+-export([remove_all_by_msg/2]).
 
 %% ===================================================================
 %% API functions
@@ -43,10 +51,11 @@ add(MsgId, MsgType, UserId, Emoji) ->
         _ ->
             Tb = tablename(),
             GenId = elib_tsid:generate(msg_reaction),
-            Sql = <<"INSERT INTO ", Tb/binary,
-                   " (id, msg_id, msg_type, user_id, emoji) "
-                   "VALUES ($1, $2, $3, $4, $5) "
-                   "ON CONFLICT (msg_id, msg_type, user_id, emoji) DO NOTHING">>,
+            Sql =
+                <<"INSERT INTO ", Tb/binary,
+                    " (id, msg_id, msg_type, user_id, emoji) "
+                    "VALUES ($1, $2, $3, $4, $5) "
+                    "ON CONFLICT (msg_id, msg_type, user_id, emoji) DO NOTHING">>,
             case elib_pg:query(Sql, [GenId, MsgId, MsgType, UserId, Emoji]) of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}
@@ -62,12 +71,16 @@ add(MsgId, MsgType, UserId, Emoji) ->
 -spec remove(binary(), binary(), integer(), binary()) -> ok.
 remove(MsgId, MsgType, UserId, Emoji) ->
     Tb = tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary,
-           " WHERE msg_id = $1 AND msg_type = $2 "
-           "AND user_id = $3 AND emoji = $4">>,
+    Sql =
+        <<"DELETE FROM ", Tb/binary,
+            " WHERE msg_id = $1 AND msg_type = $2 "
+            "AND user_id = $3 AND emoji = $4">>,
     case elib_pg:query(Sql, [MsgId, MsgType, UserId, Emoji]) of
-        {ok, _} -> ok;
-        {error, _} -> ok
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([msg_reaction_remove_failed, MsgId, MsgType, UserId, Reason]),
+            ok
     end.
 
 %% @doc 查询消息的所有表情回应
@@ -77,10 +90,13 @@ remove(MsgId, MsgType, UserId, Emoji) ->
 -spec find_by_msg(binary(), binary()) -> {ok, list(map())} | {error, term()}.
 find_by_msg(MsgId, MsgType) ->
     Tb = tablename(),
-    Sql = <<"SELECT msg_id, msg_type, user_id, emoji, created_at "
-           "FROM ", Tb/binary,
-           " WHERE msg_id = $1 AND msg_type = $2 "
-           "ORDER BY created_at ASC">>,
+    Sql = <<
+        "SELECT msg_id, msg_type, user_id, emoji, created_at "
+        "FROM ",
+        Tb/binary,
+        " WHERE msg_id = $1 AND msg_type = $2 "
+        "ORDER BY created_at ASC"
+    >>,
     case elib_pg:query(Sql, [MsgId, MsgType]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -94,10 +110,13 @@ find_by_msg(MsgId, MsgType) ->
 -spec find_by_msg_emoji(binary(), binary(), binary()) -> {ok, list(map())} | {error, term()}.
 find_by_msg_emoji(MsgId, MsgType, Emoji) ->
     Tb = tablename(),
-    Sql = <<"SELECT msg_id, msg_type, user_id, emoji, created_at "
-           "FROM ", Tb/binary,
-           " WHERE msg_id = $1 AND msg_type = $2 AND emoji = $3 "
-           "ORDER BY created_at ASC">>,
+    Sql = <<
+        "SELECT msg_id, msg_type, user_id, emoji, created_at "
+        "FROM ",
+        Tb/binary,
+        " WHERE msg_id = $1 AND msg_type = $2 AND emoji = $3 "
+        "ORDER BY created_at ASC"
+    >>,
     case elib_pg:query(Sql, [MsgId, MsgType, Emoji]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -110,8 +129,7 @@ find_by_msg_emoji(MsgId, MsgType, Emoji) ->
 -spec count_by_msg(binary(), binary()) -> integer().
 count_by_msg(MsgId, MsgType) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary,
-           " WHERE msg_id = $1 AND msg_type = $2">>,
+    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE msg_id = $1 AND msg_type = $2">>,
     case elib_pg:query(Sql, [MsgId, MsgType]) of
         {ok, [#{<<"count">> := Count}]} -> Count;
         _ -> 0
@@ -125,8 +143,9 @@ count_by_msg(MsgId, MsgType) ->
 -spec count_by_emoji(binary(), binary(), binary()) -> integer().
 count_by_emoji(MsgId, MsgType, Emoji) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary,
-           " WHERE msg_id = $1 AND msg_type = $2 AND emoji = $3">>,
+    Sql =
+        <<"SELECT COUNT(*) as count FROM ", Tb/binary,
+            " WHERE msg_id = $1 AND msg_type = $2 AND emoji = $3">>,
     case elib_pg:query(Sql, [MsgId, MsgType, Emoji]) of
         {ok, [#{<<"count">> := Count}]} -> Count;
         _ -> 0
@@ -141,11 +160,14 @@ count_by_emoji(MsgId, MsgType, Emoji) ->
 find_user_reactions(UserId, Page, Size) when Page >= 1, Size > 0 ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
-    Sql = <<"SELECT msg_id, msg_type, user_id, emoji, created_at "
-           "FROM ", Tb/binary,
-           " WHERE user_id = $1 "
-           "ORDER BY created_at DESC "
-           "LIMIT $2 OFFSET $3">>,
+    Sql = <<
+        "SELECT msg_id, msg_type, user_id, emoji, created_at "
+        "FROM ",
+        Tb/binary,
+        " WHERE user_id = $1 "
+        "ORDER BY created_at DESC "
+        "LIMIT $2 OFFSET $3"
+    >>,
     case elib_pg:query(Sql, [UserId, Size, Offset]) of
         {ok, Rows} -> {ok, Rows};
         {error, Reason} -> {error, Reason}
@@ -160,9 +182,11 @@ find_user_reactions(_, _, _) ->
 -spec remove_all_by_msg(binary(), binary()) -> ok.
 remove_all_by_msg(MsgId, MsgType) ->
     Tb = tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary,
-           " WHERE msg_id = $1 AND msg_type = $2">>,
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id = $1 AND msg_type = $2">>,
     case elib_pg:query(Sql, [MsgId, MsgType]) of
-        {ok, _} -> ok;
-        {error, _} -> ok
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([msg_reaction_remove_all_by_msg_failed, MsgId, MsgType, Reason]),
+            ok
     end.
