@@ -568,9 +568,9 @@ get_routes() ->
                 {"/v1/payment/callback/:gateway", payment_callback_handler, #{action => notify}},
 
                 % SaaS 计费 API（支付线E：套餐订阅 + 用量配额 + 账单）
-                % 管理端：套餐管理
-                {"/v1/billing/plan", billing_handler, #{action => plan_create}},
-                {"/v1/billing/plan/update", billing_handler, #{action => plan_update}},
+                % 管理端套餐 CRUD（plan_create/plan_update）已迁至 /adm/finance/billing/*
+                % （走 adm_acl finance:write RBAC 门），此处不再暴露于 /v1（BILL-01）。
+                % plan_list 保留：套餐目录对所有登录用户可见（仅需 JWT）。
                 {"/v1/billing/plan/list", billing_handler, #{action => plan_list}},
                 % 租户端：订阅
                 {"/v1/billing/subscribe", billing_handler, #{action => subscribe}},
