@@ -44,7 +44,10 @@ build_query(Base, Path, Args) ->
                 <<"/", Path/binary>>
         end,
     Args2 = elib_cnv:map_to_query(Args),
-    <<Base2/binary, Path2/binary, "?", Args2/binary>>.
+    case Args2 of
+        <<>> -> <<Base2/binary, Path2/binary>>;
+        _ -> <<Base2/binary, Path2/binary, "?", Args2/binary>>
+    end.
 
 %% @doc 下载文件到本地
 %% @param Url 文件 URL

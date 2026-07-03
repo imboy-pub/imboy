@@ -19,7 +19,6 @@ init() ->
             error({regex_compile_failed, Reason})
     end.
 
-
 % elib_type:is_numeric(Key)
 -spec is_numeric(any()) -> boolean().
 is_numeric(Value) when is_number(Value) ->
@@ -32,13 +31,19 @@ is_numeric(Value) when is_list(Value) ->
 is_numeric(_) ->
     false.
 
-
 %% @doc 检查变量是否为属性列表格式
 %% @param Var 要检查的变量
 %% @returns true 如果是属性列表，否则返回 false
 -spec is_proplist(any()) -> boolean().
 is_proplist(Var) ->
-    is_list(Var) andalso lists:all(fun({_, _}) -> true; (_) -> false end, Var).
+    is_list(Var) andalso
+        lists:all(
+            fun
+                ({_, _}) -> true;
+                (_) -> false
+            end,
+            Var
+        ).
 
 %%%%% test
 
@@ -83,9 +88,6 @@ is_proplist(Var) ->
 %     ?assertEqual(false, elib_type:is_numeric(fun() -> ok end)),
 %     ?assertEqual(false, elib_type:is_numeric(self())).
 
-
-
-
 %% @doc 验证是否为中国大陆手机号
 %% @param Mobile 手机号（binary 或 list）
 %% @returns true | false
@@ -99,7 +101,6 @@ is_mobile(Mobile) ->
             false
     end.
 
-
 %% @doc 验证是否为有效的电子邮件地址
 %% @param Email 邮箱地址（binary 或 list）
 %% @returns true | false
@@ -109,7 +110,7 @@ is_mobile(Mobile) ->
 is_email(undefined) ->
     false;
 is_email(Email) ->
-    {_, P} = re:compile("^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+$"),
+    {_, P} = re:compile("^[a-zA-Z0-9_-]+@[a-zA-Z0-9_-]+(\\.[a-zA-Z0-9_-]+)+$"),
     case re:run(Email, P) of
         {match, _} ->
             true;

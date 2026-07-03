@@ -55,8 +55,11 @@ async(Fun, TimeoutMs) ->
         receive
             {'EXIT', Pid, Result} ->
                 case Result of
-                    normal -> ok;
-                    _ -> Result
+                    normal ->
+                        ok;
+                    _ ->
+                        ok = ?ERROR_LOG("[ASYNC_FAILED] Fun 异常退出: ~p", [Result]),
+                        Result
                 end
         after TimeoutMs ->
             erlang:unlink(Pid),

@@ -130,7 +130,7 @@ do_retry(Fun, RetryCount, DelayMs, BackoffType, Attempt) ->
                 "堆栈: ~p~n",
                 [
                     Attempt,
-                    RetryCount + 1,
+                    Attempt + RetryCount,
                     Type,
                     Error,
                     calculate_delay(DelayMs, BackoffType, Attempt),
@@ -181,7 +181,7 @@ do_retry_with_timeout(Fun, TimeoutMs, RetryCount, DelayMs, BackoffType, Attempt)
                 "堆栈: ~p~n",
                 [
                     Attempt,
-                    RetryCount + 1,
+                    Attempt + RetryCount,
                     Type,
                     Error,
                     calculate_delay(DelayMs, BackoffType, Attempt),
