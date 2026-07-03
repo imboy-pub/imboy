@@ -753,6 +753,9 @@ audit_admin_action(AdmUid, Action, TargetId, Extra) ->
         }),
         ok
     catch
-        _:_ ->
+        Class:Reason ->
+            ok = ?ERROR_LOG([
+                audit_admin_action, write_failed, AdmUid, Action, TargetId, Class, Reason
+            ]),
             ok
     end.

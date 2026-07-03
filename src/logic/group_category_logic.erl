@@ -50,7 +50,8 @@ list(Uid) ->
         Categories = group_category_ds:find_by_uid(Uid),
         {ok, Categories}
     catch
-        _Error:_Reason ->
+        Class:Reason ->
+            ok = ?ERROR_LOG([list, Uid, Class, Reason]),
             {error, <<"查询分类列表失败"/utf8>>}
     end.
 
@@ -103,23 +104,24 @@ move_group(Uid, Gid, CategoryId) ->
     case group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"id">>) of
         #{<<"id">> := _} ->
             %% 验证分类是否存在（如果是0则跳过验证）
-            ValidateResult = case CategoryId of
-                0 ->
-                    ok;
-                _ ->
-                    case group_category_ds:list_by_uid(Uid, <<"id">>) of
-                        {ok, Categories} ->
-                            CategoryIds = [Id || #{<<"id">> := Id} <- Categories],
-                            case lists:member(CategoryId, CategoryIds) of
-                                true ->
-                                    ok;
-                                false ->
-                                    {error, <<"分类不存在或无权限"/utf8>>}
-                            end;
-                        _ ->
-                            {error, <<"分类不存在或无权限"/utf8>>}
-                    end
-            end,
+            ValidateResult =
+                case CategoryId of
+                    0 ->
+                        ok;
+                    _ ->
+                        case group_category_ds:list_by_uid(Uid, <<"id">>) of
+                            {ok, Categories} ->
+                                CategoryIds = [Id || #{<<"id">> := Id} <- Categories],
+                                case lists:member(CategoryId, CategoryIds) of
+                                    true ->
+                                        ok;
+                                    false ->
+                                        {error, <<"分类不存在或无权限"/utf8>>}
+                                end;
+                            _ ->
+                                {error, <<"分类不存在或无权限"/utf8>>}
+                        end
+                end,
             %% 根据验证结果决定是否执行移动操作
             case ValidateResult of
                 ok ->
@@ -149,14 +151,17 @@ update_sort_order(Uid, SortOrders) when is_list(SortOrders) ->
             UserCategoryIdsSet = sets:from_list(UserCategoryIds),
 
             %% 验证并更新每个分类的排序
-            Results = lists:map(fun({CategoryId, SortOrder}) ->
-                case sets:is_element(CategoryId, UserCategoryIdsSet) of
-                    true ->
-                        group_category_ds:update_sort_order(Uid, CategoryId, SortOrder);
-                    false ->
-                        {error, <<"分类不存在或无权限"/utf8>>}
-                end
-            end, SortOrders),
+            Results = lists:map(
+                fun({CategoryId, SortOrder}) ->
+                    case sets:is_element(CategoryId, UserCategoryIdsSet) of
+                        true ->
+                            group_category_ds:update_sort_order(Uid, CategoryId, SortOrder);
+                        false ->
+                            {error, <<"分类不存在或无权限"/utf8>>}
+                    end
+                end,
+                SortOrders
+            ),
 
             %% 检查是否所有更新都成功
             ErrorResults = [R || R <- Results, element(1, R) =:= error],

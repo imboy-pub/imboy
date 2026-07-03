@@ -287,7 +287,8 @@ send_kick_message(Pid, ReasonMap) when is_pid(Pid), is_map(ReasonMap) ->
         Pid ! Message,
         ok
     catch
-        _:_ ->
+        Class:Reason ->
+            ok = ?WARN_LOG([send_kick_message, Pid, Class, Reason]),
             ok
     end.
 
