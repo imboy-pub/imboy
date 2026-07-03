@@ -69,11 +69,20 @@ add(Req0, State) ->
     DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
 
     DeniedUserId2 = elib_cnv:safe_to_integer(DeniedUserId),
-    CreatedAt = user_denylist_logic:add(CurrentUid, DeniedUserId2),
-    elib_response:success(Req0,
-                           #{<<"user_id">> => CurrentUid,
-                             <<"denied_user_id">> => DeniedUserId2,
-                             <<"created_at">> => CreatedAt}).
+    case DeniedUserId2 > 0 of
+        false ->
+            elib_response:error(Req0, <<"目标用户ID不合法"/utf8>>);
+        true ->
+            CreatedAt = user_denylist_logic:add(CurrentUid, DeniedUserId2),
+            elib_response:success(
+                Req0,
+                #{
+                    <<"user_id">> => CurrentUid,
+                    <<"denied_user_id">> => DeniedUserId2,
+                    <<"created_at">> => CreatedAt
+                }
+            )
+    end.
 
 %% @doc 移除黑名单
 %% 将用户从黑名单中移除
@@ -90,10 +99,14 @@ remove(Req0, State) ->
     DeniedUserId = maps:get(<<"denied_user_id">>, PostVals, ""),
     DeniedUserId2 = elib_cnv:safe_to_integer(DeniedUserId),
 
-    user_denylist_logic:remove(CurrentUid, DeniedUserId2),
-    elib_response:success(Req0).
+    case DeniedUserId2 > 0 of
+        false ->
+            elib_response:error(Req0, <<"目标用户ID不合法"/utf8>>);
+        true ->
+            user_denylist_logic:remove(CurrentUid, DeniedUserId2),
+            elib_response:success(Req0)
+    end.
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

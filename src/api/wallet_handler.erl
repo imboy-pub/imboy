@@ -224,12 +224,19 @@ red_packet_open(Req0, State) ->
         false ->
             elib_response:error(Req0, <<"红包ID不能为空"/utf8>>);
         true ->
-            PacketId = binary_to_integer(PacketIdStr),
-            case red_packet_logic:open(PacketId, CurrentUid) of
-                {ok, GrabAmount} ->
-                    elib_response:success(Req0, #{<<"grab_amount">> => GrabAmount}, "success.");
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+            try binary_to_integer(PacketIdStr) of
+                PacketId ->
+                    case red_packet_logic:open(PacketId, CurrentUid) of
+                        {ok, GrabAmount} ->
+                            elib_response:success(
+                                Req0, #{<<"grab_amount">> => GrabAmount}, "success."
+                            );
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end
+            catch
+                error:badarg ->
+                    elib_response:error(Req0, <<"红包ID不合法"/utf8>>)
             end
     end.
 
@@ -243,12 +250,17 @@ red_packet_detail(Req0, State) ->
         false ->
             elib_response:error(Req0, <<"红包ID不能为空"/utf8>>);
         true ->
-            Id = binary_to_integer(IdStr),
-            case red_packet_logic:detail(Id, CurrentUid) of
-                {ok, Detail} ->
-                    elib_response:success(Req0, Detail, "success.");
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+            try binary_to_integer(IdStr) of
+                Id ->
+                    case red_packet_logic:detail(Id, CurrentUid) of
+                        {ok, Detail} ->
+                            elib_response:success(Req0, Detail, "success.");
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end
+            catch
+                error:badarg ->
+                    elib_response:error(Req0, <<"红包ID不合法"/utf8>>)
             end
     end.
 
@@ -297,12 +309,17 @@ transfer_accept(Req0, State) ->
         false ->
             elib_response:error(Req0, <<"转账单ID不能为空"/utf8>>);
         true ->
-            TransferId = binary_to_integer(TransferIdStr),
-            case transfer_logic:accept(TransferId, CurrentUid) of
-                {ok, Amount} ->
-                    elib_response:success(Req0, #{<<"amount">> => Amount}, "success.");
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+            try binary_to_integer(TransferIdStr) of
+                TransferId ->
+                    case transfer_logic:accept(TransferId, CurrentUid) of
+                        {ok, Amount} ->
+                            elib_response:success(Req0, #{<<"amount">> => Amount}, "success.");
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end
+            catch
+                error:badarg ->
+                    elib_response:error(Req0, <<"转账单ID不合法"/utf8>>)
             end
     end.
 

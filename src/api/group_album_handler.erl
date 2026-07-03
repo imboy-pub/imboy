@@ -344,7 +344,11 @@ batch_upload(Req0, State) ->
         _ ->
             case group_album_logic:batch_upload_photos(Gid, CurrentUid, Photos) of
                 {ok, Results} ->
-                    elib_response:success(Req1, #{results => Results}, <<"批量上传完成"/utf8>>)
+                    elib_response:success(Req1, #{results => Results}, <<"批量上传完成"/utf8>>);
+                {error, Reason} when is_binary(Reason) ->
+                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
+                {error, _Reason} ->
+                    elib_response:error(Req1, <<"批量上传失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
             end
     end.
 
