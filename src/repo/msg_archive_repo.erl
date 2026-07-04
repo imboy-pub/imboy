@@ -28,7 +28,7 @@
 
 -include("log.hrl").
 
--define(TABLE,     <<"public.msg_store">>).
+-define(TABLE, <<"public.msg_store">>).
 -define(SEQ_TABLE, <<"public.msg_store_seq">>).
 
 %% ==================== API ====================
@@ -37,7 +37,7 @@
 -export([next_conv_seq/1]).
 -export([archive/1]).
 -export([get_history/3, get_history/4]).
-
+-export([get_history_batch/2]).
 
 %% ==================== API Functions ====================
 
@@ -60,7 +60,6 @@ conv_key(<<"c2c">>, FromId, ToId) ->
 conv_key(<<"c2g">>, _FromId, Gid) ->
     <<"c2g:", (integer_to_binary(Gid))/binary>>.
 
-
 %%-------------------------------------------------------------------
 %% @doc  原子获取并递增 per-conversation 序列号
 %%
@@ -73,9 +72,9 @@ conv_key(<<"c2g">>, _FromId, Gid) ->
 %%-------------------------------------------------------------------
 -spec next_conv_seq(binary()) -> {ok, integer()} | {error, term()}.
 next_conv_seq(ConvKey) ->
-    Sql = <<"INSERT INTO ", ?SEQ_TABLE/binary, " (conv_key, seq) VALUES ($1, 1) ",
-            "ON CONFLICT (conv_key) DO UPDATE ",
-            "SET seq = msg_store_seq.seq + 1 ",
+    Sql =
+        <<"INSERT INTO ", ?SEQ_TABLE/binary, " (conv_key, seq) VALUES ($1, 1) ",
+            "ON CONFLICT (conv_key) DO UPDATE ", "SET seq = msg_store_seq.seq + 1 ",
             "RETURNING seq">>,
     case elib_pg:query(Sql, [ConvKey]) of
         {ok, [Row | _]} ->
@@ -85,7 +84,6 @@ next_conv_seq(ConvKey) ->
         {error, Reason} ->
             {error, Reason}
     end.
-
 
 %%-------------------------------------------------------------------
 %% @doc  归档一条消息到永久存储
@@ -128,7 +126,6 @@ archive(Row) ->
             end
     end.
 
-
 %%-------------------------------------------------------------------
 %% @doc  游标查询：按 conv_seq 升序拉取历史消息
 %%
@@ -145,7 +142,6 @@ archive(Row) ->
 get_history(ConvKey, AfterSeq, Limit) ->
     get_history(ConvKey, AfterSeq, Limit, asc).
 
-
 %%-------------------------------------------------------------------
 %% @doc  游标查询（带排序方向）
 %%
@@ -155,81 +151,129 @@ get_history(ConvKey, AfterSeq, Limit) ->
 -spec get_history(binary(), integer(), pos_integer(), asc | desc) ->
     {ok, list(map())} | {error, term()}.
 get_history(ConvKey, AfterSeq, Limit, Order) ->
-    {Cmp, OrderBin} = case Order of
-        desc -> {<<" < ">>, <<"DESC">>};
-        _    -> {<<" > ">>, <<"ASC">>}
-    end,
-    Sql = <<"SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, ",
-            "e2ee, payload, created_at, server_ts ",
-            "FROM ", ?TABLE/binary,
-            " WHERE conv_key = $1 AND conv_seq", Cmp/binary, "$2 ",
-            "ORDER BY conv_seq ", OrderBin/binary,
-            " LIMIT $3">>,
+    {Cmp, OrderBin} =
+        case Order of
+            desc -> {<<" < ">>, <<"DESC">>};
+            _ -> {<<" > ">>, <<"ASC">>}
+        end,
+    Sql =
+        <<"SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, ",
+            "e2ee, payload, created_at, server_ts ", "FROM ", ?TABLE/binary,
+            " WHERE conv_key = $1 AND conv_seq", Cmp/binary, "$2 ", "ORDER BY conv_seq ",
+            OrderBin/binary, " LIMIT $3">>,
     elib_pg:query(Sql, [ConvKey, AfterSeq, Limit]).
 
+%%-------------------------------------------------------------------
+%% @doc  批量游标查询：一次 LATERAL 拉取多个会话的增量消息(正序)
+%%
+%% 替代逐会话 N 次 get_history 往返。每个会话仍按各自 (conv_key, after_seq)
+%% 游标取最多 Limit 条，复用索引 i_msg_store_conv_seq。输出多含 conv_key
+%% 字段供上层按会话分组；Limit 服务端夹紧后内联(1..100 整数，无注入)。
+%%
+%% @param Cursors [{ConvKey :: binary(), AfterSeq :: integer()}]
+%% @end
+%%-------------------------------------------------------------------
+-spec get_history_batch([{binary(), integer()}], pos_integer()) ->
+    {ok, list(map())} | {error, term()}.
+get_history_batch([], _Limit) ->
+    {ok, []};
+get_history_batch(Cursors, Limit) ->
+    LimitInt = erlang:min(erlang:max(Limit, 1), 100),
+    {ValuesSql, Params} = build_cursor_values(Cursors),
+    Sql = <<
+        "SELECT c.conv_key AS conv_key, h.msg_id, h.chat_type, h.conv_seq, h.msg_type, ",
+        "h.from_id, h.to_id, h.group_id, h.e2ee, h.payload, h.created_at, h.server_ts ",
+        "FROM (VALUES ",
+        ValuesSql/binary,
+        ") AS c(conv_key, after_seq) ",
+        "CROSS JOIN LATERAL ("
+        "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
+        "e2ee, payload, created_at, server_ts "
+        "FROM ",
+        ?TABLE/binary,
+        " m "
+        "WHERE m.conv_key = c.conv_key AND m.conv_seq > c.after_seq "
+        "ORDER BY m.conv_seq ASC LIMIT ",
+        (integer_to_binary(LimitInt))/binary,
+        ") h "
+        "ORDER BY c.conv_key, h.conv_seq ASC"
+    >>,
+    elib_pg:query(Sql, Params).
 
 %% ==================== Internal Functions ====================
 
+%% @private 构建 VALUES 占位符与参数：[{K,S}] → {"($1::text,$2::bigint),...", [K,S,...]}
+-spec build_cursor_values([{binary(), integer()}]) -> {binary(), list()}.
+build_cursor_values(Cursors) ->
+    Indexed = lists:zip(lists:seq(1, length(Cursors)), Cursors),
+    Parts = [
+        begin
+            P1 = integer_to_binary(2 * I - 1),
+            P2 = integer_to_binary(2 * I),
+            <<"($", P1/binary, "::text,$", P2/binary, "::bigint)">>
+        end
+     || {I, _} <- Indexed
+    ],
+    Params = lists:append([[K, S] || {_, {K, S}} <- Indexed]),
+    {elib_cnv:implode(<<",">>, Parts), Params}.
+
 %% @private 构建归档数据，返回 {ok, ConvKey, DataMap} | skip | {error, Reason}
 build_archive_data(<<"c2c">>, Row) ->
-    FromId    = maps:get(<<"from_id">>, Row),
-    ToId      = maps:get(<<"to_id">>, Row, null),
-    MsgId     = maps:get(<<"msg_id">>, Row),
-    MsgType   = maps:get(<<"msg_type">>, Row, <<>>),
-    E2EE      = maps:get(<<"e2ee">>, Row, null),
-    Payload   = maps:get(<<"payload">>, Row),
+    FromId = maps:get(<<"from_id">>, Row),
+    ToId = maps:get(<<"to_id">>, Row, null),
+    MsgId = maps:get(<<"msg_id">>, Row),
+    MsgType = maps:get(<<"msg_type">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, null),
+    Payload = maps:get(<<"payload">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
-    ServerTs  = maps:get(<<"server_ts">>, Row, CreatedAt),
-    ConvKey   = conv_key(<<"c2c">>, FromId, ToId),
+    ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
+    ConvKey = conv_key(<<"c2c">>, FromId, ToId),
     Data = #{
-        chat_type  => <<"c2c">>,
-        conv_key   => ConvKey,
-        msg_id     => MsgId,
-        msg_type   => MsgType,
-        from_id    => FromId,
-        to_id      => ToId,
-        group_id   => null,
-        e2ee       => E2EE,
-        payload    => Payload,
+        chat_type => <<"c2c">>,
+        conv_key => ConvKey,
+        msg_id => MsgId,
+        msg_type => MsgType,
+        from_id => FromId,
+        to_id => ToId,
+        group_id => null,
+        e2ee => E2EE,
+        payload => Payload,
         created_at => CreatedAt,
-        server_ts  => ServerTs
+        server_ts => ServerTs
     },
     {ok, ConvKey, Data};
-
 build_archive_data(<<"c2g">>, Row) ->
-    FromId    = maps:get(<<"from_id">>, Row),
-    MsgId     = maps:get(<<"msg_id">>, Row),
-    MsgType   = maps:get(<<"msg_type">>, Row, <<>>),
-    E2EE      = maps:get(<<"e2ee">>, Row, null),
-    Payload   = maps:get(<<"payload">>, Row),
+    FromId = maps:get(<<"from_id">>, Row),
+    MsgId = maps:get(<<"msg_id">>, Row),
+    MsgType = maps:get(<<"msg_type">>, Row, <<>>),
+    E2EE = maps:get(<<"e2ee">>, Row, null),
+    Payload = maps:get(<<"payload">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
-    ServerTs  = maps:get(<<"server_ts">>, Row, CreatedAt),
+    ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
     %% C2G 的 group_id 存在 payload 的 <<"to">> 字段（字符串格式）
     case safe_decode_group_id(Payload) of
         {ok, Gid} ->
             ConvKey = conv_key(<<"c2g">>, FromId, Gid),
             Data = #{
-                chat_type  => <<"c2g">>,
-                conv_key   => ConvKey,
-                msg_id     => MsgId,
-                msg_type   => MsgType,
-                from_id    => FromId,
-                to_id      => null,
-                group_id   => Gid,
-                e2ee       => E2EE,
-                payload    => Payload,
+                chat_type => <<"c2g">>,
+                conv_key => ConvKey,
+                msg_id => MsgId,
+                msg_type => MsgType,
+                from_id => FromId,
+                to_id => null,
+                group_id => Gid,
+                e2ee => E2EE,
+                payload => Payload,
                 created_at => CreatedAt,
-                server_ts  => ServerTs
+                server_ts => ServerTs
             },
             {ok, ConvKey, Data};
         {error, Reason} ->
             {error, {decode_group_id_failed, Reason}}
     end;
-
 build_archive_data(_OtherType, _Row) ->
     %% s2c / c2s 不归档
     skip.
-
 
 %% @private 从 payload JSON 解析 group_id
 safe_decode_group_id(Payload) ->

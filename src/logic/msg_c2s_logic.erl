@@ -254,35 +254,56 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
 -spec handle_sync(integer(), list(map()), non_neg_integer()) -> map().
 handle_sync(CurrentUid, Cursors, Limit) when is_list(Cursors) ->
     ClampedLimit = erlang:min(erlang:max(Limit, 1), 100),
-    Results = lists:filtermap(
+    %% 1. 先鉴权过滤，得到授权会话的 {ConvKey, Seq}
+    Authed = lists:filtermap(
         fun(Cursor) ->
             ConvKey = maps:get(<<"conv_key">>, Cursor, <<>>),
             Seq = maps:get(<<"seq">>, Cursor, 0),
             case authorize_conv(CurrentUid, ConvKey) of
-                false ->
-                    false;
-                true ->
-                    case msg_archive_ds:history(ConvKey, Seq, ClampedLimit) of
-                        {ok, []} ->
-                            false;
-                        {ok, Rows} ->
-                            Messages = [
-                                messaging_logic:encode_history_msg(CurrentUid, R)
-                             || R <- Rows
-                            ],
-                            NextSeq = messaging_logic:next_seq_from_rows(Rows, Seq),
-                            {true, #{
-                                <<"conv_key">> => ConvKey,
-                                <<"messages">> => Messages,
-                                <<"next_seq">> => NextSeq,
-                                <<"has_more">> => length(Rows) >= ClampedLimit
-                            }};
-                        {error, _} ->
-                            false
-                    end
+                true -> {true, {ConvKey, Seq}};
+                false -> false
             end
         end,
         Cursors
+    ),
+    %% 2. 一次 LATERAL 批量查所有授权会话增量，再按 conv_key 分组(消除逐会话 N+1)
+    Grouped =
+        case msg_archive_ds:history_batch(Authed, ClampedLimit) of
+            {ok, AllRows} ->
+                lists:foldl(
+                    fun(Row, Acc) ->
+                        CK = maps:get(<<"conv_key">>, Row),
+                        Acc#{CK => [Row | maps:get(CK, Acc, [])]}
+                    end,
+                    #{},
+                    AllRows
+                );
+            {error, _} ->
+                #{}
+        end,
+    %% 3. 按原授权顺序组装每个会话的结果(空会话过滤，语义同原逐条 {ok,[]}->false)
+    Results = lists:filtermap(
+        fun({ConvKey, Seq}) ->
+            case maps:get(ConvKey, Grouped, []) of
+                [] ->
+                    false;
+                RevRows ->
+                    %% 分组时前插致倒序，还原为 conv_seq ASC
+                    Rows = lists:reverse(RevRows),
+                    Messages = [
+                        messaging_logic:encode_history_msg(CurrentUid, R)
+                     || R <- Rows
+                    ],
+                    NextSeq = messaging_logic:next_seq_from_rows(Rows, Seq),
+                    {true, #{
+                        <<"conv_key">> => ConvKey,
+                        <<"messages">> => Messages,
+                        <<"next_seq">> => NextSeq,
+                        <<"has_more">> => length(Rows) >= ClampedLimit
+                    }}
+            end
+        end,
+        Authed
     ),
     #{<<"results">> => Results};
 handle_sync(_CurrentUid, _Cursors, _Limit) ->
