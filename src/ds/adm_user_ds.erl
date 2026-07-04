@@ -11,6 +11,7 @@
 %% ==================== API ====================
 
 -export([count/0]).
+-export([count_by_role/1]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_mobile/2, find_by_account/2]).
 -export([save/1, update/2, delete/1]).
@@ -23,6 +24,11 @@
 -spec count() -> {ok, integer()} | {error, any()}.
 count() ->
     adm_user_repo:count().
+
+%% @doc 统计仍引用指定角色的在用管理员数量（用于角色删除前的孤儿校验）
+-spec count_by_role(integer()) -> {ok, integer()} | {error, any()}.
+count_by_role(RoleId) ->
+    adm_user_repo:count_by_role(RoleId).
 
 %% @doc 根据ID查找管理员用户（默认列）
 -spec find_by_id(integer()) -> map().

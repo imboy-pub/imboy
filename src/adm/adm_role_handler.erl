@@ -24,6 +24,10 @@ init(Req0, State0) ->
                 create_action(Method, Req0, State);
             permissions_save ->
                 permissions_save_action(Method, Req0, State);
+            disable ->
+                disable_action(Method, Req0, State);
+            delete ->
+                delete_action(Method, Req0, State);
             false ->
                 Req0
         end,
@@ -123,6 +127,99 @@ save_permissions_handle(Req0, State) ->
         {error, Req1} ->
             Req1
     end.
+
+%% @doc 软停用角色（status => 0），内置角色（1/2/3）不可停用
+-spec disable_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+disable_action(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"roles:update">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            RoleId = normalize_positive_int(
+                maps:get(<<"role_id">>, PostVals, maps:get(<<"id">>, PostVals, 0))
+            ),
+            case validate_mutable_role(RoleId) of
+                ok ->
+                    case update_role_status(RoleId, 0) of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{});
+                        {error, Reason} ->
+                            elib_response:error(
+                                Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end;
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+disable_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 硬删除角色，内置角色不可删；删除前校验该角色下无在用管理员，避免孤儿
+-spec delete_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+delete_action(<<"POST">>, Req0, State) ->
+    case ensure_permission(State, <<"roles:update">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            RoleId = normalize_positive_int(
+                maps:get(<<"role_id">>, PostVals, maps:get(<<"id">>, PostVals, 0))
+            ),
+            case validate_mutable_role(RoleId) of
+                ok ->
+                    delete_role_after_guard(Req0, RoleId);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+delete_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 校验该角色下无在用管理员后再删除
+-spec delete_role_after_guard(cowboy_req:req(), integer()) -> cowboy_req:req().
+delete_role_after_guard(Req0, RoleId) ->
+    case adm_user_ds:count_by_role(RoleId) of
+        {ok, 0} ->
+            case delete_role_record(RoleId) of
+                {ok, _} ->
+                    elib_response:success(Req0, #{});
+                {error, Reason} ->
+                    elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+            end;
+        {ok, Count} when Count > 0 ->
+            Msg = unicode:characters_to_binary(
+                io_lib:format("该角色下仍有 ~B 名管理员在用，无法删除", [Count])
+            ),
+            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+        {error, Reason} ->
+            elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
+    end.
+
+%% @doc 校验角色可停用/删除：内置角色(1/2/3)与不存在角色拒绝
+-spec validate_mutable_role(integer()) -> ok | {error, binary()}.
+validate_mutable_role(RoleId) when RoleId =< 0 ->
+    {error, <<"role_id 无效"/utf8>>};
+validate_mutable_role(RoleId) when RoleId =:= 1; RoleId =:= 2; RoleId =:= 3 ->
+    {error, <<"内置角色不可停用或删除"/utf8>>};
+validate_mutable_role(RoleId) ->
+    case role_exists(RoleId) of
+        true ->
+            ok;
+        false ->
+            {error, <<"角色不存在"/utf8>>}
+    end.
+
+-spec update_role_status(integer(), integer()) -> {ok, term()} | {error, term()}.
+update_role_status(RoleId, Status) ->
+    elib_pg:update(role_table(), #{<<"status">> => Status}, <<"id = $1">>, [RoleId]).
+
+-spec delete_role_record(integer()) -> {ok, term()} | {error, term()}.
+delete_role_record(RoleId) ->
+    Tb = role_table(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
+    elib_pg:execute(Sql, [RoleId]).
 
 -spec build_role_page(pos_integer(), pos_integer(), integer(), binary()) ->
     {ok, map()} | {error, term()}.

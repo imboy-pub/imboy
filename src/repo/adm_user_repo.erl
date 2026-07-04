@@ -11,6 +11,7 @@
 -export([save/1, update/2, delete/1]).
 -export([count/0]).
 -export([count_by_role_id/1]).
+-export([count_by_role/1]).
 
 -export([
     find_by_email/2,
@@ -50,6 +51,19 @@ count() ->
 count_by_role_id(RoleId) ->
     Tb = tablename(),
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE role_id = $1 AND status >= 0">>,
+    case elib_pg:query(Sql, [RoleId]) of
+        {ok, [#{<<"count">> := Count}]} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 统计仍引用指定角色的在用管理员数量（status >= 0）
+%% role_id 列为 bigint[] 数组，须用 ANY 匹配（count_by_role_id 的 `= $1` 对数组列无效）。
+%% @example adm_user_repo:count_by_role(1).
+-spec count_by_role(integer()) -> {ok, integer()} | {error, any()}.
+count_by_role(RoleId) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE $1 = ANY(role_id) AND status >= 0">>,
     case elib_pg:query(Sql, [RoleId]) of
         {ok, [#{<<"count">> := Count}]} -> {ok, Count};
         {error, Reason} -> {error, Reason}
