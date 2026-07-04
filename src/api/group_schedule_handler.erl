@@ -247,8 +247,10 @@ list(Req0, State) ->
     GroupId = proplists:get_value(<<"group_id">>, Qs, undefined),
     StartAt = normalize_time_value(proplists:get_value(<<"start_at">>, Qs, undefined)),
     EndAt = normalize_time_value(proplists:get_value(<<"end_at">>, Qs, undefined)),
-    Page = elib_param:int(page, Qs, 1),
-    Size = elib_param:int(size, Qs, 20),
+    %% elib_param:int/3 需要 cowboy_req:req()（内部 cowboy_req:method/1），此处误传
+    %% parse_qs 的 proplist 会 function_clause 崩溃 → 每次调用必 500；且其返回 {ok,Int}
+    %% 元组也非裸整数。与 my_list/2 统一改用 elib_param:page/1（带 MAX_PAGE_SIZE 上界）
+    {Page, Size} = elib_param:page(Req0),
 
     GroupId2 = elib_cnv:safe_to_integer(GroupId),
 

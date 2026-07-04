@@ -12,6 +12,7 @@
 
 -include("log.hrl").
 -include("error_code.hrl").
+-include("imboy_const.hrl").
 
 %% ===================================================================
 %% API
@@ -283,7 +284,9 @@ safe_post(Req0) ->
 resolve_page_size(Req0, PostVals) ->
     {Page0, Size0} = elib_param:page(Req0),
     Page = normalize_positive_int(maps:get(<<"page">>, PostVals, Page0), Page0),
-    Size = normalize_positive_int(maps:get(<<"size">>, PostVals, Size0), Size0),
+    Size1 = normalize_positive_int(maps:get(<<"size">>, PostVals, Size0), Size0),
+    %% body 里的 size 会覆盖 elib_param:page 已截断的值，须再钳一次上界，防单请求拉全表 DoS
+    Size = min(Size1, ?MAX_PAGE_SIZE),
     {Page, Size}.
 
 %% @private

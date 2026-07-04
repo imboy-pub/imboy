@@ -10,6 +10,7 @@
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("error_code.hrl").
+-include("imboy_const.hrl").
 
 %% ===================================================================
 %% API 函数
@@ -92,8 +93,8 @@ list_albums(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
 
     Gid = proplists:get_value(<<"gid">>, Qs, <<>>),
-    Page = ec_cnv:to_integer(proplists:get_value(<<"page">>, Qs, 1)),
-    Size = ec_cnv:to_integer(proplists:get_value(<<"size">>, Qs, 20)),
+    %% 统一走 elib_param:page/1：非数字输入不再 badarg 500，size 带 MAX_PAGE_SIZE 上界防 DoS
+    {Page, Size} = elib_param:page(Req0),
 
     % 验证参数
     case Gid of
@@ -362,8 +363,8 @@ list_photos(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
 
     AlbumId = proplists:get_value(<<"album_id">>, Qs, <<>>),
-    Page = ec_cnv:to_integer(proplists:get_value(<<"page">>, Qs, 1)),
-    Size = ec_cnv:to_integer(proplists:get_value(<<"size">>, Qs, 20)),
+    %% 统一走 elib_param:page/1：非数字输入不再 badarg 500，size 带 MAX_PAGE_SIZE 上界防 DoS
+    {Page, Size} = elib_param:page(Req0),
 
     % 验证参数
     case AlbumId of
@@ -396,7 +397,7 @@ photo_detail(Req0, State) ->
         <<>> ->
             elib_response:error(Req0, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            PhotoIdInt = ec_cnv:to_integer(PhotoId),
+            PhotoIdInt = elib_cnv:safe_to_integer(PhotoId),
             case group_album_logic:get_photo_detail(PhotoIdInt, CurrentUid) of
                 {ok, PhotoDetail} ->
                     elib_response:success(Req0, PhotoDetail, <<"查询成功"/utf8>>);
@@ -421,7 +422,7 @@ delete_photo(Req0, State) ->
         <<>> ->
             elib_response:error(Req1, <<"图片ID不能为空"/utf8>>, ?ERR_BAD_REQUEST);
         _ ->
-            PhotoIdInt = ec_cnv:to_integer(PhotoId),
+            PhotoIdInt = elib_cnv:safe_to_integer(PhotoId),
             case group_album_logic:delete_photo(PhotoIdInt, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"删除成功"/utf8>>);
@@ -523,7 +524,9 @@ list_comments(Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
 
     PhotoId = proplists:get_value(<<"photo_id">>, Qs, <<>>),
-    Limit = ec_cnv:to_integer(proplists:get_value(<<"limit">>, Qs, 20)),
+    %% safe_to_integer 防非数字 badarg 500；min/max 钳到 [1, MAX_PAGE_SIZE] 防超大 LIMIT DoS
+    Limit0 = elib_cnv:safe_to_integer(proplists:get_value(<<"limit">>, Qs, 20)),
+    Limit = min(max(Limit0, 1), ?MAX_PAGE_SIZE),
 
     % 验证参数
     case PhotoId of
