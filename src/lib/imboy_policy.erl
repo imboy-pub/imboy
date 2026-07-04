@@ -188,7 +188,11 @@ content_bearing_action(_) ->
     false.
 
 -spec encrypted_message_body(binary(), term(), term()) -> boolean().
-encrypted_message_body(<<"e2ee">>, E2EE, Payload) when is_map(E2EE), is_binary(Payload) ->
+%% v2.0 契约：是否加密以顶层 e2ee 字段为准，msg_type 保留原始类型（text/image…）
+%% 供接收方渲染（见 imboyapp chat_network_service.dart:360）。只要 e2ee 是非空 map
+%% 且 payload 非空即视为已加密，不再要求 msg_type=<<"e2ee">>——旧契约与客户端
+%% 实际发送行为冲突，会导致 required 模式下加密消息被误判为明文而拒收。
+encrypted_message_body(_MsgType, E2EE, Payload) when is_map(E2EE), is_binary(Payload) ->
     map_size(E2EE) > 0 andalso Payload =/= <<>>;
 encrypted_message_body(_, _, _) ->
     false.

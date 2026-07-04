@@ -283,6 +283,50 @@ e2ee_enabled_returns_true_when_required_test_() ->
         end
     ).
 
+%% 回归：required 模式下，加密与否以顶层 e2ee 字段为准，不依赖 msg_type。
+%% 客户端 v2.0（chat_network_service.dart:360）保留原始 msg_type=text/image，
+%% 靠非空 e2ee map 标识加密；旧逻辑卡 msg_type=<<"e2ee">> 会把这类消息误拒。
+required_accepts_encrypted_body_by_e2ee_field_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun default_config_get/2},
+                {'env', 2, fun
+                    (product_profile, community) -> community;
+                    (capabilities, #{}) -> #{e2ee_mode => required}
+                end}
+            ]}
+        ],
+        fun() ->
+            E2EE = #{<<"keys">> => [#{<<"did">> => <<"d1">>}]},
+            Ct = <<"bm9uY2U.Y3Q">>,
+            %% 原始 msg_type=text/image + 非空 e2ee map → 视为已加密，通过
+            ?assertEqual(
+                ok,
+                imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, E2EE, Ct)
+            ),
+            ?assertEqual(
+                ok,
+                imboy_policy:validate_message_write(<<"C2G">>, <<"image">>, <<>>, E2EE, Ct)
+            ),
+            %% 兼容旧 msg_type=e2ee
+            ?assertEqual(
+                ok,
+                imboy_policy:validate_message_write(<<"C2C">>, <<"e2ee">>, <<>>, E2EE, Ct)
+            ),
+            %% 明文（e2ee=null）在 required 下仍被拒
+            ?assertEqual(
+                {error, <<"encrypted_message_required">>},
+                imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, null, Ct)
+            ),
+            %% 空 e2ee map 视为明文 → 拒
+            ?assertEqual(
+                {error, <<"encrypted_message_required">>},
+                imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, #{}, Ct)
+            )
+        end
+    ).
+
 e2ee_enabled_returns_false_when_disabled_test_() ->
     ?WITH_MECKS(
         [
