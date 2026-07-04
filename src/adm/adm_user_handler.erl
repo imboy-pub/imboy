@@ -29,6 +29,8 @@ init(Req0, State0) ->
             ban -> ban(Method, Req0, State);
             unban -> unban(Method, Req0, State);
             force_logout -> force_logout(Method, Req0, State);
+            devices -> devices(Method, Req0, State);
+            device_kick -> device_kick(Method, Req0, State);
             search -> search(Method, Req0, State);
             tag_list -> tag_list(Method, Req0, State);
             tag_delete -> tag_delete(Method, Req0, State);
@@ -173,6 +175,69 @@ force_logout(<<"POST">>, Req0, State) ->
     end;
 force_logout(_, Req0, _State) ->
     elib_response:error(Req0, "Method Not Allowed").
+
+%% @doc 列出指定用户的设备（分页，含在线状态）
+%% GET /adm/user/devices?user_id=<uid>
+-spec devices(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+devices(<<"GET">>, Req0, _State) ->
+    Uid = parse_uid_param(Req0),
+    case Uid > 0 of
+        true ->
+            {Page, Size} = elib_param:page(Req0),
+            Payload = user_device_logic:page(Uid, Page, Size),
+            elib_response:success(Req0, Payload);
+        false ->
+            elib_response:error(Req0, "参数错误")
+    end;
+devices(_, Req0, _State) ->
+    elib_response:error(Req0, "Method Not Allowed").
+
+%% @doc 踢出指定用户的单个设备（结束该设备的 WS 会话，强制重新登录）
+%% POST /adm/user/device/kick {user_id, did}
+-spec device_kick(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+device_kick(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"users:update">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            PostVals = elib_param:post(Req0),
+            Uid = parse_id(
+                maps:get(<<"user_id">>, PostVals, maps:get(<<"uid">>, PostVals, 0))
+            ),
+            DID = normalize_did(maps:get(<<"did">>, PostVals, <<>>)),
+            AdmUserId = maps:get(adm_user_id, State, 0),
+            case {Uid > 0, DID =/= <<>>} of
+                {false, _} ->
+                    elib_response:error(Req0, "参数错误");
+                {_, false} ->
+                    elib_response:error(Req0, "did不能为空");
+                _ ->
+                    %% kick_device 仅结束在线会话；设备离线时无会话可踢，
+                    %% 视作已登出，同样返回成功（token 为 uid 级，重连须重认证）。
+                    _ = user_device_logic:kick_device(Uid, <<>>, DID),
+                    _ = adm_operation_log_ds:insert(
+                        AdmUserId,
+                        <<"kick_device">>,
+                        Uid,
+                        <<"user">>,
+                        #{<<"did">> => DID},
+                        elib_req:peer_ip(Req0)
+                    ),
+                    elib_response:success(Req0, #{}, "操作成功")
+            end
+    end;
+device_kick(_, Req0, _State) ->
+    elib_response:error(Req0, "Method Not Allowed").
+
+-spec normalize_did(term()) -> binary().
+normalize_did(Value) when is_binary(Value) ->
+    Value;
+normalize_did(Value) when is_list(Value) ->
+    ec_cnv:to_binary(Value);
+normalize_did(Value) when is_integer(Value) ->
+    integer_to_binary(Value);
+normalize_did(_) ->
+    <<>>.
 
 %% @doc 搜索用户
 -spec search(binary(), cowboy_req:req(), map()) -> cowboy_req:req().

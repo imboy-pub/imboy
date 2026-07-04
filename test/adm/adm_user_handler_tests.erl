@@ -275,3 +275,142 @@ init_search_requires_keyword_test_() ->
             ?assertEqual("请输入搜索关键词", maps:get(error_msg, RespReq))
         end
     ).
+
+%% ===================================================================
+%% 用户设备管理（devices / device_kick action）
+%% ===================================================================
+
+init_devices_lists_user_devices_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'int', 3, fun(user_id, _Req, _Default) -> {ok, 1001} end},
+                {'page', 1, fun(_Req) -> {1, 20} end}
+            ]},
+            {user_device_logic, [
+                {'page', 3, fun(1001, 1, 20) ->
+                    #{
+                        total => 1,
+                        page => 1,
+                        size => 20,
+                        list => [
+                            #{
+                                <<"device_id">> => <<"dev-abc">>,
+                                <<"device_name">> => <<"iPhone">>,
+                                <<"online">> => true
+                            }
+                        ]
+                    }
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, Payload) ->
+                    Req#{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"GET">>},
+            {ok, RespReq, _State} = adm_user_handler:init(Req, #{action => devices}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            Payload = maps:get(payload, RespReq),
+            ?assertEqual(1, maps:get(total, Payload)),
+            [Dev] = maps:get(list, Payload),
+            ?assertEqual(<<"dev-abc">>, maps:get(<<"device_id">>, Dev))
+        end
+    ).
+
+init_devices_invalid_uid_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'int', 3, fun(_Key, _Req, _Default) -> {ok, 0} end},
+                {'binary', 3, fun(_Key, _Req, _Default) -> {ok, <<>>} end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(Req, Msg) -> Req#{response_status => 400, error_msg => Msg} end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"GET">>},
+            {ok, RespReq, _State} = adm_user_handler:init(Req, #{action => devices}),
+            ?assertEqual(400, maps:get(response_status, RespReq)),
+            ?assertEqual("参数错误", maps:get(error_msg, RespReq))
+        end
+    ).
+
+init_device_kick_success_test_() ->
+    ?WITH_MECKS(
+        [
+            {adm_user_logic, [
+                {'find', 3, fun(1, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1, <<"role_id">> => 1}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"users:update">>], []} end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"user_id">> => <<"1001">>, <<"did">> => <<"dev-abc">>}
+                end}
+            ]},
+            {user_device_logic, [
+                {'kick_device', 3, fun(1001, <<>>, <<"dev-abc">>) -> ok end}
+            ]},
+            {adm_operation_log_ds, [
+                {'insert', 6, fun(AdmUid, Action, TargetId, TargetType, Detail, _Ip) ->
+                    ?assertEqual(1, AdmUid),
+                    ?assertEqual(<<"kick_device">>, Action),
+                    ?assertEqual(1001, TargetId),
+                    ?assertEqual(<<"user">>, TargetType),
+                    ?assertEqual(<<"dev-abc">>, maps:get(<<"did">>, Detail)),
+                    ok
+                end}
+            ]},
+            {elib_req, [
+                {'peer_ip', 1, fun(_Req) -> <<"127.0.0.1">> end}
+            ]},
+            {elib_response, [
+                {'success', 3, fun(Req, _Payload, Msg) ->
+                    Req#{response_status => 200, msg => Msg}
+                end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"POST">>},
+            {ok, RespReq, _State} = adm_user_handler:init(Req, #{
+                action => device_kick, adm_user_id => 1
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual("操作成功", maps:get(msg, RespReq))
+        end
+    ).
+
+init_device_kick_missing_did_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {adm_user_logic, [
+                {'find', 3, fun(1, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1, <<"role_id">> => 1}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"users:update">>], []} end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{<<"user_id">> => <<"1001">>, <<"did">> => <<>>} end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(Req, Msg) -> Req#{response_status => 400, error_msg => Msg} end}
+            ]}
+        ],
+        fun() ->
+            Req = #{method => <<"POST">>},
+            {ok, RespReq, _State} = adm_user_handler:init(Req, #{
+                action => device_kick, adm_user_id => 1
+            }),
+            ?assertEqual(400, maps:get(response_status, RespReq)),
+            ?assertEqual("did不能为空", maps:get(error_msg, RespReq))
+        end
+    ).

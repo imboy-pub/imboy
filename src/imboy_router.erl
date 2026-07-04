@@ -671,6 +671,8 @@ get_routes() ->
         {"/adm/user/ban", adm_user_handler, #{action => ban}},
         {"/adm/user/unban", adm_user_handler, #{action => unban}},
         {"/adm/user/force_logout", adm_user_handler, #{action => force_logout}},
+        {"/adm/user/devices", adm_user_handler, #{action => devices}},
+        {"/adm/user/device/kick", adm_user_handler, #{action => device_kick}},
         {"/adm/operation_logs", adm_operation_log_handler, #{action => list}},
         {"/adm/user/search", adm_user_handler, #{action => search}},
         {"/adm/user/tag/list", adm_user_handler, #{action => tag_list}},
