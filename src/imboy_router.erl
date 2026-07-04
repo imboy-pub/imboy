@@ -821,6 +821,9 @@ get_routes() ->
             action => review_moderate
         }},
         {"/adm/moderation/review-queue", adm_moderation_handler, #{action => review_queue}},
+        % SSO 外部认证配置（GET/POST 同路径按 method 分派）
+        {"/adm/sso/config", adm_sso_handler, #{action => config}},
+        {"/adm/sso/test", adm_sso_handler, #{action => test}},
         % 插件生命周期管理 API (lifecycle.md §10)
         {"/adm/plugin/list", adm_plugin_handler, #{action => list}},
         {"/adm/plugin/detail", adm_plugin_handler, #{action => detail}},
