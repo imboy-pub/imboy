@@ -1042,7 +1042,10 @@ preview_config_returns_plugin_adjustments_when_manifest_dependency_blocks_plugin
         fun() ->
             {ok, Preview} = preview_policy_config(#{
                 <<"plugins">> => #{
-                    <<"moment">> => true
+                    <<"moment">> => true,
+                    %% 默认启用所有功能后 channel 默认开启，须显式关闭才能复现
+                    %% "moment 依赖 channel、channel 未启用→moment 被阻断" 的场景
+                    <<"channel">> => false
                 }
             }),
             Adjustments = maps:get(<<"adjustments">>, Preview),
@@ -1141,7 +1144,9 @@ preview_config_allows_clearing_overrides_with_null_without_persisting_test_() ->
                 true, maps:get(<<"message_export">>, maps:get(<<"capabilities">>, Effective))
             ),
             ?assertEqual(
-                false,
+                %% 清除 moment override 后回落默认（默认启用所有功能），
+                %% 且无 channel override→依赖满足→moment 生效为 true
+                true,
                 maps:get(<<"enabled">>, maps:get(<<"moment">>, maps:get(<<"plugins">>, Effective)))
             ),
             ?assertEqual(<<"default">>, maps:get(<<"profile">>, Origins)),
@@ -1823,7 +1828,8 @@ save_config_allows_clearing_plugin_override_with_null_test_() ->
                 persistent_term:get({policy_config, <<"features">>})
             ),
             ?assertEqual(
-                false,
+                %% 清除 channel 插件 override 后回落默认（默认启用所有功能）→ true
+                true,
                 maps:get(<<"channel">>, maps:get(<<"features">>, PolicyView))
             ),
             ?assertEqual(

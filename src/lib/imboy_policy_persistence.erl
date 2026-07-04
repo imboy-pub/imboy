@@ -34,7 +34,11 @@
 -define(PRODUCT_PROFILE_CONFIG_KEY, <<"product_profile">>).
 -define(CAPABILITIES_CONFIG_KEY, <<"capabilities">>).
 -define(FEATURES_CONFIG_KEY, <<"features">>).
--define(DELETE_VALUE, '$delete$').
+%% 必须与 imboy_policy_view / imboy_policy_normalize / imboy_policy 的 ?DELETE_VALUE
+%% 一致（均为 '$delete'）：normalize_config_sections 产出的清除标记会跨模块传给
+%% imboy_policy_view:preview_effective_view 做模式匹配，此前多一个 $ 导致失配，
+%% "清除 override 回落默认" 的预览恒失效（回落到持久值而非 profile 默认）。
+-define(DELETE_VALUE, '$delete').
 
 -spec save_admin_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
 save_admin_config(Payload) ->
