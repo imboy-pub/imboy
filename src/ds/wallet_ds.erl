@@ -26,6 +26,8 @@
 -export([find_transaction_by_ref/1]).
 %% 运营后台：提现流水分页 + 状态更新
 -export([page_withdrawals/3, update_tx_status/2, reject_and_refund/1]).
+%% 运营后台：钱包冻结/解冻
+-export([freeze/2, unfreeze/2]).
 
 -include("log.hrl").
 
@@ -123,3 +125,13 @@ update_tx_status(TxId, Status) ->
 -spec reject_and_refund(integer()) -> {ok, 0 | 1} | {error, term()}.
 reject_and_refund(TxId) ->
     wallet_repo:reject_and_refund(TxId).
+
+%% @doc 冻结钱包资金（可用余额 -> frozen；单行原子 UPDATE，薄封装）
+-spec freeze(integer(), integer()) -> {ok, 0 | 1} | {error, term()}.
+freeze(Uid, Amount) ->
+    wallet_repo:freeze(Uid, Amount).
+
+%% @doc 解冻钱包资金（frozen -> 可用余额；freeze/2 逆操作，薄封装）
+-spec unfreeze(integer(), integer()) -> {ok, 0 | 1} | {error, term()}.
+unfreeze(Uid, Amount) ->
+    wallet_repo:unfreeze(Uid, Amount).

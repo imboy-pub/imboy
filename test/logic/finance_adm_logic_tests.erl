@@ -166,3 +166,206 @@ list_payment_transactions_passes_columns_and_filters_test_() ->
             ?assertEqual(<<"100">>, maps:get(<<"user_id">>, Row))
         end
     ).
+
+%% ===================================================================
+%% refund_recharge_order/1 —— 充值订单退款（资金反向 + 幂等 + 状态校验）
+%% ===================================================================
+
+refund_recharge_order_success_test_() ->
+    ?WITH_MECK(
+        recharge_order_ds,
+        [{'refund_in_tx', 1, fun(<<"RCH1">>) -> {ok, 8800} end}],
+        fun() ->
+            ?assertEqual({ok, 8800}, finance_adm_logic:refund_recharge_order(<<"RCH1">>))
+        end
+    ).
+
+%% 幂等：已退款订单再退 -> 明确拒绝，不重复退
+refund_recharge_order_already_refunded_test_() ->
+    ?WITH_MECK(
+        recharge_order_ds,
+        [{'refund_in_tx', 1, fun(_) -> {rollback, already_refunded} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_recharge_order(<<"RCH1">>))
+        end
+    ).
+
+%% 状态校验：非「已支付」态订单不可退
+refund_recharge_order_not_refundable_test_() ->
+    ?WITH_MECK(
+        recharge_order_ds,
+        [{'refund_in_tx', 1, fun(_) -> {rollback, order_not_refundable} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_recharge_order(<<"RCH1">>))
+        end
+    ).
+
+%% 资金边界：可用余额不足 -> 拒绝退款（不把余额扣成负 / 不动冻结额）
+refund_recharge_order_insufficient_test_() ->
+    ?WITH_MECK(
+        recharge_order_ds,
+        [{'refund_in_tx', 1, fun(_) -> {rollback, insufficient_available} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_recharge_order(<<"RCH1">>))
+        end
+    ).
+
+%% ===================================================================
+%% refund_payment_transaction/1 —— 支付流水退款（原路退回 + 保守分流）
+%% ===================================================================
+
+%% 流水不存在
+refund_payment_tx_not_found_test_() ->
+    ?WITH_MECK(
+        payment_transaction_ds,
+        [{'find_by_trade_no', 1, fun(_) -> #{} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% 幂等：流水已退款(status=3) -> 拒绝
+refund_payment_tx_already_refunded_test_() ->
+    ?WITH_MECK(
+        payment_transaction_ds,
+        [{'find_by_trade_no', 1, fun(_) -> #{<<"status">> => 3, <<"biz_type">> => 3} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% 状态校验：非成功态(如待支付0)不可退
+refund_payment_tx_not_success_test_() ->
+    ?WITH_MECK(
+        payment_transaction_ds,
+        [{'find_by_trade_no', 1, fun(_) -> #{<<"status">> => 0, <<"biz_type">> => 3} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% 保守分流：充值类(biz_type=1)拒绝，引导走「充值订单退款」防钱包重复退
+refund_payment_tx_recharge_rejected_test_() ->
+    ?WITH_MECK(
+        payment_transaction_ds,
+        [{'find_by_trade_no', 1, fun(_) -> #{<<"status">> => 1, <<"biz_type">> => 1} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% 保守分流：频道订单(biz_type=2)拒绝，引导走频道订单退款
+refund_payment_tx_channel_rejected_test_() ->
+    ?WITH_MECK(
+        payment_transaction_ds,
+        [{'find_by_trade_no', 1, fun(_) -> #{<<"status">> => 1, <<"biz_type">> => 2} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% biz_type=3(账单)成功：网关原路退回 ok + CAS 标记 {ok,1}
+refund_payment_tx_billing_success_test_() ->
+    ?WITH_MECKS(
+        [
+            {payment_transaction_ds, [
+                {'find_by_trade_no', 1, fun(_) ->
+                    #{
+                        <<"status">> => 1,
+                        <<"biz_type">> => 3,
+                        <<"gateway">> => <<"alipay">>,
+                        <<"gateway_payment_no">> => <<"GW123">>,
+                        <<"amount">> => 500
+                    }
+                end},
+                {'mark_refunded', 1, fun(<<"T1">>) -> {ok, 1} end}
+            ]},
+            {payment_gateway, [
+                {'refund', 3, fun(<<"alipay">>, <<"GW123">>, 500) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({ok, refunded}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% 竞态：网关退款成功但 CAS 标记 0 行（已被并发退）-> 报错
+refund_payment_tx_mark_race_test_() ->
+    ?WITH_MECKS(
+        [
+            {payment_transaction_ds, [
+                {'find_by_trade_no', 1, fun(_) ->
+                    #{
+                        <<"status">> => 1,
+                        <<"biz_type">> => 3,
+                        <<"gateway">> => <<"alipay">>,
+                        <<"gateway_payment_no">> => <<"GW123">>,
+                        <<"amount">> => 500
+                    }
+                end},
+                {'mark_refunded', 1, fun(_) -> {ok, 0} end}
+            ]},
+            {payment_gateway, [
+                {'refund', 3, fun(_, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% 缺网关支付单号 -> 无法原路退回
+refund_payment_tx_missing_gwno_test_() ->
+    ?WITH_MECK(
+        payment_transaction_ds,
+        [
+            {'find_by_trade_no', 1, fun(_) ->
+                #{<<"status">> => 1, <<"biz_type">> => 3, <<"gateway_payment_no">> => <<>>}
+            end}
+        ],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+        end
+    ).
+
+%% ===================================================================
+%% freeze_wallet/2 与 unfreeze_wallet/2 —— 冻结/解冻（对称可逆）
+%% ===================================================================
+
+freeze_wallet_success_test_() ->
+    ?WITH_MECK(
+        wallet_ds,
+        [{'freeze', 2, fun(100, 500) -> {ok, 1} end}],
+        fun() ->
+            ?assertEqual(ok, finance_adm_logic:freeze_wallet(100, 500))
+        end
+    ).
+
+%% 冻结失败：可用余额不足/钱包不存在（{ok,0}）-> 明确错误
+freeze_wallet_blocked_test_() ->
+    ?WITH_MECK(
+        wallet_ds,
+        [{'freeze', 2, fun(_, _) -> {ok, 0} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:freeze_wallet(100, 500))
+        end
+    ).
+
+unfreeze_wallet_success_test_() ->
+    ?WITH_MECK(
+        wallet_ds,
+        [{'unfreeze', 2, fun(100, 500) -> {ok, 1} end}],
+        fun() ->
+            ?assertEqual(ok, finance_adm_logic:unfreeze_wallet(100, 500))
+        end
+    ).
+
+%% 解冻失败：冻结额不足（{ok,0}）-> 明确错误
+unfreeze_wallet_blocked_test_() ->
+    ?WITH_MECK(
+        wallet_ds,
+        [{'unfreeze', 2, fun(_, _) -> {ok, 0} end}],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:unfreeze_wallet(100, 500))
+        end
+    ).

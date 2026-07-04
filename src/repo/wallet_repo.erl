@@ -12,6 +12,7 @@
 -export([page_withdrawals/3]).
 -export([update_tx_status/2]).
 -export([reject_and_refund/1]).
+-export([freeze/2, unfreeze/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -204,6 +205,39 @@ reject_and_refund(TxId) ->
                 throw({rollback, Reason})
         end
     end).
+
+%% @doc 冻结钱包资金：把 Amount（分）从可用余额移入 frozen（冻结额）。
+%% 单行原子 UPDATE（PG 语句级原子，无需显式事务），version+1 体现乐观锁纪律。
+%% 不变量守卫：status=1(正常) 且 `balance - frozen >= Amount`（仅可冻结可用余额），
+%% 配合表级 CHECK(frozen>=0, balance>=0) 保证 0 <= frozen <= balance 恒成立。
+%% 与 unfreeze/2 对称可逆。frozen 只是「持有标记」，不写 wallet_transaction 流水。
+%% @returns {ok, 1} 成功 | {ok, 0} 钱包不存在/已停用/可用余额不足 | {error, term()}
+-spec freeze(integer(), integer()) -> {ok, 0 | 1} | {error, term()}.
+freeze(Uid, Amount) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET frozen = frozen + $1, version = version + 1, updated_at = NOW()"
+            " WHERE user_id = $2 AND status = 1 AND balance - frozen >= $1">>,
+    case elib_pg:execute(Sql, [Amount, Uid]) of
+        {ok, N} -> {ok, N};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 解冻钱包资金：把 Amount（分）从 frozen 移回可用余额（freeze/2 的逆操作）。
+%% 单行原子 UPDATE + version+1。守卫：status=1 且 `frozen >= Amount`（不能解冻超过已冻结额）。
+%% @returns {ok, 1} 成功 | {ok, 0} 钱包不存在/已停用/冻结额不足 | {error, term()}
+-spec unfreeze(integer(), integer()) -> {ok, 0 | 1} | {error, term()}.
+unfreeze(Uid, Amount) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET frozen = frozen - $1, version = version + 1, updated_at = NOW()"
+            " WHERE user_id = $2 AND status = 1 AND frozen >= $1">>,
+    case elib_pg:execute(Sql, [Amount, Uid]) of
+        {ok, N} -> {ok, N};
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% ===================================================================
 %% EUnit tests.

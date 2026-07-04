@@ -759,9 +759,17 @@ get_routes() ->
             action => wallet_transactions
         }},
         {"/adm/finance/recharge-orders", adm_finance_handler, #{action => recharge_orders}},
+        {"/adm/finance/recharge-orders/refund", adm_finance_handler, #{
+            action => recharge_order_refund
+        }},
         {"/adm/finance/payment-transactions", adm_finance_handler, #{
             action => payment_transactions
         }},
+        {"/adm/finance/payment-transactions/refund", adm_finance_handler, #{
+            action => payment_transaction_refund
+        }},
+        {"/adm/finance/wallets/freeze", adm_finance_handler, #{action => wallet_freeze}},
+        {"/adm/finance/wallets/unfreeze", adm_finance_handler, #{action => wallet_unfreeze}},
         {"/adm/finance/billing/plans", adm_finance_handler, #{action => billing_plans}},
         {"/adm/finance/billing/plan", adm_finance_handler, #{action => billing_plan_create}},
         {"/adm/finance/billing/plan/update", adm_finance_handler, #{action => billing_plan_update}},

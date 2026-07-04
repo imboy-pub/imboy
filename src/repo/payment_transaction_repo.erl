@@ -17,6 +17,7 @@
 -export([find_by_trade_no/1]).
 -export([find_by_gateway_no/2]).
 -export([update_status/3]).
+-export([mark_refunded/1]).
 -export([page/5]).
 -export([reconcile_list/3]).
 
@@ -111,6 +112,21 @@ update_status(TradeNo, Status, Extra) ->
             " WHERE trade_no = $5">>,
     case elib_pg:execute(Sql, [Status, GwNo, NotifyData, PaidNow, TradeNo]) of
         {ok, Count} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 幂等标记退款：仅当 status=1(成功) 时置为 3(已退款) —— 条件更新(CAS) 防重复退款。
+%% @param TradeNo 内部交易号
+%% @returns {ok, 1} 本次成功标记 | {ok, 0} 非成功态/不存在（已退款或从未成功）| {error, term()}
+-spec mark_refunded(binary()) -> {ok, 0 | 1} | {error, term()}.
+mark_refunded(TradeNo) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET status = ", (integer_to_binary(?STATUS_REFUNDED))/binary,
+            ", updated_at = NOW()"
+            " WHERE trade_no = $1 AND status = ", (integer_to_binary(?STATUS_SUCCESS))/binary>>,
+    case elib_pg:execute(Sql, [TradeNo]) of
+        {ok, N} -> {ok, N};
         {error, Reason} -> {error, Reason}
     end.
 

@@ -54,19 +54,40 @@ init(Req0, State0) ->
 %% ===================================================================
 
 -spec dispatch(atom(), binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-dispatch(wallets, Method, Req0, State) -> wallets(Method, Req0, State);
-dispatch(wallet_transactions, Method, Req0, State) -> wallet_transactions(Method, Req0, State);
-dispatch(recharge_orders, Method, Req0, State) -> recharge_orders(Method, Req0, State);
-dispatch(payment_transactions, Method, Req0, State) -> payment_transactions(Method, Req0, State);
-dispatch(billing_plans, Method, Req0, State) -> billing_plans(Method, Req0, State);
-dispatch(billing_plan_create, Method, Req0, State) -> billing_plan_create(Method, Req0, State);
-dispatch(billing_plan_update, Method, Req0, State) -> billing_plan_update(Method, Req0, State);
-dispatch(billing_subscriptions, Method, Req0, State) -> billing_subscriptions(Method, Req0, State);
-dispatch(billing_invoices, Method, Req0, State) -> billing_invoices(Method, Req0, State);
-dispatch(withdrawals, Method, Req0, State) -> withdrawals(Method, Req0, State);
-dispatch(withdrawal_complete, Method, Req0, State) -> withdrawal_complete(Method, Req0, State);
-dispatch(withdrawal_reject, Method, Req0, State) -> withdrawal_reject(Method, Req0, State);
-dispatch(_, _Method, Req0, _State) -> Req0.
+dispatch(wallets, Method, Req0, State) ->
+    wallets(Method, Req0, State);
+dispatch(wallet_transactions, Method, Req0, State) ->
+    wallet_transactions(Method, Req0, State);
+dispatch(recharge_orders, Method, Req0, State) ->
+    recharge_orders(Method, Req0, State);
+dispatch(payment_transactions, Method, Req0, State) ->
+    payment_transactions(Method, Req0, State);
+dispatch(recharge_order_refund, Method, Req0, State) ->
+    recharge_order_refund(Method, Req0, State);
+dispatch(payment_transaction_refund, Method, Req0, State) ->
+    payment_transaction_refund(Method, Req0, State);
+dispatch(wallet_freeze, Method, Req0, State) ->
+    wallet_freeze(Method, Req0, State);
+dispatch(wallet_unfreeze, Method, Req0, State) ->
+    wallet_unfreeze(Method, Req0, State);
+dispatch(billing_plans, Method, Req0, State) ->
+    billing_plans(Method, Req0, State);
+dispatch(billing_plan_create, Method, Req0, State) ->
+    billing_plan_create(Method, Req0, State);
+dispatch(billing_plan_update, Method, Req0, State) ->
+    billing_plan_update(Method, Req0, State);
+dispatch(billing_subscriptions, Method, Req0, State) ->
+    billing_subscriptions(Method, Req0, State);
+dispatch(billing_invoices, Method, Req0, State) ->
+    billing_invoices(Method, Req0, State);
+dispatch(withdrawals, Method, Req0, State) ->
+    withdrawals(Method, Req0, State);
+dispatch(withdrawal_complete, Method, Req0, State) ->
+    withdrawal_complete(Method, Req0, State);
+dispatch(withdrawal_reject, Method, Req0, State) ->
+    withdrawal_reject(Method, Req0, State);
+dispatch(_, _Method, Req0, _State) ->
+    Req0.
 
 %% -------------------------------------------------------------------
 %% 钱包列表 GET /adm/finance/wallets
@@ -143,6 +164,145 @@ payment_transactions(<<"GET">>, Req0, State) ->
     end);
 payment_transactions(_, Req0, _State) ->
     Req0.
+
+%% -------------------------------------------------------------------
+%% 充值订单退款 POST /adm/finance/recharge-orders/refund
+%% body: {"order_no": <bin>, "refund_reason": <bin?>}
+%% 单事务：钱包扣回可用余额 + 订单置退款态 + 退款流水；已退款幂等拒绝。
+%% -------------------------------------------------------------------
+-spec recharge_order_refund(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+recharge_order_refund(<<"POST">>, Req0, State) ->
+    with_write_perm(State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        case parse_required_bin(PostVals, <<"order_no">>) of
+            {error, Msg} ->
+                elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+            {ok, OrderNo} ->
+                Reason = maps:get(<<"refund_reason">>, PostVals, <<>>),
+                case finance_adm_logic:refund_recharge_order(OrderNo) of
+                    {ok, NewBalance} ->
+                        _ = adm_operation_log_ds:insert(
+                            maps:get(adm_user_id, State, 0),
+                            <<"recharge_order_refund">>,
+                            0,
+                            <<"recharge_order">>,
+                            #{
+                                <<"order_no">> => OrderNo,
+                                <<"reason">> => Reason,
+                                <<"balance_after">> => NewBalance
+                            },
+                            elib_req:peer_ip(Req0)
+                        ),
+                        elib_response:success(
+                            Req0,
+                            #{<<"order_no">> => OrderNo, <<"balance">> => NewBalance},
+                            <<"退款成功"/utf8>>
+                        );
+                    {error, Msg} ->
+                        elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+                end
+        end
+    end);
+recharge_order_refund(_, Req0, _State) ->
+    Req0.
+
+%% -------------------------------------------------------------------
+%% 支付流水退款（对账原路退回）POST /adm/finance/payment-transactions/refund
+%% body: {"trade_no": <bin>, "refund_reason": <bin?>}
+%% 保守：充值/频道订单流水拒绝（走各自专用退款入口，防重复退款）。
+%% -------------------------------------------------------------------
+-spec payment_transaction_refund(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+payment_transaction_refund(<<"POST">>, Req0, State) ->
+    with_write_perm(State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        case parse_required_bin(PostVals, <<"trade_no">>) of
+            {error, Msg} ->
+                elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+            {ok, TradeNo} ->
+                Reason = maps:get(<<"refund_reason">>, PostVals, <<>>),
+                case finance_adm_logic:refund_payment_transaction(TradeNo) of
+                    {ok, refunded} ->
+                        _ = adm_operation_log_ds:insert(
+                            maps:get(adm_user_id, State, 0),
+                            <<"payment_transaction_refund">>,
+                            0,
+                            <<"payment_transaction">>,
+                            #{<<"trade_no">> => TradeNo, <<"reason">> => Reason},
+                            elib_req:peer_ip(Req0)
+                        ),
+                        elib_response:success(
+                            Req0, #{<<"trade_no">> => TradeNo}, <<"退款成功"/utf8>>
+                        );
+                    {error, Msg} ->
+                        elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+                end
+        end
+    end);
+payment_transaction_refund(_, Req0, _State) ->
+    Req0.
+
+%% -------------------------------------------------------------------
+%% 冻结钱包 POST /adm/finance/wallets/freeze
+%% body: {"user_id": <int>, "amount": <int 分>}
+%% -------------------------------------------------------------------
+-spec wallet_freeze(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+wallet_freeze(<<"POST">>, Req0, State) ->
+    with_write_perm(State, Req0, fun() ->
+        do_freeze_action(Req0, State, freeze)
+    end);
+wallet_freeze(_, Req0, _State) ->
+    Req0.
+
+%% -------------------------------------------------------------------
+%% 解冻钱包 POST /adm/finance/wallets/unfreeze
+%% body: {"user_id": <int>, "amount": <int 分>}
+%% -------------------------------------------------------------------
+-spec wallet_unfreeze(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+wallet_unfreeze(<<"POST">>, Req0, State) ->
+    with_write_perm(State, Req0, fun() ->
+        do_freeze_action(Req0, State, unfreeze)
+    end);
+wallet_unfreeze(_, Req0, _State) ->
+    Req0.
+
+%% @doc 冻结/解冻共用执行体（参数解析 + logic 调用 + 审计 + 响应）
+-spec do_freeze_action(cowboy_req:req(), map(), freeze | unfreeze) -> cowboy_req:req().
+do_freeze_action(Req0, State, Op) ->
+    PostVals = elib_param:post(Req0),
+    case parse_freeze_params(PostVals) of
+        {error, Msg} ->
+            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+        {ok, Uid, Amount} ->
+            {LogicRes, Action, OkMsg} =
+                case Op of
+                    freeze ->
+                        {
+                            finance_adm_logic:freeze_wallet(Uid, Amount),
+                            <<"wallet_freeze">>,
+                            <<"冻结成功"/utf8>>
+                        };
+                    unfreeze ->
+                        {
+                            finance_adm_logic:unfreeze_wallet(Uid, Amount),
+                            <<"wallet_unfreeze">>,
+                            <<"解冻成功"/utf8>>
+                        }
+                end,
+            case LogicRes of
+                ok ->
+                    _ = adm_operation_log_ds:insert(
+                        maps:get(adm_user_id, State, 0),
+                        Action,
+                        Uid,
+                        <<"wallet">>,
+                        #{<<"amount">> => Amount},
+                        elib_req:peer_ip(Req0)
+                    ),
+                    elib_response:success(Req0, #{}, OkMsg);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            end
+    end.
 
 %% -------------------------------------------------------------------
 %% billing 套餐列表 GET /adm/finance/billing/plans
@@ -450,6 +610,34 @@ parse_required_id(PostVals, Key) ->
             case to_positive_int(Val) of
                 {ok, Id} -> {ok, Id};
                 error -> {error, <<"ID格式错误"/utf8>>}
+            end
+    end.
+
+%% @doc 从 body 解析必填的非空 binary 字段
+-spec parse_required_bin(map(), binary()) -> {ok, binary()} | {error, binary()}.
+parse_required_bin(PostVals, Key) ->
+    case maps:get(Key, PostVals, undefined) of
+        undefined -> {error, <<"缺少必填参数"/utf8>>};
+        <<>> -> {error, <<"必填参数不能为空"/utf8>>};
+        Val when is_binary(Val) -> {ok, Val};
+        _ -> {error, <<"参数格式错误"/utf8>>}
+    end.
+
+%% @doc 解析冻结/解冻参数：user_id(正整数) + amount(正整数，单位分)
+-spec parse_freeze_params(map()) -> {ok, integer(), integer()} | {error, binary()}.
+parse_freeze_params(PostVals) ->
+    case parse_required_id(PostVals, <<"user_id">>) of
+        {error, _} = E ->
+            E;
+        {ok, Uid} ->
+            case maps:get(<<"amount">>, PostVals, undefined) of
+                undefined ->
+                    {error, <<"金额不能为空"/utf8>>};
+                AmtRaw ->
+                    case to_positive_int(AmtRaw) of
+                        {ok, Amount} -> {ok, Uid, Amount};
+                        error -> {error, <<"金额必须为正整数（单位：分）"/utf8>>}
+                    end
             end
     end.
 

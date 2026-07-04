@@ -15,6 +15,7 @@
 -export([page_by_user/3]).
 -export([page/3]).
 -export([credit_in_tx/4]).
+-export([refund_in_tx/1]).
 
 %% @doc 创建充值订单（status=0）
 -spec create(map()) -> {ok, binary()} | {error, term()}.
@@ -52,3 +53,12 @@ page(WhereMap, Page, Size) ->
     | {error, term()}.
 credit_in_tx(OrderNo, GwPayNo, Uid, Amount) ->
     recharge_order_repo:credit_in_tx(OrderNo, GwPayNo, Uid, Amount).
+
+%% @doc 单事务充值退款（订单状态3+钱包扣回+退款流水三表原子，幂等）
+-spec refund_in_tx(binary()) ->
+    {ok, integer()}
+    | {rollback,
+        already_refunded | order_not_refundable | insufficient_available | wallet_not_found}
+    | {error, term()}.
+refund_in_tx(OrderNo) ->
+    recharge_order_repo:refund_in_tx(OrderNo).

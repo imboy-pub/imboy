@@ -13,6 +13,7 @@
 -export([find_by_trade_no/1]).
 -export([find_by_gateway_no/2]).
 -export([update_status/3]).
+-export([mark_refunded/1]).
 -export([mark_success/2]).
 -export([mark_failed/2]).
 -export([page/5]).
@@ -43,6 +44,11 @@ find_by_gateway_no(Gateway, GatewayPaymentNo) ->
     {ok, non_neg_integer()} | {error, term()}.
 update_status(TradeNo, Status, Extra) ->
     payment_transaction_repo:update_status(TradeNo, Status, Extra).
+
+%% @doc 幂等标记退款（仅 status=1->3 的 CAS，薄封装）
+-spec mark_refunded(binary()) -> {ok, 0 | 1} | {error, term()}.
+mark_refunded(TradeNo) ->
+    payment_transaction_repo:mark_refunded(TradeNo).
 
 %% @doc 标记成功 —— 记录 gateway_payment_no / notify_data，落 paid_at
 -spec mark_success(binary(), map()) -> {ok, non_neg_integer()} | {error, term()}.

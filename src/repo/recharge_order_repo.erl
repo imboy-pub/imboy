@@ -24,6 +24,7 @@
 -export([page_by_user/3]).
 -export([page/3]).
 -export([credit_in_tx/4]).
+-export([refund_in_tx/1]).
 
 %%===================================================================
 %%% Constants
@@ -206,9 +207,104 @@ credit_in_tx(OrderNo, GwPayNo, Uid, Amount) ->
         end
     end).
 
+%% @doc 单事务充值退款：订单状态翻转(已支付1 -> 已退款3) + 钱包扣回余额 + 写退款流水，
+%% 三表原子，是 credit_in_tx 的逆操作。管理端对「已支付」充值订单发起退款时调用。
+%%
+%% 幂等双保险：
+%%   ① 订单 WHERE status=1(已支付) 条件更新（CAS），已退款/其它态返回明确原因，不重复退；
+%%   ② wallet_transaction.reference_no(RCHRF_<OrderNo>) UNIQUE 兜底，防同单重复退款流水。
+%%
+%% 资金安全：钱包扣款用 `balance - frozen >= Amount` 守卫（仅可退「可用余额」，不动冻结部分，
+%% 保证 balance>=0 与 frozen<=balance 不变量），可用余额不足则整体回滚拒绝退款。
+%%
+%% @returns {ok, NewBalance}
+%%        | {rollback, already_refunded | order_not_refundable
+%%                    | insufficient_available | wallet_not_found}
+%%        | {error, term()}
+-spec refund_in_tx(binary()) ->
+    {ok, integer()}
+    | {rollback,
+        already_refunded | order_not_refundable | insufficient_available | wallet_not_found}
+    | {error, term()}.
+refund_in_tx(OrderNo) ->
+    Tb = tablename(),
+    WalletTb = elib_pg_sql:public_tablename(<<"wallet">>),
+    TxTb = elib_pg_sql:public_tablename(<<"wallet_transaction">>),
+    RefNo = <<"RCHRF_", OrderNo/binary>>,
+    elib_pg:with_tx(fun(Conn) ->
+        OrderSql =
+            <<"UPDATE ", Tb/binary, " SET status = ", (integer_to_binary(?STATUS_REFUNDED))/binary,
+                ", updated_at = NOW()"
+                " WHERE order_no = $1 AND status = ", (integer_to_binary(?STATUS_PAID))/binary,
+                " RETURNING user_id, amount">>,
+        case elib_pg:execute(Conn, OrderSql, [OrderNo]) of
+            {ok, 1, [{Uid, Amount}]} ->
+                refund_wallet_in_tx(Conn, WalletTb, TxTb, Uid, Amount, RefNo);
+            {ok, 0} ->
+                throw({rollback, order_not_refundable_state(Conn, Tb, OrderNo)});
+            {error, Reason} ->
+                throw({rollback, Reason})
+        end
+    end).
+
 %%===================================================================
 %%% Internal Functions
 %%===================================================================
+
+%% @doc 订单条件更新影响 0 行时，区分"已退款(幂等)"与"不可退款(非已支付态/不存在)"
+-spec order_not_refundable_state(term(), binary(), binary()) ->
+    already_refunded | order_not_refundable.
+order_not_refundable_state(Conn, Tb, OrderNo) ->
+    Sql = <<"SELECT status FROM ", Tb/binary, " WHERE order_no = $1">>,
+    case elib_pg:execute(Conn, Sql, [OrderNo]) of
+        {ok, _, [{?STATUS_REFUNDED}]} -> already_refunded;
+        _ -> order_not_refundable
+    end.
+
+%% @doc 事务内钱包扣回余额 + 写退款流水（tx_type=2 充值退款；refno UNIQUE 冲突=已退款，幂等回滚）
+-spec refund_wallet_in_tx(term(), binary(), binary(), integer(), integer(), binary()) ->
+    {ok, integer()} | no_return().
+refund_wallet_in_tx(Conn, WalletTb, TxTb, Uid, Amount, RefNo) ->
+    WSql =
+        <<"UPDATE ", WalletTb/binary,
+            " SET balance = balance - $1, version = version + 1, updated_at = NOW()"
+            " WHERE user_id = $2 AND balance - frozen >= $1 RETURNING balance, id">>,
+    case elib_pg:execute(Conn, WSql, [Amount, Uid]) of
+        {ok, 1, [{NewBalance, WalletId}]} ->
+            TxId = elib_tsid:generate(wallet_transaction),
+            TxSql =
+                <<"INSERT INTO ", TxTb/binary,
+                    " (id, wallet_id, user_id, amount, balance_after, tx_type,"
+                    " reference_no, remark, status)"
+                    " VALUES ($1, $2, $3, $4, $5, 2, $6, $7, 1)">>,
+            case
+                elib_pg:execute(Conn, TxSql, [
+                    TxId, WalletId, Uid, Amount, NewBalance, RefNo, <<"充值退款"/utf8>>
+                ])
+            of
+                {ok, 1} ->
+                    {ok, NewBalance};
+                {error, Reason} ->
+                    case is_unique_violation(Reason) of
+                        true -> throw({rollback, already_refunded});
+                        false -> throw({rollback, Reason})
+                    end
+            end;
+        {ok, 0} ->
+            throw({rollback, wallet_refund_block_reason(Conn, WalletTb, Uid)});
+        {error, Reason} ->
+            throw({rollback, Reason})
+    end.
+
+%% @doc 钱包扣款 0 行时区分"钱包不存在"与"可用余额不足"
+-spec wallet_refund_block_reason(term(), binary(), integer()) ->
+    insufficient_available | wallet_not_found.
+wallet_refund_block_reason(Conn, WalletTb, Uid) ->
+    Sql = <<"SELECT 1 FROM ", WalletTb/binary, " WHERE user_id = $1">>,
+    case elib_pg:execute(Conn, Sql, [Uid]) of
+        {ok, _, [_ | _]} -> insufficient_available;
+        _ -> wallet_not_found
+    end.
 
 %% @doc 订单条件更新影响 0 行时，区分"已支付(幂等)"与"不可支付(过期/取消/不存在)"
 -spec order_not_payable_state(term(), binary(), binary()) ->
