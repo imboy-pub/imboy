@@ -89,20 +89,12 @@ list(Gid, CurrentUid, Page, Size, Options) ->
     % 2. 调用DS层查询文件列表
     case group_file_ds:list_files(Gid2, CurrentUid, Page, Size, Options) of
         {ok, Files} ->
-            % 3. 编码ID字段
-            Files2 = lists:map(
-                fun(File) ->
-                    File
-                end,
-                Files
-            ),
-
-            % 4. 查询总数
+            % 3. 查询总数
             {ok, Total} = group_file_ds:count_by_group(Gid2),
 
-            % 5. 返回结果
+            % 4. 返回结果
             FileList = #{
-                <<"items">> => Files2,
+                <<"items">> => Files,
                 <<"total">> => Total,
                 <<"page">> => Page,
                 <<"size">> => Size
@@ -127,14 +119,7 @@ search(Gid, Keyword, Page, Size, CurrentUid) ->
     % 2. 调用DS层搜索文件（内部校验群成员身份）
     case group_file_ds:search_files(Gid2, Keyword, Page, Size, CurrentUid) of
         {ok, Files} ->
-            % 3. 编码ID字段
-            Files2 = lists:map(
-                fun(File) ->
-                    File
-                end,
-                Files
-            ),
-            {ok, Files2};
+            {ok, Files};
         {error, Reason} ->
             {error, Reason}
     end.
