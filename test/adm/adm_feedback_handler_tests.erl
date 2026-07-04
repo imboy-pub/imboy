@@ -254,3 +254,109 @@ workflow_config_put_normalizes_templates_and_sla_test_() ->
             persistent_term:erase({adm_feedback_handler, workflow_config})
         end
     ).
+
+%% ===================================================================
+%% 反馈状态流转（status action）
+%% ===================================================================
+
+init_status_success_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1, <<"role_id">> => 1}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"feedback:reply">>], []} end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"feedback_id">> => <<"123">>, <<"status">> => <<"3">>}
+                end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-03-13T09:00:00Z">> end}
+            ]},
+            {feedback_repo, [
+                {'tablename', 0, fun() -> <<"feedback">> end}
+            ]},
+            {elib_pg, [
+                {'update', 4, fun(<<"feedback">>, Set, Where, Args) ->
+                    ?assertEqual(3, maps:get(<<"status">>, Set)),
+                    ?assertEqual([123], Args),
+                    ?assertNotEqual(nomatch, binary:match(Where, <<"status > 0">>)),
+                    {ok, 1}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, _Payload) -> Req#{response_status => 200} end}
+            ]}
+        ],
+        fun() ->
+            {ok, Req, _State} = adm_feedback_handler:init(#{}, #{
+                action => status, adm_user_id => 1
+            }),
+            ?assertEqual(200, maps:get(response_status, Req))
+        end
+    ).
+
+init_status_invalid_status_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1, <<"role_id">> => 1}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(1) -> {<<"super_admin">>, [<<"feedback:reply">>], []} end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{<<"feedback_id">> => <<"123">>, <<"status">> => <<"9">>}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, _Code) -> Req#{response_status => 400} end}
+            ]}
+        ],
+        fun() ->
+            {ok, Req, _State} = adm_feedback_handler:init(#{}, #{
+                action => status, adm_user_id => 1
+            }),
+            ?assertEqual(400, maps:get(response_status, Req))
+        end
+    ).
+
+init_status_permission_denied_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1, <<"role_id">> => 1}
+                end}
+            ]},
+            {adm_index_handler, [
+                {'role_acl', 1, fun(1) -> {<<"viewer">>, [], []} end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, _Msg, _Code) -> Req#{response_status => 403} end}
+            ]}
+        ],
+        fun() ->
+            {ok, Req, _State} = adm_feedback_handler:init(#{}, #{
+                action => status, adm_user_id => 1
+            }),
+            ?assertEqual(403, maps:get(response_status, Req))
+        end
+    ).

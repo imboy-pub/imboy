@@ -42,6 +42,8 @@ init(Req0, State0) ->
                 reply(Method, Req0, State);
             workflow_config ->
                 workflow_config(Method, Req0, State);
+            status ->
+                status(Method, Req0, State);
             delete ->
                 delete(Method, Req0, State);
             false ->
@@ -165,6 +167,46 @@ delete(<<"POST">>, Req0, State) ->
             Req1
     end;
 delete(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 反馈状态流转（待处理 1 → 处理中 2 → 已完结 3）
+%% 仅允许在有效状态 (>0) 的反馈上流转，已删除(-1)/禁用(0)不可流转。
+-spec status(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+status(<<"POST">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"feedback:reply">>, Req0) of
+        ok ->
+            PostVals = elib_param:post(Req0),
+            FeedbackId = to_positive_int(maps:get(<<"feedback_id">>, PostVals, 0)),
+            NewStatus = to_positive_int(maps:get(<<"status">>, PostVals, 0)),
+            case {FeedbackId > 0, lists:member(NewStatus, [1, 2, 3])} of
+                {false, _} ->
+                    elib_response:error(Req0, <<"feedback_id 无效"/utf8>>, ?ERR_BAD_REQUEST);
+                {_, false} ->
+                    elib_response:error(Req0, <<"status 无效"/utf8>>, ?ERR_BAD_REQUEST);
+                _ ->
+                    case
+                        elib_pg:update(
+                            feedback_repo:tablename(),
+                            #{
+                                <<"status">> => NewStatus,
+                                <<"updated_at">> => elib_dt:now()
+                            },
+                            <<"id = $1 AND status > 0">>,
+                            [FeedbackId]
+                        )
+                    of
+                        {ok, _} ->
+                            elib_response:success(Req0, #{});
+                        {error, Reason} ->
+                            elib_response:error(
+                                Req0, ec_cnv:to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                            )
+                    end
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+status(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 读取/保存反馈流程配置
@@ -340,6 +382,13 @@ safe_to_integer(Value) when is_list(Value) ->
     end;
 safe_to_integer(_) ->
     error.
+
+-spec to_positive_int(term()) -> integer().
+to_positive_int(Value) ->
+    case safe_to_integer(Value) of
+        {ok, Int} when Int > 0 -> Int;
+        _ -> 0
+    end.
 
 %% ===================================================================
 %% EUnit tests.

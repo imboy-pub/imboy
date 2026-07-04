@@ -631,6 +631,7 @@ get_routes() ->
         {"/adm/admin/assign_role", adm_admin_handler, #{action => assign_role}},
         {"/adm/admin/disable", adm_admin_handler, #{action => disable}},
         {"/adm/feedback/reply", adm_feedback_handler, #{action => reply}},
+        {"/adm/feedback/status", adm_feedback_handler, #{action => status}},
         {"/adm/feedback/delete", adm_feedback_handler, #{action => delete}},
         {"/adm/role/list", adm_role_handler, #{action => list}},
         {"/adm/roles/list", adm_role_handler, #{action => list}},
