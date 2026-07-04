@@ -175,10 +175,13 @@ get_active_compliance_key() ->
 -spec pull_key_notifications(integer(), binary() | integer(), binary() | integer()) ->
     {ok, [map()]} | {error, term()}.
 pull_key_notifications(Uid, Since, Limit) when is_integer(Uid) ->
-    %% since/limit 可能是 handler 透传的未校验 query 字符串（如 since=abc），
-    %% 用 safe_to_integer 兜底：非法输入降级为 0，避免 binary_to_integer 抛 badarg → 500
-    SinceTs = elib_cnv:safe_to_integer(Since),
-    LimitInt = elib_cnv:safe_to_integer(Limit),
+    %% since/limit 可能是 handler 透传的未校验 query（如 since=abc、limit=-1）。
+    %% safe_to_integer 兜底非数字降级为 0；再夹取范围：
+    %% - limit 夹到 [1, 1000]：负数/0 会经 SQL "LIMIT $3" 触发 PG
+    %%   "LIMIT must not be negative" → 500；超大 limit 是无界查询 DoS。
+    %% - since 夹到 >= 0，避免负时间戳。
+    SinceTs = erlang:max(0, elib_cnv:safe_to_integer(Since)),
+    LimitInt = min(max(elib_cnv:safe_to_integer(Limit), 1), 1000),
 
     % 获取好友列表
     FriendUids = friend_ds:list_by_uid(Uid),

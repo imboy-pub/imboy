@@ -191,19 +191,12 @@ create_key_shares(Uid, Proxies, PrivateKeyPem, TotalShards, Threshold) ->
 %% @doc 获取用户的所有密钥分片
 -spec get_user_shards(integer(), binary()) -> {ok, [map()]} | {error, term()}.
 get_user_shards(Uid, KeyVersion) ->
-    CacheKey = {e2ee_user_shards, Uid, KeyVersion},
-    case imboy_cache:get(CacheKey) of
-        {ok, Shards} ->
-            {ok, Shards};
-        undefined ->
-            case e2ee_social_repo:get_user_shards(Uid, KeyVersion) of
-                {ok, Shards} ->
-                    imboy_cache:set(CacheKey, Shards, 300),
-                    {ok, Shards};
-                {error, Reason} ->
-                    {error, Reason}
-            end
-    end.
+    %% 不做读缓存：分片曾按 {e2ee_user_shards, Uid, KeyVersion} 分键缓存，
+    %% 而 clear_user_shards_cache/1 只清 <<"latest">> 版本键；撤销可信联系人
+    %% （revoke_shards_by_proxy）或删除已恢复分片后，带具体版本号的缓存不会失效，
+    %% 会把已 revoked 分片当作 active 读出（最长 300s），削弱撤销即时性。
+    %% 恢复分片读取属低频操作，直接查库消除该陈旧窗口。
+    e2ee_social_repo:get_user_shards(Uid, KeyVersion).
 
 %% @doc 获取用户作为代理的所有分片
 -spec get_proxy_shards(integer()) -> {ok, [map()]} | {error, term()}.

@@ -179,11 +179,12 @@ do_recover_key(Req0, State) ->
             % 获取已解密的分片列表
             DecryptedShardList = maps:get(<<"decrypted_shards">>, Data, []),
 
-            % 验证参数
-            case length(DecryptedShardList) < 2 of
-                true ->
-                    elib_response:error(Req0, <<"至少需要 2 个分片才能恢复密钥"/utf8>>, ?ERR_BAD_REQUEST);
+            %% 验证参数：decrypted_shards 为未受信输入，必须先确认是列表再取长度，
+            %% 否则客户端传字符串/数字/对象会让 length/1 抛 badarg → 进程崩溃 500
+            case is_list(DecryptedShardList) andalso length(DecryptedShardList) >= 2 of
                 false ->
+                    elib_response:error(Req0, <<"至少需要 2 个分片才能恢复密钥"/utf8>>, ?ERR_BAD_REQUEST);
+                true ->
                     % C1 FIX: 服务端不重组私钥，只验证分片数量并将分片列表返回给客户端
                     % 客户端在本地完成 Shamir 重组，服务端永远看不到明文私钥
                     case e2ee_social_logic:validate_shards(CurrentUid, DecryptedShardList) of
