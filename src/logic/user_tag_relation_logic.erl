@@ -192,11 +192,6 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
 %%% 添加标签
 -spec add(integer(), integer(), binary() | integer(), list()) -> ok | binary().
 add(Uid, Scene, <<>>, [Tag]) ->
-    ok = elib_log:info(
-        io_lib:format("user_tag_relation_logic:add/3 uid ~p scene ~p, tag: ~p; ~n", [
-            Uid, Scene, Tag
-        ])
-    ),
     % 使用安全的参数化查询，避免SQL注入
     Tb = elib_pg_sql:public_tablename(<<"user_tag">>),
     Count =

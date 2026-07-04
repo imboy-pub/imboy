@@ -111,15 +111,21 @@ recently_user_page(Uid, Page, Size, Keyword) ->
                      || [Uid2 | Row] <- Items1, Uid2 /= Uid
                     ],
                     #{total => Total, page => Page, size => Size, list => Items2};
-                {error, _} ->
+                {error, Reason} ->
+                    %% DB 查询失败不能静默降级为空结果，否则故障被掩盖、无排查线索
+                    ok = ?ERROR_LOG([fts_user_search, page_with_total_error, Reason]),
                     #{total => 0, page => Page, size => Size, list => []}
             end;
         _ ->
             Total = fts_user_ds:count_for_user_search_page(Keyword),
             Rows =
                 case fts_user_ds:user_search_page(Keyword, Size, Offset) of
-                    {ok, Items} -> Items;
-                    _ -> []
+                    {ok, Items} ->
+                        Items;
+                    Other ->
+                        %% 区分「无结果」与「查询失败」：失败必须留日志线索
+                        ok = ?ERROR_LOG([fts_user_search, user_search_page_error, Other]),
+                        []
                 end,
             case Rows of
                 [] ->

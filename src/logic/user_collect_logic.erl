@@ -113,15 +113,6 @@ add(Uid, <<"2">>, KindId, Info, Source, Remark) when is_map(Info) ->
     Count = user_collect_ds:count_by_uid_kind_id(Uid, KindId),
     MimeType = <<"image/jpeg">>,
     {Attach, Info2} = get_info(Count, MimeType, <<"uri">>, Info),
-    ok = elib_log:info(
-        io_lib:format("user_collect_logic/add_2: Count ~p, ~n", [
-            [Count, Uid, KindId, Source, Remark]
-        ])
-    ),
-    ok = elib_log:info(
-        io_lib:format("user_collect_logic/add_2: Count ~p, Attach ~p ~n", [Count, Attach])
-    ),
-    % elib_log:info(io_lib:format("user_collect_logic/add_2: Count ~p, Info2 ~p ~n", [Count, Info2])),
     add_kind(Count, Uid, <<"2">>, KindId, Info2, Source, Remark, [Attach]),
     {ok, <<"success">>};
 add(Uid, <<"1">>, KindId, Info, Source, Remark) when is_map(Info) ->
@@ -246,7 +237,6 @@ get_info(_Count, _MimeType, _Key, _Info) ->
 %     ok;
 add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
     NowTs = elib_dt:now(),
-    ok = elib_log:info(io_lib:format("user_collect_logic/add_kind/8: NowTs ~p ~n", [NowTs])),
     Kind = binary_to_integer(KindBin),
     elib_pg:with_tx(fun(Conn) ->
         attachment_ds:save(Conn, NowTs, Uid, Attach),
