@@ -809,6 +809,18 @@ get_routes() ->
         {"/adm/announcement/delete", adm_announcement_handler, #{action => delete}},
         {"/adm/announcement/publish", adm_announcement_handler, #{action => publish}},
         {"/adm/announcement/unpublish", adm_announcement_handler, #{action => unpublish}},
+        % 内容审核：敏感词黑名单 + 消息人工复审队列（import/:id 须置于通配路由之前）
+        {"/adm/moderation/sensitive-words/import", adm_moderation_handler, #{
+            action => sensitive_words_import
+        }},
+        {"/adm/moderation/sensitive-words/:id", adm_moderation_handler, #{
+            action => sensitive_word_delete
+        }},
+        {"/adm/moderation/sensitive-words", adm_moderation_handler, #{action => sensitive_words}},
+        {"/adm/moderation/review-queue/:id/moderate", adm_moderation_handler, #{
+            action => review_moderate
+        }},
+        {"/adm/moderation/review-queue", adm_moderation_handler, #{action => review_queue}},
         % 插件生命周期管理 API (lifecycle.md §10)
         {"/adm/plugin/list", adm_plugin_handler, #{action => list}},
         {"/adm/plugin/detail", adm_plugin_handler, #{action => detail}},
