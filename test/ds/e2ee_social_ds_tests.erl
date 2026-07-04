@@ -76,6 +76,9 @@ remove_trusted_contact_test_() ->
     ?WITH_MECKS(
         [
             {e2ee_social_repo, [
+                %% remove_trusted_contact/2 先级联撤分片再删联系人；
+                %% 未 mock revoke_shards_by_proxy 会经 passthrough 落到真实 pgsql 池 → noproc
+                {revoke_shards_by_proxy, 2, fun(_Uid, _ContactUid) -> {ok, 0} end},
                 {remove_contact, 2, fun(_Uid, _ContactUid) -> ok end}
             ]},
             {imboy_cache, [
