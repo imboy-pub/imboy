@@ -151,22 +151,15 @@ confirm_session(SessionId, FromUid) ->
 
 %% @doc 获取用户的待处理传输会话列表
 %% @param ToUid 接收方用户 ID
+%%
+%% 【缓存一致性】不缓存：生产接线的写路径（create_raw/update_status/
+%% update_status_and_device/cancel_session_raw）仅持有 SessionId，无法廉价失效
+%% 以 ToUid 为键的 {e2ee_pending_sessions, ToUid} 列表缓存，此前 60s 缓存导致
+%% 接收方在设备迁移时最多 60s 看不到新转移请求，或看到已被接受/取消的会话。
+%% 该列表是低频交互轮询，直读 DB 恒正确，缓存收益不抵脏读代价。
 -spec get_pending_sessions(integer()) -> {ok, list(map())} | {error, term()}.
 get_pending_sessions(ToUid) ->
-    CacheKey = {e2ee_pending_sessions, ToUid},
-    case imboy_cache:get(CacheKey) of
-        {ok, Sessions} ->
-            {ok, Sessions};
-        undefined ->
-            case e2ee_transfer_repo:get_pending_sessions(ToUid) of
-                {ok, Sessions} ->
-                    % 缓存 1 分钟
-                    imboy_cache:set(CacheKey, Sessions, 60),
-                    {ok, Sessions};
-                {error, Reason} ->
-                    {error, Reason}
-            end
-    end.
+    e2ee_transfer_repo:get_pending_sessions(ToUid).
 
 %% @doc 取消传输会话
 %% @param SessionId 会话 ID

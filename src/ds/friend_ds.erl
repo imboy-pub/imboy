@@ -28,6 +28,11 @@
 %% 缓存 TTL 常量（秒）— 好友关系缓存统一 5 分钟
 -define(CACHE_TTL_FRIEND, 300).
 
+%% 好友关系依赖标签（depcache 级联失效用）：is_friend_fields2 的缓存键含 Fields，
+%% invalidate_cache 无法枚举所有 Fields 变体，故让这些条目依赖本标签，
+%% 失效时只需 flush 标签即可级联清除该好友对的所有 Fields 变体缓存。
+-define(FRIEND_REL_DEP(F, T), {friend_rel_dep, F, T}).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -110,7 +115,8 @@ is_friend_fields(FromUid, ToUid, Fields) ->
                 {false, #{}}
         end
     end,
-    imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND).
+    %% 依赖好友对标签：invalidate_cache 通过 flush 标签级联失效本条目（含任意 Fields 变体）
+    imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND, [?FRIEND_REL_DEP(FromUid, ToUid)]).
 %% @doc 分页获取用户好友列表
 %%
 %% 使用默认参数分页获取用户的好友列表
@@ -477,6 +483,9 @@ invalidate_cache(FromUid, ToUid) ->
     %% 清除 check_relationship3 缓存（双向）
     imboy_cache:flush({check_relationship3, FromUid, ToUid}),
     imboy_cache:flush({check_relationship3, ToUid, FromUid}),
+    %% 级联清除 is_friend_fields2 缓存（键含 Fields 无法逐一枚举，经依赖标签失效，双向）
+    imboy_cache:flush(?FRIEND_REL_DEP(FromUid, ToUid)),
+    imboy_cache:flush(?FRIEND_REL_DEP(ToUid, FromUid)),
     ok.
 
 %% G3: adm_user_handler 不应直调 friend_repo
