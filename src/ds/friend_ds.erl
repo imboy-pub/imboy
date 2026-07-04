@@ -5,6 +5,7 @@
 -export([is_friend/2]).
 -export([is_friend/3]).
 -export([is_friend_fields/3]).
+-export([friends_fields_map/3]).
 %% 新增：联合查询函数
 -export([check_relationship/2]).
 -export([list_by_uid/1]).
@@ -117,6 +118,27 @@ is_friend_fields(FromUid, ToUid, Fields) ->
     end,
     %% 依赖好友对标签：invalidate_cache 通过 flush 标签级联失效本条目（含任意 Fields 变体）
     imboy_cache:memo(Fun, Key, ?CACHE_TTL_FRIEND, [?FRIEND_REL_DEP(FromUid, ToUid)]).
+
+%% @doc 批量查好友关系(一次查询)，返回 #{ToUid => FieldsMap}，仅含好友项
+%% 用于附近的人等 N+1 热路径。未走缓存:单次查询已足够快，避免批量缓存复杂度
+% friend_ds:friends_fields_map(1, [3,5], [<<"remark">>, <<"created_at">>]).
+-spec friends_fields_map(integer(), [integer()], [binary()]) -> #{integer() => map()}.
+friends_fields_map(_FromUid, [], _Fields) ->
+    #{};
+friends_fields_map(FromUid, ToUids, Fields) ->
+    case friend_repo:friend_fields_batch(FromUid, ToUids, Fields) of
+        {ok, Rows} ->
+            lists:foldl(
+                fun(Row, Acc) ->
+                    ToUid = maps:get(<<"to_user_id">>, Row),
+                    Acc#{ToUid => maps:remove(<<"to_user_id">>, Row)}
+                end,
+                #{},
+                Rows
+            );
+        {error, _} ->
+            #{}
+    end.
 %% @doc 分页获取用户好友列表
 %%
 %% 使用默认参数分页获取用户的好友列表

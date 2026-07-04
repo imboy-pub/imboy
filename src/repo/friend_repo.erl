@@ -10,6 +10,7 @@
 -export([count_by_uid/1]).
 -export([friend_field/3]).
 -export([friend_fields/3]).
+-export([friend_fields_batch/3]).
 -export([confirm_friend/7]).
 -export([insert_pending/4, find_pending/2, delete_pending/2]).
 -export([delete/2]).
@@ -142,6 +143,20 @@ friend_fields(FromID, ToID, Fields) ->
     ),
     ?DEBUG_LOG([Sql, Params]),
     elib_pg:query(Sql, Params).
+
+%% @doc 批量查询 FromID 对多个 ToID 的好友关系(一次查询替代 N 次)
+%% Fields 为内部常量列名(非用户输入)，返回行含 to_user_id + 请求字段
+%% @example friend_repo:friend_fields_batch(4, [6,7], [<<"remark">>, <<"created_at">>]).
+-spec friend_fields_batch(integer(), [integer()], [binary()]) -> {ok, [map()]} | {error, any()}.
+friend_fields_batch(_FromID, [], _Fields) ->
+    {ok, []};
+friend_fields_batch(FromID, ToIDs, Fields) ->
+    Tb = tablename(),
+    Cols = elib_cnv:implode(<<",">>, [<<"to_user_id">> | Fields]),
+    Sql =
+        <<"SELECT ", Cols/binary, " FROM ", Tb/binary,
+            " WHERE from_user_id = $1 AND status = 1 AND to_user_id = ANY($2)">>,
+    elib_pg:query(Sql, [FromID, ToIDs]).
 
 %% @doc 查询指定用户的好友列表（使用默认限制10000）
 %% @param UID 用户ID

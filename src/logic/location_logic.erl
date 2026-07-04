@@ -72,26 +72,33 @@ people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit) ->
     case geo_people_nearby_ds:people_nearby(Lng, Lat, Radius, Unit, Limit) of
         {ok, Li} ->
             % {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li .
-            % 为每个用户检查好友关系，并添加 remark 和 created_at 信息
+            % 一次批量查好友关系(替代逐行 N+1)，再为每个用户填充 remark / created_at
+            UserIds = lists:filtermap(
+                fun(Row) ->
+                    case maps:get(<<"id">>, Row, undefined) of
+                        Uid when is_integer(Uid) -> {true, Uid};
+                        _ -> false
+                    end
+                end,
+                Li
+            ),
+            FriendMap = friend_ds:friends_fields_map(
+                CurrentUid, UserIds, [<<"remark">>, <<"created_at">>]
+            ),
             lists:map(
                 fun(Row) ->
                     case maps:get(<<"id">>, Row, undefined) of
                         UserId when is_integer(UserId) ->
-                            {IsFriend, FieldsMap} = friend_ds:is_friend_fields(
-                                CurrentUid, UserId, [
-                                    <<"remark">>, <<"created_at">>
-                                ]
-                            ),
-                            {Remark, CreatedAt} =
-                                if
-                                    IsFriend ->
-                                        % 如果是好友，从 FieldsMap 中获取 remark 和 created_at
+                            {IsFriend, Remark, CreatedAt} =
+                                case maps:get(UserId, FriendMap, undefined) of
+                                    undefined ->
+                                        {false, <<>>, 0};
+                                    FieldsMap ->
                                         {
+                                            true,
                                             maps:get(<<"remark">>, FieldsMap, <<>>),
                                             maps:get(<<"created_at">>, FieldsMap, 0)
-                                        };
-                                    true ->
-                                        {<<>>, 0}
+                                        }
                                 end,
                             Data = #{
                                 <<"id">> => UserId,
