@@ -175,16 +175,10 @@ get_active_compliance_key() ->
 -spec pull_key_notifications(integer(), binary() | integer(), binary() | integer()) ->
     {ok, [map()]} | {error, term()}.
 pull_key_notifications(Uid, Since, Limit) when is_integer(Uid) ->
-    SinceTs =
-        case is_binary(Since) of
-            true -> binary_to_integer(Since);
-            false -> Since
-        end,
-    LimitInt =
-        case is_binary(Limit) of
-            true -> binary_to_integer(Limit);
-            false -> Limit
-        end,
+    %% since/limit 可能是 handler 透传的未校验 query 字符串（如 since=abc），
+    %% 用 safe_to_integer 兜底：非法输入降级为 0，避免 binary_to_integer 抛 badarg → 500
+    SinceTs = elib_cnv:safe_to_integer(Since),
+    LimitInt = elib_cnv:safe_to_integer(Limit),
 
     % 获取好友列表
     FriendUids = friend_ds:list_by_uid(Uid),

@@ -84,7 +84,10 @@ create(GroupId, CreatorId, Title, Data) when
                     {error, imboy_error:error_msg(?ERR_TASK_TITLE_REQUIRED),
                         ?ERR_TASK_TITLE_REQUIRED};
                 {error, Reason} ->
-                    {error, io_lib:format("~p", [Reason]), ?ERR_INTERNAL_SERVER_ERROR}
+                    %% 原始内部错误（DB/约束 term）仅写服务端日志，不外泄给客户端
+                    _ = ?ERROR_LOG({group_task_create_db_error, Reason}),
+                    {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR),
+                        ?ERR_INTERNAL_SERVER_ERROR}
             end
     end;
 create(_GroupId, _CreatorId, Title, _Data) when is_binary(Title), byte_size(Title) =:= 0 ->

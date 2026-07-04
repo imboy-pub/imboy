@@ -35,117 +35,120 @@ internal_log(Level, Fmt, Args, Module, Line) ->
 %% ===================================================================
 %% API
 %% ===================================================================
+%% 级别过滤在 safe_log/level_enabled 中运行时完成：低于 ?LOG_LEVEL 阈值的
+%% 调用会被静默丢弃（返回 ok），而非因函数子句 guard 不匹配抛 function_clause。
+%% 这样调整 ?LOG_LEVEL 阈值是安全运维操作，不会让既有 debug/info 调用点崩溃。
 
 %% @doc Debug 级别日志（1参数）
 -spec debug(iodata()) -> ok.
-debug(Msg) when ?LOG_LEVEL =:= debug ->
+debug(Msg) ->
     safe_log(debug, Msg, ?MODULE, ?LINE).
 
 %% @doc Debug 级别日志（2参数）
 -spec debug(iodata(), list()) -> ok.
-debug(Fmt, Args) when ?LOG_LEVEL =:= debug ->
+debug(Fmt, Args) ->
     safe_log(debug, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Info 级别日志（1参数）
 -spec info(iodata()) -> ok.
-info(Msg) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info ->
+info(Msg) ->
     safe_log(info, Msg, ?MODULE, ?LINE).
 
 %% @doc Info 级别日志（2参数）
 -spec info(iodata(), list()) -> ok.
-info(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info ->
+info(Fmt, Args) ->
     safe_log(info, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Notice 级别日志（1参数）
 -spec notice(iodata()) -> ok.
-notice(Msg) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info; ?LOG_LEVEL =:= notice ->
+notice(Msg) ->
     safe_log(notice, Msg, ?MODULE, ?LINE).
 
 %% @doc Notice 级别日志（2参数）
 -spec notice(iodata(), list()) -> ok.
-notice(Fmt, Args) when ?LOG_LEVEL =:= debug; ?LOG_LEVEL =:= info; ?LOG_LEVEL =:= notice ->
+notice(Fmt, Args) ->
     safe_log(notice, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Warning 级别日志（1参数）
 -spec warning(iodata()) -> ok.
-warning(Msg) when
-    ?LOG_LEVEL =:= debug;
-    ?LOG_LEVEL =:= info;
-    ?LOG_LEVEL =:= notice;
-    ?LOG_LEVEL =:= warning
-->
+warning(Msg) ->
     safe_log(warning, Msg, ?MODULE, ?LINE).
 
 %% @doc Warning 级别日志（2参数）
 -spec warning(iodata(), list()) -> ok.
-warning(Fmt, Args) when
-    ?LOG_LEVEL =:= debug;
-    ?LOG_LEVEL =:= info;
-    ?LOG_LEVEL =:= notice;
-    ?LOG_LEVEL =:= warning
-->
+warning(Fmt, Args) ->
     safe_log(warning, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Error 级别日志（1参数）
 -spec error(iodata()) -> ok.
-error(Msg) when
-    ?LOG_LEVEL =:= debug;
-    ?LOG_LEVEL =:= info;
-    ?LOG_LEVEL =:= notice;
-    ?LOG_LEVEL =:= warning;
-    ?LOG_LEVEL =:= error
-->
+error(Msg) ->
     safe_log(error, Msg, ?MODULE, ?LINE).
 
 %% @doc Error 级别日志（2参数）
 -spec error(iodata(), list()) -> ok.
-error(Fmt, Args) when
-    ?LOG_LEVEL =:= debug;
-    ?LOG_LEVEL =:= info;
-    ?LOG_LEVEL =:= notice;
-    ?LOG_LEVEL =:= warning;
-    ?LOG_LEVEL =:= error
-->
+error(Fmt, Args) ->
     safe_log(error, Fmt, Args, ?MODULE, ?LINE).
 
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+%% @doc 级别权重，数值越大级别越高（越严重）
+level_weight(debug) -> 10;
+level_weight(info) -> 20;
+level_weight(notice) -> 30;
+level_weight(warning) -> 40;
+level_weight(error) -> 50.
+
+%% @doc 判断某级别是否达到 ?LOG_LEVEL 阈值（达到才实际输出）
+level_enabled(Level) ->
+    level_weight(Level) >= level_weight(?LOG_LEVEL).
+
 safe_log(Level, Msg, Module, Line) ->
-    Pid = self(),
-    Message =
-        try
-            ensure_string(Msg)
-        catch
-            _:_ ->
-                "INVALID_MESSAGE"
-        end,
-    _ =
-        try
-            lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
-        catch
-            _:_ ->
-                ok
-        end,
-    ok.
+    case level_enabled(Level) of
+        false ->
+            ok;
+        true ->
+            Pid = self(),
+            Message =
+                try
+                    ensure_string(Msg)
+                catch
+                    _:_ ->
+                        "INVALID_MESSAGE"
+                end,
+            _ =
+                try
+                    lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
+                catch
+                    _:_ ->
+                        ok
+                end,
+            ok
+    end.
 
 safe_log(Level, Fmt, Args, Module, Line) ->
-    Pid = self(),
-    Message =
-        try
-            io_lib:format(Fmt, sanitize_args(Args))
-        catch
-            _:_ ->
-                io_lib:format("INVALID_FORMAT: ~ts ARGS: ~p", [Fmt, Args])
-        end,
-    _ =
-        try
-            lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
-        catch
-            _:_ ->
-                ok
-        end,
-    ok.
+    case level_enabled(Level) of
+        false ->
+            ok;
+        true ->
+            Pid = self(),
+            Message =
+                try
+                    io_lib:format(Fmt, sanitize_args(Args))
+                catch
+                    _:_ ->
+                        io_lib:format("INVALID_FORMAT: ~ts ARGS: ~p", [Fmt, Args])
+                end,
+            _ =
+                try
+                    lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
+                catch
+                    _:_ ->
+                        ok
+                end,
+            ok
+    end.
 
 ensure_string(Msg) when is_binary(Msg) ->
     unicode:characters_to_list(Msg);

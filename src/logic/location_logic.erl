@@ -67,40 +67,49 @@ people_nearby(CurrentUid, Lng, Lat, Radius, <<"km">>, Limit) when is_binary(Radi
             []
     end;
 people_nearby(CurrentUid, Lng, Lat, Radius, Unit, Limit) ->
-    {ok, Li} = geo_people_nearby_ds:people_nearby(Lng, Lat, Radius, Unit, Limit),
-    % {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li .
-    % 为每个用户检查好友关系，并添加 remark 和 created_at 信息
-    lists:map(
-        fun(Row) ->
-            case maps:get(<<"id">>, Row, undefined) of
-                UserId when is_integer(UserId) ->
-                    {IsFriend, FieldsMap} = friend_ds:is_friend_fields(CurrentUid, UserId, [
-                        <<"remark">>, <<"created_at">>
-                    ]),
-                    {Remark, CreatedAt} =
-                        if
-                            IsFriend ->
-                                % 如果是好友，从 FieldsMap 中获取 remark 和 created_at
-                                {
-                                    maps:get(<<"remark">>, FieldsMap, <<>>),
-                                    maps:get(<<"created_at">>, FieldsMap, 0)
-                                };
-                            true ->
-                                {<<>>, 0}
-                        end,
-                    Data = #{
-                        <<"id">> => UserId,
-                        <<"is_friend">> => IsFriend,
-                        <<"remark">> => Remark,
-                        <<"friend_created_at">> => CreatedAt
-                    },
-                    maps:merge(Row, Data);
-                _ ->
-                    Row
-            end
-        end,
-        Li
-    ).
+    %% Lng/Lat 为 handler 透传的未校验 query（可能非数字或 undefined），PostGIS 解析
+    %% 失败时 ds 返回 {error,_}，此处 case 兜底避免 badmatch 崩溃 → 500
+    case geo_people_nearby_ds:people_nearby(Lng, Lat, Radius, Unit, Limit) of
+        {ok, Li} ->
+            % {Id, Account, Nickname, Avatar, Sign, Gender, Region, Location, Distance} <- Li .
+            % 为每个用户检查好友关系，并添加 remark 和 created_at 信息
+            lists:map(
+                fun(Row) ->
+                    case maps:get(<<"id">>, Row, undefined) of
+                        UserId when is_integer(UserId) ->
+                            {IsFriend, FieldsMap} = friend_ds:is_friend_fields(
+                                CurrentUid, UserId, [
+                                    <<"remark">>, <<"created_at">>
+                                ]
+                            ),
+                            {Remark, CreatedAt} =
+                                if
+                                    IsFriend ->
+                                        % 如果是好友，从 FieldsMap 中获取 remark 和 created_at
+                                        {
+                                            maps:get(<<"remark">>, FieldsMap, <<>>),
+                                            maps:get(<<"created_at">>, FieldsMap, 0)
+                                        };
+                                    true ->
+                                        {<<>>, 0}
+                                end,
+                            Data = #{
+                                <<"id">> => UserId,
+                                <<"is_friend">> => IsFriend,
+                                <<"remark">> => Remark,
+                                <<"friend_created_at">> => CreatedAt
+                            },
+                            maps:merge(Row, Data);
+                        _ ->
+                            Row
+                    end
+                end,
+                Li
+            );
+        Err ->
+            ok = ?WARN_LOG([people_nearby, query_failed, Err]),
+            []
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions
