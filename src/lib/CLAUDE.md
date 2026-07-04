@@ -27,7 +27,6 @@
 | `elib_cipher` | 加密与解密 |
 | `elib_hasher` | 哈希计算 |
 | `elib_password` | 密码哈希 |
-| `shamir_secret_sharing` | Shamir 密钥分割 |
 
 ### ID
 
