@@ -532,6 +532,11 @@ websocket_info({reply, Msg}, State) ->
 websocket_info({timeout, _Ref, {[], _, Msg}}, State) ->
     ok = ?INFO_LOG({retry_timeout, stop_online_retry, Msg}),
     {reply, encode_delivery_frame(Msg, State), State, hibernate};
+%% 定时器 fire 在「当前设备」的 WS 进程内：既重发本消息（reply），又需为该设备
+%% 续排 MsLi 剩余的重试节奏。续链必须用白名单 [DID]+true 只针对当前设备——
+%% 早前用 [DID]+false（排除当前设备）会导致：单设备时 Filtered 为空、当前设备的
+%% 重试链在第一跳后即断裂（S2C/C2S 后续多级重试全部丢失）；多设备时又给同用户
+%% 其它设备重复设定时器（那些设备各自已有独立重试链）。
 websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
     ok = ?DEBUG_LOG({timeout_retry, MsgId, Uid, DID}),
     AckReceivedKey = {ack_received, Uid, DID, MsgId},
@@ -541,11 +546,11 @@ websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
             {ok, State, hibernate};
         {ok, _} ->
             ok = ?WARN_LOG({timeout_ack_flag_invalid, MsgId}),
-            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], false),
+            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
             {reply, encode_delivery_frame(Msg, State), State, hibernate};
         undefined ->
             ok = ?DEBUG_LOG({timeout_no_ack, MsgId, Uid}),
-            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], false),
+            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
             {reply, encode_delivery_frame(Msg, State), State, hibernate}
     end;
 %% 处理其他超时消息

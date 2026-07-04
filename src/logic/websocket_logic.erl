@@ -52,8 +52,10 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
     %% 【关键修复】先设置 ACK 标志，再取消定时器
     %% 这样即使定时器消息已在队列中，投递前也会检查到 ACK
     AckReceivedKey = {ack_received, ToUid, DID, MsgId},
-    % 40秒 TTL（最大重试时间）
-    imboy_cache:set(AckReceivedKey, true, 40000),
+    % 40 秒 TTL（覆盖最大重试窗口）——imboy_cache:set/3 的 TTL 单位是「秒」，
+    % 此前误传 40000 被当作 40000 秒（约 11 小时），导致每条已 ACK 消息的标志
+    % 在缓存中滞留 11 小时，高并发下缓存持续膨胀。
+    imboy_cache:set(AckReceivedKey, true, 40),
 
     _ = ?DEBUG_LOG({ack_cancel_processing, MsgId, ToUid, DID}),
 

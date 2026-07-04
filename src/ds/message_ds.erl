@@ -148,8 +148,10 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
                             ok
                     end,
                     Ref = erlang:start_timer(Delay, Pid, {Tail, TimerKey, Msg}),
-                    %% 【修复】延长缓存时间到 Delay + 5000，避免提前清除
-                    imboy_cache:set(TimerKey, Ref, Delay + 5000),
+                    %% 缓存需覆盖定时器存活期（Delay 毫秒）+ 5s 余量供 ACK 竞态取消。
+                    %% imboy_cache:set/3 的 TTL 单位是「秒」，故 (Delay + 5000) 毫秒需 div 1000；
+                    %% 此前直接把毫秒数值当秒，TTL 被放大约 1000 倍，过期 Ref 长期滞留缓存。
+                    imboy_cache:set(TimerKey, Ref, (Delay + 5000) div 1000),
                     ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID, Ref})
                 end
              || {Pid, {_Dtype, DID}} <- Filtered3
