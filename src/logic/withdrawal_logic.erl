@@ -47,6 +47,12 @@ withdraw(Uid, Amount, Method, Account) ->
                         %% 旧写法这里恒不匹配 → 提现余额不足时必现 case_clause 崩溃。
                         {rollback, insufficient_balance} ->
                             {error, <<"钱包余额不足"/utf8>>};
+                        %% with_tx 对任意事务内 throw({rollback, _}) 均原样返回
+                        %% {rollback, Reason}（如 reference_no 唯一冲突 / 事务内 DB 故障）；
+                        %% 缺此分支会落入 case_clause 崩溃（500）。事务已回滚、无资金变动，
+                        %% 归一为可重试错误，与 payment_wallet_gateway 的完整处理一致。
+                        {rollback, _Reason} ->
+                            {error, <<"提现失败，请稍后再试"/utf8>>};
                         {error, Reason} ->
                             {error, Reason}
                     end

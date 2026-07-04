@@ -33,7 +33,8 @@ withdrawal_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
         fun withdraw_success_returns_balance/0,
         fun withdraw_insufficient_balance_rejected/0,
-        fun withdraw_amount_too_small_rejected/0
+        fun withdraw_amount_too_small_rejected/0,
+        fun withdraw_generic_rollback_rejected/0
     ]}.
 
 %% 正常路径：余额充足 → 扣款成功返回新余额
@@ -64,4 +65,16 @@ withdraw_amount_too_small_rejected() ->
     ?assertEqual(
         {error, <<"提现参数不合法"/utf8>>},
         withdrawal_logic:withdraw(?UID, 50, <<"alipay">>, <<"user@example">>)
+    ).
+
+%% 回归：事务内非余额不足的 DB 故障，with_tx 原样返回 {rollback, Reason}（非
+%% insufficient_balance）。旧代码只匹配 {rollback, insufficient_balance}/{error, _}，
+%% 缺通用 {rollback, _} 分支 → case_clause 崩溃（500）。修复后应归一为友好可重试错误。
+withdraw_generic_rollback_rejected() ->
+    meck:expect(wallet_ds, atomic_balance_change, fun(-300, ?UID, _TxData, _RefNo) ->
+        {rollback, {pgsql_error, #{code => <<"40001">>}}}
+    end),
+    ?assertEqual(
+        {error, <<"提现失败，请稍后再试"/utf8>>},
+        withdrawal_logic:withdraw(?UID, 300, <<"alipay">>, <<"user@example">>)
     ).

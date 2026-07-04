@@ -63,6 +63,11 @@ send(SenderUid, Type, Amount, Count, Greeting) ->
                         %% 旧写法这里恒不匹配 → 发红包余额不足时必现 case_clause 崩溃。
                         {rollback, insufficient_balance} ->
                             {error, <<"钱包余额不足"/utf8>>};
+                        %% with_tx 对任意事务内 throw({rollback, _}) 均原样返回
+                        %% {rollback, Reason}；缺此分支会 case_clause 崩溃（500）。
+                        %% 事务已回滚、无资金变动，归一为可重试错误。
+                        {rollback, _Reason} ->
+                            {error, <<"发红包失败，请稍后再试"/utf8>>};
                         {error, Reason} ->
                             {error, Reason}
                     end
@@ -72,6 +77,11 @@ send(SenderUid, Type, Amount, Count, Greeting) ->
 %% @doc 抢红包
 -spec open(integer(), integer()) -> {ok, integer()} | {error, term()}.
 open(PacketId, ReceiverUid) ->
+    %% 先确保领取者钱包存在：red_packet_repo:grab 在事务内用
+    %% "UPDATE wallet ... WHERE user_id RETURNING balance, id" 给领取者入账，
+    %% 若领取者从未开通钱包则命中 0 行 → 硬匹配 {ok, 1, _} badmatch → 事务崩溃回滚，
+    %% 红包名额被占又领不到钱。ensure_wallet 幂等，与发红包(send)入账前置一致。
+    _ = wallet_ds:ensure_wallet(ReceiverUid),
     case red_packet_repo:grab(PacketId, ReceiverUid) of
         {ok, GrabAmount} ->
             {ok, GrabAmount};
