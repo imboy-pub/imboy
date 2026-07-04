@@ -119,14 +119,22 @@ can_recover(Uid, KeyVersion) ->
         <<"SELECT COUNT(*) as count, threshold, total_shards ", "FROM e2ee_social_shards ",
             "WHERE uid = $1 AND key_version = $2 AND status = 'active' ",
             "GROUP BY threshold, total_shards">>,
+    %% 每组 (threshold,total_shards) 是一个独立恢复集（不同 Shamir 分割的分片
+    %% 不可跨集合并）。此前只取首行 [Row|_]：当首组分片不足、而后续某组已足够时
+    %% 会误判为不可恢复。改为遍历所有组，任一组满足门限即可恢复。
     case elib_pg:query(Sql1, [Uid, KeyVersion]) of
-        {ok, [Row | _]} ->
-            Count = maps:get(<<"count">>, Row),
-            Threshold = maps:get(<<"threshold">>, Row),
-            TotalShards = maps:get(<<"total_shards">>, Row),
-            {ok, Count >= Threshold andalso TotalShards >= Threshold};
-        {ok, []} ->
-            {ok, false};
+        {ok, Rows} when is_list(Rows) ->
+            Recoverable = lists:any(
+                fun(Row) ->
+                    Count = maps:get(<<"count">>, Row),
+                    Threshold = maps:get(<<"threshold">>, Row),
+                    TotalShards = maps:get(<<"total_shards">>, Row),
+                    is_integer(Count) andalso Count >= Threshold andalso
+                        TotalShards >= Threshold
+                end,
+                Rows
+            ),
+            {ok, Recoverable};
         {error, Reason} ->
             {error, Reason}
     end.

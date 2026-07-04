@@ -295,3 +295,22 @@ delete_restored_shards_test_() ->
             ?assertEqual(ok, Result)
         end
     ).
+
+%% 回归：create_shard 落库成功后必须失效代理的 proxy_shards 缓存，
+%% 否则代理调 get_proxy_shards 最多 300s 看不到新分片。
+create_shard_clears_proxy_cache_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_social_repo, [
+                {create, 1, fun(_Rec) -> {ok, 55} end}
+            ]},
+            {imboy_cache, [
+                {delete, 1, fun(_Key) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Rec = #{<<"proxy_uid">> => 1002, <<"encrypted_shard">> => <<"cipher">>},
+            ?assertEqual({ok, 55}, e2ee_social_ds:create_shard(Rec)),
+            ?assert(meck:called(imboy_cache, delete, [{e2ee_proxy_shards, 1002}]))
+        end
+    ).

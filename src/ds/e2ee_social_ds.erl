@@ -242,4 +242,14 @@ clear_proxy_shards_cache(ProxyUid) ->
 
 %% G3: e2ee_social_logic 不应直调 e2ee_social_repo
 -spec create_shard(map()) -> {ok, integer()} | {error, term()}.
-create_shard(ShardRecord) -> e2ee_social_repo:create(ShardRecord).
+create_shard(ShardRecord) ->
+    Result = e2ee_social_repo:create(ShardRecord),
+    %% 新分片落库后失效代理的 proxy_shards 缓存（TTL 300s）：
+    %% 否则代理调 get_proxy_shards 最多 300s 看不到新分片，拖慢恢复协作。
+    case Result of
+        {ok, _} ->
+            clear_proxy_shards_cache(ec_cnv:to_integer(maps:get(<<"proxy_uid">>, ShardRecord))),
+            Result;
+        _ ->
+            Result
+    end.

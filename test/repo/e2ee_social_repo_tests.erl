@@ -46,3 +46,41 @@ revoke_shards_by_proxy_only_active_test_() ->
             ?assertEqual({ok, 2}, e2ee_social_repo:revoke_shards_by_proxy(9999, 1001))
         end
     ).
+
+%% 回归：can_recover 遍历所有恢复组，任一组满足门限即可恢复
+%% （旧实现只取首行：首组不足、次组充足时会误判为不可恢复）。
+can_recover_any_group_satisfies_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 2, fun(Sql, [Uid, KeyVersion]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"status = 'active'">>)),
+                    ?assertEqual(9999, Uid),
+                    ?assertEqual(<<"v1">>, KeyVersion),
+                    %% 首组分片不足(1<2)，次组充足(3>=2)
+                    {ok, [
+                        #{<<"count">> => 1, <<"threshold">> => 2, <<"total_shards">> => 3},
+                        #{<<"count">> => 3, <<"threshold">> => 2, <<"total_shards">> => 3}
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({ok, true}, e2ee_social_repo:can_recover(9999, <<"v1">>))
+        end
+    ).
+
+%% 回归：所有组均不足 → 不可恢复；空结果 → 不可恢复（不再依赖 GROUP BY 空行分支）
+can_recover_all_groups_insufficient_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 2, fun(_Sql, _Params) ->
+                    {ok, [#{<<"count">> => 1, <<"threshold">> => 2, <<"total_shards">> => 3}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({ok, false}, e2ee_social_repo:can_recover(9999, <<"v1">>))
+        end
+    ).
