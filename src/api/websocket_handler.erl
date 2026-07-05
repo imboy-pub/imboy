@@ -372,7 +372,12 @@ handle_client_ack(Tail, State) ->
                     {reply, reply_frame(AckConfirmMsg, State), State, hibernate};
                 {error, Reason} ->
                     ok = ?WARN_LOG({client_ack_invalid_params, Reason, Type, MsgId, DID}),
+                    %% #1: 回显 MsgId，使客户端能把 ACK_ERROR 关联回原消息，
+                    %% 打破「收据被拒→无法关联→重发」死循环（对称于 CONFIRM）
                     ErrorMsg = #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"CLIENT_ACK_ERROR">>,
+                        <<"in_reply_to">> => MsgId,
                         <<"action">> => <<"CLIENT_ACK_ERROR">>,
                         <<"reason">> => Reason,
                         <<"server_ts">> => elib_dt:millisecond()
@@ -382,7 +387,9 @@ handle_client_ack(Tail, State) ->
     catch
         Class:CatchReason2:_Stacktrace ->
             ok = ?ERROR_LOG({client_ack_parse_error, Class, CatchReason2}),
+            %% #1: 解析失败无 MsgId 可回显，至少补可识别 type
             ErrorMsg2 = #{
+                <<"type">> => <<"CLIENT_ACK_ERROR">>,
                 <<"action">> => <<"CLIENT_ACK_ERROR">>,
                 <<"reason">> => <<"parse_error">>,
                 <<"server_ts">> => elib_dt:millisecond()
@@ -437,7 +444,11 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
                 {reply, reply_frame(AckConfirmMsg, State), State, hibernate};
             {error, Reason} ->
                 ok = ?WARN_LOG({protobuf_client_ack_invalid, Reason, MsgId}),
+                %% #1: 回显 MsgId，使客户端能把 ACK_ERROR 关联回原消息
                 ErrorMsg = #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"CLIENT_ACK_ERROR">>,
+                    <<"in_reply_to">> => MsgId,
                     <<"action">> => <<"CLIENT_ACK_ERROR">>,
                     <<"reason">> => Reason,
                     <<"server_ts">> => elib_dt:millisecond()
@@ -447,7 +458,9 @@ handle_protobuf_client_ack(Data, _RawMsg, State) ->
     catch
         Class:CatchReason:Stacktrace ->
             ok = ?ERROR_LOG({protobuf_client_ack_error, Class, CatchReason, Stacktrace}),
+            %% #1: 解码失败无 MsgId 可回显，至少补可识别 type
             ErrorMsg2 = #{
+                <<"type">> => <<"CLIENT_ACK_ERROR">>,
                 <<"action">> => <<"CLIENT_ACK_ERROR">>,
                 <<"reason">> => <<"decode_error">>,
                 <<"server_ts">> => elib_dt:millisecond()
