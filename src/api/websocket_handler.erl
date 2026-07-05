@@ -668,7 +668,10 @@ ws_validation_error(MsgId, Action, Reason) ->
 %% @return ok | {error, binary()}
 -spec validate_ack_params(binary(), binary(), binary(), map()) -> ok | {error, binary()}.
 validate_ack_params(Type, MsgId, DID, State) ->
-    ValidTypes = [<<"C2C">>, <<"C2G">>, <<"S2C">>, <<"C2S">>],
+    %% WEBRTC：客户端对入站 webrtc 信令回 CLIENT_ACK,WEBRTC,... 缺此项会被判
+    %% invalid_type → ack_received 不置位 → 服务端重投 webrtc 消息 → 死循环根源。
+    %% 停重投由 cancel_timer(ok 分支)完成，process_ack_type 走 catch-all 无副作用。
+    ValidTypes = [<<"C2C">>, <<"C2G">>, <<"S2C">>, <<"C2S">>, <<"WEBRTC">>],
     case lists:member(Type, ValidTypes) of
         false ->
             {error, <<"invalid_type">>};
