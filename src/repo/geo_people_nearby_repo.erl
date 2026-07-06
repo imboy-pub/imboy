@@ -67,14 +67,17 @@ delete(Uid) ->
     {ok, [map()]} | {error, term()}.
 people_nearby(Lng, Lat, Radius, _Unit, Limit) ->
     % 使用安全的参数化查询，避免SQL注入
-    %% 用 ST_MakePoint 构造数字点(而非字符串拼接解析)，且 location::geography
-    %% 与 functional 索引 i_geo_people_nearby_geog 表达式精确对齐 → 走索引扫描
+    %% 点用字符串拼接构造(经度/纬度为 binary，$1/$2 在 || 中被推断为 text 正常绑定)。
+    %% 注意: 勿改成 $1::float8 —— 会让 epgsql 把参数类型推断为 float8，二进制经纬度
+    %% 编码失配致连接崩溃、查询返回空(2026-07 prod 事故)。
+    %% 提速仅依赖 location::geography 命中 functional 索引 i_geo_people_nearby_geog，
+    %% 与点如何构造无关。
     Sql = <<
         "SELECT u.id, u.account, u.nickname, u.avatar, u.sign, u.gender, u.region,\n"
-        "                    ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography) as distance\n"
+        "                    ST_Distance(ST_GeographyFromText('SRID=4326;POINT(' || $1 || ' ' || $2 || ')'), location) as distance\n"
         "             FROM public.geo_people_nearby gpn\n"
         "             LEFT JOIN public.user u ON u.id = gpn.user_id\n"
-        "             WHERE ST_DWithin(location::geography, ST_SetSRID(ST_MakePoint($1::float8, $2::float8), 4326)::geography, $3)\n"
+        "             WHERE ST_DWithin(location::geography, ST_GeographyFromText('POINT(' || $1 || ' ' || $2 || ')'), $3)\n"
         "             ORDER BY distance ASC\n"
         "             LIMIT $4"
     >>,
