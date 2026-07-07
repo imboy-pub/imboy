@@ -13,6 +13,7 @@
 -export([c2c_edit_ack/3]).
 -export([c2c_read/3]).
 -export([c2c_read_ack/3]).
+-export([c2c_input/3]).
 -export([extract_reply_info/1]).
 
 -include("chat.hrl").
@@ -738,6 +739,28 @@ c2c_read_ack(MsgId, CurrentUid, Data) ->
     ok = ?DEBUG_LOG([<<"c2c_read_ack">>, MsgId, CurrentUid, ReadAt]),
     % 已读状态已在 c2c_read/3 中持久化，这里只做回执送达确认，不重复写库。
     ok.
+
+%% @doc 输入状态（typing）转发：fire-and-forget
+%% 好友且在线 → 直发（encode_and_send，不落库不重试不回执）；
+%% 离线/非好友 → 静默丢弃（typing 是瞬态信号，无补投语义）。
+%% 此前该 action 无路由：客户端 JSON 形态被 route_action 判 unknown、
+%% 0x25 二进制形态被 v2 分派回 unsupported_frame_type，typing 从未生效。
+-spec c2c_input(binary(), integer(), map()) -> ok.
+c2c_input(MsgId, CurrentUid, Data) ->
+    To = maps:get(<<"to">>, Data, <<>>),
+    ToId = ec_cnv:to_integer(To),
+    IsFriend = ToId > 0 andalso friend_ds:is_friend(ToId, CurrentUid),
+    case IsFriend andalso user_logic:is_online(ToId) of
+        true ->
+            Msg = Data#{
+                <<"from">> => ec_cnv:to_binary(CurrentUid),
+                <<"server_ts">> => elib_dt:millisecond()
+            },
+            imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
+            ok;
+        false ->
+            ok
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

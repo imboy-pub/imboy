@@ -52,6 +52,7 @@
     {<<"c2c">>, <<"message_edit_ack">>, msg_c2c_logic, c2c_edit_ack},
     {<<"c2c">>, <<"message_read">>, msg_c2c_logic, c2c_read},
     {<<"c2c">>, <<"message_read_ack">>, msg_c2c_logic, c2c_read_ack},
+    {<<"c2c">>, <<"message_input">>, msg_c2c_logic, c2c_input},
     {<<"c2g">>, <<"message_revoke">>, msg_c2g_logic, c2g_revoke},
     {<<"c2g">>, <<"message_revoke_ack">>, msg_c2g_logic, c2g_revoke_ack},
     {<<"c2g">>, <<"message_edit">>, msg_c2g_logic, c2g_edit},
