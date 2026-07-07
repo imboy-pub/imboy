@@ -46,7 +46,13 @@ save_read(MsgId, FromUid, ToUid, ToDid, ReadAt) ->
         <<"INSERT INTO ">>,
         Tb,
         <<" (msg_id, from_uid, to_uid, to_did, read_at, created_at)">>,
-        <<" SELECT $1, $2, $3, $4, $5, $5">>,
+        %% $1/$4 同时出现在 SELECT 列表（无类型上下文，推断为 text）与
+        %% WHERE 比较（列类型 varchar），PG 报 42P08 ambiguous_parameter →
+        %% save_read 对真库从未成功过（eunit mock 了 repo 未暴露）。
+        %% 显式 ::varchar 对齐两处推断；$5 只出现在 SELECT 列表、由插入目标列
+        %% 单一推断为 timestamptz，勿加 cast（epgsql 对 binary 参数按 cast
+        %% 类型编码，RFC3339 binary 按 timestamptz 编码会崩，见附近的人事故）。
+        <<" SELECT $1::varchar, $2, $3, $4::varchar, $5, $5">>,
         <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
         Tb,
         <<" WHERE msg_id = $1 AND to_uid = $3 AND to_did = $4)">>,
