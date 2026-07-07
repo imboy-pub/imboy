@@ -327,3 +327,72 @@ c2c_read_with_duplicate_read_is_idempotent_test_() ->
             ?assertMatch({reply, #{<<"type">> := <<"C2C">>}}, Result2)
         end
     ).
+
+%% ===================================================================
+%% 批量 msg_ids 形态测试（契约断裂回归）
+%% ===================================================================
+
+%% 真机实测缺陷：客户端 buildReadReceiptItem 把被读消息 id 批量放在
+%% payload.msg_ids（顶层 id 只是回执自身的新 Xid），此前后端忽略 msg_ids
+%% → save_read 存了回执自身 id、转发也丢弃 msg_ids，而发送方客户端
+%% _handleReadAction 只认 payload.msg_ids → C2C 已读状态从未生效。
+c2c_read_batch_msg_ids_marks_each_and_echoes_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {msg_read_repo, [
+                {'save_read', 5, fun(MsgId, _FromUid, _ToUid, _ToDid, _ReadAt) ->
+                    self() ! {saved, MsgId},
+                    ok
+                end}
+            ]},
+            {user_logic, [
+                {'is_online', 1, fun(_Uid) -> true end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_From, _ToLi, _Action, _MsgType, _E2EE, _Payload, _Save) -> ok end}
+            ]},
+            {elib_dt, [
+                {'to_rfc3339', 1, fun(_Ts) -> <<"2025-01-22T00:00:00Z">> end},
+                {'millisecond', 0, fun() -> 1737513600000 end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(_ToUid, _MsgId, _Msg, _MsLi) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ReceiptXid = <<"d96receipt0selfxid00">>,
+            Data = #{
+                <<"to">> => <<"789">>,
+                <<"from">> => <<"456">>,
+                <<"payload">> => #{
+                    <<"read_at">> => 1737513600000,
+                    <<"msg_ids">> => [<<"d96msg0000000000a001">>, <<"d96msg0000000000b002">>]
+                }
+            },
+
+            {reply, Ack} = msg_c2c_logic:c2c_read(ReceiptXid, 456, Data),
+
+            %% ack 的 payload 必须回带 msg_ids（发送方按它标记 seen）
+            ?assertEqual(
+                [<<"d96msg0000000000a001">>, <<"d96msg0000000000b002">>],
+                maps:get(<<"msg_ids">>, maps:get(<<"payload">>, Ack))
+            ),
+
+            %% save_read 逐条按真实消息 id 落库，且不含回执自身 id
+            Saved = collect_saved([]),
+            ?assertEqual(
+                [<<"d96msg0000000000a001">>, <<"d96msg0000000000b002">>],
+                lists:sort(Saved)
+            ),
+            ?assertNot(lists:member(ReceiptXid, Saved))
+        end
+    ).
+
+collect_saved(Acc) ->
+    receive
+        {saved, I} -> collect_saved([I | Acc])
+    after 0 -> Acc
+    end.

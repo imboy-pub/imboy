@@ -631,31 +631,47 @@ c2c_read(MsgId, CurrentUid, Data) ->
     ok | {reply, map()}.
 handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
     NowMs = elib_dt:millisecond(),
-    ReadAt = maps:get(<<"read_at">>, maps:get(<<"payload">>, Data, #{}), NowMs),
+    Payload = maps:get(<<"payload">>, Data, #{}),
+    ReadAt = maps:get(<<"read_at">>, Payload, NowMs),
 
     % 从 Data 中获取设备ID（通过 WebSocket 注入的 sender_did）
-    Payload = maps:get(<<"payload">>, Data, #{}),
     ToDid = maps:get(<<"sender_did">>, Payload, <<>>),
 
-    % 保存已读记录到数据库
+    %% 【契约修复】客户端现役形态（buildReadReceiptItem）payload.msg_ids
+    %% 是被读消息 id 批量，顶层 id 只是回执自身的新 Xid。此前实现忽略
+    %% msg_ids：save_read 存了回执自身 id、转发通知也丢弃 msg_ids，而接收方
+    %% _handleReadAction 只认 payload.msg_ids → C2C 已读状态从未生效。
+    %% 批量优先；无 msg_ids 的单条形态回落顶层 MsgId（旧契约兼容）。
+    MsgIds =
+        case maps:get(<<"msg_ids">>, Payload, []) of
+            [_ | _] = L -> [ec_cnv:to_binary(I) || I <- L];
+            _ -> [MsgId]
+        end,
+
+    % 保存已读记录到数据库（逐条；任一失败按失败处理）
     ReadAtRfc = elib_dt:to_rfc3339(ReadAt),
-    case msg_read_ds:save_read(MsgId, ToId, CurrentUid, ToDid, ReadAtRfc) of
-        ok ->
+    Results = [msg_read_ds:save_read(Id, ToId, CurrentUid, ToDid, ReadAtRfc) || Id <- MsgIds],
+    case [R || R <- Results, R =/= ok] of
+        [] ->
             % 【T18/MSG-P1-6】已读状态同步给阅读者自己的其他设备（多端未读数一致）。
             % save 落 msg_s2c：离线设备按 per-device 送达语义（T03）重连后仍可拉到；
             % 阅读设备自身也会收到并 ACK（客户端按已读状态幂等忽略），单设备用户
             % 全端 ACK 后该行随即被清理。新增 S2C action，旧客户端按未知 action 忽略。
             ReadSyncPayload = #{
+                % msg_id 保留单值形态兼容旧消费者
                 <<"msg_id">> => MsgId,
+                <<"msg_ids">> => MsgIds,
                 <<"peer">> => To,
                 <<"read_at">> => ReadAt
             },
             _ = msg_s2c_ds:send(
                 0, [CurrentUid], <<"message_read_sync">>, <<>>, null, ReadSyncPayload, save
             ),
-            % 构建已读回执消息（v2.0 格式）
+            % 构建已读回执消息（v2.0 格式）；msg_ids 必须回带——
+            % 发送方客户端按 payload.msg_ids 标记 seen
             ReadPayload = #{
-                <<"read_at">> => ReadAt
+                <<"read_at">> => ReadAt,
+                <<"msg_ids">> => MsgIds
             },
 
             ReadAckMsg = #{
@@ -690,22 +706,20 @@ handle_read_receipt(MsgId, To, ToId, From, _FromId, CurrentUid, Data) ->
                     imboy_message_helper:encode_and_send(ToId, MsgId, ReadNotifyMsg, <<"c2c">>),
                     {reply, ReadAckMsg};
                 false ->
-                    % 离线：存储离线已读通知
-                    _ = jsone:encode(ReadNotifyMsg, [native_utf8]),
-                    case
+                    % 离线：逐条存储离线已读通知
+                    %（原实现只存顶层回执 id；另删除无用的 jsone:encode 死计算）
+                    _ = [
                         msg_c2c_ds:read_offline_msg(
-                            MsgId, ToId, CurrentUid, ReadAtRfc, <<"message_read">>
+                            Id, ToId, CurrentUid, ReadAtRfc, <<"message_read">>
                         )
-                    of
-                        ok -> ok;
-                        {error, _} -> ok
-                    end,
+                     || Id <- MsgIds
+                    ],
                     {reply, ReadAckMsg}
             end;
-        {error, Reason} ->
+        [Reason | _] ->
             ok = ?ERROR_LOG(
-                "[C2C_READ_FAILED] MsgId=~s, FromUid=~p, ToUid=~p, Reason=~p~n",
-                [MsgId, CurrentUid, ToId, Reason]
+                "[C2C_READ_FAILED] MsgIds=~p, FromUid=~p, ToUid=~p, Reason=~p~n",
+                [MsgIds, CurrentUid, ToId, Reason]
             ),
             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"internal_error">>, To),
             {reply, ErrorMsg}
