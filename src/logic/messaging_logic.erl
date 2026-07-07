@@ -1,14 +1,13 @@
 -module(messaging_logic).
--dialyzer({nowarn_function, [offline_ack/2]}).
+-dialyzer({nowarn_function, [offline_ack/4]}).
 
 -export([
-    handle_rest_action/3,
-    offline/2,
-    offline_ack/2,
+    offline/6,
+    offline_ack/4,
     read_stats/2,
-    history/2,
-    reaction_add/2,
-    reaction_remove/2,
+    history/5,
+    reaction_add/4,
+    reaction_remove/4,
     reaction_list/2,
     route_ws/5
 ]).
@@ -19,118 +18,76 @@
 -include("error_code.hrl").
 -include("log.hrl").
 
-%% Stable messaging entry for REST read models and websocket routing.
--spec handle_rest_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
-handle_rest_action(offline, Req0, State) ->
-    offline(Req0, State);
-handle_rest_action(offline_ack, Req0, State) ->
-    offline_ack(Req0, State);
-handle_rest_action(read_stats, Req0, State) ->
-    read_stats(Req0, State);
-handle_rest_action(pin, Req0, State) ->
-    msg_handler:pin(Req0, State);
-handle_rest_action(forward, Req0, State) ->
-    msg_handler:forward(Req0, State);
-handle_rest_action(reaction_add, Req0, State) ->
-    reaction_add(Req0, State);
-handle_rest_action(reaction_remove, Req0, State) ->
-    reaction_remove(Req0, State);
-handle_rest_action(reaction_list, Req0, State) ->
-    reaction_list(Req0, State);
-handle_rest_action(history, Req0, State) ->
-    history(Req0, State);
-handle_rest_action(false, Req0, _State) ->
-    Req0.
+%% ARCH-01：本模块此前多个函数直接签名 cowboy_req:req() 并解析
+%% cowboy_req:parse_qs/elib_req:body，越界承担了 handler 职责。
+%% HTTP 参数解析与响应封装已上移至 msg_handler，本模块函数一律收纯参数、
+%% 返回 {ok, Payload} | {ok, Payload, Msg} | {error, Reason} | {error, Reason, Code}。
 
--spec offline(cowboy_req:req(), map()) -> cowboy_req:req().
-offline(Req0, State) ->
-    {ok, Limit} = elib_param:int(limit, Req0, 1000),
-    {ok, C2CLastMsgAtInt} = elib_param:int(c2c_last_msg_at, Req0, 0),
-    {ok, C2GLastMsgAtInt} = elib_param:int(c2g_last_msg_at, Req0, 0),
-    {ok, S2CLastMsgAtInt} = elib_param:int(s2c_last_msg_at, Req0, 0),
+-spec offline(
+    integer(), non_neg_integer(), non_neg_integer(), non_neg_integer(), non_neg_integer(), binary()
+) ->
+    map().
+offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DID) ->
     %% 【P0-1】可选 did：客户端携带时 C2C/S2C 按设备过滤（排除本设备已确认的消息）；
     %% 缺省保持按 uid 的旧语义（旧客户端零破坏）
-    DID = proplists:get_value(<<"did">>, cowboy_req:parse_qs(Req0), <<>>),
-
     C2CLastMsgAt = ms_to_since_ts(C2CLastMsgAtInt),
     C2GLastMsgAt = ms_to_since_ts(C2GLastMsgAtInt),
     S2CLastMsgAt = ms_to_since_ts(S2CLastMsgAtInt),
 
-    case maps:get(current_uid, State, undefined) of
-        undefined ->
-            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
-        CurrentUid ->
-            CountC2CMsg = msg_c2c_ds:count_unread_since(CurrentUid, C2CLastMsgAt, DID),
-            CountC2GMsg = get_c2g_msg_count(CurrentUid, C2GLastMsgAt),
-            CountS2CMsg = msg_s2c_ds:count_since(CurrentUid, S2CLastMsgAt, DID),
+    CountC2CMsg = msg_c2c_ds:count_unread_since(CurrentUid, C2CLastMsgAt, DID),
+    CountC2GMsg = get_c2g_msg_count(CurrentUid, C2GLastMsgAt),
+    CountS2CMsg = msg_s2c_ds:count_since(CurrentUid, S2CLastMsgAt, DID),
 
-            C2CMsgs = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2CLastMsgAt),
-            C2GMsgs = msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt),
-            S2CMsgs = msg_s2c_ds:read_msg_for_device(CurrentUid, DID, Limit, S2CLastMsgAt),
+    C2CMsgs = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2CLastMsgAt),
+    C2GMsgs = msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt),
+    S2CMsgs = msg_s2c_ds:read_msg_for_device(CurrentUid, DID, Limit, S2CLastMsgAt),
 
-            ProcessedC2CMsgs = [process_message(Msg) || Msg <- C2CMsgs],
-            ProcessedC2GMsgs = [process_message(Msg) || Msg <- C2GMsgs],
-            ProcessedS2CMsgs = [process_message(Msg) || Msg <- S2CMsgs],
+    ProcessedC2CMsgs = [process_message(Msg) || Msg <- C2CMsgs],
+    ProcessedC2GMsgs = [process_message(Msg) || Msg <- C2GMsgs],
+    ProcessedS2CMsgs = [process_message(Msg) || Msg <- S2CMsgs],
 
-            Payload =
-                #{
-                    <<"c2c">> =>
-                        #{
-                            <<"has_more">> => length(ProcessedC2CMsgs) < CountC2CMsg,
-                            <<"next_last_msg_at">> =>
-                                calculate_next_last_msg_at(ProcessedC2CMsgs, C2CLastMsgAt),
-                            <<"total">> => CountC2CMsg,
-                            <<"list">> => ProcessedC2CMsgs
-                        },
-                    <<"c2g">> =>
-                        #{
-                            <<"has_more">> => length(ProcessedC2GMsgs) < CountC2GMsg,
-                            <<"next_last_msg_at">> =>
-                                calculate_next_last_msg_at(ProcessedC2GMsgs, C2GLastMsgAt),
-                            <<"total">> => CountC2GMsg,
-                            <<"list">> => ProcessedC2GMsgs
-                        },
-                    <<"s2c">> =>
-                        #{
-                            <<"has_more">> => length(ProcessedS2CMsgs) < CountS2CMsg,
-                            <<"next_last_msg_at">> =>
-                                calculate_next_last_msg_at(ProcessedS2CMsgs, S2CLastMsgAt),
-                            <<"total">> => CountS2CMsg,
-                            <<"list">> => ProcessedS2CMsgs
-                        }
-                },
-            elib_response:success(Req0, Payload)
-    end.
+    #{
+        <<"c2c">> =>
+            #{
+                <<"has_more">> => length(ProcessedC2CMsgs) < CountC2CMsg,
+                <<"next_last_msg_at">> =>
+                    calculate_next_last_msg_at(ProcessedC2CMsgs, C2CLastMsgAt),
+                <<"total">> => CountC2CMsg,
+                <<"list">> => ProcessedC2CMsgs
+            },
+        <<"c2g">> =>
+            #{
+                <<"has_more">> => length(ProcessedC2GMsgs) < CountC2GMsg,
+                <<"next_last_msg_at">> =>
+                    calculate_next_last_msg_at(ProcessedC2GMsgs, C2GLastMsgAt),
+                <<"total">> => CountC2GMsg,
+                <<"list">> => ProcessedC2GMsgs
+            },
+        <<"s2c">> =>
+            #{
+                <<"has_more">> => length(ProcessedS2CMsgs) < CountS2CMsg,
+                <<"next_last_msg_at">> =>
+                    calculate_next_last_msg_at(ProcessedS2CMsgs, S2CLastMsgAt),
+                <<"total">> => CountS2CMsg,
+                <<"list">> => ProcessedS2CMsgs
+            }
+    }.
 
--spec read_stats(cowboy_req:req(), map()) -> cowboy_req:req().
-read_stats(Req0, State) ->
-    MsgId = proplists:get_value(<<"msg_id">>, cowboy_req:parse_qs(Req0), undefined),
-
-    case MsgId of
-        undefined ->
-            elib_response:error(Req0, <<"缺少 msg_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
-        _ ->
-            case maps:get(current_uid, State, undefined) of
-                undefined ->
-                    elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
-                CurrentUid ->
-                    case msg_c2g_logic:read_stats(MsgId, CurrentUid) of
-                        {ok, ReadCount, TotalCount} ->
-                            Payload = #{
-                                <<"read_count">> => ReadCount,
-                                <<"total_count">> => TotalCount
-                            },
-                            elib_response:success(Req0, Payload);
-                        {error, not_found} ->
-                            elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_NOT_FOUND);
-                        {error, permission_denied} ->
-                            elib_response:error(Req0, <<"无权限访问该消息"/utf8>>, ?ERR_ACCESS_DENIED);
-                        {error, Reason} ->
-                            elib_response:error(
-                                Req0, elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
-                            )
-                    end
-            end
+-spec read_stats(integer() | binary(), integer()) ->
+    {ok, map()} | {error, binary(), integer()}.
+read_stats(MsgId, CurrentUid) ->
+    case msg_c2g_logic:read_stats(MsgId, CurrentUid) of
+        {ok, ReadCount, TotalCount} ->
+            {ok, #{
+                <<"read_count">> => ReadCount,
+                <<"total_count">> => TotalCount
+            }};
+        {error, not_found} ->
+            {error, <<"消息不存在"/utf8>>, ?ERR_NOT_FOUND};
+        {error, permission_denied} ->
+            {error, <<"无权限访问该消息"/utf8>>, ?ERR_ACCESS_DENIED};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 %%-------------------------------------------------------------------
@@ -138,52 +95,36 @@ read_stats(Req0, State) ->
 %%
 %% 仅在 msg_archive_enabled=true 且已执行 00000075 DDL 时有效。
 %%
-%% 查询参数（GET）：
-%%   chat_type  : "c2c" | "c2g"
-%%   peer_id    : TSID 格式的对方 uid（C2C）或 group_id（C2G）
-%%   after_seq  : 上次最后消息的 conv_seq（首次传 0）
-%%   limit      : 每次返回条数（默认 50，最大 100）
+%% 参数：
+%%   ChatType   : "c2c" | "c2g"
+%%   PeerIdEnc  : TSID 格式的对方 uid（C2C）或 group_id（C2G），编码态 binary
+%%   AfterSeq   : 上次最后消息的 conv_seq（首次传 0）
+%%   Limit      : 每次返回条数（调用方需先夹到 <=100）
 %%
-%% 响应：
-%%   {messages: [...], next_seq: N, has_more: true|false}
+%% 返回：
+%%   {ok, #{messages, next_seq, has_more, conv_key}} | {error, Reason, Code}
 %% @end
 %%-------------------------------------------------------------------
--spec history(cowboy_req:req(), map()) -> cowboy_req:req().
-history(Req0, State) ->
-    case maps:get(current_uid, State, undefined) of
-        undefined ->
-            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
-        CurrentUid ->
-            Qs = cowboy_req:parse_qs(Req0),
-            ChatType = proplists:get_value(<<"chat_type">>, Qs, <<>>),
-            PeerIdEnc = proplists:get_value(<<"peer_id">>, Qs, <<>>),
-            {ok, AfterSeq} = elib_param:int(after_seq, Req0, 0),
-            {ok, Limit0} = elib_param:int(limit, Req0, 50),
-            %% 最大 100 条
-            Limit = erlang:min(Limit0, 100),
-
-            case validate_history_params(ChatType, PeerIdEnc, CurrentUid) of
-                {error, Reason} ->
-                    elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST);
-                {ok, ConvKey} ->
-                    case msg_archive_ds:history(ConvKey, AfterSeq, Limit) of
-                        {ok, Rows} ->
-                            Messages = [encode_history_msg(CurrentUid, Row) || Row <- Rows],
-                            NextSeq = next_seq_from_rows(Rows, AfterSeq),
-                            Payload = #{
-                                <<"messages">> => Messages,
-                                <<"next_seq">> => NextSeq,
-                                <<"has_more">> => length(Rows) >= Limit,
-                                <<"conv_key">> => ConvKey
-                            },
-                            elib_response:success(Req0, Payload);
-                        {error, _Reason} ->
-                            elib_response:error(
-                                Req0,
-                                <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
-                                ?ERR_INTERNAL_SERVER_ERROR
-                            )
-                    end
+-spec history(integer(), binary(), binary(), non_neg_integer(), pos_integer()) ->
+    {ok, map()} | {error, binary(), integer()}.
+history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
+    case validate_history_params(ChatType, PeerIdEnc, CurrentUid) of
+        {error, Reason} ->
+            {error, Reason, ?ERR_BAD_REQUEST};
+        {ok, ConvKey} ->
+            case msg_archive_ds:history(ConvKey, AfterSeq, Limit) of
+                {ok, Rows} ->
+                    Messages = [encode_history_msg(CurrentUid, Row) || Row <- Rows],
+                    NextSeq = next_seq_from_rows(Rows, AfterSeq),
+                    {ok, #{
+                        <<"messages">> => Messages,
+                        <<"next_seq">> => NextSeq,
+                        <<"has_more">> => length(Rows) >= Limit,
+                        <<"conv_key">> => ConvKey
+                    }};
+                {error, _Reason} ->
+                    {error, <<"消息历史暂不可用，请确认服务已开启 msg_archive_enabled"/utf8>>,
+                        ?ERR_INTERNAL_SERVER_ERROR}
             end
     end.
 
@@ -233,16 +174,9 @@ next_seq_from_rows(Rows, _AfterSeq) ->
     LastRow = lists:last(Rows),
     maps:get(<<"conv_seq">>, LastRow, 0).
 
--spec offline_ack(cowboy_req:req(), map()) -> cowboy_req:req().
-offline_ack(Req0, State) ->
-    CurrentUid = auth_ds:current_uid(State),
-    PostVals = elib_param:post(Req0),
-    Type = string:lowercase(maps:get(<<"type">>, PostVals, <<>>)),
-    MsgIds = maps:get(<<"msg_ids">>, PostVals, []),
-    %% 【P0-1】可选 did：携带时 C2C/S2C 走按设备送达标记（不按 uid 删行），
-    %% 缺省保持旧删行语义（旧客户端不受影响，但存在多端丢消息风险，客户端应尽快带 did）
-    DID = maps:get(<<"did">>, PostVals, <<>>),
-
+-spec offline_ack(integer(), binary(), list(), binary()) ->
+    {ok, map()} | {error, binary()}.
+offline_ack(CurrentUid, Type, MsgIds, DID) ->
     ok =
         ?INFO_LOG(
             "Processing offline_ack for user: ~p, type: ~p, msg_count: ~p, did: ~p",
@@ -263,114 +197,88 @@ offline_ack(Req0, State) ->
                     "Offline ack processed successfully: ~p messages for user: ~p",
                     [ProcessedCount, CurrentUid]
                 ),
-            elib_response:success(Req0, Payload);
+            {ok, Payload};
         {error, Reason} ->
             ok =
                 ?ERROR_LOG(
                     "Failed to process offline_ack for user: ~p, reason: ~p",
                     [CurrentUid, Reason]
                 ),
-            elib_response:error(Req0, Reason)
+            {error, Reason}
     end.
 
 -spec route_ws(binary(), integer(), map(), binary(), binary()) -> ok | {reply, map()}.
 route_ws(MsgId, CurrentUid, Data, Type, OriginalMsg) ->
     message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg).
 
--spec reaction_add(cowboy_req:req(), map()) -> cowboy_req:req().
-reaction_add(Req0, State) ->
-    case maps:get(current_uid, State, undefined) of
-        undefined ->
-            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
-        CurrentUid ->
-            {ok, Body, _Req1} = elib_req:body(Req0, []),
-            MsgId = maps:get(<<"msg_id">>, Body, undefined),
-            MsgType = maps:get(<<"msg_type">>, Body, <<"c2c">>),
-            Emoji = maps:get(<<"emoji">>, Body, undefined),
-
-            case {MsgId, Emoji} of
-                {undefined, _} ->
-                    elib_response:error(Req0, <<"缺少消息ID参数"/utf8>>, ?ERR_BAD_REQUEST);
-                {_, undefined} ->
-                    elib_response:error(Req0, <<"缺少emoji参数"/utf8>>, ?ERR_BAD_REQUEST);
-                {_, <<>>} ->
-                    elib_response:error(Req0, <<"emoji不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-                _ ->
-                    case msg_reaction_logic:add(MsgId, MsgType, CurrentUid, Emoji) of
-                        {ok, Result} ->
-                            Payload = #{
-                                <<"msg_id">> => MsgId,
-                                <<"emoji">> => Emoji,
-                                <<"user_id">> => maps:get(<<"user_id">>, Result),
-                                <<"created_at">> => maps:get(<<"created_at">>, Result)
-                            },
-                            elib_response:success(Req0, Payload, <<"添加表情成功"/utf8>>);
-                        {error, {invalid_param, Msg}} ->
-                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
-                        {error, msg_not_found} ->
-                            elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_MESSAGE_NOT_FOUND);
-                        {error, permission_denied} ->
-                            elib_response:error(Req0, <<"无权限访问该消息"/utf8>>, ?ERR_ACCESS_DENIED);
-                        {error, not_group_member} ->
-                            elib_response:error(Req0, <<"不是群成员"/utf8>>, ?ERR_NOT_GROUP_MEMBER);
-                        {error, Reason} ->
-                            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
-                    end
-            end
-    end.
-
--spec reaction_remove(cowboy_req:req(), map()) -> cowboy_req:req().
-reaction_remove(Req0, State) ->
-    case maps:get(current_uid, State, undefined) of
-        undefined ->
-            elib_response:error(Req0, <<"未授权"/utf8>>, ?ERR_UNAUTHORIZED);
-        CurrentUid ->
-            {ok, Body, _Req1} = elib_req:body(Req0, []),
-            MsgId = maps:get(<<"msg_id">>, Body, undefined),
-            MsgType = maps:get(<<"msg_type">>, Body, <<"c2c">>),
-            Emoji = maps:get(<<"emoji">>, Body, undefined),
-
-            case {MsgId, Emoji} of
-                {undefined, _} ->
-                    elib_response:error(Req0, <<"缺少消息ID参数"/utf8>>, ?ERR_BAD_REQUEST);
-                {_, undefined} ->
-                    elib_response:error(Req0, <<"缺少emoji参数"/utf8>>, ?ERR_BAD_REQUEST);
-                {_, <<>>} ->
-                    elib_response:error(Req0, <<"emoji不能为空"/utf8>>, ?ERR_BAD_REQUEST);
-                _ ->
-                    case msg_reaction_logic:remove(MsgId, MsgType, CurrentUid, Emoji) of
-                        ok ->
-                            Payload = #{
-                                <<"msg_id">> => MsgId,
-                                <<"emoji">> => Emoji
-                            },
-                            elib_response:success(Req0, Payload, <<"移除表情成功"/utf8>>);
-                        {error, msg_not_found} ->
-                            elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_MESSAGE_NOT_FOUND);
-                        {error, Reason} ->
-                            elib_response:error(
-                                Req0, elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
-                            )
-                    end
-            end
-    end.
-
--spec reaction_list(cowboy_req:req(), map()) -> cowboy_req:req().
-reaction_list(Req0, _State) ->
-    Qs = cowboy_req:parse_qs(Req0),
-    MsgId = proplists:get_value(<<"msg_id">>, Qs, undefined),
-    MsgType = proplists:get_value(<<"msg_type">>, Qs, <<"c2c">>),
-
-    case MsgId of
-        undefined ->
-            elib_response:error(Req0, <<"缺少 msg_id 参数"/utf8>>, ?ERR_BAD_REQUEST);
+-spec reaction_add(integer(), binary() | undefined, binary(), binary() | undefined) ->
+    {ok, map(), binary()} | {error, binary(), integer()}.
+reaction_add(CurrentUid, MsgId, MsgType, Emoji) ->
+    case {MsgId, Emoji} of
+        {undefined, _} ->
+            {error, <<"缺少消息ID参数"/utf8>>, ?ERR_BAD_REQUEST};
+        {_, undefined} ->
+            {error, <<"缺少emoji参数"/utf8>>, ?ERR_BAD_REQUEST};
+        {_, <<>>} ->
+            {error, <<"emoji不能为空"/utf8>>, ?ERR_BAD_REQUEST};
         _ ->
-            case msg_reaction_logic:list(MsgId, MsgType) of
+            case msg_reaction_logic:add(MsgId, MsgType, CurrentUid, Emoji) of
                 {ok, Result} ->
-                    elib_response:success(Req0, Result);
+                    Payload = #{
+                        <<"msg_id">> => MsgId,
+                        <<"emoji">> => Emoji,
+                        <<"user_id">> => maps:get(<<"user_id">>, Result),
+                        <<"created_at">> => maps:get(<<"created_at">>, Result)
+                    },
+                    {ok, Payload, <<"添加表情成功"/utf8>>};
+                {error, {invalid_param, Msg}} ->
+                    {error, Msg, ?ERR_BAD_REQUEST};
+                {error, msg_not_found} ->
+                    {error, <<"消息不存在"/utf8>>, ?ERR_MESSAGE_NOT_FOUND};
+                {error, permission_denied} ->
+                    {error, <<"无权限访问该消息"/utf8>>, ?ERR_ACCESS_DENIED};
+                {error, not_group_member} ->
+                    {error, <<"不是群成员"/utf8>>, ?ERR_NOT_GROUP_MEMBER};
                 {error, Reason} ->
-                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                    {error, Reason, ?ERR_INTERNAL_SERVER_ERROR}
             end
+    end.
+
+-spec reaction_remove(integer(), binary() | undefined, binary(), binary() | undefined) ->
+    {ok, map(), binary()} | {error, binary(), integer()}.
+reaction_remove(CurrentUid, MsgId, MsgType, Emoji) ->
+    case {MsgId, Emoji} of
+        {undefined, _} ->
+            {error, <<"缺少消息ID参数"/utf8>>, ?ERR_BAD_REQUEST};
+        {_, undefined} ->
+            {error, <<"缺少emoji参数"/utf8>>, ?ERR_BAD_REQUEST};
+        {_, <<>>} ->
+            {error, <<"emoji不能为空"/utf8>>, ?ERR_BAD_REQUEST};
+        _ ->
+            case msg_reaction_logic:remove(MsgId, MsgType, CurrentUid, Emoji) of
+                ok ->
+                    Payload = #{
+                        <<"msg_id">> => MsgId,
+                        <<"emoji">> => Emoji
+                    },
+                    {ok, Payload, <<"移除表情成功"/utf8>>};
+                {error, msg_not_found} ->
+                    {error, <<"消息不存在"/utf8>>, ?ERR_MESSAGE_NOT_FOUND};
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR}
+            end
+    end.
+
+-spec reaction_list(binary() | undefined, binary()) ->
+    {ok, map()} | {error, binary(), integer()}.
+reaction_list(undefined, _MsgType) ->
+    {error, <<"缺少 msg_id 参数"/utf8>>, ?ERR_BAD_REQUEST};
+reaction_list(MsgId, MsgType) ->
+    case msg_reaction_logic:list(MsgId, MsgType) of
+        {ok, Result} ->
+            {ok, Result};
+        {error, Reason} ->
+            {error, Reason, ?ERR_INTERNAL_SERVER_ERROR}
     end.
 
 -spec calculate_next_last_msg_at([map()], binary() | integer()) -> binary() | integer().
