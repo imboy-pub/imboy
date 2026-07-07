@@ -25,7 +25,7 @@
 | ID | 任务 | 仓库 | 优先级 | 备注 |
 |---|---|---|---|---|
 | **FEAT-03** | E2EE 死开关与 UI 脱节 | imboyapp(+imboy 文档) | HIGH | **plan ready，待实施**（`imboyapp/.claude/PRPs/plans/feat-03-e2ee-dead-toggle.plan.md`） |
-| SEC-03 | red_packet_detail 越权读 | imboy | MEDIUM | 后端补归属校验，范围小 |
+| ~~SEC-03~~ | red_packet_detail 越权读 | imboy | MEDIUM | **✅ 已完成**（commit `0d80be05`），核实见 project-audit-roadmap-2026-07.md |
 | SEC-05 | 免鉴权路由收紧（/user/show、/conversation/online） | imboy | MEDIUM | 需 Fable 确认字段收窄范围 |
 | ARCH-01 | messaging_logic 越界操作 cowboy_req | imboy | MEDIUM | 后端分层修正 |
 | CONTRACT-02 | admin payload 二次 JSON.parse 绕过 TSID | imboyadmin + imboy | MEDIUM | 前后端契约 |

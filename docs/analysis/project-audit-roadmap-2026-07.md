@@ -56,7 +56,8 @@
 - **分工**：**[MODEL] glm 可独立执行**（方案已在 stash，只需定位+验证+提交）。
 - **回滚条件**：若 stash 已被并发会话提交（`git log` 出现对应 commit），则本项已完成，跳过。
 
-### [SEC-03] red_packet_detail 越权读  [安全] [MEDIUM]
+### [SEC-03] red_packet_detail 越权读  [安全] [MEDIUM] [✅ 已完成 2026-07-06]
+- **状态**：已修复并提交（commit `0d80be05 fix(security): [SEC-03] 红包详情越权（IDOR）修复`），勿重复执行。`test/logic/red_packet_logic_tests.erl` 已覆盖：陌生人读取返回"无权查看该红包详情"，发送者/领取者读取返回 `{ok, _}`。
 - **根因**：`src/api/wallet_handler.erl:240` `_CurrentUid = auth_ds:current_uid(State)` 取了却丢弃，直接 `red_packet_logic:detail(Id)`；`src/logic/red_packet_logic.erl:90 detail(PacketId)` 只按 id 查，无查看者归属校验。任意登录用户可用红包 id 读发送者/祝福语/金额/领取名单。
 - **影响范围**：`wallet_handler.erl:240`、`red_packet_logic.erl:90`。
 - **修复方案**：`detail/1` → `detail/2` 加 `ViewerUid`；在返回前校验 `ViewerUid` 为发送者或已领取者之一，否则 `{error, no_permission}`。handler 传入 `CurrentUid`（去掉下划线）。
@@ -238,7 +239,7 @@
 | 任务 | 依赖 | 估时 | 分工 | 验收 |
 |---|---|---|---|---|
 | ~~SEC-02 group_* IDOR 修复~~ **✅ 已完成**（commit `5cb86897`，勿重复执行） | — | — | — | 已提交 |
-| SEC-03 red_packet_detail 越权读 | 无 | 1h | [MODEL] glm | eunit 断言 no_permission |
+| ~~SEC-03 red_packet_detail 越权读~~ **✅ 已完成**（commit `0d80be05`，勿重复执行） | — | — | — | 已提交 |
 | SEC-05 收紧 /user/show /conversation/online | Fable 定字段收窄 | 1h | Fable+glm | curl 无 token 401 |
 | FEAT-01(user-device) 后端补 /adm/user/device* 路由 | 无（逻辑已存在） | 2h | [MODEL] glm | admin 页面拉到设备列表 |
 | SEC-01 billing 管理端路由迁移（低风险子集） | 无 | 2h | [MODEL] glm | plan_create 走 adm middleware 被非 admin 拒 |
