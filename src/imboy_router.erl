@@ -15,7 +15,8 @@ get_routes() ->
             {"/", index_handler, #{action => help}},
             {"/help", index_handler, #{action => help}},
 
-            % v0 兼容路由 — 计划在 1.1.0 移除，届时通过 410 Gone 响应引导客户端升级
+            % v0 兼容路由 — 已统一加 /api 前缀（/api/init、/api/passport/login…），
+            % 与 v1 同处 /api 命名空间。v0 语义保留，下架时间另定。
             {"/api/init", index_handler, #{action => init}},
             {"/api/refreshtoken", passport_handler, #{action => refreshtoken}},
 
@@ -166,7 +167,7 @@ get_routes() ->
                 {"/api/group_album/photo/comment", group_album_handler, #{action => add_comment}},
                 {"/api/group_album/photo/comments", group_album_handler, #{action => list_comments}},
                 {"/api/group_album/cover/update", group_album_handler, #{action => update_cover}},
-                % end v0 兼容路由 — 计划在 1.1.0 移除
+                % end v0 兼容路由（已 /api 前缀化）
 
                 %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
 
