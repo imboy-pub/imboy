@@ -513,7 +513,14 @@ handle_json_message(Msg, State) ->
                     ok ->
                         {ok, State, hibernate};
                     {reply, Msg2} ->
-                        {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate}
+                        {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate};
+                    Other ->
+                        %% 路由返回异常结果（如 staging 失败时 logic 返回裸 error）：
+                        %% 原先落 case_clause 崩掉 WS 进程，客户端只见 invalid_json。
+                        %% 改为回结构化错误帧，客户端可按 msgId 关联并走重试。
+                        ok = ?ERROR_LOG({route_unexpected_result, Type, MsgId, Other}),
+                        ErrMsg = message_ds:assemble_s2c(MsgId, <<"server_error">>, <<>>),
+                        {reply, reply_frame(ErrMsg, State), State, hibernate}
                 end
         end
     catch

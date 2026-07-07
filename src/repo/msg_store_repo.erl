@@ -10,6 +10,11 @@
 
 -export([tablename/0]).
 
+-ifdef(TEST).
+%% 仅测试导出：payload/e2ee 的 JSONB 规范化（数字开头密文误判回归）
+-export([msg_store_payload_to_jsonb/1]).
+-endif.
+
 %% 表管理
 -export([ensure_table_exists/0]).
 -export([create_indexes/1]).
@@ -336,9 +341,13 @@ msg_store_payload_to_jsonb(null) ->
 msg_store_payload_to_jsonb(Map) when is_map(Map) ->
     jsone:encode(Map, [native_utf8]);
 msg_store_payload_to_jsonb(Bin) when is_binary(Bin) ->
-    case is_likely_json_binary(Bin) of
-        true -> Bin;
-        false -> jsone:encode(Bin, [native_utf8])
+    %% is_likely_json_binary 只看首字符，会把 "14bVk..." 这类以数字开头的
+    %% 裸 E2EE 密文误判为 JSON 数字 → PG 22P02（真机实测，e2ee 消息 staging
+    %% 全崩）。与 e2ee 字段同法：try-decode 真验证，不能解码则包装 JSON string。
+    try jsone:decode(Bin, [{object_format, map}]) of
+        _ -> Bin
+    catch
+        _:_ -> jsone:encode(Bin, [native_utf8])
     end;
 msg_store_payload_to_jsonb(Other) ->
     jsone:encode(Other).
@@ -348,7 +357,7 @@ msg_store_payload_to_jsonb(Other) ->
 %% 上游可能传：map（标准 E2EE 元数据）、JSON binary、空 binary、null、
 %% 或者裸字符串（如某些上游路径只取了密文片段）。裸字符串必须包装为
 %% JSON 字符串，否则触发 "invalid input syntax for type json"。
-%% 复用与 payload 相同的 is_likely_json_binary/1 判断，行为保持一致。
+%% 与 payload 相同：try-decode 真验证，行为保持一致。
 -spec msg_store_e2ee_to_jsonb(term()) -> binary() | null.
 msg_store_e2ee_to_jsonb(null) ->
     null;
@@ -366,24 +375,3 @@ msg_store_e2ee_to_jsonb(Bin) when is_binary(Bin) ->
     end;
 msg_store_e2ee_to_jsonb(_) ->
     null.
-
-%% @private 粗略判断 binary 是否已经是 JSON 文本（首字符为 {/[/"/数字/字面量）
--spec is_likely_json_binary(binary()) -> boolean().
-is_likely_json_binary(<<>>) ->
-    false;
-is_likely_json_binary(<<First, _/binary>>) when
-    First =:= ${;
-    First =:= $[;
-    First =:= $";
-    First =:= $-;
-    First >= $0, First =< $9
-->
-    true;
-is_likely_json_binary(<<"true">>) ->
-    true;
-is_likely_json_binary(<<"false">>) ->
-    true;
-is_likely_json_binary(<<"null">>) ->
-    true;
-is_likely_json_binary(_) ->
-    false.

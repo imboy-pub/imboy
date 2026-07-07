@@ -959,3 +959,32 @@ create_indexes_validates_index_ddl_test_() ->
             ok
         end
     ).
+
+%% ===================================================================
+%% msg_store_payload_to_jsonb/1 测试（E2EE 密文 staging 崩溃回归）
+%% ===================================================================
+
+%% 真机实测缺陷：E2EE 裸密文以数字开头（如 "14bVk..."）被首字符启发式
+%% 误判为 JSON 数字，原样写入 JSONB 列触发 PG 22P02，
+%% stage_and_send_c2c 返回 error 导致 WS 进程 case_clause 崩溃。
+payload_to_jsonb_wraps_digit_leading_ciphertext_test() ->
+    Ct = <<"14bVksw4V9G7cRCkGh3zAbCdEf">>,
+    Encoded = msg_store_repo:msg_store_payload_to_jsonb(Ct),
+    %% 包装后必须是合法 JSON，且解回原密文
+    ?assertEqual(Ct, jsone:decode(Encoded)).
+
+payload_to_jsonb_wraps_plain_base64_test() ->
+    Ct = <<"aGVsbG8gd29ybGQ=">>,
+    Encoded = msg_store_repo:msg_store_payload_to_jsonb(Ct),
+    ?assertEqual(Ct, jsone:decode(Encoded)).
+
+payload_to_jsonb_passthrough_valid_json_object_test() ->
+    Obj = <<"{\"text\":\"hi\"}">>,
+    ?assertEqual(Obj, msg_store_repo:msg_store_payload_to_jsonb(Obj)).
+
+payload_to_jsonb_encodes_map_test() ->
+    Encoded = msg_store_repo:msg_store_payload_to_jsonb(#{<<"text">> => <<"hi">>}),
+    ?assertEqual(#{<<"text">> => <<"hi">>}, jsone:decode(Encoded, [{object_format, map}])).
+
+payload_to_jsonb_null_test() ->
+    ?assertEqual(<<"null">>, msg_store_repo:msg_store_payload_to_jsonb(null)).

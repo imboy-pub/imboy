@@ -187,7 +187,9 @@ check_ip_rate_limit(Ip) when
             {ok, Count + 1}
     end;
 check_ip_rate_limit(Ip) ->
-    ok = ?ERROR_LOG([login_attempt, invalid_ip, Ip]),
+    %% 空 IP 是本地直连/无反代头的常态（本地开发实测每次登录失败都触发），
+    %% 降级为 warning 避免 error 级噪声；限流语义不变（无法按 IP 限流）。
+    ok = ?WARN_LOG([login_attempt, invalid_ip, Ip]),
     {error, invalid_ip}.
 
 %% @doc 提取真实客户端IP地址（防止伪造）
