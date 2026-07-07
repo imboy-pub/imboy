@@ -81,20 +81,15 @@ list_by_uid(Uid, IsRead) ->
 %% @return {ok, list(map())} | {error, Reason}
 -spec list_by_uid(integer(), boolean() | undefined, map()) -> {ok, list(map())} | {error, term()}.
 list_by_uid(Uid, IsRead, Options) ->
-    case mention_repo:find_by_uid(Uid, IsRead) of
-        {ok, Results} ->
-            % 处理分页
-            case maps:get(page, Options, undefined) of
-                undefined ->
-                    {ok, Results};
-                Page ->
-                    Size = maps:get(size, Options, 20),
-                    Start = (Page - 1) * Size,
-                    Limited = lists:sublist(Results, Start + 1, Size),
-                    {ok, Limited}
-            end;
-        {error, Reason} ->
-            {error, Reason}
+    case maps:get(page, Options, undefined) of
+        undefined ->
+            %% 无分页参数：保留旧行为（全量，向后兼容）
+            mention_repo:find_by_uid(Uid, IsRead);
+        Page ->
+            %% 有分页：LIMIT/OFFSET 下推到 DB，避免全量拉取后内存截取
+            Size = maps:get(size, Options, 20),
+            Offset = (Page - 1) * Size,
+            mention_repo:find_by_uid(Uid, IsRead, Size, Offset)
     end.
 
 %% @doc 查询用户在指定群组的@提及
@@ -102,7 +97,8 @@ list_by_uid(Uid, IsRead, Options) ->
 %% @param Uid 用户ID
 %% @param IsRead 已读状态（true/false/undefined 表示全部）
 %% @return {ok, list(map())} | {error, Reason}
--spec list_by_group_and_uid(integer(), integer(), boolean() | undefined) -> {ok, list(map())} | {error, term()}.
+-spec list_by_group_and_uid(integer(), integer(), boolean() | undefined) ->
+    {ok, list(map())} | {error, term()}.
 list_by_group_and_uid(Gid, Uid, IsRead) ->
     list_by_group_and_uid(Gid, Uid, IsRead, #{}).
 
@@ -112,22 +108,18 @@ list_by_group_and_uid(Gid, Uid, IsRead) ->
 %% @param IsRead 已读状态（true/false/undefined 表示全部）
 %% @param Options 选项，可包含 #{page => integer(), size => integer()}
 %% @return {ok, list(map())} | {error, Reason}
--spec list_by_group_and_uid(integer(), integer(), boolean() | undefined, map()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_group_and_uid(integer(), integer(), boolean() | undefined, map()) ->
+    {ok, list(map())} | {error, term()}.
 list_by_group_and_uid(Gid, Uid, IsRead, Options) ->
-    case mention_repo:find_by_group_and_uid(Gid, Uid, IsRead) of
-        {ok, Results} ->
-            % 处理分页
-            case maps:get(page, Options, undefined) of
-                undefined ->
-                    {ok, Results};
-                Page ->
-                    Size = maps:get(size, Options, 20),
-                    Start = (Page - 1) * Size,
-                    Limited = lists:sublist(Results, Start + 1, Size),
-                    {ok, Limited}
-            end;
-        {error, Reason} ->
-            {error, Reason}
+    case maps:get(page, Options, undefined) of
+        undefined ->
+            %% 无分页参数：保留旧行为（全量，向后兼容）
+            mention_repo:find_by_group_and_uid(Gid, Uid, IsRead);
+        Page ->
+            %% 有分页：LIMIT/OFFSET 下推到 DB
+            Size = maps:get(size, Options, 20),
+            Offset = (Page - 1) * Size,
+            mention_repo:find_by_group_and_uid(Gid, Uid, IsRead, Size, Offset)
     end.
 
 %% @doc 标记@消息为已读
