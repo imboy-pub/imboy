@@ -63,7 +63,7 @@
 - `message_export = true | false`
 - `audit_mode = none | metadata | full`
 - `retention_policy`
-- `e2ee_mode = disabled | optional | required`
+- `e2ee_mode = disabled | optional | required | compliance`
 
 ### 3.3 Plugin
 

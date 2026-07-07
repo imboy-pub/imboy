@@ -67,13 +67,14 @@
 - **分工**：**[MODEL] glm 可独立执行**。
 - **回滚条件**：detail 若被其他在线通知链路复用（grep `red_packet_logic:detail` 调用方），确认无破坏再改签名。
 
-### [SEC-04] compliance key 服务端密钥托管破坏 E2EE 语义  [安全] [HIGH — 需产品拍板]
+### [SEC-04] compliance key 服务端密钥托管破坏 E2EE 语义  [安全] [HIGH — 需产品拍板] [✅ 已披露 2026-07-07]
+- **状态**：客户端 wrap 行为已核实属实（`imboyapp/lib/service/e2ee_service.dart:244-266`，`compliance_e2ee` 模式下额外用 compliance 公钥 wrap AES key）。技术事实披露已落地于 `docs/compliance/e2ee-policy.md` §3。**对外法律措辞仍待法务/产品复核**（见下方分工）。
 - **根因**：`src/ds/compliance_key_ds.erl:26` 服务端持有加密的合规私钥；`src/logic/e2ee_logic.erl:173` 下发合规公钥供客户端 wrap。若客户端对 compliance 公钥追加 wrap，管理员解密合规私钥即可读全部密文——这是合法监听后门，与"零接触明文私钥"宣称不矛盾（是合规私钥非用户私钥）但**破坏端到端语义**。
-- **影响范围**：E2EE 合规声明、隐私政策、白标合规文档。[NEEDS-VERIFY] 客户端 Dart 是否真的向 compliance key wrap（需查 imboyapp e2ee_service.dart 加密路径）。
-- **修复方案**：这是**披露而非代码 bug**。（a）先核实客户端是否 wrap；（b）若 wrap，在 `docs/compliance/` 与隐私政策明示"依法留存/合规密钥托管"；（c）若不 wrap，则 compliance key 是死路径，评估移除。
+- **影响范围**：E2EE 合规声明、隐私政策、白标合规文档。[已核实] 客户端在 `e2ee_service.dart:244-266` 确实向 compliance key wrap（2026-07-07 核实）。
+- **修复方案**：这是**披露而非代码 bug**。✅ （a）已核实客户端 wrap 属实；（b）技术事实已在 `docs/compliance/e2ee-policy.md` §3 明示；⏳ 隐私政策与白标文档的**对外措辞待法务/产品定稿**。
 - **边界**：不擅自删除 compliance 机制（可能是等保/合规要求）。
-- **验收 gate**：文档明示 + 客户端 wrap 行为核实结论。
-- **分工**：**[BLOCKED] 需人工拍板**（合规策略方向，见 D）。
+- **验收 gate**：✅ 技术事实文档明示 + 客户端 wrap 行为核实结论；⏳ 对外法律措辞由人工闭环。
+- **分工**：技术披露 ✅ 已完成（glm）；**对外法律措辞仍 [BLOCKED] 需法务/产品拍板**。
 
 ### [SEC-05] 免鉴权路由收紧  [安全] [MEDIUM]
 - **根因**：`open/0`（`imboy_router.erl:901-953`）中 `/metrics`、`/user/show`、`/conversation/online` 免鉴权。/metrics 已被 nginx 入口拦截（`deploy/nginx/templates/imboy.conf.template:43-54` 仅允许内网），但 `/user/show`（任意人拉用户资料）、`/conversation/online`（在线状态）仍公开。
@@ -113,14 +114,15 @@
 - **分工**：**需 Fable 出导出数据范围方案**（涉及隐私边界）。
 - **回滚条件**：若非目标市场合规要求，降优先级到 Phase 3。
 
-### [FEAT-03] E2EESettings 死开关与 UI 脱节  [未完成] [HIGH]
+### [FEAT-03] E2EESettings 死开关与 UI 脱节  [HIGH] [✅ 短期方案 b 已完成 2026-07-07]
+- **状态**：短期方案 b 落地——死代码清理 + 文档化。`setEnabled`/`resetToDefaults`/`_keyEnabled` 已删除（`rg 'E2EESettings\.(setEnabled|resetToDefaults)' lib` 零命中）；`isEnabled()` 强化注释指明 policy 接管；后端 policy 链路核实完整；合规披露文档已建（`docs/compliance/e2ee-policy.md`）。**方案 a（密钥漂移根因）仍 BLOCKED**（见 BLK-05）。实施计划：`imboyapp/.claude/PRPs/plans/completed/feat-03-e2ee-dead-toggle.plan.md`。
 - **根因**：`imboyapp/lib/service/e2ee_settings.dart:24-30` `isEnabled()` 硬编码 `return false`，忽略持久值；`setEnabled()` 仍写 storage。设置页开关拨动对出站加密 no-op（后端 policy 强制时仍走 e2ee，policy 优先）。属开发期 workaround（本地 RSA 私钥漂移导致"无法解密"）。
 - **影响范围**：`e2ee_settings.dart`、调用点 `chat_page.dart:425`、`e2ee_service.dart:140`。
-- **修复方案**：两选一（需拍板，见 D BLK-05）：（a）修复密钥漂移根因（重装后自动重新协商/拉取设备公钥）后恢复 `isEnabled()` 读持久值；（b）暂时在设置页隐藏该开关，避免名不副实。**短期建议 (b) 止血**：设置页条件隐藏 E2EE toggle，加注释说明由后端 policy 统一控制。
+- **修复方案**：两选一（需拍板，见 D BLK-05）：（a）修复密钥漂移根因（重装后自动重新协商/拉取设备公钥）后恢复 `isEnabled()` 读持久值；（b）暂时在设置页隐藏该开关，避免名不副实。**✅ 短期方案 (b) 已落地**：死代码已清理 + 后端 policy 文档化（`docs/compliance/e2ee-policy.md`）。
 - **边界**：不改后端 policy 强制链路（`imboy_policy.erl` 完整可用）。颜色/间距若涉及 UI 走 AppColors/AppSpacing。
-- **验收 gate**：`flutter analyze` 零问题；真机验证开关隐藏后 policy=required 仍加密。
+- **验收 gate**：✅ `dart analyze lib` 零问题；✅ `setEnabled`/`resetToDefaults` 死代码零残留；✅ 后端 policy 链路核实；✅ 合规披露文档落地；✅ **API 层验收**（2026-07-07，local 后端 e2ee_mode=required）：守卫放行 + 两端 RSA 公钥注册 + 跨用户密钥分发；✅ **运行时验收**（macOS app）：加载 policy + E2EE 处理器初始化；✅ **单元测试**：`encryption_mode_test` 全绿、`e2ee_service_test` 13/15（2 预存在失败非回归）；✅ **Android APK 构建成功**（修 Gradle 镜像）；⏳ 真机 UI 端双向解密（EMUI 授权弹窗 + 用户不在手机边，留待手测）。
 - **glm 执行陷阱**：真机验证（禁模拟器）；改 UI 走 token。
-- **分工**：短期 (b) **[MODEL] glm 可执行**；根因修复 (a) **[BLOCKED]**（需真机调试密钥漂移）。
+- **分工**：✅ 短期 (b) 已完成；根因修复 (a) **[BLOCKED]**（需真机调试密钥漂移）。
 
 ### [FEAT-04] 其余占位/半成品清理  [未完成] [LOW]
 - **根因**：`group_album_ds.erl:454` 缩略图 URL 占位（未真生成缩略图）；`e2ee_shard_validator.erl:3` 分片审计 stub；`user_setting_ds.erl:16` 按账号搜索占位；`imboyapp` textStream 死基础设施（4 个 mutator 零调用，无 `TextStreamMessage` 构造）。

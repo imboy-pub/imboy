@@ -24,7 +24,7 @@
 
 | ID | 任务 | 仓库 | 优先级 | 备注 |
 |---|---|---|---|---|
-| **FEAT-03** | E2EE 死开关与 UI 脱节 | imboyapp(+imboy 文档) | HIGH | **plan ready，待实施**（`imboyapp/.claude/PRPs/plans/feat-03-e2ee-dead-toggle.plan.md`） |
+| ~~FEAT-03~~ | E2EE 死开关与 UI 脱节 | imboyapp(+imboy 文档) | HIGH | **✅ 短期方案 b 已完成（2026-07-07）**——死代码已清理、后端 policy 链路核实、合规披露文档 `docs/compliance/e2ee-policy.md` 已落地。仅余真机验收 + 方案 a（密钥漂移根因，BLOCKED）。plan：`imboyapp/.claude/PRPs/plans/completed/feat-03-e2ee-dead-toggle.plan.md` |
 | ~~SEC-03~~ | red_packet_detail 越权读 | imboy | MEDIUM | **✅ 已完成**（commit `0d80be05`），核实见 project-audit-roadmap-2026-07.md |
 | SEC-05 | 免鉴权路由收紧（/user/show、/conversation/online） | imboy | MEDIUM | 需 Fable 确认字段收窄范围 |
 | ~~ARCH-01~~ | messaging_logic 越界操作 cowboy_req | imboy | MEDIUM | **✅ 已完成**（commit `ecbbce8d`），核实见 project-audit-roadmap-2026-07.md |
@@ -75,10 +75,10 @@
 
 ## 建议执行序
 
-1. **本周**：FEAT-03（主任务，已出 plan）→ 并行启动 SEC-03 / SEC-05 / ARCH-01（后端独立，glm 可做）
+1. **本周**：~~FEAT-03~~（✅ 短期方案 b 已完成 2026-07-07，余真机验收+方案a BLOCKED）→ 并行启动 SEC-05（后端独立，glm 可做）；~~SEC-03 / ARCH-01~~ 已完成
 2. **下周**：SEC-01 阶段1（billing 管理端鉴权，glm 可做）——FEAT-01 已完成，从本序列移除
 3. **滚动**：ARCH-02 大文件拆分（每次 PR 拆 1-2 个，长期）+ PERF-01/02
 4. **GA 冲刺**：CONTRACT-01 → API schema 冻结 → Sentry DSN → 发布配套 → 上架
-5. **拍板后**：SEC-01 阶段2 / SEC-04 / FEAT-02（等产品/Fable 输入）
+5. **拍板后**：SEC-01 阶段2 / ~~SEC-04~~（✅ 技术披露已完成，余对外法律措辞待法务）/ FEAT-02（等产品/Fable 输入）
 
 > ROADMAP 中期/长期项（消息翻译/搜索/语音转文字、Helm、Loki、PG 只读副本、Windows/Linux 客户端、联邦协议、OTel、AI 助理、多租户 SaaS）**默认排后**，不在 18 项"现在做"池内。
