@@ -814,6 +814,10 @@ ws_reply(Protocol, _Framing, Msg) when is_map(Msg) ->
     imboy_codec:encode_ws_frame(Protocol, Encoded).
 
 %% @doc 根据消息 type 字段映射到 v2 帧类型
+%% 【契约】*_SERVER_ACK / CLIENT_ACK_CONFIRM / ERROR 等确认类消息刻意落入
+%% 默认分支 MSG_S2C（JSON/protobuf 载荷），由客户端统一 JSON 管道按 type 确认。
+%% 禁止改映射到 FRAME_TYPE_ACK(0x03)：该帧载荷为定长 8 字节 uint64，
+%% 装不下 Xid 字符串 id；0x03 仅保留给确有 uint64 id 的场景（当前无）。
 -spec msg_to_v2_frame_type(map()) -> 0..255.
 msg_to_v2_frame_type(Msg) ->
     case maps:get(<<"type">>, Msg, <<>>) of
