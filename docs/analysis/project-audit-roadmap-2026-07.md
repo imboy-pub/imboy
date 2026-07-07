@@ -172,7 +172,8 @@
 - **验收 gate**：`redocly lint api/openapi.yaml` 零新增警告。
 - **分工**：**[MODEL] glm 可独立执行**（对照 handler 补 yaml，机械活）。
 
-### [CONTRACT-02] admin 消息 payload 二次 JSON.parse 绕过 TSID 保护  [契约] [MEDIUM]
+### [CONTRACT-02] admin 消息 payload 二次 JSON.parse 绕过 TSID 保护  [契约] [MEDIUM] [✅ 已完成 2026-07-06]
+- **状态**：已修复并提交（commit `98db3f7`，imboyadmin 仓）。[NEEDS-VERIFY] 已核实为真：`imboy/src/logic/msg_s2c_logic.erl:255`（`e2ee_key_changed_ack`）`payload.uid` 以裸 64-bit TSID 整数嵌入。`parsePayload` 改用既有 `safeParseBigIntJson`；补 `messageRenderingHelpers.test.ts` 回归测试覆盖大整数不失真。`tsc --noEmit` 无新增错误；`bun test src/pages/messages/` 33/33 通过。
 - **根因**：`imboyadmin/src/pages/messages/messageRenderingHelpers.tsx:8` `JSON.parse(payload)` 二次解析消息 payload 字符串。外层 `safeParseBigIntJson` 正则不进引号内字符串，若 payload 内含裸整数 id（如 from_id）会丢精度。[NEEDS-VERIFY] payload 内是否真含 64-bit id（需查 `adm_message_handler` payload schema）。
 - **修复方案**：先核实 payload 字段；若含 id，改用 `safeParseBigIntJson(payload)` 替代裸 `JSON.parse`。
 - **验收 gate**：`tsc --noEmit` 零错；含大 id 的 payload 解析后 id 为 string 不失真。
@@ -256,7 +257,7 @@
 | FEAT-01(moderation) 后端敏感词+审核队列 | Fable 出表结构 | 6h | Fable+glm | 敏感词 CRUD 往返 |
 | FEAT-03(b) E2EE 死开关短期隐藏 | 无 | 1h | [MODEL] glm | 真机 policy 仍加密 |
 | CONTRACT-01 OpenAPI 补 finance/billing/license | 无 | 3h | [MODEL] glm | redocly lint 零警告 |
-| CONTRACT-02 admin payload 二次 parse 修复 | verify payload | 1h | [MODEL] glm | tsc 绿 |
+| ~~CONTRACT-02 admin payload 二次 parse 修复~~ **✅ 已完成**（commit `98db3f7`） | — | — | — | 已提交 |
 | CONTRACT-04(admin) safeParseBigIntJson 阈值 | 无 | 0.5h | [MODEL] glm | tsc 绿 |
 | ~~ARCH-01 messaging_logic 越界重构~~ **✅ 已完成**（commit `ecbbce8d`） | — | — | — | 已提交 |
 | PERF-02 mention 无界查询加分页 | 无 | 2h | [MODEL] glm | eunit 分页断言 |

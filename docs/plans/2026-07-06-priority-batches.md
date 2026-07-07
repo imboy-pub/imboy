@@ -28,7 +28,7 @@
 | ~~SEC-03~~ | red_packet_detail 越权读 | imboy | MEDIUM | **✅ 已完成**（commit `0d80be05`），核实见 project-audit-roadmap-2026-07.md |
 | SEC-05 | 免鉴权路由收紧（/user/show、/conversation/online） | imboy | MEDIUM | 需 Fable 确认字段收窄范围 |
 | ~~ARCH-01~~ | messaging_logic 越界操作 cowboy_req | imboy | MEDIUM | **✅ 已完成**（commit `ecbbce8d`），核实见 project-audit-roadmap-2026-07.md |
-| CONTRACT-02 | admin payload 二次 JSON.parse 绕过 TSID | imboyadmin + imboy | MEDIUM | 前后端契约 |
+| ~~CONTRACT-02~~ | admin payload 二次 JSON.parse 绕过 TSID | imboyadmin + imboy | MEDIUM | **✅ 已完成**（commit `98db3f7`，imboyadmin 仓），核实见 project-audit-roadmap-2026-07.md |
 
 ---
 
