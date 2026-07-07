@@ -39,44 +39,58 @@ parse_contract_version_valid_high_minor_test_() ->
 
 parse_contract_version_zero_major_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual({error, invalid_format},
-                     imboy_plugin_toml:parse_contract_version(<<"0.5">>))
+        ?assertEqual(
+            {error, invalid_format},
+            imboy_plugin_toml:parse_contract_version(<<"0.5">>)
+        )
     end).
 
 parse_contract_version_negative_minor_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual({error, invalid_format},
-                     imboy_plugin_toml:parse_contract_version(<<"1.-1">>))
+        ?assertEqual(
+            {error, invalid_format},
+            imboy_plugin_toml:parse_contract_version(<<"1.-1">>)
+        )
     end).
 
 parse_contract_version_missing_minor_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual({error, invalid_format},
-                     imboy_plugin_toml:parse_contract_version(<<"1">>))
+        ?assertEqual(
+            {error, invalid_format},
+            imboy_plugin_toml:parse_contract_version(<<"1">>)
+        )
     end).
 
 parse_contract_version_three_segments_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual({error, invalid_format},
-                     imboy_plugin_toml:parse_contract_version(<<"1.0.0">>))
+        ?assertEqual(
+            {error, invalid_format},
+            imboy_plugin_toml:parse_contract_version(<<"1.0.0">>)
+        )
     end).
 
 parse_contract_version_non_integer_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual({error, invalid_format},
-                     imboy_plugin_toml:parse_contract_version(<<"a.b">>))
+        ?assertEqual(
+            {error, invalid_format},
+            imboy_plugin_toml:parse_contract_version(<<"a.b">>)
+        )
     end).
 
 parse_contract_version_empty_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual({error, invalid_format},
-                     imboy_plugin_toml:parse_contract_version(<<"">>))
+        ?assertEqual(
+            {error, invalid_format},
+            imboy_plugin_toml:parse_contract_version(<<"">>)
+        )
     end).
 
 parse_contract_version_non_binary_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual({error, invalid_format},
-                     imboy_plugin_toml:parse_contract_version("1.0"))
+        ?assertEqual(
+            {error, invalid_format},
+            imboy_plugin_toml:parse_contract_version("1.0")
+        )
     end).
 
 %% ===================================================================
@@ -96,8 +110,10 @@ validate_manifest_dummy_passes_test_() ->
 
 validate_manifest_non_map_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertMatch({error, {manifest, not_a_map}},
-                     imboy_plugin_toml:validate_manifest(undefined))
+        ?assertMatch(
+            {error, {manifest, not_a_map}},
+            imboy_plugin_toml:validate_manifest(undefined)
+        )
     end).
 
 validate_manifest_missing_name_rejected_test_() ->
@@ -110,29 +126,37 @@ validate_manifest_invalid_name_format_rejected_test_() ->
     %% 大写字母不合规
     ?TEST_SIMPLE(fun() ->
         M = (imboy_plugin_dummy:manifest())#{name := 'BadName'},
-        ?assertMatch({error, {name, invalid_format}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {name, invalid_format}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_invalid_version_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = (imboy_plugin_dummy:manifest())#{version := <<"not-semver">>},
-        ?assertMatch({error, {version, invalid_semver}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {version, invalid_semver}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_invalid_contract_version_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = (imboy_plugin_dummy:manifest())#{contract_version := {0, 0}},
-        ?assertMatch({error, {contract_version, _}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {contract_version, _}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_invalid_kind_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = (imboy_plugin_dummy:manifest())#{kind := unknown_kind},
-        ?assertMatch({error, {kind, _}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {kind, _}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_table_prefix_mismatch_rejected_test_() ->
@@ -143,21 +167,26 @@ validate_manifest_table_prefix_mismatch_rejected_test_() ->
             preserve_on_uninstall => true
         },
         M = (imboy_plugin_dummy:manifest())#{migrations := Bad},
-        ?assertMatch({error, {migrations_table_prefix, _}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {migrations_table_prefix, _}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_route_namespace_violation_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         BadRoute = #{
             method => <<"GET">>,
-            path => <<"/v1/wrong/x">>,   %% path 不以 /v{n}/<name>/ 开头
+            %% path 不以 /v{n}/<name>/ 开头
+            path => <<"/api/v1/wrong/x">>,
             handler => some_handler,
             action => some_action
         },
         M = (imboy_plugin_dummy:manifest())#{routes := [BadRoute]},
-        ?assertMatch({error, {routes, _}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {routes, _}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_invalid_degrade_enum_rejected_test_() ->
@@ -165,8 +194,10 @@ validate_manifest_invalid_degrade_enum_rejected_test_() ->
         M = (imboy_plugin_dummy:manifest())#{
             degrade := #{on_unhealthy => crash}
         },
-        ?assertMatch({error, {degrade_on_unhealthy, _}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {degrade_on_unhealthy, _}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_buckets_too_many_rejected_test_() ->
@@ -175,24 +206,34 @@ validate_manifest_buckets_too_many_rejected_test_() ->
         Buckets = lists:duplicate(101, 0),
         Audience = #{kind => uid_hash, buckets => Buckets},
         Feature = #{
-            default => false, description => <<"x">>,
-            rollout => canary, percentage => 1, audience => Audience
+            default => false,
+            description => <<"x">>,
+            rollout => canary,
+            percentage => 1,
+            audience => Audience
         },
         M = (imboy_plugin_dummy:manifest())#{features := #{f => Feature}},
-        ?assertMatch({error, {audience_buckets, too_many}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {audience_buckets, too_many}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_buckets_duplicates_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         Audience = #{kind => uid_hash, buckets => [1, 1, 2]},
         Feature = #{
-            default => false, description => <<"x">>,
-            rollout => canary, percentage => 1, audience => Audience
+            default => false,
+            description => <<"x">>,
+            rollout => canary,
+            percentage => 1,
+            audience => Audience
         },
         M = (imboy_plugin_dummy:manifest())#{features := #{f => Feature}},
-        ?assertMatch({error, {audience_buckets, duplicates}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {audience_buckets, duplicates}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_buckets_out_of_range_rejected_test_() ->
@@ -200,20 +241,27 @@ validate_manifest_buckets_out_of_range_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         Audience = #{kind => uid_hash, buckets => [100]},
         Feature = #{
-            default => false, description => <<"x">>,
-            rollout => canary, percentage => 1, audience => Audience
+            default => false,
+            description => <<"x">>,
+            rollout => canary,
+            percentage => 1,
+            audience => Audience
         },
         M = (imboy_plugin_dummy:manifest())#{features := #{f => Feature}},
-        ?assertMatch({error, {audience_buckets, out_of_range}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {audience_buckets, out_of_range}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_audience_all_passes_test_() ->
     %% audience.kind = all 不触发 buckets 校验
     ?TEST_SIMPLE(fun() ->
         Feature = #{
-            default => true, description => <<"x">>,
-            rollout => always, audience => #{kind => all}
+            default => true,
+            description => <<"x">>,
+            rollout => always,
+            audience => #{kind => all}
         },
         M = (imboy_plugin_dummy:manifest())#{features := #{f => Feature}},
         ?assertMatch({ok, _}, imboy_plugin_toml:validate_manifest(M))
@@ -227,43 +275,55 @@ validate_manifest_audience_all_passes_test_() ->
 validate_manifest_missing_limits_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = maps:remove(limits, imboy_plugin_dummy:manifest()),
-        ?assertMatch({error, {limits, missing}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {limits, missing}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_missing_budget_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = maps:remove(budget, imboy_plugin_dummy:manifest()),
-        ?assertMatch({error, {budget, missing}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {budget, missing}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_missing_circuit_breaker_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = maps:remove(circuit_breaker, imboy_plugin_dummy:manifest()),
-        ?assertMatch({error, {circuit_breaker, missing}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {circuit_breaker, missing}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_missing_entries_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = maps:remove(entries, imboy_plugin_dummy:manifest()),
-        ?assertMatch({error, {entries, missing}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {entries, missing}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_missing_publishes_meta_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = maps:remove(publishes_meta, imboy_plugin_dummy:manifest()),
-        ?assertMatch({error, {publishes_meta, missing}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {publishes_meta, missing}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 validate_manifest_missing_audit_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         M = maps:remove(audit, imboy_plugin_dummy:manifest()),
-        ?assertMatch({error, {audit, missing}},
-                     imboy_plugin_toml:validate_manifest(M))
+        ?assertMatch(
+            {error, {audit, missing}},
+            imboy_plugin_toml:validate_manifest(M)
+        )
     end).
 
 %% ===================================================================
@@ -292,57 +352,55 @@ write_raw(Path, Content) ->
 
 load_valid_manifest_returns_ok_test_() ->
     {setup,
-     fun() ->
-         Path = tmp_config_path(),
-         write_term(Path, imboy_plugin_dummy:manifest()),
-         Path
-     end,
-     fun(Path) -> file:delete(Path) end,
-     fun(Path) ->
-         ?_assertMatch({ok, _}, imboy_plugin_toml:load(Path))
-     end}.
+        fun() ->
+            Path = tmp_config_path(),
+            write_term(Path, imboy_plugin_dummy:manifest()),
+            Path
+        end,
+        fun(Path) -> file:delete(Path) end, fun(Path) ->
+            ?_assertMatch({ok, _}, imboy_plugin_toml:load(Path))
+        end}.
 
 load_file_not_found_returns_error_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertMatch({error, {load, file_not_found}},
-                     imboy_plugin_toml:load("/tmp/imboy_plugin_toml_does_not_exist_xyz.config"))
+        ?assertMatch(
+            {error, {load, file_not_found}},
+            imboy_plugin_toml:load("/tmp/imboy_plugin_toml_does_not_exist_xyz.config")
+        )
     end).
 
 load_multiple_terms_returns_error_test_() ->
     {setup,
-     fun() ->
-         Path = tmp_config_path(),
-         %% 两个 term，违反单一 manifest 约定
-         write_raw(Path, "{a, 1}.\n{b, 2}.\n"),
-         Path
-     end,
-     fun(Path) -> file:delete(Path) end,
-     fun(Path) ->
-         ?_assertMatch({error, {load, multiple_terms}}, imboy_plugin_toml:load(Path))
-     end}.
+        fun() ->
+            Path = tmp_config_path(),
+            %% 两个 term，违反单一 manifest 约定
+            write_raw(Path, "{a, 1}.\n{b, 2}.\n"),
+            Path
+        end,
+        fun(Path) -> file:delete(Path) end, fun(Path) ->
+            ?_assertMatch({error, {load, multiple_terms}}, imboy_plugin_toml:load(Path))
+        end}.
 
 load_non_map_term_returns_error_test_() ->
     {setup,
-     fun() ->
-         Path = tmp_config_path(),
-         write_term(Path, {not_a_map, 42}),
-         Path
-     end,
-     fun(Path) -> file:delete(Path) end,
-     fun(Path) ->
-         ?_assertMatch({error, {load, {not_a_map, _}}}, imboy_plugin_toml:load(Path))
-     end}.
+        fun() ->
+            Path = tmp_config_path(),
+            write_term(Path, {not_a_map, 42}),
+            Path
+        end,
+        fun(Path) -> file:delete(Path) end, fun(Path) ->
+            ?_assertMatch({error, {load, {not_a_map, _}}}, imboy_plugin_toml:load(Path))
+        end}.
 
 load_invalid_manifest_propagates_validation_error_test_() ->
     %% 文件可读且是 map，但 schema 校验失败（name 大写非法）
     {setup,
-     fun() ->
-         Path = tmp_config_path(),
-         M = (imboy_plugin_dummy:manifest())#{name := 'BadName'},
-         write_term(Path, M),
-         Path
-     end,
-     fun(Path) -> file:delete(Path) end,
-     fun(Path) ->
-         ?_assertMatch({error, {name, invalid_format}}, imboy_plugin_toml:load(Path))
-     end}.
+        fun() ->
+            Path = tmp_config_path(),
+            M = (imboy_plugin_dummy:manifest())#{name := 'BadName'},
+            write_term(Path, M),
+            Path
+        end,
+        fun(Path) -> file:delete(Path) end, fun(Path) ->
+            ?_assertMatch({error, {name, invalid_format}}, imboy_plugin_toml:load(Path))
+        end}.

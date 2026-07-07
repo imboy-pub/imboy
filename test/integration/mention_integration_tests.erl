@@ -17,14 +17,17 @@
 
 mention_routes_exist_test() ->
     Source = read_file("src/imboy_router.erl"),
-    lists:foreach(fun(Path) ->
-        ?assert(binary:match(Source, Path) =/= nomatch)
-    end, [
-        <<"/v1/mention/list">>,
-        <<"/v1/mention/unread">>,
-        <<"/v1/mention/mark_read">>,
-        <<"/v1/mention/suggest">>
-    ]).
+    lists:foreach(
+        fun(Path) ->
+            ?assert(binary:match(Source, Path) =/= nomatch)
+        end,
+        [
+            <<"/api/v1/mention/list">>,
+            <<"/api/v1/mention/unread">>,
+            <<"/api/v1/mention/mark_read">>,
+            <<"/api/v1/mention/suggest">>
+        ]
+    ).
 
 mention_logic_exports_contract_test() ->
     ensure_module_loaded(mention_logic),
@@ -53,7 +56,9 @@ mention_repo_exports_contract_test() ->
 
 mention_migration_contains_table_test() ->
     Migration = read_file(mention_migration_path()),
-    ?assert(binary:match(Migration, <<"CREATE TABLE IF NOT EXISTS public.msg_mention">>) =/= nomatch),
+    ?assert(
+        binary:match(Migration, <<"CREATE TABLE IF NOT EXISTS public.msg_mention">>) =/= nomatch
+    ),
     ?assert(binary:match(Migration, <<"mentioned_uid bigint NOT NULL">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"is_read boolean NOT NULL DEFAULT false">>) =/= nomatch).
 

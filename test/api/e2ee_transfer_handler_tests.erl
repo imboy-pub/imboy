@@ -14,7 +14,7 @@ module_loaded_test_() ->
 
 handle_action_false_returns_original_req_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Req0 = cowboy_req_h:new(#{uri => <<"/v1/e2ee/transfer/unknown">>}),
+        Req0 = cowboy_req_h:new(#{uri => <<"/api/v1/e2ee/transfer/unknown">>}),
         Result = e2ee_transfer_handler:handle_action(false, Req0, #{}),
         ?assertEqual(Req0, Result)
     end).
