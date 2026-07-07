@@ -37,7 +37,7 @@
 | ID | 任务 | 仓库 | 优先级 | 备注 |
 |---|---|---|---|---|
 | **SEC-01** | billing 全端点零鉴权 | imboy(+imboyadmin) | CRITICAL | 阶段1 管理端动作迁移 glm 可做；阶段2 租户归属需产品拍板（方案 `imboy/docs/analysis/p0-billing-multitenant-authz-2026-07.md`） |
-| **FEAT-01** | admin 三组页面契约断裂（moderation/user-device/sso 404） | imboy + imboyadmin | CRITICAL | **最典型的重型前后端任务**，若 FEAT-03 后需重型协作转此 |
+| ~~FEAT-01~~ | admin 三组页面契约断裂（moderation/user-device/sso 404） | imboy + imboyadmin | CRITICAL | **✅ 已完成**（三子域分别 commit `8090e8ae`/`c557e4f1`/`eb3d75d4`），核实见 project-audit-roadmap-2026-07.md。注：sso 仅管理端配置契约，真实 OIDC/SAML 联邦登录仍是 BIZ-03（BLOCKED） |
 
 ---
 
@@ -76,7 +76,7 @@
 ## 建议执行序
 
 1. **本周**：FEAT-03（主任务，已出 plan）→ 并行启动 SEC-03 / SEC-05 / ARCH-01（后端独立，glm 可做）
-2. **下周**：SEC-01 阶段1（billing 管理端鉴权，glm 可做）+ FEAT-01（重型前后端，出 plan）
+2. **下周**：SEC-01 阶段1（billing 管理端鉴权，glm 可做）——FEAT-01 已完成，从本序列移除
 3. **滚动**：ARCH-02 大文件拆分（每次 PR 拆 1-2 个，长期）+ PERF-01/02
 4. **GA 冲刺**：CONTRACT-01 → API schema 冻结 → Sentry DSN → 发布配套 → 上架
 5. **拍板后**：SEC-01 阶段2 / SEC-04 / FEAT-02（等产品/Fable 输入）

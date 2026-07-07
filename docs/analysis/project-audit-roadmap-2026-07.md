@@ -86,7 +86,11 @@
 
 ### 维度 2：未完成功能
 
-### [FEAT-01] admin 三组页面契约断裂（前端调用不存在的后端端点）  [未完成] [CRITICAL]
+### [FEAT-01] admin 三组页面契约断裂（前端调用不存在的后端端点）  [未完成] [CRITICAL] [✅ 已完成 2026-07-06]
+- **状态**：三个子域均已由其他会话在审计写就后完成，本次核实全部落地且与前端契约对齐，勿重复排期：
+  - user-device：commit `8090e8ae`，`/adm/user/devices`+`/adm/user/device/kick` 字段与 `userDevices.ts` 完全对齐（`user_device_logic:page/3` 返回 device_id/device_name/device_type/device_vsn/last_active_at/online）。
+  - moderation：commit `c557e4f1`，`/adm/moderation/sensitive-words[/:id][/import]`+`/adm/moderation/review-queue[/:id/moderate]` 路径/方法与 `moderation.ts` 完全对齐。
+  - sso：commit `eb3d75d4`，`/adm/sso/config`+`/adm/sso/test` 路径/方法与 `sso.ts` 完全对齐。
 - **根因**：commit `0bafd2d` 新增前端页面但后端无对应路由，任何数据请求 404：
   - `SensitiveWordPage`/`ContentReviewQueuePage` → `/moderation/sensitive-words[/import]`、`/moderation/review-queue`（`imboyadmin/src/services/api/moderation.ts:27,37`；后端 `grep moderation imboy_router.erl` → 0）
   - `UserDeviceList` → `/user/devices`、`/user/device/kick[-all]`（`imboyadmin/src/services/api/userDevices.ts:20,33,40`；后端仅 `/adm/user/force_logout`，`user_device_handler.erl` 只挂 `/v1` 未挂 `/adm`）
@@ -229,7 +233,7 @@
 - **分工**：**[BLOCKED]**（商户账号+凭证，见 D）。
 
 ### [BIZ-03] SSO/白标能力  [商业化] [BLOCKED]
-- **根因**：见 FEAT-01 的 sso 子项。SSO 是 ToB 私有化白标的关键能力，缺后端实现。
+- **根因**：FEAT-01(sso) 的管理端配置契约（`/adm/sso/config`/`/adm/sso/test`）已完成（commit `eb3d75d4`），但仅为 MVP：存储 provider 配置 + 字段/连通性校验，**不含真实 OIDC/SAML/LDAP 联邦登录流程**。SSO 是 ToB 私有化白标的关键能力，真实登录联邦仍缺后端实现。
 - **分工**：**[BLOCKED]**（白标架构方向需拍板，见 D）。
 
 ---
@@ -243,7 +247,7 @@
 | ~~SEC-02 group_* IDOR 修复~~ **✅ 已完成**（commit `5cb86897`，勿重复执行） | — | — | — | 已提交 |
 | ~~SEC-03 red_packet_detail 越权读~~ **✅ 已完成**（commit `0d80be05`，勿重复执行） | — | — | — | 已提交 |
 | SEC-05 收紧 /user/show /conversation/online | Fable 定字段收窄 | 1h | Fable+glm | curl 无 token 401 |
-| FEAT-01(user-device) 后端补 /adm/user/device* 路由 | 无（逻辑已存在） | 2h | [MODEL] glm | admin 页面拉到设备列表 |
+| ~~FEAT-01(user-device) 后端补 /adm/user/device* 路由~~ **✅ 已完成**（commit `8090e8ae`） | — | — | — | 已提交 |
 | SEC-01 billing 管理端路由迁移（低风险子集） | 无 | 2h | [MODEL] glm | plan_create 走 adm middleware 被非 admin 拒 |
 | OPS-01 备份自动调度+Pushgateway 上报 | 无 | 2h | [MODEL] glm | 告警变绿 |
 
@@ -254,7 +258,7 @@
 | 任务 | 依赖 | 估时 | 分工 | 验收 |
 |---|---|---|---|---|
 | SEC-01 billing 租户端 IDOR 完整修复 | BLK-04 拍板 | 4h | Fable+glm | eunit 越权断言 |
-| FEAT-01(moderation) 后端敏感词+审核队列 | Fable 出表结构 | 6h | Fable+glm | 敏感词 CRUD 往返 |
+| ~~FEAT-01(moderation) 后端敏感词+审核队列~~ **✅ 已完成**（commit `c557e4f1`） | — | — | — | 已提交 |
 | FEAT-03(b) E2EE 死开关短期隐藏 | 无 | 1h | [MODEL] glm | 真机 policy 仍加密 |
 | CONTRACT-01 OpenAPI 补 finance/billing/license | 无 | 3h | [MODEL] glm | redocly lint 零警告 |
 | ~~CONTRACT-02 admin payload 二次 parse 修复~~ **✅ 已完成**（commit `98db3f7`） | — | — | — | 已提交 |
@@ -270,7 +274,7 @@
 | 任务 | 依赖 | 分工 |
 |---|---|---|
 | SEC-04 compliance key E2EE 语义披露 | BLK 合规拍板 | 文档 |
-| FEAT-01(sso) + BIZ-03 白标 SSO | BLK 白标方向 | Fable 设计 |
+| BIZ-03 白标 SSO（真实 OIDC/SAML 联邦登录，超出 FEAT-01(sso) 已完成的管理端配置契约） | BLK 白标方向 | Fable 设计 |
 | BIZ-02 真实支付网关对接 | BLK 商户账号 | glm（凭证到位后） |
 | CONTRACT-03 admin 权限 fail-open→fail-closed | BLK 可用性拍板 | glm |
 | PERF-01 群扇出 >10000 分页 | Fable 方案 | Fable+glm |
