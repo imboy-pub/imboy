@@ -125,7 +125,8 @@
 
 ### 维度 3：架构债
 
-### [ARCH-01] messaging_logic 越界操作 cowboy_req  [架构] [MEDIUM]
+### [ARCH-01] messaging_logic 越界操作 cowboy_req  [架构] [MEDIUM] [✅ 已完成 2026-07-06]
+- **状态**：已修复并提交（commit `ecbbce8d`）。8 个函数的签名映射由 glm 直接设计（沿用文件内 `pin/2`/`forward/2` 已有的 handler/logic 分工范式），HTTP 解析/认证检查/响应封装上移至 `msg_handler`，`messaging_logic` 函数改收纯参数并返回 `{ok,_}|{ok,_,_}|{error,_}|{error,_,_}` 语义化 tuple；原 `handle_rest_action/3` 收归 `msg_handler:dispatch_rest_action/3`。`grep cowboy_req src/logic/messaging_logic.erl` 仅命中说明注释；`make`/`make xref` 通过；targeted eunit（messaging_logic_tests 13/13 通过）。同步更新 `test/logic/messaging_logic_tests.erl`、`test/api/msg_handler_tests.erl` 匹配新签名。
 - **根因**：`grep -rln cowboy_req src/logic/` → 仅 `src/logic/messaging_logic.erl`。该文件 handle_rest_action/offline/read_stats/history/offline_ack/reaction 全部签名 `cowboy_req:req()` 并直接 `cowboy_req:parse_qs`（`:23,45,102,148,233,274,316,352`），logic 承担了 handler 职责。
 - **影响范围**：`messaging_logic.erl` 全文 + `msg_handler`（实际入口）。
 - **修复方案**：把 cowboy_req 解析上移到 `msg_handler`，`messaging_logic` 函数改收纯参数（uid/gid/page 等）。逐函数重构。
@@ -257,7 +258,7 @@
 | CONTRACT-01 OpenAPI 补 finance/billing/license | 无 | 3h | [MODEL] glm | redocly lint 零警告 |
 | CONTRACT-02 admin payload 二次 parse 修复 | verify payload | 1h | [MODEL] glm | tsc 绿 |
 | CONTRACT-04(admin) safeParseBigIntJson 阈值 | 无 | 0.5h | [MODEL] glm | tsc 绿 |
-| ARCH-01 messaging_logic 越界重构 | Fable 出签名映射 | 4h | Fable+glm | grep cowboy_req logic → 0 |
+| ~~ARCH-01 messaging_logic 越界重构~~ **✅ 已完成**（commit `ecbbce8d`） | — | — | — | 已提交 |
 | PERF-02 mention 无界查询加分页 | 无 | 2h | [MODEL] glm | eunit 分页断言 |
 | OPS-02 cert 到期告警 | 无 | 2h | [MODEL] glm | blackbox 有 cert 指标 |
 | OPS-03 sys.config 重复键+弱口令 | verify 启动 | 1h | [MODEL] glm | make run 正常 |
