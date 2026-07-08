@@ -74,14 +74,16 @@
 
 ### 2.3 后端策略触发
 
-后端通过 `EncryptionModeService.current` 推送加密模式：
+客户端通过 `EncryptionModeService.refresh()` 从 `/v1/app/policy` 拉取 `e2ee_mode` capability，镜像为本地 `EncryptionMode`：
 
-| 模式 | 行为 |
-|------|------|
-| `plaintext` | 明文传输，客户端本地开关决定 |
-| `optional` | 客户端本地开关决定（当前本地开关强制 false） |
-| `e2ee` | 强制端到端加密，密钥不存在则拒绝发送 |
-| `complianceE2ee` | 双密钥加密：设备密钥 + 合规审计密钥（`compliance-audit` did） |
+| `e2ee_mode`（后端 capability） | 客户端 `EncryptionMode` | 行为 |
+|------|------|------|
+| `disabled` | plaintext | E2EE API 拒绝（守卫返回 `ERR_FEATURE_DISABLED`），无加密 |
+| `optional` | plaintext | E2EE API 可用，但不强制加密；本地开关决定（当前 `isEnabled()` 强制 false → 实际明文） |
+| `required` | strictE2ee | 强制端到端加密，密钥不存在则拒绝发送 |
+| `compliance` | complianceE2ee | 双密钥加密：设备密钥 + 合规审计密钥（`compliance-audit` did） |
+
+> 合法值集合以后端 `imboy_policy_normalize.erl:185` `normalize_e2ee_mode/2` 为权威。详见 `docs/compliance/e2ee-policy.md` §1.2。
 
 ---
 
