@@ -3,7 +3,8 @@
 %%%
 % SaaS 计费 API 处理器 / SaaS billing API handler
 %
-% 管理端：套餐 CRUD（plan_create/plan_update/plan_list）。
+% 套餐列表（plan_list，登录可读）；管理端套餐 CRUD 已迁至
+%   /adm/finance/billing/*（adm_finance_handler，RBAC）。
 % 租户端：订阅（subscribe/renew/cancel）、用量上报与配额查询、账单查询与支付。
 %
 % 路由 action 由 imboy_router 注入；认证区接口经 JWT。
@@ -29,9 +30,7 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Req1 =
         case Action of
-            %% 管理端套餐管理
-            plan_create -> plan_create(Req0, State);
-            plan_update -> plan_update(Req0, State);
+            %% 套餐列表（管理端 CRUD 已迁至 /adm/finance/billing/*，见 adm_finance_handler）
             plan_list -> plan_list(Req0, State);
             %% 租户端订阅
             subscribe -> subscribe(Req0, State);
@@ -52,36 +51,6 @@ init(Req0, State0) ->
 %% ===================================================================
 %% 管理端：套餐
 %% ===================================================================
-
-%% @doc 创建套餐
-%% POST /v1/billing/plan
-%% 参数: code, name, price(分), billing_period(month/year), quota_config(jsonb), description
--spec plan_create(cowboy_req:req(), map()) -> cowboy_req:req().
-plan_create(Req0, _State) ->
-    PostVals = elib_param:post(Req0),
-    case billing_logic:create_plan(PostVals) of
-        {ok, Id} ->
-            elib_response:success(Req0, #{<<"id">> => Id}, "success.");
-        {error, Msg} ->
-            elib_response:error(Req0, Msg)
-    end.
-
-%% @doc 更新套餐
-%% POST /v1/billing/plan/update
-%% 参数: id（必填）+ 任意可改字段
--spec plan_update(cowboy_req:req(), map()) -> cowboy_req:req().
-plan_update(Req0, _State) ->
-    PostVals = elib_param:post(Req0),
-    case maps:get(<<"id">>, PostVals, 0) of
-        Id when is_integer(Id), Id > 0 ->
-            Change = maps:remove(<<"id">>, PostVals),
-            case billing_logic:update_plan(Id, Change) of
-                {ok, _} -> elib_response:success(Req0, #{<<"id">> => Id}, "success.");
-                {error, Msg} -> elib_response:error(Req0, Msg)
-            end;
-        _ ->
-            elib_response:error(Req0, <<"套餐 id 不合法"/utf8>>)
-    end.
 
 %% @doc 套餐列表（上架）
 %% GET /v1/billing/plan/list
