@@ -13,7 +13,7 @@
 v1_billing_plan_create_route_removed_test() ->
     Paths = [unicode:characters_to_binary(P) || {P, _H, _S} <- all_routes()],
     ?assertNot(
-        lists:member(<<"/v1/billing/plan">>, Paths),
+        lists:member(<<"/api/v1/billing/plan">>, Paths),
         "管理动作 /v1/billing/plan 必须迁移至 /adm/finance/billing/*，不得留在 v1"
     ).
 
@@ -21,7 +21,7 @@ v1_billing_plan_create_route_removed_test() ->
 v1_billing_plan_update_route_removed_test() ->
     Paths = [unicode:characters_to_binary(P) || {P, _H, _S} <- all_routes()],
     ?assertNot(
-        lists:member(<<"/v1/billing/plan/update">>, Paths),
+        lists:member(<<"/api/v1/billing/plan/update">>, Paths),
         "管理动作 /v1/billing/plan/update 必须迁移至 /adm/finance/billing/*，不得留在 v1"
     ).
 
@@ -30,7 +30,7 @@ adm_billing_plan_create_route_exists_test() ->
     Handlers = [
         H
      || {P, H, _S} <- all_routes(),
-        unicode:characters_to_binary(P) =:= <<"/adm/finance/billing/plan">>
+        unicode:characters_to_binary(P) =:= <<"/api/adm/finance/billing/plan">>
     ],
     ?assert(
         lists:member(adm_finance_handler, Handlers),
@@ -42,7 +42,7 @@ v1_billing_plan_list_route_retained_test() ->
     BillingListHandlers = [
         H
      || {P, H, _S} <- all_routes(),
-        unicode:characters_to_binary(P) =:= <<"/v1/billing/plan/list">>
+        unicode:characters_to_binary(P) =:= <<"/api/v1/billing/plan/list">>
     ],
     ?assert(
         lists:member(billing_handler, BillingListHandlers),

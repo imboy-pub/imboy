@@ -12,7 +12,7 @@
 legacy_v1_path_removed_test() ->
     Paths = route_path_set(),
     ?assertNot(
-        sets:is_element(<<"/api/v1/passport/login">>, Paths),
+        sets:is_element(<<"/v1/passport/login">>, Paths),
         "旧 /v1/passport/login 应已删除，迁移至 /api/v1/passport/login"
     ),
     ?assert(sets:is_element(<<"/api/v1/passport/login">>, Paths)).
@@ -20,7 +20,7 @@ legacy_v1_path_removed_test() ->
 legacy_adm_path_removed_test() ->
     Paths = route_path_set(),
     ?assertNot(
-        sets:is_element(<<"/api/adm/setup/status">>, Paths),
+        sets:is_element(<<"/adm/setup/status">>, Paths),
         "旧 /adm/setup/status 应已删除，迁移至 /api/adm/setup/status"
     ),
     ?assert(sets:is_element(<<"/api/adm/setup/status">>, Paths)).
@@ -28,14 +28,14 @@ legacy_adm_path_removed_test() ->
 legacy_bare_root_removed_test() ->
     Paths = route_path_set(),
     ?assertNot(
-        sets:is_element(<<"/api/passport/login">>, Paths),
+        sets:is_element(<<"/passport/login">>, Paths),
         "旧裸根 /passport/login 应已删除，迁移至 /api/passport/login"
     ),
     ?assert(sets:is_element(<<"/api/passport/login">>, Paths)).
 
 legacy_ws_removed_test() ->
     Paths = route_path_set(),
-    ?assertNot(sets:is_element(<<"/api/ws">>, Paths), "旧 /ws 应已删除"),
+    ?assertNot(sets:is_element(<<"/ws">>, Paths), "旧 /ws 应已删除"),
     ?assert(sets:is_element(<<"/api/ws">>, Paths)),
     ?assert(sets:is_element(<<"/api/v1/ws">>, Paths)).
 
@@ -75,14 +75,14 @@ website_whitelist_kept_at_root_test() ->
 %% ---- open/0 与 option/0 已统一 /api，旧路径不再返回 ----
 open_uses_api_only_test() ->
     Open = imboy_router:open(),
-    ?assertNot(lists:member(<<"/api/v1/passport/login">>, Open), "open/0 不应再含旧 /v1 路径"),
+    ?assertNot(lists:member(<<"/v1/passport/login">>, Open), "open/0 不应再含旧 /v1 路径"),
     ?assert(lists:member(<<"/api/v1/passport/login">>, Open)),
     ?assert(lists:member(<<"/help">>, Open), "网站白名单仍应在 open/0"),
     ?assertNot(lists:member(<<"/api/help">>, Open)).
 
 option_uses_api_only_test() ->
     Option = imboy_router:option(),
-    ?assertNot(lists:member(<<"/api/v1/feedback/add">>, Option), "option/0 不应再含旧 /v1 路径"),
+    ?assertNot(lists:member(<<"/v1/feedback/add">>, Option), "option/0 不应再含旧 /v1 路径"),
     ?assert(lists:member(<<"/api/v1/feedback/add">>, Option)).
 
 %% ---- helpers（镜像 router_consistency_tests）----
