@@ -1,4 +1,4 @@
-# POST /adm/user/report/resolve — admin
+# POST /api/adm/user/report/resolve — admin
 post:
   tags: [admin]
   summary: admin adm-report - user_resolve

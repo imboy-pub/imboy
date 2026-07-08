@@ -1,4 +1,4 @@
-# GET /adm/admin/compliance_key/list — admin
+# GET /api/adm/admin/compliance_key/list — admin
 get:
   tags: [admin]
   summary: admin adm-admin - compliance_key_list

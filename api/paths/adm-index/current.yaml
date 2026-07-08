@@ -1,4 +1,4 @@
-# GET /adm/current — admin
+# GET /api/adm/current — admin
 get:
   tags: [admin]
   summary: admin adm-index - current

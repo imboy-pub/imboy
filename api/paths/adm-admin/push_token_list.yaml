@@ -1,4 +1,4 @@
-# GET /adm/admin/push_token/list — admin
+# GET /api/adm/admin/push_token/list — admin
 get:
   tags: [admin]
   summary: admin adm-admin - push_token_list

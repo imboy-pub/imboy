@@ -1,4 +1,4 @@
-# GET /adm/passport/captcha — admin
+# GET /api/adm/passport/captcha — admin
 get:
   tags: [admin]
   summary: admin adm-passport - captcha

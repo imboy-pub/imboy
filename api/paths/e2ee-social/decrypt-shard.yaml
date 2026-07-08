@@ -1,4 +1,4 @@
-# POST /v1/e2ee/social/decrypt_shard
+# POST /api/v1/e2ee/social/decrypt_shard
 post:
   tags: [user]
   summary: 获取待解密的加密 shard（客户端本地解密）

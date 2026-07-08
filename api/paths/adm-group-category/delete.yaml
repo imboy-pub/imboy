@@ -1,4 +1,4 @@
-# POST /adm/group/category/delete — admin
+# POST /api/adm/group/category/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除群分类

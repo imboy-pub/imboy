@@ -1,4 +1,4 @@
-# GET /adm/channel/search — admin
+# GET /api/adm/channel/search — admin
 get:
   tags: [admin]
   summary: admin adm-channel - search

@@ -1,4 +1,4 @@
-# POST /adm/storage/orphan/cleanup — admin
+# POST /api/adm/storage/orphan/cleanup — admin
 post:
   tags: [admin]
   summary: 管理后台清理孤儿文件

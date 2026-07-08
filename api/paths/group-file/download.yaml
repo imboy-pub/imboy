@@ -1,4 +1,4 @@
-# GET /v1/group/file/download
+# GET /api/v1/group/file/download
 get:
   tags: [user]
   summary: 下载 / 取 URL

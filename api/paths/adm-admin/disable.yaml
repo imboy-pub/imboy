@@ -1,4 +1,4 @@
-# POST /adm/admin/disable — admin
+# POST /api/adm/admin/disable — admin
 post:
   tags: [admin]
   summary: 管理后台禁用管理员

@@ -1,4 +1,4 @@
-# POST /v1/wallet/transfer/send
+# POST /api/v1/wallet/transfer/send
 post:
   tags: [wallet]
   summary: 发起转账（托管模式）

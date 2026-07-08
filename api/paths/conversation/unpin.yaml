@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/conversation/unpin.yaml
-# POST /conversation/unpin — 取消置顶会话 / Unpin conversation
+# POST /api/conversation/unpin — 取消置顶会话 / Unpin conversation
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
 # 调用方:  api/openapi.yaml#/paths/~1conversation~1unpin

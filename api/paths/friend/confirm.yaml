@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend/confirm.yaml
-# POST /friend/confirm — 确认好友申请 / Confirm friend request
+# POST /api/friend/confirm — 确认好友申请 / Confirm friend request
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1confirm

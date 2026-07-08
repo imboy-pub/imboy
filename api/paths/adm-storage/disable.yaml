@@ -1,4 +1,4 @@
-# POST /adm/storage/disable — admin
+# POST /api/adm/storage/disable — admin
 post:
   tags: [admin]
   summary: 管理后台禁用存储

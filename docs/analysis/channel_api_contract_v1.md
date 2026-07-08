@@ -65,31 +65,31 @@ For channel content endpoints, server enforces access based on channel type:
 
 Covered endpoints:
 
-1. `GET /v1/channel/:channel_id/messages`
-2. `POST /v1/channel/:channel_id/read`
-3. `POST /v1/channel/:channel_id/message/:message_id/view`
-4. `POST /v1/channel/:channel_id/message/:message_id/reaction`
-5. `DELETE /v1/channel/:channel_id/message/:message_id/reaction/:reaction_type`
+1. `GET /api/v1/channel/:channel_id/messages`
+2. `POST /api/v1/channel/:channel_id/read`
+3. `POST /api/v1/channel/:channel_id/message/:message_id/view`
+4. `POST /api/v1/channel/:channel_id/message/:message_id/reaction`
+5. `DELETE /api/v1/channel/:channel_id/message/:message_id/reaction/:reaction_type`
 
 ## 3. Core API Matrix
 
 | Action | Method | Path | Query | Body | Payload (success) |
 |---|---|---|---|---|---|
-| Create channel | `POST` | `/v1/channel/create` | - | `name`, `type`, `description?`, `avatar?`, `custom_id?`, `tags?` | Channel object |
-| Get channel | `GET` | `/v1/channel/:channel_id` | - | - | Channel object |
-| Get by custom id | `GET` | `/v1/channel/by_custom_id/:custom_id` | - | - | Channel object |
-| Update channel | `PUT/POST` | `/v1/channel/:channel_id/update` | - | `name?`, `description?`, `avatar?`, `tags?` | Channel object |
-| Delete channel | `POST` | `/v1/channel/:channel_id/delete` | - | - | `{}` |
-| Subscribe | `POST` | `/v1/channel/:channel_id/subscribe` | - | - | `{}` |
-| Unsubscribe | `POST` | `/v1/channel/:channel_id/unsubscribe` | - | - | `{}` |
-| My subscribed channels | `GET` | `/v1/channels/subscribed` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
-| My managed channels | `GET` | `/v1/channels/managed` | - | - | `{list}` |
-| Unread summary | `GET` | `/v1/channels/unread/summary` | - | - | `{total_unread, unread_channels, channels[]}` |
-| Publish message | `POST` | `/v1/channel/:channel_id/message` | - | `content`, `msg_type`, `payload?` | Message object |
-| Message list | `GET` | `/v1/channel/:channel_id/messages` | `cursor?`, `limit?` | - | `{list}` |
-| Mark read | `POST` | `/v1/channel/:channel_id/read` | - | `message_id` | `{}` |
-| Search channels | `GET` | `/v1/channels/search` | `keyword`, `limit?` | - | `{list}` |
-| Discover channels | `GET` | `/v1/channels/discover` | `category?`, `limit?` | - | `{list}` |
+| Create channel | `POST` | `/api/v1/channel/create` | - | `name`, `type`, `description?`, `avatar?`, `custom_id?`, `tags?` | Channel object |
+| Get channel | `GET` | `/api/v1/channel/:channel_id` | - | - | Channel object |
+| Get by custom id | `GET` | `/api/v1/channel/by_custom_id/:custom_id` | - | - | Channel object |
+| Update channel | `PUT/POST` | `/api/v1/channel/:channel_id/update` | - | `name?`, `description?`, `avatar?`, `tags?` | Channel object |
+| Delete channel | `POST` | `/api/v1/channel/:channel_id/delete` | - | - | `{}` |
+| Subscribe | `POST` | `/api/v1/channel/:channel_id/subscribe` | - | - | `{}` |
+| Unsubscribe | `POST` | `/api/v1/channel/:channel_id/unsubscribe` | - | - | `{}` |
+| My subscribed channels | `GET` | `/api/v1/channels/subscribed` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+| My managed channels | `GET` | `/api/v1/channels/managed` | - | - | `{list}` |
+| Unread summary | `GET` | `/api/v1/channels/unread/summary` | - | - | `{total_unread, unread_channels, channels[]}` |
+| Publish message | `POST` | `/api/v1/channel/:channel_id/message` | - | `content`, `msg_type`, `payload?` | Message object |
+| Message list | `GET` | `/api/v1/channel/:channel_id/messages` | `cursor?`, `limit?` | - | `{list}` |
+| Mark read | `POST` | `/api/v1/channel/:channel_id/read` | - | `message_id` | `{}` |
+| Search channels | `GET` | `/api/v1/channels/search` | `keyword`, `limit?` | - | `{list}` |
+| Discover channels | `GET` | `/api/v1/channels/discover` | `category?`, `limit?` | - | `{list}` |
 
 ## 3.1 Unread Sync Contract
 
@@ -97,7 +97,7 @@ Covered endpoints:
 
 Endpoint:
 
-- `GET /v1/channels/unread/summary`
+- `GET /api/v1/channels/unread/summary`
 
 Response payload:
 
@@ -144,36 +144,36 @@ Rules:
 
 | Action | Method | Path | Query | Body | Payload (success) |
 |---|---|---|---|---|---|
-| Add admin | `POST` | `/v1/channel/:channel_id/admin` | - | `user_id`, `role` | `{}` |
-| Remove admin | `DELETE` | `/v1/channel/:channel_id/admin/:user_id` | - | - | `{}` |
-| Update admin role | `PUT` | `/v1/channel/:channel_id/admin/:user_id/role` | - | `role` | `{}` |
-| Get admins | `GET` | `/v1/channel/:channel_id/admins` | - | - | `{list}` |
-| Get subscribers | `GET` | `/v1/channel/:channel_id/subscribers` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
-| Remove subscriber | `DELETE` | `/v1/channel/:channel_id/subscriber/:user_id` | - | - | `{}` |
-| Channel stats | `GET` | `/v1/channel/:channel_id/stats` | - | - | Stats object |
-| Channel daily stats | `GET` | `/v1/channel/:channel_id/stats/daily` | `days?` | - | `{list}` |
-| Record view | `POST` | `/v1/channel/:channel_id/message/:message_id/view` | - | - | `{}` |
-| Add reaction | `POST` | `/v1/channel/:channel_id/message/:message_id/reaction` | - | `reaction_type?` | `{}` |
-| Remove reaction | `DELETE` | `/v1/channel/:channel_id/message/:message_id/reaction/:reaction_type` | - | - | `{}` |
+| Add admin | `POST` | `/api/v1/channel/:channel_id/admin` | - | `user_id`, `role` | `{}` |
+| Remove admin | `DELETE` | `/api/v1/channel/:channel_id/admin/:user_id` | - | - | `{}` |
+| Update admin role | `PUT` | `/api/v1/channel/:channel_id/admin/:user_id/role` | - | `role` | `{}` |
+| Get admins | `GET` | `/api/v1/channel/:channel_id/admins` | - | - | `{list}` |
+| Get subscribers | `GET` | `/api/v1/channel/:channel_id/subscribers` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+| Remove subscriber | `DELETE` | `/api/v1/channel/:channel_id/subscriber/:user_id` | - | - | `{}` |
+| Channel stats | `GET` | `/api/v1/channel/:channel_id/stats` | - | - | Stats object |
+| Channel daily stats | `GET` | `/api/v1/channel/:channel_id/stats/daily` | `days?` | - | `{list}` |
+| Record view | `POST` | `/api/v1/channel/:channel_id/message/:message_id/view` | - | - | `{}` |
+| Add reaction | `POST` | `/api/v1/channel/:channel_id/message/:message_id/reaction` | - | `reaction_type?` | `{}` |
+| Remove reaction | `DELETE` | `/api/v1/channel/:channel_id/message/:message_id/reaction/:reaction_type` | - | - | `{}` |
 
 ## 5. Invitation Matrix (Private Channel)
 
 | Action | Method | Path | Body | Payload (success) |
 |---|---|---|---|---|
-| Create invitation | `POST` | `/v1/channel/:channel_id/invitation` | `invitee_uid` | Invitation object |
-| Accept invitation | `POST` | `/v1/channel/invitation/accept` | `invitation_id` | `{}` |
-| Reject invitation | `POST` | `/v1/channel/invitation/reject` | `invitation_id` | `{}` |
-| My invitations | `GET` | `/v1/channel/invitations/my` | - | `{list}` |
-| Sent invitations | `GET` | `/v1/channel/invitations/sent` | - | `{list}` |
+| Create invitation | `POST` | `/api/v1/channel/:channel_id/invitation` | `invitee_uid` | Invitation object |
+| Accept invitation | `POST` | `/api/v1/channel/invitation/accept` | `invitation_id` | `{}` |
+| Reject invitation | `POST` | `/api/v1/channel/invitation/reject` | `invitation_id` | `{}` |
+| My invitations | `GET` | `/api/v1/channel/invitations/my` | - | `{list}` |
+| Sent invitations | `GET` | `/api/v1/channel/invitations/sent` | - | `{list}` |
 
 ## 6. Order Matrix (Paid Channel)
 
 | Action | Method | Path | Body | Payload (success) |
 |---|---|---|---|---|
-| Create order | `POST` | `/v1/channel/:channel_id/order` | - | Order object |
-| Pay order | `POST` | `/v1/channel/order/pay` | `order_no` | `{}` |
-| My orders | `GET` | `/v1/channel/orders/my` | - | `{list}` |
-| Get order detail | `GET` | `/v1/channel/order/:order_no` | - | Order object |
+| Create order | `POST` | `/api/v1/channel/:channel_id/order` | - | Order object |
+| Pay order | `POST` | `/api/v1/channel/order/pay` | `order_no` | `{}` |
+| My orders | `GET` | `/api/v1/channel/orders/my` | - | `{list}` |
+| Get order detail | `GET` | `/api/v1/channel/order/:order_no` | - | Order object |
 
 ## 7. Error Semantics (Business)
 
@@ -190,7 +190,7 @@ Rules:
 
 ### 8.1 App (`imboyapp`)
 
-1. `updateAdminRole` uses `/v1/channel/:channel_id/admin/:user_id/role`.
+1. `updateAdminRole` uses `/api/v1/channel/:channel_id/admin/:user_id/role`.
 2. Calls with path IDs no longer duplicate `channel_id` in body unless required by contract.
 3. Order endpoints are implemented in `ChannelApi`.
 4. Unread badge should prefer websocket push and use unread summary pull for cold-start resync.

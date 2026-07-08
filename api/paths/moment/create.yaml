@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/create.yaml
-# POST /v1/moment/create — 发布动态 / Create moment
+# POST /api/v1/moment/create — 发布动态 / Create moment
 # Handler: src/api/moment_handler.erl#create/2 → moment_logic:create_post/2
 # ----------------------------------------------------------------------------
 post:

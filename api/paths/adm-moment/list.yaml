@@ -1,4 +1,4 @@
-# GET /adm/moment/list — admin
+# GET /api/adm/moment/list — admin
 get:
   tags: [admin]
   summary: admin adm-moment - list

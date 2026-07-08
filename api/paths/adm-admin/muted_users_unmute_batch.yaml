@@ -1,4 +1,4 @@
-# POST /adm/admin/muted_users/unmute_batch — admin
+# POST /api/adm/admin/muted_users/unmute_batch — admin
 post:
   tags: [admin]
   summary: admin adm-admin - muted_users_unmute_batch

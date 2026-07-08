@@ -1,4 +1,4 @@
-# POST /v1/attachment/confirm — 确认附件上传 / Confirm attachment upload
+# POST /api/v1/attachment/confirm — 确认附件上传 / Confirm attachment upload
 # Handler: src/api/attach_handler.erl#confirm/2
 post:
   tags: [user]

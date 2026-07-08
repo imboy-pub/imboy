@@ -1,4 +1,4 @@
-# POST /feedback/remove
+# POST /api/feedback/remove
 post:
   tags: [user]
   summary: 删除反馈

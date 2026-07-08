@@ -1,4 +1,4 @@
-# GET /v1/attachment/presign — 获取 S3 预签名上传 URL / Get presigned upload URL
+# GET /api/v1/attachment/presign — 获取 S3 预签名上传 URL / Get presigned upload URL
 # Handler: src/api/attach_handler.erl#presign/2
 get:
   tags: [user]

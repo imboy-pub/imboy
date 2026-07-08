@@ -1,4 +1,4 @@
-# POST /group_album/rename — 重命名相册 / Rename album
+# POST /api/group_album/rename — 重命名相册 / Rename album
 post:
   tags: [user]
   summary: 重命名相册

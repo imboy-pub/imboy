@@ -1,4 +1,4 @@
-# POST /adm/announcement/create — admin
+# POST /api/adm/announcement/create — admin
 post:
   tags: [admin]
   summary: admin adm-announcement - create

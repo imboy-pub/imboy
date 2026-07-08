@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/unlike.yaml
-# POST /v1/moment/{moment_id}/unlike — 取消点赞 / Unlike moment
+# POST /api/v1/moment/{moment_id}/unlike — 取消点赞 / Unlike moment
 # Handler: src/api/moment_handler.erl#unlike/2 → moment_logic:unlike_post/2
 # ----------------------------------------------------------------------------
 post:

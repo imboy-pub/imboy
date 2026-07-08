@@ -104,12 +104,15 @@ api_init(Req0) ->
 -spec get_help(cowboy_req:req()) -> cowboy_req:req().
 get_help(Req0) ->
     Body =
-        "\n        <meta charset=\"utf-8\"/>\n        <meta http-equiv=\"Cont"
-        "ent-Language\" content=\"zh-CN\">\n        <h1>API列表</h1>\n "
-        "       <ol>\n            <li><a href=\"/init\" target=\"_blank\">/in"
-        "it  GET</a></li>\n            <li><a href=\"/conversation/online\" "
-        "target=\"_blank\">\n                /conversation/online  GET</a></l"
-        "i>\n        </ol>\n    ",
+        "\n"
+        "        <meta charset=\"utf-8\"/>\n"
+        "        <meta http-equiv=\"Content-Language\" content=\"zh-CN\">\n"
+        "        <h1>API列表</h1>\n"
+        "        <ol>\n"
+        "            <li><a href=\"/api/v1/init\" target=\"_blank\">/api/v1/init  GET</a></li>\n"
+        "            <li><a href=\"/api/v1/conversation/online\" target=\"_blank\">/api/v1/conversation/online  GET</a></li>\n"
+        "        </ol>\n"
+        "    ",
     cowboy_req:reply(
         200,
         #{<<"content-type">> => <<"text/html">>},

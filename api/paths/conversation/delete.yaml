@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/conversation/delete.yaml
-# POST /conversation/delete — 删除会话（软删除）/ Soft-delete conversation
+# POST /api/conversation/delete — 删除会话（软删除）/ Soft-delete conversation
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
 # 调用方:  api/openapi.yaml#/paths/~1conversation~1delete

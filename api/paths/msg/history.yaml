@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/history.yaml
-# GET /msg/history — 按 conv_seq 游标拉取历史消息 / Fetch history by cursor
+# GET /api/msg/history — 按 conv_seq 游标拉取历史消息 / Fetch history by cursor
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
 # 调用方：api/openapi.yaml#/paths/~1msg~1history

@@ -1,4 +1,4 @@
-# GET /fts/recently_user
+# GET /api/fts/recently_user
 get:
   tags: [user]
   summary: 最近联系人

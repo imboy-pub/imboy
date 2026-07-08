@@ -1,4 +1,4 @@
-# GET /v1/group/task/my
+# GET /api/v1/group/task/my
 get:
   tags: [user]
   summary: 我被指派的任务

@@ -1,4 +1,4 @@
-# GET /v1/e2ee/key/status
+# GET /api/v1/e2ee/key/status
 get:
   tags: [user]
   summary: 公钥状态查询

@@ -1,4 +1,4 @@
-# POST /adm/feedback/delete — admin
+# POST /api/adm/feedback/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除反馈

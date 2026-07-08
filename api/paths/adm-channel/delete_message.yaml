@@ -1,4 +1,4 @@
-# DELETE /adm/channel/{channel_id}/message/{message_id}/delete — admin
+# DELETE /api/adm/channel/{channel_id}/message/{message_id}/delete — admin
 delete:
   tags: [admin]
   summary: admin adm-channel - delete_message

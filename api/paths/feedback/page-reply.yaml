@@ -1,4 +1,4 @@
-# GET /feedback/page_reply
+# GET /api/feedback/page_reply
 get:
   tags: [user]
   summary: 回复分页

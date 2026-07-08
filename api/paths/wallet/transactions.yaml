@@ -1,4 +1,4 @@
-# GET /v1/wallet/transactions
+# GET /api/v1/wallet/transactions
 get:
   tags: [user]
   summary: 钱包交易流水

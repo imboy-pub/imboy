@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-collect/remove.yaml
-# POST /user_collect/remove — 删除收藏 / Remove collection item
+# POST /api/user_collect/remove — 删除收藏 / Remove collection item
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 8 / D-user-collect)
 # 调用方:  api/openapi.yaml#/paths/~1user_collect~1remove

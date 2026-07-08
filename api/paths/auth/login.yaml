@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/login.yaml
-# POST /passport/login — 账号密码登录 / Account+password login
+# POST /api/passport/login — 账号密码登录 / Account+password login
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
 # 调用方：api/openapi.yaml#/paths/~1passport~1login

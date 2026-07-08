@@ -1,4 +1,4 @@
-# GET /adm/admin/muted_users/list — admin
+# GET /api/adm/admin/muted_users/list — admin
 get:
   tags: [admin]
   summary: admin adm-admin - muted_users_list

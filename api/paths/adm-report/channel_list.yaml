@@ -1,4 +1,4 @@
-# GET /adm/channel/report/list — admin
+# GET /api/adm/channel/report/list — admin
 get:
   tags: [admin]
   summary: admin adm-report - channel_list

@@ -1,4 +1,4 @@
-# GET /v1/group/tag/list
+# GET /api/v1/group/tag/list
 get:
   tags: [user]
   summary: 群当前标签列表

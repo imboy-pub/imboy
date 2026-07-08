@@ -1,4 +1,4 @@
-# POST /v1/group/task/review
+# POST /api/v1/group/task/review
 post:
   tags: [user]
   summary: 批改作业（按分配评分）

@@ -1,4 +1,4 @@
-# GET /adm/message/export — admin
+# GET /api/adm/message/export — admin
 get:
   tags: [admin]
   summary: admin adm-message - export

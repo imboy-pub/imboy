@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-tag-relation/set.yaml
-# POST /user_tag_relation/set — 批量设置对象标签 / Bulk set tag membership
+# POST /api/user_tag_relation/set — 批量设置对象标签 / Bulk set tag membership
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
 # 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1set

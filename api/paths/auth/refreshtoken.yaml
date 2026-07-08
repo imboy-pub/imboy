@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/refreshtoken.yaml
-# POST /refreshtoken — 刷新 access token / Refresh access token
+# POST /api/refreshtoken — 刷新 access token / Refresh access token
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 26 / D-extras)
 # 调用方:  api/openapi.yaml#/paths/~1refreshtoken (主) + ~1v1~1refreshtoken (v1)

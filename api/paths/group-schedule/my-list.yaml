@@ -1,4 +1,4 @@
-# GET /v1/group_schedule/my_list
+# GET /api/v1/group_schedule/my_list
 get:
   tags: [user]
   summary: 我参与的日程

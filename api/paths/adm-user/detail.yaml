@@ -1,4 +1,4 @@
-# GET /adm/user/detail — admin
+# GET /api/adm/user/detail — admin
 get:
   tags: [admin]
   summary: admin adm-user - detail

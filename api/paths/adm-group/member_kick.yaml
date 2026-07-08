@@ -1,4 +1,4 @@
-# POST /adm/group/member/kick — admin
+# POST /api/adm/group/member/kick — admin
 post:
   tags: [admin]
   summary: 管理后台踢出群成员

@@ -1,4 +1,4 @@
-# GET /adm/group/schedule/detail — admin
+# GET /api/adm/group/schedule/detail — admin
 get:
   tags: [admin]
   summary: 管理后台群日程详情

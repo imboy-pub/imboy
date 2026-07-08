@@ -1,4 +1,4 @@
-# POST /adm/plugin/force_uninstall — admin
+# POST /api/adm/plugin/force_uninstall — admin
 post:
   tags: [admin]
   summary: admin adm-plugin - force_uninstall

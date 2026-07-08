@@ -1,4 +1,4 @@
-# POST /v1/e2ee/transfer/create
+# POST /api/v1/e2ee/transfer/create
 post:
   tags: [user]
   summary: 新设备 - 创建迁移会话

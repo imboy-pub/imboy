@@ -1,4 +1,4 @@
-# GET /adm/rbac/me — admin
+# GET /api/adm/rbac/me — admin
 get:
   tags: [admin]
   summary: admin adm-index - rbac

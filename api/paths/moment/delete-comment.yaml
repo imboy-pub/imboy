@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/delete-comment.yaml
-# POST /v1/moment/{moment_id}/comment/{comment_id}/delete — 删评论 / Delete comment
+# POST /api/v1/moment/{moment_id}/comment/{comment_id}/delete — 删评论 / Delete comment
 # Handler: src/api/moment_handler.erl#delete_comment/2 → moment_logic:delete_comment/3
 # ----------------------------------------------------------------------------
 post:

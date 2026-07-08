@@ -1,4 +1,4 @@
-# GET /adm/stats/message — admin
+# GET /api/adm/stats/message — admin
 get:
   tags: [admin]
   summary: admin adm-stats - message

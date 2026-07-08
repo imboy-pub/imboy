@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user/update.yaml
-# POST /user/update — 修改用户信息 / Update user profile field
+# POST /api/user/update — 修改用户信息 / Update user profile field
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
 # 调用方:  api/openapi.yaml#/paths/~1user~1update

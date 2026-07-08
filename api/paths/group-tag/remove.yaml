@@ -1,4 +1,4 @@
-# POST /v1/group/tag/remove
+# POST /api/v1/group/tag/remove
 post:
   tags: [user]
   summary: 群 - 移除标签

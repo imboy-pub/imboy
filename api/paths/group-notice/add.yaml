@@ -1,4 +1,4 @@
-# POST /group_notice/add — 新建群公告 / Create group notice
+# POST /api/group_notice/add — 新建群公告 / Create group notice
 # Handler: group_notice_handler.erl#add/3
 post:
   tags: [user]

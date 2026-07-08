@@ -1,4 +1,4 @@
-# POST /v1/group/vote/cast
+# POST /api/v1/group/vote/cast
 post:
   tags: [user]
   summary: 投票

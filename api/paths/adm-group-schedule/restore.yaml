@@ -1,4 +1,4 @@
-# POST /adm/group/schedule/restore — admin
+# POST /api/adm/group/schedule/restore — admin
 post:
   tags: [admin]
   summary: 管理后台恢复群日程

@@ -1,4 +1,4 @@
-# POST /v1/group/task/update
+# POST /api/v1/group/task/update
 post:
   tags: [user]
   summary: 群任务 - 修改

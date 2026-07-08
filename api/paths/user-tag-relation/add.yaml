@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-tag-relation/add.yaml
-# POST /user_tag_relation/add — 给对象打标签 / Tag an object
+# POST /api/user_tag_relation/add — 给对象打标签 / Tag an object
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
 # 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1add

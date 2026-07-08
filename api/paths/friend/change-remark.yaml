@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend/change-remark.yaml
-# POST /friend/change_remark — 修改好友备注 / Change friend remark
+# POST /api/friend/change_remark — 修改好友备注 / Change friend remark
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1change_remark

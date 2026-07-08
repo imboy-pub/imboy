@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/comments.yaml
-# GET /v1/moment/{moment_id}/comments — 评论列表 / List comments
+# GET /api/v1/moment/{moment_id}/comments — 评论列表 / List comments
 # Handler: src/api/moment_handler.erl#comments/2 → moment_logic:list_comments/4
 # ----------------------------------------------------------------------------
 get:

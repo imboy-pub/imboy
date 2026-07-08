@@ -1,4 +1,4 @@
-# POST /adm/group/notice/delete — admin
+# POST /api/adm/group/notice/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除群公告

@@ -139,7 +139,7 @@ cd /opt/imboy && IMBOYENV=prod ./bin/imboy daemon
 /opt/imboy/bin/imboy ping
 
 # HTTP 心跳 / HTTP healthcheck
-curl -fsS http://127.0.0.1:9800/v1/healthz
+curl -fsS http://127.0.0.1:9800/api/v1/healthz
 ```
 
 ---

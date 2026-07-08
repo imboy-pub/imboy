@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/show.yaml
-# GET /v1/moment/{moment_id} — 查看动态 / Show moment
+# GET /api/v1/moment/{moment_id} — 查看动态 / Show moment
 # Handler: src/api/moment_handler.erl#show/2 → moment_logic:get_post/2
 # ----------------------------------------------------------------------------
 get:

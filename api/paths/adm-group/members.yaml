@@ -1,4 +1,4 @@
-# GET /adm/group/members — admin
+# GET /api/adm/group/members — admin
 get:
   tags: [admin]
   summary: admin adm-group - members

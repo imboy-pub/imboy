@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/reaction-list.yaml
-# GET /v1/msg/reaction/list — 查询消息表情列表 / List message reactions
+# GET /api/v1/msg/reaction/list — 查询消息表情列表 / List message reactions
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1reaction~1list

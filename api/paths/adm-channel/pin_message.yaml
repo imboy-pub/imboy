@@ -1,4 +1,4 @@
-# PUT /adm/channel/{channel_id}/message/{message_id}/pin — admin
+# PUT /api/adm/channel/{channel_id}/message/{message_id}/pin — admin
 put:
   tags: [admin]
   summary: admin adm-channel - pin_message

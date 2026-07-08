@@ -1,4 +1,4 @@
-# GET /group_album/list — 相册列表 / Albums list
+# GET /api/group_album/list — 相册列表 / Albums list
 get:
   tags: [user]
   summary: 群下的相册列表

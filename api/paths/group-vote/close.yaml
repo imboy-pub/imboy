@@ -1,4 +1,4 @@
-# POST /v1/group/vote/close
+# POST /api/v1/group/vote/close
 post:
   tags: [user]
   summary: 提前结束投票

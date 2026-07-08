@@ -1,4 +1,4 @@
-# POST /adm/role/permissions/save — admin
+# POST /api/adm/role/permissions/save — admin
 post:
   tags: [admin]
   summary: admin adm-role - permissions_save

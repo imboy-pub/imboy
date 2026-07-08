@@ -1,4 +1,4 @@
-# POST /v1/group/notice/unpin — 取消置顶 / Unpin notice
+# POST /api/v1/group/notice/unpin — 取消置顶 / Unpin notice
 post:
   tags: [user]
   summary: 取消置顶群公告

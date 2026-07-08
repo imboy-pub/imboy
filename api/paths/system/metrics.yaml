@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# GET /metrics + /v1/metrics — Prometheus 文本格式
+# GET /api/metrics + /v1/metrics — Prometheus 文本格式
 # Handler: src/api/metrics_handler.erl
 # ----------------------------------------------------------------------------
 get:

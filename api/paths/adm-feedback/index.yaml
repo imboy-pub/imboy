@@ -1,4 +1,4 @@
-# GET /adm/feedback/index — admin
+# GET /api/adm/feedback/index — admin
 get:
   tags: [admin]
   summary: admin adm-feedback - index

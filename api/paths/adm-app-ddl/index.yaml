@@ -1,4 +1,4 @@
-# GET /adm/app_ddl/index — admin
+# GET /api/adm/app_ddl/index — admin
 get:
   tags: [admin]
   summary: admin adm-app-ddl - index

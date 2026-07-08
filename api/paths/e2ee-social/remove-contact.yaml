@@ -1,4 +1,4 @@
-# POST /v1/e2ee/social/contacts/remove
+# POST /api/v1/e2ee/social/contacts/remove
 post:
   tags: [user]
   summary: 移除联系人

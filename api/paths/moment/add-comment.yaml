@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/add-comment.yaml
-# POST /v1/moment/{moment_id}/comment — 发表评论 / Add comment
+# POST /api/v1/moment/{moment_id}/comment — 发表评论 / Add comment
 # Handler: src/api/moment_handler.erl#add_comment/2 → moment_logic:add_comment/4
 # ----------------------------------------------------------------------------
 post:

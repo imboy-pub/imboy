@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/conversation/online.yaml
-# GET /conversation/online — 在线统计 / Online stats
+# GET /api/conversation/online — 在线统计 / Online stats
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
 # 调用方:  api/openapi.yaml#/paths/~1conversation~1online

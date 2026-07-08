@@ -1,4 +1,4 @@
-# GET /v1/e2ee/transfer/pending
+# GET /api/v1/e2ee/transfer/pending
 get:
   tags: [user]
   summary: 待处理迁移列表（当前用户）

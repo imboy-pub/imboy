@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-tag/add.yaml
-# POST /user_tag/add — 新建标签 / Create tag
+# POST /api/user_tag/add — 新建标签 / Create tag
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
 # 调用方:  api/openapi.yaml#/paths/~1user_tag~1add

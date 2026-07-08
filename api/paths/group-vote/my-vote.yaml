@@ -1,4 +1,4 @@
-# GET /v1/group/vote/my_vote
+# GET /api/v1/group/vote/my_vote
 get:
   tags: [user]
   summary: 查询自己投了什么

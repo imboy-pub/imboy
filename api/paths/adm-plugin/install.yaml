@@ -1,4 +1,4 @@
-# POST /adm/plugin/install — admin
+# POST /api/adm/plugin/install — admin
 post:
   tags: [admin]
   summary: admin adm-plugin - install

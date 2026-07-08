@@ -1,4 +1,4 @@
-# POST /v1/group/vote/cancel
+# POST /api/v1/group/vote/cancel
 post:
   tags: [user]
   summary: 取消投票（作废）

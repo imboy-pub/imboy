@@ -1,4 +1,4 @@
-# GET /v1/group/task/list
+# GET /api/v1/group/task/list
 get:
   tags: [user]
   summary: 群任务列表

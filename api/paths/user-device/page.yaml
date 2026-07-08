@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-device/page.yaml
-# GET /user_device/page — 设备档案分页 / Paginated device list (DB)
+# GET /api/user_device/page — 设备档案分页 / Paginated device list (DB)
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
 # 调用方:  api/openapi.yaml#/paths/~1user_device~1page

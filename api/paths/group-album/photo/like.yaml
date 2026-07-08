@@ -1,4 +1,4 @@
-# POST /group_album/photo/like — 点赞照片 / Like photo
+# POST /api/group_album/photo/like — 点赞照片 / Like photo
 post:
   tags: [user]
   summary: 点赞照片（幂等）

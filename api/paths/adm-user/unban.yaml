@@ -1,4 +1,4 @@
-# POST /adm/user/unban — admin
+# POST /api/adm/user/unban — admin
 post:
   tags: [admin]
   summary: admin adm-user - unban

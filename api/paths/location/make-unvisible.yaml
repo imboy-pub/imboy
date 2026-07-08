@@ -1,4 +1,4 @@
-# POST /location/makeMyselfUnvisible
+# POST /api/location/makeMyselfUnvisible
 post:
   tags: [user]
   summary: 从附近列表中隐身

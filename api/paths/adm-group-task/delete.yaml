@@ -1,4 +1,4 @@
-# POST /adm/group/task/delete — admin
+# POST /api/adm/group/task/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除群任务

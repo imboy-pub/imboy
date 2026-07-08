@@ -1,4 +1,4 @@
-# POST /adm/announcement/publish — admin
+# POST /api/adm/announcement/publish — admin
 post:
   tags: [admin]
   summary: admin adm-announcement - publish

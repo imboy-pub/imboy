@@ -1,4 +1,4 @@
-# GET /adm/user/logout_apply/list — admin
+# GET /api/adm/user/logout_apply/list — admin
 get:
   tags: [admin]
   summary: admin adm-logout-apply - list

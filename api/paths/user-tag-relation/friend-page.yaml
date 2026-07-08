@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-tag-relation/friend-page.yaml
-# GET /user_tag_relation/friend_page — 好友标签下的好友分页 / Friends by tag
+# GET /api/user_tag_relation/friend_page — 好友标签下的好友分页 / Friends by tag
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
 # 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1friend_page

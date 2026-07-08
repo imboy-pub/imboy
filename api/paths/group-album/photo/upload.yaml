@@ -1,4 +1,4 @@
-# POST /group_album/photo/upload — 上传单张照片 / Upload single photo
+# POST /api/group_album/photo/upload — 上传单张照片 / Upload single photo
 post:
   tags: [user]
   summary: 上传单张照片（multipart 或 JSON-base64 两种模式）

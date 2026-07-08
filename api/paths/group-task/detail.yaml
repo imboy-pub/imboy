@@ -1,4 +1,4 @@
-# GET /v1/group/task/detail
+# GET /api/v1/group/task/detail
 get:
   tags: [user]
   summary: 任务详情

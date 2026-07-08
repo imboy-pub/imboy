@@ -1,4 +1,4 @@
-# GET /v1/app/manifest
+# GET /api/v1/app/manifest
 get:
   tags: [user]
   summary: 客户端启动清单

@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/ws/connect.yaml
-# GET /ws — WebSocket upgrade endpoint
+# GET /api/ws — WebSocket upgrade endpoint
 # Handler: src/api/websocket_handler.erl
 # 关联：消息协议契约见 api/proto/imboy_v2_frame.proto、api/asyncapi.yaml 与
 #       docs/api/websocket-api-2.md (人类可读设计文档).

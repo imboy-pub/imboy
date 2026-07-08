@@ -1,4 +1,4 @@
-# POST /v1/group/category/move_group
+# POST /api/v1/group/category/move_group
 post:
   tags: [user]
   summary: 把群移动到指定分组

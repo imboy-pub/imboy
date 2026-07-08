@@ -1,4 +1,4 @@
-# GET /v1/e2ee/social/shards
+# GET /api/v1/e2ee/social/shards
 get:
   tags: [user]
   summary: 拉取自己保管的 shards

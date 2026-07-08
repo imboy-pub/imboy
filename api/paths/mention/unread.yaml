@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/mention/unread.yaml
-# GET /mention/unread — 未读 @ 数量 / Unread mention count
+# GET /api/mention/unread — 未读 @ 数量 / Unread mention count
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
 # 调用方:  api/openapi.yaml#/paths/~1mention~1unread

@@ -1,4 +1,4 @@
-# GET /adm/group/category/list — admin
+# GET /api/adm/group/category/list — admin
 get:
   tags: [admin]
   summary: 管理后台群分类列表

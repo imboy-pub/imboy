@@ -1,4 +1,4 @@
-# GET /v1/group/file/search
+# GET /api/v1/group/file/search
 get:
   tags: [user]
   summary: 群文件搜索

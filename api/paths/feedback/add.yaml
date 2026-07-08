@@ -1,4 +1,4 @@
-# POST /feedback/add
+# POST /api/feedback/add
 post:
   tags: [user]
   summary: 提交反馈

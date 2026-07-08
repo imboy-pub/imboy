@@ -1,4 +1,4 @@
-# POST /adm/storage/enable — admin
+# POST /api/adm/storage/enable — admin
 post:
   tags: [admin]
   summary: 管理后台启用存储

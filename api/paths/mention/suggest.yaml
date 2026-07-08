@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/mention/suggest.yaml
-# GET /mention/suggest — @ 输入建议 / @-input suggestions
+# GET /api/mention/suggest — @ 输入建议 / @-input suggestions
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
 # 调用方:  api/openapi.yaml#/paths/~1mention~1suggest

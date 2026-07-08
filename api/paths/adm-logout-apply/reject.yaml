@@ -1,4 +1,4 @@
-# POST /adm/user/logout_apply/reject — admin
+# POST /api/adm/user/logout_apply/reject — admin
 post:
   tags: [admin]
   summary: admin adm-logout-apply - reject

@@ -1,4 +1,4 @@
-# POST /v1/e2ee/social/contacts/add
+# POST /api/v1/e2ee/social/contacts/add
 post:
   tags: [user]
   summary: 添加恢复联系人

@@ -1,4 +1,4 @@
-# GET /adm/group/notice/detail — admin
+# GET /api/adm/group/notice/detail — admin
 get:
   tags: [admin]
   summary: 管理后台群公告详情

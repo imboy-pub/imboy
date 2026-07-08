@@ -1,4 +1,4 @@
-# POST /v1/e2ee/transfer/cancel
+# POST /api/v1/e2ee/transfer/cancel
 post:
   tags: [user]
   summary: 取消迁移会话

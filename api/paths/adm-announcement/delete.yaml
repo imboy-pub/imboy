@@ -1,4 +1,4 @@
-# POST /adm/announcement/delete — admin
+# POST /api/adm/announcement/delete — admin
 post:
   tags: [admin]
   summary: admin adm-announcement - delete

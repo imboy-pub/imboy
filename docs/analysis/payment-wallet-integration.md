@@ -10,11 +10,11 @@
 
 | 组别 | 路径前缀 | 职责 | JWT 认证 |
 |------|----------|------|---------|
-| 钱包 | `/v1/wallet/` | 余额查询、流水、Mock 充值、充值订单链路 | 必须 |
-| 充值订单 | `/v1/wallet/recharge/` | 创建订单 → 拉起支付 → 查询状态 | 必须 |
-| 支付回调 | `/v1/payment/callback/{gateway}` | 第三方网关主动回调入账 | **免 JWT** |
-| SaaS 计费 | `/v1/billing/` | 套餐管理、订阅、用量、账单 | 必须 |
-| 频道订单 | `/v1/channel/` | 付费频道购买、支付、退款 | 必须 |
+| 钱包 | `/api/v1/wallet/` | 余额查询、流水、Mock 充值、充值订单链路 | 必须 |
+| 充值订单 | `/api/v1/wallet/recharge/` | 创建订单 → 拉起支付 → 查询状态 | 必须 |
+| 支付回调 | `/api/v1/payment/callback/{gateway}` | 第三方网关主动回调入账 | **免 JWT** |
+| SaaS 计费 | `/api/v1/billing/` | 套餐管理、订阅、用量、账单 | 必须 |
+| 频道订单 | `/api/v1/channel/` | 付费频道购买、支付、退款 | 必须 |
 
 ### Sandbox vs Production 差异
 
@@ -75,7 +75,7 @@ Flutter 端使用 `safeParseBigIntJson` 转换，类型声明使用 `EntityId`�
 ### Step 1 — 查询余额（可选，确认初始状态）
 
 ```http
-GET /v1/wallet/balance
+GET /api/v1/wallet/balance
 Authorization: Bearer <JWT>
 ```
 
@@ -97,7 +97,7 @@ Authorization: Bearer <JWT>
 ### Step 2 — 创建充值订单
 
 ```http
-POST /v1/wallet/recharge/order
+POST /api/v1/wallet/recharge/order
 Authorization: Bearer <JWT>
 Content-Type: application/json
 
@@ -134,7 +134,7 @@ Content-Type: application/json
 ### Step 3 — 拉起支付（mock 即时入账）
 
 ```http
-POST /v1/wallet/recharge/pay
+POST /api/v1/wallet/recharge/pay
 Authorization: Bearer <JWT>
 Content-Type: application/json
 
@@ -166,7 +166,7 @@ Content-Type: application/json
 ### Step 4 — 轮询订单状态（真实网关使用）
 
 ```http
-GET /v1/wallet/recharge/RCH20260614_A1B2C3D4
+GET /api/v1/wallet/recharge/RCH20260614_A1B2C3D4
 Authorization: Bearer <JWT>
 ```
 
@@ -194,7 +194,7 @@ Authorization: Bearer <JWT>
 跳过订单，直接向钱包加款（仅非生产环境）：
 
 ```http
-POST /v1/wallet/topup
+POST /api/v1/wallet/topup
 Authorization: Bearer <JWT>
 Content-Type: application/json
 
@@ -224,7 +224,7 @@ Content-Type: application/json
 
 ### 一、钱包
 
-#### GET /v1/wallet/balance — 查询余额
+#### GET /api/v1/wallet/balance — 查询余额
 
 | 项目 | 说明 |
 |------|------|
@@ -241,7 +241,7 @@ Content-Type: application/json
 
 ---
 
-#### GET /v1/wallet/transactions — 钱包流水
+#### GET /api/v1/wallet/transactions — 钱包流水
 
 | 项目 | 说明 |
 |------|------|
@@ -277,7 +277,7 @@ Content-Type: application/json
 
 ---
 
-#### POST /v1/wallet/topup — Mock 直接充值（非生产专用）
+#### POST /api/v1/wallet/topup — Mock 直接充值（非生产专用）
 
 | 项目 | 说明 |
 |------|------|
@@ -301,7 +301,7 @@ Content-Type: application/json
 
 ### 二、充值订单
 
-#### POST /v1/wallet/recharge/order — 创建充值订单
+#### POST /api/v1/wallet/recharge/order — 创建充值订单
 
 | 项目 | 说明 |
 |------|------|
@@ -325,7 +325,7 @@ Content-Type: application/json
 
 ---
 
-#### POST /v1/wallet/recharge/pay — 拉起支付
+#### POST /api/v1/wallet/recharge/pay — 拉起支付
 
 | 项目 | 说明 |
 |------|------|
@@ -350,7 +350,7 @@ Content-Type: application/json
 
 ---
 
-#### GET /v1/wallet/recharge/{order_no} — 查询充值订单状态
+#### GET /api/v1/wallet/recharge/{order_no} — 查询充值订单状态
 
 | 项目 | 说明 |
 |------|------|
@@ -363,7 +363,7 @@ Content-Type: application/json
 
 ### 三、支付回调
 
-#### POST /v1/payment/callback/{gateway} — 统一回调 Webhook
+#### POST /api/v1/payment/callback/{gateway} — 统一回调 Webhook
 
 | 项目 | 说明 |
 |------|------|
@@ -396,7 +396,7 @@ Content-Type: application/json
 
 ### 四、SaaS 计费
 
-#### POST /v1/billing/plan — 创建套餐（管理端）
+#### POST /api/v1/billing/plan — 创建套餐（管理端）
 
 | 项目 | 说明 |
 |------|------|
@@ -417,7 +417,7 @@ Content-Type: application/json
 
 ---
 
-#### POST /v1/billing/plan/update — 更新套餐（管理端）
+#### POST /api/v1/billing/plan/update — 更新套餐（管理端）
 
 **请求体**：`id` 必填，其余字段均为可选更新。
 
@@ -433,13 +433,13 @@ Content-Type: application/json
 
 ---
 
-#### GET /v1/billing/plan/list — 套餐列表
+#### GET /api/v1/billing/plan/list — 套餐列表
 
 返回所有 `status=1` 上架套餐，列表在 `payload.list`。
 
 ---
 
-#### POST /v1/billing/subscribe — 订阅套餐
+#### POST /api/v1/billing/subscribe — 订阅套餐
 
 **请求体**：
 
@@ -455,7 +455,7 @@ Content-Type: application/json
 
 ---
 
-#### POST /v1/billing/renew — 续费
+#### POST /api/v1/billing/renew — 续费
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -470,14 +470,14 @@ Content-Type: application/json
 
 ---
 
-#### POST /v1/billing/cancel — 取消订阅
+#### POST /api/v1/billing/cancel — 取消订阅
 
 **请求体**：`{"subscription_id": <id>}`  
 订阅状态变为 3（取消），不立即退款。
 
 ---
 
-#### GET /v1/billing/subscription — 查询当前订阅
+#### GET /api/v1/billing/subscription — 查询当前订阅
 
 **Query 参数**：`tenant_id`（默认 0）
 
@@ -496,7 +496,7 @@ BillingSubscription 字段：
 
 ---
 
-#### POST /v1/billing/usage — 上报用量（增量）
+#### POST /api/v1/billing/usage — 上报用量（增量）
 
 **请求体**：
 
@@ -513,7 +513,7 @@ BillingSubscription 字段：
 
 ---
 
-#### GET /v1/billing/quota — 查询配额
+#### GET /api/v1/billing/quota — 查询配额
 
 **Query 参数**：
 
@@ -527,7 +527,7 @@ BillingSubscription 字段：
 
 ---
 
-#### POST /v1/billing/invoice/generate — 生成账单
+#### POST /api/v1/billing/invoice/generate — 生成账单
 
 **请求体**：`{"subscription_id": <id>}`
 
@@ -542,7 +542,7 @@ BillingSubscription 字段：
 
 ---
 
-#### POST /v1/billing/invoice/pay — 支付账单
+#### POST /api/v1/billing/invoice/pay — 支付账单
 
 **请求体**：
 
@@ -555,7 +555,7 @@ BillingSubscription 字段：
 
 ---
 
-#### GET /v1/billing/invoice/list — 账单列表
+#### GET /api/v1/billing/invoice/list — 账单列表
 
 **Query 参数**：`subscription_id`（必填）
 
@@ -574,7 +574,7 @@ BillingSubscription 字段：
 
 ### 五、频道订单
 
-#### POST /v1/channel/{channel_id}/order — 创建频道订单
+#### POST /api/v1/channel/{channel_id}/order — 创建频道订单
 
 | 项目 | 说明 |
 |------|------|
@@ -598,7 +598,7 @@ BillingSubscription 字段：
 
 ---
 
-#### POST /v1/channel/order/pay — 支付频道订单
+#### POST /api/v1/channel/order/pay — 支付频道订单
 
 **请求体**：
 
@@ -612,7 +612,7 @@ BillingSubscription 字段：
 
 ---
 
-#### POST /v1/channel/order/refund — 申请退款
+#### POST /api/v1/channel/order/refund — 申请退款
 
 **请求体**：
 
@@ -627,17 +627,17 @@ BillingSubscription 字段：
 
 **响应 payload**：空 map `{}`。
 
-> **注意**：路由注册顺序中 `/v1/channel/order/refund` 早于 `/v1/channel/orders/:order_no`，确保 "refund" 不被当作 order_no 解析。
+> **注意**：路由注册顺序中 `/api/v1/channel/order/refund` 早于 `/api/v1/channel/orders/:order_no`，确保 "refund" 不被当作 order_no 解析。
 
 ---
 
-#### GET /v1/channel/orders/{order_no} — 查询频道订单详情
+#### GET /api/v1/channel/orders/{order_no} — 查询频道订单详情
 
 仅订单归属用户可查。**响应 payload**：ChannelOrder 对象。
 
 ---
 
-#### GET /v1/channel/orders/my — 我的频道订单列表
+#### GET /api/v1/channel/orders/my — 我的频道订单列表
 
 返回最近 50 条，按创建时间降序。**响应 payload**：`{"list": [...]}`。
 
@@ -663,7 +663,7 @@ BillingSubscription 字段：
 
 ```
 第三方支付服务器
-    → POST /v1/payment/callback/{gateway}（HTTP，免 JWT）
+    → POST /api/v1/payment/callback/{gateway}（HTTP，免 JWT）
         → 后端读取 RawBody 原始字节
         → payment_callback_handler:normalize/3 按网关归一化
         → payment_callback_logic:handle/3：
@@ -677,7 +677,7 @@ BillingSubscription 字段：
 
 ```bash
 # 模拟 mock 网关回调
-curl -X POST http://127.0.0.1:9800/v1/payment/callback/mock \
+curl -X POST http://127.0.0.1:9800/api/v1/payment/callback/mock \
   -H "Content-Type: application/json" \
   -d '{
     "gateway_payment_no": "MOCK_PAY_XYZ001",
@@ -699,7 +699,7 @@ curl -X POST http://127.0.0.1:9800/v1/payment/callback/mock \
 | L2 | erlang_pay 独立库未集成进主服务（现为子目录 `erlang_pay/`） | 生产网关请求转发 | 待排期 |
 | ~~L3~~ | ~~recharge 入账非单事务丢钱风险~~ **已修复**：入账重构为单事务（`recharge_order_ds:credit_in_tx/4` 订单状态翻转+钱包加余额+流水原子完成，幂等），见 `recharge_logic:credit_order/3`（提交 3836042） | 充值成功入账 | ✅ 已解决 |
 | L4 | 频道订单 amount 为元，与其他金额字段的分单位不一致 | 前端金额显示 | 已知，接口约定不变 |
-| L5 | `/v1/billing/quota` 和 `/v1/billing/invoice/pay` 的响应 payload 字段源码未明确 | SaaS 联调 | 需读源码 billing_logic 确认 |
+| L5 | `/api/v1/billing/quota` 和 `/api/v1/billing/invoice/pay` 的响应 payload 字段源码未明确 | SaaS 联调 | 需读源码 billing_logic 确认 |
 | L6 | 订阅、计费相关接口暂无权限细粒度校验（管理端与用户端共享 JWT）  | SaaS 安全 | 待排期 |
 | L7 | mock 充值（topup）在生产环境应禁用，需通过 `IMBOYENV` 或 `payment.mode` 配置保障 | 安全边界 | 待确认 |
 

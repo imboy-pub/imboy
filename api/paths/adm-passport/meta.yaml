@@ -1,4 +1,4 @@
-# GET /adm/passport/meta — admin
+# GET /api/adm/passport/meta — admin
 get:
   tags: [admin]
   summary: admin adm-passport - meta

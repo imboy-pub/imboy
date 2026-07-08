@@ -1,4 +1,4 @@
-# GET /v1/wallet/recharge/{order_no}
+# GET /api/v1/wallet/recharge/{order_no}
 get:
   tags: [wallet]
   summary: 查询充值订单状态（仅本人可查）

@@ -1,4 +1,4 @@
-# POST /v1/billing/renew — 续费订阅
+# POST /api/v1/billing/renew — 续费订阅
 post:
   tags: [user]
   summary: 续费订阅

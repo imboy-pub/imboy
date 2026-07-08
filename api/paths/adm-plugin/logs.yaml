@@ -1,4 +1,4 @@
-# GET /adm/plugin/logs — admin
+# GET /api/adm/plugin/logs — admin
 get:
   tags: [admin]
   summary: 管理后台插件日志列表

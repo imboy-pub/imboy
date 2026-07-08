@@ -1,4 +1,4 @@
-# POST /v1/group_schedule/update
+# POST /api/v1/group_schedule/update
 post:
   tags: [user]
   summary: 群日程 - 修改

@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend/list.yaml
-# GET /friend/list — 好友列表 / Friend list
+# GET /api/friend/list — 好友列表 / Friend list
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1list

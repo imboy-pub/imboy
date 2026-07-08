@@ -37,8 +37,8 @@
 | location | 转发目标 | 说明 |
 |----------|----------|------|
 | `/ws/` | `http://pro_imboy_api/ws/` | WebSocket 长连接 |
-| `/v1/*` | `http://pro_imboy_api` | REST API |
-| `/adm/` | 302 → prodadm.imboy.pub | 管理后台重定向 |
+| `/api/v1/*` | `http://pro_imboy_api` | REST API |
+| `/api/adm/` | 302 → prodadm.imboy.pub | 管理后台重定向 |
 | `/app/*` | `http://pro_imboy_api` | App 专用接口 |
 | `/` | `http://pro_imboy_api` | 其余请求 |
 
@@ -48,10 +48,10 @@ upstream `pro_imboy_api` → `127.0.0.1:9800`
 
 | location | 处理方式 | 说明 |
 |----------|----------|------|
-| `/v1/*` `/adm-api/*` `/app_version/*` | 反代 `:9800` | API 请求 |
-| `/adm/` | alias 静态目录 | React SPA 文件 |
+| `/api/v1/*` `/api/adm/*` `/app_version/*` | 反代 `:9800` | API 请求 |
+| `/api/adm/` | alias 静态目录 | React SPA 文件 |
 | `/assets/` | 静态缓存 1 年 | 前端资源 |
-| `/` | 301 → `/adm/` | 根路径跳转 |
+| `/` | 301 → `/api/adm/` | 根路径跳转 |
 
 静态文件目录：`/www/wwwroot/prodadm.imboy.pub/`
 

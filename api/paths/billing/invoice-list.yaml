@@ -1,4 +1,4 @@
-# GET /v1/billing/invoice/list — 账单列表
+# GET /api/v1/billing/invoice/list — 账单列表
 get:
   tags: [user]
   summary: 账单列表

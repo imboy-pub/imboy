@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/conversation/restore.yaml
-# POST /conversation/restore — 恢复软删除的会话 / Restore conversation
+# POST /api/conversation/restore — 恢复软删除的会话 / Restore conversation
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
 # 调用方:  api/openapi.yaml#/paths/~1conversation~1restore

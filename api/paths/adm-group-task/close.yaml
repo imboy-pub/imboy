@@ -1,4 +1,4 @@
-# POST /adm/group/task/close — admin
+# POST /api/adm/group/task/close — admin
 post:
   tags: [admin]
   summary: 管理后台关闭群任务

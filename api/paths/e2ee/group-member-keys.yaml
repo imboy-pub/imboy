@@ -1,4 +1,4 @@
-# GET /v1/e2ee/group_member_keys
+# GET /api/v1/e2ee/group_member_keys
 get:
   tags: [user]
   summary: 查询群成员公钥

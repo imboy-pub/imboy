@@ -1,4 +1,4 @@
-# GET /v1/group/vote/list
+# GET /api/v1/group/vote/list
 get:
   tags: [user]
   summary: 群投票列表

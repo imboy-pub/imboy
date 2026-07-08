@@ -1,4 +1,4 @@
-# GET /adm/channel/{channel_id}/invitations — admin
+# GET /api/adm/channel/{channel_id}/invitations — admin
 get:
   tags: [admin]
   summary: admin adm-channel - invitations

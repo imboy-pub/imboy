@@ -123,7 +123,7 @@ _rel/imboy/bin/imboy stop
 
 ```bash
 # HTTP 健康检查
-curl -s http://localhost:9800/v1/init | jq .
+curl -s http://localhost:9800/api/v1/init | jq .
 
 # Prometheus 指标
 curl -s -H "Accept: text/plain" http://localhost:9800/metrics

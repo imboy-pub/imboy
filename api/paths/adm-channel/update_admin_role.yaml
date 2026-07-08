@@ -1,4 +1,4 @@
-# PUT /adm/channel/{channel_id}/admin/{user_id}/role — admin
+# PUT /api/adm/channel/{channel_id}/admin/{user_id}/role — admin
 put:
   tags: [admin]
   summary: admin adm-channel - update_admin_role

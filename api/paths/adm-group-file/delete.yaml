@@ -1,4 +1,4 @@
-# POST /adm/group/file/delete — admin
+# POST /api/adm/group/file/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除群文件

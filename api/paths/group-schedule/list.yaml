@@ -1,4 +1,4 @@
-# GET /v1/group_schedule/list
+# GET /api/v1/group_schedule/list
 get:
   tags: [user]
   summary: 群下日程列表

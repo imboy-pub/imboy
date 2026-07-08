@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/getcode.yaml
-# POST /passport/getcode — 发送验证码 / Send verification code
+# POST /api/passport/getcode — 发送验证码 / Send verification code
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
 # 调用方：api/openapi.yaml#/paths/~1passport~1getcode

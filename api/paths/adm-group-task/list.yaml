@@ -1,4 +1,4 @@
-# GET /adm/group/task/list — admin
+# GET /api/adm/group/task/list — admin
 get:
   tags: [admin]
   summary: 管理后台群任务列表

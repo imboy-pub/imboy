@@ -1,4 +1,4 @@
-# GET /adm/plugin/detail — admin
+# GET /api/adm/plugin/detail — admin
 get:
   tags: [admin]
   summary: admin adm-plugin - detail

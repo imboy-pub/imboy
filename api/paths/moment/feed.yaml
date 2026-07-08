@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/feed.yaml
-# GET /v1/moments/feed — 关注流 / Moments feed
+# GET /api/v1/moments/feed — 关注流 / Moments feed
 # Handler: src/api/moment_handler.erl#feed/2 → moment_logic:feed/3
 # ----------------------------------------------------------------------------
 get:

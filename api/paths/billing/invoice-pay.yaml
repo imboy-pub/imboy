@@ -1,4 +1,4 @@
-# POST /v1/billing/invoice/pay — 支付账单
+# POST /api/v1/billing/invoice/pay — 支付账单
 post:
   tags: [user]
   summary: 支付账单

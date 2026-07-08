@@ -1,4 +1,4 @@
-# POST /v1/e2ee/social/recover
+# POST /api/v1/e2ee/social/recover
 post:
   tags: [user]
   summary: 用 shards 恢复主密钥

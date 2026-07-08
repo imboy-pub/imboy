@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/report.yaml
-# POST /v1/moment/{moment_id}/report — 举报动态 / Report moment
+# POST /api/v1/moment/{moment_id}/report — 举报动态 / Report moment
 # Handler: src/api/moment_handler.erl#report/2 → moment_logic:report_post/4
 # ----------------------------------------------------------------------------
 post:

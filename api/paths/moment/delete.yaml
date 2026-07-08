@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/delete.yaml
-# POST /v1/moment/{moment_id}/delete — 删除动态 / Delete moment
+# POST /api/v1/moment/{moment_id}/delete — 删除动态 / Delete moment
 # Handler: src/api/moment_handler.erl#delete/2 → moment_logic:delete_post/2
 # ----------------------------------------------------------------------------
 post:

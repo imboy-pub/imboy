@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend/add.yaml
-# POST /friend/add — 发起好友申请 / Send friend request
+# POST /api/friend/add — 发起好友申请 / Send friend request
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1add

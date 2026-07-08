@@ -1,4 +1,4 @@
-# GET /v1/group/file/categories
+# GET /api/v1/group/file/categories
 get:
   tags: [user]
   summary: 群文件分类列表

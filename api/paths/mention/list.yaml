@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/mention/list.yaml
-# GET /mention/list — @我的消息列表 / Mentions of me
+# GET /api/mention/list — @我的消息列表 / Mentions of me
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
 # 调用方:  api/openapi.yaml#/paths/~1mention~1list

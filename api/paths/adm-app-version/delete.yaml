@@ -1,4 +1,4 @@
-# DELETE /adm/app_version/delete — admin
+# DELETE /api/adm/app_version/delete — admin
 delete:
   tags: [admin]
   summary: admin adm-app-version - delete

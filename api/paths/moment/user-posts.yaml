@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/user-posts.yaml
-# GET /v1/moments/user/{uid} — 指定用户的动态列表 / User's moments
+# GET /api/v1/moments/user/{uid} — 指定用户的动态列表 / User's moments
 # Handler: src/api/moment_handler.erl#user_posts/2 → moment_logic:user_posts/4
 # ----------------------------------------------------------------------------
 get:

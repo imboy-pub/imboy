@@ -371,15 +371,15 @@ curl -s "${BASE}/health" | jq .
 
 # 应用初始化 — 1.0.0 字段变化：
 #   - upload_key / upload_scene 现在始终返回 "" (旧 go-fastdfs 字段已废弃)
-#   - 新增 attach_presign_endpoint: "/v1/attachment/presign"（Garage S3 直传入口）
-curl -s "${BASE}/v1/app/init" | jq '{ws_url, attach_presign_endpoint, upload_key}'
-# 预期: attach_presign_endpoint = "/v1/attachment/presign", upload_key = ""
+#   - 新增 attach_presign_endpoint: "/api/v1/attachment/presign"（Garage S3 直传入口）
+curl -s "${BASE}/api/v1/app/init" | jq '{ws_url, attach_presign_endpoint, upload_key}'
+# 预期: attach_presign_endpoint = "/api/v1/attachment/presign", upload_key = ""
 
 # Presign 接口可用性（需有效 JWT）
-# curl -s -H "Authorization: Bearer <token>" "${BASE}/v1/attachment/presign?filename=test.png" | jq .
+# curl -s -H "Authorization: Bearer <token>" "${BASE}/api/v1/attachment/presign?filename=test.png" | jq .
 
 # Feature flags
-curl -s "${BASE}/v1/app/features" | jq .
+curl -s "${BASE}/api/v1/app/features" | jq .
 ```
 
 ### 5.4 观测指标验证 / Metrics Verification
@@ -652,7 +652,7 @@ psql -U imboy_user -d imboy_v1 -c "
 [ ] make ctl ARGS="node status" 通过
 [ ] make ctl ARGS="db ping" 通过
 [ ] make smoke 全部通过
-[ ] /v1/app/init 返回 attach_presign_endpoint 字段（Garage 直传入口）
+[ ] /api/v1/app/init 返回 attach_presign_endpoint 字段（Garage 直传入口）
 [ ] 附件上传端到端测试（Flutter presign → PUT Garage → 可访问）
 [ ] Grafana 5xx 错误率 < 0.1%
 [ ] 连接池 available > 20

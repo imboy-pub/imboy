@@ -124,31 +124,31 @@ Additional hard constraints:
 
 | Action | Method | Path | Query | Body | Payload (success) |
 |---|---|---|---|---|---|
-| Create moment | `POST` | `/v1/moment/create` | - | `content`, `media[]`, `visibility`, `allow_comment`, `allow_uids?`, `deny_uids?` | Moment object |
-| Get moment detail | `GET` | `/v1/moment/:moment_id` | - | - | Moment object |
-| Delete moment | `POST` | `/v1/moment/:moment_id/delete` | - | - | `{}` |
-| Feed list | `GET` | `/v1/moments/feed` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
-| User moments | `GET` | `/v1/moments/user/:uid` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+| Create moment | `POST` | `/api/v1/moment/create` | - | `content`, `media[]`, `visibility`, `allow_comment`, `allow_uids?`, `deny_uids?` | Moment object |
+| Get moment detail | `GET` | `/api/v1/moment/:moment_id` | - | - | Moment object |
+| Delete moment | `POST` | `/api/v1/moment/:moment_id/delete` | - | - | `{}` |
+| Feed list | `GET` | `/api/v1/moments/feed` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+| User moments | `GET` | `/api/v1/moments/user/:uid` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
 
 ## 5. Interaction API Matrix
 
 | Action | Method | Path | Query | Body | Payload (success) |
 |---|---|---|---|---|---|
-| Like moment | `POST` | `/v1/moment/:moment_id/like` | - | - | `{}` |
-| Unlike moment | `POST` | `/v1/moment/:moment_id/unlike` | - | - | `{}` |
-| Add comment | `POST` | `/v1/moment/:moment_id/comment` | - | `content`, `reply_to_uid?` | Comment object |
-| List comments | `GET` | `/v1/moment/:moment_id/comments` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
-| Delete comment | `POST` | `/v1/moment/:moment_id/comment/:comment_id/delete` | - | - | `{}` |
+| Like moment | `POST` | `/api/v1/moment/:moment_id/like` | - | - | `{}` |
+| Unlike moment | `POST` | `/api/v1/moment/:moment_id/unlike` | - | - | `{}` |
+| Add comment | `POST` | `/api/v1/moment/:moment_id/comment` | - | `content`, `reply_to_uid?` | Comment object |
+| List comments | `GET` | `/api/v1/moment/:moment_id/comments` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
+| Delete comment | `POST` | `/api/v1/moment/:moment_id/comment/:comment_id/delete` | - | - | `{}` |
 
 ## 6. Admin API Matrix
 
 | Action | Method | Path | Query | Body | Payload (success) |
 |---|---|---|---|---|---|
-| List moments | `GET` | `/adm/moment/list` | `keyword?`, `uid?`, `status?`, `page`, `size` | - | `{list, total}` |
-| Moment detail | `GET` | `/adm/moment/detail/:moment_id` | - | - | Moment object |
-| Delete moment | `POST` | `/adm/moment/delete` | - | `moment_id`, `reason` | `{}` |
-| List reports | `GET` | `/adm/moment/report/list` | `status?`, `page`, `size` | - | `{list, total}` |
-| Resolve report | `POST` | `/adm/moment/report/resolve` | - | `report_id`, `result`, `note?` | `{}` |
+| List moments | `GET` | `/api/adm/moment/list` | `keyword?`, `uid?`, `status?`, `page`, `size` | - | `{list, total}` |
+| Moment detail | `GET` | `/api/adm/moment/detail/:moment_id` | - | - | Moment object |
+| Delete moment | `POST` | `/api/adm/moment/delete` | - | `moment_id`, `reason` | `{}` |
+| List reports | `GET` | `/api/adm/moment/report/list` | `status?`, `page`, `size` | - | `{list, total}` |
+| Resolve report | `POST` | `/api/adm/moment/report/resolve` | - | `report_id`, `result`, `note?` | `{}` |
 
 ## 7. Notification (S2C Action) Matrix
 

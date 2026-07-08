@@ -1,4 +1,4 @@
-# GET /adm/group/album/list — admin
+# GET /api/adm/group/album/list — admin
 get:
   tags: [admin]
   summary: 管理后台群相册列表

@@ -1,4 +1,4 @@
-# POST /adm/storage/delete — admin
+# POST /api/adm/storage/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除存储记录

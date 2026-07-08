@@ -1,4 +1,4 @@
-# GET /v1/e2ee/transfer/info
+# GET /api/v1/e2ee/transfer/info
 get:
   tags: [user]
   summary: 迁移会话详情

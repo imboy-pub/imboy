@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/push/register.yaml
-# POST /v1/push/register — 注册推送 Token / Register push token
+# POST /api/v1/push/register — 注册推送 Token / Register push token
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1push~1register

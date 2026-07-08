@@ -1,4 +1,4 @@
-# GET /adm/plugin/health — admin
+# GET /api/adm/plugin/health — admin
 get:
   tags: [admin]
   summary: admin adm-plugin - health

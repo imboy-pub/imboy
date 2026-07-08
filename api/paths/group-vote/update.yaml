@@ -1,4 +1,4 @@
-# POST /v1/group/vote/update
+# POST /api/v1/group/vote/update
 post:
   tags: [user]
   summary: 修改已投选项（换票）

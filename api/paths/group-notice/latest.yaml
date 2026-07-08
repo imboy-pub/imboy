@@ -1,4 +1,4 @@
-# GET /group_notice/latest — 最新公告 / Latest notice
+# GET /api/group_notice/latest — 最新公告 / Latest notice
 get:
   tags: [user]
   summary: 群最新已发布公告（用于聊天页头部展示）

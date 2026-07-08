@@ -1,4 +1,4 @@
-# POST /adm/passport/logout — admin
+# POST /api/adm/passport/logout — admin
 post:
   tags: [admin]
   summary: admin adm-passport - logout

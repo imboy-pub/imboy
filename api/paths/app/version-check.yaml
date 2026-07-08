@@ -1,4 +1,4 @@
-# GET /app_version/check
+# GET /api/app_version/check
 get:
   tags: [user]
   summary: App 版本检查（用于强制升级提示）

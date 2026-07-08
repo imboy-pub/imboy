@@ -1,4 +1,4 @@
-# POST /v1/live_room/create
+# POST /api/v1/live_room/create
 post:
   tags: [user]
   summary: 创建直播间

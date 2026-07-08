@@ -1,4 +1,4 @@
-# GET /adm/user/report/list — admin
+# GET /api/adm/user/report/list — admin
 get:
   tags: [admin]
   summary: admin adm-report - user_list

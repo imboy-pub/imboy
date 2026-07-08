@@ -1,4 +1,4 @@
-# POST /v1/e2ee/transfer/accept
+# POST /api/v1/e2ee/transfer/accept
 post:
   tags: [user]
   summary: 旧设备 - 接受迁移

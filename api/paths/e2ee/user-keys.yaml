@@ -1,4 +1,4 @@
-# GET /v1/e2ee/user_keys
+# GET /api/v1/e2ee/user_keys
 get:
   tags: [user]
   summary: 查询用户公钥（RSA-OAEP-256）

@@ -1,4 +1,4 @@
-# GET /fts/user_search
+# GET /api/fts/user_search
 get:
   tags: [user]
   summary: 用户全文搜索

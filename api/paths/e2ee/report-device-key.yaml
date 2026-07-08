@@ -1,4 +1,4 @@
-# POST /v1/e2ee/report_device_key
+# POST /api/v1/e2ee/report_device_key
 post:
   tags: [user]
   summary: 上报本设备公钥

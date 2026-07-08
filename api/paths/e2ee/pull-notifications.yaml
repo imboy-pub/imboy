@@ -1,4 +1,4 @@
-# GET /v1/e2ee/notifications/pull
+# GET /api/v1/e2ee/notifications/pull
 get:
   tags: [user]
   summary: 拉取 E2EE 系统通知

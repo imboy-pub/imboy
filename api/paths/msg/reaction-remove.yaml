@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/reaction-remove.yaml
-# POST /v1/msg/reaction/remove — 移除表情回应 / Remove emoji reaction
+# POST /api/v1/msg/reaction/remove — 移除表情回应 / Remove emoji reaction
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1reaction~1remove

@@ -1,4 +1,4 @@
-# GET /v1/e2ee/social/proxy_shards
+# GET /api/v1/e2ee/social/proxy_shards
 get:
   tags: [user]
   summary: 代理 shards 查询

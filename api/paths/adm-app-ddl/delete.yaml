@@ -1,4 +1,4 @@
-# DELETE /adm/app_ddl/delete — admin
+# DELETE /api/adm/app_ddl/delete — admin
 delete:
   tags: [admin]
   summary: admin adm-app-ddl - delete

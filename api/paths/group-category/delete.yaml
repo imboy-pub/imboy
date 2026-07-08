@@ -1,4 +1,4 @@
-# POST /v1/group/category/delete
+# POST /api/v1/group/category/delete
 post:
   tags: [user]
   summary: 删除群分组

@@ -1,4 +1,4 @@
-# GET /adm/role/list — admin
+# GET /api/adm/role/list — admin
 get:
   tags: [admin]
   summary: admin adm-role - list

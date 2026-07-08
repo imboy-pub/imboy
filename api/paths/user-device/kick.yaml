@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-device/kick.yaml
-# POST /v1/user_device/kick — 踢出指定设备 / Kick a specific device
+# POST /api/v1/user_device/kick — 踢出指定设备 / Kick a specific device
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1user_device~1kick

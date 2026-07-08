@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-device/sessions.yaml
-# GET /v1/user_device/sessions — 活跃会话列表 / Active sessions (in-memory)
+# GET /api/v1/user_device/sessions — 活跃会话列表 / Active sessions (in-memory)
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1user_device~1sessions

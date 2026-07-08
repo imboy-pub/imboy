@@ -1,4 +1,4 @@
-# GET /v1/group/notice/list — 公告列表（成员视角）/ Notices list
+# GET /api/v1/group/notice/list — 公告列表（成员视角）/ Notices list
 get:
   tags: [user]
   summary: 成员视角的群公告列表

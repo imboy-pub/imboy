@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/quick-login.yaml
-# POST /passport/quick_login — 运营商一键登录 / Carrier one-tap login
+# POST /api/passport/quick_login — 运营商一键登录 / Carrier one-tap login
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
 # 调用方：api/openapi.yaml#/paths/~1passport~1quick_login

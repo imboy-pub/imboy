@@ -1,4 +1,4 @@
-# POST /adm/channel/report/resolve — admin
+# POST /api/adm/channel/report/resolve — admin
 post:
   tags: [admin]
   summary: admin adm-report - channel_resolve

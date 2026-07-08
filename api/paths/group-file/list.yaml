@@ -1,4 +1,4 @@
-# GET /v1/group/file/list
+# GET /api/v1/group/file/list
 get:
   tags: [user]
   summary: 群文件列表（含分页/分类过滤）

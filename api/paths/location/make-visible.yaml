@@ -1,4 +1,4 @@
-# POST /location/makeMyselfVisible
+# POST /api/location/makeMyselfVisible
 post:
   tags: [user]
   summary: 在附近列表中可见

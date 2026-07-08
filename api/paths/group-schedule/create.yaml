@@ -1,4 +1,4 @@
-# POST /v1/group_schedule/create
+# POST /api/v1/group_schedule/create
 post:
   tags: [user]
   summary: 群日程 - 创建

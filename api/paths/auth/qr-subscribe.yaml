@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/qr-subscribe.yaml
-# GET /v1/passport/qr_login/subscribe — SSE 推送扫码状态
+# GET /api/v1/passport/qr_login/subscribe — SSE 推送扫码状态
 # Handler: src/api/qr_login_sse_handler.erl
 # 关联：与 /qr_login/status 轮询端点互补；推荐 Web 端用 SSE 实时订阅。
 # ----------------------------------------------------------------------------

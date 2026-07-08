@@ -1,4 +1,4 @@
-# POST /group_album/photo/batch — 批量上传 / Batch upload
+# POST /api/group_album/photo/batch — 批量上传 / Batch upload
 post:
   tags: [user]
   summary: 批量上传照片（JSON 列表）

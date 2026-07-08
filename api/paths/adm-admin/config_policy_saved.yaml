@@ -1,4 +1,4 @@
-# GET /adm/admin/config/policy/saved — admin
+# GET /api/adm/admin/config/policy/saved — admin
 get:
   tags: [admin]
   summary: admin adm-admin - config_policy_saved

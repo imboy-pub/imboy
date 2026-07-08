@@ -1,4 +1,4 @@
-# GET /v1/group/tag/hot
+# GET /api/v1/group/tag/hot
 get:
   tags: [user]
   summary: 热门群标签 TopN

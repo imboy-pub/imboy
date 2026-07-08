@@ -131,7 +131,7 @@ helm uninstall imboy --namespace imboy
 | `docker-compose.prod.yml` | 生产环境 7 服务编排入口，禁止直接修改数据库密码（改 .env） |
 | `.env.example` | 所有必填环境变量的模板，**不要提交含真实密钥的 .env** |
 | `preflight.sh` | 部署前自动检查依赖、端口占用、域名解析 |
-| `nginx/templates/imboy.conf.template` | nginx 反向代理规则（envsubst 渲染），后端 → `api.*`（含 WS 升级），管理后台 → `admin.*`；入口拦截 `/metrics` 与 `/v1/metrics` 返回 403 |
+| `nginx/templates/imboy.conf.template` | nginx 反向代理规则（envsubst 渲染），后端 → `api.*`（含 WS 升级），管理后台 → `admin.*`；入口拦截 `/metrics` 与 `/api/v1/metrics` 返回 403 |
 | `nginx/init-letsencrypt.sh` | 首次部署一次性向 Let's Encrypt 申请证书；后续由 `imboy_certbot` 自动续期 |
 | `prometheus/rules/imboy-alerts.yml` | 告警规则（CPU/内存/连接数/消息积压等） |
 | `grafana/dashboards/imboy-overview.json` | 9-panel 总览：QPS、延迟、WS 连接数、DB 连接池、错误率等 |

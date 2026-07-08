@@ -1,4 +1,4 @@
-# GET /adm/announcement/index — admin
+# GET /api/adm/announcement/index — admin
 get:
   tags: [admin]
   summary: admin adm-announcement - index

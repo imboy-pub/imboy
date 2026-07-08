@@ -13,10 +13,10 @@ This contract defines the backend behavior for social recovery shards with serve
 
 Covered APIs:
 
-- `POST /v1/e2ee/social/create_shards`
-- `GET /v1/e2ee/social/shards`
-- `GET /v1/e2ee/social/proxy_shards`
-- `POST /v1/e2ee/social/decrypt_shard`
+- `POST /api/v1/e2ee/social/create_shards`
+- `GET /api/v1/e2ee/social/shards`
+- `GET /api/v1/e2ee/social/proxy_shards`
+- `POST /api/v1/e2ee/social/decrypt_shard`
 
 ## 2. Core Decision
 
@@ -29,8 +29,8 @@ Covered APIs:
   - server validates threshold/proxy constraints.
   - server encrypts each shard with proxy public key.
   - server writes each shard record with status `active`.
-- `GET /v1/e2ee/social/shards` returns user-owned shard records by `key_version`.
-- `GET /v1/e2ee/social/proxy_shards` returns active proxy-owned shard records.
+- `GET /api/v1/e2ee/social/shards` returns user-owned shard records by `key_version`.
+- `GET /api/v1/e2ee/social/proxy_shards` returns active proxy-owned shard records.
 
 ## 4. Security Constraints
 
@@ -48,7 +48,7 @@ Covered APIs:
 ### Endpoint
 
 - Method: `POST`
-- Path: `/v1/e2ee/social/decrypt_shard`
+- Path: `/api/v1/e2ee/social/decrypt_shard`
 - Auth: required (`current_uid` from auth middleware)
 
 ### Request

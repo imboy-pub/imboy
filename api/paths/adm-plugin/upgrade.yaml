@@ -1,4 +1,4 @@
-# POST /adm/plugin/upgrade — admin
+# POST /api/adm/plugin/upgrade — admin
 post:
   tags: [admin]
   summary: admin adm-plugin - upgrade

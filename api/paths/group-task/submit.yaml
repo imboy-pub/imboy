@@ -1,4 +1,4 @@
-# POST /v1/group/task/submit
+# POST /api/v1/group/task/submit
 post:
   tags: [user]
   summary: 提交任务

@@ -1,4 +1,4 @@
-# GET /adm/user/tag/list — admin
+# GET /api/adm/user/tag/list — admin
 get:
   tags: [admin]
   summary: 管理后台用户标签列表

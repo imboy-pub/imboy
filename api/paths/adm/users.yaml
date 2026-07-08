@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/adm/users.yaml
-# GET /adm/users — 管理后台用户列表（分页） / Admin user list (paginated)
+# GET /api/adm/users — 管理后台用户列表（分页） / Admin user list (paginated)
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
 # 调用方：api/openapi.yaml#/paths/~1adm~1users

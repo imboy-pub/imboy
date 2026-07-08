@@ -1,4 +1,4 @@
-# POST /v1/e2ee/social/create_shards
+# POST /api/v1/e2ee/social/create_shards
 post:
   tags: [user]
   summary: Shamir 分片并下发

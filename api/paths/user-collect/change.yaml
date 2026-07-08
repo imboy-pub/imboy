@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-collect/change.yaml
-# POST /user_collect/change — 修改收藏 / Modify collection item
+# POST /api/user_collect/change — 修改收藏 / Modify collection item
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 8 / D-user-collect)
 # 调用方:  api/openapi.yaml#/paths/~1user_collect~1change

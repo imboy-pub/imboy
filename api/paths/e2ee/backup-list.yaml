@@ -1,4 +1,4 @@
-# GET /v1/e2ee/backup/list
+# GET /api/v1/e2ee/backup/list
 get:
   tags: [user]
   summary: 服务端持久 shard 列表

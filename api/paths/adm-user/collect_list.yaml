@@ -1,4 +1,4 @@
-# GET /adm/user/collect/list — admin
+# GET /api/adm/user/collect/list — admin
 get:
   tags: [admin]
   summary: 管理后台用户收藏列表

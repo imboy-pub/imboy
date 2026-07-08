@@ -127,7 +127,7 @@ make new t=imboy.ds n=demo_ds
 
 **Token 刷新**：WS 连接时 token 过期仍响应成功 → 发 S2C 要求 8s 内刷新 → 失败则强制下线。
 
-**E2EE**：RSA-OAEP-256 + AES-256-GCM；服务端不解密 `ciphertext`，仅路由存储。API：`/v1/e2ee/user_keys`、`/v1/e2ee/group_member_keys`。
+**E2EE**：RSA-OAEP-256 + AES-256-GCM；服务端不解密 `ciphertext`，仅路由存储。API：`/api/v1/e2ee/user_keys`、`/api/v1/e2ee/group_member_keys`。
 
 **分布式**：基于 Erlang/OTP 分布式，`syn` 库进程注册发现，跨节点消息投递。
 
@@ -155,4 +155,4 @@ make new t=imboy.ds n=demo_ds
 - 错误码：[docs/standards/error-codes.md](./docs/standards/error-codes.md)
 - TSID 规范：[docs/analysis/tsid-field-convention.md](./docs/analysis/tsid-field-convention.md)
 - API 格式：[docs/standards/api-format.md](./docs/standards/api-format.md)
-- /v1/* 端点总目录：[docs/analysis/rest-api-v1-catalog.md](./docs/analysis/rest-api-v1-catalog.md)
+- /api/v1/* 端点总目录：[docs/analysis/rest-api-v1-catalog.md](./docs/analysis/rest-api-v1-catalog.md)

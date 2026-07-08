@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/reaction-add.yaml
-# POST /v1/msg/reaction/add — 添加表情回应 / Add emoji reaction
+# POST /api/v1/msg/reaction/add — 添加表情回应 / Add emoji reaction
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1reaction~1add

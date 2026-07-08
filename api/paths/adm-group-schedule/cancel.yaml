@@ -1,4 +1,4 @@
-# POST /adm/group/schedule/cancel — admin
+# POST /api/adm/group/schedule/cancel — admin
 post:
   tags: [admin]
   summary: 管理后台取消群日程

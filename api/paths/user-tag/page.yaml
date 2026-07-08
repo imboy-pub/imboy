@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-tag/page.yaml
-# GET /user_tag/page — 标签分页列表 / Paginated tag list
+# GET /api/user_tag/page — 标签分页列表 / Paginated tag list
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
 # 调用方:  api/openapi.yaml#/paths/~1user_tag~1page

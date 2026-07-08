@@ -1,4 +1,4 @@
-# GET /v1/group/task/pending
+# GET /api/v1/group/task/pending
 get:
   tags: [user]
   summary: 等待我审核的任务

@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend-category/delete.yaml
-# POST /friend/category/delete — 删除好友分组 / Delete friend category
+# POST /api/friend/category/delete — 删除好友分组 / Delete friend category
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 12 / D-friend-category)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1category~1delete

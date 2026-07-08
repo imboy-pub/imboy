@@ -1,4 +1,4 @@
-# GET /adm/stats/ranking — admin
+# GET /api/adm/stats/ranking — admin
 get:
   tags: [admin]
   summary: admin adm-stats - ranking

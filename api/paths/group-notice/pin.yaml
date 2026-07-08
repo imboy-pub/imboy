@@ -1,4 +1,4 @@
-# POST /v1/group/notice/pin — 置顶公告 / Pin notice
+# POST /api/v1/group/notice/pin — 置顶公告 / Pin notice
 post:
   tags: [user]
   summary: 置顶群公告

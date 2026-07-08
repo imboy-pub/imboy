@@ -1,4 +1,4 @@
-# POST /v1/e2ee/transfer/confirm
+# POST /api/v1/e2ee/transfer/confirm
 post:
   tags: [user]
   summary: 新设备 - 确认迁移完成

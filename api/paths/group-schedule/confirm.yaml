@@ -1,4 +1,4 @@
-# POST /v1/group_schedule/confirm
+# POST /api/v1/group_schedule/confirm
 post:
   tags: [user]
   summary: 确认参加 / 不参加

@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user/cancel-logout.yaml
-# POST /user/cancel_logout — 撤销注销申请 / Cancel deactivation request
+# POST /api/user/cancel_logout — 撤销注销申请 / Cancel deactivation request
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
 # 调用方:  api/openapi.yaml#/paths/~1user~1cancel_logout

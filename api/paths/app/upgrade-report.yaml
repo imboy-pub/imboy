@@ -1,4 +1,4 @@
-# POST /v1/app_upgrade/report
+# POST /api/v1/app_upgrade/report
 post:
   tags: [user]
   summary: 客户端升级日志上报

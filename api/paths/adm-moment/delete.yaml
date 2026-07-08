@@ -1,4 +1,4 @@
-# POST /adm/moment/delete — admin
+# POST /api/adm/moment/delete — admin
 post:
   tags: [admin]
   summary: admin adm-moment - delete

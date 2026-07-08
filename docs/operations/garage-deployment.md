@@ -23,7 +23,7 @@
 
 ```
 Flutter App
-  ├── GET /v1/attachment/presign  →  Erlang 后端生成 presigned PUT URL
+  ├── GET /api/v1/attachment/presign  →  Erlang 后端生成 presigned PUT URL
   ├── PUT <presigned_url>         →  直传 Garage（不经 Erlang）
   └── GET <public_url>            →  Garage 直读（bucket 公开读，无需签名）
 
@@ -203,10 +203,10 @@ gg key create imboy-key
 gg bucket allow imboy --read --write --owner --key imboy-key
 
 # 注意：不要设置 bucket 公开读。私有附件（聊天图片/文件）必须保密，
-# 下载一律经后端 GET /v1/attachment/view_url 按需签发短时 presigned GET URL。
+# 下载一律经后端 GET /api/v1/attachment/view_url 按需签发短时 presigned GET URL。
 # DO NOT enable public-read. Private attachments must stay confidential;
 # downloads are served via short-lived presigned GET URLs issued by the backend
-# endpoint GET /v1/attachment/view_url. Never run `bucket allow imboy --read --public`.
+# endpoint GET /api/v1/attachment/view_url. Never run `bucket allow imboy --read --public`.
 
 # 验证 / Verify
 gg bucket list
@@ -465,7 +465,7 @@ hex(Bin) ->
 ### attach_handler.erl — presign 接口（新建）
 
 ```erlang
-%% 路由：GET /v1/attachment/presign?filename=x.jpg&mime_type=image/jpeg&expires=600
+%% 路由：GET /api/v1/attachment/presign?filename=x.jpg&mime_type=image/jpeg&expires=600
 %% 需要 JWT 认证，放在普通认证路由区（非 open 路由）
 presign(<<"GET">>, Req0, _State) ->
     Qs       = cowboy_req:parse_qs(Req0),
@@ -494,7 +494,7 @@ presign(_, Req0, _State) ->
 
 ```erlang
 %% 认证路由区（非 open）
-{"/v1/attachment/presign", attach_handler, #{action => presign}},
+{"/api/v1/attachment/presign", attach_handler, #{action => presign}},
 ```
 
 ---
@@ -583,7 +583,7 @@ class AttachmentApi {
     int expires = 600,
   }) async {
     final resp = await apiClient.get<Map<String, dynamic>>(
-      '/v1/attachment/presign',
+      '/api/v1/attachment/presign',
       queryParameters: {
         'filename':  filename,
         'mime_type': mimeType,
@@ -721,7 +721,7 @@ curl "$PubUrl"
 
 # 5. presign API 接口验证
 curl -H "Authorization: Bearer <jwt_token>" \
-  "http://localhost:8080/v1/attachment/presign?filename=a.jpg&mime_type=image/jpeg"
+  "http://localhost:8080/api/v1/attachment/presign?filename=a.jpg&mime_type=image/jpeg"
 # 期望：{ "put_url": "...", "object_key": "...", "public_url": "..." }
 ```
 

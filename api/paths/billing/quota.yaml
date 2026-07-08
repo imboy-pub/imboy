@@ -1,4 +1,4 @@
-# GET /v1/billing/quota — 配额查询
+# GET /api/v1/billing/quota — 配额查询
 get:
   tags: [user]
   summary: 配额查询

@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# GET /uqrcode + /v1/uqrcode — DEPRECATED alias of /user/qrcode
+# GET /api/uqrcode + /v1/uqrcode — DEPRECATED alias of /user/qrcode
 # Handler: src/api/user_handler.erl#qrcode/2
 # Router 已标注：// 2024-05-10 过两个版本可以清除该路由
 # ----------------------------------------------------------------------------

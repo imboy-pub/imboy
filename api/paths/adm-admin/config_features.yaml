@@ -1,4 +1,4 @@
-# GET /adm/admin/config/features — admin
+# GET /api/adm/admin/config/features — admin
 get:
   tags: [admin]
   summary: admin adm-admin - config_features

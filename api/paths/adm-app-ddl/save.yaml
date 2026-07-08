@@ -1,4 +1,4 @@
-# POST /adm/app_ddl/save — admin
+# POST /api/adm/app_ddl/save — admin
 post:
   tags: [admin]
   summary: admin adm-app-ddl - save

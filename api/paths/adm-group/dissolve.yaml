@@ -1,4 +1,4 @@
-# POST /adm/group/dissolve — admin
+# POST /api/adm/group/dissolve — admin
 post:
   tags: [admin]
   summary: admin adm-group - dissolve

@@ -1,4 +1,4 @@
-# POST /v1/group/file/upload
+# POST /api/v1/group/file/upload
 post:
   tags: [user]
   summary: 群文件 - 上传

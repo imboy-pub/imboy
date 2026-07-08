@@ -1,4 +1,4 @@
-# GET /v1/fts/msg
+# GET /api/v1/fts/msg
 get:
   tags: [user]
   summary: 消息全文搜索

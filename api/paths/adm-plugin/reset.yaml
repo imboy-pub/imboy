@@ -1,4 +1,4 @@
-# POST /adm/plugin/reset — admin
+# POST /api/adm/plugin/reset — admin
 post:
   tags: [admin]
   summary: admin adm-plugin - reset

@@ -1,4 +1,4 @@
-# POST /v1/billing/cancel — 取消订阅
+# POST /api/v1/billing/cancel — 取消订阅
 post:
   tags: [user]
   summary: 取消订阅

@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-tag-relation/collect-page.yaml
-# GET /user_tag_relation/collect_page — 收藏标签下的对象分页 / Collection items by tag
+# GET /api/user_tag_relation/collect_page — 收藏标签下的对象分页 / Collection items by tag
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
 # 调用方:  api/openapi.yaml#/paths/~1user_tag_relation~1collect_page

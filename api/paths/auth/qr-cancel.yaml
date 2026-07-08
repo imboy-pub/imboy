@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/qr-cancel.yaml
-# POST /v1/passport/qr_login/cancel — 取消扫码登录 / Cancel QR login
+# POST /api/v1/passport/qr_login/cancel — 取消扫码登录 / Cancel QR login
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1passport~1qr_login~1cancel

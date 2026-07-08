@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/offline-ack.yaml
-# POST /msg/offline_ack — 离线消息确认 / Acknowledge offline messages
+# POST /api/msg/offline_ack — 离线消息确认 / Acknowledge offline messages
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1msg~1offline_ack

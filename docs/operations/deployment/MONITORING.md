@@ -75,7 +75,7 @@ scrape_configs:
 
 ### 用户无法连接
 
-- [ ] 检查端口是否开放：`curl http://host:9800/v1/init`
+- [ ] 检查端口是否开放：`curl http://host:9800/api/v1/init`
 - [ ] 检查 Erlang 节点状态：`_rel/imboy/bin/imboy ping`
 - [ ] 检查连接池：`pooler:pool_stats(pgsql)`
 - [ ] 检查 SSL 证书是否过期

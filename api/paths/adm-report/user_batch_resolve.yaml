@@ -1,4 +1,4 @@
-# POST /adm/user/report/batch_resolve — admin
+# POST /api/adm/user/report/batch_resolve — admin
 post:
   tags: [admin]
   summary: admin adm-report - user_batch_resolve

@@ -1,4 +1,4 @@
-# POST /v1/wallet/topup
+# POST /api/v1/wallet/topup
 post:
   tags: [user]
   summary: 充值

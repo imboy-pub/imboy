@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/forward.yaml
-# POST /v1/msg/forward — 转发消息 / Forward messages
+# POST /api/v1/msg/forward — 转发消息 / Forward messages
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1forward

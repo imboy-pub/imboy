@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/bind-mail.yaml
-# GET /passport/bind_mail — 邮箱绑定确认回调 / Email binding confirmation
+# GET /api/passport/bind_mail — 邮箱绑定确认回调 / Email binding confirmation
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
 # 调用方：api/openapi.yaml#/paths/~1passport~1bind_mail

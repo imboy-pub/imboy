@@ -1,4 +1,4 @@
-# GET /adm/storage/index — admin
+# GET /api/adm/storage/index — admin
 get:
   tags: [admin]
   summary: admin adm-attach - index

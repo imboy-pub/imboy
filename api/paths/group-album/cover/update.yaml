@@ -1,4 +1,4 @@
-# POST /group_album/cover/update — 更新相册封面 / Update cover
+# POST /api/group_album/cover/update — 更新相册封面 / Update cover
 post:
   tags: [user]
   summary: 更新相册封面

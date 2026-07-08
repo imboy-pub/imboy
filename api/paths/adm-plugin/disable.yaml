@@ -1,4 +1,4 @@
-# POST /adm/plugin/disable — admin
+# POST /api/adm/plugin/disable — admin
 post:
   tags: [admin]
   summary: admin adm-plugin - disable

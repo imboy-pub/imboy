@@ -1,4 +1,4 @@
-# POST /friend/reject — 拒绝好友申请 / Reject friend request
+# POST /api/friend/reject — 拒绝好友申请 / Reject friend request
 # Handler: src/api/friend_handler.erl#reject/2
 post:
   tags: [user]

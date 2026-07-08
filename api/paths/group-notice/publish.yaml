@@ -1,4 +1,4 @@
-# POST /group_notice/publish — 发布公告 / Publish notice
+# POST /api/group_notice/publish — 发布公告 / Publish notice
 post:
   tags: [user]
   summary: 发布草稿公告

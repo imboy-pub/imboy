@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/pin.yaml
-# POST /v1/msg/pin — 置顶/取消置顶消息 / Pin / unpin message
+# POST /api/v1/msg/pin — 置顶/取消置顶消息 / Pin / unpin message
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1pin

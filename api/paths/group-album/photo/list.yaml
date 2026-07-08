@@ -1,4 +1,4 @@
-# GET /group_album/photo/list — 照片列表 / List photos
+# GET /api/group_album/photo/list — 照片列表 / List photos
 get:
   tags: [user]
   summary: 相册的照片列表（分页）

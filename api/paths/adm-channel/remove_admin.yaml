@@ -1,4 +1,4 @@
-# DELETE /adm/channel/{channel_id}/admin/{user_id} — admin
+# DELETE /api/adm/channel/{channel_id}/admin/{user_id} — admin
 delete:
   tags: [admin]
   summary: admin adm-channel - remove_admin

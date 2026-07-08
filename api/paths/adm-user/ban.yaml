@@ -1,4 +1,4 @@
-# POST /adm/user/ban — admin
+# POST /api/adm/user/ban — admin
 post:
   tags: [admin]
   summary: admin adm-user - ban

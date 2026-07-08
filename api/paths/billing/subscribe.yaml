@@ -1,4 +1,4 @@
-# POST /v1/billing/subscribe — 订阅套餐
+# POST /api/v1/billing/subscribe — 订阅套餐
 post:
   tags: [user]
   summary: 订阅套餐

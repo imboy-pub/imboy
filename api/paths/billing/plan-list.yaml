@@ -1,4 +1,4 @@
-# GET /v1/billing/plan/list — 套餐目录（只读，对所有登录用户可见）
+# GET /api/v1/billing/plan/list — 套餐目录（只读，对所有登录用户可见）
 get:
   tags: [user]
   summary: 套餐列表（上架）

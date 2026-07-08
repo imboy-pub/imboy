@@ -100,7 +100,7 @@
 
 ### 3.5 登录初始化与传输过程保护
 
-当前客户端启动会通过 `GET /v1/init` 获取初始化数据，返回内容包含：
+当前客户端启动会通过 `GET /api/v1/init` 获取初始化数据，返回内容包含：
 
 - `ws_url`
 - `upload_url`
@@ -140,8 +140,8 @@
 
 - `GET /privacy-policy`
 - `GET /account-deletion`
-- `POST /v1/user/apply_logout`
-- `POST /v1/user/cancel_logout`
+- `POST /api/v1/user/apply_logout`
+- `POST /api/v1/user/cancel_logout`
 
 同时，账号注销申请已接入后端日志记录与后台可审计链路。
 
@@ -222,9 +222,9 @@
 - [ ] `jwt_key`、`postgre_aes_key`、`adm_cookie_secret` 已替换为正式值；
 - [ ] 生产环境启动不会因缺密钥降级运行；
 - [ ] `/privacy-policy` 与 `/account-deletion` 可公网访问；
-- [ ] `/v1/user/apply_logout`、`/v1/user/cancel_logout` 联调通过；
+- [ ] `/api/v1/user/apply_logout`、`/api/v1/user/cancel_logout` 联调通过；
 - [ ] 后台可以查询注销申请审计记录；
-- [ ] `GET /v1/app/features` 与 `GET /adm/admin/config/features` 返回符合本次交付范围；
+- [ ] `GET /api/v1/app/features` 与 `GET /api/adm/admin/config/features` 返回符合本次交付范围；
 - [ ] WebSocket、Refresh Token、验证码等高频入口已做节流校验；
 - [ ] 未售卖模块的后端接口不是“可直调可用”；
 - [ ] 公网域名使用受信任证书，不使用自签名证书；

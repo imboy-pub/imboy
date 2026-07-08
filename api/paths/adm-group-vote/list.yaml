@@ -1,4 +1,4 @@
-# GET /adm/group/vote/list — admin
+# GET /api/adm/group/vote/list — admin
 get:
   tags: [admin]
   summary: 管理后台群投票列表

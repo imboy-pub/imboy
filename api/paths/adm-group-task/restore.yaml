@@ -1,4 +1,4 @@
-# POST /adm/group/task/restore — admin
+# POST /api/adm/group/task/restore — admin
 post:
   tags: [admin]
   summary: 管理后台恢复群任务

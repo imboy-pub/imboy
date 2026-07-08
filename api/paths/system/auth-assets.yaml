@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# GET /auth/assets — 鉴权后下发静态资源/凭证 / Issue auth-gated assets
+# GET /api/auth/assets — 鉴权后下发静态资源/凭证 / Issue auth-gated assets
 # Handler: src/api/auth_handler.erl#assets/1
 # ----------------------------------------------------------------------------
 get:

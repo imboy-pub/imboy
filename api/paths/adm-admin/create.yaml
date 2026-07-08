@@ -1,4 +1,4 @@
-# POST /adm/admin/create — admin
+# POST /api/adm/admin/create — admin
 post:
   tags: [admin]
   summary: admin adm-admin - create

@@ -1,4 +1,4 @@
-# GET /adm/channel/{channel_id}/stats — admin
+# GET /api/adm/channel/{channel_id}/stats — admin
 get:
   tags: [admin]
   summary: admin adm-channel - stats

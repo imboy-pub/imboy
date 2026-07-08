@@ -1,4 +1,4 @@
-# POST /adm/admin/compliance_key/create — admin
+# POST /api/adm/admin/compliance_key/create — admin
 post:
   tags: [admin]
   summary: admin adm-admin - compliance_key_create

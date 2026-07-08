@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/conversation/mine.yaml
-# GET /conversation/mine — 我的会话列表 / My conversation list
+# GET /api/conversation/mine — 我的会话列表 / My conversation list
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 14 / D-conversation)
 # 调用方:  api/openapi.yaml#/paths/~1conversation~1mine

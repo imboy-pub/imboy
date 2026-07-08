@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# POST /v1/user/export_data — 个人数据导出 (GDPR 类) / Personal data export
+# POST /api/v1/user/export_data — 个人数据导出 (GDPR 类) / Personal data export
 # Router: 行 227 注册到 user_handler#export_data
 # 注意：截至本契约编写时（2026-05-17），user_handler:handle_action/3 中
 #       **未列出** export_data 分支——可能是 router 已注册但 handler 待实现。

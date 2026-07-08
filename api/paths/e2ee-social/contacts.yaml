@@ -1,4 +1,4 @@
-# GET /v1/e2ee/social/contacts
+# GET /api/v1/e2ee/social/contacts
 get:
   tags: [user]
   summary: 我的社交恢复联系人

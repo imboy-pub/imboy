@@ -1,4 +1,4 @@
-# POST /adm/plugin/uninstall — admin
+# POST /api/adm/plugin/uninstall — admin
 post:
   tags: [admin]
   summary: admin adm-plugin - uninstall

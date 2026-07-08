@@ -1,4 +1,4 @@
-# POST /adm/admin/config/policy/preview — admin
+# POST /api/adm/admin/config/policy/preview — admin
 post:
   tags: [admin]
   summary: admin adm-admin - config_policy_preview

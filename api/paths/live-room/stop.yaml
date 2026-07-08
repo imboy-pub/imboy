@@ -1,4 +1,4 @@
-# POST /v1/live_room/stop
+# POST /api/v1/live_room/stop
 post:
   tags: [user]
   summary: 结束直播

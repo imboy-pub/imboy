@@ -1,4 +1,4 @@
-# GET /v1/e2ee/compliance_key
+# GET /api/v1/e2ee/compliance_key
 # 修订(M23)：代码实现为 GET（只读查询，不写入 body），原 post: 改为 get:，删除 requestBody
 get:
   tags: [user]

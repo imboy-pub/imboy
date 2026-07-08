@@ -1,4 +1,4 @@
-# POST /adm/group/update — admin
+# POST /api/adm/group/update — admin
 post:
   tags: [admin]
   summary: 管理后台更新群组信息

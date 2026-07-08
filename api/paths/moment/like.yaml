@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/moment/like.yaml
-# POST /v1/moment/{moment_id}/like — 点赞 / Like moment
+# POST /api/v1/moment/{moment_id}/like — 点赞 / Like moment
 # Handler: src/api/moment_handler.erl#like/2 → moment_logic:like_post/2
 # ----------------------------------------------------------------------------
 post:

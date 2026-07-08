@@ -19,10 +19,10 @@ ADM 层负责：管理员认证与权限控制、系统配置管理、用户反�
 ```erlang
 AdmRoutes = [
     {"/adm", adm_index_handler, #{action => index}},
-    {"/adm/passport/login", adm_passport_handler, #{action => login}},
-    {"/adm/feedback/index", adm_feedback_handler, #{action => index}},
-    {"/adm/app_ddl/index", adm_app_ddl_handler, #{action => index}},
-    {"/adm/app_version/index", adm_app_version_handler, #{action => index}},
+    {"/api/adm/passport/login", adm_passport_handler, #{action => login}},
+    {"/api/adm/feedback/index", adm_feedback_handler, #{action => index}},
+    {"/api/adm/app_ddl/index", adm_app_ddl_handler, #{action => index}},
+    {"/api/adm/app_version/index", adm_app_version_handler, #{action => index}},
     {"/static/admin/[...]", cowboy_static, {priv_dir, imboy, "static/admin", [...]}}
 ].
 ```
@@ -35,25 +35,25 @@ AdmRoutes = [
 
 | Handler | 路由 | 说明 |
 |---------|------|------|
-| `adm_passport_handler` | `/adm/passport/login` | 管理员登录 |
-| `adm_passport_handler` | `/adm/passport/captcha` | 获取验证码 |
-| `adm_passport_handler` | `/adm/passport/do_login` | 执行登录 |
-| `adm_feedback_handler` | `/adm/feedback/index` | 反馈列表 |
-| `adm_feedback_handler` | `/adm/feedback/reply` | 回复反馈 |
-| `adm_app_ddl_handler` | `/adm/app_ddl/index` | DDL 配置列表 |
-| `adm_app_ddl_handler` | `/adm/app_ddl/save` | 保存 DDL 配置 |
-| `adm_app_ddl_handler` | `/adm/app_ddl/delete` | 删除 DDL 配置 |
-| `adm_app_version_handler` | `/adm/app_version/index` | 版本列表 |
-| `adm_app_version_handler` | `/adm/app_version/save` | 保存版本 |
-| `adm_app_version_handler` | `/adm/app_version/delete` | 删除版本 |
-| `adm_attach_handler` | `/adm/storage/stats` | 存储统计（总数/各类/今日） |
-| `adm_attach_handler` | `/adm/storage/index` | 附件分页列表（mime_type/keyword 筛选） |
-| `adm_attach_handler` | `/adm/storage/download` | 签发下载 presigned GET URL |
-| `adm_attach_handler` | `/adm/storage/disable` | 禁用附件（status→0） |
-| `adm_attach_handler` | `/adm/storage/enable` | 启用附件（status→1） |
-| `adm_attach_handler` | `/adm/storage/delete` | 软删除附件（status→-1） |
-| `adm_attach_handler` | `/adm/storage/orphan` | 孤儿附件统计 |
-| `adm_attach_handler` | `/adm/storage/orphan/cleanup` | 物理清理孤儿（先删 S3 再删 DB） |
+| `adm_passport_handler` | `/api/adm/passport/login` | 管理员登录 |
+| `adm_passport_handler` | `/api/adm/passport/captcha` | 获取验证码 |
+| `adm_passport_handler` | `/api/adm/passport/do_login` | 执行登录 |
+| `adm_feedback_handler` | `/api/adm/feedback/index` | 反馈列表 |
+| `adm_feedback_handler` | `/api/adm/feedback/reply` | 回复反馈 |
+| `adm_app_ddl_handler` | `/api/adm/app_ddl/index` | DDL 配置列表 |
+| `adm_app_ddl_handler` | `/api/adm/app_ddl/save` | 保存 DDL 配置 |
+| `adm_app_ddl_handler` | `/api/adm/app_ddl/delete` | 删除 DDL 配置 |
+| `adm_app_version_handler` | `/api/adm/app_version/index` | 版本列表 |
+| `adm_app_version_handler` | `/api/adm/app_version/save` | 保存版本 |
+| `adm_app_version_handler` | `/api/adm/app_version/delete` | 删除版本 |
+| `adm_attach_handler` | `/api/adm/storage/stats` | 存储统计（总数/各类/今日） |
+| `adm_attach_handler` | `/api/adm/storage/index` | 附件分页列表（mime_type/keyword 筛选） |
+| `adm_attach_handler` | `/api/adm/storage/download` | 签发下载 presigned GET URL |
+| `adm_attach_handler` | `/api/adm/storage/disable` | 禁用附件（status→0） |
+| `adm_attach_handler` | `/api/adm/storage/enable` | 启用附件（status→1） |
+| `adm_attach_handler` | `/api/adm/storage/delete` | 软删除附件（status→-1） |
+| `adm_attach_handler` | `/api/adm/storage/orphan` | 孤儿附件统计 |
+| `adm_attach_handler` | `/api/adm/storage/orphan/cleanup` | 物理清理孤儿（先删 S3 再删 DB） |
 
 ---
 

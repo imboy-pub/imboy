@@ -1,4 +1,4 @@
-# POST /v1/group/notice/mark_read — 标记公告已读 / Mark notice read
+# POST /api/v1/group/notice/mark_read — 标记公告已读 / Mark notice read
 post:
   tags: [user]
   summary: 标记群公告为已读

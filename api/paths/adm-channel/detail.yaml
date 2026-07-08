@@ -1,5 +1,5 @@
-# GET /adm/channel/detail/{channel_id} — admin
-# PUT /adm/channel/detail/{channel_id} — admin（更新频道信息）
+# GET /api/adm/channel/detail/{channel_id} — admin
+# PUT /api/adm/channel/detail/{channel_id} — admin（更新频道信息）
 get:
   tags: [admin]
   summary: admin adm-channel - detail

@@ -1,4 +1,4 @@
-# GET /v1/attachment/view_url — 获取附件查看 URL / Get attachment view URL
+# GET /api/v1/attachment/view_url — 获取附件查看 URL / Get attachment view URL
 # Handler: src/api/attach_handler.erl#view_url/2
 get:
   tags: [user]

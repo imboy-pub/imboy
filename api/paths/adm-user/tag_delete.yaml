@@ -1,4 +1,4 @@
-# POST /adm/user/tag/delete — admin
+# POST /api/adm/user/tag/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除用户标签

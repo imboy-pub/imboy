@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-tag/delete.yaml
-# POST /user_tag/delete — 删除标签 / Delete tag
+# POST /api/user_tag/delete — 删除标签 / Delete tag
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 7 / D-user-tag)
 # 调用方:  api/openapi.yaml#/paths/~1user_tag~1delete

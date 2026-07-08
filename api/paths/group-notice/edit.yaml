@@ -1,4 +1,4 @@
-# POST /group_notice/edit — 修改群公告 / Edit notice
+# POST /api/group_notice/edit — 修改群公告 / Edit notice
 post:
   tags: [user]
   summary: 修改公告内容（含 status 切换）

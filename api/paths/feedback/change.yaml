@@ -1,4 +1,4 @@
-# POST /feedback/change
+# POST /api/feedback/change
 post:
   tags: [user]
   summary: 修改反馈

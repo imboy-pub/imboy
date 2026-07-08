@@ -1,4 +1,4 @@
-# POST /adm/group/vote/close — admin
+# POST /api/adm/group/vote/close — admin
 post:
   tags: [admin]
   summary: 管理后台关闭群投票

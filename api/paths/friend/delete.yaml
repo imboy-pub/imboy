@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend/delete.yaml
-# POST /friend/delete — 删除好友 / Delete friendship
+# POST /api/friend/delete — 删除好友 / Delete friendship
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1delete

@@ -1,4 +1,4 @@
-# GET /adm/storage/orphan — admin
+# GET /api/adm/storage/orphan — admin
 get:
   tags: [admin]
   summary: 管理后台孤儿文件列表

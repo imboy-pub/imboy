@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user/change-state.yaml
-# POST /user/change_state — 切换在线状态 / Toggle chat presence
+# POST /api/user/change_state — 切换在线状态 / Toggle chat presence
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
 # 调用方:  api/openapi.yaml#/paths/~1user~1change_state

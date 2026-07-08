@@ -1,4 +1,4 @@
-# POST /adm/role/create — admin
+# POST /api/adm/role/create — admin
 post:
   tags: [admin]
   summary: admin adm-role - create

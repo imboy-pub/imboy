@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/adm/setup-init.yaml
-# POST /adm/setup/init — 执行首启初始化 / Execute setup
+# POST /api/adm/setup/init — 执行首启初始化 / Execute setup
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
 # 调用方：api/openapi.yaml#/paths/~1adm~1setup~1init

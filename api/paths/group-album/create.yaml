@@ -1,4 +1,4 @@
-# POST /group_album/create — 创建相册 / Create album
+# POST /api/group_album/create — 创建相册 / Create album
 post:
   tags: [user]
   summary: 群相册 - 创建新相册

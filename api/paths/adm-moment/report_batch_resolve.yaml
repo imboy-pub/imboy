@@ -1,4 +1,4 @@
-# POST /adm/moment/report/batch_resolve — admin
+# POST /api/adm/moment/report/batch_resolve — admin
 post:
   tags: [admin]
   summary: admin adm-moment - report_batch_resolve

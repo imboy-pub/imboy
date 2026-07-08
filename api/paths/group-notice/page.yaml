@@ -1,4 +1,4 @@
-# GET /group_notice/page — 公告分页 / Paginated notices
+# GET /api/group_notice/page — 公告分页 / Paginated notices
 get:
   tags: [user]
   summary: 群公告分页（管理后台视图）

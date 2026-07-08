@@ -1,4 +1,4 @@
-# POST /v1/live_room/start
+# POST /api/v1/live_room/start
 post:
   tags: [user]
   summary: 开播

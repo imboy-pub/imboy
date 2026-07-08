@@ -1,4 +1,4 @@
-# POST /group_album/photo/comment — 评论照片 / Add comment
+# POST /api/group_album/photo/comment — 评论照片 / Add comment
 post:
   tags: [user]
   summary: 给照片发表评论

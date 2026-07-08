@@ -1,4 +1,4 @@
-# GET /v1/billing/subscription — 查询当前租户订阅
+# GET /api/v1/billing/subscription — 查询当前租户订阅
 get:
   tags: [user]
   summary: 查询当前订阅

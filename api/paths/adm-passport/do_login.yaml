@@ -1,4 +1,4 @@
-# POST /adm/passport/do_login — admin
+# POST /api/adm/passport/do_login — admin
 post:
   tags: [admin]
   summary: admin adm-passport - do_login

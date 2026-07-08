@@ -1,4 +1,4 @@
-# POST /v1/e2ee/recovery/start
+# POST /api/v1/e2ee/recovery/start
 post:
   tags: [user]
   summary: 启动 social-recovery 流程

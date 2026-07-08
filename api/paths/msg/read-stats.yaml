@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/msg/read-stats.yaml
-# GET /v1/msg/read_stats — 群消息已读统计 / Group message read stats
+# GET /api/v1/msg/read_stats — 群消息已读统计 / Group message read stats
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 13 / D-msg)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1msg~1read_stats

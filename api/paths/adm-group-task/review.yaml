@@ -1,4 +1,4 @@
-# POST /adm/group/task/review — admin
+# POST /api/adm/group/task/review — admin
 post:
   tags: [admin]
   summary: 管理后台批改群任务

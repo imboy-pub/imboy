@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-device/delete.yaml
-# POST /user_device/delete — 删除设备档案 / Delete device record
+# POST /api/user_device/delete — 删除设备档案 / Delete device record
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
 # 调用方:  api/openapi.yaml#/paths/~1user_device~1delete

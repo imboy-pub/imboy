@@ -1,4 +1,4 @@
-# GET /v1/live_room/my_list
+# GET /api/v1/live_room/my_list
 get:
   tags: [user]
   summary: 我的直播间列表

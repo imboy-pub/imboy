@@ -1,4 +1,4 @@
-# GET /group_album/photo/comments — 评论列表 / Comments
+# GET /api/group_album/photo/comments — 评论列表 / Comments
 get:
   tags: [user]
   summary: 照片的评论列表

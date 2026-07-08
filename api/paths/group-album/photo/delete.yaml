@@ -1,4 +1,4 @@
-# POST /group_album/photo/delete — 删除照片 / Delete photo
+# POST /api/group_album/photo/delete — 删除照片 / Delete photo
 post:
   tags: [user]
   summary: 删除照片

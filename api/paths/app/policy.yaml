@@ -1,4 +1,4 @@
-# GET /v1/app/policy
+# GET /api/v1/app/policy
 get:
   tags: [user]
   summary: 客户端策略下发

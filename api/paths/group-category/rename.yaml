@@ -1,4 +1,4 @@
-# POST /v1/group/category/rename
+# POST /api/v1/group/category/rename
 post:
   tags: [user]
   summary: 重命名群分组

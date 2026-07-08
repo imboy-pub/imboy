@@ -1,4 +1,4 @@
-# POST /group_album/delete — 删除相册 / Delete album
+# POST /api/group_album/delete — 删除相册 / Delete album
 post:
   tags: [user]
   summary: 删除相册（连带相片）

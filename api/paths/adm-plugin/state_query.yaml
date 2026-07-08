@@ -1,4 +1,4 @@
-# GET /adm/plugin/state — admin
+# GET /api/adm/plugin/state — admin
 get:
   tags: [admin]
   summary: admin adm-plugin - state_query

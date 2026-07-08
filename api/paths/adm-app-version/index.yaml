@@ -1,4 +1,4 @@
-# GET /adm/app_version/index — admin
+# GET /api/adm/app_version/index — admin
 get:
   tags: [admin]
   summary: admin adm-app-version - index

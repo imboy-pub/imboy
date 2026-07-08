@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/adm/setup-status.yaml
-# GET /adm/setup/status — 查询首启向导状态 / Get setup wizard status
+# GET /api/adm/setup/status — 查询首启向导状态 / Get setup wizard status
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 4 / B)
 # 调用方：api/openapi.yaml#/paths/~1adm~1setup~1status

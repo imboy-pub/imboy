@@ -1,4 +1,4 @@
-# POST /v1/wallet/withdraw
+# POST /api/v1/wallet/withdraw
 post:
   tags: [wallet]
   summary: 发起提现（需管理员审批）

@@ -1,4 +1,4 @@
-# POST /adm/group/album/delete — admin
+# POST /api/adm/group/album/delete — admin
 post:
   tags: [admin]
   summary: 管理后台删除群相册

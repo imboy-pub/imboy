@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-collect/add.yaml
-# POST /user_collect/add — 添加收藏 / Add collection item
+# POST /api/user_collect/add — 添加收藏 / Add collection item
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 8 / D-user-collect)
 # 调用方:  api/openapi.yaml#/paths/~1user_collect~1add

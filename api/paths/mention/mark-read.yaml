@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/mention/mark-read.yaml
-# POST /mention/mark_read — 标记 @ 已读 / Mark mention as read
+# POST /api/mention/mark_read — 标记 @ 已读 / Mark mention as read
 #
 # 关联:    .claude/plans/quality-loop.md v1.3 T3.2 (split phase 15 / D-mention)
 # 调用方:  api/openapi.yaml#/paths/~1mention~1mark_read

@@ -1,4 +1,4 @@
-# GET /group_album/photo/detail — 照片详情 / Photo detail
+# GET /api/group_album/photo/detail — 照片详情 / Photo detail
 get:
   tags: [user]
   summary: 照片详情（含 like / comments 计数）

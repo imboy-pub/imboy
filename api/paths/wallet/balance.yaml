@@ -1,4 +1,4 @@
-# GET /v1/wallet/balance
+# GET /api/v1/wallet/balance
 get:
   tags: [user]
   summary: 查询钱包余额

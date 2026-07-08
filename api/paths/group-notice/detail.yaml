@@ -1,4 +1,4 @@
-# GET /v1/group/notice/detail — 公告详情 / Notice detail
+# GET /api/v1/group/notice/detail — 公告详情 / Notice detail
 get:
   tags: [user]
   summary: 公告详情

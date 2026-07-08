@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/auth/qr-create.yaml
-# POST /v1/passport/qr_login/create — 创建扫码登录会话 / Create QR login session
+# POST /api/v1/passport/qr_login/create — 创建扫码登录会话 / Create QR login session
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 5 / D-auth)
 # 调用方:  api/openapi.yaml#/paths/~1v1~1passport~1qr_login~1create

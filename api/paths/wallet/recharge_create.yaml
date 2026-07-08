@@ -1,4 +1,4 @@
-# POST /v1/wallet/recharge/order
+# POST /api/v1/wallet/recharge/order
 post:
   tags: [wallet]
   summary: 创建充值订单

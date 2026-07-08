@@ -1,4 +1,4 @@
-# GET /v1/group/category/list
+# GET /api/v1/group/category/list
 get:
   tags: [user]
   summary: 群分组列表

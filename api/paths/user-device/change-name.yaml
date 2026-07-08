@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user-device/change-name.yaml
-# POST /user_device/change_name — 修改设备名 / Rename device
+# POST /api/user_device/change_name — 修改设备名 / Rename device
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 9 / D-user-device)
 # 调用方:  api/openapi.yaml#/paths/~1user_device~1change_name

@@ -1,4 +1,4 @@
-# GET /adm/welcome — admin
+# GET /api/adm/welcome — admin
 get:
   tags: [admin]
   summary: admin adm-index - welcome

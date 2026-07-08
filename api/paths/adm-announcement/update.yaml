@@ -1,4 +1,4 @@
-# PUT /adm/announcement/update — admin
+# PUT /api/adm/announcement/update — admin
 put:
   tags: [admin]
   summary: admin adm-announcement - update

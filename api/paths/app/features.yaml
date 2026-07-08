@@ -1,4 +1,4 @@
-# GET /v1/app/features
+# GET /api/v1/app/features
 get:
   tags: [user]
   summary: 客户端可用功能开关

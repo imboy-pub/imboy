@@ -1,4 +1,4 @@
-# GET /location/peopleNearby
+# GET /api/location/peopleNearby
 get:
   tags: [user]
   summary: 附近的人列表

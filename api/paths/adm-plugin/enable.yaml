@@ -1,4 +1,4 @@
-# POST /adm/plugin/enable — admin
+# POST /api/adm/plugin/enable — admin
 post:
   tags: [admin]
   summary: admin adm-plugin - enable

@@ -1,4 +1,4 @@
-# POST /v1/report/create
+# POST /api/v1/report/create
 post:
   tags: [user]
   summary: 通用举报

@@ -1,4 +1,4 @@
-# POST /v1/group/file/delete
+# POST /api/v1/group/file/delete
 post:
   tags: [user]
   summary: 删除群文件

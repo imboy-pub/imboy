@@ -1,4 +1,4 @@
-# POST /adm/user/logout_apply/approve — admin
+# POST /api/adm/user/logout_apply/approve — admin
 post:
   tags: [admin]
   summary: 管理后台批准用户注销申请

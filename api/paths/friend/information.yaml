@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend/information.yaml
-# GET /friend/information — 好友或群组详情 / Friend or group detail
+# GET /api/friend/information — 好友或群组详情 / Friend or group detail
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 11 / D-friend-core)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1information

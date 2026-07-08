@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/friend-category/rename.yaml
-# POST /friend/category/rename — 重命名分组 / Rename friend category
+# POST /api/friend/category/rename — 重命名分组 / Rename friend category
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 12 / D-friend-category)
 # 调用方:  api/openapi.yaml#/paths/~1friend~1category~1rename

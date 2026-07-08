@@ -1,4 +1,4 @@
-# GET /adm/group/task/pending_review — admin
+# GET /api/adm/group/task/pending_review — admin
 get:
   tags: [admin]
   summary: 管理后台待审核群任务列表

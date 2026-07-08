@@ -1,4 +1,4 @@
-# GET /feedback/page
+# GET /api/feedback/page
 get:
   tags: [user]
   summary: 反馈列表（自己 / admin）

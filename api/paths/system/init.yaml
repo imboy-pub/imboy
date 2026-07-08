@@ -1,5 +1,5 @@
 # ----------------------------------------------------------------------------
-# GET /init + /v1/init — 系统初始化探针 / System init probe
+# GET /api/init + /v1/init — 系统初始化探针 / System init probe
 # Handler: src/api/index_handler.erl#init/1
 # 与 /adm/setup/status 区分：/init 面向所有客户端做服务可用性探测；
 # /adm/setup/status 面向 admin 前端判断是否进入首启向导。

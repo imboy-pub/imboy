@@ -1,4 +1,4 @@
-# GET /adm/storage/stats — admin
+# GET /api/adm/storage/stats — admin
 get:
   tags: [admin]
   summary: admin adm-attach - stats

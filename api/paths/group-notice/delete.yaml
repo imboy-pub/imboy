@@ -1,4 +1,4 @@
-# POST /group_notice/delete — 删除公告 / Delete notice
+# POST /api/group_notice/delete — 删除公告 / Delete notice
 post:
   tags: [user]
   summary: 删除公告

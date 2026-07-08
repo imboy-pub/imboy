@@ -1,4 +1,4 @@
-# POST /group_album/photo/unlike — 取消点赞 / Unlike photo
+# POST /api/group_album/photo/unlike — 取消点赞 / Unlike photo
 post:
   tags: [user]
   summary: 取消点赞照片（幂等）

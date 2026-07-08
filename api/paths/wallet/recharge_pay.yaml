@@ -1,4 +1,4 @@
-# POST /v1/wallet/recharge/pay
+# POST /api/v1/wallet/recharge/pay
 post:
   tags: [wallet]
   summary: 拉起充值订单支付（仅本人 + 待支付）

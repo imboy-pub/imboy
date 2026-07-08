@@ -1,6 +1,6 @@
 # ----------------------------------------------------------------------------
 # imboy/api/paths/user/search.yaml
-# GET /user/search — 关键词搜索用户 / Search users by keyword
+# GET /api/user/search — 关键词搜索用户 / Search users by keyword
 #
 # 关联：.claude/plans/quality-loop.md v1.3 T3.2 (split phase 6 / D-user-core)
 # 调用方:  api/openapi.yaml#/paths/~1user~1search

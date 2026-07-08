@@ -1,4 +1,4 @@
-# GET /adm/group/file/detail — admin
+# GET /api/adm/group/file/detail — admin
 get:
   tags: [admin]
   summary: 管理后台群文件详情

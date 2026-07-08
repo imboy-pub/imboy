@@ -1,4 +1,4 @@
-# POST /adm/app_version/save — admin
+# POST /api/adm/app_version/save — admin
 post:
   tags: [admin]
   summary: admin adm-app-version - save

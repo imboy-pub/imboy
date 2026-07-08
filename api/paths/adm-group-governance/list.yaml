@@ -1,4 +1,4 @@
-# GET /adm/group/governance_log/list — admin
+# GET /api/adm/group/governance_log/list — admin
 get:
   tags: [admin]
   summary: 管理后台群治理日志列表
