@@ -36,9 +36,10 @@ get_routes() ->
 
 ### 用户与认证
 
-> 2026-07-07 43224c1f/4cc20e81 硬切换后，除根路径 `/` 与网站白名单
-> （`/help`、`/brand`、`/privacy-policy`、`/account-deletion`、`/metrics`）
-> 外，全部路由统一 `/api` 前缀；`/api/v1/*` 与不带 `v1` 的 `/api/*` 双命名空间并存。
+> 2026-07-08：v0 裸 `/api/*` 业务路由（不带 v1 段）已下架，全部收口到
+> `/api/v1/*`；`/api/adm/*` 保持原样（无 v1 版本，设计如此）。除根路径
+> `/` 与网站白名单（`/help`、`/brand`、`/privacy-policy`、
+> `/account-deletion`、`/metrics`）外，其余路由均为 `/api/v1/*` 或 `/api/adm/*`。
 
 | Handler | 路由前缀 | 说明 |
 |---------|---------|------|

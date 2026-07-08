@@ -134,14 +134,9 @@ reply_429(Req) ->
 %% GAP-09: /v1/passport/ 从完全豁免改为专用宽松限流
 %% @private
 -spec is_whitelisted(binary()) -> true | passport | false.
-%% 2026-07-07 43224c1f/4cc20e81 硬切换 /api 前缀后，路由不再有裸
-%% /v1/* 路径，此处若不同步改前缀会永久落空（cowboy_req:path/1 拿到的
-%% 是硬切换后的真实路径），导致 init/ws/passport 全部误落入通用限流。
-is_whitelisted(<<"/api/passport/", _/binary>>) -> passport;
+%% 2026-07-08：v0 裸 /api/* 业务路由已下架，只保留 /api/v1/* 形态。
 is_whitelisted(<<"/api/v1/passport/", _/binary>>) -> passport;
-is_whitelisted(<<"/api/init">>) -> true;
 is_whitelisted(<<"/api/v1/init">>) -> true;
-is_whitelisted(<<"/api/ws">>) -> true;
 is_whitelisted(<<"/api/v1/ws">>) -> true;
 is_whitelisted(<<"/health">>) -> true;
 is_whitelisted(<<"/healthz">>) -> true;

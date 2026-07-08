@@ -28,10 +28,9 @@ whitelist_passport_test_() ->
         end
     ).
 
-%% @doc /api/init、/api/v1/init、/api/ws、/api/v1/ws 完全豁免限流
-%% （硬切换 /api 前缀后回归覆盖，见 throttle_middleware:is_whitelisted/1）
+%% @doc /api/v1/init、/api/v1/ws 完全豁免限流（v0 裸路径已下架，不再测试）
 whitelist_init_ws_test_() ->
-    Paths = [<<"/api/init">>, <<"/api/v1/init">>, <<"/api/ws">>, <<"/api/v1/ws">>],
+    Paths = [<<"/api/v1/init">>, <<"/api/v1/ws">>],
     [
         ?WITH_MECKS(
             [

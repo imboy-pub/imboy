@@ -6,15 +6,16 @@
 %%%
 %%% 回归 2026-07-08：43224c1f/4cc20e81 硬切换 /api 前缀后，本模块 execute/2
 %%% 里判断是否需要 auth_ds:verify_sign/2（设备签名防篡改校验）的显式分支
-%%% 仍匹配裸 /v1/ws、/v1/init、/v1/refreshtoken、/v1/passport/ 路径，
+%%% 一度仍匹配裸 /v1/ws、/v1/init、/v1/refreshtoken、/v1/passport/ 路径，
 %%% 永远不命中真实的 /api/* 路径；这些端点虽在 open() 白名单里免 JWT，
-%%% 但仍需 verify_sign，回归后被悄悄跳过。
+%%% 但仍需 verify_sign，回归后被悄悄跳过。后又下架了 v0 裸 /api/* 路由，
+%%% 只保留 /api/v1/* 形态，本文件只测 v1 路径。
 
 verify_sign_called_for_ws_test_() ->
     verify_sign_called_case(<<"/api/v1/ws">>).
 
 verify_sign_called_for_init_test_() ->
-    verify_sign_called_case(<<"/api/init">>).
+    verify_sign_called_case(<<"/api/v1/init">>).
 
 verify_sign_called_for_refreshtoken_test_() ->
     verify_sign_called_case(<<"/api/v1/refreshtoken">>).

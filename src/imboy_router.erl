@@ -10,174 +10,28 @@
 -spec get_routes() -> list().
 get_routes() ->
     Host = config_ds:env(host, '_'),
+    %% 2026-07-08：v0 裸 /api/* 业务路由（不带 v1 段）已下架，
+    %% 全部迁移到 ApiV1Routes 的 /api/v1/* 等价物；三个客户端
+    %% （imboyapp/imboyadmin/imboy-sdk-js）均已确认不再调用 v0 路径。
+    %% MainRoutes 只保留网站白名单（根路径，不加 /api）与静态资源。
     MainRoutes =
         [
             {"/", index_handler, #{action => help}},
             {"/help", index_handler, #{action => help}},
 
-            % v0 兼容路由 — 已统一加 /api 前缀（/api/init、/api/passport/login…），
-            % 与 v1 同处 /api 命名空间。v0 语义保留，下架时间另定。
-            {"/api/init", index_handler, #{action => init}},
-            {"/api/refreshtoken", passport_handler, #{action => refreshtoken}},
-
-            {"/api/app_version/check", app_version_handler, #{action => check}},
-
             % 品牌配置（运行时白标，公开，客户端启动拉取，见 open/0）
             {"/brand", brand_handler, #{action => info}},
 
-            % 【新增】Prometheus 指标端点
+            % Prometheus 指标端点
             {"/metrics", metrics_handler, #{}},
 
-            {"/api/passport/quick_login", passport_handler, #{action => quick_login}},
-            {"/api/passport/login", passport_handler, #{action => login}},
-            {"/api/passport/signup", passport_handler, #{action => signup}},
-            {"/api/passport/getcode", passport_handler, #{action => getcode}},
-            {"/api/passport/findpassword", passport_handler, #{action => find_password}},
-            {"/api/passport/bind_mail", passport_handler, #{action => bind_mail}},
-
-            {"/api/ws", websocket_handler, #{}}
-        ] ++
-            test_routes() ++
-            [
-                {"/api/conversation/online", conversation_handler, #{action => online}},
-                {"/api/conversation/mine", conversation_handler, #{action => mine}},
-                {"/api/conversation/pin", conversation_handler, #{action => pin_conversation}},
-                {"/api/conversation/unpin", conversation_handler, #{action => unpin_conversation}},
-                {"/api/conversation/pinned", conversation_handler, #{action => pinned_list}},
-                {"/api/conversation/delete", conversation_handler, #{action => delete_conversation}},
-                {"/api/conversation/restore", conversation_handler, #{
-                    action => restore_conversation
-                }},
-                {"/api/msg/offline", msg_handler, #{action => offline}},
-                {"/api/msg/offline_ack", msg_handler, #{action => offline_ack}},
-
-                {"/api/user/qrcode", user_handler, #{action => qrcode}},
-                {"/api/user/update", user_handler, #{action => update}},
-                {"/api/user/show", user_handler, #{action => show}},
-                {"/api/user/change_state", user_handler, #{action => change_state}},
-                {"/api/user/setting", user_handler, #{action => setting}},
-                {"/api/user/credential", user_handler, #{action => credential}},
-                {"/api/user/change_password", user_handler, #{action => change_password}},
-                {"/api/user/set_password", user_handler, #{action => set_password}},
-                {"/api/user/apply_logout", user_handler, #{action => apply_logout}},
-                {"/api/user/cancel_logout", user_handler, #{action => cancel_logout}},
-                {"/api/user/search", user_handler, #{action => search}},
-
-                {"/api/user_device/page", user_device_handler, #{action => page}},
-                {"/api/user_device/change_name", user_device_handler, #{action => change_name}},
-                {"/api/user_device/delete", user_device_handler, #{action => delete}},
-
-                {"/api/user_collect/page", user_collect_handler, #{action => page}},
-                {"/api/user_collect/add", user_collect_handler, #{action => add}},
-                {"/api/user_collect/remove", user_collect_handler, #{action => remove}},
-                {"/api/user_collect/change", user_collect_handler, #{action => change}},
-
-                {"/api/feedback/page", feedback_handler, #{action => page}},
-                {"/api/feedback/add", feedback_handler, #{action => add}},
-                {"/api/feedback/change", feedback_handler, #{action => change}},
-                {"/api/feedback/remove", feedback_handler, #{action => remove}},
-                {"/api/feedback/reply", feedback_handler, #{action => reply}},
-                {"/api/feedback/page_reply", feedback_handler, #{action => page_reply}},
-
-                {"/api/user_tag/page", user_tag_handler, #{action => page}},
-                {"/api/user_tag/add", user_tag_handler, #{action => add}},
-                {"/api/user_tag/change_name", user_tag_handler, #{action => change_name}},
-                {"/api/user_tag/delete", user_tag_handler, #{action => delete}},
-
-                {"/api/user_tag_relation/collect_page", user_tag_relation_handler, #{
-                    action => collect_page
-                }},
-                {"/api/user_tag_relation/friend_page", user_tag_relation_handler, #{
-                    action => friend_page
-                }},
-                {"/api/user_tag_relation/add", user_tag_relation_handler, #{action => add}},
-                {"/api/user_tag_relation/set", user_tag_relation_handler, #{action => set}},
-                {"/api/user_tag_relation/remove", user_tag_relation_handler, #{action => remove}},
-
-                {"/api/location/makeMyselfVisible", location_handler, #{
-                    action => make_myself_visible
-                }},
-                {"/api/location/makeMyselfUnvisible", location_handler, #{
-                    action => make_myself_unvisible
-                }},
-                {"/api/location/peopleNearby", location_handler, #{action => people_nearby}},
-
-                {"/api/friend/add", friend_handler, #{action => add_friend}},
-                {"/api/friend/confirm", friend_handler, #{action => confirm}},
-                {"/api/friend/reject", friend_handler, #{action => reject}},
-                {"/api/friend/delete", friend_handler, #{action => delete_friend}},
-                {"/api/friend/list", friend_handler, #{action => list}},
-                {"/api/friend/information", friend_handler, #{action => information}},
-                {"/api/friend/change_remark", friend_handler, #{action => change_remark}},
-
-                {"/api/friend/denylist/add", user_denylist_handler, #{action => add}},
-                {"/api/friend/denylist/remove", user_denylist_handler, #{action => remove}},
-                {"/api/friend/denylist/page", user_denylist_handler, #{action => page}},
-
-                {"/api/friend/move", friend_handler, #{action => move}},
-                {"/api/friend/category/add", friend_category_handler, #{action => add}},
-                {"/api/friend/category/delete", friend_category_handler, #{action => delete}},
-                {"/api/friend/category/rename", friend_category_handler, #{action => rename}},
-
-                % 搜索"用户允许被搜索"的用户
-                {"/api/fts/user_search", fts_handler, #{action => user_search}},
-                % 最近新注册的并且允许被搜索到的朋友
-                {"/api/fts/recently_user", fts_handler, #{action => recently_user}},
-
-                {"/api/group/remark", group_handler, #{action => remark}},
-                {"/api/group/qrcode", group_handler, #{action => qrcode}},
-                {"/api/group/face2face", group_handler, #{action => face2face}},
-                {"/api/group/face2face_save", group_handler, #{action => face2face_save}},
-                {"/api/group/add", group_handler, #{action => add}},
-                {"/api/group/edit", group_handler, #{action => edit}},
-                {"/api/group/dissolve", group_handler, #{action => dissolve}},
-                {"/api/group/detail", group_handler, #{action => detail}},
-                {"/api/group/page", group_handler, #{action => page}},
-                {"/api/group/msg_page", group_handler, #{action => msg_page}},
-
-                {"/api/group_member/join", group_member_handler, #{action => join}},
-                {"/api/group_member/leave", group_member_handler, #{action => leave}},
-                {"/api/group_member/page", group_member_handler, #{action => page}},
-                {"/api/group_member/alias", group_member_handler, #{action => alias}},
-                {"/api/group_member/same_group", group_member_handler, #{action => same_group}},
-                % 群组公告
-                {"/api/group_notice/add", group_notice_handler, #{action => add}},
-                {"/api/group_notice/edit", group_notice_handler, #{action => edit}},
-                {"/api/group_notice/delete", group_notice_handler, #{action => delete}},
-                {"/api/group_notice/page", group_notice_handler, #{action => page}},
-                {"/api/group_notice/publish", group_notice_handler, #{action => publish}},
-                {"/api/group_notice/latest", group_notice_handler, #{action => latest}},
-                % @提及功能
-                {"/api/mention/list", mention_handler, #{action => list}},
-                {"/api/mention/unread", mention_handler, #{action => unread}},
-                {"/api/mention/mark_read", mention_handler, #{action => mark_read}},
-                {"/api/mention/suggest", mention_handler, #{action => suggest}},
-                % 群相册
-                {"/api/group_album/create", group_album_handler, #{action => create_album}},
-                {"/api/group_album/list", group_album_handler, #{action => list_albums}},
-                {"/api/group_album/rename", group_album_handler, #{action => rename_album}},
-                {"/api/group_album/delete", group_album_handler, #{action => delete_album}},
-                {"/api/group_album/photo/upload", group_album_handler, #{action => upload_photo}},
-                {"/api/group_album/photo/batch", group_album_handler, #{action => batch_upload}},
-                {"/api/group_album/photo/list", group_album_handler, #{action => list_photos}},
-                {"/api/group_album/photo/detail", group_album_handler, #{action => photo_detail}},
-                {"/api/group_album/photo/delete", group_album_handler, #{action => delete_photo}},
-                {"/api/group_album/photo/like", group_album_handler, #{action => like_photo}},
-                {"/api/group_album/photo/unlike", group_album_handler, #{action => unlike_photo}},
-                {"/api/group_album/photo/comment", group_album_handler, #{action => add_comment}},
-                {"/api/group_album/photo/comments", group_album_handler, #{action => list_comments}},
-                {"/api/group_album/cover/update", group_album_handler, #{action => update_cover}},
-                % end v0 兼容路由（已 /api 前缀化）
-
-                %%%%%%% 上面写API路由，下面写静态资源 %%%%%%%%
-
-                {"/privacy-policy", cowboy_static,
-                    {priv_file, imboy, "static/legal/privacy_policy.html"}},
-                {"/account-deletion", cowboy_static,
-                    {priv_file, imboy, "static/legal/account_deletion.html"}},
-                {"/static/[...]", cowboy_static,
-                    {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}
-            ],
+            {"/privacy-policy", cowboy_static,
+                {priv_file, imboy, "static/legal/privacy_policy.html"}},
+            {"/account-deletion", cowboy_static,
+                {priv_file, imboy, "static/legal/account_deletion.html"}},
+            {"/static/[...]", cowboy_static,
+                {priv_dir, imboy, "static", [{mimetypes, cow_mimetypes, all}]}}
+        ],
 
     % Api v1 routes
     ApiV1Routes =
@@ -947,10 +801,6 @@ route_spec_to_cowboy(#{path := Path, handler := Handler, action := Action} = Spe
 option() ->
     [
         % 没有登录也可以提交反馈建议
-        <<"/api/feedback/add">>,
-        <<"/api/app_version/check">>,
-
-        % 没有登录也可以提交反馈建议
         <<"/api/v1/feedback/add">>,
         <<"/api/v1/app_version/check">>,
         <<"/api/v1/app_upgrade/report">>
@@ -970,20 +820,8 @@ open() ->
         <<"/metrics">>,
         <<"/">>,
 
-        %% 免鉴权 API（统一 /api 前缀）
+        %% 免鉴权 API（/api/v1 前缀，v0 裸路径已下架）
         % /ws 有自己的auth
-        <<"/api/ws">>,
-        <<"/api/conversation/online">>,
-        <<"/api/init">>,
-        <<"/api/user/show">>,
-        <<"/api/refreshtoken">>,
-        <<"/api/passport/login">>,
-        <<"/api/passport/quick_login">>,
-        <<"/api/passport/signup">>,
-        <<"/api/passport/getcode">>,
-        <<"/api/passport/findpassword">>,
-        <<"/api/passport/bind_mail">>,
-
         <<"/api/v1/ws">>,
         <<"/api/v1/conversation/online">>,
         <<"/api/v1/init">>,
@@ -1028,19 +866,6 @@ is_dev_env() ->
         end,
     not lists:member(Env, [<<"pro">>, <<"prod">>, <<"production">>]).
 
-%% @doc 测试路由（v0）- 仅非生产环境
--spec test_routes() -> list().
-test_routes() ->
-    case is_dev_env() of
-        true ->
-            [
-                {"/api/test/req_get", test_handler, #{action => req_get}},
-                {"/api/test/req_post", test_handler, #{action => req_post}}
-            ];
-        false ->
-            []
-    end.
-
 %% @doc 测试路由（v1）- 仅非生产环境
 -spec test_routes_v1() -> list().
 test_routes_v1() ->
@@ -1060,8 +885,6 @@ test_open_routes() ->
     case is_dev_env() of
         true ->
             [
-                <<"/api/test/req_get">>,
-                <<"/api/test/req_post">>,
                 <<"/api/v1/test/req_get">>,
                 <<"/api/v1/test/req_post">>
             ];
