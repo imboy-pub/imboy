@@ -305,7 +305,12 @@ if [ "$SKIP_MIGRATE" -eq 1 ]; then
   log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
 else
   log "执行数据库迁移... / Running DB migrations..."
-  ssh_exec "cd '$PROJECT_DIR' && make ctl ARGS='db migrate'"
+  # CTL_NODE 必须显式指定为本次刚启动的节点名，Makefile 默认值 imboy@127.0.0.1
+  # 与 vm.args 里实际写入的 ${NODE_NAME}@${NODE_HOST} 不一致，不传会报
+  # "cannot reach 'imboy@127.0.0.1'" 并中止部署（实测复现）。同理 cookie
+  # 也必须显式传 IMBOY_CTL_COOKIE，否则 imboy_ctl 默认 cookie=imboy，
+  # 当 IMBOY_DEPLOY_COOKIE（如 .env.deploy 的 imboycookie）不是默认值时连不上。
+  ssh_exec "cd '$PROJECT_DIR' && CTL_NODE='${NODE_NAME}@${NODE_HOST}' IMBOY_CTL_COOKIE='${COOKIE}' make ctl ARGS='db migrate'"
   ok "数据库迁移完成 / DB migrations applied"
 fi
 

@@ -79,7 +79,9 @@ ssh_cap()  { ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" | tr -d '\r';
 deploy_api() {
   log "▶ 部署 Erlang 后端 (蓝绿) — 委托 deploy.sh ..."
 
-  local NODE_ID; NODE_ID="$(date '+%m%d%H%M')"
+  # 不加 local：deploy_migrate() 需要复用同一个节点名来跑迁移
+  # （make ctl 的 CTL_NODE 默认值 imboy@127.0.0.1 不等于本次启动的节点名）。
+  NODE_ID="$(date '+%m%d%H%M')"
 
   # 将 .env.deploy 变量映射为 deploy.sh 的 IMBOY_DEPLOY_* 环境变量，
   # 传 --no-migrate 让迁移由 deploy_migrate() 统一负责（避免 all 模式重复执行）
@@ -136,7 +138,16 @@ deploy_admin() {
 # =============================================================================
 deploy_migrate() {
   log "▶ 执行数据库迁移 ..."
-  ssh_exec "cd '${DEPLOY_PROJECT_DIR}' && make ctl ARGS='db migrate'"
+  # CTL_NODE/IMBOY_CTL_COOKIE 必须显式指定为 deploy_api() 刚启动的节点名+cookie，
+  # 否则 make ctl 默认连 imboy@127.0.0.1（cookie=imboy），连不上蓝绿部署实际
+  # 启动的节点（同 deploy.sh 的修复，见其 6️⃣ 步注释）。
+  # 仅 api 组件跑过时 NODE_ID 才有值；单独跑 migrate 组件时回退默认（旧行为）。
+  local CtlNode="${NODE_ID:+${NODE_ID}@${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}}"
+  if [[ -n "$CtlNode" ]]; then
+    ssh_exec "cd '${DEPLOY_PROJECT_DIR}' && CTL_NODE='${CtlNode}' IMBOY_CTL_COOKIE='${DEPLOY_COOKIE}' make ctl ARGS='db migrate'"
+  else
+    ssh_exec "cd '${DEPLOY_PROJECT_DIR}' && IMBOY_CTL_COOKIE='${DEPLOY_COOKIE}' make ctl ARGS='db migrate'"
+  fi
   ok "▶ 数据库迁移完成"
 }
 
