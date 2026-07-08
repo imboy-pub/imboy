@@ -57,7 +57,10 @@ api_init(Req0) ->
             <<"upload_key">> => <<>>,
             <<"upload_scene">> => <<>>,
             %% 新附件直传接口（Garage S3 presigned URL）
-            <<"attach_presign_endpoint">> => <<"/v1/attachment/presign">>,
+            %% 2026-07-07 43224c1f/4cc20e81 硬切换 /api 前缀后此处漏改，
+            %% 真实路由是 /api/v1/attachment/presign（见 imboy_router.erl），
+            %% 客户端拿到的旧值会 404。
+            <<"attach_presign_endpoint">> => <<"/api/v1/attachment/presign">>,
             %% 公开资源（scope=public，如头像）直读基址，客户端直拼 object_key（见 resource-access-control.md §9）
             <<"public_base_url">> => elib_oss:public_base_url(),
             <<"login_pwd_rsa_encrypt">> => config_ds:env(login_pwd_rsa_encrypt, <<"off">>),

@@ -4,12 +4,20 @@
 
 %%% @doc throttle_middleware 模块测试
 
-%% @doc 白名单路径跳过限流
+%% @doc passport 路径命中专用宽松限流（非完全豁免，GAP-09），需要
+%% mock elib_req:get_client_ip + throttle:check(passport_per_ip, _)，
+%% 否则会真的调用 cowboy_req:header/3 在 fake_req 上崩溃。
 whitelist_passport_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
                 {'path', 1, fun(_Req) -> <<"/api/v1/passport/login">> end}
+            ]},
+            {elib_req, [
+                {'get_client_ip', 1, fun(_Req) -> <<"203.0.113.1">> end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(passport_per_ip, _Key) -> {ok, 9, 60000} end}
             ]}
         ],
         fun() ->
@@ -19,6 +27,27 @@ whitelist_passport_test_() ->
             ?assertMatch({ok, _, _}, Result)
         end
     ).
+
+%% @doc /api/init、/api/v1/init、/api/ws、/api/v1/ws 完全豁免限流
+%% （硬切换 /api 前缀后回归覆盖，见 throttle_middleware:is_whitelisted/1）
+whitelist_init_ws_test_() ->
+    Paths = [<<"/api/init">>, <<"/api/v1/init">>, <<"/api/ws">>, <<"/api/v1/ws">>],
+    [
+        ?WITH_MECKS(
+            [
+                {cowboy_req, [
+                    {'path', 1, fun(_Req) -> Path end}
+                ]}
+            ],
+            fun() ->
+                Req = fake_req,
+                Env = #{handler_opts => #{}},
+                Result = throttle_middleware:execute(Req, Env),
+                ?assertMatch({ok, _, _}, Result)
+            end
+        )
+     || Path <- Paths
+    ].
 
 whitelist_health_test_() ->
     ?WITH_MECKS(
