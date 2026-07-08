@@ -1,0 +1,34 @@
+# POST /v1/billing/renew — 续费订阅
+post:
+  tags: [user]
+  summary: 续费订阅
+  description: 对指定订阅续费一个周期。
+  operationId: billingRenew
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [subscription_id]
+          properties:
+            subscription_id: { type: integer, format: int64, description: 订阅 ID }
+  responses:
+    '200':
+      description: 续费成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      subscription_id: { type: integer, format: int64 }
+                      current_period_end_ms: { type: integer, description: 续费后周期结束时间戳（毫秒） }
+    '4XX':
+      description: 订阅 id 不合法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

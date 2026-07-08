@@ -1,0 +1,33 @@
+# POST /v1/billing/invoice/pay — 支付账单
+post:
+  tags: [user]
+  summary: 支付账单
+  description: 使用指定支付方式支付账单。invoice_no 全局唯一。
+  operationId: billingInvoicePay
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [invoice_no, payment_method]
+          properties:
+            invoice_no: { type: string, description: 账单号（全局唯一） }
+            payment_method: { type: string, description: '支付方式，如 alipay / wechat' }
+  responses:
+    '200':
+      description: 支付结果（含网关支付参数）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 支付网关返回（alipay order_str / wechat prepay_id 等）
+    '4XX':
+      description: 账单号或支付方式为空 / 账单不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

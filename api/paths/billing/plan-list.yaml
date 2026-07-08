@@ -1,0 +1,35 @@
+# GET /v1/billing/plan/list — 套餐目录（只读，对所有登录用户可见）
+get:
+  tags: [user]
+  summary: 套餐列表（上架）
+  description: 查询所有已上架套餐，供客户端订阅前展示。只读，对所有登录用户可见。
+  operationId: billingPlanList
+  responses:
+    '200':
+      description: 套餐列表
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            code: { type: string }
+                            name: { type: string }
+                            price: { type: integer, description: 价格（分） }
+                            billing_period: { type: string, description: 'month | year' }
+                            quota_config: { type: object, description: 配额配置 jsonb }
+                            description: { type: string }
+    '4XX':
+      description: 参数非法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

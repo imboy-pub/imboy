@@ -1,0 +1,43 @@
+# GET /v1/billing/quota — 配额查询
+get:
+  tags: [user]
+  summary: 配额查询
+  description: 查询指定订阅在某指标下的配额与已用量。
+  operationId: billingCheckQuota
+  parameters:
+    - name: subscription_id
+      in: query
+      required: true
+      schema: { type: integer }
+      description: 订阅 ID
+    - name: metric
+      in: query
+      required: true
+      schema: { type: string }
+      description: 指标键，如 messages 或 storage
+    - name: period
+      in: query
+      required: false
+      schema: { type: string }
+      description: 计费周期标识（可选）
+  responses:
+    '200':
+      description: 配额详情
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      metric: { type: string }
+                      limit: { type: integer, description: 套餐配额上限 }
+                      used: { type: integer, description: 已用量 }
+                      remaining: { type: integer, description: 剩余配额 }
+    '4XX':
+      description: 参数不合法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

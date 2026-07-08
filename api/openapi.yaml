@@ -859,6 +859,26 @@ paths:
     $ref: './paths/wallet/recharge_create.yaml'
   /api/v1/wallet/recharge/pay:
     $ref: './paths/wallet/recharge_pay.yaml'
+  /api/v1/billing/plan/list:
+    $ref: './paths/billing/plan-list.yaml'
+  /api/v1/billing/subscribe:
+    $ref: './paths/billing/subscribe.yaml'
+  /api/v1/billing/renew:
+    $ref: './paths/billing/renew.yaml'
+  /api/v1/billing/cancel:
+    $ref: './paths/billing/cancel.yaml'
+  /api/v1/billing/subscription:
+    $ref: './paths/billing/subscription.yaml'
+  /api/v1/billing/usage:
+    $ref: './paths/billing/usage.yaml'
+  /api/v1/billing/quota:
+    $ref: './paths/billing/quota.yaml'
+  /api/v1/billing/invoice/generate:
+    $ref: './paths/billing/invoice-generate.yaml'
+  /api/v1/billing/invoice/pay:
+    $ref: './paths/billing/invoice-pay.yaml'
+  /api/v1/billing/invoice/list:
+    $ref: './paths/billing/invoice-list.yaml'
   /api/adm:
     $ref: './paths/adm-index/index.yaml'
   /api/adm/index:

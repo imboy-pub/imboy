@@ -1,0 +1,35 @@
+# POST /v1/billing/subscribe — 订阅套餐
+post:
+  tags: [user]
+  summary: 订阅套餐
+  description: 为当前租户订阅指定套餐。tenant_id 缺省 0（单租户逻辑字段）。
+  operationId: billingSubscribe
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [plan_id]
+          properties:
+            plan_id: { type: integer, format: int64, description: 套餐 ID（必填） }
+            tenant_id: { type: integer, description: 租户 ID（可选，默认 0） }
+            trial: { type: boolean, description: 是否试用（可选，默认 false） }
+  responses:
+    '200':
+      description: 订阅成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      subscription_id: { type: integer, format: int64 }
+    '4XX':
+      description: 套餐 id 不合法 / 余额不足等
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
