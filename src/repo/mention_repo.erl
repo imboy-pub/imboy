@@ -11,7 +11,9 @@
 -export([find_by_msg_id/1]).
 -export([find_msg_id_by_mention_id/2]).
 -export([find_by_uid/2]).
+-export([find_by_uid/4]).
 -export([find_by_group_and_uid/3]).
+-export([find_by_group_and_uid/5]).
 -export([mark_as_read/2]).
 -export([mark_all_as_read/1]).
 -export([mark_group_as_read/2]).
@@ -104,6 +106,28 @@ find_by_uid(Uid, IsRead) ->
             " WHERE mentioned_uid = $1 AND is_read = $2 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Uid, IsRead]).
 
+%% @doc 分页查询用户的@提及（DB 侧 LIMIT/OFFSET，避免全量拉取后内存截取）
+%% @param Uid 用户ID
+%% @param IsRead 已读状态
+%% @param Limit 每页条数（必填，由 handler 钳制上界）
+%% @param Offset 偏移量（Page-1)*Size
+-spec find_by_uid(integer(), boolean() | undefined, integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
+find_by_uid(Uid, undefined, Limit, Offset) ->
+    Tb = tablename(),
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " WHERE mentioned_uid = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3">>,
+    elib_pg:query(Sql, [Uid, Limit, Offset]);
+find_by_uid(Uid, IsRead, Limit, Offset) ->
+    Tb = tablename(),
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " WHERE mentioned_uid = $1 AND is_read = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4">>,
+    elib_pg:query(Sql, [Uid, IsRead, Limit, Offset]).
+
 %% @doc 查询用户在指定群组的@提及
 %% @param Gid 群组ID
 %% @param Uid 用户ID
@@ -125,6 +149,24 @@ find_by_group_and_uid(Gid, Uid, IsRead) ->
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = $3 ORDER BY created_at DESC">>,
     elib_pg:query(Sql, [Gid, Uid, IsRead]).
+
+%% @doc 分页查询用户在指定群组的@提及（DB 侧 LIMIT/OFFSET）
+-spec find_by_group_and_uid(integer(), integer(), boolean() | undefined, integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
+find_by_group_and_uid(Gid, Uid, undefined, Limit, Offset) ->
+    Tb = tablename(),
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " WHERE group_id = $1 AND mentioned_uid = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4">>,
+    elib_pg:query(Sql, [Gid, Uid, Limit, Offset]);
+find_by_group_and_uid(Gid, Uid, IsRead, Limit, Offset) ->
+    Tb = tablename(),
+    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = $3 ORDER BY created_at DESC LIMIT $4 OFFSET $5">>,
+    elib_pg:query(Sql, [Gid, Uid, IsRead, Limit, Offset]).
 
 %% @doc 标记@消息为已读
 %% @param MsgId 消息ID

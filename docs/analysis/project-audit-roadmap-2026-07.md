@@ -160,10 +160,10 @@
 - **验收 gate**：eunit 断言超 10000 成员群不截断（或显式告警日志）。
 - **分工**：**需 Fable 出分页扇出方案**（涉及投递语义）。属可扩展性升级，Phase 3。
 
-### [PERF-02] mention 等无界列表查询  [性能] [MEDIUM]
+### [PERF-02] mention 等无界列表查询  [性能] [MEDIUM] [✅ 已完成 2026-07-07]
 - **根因**：`src/repo/mention_repo.erl:96-103` `find_by_uid/2`、`find_by_group_and_uid/3` 无 LIMIT，@提及历史随时间无限增长全量拉取。`user_setting_repo`/`e2ee_social_repo` 类似但数据量小。
 - **修复方案**：mention 列表接口加分页参数（page/size，参照 `elib_param:page`）+ repo 层强制 LIMIT。
-- **验收 gate**：`grep -A2 SELECT src/repo/mention_repo.erl | grep -i limit` 有命中；eunit 分页断言。
+- **验收 gate**：✅ `grep LIMIT src/repo/mention_repo.erl` 有命中（find_by_uid/4、find_by_group_and_uid/5 带 LIMIT/OFFSET）；✅ eunit 分页断言 16/16 通过（commit `9fac9ceb`）。
 - **分工**：**[MODEL] glm 可独立执行**（分页是既定模式）。
 
 ### 维度 6：前后端契约错位
