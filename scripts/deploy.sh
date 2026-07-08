@@ -341,11 +341,17 @@ fi
 # =============================================================================
 if [ "$STOP_OLD" = "true" ] && [ -n "$OLD_PORT" ]; then
   log "停止旧节点 (port=$OLD_PORT)... / Stopping old node..."
+  # 按目录名版本号排序取最小值会挑到无关的历史陈旧目录（实测复现：
+  # 停了一个早已不跑的 rc.10 目录，真正占着 OLD_PORT 的进程被晾在原地）。
+  # 必须反查实际监听 OLD_PORT 的进程，从其命令行 -root 参数取真实目录。
   OLD_DIR="$(ssh_capture \
-    "find /usr/local -maxdepth 1 -name 'imboy-*-*' -type d ! -path '$RELEASE_DIR' | sort -V | head -1")" || OLD_DIR=""
+    "OLD_PID=\$(lsof -ti:$OLD_PORT -sTCP:LISTEN 2>/dev/null | head -1); \
+     [ -n \"\$OLD_PID\" ] && ps -o cmd= -p \"\$OLD_PID\" | grep -oE -- '-root [^ ]+' | awk '{print \$2}' | head -1")" || OLD_DIR=""
   if [ -n "$OLD_DIR" ]; then
     ssh_exec "$OLD_DIR/bin/imboy stop || true"
     ok "旧节点已停止: $OLD_DIR / Old node stopped"
+  else
+    echo "⚠️  未能定位监听 port=$OLD_PORT 的进程目录，请手动确认并停止 / Could not resolve dir for port=$OLD_PORT, stop manually"
   fi
 fi
 
