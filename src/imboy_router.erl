@@ -356,6 +356,27 @@ get_routes() ->
                     #{
                         action => revoke_message
                     }},
+                % 评论 API（对标公众号/知识星球评论）
+                {"/api/v1/channel/:channel_id/message/:message_id/comments",
+                    channel_handler_comment, #{
+                        action => list_comments
+                    }},
+                {"/api/v1/channel/:channel_id/message/:message_id/comment",
+                    channel_handler_comment, #{
+                        action => create_comment
+                    }},
+                {"/api/v1/channel/:channel_id/comment/:comment_id/delete",
+                    channel_handler_comment, #{
+                        action => delete_comment
+                    }},
+                {"/api/v1/channel/:channel_id/comment/:comment_id/like",
+                    channel_handler_comment, #{
+                        action => like_comment
+                    }},
+                {"/api/v1/channel/:channel_id/comment/:comment_id/unlike",
+                    channel_handler_comment, #{
+                        action => unlike_comment
+                    }},
                 % 订阅者管理 API
                 {"/api/v1/channel/:channel_id/subscribers", channel_handler_message, #{
                     action => subscribers

@@ -74,7 +74,15 @@ get_post(Uid, PostIdRaw) ->
                         true ->
                             Liked = moment_ds:has_liked(PostId, Uid),
                             Payload = post_transfer(Post),
-                            {ok, Payload#{<<"liked">> => Liked}};
+                            RecentLikers = maps:get(
+                                PostId,
+                                build_recent_likers_map([PostId], 8),
+                                []
+                            ),
+                            {ok, Payload#{
+                                <<"liked">> => Liked,
+                                <<"recent_likers">> => RecentLikers
+                            }};
                         false ->
                             {error, <<"无权限查看该动态"/utf8>>}
                     end;
@@ -452,16 +460,20 @@ enrich_posts(Uid, Posts) ->
             {ok, Ids} -> Ids;
             _ -> []
         end,
+    % 每帖最近 5 个点赞人（一次批量查询，避免 N+1）
+    LikersMap = build_recent_likers_map(PostIds, 5),
     [
         begin
             AuthorUid = maps:get(<<"author_uid">>, P, 0),
             PostId = maps:get(<<"id">>, P, 0),
             {Nickname, Avatar} = maps:get(AuthorUid, UserMap, {<<>>, <<>>}),
+            RecentLikers = maps:get(PostId, LikersMap, []),
             Base = post_transfer(P),
             Base#{
                 <<"author_nickname">> => Nickname,
                 <<"author_avatar">> => Avatar,
-                <<"liked">> => lists:member(PostId, LikedSet)
+                <<"liked">> => lists:member(PostId, LikedSet),
+                <<"recent_likers">> => RecentLikers
             }
         end
      || P <- Posts
@@ -517,6 +529,49 @@ build_user_map(Ids) ->
         _ ->
             #{}
     end.
+
+%% @doc 批量构建 #{PostId => [#{uid,nickname,avatar}]}。
+%% 一次查询取每帖最近 PerPostLimit 个点赞人，再批量查用户信息，避免 N+1。
+%% 失败或无数据时每个 PostId 对应空列表，保证前端始终拿到 recent_likers 字段。
+-spec build_recent_likers_map([integer()], integer()) -> map().
+build_recent_likers_map([], _PerPostLimit) ->
+    #{};
+build_recent_likers_map(PostIds, PerPostLimit) ->
+    Rows =
+        case moment_ds:recent_likers_by_posts(PostIds, PerPostLimit) of
+            {ok, R} when is_list(R) -> R;
+            _ -> []
+        end,
+    Uids = [
+        U
+     || #{
+            <<"user_id">> := U
+        } <- Rows,
+        is_integer(U),
+        U > 0
+    ],
+    UserMap = build_user_map(lists:usort(Uids)),
+    % 按 post_id 分组，每条组装 #{uid,nickname,avatar}
+    lists:foldl(
+        fun(R, Acc) ->
+            PostId = maps:get(<<"post_id">>, R, 0),
+            Uid = maps:get(<<"user_id">>, R, 0),
+            {Nick, Ava} = maps:get(Uid, UserMap, {<<>>, <<>>}),
+            Liker = #{
+                <<"uid">> => safe_encode(Uid),
+                <<"nickname">> => Nick,
+                <<"avatar">> => Ava
+            },
+            maps:update_with(
+                PostId,
+                fun(Existing) -> Existing ++ [Liker] end,
+                [Liker],
+                Acc
+            )
+        end,
+        #{},
+        Rows
+    ).
 
 -spec comment_transfer(map()) -> map().
 comment_transfer(Comment) ->

@@ -8,6 +8,7 @@
 -export([add/2, add/3]).
 -export([remove/2, remove/3]).
 -export([list_by_post/2]).
+-export([recent_likers_by_posts/2]).
 -export([has_liked/2]).
 -export([liked_post_ids/2]).
 
@@ -92,6 +93,34 @@ list_by_post(PostId, Limit) ->
         " ORDER BY id DESC LIMIT $2"
     >>,
     elib_pg:query(Sql, [PostId, Limit]).
+
+%% @doc 批量查询多个动态各自最近 PerPostLimit 个点赞人（避免 N+1）。
+%% 用 ROW_NUMBER() 窗口函数按 post_id 分组取 TopN，一次查询返回全部。
+%% 返回 {ok, [#{post_id, user_id, created_at}]}（已按 post_id、rn 排序）。
+-spec recent_likers_by_posts([integer()], integer()) ->
+    {ok, [map()]} | {error, any()}.
+recent_likers_by_posts([], _PerPostLimit) ->
+    {ok, []};
+recent_likers_by_posts(PostIds, PerPostLimit) when
+    is_list(PostIds),
+    PostIds =/= [],
+    is_integer(PerPostLimit),
+    PerPostLimit > 0
+->
+    Tb = tablename(),
+    % $1 = post_id 数组，$2 = 每帖点赞人上限
+    Sql = <<
+        "WITH ranked AS ("
+        " SELECT post_id, user_id, created_at,",
+        " ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY id DESC) AS rn",
+        " FROM ",
+        Tb/binary,
+        " WHERE post_id = ANY($1)"
+        ")",
+        " SELECT post_id, user_id, created_at FROM ranked WHERE rn <= $2",
+        " ORDER BY post_id, rn"
+    >>,
+    elib_pg:query(Sql, [PostIds, PerPostLimit]).
 
 -spec has_liked(integer(), integer()) -> boolean().
 has_liked(PostId, UserId) ->

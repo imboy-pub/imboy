@@ -18,6 +18,7 @@
 -export([list_post_acl/1]).
 -export([has_liked/2]).
 -export([liked_post_ids/2]).
+-export([recent_likers_by_posts/2]).
 -export([find_comment_by_id/1]).
 -export([page_admin_posts/5]).
 -export([list_reports_by_post/2]).
@@ -444,6 +445,13 @@ has_liked(PostId, Uid) -> moment_like_repo:has_liked(PostId, Uid).
 
 -spec liked_post_ids([integer()], integer()) -> {ok, [integer()]} | {error, any()}.
 liked_post_ids(PostIds, Uid) -> moment_like_repo:liked_post_ids(PostIds, Uid).
+
+%% @doc 批量查询多个动态各自最近 PerPostLimit 个点赞人。
+%% 返回 {ok, [#{post_id, user_id, created_at}]}（薄封装，用户信息富化由 logic 负责）。
+-spec recent_likers_by_posts([integer()], integer()) ->
+    {ok, [map()]} | {error, any()}.
+recent_likers_by_posts(PostIds, PerPostLimit) ->
+    moment_like_repo:recent_likers_by_posts(PostIds, PerPostLimit).
 
 -spec find_comment_by_id(integer()) -> map() | {error, any()}.
 find_comment_by_id(CommentId) -> moment_comment_repo:find_by_id(CommentId).
