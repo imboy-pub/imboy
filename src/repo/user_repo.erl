@@ -176,7 +176,14 @@ may_exist(_) ->
 save(Data) ->
     Tb = tablename(),
     Id = elib_tsid:generate(user),
-    Data2 = Data#{<<"id">> => Id},
+    %% 强制使用服务端生成的 TSID：先剔除调用方可能带入的 id/<<"id">>，
+    %% 否则 atom id 与 binary <<"id">> 会作为 map 的两个不同 key 同时存在，
+    %% elib_pg_sql:insert/2 各自转换列名却不去重，拼出 INSERT 语句里
+    %% "id" 列重复两次，PG 报 42701 column "id" specified more than once
+    %% （user_repo:create/1 经 normalize_legacy_create_data/1 传入 atom id
+    %% 时必现，真库集成测试实测复现）。
+    Data1 = maps:remove(id, maps:remove(<<"id">>, Data)),
+    Data2 = Data1#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Sql, Params) of
         {ok, _Count} -> {ok, Id};

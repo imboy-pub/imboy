@@ -160,10 +160,13 @@ add_contact(Params) ->
     Nickname = maps:get(<<"contact_nickname">>, Params, <<>>),
 
     Id = elib_tsid:generate(e2ee_social),
+    %% 表列名是 contact_nickname（见 00000004_social.up.sql），此前误写
+    %% nickname，真库集成测试实测复现 PG 42703 undefined_column——
+    %% add_contact/1 对真库调用必现失败，可信联系人功能从未成功写入过。
     Sql1 =
-        <<"INSERT INTO e2ee_trusted_contacts ", "(id, uid, contact_uid, nickname) ",
+        <<"INSERT INTO e2ee_trusted_contacts ", "(id, uid, contact_uid, contact_nickname) ",
             "VALUES ($1, $2, $3, $4) ", "ON CONFLICT (uid, contact_uid) ",
-            "DO UPDATE SET nickname = $4">>,
+            "DO UPDATE SET contact_nickname = $4">>,
     case elib_pg:execute(Sql1, [Id, Uid, ContactUid, Nickname]) of
         {ok, _Count} -> {ok, Id};
         {error, Reason} -> {error, Reason}

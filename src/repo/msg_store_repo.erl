@@ -13,6 +13,7 @@
 -ifdef(TEST).
 %% 仅测试导出：payload/e2ee 的 JSONB 规范化（数字开头密文误判回归）
 -export([msg_store_payload_to_jsonb/1]).
+-export([msg_store_e2ee_to_jsonb/1]).
 -endif.
 
 %% 表管理

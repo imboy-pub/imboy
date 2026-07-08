@@ -39,7 +39,13 @@ tablename() ->
 add(Conn, Data) ->
     Tb = tablename(),
     Id = elib_tsid:generate(group_info),
-    Data2 = Data#{<<"id">> => Id},
+    %% 同 user_repo:save/1 的修复：normalize_legacy_create_data/1 用 atom
+    %% `id` key 承载调用方传入的 id/gid，这里若只无条件覆盖 binary
+    %% <<"id">>，两个 key 类型不同会同时存在，elib_pg_sql:insert/2 拼出
+    %% 的 INSERT 语句里 "id" 列重复两次，PG 报 42701（真库集成测试实测
+    %% 复现：conversation_pin_delete_integration_tests 建群即崩）。
+    Data1 = maps:remove(id, maps:remove(<<"id">>, Data)),
+    Data2 = Data1#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Conn, Sql, Params) of
         {ok, _Count} -> {ok, Id};
