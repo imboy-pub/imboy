@@ -248,7 +248,7 @@
 | ~~SEC-03 red_packet_detail 越权读~~ **✅ 已完成**（commit `0d80be05`，勿重复执行） | — | — | — | 已提交 |
 | SEC-05 收紧 /user/show /conversation/online | Fable 定字段收窄 | 1h | Fable+glm | curl 无 token 401 |
 | ~~FEAT-01(user-device) 后端补 /adm/user/device* 路由~~ **✅ 已完成**（commit `8090e8ae`） | — | — | — | 已提交 |
-| SEC-01 billing 管理端路由迁移（低风险子集） | 无 | 2h | [MODEL] glm | plan_create 走 adm middleware 被非 admin 拒 |
+| ~~SEC-01 billing 管理端路由迁移（低风险子集）~~ **✅ 已完成**（迁移 commit `b6d3eeb7`，死代码清理 `21b938be`；租户端 IDOR 仍待 BLK-04） | — | — | — | 已提交 |
 | OPS-01 备份自动调度+Pushgateway 上报 | 无 | 2h | [MODEL] glm | 告警变绿 |
 
 > **SEC-01 租户端 IDOR 部分**依赖 tenant↔uid 归属模型（BLK-04），拍板后进 Phase 1 尾或 Phase 2 头。

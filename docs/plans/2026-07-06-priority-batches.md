@@ -36,7 +36,7 @@
 
 | ID | 任务 | 仓库 | 优先级 | 备注 |
 |---|---|---|---|---|
-| **SEC-01** | billing 全端点零鉴权 | imboy(+imboyadmin) | CRITICAL | 阶段1 管理端动作迁移 glm 可做；阶段2 租户归属需产品拍板（方案 `imboy/docs/analysis/p0-billing-multitenant-authz-2026-07.md`） |
+| **SEC-01** | billing 全端点零鉴权 | imboy(+imboyadmin) | CRITICAL | **阶段1 ✅ 已完成**（迁移 `b6d3eeb7`，死代码清理 `21b938be`，plan CRUD 走 /adm RBAC）；阶段2 租户归属需产品拍板（方案 `imboy/docs/analysis/p0-billing-multitenant-authz-2026-07.md`） |
 | ~~FEAT-01~~ | admin 三组页面契约断裂（moderation/user-device/sso 404） | imboy + imboyadmin | CRITICAL | **✅ 已完成**（三子域分别 commit `8090e8ae`/`c557e4f1`/`eb3d75d4`），核实见 project-audit-roadmap-2026-07.md。注：sso 仅管理端配置契约，真实 OIDC/SAML 联邦登录仍是 BIZ-03（BLOCKED） |
 
 ---
