@@ -3,7 +3,7 @@
 -include("eunit_setup.hrl").
 
 mock_request() ->
-    #{method => <<"POST">>, path => <<"/v1/friend">>}.
+    #{method => <<"POST">>, path => <<"/api/v1/friend">>}.
 
 init_false_action_passthrough_test_() ->
     ?TEST_SIMPLE(fun() ->

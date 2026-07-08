@@ -18,23 +18,24 @@
 %% Cowboy 请求对象是一个包含多个字段的 map
 %% @private
 mock_cowboy_req() ->
-    #{% 必需的字段
-      version => 'HTTP/1.1',
-      method => <<"GET">>,
-      scheme => <<"ws">>,
-      host => <<"localhost">>,
-      port => 8080,
-      path => <<"/ws">>,
-      qs => <<>>,
-      fragment => <<>>,
-      bindings => #{},
-      headers => #{},
-      peer => {{127, 0, 0, 1}, 12345},
-      sock => {{127, 0, 0, 1}, 8080},
-      cert => undefined,
-      has_body => false,
-      body_length => 0
-     }.
+    % 必需的字段
+    #{
+        version => 'HTTP/1.1',
+        method => <<"GET">>,
+        scheme => <<"ws">>,
+        host => <<"localhost">>,
+        port => 8080,
+        path => <<"/api/ws">>,
+        qs => <<>>,
+        fragment => <<>>,
+        bindings => #{},
+        headers => #{},
+        peer => {{127, 0, 0, 1}, 12345},
+        sock => {{127, 0, 0, 1}, 8080},
+        cert => undefined,
+        has_body => false,
+        body_length => 0
+    }.
 
 %% ===================================================================
 %% check_subprotocols/2 测试
@@ -62,7 +63,7 @@ check_subprotocols_with_valid_protocol_test_() ->
     ?TEST_SIMPLE(fun() ->
         % cowboy_websocket 需要真实请求对象，这里只验证函数存在
         Subprotocols = [<<"sip">>, <<"text">>],
-        ?assertMatch([_|_], Subprotocols),
+        ?assertMatch([_ | _], Subprotocols),
         ?assert(length(Subprotocols) > 0)
     end).
 
@@ -85,51 +86,72 @@ idle_timeout_with_different_uid_test_() ->
         ?assert(Result > 0)
     end).
 
-
 %% ===================================================================
 %% select_subprotocol/1 测试
 %% ===================================================================
 
 select_subprotocol_prefers_v2_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(<<"imboy.v2">>,
-            websocket_ds:select_subprotocol([<<"text">>, <<"imboy.v2">>])),
-        ?assertEqual(<<"imboy.v2">>,
-            websocket_ds:select_subprotocol([<<"imboy.v2">>, <<"imboy-protobuf">>])),
-        ?assertEqual(<<"imboy.v2">>,
-            websocket_ds:select_subprotocol([<<"imboy-protobuf">>, <<"imboy.v2">>, <<"imboy-json">>]))
+        ?assertEqual(
+            <<"imboy.v2">>,
+            websocket_ds:select_subprotocol([<<"text">>, <<"imboy.v2">>])
+        ),
+        ?assertEqual(
+            <<"imboy.v2">>,
+            websocket_ds:select_subprotocol([<<"imboy.v2">>, <<"imboy-protobuf">>])
+        ),
+        ?assertEqual(
+            <<"imboy.v2">>,
+            websocket_ds:select_subprotocol([<<"imboy-protobuf">>, <<"imboy.v2">>, <<"imboy-json">>])
+        )
     end).
 
 select_subprotocol_prefers_protobuf_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(<<"imboy-protobuf">>,
-            websocket_ds:select_subprotocol([<<"text">>, <<"imboy-protobuf">>])),
-        ?assertEqual(<<"imboy-protobuf">>,
-            websocket_ds:select_subprotocol([<<"imboy-protobuf">>, <<"imboy-json">>]))
+        ?assertEqual(
+            <<"imboy-protobuf">>,
+            websocket_ds:select_subprotocol([<<"text">>, <<"imboy-protobuf">>])
+        ),
+        ?assertEqual(
+            <<"imboy-protobuf">>,
+            websocket_ds:select_subprotocol([<<"imboy-protobuf">>, <<"imboy-json">>])
+        )
     end).
 
 select_subprotocol_falls_back_to_json_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(<<"imboy-json">>,
-            websocket_ds:select_subprotocol([<<"text">>, <<"imboy-json">>])),
-        ?assertEqual(<<"imboy-json">>,
-            websocket_ds:select_subprotocol([<<"imboy-json">>]))
+        ?assertEqual(
+            <<"imboy-json">>,
+            websocket_ds:select_subprotocol([<<"text">>, <<"imboy-json">>])
+        ),
+        ?assertEqual(
+            <<"imboy-json">>,
+            websocket_ds:select_subprotocol([<<"imboy-json">>])
+        )
     end).
 
 select_subprotocol_falls_back_to_text_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(<<"text">>,
-            websocket_ds:select_subprotocol([<<"text">>])),
-        ?assertEqual(<<"text">>,
-            websocket_ds:select_subprotocol([<<"sip">>, <<"text">>]))
+        ?assertEqual(
+            <<"text">>,
+            websocket_ds:select_subprotocol([<<"text">>])
+        ),
+        ?assertEqual(
+            <<"text">>,
+            websocket_ds:select_subprotocol([<<"sip">>, <<"text">>])
+        )
     end).
 
 select_subprotocol_unknown_returns_undefined_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(undefined,
-            websocket_ds:select_subprotocol([<<"sip">>])),
-        ?assertEqual(undefined,
-            websocket_ds:select_subprotocol([<<"mqtt">>, <<"sip">>]))
+        ?assertEqual(
+            undefined,
+            websocket_ds:select_subprotocol([<<"sip">>])
+        ),
+        ?assertEqual(
+            undefined,
+            websocket_ds:select_subprotocol([<<"mqtt">>, <<"sip">>])
+        )
     end).
 
 select_subprotocol_undefined_returns_undefined_test_() ->

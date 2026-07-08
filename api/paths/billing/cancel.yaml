@@ -1,0 +1,33 @@
+# POST /v1/billing/cancel — 取消订阅
+post:
+  tags: [user]
+  summary: 取消订阅
+  description: 取消指定订阅（周期结束前仍有效，之后不再续费）。
+  operationId: billingCancel
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [subscription_id]
+          properties:
+            subscription_id: { type: integer, format: int64, description: 订阅 ID }
+  responses:
+    '200':
+      description: 取消成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      subscription_id: { type: integer, format: int64 }
+    '4XX':
+      description: 订阅 id 不合法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

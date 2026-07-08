@@ -3,7 +3,7 @@
 -include("eunit_setup.hrl").
 
 mock_request() ->
-    #{method => <<"GET">>, path => <<"/adm/attach">>}.
+    #{method => <<"GET">>, path => <<"/api/adm/attach">>}.
 
 init_false_action_passthrough_test_() ->
     ?WITH_MECK(

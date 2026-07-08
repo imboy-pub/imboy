@@ -1,0 +1,34 @@
+# POST /v1/billing/invoice/generate — 生成账单
+post:
+  tags: [user]
+  summary: 生成账单
+  description: 为指定订阅生成当期账单。若当期已生成则返回 already_generated=true。
+  operationId: billingInvoiceGenerate
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [subscription_id]
+          properties:
+            subscription_id: { type: integer, format: int64 }
+  responses:
+    '200':
+      description: 生成结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      invoice_id: { type: integer, format: int64 }
+                      already_generated: { type: boolean, description: 当期已生成时为 true，此时无 invoice_id }
+    '4XX':
+      description: 订阅 id 不合法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

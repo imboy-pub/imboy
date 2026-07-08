@@ -46,65 +46,60 @@ valid_route(PluginName, Path) ->
 %% ===================================================================
 
 reload_dispatch_no_listener_no_crash_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_Pid) ->
-         ?_test(begin
-             ?assertEqual(ok, imboy_router_registry:reload_dispatch())
-         end)
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_Pid) ->
+        ?_test(begin
+            ?assertEqual(ok, imboy_router_registry:reload_dispatch())
+        end)
+    end}.
 
 %% ===================================================================
 %% 2. register 后调用 reload_dispatch 不崩溃
 %% ===================================================================
 
 register_triggers_reload_no_crash_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_Pid) ->
-         ?_test(begin
-             R = valid_route(channel, <<"/v1/channel/x">>),
-             ?assertEqual(ok, imboy_router_registry:register(channel, [R]))
-         end)
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_Pid) ->
+        ?_test(begin
+            R = valid_route(channel, <<"/api/v1/channel/x">>),
+            ?assertEqual(ok, imboy_router_registry:register(channel, [R]))
+        end)
+    end}.
 
 %% ===================================================================
 %% 3. unregister 后调用 reload_dispatch 不崩溃
 %% ===================================================================
 
 unregister_triggers_reload_no_crash_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_Pid) ->
-         ?_test(begin
-             R = valid_route(channel, <<"/v1/channel/x">>),
-             ok = imboy_router_registry:register(channel, [R]),
-             ?assertEqual(ok, imboy_router_registry:unregister(channel))
-         end)
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_Pid) ->
+        ?_test(begin
+            R = valid_route(channel, <<"/api/v1/channel/x">>),
+            ok = imboy_router_registry:register(channel, [R]),
+            ?assertEqual(ok, imboy_router_registry:unregister(channel))
+        end)
+    end}.
 
 %% ===================================================================
 %% 4. clear 后调用 reload_dispatch 不崩溃
 %% ===================================================================
 
 clear_triggers_reload_no_crash_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_Pid) ->
-         ?_test(begin
-             R = valid_route(channel, <<"/v1/channel/x">>),
-             ok = imboy_router_registry:register(channel, [R]),
-             ?assertEqual(ok, imboy_router_registry:clear())
-         end)
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_Pid) ->
+        ?_test(begin
+            R = valid_route(channel, <<"/api/v1/channel/x">>),
+            ok = imboy_router_registry:register(channel, [R]),
+            ?assertEqual(ok, imboy_router_registry:clear())
+        end)
+    end}.
 
 %% ===================================================================
 %% 5. reload_dispatch 手动调用后 ETS 内容不变
 %% ===================================================================
 
 reload_preserves_ets_content_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_Pid) ->
-         ?_test(begin
-             R = valid_route(moment, <<"/v1/moment/feed">>),
-             ok = imboy_router_registry:register(moment, [R]),
-             ok = imboy_router_registry:reload_dispatch(),
-             ?assertEqual([R], imboy_router_registry:plugin_routes(moment))
-         end)
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_Pid) ->
+        ?_test(begin
+            R = valid_route(moment, <<"/api/v1/moment/feed">>),
+            ok = imboy_router_registry:register(moment, [R]),
+            ok = imboy_router_registry:reload_dispatch(),
+            ?assertEqual([R], imboy_router_registry:plugin_routes(moment))
+        end)
+    end}.

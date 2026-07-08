@@ -1,0 +1,40 @@
+# GET /v1/billing/invoice/list — 账单列表
+get:
+  tags: [user]
+  summary: 账单列表
+  description: 查询指定订阅的账单列表。
+  operationId: billingInvoiceList
+  parameters:
+    - name: subscription_id
+      in: query
+      required: true
+      schema: { type: integer }
+      description: 订阅 ID
+  responses:
+    '200':
+      description: 账单列表
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            invoice_no: { type: string }
+                            subscription_id: { type: integer, format: int64 }
+                            amount: { type: integer, description: 金额（分） }
+                            status: { type: string, description: 'pending | paid | void' }
+                            created_at: { type: integer, description: 毫秒 }
+    '4XX':
+      description: 订阅 id 不合法
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

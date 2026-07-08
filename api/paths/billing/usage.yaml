@@ -1,0 +1,37 @@
+# POST /v1/billing/usage — 上报用量
+post:
+  tags: [user]
+  summary: 上报用量
+  description: 上报指定订阅的某项指标用量增量。超配额时返回 quota_exceeded。
+  operationId: billingReportUsage
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [subscription_id, metric, used]
+          properties:
+            subscription_id: { type: integer, format: int64 }
+            metric: { type: string, description: '指标键，如 messages 或 storage' }
+            used: { type: integer, description: 用量增量（非负） }
+            period: { type: string, description: 计费周期标识（可选） }
+  responses:
+    '200':
+      description: 上报后累计用量
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      metric: { type: string }
+                      used: { type: integer, description: 本周期累计用量 }
+    '4XX':
+      description: 参数不合法 / 用量已超出套餐配额
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
