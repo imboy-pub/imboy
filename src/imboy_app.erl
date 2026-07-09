@@ -228,7 +228,11 @@ tsid_generator_names() ->
         app_upgrade_log,
         app_version_policy,
         %% ── 全文搜索 ──
-        fts_user
+        fts_user,
+        %% ── MCP 治理 (Phase 3) ──
+        mcp_client,
+        mcp_client_grant,
+        mcp_audit_log
     ].
 
 %% ===================================================================
