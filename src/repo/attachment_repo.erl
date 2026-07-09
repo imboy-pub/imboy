@@ -65,7 +65,8 @@ tablename() ->
 save(_Conn, _CreatedAt, _Uid, []) ->
     ok;
 save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
-    Md5 = maps:get(<<"md5">>, Attach),
+    %% 双读兼容：优先新键 file_hash256，回退旧键 md5（过渡期）
+    Md5 = maps:get(<<"file_hash256">>, Attach, maps:get(<<"md5">>, Attach, <<>>)),
     MimeType = maps:get(<<"mime_type">>, Attach),
     Name = maps:get(<<"name">>, Attach),
     Path = maps:get(<<"path">>, Attach),
@@ -105,7 +106,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     >>,
     % <<"(,,,,,,,,,,,,updated_at,created_at,status)">>,
     NewAttach = #{
-        <<"md5">> => Md5,
+        <<"file_hash256">> => Md5,
         <<"mime_type">> => MimeType2,
         <<"ext">> => Ext2,
         <<"name">> => Name,
@@ -198,7 +199,7 @@ page(Page, Size, Opts) ->
     OffsetRef = <<"$", (integer_to_binary(OffsetN))/binary>>,
 
     DataSql = [
-        <<"SELECT id, md5, mime_type, name, path, url, size, referer_time, status, created_at FROM ">>,
+        <<"SELECT id, file_hash256, mime_type, name, path, url, size, referer_time, status, created_at FROM ">>,
         Tb,
         BaseWhere,
         <<" ORDER BY created_at DESC LIMIT ">>,
@@ -235,14 +236,14 @@ build_filter(undefined, undefined) ->
 build_filter(MimeType, undefined) when MimeType =/= undefined, MimeType =/= <<>> ->
     {<<" AND mime_type LIKE $1">>, [<<MimeType/binary, "%">>]};
 build_filter(undefined, Keyword) when Keyword =/= undefined, Keyword =/= <<>> ->
-    {<<" AND (name ILIKE $1 OR md5 LIKE $1)">>, [<<"%", Keyword/binary, "%">>]};
+    {<<" AND (name ILIKE $1 OR file_hash256 LIKE $1)">>, [<<"%", Keyword/binary, "%">>]};
 build_filter(MimeType, Keyword) when
     MimeType =/= undefined,
     MimeType =/= <<>>,
     Keyword =/= undefined,
     Keyword =/= <<>>
 ->
-    {<<" AND mime_type LIKE $1 AND (name ILIKE $2 OR md5 LIKE $2)">>, [
+    {<<" AND mime_type LIKE $1 AND (name ILIKE $2 OR file_hash256 LIKE $2)">>, [
         <<MimeType/binary, "%">>, <<"%", Keyword/binary, "%">>
     ]};
 build_filter(_, _) ->

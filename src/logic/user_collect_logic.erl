@@ -80,7 +80,10 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_map(Info) ->
             VideoPath = maps:get(path, VideoMap),
 
             Attach1 = #{
-                <<"md5">> => maps:get(<<"md5">>, Thumb),
+                %% 双读兼容：新消息 metadata 用 file_hash256，旧消息用 md5
+                <<"file_hash256">> => maps:get(
+                    <<"file_hash256">>, Thumb, maps:get(<<"md5">>, Thumb, <<>>)
+                ),
                 <<"mime_type">> => <<"image/jpeg">>,
                 <<"name">> => maps:get(<<"name">>, Thumb, <<>>),
                 <<"path">> => ThumbPath,
@@ -88,7 +91,9 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_map(Info) ->
                 <<"size">> => maps:get(<<"size">>, Thumb, 0)
             },
             Attach2 = #{
-                <<"md5">> => maps:get(<<"md5">>, Video),
+                <<"file_hash256">> => maps:get(
+                    <<"file_hash256">>, Video, maps:get(<<"md5">>, Video, <<>>)
+                ),
                 <<"mime_type">> => <<"octet-stream">>,
                 <<"name">> => maps:get(<<"name">>, Video, <<>>),
                 <<"path">> => VideoPath,
@@ -205,7 +210,8 @@ get_info(0, MimeType, Key, Info) ->
                 Payload0
         end,
     {ok, Uri} = maps:find(Key, Payload),
-    Md5 = maps:get(<<"md5">>, Payload),
+    %% 双读兼容：新消息 metadata 用 file_hash256，旧消息用 md5
+    Md5 = maps:get(<<"file_hash256">>, Payload, maps:get(<<"md5">>, Payload, <<>>)),
     Size = maps:get(<<"size">>, Payload, 0),
 
     UriList =
@@ -219,7 +225,7 @@ get_info(0, MimeType, Key, Info) ->
 
     % Uri = proplists:get_value(<<"uri">>, Info),
     Attach = #{
-        <<"md5">> => Md5,
+        <<"file_hash256">> => Md5,
         <<"mime_type">> => MimeType,
         <<"name">> => maps:get(<<"name">>, Payload, <<>>),
         <<"path">> => Path,
@@ -241,7 +247,13 @@ add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
     elib_pg:with_tx(fun(Conn) ->
         attachment_ds:save(Conn, NowTs, Uid, Attach),
         AttachMd5 =
-            case [maps:get(<<"md5">>, Item) || Item <- Attach] of
+            %% 双读兼容：优先新键 file_hash256，回退旧键 md5（过渡期客户端）
+            case
+                [
+                    maps:get(<<"file_hash256">>, Item, maps:get(<<"md5">>, Item, <<>>))
+                 || Item <- Attach
+                ]
+            of
                 [] ->
                     <<>>;
                 Md5List ->
@@ -256,7 +268,7 @@ add_kind(0, Uid, KindBin, KindId, Info, Source, Remark, Attach) ->
             <<"source">> => Source,
             <<"remark">> => Remark,
             <<"info">> => elib_hasher:encoded_val(Info),
-            <<"attach_md5">> => AttachMd5,
+            <<"attach_file_hash256">> => AttachMd5,
             <<"created_at">> => NowTs,
             <<"updated_at">> => NowTs,
             <<"status">> => 1

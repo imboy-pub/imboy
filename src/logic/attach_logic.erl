@@ -114,8 +114,11 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
     {ok, map()} | {error, term()}.
 do_save(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType) ->
     Attach = #{
-        %% md5 仅作完整性参考，不作安全边界
-        <<"md5">> => maps:get(<<"md5">>, Meta, <<>>),
+        %% file_hash256（SHA-256）仅作完整性参考，不作安全边界。
+        %% 双读兼容：新客户端传 file_hash256，旧客户端过渡期仍传 md5。
+        <<"file_hash256">> => maps:get(
+            <<"file_hash256">>, Meta, maps:get(<<"md5">>, Meta, <<>>)
+        ),
         %% mime_type/size 一律采用服务端 HEAD 核实的真实值
         <<"mime_type">> => RealType,
         <<"name">> => filename:basename(ObjectKey),

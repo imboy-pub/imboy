@@ -53,7 +53,7 @@ presign(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc POST /v1/attachment/confirm
-%% body: { object_key, md5, mime_type, size }
+%% body: { object_key, file_hash256, mime_type, size }（旧客户端 md5 双读兼容）
 %% 客户端 PUT 直传成功后回调，落库附件元数据
 -spec confirm(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 confirm(<<"POST">>, Req0, State) ->
