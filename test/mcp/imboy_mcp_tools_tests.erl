@@ -22,7 +22,11 @@ tools_test_() ->
         {"search_messages: 强制调用者uid做权限过滤", fun t_search_forces_caller/0},
         {"search_messages: 空keyword被拒", fun t_search_empty_kw/0},
         {"list_group_members: 群成员成功", fun t_members_ok/0},
-        {"list_group_members: 非成员被拒", fun t_members_denied/0}
+        {"list_group_members: 非成员被拒", fun t_members_denied/0},
+        {"list_conversations: 强制调用者uid", fun t_conversations_ok/0},
+        {"list_conversations: 未认证被拒", fun t_conversations_unauth/0},
+        {"create_group: 建群成功(建群者=调用者)", fun t_create_group_ok/0},
+        {"create_group: 配额超限被拒", fun t_create_group_quota/0}
     ]}.
 
 setup() ->
@@ -34,6 +38,8 @@ setup() ->
     meck:new(friend_ds, [no_link, passthrough]),
     meck:new(fts_logic, [no_link, passthrough]),
     meck:new(group_member_ds, [no_link, passthrough]),
+    meck:new(conversation_logic, [no_link, passthrough]),
+    meck:new(group_logic, [no_link, passthrough]),
     ok.
 
 cleanup(_) ->
@@ -133,4 +139,38 @@ t_members_ok() ->
 t_members_denied() ->
     meck:expect(group_member_ds, is_member, fun(100, 42) -> false end),
     R = call(<<"list_group_members">>, #{<<"group_id">> => 100}, 42),
+    ?assertEqual(true, is_error(R)).
+
+%%%===================================================================
+%%% list_conversations：uid 强制为调用者
+%%%===================================================================
+t_conversations_ok() ->
+    meck:expect(conversation_logic, list, fun
+        (42, _Opts) -> {ok, [#{<<"conversation_id">> => 7, <<"type">> => <<"c2c">>}]};
+        (_, _) -> {ok, []}
+    end),
+    R = call(<<"list_conversations">>, #{<<"uid">> => 999}, 42),
+    ?assertNot(is_error(R)),
+    #{<<"list">> := List} = maps:get(<<"structuredContent">>, R),
+    ?assertEqual([#{<<"conversation_id">> => 7, <<"type">> => <<"c2c">>}], List).
+
+t_conversations_unauth() ->
+    R = call(<<"list_conversations">>, #{}, 0),
+    ?assertEqual(true, is_error(R)).
+
+%%%===================================================================
+%%% create_group：建群者一律为调用者，配额 count_by_owner 内建
+%%%===================================================================
+t_create_group_ok() ->
+    meck:expect(group_logic, count_by_owner, fun(42) -> 3 end),
+    %% 断言建群者是调用者 42（非 Args 自报），Type 默认 2
+    meck:expect(group_logic, add, fun(3, 42, 2, [7, 8]) -> {ok, 100} end),
+    R = call(<<"create_group">>, #{<<"member_uids">> => [7, 8]}, 42),
+    ?assertNot(is_error(R)),
+    ?assertMatch(#{<<"group_id">> := 100}, maps:get(<<"structuredContent">>, R)).
+
+t_create_group_quota() ->
+    meck:expect(group_logic, count_by_owner, fun(42) -> 200 end),
+    meck:expect(group_logic, add, fun(200, 42, 2, _) -> {error, <<"群数量已达上限"/utf8>>} end),
+    R = call(<<"create_group">>, #{<<"member_uids">> => [7]}, 42),
     ?assertEqual(true, is_error(R)).

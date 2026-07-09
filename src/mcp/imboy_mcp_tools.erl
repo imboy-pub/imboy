@@ -10,13 +10,15 @@
 % 越权红线：调用者身份一律以 Ctx.auth_info（mcp_handler 从 JWT 注入的 uid）为准，
 % **绝不信任** Args 里客户端自报的 uid/gid；先用 auth_info 做 owner/member 判定再调 logic。
 %
-% 首批 4 个「只读」tool（不触碰消息通道）：
+% 首批 6 个 tool（均不触碰消息投递通道）：
 %   get_user_profile   → user_logic:find_by_id/1（仅本人或好友可查）
 %   get_contacts       → friend_ds:page_by_uid/3（只查调用者自己的好友）
 %   search_messages    → fts_logic:search_msg/5（uid 强制为调用者，权限过滤内建）
 %   list_group_members → group_member_ds:list_members/1（仅群成员可列）
+%   list_conversations → conversation_logic:list/2（只取调用者自己的会话）
+%   create_group       → group_logic:add/4（建群者=调用者，配额 count_by_owner 内建）
 %
-% 发消息类（send_message → msg_c2c_logic）触及消息通道，留待 review 后单独接入。
+% 发消息类（send_message → msg_c2c_logic）触及消息投递通道，留待 review 后单独接入。
 %
 % 常驻 worker：挂 imboy_sup（transient），启动后等 registry 就绪即注册全部 tool；
 % reg_all/0 幂等（reg 覆盖同名），registry 若异常重启则监听 DOWN 后自动重注册。
@@ -33,7 +35,9 @@
     get_user_profile/2,
     get_contacts/2,
     search_messages/2,
-    list_group_members/2
+    list_group_members/2,
+    list_conversations/2,
+    create_group/2
 ]).
 
 %% registry 就绪等待超时；重试间隔
@@ -42,6 +46,9 @@
 %% 分页上限（防客户端拉全表）
 -define(MAX_PAGE_SIZE, 100).
 -define(DEF_PAGE_SIZE, 50).
+%% 会话列表拉取上限 / 默认
+-define(MAX_CONV_LIMIT, 500).
+-define(DEF_CONV_LIMIT, 100).
 
 %%====================================================================
 %% 启动 / 注册
@@ -77,6 +84,18 @@ reg_all() ->
         list_group_members,
         <<"列出群成员（仅群成员可调用）"/utf8>>,
         members_schema()
+    ),
+    ok = reg(
+        <<"list_conversations">>,
+        list_conversations,
+        <<"获取调用者自己的会话列表（C2C + C2G）"/utf8>>,
+        conversations_schema()
+    ),
+    ok = reg(
+        <<"create_group">>,
+        create_group,
+        <<"创建群（建群者为调用者，受其建群配额限制）"/utf8>>,
+        create_group_schema()
     ),
     ok.
 
@@ -135,6 +154,30 @@ list_group_members(Args, Ctx) ->
                 end;
             false ->
                 tool_error(<<"你不是该群成员"/utf8>>)
+        end
+    end).
+
+%% @doc 会话列表：只取调用者自己的（忽略 Args 自报 uid）。
+list_conversations(Args, Ctx) ->
+    with_caller(Ctx, fun(Caller) ->
+        Limit = min(?MAX_CONV_LIMIT, max(1, to_int(maps:get(<<"limit">>, Args, ?DEF_CONV_LIMIT)))),
+        {ok, List} = conversation_logic:list(Caller, #{limit => Limit}),
+        {structured, #{<<"list">> => List}}
+    end).
+
+%% @doc 建群：建群者一律为调用者，配额经 count_by_owner 内建。
+create_group(Args, Ctx) ->
+    with_caller(Ctx, fun(Caller) ->
+        Type = to_int(maps:get(<<"type">>, Args, 2)),
+        MemberUids =
+            case maps:get(<<"member_uids">>, Args, []) of
+                L when is_list(L) -> L;
+                _ -> []
+            end,
+        Count = group_logic:count_by_owner(Caller),
+        case group_logic:add(Count, Caller, Type, MemberUids) of
+            {ok, Gid} -> {structured, #{<<"group_id">> => Gid}};
+            {error, Reason} -> tool_error(Reason)
         end
     end).
 
@@ -219,6 +262,34 @@ page_props() ->
     #{
         <<"page">> => #{<<"type">> => <<"integer">>, <<"description">> => <<"页码，从 1 起"/utf8>>},
         <<"size">> => #{<<"type">> => <<"integer">>, <<"description">> => <<"每页数量，上限 100"/utf8>>}
+    }.
+
+conversations_schema() ->
+    #{
+        <<"type">> => <<"object">>,
+        <<"properties">> => #{
+            <<"limit">> => #{
+                <<"type">> => <<"integer">>,
+                <<"description">> => <<"最多返回条数，默认 100，上限 500"/utf8>>
+            }
+        }
+    }.
+
+create_group_schema() ->
+    #{
+        <<"type">> => <<"object">>,
+        <<"properties">> => #{
+            <<"type">> => #{
+                <<"type">> => <<"integer">>,
+                <<"enum">> => [1, 2],
+                <<"description">> => <<"群类型：1 公开，2 私有（默认）"/utf8>>
+            },
+            <<"member_uids">> => #{
+                <<"type">> => <<"array">>,
+                <<"items">> => #{<<"type">> => <<"integer">>},
+                <<"description">> => <<"初始成员 uid 列表（不含建群者）"/utf8>>
+            }
+        }
     }.
 
 %%====================================================================
