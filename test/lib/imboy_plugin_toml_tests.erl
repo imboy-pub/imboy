@@ -177,7 +177,7 @@ validate_manifest_route_namespace_violation_rejected_test_() ->
     ?TEST_SIMPLE(fun() ->
         BadRoute = #{
             method => <<"GET">>,
-            %% path 不以 /v{n}/<name>/ 开头
+            %% path 不以 /api/v{n}/<name>/ 开头
             path => <<"/api/v1/wrong/x">>,
             handler => some_handler,
             action => some_action

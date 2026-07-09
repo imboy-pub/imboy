@@ -71,7 +71,7 @@ plugin_routes_returns_cowboy_tuples_test_() ->
             ?_assertEqual(1, length(Result)),
             %% cowboy tuple: {string Path, atom Handler, map Opts}
             ?_assertMatch(
-                [{"/v1/channel/discover", channel_handler, #{action := discover}}],
+                [{"/api/v1/channel/discover", channel_handler, #{action := discover}}],
                 Result
             )
         ]
@@ -94,7 +94,7 @@ plugin_routes_propagates_required_feature_test_() ->
         Result = imboy_router:plugin_routes(),
         ?_assertMatch(
             [
-                {"/v1/channel/invitation", channel_handler, #{
+                {"/api/v1/channel/invitation", channel_handler, #{
                     action := create_invitation, required_feature := channel_invitation
                 }}
             ],
@@ -126,8 +126,8 @@ plugin_routes_flattens_multiple_plugins_test_() ->
         Paths = [P || {P, _, _} <- Result],
         [
             ?_assertEqual(2, length(Result)),
-            ?_assert(lists:member("/v1/channel/x", Paths)),
-            ?_assert(lists:member("/v1/moment/y", Paths))
+            ?_assert(lists:member("/api/v1/channel/x", Paths)),
+            ?_assert(lists:member("/api/v1/moment/y", Paths))
         ]
     end}.
 

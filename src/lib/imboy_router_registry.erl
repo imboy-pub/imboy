@@ -16,7 +16,7 @@
 %%%   - 未来 Phase 4 插件 lifecycle 在 enable/disable 时调 register/unregister
 %%%
 %%% 路径校验 / Path validation:
-%%%   - 所有 route 的 path 必须以 /v{n}/<plugin_name>/ 开头（contract.md §3.3）
+%%%   - 所有 route 的 path 必须以 /api/v{n}/<plugin_name>/ 开头（contract.md §3.3）
 %%%   - 违反则 register 拒绝并返回 {error, {invalid_route_namespace, Path}}
 %%%
 %%% Source of truth: docs/plugin/contract.md §3.2 / §6 + roadmap P2
@@ -63,7 +63,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% @doc 注册插件路由（覆盖式：同一 plugin 重复 register 直接覆盖）。
-%% 路径强约束：所有 route.path 必须以 /v{n}/<plugin_name>/ 开头。
+%% 路径强约束：所有 route.path 必须以 /api/v{n}/<plugin_name>/ 开头。
 -spec register(plugin_name(), [route_spec()]) ->
     ok | {error, {invalid_route_namespace, binary()} | term()}.
 register(PluginName, Routes) when is_atom(PluginName), is_list(Routes) ->
@@ -191,11 +191,11 @@ format_status(Status) ->
 %% Internal
 %% ===================================================================
 
-%% @doc 校验路径强约束：所有 route.path 必须以 /v{n}/<plugin_name>/ 开头。
+%% @doc 校验路径强约束：所有 route.path 必须以 /api/v{n}/<plugin_name>/ 开头。
 %% 与 imboy_plugin_toml:validate_routes/1 同源（Phase 0 已实现），此处复用相同语义。
 validate_routes(PluginName, Routes) ->
     NameBin = atom_to_binary(PluginName, utf8),
-    Pattern = <<"^/v[0-9]+/", NameBin/binary, "/">>,
+    Pattern = <<"^/api/v[0-9]+/", NameBin/binary, "/">>,
     lists:foldl(
         fun
             (#{path := P}, ok) when is_binary(P) ->

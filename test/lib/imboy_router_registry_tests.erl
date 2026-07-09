@@ -15,7 +15,7 @@
 %%%   5. all_routes/0 扁平化
 %%%   6. plugin_names/0 列表
 %%%   7. clear/0 清空
-%%%   8. 路径强约束：违反 /v{n}/<name>/ 拒绝
+%%%   8. 路径强约束：违反 /api/v{n}/<name>/ 拒绝
 %%%   9. 非法 route_spec 拒绝
 %%%  10. 未知消息优雅处理（actor-model instinct）
 %%% @end
@@ -154,7 +154,7 @@ clear_removes_all_test_() ->
 
 register_rejects_invalid_namespace_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun(_Pid) ->
-        %% path 不以 /v{n}/channel/ 开头
+        %% path 不以 /api/v{n}/channel/ 开头
         BadRoute = #{
             method => <<"GET">>,
             path => <<"/api/v1/wrong/x">>,

@@ -184,18 +184,19 @@ min_core_version = "1.0.0-rc.2"
 # ===== 路由 / Routes =====
 
 # 本插件提供的 HTTP/WS 路由（cowboy 格式）
-# 强约束：path 必须以 /v{n}/<plugin_name>/ 开头（除非显式声明 route_namespace_override + ADR）
-# Hard constraint: path MUST start with /v{n}/<plugin_name>/ (unless route_namespace_override + ADR)
+# 强约束：path 必须以 /api/v{n}/<plugin_name>/ 开头（与全站 REST 前缀一致；除非显式声明 route_namespace_override + ADR）
+# Hard constraint: path MUST start with /api/v{n}/<plugin_name>/ (aligned with site-wide REST prefix; unless route_namespace_override + ADR)
+# 见 ADR 0003（前缀由 /v{n}/ 对齐为 /api/v{n}/）/ See ADR 0003
 [[routes]]
 method = "POST"
-path = "/v1/channel/discover"
+path = "/api/v1/channel/discover"
 handler = "channel_handler"
 action = "discover"
 required_feature = "channel_discover"
 
 [[routes]]
 method = "POST"
-path = "/v1/channel/invitation"
+path = "/api/v1/channel/invitation"
 handler = "channel_handler"
 action = "create_invitation"
 required_feature = "channel_invitation"
@@ -357,7 +358,7 @@ created_at = "2026-03-15"
 | `contract_version` | string | 形如 `"<major>.<minor>"`；解析为 `{Major, Minor}`；兼容性见 §9.1 |
 | `kind` | enum | `"plugin"` \| `"aggregate_plugin"` |
 | `min_core_version` | string | semver 范围或固定版本 / semver range or fixed |
-| `routes[].path` | string | **强约束**：必须以 `/v{n}/<name>/` 开头（n=1\|2\|...）；违反则 loader 拒绝并记录 `invalid_route_namespace` |
+| `routes[].path` | string | **强约束**：必须以 `/api/v{n}/<name>/` 开头（n=1\|2\|...，与全站 REST 前缀一致，见 ADR 0003）；违反则 loader 拒绝并记录 `invalid_route_namespace` |
 | `migrations.table_prefix` | string | 必须等于 `name + "_"` / MUST equal `name + "_"` |
 | `migrations.preserve_on_uninstall` | boolean | 默认 `true` |
 | `features.<key>.rollout` | enum | `"always"` \| `"percentage"` \| `"canary"` |

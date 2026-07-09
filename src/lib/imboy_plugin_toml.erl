@@ -228,11 +228,11 @@ validate_migrations(#{name := Name, migrations := #{table_prefix := P}}) when
 validate_migrations(_) ->
     {error, {migrations, missing_or_invalid}}.
 
-%% --- routes[].path 必须以 /v{n}/<name>/ 开头 ---------------------
+%% --- routes[].path 必须以 /api/v{n}/<name>/ 开头 ---------------------
 %% routes 为空列表或缺失皆通过；非空时每条 path 必须命中正则
 validate_routes(#{name := Name, routes := Routes}) when is_list(Routes) ->
     NameBin = atom_to_binary(Name, utf8),
-    Pattern = <<"^/v[0-9]+/", NameBin/binary, "/">>,
+    Pattern = <<"^/api/v[0-9]+/", NameBin/binary, "/">>,
     AllOk = lists:all(
         fun
             (#{path := P}) when is_binary(P) ->
