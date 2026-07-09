@@ -9,6 +9,7 @@
 -export([c2s/3]).
 -export([c2s_client_ack/3]).
 -export([c2s_to_external/5]).
+-export([llm_callback/2]).
 -export([c2s_to_role_chat/3]).
 -export([handle_sync/3]).
 
@@ -34,21 +35,10 @@ c2s(MsgId, CurrentUid, Data) ->
                 <<"in_reply_to">> => MsgId,
                 <<"payload">> => Result
             }};
-        <<"bot_qian_fan">> ->
-            c2s_to_external(
-                MsgId,
-                CurrentUid,
-                <<"bot_qian_fan">>,
-                Data,
-                fun qianfan_api:create_chat/3
-            );
-        % 【扩展点】未来添加其他外部服务
-        % <<"bot_openai">> ->
-        %     c2s_to_external(MsgId, CurrentUid, <<"bot_openai">>, Data,
-        %                    fun openai_api:create_chat/3);
-        % <<"bot_claude">> ->
-        %     c2s_to_external(MsgId, CurrentUid, <<"bot_claude">>, Data,
-        %                    fun claude_api:create_chat/3);
+        <<"bot_", _/binary>> = Bot ->
+            % bot_* 统一查 imboy_llm_registry 分派（BYO-LLM）
+            % 新增 provider 只需实现 imboy_llm behaviour + llm_providers 配置
+            c2s_to_llm(MsgId, CurrentUid, Bot, Data);
         _ ->
             % 检查是否为 E2EE 社交恢复消息
             Payload = maps:get(<<"payload">>, Data, #{}),
@@ -71,6 +61,41 @@ c2s_client_ack(MsgId, CurrentUid, DID) ->
 %% ===================================================================
 %% 外部服务处理函数
 %% ===================================================================
+
+%% @doc bot_* 消息按注册表分派到 LLM provider
+%% To → provider 名：bot_qian_fan → qianfan（向后兼容），bot_xxx → xxx
+-spec c2s_to_llm(binary(), integer(), binary(), map()) -> ok | {reply, map()}.
+c2s_to_llm(MsgId, CurrentUid, To, Data) ->
+    case imboy_llm_registry:lookup(provider_name(To)) of
+        {ok, #{module := Mod, opts := Opts}} ->
+            c2s_to_external(MsgId, CurrentUid, To, Data, llm_callback(Mod, Opts));
+        undefined ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To)}
+    end.
+
+%% @doc 把 imboy_llm:chat/3 桥接为 c2s_to_external/5 的 ApiCallback 契约
+%% ApiCallback 契约：fun(Uid, Text, Opts) -> RespMap（裸 map，含 result 键）
+%% 桥接：Text 包成单条 user 消息；{ok, RespMap} → RespMap；
+%% {error, _} → 抛异常触发 c2s_to_external 的 async_retry 重试（与原 qianfan
+%% crash-then-retry 一致），避免吞成空 result 给用户发空气泡。
+-spec llm_callback(module(), map()) -> fun((integer(), binary(), list()) -> map()).
+llm_callback(Mod, Opts) ->
+    fun(Uid, Text, _CallbackOpts) ->
+        Messages = [#{<<"role">> => <<"user">>, <<"content">> => Text}],
+        case Mod:chat(Uid, Messages, Opts) of
+            {ok, RespMap} ->
+                RespMap;
+            {error, Reason} ->
+                ok = ?ERROR_LOG(
+                    "[C2S_LLM_FAILED] provider=~p reason=~p~n",
+                    [Mod, Reason]
+                ),
+                error({llm_failed, Reason})
+        end
+    end.
+
+provider_name(<<"bot_qian_fan">>) -> <<"qianfan">>;
+provider_name(<<"bot_", Rest/binary>>) -> Rest.
 
 %% @doc C2S 消息发送到外部服务（AI/Bot/第三方 API）
 %% @param MsgId 消息ID
