@@ -13,20 +13,25 @@
 %%%
 
 -export([init/2]).
-%% process/1 为可测纯桥接（JSON binary → {StatusCode, RespBody}）
--export([process/1]).
+%% process/1,2 为可测纯桥接（JSON binary → {StatusCode, RespBody}）
+-export([process/1, process/2]).
 
 -include("barrel_mcp.hrl").
 
 %% 请求体上限 1MB（MCP 单条 JSON-RPC 足够；防超大 body）
 -define(MAX_BODY, 1048576).
+%% tool 同步执行超时
+-define(TOOL_TIMEOUT, 30000).
 
 -spec init(cowboy_req:req(), any()) -> {ok, cowboy_req:req(), any()}.
 init(Req0, State) ->
     case cowboy_req:method(Req0) of
         <<"POST">> ->
             {ok, Body, Req1} = read_body(Req0, <<>>),
-            {Code, Resp} = process(Body),
+            %% T3.3：auth_middleware 已把 current_uid 注入 handler opts；
+            %% 取调用者 uid 作 AuthInfo 线程进 tool Ctx（未认证=0）。
+            AuthInfo = auth_ds:current_uid(State),
+            {Code, Resp} = process(Body, AuthInfo),
             Req = cowboy_req:reply(
                 Code,
                 #{<<"content-type">> => <<"application/json">>},
@@ -38,17 +43,27 @@ init(Req0, State) ->
             {ok, cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0), State}
     end.
 
-%% @doc 纯桥接：JSON-RPC binary → {HTTP 状态码, 响应体 JSON binary}
-%% no_response（通知类，无 id）→ 202 空体；正常/async → 200 + JSON；解析失败 → 400 + -32700
+%% @doc 无 auth 上下文的桥接（测试/无认证场景）
 -spec process(binary()) -> {non_neg_integer(), binary()}.
 process(Body) ->
+    process(Body, undefined).
+
+%% @doc 纯桥接：JSON-RPC binary + AuthInfo → {HTTP 状态码, 响应体 JSON binary}
+%% no_response（通知类）→ 202 空体；tools/call 的 {async,Plan} 经 drive_async_plan/3
+%% 同步驱动（把 AuthInfo 注入 Ctx.auth_info，tool 内即可拿到调用者 uid 做越权校验）；
+%% 其余同步 → 200 + JSON；解析失败 → 400 + -32700。
+-spec process(binary(), term()) -> {non_neg_integer(), binary()}.
+process(Body, AuthInfo) ->
     case barrel_mcp_protocol:decode(Body) of
         {ok, Request} ->
             case barrel_mcp_protocol:handle(Request, #{}) of
                 no_response ->
                     {202, <<>>};
-                {async, Map} when is_map(Map) ->
-                    {200, barrel_mcp_protocol:encode(Map)};
+                {async, Plan} when is_map(Plan) ->
+                    Resp = barrel_mcp_protocol:drive_async_plan(
+                        Plan, ?TOOL_TIMEOUT, AuthInfo
+                    ),
+                    {200, barrel_mcp_protocol:encode(Resp)};
                 Map when is_map(Map) ->
                     {200, barrel_mcp_protocol:encode(Map)}
             end;
