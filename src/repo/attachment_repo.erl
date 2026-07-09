@@ -30,6 +30,10 @@
 %% Status: 1=正常 0=禁用 -1=软删除
 -export([update_status/2]).
 
+%% @doc 把 scope='moment' 且尚未绑定(scope_ref IS NULL)的附件回填 scope_ref=MomentId
+%% （两阶段绑定：媒体在发帖前上传时 scope_ref 未知，发帖后按 object_key 回填）。
+-export([bind_moment_scope_ref/2]).
+
 %% @doc 孤儿附件统计（预览用）
 -export([orphan_stats/1]).
 
@@ -264,6 +268,22 @@ update_status(Id, Status) when Status =:= -1; Status =:= 0; Status =:= 1 ->
             [Id]
         )
     of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec bind_moment_scope_ref([binary()], integer() | binary()) -> ok | {error, term()}.
+bind_moment_scope_ref([], _MomentId) ->
+    ok;
+bind_moment_scope_ref(ObjectKeys, MomentId) when is_list(ObjectKeys) ->
+    Tb = tablename(),
+    %% 显式参数编号；scope_ref 为 text 列，MomentId 转 binary。
+    %% 只回填 scope='moment' 且 scope_ref IS NULL 的行（刚上传待绑定的媒体），
+    %% object_key 含 uid 前缀天然 user-namespaced，按 path 精确匹配安全。
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET scope_ref = $1, updated_at = $2 ",
+            "WHERE scope = 'moment' AND scope_ref IS NULL AND path = ANY($3)">>,
+    case elib_pg:query(Sql, [ec_cnv:to_binary(MomentId), elib_dt:now(), ObjectKeys]) of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.

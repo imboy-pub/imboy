@@ -17,6 +17,7 @@
 -export([orphan_stats/1, orphan_cleanup/1]).
 -export([find_by_path_and_uid/2]).
 -export([find_by_path/1]).
+-export([bind_moment_scope_ref/2]).
 
 -export([find_path_by_id/1]).
 
@@ -99,6 +100,11 @@ find_by_path_and_uid(ObjectKey, Uid) ->
 -spec find_by_path(binary()) -> {ok, map()} | {error, not_found | term()}.
 find_by_path(ObjectKey) ->
     attachment_repo:find_by_path(ObjectKey).
+
+%% @doc 发帖后把 scope='moment' 待绑定的媒体附件回填 scope_ref=MomentId
+-spec bind_moment_scope_ref([binary()], integer() | binary()) -> ok | {error, term()}.
+bind_moment_scope_ref(ObjectKeys, MomentId) ->
+    attachment_repo:bind_moment_scope_ref(ObjectKeys, MomentId).
 
 %% @doc 按 id 查询附件 path（admin 下载端点签发 presign GET 用）
 -spec find_path_by_id(integer() | binary()) -> {ok, binary()} | {error, not_found | term()}.

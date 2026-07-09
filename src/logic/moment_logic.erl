@@ -50,6 +50,13 @@ create_post(Uid, PostVals) ->
             },
             case moment_ds:create_post(Uid, Data) of
                 {ok, PostId} ->
+                    %% 两阶段绑定：媒体在发帖前上传时 scope_ref 未知（momentId
+                    %% 尚未生成），发帖成功后按 object_key 回填 scope_ref=PostId，
+                    %% 使读鉴权 authorize_moment 能按帖子 ACL 放行。非致命：
+                    %% 回填失败仅影响非作者读取（退回旧行为），不阻断发帖。
+                    _ = attachment_ds:bind_moment_scope_ref(
+                        media_object_keys(Media), PostId
+                    ),
                     Post = moment_ds:get_post(PostId),
                     Payload = post_transfer(Post),
                     _ = moment_logic_notify:notify_post_created(Uid, PostId),
@@ -647,6 +654,23 @@ normalize_non_empty_binary(Value) when is_integer(Value) ->
     integer_to_binary(Value);
 normalize_non_empty_binary(_) ->
     <<>>.
+
+%% @doc 从媒体列表提取所有 object_key（图片 url、视频 url + cover_url），
+%% 用于发帖后回填 attachment.scope_ref。过滤空值。
+-spec media_object_keys(list()) -> [binary()].
+media_object_keys(Media) when is_list(Media) ->
+    Keys = lists:flatmap(
+        fun
+            (M) when is_map(M) ->
+                [maps:get(<<"url">>, M, <<>>), maps:get(<<"cover_url">>, M, <<>>)];
+            (_) ->
+                []
+        end,
+        Media
+    ),
+    lists:usort([K || K <- Keys, is_binary(K), K =/= <<>>]);
+media_object_keys(_) ->
+    [].
 
 -spec parse_media(term()) -> list().
 parse_media(Media) when is_list(Media) ->

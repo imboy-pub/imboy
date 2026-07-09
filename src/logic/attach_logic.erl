@@ -166,11 +166,14 @@ can_upload(Uid, <<"group">>, ScopeRef) ->
         error ->
             {error, forbidden}
     end;
-%% channel/moment 上传侧本期未上线，dispatch 占位（读鉴权 authorize/2 已就位）
+%% channel 上传侧本期未上线，dispatch 占位（读鉴权 authorize/2 已就位）
 can_upload(_Uid, <<"channel">>, _ScopeRef) ->
     {error, upload_not_supported};
+%% moment：任何登录用户可为自己的动态上传媒体（scope_ref 发帖时未知，
+%% 上传放行；真正可见性在读时由 authorize_moment 按帖子 ACL 卡）。
+%% 发帖后 moment_logic:create_post 会把这些附件 scope_ref 回填成 momentId。
 can_upload(_Uid, <<"moment">>, _ScopeRef) ->
-    {error, upload_not_supported};
+    ok;
 can_upload(_Uid, _Scope, _ScopeRef) ->
     {error, forbidden}.
 
