@@ -26,7 +26,13 @@ tools_test_() ->
         {"list_conversations: 强制调用者uid", fun t_conversations_ok/0},
         {"list_conversations: 未认证被拒", fun t_conversations_unauth/0},
         {"create_group: 建群成功(建群者=调用者)", fun t_create_group_ok/0},
-        {"create_group: 配额超限被拒", fun t_create_group_quota/0}
+        {"create_group: 配额超限被拒", fun t_create_group_quota/0},
+        {"send_message: 发送成功(from强制为调用者)", fun t_send_ok/0},
+        {"send_message: 非好友被拒", fun t_send_rejected/0},
+        {"send_message: 未认证被拒", fun t_send_unauth/0},
+        {"send_message: 空body被拒", fun t_send_empty_body/0},
+        {"send_message: 非text类型被拒", fun t_send_bad_type/0},
+        {"send_message: 限流被拒", fun t_send_throttled/0}
     ]}.
 
 setup() ->
@@ -40,6 +46,12 @@ setup() ->
     meck:new(group_member_ds, [no_link, passthrough]),
     meck:new(conversation_logic, [no_link, passthrough]),
     meck:new(group_logic, [no_link, passthrough]),
+    meck:new(msg_c2c_logic, [no_link, passthrough]),
+    meck:new(elib_tsid, [no_link, passthrough]),
+    meck:new(throttle, [no_link, passthrough]),
+    %% 默认放行限流 + 固定 MsgId，个别用例覆盖
+    meck:expect(throttle, check, fun(_, _) -> ok end),
+    meck:expect(elib_tsid, generate, fun() -> 123456789 end),
     ok.
 
 cleanup(_) ->
@@ -173,4 +185,42 @@ t_create_group_quota() ->
     meck:expect(group_logic, count_by_owner, fun(42) -> 200 end),
     meck:expect(group_logic, add, fun(200, 42, 2, _) -> {error, <<"群数量已达上限"/utf8>>} end),
     R = call(<<"create_group">>, #{<<"member_uids">> => [7]}, 42),
+    ?assertEqual(true, is_error(R)).
+
+%%%===================================================================
+%%% send_message：from 强制为调用者；只发明文 text；关系门控内建
+%%%===================================================================
+t_send_ok() ->
+    %% 只定义 from=42 子句：若被自报 from=999 影响，meck 无匹配子句 → 崩溃 → isError
+    meck:expect(msg_c2c_logic, c2c, fun(_MsgId, 42, <<"7">>, _Payload) -> ok end),
+    R = call(<<"send_message">>, #{<<"to">> => 7, <<"body">> => <<"hi">>, <<"from">> => 999}, 42),
+    ?assertNot(is_error(R)),
+    ?assertMatch(#{<<"status">> := <<"sent">>}, maps:get(<<"structuredContent">>, R)).
+
+t_send_rejected() ->
+    meck:expect(msg_c2c_logic, c2c, fun(_M, 42, <<"7">>, _P) ->
+        {reply, #{<<"action">> => <<"not_a_friend">>}}
+    end),
+    R = call(<<"send_message">>, #{<<"to">> => 7, <<"body">> => <<"hi">>}, 42),
+    ?assertEqual(true, is_error(R)).
+
+t_send_unauth() ->
+    R = call(<<"send_message">>, #{<<"to">> => 7, <<"body">> => <<"hi">>}, 0),
+    ?assertEqual(true, is_error(R)).
+
+t_send_empty_body() ->
+    R = call(<<"send_message">>, #{<<"to">> => 7, <<"body">> => <<>>}, 42),
+    ?assertEqual(true, is_error(R)).
+
+t_send_bad_type() ->
+    R = call(
+        <<"send_message">>,
+        #{<<"to">> => 7, <<"body">> => <<"hi">>, <<"msg_type">> => <<"image">>},
+        42
+    ),
+    ?assertEqual(true, is_error(R)).
+
+t_send_throttled() ->
+    meck:expect(throttle, check, fun(_, _) -> {limit_exceeded, 0, 0} end),
+    R = call(<<"send_message">>, #{<<"to">> => 7, <<"body">> => <<"hi">>}, 42),
     ?assertEqual(true, is_error(R)).

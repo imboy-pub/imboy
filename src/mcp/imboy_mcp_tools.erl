@@ -10,15 +10,17 @@
 % 越权红线：调用者身份一律以 Ctx.auth_info（mcp_handler 从 JWT 注入的 uid）为准，
 % **绝不信任** Args 里客户端自报的 uid/gid；先用 auth_info 做 owner/member 判定再调 logic。
 %
-% 首批 6 个 tool（均不触碰消息投递通道）：
+% 7 个 tool：
 %   get_user_profile   → user_logic:find_by_id/1（仅本人或好友可查）
 %   get_contacts       → friend_ds:page_by_uid/3（只查调用者自己的好友）
 %   search_messages    → fts_logic:search_msg/5（uid 强制为调用者，权限过滤内建）
 %   list_group_members → group_member_ds:list_members/1（仅群成员可列）
 %   list_conversations → conversation_logic:list/2（只取调用者自己的会话）
 %   create_group       → group_logic:add/4（建群者=调用者，配额 count_by_owner 内建）
+%   send_message       → msg_c2c_logic:c2c/4（发送者=调用者，仅明文 text，限流+长度门控）
 %
-% 发消息类（send_message → msg_c2c_logic）触及消息投递通道，留待 review 后单独接入。
+% send_message 触及消息投递通道：发送者强制为调用者、只发明文 text（不构造 e2ee
+% 字段，E2EE 会话不经此通道），关系门控（好友/黑名单）由 c2c/4 内建。
 %
 % 常驻 worker：挂 imboy_sup（transient），启动后等 registry 就绪即注册全部 tool；
 % reg_all/0 幂等（reg 覆盖同名），registry 若异常重启则监听 DOWN 后自动重注册。
@@ -37,7 +39,8 @@
     search_messages/2,
     list_group_members/2,
     list_conversations/2,
-    create_group/2
+    create_group/2,
+    send_message/2
 ]).
 
 %% registry 就绪等待超时；重试间隔
@@ -49,6 +52,8 @@
 %% 会话列表拉取上限 / 默认
 -define(MAX_CONV_LIMIT, 500).
 -define(DEF_CONV_LIMIT, 100).
+%% send_message 明文 body 字节上限
+-define(MAX_BODY_BYTES, 4096).
 
 %%====================================================================
 %% 启动 / 注册
@@ -96,6 +101,12 @@ reg_all() ->
         create_group,
         <<"创建群（建群者为调用者，受其建群配额限制）"/utf8>>,
         create_group_schema()
+    ),
+    ok = reg(
+        <<"send_message">>,
+        send_message,
+        <<"以调用者身份给某好友发一条明文文本消息（C2C）"/utf8>>,
+        send_message_schema()
     ),
     ok.
 
@@ -180,6 +191,57 @@ create_group(Args, Ctx) ->
             {error, Reason} -> tool_error(Reason)
         end
     end).
+
+%% @doc 发消息：发送者一律为调用者（不信 Args 自报 from）；仅明文 text；
+%% 关系门控（好友/黑名单）由 msg_c2c_logic:c2c/4 内建。E2EE 会话不经此通道。
+send_message(Args, Ctx) ->
+    with_caller(Ctx, fun(Caller) ->
+        case throttle:check(three_second_once, Caller) of
+            {limit_exceeded, _, _} ->
+                tool_error(<<"发送过于频繁，请稍后重试"/utf8>>);
+            _ ->
+                do_send_message(Caller, Args)
+        end
+    end).
+
+do_send_message(Caller, Args) ->
+    To = to_int(maps:get(<<"to">>, Args, 0)),
+    Body = maps:get(<<"body">>, Args, <<>>),
+    MsgType = maps:get(<<"msg_type">>, Args, <<"text">>),
+    case validate_send(To, Body, MsgType) of
+        ok ->
+            MsgId = ec_cnv:to_binary(elib_tsid:generate()),
+            %% 强制明文 text，不构造 e2ee 字段（E2EE 红线：服务端不解密做 AI）。
+            Payload = #{<<"msg_type">> => <<"text">>, <<"body">> => Body},
+            case msg_c2c_logic:c2c(MsgId, Caller, integer_to_binary(To), Payload) of
+                ok ->
+                    {structured, #{<<"msg_id">> => MsgId, <<"status">> => <<"sent">>}};
+                {reply, M} ->
+                    tool_error(reject_reason(M))
+            end;
+        {error, Msg} ->
+            tool_error(Msg)
+    end.
+
+%% 发送参数校验：目标合法、body 非空且不超限、仅 text。
+validate_send(To, _Body, _MsgType) when not is_integer(To); To =< 0 ->
+    {error, <<"to（接收者 uid）无效"/utf8>>};
+validate_send(_To, Body, _MsgType) when not is_binary(Body); Body =:= <<>> ->
+    {error, <<"body 不能为空"/utf8>>};
+validate_send(_To, Body, _MsgType) when byte_size(Body) > ?MAX_BODY_BYTES ->
+    {error, <<"消息内容过长（上限 4096 字节）"/utf8>>};
+validate_send(_To, _Body, MsgType) when MsgType =/= <<"text">> ->
+    {error, <<"仅支持 text 明文消息"/utf8>>};
+validate_send(_To, _Body, _MsgType) ->
+    ok.
+
+%% 把 c2c 的 {reply, S2C} 拒绝原因转成友好文案。
+reject_reason(M) ->
+    case maps:get(<<"action">>, M, <<>>) of
+        <<"not_a_friend">> -> <<"对方不是你的好友，无法发送"/utf8>>;
+        <<"in_denylist">> -> <<"因黑名单关系，消息未送达"/utf8>>;
+        _ -> <<"消息发送被拒"/utf8>>
+    end.
 
 %%====================================================================
 %% tool 内部辅助
@@ -290,6 +352,22 @@ create_group_schema() ->
                 <<"description">> => <<"初始成员 uid 列表（不含建群者）"/utf8>>
             }
         }
+    }.
+
+send_message_schema() ->
+    #{
+        <<"type">> => <<"object">>,
+        <<"properties">> => #{
+            <<"to">> => #{
+                <<"type">> => <<"integer">>,
+                <<"description">> => <<"接收者 uid（须为调用者的好友）"/utf8>>
+            },
+            <<"body">> => #{
+                <<"type">> => <<"string">>,
+                <<"description">> => <<"明文文本内容，上限 4096 字节"/utf8>>
+            }
+        },
+        <<"required">> => [<<"to">>, <<"body">>]
     }.
 
 %%====================================================================
