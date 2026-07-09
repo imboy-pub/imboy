@@ -293,13 +293,28 @@ run_tool(Name, Args, Ctx) ->
             {error, {not_found, tool, Name}}
     end.
 
-run_tool_worker(_Name, Args, Ctx, Handler, ReplyTo, RequestId) ->
+run_tool_worker(Name, Args, Ctx, Handler, ReplyTo, RequestId) ->
     %% Optional input validation against the registered input_schema.
     case validate_tool_input(Args, Handler) of
         ok ->
-            invoke_tool_handler(Args, Ctx, Handler, ReplyTo, RequestId);
+            %% imboy 集成：可选授权闸门（enforce 默认关闭）。经 function_exported
+            %% 守卫保持 vendored barrel_mcp 可独立运行（无 gate 模块时直接放行）。
+            case maybe_authz(Name, Ctx) of
+                ok ->
+                    invoke_tool_handler(Args, Ctx, Handler, ReplyTo, RequestId);
+                {deny, Content} ->
+                    ReplyTo ! {tool_error, RequestId, Content}
+            end;
         {error, Errors} ->
             ReplyTo ! {tool_validation_failed, RequestId, Errors}
+    end.
+
+%% imboy integration hook: optional MCP authz gate. Optional via
+%% function_exported so vendored barrel_mcp still runs standalone.
+maybe_authz(Name, Ctx) ->
+    case erlang:function_exported(mcp_authz_gate, check, 2) of
+        true -> mcp_authz_gate:check(Name, Ctx);
+        false -> ok
     end.
 
 validate_tool_input(Args, Handler) ->
