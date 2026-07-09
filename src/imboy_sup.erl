@@ -212,6 +212,17 @@ init([]) ->
         modules => [barrel_mcp_session]
     },
 
+    % MCP tool wrapper 注册器（T3.4）：registry 就绪后注册全部只读 tool。
+    % transient：非核心；监听 registry DOWN，异常重启后自动重注册（reg_all 幂等）。
+    McpTools = #{
+        id => imboy_mcp_tools,
+        start => {imboy_mcp_tools, start_link, []},
+        restart => transient,
+        shutdown => 5000,
+        type => worker,
+        modules => [imboy_mcp_tools]
+    },
+
     Specs =
         [
             IMBoyCache,
@@ -229,7 +240,8 @@ init([]) ->
             LicenseNoticeWorker,
             AiAgentRuntime,
             McpRegistry,
-            McpSession
+            McpSession,
+            McpTools
         ] ++ CacheSyncSpec,
     % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
     % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出
