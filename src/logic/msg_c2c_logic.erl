@@ -49,7 +49,7 @@ c2c(MsgId, CurrentUid, Data) ->
             {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(
                 CurrentUid, Data
             ),
-            stage_and_send_c2c(
+            Result = stage_and_send_c2c(
                 MsgId,
                 To,
                 ToId,
@@ -61,7 +61,13 @@ c2c(MsgId, CurrentUid, Data) ->
                 Timestamps,
                 CurrentUid,
                 Data
-            );
+            ),
+            %% T1.4：若 To 是 AI agent 账号，旁路异步触发 LLM 回复（agent→human）。
+            %% fire-and-forget，不改变原 C2C 返回值/投递；E2EE 消息在内部被跳过。
+            %% ponytail: maybe_dispatch 对每条非 E2EE 文本 C2C 多做一次 ai_agent 主键查，
+            %%   量级可控；真成热点再给 ai_agent_ds:is_agent 加 depcache 缓存。
+            _ = ai_agent_reply:maybe_dispatch(CurrentUid, ToId, Data),
+            Result;
         {reject, in_denylist} ->
             Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
             {reply, Msg};

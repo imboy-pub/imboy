@@ -9,6 +9,7 @@
 -export([tablename/0]).
 -export([upsert/1]).
 -export([find/1]).
+-export([active_ids/0]).
 -export([set_status/2]).
 -export([page/2]).
 
@@ -67,6 +68,16 @@ find(UserId) ->
     case elib_pg:query(Sql, [UserId]) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {error, notfound};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 列出所有启用中 agent 的 user_id（presence runtime 上线用）
+-spec active_ids() -> {ok, [integer()]} | {error, term()}.
+active_ids() ->
+    Tb = tablename(),
+    Sql = <<"SELECT user_id FROM ", Tb/binary, " WHERE status = 1">>,
+    case elib_pg:query(Sql, []) of
+        {ok, Rows} -> {ok, [maps:get(<<"user_id">>, R) || R <- Rows]};
         {error, Reason} -> {error, Reason}
     end.
 

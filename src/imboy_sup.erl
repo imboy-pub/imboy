@@ -182,6 +182,17 @@ init([]) ->
         modules => [imboy_plugin_sup]
     },
 
+    % AI Agent 常驻在线 runtime（T1.3）：把启用中 agent 注册进 syn 在线态（presence）。
+    % transient：DB 未就绪时 refresh 优雅跳过并定时重试，非核心，崩溃正常退出不重启。
+    AiAgentRuntime = #{
+        id => ai_agent_runtime,
+        start => {ai_agent_runtime, start_link, []},
+        restart => transient,
+        shutdown => 5000,
+        type => worker,
+        modules => [ai_agent_runtime]
+    },
+
     Specs =
         [
             IMBoyCache,
@@ -196,7 +207,8 @@ init([]) ->
             E2eeCleanupWorker,
             MsgBurnWorker,
             UserDeletionWorker,
-            LicenseNoticeWorker
+            LicenseNoticeWorker,
+            AiAgentRuntime
         ] ++ CacheSyncSpec,
     % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
     % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出
