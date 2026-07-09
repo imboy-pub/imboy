@@ -36,6 +36,9 @@ get_routes() ->
     % Api v1 routes
     ApiV1Routes =
         [
+            %% MCP Server（Phase 3 T3.2）：barrel_mcp 协议引擎的 cowboy 桥接，
+            %% 核心固定端点进静态 ApiV1Routes（不走 imboy_router_registry）。JWT 见 T3.3。
+            {"/api/v1/mcp", mcp_handler, #{}},
             {"/api/v1/init", index_handler, #{action => init}},
             {"/api/v1/refreshtoken", passport_handler, #{action => refreshtoken}},
             {"/api/v1/app/features", app_feature_handler, #{action => features}},

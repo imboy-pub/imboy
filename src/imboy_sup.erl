@@ -193,6 +193,25 @@ init([]) ->
         modules => [ai_agent_runtime]
     },
 
+    % MCP 协议引擎 gen_server（T3.1 vendored barrel_mcp）：registry + session。
+    % transient：非核心，崩溃正常退出不重启。MCP handler（T3.2）依赖其在线。
+    McpRegistry = #{
+        id => barrel_mcp_registry,
+        start => {barrel_mcp_registry, start_link, []},
+        restart => transient,
+        shutdown => 5000,
+        type => worker,
+        modules => [barrel_mcp_registry]
+    },
+    McpSession = #{
+        id => barrel_mcp_session,
+        start => {barrel_mcp_session, start_link, []},
+        restart => transient,
+        shutdown => 5000,
+        type => worker,
+        modules => [barrel_mcp_session]
+    },
+
     Specs =
         [
             IMBoyCache,
@@ -208,7 +227,9 @@ init([]) ->
             MsgBurnWorker,
             UserDeletionWorker,
             LicenseNoticeWorker,
-            AiAgentRuntime
+            AiAgentRuntime,
+            McpRegistry,
+            McpSession
         ] ++ CacheSyncSpec,
     % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
     % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出
