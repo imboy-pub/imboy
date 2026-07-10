@@ -10,6 +10,7 @@
 -export([c2s_client_ack/3]).
 -export([c2s_to_external/5]).
 -export([llm_callback/2]).
+-export([llm_callback/4]).
 -export([c2s_to_role_chat/3]).
 -export([handle_sync/3]).
 
@@ -68,7 +69,7 @@ c2s_client_ack(MsgId, CurrentUid, DID) ->
 c2s_to_llm(MsgId, CurrentUid, To, Data) ->
     case imboy_llm_registry:lookup(provider_name(To)) of
         {ok, #{module := Mod, opts := Opts}} ->
-            c2s_to_external(MsgId, CurrentUid, To, Data, llm_callback(Mod, Opts));
+            c2s_to_external(MsgId, CurrentUid, To, Data, llm_callback(Mod, Opts, To, MsgId));
         undefined ->
             {reply, message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To)}
     end.
@@ -92,6 +93,53 @@ llm_callback(Mod, Opts) ->
                 ),
                 error({llm_failed, Reason})
         end
+    end.
+
+%% @doc 带流式感知的回调（bot_* 通路）：provider 支持流式时先逐帧直推
+%% stream_delta（同定稿 id: bot_response+MsgId），再返回完整 RespMap 供
+%% c2s_to_external 定稿落库；否则委托 llm_callback/2 一次性桥接。
+-spec llm_callback(module(), map(), binary(), binary()) ->
+    fun((integer(), binary(), list()) -> map()).
+llm_callback(Mod, Opts, To, MsgId) ->
+    SyncCb = llm_callback(Mod, Opts),
+    fun(Uid, Text, CallbackOpts) ->
+        case llm_stream:stream_capable(Mod) of
+            true ->
+                Messages = [#{<<"role">> => <<"user">>, <<"content">> => Text}],
+                stream_bot_chat(Mod, Opts, Uid, To, MsgId, Messages);
+            false ->
+                SyncCb(Uid, Text, CallbackOpts)
+        end
+    end.
+
+%% 流式 bot 回复：中间 delta 直推（同定稿 id），返回完整 RespMap 给定稿。
+%% 帧 type=C2S、from=bot 标识、to=human，与 send_service_response 定稿对齐。
+-spec stream_bot_chat(module(), map(), integer(), binary(), binary(), [map()]) -> map().
+stream_bot_chat(Mod, Opts, Uid, To, MsgId, Messages) ->
+    Ctx = #{
+        stream_id => <<"bot_response", MsgId/binary>>,
+        target_uid => Uid,
+        from => To,
+        to => ec_cnv:to_binary(Uid),
+        type => <<"C2S">>
+    },
+    %% c2s_to_external 的 async_retry 在同进程递归重试，stream_id 恒定，
+    %% 每次尝试前清空进程字典状态，避免上轮残留与新一轮 delta 串味
+    ok = llm_stream:reset(Ctx),
+    StreamFun = fun(Delta) -> llm_stream:push(Ctx, Delta) end,
+    case Mod:chat_stream(Uid, Messages, Opts, StreamFun) of
+        {ok, RespMap} ->
+            llm_stream:flush_tail(Ctx),
+            RespMap;
+        {error, Reason} ->
+            %% flush 已累积 + 抛错触发 c2s_to_external async_retry（同原 crash-then-retry）
+            %% ponytail: 失败重试会重推 delta，前端按 index 幂等覆盖可容忍
+            llm_stream:flush_tail(Ctx),
+            ok = ?ERROR_LOG(
+                "[C2S_LLM_STREAM_FAILED] provider=~p reason=~p~n",
+                [Mod, Reason]
+            ),
+            error({llm_failed, Reason})
     end.
 
 provider_name(<<"bot_qian_fan">>) -> <<"qianfan">>;

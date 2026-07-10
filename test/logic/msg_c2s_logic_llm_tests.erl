@@ -120,3 +120,63 @@ c2s_unregistered_bot_replies_unsupported_test_() ->
             ?assertEqual({reply, #{<<"code">> => <<"c2s_unsupported">>}}, Result)
         end
     ).
+
+%% ===================================================================
+%% llm_callback/4 — 流式感知（Phase 2 T2.2）
+%% ===================================================================
+
+%% 开关开 + provider 支持流式：逐帧直推 stream_delta（同定稿 id）+ 返回完整 RespMap
+llm_callback4_streams_when_capable_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_llm_openai, [
+                {'capabilities', 0, fun() ->
+                    #{stream => true, vision => false, tools => false}
+                end},
+                {'chat_stream', 4, fun(7, _Msgs, _Opts, StreamFun) ->
+                    StreamFun(<<"部分一二三四"/utf8>>),
+                    {ok, #{<<"result">> => <<"完整回复"/utf8>>}}
+                end}
+            ]},
+            {imboy_syn, [{'publish', 2, fun(_, _) -> {ok, 1} end}]}
+        ],
+        fun() ->
+            application:set_env(imboy, llm_stream_enabled, true),
+            try
+                Cb = msg_c2s_logic:llm_callback(imboy_llm_openai, #{}, <<"bot_x">>, <<"mid9">>),
+                Resp = Cb(7, <<"hi">>, []),
+                %% 返回完整 RespMap 供 c2s_to_external 定稿
+                ?assertEqual(#{<<"result">> => <<"完整回复"/utf8>>}, Resp),
+                %% 帧：id=bot_response+MsgId，type=C2S，from=bot 标识
+                Pubs = meck:history(imboy_syn),
+                ?assert(length(Pubs) >= 1),
+                [{_, {_, publish, [7, Json]}, _} | _] = Pubs,
+                D = jsone:decode(Json),
+                ?assertEqual(<<"stream_delta">>, maps:get(<<"msg_type">>, D)),
+                ?assertEqual(<<"bot_responsemid9">>, maps:get(<<"id">>, D)),
+                ?assertEqual(<<"C2S">>, maps:get(<<"type">>, D)),
+                ?assertEqual(<<"bot_x">>, maps:get(<<"from">>, D))
+            after
+                application:unset_env(imboy, llm_stream_enabled)
+            end
+        end
+    ).
+
+%% 开关关：llm_callback/4 委托 /2 一次性桥接，不推流式帧
+llm_callback4_falls_back_to_sync_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_llm_openai, [
+                {'chat', 3, fun(_, _, _) -> {ok, #{<<"result">> => <<"sync">>}} end}
+            ]},
+            {imboy_syn, [{'publish', 2, fun(_, _) -> {ok, 1} end}]}
+        ],
+        fun() ->
+            application:unset_env(imboy, llm_stream_enabled),
+            Cb = msg_c2s_logic:llm_callback(imboy_llm_openai, #{}, <<"bot_x">>, <<"mid">>),
+            Resp = Cb(7, <<"hi">>, []),
+            ?assertEqual(#{<<"result">> => <<"sync">>}, Resp),
+            ?assertEqual(0, length(meck:history(imboy_syn))),
+            ?assert(meck:called(imboy_llm_openai, chat, '_'))
+        end
+    ).

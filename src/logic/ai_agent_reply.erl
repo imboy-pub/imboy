@@ -72,8 +72,19 @@ dispatch(FromUid, ToId, Agent, Text) ->
     end.
 
 %% @doc 调 LLM 并把结果作为 C2C 从 agent 回投给 human（async 闭包体，独立导出便于测试）
+%% 流式开关（llm_stream_enabled）+ provider 支持流式时走逐字流式，否则一次性回复。
 -spec run_and_reply(module(), map(), integer(), integer(), [map()]) -> ok.
 run_and_reply(Mod, Opts, FromUid, ToId, Messages) ->
+    case llm_stream:stream_capable(Mod) of
+        true ->
+            run_and_reply_stream(Mod, Opts, FromUid, ToId, Messages);
+        false ->
+            run_and_reply_sync(Mod, Opts, FromUid, ToId, Messages)
+    end.
+
+%% 一次性回复（原路径）
+-spec run_and_reply_sync(module(), map(), integer(), integer(), [map()]) -> ok.
+run_and_reply_sync(Mod, Opts, FromUid, ToId, Messages) ->
     case Mod:chat(ToId, Messages, Opts) of
         {ok, RespMap} when is_map(RespMap) ->
             Result = maps:get(<<"result">>, RespMap, <<>>),
@@ -83,15 +94,46 @@ run_and_reply(Mod, Opts, FromUid, ToId, Messages) ->
             ok
     end.
 
-%% 构建 C2C 回复消息（agent→human）并经既有投递骨架发送
+%% 流式回复：逐个 delta 节流后 imboy_syn:publish 直推 ephemeral stream_delta 帧
+%% （不落库/不 ACK/不重试），流结束用同一 id 走 deliver_reply 定稿落库。
+-spec run_and_reply_stream(module(), map(), integer(), integer(), [map()]) -> ok.
+run_and_reply_stream(Mod, Opts, FromUid, ToId, Messages) ->
+    StreamId = ec_cnv:to_binary(elib_tsid:generate()),
+    Ctx = #{
+        stream_id => StreamId,
+        target_uid => FromUid,
+        from => ec_cnv:to_binary(ToId),
+        to => ec_cnv:to_binary(FromUid),
+        type => <<"C2C">>
+    },
+    StreamFun = fun(Delta) -> llm_stream:push(Ctx, Delta) end,
+    case Mod:chat_stream(ToId, Messages, Opts, StreamFun) of
+        {ok, RespMap} when is_map(RespMap) ->
+            llm_stream:flush_tail(Ctx),
+            Result = maps:get(<<"result">>, RespMap, <<>>),
+            %% 定稿复用 StreamId：前端主键去重 → update 替换流式气泡
+            deliver_reply(FromUid, ToId, StreamId, Result);
+        {error, Reason} ->
+            ok = ?ERROR_LOG("[AGENT_REPLY_STREAM_FAILED] to=~p reason=~p~n", [ToId, Reason]),
+            %% 兜底：flush 残留 + 把已累积部分作为定稿发出（同 id），避免气泡永不定稿
+            llm_stream:flush_tail(Ctx),
+            deliver_reply(FromUid, ToId, StreamId, llm_stream:full_text(Ctx))
+    end.
+
+%% 构建 C2C 回复消息（agent→human）并经既有投递骨架发送（一次性路径：新生成 id）
 -spec deliver_reply(integer(), integer(), binary()) -> ok.
-deliver_reply(_FromUid, _ToId, <<>>) ->
-    ok;
 deliver_reply(FromUid, ToId, Result) ->
     ReplyMsgId = ec_cnv:to_binary(elib_tsid:generate()),
+    deliver_reply(FromUid, ToId, ReplyMsgId, Result).
+
+%% 用指定 MsgId 定稿：流式路径复用 StreamId，令 stream_delta 与定稿共享 id
+-spec deliver_reply(integer(), integer(), binary(), binary()) -> ok.
+deliver_reply(_FromUid, _ToId, _MsgId, <<>>) ->
+    ok;
+deliver_reply(FromUid, ToId, MsgId, Result) ->
     Content = elib_str:replace_single_quote(Result),
     Msg = #{
-        <<"id">> => ReplyMsgId,
+        <<"id">> => MsgId,
         <<"type">> => <<"C2C">>,
         <<"from">> => ec_cnv:to_binary(ToId),
         <<"to">> => ec_cnv:to_binary(FromUid),
@@ -102,7 +144,7 @@ deliver_reply(FromUid, ToId, Result) ->
     },
     MsgJson = jsone:encode(Msg, [native_utf8]),
     MsLi = elib_retry_config:intervals(<<"c2c">>),
-    message_ds:send_next(FromUid, ReplyMsgId, MsgJson, MsLi),
+    message_ds:send_next(FromUid, MsgId, MsgJson, MsLi),
     ok.
 
 %% OpenAI 兼容 messages：可选 system_prompt 开场 + 用户消息

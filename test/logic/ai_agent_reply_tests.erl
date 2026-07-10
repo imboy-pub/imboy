@@ -158,3 +158,107 @@ llm_error_no_delivery_test_() ->
             ?assertNot(meck:called(message_ds, send_next, '_'))
         end
     ).
+
+%% ===================================================================
+%% 流式回复（Phase 2 T2.2）：llm_stream_enabled=true + provider.stream
+%% ===================================================================
+
+%% 成功流式：逐 delta 节流后 publish stream_delta 帧，结束用同 id 定稿落库
+agent_dm_streams_deltas_then_finalizes_test_() ->
+    ?WITH_MECKS(
+        [
+            ?SYNC_ASYNC,
+            {elib_tsid, [{'generate', 0, fun() -> 12345 end}]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
+            ]},
+            {imboy_llm_registry, [
+                {'lookup', 1, fun(<<"openai">>) ->
+                    {ok, #{module => imboy_llm_openai, opts => #{}}}
+                end}
+            ]},
+            {imboy_llm_openai, [
+                {'capabilities', 0, fun() ->
+                    #{stream => true, vision => false, tools => false}
+                end},
+                {'chat_stream', 4, fun(42, _Msgs, _Opts, StreamFun) ->
+                    %% "你好"(6B) 缓冲；+"世界"(6B)=12B 达阈值 flush 一帧；"！"(3B) 缓冲
+                    StreamFun(<<"你好"/utf8>>),
+                    StreamFun(<<"世界"/utf8>>),
+                    StreamFun(<<"！"/utf8>>),
+                    {ok, #{<<"result">> => <<"你好世界！"/utf8>>}}
+                end}
+            ]},
+            {imboy_syn, [{'publish', 2, fun(_Uid, _Json) -> {ok, 1} end}]},
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            application:set_env(imboy, llm_stream_enabled, true),
+            try
+                Data = #{
+                    <<"payload">> => #{<<"content">> => <<"在吗"/utf8>>},
+                    <<"msg_type">> => <<"text">>
+                },
+                ?assertEqual(ok, ai_agent_reply:maybe_dispatch(7, 42, Data)),
+                %% 两帧 stream_delta：达阈值的 "你好世界" + 尾块 "！"
+                Pubs = meck:history(imboy_syn),
+                ?assertEqual(2, length(Pubs)),
+                [{_, {_, publish, [7, Json0]}, _} | _] = Pubs,
+                D0 = jsone:decode(Json0),
+                ?assertEqual(<<"stream_delta">>, maps:get(<<"msg_type">>, D0)),
+                ?assertEqual(<<"12345">>, maps:get(<<"id">>, D0)),
+                P0 = maps:get(<<"payload">>, D0),
+                ?assertEqual(<<"你好世界"/utf8>>, maps:get(<<"delta">>, P0)),
+                ?assertEqual(0, maps:get(<<"index">>, P0)),
+                ?assertEqual(<<"12345">>, maps:get(<<"stream_id">>, P0)),
+                %% 定稿走 send_next，复用同一 StreamId（前端主键去重替换气泡）
+                ?assert(meck:called(message_ds, send_next, [7, <<"12345">>, '_', '_']))
+            after
+                application:unset_env(imboy, llm_stream_enabled)
+            end
+        end
+    ).
+
+%% 流式失败：已累积部分作为定稿发出（同 id），前端流式气泡不会永不定稿
+stream_error_finalizes_partial_test_() ->
+    ?WITH_MECKS(
+        [
+            ?SYNC_ASYNC,
+            {elib_tsid, [{'generate', 0, fun() -> 999 end}]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
+            ]},
+            {imboy_llm_registry, [
+                {'lookup', 1, fun(<<"openai">>) ->
+                    {ok, #{module => imboy_llm_openai, opts => #{}}}
+                end}
+            ]},
+            {imboy_llm_openai, [
+                {'capabilities', 0, fun() ->
+                    #{stream => true, vision => false, tools => false}
+                end},
+                {'chat_stream', 4, fun(42, _Msgs, _Opts, StreamFun) ->
+                    %% "部分回复"(12B) 达阈值即 flush，随后 provider 报错
+                    StreamFun(<<"部分回复"/utf8>>),
+                    {error, timeout}
+                end}
+            ]},
+            {imboy_syn, [{'publish', 2, fun(_, _) -> {ok, 1} end}]},
+            {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            application:set_env(imboy, llm_stream_enabled, true),
+            try
+                Data = #{
+                    <<"payload">> => #{<<"content">> => <<"hi">>},
+                    <<"msg_type">> => <<"text">>
+                },
+                ?assertEqual(ok, ai_agent_reply:maybe_dispatch(7, 42, Data)),
+                %% 兜底定稿：已累积 "部分回复" 走 send_next，同一 id
+                ?assert(meck:called(message_ds, send_next, [7, <<"999">>, '_', '_']))
+            after
+                application:unset_env(imboy, llm_stream_enabled)
+            end
+        end
+    ).
