@@ -103,6 +103,39 @@ c2s_bot_qian_fan_maps_to_qianfan_provider_test_() ->
         end
     ).
 
+%% 金钱 DoS 闸门：bot_qian_fan / bot_qianfan 别名映射同一 provider(qianfan)，
+%% 限流按归一化后 provider 名建 scope → 必须共享计数，不能交替别名双倍突破配额。
+c2s_bot_alias_shares_rate_limit_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_llm_registry, [
+                {'lookup', 1, fun(<<"qianfan">>) -> undefined end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_MsgId, Code, _To) -> #{<<"code">> => Code} end}
+            ]},
+            {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            reset_rl(1),
+            try
+                D1 = #{<<"to">> => <<"bot_qian_fan">>, <<"payload">> => #{<<"text">> => <<"a">>}},
+                D2 = #{<<"to">> => <<"bot_qianfan">>, <<"payload">> => #{<<"text">> => <<"b">>}},
+                %% 别名一放行 → 走到 lookup(qianfan)（undefined → unsupported reply）
+                ?assertEqual(
+                    {reply, #{<<"code">> => <<"c2s_unsupported">>}},
+                    msg_c2s_logic:c2s(<<"m1">>, 7, D1)
+                ),
+                %% 别名二归一化到同一 scope qianfan，per_requester=1 已满 → deny 静默丢弃
+                ?assertEqual(ok, msg_c2s_logic:c2s(<<"m2">>, 7, D2)),
+                %% 关键断言：lookup 只被调 1 次——第二个别名在限流处被拦，未共享绕过
+                ?assertEqual(1, meck:num_calls(imboy_llm_registry, lookup, [<<"qianfan">>]))
+            after
+                rl_teardown()
+            end
+        end
+    ).
+
 c2s_unregistered_bot_replies_unsupported_test_() ->
     ?WITH_MECKS(
         [
@@ -161,6 +194,25 @@ llm_callback4_streams_when_capable_test_() ->
             end
         end
     ).
+
+%% ===================================================================
+%% 限流器测试助手（真实 ETS，清空 + 设小阈值）
+%% ===================================================================
+
+reset_rl(PerReq) ->
+    _ = agent_rate_limiter:allow(0, 0),
+    case ets:whereis(agent_rate_limiter_ets) of
+        undefined -> ok;
+        _ -> ets:delete_all_objects(agent_rate_limiter_ets)
+    end,
+    application:set_env(imboy, agent_rl_per_requester, PerReq),
+    application:set_env(imboy, agent_rl_per_agent, 1000),
+    ok.
+
+rl_teardown() ->
+    application:unset_env(imboy, agent_rl_per_requester),
+    application:unset_env(imboy, agent_rl_per_agent),
+    ok.
 
 %% 开关关：llm_callback/4 委托 /2 一次性桥接，不推流式帧
 llm_callback4_falls_back_to_sync_test_() ->

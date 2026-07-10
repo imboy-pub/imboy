@@ -67,11 +67,23 @@ c2s_client_ack(MsgId, CurrentUid, DID) ->
 %% To → provider 名：bot_qian_fan → qianfan（向后兼容），bot_xxx → xxx
 -spec c2s_to_llm(binary(), integer(), binary(), map()) -> ok | {reply, map()}.
 c2s_to_llm(MsgId, CurrentUid, To, Data) ->
-    case imboy_llm_registry:lookup(provider_name(To)) of
-        {ok, #{module := Mod, opts := Opts}} ->
-            c2s_to_external(MsgId, CurrentUid, To, Data, llm_callback(Mod, Opts, To, MsgId));
-        undefined ->
-            {reply, message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To)}
+    %% 金钱 DoS 闸门：bot_* C2S 触发 LLM 前限流。deny 静默丢弃，不查 registry、
+    %% 不调 LLM、不给攻击者信号。与 ai_agent_reply 走同一闸门。
+    %% scope 用归一化后的 provider 名（真实计费身份）：bot_qian_fan / bot_qianfan
+    %% 等别名映射同一 provider，必须共享计数，否则可交替别名双倍突破配额。
+    case agent_rate_limiter:allow(provider_name(To), CurrentUid) of
+        {deny, Reason} ->
+            ok = ?WARN_LOG("[BOT_RATE_LIMITED] to=~p from=~p reason=~p~n", [To, CurrentUid, Reason]),
+            ok;
+        allow ->
+            case imboy_llm_registry:lookup(provider_name(To)) of
+                {ok, #{module := Mod, opts := Opts}} ->
+                    c2s_to_external(
+                        MsgId, CurrentUid, To, Data, llm_callback(Mod, Opts, To, MsgId)
+                    );
+                undefined ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To)}
+            end
     end.
 
 %% @doc 把 imboy_llm:chat/3 桥接为 c2s_to_external/5 的 ApiCallback 契约

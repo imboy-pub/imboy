@@ -56,6 +56,20 @@ do_maybe_dispatch(FromUid, ToId, Data) ->
 
 -spec dispatch(integer(), integer(), map(), binary()) -> ok.
 dispatch(FromUid, ToId, Agent, Text) ->
+    %% 金钱 DoS 闸门：LLM 调用前限流（唯一 choke point，C2G 接线后走同一闸门）。
+    %% deny 时静默丢弃——不回复、不花钱、不给攻击者信号。
+    case agent_rate_limiter:allow(ToId, FromUid) of
+        allow ->
+            do_dispatch(FromUid, ToId, Agent, Text);
+        {deny, Reason} ->
+            ok = ?WARN_LOG("[AGENT_RATE_LIMITED] agent=~p from=~p reason=~p~n", [
+                ToId, FromUid, Reason
+            ]),
+            ok
+    end.
+
+-spec do_dispatch(integer(), integer(), map(), binary()) -> ok.
+do_dispatch(FromUid, ToId, Agent, Text) ->
     Provider = maps:get(<<"provider">>, Agent, <<>>),
     case imboy_llm_registry:lookup(Provider) of
         {ok, #{module := Mod, opts := Opts0}} ->

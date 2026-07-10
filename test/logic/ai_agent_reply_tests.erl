@@ -18,6 +18,13 @@
     ]}
 ).
 
+%% 限流器放行（隔离 agent_rate_limiter，本模块只测 dispatch 编排，不测限流内部）
+-define(ALLOW_RL,
+    {agent_rate_limiter, [
+        {'allow', 2, fun(_Scope, _FromUid) -> allow end}
+    ]}
+).
+
 %% ===================================================================
 %% Happy path：agent 私聊 → LLM → 回投
 %% ===================================================================
@@ -26,6 +33,7 @@ agent_dm_triggers_llm_and_delivers_reply_test_() ->
     ?WITH_MECKS(
         [
             ?SYNC_ASYNC,
+            ?ALLOW_RL,
             {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) ->
@@ -64,6 +72,34 @@ agent_dm_triggers_llm_and_delivers_reply_test_() ->
                 meck:history(imboy_llm_openai),
             ?assertMatch([#{<<"role">> := <<"system">>} | _], Messages),
             ?assertEqual(<<"deepseek-chat">>, maps:get(model, Opts))
+        end
+    ).
+
+%% ===================================================================
+%% 金钱 DoS 闸门：限流 deny 时不触发 LLM、不投递，仍恒返回 ok
+%% ===================================================================
+
+rate_limited_denies_no_llm_test_() ->
+    ?WITH_MECKS(
+        [
+            ?SYNC_ASYNC,
+            {agent_rate_limiter, [{'allow', 2, fun(_, _) -> {deny, requester_rate} end}]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
+            ]},
+            {imboy_llm_registry, [{'lookup', 1, fun(_) -> {ok, #{module => x, opts => #{}}} end}]},
+            {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            Data = #{
+                <<"payload">> => #{<<"content">> => <<"在吗"/utf8>>},
+                <<"msg_type">> => <<"text">>
+            },
+            ?assertEqual(ok, ai_agent_reply:maybe_dispatch(7, 42, Data)),
+            %% 限流拦截在 LLM 之前：registry/lookup 与投递均不发生
+            ?assertNot(meck:called(imboy_llm_registry, lookup, '_')),
+            ?assertNot(meck:called(message_ds, send_next, '_'))
         end
     ).
 
@@ -124,6 +160,7 @@ non_text_message_no_op_test_() ->
 provider_missing_no_delivery_test_() ->
     ?WITH_MECKS(
         [
+            ?ALLOW_RL,
             {ai_agent_ds, [
                 {'is_agent', 1, fun(_) -> {true, #{<<"provider">> => <<"ghost">>}} end}
             ]},
@@ -142,6 +179,7 @@ llm_error_no_delivery_test_() ->
     ?WITH_MECKS(
         [
             ?SYNC_ASYNC,
+            ?ALLOW_RL,
             {ai_agent_ds, [
                 {'is_agent', 1, fun(_) -> {true, #{<<"provider">> => <<"openai">>}} end}
             ]},
@@ -168,6 +206,7 @@ agent_dm_streams_deltas_then_finalizes_test_() ->
     ?WITH_MECKS(
         [
             ?SYNC_ASYNC,
+            ?ALLOW_RL,
             {elib_tsid, [{'generate', 0, fun() -> 12345 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
@@ -224,6 +263,7 @@ stream_error_finalizes_partial_test_() ->
     ?WITH_MECKS(
         [
             ?SYNC_ASYNC,
+            ?ALLOW_RL,
             {elib_tsid, [{'generate', 0, fun() -> 999 end}]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(42) -> {true, #{<<"provider">> => <<"openai">>}} end}
