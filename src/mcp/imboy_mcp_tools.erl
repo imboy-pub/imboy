@@ -29,7 +29,7 @@
 -behaviour(gen_server).
 
 %% 启动 + 注册 API
--export([start_link/0, reg_all/0]).
+-export([start_link/0, reg_all/0, reg_plugin_tools/0]).
 %% gen_server 回调
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, handle_continue/2]).
 %% tool handlers（arity 2：第二参 Ctx 携带 auth_info）
@@ -108,6 +108,31 @@ reg_all() ->
         <<"以调用者身份给某好友发一条明文文本消息（C2C）"/utf8>>,
         send_message_schema()
     ),
+    %% Phase 4 T4.1：桥接生产插件 manifest 声明的 mcp_tools
+    ok = reg_plugin_tools(),
+    ok.
+
+%% @doc Phase 4 T4.1：把生产插件 manifest 声明的 mcp_tools 注册进 MCP 表。
+%% 声明源仅 imboy_plugin_registry:mcp_tool_declarations/0（硬编码生产 manifest，
+%% 在仓可信代码）——第三方动态 manifest 不进此路径，规避任意 mfa 越权。
+%% 结构不完整的声明跳过并告警，避免单个插件手误崩掉整批注册。
+-spec reg_plugin_tools() -> ok.
+reg_plugin_tools() ->
+    lists:foreach(fun try_reg_plugin_tool/1, imboy_plugin_registry:mcp_tool_declarations()),
+    ok.
+
+-spec try_reg_plugin_tool(map()) -> ok.
+try_reg_plugin_tool(#{
+    name := N,
+    module := M,
+    function := F,
+    description := D,
+    input_schema := S
+}) when is_binary(N), is_atom(M), is_atom(F), is_binary(D), is_map(S) ->
+    _ = barrel_mcp_registry:reg(tool, N, M, F, #{description => D, input_schema => S}),
+    ok;
+try_reg_plugin_tool(Bad) ->
+    logger:warning("[MCP_PLUGIN_TOOL_SKIP] malformed mcp_tool declaration: ~p", [Bad]),
     ok.
 
 reg(Name, Fun, Desc, Schema) ->

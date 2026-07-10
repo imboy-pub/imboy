@@ -43,6 +43,8 @@ get_routes() ->
             {"/api/v1/refreshtoken", passport_handler, #{action => refreshtoken}},
             {"/api/v1/app/features", app_feature_handler, #{action => features}},
             {"/api/v1/app/manifest", app_manifest_handler, #{action => manifest}},
+            %% Phase 4 T4.1：Agent 能力发现端点（外部 AI 发现 MCP 端点 + 插件 tools）
+            {"/api/v1/agent-card", agent_card_handler, #{action => card}},
             {"/api/v1/app/policy", app_feature_handler, #{action => policy}},
             {"/api/v1/app/ice_servers", app_feature_handler, #{action => ice_servers}},
             {"/api/v1/app_version/check", app_version_handler, #{action => check}},
@@ -364,20 +366,19 @@ get_routes() ->
                     channel_handler_comment, #{
                         action => list_comments
                     }},
-                {"/api/v1/channel/:channel_id/message/:message_id/comment",
-                    channel_handler_comment, #{
+                {"/api/v1/channel/:channel_id/message/:message_id/comment", channel_handler_comment,
+                    #{
                         action => create_comment
                     }},
-                {"/api/v1/channel/:channel_id/comment/:comment_id/delete",
-                    channel_handler_comment, #{
+                {"/api/v1/channel/:channel_id/comment/:comment_id/delete", channel_handler_comment,
+                    #{
                         action => delete_comment
                     }},
-                {"/api/v1/channel/:channel_id/comment/:comment_id/like",
-                    channel_handler_comment, #{
+                {"/api/v1/channel/:channel_id/comment/:comment_id/like", channel_handler_comment, #{
                         action => like_comment
                     }},
-                {"/api/v1/channel/:channel_id/comment/:comment_id/unlike",
-                    channel_handler_comment, #{
+                {"/api/v1/channel/:channel_id/comment/:comment_id/unlike", channel_handler_comment,
+                    #{
                         action => unlike_comment
                     }},
                 % 订阅者管理 API

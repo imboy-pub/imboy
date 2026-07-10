@@ -16,7 +16,10 @@
     %% 由 imboy_plugin_loader 在启动期注入）。旧 manifest/1 与 manifests/0
     %% 保持不变以维持向后兼容。详见 .claude/plan/industrial-plugin-architecture-roadmap.md
     manifest_v2/1,
-    manifests_v2/0
+    manifests_v2/0,
+    %% Phase 4 T4.1：插件 manifest 可声明 mcp_tools，桥接进 MCP 注册表
+    mcp_tool_declarations/0,
+    mcp_tools_from/1
 ]).
 
 %% Deprecated compatibility wrapper.
@@ -268,9 +271,28 @@ normalize_manifest(RawManifest) ->
         admin_target_feature_rules => #{},
         app_entries => [],
         admin_entries => [],
-        api_handlers => []
+        api_handlers => [],
+        %% Phase 4 T4.1：可选，插件声明暴露给外部 AI 的 MCP tool（默认空 = 向后兼容）
+        mcp_tools => []
     },
     maps:merge(Defaults, RawManifest).
+
+%% @doc Phase 4 T4.1：采集全部生产插件 manifest 声明的 MCP tool。
+%% 仅从 manifests/0（硬编码生产路线，在仓可信代码）采集——第三方动态 manifest
+%% 不进此路径，规避"任意 mfa 声明=越权/供应链"风险。每个 tool 为 map：
+%%   #{name := binary(), module := atom(), function := atom(),
+%%     description := binary(), input_schema := map()}
+-spec mcp_tool_declarations() -> [map()].
+mcp_tool_declarations() ->
+    mcp_tools_from(manifests()).
+
+%% @doc 纯函数：从 manifest map 集合中平铺采集 mcp_tools（便于单测）。
+-spec mcp_tools_from(map()) -> [map()].
+mcp_tools_from(Manifests) when is_map(Manifests) ->
+    lists:flatten([
+        maps:get(mcp_tools, M, [])
+     || M <- maps:values(Manifests), is_map(M)
+    ]).
 
 -spec enabled_entries(app_entries | admin_entries, map()) -> [atom()].
 enabled_entries(EntryKey, EnabledFeatures) ->
