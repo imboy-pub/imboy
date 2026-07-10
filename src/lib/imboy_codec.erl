@@ -28,7 +28,8 @@
     protocol_atom/1,
     framing_atom/1,
     wrap_v2_frame/3,
-    unwrap_v2_frame/1
+    unwrap_v2_frame/1,
+    is_json_channel_type/1
 ]).
 
 %% 协议类型
@@ -302,6 +303,17 @@ content_type_from_enum('LOCATION') -> <<"location">>;
 content_type_from_enum('CUSTOM') -> <<"custom">>;
 content_type_from_enum('E2EE') -> <<"e2ee">>;
 content_type_from_enum(_) -> <<>>.
+
+%% @doc JSON 通道专属 msg_type 识别
+%%
+%% agent_task / a2a_task_update / stream_delta 均为 JSON 通道消息类型，
+%% 不进入 protobuf enum（无 proto 变更），在 JSON 通道由 msg_type binary
+%% 原样透传。业务层可据此判定是否为 JSON-only 内容类型（渲染/路由 gate）。
+-spec is_json_channel_type(binary()) -> boolean().
+is_json_channel_type(<<"agent_task">>) -> true;
+is_json_channel_type(<<"a2a_task_update">>) -> true;
+is_json_channel_type(<<"stream_delta">>) -> true;
+is_json_channel_type(_) -> false.
 
 %% --- Payload type mapping ---
 

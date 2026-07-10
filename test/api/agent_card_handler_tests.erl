@@ -58,6 +58,44 @@ card_reflects_plugin_declared_tools_test_() ->
         end
     ).
 
+well_known_card_serves_a2a_shape_test_() ->
+    ?WITH_MECK(
+        imboy_plugin_registry,
+        [
+            {'mcp_tool_declarations', 0, fun() -> [] end},
+            {'a2a_agent_cards', 0, fun() -> [] end}
+        ],
+        fun() ->
+            Card = agent_card_handler:build_well_known_card(),
+            ?assertEqual(<<"imboy">>, maps:get(<<"name">>, Card)),
+            ?assertEqual(<<"/.well-known/agent.json">>, maps:get(<<"url">>, Card)),
+            ?assertEqual(<<"/api/v1/mcp">>, maps:get(<<"mcp_endpoint">>, Card)),
+            %% A2A 规范字段齐备
+            ?assert(is_binary(maps:get(<<"version">>, Card))),
+            ?assertEqual(true, maps:get(<<"mcp">>, maps:get(<<"capabilities">>, Card))),
+            %% plugin_tools 同时以 skills 暴露
+            ?assertEqual([], maps:get(<<"skills">>, Card)),
+            ?assertEqual([], maps:get(<<"a2a_agent_cards">>, Card))
+        end
+    ).
+
+well_known_card_surfaces_plugin_a2a_cards_test_() ->
+    ?WITH_MECK(
+        imboy_plugin_registry,
+        [
+            {'mcp_tool_declarations', 0, fun() -> [] end},
+            {'a2a_agent_cards', 0, fun() ->
+                [#{<<"name">> => <<"plugin-agent"/utf8>>, <<"url">> => <<"/p/agent.json">>}]
+            end}
+        ],
+        fun() ->
+            Card = agent_card_handler:build_well_known_card(),
+            Cards = maps:get(<<"a2a_agent_cards">>, Card),
+            ?assertEqual(1, length(Cards)),
+            ?assertEqual(<<"plugin-agent"/utf8>>, maps:get(<<"name">>, hd(Cards)))
+        end
+    ).
+
 etag_stable_and_changes_with_content_test_() ->
     ?WITH_MECK(
         imboy_plugin_registry,

@@ -45,6 +45,8 @@ get_routes() ->
             {"/api/v1/app/manifest", app_manifest_handler, #{action => manifest}},
             %% Phase 4 T4.1：Agent 能力发现端点（外部 AI 发现 MCP 端点 + 插件 tools）
             {"/api/v1/agent-card", agent_card_handler, #{action => card}},
+            %% Phase 4 T4.1：标准 A2A 发现端点（匿名可达，见 open/0）
+            {"/.well-known/agent.json", agent_card_handler, #{action => well_known}},
             {"/api/v1/app/policy", app_feature_handler, #{action => policy}},
             {"/api/v1/app/ice_servers", app_feature_handler, #{action => ice_servers}},
             {"/api/v1/app_version/check", app_version_handler, #{action => check}},
@@ -435,6 +437,8 @@ get_routes() ->
                 %% Phase 4 T4.2：群内 agent 任务审批卡片端点
                 {"/api/v1/agent_task/approve", agent_task_handler, #{action => approve}},
                 {"/api/v1/agent_task/reject", agent_task_handler, #{action => reject}},
+                %% Phase 4 T4.2：agent 任务 emit 驱动 PoC（demo 触发生命周期）
+                {"/api/v1/agent_task/demo", agent_task_demo_handler, #{action => demo}},
                 {"/api/v1/group/task/pending", group_task_handler, #{action => pending_review}},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
@@ -857,6 +861,8 @@ open() ->
         <<"/privacy-policy">>,
         <<"/account-deletion">>,
         <<"/metrics">>,
+        %% Phase 4 T4.1：A2A 发现端点按规范匿名可达
+        <<"/.well-known/agent.json">>,
         <<"/">>,
 
         %% 免鉴权 API（/api/v1 前缀，v0 裸路径已下架）

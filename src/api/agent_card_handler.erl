@@ -14,7 +14,7 @@
 -behavior(cowboy_rest).
 
 -export([init/2]).
--export([build_card/0, compute_etag/1]).
+-export([build_card/0, build_well_known_card/0, compute_etag/1]).
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
@@ -22,14 +22,16 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Req1 =
         case Action of
-            card -> card(cowboy_req:method(Req0), Req0);
+            card -> serve(cowboy_req:method(Req0), build_card(), Req0);
+            %% Phase 4 T4.1：标准 A2A 发现端点，挂载于 /.well-known/agent.json（无需认证）
+            well_known -> serve(cowboy_req:method(Req0), build_well_known_card(), Req0);
             _ -> Req0
         end,
     {ok, Req1, State}.
 
--spec card(binary(), cowboy_req:req()) -> cowboy_req:req().
-card(<<"GET">>, Req0) ->
-    Card = build_card(),
+%% GET 才返回；命中 if-none-match 走 304，否则 200 + ETag。其余方法 405。
+-spec serve(binary(), map(), cowboy_req:req()) -> cowboy_req:req().
+serve(<<"GET">>, Card, Req0) ->
     Etag = compute_etag(Card),
     case cowboy_req:header(<<"if-none-match">>, Req0) of
         Etag when Etag =/= undefined ->
@@ -47,7 +49,7 @@ card(<<"GET">>, Req0) ->
                 Req0
             )
     end;
-card(_, Req0) ->
+serve(_, _Card, Req0) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 -spec build_card() -> map().
@@ -59,6 +61,37 @@ build_card() ->
         <<"plugin_tools">> => plugin_tools(),
         <<"generated_at">> => erlang:system_time(millisecond)
     }.
+
+%% @doc Phase 4 T4.1：标准 A2A 风格 agent card（挂载 /.well-known/agent.json）。
+%% 复用 build_card/0 的 mcp_endpoint 与 plugin_tools（后者同时以 skills 暴露），
+%% 叠加 A2A 规范字段 name/description/url/version/capabilities，并汇总插件声明的 a2a_agent_card。
+-spec build_well_known_card() -> map().
+build_well_known_card() ->
+    Base = build_card(),
+    #{
+        <<"name">> => <<"imboy">>,
+        <<"description">> => <<"imboy 即时通讯平台 Agent 能力发现端点"/utf8>>,
+        <<"url">> => <<"/.well-known/agent.json">>,
+        <<"version">> => version(),
+        <<"capabilities">> => #{
+            <<"mcp">> => true,
+            <<"streaming">> => false,
+            <<"pushNotifications">> => false
+        },
+        <<"mcp_endpoint">> => maps:get(<<"mcp_endpoint">>, Base),
+        <<"skills">> => maps:get(<<"plugin_tools">>, Base),
+        <<"plugin_tools">> => maps:get(<<"plugin_tools">>, Base),
+        <<"a2a_agent_cards">> => imboy_plugin_registry:a2a_agent_cards(),
+        <<"generated_at">> => maps:get(<<"generated_at">>, Base)
+    }.
+
+%% 版本取自 OTP application vsn，避免硬编码。
+-spec version() -> binary().
+version() ->
+    case application:get_key(imboy, vsn) of
+        {ok, V} when is_list(V) -> list_to_binary(V);
+        _ -> <<"unknown">>
+    end.
 
 -spec plugin_tools() -> [map()].
 plugin_tools() ->

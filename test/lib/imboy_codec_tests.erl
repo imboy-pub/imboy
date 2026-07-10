@@ -14,24 +14,22 @@
 %%%===================================================================
 
 codec_test_() ->
-    {setup,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"JSON encode/decode roundtrip", fun json_roundtrip/0},
-      {"Protobuf encode/decode roundtrip", fun protobuf_roundtrip/0},
-      {"JSON and Protobuf decode to equivalent maps", fun cross_protocol_equivalence/0},
-      {"Protocol atom conversion", fun protocol_atom_test/0},
-      {"WebSocket frame types", fun ws_frame_types/0},
-      {"E2EE metadata conversion", fun e2ee_conversion/0},
-      {"Empty/null field handling", fun empty_field_handling/0},
-      {"Payload encode/decode", fun payload_encode_decode/0},
-      {"Large UID handling (TSID)", fun large_uid_handling/0},
-      {"Framing atom conversion", fun framing_atom_test/0},
-      {"v2 frame wrap/unwrap roundtrip", fun v2_frame_roundtrip/0},
-      {"v2 protocol atom maps to protobuf", fun v2_protocol_atom_test/0},
-      {"v2 frame unwrap error on bad input", fun v2_frame_unwrap_error/0}
-     ]}.
+    {setup, fun setup/0, fun cleanup/1, [
+        {"JSON encode/decode roundtrip", fun json_roundtrip/0},
+        {"Protobuf encode/decode roundtrip", fun protobuf_roundtrip/0},
+        {"JSON and Protobuf decode to equivalent maps", fun cross_protocol_equivalence/0},
+        {"Protocol atom conversion", fun protocol_atom_test/0},
+        {"WebSocket frame types", fun ws_frame_types/0},
+        {"E2EE metadata conversion", fun e2ee_conversion/0},
+        {"Empty/null field handling", fun empty_field_handling/0},
+        {"Payload encode/decode", fun payload_encode_decode/0},
+        {"Large UID handling (TSID)", fun large_uid_handling/0},
+        {"Framing atom conversion", fun framing_atom_test/0},
+        {"v2 frame wrap/unwrap roundtrip", fun v2_frame_roundtrip/0},
+        {"v2 protocol atom maps to protobuf", fun v2_protocol_atom_test/0},
+        {"v2 frame unwrap error on bad input", fun v2_frame_unwrap_error/0},
+        {"a2a_task_update accepted on JSON channel", fun a2a_task_update_json_channel/0}
+    ]}.
 
 %%%===================================================================
 %%% Setup / Cleanup
@@ -127,9 +125,11 @@ e2ee_conversion() ->
 
 %% @doc 空值/缺失字段处理测试
 empty_field_handling() ->
-    Msg = #{<<"id">> => <<"msg-empty">>,
-            <<"type">> => <<"S2C">>,
-            <<"action">> => <<"pull_offline_msg">>},
+    Msg = #{
+        <<"id">> => <<"msg-empty">>,
+        <<"type">> => <<"S2C">>,
+        <<"action">> => <<"pull_offline_msg">>
+    },
     Encoded = imboy_codec:encode(protobuf, Msg),
     Decoded = imboy_codec:decode(protobuf, Encoded),
 
@@ -157,10 +157,12 @@ payload_encode_decode() ->
 large_uid_handling() ->
     %% TSID 通常是 64-bit 有符号整数
     LargeUid = 7654321098765432,
-    Msg = #{<<"id">> => <<"msg-large-uid">>,
-            <<"type">> => <<"C2C">>,
-            <<"from">> => LargeUid,
-            <<"to">> => LargeUid + 1},
+    Msg = #{
+        <<"id">> => <<"msg-large-uid">>,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => LargeUid,
+        <<"to">> => LargeUid + 1
+    },
     Encoded = imboy_codec:encode(protobuf, Msg),
     Decoded = imboy_codec:decode(protobuf, Encoded),
 
@@ -203,41 +205,76 @@ v2_frame_unwrap_error() ->
     %% 不完整的 header
     ?assertMatch({error, incomplete_frame}, imboy_codec:unwrap_v2_frame(<<>>)).
 
+%% @doc a2a_task_update 在 JSON 通道被识别并原样透传（无 proto 变更）
+a2a_task_update_json_channel() ->
+    %% JSON-only 内容类型识别
+    ?assert(imboy_codec:is_json_channel_type(<<"a2a_task_update">>)),
+    ?assert(imboy_codec:is_json_channel_type(<<"agent_task">>)),
+    ?assert(imboy_codec:is_json_channel_type(<<"stream_delta">>)),
+    ?assertNot(imboy_codec:is_json_channel_type(<<"text">>)),
+    ?assertNot(imboy_codec:is_json_channel_type(<<"custom">>)),
+
+    %% JSON 通道 msg_type 原样往返，不落 protobuf enum
+    Msg = #{
+        <<"id">> => <<"msg-a2a-001">>,
+        <<"type">> => <<"C2G">>,
+        <<"from">> => 123456789,
+        <<"to">> => 987654321,
+        <<"msg_type">> => <<"a2a_task_update">>,
+        <<"action">> => <<>>,
+        <<"e2ee">> => null,
+        <<"payload">> => #{<<"task_id">> => <<"t-001">>, <<"status">> => <<"running">>},
+        <<"created_at">> => 1710000000000
+    },
+    Encoded = imboy_codec:encode(json, Msg),
+    ?assert(is_binary(Encoded)),
+    Decoded = imboy_codec:decode(json, Encoded),
+    ?assertEqual(<<"a2a_task_update">>, maps:get(<<"msg_type">>, Decoded)),
+    ?assertEqual(
+        <<"t-001">>,
+        maps:get(<<"task_id">>, maps:get(<<"payload">>, Decoded))
+    ).
 
 %%%===================================================================
 %%% Test data helpers
 %%%===================================================================
 
 test_c2c_message() ->
-    #{<<"id">> => <<"msg-test-001">>,
-      <<"type">> => <<"C2C">>,
-      <<"from">> => 123456789,
-      <<"to">> => 987654321,
-      <<"msg_type">> => <<"text">>,
-      <<"action">> => <<>>,
-      <<"e2ee">> => null,
-      <<"payload">> => #{<<"body">> => <<"Hello IMBoy">>},
-      <<"created_at">> => 1710000000000,
-      <<"server_ts">> => 0}.
+    #{
+        <<"id">> => <<"msg-test-001">>,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => 123456789,
+        <<"to">> => 987654321,
+        <<"msg_type">> => <<"text">>,
+        <<"action">> => <<>>,
+        <<"e2ee">> => null,
+        <<"payload">> => #{<<"body">> => <<"Hello IMBoy">>},
+        <<"created_at">> => 1710000000000,
+        <<"server_ts">> => 0
+    }.
 
 test_e2ee_message() ->
-    #{<<"id">> => <<"msg-e2ee-001">>,
-      <<"type">> => <<"C2C">>,
-      <<"from">> => 111222333,
-      <<"to">> => 444555666,
-      <<"msg_type">> => <<"e2ee">>,
-      <<"action">> => <<>>,
-      <<"e2ee">> => #{
-          <<"e2ee">> => true,
-          <<"e2ee_ver">> => 1,
-          <<"e2ee_suite">> => <<"RSA-OAEP-256+AES-256-GCM">>,
-          <<"nonce">> => <<"base64nonce">>,
-          <<"keys">> => [
-              #{<<"did">> => <<"device-001">>,
-                <<"kid">> => <<"key-001">>,
-                <<"wrap_alg">> => <<"RSA-OAEP-256">>,
-                <<"ek">> => <<"encrypted-key-bytes">>}
-          ]
-      },
-      <<"payload">> => <<"encrypted-ciphertext-here">>,
-      <<"created_at">> => 1710000000000}.
+    #{
+        <<"id">> => <<"msg-e2ee-001">>,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => 111222333,
+        <<"to">> => 444555666,
+        <<"msg_type">> => <<"e2ee">>,
+        <<"action">> => <<>>,
+        <<"e2ee">> => #{
+            <<"e2ee">> => true,
+            <<"e2ee_ver">> => 1,
+            <<"e2ee_suite">> => <<"RSA-OAEP-256+AES-256-GCM">>,
+            <<"nonce">> => <<"base64nonce">>,
+            <<"keys">> => [
+                #{
+                    <<"did">> => <<"device-001">>,
+                    <<"kid">> => <<"key-001">>,
+                    <<"wrap_alg">> => <<"RSA-OAEP-256">>,
+                    <<"ek">> => <<"encrypted-key-bytes">>
+                }
+            ]
+        },
+        <<"payload">> => <<"encrypted-ciphertext-here">>,
+        <<"created_at">> => 1710000000000
+    }.

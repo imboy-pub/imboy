@@ -19,7 +19,9 @@
     manifests_v2/0,
     %% Phase 4 T4.1：插件 manifest 可声明 mcp_tools，桥接进 MCP 注册表
     mcp_tool_declarations/0,
-    mcp_tools_from/1
+    mcp_tools_from/1,
+    %% Phase 4 T4.1：插件 manifest 可选声明 a2a_agent_card，汇总进 A2A 发现端点
+    a2a_agent_cards/0
 ]).
 
 %% Deprecated compatibility wrapper.
@@ -273,7 +275,9 @@ normalize_manifest(RawManifest) ->
         admin_entries => [],
         api_handlers => [],
         %% Phase 4 T4.1：可选，插件声明暴露给外部 AI 的 MCP tool（默认空 = 向后兼容）
-        mcp_tools => []
+        mcp_tools => [],
+        %% Phase 4 T4.1：可选，插件声明的 A2A agent card（默认 undefined = 向后兼容，非 Required）
+        a2a_agent_card => undefined
     },
     maps:merge(Defaults, RawManifest).
 
@@ -293,6 +297,18 @@ mcp_tools_from(Manifests) when is_map(Manifests) ->
         maps:get(mcp_tools, M, [])
      || M <- maps:values(Manifests), is_map(M)
     ]).
+
+%% @doc Phase 4 T4.1：采集全部生产插件 manifest 声明的 A2A agent card。
+%% 与 mcp_tool_declarations/0 同源（仅可信在仓 manifests/0），跳过未声明（undefined）。
+-spec a2a_agent_cards() -> [map()].
+a2a_agent_cards() ->
+    [
+        Card
+     || M <- maps:values(manifests()),
+        is_map(M),
+        Card <- [maps:get(a2a_agent_card, M, undefined)],
+        Card =/= undefined
+    ].
 
 -spec enabled_entries(app_entries | admin_entries, map()) -> [atom()].
 enabled_entries(EntryKey, EnabledFeatures) ->
