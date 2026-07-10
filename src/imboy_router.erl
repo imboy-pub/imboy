@@ -432,6 +432,9 @@ get_routes() ->
                 {"/api/v1/group/task/list", group_task_handler, #{action => list}},
                 {"/api/v1/group/task/detail", group_task_handler, #{action => detail}},
                 {"/api/v1/group/task/my", group_task_handler, #{action => my_tasks}},
+                %% Phase 4 T4.2：群内 agent 任务审批卡片端点
+                {"/api/v1/agent_task/approve", agent_task_handler, #{action => approve}},
+                {"/api/v1/agent_task/reject", agent_task_handler, #{action => reject}},
                 {"/api/v1/group/task/pending", group_task_handler, #{action => pending_review}},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
