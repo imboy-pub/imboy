@@ -99,6 +99,9 @@ get_routes() ->
                 {"/api/v1/msg/reaction/list", msg_handler, #{action => reaction_list}},
                 {"/api/v1/msg/history", msg_handler, #{action => history}},
 
+                %% AI 助手发现：供客户端列出可发起 C2S 会话的助手（JWT 认证，owner 无关）
+                {"/api/v1/agent/list", ai_agent_handler, #{action => list}},
+
                 {"/api/v1/user/qrcode", user_handler, #{action => qrcode}},
                 {"/api/v1/user/update", user_handler, #{action => update}},
                 {"/api/v1/user/show", user_handler, #{action => show}},
@@ -437,8 +440,6 @@ get_routes() ->
                 %% Phase 4 T4.2：群内 agent 任务审批卡片端点
                 {"/api/v1/agent_task/approve", agent_task_handler, #{action => approve}},
                 {"/api/v1/agent_task/reject", agent_task_handler, #{action => reject}},
-                %% Phase 4 T4.2：agent 任务 emit 驱动 PoC（demo 触发生命周期）
-                {"/api/v1/agent_task/demo", agent_task_demo_handler, #{action => demo}},
                 {"/api/v1/group/task/pending", group_task_handler, #{action => pending_review}},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
@@ -483,6 +484,12 @@ get_routes() ->
                 {"/api/v1/wallet/transfer/send", wallet_handler, #{action => transfer_send}},
                 {"/api/v1/wallet/transfer/accept", wallet_handler, #{action => transfer_accept}},
                 {"/api/v1/wallet/withdraw", wallet_handler, #{action => withdraw}},
+
+                % Agent 受控支付授权 API（JWT 认证，owner 管理自己 agent 的代付额度；
+                % owner_uid 恒取 JWT current_uid，金钱红线全在 agent_payment_mandate_logic）
+                {"/api/v1/agent/mandate/authorize", agent_mandate_handler, #{action => authorize}},
+                {"/api/v1/agent/mandate/revoke", agent_mandate_handler, #{action => revoke}},
+                {"/api/v1/agent/mandate/active", agent_mandate_handler, #{action => active}},
 
                 % 统一支付回调 webhook（第三方支付服务器回调，无 JWT，见 open/0）
                 {"/api/v1/payment/callback/:gateway", payment_callback_handler, #{action => notify}},
@@ -577,6 +584,8 @@ get_routes() ->
         {"/api/adm/ai_agent/create", adm_ai_agent_handler, #{action => create}},
         {"/api/adm/ai_agent/update", adm_ai_agent_handler, #{action => update}},
         {"/api/adm/ai_agent/set_status", adm_ai_agent_handler, #{action => set_status}},
+        % admin 应急入口(c)：代运营为 agent 创建受控支付授权（finance:write RBAC）
+        {"/api/adm/ai_agent/mandate_create", adm_ai_agent_handler, #{action => mandate_create}},
         {"/api/adm/mcp/clients", adm_mcp_handler, #{action => list}},
         {"/api/adm/mcp/clients/approve", adm_mcp_handler, #{action => approve}},
         {"/api/adm/mcp/clients/reject", adm_mcp_handler, #{action => reject}},
@@ -918,7 +927,10 @@ test_routes_v1() ->
         true ->
             [
                 {"/api/v1/test/req_get", test_handler, #{action => req_get}},
-                {"/api/v1/test/req_post", test_handler, #{action => req_post}}
+                {"/api/v1/test/req_post", test_handler, #{action => req_post}},
+                %% Phase 4 T4.2：agent 任务 emit 驱动 PoC（demo 触发生命周期）
+                %% 仅非生产环境注册；生产返回 404（无此路由）
+                {"/api/v1/agent_task/demo", agent_task_demo_handler, #{action => demo}}
             ];
         false ->
             []

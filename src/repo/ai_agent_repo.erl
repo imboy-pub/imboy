@@ -12,6 +12,7 @@
 -export([active_ids/0]).
 -export([set_status/2]).
 -export([page/2]).
+-export([page_assistants/3]).
 
 -include("log.hrl").
 
@@ -95,3 +96,55 @@ page(Page, Size) ->
     Tb = tablename(),
     Column = <<"user_id, provider, model, role_id, owner_uid, status, created_at">>,
     elib_pg:page_with_total(Tb, Column, #{}, <<"created_at DESC">>, Page, Size).
+
+%% @doc 面向普通用户的「可发现助手」分页列表（供 Flutter 发起 C2S 会话）。
+%% 可见性口径（保守默认）：ai_agent.status=1（启用）AND owner_uid=0（官方/平台、无个人归属）
+%%   AND user.status=1（账号正常）。
+%% ⚠️ 缺口：ai_agent 表**无独立可见性字段**，此处以 owner_uid=0 近似「官方助手」，
+%%   避免把每个用户自建的私有 agent 泄露给全体用户；若日后要开放用户自建公开 agent，
+%%   须新增 visibility/is_public 列（属 schema 变更，不在本次范围）。
+%% 卡片字段取自 user 表：nickname/avatar/sign；description 无独立列，暂用 sign（个性签名）。
+%% ponytail: 内联 LIMIT/OFFSET（整数来自已校验分页），keyword 走参数化 $1 防注入。
+-spec page_assistants(binary(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page_assistants(Keyword, Page, Size) when Page > 0, Size > 0 ->
+    ATb = tablename(),
+    UTb = user_repo:tablename(),
+    {KwWhere, Params} =
+        case Keyword of
+            <<>> ->
+                {<<>>, []};
+            _ ->
+                Like = <<"%", (elib_pg:escape_like(Keyword))/binary, "%">>,
+                {<<" AND u.nickname ILIKE $1">>, [Like]}
+        end,
+    From =
+        <<" FROM ", ATb/binary, " a JOIN ", UTb/binary, " u ON u.id = a.user_id ">>,
+    Where =
+        <<"WHERE a.status = 1 AND a.owner_uid = 0 AND u.status = 1", KwWhere/binary>>,
+    CountSql = <<"SELECT count(*) AS total", From/binary, Where/binary>>,
+    case elib_pg:query(CountSql, Params) of
+        {ok, [#{<<"total">> := 0} | _]} ->
+            {ok, empty_page(Page, Size)};
+        {ok, [#{<<"total">> := Total} | _]} ->
+            Offset = (Page - 1) * Size,
+            ListSql =
+                <<"SELECT a.user_id, u.nickname, u.avatar, u.sign", From/binary, Where/binary,
+                    " ORDER BY a.created_at DESC LIMIT ", (integer_to_binary(Size))/binary,
+                    " OFFSET ", (integer_to_binary(Offset))/binary>>,
+            case elib_pg:query(ListSql, Params) of
+                {ok, Rows} ->
+                    {ok, #{total => Total, page => Page, size => Size, list => Rows}};
+                {error, Reason} ->
+                    ?ERROR_LOG("ai_agent_repo:page_assistants list error ~p~n", [Reason]),
+                    {error, Reason}
+            end;
+        {ok, []} ->
+            {ok, empty_page(Page, Size)};
+        {error, Reason} ->
+            ?ERROR_LOG("ai_agent_repo:page_assistants count error ~p~n", [Reason]),
+            {error, Reason}
+    end.
+
+-spec empty_page(pos_integer(), pos_integer()) -> map().
+empty_page(Page, Size) ->
+    #{total => 0, page => Page, size => Size, list => []}.

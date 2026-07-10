@@ -8,6 +8,25 @@
         {cluster_nodes, []},
         {channel_revoke_window_seconds, 120},
 
+        %% LLM providers registry consumed by imboy_llm_registry:lookup/1.
+        %% 默认空列表 => 仅内置 qianfan（module 内置默认）可用；AI agent 需要
+        %% 至少一个可用 provider 才会回复，请按需在此显式配置。
+        %% 每个元素是一个 map：
+        %%   name     : 必填 binary，provider 名称（客户端/业务按此名查找）
+        %%   module   : 必填 atom，实现 imboy_llm behaviour 的模块
+        %%   base_url : 可选 binary，OpenAI 兼容网关地址
+        %%   api_key  : 可选 binary，敏感值——请用占位符，生产经 IMBOY_* 环境变量注入
+        %%   model    : 可选 binary，模型名
+        %% maps:without([name, module], Provider) 之外的字段会作为 chat/3 的 Opts 透传。
+        {llm_providers, [
+            #{name => <<"qianfan">>, module => imboy_llm_qianfan},
+            #{name => <<"openai">>, module => imboy_llm_openai,
+              base_url => <<"https://api.deepseek.com/v1">>,
+              %% 请勿在此写入真实密钥，运行时用 IMBOY_LLM_OPENAI_API_KEY 等注入
+              api_key => <<"YOUR_API_KEY_HERE">>,
+              model => <<"deepseek-chat">>}
+        ]},
+
         %% Stage 1 product policy skeleton:
         %% - `product_profile` and `capabilities` are now explicit config objects
         %% - current App/Admin feature payload shape remains unchanged

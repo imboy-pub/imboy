@@ -9,8 +9,9 @@
 %   POST /adm/ai_agent/create        -> 新建 agent（建号+绑 provider/role/owner）
 %   POST /adm/ai_agent/update        -> 更新既有 agent 绑定
 %   POST /adm/ai_agent/set_status    -> 启用/停用（status 0|1）
+%   POST /adm/ai_agent/mandate_create-> 【admin 应急入口】代运营为 agent 创建受控支付授权
 %
-% 权限：users:read 读，users:create 建，users:update 改。
+% 权限：users:read 读，users:create 建，users:update 改，finance:write 授权代付。
 %%%
 
 -behavior(cowboy_rest).
@@ -23,6 +24,7 @@
 -define(PERM_READ, <<"users:read">>).
 -define(PERM_CREATE, <<"users:create">>).
 -define(PERM_UPDATE, <<"users:update">>).
+-define(PERM_FINANCE_WRITE, <<"finance:write">>).
 
 %% ===================================================================
 %% API
@@ -40,6 +42,7 @@ init(Req0, State0) ->
             create -> create(Method, Req0, State);
             update -> update(Method, Req0, State);
             set_status -> set_status(Method, Req0, State);
+            mandate_create -> mandate_create(Method, Req0, State);
             _ -> Req0
         end,
     {ok, Req1, State}.
@@ -110,6 +113,38 @@ set_status(<<"POST">>, Req0, State) ->
         end
     end);
 set_status(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc 【admin 应急入口(c)】代运营为指定 agent 创建受控支付授权。
+%% ⚠️ owner_uid **不取管理员身份**，而是目标 agent 的 ai_agent.owner_uid
+%%    （代运营替 owner 决策，扣款方仍是 owner 本人钱包）。金钱红线（归属/边界/单活）
+%%    全部复用 agent_payment_mandate_logic:authorize/2，本层只解析目标 owner。
+%% Body: agent_uid, max_amount_fen, max_total_fen, expires_in_secs, period_secs?
+-spec mandate_create(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+mandate_create(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_FINANCE_WRITE, State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        AgentUid = ec_cnv:to_integer(maps:get(<<"agent_uid">>, PostVals, 0)),
+        case ai_agent_ds:is_agent(AgentUid) of
+            {true, #{<<"owner_uid">> := OwnerUid0}} ->
+                OwnerUid = ec_cnv:to_integer(OwnerUid0),
+                case agent_payment_mandate_logic:authorize(OwnerUid, PostVals) of
+                    {ok, R} ->
+                        elib_response:success(Req0, R, <<"授权成功"/utf8>>);
+                    {error, not_agent_owner} ->
+                        elib_response:error(
+                            Req0, <<"该 Agent 未绑定 owner，无法授权"/utf8>>, ?ERR_BAD_REQUEST
+                        );
+                    {error, invalid_params} ->
+                        elib_response:error(Req0, <<"参数不合法"/utf8>>, ?ERR_BAD_REQUEST);
+                    {error, _} ->
+                        elib_response:error(Req0, <<"授权失败"/utf8>>, ?ERR_BAD_REQUEST)
+                end;
+            false ->
+                elib_response:error(Req0, <<"Agent 不存在或已停用"/utf8>>, ?ERR_BAD_REQUEST)
+        end
+    end);
+mandate_create(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% @doc 权限门控：ok 则执行 Fun，否则回 acl 的拒绝 Req
