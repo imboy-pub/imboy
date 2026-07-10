@@ -22,6 +22,8 @@
 -export([topup/3]).
 %% G3 治理：payment_wallet_gateway 不再直调 repo / G3 remediation
 -export([atomic_balance_change/4]).
+%% 原子两腿结算（借记付款方 + 贷记收款方，单事务无资金丢失窗口）
+-export([atomic_transfer/2]).
 %% 幂等查询：payment_wallet_gateway 用 reference_no 防止重复入账
 -export([find_transaction_by_ref/1]).
 %% 运营后台：提现流水分页 + 状态更新
@@ -101,6 +103,15 @@ topup(Uid, Amount, RefNo) ->
     {ok, integer()} | {rollback, term()} | {error, term()}.
 atomic_balance_change(Amount, Uid, TxData, RefNo) ->
     wallet_repo:atomic_balance_change(Amount, Uid, TxData, RefNo).
+
+%% @doc 原子两腿结算（薄封装）：同一事务借记付款方 + 贷记收款方 + 双流水。
+%% Debit/Credit map：#{user_id, wallet_id, amount(正整数分), tx_type, remark, reference_no}
+-spec atomic_transfer(map(), map()) ->
+    {ok, #{debit_balance := integer(), credit_balance := integer()}}
+    | {rollback, term()}
+    | {error, term()}.
+atomic_transfer(Debit, Credit) ->
+    wallet_repo:atomic_transfer(Debit, Credit).
 
 %% @doc 按外部业务号查询流水（幂等性保护）/ Find transaction by external ref (idempotency).
 %% G3 治理：payment_wallet_gateway 不再直调 repo / G3 remediation.

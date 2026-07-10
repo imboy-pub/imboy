@@ -6,6 +6,7 @@
 -export([find_by_uid/1]).
 -export([create/1]).
 -export([atomic_balance_change/4]).
+-export([atomic_transfer/2]).
 -export([find_transaction_by_ref/1]).
 -export([page_transactions/3]).
 -export([page/3]).
@@ -139,6 +140,99 @@ atomic_balance_change(Amount, Uid, TxData, RefNo) ->
                 throw({rollback, Reason})
         end
     end).
+
+%% @doc 原子两腿结算：**同一事务**内借记付款方 + 贷记收款方 + 各写一条流水。
+%% 绝无「借记成功/贷记失败」资金丢失窗口——任一步失败整笔 rollback（复用
+%% reject_and_refund/1 的单事务多步范本，直接用 elib_pg:execute(Conn,...)，
+%% **不嵌套** atomic_balance_change/4，因其自开事务会破坏原子性）。
+%% Debit/Credit 均为 map（amount 为正整数分，方向由借/贷腿决定）：
+%%   #{user_id, wallet_id, amount, tx_type, remark, reference_no}
+%% 借记腿守卫 `balance - amount >= 0`（余额不足 → {rollback, insufficient_balance}）；
+%% 贷记腿要求收款钱包存在（{ok,0} → {rollback, credit_wallet_missing}）。
+%% 流水 amount 存**带符号增量**：借记 -amount、贷记 +amount（与既有 ledger 一致）。
+%% 幂等靠 reference_no 唯一索引：两腿须用不同 RefNo，重放时 INSERT 撞索引 → 整笔 rollback。
+%% @returns {ok, #{debit_balance := integer(), credit_balance := integer()}}
+%%        | {rollback, term()} | {error, term()}
+-spec atomic_transfer(map(), map()) ->
+    {ok, #{debit_balance := integer(), credit_balance := integer()}}
+    | {rollback, term()}
+    | {error, term()}.
+atomic_transfer(Debit, Credit) ->
+    Tb = tablename(),
+    TxTb = tx_tablename(),
+    #{
+        user_id := DUid,
+        wallet_id := DWid,
+        amount := DAmt,
+        tx_type := DType,
+        reference_no := DRef
+    } = Debit,
+    #{
+        user_id := CUid,
+        wallet_id := CWid,
+        amount := CAmt,
+        tx_type := CType,
+        reference_no := CRef
+    } = Credit,
+    DRemark = maps:get(remark, Debit, <<>>),
+    CRemark = maps:get(remark, Credit, <<>>),
+    elib_pg:with_tx(fun(Conn) ->
+        %% 1. 借记付款方（守卫余额充足，行锁 + 乐观锁 version+1）
+        DebitBal = do_debit(Conn, Tb, DUid, DAmt),
+        %% 2. 借记流水（负数增量）
+        ok = insert_tx(Conn, TxTb, DWid, DUid, -DAmt, DebitBal, DType, DRemark, DRef),
+        %% 3. 贷记收款方
+        CreditBal = do_credit(Conn, Tb, CUid, CAmt),
+        %% 4. 贷记流水（正数增量）
+        ok = insert_tx(Conn, TxTb, CWid, CUid, CAmt, CreditBal, CType, CRemark, CRef),
+        {ok, #{debit_balance => DebitBal, credit_balance => CreditBal}}
+    end).
+
+%% 借记单腿（事务内）。守卫 status=1（不动冻结/停用钱包）且 balance - Amt >= 0；
+%% 0 行匹配=余额不足/钱包不存在/已停用。显式带 status，不依赖 ensure_wallet 的连带效应。
+do_debit(Conn, Tb, Uid, Amt) ->
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET balance = balance - $1, version = version + 1, updated_at = NOW()"
+            " WHERE user_id = $2 AND status = 1 AND balance - $1 >= 0"
+            " RETURNING balance">>,
+    case elib_pg:execute(Conn, Sql, [Amt, Uid]) of
+        {ok, 1, [{Bal}]} -> Bal;
+        {ok, 0} -> throw({rollback, insufficient_balance});
+        {error, Reason} -> throw({rollback, Reason})
+    end.
+
+%% 贷记单腿（事务内）。守卫 status=1；收款钱包不存在/已停用（0 行）→ credit_wallet_missing。
+do_credit(Conn, Tb, Uid, Amt) ->
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
+            " WHERE user_id = $2 AND status = 1"
+            " RETURNING balance">>,
+    case elib_pg:execute(Conn, Sql, [Amt, Uid]) of
+        {ok, 1, [{Bal}]} -> Bal;
+        {ok, 0} -> throw({rollback, credit_wallet_missing});
+        {error, Reason} -> throw({rollback, Reason})
+    end.
+
+%% 写一条流水（事务内）。INSERT 失败（含 reference_no 唯一索引冲突）→ rollback。
+insert_tx(Conn, TxTb, WalletId, Uid, SignedAmt, BalAfter, Type, Remark, Ref) ->
+    TxId = elib_tsid:generate(wallet_transaction),
+    {TxSql, TxParams} = elib_pg_sql:insert(TxTb, #{
+        <<"id">> => TxId,
+        <<"wallet_id">> => WalletId,
+        <<"user_id">> => Uid,
+        <<"amount">> => SignedAmt,
+        <<"balance_after">> => BalAfter,
+        <<"tx_type">> => Type,
+        <<"remark">> => Remark,
+        <<"reference_no">> => Ref,
+        <<"status">> => 1
+    }),
+    case elib_pg:execute(Conn, TxSql, TxParams) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, Reason})
+    end.
 
 %% @doc 提现流水分页（运营后台跨用户，固定 tx_type=10）
 -spec page_withdrawals(map(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
