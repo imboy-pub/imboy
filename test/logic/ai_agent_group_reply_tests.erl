@@ -166,3 +166,103 @@ non_agent_mention_no_trigger_test_() ->
             ?assertNot(meck:called(imboy_llm_registry, lookup, '_'))
         end
     ).
+
+%% ===================================================================
+%% T4.3 ② 支付指令触发（确定性命令 + 授权 + 限流）
+%% ===================================================================
+
+%% 收款人 = 唯一非 agent mention
+payee_single_nonagent_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        D = #{<<"payload">> => #{<<"mentions">> => [100, 200]}},
+        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100))
+    end).
+
+%% binary uid 归一
+payee_binary_uid_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        D = #{<<"payload">> => #{<<"mentions">> => [100, <<"200">>]}},
+        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100))
+    end).
+
+%% 排除 0/负数（to_uid >0 守卫），仍取到唯一合法收款人
+payee_excludes_nonpositive_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        D = #{<<"payload">> => #{<<"mentions">> => [100, 0, -5, 200]}},
+        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100))
+    end).
+
+%% 0 个或 >1 个非 agent 收款人 → 歧义 error
+payee_ambiguous_or_missing_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            error,
+            ai_agent_group_reply:payee_mention(
+                #{<<"payload">> => #{<<"mentions">> => [100]}}, 100
+            )
+        ),
+        ?assertEqual(
+            error,
+            ai_agent_group_reply:payee_mention(
+                #{<<"payload">> => #{<<"mentions">> => [100, 200, 300]}}, 100
+            )
+        )
+    end).
+
+%% H1：支付指令须过金钱DoS限流闸门；deny → handled 且**不授权/不扣款**
+pay_command_rate_limited_test_() ->
+    ?WITH_MECKS(
+        [
+            {agent_payment_command, [
+                {'parse_amount', 1, fun(_) -> {ok, 500} end},
+                {'authorize_and_pay', 5, fun(_, _, _, _, _) ->
+                    put(paid, true),
+                    {ok, #{}}
+                end}
+            ]},
+            {agent_rate_limiter, [{'allow', 2, fun(_, _) -> {deny, agent_rate} end}]}
+        ],
+        fun() ->
+            erase(paid),
+            D = #{<<"payload">> => #{<<"mentions">> => [100, 200]}, <<"id">> => 7777},
+            R = ai_agent_group_reply:try_pay_command(999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}]),
+            ?assertEqual(handled, R),
+            ?assertEqual(undefined, get(paid))
+        end
+    ).
+
+%% 限流放行 → 授权扣款（From/agent/payee/amount 正确传入），成功回群
+pay_command_authorizes_test_() ->
+    ?WITH_MECKS(
+        [
+            {agent_payment_command, [
+                {'parse_amount', 1, fun(_) -> {ok, 500} end},
+                {'authorize_and_pay', 5, fun(From, Agent, Payee, Amount, _Msg) ->
+                    put(paid, {From, Agent, Payee, Amount}),
+                    {ok, #{}}
+                end}
+            ]},
+            {agent_rate_limiter, [{'allow', 2, fun(_, _) -> allow end}]},
+            {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 1 end}]}
+        ],
+        fun() ->
+            erase(paid),
+            D = #{<<"payload">> => #{<<"mentions">> => [100, 200]}, <<"id">> => 7777},
+            R = ai_agent_group_reply:try_pay_command(999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}]),
+            ?assertEqual(handled, R),
+            ?assertEqual({999, 100, 200, 500}, get(paid))
+        end
+    ).
+
+%% >1 个 agent 被@ → 支付歧义，回退 LLM 路径（ignore），不碰支付
+pay_command_multi_agent_ignore_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        D = #{<<"payload">> => #{<<"mentions">> => [100, 101, 200]}, <<"id">> => 1},
+        ?assertEqual(
+            ignore,
+            ai_agent_group_reply:try_pay_command(
+                999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}, {101, #{}}]
+            )
+        )
+    end).
