@@ -11,10 +11,12 @@
 %%% msg_c2s_logic（bot_* C2S）两条通路共用（Phase 2 T2.2）。
 %%%
 %%% Ctx = #{stream_id := binary(),   %% 流会话 id，与定稿共享
-%%%         target_uid := integer(), %% imboy_syn:publish 目标（在线接收方 human uid）
+%%%         target_uid := integer(), %% imboy_syn:publish 目标（单接收方；observer_uids 缺省时用）
+%%%         observer_uids => [integer()], %% 可选(Phase 4 T4.2)：群内多观察者扇出目标；
+%%%                                       %% 提供时覆盖 target_uid，扇出给每个 uid
 %%%         from := binary(),        %% 帧 from（agent uid / bot 标识）
-%%%         to := binary(),          %% 帧 to（human uid）
-%%%         type := binary()}        %% 帧 type（C2C / C2S）
+%%%         to := binary(),          %% 帧 to（human uid / group id）
+%%%         type := binary()}        %% 帧 type（C2C / C2S / C2G）
 %%% @since 2026-07-10
 
 -export([push/2, flush_tail/1, full_text/1, reset/1]).
@@ -105,7 +107,16 @@ publish(Ctx, Chunk, IsEnd) ->
         },
         <<"created_at">> => elib_dt:millisecond()
     },
-    _ = imboy_syn:publish(maps:get(target_uid, Ctx), jsone:encode(Frame, [native_utf8])),
+    %% Phase 4 T4.2 fan-out：有 observer_uids 则扇出给群内多观察者（群 agent 协作
+    %% 可观测窗），否则回退单 target_uid（Phase 2 C2C/C2S 原行为，向后兼容）。
+    %% 注意 maps:get/3 默认值急切求值，故用 case 惰性取 target_uid。
+    Targets =
+        case maps:get(observer_uids, Ctx, undefined) of
+            undefined -> [maps:get(target_uid, Ctx)];
+            Us when is_list(Us) -> Us
+        end,
+    Json = jsone:encode(Frame, [native_utf8]),
+    lists:foreach(fun(U) -> imboy_syn:publish(U, Json) end, Targets),
     ok.
 
 pd(Key, Default) ->

@@ -152,6 +152,7 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
 
     case imboy_policy:validate_message_write(<<"C2G">>, MsgType, Action, E2EE, Msg2) of
         ok ->
+            %% agent 群触发在 do_stage_and_send_c2g 的 {ok,new} 分支内旁路（仅真正新消息）
             do_stage_and_send_c2g(
                 MsgId,
                 CurrentUid,
@@ -349,6 +350,11 @@ do_stage_and_send_c2g(
                     [] -> ok;
                     _ -> _ = mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
                 end,
+
+            %% Phase 4 T4.2 群触发：仅对**真正新入投递管道**的消息旁路触发 @agent 回复。
+            %% 放在 {ok,new} 分支内，避免 {ok,duplicate}(QoS 正常重发) / error(引用不存在未投递)
+            %% 场景下误触发 agent（重复 LLM 调用/刷屏）。fire-and-forget。
+            _ = ai_agent_group_reply:maybe_dispatch(CurrentUid, ToGID, Data, MemberUids),
 
             ok;
         error ->
