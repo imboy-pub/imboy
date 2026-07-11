@@ -138,7 +138,10 @@ agent_data(Uid, Provider, ConfigMap) ->
         system_prompt => maps:get(<<"system_prompt">>, ConfigMap, <<>>),
         owner_uid => ec_cnv:to_integer(maps:get(<<"owner_uid">>, ConfigMap, 0)),
         trigger_policy => jsone:encode(TriggerMap, [native_utf8]),
-        status => 1
+        status => 1,
+        %% 可选：管理后台传则透传，缺省保持列 DEFAULT（description='' visibility=0）
+        description => maps:get(<<"description">>, ConfigMap, <<>>),
+        visibility => ec_cnv:to_integer(maps:get(<<"visibility">>, ConfigMap, 0))
     }.
 
 -spec decode_trigger(map()) -> map().

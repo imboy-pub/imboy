@@ -5,7 +5,7 @@
 %
 % 职责：面向普通用户列出「可发起 C2S 会话的助手」，把 repo 返回的存储行
 %       映射为前端卡片 {id, name, avatar, description}。可见性口径由 repo 收口
-%       （status=1 且 owner_uid=0 官方助手），本层只做字段投影，不做权限判定。
+%       （status=1 且 visibility=1 公开可发现），本层只做字段投影，不做权限判定。
 %%%
 
 -export([list_assistants/1]).
@@ -30,12 +30,12 @@ list_assistants(#{page := Page, size := Size} = Params) ->
 %% Internal
 %% ===================================================================
 
-%% 存储行 → 前端助手卡片（description 暂映射 user.sign 个性签名）
+%% 存储行 → 前端助手卡片（description 取 ai_agent.description 真实列）
 -spec to_card(map()) -> map().
 to_card(Row) ->
     #{
         <<"id">> => maps:get(<<"user_id">>, Row),
         <<"name">> => maps:get(<<"nickname">>, Row, <<>>),
         <<"avatar">> => maps:get(<<"avatar">>, Row, <<>>),
-        <<"description">> => maps:get(<<"sign">>, Row, <<>>)
+        <<"description">> => maps:get(<<"description">>, Row, <<>>)
     }.

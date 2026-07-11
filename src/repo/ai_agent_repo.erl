@@ -22,7 +22,8 @@ tablename() ->
 
 %% @doc 创建或更新 agent 绑定（按 user_id upsert）
 %% Data 键：user_id(必填), provider(必填), model, role_id, system_prompt,
-%%          owner_uid, trigger_policy(已编码 JSON binary), status
+%%          owner_uid, trigger_policy(已编码 JSON binary), status,
+%%          description(专属简介), visibility(0=私有 1=公开可发现)
 -spec upsert(map()) -> {ok, [map()]} | {error, term()}.
 upsert(#{user_id := UserId, provider := Provider} = Data) ->
     Tb = tablename(),
@@ -32,20 +33,32 @@ upsert(#{user_id := UserId, provider := Provider} = Data) ->
     OwnerUid = maps:get(owner_uid, Data, 0),
     TriggerJson = maps:get(trigger_policy, Data, <<"{}">>),
     Status = maps:get(status, Data, 1),
+    Description = maps:get(description, Data, <<>>),
+    Visibility = maps:get(visibility, Data, 0),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (user_id, provider, model, role_id, system_prompt, owner_uid,"
-            "  trigger_policy, status, created_at, updated_at)"
-            " VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,NOW(),NOW())"
+            "  trigger_policy, status, description, visibility, created_at, updated_at)"
+            " VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,NOW(),NOW())"
             " ON CONFLICT (user_id) DO UPDATE SET"
             " provider = EXCLUDED.provider, model = EXCLUDED.model,"
             " role_id = EXCLUDED.role_id, system_prompt = EXCLUDED.system_prompt,"
             " owner_uid = EXCLUDED.owner_uid, trigger_policy = EXCLUDED.trigger_policy,"
-            " status = EXCLUDED.status, updated_at = NOW()"
+            " status = EXCLUDED.status, description = EXCLUDED.description,"
+            " visibility = EXCLUDED.visibility, updated_at = NOW()"
             " RETURNING user_id">>,
     case
         elib_pg:query(Sql, [
-            UserId, Provider, Model, RoleId, SystemPrompt, OwnerUid, TriggerJson, Status
+            UserId,
+            Provider,
+            Model,
+            RoleId,
+            SystemPrompt,
+            OwnerUid,
+            TriggerJson,
+            Status,
+            Description,
+            Visibility
         ])
     of
         {ok, Rows} ->
@@ -62,7 +75,7 @@ find(UserId) ->
     Sql =
         <<
             "SELECT user_id, provider, model, role_id, system_prompt, owner_uid,"
-            " trigger_policy, status FROM ",
+            " trigger_policy, status, description, visibility FROM ",
             Tb/binary,
             " WHERE user_id = $1"
         >>,
@@ -98,12 +111,10 @@ page(Page, Size) ->
     elib_pg:page_with_total(Tb, Column, #{}, <<"created_at DESC">>, Page, Size).
 
 %% @doc 面向普通用户的「可发现助手」分页列表（供 Flutter 发起 C2S 会话）。
-%% 可见性口径（保守默认）：ai_agent.status=1（启用）AND owner_uid=0（官方/平台、无个人归属）
-%%   AND user.status=1（账号正常）。
-%% ⚠️ 缺口：ai_agent 表**无独立可见性字段**，此处以 owner_uid=0 近似「官方助手」，
-%%   避免把每个用户自建的私有 agent 泄露给全体用户；若日后要开放用户自建公开 agent，
-%%   须新增 visibility/is_public 列（属 schema 变更，不在本次范围）。
-%% 卡片字段取自 user 表：nickname/avatar/sign；description 无独立列，暂用 sign（个性签名）。
+%% 可见性口径：ai_agent.status=1（启用）AND visibility=1（公开可发现）
+%%   AND user.status=1（账号正常）。visibility 独立列（迁移 000031），公开即可
+%%   被发现，不再绑死 owner_uid=0；官方助手已 backfill visibility=1。
+%% 卡片字段：name/avatar JOIN user 表；description 取 ai_agent.description 真实列。
 %% ponytail: 内联 LIMIT/OFFSET（整数来自已校验分页），keyword 走参数化 $1 防注入。
 -spec page_assistants(binary(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
 page_assistants(Keyword, Page, Size) when Page > 0, Size > 0 ->
@@ -120,7 +131,7 @@ page_assistants(Keyword, Page, Size) when Page > 0, Size > 0 ->
     From =
         <<" FROM ", ATb/binary, " a JOIN ", UTb/binary, " u ON u.id = a.user_id ">>,
     Where =
-        <<"WHERE a.status = 1 AND a.owner_uid = 0 AND u.status = 1", KwWhere/binary>>,
+        <<"WHERE a.status = 1 AND a.visibility = 1 AND u.status = 1", KwWhere/binary>>,
     CountSql = <<"SELECT count(*) AS total", From/binary, Where/binary>>,
     case elib_pg:query(CountSql, Params) of
         {ok, [#{<<"total">> := 0} | _]} ->
@@ -128,9 +139,10 @@ page_assistants(Keyword, Page, Size) when Page > 0, Size > 0 ->
         {ok, [#{<<"total">> := Total} | _]} ->
             Offset = (Page - 1) * Size,
             ListSql =
-                <<"SELECT a.user_id, u.nickname, u.avatar, u.sign", From/binary, Where/binary,
-                    " ORDER BY a.created_at DESC LIMIT ", (integer_to_binary(Size))/binary,
-                    " OFFSET ", (integer_to_binary(Offset))/binary>>,
+                <<"SELECT a.user_id, u.nickname, u.avatar, a.description", From/binary,
+                    Where/binary, " ORDER BY a.created_at DESC LIMIT ",
+                    (integer_to_binary(Size))/binary, " OFFSET ",
+                    (integer_to_binary(Offset))/binary>>,
             case elib_pg:query(ListSql, Params) of
                 {ok, Rows} ->
                     {ok, #{total => Total, page => Page, size => Size, list => Rows}};
