@@ -28,6 +28,11 @@
 
 -behaviour(gen_server).
 
+%% do_send_message 的 `ok ->` 分支运行时确实可达（msg_c2c_logic:c2c 成功即返回 ok），
+%% 但 dialyzer 因 msg_c2c_logic 内 c2c_send 的 none() 级联误判 c2c 只返回 {reply,_}，
+%% 报 pattern 'ok' can never match（假阴性）。与 msg_c2c_logic 对该链的 nowarn 约定一致。
+-dialyzer({nowarn_function, [do_send_message/2]}).
+
 %% 启动 + 注册 API
 -export([start_link/0, reg_all/0, reg_plugin_tools/0]).
 %% gen_server 回调
