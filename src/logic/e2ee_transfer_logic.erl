@@ -35,6 +35,20 @@
 %% 零信任：EncryptedBundle 为发送方客户端用接收方公钥加密自身私钥后的密文，
 %% 服务端只存储/中转，永不接触明文私钥。
 create_transfer(FromUid, FromDeviceId, ToUid, EncryptedBundle) ->
+    % 0. 同账号校验（fail-closed）：设备间传输仅用于「同一账号换机」，ToUid 必须
+    %    等于发起方 FromUid（FromUid 来自 handler 鉴权得到的 current_uid，不可伪造）。
+    %    缺此校验时任意登录用户可用受害者公钥加密任意 bundle 向其发起转移，诱导
+    %    受害者在待处理列表点「查看」时静默导入攻击者可控密钥，构成 E2EE 身份注入。
+    case ToUid =:= FromUid of
+        false ->
+            {error, {<<"只能向本人账号的其他设备发起密钥传输"/utf8>>, ?ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH}};
+        true ->
+            create_transfer_same_account(FromUid, FromDeviceId, ToUid, EncryptedBundle)
+    end.
+
+-spec create_transfer_same_account(integer(), binary(), integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+create_transfer_same_account(FromUid, FromDeviceId, ToUid, EncryptedBundle) ->
     % 1. 验证接收方用户是否存在
     case user_ds:may_exist(ToUid) of
         false ->

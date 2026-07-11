@@ -39,6 +39,10 @@ start(_Type, _Args) ->
     % 无此步则 check_and_record 靠 ensure_tables 惰性建表但无清零定时器，
     % 计数只增不减 → 用户发满阈值后被永久禁言，故必须在此显式挂载。
     ok = msg_rate_logic:init_table(),
+    % 初始化 Agent/LLM 触发限流 ETS 表（金钱 DoS 闸门）。必须在此由长驻的
+    % application master 进程建表持有；否则表被首个惰性建表的短命 WS 连接进程
+    % 随断线销毁 → 全局限流计数清零 → 攻击者反复连接/断开即可绕过双维上限。
+    ok = agent_rate_limiter:init_table(),
     % 显式初始化 throttle 限流规则，防止 sys.config 加载时序问题导致 rate_not_set
     ok = init_throttle_rates(),
     % khepri:start(),

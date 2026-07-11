@@ -141,6 +141,55 @@ accept_transfer_rejects_same_device_as_source_test_() ->
         end
     ).
 
+%% ===================================================================
+%% create_transfer/4 同账号安全回归测试
+%% 设备间传输仅用于「同一账号换机」；缺同账号校验时任意登录用户可用受害者
+%% 公钥加密任意 bundle 向其发起转移，诱导受害者导入攻击者可控密钥（E2EE 身份注入）。
+%% ===================================================================
+
+%% 跨账号（ToUid =/= FromUid）必须 fail-closed 拒绝，且不得触达建会话
+create_transfer_rejects_cross_account_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {may_exist, 1, fun(_ToUid) -> true end}
+            ]},
+            {e2ee_transfer_ds, [
+                %% 若守卫缺失会走到这里建会话；这里若被调用即视为漏洞未修
+                {generate_session_id, 0, fun() -> <<"sess-x">> end},
+                {create_raw, 1, fun(_Map) -> {ok, <<"sess-x">>} end}
+            ]}
+        ],
+        fun() ->
+            Result = e2ee_transfer_logic:create_transfer(
+                10001, <<"device-001">>, 10002, <<"attacker-bundle">>
+            ),
+            ?assertMatch({error, {_, ?ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH}}, Result),
+            %% 且不得创建任何会话
+            ?assertNot(meck:called(e2ee_transfer_ds, create_raw, '_'))
+        end
+    ).
+
+%% 同账号换机（ToUid =:= FromUid）正常放行
+create_transfer_allows_same_account_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {may_exist, 1, fun(_ToUid) -> true end}
+            ]},
+            {e2ee_transfer_ds, [
+                {generate_session_id, 0, fun() -> <<"sess-ok">> end},
+                {create_raw, 1, fun(_Map) -> {ok, <<"sess-ok">>} end}
+            ]}
+        ],
+        fun() ->
+            Result = e2ee_transfer_logic:create_transfer(
+                10001, <<"device-001">>, 10001, <<"my-bundle">>
+            ),
+            ?assertMatch({ok, #{<<"status">> := <<"pending">>}}, Result)
+        end
+    ).
+
 accept_transfer_conflict_on_concurrent_accept_test_() ->
     ?WITH_MECKS(
         [

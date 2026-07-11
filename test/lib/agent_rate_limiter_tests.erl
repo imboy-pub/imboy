@@ -108,3 +108,34 @@ defaults_apply_test_() ->
         end,
         ?assertEqual(allow, agent_rate_limiter:allow(9001, 9002))
     end).
+
+%% 金钱 DoS 闸门核心保证：init_table 由长驻进程建表后，短命调用方（模拟 WS 连接
+%% 进程）触发 allow 并退出，限流表与计数必须存活——否则断线即清零、闸门被绕过。
+init_table_survives_transient_caller_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 清掉任何已存在的表，确保由本测试（长驻）进程通过 init_table 建表并持有
+        case ets:whereis(agent_rate_limiter_ets) of
+            undefined -> ok;
+            _ -> ets:delete(agent_rate_limiter_ets)
+        end,
+        ok = agent_rate_limiter:init_table(),
+        Owner = ets:info(agent_rate_limiter_ets, owner),
+        ?assertEqual(self(), Owner),
+        %% 短命进程触发一次 allow 后退出
+        {_Pid, Ref} = spawn_monitor(fun() ->
+            _ = agent_rate_limiter:allow(4242, 84),
+            ok
+        end),
+        receive
+            {'DOWN', Ref, process, _, _} -> ok
+        after 2000 -> erlang:error(timeout)
+        end,
+        %% 表仍在、属主仍是长驻进程、计数未因短命进程退出而清零
+        ?assertNotEqual(undefined, ets:whereis(agent_rate_limiter_ets)),
+        ?assertEqual(self(), ets:info(agent_rate_limiter_ets, owner)),
+        Bucket = erlang:system_time(second) div 60,
+        ?assertEqual(
+            [{{req, 4242, 84, Bucket}, 1}],
+            ets:lookup(agent_rate_limiter_ets, {req, 4242, 84, Bucket})
+        )
+    end).

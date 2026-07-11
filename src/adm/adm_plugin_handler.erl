@@ -7,6 +7,10 @@
 
 -export([init/2]).
 
+-ifdef(TEST).
+-export([safe_plugin_name/1]).
+-endif.
+
 -include_lib("eunit/include/eunit.hrl").
 
 -include("log.hrl").
@@ -399,8 +403,18 @@ safe_plugin_name(NameBin) when
     is_binary(NameBin), byte_size(NameBin) > 0, byte_size(NameBin) =< 64
 ->
     case re:run(NameBin, <<"^[a-zA-Z][a-zA-Z0-9_]*$">>) of
-        nomatch -> {error, <<"插件名称格式无效"/utf8>>};
-        _ -> {ok, binary_to_atom(NameBin, utf8)}
+        nomatch ->
+            {error, <<"插件名称格式无效"/utf8>>};
+        _ ->
+            %% 用 binary_to_existing_atom：合法插件的原子在启动注册 manifest
+            %% （persistent_term {imboy_plugin_manifest, Name}）时已存在；
+            %% 未知随机名的原子不存在 → badarg → 拒绝，永不新建原子，
+            %% 杜绝外部输入耗尽原子表的 DoS。
+            try
+                {ok, binary_to_existing_atom(NameBin, utf8)}
+            catch
+                error:badarg -> {error, <<"插件不存在"/utf8>>}
+            end
     end;
 safe_plugin_name(_) ->
     {error, <<"插件名称无效"/utf8>>}.

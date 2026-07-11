@@ -23,6 +23,8 @@
 %%%
 
 -export([allow/2]).
+%% 应用启动时调用，使限流表由长驻 application master 进程持有
+-export([init_table/0]).
 %% 供定时器回调（旧桶内存回收）
 -export([cleanup/0]).
 
@@ -49,6 +51,15 @@ allow(Scope, FromUid) ->
                 ok -> allow
             end
     end.
+
+%% @doc 应用启动时（imboy_app:start/2）调用一次，由长驻的 application master
+%% 进程建表并持有。否则表会被首个惰性建表的短命 WS 连接进程随断线销毁
+%% （named_table 无 heir，属主进程退出即删表），导致全局限流计数被整体清零、
+%% 金钱 DoS 闸门失效——攻击者反复 连接→断开 即可重置计数越过双维上限。
+%% allow/2 中的 ensure_ready 保留为防御性兜底（若未初始化仍能惰性自愈）。
+-spec init_table() -> ok.
+init_table() ->
+    ensure_ready().
 
 %% ===================================================================
 %% Internal
