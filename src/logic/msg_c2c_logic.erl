@@ -40,6 +40,17 @@ c2c(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     ToId = ec_cnv:to_integer(To),
 
+    %% 消息级限流（金钱 DoS/刷屏兜底）：超限自动禁言 → 拒发该条，不崩连接。
+    %% is_muted/auto-mute/管理员 unmute 语义均由 check_and_record 内聚承载。
+    case msg_rate_logic:check_and_record(CurrentUid) of
+        {error, muted} ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"rate_limited">>, To)};
+        _ ->
+            c2c_send(MsgId, CurrentUid, To, ToId, Data)
+    end.
+
+-spec c2c_send(binary(), integer(), binary(), integer(), map()) -> ok | {reply, map()}.
+c2c_send(MsgId, CurrentUid, To, ToId, Data) ->
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
     elib_log:info([<<"msg_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
@@ -67,6 +78,9 @@ c2c(MsgId, CurrentUid, Data) ->
             %% ponytail: maybe_dispatch 对每条非 E2EE 文本 C2C 多做一次 ai_agent 主键查，
             %%   量级可控；真成热点再给 ai_agent_ds:is_agent 加 depcache 缓存。
             _ = ai_agent_reply:maybe_dispatch(CurrentUid, ToId, Data),
+            %% billing 软计量埋点（金钱相邻）：fire-and-forget 累加 messages_sent，
+            %% 绝不阻塞主返回；无订阅/失败均 no-op（详见 billing_meter）。
+            _ = billing_meter:meter(<<"messages_sent">>, 1),
             Result;
         {reject, in_denylist} ->
             Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),

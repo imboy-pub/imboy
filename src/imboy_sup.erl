@@ -132,6 +132,16 @@ init([]) ->
         modules => [license_notice_worker]
     },
 
+    % SaaS 账单生成定时 worker（默认禁用，需 sys.config 显式启用；只生成账单不扣款）
+    BillingInvoiceWorker = #{
+        id => billing_invoice_worker,
+        start => {billing_invoice_worker, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [billing_invoice_worker]
+    },
+
     % 登录失败次数限制（ETS 表 login_attempt_ets 由此 gen_server 创建）
     LoginAttemptServer = #{
         id => login_attempt_ds,
@@ -238,6 +248,7 @@ init([]) ->
             MsgBurnWorker,
             UserDeletionWorker,
             LicenseNoticeWorker,
+            BillingInvoiceWorker,
             AiAgentRuntime,
             McpRegistry,
             McpSession,

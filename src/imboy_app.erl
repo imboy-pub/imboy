@@ -35,6 +35,10 @@ start(_Type, _Args) ->
     _ = imboy_cluster:init(),
     % 初始化验证码 ETS 表
     _ = simple_captcha_ets:init(),
+    % 初始化消息频率限流 ETS 表 + 每分钟清零定时器（接进 C2C/C2G 发送主路径）
+    % 无此步则 check_and_record 靠 ensure_tables 惰性建表但无清零定时器，
+    % 计数只增不减 → 用户发满阈值后被永久禁言，故必须在此显式挂载。
+    ok = msg_rate_logic:init_table(),
     % 显式初始化 throttle 限流规则，防止 sys.config 加载时序问题导致 rate_not_set
     ok = init_throttle_rates(),
     % khepri:start(),

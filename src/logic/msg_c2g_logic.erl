@@ -50,6 +50,25 @@ c2g(MsgId, CurrentUid, Data) ->
     Gid = maps:get(<<"to">>, Data),
     ToGID = ec_cnv:to_integer(Gid),
 
+    %% 消息级限流（金钱 DoS/刷屏兜底）：超限自动禁言 → 拒发该条，不崩连接。
+    %% 与群内 check_mute（管理员群禁言）正交：这是 per-user 全局发消息速率闸门。
+    case msg_rate_logic:check_and_record(CurrentUid) of
+        {error, muted} ->
+            _ = ?WARN_LOG("用户 ~p 消息发送频率超限，拒发 C2G", [CurrentUid]),
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_ERROR">>,
+                    <<"error">> => <<"Message rate limit exceeded"/utf8>>,
+                    <<"code">> => 429
+                }},
+            ok;
+        _ ->
+            c2g_send(MsgId, CurrentUid, Gid, ToGID, Data)
+    end.
+
+-spec c2g_send(binary(), integer(), binary(), integer(), map()) -> ok | {reply, map()}.
+c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
     % 检查是否被禁言
     case group_member_logic:check_mute(ToGID, CurrentUid) of
         true ->
