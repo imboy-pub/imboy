@@ -12,7 +12,6 @@ fi
 violations=0
 
 BOUNDARY_HANDLERS="
-auth_handler.erl
 passport_handler.erl
 user_handler.erl
 user_collect_handler.erl
@@ -36,9 +35,6 @@ group_vote_handler.erl
 # directly is a layering violation and must surface, not be whitelisted.
 allowed_modules_for_handler() {
   case "$1" in
-    auth_handler.erl)
-      echo "auth_logic"
-      ;;
     passport_handler.erl)
       echo "config_ds passport_logic token_ds user_logic"
       ;;

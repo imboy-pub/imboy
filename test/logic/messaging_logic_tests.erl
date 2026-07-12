@@ -139,3 +139,129 @@ reaction_add_uses_messaging_boundary_test_() ->
             ?assertEqual(12345, maps:get(<<"user_id">>, Payload))
         end
     ).
+
+%%%===================================================================
+%%% history/5 增量同步（conv_seq range fetch）契约测试
+%%% 覆盖：游标推进 / 重连幂等 / gap / 空结果 / archive 未开启降级 / 参数校验
+%%%===================================================================
+
+%% 正常 range fetch：next_seq 取最后一行 conv_seq，满页 has_more=true
+history_range_fetch_advances_cursor_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2c', 2, fun(A, B) ->
+                    <<"c2c:", (integer_to_binary(min(A, B)))/binary, ":",
+                        (integer_to_binary(max(A, B)))/binary>>
+                end},
+                {'history', 3, fun(_ConvKey, AfterSeq, _Limit) ->
+                    ?assertEqual(5, AfterSeq),
+                    {ok, [
+                        #{<<"conv_seq">> => 6, <<"from_id">> => 100, <<"to_id">> => 200},
+                        #{<<"conv_seq">> => 7, <<"from_id">> => 200, <<"to_id">> => 100}
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Res} = messaging_logic:history(100, <<"c2c">>, <<"200">>, 5, 2),
+            ?assertEqual(7, maps:get(<<"next_seq">>, Res)),
+            ?assertEqual(true, maps:get(<<"has_more">>, Res)),
+            % from_id/to_id 重命名为 from/to
+            [First | _] = maps:get(<<"messages">>, Res),
+            ?assertEqual(100, maps:get(<<"from">>, First)),
+            ?assertEqual(false, maps:is_key(<<"from_id">>, First))
+        end
+    ).
+
+%% 重连幂等：同一 after_seq 重复拉取结果一致（服务端无隐藏游标状态）
+history_reconnect_idempotent_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(Gid) -> <<"c2g:", (integer_to_binary(Gid))/binary>> end},
+                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) ->
+                    {ok, [#{<<"conv_seq">> => 3, <<"from_id">> => 1, <<"group_id">> => 9}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, R1} = messaging_logic:history(1, <<"c2g">>, <<"9">>, 2, 10),
+            {ok, R2} = messaging_logic:history(1, <<"c2g">>, <<"9">>, 2, 10),
+            ?assertEqual(R1, R2),
+            ?assertEqual(3, maps:get(<<"next_seq">>, R1)),
+            % 未满页 has_more=false
+            ?assertEqual(false, maps:get(<<"has_more">>, R1))
+        end
+    ).
+
+%% gap 场景：存储侧 conv_seq 不连续（如 6,9,10），next_seq 取末行；
+%% gap 检测是客户端职责（按 conv_seq 连续性判断），服务端如实返回
+history_gap_rows_next_seq_is_last_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2c', 2, fun(_, _) -> <<"c2c:1:2">> end},
+                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) ->
+                    {ok, [
+                        #{<<"conv_seq">> => 6, <<"from_id">> => 1, <<"to_id">> => 2},
+                        #{<<"conv_seq">> => 9, <<"from_id">> => 2, <<"to_id">> => 1},
+                        #{<<"conv_seq">> => 10, <<"from_id">> => 1, <<"to_id">> => 2}
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Res} = messaging_logic:history(1, <<"c2c">>, <<"2">>, 5, 10),
+            ?assertEqual(10, maps:get(<<"next_seq">>, Res)),
+            Seqs = [maps:get(<<"conv_seq">>, M) || M <- maps:get(<<"messages">>, Res)],
+            ?assertEqual([6, 9, 10], Seqs)
+        end
+    ).
+
+%% 空结果：游标不回退（next_seq 保持 after_seq）
+history_empty_keeps_cursor_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2c', 2, fun(_, _) -> <<"c2c:1:2">> end},
+                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) -> {ok, []} end}
+            ]}
+        ],
+        fun() ->
+            {ok, Res} = messaging_logic:history(1, <<"c2c">>, <<"2">>, 42, 10),
+            ?assertEqual(42, maps:get(<<"next_seq">>, Res)),
+            ?assertEqual(false, maps:get(<<"has_more">>, Res)),
+            ?assertEqual([], maps:get(<<"messages">>, Res))
+        end
+    ).
+
+%% archive 未开启：DS 报错时返回 500 级错误与可读提示
+history_archive_disabled_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2c', 2, fun(_, _) -> <<"c2c:1:2">> end},
+                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) -> {error, disabled} end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, _, ?ERR_INTERNAL_SERVER_ERROR},
+                messaging_logic:history(1, <<"c2c">>, <<"2">>, 0, 10)
+            )
+        end
+    ).
+
+%% 参数校验：非法 chat_type / 缺 peer_id 均 400
+history_param_validation_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertMatch(
+            {error, _, ?ERR_BAD_REQUEST},
+            messaging_logic:history(1, <<"c2x">>, <<"2">>, 0, 10)
+        ),
+        ?assertMatch(
+            {error, _, ?ERR_BAD_REQUEST},
+            messaging_logic:history(1, <<"c2c">>, <<>>, 0, 10)
+        )
+    end).
