@@ -138,6 +138,10 @@ insert_option_batch_success_test_() ->
             end}
         ],
         fun() ->
+            % 批量插入现为每行生成 id TSID，测试环境无 generator 注册，需 mock。
+            _ = catch meck:unload(elib_tsid),
+            meck:new(elib_tsid, [passthrough, no_link]),
+            meck:expect(elib_tsid, generate, fun(group_vote_option) -> 3001 end),
             Options = [
                 #{
                     vote_id => <<"vote123">>,
@@ -153,9 +157,40 @@ insert_option_batch_success_test_() ->
                 }
             ],
             Result = group_vote_repo:insert_options_batch(Options),
+            meck:unload(elib_tsid),
             ?assertMatch({ok, 2}, Result)
         end
     ).
+
+%% 回归：批量插入必须显式提供 id（表 id NOT NULL 无默认值）。
+%% 此前 SQL 漏 id 列在生产触发 23502 not_null_violation（2026-07-12）。
+insert_option_batch_includes_id_column_test() ->
+    _ = catch meck:unload(elib_tsid),
+    meck:new(elib_tsid, [passthrough, no_link]),
+    meck:expect(elib_tsid, generate, fun(group_vote_option) -> 3001 end),
+    _ = catch meck:unload(elib_pg),
+    meck:new(elib_pg, [passthrough, no_link]),
+    Self = self(),
+    meck:expect(elib_pg, query, fun(Sql, Params) ->
+        Self ! {captured, iolist_to_binary(Sql), Params},
+        {ok, 2}
+    end),
+    Options = [
+        #{vote_id => <<"v1">>, option_id => <<"o1">>, option_text => <<"A">>, sort_order => 1},
+        #{vote_id => <<"v1">>, option_id => <<"o2">>, option_text => <<"B">>, sort_order => 2}
+    ],
+    ?assertMatch({ok, 2}, group_vote_repo:insert_options_batch(Options)),
+    receive
+        {captured, Sql, Params} ->
+            ?assertMatch({_, _}, binary:match(Sql, <<"(id, vote_id, option_id">>)),
+            % 每行 6 参数（id 领头），2 行共 12 个
+            ?assertEqual(12, length(Params)),
+            ?assertEqual(3001, hd(Params))
+    after 1000 ->
+        ?assert(false)
+    end,
+    meck:unload(elib_pg),
+    meck:unload(elib_tsid).
 
 %% ===================================================================
 %% list_options_by_vote_id/1 测试 - 查询投票选项列表

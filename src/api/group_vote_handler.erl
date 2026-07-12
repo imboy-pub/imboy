@@ -100,7 +100,7 @@ create(Req0, State) ->
                 {error, not_group_member} ->
                     elib_response:error(Req0, "您不是该群成员");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -129,7 +129,7 @@ list(Req0, State) ->
                 {error, permission_denied} ->
                     elib_response:error(Req0, "无权限查看该群投票");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -158,7 +158,7 @@ detail(Req0, State) ->
                 {error, permission_denied} ->
                     elib_response:error(Req0, "无权限查看该投票");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -202,7 +202,7 @@ cast(Req0, State) ->
                 {error, not_group_member} ->
                     elib_response:error(Req0, "您不是该群成员");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -240,7 +240,7 @@ update(Req0, State) ->
                 {error, not_group_member} ->
                     elib_response:error(Req0, "您不是该群成员");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -267,7 +267,7 @@ cancel(Req0, State) ->
                 {error, not_voted_yet} ->
                     elib_response:error(Req0, "您还未投票");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -298,7 +298,7 @@ close(Req0, State) ->
                 {error, permission_denied} ->
                     elib_response:error(Req0, "无权限结束该投票");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -325,13 +325,20 @@ my_vote(Req0, State) ->
                 {error, not_voted_yet} ->
                     elib_response:error(Req0, "您还未投票");
                 {error, Reason} ->
-                    elib_response:error(Req0, ec_cnv:to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+%% @doc 错误原因安全转文案：atom/binary 直接转换，其余复杂 term（如
+%% epgsql 错误元组）用 ~0p 格式化，避免 ec_cnv:to_binary/1 function_clause
+%% 崩掉响应进程（生产 crash.log 2026-07-12 坐实）。
+fmt_reason(Reason) when is_atom(Reason) -> atom_to_binary(Reason, utf8);
+fmt_reason(Reason) when is_binary(Reason) -> Reason;
+fmt_reason(Reason) -> unicode:characters_to_binary(io_lib:format("~0p", [Reason])).
 
 %% @doc 将请求参数中的布尔值统一转换为 boolean()
 to_boolean(true, _Default) -> true;

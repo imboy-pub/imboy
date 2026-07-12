@@ -83,17 +83,18 @@ find_by_file_id(FileId) ->
 list_by_group(Gid, Page, Size, Options) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
-    Where = case maps:get(category, Options, undefined) of
-        undefined ->
-            #{group_id => Gid, status => 1};
-        Category ->
-            #{group_id => Gid, status => 1, file_category => Category}
-    end,
+    Where =
+        case maps:get(category, Options, undefined) of
+            undefined ->
+                #{group_id => Gid, status => 1};
+            Category ->
+                #{group_id => Gid, status => 1, file_category => Category}
+        end,
     {Sql, Params} = elib_pg_sql:build_select(
         Tb,
         <<"*">>,
         Where,
-        #{order_by => <<"created_at DESC">>, limit => Size, offset => Offset}
+        #{order_by => [{created_at, desc}], limit => Size, offset => Offset}
     ),
     elib_pg:query(Sql, Params).
 
@@ -103,16 +104,14 @@ list_by_group(Gid, Page, Size, Options) ->
 %% @param Page 页码
 %% @param Size 每页数量
 %% @return {ok, [FileMap]} | {error, Reason}
--spec search_by_name(integer(), binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec search_by_name(integer(), binary(), integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
 search_by_name(Gid, Keyword, Page, Size) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
-    Sql = <<"SELECT * FROM ", Tb/binary,
-            " WHERE group_id = $1 ",
-            " AND status = 1 ",
-            " AND file_name LIKE $2 ",
-            " ORDER BY created_at DESC ",
-            " LIMIT $3 OFFSET $4">>,
+    Sql =
+        <<"SELECT * FROM ", Tb/binary, " WHERE group_id = $1 ", " AND status = 1 ",
+            " AND file_name LIKE $2 ", " ORDER BY created_at DESC ", " LIMIT $3 OFFSET $4">>,
     Params = [Gid, <<"%", Keyword/binary, "%">>, Size, Offset],
     elib_pg:query(Sql, Params).
 
@@ -122,7 +121,8 @@ search_by_name(Gid, Keyword, Page, Size) ->
 %% @param Page 页码
 %% @param Size 每页数量
 %% @return {ok, [FileMap]} | {error, Reason}
--spec list_by_category(integer(), binary(), integer(), integer()) -> {ok, list(map())} | {error, term()}.
+-spec list_by_category(integer(), binary(), integer(), integer()) ->
+    {ok, list(map())} | {error, term()}.
 list_by_category(Gid, Category, Page, Size) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
@@ -130,7 +130,7 @@ list_by_category(Gid, Category, Page, Size) ->
         Tb,
         <<"*">>,
         #{group_id => Gid, status => 1, file_category => Category},
-        #{order_by => <<"created_at DESC">>, limit => Size, offset => Offset}
+        #{order_by => [{created_at, desc}], limit => Size, offset => Offset}
     ),
     elib_pg:query(Sql, Params).
 
@@ -149,8 +149,8 @@ soft_delete(FileId) ->
 -spec increment_download(integer()) -> {ok, integer()} | {error, term()}.
 increment_download(FileId) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
-            " SET download_count = download_count + 1 ",
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET download_count = download_count + 1 ",
             " WHERE id = $1 AND status = 1">>,
     elib_pg:execute(Sql, [FileId]).
 
@@ -160,8 +160,7 @@ increment_download(FileId) ->
 -spec count_by_group(integer()) -> {ok, integer()} | {error, term()}.
 count_by_group(Gid) ->
     Tb = tablename(),
-    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary,
-            " WHERE group_id = $1 AND status = 1">>,
+    Sql = <<"SELECT COUNT(*) as count FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1">>,
     case elib_pg:one(Sql, [Gid]) of
         {ok, #{<<"count">> := Count}} -> {ok, Count};
         {error, Reason} -> {error, Reason}
@@ -173,7 +172,8 @@ count_by_group(Gid) ->
 -spec sum_size_by_group(integer()) -> {ok, integer()} | {error, term()}.
 sum_size_by_group(Gid) ->
     Tb = tablename(),
-    Sql = <<"SELECT COALESCE(SUM(file_size), 0) as total_size FROM ", Tb/binary,
+    Sql =
+        <<"SELECT COALESCE(SUM(file_size), 0) as total_size FROM ", Tb/binary,
             " WHERE group_id = $1 AND status = 1">>,
     case elib_pg:one(Sql, [Gid]) of
         {ok, #{<<"total_size">> := TotalSize}} -> {ok, TotalSize};
@@ -186,18 +186,20 @@ sum_size_by_group(Gid) ->
 -spec category_stats(integer()) -> {ok, list({binary(), integer(), integer()})} | {error, term()}.
 category_stats(Gid) ->
     Tb = tablename(),
-    Sql = <<"SELECT file_category, ",
-            " COUNT(*) as count, ",
-            " SUM(file_size) as total_size ",
-            " FROM ", Tb/binary,
-            " WHERE group_id = $1 AND status = 1 ",
-            " GROUP BY file_category ",
+    Sql =
+        <<"SELECT file_category, ", " COUNT(*) as count, ", " SUM(file_size) as total_size ",
+            " FROM ", Tb/binary, " WHERE group_id = $1 AND status = 1 ", " GROUP BY file_category ",
             " ORDER BY count DESC">>,
     case elib_pg:query(Sql, [Gid]) of
         {ok, Rows} ->
-            Stats = [{maps:get(<<"file_category">>, R, <<>>),
-                      maps:get(<<"count">>, R, 0),
-                      maps:get(<<"total_size">>, R, 0)} || R <- Rows],
+            Stats = [
+                {
+                    maps:get(<<"file_category">>, R, <<>>),
+                    maps:get(<<"count">>, R, 0),
+                    maps:get(<<"total_size">>, R, 0)
+                }
+             || R <- Rows
+            ],
             {ok, Stats};
         {error, Reason} ->
             {error, Reason}

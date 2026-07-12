@@ -254,23 +254,30 @@ insert_options_batch(Options) when is_list(Options), length(Options) > 0 ->
     Now = elib_dt:now(),
 
     % 构建批量插入SQL
+    % id 列 NOT NULL 且无数据库默认值，必须逐行生成 TSID（与单条
+    % insert_option/1 一致）；此前遗漏 id 导致批量插入必崩 23502。
     {ValuesList, Params} = lists:foldl(
         fun(Option, {ValsAcc, ParamsAcc}) ->
+            Id = elib_tsid:generate(group_vote_option),
             VoteId = maps:get(vote_id, Option),
             OptionId = maps:get(option_id, Option),
             OptionText = maps:get(option_text, Option),
             SortOrder = maps:get(sort_order, Option, 0),
             Placeholder = io_lib:format(
-                "($~p, $~p, $~p, $~p, $~p)",
+                "($~p, $~p, $~p, $~p, $~p, $~p)",
                 [
                     length(ParamsAcc) + 1,
                     length(ParamsAcc) + 2,
                     length(ParamsAcc) + 3,
                     length(ParamsAcc) + 4,
-                    length(ParamsAcc) + 5
+                    length(ParamsAcc) + 5,
+                    length(ParamsAcc) + 6
                 ]
             ),
-            {[Placeholder | ValsAcc], ParamsAcc ++ [VoteId, OptionId, OptionText, SortOrder, Now]}
+            {
+                [Placeholder | ValsAcc],
+                ParamsAcc ++ [Id, VoteId, OptionId, OptionText, SortOrder, Now]
+            }
         end,
         {[], []},
         Options
@@ -279,7 +286,7 @@ insert_options_batch(Options) when is_list(Options), length(Options) > 0 ->
     ValuesStr = lists:join(<<",">>, lists:reverse(ValuesList)),
     Sql =
         <<"INSERT INTO ", Tb/binary,
-            " (vote_id, option_id, option_text, sort_order, created_at) VALUES ",
+            " (id, vote_id, option_id, option_text, sort_order, created_at) VALUES ",
             (iolist_to_binary(ValuesStr))/binary>>,
 
     case elib_pg:query(Sql, Params) of
