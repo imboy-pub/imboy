@@ -98,14 +98,24 @@ sign_file(Path, PrivateKey) ->
 %%   - 签名文件不存在 → ok（无签名 = 不强制）
 %%   - 任一公钥验证通过 → ok
 %%   - 全部失败 → {error, no_matching_key}
+%%
+%% 严格模式 / Strict mode（P1 插件市场签名校验）:
+%%   `{imboy, plugin_signature_required}` 为 true 时（默认 false）：
+%%   - 无可信公钥 → {error, no_trusted_keys}
+%%   - 签名文件不存在 → {error, signature_missing}
 -spec verify_file(file:filename_all(), file:filename_all()) ->
     ok | {error, term()}.
 verify_file(FilePath, SigPath) ->
     TrustedKeys = application:get_env(imboy, plugin_trusted_public_keys, []),
+    Strict = application:get_env(imboy, plugin_signature_required, false) =:= true,
     HasKeys = is_list(TrustedKeys) andalso TrustedKeys =/= [],
     case {HasKeys, file:read_file(SigPath)} of
+        {false, _} when Strict ->
+            {error, no_trusted_keys};
         {false, _} ->
             ok;
+        {_, {error, enoent}} when Strict ->
+            {error, signature_missing};
         {_, {error, enoent}} ->
             ok;
         {true, {ok, Signature}} ->

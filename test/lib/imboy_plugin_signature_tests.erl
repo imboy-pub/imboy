@@ -62,8 +62,10 @@ verify_with_wrong_pubkey_fails_test_() ->
         {ok, Pub2, _Priv2} = imboy_plugin_signature:generate_keypair(),
         Data = <<"some data">>,
         {ok, Sig} = imboy_plugin_signature:sign_data(Data, Priv1),
-        ?assertEqual({error, signature_invalid},
-                     imboy_plugin_signature:verify_data(Data, Pub2, Sig))
+        ?assertEqual(
+            {error, signature_invalid},
+            imboy_plugin_signature:verify_data(Data, Pub2, Sig)
+        )
     end).
 
 %% ===================================================================
@@ -76,8 +78,10 @@ verify_with_tampered_data_fails_test_() ->
         Original = <<"original content">>,
         Tampered = <<"tampered content">>,
         {ok, Sig} = imboy_plugin_signature:sign_data(Original, Priv),
-        ?assertEqual({error, signature_invalid},
-                     imboy_plugin_signature:verify_data(Tampered, Pub, Sig))
+        ?assertEqual(
+            {error, signature_invalid},
+            imboy_plugin_signature:verify_data(Tampered, Pub, Sig)
+        )
     end).
 
 %% ===================================================================
@@ -93,8 +97,10 @@ verify_with_tampered_sig_fails_test_() ->
         Last = binary:last(Sig),
         SigBody = binary:part(Sig, 0, byte_size(Sig) - 1),
         TamperedSig = <<SigBody/binary, (Last bxor 16#FF)>>,
-        ?assertEqual({error, signature_invalid},
-                     imboy_plugin_signature:verify_data(Data, Pub, TamperedSig))
+        ?assertEqual(
+            {error, signature_invalid},
+            imboy_plugin_signature:verify_data(Data, Pub, TamperedSig)
+        )
     end).
 
 %% ===================================================================
@@ -103,20 +109,19 @@ verify_with_tampered_sig_fails_test_() ->
 
 sign_verify_file_roundtrip_test_() ->
     {setup,
-     fun() ->
-         Path = unique_path(),
-         ok = file:write_file(Path, <<"plugin manifest content">>),
-         Path
-     end,
-     fun(Path) -> file:delete(Path) end,
-     fun(Path) ->
-         {ok, Pub, Priv} = imboy_plugin_signature:generate_keypair(),
-         {ok, Sig} = imboy_plugin_signature:sign_file(Path, Priv),
-         [
-             ?_assertEqual(64, byte_size(Sig)),
-             ?_assertEqual(ok, imboy_plugin_signature:verify_file(Path, Pub, Sig))
-         ]
-     end}.
+        fun() ->
+            Path = unique_path(),
+            ok = file:write_file(Path, <<"plugin manifest content">>),
+            Path
+        end,
+        fun(Path) -> file:delete(Path) end, fun(Path) ->
+            {ok, Pub, Priv} = imboy_plugin_signature:generate_keypair(),
+            {ok, Sig} = imboy_plugin_signature:sign_file(Path, Priv),
+            [
+                ?_assertEqual(64, byte_size(Sig)),
+                ?_assertEqual(ok, imboy_plugin_signature:verify_file(Path, Pub, Sig))
+            ]
+        end}.
 
 %% ===================================================================
 %% 7. verify_file 文件不存在
@@ -126,9 +131,12 @@ verify_file_missing_returns_error_test_() ->
     ?TEST_SIMPLE(fun() ->
         {ok, Pub, Priv} = imboy_plugin_signature:generate_keypair(),
         {ok, Sig} = imboy_plugin_signature:sign_data(<<"x">>, Priv),
-        Path = unique_path(),  %% 不创建
-        ?assertMatch({error, enoent},
-                     imboy_plugin_signature:verify_file(Path, Pub, Sig))
+        %% 不创建
+        Path = unique_path(),
+        ?assertMatch(
+            {error, enoent},
+            imboy_plugin_signature:verify_file(Path, Pub, Sig)
+        )
     end).
 
 %% ===================================================================
@@ -145,4 +153,100 @@ sign_data_signature_length_64_test_() ->
         ?assertEqual(64, byte_size(Sig1)),
         ?assertEqual(64, byte_size(Sig2)),
         ?assertEqual(64, byte_size(Sig3))
+    end).
+
+%% ===================================================================
+%% 9. strict 模式（P1 插件市场签名校验）
+%%    {imboy, plugin_signature_required} = true 时：
+%%    - 无可信公钥 → {error, no_trusted_keys}
+%%    - 签名文件缺失 → {error, signature_missing}
+%%    默认 false 保持宽松（向后兼容）
+%% ===================================================================
+
+strict_mode_test_() ->
+    {foreach, fun strict_setup/0, fun strict_cleanup/1, [
+        fun strict_missing_sig_rejected/1,
+        fun non_strict_missing_sig_ok/1,
+        fun strict_no_trusted_keys_rejected/1,
+        fun strict_valid_signature_ok/1
+    ]}.
+
+strict_setup() ->
+    Saved = {
+        application:get_env(imboy, plugin_trusted_public_keys),
+        application:get_env(imboy, plugin_signature_required)
+    },
+    application:unset_env(imboy, plugin_trusted_public_keys),
+    application:unset_env(imboy, plugin_signature_required),
+    Path = unique_path(),
+    ok = file:write_file(Path, <<"plugin content">>),
+    {Saved, Path}.
+
+strict_cleanup({{Keys, Required}, Path}) ->
+    restore_env(plugin_trusted_public_keys, Keys),
+    restore_env(plugin_signature_required, Required),
+    file:delete(Path),
+    file:delete(Path ++ ".sig"),
+    ok.
+
+restore_env(Key, undefined) -> application:unset_env(imboy, Key);
+restore_env(Key, {ok, V}) -> application:set_env(imboy, Key, V).
+
+%% strict 模式下无签名文件拒绝
+strict_missing_sig_rejected({_, Path}) ->
+    ?_test(begin
+        {ok, Pub, _Priv} = imboy_plugin_signature:generate_keypair(),
+        application:set_env(imboy, plugin_trusted_public_keys, [Pub]),
+        application:set_env(imboy, plugin_signature_required, true),
+        ?assertEqual(
+            {error, signature_missing},
+            imboy_plugin_signature:verify_file(Path, Path ++ ".sig")
+        )
+    end).
+
+%% 非 strict 模式下无签名放行（向后兼容，默认行为）
+non_strict_missing_sig_ok({_, Path}) ->
+    ?_test(begin
+        {ok, Pub, _Priv} = imboy_plugin_signature:generate_keypair(),
+        application:set_env(imboy, plugin_trusted_public_keys, [Pub]),
+        %% 显式 false
+        application:set_env(imboy, plugin_signature_required, false),
+        ?assertEqual(ok, imboy_plugin_signature:verify_file(Path, Path ++ ".sig")),
+        %% 未设置（默认）
+        application:unset_env(imboy, plugin_signature_required),
+        ?assertEqual(ok, imboy_plugin_signature:verify_file(Path, Path ++ ".sig")),
+        %% 无可信公钥也放行
+        application:unset_env(imboy, plugin_trusted_public_keys),
+        ?assertEqual(ok, imboy_plugin_signature:verify_file(Path, Path ++ ".sig"))
+    end).
+
+%% strict 模式无可信公钥拒绝（未配置 / 空列表）
+strict_no_trusted_keys_rejected({_, Path}) ->
+    ?_test(begin
+        application:set_env(imboy, plugin_signature_required, true),
+        ?assertEqual(
+            {error, no_trusted_keys},
+            imboy_plugin_signature:verify_file(Path, Path ++ ".sig")
+        ),
+        application:set_env(imboy, plugin_trusted_public_keys, []),
+        ?assertEqual(
+            {error, no_trusted_keys},
+            imboy_plugin_signature:verify_file(Path, Path ++ ".sig")
+        )
+    end).
+
+%% strict 模式下签名齐全且有效 → ok；篡改文件 → {error, no_matching_key}
+strict_valid_signature_ok({_, Path}) ->
+    ?_test(begin
+        {ok, Pub, Priv} = imboy_plugin_signature:generate_keypair(),
+        application:set_env(imboy, plugin_trusted_public_keys, [Pub]),
+        application:set_env(imboy, plugin_signature_required, true),
+        {ok, Sig} = imboy_plugin_signature:sign_file(Path, Priv),
+        ok = file:write_file(Path ++ ".sig", Sig),
+        ?assertEqual(ok, imboy_plugin_signature:verify_file(Path, Path ++ ".sig")),
+        ok = file:write_file(Path, <<"tampered content">>),
+        ?assertEqual(
+            {error, no_matching_key},
+            imboy_plugin_signature:verify_file(Path, Path ++ ".sig")
+        )
     end).
