@@ -10,6 +10,7 @@
 %%% 恢复方式优先级：
 %%% 1. 设备间传输（最快，最安全）
 %%% 2. 社交恢复（零信任，需要代理配合）
+%%% 3. 服务端加密备份（4S 模式，需恢复口令，见 e2ee_backup_logic）
 %%%
 %%% 【T10/D4】本地备份（local_backup）已删除：create 端点从未实现过，
 %%% 该路径实为孤岛，且同账号换机 transfer 已是主恢复路径，符合 YAGNI。
@@ -90,12 +91,29 @@ get_recovery_options(Uid) when is_integer(Uid) ->
                 Options1
         end,
 
+    % 3. 检查服务端加密备份（4S 模式，客户端凭恢复口令本地解密）
+    Options3 =
+        case check_server_backup_available(Uid) of
+            {ok, true, Details3} ->
+                [
+                    #{
+                        <<"method">> => <<"server_backup">>,
+                        <<"available">> => true,
+                        <<"priority">> => 3,
+                        <<"details">> => Details3
+                    }
+                    | Options2
+                ];
+            _ ->
+                Options2
+        end,
+
     % 按优先级排序
     lists:sort(
         fun(A, B) ->
             maps:get(<<"priority">>, A) < maps:get(<<"priority">>, B)
         end,
-        Options2
+        Options3
     ).
 
 %% @doc 推荐恢复方式
@@ -118,6 +136,8 @@ start_auto_recovery(Uid, DeviceId, Method) ->
             start_device_transfer_recovery(Uid, DeviceId);
         <<"social_recovery">> ->
             start_social_recovery(Uid, DeviceId);
+        <<"server_backup">> ->
+            start_server_backup_recovery(Uid, DeviceId);
         _ ->
             {error, {<<"不支持的恢复方式"/utf8>>, ?ERR_E2EE_OPERATION_NOT_SUPPORTED}}
     end.
@@ -192,6 +212,40 @@ check_social_recovery_available(Uid) ->
         _:Error ->
             ok = ?ERROR_LOG([check_social_recovery_available, {'catch', Error}]),
             {ok, false, #{}}
+    end.
+
+%% @doc 检查服务端加密备份是否可用（只探测有无，不触密文内容）
+-spec check_server_backup_available(integer()) ->
+    {ok, boolean(), map()} | {error, term()}.
+check_server_backup_available(Uid) ->
+    case e2ee_backup_ds:latest(Uid) of
+        {ok, Row} ->
+            {ok, true, #{
+                <<"backup_version">> => maps:get(<<"backup_version">>, Row),
+                <<"created_at">> => maps:get(<<"created_at">>, Row, null)
+            }};
+        {error, not_found} ->
+            {ok, false, #{}};
+        {error, Reason} ->
+            ok = ?ERROR_LOG([check_server_backup_available, Reason]),
+            {ok, false, #{}}
+    end.
+
+%% @doc 启动服务端备份恢复：指引客户端拉密文包并本地口令解密（服务端零密码学）
+-spec start_server_backup_recovery(integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+start_server_backup_recovery(Uid, _DeviceId) ->
+    case e2ee_backup_ds:latest(Uid) of
+        {ok, Row} ->
+            {ok, #{
+                <<"action">> => <<"fetch_backup">>,
+                <<"backup_version">> => maps:get(<<"backup_version">>, Row),
+                <<"message">> => <<"请输入恢复口令以解密云端备份"/utf8>>
+            }};
+        {error, not_found} ->
+            {error, {<<"无云端备份"/utf8>>, ?ERR_NOT_FOUND}};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 启动设备间传输恢复

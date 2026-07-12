@@ -1,5 +1,6 @@
 -module(e2ee_recovery_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
+-include("eunit_setup.hrl").
 -include("error_code.hrl").
 
 %%%===================================================================
@@ -54,3 +55,111 @@ start_auto_recovery_unsupported_test() ->
     Result = e2ee_recovery_logic:start_auto_recovery(Uid, DeviceId, Method),
 
     ?assertMatch({error, {_, ?ERR_E2EE_OPERATION_NOT_SUPPORTED}}, Result).
+
+%% ===================================================================
+%% server_backup 恢复方式（P0-B B3）
+%% ===================================================================
+
+recovery_options_include_server_backup_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_transfer_ds, [
+                {'get_pending_sessions', 1, fun(10001) -> {ok, []} end}
+            ]},
+            {e2ee_social_ds, [
+                {'list_trusted_contacts', 1, fun(10001) -> {ok, []} end}
+            ]},
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(10001) ->
+                    {ok, #{
+                        <<"backup_version">> => 5,
+                        <<"created_at">> => <<"2026-07-12 00:00:00">>
+                    }}
+                end}
+            ]}
+        ],
+        fun() ->
+            Options = e2ee_recovery_logic:get_recovery_options(10001),
+            ?assertEqual([<<"server_backup">>], [maps:get(<<"method">>, O) || O <- Options]),
+            [Opt] = Options,
+            %% 探测详情只含版本与时间，不含密文/盐值（零信任）
+            Details = maps:get(<<"details">>, Opt),
+            ?assertEqual(5, maps:get(<<"backup_version">>, Details)),
+            ?assertNot(maps:is_key(<<"encrypted_payload">>, Details)),
+            ?assertNot(maps:is_key(<<"kdf_salt">>, Details))
+        end
+    ).
+
+recovery_options_no_backup_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_transfer_ds, [
+                {'get_pending_sessions', 1, fun(10001) -> {ok, []} end}
+            ]},
+            {e2ee_social_ds, [
+                {'list_trusted_contacts', 1, fun(10001) -> {ok, []} end}
+            ]},
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(10001) -> {error, not_found} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual([], e2ee_recovery_logic:get_recovery_options(10001))
+        end
+    ).
+
+%% 设备间传输可用时优先级仍高于 server_backup（1 < 3）
+recovery_options_priority_order_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_transfer_ds, [
+                {'get_pending_sessions', 1, fun(10001) ->
+                    {ok, [#{<<"session_id">> => <<"s1">>}]}
+                end}
+            ]},
+            {e2ee_social_ds, [
+                {'list_trusted_contacts', 1, fun(10001) -> {ok, []} end}
+            ]},
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(10001) -> {ok, #{<<"backup_version">> => 1}} end}
+            ]}
+        ],
+        fun() ->
+            Options = e2ee_recovery_logic:get_recovery_options(10001),
+            ?assertEqual(
+                [<<"device_transfer">>, <<"server_backup">>],
+                [maps:get(<<"method">>, O) || O <- Options]
+            ),
+            ?assertEqual(<<"device_transfer">>, e2ee_recovery_logic:recommend_method(Options))
+        end
+    ).
+
+start_server_backup_recovery_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(10001) -> {ok, #{<<"backup_version">> => 5}} end}
+            ]}
+        ],
+        fun() ->
+            {ok, Result} =
+                e2ee_recovery_logic:start_auto_recovery(10001, <<"dev-1">>, <<"server_backup">>),
+            ?assertEqual(<<"fetch_backup">>, maps:get(<<"action">>, Result)),
+            ?assertEqual(5, maps:get(<<"backup_version">>, Result))
+        end
+    ).
+
+start_server_backup_recovery_no_backup_test_() ->
+    ?WITH_MECKS(
+        [
+            {e2ee_backup_ds, [
+                {'latest', 1, fun(10001) -> {error, not_found} end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {_, ?ERR_NOT_FOUND}},
+                e2ee_recovery_logic:start_auto_recovery(10001, <<"dev-1">>, <<"server_backup">>)
+            )
+        end
+    ).
