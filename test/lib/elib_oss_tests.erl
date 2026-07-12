@@ -295,6 +295,22 @@ build_object_key_group_segment_test_() ->
         ?assertEqual({ok, 1}, elib_oss:owner_of_key(Key))
     end).
 
+%% 回归：scope_segment 此前缺 moment/channel 子句 → function_clause → presign 500，
+%% 朋友圈/频道上传全断。moment 发帖前 momentId 未知故 ScopeRef=undefined 亦须不崩。
+build_object_key_moment_segment_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Key = elib_oss:build_object_key(1, <<"moment">>, undefined, <<"a.jpg">>),
+        ?assertMatch(<<"u1/moment/", _/binary>>, Key),
+        ?assertEqual({ok, 1}, elib_oss:owner_of_key(Key))
+    end).
+
+build_object_key_channel_segment_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Key = elib_oss:build_object_key(1, <<"channel">>, <<"88">>, <<"a.jpg">>),
+        ?assertMatch(<<"u1/channel/", _/binary>>, Key),
+        ?assertEqual({ok, 1}, elib_oss:owner_of_key(Key))
+    end).
+
 build_object_key_backward_compat_test_() ->
     ?TEST_SIMPLE(fun() ->
         %% /2 入口等价 scope=private

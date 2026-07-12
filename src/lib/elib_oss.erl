@@ -162,6 +162,12 @@ build_object_key(Uid, Scope, ScopeRef, FileName) ->
 scope_segment(<<"public">>, _) -> <<"avatar">>;
 scope_segment(<<"private">>, _) -> <<"file">>;
 scope_segment(<<"c2c">>, _) -> <<"c2c">>;
+%% channel/moment：段名用固定 scope 名（读鉴权走 attachment.scope_ref 字段而非
+%% object_key 段名，见 attach_logic:authorize/3）。moment 发帖前 momentId 未知故
+%% ScopeRef 可空。此前缺这两子句 → scope_segment(<<"moment"|"channel">>,_)
+%% function_clause → presign 生成 object_key 崩溃 → HTTP 500，朋友圈/频道上传全断。
+scope_segment(<<"channel">>, _) -> <<"channel">>;
+scope_segment(<<"moment">>, _) -> <<"moment">>;
 scope_segment(<<"group">>, ScopeRef) -> <<"g", (to_bin(ScopeRef))/binary>>.
 
 %% @doc 当日 UTC 日期目录 <Ymd>（YYYYMMDD）。
