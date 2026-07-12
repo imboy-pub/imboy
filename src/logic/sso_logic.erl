@@ -30,9 +30,32 @@
 %% ===================================================================
 
 %% @doc 读取三 provider 配置，缺省 provider 不含该键
+%% 敏感字段脱敏为 <<"***">>，并附 has_<field> 布尔标志（前端"留空=不修改"约定）
 -spec get_config() -> {ok, map()} | {error, term()}.
 get_config() ->
-    sso_config_ds:get_all().
+    case sso_config_ds:get_all() of
+        {ok, M} ->
+            {ok, maps:map(fun(_Provider, Cfg) -> mask_secrets(Cfg) end, M)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 敏感字段脱敏：非空 -> ***；同时给出 has_<field> 供前端判断是否已配置
+-spec mask_secrets(map()) -> map().
+mask_secrets(Cfg) ->
+    lists:foldl(
+        fun(F, Acc) ->
+            HasKey = <<"has_", F/binary>>,
+            case maps:get(F, Acc, <<>>) of
+                <<>> ->
+                    Acc#{HasKey => false};
+                _ ->
+                    Acc#{F => <<"***">>, HasKey => true}
+            end
+        end,
+        Cfg,
+        sso_config_ds:secret_fields()
+    ).
 
 %% @doc 保存单个 provider 配置（body 即配置对象，含 provider 字段）
 -spec save_config(map()) -> {ok, map()} | {error, binary()}.

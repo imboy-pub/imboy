@@ -67,3 +67,41 @@ test_oauth2_missing_token_url_test() ->
 %% @doc 未知 provider -> 校验失败
 test_unknown_provider_test() ->
     ?assertMatch({false, _}, sso_logic:test_connection(<<"bogus">>, #{})).
+
+%% ===================================================================
+%% get_config/0 敏感字段脱敏
+%% ===================================================================
+
+%% @doc 已配置的敏感字段 -> *** + has_<field>=true；未配置 -> has_<field>=false
+get_config_masks_secrets_test_() ->
+    ?WITH_MECKS(
+        [
+            {sso_config_ds, [
+                {'get_all', 0, fun() ->
+                    {ok, #{
+                        <<"oauth2">> => #{
+                            <<"client_id">> => <<"cid">>,
+                            <<"client_secret">> => <<"enc:v1:iv:cipher">>
+                        },
+                        <<"ldap">> => #{<<"host">> => <<"h">>}
+                    }}
+                end},
+                {'secret_fields', 0, fun() ->
+                    [<<"bind_password">>, <<"client_secret">>]
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, M} = sso_logic:get_config(),
+            OAuth = maps:get(<<"oauth2">>, M),
+            ?assertEqual(<<"***">>, maps:get(<<"client_secret">>, OAuth)),
+            ?assertEqual(true, maps:get(<<"has_client_secret">>, OAuth)),
+            %% 密文绝不外泄
+            ?assertEqual(nomatch, binary:match(jsone:encode(OAuth), <<"cipher">>)),
+            Ldap = maps:get(<<"ldap">>, M),
+            ?assertEqual(false, maps:get(<<"has_bind_password">>, Ldap)),
+            ?assertEqual(false, maps:get(<<"has_client_secret">>, Ldap)),
+            %% 非敏感字段原样保留
+            ?assertEqual(<<"h">>, maps:get(<<"host">>, Ldap))
+        end
+    ).
