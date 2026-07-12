@@ -242,6 +242,8 @@ get_routes() ->
                 {"/api/v1/group/face2face_save", group_handler, #{action => face2face_save}},
                 {"/api/v1/group/add", group_handler, #{action => add}},
                 {"/api/v1/group/edit", group_handler, #{action => edit}},
+                % 群级 E2EE 开关（仅群主，0→1 单向，P0-B B4）
+                {"/api/v1/group/set_e2ee_mode", group_handler, #{action => set_e2ee_mode}},
                 {"/api/v1/group/dissolve", group_handler, #{action => dissolve}},
                 {"/api/v1/group/detail", group_handler, #{action => detail}},
                 {"/api/v1/group/page", group_handler, #{action => page}},

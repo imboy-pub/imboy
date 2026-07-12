@@ -5,6 +5,8 @@
 %  msg_c2g 业务逻辑模块
 %%%
 -export([c2g/3]).
+%% 群级 E2EE fail-closed 门（导出供 EUnit 直测）
+-export([group_e2ee_gate/5]).
 -export([c2g_client_ack/3]).
 -export([c2g_revoke/3]).
 -export([c2g_revoke_ack/3]).
@@ -177,7 +179,15 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
         end,
     Msg2 = jsone:encode(MsgFull, [native_utf8]),
 
-    case imboy_policy:validate_message_write(<<"C2G">>, MsgType, Action, E2EE, Msg2) of
+    ValidateResult =
+        case imboy_policy:validate_message_write(<<"C2G">>, MsgType, Action, E2EE, Msg2) of
+            ok ->
+                %% 群级 fail-closed 门（P0-B B4）：e2ee_mode=1 的群拒收明文内容消息
+                group_e2ee_gate(ToGID, MsgType, Action, E2EE, Msg2);
+            {error, _} = PolicyErr ->
+                PolicyErr
+        end,
+    case ValidateResult of
         ok ->
             %% agent 群触发在 do_stage_and_send_c2g 的 {ok,new} 分支内旁路（仅真正新消息）
             do_stage_and_send_c2g(
@@ -197,6 +207,31 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
             );
         {error, Reason} ->
             policy_violation_reply(MsgId, Reason)
+    end.
+
+%% @doc 群级 E2EE fail-closed 门（P0-B B4）
+%% e2ee_mode=1 的群拒收未加密的内容消息；群配置查询失败同样拒发（fail-closed，
+%% 修掉项目欠账"E2EE fail-closed 无群级标志"）。非内容动作（撤回/已读等）放行。
+%% 热路径读走 group_ds:e2ee_mode 缓存，不逐条裸查 PG。
+-spec group_e2ee_gate(integer(), binary(), binary(), term(), binary()) ->
+    ok | {error, binary()}.
+group_e2ee_gate(Gid, MsgType, Action, E2EE, Payload) ->
+    case imboy_policy:content_bearing_action(Action) of
+        false ->
+            ok;
+        true ->
+            case group_ds:e2ee_mode(Gid) of
+                {ok, 1} ->
+                    case imboy_policy:encrypted_message_body(MsgType, E2EE, Payload) of
+                        true -> ok;
+                        false -> {error, <<"encrypted_message_required">>}
+                    end;
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([group_e2ee_gate_query_failed, Gid, Reason]),
+                    {error, <<"group_e2ee_check_failed">>}
+            end
     end.
 
 -spec do_stage_and_send_c2g(
@@ -605,15 +640,31 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                                             ),
                                             {reply, ActionMsg};
                                         edit ->
-                                            case
-                                                imboy_policy:validate_message_write(
-                                                    <<"C2G">>,
-                                                    MsgType,
-                                                    <<"message_edit">>,
-                                                    maps:get(<<"e2ee">>, Data, null),
-                                                    ActionPayloadJson
-                                                )
-                                            of
+                                            %% 编辑与新发同为内容写入：全局策略过后必须再过
+                                            %% 群级 fail-closed 门，否则开启 E2EE 的群可用
+                                            %% "编辑"注入明文（security-reviewer C1）
+                                            EditValidate =
+                                                case
+                                                    imboy_policy:validate_message_write(
+                                                        <<"C2G">>,
+                                                        MsgType,
+                                                        <<"message_edit">>,
+                                                        maps:get(<<"e2ee">>, Data, null),
+                                                        ActionPayloadJson
+                                                    )
+                                                of
+                                                    ok ->
+                                                        group_e2ee_gate(
+                                                            ToGID,
+                                                            MsgType,
+                                                            <<"message_edit">>,
+                                                            maps:get(<<"e2ee">>, Data, null),
+                                                            ActionPayloadJson
+                                                        );
+                                                    {error, _} = EditPolicyErr ->
+                                                        EditPolicyErr
+                                                end,
+                                            case EditValidate of
                                                 ok ->
                                                     MemberUids = group_ds:member_uids(ToGID),
                                                     ActionMsg = maps:merge(

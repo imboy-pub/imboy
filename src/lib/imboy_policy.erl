@@ -35,6 +35,8 @@
     message_encryption_required/0,
     e2ee_enabled/0,
     validate_message_write/5,
+    content_bearing_action/1,
+    encrypted_message_body/3,
     maybe_put_saved_section/3,
     capability_adjustments/2,
     effective_view_from_configs/3,

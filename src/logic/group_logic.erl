@@ -25,6 +25,7 @@
 -export([member_list_by_uids/1]).
 -export([count_by_owner/1]).
 -export([edit/3]).
+-export([set_e2ee_mode/3]).
 -export([page_by_owner/3]).
 -export([page_joined/3]).
 -export([page_managed/3]).
@@ -455,6 +456,44 @@ edit(Uid, Gid, Data) ->
             case group_ds:insert(Data4) of
                 {ok, _} -> ok;
                 {error, _} = Err -> Err
+            end
+    end.
+
+%% @doc 开启群级 E2EE（P0-B B4）
+%% 仅群主可操作，且只允许 0→1 单向开启（MVP：防"关闭后明文泄漏预期"歧义）。
+%% 开启后 msg_c2g_logic 的 fail-closed 门拒收未加密的内容消息。
+%% @param Uid 操作用户ID
+%% @param Gid 群组ID
+%% @param Mode 目标模式（仅接受 1）
+-spec set_e2ee_mode(integer(), integer(), integer()) -> ok | {error, binary()}.
+set_e2ee_mode(_Uid, _Gid, Mode) when Mode =/= 1 ->
+    {error, <<"e2ee_mode 仅支持单向开启（0→1）"/utf8>>};
+set_e2ee_mode(Uid, Gid, 1) ->
+    Member = group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"role">>),
+    Role = maps:get(<<"role">>, Member, 0),
+    case ?IS_OWNER_ROLE(Role) of
+        false ->
+            {error, <<"只有群主才能开启群端到端加密"/utf8>>};
+        true ->
+            case group_ds:update_by_id(Gid, #{e2ee_mode => 1, updated_at => elib_dt:now()}) of
+                {ok, _} ->
+                    ok = group_ds:flush_e2ee_mode(Gid),
+                    %% 广播开关事件：客户端据此建立群会话并停发明文
+                    ToUidLi = group_ds:member_uids(Gid),
+                    msg_s2c_ds:send(
+                        Uid,
+                        ToUidLi,
+                        <<"group_e2ee_mode">>,
+                        <<>>,
+                        null,
+                        #{<<"gid">> => Gid, <<"e2ee_mode">> => 1},
+                        save
+                    ),
+                    ok;
+                {error, Reason} ->
+                    %% 内部 PG 错误详情只进日志，不透传客户端（security-reviewer M1）
+                    _ = ?ERROR_LOG([set_e2ee_mode_update_failed, Gid, Reason]),
+                    {error, <<"e2ee_mode_update_failed">>}
             end
     end.
 

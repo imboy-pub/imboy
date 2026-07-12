@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/group/set-e2ee-mode.yaml — POST /api/v1/group/set_e2ee_mode
+# Handler: src/api/group_handler.erl#set_e2ee_mode/2
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 开启群级端到端加密（仅群主，单向）
+  description: |
+    ## 中文 / English
+    开启群级 E2EE（e2ee_mode 0→1 单向，仅群主）。开启后服务端拒收
+    未加密的内容消息（fail-closed），并向全体成员广播 group_e2ee_mode
+    事件供客户端建立群加密会话。
+    Owner-only one-way enable of group E2EE. Once required, the server
+    rejects plaintext content messages (fail-closed) and broadcasts a
+    group_e2ee_mode event to all members.
+  operationId: groupSetE2eeMode
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [gid, e2ee_mode]
+          properties:
+            gid:
+              type: integer
+              description: 群组 TSID / Group TSID.
+            e2ee_mode:
+              type: integer
+              enum: [1]
+              description: 目标模式，仅接受 1（0→1 单向）/ Target mode, only 1 accepted.
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      gid: { type: integer }
+                      e2ee_mode: { type: integer }
+    '4XX':
+      description: 参数非法(400) / 非群主或试图关闭(403)
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

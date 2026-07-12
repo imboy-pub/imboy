@@ -287,6 +287,8 @@ paths:
     $ref: './paths/group/add.yaml'
   /api/v1/group/edit:
     $ref: './paths/group/edit.yaml'
+  /api/v1/group/set_e2ee_mode:
+    $ref: './paths/group/set-e2ee-mode.yaml'
   /api/v1/group/dissolve:
     $ref: './paths/group/dissolve.yaml'
   /api/v1/group/detail:

@@ -9,6 +9,8 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 {'check_mute', 2, fun(100, 1001) -> false end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
                 {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
             ]},
@@ -105,6 +107,8 @@ c2g_non_member_gets_error_reply_test_() ->
                 {'check_mute', 2, fun(100, 1001) -> false end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> false end}
             ]}
         ],
@@ -138,6 +142,8 @@ c2g_mention_all_requires_admin_role_test_() ->
                 {'check_mute', 2, fun(100, 1001) -> false end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end}
             ]},
             {group_member_ds, [
@@ -174,6 +180,8 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
                 {'check_mute', 2, fun(100, 1001) -> false end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
                 {'member_uids', 1, fun(100) -> [1001, 1002] end}
             ]},
@@ -309,6 +317,8 @@ read_stats_success_returns_read_and_total_counts_test_() ->
                 {'find_by_msg_id', 1, fun(<<"msg_stats_001">>) -> {ok, [#{<<"to_gid">> => 88}]} end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end},
                 {'member_uids', 1, fun(88) -> [1001, 1002, 1003, 1004] end}
             ]},
@@ -328,6 +338,8 @@ read_stats_permission_denied_for_non_member_test_() ->
                 {'find_by_msg_id', 1, fun(<<"msg_stats_002">>) -> {ok, [#{<<"to_gid">> => 99}]} end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 99) -> false end}
             ]}
         ],
@@ -375,6 +387,8 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
                 {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end},
                 {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end}
             ]},
@@ -429,6 +443,8 @@ c2g_revoke_permission_denied_when_operator_not_sender_test_() ->
                 {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end}
             ]},
             {msg_c2g_repo, [
@@ -467,6 +483,8 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
                 {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end},
                 {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end}
             ]},
@@ -519,6 +537,8 @@ c2g_edit_rejected_when_window_expired_test_() ->
                 {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end}
             ]},
             {msg_c2g_ds, [
@@ -564,6 +584,8 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 {'check_mute', 2, fun(100, 1001) -> false end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
                 {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
             ]},
@@ -607,6 +629,8 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
                 {'check_mute', 2, fun(100, 1001) -> false end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
                 {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
             ]},
@@ -657,6 +681,8 @@ c2g_edit_plaintext_blocked_when_encryption_required_test_() ->
                 {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {group_ds, [
+                %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
+                {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end}
             ]},
             {msg_c2g_ds, [
@@ -694,6 +720,61 @@ c2g_edit_plaintext_blocked_when_encryption_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
+            ?assertEqual(0, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
+        end
+    ).
+
+%% B4 群级门集成测试（security-reviewer C1 回归守护）：
+%% 全局策略放行时，e2ee_mode=1 的群对"编辑注入明文"必须在真实 c2g_edit
+%% 调用链上被 group_e2ee_gate 拦下——仅单测 gate 函数不足以证明接线。
+c2g_edit_plaintext_blocked_when_group_e2ee_required_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {group_ds, [
+                {'e2ee_mode', 1, fun(88) -> {ok, 1} end},
+                {'is_member', 2, fun(1001, 88) -> true end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2g_group_gate_001">>) ->
+                    {ok, #{
+                        <<"from_id">> => 1001,
+                        <<"created_at">> => 1700000000000
+                    }}
+                end},
+                {'edit_offline_msg', 6, fun(_, _, _, _, _, _) -> ok end}
+            ]},
+            {imboy_policy, [
+                %% 全局策略放行，隔离出群级门的独立作用
+                {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end},
+                {'content_bearing_action', 1, fun(<<"message_edit">>) -> true end},
+                {'encrypted_message_body', 3, fun(_, _, _) -> false end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2g_edit_group_gate_001">>,
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"orig_c2g_group_gate_001">>,
+                    <<"content">> => <<"plaintext injected via edit">>,
+                    <<"msg_type">> => <<"text">>
+                },
+                <<"e2ee">> => null
+            },
+
+            {reply, Reply} = msg_c2g_logic:c2g_edit(MsgId, 1001, Data),
+            ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(
+                <<"encrypted_message_required">>,
+                maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
+            ),
+            %% 门确实查了群级配置，且明文编辑未落库
+            ?assertEqual(1, meck:num_calls(group_ds, e2ee_mode, 1)),
             ?assertEqual(0, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
         end
     ).

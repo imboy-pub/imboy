@@ -15,6 +15,8 @@
 
 -export([member_uids/1]).
 -export([is_member/2]).
+-export([e2ee_mode/1]).
+-export([flush_e2ee_mode/1]).
 -export([join/2]).
 -export([leave/2]).
 -export([dissolve/1]).
@@ -83,6 +85,37 @@ member_uids(Gid) ->
         {ok, Li} ->
             Li
     end.
+
+%% 安全关键缓存短 TTL：生产 dsync_enabled=false 时 flush 不跨节点广播，
+%% 多节点部署下开关翻转的失效窗口以此 TTL 为上界（security-reviewer H1）。
+-define(E2EE_MODE_TTL, 60).
+
+%% @doc 群级 E2EE 模式（0=off 1=required，P0-B B4）
+%%
+%% 热路径（每条 C2G 内容消息过 fail-closed 门）走缓存；
+%% 查询失败原样返回 {error, _}，fail-closed 语义由调用方兑现。
+-spec e2ee_mode(integer()) -> {ok, integer()} | {error, any()}.
+e2ee_mode(Gid) ->
+    CacheKey = {group_e2ee_mode, Gid},
+    case imboy_cache:get(CacheKey) of
+        {ok, Mode} ->
+            {ok, Mode};
+        undefined ->
+            case group_repo:find_by_id(Gid, <<"e2ee_mode">>) of
+                #{<<"e2ee_mode">> := Mode} ->
+                    imboy_cache:set(CacheKey, Mode, ?E2EE_MODE_TTL),
+                    {ok, Mode};
+                {error, Reason} ->
+                    {error, Reason};
+                _ ->
+                    {error, group_not_found}
+            end
+    end.
+
+%% @doc 开关变更后清除 e2ee_mode 缓存
+-spec flush_e2ee_mode(integer()) -> ok.
+flush_e2ee_mode(Gid) ->
+    imboy_cache:flush({group_e2ee_mode, Gid}).
 
 %% @doc 用户加入群组
 %%

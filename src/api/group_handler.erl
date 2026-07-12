@@ -41,6 +41,8 @@ handle_action(add, Req, State) ->
     add(Req, State);
 handle_action(edit, Req, State) ->
     edit(Req, State);
+handle_action(set_e2ee_mode, Req, State) ->
+    set_e2ee_mode(Req, State);
 handle_action(dissolve, Req, State) ->
     dissolve(Req, State);
 handle_action(detail, Req, State) ->
@@ -254,6 +256,28 @@ edit(Req0, State) ->
             elib_response:error(Req0, Msg);
         ok ->
             process_group_edit(Req0, Uid, Gid, Gid2, Data)
+    end.
+
+%% @doc 开启群级 E2EE（仅群主，0→1 单向，P0-B B4）
+-spec set_e2ee_mode(cowboy_req:req(), map()) -> cowboy_req:req().
+set_e2ee_mode(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    Gid = elib_cnv:safe_to_integer(maps:get(<<"gid">>, PostVals, 0)),
+    Mode = elib_cnv:safe_to_integer(maps:get(<<"e2ee_mode">>, PostVals, -1)),
+    %% 参数/业务规则错误（含 0→1 单向限制）→ 400；越权 → 403（security-reviewer L1）
+    case is_integer(Gid) andalso Gid > 0 andalso Mode =:= 1 of
+        false ->
+            elib_response:error(Req0, <<"bad_request">>, 400);
+        true ->
+            case group_logic:set_e2ee_mode(Uid, Gid, Mode) of
+                ok ->
+                    elib_response:success(Req0, #{
+                        <<"gid">> => Gid, <<"e2ee_mode">> => Mode
+                    });
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, 403)
+            end
     end.
 
 %% @doc 构建群组更新数据
