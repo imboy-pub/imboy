@@ -11,6 +11,7 @@
 -export([broadcast_channel_message/2]).
 -export([notify_message_deleted/2]).
 -export([notify_message_revoked/4]).
+-export([notify_message_edited/4]).
 -export([notify_invitation_created/2]).
 -export([notify_invitation_accepted/3]).
 -export([notify_order_paid/2]).
@@ -78,6 +79,18 @@ notify_message_revoked(ChannelId, MessageId, RevokedBy, RevokedAt) ->
         <<"message_id">> => MessageId,
         <<"revoked_by">> => RevokedBy,
         <<"revoked_at">> => RevokedAt
+    },
+    send_safe(SubscriberUids, Action, Payload, save).
+
+-spec notify_message_edited(integer(), integer(), binary(), binary()) -> ok.
+notify_message_edited(ChannelId, MessageId, Content, EditedAt) ->
+    Action = <<"channel_message_edited">>,
+    SubscriberUids = subscriber_uids_safe(ChannelId, Action),
+    Payload = #{
+        <<"channel_id">> => ChannelId,
+        <<"message_id">> => MessageId,
+        <<"content">> => Content,
+        <<"edited_at">> => EditedAt
     },
     send_safe(SubscriberUids, Action, Payload, save).
 

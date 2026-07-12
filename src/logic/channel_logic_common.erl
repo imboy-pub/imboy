@@ -7,6 +7,7 @@
 -export([get_user_role/2]).
 -export([ensure_channel_content_access/2]).
 -export([channel_revoke_window_seconds/0]).
+-export([channel_edit_window_seconds/0]).
 -export([log_channel_action/6]).
 
 -include("log.hrl").
@@ -119,6 +120,16 @@ channel_revoke_window_seconds() ->
             Value;
         _ ->
             120
+    end.
+
+%% @doc 频道消息编辑时间窗（秒），<=0 表示不限制；默认 24 小时
+-spec channel_edit_window_seconds() -> integer().
+channel_edit_window_seconds() ->
+    case application:get_env(imboy, channel_edit_window_seconds) of
+        {ok, Value} when is_integer(Value) ->
+            Value;
+        _ ->
+            86400
     end.
 
 -spec log_channel_action(integer(), integer(), integer() | undefined, binary(), term(), integer()) ->

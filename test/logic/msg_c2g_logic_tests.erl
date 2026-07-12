@@ -511,6 +511,52 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
         end
     ).
 
+c2g_edit_rejected_when_window_expired_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(1001, 88) -> true end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_expired_001">>) ->
+                    {ok, #{
+                        <<"from_id">> => 1001,
+                        <<"created_at">> => 1700000000000
+                    }}
+                end},
+                {'edit_offline_msg', 6, fun(_, _, _, _, _, _) ->
+                    erlang:error(should_not_persist_edit_when_expired)
+                end}
+            ]},
+            {elib_dt, [
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                %% 默认窗口 86400s，超出 1 秒
+                {'millisecond', 0, fun() -> 1700000000000 + 86400000 + 1000 end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"orig_c2g_edit_expired_001">>,
+                    <<"content">> => <<"new content">>,
+                    <<"msg_type">> => <<"text">>
+                }
+            },
+
+            {reply, Reply} = msg_c2g_logic:c2g_edit(<<"c2g_edit_expired_001">>, 1001, Data),
+            ?assertEqual(<<"message_edit_error">>, maps:get(<<"action">>, Reply)),
+            ReplyPayload = maps:get(<<"payload">>, Reply),
+            ?assertEqual(409, maps:get(<<"code">>, ReplyPayload)),
+            ?assertEqual(0, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
+        end
+    ).
+
 c2g_plaintext_blocked_when_encryption_required_test_() ->
     ?WITH_MECKS(
         [

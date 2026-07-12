@@ -12,6 +12,7 @@
     record_view/2,
     delete_message/2,
     revoke_message/2,
+    edit_message/2,
     add_reaction/2,
     remove_reaction/2,
     subscribers/2
@@ -34,6 +35,7 @@ handle_action(message_reactions, Req, State) -> message_reactions(Req, State);
 handle_action(record_view, Req, State) -> record_view(Req, State);
 handle_action(delete_message, Req, State) -> delete_message(Req, State);
 handle_action(revoke_message, Req, State) -> revoke_message(Req, State);
+handle_action(edit_message, Req, State) -> edit_message(Req, State);
 handle_action(add_reaction, Req, State) -> add_reaction(Req, State);
 handle_action(remove_reaction, Req, State) -> remove_reaction(Req, State);
 handle_action(subscribers, Req, State) -> subscribers(Req, State);
@@ -118,6 +120,29 @@ revoke_message(Req0, State) ->
             elib_response:error(Req0, <<"消息ID不能为空"/utf8>>);
         _ ->
             case channel_logic:revoke_message(Uid, ChannelId, MessageId) of
+                ok ->
+                    elib_response:success(Req0, #{});
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+-spec edit_message(cowboy_req:req(), map()) -> cowboy_req:req().
+edit_message(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    MessageId = resolve_message_id(Req0, PostVals),
+    Content = maps:get(<<"content">>, PostVals, <<>>),
+    case ChannelId of
+        <<>> ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        _ when MessageId =:= <<>> ->
+            elib_response:error(Req0, <<"消息ID不能为空"/utf8>>);
+        _ when Content =:= <<>> ->
+            elib_response:error(Req0, <<"消息内容不能为空"/utf8>>);
+        _ ->
+            case channel_logic_message:edit_message(Uid, ChannelId, MessageId, Content) of
                 ok ->
                     elib_response:success(Req0, #{});
                 {error, Msg} ->

@@ -331,7 +331,15 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
                 end}
             ]},
             {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_001">>) ->
+                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                end},
                 {'edit_offline_msg', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {elib_dt, [
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                {'millisecond', 0, fun() -> 1700000060000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
             ]}
         ],
         fun() ->
@@ -435,7 +443,13 @@ c2c_edit_success_online_sends_edit_ack_test_() ->
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
-                {'millisecond', 0, fun() -> 1700000065000 end}
+                {'millisecond', 0, fun() -> 1700000065000 end},
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_001">>) ->
+                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                end}
             ]},
             {user_logic, [
                 {'is_online', 1, fun(456) -> true end}
@@ -492,6 +506,89 @@ c2c_edit_permission_denied_when_operator_not_sender_test_() ->
 
             {reply, Reply} = msg_c2c_logic:c2c_edit(<<"c2c_edit_denied_001">>, 123, Data),
             ?assertEqual(<<"permission_denied">>, maps:get(<<"error">>, Reply))
+        end
+    ).
+
+c2c_edit_rejected_when_window_expired_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_expired_001">>) ->
+                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                end}
+            ]},
+            {elib_dt, [
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                %% 默认窗口 86400s，超出 1 秒
+                {'millisecond', 0, fun() -> 1700000000000 + 86400000 + 1000 end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{
+                    <<"original_msg_id">> => <<"orig_c2c_edit_expired_001">>,
+                    <<"content">> => <<"edited content">>,
+                    <<"msg_type">> => <<"text">>
+                }
+            },
+
+            {reply, Reply} = msg_c2c_logic:c2c_edit(<<"c2c_edit_expired_001">>, 123, Data),
+            ?assertEqual(<<"message_edit_error">>, maps:get(<<"action">>, Reply)),
+            ReplyPayload = maps:get(<<"payload">>, Reply),
+            ?assertEqual(409, maps:get(<<"code">>, ReplyPayload)),
+            ?assertEqual(
+                <<"orig_c2c_edit_expired_001">>, maps:get(<<"original_msg_id">>, ReplyPayload)
+            )
+        end
+    ).
+
+c2c_edit_allowed_when_window_disabled_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_nowin_001">>) ->
+                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                end}
+            ]},
+            {elib_dt, [
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                %% 距创建已远超 24h，但窗口配置为 0（不限制）
+                {'millisecond', 0, fun() -> 1700000000000 + 30 * 86400000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            ]},
+            {user_logic, [
+                {'is_online', 1, fun(456) -> true end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_and_send', 4, fun(456, <<"c2c_edit_nowin_001">>, _Msg, <<"c2s">>) ->
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            application:set_env(imboy, msg_edit_window_seconds, 0),
+            try
+                Data = #{
+                    <<"to">> => <<"456">>,
+                    <<"from">> => <<"123">>,
+                    <<"payload">> => #{
+                        <<"original_msg_id">> => <<"orig_c2c_edit_nowin_001">>,
+                        <<"content">> => <<"edited content">>,
+                        <<"msg_type">> => <<"text">>
+                    }
+                },
+
+                {reply, Reply} = msg_c2c_logic:c2c_edit(<<"c2c_edit_nowin_001">>, 123, Data),
+                ?assertEqual(<<"message_edit_ack">>, maps:get(<<"action">>, Reply))
+            after
+                application:unset_env(imboy, msg_edit_window_seconds)
+            end
         end
     ).
 

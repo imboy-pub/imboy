@@ -510,75 +510,147 @@ c2c_edit(MsgId, CurrentUid, Data) ->
     From = maps:get(<<"from">>, Data),
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
-    NewContent = maps:get(<<"content">>, Payload),
-    MsgType = maps:get(<<"msg_type">>, Payload),
-    E2EE = maps:get(<<"e2ee">>, Data, null),
-    ToId = ec_cnv:to_integer(To),
     FromId = ec_cnv:to_integer(From),
-    ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
 
     % 验证权限：只能编辑自己发送的消息
     case CurrentUid =:= FromId of
         true ->
-            NowTs = elib_dt:now(),
-            NowMS = elib_dt:millisecond(),
-
-            % 构建编辑确认消息（v2.0 格式）
-            %% msg_type 和 action 提升到顶层
-            EditPayload = #{
-                <<"content">> => NewContent,
-                <<"original_msg_id">> => OriginalMsgId,
-                <<"edited_at">> => NowMS
-            },
-
-            EditMsg = #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"C2C">>,
-                <<"from">> => From,
-                <<"to">> => To,
-                <<"msg_type">> => MsgType,
-                <<"action">> => <<"message_edit_ack">>,
-                <<"payload">> => EditPayload,
-                <<"server_ts">> => NowMS
-            },
-
-            EditPayloadJson = imboy_message_helper:encode_json(EditPayload),
-            case
-                imboy_policy:validate_message_write(
-                    <<"C2C">>,
-                    MsgType,
-                    <<"message_edit">>,
-                    E2EE,
-                    EditPayloadJson
-                )
-            of
+            %% 【新增】编辑时间窗校验（MIRROR c2c_revoke 的查找与时限路径）
+            case c2c_edit_window_check(OriginalMsgId, CurrentUid) of
                 ok ->
-                    % 判断对方是否在线
-                    case user_logic:is_online(ToId) of
-                        true ->
-                            imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>),
-                            ok;
-                        % 对端离线处理
-                        false ->
-                            case
-                                msg_c2c_ds:edit_offline_msg(
-                                    EditPayloadJson, NowTs, MsgId, CurrentUid, ToId
-                                )
-                            of
-                                ok ->
-                                    ok;
-                                {error, _Reason} ->
-                                    ok
-                            end
-                    end,
-                    {reply, EditMsg};
-                {error, Reason} ->
-                    policy_violation_reply(MsgId, Reason)
+                    do_c2c_edit(MsgId, CurrentUid, Data);
+                {expired, NowMs} ->
+                    ErrorMsg = #{
+                        <<"id">> => MsgId,
+                        <<"type">> => <<"C2C">>,
+                        <<"from">> => From,
+                        <<"to">> => To,
+                        <<"msg_type">> => <<"custom">>,
+                        <<"action">> => <<"message_edit_error">>,
+                        <<"payload">> => #{
+                            <<"content">> => <<>>,
+                            <<"original_msg_id">> => OriginalMsgId,
+                            <<"error">> => <<"超过编辑时间限制"/utf8>>,
+                            <<"code">> => ?ERR_REVOKE_TIMEOUT
+                        },
+                        <<"server_ts">> => NowMs
+                    },
+                    {reply, ErrorMsg};
+                permission_denied ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
+                not_found ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)}
             end;
         false ->
             % 权限不足，返回错误
             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To),
             {reply, ErrorMsg}
+    end.
+
+%% @private c2c_edit 通过权限与时间窗校验后的原编辑逻辑
+-spec do_c2c_edit(binary(), integer(), map()) -> ok | {reply, Msg :: map()}.
+do_c2c_edit(MsgId, CurrentUid, Data) ->
+    To = maps:get(<<"to">>, Data),
+    From = maps:get(<<"from">>, Data),
+    Payload = maps:get(<<"payload">>, Data),
+    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
+    NewContent = maps:get(<<"content">>, Payload),
+    MsgType = maps:get(<<"msg_type">>, Payload),
+    E2EE = maps:get(<<"e2ee">>, Data, null),
+    ToId = ec_cnv:to_integer(To),
+    ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
+    NowTs = elib_dt:now(),
+    NowMS = elib_dt:millisecond(),
+
+    % 构建编辑确认消息（v2.0 格式）
+    %% msg_type 和 action 提升到顶层
+    EditPayload = #{
+        <<"content">> => NewContent,
+        <<"original_msg_id">> => OriginalMsgId,
+        <<"edited_at">> => NowMS
+    },
+
+    EditMsg = #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => From,
+        <<"to">> => To,
+        <<"msg_type">> => MsgType,
+        <<"action">> => <<"message_edit_ack">>,
+        <<"payload">> => EditPayload,
+        <<"server_ts">> => NowMS
+    },
+
+    EditPayloadJson = imboy_message_helper:encode_json(EditPayload),
+    case
+        imboy_policy:validate_message_write(
+            <<"C2C">>,
+            MsgType,
+            <<"message_edit">>,
+            E2EE,
+            EditPayloadJson
+        )
+    of
+        ok ->
+            % 判断对方是否在线
+            case user_logic:is_online(ToId) of
+                true ->
+                    imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>),
+                    ok;
+                % 对端离线处理
+                false ->
+                    case
+                        msg_c2c_ds:edit_offline_msg(
+                            EditPayloadJson, NowTs, MsgId, CurrentUid, ToId
+                        )
+                    of
+                        ok ->
+                            ok;
+                        {error, _Reason} ->
+                            ok
+                    end
+            end,
+            {reply, EditMsg};
+        {error, Reason} ->
+            policy_violation_reply(MsgId, Reason)
+    end.
+
+%% @private 编辑时间窗校验：查原消息（staging 兜底），核对归属并检查是否超窗
+-spec c2c_edit_window_check(binary(), integer()) ->
+    ok | {expired, integer()} | permission_denied | not_found.
+c2c_edit_window_check(OriginalMsgId, CurrentUid) ->
+    %% 正式表查不到时兜底查 staging（消息仍在异步管道内）
+    FindResult =
+        case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
+            {ok, Found} -> {ok, Found};
+            _ -> msg_store_ds:find_staged(OriginalMsgId)
+        end,
+    case FindResult of
+        {ok, #{<<"from_id">> := CurrentUid} = MsgData} ->
+            CreatedAt = maps:get(<<"created_at">>, MsgData),
+            CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
+            NowMs = elib_dt:millisecond(),
+            WindowMs = msg_edit_window_ms(),
+            case
+                WindowMs > 0 andalso
+                    is_integer(CreatedAtMs) andalso
+                    NowMs - CreatedAtMs > WindowMs
+            of
+                true -> {expired, NowMs};
+                false -> ok
+            end;
+        {ok, _} ->
+            permission_denied;
+        _ ->
+            not_found
+    end.
+
+%% @private 编辑时间窗（毫秒），env msg_edit_window_seconds，默认 86400 秒；<=0 不限
+-spec msg_edit_window_ms() -> integer().
+msg_edit_window_ms() ->
+    case application:get_env(imboy, msg_edit_window_seconds) of
+        {ok, V} when is_integer(V) -> V * 1000;
+        _ -> 86400 * 1000
     end.
 
 %% 客户端编辑消息确认 for c2c

@@ -19,6 +19,7 @@
 -export([pin_message/3]).
 -export([delete_message/2]).
 -export([revoke_message/3]).
+-export([edit_message/4]).
 -export([get_admins/1]).
 -export([update_admin_role/4]).
 
@@ -476,6 +477,75 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
     ),
     Result.
 
+%% @doc 编辑频道消息（仅作者本人，受编辑时间窗约束，已撤回消息不可编辑）
+-spec edit_message(integer(), binary(), binary(), binary()) -> ok | {error, binary()}.
+edit_message(Uid, ChannelIdBin, MessageIdBin, NewContent) ->
+    StartMs = elib_dt:millisecond(),
+    ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
+    MessageId = decode_positive_id(MessageIdBin),
+    Result =
+        case ChannelId of
+            0 ->
+                {error, <<"频道不存在"/utf8>>};
+            _ when MessageId =:= 0 ->
+                {error, <<"消息不存在"/utf8>>};
+            _ when NewContent =:= <<>> ->
+                {error, <<"消息内容不能为空"/utf8>>};
+            _ ->
+                case channel_message_ds:find_by_id(MessageId) of
+                    Message when is_map(Message) ->
+                        do_edit_message(Uid, ChannelId, MessageId, NewContent, Message);
+                    _ ->
+                        {error, <<"消息不存在"/utf8>>}
+                end
+        end,
+    channel_logic_common:log_channel_action(
+        Uid, ChannelId, MessageId, <<"edit_message">>, Result, StartMs
+    ),
+    Result.
+
+-spec do_edit_message(integer(), integer(), integer(), binary(), map()) ->
+    ok | {error, binary()}.
+do_edit_message(Uid, ChannelId, MessageId, NewContent, Message) ->
+    MessageChannelId = maps:get(<<"channel_id">>, Message, 0),
+    MessageAuthorId = maps:get(<<"author_id">>, Message, 0),
+    ValidMessage =
+        is_integer(MessageChannelId) andalso
+            MessageChannelId =:= ChannelId andalso
+            is_integer(MessageAuthorId) andalso
+            MessageAuthorId > 0,
+    Revoked = maps:get(<<"revoked">>, Message, false),
+    if
+        not ValidMessage ->
+            {error, <<"消息不存在"/utf8>>};
+        %% 编辑与撤回语义不同：仅作者本人可编辑，管理员不可
+        MessageAuthorId =/= Uid ->
+            {error, <<"无权限编辑此消息"/utf8>>};
+        Revoked =:= true ->
+            {error, <<"消息已撤回，无法编辑"/utf8>>};
+        true ->
+            case is_within_edit_window(Message) of
+                false ->
+                    {error, <<"编辑时间已超出限制"/utf8>>};
+                true ->
+                    EditedAt = elib_dt:now(),
+                    UpdateData = #{
+                        content => NewContent,
+                        edited_at => EditedAt,
+                        updated_at => EditedAt
+                    },
+                    case channel_message_ds:update(MessageId, UpdateData) of
+                        {ok, _} ->
+                            channel_logic_notify:notify_message_edited(
+                                ChannelId, MessageId, NewContent, EditedAt
+                            ),
+                            ok;
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end
+            end
+    end.
+
 -spec get_admins(integer() | binary()) -> {ok, list(map())} | {error, binary()}.
 get_admins(ChannelId) when is_binary(ChannelId) ->
     DecodedChannelId = decode_positive_id(ChannelId),
@@ -555,7 +625,14 @@ push_unread_updates(ChannelId) ->
 
 -spec is_within_revoke_window(map()) -> boolean().
 is_within_revoke_window(Message) ->
-    WindowSecs = channel_logic_common:channel_revoke_window_seconds(),
+    is_within_window(Message, channel_logic_common:channel_revoke_window_seconds()).
+
+-spec is_within_edit_window(map()) -> boolean().
+is_within_edit_window(Message) ->
+    is_within_window(Message, channel_logic_common:channel_edit_window_seconds()).
+
+-spec is_within_window(map(), integer()) -> boolean().
+is_within_window(Message, WindowSecs) ->
     case WindowSecs =< 0 of
         true ->
             true;

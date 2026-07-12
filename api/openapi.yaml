@@ -489,6 +489,8 @@ paths:
     $ref: './paths/channel/message/delete.yaml'
   /api/v1/channel/{channel_id}/message/{message_id}/revoke:
     $ref: './paths/channel/message/revoke.yaml'
+  /api/v1/channel/{channel_id}/message/{message_id}/edit:
+    $ref: './paths/channel/message/edit.yaml'
   /api/v1/channel/{channel_id}/admin:
     $ref: './paths/channel/admin/add.yaml'
   /api/v1/channel/{channel_id}/admins:

@@ -5177,6 +5177,164 @@ get_discover_channels_filters_non_map_entries_test_() ->
     end}.
 
 %% ===================================================================
+%% edit_message/4 测试 - P1 编辑能力
+%% ===================================================================
+
+edit_message_author_success_within_window_writes_edited_at_test_() ->
+    MockConfigs = [
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(991) ->
+                #{
+                    <<"id">> => 991,
+                    <<"channel_id">> => 11,
+                    <<"author_id">> => 1001,
+                    <<"created_at">> => <<"2026-02-22T10:00:00Z">>,
+                    <<"revoked">> => false
+                }
+            end},
+            {'update', 2, fun(991, Data) ->
+                ?assertEqual(<<"new content"/utf8>>, maps:get(content, Data)),
+                ?assertEqual(<<"2026-02-22T10:01:00Z">>, maps:get(edited_at, Data)),
+                {ok, 1}
+            end}
+        ]},
+        {channel_ds, [
+            {'subscriber_uids', 1, fun(11) -> [1001, 2002] end}
+        ]},
+        {application, [
+            {'get_env', 2, fun(App, Key) ->
+                case {App, Key} of
+                    {imboy, channel_edit_window_seconds} -> {ok, 86400};
+                    _ -> undefined
+                end
+            end}
+        ]},
+        {elib_dt, [
+            {'rfc3339_to', 2, fun(<<"2026-02-22T10:00:00Z">>, millisecond) -> 1708596000000 end},
+            {'millisecond', 0, fun() -> 1708596060000 end},
+            {'now', 0, fun() -> <<"2026-02-22T10:01:00Z">> end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(
+                0, [1001, 2002], <<"channel_message_edited">>, <<>>, null, Payload, save
+            ) ->
+                ?assertEqual(11, maps:get(<<"channel_id">>, Payload)),
+                ?assertEqual(991, maps:get(<<"message_id">>, Payload)),
+                ?assertEqual(<<"new content"/utf8>>, maps:get(<<"content">>, Payload)),
+                ?assertEqual(<<"2026-02-22T10:01:00Z">>, maps:get(<<"edited_at">>, Payload)),
+                ok
+            end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:edit_message(
+                1001, <<"11">>, <<"991">>, <<"new content"/utf8>>
+            ),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, update, 2)),
+            ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
+
+edit_message_returns_permission_denied_for_non_author_test_() ->
+    MockConfigs = [
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(991) ->
+                #{
+                    <<"id">> => 991,
+                    <<"channel_id">> => 11,
+                    <<"author_id">> => 2002,
+                    <<"created_at">> => <<"2026-02-22T10:00:00Z">>,
+                    <<"revoked">> => false
+                }
+            end},
+            {'update', 2, fun(_, _) -> erlang:error(should_not_update_without_permission) end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:edit_message(1001, <<"11">>, <<"991">>, <<"x">>),
+            ?assertEqual({error, <<"无权限编辑此消息"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2))
+        end)
+    end}.
+
+edit_message_returns_timeout_error_when_window_expired_test_() ->
+    MockConfigs = [
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(991) ->
+                #{
+                    <<"id">> => 991,
+                    <<"channel_id">> => 11,
+                    <<"author_id">> => 1001,
+                    <<"created_at">> => <<"2026-02-22T10:00:00Z">>,
+                    <<"revoked">> => false
+                }
+            end},
+            {'update', 2, fun(_, _) -> erlang:error(should_not_update_when_expired) end}
+        ]},
+        {application, [
+            {'get_env', 2, fun(App, Key) ->
+                case {App, Key} of
+                    {imboy, channel_edit_window_seconds} -> {ok, 120};
+                    _ -> undefined
+                end
+            end}
+        ]},
+        {elib_dt, [
+            {'rfc3339_to', 2, fun(<<"2026-02-22T10:00:00Z">>, millisecond) -> 1708596000000 end},
+            {'millisecond', 0, fun() -> 1708597000000 end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:edit_message(1001, <<"11">>, <<"991">>, <<"x">>),
+            ?assertEqual({error, <<"编辑时间已超出限制"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2))
+        end)
+    end}.
+
+edit_message_rejects_revoked_message_test_() ->
+    MockConfigs = [
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(991) ->
+                #{
+                    <<"id">> => 991,
+                    <<"channel_id">> => 11,
+                    <<"author_id">> => 1001,
+                    <<"created_at">> => <<"2026-02-22T10:00:00Z">>,
+                    <<"revoked">> => true
+                }
+            end},
+            {'update', 2, fun(_, _) -> erlang:error(should_not_update_revoked_message) end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:edit_message(1001, <<"11">>, <<"991">>, <<"x">>),
+            ?assertEqual({error, <<"消息已撤回，无法编辑"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2))
+        end)
+    end}.
+
+edit_message_returns_error_when_content_empty_test_() ->
+    MockConfigs = [
+        {channel_message_repo, [
+            {'find_by_id', 1, fun(_) -> erlang:error(should_not_lookup_when_content_empty) end},
+            {'update', 2, fun(_, _) -> erlang:error(should_not_update_when_content_empty) end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic_message:edit_message(1001, <<"11">>, <<"991">>, <<>>),
+            ?assertEqual({error, <<"消息内容不能为空"/utf8>>}, Result),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, find_by_id, 1)),
+            ?assertEqual(0, meck:num_calls(channel_message_repo, update, 2))
+        end)
+    end}.
+
+%% ===================================================================
 %% Internal helpers
 %% ===================================================================
 

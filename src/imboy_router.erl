@@ -366,6 +366,9 @@ get_routes() ->
                     #{
                         action => revoke_message
                     }},
+                {"/api/v1/channel/:channel_id/message/:message_id/edit", channel_handler_message, #{
+                        action => edit_message
+                    }},
                 % 评论 API（对标公众号/知识星球评论）
                 {"/api/v1/channel/:channel_id/message/:message_id/comments",
                     channel_handler_comment, #{

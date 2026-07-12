@@ -34,6 +34,14 @@ policy_violation_reply(MsgId, Reason) ->
         <<"server_ts">> => elib_dt:millisecond()
     }}.
 
+%% @private 编辑时间窗（毫秒），env msg_edit_window_seconds，默认 86400 秒；<=0 不限
+-spec msg_edit_window_ms() -> integer().
+msg_edit_window_ms() ->
+    case application:get_env(imboy, msg_edit_window_seconds) of
+        {ok, V} when is_integer(V) -> V * 1000;
+        _ -> 86400 * 1000
+    end.
+
 -spec mentions_from_payload(term()) -> list().
 mentions_from_payload(Payload) when is_map(Payload) ->
     maps:get(<<"mentions">>, Payload, []);
@@ -493,26 +501,38 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                             CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
                             NowMS = elib_dt:millisecond(),
 
-                            % 编辑沿用权限校验，但不受撤回时限约束
+                            % 撤回受 2 分钟时限约束；编辑受独立编辑时间窗约束（默认 24h，<=0 不限）
                             % ponytail: guard on integer to avoid badarith when CreatedAt is empty/invalid
+                            {WindowMs, ErrAction, ErrText} =
+                                case ActionType of
+                                    revoke ->
+                                        {?REVOKE_TIMEOUT_MS, <<"message_revoke_error">>,
+                                            <<"超过撤回时间限制(2分钟)"/utf8>>};
+                                    edit ->
+                                        {
+                                            msg_edit_window_ms(),
+                                            <<"message_edit_error">>,
+                                            <<"超过编辑时间限制"/utf8>>
+                                        }
+                                end,
                             case
-                                ActionType =:= revoke andalso
+                                WindowMs > 0 andalso
                                     is_integer(CreatedAtMs) andalso
-                                    NowMS - CreatedAtMs > ?REVOKE_TIMEOUT_MS
+                                    NowMS - CreatedAtMs > WindowMs
                             of
                                 true ->
-                                    % 超过撤回时间限制
+                                    % 超过操作时间限制
                                     ErrorMsg = #{
                                         <<"id">> => MsgId,
                                         <<"type">> => <<"C2G">>,
                                         <<"from">> => From,
                                         <<"to">> => To,
                                         <<"msg_type">> => <<"custom">>,
-                                        <<"action">> => <<"message_revoke_error">>,
+                                        <<"action">> => ErrAction,
                                         <<"payload">> => #{
                                             <<"content">> => <<>>,
                                             <<"original_msg_id">> => OriginalMsgId,
-                                            <<"error">> => <<"超过撤回时间限制(2分钟)"/utf8>>,
+                                            <<"error">> => ErrText,
                                             <<"code">> => ?ERR_REVOKE_TIMEOUT
                                         },
                                         <<"server_ts">> => NowMS
