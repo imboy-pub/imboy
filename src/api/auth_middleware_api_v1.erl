@@ -26,7 +26,11 @@ execute(Req, Env) ->
     %% auth_ds:condition/5 以「开放路由」放行（否则 condition 仍会因无 token 而 stop）。
     IsPaymentCallback =
         string:sub_string(binary_to_list(Path), 1, 25) == "/api/v1/payment/callback/",
-    InOpenLi = IsPaymentCallback orelse lists:member(Path, OpenLi),
+    %% 频道 incoming webhook 同款范式：token 即凭证（:token 变量段无法在 open/0
+    %% 精确枚举），限流/token 校验在 channel_webhook_logic:incoming/2 完成。
+    IsChannelWebhook =
+        string:sub_string(binary_to_list(Path), 1, 24) == "/api/v1/webhook/channel/",
+    InOpenLi = IsPaymentCallback orelse IsChannelWebhook orelse lists:member(Path, OpenLi),
     InOptionLi = lists:member(Path, OptionLi),
     Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"on">>)),
     %% ws/init/refreshtoken/passport 是 JWT-open 但仍需设备签名校验的端点

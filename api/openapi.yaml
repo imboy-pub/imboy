@@ -471,6 +471,14 @@ paths:
     $ref: './paths/channel/discover.yaml'
   /api/v1/channels/sync:
     $ref: './paths/channel/sync.yaml'
+  /api/v1/channel/{channel_id}/webhook/create:
+    $ref: './paths/channel/webhook-create.yaml'
+  /api/v1/channel/{channel_id}/webhook/list:
+    $ref: './paths/channel/webhook-list.yaml'
+  /api/v1/channel/{channel_id}/webhook/{webhook_id}/disable:
+    $ref: './paths/channel/webhook-disable.yaml'
+  /api/v1/webhook/channel/{token}:
+    $ref: './paths/channel/webhook-incoming.yaml'
   /api/v1/channel/{channel_id}/message:
     $ref: './paths/channel/message/publish.yaml'
   /api/v1/channel/{channel_id}/messages:

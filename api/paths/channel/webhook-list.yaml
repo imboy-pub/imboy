@@ -1,0 +1,39 @@
+# GET (channel) listChannelWebhooks
+get:
+  tags: [user]
+  summary: 频道 webhook - 列表
+  description: |
+    ## 中文 / English
+    频道 webhook 列表（须频道管理员 role>=2）。token 只返回前 8 位掩码。
+    List channel webhooks (channel admin role>=2 required). Token is masked (first 8 chars + ***).
+  operationId: listChannelWebhooks
+  parameters:
+    - name: channel_id
+      in: path
+      required: true
+      schema: { type: string }
+      description: 频道 ID / Channel ID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            channel_id: { type: integer, format: int64 }
+                            name: { type: string }
+                            token: { type: string, description: '掩码 token（前 8 位 + ***）/ Masked token' }
+                            bot_uid: { type: integer, format: int64 }
+                            status: { type: integer, description: '1=启用 2=停用 / 1=enabled 2=disabled' }

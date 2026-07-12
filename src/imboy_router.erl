@@ -423,6 +423,21 @@ get_routes() ->
                 {"/api/v1/channel/order/:order_no", channel_handler_order, #{action => get_order}},
                 {"/api/v1/channels/sync", channel_handler_admin, #{action => sync}},
 
+                % 频道 incoming webhook 管理（须频道管理员 role>=2）
+                {"/api/v1/channel/:channel_id/webhook/create", channel_webhook_handler, #{
+                    action => create
+                }},
+                {"/api/v1/channel/:channel_id/webhook/list", channel_webhook_handler, #{
+                    action => list
+                }},
+                {"/api/v1/channel/:channel_id/webhook/:webhook_id/disable", channel_webhook_handler,
+                    #{action => disable}},
+                % 频道 incoming webhook 入站（token 即凭证，免 JWT/免 902 签名，
+                % 放行见 auth_middleware_api_v1 的 IsChannelWebhook 前缀）
+                {"/api/v1/webhook/channel/:token", channel_webhook_handler, #{
+                    action => incoming
+                }},
+
                 % 群文件管理 API
                 {"/api/v1/group/file/upload", group_file_handler, #{action => upload}},
                 {"/api/v1/group/file/download", group_file_handler, #{action => download}},

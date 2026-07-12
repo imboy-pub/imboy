@@ -1,0 +1,44 @@
+# POST (channel) channelWebhookIncoming
+post:
+  tags: [user]
+  summary: 频道 webhook - incoming 消息
+  description: |
+    ## 中文 / English
+    incoming webhook 入站消息（免 JWT，token 即凭证）。以绑定的 system_bot
+    账号向 webhook 创建时绑定的频道发送文本消息（channel locking）。
+    无效/停用 token 统一 404（不泄露存在性差异）；限流 429。body 1MB 上限。
+    Incoming webhook message (no JWT, token as credential). Publishes a text
+    message to the bound channel as the bound system_bot user.
+    Invalid/disabled tokens uniformly return 404; rate limited returns 429.
+  operationId: channelWebhookIncoming
+  security: []
+  parameters:
+    - name: token
+      in: path
+      required: true
+      schema: { type: string }
+      description: webhook token（凭证）/ Webhook token (credential)
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [text]
+          properties:
+            text: { type: string, description: '文本消息内容 / Text message content' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              ok: { type: boolean, example: true }
+    '400':
+      description: text 为空或发布失败 / Empty text or publish failure
+    '404':
+      description: token 无效或已停用 / Invalid or disabled token
+    '429':
+      description: 触发限流 / Rate limited

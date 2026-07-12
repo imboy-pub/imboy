@@ -1,0 +1,27 @@
+# POST (channel) disableChannelWebhook
+post:
+  tags: [user]
+  summary: 频道 webhook - 停用
+  description: |
+    ## 中文 / English
+    停用频道 webhook（须频道管理员 role>=2）。停用后 incoming 端点统一返回 404。
+    Disable channel webhook (channel admin role>=2 required). Incoming endpoint returns 404 afterwards.
+  operationId: disableChannelWebhook
+  parameters:
+    - name: channel_id
+      in: path
+      required: true
+      schema: { type: string }
+      description: 频道 ID / Channel ID
+    - name: webhook_id
+      in: path
+      required: true
+      schema: { type: string }
+      description: webhook ID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

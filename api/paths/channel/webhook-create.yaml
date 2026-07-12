@@ -1,0 +1,45 @@
+# POST (channel) createChannelWebhook
+post:
+  tags: [user]
+  summary: 频道 webhook - 创建
+  description: |
+    ## 中文 / English
+    创建频道 incoming webhook（须频道管理员 role>=2）。
+    完整 token 仅创建时返回一次，请妥善保存。
+    Create channel incoming webhook (channel admin role>=2 required).
+    Full token is returned only once at creation.
+  operationId: createChannelWebhook
+  parameters:
+    - name: channel_id
+      in: path
+      required: true
+      schema: { type: string }
+      description: 频道 ID / Channel ID
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, maxLength: 64, description: 'webhook 名称（同时用作 bot 昵称）/ Webhook name (also bot nickname)' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer, format: int64, description: webhook TSID }
+                      channel_id: { type: integer, format: int64 }
+                      name: { type: string }
+                      token: { type: string, description: '完整 token（仅此一次返回）/ Full token (returned only once)' }
+                      bot_uid: { type: integer, format: int64, description: '绑定的 system_bot 用户 / Bound system_bot user' }
+                      url: { type: string, description: 'incoming webhook URL 路径 / Incoming webhook URL path' }

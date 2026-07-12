@@ -198,6 +198,7 @@ tsid_generator_names() ->
         channel_message_view,
         channel_order,
         channel_invitation,
+        channel_webhook,
         %% ── 反馈 ──
         feedback,
         feedback_reply,
