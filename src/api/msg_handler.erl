@@ -214,6 +214,10 @@ pin(Req0, State) ->
                                     elib_response:success(Req0, Payload, <<"置顶成功"/utf8>>);
                                 {error, not_found} ->
                                     elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_NOT_FOUND);
+                                {error, permission_denied} ->
+                                    elib_response:error(
+                                        Req0, <<"无权限操作该消息"/utf8>>, ?ERR_FORBIDDEN
+                                    );
                                 {error, Reason} ->
                                     elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
                             end;
@@ -227,6 +231,10 @@ pin(Req0, State) ->
                                     elib_response:success(Req0, Payload, <<"取消置顶成功"/utf8>>);
                                 {error, not_found} ->
                                     elib_response:error(Req0, <<"消息不存在"/utf8>>, ?ERR_NOT_FOUND);
+                                {error, permission_denied} ->
+                                    elib_response:error(
+                                        Req0, <<"无权限操作该消息"/utf8>>, ?ERR_FORBIDDEN
+                                    );
                                 {error, Reason} ->
                                     elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
                             end
