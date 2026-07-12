@@ -57,7 +57,7 @@ broadcast_channel_message(ChannelId, Message) ->
         <<"channel_id">> => ChannelId,
         <<"type">> => <<"CHANNEL">>
     },
-    send_safe(SubscriberUids, Action, Payload, save).
+    send_safe(SubscriberUids, Action, Payload, fanout_save_mode(SubscriberUids)).
 
 -spec notify_message_deleted(integer(), integer()) -> ok.
 notify_message_deleted(ChannelId, MessageId) ->
@@ -135,6 +135,24 @@ send_safe(Uids, Action, Payload, SaveMode) when is_list(Uids) ->
 send_safe(Uids, Action, _Payload, _SaveMode) ->
     ?ERROR_LOG([channel_logic_notify_invalid_uids, Action, Uids]),
     ok.
+
+%% @doc 频道内容消息写扩散抑制：订阅者数超过阈值时改用 no_save（只推在线），
+%% 离线订阅者靠打开频道时按 cursor 拉历史 + unread_count 角标（机制已存在）。
+%% 仅适用于内容消息（channel_message）；撤回/编辑/删除等状态通知恒 save，
+%% 离线端必须能感知撤回。
+%% ponytail: 阈值门控写扩散；枚举 SubscriberUids 本身仍是 O(N)，
+%% 百万级需改 per-channel pub/sub topic，留待压测后
+-spec fanout_save_mode(list(integer())) -> save | no_save.
+fanout_save_mode(SubscriberUids) ->
+    case application:get_env(imboy, channel_fanout_save_threshold, 0) of
+        Threshold when is_integer(Threshold), Threshold > 0 ->
+            case length(SubscriberUids) > Threshold of
+                true -> no_save;
+                false -> save
+            end;
+        _ ->
+            save
+    end.
 
 -spec subscriber_uids_safe(integer(), binary()) -> list(integer()).
 subscriber_uids_safe(ChannelId, Action) ->
