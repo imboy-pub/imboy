@@ -1,0 +1,60 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/rtc/room_join.yaml — POST /rtc/room/join
+# Handler: src/api/rtc_room_handler.erl#join → rtc_room_logic:join/4
+# ----------------------------------------------------------------------------
+post:
+  tags: [user]
+  summary: 加入 RTC 房间（LiveKit SFU）
+  description: |
+    ## 中文 / English
+    校验成员资格（group=群成员；c2c=好友）后签发 LiveKit 接入 token。
+    媒体面由 LiveKit SFU 承载，本接口只发入场券（有效期 600s）。
+    Verifies membership (group member / friend) and issues a LiveKit access
+    token (valid 600s). Media is carried by the LiveKit SFU.
+  operationId: rtcRoomJoin
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [kind, target_id]
+          properties:
+            kind:
+              type: string
+              enum: [group, c2c]
+              description: 房间类型：group=群通话，c2c=1:1 通话
+            target_id:
+              type: integer
+              format: int64
+              minimum: 1
+              description: kind=group 时为群 TSID；kind=c2c 时为对方 uid
+            did:
+              type: string
+              description: 设备标识（identity 后缀，避免多设备互踢），缺省 default
+  responses:
+    '200':
+      description: 入场券；ws_url + token + room_name
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      ws_url:
+                        type: string
+                        description: LiveKit WebSocket 信令地址
+                      token:
+                        type: string
+                        description: LiveKit 接入 JWT（600s 有效）
+                      room_name:
+                        type: string
+                        description: 房间名（rtc_group_<gid> / rtc_c2c_<lo>_<hi>）
+    '4XX':
+      description: target_id 无效 / 非群成员 / 非好友 / 不支持的房间类型
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

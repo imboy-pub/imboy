@@ -227,6 +227,9 @@ get_routes() ->
                 % 消息全文搜索
                 {"/api/v1/fts/msg", fts_handler, #{action => msg}},
 
+                % RTC 房间（LiveKit SFU：群通话/1:1 通话入场券）
+                {"/api/v1/rtc/room/join", rtc_room_handler, #{action => join}},
+
                 {"/api/v1/group/remark", group_handler, #{action => remark}},
                 {"/api/v1/group/qrcode", group_handler, #{action => qrcode}},
                 {"/api/v1/group/face2face", group_handler, #{action => face2face}},

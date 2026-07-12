@@ -131,6 +131,9 @@ override_from_env() ->
     %% Garage S3 对象存储凭证
     ok = override_garage(),
 
+    %% LiveKit SFU 凭证与信令地址
+    ok = override_livekit(),
+
     %% 支付网关凭据（微信/支付宝/Stripe）+ 运行模式
     ok = override_payment(),
 
@@ -259,6 +262,27 @@ override_garage() ->
                 unicode:characters_to_binary(V)
             end),
             application:set_env(imboy, garage, Cfg4),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖 LiveKit SFU 配置
+%% Override LiveKit SFU config (ws_url / api_key / api_secret)
+-spec override_livekit() -> ok.
+override_livekit() ->
+    case application:get_env(imboy, livekit) of
+        {ok, Cfg} when is_map(Cfg) ->
+            Cfg1 = maybe_override_map(Cfg, ws_url, "IMBOY_LIVEKIT_WS_URL", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            Cfg2 = maybe_override_map(Cfg1, api_key, "IMBOY_LIVEKIT_API_KEY", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            Cfg3 = maybe_override_map(Cfg2, api_secret, "IMBOY_LIVEKIT_API_SECRET", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            application:set_env(imboy, livekit, Cfg3),
             ok;
         _ ->
             ok

@@ -281,6 +281,8 @@ paths:
     $ref: './paths/moment/delete-comment.yaml'
   /api/v1/moment/{moment_id}/report:
     $ref: './paths/moment/report.yaml'
+  /api/v1/rtc/room/join:
+    $ref: './paths/rtc/room_join.yaml'
   /api/v1/group/add:
     $ref: './paths/group/add.yaml'
   /api/v1/group/edit:

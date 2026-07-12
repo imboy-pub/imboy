@@ -91,6 +91,22 @@ server {
         add_header X-Accel-Buffering no;
     }
 
+    # LiveKit SFU WebSocket 信令（媒体走 UDP/TCP 直连宿主，不经 nginx）
+    # LiveKit SFU WebSocket signaling (media goes direct via UDP/TCP, not through nginx)
+    location /livekit/ {
+        proxy_pass http://imboy_livekit:7880/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+        # 通话会话是长连接 / call sessions are long-lived
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+
     # WebSocket + REST 同源转发到后端 Cowboy
     location / {
         limit_req zone=api_per_ip burst=20 nodelay;
