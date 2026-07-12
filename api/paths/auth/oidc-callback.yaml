@@ -1,0 +1,49 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/oidc-callback.yaml
+# GET /api/v1/auth/oidc/callback — 企业 SSO OIDC 回调 / OIDC callback
+#
+# 关联：.claude/PRPs/plans/p0c-sso-oidc.plan.md Task C2a
+# Handler: src/api/auth_oidc_handler.erl#handle_callback/1 → auth_oidc_logic:callback/2
+# ----------------------------------------------------------------------------
+get:
+  security: []
+  tags: [auth]
+  summary: 企业 SSO OIDC 回调
+  description: |
+    ## 中文
+    IdP 授权码回调：state 一次性消费 → 换 token（PKCE verifier）→ 校验
+    id_token claims（iss/aud/exp/nonce）→ userinfo → 账号映射/自动建号
+    （过 License 配额闸门）→ 签发 imboy JWT。client=test 直接返回登录
+    payload；client=app 302 到 `imboy://oidc/callback?otc=` 深链。
+    所有失败路径统一返回"SSO 登录失败"（License 满额 402 除外）。
+    ## English
+    IdP authorization-code callback: one-time state consumption, PKCE token
+    exchange, id_token claims validation, userinfo fetch, account mapping or
+    auto-provisioning (license quota gated), then imboy JWT issuance.
+  operationId: oidcCallback
+  parameters:
+    - name: code
+      in: query
+      required: true
+      schema: { type: string }
+      description: IdP 授权码
+    - name: state
+      in: query
+      required: true
+      schema: { type: string }
+      description: authorize 时生成的一次性 state
+  responses:
+    '200':
+      description: client=test 时返回登录 payload（token/refreshtoken/uid 等）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '302':
+      description: client=app 时 302 到 imboy://oidc/callback?otc=<一次性码>
+    '4XX':
+      description: state 无效/重放、claims 不符、IdP 交互失败（统一错误消息）；License 满额 402
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

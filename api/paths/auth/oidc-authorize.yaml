@@ -1,0 +1,37 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/oidc-authorize.yaml
+# GET /api/v1/auth/oidc/authorize — 企业 SSO OIDC 授权跳转 / OIDC authorize redirect
+#
+# 关联：.claude/PRPs/plans/p0c-sso-oidc.plan.md Task C2a
+# Handler: src/api/auth_oidc_handler.erl#handle_authorize/1 → auth_oidc_logic:authorize/1
+# ----------------------------------------------------------------------------
+get:
+  security: []
+  tags: [auth]
+  summary: 企业 SSO OIDC 授权跳转
+  description: |
+    ## 中文
+    生成 state/nonce/PKCE(S256) 后 302 跳转到管理员配置的 IdP authorize 端点
+    （Authorization Code + PKCE 流）。免鉴权（浏览器发起，无客户端签名头）。
+    ## English
+    Generates state/nonce/PKCE(S256) and 302-redirects to the configured IdP
+    authorize endpoint (Authorization Code + PKCE). Unauthenticated by design.
+  operationId: oidcAuthorize
+  parameters:
+    - name: client
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [app, test]
+        default: app
+      description: 回调分流：app=302 深链一次性码；test=直接 JSON 返回登录 payload（E2E 用）
+  responses:
+    '302':
+      description: 跳转到 IdP authorize 端点（Location 含 state/nonce/code_challenge）
+    '4XX':
+      description: SSO 未启用/配置无效（统一错误消息，不泄配置细节）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

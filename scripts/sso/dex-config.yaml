@@ -1,0 +1,29 @@
+# dex OIDC IdP 配置（仅供 scripts/sso_oidc_e2e.sh 本地 E2E 使用）
+# dex config for local SSO OIDC E2E only — static client + static password, no external deps.
+issuer: http://127.0.0.1:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  # 跳过授权确认页，便于 curl 脚本化
+  skipApprovalScreen: true
+
+staticClients:
+  - id: imboy
+    name: imboy
+    secret: imboy-e2e-secret
+    redirectURIs:
+      - http://127.0.0.1:9800/api/v1/auth/oidc/callback
+
+enablePasswordDB: true
+
+staticPasswords:
+  - email: test@example.com
+    # bcrypt("password") — dex 官方示例哈希
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: test
+    userID: 08a8684b-db88-4b73-90a9-3cd1661f5466

@@ -72,6 +72,11 @@ get_routes() ->
             %% Web 端 EventSource 长连接，scan/confirm 后实时推送状态
             {"/api/v1/passport/qr_login/subscribe", qr_login_sse_handler, #{}},
 
+            %% P0-C: 企业 SSO OIDC 登录流（Authorization Code + PKCE），见 open/0 白名单
+            {"/api/v1/auth/oidc/authorize", auth_oidc_handler, #{action => authorize}},
+            {"/api/v1/auth/oidc/callback", auth_oidc_handler, #{action => callback}},
+            {"/api/v1/auth/oidc/exchange", auth_oidc_handler, #{action => exchange}},
+
             {"/api/v1/ws", websocket_handler, #{}}
         ] ++
             test_routes_v1() ++
@@ -915,6 +920,10 @@ open() ->
         <<"/api/v1/passport/qr_login/cancel">>,
         %% PR-3β: SSE 端点免登录（EventSource 在握手完成前没有 token）
         <<"/api/v1/passport/qr_login/subscribe">>,
+        %% P0-C: OIDC 登录流——callback 是浏览器重定向，无 sign/did 头，必须免 902 签名门
+        <<"/api/v1/auth/oidc/authorize">>,
+        <<"/api/v1/auth/oidc/callback">>,
+        <<"/api/v1/auth/oidc/exchange">>,
 
         <<"/api/v1/metrics">>,
 

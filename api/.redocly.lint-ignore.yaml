@@ -25,3 +25,6 @@ openapi.yaml:
 paths/ws/connect.yaml:
   operation-2xx-response:
     - '#/get/responses'
+paths/auth/oidc-authorize.yaml:
+  operation-2xx-response:
+    - '#/get/responses'

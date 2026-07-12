@@ -241,7 +241,9 @@ tsid_generator_names() ->
         %% ── MCP 治理 (Phase 3) ──
         mcp_client,
         mcp_client_grant,
-        mcp_audit_log
+        mcp_audit_log,
+        %% ── SSO (P0-C) ──
+        sso_identity
     ].
 
 %% ===================================================================

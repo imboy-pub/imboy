@@ -1,0 +1,44 @@
+# ----------------------------------------------------------------------------
+# imboy/api/paths/auth/oidc-exchange.yaml
+# POST /api/v1/auth/oidc/exchange — OIDC App 深链一次性码换登录 payload
+#
+# 关联：.claude/PRPs/plans/p0c-sso-oidc.plan.md Task C2a
+# Handler: src/api/auth_oidc_handler.erl#handle_exchange/1 → auth_oidc_logic:exchange/1
+# ----------------------------------------------------------------------------
+post:
+  security: []
+  tags: [auth]
+  summary: OIDC 一次性码换登录 payload
+  description: |
+    ## 中文
+    App 通过 `imboy://oidc/callback?otc=` 深链收到一次性码后调用本端点
+    换取登录 payload（与密码登录同构：token/refreshtoken/uid 等）。
+    otc 有效期 60s，一次性消费，重放拒绝。
+    ## English
+    Exchanges the one-time code (received via the `imboy://` deep link) for
+    the login payload. The OTC expires in 60s and is single-use.
+  operationId: oidcExchange
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [otc]
+          properties:
+            otc:
+              type: string
+              description: callback 深链下发的一次性码
+  responses:
+    '200':
+      description: 登录 payload（token/refreshtoken/uid 等，同密码登录）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'
+    '4XX':
+      description: otc 无效/过期/重放（统一错误消息）
+      content:
+        application/json:
+          schema:
+            $ref: '../../components/schemas/Envelope.yaml'

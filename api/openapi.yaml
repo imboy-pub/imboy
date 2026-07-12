@@ -121,6 +121,12 @@ paths:
     $ref: './paths/auth/qr-confirm.yaml'
   /api/v1/passport/qr_login/cancel:
     $ref: './paths/auth/qr-cancel.yaml'
+  /api/v1/auth/oidc/authorize:
+    $ref: './paths/auth/oidc-authorize.yaml'
+  /api/v1/auth/oidc/callback:
+    $ref: './paths/auth/oidc-callback.yaml'
+  /api/v1/auth/oidc/exchange:
+    $ref: './paths/auth/oidc-exchange.yaml'
   /api/v1/user/update:
     $ref: './paths/user/update.yaml'
   /api/v1/user/show:
