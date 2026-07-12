@@ -1,0 +1,32 @@
+# GET /api/v1/e2ee/backup/info
+get:
+  tags: [user]
+  summary: 备份存在性探测（恢复横幅用）
+  description: |
+    ## 中文 / English
+    查询当前用户有无云端密钥备份及版本信息。响应不含密文与盐值。
+    Probe whether a server-side key backup exists. Response never
+    contains ciphertext or KDF salt.
+  operationId: e2eeBackupInfo
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      has_backup: { type: boolean }
+                      backup_version: { type: integer, description: '仅 has_backup=true 时返回' }
+                      algo: { type: string, description: '仅 has_backup=true 时返回' }
+                      kdf_iterations: { type: integer, description: '仅 has_backup=true 时返回' }
+                      created_at: { type: string, description: '仅 has_backup=true 时返回' }
+    '4XX':
+      description: 功能未启用
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

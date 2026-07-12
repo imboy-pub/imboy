@@ -553,8 +553,12 @@ paths:
     $ref: './paths/e2ee/pull-notifications.yaml'
   /api/v1/e2ee/recovery/start:
     $ref: './paths/e2ee/start-recovery.yaml'
-  /api/v1/e2ee/backup/list:
-    $ref: './paths/e2ee/backup-list.yaml'
+  /api/v1/e2ee/backup/put:
+    $ref: './paths/e2ee/backup-put.yaml'
+  /api/v1/e2ee/backup/get:
+    $ref: './paths/e2ee/backup-get.yaml'
+  /api/v1/e2ee/backup/info:
+    $ref: './paths/e2ee/backup-info.yaml'
   /api/v1/e2ee/backup/delete:
     $ref: './paths/e2ee/backup-delete.yaml'
   /api/v1/e2ee/compliance_key:

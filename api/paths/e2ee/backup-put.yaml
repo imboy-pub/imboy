@@ -1,0 +1,61 @@
+# POST /api/v1/e2ee/backup/put
+post:
+  tags: [user]
+  summary: 上传加密密钥备份（4S 模式）
+  description: |
+    ## 中文 / English
+    上传新版本的加密密钥备份。客户端用恢复口令派生密钥（PBKDF2-HMAC-SHA256）
+    本地加密密钥包后上传；服务端只存密文与 KDF 参数，零信任。
+    backup_version 必须 = 当前最新版本 + 1（无备份时为 1），否则 409。
+    Upload a new encrypted key backup version. All crypto happens client-side;
+    the server stores ciphertext + KDF params only (Matrix 4S semantics).
+  operationId: e2eeBackupPut
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [backup_version, kdf_salt, kdf_iterations, encrypted_payload, payload_hash]
+          properties:
+            backup_version:
+              type: integer
+              description: '备份版本号，必须 = 当前 + 1 / Monotonic version, must equal current + 1'
+            algo:
+              type: string
+              default: pbkdf2-sha256/aes-256-gcm
+              description: '加密算法标识 / Encryption algorithm identifier'
+            kdf_salt:
+              type: string
+              description: 'KDF 盐值 base64（客户端生成）/ KDF salt, base64, client-generated'
+            kdf_iterations:
+              type: integer
+              minimum: 100000
+              description: 'KDF 迭代次数（客户端保证 >=310000）/ KDF iterations'
+            encrypted_payload:
+              type: string
+              maxLength: 1048576
+              description: 'base64 密文包，明文 PEM 拒收 / base64 ciphertext; plaintext PEM rejected'
+            payload_hash:
+              type: string
+              description: '密文包 SHA-256 十六进制 / SHA-256 hex of the payload'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      backup_version:
+                        type: integer
+                        description: 已落库的版本号 / Stored version
+    '4XX':
+      description: 参数非法 / 明文拒收(400) / 版本冲突(409) / 限流(429)
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

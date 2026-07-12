@@ -168,6 +168,12 @@ get_routes() ->
                 % 合规密钥分发（三层加密架构）
                 {"/api/v1/e2ee/compliance_key", e2ee_handler, #{action => compliance_key}},
 
+                % 加密密钥备份（4S 模式，服务端只存密文）
+                {"/api/v1/e2ee/backup/put", e2ee_backup_handler, #{action => put}},
+                {"/api/v1/e2ee/backup/get", e2ee_backup_handler, #{action => get}},
+                {"/api/v1/e2ee/backup/info", e2ee_backup_handler, #{action => info}},
+                {"/api/v1/e2ee/backup/delete", e2ee_backup_handler, #{action => delete}},
+
                 {"/api/v1/user_collect/page", user_collect_handler, #{action => page}},
                 {"/api/v1/user_collect/add", user_collect_handler, #{action => add}},
                 {"/api/v1/user_collect/remove", user_collect_handler, #{action => remove}},

@@ -1,20 +1,12 @@
 # POST /api/v1/e2ee/backup/delete
 post:
   tags: [user]
-  summary: 删除某个备份
+  summary: 删除全部云端密钥备份
   description: |
     ## 中文 / English
-    删除某个备份
-    See docs/api/e2ee_*.md for crypto invariants and shard policy.
+    删除当前用户全部版本的加密密钥备份（4S 模式）。
+    Delete all encrypted key backup versions for the current user.
   operationId: e2eeBackupDelete
-  requestBody:
-    required: true
-    content:
-      application/json:
-        schema:
-          type: object
-          properties:
-            backup_id: { type: integer, description: '备份 ID / Backup ID' }
   responses:
     '200':
       description: 成功
@@ -27,13 +19,11 @@ post:
                 properties:
                   payload:
                     type: object
-                    required: [deleted]
                     properties:
                       deleted:
-                        type: boolean
-                        example: true
-                        description: 是否已删除 / Whether the backup was deleted
+                        type: integer
+                        description: 删除的版本数 / Number of versions deleted
     '4XX':
-      description: 参数非法 / 无权限 / backup 校验失败
+      description: 功能未启用 / 限流(429)
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

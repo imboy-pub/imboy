@@ -1,0 +1,37 @@
+# GET /api/v1/e2ee/backup/get
+get:
+  tags: [user]
+  summary: 拉取最新加密密钥备份（换机恢复用）
+  description: |
+    ## 中文 / English
+    拉取当前用户最新版本的加密密钥备份（含密文与 KDF 参数），
+    新设备输入恢复口令后本地派生解密。服务端不可解。
+    Fetch the latest encrypted backup (ciphertext + KDF params) for
+    client-side recovery. The server cannot decrypt it.
+  operationId: e2eeBackupGet
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      backup_version: { type: integer }
+                      algo: { type: string }
+                      kdf_salt: { type: string, description: 'KDF 盐值 base64' }
+                      kdf_iterations: { type: integer }
+                      encrypted_payload:
+                        type: string
+                        description: 'base64 密文包，与上传逐字节一致 / verbatim ciphertext'
+                      payload_hash: { type: string }
+                      created_at: { type: string }
+    '4XX':
+      description: 无备份(404)
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -206,6 +206,7 @@ tsid_generator_names() ->
         e2ee_transfer,
         e2ee_social,
         e2ee_local_backup,
+        e2ee_key_backup,
         e2ee_shard_transmission_log,
         %% ── 举报 ──
         report_ticket,
