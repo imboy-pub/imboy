@@ -40,7 +40,15 @@ create(ChannelId, Name, CreatorUid) ->
             },
             case channel_admin_repo:add(AdminData) of
                 {ok, _} ->
-                    insert_webhook(ChannelId, Name, Token, BotUid, CreatorUid);
+                    case insert_webhook(ChannelId, Name, Token, BotUid, CreatorUid) of
+                        {ok, _} = Ok ->
+                            Ok;
+                        {error, _} = Err ->
+                            %% 尽力回滚频道编辑授权，避免留下无主且现有管理端
+                            %% 不可发现的 channel_admin 权限残留（security-review M2）
+                            _ = channel_admin_repo:delete(ChannelId, BotUid),
+                            Err
+                    end;
                 {error, Reason} ->
                     ?ERROR_LOG("channel_webhook_ds:create admin error ~p~n", [Reason]),
                     {error, <<"绑定频道编辑失败"/utf8>>}

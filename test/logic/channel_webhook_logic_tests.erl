@@ -3,7 +3,7 @@
 -include("eunit_setup.hrl").
 
 %% ===================================================================
-%% incoming/2
+%% incoming/3
 %% ===================================================================
 
 %% ① token 无效 → 统一 not_found
@@ -18,7 +18,7 @@ incoming_invalid_token_test_() ->
         fun() ->
             ?assertEqual(
                 {error, not_found},
-                channel_webhook_logic:incoming(<<"badtoken">>, <<"hello">>)
+                channel_webhook_logic:incoming(<<"badtoken">>, <<"hello">>, <<"1.2.3.4">>)
             )
         end
     ).
@@ -41,7 +41,7 @@ incoming_disabled_webhook_test_() ->
         fun() ->
             ?assertEqual(
                 {error, not_found},
-                channel_webhook_logic:incoming(<<"disabledtok">>, <<"hello">>)
+                channel_webhook_logic:incoming(<<"disabledtok">>, <<"hello">>, <<"1.2.3.4">>)
             )
         end
     ).
@@ -51,7 +51,10 @@ incoming_rate_limited_test_() ->
     ?WITH_MECKS(
         [
             {agent_rate_limiter, [
-                {'allow', 2, fun(_, 0) -> {deny, requester_rate} end}
+                {'allow', 2, fun
+                    (<<"webhook_ip:", _/binary>>, 0) -> allow;
+                    (_, 0) -> {deny, requester_rate}
+                end}
             ]},
             {channel_webhook_ds, [
                 {'find_by_token', 1, fun(_) -> erlang:error(should_not_hit_ds) end}
@@ -60,7 +63,7 @@ incoming_rate_limited_test_() ->
         fun() ->
             ?assertEqual(
                 {error, rate_limited},
-                channel_webhook_logic:incoming(<<"sometoken">>, <<"hello">>)
+                channel_webhook_logic:incoming(<<"sometoken">>, <<"hello">>, <<"1.2.3.4">>)
             )
         end
     ).
@@ -92,7 +95,7 @@ incoming_valid_token_publishes_as_bot_test_() ->
         fun() ->
             ?assertEqual(
                 ok,
-                channel_webhook_logic:incoming(<<"goodtoken">>, <<"hello">>)
+                channel_webhook_logic:incoming(<<"goodtoken">>, <<"hello">>, <<"1.2.3.4">>)
             ),
             ?assert(meck:called(channel_logic_message, publish_message, '_'))
         end
@@ -147,5 +150,33 @@ list_masks_token_test_() ->
         fun() ->
             {ok, [Row]} = channel_webhook_logic:list(1001, <<"77">>),
             ?assertEqual(<<"abcdefgh***">>, maps:get(<<"token">>, Row))
+        end
+    ).
+
+%% ⑦ IP 维度限流是第一道闸门：换 token 枚举/空 body 均被 IP 限流覆盖，
+%% 不触达 token 限流与 DS（security-review H1/M1）
+incoming_ip_rate_limited_test_() ->
+    ?WITH_MECKS(
+        [
+            {agent_rate_limiter, [
+                {'allow', 2, fun
+                    (<<"webhook_ip:", _/binary>>, 0) -> {deny, requester_rate};
+                    (_, 0) -> erlang:error(should_not_hit_token_limiter)
+                end}
+            ]},
+            {channel_webhook_ds, [
+                {'find_by_token', 1, fun(_) -> erlang:error(should_not_hit_ds) end}
+            ]}
+        ],
+        fun() ->
+            %% 正常 body 与空 body 都先过 IP 闸门
+            ?assertEqual(
+                {error, rate_limited},
+                channel_webhook_logic:incoming(<<"any">>, <<"hello">>, <<"6.6.6.6">>)
+            ),
+            ?assertEqual(
+                {error, rate_limited},
+                channel_webhook_logic:incoming(<<"any">>, <<>>, <<"6.6.6.6">>)
+            )
         end
     ).

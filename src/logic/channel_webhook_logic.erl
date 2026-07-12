@@ -4,7 +4,8 @@
 % 频道 incoming webhook 业务逻辑 / Channel incoming webhook business logic
 %
 % 管理端（须频道管理员 role>=2）：create / disable / list（list 只回 token 前 8 位掩码）。
-% 入站端（免 JWT，token 即凭证）：incoming/2 —— 限流 → 查 token → 以 bot_uid 发消息。
+% 入站端（免 JWT，token 即凭证）：incoming/3 —— IP 限流 → token 限流 → 查 token
+% → 以 bot_uid 发消息。
 %
 % channel locking：webhook 只能发到建它时绑定的 channel。token 不携带任何路由
 % 信息，目标频道只来自 channel_webhook 表行（表结构天然保证）。
@@ -16,7 +17,7 @@
 -export([create/3]).
 -export([disable/3]).
 -export([list/2]).
--export([incoming/2]).
+-export([incoming/3]).
 
 %% webhook 管理要求的最低角色（2=管理员，3=创建者）
 -define(MIN_MANAGE_ROLE, 2).
@@ -69,14 +70,26 @@ list(Uid, ChannelIdBin) ->
 %% 入站端 API（免 JWT，token 即凭证）
 %% ===================================================================
 
-%% @doc incoming 消息：限流（按 token）→ 查 token（status=1）→ 以 bot_uid 发文本。
+%% @doc incoming 消息：IP 限流 → token 限流 → 查 token（status=1）→ 以 bot_uid 发文本。
 %% 无效/停用 token 统一 not_found（不泄露存在性差异）；限流 rate_limited。
--spec incoming(binary(), binary()) ->
+%%
+%% 双维限流（security-review H1/M1）：按 token 限流的 key 是候选值本身，
+%% 换 token 枚举时每个候选都是新 key，约束不到"遍历 token 打库"；故第一道
+%% 按来源 IP 限流且前置于一切分支（含空 text 短路），覆盖全部入站路径。
+-spec incoming(binary(), binary(), binary()) ->
     ok | {error, rate_limited | not_found | binary()}.
-incoming(_Token, <<>>) ->
+incoming(Token, Text, Ip) ->
+    case agent_rate_limiter:allow(<<"webhook_ip:", Ip/binary>>, 0) of
+        {deny, _} ->
+            {error, rate_limited};
+        allow ->
+            incoming_checked(Token, Text)
+    end.
+
+incoming_checked(_Token, <<>>) ->
     {error, <<"text 不能为空"/utf8>>};
-incoming(Token, Text) ->
-    %% 限流前置于查库之前，挡住无效 token 打库；FromUid 无认证主体固定 0
+incoming_checked(Token, Text) ->
+    %% 第二道：按 token 限流，约束单 token 多来源洪泛；FromUid 无认证主体固定 0
     case agent_rate_limiter:allow(Token, 0) of
         {deny, _} ->
             {error, rate_limited};

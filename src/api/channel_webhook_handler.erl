@@ -79,7 +79,7 @@ incoming(Req0) ->
     Token = binding_or_empty(token, Req0),
     {RawBody, Req1} = read_raw_body(Req0),
     Text = extract_text(RawBody),
-    case channel_webhook_logic:incoming(Token, Text) of
+    case channel_webhook_logic:incoming(Token, Text, client_ip(Req0)) of
         ok ->
             reply_json(200, <<"{\"ok\":true}">>, Req1);
         {error, rate_limited} ->
@@ -94,6 +94,18 @@ incoming(Req0) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+%% @doc 提取来源 IP（CF-Connecting-IP > X-Real-IP > X-Forwarded-For > peer），
+%% 供入站限流按 IP 维度计数（security-review H1/M1）
+-spec client_ip(cowboy_req:req()) -> binary().
+client_ip(Req) ->
+    case login_attempt_ds:extract_real_ip(cowboy_req:headers(Req)) of
+        {ok, Ip} ->
+            Ip;
+        _ ->
+            {PeerIp, _Port} = cowboy_req:peer(Req),
+            list_to_binary(inet:ntoa(PeerIp))
+    end.
 
 %% @doc 读取完整原始报文（1MB/5s 上限，复刻 payment_callback_handler 范式）
 -spec read_raw_body(cowboy_req:req()) -> {binary(), cowboy_req:req()}.
