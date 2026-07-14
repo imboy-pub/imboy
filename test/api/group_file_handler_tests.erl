@@ -11,19 +11,45 @@
 %%% - upload/download/list/delete/search/categories
 %%%===================================================================
 
+%% 模拟 cowboy 流式 multipart 协议：read_part 每次返回一个 part 的
+%% headers map，read_part_body 返回对应 body，读完返回 {done, Req}。
+%% 旧 mock 把 parts 列表塞进单次 read_part 返回值，固化了错误契约，
+%% 正是生产 function_clause 崩溃（2026-07-14）漏网的原因。
+multipart_stream_mocks(PartSpecs) ->
+    % PartSpecs :: [{HeadersMap, BodyBinary}]
+    % atomics 计数器跨进程可见（mock fun 在 eunit 工作进程执行，进程字典不通）。
+    Ctr = atomics:new(2, []),
+    ReadPart = fun(_Req) ->
+        N = atomics:add_get(Ctr, 1, 1) - 1,
+        case N < length(PartSpecs) of
+            true ->
+                {Headers, _Body} = lists:nth(N + 1, PartSpecs),
+                {ok, Headers, req_headers};
+            false ->
+                {done, req_done}
+        end
+    end,
+    ReadBody = fun(_Req) ->
+        N = atomics:add_get(Ctr, 2, 1) - 1,
+        {_Headers, Body} = lists:nth(N + 1, PartSpecs),
+        {ok, Body, req_body}
+    end,
+    [{'read_part', 1, ReadPart}, {'read_part_body', 1, ReadBody}].
+
 upload_missing_gid_returns_missing_param_test_() ->
     ?WITH_MECKS(
         [
-            {cowboy_req, [
-                {'read_part', 1, fun(_Req) ->
-                    {ok,
-                        [
-                            {<<"file_name">>, <<"a.txt">>},
-                            {<<"file">>, <<"hello">>}
-                        ],
-                        req_after_part}
-                end}
-            ]},
+            {cowboy_req,
+                multipart_stream_mocks([
+                    {
+                        #{
+                            <<"content-disposition">> =>
+                                <<"form-data; name=\"file\"; filename=\"a.txt\"">>,
+                            <<"content-type">> => <<"text/plain">>
+                        },
+                        <<"hello">>
+                    }
+                ])},
             {elib_response, [
                 {'error', 3, fun(_Req, _Msg, Code) ->
                     self() ! {resp_code, Code},
@@ -41,18 +67,26 @@ upload_missing_gid_returns_missing_param_test_() ->
 upload_success_returns_success_test_() ->
     ?WITH_MECKS(
         [
-            {cowboy_req, [
-                {'read_part', 1, fun(_Req) ->
-                    {ok,
-                        [
-                            {<<"gid">>, <<"gid_1">>},
-                            {<<"file_name">>, <<"a.txt">>},
-                            {<<"file_type">>, <<"text/plain">>},
-                            {<<"file">>, <<"hello">>}
-                        ],
-                        req_after_part}
-                end}
-            ]},
+            {cowboy_req,
+                multipart_stream_mocks([
+                    {#{<<"content-disposition">> => <<"form-data; name=\"gid\"">>}, <<"gid_1">>},
+                    {
+                        #{<<"content-disposition">> => <<"form-data; name=\"file_name\"">>},
+                        <<"a.txt">>
+                    },
+                    {
+                        #{<<"content-disposition">> => <<"form-data; name=\"file_type\"">>},
+                        <<"text/plain">>
+                    },
+                    {
+                        #{
+                            <<"content-disposition">> =>
+                                <<"form-data; name=\"file\"; filename=\"a.txt\"">>,
+                            <<"content-type">> => <<"text/plain">>
+                        },
+                        <<"hello">>
+                    }
+                ])},
             {group_file_logic, [
                 {'upload', 5, fun(_Gid, _Uid, _FileName, _FileBinary, _FileType) ->
                     {ok, #{<<"file_id">> => <<"f_1">>}}

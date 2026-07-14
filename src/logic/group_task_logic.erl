@@ -68,8 +68,11 @@ create(GroupId, CreatorId, Title, Data) when
             {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
                 ?ERR_TASK_PERMISSION_DENIED};
         true ->
-            % 生成唯一的作业ID（使用TSID）
-            TaskId = GroupId + CreatorId + erlang:unique_integer([positive]),
+            % 生成唯一的作业对外 ID（binary，对齐表列 task_id varchar(40)
+            % 与 repo is_binary 校验契约）。此前用整数相加生成 → repo guard
+            % 不匹配落 invalid_param，创建作业 100% 失败（2026-07-14 生产
+            % 坐实，group_task 表 0 行）。
+            TaskId = elib_id:gen(<<"task">>),
             TaskData = #{
                 group_id => GroupId,
                 task_id => TaskId,

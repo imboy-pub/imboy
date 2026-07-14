@@ -39,6 +39,35 @@ create_with_missing_title_test_() ->
         ?assertMatch({error, _, _}, Result)
     end).
 
+%% 回归：task_id 必须是 binary（表列 varchar(40) + repo is_binary 校验）。
+%% 此前 logic 用整数相加生成 task_id → repo guard 不匹配 invalid_param，
+%% 创建作业 100% 失败（2026-07-14 生产坐实）。mock 掉 insert 的旧测试抓
+%% 不到该类型契约，这里显式断言传给 repo 的 task_id 类型。
+create_task_id_is_binary_contract_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_task_repo, [
+                {'insert', 1, fun(Data) ->
+                    self() ! {captured_task_id, maps:get(task_id, Data)},
+                    {ok, 1001, [{<<"id">>, 1001}]}
+                end}
+            ]},
+            {group_ds, [{'is_member', 2, fun(_Uid, _Gid) -> true end}]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, _},
+                group_task_logic:create(123, 456, <<"契约"/utf8>>, #{})
+            ),
+            receive
+                {captured_task_id, TaskId} ->
+                    ?assert(is_binary(TaskId)),
+                    ?assert(byte_size(TaskId) =< 40)
+            after 1000 -> ?assert(false)
+            end
+        end
+    ).
+
 %% 回归（IDOR）：创建者不是该群成员 → 拒绝，防止对任意 group_id 创建作业
 create_non_member_rejected_test_() ->
     ?WITH_MECK(

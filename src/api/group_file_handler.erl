@@ -54,8 +54,12 @@ handle_action(false, Req, _State) -> Req.
 upload(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
 
-    % 解析 multipart 表单数据
-    {ok, Parts, Req1} = cowboy_req:read_part(Req0),
+    % 解析 multipart 表单数据。cowboy_req:read_part/1 是流式 API：每次只
+    % 返回单个 part 的 headers map，须配合 read_part_body 循环读完全部
+    % part。此前把首个 part 的 headers 当 parts 列表直传 parse_multipart
+    % → function_clause 崩溃，真实请求下上传从未成功过（2026-07-14 生产
+    % crash.log 坐实）。
+    {Parts, Req1} = read_all_parts(Req0),
 
     % 提取参数
     {Gid, FileName, FileBinary, FileType} = parse_multipart(Parts),
@@ -237,6 +241,37 @@ categories(Req0, State) ->
 %% ===================================================================
 %% 内部函数
 %% ===================================================================
+
+%% @doc 流式读完请求的全部 multipart part，归一化为
+%% [{FieldName, Value}]：普通表单字段 Value 为 binary；文件字段 Value 为
+%% #{filename, data, content_type}（与 parse_multipart/normalize_file_part
+%% 的既有子句对齐）。
+-spec read_all_parts(cowboy_req:req()) -> {list(), cowboy_req:req()}.
+read_all_parts(Req0) ->
+    read_all_parts(Req0, []).
+
+read_all_parts(Req0, Acc) ->
+    case cowboy_req:read_part(Req0) of
+        {ok, Headers, Req1} ->
+            case cow_multipart:form_data(Headers) of
+                {data, FieldName} ->
+                    {Body, Req2} = read_full_part_body(Req1, <<>>),
+                    read_all_parts(Req2, [{FieldName, Body} | Acc]);
+                {file, FieldName, Filename, CType} ->
+                    {Body, Req2} = read_full_part_body(Req1, <<>>),
+                    Value = #{filename => Filename, data => Body, content_type => CType},
+                    read_all_parts(Req2, [{FieldName, Value} | Acc])
+            end;
+        {done, Req1} ->
+            {lists:reverse(Acc), Req1}
+    end.
+
+%% @doc 循环 read_part_body 直到读完单个 part（大文件会分多次 more 返回）。
+read_full_part_body(Req0, Acc) ->
+    case cowboy_req:read_part_body(Req0) of
+        {ok, Data, Req1} -> {<<Acc/binary, Data/binary>>, Req1};
+        {more, Data, Req1} -> read_full_part_body(Req1, <<Acc/binary, Data/binary>>)
+    end.
 
 %% @doc 解析 multipart 表单数据（兼容测试桩和简化结构）
 %% @param Parts cowboy_req 读到的部分
