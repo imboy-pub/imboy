@@ -92,16 +92,6 @@ init([]) ->
         modules => [msg_store_sup]
     },
 
-    % E2EE 清理工作进程
-    E2eeCleanupWorker = #{
-        id => e2ee_cleanup_worker,
-        start => {e2ee_cleanup_worker, start_link, []},
-        restart => permanent,
-        shutdown => 5000,
-        type => worker,
-        modules => [e2ee_cleanup_worker]
-    },
-
     % 消息自毁定时清理工作进程
     MsgBurnWorker = #{
         id => msg_burn_logic,
@@ -244,7 +234,6 @@ init([]) ->
             LoginAttemptServer,
             UserServer,
             MsgWriteQueueSup,
-            E2eeCleanupWorker,
             MsgBurnWorker,
             UserDeletionWorker,
             LicenseNoticeWorker,

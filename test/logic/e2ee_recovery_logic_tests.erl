@@ -63,12 +63,6 @@ start_auto_recovery_unsupported_test() ->
 recovery_options_include_server_backup_test_() ->
     ?WITH_MECKS(
         [
-            {e2ee_transfer_ds, [
-                {'get_pending_sessions', 1, fun(10001) -> {ok, []} end}
-            ]},
-            {e2ee_social_ds, [
-                {'list_trusted_contacts', 1, fun(10001) -> {ok, []} end}
-            ]},
             {e2ee_backup_ds, [
                 {'latest', 1, fun(10001) ->
                     {ok, #{
@@ -86,51 +80,22 @@ recovery_options_include_server_backup_test_() ->
             Details = maps:get(<<"details">>, Opt),
             ?assertEqual(5, maps:get(<<"backup_version">>, Details)),
             ?assertNot(maps:is_key(<<"encrypted_payload">>, Details)),
-            ?assertNot(maps:is_key(<<"kdf_salt">>, Details))
+            ?assertNot(maps:is_key(<<"kdf_salt">>, Details)),
+            %% 云备份即唯一恢复方式（自研 transfer/social 已下线）
+            ?assertEqual(<<"server_backup">>, e2ee_recovery_logic:recommend_method(Options))
         end
     ).
 
 recovery_options_no_backup_test_() ->
     ?WITH_MECKS(
         [
-            {e2ee_transfer_ds, [
-                {'get_pending_sessions', 1, fun(10001) -> {ok, []} end}
-            ]},
-            {e2ee_social_ds, [
-                {'list_trusted_contacts', 1, fun(10001) -> {ok, []} end}
-            ]},
             {e2ee_backup_ds, [
                 {'latest', 1, fun(10001) -> {error, not_found} end}
             ]}
         ],
         fun() ->
-            ?assertEqual([], e2ee_recovery_logic:get_recovery_options(10001))
-        end
-    ).
-
-%% 设备间传输可用时优先级仍高于 server_backup（1 < 3）
-recovery_options_priority_order_test_() ->
-    ?WITH_MECKS(
-        [
-            {e2ee_transfer_ds, [
-                {'get_pending_sessions', 1, fun(10001) ->
-                    {ok, [#{<<"session_id">> => <<"s1">>}]}
-                end}
-            ]},
-            {e2ee_social_ds, [
-                {'list_trusted_contacts', 1, fun(10001) -> {ok, []} end}
-            ]},
-            {e2ee_backup_ds, [
-                {'latest', 1, fun(10001) -> {ok, #{<<"backup_version">> => 1}} end}
-            ]}
-        ],
-        fun() ->
-            Options = e2ee_recovery_logic:get_recovery_options(10001),
-            ?assertEqual(
-                [<<"device_transfer">>, <<"server_backup">>],
-                [maps:get(<<"method">>, O) || O <- Options]
-            ),
-            ?assertEqual(<<"device_transfer">>, e2ee_recovery_logic:recommend_method(Options))
+            ?assertEqual([], e2ee_recovery_logic:get_recovery_options(10001)),
+            ?assertEqual(<<"none">>, e2ee_recovery_logic:recommend_method([]))
         end
     ).
 

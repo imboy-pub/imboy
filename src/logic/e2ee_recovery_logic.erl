@@ -7,13 +7,10 @@
 %%% - 获取可用恢复方式
 %%% - 推荐最优恢复路径
 %%%
-%%% 恢复方式优先级：
-%%% 1. 设备间传输（最快，最安全）
-%%% 2. 社交恢复（零信任，需要代理配合）
-%%% 3. 服务端加密备份（4S 模式，需恢复口令，见 e2ee_backup_logic）
+%%% 恢复方式：服务端加密备份（4S 模式，需恢复口令/恢复密钥，见 e2ee_backup_logic）。
 %%%
-%%% 【T10/D4】本地备份（local_backup）已删除：create 端点从未实现过，
-%%% 该路径实为孤岛，且同账号换机 transfer 已是主恢复路径，符合 YAGNI。
+%%% 自研的设备间传输、社交恢复（Shamir 分片）已下线：统一收敛到口令/恢复密钥
+%%% 加密的云备份（与 Matrix 4S 等价），服务端全程零密码学，不接触明文私钥。
 %%%===================================================================
 
 -include("log.hrl").
@@ -55,66 +52,20 @@ check_key_status(Uid, DeviceId) when is_integer(Uid), is_binary(DeviceId) ->
 %% @returns [RecoveryOption]
 -spec get_recovery_options(integer()) -> [map()].
 get_recovery_options(Uid) when is_integer(Uid) ->
-    Options = [],
-
-    % 1. 检查设备间传输（最高优先级）
-    Options1 =
-        case check_device_transfer_available(Uid) of
-            {ok, true, Details1} ->
-                [
-                    #{
-                        <<"method">> => <<"device_transfer">>,
-                        <<"available">> => true,
-                        <<"priority">> => 1,
-                        <<"details">> => Details1
-                    }
-                    | Options
-                ];
-            _ ->
-                Options
-        end,
-
-    % 2. 检查社交恢复
-    Options2 =
-        case check_social_recovery_available(Uid) of
-            {ok, true, Details2} ->
-                [
-                    #{
-                        <<"method">> => <<"social_recovery">>,
-                        <<"available">> => true,
-                        <<"priority">> => 2,
-                        <<"details">> => Details2
-                    }
-                    | Options1
-                ];
-            _ ->
-                Options1
-        end,
-
-    % 3. 检查服务端加密备份（4S 模式，客户端凭恢复口令本地解密）
-    Options3 =
-        case check_server_backup_available(Uid) of
-            {ok, true, Details3} ->
-                [
-                    #{
-                        <<"method">> => <<"server_backup">>,
-                        <<"available">> => true,
-                        <<"priority">> => 3,
-                        <<"details">> => Details3
-                    }
-                    | Options2
-                ];
-            _ ->
-                Options2
-        end,
-
-    % 按优先级排序
-    lists:sort(
-        fun(A, B) ->
-            maps:get(<<"priority">>, A) < maps:get(<<"priority">>, B)
-        end,
-        Options3
-    ).
+    % 唯一恢复方式：服务端加密备份（4S 模式，客户端凭恢复口令/恢复密钥本地解密）
+    case check_server_backup_available(Uid) of
+        {ok, true, Details} ->
+            [
+                #{
+                    <<"method">> => <<"server_backup">>,
+                    <<"available">> => true,
+                    <<"priority">> => 1,
+                    <<"details">> => Details
+                }
+            ];
+        _ ->
+            []
+    end.
 
 %% @doc 推荐恢复方式
 %% @param Options 恢复选项列表
@@ -132,10 +83,6 @@ recommend_method([Best | _]) -> maps:get(<<"method">>, Best).
     {ok, map()} | {error, term()}.
 start_auto_recovery(Uid, DeviceId, Method) ->
     case Method of
-        <<"device_transfer">> ->
-            start_device_transfer_recovery(Uid, DeviceId);
-        <<"social_recovery">> ->
-            start_social_recovery(Uid, DeviceId);
         <<"server_backup">> ->
             start_server_backup_recovery(Uid, DeviceId);
         _ ->
@@ -168,52 +115,6 @@ check_device_has_key(Uid, DeviceId) ->
             false
     end.
 
-%% @doc 检查设备间传输是否可用
--spec check_device_transfer_available(integer()) ->
-    {ok, boolean(), map()} | {error, term()}.
-check_device_transfer_available(Uid) ->
-    case e2ee_transfer_ds:get_pending_sessions(Uid) of
-        {ok, []} ->
-            {ok, false, #{}};
-        {ok, Sessions} ->
-            % 有待处理的传输会话
-            {ok, true, #{
-                <<"pending_count">> => length(Sessions),
-                <<"sessions">> => Sessions
-            }};
-        {error, Reason} ->
-            ok = ?ERROR_LOG([check_device_transfer_available, Reason]),
-            {ok, false, #{}}
-    end.
-
-%% @doc 检查社交恢复是否可用
--spec check_social_recovery_available(integer()) ->
-    {ok, boolean(), map()} | {error, term()}.
-check_social_recovery_available(Uid) ->
-    try
-        % 检查是否有可信联系人
-        case e2ee_social_ds:list_trusted_contacts(Uid) of
-            {ok, []} ->
-                {ok, false, #{}};
-            {ok, Contacts} ->
-                % 可信联系人由服务端维护，默认视作可参与恢复
-                ActiveCount = length(Contacts),
-                % 至少需要 2 个可信联系人
-                CanRecover = ActiveCount >= 2,
-                {ok, CanRecover, #{
-                    <<"contact_count">> => length(Contacts),
-                    <<"active_count">> => ActiveCount
-                }};
-            {error, Reason} ->
-                ok = ?ERROR_LOG([check_social_recovery_available, Reason]),
-                {ok, false, #{}}
-        end
-    catch
-        _:Error ->
-            ok = ?ERROR_LOG([check_social_recovery_available, {'catch', Error}]),
-            {ok, false, #{}}
-    end.
-
 %% @doc 检查服务端加密备份是否可用（只探测有无，不触密文内容）
 -spec check_server_backup_available(integer()) ->
     {ok, boolean(), map()} | {error, term()}.
@@ -244,48 +145,6 @@ start_server_backup_recovery(Uid, _DeviceId) ->
             }};
         {error, not_found} ->
             {error, {<<"无云端备份"/utf8>>, ?ERR_NOT_FOUND}};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%% @doc 启动设备间传输恢复
--spec start_device_transfer_recovery(integer(), binary()) ->
-    {ok, map()} | {error, term()}.
-start_device_transfer_recovery(Uid, _DeviceId) ->
-    case e2ee_transfer_ds:get_pending_sessions(Uid) of
-        {ok, []} ->
-            {error, {<<"无待处理的传输会话"/utf8>>, ?ERR_E2EE_TRANSFER_SESSION_NOT_FOUND}};
-        {ok, [Session | _]} ->
-            SessionId = maps:get(<<"session_id">>, Session),
-            {ok, #{
-                <<"action">> => <<"accept_transfer">>,
-                <<"session_id">> => SessionId,
-                <<"message">> => <<"请接受传输会话以恢复密钥"/utf8>>
-            }};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-%% @doc 启动社交恢复
--spec start_social_recovery(integer(), binary()) ->
-    {ok, map()} | {error, term()}.
-start_social_recovery(Uid, _DeviceId) ->
-    case e2ee_social_ds:list_trusted_contacts(Uid) of
-        {ok, []} ->
-            {error, {<<"无可信联系人"/utf8>>, ?ERR_E2EE_SOCIAL_CONTACT_NOT_FOUND}};
-        {ok, Contacts} ->
-            ActiveContacts = Contacts,
-
-            case length(ActiveContacts) >= 2 of
-                true ->
-                    {ok, #{
-                        <<"action">> => <<"request_shards">>,
-                        <<"contacts">> => ActiveContacts,
-                        <<"message">> => <<"请向可信联系人请求密钥分片"/utf8>>
-                    }};
-                false ->
-                    {error, {<<"活跃联系人不足"/utf8>>, ?ERR_E2EE_SOCIAL_NOT_ENOUGH_SHARES}}
-            end;
         {error, Reason} ->
             {error, Reason}
     end.

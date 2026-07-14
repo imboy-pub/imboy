@@ -213,10 +213,8 @@ delete_all_related_data_cascades_e2ee_tables_test_() ->
             ok = user_ds:delete_all_related_data(42),
             Deleted = collect_deleted_tables([]),
             E2ee = [T || T <- Deleted, binary:match(T, <<"e2ee_">>) =/= nomatch],
-            %% shards×2(uid/proxy_uid) + trusted_contacts×2(uid/contact_uid)
-            %% + transfer_sessions×2(from/to) + local_backups×1
-            ?assertEqual(7, length(E2ee)),
-            ?assert(lists:member(<<"public.e2ee_social_shards">>, E2ee)),
+            %% 自研 social/transfer 表已下线；仅剩云端加密备份 local_backups×1
+            ?assertEqual(1, length(E2ee)),
             ?assert(lists:member(<<"public.e2ee_local_backups">>, E2ee))
         end
     ).

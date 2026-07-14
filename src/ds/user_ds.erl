@@ -262,22 +262,8 @@ delete_all_related_data(Conn, Uid) ->
     ok = delete_from_table_if_exists(
         Conn, group_random_code_repo:tablename(), <<"user_id = $1">>, [Uid]
     ),
-    % E2EE 级联清理（被遗忘权 + 防止历史代理合谋重建已注销用户的私钥）：
-    % 分片按 uid（作为密钥所有者）与 proxy_uid（作为他人代理）两个维度清理
-    ok = delete_from_table_if_exists(Conn, <<"public.e2ee_social_shards">>, <<"uid = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(
-        Conn, <<"public.e2ee_social_shards">>, <<"proxy_uid = $1">>, [Uid]
-    ),
-    ok = delete_from_table_if_exists(Conn, <<"public.e2ee_trusted_contacts">>, <<"uid = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(
-        Conn, <<"public.e2ee_trusted_contacts">>, <<"contact_uid = $1">>, [Uid]
-    ),
-    ok = delete_from_table_if_exists(
-        Conn, <<"public.e2ee_transfer_sessions">>, <<"from_uid = $1">>, [Uid]
-    ),
-    ok = delete_from_table_if_exists(
-        Conn, <<"public.e2ee_transfer_sessions">>, <<"to_uid = $1">>, [Uid]
-    ),
+    % E2EE 级联清理（被遗忘权）：云端加密备份按 uid 清理。
+    % 自研社交恢复分片/可信联系人/设备传输会话已下线，相关表随迁移下线。
     ok = delete_from_table_if_exists(Conn, <<"public.e2ee_local_backups">>, <<"uid = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_repo:tablename(), <<"id = $1">>, [Uid]),
     ok.
@@ -414,7 +400,7 @@ update_allow_search(Uid, AllowSearch) when AllowSearch >= 1, AllowSearch =< 2 ->
     Tb = <<"fts_user">>,
     elib_pg:update(Tb, #{<<"allow_search">> => AllowSearch}, <<"user_id = $1">>, [Uid]).
 
-%% @doc G3: e2ee_transfer_logic 不应直调 user_repo
+%% @doc G3: 领域 logic 不应直调 user_repo
 -spec may_exist(integer()) -> boolean().
 may_exist(Uid) -> user_repo:may_exist(Uid).
 

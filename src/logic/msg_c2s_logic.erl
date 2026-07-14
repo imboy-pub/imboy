@@ -41,17 +41,9 @@ c2s(MsgId, CurrentUid, Data) ->
             % 新增 provider 只需实现 imboy_llm behaviour + llm_providers 配置
             c2s_to_llm(MsgId, CurrentUid, Bot, Data);
         _ ->
-            % 检查是否为 E2EE 社交恢复消息
-            Payload = maps:get(<<"payload">>, Data, #{}),
-            MsgType = maps:get(<<"msg_type">>, Payload, <<>>),
-            case MsgType of
-                <<"e2ee_social_shard">> ->
-                    handle_e2ee_social_shard(MsgId, CurrentUid, Data);
-                _ ->
-                    % 不支持的 c2s 消息
-                    Msg = message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To),
-                    {reply, Msg}
-            end
+            % 不支持的 c2s 消息（自研 E2EE 社交恢复分片通道已下线）
+            Msg = message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To),
+            {reply, Msg}
     end.
 
 %% @doc 客户端确认 C2S 投递消息
@@ -411,76 +403,3 @@ authorize_conv(CurrentUid, <<"c2g:", GidBin/binary>>) ->
     group_ds:is_member(CurrentUid, Gid);
 authorize_conv(_CurrentUid, _ConvKey) ->
     false.
-
-%% ===================================================================
-%% E2EE 社交恢复 - 零信任架构
-%% ===================================================================
-
-%% @doc 处理 E2EE 社交恢复分片消息
-%% 零信任架构：处理代理解密分片请求
--spec handle_e2ee_social_shard(binary(), integer(), map()) -> {reply, map()}.
-handle_e2ee_social_shard(MsgId, CurrentUid, Data) ->
-    Payload = maps:get(<<"payload">>, Data, #{}),
-    Action = maps:get(<<"action">>, Payload, <<>>),
-
-    case Action of
-        <<"decrypt_shard">> ->
-            % 用户向代理请求解密分片
-            % 服务端仅作为传输通道，转发请求给代理
-            To = maps:get(<<"to">>, Data),
-            From = CurrentUid,
-
-            ShardId = maps:get(<<"shard_id">>, Payload, <<>>),
-            KeyVersion = maps:get(<<"key_version">>, Payload, <<>>),
-            ProxyUid = ec_cnv:to_integer(To),
-
-            % 归属校验：shard_id 必须属于请求者本人，且 To 必须是该分片的代理，
-            % 防止客户端可控 shard_id/to 伪造解密请求骚扰任意用户
-            case verify_shard_relay(CurrentUid, ShardId, ProxyUid) of
-                ok ->
-                    % 记录分片解密请求日志（uid 取鉴权身份）
-                    e2ee_shard_validator:log_shard_transmission(
-                        shard_decrypted,
-                        ShardId,
-                        #{
-                            <<"uid">> => CurrentUid,
-                            <<"proxy_uid">> => ProxyUid,
-                            <<"key_version">> => KeyVersion
-                        }
-                    ),
-
-                    % 构造转发消息
-                    Msg = message_ds:assemble_msg(
-                        <<"C2C">>, From, To, Payload, MsgId, <<>>, <<"decrypt_shard">>, null
-                    ),
-
-                    % 转发给代理
-                    MsLi = elib_retry_config:intervals(<<"c2c">>),
-                    message_ds:send_next(ProxyUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
-
-                    % 给请求者回复确认
-                    {reply, Msg};
-                {error, Reason} ->
-                    _ = ?WARN_LOG({decrypt_shard_relay_rejected, CurrentUid, ShardId, Reason}),
-                    {reply, message_ds:assemble_s2c(MsgId, <<"shard_not_owned">>, To)}
-            end;
-        _ ->
-            % 不支持的 E2EE 社交恢复操作
-            Msg = message_ds:assemble_s2c(MsgId, <<"e2ee_social_unsupported_action">>, Action),
-            {reply, Msg}
-    end.
-
-%% @doc 校验分片转发请求：分片必须属于请求者本人，且 To 为该分片登记的代理
--spec verify_shard_relay(integer(), binary(), integer()) -> ok | {error, term()}.
-verify_shard_relay(_Uid, <<>>, _ProxyUid) ->
-    {error, missing_shard_id};
-verify_shard_relay(Uid, ShardId, ProxyUid) ->
-    case e2ee_social_ds:get_shard_by_id(Uid, ShardId) of
-        {ok, Shard} ->
-            case maps:get(<<"proxy_uid">>, Shard) =:= ProxyUid of
-                true -> ok;
-                false -> {error, proxy_mismatch}
-            end;
-        {error, Reason} ->
-            {error, Reason}
-    end.

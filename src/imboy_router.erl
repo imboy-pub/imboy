@@ -141,30 +141,6 @@ get_routes() ->
                 {"/api/v1/e2ee/notifications/pull", e2ee_handler, #{action => pull_notifications}},
                 {"/api/v1/e2ee/recovery/start", e2ee_handler, #{action => start_recovery}},
 
-                {"/api/v1/e2ee/transfer/create", e2ee_transfer_handler, #{action => create}},
-                {"/api/v1/e2ee/transfer/accept", e2ee_transfer_handler, #{action => accept}},
-                {"/api/v1/e2ee/transfer/confirm", e2ee_transfer_handler, #{action => confirm}},
-                {"/api/v1/e2ee/transfer/cancel", e2ee_transfer_handler, #{action => cancel}},
-                {"/api/v1/e2ee/transfer/info", e2ee_transfer_handler, #{action => info}},
-                {"/api/v1/e2ee/transfer/pending", e2ee_transfer_handler, #{action => pending}},
-
-                {"/api/v1/e2ee/social/contacts", e2ee_social_handler, #{action => contacts}},
-                {"/api/v1/e2ee/social/contacts/add", e2ee_social_handler, #{action => add_contact}},
-                {"/api/v1/e2ee/social/contacts/remove", e2ee_social_handler, #{
-                    action => remove_contact
-                }},
-                {"/api/v1/e2ee/social/create_shards", e2ee_social_handler, #{
-                    action => create_shards
-                }},
-                {"/api/v1/e2ee/social/shards", e2ee_social_handler, #{action => get_shards}},
-                {"/api/v1/e2ee/social/recover", e2ee_social_handler, #{action => recover_key}},
-                {"/api/v1/e2ee/social/proxy_shards", e2ee_social_handler, #{
-                    action => get_proxy_shards
-                }},
-                {"/api/v1/e2ee/social/decrypt_shard", e2ee_social_handler, #{
-                    action => decrypt_shard
-                }},
-
                 % 合规密钥分发（三层加密架构）
                 {"/api/v1/e2ee/compliance_key", e2ee_handler, #{action => compliance_key}},
 

@@ -493,26 +493,3 @@ s2c_unknown_action_returns_unknown_action_test_() ->
             ?assertEqual(<<"unknown_action">>, maps:get(<<"action">>, Reply))
         end
     ).
-
-%% 归属校验回归：非可信联系人不得被投递 store_shard
-s2c_store_shard_rejects_untrusted_proxy_test_() ->
-    ?WITH_MECKS(
-        [
-            {e2ee_social_ds, [
-                {'is_trusted_contact', 2, fun(42, 999) -> false end}
-            ]},
-            {message_ds, [
-                {'assemble_s2c', 3, fun(MsgId, Reason, _To) ->
-                    #{<<"id">> => MsgId, <<"action">> => Reason}
-                end}
-            ]}
-        ],
-        fun() ->
-            Data = #{
-                <<"to">> => <<"999">>,
-                <<"payload">> => #{<<"shard_id">> => <<"s1">>}
-            },
-            {reply, Reply} = msg_s2c_logic:s2c(<<"store_shard">>, <<"msg_x_002">>, 42, Data),
-            ?assertEqual(<<"not_trusted_contact">>, maps:get(<<"action">>, Reply))
-        end
-    ).
