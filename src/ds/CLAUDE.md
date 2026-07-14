@@ -79,10 +79,7 @@
 
 | 模块 | 说明 |
 |------|------|
-| `e2ee_social_ds` | E2EE 社交恢复 |
-| `e2ee_transfer_ds` | E2EE 设备传输 |
 | `e2ee_local_backup_ds` | E2EE 本地备份 |
-| `e2ee_shard_transmission_log_ds` | E2EE 分片传输日志 |
 | `compliance_key_ds` | 合规密钥管理 |
 
 ### 频道

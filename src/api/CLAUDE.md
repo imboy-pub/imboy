@@ -92,8 +92,6 @@ get_routes() ->
 | Handler | 路由前缀 | 说明 |
 |---------|---------|------|
 | `e2ee_handler` | `/api/v1/e2ee/*` | 端到端加密(E2EE)密钥管理 |
-| `e2ee_transfer_handler` | `/api/v1/e2ee/transfer/*` | E2EE 设备间密钥转移 |
-| `e2ee_social_handler` | `/api/v1/e2ee/social/*` | E2EE 社交恢复 |
 
 ### 应用与内容
 
@@ -200,8 +198,6 @@ elib_response:error(Req, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST)
 | 13 | `conversation_handler` | 会话管理接口 |
 | 14 | `cors_middleware` | CORS 跨域资源共享中间件 |
 | 15 | `e2ee_handler` | 端到端加密(E2EE)用户密钥管理 |
-| 16 | `e2ee_social_handler` | E2EE 社交恢复功能 |
-| 17 | `e2ee_transfer_handler` | E2EE 设备间密钥转移 |
 | 18 | `feedback_handler` | 用户反馈与问题报告 |
 | 19 | `friend_category_handler` | 好友分组管理 |
 | 20 | `friend_handler` | 好友关系与好友列表管理 |

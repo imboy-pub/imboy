@@ -107,10 +107,7 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 
 | Repo | 说明 |
 |------|------|
-| `e2ee_transfer_repo` | E2EE 设备间传输 |
-| `e2ee_social_repo` | E2EE 社交恢复 |
 | `e2ee_local_backup_repo` | E2EE 本地备份 |
-| `e2ee_shard_transmission_log_repo` | E2EE 分片传输日志 |
 
 ### 频道系统（5 个）
 
