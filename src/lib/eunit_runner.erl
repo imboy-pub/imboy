@@ -66,6 +66,10 @@ ensure_config_loaded() ->
     % 配置文件已通过 Makefile 的 -config 参数加载
     % 这里检查必需的配置是否存在，不存在则报错
 
+    % -config 提供的 env 只有在应用 load 后 get_env 才可见；
+    % 全量 eunit 时靠别的模块顺带 load，单模块 t= 运行必须显式 load
+    _ = application:load(imboy),
+
     % 检查 pg_conf 是否已加载
     case application:get_env(imboy, pg_conf) of
         {ok, _PgConf} ->
