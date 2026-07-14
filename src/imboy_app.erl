@@ -149,6 +149,7 @@ tsid_generator_names() ->
         friend,
         friend_category,
         %% ── 群组相关 ──
+        group,
         group_info,
         group_member,
         group_notice,
@@ -199,6 +200,8 @@ tsid_generator_names() ->
         channel_order,
         channel_invitation,
         channel_webhook,
+        channel_comment,
+        channel_price,
         %% ── 反馈 ──
         feedback,
         feedback_reply,
@@ -214,6 +217,9 @@ tsid_generator_names() ->
         %% ── 支付 / 充值 ──
         recharge_order,
         payment_transaction,
+        red_packet,
+        red_packet_receive,
+        transfer_order,
         %% ── SaaS 计费 ──
         billing_plan,
         billing_subscription,
@@ -229,6 +235,9 @@ tsid_generator_names() ->
         compliance_key,
         %% ── 管理员 ──
         adm_user,
+        admin_op_log,
+        %% ── 插件 ──
+        plugin_audit_log,
         %% ── 应用配置 ──
         app_version,
         app_ddl,
