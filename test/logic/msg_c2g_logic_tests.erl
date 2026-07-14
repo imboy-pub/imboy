@@ -778,3 +778,107 @@ c2g_edit_plaintext_blocked_when_group_e2ee_required_test_() ->
             ?assertEqual(0, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
         end
     ).
+
+%% P0-B B4 零信任守护线：e2ee_room_key 群密钥分发消息
+%% ① 具名 action 不触群级门（零查库）②密钥密文 payload 存储/入队/投递逐字节透传
+c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_logic, [
+                {'check_mute', 2, fun(100, 1001) -> false end}
+            ]},
+            {group_ds, [
+                {'e2ee_mode', 1, fun(_) -> {ok, 1} end},
+                {'is_member', 2, fun(1001, 100) -> true end},
+                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+                {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'enqueue', 3, fun(_, _, _) -> ok end}
+            ]},
+            {elib_retry_config, [
+                {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {mention_logic, [
+                {'create_mentions', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {user_logic, [
+                {'is_online', 1, fun(_Uid) -> true end}
+            ]},
+            {push_notification_logic, [
+                {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2g_room_key_001">>,
+            %% 不透明密钥材料：RSA-OAEP 包裹的 Megolm session key（服务端不可解读）
+            OpaqueKeys = [
+                #{
+                    <<"uid">> => 1002,
+                    <<"did">> => <<"did_b1">>,
+                    <<"kid">> => <<"kid_b1">>,
+                    <<"ek">> => base64:encode(<<"opaque-wrapped-megolm-key-bytes-1">>)
+                },
+                #{
+                    <<"uid">> => 1003,
+                    <<"did">> => <<"did_c1">>,
+                    <<"kid">> => <<"kid_c1">>,
+                    <<"ek">> => base64:encode(<<"opaque-wrapped-megolm-key-bytes-2">>)
+                }
+            ],
+            Payload = #{
+                <<"msg_type">> => <<"e2ee_room_key">>,
+                <<"gid">> => 100,
+                <<"session_id">> => <<"megolm_session_abc">>,
+                <<"wrap_alg">> => <<"RSA-OAEP-256">>,
+                <<"keys">> => OpaqueKeys
+            },
+            Data = #{
+                <<"to">> => <<"100">>,
+                <<"payload">> => Payload,
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"e2ee_room_key">>,
+                <<"action">> => <<"e2ee_room_key">>,
+                <<"e2ee">> => null
+            },
+
+            ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+
+            Reply =
+                receive
+                    {reply, Msg} -> Msg
+                after 1000 ->
+                    timeout
+                end,
+            ?assertNotEqual(timeout, Reply),
+            ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
+
+            %% ① 具名 action 短路 content_bearing 判定：群级门零查库，
+            %%    即便 e2ee_mode=1（本 mock 特意返回 {ok,1}）也不拦密钥分发
+            ?assertEqual(0, meck:num_calls(group_ds, e2ee_mode, 1)),
+
+            %% ② 存储/入队/投递三处拿到的是同一 binary（编码一次，零改写）
+            StagedMsg = meck:capture(
+                first, msg_store_ds, stage, ['_', '_', '_', '_', '_', '_', '_', '_', '_', '_'], 6
+            ),
+            EnqueuedMap = meck:capture(first, msg_store_ds, enqueue, ['_', '_', '_'], 3),
+            SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
+            ?assertEqual(StagedMsg, maps:get(payload, EnqueuedMap)),
+            ?assertEqual(StagedMsg, SentMsg),
+
+            %% ③ 密钥材料逐字段透传：解码后 payload 与入参完全一致
+            Decoded = jsone:decode(StagedMsg),
+            ?assertEqual(Payload, maps:get(<<"payload">>, Decoded)),
+            ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"action">>, Decoded)),
+            ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"msg_type">>, Decoded)),
+            ?assertNot(maps:is_key(<<"e2ee">>, Decoded))
+        end
+    ).
