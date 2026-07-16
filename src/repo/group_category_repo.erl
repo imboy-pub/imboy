@@ -23,6 +23,7 @@
 %% 群组成员分类操作
 -export([update_group_category/3]).
 -export([list_groups_by_category/3]).
+-export([count_groups_grouped_by_category/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -66,7 +67,9 @@ list_by_uid(Uid, Column, Limit) ->
 find_by_name(Uid, Name) ->
     Tb = tablename(),
     Where = <<" WHERE user_id = $1 AND category_name = $2">>,
-    Sql = <<"SELECT id, user_id, category_name, sort_order FROM ", Tb/binary, Where/binary, " LIMIT 1">>,
+    Sql =
+        <<"SELECT id, user_id, category_name, sort_order FROM ", Tb/binary, Where/binary,
+            " LIMIT 1">>,
     case elib_pg:one(Sql, [Uid, Name], #{}) of
         {ok, Row} when map_size(Row) > 0 ->
             {ok, Row};
@@ -84,7 +87,8 @@ find_by_name(Uid, Name) ->
 add(Uid, Name) ->
     Tb = tablename(),
     Id = elib_tsid:generate(group_category),
-    Sql = <<"INSERT INTO ", Tb/binary,
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
             " (id, user_id, category_name, sort_order) "
             "VALUES ($1, $2, $3, 0)">>,
     case elib_pg:execute(Sql, [Id, Uid, Name]) of
@@ -102,7 +106,8 @@ add(Uid, Name) ->
 -spec update_name(integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 update_name(Uid, CategoryId, NewName) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET category_name = $1 "
             "WHERE id = $2 AND user_id = $3">>,
     elib_pg:execute(Sql, [NewName, CategoryId, Uid]).
@@ -115,7 +120,8 @@ update_name(Uid, CategoryId, NewName) ->
 -spec update_sort_order(integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
 update_sort_order(Uid, CategoryId, SortOrder) ->
     Tb = tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET sort_order = $1 "
             "WHERE id = $2 AND user_id = $3">>,
     elib_pg:execute(Sql, [SortOrder, CategoryId, Uid]).
@@ -127,8 +133,7 @@ update_sort_order(Uid, CategoryId, SortOrder) ->
 -spec delete(integer(), integer()) -> {ok, integer()} | {error, term()}.
 delete(Uid, CategoryId) ->
     Tb = tablename(),
-    Sql = <<"DELETE FROM ", Tb/binary,
-            " WHERE id = $1 AND user_id = $2">>,
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1 AND user_id = $2">>,
     elib_pg:execute(Sql, [CategoryId, Uid]).
 
 %% @doc 更新群组成员的分类ID
@@ -139,7 +144,8 @@ delete(Uid, CategoryId) ->
 -spec update_group_category(integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
 update_group_category(Uid, Gid, CategoryId) ->
     Tb = group_member_repo:tablename(),
-    Sql = <<"UPDATE ", Tb/binary,
+    Sql =
+        <<"UPDATE ", Tb/binary,
             " SET category_id = $1, updated_at = $2 "
             "WHERE group_id = $3 AND user_id = $4">>,
     elib_pg:execute(Sql, [CategoryId, elib_dt:now(), Gid, Uid]).
@@ -149,17 +155,29 @@ update_group_category(Uid, Gid, CategoryId) ->
 %% @param CategoryId 分类ID（0表示未分类）
 %% @param Column 要查询的列名
 %% @return {ok, Rows} 查询成功返回map列表 | {error, Reason} 查询失败
--spec list_groups_by_category(integer(), integer(), binary()) -> {ok, list(map())} | {error, term()}.
+-spec list_groups_by_category(integer(), integer(), binary()) ->
+    {ok, list(map())} | {error, term()}.
 list_groups_by_category(Uid, CategoryId, Column) ->
     Tb = group_member_repo:tablename(),
     GTb = group_repo:tablename(),
     Where = <<" WHERE gm.user_id = $1 AND gm.category_id = $2 AND gm.status = 1">>,
-    Sql = <<"SELECT ", Column/binary,
-            " FROM ", Tb/binary, " gm "
-            "LEFT JOIN ", GTb/binary, " g ON gm.group_id = g.id ",
-            Where/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " gm "
+            "LEFT JOIN ", GTb/binary, " g ON gm.group_id = g.id ", Where/binary,
             " ORDER BY gm.updated_at DESC">>,
     elib_pg:query(Sql, [Uid, CategoryId]).
+
+%% @doc 按分类一次聚合用户各分类下的群数量（含未分类，NULL 归入 0）
+%% @param Uid 用户ID
+%% @return {ok, [#{<<"category_id">> := Id, <<"count">> := N}]} | {error, Reason}
+-spec count_groups_grouped_by_category(integer()) -> {ok, list(map())} | {error, term()}.
+count_groups_grouped_by_category(Uid) ->
+    Tb = group_member_repo:tablename(),
+    Sql =
+        <<"SELECT COALESCE(category_id, 0) AS category_id, COUNT(*) AS count FROM ", Tb/binary,
+            " WHERE user_id = $1 AND status = 1 GROUP BY COALESCE(category_id, 0)">>,
+    elib_pg:query(Sql, [Uid]).
 
 %% ===================================================================
 %% Internal Function Definitions

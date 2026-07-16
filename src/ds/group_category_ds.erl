@@ -53,26 +53,43 @@ add(Uid, Name) ->
 -spec find_by_uid(integer()) -> list(map()).
 find_by_uid(Uid) ->
     Field = <<"id, category_name, sort_order">>,
+    %% 一次聚合各分类群数量（NULL 归入未分类 0），供每个分类补 group_count
+    CountMap =
+        case group_category_repo:count_groups_grouped_by_category(Uid) of
+            {ok, CountRows} when is_list(CountRows) ->
+                maps:from_list([
+                    {Cid, N}
+                 || #{<<"category_id">> := Cid, <<"count">> := N} <- CountRows
+                ]);
+            _ ->
+                #{}
+        end,
+    Default = #{
+        <<"id">> => 0,
+        <<"category_name">> => <<"未分类"/utf8>>,
+        <<"sort_order">> => 0,
+        <<"group_count">> => maps:get(0, CountMap, 0)
+    },
     case group_category_repo:list_by_uid(Uid, Field) of
         {ok, Rows} when is_list(Rows) ->
-            Default = #{<<"id">> => 0,
-                       <<"category_name">> => <<"未分类"/utf8>>,
-                       <<"sort_order">> => 0},
-            case length(Rows) of
-                0 ->
-                    [Default];
-                _ ->
-                    [Default | [#{<<"id">> => Id,
-                                 <<"category_name">> => Name,
-                                 <<"sort_order">> => SortOrder}
-                               || #{<<"id">> := Id,
-                                    <<"category_name">> := Name,
-                                    <<"sort_order">> := SortOrder} <- Rows]]
-            end;
+            [
+                Default
+                | [
+                    #{
+                        <<"id">> => Id,
+                        <<"category_name">> => Name,
+                        <<"sort_order">> => SortOrder,
+                        <<"group_count">> => maps:get(Id, CountMap, 0)
+                    }
+                 || #{
+                        <<"id">> := Id,
+                        <<"category_name">> := Name,
+                        <<"sort_order">> := SortOrder
+                    } <- Rows
+                ]
+            ];
         _ ->
-            [#{<<"id">> => 0,
-              <<"category_name">> => <<"未分类"/utf8>>,
-              <<"sort_order">> => 0}]
+            [Default]
     end.
 
 %% @doc 重命名群组分类
@@ -81,13 +98,17 @@ find_by_uid(Uid) ->
 %% @param NewName 新的分类名称
 %% @return {ok, 1} 操作成功 | {error, Reason} 操作失败
 -spec rename(integer(), integer() | binary(), binary()) -> {ok, 1} | {error, term()}.
-rename(_Uid, CategoryId, _NewName) when CategoryId =:= undefined;
-                                         CategoryId =:= <<"">>;
-                                         CategoryId =:= "" ->
+rename(_Uid, CategoryId, _NewName) when
+    CategoryId =:= undefined;
+    CategoryId =:= <<"">>;
+    CategoryId =:= ""
+->
     {error, <<"invalid_id: 分类ID必须"/utf8>>};
-rename(_Uid, _CategoryId, NewName) when NewName =:= undefined;
-                                         NewName =:= <<"">>;
-                                         NewName =:= "" ->
+rename(_Uid, _CategoryId, NewName) when
+    NewName =:= undefined;
+    NewName =:= <<"">>;
+    NewName =:= ""
+->
     {error, <<"invalid_name: 分类名称必须"/utf8>>};
 rename(Uid, CategoryId, NewName) ->
     case group_category_repo:update_name(Uid, ec_cnv:to_integer(CategoryId), NewName) of
@@ -105,9 +126,11 @@ rename(Uid, CategoryId, NewName) ->
 %% @param CategoryId 分类ID
 %% @return {ok, 1} 操作成功 | {error, Reason} 操作失败
 -spec delete(integer(), integer() | binary()) -> {ok, 1} | {error, term()}.
-delete(_Uid, CategoryId) when CategoryId =:= undefined;
-                               CategoryId =:= <<"">>;
-                               CategoryId =:= "" ->
+delete(_Uid, CategoryId) when
+    CategoryId =:= undefined;
+    CategoryId =:= <<"">>;
+    CategoryId =:= ""
+->
     {error, <<"invalid_id: 分类ID必须"/utf8>>};
 delete(Uid, CategoryId) ->
     CategoryIdInt = ec_cnv:to_integer(CategoryId),
@@ -116,9 +139,12 @@ delete(Uid, CategoryId) ->
     case group_category_repo:list_groups_by_category(Uid, CategoryIdInt, <<"gm.group_id">>) of
         {ok, Groups} ->
             %% 批量更新群组的分类ID为0
-            lists:foreach(fun(#{<<"group_id">> := Gid}) ->
-                group_category_repo:update_group_category(Uid, Gid, 0)
-            end, Groups);
+            lists:foreach(
+                fun(#{<<"group_id">> := Gid}) ->
+                    group_category_repo:update_group_category(Uid, Gid, 0)
+                end,
+                Groups
+            );
         _ ->
             ok
     end,
