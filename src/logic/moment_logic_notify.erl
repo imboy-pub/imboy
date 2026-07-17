@@ -11,6 +11,7 @@
 -export([notify_post_deleted/3]).
 -export([notify_post_liked/3]).
 -export([notify_post_commented/4]).
+-export([notify_post_at/3]).
 
 -include("log.hrl").
 
@@ -62,6 +63,18 @@ notify_post_commented(FromUid, PostId, CommentId, AuthorUid) ->
             },
             safe_send([AuthorUid], <<"moment_comment">>, Payload, save)
     end.
+
+%% @doc @提醒通知：收件人由 moment_logic 预先按可见性 ACL 过滤并排除作者。
+%% 空收件人短路；save 持久化到通知收件箱。
+-spec notify_post_at(integer(), integer(), [integer()]) -> ok.
+notify_post_at(_AuthorUid, _PostId, []) ->
+    ok;
+notify_post_at(AuthorUid, PostId, AtUids) ->
+    Payload = #{
+        <<"moment_id">> => PostId,
+        <<"author_uid">> => AuthorUid
+    },
+    safe_send(AtUids, <<"moment_at">>, Payload, save).
 
 -spec resolve_post_recipients(integer()) -> [integer()].
 resolve_post_recipients(AuthorUid) ->

@@ -9,6 +9,131 @@ create_post_rejects_empty_content_and_media_test_() ->
         ?assertEqual({error, <<"动态内容不能为空"/utf8>>}, Result)
     end).
 
+create_post_parses_location_and_notifies_mentions_test_() ->
+    ?WITH_MECKS(
+        [
+            {moment_ds, [
+                {'create_post', 2, fun(1001, Data) ->
+                    self() ! {captured_create, Data},
+                    {ok, 555}
+                end},
+                {'get_post', 1, fun(555) ->
+                    #{
+                        <<"id">> => 555,
+                        <<"author_uid">> => 1001,
+                        <<"content">> => <<"hi">>,
+                        <<"media">> => [],
+                        <<"visibility">> => 1,
+                        <<"allow_comment">> => true,
+                        <<"like_count">> => 0,
+                        <<"comment_count">> => 0,
+                        <<"status">> => 1,
+                        <<"location">> => <<"{\"name\":\"Cafe\"}">>,
+                        <<"at_uids">> => <<"[2002,2003]">>
+                    }
+                end},
+                {'can_view_post', 2, fun
+                    (2002, _Post) -> true;
+                    (2003, _Post) -> false
+                end}
+            ]},
+            {attachment_ds, [
+                {'bind_moment_scope_ref', 2, fun(_, _) -> ok end}
+            ]},
+            {moment_logic_notify, [
+                {'notify_post_created', 2, fun(1001, 555) -> ok end},
+                {'notify_post_at', 3, fun(1001, 555, Recipients) ->
+                    self() ! {captured_at, Recipients},
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Payload} = moment_logic:create_post(1001, #{
+                <<"content">> => <<"hi">>,
+                <<"location">> => #{
+                    <<"name">> => <<"Cafe">>,
+                    <<"lng">> => 121.4,
+                    <<"lat">> => 31.2,
+                    <<"address">> => <<"某街1号"/utf8>>
+                },
+                <<"at_uids">> => [2002, 2003, 1001]
+            }),
+            %% Data 组装：location 归一化为 map（含数值经纬度），at_uids 去重排序
+            Data =
+                receive
+                    {captured_create, D} -> D
+                after 1000 -> erlang:error(no_data)
+                end,
+            Loc = maps:get(location, Data),
+            ?assertEqual(<<"Cafe">>, maps:get(<<"name">>, Loc)),
+            ?assertEqual(121.4, maps:get(<<"lng">>, Loc)),
+            ?assertEqual(<<"某街1号"/utf8>>, maps:get(<<"address">>, Loc)),
+            ?assertEqual([1001, 2002, 2003], maps:get(at_uids, Data)),
+            %% @提醒 ACL：排除作者 1001、排除无权限 2003，仅通知 2002
+            Recipients =
+                receive
+                    {captured_at, R} -> R
+                after 1000 -> erlang:error(no_at)
+                end,
+            ?assertEqual([2002], Recipients),
+            %% 读回 payload 带 location(map) + at_uids(list)
+            ?assertEqual(<<"Cafe">>, maps:get(<<"name">>, maps:get(<<"location">>, Payload))),
+            ?assertEqual([2002, 2003], maps:get(<<"at_uids">>, Payload))
+        end
+    ).
+
+create_post_drops_invalid_location_and_skips_at_notify_test_() ->
+    ?WITH_MECKS(
+        [
+            {moment_ds, [
+                {'create_post', 2, fun(1001, Data) ->
+                    self() ! {captured_create2, Data},
+                    {ok, 556}
+                end},
+                {'get_post', 1, fun(556) ->
+                    #{
+                        <<"id">> => 556,
+                        <<"author_uid">> => 1001,
+                        <<"content">> => <<"hi">>,
+                        <<"media">> => [],
+                        <<"visibility">> => 1,
+                        <<"allow_comment">> => true,
+                        <<"like_count">> => 0,
+                        <<"comment_count">> => 0,
+                        <<"status">> => 1,
+                        <<"location">> => null,
+                        <<"at_uids">> => <<"[]">>
+                    }
+                end}
+            ]},
+            {attachment_ds, [
+                {'bind_moment_scope_ref', 2, fun(_, _) -> ok end}
+            ]},
+            {moment_logic_notify, [
+                {'notify_post_created', 2, fun(1001, 556) -> ok end}
+            ]}
+        ],
+        fun() ->
+            %% location 无 name → 退化 undefined（DS 省略列，落库 NULL）；at_uids 空
+            {ok, Payload} = moment_logic:create_post(1001, #{
+                <<"content">> => <<"hi">>,
+                <<"location">> => #{<<"lng">> => 1.0},
+                <<"at_uids">> => []
+            }),
+            Data =
+                receive
+                    {captured_create2, D} -> D
+                after 1000 -> erlang:error(no_data)
+                end,
+            ?assertEqual(undefined, maps:get(location, Data)),
+            ?assertEqual([], maps:get(at_uids, Data)),
+            %% notify_post_at 未 mock 且不应被调用（at_uids 为空）
+            ?assertEqual(null, maps:get(<<"location">>, Payload)),
+            ?assertEqual([], maps:get(<<"at_uids">>, Payload))
+        end
+    ).
+
 feed_filters_invisible_posts_test_() ->
     ?WITH_MECKS(
         [

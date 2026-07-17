@@ -40,6 +40,8 @@ create_post(Uid, PostVals) ->
     AllowComment = parse_bool(maps:get(<<"allow_comment">>, PostVals, true), true),
     AllowUids = parse_uid_list(maps:get(<<"allow_uids">>, PostVals, [])),
     DenyUids = parse_uid_list(maps:get(<<"deny_uids">>, PostVals, [])),
+    AtUids = parse_uid_list(maps:get(<<"at_uids">>, PostVals, [])),
+    Location = parse_location(maps:get(<<"location">>, PostVals, undefined)),
 
     case validate_create(Content, Media, Visibility) of
         ok ->
@@ -49,7 +51,9 @@ create_post(Uid, PostVals) ->
                 visibility => Visibility,
                 allow_comment => AllowComment,
                 allow_uids => AllowUids,
-                deny_uids => DenyUids
+                deny_uids => DenyUids,
+                at_uids => AtUids,
+                location => Location
             },
             case moment_ds:create_post(Uid, Data) of
                 {ok, PostId} ->
@@ -63,6 +67,8 @@ create_post(Uid, PostVals) ->
                     Post = moment_ds:get_post(PostId),
                     Payload = post_transfer(Post),
                     _ = moment_logic_notify:notify_post_created(Uid, PostId),
+                    %% @提醒：best-effort，失败不阻断发帖（见 notify_at_mentions）
+                    _ = notify_at_mentions(Uid, PostId, AtUids, Post),
                     {ok, Payload};
                 {error, Reason} ->
                     {error, normalize_error(Reason, <<"发布动态失败"/utf8>>)}
@@ -433,12 +439,16 @@ post_transfer(Post) ->
     AuthorUid = maps:get(<<"author_uid">>, Post, 0),
     MediaRaw = maps:get(<<"media">>, Post, <<"[]">>),
     Media = decode_json(MediaRaw, []),
+    Location = decode_location(maps:get(<<"location">>, Post, null)),
+    AtUids = decode_json(maps:get(<<"at_uids">>, Post, <<"[]">>), []),
     LikeCount = maps:get(<<"like_count">>, Post, 0),
     CommentCount = maps:get(<<"comment_count">>, Post, 0),
     Post2 = Post#{
         <<"id">> => safe_encode(PostId),
         <<"author_uid">> => safe_encode(AuthorUid),
         <<"media">> => Media,
+        <<"location">> => Location,
+        <<"at_uids">> => AtUids,
         <<"stats">> => #{
             <<"like_count">> => LikeCount,
             <<"comment_count">> => CommentCount
@@ -747,6 +757,70 @@ parse_uid_list(Uids) when is_binary(Uids), Uids =/= <<>> ->
     end;
 parse_uid_list(_) ->
     [].
+
+%% @doc 解析所在位置：接受 map 或 JSON 字符串，归一化为 #{name, lng?, lat?, address?}。
+%% name 为必填非空项；缺失/非法/无 name 时退化为 undefined（落库走 NULL，向后兼容）。
+%% lng/lat 仅接受数值，非数值静默丢弃（name/address 仍保留）。
+-spec parse_location(term()) -> map() | undefined.
+parse_location(undefined) ->
+    undefined;
+parse_location(<<>>) ->
+    undefined;
+parse_location(Bin) when is_binary(Bin) ->
+    case decode_json(Bin, undefined) of
+        Map when is_map(Map) -> parse_location(Map);
+        _ -> undefined
+    end;
+parse_location(Map) when is_map(Map) ->
+    case normalize_non_empty_binary(maps:get(<<"name">>, Map, <<>>)) of
+        <<>> ->
+            undefined;
+        Name ->
+            Base = #{<<"name">> => Name},
+            Base1 = maybe_put_coord(Base, <<"lng">>, maps:get(<<"lng">>, Map, undefined)),
+            Base2 = maybe_put_coord(Base1, <<"lat">>, maps:get(<<"lat">>, Map, undefined)),
+            case normalize_non_empty_binary(maps:get(<<"address">>, Map, <<>>)) of
+                <<>> -> Base2;
+                Addr -> Base2#{<<"address">> => Addr}
+            end
+    end;
+parse_location(_) ->
+    undefined.
+
+-spec maybe_put_coord(map(), binary(), term()) -> map().
+maybe_put_coord(Map, Key, Value) when is_number(Value) ->
+    Map#{Key => Value};
+maybe_put_coord(Map, _Key, _Value) ->
+    Map.
+
+-spec decode_location(term()) -> map() | null.
+decode_location(null) ->
+    null;
+decode_location(undefined) ->
+    null;
+decode_location(<<>>) ->
+    null;
+decode_location(Value) ->
+    case decode_json(Value, null) of
+        Map when is_map(Map) -> Map;
+        _ -> null
+    end.
+
+%% @doc @提醒通知：排除作者本人 + 按可见性 ACL 过滤（被提醒者须能看到该帖），
+%% best-effort（notify glue 内部 catch），失败不阻断发帖。Post 非 map（读回失败）时跳过。
+-spec notify_at_mentions(integer(), integer(), [integer()], map() | term()) -> ok.
+notify_at_mentions(_AuthorUid, _PostId, [], _Post) ->
+    ok;
+notify_at_mentions(AuthorUid, PostId, AtUids, Post) when is_map(Post) ->
+    Recipients = [
+        U
+     || U <- AtUids,
+        U =/= AuthorUid,
+        moment_ds:can_view_post(U, Post)
+    ],
+    moment_logic_notify:notify_post_at(AuthorUid, PostId, Recipients);
+notify_at_mentions(_AuthorUid, _PostId, _AtUids, _Post) ->
+    ok.
 
 -spec parse_bool(term(), boolean()) -> boolean().
 parse_bool(true, _Default) ->

@@ -37,22 +37,28 @@ create_post(AuthorUid, Data) ->
     AllowComment = maps:get(allow_comment, Data, true),
     AllowUids = maps:get(allow_uids, Data, []),
     DenyUids = maps:get(deny_uids, Data, []),
+    AtUids = maps:get(at_uids, Data, []),
+    Location = maps:get(location, Data, undefined),
     MediaJson = encode_json(Media, <<"[]">>),
+    AtUidsJson = encode_json(AtUids, <<"[]">>),
     Now = elib_dt:now(),
     case
         elib_pg:with_tx(fun(Conn) ->
-            PostData = #{
+            PostData0 = #{
                 author_uid => AuthorUid,
                 content => Content,
                 media => MediaJson,
                 visibility => Visibility,
                 allow_comment => AllowComment,
+                at_uids => AtUidsJson,
                 like_count => 0,
                 comment_count => 0,
                 status => 1,
                 created_at => Now,
                 updated_at => Now
             },
+            %% location 无值时省略该列，落库走 DEFAULT NULL（向后兼容旧帖）
+            PostData = maybe_put_location(PostData0, Location),
             case moment_post_repo:add(Conn, PostData) of
                 {ok, PostId} ->
                     case moment_post_acl_repo:replace_for_post(Conn, PostId, AllowUids, DenyUids) of
@@ -428,6 +434,12 @@ is_denied_between(UidA, UidB) when UidA =< 0; UidB =< 0 ->
 is_denied_between(UidA, UidB) ->
     user_denylist_repo:in_denylist(UidA, UidB) > 0 orelse
         user_denylist_repo:in_denylist(UidB, UidA) > 0.
+
+-spec maybe_put_location(map(), term()) -> map().
+maybe_put_location(Data, Location) when is_map(Location), map_size(Location) > 0 ->
+    Data#{location => encode_json(Location, <<"null">>)};
+maybe_put_location(Data, _Location) ->
+    Data.
 
 -spec encode_json(term(), binary()) -> binary().
 encode_json(Value, Default) ->
