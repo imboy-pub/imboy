@@ -33,7 +33,8 @@ find_by_uid(Uid) when is_binary(Uid) ->
     find_by_uid(ec_cnv:to_integer(Uid));
 find_by_uid(Uid) ->
     Column = <<"setting">>,
-    S = case user_setting_repo:find_by_uid(Uid, Column) of
+    S =
+        case user_setting_repo:find_by_uid(Uid, Column) of
             #{<<"setting">> := Setting} when Setting =/= <<>> ->
                 try jsone:decode(Setting, [{object_format, map}]) of
                     Res ->
@@ -78,29 +79,39 @@ batch_chat_state_hide([]) ->
 batch_chat_state_hide(Uids) when is_list(Uids) ->
     % 使用安全的参数化查询，一次查询获取所有用户设置
     Tb = user_setting_repo:tablename(),
-    InClause = iolist_to_binary(lists:join(<<",">>,
-        [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Uids))])),
-    Sql = <<"SELECT user_id, setting FROM ", Tb/binary,
-            " WHERE user_id IN (", InClause/binary, ")">>,
+    InClause = iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, length(Uids))]
+        )
+    ),
+    Sql =
+        <<"SELECT user_id, setting FROM ", Tb/binary, " WHERE user_id IN (", InClause/binary, ")">>,
 
     case elib_pg:query(Sql, Uids) of
         {ok, Rows} ->
-            lists:foldl(fun(#{<<"user_id">> := Uid, <<"setting">> := SettingBin}, Acc) ->
-                IsHide = case SettingBin of
-                    <<>> -> false;
-                    _ ->
-                        try jsone:decode(SettingBin, [{object_format, map}]) of
-                            Setting ->
-                                case maps:get(<<"chat_state">>, Setting, false) of
-                                    <<"hide">> -> true;
-                                    _ -> false
+            lists:foldl(
+                fun(#{<<"user_id">> := Uid, <<"setting">> := SettingBin}, Acc) ->
+                    IsHide =
+                        case SettingBin of
+                            <<>> ->
+                                false;
+                            _ ->
+                                try jsone:decode(SettingBin, [{object_format, map}]) of
+                                    Setting ->
+                                        case maps:get(<<"chat_state">>, Setting, false) of
+                                            <<"hide">> -> true;
+                                            _ -> false
+                                        end
+                                catch
+                                    _:_ -> false
                                 end
-                        catch
-                            _:_ -> false
-                        end
+                        end,
+                    maps:put(Uid, IsHide, Acc)
                 end,
-                maps:put(Uid, IsHide, Acc)
-            end, #{}, Rows);
+                #{},
+                Rows
+            );
         {error, _Reason} ->
             % 查询失败时返回空映射（所有用户默认不隐藏）
             #{}
@@ -138,7 +149,14 @@ save(Uid, <<"font_size">>, State) ->
 %% State: hide online offline
 %% user_setting_ds:save(CurrentUid, <<"chat_state">>, ChatState),
 save(Uid, <<"chat_state">>, State) ->
-    priv_save(Uid, <<"chat_state">>, State).
+    priv_save(Uid, <<"chat_state">>, State);
+%% 隐私布尔开关（QA #19）：是否显示在线状态 / 允许手机号加友 / 允许二维码加友
+save(Uid, <<"show_online_status">>, Visible) when is_boolean(Visible) ->
+    priv_save(Uid, <<"show_online_status">>, Visible);
+save(Uid, <<"allow_add_by_phone">>, Allow) when is_boolean(Allow) ->
+    priv_save(Uid, <<"allow_add_by_phone">>, Allow);
+save(Uid, <<"allow_add_by_qr">>, Allow) when is_boolean(Allow) ->
+    priv_save(Uid, <<"allow_add_by_qr">>, Allow).
 
 %% @doc 内部函数：保存用户设置
 %%

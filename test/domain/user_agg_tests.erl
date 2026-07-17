@@ -101,3 +101,39 @@ validate_gender_predicate_test() ->
 validate_allow_search_predicate_test() ->
     ?assertEqual({ok, 1}, user_agg:validate_allow_search(<<"1">>)),
     ?assertEqual(error, user_agg:validate_allow_search(<<"9">>)).
+
+%% ---- 隐私布尔开关（QA #19）----
+
+privacy_bool_switch_test() ->
+    ?assertEqual(
+        {ok, {set_setting, <<"allow_add_by_phone">>, true}},
+        user_agg:validate_update(<<"allow_add_by_phone">>, <<"true">>)
+    ),
+    ?assertEqual(
+        {ok, {set_setting, <<"allow_add_by_qr">>, false}},
+        user_agg:validate_update(<<"allow_add_by_qr">>, <<"false">>)
+    ),
+    ?assertEqual(
+        {ok, {set_online_visibility, false}},
+        user_agg:validate_update(<<"show_online_status">>, <<"false">>)
+    ),
+    ?assertEqual(
+        {ok, {set_nearby_visible, true}},
+        user_agg:validate_update(<<"allow_nearby_visible">>, <<"true">>)
+    ).
+
+privacy_bool_switch_invalid_test() ->
+    ?assertEqual(
+        {error, bad_bool},
+        user_agg:validate_update(<<"allow_add_by_phone">>, <<"1">>)
+    ),
+    ?assertEqual(
+        {error, bad_bool},
+        user_agg:validate_update(<<"show_online_status">>, <<"yes">>)
+    ).
+
+validate_bool_predicate_test() ->
+    ?assertEqual({ok, true}, user_agg:validate_bool(<<"true">>)),
+    ?assertEqual({ok, false}, user_agg:validate_bool(<<"false">>)),
+    ?assertEqual({ok, true}, user_agg:validate_bool(true)),
+    ?assertEqual(error, user_agg:validate_bool(<<"0">>)).

@@ -63,6 +63,50 @@ add_friend(_MsgId, CurrentUid, To, Payload, CreatedAt) ->
     ok | {error, binary(), binary()}.
 do_add_friend(CurrentUid, To, Payload, CreatedAt) ->
     ToId = ec_cnv:to_integer(To),
+    case check_add_way_allowed(ToId, Payload) of
+        ok ->
+            do_add_friend_checked(CurrentUid, To, ToId, Payload, CreatedAt);
+        {error, Code, Msg} ->
+            {error, Code, Msg}
+    end.
+
+%% @doc 读侧强制目标用户的加友方式隐私开关（QA #19）：
+%% 申请 payload 的 from.source 标识加友途径（mobile/qrcode/...），
+%% 目标用户关闭对应开关时拒绝申请。开关缺省 = 允许。
+-spec check_add_way_allowed(integer(), binary() | map()) ->
+    ok | {error, binary(), binary()}.
+check_add_way_allowed(ToId, Payload) ->
+    PayloadMap =
+        if
+            is_map(Payload) -> Payload;
+            true -> jsone:decode(Payload, [{object_format, map}])
+        end,
+    FromSetting = maps:get(<<"from">>, PayloadMap, #{}),
+    %% 仅 mobile/qrcode 两个受控途径才查设置，其余途径零开销放行
+    case maps:get(<<"source">>, FromSetting, <<>>) of
+        <<"mobile">> ->
+            check_setting_allows(
+                ToId, <<"allow_add_by_phone">>, <<"对方已关闭通过手机号添加好友"/utf8>>
+            );
+        <<"qrcode">> ->
+            check_setting_allows(
+                ToId, <<"allow_add_by_qr">>, <<"对方已关闭通过二维码添加好友"/utf8>>
+            );
+        _ ->
+            ok
+    end.
+
+-spec check_setting_allows(integer(), binary(), binary()) ->
+    ok | {error, binary(), binary()}.
+check_setting_allows(ToId, Key, DeniedMsg) ->
+    case maps:get(Key, user_setting_ds:find_by_uid(ToId), true) of
+        false -> {error, <<"add_way_disabled">>, DeniedMsg};
+        _ -> ok
+    end.
+
+-spec do_add_friend_checked(integer(), binary(), integer(), binary(), binary()) ->
+    ok | {error, binary(), binary()}.
+do_add_friend_checked(CurrentUid, To, ToId, Payload, CreatedAt) ->
     FromBin = ec_cnv:to_binary(CurrentUid),
     Friendship = friend_agg:rehydrate(#{
         <<"from_user_id">> => FromBin,

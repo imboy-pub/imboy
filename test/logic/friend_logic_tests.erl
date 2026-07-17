@@ -798,3 +798,55 @@ reject_friend_without_pending_returns_error_test_() ->
             ?assertMatch({error, <<"no_pending_request">>, _}, Result)
         end
     ).
+
+%% ===================================================================
+%% 加友方式隐私开关读侧强制（QA #19）
+%% ===================================================================
+
+add_friend_denied_by_phone_switch_test_() ->
+    ?WITH_MECK(
+        user_setting_ds,
+        [{'find_by_uid', 1, fun(_Uid) -> #{<<"allow_add_by_phone">> => false} end}],
+        fun() ->
+            Payload = #{
+                <<"from">> => #{<<"source">> => <<"mobile">>},
+                <<"msg">> => <<"hi">>
+            },
+            Result = friend_logic:add_friend(1, <<"2">>, Payload, 1640995200),
+            ?assertMatch({error, <<"add_way_disabled">>, _}, Result)
+        end
+    ).
+
+add_friend_denied_by_qr_switch_test_() ->
+    ?WITH_MECK(
+        user_setting_ds,
+        [{'find_by_uid', 1, fun(_Uid) -> #{<<"allow_add_by_qr">> => false} end}],
+        fun() ->
+            Payload = #{
+                <<"from">> => #{<<"source">> => <<"qrcode">>},
+                <<"msg">> => <<"hi">>
+            },
+            Result = friend_logic:add_friend(1, <<"2">>, Payload, 1640995200),
+            ?assertMatch({error, <<"add_way_disabled">>, _}, Result)
+        end
+    ).
+
+add_friend_allowed_when_switch_absent_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_setting_ds, [{'find_by_uid', 1, fun(_Uid) -> #{} end}]},
+            {friend_ds, [
+                {'pending_status', 2, fun(_From, _To) -> pending end}
+            ]}
+        ],
+        fun() ->
+            %% 开关缺省=允许：source=mobile 但无设置时须走到 already_requested
+            %% （pending 状态拦截），而非 add_way_disabled
+            Payload = #{
+                <<"from">> => #{<<"source">> => <<"mobile">>},
+                <<"msg">> => <<"hi">>
+            },
+            Result = friend_logic:add_friend(1, <<"2">>, Payload, 1640995200),
+            ?assertMatch({error, <<"already_requested">>, _}, Result)
+        end
+    ).

@@ -258,12 +258,38 @@ update(Uid, Field, Val) ->
             user_ds:update_allow_search(Uid, N);
         {ok, {set_field, F, V}} ->
             user_ds:update_field(Uid, F, V);
+        %% 隐私布尔开关（QA #19）：落 user_setting.setting JSONB
+        {ok, {set_setting, Key, Bool}} ->
+            ok = user_setting_ds:save(Uid, Key, Bool),
+            {ok, Bool};
+        %% 读侧生效：chat_state 是在线可见性的既有真值
+        %% （user_setting_ds:chat_state_hide 已被在线状态展示消费）
+        {ok, {set_online_visibility, Visible}} ->
+            ok = user_setting_ds:save(Uid, <<"show_online_status">>, Visible),
+            ChatState =
+                case Visible of
+                    true -> <<"online">>;
+                    false -> <<"hide">>
+                end,
+            ok = user_setting_ds:save(Uid, <<"chat_state">>, ChatState),
+            {ok, Visible};
+        %% 读侧生效：附近的人可见性由 geo_people_nearby 表成员身份控制，
+        %% 关闭时须同步删 geo 行（make_myself_unvisible 内含存 false + 删行）
+        {ok, {set_nearby_visible, false}} ->
+            ok = location_logic:make_myself_unvisible(Uid),
+            {ok, false};
+        {ok, {set_nearby_visible, true}} ->
+            %% 开启只存 flag；重新出现在附近列表需客户端下次上报位置
+            ok = user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),
+            {ok, true};
         {error, bad_email_format} ->
             {error, {1, <<"">>, <<"Email 格式有误"/utf8>>}};
         {error, bad_gender} ->
             {error, {1, <<"">>, <<"性别值必须是 1、2 或 3"/utf8>>}};
         {error, bad_allow_search} ->
             {error, {1, <<"">>, <<"允许搜索值必须是 1 或 2"/utf8>>}};
+        {error, bad_bool} ->
+            {error, {1, <<"">>, <<"值必须是 true 或 false"/utf8>>}};
         {error, unsupported_field} ->
             {error, {1, <<"">>, <<"Unsupported field">>}}
     end.

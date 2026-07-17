@@ -23,7 +23,7 @@
 -module(user_agg).
 
 -export([validate_update/2]).
--export([is_valid_email/1, validate_gender/1, validate_allow_search/1]).
+-export([is_valid_email/1, validate_gender/1, validate_allow_search/1, validate_bool/1]).
 
 -export_type([update_cmd/0, reject/0]).
 
@@ -32,13 +32,17 @@
     {set_field, Field :: binary(), Val :: binary()}
     | {set_gender, 1..3}
     | {set_allow_search, 1..2}
-    | {check_email, Email :: binary()}.
+    | {check_email, Email :: binary()}
+    | {set_setting, Key :: binary(), boolean()}
+    | {set_online_visibility, boolean()}
+    | {set_nearby_visible, boolean()}.
 
 %% 校验拒绝原因（外壳映射为 {error, {1, <<>>, Msg}} 线格式）。
 -type reject() ::
     bad_email_format
     | bad_gender
     | bad_allow_search
+    | bad_bool
     | unsupported_field.
 
 %% 透传字段白名单（无格式约束，原样落库）。
@@ -79,6 +83,30 @@ validate_update(<<"allow_search">>, Val) ->
         error ->
             {error, bad_allow_search}
     end;
+%% 隐私布尔开关（QA #19）：handler 已 ec_cnv:to_binary，布尔到达时为
+%% <<"true">>/<<"false">>；落 user_setting.setting JSONB（前端登录回包
+%% 按同名 key 回显）。show_online_status / allow_nearby_visible 带读侧
+%% 生效副作用，归一为专属命令由外壳执行。
+validate_update(<<"allow_add_by_phone">>, Val) ->
+    case validate_bool(Val) of
+        {ok, B} -> {ok, {set_setting, <<"allow_add_by_phone">>, B}};
+        error -> {error, bad_bool}
+    end;
+validate_update(<<"allow_add_by_qr">>, Val) ->
+    case validate_bool(Val) of
+        {ok, B} -> {ok, {set_setting, <<"allow_add_by_qr">>, B}};
+        error -> {error, bad_bool}
+    end;
+validate_update(<<"show_online_status">>, Val) ->
+    case validate_bool(Val) of
+        {ok, B} -> {ok, {set_online_visibility, B}};
+        error -> {error, bad_bool}
+    end;
+validate_update(<<"allow_nearby_visible">>, Val) ->
+    case validate_bool(Val) of
+        {ok, B} -> {ok, {set_nearby_visible, B}};
+        error -> {error, bad_bool}
+    end;
 validate_update(Field, Val) ->
     case lists:member(Field, ?PASSTHROUGH_FIELDS) of
         true ->
@@ -109,3 +137,11 @@ validate_gender(_) -> error.
 validate_allow_search(<<"1">>) -> {ok, 1};
 validate_allow_search(<<"2">>) -> {ok, 2};
 validate_allow_search(_) -> error.
+
+%% @doc 布尔开关校验：handler 层 ec_cnv:to_binary 后布尔为二进制形态。
+-spec validate_bool(term()) -> {ok, boolean()} | error.
+validate_bool(<<"true">>) -> {ok, true};
+validate_bool(<<"false">>) -> {ok, false};
+validate_bool(true) -> {ok, true};
+validate_bool(false) -> {ok, false};
+validate_bool(_) -> error.
