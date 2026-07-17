@@ -243,8 +243,15 @@ get_pinned_messages(Uid, ChannelIdBin) ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
-                ok -> channel_message_ds:list_pinned(ChannelId);
-                {error, Reason} -> {error, Reason}
+                ok ->
+                    case channel_message_ds:list_pinned(ChannelId) of
+                        {ok, Messages} when is_list(Messages) ->
+                            {ok, channel_logic_message:attach_my_reactions(Uid, Messages)};
+                        Other ->
+                            Other
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end
     end.
 

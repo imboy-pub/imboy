@@ -22,6 +22,7 @@
 -export([edit_message/4]).
 -export([get_admins/1]).
 -export([update_admin_role/4]).
+-export([attach_my_reactions/2]).
 
 -include("log.hrl").
 
@@ -222,7 +223,8 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
                 ok ->
                     case channel_message_ds:list_by_channel(ChannelId, Cursor, Limit) of
                         {ok, Messages} when is_list(Messages) ->
-                            {ok, [message_transfer(M) || M <- Messages, is_map(M)]};
+                            Messages2 = [message_transfer(M) || M <- Messages, is_map(M)],
+                            {ok, attach_my_reactions(Uid, Messages2)};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end;
@@ -588,6 +590,36 @@ update_admin_role(Uid, ChannelId, TargetUid, Role) ->
         _ ->
             {error, <<"无权限操作，仅创建者可修改角色"/utf8>>}
     end.
+
+%% @doc 为一页消息批量补充当前用户已添加的反应类型列表（my_reactions）
+%% 一次 IN 查询覆盖整页消息，禁止逐条查询（N+1）。
+%% 查询失败时记录日志并降级为全空列表，不阻断消息列表返回。
+-spec attach_my_reactions(integer(), list(map())) -> list(map()).
+attach_my_reactions(_Uid, []) ->
+    [];
+attach_my_reactions(Uid, Messages) ->
+    MsgIds = [Id || #{<<"id">> := Id} <- Messages, is_integer(Id)],
+    ByMsg =
+        case channel_ds:list_user_reactions(Uid, MsgIds) of
+            {ok, Rows} when is_list(Rows) ->
+                lists:foldl(
+                    fun
+                        (#{<<"message_id">> := Mid, <<"reaction_type">> := Rt}, Acc) ->
+                            maps:update_with(Mid, fun(L) -> L ++ [Rt] end, [Rt], Acc);
+                        (_, Acc) ->
+                            Acc
+                    end,
+                    #{},
+                    Rows
+                );
+            {error, Reason} ->
+                ?ERROR_LOG(["channel_list_user_reactions_failed", Uid, Reason]),
+                #{}
+        end,
+    [
+        M#{<<"my_reactions">> => maps:get(maps:get(<<"id">>, M, 0), ByMsg, [])}
+     || M <- Messages
+    ].
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->

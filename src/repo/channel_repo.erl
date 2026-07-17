@@ -27,6 +27,7 @@
 -export([insert_message_view/4]).
 -export([insert_reaction/5]).
 -export([delete_reaction/4]).
+-export([list_user_reactions/2]).
 -export([get_daily_stats/2]).
 
 -ifdef(EUNIT).
@@ -348,6 +349,18 @@ insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
     end.
+
+%% @doc 批量查询用户对一组消息已添加的反应（避免 N+1）
+%% 返回行形如 #{<<"message_id">> => Mid, <<"reaction_type">> => <<"like">>}
+-spec list_user_reactions(integer(), [integer()]) -> {ok, [map()]} | {error, term()}.
+list_user_reactions(_UserId, []) ->
+    {ok, []};
+list_user_reactions(UserId, MessageIds) when is_list(MessageIds) ->
+    Sql = <<
+        "SELECT message_id, reaction_type FROM channel_reaction "
+        "WHERE user_id = $1 AND message_id = ANY($2)"
+    >>,
+    elib_pg:query(Sql, [UserId, MessageIds]).
 
 %% @doc 删除消息反应
 -spec delete_reaction(integer(), integer(), integer(), binary()) ->

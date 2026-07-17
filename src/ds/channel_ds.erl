@@ -27,6 +27,7 @@
 -export([insert_message_view/4]).
 -export([insert_reaction/5]).
 -export([delete_reaction/4]).
+-export([list_user_reactions/2]).
 -export([get_daily_stats/2]).
 -export([page/5]).
 
@@ -330,6 +331,10 @@ insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     {ok, non_neg_integer()} | {error, any()}.
 delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
     channel_repo:delete_reaction(ChannelId, MessageId, UserId, ReactionType).
+
+-spec list_user_reactions(integer(), [integer()]) -> {ok, [map()]} | {error, term()}.
+list_user_reactions(UserId, MessageIds) ->
+    channel_repo:list_user_reactions(UserId, MessageIds).
 
 -spec get_daily_stats(integer(), integer()) -> {ok, list(map())} | {error, any()}.
 get_daily_stats(ChannelId, Days) -> channel_repo:get_daily_stats(ChannelId, Days).
