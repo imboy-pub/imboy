@@ -29,6 +29,9 @@
 
 -define(ADM_MOMENT_AUDIT_TYPE, 903).
 
+% feed 每帖内联评论预览条数（对标微信时间线卡片）
+-define(FEED_COMMENTS_PREVIEW_LIMIT, 3).
+
 -spec create_post(integer(), map()) -> {ok, map()} | {error, binary()}.
 create_post(Uid, PostVals) ->
     Content = normalize_non_empty_binary(maps:get(<<"content">>, PostVals, <<>>)),
@@ -469,6 +472,8 @@ enrich_posts(Uid, Posts) ->
         end,
     % 每帖最近 5 个点赞人（一次批量查询，避免 N+1）
     LikersMap = build_recent_likers_map(PostIds, 5),
+    % 每帖最新 3 条评论预览（一次批量查询，避免 N+1）
+    CommentsMap = build_comments_preview_map(PostIds, ?FEED_COMMENTS_PREVIEW_LIMIT),
     [
         begin
             AuthorUid = maps:get(<<"author_uid">>, P, 0),
@@ -480,7 +485,8 @@ enrich_posts(Uid, Posts) ->
                 <<"author_nickname">> => Nickname,
                 <<"author_avatar">> => Avatar,
                 <<"liked">> => lists:member(PostId, LikedSet),
-                <<"recent_likers">> => RecentLikers
+                <<"recent_likers">> => RecentLikers,
+                <<"comments_preview">> => maps:get(PostId, CommentsMap, [])
             }
         end
      || P <- Posts
@@ -573,6 +579,48 @@ build_recent_likers_map(PostIds, PerPostLimit) ->
                 PostId,
                 fun(Existing) -> Existing ++ [Liker] end,
                 [Liker],
+                Acc
+            )
+        end,
+        #{},
+        Rows
+    ).
+
+%% @doc 批量构建 #{PostId => [评论预览]}，每帖最新 PerPostLimit 条（帖内正序）。
+%% 一次批量查评论 + 一次批量查用户昵称，避免 N+1；失败或无数据时对应空列表。
+-spec build_comments_preview_map([integer()], integer()) -> map().
+build_comments_preview_map([], _PerPostLimit) ->
+    #{};
+build_comments_preview_map(PostIds, PerPostLimit) ->
+    Rows =
+        case moment_ds:recent_comments_by_posts(PostIds, PerPostLimit) of
+            {ok, R} when is_list(R) -> R;
+            _ -> []
+        end,
+    Ids = lists:flatten([
+        [
+            maps:get(<<"user_id">>, C, 0),
+            maps:get(<<"reply_to_uid">>, C, 0)
+        ]
+     || C <- Rows
+    ]),
+    UserMap = build_user_map(lists:usort([I || I <- Ids, is_integer(I), I > 0])),
+    lists:foldl(
+        fun(C, Acc) ->
+            PostId = maps:get(<<"post_id">>, C, 0),
+            UserId = maps:get(<<"user_id">>, C, 0),
+            ReplyToUid = maps:get(<<"reply_to_uid">>, C, 0),
+            {Nick, _} = maps:get(UserId, UserMap, {<<>>, <<>>}),
+            {ReplyNick, _} = maps:get(ReplyToUid, UserMap, {<<>>, <<>>}),
+            Base = comment_transfer(C),
+            Item = Base#{
+                <<"user_nickname">> => Nick,
+                <<"reply_to_nickname">> => ReplyNick
+            },
+            maps:update_with(
+                PostId,
+                fun(Existing) -> Existing ++ [Item] end,
+                [Item],
                 Acc
             )
         end,
