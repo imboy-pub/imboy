@@ -7,7 +7,7 @@
 --   Drops self-hosted social-recovery (Shamir) + device-transfer tables.
 --   Key custody standardizes on password/recovery-key cloud backup (4S-equiv).
 
-DROP TABLE IF EXISTS public.e2ee_shard_transmission_log;
-DROP TABLE IF EXISTS public.e2ee_social_shards;
-DROP TABLE IF EXISTS public.e2ee_trusted_contacts;
-DROP TABLE IF EXISTS public.e2ee_transfer_sessions;
+DROP TABLE IF EXISTS public.e2ee_shard_transmission_log CASCADE;
+DROP TABLE IF EXISTS public.e2ee_social_shards CASCADE;
+DROP TABLE IF EXISTS public.e2ee_trusted_contacts CASCADE;
+DROP TABLE IF EXISTS public.e2ee_transfer_sessions CASCADE;
