@@ -11,6 +11,7 @@
 -export([upsert_identity/6]).
 -export([find_identity/2]).
 -export([list_identity_by_uids/1]).
+-export([list_devices_with_identity/1]).
 -export([upsert_one_time_keys/4]).
 -export([count_one_time_keys/2]).
 -export([claim_one_time_key/3]).
@@ -80,6 +81,30 @@ list_identity_by_uids(Uids) when is_list(Uids) ->
         <<"SELECT user_id, device_id, ed25519_key, curve25519_key, signature", " FROM ", Tb/binary,
             " WHERE user_id = ANY($1)">>,
     elib_pg:query(Sql, [Uids]).
+
+%% @doc 列出对端某用户全部活跃设备（含 olm 身份键 + 派生列），ADR 03 §8.1 统一设备列表 API。
+%%  仅返回 status=1（活跃）且已注册 olm_identity 的设备（INNER JOIN）。
+%%  capabilities/trust_state/identity_blob/identity_signature 为 user_device 侧
+%%  （migration 00000043）；ed25519/curve25519/signature 为 olm_identity 侧公钥
+%%  （服务端零私钥，ADR 07 §6）。服务端不解释 capabilities，仅透传（ADR 03 §5.2）。
+-spec list_devices_with_identity(integer()) -> {ok, [map()]} | {error, term()}.
+list_devices_with_identity(UserId) when is_integer(UserId) ->
+    UdTb = elib_pg_sql:public_tablename(<<"user_device">>),
+    OiTb = tablename_identity(),
+    Sql = <<
+        "SELECT ud.device_id, ud.device_type, ud.capabilities, ud.trust_state,",
+        "       ud.identity_blob, ud.identity_signature,",
+        "       oi.ed25519_key, oi.curve25519_key, oi.signature",
+        " FROM ",
+        UdTb/binary,
+        " ud",
+        " JOIN ",
+        OiTb/binary,
+        " oi ON ud.user_id = oi.user_id AND ud.device_id = oi.device_id",
+        " WHERE ud.user_id = $1 AND ud.status = 1",
+        " ORDER BY ud.device_id"
+    >>,
+    elib_pg:query(Sql, [UserId]).
 
 %% ===================================================================
 %% One-Time Keys（X3DH prekey；claim 标记 status='claimed' 不删，保留审计行）

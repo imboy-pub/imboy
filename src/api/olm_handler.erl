@@ -30,8 +30,12 @@ init(Req0, State0) ->
                 report_fallback(Req0, State);
             get_identity ->
                 get_identity(Req0, State);
+            list_devices ->
+                list_devices(Req0, State);
             claim_key ->
                 claim_key(Req0, State);
+            batch_claim ->
+                batch_claim(Req0, State);
             _ ->
                 elib_response:error(Req0, <<"not_found">>, 404)
         end,
@@ -181,6 +185,69 @@ do_get_identity(Req0, _State) ->
     end.
 
 %% ===================================================================
+%% GET /api/v1/e2ee/devices?uid= — 列出对端全部活跃 olm 设备（ADR 03 §8.1）
+%% ===================================================================
+
+-spec list_devices(cowboy_req:req(), map()) -> cowboy_req:req().
+list_devices(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_list_devices(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_list_devices(cowboy_req:req(), map()) -> cowboy_req:req().
+do_list_devices(Req0, _State) ->
+    TargetUidEnc = elib_param:get(<<"uid">>, Req0, <<"">>),
+    TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),
+    case is_integer(TargetUid) andalso TargetUid > 0 of
+        false ->
+            elib_response:error(Req0, <<"bad_request">>, 400);
+        true ->
+            case olm_identity_logic:list_devices(TargetUid) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            end
+    end.
+
+%% ===================================================================
+%% POST /api/v1/e2ee/devices/batch_claim — 批量领取多设备 prekey（ADR 03 §8.2）
+%% Body: {target_uid, device_ids: ["dev-a", "dev-b", ...]}
+%% 返回: {claimed: {device_id => {type, key_id, key_base64, identity}}, failed: {...}}
+%% ===================================================================
+
+-spec batch_claim(cowboy_req:req(), map()) -> cowboy_req:req().
+batch_claim(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_batch_claim(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+-spec do_batch_claim(cowboy_req:req(), map()) -> cowboy_req:req().
+do_batch_claim(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    TargetUidEnc = maps:get(<<"target_uid">>, PostVals, <<"">>),
+    TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),
+    DeviceIds = normalize_device_ids(maps:get(<<"device_ids">>, PostVals, [])),
+    case is_integer(TargetUid) andalso TargetUid > 0 andalso DeviceIds =/= [] of
+        false ->
+            elib_response:error(Req0, <<"bad_request">>, 400);
+        true ->
+            case olm_identity_logic:batch_claim_keys(CurrentUid, TargetUid, DeviceIds) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            end
+    end.
+
+%% ===================================================================
 %% POST /api/v1/e2ee/olm/claim — 领取对端一个 prekey（X3DH）
 %% Body: {target_uid, device_id}
 %% 返回: {type: one_time|fallback, key_id, key_base64, identity: {...}}
@@ -228,6 +295,13 @@ normalize_key_pairs(List) when is_list(List) ->
 normalize_key_pairs(Map) when is_map(Map) ->
     [{to_bin(K), to_bin(V)} || {K, V} <- maps:to_list(Map), is_binary(V) orelse is_list(V)];
 normalize_key_pairs(_) ->
+    [].
+
+%% @doc 归一化 device_ids 列表（接受 binary / string 元素，剔除非法）。
+-spec normalize_device_ids(term()) -> [binary()].
+normalize_device_ids(List) when is_list(List) ->
+    [to_bin(D) || D <- List, is_binary(D) orelse is_list(D)];
+normalize_device_ids(_) ->
     [].
 
 -spec to_bin(term()) -> binary().

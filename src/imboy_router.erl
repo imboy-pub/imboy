@@ -157,6 +157,9 @@ get_routes() ->
                 {"/api/v1/e2ee/olm/fallback_key", olm_handler, #{action => report_fallback}},
                 {"/api/v1/e2ee/olm/get_identity", olm_handler, #{action => get_identity}},
                 {"/api/v1/e2ee/olm/claim", olm_handler, #{action => claim_key}},
+                % 统一 Device API（ADR 03 §8）：多设备列表 + batch claim（现有 5 端点保留兼容）
+                {"/api/v1/e2ee/devices", olm_handler, #{action => list_devices}},
+                {"/api/v1/e2ee/devices/batch_claim", olm_handler, #{action => batch_claim}},
 
                 {"/api/v1/user_collect/page", user_collect_handler, #{action => page}},
                 {"/api/v1/user_collect/add", user_collect_handler, #{action => add}},

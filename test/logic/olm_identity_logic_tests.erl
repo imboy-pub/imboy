@@ -166,6 +166,112 @@ get_identity_not_found_test() ->
     end).
 
 %% ===================================================================
+%% list_devices（ADR 03 §8.1 统一设备列表）
+%% ===================================================================
+
+list_devices_ok_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        Devices = [
+            #{<<"device_id">> => <<"phone-a">>, <<"capabilities">> => [<<"olm">>]},
+            #{<<"device_id">> => <<"ipad-b">>, <<"capabilities">> => [<<"olm">>, <<"megolm">>]}
+        ],
+        meck:expect(olm_identity_ds, list_devices_with_identity, 1, fun(_) -> {ok, Devices} end),
+        {ok, Payload} = olm_identity_logic:list_devices(200),
+        ?assertEqual(200, maps:get(<<"user_id">>, Payload)),
+        ?assertEqual(Devices, maps:get(<<"devices">>, Payload))
+    end).
+
+list_devices_empty_ok_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        meck:expect(olm_identity_ds, list_devices_with_identity, 1, fun(_) -> {ok, []} end),
+        {ok, Payload} = olm_identity_logic:list_devices(200),
+        ?assertEqual([], maps:get(<<"devices">>, Payload))
+    end).
+
+list_devices_rejects_bad_uid_test() ->
+    ?assertEqual({error, <<"bad_request">>}, olm_identity_logic:list_devices(0)),
+    ?assertEqual({error, <<"bad_request">>}, olm_identity_logic:list_devices(<<"x">>)).
+
+list_devices_maps_ds_error_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        meck:expect(olm_identity_ds, list_devices_with_identity, 1, fun(_) -> {error, db_down} end),
+        ?assertEqual({error, <<"internal_error">>}, olm_identity_logic:list_devices(200))
+    end).
+
+%% ===================================================================
+%% batch_claim_keys（ADR 03 §8.2 多设备 fan-out）
+%% ===================================================================
+
+%% 多设备各自 claim 成功，聚合到 claimed，failed 为空
+batch_claim_all_ok_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        Identity = #{<<"device_id">> => <<"d">>},
+        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {ok, Identity} end),
+        meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, Did, _) ->
+            {ok, #{<<"key_id">> => <<"otk-", Did/binary>>, <<"key_base64">> => <<"A">>}}
+        end),
+        {ok, Payload} = olm_identity_logic:batch_claim_keys(100, 200, [<<"a">>, <<"b">>]),
+        Claimed = maps:get(<<"claimed">>, Payload),
+        ?assertEqual(2, maps:size(Claimed)),
+        ?assertEqual(#{}, maps:get(<<"failed">>, Payload)),
+        ?assertEqual(<<"one_time">>, maps:get(<<"type">>, maps:get(<<"a">>, Claimed)))
+    end).
+
+%% 部分设备未注册 → 该设备落 failed，不中断其他设备
+batch_claim_partial_failure_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        meck:expect(olm_identity_ds, find_identity, 2, fun
+            (_, <<"good">>) -> {ok, #{<<"device_id">> => <<"good">>}};
+            (_, <<"bad">>) -> {ok, not_found}
+        end),
+        meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, _, _) ->
+            {ok, #{<<"key_id">> => <<"otk-1">>, <<"key_base64">> => <<"A">>}}
+        end),
+        {ok, Payload} = olm_identity_logic:batch_claim_keys(100, 200, [<<"good">>, <<"bad">>]),
+        ?assertEqual(1, maps:size(maps:get(<<"claimed">>, Payload))),
+        Failed = maps:get(<<"failed">>, Payload),
+        ?assertEqual(<<"device_not_registered">>, maps:get(<<"bad">>, Failed))
+    end).
+
+%% 去重：重复 device_id 只 claim 一次
+batch_claim_dedups_device_ids_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
+            {ok, #{<<"device_id">> => <<"a">>}}
+        end),
+        meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, _, _) ->
+            {ok, #{<<"key_id">> => <<"otk-1">>, <<"key_base64">> => <<"A">>}}
+        end),
+        {ok, Payload} = olm_identity_logic:batch_claim_keys(100, 200, [<<"a">>, <<"a">>, <<"a">>]),
+        ?assertEqual(1, maps:size(maps:get(<<"claimed">>, Payload))),
+        ?assertEqual(1, meck:num_calls(olm_identity_ds, claim_one_time_key, '_'))
+    end).
+
+batch_claim_rejects_empty_test() ->
+    ?assertEqual(
+        {error, <<"no_device_ids">>},
+        olm_identity_logic:batch_claim_keys(100, 200, [])
+    ),
+    %% 全为非法元素过滤后为空
+    ?assertEqual(
+        {error, <<"no_device_ids">>},
+        olm_identity_logic:batch_claim_keys(100, 200, [<<>>, 123])
+    ).
+
+batch_claim_rejects_too_many_test() ->
+    Ids = [integer_to_binary(N) || N <- lists:seq(1, 21)],
+    ?assertEqual(
+        {error, <<"too_many_devices">>},
+        olm_identity_logic:batch_claim_keys(100, 200, Ids)
+    ).
+
+batch_claim_rejects_bad_args_test() ->
+    ?assertEqual(
+        {error, <<"bad_request">>},
+        olm_identity_logic:batch_claim_keys(<<"x">>, 200, [<<"a">>])
+    ).
+
+%% ===================================================================
 %% cleanup_consumed_one_time_keys：retention 守卫 + days→seconds 换算 + 透传
 %% ===================================================================
 

@@ -7,6 +7,7 @@
 -export([upsert_identity/6]).
 -export([find_identity/2]).
 -export([list_identity_by_uids/1]).
+-export([list_devices_with_identity/1]).
 -export([upsert_one_time_keys/4]).
 -export([count_one_time_keys/2]).
 -export([claim_one_time_key/3]).
@@ -28,6 +29,10 @@ find_identity(UserId, DeviceId) ->
 -spec list_identity_by_uids([integer()]) -> {ok, [map()]} | {error, term()}.
 list_identity_by_uids(Uids) ->
     olm_identity_repo:list_identity_by_uids(Uids).
+
+-spec list_devices_with_identity(integer()) -> {ok, [map()]} | {error, term()}.
+list_devices_with_identity(UserId) ->
+    olm_identity_repo:list_devices_with_identity(UserId).
 
 -spec upsert_one_time_keys(integer(), binary(), [{binary(), binary()}], pos_integer()) ->
     {ok, non_neg_integer()} | {error, term()}.
