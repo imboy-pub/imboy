@@ -160,6 +160,8 @@ get_routes() ->
                 % 统一 Device API（ADR 03 §8）：多设备列表 + batch claim（现有 5 端点保留兼容）
                 {"/api/v1/e2ee/devices", olm_handler, #{action => list_devices}},
                 {"/api/v1/e2ee/devices/batch_claim", olm_handler, #{action => batch_claim}},
+                % Device Trust 决策事件（ADR 06 §8）：服务端验签+审计+广播,零算法
+                {"/api/v1/e2ee/trust/record", e2ee_trust_handler, #{action => record}},
 
                 {"/api/v1/user_collect/page", user_collect_handler, #{action => page}},
                 {"/api/v1/user_collect/add", user_collect_handler, #{action => add}},

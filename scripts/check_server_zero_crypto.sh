@@ -27,6 +27,14 @@ if [ -n "$HITS2" ]; then
   FAIL=1
 fi
 
+# 3. 服务端不得计算 Safety Number（ADR 06 §8.1 零算法 / §9.4 T-06-14）
+HITS3=$(grep -rniE "safety_?number" src --include="*.erl" || true)
+if [ -n "$HITS3" ]; then
+  echo "[FAIL] 服务端出现 Safety Number 计算（违反 ADR 06 §8.1 零算法）："
+  echo "$HITS3"
+  FAIL=1
+fi
+
 if [ "$FAIL" -eq 0 ]; then
   echo "[OK] 服务端零密码学守护通过：无 E2EE 解密命中。"
 fi
