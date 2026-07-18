@@ -315,7 +315,7 @@ show(Req0, _State) ->
                 {error, Req} ->
                     Req;
                 {ok, DecodedUid} ->
-                    Column = <<"id, nickname, avatar, account, sign">>,
+                    Column = <<"id, nickname, avatar, background, account, sign">>,
                     User = user_logic:find_by_id(DecodedUid, Column),
                     User2 = convert_user_id(User),
                     elib_response:success(Req0, User2)

@@ -50,6 +50,7 @@
     <<"sign">>,
     <<"nickname">>,
     <<"avatar">>,
+    <<"background">>,
     <<"region">>,
     <<"birthday">>
 ]).
