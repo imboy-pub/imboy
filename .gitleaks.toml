@@ -46,6 +46,10 @@ paths = [
     '''priv/static/webrtc/''',      # WebRTC demo 含 JWT 注释示例
     '''ssl/''',                     # 本地 dev SSL 证书（gitignored，prod 用 deploy/ssl/）
 
+    # Olm E2EE 迁移：纯 DDL，ed25519_key/curve25519_key 是公钥列名（非 secret），
+    # 触发 generic-api-key 误报；迁移不含任何密钥值，仅表结构。
+    '''priv/migrations/.*_olm_.*\.sql''',
+
     # 文档示例
     '''docs/CONVENTIONS\.md''',
     '''docs/CODEMAPS/''',

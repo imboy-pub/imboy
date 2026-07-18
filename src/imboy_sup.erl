@@ -132,6 +132,16 @@ init([]) ->
         modules => [billing_invoice_worker]
     },
 
+    % Olm OTK 已消费审计行清理定时 worker（默认禁用，需 sys.config 显式启用；不删任何审计行直到启用）
+    OlmOtkCleanupWorker = #{
+        id => olm_otk_cleanup_worker,
+        start => {olm_otk_cleanup_worker, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [olm_otk_cleanup_worker]
+    },
+
     % 登录失败次数限制（ETS 表 login_attempt_ets 由此 gen_server 创建）
     LoginAttemptServer = #{
         id => login_attempt_ds,
@@ -238,6 +248,7 @@ init([]) ->
             UserDeletionWorker,
             LicenseNoticeWorker,
             BillingInvoiceWorker,
+            OlmOtkCleanupWorker,
             AiAgentRuntime,
             McpRegistry,
             McpSession,

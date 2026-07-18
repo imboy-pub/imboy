@@ -150,6 +150,14 @@ get_routes() ->
                 {"/api/v1/e2ee/backup/info", e2ee_backup_handler, #{action => info}},
                 {"/api/v1/e2ee/backup/delete", e2ee_backup_handler, #{action => delete}},
 
+                % Olm（X3DH + Double Ratchet）单聊 E2EE：身份键 / prekey / fallback / claim
+                % 服务端只存公钥侧，无私钥；不做任何加解密。
+                {"/api/v1/e2ee/olm/identity", olm_handler, #{action => report_identity}},
+                {"/api/v1/e2ee/olm/prekeys", olm_handler, #{action => report_prekeys}},
+                {"/api/v1/e2ee/olm/fallback_key", olm_handler, #{action => report_fallback}},
+                {"/api/v1/e2ee/olm/get_identity", olm_handler, #{action => get_identity}},
+                {"/api/v1/e2ee/olm/claim", olm_handler, #{action => claim_key}},
+
                 {"/api/v1/user_collect/page", user_collect_handler, #{action => page}},
                 {"/api/v1/user_collect/add", user_collect_handler, #{action => add}},
                 {"/api/v1/user_collect/remove", user_collect_handler, #{action => remove}},

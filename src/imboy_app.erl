@@ -233,6 +233,10 @@ tsid_generator_names() ->
         announcement,
         %% ── 合规 ──
         compliance_key,
+        %% ── Olm（X3DH + Double Ratchet）单聊 E2EE ──
+        olm_identity,
+        olm_one_time_key,
+        olm_fallback_key,
         %% ── 管理员 ──
         adm_user,
         admin_op_log,
