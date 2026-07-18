@@ -7,7 +7,9 @@
 # 断言：
 #   - 设备列表 INNER JOIN 只返回 status=1 且有 olm_identity 的设备（排除非活跃 / 无身份）；
 #   - capabilities/trust_state 默认列可读（migration 43）；
-#   - claim 原子 UPDATE 审计：选中行 status='claimed' + consumed_at + claimed_by，不删除。
+#   - claim 原子 UPDATE 审计：选中行 status='claimed' + consumed_at + claimed_by，不删除；
+#   - 并发 claim 唯一性（ADR 08 §4 otk_concurrent_claim_uniqueness / T7）：100 并发抢 50 个
+#     OTK，FOR UPDATE SKIP LOCKED 保证恰好 50 成功、无一被重复 claim、每 key 唯一 claimer。
 #
 # 临时实例跑完即删，零残留、不碰任何真实库。需本机 postgresql@18（或 PATH 内 initdb/pg_ctl）。
 # 用法：bash scripts/verify_device_api_sql.sh
@@ -31,7 +33,8 @@ cleanup() { "$PGBIN/pg_ctl" -D "$PGDATA" -m immediate stop >/dev/null 2>&1 || tr
 trap cleanup EXIT
 
 "$PGBIN/initdb" -D "$PGDATA" -U postgres --auth=trust >/dev/null 2>&1
-"$PGBIN/pg_ctl" -D "$PGDATA" -o "-p $PGPORT -k $PGDATA -c listen_addresses=''" -w start >/dev/null 2>&1
+# max_connections 提到 200：断言 3 的 100 并发 claim 会占满默认 100 连接上限
+"$PGBIN/pg_ctl" -D "$PGDATA" -o "-p $PGPORT -k $PGDATA -c listen_addresses='' -c max_connections=200" -w start >/dev/null 2>&1
 PSQL=("$PGBIN/psql" -h "$PGDATA" -p "$PGPORT" -U postgres -d migtest -v ON_ERROR_STOP=1 -qtA)
 "$PGBIN/createdb" -h "$PGDATA" -p "$PGPORT" -U postgres migtest
 
@@ -103,6 +106,57 @@ check "剩余 available OTK = 1（低水位口径一致）" "1" "$AVAIL"
 # ---- 断言 3：trust_audit 表存在且 append-only 结构（migration 44 foundation）----
 TA=$("${PSQL[@]}" -c "SELECT count(*) FROM information_schema.tables WHERE table_name='trust_audit';")
 check "trust_audit 表已建（migration 44 foundation）" "1" "$TA"
+
+# ---- 断言 4：并发 claim 唯一性压测（ADR 08 §4 otk_concurrent_claim_uniqueness / T7）----
+# STRESS_WORKERS 个进程同时抢 STRESS_KEYS 个 OTK。SKIP LOCKED 使每事务锁到不同行；
+# 供不应求时多出的 worker 抢空返回空行。不变式（与调度无关）：
+#   成功数 == STRESS_KEYS；被 claim 的 key 互不重复；每 key 恰好一个 claimer。
+STRESS_WORKERS=100
+STRESS_KEYS=50
+# stress 用独立 user/device，避免与上面的 fixture 断言相互干扰
+"${PSQL[@]}" -c "INSERT INTO public.user_device (user_id, device_id, device_type, status, capabilities, trust_state)
+  VALUES (300,'stress-e','phone',1,'{olm}','unverified');" >/dev/null
+"${PSQL[@]}" -c "INSERT INTO public.olm_identity (id,user_id,device_id,ed25519_key,curve25519_key,signature)
+  VALUES (3,300,'stress-e','ed-e','cv-e','sig-e');" >/dev/null
+"${PSQL[@]}" -c "INSERT INTO public.olm_one_time_key (id,user_id,device_id,key_id,key_base64)
+  SELECT 1000+g, 300, 'stress-e', 'sk'||g, 'kb'||g FROM generate_series(1,$STRESS_KEYS) g;" >/dev/null
+
+CLAIMDIR="$PGDATA/claims"
+mkdir -p "$CLAIMDIR"
+CLAIM_CTE="WITH picked AS (
+  SELECT id, key_id FROM public.olm_one_time_key
+  WHERE user_id = 300 AND device_id = 'stress-e' AND status = 'available'
+  ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED
+),
+claimed AS (
+  UPDATE public.olm_one_time_key
+  SET status = 'claimed', consumed_at = CURRENT_TIMESTAMP, claimed_by = %WORKER%
+  WHERE id IN (SELECT id FROM picked) RETURNING id
+)
+SELECT p.key_id FROM picked p JOIN claimed c ON p.id = c.id"
+for i in $(seq 1 "$STRESS_WORKERS"); do
+  ("$PGBIN/psql" -h "$PGDATA" -p "$PGPORT" -U postgres -d migtest -v ON_ERROR_STOP=1 -qtA \
+    -c "${CLAIM_CTE/\%WORKER\%/$i}" > "$CLAIMDIR/$i.out" 2>/dev/null) &
+done
+wait
+
+SUCCESS=$(cat "$CLAIMDIR"/*.out 2>/dev/null | grep -c . || true)
+UNIQKEYS=$(cat "$CLAIMDIR"/*.out 2>/dev/null | grep . | sort -u | wc -l | tr -d ' ')
+DUPS=$(cat "$CLAIMDIR"/*.out 2>/dev/null | grep . | sort | uniq -d | wc -l | tr -d ' ')
+check "并发成功数 == OTK 数（${STRESS_KEYS}，供不应求下确定）" "$STRESS_KEYS" "$SUCCESS"
+check "被 claim 的 key 互不重复（distinct == ${STRESS_KEYS}）" "$STRESS_KEYS" "$UNIQKEYS"
+check "无 key 被重复 claim（uniq -d 为空）" "0" "$DUPS"
+
+DBCLAIMED=$("${PSQL[@]}" -c "SELECT count(*) FROM public.olm_one_time_key
+  WHERE user_id=300 AND device_id='stress-e' AND status='claimed'
+    AND consumed_at IS NOT NULL AND claimed_by IS NOT NULL;")
+check "DB claimed 行 == ${STRESS_KEYS} 且审计字段填充" "$STRESS_KEYS" "$DBCLAIMED"
+DBAVAIL=$("${PSQL[@]}" -c "SELECT count(*) FROM public.olm_one_time_key
+  WHERE user_id=300 AND device_id='stress-e' AND status='available';")
+check "DB 剩余 available == 0（全部被消费）" "0" "$DBAVAIL"
+DBBY=$("${PSQL[@]}" -c "SELECT count(DISTINCT claimed_by) FROM public.olm_one_time_key
+  WHERE user_id=300 AND device_id='stress-e' AND status='claimed';")
+check "每 key 唯一 claimer（distinct claimed_by == ${STRESS_KEYS}）" "$STRESS_KEYS" "$DBBY"
 
 if [ "$fail" -eq 0 ]; then echo "[PASS] Device API SQL 集成验证全部通过"; else echo "[FAIL] Device API SQL 集成验证有失败项"; fi
 exit "$fail"
