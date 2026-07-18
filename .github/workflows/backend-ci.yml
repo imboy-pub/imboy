@@ -53,6 +53,9 @@ jobs:
       - name: Check duplicate module names
         run: bash scripts/check_duplicate_modules.sh
 
+      - name: Check server zero-crypto (E2EE 私钥/明文永不经服务端, ADR 07 §6.3 / 08 §4)
+        run: bash scripts/check_server_zero_crypto.sh
+
       - name: Compile
         run: IMBOYENV=local make test-build
 

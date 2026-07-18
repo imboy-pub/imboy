@@ -272,6 +272,42 @@ batch_claim_rejects_bad_args_test() ->
     ).
 
 %% ===================================================================
+%% Device API 契约冻结（ADR 03 §8.1/§8.2）
+%% logic 返回的 map 即 handler 透传给客户端的响应体（elib_response:success/2），
+%% 故断言 map 顶层键集 = 冻结 wire 契约。PR 改动契约时本测试立即可见。
+%% ===================================================================
+
+%% 契约冻结：list_devices 响应恰含 {user_id, devices}
+contract_list_devices_shape_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        Dev = #{<<"device_id">> => <<"d">>, <<"capabilities">> => [<<"olm">>]},
+        meck:expect(olm_identity_ds, list_devices_with_identity, 1, fun(_) -> {ok, [Dev]} end),
+        {ok, Payload} = olm_identity_logic:list_devices(200),
+        ?assertEqual(
+            [<<"devices">>, <<"user_id">>],
+            lists:sort(maps:keys(Payload))
+        )
+    end).
+
+%% 契约冻结：batch_claim 响应恰含 {claimed, failed}；claimed 项恰含
+%% {type, key_id, key_base64, identity}（X3DH 客户端 createOutboundSession 依赖）
+contract_batch_claim_shape_test() ->
+    ?WITH_MECKS([olm_identity_ds], fun() ->
+        Identity = #{<<"device_id">> => <<"a">>, <<"ed25519_key">> => <<"e">>},
+        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {ok, Identity} end),
+        meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, _, _) ->
+            {ok, #{<<"key_id">> => <<"otk-1">>, <<"key_base64">> => <<"A">>}}
+        end),
+        {ok, Payload} = olm_identity_logic:batch_claim_keys(100, 200, [<<"a">>]),
+        ?assertEqual([<<"claimed">>, <<"failed">>], lists:sort(maps:keys(Payload))),
+        Entry = maps:get(<<"a">>, maps:get(<<"claimed">>, Payload)),
+        ?assertEqual(
+            [<<"identity">>, <<"key_base64">>, <<"key_id">>, <<"type">>],
+            lists:sort(maps:keys(Entry))
+        )
+    end).
+
+%% ===================================================================
 %% cleanup_consumed_one_time_keys：retention 守卫 + days→seconds 换算 + 透传
 %% ===================================================================
 
