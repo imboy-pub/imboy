@@ -6,6 +6,13 @@ post:
     ## 中文 / English
     管理后台 adm-admin handler 的 `compliance_key_create` 动作；路径 `/adm/admin/compliance_key/create`。
     Admin handler `adm-admin`, action `compliance_key_create`. Path `/adm/admin/compliance_key/create`.
+
+    ## 零信任契约（线 A 改造）
+    仅接收 `public_key`。合规私钥由审计方在本地（HSM / 离线介质）生成与保管，
+    服务端永不接收、永不落盘。上传私钥的旧字段 `private_key_encrypted` 已废弃。
+    Zero-trust contract (line A): only `public_key` is accepted. The compliance
+    private key is generated and held locally by the auditor (HSM / offline
+    media); the server never receives or persists it.
   operationId: adm_admin_compliance_key_create
   requestBody:
     required: true
@@ -13,7 +20,12 @@ post:
       application/json:
         schema:
           type: object
-          additionalProperties: true
+          required: [public_key]
+          properties:
+            public_key:
+              type: string
+              description: 合规公钥（PEM 格式）/ Compliance public key (PEM)
+          additionalProperties: false
   responses:
     '200':
       description: 成功

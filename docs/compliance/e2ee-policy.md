@@ -1,6 +1,6 @@
 # imboy E2EE（端到端加密）策略与合规密钥托管披露
 
-> 版本：v2.x | 最后更新：2026-07-07
+> 版本：v2.x | 最后更新：2026-07-18（零信任改造线 A：compliance 私钥下线服务端落盘）
 > 关联文档：`docs/analysis/project-audit-roadmap-2026-07.md` [FEAT-03] / [SEC-04]、`imboyapp/.claude/PRPs/plans/completed/feat-03-e2ee-dead-toggle.plan.md`
 > 适用：imboy 后端 + imboyapp 客户端
 
@@ -104,15 +104,28 @@ if (policyMode == EncryptionMode.complianceE2ee) {
 - 这是**依法留存 / 合规审计后门**，与 imboy"零接触明文用户私钥"的宣称**不矛盾**（compliance 私钥 ≠ 用户私钥；用户私钥从未离开设备）。
 - 但该机制**破坏纯端到端语义**——第三方（持 compliance 私钥者）能读取密文。须在隐私政策与白标合规文档中明示。
 
-### 3.3 后端配套
+### 3.3 后端配套（零信任改造线 A，2026-07）
 
-- 合规私钥服务端持有：`src/ds/compliance_key_ds.erl`；合规公钥下发供客户端 wrap：`src/logic/e2ee_logic.erl`。
+> **改造记录**：原方案 compliance 私钥由服务端落盘持有（`compliance_key.private_key_encrypted` 列），
+> 这使运营方/管理员具备解密所有 compliance 模式密文的能力。2026-07 零信任改造（线 A）
+> 彻底下线该字段：服务端**永不接收、永不落盘** compliance 私钥。
+
+- **合规私钥仅由审计方在本地持有**：审计方在 HSM / 离线介质（USB / 纸质等）生成 RSA 密钥对，
+  私钥永不离开本地，仅将公钥经 admin 上传服务端（`POST /api/adm/admin/compliance_key/create`，
+  入参仅 `public_key`）。
+- **服务端零接触私钥**：`compliance_key_repo:create/3` 只存公钥；
+  migration `00000041` 已 `DROP COLUMN private_key_encrypted`；
+  死代码 `find_by_key_id/1`（原唯一读取私钥的入口）已删除。
+- **合规公钥下发**：客户端经 `GET /api/v1/e2ee/compliance_key` 取活跃合规公钥（仅 `key_id` + `public_key`），
+  用于在 compliance 模式下额外 wrap 一份 AES key（见 §3.1）。
+- **审计解密路径**：审计员在自己设备上导入本地保管的合规私钥 → 读取消息 `e2ee.keys[]` 中
+  `did:compliance-audit` 条目的 `ek` → RSA-OAEP-256 解出 AES key → 解密消息。**整条链路服务端零参与**。
 - `e2ee_mode` 只有显式配置为 `compliance` 时才启用合规双 wrap；`required`（strict）模式**不**进行合规 wrap，是纯端到端。
 
 ### 3.4 部署方须做
 
 1. 在隐私政策中披露"依法留存的合规密钥托管"机制（`compliance_e2ee` 模式下）。
-2. 明确 compliance 私钥的保管责任人与访问审计流程。
+2. **合规私钥由审计方在本地（HSM / 离线介质）生成与妥善保管**；明确保管责任人、离线介质存放位置与访问审计流程。**服务端不再保存任何私钥，私钥一旦丢失，所有用此公钥加密的历史合规密文将永久无法解密**。
 3. 若部署场景不需要合规托管，将 `e2ee_mode` 配置为 `required`（纯端到端）或 `optional`/`disabled` 即可关闭合规双 wrap。
 4. 对外措辞由方法务/产品最终审定——本文件仅提供技术事实陈述。
 

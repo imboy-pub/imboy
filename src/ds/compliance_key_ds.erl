@@ -11,7 +11,7 @@
 
 -export([find_active/0]).
 -export([list_all/0]).
--export([create/4]).
+-export([create/3]).
 -export([revoke/2]).
 
 -spec find_active() -> {ok, map()} | {error, term()}.
@@ -22,9 +22,10 @@ find_active() ->
 -spec list_all() -> {ok, list(map())} | {error, term()}.
 list_all() -> compliance_key_repo:list_all().
 
--spec create(binary(), binary(), binary(), integer()) -> {ok, binary()} | {error, term()}.
-create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId) ->
-    compliance_key_repo:create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId).
+%% 零信任改造（线 A）：合规私钥永不上传服务端，create/3 仅接收公钥。
+-spec create(binary(), binary(), integer()) -> {ok, binary()} | {error, term()}.
+create(KeyId, PublicKey, AdmUserId) ->
+    compliance_key_repo:create(KeyId, PublicKey, AdmUserId).
 
 -spec revoke(binary(), integer()) -> {ok, integer()} | {error, term()}.
 revoke(KeyId, AdmUserId) -> compliance_key_repo:revoke(KeyId, AdmUserId).

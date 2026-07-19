@@ -5,8 +5,10 @@
 -define(WITH_MECKS(Modules, Fun),
     (fun() ->
         ok = meck:new(Modules, [passthrough, no_link]),
-        try Fun()
-        after meck:unload(Modules)
+        try
+            Fun()
+        after
+            meck:unload(Modules)
         end
     end)()
 ).
@@ -21,9 +23,10 @@ create_ok_test() ->
     try
         meck:expect(elib_tsid, generate, 1, fun(compliance_key) -> 9001 end),
         meck:expect(elib_pg, query, 2, fun(_Sql, _Params) -> {ok, 1} end),
+        %% 零信任改造（线 A）：create/3 仅接收公钥，不再接收加密私钥。
         ?assertEqual(
             {ok, <<"key-001">>},
-            compliance_key_repo:create(<<"key-001">>, <<"-----BEGIN PUBLIC KEY-----">>, <<"encrypted">>, 1)
+            compliance_key_repo:create(<<"key-001">>, <<"-----BEGIN PUBLIC KEY-----">>, 1)
         )
     after
         meck:unload([elib_pg, elib_tsid])
@@ -38,8 +41,37 @@ create_error_test() ->
         meck:expect(elib_pg, query, 2, fun(_Sql, _Params) -> {error, unique_violation} end),
         ?assertEqual(
             {error, unique_violation},
-            compliance_key_repo:create(<<"key-dup">>, <<"pk">>, <<"enc">>, 1)
+            compliance_key_repo:create(<<"key-dup">>, <<"pk">>, 1)
         )
+    after
+        meck:unload([elib_pg, elib_tsid])
+    end.
+
+%% 守护测试：create 写入的数据 map 不得含 private_key_encrypted 键
+%% （配合 migration 00000041 DROP COLUMN 的语义防回归）。
+create_must_not_persist_private_key_test() ->
+    _ = catch meck:unload([elib_pg, elib_tsid]),
+    ok = meck:new(elib_tsid, [no_link]),
+    Captured = atomics:new(1, [{signed, true}]),
+    ok = meck:new(elib_pg, [no_link]),
+    try
+        meck:expect(elib_tsid, generate, 1, fun(compliance_key) -> 9003 end),
+        meck:expect(elib_pg, query, 2, fun(_Sql, [Params | _]) when is_map(Params) ->
+            HasPrivateKey =
+                maps:is_key(<<"private_key_encrypted">>, Params) orelse
+                    maps:is_key(private_key_encrypted, Params),
+            atomics:put(
+                Captured,
+                1,
+                case HasPrivateKey of
+                    true -> 1;
+                    false -> 0
+                end
+            ),
+            {ok, 1}
+        end),
+        _ = compliance_key_repo:create(<<"key-003">>, <<"pk">>, 1),
+        ?assertEqual(0, atomics:get(Captured, 1))
     after
         meck:unload([elib_pg, elib_tsid])
     end.
@@ -55,19 +87,6 @@ find_active_not_found_test() ->
     ?WITH_MECKS([elib_pg], fun() ->
         meck:expect(elib_pg, query, fun(_Sql, []) -> {ok, []} end),
         ?assertEqual({error, not_found}, compliance_key_repo:find_active())
-    end).
-
-find_by_key_id_ok_test() ->
-    ?WITH_MECKS([elib_pg], fun() ->
-        Row = #{<<"key_id">> => <<"key-001">>, <<"status">> => 1},
-        meck:expect(elib_pg, query, fun(_Sql, [<<"key-001">>]) -> {ok, [Row]} end),
-        ?assertEqual({ok, Row}, compliance_key_repo:find_by_key_id(<<"key-001">>))
-    end).
-
-find_by_key_id_not_found_test() ->
-    ?WITH_MECKS([elib_pg], fun() ->
-        meck:expect(elib_pg, query, fun(_Sql, [_]) -> {ok, []} end),
-        ?assertEqual({error, not_found}, compliance_key_repo:find_by_key_id(<<"nonexist">>))
     end).
 
 list_all_test() ->

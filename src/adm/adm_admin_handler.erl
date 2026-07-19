@@ -672,16 +672,13 @@ compliance_key_create_action(<<"POST">>, Req0, State) ->
         ok ->
             PostVals = elib_param:post(Req0),
             PublicKey = normalize_binary(maps:get(<<"public_key">>, PostVals, <<>>)),
-            PrivateKeyEncrypted = normalize_binary(
-                maps:get(<<"private_key_encrypted">>, PostVals, <<>>)
-            ),
-            case {byte_size(PublicKey) > 0, byte_size(PrivateKeyEncrypted) > 0} of
-                {true, true} ->
+            case byte_size(PublicKey) > 0 of
+                true ->
                     KeyId = elib_id:gen(<<"ck_">>),
                     AdmUserId = maps:get(adm_user_id, State, 0),
-                    case
-                        compliance_key_ds:create(KeyId, PublicKey, PrivateKeyEncrypted, AdmUserId)
-                    of
+                    %% 零信任改造（线 A）：仅存公钥；合规私钥由审计方本地保管，
+                    %% 服务端永不接收。
+                    case compliance_key_ds:create(KeyId, PublicKey, AdmUserId) of
                         {ok, _} ->
                             elib_response:success(Req0, #{<<"key_id">> => KeyId});
                         {error, Reason} ->
@@ -689,9 +686,9 @@ compliance_key_create_action(<<"POST">>, Req0, State) ->
                                 Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
                             )
                     end;
-                _ ->
+                false ->
                     elib_response:error(
-                        Req0, <<"public_key 和 private_key_encrypted 不能为空"/utf8>>, ?ERR_BAD_REQUEST
+                        Req0, <<"public_key 不能为空"/utf8>>, ?ERR_BAD_REQUEST
                     )
             end;
         {error, Req1} ->
