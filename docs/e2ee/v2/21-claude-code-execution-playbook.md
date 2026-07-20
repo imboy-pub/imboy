@@ -119,8 +119,8 @@
 | B00 | E2EE-000, E2EE-001 | 无 | E2EE-000 PASS / E2EE-001 BLOCKED（ADR 14-19 仍 Proposed，待人工签字） |
 | B01 | E2EE-010, E2EE-011 | B00 | PASS（app c326183a/418bdcbd；用户授权 P0 修复；RSA sender cleanup 待后续 pass） |
 | B02 | E2EE-012 | B01 | Pending |
-| B03 | E2EE-013, E2EE-014 | B01 | E2EE-013 PASS（0b67aade）/ E2EE-014 PASS（后端：waiver 5e845dc0 + migration 3534e503 + logic da1cb358；11 字段 canonical/freshness/event_id 幂等/单调/撤销；20 eunit 绿；imboyapp 无 trust 客户端故非破坏性；客户端 trust UI 独立后续） |
-| B04 | E2EE-015, E2EE-016 | B01 | E2EE-016 PASS（app，backup parser 确定性 notes 布局+大小/迭代/短文件上限+物理 DID 不被覆盖；10k fuzz 绿）/ E2EE-015 实现+单测 PASS（app，E2eeSecretInventory 前缀清单+purge 复核 fail-closed+loginAfter 闸门；真机 logout→重启→换号旅程待人工） |
+| B03 | E2EE-013, E2EE-014 | B01 | E2EE-013 PASS（0b67aade）/ E2EE-014 PASS（后端：waiver 5e845dc0 + migration 3534e503 + logic da1cb358；11 字段 canonical/freshness/event_id 幂等/单调/撤销；imboyapp 无 trust 客户端故非破坏性；客户端 trust UI 独立后续）+ 安全复核硬化 72cef55d（event_id 抢占+版本 TOCTOU 折进 advisory-lock 单事务；21 eunit 绿） |
+| B04 | E2EE-015, E2EE-016 | B01 | E2EE-016 PASS（app，backup parser 确定性 notes 布局+大小/迭代/短文件上限+物理 DID 不被覆盖；10k fuzz 绿）/ E2EE-015 实现+单测 PASS（app e3646285，E2eeSecretInventory 前缀清单+purge 复核 fail-closed+loginAfter 闸门）+ 安全复核 CRITICAL 修复 b05f7180（quitLogin 物理收尾不被 purge 失败中断+SqliteService uid 隔离）；真机 logout→重启→换号旅程待人工。S1 安全复核 evidence=E2EE-S1-security-review.md（Critical/High=0，3 Medium 已处置，3 Low 记录） |
 | B05 | E2EE-019 | B02–B04 | Pending |
 | B06 | E2EE-020, E2EE-021, E2EE-022 | B05 | Pending |
 | B07 | E2EE-023, E2EE-024, E2EE-025 | B06 | Pending |
