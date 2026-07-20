@@ -1,0 +1,116 @@
+# POST /api/v1/e2ee/trust/record
+post:
+  tags: [user]
+  summary: 记录设备信任决策事件 / Record a device trust decision event
+  description: |
+    ## 中文 / English
+    记录一条带签名的设备信任决策事件（ADR 16 §3.3.1）。服务端零算法：
+    只校验 actor 身份签名 + freshness/单调/幂等，落 append-only 审计并广播
+    `e2ee_trust_changed`，**不判定** verification 语义本身。
+
+    Records a signed device-trust decision event. Server is algorithm-free:
+    it verifies the actor identity signature plus freshness / monotonicity /
+    idempotency, appends an immutable audit row and broadcasts
+    `e2ee_trust_changed`; it never decides the verification semantics.
+
+    ### 签名负载 / Canonical signature payload (ADR 16 §3.3.1)
+    `actor_signature` 是 actor 设备 Ed25519 私钥对 canonical 负载的签名。
+    canonical = 11 个字段按字典序 `key=value\n` 拼接（不含 `actor_signature`
+    自身）：`actor_device_generation`, `actor_uid`, `event_id`, `expires_at`,
+    `from_state`, `issued_at`, `method`, `target_device_id`, `target_ed25519`,
+    `target_identity_version`, `to_state`。`actor_uid` 取自会话，不接受 body 传入。
+  operationId: e2eeTrustRecord
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required:
+            - actor_device_id
+            - target_uid
+            - target_device_id
+            - target_ed25519
+            - from_state
+            - to_state
+            - method
+            - event_id
+            - issued_at
+            - expires_at
+            - actor_device_generation
+            - target_identity_version
+            - actor_signature
+          properties:
+            actor_device_id:
+              type: string
+              description: 发起决策的 actor 设备 ID / Actor device identifier
+            target_uid:
+              type: integer
+              format: int64
+              description: 被决策目标用户 TSID / Target user TSID (JSON integer)
+            target_device_id:
+              type: string
+              description: 被决策目标设备 ID / Target device identifier
+            target_ed25519:
+              type: string
+              description: 目标设备 Ed25519 公钥 / Target device Ed25519 public key
+            from_state:
+              type: string
+              description: 迁移前信任态（白名单转换，ADR 06 §3.2）/ Previous trust state
+              example: unverified
+            to_state:
+              type: string
+              description: 迁移后信任态 / New trust state
+              example: verified
+            method:
+              type: string
+              description: 验证方式 / Verification method（如 qr / safety_number）
+            event_id:
+              type: string
+              description: |
+                事件唯一 ID（幂等键）。同 event_id 且归属一致的重放返回原语义结果、
+                不重复审计/广播；被他人抢占同一 event_id → event_id_conflict。
+                Idempotency key; must be unpredictable (UUIDv4-grade) per client.
+            issued_at:
+              type: integer
+              format: int64
+              description: 签发毫秒时间戳，freshness 窗口 [now-5min, now+2min] / Issued epoch ms
+            expires_at:
+              type: integer
+              format: int64
+              description: 过期毫秒时间戳，须 (issued_at, issued_at+5min] 且未过期 / Expiry epoch ms
+            actor_device_generation:
+              type: integer
+              description: actor 设备代数，须与 user_device 记录精确匹配（防旧设备重放）/ Actor device generation
+            target_identity_version:
+              type: integer
+              description: 目标身份版本，单调不回退（防身份键回退）/ Target identity version (monotonic)
+            actor_signature:
+              type: string
+              description: actor 设备 Ed25519 对 canonical 负载的 base64 签名 / Ed25519 signature (base64)
+  responses:
+    '200':
+      description: 成功记录或合法幂等重放 / Recorded, or legitimate idempotent replay
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [success]
+                    properties:
+                      success:
+                        type: boolean
+                        example: true
+    '4XX':
+      description: |
+        参数非法 / 验签失败 / 状态机拒绝 / 过期或超窗 / 版本回退 / event_id 抢占 /
+        actor 设备未注册或已撤销 / E2EE 未启用。错误原因为泛化 binary（不泄漏签名
+        oracle 细节）：`bad_request`, `invalid_transition`, `invalid_signature`,
+        `stale_event`, `identity_version_rollback`, `event_id_conflict`,
+        `actor_device_not_registered`, `actor_device_revoked`, `internal_error`.
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
