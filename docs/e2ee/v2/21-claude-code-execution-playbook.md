@@ -116,8 +116,8 @@
 
 | Batch | Tasks | 依赖 | 状态 |
 |---|---|---|---|
-| B00 | E2EE-000, E2EE-001 | 无 | Pending |
-| B01 | E2EE-010, E2EE-011 | B00 | Pending |
+| B00 | E2EE-000, E2EE-001 | 无 | E2EE-000 PASS / E2EE-001 BLOCKED（ADR 14-19 仍 Proposed，待人工签字） |
+| B01 | E2EE-010, E2EE-011 | B00 | PASS（app c326183a/418bdcbd；用户授权 P0 修复；RSA sender cleanup 待后续 pass） |
 | B02 | E2EE-012 | B01 | Pending |
 | B03 | E2EE-013, E2EE-014 | B01 | Pending |
 | B04 | E2EE-015, E2EE-016 | B01 | Pending |
