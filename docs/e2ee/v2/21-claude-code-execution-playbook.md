@@ -119,8 +119,8 @@
 | B00 | E2EE-000, E2EE-001 | 无 | E2EE-000 PASS / E2EE-001 BLOCKED（ADR 14-19 仍 Proposed，待人工签字） |
 | B01 | E2EE-010, E2EE-011 | B00 | PASS（app c326183a/418bdcbd；用户授权 P0 修复；RSA sender cleanup 待后续 pass） |
 | B02 | E2EE-012 | B01 | Pending |
-| B03 | E2EE-013, E2EE-014 | B01 | E2EE-013 PASS（0b67aade，token DID 绑定）/ E2EE-014 Pending |
-| B04 | E2EE-015, E2EE-016 | B01 | Pending |
+| B03 | E2EE-013, E2EE-014 | B01 | E2EE-013 PASS（0b67aade，token DID 绑定）/ E2EE-014 BLOCKED（全量触及 ADR 16 未签 trust model：device_generation/identity_version/session-revocation/改 canonical 签名；用户拍板 B2「先过治理门」，待翻 ADR 14-16 状态+定稿 canonical+确认跨仓） |
+| B04 | E2EE-015, E2EE-016 | B01 | E2EE-016 PASS（app，backup parser 确定性 notes 布局+大小/迭代/短文件上限+物理 DID 不被覆盖；10k fuzz 绿）/ E2EE-015 Pending |
 | B05 | E2EE-019 | B02–B04 | Pending |
 | B06 | E2EE-020, E2EE-021, E2EE-022 | B05 | Pending |
 | B07 | E2EE-023, E2EE-024, E2EE-025 | B06 | Pending |
