@@ -5,17 +5,12 @@
 %%%
 
 -export([insert_event/1]).
--export([max_target_identity_version/2]).
 -export([actor_device_state/2]).
 -export([list_by_target/2]).
 
 -spec insert_event(map()) -> {ok, inserted | duplicate} | {error, term()}.
 insert_event(Fields) when is_map(Fields) ->
     trust_audit_repo:insert_event(Fields).
-
--spec max_target_identity_version(integer(), binary()) -> {ok, integer()} | {error, term()}.
-max_target_identity_version(TargetUid, TargetDeviceId) ->
-    trust_audit_repo:max_target_identity_version(TargetUid, TargetDeviceId).
 
 -spec actor_device_state(integer(), binary()) -> {ok, map() | not_found} | {error, term()}.
 actor_device_state(ActorUid, ActorDeviceId) ->

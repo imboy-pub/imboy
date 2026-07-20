@@ -146,25 +146,13 @@ verify_sig_then_write(N, ActorEd25519B64) ->
         false ->
             {error, <<"invalid_signature">>};
         true ->
-            check_version_then_write(N)
+            write_and_broadcast(N)
     end.
 
-%% target_identity_version 单调：不得 < 该 target device 历史已记录版本（回退拒绝）
--spec check_version_then_write(map()) -> ok | {error, binary()}.
-check_version_then_write(N) ->
-    TargetUid = maps:get(target_uid, N),
-    TargetDeviceId = maps:get(target_device_id, N),
-    case trust_audit_ds:max_target_identity_version(TargetUid, TargetDeviceId) of
-        {ok, MaxVer} when is_integer(MaxVer) ->
-            case maps:get(target_identity_version, N) >= MaxVer of
-                false -> {error, <<"identity_version_rollback">>};
-                true -> write_and_broadcast(N)
-            end;
-        {error, Reason} ->
-            _ = ?ERROR_LOG({trust_max_version_error, TargetUid, Reason}),
-            {error, <<"internal_error">>}
-    end.
-
+%% 原子写入：版本单调校验（防身份键回退）+ event_id 幂等 + 冲突归属核对，
+%% 全部在 trust_audit_repo:insert_event/1 的单事务内完成（advisory 锁串行化，
+%% 闭合 TOCTOU 与 event_id 抢占——见 repo 层文档）。
+%% 业务语义错误（binary）直接透传给 handler；DB 层错误（其它）折成 internal_error。
 -spec write_and_broadcast(map()) -> ok | {error, binary()}.
 write_and_broadcast(N) ->
     case trust_audit_ds:insert_event(N) of
@@ -172,8 +160,11 @@ write_and_broadcast(N) ->
             broadcast_trust_changed(N),
             ok;
         {ok, duplicate} ->
-            %% 同 event_id 重放：幂等返回原语义结果，不重复审计、不重播（E2EE-014）
+            %% 同 event_id 合法重放：幂等返回原语义结果，不重复审计、不重播（E2EE-014）
             ok;
+        {error, Reason} when is_binary(Reason) ->
+            %% identity_version_rollback / event_id_conflict：语义拒绝，不泄漏细节
+            {error, Reason};
         {error, Reason} ->
             _ = ?ERROR_LOG({trust_audit_insert_error, maps:get(actor_uid, N), Reason}),
             {error, <<"internal_error">>}

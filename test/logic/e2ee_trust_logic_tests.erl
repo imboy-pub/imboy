@@ -72,7 +72,6 @@ setup_ok(PubB64) ->
     meck:expect(trust_audit_ds, actor_device_state, 2, fun(_, _) ->
         {ok, #{<<"status">> => 1, <<"device_generation">> => 1}}
     end),
-    meck:expect(trust_audit_ds, max_target_identity_version, 2, fun(_, _) -> {ok, 0} end),
     meck:expect(trust_audit_ds, insert_event, 1, fun(_) -> {ok, inserted} end),
     meck:expect(msg_s2c_ds, send, 7, fun(_, _, _, _, _, _, _) -> ok end),
     meck:expect(elib_dt, millisecond, 0, fun() -> ?NOW end).
@@ -235,10 +234,24 @@ identity_version_rollback_rejected_test() ->
     ?WITH_MECKS(fun() ->
         {Pub, F} = sign(100, base_fields()),
         setup_ok(Pub),
-        %% 历史已记录版本 5，本次声明 1 → 回退拒
-        meck:expect(trust_audit_ds, max_target_identity_version, 2, fun(_, _) -> {ok, 5} end),
+        %% 版本单调校验已下沉进 insert_event 单事务（锁内读 MAX 后决定），
+        %% 回退作为 insert_event 的语义错误返回，logic 透传（不再是插入前拦截）。
+        meck:expect(trust_audit_ds, insert_event, 1, fun(_) ->
+            {error, <<"identity_version_rollback">>}
+        end),
         ?assertEqual({error, <<"identity_version_rollback">>}, record(F)),
-        ?assertEqual(0, meck:num_calls(trust_audit_ds, insert_event, '_'))
+        ?assertEqual(1, meck:num_calls(trust_audit_ds, insert_event, '_'))
+    end).
+
+%% event_id 被他人抢占（归属不符）→ 拒绝，不静默吞掉合法事件
+event_id_conflict_rejected_test() ->
+    ?WITH_MECKS(fun() ->
+        {Pub, F} = sign(100, base_fields()),
+        setup_ok(Pub),
+        meck:expect(trust_audit_ds, insert_event, 1, fun(_) ->
+            {error, <<"event_id_conflict">>}
+        end),
+        ?assertEqual({error, <<"event_id_conflict">>}, record(F))
     end).
 
 %% ===================================================================
