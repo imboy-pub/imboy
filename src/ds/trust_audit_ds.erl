@@ -4,25 +4,22 @@
 %% 与 olm_identity_ds 同模式：handler/logic 不直调 repo。
 %%%
 
--export([insert_event/8]).
+-export([insert_event/1]).
+-export([max_target_identity_version/2]).
+-export([actor_device_state/2]).
 -export([list_by_target/2]).
 
--spec insert_event(
-    integer(), integer(), binary(), binary(), binary(), binary(), binary(), binary()
-) -> {ok, term()} | {error, term()}.
-insert_event(
-    ActorUid, TargetUid, TargetDeviceId, TargetEd25519, FromState, ToState, Method, ActorSignature
-) ->
-    trust_audit_repo:insert_event(
-        ActorUid,
-        TargetUid,
-        TargetDeviceId,
-        TargetEd25519,
-        FromState,
-        ToState,
-        Method,
-        ActorSignature
-    ).
+-spec insert_event(map()) -> {ok, inserted | duplicate} | {error, term()}.
+insert_event(Fields) when is_map(Fields) ->
+    trust_audit_repo:insert_event(Fields).
+
+-spec max_target_identity_version(integer(), binary()) -> {ok, integer()} | {error, term()}.
+max_target_identity_version(TargetUid, TargetDeviceId) ->
+    trust_audit_repo:max_target_identity_version(TargetUid, TargetDeviceId).
+
+-spec actor_device_state(integer(), binary()) -> {ok, map() | not_found} | {error, term()}.
+actor_device_state(ActorUid, ActorDeviceId) ->
+    trust_audit_repo:actor_device_state(ActorUid, ActorDeviceId).
 
 -spec list_by_target(integer(), binary()) -> {ok, [map()]} | {error, term()}.
 list_by_target(TargetUid, TargetDeviceId) ->

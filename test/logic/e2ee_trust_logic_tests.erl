@@ -1,32 +1,87 @@
 -module(e2ee_trust_logic_tests).
 %%%
-%% ADR 06 §9.4 Device Trust 服务端守护测试（T-06-11..13 + 转换白名单 + canonical）。
+%% ADR 06 §9.4 + ADR 16 §3.3.1（E2EE-014）Device Trust 服务端守护测试。
+%% 覆盖：append-only、验签、状态机白名单、canonical 确定性、freshness 时间窗（-1/0/+1ms）、
+%% event_id 幂等（重放不重播）、target_identity_version 单调、撤销 actor / 旧设备代数拒绝。
 %%%
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(WITH_MECKS(Modules, Fun),
+%% 测试固定 "now"（ms）；freshness 用它做确定性边界
+-define(NOW, 1721300000000).
+
+-define(MECKS, [olm_identity_ds, trust_audit_ds, msg_s2c_ds, elib_dt]).
+
+-define(WITH_MECKS(Fun),
     (fun() ->
-        ok = meck:new(Modules, [passthrough, no_link]),
+        ok = meck:new(?MECKS, [passthrough, no_link]),
         try
             Fun()
         after
-            meck:unload(Modules)
+            meck:unload(?MECKS)
         end
     end)()
 ).
 
-%% 生成一个 actor Ed25519 密钥对，对给定 canonical 负载签名，返回 {PubB64, SigB64}
-sign_event(TargetUid, TargetDeviceId, TargetEd25519, FromState, ToState, TsBin) ->
+%% ===================================================================
+%% 测试辅助
+%% ===================================================================
+
+%% 完整合法 Fields（issued_at=NOW，60s TTL，gen/ver=1）
+base_fields() ->
+    #{
+        <<"actor_device_id">> => <<"phone-a">>,
+        <<"target_uid">> => 200,
+        <<"target_device_id">> => <<"phone-b">>,
+        <<"target_ed25519">> => <<"ed-b">>,
+        <<"from_state">> => <<"unverified">>,
+        <<"to_state">> => <<"verified">>,
+        <<"method">> => <<"qr_scan">>,
+        <<"event_id">> => <<"evt-1">>,
+        <<"issued_at">> => ?NOW,
+        <<"expires_at">> => ?NOW + 60000,
+        <<"actor_device_generation">> => 1,
+        <<"target_identity_version">> => 1,
+        <<"actor_signature">> => <<>>
+    }.
+
+%% 用新密钥对 Fields 的 canonical 签名，返回 {PubB64, SignedFields}
+sign(ActorUid, F) ->
     {Pub, Priv} = crypto:generate_key(eddsa, ed25519),
-    Canonical = e2ee_trust_logic:canonical_payload(
-        TargetUid, TargetDeviceId, TargetEd25519, FromState, ToState, TsBin
-    ),
+    Canonical = e2ee_trust_logic:canonical_payload(#{
+        <<"actor_device_generation">> => maps:get(<<"actor_device_generation">>, F),
+        <<"actor_uid">> => ActorUid,
+        <<"event_id">> => maps:get(<<"event_id">>, F),
+        <<"expires_at">> => maps:get(<<"expires_at">>, F),
+        <<"from_state">> => maps:get(<<"from_state">>, F),
+        <<"issued_at">> => maps:get(<<"issued_at">>, F),
+        <<"target_device_id">> => maps:get(<<"target_device_id">>, F),
+        <<"target_ed25519">> => maps:get(<<"target_ed25519">>, F),
+        <<"target_identity_version">> => maps:get(<<"target_identity_version">>, F),
+        <<"target_uid">> => maps:get(<<"target_uid">>, F),
+        <<"to_state">> => maps:get(<<"to_state">>, F)
+    }),
     Sig = crypto:sign(eddsa, none, Canonical, [Priv, ed25519]),
-    {base64:encode(Pub), base64:encode(Sig)}.
+    {base64:encode(Pub), F#{<<"actor_signature">> => base64:encode(Sig)}}.
+
+%% 安装 happy-path 默认 mock（actor active gen=1、无历史版本、insert=inserted、now=NOW）
+setup_ok(PubB64) ->
+    meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
+        {ok, #{<<"ed25519_key">> => PubB64}}
+    end),
+    meck:expect(trust_audit_ds, actor_device_state, 2, fun(_, _) ->
+        {ok, #{<<"status">> => 1, <<"device_generation">> => 1}}
+    end),
+    meck:expect(trust_audit_ds, max_target_identity_version, 2, fun(_, _) -> {ok, 0} end),
+    meck:expect(trust_audit_ds, insert_event, 1, fun(_) -> {ok, inserted} end),
+    meck:expect(msg_s2c_ds, send, 7, fun(_, _, _, _, _, _, _) -> ok end),
+    meck:expect(elib_dt, millisecond, 0, fun() -> ?NOW end).
+
+record(F) ->
+    e2ee_trust_logic:record_trust_event(100, F).
 
 %% ===================================================================
-%% T-06-11 append-only：repo 无 update/delete API（代码级不可变审计）
+%% T-06-11 append-only：repo 无 update/delete API
 %% ===================================================================
 
 appendonly_repo_has_no_mutation_api_test() ->
@@ -38,64 +93,28 @@ appendonly_repo_has_no_mutation_api_test() ->
     ?assertNot(lists:member(delete_event, Names)).
 
 %% ===================================================================
-%% T-06-13 有效带签事件：验签通过 → 写审计 + 广播 e2ee_trust_changed
+%% T-06-13 有效带签事件：写审计 + 广播（非 revoked 仅发 actor 自己）
 %% ===================================================================
 
 valid_event_writes_and_broadcasts_test() ->
-    ?WITH_MECKS([olm_identity_ds, trust_audit_ds, msg_s2c_ds], fun() ->
-        {PubB64, SigB64} = sign_event(
-            200, <<"phone-b">>, <<"ed-b">>, <<"unverified">>, <<"verified">>, <<"1721300000">>
-        ),
-        meck:expect(olm_identity_ds, find_identity, 2, fun(100, <<"phone-a">>) ->
-            {ok, #{<<"ed25519_key">> => PubB64}}
-        end),
-        meck:expect(trust_audit_ds, insert_event, 8, fun(_, _, _, _, _, _, _, _) -> {ok, 1} end),
-        meck:expect(msg_s2c_ds, send, 7, fun(_, _, _, _, _, _, _) -> ok end),
-        Result = e2ee_trust_logic:record_trust_event(
-            100,
-            <<"phone-a">>,
-            200,
-            <<"phone-b">>,
-            <<"ed-b">>,
-            <<"unverified">>,
-            <<"verified">>,
-            <<"qr_scan">>,
-            <<"1721300000">>,
-            SigB64
-        ),
-        ?assertEqual(ok, Result),
+    ?WITH_MECKS(fun() ->
+        {Pub, F} = sign(100, base_fields()),
+        setup_ok(Pub),
+        ?assertEqual(ok, record(F)),
         ?assertEqual(1, meck:num_calls(trust_audit_ds, insert_event, '_')),
-        %% 广播 action = e2ee_trust_changed，非 revoked 只发给 actor 自己（多设备同步）
-        [{_Pid, {_M, _F, Args}, _Res}] = meck:history(msg_s2c_ds),
+        [{_, {_, _, Args}, _}] = meck:history(msg_s2c_ds),
         [_From, ToUids, Action | _] = Args,
         ?assertEqual(<<"e2ee_trust_changed">>, Action),
         ?assertEqual([100], ToUids)
     end).
 
-%% revoked：广播额外发给对端用户（§8.3）
 revoked_event_broadcasts_to_target_test() ->
-    ?WITH_MECKS([olm_identity_ds, trust_audit_ds, msg_s2c_ds], fun() ->
-        {PubB64, SigB64} = sign_event(
-            200, <<"phone-b">>, <<"ed-b">>, <<"verified">>, <<"revoked">>, <<"1721300001">>
-        ),
-        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
-            {ok, #{<<"ed25519_key">> => PubB64}}
-        end),
-        meck:expect(trust_audit_ds, insert_event, 8, fun(_, _, _, _, _, _, _, _) -> {ok, 1} end),
-        meck:expect(msg_s2c_ds, send, 7, fun(_, _, _, _, _, _, _) -> ok end),
-        ok = e2ee_trust_logic:record_trust_event(
-            100,
-            <<"phone-a">>,
-            200,
-            <<"phone-b">>,
-            <<"ed-b">>,
-            <<"verified">>,
-            <<"revoked">>,
-            <<"revoke">>,
-            <<"1721300001">>,
-            SigB64
-        ),
-        [{_Pid, {_M, _F, Args}, _Res}] = meck:history(msg_s2c_ds),
+    ?WITH_MECKS(fun() ->
+        F0 = (base_fields())#{<<"from_state">> => <<"verified">>, <<"to_state">> => <<"revoked">>},
+        {Pub, F} = sign(100, F0),
+        setup_ok(Pub),
+        ?assertEqual(ok, record(F)),
+        [{_, {_, _, Args}, _}] = meck:history(msg_s2c_ds),
         [_From, ToUids | _] = Args,
         ?assertEqual([100, 200], ToUids)
     end).
@@ -104,152 +123,182 @@ revoked_event_broadcasts_to_target_test() ->
 %% T-06-12 验签失败：拒写 + 拒广播（防 T7 伪造）
 %% ===================================================================
 
-bad_signature_rejects_write_and_broadcast_test() ->
-    ?WITH_MECKS([olm_identity_ds, trust_audit_ds, msg_s2c_ds], fun() ->
-        %% actor 公钥来自另一对密钥，与传入签名不匹配 → 验签失败
-        {WrongPubB64, _} = sign_event(200, <<"x">>, <<"y">>, <<"a">>, <<"b">>, <<"1">>),
-        {_, RealSigB64} = sign_event(
-            200, <<"phone-b">>, <<"ed-b">>, <<"unverified">>, <<"verified">>, <<"1721300000">>
-        ),
-        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
-            {ok, #{<<"ed25519_key">> => WrongPubB64}}
-        end),
-        meck:expect(trust_audit_ds, insert_event, 8, fun(_, _, _, _, _, _, _, _) -> {ok, 1} end),
-        meck:expect(msg_s2c_ds, send, 7, fun(_, _, _, _, _, _, _) -> ok end),
-        Result = e2ee_trust_logic:record_trust_event(
-            100,
-            <<"phone-a">>,
-            200,
-            <<"phone-b">>,
-            <<"ed-b">>,
-            <<"unverified">>,
-            <<"verified">>,
-            <<"qr_scan">>,
-            <<"1721300000">>,
-            RealSigB64
-        ),
-        ?assertEqual({error, <<"invalid_signature">>}, Result),
+bad_signature_rejects_test() ->
+    ?WITH_MECKS(fun() ->
+        {_RealPub, F} = sign(100, base_fields()),
+        %% actor 公钥换成另一对 → 验签失败
+        {WrongPub, _} = sign(100, (base_fields())#{<<"event_id">> => <<"other">>}),
+        setup_ok(WrongPub),
+        ?assertEqual({error, <<"invalid_signature">>}, record(F)),
         ?assertEqual(0, meck:num_calls(trust_audit_ds, insert_event, '_')),
         ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, '_'))
     end).
 
-%% actor 设备未注册 olm 身份 → 无验签公钥
 actor_device_not_registered_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS(fun() ->
+        {_Pub, F} = sign(100, base_fields()),
+        meck:expect(elib_dt, millisecond, 0, fun() -> ?NOW end),
         meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {ok, not_found} end),
-        ?assertEqual(
-            {error, <<"actor_device_not_registered">>},
-            e2ee_trust_logic:record_trust_event(
-                100,
-                <<"phone-a">>,
-                200,
-                <<"phone-b">>,
-                <<"ed-b">>,
-                <<"unverified">>,
-                <<"verified">>,
-                <<"qr_scan">>,
-                <<"1">>,
-                <<"sig">>
-            )
-        )
+        ?assertEqual({error, <<"actor_device_not_registered">>}, record(F))
     end).
 
 %% ===================================================================
-%% 状态转换白名单（ADR 06 §3.2）
+%% E2EE-014 撤销 actor / 旧设备代数拒绝
 %% ===================================================================
 
-%% 非法转换 revoked→verified（绕过 unverified）在验签前即拒
-illegal_transition_rejected_before_verify_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
-        meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
-            {ok, #{<<"ed25519_key">> => <<"x">>}}
+revoked_actor_rejected_test() ->
+    ?WITH_MECKS(fun() ->
+        {Pub, F} = sign(100, base_fields()),
+        setup_ok(Pub),
+        meck:expect(trust_audit_ds, actor_device_state, 2, fun(_, _) ->
+            {ok, #{<<"status">> => 0, <<"device_generation">> => 1}}
         end),
-        ?assertEqual(
-            {error, <<"invalid_transition">>},
-            e2ee_trust_logic:record_trust_event(
-                100,
-                <<"phone-a">>,
-                200,
-                <<"phone-b">>,
-                <<"ed-b">>,
-                <<"revoked">>,
-                <<"verified">>,
-                <<"qr_scan">>,
-                <<"1">>,
-                <<"sig">>
-            )
-        ),
-        %% 未查身份（转换校验在验签前）
+        ?assertEqual({error, <<"actor_device_revoked">>}, record(F)),
+        ?assertEqual(0, meck:num_calls(trust_audit_ds, insert_event, '_'))
+    end).
+
+device_generation_mismatch_rejected_test() ->
+    ?WITH_MECKS(fun() ->
+        {Pub, F} = sign(100, base_fields()),
+        setup_ok(Pub),
+        %% 存储代数=2，签名声明=1（旧设备重放）→ 拒
+        meck:expect(trust_audit_ds, actor_device_state, 2, fun(_, _) ->
+            {ok, #{<<"status">> => 1, <<"device_generation">> => 2}}
+        end),
+        ?assertEqual({error, <<"actor_device_revoked">>}, record(F))
+    end).
+
+%% ===================================================================
+%% E2EE-014 freshness 时间窗（-1/0/+1ms 边界）
+%% ===================================================================
+
+fresh_past_boundary_accept_test() ->
+    ?WITH_MECKS(fun() ->
+        %% issued 在过去窗口边界（NOW-300000），expires 恰达 now（TTL=满 300000）→ 未过期，接受
+        F0 = (base_fields())#{
+            <<"issued_at">> => ?NOW - 300000, <<"expires_at">> => ?NOW
+        },
+        {Pub, F} = sign(100, F0),
+        setup_ok(Pub),
+        ?assertEqual(ok, record(F))
+    end).
+
+fresh_past_boundary_reject_test() ->
+    ?WITH_MECKS(fun() ->
+        F0 = (base_fields())#{
+            <<"issued_at">> => ?NOW - 300001, <<"expires_at">> => ?NOW - 300001 + 60000
+        },
+        {Pub, F} = sign(100, F0),
+        setup_ok(Pub),
+        ?assertEqual({error, <<"stale_event">>}, record(F)),
+        ?assertEqual(0, meck:num_calls(trust_audit_ds, insert_event, '_'))
+    end).
+
+fresh_future_boundary_reject_test() ->
+    ?WITH_MECKS(fun() ->
+        F0 = (base_fields())#{
+            <<"issued_at">> => ?NOW + 120001, <<"expires_at">> => ?NOW + 120001 + 60000
+        },
+        {Pub, F} = sign(100, F0),
+        setup_ok(Pub),
+        ?assertEqual({error, <<"stale_event">>}, record(F))
+    end).
+
+expired_event_reject_test() ->
+    ?WITH_MECKS(fun() ->
+        %% issued 合法但 expires 已过（now > expires）
+        F0 = (base_fields())#{<<"issued_at">> => ?NOW - 100000, <<"expires_at">> => ?NOW - 1},
+        {Pub, F} = sign(100, F0),
+        setup_ok(Pub),
+        ?assertEqual({error, <<"stale_event">>}, record(F))
+    end).
+
+%% ===================================================================
+%% E2EE-014 event_id 幂等：重放不重播、不重复审计
+%% ===================================================================
+
+duplicate_event_id_idempotent_test() ->
+    ?WITH_MECKS(fun() ->
+        {Pub, F} = sign(100, base_fields()),
+        setup_ok(Pub),
+        meck:expect(trust_audit_ds, insert_event, 1, fun(_) -> {ok, duplicate} end),
+        ?assertEqual(ok, record(F)),
+        %% 幂等命中：不广播
+        ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, '_'))
+    end).
+
+%% ===================================================================
+%% E2EE-014 target_identity_version 单调（回退拒绝，不靠幂等绕过状态机）
+%% ===================================================================
+
+identity_version_rollback_rejected_test() ->
+    ?WITH_MECKS(fun() ->
+        {Pub, F} = sign(100, base_fields()),
+        setup_ok(Pub),
+        %% 历史已记录版本 5，本次声明 1 → 回退拒
+        meck:expect(trust_audit_ds, max_target_identity_version, 2, fun(_, _) -> {ok, 5} end),
+        ?assertEqual({error, <<"identity_version_rollback">>}, record(F)),
+        ?assertEqual(0, meck:num_calls(trust_audit_ds, insert_event, '_'))
+    end).
+
+%% ===================================================================
+%% 状态机白名单（ADR 06 §3.2）—— 幂等不得绕过
+%% ===================================================================
+
+illegal_transition_rejected_before_verify_test() ->
+    ?WITH_MECKS(fun() ->
+        F0 = (base_fields())#{<<"from_state">> => <<"revoked">>, <<"to_state">> => <<"verified">>},
+        {Pub, F} = sign(100, F0),
+        setup_ok(Pub),
+        ?assertEqual({error, <<"invalid_transition">>}, record(F)),
+        %% 转换校验在验签/DB 前
         ?assertEqual(0, meck:num_calls(olm_identity_ds, find_identity, '_'))
     end).
 
 same_state_transition_rejected_test() ->
-    ?assertEqual(
-        {error, <<"invalid_transition">>},
-        e2ee_trust_logic:record_trust_event(
-            100,
-            <<"d">>,
-            200,
-            <<"e">>,
-            <<"ed">>,
-            <<"verified">>,
-            <<"verified">>,
-            <<"qr_scan">>,
-            <<"1">>,
-            <<"sig">>
-        )
-    ).
+    ?WITH_MECKS(fun() ->
+        F0 = (base_fields())#{<<"from_state">> => <<"verified">>, <<"to_state">> => <<"verified">>},
+        {Pub, F} = sign(100, F0),
+        setup_ok(Pub),
+        ?assertEqual({error, <<"invalid_transition">>}, record(F))
+    end).
 
-%% 非法 method 拒收
 invalid_method_rejected_test() ->
-    ?assertEqual(
-        {error, <<"bad_request">>},
-        e2ee_trust_logic:record_trust_event(
-            100,
-            <<"d">>,
-            200,
-            <<"e">>,
-            <<"ed">>,
-            <<"unverified">>,
-            <<"verified">>,
-            <<"hacked">>,
-            <<"1">>,
-            <<"sig">>
-        )
-    ).
+    F = (base_fields())#{<<"method">> => <<"hacked">>},
+    ?assertEqual({error, <<"bad_request">>}, record(F)).
 
-%% 空必填字段拒收
-empty_field_rejected_test() ->
-    ?assertEqual(
-        {error, <<"bad_request">>},
-        e2ee_trust_logic:record_trust_event(
-            100,
-            <<>>,
-            200,
-            <<"e">>,
-            <<"ed">>,
-            <<"unverified">>,
-            <<"verified">>,
-            <<"qr_scan">>,
-            <<"1">>,
-            <<"sig">>
-        )
-    ).
+empty_event_id_rejected_test() ->
+    F = (base_fields())#{<<"event_id">> => <<>>},
+    ?assertEqual({error, <<"bad_request">>}, record(F)).
+
+empty_device_field_rejected_test() ->
+    F = (base_fields())#{<<"actor_device_id">> => <<>>},
+    ?assertEqual({error, <<"bad_request">>}, record(F)).
+
+non_integer_issued_at_rejected_test() ->
+    F = (base_fields())#{<<"issued_at">> => <<"not-a-number">>},
+    ?assertEqual({error, <<"bad_request">>}, record(F)).
 
 %% ===================================================================
 %% canonical 负载确定性（客户端须用同格式签名）
 %% ===================================================================
 
 canonical_payload_deterministic_test() ->
-    A = e2ee_trust_logic:canonical_payload(
-        200, <<"d">>, <<"ed">>, <<"unverified">>, <<"verified">>, <<"9">>
-    ),
-    B = e2ee_trust_logic:canonical_payload(
-        200, <<"d">>, <<"ed">>, <<"unverified">>, <<"verified">>, <<"9">>
-    ),
-    ?assertEqual(A, B),
+    M = #{
+        <<"actor_device_generation">> => 1,
+        <<"actor_uid">> => 100,
+        <<"event_id">> => <<"evt-1">>,
+        <<"expires_at">> => 9,
+        <<"from_state">> => <<"unverified">>,
+        <<"issued_at">> => 8,
+        <<"target_device_id">> => <<"d">>,
+        <<"target_ed25519">> => <<"ed">>,
+        <<"target_identity_version">> => 1,
+        <<"target_uid">> => 200,
+        <<"to_state">> => <<"verified">>
+    },
+    A = e2ee_trust_logic:canonical_payload(M),
+    ?assertEqual(A, e2ee_trust_logic:canonical_payload(M)),
     %% 任一字段变化 → 负载变化（雪崩前提）
-    C = e2ee_trust_logic:canonical_payload(
-        201, <<"d">>, <<"ed">>, <<"unverified">>, <<"verified">>, <<"9">>
-    ),
-    ?assertNotEqual(A, C).
+    ?assertNotEqual(A, e2ee_trust_logic:canonical_payload(M#{<<"target_uid">> => 201})),
+    ?assertNotEqual(A, e2ee_trust_logic:canonical_payload(M#{<<"event_id">> => <<"evt-2">>})).

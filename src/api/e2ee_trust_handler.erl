@@ -27,9 +27,10 @@ init(Req0, State0) ->
     {ok, Req1, State}.
 
 %% ===================================================================
-%% POST /api/v1/e2ee/trust/record — 记录一条信任决策事件
+%% POST /api/v1/e2ee/trust/record — 记录一条信任决策事件（ADR 16 §3.3.1）
 %% Body: {actor_device_id, target_uid, target_device_id, target_ed25519,
-%%        from_state, to_state, method, ts, actor_signature}
+%%        from_state, to_state, method, event_id, issued_at, expires_at,
+%%        actor_device_generation, target_identity_version, actor_signature}
 %% ===================================================================
 
 -spec record(cowboy_req:req(), map()) -> cowboy_req:req().
@@ -47,34 +48,25 @@ record(Req0, State) ->
 do_record(Req0, State) ->
     ActorUid = auth_ds:current_uid(State),
     P = elib_param:post(Req0),
-    TargetUid = elib_cnv:safe_to_integer(maps:get(<<"target_uid">>, P, <<"">>)),
-    case is_integer(TargetUid) andalso TargetUid > 0 of
-        false ->
-            elib_response:error(Req0, <<"bad_request">>, 400);
-        true ->
-            Result = e2ee_trust_logic:record_trust_event(
-                ActorUid,
-                maps:get(<<"actor_device_id">>, P, <<>>),
-                TargetUid,
-                maps:get(<<"target_device_id">>, P, <<>>),
-                maps:get(<<"target_ed25519">>, P, <<>>),
-                maps:get(<<"from_state">>, P, <<>>),
-                maps:get(<<"to_state">>, P, <<>>),
-                maps:get(<<"method">>, P, <<>>),
-                to_bin(maps:get(<<"ts">>, P, <<>>)),
-                maps:get(<<"actor_signature">>, P, <<>>)
-            ),
-            case Result of
-                ok ->
-                    elib_response:success(Req0, #{<<"success">> => true});
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
-            end
+    %% 数值字段透传给 logic 统一规范化（binary/integer 皆可），logic 做完整校验
+    Fields = #{
+        <<"actor_device_id">> => maps:get(<<"actor_device_id">>, P, <<>>),
+        <<"target_uid">> => maps:get(<<"target_uid">>, P, <<>>),
+        <<"target_device_id">> => maps:get(<<"target_device_id">>, P, <<>>),
+        <<"target_ed25519">> => maps:get(<<"target_ed25519">>, P, <<>>),
+        <<"from_state">> => maps:get(<<"from_state">>, P, <<>>),
+        <<"to_state">> => maps:get(<<"to_state">>, P, <<>>),
+        <<"method">> => maps:get(<<"method">>, P, <<>>),
+        <<"event_id">> => maps:get(<<"event_id">>, P, <<>>),
+        <<"issued_at">> => maps:get(<<"issued_at">>, P, <<>>),
+        <<"expires_at">> => maps:get(<<"expires_at">>, P, <<>>),
+        <<"actor_device_generation">> => maps:get(<<"actor_device_generation">>, P, <<>>),
+        <<"target_identity_version">> => maps:get(<<"target_identity_version">>, P, <<>>),
+        <<"actor_signature">> => maps:get(<<"actor_signature">>, P, <<>>)
+    },
+    case e2ee_trust_logic:record_trust_event(ActorUid, Fields) of
+        ok ->
+            elib_response:success(Req0, #{<<"success">> => true});
+        {error, Msg} ->
+            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
     end.
-
-%% ts 可能以数字或字符串传入，统一为 binary（纳入签名负载须与客户端一致）
--spec to_bin(term()) -> binary().
-to_bin(B) when is_binary(B) -> B;
-to_bin(I) when is_integer(I) -> integer_to_binary(I);
-to_bin(L) when is_list(L) -> list_to_binary(L);
-to_bin(_) -> <<>>.
