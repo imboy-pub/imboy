@@ -23,7 +23,19 @@
 
 **不实施理由（除边界外）**: 即便只做已解锁子集，仍是大型客户端特性（vodozemac Ed25519 签名暴露 + 与服务端逐字节一致的 canonical builder + e2ee_api + 广播验证 + safety-number UI）。其 wire 契约正确性**必须靠运行中的后端 + 真机验证**——canonical 逐字节失配即全拒。无后端/真机时 mock 协议边界只会产出「幻影正确」代码（既往教训）。建议作为独立会话，配真机 + 运行后端落地。
 
-## D — 100 并发重放集成压测（受阻于 DB 准备）
+## D — 100 并发重放集成压测（DONE，真 PG）
+
+> 用户 2026-07-20 授权在 dev 库 imboy_v1 应用 migration 44+47。
+
+**执行**:
+- 应用 `00000044_device_trust.up.sql`（建 trust_audit）+ `00000047_trust_event_freshness.up.sql`（trust_audit freshness/event_id 列 + user_device device_generation/identity_version + `uk_trust_audit_event_id` partial UNIQUE）到 imboy_v1；`schema_migrations` 登记 version 44/47。44/47 自包含，不依赖 43/45/46（44 只用基类型，47 只需 user_device/trust_audit 基表存在）。
+- **100 并发同 event_id 插入证明**：`seq 100 | xargs -P 32` 32 路并发跑 `insert_event` 同款 `INSERT ... ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING`（同一 event_id）→ **落库恰 1 行**（`count=1`）。migration 47 partial UNIQUE 在真并发下成立=「100 并发只 1 审计」的 DB 层终极兜底。
+
+**分层覆盖**: DB 层 UNIQUE（本证明，保证「只 1 行审计」不变量）+ Erlang 层 `insert_event` 的 `pg_advisory_xact_lock` 串行化/版本单调/event_id 冲突归属核对（logic eunit 21 测试覆盖 inserted/duplicate/rollback/conflict 四路）。二者叠加满足 D 验收意图。
+
+**⚠️ dev 库状态变更**: imboy_v1 现 schema_migrations = {..37, 44, 47}，**38-43/45/46 为空缺**。若后续跑迁移 runner 会补这些号（相对已在的 44/47 乱序），erlang_migrate strict 乱序检测可能报错。用户已授权此选择性应用；未来在 imboy_v1 做迁移相关工作须先知悉此空缺。
+
+### 原受阻记录（已由用户授权解除）
 
 **现状**: 本地 imboy_v1 在 migration **37**，`trust_audit` 表不存在（`to_regclass('public.trust_audit')` 为空）。`insert_event` 真 PG 测试需 trust_audit（migration 44 建表 + 47 加 freshness 列）+ user_device（actor_device_state 跨表读）。
 
