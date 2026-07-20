@@ -1,6 +1,6 @@
 # ADR 16 — Device-bound Auth、Cross-signing 与 Key Transparency
 
-> **状态**：Proposed
+> **状态**：Accepted（**范围收敛豁免** — leeyi 单方授权 alpha.15 pre-GA，仅解锁 **E2EE-014 trust-event freshness/唯一性/幂等子集**（§3.3.1）；device-bound session 完整体（§3.1）、cross-signing（§5）、transparency log 仍为 Proposed 待五方人工签字。五方签字未过前不得对外宣称达成 ADR 14 的“Strong/GA”发布判定。草拟：Claude Code 代笔，2026-07-20）
 > **拟替代**：ADR 03 的设备身份写入授权、ADR 04 的 capability 信任来源、ADR 06 的“仅预留 CrossSigningService”决定
 > **保留**：现有 Safety Number 作为人工核验入口；现有 trust state 数据迁移后继续使用
 > **依赖**：ADR 14、ADR 15；恢复根密钥见 ADR 17
@@ -94,6 +94,42 @@ JWT 可以携带相同声明，但服务端必须检查可撤销会话记录；�
 ```
 
 服务端验证 session 绑定、Ed25519 签名、时间窗、版本单调和 `previous_event_hash`。默认有效期 5 分钟；时钟偏差默认 ±2 分钟；`operation_id` 至少保留 30 天用于幂等/重放审计。
+
+### 3.3.1 E2EE-014 Trust Event canonical 定稿（编码收敛，scoped waiver）
+
+> 本小节为 E2EE-014 落地的**定稿**，范围收敛豁免见头部状态行。仅覆盖「A 信任 B」的 trust-event 签名，不含 §3.3 通用 operation 的 `body_hash/previous_event_hash` 链（那属完整 device-bound session/透明度日志，仍 Proposed）。
+
+**编码**：沿用现网 `key=value\n`（ASCII 字典序键、UTF-8、整数十进制、末字段无尾随换行），**不采用 §3.3 的 CBOR**。理由：`e2ee_trust_logic:canonical_payload/6` 已用此格式，确定性、零依赖；trust-event 子集不引入 CBOR 编码器与 canonical-CBOR 键序风险。CBOR 留给未来 MLS/PFv3 通用 operation。
+
+**签名字段（字典序，客户端 Ed25519 私钥签名，服务端逐字节复算验签）**：
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `actor_device_generation` | int | actor 设备重注册代数，防旧设备重放 |
+| `actor_uid` | int | 决策发起方（原来自 session 未签，现纳入签名防跨 actor 重放） |
+| `event_id` | string `[0-9a-f-]{1,64}` | 客户端生成、全局唯一幂等键 |
+| `expires_at` | int(ms) | 事件有效期上界 |
+| `from_state` | string | 原信任态 |
+| `issued_at` | int(ms) | 签发时刻（取代旧 `ts`），freshness 下界 |
+| `target_device_id` | string | 对端设备 |
+| `target_ed25519` | base64 | 决策时对端身份键快照 |
+| `target_identity_version` | int | 对端身份键版本，防回退 |
+| `target_uid` | int | 对端用户 |
+| `to_state` | string | 目标信任态 |
+
+**校验规则（服务端，失败一律 `invalid_*` 语义错误，不泄漏签名 oracle 细节）**：
+- freshness：`now-300000 ≤ issued_at ≤ now+120000`（TTL 5min、skew ±2min，对齐 §3.3）；`issued_at < expires_at ≤ issued_at+300000`。
+- 幂等：`event_id` DB 唯一；同 `event_id` 重放返回原语义结果，不新增审计、不重复广播；审计保留 ≥30 天。
+- 单调：`target_identity_version` 不得 `<` 该 target device 已记录版本（回退拒绝）。
+- 撤销：actor 设备须 `user_device.status=active`（撤销/禁用 actor 拒绝）。
+- 合法状态转换白名单不变（§3.2）；幂等不得绕过状态机（不同 `event_id` 的非法转换仍拒绝）。
+
+**schema 落点（open items 定稿默认，migration 00000047）**：
+- `user_device` 加 `device_generation int NOT NULL DEFAULT 1`（重注册 +1，不回退）、`identity_version int NOT NULL DEFAULT 1`（identity 轮换 +1，不回退）。
+- `trust_audit` 加 `event_id / issued_at / expires_at / actor_device_generation / target_identity_version`；`event_id` 加 UNIQUE 约束。
+- 撤销判定复用 `user_device.status`，**不新建 session 表**（完整 device-bound session=§3.1，仍 Proposed）。
+
+**跨仓**：客户端 `e2ee_trust` 签名逻辑须同步扩展上述字段，否则验签全拒（wire 双端契约）。是否本会话连带改 imboyapp 由 leeyi 决定。
 
 ---
 
