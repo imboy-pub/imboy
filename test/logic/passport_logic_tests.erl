@@ -185,12 +185,12 @@ do_login_with_empty_password_fails_test_() ->
 
 verify_user_with_empty_password_returns_error_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Result = passport_logic:verify_user(<<>>, #{}),
+        Result = passport_logic:verify_user(<<>>, #{}, <<>>),
         ?assertMatch({error, _}, Result)
     end).
 
 verify_user_with_empty_user_map_returns_error_test() ->
-    Result = passport_logic:verify_user(<<"Test@123456">>, #{}),
+    Result = passport_logic:verify_user(<<"Test@123456">>, #{}, <<>>),
     ?assertEqual({error, <<"账号不存在"/utf8>>}, Result).
 
 verify_user_with_valid_password_succeeds_test_() ->
@@ -217,7 +217,7 @@ verify_user_with_valid_password_succeeds_test_() ->
                 <<"sign">> => <<"Hello">>,
                 <<"status">> => 1
             },
-            Result = passport_logic:verify_user(<<"Test@123456">>, User),
+            Result = passport_logic:verify_user(<<"Test@123456">>, User, <<>>),
             ?assertMatch({ok, #{<<"uid">> := 12345, <<"token">> := _}}, Result)
         end
     ).
@@ -242,7 +242,7 @@ verify_user_with_wrong_password_fails_test_() ->
                 <<"sign">> => <<>>,
                 <<"status">> => 1
             },
-            Result = passport_logic:verify_user(<<"WrongPassword">>, User),
+            Result = passport_logic:verify_user(<<"WrongPassword">>, User, <<>>),
             ?assertMatch({error, _}, Result)
         end
     ).
@@ -267,7 +267,7 @@ verify_user_with_disabled_account_fails_test_() ->
                 <<"sign">> => <<>>,
                 <<"status">> => 0
             },
-            Result = passport_logic:verify_user(<<"Test@123456">>, User),
+            Result = passport_logic:verify_user(<<"Test@123456">>, User, <<>>),
             ?assertMatch({error, _}, Result)
         end
     ).
@@ -292,7 +292,7 @@ verify_user_with_deleted_account_fails_test_() ->
                 <<"sign">> => <<>>,
                 <<"status">> => -1
             },
-            Result = passport_logic:verify_user(<<"Test@123456">>, User),
+            Result = passport_logic:verify_user(<<"Test@123456">>, User, <<>>),
             ?assertMatch({error, _}, Result)
         end
     ).

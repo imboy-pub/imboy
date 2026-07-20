@@ -107,3 +107,42 @@ encrypt_token_negative_uid_test_() ->
         % 验证返回值格式
         ?assertMatch(<<_/binary>>, Result)
     end).
+
+%% ===================================================================
+%% E2EE-013：DID 绑定 token 往返
+%% ===================================================================
+
+%% 绑定设备 DID 的 token → decrypt 返回同一 DID（5 元组）。
+encrypt_token_binds_did_roundtrip_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Uid = 12345,
+        Did = <<"device-abc-123">>,
+        Token = token_ds:encrypt_token(Uid, Did),
+        ?assertMatch(
+            {ok, 12345, _Exp, <<"tk">>, <<"device-abc-123">>},
+            token_ds:decrypt_token(Token)
+        )
+    end).
+
+%% legacy token（encrypt_token/1，无 DID）→ decrypt 返回 Did=<<>>（向后兼容）。
+legacy_token_has_empty_did_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Uid = 12345,
+        Token = token_ds:encrypt_token(Uid),
+        ?assertMatch(
+            {ok, 12345, _Exp, <<"tk">>, <<>>},
+            token_ds:decrypt_token(Token)
+        )
+    end).
+
+%% refresh token 也绑定 DID。
+encrypt_refreshtoken_binds_did_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Uid = 12345,
+        Did = <<"device-xyz">>,
+        Rtk = token_ds:encrypt_refreshtoken(Uid, Did),
+        ?assertMatch(
+            {ok, 12345, _Exp, <<"rtk">>, <<"device-xyz">>},
+            token_ds:decrypt_token(Rtk)
+        )
+    end).

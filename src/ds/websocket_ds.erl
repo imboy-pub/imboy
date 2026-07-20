@@ -77,7 +77,7 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
         % Token 有效且未过期（token_ds 已检查过期）
-        {ok, Uid, ExpireDAt, Type} ->
+        {ok, Uid, ExpireDAt, Type, _Did} ->
             % 将过期时间传递给后续处理，便于提前刷新 Token
             auth_after(Uid, Req, State#{token_expire_at => ExpireDAt, token_type => Type}, Opt);
         {error, 705, _, _Map} ->

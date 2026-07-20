@@ -14,7 +14,7 @@
 -export([do_login_by_code/5]).
 -export([do_signup/5]).
 -export([find_password/5]).
--export([verify_user/2]).
+-export([verify_user/3]).
 -export([quick_login/4]).
 -export([find_user_setting/1]).
 -export([email_in_use/1]).
@@ -234,7 +234,7 @@ do_login_by_code_verify(User, DType, Did) ->
         0 ->
             {error, <<"账号被禁用"/utf8>>};
         1 ->
-            Data = login_resp(User, #{}),
+            Data = login_resp(User, Did, #{}),
             UidHashed = maps:get(<<"uid">>, Data),
             Uid = ec_cnv:to_integer(UidHashed),
             % GAP-01: 异步写验证码登录成功审计日志（type=100）
@@ -255,14 +255,14 @@ do_login_by_code_verify(User, DType, Did) ->
                 {error, _} -> {ok, Data}
             end;
         2 ->
-            {ok, login_resp(User, #{})}
+            {ok, login_resp(User, Did, #{})}
     end.
 
 %% @doc 登录验证（带设备冲突检查）
 %% 先认证用户，成功后检查设备冲突
 -spec do_login_verify(binary(), map(), binary(), binary()) ->
     {ok, map()} | {{error, conflict}, map()} | {error, term()}.
-do_login_verify(Pwd, User, DType, _Did) ->
+do_login_verify(Pwd, User, DType, Did) ->
     % 提取账户标识符用于暴力破解保护
     Account = maps:get(
         <<"account">>,
@@ -280,7 +280,7 @@ do_login_verify(Pwd, User, DType, _Did) ->
         {error, locked, LockInfo} ->
             {error, LockInfo};
         {ok, true} ->
-            case verify_user(Pwd, User) of
+            case verify_user(Pwd, User, Did) of
                 {ok, Data} ->
                     % 登录成功，重置失败计数
                     _ = login_security_logic:record_login_success(Account, Ip),
@@ -618,12 +618,12 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             end
     end.
 
--spec verify_user(binary(), map()) -> {ok, map()} | {error, any()}.
-verify_user(<<>>, _) ->
+-spec verify_user(binary(), map(), binary()) -> {ok, map()} | {error, any()}.
+verify_user(<<>>, _, _Did) ->
     {error, <<"账号不存在"/utf8>>};
-verify_user(_Pwd, User) when map_size(User) =:= 0 ->
+verify_user(_Pwd, User, _Did) when map_size(User) =:= 0 ->
     {error, <<"账号不存在"/utf8>>};
-verify_user(Pwd, User) ->
+verify_user(Pwd, User, Did) ->
     Pwd2 = maps:get(<<"password">>, User, <<>>),
     % 状态: -1 删除  0 禁用  1 启用  2 申请注销中
     Status = maps:get(<<"status">>, User, -2),
@@ -635,12 +635,18 @@ verify_user(Pwd, User) ->
         {ok, _} when Status == 0 ->
             {error, <<"账号被禁用"/utf8>>};
         {ok, _} when Status == 1; Status == 2 ->
-            {ok, login_resp(User, #{})};
+            % E2EE-013：绑定登录设备 DID 进 token。
+            {ok, login_resp(User, Did, #{})};
         {error, Msg} ->
             {error, Msg}
     end.
 
 login_resp(User, Resp) ->
+    %% 兼容旧调用（无设备 DID）→ legacy token，crypto 写端点将 fail-closed。
+    login_resp(User, <<>>, Resp).
+
+%% @doc E2EE-013：签发绑定设备 DID 的 token/refreshtoken。
+login_resp(User, Did, Resp) ->
     Id = maps:get(<<"id">>, User),
     % 从 User 数据中读取 role 字段；user 表暂未设置 role 列，默认为 1（普通用户）
     % 待 user 表添加 role 列后，LOGIN_COLUMN 中需加入 role，届时可自动生效
@@ -649,8 +655,8 @@ login_resp(User, Resp) ->
         #{
             <<"uid">> => Id,
             <<"user_id">> => Id,
-            <<"token">> => token_ds:encrypt_token(Id),
-            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id),
+            <<"token">> => token_ds:encrypt_token(Id, Did),
+            <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id, Did),
             <<"email">> => maps:get(<<"email">>, User),
             <<"nickname">> => maps:get(<<"nickname">>, User),
             <<"avatar">> => maps:get(<<"avatar">>, User),

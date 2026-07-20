@@ -4,8 +4,8 @@
 % token_ds 是 token domain service 缩写
 %%%
 
--export([encrypt_token/1]).
--export([encrypt_refreshtoken/1]).
+-export([encrypt_token/1, encrypt_token/2]).
+-export([encrypt_refreshtoken/1, encrypt_refreshtoken/2]).
 -export([decrypt_token/1]).
 
 % -export ([get_uid/1]).
@@ -20,7 +20,12 @@
 % token_ds:decrypt_token(token_ds:encrypt_refreshtoken(1)).
 -spec encrypt_refreshtoken(integer() | binary()) -> binary().
 encrypt_refreshtoken(ID) ->
-    encrypt_token(ID, ?REFRESHTOKEN_VALID, <<"rtk">>).
+    encrypt_refreshtoken(ID, <<>>).
+
+%% @doc 生成绑定设备 DID 的 refresh token（E2EE-013）。
+-spec encrypt_refreshtoken(integer() | binary(), binary()) -> binary().
+encrypt_refreshtoken(ID, Did) ->
+    do_encrypt_token(ID, Did, ?REFRESHTOKEN_VALID, <<"rtk">>).
 
 %% @doc 生成访问token
 %% 生成用于用户认证的访问令牌，有效期由?TOKEN_VALID定义。
@@ -30,7 +35,13 @@ encrypt_refreshtoken(ID) ->
 %% @returns 编码后的JWT access token
 -spec encrypt_token(integer() | binary()) -> binary().
 encrypt_token(ID) ->
-    encrypt_token(ID, ?TOKEN_VALID, <<"tk">>).
+    encrypt_token(ID, <<>>).
+
+%% @doc 生成绑定设备 DID 的 access token（E2EE-013）。
+%% Did=<<>> 表示 legacy 无设备绑定（crypto 写端点将 fail-closed）。
+-spec encrypt_token(integer() | binary(), binary()) -> binary().
+encrypt_token(ID, Did) ->
+    do_encrypt_token(ID, Did, ?TOKEN_VALID, <<"tk">>).
 
 %% @doc 解析token
 %% 验证并解析JWT token，提取用户ID、过期时间和主题信息。
@@ -39,7 +50,7 @@ encrypt_token(ID) ->
 % token_ds:decrypt_token(token_ds:encrypt_token(1)).
 %% @returns 解析结果：成功时返回用户ID、过期时间和主题；失败时返回错误信息
 -spec decrypt_token(binary()) ->
-    {ok, integer(), integer(), binary()}
+    {ok, integer(), integer(), binary(), binary()}
     | {error, integer(), binary() | string(), map()}.
 decrypt_token(Token) ->
     % 容忍 5 分钟时钟偏差
@@ -51,10 +62,12 @@ decrypt_token(Token) ->
             ID = ec_cnv:to_integer(Uid),
             ExpireDAt = maps:get(exp, Payload, <<>>),
             Sub = maps:get(sub, Payload, <<"tk">>),
+            % E2EE-013：绑定的设备 DID；legacy token 无此 claim → <<>>。
+            Did = to_did(maps:get(did, Payload, <<>>)),
             Now = elib_dt:utc(second),
             if
                 ExpireDAt > Now ->
-                    {ok, ID, ExpireDAt, Sub};
+                    {ok, ID, ExpireDAt, Sub, Did};
                 true ->
                     {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
             end;
@@ -94,20 +107,29 @@ decrypt_token(Token) ->
 %% @param Second token有效期（秒）
 %% @param Sub token主题类型（tk表示access token，rtk表示refresh token）
 %% @returns 编码后的JWT token
--spec encrypt_token(integer() | binary(), integer(), binary()) -> binary().
-encrypt_token(ID, Second, Sub) ->
+%% @doc 内部签发：uid + 绑定设备 DID（E2EE-013）。
+%% Did=<<>> 时不写 did claim（保持与旧 token payload 一致，减少体积）。
+-spec do_encrypt_token(integer() | binary(), binary(), integer(), binary()) -> binary().
+do_encrypt_token(ID, Did, Second, Sub) ->
     ExpireDAt = erlang:system_time(second) + Second,
-    Data =
-        % iss => imboy  % iss (issuer)：签发人
+    Base =
         #{
-            % , nbf => Now + 1 % nbf (Not Before)：生效时间
-            % , iat => Now % iat (Issued At)：签发时间
-
             % sub (subject)：主题
             sub => Sub,
             % exp (expiration time)：过期时间
             exp => ExpireDAt,
             uid => ID
         },
+    Data =
+        case to_did(Did) of
+            <<>> -> Base;
+            D -> Base#{did => D}
+        end,
     JwtKey = config_ds:env(jwt_key, <<>>),
     jwerl:sign(Data, hs256, JwtKey).
+
+%% @doc 归一化 did（容错 string / undefined / 非 binary）。
+-spec to_did(term()) -> binary().
+to_did(D) when is_binary(D) -> D;
+to_did(D) when is_list(D) -> list_to_binary(D);
+to_did(_) -> <<>>.

@@ -9,6 +9,8 @@
 -behavior(cowboy_rest).
 
 -export([init/2]).
+%% 导出纯谓词供 EUnit 直测设备所有权判定（DT-01/02）。
+-export([device_write_decision/2]).
 
 -include("common.hrl").
 -include("error_code.hrl").
@@ -77,6 +79,16 @@ do_report_identity(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     DeviceId = maps:get(<<"device_id">>, PostVals, <<>>),
+    case ensure_device_owner(Req0, State, DeviceId) of
+        {error, Req1} ->
+            Req1;
+        ok ->
+            do_report_identity1(Req0, CurrentUid, DeviceId, PostVals)
+    end.
+
+-spec do_report_identity1(cowboy_req:req(), integer(), binary(), map()) ->
+    cowboy_req:req().
+do_report_identity1(Req0, CurrentUid, DeviceId, PostVals) ->
     DeviceType = maps:get(<<"device_type">>, PostVals, <<>>),
     Ed25519Key = maps:get(<<"ed25519_key">>, PostVals, <<>>),
     Curve25519Key = maps:get(<<"curve25519_key">>, PostVals, <<>>),
@@ -111,6 +123,16 @@ do_report_prekeys(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     DeviceId = maps:get(<<"device_id">>, PostVals, <<>>),
+    case ensure_device_owner(Req0, State, DeviceId) of
+        {error, Req1} ->
+            Req1;
+        ok ->
+            do_report_prekeys1(Req0, CurrentUid, DeviceId, PostVals)
+    end.
+
+-spec do_report_prekeys1(cowboy_req:req(), integer(), binary(), map()) ->
+    cowboy_req:req().
+do_report_prekeys1(Req0, CurrentUid, DeviceId, PostVals) ->
     KeysRaw = maps:get(<<"keys">>, PostVals, []),
     Keys = normalize_key_pairs(KeysRaw),
     case
@@ -143,6 +165,16 @@ do_report_fallback(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     PostVals = elib_param:post(Req0),
     DeviceId = maps:get(<<"device_id">>, PostVals, <<>>),
+    case ensure_device_owner(Req0, State, DeviceId) of
+        {error, Req1} ->
+            Req1;
+        ok ->
+            do_report_fallback1(Req0, CurrentUid, DeviceId, PostVals)
+    end.
+
+-spec do_report_fallback1(cowboy_req:req(), integer(), binary(), map()) ->
+    cowboy_req:req().
+do_report_fallback1(Req0, CurrentUid, DeviceId, PostVals) ->
     KeyId = maps:get(<<"key_id">>, PostVals, <<>>),
     KeyB64 = maps:get(<<"key_base64">>, PostVals, <<>>),
     case olm_identity_logic:report_fallback_key(CurrentUid, DeviceId, KeyId, KeyB64) of
@@ -280,6 +312,46 @@ do_claim_key(Req0, State) ->
                     elib_response:error(Req0, Msg, ?ERR_NOT_FOUND)
             end
     end.
+
+%% ===================================================================
+%% E2EE-013：Crypto 写端点设备所有权守卫。
+%% - token 未绑定 DID（legacy）→ fail-closed（要求重新登录换取绑定 token）。
+%% - body device_id 必须等于 token 绑定的 DID，否则同账号越权覆盖别设备密钥 → 403。
+%% 完整可撤销 device-bound session（校验 active/撤销）见 E2EE-030。
+%% ===================================================================
+-spec ensure_device_owner(cowboy_req:req(), map(), binary()) ->
+    ok | {error, cowboy_req:req()}.
+ensure_device_owner(Req0, State, BodyDeviceId) ->
+    CurrentDid = auth_ds:current_did(State),
+    case device_write_decision(CurrentDid, BodyDeviceId) of
+        ok ->
+            ok;
+        device_binding_required ->
+            {error,
+                elib_response:error(
+                    Req0, <<"device_binding_required">>, ?ERR_FORBIDDEN
+                )};
+        device_mismatch ->
+            {error,
+                elib_response:error(
+                    Req0, <<"device_mismatch">>, ?ERR_FORBIDDEN
+                )}
+    end.
+
+%% @doc 纯谓词：crypto 写端点设备所有权判定（E2EE-013 / DT-01/02）。
+%% - CurrentDid=<<>>（legacy token 未绑定）→ device_binding_required（fail-closed）。
+%% - body device_id 为空 → device_mismatch（不允许空设备写）。
+%% - body device_id 必须等于 token 绑定 DID，否则 device_mismatch（同账号越权）。
+-spec device_write_decision(binary(), binary()) ->
+    ok | device_binding_required | device_mismatch.
+device_write_decision(<<>>, _BodyDeviceId) ->
+    device_binding_required;
+device_write_decision(_CurrentDid, <<>>) ->
+    device_mismatch;
+device_write_decision(Did, Did) ->
+    ok;
+device_write_decision(_CurrentDid, _BodyDeviceId) ->
+    device_mismatch.
 
 %% ===================================================================
 %% Internal: 归一化 keys 列表（接受 [{key_id, key_base64}] 或 #{key_id => key_base64}）

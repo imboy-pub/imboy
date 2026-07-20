@@ -8,6 +8,7 @@
 -include("error_code.hrl").
 
 -export([current_uid/1]).
+-export([current_did/1]).
 
 %% 认证相关导出函数
 -export([verify_sign/2]).
@@ -89,13 +90,14 @@ do_verify_sign(_, _, _, _) ->
 %%
 %% @param Authorization Authorization 头的值
 %% @return {ok, UserId} | {error, Code, Msg}
--spec verify_token(binary()) -> {ok, integer()} | {error, integer(), binary()}.
+-spec verify_token(binary()) ->
+    {ok, integer(), binary()} | {error, integer(), binary()}.
 verify_token(Authorization) ->
     Token = parse_authorization_header(Authorization),
     case token_ds:decrypt_token(Token) of
-        {ok, Id, _ExpireDAt, <<"tk">>} when is_integer(Id) ->
-            {ok, Id};
-        {ok, _Id, _ExpireDAt, <<"rtk">>} ->
+        {ok, Id, _ExpireDAt, <<"tk">>, Did} when is_integer(Id) ->
+            {ok, Id, Did};
+        {ok, _Id, _ExpireDAt, <<"rtk">>, _Did} ->
             {error, ?ERR_TOKEN_REFRESH_NOT_ALLOWED, <<"TOKEN REFRESH NOT ALLOWED"/utf8>>};
         {error, Code, Msg, _Map} ->
             {error, Code, Msg}
@@ -187,9 +189,16 @@ do_authorization(undefined, Req, _Env) ->
     {stop, Req};
 do_authorization(Authorization, Req, Env) ->
     case verify_token(Authorization) of
-        {ok, UserId} ->
+        {ok, UserId, Did} ->
             #{handler_opts := HandlerOpts} = Env,
-            Env2 = Env#{handler_opts := HandlerOpts#{current_uid => UserId}},
+            % E2EE-013：把 token 绑定的设备 DID 注入认证上下文，
+            % crypto 写端点据此校验设备所有权（不信 body device_id）。
+            Env2 = Env#{
+                handler_opts := HandlerOpts#{
+                    current_uid => UserId,
+                    current_did => Did
+                }
+            },
             {ok, Req, Env2};
         {error, Code, Msg} ->
             Req1 = elib_response:error(Req, Msg, Code),
@@ -200,6 +209,12 @@ do_authorization(Authorization, Req, Env) ->
 -spec current_uid(map()) -> integer().
 current_uid(State) ->
     maps:get(current_uid, State, 0).
+
+%% @doc token 绑定的设备 DID（E2EE-013）；legacy 无绑定 token 返回 <<>>。
+% auth_ds:current_did(State)
+-spec current_did(map()) -> binary().
+current_did(State) ->
+    maps:get(current_did, State, <<>>).
 
 %% ===================================================================
 %% EUnit tests.

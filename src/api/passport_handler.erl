@@ -258,14 +258,15 @@ refreshtoken(Req0) ->
             cowboy_req:reply(429, Req0);
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of
-                {ok, Id, _ExpireDAt, <<"rtk">>} ->
+                {ok, Id, _ExpireDAt, <<"rtk">>, Did} ->
                     % 状态: -1 删除  0 禁用  1 启用
                     Status = user_logic:get_status(Id),
                     case Status of
                         _Other when Status > -1 ->
+                            % E2EE-013：刷新保留原 refresh token 绑定的设备 DID。
                             elib_response:success(
                                 Req0,
-                                #{<<"token">> => token_ds:encrypt_token(Id)}
+                                #{<<"token">> => token_ds:encrypt_token(Id, Did)}
                             );
                         _ ->
                             elib_response:error(Req0, "用户被禁用或已删除")
