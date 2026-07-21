@@ -23,7 +23,7 @@ init_add_success_test_() ->
                     #{<<"name">> => <<"工作"/utf8>>}
                 end}
             ]},
-            {friend_category_ds, [
+            {friend_category_logic, [
                 {'add', 2, fun(12345, <<"工作"/utf8>>) ->
                     {ok, 88}
                 end}
@@ -54,7 +54,7 @@ init_add_error_test_() ->
                     #{<<"name">> => <<"工作"/utf8>>}
                 end}
             ]},
-            {friend_category_ds, [
+            {friend_category_logic, [
                 {'add', 2, fun(12345, <<"工作"/utf8>>) ->
                     {error, <<"category_exists">>}
                 end}
