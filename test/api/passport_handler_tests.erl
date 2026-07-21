@@ -36,7 +36,7 @@ signup_test_() ->
                 {'do_signup', 5, fun(
                     <<"email">>, <<"test@example.com">>, <<"password123">>, <<"123456">>, PostVals
                 ) ->
-                    ?assertEqual(<<"{}">>, maps:get(<<"ip">>, PostVals)),
+                    ?assertEqual(<<"127.0.0.1">>, maps:get(<<"ip">>, PostVals)),
                     {ok, #{<<"uid">> => <<"12345">>}}
                 end}
             ]},
@@ -82,7 +82,7 @@ find_password_test_() ->
                 {'find_password', 5, fun(
                     <<"email">>, <<"test@example.com">>, <<"new-password">>, <<"654321">>, PostVals
                 ) ->
-                    ?assertEqual(<<"{}">>, maps:get(<<"ip">>, PostVals)),
+                    ?assertEqual(<<"127.0.0.1">>, maps:get(<<"ip">>, PostVals)),
                     {ok, #{}}
                 end}
             ]},
