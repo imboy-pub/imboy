@@ -31,7 +31,7 @@
 | `e2ee_trust_logic_tests` | **22/22** | E2EE-014（canonical/freshness/event_id 幂等/单调/撤销/newline 守卫） |
 | `olm_handler_tests` | **5/5** | E2EE-013（device_write_decision DID 绑定） |
 | `token_ds_tests` | **11/11** | E2EE-013（token DID claim 往返） |
-| `auth_ds_tests` | **12/13**（见 §3.1） | E2EE-013（verify_token 三元组 / current_did） |
+| `auth_ds_tests` | 基线 **12/13** → 清理后 **12/12**（见 §3.1） | E2EE-013（verify_token 三元组 / current_did） |
 | `trust_audit_repo_integration_tests`（真 PG `imboy_v1`，非 meck） | **4/4** | E2EE-014 #1（inserted / duplicate 幂等 / event_id_conflict / identity_version_rollback） |
 
 命令（真 PG 骨架，绕开 boot，不动 dev schema）：
@@ -43,7 +43,11 @@
 - **根因**：`rg 'get_token\(' src/` **全库零命中** — 生产代码已无 `get_token/N`（资源上传 token 早已重构移除），测试残留未删 → 调不存在的函数必然 `undef`。
 - **非本轨道回归**：E2EE-013 `0b67aade` 对 `auth_ds.erl` 的 diff **没有删除 `get_token`**（只新增 `verify_token/1` 三元组 + `current_did/1` + `do_authorization` 三元组处理）；该函数在 E2EE 轨道起点之前就已不在模块内。
 - **E2EE-013 触及面全绿**：`current_did_default_test` / `verify_token_with_valid_token_test` / `verify_token_with_refresh_token_test` 均 ok。
-- 处置：不在 E2EE-019 范围内清理（playbook §1.2「不顺手重构」）。记录为预存基线，归入死代码清理待办。与 passport 7 个预存基线失败同类。
+- **处置（#4 横切质量，用户授权）**：已删除 `get_token_with_assets_resource_test_` 死测试用例并加注移除原因；`auth_ds_tests` 现 **12/12 全绿**。
+- **同类死引用（Low 待办，本 Slice 不动，避免扩大范围）**：
+  - `test/lib/elib_uri_tests.erl:267` `check_auth_valid_url_test_` 仍 `meck:expect(auth_ds, get_token, ...)`，但 `elib_uri.erl` 生产代码已无 get_token 调用 → **死 mock**（meck 为 mock 模块凭空造函数，故不 undef；且该用例受 `?TEST_WITH_APP` 的 `missing_config,pg_conf` 环境门限制，纯 eunit 下 setup 即 cancelled，从未跑到断言）。
+  - `include/eunit_setup.hrl:155` 注释示例引用 `auth_ds:get_token/3`（过时文档）。
+  - 这两处冗余无害，随 elib_uri_tests 的 DB 环境门一并留待后续死代码清理批次。
 
 ## 4. Flutter S1 测试集
 

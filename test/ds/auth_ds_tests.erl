@@ -3,25 +3,9 @@
 -include("eunit_setup.hrl").
 -include("error_code.hrl").
 
-get_token_with_assets_resource_test_() ->
-    ?WITH_MECKS(
-        [
-            {config_ds, [
-                {'env', 2, fun(upload_key, _Default) ->
-                    <<"upload_key">>
-                end}
-            ]},
-            {elib_hasher, [
-                {'md5', 1, fun(<<"upload_key", "12345">>) ->
-                    <<"1234567890abcdef1234567890abcdef">>
-                end}
-            ]}
-        ],
-        fun() ->
-            Result = auth_ds:get_token(assets, <<"scene">>, 12345),
-            ?assertEqual(<<"90abcdef12345678">>, Result)
-        end
-    ).
+%% NOTE: get_token/3 was removed from auth_ds as 0-caller dead code; its test
+%% was left behind and failed with error:undef. Removed as part of E2EE-019
+%% baseline cleanup (see docs/e2ee/v2/evidence/E2EE-019-automated-baseline.md).
 
 verify_sign_with_valid_sign_test_() ->
     ?WITH_MECKS(
