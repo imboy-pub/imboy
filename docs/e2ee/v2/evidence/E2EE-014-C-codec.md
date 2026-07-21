@@ -19,6 +19,12 @@ transparency inclusion proof、safety-number 校验 UI、实际 POST `/e2ee/trus
 |---|---|
 | `imboyapp/lib/service/e2ee/trust_event_canonical.dart` | `TrustEventCanonicalFields`（11 字段不可变）+ `canonicalBytes()`（纯编码，零 crypto 依赖）+ `sign(Ed25519Signer)`（注入式签名器） |
 | `imboyapp/test/service/e2ee/trust_event_canonical_test.dart` | 6 单测，含 backend golden 逐字节比对 |
+| `imboyapp/lib/service/e2ee/trust_event_client.dart` | 客户端逻辑补全（app `2556d744`）：`buildTrustRecordRequest`（13 字段请求体，不含 actor_uid）+ `isFreshTrustEvent`（freshness 预检，镜像后端 `fresh/2`）+ `isValidTrustTransition`（§3.2 白名单镜像）+ `TrustChangedEvent.fromBroadcast`（广播解析/校验，外部数据 fail-closed 抛 FormatException） |
+| `imboyapp/test/service/e2ee/trust_event_client_test.dart` | 17 单测（转换白名单/freshness 六边界/请求体/广播解析五拒绝） |
+
+后端契约锚点（逐一对齐 `imboy/src/logic/e2ee_trust_logic.erl`）：method 白名单 `?VALID_METHODS`、
+转换白名单 `valid_transition/2`（5 条）、freshness `FRESH_PAST_MS=300000/FRESH_FUTURE_MS=120000/MAX_TTL_MS=300000`、
+广播 7 字段 `broadcast_trust_changed/1`、请求体字段 `normalize/2`。任一漂移会致后端拒收，改动须同步两端。
 
 ## Golden 向量来源（非手算，取自真实后端）
 
@@ -68,3 +74,15 @@ erl -pa ebin -eval 'e2ee_trust_logic:canonical_payload(#{
 - freshness/幂等/单调/撤销在真实网络下的行为（后端 eunit 已覆盖逻辑侧）。
 
 以上属 E2EE-014-C 的 wire 部分，须配真机 + 运行本地后端逐字节验证后再补证据。
+
+## #1 后端 wire 半程集成测（BLOCKED，待 dev 库迁移对账决策）
+
+设想：本地起后端 + imboy_v1，Erlang 侧生成 Ed25519 → `canonical_payload/1` → 签名 →
+真实 POST `/e2ee/trust/record` → 断言验签通过 + `trust_audit` 落库 + 广播意图。此可证
+**服务端 wire 半程**（HTTP→verify→audit→broadcast），无需真机。
+
+阻塞（2026-07-21 探测）：imboy 节点未运行；`imboy_v1.schema_migrations = {37, 44, 47}`，
+38-43/45/46 空缺。`IMBOYENV=local make run` 启动会跑迁移 runner 补这些号，与已登记的
+44/47 乱序 → erlang_migrate strict 乱序检测报错，后端起不来。需先做 dev 库迁移对账（三选一）：
+(a) 按序补 38-46；(b) 登记 38-46 为已应用（假对账，可能掩盖真实 schema 缺口，不推荐）；
+(c) 本次测试禁用启动迁移 runner。均触 dev DB、属用户决策，未擅自执行。
