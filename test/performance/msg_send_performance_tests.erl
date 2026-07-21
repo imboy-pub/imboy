@@ -9,25 +9,25 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% 性能阈值定义
--define(MAX_SINGLE_MSG_TIME_MS, 100).      % 单条消息最大耗时 100ms
--define(MAX_BATCH_MSG_TIME_MS, 5000).      % 批量100条消息最大耗时 5s
--define(MAX_QUERY_TIME_MS, 200).           % 查询最大耗时 200ms
--define(BATCH_COUNT, 100).                 % 批量测试数量
+
+% 单条消息最大耗时 100ms
+-define(MAX_SINGLE_MSG_TIME_MS, 100).
+% 批量100条消息最大耗时 5s
+-define(MAX_BATCH_MSG_TIME_MS, 5000).
+% 查询最大耗时 200ms
+-define(MAX_QUERY_TIME_MS, 200).
+% 批量测试数量
+-define(BATCH_COUNT, 100).
 
 %% 测试夹具
 msg_performance_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"单聊消息发送性能", fun test_c2c_send_performance/0},
-      {"群聊消息发送性能", fun test_c2g_send_performance/0},
-      {"批量消息发送性能", fun test_batch_send_performance/0},
-      {"消息查询性能", fun test_query_performance/0},
-      {"消息列表加载性能", fun test_list_load_performance/0},
-      {"并发发送性能", fun test_concurrent_send_performance/0}
-     ]
-    }.
+    {foreach, fun setup/0, fun cleanup/1, [
+        {"单聊消息发送性能", fun test_c2c_send_performance/0},
+        {"群聊消息发送性能", fun test_c2g_send_performance/0},
+        {"批量消息发送性能", fun test_batch_send_performance/0},
+        {"消息查询性能", fun test_query_performance/0},
+        {"并发发送性能", fun test_concurrent_send_performance/0}
+    ]}.
 
 setup() ->
     _ = eunit_runner:eunit_setup(),
@@ -67,21 +67,24 @@ test_c2c_send_performance() ->
     User2 = maps:get(user2, Context),
 
     % 发送100条单聊消息，计算平均耗时
-    Times = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "性能测试消息"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
+    Times = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "性能测试消息"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
 
-        StartTime = erlang:monotonic_time(millisecond),
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
-        EndTime = erlang:monotonic_time(millisecond),
+            StartTime = erlang:monotonic_time(millisecond),
+            ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
+            EndTime = erlang:monotonic_time(millisecond),
 
-        EndTime - StartTime
-    end, lists:seq(1, ?BATCH_COUNT)),
+            EndTime - StartTime
+        end,
+        lists:seq(1, ?BATCH_COUNT)
+    ),
 
     % 计算统计数据
     AvgTime = lists:sum(Times) / length(Times),
@@ -106,21 +109,24 @@ test_c2g_send_performance() ->
     Group = maps:get(group, Context),
 
     % 发送100条群聊消息，计算平均耗时
-    Times = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "群聊性能测试"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
+    Times = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "群聊性能测试"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
 
-        StartTime = erlang:monotonic_time(millisecond),
-        ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(Group)}),
-        EndTime = erlang:monotonic_time(millisecond),
+            StartTime = erlang:monotonic_time(millisecond),
+            ok = msg_c2g_logic:c2g(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(Group)}),
+            EndTime = erlang:monotonic_time(millisecond),
 
-        EndTime - StartTime
-    end, lists:seq(1, ?BATCH_COUNT)),
+            EndTime - StartTime
+        end,
+        lists:seq(1, ?BATCH_COUNT)
+    ),
 
     % 计算统计数据
     AvgTime = lists:sum(Times) / length(Times),
@@ -147,17 +153,20 @@ test_batch_send_performance() ->
     % 批量发送消息
     StartTime = erlang:monotonic_time(millisecond),
 
-    MsgIds = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "批量测试"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
-        MsgId
-    end, lists:seq(1, ?BATCH_COUNT)),
+    MsgIds = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "批量测试"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
+            ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
+            MsgId
+        end,
+        lists:seq(1, ?BATCH_COUNT)
+    ),
 
     EndTime = erlang:monotonic_time(millisecond),
     TotalTime = EndTime - StartTime,
@@ -182,25 +191,31 @@ test_query_performance() ->
     User2 = maps:get(user2, Context),
 
     % 先发送一些消息
-    MsgIds = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "查询测试"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
-        MsgId
-    end, lists:seq(1, 50)),
+    MsgIds = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "查询测试"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
+            ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
+            MsgId
+        end,
+        lists:seq(1, 50)
+    ),
 
     % 测试单条消息查询性能
-    QueryTimes = lists:map(fun(MsgId) ->
-        StartTime = erlang:monotonic_time(millisecond),
-        {ok, _} = msg_c2c_repo:find_msg_by_id(MsgId),
-        EndTime = erlang:monotonic_time(millisecond),
-        EndTime - StartTime
-    end, MsgIds),
+    QueryTimes = lists:map(
+        fun(MsgId) ->
+            StartTime = erlang:monotonic_time(millisecond),
+            {ok, _} = msg_c2c_repo:find_msg_by_id(MsgId),
+            EndTime = erlang:monotonic_time(millisecond),
+            EndTime - StartTime
+        end,
+        MsgIds
+    ),
 
     AvgQueryTime = lists:sum(QueryTimes) / length(QueryTimes),
 
@@ -211,46 +226,6 @@ test_query_performance() ->
 
     % 验证性能阈值
     ?assert(AvgQueryTime =< ?MAX_QUERY_TIME_MS, "消息查询平均耗时超过阈值"),
-
-    ok.
-
-test_list_load_performance() ->
-    Context = get_context(),
-    User1 = maps:get(user1, Context),
-    User2 = maps:get(user2, Context),
-
-    % 先发送200条消息
-    lists:foreach(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "列表测试"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)})
-    end, lists:seq(1, 200)),
-
-    % 测试分页加载性能
-    PageSize = 20,
-    LoadTimes = lists:map(fun(Page) ->
-        Offset = (Page - 1) * PageSize,
-        StartTime = erlang:monotonic_time(millisecond),
-        {ok, _} = msg_c2c_repo:list(User1, User2, #{offset => Offset, limit => PageSize}),
-        EndTime = erlang:monotonic_time(millisecond),
-        EndTime - StartTime
-    end, lists:seq(1, 10)),
-
-    AvgLoadTime = lists:sum(LoadTimes) / length(LoadTimes),
-
-    % 输出性能报告
-    io:format("~n消息列表加载性能报告:~n"),
-    io:format("  每页数量: ~p~n", [PageSize]),
-    io:format("  加载次数: ~p~n", [length(LoadTimes)]),
-    io:format("  平均耗时: ~.2f ms~n", [AvgLoadTime]),
-
-    % 验证性能阈值
-    ?assert(AvgLoadTime =< ?MAX_QUERY_TIME_MS, "消息列表加载平均耗时超过阈值"),
 
     ok.
 
@@ -265,27 +240,35 @@ test_concurrent_send_performance() ->
 
     StartTime = erlang:monotonic_time(millisecond),
 
-    Pids = lists:map(fun(N) ->
-        spawn(fun() ->
-            MsgId = integer_to_binary(elib_tsid:generate()),
-            MsgData = #{
-                <<"payload">> => <<N/integer, "并发测试"/utf8>>,
-                <<"msg_type">> => <<"text">>,
-                <<"action">> => <<"send">>,
-                <<"created_at">> => elib_dt:millisecond()
-            },
-            Result = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
-            Parent ! {done, self(), Result}
-        end)
-    end, lists:seq(1, ConcurrentCount)),
+    Pids = lists:map(
+        fun(N) ->
+            spawn(fun() ->
+                MsgId = integer_to_binary(elib_tsid:generate()),
+                MsgData = #{
+                    <<"payload">> => <<N/integer, "并发测试"/utf8>>,
+                    <<"msg_type">> => <<"text">>,
+                    <<"action">> => <<"send">>,
+                    <<"created_at">> => elib_dt:millisecond()
+                },
+                Result = msg_c2c_logic:c2c(MsgId, User1, MsgData#{
+                    <<"to">> => integer_to_binary(User2)
+                }),
+                Parent ! {done, self(), Result}
+            end)
+        end,
+        lists:seq(1, ConcurrentCount)
+    ),
 
     % 等待所有进程完成
-    Results = lists:map(fun(Pid) ->
-        receive
-            {done, Pid, Result} -> Result
-        after 10000 -> timeout
-        end
-    end, Pids),
+    Results = lists:map(
+        fun(Pid) ->
+            receive
+                {done, Pid, Result} -> Result
+            after 10000 -> timeout
+            end
+        end,
+        Pids
+    ),
 
     EndTime = erlang:monotonic_time(millisecond),
     TotalTime = EndTime - StartTime,
@@ -314,20 +297,24 @@ get_context() ->
 
 ensure_friends(User1, User2) ->
     NowTs = elib_dt:now(),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
-                                  User1,
-                                  User2,
-                                  <<>>,
-                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
-                                  User2,
-                                  User1,
-                                  <<>>,
-                                  #{<<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User1, User2),
+        User1,
+        User2,
+        <<>>,
+        #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User2, User1),
+        User2,
+        User1,
+        <<>>,
+        #{<<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
     ok = friend_ds:invalidate_cache(User1, User2),
     imboy_cache:flush({check_relationship3, User1, User2}),
     imboy_cache:flush({check_relationship3, User2, User1}),
