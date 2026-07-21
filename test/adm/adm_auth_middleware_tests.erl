@@ -18,7 +18,9 @@ config_ds_mock() ->
             (start_mode, http) -> http;
             (adm_cookie_secret, <<"imboy-adm-cookie">>) -> <<"test-cookie-secret">>;
             (adm_auth_legacy_cookie_enabled, false) -> false;
-            (_, _) -> undefined
+            %% 其余键回退到调用方给定的默认值（贴近真实 config_ds:env/2 语义）；
+            %% GAP-12 的 check_ip_allowlist 依赖 adm_ip_allowlist 默认 [] 才返回 allow
+            (_, Default) -> Default
         end}
     ]}.
 
@@ -136,9 +138,10 @@ execute_without_uid_cookie_get_test_() ->
         [
             config_ds_mock(),
             {cowboy_req, [
-                {'path', 1, fun(_Req) -> <<"/api/adm/">> end},
+                %% 页面路径才 302 跳转登录；API 路径统一 401（见 should_redirect_to_login/1）
+                {'path', 1, fun(_Req) -> <<"/adm/index">> end},
                 {'method', 1, fun(_Req) -> <<"GET">> end},
-                {'uri', 1, fun(_Req) -> <<"https://example.com/adm/">> end},
+                {'uri', 1, fun(_Req) -> <<"https://example.com/adm/index">> end},
                 {'set_resp_cookie', 4, fun(_name, _value, _Req, _opts) ->
                     #{cookie_set => true}
                 end},
@@ -223,7 +226,8 @@ condition_get_without_uid_redirects_test_() ->
         [
             config_ds_mock(),
             {cowboy_req, [
-                {'path', 1, fun(_Req) -> <<"/api/adm/index">> end},
+                %% 页面路径才 302 跳转；API 路径返 401（should_redirect_to_login/1）
+                {'path', 1, fun(_Req) -> <<"/adm/index">> end},
                 {'uri', 1, fun(_Req) -> <<"https://example.com/adm/index">> end},
                 {'set_resp_cookie', 4, fun(_name, _value, _Req, _opts) ->
                     #{cookie_set => true}

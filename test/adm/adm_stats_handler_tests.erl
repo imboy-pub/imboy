@@ -15,18 +15,19 @@ init_overview_aggregates_core_metrics_test_() ->
             {elib_pg, [
                 {'one', 2, fun(Sql, Params) ->
                     ?assertEqual([], Params),
+                    %% 生产用 quoted_tb/1 生成 public."<表>"（user/group 为保留字需引号）
                     case Sql of
-                        <<"SELECT COUNT(*) FROM user">> ->
+                        <<"SELECT COUNT(*) FROM public.\"user\"">> ->
                             {ok, #{count => 1000}};
-                        <<"SELECT COUNT(*) FROM user WHERE created_at >= CURRENT_DATE">> ->
+                        <<"SELECT COUNT(*) FROM public.\"user\" WHERE created_at >= CURRENT_DATE">> ->
                             {ok, #{count => 12}};
-                        <<"SELECT COUNT(*) FROM group">> ->
+                        <<"SELECT COUNT(*) FROM public.\"group\"">> ->
                             {ok, #{count => 321}};
-                        <<"SELECT COUNT(*) FROM group WHERE created_at >= CURRENT_DATE">> ->
+                        <<"SELECT COUNT(*) FROM public.\"group\" WHERE created_at >= CURRENT_DATE">> ->
                             {ok, #{count => 7}};
-                        <<"SELECT COUNT(*) FROM msg_c2c WHERE created_at >= CURRENT_DATE">> ->
+                        <<"SELECT COUNT(*) FROM public.\"msg_c2c\" WHERE created_at >= CURRENT_DATE">> ->
                             {ok, #{count => 80}};
-                        <<"SELECT COUNT(*) FROM msg_c2g WHERE created_at >= CURRENT_DATE">> ->
+                        <<"SELECT COUNT(*) FROM public.\"msg_c2g\" WHERE created_at >= CURRENT_DATE">> ->
                             {ok, #{count => 20}}
                     end
                 end}
@@ -65,11 +66,11 @@ init_user_stats_supports_custom_days_test_() ->
             {elib_pg, [
                 {'query', 2, fun(Sql, Params) ->
                     ?assertEqual([], Params),
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"FROM user">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"public.\"user\"">>)),
                     {ok, [#{<<"date">> => <<"2026-02-20">>, <<"count">> => 3}]}
                 end},
                 {'one', 2, fun(Sql, Params) ->
-                    ?assertEqual(<<"SELECT COUNT(*) FROM user WHERE status = $1">>, Sql),
+                    ?assertEqual(<<"SELECT COUNT(*) FROM public.\"user\" WHERE status = $1">>, Sql),
                     case Params of
                         [1] -> {ok, #{count => 900}};
                         [0] -> {ok, #{count => 20}};
@@ -104,9 +105,9 @@ init_message_stats_returns_daily_series_test_() ->
             {elib_pg, [
                 {'query', 2, fun(Sql, Params) ->
                     ?assertEqual([], Params),
-                    case binary:match(Sql, <<"FROM msg_c2c">>) of
+                    case binary:match(Sql, <<"public.\"msg_c2c\"">>) of
                         nomatch ->
-                            ?assertNotEqual(nomatch, binary:match(Sql, <<"FROM msg_c2g">>)),
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"public.\"msg_c2g\"">>)),
                             {ok, [#{<<"date">> => <<"2026-02-21">>, <<"count">> => 8}]};
                         _ ->
                             {ok, [#{<<"date">> => <<"2026-02-21">>, <<"count">> => 13}]}
