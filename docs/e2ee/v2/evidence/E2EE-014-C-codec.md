@@ -86,3 +86,27 @@ erl -pa ebin -eval 'e2ee_trust_logic:canonical_payload(#{
 44/47 乱序 → erlang_migrate strict 乱序检测报错，后端起不来。需先做 dev 库迁移对账（三选一）：
 (a) 按序补 38-46；(b) 登记 38-46 为已应用（假对账，可能掩盖真实 schema 缺口，不推荐）；
 (c) 本次测试禁用启动迁移 runner。均触 dev DB、属用户决策，未擅自执行。
+
+### #1 DB 半程实证 DONE（真 PG eunit，绕开 boot/对账）
+
+用户授权后采「真 PG eunit 骨架」路线（不动 dev 库 schema、不跑迁移 runner）：新建
+`test/repo/trust_audit_repo_integration_tests.erl`（imboy `d9d7c9dd`）。setup 直接
+`application:start(pooler)` + `pooler:new_pool(config_ds:env(pg_conf))` 连本地 imboy_v1，
+用高位测试 `target_uid=88880001`，setup/teardown 自清行。
+
+⚠️ 现有 `test/repo/*` 全 meck `elib_pg`，无真连骨架——此为从零搭建。运行须把本地 pg_conf
+载入 eunit VM，否则 `config_ds:env(pg_conf)=undefined`：
+
+```
+IMBOYENV=local make eunit t=trust_audit_repo_integration_tests \
+  EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
+```
+
+**真 PG 实证 4/4 绿**（连 127.0.0.1:4323 imboy_v1，非 meck），覆盖当前 logic-eunit 用 meck
+绕过的 DB 层不变量：
+1. 首次 insert → `{ok, inserted}`，落 1 行；
+2. 同 event_id 同归属重放 → `{ok, duplicate}`，幂等不新增行（partial UNIQUE + ON CONFLICT）；
+3. 同 event_id 异归属（actor 不同）→ `{error, event_id_conflict}`，不吞原合法事件；
+4. 同 target device 更低 `target_identity_version` → `{error, identity_version_rollback}`（advisory 锁内读 MAX 判定）。
+
+仍未覆盖（需真机/运行 app）：HTTP handler 层（cowboy）+ 客户端 Dart 真实 Ed25519 签名逐字节验签。
