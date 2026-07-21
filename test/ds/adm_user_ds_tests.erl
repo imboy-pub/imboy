@@ -35,18 +35,14 @@ find_by_account_success_test_() ->
 %% against page_with_where_sql/4 is a coverage-gap backlog item.
 
 count_success_test_() ->
-    ?WITH_MECKS(
+    %% adm_user_ds:count/0 现在直接委托 adm_user_repo:count/0（SQL 下沉到 repo），
+    %% 不再在 ds 层自建 tablename + elib_pg:query。mock repo 边界即可。
+    ?WITH_MECK(
+        adm_user_repo,
         [
-            {adm_user_repo, [
-                {'tablename', 0, fun() ->
-                    <<"adm_user">>
-                end}
-            ]},
-            {elib_pg, [
-                {'query', 2, fun(_Sql, []) ->
-                    {ok, [#{<<"count">> => 5}]}
-                end}
-            ]}
+            {'count', 0, fun() ->
+                {ok, 5}
+            end}
         ],
         fun() ->
             ?assertEqual({ok, 5}, adm_user_ds:count())

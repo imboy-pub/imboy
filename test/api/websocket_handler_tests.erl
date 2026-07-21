@@ -184,7 +184,7 @@ websocket_info_timeout_without_ack_resend_test_() ->
                 ]},
                 {message_ds, [
                     {'send_next', 6, fun(
-                        1, <<"msg_1">>, <<"raw_msg">>, [100, 200], [<<"did_1">>], false
+                        1, <<"msg_1">>, <<"raw_msg">>, [100, 200], [<<"did_1">>], true
                     ) ->
                         ok
                     end}
@@ -231,7 +231,7 @@ websocket_info_timeout_with_invalid_ack_flag_resend_test_() ->
                 ]},
                 {message_ds, [
                     {'send_next', 6, fun(
-                        1, <<"msg_3">>, <<"raw_msg_3">>, [100, 200], [<<"did_1">>], false
+                        1, <<"msg_3">>, <<"raw_msg_3">>, [100, 200], [<<"did_1">>], true
                     ) ->
                         ok
                     end}

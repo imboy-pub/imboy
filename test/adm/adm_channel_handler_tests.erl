@@ -838,7 +838,7 @@ init_stats_success_test_() ->
                     {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
                 ]},
                 {channel_logic, [
-                    {'get_channel_stats', 1, fun(11) ->
+                    {'get_channel_stats', 1, fun(<<"11">>) ->
                         {ok, #{
                             <<"channel_id">> => 11,
                             <<"subscriber_count">> => 37,
@@ -879,7 +879,7 @@ init_stats_not_found_test_() ->
                     {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
                 ]},
                 {channel_logic, [
-                    {'get_channel_stats', 1, fun(11) ->
+                    {'get_channel_stats', 1, fun(<<"11">>) ->
                         {error, <<"频道不存在"/utf8>>}
                     end}
                 ]},
