@@ -165,3 +165,15 @@ docs-serve:
 
 docs-stop:
 	docker compose -f docs/api-sandbox/docker-compose.yml down
+
+# EUnit（本地真 PG）：注入 config/sys.local 使 pg_conf 可读并起全量 imboy app，
+# 让 ?TEST_WITH_APP / ?TEST_WITH_DB 类用例真连本地 imboy_v1 跑；否则纯 make eunit
+# 无 -config 时 eunit_runner:ensure_config_loaded/0 硬失败 {missing_config, pg_conf}，
+# 一大批 ?TEST_WITH_APP setup 被 cancelled。
+# 用法: make eunit-local                    # 全量
+#       make eunit-local t=elib_uri_tests   # 单模块
+# 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
+#       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
+.PHONY: eunit-local
+eunit-local:
+	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
