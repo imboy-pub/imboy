@@ -28,6 +28,7 @@ DEPS = ranch cowlib cowboy gun
 # Utility
 DEPS += erlware_commons jwerl gen_smtp throttle
 DEPS += goldrush jsone  # goldrush: lager transitive dep, pin version explicitly
+DEPS += jsx  # jwerl transitive dep, pin to gitee git (deps.mk) instead of hex to avoid hex_core in sub-make
 # Database / Cache / ID
 DEPS += epgsql pooler erlang_migrate depcache syn ecron uid
 # Ops / Observability
