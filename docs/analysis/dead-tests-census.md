@@ -76,14 +76,14 @@
 
 清跑 `make eunit-local` 全量后暴露（首轮 partial 增量运行未执行到；git 证本会话 5 提交未碰这 3 文件）：
 
-| 文件 | 失败 | 定性 |
-|---|---|---|
-| `test/ds/group_category_ds_tests.erl:48/:66` | `noproc pgsql take_member` | pool 时序 flake（非确定性，`?TEST_WITH_APP` DB 依赖） |
-| `test/ds/websocket_ds_tests.erl:75` | `idle_timeout(1)` 断言 `128000` 漂移 | 确定性 contract 漂移，需核对生产当前默认值 |
-| `test/lib/imboy_plugin_sup_tests.erl:63` | supervisor 子进程数断言 `5` 漂移 | 可能架构变更（sup 增删），需人工确认 vs 简单值修 |
+| 文件 | 失败 | 定性 | 处置 |
+|---|---|---|---|
+| `test/ds/websocket_ds_tests.erl:75` | `idle_timeout(1)` 断言 `128000` 漂移 | 确定性：生产 `config_ds:env(ws_idle_timeout_ms,180000)` 无 config 覆盖 | **已修 `f373216c`**（→180000） |
+| `test/lib/imboy_plugin_sup_tests.erl:63` | supervisor 子进程数断言 `5` 漂移 | 确定性：生产新增 `imboy_ws_action_registry`（WS 路由查表前置）→6 子进程 | **已修 `f373216c`**（→6+断言新 child） |
+| `test/ds/group_category_ds_tests.erl:48/:66` | `noproc pgsql take_member` | pool 时序 **flake**（非确定性，`?TEST_WITH_APP` DB 依赖，全量并发跑偶发 pool 耗尽） | 待查：pool 就绪/隔离，非 mock 漂移 |
 
-**处置（需授权/决策）**：websocket_ds 属简单值对齐；imboy_plugin_sup 子进程数是架构判断；group_category
-是 flake。均超出「C 类剩余 20」分配范围，留待后续批次。
+**处置**：2 个确定性 contract 漂移已修（Batch 6，`f373216c`，均为断言对齐当前生产、非回归）。剩 group_category
+pool-noproc flake 属基础设施时序问题（非死测试/非 mock 漂移），需 pool 调查，留待授权。
 
 ## 复现命令（样本）
 
