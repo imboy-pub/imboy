@@ -360,7 +360,7 @@ init_vote_list_success_test_() ->
             ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_vote_handler:init(Req, #{
                 action => vote_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -405,7 +405,7 @@ init_vote_close_success_writes_audit_test_() ->
         fun() ->
             put(audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_vote_handler:init(Req, #{
                 action => vote_close, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -450,7 +450,7 @@ init_vote_close_permission_denied_test_() ->
             ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_vote_handler:init(Req, #{
                 action => vote_close, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -486,7 +486,7 @@ init_notice_list_success_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_notice_handler:init(Req, #{
                 action => notice_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -526,7 +526,7 @@ init_notice_detail_success_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_notice_handler:init(Req, #{
                 action => notice_detail, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -569,7 +569,7 @@ init_notice_delete_success_writes_audit_test_() ->
         fun() ->
             put(notice_delete_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_notice_handler:init(Req, #{
                 action => notice_delete, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -607,7 +607,7 @@ init_notice_delete_permission_denied_test_() ->
         ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_notice_handler:init(Req, #{
                 action => notice_delete, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -657,7 +657,7 @@ init_category_list_success_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => category_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -708,7 +708,7 @@ init_category_delete_success_writes_audit_test_() ->
         fun() ->
             put(category_delete_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => category_delete, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -746,7 +746,7 @@ init_category_delete_permission_denied_test_() ->
         ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => category_delete, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -781,7 +781,7 @@ init_tag_list_success_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => tag_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -823,7 +823,7 @@ init_tag_delete_success_writes_audit_test_() ->
         fun() ->
             put(tag_delete_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => tag_delete, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -861,7 +861,7 @@ init_tag_delete_permission_denied_test_() ->
         ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => tag_delete, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -903,7 +903,7 @@ init_file_list_success_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => file_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -953,7 +953,7 @@ init_file_delete_success_writes_audit_test_() ->
         fun() ->
             put(file_delete_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => file_delete, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -988,7 +988,7 @@ init_file_delete_permission_denied_test_() ->
         ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => file_delete, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1026,7 +1026,7 @@ init_album_list_success_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => album_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1079,7 +1079,7 @@ init_album_delete_success_writes_audit_test_() ->
         fun() ->
             put(album_delete_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => album_delete, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1114,7 +1114,7 @@ init_album_delete_permission_denied_test_() ->
         ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_content_handler:init(Req, #{
                 action => album_delete, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1157,7 +1157,7 @@ init_task_list_with_status_uses_repo_count_test_() ->
             ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1204,7 +1204,7 @@ init_task_list_deleted_view_uses_deleted_repo_count_test_() ->
             ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_list, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1250,7 +1250,7 @@ init_task_pending_review_success_test_() ->
             ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_pending_review, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1314,7 +1314,7 @@ init_task_review_success_writes_audit_test_() ->
         fun() ->
             put(task_review_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_review, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1358,7 +1358,7 @@ init_task_review_permission_denied_test_() ->
             ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_review, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1403,7 +1403,7 @@ init_task_close_success_writes_audit_test_() ->
         fun() ->
             put(task_close_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_close, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1445,7 +1445,7 @@ init_task_close_permission_denied_test_() ->
             ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_close, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1493,7 +1493,7 @@ init_task_restore_success_writes_audit_test_() ->
         fun() ->
             put(task_restore_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_restore, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1533,7 +1533,7 @@ init_task_restore_permission_denied_test_() ->
             ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_restore, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1574,7 +1574,7 @@ init_task_delete_success_writes_audit_test_() ->
         fun() ->
             put(task_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_delete, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1622,7 +1622,7 @@ init_schedule_detail_supports_numeric_schedule_id_test_() ->
             ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => schedule_detail, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1672,7 +1672,7 @@ init_schedule_cancel_success_writes_audit_test_() ->
         fun() ->
             put(schedule_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => schedule_cancel, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1712,7 +1712,7 @@ init_schedule_cancel_permission_denied_test_() ->
             ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => schedule_cancel, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1760,7 +1760,7 @@ init_schedule_restore_success_writes_audit_test_() ->
         fun() ->
             put(schedule_restore_audit_data, undefined),
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => schedule_restore, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1802,7 +1802,7 @@ init_schedule_restore_permission_denied_test_() ->
             ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => schedule_restore, adm_user_id => 9003
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1866,7 +1866,7 @@ init_governance_log_list_success_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => governance_log_list, adm_user_id => 9002
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1902,7 +1902,7 @@ init_governance_log_list_permission_denied_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => governance_log_list, adm_user_id => 9010
             }),
             ?assertEqual(403, maps:get(response_status, RespReq)),
@@ -1935,7 +1935,7 @@ init_governance_log_list_logs_view_role_allowed_test_() ->
         ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_schedule_handler:init(Req, #{
                 action => governance_log_list, adm_user_id => 9003
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -1973,7 +1973,7 @@ init_task_detail_supports_task_uid_test_() ->
             ],
         fun() ->
             Req = #{method => <<"GET">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_detail, adm_user_id => 9001
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
@@ -2008,7 +2008,7 @@ init_task_delete_soft_delete_success_test_() ->
             ],
         fun() ->
             Req = #{method => <<"POST">>},
-            {ok, RespReq, _State} = adm_group_sub_handler:init(Req, #{
+            {ok, RespReq, _State} = adm_group_task_handler:init(Req, #{
                 action => task_delete, adm_user_id => 9002
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
