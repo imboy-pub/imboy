@@ -43,6 +43,21 @@
 - `websocket_connection_flow_SUITE.erl`（28 处 `websocket_logic:*` / `token_ds:refresh_token`）：多数被 `meck:new/expect`，排除；但 `connect`/`heartbeat` 未见对应 `meck:expect`，若无 passthrough 仍可能 undef → **人工确认**。
 - arity 不符类（374 处，名字存在但参数疑似不符）：静态计数对多行/宏不可靠，**未采信**。
 
+## C 类 — handler 层 mock/API 漂移失败（DB 门解除后暴露，160 失败）
+
+- **来源**：2026-07-21 全量 `make eunit-local` 基线（DB 环境门系统解后首次真跑，见
+  `docs/e2ee/v2/evidence/E2EE-019-db-env-gate-fix.md`）。**Passed 752 / Failed 160**。
+- **分布**：`channel_handler_tests` 88 + `adm_group_handler_tests` 40 = 128（占 80%），其余零散
+  adm/handler 测试（adm_auth_middleware 5、adm_attach 4、adm_stats 3…）。
+- **根因签名**：98 `function_clause` + 14 `meck` + 5 `undef`。样本
+  `adm_channel_handler` → `channel_logic:get_channel_stats(<<"11">>)` → `function_clause`：
+  测试 meck expectation fun 只匹配旧参数模式，生产 handler 现传的参数不匹配。
+- **性质**：与 A 类同根因（生产重构后测试未同步），但发生在 **handler 层且进 `make eunit`**。
+  DB 门解除前这些 `?TEST_WITH_APP` 用例一律 setup cancelled 从未真跑，故此前未暴露。
+- **处置（需授权）**：逐 handler 文件甄别——meck 重对齐（生产仍在用）vs 判定过时删除。
+  独立大工程，未执行。E2EE 主线相关测试（`user_device_repo_tests` 16/16、`elib_uri_tests` 26/26）
+  无新失败，不受影响。
+
 ## 复现命令（样本）
 
 ```bash

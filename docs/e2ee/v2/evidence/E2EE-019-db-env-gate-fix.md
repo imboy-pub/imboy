@@ -60,7 +60,24 @@
   → `Application imboy started on node nonode@nohost`(**迁移干净通过,不再 out_of_order**)+ `All 26 tests passed.`
   含之前受 DB 门 cancelled 的 `?TEST_WITH_APP` 用例(download_success / http_error / network_error)。
 - `make eunit-local t=elib_uri_tests` → 同上(target + `t=` 传递生效)。
-- 全量 `make eunit-local` 真实基线:后台运行中(全量起停 app 慢),待补录本文。
+- 全量 `make eunit-local` 真实基线(2026-07-21):**Passed 752 / Failed 160 / Skipped 0**,
+  make 返回 Error 2(有失败)。cancelled 仅 3 处(`noproc pgsql take_member`,pool 时序零星,非系统性门残留)。
+
+### 全量基线 160 失败定性(非 #3 回归)
+
+- 失败集中在 **handler 层**:`channel_handler_tests` 88 + `adm_group_handler_tests` 40 = 128(占 80%),
+  其余为零散 adm/handler 测试。
+- 根因签名:**98 function_clause** + 14 meck + 5 undef 为主。抽样
+  `adm_channel_handler` → `channel_logic:get_channel_stats(<<"11">>)` → `error:function_clause`:
+  测试的 meck expectation fun 只匹配旧参数模式,生产 handler 现传 `<<"11">>` 不匹配 → function_clause。
+- 定性:**mock / API 漂移的预存失败**,与 dead-tests-census.md A 类(group_logic 改名)同根因
+  (生产重构后 handler 测试未同步)。**非 #3 引入的回归**——这些 handler 测试在 DB 门解除前
+  一律 setup cancelled、从未真跑;#3 解锁后才首次暴露。#3 自身只碰 dev 库 schema + Makefile。
+- **E2EE 主线增量验证**:#3 解锁的唯一 E2EE 主线受门模块 `user_device_repo_tests` = **16/16 绿**
+  (迁移 43 加 user_device.trust_state/capabilities/identity_blob 后真 PG 通过);
+  `elib_uri_tests` 26/26 绿。E2EE 相关无新失败。
+- **处置**:160 个 handler 测试失败修复(mock 重对齐 / 判定过时删除)是独立大工程,
+  超出 #3 范围,记入 census backlog 待用户单独立项;不在本轮修。
 
 ## 备注
 
