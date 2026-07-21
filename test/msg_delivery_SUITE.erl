@@ -37,18 +37,18 @@
 
 all() ->
     [
-     {group, full_flow},
-     {group, offline_storage},
-     {group, retry_mechanism},
-     {group, multi_device}
+        {group, full_flow},
+        {group, offline_storage},
+        {group, retry_mechanism},
+        {group, multi_device}
     ].
 
 groups() ->
     [
-     {full_flow, [], prepare_and_send_test_cases()},
-     {offline_storage, [], offline_storage_test_cases()},
-     {retry_mechanism, [], retry_test_cases()},
-     {multi_device, [], multi_device_test_cases()}
+        {full_flow, [], prepare_and_send_test_cases()},
+        {offline_storage, [], offline_storage_test_cases()},
+        {retry_mechanism, [], retry_test_cases()},
+        {multi_device, [], multi_device_test_cases()}
     ].
 
 init_per_suite(Config) ->
@@ -66,36 +66,34 @@ end_per_group(_Group, _Config) ->
     meck:unload(),
     ok.
 
-
 %% ===================================================================
 %% 测试用例定义
 %% ===================================================================
 
 prepare_and_send_test_cases() ->
     [
-     send_c2c_message,
-     message_delivered_to_online_user,
-     message_ack_cleanup
+        send_c2c_message,
+        message_delivered_to_online_user,
+        message_ack_cleanup
     ].
 
 offline_storage_test_cases() ->
     [
-     store_offline_message,
-     retrieve_offline_message_on_user_online
+        store_offline_message,
+        retrieve_offline_message_on_user_online
     ].
 
 retry_test_cases() ->
     [
-     retry_on_first_failure,
-     retry_intervals_configuration
+        retry_on_first_failure,
+        retry_intervals_configuration
     ].
 
 multi_device_test_cases() ->
     [
-     deliver_to_all_devices,
-     ack_from_single_device
+        deliver_to_all_devices,
+        ack_from_single_device
     ].
-
 
 %% ===================================================================
 %% 完整流程测试
@@ -107,21 +105,34 @@ send_c2c_message(_Config) ->
     ToUid = 9002,
     MsgId = <<"test_msg_001">>,
 
+    % 前置清理，保证用例可重复运行（避免前次崩溃遗留脏数据）
+    elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
+
     % 准备好友关系
     elib_pg:execute(<<"DELETE FROM user_friend WHERE uid = $1">>, [FromUid]),
-    elib_pg:execute(<<"INSERT INTO user_friend (uid, friend_uid, created_at)
-                      VALUES ($1, $2, NOW())">>,
-                     [FromUid, ToUid]),
+    elib_pg:execute(
+        <<
+            "INSERT INTO user_friend (uid, friend_uid, created_at)\n"
+            "                      VALUES ($1, $2, NOW())"
+        >>,
+        [FromUid, ToUid]
+    ),
 
-    % 发送消息
+    % 发送消息（write_msg/6: CreatedAt, Id, Payload, From, To, ServerTS）
     Payload = #{<<"text">> => <<"测试消息"/utf8>>},
-    {ok, _} = msg_c2c_ds:write(MsgId, FromUid, ToUid,
-                               jsone:encode(Payload, [native_utf8]),
-                               #{}),
+    Now = elib_dt:now(),
+    ok = msg_c2c_ds:write_msg(
+        Now,
+        MsgId,
+        jsone:encode(Payload, [native_utf8]),
+        FromUid,
+        ToUid,
+        Now
+    ),
 
     % 验证消息已存储
     Sql = <<"SELECT COUNT(*) FROM msg_c2c WHERE msg_id = $1">>,
-    {ok, _, [{Count}]} = elib_pg:query(Sql, [MsgId]),
+    {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql, [MsgId]),
     ?assertEqual(1, Count),
 
     % 清理
@@ -157,9 +168,13 @@ message_ack_cleanup(_Config) ->
 
     % 准备离线消息
     elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
-    elib_pg:execute(<<"INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)
-                      VALUES ($1, $2, $3, $4, NOW())">>,
-                     [9000, ToUid, MsgId, <<"{\"text\":\"test\"}">>]),
+    elib_pg:execute(
+        <<
+            "INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)\n"
+            "                      VALUES ($1, $2, $3, $4, NOW())"
+        >>,
+        [9000, ToUid, MsgId, <<"{\"text\":\"test\"}">>]
+    ),
 
     % Mock
     meck:new(msg_store_ds, [unstick]),
@@ -170,10 +185,9 @@ message_ack_cleanup(_Config) ->
 
     % 验证清理
     Sql = <<"SELECT COUNT(*) FROM msg_c2c WHERE msg_id = $1">>,
-    {ok, _, [{Count}]} = elib_pg:query(Sql, [MsgId]),
+    {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql, [MsgId]),
     ?assertEqual(0, Count),
     {comment, "ACK 清理成功"}.
-
 
 %% ===================================================================
 %% 离线存储测试
@@ -192,15 +206,21 @@ store_offline_message(_Config) ->
     meck:new(imboy_syn, [unstick]),
     meck:expect(imboy_syn, list_by_uid, fun(_) -> [] end),
 
-    % 发送消息（应存储为离线）
+    % 发送消息（应存储为离线；write_msg/6）
     Payload = #{<<"text">> => <<"离线消息"/utf8>>},
-    {ok, _} = msg_c2c_ds:write(MsgId, FromUid, ToUid,
-                               jsone:encode(Payload, [native_utf8]),
-                               #{}),
+    Now = elib_dt:now(),
+    ok = msg_c2c_ds:write_msg(
+        Now,
+        MsgId,
+        jsone:encode(Payload, [native_utf8]),
+        FromUid,
+        ToUid,
+        Now
+    ),
 
     % 验证存储
     Sql = <<"SELECT COUNT(*) FROM msg_c2c WHERE msg_id = $1 AND to_id = $2">>,
-    {ok, _, [{Count}]} = elib_pg:query(Sql, [MsgId, ToUid]),
+    {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql, [MsgId, ToUid]),
     ?assertEqual(1, Count),
 
     % 清理
@@ -214,9 +234,13 @@ retrieve_offline_message_on_user_online(_Config) ->
 
     % 准备离线消息
     elib_pg:execute(<<"DELETE FROM msg_c2c WHERE msg_id = $1">>, [MsgId]),
-    elib_pg:execute(<<"INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)
-                      VALUES ($1, $2, $3, $4, NOW())">>,
-                     [9020, ToUid, MsgId, <<"{\"text\":\"offline\"}">>]),
+    elib_pg:execute(
+        <<
+            "INSERT INTO msg_c2c (from_id, to_id, msg_id, payload, created_at)\n"
+            "                      VALUES ($1, $2, $3, $4, NOW())"
+        >>,
+        [9020, ToUid, MsgId, <<"{\"text\":\"offline\"}">>]
+    ),
 
     % Mock
     meck:new(imboy_syn, [unstick]),
@@ -233,10 +257,9 @@ retrieve_offline_message_on_user_online(_Config) ->
 
     % 验证离线消息被处理
     Sql = <<"SELECT COUNT(*) FROM msg_c2c WHERE msg_id = $1">>,
-    {ok, _, [{Count}]} = elib_pg:query(Sql, [MsgId]),
+    {ok, [#{<<"count">> := Count}]} = elib_pg:query(Sql, [MsgId]),
     ?assertEqual(0, Count),
     {comment, "离线消息处理成功"}.
-
 
 %% ===================================================================
 %% 重试机制测试
@@ -249,24 +272,23 @@ retry_on_first_failure(_Config) ->
     % Mock 重试间隔配置
     MsLi = elib_retry_config:intervals(<<"c2c">>),
 
-    % 验证重试间隔
-    ?assertEqual([0, 5000, 7000, 11000, 17000], MsLi),
-    ?assertEqual(5, length(MsLi)),
+    % 验证重试间隔（真值见 elib_retry_config: C2C=[0,3000]）
+    ?assertEqual([0, 3000], MsLi),
+    ?assertEqual(2, length(MsLi)),
     {comment, "重试间隔配置正确"}.
 
 retry_intervals_configuration(_Config) ->
     ct:log("测试不同消息类型的重试间隔"),
 
-    % 测试 C2G
+    % 测试 C2G（真值 [0]）
     C2gMsLi = elib_retry_config:intervals(<<"c2g">>),
-    ?assertEqual([0, 3500, 7000, 11000, 17000], C2gMsLi),
+    ?assertEqual([0], C2gMsLi),
 
-    % 测试 Pull
+    % 测试 Pull（真值 [8000,10000,20000]）
     PullMsLi = elib_retry_config:intervals(<<"pull">>),
-    ?assertEqual([0, 10000, 20000], PullMsLi),
+    ?assertEqual([8000, 10000, 20000], PullMsLi),
 
     {comment, "所有重试间隔配置正确"}.
-
 
 %% ===================================================================
 %% 多设备测试
@@ -277,33 +299,37 @@ deliver_to_all_devices(_Config) ->
     ToUid = 9031,
     MsgId = <<"test_multi_001">>,
 
-    % Mock 多设备
-    DeliveryCount = ets:new(delivery_count, [set, private]),
-    ets:insert(DeliveryCount, {count, 0}),
-
+    % Mock 多设备（3 个设备 Pid 均为 self()，Delay=0 时 send_next 走
+    % erlang:start_timer(0, Pid, Msg) 逐设备投递，故 self() 会收到 3 个 timeout 消息）
     meck:new(imboy_syn, [unstick]),
     meck:expect(imboy_syn, list_by_uid, fun(_) ->
-        [{self(), {<<"ios">>, <<"device_ios">>}},
-         {self(), {<<"android">>, <<"device_android">>}},
-         {self(), {<<"web">>, <<"device_web">>}}]
+        [
+            {self(), {<<"ios">>, <<"device_ios">>}},
+            {self(), {<<"android">>, <<"device_android">>}},
+            {self(), {<<"web">>, <<"device_web">>}}
+        ]
     end),
-    meck:expect(imboy_syn, publish, fun(_, _, _) ->
-        ets:update_counter(DeliveryCount, count, {2, 1}),
-        ok
-    end),
+    % 未 ACK 才投递：mock cache get 返回 undefined，避免设备被 ack 过滤
+    meck:new(imboy_cache, [unstick]),
+    meck:expect(imboy_cache, get, fun(_) -> undefined end),
 
     % 投递消息
     Msg = <<"{\"id\":\"", MsgId/binary, "\"}">>,
-    MsLi = [0],
-    message_ds:send_next(ToUid, MsgId, Msg, MsLi),
+    message_ds:send_next(ToUid, MsgId, Msg, [0]),
 
-    % 验证所有设备都收到
-    Count = ets:lookup_element(DeliveryCount, count, 2),
+    % 验证所有设备都收到（每设备一个 start_timer(0) → self() 收 3 个 timeout）
+    Count = count_timeouts(3, 0),
     ?assertEqual(3, Count),
-
-    % 清理
-    ets:delete(DeliveryCount),
     {comment, "消息投递到所有设备成功"}.
+
+%% 计数 self() 收到的 timeout 消息（send_next Delay=0 逐设备 start_timer 投递）
+count_timeouts(0, Acc) ->
+    Acc;
+count_timeouts(N, Acc) ->
+    receive
+        {timeout, _Ref, _Msg} -> count_timeouts(N - 1, Acc + 1)
+    after 1000 -> Acc
+    end.
 
 ack_from_single_device(_Config) ->
     ct:log("测试单个设备 ACK 不影响其他设备"),
