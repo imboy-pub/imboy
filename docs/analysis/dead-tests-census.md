@@ -80,10 +80,10 @@
 |---|---|---|---|
 | `test/ds/websocket_ds_tests.erl:75` | `idle_timeout(1)` 断言 `128000` 漂移 | 确定性：生产 `config_ds:env(ws_idle_timeout_ms,180000)` 无 config 覆盖 | **已修 `f373216c`**（→180000） |
 | `test/lib/imboy_plugin_sup_tests.erl:63` | supervisor 子进程数断言 `5` 漂移 | 确定性：生产新增 `imboy_ws_action_registry`（WS 路由查表前置）→6 子进程 | **已修 `f373216c`**（→6+断言新 child） |
-| `test/ds/group_category_ds_tests.erl:48/:66` | `noproc pgsql take_member` | pool 时序 **flake**（非确定性，`?TEST_WITH_APP` DB 依赖，全量并发跑偶发 pool 耗尽） | 待查：pool 就绪/隔离，非 mock 漂移 |
+| `test/ds/group_category_ds_tests.erl:48/:66` | `noproc pgsql take_member` | **确定性缺 mock**（非 flake）：`find_by_uid/1` 先调 `count_groups_grouped_by_category/1` 聚合群数，测试只 mock `list_by_uid/2`，未列函数 passthrough 打真 elib_pg | **已修 `2e4d0da4`**（补 count mock） |
 
-**处置**：2 个确定性 contract 漂移已修（Batch 6，`f373216c`，均为断言对齐当前生产、非回归）。剩 group_category
-pool-noproc flake 属基础设施时序问题（非死测试/非 mock 漂移），需 pool 调查，留待授权。
+**处置**：D 类 4 个失败**全部已修**（`f373216c` + `2e4d0da4`，均为断言/mock 对齐当前生产、非回归）。
+⚠️group_category 初判「pool flake」有误——noproc 是缺 mock 打真 DB 的**症状**，根因是确定性 mock 漂移（同 C 类模式）。
 
 ## 复现命令（样本）
 
