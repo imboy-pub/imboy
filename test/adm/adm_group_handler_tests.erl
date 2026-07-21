@@ -45,7 +45,8 @@ init_list_with_pagination_filters_test_() ->
                         status -> {ok, 1};
                         type -> {ok, 2}
                     end
-                end}
+                end},
+                {'binary', 3, fun(keyword, _Req, _Default) -> {ok, <<>>} end}
             ]},
             {group_repo, [
                 {'page', 4, fun(Page, Size, Where, OrderBy) ->
@@ -472,7 +473,7 @@ init_notice_list_success_test_() ->
             ]},
             {group_notice_ds, [
                 {'list_by_group_id', 3, fun(66, 1, 10) ->
-                    {ok, [#{<<"id">> => 123, <<"title">> => <<"群规公告">>}]}
+                    {ok, {1, [#{<<"id">> => 123, <<"title">> => <<"群规公告">>}]}}
                 end},
                 {'count_by_group_id', 1, fun(66) ->
                     {ok, 1}
@@ -551,7 +552,7 @@ init_notice_delete_success_writes_audit_test_() ->
                     {ok, #{<<"id">> => 123, <<"group_id">> => 66}}
                 end},
                 {'soft_delete', 1, fun(123) ->
-                    {ok, 1}
+                    ok
                 end}
             ]},
             {user_log_repo, [
