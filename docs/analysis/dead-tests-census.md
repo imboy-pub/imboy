@@ -58,6 +58,33 @@
   独立大工程，未执行。E2EE 主线相关测试（`user_device_repo_tests` 16/16、`elib_uri_tests` 26/26）
   无新失败，不受影响。
 
+### C 类清理完成（2026-07-21，160/160 全清）
+
+- **前序会话清 140**（channel 88 + adm_group 40 + 零散 12），本会话清最后 **20**（5 批，均 meck/断言
+  重对齐到当前生产契约，非删除）：metrics/group_album/group_schedule（cowboy_req 缺 `peer/1`/`method/1`
+  meck 透传崩）、conversation（mine 薄适配委托 `conversation_logic:list/2`）、friend_category（→
+  `friend_category_logic:add/2`）、mention（信封 `list`→`items`）、adm_channel（`get_channel_stats`
+  收 binary）、websocket（`send_next` 第 6 参 `[DID]+true`）、adm_user_ds（`count/0` 委托 repo）、
+  adm_passport（redirect `/adm/`、logout cookie path `/`）、msg（c2c/s2c 走 `read_msg_for_device/4`）、
+  channel_ds（`is_subscribed/2` 边界）、passport（signup/find_password ip=`127.0.0.1`）。
+  提交 `005ffbdc`/`53ad3f40`/`73c51886`/`18a6466b`/`d1cdd664`。全量 `make eunit-local` 清跑，13 模块全绿。
+- ⚠️ 快 harness 会把 helper（`meck_helper`/`cowboy_req_h` 等）编到 `test/` 扁平；`rm -f test/*.beam`
+  后须 `find test -name '*.erl' -exec touch {} +` 强制全量重编，否则增量 `make eunit` 只重编改动文件、
+  helper beam 缺失 → 大量 `context setup failed`（假象非回归）。
+
+### D 类 — 全量清跑浮现的 4 个预存失败（非 C 类、非本轨道回归）
+
+清跑 `make eunit-local` 全量后暴露（首轮 partial 增量运行未执行到；git 证本会话 5 提交未碰这 3 文件）：
+
+| 文件 | 失败 | 定性 |
+|---|---|---|
+| `test/ds/group_category_ds_tests.erl:48/:66` | `noproc pgsql take_member` | pool 时序 flake（非确定性，`?TEST_WITH_APP` DB 依赖） |
+| `test/ds/websocket_ds_tests.erl:75` | `idle_timeout(1)` 断言 `128000` 漂移 | 确定性 contract 漂移，需核对生产当前默认值 |
+| `test/lib/imboy_plugin_sup_tests.erl:63` | supervisor 子进程数断言 `5` 漂移 | 可能架构变更（sup 增删），需人工确认 vs 简单值修 |
+
+**处置（需授权/决策）**：websocket_ds 属简单值对齐；imboy_plugin_sup 子进程数是架构判断；group_category
+是 flake。均超出「C 类剩余 20」分配范围，留待后续批次。
+
 ## 复现命令（样本）
 
 ```bash
