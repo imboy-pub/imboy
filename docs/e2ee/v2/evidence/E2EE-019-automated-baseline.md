@@ -44,10 +44,11 @@
 - **非本轨道回归**：E2EE-013 `0b67aade` 对 `auth_ds.erl` 的 diff **没有删除 `get_token`**（只新增 `verify_token/1` 三元组 + `current_did/1` + `do_authorization` 三元组处理）；该函数在 E2EE 轨道起点之前就已不在模块内。
 - **E2EE-013 触及面全绿**：`current_did_default_test` / `verify_token_with_valid_token_test` / `verify_token_with_refresh_token_test` 均 ok。
 - **处置（#4 横切质量，用户授权）**：已删除 `get_token_with_assets_resource_test_` 死测试用例并加注移除原因；`auth_ds_tests` 现 **12/12 全绿**。
-- **同类死引用（Low 待办，本 Slice 不动，避免扩大范围）**：
-  - `test/lib/elib_uri_tests.erl:267` `check_auth_valid_url_test_` 仍 `meck:expect(auth_ds, get_token, ...)`，但 `elib_uri.erl` 生产代码已无 get_token 调用 → **死 mock**（meck 为 mock 模块凭空造函数，故不 undef；且该用例受 `?TEST_WITH_APP` 的 `missing_config,pg_conf` 环境门限制，纯 eunit 下 setup 即 cancelled，从未跑到断言）。
-  - `include/eunit_setup.hrl:155` 注释示例引用 `auth_ds:get_token/3`（过时文档）。
-  - 这两处冗余无害，随 elib_uri_tests 的 DB 环境门一并留待后续死代码清理批次。
+- **同批死测试清理（#4，用户授权）**：`test/lib/elib_uri_tests.erl` `check_auth_valid_url_test_` 同因死测试——调 `elib_uri:check_auth`（导出表无此函数，0-caller 死代码已删）+ mock 已废 `auth_ds:get_token/3`，其 `error:undef` 一直被 `?TEST_WITH_APP` 的 `missing_config,pg_conf` setup gate 掩盖。已删除该用例并加注。
+- **剩余待办（本 Slice 不动，另批处理）**：
+  - `elib_uri_tests` 的 `download_success/http_error/network_error` 3 个 `?TEST_WITH_APP` 用例 = **DB 环境门预存失败**（`download/2` 函数存在，是真测试被 `missing_config,pg_conf` 挡；非死测试），需真 PG 骨架或宏改造，范围较大。
+  - `include/eunit_setup.hrl:155` 注释示例仍引用 `auth_ds:get_token/3`（过时文档，纯注释无害）。
+  - 更广的 eunit 预存失败普查（含 passport 7 项）建议另开低成本会话或子 agent 批量做。
 
 ## 4. Flutter S1 测试集
 

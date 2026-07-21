@@ -123,7 +123,8 @@ exclusion_param_with_list_url_test_() ->
 
 get_params_full_url_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Url = <<"https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375">>,
+        Url =
+            <<"https://a.imboy.pub/img/20235/20_15/chk7ef90poqbagho7410.jpg?s=dev&a=344af61665efff23&v=531378&width=375">>,
         {UrlMap, Params} = elib_uri:get_params(Url),
         ?assertMatch(#{host := _, path := _, query := _}, UrlMap),
         ?assertEqual(<<"dev">>, maps:get(<<"s">>, Params)),
@@ -252,33 +253,10 @@ download_network_error_test_() ->
         end
     end).
 
-%% ===================================================================
-%% check_auth/1 测试
-%% ===================================================================
-
-check_auth_valid_url_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        meck:new(elib_dt, [passthrough, no_link]),
-        meck:new(auth_ds, [passthrough, no_link]),
-        try
-            Url = <<"https://a.imboy.pub/img.jpg?s=dev&a=123">>,
-
-            meck:expect(elib_dt, utc, fun(second) -> 1704067200 end),
-            meck:expect(auth_ds, get_token, fun(assets, <<"dev">>, "1704067200") ->
-                <<"generated_token">>
-            end),
-
-            Result = elib_uri:check_auth(Url),
-
-            % 验证返回的URL包含参数
-            ?assert(binary:match(Result, <<"s=dev">>) =/= nomatch),
-            ?assert(binary:match(Result, <<"a=">>) =/= nomatch),
-            ?assert(binary:match(Result, <<"v=1704067200">>) =/= nomatch)
-        after
-            meck:unload(elib_dt),
-            meck:unload(auth_ds)
-        end
-    end).
+%% NOTE: check_auth/1 was removed from elib_uri (0-caller dead code); this
+%% test called elib_uri:check_auth (error:undef, masked by the pg_conf setup
+%% gate) and mocked the also-removed auth_ds:get_token/3. Removed as part of
+%% E2EE-019 baseline cleanup (see docs/e2ee/v2/evidence/E2EE-019-automated-baseline.md).
 
 %% ===================================================================
 %% 内部函数测试
