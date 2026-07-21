@@ -13,6 +13,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -include("error_code.hrl").
+-include("group_role.hrl").
 
 -export([
     all/0,
@@ -131,8 +132,8 @@ broadcast_cases() ->
 owner_can_publish_notice_succeeds(_Config) ->
     ct:log("测试群主发布公告成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    %% group_logic:add/4 建群返回 {ok, Gid}，创建者自动成为群主成员
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"群主公告"/utf8>>, <<"本群公告内容"/utf8>>),
 
@@ -156,12 +157,11 @@ owner_can_publish_notice_succeeds(_Config) ->
 admin_can_publish_notice_succeeds(_Config) ->
     ct:log("测试管理员发布公告成功"),
     {OwnerUid, AdminUid, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [AdminUid]),
+    %% 建群时把 AdminUid 作为初始成员加入（add/4 的 MemberUids 只接受 binary id）
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(AdminUid)]),
 
-    % 将 AdminUid 设置为管理员
-    ok = group_member_logic:set_role(Gid, OwnerUid, AdminUid, admin),
+    % 将 AdminUid 设置为管理员（update_role/4：操作者, 群, 目标, 角色整数）
+    ok = group_member_logic:update_role(OwnerUid, Gid, AdminUid, ?ROLE_ADMIN),
 
     NoticeId = insert_notice(Gid, AdminUid, <<"管理员公告"/utf8>>, <<"管理员公告内容"/utf8>>),
 
@@ -181,8 +181,7 @@ admin_can_publish_notice_succeeds(_Config) ->
 non_member_cannot_publish_notice_fails(_Config) ->
     ct:log("测试非群成员发布公告失败"),
     {OwnerUid, _, NonMemberUid} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     % 创建公告
     NoticeId = insert_notice(Gid, OwnerUid, <<"测试公告"/utf8>>, <<"公告内容"/utf8>>),
@@ -198,9 +197,7 @@ non_member_cannot_publish_notice_fails(_Config) ->
 regular_member_publish_notice_rejected(_Config) ->
     ct:log("测试普通成员发布公告被拒绝"),
     {OwnerUid, MemberUid, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告权限测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [MemberUid]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(MemberUid)]),
 
     % 群主创建公告
     NoticeId = insert_notice(Gid, OwnerUid, <<"群主公告"/utf8>>, <<"内容"/utf8>>),
@@ -220,9 +217,7 @@ regular_member_publish_notice_rejected(_Config) ->
 list_notices_with_pagination_succeeds(_Config) ->
     ct:log("测试查询群公告列表（分页）"),
     {OwnerUid, MemberUid, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告列表测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [MemberUid]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(MemberUid)]),
 
     % 插入三条公告
     _Id1 = insert_notice(Gid, OwnerUid, <<"公告1"/utf8>>, <<"内容1"/utf8>>),
@@ -247,8 +242,7 @@ list_notices_with_pagination_succeeds(_Config) ->
 non_member_list_notices_rejected(_Config) ->
     ct:log("测试非群成员查询公告列表被拒绝"),
     {OwnerUid, _, NonMemberUid} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告权限群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Result = group_notice_logic:list(NonMemberUid, Gid, 1, 10),
 
@@ -264,8 +258,7 @@ non_member_list_notices_rejected(_Config) ->
 owner_can_update_notice_succeeds(_Config) ->
     ct:log("测试群主更新公告成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告更新测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"原始标题"/utf8>>, <<"原始内容"/utf8>>),
 
@@ -294,9 +287,7 @@ owner_can_update_notice_succeeds(_Config) ->
 regular_member_cannot_update_notice_fails(_Config) ->
     ct:log("测试普通成员无法更新公告"),
     {OwnerUid, MemberUid, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告权限测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [MemberUid]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(MemberUid)]),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"群主公告"/utf8>>, <<"公告内容"/utf8>>),
 
@@ -315,8 +306,7 @@ regular_member_cannot_update_notice_fails(_Config) ->
 owner_can_delete_notice_succeeds(_Config) ->
     ct:log("测试群主删除公告成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告删除测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"待删除公告"/utf8>>, <<"公告内容"/utf8>>),
 
@@ -330,9 +320,7 @@ owner_can_delete_notice_succeeds(_Config) ->
 regular_member_cannot_delete_notice_fails(_Config) ->
     ct:log("测试普通成员无法删除公告"),
     {OwnerUid, MemberUid, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"公告删除权限群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [MemberUid]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(MemberUid)]),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"群主公告"/utf8>>, <<"内容"/utf8>>),
 
@@ -350,8 +338,7 @@ regular_member_cannot_delete_notice_fails(_Config) ->
 owner_can_pin_notice_succeeds(_Config) ->
     ct:log("测试群主置顶公告成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"置顶测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"待置顶公告"/utf8>>, <<"公告内容"/utf8>>),
 
@@ -365,8 +352,7 @@ owner_can_pin_notice_succeeds(_Config) ->
 owner_can_unpin_notice_succeeds(_Config) ->
     ct:log("测试群主取消置顶公告成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"置顶测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"置顶公告"/utf8>>, <<"公告内容"/utf8>>),
     ok = group_notice_logic:pin(OwnerUid, NoticeId),
@@ -385,9 +371,7 @@ owner_can_unpin_notice_succeeds(_Config) ->
 publish_notice_triggers_broadcast(_Config) ->
     ct:log("测试发布公告触发广播事件"),
     {OwnerUid, MemberUid, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"广播测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [MemberUid]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(MemberUid)]),
 
     NoticeId = insert_notice(Gid, OwnerUid, <<"广播测试公告"/utf8>>, <<"公告内容"/utf8>>),
 
@@ -457,25 +441,27 @@ insert_notice(Gid, Uid, Title, Body) ->
 
 unique_mobile(Prefix) ->
     Suffix = erlang:phash2(
-        {erlang:system_time(microsecond),
-         erlang:unique_integer([monotonic, positive]),
-         self()},
+        {erlang:system_time(microsecond), erlang:unique_integer([monotonic, positive]), self()},
         1000000
     ),
     list_to_binary(io_lib:format("~s~6..0B", [Prefix, Suffix])).
 
-cleanup_users([]) -> ok;
+cleanup_users([]) ->
+    ok;
 cleanup_users([Uid | Rest]) ->
     user_repo:delete(Uid),
     cleanup_users(Rest).
 
 cleanup_all_test_data() ->
-    Sql = <<"SELECT id FROM user WHERE mobile LIKE '13920%'">>,
+    Sql = <<"SELECT id FROM \"user\" WHERE mobile LIKE '13920%'">>,
     case elib_pg:query(Sql, []) of
         {ok, Rows} ->
-            lists:foreach(fun(#{<<"id">> := Id}) ->
-                user_repo:delete(Id)
-            end, Rows);
+            lists:foreach(
+                fun(#{<<"id">> := Id}) ->
+                    user_repo:delete(Id)
+                end,
+                Rows
+            );
         _ ->
             ok
     end.
