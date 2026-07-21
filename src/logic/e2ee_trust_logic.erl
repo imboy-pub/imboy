@@ -71,6 +71,12 @@ normalize(ActorUid, F) ->
     NonEmptyOk = valid_nonempty([
         ActorDeviceId, TargetDeviceId, TargetEd25519, EventId, ActorSig
     ]),
+    %% canonical 唯一分隔符是 \n；任一签名字段值内含 \n/\r 会破坏 key=value\n 结构，
+    %% 使编码非单射（同一 Ed25519 签名可对应多组字段拆分→信任伪造）。故拒收含换行
+    %% 的自由文本字段。ADR 16 §3.3.1。权威校验点在服务端（客户端守卫仅前置优化）。
+    NoCtrlOk = no_ctrl_chars([
+        ActorDeviceId, TargetDeviceId, TargetEd25519, FromState, ToState, EventId
+    ]),
     IntsOk =
         is_integer(TargetUid) andalso TargetUid > 0 andalso
             is_integer(IssuedAt) andalso IssuedAt >= 0 andalso
@@ -78,7 +84,8 @@ normalize(ActorUid, F) ->
             is_integer(ActorGen) andalso ActorGen >= 0 andalso
             is_integer(TargetVer) andalso TargetVer >= 0,
     case
-        NonEmptyOk andalso IntsOk andalso lists:member(Method, ?VALID_METHODS) andalso
+        NonEmptyOk andalso NoCtrlOk andalso IntsOk andalso
+            lists:member(Method, ?VALID_METHODS) andalso
             byte_size(EventId) =< 64
     of
         false ->
@@ -315,6 +322,16 @@ verify_signature(Ed25519B64, Canonical, SignatureB64) ->
 -spec valid_nonempty([binary()]) -> boolean().
 valid_nonempty(List) ->
     lists:all(fun(B) -> is_binary(B) andalso byte_size(B) > 0 end, List).
+
+%% canonical 单射守卫：字段值不得含 \n/\r（唯一记录分隔符）。见 normalize/2 注释。
+-spec no_ctrl_chars([binary()]) -> boolean().
+no_ctrl_chars(List) ->
+    lists:all(
+        fun(B) ->
+            is_binary(B) andalso binary:match(B, [<<"\n">>, <<"\r">>]) =:= nomatch
+        end,
+        List
+    ).
 
 -spec to_int(term()) -> integer() | invalid.
 to_int(I) when is_integer(I) -> I;

@@ -133,6 +133,15 @@ bad_signature_rejects_test() ->
         ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, '_'))
     end).
 
+%% canonical 单射守卫：字段值含 \n 破坏 key=value\n 结构（信任伪造），normalize 拒收。
+newline_in_field_rejected_test() ->
+    F1 = (base_fields())#{<<"target_device_id">> => <<"dev\ntarget_ed25519=x">>},
+    ?assertEqual({error, <<"bad_request">>}, record(F1)),
+    F2 = (base_fields())#{<<"target_ed25519">> => <<"AAAA\ntarget_ed25519=BBBB">>},
+    ?assertEqual({error, <<"bad_request">>}, record(F2)),
+    F3 = (base_fields())#{<<"event_id">> => <<"evt\n1">>},
+    ?assertEqual({error, <<"bad_request">>}, record(F3)).
+
 actor_device_not_registered_test() ->
     ?WITH_MECKS(fun() ->
         {_Pub, F} = sign(100, base_fields()),
