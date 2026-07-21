@@ -668,7 +668,7 @@ pay_order_normalizes_integer_order_no_before_logic_call_test_() ->
                 {'post', 1, fun(_Req) -> #{<<"order_no">> => 12345} end}
             ]},
             {channel_logic, [
-                {'pay_order', 2, fun(1001, <<"12345">>) -> ok end}
+                {'pay_order', 2, fun(1001, <<"12345">>) -> {ok, #{}} end}
             ]},
             {elib_response, [
                 {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
@@ -690,7 +690,7 @@ pay_order_normalizes_list_order_no_before_logic_call_test_() ->
                 {'post', 1, fun(_Req) -> #{<<"order_no">> => "  ORD-LIST-01  "} end}
             ]},
             {channel_logic, [
-                {'pay_order', 2, fun(1001, <<"ORD-LIST-01">>) -> ok end}
+                {'pay_order', 2, fun(1001, <<"ORD-LIST-01">>) -> {ok, #{}} end}
             ]},
             {elib_response, [
                 {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
@@ -2529,8 +2529,11 @@ stats_uses_path_channel_id_test_() ->
             {cowboy_req, [
                 {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
             ]},
+            {channel_logic_subscription, [
+                {'is_subscribed', 2, fun(_, _) -> true end}
+            ]},
             {channel_logic, [
-                {'get_channel_stats', 1, fun(<<"ch_hash_path">>) ->
+                {'get_channel_stats', 2, fun(1001, <<"ch_hash_path">>) ->
                     {ok, #{<<"subscriber_count">> => 42}}
                 end}
             ]},
@@ -2578,6 +2581,9 @@ subscribers_parses_cursor_and_limit_test_() ->
                 {'parse_qs', 1, fun(_Req) ->
                     [{<<"cursor">>, <<"99">>}, {<<"limit">>, <<"10">>}]
                 end}
+            ]},
+            {channel_logic_subscription, [
+                {'is_subscribed', 2, fun(_, _) -> true end}
             ]},
             {channel_logic, [
                 {'get_subscribers', 3, fun(<<"ch_hash_path">>, 99, 10) ->
@@ -3368,6 +3374,9 @@ admins_uses_path_channel_id_test_() ->
         [
             {cowboy_req, [
                 {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
+            ]},
+            {channel_logic_subscription, [
+                {'is_subscribed', 2, fun(_, _) -> true end}
             ]},
             {channel_logic, [
                 {'get_admins', 1, fun(<<"ch_hash_path">>) ->
