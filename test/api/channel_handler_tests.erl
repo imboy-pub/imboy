@@ -216,7 +216,7 @@ revoke_message_uses_path_params_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(revoke_message, Req, State),
+            Result = channel_handler_message:handle_action(revoke_message, Req, State),
             ?assertEqual({ok_resp, #{}}, Result)
         end
     ).
@@ -243,7 +243,7 @@ revoke_message_returns_error_when_message_id_missing_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(revoke_message, Req, State),
+            Result = channel_handler_message:handle_action(revoke_message, Req, State),
             ?assertEqual({error_resp, <<"消息ID不能为空"/utf8>>}, Result)
         end
     ).
@@ -322,7 +322,7 @@ remove_admin_uses_path_params_on_delete_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_admin, Req, State),
+            Result = channel_handler_admin:handle_action(remove_admin, Req, State),
             ?assertEqual({ok_resp, success, #{}}, Result)
         end
     ).
@@ -355,7 +355,7 @@ remove_admin_returns_error_when_user_id_decode_unexpected_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_admin, Req, State),
+            Result = channel_handler_admin:handle_action(remove_admin, Req, State),
             ?assertEqual({error_resp, <<"用户ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, remove_admin, 3))
         end
@@ -388,7 +388,7 @@ remove_admin_put_delegates_to_update_admin_role_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_admin, Req, State),
+            Result = channel_handler_admin:handle_action(remove_admin, Req, State),
             ?assertEqual({ok_resp, success, #{}}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, remove_admin, 3))
         end
@@ -423,7 +423,7 @@ update_admin_role_prefers_path_params_over_body_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(update_admin_role, Req, State),
+            Result = channel_handler_admin:handle_action(update_admin_role, Req, State),
             ?assertEqual({ok_resp, success, #{}}, Result)
         end
     ).
@@ -459,7 +459,7 @@ update_admin_role_without_user_id_returns_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(update_admin_role, Req, State),
+            Result = channel_handler_admin:handle_action(update_admin_role, Req, State),
             ?assertEqual({error_resp, <<"用户ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, update_admin_role, 4))
         end
@@ -494,7 +494,7 @@ update_admin_role_returns_error_when_user_id_decode_unexpected_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(update_admin_role, Req, State),
+            Result = channel_handler_admin:handle_action(update_admin_role, Req, State),
             ?assertEqual({error_resp, <<"用户ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, update_admin_role, 4))
         end
@@ -524,7 +524,7 @@ create_invitation_prefers_path_channel_id_over_body_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertMatch({ok_resp, success, #{<<"id">> := <<"inv_1">>}}, Result)
         end
     ).
@@ -550,7 +550,7 @@ create_invitation_without_invitee_uid_returns_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertEqual({error_resp, <<"被邀请人ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, create_invitation, 3))
         end
@@ -577,7 +577,7 @@ create_invitation_returns_error_when_invitee_uid_decode_unexpected_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertEqual({error_resp, <<"被邀请人ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, create_invitation, 3))
         end
@@ -608,7 +608,7 @@ create_order_prefers_path_channel_id_over_body_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertMatch({ok_resp, #{<<"order_no">> := <<"ORD001">>}}, Result)
         end
     ).
@@ -631,7 +631,7 @@ pay_order_without_order_no_returns_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"订单号不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, pay_order, 2))
         end
@@ -655,7 +655,7 @@ pay_order_with_whitespace_order_no_returns_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"订单号不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, pay_order, 2))
         end
@@ -677,7 +677,7 @@ pay_order_normalizes_integer_order_no_before_logic_call_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_logic, pay_order, 2))
         end
@@ -699,7 +699,7 @@ pay_order_normalizes_list_order_no_before_logic_call_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_logic, pay_order, 2))
         end
@@ -720,7 +720,7 @@ my_orders_passes_current_uid_to_logic_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(my_orders, Req, State),
+            Result = channel_handler_order:handle_action(my_orders, Req, State),
             ?assertMatch({ok_resp, #{list := [#{<<"order_no">> := <<"ORD001">>}]}}, Result)
         end
     ).
@@ -740,7 +740,7 @@ my_orders_propagates_logic_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(my_orders, Req, State),
+            Result = channel_handler_order:handle_action(my_orders, Req, State),
             ?assertEqual({error_resp, <<"db_down">>}, Result)
         end
     ).
@@ -765,7 +765,7 @@ remove_subscriber_uses_path_params_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_subscriber, Req, State),
+            Result = channel_handler_admin:handle_action(remove_subscriber, Req, State),
             ?assertEqual({ok_resp, success, #{}}, Result)
         end
     ).
@@ -794,7 +794,7 @@ remove_subscriber_returns_error_when_user_id_decode_unexpected_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_subscriber, Req, State),
+            Result = channel_handler_admin:handle_action(remove_subscriber, Req, State),
             ?assertEqual({error_resp, <<"用户ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, remove_subscriber, 3))
         end
@@ -848,7 +848,7 @@ create_invitation_handler_logic_repo_chain_success_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertMatch({ok_resp, _}, Result),
             {ok_resp, Invitation} = Result,
             ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
@@ -888,7 +888,7 @@ create_invitation_handler_logic_repo_chain_channel_not_found_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertEqual({error_resp, <<"频道不存在"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -928,7 +928,7 @@ create_invitation_handler_logic_repo_chain_channel_disabled_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertEqual({error_resp, <<"频道已禁用或删除"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -968,7 +968,7 @@ create_invitation_handler_logic_repo_chain_non_private_channel_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertEqual({error_resp, <<"只有私有频道支持邀请功能"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -1011,7 +1011,7 @@ create_invitation_handler_logic_repo_chain_inviter_not_subscribed_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertEqual({error_resp, <<"您不是频道订阅者，无法邀请他人"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
             ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
@@ -1055,7 +1055,7 @@ create_invitation_handler_logic_repo_chain_ds_binary_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertEqual({error_resp, <<"邀请创建失败"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_invitation, 3)),
             ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
@@ -1099,7 +1099,7 @@ create_invitation_handler_logic_repo_chain_ds_atom_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertMatch({error_resp, _}, Result),
             {error_resp, ErrMsg} = Result,
             ?assert(is_binary(ErrMsg)),
@@ -1144,7 +1144,7 @@ create_invitation_handler_logic_repo_chain_invitation_load_failed_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(create_invitation, Req, State),
             ?assertMatch({error_resp, _}, Result),
             {error_resp, ErrMsg} = Result,
             ?assert(is_binary(ErrMsg)),
@@ -1184,7 +1184,7 @@ accept_invitation_handler_logic_ds_chain_already_accepted_is_success_and_silent_
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(accept_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(accept_invitation, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
             ?assertEqual(0, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
@@ -1227,7 +1227,7 @@ accept_invitation_handler_logic_ds_chain_notify_crash_still_returns_success_test
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(accept_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(accept_invitation, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, accept_invitation, 2)),
             ?assertEqual(1, meck:num_calls(channel_invitation_repo, find_by_id, 1)),
@@ -1271,7 +1271,7 @@ create_order_handler_logic_repo_chain_success_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertMatch({ok_resp, _}, Result),
             {ok_resp, Order} = Result,
             ?assertEqual(11, maps:get(<<"channel_id">>, Order)),
@@ -1307,7 +1307,7 @@ create_order_handler_logic_repo_chain_channel_not_found_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertEqual({error_resp, <<"频道不存在"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3)),
             ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
@@ -1342,7 +1342,7 @@ create_order_handler_logic_repo_chain_channel_lookup_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertEqual({error_resp, <<"db_down">>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3)),
             ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
@@ -1379,7 +1379,7 @@ create_order_handler_logic_repo_chain_non_paid_channel_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertEqual({error_resp, <<"只有付费频道支持购买"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3)),
             ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
@@ -1414,7 +1414,7 @@ create_order_handler_logic_repo_chain_order_load_failed_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertMatch({error_resp, _}, Result),
             {error_resp, ErrMsg} = Result,
             ?assert(is_binary(ErrMsg)),
@@ -1454,7 +1454,7 @@ create_order_handler_logic_repo_chain_channel_disabled_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertEqual({error_resp, <<"频道已禁用或删除"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, create_order, 3)),
             ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
@@ -1491,7 +1491,7 @@ create_order_handler_logic_repo_chain_ds_binary_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertEqual({error_resp, <<"订单创建失败"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, create_order, 3)),
             ?assertEqual(0, meck:num_calls(channel_order_repo, find_by_order_no, 1))
@@ -1528,7 +1528,7 @@ create_order_handler_logic_repo_chain_ds_atom_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(create_order, Req, State),
+            Result = channel_handler_order:handle_action(create_order, Req, State),
             ?assertMatch({error_resp, _}, Result),
             {error_resp, ErrMsg} = Result,
             ?assert(is_binary(ErrMsg)),
@@ -1568,7 +1568,7 @@ update_admin_role_handler_logic_repo_chain_success_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(update_admin_role, Req, State),
+            Result = channel_handler_admin:handle_action(update_admin_role, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role, 3))
         end
@@ -1617,7 +1617,7 @@ pay_order_handler_logic_repo_chain_success_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
             ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7))
@@ -1672,7 +1672,7 @@ remove_subscriber_handler_logic_repo_chain_success_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_subscriber, Req, State),
+            Result = channel_handler_admin:handle_action(remove_subscriber, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
             ?assertEqual(1, meck:num_calls(channel_repo, increment_subscribers, 3)),
@@ -1710,7 +1710,7 @@ pay_order_handler_logic_repo_chain_owner_mismatch_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"无权操作此订单"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -1738,7 +1738,7 @@ pay_order_handler_logic_repo_chain_order_not_found_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"订单不存在"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
         end
@@ -1765,7 +1765,7 @@ pay_order_handler_logic_repo_chain_lookup_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"db_down">>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscribe_ds, pay_order, 2))
         end
@@ -1803,7 +1803,7 @@ pay_order_handler_logic_repo_chain_ds_atom_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertMatch({error_resp, _}, Result),
             {error_resp, ErrMsg} = Result,
             ?assert(is_binary(ErrMsg)),
@@ -1845,7 +1845,7 @@ pay_order_handler_logic_repo_chain_ds_binary_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"支付失败"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -1886,7 +1886,7 @@ pay_order_handler_logic_repo_chain_already_paid_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"订单已支付"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -1927,7 +1927,7 @@ pay_order_handler_logic_repo_chain_not_found_or_expired_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({error_resp, <<"订单不存在或已过期"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
             ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
@@ -1972,7 +1972,7 @@ pay_order_handler_logic_repo_chain_notify_failed_still_returns_success_test_() -
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
             ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7)),
@@ -2013,7 +2013,7 @@ pay_order_handler_logic_repo_chain_notify_crash_still_returns_success_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pay_order, Req, State),
+            Result = channel_handler_order:handle_action(pay_order, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscribe_ds, pay_order, 2)),
             ?assertEqual(2, meck:num_calls(msg_s2c_ds, send, 7)),
@@ -2053,7 +2053,7 @@ remove_subscriber_handler_logic_repo_chain_permission_denied_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_subscriber, Req, State),
+            Result = channel_handler_admin:handle_action(remove_subscriber, Req, State),
             ?assertEqual({error_resp, <<"无权限操作，需要管理员及以上权限"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_subscription_repo, delete, 3)),
             ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3))
@@ -2101,7 +2101,7 @@ remove_subscriber_handler_logic_repo_chain_delete_failed_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_subscriber, Req, State),
+            Result = channel_handler_admin:handle_action(remove_subscriber, Req, State),
             ?assertEqual({error_resp, <<"移除订阅者失败"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
             ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3))
@@ -2152,7 +2152,7 @@ remove_subscriber_handler_logic_repo_chain_noop_is_idempotent_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_subscriber, Req, State),
+            Result = channel_handler_admin:handle_action(remove_subscriber, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_subscription_repo, delete, 3)),
             ?assertEqual(0, meck:num_calls(channel_repo, increment_subscribers, 3)),
@@ -2190,7 +2190,7 @@ update_admin_role_handler_logic_repo_chain_permission_denied_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(update_admin_role, Req, State),
+            Result = channel_handler_admin:handle_action(update_admin_role, Req, State),
             ?assertEqual({error_resp, <<"无权限操作，仅创建者可修改角色"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_admin_repo, update_role, 3))
         end
@@ -2226,7 +2226,7 @@ update_admin_role_handler_logic_repo_chain_update_failed_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(update_admin_role, Req, State),
+            Result = channel_handler_admin:handle_action(update_admin_role, Req, State),
             ?assertEqual({error_resp, <<"更新角色失败"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role, 3))
         end
@@ -2332,7 +2332,7 @@ remove_reaction_prefers_path_reaction_type_over_body_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(remove_reaction, Req, State),
+            Result = channel_handler_message:handle_action(remove_reaction, Req, State),
             ?assertEqual({ok_resp, #{}}, Result)
         end
     ).
@@ -2591,7 +2591,7 @@ subscribers_parses_cursor_and_limit_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(subscribers, Req, State),
+            Result = channel_handler_message:handle_action(subscribers, Req, State),
             ?assertEqual(
                 {ok_resp, #{list => [#{<<"user_id">> => <<"u_1">>}], cursor => 99, limit => 10}},
                 Result
@@ -2617,7 +2617,7 @@ sync_parses_since_and_passes_current_uid_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(sync, Req, State),
+            Result = channel_handler_admin:handle_action(sync, Req, State),
             ?assertEqual({ok_resp, #{channels => [], server_time => 1700000001000}}, Result)
         end
     ).
@@ -2994,7 +2994,7 @@ record_view_uses_path_params_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(record_view, Req, State),
+            Result = channel_handler_message:handle_action(record_view, Req, State),
             ?assertEqual({ok_resp, #{}}, Result)
         end
     ).
@@ -3026,7 +3026,7 @@ add_reaction_uses_path_params_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(add_reaction, Req, State),
+            Result = channel_handler_message:handle_action(add_reaction, Req, State),
             ?assertEqual({ok_resp, #{}}, Result)
         end
     ).
@@ -3052,7 +3052,7 @@ pin_message_uses_path_message_id_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(pin_message, Req, State),
+            Result = channel_handler_message:handle_action(pin_message, Req, State),
             ?assertMatch({ok_resp, #{<<"pinned">> := true}}, Result)
         end
     ).
@@ -3073,7 +3073,7 @@ delete_message_uses_path_message_id_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(delete_message, Req, State),
+            Result = channel_handler_message:handle_action(delete_message, Req, State),
             ?assertEqual({ok_resp, #{}}, Result)
         end
     ).
@@ -3096,7 +3096,7 @@ delete_message_returns_error_when_message_id_missing_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(delete_message, Req, State),
+            Result = channel_handler_message:handle_action(delete_message, Req, State),
             ?assertEqual({error_resp, <<"消息ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, delete_message, 2))
         end
@@ -3120,7 +3120,7 @@ delete_message_propagates_logic_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(delete_message, Req, State),
+            Result = channel_handler_message:handle_action(delete_message, Req, State),
             ?assertEqual({error_resp, <<"无权限删除此消息"/utf8>>}, Result)
         end
     ).
@@ -3166,7 +3166,7 @@ delete_message_handler_logic_repo_chain_notify_failed_still_returns_success_test
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(delete_message, Req, State),
+            Result = channel_handler_message:handle_action(delete_message, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
             ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7)),
@@ -3212,7 +3212,7 @@ delete_message_handler_logic_repo_chain_notify_crash_still_returns_success_test_
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(delete_message, Req, State),
+            Result = channel_handler_message:handle_action(delete_message, Req, State),
             ?assertEqual({ok_resp, #{}}, Result),
             ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
             ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7)),
@@ -3238,7 +3238,7 @@ get_order_uses_path_order_no_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(get_order, Req, State),
+            Result = channel_handler_order:handle_action(get_order, Req, State),
             ?assertEqual({ok_resp, #{<<"order_no">> => <<"ORD001">>}}, Result)
         end
     ).
@@ -3261,7 +3261,7 @@ get_order_returns_error_when_order_no_missing_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(get_order, Req, State),
+            Result = channel_handler_order:handle_action(get_order, Req, State),
             ?assertEqual({error_resp, <<"订单号不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, get_order, 2))
         end
@@ -3285,7 +3285,7 @@ get_order_returns_error_when_order_no_blank_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(get_order, Req, State),
+            Result = channel_handler_order:handle_action(get_order, Req, State),
             ?assertEqual({error_resp, <<"订单号不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, get_order, 2))
         end
@@ -3309,7 +3309,7 @@ get_order_normalizes_integer_order_no_before_logic_call_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(get_order, Req, State),
+            Result = channel_handler_order:handle_action(get_order, Req, State),
             ?assertEqual({ok_resp, #{<<"order_no">> => <<"12345">>}}, Result),
             ?assertEqual(1, meck:num_calls(channel_logic, get_order, 2))
         end
@@ -3333,7 +3333,7 @@ get_order_normalizes_list_order_no_before_logic_call_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(get_order, Req, State),
+            Result = channel_handler_order:handle_action(get_order, Req, State),
             ?assertEqual({ok_resp, #{<<"order_no">> => <<"ORD-LIST-GET">>}}, Result),
             ?assertEqual(1, meck:num_calls(channel_logic, get_order, 2))
         end
@@ -3357,7 +3357,7 @@ get_order_propagates_logic_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(get_order, Req, State),
+            Result = channel_handler_order:handle_action(get_order, Req, State),
             ?assertEqual({error_resp, <<"db_down">>}, Result),
             ?assertEqual(1, meck:num_calls(channel_logic, get_order, 2))
         end
@@ -3380,7 +3380,7 @@ admins_uses_path_channel_id_test_() ->
         ],
         fun() ->
             Req = req_mock(),
-            Result = channel_handler:handle_action(admins, Req, #{}),
+            Result = channel_handler_admin:handle_action(admins, Req, #{}),
             ?assertEqual({ok_resp, #{list => [#{<<"user_id">> => <<"uid_1">>}]}}, Result)
         end
     ).
@@ -3401,7 +3401,7 @@ accept_invitation_decodes_invitation_id_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(accept_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(accept_invitation, Req, State),
             ?assertEqual({ok_resp, #{}}, Result)
         end
     ).
@@ -3424,7 +3424,7 @@ accept_invitation_returns_error_when_invitation_id_missing_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(accept_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(accept_invitation, Req, State),
             ?assertEqual({error_resp, <<"邀请ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, accept_invitation, 2))
         end
@@ -3448,7 +3448,7 @@ accept_invitation_returns_error_when_invitation_id_decode_unexpected_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(accept_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(accept_invitation, Req, State),
             ?assertEqual({error_resp, <<"邀请ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, accept_invitation, 2))
         end
@@ -3470,7 +3470,7 @@ accept_invitation_returns_logic_error_message_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(accept_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(accept_invitation, Req, State),
             ?assertEqual({error_resp, <<"邀请不存在或已过期"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_logic, accept_invitation, 2))
         end
@@ -3492,8 +3492,8 @@ accept_invitation_retry_is_idempotent_at_handler_boundary_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            First = channel_handler:handle_action(accept_invitation, Req, State),
-            Second = channel_handler:handle_action(accept_invitation, Req, State),
+            First = channel_handler_admin:handle_action(accept_invitation, Req, State),
+            Second = channel_handler_admin:handle_action(accept_invitation, Req, State),
             ?assertEqual({ok_resp, #{}}, First),
             ?assertEqual({ok_resp, #{}}, Second),
             ?assertEqual(2, meck:num_calls(channel_logic, accept_invitation, 2))
@@ -3514,7 +3514,7 @@ reject_invitation_decodes_invitation_id_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(reject_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(reject_invitation, Req, State),
             ?assertEqual({ok_resp, success, #{}}, Result)
         end
     ).
@@ -3537,7 +3537,7 @@ reject_invitation_returns_error_when_invitation_id_missing_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(reject_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(reject_invitation, Req, State),
             ?assertEqual({error_resp, <<"邀请ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, reject_invitation, 2))
         end
@@ -3561,7 +3561,7 @@ reject_invitation_returns_error_when_invitation_id_decode_unexpected_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(reject_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(reject_invitation, Req, State),
             ?assertEqual({error_resp, <<"邀请ID不能为空"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_logic, reject_invitation, 2))
         end
@@ -3583,7 +3583,7 @@ reject_invitation_returns_logic_error_message_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(reject_invitation, Req, State),
+            Result = channel_handler_admin:handle_action(reject_invitation, Req, State),
             ?assertEqual({error_resp, <<"邀请不存在或已过期"/utf8>>}, Result),
             ?assertEqual(1, meck:num_calls(channel_logic, reject_invitation, 2))
         end
@@ -3605,8 +3605,8 @@ reject_invitation_retry_is_idempotent_at_handler_boundary_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            First = channel_handler:handle_action(reject_invitation, Req, State),
-            Second = channel_handler:handle_action(reject_invitation, Req, State),
+            First = channel_handler_admin:handle_action(reject_invitation, Req, State),
+            Second = channel_handler_admin:handle_action(reject_invitation, Req, State),
             ?assertEqual({ok_resp, #{}}, First),
             ?assertEqual({ok_resp, #{}}, Second),
             ?assertEqual(2, meck:num_calls(channel_logic, reject_invitation, 2))
@@ -3628,7 +3628,7 @@ my_invitations_passes_current_uid_to_logic_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(my_invitations, Req, State),
+            Result = channel_handler_admin:handle_action(my_invitations, Req, State),
             ?assertEqual({ok_resp, #{list => [#{<<"id">> => <<"inv_1">>}]}}, Result)
         end
     ).
@@ -3648,7 +3648,7 @@ my_invitations_propagates_logic_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(my_invitations, Req, State),
+            Result = channel_handler_admin:handle_action(my_invitations, Req, State),
             ?assertEqual({error_resp, <<"db_down">>}, Result)
         end
     ).
@@ -3668,7 +3668,7 @@ sent_invitations_passes_current_uid_to_logic_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(sent_invitations, Req, State),
+            Result = channel_handler_admin:handle_action(sent_invitations, Req, State),
             ?assertEqual({ok_resp, #{list => [#{<<"id">> => <<"inv_2">>}]}}, Result)
         end
     ).
@@ -3688,7 +3688,7 @@ sent_invitations_propagates_logic_error_test_() ->
         fun() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
-            Result = channel_handler:handle_action(sent_invitations, Req, State),
+            Result = channel_handler_admin:handle_action(sent_invitations, Req, State),
             ?assertEqual({error_resp, <<"db_down">>}, Result)
         end
     ).
