@@ -75,7 +75,8 @@ idle_timeout_returns_default_value_test_() ->
     ?TEST_SIMPLE(fun() ->
         Uid = 1,
         Result = websocket_ds:idle_timeout(Uid),
-        ?assertEqual(128000, Result)
+        %% 生产默认 config_ds:env(ws_idle_timeout_ms, 180000)，未在任何 config 覆盖
+        ?assertEqual(180000, Result)
     end).
 
 idle_timeout_with_different_uid_test_() ->
