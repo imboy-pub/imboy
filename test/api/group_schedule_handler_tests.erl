@@ -433,6 +433,7 @@ init_list_with_time_range_query_compatible_test_() ->
         feature_gate_bypass_mocks() ++
             [
                 {cowboy_req, [
+                    {'method', 1, fun(_Req) -> <<"GET">> end},
                     {'parse_qs', 1, fun(_Req) ->
                         [
                             {<<"group_id">>, <<"9">>},
@@ -441,12 +442,6 @@ init_list_with_time_range_query_compatible_test_() ->
                             {<<"page">>, <<"1">>},
                             {<<"size">>, <<"20">>}
                         ]
-                    end}
-                ]},
-                {elib_param, [
-                    {'int', 3, fun
-                        (page, _Qs, 1) -> 1;
-                        (size, _Qs, 20) -> 20
                     end}
                 ]},
                 {group_schedule_logic, [
