@@ -445,7 +445,7 @@ login_post_success_default_redirect_test_() ->
             {ok, Req, _State} = adm_passport_handler:init(MockReq, #{action => login}),
 
             ResponseData = maps:get(response_data, Req, #{}),
-            ?ASSERT_EQUAL(<<"/api/adm/">>, maps:get(<<"next">>, ResponseData))
+            ?ASSERT_EQUAL(<<"/adm/">>, maps:get(<<"next">>, ResponseData))
         end
     ).
 
@@ -999,7 +999,7 @@ logout_post_clears_auth_cookies_test_() ->
                 {'set_resp_cookie', 4, fun(Name, Value, Req, Opts) ->
                     ?assertEqual(<<>>, Value),
                     ?assertEqual(0, maps:get(max_age, Opts)),
-                    ?assertEqual(<<"/adm">>, maps:get(path, Opts)),
+                    ?assertEqual(<<"/">>, maps:get(path, Opts)),
                     Cleared = maps:get(cleared_cookies, Req, []),
                     Req#{cleared_cookies => [Name | Cleared]}
                 end}

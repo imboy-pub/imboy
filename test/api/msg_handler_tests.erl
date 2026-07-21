@@ -83,13 +83,13 @@ offline_with_default_parameters_test_() ->
                 {'query', 2, fun(_Sql, _Params) -> {ok, [#{<<"count">> => 0}]} end}
             ]},
             {msg_c2c_ds, [
-                {'read_msg', 3, fun(_Uid, _Limit, _LastMsgAt) -> [] end}
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _LastMsgAt) -> [] end}
             ]},
             {msg_c2g_ds, [
                 {'read_msg', 3, fun(_Uid, _Limit, _LastMsgAt) -> [] end}
             ]},
             {msg_s2c_ds, [
-                {'read_msg', 3, fun(_Uid, _Limit, _LastMsgAt) -> [] end}
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _LastMsgAt) -> [] end}
             ]},
             {elib_response, [
                 {'success', 2, fun(_Req, Data) ->
@@ -161,7 +161,7 @@ offline_with_custom_parameters_test_() ->
                 end}
             ]},
             {msg_c2c_ds, [
-                {'read_msg', 3, fun(12345, 500, <<"ts-c2c">>) ->
+                {'read_msg_for_device', 4, fun(12345, _DID, 500, <<"ts-c2c">>) ->
                     [
                         #{
                             <<"id">> => 1,
@@ -192,7 +192,7 @@ offline_with_custom_parameters_test_() ->
                 end}
             ]},
             {msg_s2c_ds, [
-                {'read_msg', 3, fun(12345, 500, <<"ts-s2c">>) ->
+                {'read_msg_for_device', 4, fun(12345, _DID, 500, <<"ts-s2c">>) ->
                     [
                         #{
                             <<"id">> => 3,
