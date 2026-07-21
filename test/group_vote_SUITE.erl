@@ -123,8 +123,8 @@ lifecycle_cases() ->
 create_single_choice_vote_succeeds(_Config) ->
     ct:log("测试创建单选投票成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"投票测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    %% group_logic:add/4 建群返回 {ok, Gid}（Gid 为整数），创建者自动成为群主成员
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Title = <<"周末去哪里？"/utf8>>,
     Options = [
@@ -148,8 +148,7 @@ create_single_choice_vote_succeeds(_Config) ->
 create_multi_choice_vote_succeeds(_Config) ->
     ct:log("测试创建多选投票成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"投票测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Title = <<"最喜欢的编程语言（可多选）"/utf8>>,
     Options = [
@@ -172,8 +171,7 @@ create_multi_choice_vote_succeeds(_Config) ->
 create_vote_missing_title_fails(_Config) ->
     ct:log("测试创建缺少标题的投票失败"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"投票测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Options = [#{option_text => <<"选项A">>, sort_order => 1}],
     Extra = #{vote_type => 1, is_anonymous => false, end_at => undefined},
@@ -188,8 +186,7 @@ create_vote_missing_title_fails(_Config) ->
 create_vote_empty_options_fails(_Config) ->
     ct:log("测试创建无选项投票失败"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"投票测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Title = <<"无效投票"/utf8>>,
     Extra = #{vote_type => 1, is_anonymous => false, end_at => undefined},
@@ -226,9 +223,8 @@ cast_single_choice_vote_succeeds(_Config) ->
 cast_multi_choice_vote_succeeds(_Config) ->
     ct:log("测试多选投票成功"),
     {OwnerUid, Uid1, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"多选投票群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [Uid1]),
+    %% 建群时把 Uid1 作为初始成员一并加入（add/4 的 MemberUids 只接受 binary id）
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(Uid1)]),
 
     Title = <<"多选投票"/utf8>>,
     Options = [
@@ -288,18 +284,22 @@ single_choice_with_multiple_options_fails(_Config) ->
     {_Gid, VoteId, OptionIds} = setup_single_choice_vote(OwnerUid, Uid1),
 
     % 单选投票选两个选项
-    [OptionId1, OptionId2 | _] = case length(OptionIds) >= 2 of
-        true -> OptionIds;
-        false ->
-            % 只有一个选项时补充一个假 id（会触发 invalid_option 或 single_choice_requires_one_option）
-            OptionIds ++ [<<"fake_extra">>]
-    end,
+    [OptionId1, OptionId2 | _] =
+        case length(OptionIds) >= 2 of
+            true ->
+                OptionIds;
+            false ->
+                % 只有一个选项时补充一个假 id（会触发 invalid_option 或 single_choice_requires_one_option）
+                OptionIds ++ [<<"fake_extra">>]
+        end,
 
     Result = group_vote_logic:cast_vote(VoteId, Uid1, [OptionId1, OptionId2]),
 
     % 期望返回单选限制错误或无效选项错误
-    ?assert(Result =:= {error, single_choice_requires_one_option}
-            orelse Result =:= {error, invalid_option}),
+    ?assert(
+        Result =:= {error, single_choice_requires_one_option} orelse
+            Result =:= {error, invalid_option}
+    ),
 
     cleanup_users([OwnerUid, Uid1]),
     {comment, "单选投票选多个选项被拒绝"}.
@@ -307,9 +307,7 @@ single_choice_with_multiple_options_fails(_Config) ->
 multi_choice_with_one_option_fails(_Config) ->
     ct:log("测试多选投票仅选一个选项失败"),
     {OwnerUid, Uid1, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"多选投票群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [Uid1]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(Uid1)]),
 
     Options = [
         #{option_text => <<"选项X">>, sort_order => 1},
@@ -359,8 +357,7 @@ get_vote_detail_returns_result(_Config) ->
 list_votes_in_group_succeeds(_Config) ->
     ct:log("测试列出群内所有投票"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"投票列表测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     % 创建两个投票
     Options = [
@@ -411,8 +408,8 @@ cast_vote_on_closed_vote_fails(_Config) ->
     {OwnerUid, Uid1, _} = create_three_users(),
     {_Gid, VoteId, OptionIds} = setup_single_choice_vote(OwnerUid, Uid1),
 
-    % 关闭投票
-    ok = group_vote_logic:close_vote(VoteId),
+    %% 关闭投票（close_vote/2：仅创建者或群管理员可操作，OwnerUid 为创建者）
+    ok = group_vote_logic:close_vote(VoteId, OwnerUid),
 
     % 尝试投票
     [OptionId1 | _] = OptionIds,
@@ -426,9 +423,7 @@ cast_vote_on_closed_vote_fails(_Config) ->
 cast_vote_after_deadline_fails(_Config) ->
     ct:log("测试投票截止时间验证"),
     {OwnerUid, Uid1, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"截止测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [Uid1]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(Uid1)]),
 
     % 创建一个已过期的投票（截止时间为过去）
     Options = [
@@ -457,8 +452,7 @@ cast_vote_after_deadline_fails(_Config) ->
 close_vote_by_creator_succeeds(_Config) ->
     ct:log("测试创建者关闭投票成功"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"关闭投票测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Options = [
         #{option_text => <<"选项1">>, sort_order => 1},
@@ -468,14 +462,15 @@ close_vote_by_creator_succeeds(_Config) ->
     {ok, Vote} = group_vote_logic:create_vote(Gid, OwnerUid, <<"待关闭投票"/utf8>>, Options, Extra, #{}),
     VoteId = maps:get(<<"vote_id">>, Vote),
 
-    Result = group_vote_logic:close_vote(VoteId),
+    Result = group_vote_logic:close_vote(VoteId, OwnerUid),
 
     ?assertEqual(ok, Result),
 
     % 再次查询验证状态
     {ok, Detail} = group_vote_logic:get_vote_detail(VoteId),
     Status = maps:get(<<"status">>, Detail),
-    ?assertEqual(2, Status),  %% 2 = closed
+    %% 2 = closed
+    ?assertEqual(2, Status),
 
     cleanup_users([OwnerUid]),
     {comment, "关闭投票成功"}.
@@ -483,8 +478,7 @@ close_vote_by_creator_succeeds(_Config) ->
 close_already_closed_vote_fails(_Config) ->
     ct:log("测试关闭已关闭的投票失败"),
     {OwnerUid, _, _} = create_three_users(),
-    {ok, Group} = group_logic:create(<<"重复关闭测试群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Options = [
         #{option_text => <<"选项1">>, sort_order => 1},
@@ -494,8 +488,8 @@ close_already_closed_vote_fails(_Config) ->
     {ok, Vote} = group_vote_logic:create_vote(Gid, OwnerUid, <<"测试投票"/utf8>>, Options, Extra, #{}),
     VoteId = maps:get(<<"vote_id">>, Vote),
 
-    ok = group_vote_logic:close_vote(VoteId),
-    Result = group_vote_logic:close_vote(VoteId),
+    ok = group_vote_logic:close_vote(VoteId, OwnerUid),
+    Result = group_vote_logic:close_vote(VoteId, OwnerUid),
 
     ?assertMatch({error, vote_already_closed}, Result),
 
@@ -528,10 +522,9 @@ create_three_users() ->
     {Uid1, Uid2, Uid3}.
 
 %% 创建单选投票并返回 {Gid, VoteId, OptionIds}
+%% 建群时把 MemberUid 作为初始成员一并加入（add/4 的 MemberUids 只接受 binary id）
 setup_single_choice_vote(OwnerUid, MemberUid) ->
-    {ok, Group} = group_logic:create(<<"单选投票群"/utf8>>, OwnerUid),
-    Gid = maps:get(<<"id">>, Group),
-    ok = group_logic:invite_members(Gid, OwnerUid, [MemberUid]),
+    {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(MemberUid)]),
 
     Options = [
         #{option_text => <<"选项A">>, sort_order => 1},
@@ -539,7 +532,9 @@ setup_single_choice_vote(OwnerUid, MemberUid) ->
         #{option_text => <<"选项C">>, sort_order => 3}
     ],
     Extra = #{vote_type => 1, is_anonymous => false, end_at => undefined},
-    {ok, Vote} = group_vote_logic:create_vote(Gid, OwnerUid, <<"单选投票测试"/utf8>>, Options, Extra, #{}),
+    {ok, Vote} = group_vote_logic:create_vote(
+        Gid, OwnerUid, <<"单选投票测试"/utf8>>, Options, Extra, #{}
+    ),
     VoteId = maps:get(<<"vote_id">>, Vote),
 
     {ok, Detail} = group_vote_logic:get_vote_detail(VoteId),
@@ -550,25 +545,27 @@ setup_single_choice_vote(OwnerUid, MemberUid) ->
 
 unique_mobile(Prefix) ->
     Suffix = erlang:phash2(
-        {erlang:system_time(microsecond),
-         erlang:unique_integer([monotonic, positive]),
-         self()},
+        {erlang:system_time(microsecond), erlang:unique_integer([monotonic, positive]), self()},
         1000000
     ),
     list_to_binary(io_lib:format("~s~6..0B", [Prefix, Suffix])).
 
-cleanup_users([]) -> ok;
+cleanup_users([]) ->
+    ok;
 cleanup_users([Uid | Rest]) ->
     user_repo:delete(Uid),
     cleanup_users(Rest).
 
 cleanup_all_test_data() ->
-    Sql = <<"SELECT id FROM user WHERE mobile LIKE '13910%'">>,
+    Sql = <<"SELECT id FROM \"user\" WHERE mobile LIKE '13910%'">>,
     case elib_pg:query(Sql, []) of
         {ok, Rows} ->
-            lists:foreach(fun(#{<<"id">> := Id}) ->
-                user_repo:delete(Id)
-            end, Rows);
+            lists:foreach(
+                fun(#{<<"id">> := Id}) ->
+                    user_repo:delete(Id)
+                end,
+                Rows
+            );
         _ ->
             ok
     end.
