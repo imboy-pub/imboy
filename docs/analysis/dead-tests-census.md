@@ -7,20 +7,29 @@
 
 > ⚠️ 本文件是 backlog，非执行记录。以下清理**需产品/授权决策**，未执行。
 
-## A 类 — Common Test suite（6 个，不进 `make eunit`，整体对旧 API 失效）
+## A 类 — Common Test suite（6 个，不进 `make eunit`，整体对旧 API 失效）✅ 已全部重写完成（2026-07-22）
 
-这些 CT suite 是对**旧 `group_logic` API** 写的集成测试；生产已把 `create/invite_members/remove_member/update_info/mute_member/unmute_member` 重构为 `add/4`、`edit/3` 等，导致整套 suite `undef` 失效。
+这些 CT suite 是对**旧 API** 写的集成测试；生产已把相关函数重构（`create/invite_members/remove_member/update_info/mute_member/unmute_member` → `add/4`、`edit/3` 等；消息/认证层同理），导致整套 suite `undef` 失效。
 
-| 文件 | 失效的旧调用（样本） |
-|---|---|
-| `test/group_management_flow_SUITE.erl` | `group_logic:create/2,3`、`invite_members/3`、`remove_member/3`、`update_info/3`、`mute_member/3`、`unmute_member/3`、`group_member_ds:find_by_users/2`、`list/1`、`group_notice_logic:add/3` |
-| `test/group_notice_SUITE.erl` | `group_logic:create/2`、`invite_members/3`、`group_member_logic:set_role/4` |
-| `test/group_vote_SUITE.erl` | `group_logic:create/2`、`invite_members/3` |
-| `test/messaging_flow_SUITE.erl` | `group_logic:create/2`、`invite_members/3`、`msg_c2c_repo:find_by_msg_id/1`、`msg_c2c_logic:recall/3`、`msg_store_ds:page/3`、`msg_ack_logic:ack/3` |
-| `test/msg_delivery_SUITE.erl` | `msg_c2c_ds:write/5` |
-| `test/user_auth_flow_SUITE.erl` | `token_ds:refresh_token/1`、`user_logic:reset_password/3` |
+**决策已定（用户授权 loop 会话）：全部重写匹配当前生产 API，非删除。** 6/6 完成，均对真 PG 跑 0 failed。重写过程另抓出 **4 个真生产 bug**（改实现非改测试，见下）。
 
-**决策项**：这些群组/消息/认证流集成测试是**删除**（承认这些流程当前无 CT 覆盖）还是**重写匹配新 API**（大工程）？→ 产品决策，不在死代码清理范围内。
+| 文件 | 原失效旧调用（样本） | 状态 | 提交 |
+|---|---|---|---|
+| `test/msg_delivery_SUITE.erl` | `msg_c2c_ds:write/5` | ✅ 重写 | `1f294d39` |
+| `test/group_vote_SUITE.erl` | `group_logic:create/2`、`invite_members/3` | ✅ 重写 | `fe510cc1` |
+| `test/group_notice_SUITE.erl` | `group_logic:create/2`、`invite_members/3`、`group_member_logic:set_role/4` | ✅ 重写 | `59b1aca8` |
+| `test/group_management_flow_SUITE.erl` | `group_logic:create/2,3`、`invite_members/3`、`remove_member/3`、`update_info/3`、`mute_member/3`、`unmute_member/3`、`group_member_ds:find_by_users/2`、`group_notice_logic:add/3` | ✅ 重写 (17/0) | `d7fe2abf`(+fix `764f92e7`) |
+| `test/messaging_flow_SUITE.erl` | `group_logic:create/2`、`invite_members/3`、`msg_c2c_repo:find_by_msg_id/1`、`msg_c2c_logic:recall/3`、`msg_store_ds:page/3`、`msg_ack_logic:ack/3` | ✅ 重写 (14/0) | `7266f98f`(+fix `4d160374`) |
+| `test/user_auth_flow_SUITE.erl` | `token_ds:refresh_token/1`、`user_logic:reset_password/3`、`change_password/3`、`verification_code_logic` | ✅ 重写 (14/0) | `148a2d15`(+fix `b3567197`) |
+
+**重写抓出的真生产 bug（CT 覆盖的价值）**：
+1. `group_logic:do_transfer/5`（transfer/3 群主转让生产路径）：原子键 `#{id := _}` 匹配 repo 二进制键 map 恒失败，且传 binary role 给 smallint 列崩连接 → 转让群主一直坏。`764f92e7` 修。
+2. `group_log_repo:batch_add`：INSERT 缺 `VALUES` 关键字（42601）+ 漏 NOT NULL id 列 + 参数序颠倒，自引入从未跑通；在 dissolve 事务内致 25P02 连锁。`764f92e7` 修。
+3. `group_ds:dissolve_group`：忽略 `with_tx` 返回值恒返 ok，事务回滚仍报成功 → 解散群静默失效。`764f92e7` 修。
+4. `msg_c2c_ds:revoke_offline_msg/9`：spec 声明 `ok|{error}` 但恒返 `{ok,N}`，唯一调用方 `c2c_revoke` 只匹配前两者 → **离线 C2C 撤回必 case_clause 崩溃**（原文永不被覆盖）。`4d160374` 修。
+5. `user_logic:change_password/2`：E2EE-013 把 `verify_user/2→/3` 后漏改此调用点 → **改密自 E2EE-013 起 undef 崩溃**。`b3567197` 修。
+
+（bug 1-3 属 group_management 轮次，4 属 messaging_flow 轮次，5 属 user_auth_flow 轮次。均未被单测发现：离线/转让/改密路径要么被 mock 走在线分支跳过，要么无对应单测。）
 
 ## B 类 — eunit 类死测试（7 个，可能污染 `make eunit` 全量，同 auth_ds/elib_uri 模式）
 
