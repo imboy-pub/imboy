@@ -1,13 +1,12 @@
--module (group_log_repo).
+-module(group_log_repo).
 %%%
 % group_log 相关操作都放到该模块，存储库模块
 % group_log related operations are put in this module, repository module
 %%%
 
--export ([tablename/0]).
--export ([add/2]).
--export ([batch_add/2]).
-
+-export([tablename/0]).
+-export([add/2]).
+-export([batch_add/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -50,8 +49,8 @@ batch_add(Conn, DataList) when is_list(DataList), length(DataList) > 0 ->
     Tb = tablename(),
     % 构建 VALUES 子句和参数列表
     {ValuesClause, AllParams} = build_values_clause(DataList, 1, <<>>, []),
-    Sql = <<"INSERT INTO ", Tb/binary,
-            " (type, option_uid, group_id, body, created_at) ",
+    Sql =
+        <<"INSERT INTO ", Tb/binary, " (id, type, option_uid, group_id, body, created_at) VALUES ",
             ValuesClause/binary>>,
     elib_pg:execute(Conn, Sql, AllParams);
 batch_add(_Conn, []) ->
@@ -69,6 +68,7 @@ batch_add(_Conn, []) ->
 build_values_clause([], _Index, ValuesAcc, ParamsAcc) ->
     {ValuesAcc, lists:reverse(ParamsAcc)};
 build_values_clause([Data | Rest], Index, ValuesAcc, ParamsAcc) ->
+    Id = elib_tsid:generate(group_log),
     Type = maps:get(type, Data),
     OptionUid = maps:get(option_uid, Data),
     GroupId = maps:get(group_id, Data),
@@ -76,23 +76,25 @@ build_values_clause([Data | Rest], Index, ValuesAcc, ParamsAcc) ->
     CreatedAt = maps:get(created_at, Data),
 
     % 为当前索引构建参数占位符（使用安全的二进制拼接）
-    BaseIndex = (Index - 1) * 5,
+    BaseIndex = (Index - 1) * 6,
     N1 = integer_to_binary(BaseIndex + 1),
     N2 = integer_to_binary(BaseIndex + 2),
     N3 = integer_to_binary(BaseIndex + 3),
     N4 = integer_to_binary(BaseIndex + 4),
     N5 = integer_to_binary(BaseIndex + 5),
-    ValueClause = <<"($", N1/binary, ", $", N2/binary, ", $", N3/binary,
-                     ", $", N4/binary, ", $", N5/binary, ")">>,
+    N6 = integer_to_binary(BaseIndex + 6),
+    ValueClause =
+        <<"($", N1/binary, ", $", N2/binary, ", $", N3/binary, ", $", N4/binary, ", $", N5/binary,
+            ", $", N6/binary, ")">>,
 
-    NewValuesAcc = case Index of
-        1 -> <<ValuesAcc/binary, ValueClause/binary>>;
-        _ -> <<ValuesAcc/binary, ", ", ValueClause/binary>>
-    end,
+    NewValuesAcc =
+        case Index of
+            1 -> <<ValuesAcc/binary, ValueClause/binary>>;
+            _ -> <<ValuesAcc/binary, ", ", ValueClause/binary>>
+        end,
 
-    NewParamsAcc = [Type, OptionUid, GroupId, Body, CreatedAt | ParamsAcc],
+    NewParamsAcc = [CreatedAt, Body, GroupId, OptionUid, Type, Id | ParamsAcc],
     build_values_clause(Rest, Index + 1, NewValuesAcc, NewParamsAcc).
-
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -103,4 +105,3 @@ build_values_clause([Data | Rest], Index, ValuesAcc, ParamsAcc) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
-

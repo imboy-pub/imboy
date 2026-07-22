@@ -417,81 +417,87 @@ dissolve_group(Uid, Gid, _, G) ->
     {ok, Body} = jsone_encode:encode(G, [native_utf8]),
     ToUidLi = member_uids(Gid),
 
-    elib_pg:with_tx(fun(Conn) ->
-        % 添加群日志
-        case
-            group_log_repo:add(
-                Conn,
-                #{
-                    type => 101,
-                    option_uid => Uid,
-                    group_id => Gid,
-                    body => Body,
-                    created_at => Now
-                }
-            )
-        of
-            {ok, _} -> ok;
-            {error, LogReason} -> ?ERROR_LOG([group_log_add_failed, Gid, Uid, LogReason])
-        end,
-
-        % 删除群组
-        Tb = group_repo:tablename(),
-        Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
-        {ok, _} = elib_pg:execute(Conn, Sql, [Gid]),
-
-        % 批量添加成员日志
-        case group_member_repo:list_by_gid(Gid, <<"*">>, 1_000_000) of
-            {ok, []} ->
-                ok;
-            {ok, Li} ->
-                MemberLogs = [
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            % 添加群日志
+            case
+                group_log_repo:add(
+                    Conn,
                     #{
-                        type => 201,
+                        type => 101,
                         option_uid => Uid,
                         group_id => Gid,
-                        body =>
-                            case jsone_encode:encode(V, [native_utf8]) of
-                                {ok, Encoded} -> Encoded;
-                                _ -> <<>>
-                            end,
+                        body => Body,
                         created_at => Now
                     }
-                 || V <- Li
-                ],
-                case MemberLogs of
-                    [] ->
-                        ok;
-                    _ ->
-                        case group_log_repo:batch_add(Conn, MemberLogs) of
-                            {ok, _} ->
-                                ok;
-                            {error, BatchReason} ->
-                                ?ERROR_LOG([group_log_batch_add_failed, Gid, BatchReason])
-                        end,
-                        ok
-                end;
-            {error, _Reason} ->
-                %% 忽略错误，继续执行
-                ok
-        end,
+                )
+            of
+                {ok, _} -> ok;
+                {error, LogReason} -> ?ERROR_LOG([group_log_add_failed, Gid, Uid, LogReason])
+            end,
 
-        % 删除群成员
-        Tb2 = group_member_repo:tablename(),
-        Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE group_id = $1">>,
-        {ok, _} = elib_pg:execute(Conn, Sql2, [Gid]),
+            % 删除群组
+            Tb = group_repo:tablename(),
+            Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
+            {ok, _} = elib_pg:execute(Conn, Sql, [Gid]),
 
-        ok
-    end),
+            % 批量添加成员日志
+            case group_member_repo:list_by_gid(Gid, <<"*">>, 1_000_000) of
+                {ok, []} ->
+                    ok;
+                {ok, Li} ->
+                    MemberLogs = [
+                        #{
+                            type => 201,
+                            option_uid => Uid,
+                            group_id => Gid,
+                            body =>
+                                case jsone_encode:encode(V, [native_utf8]) of
+                                    {ok, Encoded} -> Encoded;
+                                    _ -> <<>>
+                                end,
+                            created_at => Now
+                        }
+                     || V <- Li
+                    ],
+                    case MemberLogs of
+                        [] ->
+                            ok;
+                        _ ->
+                            case group_log_repo:batch_add(Conn, MemberLogs) of
+                                {ok, _} ->
+                                    ok;
+                                {error, BatchReason} ->
+                                    ?ERROR_LOG([group_log_batch_add_failed, Gid, BatchReason])
+                            end,
+                            ok
+                    end;
+                {error, _Reason} ->
+                    %% 忽略错误，继续执行
+                    ok
+            end,
 
-    % 清除缓存
-    dissolve(Gid),
+            % 删除群成员
+            Tb2 = group_member_repo:tablename(),
+            Sql2 = <<"DELETE FROM ", Tb2/binary, " WHERE group_id = $1">>,
+            {ok, _} = elib_pg:execute(Conn, Sql2, [Gid]),
 
-    % 发送通知
-    Action = <<"group_dissolve">>,
-    Payload = #{<<"gid">> => Gid},
-    msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
-    ok.
+            ok
+        end)
+    of
+        ok ->
+            % 清除缓存
+            dissolve(Gid),
+
+            % 发送通知
+            Action = <<"group_dissolve">>,
+            Payload = #{<<"gid">> => Gid},
+            msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
+            ok;
+        Err ->
+            ?ERROR_LOG([dissolve_group_tx_failed, Gid, Uid, Err]),
+            {error, <<"解散群组失败"/utf8>>}
+    end.
 
 %% @doc 根据创建者和用户ID总和查找群组
 %% @param CreatorUid 创建者用户ID

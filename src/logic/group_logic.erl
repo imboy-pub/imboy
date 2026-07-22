@@ -178,18 +178,18 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
         OwnerUid ->
             % 验证新群主是群成员
             case group_member_ds:find_by_gid_and_uid(Gid, NewOwnerUid, <<"id">>) of
-                #{id := _} ->
+                #{<<"id">> := _} ->
                     % 使用事务更新群主和双方角色
                     elib_pg:with_tx(fun(Conn) ->
                         case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
                             ok ->
                                 case
-                                    group_member_ds:update_role(Conn, Gid, OwnerUid, <<"normal">>)
+                                    group_member_ds:update_role(Conn, Gid, OwnerUid, ?ROLE_MEMBER)
                                 of
                                     ok ->
                                         case
                                             group_member_ds:update_role(
-                                                Conn, Gid, NewOwnerUid, <<"owner">>
+                                                Conn, Gid, NewOwnerUid, ?ROLE_OWNER
                                             )
                                         of
                                             ok ->
