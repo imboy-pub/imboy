@@ -72,7 +72,9 @@ change_password(Uid, Req0) ->
     NewPwd = maps:get(<<"new_pwd">>, PostVals, undefined),
     User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
     ExistingPwd2 = elib_cipher:rsa_decrypt(ExistingPwd),
-    case passport_logic:verify_user(ExistingPwd2, User) of
+    %% E2EE-013 将 verify_user/2 改为 /3（新增 Did 绑定 token）；改密不签发
+    %% 登录 token，传空 Did 即可（verify_user 的返回 map 此处仅用于校验成败）。
+    case passport_logic:verify_user(ExistingPwd2, User, <<>>) of
         {ok, _} ->
             PwdPlaintext = elib_cipher:rsa_decrypt(NewPwd),
             PwdHash = elib_password:generate(PwdPlaintext),
