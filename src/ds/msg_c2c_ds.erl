@@ -248,7 +248,13 @@ revoke_offline_msg(Payload, NowTs, MsgId, OriginalMsgId, FromId, ToId, MsgType, 
     % (msg_id, created_at) 约束落重复行，改用 (msg_id, to_id) 判重写入
     _ = write_msg_once(NowTs, MsgId, PayloadBin, FromId, ToId, NowTs, MsgType, E2EE),
     % 覆盖离线队列中原消息 payload，避免离线接收方上线仍收到完整原文
-    msg_c2c_repo:update_payload_by_msg_id(OriginalMsgId, PayloadBin).
+    %% update_payload_by_msg_id 恒返 {ok, AffectedRows}；本函数 spec 承诺
+    %% ok | {error, _}，调用方 msg_c2c_logic:c2c_revoke 亦只匹配这两者，
+    %% 故此处归一化，避免 {ok, N} 触发 case_clause 崩溃离线撤回路径。
+    case msg_c2c_repo:update_payload_by_msg_id(OriginalMsgId, PayloadBin) of
+        {ok, _} -> ok;
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 编辑离线消息
 %% @returns ok | {error, Reason}
