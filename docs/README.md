@@ -1,79 +1,34 @@
-# Imboy 文档索引
+# IMBoy 文档
 
-> Last Updated: 2026-03-13  
-> Scope: 当前仓库文档索引与维护规则  
-> Related docs: `README.md`, `docs/changelog.md`
+第一次接触项目，请先按 [根 README](../README.md) 启动后端，再根据任务查阅下面的专题文档。
 
-## 目标
+## 开发
 
-只保留当前仍有效、可执行、可复用的文档入口；避免在这里继续挂已经删除、已过期或仅服务某个阶段的材料。
+- [后端架构](./architecture/overview.md)：系统分层和核心组件
+- [模块地图](./architecture/module_map.md)：功能对应的代码位置
+- [数据库访问](./architecture/database-access.md)：Repo 与 SQL 规范
+- [API 格式](./standards/api-format.md)：请求、响应和分页约定
+- [错误码](./standards/error-codes.md)：错误码定义与使用
+- [REST API 目录](./analysis/rest-api-v1-catalog.md)：`/api/v1` 接口速查
+- [WebSocket 协议](./analysis/ws-protocol-contract.md)：消息信封与事件约定
 
-## 当前长期文档
+## 部署与运维
 
-### 1. 架构与规范
+- [生产部署](../deploy/README.md)
+- [备份与恢复](./operations/deployment/BACKUP-RESTORE.md)
+- [版本升级](./operations/upgrade-runbook.md)
+- [Garage 附件存储](./operations/garage-deployment.md)
+- [监控](./operations/deployment/MONITORING.md)
 
-- `architecture/overview.md`
-- `architecture/module_map.md`
-- `architecture/database-access.md`
-- `architecture/module-layer-cheatsheet.md`
-- `architecture/current-module-classification.md`
-- `architecture/product-profile-and-plugin-registry-design.md`
-- `standards/api-format.md`
-- `standards/error-codes.md`
-- ~~`standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
-- `standards/utf8-encoding.md`
-- `standards/migration_naming.md`
+## 安全
 
-### 2. 功能开关与部署指引
+- [运行安全](./operations/security.md)
+- [安全加固](./security/security-hardening.md)
+- [漏洞报告](../SECURITY.md)
 
-- `guides/module-feature-flag-config.md`
-- `operations/deployment/DEPLOY-SCRIPT.md` — 自动化部署脚本（全量/增量，`.env.deploy` 驱动）
-- `operations/deployment/DEPLOYMENT.md` — 完整部署参考手册
-- `operations/deployment/DAY1-QUICKSTART.md` — 5 分钟快速上手
-- `operations/deployment/production-architecture.md` — 生产服务器架构与端口分布
+## 文档维护
 
-### 3. API 与三端契约
-
-- `api/rest-api.md`
-- `api/websocket-api-2.md`
-- `api/channel_api_contract_v1.md`
-- `api/moment_api_contract_v1.md`
-- `api/e2ee_server_persisted_shard_contract_v1.md`
-- `api/envelope.schema.json`
-
-### 4. 运行与安全
-
-- `operations/dependencies.md`
-- `operations/security.md`
-
-### 5. 组件与排障参考
-
-以下文档允许长期保留，但默认不作为客户交付主文档：
-
-- `libraries/async.md`
-
-### 6. 变更记录
-
-- `changelog.md`
-
-## 不再建议沉淀的内容
-
-- 一次性计划、评审、AI 产物；
-- 已失效的外链、截图、环境专属样例；
-- 绑定具体域名、IP、证书路径、面板路径的部署模板；
-- 已被核心文档吸收结论的阶段性说明。
-
-## 文档维护规则
-
-1. 新增文档前先判断：能否并入现有核心文档章节。
-2. 接口变更优先更新 `api/` 现有文档，不新建“临时实现说明”。
-3. 阶段性推进计划默认不进入本文档主索引。
-4. 发布前优先更新受影响核心文档与 `changelog.md`。
-5. 出现环境绑定样例时，默认放到交付环境，不回写到通用仓库。
-6. 当阶段性材料中的结论已稳定，应回写到核心文档，而不是继续保留原始过程文档。
-
-## 相关链接
-
-- 根说明：`../README.md`
-- 研发上下文：`../CLAUDE.md`
-- 模块地图：`architecture/module_map.md`
+- 优先更新现有文档，不为一次性任务新建长期文档。
+- 主索引只收录稳定、仍可执行的内容。
+- 计划、评审和审计材料保留在各自目录，不作为新手入口。
+- 接口或部署方式变化时，同步更新根 README 和对应专题文档。
