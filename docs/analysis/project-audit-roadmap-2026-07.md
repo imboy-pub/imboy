@@ -67,9 +67,9 @@
 - **分工**：**[MODEL] glm 可独立执行**。
 - **回滚条件**：detail 若被其他在线通知链路复用（grep `red_packet_logic:detail` 调用方），确认无破坏再改签名。
 
-### [SEC-04] compliance key 服务端密钥托管破坏 E2EE 语义  [安全] [HIGH — 需产品拍板] [✅ 已披露 2026-07-07]
+### [SEC-04] compliance 接收方可解密，需明确非纯 E2EE 语义  [安全] [HIGH — 需产品拍板] [✅ 已披露 2026-07-07]
 - **状态**：客户端 wrap 行为已核实属实（`imboyapp/lib/service/e2ee_service.dart:244-266`，`compliance_e2ee` 模式下额外用 compliance 公钥 wrap AES key）。技术事实披露已落地于 `docs/compliance/e2ee-policy.md` §3。**对外法律措辞仍待法务/产品复核**（见下方分工）。
-- **根因**：`src/ds/compliance_key_ds.erl:26` 服务端持有加密的合规私钥；`src/logic/e2ee_logic.erl:173` 下发合规公钥供客户端 wrap。若客户端对 compliance 公钥追加 wrap，管理员解密合规私钥即可读全部密文——这是合法监听后门，与"零接触明文私钥"宣称不矛盾（是合规私钥非用户私钥）但**破坏端到端语义**。
+- **根因**：服务端只保存并下发合规公钥（`src/repo/compliance_key_repo.erl:24-46`、`src/logic/e2ee_logic.erl:160-163`）；客户端对该公钥额外 wrap AES key。合规私钥由审计方在 HSM / 离线介质保管，持有者可解密 compliance 模式密文。因此服务端仍满足零私钥边界，但该模式存在第三方接收方，**不属于纯端到端加密语义**。历史私钥列已由 `priv/migrations/00000046_compliance_key_drop_private.up.sql:1-16` 删除。
 - **影响范围**：E2EE 合规声明、隐私政策、白标合规文档。[已核实] 客户端在 `e2ee_service.dart:244-266` 确实向 compliance key wrap（2026-07-07 核实）。
 - **修复方案**：这是**披露而非代码 bug**。✅ （a）已核实客户端 wrap 属实；（b）技术事实已在 `docs/compliance/e2ee-policy.md` §3 明示；⏳ 隐私政策与白标文档的**对外措辞待法务/产品定稿**。
 - **边界**：不擅自删除 compliance 机制（可能是等保/合规要求）。
@@ -125,7 +125,7 @@
 - **分工**：✅ 短期 (b) 已完成；根因修复 (a) **[BLOCKED]**（需真机调试密钥漂移）。
 
 ### [FEAT-04] 其余占位/半成品清理  [未完成] [LOW]
-- **根因**：`group_album_ds.erl:454` 缩略图 URL 占位（未真生成缩略图）；`e2ee_shard_validator.erl:3` 分片审计 stub；`user_setting_ds.erl:16` 按账号搜索占位；`imboyapp` textStream 死基础设施（4 个 mutator 零调用，无 `TextStreamMessage` 构造）。
+- **根因**：`group_album_ds.erl:454` 缩略图 URL 占位（未真生成缩略图）；`user_setting_ds.erl:16` 按账号搜索占位；`imboyapp` textStream 死基础设施（4 个 mutator 零调用，无 `TextStreamMessage` 构造）。原文所列 `e2ee_shard_validator.erl` 在冻结代码树中不存在，已移除该误报。
 - **修复方案**：按优先级补齐或明确标记；**textStream 保持不动**（历史结论：后端不下发，勿单接 UI）。
 - **分工**：**[MODEL] glm 可执行**（逐个小项，缩略图生成需 Fable 定方案）。
 
@@ -179,7 +179,7 @@
 - **分工**：**[MODEL] glm 可独立执行**（对照 handler 补 yaml，机械活）。
 
 ### [CONTRACT-02] admin 消息 payload 二次 JSON.parse 绕过 TSID 保护  [契约] [MEDIUM] [✅ 已完成 2026-07-06]
-- **状态**：已修复并提交（commit `98db3f7`，imboyadmin 仓）。[NEEDS-VERIFY] 已核实为真：`imboy/src/logic/msg_s2c_logic.erl:255`（`e2ee_key_changed_ack`）`payload.uid` 以裸 64-bit TSID 整数嵌入。`parsePayload` 改用既有 `safeParseBigIntJson`；补 `messageRenderingHelpers.test.ts` 回归测试覆盖大整数不失真。`tsc --noEmit` 无新增错误；`bun test src/pages/messages/` 33/33 通过。
+- **状态**：已修复并提交（commit `98db3f7`，imboyadmin 仓）。[NEEDS-VERIFY] 已核实为真：`imboy/src/logic/msg_s2c_logic.erl:146-167`（`e2ee_key_changed_ack`）`payload.uid` 以裸 64-bit TSID 整数嵌入。`parsePayload` 改用既有 `safeParseBigIntJson`；补 `messageRenderingHelpers.test.ts` 回归测试覆盖大整数不失真。`tsc --noEmit` 无新增错误；`bun test src/pages/messages/` 33/33 通过。
 - **根因**：`imboyadmin/src/pages/messages/messageRenderingHelpers.tsx:8` `JSON.parse(payload)` 二次解析消息 payload 字符串。外层 `safeParseBigIntJson` 正则不进引号内字符串，若 payload 内含裸整数 id（如 from_id）会丢精度。[NEEDS-VERIFY] payload 内是否真含 64-bit id（需查 `adm_message_handler` payload schema）。
 - **修复方案**：先核实 payload 字段；若含 id，改用 `safeParseBigIntJson(payload)` 替代裸 `JSON.parse`。
 - **验收 gate**：`tsc --noEmit` 零错；含大 id 的 payload 解析后 id 为 string 不失真。
@@ -201,15 +201,15 @@
 ### 维度 7：可观测性与运维
 
 ### [OPS-01] 备份无自动调度 + 告警指标未上报  [运维] [HIGH]
-- **根因**：`grep cron/systemd/timer` 全仓，备份仅 `scripts/backup_pg.sh:11` 注释里一行 cron 示例，`docker-compose.prod.yml` 无 backup 服务。告警 `imboy-alerts.yml:481` `IMBoyBackupNotRunning` 依赖 `imboy_backup_last_success_timestamp` 推 Pushgateway，但 `backup_pg.sh` 末尾无推送代码。→ 生产大概率靠手工 crontab，无版本化保证，告警是死的。
-- **修复方案**：（a）`docker-compose.prod.yml` 加 cron sidecar（ofelia 或 alpine+crond）跑 `backup_pg.sh`；（b）`backup_pg.sh` 末尾加 `curl` 推 Pushgateway `imboy_backup_last_success_timestamp`。
+- **根因**：`grep cron/systemd/timer` 全仓，备份仅 `scripts/backup_pg.sh:11` 注释里一行 cron 示例；Git 跟踪的 Helm Chart 也无 backup CronJob。告警 `imboy-alerts.yml:481` `IMBoyBackupNotRunning` 依赖 `imboy_backup_last_success_timestamp`，但 `backup_pg.sh` 末尾无推送代码。→ 仓库没有版本化的自动备份调度，告警数据源也未闭环。
+- **修复方案**：（a）Helm 增加 CronJob（若后续恢复 Compose 交付，再同步增加调度 sidecar）运行 `backup_pg.sh`；（b）`backup_pg.sh` 成功后推送 `imboy_backup_last_success_timestamp`。
 - **验收 gate**：备份定时执行；Pushgateway 有时间戳；`IMBoyBackupNotRunning` 告警从常红变绿。
 - **glm 执行陷阱**：deploy 改动先查 `deploy/README.md`；compose 语法 `docker compose config` 验证。
-- **分工**：**[MODEL] glm 可独立执行**（脚本+compose 补全）。
+- **分工**：**[MODEL] glm 可独立执行**（脚本 + Helm CronJob）。
 
 ### [OPS-02] 无 TLS 证书到期告警 + 无支付失败率告警  [运维] [HIGH]
 - **根因**：`grep cert|ssl|expiry` 于 rules/alertmanager → 0；prometheus.yml 无 blackbox_exporter。certbot 每 12h 续期但静默失败无监控。业务有 Stripe/支付宝/微信但 rules 无 payment 失败率指标。
-- **修复方案**：（a）`docker-compose.prod.yml` 加 blackbox_exporter，`imboy-alerts.yml` 加 `probe_ssl_earliest_cert_expiry < 14d warn / 3d crit`；（b）后端暴露 `imboy_payment_*_total{status}` 指标（`metrics_handler` 加计数器），加失败率告警。
+- **修复方案**：（a）在受版本控制的部署入口增加 blackbox_exporter，`imboy-alerts.yml` 加 `probe_ssl_earliest_cert_expiry < 14d warn / 3d crit`；（b）后端暴露 `imboy_payment_*_total{status}` 指标（`metrics_handler` 加计数器），加失败率告警。
 - **验收 gate**：blackbox probe 有 cert 到期指标；payment 指标在 `/metrics` 可见。
 - **分工**：cert 告警 **[MODEL] glm 可执行**；payment 指标需后端埋点，**需 Fable 定指标 label 规范**。
 

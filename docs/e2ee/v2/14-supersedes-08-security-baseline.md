@@ -83,7 +83,7 @@ IMBoy 的 E2EE 不再以“存在加密算法”作为完成标准，而以端�
 | T3 | 网络攻击者读取、篡改、重放流量 | TLS + E2EE 完整性 + replay window/idempotency |
 | T4 | 恶意已登录设备冒充同账号另一设备 | device-bound session、设备签名、目标设备授权 |
 | T5 | 单设备短期攻陷并随后恢复控制 | Double Ratchet/MLS PCS、撤销、密钥更新、最小备份 |
-| T6 | 加密备份被盗并离线爆破 | Argon2id、有界参数、随机恢复密钥、格式认证 |
+| T6 | 加密备份被盗并离线暴力破解 | Argon2id、有界参数、随机恢复密钥、格式认证 |
 | T7 | 恶意客户端构造畸形/超大/回滚输入 | 严格解析、单调版本、配额、原子 claim、模糊测试 |
 | T8 | 服务端对不同用户展示不一致设备历史 | append-only transparency、inclusion/consistency proof、gossip |
 | T9 | 崩溃、断电、并发收发造成状态分叉 | 事务化 CryptoStore、WAL、幂等操作、恢复测试 |

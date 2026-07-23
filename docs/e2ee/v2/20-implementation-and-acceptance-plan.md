@@ -87,20 +87,22 @@ flowchart LR
 - 产品、安全负责人可在 2 个工作日内完成阶段签字；
 - 外部安全审计档期单独采购。
 
-在上述条件下，核心工程约 `26–42 engineer-weeks`；部分并行后的日历时间约 `16–24 周`，不含审计排期和商店审核。若只有一名全栈工程师，应按 `32–48+ 周` 规划，并优先停在 `GA-C2C`，不要并行开发 MLS。
+在上述条件下，核心工程约 `26–42 engineer-weeks`（**这是投入量 effort，非日历工期、不设截止日**）。推进由退出门 `G0→G5` 状态驱动：一个阶段的门绿了才进下一阶段。若只有一名全栈工程师，投入量相应放大，并优先停在 `GA-C2C`，不要并行开发 MLS。
 
 ---
 
 ## 4. 阶段总览与发布门
 
-| 阶段 | 目标 | 估算 | 可发布等级 | 退出门 |
+> 推进由**退出门 G0→G5 状态驱动**，非日历。「相对投入」为 effort 量级（engineer-weeks 等价，仅供排序与容量粗估，不设截止日）。
+
+| 阶段 | 目标 | 相对投入(effort) | 可发布等级 | 退出门 |
 |---|---|---:|---|---|
-| S0 | ADR 签字、基线冻结、测试骨架 | 1 周 | Preview | G0 |
-| S1 | 关闭所有 P0 可利用缺口 | 2–4 周 | Preview / Strong Preview 候选 | G1 |
-| S2 | Device-bound auth + Protected Frame + Olm C2C + 事务存储 | 4–6 周 | Strong Preview | G2 |
-| S3 | Cross-signing + transparency + Recovery Vault v2 | 4–6 周 | GA-C2C 候选 | G3 |
-| S4 | MLS Spike、实现与 Megolm 迁移 | 8–12 周 | GA-Top-Tier 候选 | G4 |
-| S5 | 独立审计、红队、灰度与 GA | 4–6 周 + 审计排期 | GA-C2C / GA-Top-Tier | G5 |
+| S0 | ADR 签字、基线冻结、测试骨架 | XS | Preview | G0 |
+| S1 | 关闭所有 P0 可利用缺口 | S | Preview / Strong Preview 候选 | G1 |
+| S2 | Device-bound auth + Protected Frame + Olm C2C + 事务存储 | M | Strong Preview | G2 |
+| S3 | Cross-signing + transparency + Recovery Vault v2 | M | GA-C2C 候选 | G3 |
+| S4 | MLS Spike、实现与 Megolm 迁移 | L | GA-Top-Tier 候选 | G4 |
+| S5 | 独立审计、红队、灰度与 GA | M + 审计排期 | GA-C2C / GA-Top-Tier | G5 |
 
 允许 S3 的 transparency 后端与 Recovery UI 并行；S4 只能在 S2 的 CryptoStore 和 ADR 16 credential binding 完成后进入生产实现。
 

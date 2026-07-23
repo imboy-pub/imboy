@@ -16,7 +16,7 @@ E2EE 是否启用**由后端 capability（`e2ee_mode`）全权控制**，客户�
 |---|---|---|
 | capability 源 | `src/lib/imboy_policy.erl:121-157` | `effective_capabilities/0` 按 profile（community/enterprise）+ 配置派生，产出 `e2ee_mode` 字段 |
 | 判定函数 | `src/lib/imboy_policy.erl:155-157` | `e2ee_enabled/0` = `e2ee_mode =/= disabled` |
-| handler 守卫 | `src/api/e2ee_handler.erl:47`、`src/api/e2ee_social_handler.erl:51` | 每个公开 handler 入口先 `ensure_e2ee_enabled(Req)`；`e2ee_mode=disabled` 时返回 `ERR_FEATURE_DISABLED` |
+| handler 守卫 | `src/api/e2ee_handler.erl:47-57`、`src/api/e2ee_backup_handler.erl:37-47`、`src/api/olm_handler.erl:50-60`、`src/api/e2ee_trust_handler.erl:34-43` | 各公开 E2EE handler 入口检查 capability；`e2ee_mode=disabled` 时返回 `ERR_FEATURE_DISABLED` |
 
 ### 1.2 `e2ee_mode` 四态
 
@@ -101,7 +101,7 @@ if (policyMode == EncryptionMode.complianceE2ee) {
 ### 3.2 含义
 
 - 持有 **compliance 私钥**的管理员/审计方，可解密 `e2ee_mode=compliance` 模式下的全部密文。
-- 这是**依法留存 / 合规审计后门**，与 imboy"零接触明文用户私钥"的宣称**不矛盾**（compliance 私钥 ≠ 用户私钥；用户私钥从未离开设备）。
+- 这是**依法留存 / 合规审计访问通道**，与 imboy"零接触明文用户私钥"的宣称**不矛盾**（compliance 私钥 ≠ 用户私钥；用户私钥从未离开设备）。
 - 但该机制**破坏纯端到端语义**——第三方（持 compliance 私钥者）能读取密文。须在隐私政策与白标合规文档中明示。
 
 ### 3.3 后端配套（零信任改造线 A，2026-07）
@@ -114,7 +114,7 @@ if (policyMode == EncryptionMode.complianceE2ee) {
   私钥永不离开本地，仅将公钥经 admin 上传服务端（`POST /api/adm/admin/compliance_key/create`，
   入参仅 `public_key`）。
 - **服务端零接触私钥**：`compliance_key_repo:create/3` 只存公钥；
-  migration `00000041` 已 `DROP COLUMN private_key_encrypted`；
+  migration `00000046` 已 `DROP COLUMN private_key_encrypted`；
   死代码 `find_by_key_id/1`（原唯一读取私钥的入口）已删除。
 - **合规公钥下发**：客户端经 `GET /api/v1/e2ee/compliance_key` 取活跃合规公钥（仅 `key_id` + `public_key`），
   用于在 compliance 模式下额外 wrap 一份 AES key（见 §3.1）。
@@ -137,7 +137,7 @@ if (policyMode == EncryptionMode.complianceE2ee) {
 - 实施计划：`imboyapp/.claude/PRPs/plans/completed/feat-03-e2ee-dead-toggle.plan.md`
 - 相关代码：
   - 后端 policy：`imboy/src/lib/imboy_policy.erl:121-157`
-  - 后端守卫：`imboy/src/api/e2ee_handler.erl:47`、`imboy/src/api/e2ee_social_handler.erl:51`
+  - 后端守卫：`imboy/src/api/e2ee_handler.erl:47-57`、`imboy/src/api/e2ee_backup_handler.erl:37-47`、`imboy/src/api/olm_handler.erl:50-60`、`imboy/src/api/e2ee_trust_handler.erl:34-43`
   - 客户端镜像：`imboyapp/lib/service/encryption_mode.dart`
   - 客户端决策：`imboyapp/lib/service/e2ee_service.dart:124-147`
   - 客户端合规 wrap：`imboyapp/lib/service/e2ee_service.dart:244-266`
