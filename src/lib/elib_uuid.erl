@@ -1,4 +1,5 @@
 -module(elib_uuid).
+-eqwalizer(enable).
 
 %%% @doc UUIDv7 生成器（时序 UUID，RFC 9562）
 %%% 格式：48-bit unix_ts_ms | ver=7 | 12-bit rand_a | var=10 | 62-bit rand_b

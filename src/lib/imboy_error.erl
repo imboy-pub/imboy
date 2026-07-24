@@ -11,6 +11,7 @@
 %%%-------------------------------------------------------------------
 
 -module(imboy_error).
+-eqwalizer(enable).
 
 %% 参数验证导出
 -export([validate_required/2, validate_required/3]).
