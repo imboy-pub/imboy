@@ -87,3 +87,58 @@ lookup_dirty_config_falls_back_to_builtin_test_() ->
     with_config(#{bad => config}, fun() ->
         ?assertMatch({ok, #{module := imboy_llm_qianfan}}, imboy_llm_registry:lookup(<<"qianfan">>))
     end).
+
+%% ===================================================================
+%% {env, Var} 解析：密钥走环境变量，不落配置文件
+%% ===================================================================
+
+lookup_env_key_resolved_from_os_env_test_() ->
+    os:putenv("ARK_KEY_TEST_XZ", "sk-from-env"),
+    with_config(
+        [
+            #{
+                name => <<"ark">>,
+                module => imboy_llm_openai,
+                base_url => <<"https://ark.example/api/v3">>,
+                api_key => {env, <<"ARK_KEY_TEST_XZ">>}
+            }
+        ],
+        fun() ->
+            {ok, #{opts := Opts}} = imboy_llm_registry:lookup(<<"ark">>),
+            ?assertEqual(<<"sk-from-env">>, maps:get(api_key, Opts)),
+            %% 非 env 值原样透传
+            ?assertEqual(<<"https://ark.example/api/v3">>, maps:get(base_url, Opts))
+        end
+    ).
+
+lookup_env_missing_uses_default_test_() ->
+    os:unsetenv("ARK_MODEL_TEST_XZ"),
+    with_config(
+        [
+            #{
+                name => <<"ark">>,
+                module => imboy_llm_openai,
+                model => {env, <<"ARK_MODEL_TEST_XZ">>, <<"doubao-lite-4k">>}
+            }
+        ],
+        fun() ->
+            {ok, #{opts := Opts}} = imboy_llm_registry:lookup(<<"ark">>),
+            ?assertEqual(<<"doubao-lite-4k">>, maps:get(model, Opts))
+        end
+    ).
+
+lookup_env_missing_no_default_is_empty_test_() ->
+    os:unsetenv("ARK_KEY_TEST_UNSET_XZ"),
+    with_config(
+        [
+            #{
+                name => <<"ark">>,
+                module => imboy_llm_openai,
+                api_key => {env, <<"ARK_KEY_TEST_UNSET_XZ">>}
+            }
+        ],
+        fun() ->
+            {ok, #{opts := Opts}} = imboy_llm_registry:lookup(<<"ark">>),
+            ?assertEqual(<<>>, maps:get(api_key, Opts))
+        end
+    ).

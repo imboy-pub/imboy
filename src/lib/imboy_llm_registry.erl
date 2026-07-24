@@ -36,6 +36,27 @@ builtin() ->
 find(_Name, []) ->
     undefined;
 find(Name, [#{name := Name, module := Mod} = Provider | _]) ->
-    {ok, #{module => Mod, opts => maps:without([name, module], Provider)}};
+    Opts = resolve_env(maps:without([name, module], Provider)),
+    {ok, #{module => Mod, opts => Opts}};
 find(Name, [_ | Rest]) ->
     find(Name, Rest).
+
+%% @doc 解析 opts 中的环境变量占位：api_key 等敏感值配 {env, <<"VAR">>} /
+%% {env, <<"VAR">>, Default}，运行时从 os:getenv 取，避免密钥写死进配置文件。
+-spec resolve_env(map()) -> map().
+resolve_env(Opts) ->
+    maps:map(fun(_K, V) -> resolve_val(V) end, Opts).
+
+resolve_val({env, Var}) when is_binary(Var) ->
+    env_get(Var, <<>>);
+resolve_val({env, Var, Default}) when is_binary(Var) ->
+    env_get(Var, Default);
+resolve_val(V) ->
+    V.
+
+env_get(Var, Default) ->
+    case os:getenv(binary_to_list(Var)) of
+        false -> Default;
+        [] -> Default;
+        S -> unicode:characters_to_binary(S)
+    end.
