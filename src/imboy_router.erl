@@ -611,6 +611,10 @@ get_routes() ->
         {"/api/adm/ai_agent/onboarding_config", adm_ai_agent_handler, #{
             action => onboarding_config
         }},
+        % 知识库配置（A3-1）：群规/FAQ，供 @管家 答疑注入（users:read|update）
+        {"/api/adm/ai_agent/knowledge_config", adm_ai_agent_handler, #{
+            action => knowledge_config
+        }},
         % admin 应急入口(c)：代运营为 agent 创建受控支付授权（finance:write RBAC）
         {"/api/adm/ai_agent/mandate_create", adm_ai_agent_handler, #{action => mandate_create}},
         {"/api/adm/mcp/clients", adm_mcp_handler, #{action => list}},

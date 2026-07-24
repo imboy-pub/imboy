@@ -11,6 +11,8 @@
 %   POST /adm/ai_agent/set_status    -> 启用/停用（status 0|1）
 %   GET  /adm/ai_agent/onboarding_config -> 读取新手引导配置（enabled/欢迎文案/默认频道等）
 %   POST /adm/ai_agent/onboarding_config -> 半量保存新手引导配置（白名单键校验）
+%   GET  /adm/ai_agent/knowledge_config  -> 读取知识库配置（群规/FAQ，供 @管家 注入）
+%   POST /adm/ai_agent/knowledge_config  -> 半量保存知识库配置（白名单键校验）
 %   POST /adm/ai_agent/mandate_create-> 【admin 应急入口】代运营为 agent 创建受控支付授权
 %
 % 权限：users:read 读，users:create 建，users:update 改，finance:write 授权代付。
@@ -45,6 +47,7 @@ init(Req0, State0) ->
             update -> update(Method, Req0, State);
             set_status -> set_status(Method, Req0, State);
             onboarding_config -> onboarding_config(Method, Req0, State);
+            knowledge_config -> knowledge_config(Method, Req0, State);
             mandate_create -> mandate_create(Method, Req0, State);
             _ -> Req0
         end,
@@ -139,6 +142,29 @@ onboarding_config(<<"POST">>, Req0, State) ->
         end
     end);
 onboarding_config(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc 知识库配置：GET 读全量 / POST 半量保存（群规/FAQ，供 @管家 答疑注入）。
+%% 键：enabled / group_rule / faq（白名单 + 类型校验在 logic 层）
+-spec knowledge_config(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+knowledge_config(<<"GET">>, Req0, State) ->
+    with_perm(?PERM_READ, State, Req0, fun() ->
+        elib_response:success(Req0, ai_agent_kb_logic:get_config())
+    end);
+knowledge_config(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_UPDATE, State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        case ai_agent_kb_logic:put_config(PostVals) of
+            {ok, _} ->
+                %% 回全量最新配置，前端表单直接回显
+                elib_response:success(
+                    Req0, ai_agent_kb_logic:get_config(), <<"保存成功"/utf8>>
+                );
+            {error, Reason} ->
+                elib_response:error(Req0, Reason, ?ERR_BAD_REQUEST)
+        end
+    end);
+knowledge_config(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% @doc 【admin 应急入口(c)】代运营为指定 agent 创建受控支付授权。
