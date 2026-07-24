@@ -27,7 +27,7 @@ run() ->
 
 %% @doc 运行指定模块的测试
 %% @param Modules 模块列表，如 [user_repo_tests, group_repo_tests]
--spec run(any()) -> ok.
+-spec run(any()) -> ok | error | {error, term()}.
 run(Modules) when is_list(Modules) ->
     % 启动应用
     start_applications(),
@@ -42,7 +42,7 @@ run(Modules) when is_list(Modules) ->
     end.
 
 %% @doc 快速测试（只测试不需要数据库的模块）
--spec run_fast() -> ok.
+-spec run_fast() -> ok | error | {error, term()}.
 run_fast() ->
     % 启动应用
     start_applications(),
@@ -193,11 +193,11 @@ eunit_cleanup(_State) ->
 
 %% @doc 尝试建立数据库连接
 %% @return {ok, Conn} | {error, Reason}
--spec eunit_try_db() -> {ok, any()} | {error, any()}.
+-spec eunit_try_db() -> {ok, any(), any()} | {error, any()}.
 eunit_try_db() ->
     eunit_try_db(30).
 
--spec eunit_try_db(non_neg_integer()) -> {ok, any()} | {error, any()}.
+-spec eunit_try_db(non_neg_integer()) -> {ok, any(), any()} | {error, any()}.
 eunit_try_db(0) ->
     {error, no_connection};
 eunit_try_db(AttemptsLeft) ->

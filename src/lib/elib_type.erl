@@ -106,7 +106,7 @@ is_mobile(Mobile) ->
 %% @returns true | false
 %% @example
 %% elib_type:is_email(<<"test@example.com">>).
--spec is_email(binary() | list()) -> boolean().
+-spec is_email(binary() | list() | undefined) -> boolean().
 is_email(undefined) ->
     false;
 is_email(Email) ->
