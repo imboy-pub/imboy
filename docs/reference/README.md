@@ -40,6 +40,12 @@
 |------|------|
 | [engineering/](./engineering/) | CI/配置/依赖/Docker/日志/可观测/发布/技术债笔记 + 迁移命名规范 |
 
+## 静态类型检查
+
+| 文档 | 内容 |
+|------|------|
+| [static-typechecking/](./static-typechecking/) | Gradualizer + eqWAlizer 双引擎：选型分析、落地规划、误报决策日志、CI 集成验证 |
+
 ## 待生成
 
 - `api/`：REST API 参考站点，由 `imboy/api/openapi.yaml` 经 Redoc CI 自动生成，**禁止手写**
