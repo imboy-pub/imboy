@@ -1,4 +1,5 @@
 -module(elib_id).
+-eqwalizer(enable).
 
 %%% @doc ID 工具模块
 %%% 提供唯一标识符生成和 TSID 字段序列化功能
@@ -47,11 +48,15 @@ tsid_to_bin(Value) ->
 %%   ) => #{from_id => <<"84442613760000002">>, to_id => <<"84442613760000003">>}
 -spec tsid_keys_to_bin(map(), [atom() | binary()]) -> map().
 tsid_keys_to_bin(Map, Keys) when is_map(Map) ->
-    lists:foldl(fun(Key, Acc) ->
-        case maps:find(Key, Acc) of
-            {ok, Value} when is_integer(Value) ->
-                maps:put(Key, integer_to_binary(Value), Acc);
-            _ ->
-                Acc
-        end
-    end, Map, Keys).
+    lists:foldl(
+        fun(Key, Acc) ->
+            case maps:find(Key, Acc) of
+                {ok, Value} when is_integer(Value) ->
+                    maps:put(Key, integer_to_binary(Value), Acc);
+                _ ->
+                    Acc
+            end
+        end,
+        Map,
+        Keys
+    ).
