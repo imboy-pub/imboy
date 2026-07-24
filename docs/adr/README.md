@@ -14,3 +14,4 @@
 | [0001](./0001-four-layer-architecture.md) | 后端四层单向依赖架构 | Accepted |
 | [0002](./0002-database-migrations.md) | 数据库迁移采用 erlang_migrate + 顺序版本号 | Accepted |
 | [0003](./0003-plugin-route-namespace-api-prefix.md) | 动态插件路由命名空间对齐为 `/api/v{n}/` 前缀 | Accepted |
+| [0004](./0004-tsid-origin-namespace.md) | TSID 之上预留 origin 命名空间位（不改现有数据） | Proposed |
