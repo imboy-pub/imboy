@@ -34,7 +34,7 @@
 - `docs/adr/` — ADR 机制已跑通（4 篇），继续沿用
 - `docs/standards/` — api-format、error-codes 等标准文档，归入「参考」
 - `api/openapi.yaml` — API 文档真源已存在，缺的是发布流水线
-- `docs/operations/`、`docs/release/` — 运维与发布文档，归入「操作指南」
+- `docs/guides/operations/`、`docs/release/` — 运维与发布文档，归入「操作指南」
 
 ---
 
@@ -79,10 +79,10 @@ imboy/docs/
 │   └── first-message-with-sdk.md
 │
 ├── guides/                    # 【操作指南】任务导向
-│   ├── operations/            #   ← 现 docs/operations/ 迁入
+│   ├── operations/            #   ← 现 docs/guides/operations/ 迁入
 │   ├── release/               #   ← 现 docs/release/ 迁入
 │   ├── migrations/            #   ← 现 docs/migrations/ 迁入
-│   ├── e2ee/                  #   ← 现 docs/e2ee/ 迁入
+│   ├── e2ee/                  #   ← 现 docs/guides/e2ee/ 迁入
 │   └── plugin/                #   ← 现 docs/plugin/ 迁入
 │
 ├── reference/                 # 【参考】信息导向

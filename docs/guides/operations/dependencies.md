@@ -4,7 +4,7 @@
 > Status: 长期运维文档  
 > Scope: 交付、开发、部署阶段涉及的基础服务与外围组件说明  
 > Note: 实际交付环境以项目部署清单为准；本文档用于说明默认依赖边界，不直接等同于环境实施单。  
-> Related docs: `docs/guides/deployment.md`, `docs/architecture/database-access.md`, `docs/operations/security.md`
+> Related docs: `docs/guides/deployment.md`, `docs/architecture/database-access.md`, `docs/guides/operations/security.md`
 
 ## 1. 文档目的
 

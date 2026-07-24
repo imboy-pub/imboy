@@ -22,7 +22,7 @@
 - 依赖管理：`Makefile` + `include/deps.mk` + `erlang.mk`
 - 示例配置：`config/sys.config.example`
 
-依赖与运行说明详见 `docs/operations/dependencies.md`。
+依赖与运行说明详见 `docs/guides/operations/dependencies.md`。
 
 ## 常用开发命令
 

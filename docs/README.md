@@ -7,7 +7,7 @@
 | 我是谁 | 入口 |
 |--------|------|
 | 新加入的后端工程师 | [教程：本地跑通后端（15 分钟）](./tutorials/quickstart-backend.md) → [工程约定 CONVENTIONS](./CONVENTIONS.md) |
-| 运维 / 私有化部署 | [生产部署](../deploy/README.md) → [备份与恢复](./operations/deployment/BACKUP-RESTORE.md) |
+| 运维 / 私有化部署 | [生产部署](../deploy/README.md) → [备份与恢复](./guides/operations/deployment/BACKUP-RESTORE.md) |
 | 前端 / 移动端开发 | [API 格式](./standards/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
 | SDK 使用者（外部） | imboy-sdk-js 仓库 README（快速开始） |
 | 插件开发者 | imboy-plugin-marketplace 仓库 README |
@@ -37,14 +37,14 @@
 ### 部署与运维
 
 - [生产部署](../deploy/README.md)
-- [备份与恢复](./operations/deployment/BACKUP-RESTORE.md)
-- [版本升级](./operations/upgrade-runbook.md)
-- [Garage 附件存储](./operations/garage-deployment.md)
-- [监控](./operations/deployment/MONITORING.md)
+- [备份与恢复](./guides/operations/deployment/BACKUP-RESTORE.md)
+- [版本升级](./guides/operations/upgrade-runbook.md)
+- [Garage 附件存储](./guides/operations/garage-deployment.md)
+- [监控](./guides/operations/deployment/MONITORING.md)
 
 ### 安全
 
-- [运行安全](./operations/security.md)
+- [运行安全](./guides/operations/security.md)
 - [安全加固](./security/security-hardening.md)
 - [漏洞报告](../SECURITY.md)
 

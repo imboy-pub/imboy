@@ -1,6 +1,6 @@
 # CI 流程笔记（CI Notes）
 
-> 工程视角 · 描述现状 + 增量改进 · 与 `docs/testing/ci-testing.md` 互补(那份偏测试编排,本份偏工程门禁现状)
+> 工程视角 · 描述现状 + 增量改进 · 与 `docs/guides/testing/ci-testing.md` 互补(那份偏测试编排,本份偏工程门禁现状)
 
 ## 现状
 
@@ -23,7 +23,7 @@
 ## 潜在改进
 
 1. **软门收紧为 ratchet 硬门**(优先级高,增量,已有计划):Full EUnit 与 dialyzer 当前 continue-on-error;按 `backend-ci.yml` 自带计划,清存量红项后翻硬门(见 roadmap TEST-01)。这是工程效能最高杠杆。
-2. **覆盖率门**(高):三仓仅 `test -f lcov.info` 存在性检查,补真实阈值门(见 `docs/testing/coverage-plan.md`、roadmap TEST-02)。
+2. **覆盖率门**(高):三仓仅 `test -f lcov.info` 存在性检查,补真实阈值门(见 `docs/guides/testing/coverage-plan.md`、roadmap TEST-02)。
 3. **admin E2E 进 CI**(高):9 个 Playwright spec 零引用,接入 nightly/合并前(roadmap TEST-03)。
 4. **排查坏死工作流**(中):`imboyapp/integration_test.yml` 的触发配置(paths/working-directory)在 umbrella 工作区下失效,可能从未运行;注意 `ci.yml` 另有在跑的 integration job,该 yml 可能是冗余坏死副本(详见 roadmap TEST-05 CRITICAL 排查)。
 5. **契约门禁**(高):proto/OpenAPI/ws_url diff 进 CI,拦协议漂移(roadmap ARCH-03)。

@@ -164,4 +164,4 @@ WebSocket 路径本质也遵循同样思路：连接与协议入口在 `Handler`
 - `docs/architecture/database-access.md`
 - `docs/standards/api-format.md`
 - `docs/standards/error-codes.md`
-- `docs/operations/dependencies.md`
+- `docs/guides/operations/dependencies.md`

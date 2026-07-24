@@ -13,7 +13,7 @@
 完整阅读：
 1. 工作区根 AGENTS.md；
 2. 目标仓库及目标目录的 AGENTS.md；
-3. imboy/docs/e2ee/v2/14~21；
+3. imboy/docs/guides/e2ee/v2/14~21；
 4. 当前任务列出的源代码和测试。
 
 然后执行 21-claude-code-execution-playbook.md：
@@ -67,7 +67,7 @@
 - [ ] Flutter 变更执行 `dart analyze lib` 和任务列出的 `flutter test`。
 - [ ] Erlang 变更执行 `make compile`、相关 EUnit；格式化检查执行 `make format-check`。
 - [ ] migration 有真实 PostgreSQL up 验证，并提供 down 或前向修复方案。
-- [ ] 更新 `docs/e2ee/v2/evidence/E2EE-XXX.md`（目录不存在时创建）。
+- [ ] 更新 `docs/guides/e2ee/v2/evidence/E2EE-XXX.md`（目录不存在时创建）。
 - [ ] 使用已确认身份提交；提交后目标仓 `git status --short` 无本任务残留。
 
 ### 1.5 Evidence 模板
@@ -162,7 +162,7 @@
 1. 记录 `imboy`、`imboyapp` 的 HEAD、branch、status、远端差异。
 2. 用 `rg` 重新定位 ADR 20 §1.2 的每个 Gap，记录符号和行号，不照抄旧 handoff。
 3. 运行当前 E2EE 定向测试、`dart analyze lib`、`make compile`、`make eunit`，记录既有失败。
-4. 创建 `docs/e2ee/v2/evidence/E2EE-000.md`，不得修复发现。
+4. 创建 `docs/guides/e2ee/v2/evidence/E2EE-000.md`，不得修复发现。
 
 **验收标准**
 
@@ -188,7 +188,7 @@
 
 - [ ] 五类 owner 的决定、日期和适用 ADR 写入 evidence；无执行者冒充签字。
 - [ ] 每个旧 ADR 只标记被替代章节，保留的 legacy/decrypt-only 内容没有误删。
-- [ ] `rg -n '状态.*Proposed' docs/e2ee/v2/{14,15,16,17,18,19}-*.md` 零命中。
+- [ ] `rg -n '状态.*Proposed' docs/guides/e2ee/v2/{14,15,16,17,18,19}-*.md` 零命中。
 - [ ] 00 Freeze Gate、10 dependency graph、11 compatibility matrix 与新决策一致。
 - [ ] `git diff --check` 通过，Markdown 链接无断链。
 

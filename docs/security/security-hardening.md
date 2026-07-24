@@ -2,7 +2,7 @@
 
 > 版本：v2.x | 最后更新：2026-06-30
 > 适用场景：生产环境首次部署、版本升级前、等保测评前
-> 关联文档：`docs/operations/security.md`、`docs/compliance/mlps2-checklist.md`、`config/sys.config.example`
+> 关联文档：`docs/guides/operations/security.md`、`docs/compliance/mlps2-checklist.md`、`config/sys.config.example`
 
 本指南提供可执行的操作步骤，不是概念描述。按清单逐项执行，完成后打勾。
 
@@ -366,7 +366,7 @@ trivy image imboy:latest --severity HIGH,CRITICAL
 # 重点测试：SQL 注入、认证绕过、WebSocket 消息伪造、IDOR
 
 # 3. 备份恢复演练（参照 RESTORE-DRILL 记录格式）
-# 文档：docs/operations/deployment/RESTORE-DRILL-2026-06.md
+# 文档：docs/guides/operations/deployment/RESTORE-DRILL-2026-06.md
 # 步骤：恢复到测试环境 → 验证数据完整性 → 记录 RTO
 
 # 4. 等保自查（参照 docs/compliance/mlps2-checklist.md）

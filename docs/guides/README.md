@@ -20,10 +20,10 @@
 
 | 子目录 | 内容 | 迁移来源 |
 |--------|------|---------|
-| `operations/` | 备份恢复、节点控制、诊断、压测 | 现 `docs/operations/` |
+| `operations/` | 备份恢复、节点控制、诊断、压测 | 现 `docs/guides/operations/` |
 | `release/` | 发版流程、应用商店清单 | 现 `docs/release/` |
 | `migrations/` | 数据库迁移操作 | 现 `docs/migrations/` |
-| `e2ee/` | E2EE 配置与轮换操作 | 现 `docs/e2ee/` |
+| `e2ee/` | E2EE 配置与轮换操作 | 现 `docs/guides/e2ee/` |
 | `plugin/` | 插件安装与运维 | 现 `docs/plugin/` |
 
 模板：见 [documentation-system/templates/HOWTO_TEMPLATE.md](../documentation-system/templates/HOWTO_TEMPLATE.md)

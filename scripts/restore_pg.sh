@@ -2,7 +2,7 @@
 # ============================================================
 # PostgreSQL 恢复 / Restore PostgreSQL from a pg_dump (-Fc) backup
 # ------------------------------------------------------------
-# 被 docs/operations/deployment/BACKUP-RESTORE.md 引用。
+# 被 docs/guides/operations/deployment/BACKUP-RESTORE.md 引用。
 # 含恢复后行数抽样校验，用于备份/恢复演练（A4 验收）。
 #
 # 用法 / Usage:

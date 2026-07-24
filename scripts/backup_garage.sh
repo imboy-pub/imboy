@@ -3,7 +3,7 @@
 # Garage S3 附件数据备份 / Garage S3 attachment backup
 # ------------------------------------------------------------
 # 用 rclone（S3 兼容）把 Garage bucket 同步到备份目标。
-# 被 docs/operations/deployment/BACKUP-RESTORE.md 引用。
+# 被 docs/guides/operations/deployment/BACKUP-RESTORE.md 引用。
 #
 # 前置 / Prereq:
 #   1. 安装 rclone: https://rclone.org/install/

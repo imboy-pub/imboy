@@ -1,6 +1,6 @@
 # 发布流程笔记（Release Notes）
 
-> 工程视角 · 描述现状 + 增量改进 · 补充 `docs/testing/ci-testing.md`(CD 侧)
+> 工程视角 · 描述现状 + 增量改进 · 补充 `docs/guides/testing/ci-testing.md`(CD 侧)
 
 ## 现状
 
@@ -25,7 +25,7 @@
 1. **版本双源同步机制**(优先级中,增量):`VERSION` 与 `relx.config` 需都 bump(评审记录 alpha.14 踩坑,漏一个致迁移 dirty/版本不一致)。建议单一真源生成或 CI 校验二者一致(类比 Flutter DDL 单一真源思路)。
 2. **发布后自动冒烟 + 回滚**(中):蓝绿切换后自动跑 `smoke`(c2c/ws/ctl)+ admin `prod-health-check`,失败自动回滚(见 ci-testing CD 段)。当前冒烟脚本存在但发布链自动联动待确认。
 3. **三仓版本对齐校验**(低):三仓同版本线,建议发布门校验版本一致,避免 app/后端/admin 版本漂移。
-4. **回滚演练常态化**(中):迁移 down + 蓝绿回退定期演练(见 `docs/testing/chaos-testing.md`),确保回滚路径可用。
+4. **回滚演练常态化**(中):迁移 down + 蓝绿回退定期演练(见 `docs/guides/testing/chaos-testing.md`),确保回滚路径可用。
 5. **CHANGELOG 自动化**(低):基于 Conventional Commits 自动生成,减少手工维护漂移。
 
 ## 相关模块

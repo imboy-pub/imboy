@@ -8,7 +8,7 @@
   【已完成】Phase A 安全子集（双语，全部可回滚）：
   - imboy/config/sys.local.config.example（密钥模板）
   - script/backup_pg.sh + restore_pg.sh + backup_garage.sh（语法验证通过）
-  - docs/operations/deployment/BACKUP-RESTORE.md（新建）
+  - docs/guides/operations/deployment/BACKUP-RESTORE.md（新建）
   - README.md / README.en.md：E2EE 默认禁用披露 + 百万并发降级为设计目标 + 表格
   - imboy/CLAUDE.md 根表格 + logic/lib 面包屑计数修正
 
@@ -23,7 +23,7 @@
      src/*/CLAUDE.md 文件清单——api/adm/repo 的计数与文件列表都过期，手工改会引入
      新矛盾，必须用自动化。真实计数：api 54/adm 27/logic 76/ds 77/repo 72/lib 61
   2. BACKUP-RESTORE 真实演练：需 docker PG 容器(imboy_pg18)运行，跑 backup_pg.sh→
-     restore_pg.sh --target imboy_restore_test，生成 docs/operations/deployment/RESTORE-DRILL-2026-06.md
+     restore_pg.sh --target imboy_restore_test，生成 docs/guides/operations/deployment/RESTORE-DRILL-2026-06.md
   3. A2：backend-ci.yml 改为全量 make eunit + make dialyze + OTP 28（注意可能暴露历史失败）
 
   【不要自动执行】

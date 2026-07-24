@@ -2,7 +2,7 @@
 # ============================================================
 # PostgreSQL 全量备份 / Full PostgreSQL backup
 # ------------------------------------------------------------
-# 被 docs/operations/deployment/BACKUP-RESTORE.md 引用。
+# 被 docs/guides/operations/deployment/BACKUP-RESTORE.md 引用。
 # 使用 pg_dump 自定义格式（-Fc，支持并行恢复+压缩）。
 #
 # 用法 / Usage:

@@ -127,7 +127,7 @@ docker compose -f docker-compose.prod.yml logs -f imboy_backend
 
 ### 备份
 
-参见 `imboy/docs/operations/deployment/BACKUP-RESTORE.md`。简化版：
+参见 `imboy/docs/guides/operations/deployment/BACKUP-RESTORE.md`。简化版：
 
 ```bash
 # PG 逻辑备份

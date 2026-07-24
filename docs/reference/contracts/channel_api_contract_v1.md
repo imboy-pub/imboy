@@ -218,4 +218,4 @@ Any channel API contract change must update all:
 - `docs/reference/websocket-api-2.md`
 - `docs/api/envelope.schema.json`
 - ~~`docs/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
-- `docs/operations/security.md`
+- `docs/guides/operations/security.md`

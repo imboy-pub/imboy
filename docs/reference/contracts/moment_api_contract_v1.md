@@ -207,4 +207,4 @@ Any Moment contract change must update all:
 - `docs/reference/rest-api.md`
 - `docs/reference/websocket-api-2.md`
 - `docs/api/envelope.schema.json`
-- `docs/operations/security.md`
+- `docs/guides/operations/security.md`

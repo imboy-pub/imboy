@@ -436,7 +436,7 @@ _rel/imboy/bin/imboy stop
 docker compose -f deploy/docker-compose.prod.yml stop imboy_backend
 
 # ---- 步骤 3：PITR 恢复 ----
-# 参考 docs/operations/deployment/BACKUP-RESTORE.md 中的 PITR 章节
+# 参考 docs/guides/operations/deployment/BACKUP-RESTORE.md 中的 PITR 章节
 # 以下为快速参考：
 
 # 停止 PostgreSQL

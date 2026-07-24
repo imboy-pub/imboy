@@ -4,7 +4,7 @@
 > Status: 目标设计文档
 > Purpose: 把 `product_profile`、`capabilities`、`features`、`plugin_manifest` 与 `policy_engine` 明确成可落地模型，避免后续模块化时继续把“套餐”“规则”“功能”混在一起
 > Source of truth: `config/sys.config.example`, `src/lib/imboy_feature.erl`, `src/api/app_feature_handler.erl`, `src/adm/adm_admin_handler.erl`
-> Related docs: `overview.md`, `module-layer-cheatsheet.md`, `current-module-classification.md`, `../guides/module-feature-flag-config.md`, `../operations/security.md`
+> Related docs: `overview.md`, `module-layer-cheatsheet.md`, `current-module-classification.md`, `../guides/module-feature-flag-config.md`, `../guides/operations/security.md`
 
 ## 1. 这份文档解决什么问题
 
@@ -252,7 +252,7 @@ product_profile
 
 这里把 `storage_mode` 先设为 `archived`，不是因为目标不是“更安全”，而是因为当前仓库还不能对外笼统承诺“所有消息默认真正端到端加密且服务端不可见”。
 
-这与 `docs/operations/security.md` 中的口径保持一致。
+这与 `docs/guides/operations/security.md` 中的口径保持一致。
 
 #### `enterprise`
 

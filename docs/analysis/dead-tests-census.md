@@ -55,7 +55,7 @@
 ## C 类 — handler 层 mock/API 漂移失败（DB 门解除后暴露，160 失败）
 
 - **来源**：2026-07-21 全量 `make eunit-local` 基线（DB 环境门系统解后首次真跑，见
-  `docs/e2ee/v2/evidence/E2EE-019-db-env-gate-fix.md`）。**Passed 752 / Failed 160**。
+  `docs/guides/e2ee/v2/evidence/E2EE-019-db-env-gate-fix.md`）。**Passed 752 / Failed 160**。
 - **分布**：`channel_handler_tests` 88 + `adm_group_handler_tests` 40 = 128（占 80%），其余零散
   adm/handler 测试（adm_auth_middleware 5、adm_attach 4、adm_stats 3…）。
 - **根因签名**：98 `function_clause` + 14 `meck` + 5 `undef`。样本
