@@ -23,14 +23,14 @@ get:
   parameters:
     - in: query
       name: page
-      required: true
-      description: 页码，从 1 起 / Page number, 1-based
-      schema: { type: integer, minimum: 1 }
+      required: false
+      description: 页码，从 1 起，缺省 1；<1 或非法值服务端兜底为 1（elib_param:page/1）/ Page number, 1-based, default 1; invalid values fall back to 1
+      schema: { type: integer, minimum: 1, default: 1 }
     - in: query
       name: size
-      required: true
-      description: 每页条数 / Page size
-      schema: { type: integer, minimum: 1 }
+      required: false
+      description: 每页条数，缺省 20，>1000 服务端截断为 1000 / Page size, default 20, clamped to 1000 server-side
+      schema: { type: integer, minimum: 1, maximum: 1000, default: 20 }
     - in: query
       name: kwd
       required: false
