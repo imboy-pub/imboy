@@ -31,12 +31,12 @@ maybe_dispatch(FromUid, ToId, Data) ->
 
 -spec do_maybe_dispatch(integer(), integer(), map()) -> ok.
 do_maybe_dispatch(FromUid, ToId, Data) ->
-    case is_e2ee(Data) of
+    case ai_agent_prompt:is_e2ee(Data) of
         true ->
             % E2EE 红线：不解密、不做 AI
             ok;
         false ->
-            case extract_text(Data) of
+            case ai_agent_prompt:extract_text(Data) of
                 <<>> ->
                     % 非文本（图片/文件/位置等）不触发
                     ok;
@@ -73,8 +73,8 @@ do_dispatch(FromUid, ToId, Agent, Text) ->
     Provider = maps:get(<<"provider">>, Agent, <<>>),
     case imboy_llm_registry:lookup(Provider) of
         {ok, #{module := Mod, opts := Opts0}} ->
-            Opts = merge_model(Opts0, Agent),
-            Messages = build_messages(Agent, Text),
+            Opts = ai_agent_prompt:merge_model(Opts0, Agent),
+            Messages = ai_agent_prompt:build_messages(Agent, Text),
             % 异步：不阻塞发送者的 C2C 处理
             elib_async:async(fun() ->
                 ?MODULE:run_and_reply(Mod, Opts, FromUid, ToId, Messages)
@@ -160,48 +160,3 @@ deliver_reply(FromUid, ToId, MsgId, Result) ->
     MsLi = elib_retry_config:intervals(<<"c2c">>),
     message_ds:send_next(FromUid, MsgId, MsgJson, MsLi),
     ok.
-
-%% OpenAI 兼容 messages：可选 system_prompt 开场 + 用户消息
--spec build_messages(map(), binary()) -> [map()].
-build_messages(Agent, Text) ->
-    User = #{<<"role">> => <<"user">>, <<"content">> => Text},
-    case maps:get(<<"system_prompt">>, Agent, <<>>) of
-        SP when is_binary(SP), SP =/= <<>> ->
-            [#{<<"role">> => <<"system">>, <<"content">> => SP}, User];
-        _ ->
-            [User]
-    end.
-
-%% agent.model 非空则覆盖 provider 配置的 model
--spec merge_model(map(), map()) -> map().
-merge_model(Opts, Agent) ->
-    case maps:get(<<"model">>, Agent, <<>>) of
-        M when is_binary(M), M =/= <<>> -> Opts#{model => M};
-        _ -> Opts
-    end.
-
-%% 消息是否 E2EE（顶层 e2ee map 非 null，或 msg_type=e2ee）
--spec is_e2ee(map()) -> boolean().
-is_e2ee(Data) ->
-    E2EE = maps:get(<<"e2ee">>, Data, null),
-    MsgType = maps:get(<<"msg_type">>, Data, <<>>),
-    (is_map(E2EE) andalso map_size(E2EE) > 0) orelse MsgType =:= <<"e2ee">>.
-
-%% 从 C2C payload 提取文本（content 优先，text 兜底）
--spec extract_text(map()) -> binary().
-extract_text(Data) ->
-    Payload = maps:get(<<"payload">>, Data, #{}),
-    case Payload of
-        P when is_map(P) ->
-            first_nonempty([
-                maps:get(<<"content">>, P, <<>>),
-                maps:get(<<"text">>, P, <<>>)
-            ]);
-        _ ->
-            <<>>
-    end.
-
--spec first_nonempty([term()]) -> binary().
-first_nonempty([B | _]) when is_binary(B), B =/= <<>> -> B;
-first_nonempty([_ | Rest]) -> first_nonempty(Rest);
-first_nonempty([]) -> <<>>.

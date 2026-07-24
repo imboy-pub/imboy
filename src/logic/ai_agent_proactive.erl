@@ -111,8 +111,12 @@ do_llm_welcome(Agent, AgentUid, Nickname) ->
     Provider = maps:get(<<"provider">>, Agent, <<>>),
     case imboy_llm_registry:lookup(Provider) of
         {ok, #{module := Mod, opts := Opts0}} ->
-            Opts = merge_model(Opts0, Agent),
-            Messages = build_welcome_messages(Agent, Nickname),
+            Opts = ai_agent_prompt:merge_model(Opts0, Agent),
+            User = #{
+                <<"role">> => <<"user">>,
+                <<"content">> => <<?WELCOME_INSTRUCTION/binary, Nickname/binary>>
+            },
+            Messages = ai_agent_prompt:build_messages_with_user(Agent, User),
             case Mod:chat(AgentUid, Messages, Opts) of
                 {ok, RespMap} when is_map(RespMap) ->
                     {ok, maps:get(<<"result">>, RespMap, <<>>)};
@@ -142,25 +146,4 @@ template_of(Cfg) ->
     case maps:get(welcome_template, Cfg, ?DEFAULT_TEMPLATE) of
         T when is_binary(T), T =/= <<>> -> T;
         _ -> ?DEFAULT_TEMPLATE
-    end.
-
-%% OpenAI 兼容 messages：system_prompt 开场 + 欢迎指令
--spec build_welcome_messages(map(), binary()) -> [map()].
-build_welcome_messages(Agent, Nickname) ->
-    User = #{
-        <<"role">> => <<"user">>, <<"content">> => <<?WELCOME_INSTRUCTION/binary, Nickname/binary>>
-    },
-    case maps:get(<<"system_prompt">>, Agent, <<>>) of
-        SP when is_binary(SP), SP =/= <<>> ->
-            [#{<<"role">> => <<"system">>, <<"content">> => SP}, User];
-        _ ->
-            [User]
-    end.
-
-%% ponytail: 与 ai_agent_reply:merge_model/2 同形（5 行），各自私有避免跨模块导出
--spec merge_model(map(), map()) -> map().
-merge_model(Opts, Agent) ->
-    case maps:get(<<"model">>, Agent, <<>>) of
-        M when is_binary(M), M =/= <<>> -> Opts#{model => M};
-        _ -> Opts
     end.

@@ -38,11 +38,11 @@ maybe_dispatch(FromUid, ToGID, Data, MemberUids) ->
 
 -spec do_maybe_dispatch(integer(), integer(), map(), [integer()]) -> ok.
 do_maybe_dispatch(FromUid, ToGID, Data, MemberUids) ->
-    case is_e2ee(Data) orelse is_agent_sender(FromUid) of
+    case ai_agent_prompt:is_e2ee(Data) orelse is_agent_sender(FromUid) of
         true ->
             ok;
         false ->
-            Text = extract_text(Data),
+            Text = ai_agent_prompt:extract_text(Data),
             MentionedAgents = mentioned_agents(Data),
             %% T4.3 ②：先看是否是确定性支付指令（LLM 不进资金路径）；不是才走 LLM 回复。
             case try_pay_command(FromUid, ToGID, Data, Text, MentionedAgents) of
@@ -86,8 +86,8 @@ dispatch(ToGID, AgentUid, Agent, Text, MemberUids) ->
     Provider = maps:get(<<"provider">>, Agent, <<>>),
     case imboy_llm_registry:lookup(Provider) of
         {ok, #{module := Mod, opts := Opts0}} ->
-            Opts = merge_model(Opts0, Agent),
-            Messages = build_messages(Agent, Text),
+            Opts = ai_agent_prompt:merge_model(Opts0, Agent),
+            Messages = ai_agent_prompt:build_messages(Agent, Text),
             elib_async:async(fun() ->
                 ?MODULE:run_and_reply(Mod, Opts, ToGID, {AgentUid, Agent}, {Messages, MemberUids})
             end),
@@ -305,36 +305,3 @@ is_agent_sender(FromUid) ->
         {true, _} -> true;
         false -> false
     end.
-
-build_messages(Agent, Text) ->
-    User = #{<<"role">> => <<"user">>, <<"content">> => Text},
-    case maps:get(<<"system_prompt">>, Agent, <<>>) of
-        SP when is_binary(SP), SP =/= <<>> ->
-            [#{<<"role">> => <<"system">>, <<"content">> => SP}, User];
-        _ ->
-            [User]
-    end.
-
-merge_model(Opts, Agent) ->
-    case maps:get(<<"model">>, Agent, <<>>) of
-        M when is_binary(M), M =/= <<>> -> Opts#{model => M};
-        _ -> Opts
-    end.
-
-is_e2ee(Data) ->
-    E2EE = maps:get(<<"e2ee">>, Data, null),
-    MsgType = maps:get(<<"msg_type">>, Data, <<>>),
-    (is_map(E2EE) andalso map_size(E2EE) > 0) orelse MsgType =:= <<"e2ee">>.
-
-extract_text(Data) ->
-    Payload = maps:get(<<"payload">>, Data, #{}),
-    case Payload of
-        P when is_map(P) ->
-            first_nonempty([maps:get(<<"content">>, P, <<>>), maps:get(<<"text">>, P, <<>>)]);
-        _ ->
-            <<>>
-    end.
-
-first_nonempty([B | _]) when is_binary(B), B =/= <<>> -> B;
-first_nonempty([_ | Rest]) -> first_nonempty(Rest);
-first_nonempty([]) -> <<>>.
