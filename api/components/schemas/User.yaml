@@ -49,6 +49,17 @@ properties:
     description: |
       ## 中文 / English
       头像 URL / Avatar URL.
+  account_type:
+    type: integer
+    enum: [0, 1, 2]
+    description: |
+      ## 中文
+      账号类型：0=真人用户，1=AI 助手，2=系统机器人（服务端事实标记，
+      客户端据此渲染「AI」/「官方」徽章，防钓鱼）。只读字段。
+      ## English
+      Account type: 0=human, 1=AI agent, 2=system bot (server-side fact marker;
+      clients render an "AI"/"Official" badge accordingly, anti-phishing).
+      Read-only.
   status:
     type: integer
     description: |

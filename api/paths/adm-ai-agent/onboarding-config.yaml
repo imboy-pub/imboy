@@ -1,0 +1,90 @@
+# /api/adm/ai_agent/onboarding_config — 新手引导配置读写 / New-user onboarding config
+# adm_ai_agent_handler action=onboarding_config；GET 需 PERM_READ，POST 需 PERM_UPDATE。
+get:
+  tags: [admin, ai-agent]
+  summary: 读取新手引导配置 / Read onboarding config
+  description: |
+    ## 中文
+    管理后台读取「注册三件套」（默认好友 + 默认订阅 + 欢迎消息）的全量配置，
+    存于 config 表 `onboarding.*` 键（`user_onboarding_logic:get_config/0`）。
+    ## English
+    Reads the full new-user onboarding config (default friend + default channel
+    subscription + welcome message), stored under `onboarding.*` config keys.
+  operationId: adm_ai_agent_onboarding_config_get
+  security:
+    - bearerAuth: []
+  responses:
+    '200':
+      description: 成功，payload 为 onboarding 全量配置 / Success, payload is the full onboarding config
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload: { $ref: '../../components/schemas/OnboardingConfig.yaml' }
+    '4XX':
+      description: 无权限 / 未认证 / Forbidden or unauthorized
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+post:
+  tags: [admin, ai-agent]
+  summary: 半量保存新手引导配置 / Partial-update onboarding config
+  description: |
+    ## 中文
+    半量更新：白名单键逐个校验（`user_onboarding_logic:put_config/1`），任一
+    非法则整体拒绝（零写入）、未知键忽略。成功后回全量最新配置供前端表单回显。
+    - `welcome_agent_uid`：接受非负整数或数字字符串（TSID，归一化为 integer 存储）
+    - `default_channels`：非空字符串数组，最多 20 个
+    - `welcome_template`：非空字符串，≤2000 字节，支持 `{{nickname}}` 占位符
+    ## English
+    Partial update with per-key whitelist validation; any invalid key rejects the
+    whole patch (zero write), unknown keys ignored. Returns the full latest config.
+  operationId: adm_ai_agent_onboarding_config_post
+  security:
+    - bearerAuth: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          description: 半量补丁，所有字段可选 / Partial patch, all fields optional
+          properties:
+            enabled:
+              type: boolean
+              description: 新手引导总开关；关闭后注册不触发任何引导 / Master switch
+            welcome_agent_uid:
+              type: integer
+              format: int64
+              description: |
+                欢迎助手用户 ID（TSID，须为 account_type=1 的 AI 账号；接受数字字符串）/
+                Welcome agent user ID (TSID; must be an AI account).
+            default_channels:
+              type: array
+              items: { type: string }
+              maxItems: 20
+              description: 默认订阅频道 ID 列表 / Default channel IDs to subscribe
+            welcome_template:
+              type: string
+              maxLength: 2000
+              description: 欢迎文案模板，支持 {{nickname}} 占位 / Welcome template with {{nickname}} placeholder
+            welcome_llm_enabled:
+              type: boolean
+              description: LLM 个性化欢迎开关（失败自动回退模板）/ LLM-personalized welcome toggle
+  responses:
+    '200':
+      description: 保存成功，payload 为全量最新配置 / Saved, payload is the full latest config
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload: { $ref: '../../components/schemas/OnboardingConfig.yaml' }
+    '4XX':
+      description: 校验失败（键值非法）/ 无权限 / Validation error or forbidden
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

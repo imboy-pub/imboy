@@ -1,0 +1,51 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/schemas/OnboardingConfig.yaml
+# 新手引导配置 / New-user onboarding config
+#
+# 来源：user_onboarding_logic:get_config/0（config 表 onboarding.* 键）
+# 调用方：paths/adm-ai-agent/onboarding-config.yaml（GET/POST payload）
+# ----------------------------------------------------------------------------
+type: object
+required: [enabled, welcome_agent_uid, default_channels, welcome_template, welcome_llm_enabled]
+properties:
+  enabled:
+    type: boolean
+    description: |
+      ## 中文
+      新手引导总开关。false 时新用户注册不触发任何引导动作（三件套整体 no-op）。
+      ## English
+      Onboarding master switch. When false, signup triggers no onboarding actions.
+  welcome_agent_uid:
+    type: integer
+    format: int64
+    description: |
+      ## 中文
+      欢迎助手用户 ID（TSID，JSON integer 传输）。须为 `account_type=1` 的 AI 账号；
+      0 表示未配置（等同关闭）。
+      ## English
+      Welcome agent user ID (TSID, JSON integer). Must be an AI account
+      (account_type=1); 0 means unconfigured.
+  default_channels:
+    type: array
+    items: { type: string }
+    description: |
+      ## 中文
+      新用户默认订阅的频道 ID 列表；留空则不订阅。最多 20 个。
+      ## English
+      Channel IDs auto-subscribed for new users; empty = none. Max 20.
+  welcome_template:
+    type: string
+    description: |
+      ## 中文
+      欢迎消息文案模板，支持 `{{nickname}}` 占位符（后端渲染为用户昵称）。
+      ## English
+      Welcome message template; supports the `{{nickname}}` placeholder.
+  welcome_llm_enabled:
+    type: boolean
+    description: |
+      ## 中文
+      是否用 LLM 个性化生成欢迎语（过限流闸门；失败/限流自动回退模板）。
+      false 时始终用 `welcome_template`，零 LLM 成本。
+      ## English
+      Whether to LLM-personalize the welcome message (rate-limited; falls back
+      to the template on failure). When false, always uses the template.

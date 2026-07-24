@@ -1,0 +1,87 @@
+# GET /api/v1/agent/list — AI 助手广场发现接口 / AI assistant plaza discovery
+get:
+  tags: [ai-agent]
+  summary: 助手广场分页列表 / Assistant plaza paged list
+  description: |
+    ## 中文
+    面向普通用户列出「可发起会话的 AI 助手」，用于客户端助手广场页。
+    可见性口径由服务端收口：仅返回 `status=1 且 visibility=1` 且用户
+    `status=1` 的助手（`ai_agent_logic:list_assistants/1` → `ai_agent_repo:page_assistants/3`）。
+    按 `created_at DESC` 排序；`kwd` 按 agent 昵称模糊匹配。
+    每项为精简卡片 `{id, name, avatar, description}`。
+    > 说明：本接口不返回 `account_type`（广场内均为 AI 助手）。若客户端需
+    > 区分 AI(1)/官方(2) 徽章，account_type 经好友/用户资料 payload 获取
+    > （见 `components/schemas/User.yaml`）。
+    ## English
+    Lists discoverable AI assistants for the client-side plaza page. Server
+    enforces visibility (`status=1 AND visibility=1`, user `status=1`).
+    Ordered by `created_at DESC`; `kwd` fuzzy-matches the agent nickname.
+    Each item is a compact card `{id, name, avatar, description}`.
+  operationId: ai_agent_list_assistants
+  security:
+    - bearerAuth: []
+  parameters:
+    - in: query
+      name: page
+      required: true
+      description: 页码，从 1 起 / Page number, 1-based
+      schema: { type: integer, minimum: 1 }
+    - in: query
+      name: size
+      required: true
+      description: 每页条数 / Page size
+      schema: { type: integer, minimum: 1 }
+    - in: query
+      name: kwd
+      required: false
+      description: 按助手昵称模糊搜索（可选）/ Fuzzy search by assistant nickname (optional)
+      schema: { type: string }
+  responses:
+    '200':
+      description: 成功，payload 为分页对象 / Success, payload is a paged object
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [total, page, size, list]
+                    properties:
+                      total:
+                        type: integer
+                        description: 匹配总数 / Total matched count
+                      page:
+                        type: integer
+                        description: 当前页码 / Current page
+                      size:
+                        type: integer
+                        description: 每页条数 / Page size
+                      list:
+                        type: array
+                        description: 助手卡片列表 / Assistant cards
+                        items:
+                          type: object
+                          required: [id, name, avatar, description]
+                          properties:
+                            id:
+                              type: integer
+                              format: int64
+                              description: |
+                                助手用户 ID（TSID，JSON integer 传输；前端 safeParseBigIntJson 转 string）/
+                                Assistant user ID (TSID, transmitted as JSON integer).
+                            name:
+                              type: string
+                              description: 助手昵称 / Assistant nickname
+                            avatar:
+                              type: string
+                              description: 头像 object_key/URL（客户端须经 AssetsService 授权访问）/ Avatar key/URL (client must resolve via authorized viewUrl)
+                            description:
+                              type: string
+                              description: 助手简介 / Assistant description
+    '4XX':
+      description: 参数非法 / 未认证 — 读取助手列表失败 / Bad request or unauthorized
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

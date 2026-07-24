@@ -1014,6 +1014,10 @@ paths:
     $ref: './paths/attachment/confirm.yaml'
   /api/v1/attachment/view_url:
     $ref: './paths/attachment/view_url.yaml'
+  /api/v1/agent/list:
+    $ref: './paths/ai-agent/list.yaml'
+  /api/adm/ai_agent/onboarding_config:
+    $ref: './paths/adm-ai-agent/onboarding-config.yaml'
 
 components:
   securitySchemes:
