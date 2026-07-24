@@ -607,6 +607,10 @@ get_routes() ->
         {"/api/adm/ai_agent/create", adm_ai_agent_handler, #{action => create}},
         {"/api/adm/ai_agent/update", adm_ai_agent_handler, #{action => update}},
         {"/api/adm/ai_agent/set_status", adm_ai_agent_handler, #{action => set_status}},
+        % 新手引导配置（AI 冷启动）：GET 读 / POST 半量保存（users:read|update）
+        {"/api/adm/ai_agent/onboarding_config", adm_ai_agent_handler, #{
+            action => onboarding_config
+        }},
         % admin 应急入口(c)：代运营为 agent 创建受控支付授权（finance:write RBAC）
         {"/api/adm/ai_agent/mandate_create", adm_ai_agent_handler, #{action => mandate_create}},
         {"/api/adm/mcp/clients", adm_mcp_handler, #{action => list}},

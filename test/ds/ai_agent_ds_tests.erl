@@ -141,3 +141,43 @@ get_decodes_trigger_policy_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% update/2 — nickname 同步 user 表（agent 资料管理后台可配）
+%% ===================================================================
+
+update_syncs_nickname_when_present_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_repo, [{'update', 2, fun(_Uid, _Data) -> {ok, 1} end}]},
+            {ai_agent_repo, [
+                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+            ]}
+        ],
+        fun() ->
+            {ok, _} = ai_agent_ds:update(7, #{
+                <<"provider">> => <<"qianfan">>,
+                <<"nickname">> => <<"新昵称"/utf8>>
+            }),
+            ?assert(meck:called(user_repo, update, [7, #{nickname => <<"新昵称"/utf8>>}]))
+        end
+    ).
+
+update_skips_nickname_when_absent_or_blank_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {ai_agent_repo, [
+                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+            ]}
+        ],
+        fun() ->
+            %% 不带 nickname
+            {ok, _} = ai_agent_ds:update(7, #{<<"provider">> => <<"qianfan">>}),
+            %% 带空白 nickname
+            {ok, _} = ai_agent_ds:update(7, #{
+                <<"provider">> => <<"qianfan">>, <<"nickname">> => <<"  ">>
+            }),
+            ?assertNot(meck:called(user_repo, update, '_'))
+        end
+    ).

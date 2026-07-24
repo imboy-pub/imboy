@@ -57,7 +57,8 @@ create(ConfigMap) when is_map(ConfigMap) ->
             Err
     end.
 
-%% @doc 更新既有 agent 绑定（不新建 user，按 user_id upsert 元数据）
+%% @doc 更新既有 agent 绑定（不新建 user，按 user_id upsert 元数据）；
+%% ConfigMap 含非空 nickname 时同步 user 表昵称（agent 资料管理后台可配）。
 -spec update(integer(), map()) -> {ok, map()} | {error, binary()}.
 update(UserId, ConfigMap) when is_map(ConfigMap) ->
     case trim(maps:get(<<"provider">>, ConfigMap, <<>>)) of
@@ -66,10 +67,29 @@ update(UserId, ConfigMap) when is_map(ConfigMap) ->
         Provider ->
             case ai_agent_repo:upsert(agent_data(UserId, Provider, ConfigMap)) of
                 {ok, _} ->
+                    ok = maybe_update_nickname(UserId, ConfigMap),
                     {ok, #{<<"user_id">> => UserId}};
                 {error, Reason} ->
                     ?ERROR_LOG("ai_agent_ds:update user_id=~p error ~p~n", [UserId, Reason]),
                     {error, <<"更新 Agent 失败"/utf8>>}
+            end
+    end.
+
+%% nickname 非空则同步 user 表；失败仅记日志（元数据更新已成功，昵称可重试）
+-spec maybe_update_nickname(integer(), map()) -> ok.
+maybe_update_nickname(UserId, ConfigMap) ->
+    case trim(maps:get(<<"nickname">>, ConfigMap, <<>>)) of
+        <<>> ->
+            ok;
+        Nickname ->
+            case user_repo:update(UserId, #{nickname => Nickname}) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    ?ERROR_LOG("ai_agent_ds:update nickname user_id=~p error ~p~n", [
+                        UserId, Reason
+                    ]),
+                    ok
             end
     end.
 

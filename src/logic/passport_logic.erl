@@ -491,7 +491,12 @@ do_signup_by_email(Email, Pwd, PostVals) ->
                                 PostVals
                             ),
                             case user_ds:insert_and_get_id(Data) of
-                                {ok, _} ->
+                                {ok, NewUid} ->
+                                    %% 新手引导（AI 冷启动）：fire-and-forget，
+                                    %% onboarding 任何失败不阻断注册
+                                    elib_async:async(fun() ->
+                                        user_onboarding_logic:after_signup(NewUid, Nickname)
+                                    end),
                                     % 注册成功
                                     {ok, #{}};
                                 {error,
@@ -532,7 +537,12 @@ do_signup_by_mobile(Mobile, Pwd, PostVals) ->
                                 PostVals
                             ),
                             case user_ds:insert_and_get_id(Data) of
-                                {ok, _} ->
+                                {ok, NewUid} ->
+                                    %% 新手引导（AI 冷启动）：fire-and-forget，
+                                    %% onboarding 任何失败不阻断注册
+                                    elib_async:async(fun() ->
+                                        user_onboarding_logic:after_signup(NewUid, Nickname)
+                                    end),
                                     % 注册成功
                                     {ok, #{}};
                                 {error, Reason} ->

@@ -105,10 +105,41 @@ set_status(UserId, Status) ->
 
 %% @doc 分页列出 agent（管理后台）
 -spec page(pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
-page(Page, Size) ->
-    Tb = tablename(),
-    Column = <<"user_id, provider, model, role_id, owner_uid, status, created_at">>,
-    elib_pg:page_with_total(Tb, Column, #{}, <<"created_at DESC">>, Page, Size).
+%% @doc admin 管理列表：JOIN user 拿 nickname/avatar，补 visibility/description，
+%% 便于后台识别与编辑（不含 system_prompt 长文本，编辑走 find/1 详情）。
+%% ponytail: LIMIT/OFFSET 整数来自已校验分页（Page/Size>0），内联安全。
+page(Page, Size) when Page > 0, Size > 0 ->
+    ATb = tablename(),
+    UTb = user_repo:tablename(),
+    From = <<" FROM ", ATb/binary, " a JOIN ", UTb/binary, " u ON u.id = a.user_id ">>,
+    case elib_pg:query(<<"SELECT count(*) AS total", From/binary>>, []) of
+        {ok, [#{<<"total">> := 0} | _]} ->
+            {ok, empty_page(Page, Size)};
+        {ok, [#{<<"total">> := Total} | _]} ->
+            Offset = (Page - 1) * Size,
+            ListSql =
+                <<
+                    "SELECT a.user_id, u.nickname, u.avatar, a.provider, a.model,"
+                    " a.description, a.visibility, a.status, a.owner_uid, a.created_at",
+                    From/binary,
+                    " ORDER BY a.created_at DESC LIMIT ",
+                    (integer_to_binary(Size))/binary,
+                    " OFFSET ",
+                    (integer_to_binary(Offset))/binary
+                >>,
+            case elib_pg:query(ListSql, []) of
+                {ok, Rows} ->
+                    {ok, #{total => Total, page => Page, size => Size, list => Rows}};
+                {error, Reason} ->
+                    ?ERROR_LOG("ai_agent_repo:page list error ~p~n", [Reason]),
+                    {error, Reason}
+            end;
+        {ok, []} ->
+            {ok, empty_page(Page, Size)};
+        {error, Reason} ->
+            ?ERROR_LOG("ai_agent_repo:page count error ~p~n", [Reason]),
+            {error, Reason}
+    end.
 
 %% @doc 面向普通用户的「可发现助手」分页列表（供 Flutter 发起 C2S 会话）。
 %% 可见性口径：ai_agent.status=1（启用）AND visibility=1（公开可发现）

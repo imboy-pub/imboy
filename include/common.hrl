@@ -11,4 +11,4 @@
         nickname,avatar,background,gender,region,sign,birthday,status">>).
 
 -define (DEF_USER_COLUMN, <<"id,account,
-        nickname,avatar,background,sign,gender,region,birthday">>).
+        nickname,avatar,background,sign,gender,region,birthday,account_type">>).
