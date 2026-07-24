@@ -110,4 +110,4 @@ Any E2EE social shard contract change must update all:
 - `docs/reference/rest-api.md`
 - `docs/reference/websocket-api-2.md`
 - `docs/guides/operations/security.md`
-- `docs/standards/error-codes.md`
+- `docs/reference/error-codes.md`

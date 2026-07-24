@@ -42,7 +42,7 @@ IMBOYENV=local make relup
 说明：
 
 - `make eunit` 默认使用 `config/sys.config`，可通过 `EUNIT_CONFIG=config/sys.local.config` 指定配置。
-- 提交迁移前，按 `docs/standards/migration_naming.md` 做命名自检。
+- 提交迁移前，按 `docs/reference/engineering/migration_naming.md` 做命名自检。
 - 功能开关 smoke 校验可直接使用 `script/run_feature_flag_smoke.sh`，或通过 `make feature-smoke` 触发。
 
 ## Architecture Gates / 架构门禁

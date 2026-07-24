@@ -4,11 +4,11 @@
 > Status: 长期架构文档  
 > Scope: 当前仓库的分层职责、调用链路与设计边界  
 > Source of truth: `src/imboy_router.erl`, `src/api/`, `src/adm/`, `src/logic/`, `src/ds/`, `src/repo/`, `src/lib/`  
-> Related docs: `docs/architecture/database-access.md`, `docs/standards/api-format.md`, `docs/README.md`
+> Related docs: `docs/architecture/database-access.md`, `docs/reference/api-format.md`, `docs/README.md`
 
 ## 相关 ADR / Related Decisions
 
-- [`2026-03-15-modular-monolith-boundaries.md`](adr/2026-03-15-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
+- [`2026-03-15-modular-monolith-boundaries.md`](../adr/0005-modular-monolith-boundaries.md): 明确后端继续保持 modular monolith，并仅在高变化扩展点引入轻量插件化。
 
 ## 迁移状态（2026-03-28 — 闭环）
 
@@ -162,6 +162,6 @@ WebSocket 路径本质也遵循同样思路：连接与协议入口在 `Handler`
 ## 7. 相关文档
 
 - `docs/architecture/database-access.md`
-- `docs/standards/api-format.md`
-- `docs/standards/error-codes.md`
+- `docs/reference/api-format.md`
+- `docs/reference/error-codes.md`
 - `docs/guides/operations/dependencies.md`

@@ -405,7 +405,7 @@ push_notification_logic.erl:76-107；grep 结果（user_dnd_rule 无 logic 层�
 按 scope（public/private/c2c/group/channel/moment）选桶、presigned PUT/GET、confirm HEAD 核实落库、view_url 读鉴权。
 
 ### 设计
-- 写归属 = object_key `u<Uid>/` 前缀 + can_upload scope 权限；读归属 = authorize/2 六分支（attach_logic.erl:6-14 设计注释与 docs/architecture/resource-access-control.md 对应）。
+- 写归属 = object_key `u<Uid>/` 前缀 + can_upload scope 权限；读归属 = authorize/2 六分支（attach_logic.erl:6-14 设计注释与 docs/archive/architecture/resource-access-control.md 对应）。
 - confirm 三防线：owner_of_key 前缀归属（:71-83）→ HEAD 核实真实 size/type 覆盖客户端自报值（:88-109）→ 超限/类型非法即删对象。
 - view_url fail-closed：归属查询失败拒签不降级（:193-206）；受限资源统一 600s GET；go-fastdfs 历史附件（`/` 前缀）回退兼容（:212-222）。
 

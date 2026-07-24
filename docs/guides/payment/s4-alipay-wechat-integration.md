@@ -1,4 +1,4 @@
-> [imboy.pub 根目录](../../../CLAUDE.md) > [imboy 后端](../../CLAUDE.md) > **支付 / Payment** > **S4 支付宝/微信真实支付对接**
+> [imboy.pub 根目录](../../../CLAUDE.md) > [imboy 后端](../../../CLAUDE.md) > **支付 / Payment** > **S4 支付宝/微信真实支付对接**
 
 # S4：支付宝/微信真实支付对接（两端对接文档）/ Alipay & WeChat Real Payment Integration
 
@@ -395,9 +395,9 @@ flutter build apk \
 
 ## 相关文档 / Related
 
-- 后端 API 层：[../../src/api/CLAUDE.md](../../src/api/CLAUDE.md)
-- 后端 Logic 层：[../../src/logic/CLAUDE.md](../../src/logic/CLAUDE.md)
+- 后端 API 层：[../../src/api/CLAUDE.md](../../../src/api/CLAUDE.md)
+- 后端 Logic 层：[../../src/logic/CLAUDE.md](../../../src/logic/CLAUDE.md)
 - 前端服务层：`../../../imboyapp/lib/service/CLAUDE.md`
 - erlang_pay 库研究报告：`../../../erlang_pay/docs/payment-library-research-2026-06.md`
-- API 格式规范：[../standards/api-format.md](../standards/api-format.md)
-- 错误码：[../standards/error-codes.md](../standards/error-codes.md)
+- API 格式规范：[../reference/api-format.md](../../reference/api-format.md)
+- 错误码：[../reference/error-codes.md](../../reference/error-codes.md)

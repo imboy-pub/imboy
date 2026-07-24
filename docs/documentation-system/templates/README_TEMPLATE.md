@@ -30,7 +30,7 @@
 
 **前置要求**：
 
-- [ ] 工具 X（版本 ≥ Y，[安装指引](链接)）
+- [ ] 工具 X（版本 ≥ Y，[安装指引](#)）
 - [ ] 服务 Z 已启动
 
 ```bash
@@ -57,13 +57,13 @@
 
 | 我想…… | 去哪里 |
 |--------|--------|
-| 跟着教程做一遍 | [docs/tutorials/](docs/tutorials/) |
-| 查 API 参数 | [docs/reference/](docs/reference/) |
-| 理解设计决策 | [docs/adr/](docs/adr/) |
+| 跟着教程做一遍 | `docs/tutorials/` |
+| 查 API 参数 | `docs/reference/` |
+| 理解设计决策 | `docs/adr/` |
 
 ## 贡献
 
-见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+见 `CONTRIBUTING.md`。
 
 ## 许可证
 

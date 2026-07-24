@@ -88,8 +88,8 @@ imboy/docs/
 ├── reference/                 # 【参考】信息导向
 │   ├── api/                   #   ← 由 api/openapi.yaml 生成，CI 产出
 │   ├── websocket-protocol.md
-│   ├── error-codes.md         #   ← 现 standards/error-codes.md 迁入
-│   ├── api-format.md          #   ← 现 standards/api-format.md 迁入
+│   ├── error-codes.md         #   ← 现 reference/error-codes.md 迁入
+│   ├── api-format.md          #   ← 现 reference/api-format.md 迁入
 │   └── tsid-conventions.md
 │
 ├── explanation/               # 【解释】理解导向

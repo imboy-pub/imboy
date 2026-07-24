@@ -13,7 +13,7 @@
 %   应答：200 {"ok":true} | 400 | 404（无效/停用统一 404）| 429 限流
 %%%
 
--behavior(cowboy_rest).
+-behavior(cowboy_handler).
 
 -export([init/2]).
 

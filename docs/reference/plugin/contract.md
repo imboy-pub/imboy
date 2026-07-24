@@ -2,7 +2,7 @@
 
 > ⚠️ **架构定位声明（2026-06）/ Architecture Status (2026-06)**
 >
-> 本契约描述的动态插件平台为**远期可选路线**，当前默认走 `product-profile` 配置裁剪（见 `docs/architecture/product-profile-and-plugin-registry-design.md §3.1`）。
+> 本契约描述的动态插件平台为**远期可选路线**，当前默认走 `product-profile` 配置裁剪（见 `docs/explanation/product-profile-and-plugin-registry-design.md §3.1`）。
 > 两条路线并不矛盾：现行路线基于静态清单 + policy 策略引擎；动态平台路线（本契约 §2+ 描述的 OTP application 热插拔、marketplace 拉取、Ed25519 签名验证等）为 **roadmap-only**，代码已冻结（`imboy_plugin_loader` 等 v2 模块标注 `@status FROZEN`）。
 >
 > This contract describes the dynamic plugin platform as a **long-term optional route**. Current production uses config-driven profile modulation (§3.1 in the architecture doc). Dynamic hot-plug, marketplace fetch, and Ed25519 signing are **roadmap-only**; related v2 code is frozen.
@@ -11,7 +11,7 @@
 > **Status**: 长期插件架构契约文档（Phase 0 立项版，contract_version=1.0）
 > **Scope**: 定义 IMBoy 后端"插件"的形态、清单格式、behaviour 接口、命名约定与通信规则
 > **Source of truth**: `src/lib/imboy_plugin.erl`（待 P0-T1 实现）、`include/imboy_plugin.hrl`、`priv/plugins/*/plugin.toml`
-> **Related docs**: `.claude/plan/industrial-plugin-architecture-roadmap.md`、`docs/architecture/overview.md`、`docs/architecture/adr/2026-03-15-modular-monolith-boundaries.md`、`priv/plugin-examples/example/plugin.config`（P0-T5 教学样板，第三方插件作者参考）
+> **Related docs**: `.claude/plan/industrial-plugin-architecture-roadmap.md`、`docs/architecture/overview.md`、`docs/adr/0005-modular-monolith-boundaries.md`、`priv/plugin-examples/example/plugin.config`（P0-T5 教学样板，第三方插件作者参考）
 > **简体中文为权威版本，本文采用 Pattern A 同节并排双语 / Chinese is authoritative; bilingual sections side-by-side**
 
 ---

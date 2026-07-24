@@ -15,3 +15,5 @@
 | [0002](./0002-database-migrations.md) | 数据库迁移采用 erlang_migrate + 顺序版本号 | Accepted |
 | [0003](./0003-plugin-route-namespace-api-prefix.md) | 动态插件路由命名空间对齐为 `/api/v{n}/` 前缀 | Accepted |
 | [0004](./0004-tsid-origin-namespace.md) | TSID 之上预留 origin 命名空间位（不改现有数据） | Proposed |
+| [0005](./0005-modular-monolith-boundaries.md) | 模块化单体边界与轻量插件扩展点（原 `architecture/adr/2026-03-15-modular-monolith-boundaries.md`） | Accepted |
+| [0006](./0006-ddd-migration-endpoint.md) | DDD 迁移终点线：触发式迁移，不设日历死线（原 `architecture/adr/2026-06-03-ddd-migration-endpoint.md`） | Accepted |

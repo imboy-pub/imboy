@@ -62,7 +62,7 @@
 
 ## WebSocket 消息格式
 
-> **详细规范**: 请参阅 [websocket-api.md](../api/websocket-api.md) - 完整的 WebSocket API 规范文档
+> **详细规范**: 请参阅 [websocket-api.md](./websocket-api-2.md) - 完整的 WebSocket API 规范文档
 
 ### 基础消息结构
 
@@ -310,5 +310,5 @@ GET /api/messages?page=1&limit=20
 - **UTF-8 编码规范**: [utf8-encoding.md](./utf8-encoding.md)
 - **错误码规范**: [error-codes.md](./error-codes.md)
 - **TSID 规范**: [elib_tsid 文档](../../src/lib/CLAUDE.md)（hashid-encoding.md 已删除，TSID 迁移后不再使用 hashids）
-- **WebSocket API**: [websocket-api.md](../api/websocket-api.md)
+- **WebSocket API**: [websocket-api.md](./websocket-api-2.md)
 - **主文档**: [CLAUDE.md](../../CLAUDE.md)

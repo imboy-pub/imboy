@@ -3,7 +3,7 @@
 
 > **版本 / Version**: 1.0.0 | **最后更新 / Last Updated**: 2026-05-27
 > **适用范围 / Scope**: 生产环境主从流式复制 + Erlang pooler 读写分离
-> **前置文档 / Prerequisites**: [clustering.md](./clustering.md), [sys.config](../../config/sys.config)
+> **前置文档 / Prerequisites**: [clustering.md](./clustering.md), [sys.config](../../../config/sys.config)
 
 ---
 

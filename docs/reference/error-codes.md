@@ -4,7 +4,7 @@
 > Status: 长期接口规范文档  
 > Scope: 错误码定义、引用方式与响应使用约定  
 > Source of truth: `include/error_code.hrl`  
-> Related docs: `docs/standards/api-format.md`, `docs/reference/rest-api.md`, `docs/reference/websocket-api-2.md`
+> Related docs: `docs/reference/api-format.md`, `docs/reference/rest-api.md`, `docs/reference/websocket-api-2.md`
 
 ## 概述
 
@@ -318,5 +318,5 @@ handle_error(Req, Error) ->
 - **UTF-8 编码规范**: [utf8-encoding.md](./utf8-encoding.md)
 - **TSID 规范**: [elib_tsid 文档](../../src/lib/CLAUDE.md)（hashid-encoding.md 已删除，TSID 迁移后不再使用 hashids）
 - **API 格式规范**: [api-format.md](./api-format.md)
-- **类型规范**: [type-specification.md](./type-specification.md)
+- **类型规范**: type-specification.md（待补）
 - **主文档**: [CLAUDE.md](../../CLAUDE.md)

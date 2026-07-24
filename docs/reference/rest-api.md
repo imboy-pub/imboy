@@ -281,4 +281,4 @@ Query：
 - `docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`
 - `docs/reference/websocket-api-2.md`
 - `docs/api/envelope.schema.json`
-- `docs/standards/error-codes.md`
+- `docs/reference/error-codes.md`

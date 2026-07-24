@@ -112,8 +112,8 @@ docker compose -f docker-compose.prod.yml up -d
 
 - [文档索引](./docs/README.md)
 - [后端架构](./docs/architecture/overview.md)
-- [REST API 目录](./docs/analysis/rest-api-v1-catalog.md)
-- [WebSocket 协议](./docs/analysis/ws-protocol-contract.md)
+- [REST API 目录](./docs/reference/rest-api-v1-catalog.md)
+- [WebSocket 协议](./docs/reference/ws-protocol-contract.md)
 - [贡献指南](./CONTRIBUTING.md)
 - [安全说明](./SECURITY.md)
 

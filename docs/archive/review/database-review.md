@@ -163,7 +163,7 @@ timeline
 
 ### 3.1 设计
 
-- **命名规范**：8 位零填充顺序整数，非时间戳（`docs/standards/migration_naming.md` 第 2 节明确"时间戳格式已废弃"）。取最大号 +1，禁止跳号/复用。
+- **命名规范**：8 位零填充顺序整数，非时间戳（`docs/reference/engineering/migration_naming.md` 第 2 节明确"时间戳格式已废弃"）。取最大号 +1，禁止跳号/复用。
 - **驱动**：自研 `erlang_migrate`（golang-migrate/v4 模型）：advisory lock（`erlang_migrate_pg.erl:54` `pg_try_advisory_lock` + 重试）、dirty 标记（`erlang_migrate.erl:292-297`）、每个迁移文件整体 `BEGIN/COMMIT` 包裹（`erlang_migrate_pg.erl:128,146`）。
 - **strict 乱序检测**：`imboy_migrate.erl:87` `Config = #{conn => Conn, dir => Path, strict => true}`；已应用版本记入 `schema_migrations_history`（`erlang_migrate.erl:520-527`），`up` 时发现"版本 ≤ 当前但从未应用"即报 `{error, {out_of_order, Versions}}`（`erlang_migrate.erl:535-544`）。
 - **41 号空缺**：目录中 `00000040` 之后直接是 `00000042`（`ls priv/migrations` 实证）。原 41（compliance_key 改造）因晚于 42–45 合入会触发 strict 乱序，被 renumber 为 46——这正是 strict 机制按设计工作的证据，空号本身无害（strict 只检测"已应用集合"缺口，不要求文件连号）。
@@ -182,7 +182,7 @@ timeline
 |---|---|---|---|
 | M1 | `insert_history` 无 `ON CONFLICT DO NOTHING`：strict 首次回填（`erlang_migrate.erl:506-511`）与 `strict_record_up`（:548-552）用裸 INSERT，若 history 表被部分回填过（如上次回填后 history 写失败重跑），会撞 PK 报错，需人工 `force/2` 恢复 | erlang_migrate.erl:529-533 | P2 |
 | M2 | 基线迁移在**单事务内执行 `create_hypertable(migrate_data=>TRUE)` + 压缩/保留策略**；TimescaleDB 对事务内建 hypertable 有版本相关限制，且 `add_compression_policy` 在部分版本要求 chunk 已存在，跨 PG/TSDB 版本升级时是最脆的一环 | 00000002_message_aux.up.sql:22-25; erlang_migrate_pg.erl:146(BEGIN 包裹) | P2 |
-| M3 | 旧生产环境从旧编号体系切换时需手工 `UPDATE schema_migrations` 映射（9 条），未内置迁移脚本，靠文档/记忆传承 | docs/standards/migration_naming.md（切换说明）；历史事故：schema_migrations_history 差步导致启动失败 | P2 |
+| M3 | 旧生产环境从旧编号体系切换时需手工 `UPDATE schema_migrations` 映射（9 条），未内置迁移脚本，靠文档/记忆传承 | docs/reference/engineering/migration_naming.md（切换说明）；历史事故：schema_migrations_history 差步导致启动失败 | P2 |
 | M4 | `check_out_of_order` 为 O(n·m) `lists:member`（n=文件数, m=已应用数），47 个迁移下无感，但作为通用库应换 sets | erlang_migrate.erl:535-544 | P3 |
 
 **结论：迁移体系健康度为良好偏优。** strict 乱序检测真实拦截过一次事故（41→46），dirty 标记 + advisory lock + 单文件事务的组合达到 golang-migrate 同等纪律；主要残留风险在 TimescaleDB 版本耦合与 history 回填幂等性。

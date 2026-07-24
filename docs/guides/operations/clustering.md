@@ -3,7 +3,7 @@
 
 > **版本 / Version**: 1.0.0 | **最后更新 / Last Updated**: 2026-05-27
 > **适用范围 / Scope**: 1.x 中期计划（ROADMAP.md §多节点部署文档）
-> **前置文档 / Prerequisites**: [DEPLOYMENT.md](./deployment/DEPLOYMENT.md), [sys.config](../config/sys.config)
+> **前置文档 / Prerequisites**: [DEPLOYMENT.md](./deployment/DEPLOYMENT.md), [sys.config](../../../config/sys.config)
 
 ---
 

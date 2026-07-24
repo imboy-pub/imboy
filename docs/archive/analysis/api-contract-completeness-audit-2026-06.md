@@ -3,7 +3,7 @@
 > **日期 / Date**: 2026-06-23
 > **范围 / Scope**: 后端 `imboy`(Erlang) ↔ 移动端 `imboyapp`(Flutter) ↔ 管理后台 `imboyadmin`(React)
 > **方法 / Method**: 以 `src/imboy_router.erl` 为后端真值源，做四向集合差 + 响应字段抽查
-> **基线 / Builds on**: [contract-audit-response-fields-2026-06-02.md](./contract-audit-response-fields-2026-06-02.md)（旧 admin 仓）、[tsid-field-matrix.md](./tsid-field-matrix.md)、[openapi.yaml](./openapi.yaml)
+> **基线 / Builds on**: [contract-audit-response-fields-2026-06-02.md](./contract-audit-response-fields-2026-06-02.md)（旧 admin 仓）、[tsid-field-matrix.md](../../reference/tsid-field-matrix.md)、[openapi.yaml](../../../api/openapi.yaml)
 > **约束 / Constraint**: 本轮**仅审计出报告，未改动任何业务代码**。
 
 ---

@@ -87,11 +87,11 @@ Erlang/OTP + Cowboy + syn 做 IM 是教科书级正确（WhatsApp/ejabberd 同�
 
 ### ✅ S5. DDD 自我评估文档诚实
 
-`docs/architecture/ddd-rich-model-status.md` 明确承认"工程侧落地 ≠ 运行时验证"，标注真机回归未签收。这种自我批判能力在开源项目中罕见。
+`docs/archive/architecture/ddd-rich-model-status.md` 明确承认"工程侧落地 ≠ 运行时验证"，标注真机回归未签收。这种自我批判能力在开源项目中罕见。
 
 ```bash
 cd /Users/leeyi/project/imboy.pub/imboy
-grep "运行时验证" docs/architecture/ddd-rich-model-status.md
+grep "运行时验证" docs/archive/architecture/ddd-rich-model-status.md
 # 输出：工程侧落地 ≠ 运行时验证
 ```
 
@@ -151,7 +151,7 @@ ls imboy/test/performance/
 find . -name "benchmark.md" -o -name "benchmark_*.html" -o -name "perf_report*" | grep -v deps | grep -v _build | grep -v node_modules | grep -v checkouts
 ```
 
-**修复**：跑一次 `test/performance/websocket_performance_tests.erl`，出一份 `docs/benchmark.md`（硬件规格 + 连接数 + 内存/CPU）。哪怕只跑到 1 万连接也比零数据有说服力。**这是 ROI 最高的单项工作。**
+**修复**：跑一次 `test/performance/websocket_performance_tests.erl`，出一份 `docs/guides/operations/benchmark.md`（硬件规格 + 连接数 + 内存/CPU）。哪怕只跑到 1 万连接也比零数据有说服力。**这是 ROI 最高的单项工作。**
 
 ### 🟠 C4. API Handler 大规模绕过 Logic 层直调 DS
 
@@ -291,7 +291,7 @@ grep -rn "_logic:" src/ds/ --include="*.erl" | grep -v "%%"
 
 | # | 行动 | 效果 | 工作量 |
 |---|------|------|--------|
-| 4 | 跑性能测试，出 `docs/benchmark.md` | **ROI 最高单项**，从零数据变为有数据 | 2-3 h |
+| 4 | 跑性能测试，出 `docs/guides/operations/benchmark.md` | **ROI 最高单项**，从零数据变为有数据 | 2-3 h |
 | 5 | CI 加层边界检查脚本 | 新增违规自动阻断 | 1 h |
 | 6 | 拆分 `adm_group_handler.erl`（2,218→3 文件） | 消除最大超标文件 | 2 h |
 | 7 | OpenAPI 删虚构端点 | 消除误导性文档 | 30 min |

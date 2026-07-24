@@ -16,18 +16,29 @@
 |------|------|
 | [rest-api.md](./rest-api.md) | REST 通用入口与基础契约（envelope、TSID 字段约定） |
 | [rest-api-v1-catalog.md](./rest-api-v1-catalog.md) | `/api/v1` 全量端点目录 |
+| [api-format.md](./api-format.md) | 请求、响应和分页约定 |
+| [error-codes.md](./error-codes.md) | 错误码定义与使用 |
+| [utf8-encoding.md](./utf8-encoding.md) | UTF-8 编码约定 |
 | [ws-protocol-contract.md](./ws-protocol-contract.md) | WebSocket 消息信封与事件约定 |
-| [websocket-api-2.md](./websocket-api-2.md) | WebSocket API 详细协议（1651 行全量参考） |
+| [websocket-api-2.md](./websocket-api-2.md) | WebSocket API 详细协议（全量参考） |
 | [tsid-field-convention.md](./tsid-field-convention.md) | TSID 跨端字段约定 |
 | [tsid-field-matrix.md](./tsid-field-matrix.md) | TSID 字段矩阵 |
+| [ws-repl-cheatsheet.md](./ws-repl-cheatsheet.md) | WebSocket REPL 开发速记 |
 | [contracts/](./contracts/) | 频道/朋友圈/E2EE 分片契约 v1 |
 
-## 工程标准（待迁入）
+## 插件规范
 
-| 文档 | 现位置 | 内容 |
-|------|--------|------|
-| 错误码全表 | `standards/error-codes.md` | 错误码定义与使用 |
-| API 格式约定 | `standards/api-format.md` | 请求、响应和分页约定 |
+| 文档 | 内容 |
+|------|------|
+| [plugin/contract.md](./plugin/contract.md) | 插件契约（imboy_plugin behaviour 权威定义） |
+| [plugin/lifecycle.md](./plugin/lifecycle.md) | 生命周期 gen_statem 精确规范 |
+| [plugin/frontend-integration.md](./plugin/frontend-integration.md) | manifest + WS push API 协议规范 |
+
+## 工程笔记
+
+| 文档 | 内容 |
+|------|------|
+| [engineering/](./engineering/) | CI/配置/依赖/Docker/日志/可观测/发布/技术债笔记 + 迁移命名规范 |
 
 ## 待生成
 

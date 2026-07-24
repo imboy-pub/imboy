@@ -31,7 +31,7 @@ E2EE 是否启用**由后端 capability（`e2ee_mode`）全权控制**，客户�
 
 > ⚠️ **注意区分两个枚举**：本表的 `e2ee_mode` 是**后端 capability 字段**；客户端 `EncryptionMode` 枚举（`plaintext`/`complianceE2ee`/`strictE2ee`）是 policy 的镜像结果，二者非一一对应。`plaintext`/`secure_e2ee`/`compliance_e2ee` 是**会话级** `encryption_mode` 字段（`chat_setting_page.dart:327` 经 `fromApiString` 解析），与全局 `e2ee_mode` 是不同数据源。
 
-> 📌 **`optional` 的已知设计债务**（非 bug，已有文档记录于 `docs/standards/e2ee-key-rotation-policy.md:82,329`）：FEAT-03 把 `E2EESettings.isEnabled()` 硬编码为 false 后，`optional` 模式实际等价 plaintext。若未来恢复用户级开关（密钥漂移方案 a 解阻），`optional` 语义会重新生效。
+> 📌 **`optional` 的已知设计债务**（非 bug，已有文档记录于 `docs/guides/e2ee/e2ee-key-rotation-policy.md:82,329`）：FEAT-03 把 `E2EESettings.isEnabled()` 硬编码为 false 后，`optional` 模式实际等价 plaintext。若未来恢复用户级开关（密钥漂移方案 a 解阻），`optional` 语义会重新生效。
 
 ### 1.3 客户端镜像：`EncryptionModeService`
 

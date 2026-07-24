@@ -1,3 +1,5 @@
+> **整理提示**：本文档从 standards/ 迁入。内容与 guides/e2ee/v2/ 密钥轮换文档有重叠，待 E2EE owner 并入统一文档后移除本提示。
+
 # E2EE 密钥旋转策略
 # E2EE Key Rotation Policy
 

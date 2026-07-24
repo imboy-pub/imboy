@@ -12,7 +12,7 @@
 - 审计端点 / Endpoints audited: 276 routes across 11 domains
 - 确认 mismatch / Confirmed mismatches: **29**（已全部修复 / all fixed）
 - 过滤误报 / False positives filtered: 11
-- 前置完成 / Prior phases done: 请求参数层、响应崩溃风险维度（见 [tsid-field-convention.md](./tsid-field-convention.md) 与项目记忆）
+- 前置完成 / Prior phases done: 请求参数层、响应崩溃风险维度（见 [tsid-field-convention.md](../../reference/tsid-field-convention.md) 与项目记忆）
 
 This report covers the **functional** response-field comparison (FE reads but BE omits → blank/default; BE sends but FE unused → redundant; type mismatch esp. TSID; naming/nesting mismatch). All 29 confirmed items were fixed directly (FE-aligns-BE by default unless BE clearly wrong).
 

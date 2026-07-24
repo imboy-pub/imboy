@@ -943,7 +943,7 @@ CLIENT_ACK,C2C,c2c.x9j8.5ia0V5.Kr3aUs.F,device123
 
 ### 通用约定
 
-- 通用业务错误码、envelope 语义与字段口径以 `docs/standards/error-codes.md`、`docs/reference/rest-api.md` 为准。
+- 通用业务错误码、envelope 语义与字段口径以 `docs/reference/error-codes.md`、`docs/reference/rest-api.md` 为准。
 - 本节仅补充 WebSocket 场景下的连接期 / 消息期错误表现与客户端处理建议。
 
 ### 顶层错误消息
@@ -1640,7 +1640,7 @@ v2.0 与 v1.0 **不兼容**，需要前后端**同步升级**。
 ### 相关文档
 
 - `docs/reference/rest-api.md`
-- `docs/standards/error-codes.md`
+- `docs/reference/error-codes.md`
 - ~~`docs/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
 - `docs/guides/operations/security.md`
 - `docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`
