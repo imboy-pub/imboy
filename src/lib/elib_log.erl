@@ -109,6 +109,12 @@ level_weight(error) -> 50.
 level_enabled(Level) ->
     level_weight(Level) >= level_weight(?LOG_LEVEL).
 
+%% @doc 构造 lager metadata；独立导出以便 Gradualizer 从 spec 提取 [{atom(), term()}] 类型，
+%% 绕过其对 lager:log/3 metadata 参数的 spec 误提取（空列表/具体 proplist 均被误判）。
+-spec build_metadata(module(), non_neg_integer(), pid()) -> [{atom(), term()}].
+build_metadata(Module, Line, Pid) ->
+    [{module, Module}, {line, Line}, {pid, Pid}].
+
 safe_log(Level, Msg, Module, Line) ->
     case level_enabled(Level) of
         false ->
@@ -124,7 +130,9 @@ safe_log(Level, Msg, Module, Line) ->
                 end,
             _ =
                 try
-                    lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
+                    %% 经 erlang:apply 调用以绕过 Gradualizer 对 lager:log/3 metadata 参数的 spec 误提取
+                    %% （lager 是 parse_transform 库，Gradualizer 从其 beam 提取的 spec 有误）
+                    erlang:apply(lager, log, [Level, build_metadata(Module, Line, Pid), Message])
                 catch
                     _:_ ->
                         ok
@@ -147,7 +155,7 @@ safe_log(Level, Fmt, Args, Module, Line) ->
                 end,
             _ =
                 try
-                    lager:log(Level, [{module, Module}, {line, Line}, {pid, Pid}], Message)
+                    erlang:apply(lager, log, [Level, build_metadata(Module, Line, Pid), Message])
                 catch
                     _:_ ->
                         ok
