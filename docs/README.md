@@ -1,6 +1,6 @@
 # IMBoy 文档门户
 
-> 文档体系说明：本目录按 [Divio 四象限](./documentation-system/README.md) 组织——教程（学习）、指南（办事）、参考（查阅）、解释（理解）。存量文档正在分批迁移，迁移期间本页同时索引新旧位置。
+> 文档体系说明：本目录按 [Divio 四象限](./documentation-system/README.md) 组织——教程（学习）、指南（办事）、参考（查阅）、解释（理解）。过程材料（评审/审计/已完成计划）在 [archive/](./archive/)，进行中的工作在 [planning/](./planning/)。
 
 ## 我从这里开始（按角色）
 
@@ -13,16 +13,27 @@
 | 插件开发者 | imboy-plugin-marketplace 仓库 README |
 | 架构评审 / 技术买家 | [后端架构](./architecture/overview.md) → [ADR 决策记录](./adr/) |
 
-## 四象限导航（新结构，建设中）
+## 四象限导航
 
 | 象限 | 目录 | 用途 |
 |------|------|------|
 | 教程 | [tutorials/](./tutorials/) | 跟着做，做出可运行的成果 |
-| 操作指南 | [guides/](./guides/) | 完成具体任务（备份、升级、配置） |
-| 参考 | [reference/](./reference/) | 查事实（API、协议、错误码、配置项） |
+| 操作指南 | [guides/](./guides/) | 完成具体任务（备份、升级、配置、支付、安全加固） |
+| 参考 | [reference/](./reference/) | 查事实（API、协议、错误码、工程笔记） |
 | 解释 | [explanation/](./explanation/) | 理解设计理由与权衡 |
 
-## 常用专题（存量文档，逐步迁入四象限）
+## 业务与规划
+
+| 目录 | 内容 |
+|------|------|
+| [roadmap/](./roadmap/) | 产品与工程路线图（含 AI Agent 载体路线图） |
+| [planning/](./planning/) | 进行中的计划：P0/P1 方案、执行清单、风险台账 |
+| [business/](./business/) | 商业分析：变现策略、竞品对比 |
+| [release/](./release/) | 发版流程与应用商店清单 |
+| [legal/](./legal/) · [compliance/](./compliance/) | 法务（软著）与合规（等保、E2EE 披露） |
+| [archive/](./archive/) | 归档：历史评审、审计、已完成计划（只进不出） |
+
+## 常用专题
 
 ### 开发
 
@@ -51,6 +62,6 @@
 ## 文档维护
 
 - 写新文档前，先读 [写作规范](./documentation-system/writing-guide.md)，并从 [模板库](./documentation-system/templates/) 复制对应模板。
-- 优先更新现有文档，不为一次性任务新建长期文档。
-- 本索引只收录稳定、仍可执行的内容；计划、评审和审计材料保留在各自目录，不作为新手入口。
+- 优先更新现有文档，不为一次性任务新建长期文档——一次性产物（评审/审计/计划）完成后归 [archive/](./archive/)。
+- 本索引只收录稳定、仍可执行的内容；进行中的工作看 [planning/](./planning/)。
 - 接口或部署方式变化时，同步更新根 README 和对应专题文档。
