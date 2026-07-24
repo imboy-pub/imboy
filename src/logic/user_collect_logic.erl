@@ -184,9 +184,9 @@ page(Column, WhereMap, Order, Page, Size) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% @doc 确保参数为 map 类型
+%% @doc 确保参数为 map 类型（非 map 一律降级为空 map，避免下游 maps:get/find 抛 badmap）
 %% @private
--spec ensure_map(any()) -> map() | {}.
+-spec ensure_map(any()) -> map().
 ensure_map(Map) when is_map(Map) ->
     Map;
 ensure_map(_) ->
@@ -197,17 +197,14 @@ ensure_map(_) ->
 -spec get_info(non_neg_integer(), binary(), binary(), map()) -> {map(), binary()} | {map(), ok}.
 get_info(0, MimeType, Key, Info) ->
     PayloadIn = maps:get(<<"payload">>, Info, #{}),
-    Payload0 =
-        if
-            is_map(PayloadIn) -> PayloadIn;
-            true -> PayloadIn
-        end,
+    %% payload 可能是已解析 map，也可能是 JSON binary；JSON 还可能解出 list/scalar/null，
+    %% 统一经 ensure_map 收口为 map，消除 jsone:decode 返回非 map 时 maps:find/maps:get 的 badmap 崩溃
     Payload =
-        if
-            is_binary(Payload0) ->
-                jsone:decode(Payload0, [{object_format, map}]);
-            true ->
-                Payload0
+        case PayloadIn of
+            PBin when is_binary(PBin) -> ensure_map(jsone:decode(PBin, [{object_format, map}]));
+            PM when is_map(PM) -> PM;
+            _ when is_list(PayloadIn) -> #{};
+            _ -> #{}
         end,
     {ok, Uri} = maps:find(Key, Payload),
     %% 双读兼容：新消息 metadata 用 file_hash256，旧消息用 md5
