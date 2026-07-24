@@ -339,7 +339,8 @@ generate_file_id() ->
 validate_file_id(FileId) ->
     case re:run(FileId, <<"^file_[0-9]+_[0-9]+$">>, [{capture, none}]) of
         match -> ok;
-        nomatch -> {error, <<"invalid_file_id">>}
+        nomatch -> {error, <<"invalid_file_id">>};
+        {error, _} -> {error, <<"regex_error">>}
     end.
 
 -spec get_file_category(binary()) -> atom().

@@ -77,9 +77,7 @@ has_suffix(Bin, Suf) ->
 
 -spec normalize_ids(list()) -> [integer()].
 normalize_ids(List) when is_list(List) ->
-    [ec_cnv:to_integer(X) || X <- List];
-normalize_ids(_) ->
-    [].
+    [ec_cnv:to_integer(X) || X <- List].
 
 -spec truthy(term()) -> boolean().
 truthy(true) -> true;
