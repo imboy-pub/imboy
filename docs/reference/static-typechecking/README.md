@@ -11,6 +11,7 @@
 | [elp-eqwalizer-landing-plan.md](./elp-eqwalizer-landing-plan.md) | 规划 | eqWAlizer（via ELP）落地路线图与白名单分层 enable 策略 |
 | [gradualizer-upstream-issues.md](./gradualizer-upstream-issues.md) | 决策日志 | Gradualizer / eqWAlizer **误报模式决策表 + 已修复真阳性索引（持续维护）** |
 | [typecheck-integration-verification.md](./typecheck-integration-verification.md) | 验证 | 双引擎 CI 集成验证：Makefile 目标、CI job、预算 ratchet 行为 |
+| [eqwalizer-support-fork-plan.md](./eqwalizer-support-fork-plan.md) | 专项方案 | **eqwalizer_support fork 方案**：覆盖 crypto/uri_string/epgsql 第三方类型缝隙，让 lib 层 eqWAlizer 转阻塞的唯一路径（2026-07-25 R16）|
 
 ## 当前状态（截至 2026-07-25）
 
