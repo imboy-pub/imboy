@@ -298,31 +298,12 @@ rfc3339_to(Dt, _Unit) when Dt =:= []; Dt =:= undefined ->
 rfc3339_to(Dt, _Unit) when is_list(Dt), length(Dt) =:= 0 ->
     {error, empty_input};
 rfc3339_to(Dt, Unit) when is_list(Dt); is_binary(Dt) ->
-    % 先尝试标准 T 分隔符，失败后尝试空格分隔符（向后兼容）
+    % OTP 的 calendar:rfc3339_to_system_time/2 默认即接受 T 与空格两种分隔符
+    % （见 OTP 文档示例），且 spec 仅允许 [{unit, rfc3339_time_unit()}]，
+    % 不容许 time_designator 选项——原代码传该选项既冗余又违反 spec（eqWAlizer 标记）。
+    % 故仅传 unit 选项，单 try 收口非法输入为 {error, empty_input}。
     try
-        Result = calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $T}]),
-        try
-            Result2 = calendar:rfc3339_to_system_time(Dt, [{unit, Unit}, {time_designator, $\s}]),
-            if
-                is_integer(Result2) ->
-                    Result2;
-                true ->
-                    if
-                        is_integer(Result) ->
-                            Result;
-                        true ->
-                            {error, empty_input}
-                    end
-            end
-        catch
-            _:_ ->
-                if
-                    is_integer(Result) ->
-                        Result;
-                    true ->
-                        {error, empty_input}
-                end
-        end
+        calendar:rfc3339_to_system_time(Dt, [{unit, Unit}])
     catch
         _:_ ->
             {error, empty_input}
