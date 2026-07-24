@@ -1,8 +1,31 @@
 # eqwalizer_support Fork 专项方案
 
-> **状态**：Draft（待团队评审）  
-> **作者**：P3 类型检查治理轮（R16）  
-> **前置依赖**：[R14 根因分布表][gradualizer-upstream-issues] 裁定 lib 层剩余 30 failing 模块的主因是 OTP/epgsql 第三方类型缝隙，[R14 spike] 证实项目本地 `eqwalizer_specs` 不被 elp 加载。
+> **状态**：NEEDS REVISION — R18 实证改装方案不成立
+> **作者**：P3 类型检查治理轮（R16，R18 修订）
+> **前置依赖**：[R14 根因分布表][gradualizer-upstream-issues] 裁定 lib 层剩余 30 failing 模块的主因是 OTP/epgsql 第三方类型缝隙。
+
+---
+
+## ⚠️ R18 关键修订：改装方案不成立（2026-07-25）
+
+**R18 进行了三次逐级加强的实证尝试，三次全部失败**：
+
+| 尝试 | 方法 | 结果 |
+|---|---|---|
+| 1（R14 spike） | 项目本地 `eqwalizer_specs.erl` 模块 | elp 不加载，无效 |
+| 2（R18） | vendor/ 目录 vendor 全量 eqwalizer_support + 改 `.elp.toml` path | elp 不加载，无效 |
+| 3（R18） | **直接修改 vendored `.elp/elp-repo/.../eqwalizer_specs.erl` 源码 + 清 elp 缓存** | elp 不加载，无效 |
+| 4（R18） | **编译 eqwalizer_specs → beam 放入 ebin/ + 清 elp 缓存** | eqWAlizer 不加载，完全无效 |
+
+**结论**：eqWAlizer 的 spec override 不是文件系统机制——specs 编译进 elp/eqWAlizer 的 JVM 二进制中，运行时**不读 `.erl` 源文件、不读 `.beam` 文件**。**改 eqwalizer_specs 唯一方式：fork WhatsApp/eqwalizer 源码 + 重编译 elp 二进制**（非模块级变更，需 Rust/Scala 工具链）。
+
+**影响**：R16 原方案中的"~4 人·时 fork + 本地 clone"路径不成立。实际投入量级：
+- fork eqWAlizer 主仓库（Scala 91% + Erlang 8%）
+- 修改 eqwalizer_specs.erl
+- 重编译 elp 二进制（需 Rust/Scala/JVM 工具链）
+- 维护自定义 elp 版本（每次上游发版需重新合并+编译）
+
+**量级从"~4 人·时"变为"专项工程（需 Scala/Rust/JVM 工具链，持续维护成本等同维护一个 elp 分支）"**。
 
 ---
 
