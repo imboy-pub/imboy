@@ -13,8 +13,14 @@
 -export([start_link/0, broadcast/1]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
+    code_change/3
+]).
 
 -record(state, {}).
 
@@ -23,7 +29,7 @@
 %% ===================================================================
 
 %% @doc 启动分布式缓存同步服务器
--spec start_link() -> {ok, pid()} | {error, term()}.
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 

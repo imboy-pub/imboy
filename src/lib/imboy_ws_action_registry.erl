@@ -63,7 +63,7 @@
 %% Public API
 %% ===================================================================
 
--spec start_link() -> {ok, pid()} | {error, term()}.
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 

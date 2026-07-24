@@ -34,7 +34,7 @@
 -define(INITIAL_DELAY_MS, 60000).
 -define(DEFAULT_RETENTION_DAYS, 7).
 
--spec start_link() -> {ok, pid()} | {error, term()}.
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 

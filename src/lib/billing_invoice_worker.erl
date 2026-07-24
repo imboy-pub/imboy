@@ -24,7 +24,7 @@
 -define(CHECK_INTERVAL_MS, 86400000).
 -define(INITIAL_DELAY_MS, 60000).
 
--spec start_link() -> {ok, pid()} | {error, term()}.
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 

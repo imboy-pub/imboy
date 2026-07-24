@@ -27,7 +27,7 @@
 
 -record(state, {last_notified = none}).
 
--spec start_link() -> {ok, pid()} | {error, term()}.
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
@@ -92,7 +92,7 @@ should_send(none, _Last) -> false;
 should_send(Due, Due) -> false;
 should_send(_Due, _Last) -> true.
 
--spec send_notices(expired | 1 | 7 | 30) -> ok.
+-spec send_notices(none | expired | 1 | 7 | 30) -> ok.
 send_notices(Due) ->
     {Subject, Body} = license_expiry_notice:render(Due, imboy_license:licensee()),
     Tos = recipients(),

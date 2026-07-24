@@ -72,12 +72,12 @@
 %% Public API
 %% ===================================================================
 
--spec start_link() -> {ok, pid()} | {error, term()}.
+-spec start_link() -> gen_server:start_ret().
 start_link() ->
     DefaultDir = filename:join(code:priv_dir(imboy), "plugins"),
     start_link(DefaultDir).
 
--spec start_link(file:filename_all()) -> {ok, pid()} | {error, term()}.
+-spec start_link(file:filename_all()) -> gen_server:start_ret().
 start_link(PluginDir) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [PluginDir], []).
 
