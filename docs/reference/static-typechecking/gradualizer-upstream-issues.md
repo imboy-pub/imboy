@@ -368,6 +368,43 @@ R10 结论写过「让 eqWAlizer 真正可用的**唯一路径**是写本地 `eq
 - R8–R10 称「`config_ds:env` 渗出是最大噪声头」——这是针对**全仓**（api/repo/ds/logic）的判断；在 **lib 层它只占 3 处**，并非主因。lib 层真正主因是 **OTP `crypto`/`uri_string` 类型缝隙（合计 ~55，占 40%）+ `gen_server` 回调模式（~24）+ `epgsql` 第三方精度（~12）**，三者**全在 vendored support 覆盖列表之外**。
 - 这解释了为何 R11 的「写 override 消 env 渗出」设想在 lib 层根本不对题：env 渗出不是 lib 层瓶颈，瓶颈是 OTP/epgsql 类型缝隙，而消这些必须 fork support。
 
+---
+
+## R15：源码级 spec 补全消 6 个 lib 模块（commit e5d4feba）
+
+> **动机**：R14 根因分布表里 `gen_server` 回调 ~24 是唯二「源码可修」类之一（另一类是 maps 不精确 ~15，但收窄 map 类型需触业务逻辑，风险更高）。先用最小代价消 gen_server 误报。
+
+### R15.1 gen_server start_link 规格化（9 行 spec → `gen_server:start_ret()`）
+
+**8 模块、9 行 spec** 从 `{ok, pid()} | {error, term()}` 收敛为 `gen_server:start_ret()`：
+
+- `billing_invoice_worker` / `elib_metric` / `imboy_router_registry` / `imboy_ws_action_registry` / `olm_otk_cleanup_worker`：start_link/0（5 行）
+- `imboy_plugin_loader`：start_link/0 + start_link/1（2 行）
+- `imboy_cache_sync` / `license_notice_worker`：start_link/0（2 行）
+
+**安全论证**：`gen_server:start_ret()` = `{ok,pid()}|ignore|{error,term()}`，是当前 spec 的超集。这 8 个 worker 的 init 均返回 `{ok,State}`，实际绝不产生 `ignore`；收敛为更精确的 OTP 语义使 eqWAlizer 不再标记为 incompatible。
+
+### R15.2 send_notices 规格化（1 行）
+
+`license_notice_worker:send_notices/1` spec 从 `expired|1|7|30` 补 `none` 候选。实际 `should_send(none, _) -> false` 保证运行时绝不渗入，但 eqWAlizer 不感知流控，spec 需全量 union。修复后错误从 `send_notices` 转移到它内部的 `license_expiry_notice:render`（第三方隔阂，不可本地消）。
+
+### R15.3 附带修 imboy_cache_sync pre-existing erlfmt
+
+`imboy_cache_sync` export 列表多行→单行，纯格式，与 R13 同类。erlfmt -w 后提交通过。
+
+### 结果
+
+| 指标 | 修复前 | 修复后 | 说明 |
+|---|---|---|---|
+| lib failing 模块 | 36 | **30** | 6 模块 0-error |
+| 本次消 | — | 7 error（9 gen_server + send_notices，imboy_cache_sync 3→2 抵消 1） | |
+| 源码可修类 | ~24+~15 | **gen_server 已清完**，maps 随业务迭代 | gen_server 是唯二源码可修类之一 |
+| 残留第三方隔阂 | — | OTP crypto/uri_string ~55 + epgsql ~12 + depcache + render 等 | **全部需要 fork eqwalizer_support** |
+
+### 结论
+
+**lib 层源码可修（勿需 fork 依赖、勿需触业务逻辑）的部分已清完。** 剩余 30 failing 模块的 error **全部属于 OTP/epgsql/depcache/cowboy 第三方类型隔阂 + config_ds:env 渗出 + maps 不精确**——前三者需 fork eqwalizer_support、后者需逐模块收窄 map 类型（触业务逻辑/高 touch 面）。本地 P3 治理的 gen_server 回头债已偿。
+
 ### R14.4 route ② GO / NO-GO 裁决
 
 - **GO 条件（若要做）**：fork `eqwalizer_support` → 在自有 fork 的 `eqwalizer_specs` 中补 `crypto`/`uri_string`/`gen_server`/`epgsql` 的精确/替代 spec → 接 `.elp.toml` dep 指向 fork → 重测 140 error 回落幅度。
