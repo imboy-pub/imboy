@@ -17,6 +17,6 @@
 | TSID 选型 | 为什么不用自增 ID / UUIDv4 | ADR-0004 |
 | E2EE 密钥轮换设计 | 密钥怎么换、为什么这样换 | docs/guides/e2ee/ |
 | Garage S3 直传设计 | 为什么附件不走后端中转 | architecture/fastdfs-to-garage-migration.md |
-| 插件系统隔离模型 | 插件为什么不能直接碰核心 | docs/plugin/ |
+| 插件系统隔离模型 | 插件为什么不能直接碰核心 | docs/reference/plugin/ |
 
 现有 `architecture/` 目录下的设计文档将逐步迁入本目录。

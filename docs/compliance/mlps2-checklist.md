@@ -216,7 +216,7 @@
 | 网络拓扑图 | `docs/guides/operations/deployment/production-architecture.md` |
 | TLS 配置 | `deploy/nginx/nginx.conf` → `ssl_protocols` |
 | 身份鉴别配置 | `src/api/auth_middleware.erl`、`src/adm/adm_auth_middleware.erl` |
-| 访问控制矩阵 | `docs/release/edition-boundary.md` |
+| 访问控制矩阵 | `docs/business/edition-boundary.md` |
 | 审计日志样本 | Loki / Grafana 截图（测评前 30 天） |
 | 密钥管理配置 | `config/sys.config.example`（脱敏版） |
 | 备份恢复记录 | `docs/guides/operations/deployment/RESTORE-DRILL-2026-06.md` |

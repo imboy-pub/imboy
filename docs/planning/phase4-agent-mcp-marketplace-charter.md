@@ -72,7 +72,7 @@ Phase 0–3 均已交付（未 push）。Phase 4 三子任务对既有地基的�
 | **spike (go/no-go)** | 无硬 spike。**决策项**：`mcp_tools` 加在**生产路线**（`imboy_plugin_registry` 硬编码 map）还是 **FROZEN 路线**（`imboy_plugin.erl` behaviour + `imboy_plugin_toml` 校验器）？→ **裁决：加生产路线**（FROZEN 路线的字段对 `app_manifest_handler`/MCP 注册不生效）。 |
 | **MVP 边界** | 仅**官方 4 插件**可声明 `mcp_tools`；不开放第三方自由声明 `mfa`（越权/供应链风险，见风险#2）。marketplace index.json 升版为纯生态元数据快照，**不接入后端运行时**。 |
 | **工作量** | Manifest 可选字段 **S** · MCP 桥接 **M** · `/.well-known/agent.json` **S–M** · marketplace schema **S** · generic_sup child spec 参数化（路径 A）**S–M**。综合 **M**。 |
-| **风险** | ①**两套 manifest 概念混淆**（behaviour 契约 21 字段 vs 生产硬编码字段集不是同一 schema，照抄 `docs/plugin/contract.md` 会加到 FROZEN 路线不生效）；②第三方 `mcp_tools` 自由声明 `mfa`=越权面；③marketplace 升字段但后端零消费=两层皮死数据（须同批做发现端点）；④误挂 `ai_agent_runtime` 进 generic_sup 语义混乱。 |
+| **风险** | ①**两套 manifest 概念混淆**（behaviour 契约 21 字段 vs 生产硬编码字段集不是同一 schema，照抄 `docs/reference/plugin/contract.md` 会加到 FROZEN 路线不生效）；②第三方 `mcp_tools` 自由声明 `mfa`=越权面；③marketplace 升字段但后端零消费=两层皮死数据（须同批做发现端点）；④误挂 `ai_agent_runtime` 进 generic_sup 语义混乱。 |
 
 ### T4.2 — IM 作为 A2A 协作可观测前端
 

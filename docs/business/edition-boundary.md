@@ -1,6 +1,6 @@
 # IMBoy 版次边界 / Edition Boundary
 
-> 配套：[RELEASE.md](./RELEASE.md) ｜ 商业策略来源：[../business/monetization-path-a-private-deployment.md](../business/monetization-path-a-private-deployment.md)
+> 配套：[RELEASE.md](../guides/release/RELEASE.md) ｜ 商业策略来源：[./monetization-path-a-private-deployment.md](./monetization-path-a-private-deployment.md)
 > 运行时版次标记由环境变量 `IMBOY_EDITION` 控制（community | professional | enterprise），缺省 `community`。
 
 ---
@@ -46,4 +46,4 @@
 
 ## 与变现路径的关系
 
-本边界对应变现路径 A（To B 私有化授权）的定价分层：社区版免费引流 → 专业版 ¥3.9 万/套（终身，绑定域名）→ 企业版 ¥12 万/年起。详见 [monetization-path-a-private-deployment.md](../business/monetization-path-a-private-deployment.md) 第 2-3 节。
+本边界对应变现路径 A（To B 私有化授权）的定价分层：社区版免费引流 → 专业版 ¥3.9 万/套（终身，绑定域名）→ 企业版 ¥12 万/年起。详见 [monetization-path-a-private-deployment.md](./monetization-path-a-private-deployment.md) 第 2-3 节。

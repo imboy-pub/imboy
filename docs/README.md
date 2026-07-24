@@ -29,7 +29,7 @@
 | [roadmap/](./roadmap/) | 产品与工程路线图（含 AI Agent 载体路线图） |
 | [planning/](./planning/) | 进行中的计划：P0/P1 方案、执行清单、风险台账 |
 | [business/](./business/) | 商业分析：变现策略、竞品对比 |
-| [release/](./release/) | 发版流程与应用商店清单 |
+| [guides/release/](./guides/release/) | 发版流程与应用商店清单 |
 | [legal/](./legal/) · [compliance/](./compliance/) | 法务（软著）与合规（等保、E2EE 披露） |
 | [archive/](./archive/) | 归档：历史评审、审计、已完成计划（只进不出） |
 

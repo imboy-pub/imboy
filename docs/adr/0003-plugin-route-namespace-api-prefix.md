@@ -2,14 +2,14 @@
 
 - 状态：Accepted
 - 日期：2026-07-09
-- 关联文件：`src/lib/imboy_router_registry.erl`、`src/lib/imboy_plugin_toml.erl`、`docs/plugin/contract.md`
+- 关联文件：`src/lib/imboy_router_registry.erl`、`src/lib/imboy_plugin_toml.erl`、`docs/reference/plugin/contract.md`
 - 关联测试：`test/lib/imboy_router_registry_tests.erl`、`test/lib/imboy_router_plugin_routes_tests.erl`、`test/lib/imboy_plugin_toml_tests.erl`
 
 ## 背景
 
 全站 REST 路由统一以 `/api/v1/*` 为前缀，静态定义在 `imboy_router.erl` 的 `ApiV1Routes`（含现有 channel/moment/location/group_collab 等功能，对外均 `/api/v1/...`）。
 
-而**冻结的动态插件平台**（见 `docs/plugin/contract.md`，标注为 roadmap-only、v2 代码冻结）原契约（§3.3）要求插件路由 path 必须以 `/v{n}/<plugin_name>/` 开头——**不含 `/api`**，与全站不一致。两处校验同源：`imboy_router_registry:validate_routes/2` 与 `imboy_plugin_toml:validate_routes/1`，正则均为 `^/v[0-9]+/<name>/`。
+而**冻结的动态插件平台**（见 `docs/reference/plugin/contract.md`，标注为 roadmap-only、v2 代码冻结）原契约（§3.3）要求插件路由 path 必须以 `/v{n}/<plugin_name>/` 开头——**不含 `/api`**，与全站不一致。两处校验同源：`imboy_router_registry:validate_routes/2` 与 `imboy_plugin_toml:validate_routes/1`，正则均为 `^/v[0-9]+/<name>/`。
 
 该平台当前**未启用**（生产插件走静态 `/api/v1/`，不经此注册表），因此不一致暂无运行时危害。但：
 

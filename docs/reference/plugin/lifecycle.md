@@ -3,7 +3,7 @@
 > **Last Updated**: 2026-04-29（Phase 4-T1 实施前置设计）
 > **Status**: Phase 4 实施前置设计文档（lifecycle_version=1.0）
 > **Scope**: 定义 `imboy_plugin_lifecycle` gen_statem 的状态枚举、事件、转换、回滚、超时、依赖联动、Admin REST API 与审计日志
-> **Source of truth**: 本文档 + `docs/plugin/contract.md` §7（简化状态枚举）
+> **Source of truth**: 本文档 + `docs/reference/plugin/contract.md` §7（简化状态枚举）
 > **Related modules**: `imboy_plugin`, `imboy_plugin_loader`, `imboy_plugin_dependency`, `imboy_plugin_migrate`, `imboy_router_registry`, `imboy_plugin_sup`, `imboy_plugin_signature`
 > **简体中文为权威版本，本文采用 Pattern A 同节并排双语 / Chinese is authoritative; bilingual sections side-by-side**
 

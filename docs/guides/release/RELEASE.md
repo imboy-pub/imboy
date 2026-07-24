@@ -1,7 +1,7 @@
 # IMBoy 发布指南 / Release Guide
 
 > 串联版本、镜像构建、版次、部署、部署后校验的完整发布流程。
-> 配套：[edition-boundary.md](./edition-boundary.md) ｜ [../../deploy/README.md](../../deploy/README.md) ｜ [../guides/operations/deployment/DAY1-QUICKSTART.md](../guides/operations/deployment/DAY1-QUICKSTART.md)
+> 配套：[edition-boundary.md](../../business/edition-boundary.md) ｜ [../../../deploy/README.md](../../../deploy/README.md) ｜ [../operations/deployment/DAY1-QUICKSTART.md](../operations/deployment/DAY1-QUICKSTART.md)
 
 ---
 
@@ -51,13 +51,13 @@ docker build --build-arg VITE_API_BASE=https://api.yourdomain.com -t imboy/imboy
 
 ## 3. 版次 / Edition
 
-部署时设 `IMBOY_EDITION`（默认 `community`）。功能边界与商业分层见 [edition-boundary.md](./edition-boundary.md)。社区版即本开源仓全部能力；专业版/企业版功能为闭源商业模块。
+部署时设 `IMBOY_EDITION`（默认 `community`）。功能边界与商业分层见 [edition-boundary.md](../../business/edition-boundary.md)。社区版即本开源仓全部能力；专业版/企业版功能为闭源商业模块。
 
 ---
 
 ## 4. 部署 / Deploy
 
-一键部署五步见 [../../deploy/README.md](../../deploy/README.md)：preflight → 配 `.env` → `docker compose up -d` → 查日志 → `/setup` 向导建管理员。
+一键部署五步见 [../../../deploy/README.md](../../../deploy/README.md)：preflight → 配 `.env` → `docker compose up -d` → 查日志 → `/setup` 向导建管理员。
 
 ---
 
