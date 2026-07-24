@@ -336,3 +336,59 @@ R10 结论写过「让 eqWAlizer 真正可用的**唯一路径**是写本地 `eq
   - 确认 `elp eqwalize` 对未 enable 模块仍强查（elib_cipher 16 errors 照报）→ 印证 R11.2 工具行为表
 - **结论**：试点机制跑通。后续按层推进时，可直接从 R11.3 绿名单批量 enable（建议仍按层小批量，避免一次性 185 文件大改违反防腐规则）；真正让某层「预算→0 转阻塞」需先做 R11.1 所述的高阶 overlay 覆盖工程。
 - **提交范围**：仅 3 个 lib .erl 文件；不动 36 个 lib 报错模块（overlay 噪声，留专项）；本文档在游离根级 docs/（非 git 仓，与 R5/R6/R10 一致）。
+
+---
+
+## R14 — lib 层 140 error 根因定性与 route ② 可行性裁决（2026-07-25）
+
+> 背景：R11 把「写 `eqwalizer_support` 覆盖」列为让 eqWAlizer lib 层转阻塞的唯一路径，但未验证「项目本地能否挂覆盖」。R13 后用户要求继续推进 route ②，本轮用数据裁决。
+
+### R14.1 route ② 可行性实证 spike（决定性负面）
+
+- **假设**：在 `src/lib/` 建项目本地 `eqwalizer_specs.erl`，给 `jsone:decode/2` 写更精确 override（`{ok, map()} | {error, term()}` 取代 vendored 的 `eqwalizer:dynamic()`），观察 `elib_uri` line 115 的 jsone error 是否消失。
+- **结果**：`elib_uri` 仍 10 error；line 115 仍报 `jsone:decode` 返回 `term()`；**无任何模块名冲突告警，也无任何改善**。
+- **结论**：**elp 只加载 vendored `eqwalizer_support` 里的 `eqwalizer_specs`，项目本地同名模块无效**。要给 `crypto`/`uri_string`/`gen_server`/`epgsql` 加覆盖，必须 **fork / 维护一份独立的 `eqwalizer_support` 依赖**（写入 `.elp.toml` 的 dep 指向自有 fork），这是真实的依赖运维承诺，非「写个模块」能解决。spike 模块已清理，未提交。
+
+### R14.2 lib 层 140 error 根因分布（全量抓取 36 模块 / 140 error）
+
+> 方法：`elp eqwalize` 逐模块顺序跑（避 jar race），抓取全部 error 上下文，按涉及的外部模块/类型前缀统计（含类型名与调用，为量级信号非精确归因）。
+
+| 根因类别 | 量级 | 主导模块 | 是否可消 |
+|---|---|---|---|
+| **OTP `crypto:*` 类型缝隙**（`rsa_public`/`ecdh_public`/`cipher_iv`/`crypto_init` 等 opaque 类型，vendored support 未覆盖） | ~30 | `elib_cipher`(16)、`elib_cnv`(10) | 仅能靠 fork support 覆盖 |
+| **OTP `uri_string:*` 类型缝隙**（`uri_map`/`error`/`normalize`/`unquote`，vendored 未覆盖） | ~25 | `elib_uri`(10) 等 | 仅能靠 fork support 覆盖 |
+| **`gen_server:start_link`/`start_ret` 回调模式** | ~24 | worker 类（`billing_invoice_worker`/`olm_otk_cleanup_worker`/`license_notice_worker` 等） | 部分可在源码补 `-spec` 修复 |
+| **第三方 `epgsql:*` 精度不足**（`query_error`/`connect_opts`/`transaction_opts` 等） | ~12 | `elib_pg`(10)、`elib_pg_sql`(2) | 仅能靠 fork support 覆盖 epgsql spec |
+| **`maps:*` 操作作用于不精确 map**（`maps:get`/`remove`/`from_list`/`find`） | ~15 | 多模块 | 部分可在源码收窄 map 类型修复 |
+| **`config_ds:env` 渗出**（`term()` 沿调用链渗） | **仅 3** | 个别 | **不可消**（R11 已证：override 仅改签名，`any()` 无法按 key 精细化） |
+| **`jsone`/`jsx`/`cowboy` 等第三方** | ~1–3 | 极小 | 可覆盖但量级可忽略 |
+
+### R14.3 纠正 R8–R11 的一处误判
+
+- R8–R10 称「`config_ds:env` 渗出是最大噪声头」——这是针对**全仓**（api/repo/ds/logic）的判断；在 **lib 层它只占 3 处**，并非主因。lib 层真正主因是 **OTP `crypto`/`uri_string` 类型缝隙（合计 ~55，占 40%）+ `gen_server` 回调模式（~24）+ `epgsql` 第三方精度（~12）**，三者**全在 vendored support 覆盖列表之外**。
+- 这解释了为何 R11 的「写 override 消 env 渗出」设想在 lib 层根本不对题：env 渗出不是 lib 层瓶颈，瓶颈是 OTP/epgsql 类型缝隙，而消这些必须 fork support。
+
+### R14.4 route ② GO / NO-GO 裁决
+
+- **GO 条件（若要做）**：fork `eqwalizer_support` → 在自有 fork 的 `eqwalizer_specs` 中补 `crypto`/`uri_string`/`gen_server`/`epgsql` 的精确/替代 spec → 接 `.elp.toml` dep 指向 fork → 重测 140 error 回落幅度。
+- **代价与风险**：① 长期维护一个 WhatsApp 上游的 fork（上游更新需 rebase）；② override 写错会变**不健全（unsound）**，掩盖真实 bug；③ 即使 fork 完成，`config_ds:env` 渗出的 3 处 + 部分源码级 spec 缺失仍残留，预算无法归零。
+- **NO-GO 推荐**：**本地 P3 治理的低风险价值已见底**。route ② 是「依赖运维承诺 + 不健全风险」的 deliberate 工程，不应作为「继续」的反射动作。剩余 140 error 中，**`gen_server` 回调与 `maps` 不精确 map 子集可在源码级渐进补 spec 修复**（随相关模块业务迭代顺手做，不单独立项）；OTP/epgsql 缝隙留给 fork support 专项，需团队决策。
+
+### R14.5 阶段收口结论
+
+| 维度 | 状态 |
+|---|---|
+| 真阳性治理 | ✅ 7 精确 commit（Gradualizer 6 + eqWAlizer 1） |
+| 白名单机制 | ✅ lib 5 模块 enable（R11+R13）+ 全仓 185 绿名单 |
+| 知识资产 | ✅ 入仓可见（R12），本文档即其中之一 |
+| 格式技术债 | ✅ imboy_dtl/elib_id 已消（R13） |
+| lib 140 error 定性 | ✅ 本轮完成（R14.2 分布表 + R14.1 spike 裁决） |
+
+**剩余路线（需团队决策 / 外部动作，非本地可独立完成）：**
+1. **激活 CI 预算 ratchet** —— maintainer 在 GitHub 后台设 `vars.GRADUALIZE_BUDGET`（本地无法）
+2. **fork `eqwalizer_support` 覆盖 OTP/epgsql 缝隙** —— 让 lib 层预算部分回落（高阶专项，R14.4 已拆解代价）
+3. **源码级补 spec**（gen_server 回调 + maps 精确化）—— 随业务迭代顺手做
+4. ~~config_ds:env 渗出~~ —— ✅ 已证不可消，放弃
+5. ~~friend/moment map() 收窄~~ —— R4 判误报，不动
+
+> 注：本 R14 章节已随文档在 R12 迁入 `imboy/docs/reference/static-typechecking/`（git 仓内，对买家/CI 可见），原「游离根级 docs」表述作废。
