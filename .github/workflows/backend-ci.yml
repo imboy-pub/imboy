@@ -197,13 +197,165 @@ jobs:
           retention-days: 14
 
   # ----------------------------------------------------------------
+  # Gradualizer — 宽网类型基线（continue-on-error，暂不阻塞）
+  # 双引擎分工：Gradualizer 管"pre-push 本地快检 + CI 全仓宽网扫描"，
+  # 分层阻塞门禁由 eqWAlizer 承担（见下）。本 job 产出 failing 趋势指标；
+  # 首次跑出 CI 干净基线后，设置仓库变量 GRADUALIZE_BUDGET=观察值 即激活
+  # ratchet（只准减不准增，同 xref 范式）。
+  # 注意：Gradualizer 构建在 OTP 29+ 需 +nowarn_match_alias_pats
+  # （已固化在 make gradualizer-setup 内）。
+  # ----------------------------------------------------------------
+  gradualize:
+    name: Gradualizer (baseline, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [compile]
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Cache Gradualizer escript
+        uses: actions/cache@v4
+        with:
+          path: tools/gradualizer
+          key: ${{ runner.os }}-otp28-gradualizer-23533d7eb7541d8a146a507e837fdfff6499a202
+
+      - name: Build Gradualizer (cache hit 时秒过)
+        run: make gradualizer-setup
+
+      - name: Compile
+        run: IMBOYENV=local make test-build
+
+      - name: Run full-repo Gradualizer audit
+        run: |
+          set -o pipefail
+          make gradualize-audit GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }} 2>&1 | tee gradualize.log
+
+      - name: Summarize Gradualizer result
+        if: always()
+        run: |
+          echo "## Gradualizer 类型健康度 (baseline, non-blocking)" >> "$GITHUB_STEP_SUMMARY"
+          cat .gradualizer/metrics.txt >> "$GITHUB_STEP_SUMMARY" || true
+          echo "预算 GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }}（设为观察值即激活 ratchet，只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Gradualizer logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gradualizer-logs
+          path: .gradualizer/logs
+          retention-days: 14
+
+  # ----------------------------------------------------------------
+  # eqWAlizer (ELP) — 分层类型门禁基线（continue-on-error，暂不阻塞）
+  # 本地基线（2026-07-24, elp 1.1.0, OTP 29）：lib 层 modules=70 failing=38。
+  # CI/OTP 28 数字可能略有漂移，以首次 CI 观察值校准仓库变量 EQWALIZE_BUDGET_LIB。
+  # 收紧计划（双引擎交接）：lib 层 failing 清零 且 Gradualizer lib 层先转阻塞
+  # 稳定 2 周后，本 job 移除 continue-on-error 转阻塞。
+  # 注意：elp eqwalize 退出码恒为 0，Makefile 目标已改为解析输出判定。
+  # ----------------------------------------------------------------
+  eqwalize:
+    name: eqWAlizer lib layer (baseline, non-blocking)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [compile]
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Setup JDK 17 (eqWAlizer 为 Scala jar)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Cache ELP binary and eqwalizer_support
+        uses: actions/cache@v4
+        with:
+          path: .elp
+          key: ${{ runner.os }}-elp-2026-06-10-${{ hashFiles('.elp.toml', 'Makefile') }}
+
+      - name: Install ELP (pinned 2026-06-10, otp-28 build)
+        run: |
+          mkdir -p .elp/bin
+          if [ ! -x .elp/bin/elp ]; then
+            curl -sL "https://github.com/WhatsApp/erlang-language-platform/releases/download/2026-06-10/elp-linux-x86_64-unknown-linux-gnu-otp-28.tar.gz" | tar xz -C .elp/bin
+          fi
+          .elp/bin/elp version
+
+      - name: Add ELP to PATH
+        run: echo "$GITHUB_WORKSPACE/.elp/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch eqwalizer_support and verify setup
+        run: make elp-setup
+
+      - name: Compile
+        run: IMBOYENV=local make test-build
+
+      - name: Run eqWAlizer on lib layer
+        run: |
+          set -o pipefail
+          make eqwalize-layer LAYER=lib EQWALIZE_BUDGET=${{ vars.EQWALIZE_BUDGET_LIB || '38' }} 2>&1 | tee eqwalize.log
+
+      - name: Summarize eqWAlizer result
+        if: always()
+        run: |
+          echo "## eqWAlizer lib layer (baseline, non-blocking)" >> "$GITHUB_STEP_SUMMARY"
+          grep "== eqwalize-layer" eqwalize.log >> "$GITHUB_STEP_SUMMARY" || true
+          echo "预算 EQWALIZE_BUDGET_LIB=${{ vars.EQWALIZE_BUDGET_LIB || '38' }}（ratchet：只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload eqWAlizer logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eqwalizer-lib-logs
+          path: .elp/logs
+          retention-days: 14
+
+  # ----------------------------------------------------------------
   # Xref — 零容忍 ratchet（阻塞，undefined 数必须为 0）
   # 完整编译后实跑 make xref，任何"调用了不存在函数"均视为 CI 失败。
   # 必须在完整 build 之后运行：beam 不全会产生假阳性（mutual undefined）。
   # 基线历史：2026-06-13 初始=42，同日全部修复，ratchet 目标 = 0。
   # ----------------------------------------------------------------
   xref:
-    name: Xref undefined-calls (ratchet: 0 allowed)
+    name: "Xref undefined-calls (ratchet: 0 allowed)"
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [compile]

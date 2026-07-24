@@ -1,0 +1,27 @@
+# .elp.toml — ELP/eqWAlizer 项目配置（imboy 使用 erlang.mk，非 rebar3）
+# 本文件同时是 ELP 项目根标记：LSP（IDE）与 CLI（CI）共用同一份项目描述。
+# 参考: https://whatsapp.github.io/erlang-language-platform/docs/get-started/configure-project/elp-toml/
+#
+# 维护规则：新增 src/ 子目录时必须同步 src_dirs（make elp-setup 有一致性校验）。
+
+[build_info]
+# 主 app：erlang.mk 多 src 子目录布局，需显式列出
+apps = [
+  { name = "imboy", dir = ".",
+    src_dirs       = ["src", "src/adm", "src/api", "src/domain", "src/ds",
+                      "src/lib", "src/logic", "src/mcp", "src/repo"],
+    extra_src_dirs = ["test", "test/adm"],
+    ebin           = "ebin",
+    include_dirs   = ["include"] },
+]
+# 第三方依赖：只做索引/跳转，不参与类型检查
+# 第二项是 eqwalizer_support（OTP/BIF spec overlay，eqWAlizer 必需）
+deps = ["deps/*", ".elp/elp-repo/eqwalizer/eqwalizer_support"]
+
+[eqwalizer]
+enable_all     = false                # 白名单阶段：不默认全量；逐层/逐模块开启
+max_tasks      = 4                    # eqWAlizer 实例内存密集，小机器调低到 2
+ignore_modules = ["elib_log"]         # lager parse_transform 封装层，豁免
+
+[otp]
+exclude_apps = ["megaco", "diameter", "wx", "et", "debugger", "observer"]   # 减少索引量

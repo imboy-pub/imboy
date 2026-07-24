@@ -96,3 +96,8 @@ scripts/.env.deploy
 # 真源是 api/openapi.yaml + api/components/**；bundled 单文件按需生成。
 api/openapi.bundled.yaml
 api/openapi.bundled.json
+
+# --- 类型检查工具产物（ELP/Gradualizer，不入仓） ---
+/.elp/
+/.gradualizer/
+/tools/

@@ -178,3 +178,106 @@ docs-stop:
 .PHONY: eunit-local
 eunit-local:
 	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
+
+# ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
+# 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担
+GRADUALIZER_DIR  := tools/gradualizer
+GRADUALIZER      ?= $(GRADUALIZER_DIR)/bin/gradualizer
+GRADUALIZER_REF  ?= 23533d7eb7541d8a146a507e837fdfff6499a202
+GRADUALIZE_BUDGET ?= 0
+# gpb 生成代码、lager 封装层不参与门禁；elib_str 触发 Gradualizer 崩溃（pick_value none() bug，待上报上游）
+GRADUALIZE_EXCLUDE := src/imboy_pb.erl src/lib/elib_log.erl src/lib/elib_str.erl
+GRADUALIZER_OPTS ?= -pa ebin $(addprefix -pa ,$(wildcard deps/*/ebin)) \
+                    -I $(CURDIR)/include --no_color --fmt_location brief
+# OTP 29 把 match_alias_pats 警告升级为错误，上游未适配，构建时压制
+GRADUALIZER_ERLC_OPTS = -I include -I src -pa ebin +debug_info +nowarn_match_alias_pats
+
+.PHONY: gradualizer-setup
+gradualizer-setup: ## 拉取并构建 Gradualizer escript（pin 版本）
+	@test -x $(GRADUALIZER) || { \
+		git clone https://github.com/josefs/Gradualizer.git $(GRADUALIZER_DIR) && \
+		git -C $(GRADUALIZER_DIR) checkout $(GRADUALIZER_REF) && \
+		git -C $(GRADUALIZER_DIR) rev-parse HEAD > $(GRADUALIZER_DIR)/PINNED && \
+		$(MAKE) -C $(GRADUALIZER_DIR) escript ERLC_OPTS="$(GRADUALIZER_ERLC_OPTS)"; }
+	@echo "✅ Gradualizer ready ($(GRADUALIZER_REF))"
+
+.PHONY: gradualize
+gradualize: ## 单文件检查: make gradualize FILE=src/lib/elib_cnv.erl
+	@test -n "$(FILE)" || { echo "用法: make gradualize FILE=<path.erl>"; exit 1; }
+	@$(GRADUALIZER) $(GRADUALIZER_OPTS) $(FILE)
+
+.PHONY: gradualize-layer
+gradualize-layer: ## 分层门禁（单发模式，用于转绿层）: make gradualize-layer LAYER=lib
+	@test -n "$(LAYER)" || { echo "用法: make gradualize-layer LAYER=lib|repo|ds|logic|api"; exit 1; }
+	$(GRADUALIZER) $(GRADUALIZER_OPTS) \
+		$(filter-out $(GRADUALIZE_EXCLUDE),$(wildcard src/$(LAYER)/*.erl))
+
+.PHONY: gradualize-audit
+gradualize-audit: ## 全仓逐模块审计（预算制，基线期）: make gradualize-audit
+	@mkdir -p .gradualizer/logs; fail=0; total=0; \
+	for f in $(filter-out $(GRADUALIZE_EXCLUDE),$(wildcard src/*.erl src/*/*.erl)); do \
+		case "$$f" in *_tests.erl) continue;; esac; \
+		total=$$((total+1)); \
+		log=.gradualizer/logs/$$(basename $$f .erl).log; \
+		if ! $(GRADUALIZER) $(GRADUALIZER_OPTS) $$f > $$log 2>&1; then \
+			fail=$$((fail+1)); echo "❌ $$f"; \
+		fi; \
+	done; \
+	echo "== gradualize-audit: modules=$$total failing=$$fail budget=$(GRADUALIZE_BUDGET)"; \
+	echo "gradualizer_failing $$fail" > .gradualizer/metrics.txt; \
+	test $$fail -le $(GRADUALIZE_BUDGET)
+
+# ==================== ELP / eqWAlizer（CI 分层阻塞门禁 + IDE） ====================
+# 项目结构描述在 .elp.toml（入仓）；.elp/elp-repo 不入仓，由 elp-setup 拉取
+ELP ?= elp
+ELP_REPO_DIR := .elp/elp-repo
+ELP_REPO_REF ?= c3708e6a7cc627c5323ef066a2bdfd8d1ba987e5
+EQWALIZER_SUPPORT := $(ELP_REPO_DIR)/eqwalizer/eqwalizer_support
+EQWALIZE_BUDGET ?= 0
+
+.PHONY: elp-setup
+elp-setup: ## 校验 elp + JVM，拉取 eqwalizer_support；校验 .elp.toml 与实际目录一致
+	@command -v $(ELP) >/dev/null || { echo "❌ 未找到 elp: brew install erlang-language-platform"; exit 1; }
+	@command -v java >/dev/null   || { echo "❌ eqWAlizer 需要 JVM 17+"; exit 1; }
+	@if [ ! -d "$(EQWALIZER_SUPPORT)" ]; then \
+		mkdir -p .elp && \
+		git clone --filter=blob:none --sparse \
+		  https://github.com/WhatsApp/erlang-language-platform.git $(ELP_REPO_DIR) && \
+		git -C $(ELP_REPO_DIR) sparse-checkout set eqwalizer/eqwalizer_support && \
+		git -C $(ELP_REPO_DIR) checkout $(ELP_REPO_REF) && \
+		git -C $(ELP_REPO_DIR) rev-parse HEAD > .elp/PINNED; \
+	fi
+	@actual=$$(ls -d src/*/ | xargs -n1 basename | sort); \
+	configured=$$(grep -o 'src/[a-z][a-z]*' .elp.toml | cut -d/ -f2 | sort -u); \
+	[ "$$actual" = "$$configured" ] || \
+		echo "⚠️ .elp.toml 的 src_dirs 与实际 src/ 子目录不一致，请同步"
+	@echo "✅ ELP ready"
+
+.PHONY: eqwalize
+eqwalize: ## 单模块检查: make eqwalize MOD=msg_c2c_logic
+	@test -n "$(MOD)" || { echo "用法: make eqwalize MOD=<module>"; exit 1; }
+	@out=$$($(ELP) eqwalize $(MOD) 2>&1); rc=$$?; echo "$$out"; \
+	if [ $$rc -ne 0 ]; then exit $$rc; fi; \
+	echo "$$out" | grep -q "^error:" && exit 1 || true
+
+.PHONY: eqwalize-layer
+eqwalize-layer: ## 分层检查（预算制）: make eqwalize-layer LAYER=lib
+	@test -n "$(LAYER)" || { echo "用法: make eqwalize-layer LAYER=lib|repo|ds|logic|api"; exit 1; }
+	@mkdir -p .elp/logs; fail=0; total=0; \
+	for f in src/$(LAYER)/*.erl; do \
+		m=$$(basename $$f .erl); \
+		case "$$m" in *_tests) continue;; esac; \
+		total=$$((total+1)); \
+		if $(ELP) eqwalize $$m > .elp/logs/$$m.log 2>&1; then \
+			grep -q "^error:" .elp/logs/$$m.log && { fail=$$((fail+1)); echo "❌ $$m"; } || true; \
+		else \
+			fail=$$((fail+1)); echo "❌ $$m (crash, 详见 .elp/logs/$$m.log)"; \
+		fi; \
+	done; \
+	echo "== eqwalize-layer: layer=$(LAYER) modules=$$total failing=$$fail budget=$(EQWALIZE_BUDGET)"; \
+	test $$fail -le $(EQWALIZE_BUDGET)
+
+.PHONY: eqwalize-all
+eqwalize-all: ## 全量检查（CI 用；解析输出判定，退出码不可信）
+	@$(ELP) eqwalize-all 2>&1 | tee .elp/eqwalize-all.log; \
+	grep -q "^error:" .elp/eqwalize-all.log && exit 1 || true

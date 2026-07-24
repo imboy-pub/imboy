@@ -24,3 +24,15 @@ commit-msg:
           echo "   type: feat|fix|refactor|docs|test|chore|perf|ci|style|build|revert" >&2
           exit 1
         fi
+
+# pre-push：Gradualizer 变更模块快检（escript 秒级、无 JVM 依赖；CI 深度门禁由 eqWAlizer 承担）
+# 依赖: make gradualizer-setup（首次）+ 最近一次 make compile 的 ebin/
+pre-push:
+  commands:
+    gradualize-changed:
+      run: |
+        files=$(git diff --name-only origin/main...HEAD -- 'src/*.erl' 'src/**/*.erl' \
+          | grep -v '_tests\.erl$' | grep -v 'imboy_pb\.erl$' | grep -v 'elib_log\.erl$' || true)
+        [ -z "$files" ] && exit 0
+        [ -x tools/gradualizer/bin/gradualizer ] || { echo "⚠️ 未安装 Gradualizer，跳过（make gradualizer-setup 安装）"; exit 0; }
+        tools/gradualizer/bin/gradualizer -pa ebin -I include --no_color --fmt_location brief --stop_on_first_error $files
