@@ -201,7 +201,9 @@ assemble_s2c(MsgId, Action, To) ->
 assemble_msg(Type, From, To, Payload, MsgId, MsgType, Action, E2EE) ->
     %% v2.0: MsgType/Action/E2EE 作为独立参数，直接使用
     %% TSID 大整数超过 JS 安全范围，所有 ID 必须转为 binary 字符串
+    %% S0-1: 信封带 ver 字段（出站=当前版本，架构保险）
     #{
+        <<"ver">> => ?CUR_MSG_VER,
         <<"id">> => MsgId,
         <<"type">> => Type,
         <<"from">> => From,
@@ -288,7 +290,9 @@ encode_websocket_message(Msg) ->
 
     %% v2.0 格式：所有字段提升到顶层
     %% TSID 大整数超过 JS 安全范围，所有 ID 必须转为 binary 字符串
+    %% S0-1: 信封带 ver 字段（出站=当前版本，架构保险）
     #{
+        <<"ver">> => ?CUR_MSG_VER,
         <<"id">> => maps:get(<<"id">>, Msg),
         <<"type">> => Type,
         <<"from">> => From,
@@ -317,6 +321,9 @@ decode_websocket_message(Data) ->
     % map() | null
     E2EE = maps:get(<<"e2ee">>, Msg, null),
 
+    %% S0-1: 信封版本号透传；旧客户端不带 ver 时缺省视为当前版本（向后兼容）
+    Ver = maps:get(<<"ver">>, Msg, ?CUR_MSG_VER),
+
     %% 保持客户端字段名：from/to（binary，TSID 字符串）
     %% Logic 层会使用 ec_cnv:to_integer/1 将其转换为 integer
     %% 消息自毁秒数（可选，0 或 undefined 表示不自毁）
@@ -327,6 +334,7 @@ decode_websocket_message(Data) ->
         end,
 
     #{
+        <<"ver">> => Ver,
         <<"id">> => maps:get(<<"id">>, Msg, <<>>),
         <<"type">> => Type,
         <<"from">> => maps:get(<<"from">>, Msg, <<>>),

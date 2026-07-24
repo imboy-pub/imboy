@@ -1,6 +1,7 @@
 -module(msg_c2g_logic_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("chat.hrl").
 
 c2g_success_sends_server_ack_and_dispatch_test_() ->
     ?WITH_MECKS(
@@ -66,7 +67,12 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
-            ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4))
+            ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4)),
+
+            %% S0-1: C2G 独立信封路径带当前版本 ver（解码投递出的 JSON 断言）
+            SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
+            Decoded = jsone:decode(SentMsg),
+            ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded))
         end
     ).
 

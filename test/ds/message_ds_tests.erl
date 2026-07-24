@@ -1,6 +1,7 @@
 -module(message_ds_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
+-include("chat.hrl").
 
 %%%===================================================================
 %%% @doc
@@ -33,6 +34,83 @@ assemble_msg_with_valid_params_test_() ->
         ?assertEqual(<<"text">>, MsgType),
         ?assertEqual(<<"user123">>, FromUid),
         ?assertEqual(<<"user456">>, ToUid)
+    end).
+
+%% ===================================================================
+%% S0-1 消息信封 ver 字段（架构保险）
+%% 出站信封统一带当前版本；入站缺省视为当前版本（旧客户端无 ver 兼容）
+%% ===================================================================
+
+%% assemble_msg/8 出站信封带当前版本 ver
+assemble_msg_carries_current_ver_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Msg = message_ds:assemble_msg(
+            <<"C2C">>,
+            <<"111">>,
+            <<"222">>,
+            #{<<"content">> => <<"hi">>},
+            <<"mid-1">>,
+            <<"text">>,
+            <<>>,
+            null
+        ),
+        ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Msg))
+    end).
+
+%% assemble_msg/5 向后兼容版同样带 ver
+assemble_msg_5_carries_current_ver_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Msg = message_ds:assemble_msg(
+            <<"C2C">>,
+            <<"111">>,
+            <<"222">>,
+            #{<<"content">> => <<"hi">>, <<"msg_type">> => <<"text">>},
+            <<"mid-2">>
+        ),
+        ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Msg))
+    end).
+
+%% assemble_s2c 系统消息经 assemble_msg/8 亦带 ver
+assemble_s2c_carries_current_ver_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Msg = message_ds:assemble_s2c(<<"mid-3">>, <<"please_refresh_token">>, <<"333">>),
+        ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Msg))
+    end).
+
+%% encode_websocket_message/1 为模块私有函数（离线回放路径），
+%% 其 ver 行为由内部信封构造收敛，不直接单测；C2G 独立路径在 msg_c2g_logic_tests 覆盖。
+
+%% decode_websocket_message：新客户端带 ver 时透传
+decode_websocket_message_passes_ver_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Json = jsone:encode(#{
+            <<"ver">> => ?CUR_MSG_VER,
+            <<"id">> => <<"mid-5">>,
+            <<"type">> => <<"C2C">>,
+            <<"from">> => <<"111">>,
+            <<"to">> => <<"222">>,
+            <<"msg_type">> => <<"text">>,
+            <<"payload">> => #{<<"content">> => <<"hi">>}
+        }),
+        Decoded = message_ds:decode_websocket_message(Json),
+        ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded))
+    end).
+
+%% decode_websocket_message：旧客户端无 ver 时缺省=当前版本（向后兼容核心断言）
+decode_websocket_message_defaults_ver_when_absent_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% 注意：不带 ver 字段，模拟旧客户端
+        Json = jsone:encode(#{
+            <<"id">> => <<"mid-6">>,
+            <<"type">> => <<"C2C">>,
+            <<"from">> => <<"111">>,
+            <<"to">> => <<"222">>,
+            <<"msg_type">> => <<"text">>,
+            <<"payload">> => #{<<"content">> => <<"hi">>}
+        }),
+        Decoded = message_ds:decode_websocket_message(Json),
+        %% 缺省即当前版本——旧客户端不被破坏
+        ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded))
     end).
 
 %% ===================================================================

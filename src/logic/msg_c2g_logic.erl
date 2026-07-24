@@ -153,7 +153,9 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
     E2EE = maps:get(<<"e2ee">>, Data, null),
 
     Payload = maps:get(<<"payload">>, Data),
+    %% S0-1: 信封带 ver 字段（出站=当前版本，架构保险）
     MsgBase = #{
+        <<"ver">> => ?CUR_MSG_VER,
         <<"id">> => MsgId,
         <<"type">> => <<"C2G">>,
         <<"from">> => CurrentUid,
