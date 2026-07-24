@@ -49,7 +49,7 @@ group_transfer(G) -> G.
 %% @param Lng 经度
 %% @param Lat 纬度
 %% @return {ok, Gid} | {error, Reason}
--spec face2face(integer(), binary(), binary(), binary()) ->
+-spec face2face(integer(), binary(), binary() | undefined, binary() | undefined) ->
     {ok, integer()} | {error, binary() | string()}.
 face2face(_, <<>>, _, _) ->
     {error, <<"Code 必须"/utf8>>};

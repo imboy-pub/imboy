@@ -30,7 +30,7 @@
 %% @param Source 来源
 %% @param Remark 备注
 %% @return {ok, binary()} | {error, binary()}
--spec add(integer(), binary(), binary(), map(), binary(), binary()) ->
+-spec add(integer(), binary(), binary(), map() | list(), binary(), binary()) ->
     {ok, binary()} | {error, binary()}.
 
 % Kind 被收藏的资源种类： 1 文本  2 图片  3 语音  4 视频  5 文件  6 位置消息  7 个人名片

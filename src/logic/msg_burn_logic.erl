@@ -67,9 +67,13 @@ calc_expire_at(_CreatedAt, undefined) ->
 calc_expire_at(_CreatedAt, 0) ->
     null;
 calc_expire_at(CreatedAt, ExpireSecs) when is_integer(ExpireSecs), ExpireSecs > 0 ->
-    CreatedAtMs = elib_dt:rfc3339_to(CreatedAt),
-    ExpireAtMs = CreatedAtMs + (ExpireSecs * 1000),
-    elib_dt:to_rfc3339(ExpireAtMs);
+    case elib_dt:rfc3339_to(CreatedAt) of
+        CreatedAtMs when is_integer(CreatedAtMs) ->
+            ExpireAtMs = CreatedAtMs + (ExpireSecs * 1000),
+            elib_dt:to_rfc3339(ExpireAtMs);
+        _ ->
+            null
+    end;
 calc_expire_at(_CreatedAt, _) ->
     null.
 

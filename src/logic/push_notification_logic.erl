@@ -36,8 +36,6 @@ unregister_token(Uid, DeviceId) ->
     case push_token_ds:deactivate(Uid, DeviceId) of
         {ok, _} ->
             ok;
-        ok ->
-            ok;
         {error, Reason} ->
             ?ERROR_LOG(["push_token_deactivate_failed", Uid, DeviceId, Reason]),
             ok

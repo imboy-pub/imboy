@@ -393,7 +393,7 @@ process_remind_list([Remind | Rest], Acc) ->
     process_remind_list(Rest, Acc + 1).
 
 %% @doc 安排提醒
--spec schedule_reminders(binary(), binary(), integer(), [integer()]) -> ok.
+-spec schedule_reminders(binary(), binary(), integer() | undefined, [integer()]) -> ok.
 schedule_reminders(ScheduleId, StartAt, RemindBefore, UserIds) ->
     case RemindBefore of
         undefined ->

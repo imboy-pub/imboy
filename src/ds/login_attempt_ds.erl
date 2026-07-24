@@ -68,7 +68,7 @@
 
 %% 类型定义
 -type login_result() :: {ok, pos_integer()} | {ok, pos_integer(), locked} | {error, term()}.
--type ip_rate_limit_result() :: {ok, pos_integer()} | {error, rate_limited}.
+-type ip_rate_limit_result() :: {ok, pos_integer()} | {error, rate_limited | invalid_ip}.
 
 %%%===================================================================
 %%% API 函数

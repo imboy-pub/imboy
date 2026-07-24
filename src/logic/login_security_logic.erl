@@ -17,7 +17,14 @@
 %%%===================================================================
 
 %% Dialyzer 抑制误报警告：布尔类型模式匹配的局限性
--dialyzer({nowarn_function, [check_login_allowed/2, record_login_failure/2, build_lock_info/2, get_lock_duration_minutes/0]}).
+-dialyzer(
+    {nowarn_function, [
+        check_login_allowed/2,
+        record_login_failure/2,
+        build_lock_info/2,
+        get_lock_duration_minutes/0
+    ]}
+).
 
 -include("error_code.hrl").
 -include("log.hrl").
@@ -33,8 +40,9 @@
 
 %% 类型定义
 -type login_check_result() :: {ok, true} | {error, locked, map()}.
--type failure_result() :: {ok, pos_integer()} | {ok, pos_integer(), locked} | {error, invalid_ip | rate_limited}.
--type ip_limit_result() :: {ok, pos_integer()} | {error, rate_limited}.
+-type failure_result() ::
+    {ok, pos_integer()} | {ok, pos_integer(), locked} | {error, invalid_ip | rate_limited}.
+-type ip_limit_result() :: {ok, pos_integer()} | {error, rate_limited | invalid_ip}.
 
 %%%===================================================================
 %%% API 函数

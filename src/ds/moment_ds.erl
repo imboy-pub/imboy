@@ -491,6 +491,7 @@ page_admin_reports(Status, Page, Size) -> moment_report_repo:page_admin(Status, 
 -spec find_report_by_id(integer()) -> map() | {error, any()}.
 find_report_by_id(ReportId) -> moment_report_repo:find_by_id(ReportId).
 
--spec resolve_report(integer(), integer(), binary() | undefined, integer()) -> ok | {error, any()}.
+-spec resolve_report(integer(), integer(), binary() | undefined, integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
 resolve_report(ReportId, Result, Note, AdmUid) ->
     moment_report_repo:resolve(ReportId, Result, Note, AdmUid).

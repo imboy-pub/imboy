@@ -30,9 +30,9 @@
 %% @return ok | {error, ErrorCode, ErrorMsg}
 -spec add_friend(
     integer(),
-    binary(),
-    binary() | map(),
-    binary() | integer()
+    binary() | undefined,
+    binary() | map() | undefined,
+    binary() | integer() | undefined
 ) -> ok | {error, binary(), binary()}.
 add_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"to">>};
@@ -155,7 +155,7 @@ send_apply_friend(CurrentUid, To, ToId, FromBin, Payload, CreatedAt) ->
 %% @param To 接收方用户ID（整数）
 %% @param Payload 包含好友设置信息的映射
 %% @return {ok, FromID, Remark2, Source} | {error, ErrorCode, ErrorMsg}
--spec confirm_friend(integer(), binary(), binary(), binary()) ->
+-spec confirm_friend(integer(), binary() | undefined, binary() | undefined, binary() | undefined) ->
     {ok, integer(), binary(), binary()} | {error, binary(), binary()}.
 confirm_friend(_, undefined, _, _) ->
     {error, <<"Parameter error">>, <<"from">>};
