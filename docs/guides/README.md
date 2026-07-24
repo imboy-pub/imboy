@@ -14,19 +14,19 @@
 
 | 子目录 | 内容 | 规模 |
 |--------|------|------|
-| [operations/](./operations/) | 部署运维：备份恢复、升级、监控、集群、Garage | 17 篇 |
+| [operations/](./operations/) | 部署运维：备份恢复、升级、监控、集群、Garage、benchmark | 18 篇 |
 | [testing/](./testing/) | 测试指南：单元/集成/E2E/性能/混沌测试 | 16 篇 |
-| [e2ee/](./e2ee/) | E2EE 配置与协议专题（含 v2/ 子目录，待 owner 细分） | 36 篇 |
+| [e2ee/](./e2ee/) | E2EE 配置与协议专题（含 v2/ 子目录，待 owner 细分） | 37 篇 |
+| [release/](./release/) | 发版流程与应用商店上架清单 | 4 篇 |
+| [payment/](./payment/) | 支付集成（S4 支付宝/微信、钱包联调） | 2 篇 |
+| [migrations/](./migrations/) | 数据库迁移操作 | 1 篇 |
+| [security/](./security/) | 安全加固 | 1 篇 |
 
 ## 单篇指南
 
 | 文档 | 内容 |
 |------|------|
 | [sentry-dsn-integration-guide.md](./sentry-dsn-integration-guide.md) | Sentry DSN 接入配置 |
-
-## 待迁入
-
-- `migrations/`（数据库迁移操作）
-- `plugin/`（插件安装与运维）
+| [libraries-async.md](./libraries-async.md) | `elib_async` 使用指南 |
 
 模板：见 [documentation-system/templates/HOWTO_TEMPLATE.md](../documentation-system/templates/HOWTO_TEMPLATE.md)
