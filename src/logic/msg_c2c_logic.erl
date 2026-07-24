@@ -135,7 +135,7 @@ policy_violation_reply(MsgId, Reason) ->
 
 %% @doc 准备单聊消息数据
 %% @private
--spec prepare_c2c_data(integer(), map()) -> {binary(), binary(), binary(), binary(), map(), map()}.
+-spec prepare_c2c_data(integer(), map()) -> {integer(), binary(), binary(), binary(), map(), map()}.
 prepare_c2c_data(CurrentUid, Data) ->
     NowTs = elib_dt:now(),
     NowMS = elib_dt:rfc3339_to(NowTs, millisecond),

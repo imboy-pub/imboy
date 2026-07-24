@@ -200,7 +200,7 @@ to_rfc3339(Num, Unit, Offset) when is_integer(Num) andalso Num >= 0 ->
         end,
     case Num =< MaxValue of
         true ->
-            list_to_binary(
+            iolist_to_binary(
                 calendar:system_time_to_rfc3339(Num, [
                     {unit, Unit}, {time_designator, $T}, {offset, Offset}
                 ])
@@ -226,12 +226,32 @@ datetime_to({{Y, Mo, D}, {H, Mi, S}}, millisecond) when is_number(S) ->
     try
         IntS = trunc(S),
         FracS = S - IntS,
-        GregorianSecs = calendar:datetime_to_gregorian_seconds({{Y, Mo, D}, {H, Mi, IntS}}),
+        GregorianSecs = safe_gregorian_secs({{Y, Mo, D}, {H, Mi, IntS}}),
         UnixEpochSecs = GregorianSecs - 62167219200,
         UnixEpochSecs * 1000 + round(FracS * 1000)
     catch
         _:_ -> {error, "invalid datetime tuple"}
     end.
+
+%% 显式校验日期元组各字段范围后调用 calendar，避免非法 month 等经 badarg 异常路径
+%% 返回 {error, invalid_datetime} 保持与模块其它函数的错误契约一致
+safe_gregorian_secs({{Y, Mo, D}, {H, Mi, S}}) when
+    is_integer(Y),
+    is_integer(Mo),
+    Mo >= 1,
+    Mo =< 12,
+    is_integer(D),
+    D >= 1,
+    D =< 31,
+    is_integer(H),
+    H >= 0,
+    H =< 23,
+    is_integer(Mi),
+    Mi >= 0,
+    Mi =< 59,
+    is_integer(S)
+->
+    calendar:datetime_to_gregorian_seconds({{Y, Mo, D}, {H, Mi, S}}).
 
 -spec rfc3339_to(integer() | tuple() | list() | binary() | undefined | atom()) ->
     integer() | binary() | null | term().
@@ -267,7 +287,10 @@ rfc3339_to(Value) ->
 % Dt = elib_dt:now(),
 % elib_dt:rfc3339_to(Dt, millisecond).
 % elib_dt:rfc3339_to(Dt, microsecond).
--spec rfc3339_to(binary() | list() | undefined, atom()) -> integer() | {error, empty_input}.
+-spec rfc3339_to(
+    integer() | binary() | list() | undefined,
+    second | millisecond | microsecond | nanosecond
+) -> integer() | {error, empty_input}.
 rfc3339_to(Dt, Unit) when is_binary(Dt) andalso Dt =/= <<>> ->
     rfc3339_to(binary_to_list(Dt), Unit);
 rfc3339_to(Dt, _Unit) when Dt =:= []; Dt =:= undefined ->

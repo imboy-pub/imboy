@@ -41,7 +41,7 @@
 
 只移动不改名，引用更新为机械的路径前缀替换。全部引用点已同步更新。
 
-### 批次 C — 过程材料归 archive/（待执行，建议下轮）
+### 批次 C — 过程材料归 archive/ ✅ 已完成（2026-07-24）
 
 | 源 | 目标 | 说明 |
 |----|------|------|
@@ -52,7 +52,7 @@
 
 注意：analysis 中 4 篇商业分析（`ai-era-monetization-*`、`business-value-*`、`im-market-*`、`monetization-path-*`）**不归 archive**——它们是有效业务文档，建议移 `business/`（新建）或留待确认。
 
-### 批次 D — 单文件目录并编（待执行）
+### 批次 D — 单文件目录并编 ✅ 已完成（2026-07-24）
 
 | 目录 | 文件 | 建议去向 |
 |------|------|---------|
@@ -63,7 +63,7 @@
 | `design/` | 1 篇 | explanation/ |
 | `dev/` | 3 篇 | cheatsheet→reference/；changelog→engineering/；backend-readme 与根 README 去重 |
 
-### 批次 E — 大专题目录拆分（待执行，需内容审阅）
+### 批次 E — 大专题目录拆分 ✅ 部分完成（2026-07-24）
 
 - `e2ee/` 36 篇（含 v2/ 子目录）：拆为 `guides/e2ee/`（操作）+ `reference/e2ee/`（协议契约）+ `explanation/e2ee-design.md`（设计理由）
 - `testing/` 16 篇：整体移 `guides/testing/`（基本都是任务型指南）
@@ -76,3 +76,31 @@
 2. 每批一个独立 commit，信息格式：`docs: batch X — move <源> to <目标>`。
 3. 移动后在源目录留 `.moved` 说明文件（一批一个），30 天后清理。
 4. archive/ 内保留原目录结构，永不删除。
+
+### 批次 F — release/plugin/CODEMAPS 归位 ✅ 已完成（2026-07-24，团队协作）
+
+- release/ 4 活跃指南 → guides/release/；2 快照 → archive/release/；3 商业 → business/
+- plugin/ 3 规范 → reference/plugin/
+- CODEMAPS/ → archive/CODEMAPS/（实测失真 +46%，已加基线警告）
+- roadmap/ 8 篇保留原位（TASKS.md 是 loop 状态真源，不可动）
+- api-sandbox/ 保留（工具与相对路径强耦合）
+
+### 批次 G — architecture/standards/templates/benchmark 归位 ✅ 已完成（2026-07-24，团队协作）
+
+- architecture/adr/ 2 篇 → docs/adr/0005、0006（统一编号风格，索引登记原名）
+- architecture/ 5 篇完成历程 → archive/architecture/；2 篇设计 → explanation/
+- 保留 architecture/ 仅 4 篇活跃（overview/module_map/database-access/module-layer-cheatsheet）
+- standards/ 3 篇 → reference/；e2ee-key-rotation → guides/e2ee/（待并入）；migration_naming → reference/engineering/
+- templates/PRIVACY_POLICY → legal/（加法务守门提示）
+- benchmark.md → guides/operations/
+
+### 跨仓批次（imboyapp + imboyadmin）✅ 已完成（2026-07-24）
+
+- imboyapp：feature-status → reference/；2 审计 → qa/audits/；1 完成计划 → archive/plans/；FAQ/changelog/privacy-policy 保留根级（Flutter asset 打包，已加警示）
+- imboyadmin：4 契约 → api-contracts/ + 草案状态标注
+
+### 剩余尾巴（不影响结构稳定）
+
+- architecture/ 4 篇活跃文档未来可迁 explanation/ 或保留专题（owner 决定）
+- guides/e2ee/ 36 篇专题待 owner 细分（当前保持结构）
+- docs/ 一级目录最终：15 目录 + 2 根文件（CONVENTIONS.md、README.md）

@@ -40,7 +40,8 @@ internal_log(Level, Fmt, Args, Module, Line) ->
 %% 这样调整 ?LOG_LEVEL 阈值是安全运维操作，不会让既有 debug/info 调用点崩溃。
 
 %% @doc Debug 级别日志（1参数）
--spec debug(iodata()) -> ok.
+%% 实参经 ensure_string/1 转字符串，接受任意 term（与 internal_log/4 一致）
+-spec debug(term()) -> ok.
 debug(Msg) ->
     safe_log(debug, Msg, ?MODULE, ?LINE).
 
@@ -50,7 +51,8 @@ debug(Fmt, Args) ->
     safe_log(debug, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Info 级别日志（1参数）
--spec info(iodata()) -> ok.
+%% 实参经 ensure_string/1 转字符串，接受任意 term（与 internal_log/4 一致）
+-spec info(term()) -> ok.
 info(Msg) ->
     safe_log(info, Msg, ?MODULE, ?LINE).
 
@@ -60,7 +62,8 @@ info(Fmt, Args) ->
     safe_log(info, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Notice 级别日志（1参数）
--spec notice(iodata()) -> ok.
+%% 实参经 ensure_string/1 转字符串，接受任意 term（与 internal_log/4 一致）
+-spec notice(term()) -> ok.
 notice(Msg) ->
     safe_log(notice, Msg, ?MODULE, ?LINE).
 
@@ -70,7 +73,8 @@ notice(Fmt, Args) ->
     safe_log(notice, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Warning 级别日志（1参数）
--spec warning(iodata()) -> ok.
+%% 实参经 ensure_string/1 转字符串，接受任意 term（与 internal_log/4 一致）
+-spec warning(term()) -> ok.
 warning(Msg) ->
     safe_log(warning, Msg, ?MODULE, ?LINE).
 
@@ -80,7 +84,8 @@ warning(Fmt, Args) ->
     safe_log(warning, Fmt, Args, ?MODULE, ?LINE).
 
 %% @doc Error 级别日志（1参数）
--spec error(iodata()) -> ok.
+%% 实参经 ensure_string/1 转字符串，接受任意 term（与 internal_log/4 一致）
+-spec error(term()) -> ok.
 error(Msg) ->
     safe_log(error, Msg, ?MODULE, ?LINE).
 
