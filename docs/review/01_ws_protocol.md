@@ -2,7 +2,7 @@
 
 > 审查日期：2026-07-02
 > 审查性质：只读盘点，不含代码改动
-> 审查范围：`src/lib/imboy_frame.erl`、`src/lib/imboy_ws_action_registry.erl`、`src/api/websocket_handler.erl`、`src/logic/websocket_logic.erl`、`src/logic/webrtc_ws_logic.erl`、`docs/analysis/ws-protocol-contract.md`、`docs/analysis/websocket-api-2.md`；延伸取证：`message_router_logic.erl`、`msg_c2s_logic.erl`、`msg_s2c_logic.erl`、`msg_ack_logic.erl`、`elib_retry_config.erl`、`include/imboy_frame.hrl`、`imboy_pb.erl`、`message_policy.erl`
+> 审查范围：`src/lib/imboy_frame.erl`、`src/lib/imboy_ws_action_registry.erl`、`src/api/websocket_handler.erl`、`src/logic/websocket_logic.erl`、`src/logic/webrtc_ws_logic.erl`、`docs/reference/ws-protocol-contract.md`、`docs/reference/websocket-api-2.md`；延伸取证：`message_router_logic.erl`、`msg_c2s_logic.erl`、`msg_s2c_logic.erl`、`msg_ack_logic.erl`、`elib_retry_config.erl`、`include/imboy_frame.hrl`、`imboy_pb.erl`、`message_policy.erl`
 > 核心问题：「这条 WS 通道到底是不是 RPC」是否在协议层说清楚了？
 
 ---
@@ -105,7 +105,7 @@
 | 2 | v2 ACK 帧方向处理 | "`msg_direction` 硬编码为 C2C"（`:537,545`） | 已从 flags 读方向（`websocket_handler.erl:246-248`，即 2026-06-23 修的 bug） |
 | 3 | 服务端重试间隔 | C2C `[0,5000,7000,11000,17000]`、C2G `[0,3500,3500,3000,5000]`（`:919-923`） | C2C `[0,3000]`、C2G `[0]`（`src/lib/elib_retry_config.erl:22-27`；contract §5.1 一致） |
 | 4 | FRAME_TYPE_ACK 方向 | "服务端→客户端（预留）"（`:386`） | 服务端实现的是**客户端→服务端入站**处理（`websocket_handler.erl:246-263`），下行从未发过 ACK 帧 |
-| 5 | 文档位置 | `imboy/CLAUDE.md` 引用 `docs/api/websocket-api-2.md` | 该路径不存在，文件实际在 `docs/analysis/`（已 `ls` 证实） |
+| 5 | 文档位置 | `imboy/CLAUDE.md` 引用 `docs/reference/websocket-api-2.md` | 该路径不存在，文件实际在 `docs/analysis/`（已 `ls` 证实） |
 | 6 | 根 CLAUDE.md | "未确认重试 2s/5s/7s/11s" | 无任何类型是这个序列（最接近的 c2s 是 `[0,5s,7s,11s]`） |
 
 另有一处**命名债**：「消息结构 v2.0」与「imboy.v2 帧协议」双 "v2" 并存，`websocket-api-2.md:7` 自己都要加注区分，而 contract 文档未提及此歧义。

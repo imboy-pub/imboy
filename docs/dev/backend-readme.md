@@ -12,8 +12,8 @@
 - 数据访问：`docs/architecture/database-access.md`
 - 文档索引：`docs/README.md`
 - 测试说明：`test/README.md`
-- REST API：`docs/api/rest-api.md`
-- WebSocket API：`docs/api/websocket-api-2.md`
+- REST API：`docs/reference/rest-api.md`
+- WebSocket API：`docs/reference/websocket-api-2.md`
 
 ## 环境依赖
 

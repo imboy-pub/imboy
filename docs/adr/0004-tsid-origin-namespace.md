@@ -2,7 +2,7 @@
 
 - 状态：Proposed
 - 日期：2026-07-24
-- 关联文件：`src/lib/elib_tsid.erl`、`src/imboy_app.erl`、`docs/analysis/tsid-field-convention.md`、`docs/CONVENTIONS.md`
+- 关联文件：`src/lib/elib_tsid.erl`、`src/imboy_app.erl`、`docs/reference/tsid-field-convention.md`、`docs/CONVENTIONS.md`
 - 关联 ADR：无前序（本篇为 ID 命名空间首篇）；参阅 `docs/analysis/p0-billing-multitenant-authz-2026-07.md`（租户现状）
 
 ## 背景

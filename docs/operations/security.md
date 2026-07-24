@@ -260,6 +260,6 @@
 - `config/sys.config.example`
 - `docs/guides/deployment.md`
 - `docs/guides/module-feature-flag-config.md`
-- `docs/api/rest-api.md`
+- `docs/reference/rest-api.md`
 - `priv/static/legal/privacy_policy.html`
 - `priv/static/legal/account_deletion.html`

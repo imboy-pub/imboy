@@ -119,7 +119,7 @@
 
 ## 5. 测试策略缺口（跨仓）
 
-1. **契约测试单薄（P1）**：census 5 个真 bug 全部是"层间契约"错误（spec vs 实现、meck 期望 vs 生产参数）。现有防御=redocly OpenAPI 门（HTTP 层）+ 重写后的 6 个 CT SUITE（真 PG）。WS 协议契约（`docs/analysis/ws-protocol-contract.md`）无自动化契约测试对齐三端；SDK（imboy-sdk-js，vitest）与后端之间无契约验证。
+1. **契约测试单薄（P1）**：census 5 个真 bug 全部是"层间契约"错误（spec vs 实现、meck 期望 vs 生产参数）。现有防御=redocly OpenAPI 门（HTTP 层）+ 重写后的 6 个 CT SUITE（真 PG）。WS 协议契约（`docs/reference/ws-protocol-contract.md`）无自动化契约测试对齐三端；SDK（imboy-sdk-js，vitest）与后端之间无契约验证。
 2. **E2E 关键流**：app 侧 `integration_test/e2e_chat_test.dart` 等 23 个文件在 ci.yml test job 跑（headless），但真正端到端（真后端+真机）流程只有手动冒烟（`imboy/scripts/smoke/`、`make ctl ARGS="smoke all"`）；admin 侧 E2E 不进 CI。
 3. **覆盖率度量三仓均缺阈值门**：后端零度量、app 只查文件存在、admin bun test 无 coverage 配置进 CI。所有书面覆盖率目标当前均为无据宣称。
 

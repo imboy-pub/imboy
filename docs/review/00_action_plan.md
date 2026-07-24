@@ -109,7 +109,7 @@
 ### R8：重试间隔文档神话"2/5/7/11s 转离线"（双域重复报告，一次修订全消）
 - 衍生条目：[WS-P2-表#3、#6][MSG-P1-10]；同批收敛 [WS-P2-表#1/#2/#4/#5]（Flags 位 / ACK 方向 / 文档路径失效）与"双 v2 命名债"
 - 受益面：`imboy/CLAUDE.md` 关键特性段 + `websocket-api-2.md` 六处 + contract 补「语义类型总表」一轮文档任务全部解决；真值以 `src/lib/elib_retry_config.erl:20-27` 为准（C2C `[0,3000]`、C2G `[0]`，且"离线不是转存动作而是存储常态"）。
-- 涉及文件：`imboy/CLAUDE.md`、`docs/analysis/websocket-api-2.md`、`docs/analysis/ws-protocol-contract.md`
+- 涉及文件：`imboy/CLAUDE.md`、`docs/reference/websocket-api-2.md`、`docs/reference/ws-protocol-contract.md`
 
 ### R9：协议无显式响应标记，`type` 一字段背三职（域内根因）
 - 衍生条目：[WS-P1-6][WS-总论]；关联 [WS-P1-8]（e2ee_key_changed_ack 裸 map 违反信封契约——补信封时一并归位）

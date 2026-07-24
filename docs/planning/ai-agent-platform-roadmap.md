@@ -38,7 +38,7 @@
 | **WS action 动态注册** | `src/lib/imboy_ws_action_registry.erl:76` `register/3`（ETS，O(1) 查表） | 新增 AI action 无需改核心路由 |
 | **HTTP 路由动态注册** | `src/lib/imboy_router_registry.erl:67` `register/2`（热更 cowboy dispatch，须 `/v{n}/<plugin>/` 命名空间） | MCP server 端点挂载点 |
 | **插件 behaviour** | `src/lib/imboy_plugin.erl` 7 callback（manifest/start/stop/migrate/routes/capabilities/health），进程内 Erlang 模块 | Agent/MCP 作为插件 |
-| **REST API 面** | `docs/analysis/rest-api-v1-catalog.md` 575 行，40+ 分组端点 | MCP tools 的现成来源 |
+| **REST API 面** | `docs/reference/rest-api-v1-catalog.md` 575 行，40+ 分组端点 | MCP tools 的现成来源 |
 | **License 授权层** | `imboy_license`（RSA 验签、锁规模不锁功能、配额 gate） | AI 模块按规模授权 |
 | **支付子系统** | `erlang_pay` + `billing_logic` | Agent 支付（AP2）的结合点 |
 
@@ -335,7 +335,7 @@ AGUI（Agent-User Interaction Protocol，CopilotKit）已标准化**单个用户
 | C2C/C2G 发送 | `src/logic/msg_c2c_logic.erl:38` / `src/logic/msg_c2g_logic.erl:46` |
 | 消息编解码/类型 | `src/lib/imboy_codec.erl:285` |
 | user 表 DDL | `priv/migrations/00000001_foundation.up.sql:2459` |
-| REST API 全目录 | `docs/analysis/rest-api-v1-catalog.md` |
+| REST API 全目录 | `docs/reference/rest-api-v1-catalog.md` |
 | License 授权 | `imboy_license` |
 
 ---

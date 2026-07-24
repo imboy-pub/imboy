@@ -160,8 +160,8 @@ Payload = #{<<"id">> => Id, <<"from_id">> => FromId}.
 
 ## 6. 相关文档
 
-- `docs/api/rest-api.md` — REST API 通用约定
-- `docs/api/websocket-api-2.md` — WebSocket 消息协议
+- `docs/reference/rest-api.md` — REST API 通用约定
+- `docs/reference/websocket-api-2.md` — WebSocket 消息协议
 - `src/lib/elib_tsid.erl` — TSID 生成器实现
 - `imboy-admin-frontend/src/services/api/client.ts` — safeParseBigIntJson 实现
 - `imboy-admin-frontend/src/types/common.ts` — EntityId 类型定义

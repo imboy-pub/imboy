@@ -150,9 +150,9 @@ make new t=imboy.ds n=demo_ds
 - 架构：[docs/architecture/overview.md](./docs/architecture/overview.md)
 - 数据库访问：[docs/architecture/database-access.md](./docs/architecture/database-access.md)
 - DDD 充血模型落地现状：[docs/architecture/ddd-rich-model-status.md](./docs/architecture/ddd-rich-model-status.md)
-- WebSocket API：[docs/analysis/websocket-api-2.md](./docs/analysis/websocket-api-2.md)（协议契约速查：[docs/analysis/ws-protocol-contract.md](./docs/analysis/ws-protocol-contract.md)）
+- WebSocket API：[docs/reference/websocket-api-2.md](./docs/reference/websocket-api-2.md)（协议契约速查：[docs/reference/ws-protocol-contract.md](./docs/reference/ws-protocol-contract.md)）
 - UTF-8 规范：[docs/standards/utf8-encoding.md](./docs/standards/utf8-encoding.md)
 - 错误码：[docs/standards/error-codes.md](./docs/standards/error-codes.md)
-- TSID 规范：[docs/analysis/tsid-field-convention.md](./docs/analysis/tsid-field-convention.md)
+- TSID 规范：[docs/reference/tsid-field-convention.md](./docs/reference/tsid-field-convention.md)
 - API 格式：[docs/standards/api-format.md](./docs/standards/api-format.md)
-- /api/v1/* 端点总目录：[docs/analysis/rest-api-v1-catalog.md](./docs/analysis/rest-api-v1-catalog.md)
+- /api/v1/* 端点总目录：[docs/reference/rest-api-v1-catalog.md](./docs/reference/rest-api-v1-catalog.md)

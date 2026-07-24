@@ -5,7 +5,7 @@
 > Scope: Moment contract across server, app, and admin frontend  
 > Source of truth: `src/imboy_router.erl` + `src/api/moment_handler.erl`  
 > Note: `v1` refers to the contract version, not the application release version.  
-> Related docs: `docs/api/rest-api.md`, `docs/api/websocket-api-2.md`, `docs/api/envelope.schema.json`
+> Related docs: `docs/reference/rest-api.md`, `docs/reference/websocket-api-2.md`, `docs/api/envelope.schema.json`
 
 ## 1. Scope
 
@@ -204,7 +204,7 @@ Any Moment contract change must update all:
 
 ## 12. Related Docs
 
-- `docs/api/rest-api.md`
-- `docs/api/websocket-api-2.md`
+- `docs/reference/rest-api.md`
+- `docs/reference/websocket-api-2.md`
 - `docs/api/envelope.schema.json`
 - `docs/operations/security.md`
