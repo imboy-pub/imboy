@@ -25,7 +25,7 @@
 
 **P1 关键事实：目标覆盖率（Repo 80% / Logic 70% / Handler 60% / 整体 65%，见根 `CLAUDE.md` 测试策略表）目前无任何度量手段。** `imboy/Makefile` 中不存在任何 `cover`/`COVER` 目标（`grep -n "cover\|COVER" imboy/Makefile` 为空），CI（`.github/workflows/backend-ci.yml`）也未收集行覆盖。上表"文件级配比"不是行覆盖，目标达成与否**不可验证**——这是宣称与事实之间的缺口。
 
-### 1.2 死测试/幻影测试问题（证据：`docs/analysis/dead-tests-census.md`）
+### 1.2 死测试/幻影测试问题（证据：`docs/planning/dead-tests-census.md`）
 
 普查结论（census:5）：**132 处死调用点、14 个 test 文件、约 16 个已被重构删除/改名的生产函数**，根因是生产重构后测试未同步。分类现状：
 
@@ -36,7 +36,7 @@
 
 ### 1.3 反模式
 
-1. **mock 掉协议/存储边界 → 抓不住契约错误（P1）**。census:25-32 的 5 个真 bug 均未被 404 个单测中的任何一个发现——"离线/转让/改密路径要么被 mock 走在线分支跳过，要么无对应单测"（census:32）。典型如 `msg_c2c_ds:revoke_offline_msg/9` spec 声明 `ok|{error}` 实返 `{ok,N}`：单测 mock 了 DS 层，只有对真 PG 的 CT 才暴露。经验教训与 `docs/analysis/`（messaging_flow 轨道）一致：**mock 掉协议边界的测试验证的是 mock 自身**。
+1. **mock 掉协议/存储边界 → 抓不住契约错误（P1）**。census:25-32 的 5 个真 bug 均未被 404 个单测中的任何一个发现——"离线/转让/改密路径要么被 mock 走在线分支跳过，要么无对应单测"（census:32）。典型如 `msg_c2c_ds:revoke_offline_msg/9` spec 声明 `ok|{error}` 实返 `{ok,N}`：单测 mock 了 DS 层，只有对真 PG 的 CT 才暴露。经验教训与 `docs/archive/analysis/`（messaging_flow 轨道）一致：**mock 掉协议边界的测试验证的是 mock 自身**。
 2. **`?TEST_WITH_APP` 环境门静默取消（P1，已缓解但机制仍在）**。`include/eunit_setup.hrl:27` 定义的 DB 门宏，在无 DB 环境下 setup cancelled 而非 fail，导致 160 个失败被掩盖数月（census:57-66）。当前 CI full-eunit 有真 DB 前基线仍靠 continue-on-error（见 §4），同类掩盖可再发生。
 3. **meck history 三元组坑**。`meck:history/1` 返回 `{Pid, {M,F,Args}, Result}` 三元组；正确写法见 `test/logic/e2ee_trust_logic_tests.erl:104`（`[{_, {_, _, Args}, _}] = meck:history(...)`）。写成四元组会 badmatch，属团队已知踩坑点，建议收进测试规范。
 4. **模块重名陷阱**：`test/common/eunit_runner.erl` 与 `src/lib/eunit_runner.erl` 曾重名（census:51），快 harness 增量编译时 helper beam 缺失会造成大面积 `context setup failed` 假象（census:80-82）。CI 已加 `scripts/check_duplicate_modules.sh` 门（backend-ci.yml "Check duplicate module names" step）。
@@ -132,7 +132,7 @@
 | 1 | 覆盖率目标（80/70/60/65）零度量手段，不可验证 | imboy | P1 | Makefile 无 cover；backend-ci.yml 无覆盖收集 |
 | 2 | 全量 EUnit 仍 continue-on-error，mock 漂移可再静默积累 | imboy | P1 | backend-ci.yml full-eunit job |
 | 3 | Playwright 9 个 E2E spec 完全不进 CI | imboyadmin | P1 | tests/e2e/*.spec.ts；workflows 零 playwright 引用 |
-| 4 | mock 协议/存储边界反模式：5 个真生产 bug 未被 404 个单测发现 | imboy | P1 | docs/analysis/dead-tests-census.md:25-32 |
+| 4 | mock 协议/存储边界反模式：5 个真生产 bug 未被 404 个单测发现 | imboy | P1 | docs/planning/dead-tests-census.md:25-32 |
 | 5 | Flutter 覆盖率门只验证 lcov 文件存在，无阈值 | imboyapp | P1 | .github/workflows/ci.yml analyze job |
 | 6 | B 类死测试文件 3/7 仍残留（4/7 已删；performance 目录 4 文件中 2 死 2 benchmark 非死） | imboy | P2 | dead-tests-census.md:34-46 |
 | 7 | integration_test.yml 坏死工作流（paths/working-directory 指向不存在目录） | imboyapp | P2 | integration_test.yml:5-9,32-34 |

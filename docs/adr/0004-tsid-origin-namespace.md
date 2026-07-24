@@ -3,7 +3,7 @@
 - 状态：Proposed
 - 日期：2026-07-24
 - 关联文件：`src/lib/elib_tsid.erl`、`src/imboy_app.erl`、`docs/reference/tsid-field-convention.md`、`docs/CONVENTIONS.md`
-- 关联 ADR：无前序（本篇为 ID 命名空间首篇）；参阅 `docs/analysis/p0-billing-multitenant-authz-2026-07.md`（租户现状）
+- 关联 ADR：无前序（本篇为 ID 命名空间首篇）；参阅 `docs/planning/p0-billing-multitenant-authz-2026-07.md`（租户现状）
 
 ## 背景
 
@@ -18,7 +18,7 @@ imboy 的所有业务实体主键由应用层 TSID 生成（取代 BIGSERIAL）�
 **跨部署实例的唯一性完全依赖 node 段**。而 `tsid_dc_id`/`tsid_node_id` 来自 application env（默认均为 1），`.env.example` 当前**未列出这两个键**。这意味着：
 
 - 多个私有化部署实例若不显式配置，会都用 `dc_id=1, node_id=1`，在同一毫秒生成**数值完全相同**的 ID。
-- 白标（换肤+独立部署）是已确认的商业方向（见 `docs/analysis/*monetization*`、`im-competitor-capability-roadmap-2026-06.md`），但现有方案只覆盖前端品牌与 SSO，**未回答「当两个白标客户的数据需要合并 / 迁移 / 联邦时 TSID 撞键怎么办」**。
+- 白标（换肤+独立部署）是已确认的商业方向（见 `docs/archive/analysis/*monetization*`、`im-competitor-capability-roadmap-2026-06.md`），但现有方案只覆盖前端品牌与 SSO，**未回答「当两个白标客户的数据需要合并 / 迁移 / 联邦时 TSID 撞键怎么办」**。
 - 库内现有的归属字段都不能解决此问题：`billing_subscription.tenant_id`（bigint DEFAULT 0，逻辑字段、无 tenant 实体表、无 uid 映射）、`user.account_type`（0=human/1=ai/2=bot，账号类型投影，非部署标识）、CORS `origins`（域名白名单）、`user.source`（注册渠道字符串）——四者均非「ID 生成层的部署/实例命名空间」。
 
 > 历史先例：`system_id_segment` 表（`00000001_foundation` L1348）保留了早期「按 datacenter × table 分配 ID 段」的思路，证明项目早有按维度隔离 ID 的意图，后被应用层 TSID 取代。本 ADR 是其精神延续：把「部署/实例」维度显式编码进 ID 本身。

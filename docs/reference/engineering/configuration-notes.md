@@ -1,6 +1,6 @@
 # 配置布局笔记（Configuration Notes）
 
-> 工程视角 · 描述现状 + 增量改进 · 补充 `docs/review/` 中零散的配置漂移记录
+> 工程视角 · 描述现状 + 增量改进 · 补充 `docs/archive/review/` 中零散的配置漂移记录
 
 ## 现状
 

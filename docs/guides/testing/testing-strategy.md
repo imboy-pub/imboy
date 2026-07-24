@@ -16,7 +16,7 @@
 | imboyapp | 433 单测（`test/{smoke,page,unit,widget,service,modules,store,...}`）+ 23 integration_test + `maestro/` 14 条 e2e yaml（含 e2ee_c2c/group）| **更正**：`ci.yml` 已跑 integration job；真实缺口是无覆盖率阈值门 + 独立 `integration_test.yml` 冗余/路径存疑；无头 widget 与异步页不兼容 |
 | imboyadmin | 119 bun 单测 + 9 Playwright spec + Channel/Moment regression gate（仅 bun test，无 vitest）| Playwright 零进 CI;无覆盖率门 |
 
-**核心问题不是"没测试"而是"测试信号不可信":** 覆盖率不可度量、E2E 不自动跑、mock 掉协议边界使 5 个真生产 bug 逃过 404 个单测(见 `docs/review/testing-review.md`)。
+**核心问题不是"没测试"而是"测试信号不可信":** 覆盖率不可度量、E2E 不自动跑、mock 掉协议边界使 5 个真生产 bug 逃过 404 个单测(见 `docs/archive/review/testing-review.md`)。
 
 ---
 

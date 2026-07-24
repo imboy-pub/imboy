@@ -1,6 +1,6 @@
 # 工程技术债笔记（Technical Debt — Engineering Lens）
 
-> 工程视角的债务汇总 · 补充而非替代 `docs/review/tech-debt.md`(那份含全量 P0-P3 + 演进路线)
+> 工程视角的债务汇总 · 补充而非替代 `docs/planning/tech-debt.md`(那份含全量 P0-P3 + 演进路线)
 > 本文只聚焦**工程质量维度**(结构/可维护/组织/门禁)的债务,不含业务功能缺陷。
 
 ## 现状（工程债盘点）
@@ -50,7 +50,7 @@
 
 ## 相关模块
 
-见各条证据指向;交叉参考 `docs/review/code-quality-review.md`、`docs/review/tech-debt.md`、`docs/roadmap/engineering-roadmap.md`
+见各条证据指向;交叉参考 `docs/archive/review/code-quality-review.md`、`docs/planning/tech-debt.md`、`docs/roadmap/engineering-roadmap.md`
 
 ## 优先级
 

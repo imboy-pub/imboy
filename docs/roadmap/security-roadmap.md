@@ -1,6 +1,6 @@
 # IMBoy 安全演进路线（Security Roadmap）
 
-> 基于 `docs/review/security-review.md` · 渐进升级,不破坏兼容 · 日期 2026-07-22
+> 基于 `docs/archive/review/security-review.md` · 渐进升级,不破坏兼容 · 日期 2026-07-22
 > 核心判断：密码学基本面扎实（JWT exp 强制、支付 owner_uid 红线、E2EE 零明文私钥、SQL 全参数化、密钥未入库）；缺口集中在**授权粒度**（对象级越权）与**会话/密钥卫生**（管理端）。安全债多为"结构未封死",非"防线缺失"。
 
 ---

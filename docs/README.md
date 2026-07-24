@@ -45,7 +45,7 @@
 ### 安全
 
 - [运行安全](./guides/operations/security.md)
-- [安全加固](./security/security-hardening.md)
+- [安全加固](./guides/security/security-hardening.md)
 - [漏洞报告](../SECURITY.md)
 
 ## 文档维护

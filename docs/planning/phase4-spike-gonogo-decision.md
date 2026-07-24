@@ -9,7 +9,7 @@
 ## 0. 前置事实与诚实标注
 
 **关键事实：charter 原文在本 worktree 不存在。**
-- 目标路径 `docs/planning/phase4-agent-mcp-marketplace-charter.md` 及 `docs/planning/` 目录均不存在；`docs/plans/` 仅有 `2026-04-11-tsid-audit` 与 `2026-07-06-priority-batches` 两份，无 charter。
+- 目标路径 `docs/planning/phase4-agent-mcp-marketplace-charter.md` 及 `docs/planning/` 目录均不存在；`docs/archive/plans/` 仅有 `2026-04-11-tsid-audit` 与 `2026-07-06-priority-batches` 两份，无 charter。
 - 两个 spike 独立复核，均确认 charter 缺失。故 **charter §3 的 6 条 go/no-go 判据的原文阈值、T4.2 的原始验收标准文本，本决策文档无法逐字引用，属"待验"**。
 - 本文的"6 个 go/no-go"以 **SPIKE 1 的 Q1–Q6 六问**为代理判据（它们即是 A/B 路线的六个决策探针），逐条给结论。若后续找回 charter 原文，须用其 §3 原始阈值回填校准本裁决。
 

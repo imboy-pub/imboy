@@ -1,7 +1,7 @@
 # imboy 三端盘点跨域汇聚与行动计划
 
 > 汇聚日期：2026-07-02 ｜ 性质：只读汇聚与规划，不含任何代码改动
-> 输入：`docs/review/01_ws_protocol.md`、`docs/review/02_message_stability.md`、`docs/review/03_e2ee.md`
+> 输入：`docs/archive/review/01_ws_protocol.md`、`docs/archive/review/02_message_stability.md`、`docs/archive/review/03_e2ee.md`
 > 条目引用记法：[WS-*]=01 号文档、[MSG-*]=02 号文档、[E2EE-*]=03 号文档
 
 > **执行进度（2026-07-02 当日实施，已提交至 imboy dev/main 本地，未 push）**：
@@ -27,7 +27,7 @@
 >   ws-protocol-contract.md 新增 §9 语义类型总表（RPC vs 推送 vs 回执 + in_reply_to 辨析 +
 >   message_read_sync + REST did 参数）；CLAUDE.md 修正 QoS 神话（重试真值+离线=存储常态+
 >   per-device ACK）并修复 4 处失效文档路径（websocket-api-2/tsid/rest-api-v1 均实际在
->   docs/analysis/）；引用路径已 ls 全量核验可达
+>   docs/archive/analysis/）；引用路径已 ls 全量核验可达
 > ✅ P2 backlog 部分完成：[MSG-P2-6] 已修——⚠️盘点建议的三列唯一约束在 msg_read
 >   （hypertable，按 created_at 分区）上不可行（唯一索引必须含分区列），改为 save_read
 >   SQL 内 WHERE NOT EXISTS 三列应用层去重 + 原四列 ON CONFLICT 兜并发竞态，零 DDL。

@@ -81,7 +81,7 @@ imboy/docs/
 ├── guides/                    # 【操作指南】任务导向
 │   ├── operations/            #   ← 现 docs/guides/operations/ 迁入
 │   ├── release/               #   ← 现 docs/release/ 迁入
-│   ├── migrations/            #   ← 现 docs/migrations/ 迁入
+│   ├── migrations/            #   ← 现 docs/guides/migrations/ 迁入
 │   ├── e2ee/                  #   ← 现 docs/guides/e2ee/ 迁入
 │   └── plugin/                #   ← 现 docs/plugin/ 迁入
 │

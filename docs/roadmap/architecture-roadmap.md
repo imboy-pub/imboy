@@ -1,6 +1,6 @@
 # IMBoy 架构演进路线（Architecture Roadmap · 依赖/状态驱动，非日历）
 
-> Staff Engineer 视角 · 基于 `docs/review/` 全量评审 · 基线三仓 `1.0.0-alpha.15` · 日期 2026-07-22
+> Staff Engineer 视角 · 基于 `docs/archive/review/` 全量评审 · 基线三仓 `1.0.0-alpha.15` · 日期 2026-07-22
 > **三条铁律**：① 不推倒重来 ② 不破坏兼容 ③ 渐进升级
 > 本文是总纲；专项见 `performance-roadmap.md` / `security-roadmap.md` / `testing-roadmap.md` / `engineering-roadmap.md`，时间线见 `2026-roadmap.md`。任务编号跨文档唯一。
 

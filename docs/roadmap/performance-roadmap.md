@@ -1,6 +1,6 @@
 # IMBoy 性能演进路线（Performance Roadmap）
 
-> 基于 `docs/review/performance-review.md` · 渐进升级,不破坏兼容 · 日期 2026-07-22
+> 基于 `docs/archive/review/performance-review.md` · 渐进升级,不破坏兼容 · 日期 2026-07-22
 > 核心判断：瓶颈全在"共享单进程"而非算法；根治手段是把误用 depcache/单 gen_server 的热路径换成并发 ETS 表(write_concurrency) / 进程内 State——仓内 `agent_rate_limiter` 已是正确范本。
 
 ---

@@ -1,6 +1,6 @@
 # IMBoy 工程效能演进路线（Engineering Roadmap）
 
-> 基于 `docs/review/code-quality-review.md` 与全量评审的头号根因 · 日期 2026-07-22
+> 基于 `docs/archive/review/code-quality-review.md` 与全量评审的头号根因 · 日期 2026-07-22
 > 核心判断：头号根因是"约定驱动而非机制驱动"。工程效能演进 = **把注释约定升级为 lint/schema/CI 机制**,把巨型文件与死设施清理掉,让"正确"成为默认路径而非自觉。
 
 ---

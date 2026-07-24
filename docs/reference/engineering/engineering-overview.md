@@ -1,7 +1,7 @@
 # 工程质量总览（Engineering Overview）
 
 > 聚焦工程能力(非业务功能)· 描述现状 + 增量改进 · 日期 2026-07-22
-> 本目录是既有评审的工程视角延伸,不重复内容。深度分析见 `docs/review/`,演进排期见 `docs/roadmap/`。
+> 本目录是既有评审的工程视角延伸,不重复内容。深度分析见 `docs/archive/review/`,演进排期见 `docs/roadmap/`。
 > 本文是索引与跨主题小结;各主题详见同目录专项。
 
 ---
@@ -10,9 +10,9 @@
 
 | 已有文档 | 本目录关系 |
 |---|---|
-| `docs/review/*` | 深度评审(架构/安全/性能/协议/DB/测试),含 P0-P3 台账 |
+| `docs/archive/review/*` | 深度评审(架构/安全/性能/协议/DB/测试),含 P0-P3 台账 |
 | `docs/roadmap/*` | 2 年演进排期,任务编号 ARCH/PERF/SEC/TEST/ENG |
-| `docs/engineering/*`（本目录）| 工程基建现状描述:结构/依赖/配置/日志/可观测/发布/Docker/CI/债务 |
+| `docs/reference/engineering/*`（本目录）| 工程基建现状描述:结构/依赖/配置/日志/可观测/发布/Docker/CI/债务 |
 
 本目录**只做工程质量的现状记录与增量改进建议**,不重设计架构、不提大重构。重复处一律引用而非重写。
 
@@ -28,7 +28,7 @@
 
 | 主题 | 现状评级 | 一句话 | 专项 |
 |---|---|---|---|
-| 项目结构 | 良好 | 后端四层清晰(仅 1 破窗);Flutter 三套运行时并存是主要杂音 | 见 `docs/review/code-quality-review.md` + 本目录 technical-debt |
+| 项目结构 | 良好 | 后端四层清晰(仅 1 破窗);Flutter 三套运行时并存是主要杂音 | 见 `docs/archive/review/code-quality-review.md` + 本目录 technical-debt |
 | 依赖管理 | 中等偏上 | 显式 pin + SBOM;生产 profile 混入调试工具、Flutter 多个同类库 | dependency-notes |
 | 配置布局 | 良好 | 三层配置 + IMBOY_* 优先 + 生产 fail-fast;少量默认值与文档漂移 | configuration-notes |
 | 日志一致性 | **偏弱** | `elib_log` 封装存在但全后端仅 ~18 文件调用,覆盖稀疏 | logging-notes |
@@ -47,7 +47,7 @@
 
 1. **工具齐、机制软**:lefthook(erlfmt/gitleaks/conventional)、xref=0、check_module_boundaries、SBOM diff、Sonar 都在,但全量 eunit/dialyzer/覆盖率/E2E 多为软门。工程效能的最高杠杆是"把已有软门收紧"(见 ci-notes 与 roadmap TEST-01/02)。
 2. **覆盖密度不足**:日志、指标埋点、测试覆盖率三处都是"设施在但用得薄"。这是可增量补齐的,不需重构。
-3. **正确范本已存在**:多处"对的做法 + 未推广"(见 `docs/review/tech-debt.md`),工程改进 = 推广而非发明。
+3. **正确范本已存在**:多处"对的做法 + 未推广"(见 `docs/planning/tech-debt.md`),工程改进 = 推广而非发明。
 
 ---
 

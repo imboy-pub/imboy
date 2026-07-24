@@ -38,7 +38,7 @@
 ### ⚠️ 待现场确认（执行前逐条落定）
 
 1. **MCP 库 == 后端库？** 用户声明 DB 走「pgsql MCP 配置的库」，但后端 `config/sys.local.config:94-114` `pg_conf` 指向 `127.0.0.1:4323 / imboy_v1 / imboy_user`。**若 MCP 指向的不是同一库，你预置的 agent/mandate/wallet 行后端看不到，全链失败**。先 `db ping` + `current_database()` 与 MCP 侧对账。
-2. **真机登录账号真值**：项目记忆的 `uid5/uid7 + Test1234` 在库文档中 grep 不到；`docs/dev/ws-repl-cheatsheet.md:22-42` 记的是 `alice@test.com`/`bob@test.com` 密码 `test123456`。以现场查 `user` 表 / 实际登录成功为准。
+2. **真机登录账号真值**：项目记忆的 `uid5/uid7 + Test1234` 在库文档中 grep 不到；`docs/reference/ws-repl-cheatsheet.md:22-42` 记的是 `alice@test.com`/`bob@test.com` 密码 `test123456`。以现场查 `user` 表 / 实际登录成功为准。
 3. **imboyapp @ 是否把目标 uid 写进 `payload.mentions`**：群触发的**唯一前端依赖**。发 @agent 消息时抓 WS 帧确认 `payload.mentions` 含 AgentUid，否则群触发不成立。
 4. **前端是否监听 `a2a_task_update`**：codec 白名单有此 msg_type（`imboy_codec.erl:314`）但当前后端只 emit `agent_task`，无生产者。若前端卡片只认 `a2a_task_update` 则看不到任务卡片。
 5. **provider 可达**：`llm_providers` 里配的 OpenAI 兼容端点（DeepSeek/Qwen/本地 Ollama/vLLM）网络可达且 key 有效，否则流式看不到逐字。

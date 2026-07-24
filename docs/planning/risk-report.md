@@ -97,7 +97,7 @@
 |---|---|---|
 | P1-T1 | 三仓覆盖率均无阈值门，书面目标（Repo80/Logic70/Handler60/整体65）全不可验证 | `imboy/Makefile`（无 cover）; `imboyapp` ci.yml; `imboyadmin` 无 coverage 配置 |
 | P1-T2 | admin 9 个 Playwright E2E spec 在所有 workflow 零引用，E2E 纯手动无回归 | `imboyadmin/.github/workflows/*.yml` |
-| P1-T3 | mock 协议/存储边界反模式：`dead-tests-census.md:25-32` 的 5 个真生产 bug（离线撤回必崩等）404 个单测无一发现，仅真 PG 的 CT 抓出 | `imboy/docs/analysis/dead-tests-census.md:25-32` |
+| P1-T3 | mock 协议/存储边界反模式：`dead-tests-census.md:25-32` 的 5 个真生产 bug（离线撤回必崩等）404 个单测无一发现，仅真 PG 的 CT 抓出 | `imboy/docs/planning/dead-tests-census.md:25-32` |
 | P1-T4 | `integration_test.yml` 坏死工作流（paths/working-directory 指向不存在的 `imboyapp/` 子目录） | `imboyapp/.github/workflows/integration_test.yml` |
 
 ---

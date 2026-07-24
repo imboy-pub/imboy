@@ -4,7 +4,7 @@
 > 标准依据：GB/T 22239-2019《信息安全技术 网络安全等级保护基本要求》/ GA/T 1390
 > 最后更新：2026-06-30
 > 维护人：运维安全团队
-> 关联文档：`docs/guides/operations/security.md`、`docs/security/security-hardening.md`、`config/sys.config.example`
+> 关联文档：`docs/guides/operations/security.md`、`docs/guides/security/security-hardening.md`、`config/sys.config.example`
 
 ---
 
@@ -110,7 +110,7 @@
 | 控制点 | 要求 | 状态 | 说明 |
 |--------|------|------|------|
 | 3.4.1 遵循最小安装原则 | 服务器只安装必需组件 | ✅ 已实现 | Docker 镜像基于精简 Alpine/OTP 基础镜像；`deploy/Dockerfile` 不含调试工具 |
-| 3.4.2 关闭不必要的系统服务和端口 | 参照安全加固指南 | ✅ 已实现 | 见 `docs/security/security-hardening.md` 端口最小化配置 |
+| 3.4.2 关闭不必要的系统服务和端口 | 参照安全加固指南 | ✅ 已实现 | 见 `docs/guides/security/security-hardening.md` 端口最小化配置 |
 | 3.4.3 SQL 注入防护 | 参数化查询 | ✅ 已实现 | 所有 SQL 经 `elib_pg` 模块参数化执行（`src/lib/elib_pg.erl`）；代码审查强制要求无字符串拼接 SQL |
 | 3.4.4 代码安全加固（XSS/CSRF）| 管理后台防 XSS/CSRF | ✅ 已实现 | imboyadmin React 前端做输出转义；后台 Cookie 含 `HttpOnly`、`SameSite=Strict`（`adm_auth_middleware.erl`） |
 
@@ -128,7 +128,7 @@
 |--------|------|------|------|
 | 3.6.1 存储敏感数据加密 | 数据库字段级加密 | ✅ 已实现 | `postgre_aes_key` AES-256 加密 `payload`、`config`、`info` 等敏感字段（`src/lib/elib_cipher.erl`） |
 | 3.6.2 个人信息保护 | PII 字段不明文存储 | ✅ 已实现 | 手机号等 PII 字段加密存储；用户密码存储 MD5（历史）+ 后续迁移 bcrypt |
-| 3.6.3 端到端加密（可选模块）| E2EE 消息服务端不可解密 | ✅ 已实现 | E2EE 模式下服务端仅路由密文（RSA-OAEP-256 + AES-256-GCM）；`e2ee_logic.erl` 不持有私钥；启用方式见 `docs/analysis/e2ee-web-activation.md` |
+| 3.6.3 端到端加密（可选模块）| E2EE 消息服务端不可解密 | ✅ 已实现 | E2EE 模式下服务端仅路由密文（RSA-OAEP-256 + AES-256-GCM）；`e2ee_logic.erl` 不持有私钥；启用方式见 `docs/archive/analysis/e2ee-web-activation.md` |
 | 3.6.4 [三级] 静态全卷加密 | 磁盘层加密 | ❌ 待实现 | 依赖宿主机 LUKS/dm-crypt 配置；私有化交付客户需自行配置操作系统层面加密 |
 
 ---

@@ -1,7 +1,7 @@
 # imboy E2EE（端到端加密）策略与合规密钥托管披露
 
 > 版本：v2.x | 最后更新：2026-07-18（零信任改造线 A：compliance 私钥下线服务端落盘）
-> 关联文档：`docs/analysis/project-audit-roadmap-2026-07.md` [FEAT-03] / [SEC-04]、`imboyapp/.claude/PRPs/plans/completed/feat-03-e2ee-dead-toggle.plan.md`
+> 关联文档：`docs/planning/project-audit-roadmap-2026-07.md` [FEAT-03] / [SEC-04]、`imboyapp/.claude/PRPs/plans/completed/feat-03-e2ee-dead-toggle.plan.md`
 > 适用：imboy 后端 + imboyapp 客户端
 
 ---
@@ -133,7 +133,7 @@ if (policyMode == EncryptionMode.complianceE2ee) {
 
 ## 参考
 
-- 审计原始记录：`docs/analysis/project-audit-roadmap-2026-07.md` [FEAT-03]、[SEC-04]、BLK-05、BLK-06
+- 审计原始记录：`docs/planning/project-audit-roadmap-2026-07.md` [FEAT-03]、[SEC-04]、BLK-05、BLK-06
 - 实施计划：`imboyapp/.claude/PRPs/plans/completed/feat-03-e2ee-dead-toggle.plan.md`
 - 相关代码：
   - 后端 policy：`imboy/src/lib/imboy_policy.erl:121-157`

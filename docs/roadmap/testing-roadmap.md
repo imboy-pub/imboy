@@ -1,6 +1,6 @@
 # IMBoy 测试演进路线（Testing Roadmap）
 
-> 基于 `docs/review/testing-review.md` · 渐进升级 · 日期 2026-07-22
+> 基于 `docs/archive/review/testing-review.md` · 渐进升级 · 日期 2026-07-22
 > 核心判断：ratchet 框架已搭好（xref=0 是成功样板），但绝大多数门是软门（continue-on-error / `test -f lcov.info` / E2E 零进 CI）。演进 = **把软门逐个收紧成硬门**,并补最缺的契约测试与真边界测试。
 
 ---
