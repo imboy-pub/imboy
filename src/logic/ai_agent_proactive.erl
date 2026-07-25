@@ -10,8 +10,9 @@
 % 成本红线：LLM 路必须过 agent_rate_limiter 闸门；deny/失败回退模板文案
 % （欢迎是产品功能须可达，成本闸门只挡 LLM 调用、不挡投递本身）。
 %
-% E2EE 红线天然成立：主动消息由服务端以 agent 身份明文发出，不参与、
-% 也无法参与任何 E2EE 会话（agent 无设备私钥）。
+% E2EE 红线：主动消息由服务端以 agent 身份明文发出，agent 无设备私钥、
+% 永远无法加密。因此在 e2ee_mode=required/compliance 的部署下必须**拒发**，
+% 而不是把明文写进 msg_c2c——见 send_text/3 的部署级明文门。
 %%%
 
 -export([send_text/3]).
@@ -34,16 +35,33 @@
 send_text(AgentUid, ToUid, Text) when
     is_integer(AgentUid), is_integer(ToUid), is_binary(Text), Text =/= <<>>
 ->
-    MsgId = ec_cnv:to_binary(elib_tsid:generate()),
     Content = elib_str:replace_single_quote(Text),
     %% text/content 双键：兼容不同渲染消费者
     PayloadMap = #{<<"text">> => Content, <<"content">> => Content},
+    PayloadJson = jsone:encode(PayloadMap, [native_utf8]),
+    %% 部署级 E2EE fail-closed 门：本模块直写 msg_store_ds:stage/enqueue，
+    %% 不经 msg_c2c_logic:stage_and_send_c2c，必须自带同款门，否则 required 部署下
+    %% agent 明文会从这条旁路灌进 msg_c2c（E2EE 恒 null → 判定必为明文）。
+    case imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, null, PayloadJson) of
+        ok ->
+            do_send_text(AgentUid, ToUid, PayloadMap, PayloadJson);
+        {error, Reason} ->
+            %% 拒发而非降级：agent 无设备私钥，没有"加密后再发"这条路。
+            ?WARN_LOG("[AGENT_PROACTIVE_BLOCKED] to=~p reason=~p~n", [ToUid, Reason]),
+            ok
+    end;
+send_text(_, _, _) ->
+    ok.
+
+%% @private 过门后的实际投递
+-spec do_send_text(integer(), integer(), map(), binary()) -> ok.
+do_send_text(AgentUid, ToUid, PayloadMap, PayloadJson) ->
+    MsgId = ec_cnv:to_binary(elib_tsid:generate()),
     %% 【离线可达】持久化到 msg_c2c（离线 pull 源），与标准 c2c 同链
     %% （msg_c2c_logic:stage_and_send_c2c）：先 stage 写 staging 表（同步安全），
     %% 再 enqueue 触发 msg_store_worker claim staging → 写 msg_c2c。send_next 只推
     %% imboy_syn 在线设备，新用户注册时通常无 WS 会话，缺此步则离线欢迎消息永久丢失。
     NowTs = elib_dt:now(),
-    PayloadJson = jsone:encode(PayloadMap, [native_utf8]),
     _ = msg_store_ds:stage(
         <<"c2c">>, MsgId, <<"text">>, <<>>, null, PayloadJson, AgentUid, ToUid, NowTs, NowTs
     ),
@@ -65,8 +83,6 @@ send_text(AgentUid, ToUid, Text) when
     },
     MsLi = elib_retry_config:intervals(<<"c2c">>),
     message_ds:send_next(ToUid, MsgId, jsone:encode(Msg, [native_utf8]), MsLi),
-    ok;
-send_text(_, _, _) ->
     ok.
 
 %% @doc 发送新手欢迎消息。默认模板路（零 LLM 成本）；Cfg.welcome_llm_enabled=true

@@ -708,3 +708,248 @@ c2c_duplicate_resend_acks_without_redelivery_test_() ->
             ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4))
         end
     ).
+
+%% ===================================================================
+%% 部署级 E2EE 明文拒收门（真实策略判定）
+%%
+%% 上面三个 *_when_encryption_required 测试把 imboy_policy:validate_message_write/5
+%% 整个桩掉，只验证了「门返回 error 时外壳如何应答」这段 wiring，测不出判定契约本身：
+%% 明文部署会不会误伤、加密消息会不会被误判成明文，一条都没覆盖。
+%% 下面这组只桩 config_ds（部署配置边界），imboy_policy 的判定链
+%% effective_capabilities → message_encryption_required → encrypted_message_body
+%% 全程真实执行。
+%% ===================================================================
+
+%% 部署配置桩：Caps 为 capabilities 覆盖项（#{} = 用 community 档默认 e2ee_mode=optional）
+policy_config_meck(Caps) ->
+    {config_ds, [
+        {'get', 2, fun(_Key, Default) -> Default end},
+        {'env', 2, fun
+            (product_profile, community) -> community;
+            (capabilities, #{}) -> Caps;
+            %% 其余 key（msg_rate_* 等）一律取默认值，不干扰被测判定
+            (_Key, Default) -> Default
+        end}
+    ]}.
+
+%% 走通投递管道所需的周边桩（不含 imboy_policy）
+c2c_pipeline_mecks() ->
+    [
+        {friend_ds, [
+            {'check_relationship', 2, fun(456, 123) -> {true, false} end}
+        ]},
+        {elib_dt, [
+            {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+            {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+            {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end},
+            {'millisecond', 0, fun() -> 1708768800000 end}
+        ]},
+        {msg_store_ds, [
+            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+            {'enqueue', 3, fun(_, _, _) -> ok end}
+        ]},
+        {elib_async, [
+            {'async_retry', 3, fun(Fun, 3, 1000) ->
+                Fun(),
+                ok
+            end},
+            {'async', 1, fun(Fun) ->
+                Fun(),
+                self()
+            end}
+        ]},
+        {push_notification_logic, [
+            {'maybe_push_for_c2c', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {message_ds, [
+            {'assemble_msg', 8, fun(_, _, _, _, MsgId, _, _, _) -> #{<<"id">> => MsgId} end}
+        ]},
+        {imboy_message_helper, [
+            {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+        ]},
+        {ai_agent_reply, [
+            {'maybe_dispatch', 3, fun(_, _, _) -> ok end}
+        ]},
+        {billing_meter, [
+            {'meter', 2, fun(_, _) -> ok end}
+        ]}
+    ].
+
+plaintext_c2c_data() ->
+    #{
+        <<"to">> => <<"456">>,
+        <<"payload">> => #{<<"content">> => <<"hello">>},
+        <<"created_at">> => 1708768700000,
+        <<"msg_type">> => <<"text">>,
+        <<"action">> => <<>>,
+        <<"e2ee">> => null
+    }.
+
+%% 【防误伤·关键】明文部署（community 档 e2ee_mode=optional）下明文 C2C 必须照常放行。
+%% 这道门经过每一条 C2C，判错就是全站发不出消息。
+c2c_plaintext_allowed_when_deployment_does_not_require_e2ee_test_() ->
+    ?WITH_MECKS(
+        [policy_config_meck(#{}) | c2c_pipeline_mecks()],
+        fun() ->
+            ?assertEqual(
+                ok, msg_c2c_logic:c2c(<<"msg_plain_allowed_001">>, 123, plaintext_c2c_data())
+            ),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
+        end
+    ).
+
+%% 【防误伤】storage_mode=archived + e2ee_mode=disabled（enterprise 档形态）同样放行
+c2c_plaintext_allowed_when_e2ee_disabled_test_() ->
+    ?WITH_MECKS(
+        [
+            policy_config_meck(#{storage_mode => archived, e2ee_mode => disabled})
+            | c2c_pipeline_mecks()
+        ],
+        fun() ->
+            ?assertEqual(
+                ok, msg_c2c_logic:c2c(<<"msg_plain_allowed_002">>, 123, plaintext_c2c_data())
+            ),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10))
+        end
+    ).
+
+%% e2ee_mode=required 的部署：明文 C2C 被真实策略拒收，且一个字节都没落库
+c2c_plaintext_blocked_by_real_policy_when_e2ee_required_test_() ->
+    ?WITH_MECKS(
+        [policy_config_meck(#{e2ee_mode => required}) | c2c_pipeline_mecks()],
+        fun() ->
+            {reply, Reply} = msg_c2c_logic:c2c(
+                <<"msg_plain_blocked_001">>, 123, plaintext_c2c_data()
+            ),
+            ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Reply)),
+            ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(
+                <<"encrypted_message_required">>,
+                maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
+            ),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4))
+        end
+    ).
+
+%% storage_mode=secure_e2ee 是另一条触发路径，同样拒收明文
+c2c_plaintext_blocked_when_storage_mode_secure_e2ee_test_() ->
+    ?WITH_MECKS(
+        [policy_config_meck(#{storage_mode => secure_e2ee}) | c2c_pipeline_mecks()],
+        fun() ->
+            {reply, Reply} = msg_c2c_logic:c2c(
+                <<"msg_plain_blocked_002">>, 123, plaintext_c2c_data()
+            ),
+            ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10))
+        end
+    ).
+
+%% 【防误伤·关键】真实客户端现役形态：加密消息的 msg_type 保留原始类型（text），
+%% 只有顶层 e2ee 元数据标识加密。若判定去看 msg_type=<<"e2ee">>，这条会被
+%% 误判成明文而在 required 部署下全量拒发。
+c2c_encrypted_allowed_when_msg_type_stays_text_test_() ->
+    ?WITH_MECKS(
+        [policy_config_meck(#{e2ee_mode => required}) | c2c_pipeline_mecks()],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"payload">> => <<"bm9uY2U=.Y2lwaGVydGV4dA==">>,
+                <<"created_at">> => 1708768700000,
+                %% 关键：不是 <<"e2ee">>
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => #{
+                    <<"e2ee">> => true,
+                    <<"e2ee_ver">> => 1,
+                    <<"e2ee_suite">> => <<"RSA-OAEP-256+AES-256-GCM">>,
+                    <<"nonce">> => <<"bm9uY2U=">>,
+                    <<"keys">> => [#{<<"did">> => <<"d1">>, <<"ek">> => <<"ZWs=">>}]
+                }
+            },
+            ?assertEqual(ok, msg_c2c_logic:c2c(<<"msg_enc_allowed_001">>, 123, Data)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
+        end
+    ).
+
+%% payload 为 map 的加密消息（encode_payload 转 JSON binary）同样不能被误判
+c2c_encrypted_allowed_when_payload_is_map_test_() ->
+    ?WITH_MECKS(
+        [policy_config_meck(#{e2ee_mode => required}) | c2c_pipeline_mecks()],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"payload">> => #{<<"content">> => <<"bm9uY2U=.Y2lwaGVy">>},
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"image">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => #{<<"e2ee">> => true, <<"nonce">> => <<"bm9uY2U=">>}
+            },
+            ?assertEqual(ok, msg_c2c_logic:c2c(<<"msg_enc_allowed_002">>, 123, Data)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10))
+        end
+    ).
+
+%% 【防误伤】控制帧（撤回）不是内容承载动作，required 部署下必须照常工作。
+%% 撤回/已读/各类 ack 只搬运 original_msg_id 等元数据，本身不含明文正文；
+%% 若一并拦下，required 部署里用户将永远无法撤回消息。
+c2c_revoke_not_blocked_when_e2ee_required_test_() ->
+    ?WITH_MECKS(
+        [
+            policy_config_meck(#{e2ee_mode => required}),
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_revoke_gate_001">>) ->
+                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                end},
+                {'revoke_offline_msg', 9, fun(_, _, _, _, _, _, _, _, _) -> ok end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000060000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end}
+            ]},
+            {user_logic, [{'is_online', 1, fun(456) -> false end}]},
+            {user_device_logic, [{'online_dids', 1, fun(456) -> [] end}]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"orig_revoke_gate_001">>}
+            },
+            {reply, Reply} = msg_c2c_logic:c2c_revoke(<<"msg_revoke_gate_001">>, 123, Data),
+            %% 不是 policy_violation，而是正常的撤回确认
+            ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(<<"C2C">>, maps:get(<<"type">>, Reply))
+        end
+    ).
+
+%% 【门后旁路】被门拒收的消息绝不能再触发 agent 旁路：
+%% agent 只会以明文 C2C 回投用户，等于把刚拦下的明文从旁路放出去；
+%% billing 也不该给一条从未发出的消息计量。
+c2c_blocked_message_does_not_trigger_agent_or_billing_test_() ->
+    ?WITH_MECKS(
+        [policy_config_meck(#{e2ee_mode => required}) | c2c_pipeline_mecks()],
+        fun() ->
+            {reply, _} = msg_c2c_logic:c2c(
+                <<"msg_blocked_noagent_001">>, 123, plaintext_c2c_data()
+            ),
+            ?assertEqual(0, meck:num_calls(ai_agent_reply, maybe_dispatch, 3)),
+            ?assertEqual(0, meck:num_calls(billing_meter, meter, 2))
+        end
+    ).
+
+%% 【防误伤】消息被放行时 agent 旁路与计量必须照常触发（上一条修复不得误杀正常链路）
+c2c_allowed_message_still_triggers_agent_and_billing_test_() ->
+    ?WITH_MECKS(
+        [policy_config_meck(#{}) | c2c_pipeline_mecks()],
+        fun() ->
+            ok = msg_c2c_logic:c2c(<<"msg_allowed_agent_001">>, 123, plaintext_c2c_data()),
+            ?assertEqual(1, meck:num_calls(ai_agent_reply, maybe_dispatch, 3)),
+            ?assertEqual(1, meck:num_calls(billing_meter, meter, 2))
+        end
+    ).

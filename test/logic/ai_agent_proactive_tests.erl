@@ -212,3 +212,87 @@ send_welcome_rate_limited_falls_back_to_template_test_() ->
             ?assert(meck:called(message_ds, send_next, [7, '_', '_', '_']))
         end
     ).
+
+%% ===================================================================
+%% send_text/3：部署级 E2EE 明文拒收门
+%%
+%% 本模块直写 msg_store_ds:stage/enqueue，不经 msg_c2c_logic:stage_and_send_c2c，
+%% 所以必须自带同款门。只桩 config_ds（部署配置边界），imboy_policy 判定真实执行。
+%% ===================================================================
+
+policy_config_meck(Caps) ->
+    {config_ds, [
+        {'get', 2, fun(_Key, Default) -> Default end},
+        {'env', 2, fun
+            (product_profile, community) -> community;
+            (capabilities, #{}) -> Caps;
+            (_Key, Default) -> Default
+        end}
+    ]}.
+
+send_text_gate_mecks(Caps) ->
+    [
+        policy_config_meck(Caps),
+        {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+        {elib_retry_config, [{'intervals', 1, fun(<<"c2c">>) -> [0, 3000] end}]},
+        {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+        ?MSG_STORE_MECK
+    ].
+
+%% agent 无设备私钥、只能发明文；required 部署下必须拒发，
+%% 不得把明文写进 staging/msg_c2c，也不得实时推送。
+send_text_blocked_when_e2ee_required_test_() ->
+    ?WITH_MECKS(
+        send_text_gate_mecks(#{e2ee_mode => required}),
+        fun() ->
+            %% 对调用方仍是恒 ok（fire-and-forget 语义不变）
+            ?assertEqual(ok, ai_agent_proactive:send_text(42, 7, <<"你好"/utf8>>)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+        end
+    ).
+
+%% storage_mode=secure_e2ee 同样拒发
+send_text_blocked_when_storage_mode_secure_e2ee_test_() ->
+    ?WITH_MECKS(
+        send_text_gate_mecks(#{storage_mode => secure_e2ee}),
+        fun() ->
+            ?assertEqual(ok, ai_agent_proactive:send_text(42, 7, <<"你好"/utf8>>)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+        end
+    ).
+
+%% 【防误伤】明文部署（community 档 e2ee_mode=optional）下欢迎消息照常发出
+send_text_allowed_when_deployment_does_not_require_e2ee_test_() ->
+    ?WITH_MECKS(
+        send_text_gate_mecks(#{}),
+        fun() ->
+            ?assertEqual(ok, ai_agent_proactive:send_text(42, 7, <<"你好"/utf8>>)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 4))
+        end
+    ).
+
+%% 【防误伤】e2ee_mode=disabled（enterprise 档形态）同样放行
+send_text_allowed_when_e2ee_disabled_test_() ->
+    ?WITH_MECKS(
+        send_text_gate_mecks(#{storage_mode => archived, e2ee_mode => disabled}),
+        fun() ->
+            ?assertEqual(ok, ai_agent_proactive:send_text(42, 7, <<"你好"/utf8>>)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10))
+        end
+    ).
+
+%% send_welcome 走 send_text，required 部署下整条欢迎链一并拒发（不留旁路）
+send_welcome_blocked_when_e2ee_required_test_() ->
+    ?WITH_MECKS(
+        send_text_gate_mecks(#{e2ee_mode => required}),
+        fun() ->
+            ?assertEqual(ok, ai_agent_proactive:send_welcome(42, 7, <<"小明"/utf8>>, #{})),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+        end
+    ).

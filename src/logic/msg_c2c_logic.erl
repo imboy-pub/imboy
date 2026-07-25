@@ -73,14 +73,28 @@ c2c_send(MsgId, CurrentUid, To, ToId, Data) ->
                 CurrentUid,
                 Data
             ),
-            %% T1.4：若 To 是 AI agent 账号，旁路异步触发 LLM 回复（agent→human）。
-            %% fire-and-forget，不改变原 C2C 返回值/投递；E2EE 消息在内部被跳过。
-            %% ponytail: maybe_dispatch 对每条非 E2EE 文本 C2C 多做一次 ai_agent 主键查，
-            %%   量级可控；真成热点再给 ai_agent_ds:is_agent 加 depcache 缓存。
-            _ = ai_agent_reply:maybe_dispatch(CurrentUid, ToId, Data),
-            %% billing 软计量埋点（金钱相邻）：fire-and-forget 累加 messages_sent，
-            %% 绝不阻塞主返回；无订阅/失败均 no-op（详见 billing_meter）。
-            _ = billing_meter:meter(<<"messages_sent">>, 1),
+            %% 【门后旁路】stage_and_send_c2c 返回 {reply, _} 表示该条被拒
+            %% （部署级明文门 policy_violation / 引用消息不存在），此时绝不能再触发
+            %% 下面两个副作用：agent 旁路会以**明文** C2C 回投用户，等于绕过刚刚生效
+            %% 的明文拒收门；billing 也会给一条从未发出的消息计量。
+            %% 与 C2G 侧「agent 触发只在 {ok,new} 分支内旁路」同一范式。
+            %% ponytail: 只区分 ok / {reply,_}，客户端重发（stage 返回 {ok,duplicate}）
+            %%   仍会重复触发一次 agent 与计量；要精确到 {ok,new} 需把 stage 结果透传出
+            %%   stage_and_send_c2c，等重发导致的重复计费真出现再改。
+            case Result of
+                ok ->
+                    %% T1.4：若 To 是 AI agent 账号，旁路异步触发 LLM 回复（agent→human）。
+                    %% fire-and-forget，不改变原 C2C 返回值/投递；E2EE 消息在内部被跳过。
+                    %% ponytail: maybe_dispatch 对每条非 E2EE 文本 C2C 多做一次 ai_agent
+                    %%   主键查，量级可控；真成热点再给 ai_agent_ds:is_agent 加 depcache 缓存。
+                    _ = ai_agent_reply:maybe_dispatch(CurrentUid, ToId, Data),
+                    %% billing 软计量埋点（金钱相邻）：fire-and-forget 累加 messages_sent，
+                    %% 绝不阻塞主返回；无订阅/失败均 no-op（详见 billing_meter）。
+                    _ = billing_meter:meter(<<"messages_sent">>, 1),
+                    ok;
+                _ ->
+                    ok
+            end,
             Result;
         {reject, in_denylist} ->
             Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
@@ -182,6 +196,17 @@ stage_and_send_c2c(
     % T1.2：构建决策退化为外壳调用 message_policy:encode_payload/1
     PayloadJson = message_policy:encode_payload(Payload),
 
+    %% 部署级 E2EE fail-closed 门（与 msg_c2g_logic:do_send_c2g 同一入口范式）：
+    %% e2ee_mode=required/compliance 或 storage_mode=*_e2ee 的部署拒收明文内容消息。
+    %% 明文判定在 imboy_policy:encrypted_message_body/3——顶层 e2ee 为非空 map 且
+    %% payload 非空即视为已加密（不看 msg_type），拒收时返回 S2C policy_violation。
+    %% 这是最后一道兜底：客户端手动重试（MessageRetry._retryMessage）直接从本地 DB
+    %% 原样重发报文、不过客户端策略门，明文重发只有服务端能拦。
+    %% 非内容动作（撤回/已读/各类 ack）由 content_bearing_action/1 判 false 直接放行；
+    %% 部署未要求加密时 message_encryption_required/0 为 false，整门短路，明文照常放行。
+    %% ponytail: 只覆盖 c2c/3(→c2c/4) 这一条用户发送链与 do_c2c_edit；agent 主动消息
+    %%   在 ai_agent_proactive:send_text 自带同款门。新增任何直写 msg_store_ds:stage
+    %%   的 C2C 路径必须同步补门，否则又是一个绕过口。
     case imboy_policy:validate_message_write(<<"C2C">>, MsgType, Action, E2EE, PayloadJson) of
         ok ->
             % 提取引用回复信息
