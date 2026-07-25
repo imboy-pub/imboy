@@ -203,10 +203,17 @@ get_info(0, MimeType, Key, Info) ->
         case PayloadIn of
             PBin when is_binary(PBin) -> ensure_map(jsone:decode(PBin, [{object_format, map}]));
             PM when is_map(PM) -> PM;
-            _ when is_list(PayloadIn) -> #{};
             _ -> #{}
         end,
-    {ok, Uri} = maps:find(Key, Payload),
+    %% Key 缺失时降级为空附件（收藏本体仍保存），不能 badmatch 崩 500
+    Uri =
+        case maps:find(Key, Payload) of
+            {ok, U} ->
+                U;
+            error ->
+                ?WARN_LOG("collect payload missing key ~p, degrade to empty attach", [Key]),
+                <<>>
+        end,
     %% 双读兼容：新消息 metadata 用 file_hash256，旧消息用 md5
     Md5 = maps:get(<<"file_hash256">>, Payload, maps:get(<<"md5">>, Payload, <<>>)),
     Size = maps:get(<<"size">>, Payload, 0),
@@ -290,3 +297,18 @@ add_kind(_Count, _Kind, _Uid, _KindId, _Info, _Source, _Remark, _) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+-ifdef(TEST).
+
+%% payload 缺目标键时降级为空附件（收藏本体仍保存），不 badmatch 崩 500
+get_info_missing_key_degrades_test() ->
+    {Attach, Info2} = get_info(0, <<"image/jpeg">>, <<"uri">>, #{<<"payload">> => #{}}),
+    ?assertEqual(<<>>, maps:get(<<"url">>, Attach)),
+    ?assert(is_binary(Info2)).
+
+%% payload 为非 map（JSON 解出 list/scalar）时同样降级，不 badmap 崩溃
+get_info_non_map_payload_degrades_test() ->
+    {Attach, _} = get_info(0, <<"image/jpeg">>, <<"uri">>, #{<<"payload">> => [1, 2]}),
+    ?assertEqual(<<>>, maps:get(<<"url">>, Attach)).
+
+-endif.

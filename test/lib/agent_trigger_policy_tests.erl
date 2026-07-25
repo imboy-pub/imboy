@@ -91,6 +91,36 @@ allowlist_allows_listed_group_test() ->
         )
     ).
 
+%% allowlist 为脏配置（jsonb 无键级校验，null/数字均可能出现）时
+%% 回退"不限群"而非 function_clause 崩溃（崩溃会中断同批其余 agent 的回复）
+allowlist_dirty_config_falls_back_test() ->
+    ?assert(
+        agent_trigger_policy:should_trigger(
+            #{<<"group_allowlist">> => null},
+            #{mentioned => true, text => <<"hi">>, group_id => 300}
+        )
+    ),
+    ?assert(
+        agent_trigger_policy:should_trigger(
+            #{<<"group_allowlist">> => 123},
+            #{mentioned => true, text => <<"hi">>, group_id => 300}
+        )
+    ).
+
+%% 元素级脏数据逐个丢弃，合法元素保留（不因个别脏值放开整个白名单）
+allowlist_dirty_elements_dropped_test() ->
+    Policy = #{<<"group_allowlist">> => [null, <<"abc">>, 200]},
+    ?assert(
+        agent_trigger_policy:should_trigger(
+            Policy, #{mentioned => true, text => <<"hi">>, group_id => 200}
+        )
+    ),
+    ?assertNot(
+        agent_trigger_policy:should_trigger(
+            Policy, #{mentioned => true, text => <<"hi">>, group_id => 300}
+        )
+    ).
+
 %% allowlist 元素为 binary（jsonb 反解）也能匹配
 allowlist_binary_ids_match_test() ->
     ?assert(

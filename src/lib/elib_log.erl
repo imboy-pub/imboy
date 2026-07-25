@@ -131,7 +131,8 @@ safe_log(Level, Msg, Module, Line) ->
             _ =
                 try
                     %% 经 erlang:apply 调用以绕过 Gradualizer 对 lager:log/3 metadata 参数的 spec 误提取
-                    %% （lager 是 parse_transform 库，Gradualizer 从其 beam 提取的 spec 有误）
+                    %% （lager 是 parse_transform 库，Gradualizer 从其 beam 提取的 spec 有误）。
+                    %% 代价：xref 对 lager 的依赖可见性丢失；Gradualizer 修复该误报后应回退为直接调用
                     erlang:apply(lager, log, [Level, build_metadata(Module, Line, Pid), Message])
                 catch
                     _:_ ->
@@ -155,6 +156,7 @@ safe_log(Level, Fmt, Args, Module, Line) ->
                 end,
             _ =
                 try
+                    %% erlang:apply 原因同上（Gradualizer lager spec 误提取）
                     erlang:apply(lager, log, [Level, build_metadata(Module, Line, Pid), Message])
                 catch
                     _:_ ->

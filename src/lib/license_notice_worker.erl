@@ -93,6 +93,10 @@ should_send(Due, Due) -> false;
 should_send(_Due, _Last) -> true.
 
 -spec send_notices(none | expired | 1 | 7 | 30) -> ok.
+%% none 显式 no-op：调用侧 should_send(none, _) 已拦截，此子句让 spec 与实现自洽
+%% （否则 render/2 无 none 子句，spec 声明了会 function_clause 的输入）
+send_notices(none) ->
+    ok;
 send_notices(Due) ->
     {Subject, Body} = license_expiry_notice:render(Due, imboy_license:licensee()),
     Tos = recipients(),

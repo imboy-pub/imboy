@@ -67,13 +67,19 @@ calc_expire_at(_CreatedAt, undefined) ->
 calc_expire_at(_CreatedAt, 0) ->
     null;
 calc_expire_at(CreatedAt, ExpireSecs) when is_integer(ExpireSecs), ExpireSecs > 0 ->
-    case elib_dt:rfc3339_to(CreatedAt) of
-        CreatedAtMs when is_integer(CreatedAtMs) ->
-            ExpireAtMs = CreatedAtMs + (ExpireSecs * 1000),
-            elib_dt:to_rfc3339(ExpireAtMs);
-        _ ->
-            null
-    end;
+    %% created_at 是客户端上送的不可信输入；解析失败必须回退服务端时间，
+    %% 不能返回 null——null 会让阅后即焚静默失效（消息落库后永不自毁）
+    CreatedAtMs =
+        case elib_dt:rfc3339_to(CreatedAt) of
+            Ms when is_integer(Ms) ->
+                Ms;
+            Err ->
+                ?WARN_LOG("burn created_at parse failed ~p: ~p, fallback to server time", [
+                    CreatedAt, Err
+                ]),
+                elib_dt:millisecond()
+        end,
+    elib_dt:to_rfc3339(CreatedAtMs + ExpireSecs * 1000);
 calc_expire_at(_CreatedAt, _) ->
     null.
 

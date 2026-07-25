@@ -75,9 +75,26 @@ has_suffix(Bin, Suf) ->
     BS = byte_size(Bin),
     BS >= SS andalso binary:part(Bin, BS - SS, SS) =:= Suf.
 
--spec normalize_ids(list()) -> [integer()].
+%% trigger_policy 来自 ai_agent jsonb，无键级校验：非 list 回退 []（不限群），
+%% 脏元素逐个丢弃（合法元素保留，不因个别脏值放开整个白名单），
+%% 防止单个 agent 的脏配置崩溃中断同批被 @ 的其余 agent
+-spec normalize_ids(term()) -> [integer()].
 normalize_ids(List) when is_list(List) ->
-    [ec_cnv:to_integer(X) || X <- List].
+    lists:filtermap(fun normalize_id/1, List);
+normalize_ids(_) ->
+    [].
+
+-spec normalize_id(term()) -> {true, integer()} | false.
+normalize_id(X) when is_integer(X) ->
+    {true, X};
+normalize_id(X) when is_binary(X) ->
+    try
+        {true, binary_to_integer(X)}
+    catch
+        _:_ -> false
+    end;
+normalize_id(_) ->
+    false.
 
 -spec truthy(term()) -> boolean().
 truthy(true) -> true;

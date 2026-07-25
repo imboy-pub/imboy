@@ -234,8 +234,9 @@ datetime_to({{Y, Mo, D}, {H, Mi, S}}, millisecond) when is_number(S) ->
         _:_ -> {error, "invalid datetime tuple"}
     end.
 
-%% 显式校验日期元组各字段范围后调用 calendar，避免非法 month 等经 badarg 异常路径
-%% 返回 {error, invalid_datetime} 保持与模块其它函数的错误契约一致
+%% 显式校验日期元组各字段范围后调用 calendar，避免非法 month 等经 badarg 异常路径。
+%% 非法字段不匹配任何子句 → function_clause，由调用方 datetime_to 的 try 捕获
+%% 收敛为 {error, "invalid datetime tuple"}（本函数自身不返回 error 元组）
 safe_gregorian_secs({{Y, Mo, D}, {H, Mi, S}}) when
     is_integer(Y),
     is_integer(Mo),
@@ -288,6 +289,8 @@ rfc3339_to(Value) ->
 % Dt = elib_dt:now(),
 % elib_dt:rfc3339_to(Dt, millisecond).
 % elib_dt:rfc3339_to(Dt, microsecond).
+%% 注意：integer() 入参不做单位换算，落入 catch-all 返回 {error, empty_input}
+%% （整数直通语义只在 rfc3339_to/1）；spec 列 integer() 仅声明"可接受不崩溃"
 -spec rfc3339_to(
     integer() | binary() | list() | undefined,
     second | millisecond | microsecond | nanosecond

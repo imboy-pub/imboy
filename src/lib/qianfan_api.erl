@@ -149,7 +149,8 @@ canonical_uri(URL) ->
     R1 =
         case uri_string:parse(I3) of
             #{} = Map -> Map;
-            {error, _} -> #{path => <<"/">>, query => <<>>}
+            %% uri_string:parse/1 出错返回三元组 {error, Atom, Term}
+            {error, _, _} -> #{path => <<"/">>, query => <<>>}
         end,
     CanonicalURI = maps:get(path, R1, <<"/">>),
     Query = maps:get(query, R1, <<>>),
