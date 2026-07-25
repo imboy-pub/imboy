@@ -15,380 +15,422 @@
 %% ===================================================================
 
 forward_c2c_to_c2c_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
-            end}
-        ]},
-        {msg_c2c_logic, [
-            {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]},
-        {msg_forward_ds, [
-            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, [_]}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({ok, [_]}, Result)
+        end
+    ).
 
 forward_c2c_payload_contains_to_field_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
-            end}
-        ]},
-        {msg_c2c_logic, [
-            {'c2c', 3, fun(_MsgId, _FromUid, Data) ->
-                ?assertEqual(true, maps:is_key(<<"to">>, Data)),
-                ok
-            end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]},
-        {msg_forward_ds, [
-            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, Data) ->
+                    ?assertEqual(true, maps:is_key(<<"to">>, Data)),
+                    ok
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, [_]}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({ok, [_]}, Result)
+        end
+    ).
 
 forward_c2c_reply_rejected_returns_error_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
-            end}
-        ]},
-        {msg_c2c_logic, [
-            {'c2c', 3, fun(_MsgId, _FromUid, _Data) ->
-                {reply, #{<<"type">> => <<"C2C_ERROR">>}}
-            end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) ->
+                    {reply, #{<<"type">> => <<"C2C_ERROR">>}}
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({error, {forward_rejected, _}}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({error, {forward_rejected, _}}, Result)
+        end
+    ).
 
 forward_c2c_to_c2c_with_non_friend_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
-            end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {false, false} end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {false, false} end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({error, {not_friends, _}}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({error, {not_friends, _}}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 单聊 → 群聊转发测试
 %% ===================================================================
 
 forward_c2c_to_c2g_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
-            end}
-        ]},
-        {msg_c2g_logic, [
-            {'c2g', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
-        ]},
-        {group_ds, [
-            {'is_member', 2, fun(_Uid, _Gid) -> true end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]},
-        {msg_forward_ds, [
-            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 1001,
-        ToType = <<"c2g">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {msg_c2g_logic, [
+                {'c2g', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(_Uid, _Gid) -> true end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 1001,
+            ToType = <<"c2g">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, [_]}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({ok, [_]}, Result)
+        end
+    ).
 
 forward_c2c_to_c2g_with_non_group_member_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
-            end}
-        ]},
-        {group_ds, [
-            {'is_member', 2, fun(_Uid, _Gid) -> false end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 1001,
-        ToType = <<"c2g">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
+                end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(_Uid, _Gid) -> false end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 1001,
+            ToType = <<"c2g">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({error, {not_group_member, _}}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({error, {not_group_member, _}}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 群聊 → 单聊转发测试
 %% ===================================================================
 
 forward_c2g_to_c2c_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {error, not_found}
-            end}
-        ]},
-        {msg_c2g_ds, [
-            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
-                {ok, [#{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
-            end}
-        ]},
-        {group_ds, [
-            {'is_member', 2, fun(_Uid, _Gid) -> true end}
-        ]},
-        {msg_c2c_logic, [
-            {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]},
-        {msg_forward_ds, [
-            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {error, not_found}
+                end}
+            ]},
+            {msg_c2g_ds, [
+                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                    {ok, [
+                        #{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
+                    ]}
+                end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(_Uid, _Gid) -> true end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, [_]}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({ok, [_]}, Result)
+        end
+    ).
 
 forward_c2g_to_c2c_without_group_membership_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {error, not_found}
-            end}
-        ]},
-        {msg_c2g_ds, [
-            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
-                {ok, [#{<<"from_id">> => 999, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
-            end}
-        ]},
-        {group_ds, [
-            {'is_member', 2, fun(Uid, Gid) ->
-                ?assertEqual(123, Uid),
-                ?assertEqual(1001, Gid),
-                false
-            end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {error, not_found}
+                end}
+            ]},
+            {msg_c2g_ds, [
+                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                    {ok, [
+                        #{<<"from_id">> => 999, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
+                    ]}
+                end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(Uid, Gid) ->
+                    ?assertEqual(123, Uid),
+                    ?assertEqual(1001, Gid),
+                    false
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({error, {permission_denied, _}}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({error, {permission_denied, _}}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 群聊 → 群聊转发测试
 %% ===================================================================
 
 forward_c2g_to_c2g_with_valid_data_succeeds_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {error, not_found}
-            end}
-        ]},
-        {msg_c2g_ds, [
-            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
-                {ok, [#{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}]}
-            end}
-        ]},
-        {msg_c2g_logic, [
-            {'c2g', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
-        ]},
-        {group_ds, [
-            {'is_member', 2, fun(_Uid, _Gid) -> true end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]},
-        {msg_forward_ds, [
-            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 1002,
-        ToType = <<"c2g">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {error, not_found}
+                end}
+            ]},
+            {msg_c2g_ds, [
+                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                    {ok, [
+                        #{<<"from_id">> => 123, <<"to_gid">> => 1001, <<"msg_type">> => <<"text">>}
+                    ]}
+                end}
+            ]},
+            {msg_c2g_logic, [
+                {'c2g', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(_Uid, _Gid) -> true end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 1002,
+            ToType = <<"c2g">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, [_]}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({ok, [_]}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 批量转发测试
 %% ===================================================================
 
 forward_batch_messages_succeeds_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
-            end}
-        ]},
-        {msg_c2c_logic, [
-            {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]},
-        {msg_forward_ds, [
-            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>, <<"msg_124">>, <<"msg_125">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>, <<"msg_124">>, <<"msg_125">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, [_, _, _]}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({ok, [_, _, _]}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 权限验证测试
 %% ===================================================================
 
 forward_with_permission_denied_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {ok, #{<<"from_id">> => 999, <<"to_id">> => 888}}
-            end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 999, <<"to_id">> => 888}}
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({error, {permission_denied, _}}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({error, {permission_denied, _}}, Result)
+        end
+    ).
 
 forward_msg_not_found_fails_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                {error, not_found}
-            end}
-        ]},
-        {msg_c2g_ds, [
-            {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
-                {ok, []}
-            end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"non_existent_msg">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {error, not_found}
+                end}
+            ]},
+            {msg_c2g_ds, [
+                {'timeline_find_by_msg_id', 1, fun(_MsgId) ->
+                    {ok, []}
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"non_existent_msg">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({error, {msg_not_found, _}}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            ?assertMatch({error, {msg_not_found, _}}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 边界条件测试
@@ -417,44 +459,186 @@ forward_with_invalid_to_type_fails_test_() ->
     end).
 
 %% ===================================================================
+%% 发送失败必须反馈给调用方（不 mock 协议边界：真跑 msg_c2c_logic / msg_c2g_logic）
+%% ===================================================================
+
+%% c2c 发送被真实 msg_c2c_logic 拒绝（限流禁言 → 返回 {reply, ErrFrame}）
+%% 调用方必须拿到失败，且不得落转发记录
+forward_c2c_send_rejected_propagates_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            %% 只 mock 限流器（非协议边界），msg_c2c_logic:c2c/3 走真实代码
+            {msg_rate_logic, [
+                {'check_and_record', 1, fun(_Uid) -> {error, muted} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) ->
+                    erlang:error(forward_record_saved_but_message_not_sent)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 789, <<"c2c">>),
+            ?assertMatch({error, {forward_rejected, <<"rate_limited">>}}, Result),
+            ?assertEqual([], drain_reply_frames())
+        end
+    ).
+
+%% c2g 发送被真实 msg_c2g_logic 拒绝（群内禁言 → 带外 self() ! {reply, C2G_ERROR}）
+%% 这是本次修复的核心：带外帧在 REST 进程里无人消费，调用方必须仍能拿到失败
+forward_c2g_send_rejected_propagates_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(_Uid, _Gid) -> true end}
+            ]},
+            %% msg_c2g_logic:c2g/3 走真实代码，只 mock 限流器与禁言判定
+            {msg_rate_logic, [
+                {'check_and_record', 1, fun(_Uid) -> ok end}
+            ]},
+            {group_member_logic, [
+                {'check_mute', 2, fun(_Gid, _Uid) -> true end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) ->
+                    erlang:error(forward_record_saved_but_message_not_sent)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_forward_logic:forward([<<"msg_123">>], 123, 1001, <<"c2g">>),
+            ?assertMatch({error, {forward_rejected, <<"You are muted in this group">>}}, Result),
+            %% 带外帧必须被消费掉，不留在进程邮箱里当死信
+            ?assertEqual([], drain_reply_frames())
+        end
+    ).
+
+%% 批量转发：一条发送失败时按条区分成败，而不是一个总的 ok
+forward_batch_with_send_failure_returns_partial_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    {ok, #{<<"from_id">> => 123, <<"to_id">> => 456, <<"msg_type">> => <<"text">>}}
+                end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, Data) ->
+                    %% 复刻真实契约：拒绝时返回 {reply, S2C 帧}
+                    case maps:get(<<"payload">>, Data) of
+                        #{<<"original_msg_id">> := <<"msg_124">>} ->
+                            {reply, #{
+                                <<"id">> => _MsgId,
+                                <<"type">> => <<"S2C">>,
+                                <<"action">> => <<"in_denylist">>
+                            }};
+                        _ ->
+                            ok
+                    end
+                end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>, <<"msg_124">>, <<"msg_125">>],
+            Result = msg_forward_logic:forward(MsgIds, 123, 789, <<"c2c">>),
+            ?assertMatch(
+                {partial, [_, _], [{<<"msg_124">>, {forward_rejected, <<"in_denylist">>}}]},
+                Result
+            )
+        end
+    ).
+
+%% 取走进程邮箱里残留的 {reply, _}，用于断言"没有死信"
+drain_reply_frames() ->
+    receive
+        {reply, Frame} -> [Frame | drain_reply_frames()]
+    after 0 ->
+        []
+    end.
+
+%% ===================================================================
 %% 部分失败测试
 %% ===================================================================
 
 forward_partial_success_test_() ->
-    ?WITH_MECKS([
-        {msg_c2c_ds, [
-            {'find_msg_by_id', 1, fun(_MsgId) ->
-                case _MsgId of
-                    <<"msg_123">> -> {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}};
-                    <<"msg_124">> -> {error, not_found};
-                    <<"msg_125">> -> {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
-                end
-            end}
-        ]},
-        {msg_c2g_ds, [
-            {'timeline_find_by_msg_id', 1, fun(<<"msg_124">>) -> {ok, []} end}
-        ]},
-        {msg_c2c_logic, [
-            {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
-        ]},
-        {friend_ds, [
-            {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
-        ]},
-        {elib_tsid, [
-            {'generate', 0, fun() -> 987654321 end}
-        ]},
-        {elib_dt, [
-            {'millisecond', 0, fun() -> 1700000000000 end}
-        ]},
-        {msg_forward_ds, [
-            {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
-        ]}
-    ], fun() ->
-        MsgIds = [<<"msg_123">>, <<"msg_124">>, <<"msg_125">>],
-        FromUid = 123,
-        ToId = 789,
-        ToType = <<"c2c">>,
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(_MsgId) ->
+                    case _MsgId of
+                        <<"msg_123">> -> {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}};
+                        <<"msg_124">> -> {error, not_found};
+                        <<"msg_125">> -> {ok, #{<<"from_id">> => 123, <<"to_id">> => 456}}
+                    end
+                end}
+            ]},
+            {msg_c2g_ds, [
+                {'timeline_find_by_msg_id', 1, fun(<<"msg_124">>) -> {ok, []} end}
+            ]},
+            {msg_c2c_logic, [
+                {'c2c', 3, fun(_MsgId, _FromUid, _Data) -> ok end}
+            ]},
+            {friend_ds, [
+                {'check_relationship', 2, fun(_ToId, _FromUid) -> {true, false} end}
+            ]},
+            {elib_tsid, [
+                {'generate', 0, fun() -> 987654321 end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000000000 end}
+            ]},
+            {msg_forward_ds, [
+                {'save_forward_record', 8, fun(_, _, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgIds = [<<"msg_123">>, <<"msg_124">>, <<"msg_125">>],
+            FromUid = 123,
+            ToId = 789,
+            ToType = <<"c2c">>,
 
-        Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
-        ?assertMatch({ok, _}, Result)
-    end).
+            Result = msg_forward_logic:forward(MsgIds, FromUid, ToId, ToType),
+            %% msg_124 查不到原消息：不能谎报整批 ok，必须按条区分
+            ?assertMatch(
+                {partial, [_, _], [{<<"msg_124">>, {msg_not_found, _}}]},
+                Result
+            )
+        end
+    ).

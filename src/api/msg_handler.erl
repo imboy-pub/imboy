@@ -276,12 +276,18 @@ forward(Req0, State) ->
                     % 调用逻辑层处理转发
                     case msg_forward_logic:forward(MsgIds, CurrentUid, ToId, ToType) of
                         {ok, ForwardMsgIds} ->
-                            Payload = #{
-                                <<"msg">> => <<"messages_forwarded">>,
-                                <<"forward_msg_ids">> => ForwardMsgIds,
-                                <<"forward_count">> => length(ForwardMsgIds)
-                            },
-                            elib_response:success(Req0, Payload, <<"转发成功"/utf8>>);
+                            elib_response:success(
+                                Req0,
+                                forward_payload(ForwardMsgIds, []),
+                                <<"转发成功"/utf8>>
+                            );
+                        {partial, ForwardMsgIds, Failed} ->
+                            % 批量转发部分失败：按条返回失败原因，不谎报全部成功
+                            elib_response:success(
+                                Req0,
+                                forward_payload(ForwardMsgIds, Failed),
+                                <<"部分消息转发失败"/utf8>>
+                            );
                         {error, {invalid_param, Msg}} ->
                             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
                         {error, {not_friends, Msg}} ->
@@ -294,11 +300,34 @@ forward(Req0, State) ->
                             elib_response:error(Req0, Msg, ?ERR_ACCESS_DENIED);
                         {error, {msg_not_found, Msg}} ->
                             elib_response:error(Req0, Msg, ?ERR_MESSAGE_NOT_FOUND);
+                        {error, {forward_rejected, Msg}} ->
+                            elib_response:error(Req0, Msg, ?ERR_FORBIDDEN);
                         {error, Reason} ->
                             elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
                     end
             end
     end.
+
+%% @doc 组装转发响应体（成功列表 + 按条失败明细）
+-spec forward_payload([binary()], [{binary(), term()}]) -> map().
+forward_payload(ForwardMsgIds, Failed) ->
+    #{
+        <<"msg">> => <<"messages_forwarded">>,
+        <<"forward_msg_ids">> => ForwardMsgIds,
+        <<"forward_count">> => length(ForwardMsgIds),
+        <<"failed">> => [
+            #{<<"msg_id">> => MsgId, <<"reason">> => forward_fail_reason(Reason)}
+         || {MsgId, Reason} <- Failed
+        ],
+        <<"failed_count">> => length(Failed)
+    }.
+
+%% @doc 失败原因转可读文案
+-spec forward_fail_reason(term()) -> binary().
+forward_fail_reason({_Tag, Msg}) when is_binary(Msg) -> Msg;
+forward_fail_reason(Reason) when is_binary(Reason) -> Reason;
+forward_fail_reason(Reason) when is_atom(Reason) -> atom_to_binary(Reason, utf8);
+forward_fail_reason(_Reason) -> <<"转发失败"/utf8>>.
 
 %% @doc 处理添加表情回应请求
 %% 添加表情到指定消息
