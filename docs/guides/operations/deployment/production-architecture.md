@@ -78,7 +78,6 @@ coturn 进程，监听 `10.1.20.14:3478`（WebRTC 穿透用）
 | PostgreSQL（生产） | Docker `prod_imboy_pg18` | `0.0.0.0:5182` | Docker volume |
 | PostgreSQL（开发） | Docker `dev_imboy_pg18` | `0.0.0.0:5180` | Docker volume |
 | Garage S3 | 裸进程 | `0.0.0.0:3900`（公网 API）`127.0.0.1:3901`（RPC）`127.0.0.1:3903`（Admin）| `/var/lib/garage/` |
-| FastDFS（旧，待废弃） | Docker `imboy_fastdfs` | `0.0.0.0:8080` | Docker |
 | coturn | 系统进程 | `10.1.20.14:3478` | 系统服务 |
 | 宝塔面板 | BT-Panel | `*:9898` | 系统服务 |
 | SSH | sshd | `0.0.0.0:32` | 系统服务 |

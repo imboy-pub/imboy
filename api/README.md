@@ -52,7 +52,7 @@ imboy/api/
 ## 与 `imboy/docs/api/`（人类可读契约）的关系
 
 **`imboy/docs/api/`**（已存在 10+ 文件）：
-- 含 **手写设计文档**：`websocket-api-2.md` / `channel_api_contract_v1.md` / `moment_api_contract_v1.md` / `e2ee_server_persisted_shard_contract_v1.md` / `tsid-field-convention.md` / `tsid-field-matrix.md` / `rest-api.md`
+- 含 **手写设计文档**：`websocket-api-2.md` / `channel-api-contract-v1.md` / `moment-api-contract-v1.md` / `e2ee-server-persisted-shard-contract-v1.md` / `tsid-field-convention.md` / `tsid-field-matrix.md` / `rest-api.md`
 - 含 **历史 yaml**：`openapi.yaml`（340 行）/ `asyncapi.yaml` / `envelope.schema.json`
 - 角色：**人类可读的设计与决策记录**（叙述性、含背景与权衡）
 

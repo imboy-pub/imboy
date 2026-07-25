@@ -29,4 +29,4 @@
 | [sentry-dsn-integration-guide.md](./sentry-dsn-integration-guide.md) | Sentry DSN 接入配置 |
 | [libraries-async.md](./libraries-async.md) | `elib_async` 使用指南 |
 
-模板：见 [documentation-system/templates/HOWTO_TEMPLATE.md](../documentation-system/templates/HOWTO_TEMPLATE.md)
+模板：见 [documentation-system/templates/howto-template.md](../documentation-system/templates/howto-template.md)

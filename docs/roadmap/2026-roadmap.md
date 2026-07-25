@@ -32,9 +32,9 @@
 | SEC-01 计费 9 端点补归属校验 | 任意 JWT 无法操作他租户账单 | S |
 | SEC-02 钱包借记补 frozen/status + 表级 CHECK | 冻结资金不可花 | S |
 | SEC-00 AGPL 法务裁决（产品决策）| vodozemac 授权路径定案 | 决策 |
-| SEC-03 首启向导 401 修复（在 TASKS.md 并入 W1-ARCH-01 执行） | 全新部署可初始化 | S |
+| SEC-03 首启向导 401 修复（在 tasks.md 并入 W1-ARCH-01 执行） | 全新部署可初始化 | S |
 
-> **Wave 0 闸门（= M1）**：GATE-W0 追踪的 7 项（ARCH-01/ARCH-02/PERF-02/PERF-01/SEC-01/SEC-02/SEC-00）全绿 + 一轮真机回归。SEC-03 setup 401 在 TASKS.md 并入 W1-ARCH-01，不单列 GATE-W0 依赖。闸门绿才进 Wave 1。
+> **Wave 0 闸门（= M1）**：GATE-W0 追踪的 7 项（ARCH-01/ARCH-02/PERF-02/PERF-01/SEC-01/SEC-02/SEC-00）全绿 + 一轮真机回归。SEC-03 setup 401 在 tasks.md 并入 W1-ARCH-01，不单列 GATE-W0 依赖。闸门绿才进 Wave 1。
 
 ---
 

@@ -158,7 +158,7 @@
 - 但若后端在测试/生产中任何场景使用 HTTP 明文，审核会被拒绝。
 
 **操作建议 / Action：**
-1. 确认生产服务器全部为 HTTPS（项目使用 Caddy 自动 TLS，应已满足）。
+1. 确认生产服务器全部为 HTTPS（项目使用 nginx + certbot 自动 TLS，应已满足）。
 2. 移除 `NSAllowsLocalNetworking`（生产包中无意义），或保留仅用于开发。
 3. **绝对不要**添加 `NSAllowsArbitraryLoads = true`（App Store 会要求说明理由）。
 

@@ -3,6 +3,8 @@
 一键将 IMBoy 部署到一台 Linux 服务器。
 One-command deployment of IMBoy to a Linux server.
 
+> 文档分工：本目录是**可执行部署栈**（compose/env/脚本）；完整手册见 [deployment.md](../docs/guides/operations/deployment/deployment.md)，5 分钟快速上手见 [day1-quickstart.md](../docs/guides/operations/deployment/day1-quickstart.md)，备份恢复见 [backup-restore.md](../docs/guides/operations/deployment/backup-restore.md)。
+
 ## 交付清单 / Deliverables
 
 ```
@@ -127,7 +129,7 @@ docker compose -f docker-compose.prod.yml logs -f imboy_backend
 
 ### 备份
 
-参见 `imboy/docs/guides/operations/deployment/BACKUP-RESTORE.md`。简化版：
+参见 `imboy/docs/guides/operations/deployment/backup-restore.md`。简化版：
 
 ```bash
 # PG 逻辑备份

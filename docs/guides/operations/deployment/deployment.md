@@ -1,7 +1,7 @@
 # IMBoy 生产部署指南
 
-> - **自动化部署脚本**（推荐）：[DEPLOY-SCRIPT.md](./DEPLOY-SCRIPT.md) — 配置一次 `.env.deploy`，一条命令完成全量或增量部署
-> - **5 分钟快速上手**：[DAY1-QUICKSTART.md](./DAY1-QUICKSTART.md) — 从零搭建最小生产环境
+> - **自动化部署脚本**（推荐）：[deploy-script.md](./deploy-script.md) — 配置一次 `.env.deploy`，一条命令完成全量或增量部署
+> - **5 分钟快速上手**：[day1-quickstart.md](./day1-quickstart.md) — 从零搭建最小生产环境
 > - **生产架构图**：[production-architecture.md](./production-architecture.md) — 服务分布与端口一览
 >
 > 本文是完整参考手册，适合定制化配置场景。
@@ -157,7 +157,7 @@ _rel/imboy/bin/imboy start
 迁移脚本设计为向前兼容，通常不需要回滚。如果需要：
 
 1. 备份当前数据：`bash scripts/backup_pg.sh --full`
-2. 恢复到指定时间点（参见 BACKUP-RESTORE.md）
+2. 恢复到指定时间点（参见 backup-restore.md）
 
 ---
 

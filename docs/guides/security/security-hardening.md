@@ -366,7 +366,7 @@ trivy image imboy:latest --severity HIGH,CRITICAL
 # 重点测试：SQL 注入、认证绕过、WebSocket 消息伪造、IDOR
 
 # 3. 备份恢复演练（参照 RESTORE-DRILL 记录格式）
-# 文档：docs/guides/operations/deployment/RESTORE-DRILL-2026-06.md
+# 文档：docs/guides/operations/deployment/restore-drill-2026-06.md
 # 步骤：恢复到测试环境 → 验证数据完整性 → 记录 RTO
 
 # 4. 等保自查（参照 docs/compliance/mlps2-checklist.md）

@@ -3,6 +3,7 @@
 > 简体中文 / English — bilingual
 > 适用版本 / Applies to: imboy v1.0.0-rc.1+
 > 目标 / Goal: 5 分钟内跑通生产部署的最小可用配置 / Stand up a minimal production deployment in 5 minutes.
+> 完整参考手册 / Full manual: [deployment.md](./deployment.md) ｜ 自动化脚本 / Script: [deploy-script.md](./deploy-script.md)
 
 ---
 
@@ -172,8 +173,8 @@ upstream imboy {
 
 ## 参考 / References
 
-- 完整生产部署指南 / Full production guide: [`DEPLOYMENT.md`](./DEPLOYMENT.md)
-- 备份与恢复 / Backup & restore: [`BACKUP-RESTORE.md`](./BACKUP-RESTORE.md)
-- 监控 / Monitoring: [`MONITORING.md`](./MONITORING.md)
+- 完整生产部署指南 / Full production guide: [`deployment.md`](./deployment.md)
+- 备份与恢复 / Backup & restore: [`backup-restore.md`](./backup-restore.md)
+- 监控 / Monitoring: [`monitoring.md`](./monitoring.md)
 - 环境变量映射源码 / Env var mapping source: `src/lib/imboy_env.erl`
 - Fail-fast 校验源码 / Fail-fast validation source: `src/imboy_app.erl: validate_runtime_config/0`

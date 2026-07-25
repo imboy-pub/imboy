@@ -70,9 +70,9 @@ B.4   Web SDK（vodozemac-js + StorageProvider）
 | 现有文档 | v2 中的角色 |
 |---|---|
 | `docs/compliance/e2ee-policy.md` | 线 A 已更新，v2 继承其零信任契约 |
-| `docs/archive/analysis/e2ee-zero-trust-redesign-plan.md` | transfer/social 改造先例，v2 遵循同模式 |
-| `docs/archive/analysis/e2ee-backend-audit-final.md` | 审计基线，v2 的 Threat Model 与之对齐 |
-| `docs/archive/analysis/e2ee-key-backup-implementation-plan.md` | 4S 备份方案，v2 Storage ADR 引用 |
+| （原 `docs/archive/analysis/e2ee-zero-trust-redesign-plan.md`，内容已并入本 v2 规范，2026-07-25 删除） | transfer/social 改造先例，v2 遵循同模式 |
+| （原 `docs/archive/analysis/e2ee-backend-audit-final.md`，审计结论已并入 v2 规范，2026-07-25 删除） | 审计基线，v2 的 Threat Model 与之对齐 |
+| （原 `docs/archive/analysis/e2ee-key-backup-implementation-plan.md`，4S 方案已并入本 v2 规范，2026-07-25 删除） | 4S 备份方案，v2 Storage ADR 引用 |
 | `docs/guides/e2ee/e2ee-key-rotation-policy.md` | 轮换策略，v2 Device Identity ADR 引用 |
 | `docs/archive/analysis/e2ee-cross-device-recovery-assessment-2026-06.md` | 跨设备恢复评估，v2 Device Trust ADR 引用 |
 

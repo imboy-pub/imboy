@@ -31,7 +31,7 @@ For general questions, usage advice, and feature ideas:
 **仅用于 Bug 报告**。请先确认问题可稳定复现，再提交 Issue。
 **For bug reports only.** Please confirm the issue is reproducible before filing.
 
-使用 Issue 模板 / Use the issue template：[Bug Report](.github/ISSUE_TEMPLATE/bug_report.yml)
+使用 Issue 模板 / Use the issue template：[Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
 
 ### 关于 Erlang/OTP 和 Flutter
 

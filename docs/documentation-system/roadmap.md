@@ -44,7 +44,7 @@
 | 3.2 | CI：markdownlint + 死链 | docs.yml workflow | 坏格式 / 死链 PR 被拦截（先 warn 1 周过渡期） |
 | 3.3 | CI：元信息头校验 | check-doc-meta.sh | 缺元信息的新文档 CI 红 |
 | 3.4 | PR 模板加文档 checklist | 「文档已更新 / 无需更新」必选项 | 全仓库启用 |
-| 3.5 | 站点上线 | Caddy 反代部署（复用 deploy/ 栈） | 内网/公网 docs 域名可访问，搜索可用 |
+| 3.5 | 站点上线 | nginx 反代部署（复用 deploy/ 栈） | 内网/公网 docs 域名可访问，搜索可用 |
 
 ## Phase 4 — 深化（持续，每季度排期）
 

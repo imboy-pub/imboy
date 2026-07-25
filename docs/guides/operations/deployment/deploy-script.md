@@ -234,8 +234,8 @@ bash scripts/imboy-deploy.sh rollback
 
 ## 参考文档
 
-- 从零搭建服务器：[DEPLOYMENT.md](./DEPLOYMENT.md)
-- Day-1 快速上手：[DAY1-QUICKSTART.md](./DAY1-QUICKSTART.md)
-- 备份与恢复：[BACKUP-RESTORE.md](./BACKUP-RESTORE.md)
-- 监控：[MONITORING.md](./MONITORING.md)
+- 从零搭建服务器：[deployment.md](./deployment.md)
+- Day-1 快速上手：[day1-quickstart.md](./day1-quickstart.md)
+- 备份与恢复：[backup-restore.md](./backup-restore.md)
+- 监控：[monitoring.md](./monitoring.md)
 - 生产架构图：[production-architecture.md](./production-architecture.md)

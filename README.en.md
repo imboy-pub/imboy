@@ -112,8 +112,8 @@ Production also requires domains, TLS, and strong secrets. See the full [deploym
 
 - [Documentation index](./docs/README.md)
 - [Backend architecture](./docs/architecture/overview.md)
-- [REST API catalog](./docs/analysis/rest-api-v1-catalog.md)
-- [WebSocket protocol](./docs/analysis/ws-protocol-contract.md)
+- [REST API catalog](./docs/reference/rest-api-v1-catalog.md)
+- [WebSocket protocol](./docs/reference/ws-protocol-contract.md)
 - [Contributing](./CONTRIBUTING.md)
 - [Security](./SECURITY.md)
 

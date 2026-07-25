@@ -1,7 +1,7 @@
 # IMBoy 发布指南 / Release Guide
 
 > 串联版本、镜像构建、版次、部署、部署后校验的完整发布流程。
-> 配套：[edition-boundary.md](../../business/edition-boundary.md) ｜ [../../../deploy/README.md](../../../deploy/README.md) ｜ [../operations/deployment/DAY1-QUICKSTART.md](../operations/deployment/DAY1-QUICKSTART.md)
+> 配套：[edition-boundary.md](../../business/edition-boundary.md) ｜ [../../../deploy/README.md](../../../deploy/README.md) ｜ [../operations/deployment/day1-quickstart.md](../operations/deployment/day1-quickstart.md)
 
 ---
 

@@ -1,6 +1,6 @@
 # Logic 层 - 业务逻辑层
 
-[根目录](../CLAUDE.md) > **src/logic** | 76 个模块（截至 2026-06，以 `find src/logic -name '*.erl'\|wc -l` 为准） | 职责：核心业务逻辑，调用 DS 层，处理消息路由与分发
+[根目录](../../CLAUDE.md) > **src/logic** | 76 个模块（截至 2026-06，以 `find src/logic -name '*.erl'\|wc -l` 为准） | 职责：核心业务逻辑，调用 DS 层，处理消息路由与分发
 
 ---
 

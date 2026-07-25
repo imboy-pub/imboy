@@ -1,4 +1,4 @@
-# IMBoy 任务状态账本（TASKS.md）
+# IMBoy 任务状态账本（tasks.md）
 
 > **这是 loop 的唯一状态真源**。每轮：读本文件 → 选一个 `status: ready` 且依赖全 `done` 的任务 → 执行 → 更新其 `status` 与 `evidence` → 提交。
 > 人读版路线见 `2026-roadmap.md`（波次）与 `architecture-roadmap.md`（总纲）。本文件是它们的**可执行状态投影**。
@@ -11,7 +11,7 @@
 
 ```
 每轮循环：
-1. 读 TASKS.md，解析所有任务块。
+1. 读 tasks.md，解析所有任务块。
 2. 刷新状态：某任务所有 deps 均 done → 若其为 blocked 则置 ready。
 3. 取第一个 status: ready 的任务（按本文件出现顺序 = 优先级顺序）。
    无 ready 任务 → 检查是否某 Wave 闸门可结算 → 否则报告"无可做任务，等待人工"并退出。
@@ -483,4 +483,4 @@
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
 
-> loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' TASKS.md` 等重算）。
+> loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。

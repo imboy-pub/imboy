@@ -50,4 +50,4 @@
 
 - `api/`：REST API 参考站点，由 `imboy/api/openapi.yaml` 经 Redoc CI 自动生成，**禁止手写**
 
-模板：见 [documentation-system/templates/REFERENCE_TEMPLATE.md](../documentation-system/templates/REFERENCE_TEMPLATE.md)
+模板：见 [documentation-system/templates/reference-template.md](../documentation-system/templates/reference-template.md)

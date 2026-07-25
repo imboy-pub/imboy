@@ -1,4 +1,4 @@
-# ADR-NNNN：[决策标题，动宾短语，如"采用 Garage S3 替代 go-fastdfs"]
+# ADR-NNNN：[决策标题，动宾短语，如"采用 LiveKit 作为 SFU 媒体服务器"]
 
 > **状态**：提议 | 已接受 | 已废弃 | 被 [ADR-XXXX](#) 取代
 > **日期**：YYYY-MM-DD

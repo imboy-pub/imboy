@@ -180,5 +180,5 @@ rsync -a --delete ../docs/                      "$SITE_CONTENT/main/"
 1. **Phase 3 第 1 步**：`docs-site/` 脚手架 + 本地 `bun run dev` 可预览现有 docs/
 2. **第 2 步**：CI 加 lint + 死链检查（先 warn 一周，再转 error）
 3. **第 3 步**：gen-api-reference.sh 接入 CI，openapi.yaml 变更强制同步
-4. **第 4 步**：站点部署到内网 / docs 子域名（Caddy 反代，复用现有 deploy 栈）
+4. **第 4 步**：站点部署到内网 / docs 子域名（nginx 反代，复用现有 deploy 栈）
 5. **Phase 4**：引入 Vale 术语检查；多版本切换

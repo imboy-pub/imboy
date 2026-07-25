@@ -46,8 +46,8 @@ pg_restore --list "/backups/${BACKUP_FILE}" | head -20
 echo "Backup saved: /backups/${BACKUP_FILE}"
 ```
 
-> 备份文件保留至少 30 天。在 BACKUP-RESTORE.md 中记录备份位置和文件名。
-> Keep the backup file for at least 30 days. Record its location in BACKUP-RESTORE.md.
+> 备份文件保留至少 30 天。在 backup-restore.md 中记录备份位置和文件名。
+> Keep the backup file for at least 30 days. Record its location in backup-restore.md.
 
 ### 1.2 节点状态确认 / Node Status Check
 
@@ -436,7 +436,7 @@ _rel/imboy/bin/imboy stop
 docker compose -f deploy/docker-compose.prod.yml stop imboy_backend
 
 # ---- 步骤 3：PITR 恢复 ----
-# 参考 docs/guides/operations/deployment/BACKUP-RESTORE.md 中的 PITR 章节
+# 参考 docs/guides/operations/deployment/backup-restore.md 中的 PITR 章节
 # 以下为快速参考：
 
 # 停止 PostgreSQL

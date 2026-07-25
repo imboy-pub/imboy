@@ -53,7 +53,7 @@
 |--------|------|------|------|
 | 2.1.1 限制不必要的通信端口 | 最小化开放端口 | ✅ 已实现 | 对外仅开放 80/443；9800 仅监听 127.0.0.1（由 nginx 转发）；PG 端口 5432 仅内网可达 |
 | 2.1.2 禁止未授权设备接入 | WebSocket 连接须 JWT 认证 | ✅ 已实现 | `websocket_handler.erl` 握手阶段校验 token，失败返回 401 关闭连接 |
-| 2.1.3 边界处对网络流量做访问控制 | 防火墙规则管理 | ✅ 已实现 | `deploy/` 内 `preflight.sh` 包含 ufw 规则检查；生产防火墙配置见 `docs/guides/operations/deployment/DAY1-QUICKSTART.md` |
+| 2.1.3 边界处对网络流量做访问控制 | 防火墙规则管理 | ✅ 已实现 | `deploy/` 内 `preflight.sh` 包含 ufw 规则检查；生产防火墙配置见 `docs/guides/operations/deployment/day1-quickstart.md` |
 
 ### 2.2 入侵防范
 
@@ -101,9 +101,9 @@
 |--------|------|------|------|
 | 3.3.1 重要用户行为审计 | 登录/注销/敏感操作记录 | ✅ 已实现 | lager 记录所有 API 请求（`src/api/imboy_handler.erl`）；账号注销申请写入审计表（`user_repo.erl apply_logout`）；管理后台操作记录在 `adm_audit_log` |
 | 3.3.2 审计记录内容完整 | 时间、用户、操作、结果 | ✅ 已实现 | 日志格式含时间戳、uid、IP、action、result_code |
-| 3.3.3 审计记录不可被普通用户删除 | 日志保护 | ⚠️ 部分实现 | lager 日志写本地文件，需 OS 层面配置 append-only 或写入 Loki（`docs/guides/operations/deployment/MONITORING.md`）；Loki 日志不可删是架构设计但未强制配置 |
+| 3.3.3 审计记录不可被普通用户删除 | 日志保护 | ⚠️ 部分实现 | lager 日志写本地文件，需 OS 层面配置 append-only 或写入 Loki（`docs/guides/operations/deployment/monitoring.md`）；Loki 日志不可删是架构设计但未强制配置 |
 | 3.3.4 审计记录保存不少于 6 个月 | 日志保留期 | ⚠️ 部分实现 | Loki 保留期取决于磁盘配置；生产部署须在 `deploy/loki/loki-config.yml` 中设置 `retention_period: 180d`（当前未明确设置） |
-| 3.3.5 [三级] 集中审计管理平台 | 日志统一收集、告警 | ⚠️ 部分实现 | Prometheus + Grafana + Loki 栈已就绪（`docs/guides/operations/deployment/MONITORING.md`）；告警规则需客户按场景补充 |
+| 3.3.5 [三级] 集中审计管理平台 | 日志统一收集、告警 | ⚠️ 部分实现 | Prometheus + Grafana + Loki 栈已就绪（`docs/guides/operations/deployment/monitoring.md`）；告警规则需客户按场景补充 |
 
 ### 3.4 入侵防范（计算环境）
 
@@ -120,7 +120,7 @@
 |--------|------|------|------|
 | 3.5.1 传输数据完整性 | HTTPS 保证传输完整性 | ✅ 已实现 | TLS 提供完整性校验；消息投递有 ACK 确认机制（`msg_c2c_logic.erl`） |
 | 3.5.2 存储数据完整性 | 数据库约束 + 事务 | ✅ 已实现 | PostgreSQL 约束、外键、事务（`elib_pg:with_tx/2`）；钱包操作强制单事务（`wallet_repo.erl reject_and_refund`） |
-| 3.5.3 备份数据完整性校验 | 备份验证 | ⚠️ 部分实现 | `imboy/scripts/backup_pg.sh` 实现备份；恢复演练记录见 `docs/guides/operations/deployment/RESTORE-DRILL-2026-06.md`；未实现自动完整性校验哈希 |
+| 3.5.3 备份数据完整性校验 | 备份验证 | ⚠️ 部分实现 | `imboy/scripts/backup_pg.sh` 实现备份；恢复演练记录见 `docs/guides/operations/deployment/restore-drill-2026-06.md`；未实现自动完整性校验哈希 |
 
 ### 3.6 数据保密性
 
@@ -141,7 +141,7 @@
 |--------|------|------|------|
 | 4.1.1 集中配置管理 | 配置统一管理，不分散硬编码 | ✅ 已实现 | 三层配置架构：`sys.config` + 环境变量 `IMBOY_*` + 运行时 `config_ds:local_reload()`；见 `docs/architecture/config-architecture.md` |
 | 4.1.2 运维账号独立 | 运维与业务账号分离 | ✅ 已实现 | 后台角色矩阵区分 admin / operator / viewer；Erlang 节点 remote_console 凭 `IMBOY_CTL_COOKIE` 访问，不使用业务账号 |
-| 4.1.3 集中监控管理 | Prometheus + Grafana | ✅ 已实现 | 监控栈见 `docs/guides/operations/deployment/MONITORING.md`；metrics 端点 `/metrics` 仅内网可达（nginx 配置拦截外部访问） |
+| 4.1.3 集中监控管理 | Prometheus + Grafana | ✅ 已实现 | 监控栈见 `docs/guides/operations/deployment/monitoring.md`；metrics 端点 `/metrics` 仅内网可达（nginx 配置拦截外部访问） |
 
 ### 4.2 审计管理
 
@@ -157,7 +157,7 @@
 | 控制点 | 要求 | 状态 | 说明 |
 |--------|------|------|------|
 | 5.1 信息安全方针政策 | 明文安全策略文档 | ⚠️ 部分实现 | `docs/guides/operations/security.md` 覆盖技术安全基线；企业级安全方针文件（PDF/OA 系统）需客户自行建立 |
-| 5.2 安全管理制度体系 | 覆盖开发、运维、应急 | ⚠️ 部分实现 | 技术层面有 `security-hardening.md`、`BACKUP-RESTORE.md`、`upgrade-runbook.md`；制度层面文件需结合买家组织实际编写 |
+| 5.2 安全管理制度体系 | 覆盖开发、运维、应急 | ⚠️ 部分实现 | 技术层面有 `security-hardening.md`、`backup-restore.md`、`upgrade-runbook.md`；制度层面文件需结合买家组织实际编写 |
 | 5.3 制度定期评审 | 每年至少评审一次 | ❌ 待实现 | 建议在 OA 系统或 Wiki 建立年度评审机制，本文档版本号随评审更新 |
 
 ---
@@ -219,7 +219,7 @@
 | 访问控制矩阵 | `docs/business/edition-boundary.md` |
 | 审计日志样本 | Loki / Grafana 截图（测评前 30 天） |
 | 密钥管理配置 | `config/sys.config.example`（脱敏版） |
-| 备份恢复记录 | `docs/guides/operations/deployment/RESTORE-DRILL-2026-06.md` |
+| 备份恢复记录 | `docs/guides/operations/deployment/restore-drill-2026-06.md` |
 | 漏洞扫描报告 | 测评前由第三方出具 |
 | 安全培训记录 | 客户提供 |
 | 安全策略文件 | 客户提供 |

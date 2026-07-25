@@ -228,7 +228,7 @@ GET /api/v1/messages?cursorAfter=123456789012345678&limit=50
 - **lefthook pre-commit**：`commitlint` + `gitleaks` + 各端 formatter
 - **CI（quality.yml）**：本约定的自动化检查由 `oasdiff` / `eslint` / `elvis` / `dart_code_metrics` 落地
 - **codegen**：`imboy/api/codegen/` 生成的客户端代码自动符合「字段命名」§3 与「错误响应」§4
-- **codemap**：变更后由 `doc-updater` agent 同步至 `imboy/docs/archive/CODEMAPS/`
+- **codemap**：变更后由 `doc-updater` agent 同步至 `src/*/CLAUDE.md` 模块文档（旧 `docs/archive/CODEMAPS/` 因数据失真已于 2026-07-25 删除）
 
 ---
 

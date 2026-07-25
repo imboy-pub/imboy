@@ -7,7 +7,7 @@
 | 我是谁 | 入口 |
 |--------|------|
 | 新加入的后端工程师 | [教程：本地跑通后端（15 分钟）](./tutorials/quickstart-backend.md) → [工程约定 CONVENTIONS](./CONVENTIONS.md) |
-| 运维 / 私有化部署 | [生产部署](../deploy/README.md) → [备份与恢复](./guides/operations/deployment/BACKUP-RESTORE.md) |
+| 运维 / 私有化部署 | [生产部署](../deploy/README.md) → [备份与恢复](./guides/operations/deployment/backup-restore.md) |
 | 前端 / 移动端开发 | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
 | SDK 使用者（外部） | imboy-sdk-js 仓库 README（快速开始） |
 | 插件开发者 | imboy-plugin-marketplace 仓库 README |
@@ -38,7 +38,7 @@
 ### 开发
 
 - [后端架构](./architecture/overview.md)：系统分层和核心组件
-- [模块地图](./architecture/module_map.md)：功能对应的代码位置
+- [模块地图](./architecture/module-map.md)：功能对应的代码位置
 - [数据库访问](./architecture/database-access.md)：Repo 与 SQL 规范
 - [API 格式](./reference/api-format.md)：请求、响应和分页约定
 - [错误码](./reference/error-codes.md)：错误码定义与使用
@@ -48,10 +48,10 @@
 ### 部署与运维
 
 - [生产部署](../deploy/README.md)
-- [备份与恢复](./guides/operations/deployment/BACKUP-RESTORE.md)
+- [备份与恢复](./guides/operations/deployment/backup-restore.md)
 - [版本升级](./guides/operations/upgrade-runbook.md)
 - [Garage 附件存储](./guides/operations/garage-deployment.md)
-- [监控](./guides/operations/deployment/MONITORING.md)
+- [监控](./guides/operations/deployment/monitoring.md)
 
 ### 安全
 

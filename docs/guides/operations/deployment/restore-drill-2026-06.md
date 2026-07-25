@@ -1,7 +1,7 @@
 # 备份恢复演练记录 2026-06 / Restore Drill 2026-06
 
 > 简体中文为权威版本，English follows.
-> 关联 / Related: [BACKUP-RESTORE.md](./BACKUP-RESTORE.md)、`scripts/backup_pg.sh`、`scripts/restore_pg.sh`
+> 关联 / Related: [backup-restore.md](./backup-restore.md)、`scripts/backup_pg.sh`、`scripts/restore_pg.sh`
 > **结论 / Result: ✅ PASS**（修复 2 个真实缺陷后达成 / after fixing 2 real defects）
 
 ---
@@ -79,7 +79,7 @@ FORCE=1 POSTGRES_DB=imboy_v1 bash scripts/restore_pg.sh \
 
 1. 生产首次启用前，按本演练在生产同构环境复跑一次（数据量更大，复核 RTO）。
 2. 开启 PostgreSQL `archive_mode=on` + WAL 归档，使 RPO 从"备份间隔"降到 < 5 min（PITR）。
-3. `restore_pg.sh` 的 timescaledb 处理已就绪；`BACKUP-RESTORE.md` 已同步说明恢复对 timescaledb 库为串行 + pre/post_restore。
+3. `restore_pg.sh` 的 timescaledb 处理已就绪；`backup-restore.md` 已同步说明恢复对 timescaledb 库为串行 + pre/post_restore。
 4. 增补"恢复后启动后端冒烟（登录/发消息）"自动化（当前演练止于数据层校验）。
 
 ---

@@ -55,7 +55,7 @@
 
 | 能力 | 真实状态（已核查） | 证据 |
 |---|---|---|
-| 音视频 | **纯转发信令**：`webrtc_ws_logic.erl` 仅校验好友/黑名单后转发 OFFER/ANSWER/CANDIDATE，**不参与 SDP 协商、无 SFU/MCU、无自带 TURN** → 仅支持 1对1 P2P | `docs/archive/analysis/webrtc-signaling-analysis.md` + `src/logic/webrtc_ws_logic.erl` |
+| 音视频 | **纯转发信令**：`webrtc_ws_logic.erl` 仅校验好友/黑名单后转发 OFFER/ANSWER/CANDIDATE，**不参与 SDP 协商、无 SFU/MCU、无自带 TURN** → 仅支持 1对1 P2P | `src/logic/webrtc_ws_logic.erl` + `docs/planning/p0-webrtc-relay-rootcause-2026-07.md` |
 | E2EE | RSA-OAEP-256+AES-256-GCM，服务端不解密 ciphertext。**但 transfer 模块违反零信任（服务端中转明文私钥，待重设计）**，换设备历史恢复不平滑 | 项目记忆 `e2ee_backend_audit` / `e2ee_cross_device_recovery` |
 | 支付 | 生产级：乐观锁原子钱包+订阅订单+网关注册表。⚠️遗留：真实网关仅 TODO 骨架、真机联调未做 | 项目记忆 `payment_subsystem_impl` |
 | License | RSA-SHA256 验签+域名绑定+到期宽限+配额 gate，已端到端验证（commit 57cc6fb）。未做=规模 gate 接 signup、状态 API、max_nodes | 项目记忆 `license_layer` |
@@ -111,7 +111,7 @@
 ## 7. 来源 / Sources
 
 **imboy 项目事实（代码核查 2026-06-16）**
-- `src/logic/webrtc_ws_logic.erl` + `docs/archive/analysis/webrtc-signaling-analysis.md`（RTC 纯转发）
+- `src/logic/webrtc_ws_logic.erl` + `docs/planning/p0-webrtc-relay-rootcause-2026-07.md`（RTC 纯转发与 relay 根因）
 - 项目记忆：`e2ee_backend_audit`、`e2ee_cross_device_recovery`、`payment_subsystem_impl`、`license_layer`、obs 12140（信创零实现）
 - 已有报告：`business-value-monetization-2026-06.md`、`im-market-monetization-2026-06.md`
 

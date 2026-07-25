@@ -5,7 +5,7 @@
 > Scope: WebSocket 连接、消息结构、错误约定与迁移说明  
 > Source of truth: `src/imboy_router.erl` + `src/api/websocket_handler.erl` + `src/logic/websocket_logic.erl` + `src/ds/message_ds.erl` + `src/ds/websocket_ds.erl` + `src/lib/imboy_codec.erl` + `src/lib/imboy_frame.erl` + `include/imboy_frame.hrl`  
 > Note: 本文中的 `v2.0` 指消息结构版本，`imboy.v2` 指分层二进制帧协议版本，二者相互独立。  
-> Related docs: `docs/reference/rest-api.md`, `docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`, `docs/guides/operations/security.md`, `proto/imboy.proto`, `.claude/plans/imboy-frame-protocol.md`
+> Related docs: `docs/reference/rest-api.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/guides/operations/security.md`, `proto/imboy.proto`, `.claude/plans/imboy-frame-protocol.md`
 
 ## 变更记录 (Changelog)
 
@@ -1643,7 +1643,7 @@ v2.0 与 v1.0 **不兼容**，需要前后端**同步升级**。
 - `docs/reference/error-codes.md`
 - ~~`docs/standards/hashid-encoding.md`~~ （已删除，TSID 迁移后不再使用 hashids）
 - `docs/guides/operations/security.md`
-- `docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`
+- `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`
 - `CLAUDE.md`
 
 ---

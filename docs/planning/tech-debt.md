@@ -93,3 +93,15 @@
 ## 四、一句话总结
 
 > IMBoy 骨架成熟（后端分层纪律是真金、消息 QoS 与 E2EE 设计扎实、约束即文档密度高、可观测栈完整），核心问题不是"不会做"而是"没收口"：正确范本与 ratchet 框架都已存在，最高性价比的动作是**把软门收紧成硬门、把注释约定升级为 lint/schema/CI 机制**。发布前先清 5 个阻断项（P0-1 支付回调、P0-4 AGPL、P1-A1 计费越权、P1-A2 首启 401、P1-D1 钱包冻结资金）。
+
+---
+
+## 五、工程质量维度补充（2026-07-25 自 `reference/engineering/technical-debt.md` 并入）
+
+> 原"工程视角债务笔记"的独有内容；与上文批次不重复的部分。
+
+- **巨型文件清单**（均超 800 行规范）：`imboy_pb.erl` 6018（生成物，可接受）、`adm_channel_handler.erl` 1044、`barrel_mcp_session.erl` 1027、`imboy_router.erl` 977、`moment_logic.erl` 962、`msg_c2c_logic.erl` 937、`websocket_handler.erl` 925；Flutter `chat_page.dart` 2234 + 12+ 个 >800 行。拆分见批次 5。
+- **工作区根级卫生**：非 git 仓库的工作区根散落 `REPAIR_PLAN_v2`、`CLEANUP_PLAN.md`、`spikes/`、`releases/` 等，归属需梳理（根 CLAUDE.md 已警示根级只允许 AI/工具配置）。
+- **坏死工作流**：`integration_test.yml` 路径失效。
+- **翻案防误报**（排查死代码时勿再误报）：`msg_rate_logic` 已接线、`textStream` 已复活（Phase 2）。
+- **增量改进编号**（原 ENG 系列，供排期引用）：ENG-01 补 custom_lint / 边界脚本；ENG-03 巨型文件逐个拆分、每步真机验证；ENG-04 liveRoom 冻结确认后下线；ENG-06 文档漂移批量修正。

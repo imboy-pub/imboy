@@ -18,4 +18,4 @@
 | 私有化部署（待补） | 30 分钟 | 运维 / 部署客户 |
 | 用 SDK 发出第一条消息（待补，写在 imboy-sdk-js 仓） | 15 分钟 | 外部集成者 |
 
-模板：见 [documentation-system/templates/TUTORIAL_TEMPLATE.md](../documentation-system/templates/TUTORIAL_TEMPLATE.md)
+模板：见 [documentation-system/templates/tutorial-template.md](../documentation-system/templates/tutorial-template.md)

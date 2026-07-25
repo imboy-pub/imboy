@@ -14,12 +14,12 @@
 | 文档 | 回答的问题 | 关联 |
 |------|-----------|------|
 | [product-profile-and-plugin-registry-design.md](./product-profile-and-plugin-registry-design.md) | 产品画像与插件注册中心为什么这样设计 | plugin/ 规范 |
-| [current-module-classification.md](./current-module-classification.md) | 现行模块分类的全景与归类逻辑 | architecture/module_map.md |
+| [current-module-classification.md](./current-module-classification.md) | 现行模块分类的全景与归类逻辑 | architecture/module-map.md |
 | [ai-companion-flutter-ui.md](./ai-companion-flutter-ui.md) | AI 助手冷启动的 Flutter UI 设计蓝图 | — |
 
 ## 相关入口
 
-- [architecture/](../architecture/)：架构活跃文档（overview、module_map、database-access、module-layer-cheatsheet）
+- [architecture/](../architecture/)：架构活跃文档（overview、module-map、database-access、module-layer-cheatsheet）
 - [archive/architecture/](../archive/architecture/)：已完成的架构历程（DDD 迁移状态、fastdfs→Garage 迁移、资源访问控制演进）
 
 ## 待补（Phase 4 深化）

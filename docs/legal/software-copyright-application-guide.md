@@ -59,7 +59,7 @@
 - [ ] 用户手册
 - [ ] 操作手册
 
-> 已生成文件：`docs/软著_说明书.md`
+> 已生成文件：`docs/legal/software-copyright-specification.md`
 
 ---
 
@@ -68,7 +68,7 @@
 1. **计算机软件著作权登记申请表**（在线填写后打印签章）
 2. **鉴别材料**：
    - 源代码文档（`docs/软著_源代码.txt`）→ 转为 Word/PDF，宋体小四，每页50行
-   - 软件说明书（`docs/软著_说明书.md`）→ 转为 Word/PDF，补充截图
+   - 软件说明书（`docs/legal/software-copyright-specification.md`）→ 转为 Word/PDF，补充截图
 3. **身份证明**：
    - 自然人：身份证复印件
    - 法人：营业执照副本复印件 + 法人身份证复印件

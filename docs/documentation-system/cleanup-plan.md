@@ -34,9 +34,9 @@
 | `reference/websocket-api-2.md` | `reference/websocket-api-2.md` | 参考 |
 | `reference/tsid-field-convention.md` | `reference/tsid-field-convention.md` | 参考 |
 | `reference/tsid-field-matrix.md` | `reference/tsid-field-matrix.md` | 参考 |
-| `reference/contracts/channel_api_contract_v1.md` | `reference/contracts/channel_api_contract_v1.md` | 参考 |
-| `reference/contracts/moment_api_contract_v1.md` | `reference/contracts/moment_api_contract_v1.md` | 参考 |
-| `reference/contracts/e2ee_server_persisted_shard_contract_v1.md` | `reference/contracts/e2ee_server_persisted_shard_contract_v1.md` | 参考 |
+| `reference/contracts/channel-api-contract-v1.md` | `reference/contracts/channel-api-contract-v1.md` | 参考 |
+| `reference/contracts/moment-api-contract-v1.md` | `reference/contracts/moment-api-contract-v1.md` | 参考 |
+| `reference/contracts/e2ee-server-persisted-shard-contract-v1.md` | `reference/contracts/e2ee-server-persisted-shard-contract-v1.md` | 参考 |
 | `guides/sentry-dsn-integration-guide.md` | `guides/sentry-dsn-integration-guide.md` | 指南 |
 
 只移动不改名，引用更新为机械的路径前缀替换。全部引用点已同步更新。
@@ -61,7 +61,7 @@
 | `migrations/` | 1 篇 | guides/migrations/ |
 | `libraries/` | 1 篇 | reference/ |
 | `design/` | 1 篇 | explanation/ |
-| `dev/` | 3 篇 | cheatsheet→reference/；changelog→engineering/；backend-readme 与根 README 去重 |
+| `dev/` | 3 篇 | cheatsheet→reference/；changelog→engineering/；backend-readme 与根 README 去重 |（2026-07-25 已执行：backend-readme 删除）
 
 ### 批次 E — 大专题目录拆分 ✅ 部分完成（2026-07-24）
 
@@ -82,15 +82,15 @@
 - release/ 4 活跃指南 → guides/release/；2 快照 → archive/release/；3 商业 → business/
 - plugin/ 3 规范 → reference/plugin/
 - CODEMAPS/ → archive/CODEMAPS/（实测失真 +46%，已加基线警告）
-- roadmap/ 8 篇保留原位（TASKS.md 是 loop 状态真源，不可动）
+- roadmap/ 8 篇保留原位（tasks.md 是 loop 状态真源，不可动）
 - api-sandbox/ 保留（工具与相对路径强耦合）
 
 ### 批次 G — architecture/standards/templates/benchmark 归位 ✅ 已完成（2026-07-24，团队协作）
 
 - architecture/adr/ 2 篇 → docs/adr/0005、0006（统一编号风格，索引登记原名）
 - architecture/ 5 篇完成历程 → archive/architecture/；2 篇设计 → explanation/
-- 保留 architecture/ 仅 4 篇活跃（overview/module_map/database-access/module-layer-cheatsheet）
-- standards/ 3 篇 → reference/；e2ee-key-rotation → guides/e2ee/（待并入）；migration_naming → reference/engineering/
+- 保留 architecture/ 仅 4 篇活跃（overview/module-map/database-access/module-layer-cheatsheet）
+- standards/ 3 篇 → reference/；e2ee-key-rotation → guides/e2ee/（待并入）；migration-naming → reference/engineering/
 - templates/PRIVACY_POLICY → legal/（加法务守门提示）
 - benchmark.md → guides/operations/
 

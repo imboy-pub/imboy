@@ -1,6 +1,7 @@
 # imboy 执行任务清单 / Execution Checklist
 
 > 版本 2026-07-02 | 汇总本次会话四份分析文档为单一可执行清单。
+> 注意：loop 任务状态唯一真源是 `docs/roadmap/tasks.md`（2026-07-22 修订，更新于本清单之后）；冲突以 tasks.md 为准。
 > **本清单只做调度**（ID/依赖/分工/验收一句话/阻塞状态），详细方案见各源文档：
 > - 全项目巡检：[project-audit-roadmap-2026-07.md](./project-audit-roadmap-2026-07.md)
 > - P0-A WebRTC：[p0-webrtc-relay-rootcause-2026-07.md](./p0-webrtc-relay-rootcause-2026-07.md)

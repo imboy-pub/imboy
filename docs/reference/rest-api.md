@@ -4,7 +4,7 @@
 > Status: 长期协议契约文档  
 > Scope: 通用 REST 入口、兼容性接口与基础 envelope 约定  
 > Source of truth: `src/imboy_router.erl` + 本文涉及接口对应的 handler / logic 代码  
-> Related docs: `docs/reference/rest-api-v1-catalog.md`（全量 /api/v1/* 端点总目录）, `docs/reference/contracts/channel_api_contract_v1.md`, `docs/reference/contracts/moment_api_contract_v1.md`, `docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`, `docs/reference/websocket-api-2.md`
+> Related docs: `docs/reference/rest-api-v1-catalog.md`（全量 /api/v1/* 端点总目录）, `docs/reference/contracts/channel-api-contract-v1.md`, `docs/reference/contracts/moment-api-contract-v1.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/reference/websocket-api-2.md`
 
 ## 0. TSID 字段约定
 
@@ -24,9 +24,9 @@
 
 以下模块使用独立契约文档维护，不再在本文件重复展开：
 
-- 频道：`docs/reference/contracts/channel_api_contract_v1.md`
-- 朋友圈：`docs/reference/contracts/moment_api_contract_v1.md`
-- E2EE 社交恢复分片：`docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`
+- 频道：`docs/reference/contracts/channel-api-contract-v1.md`
+- 朋友圈：`docs/reference/contracts/moment-api-contract-v1.md`
+- E2EE 社交恢复分片：`docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`
 - WebSocket：`docs/reference/websocket-api-2.md`
 - 通用响应包：`docs/api/envelope.schema.json`
 
@@ -268,17 +268,17 @@ Query：
 
 以下接口已迁移到独立文档维护：
 
-- 频道主契约与邀请 / 订单 / 未读同步：`docs/reference/contracts/channel_api_contract_v1.md`
-- 朋友圈主契约：`docs/reference/contracts/moment_api_contract_v1.md`
-- E2EE 社交恢复分片：`docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`
+- 频道主契约与邀请 / 订单 / 未读同步：`docs/reference/contracts/channel-api-contract-v1.md`
+- 朋友圈主契约：`docs/reference/contracts/moment-api-contract-v1.md`
+- E2EE 社交恢复分片：`docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`
 - WebSocket 消息协议：`docs/reference/websocket-api-2.md`
 
 ## 9. Related Docs
 
 - `docs/reference/rest-api-v1-catalog.md` —— 全量 `/api/v1/*` 端点总目录（方法/鉴权/请求/响应一览）
-- `docs/reference/contracts/channel_api_contract_v1.md`
-- `docs/reference/contracts/moment_api_contract_v1.md`
-- `docs/reference/contracts/e2ee_server_persisted_shard_contract_v1.md`
+- `docs/reference/contracts/channel-api-contract-v1.md`
+- `docs/reference/contracts/moment-api-contract-v1.md`
+- `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`
 - `docs/reference/websocket-api-2.md`
 - `docs/api/envelope.schema.json`
 - `docs/reference/error-codes.md`

@@ -12,9 +12,9 @@
 - API 格式规范：[../reference/api-format.md](../reference/api-format.md)
 - 错误码：[../reference/error-codes.md](../reference/error-codes.md)
 - TSID 字段约定：[tsid-field-convention.md](./tsid-field-convention.md) ｜ [tsid-field-matrix.md](./tsid-field-matrix.md)
-- 频道详细契约：[channel_api_contract_v1.md](./contracts/channel_api_contract_v1.md)
-- 朋友圈详细契约：[moment_api_contract_v1.md](./contracts/moment_api_contract_v1.md)
-- E2EE 社交恢复分片：[e2ee_server_persisted_shard_contract_v1.md](./contracts/e2ee_server_persisted_shard_contract_v1.md)
+- 频道详细契约：[channel-api-contract-v1.md](./contracts/channel-api-contract-v1.md)
+- 朋友圈详细契约：[moment-api-contract-v1.md](./contracts/moment-api-contract-v1.md)
+- E2EE 社交恢复分片：[e2ee-server-persisted-shard-contract-v1.md](./contracts/e2ee-server-persisted-shard-contract-v1.md)
 - WebSocket 协议：[websocket-api-2.md](./websocket-api-2.md)
 
 ---
@@ -380,7 +380,7 @@
 
 # E. 频道 / Channel
 
-> 频道字段完整结构详见 [channel_api_contract_v1.md](./contracts/channel_api_contract_v1.md)。频道对象顶层含 `id`(TSID)、`name`、`type`(smallint 0\|1\|2)、`description`、`avatar`、`custom_id`、`tags`、`creator_uid`(TSID) 等。路径参数“path 优先、body 回退”。
+> 频道字段完整结构详见 [channel-api-contract-v1.md](./contracts/channel-api-contract-v1.md)。频道对象顶层含 `id`(TSID)、`name`、`type`(smallint 0\|1\|2)、`description`、`avatar`、`custom_id`、`tags`、`creator_uid`(TSID) 等。路径参数“path 优先、body 回退”。
 
 ## 频道核心 / Channel Core
 
@@ -452,7 +452,7 @@
 
 ## 朋友圈 / Moment
 
-> 详见 [moment_api_contract_v1.md](./contracts/moment_api_contract_v1.md)。feed/user_posts/comments 经 `enrich_*` 批量补全作者昵称/头像/liked；`post_transfer` 将 `like_count`/`comment_count` 收敛到 `stats`。
+> 详见 [moment-api-contract-v1.md](./contracts/moment-api-contract-v1.md)。feed/user_posts/comments 经 `enrich_*` 批量补全作者昵称/头像/liked；`post_transfer` 将 `like_count`/`comment_count` 收敛到 `stats`。
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
@@ -515,7 +515,7 @@
 
 # G. E2EE 端到端加密 / E2EE
 
-> 所有 E2EE 端点先经 `imboy_policy:e2ee_enabled()` 门控，关闭时返回 ?ERR_FEATURE_DISABLED。社交恢复分片详见 [e2ee_server_persisted_shard_contract_v1.md](./contracts/e2ee_server_persisted_shard_contract_v1.md)。
+> 所有 E2EE 端点先经 `imboy_policy:e2ee_enabled()` 门控，关闭时返回 ?ERR_FEATURE_DISABLED。社交恢复分片详见 [e2ee-server-persisted-shard-contract-v1.md](./contracts/e2ee-server-persisted-shard-contract-v1.md)。
 
 ## E2EE 密钥与备份 / Keys & Backup
 
