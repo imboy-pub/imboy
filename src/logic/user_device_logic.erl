@@ -12,7 +12,8 @@
 -export([
     device_name/2,
     change_name/3,
-    delete/2
+    delete/2,
+    is_active/2
 ]).
 -export([page/3]).
 
@@ -79,14 +80,24 @@ change_name(Uid, DID, Name) ->
     imboy_cache:flush(Key),
     ok.
 
+%% @doc 设备是否活跃（未被移除）
+%% 存在的理由：Handler 层不得直调 DS（分层约束，见 scripts/check_module_boundaries.sh），
+%% passport_handler 刷新端点需要这条判据。逻辑与缓存都在 user_device_ds:is_active/2。
+%% @param Uid 用户ID
+%% @param DID 设备ID
+%% @return boolean()
+-spec is_active(integer(), binary()) -> boolean().
+is_active(Uid, DID) ->
+    user_device_ds:is_active(Uid, DID).
+
 %% @doc 删除设备
 %% 删除指定设备记录，并联动断开该设备的 WS 会话（在线时）。
-%% ponytail: token 为 uid 级非设备级，无法按设备 revoke；
-%% 被踢设备重连须重新认证，且设备记录已删（E2EE 公钥随之失效）。
-%% 上限：全仓没有 token 吊销名单，本函数只断开当前 WS 会话，已签发 token 不失效。
-%% 升级触发：出现「设备丢失/被盗需远程吊销」或需按设备撤销 E2EE 设备信任时，
-%% 把 did 从可选 claim（token_ds 签发已支持，E2EE-013）提升为必填，
-%% 并补设备级吊销名单与鉴权侧校验。
+%% 设备行本身就是白名单：删除后 auth_ds:verify_token / passport_handler 刷新 /
+%% websocket_ds:auth 三条路径都会因 is_active=false 拒绝该设备的 token（401）。
+%% ponytail: did-less 的 legacy token（token_ds 签发 did claim 之前的存量）
+%% 仍不可吊销——它没有设备身份可比对，只能等自然过期。
+%% 升级触发：需要连 legacy token 一起吊销时，把 did 从可选 claim 提升为必填，
+%% 并对无 did token 直接拒绝（那会造成一次性全端登出，需要发版窗口配合）。
 %% @param Uid 用户ID
 %% @param DID 设备ID
 %% @return ok
@@ -95,6 +106,17 @@ delete(Uid, DID) ->
     user_device_ds:delete(Uid, DID),
     Key = {user_device_name, 2, Uid, DID},
     imboy_cache:flush(Key),
+    %% 吊销判据缓存必须立刻失效；生产 dsync_enabled=false 时 imboy_cache:flush/1
+    %% 不跨节点，故显式广播（其他节点最差也只被 60s TTL 兜底）。
+    ActiveKey = {user_device_active, Uid, DID},
+    imboy_cache:flush(ActiveKey),
+    _ =
+        try
+            imboy_cache:broadcast({flush, ActiveKey})
+        catch
+            Class:Reason ->
+                ?WARN_LOG({device_active_cache_broadcast_failed, Uid, DID, Class, Reason})
+        end,
     case find_device_by_did(imboy_syn:list_by_uid(Uid), DID) of
         {ok, Pid, _DType} ->
             send_kick_message(Pid, #{<<"reason">> => <<"设备已被移除"/utf8>>}),

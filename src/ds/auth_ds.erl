@@ -95,8 +95,18 @@ do_verify_sign(_, _, _, _) ->
 verify_token(Authorization) ->
     Token = parse_authorization_header(Authorization),
     case token_ds:decrypt_token(Token) of
+        %% did 为空的 legacy token：没有设备身份可比对，原样放行。
+        %% 这是"零全端登出"的关键——存量 token 不受设备吊销影响。
+        {ok, Id, _ExpireDAt, <<"tk">>, <<>>} when is_integer(Id) ->
+            {ok, Id, <<>>};
         {ok, Id, _ExpireDAt, <<"tk">>, Did} when is_integer(Id) ->
-            {ok, Id, Did};
+            %% 设备已被移除（user_device 行不在）→ token 立即失效，401 强制重登。
+            case user_device_ds:is_active(Id, Did) of
+                true ->
+                    {ok, Id, Did};
+                false ->
+                    {error, ?ERR_TOKEN_INVALID, <<"设备已被移除，请重新登录"/utf8>>}
+            end;
         {ok, _Id, _ExpireDAt, <<"rtk">>, _Did} ->
             {error, ?ERR_TOKEN_REFRESH_NOT_ALLOWED, <<"TOKEN REFRESH NOT ALLOWED"/utf8>>};
         {error, Code, Msg, _Map} ->

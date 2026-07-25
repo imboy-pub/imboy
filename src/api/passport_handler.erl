@@ -14,6 +14,7 @@
 
 -include("log.hrl").
 -include("imboy_const.hrl").
+-include("error_code.hrl").
 
 %% @doc 获取可信任的真实客户端 IP
 %% 只有来自受信任代理的请求才信任 x-forwarded-for；否则使用直连 IP
@@ -224,7 +225,11 @@ quick_login(Req0) ->
     Cosv = maps:get(<<"sys_version">>, PostVals, <<>>),
     Ip = get_real_ip(Req0),
     % ?DEBUG_LOG(["Ip", Ip]),
-    Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip},
+    %% did 头必须提上来：passport_logic:quick_login/4 用它绑 token 的 did claim，
+    %% user_server 的 login_success 也从同一个 map 取 did 写 user_device 行。
+    %% 缺这一行时两者同为空，该设备既无法被按设备吊销，设备记录也是断的。
+    Did = cowboy_req:header(<<"did">>, Req0, <<>>),
+    Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip, <<"did">> => Did},
     % ?DEBUG_LOG(["PostVals", PostVals, Post2]),
     case passport_logic:quick_login(Service, Operator, Token, Post2) of
         {ok, Data} ->
@@ -261,15 +266,22 @@ refreshtoken(Req0) ->
                 {ok, Id, _ExpireDAt, <<"rtk">>, Did} ->
                     % 状态: -1 删除  0 禁用  1 启用
                     Status = user_logic:get_status(Id),
-                    case Status of
-                        _Other when Status > -1 ->
+                    % 设备被移除 → 拒绝刷新。这是真正切断 refresh token 356 天窗口
+                    % 的地方；did 为空的 legacy refresh token 原样放行（零全端登出）。
+                    DeviceActive = Did =:= <<>> orelse user_device_logic:is_active(Id, Did),
+                    case {Status > -1, DeviceActive} of
+                        {true, true} ->
                             % E2EE-013：刷新保留原 refresh token 绑定的设备 DID。
                             elib_response:success(
                                 Req0,
                                 #{<<"token">> => token_ds:encrypt_token(Id, Did)}
                             );
-                        _ ->
-                            elib_response:error(Req0, "用户被禁用或已删除")
+                        {false, _} ->
+                            elib_response:error(Req0, "用户被禁用或已删除");
+                        {_, false} ->
+                            elib_response:error(
+                                Req0, <<"设备已被移除，请重新登录"/utf8>>, ?ERR_TOKEN_INVALID
+                            )
                     end;
                 {error, ErrCode, Msg, _Map} ->
                     elib_response:error(Req0, Msg, ErrCode)

@@ -142,13 +142,18 @@ do_verify_sign_with_invalid_input_test() ->
     ?assertEqual(false, auth_ds:do_verify_sign(<<"sign">>, <<"plaintext">>, <<"key">>, <<"md5">>)).
 
 verify_token_with_valid_token_test_() ->
-    ?WITH_MECK(
-        token_ds,
+    ?WITH_MECKS(
         [
-            %% E2EE-013：decrypt_token 返回 5 元组（含绑定 DID）。
-            {'decrypt_token', 1, fun(_Token) ->
-                {ok, 123, <<"2026-03-16">>, <<"tk">>, <<"dev-9">>}
-            end}
+            {token_ds, [
+                %% E2EE-013：decrypt_token 返回 5 元组（含绑定 DID）。
+                {'decrypt_token', 1, fun(_Token) ->
+                    {ok, 123, <<"2026-03-16">>, <<"tk">>, <<"dev-9">>}
+                end}
+            ]},
+            %% did 绑定的 token 需设备仍在（设备被移除 = token 吊销）
+            {user_device_ds, [
+                {'is_active', 2, fun(123, <<"dev-9">>) -> true end}
+            ]}
         ],
         fun() ->
             ?assertEqual(

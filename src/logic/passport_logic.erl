@@ -41,6 +41,10 @@
 quick_login(<<>>, _, _, _) ->
     {error, <<"未指定登录服务"/utf8>>};
 quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
+    %% E2EE-013：绑定登录设备 DID 进 token。
+    %% did 与 user_server 的 {login_success, Uid, PostVals} 写 user_device 行取的是
+    %% 同一个 PostVals key，两者天然一致；调用方没给就退化为 legacy 空 did。
+    Did = maps:get(<<"did">>, PostVals, <<>>),
     case imboy_sms:jverification(Token) of
         {error, Msg} ->
             {error, Msg};
@@ -61,12 +65,15 @@ quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
                     case user_ds:insert_and_get_id(Data) of
                         {ok, Uid2} ->
                             User2 = user_ds:find_by_id(Uid2, ?LOGIN_COLUMN),
-                            {ok, login_resp(User2, #{<<"action">> => <<"need_set_password">>})};
+                            {ok,
+                                login_resp(User2, Did, #{
+                                    <<"action">> => <<"need_set_password">>
+                                })};
                         {error, Reason} ->
                             {error, Reason}
                     end;
                 _ ->
-                    {ok, login_resp(User, #{})}
+                    {ok, login_resp(User, Did, #{})}
             end
     end;
 quick_login(_, _, _, _) ->

@@ -36,7 +36,7 @@ group_vote_handler.erl
 allowed_modules_for_handler() {
   case "$1" in
     passport_handler.erl)
-      echo "config_ds passport_logic token_ds user_logic"
+      echo "config_ds passport_logic token_ds user_device_logic user_logic"
       ;;
     user_handler.erl)
       echo "auth_ds config_ds friend_logic user_logic"

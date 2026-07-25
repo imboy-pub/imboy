@@ -312,7 +312,22 @@ handle_confirm(Req, State) ->
                                                         ?ERR_QR_LOGIN_NOT_SCANNED
                                                     );
                                                 Uid ->
-                                                    LoginToken = generate_login_token(Uid),
+                                                    %% E2EE-013：被登录的设备是 create 时 Web 端上报的
+                                                    %% device_id（不是扫码的手机）。必须先写 user_device
+                                                    %% 行、再签发/广播 token，否则 Web 端可能拿着绑定
+                                                    %% did 的 token 抢在设备行落库前发请求，被设备级
+                                                    %% 校验当成不存在的设备拒掉。
+                                                    DeviceId = maps:get(<<"device_id">>, Session),
+                                                    DeviceName = maps:get(
+                                                        <<"device_name">>, Session
+                                                    ),
+                                                    Platform = maps:get(<<"platform">>, Session),
+                                                    log_device_login(
+                                                        Uid, DeviceId, DeviceName, Platform
+                                                    ),
+                                                    LoginToken = generate_login_token(
+                                                        Uid, DeviceId
+                                                    ),
                                                     UpdatedSession = Session#{
                                                         <<"status">> => <<"confirmed">>,
                                                         <<"login_token">> => LoginToken,
@@ -328,15 +343,6 @@ handle_confirm(Req, State) ->
                                                         qr_login_event_ds:event(
                                                             confirmed, LoginToken
                                                         )
-                                                    ),
-
-                                                    DeviceId = maps:get(<<"device_id">>, Session),
-                                                    DeviceName = maps:get(
-                                                        <<"device_name">>, Session
-                                                    ),
-                                                    Platform = maps:get(<<"platform">>, Session),
-                                                    log_device_login(
-                                                        Uid, DeviceId, DeviceName, Platform
                                                     ),
                                                     elib_response:success(
                                                         Req,
@@ -419,11 +425,11 @@ parse_qr_token(QRToken) ->
         _:_ -> {error, invalid_format}
     end.
 
-%% @doc 生成登录 Token
--spec generate_login_token(integer()) -> binary().
-generate_login_token(Uid) ->
+%% @doc 生成登录 Token（E2EE-013：绑定被登录设备的 DID）
+-spec generate_login_token(integer(), binary()) -> binary().
+generate_login_token(Uid, Did) ->
     % 调用 token_ds 生成 JWT Token
-    token_ds:encrypt_token(Uid).
+    token_ds:encrypt_token(Uid, Did).
 
 %% @doc 缓存会话
 -spec cache_session(binary(), map()) -> ok.

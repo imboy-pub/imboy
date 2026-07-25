@@ -245,6 +245,10 @@ refresh_token_test_() ->
                     1
                 end}
             ]},
+            %% 刷新须校验 token 绑定的设备仍在（设备被移除 = token 吊销）
+            {user_device_logic, [
+                {'is_active', 2, fun(12345, <<"dev-1">>) -> true end}
+            ]},
             {elib_response, [
                 {'success', 2, fun(_Req, Data) ->
                     cowboy_req_h:new(#{

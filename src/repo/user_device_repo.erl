@@ -9,6 +9,7 @@
 -export([login_count/2]).
 -export([device_name/2]).
 -export([delete/2]).
+-export([is_active/2]).
 -export([update_by_did/4]).
 -export([
     count_by_uid/1,
@@ -126,6 +127,24 @@ login_count(Uid, DID) ->
     of
         {ok, LoginCount} when is_integer(LoginCount) -> LoginCount;
         _ -> 0
+    end.
+
+%% @doc 设备是否仍是活跃设备（未被移除）
+%% user_device 行本身就是设备白名单：delete/2 是硬删，「行不在 = 已吊销」，
+%% 因此不需要额外的吊销名单表。走部分索引 idx_user_device_uid_active
+%% （priv/migrations/00000043_device_identity.up.sql）。
+%% 返回 {error, _} 表示"查不出来"（DB 故障），与"确定查无此行"语义不同，
+%% 由上层 user_device_ds:is_active/2 决定放行策略。
+-spec is_active(integer(), binary()) -> {ok, boolean()} | {error, term()}.
+is_active(Uid, DID) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT 1 FROM ", Tb/binary,
+            " WHERE status = 1 AND user_id = $1 AND device_id = $2 LIMIT 1">>,
+    case elib_pg:query(Sql, [Uid, DID]) of
+        {ok, Rows} when is_list(Rows) -> {ok, Rows =/= []};
+        {error, Reason} -> {error, Reason};
+        Other -> {error, Other}
     end.
 
 -spec delete(integer(), binary()) -> ok.

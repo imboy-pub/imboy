@@ -77,9 +77,24 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
         % Token 有效且未过期（token_ds 已检查过期）
-        {ok, Uid, ExpireDAt, Type, _Did} ->
+        {ok, Uid, ExpireDAt, <<"tk">>, Did} ->
             % 将过期时间传递给后续处理，便于提前刷新 Token
-            auth_after(Uid, Req, State#{token_expire_at => ExpireDAt, token_type => Type}, Opt);
+            State1 = State#{token_expire_at => ExpireDAt, token_type => <<"tk">>},
+            auth_device(Uid, Did, Req, State1, Opt);
+        %% refresh token（356 天有效期）不是 WS 门票：只接受 <<"tk">>，
+        %% 与 HTTP 侧 auth_ds:verify_token/1 的既有行为对齐。
+        {ok, _Uid, _ExpireDAt, _OtherType, _Did} ->
+            ok = ?WARN_LOG([ws_refresh_token_rejected]),
+            Req2 = cowboy_req:reply(
+                401,
+                #{
+                    <<"content-type">> => <<"application/json">>,
+                    <<"x-token-error">> => <<"refresh_not_allowed">>
+                },
+                <<"{\"code\":901,\"msg\":\"token_refresh_not_allowed\"}">>,
+                Req
+            ),
+            {ok, Req2, State#{error => 901, msg => <<"token_refresh_not_allowed">>}};
         {error, 705, _, _Map} ->
             %% 【安全修复】过期 Token 应该拒绝连接，要求客户端重新登录
             %% 原本用 4401 是非法 HTTP 状态码，cowboy 会静默关闭不发 response；
@@ -133,6 +148,36 @@ auth(Auth, Req0, State0, _Opt) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 设备维度校验：token 的 did 权威 + 设备吊销检查
+%%
+%% did 以 token 为准：header/query 的 did 是"客户端自称"，可任意伪造，
+%% 只有 token 未绑定 did（legacy 签发）时才回退到 websocket_handler 解析出的值。
+%% did 不可伪造是设备吊销能生效的前提。
+%%
+%% did 为空的 legacy token 直接放行（无设备身份可比对，强制失效会造成全端登出）。
+-spec auth_device(non_neg_integer(), binary(), cowboy_req:req(), map(), map()) ->
+    {ok, cowboy_req:req(), map()}
+    | {cowboy_websocket, cowboy_req:req(), map(), map()}.
+auth_device(Uid, <<>>, Req, State, Opt) ->
+    auth_after(Uid, Req, State, Opt);
+auth_device(Uid, Did, Req, State, Opt) when is_binary(Did) ->
+    case user_device_ds:is_active(Uid, Did) of
+        true ->
+            auth_after(Uid, Req, State#{did => Did}, Opt);
+        false ->
+            ok = ?WARN_LOG([ws_device_revoked, Uid, Did]),
+            Req2 = cowboy_req:reply(
+                401,
+                #{
+                    <<"content-type">> => <<"application/json">>,
+                    <<"x-token-error">> => <<"device_revoked">>
+                },
+                <<"{\"code\":401,\"msg\":\"device_revoked\"}">>,
+                Req
+            ),
+            {ok, Req2, State#{error => 401, msg => <<"device_revoked">>}}
+    end.
 
 %% @doc WebSocket认证后的处理
 %%

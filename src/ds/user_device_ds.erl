@@ -14,6 +14,7 @@
 -export([login_count/2]).
 -export([device_name/2]).
 -export([delete/2]).
+-export([is_active/2]).
 -export([update_by_did/4]).
 -export([count_by_uid/1, page/3]).
 -export([list_public_keys/1]).
@@ -112,6 +113,28 @@ save(Now, Uid, DID, PostVals) ->
 -spec delete(integer(), binary()) -> ok.
 delete(Uid, DID) ->
     user_device_repo:delete(Uid, DID).
+
+%% @doc 设备是否仍活跃（未被移除）——token 吊销的唯一判据
+%% 缓存 60s：吊销延迟上限 60s；删除设备时 user_device_logic:delete/2 会
+%% 主动 flush 并跨节点广播，正常路径是即时生效。
+%% @param Uid 用户ID
+%% @param DID 设备ID
+%% @return boolean()
+-spec is_active(integer(), binary()) -> boolean().
+is_active(Uid, DID) ->
+    Key = {user_device_active, Uid, DID},
+    Fun = fun() -> user_device_repo:is_active(Uid, DID) end,
+    case imboy_cache:memo(Fun, Key, 60) of
+        {ok, Active} when is_boolean(Active) ->
+            Active;
+        Other ->
+            %% ponytail: DB 查不出来时 fail-open（放行），只有"确定查无此行"才判吊销。
+            %% 否则一次 DB 抖动会把所有 did 绑定 token 的用户全端踢下线。
+            %% 上限：DB 故障期间已被移除的设备仍能访问（最长 60s 缓存 TTL）。
+            %% 升级触发：需要强一致吊销时改 fail-closed + 熔断降级。
+            ok = ?WARN_LOG({user_device_is_active_unavailable, Uid, DID, Other}),
+            true
+    end.
 
 %% @doc 根据设备ID更新设备信息
 %% @param Uid 用户ID

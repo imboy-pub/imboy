@@ -617,3 +617,70 @@ find_password_unsupported_type_fails_test_() ->
         ),
         ?assertMatch({error, _}, Result)
     end).
+
+%% ===================================================================
+%% E2EE-013: quick_login 的 did 绑定
+%% ===================================================================
+
+quick_login_did_user_row() ->
+    #{
+        <<"id">> => 1001,
+        <<"email">> => <<>>,
+        <<"nickname">> => <<"quick">>,
+        <<"avatar">> => <<>>,
+        <<"account">> => <<"quick_acc">>,
+        <<"gender">> => 0,
+        <<"region">> => <<>>,
+        <<"sign">> => <<>>,
+        <<"status">> => 1
+    }.
+
+quick_login_binds_did_into_token_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_sms, [
+                {'jverification', 1, fun(_Token) -> {ok, <<"13800138000">>} end}
+            ]},
+            {user_ds, [
+                {'find_by_mobile', 2, fun(_Mobile, _Fields) -> quick_login_did_user_row() end}
+            ]},
+            {token_ds, [
+                {'encrypt_token', 2, fun(1001, <<"dev-abc">>) -> <<"tk_with_did">> end},
+                {'encrypt_refreshtoken', 2, fun(1001, <<"dev-abc">>) -> <<"rtk_with_did">> end}
+            ]}
+        ],
+        fun() ->
+            {ok, Data} = passport_logic:quick_login(
+                <<"jverify">>,
+                <<"CM">>,
+                <<"jv_token">>,
+                #{<<"did">> => <<"dev-abc">>}
+            ),
+            ?assertEqual(<<"tk_with_did">>, maps:get(<<"token">>, Data)),
+            ?assertEqual(<<"rtk_with_did">>, maps:get(<<"refreshtoken">>, Data))
+        end
+    ).
+
+%% 调用方未上报 did（当前 passport_handler 即如此）→ 仍签发空 did token，不报错
+quick_login_without_did_issues_legacy_token_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_sms, [
+                {'jverification', 1, fun(_Token) -> {ok, <<"13800138000">>} end}
+            ]},
+            {user_ds, [
+                {'find_by_mobile', 2, fun(_Mobile, _Fields) -> quick_login_did_user_row() end}
+            ]},
+            {token_ds, [
+                {'encrypt_token', 2, fun(1001, <<>>) -> <<"tk_legacy">> end},
+                {'encrypt_refreshtoken', 2, fun(1001, <<>>) -> <<"rtk_legacy">> end}
+            ]}
+        ],
+        fun() ->
+            {ok, Data} = passport_logic:quick_login(
+                <<"jverify">>, <<"CM">>, <<"jv_token">>, #{}
+            ),
+            ?assertEqual(<<"tk_legacy">>, maps:get(<<"token">>, Data)),
+            ?assertEqual(<<"rtk_legacy">>, maps:get(<<"refreshtoken">>, Data))
+        end
+    ).

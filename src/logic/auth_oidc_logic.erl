@@ -470,6 +470,15 @@ nickname(Name, _Sub) ->
 
 %% ===================================================================
 %% Internal: 签发（复用 passport_logic:login_resp/2 唯一收口）
+%%
+%% E2EE-013 已知缺口：这里签发的是 did-less token（设备级吊销对它无效）。
+%% OIDC 流三个入口都拿不到设备 DID：
+%%   - authorize：浏览器 GET，只带 client 参数（open 白名单，无 did 头）
+%%   - callback ：IdP 重定向，只带 code/state
+%%   - exchange ：App POST，只带 otc（且 Payload 已在此处签好）
+%% 且本流程全程不写 user_device 行，凭空造一个 did 只会产生幽灵设备。
+%% 补齐需要客户端配合：App 在 authorize 或 exchange 上报自己的 did，
+%% 随 state/otc 透传到此处，并同步落 user_device 行后再签发。
 %% ===================================================================
 
 finish_login(Uid, Client, Ip) ->
