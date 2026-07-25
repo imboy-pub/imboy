@@ -17,7 +17,7 @@
 | 3（R18） | **直接修改 vendored `.elp/elp-repo/.../eqwalizer_specs.erl` 源码 + 清 elp 缓存** | elp 不加载，无效 |
 | 4（R18） | **编译 eqwalizer_specs → beam 放入 ebin/ + 清 elp 缓存** | eqWAlizer 不加载，完全无效 |
 
-**结论**：eqWAlizer 的 spec override 不是文件系统机制——specs 编译进 elp/eqWAlizer 的 JVM 二进制中，运行时**不读 `.erl` 源文件、不读 `.beam` 文件**。**改 eqwalizer_specs 唯一方式：fork WhatsApp/eqwalizer 源码 + 重编译 elp 二进制**（非模块级变更，需 Rust/Scala 工具链）。
+**结论**：eqWAlizer 的 spec override 不是文件系统机制——specs 编译进 elp/eqWAlizer 发行二进制中（本机 Homebrew 原生二进制 `strings` 可直接看到 `eqwalizer_specs` 全文嵌入，CI 路径则为 Scala jar），运行时**不读 `.erl` 源文件、不读 `.beam` 文件**。**改 eqwalizer_specs 唯一方式：fork WhatsApp/eqwalizer 源码 + 重编译 elp 二进制**（非模块级变更，需 Rust/Scala 工具链）。
 
 **影响**：R16 原方案中的"~4 人·时 fork + 本地 clone"路径不成立。实际投入量级：
 - fork eqWAlizer 主仓库（Scala 91% + Erlang 8%）
@@ -40,7 +40,7 @@
 | 已消部分 | 7 Gradualizer + 1 eqWAlizer 真阳性（4 commits）；6 gen_server spec 收敛（R15） |
 | 瓶颈 | lib 层 30 failing 模块的 error **100% 属于 OTP/epgsql/depcache/cowboy 第三方类型缝隙**——非源码可修 |
 
-**Fork `eqwalizer_support` 是唯一能让 lib 层转阻塞的技术路径**。不 fork，eqWAlizer 永远只能做非阻塞参考门禁（当前状态）。
+~~**Fork `eqwalizer_support` 是唯一能让 lib 层转阻塞的技术路径**~~（R18 修订：fork `eqwalizer_support` 本身无效，唯一路径是 fork eqWAlizer 主仓库并重编译 elp 二进制，见顶部修订块）。不走该专项，eqWAlizer 只能做非阻塞参考门禁（当前状态）。
 
 ---
 
@@ -123,7 +123,9 @@ lib 层 fork 覆盖的模式可复用到 api/repo/ds/logic 层——但那些层
 
 ## 5. 架构方案
 
-### 5.1 选项 A：Fork + 本地 clone（推荐）
+### 5.1 选项 A：Fork + 本地 clone（~~推荐~~ **R18 已证伪，勿照做**）
+
+> ⚠️ **R18 修订**：下述步骤 3–5 实测无效——elp 不从磁盘读 eqwalizer_specs（无论 `.erl` 还是 `.beam`），specs 内嵌于 elp 发行二进制。保留原文仅作记录。
 
 ```
 1. Fork WhatsApp/eqwalizer → github.com/imboy/eqwalizer-fork
@@ -152,7 +154,7 @@ lib 层 fork 覆盖的模式可复用到 api/repo/ds/logic 层——但那些层
 
 ## 6. 实施步骤
 
-### Phase 0：Fork 与接入（1 人·时）
+### Phase 0：Fork 与接入（~~1 人·时~~ R18 修订：此路径无效；真实量级见顶部修订块）
 
 ```bash
 # 1. Fork WhatsApp/eqwalizer 到 imboy org

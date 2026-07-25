@@ -348,6 +348,7 @@ R10 结论写过「让 eqWAlizer 真正可用的**唯一路径**是写本地 `eq
 - **假设**：在 `src/lib/` 建项目本地 `eqwalizer_specs.erl`，给 `jsone:decode/2` 写更精确 override（`{ok, map()} | {error, term()}` 取代 vendored 的 `eqwalizer:dynamic()`），观察 `elib_uri` line 115 的 jsone error 是否消失。
 - **结果**：`elib_uri` 仍 10 error；line 115 仍报 `jsone:decode` 返回 `term()`；**无任何模块名冲突告警，也无任何改善**。
 - **结论**：**elp 只加载 vendored `eqwalizer_support` 里的 `eqwalizer_specs`，项目本地同名模块无效**。要给 `crypto`/`uri_string`/`gen_server`/`epgsql` 加覆盖，必须 **fork / 维护一份独立的 `eqwalizer_support` 依赖**（写入 `.elp.toml` 的 dep 指向自有 fork），这是真实的依赖运维承诺，非「写个模块」能解决。spike 模块已清理，未提交。
+- **R18 更正**：上一条的机制推断有误——elp 连 vendored 磁盘副本也不读，`eqwalizer_specs` 内嵌于 elp 发行二进制；fork `eqwalizer_support` 依赖同样无效，唯一路径是 fork eqWAlizer 主仓库重编译 elp（见 [eqwalizer-support-fork-plan.md](./eqwalizer-support-fork-plan.md) 顶部修订块）。「必须 fork」的结论方向不变，量级从依赖运维升级为专项工程。
 
 ### R14.2 lib 层 140 error 根因分布（全量抓取 36 模块 / 140 error）
 

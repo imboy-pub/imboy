@@ -85,7 +85,7 @@ PASS=23   FAIL=45   CRASH=1（elib_str）   总告警=107 条
 | job | 内容 | 预算（ratchet 初值） | 缓存 |
 |---|---|---|---|
 | `gradualize` | 全仓 `gradualize-audit` + `metrics.txt` 进 step summary | `GRADUALIZE_BUDGET` 默认 9999（首次 CI 观察值后设仓库变量激活 ratchet） | Gradualizer escript（pin 23533d7 为 key） |
-| `eqwalize` | lib 层 `eqwalize-layer`（70 模块，本地实测 58s） | `EQWALIZE_BUDGET_LIB` 默认 **38**（本地基线 modules=70 failing=38，CI/OTP 28 可能漂移需校准） | `.elp/`（ELP 二进制 + eqwalizer_support，release 2026-06-10 otp-28 构建 + pin 为 key） |
+| `eqwalize` | lib 层 `eqwalize-layer`（70 模块，本地实测 58s） | `EQWALIZE_BUDGET_LIB` 默认 **38**（落地时本地基线 modules=70 failing=38；R15 spec 收敛后 failing=30，预算已收紧至 **32**，见 backend-ci.yml） | `.elp/`（ELP 二进制 + eqwalizer_support，release 2026-06-10 otp-28 构建 + pin 为 key） |
 
 P2 落地时新增的关键事实：
 

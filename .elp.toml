@@ -15,7 +15,9 @@ apps = [
     include_dirs   = ["include"] },
 ]
 # 第三方依赖：只做索引/跳转，不参与类型检查
-# 第二项是 eqwalizer_support（OTP/BIF spec overlay，eqWAlizer 必需）
+# 第二项是 eqwalizer_support：仅供 `eqwalizer:` 类型/IDE 跳转索引。
+# R18 已证伪其 spec overlay 作用——OTP/BIF spec 内嵌于 elp 二进制，
+# 磁盘副本不参与检查（见 docs/reference/static-typechecking/eqwalizer-support-fork-plan.md）
 deps = ["deps/*", ".elp/elp-repo/eqwalizer/eqwalizer_support"]
 
 [eqwalizer]
