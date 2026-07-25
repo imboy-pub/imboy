@@ -540,6 +540,11 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
 
                             % 撤回受 2 分钟时限约束；编辑受独立编辑时间窗约束（默认 24h，<=0 不限）
                             % ponytail: guard on integer to avoid badarith when CreatedAt is empty/invalid
+                            % ceiling: elib_dt:rfc3339_to/1 returns null for empty/unparsable
+                            %   input, so the window check is skipped and the revoke/edit is
+                            %   allowed through (fail-open on bad timestamps)
+                            % upgrade: if the window becomes a compliance/risk-control rule
+                            %   rather than a UX guard, switch to fail-closed (reject on null)
                             {WindowMs, ErrAction, ErrText} =
                                 case ActionType of
                                     revoke ->

@@ -94,6 +94,10 @@ add_optional_fields(Data, Opts) ->
             case maps:get(Field, Opts, undefined) of
                 undefined -> Acc;
                 % ponytail: [] → DB default '[]'::jsonb
+                %   上限：仅在 INSERT 路径成立，依赖迁移 00000003 的
+                %   `tags jsonb DEFAULT '[]'::jsonb NOT NULL`。
+                %   升级触发：本函数被复用到 UPDATE 路径时（届时跳过字段 = 保持原值，
+                %   而非清空），或该列 DEFAULT 被移除，必须显式写入 '[]'。
                 [] when Field =:= tags -> Acc;
                 Val when Field =:= tags -> Acc#{Field => jsone:encode(Val, [native_utf8])};
                 Val -> Acc#{Field => Val}

@@ -543,6 +543,11 @@ check_deadline(Deadline) ->
     try
         DeadlineTs = elib_dt:rfc3339_to(Deadline),
         % ponytail: rfc3339_to returns integer(ms); use millisecond() for same type
+        % ceiling: unit is pinned to elib_dt:rfc3339_to/1's ms default; an unparsable
+        %   Deadline yields null, and atom > integer makes it read as "not expired"
+        % upgrade: none (design constraint, not a deferral) — both sides must share one
+        %   unit by definition; changing elib_dt's default would be a regression there,
+        %   not an upgrade here
         NowTs = elib_dt:millisecond(),
         NowTs > DeadlineTs
     catch

@@ -138,6 +138,10 @@ stream_bot_chat(Mod, Opts, Uid, To, MsgId, Messages) ->
         {error, Reason} ->
             %% flush 已累积 + 抛错触发 c2s_to_external async_retry（同原 crash-then-retry）
             %% ponytail: 失败重试会重推 delta，前端按 index 幂等覆盖可容忍
+            %% 上限：重试期间同一 stream_id 的 delta 会重复下发，正确性完全依赖
+            %% 「前端按 index 覆盖」这一契约（本层不做去重）。
+            %% 升级触发：前端改为追加式渲染、或同一会话要多端同屏时，须在重试前
+            %% 下发 stream_reset（或换 stream_id）显式作废上一轮 delta。
             llm_stream:flush_tail(Ctx),
             ok = ?ERROR_LOG(
                 "[C2S_LLM_STREAM_FAILED] provider=~p reason=~p~n",

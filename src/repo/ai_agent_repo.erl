@@ -108,6 +108,11 @@ set_status(UserId, Status) ->
 %% @doc admin 管理列表：JOIN user 拿 nickname/avatar，补 visibility/description，
 %% 便于后台识别与编辑（不含 system_prompt 长文本，编辑走 find/1 详情）。
 %% ponytail: LIMIT/OFFSET 整数来自已校验分页（Page/Size>0），内联安全。
+%% 上限：安全性实际由 integer_to_binary/1 兜底——非整数直接 badarg 崩在拼串前，
+%%   不存在可注入的字符串路径；代价是该保证只覆盖这两个位置。
+%% 升级触发：无升级路径（设计约束，非延期）——只要 LIMIT/OFFSET 仍经
+%%   integer_to_binary/1 拼接，注入面恒为零；反之若改成直传 binary/字符串，
+%%   就不再是简化而是缺陷，必须换回参数化。
 page(Page, Size) when Page > 0, Size > 0 ->
     ATb = tablename(),
     UTb = user_repo:tablename(),
@@ -147,6 +152,10 @@ page(Page, Size) when Page > 0, Size > 0 ->
 %%   被发现，不再绑死 owner_uid=0；官方助手已 backfill visibility=1。
 %% 卡片字段：name/avatar JOIN user 表；description 取 ai_agent.description 真实列。
 %% ponytail: 内联 LIMIT/OFFSET（整数来自已校验分页），keyword 走参数化 $1 防注入。
+%% 上限：同 page/2——integer_to_binary/1 是类型闸门，非整数在拼串前就 badarg；
+%%   Keyword 经 elib_pg:escape_like/1 + $1，不进 SQL 文本。
+%% 升级触发：无升级路径（设计约束，非延期）——除非有人把 Size/Offset 改成直传
+%%   binary 或把 Keyword 挪出参数位，那属于缺陷回归而非升级。
 -spec page_assistants(binary(), pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
 page_assistants(Keyword, Page, Size) when Page > 0, Size > 0 ->
     ATb = tablename(),

@@ -58,6 +58,11 @@ create_order(Data) ->
         case maps:get(extra_data, Data, null) of
             null -> null;
             % ponytail: encode map/list→jsonb, guard against future callers
+            % 上限：binary 分支原样落库、不校验是否合法 JSON，非法 JSON binary 会在
+            %   PG 侧报 22P02（与 msg_store 密文那次真 bug 同形）；非 map/list/binary/null
+            %   的类型直接 function_clause 崩在这里。
+            % 升级触发：extra_data 开始接受外部/客户端直传的 binary 时，比照
+            %   msg_store_repo:msg_store_payload_to_jsonb 补 try-decode 校验。
             M when is_map(M) -> jsone:encode(M, [native_utf8]);
             L when is_list(L) -> jsone:encode(L, [native_utf8]);
             B when is_binary(B) -> B

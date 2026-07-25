@@ -226,10 +226,18 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
 -spec send_forward_message(binary(), binary(), integer(), map()) -> ok | {error, term()}.
 send_forward_message(<<"c2c">>, MsgId, CurrentUid, ForwardData) ->
     %% ponytail: c2c reply is a WS frame sent to the caller; treat as ok at this layer
+    %% ceiling: c2c/3 returns ok | {reply, ErrFrame}; the error frame is dropped here, so a
+    %%   failed forward still reports {ok, ForwardMsgId} to the HTTP caller
+    %% upgrade: when forwarding must report per-target success (batch forward, REST result
+    %%   list), propagate {reply, _} up instead of discarding it
     _ = msg_c2c_logic:c2c(MsgId, CurrentUid, ForwardData),
     ok;
 send_forward_message(<<"c2g">>, MsgId, CurrentUid, ForwardData) ->
     %% ponytail: c2g errors are sent via self() ! {reply,...}; return value is always ok
+    %% ceiling: same as the c2c clause — the caller's {ok, ForwardMsgId} says nothing about
+    %%   whether the group fan-out actually happened
+    %% upgrade: same trigger — per-target forward results (batch forward / REST response)
+    %%   require c2g/3 to return a structured result instead of signalling out-of-band
     _ = msg_c2g_logic:c2g(MsgId, CurrentUid, ForwardData),
     ok.
 

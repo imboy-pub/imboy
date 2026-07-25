@@ -539,6 +539,11 @@ set_expire_at(MsgId, ExpireAt) ->
     end.
 
 %% ponytail: NOW() 避免 epgsql 对 RFC3339 binary 的 timestamptz 转换
+%% 上限：过期判定锚定 PG 服务器时钟（与写 expire_at 的应用节点时钟可能有偏移），
+%%   且无法从调用方注入时间点（测试/补偿回放只能靠改 expire_at）。
+%% 升级触发：无升级路径（设计约束，非延期）——NOW() 在 PG 侧求值，天然绕开
+%%   参数编码这一环；只有在需要「按指定时刻清理」时才该改传 $N::timestamptz，
+%%   那是新需求而不是本简化的欠账。
 delete_expired(BatchSize) ->
     Tb = tablename(),
     Sql =

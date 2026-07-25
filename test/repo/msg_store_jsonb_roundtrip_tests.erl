@@ -41,7 +41,11 @@ pure_digit_ciphertext_gets_json_number_treatment_test() ->
     %% 落库后以数字而非字符串形式存在 JSONB 列。base64 字母表 64 个符号里
     %% 仅 10 个是数字，定长随机密文全数字的概率约 (10/64)^N，N=44 时
     %% ~1e-36，工程上可忽略，故此测试只是钉住当前行为、不作为需要修复的
-    %% bug。若未来密文编码改为纯数字体系（如某些 KDF 输出），需重新评估。
+    %% bug。
+    %% 上限：安全性来自「密文足够长且字母数字混排」，N=44 时 ~1e-36；N 变小时
+    %%   概率按 (10/64)^N 快速上升（N=6 已到 ~1e-5）。
+    %% 升级触发：密文编码改为纯数字体系（如某些 KDF 输出）、或密文/摘要长度缩短到
+    %%   十几字符以内时，须改为无条件加引号包装，本测试同步改成断言包装后的形状。
     AllDigits = <<"123456789012345">>,
     Encoded = msg_store_repo:msg_store_payload_to_jsonb(AllDigits),
     ?assertEqual(AllDigits, Encoded).
@@ -54,6 +58,10 @@ json_literal_lookalike_ciphertext_pinned_test() ->
     %% 这才是 unwrap_staging_payload 等下游消费者实际读取/操作的形式，
     %% 字节层面本就与输入一致，管线里从未对其做语义级 term 解码。
     %% 现实中 base64 密文几乎不可能整体等于这三个字面量，风险可忽略。
+    %% 上限：安全性依赖两个前提——payload 不会是短枚举值，且下游只按字节消费
+    %%   staging payload（一旦做语义级解码，true 会变成 atom 而非原字符串）。
+    %% 升级触发：unwrap_staging_payload 等下游改为语义级 term 解码，或 payload
+    %%   开始承载短枚举/布尔类值时，须改为无条件加引号包装。
     lists:foreach(
         fun(Literal) ->
             Encoded = msg_store_repo:msg_store_payload_to_jsonb(Literal),

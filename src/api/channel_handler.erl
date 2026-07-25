@@ -487,6 +487,10 @@ normalize_error_binary(Msg, Default) ->
                 elib_cnv:safe_to_binary(Msg)
         end,
     % ponytail: Bin0 is always binary here; skip normalize_non_empty_binary to avoid dead-pattern warnings
+    % ceiling: only the empty-binary fallback runs; the safe_to_binary/1 branch is never
+    %   trimmed, so a whitespace-only non-binary Msg is returned as-is instead of Default
+    % upgrade: none (design constraint, not a deferral) — both branches above already
+    %   yield a binary, so a second normalize call is an unreachable clause by construction
     case Bin0 of
         <<>> -> Default;
         Bin -> Bin

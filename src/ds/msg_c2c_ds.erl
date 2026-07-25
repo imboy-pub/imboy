@@ -334,6 +334,11 @@ write_msg_once(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
 -spec check_and_delete_overflow(integer()) -> ok.
 check_and_delete_overflow(ToUid) ->
     % ponytail: 1/20 采样，避免每次写消息都 COUNT；溢出最多延迟 ~20 条被清理
+    %   上限：期望超出 ?SAVE_MSG_LIMIT(5000) 约 20 条才被回收；低写入量用户可能
+    %   长期不命中采样，离线队列在该窗口内不受约束。
+    %   升级触发：单用户离线条数上限变成硬约束（存储配额/合规留存口径），或单用户
+    %   写入量级上升到「~20 条超额」不可接受时，改为按写入计数确定性触发（每 N 条
+    %   必查）或交给后台定时扫描，采样逻辑随之删除。
     _ =
         case rand:uniform(20) =:= 1 of
             true ->

@@ -83,6 +83,10 @@ change_name(Uid, DID, Name) ->
 %% 删除指定设备记录，并联动断开该设备的 WS 会话（在线时）。
 %% ponytail: token 为 uid 级非设备级，无法按设备 revoke；
 %% 被踢设备重连须重新认证，且设备记录已删（E2EE 公钥随之失效）。
+%% 上限：全仓没有 token 吊销名单，本函数只断开当前 WS 会话，已签发 token 不失效。
+%% 升级触发：出现「设备丢失/被盗需远程吊销」或需按设备撤销 E2EE 设备信任时，
+%% 把 did 从可选 claim（token_ds 签发已支持，E2EE-013）提升为必填，
+%% 并补设备级吊销名单与鉴权侧校验。
 %% @param Uid 用户ID
 %% @param DID 设备ID
 %% @return ok

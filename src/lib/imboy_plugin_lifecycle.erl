@@ -324,6 +324,10 @@ audit_transition(Name, FromState, ToState, Result, Meta) ->
             to_state => state_to_bin(ToState),
             result => result_to_bin(Result),
             % ponytail: encode map→jsonb
+            % 上限：Meta 必须整体可 JSON 编码；含 pid/ref/fun 等不可编码项时
+            %   jsone:encode 抛错，被外层 catch 吞掉 → 该条审计记录静默丢失。
+            % 升级触发：插件审计日志被纳入合规留存要求时，改为编码前校验/降级
+            %   （不可编码项转字符串）并去掉这里的静默 catch。
             metadata => jsone:encode(Meta)
         }).
 
