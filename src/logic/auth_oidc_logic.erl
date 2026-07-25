@@ -17,12 +17,16 @@
 %   - token_url 必须 https（127.0.0.1/localhost 白名单供本地 E2E）。
 %   - MVP 不做 JWKS 验签：id_token 经 TLS 直连 token endpoint 取得，
 %     依赖信道 + iss/aud/exp/nonce claims 校验（OIDC Core §3.1.3.7）。
-%   - state/otc 存 imboy_cache（depcache，单节点内存）：多节点部署时
-%     authorize 与 callback 必须同节点（现单 upstream 成立）。
-%     ponytail: depcache 无原子 take，get+delete 存并发窗口；多节点/高并发前换 DB/Redis。
+%   - state/otc 存本模块自有 ETS 表（?ONETIME_TAB，单节点内存），消费走
+%     ets:take/2（查+删单个原子操作），同一 state/otc 并发下只有一个进程能取到。
+%     ponytail: 单节点原子性已解决；仍是节点本地存储 —— 各节点 ETS 独立，
+%     多节点部署时 authorize/callback/exchange 必须落在同一节点（现单 upstream
+%     成立）。真要多节点无粘性，换 DB/Redis 做跨节点一次性消费。
 %%%
 
 -export([authorize/1, callback/2, exchange/1]).
+%% 供 imboy_app 启动期建表（长驻属主）与定时清扫
+-export([init_table/0, sweep_expired/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
@@ -35,6 +39,10 @@
 %% App 一次性码有效期（秒）
 -define(OTC_TTL, 60).
 -define(HTTP_TIMEOUT, 5000).
+%% state/otc 一次性凭据表（自有 ETS，消费用 ets:take/2 保证原子）
+-define(ONETIME_TAB, imboy_oidc_onetime).
+%% 过期项清扫周期（毫秒）：只回收无人消费的残留，正确性由 take 时的过期判定保证
+-define(SWEEP_INTERVAL, 60000).
 -define(DEFAULT_SCOPES, <<"openid profile email">>).
 %% 统一对外失败消息（不泄 IdP/配置细节）
 -define(FAIL_MSG, <<"SSO 登录失败"/utf8>>).
@@ -52,7 +60,7 @@ authorize(Client) ->
             Nonce = rand_token(),
             Verifier = rand_token(),
             Challenge = b64url(crypto:hash(sha256, Verifier)),
-            ok = imboy_cache:set(
+            ok = onetime_put(
                 {oidc_state, State},
                 #{nonce => Nonce, verifier => Verifier, client => Client},
                 ?STATE_TTL
@@ -95,13 +103,9 @@ callback(Params, Ip) ->
 %% @doc App 深链一次性码换登录 payload（一次性消费）
 -spec exchange(binary()) -> {ok, map()} | {error, binary()}.
 exchange(Otc) when is_binary(Otc), byte_size(Otc) > 0 ->
-    Key = {oidc_otc, Otc},
-    case imboy_cache:get(Key) of
-        {ok, Payload} ->
-            ok = imboy_cache:delete(Key),
-            {ok, Payload};
-        _ ->
-            {error, ?FAIL_MSG}
+    case onetime_take({oidc_otc, Otc}) of
+        {ok, Payload} -> {ok, Payload};
+        undefined -> {error, ?FAIL_MSG}
     end;
 exchange(_) ->
     {error, ?FAIL_MSG}.
@@ -170,13 +174,80 @@ sanitize_http_error(Other) ->
 consume_state(<<>>) ->
     error;
 consume_state(State) ->
-    Key = {oidc_state, State},
-    case imboy_cache:get(Key) of
-        {ok, StData} when is_map(StData) ->
-            ok = imboy_cache:delete(Key),
-            {ok, StData};
+    case onetime_take({oidc_state, State}) of
+        {ok, StData} when is_map(StData) -> {ok, StData};
+        _ -> error
+    end.
+
+%% ===================================================================
+%% Internal: 一次性凭据存储（自有 ETS + ets:take/2 原子消费）
+%% ===================================================================
+%% 安全：state/otc 必须"查到即失效"。depcache 的 get 是调用进程内的裸 ETS 读、
+%%       delete 是 gen_server call，两步之间存在并发窗口 —— 实测 32 个并发进程
+%%       可用同一个 otc 各换到一份登录 payload。ets:take/2 是单个原子操作
+%%       （查+删），并发下有且只有一个调用方拿到值，其余得 []。
+
+%% @doc 启动期由长驻进程建表（imboy_app 调用）。
+%% 必须在此显式建表：否则表由首个惰性建表的 Cowboy 请求进程持有，
+%% 请求结束进程退出即销毁全表 -> 所有在途 state/otc 消失 -> 登录中断。
+-spec init_table() -> ok.
+init_table() ->
+    ensure_table().
+
+-spec ensure_table() -> ok.
+ensure_table() ->
+    case ets:whereis(?ONETIME_TAB) of
+        undefined ->
+            try
+                _ = ets:new(?ONETIME_TAB, [
+                    set,
+                    public,
+                    named_table,
+                    {read_concurrency, true},
+                    {write_concurrency, true}
+                ]),
+                %% 只有建表成功者挂清扫定时器（并发建表的失败方在此之前已抛 badarg）
+                _ = timer:apply_interval(?SWEEP_INTERVAL, ?MODULE, sweep_expired, []),
+                ok
+            catch
+                error:badarg -> ok
+            end;
         _ ->
-            error
+            ok
+    end.
+
+-spec onetime_put(term(), term(), pos_integer()) -> ok.
+onetime_put(Key, Value, TtlSec) ->
+    ok = ensure_table(),
+    true = ets:insert(?ONETIME_TAB, {Key, Value, erlang:system_time(second) + TtlSec}),
+    ok.
+
+%% @doc 原子消费：命中且未过期返回 {ok, Value}；未命中/已被他人消费/已过期返回 undefined
+-spec onetime_take(term()) -> {ok, term()} | undefined.
+onetime_take(Key) ->
+    ok = ensure_table(),
+    Now = erlang:system_time(second),
+    case ets:take(?ONETIME_TAB, Key) of
+        [{_, Value, ExpireAt}] when ExpireAt > Now ->
+            {ok, Value};
+        _ ->
+            %% 未命中 / 已被他人消费 / 已过期（过期项已被 take 顺带删除）
+            undefined
+    end.
+
+%% @doc 回收无人消费的过期残留（未走完流程的 state 会一直占内存；
+%% authorize 是未认证端点，不清扫等于给出一条内存增长路径）
+-spec sweep_expired() -> ok.
+sweep_expired() ->
+    case ets:whereis(?ONETIME_TAB) of
+        undefined ->
+            ok;
+        _ ->
+            Now = erlang:system_time(second),
+            _ = ets:select_delete(?ONETIME_TAB, [
+                {{'_', '_', '$1'}, [{'=<', '$1', Now}], [true]}
+            ]),
+            ok
     end.
 
 %% ===================================================================
@@ -412,7 +483,7 @@ finish_login(Uid, Client, Ip) ->
                     {ok, Payload};
                 _ ->
                     Otc = rand_token(),
-                    ok = imboy_cache:set({oidc_otc, Otc}, Payload, ?OTC_TTL),
+                    ok = onetime_put({oidc_otc, Otc}, Payload, ?OTC_TTL),
                     {redirect, <<"imboy://oidc/callback?otc=", Otc/binary>>}
             end;
         false ->

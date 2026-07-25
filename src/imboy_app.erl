@@ -43,6 +43,10 @@ start(_Type, _Args) ->
     % application master 进程建表持有；否则表被首个惰性建表的短命 WS 连接进程
     % 随断线销毁 → 全局限流计数清零 → 攻击者反复连接/断开即可绕过双维上限。
     ok = agent_rate_limiter:init_table(),
+    % 初始化 OIDC 一次性凭据（state/otc）ETS 表 + 过期清扫定时器。
+    % 同上：必须由长驻的 application master 建表持有，否则表被首个惰性建表的
+    % 短命 HTTP 请求进程随请求结束销毁 → 所有在途 state/otc 丢失 → 登录中断。
+    ok = auth_oidc_logic:init_table(),
     % 显式初始化 throttle 限流规则，防止 sys.config 加载时序问题导致 rate_not_set
     ok = init_throttle_rates(),
     % khepri:start(),

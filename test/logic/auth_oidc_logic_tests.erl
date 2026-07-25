@@ -8,9 +8,11 @@
 %%%
 %%% 覆盖：state 一次性消费（重放拒绝）/ nonce 不匹配拒绝 /
 %%%       PKCE verifier 与 challenge 对应 / 身份映射命中 / email 关联 /
-%%%       自动建号（含 quota 拒绝）/ OTC 一次性换取 / 统一错误消息不泄漏。
-%%% 说明：imboy_cache 与 httpc 用进程字典驱动的 meck 模拟
-%%%       （mock fun 在测试进程内执行），不触网不触库。
+%%%       自动建号（含 quota 拒绝）/ OTC 一次性换取（含并发单赢家）/
+%%%       统一错误消息不泄漏。
+%%% 说明：httpc 用进程字典驱动的 meck 模拟（mock fun 在测试进程内执行），
+%%%       不触网不触库；state/otc 走 auth_oidc_logic 自有 ETS 表（不 mock，
+%%%       否则并发原子性测不出来）。
 %%%===================================================================
 
 -define(FAIL_MSG, <<"SSO 登录失败"/utf8>>).
@@ -31,25 +33,6 @@ cfg() ->
         <<"redirect_uri">> => <<"http://127.0.0.1:9800/api/v1/auth/oidc/callback">>,
         <<"scopes">> => <<"openid profile email">>
     }.
-
-%% imboy_cache 进程字典模拟（同测试进程内 set/get/delete 语义完整）
-cache_mock() ->
-    {imboy_cache, [
-        {'set', 3, fun(K, V, _TTL) ->
-            erlang:put({oidc_tc, K}, V),
-            ok
-        end},
-        {'get', 1, fun(K) ->
-            case erlang:get({oidc_tc, K}) of
-                undefined -> undefined;
-                V -> {ok, V}
-            end
-        end},
-        {'delete', 1, fun(K) ->
-            erlang:erase({oidc_tc, K}),
-            ok
-        end}
-    ]}.
 
 sso_config_mock() ->
     {sso_config_ds, [{'get_provider', 1, fun(<<"oauth2">>) -> {ok, cfg()} end}]}.
@@ -142,11 +125,11 @@ authorize_insecure_token_url_test_() ->
 %%      state/nonce 与缓存一致；method 固定 S256
 authorize_pkce_challenge_test_() ->
     ?WITH_MECKS(
-        [cache_mock(), sso_config_mock()],
+        [sso_config_mock()],
         fun() ->
             {State, Nonce, QP} = prime_flow(<<"app">>, #{}),
-            #{nonce := CachedNonce, verifier := Verifier, client := Client} =
-                erlang:get({oidc_tc, {oidc_state, State}}),
+            [{_, #{nonce := CachedNonce, verifier := Verifier, client := Client}, _Exp}] =
+                ets:lookup(imboy_oidc_onetime, {oidc_state, State}),
             ?assertEqual(<<"app">>, Client),
             ?assertEqual(CachedNonce, Nonce),
             ?assertEqual(<<"S256">>, maps:get(<<"code_challenge_method">>, QP)),
@@ -167,7 +150,6 @@ authorize_pkce_challenge_test_() ->
 callback_state_replay_test_() ->
     ?WITH_MECKS(
         [
-            cache_mock(),
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
@@ -198,7 +180,7 @@ callback_state_replay_test_() ->
 %% @doc id_token nonce 与缓存不符 -> 拒绝
 callback_nonce_mismatch_test_() ->
     ?WITH_MECKS(
-        [cache_mock(), sso_config_mock(), rate_limit_mock(), dyn_httpc_mock()],
+        [sso_config_mock(), rate_limit_mock(), dyn_httpc_mock()],
         fun() ->
             {State, _Nonce, _} = prime_flow(<<"test">>, #{<<"sub">> => <<"sub-001">>}),
             %% 覆盖为错误 nonce 的 id_token
@@ -211,7 +193,7 @@ callback_nonce_mismatch_test_() ->
 %% @doc 伪造/未知 state -> 拒绝
 callback_forged_state_test_() ->
     ?WITH_MECKS(
-        [cache_mock(), rate_limit_mock()],
+        [rate_limit_mock()],
         fun() ->
             Params = #{<<"code">> => <<"c">>, <<"state">> => <<"forged-state">>},
             ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:callback(Params, <<"1.2.3.4">>))
@@ -232,7 +214,6 @@ callback_idp_error_param_test_() ->
 callback_token_error_unified_msg_test_() ->
     ?WITH_MECKS(
         [
-            cache_mock(),
             sso_config_mock(),
             rate_limit_mock(),
             {httpc, [
@@ -261,7 +242,6 @@ callback_token_error_unified_msg_test_() ->
 callback_email_link_test_() ->
     ?WITH_MECKS(
         [
-            cache_mock(),
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
@@ -300,7 +280,6 @@ callback_email_link_test_() ->
 callback_unverified_email_no_link_test_() ->
     ?WITH_MECKS(
         [
-            cache_mock(),
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
@@ -345,7 +324,6 @@ callback_unverified_email_no_link_test_() ->
 callback_provision_test_() ->
     ?WITH_MECKS(
         [
-            cache_mock(),
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
@@ -388,7 +366,6 @@ callback_quota_rejected_test_() ->
     QuotaMsg = <<"用户数已达授权上限"/utf8>>,
     ?WITH_MECKS(
         [
-            cache_mock(),
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
@@ -417,7 +394,6 @@ callback_quota_rejected_test_() ->
 otc_exchange_one_time_test_() ->
     ?WITH_MECKS(
         [
-            cache_mock(),
             sso_config_mock(),
             rate_limit_mock(),
             dyn_httpc_mock(),
@@ -446,10 +422,92 @@ otc_exchange_one_time_test_() ->
         end
     ).
 
+%% @doc 并发消费同一 OTC：N 个进程同时兑换，有且只有一个成功。
+%% 关键：本用例**不** mock imboy_cache/存储层 —— 缺陷本身就是"查+删非原子"，
+%%       mock 成进程字典（各进程独立）会把并发窗口一起 mock 掉，测不出问题。
+otc_concurrent_exchange_single_winner_test_() ->
+    {timeout, 30,
+        ?WITH_MECKS(
+            [
+                sso_config_mock(),
+                rate_limit_mock(),
+                dyn_httpc_mock(),
+                {sso_identity_ds, [{'find_uid', 2, fun(_, _) -> {ok, 55} end}]},
+                {user_ds, [
+                    {'find_by_id', 2, fun(55, _) -> #{<<"id">> => 55, <<"status">> => 1} end}
+                ]},
+                {passport_logic, [
+                    {'login_resp', 2, fun(_, _) ->
+                        #{<<"uid">> => 55, <<"token">> => <<"jwt-app">>}
+                    end}
+                ]}
+            ],
+            fun() ->
+                {State, _Nonce, _} = prime_flow(<<"app">>, #{<<"sub">> => <<"sub-001">>}),
+                {redirect, DeepLink} = auth_oidc_logic:callback(
+                    #{<<"code">> => <<"c">>, <<"state">> => State}, <<"1.2.3.4">>
+                ),
+                [_, Otc] = binary:split(DeepLink, <<"otc=">>),
+                N = 32,
+                Results = race_exchange(Otc, N),
+                ?assertEqual(N, length(Results)),
+                Winners = [R || {ok, _} = R <- Results],
+                %% 一次性码被兑换两次即可重放 -> 同一登录凭据签出多份 token
+                ?assertEqual(1, length(Winners)),
+                %% 其余全部走统一失败出口
+                ?assertEqual(
+                    N - 1, length([R || R <- Results, R =:= {error, ?FAIL_MSG}])
+                )
+            end
+        )}.
+
+%% @doc N 个进程在同一栅栏上同时调用 exchange/1，收集全部返回值
+race_exchange(Otc, N) ->
+    Parent = self(),
+    Pids = [
+        spawn(fun() ->
+            receive
+                go -> ok
+            end,
+            Parent ! {self(), auth_oidc_logic:exchange(Otc)}
+        end)
+     || _ <- lists:seq(1, N)
+    ],
+    _ = [P ! go || P <- Pids],
+    [
+        receive
+            {P, R} -> R
+        after 5000 -> timeout
+        end
+     || P <- Pids
+    ].
+
+%% @doc 过期语义：已过期的 otc 不可兑换；清扫只回收过期项，在途凭据必须留下
+%%（清扫用的是 match spec，写错要么回收不掉，要么误删在途 state 打断正常登录）
+otc_expiry_and_sweep_test_() ->
+    ?WITH_MECKS(
+        [sso_config_mock()],
+        fun() ->
+            Tab = imboy_oidc_onetime,
+            %% 在途 state（TTL 600s）
+            {State, _Nonce, _} = prime_flow(<<"app">>, #{}),
+            Past = erlang:system_time(second) - 1,
+            true = ets:insert(Tab, {{oidc_otc, <<"stale-otc">>}, #{}, Past}),
+            %% 过期即不可兑换
+            ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:exchange(<<"stale-otc">>)),
+            %% 未被兑换的过期残留由清扫回收
+            true = ets:insert(Tab, {{oidc_state, <<"stale-state">>}, #{}, Past}),
+            ok = auth_oidc_logic:sweep_expired(),
+            ?assertEqual([], ets:lookup(Tab, {oidc_state, <<"stale-state">>})),
+            %% 在途 state 不能被误删
+            ?assertMatch([{_, _, _}], ets:lookup(Tab, {oidc_state, State}))
+        end
+    ).
+
 %% @doc 空/未知 otc -> 拒绝
 exchange_invalid_otc_test_() ->
     ?WITH_MECKS(
-        [cache_mock()],
+        [],
         fun() ->
             ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:exchange(<<>>)),
             ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:exchange(<<"nope">>))
