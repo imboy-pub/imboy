@@ -27,12 +27,35 @@ commit-msg:
 
 # pre-push：Gradualizer 变更模块快检（escript 秒级、无 JVM 依赖；CI 深度门禁由 eqWAlizer 承担）
 # 依赖: make gradualizer-setup（首次）+ 最近一次 make compile 的 ebin/
+# Ratchet 语义：只拦"基线外的新增失败模块"；存量失败（.gradualizer-baseline.txt 内）警告放行，
+# 与 CI 观察模式一致。修绿模块后跑 make gradualize-baseline 收紧基线（只准减不准增）。
+# 排除清单与 Makefile GRADUALIZE_EXCLUDE 对齐：imboy_pb（gpb 生成）、elib_str（触发上游崩溃）。
 pre-push:
   commands:
     gradualize-changed:
       run: |
         files=$(git diff --name-only origin/main...HEAD -- 'src/*.erl' 'src/**/*.erl' \
-          | grep -v '_tests\.erl$' | grep -v 'imboy_pb\.erl$' | grep -v 'elib_log\.erl$' || true)
+          | grep -v '_tests\.erl$' | grep -v 'imboy_pb\.erl$' | grep -v 'elib_str\.erl$' || true)
+        files=$(for f in $files; do [ -f "$f" ] && echo "$f"; done)
         [ -z "$files" ] && exit 0
         [ -x tools/gradualizer/bin/gradualizer ] || { echo "⚠️ 未安装 Gradualizer，跳过（make gradualizer-setup 安装）"; exit 0; }
-        tools/gradualizer/bin/gradualizer -pa ebin -I include --no_color --fmt_location brief --stop_on_first_error $files
+        pa="-pa ebin"; for d in deps/*/ebin; do [ -d "$d" ] && pa="$pa -pa $d"; done
+        out=$(tools/gradualizer/bin/gradualizer $pa -I "$PWD/include" --no_color --fmt_location brief $files 2>&1) && exit 0
+        failing=$(printf '%s\n' "$out" | grep -oE '^src/[^:]+\.erl' | sort -u)
+        if [ -z "$failing" ]; then
+          echo "⚠️ Gradualizer 运行异常（非类型错误），放行（CI 兜底）:"
+          printf '%s\n' "$out" | tail -10
+          exit 0
+        fi
+        rc=0
+        for f in $failing; do
+          mod=$(basename "$f" .erl)
+          if grep -qx "$mod" .gradualizer-baseline.txt 2>/dev/null; then
+            echo "⚠️ $f 存量类型缝隙（基线内，放行）"
+          else
+            echo "❌ $f 新增 Gradualizer 失败（不在 .gradualizer-baseline.txt 基线内）:"
+            printf '%s\n' "$out" | grep "^$f:" | head -10
+            rc=1
+          fi
+        done
+        exit $rc

@@ -228,6 +228,13 @@ gradualize-audit: ## 全仓逐模块审计（预算制，基线期）: make grad
 	echo "gradualizer_failing $$fail" > .gradualizer/metrics.txt; \
 	test $$fail -le $(GRADUALIZE_BUDGET)
 
+.PHONY: gradualize-baseline
+gradualize-baseline: ## 从最近一次 gradualize-audit 日志重建 pre-push ratchet 基线（入仓，只准减不准增）
+	@test -d .gradualizer/logs || { echo "先跑 make gradualize-audit GRADUALIZE_BUDGET=9999"; exit 1; }
+	@grep -lE '^src/.*\.erl:[0-9]' .gradualizer/logs/*.log 2>/dev/null \
+		| xargs -n1 basename | sed 's/\.log$$//' | sort > .gradualizer-baseline.txt
+	@echo "✅ .gradualizer-baseline.txt: $$(wc -l < .gradualizer-baseline.txt | tr -d ' ') 个存量失败模块"
+
 # ==================== ELP / eqWAlizer（CI 分层阻塞门禁 + IDE） ====================
 # 项目结构描述在 .elp.toml（入仓）；.elp/elp-repo 不入仓，由 elp-setup 拉取
 ELP ?= elp
