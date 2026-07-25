@@ -267,9 +267,11 @@ jobs:
   # ----------------------------------------------------------------
   # eqWAlizer (ELP) — 分层类型门禁基线（continue-on-error，暂不阻塞）
   # 本地基线（2026-07-24, elp 1.1.0, OTP 29）：lib 层 modules=70 failing=38。
-  # CI/OTP 28 数字可能略有漂移，以首次 CI 观察值校准仓库变量 EQWALIZE_BUDGET_LIB。
+  # 2026-07-25 R15 源码 spec 补全后：lib 层 failing=30（6 gen_server worker 清零）。
+  # CI/OTP 28 数字可能略有漂移，以生产 CI 观察值校准仓库变量 EQWALIZE_BUDGET_LIB。
   # 收紧计划（双引擎交接）：lib 层 failing 清零 且 Gradualizer lib 层先转阻塞
   # 稳定 2 周后，本 job 移除 continue-on-error 转阻塞。
+  # 注：eqWAlizer spec override 需 fork + 重编译 elp 二进制，R18 已证伪模块级方案。
   # 注意：elp eqwalize 退出码恒为 0，Makefile 目标已改为解析输出判定。
   # ----------------------------------------------------------------
   eqwalize:
@@ -331,14 +333,14 @@ jobs:
       - name: Run eqWAlizer on lib layer
         run: |
           set -o pipefail
-          make eqwalize-layer LAYER=lib EQWALIZE_BUDGET=${{ vars.EQWALIZE_BUDGET_LIB || '38' }} 2>&1 | tee eqwalize.log
+          make eqwalize-layer LAYER=lib EQWALIZE_BUDGET=${{ vars.EQWALIZE_BUDGET_LIB || '32' }} 2>&1 | tee eqwalize.log
 
       - name: Summarize eqWAlizer result
         if: always()
         run: |
           echo "## eqWAlizer lib layer (baseline, non-blocking)" >> "$GITHUB_STEP_SUMMARY"
           grep "== eqwalize-layer" eqwalize.log >> "$GITHUB_STEP_SUMMARY" || true
-          echo "预算 EQWALIZE_BUDGET_LIB=${{ vars.EQWALIZE_BUDGET_LIB || '38' }}（ratchet：只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
+          echo "预算 EQWALIZE_BUDGET_LIB=${{ vars.EQWALIZE_BUDGET_LIB || '32' }}（ratchet：只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload eqWAlizer logs
         if: always()
