@@ -3,6 +3,7 @@
 > **状态**：Executable Plan（架构决策仍以 ADR 14–19 的签字状态为准）
 > **适用执行者**：Claude Code / Codex / 人类工程师
 > **上位计划**：`20-implementation-and-acceptance-plan.md`
+> **跨会话状态**：`22-claude-code-execution-state.md`（唯一事实来源；新会话先读该文件）
 > **强制规则**：每次最多执行同一 Batch 中的 3 个任务；每个任务独立验收、独立证据、独立提交；Batch 完成后停止并报告 `Ready for feedback.`
 
 ---
@@ -14,10 +15,12 @@
 1. 工作区根 AGENTS.md；
 2. 目标仓库及目标目录的 AGENTS.md；
 3. imboy/docs/guides/e2ee/v2/14~21；
-4. 当前任务列出的源代码和测试。
+4. imboy/docs/guides/e2ee/v2/22-claude-code-execution-state.md；
+5. 当前任务列出的源代码和测试。
 
 然后执行 21-claude-code-execution-playbook.md：
-- 从当前目标发布轨道中选择“依赖全部通过”的第一个 Pending Batch；到达 B13 后先让用户选择 C2C GA 或继续 MLS；
+- 以 22-claude-code-execution-state.md 的 next_task、active_session 和任务状态为准；不得使用本文件旧状态表抢占任务；
+- 只领取 next_task 指定的一个任务；到达 B13 后先让用户选择 C2C GA 或继续 MLS；
 - 一次最多执行 3 个任务，不得跨 Batch；
 - 每个任务先复现/新增失败测试，再做最小实现，再运行该任务全部验收；
 - 验收失败、环境缺失、ADR 未签字或需要外部操作时立即停止，不得猜测或跳过；
@@ -110,7 +113,9 @@
 
 ---
 
-## 2. 任务状态与 Batch
+## 2. 任务状态与 Batch（初始快照）
+
+> 本节保留原始执行手册的 Batch 快照，供阅读任务依赖和历史上下文使用。执行中的状态、当前任务、会话占用和下一任务必须更新 [`22-claude-code-execution-state.md`](./22-claude-code-execution-state.md)，不得只修改本节。
 
 状态只允许：`Pending / In Progress / PASS / BLOCKED`。执行者完成任务后更新本表和 evidence，但不得自行把人工 Gate 改为 PASS。
 

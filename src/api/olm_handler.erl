@@ -263,6 +263,16 @@ batch_claim(Req0, State) ->
 -spec do_batch_claim(cowboy_req:req(), map()) -> cowboy_req:req().
 do_batch_claim(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
+    %% S1.3 / P1：per-claimant 限流，防止高频 claim 耗尽目标 OTK 池
+    case throttle:check(olm_claim, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"rate_limited">>, 429);
+        _ ->
+            do_batch_claim1(Req0, CurrentUid)
+    end.
+
+-spec do_batch_claim1(cowboy_req:req(), integer()) -> cowboy_req:req().
+do_batch_claim1(Req0, CurrentUid) ->
     PostVals = elib_param:post(Req0),
     TargetUidEnc = maps:get(<<"target_uid">>, PostVals, <<"">>),
     TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),
@@ -297,6 +307,16 @@ claim_key(Req0, State) ->
 -spec do_claim_key(cowboy_req:req(), map()) -> cowboy_req:req().
 do_claim_key(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
+    %% S1.3 / P1：per-claimant 限流，防止高频 claim 耗尽目标 OTK 池
+    case throttle:check(olm_claim, CurrentUid) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"rate_limited">>, 429);
+        _ ->
+            do_claim_key1(Req0, CurrentUid)
+    end.
+
+-spec do_claim_key1(cowboy_req:req(), integer()) -> cowboy_req:req().
+do_claim_key1(Req0, CurrentUid) ->
     PostVals = elib_param:post(Req0),
     TargetUidEnc = maps:get(<<"target_uid">>, PostVals, <<"">>),
     TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),

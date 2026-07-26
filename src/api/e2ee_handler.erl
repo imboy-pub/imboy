@@ -141,22 +141,48 @@ do_report_device_key(Req0, State) ->
                         {error, Reason} ->
                             elib_response:error(Req0, Reason, 400);
                         ok ->
-                            case
-                                e2ee_logic:report_device_key(
-                                    CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId
-                                )
-                            of
-                                {ok, OtherDeviceCount} ->
-                                    elib_response:success(Req0, #{
-                                        <<"success">> => true,
-                                        <<"other_device_count">> => OtherDeviceCount,
-                                        <<"has_other_device">> => OtherDeviceCount > 0
-                                    });
-                                {error, Reason} ->
-                                    elib_response:error(Req0, Reason, 500)
+                            %% S1.3 / DT-03：body device_id 必须等于 token 绑定 DID，
+                            %% 防止同账号设备 A 的 token 为设备 B 上报公钥。
+                            CurrentDid = auth_ds:current_did(State),
+                            case olm_handler:device_write_decision(CurrentDid, DeviceId) of
+                                ok ->
+                                    do_report_device_key1(
+                                        Req0,
+                                        CurrentUid,
+                                        DeviceId,
+                                        DeviceType,
+                                        DeviceName,
+                                        PublicKey,
+                                        KeyId
+                                    );
+                                device_binding_required ->
+                                    elib_response:error(Req0, <<"device_binding_required">>, 403);
+                                device_mismatch ->
+                                    elib_response:error(Req0, <<"device_mismatch">>, 403)
                             end
                     end
             end
+    end.
+
+%% @doc 设备所有权校验通过后，执行实际上报逻辑。
+-spec do_report_device_key1(
+    cowboy_req:req(), integer(), binary(), binary(), binary() | undefined, binary(), binary()
+) ->
+    cowboy_req:req().
+do_report_device_key1(Req0, CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) ->
+    case
+        e2ee_logic:report_device_key(
+            CurrentUid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId
+        )
+    of
+        {ok, OtherDeviceCount} ->
+            elib_response:success(Req0, #{
+                <<"success">> => true,
+                <<"other_device_count">> => OtherDeviceCount,
+                <<"has_other_device">> => OtherDeviceCount > 0
+            });
+        {error, Reason} ->
+            elib_response:error(Req0, Reason, 500)
     end.
 
 %% @doc 读取上报参数
