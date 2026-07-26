@@ -162,6 +162,21 @@ security-gate:
 	@bash scripts/check_module_boundaries.sh
 	@echo "=== 安全门禁全部通过 ==="
 
+# E2EE 完整验证套件（一键可审计）
+.PHONY: e2ee-verify
+e2ee-verify: security-gate
+	@echo ""
+	@echo "=== E2EE 安全验证套件 (S2-S17 全守护) ==="
+	@echo "--- 编译测试模块 ---"
+	@mkdir -p test
+	@erlc -o test -pa ebin $$(ls -d deps/*/ebin | sed 's/^/-pa /') -I include \
+		$$(find test -name "*e2ee*" -o -name "*olm*" -o -name "imboy_codec_tests.erl" \
+		-o -name "message_ds_tests.erl" -o -name "push_notification_logic_tests.erl" \
+		-o -name "msg_store_jsonb_roundtrip_tests.erl" -o -name "device_revocation_tests.erl" \
+		| grep '\.erl$$') 2>&1 | grep -v "^$$" || true
+	@echo "--- 运行 E2EE 测试模块 ---"
+	@erl -noshell -pa ebin -pa test $$(ls -d deps/*/ebin | sed 's/^/-pa /') -eval 'Modules = [e2ee_handler_tests,e2ee_handler_capability_tests,e2ee_handler_device_binding_tests,olm_handler_tests,olm_handler_claim_throttle_tests,e2ee_logic_tests,e2ee_backup_logic_tests,e2ee_recovery_logic_tests,e2ee_trust_logic_tests,group_e2ee_logic_tests,olm_identity_logic_tests,olm_otk_lifecycle_tests,e2ee_v3_passthrough_contract_tests,device_revocation_tests,e2ee_backup_repo_tests,olm_identity_repo_tests,msg_store_jsonb_roundtrip_tests,e2ee_error_code_tests,elib_cipher_e2ee_v2_tests,olm_otk_cleanup_worker_tests,imboy_codec_tests,message_ds_tests,push_notification_logic_tests], case eunit:test(Modules, []) of ok -> io:format("~n=== E2EE verify ALL PASSED ===~n"), halt(0); error -> io:format("~n=== E2EE verify FAILED ===~n"), halt(1) end.'
+
 .PHONY: clear_beam
 clear_beam:
 	@find . -path ./deps -prune -o -name '*.beam' -print -delete
