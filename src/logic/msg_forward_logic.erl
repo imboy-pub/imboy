@@ -205,7 +205,7 @@ create_forward_message(OriginalMsg, OriginalType, OriginalMsgId, CurrentUid, ToI
         },
         <<"msg_type">> => <<"forward">>,
         <<"action">> => <<"forward">>,
-        <<"e2ee">> => <<>>,
+        <<"e2ee">> => null,
         <<"created_at">> => NowMs
     },
     OriginalFromId = maps:get(<<"from_id">>, OriginalMsg, 0),

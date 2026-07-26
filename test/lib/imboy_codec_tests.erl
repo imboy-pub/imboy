@@ -21,6 +21,8 @@ codec_test_() ->
         {"Protocol atom conversion", fun protocol_atom_test/0},
         {"WebSocket frame types", fun ws_frame_types/0},
         {"E2EE metadata conversion", fun e2ee_conversion/0},
+        {"E2EE Olm metadata protobuf roundtrip", fun e2ee_olm_roundtrip/0},
+        {"E2EE Megolm metadata protobuf roundtrip", fun e2ee_megolm_roundtrip/0},
         {"Empty/null field handling", fun empty_field_handling/0},
         {"Payload encode/decode", fun payload_encode_decode/0},
         {"Large UID handling (TSID)", fun large_uid_handling/0},
@@ -235,6 +237,51 @@ a2a_task_update_json_channel() ->
         maps:get(<<"task_id">>, maps:get(<<"payload">>, Decoded))
     ).
 
+%% @doc E2EE Olm 元数据 protobuf roundtrip（S14 fields 5-13）
+e2ee_olm_roundtrip() ->
+    Msg = test_e2ee_olm_message(),
+    Encoded = imboy_codec:encode(protobuf, Msg),
+    ?assert(is_binary(Encoded)),
+    Decoded = imboy_codec:decode(protobuf, Encoded),
+
+    E2EE = maps:get(<<"e2ee">>, Decoded),
+    ?assert(is_map(E2EE)),
+    %% 基础字段
+    ?assertEqual(1, maps:get(<<"e2ee_ver">>, E2EE)),
+    ?assertEqual(<<"OLM.V1">>, maps:get(<<"e2ee_suite">>, E2EE)),
+    %% v2 Olm 扩展字段
+    ?assertEqual(<<"olm">>, maps:get(<<"protocol">>, E2EE)),
+    ?assertEqual(1, maps:get(<<"version">>, E2EE)),
+    ?assertEqual(<<"111222333">>, maps:get(<<"peer_uid">>, E2EE)),
+    ?assertEqual(<<"device-abc">>, maps:get(<<"peer_device_id">>, E2EE)),
+    ?assertEqual(1, maps:get(<<"message_type">>, E2EE)),
+    ?assertEqual(<<"sess-xyz-001">>, maps:get(<<"session_id">>, E2EE)),
+    %% 不应有 Megolm 字段
+    ?assertNot(maps:is_key(<<"message_index">>, E2EE)),
+    ?assertNot(maps:is_key(<<"group_id">>, E2EE)).
+
+%% @doc E2EE Megolm 元数据 protobuf roundtrip（S14 fields 5-13）
+e2ee_megolm_roundtrip() ->
+    Msg = test_e2ee_megolm_message(),
+    Encoded = imboy_codec:encode(protobuf, Msg),
+    ?assert(is_binary(Encoded)),
+    Decoded = imboy_codec:decode(protobuf, Encoded),
+
+    E2EE = maps:get(<<"e2ee">>, Decoded),
+    ?assert(is_map(E2EE)),
+    %% 基础字段
+    ?assertEqual(1, maps:get(<<"e2ee_ver">>, E2EE)),
+    ?assertEqual(<<"MEGOLM.V1">>, maps:get(<<"e2ee_suite">>, E2EE)),
+    %% v2 Megolm 扩展字段
+    ?assertEqual(<<"megolm">>, maps:get(<<"protocol">>, E2EE)),
+    ?assertEqual(1, maps:get(<<"version">>, E2EE)),
+    ?assertEqual(42, maps:get(<<"message_index">>, E2EE)),
+    ?assertEqual(<<"group-999">>, maps:get(<<"group_id">>, E2EE)),
+    ?assertEqual(<<"megolm-sess-001">>, maps:get(<<"session_id">>, E2EE)),
+    %% 不应有 Olm 字段
+    ?assertNot(maps:is_key(<<"peer_uid">>, E2EE)),
+    ?assertNot(maps:is_key(<<"peer_device_id">>, E2EE)).
+
 %%%===================================================================
 %%% Test data helpers
 %%%===================================================================
@@ -276,5 +323,52 @@ test_e2ee_message() ->
             ]
         },
         <<"payload">> => <<"encrypted-ciphertext-here">>,
+        <<"created_at">> => 1710000000000
+    }.
+
+test_e2ee_olm_message() ->
+    #{
+        <<"id">> => <<"msg-olm-001">>,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => 111222333,
+        <<"to">> => 444555666,
+        <<"msg_type">> => <<"e2ee">>,
+        <<"action">> => <<"message">>,
+        <<"e2ee">> => #{
+            <<"e2ee_ver">> => 1,
+            <<"e2ee_suite">> => <<"OLM.V1">>,
+            <<"nonce">> => <<>>,
+            <<"keys">> => [],
+            <<"protocol">> => <<"olm">>,
+            <<"version">> => 1,
+            <<"peer_uid">> => <<"111222333">>,
+            <<"peer_device_id">> => <<"device-abc">>,
+            <<"message_type">> => 1,
+            <<"session_id">> => <<"sess-xyz-001">>
+        },
+        <<"payload">> => <<"olm-ciphertext-binary">>,
+        <<"created_at">> => 1710000000000
+    }.
+
+test_e2ee_megolm_message() ->
+    #{
+        <<"id">> => <<"msg-megolm-001">>,
+        <<"type">> => <<"C2G">>,
+        <<"from">> => 111222333,
+        <<"to">> => 999888777,
+        <<"msg_type">> => <<"e2ee">>,
+        <<"action">> => <<"message">>,
+        <<"e2ee">> => #{
+            <<"e2ee_ver">> => 1,
+            <<"e2ee_suite">> => <<"MEGOLM.V1">>,
+            <<"nonce">> => <<>>,
+            <<"keys">> => [],
+            <<"protocol">> => <<"megolm">>,
+            <<"version">> => 1,
+            <<"message_index">> => 42,
+            <<"group_id">> => <<"group-999">>,
+            <<"session_id">> => <<"megolm-sess-001">>
+        },
+        <<"payload">> => <<"megolm-ciphertext-binary">>,
         <<"created_at">> => 1710000000000
     }.

@@ -345,18 +345,68 @@ e2ee_to_pb(E2EE) when is_map(E2EE) ->
         end
      || K <- maps:get(<<"keys">>, E2EE, [])
     ],
-    #{
+    Base = #{
         ver => maps:get(<<"e2ee_ver">>, E2EE, 1),
         suite => maps:get(<<"e2ee_suite">>, E2EE, <<>>),
         nonce => maps:get(<<"nonce">>, E2EE, <<>>),
         keys => Keys
-    };
+    },
+    %% v2 Olm/Megolm/v3 扩展字段（仅非默认值写入，gpb omitted 语义）
+    e2ee_to_pb_ext(Base, E2EE);
 e2ee_to_pb(_) ->
     undefined.
 
+%% @doc 条件写入 v2 扩展字段（仅非默认值）
+e2ee_to_pb_ext(M, E2EE) ->
+    M1 =
+        case maps:get(<<"protocol">>, E2EE, <<>>) of
+            <<>> -> M;
+            V1 -> M#{protocol => V1}
+        end,
+    M2 =
+        case maps:get(<<"version">>, E2EE, 0) of
+            0 -> M1;
+            V2 -> M1#{protocol_version => V2}
+        end,
+    M3 =
+        case maps:get(<<"peer_uid">>, E2EE, <<>>) of
+            <<>> -> M2;
+            V3 -> M2#{peer_uid => V3}
+        end,
+    M4 =
+        case maps:get(<<"peer_device_id">>, E2EE, <<>>) of
+            <<>> -> M3;
+            V4 -> M3#{peer_device_id => V4}
+        end,
+    M5 =
+        case maps:get(<<"message_type">>, E2EE, 0) of
+            0 -> M4;
+            V5 -> M4#{message_type => V5}
+        end,
+    M6 =
+        case maps:get(<<"session_id">>, E2EE, <<>>) of
+            <<>> -> M5;
+            V6 -> M5#{session_id => V6}
+        end,
+    M7 =
+        case maps:get(<<"message_index">>, E2EE, 0) of
+            0 -> M6;
+            V7 -> M6#{message_index => V7}
+        end,
+    M8 =
+        case maps:get(<<"group_id">>, E2EE, <<>>) of
+            <<>> -> M7;
+            V8 -> M7#{group_id => V8}
+        end,
+    case maps:get(<<"meta_version">>, E2EE, 0) of
+        0 -> M8;
+        V9 -> M8#{meta_version => V9}
+    end.
+
 e2ee_from_pb(undefined) ->
     null;
-e2ee_from_pb(#{ver := Ver, suite := Suite, nonce := Nonce, keys := Keys}) ->
+e2ee_from_pb(Pb) when is_map(Pb) ->
+    Keys = maps:get(keys, Pb, []),
     KeysList = [
         #{
             <<"did">> => maps:get(did, K, <<>>),
@@ -366,15 +416,64 @@ e2ee_from_pb(#{ver := Ver, suite := Suite, nonce := Nonce, keys := Keys}) ->
         }
      || K <- Keys
     ],
-    #{
+    Base = #{
         <<"e2ee">> => true,
-        <<"e2ee_ver">> => Ver,
-        <<"e2ee_suite">> => Suite,
-        <<"nonce">> => Nonce,
+        <<"e2ee_ver">> => maps:get(ver, Pb, 0),
+        <<"e2ee_suite">> => maps:get(suite, Pb, <<>>),
+        <<"nonce">> => maps:get(nonce, Pb, <<>>),
         <<"keys">> => KeysList
-    };
+    },
+    %% v2 扩展字段（仅非默认值写回 JSON map）
+    e2ee_from_pb_ext(Base, Pb);
 e2ee_from_pb(_) ->
     null.
+
+%% @doc 条件回写 v2 扩展字段到 JSON binary-key map
+e2ee_from_pb_ext(M, Pb) ->
+    M1 =
+        case maps:get(protocol, Pb, <<>>) of
+            <<>> -> M;
+            V1 -> M#{<<"protocol">> => V1}
+        end,
+    M2 =
+        case maps:get(protocol_version, Pb, 0) of
+            0 -> M1;
+            V2 -> M1#{<<"version">> => V2}
+        end,
+    M3 =
+        case maps:get(peer_uid, Pb, <<>>) of
+            <<>> -> M2;
+            V3 -> M2#{<<"peer_uid">> => V3}
+        end,
+    M4 =
+        case maps:get(peer_device_id, Pb, <<>>) of
+            <<>> -> M3;
+            V4 -> M3#{<<"peer_device_id">> => V4}
+        end,
+    M5 =
+        case maps:get(message_type, Pb, 0) of
+            0 -> M4;
+            V5 -> M4#{<<"message_type">> => V5}
+        end,
+    M6 =
+        case maps:get(session_id, Pb, <<>>) of
+            <<>> -> M5;
+            V6 -> M5#{<<"session_id">> => V6}
+        end,
+    M7 =
+        case maps:get(message_index, Pb, 0) of
+            0 -> M6;
+            V7 -> M6#{<<"message_index">> => V7}
+        end,
+    M8 =
+        case maps:get(group_id, Pb, <<>>) of
+            <<>> -> M7;
+            V8 -> M7#{<<"group_id">> => V8}
+        end,
+    case maps:get(meta_version, Pb, 0) of
+        0 -> M8;
+        V9 -> M8#{<<"meta_version">> => V9}
+    end.
 
 %% --- Type conversion helpers ---
 

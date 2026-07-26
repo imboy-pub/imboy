@@ -129,3 +129,34 @@ send_next_requires_valid_params_test_() ->
         ?assert(byte_size(MsgId) > 0),
         ?assertEqual(ok, message_ds:send_next(Uid, MsgId, Msg, []))
     end).
+
+%% ===================================================================
+%% S2C e2ee 拒绝守护（服务端零密码学不变量）
+%% S2C 系统消息永远不应携带 e2ee 字段
+%% ===================================================================
+
+s2c_with_e2ee_rejected_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Msg = #{
+            <<"id">> => <<"s2c-e2ee-bad">>,
+            <<"type">> => <<"S2C">>,
+            <<"action">> => <<"logged_another_device">>,
+            <<"e2ee">> => #{<<"protocol">> => <<"olm">>},
+            <<"payload">> => #{}
+        },
+        Result = message_ds:validate_message(Msg),
+        ?assertEqual({error, <<"s2c_message_not_support_e2ee">>}, Result)
+    end).
+
+s2c_without_e2ee_passes_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Msg = #{
+            <<"id">> => <<"s2c-ok">>,
+            <<"type">> => <<"S2C">>,
+            <<"action">> => <<"logged_another_device">>,
+            <<"e2ee">> => null,
+            <<"payload">> => #{}
+        },
+        Result = message_ds:validate_message(Msg),
+        ?assertMatch({ok, _}, Result)
+    end).
