@@ -153,6 +153,15 @@ format-check:
 xref-strict: xref
 	@echo "xref strict mode done"
 
+# 安全门禁: security-gate（CI 硬门本地可跑）
+.PHONY: security-gate
+security-gate:
+	@echo "=== 服务端零密码学守护 (ADR 07 §6.3 / 08 §4) ==="
+	@bash scripts/check_server_zero_crypto.sh
+	@echo "=== 模块边界守护 (Handler→Logic→DS→Repo 单向依赖) ==="
+	@bash scripts/check_module_boundaries.sh
+	@echo "=== 安全门禁全部通过 ==="
+
 .PHONY: clear_beam
 clear_beam:
 	@find . -path ./deps -prune -o -name '*.beam' -print -delete
