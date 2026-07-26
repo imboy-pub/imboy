@@ -299,7 +299,13 @@ read_msg(ToUid, Limit, LastMsgAt) ->
                     [];
                 {ok, Rows2} ->
                     % 与 msg_c2c_ds:read_msg 保持一致，返回包含 from_id 和 to_id 的数据
-                    [elib_response:json_decode_field(Row, <<"payload">>) || Row <- Rows2]
+                    % 同时反序列化 payload 与 e2ee 列（二者写入时均为 JSON 字符串）
+                    [
+                        elib_response:json_decode_field(
+                            elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+                        )
+                     || Row <- Rows2
+                    ]
             end
     end.
 
