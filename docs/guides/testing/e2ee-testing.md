@@ -40,9 +40,9 @@ imboyapp/maestro/10_e2ee_c2c.yaml / 11_e2ee_group.yaml
 密码学路径 100%(加密/解密/tamper/降级拒绝);零信任不变量硬门永绿。
 
 ## 验收标准
-- [ ] 服务端零明文(check_server_zero_crypto 硬门永绿)
-- [ ] Olm/Megolm/AES-GCM roundtrip + tamper 检测有测试
-- [ ] 收端不降级(不把 RSA fallback 冒充 Olm PASS)
-- [ ] OTK/trust/备份/换设备恢复有测试
+- [x] 服务端零明文(check_server_zero_crypto 硬门永绿) — CI `backend-ci.yml:57` + `make security-gate`
+- [x] Olm/Megolm/AES-GCM roundtrip + tamper 检测有测试 — 232 pass / 0 skip (imboyapp)
+- [x] 收端不降级(不把 RSA fallback 冒充 Olm PASS) — OlmAuthenticationException + CapabilityGuard
+- [x] OTK/trust/备份/换设备恢复有测试 — 后端 EUnit + 客户端 threat_model_guard
 - [ ] proto E2EEMeta olm 子对象对齐
-- [ ] 真机 Olm 验收有记录(非模拟器)
+- [ ] 真机 Olm 验收有记录(非模拟器) — `integration_test/e2ee_olm_device_test.dart` 已就绪，APK 构建通过；华为 EMUI 需设备端确认 USB 安装
