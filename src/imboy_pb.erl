@@ -76,7 +76,16 @@
       #{ver                     => integer(),       % = 1, optional, 32 bits
         suite                   => unicode:chardata(), % = 2, optional
         nonce                   => iodata(),        % = 3, optional
-        keys                    => ['E2EEDeviceKey'()] % = 4, repeated
+        keys                    => ['E2EEDeviceKey'()], % = 4, repeated
+        protocol                => unicode:chardata(), % = 5, optional
+        protocol_version        => integer(),       % = 6, optional, 32 bits
+        peer_uid                => unicode:chardata(), % = 7, optional
+        peer_device_id          => unicode:chardata(), % = 8, optional
+        message_type            => integer(),       % = 9, optional, 32 bits
+        session_id              => unicode:chardata(), % = 10, optional
+        message_index           => integer(),       % = 11, optional, 32 bits
+        group_id                => unicode:chardata(), % = 12, optional
+        meta_version            => integer()        % = 13, optional, 32 bits
        }.
 
 -type 'E2EEDeviceKey'() ::
@@ -454,13 +463,108 @@ encode_msg_E2EEMeta(#{} = M, Bin, TrUserData) ->
                  end;
              _ -> B2
          end,
+    B4 = case M of
+             #{keys := F4} ->
+                 TrF4 = id(F4, TrUserData),
+                 if TrF4 == [] -> B3;
+                    true -> e_field_E2EEMeta_keys(TrF4, B3, TrUserData)
+                 end;
+             _ -> B3
+         end,
+    B5 = case M of
+             #{protocol := F5} ->
+                 begin
+                     TrF5 = id(F5, TrUserData),
+                     case is_empty_string(TrF5) of
+                         true -> B4;
+                         false -> e_type_string(TrF5, <<B4/binary, 42>>, TrUserData)
+                     end
+                 end;
+             _ -> B4
+         end,
+    B6 = case M of
+             #{protocol_version := F6} ->
+                 begin
+                     TrF6 = id(F6, TrUserData),
+                     if TrF6 =:= 0 -> B5;
+                        true -> e_type_int32(TrF6, <<B5/binary, 48>>, TrUserData)
+                     end
+                 end;
+             _ -> B5
+         end,
+    B7 = case M of
+             #{peer_uid := F7} ->
+                 begin
+                     TrF7 = id(F7, TrUserData),
+                     case is_empty_string(TrF7) of
+                         true -> B6;
+                         false -> e_type_string(TrF7, <<B6/binary, 58>>, TrUserData)
+                     end
+                 end;
+             _ -> B6
+         end,
+    B8 = case M of
+             #{peer_device_id := F8} ->
+                 begin
+                     TrF8 = id(F8, TrUserData),
+                     case is_empty_string(TrF8) of
+                         true -> B7;
+                         false -> e_type_string(TrF8, <<B7/binary, 66>>, TrUserData)
+                     end
+                 end;
+             _ -> B7
+         end,
+    B9 = case M of
+             #{message_type := F9} ->
+                 begin
+                     TrF9 = id(F9, TrUserData),
+                     if TrF9 =:= 0 -> B8;
+                        true -> e_type_int32(TrF9, <<B8/binary, 72>>, TrUserData)
+                     end
+                 end;
+             _ -> B8
+         end,
+    B10 = case M of
+              #{session_id := F10} ->
+                  begin
+                      TrF10 = id(F10, TrUserData),
+                      case is_empty_string(TrF10) of
+                          true -> B9;
+                          false -> e_type_string(TrF10, <<B9/binary, 82>>, TrUserData)
+                      end
+                  end;
+              _ -> B9
+          end,
+    B11 = case M of
+              #{message_index := F11} ->
+                  begin
+                      TrF11 = id(F11, TrUserData),
+                      if TrF11 =:= 0 -> B10;
+                         true -> e_type_int32(TrF11, <<B10/binary, 88>>, TrUserData)
+                      end
+                  end;
+              _ -> B10
+          end,
+    B12 = case M of
+              #{group_id := F12} ->
+                  begin
+                      TrF12 = id(F12, TrUserData),
+                      case is_empty_string(TrF12) of
+                          true -> B11;
+                          false -> e_type_string(TrF12, <<B11/binary, 98>>, TrUserData)
+                      end
+                  end;
+              _ -> B11
+          end,
     case M of
-        #{keys := F4} ->
-            TrF4 = id(F4, TrUserData),
-            if TrF4 == [] -> B3;
-               true -> e_field_E2EEMeta_keys(TrF4, B3, TrUserData)
+        #{meta_version := F13} ->
+            begin
+                TrF13 = id(F13, TrUserData),
+                if TrF13 =:= 0 -> B12;
+                   true -> e_type_int32(TrF13, <<B12/binary, 104>>, TrUserData)
+                end
             end;
-        _ -> B3
+        _ -> B12
     end.
 
 encode_msg_E2EEDeviceKey(Msg, TrUserData) -> encode_msg_E2EEDeviceKey(Msg, <<>>, TrUserData).
@@ -1914,78 +2018,192 @@ skip_32_IMBoyMessage(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F
 skip_64_IMBoyMessage(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData) ->
     dfp_read_field_def_IMBoyMessage(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, TrUserData).
 
-decode_msg_E2EEMeta(Bin, TrUserData) -> dfp_read_field_def_E2EEMeta(Bin, 0, 0, 0, id(0, TrUserData), id(<<>>, TrUserData), id(<<>>, TrUserData), id([], TrUserData), TrUserData).
+decode_msg_E2EEMeta(Bin, TrUserData) ->
+    dfp_read_field_def_E2EEMeta(Bin,
+                                0,
+                                0,
+                                0,
+                                id(0, TrUserData),
+                                id(<<>>, TrUserData),
+                                id(<<>>, TrUserData),
+                                id([], TrUserData),
+                                id(<<>>, TrUserData),
+                                id(0, TrUserData),
+                                id(<<>>, TrUserData),
+                                id(<<>>, TrUserData),
+                                id(0, TrUserData),
+                                id(<<>>, TrUserData),
+                                id(0, TrUserData),
+                                id(<<>>, TrUserData),
+                                id(0, TrUserData),
+                                TrUserData).
 
-dfp_read_field_def_E2EEMeta(<<8, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> d_field_E2EEMeta_ver(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-dfp_read_field_def_E2EEMeta(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> d_field_E2EEMeta_suite(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-dfp_read_field_def_E2EEMeta(<<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> d_field_E2EEMeta_nonce(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-dfp_read_field_def_E2EEMeta(<<34, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> d_field_E2EEMeta_keys(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-dfp_read_field_def_E2EEMeta(<<>>, 0, 0, _, F@_1, F@_2, F@_3, R1, TrUserData) ->
-    S1 = #{ver => F@_1, suite => F@_2, nonce => F@_3},
+dfp_read_field_def_E2EEMeta(<<8, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_ver(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<18, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_suite(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<26, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_nonce(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<34, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_keys(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<42, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_protocol(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<48, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_protocol_version(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<58, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_peer_uid(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<66, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_peer_device_id(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<72, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_message_type(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<82, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_session_id(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<88, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_message_index(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<98, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_group_id(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<104, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    d_field_E2EEMeta_meta_version(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dfp_read_field_def_E2EEMeta(<<>>, 0, 0, _, F@_1, F@_2, F@_3, R1, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    S1 = #{ver => F@_1, suite => F@_2, nonce => F@_3, protocol => F@_5, protocol_version => F@_6, peer_uid => F@_7, peer_device_id => F@_8, message_type => F@_9, session_id => F@_10, message_index => F@_11, group_id => F@_12, meta_version => F@_13},
     if R1 == '$undef' -> S1;
        true -> S1#{keys => lists_reverse(R1, TrUserData)}
     end;
-dfp_read_field_def_E2EEMeta(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> dg_read_field_def_E2EEMeta(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData).
+dfp_read_field_def_E2EEMeta(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    dg_read_field_def_E2EEMeta(Other, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-dg_read_field_def_E2EEMeta(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData) when N < 32 - 7 -> dg_read_field_def_E2EEMeta(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-dg_read_field_def_E2EEMeta(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, TrUserData) ->
+dg_read_field_def_E2EEMeta(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 32 - 7 ->
+    dg_read_field_def_E2EEMeta(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+dg_read_field_def_E2EEMeta(<<0:1, X:7, Rest/binary>>, N, Acc, _, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
     Key = X bsl N + Acc,
     case Key of
-        8 -> d_field_E2EEMeta_ver(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, TrUserData);
-        18 -> d_field_E2EEMeta_suite(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, TrUserData);
-        26 -> d_field_E2EEMeta_nonce(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, TrUserData);
-        34 -> d_field_E2EEMeta_keys(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, TrUserData);
+        8 -> d_field_E2EEMeta_ver(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        18 -> d_field_E2EEMeta_suite(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        26 -> d_field_E2EEMeta_nonce(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        34 -> d_field_E2EEMeta_keys(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        42 -> d_field_E2EEMeta_protocol(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        48 -> d_field_E2EEMeta_protocol_version(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        58 -> d_field_E2EEMeta_peer_uid(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        66 -> d_field_E2EEMeta_peer_device_id(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        72 -> d_field_E2EEMeta_message_type(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        82 -> d_field_E2EEMeta_session_id(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        88 -> d_field_E2EEMeta_message_index(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        98 -> d_field_E2EEMeta_group_id(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+        104 -> d_field_E2EEMeta_meta_version(Rest, 0, 0, 0, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
         _ ->
             case Key band 7 of
-                0 -> skip_varint_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, TrUserData);
-                1 -> skip_64_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, TrUserData);
-                2 -> skip_length_delimited_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, TrUserData);
-                3 -> skip_group_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, TrUserData);
-                5 -> skip_32_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, TrUserData)
+                0 -> skip_varint_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+                1 -> skip_64_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+                2 -> skip_length_delimited_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+                3 -> skip_group_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+                5 -> skip_32_E2EEMeta(Rest, 0, 0, Key bsr 3, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData)
             end
     end;
-dg_read_field_def_E2EEMeta(<<>>, 0, 0, _, F@_1, F@_2, F@_3, R1, TrUserData) ->
-    S1 = #{ver => F@_1, suite => F@_2, nonce => F@_3},
+dg_read_field_def_E2EEMeta(<<>>, 0, 0, _, F@_1, F@_2, F@_3, R1, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    S1 = #{ver => F@_1, suite => F@_2, nonce => F@_3, protocol => F@_5, protocol_version => F@_6, peer_uid => F@_7, peer_device_id => F@_8, message_type => F@_9, session_id => F@_10, message_index => F@_11, group_id => F@_12, meta_version => F@_13},
     if R1 == '$undef' -> S1;
        true -> S1#{keys => lists_reverse(R1, TrUserData)}
     end.
 
-d_field_E2EEMeta_ver(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData) when N < 57 -> d_field_E2EEMeta_ver(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-d_field_E2EEMeta_ver(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, F@_3, F@_4, TrUserData) ->
+d_field_E2EEMeta_ver(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_ver(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_ver(<<0:1, X:7, Rest/binary>>, N, Acc, F, _, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
     {NewFValue, RestF} = {begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end, Rest},
-    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, NewFValue, F@_2, F@_3, F@_4, TrUserData).
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, NewFValue, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-d_field_E2EEMeta_suite(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData) when N < 57 -> d_field_E2EEMeta_suite(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-d_field_E2EEMeta_suite(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, TrUserData) ->
+d_field_E2EEMeta_suite(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_suite(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_suite(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, _, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
     {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
-    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, TrUserData).
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, NewFValue, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-d_field_E2EEMeta_nonce(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData) when N < 57 -> d_field_E2EEMeta_nonce(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-d_field_E2EEMeta_nonce(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, TrUserData) ->
+d_field_E2EEMeta_nonce(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_nonce(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_nonce(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, _, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
     {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
-    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, TrUserData).
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, NewFValue, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-d_field_E2EEMeta_keys(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData) when N < 57 -> d_field_E2EEMeta_keys(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-d_field_E2EEMeta_keys(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, Prev, TrUserData) ->
+d_field_E2EEMeta_keys(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_keys(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_keys(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, Prev, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
     {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bs:Len/binary, Rest2/binary>> = Rest, {id(decode_msg_E2EEDeviceKey(Bs, TrUserData), TrUserData), Rest2} end,
-    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, cons(NewFValue, Prev, TrUserData), TrUserData).
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, cons(NewFValue, Prev, TrUserData), F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-skip_varint_E2EEMeta(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> skip_varint_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-skip_varint_E2EEMeta(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> dfp_read_field_def_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData).
+d_field_E2EEMeta_protocol(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_protocol(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_protocol(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, _, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, NewFValue, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-skip_length_delimited_E2EEMeta(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData) when N < 57 -> skip_length_delimited_E2EEMeta(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData);
-skip_length_delimited_E2EEMeta(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, TrUserData) ->
+d_field_E2EEMeta_protocol_version(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_protocol_version(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_protocol_version(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, _, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    {NewFValue, RestF} = {begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end, Rest},
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, NewFValue, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
+
+d_field_E2EEMeta_peer_uid(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_peer_uid(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_peer_uid(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, _, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, NewFValue, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
+
+d_field_E2EEMeta_peer_device_id(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_peer_device_id(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_peer_device_id(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, _, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, NewFValue, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
+
+d_field_E2EEMeta_message_type(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_message_type(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_message_type(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, _, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    {NewFValue, RestF} = {begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end, Rest},
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, NewFValue, F@_10, F@_11, F@_12, F@_13, TrUserData).
+
+d_field_E2EEMeta_session_id(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_session_id(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_session_id(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, _, F@_11, F@_12, F@_13, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, NewFValue, F@_11, F@_12, F@_13, TrUserData).
+
+d_field_E2EEMeta_message_index(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_message_index(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_message_index(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, _, F@_12, F@_13, TrUserData) ->
+    {NewFValue, RestF} = {begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end, Rest},
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, NewFValue, F@_12, F@_13, TrUserData).
+
+d_field_E2EEMeta_group_id(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_group_id(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_group_id(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, _, F@_13, TrUserData) ->
+    {NewFValue, RestF} = begin Len = X bsl N + Acc, <<Bytes:Len/binary, Rest2/binary>> = Rest, Bytes2 = binary:copy(Bytes), {id(Bytes2, TrUserData), Rest2} end,
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, NewFValue, F@_13, TrUserData).
+
+d_field_E2EEMeta_meta_version(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    d_field_E2EEMeta_meta_version(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+d_field_E2EEMeta_meta_version(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, _, TrUserData) ->
+    {NewFValue, RestF} = {begin <<Res:32/signed-native>> = <<(X bsl N + Acc):32/unsigned-native>>, id(Res, TrUserData) end, Rest},
+    dfp_read_field_def_E2EEMeta(RestF, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, NewFValue, TrUserData).
+
+skip_varint_E2EEMeta(<<1:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    skip_varint_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+skip_varint_E2EEMeta(<<0:1, _:7, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    dfp_read_field_def_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
+
+skip_length_delimited_E2EEMeta(<<1:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) when N < 57 ->
+    skip_length_delimited_E2EEMeta(Rest, N + 7, X bsl N + Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData);
+skip_length_delimited_E2EEMeta(<<0:1, X:7, Rest/binary>>, N, Acc, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
     Length = X bsl N + Acc,
     <<_:Length/binary, Rest2/binary>> = Rest,
-    dfp_read_field_def_E2EEMeta(Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, TrUserData).
+    dfp_read_field_def_E2EEMeta(Rest2, 0, 0, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-skip_group_E2EEMeta(Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, TrUserData) ->
+skip_group_E2EEMeta(Bin, _, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
     {_, Rest} = read_group(Bin, FNum),
-    dfp_read_field_def_E2EEMeta(Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, TrUserData).
+    dfp_read_field_def_E2EEMeta(Rest, 0, Z2, FNum, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-skip_32_E2EEMeta(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> dfp_read_field_def_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData).
+skip_32_E2EEMeta(<<_:32, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    dfp_read_field_def_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
-skip_64_E2EEMeta(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData) -> dfp_read_field_def_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, TrUserData).
+skip_64_E2EEMeta(<<_:64, Rest/binary>>, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData) ->
+    dfp_read_field_def_E2EEMeta(Rest, Z1, Z2, F, F@_1, F@_2, F@_3, F@_4, F@_5, F@_6, F@_7, F@_8, F@_9, F@_10, F@_11, F@_12, F@_13, TrUserData).
 
 decode_msg_E2EEDeviceKey(Bin, TrUserData) -> dfp_read_field_def_E2EEDeviceKey(Bin, 0, 0, 0, id(<<>>, TrUserData), id(<<>>, TrUserData), id(<<>>, TrUserData), id(<<>>, TrUserData), TrUserData).
 
@@ -3831,11 +4049,56 @@ merge_msg_E2EEMeta(PMsg, NMsg, TrUserData) ->
              {#{nonce := PFnonce}, _} -> S3#{nonce => PFnonce};
              _ -> S3
          end,
+    S5 = case {PMsg, NMsg} of
+             {#{keys := PFkeys}, #{keys := NFkeys}} -> S4#{keys => 'erlang_++'(PFkeys, NFkeys, TrUserData)};
+             {_, #{keys := NFkeys}} -> S4#{keys => NFkeys};
+             {#{keys := PFkeys}, _} -> S4#{keys => PFkeys};
+             {_, _} -> S4
+         end,
+    S6 = case {PMsg, NMsg} of
+             {_, #{protocol := NFprotocol}} -> S5#{protocol => NFprotocol};
+             {#{protocol := PFprotocol}, _} -> S5#{protocol => PFprotocol};
+             _ -> S5
+         end,
+    S7 = case {PMsg, NMsg} of
+             {_, #{protocol_version := NFprotocol_version}} -> S6#{protocol_version => NFprotocol_version};
+             {#{protocol_version := PFprotocol_version}, _} -> S6#{protocol_version => PFprotocol_version};
+             _ -> S6
+         end,
+    S8 = case {PMsg, NMsg} of
+             {_, #{peer_uid := NFpeer_uid}} -> S7#{peer_uid => NFpeer_uid};
+             {#{peer_uid := PFpeer_uid}, _} -> S7#{peer_uid => PFpeer_uid};
+             _ -> S7
+         end,
+    S9 = case {PMsg, NMsg} of
+             {_, #{peer_device_id := NFpeer_device_id}} -> S8#{peer_device_id => NFpeer_device_id};
+             {#{peer_device_id := PFpeer_device_id}, _} -> S8#{peer_device_id => PFpeer_device_id};
+             _ -> S8
+         end,
+    S10 = case {PMsg, NMsg} of
+              {_, #{message_type := NFmessage_type}} -> S9#{message_type => NFmessage_type};
+              {#{message_type := PFmessage_type}, _} -> S9#{message_type => PFmessage_type};
+              _ -> S9
+          end,
+    S11 = case {PMsg, NMsg} of
+              {_, #{session_id := NFsession_id}} -> S10#{session_id => NFsession_id};
+              {#{session_id := PFsession_id}, _} -> S10#{session_id => PFsession_id};
+              _ -> S10
+          end,
+    S12 = case {PMsg, NMsg} of
+              {_, #{message_index := NFmessage_index}} -> S11#{message_index => NFmessage_index};
+              {#{message_index := PFmessage_index}, _} -> S11#{message_index => PFmessage_index};
+              _ -> S11
+          end,
+    S13 = case {PMsg, NMsg} of
+              {_, #{group_id := NFgroup_id}} -> S12#{group_id => NFgroup_id};
+              {#{group_id := PFgroup_id}, _} -> S12#{group_id => PFgroup_id};
+              _ -> S12
+          end,
     case {PMsg, NMsg} of
-        {#{keys := PFkeys}, #{keys := NFkeys}} -> S4#{keys => 'erlang_++'(PFkeys, NFkeys, TrUserData)};
-        {_, #{keys := NFkeys}} -> S4#{keys => NFkeys};
-        {#{keys := PFkeys}, _} -> S4#{keys => PFkeys};
-        {_, _} -> S4
+        {_, #{meta_version := NFmeta_version}} -> S13#{meta_version => NFmeta_version};
+        {#{meta_version := PFmeta_version}, _} -> S13#{meta_version => PFmeta_version};
+        _ -> S13
     end.
 
 -compile({nowarn_unused_function,merge_msg_E2EEDeviceKey/3}).
@@ -4489,7 +4752,52 @@ v_msg_E2EEMeta(#{} = M, Path, TrUserData) ->
             end;
         _ -> ok
     end,
-    lists:foreach(fun (keys) -> ok;
+    case M of
+        #{protocol := F5} -> v_type_string(F5, [protocol | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{protocol_version := F6} -> v_type_int32(F6, [protocol_version | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{peer_uid := F7} -> v_type_string(F7, [peer_uid | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{peer_device_id := F8} -> v_type_string(F8, [peer_device_id | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{message_type := F9} -> v_type_int32(F9, [message_type | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{session_id := F10} -> v_type_string(F10, [session_id | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{message_index := F11} -> v_type_int32(F11, [message_index | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{group_id := F12} -> v_type_string(F12, [group_id | Path], TrUserData);
+        _ -> ok
+    end,
+    case M of
+        #{meta_version := F13} -> v_type_int32(F13, [meta_version | Path], TrUserData);
+        _ -> ok
+    end,
+    lists:foreach(fun (meta_version) -> ok;
+                      (group_id) -> ok;
+                      (message_index) -> ok;
+                      (session_id) -> ok;
+                      (message_type) -> ok;
+                      (peer_device_id) -> ok;
+                      (peer_uid) -> ok;
+                      (protocol_version) -> ok;
+                      (protocol) -> ok;
+                      (keys) -> ok;
                       (nonce) -> ok;
                       (suite) -> ok;
                       (ver) -> ok;
@@ -5371,7 +5679,16 @@ get_msg_defs() ->
       [#{name => ver, fnum => 1, rnum => 2, type => int32, occurrence => optional, opts => []},
        #{name => suite, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},
        #{name => nonce, fnum => 3, rnum => 4, type => bytes, occurrence => optional, opts => []},
-       #{name => keys, fnum => 4, rnum => 5, type => {msg, 'E2EEDeviceKey'}, occurrence => repeated, opts => []}]},
+       #{name => keys, fnum => 4, rnum => 5, type => {msg, 'E2EEDeviceKey'}, occurrence => repeated, opts => []},
+       #{name => protocol, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+       #{name => protocol_version, fnum => 6, rnum => 7, type => int32, occurrence => optional, opts => []},
+       #{name => peer_uid, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []},
+       #{name => peer_device_id, fnum => 8, rnum => 9, type => string, occurrence => optional, opts => []},
+       #{name => message_type, fnum => 9, rnum => 10, type => int32, occurrence => optional, opts => []},
+       #{name => session_id, fnum => 10, rnum => 11, type => string, occurrence => optional, opts => []},
+       #{name => message_index, fnum => 11, rnum => 12, type => int32, occurrence => optional, opts => []},
+       #{name => group_id, fnum => 12, rnum => 13, type => string, occurrence => optional, opts => []},
+       #{name => meta_version, fnum => 13, rnum => 14, type => int32, occurrence => optional, opts => []}]},
      {{msg, 'E2EEDeviceKey'},
       [#{name => did, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
        #{name => kid, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},
@@ -5557,7 +5874,16 @@ find_msg_def('E2EEMeta') ->
     [#{name => ver, fnum => 1, rnum => 2, type => int32, occurrence => optional, opts => []},
      #{name => suite, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},
      #{name => nonce, fnum => 3, rnum => 4, type => bytes, occurrence => optional, opts => []},
-     #{name => keys, fnum => 4, rnum => 5, type => {msg, 'E2EEDeviceKey'}, occurrence => repeated, opts => []}];
+     #{name => keys, fnum => 4, rnum => 5, type => {msg, 'E2EEDeviceKey'}, occurrence => repeated, opts => []},
+     #{name => protocol, fnum => 5, rnum => 6, type => string, occurrence => optional, opts => []},
+     #{name => protocol_version, fnum => 6, rnum => 7, type => int32, occurrence => optional, opts => []},
+     #{name => peer_uid, fnum => 7, rnum => 8, type => string, occurrence => optional, opts => []},
+     #{name => peer_device_id, fnum => 8, rnum => 9, type => string, occurrence => optional, opts => []},
+     #{name => message_type, fnum => 9, rnum => 10, type => int32, occurrence => optional, opts => []},
+     #{name => session_id, fnum => 10, rnum => 11, type => string, occurrence => optional, opts => []},
+     #{name => message_index, fnum => 11, rnum => 12, type => int32, occurrence => optional, opts => []},
+     #{name => group_id, fnum => 12, rnum => 13, type => string, occurrence => optional, opts => []},
+     #{name => meta_version, fnum => 13, rnum => 14, type => int32, occurrence => optional, opts => []}];
 find_msg_def('E2EEDeviceKey') ->
     [#{name => did, fnum => 1, rnum => 2, type => string, occurrence => optional, opts => []},
      #{name => kid, fnum => 2, rnum => 3, type => string, occurrence => optional, opts => []},

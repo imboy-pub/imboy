@@ -44,5 +44,5 @@ imboyapp/maestro/10_e2ee_c2c.yaml / 11_e2ee_group.yaml
 - [x] Olm/Megolm/AES-GCM roundtrip + tamper 检测有测试 — 232 pass / 0 skip (imboyapp)
 - [x] 收端不降级(不把 RSA fallback 冒充 Olm PASS) — OlmAuthenticationException + CapabilityGuard
 - [x] OTK/trust/备份/换设备恢复有测试 — 后端 EUnit + 客户端 threat_model_guard
-- [ ] proto E2EEMeta olm 子对象对齐
+- [x] proto E2EEMeta olm 子对象对齐 — fields 5-13 (protocol/peer_uid/session_id/message_index/meta_version…)；Dart codec + Erlang gpb 双端生成验证
 - [ ] 真机 Olm 验收有记录(非模拟器) — `integration_test/e2ee_olm_device_test.dart` 已就绪，APK 构建通过；华为 EMUI 需设备端确认 USB 安装

@@ -129,14 +129,50 @@ message E2EEMeta {
   // E2EE protocol version
   int32 ver = 1;
 
-  // Cipher suite identifier, e.g. "RSA-OAEP-256+AES-256-GCM"
+  // Cipher suite identifier, e.g. "RSA-OAEP-256+AES-256-GCM", "OLM.V1", "MEGOLM.V1"
   string suite = 2;
 
   // Nonce/IV for the symmetric cipher (base64-encoded in JSON, raw bytes here)
+  // Used by RSA-OAEP suite only.
   bytes nonce = 3;
 
-  // Per-device encrypted symmetric keys
+  // Per-device encrypted symmetric keys (RSA-OAEP suite only)
   repeated E2EEDeviceKey keys = 4;
+
+  // --- v2 routing fields (ADR 02 §7) ---
+
+  // Protocol identifier for v2 routing: "olm", "megolm", "rsa-oaep"
+  string protocol = 5;
+
+  // Protocol version (e.g. 1 for OLM.V1)
+  int32 protocol_version = 6;
+
+  // --- Olm suite fields (OLM.V1) ---
+
+  // Sender's UID (receiver uses this to locate the Olm session peer)
+  string peer_uid = 7;
+
+  // Sender's device ID
+  string peer_device_id = 8;
+
+  // Olm message type: 0 = prekey message, 1 = normal message
+  int32 message_type = 9;
+
+  // Session identifier (Olm session ID or Megolm session ID)
+  string session_id = 10;
+
+  // --- Megolm suite fields (MEGOLM.V1) ---
+
+  // Megolm ratchet message index
+  int32 message_index = 11;
+
+  // Group identifier (for C2G messages)
+  string group_id = 12;
+
+  // --- v3 Protected Frame (ADR 15) ---
+
+  // Meta version: 1 = legacy RSA, 2 = v2 routing, 3 = protected frame
+  int32 meta_version = 13;
 }
 
 // Per-device wrapped key for E2EE
