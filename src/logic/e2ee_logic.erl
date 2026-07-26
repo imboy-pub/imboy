@@ -76,7 +76,7 @@ report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) when 
                         ok;
                     {error, Reason} ->
                         _ = ?ERROR_LOG({e2ee_report_device_key_create_error, Reason}),
-                        {error, Reason}
+                        {error, <<"internal_error">>}
                 end;
             {ok, _Count} ->
                 % 设备已存在，更新公钥
@@ -84,7 +84,7 @@ report_device_key(Uid, DeviceId, DeviceType, DeviceName, PublicKey, KeyId) when 
                 ok;
             {error, Reason} ->
                 _ = ?ERROR_LOG({e2ee_report_device_key_error, Reason}),
-                {error, Reason}
+                {error, <<"internal_error">>}
         end,
 
     % 如果保存/更新失败，直接返回错误
@@ -230,5 +230,5 @@ pull_key_changes_from_db(FriendUids, SinceTs, Limit) ->
             {ok, Notifications};
         {error, Reason} ->
             _ = ?ERROR_LOG({pull_key_notifications_db_error, Reason}),
-            {error, Reason}
+            {error, <<"internal_error">>}
     end.

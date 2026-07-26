@@ -146,5 +146,6 @@ start_server_backup_recovery(Uid, _DeviceId) ->
         {error, not_found} ->
             {error, {<<"无云端备份"/utf8>>, ?ERR_NOT_FOUND}};
         {error, Reason} ->
-            {error, Reason}
+            _ = ?ERROR_LOG({start_server_backup_recovery_db_error, Uid, Reason}),
+            {error, <<"internal_error">>}
     end.
