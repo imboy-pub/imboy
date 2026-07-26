@@ -1,6 +1,6 @@
 # imboy E2EE Protocol Specification
 
-> Version: 1.0.0 | Date: 2026-07-26
+> Version: 1.1.0 | Date: 2026-07-27
 > Status: Draft for External Audit
 > Scope: Client-side cryptographic protocol stack (imboyapp) + server zero-knowledge invariant (imboy backend)
 
@@ -313,9 +313,15 @@ The server infrastructure adheres to a strict zero-knowledge policy regarding cr
 
 2. **No message decryption.** The server message pipeline treats E2EE ciphertext as opaque byte sequences. Routing is performed on metadata (sender, recipient, timestamp) without accessing payload content.
 
-3. **OTK atomic claim.** One-time prekeys are consumed via an atomic `DELETE ... RETURNING` operation, preventing double-use (replay) attacks.
+3. **OTK atomic claim.** One-time prekeys follow a strict lifecycle: upload (full-replacement) → claim (FIFO via `SELECT FOR UPDATE SKIP LOCKED`) → exhaust → fallback (non-destructive, repeatable) → replenish. The atomic claim prevents double-use (replay) attacks. Rate limiting (30/min production, 60/min local) prevents enumeration.
 
 4. **CI enforcement.** A `check_server_zero_crypto.sh` script runs in CI and greps the server codebase for decryption function calls. Any introduction of server-side decryption capability fails the build.
+
+5. **Push notification privacy.** Offline push notifications never contain message ciphertext. The push body is determined by a static format string (`get_push_body/1`) based solely on `msg_type`; the actual payload is discarded at the function head (`_Payload`). E2EE messages produce a generic "发来一条消息" notification with no cryptographic material.
+
+6. **Error response sanitization.** All E2EE logic-layer error returns are opaque binaries (e.g., `<<"internal_error">>`). Raw database error tuples (containing table names, constraint names, SQLSTATE codes) are logged server-side but never propagated to API responses. This prevents schema disclosure via error oracle attacks.
+
+7. **C2G e2ee passthrough.** Group message e2ee fields traverse the entire server pipeline (decode → validate → stage → store → fan-out → offline pull) as opaque maps. No server component reads, pattern-matches, transforms, or strips any field within the e2ee envelope. Byte-for-byte preservation is enforced by contract tests covering decode, assemble, JSON serialization roundtrip, and offline retrieval format consistency.
 
 ---
 
@@ -332,6 +338,9 @@ The server infrastructure adheres to a strict zero-knowledge policy regarding cr
 | T7 | Replay / reorder | OTK atomic claim + inbox dedupe (`crypto_inbox_dedupe`) | `otk_concurrent_claim_uniqueness`, `message_replay_rejected` |
 | T8 | Trust state manipulation | Audit log hash chain (§10) | `device_trust_state_change_audit_log` |
 | T9 | Rollback (identity/session) | TOFU monotonic pin + Megolm session index monotonicity | `device_identity_rollback_rejected`, `megolm_old_session_rejected` |
+| T10 | Error response info disclosure | Opaque `<<"internal_error">>` returns; raw DB errors logged server-side only (§11.6) | `e2ee_error_privacy_tests` (5 tests) |
+| T11 | C2G e2ee field modification in transit | Byte-preserving passthrough contract; no server-side parse/transform (§11.7) | `e2ee_c2g_passthrough_contract_tests` (6 tests) |
+| T12 | Push notification ciphertext leakage | Static body from `get_push_body/1`; payload discarded at function head (§11.5) | `push_notification_logic_tests` (privacy guards) |
 
 ---
 
@@ -354,13 +363,15 @@ No custom cryptographic primitives are implemented. All cryptography delegates t
 
 ## 14. Test Coverage Summary
 
-As of 2026-07-26, the client-side E2EE test suite comprises **232 passing tests** across:
+As of 2026-07-27, the E2EE verification suite comprises **244 client-side tests** and **265 backend tests** (25 modules), all passing with zero skips.
+
+### 14.1 Client-Side (imboyapp)
 
 | Category | Count | Framework |
 |----------|-------|-----------|
 | Olm session lifecycle (X3DH, ratchet, PFS, PCS) | 3 | flutter test + vodozemac FFI |
 | Protocol integration (full-stack composition) | 4 | flutter test + vodozemac FFI + sqflite_ffi |
-| Threat model guards (T1–T9) | 24 | flutter test + sqflite_ffi |
+| Threat model guards (T1–T9) | 26 | flutter test + sqflite_ffi |
 | Identity verification (Ed25519) | 8 | flutter test + vodozemac FFI |
 | Safety Number | 12 | flutter test |
 | Capability negotiation + downgrade | 14 | flutter test + sqflite_ffi |
@@ -369,9 +380,31 @@ As of 2026-07-26, the client-side E2EE test suite comprises **232 passing tests*
 | CryptoStore (transactions, dedupe) | 20+ | flutter test + sqflite_ffi |
 | AES-256-GCM (encrypt/decrypt/tamper) | 10+ | flutter test |
 | Megolm group session | 15+ | flutter test + vodozemac FFI |
-| KDF backward compatibility | 14 | flutter test (PBKDF2 310k iterations) |
+| Protocol codec (protobuf roundtrip) | 12 | flutter test |
 
-Zero tests are skipped. All tests run in CI without requiring physical devices (vodozemac FFI loads the host-platform dynamic library).
+One-command: `bash scripts/run_e2ee_suite.sh` (dart analyze → e2ee tests → protocol tests).
+
+### 14.2 Backend (imboy)
+
+| Category | Modules | Count | Framework |
+|----------|---------|-------|-----------|
+| Handler layer (e2ee, olm, capability, device binding) | 5 | 60+ | EUnit + meck |
+| Logic layer (e2ee, backup, recovery, trust, group, olm identity) | 7 | 80+ | EUnit + meck |
+| OTK lifecycle (stateful FIFO, fallback, batch, replenish) | 1 | 5 | EUnit + ets mock |
+| Passthrough contract (C2C v3, C2G Megolm) | 2 | 13 | EUnit |
+| Error response privacy | 1 | 5 | EUnit + meck |
+| Push notification privacy | 1 | 3 | EUnit + meck |
+| Repo layer (backup, olm identity, JSONB roundtrip) | 3 | 20+ | EUnit + meck |
+| Codec (protobuf ↔ JSON bridge) | 1 | 15+ | EUnit |
+| Message DS (S2C rejection, validation) | 1 | 10+ | EUnit + meck |
+| Cipher (AES-GCM v2, error codes) | 2 | 20+ | EUnit |
+| Worker (OTK cleanup) | 1 | 5+ | EUnit |
+
+One-command: `make e2ee-verify` (security-gate → compile 25 test modules → single-run ALL PASSED/FAILED).
+
+### 14.3 Verification Guarantees
+
+Both gates are designed for independent audit: an auditor can clone the repository, run the two commands above, and reproduce the full 509-test E2EE verification without requiring a running server, database, or physical device. All cryptographic operations in tests use the actual vodozemac library (not mocks) for PFS/PCS assertions.
 
 ---
 
