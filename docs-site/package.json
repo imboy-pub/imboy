@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "sync": "bash scripts/sync-content.sh",
-    "dev": "bun run sync && vitepress dev",
+    "dev": "bun run sync && DOCS_BASE='/' vitepress dev",
     "build": "bun run sync && vitepress build",
-    "preview": "vitepress preview"
+    "preview": "DOCS_BASE='/' vitepress preview"
   },
   "devDependencies": {
     "vitepress": "^1.6.3"

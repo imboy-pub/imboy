@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'IMBoy Docs',
   description: 'IMBoy 私有化即时通讯平台 — 部署、集成与开发文档',
   lang: 'zh-CN',
+  base: process.env.DOCS_BASE || '/imboy/',
   cleanUrls: true,
   lastUpdated: true,
   srcDir: 'content',
