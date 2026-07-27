@@ -14,7 +14,12 @@ release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
 current_batch: B05
 next_task: E2EE-019
-active_session: null
+active_session:
+  id: "20260727-1540-gemini-cli"
+  task: "E2EE-019"
+  repo: "imboyapp"
+  started_at: "2026-07-27T15:40:00+08:00"
+  owner: "gemini-cli"
 human_gate:
   adr_14_19: BLOCKED
   adr_14_19_reason: "仍为 Proposed；不得自行代签"
@@ -179,7 +184,7 @@ blocked:
 | E2EE-014 | B03 | Trust Event、身份新鲜度和幂等 | `PASS` | `evidence/E2EE-014.md` |
 | E2EE-015 | B04 | Secret Inventory、登出和残留清理 | `PASS` | `evidence/E2EE-015.md` |
 | E2EE-016 | B04 | 备份解析和边界校验 | `PASS` | 仅代表旧备份解析，不代表 Recovery Vault v2 |
-| E2EE-019 | B05 | 自动化基线 | `IN_PROGRESS` | 109 passed/10 skipped；真机矩阵待完成 |
+| E2EE-019 | B05 | 自动化基线 | `IN_PROGRESS` | 257 passed/0 failed. G1 自动化基线完全 PASS，真机矩阵待人工验证 |
 | E2EE-020 | B06 | Device Manifest | `PENDING` | 依赖 E2EE-012、ADR14 |
 | E2EE-021 | B06 | Signed Capabilities | `PENDING` | 依赖设备身份 |
 | E2EE-022 | B06 | 客户端身份签名验证 | `PENDING` | 不能只信服务端返回值 |
