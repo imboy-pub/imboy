@@ -163,6 +163,7 @@ pre-push:
 
 ### 2.1 `backend-ci.yml` 追加 job（无 JVM 依赖，比 eqwalize job 轻）
 
+::: v-pre
 ```yaml
 gradualize:
   runs-on: ubuntu-latest
@@ -192,6 +193,7 @@ gradualize:
         echo "### Gradualizer 类型健康度" >> "$GITHUB_STEP_SUMMARY"
         cat .gradualizer/metrics.txt >> "$GITHUB_STEP_SUMMARY"
 ```
+:::
 
 ### 2.2 与 eqWAlizer CI 的共存规则
 
@@ -241,7 +243,7 @@ make gradualize-audit GRADUALIZE_BUDGET=9999   # 不阻断，仅统计
 #### 2.3.3 首次 CI 干净基线捕获流程（maintainer 操作）
 
 1. 确认 `backend-ci.yml` 的 `gradualize` job 已合入且 `continue-on-error: true`、
-   `GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }}`（当前已满足）。
+   <code v-pre>GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }}</code>（当前已满足）。
 2. 在 `main` 分支推一个空改动 / 或手动触发一次 `backend-ci.yml` 工作流。
 3. 进入该次运行的 `gradualize` job → 读 step summary 里的 `gradualizer_failing N`
    （即 CI OTP28 下的真实基线，记为 `N_CI`）。
