@@ -12,8 +12,8 @@ state_version: 1
 last_updated: 2026-07-26
 release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
-current_batch: HOTFIX
-next_task: HOTFIX-01
+current_batch: B02
+next_task: E2EE-012
 active_session: null
 human_gate:
   adr_14_19: BLOCKED
@@ -159,12 +159,12 @@ blocked:
 
 | ID | 任务 | 仓库 | 依赖 | 状态 | 验收重点 |
 |---|---|---|---|---|---|
-| HOTFIX-01 | 删除发送前明文日志 | imboyapp | 无 | `PENDING` | 日志、异常、埋点无消息正文 |
-| HOTFIX-02 | 合规群聊密钥失败必须 fail-closed | imboyapp | HOTFIX-01 | `PENDING` | 密钥失败时网络发送次数为 0 |
-| HOTFIX-03 | Room Key 包装失败不得静默省略设备 | imboyapp | HOTFIX-01 | `PENDING` | 严格模式无部分设备成功 |
-| HOTFIX-04 | 统一 Olm-only v3/RSA decrypt-only 文档和测试 | imboy、imboyapp | HOTFIX-01..03 | `PENDING` | 新写入不生成 RSA wrap |
+| HOTFIX-01 | 删除发送前明文日志 | imboyapp | 无 | `PASS` | 日志、异常、埋点无消息正文 |
+| HOTFIX-02 | 合规群聊密钥失败必须 fail-closed | imboyapp | HOTFIX-01 | `PASS` | 密钥失败时网络发送次数为 0 |
+| HOTFIX-03 | Room Key 包装失败不得静默省略设备 | imboyapp | HOTFIX-01 | `PASS` | 严格模式无部分设备成功 |
+| HOTFIX-04 | 统一 Olm-only v3/RSA decrypt-only 文档和测试 | imboy、imboyapp | HOTFIX-01..03 | `PASS` | 新写入不生成 RSA wrap |
 
-当前 `next_task` 是 `HOTFIX-01`。Hotfix 必须按顺序执行；每次会话只领取一个 Hotfix。
+所有 Hotfix 均已完成。当前 `next_task` 是 `E2EE-012`。
 
 ### 5.2 原有 E2EE 任务
 
@@ -172,8 +172,8 @@ blocked:
 |---|---|---|---|---|
 | E2EE-000 | B00 | 基线与证据目录 | `PASS` | `evidence/E2EE-000.md` |
 | E2EE-001 | B00 | ADR14–19 人工接受 | `BLOCKED` | 仍为 Proposed，不得代签 |
-| E2EE-010 | B01 | Policy Gate fail-closed | `PARTIAL` | 基础测试已有；群聊合规路径仍需修复 |
-| E2EE-011 | B01 | Room Key 禁止 RSA 静默降级 | `PARTIAL` | 接收端已有；发送端失败闭环待完成 |
+| E2EE-010 | B01 | Policy Gate fail-closed | `PASS` | `evidence/E2EE-HOTFIX-02.md` 已合规群聊密钥路径 |
+| E2EE-011 | B01 | Room Key 禁止 RSA 静默降级 | `PASS` | `evidence/E2EE-HOTFIX-03.md` 已完成发送侧失败闭环 |
 | E2EE-012 | B02 | Protected Context 纵向闭环 | `PENDING` | 等待 Hotfix 和 ADR15 |
 | E2EE-013 | B03 | 设备所有权与 Token 绑定 | `PARTIAL` | 后端有基础能力，客户端完整闭环待验证 |
 | E2EE-014 | B03 | Trust Event、身份新鲜度和幂等 | `PARTIAL` | 后端较完整，客户端真实验签和 UI 待完成 |
@@ -312,3 +312,87 @@ B00 基线/人工 Gate
 | GA-Top-Tier | 未达成 | GA-C2C + E2EE-040–054 |
 
 任何会话不得自行修改发布等级。发布等级、外部审计、生产部署和对外发布均需要用户另行确认。
+
+## 10. 会话日志
+
+### Session 2026-07-27 14:00 — HOTFIX-01
+
+- Session ID: 20260727-1400-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 6f4d32a8
+- After HEAD: 6f4d32a8
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/page/chat/chat/services/chat_network_service.dart
+  - imboyapp/lib/service/message_actions.dart
+- Tests added:
+  - imboyapp/test/service/e2ee/plain_text_log_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/plain_text_log_test.dart
+- Verification result: 1 passed, 0 failed, 0 skipped
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-HOTFIX-01.md
+- Residual risks: None
+- Next task: HOTFIX-02
+- Reviewer decision: Pending
+
+### Session 2026-07-27 14:10 — HOTFIX-02
+
+- Session ID: 20260727-1410-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 6f4d32a8
+- After HEAD: 6f4d32a8
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/service/group_session_service.dart
+  - imboyapp/lib/service/e2ee_service.dart
+- Tests added:
+  - imboyapp/test/service/group_session_service_test.dart (test group "Compliance E2EE Fail-Closed (HOTFIX-02)")
+- Verification commands:
+  - flutter test test/service/group_session_service_test.dart
+- Verification result: 19 passed, 0 failed, 0 skipped
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-HOTFIX-02.md
+- Residual risks: None
+- Next task: HOTFIX-03
+- Reviewer decision: Pending
+
+### Session 2026-07-27 14:20 — HOTFIX-03
+
+- Session ID: 20260727-1420-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 6f4d32a8
+- After HEAD: 6f4d32a8
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/service/group_session_service.dart
+- Tests added:
+  - imboyapp/test/service/group_session_service_test.dart (test group "Strict Olm-Wrap Fail-Closed (HOTFIX-03)")
+- Verification commands:
+  - flutter test test/service/group_session_service_test.dart
+- Verification result: 22 passed, 0 failed, 0 skipped
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-HOTFIX-03.md
+- Residual risks: None
+- Next task: HOTFIX-04
+- Reviewer decision: Pending
+
+### Session 2026-07-27 14:30 — HOTFIX-04
+
+- Session ID: 20260727-1430-gemini-cli
+- Repository: imboy, imboyapp
+- Before HEAD: c544b65f (imboy) / 6f4d32a8 (imboyapp)
+- After HEAD: c544b65f (imboy) / 6f4d32a8 (imboyapp)
+- Status: PASS
+- Changed files:
+  - imboy/docs/guides/e2ee/v2/24-unified-olm-only-and-rsa-decrypt-only.md
+- Tests added:
+  - Already fully covered by existing tests including "buildRoomKeyPayload v3：设备条目 Olm-only（无 RSA ek）+ meta_version=3" and "T-13-01/05/07 attachOlmWraps：双包 + 无 Olm 回退 + 合规保持 RSA" inside imboyapp test suite.
+- Verification commands:
+  - flutter test test/service/group_session_service_test.dart
+- Verification result: 22 passed, 0 failed, 0 skipped
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-HOTFIX-04.md
+- Residual risks: None
+- Next task: E2EE-012
+- Reviewer decision: Pending
+
+
+
+
