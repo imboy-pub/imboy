@@ -30,13 +30,35 @@ curl -s http://127.0.0.1:9800/api/v1/init
 - [ ] 浏览器打开文档站（https://imboy-pub.github.io/imboy/）
 - [ ] 备用：录屏（万一现场网络出问题）
 
-### 手机端配置
+### IP 配置同步（演示失败的第一大原因）
 
-App 设置 → 服务器地址 → 填入演示机局域网 IP：
+演示前 **必须** 确认以下两处 IP 一致且为当前局域网 IP：
+
+```bash
+# 查看当前 IP
+ifconfig | grep "inet " | grep -v 127.0.0.1
+# 假设输出 192.168.0.24
+```
+
+**① 后端 `config/sys.local.config`**（WebSocket 地址）：
+
+```erlang
+{ws_url, <<"ws://192.168.0.24:9800/api/v1/ws">>},
+```
+
+修改后重启后端：`IMBOYENV=local make run`
+
+**② 客户端 `imboyapp/.env.local`**（HTTP API 地址）：
 
 ```
-http://192.168.x.x:9800
+API_BASE_URL=http://192.168.0.24:9800
 ```
+
+修改后重新运行 App：`flutter run --dart-define=APP_ENV=local`
+
+**③ 手机与电脑在同一 WiFi / 子网**，手机 App 设置中确认服务器地址为上述 IP。
+
+> ⚠️ 切换网络（如从办公室到客户现场）后 IP 会变，必须重新执行上述步骤。
 
 ---
 
