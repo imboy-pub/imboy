@@ -1,0 +1,14 @@
+{
+  "name": "imboy-docs-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "bash scripts/sync-content.sh",
+    "dev": "bun run sync && vitepress dev",
+    "build": "bun run sync && vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}
