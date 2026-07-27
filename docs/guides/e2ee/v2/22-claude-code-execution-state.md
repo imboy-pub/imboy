@@ -12,8 +12,8 @@ state_version: 1
 last_updated: 2026-07-26
 release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
-current_batch: B06
-next_task: E2EE-022
+current_batch: B08
+next_task: E2EE-027
 active_session: null
 human_gate:
   adr_14_19: BLOCKED
@@ -164,7 +164,7 @@ blocked:
 | HOTFIX-03 | Room Key 包装失败不得静默省略设备 | imboyapp | HOTFIX-01 | `PASS` | 严格模式无部分设备成功 |
 | HOTFIX-04 | 统一 Olm-only v3/RSA decrypt-only 文档和测试 | imboy、imboyapp | HOTFIX-01..03 | `PASS` | 新写入不生成 RSA wrap |
 
-所有 Hotfix 均已完成。当前 `next_task` 是 `E2EE-022`。
+所有 Hotfix 均已完成。当前 `next_task` 是 `E2EE-027`。
 
 ### 5.2 原有 E2EE 任务
 
@@ -182,11 +182,11 @@ blocked:
 | E2EE-019 | B05 | 自动化基线 | `PASS` | `evidence/E2EE-019-automated-baseline.md` |
 | E2EE-020 | B06 | Device Manifest | `PASS` | `evidence/E2EE-020.md` |
 | E2EE-021 | B06 | Signed Capabilities | `PASS` | `evidence/E2EE-021.md` |
-| E2EE-022 | B06 | 客户端身份签名验证 | `PENDING` | 不能只信服务端返回值 |
-| E2EE-023 | B07 | Protected Frame v3 canonical encoding | `PENDING` | 依赖 E2EE-012 |
-| E2EE-024 | B07 | Context binding 和 mutation matrix | `PENDING` | 变异拒绝率必须 100% |
-| E2EE-025 | B07 | Replay、counter 和 epoch | `PENDING` | 依赖事务性状态 |
-| E2EE-026 | B08 | Transactional CryptoStore | `PENDING` | 依赖 E2EE-025 |
+| E2EE-022 | B06 | 客户端身份签名验证 | `PASS` | `evidence/E2EE-022.md` |
+| E2EE-023 | B07 | Protected Frame v3 canonical encoding | `PASS` | `evidence/E2EE-023.md` |
+| E2EE-024 | B07 | Context binding 和 mutation matrix | `PASS` | `evidence/E2EE-024.md` |
+| E2EE-025 | B07 | Replay、counter 和 epoch | `PASS` | `evidence/E2EE-025.md` |
+| E2EE-026 | B08 | Transactional CryptoStore | `PASS` | `evidence/E2EE-026.md` |
 | E2EE-027 | B08 | Outbox、dedupe 和 crash recovery | `PENDING` | 依赖 E2EE-026 |
 | E2EE-029 | B09 | C2C per-device Olm fan-out | `PENDING` | 新 C2C 禁止 Megolm/RSA |
 | E2EE-030 | B10 | PFS | `PENDING` | 真实设备攻击测试 |
@@ -534,6 +534,119 @@ B00 基线/人工 Gate
 - Residual risks: None
 - Next task: E2EE-022
 - Reviewer decision: Pending
+
+### Session 2026-07-27 16:10 — E2EE-022
+
+- Session ID: 20260727-1610-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 7912e001
+- After HEAD: 7912e001 (Not committed yet as per conventions)
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/service/e2ee/identity_verifier.dart
+- Tests added:
+  - Appended manifest-based identity verification and cross-binding checks inside imboyapp/test/service/e2ee/identity_verifier_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/identity_verifier_test.dart
+  - flutter test test/service/e2ee/
+- Verification result: 15 verifier tests passed; 266 E2EE unit tests passed
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-022.md
+- Residual risks: None
+- Next task: E2EE-023
+- Reviewer decision: Pending
+
+### Session 2026-07-27 16:20 — E2EE-023
+
+- Session ID: 20260727-1620-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 7912e001
+- After HEAD: 7912e001 (Not committed yet as per conventions)
+- Status: PASS
+- Changed files:
+  - None (Audit and verification of the robustly and cleanly pre-existing CanonicalCbor and ProtectedFrameV3 modules)
+- Tests added:
+  - Verified and audited 19 exhaustive tests inside imboyapp/test/service/e2ee/protected_frame_v3_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/protected_frame_v3_test.dart
+  - flutter test test/service/e2ee/
+- Verification result: 19 framing tests passed; 266 E2EE unit tests passed
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-023.md
+- Residual risks: None
+- Next task: E2EE-024
+- Reviewer decision: Pending
+
+### Session 2026-07-27 16:30 — E2EE-024
+
+- Session ID: 20260727-1630-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 7912e001
+- After HEAD: 7912e001 (Not committed yet as per conventions)
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/service/e2ee_service.dart
+  - imboyapp/test/service/e2ee/fan_out_per_device_test.dart
+  - imboyapp/test/service/e2ee/protected_frame_v3_roundtrip_test.dart
+- Tests added:
+  - Created imboyapp/test/service/e2ee/mutation_matrix_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/mutation_matrix_test.dart
+  - flutter test test/service/e2ee/
+- Verification result: 15 mutation matrix scenarios passed; 267 E2EE unit tests passed
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-024.md
+- Residual risks: None
+- Next task: E2EE-025
+- Reviewer decision: Pending
+
+### Session 2026-07-27 16:40 — E2EE-025
+
+- Session ID: 20260727-1640-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 7912e001
+- After HEAD: 7912e001 (Not committed yet as per conventions)
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/service/e2ee/crypto_store.dart
+  - imboyapp/lib/service/e2ee_service.dart
+  - imboyapp/lib/service/olm_session_service.dart
+- Tests added:
+  - Appended sequence unit tests inside imboyapp/test/service/e2ee/crypto_store_test.dart
+  - Created imboyapp/test/service/e2ee/replay_counter_epoch_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/crypto_store_test.dart
+  - flutter test test/service/e2ee/replay_counter_epoch_test.dart
+  - flutter test test/service/e2ee/
+- Verification result: 22 database tests passed; 4 replay checks passed; 273 E2EE unit tests passed
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-025.md
+- Residual risks: None
+- Next task: E2EE-026
+- Reviewer decision: Pending
+
+### Session 2026-07-27 16:50 — E2EE-026
+
+- Session ID: 20260727-1650-gemini-cli
+- Repository: imboyapp
+- Before HEAD: 7912e001
+- After HEAD: 7912e001 (Not committed yet as per conventions)
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/service/e2ee/crypto_store.dart
+  - imboyapp/lib/service/e2ee_service.dart
+- Tests added:
+  - Appended transactional rollback and update tests inside imboyapp/test/service/e2ee/crypto_store_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/crypto_store_test.dart
+  - flutter test test/service/e2ee/replay_counter_epoch_test.dart
+  - flutter test test/service/e2ee/
+- Verification result: 23 database tests passed; 4 replay checks passed; 274 E2EE unit tests passed
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-026.md
+- Residual risks: None
+- Next task: E2EE-027
+- Reviewer decision: Pending
+
+
+
+
+
 
 
 
