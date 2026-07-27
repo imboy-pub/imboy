@@ -108,9 +108,22 @@ docker compose -f docker-compose.prod.yml up -d
 
 生产环境还需要域名、TLS 和强密钥，完整步骤见 [部署指南](./deploy/README.md)。
 
+## 快速演示
+
+```bash
+cd deploy
+docker compose -f docker-compose.demo.yml up -d
+# 30 秒后访问 http://127.0.0.1:9800/api/v1/init
+```
+
+最小两服务环境（PostgreSQL + 后端），适合产品评估和现场演示。
+详细演示流程见 [5 分钟 Demo 脚本](./docs/business/demo-runbook.md)。
+
 ## 继续阅读
 
-- [文档索引](./docs/README.md)
+- [**在线文档站**](https://imboy-pub.github.io/imboy/)（教程 / 指南 / 参考 / 合规）
+- [E2EE 协议规范](./docs/reference/e2ee-protocol-specification.md)
+- [E2EE 安全简报（企业决策者）](./docs/business/e2ee-security-brief.md)
 - [后端架构](./docs/architecture/overview.md)
 - [REST API 目录](./docs/reference/rest-api-v1-catalog.md)
 - [WebSocket 协议](./docs/reference/ws-protocol-contract.md)
