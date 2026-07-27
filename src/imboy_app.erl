@@ -12,6 +12,8 @@
 start(_Type, _Args) ->
     _ = inets:start(),
     ok = imboy_env:override_from_env(),
+    %% 确保 os:cmd 能找到 homebrew/系统工具（captcha 依赖 ImageMagick convert）
+    ok = ensure_tool_path(),
     %% prime IMBOYENV 缓存：所有运行时模块统一走 imboy_env:current/0
     _ = imboy_env:current(),
     ok = validate_runtime_config(),
@@ -667,3 +669,15 @@ normalize_secret(Value) when is_atom(Value) ->
     atom_to_binary(Value, utf8);
 normalize_secret(Value) ->
     ec_cnv:to_binary(Value).
+
+-spec ensure_tool_path() -> ok.
+ensure_tool_path() ->
+    case os:type() of
+        {unix, darwin} ->
+            CurrentPath = os:getenv("PATH", ""),
+            NewPath = "/opt/homebrew/bin:/usr/local/bin:" ++ CurrentPath,
+            os:putenv("PATH", NewPath);
+        _ ->
+            ok
+    end,
+    ok.
