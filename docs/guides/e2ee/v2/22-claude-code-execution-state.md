@@ -41,6 +41,34 @@ human_gate:
 overall_status: IN_PROGRESS
 ```
 
+## 1.1 自动推进队列（loop 专用，2026-07-28 建立）
+
+无人值守的 loop **只能**按此顺序取任务，取到第一个未完成项即执行，一轮一件。
+凡不在本表「可自动」段的，一律不得开工。
+
+### 可自动（不需人工签字、不需真机、不需架构点头）
+
+| # | 任务 | 依赖 | 关键约束 |
+|---|---|---|---|
+| 1 | **A2-a** 后端 `sender_did` 持久化 | — | 迁移序号 **48**；须**同时**改 `ALTER TABLE IF EXISTS ... ADD COLUMN IF NOT EXISTS`（存量部署）与 `msg_store_repo:ensure_table_exists/0` 的 DDL（全新安装），漏一处即新老部署 schema 分叉；`msg_store_repo/ds:stage/10` 扩参波及全部调用方；`msg_c2c_ds:read_msg_filter/3` 列集同步；**不存** `sender_dtype`。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.3 |
+| 2 | **A2-b** 客户端 decrypt-on-read v3 接线 | A2-a | 接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见同文件 §6.1.2 |
+| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | 后端为主 |
+| 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
+| 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
+| 6 | **E2EE-065/066** Key Transparency | — | 最大件：**只产出调研与设计文档**，不改任何生产代码 |
+
+### 停放区（需人工签字 / 真机 / 架构点头——loop 一律不得触碰）
+
+- 提案 25 §7 第 3、4 项签字；E2EE-012/024/025 的 `PASS` 回退裁定
+  （`22` §3 状态机不含 `PASS -> PARTIAL`，转换路径须人工先定）
+- ADR 14–19 人工接受（`human_gate.adr_14_19: BLOCKED`）
+- E2EE-030 真机 PFS 攻击测试；以及全部真机腿：`session_ref` / `message_id` /
+  `message_type` / ADR 26 counter 语义 / PFv3 接收侧接线 / 图片消息端到端
+- 候选任务 B：`_receiveMessage` 副作用链解耦（重构）
+- `git push`、部署、访问生产、通知第三方
+
+---
+
 当前发布声明只能是 `Preview`。在下列条件全部满足前，不得对外宣称 `GA-C2C` 或 `GA-Top-Tier`：
 
 - 单聊完成每设备 Olm，而不是 C2C Megolm；
