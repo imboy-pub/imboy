@@ -2395,3 +2395,67 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
   是否放行纯函数实施刀 / 012-024-025 回退裁定）。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 14:00 — E2EE-062：`seed` 只应对新建账号成立（自查回归）
+
+- Session ID: 20260729-1400-claude-code
+- Repository: imboyapp
+- Status: 回归已修并实证。E2EE-062 整体仍 `PARTIAL`
+- Changed files:
+  - `lib/service/olm_session_service.dart`（`_accountCreatedThisLoad` +
+    `seed: _accountCreatedThisLoad` + `@visibleForTesting OlmApi? api` 注入口 +
+    `debugResetAccountCache()`）
+- Tests added:
+  - `test/service/e2ee/publish_seed_only_for_new_account_test.dart`（3 例，
+    真 vodozemac 账号 + 假 OlmApi 记录调用）
+- ⚠️⚠️ **本刀修的是我自己上上轮引入的缺陷**：
+  `E2EE-062-client-refill-wiring.md` 那一刀写下
+  `_refillOneTimeKeys(account, seed: true)  // 首次注册：池必然为空`，
+  **该注释对这个调用点是错的**——`publishIdentityAndPrekeys` 由
+  `passport_notifier.dart:1092` 与 `olm_protocol.dart:35` 调用，**每次登录都会跑**，
+  且函数体内**无任何幂等守卫**（均已实证）。
+  于是 `seed: true` 恒成立 → **低水位判断被完全绕过** → 每次登录全量重发 50 条 OTK；
+  而 `report_one_time_keys` 是**全量替换式**（先删后插）→
+  **每次登录把一个健康的 OTK 池推倒重建一次**。
+  那一刀修好了「每次入站建会话重置池」，却在同一次改动里写进了「每次登录重置池」。
+- **教训**：`seed` 这个名字描述的是**意图**（首次注册），而代码能断定的只有**事实**
+  （账号是否新建）。**名字与可判定事实不一致时，调用点迟早会传错。**
+  已把依据改成 `_accountCreatedThisLoad`——本地可确定、不依赖网络，
+  且判错方向安全（载入账号若真没 OTK，低水位判断 count=0 照样补满）。
+- 取舍：不采用「先查真实余量、查不到才 seed」——把**未知**当**空池**处理就是在未知
+  状态上执行全量替换，正是上上轮明确否掉的方向。
+- ⚠️ **RED 是空验证**：把 seed 决策临时还原成恒 `true` → `+2 -1`，
+  **唯独核心用例（载入账号 + 池健康 → 不得重发）变红**，对照组与正向可用性仍绿。
+  验证后已恢复。
+  对照组「新建账号必须铺满」还断言 `countCalls == 0`（新建账号不该依赖查询）；
+  正向可用性「载入账号但池见底仍须补传」否掉「载入账号一律不补」的作弊实现。
+- 顺带把 `publishIdentityAndPrekeys` / `_refillOneTimeKeys` 加了
+  `@visibleForTesting OlmApi? api` 注入口——**这使该函数的接线首次可被行为验证**
+  （此前 evidence 多次把这类结论标为"文件级阅读结论，未实证"）。
+  `debugResetAccountCache()` 刻意**不并入** `resetForTest`，避免改变既有测试依赖的缓存行为。
+- Verification（imboyapp 侧）:
+  - `flutter test test/service/e2ee/publish_seed_only_for_new_account_test.dart` → **All 3 passed**
+  - `flutter test test/service/e2ee/` → **377 passed**（上一刀 374）
+  - `flutter test test/service/` → **1257 passed**（上一刀 1254）
+  - `dart analyze lib` → 1 issue（既有 info）
+  - imboy 侧未改动，`make e2ee-verify` 本刀不适用
+- Evidence: `evidence/E2EE-062-seed-only-for-new-account.md`
+- Residual（E2EE-062 仍 PARTIAL）:
+  1. ⚠️ **fallback key 轮换周期未评估**（本轮顺带实证）：`generateFallbackKey()`
+     全仓只在 `publishIdentityAndPrekeys` 出现一次，即**只在登录时轮换**，
+     无基于时间的轮换、无 `forgetFallbackKey`。长期不登出的设备其 fallback key
+     长期不变，而 OTK 耗尽时所有新会话都走它。Olm/Matrix 惯例是按周期轮换并遗忘旧 key。
+     **调用点分布已实证；「当前频率是否足够」未评估。下一刀首选。**
+  2. `report_identity` 每次登录仍无条件上报（幂等 upsert，无害但没必要）；
+  3. 服务端 fallback 签名仍非必填；客户端 fallback 只覆盖注册/登录路径；
+  4. 告警规则未做；`/metrics` 输出未实证；
+  5. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网）；滞留后 UX 无提示；
+  6. 幂等/补传链路端到端未实证；单租户/全局限流未做；租约无 TTL；60/min 未压测；
+     进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  7. 真机双端未验证。
+- **Next task**：**fallback key 轮换评估**（残留 1）——先判定当前「仅登录时轮换」
+  是否构成前向保密缺口（长期在线设备可能数月不轮换），再决定是否实施周期轮换。
+  评估本身是纯调研，不需人工放行。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变。
+- Reviewer decision: Pending
