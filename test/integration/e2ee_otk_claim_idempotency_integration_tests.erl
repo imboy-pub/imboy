@@ -15,6 +15,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(DID, <<"dev-otk-idem-01">>).
+-define(DID_B, <<"dev-otk-idem-02">>).
 
 otk_idempotency_test_() ->
     _ = eunit_runner:eunit_setup(),
@@ -27,7 +28,9 @@ otk_idempotency_test_() ->
                 {"旧客户端（无 request_id）保持逐次消费，NULL 行不撞唯一索引", fun legacy_null_request_id/0},
                 {"幂等租约按领取方隔离：换领取方不得命中他人的 claim", fun lease_scoped_to_claimant/0},
                 {"并发同 request_id：50 路并发只消费一条（TOCTOU 由唯一索引兜住）",
-                    fun concurrent_same_request_consumes_once/0}
+                    fun concurrent_same_request_consumes_once/0},
+                {"batch fan-out：同 request_id 跨设备不串键，重放每设备只消费一条",
+                    fun batch_same_request_across_devices/0}
             ]};
         {error, _Reason} ->
             {"Database not available", fun() -> {skip, "Database not available"} end}
@@ -51,15 +54,21 @@ ctx() -> persistent_term:get({?MODULE, ctx}).
 
 %% 每个用例独立铺池，避免结果依赖执行顺序
 seed(Target, N) ->
+    seed(Target, ?DID, N).
+
+seed(Target, Did, N) ->
     Keys = [
         {<<"k", (integer_to_binary(I))/binary>>, <<"b64-", (integer_to_binary(I))/binary>>}
      || I <- lists:seq(1, N)
     ],
-    {ok, _} = olm_identity_repo:upsert_one_time_keys(Target, ?DID, Keys, 100),
+    {ok, _} = olm_identity_repo:upsert_one_time_keys(Target, Did, Keys, 100),
     ok.
 
 available(Target) ->
-    {ok, N} = olm_identity_repo:count_one_time_keys(Target, ?DID),
+    available(Target, ?DID).
+
+available(Target, Did) ->
+    {ok, N} = olm_identity_repo:count_one_time_keys(Target, Did),
     N.
 
 %% ===================================================================
@@ -139,3 +148,30 @@ concurrent_same_request_consumes_once() ->
         "50 路并发同 request_id 必须恒返回同一条 key；>1 说明 TOCTOU 未被唯一索引兜住"
     ),
     ?assertEqual(49, available(Target)).
+
+%% E2EE-062 第三刀的核心设计判断：batch fan-out **不按设备派生** request_id，
+%% 而是把同一条原样传给每个设备——依据是部分唯一索引
+%% `uk_olm_otk_claim_request (claimed_by, user_id, device_id, claim_request_id)`
+%% 里已经含 device_id。此处在真 PG 上把这个判断钉死（否则只是文件级阅读结论）：
+%%   - 同 request_id 的两个设备必须各拿各的 key（串键 = 用别人设备的 prekey 建会话）；
+%%   - 整批重放时每设备仍只消费一条。
+batch_same_request_across_devices() ->
+    #{target := Target, claimer := Claimer} = ctx(),
+    ok = seed(Target, ?DID, 5),
+    ok = seed(Target, ?DID_B, 5),
+    ReqId = <<"req-batch-fanout-001">>,
+    {ok, A1} = olm_identity_repo:claim_one_time_key(Target, ?DID, Claimer, ReqId),
+    {ok, B1} = olm_identity_repo:claim_one_time_key(Target, ?DID_B, Claimer, ReqId),
+    ?assertNotEqual(
+        {?DID, maps:get(<<"key_id">>, A1)},
+        {?DID_B, maps:get(<<"key_id">>, B1)}
+    ),
+    ?assertEqual(4, available(Target, ?DID)),
+    ?assertEqual(4, available(Target, ?DID_B)),
+    %% 整批重放：每设备仍只消费一条，且恒返回同一条 key
+    {ok, A2} = olm_identity_repo:claim_one_time_key(Target, ?DID, Claimer, ReqId),
+    {ok, B2} = olm_identity_repo:claim_one_time_key(Target, ?DID_B, Claimer, ReqId),
+    ?assertEqual(maps:get(<<"key_id">>, A1), maps:get(<<"key_id">>, A2)),
+    ?assertEqual(maps:get(<<"key_id">>, B1), maps:get(<<"key_id">>, B2)),
+    ?assertEqual(4, available(Target, ?DID)),
+    ?assertEqual(4, available(Target, ?DID_B)).

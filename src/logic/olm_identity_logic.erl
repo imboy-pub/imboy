@@ -16,6 +16,7 @@
 -export([claim_keys/3]).
 -export([claim_keys/4]).
 -export([batch_claim_keys/3]).
+-export([batch_claim_keys/4]).
 -export([cleanup_consumed_one_time_keys/1]).
 
 %% one-time keys 上报上限（防存储放大 DoS）
@@ -276,29 +277,73 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
 batch_claim_keys(CurrentUid, TargetUid, DeviceIds) when
     is_integer(CurrentUid), is_integer(TargetUid), is_list(DeviceIds)
 ->
-    Uniq = lists:usort([D || D <- DeviceIds, is_binary(D), byte_size(D) > 0]),
-    case Uniq of
-        [] ->
-            {error, <<"no_device_ids">>};
-        _ when length(Uniq) > ?MAX_BATCH_CLAIM_DEVICES ->
-            {error, <<"too_many_devices">>};
-        _ ->
-            {Claimed, Failed} = lists:foldl(
-                fun(DeviceId, {AccOk, AccErr}) ->
-                    case claim_keys(CurrentUid, TargetUid, DeviceId) of
-                        {ok, Payload} ->
-                            {maps:put(DeviceId, Payload, AccOk), AccErr};
-                        {error, Reason} ->
-                            {AccOk, maps:put(DeviceId, Reason, AccErr)}
-                    end
-                end,
-                {#{}, #{}},
-                Uniq
-            ),
-            {ok, #{<<"claimed">> => Claimed, <<"failed">> => Failed}}
+    case normalize_device_ids(DeviceIds) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, Uniq} ->
+            %% 保留对 claim_keys/3 的原调用形状（既有测试按 arity 挂 meck 期望）
+            {ok,
+                fan_out(Uniq, fun(DeviceId) ->
+                    claim_keys(CurrentUid, TargetUid, DeviceId)
+                end)}
     end;
 batch_claim_keys(_, _, _) ->
     {error, <<"bad_request">>}.
+
+%% @doc E2EE-062 第三刀：带幂等租约的批量领取。
+%%  多设备 fan-out 是幂等缺口的**放大器**——一次重试消费 N 条 OTK，抽干速度是
+%%  单设备路径的 N 倍。此处把 RequestId 逐设备传给 `claim_keys/4`。
+%%
+%%  RequestId **不按设备派生**（不拼 device_id）：迁移 49 的部分唯一索引
+%%  `uk_olm_otk_claim_request` 的键已经是
+%%  `(claimed_by, user_id, device_id, claim_request_id)`，device_id 本就在键里，
+%%  同一 RequestId 在不同设备上天然不互相命中。派生反而会把长度推过
+%%  `claim_request_id varchar(64)` 而在 DB 层报错——即把可选的幂等优化变成
+%%  一条新的失败路径。
+-spec batch_claim_keys(integer(), integer(), [binary()], binary()) ->
+    {ok, map()} | {error, binary()}.
+batch_claim_keys(CurrentUid, TargetUid, DeviceIds, <<>>) ->
+    batch_claim_keys(CurrentUid, TargetUid, DeviceIds);
+batch_claim_keys(CurrentUid, TargetUid, DeviceIds, RequestId) when
+    is_integer(CurrentUid), is_integer(TargetUid), is_list(DeviceIds), is_binary(RequestId)
+->
+    case normalize_device_ids(DeviceIds) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, Uniq} ->
+            {ok,
+                fan_out(Uniq, fun(DeviceId) ->
+                    claim_keys(CurrentUid, TargetUid, DeviceId, RequestId)
+                end)}
+    end;
+batch_claim_keys(_, _, _, _) ->
+    {error, <<"bad_request">>}.
+
+%% @private 逐设备串行 claim，部分失败不中断其他设备。
+-spec fan_out([binary()], fun((binary()) -> {ok, map()} | {error, binary()})) -> map().
+fan_out(DeviceIds, ClaimFun) ->
+    {Claimed, Failed} = lists:foldl(
+        fun(DeviceId, {AccOk, AccErr}) ->
+            case ClaimFun(DeviceId) of
+                {ok, Payload} ->
+                    {maps:put(DeviceId, Payload, AccOk), AccErr};
+                {error, Reason} ->
+                    {AccOk, maps:put(DeviceId, Reason, AccErr)}
+            end
+        end,
+        {#{}, #{}},
+        DeviceIds
+    ),
+    #{<<"claimed">> => Claimed, <<"failed">> => Failed}.
+
+%% @private 去重 + 上限校验（batch_claim_keys/3 与 /4 共用同一判据）
+-spec normalize_device_ids([binary()]) -> {ok, [binary()]} | {error, binary()}.
+normalize_device_ids(DeviceIds) ->
+    case lists:usort([D || D <- DeviceIds, is_binary(D), byte_size(D) > 0]) of
+        [] -> {error, <<"no_device_ids">>};
+        Uniq when length(Uniq) > ?MAX_BATCH_CLAIM_DEVICES -> {error, <<"too_many_devices">>};
+        Uniq -> {ok, Uniq}
+    end.
 
 %% ===================================================================
 %% cleanup 已消费 OTK 审计行（olm_otk_cleanup_worker 调用）

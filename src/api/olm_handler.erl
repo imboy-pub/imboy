@@ -286,7 +286,20 @@ do_batch_claim1(Req0, CurrentUid) ->
         true when TargetLimited ->
             elib_response:error(Req0, <<"rate_limited">>, 429);
         true ->
-            case olm_identity_logic:batch_claim_keys(CurrentUid, TargetUid, DeviceIds) of
+            %% E2EE-062 第三刀：多设备 fan-out 同样要吃幂等租约——一次重试
+            %% 消费 N 条 OTK，抽干速度是单设备路径的 N 倍。
+            RequestId = normalize_request_id(maps:get(<<"request_id">>, PostVals, <<>>)),
+            %% 保留对 batch_claim_keys/3 的原调用形状（既有测试按 arity 挂 meck 期望）
+            Claimed =
+                case RequestId of
+                    <<>> ->
+                        olm_identity_logic:batch_claim_keys(CurrentUid, TargetUid, DeviceIds);
+                    _ ->
+                        olm_identity_logic:batch_claim_keys(
+                            CurrentUid, TargetUid, DeviceIds, RequestId
+                        )
+                end,
+            case Claimed of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
                 {error, Msg} ->

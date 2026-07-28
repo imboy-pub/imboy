@@ -58,7 +58,7 @@ overall_status: IN_PROGRESS
 |---|---|---|---|
 | 1 | ~~**A2-a** 后端 `sender_did` 持久化~~ | — | ✅ **DONE**（2026-07-28 会话 20260728-1730）。迁移 48 + staging/msg_c2c 双表加列 + 六接缝贯通；真 PostgreSQL 端到端已实证。证据：`evidence/E2EE-A2-a-offline-sender-did.md`。⚠️ 教训：`stage/10`、`write_msg/8` **必须保留原调用形状**，改成「新 arity + 默认值」会让按 arity 挂 meck 期望的既有测试静默穿透（实证回归 6 例） |
 | 2 | ~~**A2-b** 客户端 decrypt-on-read v3 接线~~ | A2-a ✅ | ✅ **DONE**（2026-07-28 会话 20260728-1810）。SQLite v25 加 `msg_c2c.sender_did` + `toTypeMessage()` 经 `decryptInboundV3` 分流；结构守护断言已反转，正向可用性用例已补。证据：`evidence/E2EE-A2-b-decrypt-on-read-v3.md`。⚠️ 真机仍未验证；迁移前旧离线行永久不可读（fail-closed 设计选择）。原文：接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
-| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 314）——见 `evidence/E2EE-062-per-target-throttle.md`。**未做（本项仍未完成，下次接着做）**：① 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑤ **低水位补传与耗尽告警**——这是「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立，是最重要的配套缺口；② `batch_claim` 未接幂等；③ fallback 未验签；④ 客户端未发送 `request_id`，**生产流量一条也走不到幂等路径**。证据：`evidence/E2EE-062-otk-claim-idempotent-lease.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
+| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 315）——见 `evidence/E2EE-062-per-target-throttle.md`。**第三刀已做**：`batch_claim` 幂等（`batch_claim_keys/4` 逐设备走 `claim_keys/4` + handler 透传 `request_id`，e2ee-verify 321、真 PG 6/6）——见 `evidence/E2EE-062-batch-claim-idempotency.md`；**不派生 per-device key**，依据是迁移 49 部分唯一索引键已含 `device_id`，派生反而溢出 `varchar(64)`，该判断已在真 PG 实证。**未做（本项仍未完成，下次接着做）**：① **客户端两条路径都未发送 `request_id`**——服务端已就绪但生产流量一条也走不到幂等路径，是兑现价值的唯一剩余前提；② **低水位补传与耗尽告警**——「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立；③ 租约无独立 TTL；④ fallback 未验签；⑤ 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；⑥ 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑦ `olm_claim` 门仍朴素写法。证据：`evidence/E2EE-062-batch-claim-idempotency.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
 | 6 | **E2EE-065/066** Key Transparency | — | 最大件：**只产出调研与设计文档**，不改任何生产代码 |
@@ -296,7 +296,7 @@ blocked:
 |---|---|---|---|---|---|
 | E2EE-060 | 21/E2EE-022 | 后端 PFv3 不透明透传契约（Erlang HTTP/WS/DB round-trip byte-preserving） | E2EE-023 | `PASS` | GA-C2C |
 | E2EE-061 | 21/E2EE-023 | 附件独立 content key 与分块 AEAD（**ATT-01..05**） | E2EE-060 | `PENDING` | **GA-C2C 硬门禁**（ADR 15 §9 / ADR 14 G5「附件」行） |
-| E2EE-062 | 21/E2EE-025 | OTK/fallback 抗耗尽与幂等租约（DT-03/09、1000 并发 claim） | E2EE-013 | `PARTIAL` | GA-C2C（ADR 14 T7）；幂等租约已闭合，四层限流/batch/fallback 验签未做，见 `evidence/E2EE-062-otk-claim-idempotent-lease.md` §5 |
+| E2EE-062 | 21/E2EE-025 | OTK/fallback 抗耗尽与幂等租约（DT-03/09、1000 并发 claim） | E2EE-013 | `PARTIAL` | GA-C2C（ADR 14 T7）；单设备幂等租约 + 目标级限流 + batch 幂等均已闭合；客户端未发 `request_id`、低水位补传/告警、fallback 验签未做，见 `evidence/E2EE-062-batch-claim-idempotency.md` §5 |
 | E2EE-063 | 21/E2EE-029 | G2 Strong Preview 出口门（证据汇总，非编码） | E2EE-026/027/029/030/060/061/062 | `PENDING` | Strong Preview 门 |
 | E2EE-064 | 21/E2EE-030 | 可撤销 device-bound session 完整体（PostgreSQL session schema、DT-01..04/08/10） | E2EE-013 | `PENDING` | GA-C2C |
 | E2EE-065 | 21/E2EE-033 | Key Transparency append-only 日志与 inclusion/consistency proof API | E2EE-064/033 | `PENDING` | **GA-C2C 硬门禁**（ADR 14 T8 / 20-plan G3「独立 monitor 已运行并演练 split view」） |
@@ -1413,4 +1413,53 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
 - Evidence: `evidence/E2EE-062-per-target-throttle.md`
 - Next task: **E2EE-062 第三刀** = `batch_claim` 幂等（残留 2），
   之后按队列进第 4 项 **E2EE-064**
+- Reviewer decision: Pending
+
+### Session 2026-07-28 21:00 — E2EE-062（第三刀：batch_claim 幂等）
+
+- Session ID: 20260728-2100-claude-code
+- Repository: imboy
+- Before HEAD: 673c4951
+- After HEAD: （见本次提交）
+- Status: PARTIAL（E2EE-062 整体仍未完成，残留见下）
+- Changed files:
+  - `src/logic/olm_identity_logic.erl`（新增 `batch_claim_keys/4`；抽出 `fan_out/2`、`normalize_device_ids/1` 供 /3 与 /4 共用）
+  - `src/api/olm_handler.erl`（`do_batch_claim1/2` 读 body `request_id` 并按空/非空分派 /3 或 /4）
+  - `Makefile`（e2ee-verify Modules 加 `e2ee_batch_claim_idempotency_tests`）
+- Tests added:
+  - `test/logic/e2ee_batch_claim_idempotency_tests.erl`（6 例，已入门禁清单）
+  - `test/integration/e2ee_otk_claim_idempotency_integration_tests.erl` 新增
+    `batch_same_request_across_devices`（真 PG，**不**入门禁清单）
+- RED 记录：`Failed: 2, Passed: 4`，**2 红均为行为失败**——
+  ① `length(lists:usort(Results))` 期望 1 实得 4（10 次重放拿到 4 批不同 key，即每次都在消费新 OTK）；
+  ② `error:must_not_drop_request_id`（handler 丢弃 body 的 `request_id` 走了 /3）。
+  **对照组 `legacy_batch_consumes_each_time` 改前改后都绿** → harness 无缺陷。
+  先只落载体（`/4` 原样委托 `/3`）以保证 RED 是行为失败而非 `undef` 编译错误。
+- 正向可用性用例（规避「只验拒收」反模式）：
+  不同 request_id 各自消费；同一 request_id 下不同设备**互不串键**。
+- 设计取舍：**不按设备派生 request_id**。迁移 49 部分唯一索引键已含 `device_id`，
+  派生不解决任何问题、反而会把长度推过 `claim_request_id varchar(64)`，
+  把可选的幂等优化变成一条新的失败路径。该判断**已在真 PG 实证**，不是文件级结论。
+- Verification:
+  - `make e2ee-verify` → **All 321 tests passed**（上一刀 315）
+  - `IMBOYENV=local make eunit t=e2ee_otk_claim_idempotency_integration_tests \
+     EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"` → **All 6 tests passed**（上一刀 5）
+  - `git diff --check` / `erlfmt --check` 通过
+- Evidence: `evidence/E2EE-062-batch-claim-idempotency.md`
+- Residual（按优先级重排，详见 evidence §5）:
+  1. **客户端两条路径都未发送 `request_id`** —— 服务端 claim / batch_claim 均已就绪，
+     但**生产流量一条也走不到幂等路径**，是兑现价值的唯一剩余前提（未实证）；
+  2. **低水位补传与耗尽告警缺失** —— 「限流只拖慢、靠补传恢复」的前提，目前不成立；
+  3. 租约无独立 TTL（边界是审计保留期）；
+  4. fallback prekey 未在服务端验签（未实证）；
+  5. 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；
+  6. 单租户/全局两层限流未做（有意识缺口，网关承担更合适）；
+  7. `olm_claim`（per-claimant）门仍是朴素写法，未注册 scope 时静默失效（已实证存在）；
+  8. 60/min 阈值未压测校准；
+  9. `config/sys.local.config` 是 gitignored；
+  10. batch 内部仍逐设备串行 claim（N≤20 上限内可接受，升级路径已注释）；
+  11. 真机双端未验证。
+- Next task: E2EE-062 剩余残留多为**需客户端改动（残留 1）或需运维设施（残留 2）**，
+  服务端侧本轮已收口；按队列进第 4 项 **E2EE-064**（可撤销 device-bound session，
+  后端 PostgreSQL schema）。
 - Reviewer decision: Pending
