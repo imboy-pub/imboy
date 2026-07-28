@@ -2524,3 +2524,65 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
   人工优先事项不变。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 16:00 — E2EE-062：fallback key 周期轮换（实施）
+
+- Session ID: 20260729-1600-claude-code
+- Repository: imboyapp
+- Status: 周期轮换已落地并实证；**`forgetFallbackKey()` 仍未调用**。E2EE-062 仍 `PARTIAL`
+- Changed files:
+  - `lib/service/e2ee/fallback_rotation_policy.dart`（新，纯策略 + 7 天周期常量）
+  - `lib/service/olm_session_service.dart`（`maybeRotateFallbackKey` +
+    `_recordFallbackRotation` / `_readLastFallbackRotation` + 登录路径记录时刻 +
+    接线到入站建会话后的维护链）
+- Tests added:
+  - `test/service/e2ee/fallback_rotation_policy_test.dart`（5 例）
+  - `test/service/e2ee/fallback_rotation_wiring_test.dart`（4 例）
+- 取舍一 **触发点挂入站建会话之后**：**"长期不登录"正是缺口成因，绑登录等于没修**；
+  应用启动会漏掉长期不重启的设备；定时器需新调度基建。入站建会话对活跃用户天然
+  触发、**零新基建**。诚实代价：**完全不收消息的设备不会轮换**——但那样的设备
+  也不会有人向它建新会话，暴露面随之为零，残留自洽。
+- 取舍二 **时间戳异常一律判「该轮换」**：`null`（升级上来的老账号）→ 换；
+  未来时间戳（时钟回拨/损坏）→ 换（否则该设备**永远**不再轮换）；恰好到期 → 换。
+  多换一次只是一次上报，旧 key 被保留、在途消息不受影响（上一刀已实证）。
+  **三种异常都倒向"换"，是唯一安全的方向。**
+- 取舍三 **不调 `forgetFallbackKey()`**：其确切语义尚未特征化——Dart 文档写
+  "Forget the **current** fallback key"，与 vodozemac Rust 侧常见描述不一致，
+  **不能凭文档下手，误调会丢在途消息**。不调的后果（旧私钥留在 pickle）
+  **与本刀之前状态相同，不是新增风险**。留作独立一刀。
+- RED（纯策略）：先落载体（恒 `false` ＝今天这条路径上的行为），`+1 -4`，
+  4 红均为行为失败；对照组「刚轮换过 → 不轮换」两态都绿。
+- ⚠️⚠️ **RED（接线）用空验证，且第一次空验证暴露了 harness 的真实弱点**：
+  3 例全红，**包括业务对照组**。原因是业务对照组「刚轮换过 → 不得再报」
+  **依赖"第一次轮换成功"这个前置条件**，判据被摘除时它因**前置不成立**而红，
+  而非因被测性质失效——**这削弱了「对照组红 = harness 缺陷」这个信号本身**。
+  处置：补一条**与策略无关**的 harness 对照组（secure storage mock 通道可读写）。
+  再次空验证得 `+1 -3`：**harness 对照组两态都绿**，三条业务用例全红，信号恢复有效。
+  恢复后 `git diff --stat` 无漂移。
+- 正向可用性：「从未记录时刻 → 必须轮换并上报」否掉「永不轮换」的实现，
+  且同时断言**上报带签名非空**（否则绕过服务端验签那一刀）；
+  「时刻过期 → keyId 必须与上次不同」否掉「重发同一把 key」——那样暴露窗口没缩短。
+- Verification（imboyapp 侧）:
+  - `flutter test .../fallback_rotation_policy_test.dart` → **All 5 passed**
+  - `flutter test .../fallback_rotation_wiring_test.dart` → **All 4 passed**
+  - `flutter test test/service/e2ee/` → **390 passed**（上一刀 381）
+  - `flutter test test/service/` → **1270 passed**（上一刀 1261）
+  - `dart analyze lib` → 1 issue（既有 info）；imboy 侧未改动，`make e2ee-verify` 不适用
+- Evidence: `evidence/E2EE-062-fallback-periodic-rotation.md`
+- Residual（E2EE-062 仍 PARTIAL）:
+  1. **`forgetFallbackKey()` 仍未调用**（需先特征化语义，误调会丢消息）；
+  2. 完全不收消息的设备不会轮换（触发点取舍的自洽代价）；
+  3. **7 天周期未经论证** —— 取自生态惯例，**未针对本项目会话时长分布评估**；
+  4. 服务端 fallback 签名仍非必填；`report_identity` 的 signature 未验证；
+  5. 告警规则未做；`/metrics` 输出未实证；
+  6. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网）；滞留后 UX 无提示；
+  7. 幂等/补传链路端到端未实证；单租户/全局限流未做；租约无 TTL；60/min 未压测；
+     进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  8. 真机双端未验证。
+- **Next task**：**特征化 `forgetFallbackKey()` 语义**（残留 1）——
+  与上一刀同样的做法：用真 vodozemac 写特征测试确定它丢的是"当前"还是"上一把"、
+  以及调用后旧 key 建的会话是否还能解密。**只有先钉死语义才能安全地调它。**
+  纯测试、不改生产代码、不需人工放行。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变。
+- Reviewer decision: Pending
