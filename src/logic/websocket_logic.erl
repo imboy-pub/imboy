@@ -18,6 +18,7 @@
 -export([convert_v1_to_v2/1]).
 -export([validate_message/1]).
 -export([inject_sender_device/2]).
+-export([stamp_sender_device/2]).
 -export([send_next/6]).
 
 %% ===================================================================
@@ -108,6 +109,11 @@ validate_message(Data) ->
 -spec inject_sender_device(map(), map()) -> map().
 inject_sender_device(Payload, State) ->
     message_ds:inject_sender_device(Payload, State).
+
+%% @doc 将发送者设备信息盖到消息信封顶层（payload 不透明时唯一有效的位置）
+-spec stamp_sender_device(map(), map()) -> map().
+stamp_sender_device(Data, State) ->
+    message_ds:stamp_sender_device(Data, State).
 
 %% @doc 发送消息（含设备过滤重试）
 -spec send_next(pos_integer() | binary(), binary(), binary(), list(), [binary()], boolean()) -> ok.

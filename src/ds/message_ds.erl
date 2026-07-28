@@ -17,6 +17,7 @@
 -export([send_next/4, send_next/6]).
 -export([check_and_notify_offline_msgs/1, check_and_notify_offline_msgs/2]).
 -export([inject_sender_device/2]).
+-export([stamp_sender_device/2, with_sender_device/2]).
 -export([build_adm_union_sql/1]).
 
 %% ===================================================================
@@ -554,6 +555,52 @@ inject_sender_device(Payload, State) when is_list(Payload) ->
 %% @return 原样返回的 payload
 inject_sender_device(Payload, _State) ->
     Payload.
+
+%% @doc 把服务端验证过的发送者设备标识盖到**消息信封顶层**。
+%%
+%% 与 inject_sender_device/2 的区别（也是它存在的理由）：
+%% inject_sender_device/2 注入的是 **payload 内部**，因此只在 payload 是 map、
+%% 或可 JSON 解码为 map 的 binary 时才生效。而 E2EE 消息的 payload 对服务端
+%% 是不透明的——
+%%   - v1/v2：payload 是密文字符串 `base64(nonce).base64(ct)`，JSON 解码失败；
+%%   - v3（PFv3）：密文在 e2ee.devices 内，**外层 payload 恒为空串**。
+%% 两种情况下 inject_sender_device/2 都原样返回，什么都没注入。
+%%
+%% 后果（已实证，见 imboyapp/test/service/e2ee/production_inbound_frame_gate_test.dart）：
+%% 客户端 `_validateContextBinding` 第 6 项拿 `sender_did` 与受认证的
+%% protected_header.sender_did 硬比对（ADR 15 §3.3），服务端从未在帧顶层提供该
+%% 字段 → 每条生产 C2C v3 消息都被判 `context_mismatch_sender_did` 而不可读。
+%%
+%% 因此设备标识必须盖在**信封层**而不是 payload 层：信封是服务端组装的、
+%% 与 payload 是否加密无关，这样才对所有 payload 形状都成立。
+%%
+%% 安全语义不变：值取自 WebSocket State 的 did/dtype（连接建立时认证得到），
+%% 客户端无法伪造——这正是 ADR 15 §3.3 第 6 项要绑定的那个「服务端验证过的」值。
+%%
+%% @param Data 消息信封（顶层 map）
+%% @param State WebSocket 状态映射，包含 did 和 dtype
+%% @return 顶层带 sender_did/sender_dtype 的信封
+%% @end
+-spec stamp_sender_device(map(), map()) -> map().
+stamp_sender_device(Data, State) when is_map(Data) ->
+    DID = maps:get(did, State, <<>>),
+    DType = maps:get(dtype, State, <<>>),
+    Data2 = maps:put(<<"sender_did">>, DID, Data),
+    maps:put(<<"sender_dtype">>, DType, Data2);
+stamp_sender_device(Data, _State) ->
+    Data.
+
+%% @doc 把信封顶层的发送者设备标识带进待投递消息。
+%%
+%% assemble_msg/8 只认识固定字段集，不接受调用方透传的额外字段；投递侧据此
+%% 把 stamp_sender_device/2 盖好的两个字段并进去。缺字段时不补空值——
+%% 补 `<<>>` 会让接收侧把「服务端没提供」误判成「设备 ID 是空串」。
+%% @end
+-spec with_sender_device(map(), map()) -> map().
+with_sender_device(Msg, Data) when is_map(Msg), is_map(Data) ->
+    maps:merge(Msg, maps:with([<<"sender_did">>, <<"sender_dtype">>], Data));
+with_sender_device(Msg, _Data) ->
+    Msg.
 
 %% ===================================================================
 %% Internal functions

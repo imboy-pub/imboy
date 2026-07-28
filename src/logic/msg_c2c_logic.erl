@@ -362,9 +362,14 @@ stage_and_send_c2c(
                     % 与持久化同闭包整体重放会把已成功的实时投递再推一次）
                     elib_async:async(
                         fun() ->
-                            Msg = message_ds:assemble_msg(
+                            Msg0 = message_ds:assemble_msg(
                                 <<"C2C">>, From, To, Payload, MsgId, MsgType, Action, E2EE
                             ),
+                            % 带上服务端验证过的发送者设备标识（信封顶层）。
+                            % 接收侧 PFv3 context binding 第 6 项拿它与受认证的
+                            % protected_header.sender_did 硬比对；不带 = 每条
+                            % C2C v3 消息都判 context_mismatch_sender_did。
+                            Msg = message_ds:with_sender_device(Msg0, Data),
                             imboy_message_helper:encode_and_send(ToId, MsgId, Msg, <<"c2c">>),
                             % 离线推送（异步，不阻塞消息投递）
                             push_notification_logic:maybe_push_for_c2c(

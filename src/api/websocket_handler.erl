@@ -504,7 +504,12 @@ handle_json_message(Msg, State) ->
 
                 % 将发送者的设备信息（sender_did 和 sender_dtype）注入到消息的 payload 中。
                 Payload = websocket_logic:inject_sender_device(Payload0, State),
-                Data2 = maps:put(<<"payload">>, Payload, ValidatedData),
+                % 同时盖到信封顶层：E2EE 消息的 payload 对服务端不透明
+                % （v1/v2 是密文串、v3 恒为空串），注入拿不到落脚点。
+                % 接收侧 context binding 比对的正是信封顶层这一份。
+                Data2 = websocket_logic:stamp_sender_device(
+                    maps:put(<<"payload">>, Payload, ValidatedData), State
+                ),
 
                 %% 统一消息路由：根据 action 和 type 分发到对应的 logic 模块
                 Result = message_router_logic:route(MsgId, CurrentUid, Data2, Type, Msg),
@@ -770,7 +775,10 @@ handle_protobuf_message_decoded(Data0, State) ->
 
                 Payload0 = maps:get(<<"payload">>, ValidatedData, #{}),
                 Payload = websocket_logic:inject_sender_device(Payload0, State),
-                Data2 = maps:put(<<"payload">>, Payload, ValidatedData),
+                % 与 JSON 分支同理：payload 不透明时信封顶层是唯一有效落脚点
+                Data2 = websocket_logic:stamp_sender_device(
+                    maps:put(<<"payload">>, Payload, ValidatedData), State
+                ),
 
                 %% 路由（当前投递管道使用 JSON，迭代4 将适配 protobuf）
                 RawJson = jsone:encode(Data2, [native_utf8]),
