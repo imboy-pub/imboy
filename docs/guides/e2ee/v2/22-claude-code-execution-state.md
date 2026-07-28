@@ -24,8 +24,11 @@ last_updated: 2026-07-28
 # 离线拉取路径的**后端半边**已于 2026-07-28 修复（A2-a：迁移 48 + staging/msg_c2c
 # 双表 sender_did 列 + 六接缝贯通，真 PostgreSQL 端到端已实证，见
 # evidence/E2EE-A2-a-offline-sender-did.md）。
-# ⚠️ 但离线 v3 消息**仍不可读**：客户端 decrypt-on-read 尚未接线（A2-b），
-# 见 evidence/E2EE-012-024-025-029-reacceptance.md §6.1.2。
+# 客户端 decrypt-on-read 已于 2026-07-28 接线（A2-b：SQLite v25 加
+# msg_c2c.sender_did + toTypeMessage 经 decryptInboundV3 分流，正向可用性
+# 用例已实证，见 evidence/E2EE-A2-b-decrypt-on-read-v3.md）。
+# ⚠️ 单测层闭合，**真机双端仍未验证**（真机腿在停放区）；
+# ⚠️ 迁移 48 / v25 之前落库的旧离线行永久不可读（fail-closed 设计选择，无回填路径）。
 # E2EE-023 经人工裁定维持 PASS；其余四项状态标记仍未擅改。
 release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
@@ -54,7 +57,7 @@ overall_status: IN_PROGRESS
 | # | 任务 | 依赖 | 关键约束 |
 |---|---|---|---|
 | 1 | ~~**A2-a** 后端 `sender_did` 持久化~~ | — | ✅ **DONE**（2026-07-28 会话 20260728-1730）。迁移 48 + staging/msg_c2c 双表加列 + 六接缝贯通；真 PostgreSQL 端到端已实证。证据：`evidence/E2EE-A2-a-offline-sender-did.md`。⚠️ 教训：`stage/10`、`write_msg/8` **必须保留原调用形状**，改成「新 arity + 默认值」会让按 arity 挂 meck 期望的既有测试静默穿透（实证回归 6 例） |
-| 2 | **A2-b** 客户端 decrypt-on-read v3 接线 | A2-a ✅ | **下一件**。接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
+| 2 | ~~**A2-b** 客户端 decrypt-on-read v3 接线~~ | A2-a ✅ | ✅ **DONE**（2026-07-28 会话 20260728-1810）。SQLite v25 加 `msg_c2c.sender_did` + `toTypeMessage()` 经 `decryptInboundV3` 分流；结构守护断言已反转，正向可用性用例已补。证据：`evidence/E2EE-A2-b-decrypt-on-read-v3.md`。⚠️ 真机仍未验证；迁移前旧离线行永久不可读（fail-closed 设计选择）。原文：接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
 | 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | 后端为主 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
@@ -1260,4 +1263,56 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   第一版把旧 arity 委托给新 arity，导致 6 例既有测试（按 arity 挂 meck 期望）
   静默穿透到真实实现而回归。已改为两条 arity 各自直调、共用结果归一化函数。
 - Next task: **A2-b** 客户端 decrypt-on-read v3 接线（队列第 2 项）
+- Reviewer decision: Pending
+
+### Session 2026-07-28 18:10 — A2-b（客户端 decrypt-on-read v3 接线）
+
+- Session ID: 20260728-1810-claude-code
+- Repository: imboyapp
+- Before HEAD: 35676bb0
+- Status: **PASS**（单测层闭合；真机腿仍在停放区）
+- Changed files:
+  - `assets/migrations/upgrade.sql`（VERSION 25 块）
+  - `assets/migrations/baseline_schema.sql`（msg_c2c 加 sender_did，全新安装）
+  - `lib/service/sqlite.dart`（`_dbVersion = 25`）
+  - `lib/store/model/message_columns.dart`（`senderDid`）
+  - `lib/store/model/message_model.dart`（`senderDid` 字段 + fromJson/toJson 对称）
+  - `lib/store/repository/message_repo_sqlite.dart`（离线落库写 sender_did）
+  - `lib/modules/messaging/infrastructure/message_model_mapper.dart`
+    （`_toInboundFrame()` / `_decryptLegacyPayload()` + v3 分流）
+- Tests added / rewritten:
+  - `test/service/e2ee/decrypt_on_read_v3_gap_test.dart`：新增正向可用性 +
+    fail-closed 负向各 1 例；**结构守护断言按队列要求反转重写**（用例未删，
+    废止理由写在文件头）
+  - `test/integration/db_v25_msg_c2c_sender_did_test.dart`（新增 3 例）
+- RED 记录：
+  - 首次尝试是**编译错误**（Dart 缺命名参数），不算 RED → 先只加承载字段、
+    不接线，把 RED 降格为纯行为问题；
+  - 真 RED `+2 -3`：正向读不出明文（`decrypt_failed` / FormatException）、
+    fail-closed 分类错误、结构守护为 false；
+  - **对照组绿**（同一行数据经 `decryptInboundV3` 可读）→ harness 有效。
+- Verification commands / result:
+  - `flutter test test/service/e2ee/` → **337 passed**（基线 335）
+  - `flutter test test/service/` → **1217 passed**（基线 1212）
+  - `dart analyze lib` → **1 issue**（`ios_settings_ui.dart` 既有 info）
+  - `flutter test test/integration/db_v25_msg_c2c_sender_did_test.dart` → 3 passed
+- **预存失败（非本次引入，未删未 skip）**：`test/store/` 1 例
+  （attachment presign 负载不符）、`test/integration/` 34 例（moment/collect
+  UI 图标断言漂移）。已 `grep` 实证两者均**不 import**
+  `message_model` / `message_repo` / `SqliteService`。
+- Evidence: `evidence/E2EE-A2-b-decrypt-on-read-v3.md`
+- Residual risks:
+  1. **真机双端始终未验证**（停放区那条腿）；
+  2. 迁移 v25 / 后端迁移 48 之前的旧离线行**永久不可读**（fail-closed 设计选择，
+     无回填路径——服务端也没有历史行的设备标识）；
+  3. C2G 未覆盖（走 Megolm v2，不受影响；上 PFv3 需同步扩表）；
+  4. `downgrade.sql` 未同步（到 v17 的整体回退脚本，无单步 v25→v24）；
+  5. `toTypeMessage()` 富化取数耦合仍在（与停放区候选任务 B 同源），
+     正向用例靠 `currentUid == fromId` 绕开，**未覆盖「非本人发送 + 富化取数」**；
+  6. `batchInsertOfflineMessages` 写列那几行**无端到端用例**（未实证）；
+  7. 归档回放路径（`chat_archive_service`）是否透传 `sender_did` **未核实**。
+- ⚠️ 记录在案的替代方案（本轮否决）：把离线路径改成「落库前解密」可完全不加列、
+  并把两条解密路径收敛成一个入口，但会把离线消息 at-rest 从密文改成明文
+  （安全姿态弱化），且属存储语义的架构级变更，需人工点头。详见 evidence §1.1 取舍二。
+- Next task: **E2EE-062** OTK/fallback 抗耗尽与幂等租约（队列第 3 项，后端为主）
 - Reviewer decision: Pending
