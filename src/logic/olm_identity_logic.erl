@@ -11,6 +11,7 @@
 -export([report_identity/6]).
 -export([report_one_time_keys/4]).
 -export([report_fallback_key/4]).
+-export([report_fallback_key/5]).
 -export([get_identity/2]).
 -export([list_devices/1]).
 -export([claim_keys/3]).
@@ -124,6 +125,96 @@ report_fallback_key(UserId, DeviceId, KeyId, KeyB64) when
     end;
 report_fallback_key(_, _, _, _) ->
     {error, <<"bad_request">>}.
+
+%% @doc E2EE-062：带签名的 fallback prekey 上报（playbook E2EE-025：
+%%  「OTK 耗尽只使用协议允许且**身份验证通过的** signed fallback prekey，或拒发」）。
+%%
+%%  威胁：E2EE-013 用 token 绑定设备所有权，但 **token 在网络上传输、identity 私钥
+%%  不会**——盗 token 远比盗设备 ed25519 私钥容易。持被盗 token 的攻击者今天可以
+%%  给该设备上传**自己控制的** fallback prekey；此后凡该设备 OTK 耗尽、对端回退
+%%  fallback 的会话，用的都是攻击者的预密钥。要求由**已注册的 ed25519 身份键**
+%%  签名，就把 fallback key 绑到了 token 窃取者拿不到的秘密上。
+%%
+%%  ⚠️ 签名为空时**仍然接受**（并计数）：今天没有任何客户端发送签名，此刻要求
+%%  必填等于所有设备都发布不了 fallback key —— 每次 OTK 耗尽都变成
+%%  `no_prekey_available`，新会话直接建不起来。这是两阶段推进的第一阶段，
+%%  与第四刀（客户端发 request_id）同一形状：先服务端能验、并让缺口可见，
+%%  待客户端普遍带上签名后再改为必填。**在那之前本项不算关闭。**
+-spec report_fallback_key(integer(), binary(), binary(), binary(), binary()) ->
+    ok | {error, binary()}.
+report_fallback_key(UserId, DeviceId, KeyId, KeyB64, <<>>) ->
+    _ = elib_metric:increment(olm_fallback_unsigned_total),
+    %% 保留对 report_fallback_key/4 的原调用形状（既有测试按 arity 挂 meck 期望）
+    report_fallback_key(UserId, DeviceId, KeyId, KeyB64);
+report_fallback_key(UserId, DeviceId, KeyId, KeyB64, Signature) when
+    is_integer(UserId),
+    is_binary(DeviceId),
+    is_binary(KeyId),
+    is_binary(KeyB64),
+    is_binary(Signature)
+->
+    case no_ctrl_chars([DeviceId, KeyId, KeyB64]) of
+        false ->
+            %% canonical 用 `key=value\n`，值内含 \n/\r 会让编码非单射——
+            %% 同一串字节可对应多组字段拆分，等价于签名伪造。fail-closed 拒收。
+            {error, <<"invalid_fallback_key">>};
+        true ->
+            verify_then_report_fallback(UserId, DeviceId, KeyId, KeyB64, Signature)
+    end;
+report_fallback_key(_, _, _, _, _) ->
+    {error, <<"bad_request">>}.
+
+-spec verify_then_report_fallback(integer(), binary(), binary(), binary(), binary()) ->
+    ok | {error, binary()}.
+verify_then_report_fallback(UserId, DeviceId, KeyId, KeyB64, Signature) ->
+    case olm_identity_ds:find_identity(UserId, DeviceId) of
+        {ok, not_found} ->
+            %% 无从验证即拒绝：若「验不了就放行」，攻击者只需先让 identity 查不到
+            %% 即可绕开整道验签。
+            {error, <<"device_not_registered">>};
+        {ok, #{<<"ed25519_key">> := Ed25519B64}} ->
+            Canonical = fallback_canonical(UserId, DeviceId, KeyId, KeyB64),
+            case verify_ed25519(Ed25519B64, Canonical, Signature) of
+                true ->
+                    report_fallback_key(UserId, DeviceId, KeyId, KeyB64);
+                false ->
+                    {error, <<"invalid_signature">>}
+            end;
+        {error, Reason} ->
+            _ = ?ERROR_LOG({olm_fallback_identity_error, UserId, DeviceId, Reason}),
+            {error, <<"internal_error">>}
+    end.
+
+%% @private fallback key 的 canonical 签名载荷。
+%%  `key=value\n`、ASCII 字典序、末字段无尾随换行——与
+%%  `e2ee_trust_logic:canonical_payload/1` 同一方案（项目既有、双语言对齐）。
+%%  字段序 device_id < key_base64 < key_id < user_id 已是字典序。
+-spec fallback_canonical(integer(), binary(), binary(), binary()) -> binary().
+fallback_canonical(UserId, DeviceId, KeyId, KeyB64) ->
+    <<"device_id=", DeviceId/binary, "\n", "key_base64=", KeyB64/binary, "\n", "key_id=",
+        KeyId/binary, "\n", "user_id=", (integer_to_binary(UserId))/binary>>.
+
+%% @private canonical 单射守卫：字段值不得含 \n/\r（唯一记录分隔符）。
+-spec no_ctrl_chars([binary()]) -> boolean().
+no_ctrl_chars(List) ->
+    lists:all(
+        fun(B) -> is_binary(B) andalso binary:match(B, [<<"\n">>, <<"\r">>]) =:= nomatch end,
+        List
+    ).
+
+%% @private Ed25519 验签（公钥与签名均为 base64）。
+%%  与 `e2ee_trust_logic:verify_signature/3` 是同一段原语的两份拷贝：
+%%  那边是私有函数，而 `imboy_plugin_signature` 标注 FROZEN（v2 动态加载子系统冻结），
+%%  两者都不宜从本路径依赖。若日后要合并，两处都在本注释可检索到。
+-spec verify_ed25519(binary(), binary(), binary()) -> boolean().
+verify_ed25519(Ed25519B64, Canonical, SignatureB64) ->
+    try
+        PubKey = base64:decode(Ed25519B64),
+        Sig = base64:decode(SignatureB64),
+        crypto:verify(eddsa, none, Canonical, Sig, [PubKey, ed25519])
+    catch
+        _:_ -> false
+    end.
 
 %% ===================================================================
 %% 查询身份键

@@ -2245,7 +2245,7 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   3. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网，仅 find+判定+日志）；
   4. 滞留后 UX 无具体提示；
   5. 幂等/补传链路端到端未实证；
-  6. 单租户/全局限流未做；租约无 TTL；**fallback prekey 未在服务端验签**；
+  6. 单租户/全局限流未做；租约无 TTL；**fallback prekey 验签第一阶段已于 2026-07-29 会话 20260729-1200 落地**（`report_fallback_key/5`：canonical 单射守卫 → 查已注册 ed25519 → 验签 → 通过才落库，真 Ed25519 测试，e2ee-verify 350）——⚠️ **本项未关闭：签名仍非必填**（今天无客户端发签名，此刻必填 = 所有设备发布不了 fallback key → 每次耗尽变 `no_prekey_available`），被盗 token 的攻击者可「干脆不带签名」绕过；新指标 `olm_fallback_unsigned_total` 用于判断第二阶段何时可启动。见 `evidence/E2EE-062-fallback-signature.md`；
      60/min 未压测；进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
   7. 真机双端未验证。
 - **Next task**：E2EE-062 残留里**仍可自动推进**的候选（按价值排序）：
@@ -2257,4 +2257,76 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   队列其余项状态不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
   人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 / 是否放行纯函数实施刀 /
   012-024-025 回退裁定）。
+- Reviewer decision: Pending
+
+### Session 2026-07-29 12:00 — E2EE-062 残留 6（fallback prekey 验签，第一阶段）
+
+- Session ID: 20260729-1200-claude-code
+- Repository: imboy
+- Status: **第一阶段完成**（能验、缺口可见）；**本项未关闭**。E2EE-062 整体仍 `PARTIAL`
+- Changed files:
+  - `src/logic/olm_identity_logic.erl`（新增 `report_fallback_key/5` + canonical + 单射守卫 + 验签）
+  - `src/api/olm_handler.erl`（`do_report_fallback1` 读可选 `signature`，统一走 `/5`）
+  - `Makefile`（Modules 清单 +1）
+- Tests added:
+  - `test/logic/e2ee_fallback_signature_tests.erl`（7 例，**已入门禁**；
+    用 `crypto:generate_key(eddsa, ed25519)` 真实密钥对真实签名，**不 mock 密码学库**）
+- 依据：playbook E2EE-025「OTK 耗尽只使用协议允许且**身份验证通过的** signed fallback
+  prekey，或拒发」。现状 `/4` 只校验非空，**无任何签名**。
+- ⚠️ **威胁不是理论**：E2EE-013 用 token 绑定设备所有权，但 **token 在网络上传输、
+  identity 私钥不会**——盗 token 远易于盗设备 ed25519 私钥。持被盗 token 者**今天**
+  可给该设备上传自己控制的 fallback prekey；此后凡该设备 OTK 耗尽、对端回退 fallback
+  的会话（正是第七/八刀一直在防的耗尽场景）用的都是**攻击者的预密钥**。
+- ⚠️⚠️ **取舍：签名为空仍接受（并计数）——本项因此未关闭。**
+  今天无任何客户端发签名；此刻必填 = 所有设备发布不了 fallback key →
+  每次 OTK 耗尽变 `no_prekey_available` → **新会话直接建不起来**。
+  故两阶段推进，与第四刀（客户端发 request_id）**同一形状**：
+  一 = 服务端能验 + 未签名计数（本刀）；二 = 客户端普遍带签名后改必填（未做）。
+  **在第二阶段前，攻击者可「干脆不带签名」绕过整道校验。**
+  `olm_fallback_unsigned_total` 就是用来判断第二阶段何时可启动的。
+- ⚠️ **RED 两次**：首跑 5 红但走 `/5` 的用例失败于 `undef`（**编译级**，不算 RED）；
+  按铁律先落载体（`/5` 原样委托 `/4`），再取真 RED `Failed:4 Passed:2`——
+  无效签名被接受、换 key 复用签名被接受、设备未注册仍被接受、未签名无计数。
+- 对照组 `unsigned_still_accepted`（旧客户端仍落库）改前改后都绿——它红就说明我把
+  所有设备的 fallback 发布能力一起砍了。正向可用性 `valid_signature_accepted` 否掉
+  「一律拒绝」的作弊实现。另有反重放（换 key 复用签名失效）与
+  「不得验不了就放行」（未注册 identity 即拒）。
+- 取舍：**canonical 复用项目既有 `key=value\n` ASCII 字典序方案**（与
+  `e2ee_trust_logic:canonical_payload/1`、KT profile §3 一致），不发明第三套；
+  值含 `\n`/`\r` 会让编码非单射（= 签名伪造）故 fail-closed 拒收。
+- 取舍：**复制 8 行 `crypto:verify(eddsa,...)` 原语**——`e2ee_trust_logic:verify_signature/3`
+  是私有（导出会造成 logic→logic 耦合），`imboy_plugin_signature` 标注
+  **`@status FROZEN`**（v2 动态加载子系统暂停），从活跃 E2EE 路径依赖冻结模块更差。
+  两处注释互相注明位置，日后可检索合并。
+- 取舍：**计数打在 `/5` 而非 `/4`** —— `/5` 验签成功后内部复用 `/4`，
+  打在 `/4` 会把**合法签名的上传误计成"未签名"**，指标随即失去意义。
+  守护用例 `signed_not_counted_as_unsigned`。
+  已 grep 核实**全仓无任何测试按 arity mock `report_fallback_key`**
+  （`olm_otk_lifecycle_tests` 是直接调用 `/4`，非 mock），故 handler 统一走 `/5`
+  不会静默穿透；**`/4` 本体一字未改**。
+- Verification:
+  - `IMBOYENV=local make eunit t=e2ee_fallback_signature_tests` → **All 7 tests passed**
+  - `make e2ee-verify` → **All 350 tests passed**（上一轮 343）
+  - `erlfmt --check` / `git diff --check` 通过
+  - 既有 `olm_otk_lifecycle_tests`（直接调 `/4` 三处）门禁内全绿 → `/4` 语义未变
+- Evidence: `evidence/E2EE-062-fallback-signature.md`
+- Residual（E2EE-062 仍 PARTIAL）:
+  1. **⚠️ 本项未关闭：签名仍非必填**；第二阶段（客户端签名 + 服务端改必填）未做；
+  2. **客户端不发送签名** —— 与第四刀 request_id 同形状，需 imboyapp 一刀；
+  3. **`report_identity` 的 signature 只校验非空、未验证**（**已实证**）。
+     注意它与本刀不同：identity 自签只证明内部一致，无法证明所有权连续性，
+     真正的防护在客户端 TOFU 与 KT（E2EE-065）；
+  4. 告警规则未做；`/metrics` 输出未实证；
+  5. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网）；滞留后 UX 无提示；
+  6. 幂等/补传链路端到端未实证；单租户/全局限流未做；租约无 TTL；60/min 未压测；
+     进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  7. 真机双端未验证。
+- **Next task**：E2EE-062 仍可自动推进的候选：
+  1. **客户端为 fallback key 签名**（残留 2）—— imboyapp 侧一刀，
+     与第四刀 request_id 同形状；做完后残留 1 的第二阶段才具备启动条件。**首选。**
+  2. 告警规则（需基线数据 + 部署侧配置）；
+  3. `/metrics` 输出实证（需起服务，属集成验收）。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
+  是否放行纯函数实施刀 / 012-024-025 回退裁定）。
 - Reviewer decision: Pending

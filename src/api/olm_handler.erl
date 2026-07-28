@@ -180,7 +180,13 @@ do_report_fallback(Req0, State) ->
 do_report_fallback1(Req0, CurrentUid, DeviceId, PostVals) ->
     KeyId = maps:get(<<"key_id">>, PostVals, <<>>),
     KeyB64 = maps:get(<<"key_base64">>, PostVals, <<>>),
-    case olm_identity_logic:report_fallback_key(CurrentUid, DeviceId, KeyId, KeyB64) of
+    %% E2EE-062：可选签名（由设备已注册的 ed25519 身份键签发）。
+    %% 统一走 /5：签名为空时 /5 计一次 olm_fallback_unsigned_total 再委托 /4，
+    %% 计数因此**恰好每个未签名请求一次**，且验签通过的上传不会被误计
+    %% （/5 成功后才内部复用 /4）。已 grep 核实全仓无任何测试按 arity mock
+    %% report_fallback_key，故此处统一调 /5 不会造成静默穿透。
+    Signature = to_bin(maps:get(<<"signature">>, PostVals, <<>>)),
+    case olm_identity_logic:report_fallback_key(CurrentUid, DeviceId, KeyId, KeyB64, Signature) of
         ok ->
             elib_response:success(Req0, #{<<"success">> => true});
         {error, Msg} ->
