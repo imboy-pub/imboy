@@ -11,6 +11,7 @@
 -export([upsert_one_time_keys/4]).
 -export([count_one_time_keys/2]).
 -export([claim_one_time_key/3]).
+-export([claim_one_time_key/4]).
 -export([upsert_fallback_key/4]).
 -export([claim_fallback_key/2]).
 -export([cleanup_consumed_one_time_keys/1]).
@@ -46,6 +47,12 @@ count_one_time_keys(UserId, DeviceId) ->
 -spec claim_one_time_key(integer(), binary(), integer()) -> {ok, map()} | {error, exhausted}.
 claim_one_time_key(UserId, DeviceId, ClaimedBy) ->
     olm_identity_repo:claim_one_time_key(UserId, DeviceId, ClaimedBy).
+
+%% @doc E2EE-062：带幂等租约的 claim。RequestId 为 <<>> 时语义等同 /3。
+-spec claim_one_time_key(integer(), binary(), integer(), binary()) ->
+    {ok, map()} | {error, exhausted}.
+claim_one_time_key(UserId, DeviceId, ClaimedBy, RequestId) ->
+    olm_identity_repo:claim_one_time_key(UserId, DeviceId, ClaimedBy, RequestId).
 
 -spec upsert_fallback_key(integer(), binary(), binary(), binary()) ->
     {ok, term()} | {error, term()}.

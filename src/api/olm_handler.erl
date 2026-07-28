@@ -325,7 +325,17 @@ do_claim_key1(Req0, CurrentUid) ->
         false ->
             elib_response:error(Req0, <<"bad_request">>, 400);
         true ->
-            case olm_identity_logic:claim_keys(CurrentUid, TargetUid, DeviceId) of
+            %% E2EE-062：幂等租约键（可选）。同一领取方重放同一 request_id
+            %% 只消费一条 OTK；缺省 <<>> 时保持旧的逐次消费语义（旧客户端零破坏）。
+            RequestId = normalize_request_id(maps:get(<<"request_id">>, PostVals, <<>>)),
+            %% 保留对 claim_keys/3 的原调用形状——既有测试按 arity 挂 meck 期望，
+            %% 无脑改走 /4 会让它们静默穿透到真实实现（A2-a 已实证过同款回归）
+            Claimed =
+                case RequestId of
+                    <<>> -> olm_identity_logic:claim_keys(CurrentUid, TargetUid, DeviceId);
+                    _ -> olm_identity_logic:claim_keys(CurrentUid, TargetUid, DeviceId, RequestId)
+                end,
+            case Claimed of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
                 {error, Msg} ->
@@ -400,3 +410,17 @@ normalize_device_ids(_) ->
 to_bin(B) when is_binary(B) -> B;
 to_bin(L) when is_list(L) -> list_to_binary(L);
 to_bin(_) -> <<>>.
+
+%% @private E2EE-062：request_id 白名单归一化。
+%%  只接受 base64url / hex 安全字符集，长度 <= 64（对齐
+%%  priv/migrations/00000049 的 varchar(64)）；不合规一律降级为 <<>>
+%%  （= 无幂等，逐次消费），**不报错**——幂等键是可选优化，
+%%  不是安全边界；用它来拒绝请求反而给了攻击者一个新的拒绝服务面。
+-spec normalize_request_id(term()) -> binary().
+normalize_request_id(Bin) when is_binary(Bin), byte_size(Bin) > 0, byte_size(Bin) =< 64 ->
+    case re:run(Bin, <<"^[A-Za-z0-9_.-]+$">>, [{capture, none}]) of
+        match -> Bin;
+        nomatch -> <<>>
+    end;
+normalize_request_id(_) ->
+    <<>>.

@@ -14,6 +14,7 @@
 -export([get_identity/2]).
 -export([list_devices/1]).
 -export([claim_keys/3]).
+-export([claim_keys/4]).
 -export([batch_claim_keys/3]).
 -export([cleanup_consumed_one_time_keys/1]).
 
@@ -185,9 +186,30 @@ claim_keys(CurrentUid, TargetUid, DeviceId) when
 claim_keys(_, _, _) ->
     {error, <<"bad_request">>}.
 
+%% @doc E2EE-062：带幂等租约的 claim。RequestId 非空时，同一领取方重放同一
+%%  RequestId 只消费一条 OTK 并恒返回同一条 key；为空时语义等同 claim_keys/3。
+-spec claim_keys(integer(), integer(), binary(), binary()) ->
+    {ok, map()} | {error, binary()}.
+claim_keys(CurrentUid, TargetUid, DeviceId, RequestId) when
+    is_integer(CurrentUid), is_integer(TargetUid), is_binary(DeviceId), is_binary(RequestId)
+->
+    case olm_identity_ds:find_identity(TargetUid, DeviceId) of
+        {ok, not_found} ->
+            {error, <<"device_not_registered">>};
+        {ok, Identity} ->
+            claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId);
+        {error, Reason} ->
+            _ = ?ERROR_LOG({olm_claim_identity_error, TargetUid, DeviceId, Reason}),
+            {error, <<"internal_error">>}
+    end;
+claim_keys(_, _, _, _) ->
+    {error, <<"bad_request">>}.
+
 -spec claim_with_identity(integer(), integer(), binary(), map()) ->
     {ok, map()} | {error, binary()}.
 claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
+    %% 保留对 olm_identity_ds:claim_one_time_key/3 的原调用形状——
+    %% 既有测试按 arity 挂 meck 期望，换 arity 会让它们静默穿透（A2-a 实证过）
     case olm_identity_ds:claim_one_time_key(TargetUid, DeviceId, CurrentUid) of
         {ok, OtkRow} ->
             {ok, #{
@@ -198,6 +220,34 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
             }};
         {error, exhausted} ->
             %% OTK 耗尽 → fallback 兜底
+            case olm_identity_ds:claim_fallback_key(TargetUid, DeviceId) of
+                {ok, FbRow} ->
+                    {ok, #{
+                        <<"type">> => <<"fallback">>,
+                        <<"key_id">> => maps:get(<<"key_id">>, FbRow),
+                        <<"key_base64">> => maps:get(<<"key_base64">>, FbRow),
+                        <<"identity">> => Identity
+                    }};
+                {error, exhausted} ->
+                    {error, <<"no_prekey_available">>}
+            end
+    end.
+
+-spec claim_with_identity(integer(), integer(), binary(), map(), binary()) ->
+    {ok, map()} | {error, binary()}.
+claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, <<>>) ->
+    claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity);
+claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
+    case olm_identity_ds:claim_one_time_key(TargetUid, DeviceId, CurrentUid, RequestId) of
+        {ok, OtkRow} ->
+            {ok, #{
+                <<"type">> => <<"one_time">>,
+                <<"key_id">> => maps:get(<<"key_id">>, OtkRow),
+                <<"key_base64">> => maps:get(<<"key_base64">>, OtkRow),
+                <<"identity">> => Identity
+            }};
+        {error, exhausted} ->
+            %% OTK 耗尽 → fallback 兜底（非破坏性，重复领取同一条是协议允许的）
             case olm_identity_ds:claim_fallback_key(TargetUid, DeviceId) of
                 {ok, FbRow} ->
                     {ok, #{

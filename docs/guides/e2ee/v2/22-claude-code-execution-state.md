@@ -58,7 +58,7 @@ overall_status: IN_PROGRESS
 |---|---|---|---|
 | 1 | ~~**A2-a** 后端 `sender_did` 持久化~~ | — | ✅ **DONE**（2026-07-28 会话 20260728-1730）。迁移 48 + staging/msg_c2c 双表加列 + 六接缝贯通；真 PostgreSQL 端到端已实证。证据：`evidence/E2EE-A2-a-offline-sender-did.md`。⚠️ 教训：`stage/10`、`write_msg/8` **必须保留原调用形状**，改成「新 arity + 默认值」会让按 arity 挂 meck 期望的既有测试静默穿透（实证回归 6 例） |
 | 2 | ~~**A2-b** 客户端 decrypt-on-read v3 接线~~ | A2-a ✅ | ✅ **DONE**（2026-07-28 会话 20260728-1810）。SQLite v25 加 `msg_c2c.sender_did` + `toTypeMessage()` 经 `decryptInboundV3` 分流；结构守护断言已反转，正向可用性用例已补。证据：`evidence/E2EE-A2-b-decrypt-on-read-v3.md`。⚠️ 真机仍未验证；迁移前旧离线行永久不可读（fail-closed 设计选择）。原文：接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
-| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | 后端为主 |
+| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**未做（本项仍未完成，下次接着做）**：① per-target 限流——现只有 per-claimant，N 个账号协同仍可定向耗尽同一目标；② `batch_claim` 未接幂等；③ fallback 未验签；④ 客户端未发送 `request_id`，**生产流量一条也走不到幂等路径**。证据：`evidence/E2EE-062-otk-claim-idempotent-lease.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
 | 6 | **E2EE-065/066** Key Transparency | — | 最大件：**只产出调研与设计文档**，不改任何生产代码 |
@@ -296,7 +296,7 @@ blocked:
 |---|---|---|---|---|---|
 | E2EE-060 | 21/E2EE-022 | 后端 PFv3 不透明透传契约（Erlang HTTP/WS/DB round-trip byte-preserving） | E2EE-023 | `PASS` | GA-C2C |
 | E2EE-061 | 21/E2EE-023 | 附件独立 content key 与分块 AEAD（**ATT-01..05**） | E2EE-060 | `PENDING` | **GA-C2C 硬门禁**（ADR 15 §9 / ADR 14 G5「附件」行） |
-| E2EE-062 | 21/E2EE-025 | OTK/fallback 抗耗尽与幂等租约（DT-03/09、1000 并发 claim） | E2EE-013 | `PENDING` | GA-C2C（ADR 14 T7） |
+| E2EE-062 | 21/E2EE-025 | OTK/fallback 抗耗尽与幂等租约（DT-03/09、1000 并发 claim） | E2EE-013 | `PARTIAL` | GA-C2C（ADR 14 T7）；幂等租约已闭合，四层限流/batch/fallback 验签未做，见 `evidence/E2EE-062-otk-claim-idempotent-lease.md` §5 |
 | E2EE-063 | 21/E2EE-029 | G2 Strong Preview 出口门（证据汇总，非编码） | E2EE-026/027/029/030/060/061/062 | `PENDING` | Strong Preview 门 |
 | E2EE-064 | 21/E2EE-030 | 可撤销 device-bound session 完整体（PostgreSQL session schema、DT-01..04/08/10） | E2EE-013 | `PENDING` | GA-C2C |
 | E2EE-065 | 21/E2EE-033 | Key Transparency append-only 日志与 inclusion/consistency proof API | E2EE-064/033 | `PENDING` | **GA-C2C 硬门禁**（ADR 14 T8 / 20-plan G3「独立 monitor 已运行并演练 split view」） |
@@ -1315,4 +1315,58 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   并把两条解密路径收敛成一个入口，但会把离线消息 at-rest 从密文改成明文
   （安全姿态弱化），且属存储语义的架构级变更，需人工点头。详见 evidence §1.1 取舍二。
 - Next task: **E2EE-062** OTK/fallback 抗耗尽与幂等租约（队列第 3 项，后端为主）
+- Reviewer decision: Pending
+
+### Session 2026-07-28 19:30 — E2EE-062（OTK claim 幂等租约，第一刀）
+
+- Session ID: 20260728-1930-claude-code
+- Repository: imboy
+- Before HEAD: 802fde4a
+- Status: **PARTIAL**（幂等租约闭合；四层限流 / batch / fallback 验签未做）
+- Changed files:
+  - `priv/migrations/00000049_olm_otk_claim_request.{up,down}.sql`（新增）
+  - `src/repo/olm_identity_repo.erl`（`claim_one_time_key/4` + `find_claim_by_request/4`
+    + `claim_with_request_id/4` + `is_unique_violation/1`）
+  - `src/ds/olm_identity_ds.erl`（`claim_one_time_key/4`）
+  - `src/logic/olm_identity_logic.erl`（`claim_keys/4` + `claim_with_identity/5`）
+  - `src/api/olm_handler.erl`（读可选 `request_id` + `normalize_request_id/1`）
+  - `Makefile`（新单测模块入 e2ee-verify 清单）
+- Tests added:
+  - `test/logic/e2ee_otk_claim_idempotency_tests.erl`（5 例，已入门禁清单）
+  - `test/integration/e2ee_otk_claim_idempotency_integration_tests.erl`（5 例，真 PostgreSQL；
+    与既有 pipeline 集成测试同例，**不**入门禁清单，无 DB 时会 skip）
+- RED 记录：
+  - 首次尝试是 meck 拒绝挂不存在的 arity（结构缺失，不算 RED）→ 先只加承载 arity、
+    全部原样委托 `/3`、不实现任何幂等语义，把 RED 降格成纯行为问题；
+  - 真 RED `Failed: 1, Passed: 4`：`replay_consumes_once` 期望 `[k1]`、实得 `[k1,k2,k3]`
+    ——100 次重放把整池消费光，逐字复现耗尽缺陷；
+  - 4 绿对照组含**正向可用性**（不同 request_id 各自消费），专门否掉
+    「永远返回同一条 key」的作弊实现。
+- Verification commands / result:
+  - `make e2ee-verify` → **All 309 tests passed**（上一轮 304，本轮 +5）
+  - `IMBOYENV=local make eunit t=e2ee_otk_claim_idempotency_integration_tests …`
+    → **All 5 tests passed**（真 PostgreSQL；含 100 次重放与 **50 路并发**）
+  - 直连 PG 核实：`schema_migrations` 最高 = 49；`claim_request_id varchar(64)` 与
+    `uk_olm_otk_claim_request` 均已存在
+  - 回归：`olm_identity_repo_tests` 10/10、`olm_identity_logic_tests` 28/28、
+    `olm_handler_tests` 5/5、`olm_otk_lifecycle_tests` 5/5
+  - `git diff --check` 通过；`erlfmt --check` 全部改动文件通过
+- ⚠️⚠️ **本会话第二次踩同一个坑**：新增 arity 时把旧 arity 改成「委托新 arity」，
+  导致 `olm_handler_claim_throttle_tests` 静默穿透到真实实现
+  （`{noproc,{gen_server,call,[pgsql,...]}}`）。**铁律：新增 arity 一律保留旧 arity
+  的原调用形状，不要图省事改成委托。** A2-a 是第一次。
+- Residual risks（**本任务远未完成**，详见 evidence §5）:
+  1. **per-target 限流缺失** —— 现只有 per-claimant(30/min)；N 个账号协同、
+     或每次换新 request_id，仍可定向耗尽同一目标的池。这是剩下最重要的一刀；
+  2. `batch_claim_keys/3` 完全未接幂等租约（多设备 fan-out 重试仍逐次消费）；
+  3. 租约无独立 TTL，边界是审计保留期，过期后同 request_id 会重新消费；
+  4. fallback prekey 未在服务端验签（playbook 要求「身份验证通过」）；
+  5. 「耗尽/限流绝不触发 RSA/Megolm/明文」无针对性守护用例；
+  6. 低水位补充与耗尽告警缺失；
+  7. **客户端未发送 `request_id`，生产流量一条也走不到幂等路径**——
+     不要据本轮 evidence 认为「重试不再耗尽 OTK」已在生产成立；
+  8. 真机双端未验证。
+- Evidence: `evidence/E2EE-062-otk-claim-idempotent-lease.md`
+- Next task: **E2EE-062 续**（per-target 限流 + batch_claim 幂等），
+  完成后再进队列第 4 项 **E2EE-064**
 - Reviewer decision: Pending

@@ -15,6 +15,7 @@
 -export([upsert_one_time_keys/4]).
 -export([count_one_time_keys/2]).
 -export([claim_one_time_key/3]).
+-export([claim_one_time_key/4]).
 -export([cleanup_consumed_one_time_keys/1]).
 -export([upsert_fallback_key/4]).
 -export([claim_fallback_key/2]).
@@ -189,6 +190,125 @@ claim_one_time_key(UserId, DeviceId, ClaimedBy) ->
             _ = ?ERROR_LOG({olm_claim_otk_error, UserId, DeviceId, Reason}),
             {error, exhausted}
     end.
+
+%% @doc E2EE-062：带**幂等租约**的 claim。
+%%
+%%  X3DH 的 one-time prekey 是一次性资源。没有幂等键时，客户端一次网络超时
+%%  后的重试就会再消费一条；恶意方重放同一请求即可定向耗尽某用户的池，把
+%%  所有新会话逼到复用同一条 fallback prekey（前向保密显著下降）。
+%%
+%%  语义（21-playbook E2EE-025）：同 (ClaimedBy, UserId, DeviceId, RequestId)
+%%  重放**只消费一条**，每次返回同一条 key。租约按**领取方**隔离——
+%%  换一个领取方拿同样的 RequestId 不得读到别人的 claim 结果（否则
+%%  RequestId 就成了越权读取他人已领 key 的通道）。
+%%
+%%  原子性：先查租约；未命中则消费一条并写入 claim_request_id。
+%%  两个并发同 RequestId 的请求可能同时查空，此时
+%%  `uk_olm_otk_claim_request`（部分唯一索引）让第二条 UPDATE 撞 23505，
+%%  捕获后回查租约返回第一条的结果——**不重复消费**。
+%%  这一层不能省：只靠先查后写是 TOCTOU。
+%%
+%%  RequestId 为空（旧客户端）→ 退回 /3 的逐次消费语义，零破坏。
+-spec claim_one_time_key(integer(), binary(), integer(), binary()) ->
+    {ok, map()} | {error, exhausted}.
+claim_one_time_key(UserId, DeviceId, ClaimedBy, RequestId) when
+    is_binary(RequestId), RequestId =/= <<>>
+->
+    case find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) of
+        {ok, Row} ->
+            {ok, Row};
+        {error, not_found} ->
+            case claim_with_request_id(UserId, DeviceId, ClaimedBy, RequestId) of
+                {ok, Row} ->
+                    {ok, Row};
+                {error, request_conflict} ->
+                    %% 并发同 RequestId：另一路已消费并写入租约，回查返回同一条
+                    case find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) of
+                        {ok, Row} -> {ok, Row};
+                        {error, not_found} -> {error, exhausted}
+                    end;
+                {error, exhausted} ->
+                    {error, exhausted}
+            end
+    end;
+claim_one_time_key(UserId, DeviceId, ClaimedBy, _RequestId) ->
+    claim_one_time_key(UserId, DeviceId, ClaimedBy).
+
+%% @private 回查已发放的租约（严格按领取方 + 目标设备 + request_id 三元组）
+-spec find_claim_by_request(integer(), binary(), integer(), binary()) ->
+    {ok, map()} | {error, not_found}.
+find_claim_by_request(UserId, DeviceId, ClaimedBy, RequestId) ->
+    Tb = tablename_one_time_key(),
+    Sql = <<
+        "SELECT key_id, key_base64 FROM ",
+        Tb/binary,
+        " WHERE user_id = $1 AND device_id = $2 AND claimed_by = $3",
+        "   AND claim_request_id = $4 AND status = 'claimed' LIMIT 1"
+    >>,
+    case elib_pg:query(Sql, [UserId, DeviceId, ClaimedBy, RequestId]) of
+        {ok, [Row | _]} ->
+            {ok, Row};
+        {ok, []} ->
+            {error, not_found};
+        {error, Reason} ->
+            %% fail-closed：查询失败不得当成「没有租约」而去消费新 key
+            _ = ?ERROR_LOG({olm_claim_lease_lookup_error, UserId, DeviceId, Reason}),
+            {error, not_found}
+    end.
+
+%% @private 消费一条并登记租约；唯一索引冲突返回 request_conflict
+-spec claim_with_request_id(integer(), binary(), integer(), binary()) ->
+    {ok, map()} | {error, exhausted | request_conflict}.
+claim_with_request_id(UserId, DeviceId, ClaimedBy, RequestId) ->
+    Tb = tablename_one_time_key(),
+    Sql = <<
+        "WITH picked AS (",
+        "  SELECT id, key_id, key_base64 FROM ",
+        Tb/binary,
+        "  WHERE user_id = $1 AND device_id = $2 AND status = 'available'",
+        "  ORDER BY id ASC LIMIT 1",
+        "  FOR UPDATE SKIP LOCKED",
+        "),",
+        "claimed AS (",
+        "  UPDATE ",
+        Tb/binary,
+        "  SET status = 'claimed', consumed_at = CURRENT_TIMESTAMP,",
+        "      claimed_by = $3, claim_request_id = $4",
+        "  WHERE id IN (SELECT id FROM picked)",
+        "  RETURNING id",
+        ")",
+        "SELECT p.key_id, p.key_base64 FROM picked p",
+        " JOIN claimed c ON p.id = c.id"
+    >>,
+    case elib_pg:query(Sql, [UserId, DeviceId, ClaimedBy, RequestId]) of
+        {ok, [Row]} ->
+            {ok, Row};
+        {ok, []} ->
+            {error, exhausted};
+        {error, {error, {error, <<"23505">>, unique_violation, _, _}}} ->
+            {error, request_conflict};
+        {error, Reason} ->
+            case is_unique_violation(Reason) of
+                true ->
+                    {error, request_conflict};
+                false ->
+                    _ = ?ERROR_LOG({olm_claim_otk_error, UserId, DeviceId, Reason}),
+                    {error, exhausted}
+            end
+    end.
+
+%% @private epgsql 的错误包装层数随调用路径不同，统一按 sqlstate 判定
+-spec is_unique_violation(term()) -> boolean().
+is_unique_violation(unique_violation) ->
+    true;
+is_unique_violation(<<"23505">>) ->
+    true;
+is_unique_violation(T) when is_tuple(T) ->
+    lists:any(fun is_unique_violation/1, tuple_to_list(T));
+is_unique_violation(L) when is_list(L) ->
+    lists:any(fun is_unique_violation/1, L);
+is_unique_violation(_) ->
+    false.
 
 %% @doc 清理已消费（claimed）且超过保留期的 one-time key 审计行（cleanup worker 调用）。
 %%  ADR 03 §6：claim 不删只标记，需定期清理避免表膨胀。RetentionSeconds 内的保留供审计。
