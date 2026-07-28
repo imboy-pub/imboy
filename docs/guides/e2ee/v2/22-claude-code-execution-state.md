@@ -2835,3 +2835,72 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
      **放行后 loop 可继续无人值守推进相当一段时间**；
   5. E2EE-012/024/025 的 PASS 回退裁定（停放区）。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 21:00 — E2EE-062：客户端拒绝上传未签名的 fallback key
+
+- Session ID: 20260729-2100-claude-code
+- Repository: imboyapp
+- Status: `E2EE-062-client-fallback-signature.md` §5.2 的残留**已闭合**。E2EE-062 仍 `PARTIAL`
+- Changed files:
+  - `lib/store/api/olm_api.dart`（`buildFallbackBody` 空签名 `throw ArgumentError`；
+    `reportFallbackKey` 的 `signature` **去掉默认值**改 `required`）
+  - `test/service/e2ee/fallback_key_signature_test.dart`（**重写**一条既有断言，未删用例）
+- 缺口：客户端签名那一刀留下「没有任何机制阻止『新增一个不签名的调用点』」。
+  此后又加了周期轮换，现在有**两个**调用点、都会签名，但 `signature` 带 `= ''` 默认值
+  ⇒ **漏签是静默的**：新调用点忘了传，请求体少一个字段，
+  服务端为兼容旧客户端**照单全收**（两阶段第一阶段），整道验签被绕过且无信号。
+- ⚠️ **这是针对本会话已两次踩到的缺陷类别的硬化**：
+  1. `_refillOneTimeKeys(account, seed: true)` —— 参数传值与调用点现实不符，
+     导致每次登录全量重建 OTK 池；
+  2. `reportFallbackKey(signature: '')` —— 同一类：安全相关参数带着
+     **「静默降级」语义的默认值**。
+  **共同教训：安全相关参数不该有默认值**——把「漏传」从运行时静默降级
+  变成**编译期不可表达**。
+- 取舍：守卫放在 `buildFallbackBody`（纯函数、是 `reportFallbackKey` 真正用来构造
+  请求体的函数，**可直接验收**）而非网络调用处（后者测试须跨 HTTP 层，本仓无 Dio
+  mock 基建）。两者都在请求发出之前，安全效果相同。
+- ⚠️ **RED 由「重写既有断言」取得，未新增用例、未删用例**：
+  原断言「正向可用性：签名为空时不得写入该键（旧语义零破坏）」
+  → 新断言「签名为空必须拒绝构造请求体（fail-closed）」。
+  **废止理由已写入该用例上方注释**：写下原断言时客户端**还不会签名**，
+  "允许空签名"是为旧语义兼容留的口子；此后两刀分别接上注册与轮换路径的签名，
+  两个调用点现在都必然带签名，"空签名"只可能来自新增调用点漏签。
+  出处：`E2EE-062-client-fallback-signature.md` §5.2。
+  RED `+4 -1`，1 红为行为失败；4 绿含正向可用性「签名非空时必须进入请求体」
+  与三条 canonical golden vector 用例。
+  正向可用性的另一半由既有 `fallback_rotation_wiring_test.dart` 承担
+  （断言轮换产出的 `signatures.single` 非空且流程走通）。
+- Verification（imboyapp 侧）:
+  - `flutter test .../fallback_key_signature_test.dart` → **All 5 passed**
+  - `flutter test test/service/e2ee/` → **394 passed**
+  - `flutter test test/service/` → **1274 passed**
+  - `dart analyze lib` → 1 issue（既有 info）
+  - ⚠️ 用例总数与上次 imboyapp 轮次持平——本刀**重写**断言而非新增用例；
+    `dart analyze` 通过即证明两个调用点都已显式传参（去掉默认值后漏传会是编译错误）
+  - imboy 侧未改动，`make e2ee-verify` 不适用
+- Evidence: `evidence/E2EE-062-client-refuses-unsigned-fallback.md`
+- Residual:
+  1. **服务端仍接受未签名上传** —— 两阶段第一阶段未变；本刀只保证**本端**不发出
+     未签名的 fallback key。第二阶段需等 `olm_fallback_unsigned_total` 降到零；
+  2. `required` 只强制"必须传"不强制"非空"，非空由运行时 `ArgumentError` 兜；
+     二者叠加已足够（要绕过必须显式写 `signature: ''` 并撞异常）；
+  3. **同类默认值风险未做全仓排查** —— 只处理了这一个参数。
+     `_refillOneTimeKeys` 的 `seed` 仍有 `= false` 默认（语义是保守方向，
+     且已由 `publish_seed_only_for_new_account_test.dart` 钉住）。
+     **其余安全相关参数是否也带危险默认值，未逐个排查。**
+  4. E2EE-062 其余残留不变（告警规则、留存期 ≈2 周期、端到端未实证、
+     单租户/全局限流、60/min 未压测、真机等）。
+- **Next task**：E2EE-062 内**能靠纯代码推进且有真实价值的项已见底**，
+  本刀是把前几刀自己列出的残留逐条收口的最后一条。
+  唯一还能自动做的同类事是残留 3（全仓排查安全相关参数的危险默认值），
+  但那属于**跨模块的面**、不在 E2EE-062 边界内，且极易变成噪音改动，
+  **建议由人工决定是否立项**。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  **人工优先事项（不变，按解锁价值排序）**：
+  1. ADR 16 §3.1/§5/§6 五方签字 —— 一次解锁 E2EE-064/065/066（两项是 GA-C2C 硬门禁）；
+  2. transparency profile 的安全 reviewer 接受（`29-...profile-v1.md`）；
+  3. E2EE-061 三项拍板，拍板后剩余八刀可自动推进；
+  4. **是否放行"纯函数实施刀"**（061 Slice 2/3、065 Slice 4）——
+     **放行后 loop 可继续无人值守推进相当一段时间**；
+  5. E2EE-012/024/025 的 PASS 回退裁定（停放区）。
+- Reviewer decision: Pending
