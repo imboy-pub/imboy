@@ -2707,3 +2707,62 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
   是否放行纯函数实施刀 / 012-024-025 回退裁定）。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 19:00 — `/metrics` 内网 IP 门接线实证
+
+- Session ID: 20260729-1900-claude-code
+- Repository: imboy
+- Status: 上一刀残留 2「HTTP 层未覆盖」**已闭合**。E2EE-062 仍 `PARTIAL`
+- **本刀不改任何生产代码**（只加测试 + 门禁清单一行）
+- Changed files:
+  - `test/api/e2ee_metrics_ip_gate_tests.erl`（新，3 例，**已入门禁**）
+  - `Makefile`（Modules 清单 +1）
+- **先核实两个「可能有洞」的猜想，两个都不成立，故不制造伪工作**：
+  1. **IPv4-mapped IPv6 被误判为外网？** 不可达——`imboy_app:start_clear/2`
+     只传 `[{port, Port}]` 未指定 `{ip,_}`，ranch 默认 IPv4，peer 恒为四元组。
+     ⚠️ **若将来显式改监听为 IPv6 双栈，该结论失效**；
+  2. **反代后 TCP peer 恒为内网，这道门形同虚设？** 已在入口拦截——
+     `deploy/nginx/templates/imboy.conf.template:43-48`
+     `location ~ ^/(api/)?(v1/)?metrics$ { return 403; }`，
+     **注释逐字写明了与我推导相同的理由**。
+- ⚠️ **真正的缺口**：`deploy/helm/values.yaml` 给 Pod 加了
+  `prometheus.io/path: "/metrics"` 注解——**k8s 抓取路径不经过 nginx**，
+  此时后端 `is_internal_ip` 门是**唯一防线**，而它此前**没有任何测试**：
+  被重构掉不会有人发现，nginx 部署照常安全、k8s 部署静默暴露。
+  暴露的不只是系统指标——E2EE-062 刚加的耗尽计数**会泄漏攻击活动**
+  （耗尽发生得多频繁），等于把攻击进展反馈给攻击者。
+- ⚠️ **RED 用空验证**：临时摘掉 `init/2` 的 `is_internal_ip` 分支 →
+  `Failed:1 Passed:2`，**唯独「外网 peer → 403 且不触达指标读取」变红**，
+  对照组与正向可用性仍绿。恢复后无漂移。
+- 三条用例各自职责：
+  1. **对照组** `is_internal_ip` 分类正确——含 `172.15`/`172.32` 两个
+     **紧贴 RFC-1918 边界**的外网地址；它红则后两条结论都不成立；
+  2. 外网 → 403 **且不读取任何指标**（用 `get_all_metrics` 抛错断言"一字节不读"）；
+  3. **正向可用性** 内网照常拿到**含内容**的指标——
+     **"一律 403"的实现在"不泄漏"上恒得满分**，没有这条，把端点关掉也能让第 2 条通过。
+- Verification:
+  - `IMBOYENV=local make eunit t=e2ee_metrics_ip_gate_tests` → **All 3 passed**
+  - `make e2ee-verify` → **All 357 tests passed**（上一轮 354）
+  - `erlfmt --check` / `git diff --check` 通过；imboyapp 侧未改动
+  - 运行中的 `event: metrics_ranch_info_failed` 是测试环境无 ranch listener，
+    生产代码已 catch 降级为 warning，属既有行为，不影响断言
+- Evidence: `evidence/E2EE-062-metrics-ip-gate.md`
+- Residual:
+  1. **告警规则仍未做** —— 指标能导出、端点有门，但无 rule/阈值/通知渠道。
+     **这是"运维不再盲"的最后一段**，需部署侧配置 + 基线数据；
+  2. **若将来监听改 IPv6 双栈，§1.1 结论失效** —— `is_internal_ip/1` 不认
+     IPv4-mapped IPv6，会把内网抓取判成外网（fail-closed 但打断抓取）。
+     **本刀未加该分支**：当前不可达，凭空加分支等于给不存在的场景写未验证的代码；
+  3. nginx 那层**只做了读取核实，未实跑验证**（起 nginx 验 403 属部署侧集成）；
+  4. E2EE-062 其余残留不变（fallback 签名非必填、留存期 ≈2 周期、端到端未实证、
+     单租户/全局限流、真机等）。
+- **Next task**：E2EE-062 **能靠纯代码推进的项已见底**（本刀是最后一条）。
+  剩余全部落在三类之外部条件上：
+  1. **需部署侧配置 + 基线数据**：告警规则；
+  2. **需联调 / 真机 / 起服务**：端到端实证、nginx 403 实跑、60/min 压测、真机；
+  3. **需等外部条件**：fallback 签名改必填（等客户端普及）、
+     单租户/全局限流（有意识缺口，网关承担）。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
+  是否放行纯函数实施刀 / 012-024-025 回退裁定）。
+- Reviewer decision: Pending
