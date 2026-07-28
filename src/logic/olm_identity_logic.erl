@@ -221,7 +221,10 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
                 <<"identity">> => Identity
             }};
         {error, exhausted} ->
-            %% OTK 耗尽 → fallback 兜底
+            %% OTK 耗尽 → fallback 兜底。
+            %% 这一刻就是前向保密降级的瞬间：该对端此后的新会话都复用同一条
+            %% fallback prekey。运维侧必须能看见它，否则耗尽攻击是完全静默的。
+            _ = elib_metric:increment(olm_otk_exhausted_total),
             case olm_identity_ds:claim_fallback_key(TargetUid, DeviceId) of
                 {ok, FbRow} ->
                     {ok, #{
@@ -231,6 +234,8 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity) ->
                         <<"identity">> => Identity
                     }};
                 {error, exhausted} ->
+                    %% 连 fallback 都没有：比「池空」更严重，单独计数以便告警分级。
+                    _ = elib_metric:increment(olm_prekey_unavailable_total),
                     {error, <<"no_prekey_available">>}
             end
     end.
@@ -249,7 +254,10 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
                 <<"identity">> => Identity
             }};
         {error, exhausted} ->
-            %% OTK 耗尽 → fallback 兜底（非破坏性，重复领取同一条是协议允许的）
+            %% OTK 耗尽 → fallback 兜底（非破坏性，重复领取同一条是协议允许的）。
+            %% 幂等路径与 claim_with_identity/4 是两个函数子句，埋点必须各插一次；
+            %% 合并成「旧的委托新的」会让按 arity 挂 meck 的既有测试静默穿透。
+            _ = elib_metric:increment(olm_otk_exhausted_total),
             case olm_identity_ds:claim_fallback_key(TargetUid, DeviceId) of
                 {ok, FbRow} ->
                     {ok, #{
@@ -259,6 +267,8 @@ claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId) ->
                         <<"identity">> => Identity
                     }};
                 {error, exhausted} ->
+                    %% 连 fallback 都没有：比「池空」更严重，单独计数以便告警分级。
+                    _ = elib_metric:increment(olm_prekey_unavailable_total),
                     {error, <<"no_prekey_available">>}
             end
     end.
