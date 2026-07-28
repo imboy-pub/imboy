@@ -24,6 +24,11 @@
 7. 提交（不 push，除非人工要求），继续下一轮。
 ```
 
+可选聚焦执行：启动任务时可指定 `focus=commercialization`，此时只选择
+`tag: commercialization` 的任务，使用
+`docs/planning/p0-commercialization-claude-code-plan-2026-07.md`
+作为动作与验收的详细规范。未指定 focus 时保持原有全局顺序。
+
 **退出条件**（任一即停并报告）：无 ready 任务且无可结算闸门 / 遇授权/凭证/架构决策 / 连续两轮无新进展 / 验收需真机或人工凭证。
 
 **格式契约**（勿破坏，loop 靠正则解析）：
@@ -474,6 +479,109 @@
 
 ---
 
+## Wave C0 · 商业化 P0（聚焦执行）
+
+> 详细规范：`docs/planning/p0-commercialization-claude-code-plan-2026-07.md`。
+> 固化默认：单租户 `owner_uid=current_uid`、OIDC-only、支付 mock-only；真实凭证和真机不进入本闸门。
+
+### C0-BILL-01
+- title: Billing 归属与跨租户越权修复
+- status: blocked
+- deps: W0-SEC-01
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-BILL-01
+- action: 增加 owner_uid 迁移；handler 注入 current_uid；logic 统一 assert_owner；invoice_pay 反查订阅归属；补 8 类跨用户 EUnit。
+- verify: make compile && make eunit；billing 授权测试全绿；billing handler 不再丢弃 State；owner_uid schema 存在。
+- evidence:
+
+### C0-LICENSE-01
+- title: License max_nodes 硬 gate 与续费边界
+- status: ready
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-LICENSE-01
+- action: 接入 max_nodes 硬 gate；补签名、域名、过期、宽限、用户数和节点数 fixture 测试；完善脱敏状态 API。
+- verify: make compile && make eunit；max_nodes=1 拒绝第二节点；License API 不泄露原文/私钥。
+- evidence:
+
+### C0-BRAND-01
+- title: Flutter/Admin 白标构建配置
+- status: ready
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-BRAND-01
+- action: 建立单一 BrandConfig，覆盖名称、Logo、启动页、主题色和品牌文案；补默认与白标 fixture。
+- verify: flutter analyze && flutter test；bun test && bun run build；默认/白标 fixture 配置断言通过。
+- evidence:
+
+### C0-OPS-01
+- title: 备份恢复与健康告警闭环
+- status: ready
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-OPS-01
+- action: 接入受支持的备份调度、Pushgateway 成功指标、TLS 证书告警、支付结果指标和临时库 restore smoke。
+- verify: bash -n scripts/backup_pg.sh scripts/backup_garage.sh deploy/preflight.sh；docker compose config；helm lint；promtool check rules。
+- evidence:
+
+### C0-IAM-01
+- title: OIDC PKCE 生产加固与 fake IdP 回归
+- status: ready
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-IAM-01
+- action: 固定 issuer/aud/exp/nonce/PKCE 校验；解决或显式阻断多节点一次性状态；未实现 provider 不得假报已启用。
+- verify: make compile；OIDC EUnit 覆盖重放/claims/并发 OTC；fake IdP authorize→callback→exchange 全链路通过。
+- evidence:
+
+### C0-GOV-01
+- title: 数据导出、审计和 RBAC fail-closed
+- status: blocked
+- deps: C0-IAM-01
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-GOV-01
+- action: 实现受限范围 export_data；补关键动作审计；RBAC 不可用时拒绝敏感写操作；留存/Legal Hold 未实现时显式标记。
+- verify: make compile && make eunit；导出 schema/敏感字段断言通过；模拟 rbac 404 时敏感写操作被拒。
+- evidence:
+
+### C0-CONTRACT-01
+- title: 商业 API 合同与三仓发布门
+- status: blocked
+- deps: C0-BILL-01,C0-GOV-01
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-CONTRACT-01
+- action: 补 finance/billing/license/sso/export_data OpenAPI；增加三仓构建、测试、版本和迁移一致性检查。
+- verify: redocly lint api/openapi.yaml；make compile && make eunit；bun test && bun run build；flutter analyze && flutter test。
+- evidence:
+
+### GATE-C0
+- title: P0 商业化自动验收闸门
+- status: blocked
+- deps: C0-BILL-01,C0-LICENSE-01,C0-BRAND-01,C0-OPS-01,C0-IAM-01,C0-GOV-01,C0-CONTRACT-01
+- wave: C0
+- tag: commercialization
+- effort: —
+- source: p0-commercialization-claude-code-plan-2026-07.md §P0 闸门
+- action: 执行本地 mock 商业冒烟并汇总三仓验收证据；不触发真实支付、商店发布或真机操作。
+- verify: 所有 deps done；三仓检查全绿；注册→License→OIDC→订阅→mock 支付→审计→导出→备份 smoke 全绿；git diff --check。
+- evidence:
+
+---
+
 ## 进度快照（loop 每轮可更新此表，便于人一眼看全局）
 
 | Wave | 任务数 | done | in_progress | ready | blocked | 闸门 |
@@ -482,5 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
+| C0 | 8 | 0 | 0 | 4 | 4 | GATE-C0 blocked |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
