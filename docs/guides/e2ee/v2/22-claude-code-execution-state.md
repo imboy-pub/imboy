@@ -2586,3 +2586,64 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
   人工优先事项不变。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 17:00 — E2EE-062：`forgetFallbackKey()` 特征化（结论=不该调用）
+
+- Session ID: 20260729-1700-claude-code
+- Repository: imboyapp
+- Status: 上一刀残留 1 **裁决关闭**（不是待办，是有意识的设计决定）。E2EE-062 仍 `PARTIAL`
+- **本刀不改任何生产代码**（`git diff --stat lib/` 无输出）
+- Changed files:
+  - `test/service/e2ee/fallback_forget_characterization_test.dart`（新，4 例）
+- ⚠️⚠️ **Dart 上游文档是错的**：写的是 "Forget the **current** fallback key"，
+  实测**丢的是上一把（previous），当前那把保留**：
+  | 场景 | 实测 |
+  |---|---|
+  | 对照组：全新账号 → forget | `false` |
+  | 只有一把（从未轮换）→ forget | `false`，且**该 key 仍可解密** |
+  | 轮换过一次 → forget | `true`；上一把不可解密、**当前那把仍可解密** |
+  **这是又一个「静态阅读只能形成假设」的实例——这次错的不是我的推理，是上游文档。**
+- ⚠️ **决定性发现：轮换本身就会挤掉"上上把"。** 连续轮换 k1→k2→k3 后，
+  k1 已不可解密，k2/k3 可解密 ⇒ vodozemac 最多保留 **current + previous**。
+  **每把 key 的留存期已被轮换周期自然界定在约两个周期内**（7 天周期 ⇒ ≈14 天）。
+- **裁决：不调用 `forgetFallbackKey()`。**
+  收益 = 旧私钥少留存约 7 天；代价 = 刚被替换的那把 key **立即失效**，
+  对端可能几分钟前才 claim 到它、消息正在路上，**这些消息会解不开**（机制已实证）。
+  留存期本就有界（不是"无限期"那类问题），而丢消息是**用户可见的功能损坏**。
+  按「两种合理实现选安全那个」→ 不调用。
+  若将来要调，安全时机是「确信旧 key 上不会再有在途消息之后」，
+  而那个判断所需信息（对端何时 claim 过该 key）**服务端有、客户端没有**——
+  真要做应当是**服务端驱动**的，不是客户端自行决定。
+- RED：**不适用**（纯特征化，无生产代码改动）。替代验收：对照组「全新账号 forget
+  返回 false」；结论依赖的每条事实都有独立 `expect` 支撑；
+  **探针阶段先用一次性脚本打印真实返回值、再据此写断言**——
+  避免"先写好期望再让实现去凑"。该临时脚本未入库。
+- Verification（imboyapp 侧）:
+  - `flutter test .../fallback_forget_characterization_test.dart` → **All 4 passed**
+  - `flutter test test/service/e2ee/` → **394 passed**（上一刀 390）
+  - `flutter test test/service/` → **1274 passed**（上一刀 1270）
+  - `dart analyze lib` → 1 issue（既有 info）
+  - `git diff --stat lib/` → 无输出；imboy 侧未改动，`make e2ee-verify` 不适用
+- Evidence: `evidence/E2EE-062-forget-fallback-characterization.md`
+- Residual（E2EE-062 仍 PARTIAL）:
+  1. ~~`forgetFallbackKey()` 未调用~~ → **已裁决关闭**；
+  2. **fallback key 留存期 ≈2 个轮换周期（≈14 天）** —— 接受的设计结果，非缺陷；
+     但周期调大时留存期会同比放大。**上界已实证；"14 天是否可接受"未针对威胁模型论证**；
+  3. 完全不收消息的设备不会轮换（触发点取舍的自洽代价）；
+  4. 7 天周期取自生态惯例，未针对本项目会话时长分布评估；
+  5. 服务端 fallback 签名仍非必填；`report_identity` 的 signature 未验证；
+  6. 告警规则未做；`/metrics` 输出未实证；
+  7. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网）；滞留后 UX 无提示；
+  8. 幂等/补传链路端到端未实证；单租户/全局限流未做；租约无 TTL；60/min 未压测；
+     进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  9. 真机双端未验证。
+- **Next task**：E2EE-062 剩余残留里仍可自动推进的候选（按价值排序）：
+  1. **`report_identity` 的 signature 未验证**（残留 5）—— 与 fallback 验签同形
+     （canonical + Ed25519），纯后端可测。⚠️ 但价值需先界定：identity 自签只证明
+     **内部一致**，无法证明所有权连续性（攻击者可自造一致三元组），
+     真正防护在客户端 TOFU 与 KT。定位应是**边界快速失败/数据卫生**，不是安全边界；
+  2. 告警规则（需基线数据 + 部署侧配置）；`/metrics` 输出实证（需起服务）；
+  3. 其余需 UX 设计、联调或真机。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变。
+- Reviewer decision: Pending
