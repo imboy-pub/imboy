@@ -2647,3 +2647,63 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
   人工优先事项不变。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 18:00 — E2EE-062：耗尽计数的 Prometheus 导出实证
+
+- Session ID: 20260729-1800-claude-code
+- Repository: imboy
+- Status: 「计数最终出现在 `/metrics` 输出」残留**已闭合**。E2EE-062 仍 `PARTIAL`
+- **本刀不改任何生产代码**（只加测试 + 门禁清单一行）
+- Changed files:
+  - `test/api/e2ee_otk_metric_exposition_tests.erl`（新，3 例，**已入门禁**）
+  - `Makefile`（Modules 清单 +1）
+- **先界定了上一刀点名的「下一件」`report_identity` 验签的价值 → 低，降优先级**：
+  ⚠️ **对端客户端已经在验这个签名**（`olm_session_service.dart:658`
+  `_verifyIdentitySignature`，在 `_establishOutboundSession` 内，**已实证**）；
+  服务端再验只能证明三元组**内部一致**，而被盗 token 的攻击者可自造一致三元组。
+  既拦不住实际威胁又与对端检查重复，真正防护在客户端 TOFU 与 KT（被签字阻塞）。
+  故本轮改做价值更高的一项。
+- 缺口：耗尽埋点那一刀把「计数最终出现在 `/metrics` 输出」标为
+  **文件级阅读结论、未实证**。**只增不导出的计数器等于没有计数器**——
+  运维那边永远是零，而那一刀正是为了让运维不再对耗尽攻击盲。
+- ⚠️ **本文件不 mock `elib_metric`**——它正是被测链路的一环，用真 gen_server；
+  只 mock DS 层制造"耗尽"。
+- ⚠️ **RED 用空验证**：把 `olm_identity_logic` 里两处
+  `elib_metric:increment(olm_otk_exhausted_total)` 临时注释掉 →
+  `Failed:1 Passed:2`，**唯独第三条变红**，两条对照组仍绿。恢复后无漂移。
+- 两条对照组各自挡什么：
+  1. `导出器把拿到的计数原样导出` —— 它红则后两条的绿毫无意义；
+  2. `未被计数的指标不得出现在导出里` —— **一个"把所有已知名字都打印一遍"的导出器
+     在"指标出现了"这个断言上恒得满分**，这条把它否掉。
+- ⚠️ **断言从「文本里有没有」收紧为「计数是否递增」**：初版断言导出文本里是否
+  出现该指标名，但同一 VM 里若别的路径早已加过该计数器，"出现了"会**恒真**、
+  测不出任何东西。改为读 `get_all_metrics()` 的计数值断言 `Before + 1`，
+  再附加文本包含断言——既与执行顺序无关，又覆盖导出这一段。
+- Verification:
+  - `IMBOYENV=local make eunit t=e2ee_otk_metric_exposition_tests` → **All 3 passed**
+  - `make e2ee-verify` → **All 354 tests passed**（上一轮 351）
+  - `erlfmt --check` / `git diff --check` 通过；imboyapp 侧未改动
+- Evidence: `evidence/E2EE-062-metric-exposition.md`
+- Residual（E2EE-062 仍 PARTIAL）:
+  1. **告警规则仍未做** —— 指标现在确实导出了，但无 Prometheus rule / 阈值 /
+     通知渠道，运维仍需**主动去看** `/metrics`。属部署侧配置且需基线数据。
+     **这是"运维不再盲"的最后一段。**
+  2. **HTTP 层未覆盖** —— `metrics_handler:init/2` 的内网 IP 门与响应组装未纳入
+     （与"计数有没有被导出"正交）；
+  3. `report_identity` 验签 —— 已界定为低价值，降优先级；
+  4. 服务端 fallback 签名仍非必填（等客户端普及）；
+  5. fallback 留存期 ≈2 个轮换周期；7 天周期未针对本项目论证；
+     完全不收消息的设备不会轮换；
+  6. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网）；滞留后 UX 无提示；
+  7. 幂等/补传链路端到端未实证；单租户/全局限流未做；租约无 TTL；60/min 未压测；
+     进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  8. 真机双端未验证。
+- **Next task**：E2EE-062 里**能靠纯代码推进的项已基本见底**。剩余按性质分三类：
+  1. **需部署侧配置 + 基线数据**：告警规则（残留 1，"运维不再盲"的最后一段）；
+  2. **需联调 / 真机 / 起服务**：端到端实证、HTTP 层、60/min 压测、真机；
+  3. **需等外部条件**：fallback 签名改必填（等客户端普及）、
+     单租户/全局限流（有意识缺口，网关承担）。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
+  是否放行纯函数实施刀 / 012-024-025 回退裁定）。
+- Reviewer decision: Pending
