@@ -9,12 +9,17 @@
 
 ```yaml
 state_version: 1
-last_updated: 2026-07-26
+last_updated: 2026-07-28
 release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
-current_batch: B08
-next_task: E2EE-027
+current_batch: B10
+next_task: E2EE-025
 active_session: null
+blocked:
+  reason: "E2EE-030 真机攻击测试未执行：真机仅无线可见且 LAN 浏览报错；真机 integration 需 TEST_PHONE/TEST_PASSWORD 凭证，不得编造"
+  first_seen: "2026-07-27"
+  required_action: "有线连接真机并由人工提供测试账号凭证，执行真机 at-rest 取证 + 强杀重启验证后方可将 E2EE-030 置为 PASS"
+  safe_alternative: "自动化不变量守护已闭环（见 evidence/E2EE-030.md），但不得据此标 PASS"
 human_gate:
   adr_14_19: BLOCKED
   adr_14_19_reason: "仍为 Proposed；不得自行代签"
@@ -164,7 +169,7 @@ blocked:
 | HOTFIX-03 | Room Key 包装失败不得静默省略设备 | imboyapp | HOTFIX-01 | `PASS` | 严格模式无部分设备成功 |
 | HOTFIX-04 | 统一 Olm-only v3/RSA decrypt-only 文档和测试 | imboy、imboyapp | HOTFIX-01..03 | `PASS` | 新写入不生成 RSA wrap |
 
-所有 Hotfix 均已完成。当前 `next_task` 是 `E2EE-027`。
+所有 Hotfix 均已完成。当前 `next_task` 以 §1 的 yaml 为准（勿以本节旧文推断）。
 
 ### 5.2 原有 E2EE 任务
 
@@ -174,7 +179,7 @@ blocked:
 | E2EE-001 | B00 | ADR14–19 人工接受 | `BLOCKED` | 仍为 Proposed，不得代签 |
 | E2EE-010 | B01 | Policy Gate fail-closed | `PASS` | `evidence/E2EE-HOTFIX-02.md` 已合规群聊密钥路径 |
 | E2EE-011 | B01 | Room Key 禁止 RSA 静默降级 | `PASS` | `evidence/E2EE-HOTFIX-03.md` 已完成发送侧失败闭环 |
-| E2EE-012 | B02 | Protected Context 纵向闭环 | `PASS` | `evidence/E2EE-012.md` |
+| E2EE-012 | B02 | Protected Context 纵向闭环 | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-012.md`；⚠️ `evidence/E2EE-012-024-review.md`：验收只验「篡改能否拒收」，从未验「生产未篡改消息能否收下」；evidence 自记「改测试对齐 sessionRef」。状态未擅改 |
 | E2EE-013 | B03 | 设备所有权与 Token 绑定 | `PASS` | `evidence/E2EE-013.md` |
 | E2EE-014 | B03 | Trust Event、身份新鲜度和幂等 | `PASS` | `evidence/E2EE-014.md` |
 | E2EE-015 | B04 | Secret Inventory、登出和残留清理 | `PASS` | `evidence/E2EE-015.md` |
@@ -184,12 +189,12 @@ blocked:
 | E2EE-021 | B06 | Signed Capabilities | `PASS` | `evidence/E2EE-021.md` |
 | E2EE-022 | B06 | 客户端身份签名验证 | `PASS` | `evidence/E2EE-022.md` |
 | E2EE-023 | B07 | Protected Frame v3 canonical encoding | `PASS` | `evidence/E2EE-023.md` |
-| E2EE-024 | B07 | Context binding 和 mutation matrix | `PASS` | `evidence/E2EE-024.md` |
-| E2EE-025 | B07 | Replay、counter 和 epoch | `PASS` | `evidence/E2EE-025.md` |
+| E2EE-024 | B07 | Context binding 和 mutation matrix | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-024.md`；⚠️ `evidence/E2EE-012-024-review.md`：「100% Mutation Rejection Rate」在一个拒绝所有消息的实现上恒成立，不构成正确性证据。状态未擅改 |
+| E2EE-025 | B07 | Replay、counter 和 epoch | `PASS`（⚠️ **强烈建议回退**） | `evidence/E2EE-025.md`；⚠️⚠️ **`evidence/E2EE-025-production-wiring-finding.md` 实证：生产 C2C Olm v3 消息被接收侧整条拒绝（`context_mismatch_session_id`），不是"少一层防御"而是链路不通**。counter 语义已定案选项 C；修复因触及 ADR 02 冻结接口的循环依赖而未实施，两个方案的取舍待人工拍板。状态标记未擅改 |
 | E2EE-026 | B08 | Transactional CryptoStore | `PASS` | `evidence/E2EE-026.md` |
-| E2EE-027 | B08 | Outbox、dedupe 和 crash recovery | `PENDING` | 依赖 E2EE-026 |
-| E2EE-029 | B09 | C2C per-device Olm fan-out | `PENDING` | 新 C2C 禁止 Megolm/RSA |
-| E2EE-030 | B10 | PFS | `PENDING` | 真实设备攻击测试 |
+| E2EE-027 | B08 | Outbox、dedupe 和 crash recovery | `PARTIAL` | `evidence/E2EE-027.md` + `evidence/E2EE-027-followup.md`；outbox 提交已改 fail-closed；残留=读侧未接线（重发仍重新 encrypt）、ratchet+outbox 非同一事务（受 ADR 02 冻结接口限制） |
+| E2EE-029 | B09 | C2C per-device Olm fan-out | `PASS` | `evidence/E2EE-029.md` | 新 C2C 禁止 Megolm/RSA |
+| E2EE-030 | B10 | PFS | `PARTIAL` | `evidence/E2EE-030.md`；自动化闭环（修复生产路径 ratchet 回滚/key reuse）；残留=真机攻击测试 |
 | E2EE-031 | B10 | PCS | `PENDING` | 真实设备攻击测试 |
 | E2EE-032 | B10 | C2C 多设备集成 | `PENDING` | 2 用户 × 3 设备 |
 | E2EE-033 | B11 | Cross-signing | `PENDING` | 依赖 E2EE-022 |
@@ -210,6 +215,52 @@ blocked:
 | E2EE-052 | B20 | 性能和资源预算 | `PENDING` | p95/p99/OOM 门禁 |
 | E2EE-053 | B21 | 外部安全审计整改 | `PENDING` | Critical/High 必须为 0 |
 | E2EE-054 | B22 | GA-Top-Tier 发布证据 | `PENDING` | 证据包和发布声明 |
+
+### 5.3 与 `21` playbook 的编号对账（2026-07-27 补齐）
+
+`21-claude-code-execution-playbook.md` 与本文件对 E2EE-020..039 使用了**两套不同的任务定义**。
+既有会话一直按本文件执行，导致 `21` 中若干任务在本文件中**没有承载点**，存在被整体跳过的风险。
+下表是按**内容**（而非编号）做的对账。
+
+| `21` 任务 | 本文件对应 | 状态 |
+|---|---|---|
+| E2EE-020 PFv3 严格 codec | E2EE-023 | ✅ 已覆盖 |
+| E2EE-021 PFv3 全发送/接收路由 | E2EE-024（部分） | ⚠️ mutation matrix 已覆盖；"`rg` 证明业务层无 suite if/else 路由"等未单列 |
+| E2EE-022 后端 PFv3 不透明透传契约（Erlang） | — | ❌ **缺失** → 新增 E2EE-060 |
+| E2EE-023 附件独立密钥与分块 AEAD（ATT-01..05） | — | ❌ **缺失** → 新增 E2EE-061 |
+| E2EE-024 C2C per-device Olm fan-out | E2EE-029 | ✅ 已覆盖 |
+| E2EE-025 OTK/fallback 抗耗尽与幂等租约 | — | ❌ **缺失** → 新增 E2EE-062 |
+| E2EE-026 / 027 | E2EE-026 / 027 | ✅ 编号与内容均一致 |
+| E2EE-029 G2 Strong Preview 出口门 | — | ❌ **缺失** → 新增 E2EE-063 |
+| E2EE-030 可撤销 device-bound session 完整体 | E2EE-013（仅 hotfix 子集） | ❌ 完整体**缺失** → 新增 E2EE-064 |
+| E2EE-031 Account Root 与 Cross-signing | E2EE-033 | ✅ 已覆盖（PENDING） |
+| E2EE-032 新设备核验/撤销/Root Reset UX | E2EE-034（部分） | ⚠️ Safety Number/TOFU 已列；撤销与 root reset UX 未单列 |
+| E2EE-033 Key Transparency 日志与 proof API | — | ❌ **缺失** → 新增 E2EE-065 |
+| E2EE-034 Transparency 客户端、gossip 与独立 monitor | — | ❌ **缺失** → 新增 E2EE-066 |
+| E2EE-035 / 036 / 039 | E2EE-035 / 036 / 039 | ✅ 内容一致 |
+
+> 本文件独有的 E2EE-030（PFS）/031（PCS）/032（多设备集成）在 `21` 中是并入
+> E2EE-024/029 验收标准的验证项，不属遗漏。
+
+**新增任务采用 060+ 段编号**，避免与既有 020..054 冲突、也不改动任何历史编号：
+
+| ID | 来源 | 任务主题 | 依赖 | 状态 | GA 门禁归属 |
+|---|---|---|---|---|---|
+| E2EE-060 | 21/E2EE-022 | 后端 PFv3 不透明透传契约（Erlang HTTP/WS/DB round-trip byte-preserving） | E2EE-023 | `PASS` | GA-C2C |
+| E2EE-061 | 21/E2EE-023 | 附件独立 content key 与分块 AEAD（**ATT-01..05**） | E2EE-060 | `PENDING` | **GA-C2C 硬门禁**（ADR 15 §9 / ADR 14 G5「附件」行） |
+| E2EE-062 | 21/E2EE-025 | OTK/fallback 抗耗尽与幂等租约（DT-03/09、1000 并发 claim） | E2EE-013 | `PENDING` | GA-C2C（ADR 14 T7） |
+| E2EE-063 | 21/E2EE-029 | G2 Strong Preview 出口门（证据汇总，非编码） | E2EE-026/027/029/030/060/061/062 | `PENDING` | Strong Preview 门 |
+| E2EE-064 | 21/E2EE-030 | 可撤销 device-bound session 完整体（PostgreSQL session schema、DT-01..04/08/10） | E2EE-013 | `PENDING` | GA-C2C |
+| E2EE-065 | 21/E2EE-033 | Key Transparency append-only 日志与 inclusion/consistency proof API | E2EE-064/033 | `PENDING` | **GA-C2C 硬门禁**（ADR 14 T8 / 20-plan G3「独立 monitor 已运行并演练 split view」） |
+| E2EE-066 | 21/E2EE-034 | Transparency 客户端校验、gossip 与独立 monitor | E2EE-065 | `PENDING` | **GA-C2C 硬门禁**（同上） |
+
+⚠️ **对 GA-C2C 声明的影响**：E2EE-061（附件）与 E2EE-065/066（透明度）此前在本文件中
+完全没有承载点。在它们完成前，即便 E2EE-030..039 全绿也**不构成 GA-C2C**——
+ADR 14 §3 的 `GA-C2C` 行明确要求"认证信封、设备绑定、cross-signing、**透明度**、恢复与外审门禁通过"，
+ADR 14 G5 验收表另有独立的"附件"行（ATT-01..05）。§9 的发布等级表据此更新。
+
+本节为**编号对账与账目补齐**，不改动任何 ADR、不改动既有任务的状态标记。
+如对新增编号或归属有异议，请人工调整后再执行。
 
 ## 6. Batch 依赖图
 
@@ -308,7 +359,7 @@ B00 基线/人工 Gate
 |---|---|---|
 | Preview | 当前 | 现有能力可用，但不宣称顶级 |
 | Strong Preview | 未达成 | P0/P1 关闭、真实设备基础矩阵 |
-| GA-C2C | 未达成 | E2EE-020–039 |
+| GA-C2C | 未达成 | E2EE-020–039 **+ E2EE-060/061/062/064/065/066**（见 §5.3 对账；其中 061 附件、065/066 透明度为 ADR 14 明列的硬门禁） |
 | GA-Top-Tier | 未达成 | GA-C2C + E2EE-040–054 |
 
 任何会话不得自行修改发布等级。发布等级、外部审计、生产部署和对外发布均需要用户另行确认。
@@ -657,3 +708,356 @@ B00 基线/人工 Gate
 
 
 
+
+
+### Session 2026-07-27 17:10 — E2EE-027
+
+- Session ID: 20260727-1710-claude-code
+- Repository: imboyapp
+- Before HEAD: 7912e001
+- After HEAD: 7912e001 (not committed)
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/service/e2ee/crypto_store.dart
+  - imboyapp/lib/service/e2ee/e2ee_outbound_router.dart
+- Tests added:
+  - imboyapp/test/service/e2ee/outbox_crash_recovery_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/outbox_crash_recovery_test.dart
+  - flutter test test/service/e2ee/
+  - dart analyze lib/service/e2ee/e2ee_outbound_router.dart lib/service/e2ee/crypto_store.dart
+- Verification result: 9 new tests passed; 283 E2EE unit tests passed; 0 failed, 0 skipped
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-027.md
+- Residual risks: outbox degrade-gracefully when SqliteService DB unavailable; real device crash consistency in E2EE-051
+- Next task: E2EE-029
+- Reviewer decision: Pending
+
+### Session 2026-07-27 17:31 — E2EE-029
+
+- Session ID: 20260727-1731-claude-code
+- Repository: imboyapp
+- Before HEAD: 7912e001
+- After HEAD: 7912e001 (not committed)
+- Status: PASS
+- Changed files:
+  - imboyapp/lib/page/chat/chat/services/chat_network_service.dart
+  - imboyapp/test/service/olm_suite_routing_test.dart
+- Tests added:
+  - imboyapp/test/service/e2ee/c2c_olm_not_megolm_test.dart
+- Verification commands:
+  - flutter test test/service/e2ee/c2c_olm_not_megolm_test.dart
+  - flutter test test/service/olm_suite_routing_test.dart test/service/e2ee/fan_out_per_device_test.dart test/service/e2ee/c2c_olm_not_megolm_test.dart
+  - flutter test test/service/e2ee/
+  - dart analyze lib/page/chat/chat/services/chat_network_service.dart lib/service/e2ee_service.dart
+- Verification result: 8 new tests passed; 291 E2EE suite passed; 24 routing + fan_out tests passed
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-029.md
+- Residual risks: real-device 2-user × 3-device integration deferred to E2EE-032; Megolm C2G path unchanged; compile-time constant limits runtime feature flag
+- Next task: E2EE-030
+- Reviewer decision: Pending
+
+### Session 2026-07-27 18:19 — E2EE-030
+
+- Session ID: 20260727-1819-claude-code
+- Repository: imboyapp（+ imboy 仅文档/证据）
+- Before HEAD: 955e27a6
+- After HEAD: 955e27a6 (not committed)
+- Status: PARTIAL
+- Changed files:
+  - imboyapp/lib/service/olm_session_service.dart
+  - imboyapp/lib/service/e2ee/crypto_store.dart
+  - imboy/docs/guides/e2ee/v2/evidence/E2EE-030.md
+- Tests added:
+  - imboyapp/test/service/e2ee/olm_pfs_production_path_test.dart（5 用例，真实 vodozemac + 真实 SQLite）
+- Verification commands:
+  - flutter test test/service/e2ee/olm_pfs_production_path_test.dart
+  - flutter test test/service/e2ee/
+  - flutter test test/integration/room_key_olm_roundtrip_test.dart test/service/group_session_service_test.dart test/service/olm_suite_routing_test.dart test/service/e2ee_local_backup_boundary_test.dart test/service/sqlite_uid_isolation_test.dart
+  - dart analyze lib
+  - git diff --check
+- Verification result: 新增 5 passed（修复前 4 failed）；E2EE 套件 296 passed 0 failed 0 skipped；邻接回归 49 passed；analyze 仅 1 条既有 info（component/ui/ios_settings_ui.dart，与本任务无关）；diff --check clean
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-030.md
+- Residual risks:
+  - 真机攻击测试未执行（凭证/有线真机阻塞）→ 故为 PARTIAL
+  - fail-closed 后 SQLCipher 不可用时 C2C 收发报错，UI 侧安全错误提示未实现
+  - 升级前已发生过一次回滚的设备无法追溯检测（需 out-of-DB 单调计数器，留待 E2EE-051 权衡）
+- 本任务外发现（供人工决策，见 evidence §7）:
+  - `21` 与 `22` 任务编号定义不一致：`21` 的 E2EE-022 后端 PFv3 透传契约 / E2EE-023 附件分块 AEAD(ATT-01..05) / E2EE-025 OTK 抗耗尽，在 `22` 编号体系中无对应任务，存在被整体跳过风险
+  - E2EE-027 的"原子 ratchet + outbox"在生产 C2C 路径未生效（OlmProtocol 不传 outboxId；outbox 由 E2eeOutboundRouter 非事务写入且 `catch (_)` 静默吞错），建议重核其 PASS 判定
+- Next task: E2EE-030 真机腿（解阻塞后）→ 其后 E2EE-031
+- Reviewer decision: Pending
+
+### Session 2026-07-27 19:05 — E2EE-027 补课（修复已确认漏洞）
+
+- Session ID: 20260727-1819-claude-code（同会话续做，用户明确指定）
+- Repository: imboyapp
+- Before HEAD: 955e27a6
+- After HEAD: 955e27a6 (not committed)
+- Status: E2EE-027 由 PASS 调整为 PARTIAL（残留项已明确）
+- 性质: 修复已确认漏洞，不改协议/ADR/任务编号（20-plan §S0.1 允许范围）
+- Changed files:
+  - imboyapp/lib/service/e2ee/e2ee_outbound_router.dart（新增 E2eeOutboxCommitException；删除 catch(_) 与 db==null 静默跳过）
+  - imboyapp/lib/service/e2ee/crypto_store.dart（修正 insertOutbox 文档：读侧未接线）
+  - imboyapp/test/service/e2ee/{mutation_matrix,protected_frame_v3_roundtrip,fan_out_per_device}_test.dart（注入真实事务存储 + 逐用例 DB 隔离；未 skip/未删任何用例）
+- Tests added:
+  - imboyapp/test/service/e2ee/outbox_fail_closed_test.dart（4 用例）
+- Verification commands:
+  - flutter test test/service/e2ee/outbox_fail_closed_test.dart
+  - flutter test test/service/e2ee/
+  - flutter test test/integration/room_key_olm_roundtrip_test.dart test/service/group_session_service_test.dart test/service/olm_suite_routing_test.dart test/service/e2ee_service_test.dart
+  - dart analyze lib ; git diff --check
+- Verification result: 新增 4 passed（修复前 2 failed）；E2EE 套件 300 passed 0 failed 0 skipped；邻接回归 42 passed；analyze 仅 1 条既有 info；diff --check clean
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-027-followup.md
+- 追加修复（同 Slice，§4b）: v3 接收侧错误分类 —— `e2ee_service.dart` 的 `catch (_)` 把 `DuplicateMessageException` / `OlmStateCommitException` 压成 `decrypt_error`，现分别归类 `duplicate_message` / `crypto_store_unavailable`（ADR 15 §5/§7.1）。新增 `test/service/e2ee/decrypt_error_taxonomy_test.dart`（4 用例，修复前 2 failed）。
+- Residual risks / 新发现:
+  - ⚠️ **E2EE-025 的 PFv3 序列检查层在生产失效**（严重性已复核收敛）：发送侧 `session_ref` 恒空 → 该层整段跳过；counter 恒 0 → 若填上 session_ref 则首条合法消息被误判 replay。**但 `message_id` dedupe 层在生产已接线生效**（e2ee_service:538 → OlmProtocol → crypto_inbox_dedupe），叠加 Olm message key 用后即毁，故属纵深防御少一层而非重放门户大开。修复需先定 counter 语义（协议层决策），已在 E2EE-025 行标注待人工复核，状态标记未擅改。
+  - `CryptoStore.checkAndUpdateSequence` 的 `catch (_) { return false; }` 把 DB 故障报成 `replay_detected`（方向 fail-closed，但分类错误），建议与 counter 语义一并处理。
+  - outbox 读侧未接线：pendingOutbox/confirmOutbox/getOutboxEntry 在 lib/ 下零生产调用者，重发仍重新 encrypt。
+  - ratchet+outbox 非同一事务：合并需改 ADR 02 §10 冻结接口 E2eeSessionProtocol.encrypt，未经签字不得动；残留窗口只损失该条消息，不产生 key reuse。
+- Reviewer decision: Pending
+
+### Session 2026-07-27 19:40 — 治理：counter 语义提案 + 21/22 编号对账
+
+- Session ID: 20260727-1819-claude-code（同会话续做，用户指定"1+2"）
+- Repository: imboy（仅文档，无代码改动）
+- Status: 交付决策支持产物，**不含实现**
+- 产物 1（对应决策点 1）: `25-proposal-replay-counter-semantics.md`
+  - 性质：Proposed，需签字。触及 ADR 15 §3.1/§7.2 冻结字段语义，执行规则 13 下不得擅自实现。
+  - 内容：事实基线（P1 跳过 / P2 首条误杀 / P3 严格单调≠滑动窗口）、严重性收敛论证、
+    三选项（A 协议自带 index / B 应用层计数器+IPsec 式窗口 / C 收敛为仅 MLS 使用）、
+    推荐 C（B 为不愿改 ADR 时的退路）、RC-01..06 验收、§5 两项无争议实现 bug。
+  - 明确否决"只修 session_ref 不动 counter"——那等于选中 P2，会造成 C2C 全线不可读。
+- 产物 2（对应决策点 2）: 本文件新增 §5.3「与 21 playbook 的编号对账」
+  - 按内容对账，识别出 **6 项在本文件中无承载点的任务**，以 060+ 段新编号补齐，
+    不改动任何历史编号与既有状态标记。
+  - ⚠️ 最重要发现：**Key Transparency 此前在本文件中完全缺席**（21/E2EE-033+034），
+    而 ADR 14 §3 的 GA-C2C 行与 20-plan G3 出口都明确要求透明度 + 独立 monitor。
+    附件分块 AEAD（ATT-01..05，ADR 14 G5 独立验收行）同样缺席。
+  - §9 发布等级表已据此更新 GA-C2C 的完成条件。
+- 待人工决策: 提案 25 §7 的签字清单；060+ 编号与归属是否认可
+- Reviewer decision: Pending
+
+### Session 2026-07-28 11:41 — 人工决策记录（决策点 1 与 2）
+
+- Session ID: 20260728-1141-claude-code
+- 性质: 记录人工答复，不含实现
+- **决策点 1（提案 25 §7）**：选定 **选项 C** —— `session_ref` 必填非空；
+  `epoch_or_counter` 仅 MLS 使用，Olm/Megolm 恒填 0 且接收侧不做序列检查；
+  重放防护职责归 `message_id` dedupe（ADR 15 §7.1）+ 协议自身 ratchet 语义；
+  ADR 15 §7.2 的滑动窗口条款收敛为仅适用于 MLS。**同时批准 ADR 15 §3.1 + §7.2 的
+  supersede 修订**。
+  ⚠️ 提案 §7 的另外两项（§5 两个实现 bug 是否同批修复、E2EE-025 的 `PASS` 是否回退）
+  **未询问、未签字**，故本会话未改动 E2EE-025 行的状态标记；另注意本文件 §3 的状态机
+  不含 `PASS -> PARTIAL` 转换，需人工先裁定转换路径。详见 `25-...md` §7 与 §7.1。
+- **决策点 2（§5.3 060+ 编号）**：**认可，保持现状**。E2EE-060..066 编号成立；
+  E2EE-061（附件分块 AEAD）、E2EE-065/066（Key Transparency）计入 GA-C2C 硬门禁；
+  §9 发布等级表维持已更新版本。
+- **决策点 3（E2EE-030 真机腿）**：未提供真机与凭证，维持 §1 `blocked` 记录不变。
+- Reviewer decision: Recorded
+
+### Session 2026-07-28 11:41 — E2EE-060
+
+- Session ID: 20260728-1141-claude-code
+- Repository: imboy
+- Before HEAD: e9bc483f
+- After HEAD: e9bc483f (not committed)
+- Status: PASS
+- Changed files:
+  - imboy/src/lib/imboy_codec.erl（fail-closed 拒绝有损 protobuf 编码 + `encode_ws_msg/4` + `e2ee_pb_lossless/1`）
+  - imboy/src/api/websocket_handler.erl（`ws_reply/3` 委托给 codec）
+  - imboy/src/ds/message_ds.erl（入站 E2EE 外层信封校验：尺寸 + 必填字段 + 类型）
+  - imboy/test/ds/e2ee_v3_passthrough_contract_tests.erl
+  - imboy/test/integration/e2ee_message_pipeline_integration_tests.erl
+- Tests added:
+  - 契约测试 20 项（E2EE-060-01..20）：出站拒绝裁剪 / 入站校验 / 出站线上帧保真 / 回归护栏
+  - 真实 PostgreSQL 全链路 1 项：`test_pfv3_fanout_survives_pipeline_and_wire/0`
+- Verification commands:
+  - `erl ... eunit:test([e2ee_v3_passthrough_contract_tests],[verbose])`
+  - `IMBOYENV=local erl -config config/sys.local ... eunit:test([e2ee_message_pipeline_integration_tests],[verbose])`
+  - `make e2ee-verify`（含 `scripts/check_server_zero_crypto.sh`）
+  - 基线对照：把 HEAD 版三个被改模块编到临时 ebin 强制加载，跑同一组 21 个 message/codec/websocket 模块
+  - `make app`；`git diff --check`；`erlfmt --check`
+- Verification result:
+  - RED（改生产代码前）：8 failed / 13 passed，8 项全为返回值断言失败
+  - GREEN：契约 27 passed；真实 PG 集成 3 passed；`make e2ee-verify` 285 passed + 安全门禁通过
+  - 零回归：基线 9 failed/289 passed，改动后同为 9 failed/289 passed，失败集合完全相同
+  - 相邻真实 PG 集成 37 passed / 2 failed，2 项经基线对照确认为预存失败
+  - `make app` 0 error 0 warning；`git diff --check` clean；erlfmt clean
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-060.md
+- 本任务发现的真实缺陷:
+  - **P0**：`imboy_codec:e2ee_to_pb/1` 静默裁掉整个 PFv3 信封
+    （`protected_header`/`header_hash`/`ciphertext`/`protocol_metadata`/`fan_out`/`devices`
+    在 `proto/imboy.proto` 的 `E2EEMeta` 中无落点），接收端拿到 `meta_version=3`
+    却无信封 → 消息永久不可解密。影响 `ws_reply/3` 同步响应路径与 `imboy-protobuf`
+    子协议连接；主投递路径因 `encode_delivery_frame_v2/1` 早已固定用 JSON 而幸免。
+  - **P1**：`message_ds:validate_message/1` 对 e2ee 零校验，畸形/超限信封可直接落库并广播。
+- Residual risks:
+  - 「未知 critical version 按契约拒绝」未实现——ADR 15 未定义 critical version 判定
+    与拒绝语义，自行发明会越过冻结边界，建议并入 ADR 14–19 签字批次
+  - HTTP 入口未覆盖（当前后端无接收 e2ee 消息的 HTTP 端点）；将来新增须复用
+    `message_ds:validate_message/1`
+  - 「速率边界」未新增，建议随 E2EE-062 一并复核
+  - `v2_frame_e2e_tests` 2 项预存失败（`v2_msg_c2c_garbage_payload`、
+    `v2_bad_magic_frame_tolerated`）未修，与本任务无关，建议单独立项
+  - 1 MiB 信封上界在超大 fan-out 或附件密文内联（E2EE-061）场景需重估；
+    已做成 `e2ee_envelope_max_bytes` 应用配置
+- Next task: E2EE-025（counter 语义已定案为 C；开工前须先完成 ADR 15 supersede 修订稿
+  与提案 25 §7 剩余两项签字，见 `25-...md` §7.1）
+- Reviewer decision: Pending
+
+### Session 2026-07-28 12:5x — E2EE-025 诊断（未实施修复）
+
+- Session ID: 20260728-1141-claude-code（同会话续做，用户指令「继续」）
+- Repository: imboyapp
+- Before HEAD: 955e27a6
+- After HEAD: 955e27a6 (not committed)
+- Status: **诊断完成，修复 BLOCKED（待人工拍板方案 A / B）**；E2EE-025 行状态未擅改
+- ⚠️ **P0 实证发现**：生产 C2C Olm PFv3 消息在接收侧被 `_validateContextBinding`
+  判为 `context_mismatch_session_id` —— **整条消息不可读**。
+  这推翻了提案 25 §1.3「纵深防御少一层，非可利用漏洞」的定性：
+  该链路不是防御弱，是**根本不通**。`useOlmForC2C = true` 已默认开启。
+  因果链三处均逐行核实（`chat_network_service.dart:634` 传空串 →
+  `olm_protocol.dart:77` 只写 protocol_metadata →
+  `e2ee_service.dart:692-702` 硬比对两者相等）。
+- 既有测试未抓到的原因：`protected_frame_v3_roundtrip_test.dart:95` 把
+  `sessionRef: 'test-session'` 与假协议的 `session_id: 'test-session'`
+  **人为对齐**，掩盖了生产不会对齐这一事实。
+- Changed files:
+  - imboyapp/test/service/e2ee/production_session_ref_wiring_test.dart（**新增**，2 项失败守护测试）
+  - 未改任何生产代码
+- Tests added: RC-01（session_ref 非空且等于协议会话标识）、RC-02（首条合法消息必须被接受）
+- Verification commands:
+  - `flutter test test/service/e2ee/production_session_ref_wiring_test.dart`
+  - `flutter test test/service/e2ee/`
+- Verification result:
+  - 新增 2 项均 RED，失败原因即 `context_mismatch_session_id`（行为失败，非编译错误）
+  - E2EE 套件由 `304 passed / 0 failed` 变为 `304 passed / 2 failed`；
+    原有 304 项**无一被打破**。这 2 项红是真实缺陷暴露，按执行规则不得 skip/删除
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-025-production-wiring-finding.md
+- **待人工拍板**：修复方案 A（`OlmSessionService.ensureSessionId` 两阶段调用，
+  有竞态窗口 + 改变首次 claim prekey 时序）vs 方案 B（改 `session_ref` 语义为
+  可独立计算的稳定标识，需再次修订 ADR 15 §3.1 并重新签字，且削弱绑定强度）。
+  详见 evidence §5。两者都改变已签字语义或引入新失败模式，属架构决策，未自行选择。
+- 连带建议复核: E2EE-012、E2EE-024 的 `PASS` 判定——它们的验收对象正是
+  `_validateContextBinding` 与 mutation matrix，可能同样建立在「测试内手工对齐
+  sessionRef」而非生产 wiring 之上
+- Reviewer decision: Pending
+
+### Session 2026-07-28 13:xx — E2EE-025 选项 C 落地
+
+- Session ID: 20260728-1141-claude-code（同会话续做，用户拍板方案 A）
+- Repository: imboyapp（+ imboy 仅文档/ADR/证据）
+- Before HEAD: 955e27a6
+- After HEAD: 955e27a6 (not committed)
+- Status: **实现完成、验收通过**；E2EE-025 行状态标记未擅改（§7 未签字项仍在）
+- 人工决策: 修复方案 **A**（`OlmSessionService.ensureSessionId` 两阶段调用），
+  竞态窗口与 claim prekey 时序提前两项代价已告知并被接受
+- Changed files（生产）:
+  - imboyapp/lib/service/e2ee/protected_frame_v3.dart（`buildProtectedHeader` 对空 sessionRef fail-closed）
+  - imboyapp/lib/service/olm_session_service.dart（新增 `ensureSessionId/2`，锁内 load-or-establish + **立即持久化**）
+  - imboyapp/lib/page/chat/chat/services/chat_network_service.dart（传真实 session id，删 `sessionRef: ''`）
+  - imboyapp/lib/service/e2ee_service.dart（移除 Olm/Megolm 序列检查；MLS 显式未实现；新增 store 故障分类）
+  - imboyapp/lib/service/e2ee/crypto_store.dart（新增 `CryptoStoreUnavailableException`；存储故障不再伪装成重放）
+- Changed files（文档）:
+  - imboy/docs/guides/e2ee/v2/**26-supersedes-15-counter-semantics.md（新增 ADR，已签字）**
+- Tests added/changed:
+  - 新增 `production_session_ref_wiring_test.dart`（5 项：RC-01a/01b/02/04/04b）
+  - `olm_pfs_production_path_test.dart` 新增 3 项（真实 vodozemac + 真实 SQLite 守护
+    `ensureSessionId` 与 encrypt 的会话一致性、幂等、不破坏 ratchet）
+  - `crypto_store_test.dart` 新增 1 项（存储不可用抛 `CryptoStoreUnavailableException`）
+  - `replay_counter_epoch_test.dart` **重写** 2 项断言到选项 C 语义（未删除、未 skip，理由写入文件头）
+- Verification commands:
+  - `flutter test test/service/e2ee/`
+  - `flutter test test/service/ test/integration/`
+  - `dart analyze lib`；`dart format --set-exit-if-changed <9 文件>`
+- Verification result:
+  - E2EE 套件 **313 passed / 0 failed / 0 skipped**（基线 304 → 313，新增 9，原有无一被打破）
+  - `dart analyze lib` 回到基线（仅 1 条既有 info）
+  - 更大范围 `1594 passed / 33 failed`；33 项全部落在 5 个 UI 流程文件
+    （collect / moment feed / moment publish / contact tag / group tag），
+    失败原因为 widget finder 失配，与 E2EE 无关，属预存漂移
+- **实现期发现的陷阱（已规避）**：`_establishOutboundSession` 只返回 session，
+  既不缓存也不落库。若 `ensureSessionId` 不立即持久化，会导致随后的 encrypt
+  再 claim 一个 OTK 并拿到**另一个** session id → 每条首发消息仍被拒 +
+  无谓消耗 OTK。已加真实 vodozemac 测试守护该不变量
+- 提案 §6 验收: RC-01 ✅ / RC-02 ✅ / RC-04 ✅ / RC-05 ✅ / RC-06 N/A；
+  **RC-03（重放 100 次）未补压力用例**，现由既有 `message_id` dedupe 守护
+- Evidence:
+  - imboy/docs/guides/e2ee/v2/evidence/E2EE-025-production-wiring-finding.md（诊断）
+  - imboy/docs/guides/e2ee/v2/evidence/E2EE-025-option-c-implementation.md（实现与验收）
+- Residual risks:
+  - 方案 A 的竞态窗口与首次 claim 时序变化（fail-closed 方向，非绑定弱化）
+  - **真机验证未做**（无真机与凭证）
+  - RC-03 压力用例未补
+  - `CryptoStore.checkAndUpdateSequence` 目前无生产调用方；保留供 MLS，
+    但 ADR 26 §2.4 已明确 MLS 不得直接复用（严格单调 ≠ 滑动窗口）
+  - E2EE-012 / E2EE-024 的 `PASS` 判定建议复核（同源风险，本会话未做）
+- 待人工: 提案 25 §7 第 3、4 项签字；E2EE-025 行的状态转换裁定
+- Reviewer decision: Pending
+
+### Session 2026-07-28 14:xx — E2EE-012 / E2EE-024 复核
+
+- Session ID: 20260728-1141-claude-code（同会话续做，用户指定复核）
+- Repository: imboyapp（仅新增测试）+ imboy（证据/状态）
+- Status: **两项 `PASS` 判定均复核为不成立**；状态标记未擅改
+- **书证**：两份 evidence 的 Changed files 段自记「Aligned `sessionRef` with the mock
+  protocol's value」「Appended `id` and `sender_did` to mock envelopes to align with
+  strict checks」——即收紧生产校验后**改测试 fixture 去迁就**，从未验证生产是否满足。
+  两份同时写「Residual risks: None」「100% Mutation Rejection Rate」。
+- **方法论缺陷**：验收对象只有「篡改能否拒收」，缺「未篡改的生产消息能否收下」。
+  一个把所有消息都拒收的实现在该验收下拿满分。
+- **复核中发现第二个独立 P0**：`chat_network_service._encryptC2COlmFanOut` 内部
+  `final msgId = Xid().toString()` **新生成** id 写进 protected_header，
+  而外层 WS 消息用 `obj.id`；同时 `messageType: 'text'` **硬编码**，
+  外层用真实 msgType。该函数入参只有 `(toId, plaintext, action)`，
+  **没有接收 msgId/msgType 的通道**。后果：
+  - `_validateContextBinding` 第 1 项对**每条** C2C v3 消息不成立 → 全部被拒
+    （比 session_ref 更早命中）；第 5 项对每条非文本消息额外不成立。
+  - 即：修完 session_ref 后生产 C2C v3 **仍然一条都读不出来**。
+  - 更深：ADR 26（选项 C）取消 Olm 序列检查的论证基石是「message_id dedupe 是
+    密码学绑定的幂等保证」。而该 id 每次加密新生成 → 重发时 dedupe 认不出 →
+    **刚签字的 ADR 26 的前提被打穿**，修复 message_id 后该前提才成立。
+- 逐项对齐核查（7 项）：#1 message_id ❌ 必不等；#5 message_type ❌ 非文本必不等；
+  #7 session_id ✅ 本会话已修；#3 scope、#4 destination ✅；
+  #2 sender_uid、#6 sender_did ⚠️ **未实证**（静态看应相等，但本次教训正是
+  「静态看起来对齐 ≠ 生产对齐」，建议随修复端到端实证）
+- Tests added: `production_session_ref_wiring_test.dart` 新增 2 项（组「E2EE-012/024 复核」）
+- Verification: `flutter test test/service/e2ee/production_session_ref_wiring_test.dart` → **7 passed**
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-012-024-review.md
+- 建议 ①③**已在本会话实施**（见下一条日志）；②部分实施；④⑤未做
+- Reviewer decision: Pending
+
+### Session 2026-07-28 15:xx — E2EE-012/024 复核发现的 P0 修复
+
+- Session ID: 20260728-1141-claude-code（同会话续做，用户指令「继续」）
+- Repository: imboyapp（+ imboy 仅证据）
+- Before HEAD: 955e27a6 / After HEAD: 955e27a6 (not committed)
+- Status: **修复完成、验收通过**；E2EE-012 / E2EE-024 状态标记仍未擅改
+- 修的是什么: `_encryptC2COlmFanOut` 内部 `Xid().toString()` 自造 message_id +
+  `messageType: 'text'` 硬编码，与外层 WS 消息完全脱节
+- Changed files（生产，1 个）:
+  - imboyapp/lib/page/chat/chat/services/chat_network_service.dart
+    - `encryptPayload` 新增 `required String messageId` / `required String messageType`
+    - `_encryptC2COlmFanOut` 签名新增同名 required 命名参数；**删除** `Xid()` 生成与 `'text'` 硬编码
+    - 两个调用点分别传 `obj.id`/`msgType` 与 `msg['id']`/`msg['msg_type']`
+  - 设计取向：用 `required` 参数让「漏传」在**编译期不可表达**，
+    而不是靠注释或测试提醒（`message_id` 是否与业务同源无法在 header 构造处判断，
+    故不同于 `session_ref` 的构造处 fail-closed 守卫）
+  - C2G Megolm 分支走非 v3 路径，不受影响；全仓 `encryptPayload` 无其他调用方（已 rg 核实）
+- Tests added: `production_session_ref_wiring_test.dart` 新增 4 项
+  - 2 项复核证据（负向）：`context_mismatch_id` / `context_mismatch_msg_type` 可复现
+  - 2 项**正向可用性门**：业务 id 一致必须被接受；image/video/audio/file 一致必须被接受
+    → 这正是 E2EE-012/024 验收中**缺失**的那一类用例，今后凡收紧 context binding
+      必须同时在此组补正向用例（建议 ③ 落点）
+- Verification commands / result:
+  - `flutter test test/service/e2ee/production_session_ref_wiring_test.dart` → **9 passed**
+  - `flutter test test/service/e2ee/` → **317 passed / 0 failed / 0 skipped**
+  - `flutter test test/service/` → **1197 passed**
+  - `dart analyze lib` → 基线（1 条既有 info）；`dart format --set-exit-if-changed` → 通过
+- Evidence: imboy/docs/guides/e2ee/v2/evidence/E2EE-012-024-review.md（§5–§7 已更新）
+- Residual risks:
+  - **fan-out 层端到端未验证**：`_encryptC2COlmFanOut` 私有且依赖网络
+    （`getUserDevicePublicKeys`），修复正确性由 encryptV3 层 + 编译期保证，
+    但「真机上一条图片消息能被对端读出」**未实证**——与 E2EE-025 真机腿同一缺口
+  - 未做：复核 E2EE-023（同批次）；实证 #2 `sender_uid` / #6 `sender_did`
+  - `message_type` 未纳入 `buildProtectedHeader` 枚举白名单校验
+- Reviewer decision: Pending
