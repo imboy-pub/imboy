@@ -16,6 +16,14 @@ last_updated: 2026-07-28
 # 进入点，_receiveMessage / _handleE2EEMessage 两处放行+分流。
 # ⚠️ 但 E2EE-012/023/024/025/029 的 PASS 仍受影响——它们的验收全部建立在
 # 一条生产不走的旁路上，需按新边界重新验收；且真机双端始终未验证。
+#
+# ⚠️⚠️ 2026-07-28（会话 20260728-1622）任务 A 实证：**接线之后仍有第 4 个断点**。
+# 后端把 sender_did 注入 payload 内部，而 v3 的 payload 恒为空串 → 注入不发生
+# → 接收侧 context binding #6 必然失配 → 生产 C2C v3 消息 100% 不可读。
+# 实时投递路径已修（message_ds:stamp_sender_device/2 盖信封顶层）；
+# **离线拉取路径未修，需 DB 迁移**（msg_c2c 表无设备列）——见
+# evidence/E2EE-012-024-025-029-reacceptance.md §6.1。
+# E2EE-023 经人工裁定维持 PASS；其余四项状态标记仍未擅改。
 release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
 current_batch: B10
@@ -185,7 +193,7 @@ blocked:
 | E2EE-001 | B00 | ADR14–19 人工接受 | `BLOCKED` | 仍为 Proposed，不得代签 |
 | E2EE-010 | B01 | Policy Gate fail-closed | `PASS` | `evidence/E2EE-HOTFIX-02.md` 已合规群聊密钥路径 |
 | E2EE-011 | B01 | Room Key 禁止 RSA 静默降级 | `PASS` | `evidence/E2EE-HOTFIX-03.md` 已完成发送侧失败闭环 |
-| E2EE-012 | B02 | Protected Context 纵向闭环 | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-012.md`；⚠️ `evidence/E2EE-012-024-review.md`：验收只验「篡改能否拒收」，从未验「生产未篡改消息能否收下」；evidence 自记「改测试对齐 sessionRef」。状态未擅改 |
+| E2EE-012 | B02 | Protected Context 纵向闭环 | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-012.md`；⚠️ `evidence/E2EE-012-024-review.md`：验收只验「篡改能否拒收」，从未验「生产未篡改消息能否收下」；evidence 自记「改测试对齐 sessionRef」。状态未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
 | E2EE-013 | B03 | 设备所有权与 Token 绑定 | `PASS` | `evidence/E2EE-013.md` |
 | E2EE-014 | B03 | Trust Event、身份新鲜度和幂等 | `PASS` | `evidence/E2EE-014.md` |
 | E2EE-015 | B04 | Secret Inventory、登出和残留清理 | `PASS` | `evidence/E2EE-015.md` |
@@ -194,12 +202,12 @@ blocked:
 | E2EE-020 | B06 | Device Manifest | `PASS` | `evidence/E2EE-020.md` |
 | E2EE-021 | B06 | Signed Capabilities | `PASS` | `evidence/E2EE-021.md` |
 | E2EE-022 | B06 | 客户端身份签名验证 | `PASS` | `evidence/E2EE-022.md` |
-| E2EE-023 | B07 | Protected Frame v3 canonical encoding | `PASS` | `evidence/E2EE-023.md` |
-| E2EE-024 | B07 | Context binding 和 mutation matrix | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-024.md`；⚠️ `evidence/E2EE-012-024-review.md`：「100% Mutation Rejection Rate」在一个拒绝所有消息的实现上恒成立，不构成正确性证据。状态未擅改 |
-| E2EE-025 | B07 | Replay、counter 和 epoch | `PASS`（⚠️ **强烈建议回退**） | `evidence/E2EE-025.md`；⚠️⚠️ **`evidence/E2EE-025-production-wiring-finding.md` 实证：生产 C2C Olm v3 消息被接收侧整条拒绝（`context_mismatch_session_id`），不是"少一层防御"而是链路不通**。counter 语义已定案选项 C；修复因触及 ADR 02 冻结接口的循环依赖而未实施，两个方案的取舍待人工拍板。状态标记未擅改 |
+| E2EE-023 | B07 | Protected Frame v3 canonical encoding | `PASS` | `evidence/E2EE-023.md`；2026-07-28 复核**维持 PASS**（人工已裁定）：验收对象是纯 codec，发送侧 `encryptV3` 与接收侧 `_decryptV3Payload` 均有真实生产调用方，不同于 012/024 掉在旁路上。仅撤回「Residual risks: None」。见 `evidence/E2EE-012-024-025-029-reacceptance.md` §5 |
+| E2EE-024 | B07 | Context binding 和 mutation matrix | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-024.md`；⚠️ `evidence/E2EE-012-024-review.md`：「100% Mutation Rejection Rate」在一个拒绝所有消息的实现上恒成立，不构成正确性证据。状态未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
+| E2EE-025 | B07 | Replay、counter 和 epoch | `PASS`（⚠️ **强烈建议回退**） | `evidence/E2EE-025.md`；⚠️⚠️ **`evidence/E2EE-025-production-wiring-finding.md` 实证：生产 C2C Olm v3 消息被接收侧整条拒绝（`context_mismatch_session_id`），不是"少一层防御"而是链路不通**。counter 语义已定案选项 C；修复因触及 ADR 02 冻结接口的循环依赖而未实施，两个方案的取舍待人工拍板。状态标记未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
 | E2EE-026 | B08 | Transactional CryptoStore | `PASS` | `evidence/E2EE-026.md` |
 | E2EE-027 | B08 | Outbox、dedupe 和 crash recovery | `PARTIAL` | `evidence/E2EE-027.md` + `evidence/E2EE-027-followup.md`；outbox 提交已改 fail-closed；残留=读侧未接线（重发仍重新 encrypt）、ratchet+outbox 非同一事务（受 ADR 02 冻结接口限制） |
-| E2EE-029 | B09 | C2C per-device Olm fan-out | `PASS` | `evidence/E2EE-029.md` | 新 C2C 禁止 Megolm/RSA |
+| E2EE-029 | B09 | C2C per-device Olm fan-out | `PASS` | `evidence/E2EE-029.md`；2026-07-28 **接收侧首获实证**（多设备 fan-out 只取本机信封，在生产入口 `decryptInboundV3` 上），见 `evidence/E2EE-012-024-025-029-reacceptance.md` §3.1 | 新 C2C 禁止 Megolm/RSA |
 | E2EE-030 | B10 | PFS | `PARTIAL` | `evidence/E2EE-030.md`；自动化闭环（修复生产路径 ratchet 回滚/key reuse）；残留=真机攻击测试 |
 | E2EE-031 | B10 | PCS | `PENDING` | 真实设备攻击测试 |
 | E2EE-032 | B10 | C2C 多设备集成 | `PENDING` | 2 用户 × 3 设备 |
@@ -1066,4 +1074,106 @@ B00 基线/人工 Gate
     但「真机上一条图片消息能被对端读出」**未实证**——与 E2EE-025 真机腿同一缺口
   - 未做：复核 E2EE-023（同批次）；实证 #2 `sender_uid` / #6 `sender_did`
   - `message_type` 未纳入 `buildProtectedHeader` 枚举白名单校验
+- Reviewer decision: Pending
+
+### Session 2026-07-28 16:22 — 任务 A：按新边界重新验收 012/023/024/025/029
+
+- Session ID: 20260728-1622-claude-code（用户指定任务 A）
+- Repository: imboy（生产 + 测试 + 文档）+ imboyapp（仅测试）
+- Status: **实证发现接线之后仍存在的第 4 个断点并已修实时侧**；
+  012/024/025/029 状态标记**未擅改**，023 经人工裁定维持 `PASS`
+- Evidence: `evidence/E2EE-012-024-025-029-reacceptance.md`
+
+**实证发现**：上一日志把 #6 `sender_did` 标为「未实证」。本会话把入站帧改为
+后端**真实投递形状**后，7 项正向用例全红，一律 `context_mismatch_sender_did`：
+
+- 后端 `inject_sender_device/2` 注入的是 **payload 内部**，只对 map 或可 JSON
+  解码的 binary 生效；而 v3 的外层 payload **恒为空串** → 注入不发生；
+- 客户端读的是**帧顶层** `data['sender_did']`（message.dart:539）；
+- 投递帧 `assemble_msg/8` 字段集本就不含该字段；`msg_c2c` 表也无设备列。
+- → **每条生产 C2C v3 消息不可读**。接线（上一会话）是必要不充分条件。
+
+**对照组通过**（同一条帧仅手工补顶层 `sender_did`），断点被精确隔离，
+排除 harness 缺陷 —— 沿用了上一会话总结的「先放对照组」纪律。
+
+**修复（人工签字方案 A）**：设备标识改盖**信封层**而非 payload 层。
+- imboy `src/ds/message_ds.erl`：新增 `stamp_sender_device/2` + `with_sender_device/2`
+- imboy `src/logic/websocket_logic.erl`：转发（守 Handler→Logic→DS 边界）
+- imboy `src/api/websocket_handler.erl`：JSON / protobuf 两处接入点
+- imboy `src/logic/msg_c2c_logic.erl`：投递组装带上
+- imboy `Makefile`：`e2ee-verify` 纳入新模块
+- 安全语义不降级：值取自已认证 WS State 的 did/dtype，客户端不可伪造；
+  缺字段时**不补空占位**（补 `<<>>` 会把「没提供」误判成「设备 ID 是空串」）
+
+**新增测试**
+- imboyapp `test/service/e2ee/production_inbound_frame_gate_test.dart`（11 项）：
+  7 正向可用性门 + 2 接线守护（结构级，闭合 `E2EE-v3-receive-path-not-wired.md`
+  §7.4.1 残留）+ 2 fail-closed 负向门（缺失/伪造 sender_did 必须拒收）
+- imboy `test/ds/e2ee_sender_device_envelope_tests.erl`（7 项，含对照断言：
+  实证旧 payload 注入对 E2EE 形状确实无效）
+
+**验收**
+- `flutter test test/service/e2ee/` → **332 passed**（基线 321）
+- `flutter test test/service/` → **1212 passed**（基线 1201）
+- `dart analyze lib` → 1 条既有 info（与 E2EE 无关）
+- `make e2ee-verify` → **292 passed** + 安全门禁通过（基线 285）
+- `erlfmt --check` 5 个改动文件 → 通过
+
+**逐项复核结论**（标记未改，待人工决策 2）
+- E2EE-012 / 024 / 025：**仍不成立 → 建议回退**
+- E2EE-023：**维持 PASS**（验收对象是纯 codec，发送/接收侧均有真实生产调用方），
+  仅撤回「Residual risks: None」一句，已改 `evidence/E2EE-023.md`（人工已裁定）
+- E2EE-029：接收侧本次**首获实证**（多设备 fan-out 只取本机信封）
+
+**⚠️ 未闭合：离线投递路径同一缺陷仍在**
+- `msg_c2c_ds:read_msg_filter/3` 列集无设备列；`msg_c2c` 表无 `sender_did` 列
+- 离线期间收到的 C2C v3 消息，重连拉取后**仍会不可读**
+- 修复需 DB 迁移，属独立 Slice，预估 5–7 文件（迁移 up/down + ds/repo 读写两侧
+  + staging + 测试）。详见 evidence §6.1
+
+**其余残留**：真机双端未验证；接线守护是结构级非行为级（副作用链未解耦＝候选 B）；
+C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push / 未部署
+- Reviewer decision: Pending
+
+### Session 2026-07-28 17:xx — A2 领取后立即重估并退出（未动代码）
+
+- Session ID: 20260728-1622-claude-code
+- Status: **A2 未执行**；勘察后判定原预估不成立，按纪律停下重估
+- 勘察结论：离线与实时是**两条不同的解密路径**——
+  实时存明文（`_receiveMessage` 解密后落库，已接 `decryptInboundV3`）；
+  离线存密文、**decrypt-on-read**，入口是
+  `modules/messaging/infrastructure/message_model_mapper.dart::toTypeMessage()`，
+  它只调 `E2EEService.decryptE2EEMessage`（v1/v2），**无 v3 分支**。
+- 即离线 v3 有**两个独立断点**：①缺服务端 sender_did（需 DB 列）；
+  ②decrypt-on-read 路径未接线（需客户端接线，结构与当初 `_handleE2EEMessage` 同型）
+- ⚠️ 第②点为**文件级阅读结论，未行为实证**——按已固化教训，落地前必须先写 RED 证明
+- 建议拆分：A2-a 后端持久化 / A2-b 客户端 decrypt-on-read 接线
+  （A2-b 可能先要解决 `toTypeMessage()` 可测性，与候选 B 同源）
+- 详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.1
+- 本会话在此之后**未修改任何代码**，两仓改动集与上一条日志一致
+- Reviewer decision: Pending
+
+### Session 2026-07-28 17:xx — A2-b：decrypt-on-read v3 缺口已实证
+
+- Session ID: 20260728-1622-claude-code（用户指定「先 A2-b：先实证」）
+- Repository: imboyapp（仅新增测试）+ imboy（仅证据/状态）
+- Status: **实证完成**；接线**未做**，被 A2-a 阻塞（理由见下）
+- Tests added: `imboyapp/test/service/e2ee/decrypt_on_read_v3_gap_test.dart`（3 项全绿）
+- **实证结论（与密码学无关，故不依赖协议行为）**：
+  `toTypeMessage()`（mapper:39-43）把 `ciphertext` 实参取自**外层 payload**，
+  而 v3 外层 payload **恒为空串**——真密文在 `e2ee.devices[<did>].ciphertext`。
+  传错了输入，任何协议都解不出明文。测试正面断言 `payload == ''` 且
+  `devices[myDid].ciphertext` 非空。
+- **对照组通过**：同一行数据经 `decryptInboundV3` 可读 → 缺口在路径不在 harness
+- harness 诚实记录：恒等协议下返回**空串**不抛错；生产真实 OlmProtocol
+  会因缺 `peer_uid`/`peer_device_id` 抛错→`decrypt_failed`。两者都读不出明文
+- 另加结构守护：钉死 mapper 当前无 `decryptInboundV3` / 无 `meta_version` 分流；
+  **接线后该组断言必须反转并补正向可用性用例**
+- **⚠️ 接线被 A2-a 阻塞**：`decryptInboundV3` 需帧内含 `sender_did`（context
+  binding #6），而 `MessageModel` 无该字段、SQLite 消息表无该列、服务端也尚未
+  提供（§6.1 断点 1）。强行接线只会把失败分类从 `decrypt_failed` 换成
+  `context_mismatch_sender_did`，无可用性收益。**正确顺序：A2-a 先行**
+- Verification: `flutter test test/service/e2ee/` → **335 passed**（上一条日志 332）；
+  `dart analyze lib` → 1 条既有 info
+- Evidence: `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2
 - Reviewer decision: Pending
