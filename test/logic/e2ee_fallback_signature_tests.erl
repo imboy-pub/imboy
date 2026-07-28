@@ -108,7 +108,8 @@ fb_test_() ->
             {"签名覆盖 key_base64：换 key 复用签名必须失效", fun signature_binds_key/0},
             {"设备未注册 identity → 无从验证即拒绝", fun unregistered_device_rejected/0},
             {"未签名上传必须被计数（缺口可见）", fun unsigned_is_counted/0},
-            {"有效签名不得被误计成未签名", fun signed_not_counted_as_unsigned/0}
+            {"有效签名不得被误计成未签名", fun signed_not_counted_as_unsigned/0},
+            {"canonical golden vector（跨语言钉死）", fun canonical_golden_vector/0}
         ]
     end}.
 
@@ -188,3 +189,32 @@ signed_not_counted_as_unsigned() ->
     reset(),
     ok = olm_identity_logic:report_fallback_key(?UID, ?DID, ?KID, ?KB64, valid_sig()),
     ?assertNot(lists:member(olm_fallback_unsigned_total, metrics())).
+
+%% ⚠️ 跨语言 golden vector。客户端（imboyapp `fallbackKeyCanonical`）必须产出
+%% **逐字节相同**的载荷，否则服务端验签必然失败 → 该设备发布不了 fallback key
+%% → 每次 OTK 耗尽都变成 `no_prekey_available`，是一次**生产可用性事故**。
+%% 两侧各自把同一条字面量钉死，是本项目在没有联调环境时能做的最强一致性检查。
+%% 对侧断言：imboyapp `test/service/e2ee/fallback_key_signature_test.dart`。
+canonical_golden_vector() ->
+    reset(),
+    Expected =
+        <<
+            "device_id=dev-fb-A\n"
+            "key_base64=ZmFsbGJhY2sta2V5LWJ5dGVz\n"
+            "key_id=fbkey-1\n"
+            "user_id=6001"
+        >>,
+    %% 用「按 Expected 签名 → 服务端必须接受」间接钉死服务端 canonical：
+    %% 若服务端构造的字节与 Expected 不同，验签必失败。
+    Sig = sign(Expected),
+    ?assertEqual(
+        ok,
+        olm_identity_logic:report_fallback_key(?UID, ?DID, ?KID, ?KB64, Sig),
+        "服务端 canonical 必须与 golden vector 逐字节一致"
+    ),
+    ?assertEqual(
+        82,
+        byte_size(Expected),
+        "长度也是向量的一部分：长度对不上说明编码规则理解错了，"
+        "此时再比签名只会得到无信息量的『验签失败』"
+    ).

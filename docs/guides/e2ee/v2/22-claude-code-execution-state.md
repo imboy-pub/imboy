@@ -2245,7 +2245,7 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   3. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网，仅 find+判定+日志）；
   4. 滞留后 UX 无具体提示；
   5. 幂等/补传链路端到端未实证；
-  6. 单租户/全局限流未做；租约无 TTL；**fallback prekey 验签第一阶段已于 2026-07-29 会话 20260729-1200 落地**（`report_fallback_key/5`：canonical 单射守卫 → 查已注册 ed25519 → 验签 → 通过才落库，真 Ed25519 测试，e2ee-verify 350）——⚠️ **本项未关闭：签名仍非必填**（今天无客户端发签名，此刻必填 = 所有设备发布不了 fallback key → 每次耗尽变 `no_prekey_available`），被盗 token 的攻击者可「干脆不带签名」绕过；新指标 `olm_fallback_unsigned_total` 用于判断第二阶段何时可启动。见 `evidence/E2EE-062-fallback-signature.md`；
+  6. 单租户/全局限流未做；租约无 TTL；**fallback prekey 验签第一阶段已于 2026-07-29 会话 20260729-1200 落地**（`report_fallback_key/5`：canonical 单射守卫 → 查已注册 ed25519 → 验签 → 通过才落库，真 Ed25519 测试，e2ee-verify 350）——⚠️ **本项未关闭：签名仍非必填**（今天无客户端发签名，此刻必填 = 所有设备发布不了 fallback key → 每次耗尽变 `no_prekey_available`），被盗 token 的攻击者可「干脆不带签名」绕过；新指标 `olm_fallback_unsigned_total` 用于判断第二阶段何时可启动。见 `evidence/E2EE-062-fallback-signature.md`。**客户端签名已于 2026-07-29 会话 20260729-1300 接线**（`fallbackKeyCanonical` + `buildFallbackBody` + `registerDevice` 用 `account.sign` 签名，e2ee 374 / service 1254 / 后端 351）——⚠️ 跨语言 canonical 必须**逐字节一致**，否则不是「少一层防护」而是**验签必失败 → 发布不了 fallback key → 每次耗尽变 `no_prekey_available`** 的生产可用性事故，故**两侧各自钉死同一条 golden vector（含长度 82）**。见 `evidence/E2EE-062-client-fallback-signature.md`；
      60/min 未压测；进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
   7. 真机双端未验证。
 - **Next task**：E2EE-062 残留里**仍可自动推进**的候选（按价值排序）：
@@ -2326,6 +2326,71 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
      与第四刀 request_id 同形状；做完后残留 1 的第二阶段才具备启动条件。**首选。**
   2. 告警规则（需基线数据 + 部署侧配置）；
   3. `/metrics` 输出实证（需起服务，属集成验收）。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
+  是否放行纯函数实施刀 / 012-024-025 回退裁定）。
+- Reviewer decision: Pending
+
+### Session 2026-07-29 13:00 — E2EE-062 残留 2（客户端为 fallback key 签名）
+
+- Session ID: 20260729-1300-claude-code
+- Repository: imboyapp（+ imboy 侧一条 golden vector 钉桩）
+- Status: 客户端签名已接线；**签名仍非必填，本项未关闭**。E2EE-062 整体仍 `PARTIAL`
+- Changed files:
+  - imboyapp `lib/service/e2ee/fallback_key_signature.dart`（新，纯函数 `fallbackKeyCanonical`）
+  - imboyapp `lib/store/api/olm_api.dart`（`reportFallbackKey` +可选 `signature`；
+    抽出 `buildFallbackBody` 作为可验收接缝）
+  - imboyapp `lib/service/olm_session_service.dart`（`registerDevice` 用
+    `account.sign(canonical)` 签名后上报）
+  - imboy `test/logic/e2ee_fallback_signature_tests.erl`（+1 例 golden vector）
+- Tests added:
+  - imboyapp `test/service/e2ee/fallback_key_signature_test.dart`（5 例）
+- ⚠️⚠️ **跨语言一致性是本刀的核心风险，不是附带事项**：客户端 canonical 必须与
+  服务端 `fallback_canonical/4` **逐字节一致**。不一致的后果**不是「少一层防护」**，
+  而是 **验签必然失败 → 该设备发布不了 fallback key → 每次 OTK 耗尽变
+  `no_prekey_available` → 新会话直接建不起来**，即一个编码细节偏差变成
+  **生产可用性事故**。
+  处置：**两侧各自钉死同一条 golden vector**——
+  imboy 侧用「按 golden 字面量签名 → 服务端必须接受」间接钉死服务端 canonical；
+  imboyapp 侧直接断言相等。两侧同时断言**长度 = 82 字节**。
+- ⚠️ **长度断言不是冗余，本轮它抓到我两次算错**：手算长度先后写成 96、81，
+  **两次都错**，实算 82。若只比内容不比长度，编码规则理解错时只会得到无信息量的
+  「不相等」；长度先对不上能立刻指出错在哪一类。
+- canonical 复用既有 `key=value\n` ASCII 字典序方案（与 `trust_event_canonical.dart` /
+  `e2ee_trust_logic:canonical_payload/1` / KT profile §3 一致），**不发明第三套**。
+- RED：客户端先落载体（canonical 返回空串、body 忽略 signature），
+  取得 `+1 -4`，**4 红均为行为失败**；1 绿是正向可用性
+  「签名为空时不得写入该键」（旧语义零破坏），载体阶段空绿、实现后仍须绿。
+- Verification:
+  - imboyapp `flutter test test/service/e2ee/fallback_key_signature_test.dart` → **All 5 passed**
+  - imboyapp `flutter test test/service/e2ee/` → **374 passed**（上一刀 369）
+  - imboyapp `flutter test test/service/` → **1254 passed**（上一刀 1249）
+  - imboyapp `dart analyze lib` → 1 issue（既有 info）
+  - imboy `make e2ee-verify` → **All 351 tests passed**（上一刀 350）
+  - `erlfmt --check` / `git diff --check` 通过
+- Evidence: `evidence/E2EE-062-client-fallback-signature.md`
+- Residual（E2EE-062 仍 PARTIAL）:
+  1. **⚠️ 本项仍未关闭：签名仍非必填。** 第二阶段（服务端改必填）现在**具备了前置
+     条件**（客户端会签名了），但需等 `olm_fallback_unsigned_total` 降到零、
+     即旧版客户端基本退场后才能安全切换。**在那之前攻击者仍可「干脆不带签名」绕过。**
+  2. **只覆盖注册路径** —— `registerDevice` 是全仓唯一 `reportFallbackKey` 调用点
+     （已 grep 核实），但日后若新增 fallback **轮换**路径必须同样带签名；
+     本刀没有任何机制阻止「新增一个不签名的调用点」；
+  3. **端到端未实证** —— 两侧各自实证，拼接只有 golden vector 这一层静态保证，
+     未在真实网络上跑通；
+  4. `report_identity` 的 signature 只校验非空、未验证（已实证）；
+  5. 告警规则未做；`/metrics` 输出未实证；
+  6. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网）；滞留后 UX 无具体提示；
+  7. 幂等/补传链路端到端未实证；单租户/全局限流未做；租约无 TTL；60/min 未压测；
+     进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  8. 真机双端未验证。
+- **Next task**：E2EE-062 仍可自动推进的候选：
+  1. **`report_identity` 验签**（残留 4）—— 与本刀同形（canonical + Ed25519），
+     纯后端可测；但需先想清它防什么：identity 自签只证明内部一致，
+     无法证明所有权连续性，真正防护在客户端 TOFU 与 KT。**价值需先评估再动手。**
+  2. **fallback 轮换路径的守护**（残留 2）—— 加一条「所有 reportFallbackKey 调用点
+     都必须带签名」的结构守护，防止日后新增不签名调用点；小、纯测试。
+  3. 告警规则（需基线数据 + 部署侧配置）；`/metrics` 输出实证（需起服务）。
   队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
   人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
   是否放行纯函数实施刀 / 012-024-025 回退裁定）。
