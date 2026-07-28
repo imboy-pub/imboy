@@ -811,14 +811,10 @@ reply_frame(Msg, State) when is_map(Msg) ->
 %% v2 framing：protobuf 序列化后用 imboy_frame 包裹，类型默认 MSG_S2C
 -spec ws_reply(imboy_codec:protocol(), imboy_codec:framing(), map()) ->
     {text, binary()} | {binary, binary()}.
-ws_reply(protobuf, v2, Msg) when is_map(Msg) ->
-    Encoded = imboy_codec:encode(protobuf, Msg),
-    FrameType = msg_to_v2_frame_type(Msg),
-    Frame = imboy_codec:wrap_v2_frame(FrameType, 0, Encoded),
-    {binary, Frame};
-ws_reply(Protocol, _Framing, Msg) when is_map(Msg) ->
-    Encoded = imboy_codec:encode(Protocol, Msg),
-    imboy_codec:encode_ws_frame(Protocol, Encoded).
+%% E2EE-060：编码选择下沉到 imboy_codec:encode_ws_msg/4。protobuf 装不下
+%% PFv3 信封时它会退回 JSON，避免服务端投递被裁剪的信封（ADR 15 §10）。
+ws_reply(Protocol, Framing, Msg) when is_map(Msg) ->
+    imboy_codec:encode_ws_msg(Protocol, Framing, msg_to_v2_frame_type(Msg), Msg).
 
 %% @doc 根据消息 type 字段映射到 v2 帧类型
 %% 【契约】*_SERVER_ACK / CLIENT_ACK_CONFIRM / ERROR 等确认类消息刻意落入

@@ -25,6 +25,8 @@
     encode_payload/3,
     decode_payload/3,
     encode_ws_frame/2,
+    encode_ws_msg/4,
+    e2ee_pb_lossless/1,
     protocol_atom/1,
     framing_atom/1,
     wrap_v2_frame/3,
@@ -36,6 +38,28 @@
 -type protocol() :: json | protobuf.
 -type framing() :: none | v2.
 -export_type([protocol/0, framing/0]).
+
+%% protobuf E2EEMeta（proto/imboy.proto §128）能承载的 JSON 字段全集。
+%% 与 e2ee_to_pb/1 + e2ee_from_pb/1 的读写字段一一对应，改动其一必须同步改这里。
+-define(E2EE_PB_FIELDS, [
+    <<"e2ee">>,
+    <<"e2ee_ver">>,
+    <<"e2ee_suite">>,
+    <<"nonce">>,
+    <<"keys">>,
+    <<"protocol">>,
+    <<"version">>,
+    <<"peer_uid">>,
+    <<"peer_device_id">>,
+    <<"message_type">>,
+    <<"session_id">>,
+    <<"message_index">>,
+    <<"group_id">>,
+    <<"meta_version">>
+]).
+
+%% protobuf E2EEDeviceKey 能承载的字段全集
+-define(E2EE_PB_KEY_FIELDS, [<<"did">>, <<"kid">>, <<"wrap_alg">>, <<"ek">>]).
 
 %%%===================================================================
 %%% API
@@ -59,13 +83,24 @@ encode(json, Msg) when is_map(Msg) ->
             <<"{}">>
     end;
 encode(protobuf, Msg) when is_map(Msg) ->
-    try
-        PbMsg = to_pb_map(Msg),
-        imboy_pb:encode_msg(PbMsg, 'IMBoyMessage')
-    catch
-        Class:Reason ->
-            ok = ?WARN_LOG({codec_pb_encode_error, Class, Reason}),
-            <<>>
+    case e2ee_pb_lossless(Msg) of
+        false ->
+            %% ADR 15 §10 fail-closed：protobuf 的 E2EEMeta schema 装不下该
+            %% e2ee 信封（PFv3 的 protected_header/header_hash/ciphertext/
+            %% protocol_metadata/devices 均无对应字段）。宁可拒绝编码，也不
+            %% 投递被裁剪的信封——服务端不持有密钥，接收端一旦收到裁剪结果
+            %% 即永久不可解密，且无法事后修复。调用方须退回 JSON。
+            ok = ?WARN_LOG({codec_pb_encode_refused_lossy_e2ee, maps:get(<<"id">>, Msg, unknown)}),
+            <<>>;
+        true ->
+            try
+                PbMsg = to_pb_map(Msg),
+                imboy_pb:encode_msg(PbMsg, 'IMBoyMessage')
+            catch
+                Class:Reason ->
+                    ok = ?WARN_LOG({codec_pb_encode_error, Class, Reason}),
+                    <<>>
+            end
     end.
 
 %% @doc 解码传输数据为 Erlang map
@@ -163,6 +198,61 @@ encode_ws_frame(json, EncodedMsg) ->
     {text, EncodedMsg};
 encode_ws_frame(protobuf, EncodedMsg) ->
     {binary, EncodedMsg}.
+
+%% @doc 按连接的协议与 framing 把消息编成 WebSocket 帧，并保证 E2EE 信封无损
+%%
+%% protobuf 的 E2EEMeta schema 无法表达 PFv3 外层信封。遇到这类消息一律
+%% 退回 byte-preserving 的 JSON：v2 framing 的 payload 本就允许 JSON 原文
+%% （见 websocket_handler:encode_delivery_frame_v2/1），非 v2 的 protobuf
+%% 连接同样已有 JSON text 帧回退先例（encode_delivery_frame_protobuf/1）。
+%%
+%% @param FrameType v2 framing 的帧类型；非 v2 时忽略
+-spec encode_ws_msg(protocol(), framing(), 0..255, map()) ->
+    {text, binary()} | {binary, binary()}.
+encode_ws_msg(protobuf, v2, FrameType, Msg) when is_map(Msg) ->
+    Encoded =
+        case e2ee_pb_lossless(Msg) of
+            true -> encode(protobuf, Msg);
+            false -> encode(json, Msg)
+        end,
+    {binary, wrap_v2_frame(FrameType, 0, Encoded)};
+encode_ws_msg(protobuf, _Framing, _FrameType, Msg) when is_map(Msg) ->
+    case e2ee_pb_lossless(Msg) of
+        true -> encode_ws_frame(protobuf, encode(protobuf, Msg));
+        false -> encode_ws_frame(json, encode(json, Msg))
+    end;
+encode_ws_msg(Protocol, _Framing, _FrameType, Msg) when is_map(Msg) ->
+    encode_ws_frame(Protocol, encode(Protocol, Msg)).
+
+%% @doc protobuf 的 E2EEMeta 能否无损承载该消息的 e2ee 信封
+%%
+%% 判据是白名单：e2ee map（含 keys 列表元素）出现任何 E2EEMeta 没有的字段，
+%% 即视为不可无损表达。这样 PFv3 字段与一切未来扩展字段都被自动覆盖，
+%% 不需要随协议演进逐个补判断。
+-spec e2ee_pb_lossless(map()) -> boolean().
+e2ee_pb_lossless(Msg) when is_map(Msg) ->
+    case maps:get(<<"e2ee">>, Msg, null) of
+        E2EE when is_map(E2EE) ->
+            no_extra_keys(E2EE, ?E2EE_PB_FIELDS) andalso
+                keys_pb_lossless(maps:get(<<"keys">>, E2EE, []));
+        _ ->
+            true
+    end;
+e2ee_pb_lossless(_) ->
+    true.
+
+%% @private
+keys_pb_lossless(Keys) when is_list(Keys) ->
+    lists:all(
+        fun(K) -> is_map(K) andalso no_extra_keys(K, ?E2EE_PB_KEY_FIELDS) end,
+        Keys
+    );
+keys_pb_lossless(_) ->
+    false.
+
+%% @private
+no_extra_keys(M, Allowed) ->
+    maps:size(maps:without(Allowed, M)) =:= 0.
 
 %% @doc 将子协议字符串转换为协议原子
 %%

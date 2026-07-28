@@ -15,6 +15,7 @@
 -module(e2ee_message_pipeline_integration_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("imboy_frame.hrl").
 
 e2ee_pipeline_test_() ->
     _ = eunit_runner:eunit_setup(),
@@ -25,7 +26,9 @@ e2ee_pipeline_test_() ->
                 {"数字开头裸密文 payload + e2ee envelope 全链路落正式表保真",
                     fun test_raw_ciphertext_payload_survives_pipeline/0},
                 {"经 msg_c2c_logic:c2c/3 正常路径发送的 e2ee 消息全链路保真",
-                    fun test_via_c2c_logic_survives_pipeline/0}
+                    fun test_via_c2c_logic_survives_pipeline/0},
+                {"E2EE-060 PFv3 per-device fan-out 信封落 jsonb 后再出站线上帧逐字节保真",
+                    fun test_pfv3_fanout_survives_pipeline_and_wire/0}
             ]};
         {error, _Reason} ->
             {"Database not available", fun() -> {skip, "Database not available"} end}
@@ -113,6 +116,74 @@ test_via_c2c_logic_survives_pipeline() ->
 
     E2EEDecoded = jsone:decode(maps:get(<<"e2ee">>, Row), [{object_format, map}]),
     ?assertEqual(E2EE, E2EEDecoded).
+
+%% E2EE-060：闭合 "客户端 fixture → 生产入口 → PostgreSQL jsonb → 出站 WS 帧"
+%% 这一整条链。PFv3 信封的 protected_header/header_hash/ciphertext 是
+%% base64url（含 - 与 _、无填充），任何一处转义或裁剪都等价于消息永久不可
+%% 解密；服务端不持密钥，事后无法修复。
+test_pfv3_fanout_survives_pipeline_and_wire() ->
+    Context = get_context(),
+    User1 = maps:get(user1, Context),
+    User2 = maps:get(user2, Context),
+    ok = ensure_friends(User1, User2),
+
+    MsgId = integer_to_binary(elib_tsid:generate()),
+    %% chat_network_service.dart buildOlmFanOutPayload 的实际产出形状
+    E2EE = #{
+        <<"meta_version">> => 3,
+        <<"protocol">> => <<"olm">>,
+        <<"version">> => 1,
+        <<"fan_out">> => <<"per_device">>,
+        <<"devices">> => #{
+            <<"dev-a">> => #{
+                <<"protected_header">> => <<"omh2ImlkIqJtZXNzYWdlX2lk-_Ag">>,
+                <<"header_hash">> => <<"dGVzdC1oYXNoLTI1Ng">>,
+                <<"ciphertext">> => <<"14bVkXq8ZpQ2mR7sT9uWaBcDeFgHiJkLmNoPqRsTuVwXyZ-_09">>,
+                <<"protocol_metadata">> => #{
+                    <<"session_id">> => <<"sess-a">>, <<"message_index">> => 0
+                }
+            },
+            <<"dev-b">> => #{
+                <<"protected_header">> => <<"omh2ImlkIqJtZXNzYWdlX2ll-_Bg">>,
+                <<"header_hash">> => <<"dGVzdC1oYXNoLTI1Nw">>,
+                <<"ciphertext">> => <<"25cWlYr9aqR3nS8tU0vXbCdEfGhIjKlMnOpQrStUvWxYz-_10">>,
+                <<"protocol_metadata">> => #{
+                    <<"session_id">> => <<"sess-b">>, <<"message_index">> => 7
+                }
+            }
+        }
+    },
+    Data = #{
+        <<"to">> => integer_to_binary(User2),
+        <<"payload">> => #{<<"body">> => <<>>},
+        <<"created_at">> => elib_dt:now(),
+        <<"msg_type">> => <<"text">>,
+        <<"action">> => <<"message">>,
+        <<"e2ee">> => E2EE
+    },
+    ok = msg_c2c_logic:c2c(MsgId, User1, Data),
+
+    %% 1) PostgreSQL jsonb 往返：信封语义完全一致，未知/嵌套字段未被裁剪
+    {ok, Row} = wait_for_final_row(MsgId),
+    E2EEFromDb = jsone:decode(maps:get(<<"e2ee">>, Row), [{object_format, map}]),
+    ?assertEqual(E2EE, E2EEFromDb),
+
+    %% 2) 出站线上帧（imboy.v2 连接：protocol=protobuf, framing=v2）
+    Msg = #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => integer_to_binary(User1),
+        <<"to">> => integer_to_binary(User2),
+        <<"msg_type">> => <<"text">>,
+        <<"action">> => <<"message">>,
+        <<"e2ee">> => E2EEFromDb,
+        <<"payload">> => <<>>,
+        <<"created_at">> => elib_dt:now()
+    },
+    {binary, Frame} = imboy_codec:encode_ws_msg(protobuf, v2, ?FRAME_TYPE_MSG_C2C, Msg),
+    {ok, #imboy_frame{payload = WirePayload}} = imboy_codec:unwrap_v2_frame(Frame),
+    WireMap = jsone:decode(WirePayload, [{object_format, map}]),
+    ?assertEqual(E2EE, maps:get(<<"e2ee">>, WireMap)).
 
 %% ===================================================================
 %% 辅助函数

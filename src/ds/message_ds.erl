@@ -634,7 +634,10 @@ validate_message_by_type(Type, Msg) when
                 <<>> ->
                     {error, <<"non_s2c_message_missing_msg_type">>};
                 _ ->
-                    {ok, Msg}
+                    case validate_e2ee_envelope(maps:get(<<"e2ee">>, Msg, null)) of
+                        ok -> {ok, Msg};
+                        {error, _} = Err2 -> Err2
+                    end
             end
     end;
 validate_message_by_type(Type, Msg) when is_binary(Type) ->
@@ -650,6 +653,77 @@ validate_message_by_type(Type, Msg) when is_binary(Type) ->
     end;
 validate_message_by_type(_Type, _Msg) ->
     {error, <<"invalid_message_format">>}.
+
+%% @private
+%% @doc 外层 E2EE 信封校验（E2EE-060 / ADR 15 §10）
+%%
+%% 服务端**不解密、不解析** protected_header 内容，只做三件事：
+%%   1. 外层尺寸上界，避免未授权大分配；
+%%   2. meta_version >= 3 时必填字段存在且类型正确；
+%%   3. 通过后原样透传，不重建、不裁剪任何字段（含未知扩展字段）。
+%%
+%% 校验发生在 staging 落库与广播之前，因此超限/畸形信封得到的是稳定的
+%% 业务错误码，而不是 cowboy 层 max_frame_size 触发的连接断开。
+-spec validate_e2ee_envelope(term()) -> ok | {error, binary()}.
+validate_e2ee_envelope(null) ->
+    ok;
+validate_e2ee_envelope(E2EE) when is_map(E2EE) ->
+    case e2ee_envelope_within_limit(E2EE) of
+        false ->
+            {error, <<"e2ee_envelope_too_large">>};
+        true ->
+            case maps:get(<<"meta_version">>, E2EE, 0) of
+                V when is_integer(V), V >= 3 -> validate_v3_envelope_shape(E2EE);
+                _ -> ok
+            end
+    end;
+validate_e2ee_envelope(_) ->
+    {error, <<"e2ee_envelope_invalid">>}.
+
+%% @private
+%% @doc v3 信封形态：ADR 15 §3.3 单信封，或 E2EE-029 per-device fan-out
+-spec validate_v3_envelope_shape(map()) -> ok | {error, binary()}.
+validate_v3_envelope_shape(E2EE) ->
+    case maps:get(<<"devices">>, E2EE, undefined) of
+        undefined ->
+            require_envelope_fields(E2EE);
+        Devices when is_map(Devices), map_size(Devices) > 0 ->
+            case lists:all(fun(D) -> require_envelope_fields(D) =:= ok end, maps:values(Devices)) of
+                true -> ok;
+                false -> {error, <<"e2ee_envelope_invalid">>}
+            end;
+        _ ->
+            {error, <<"e2ee_envelope_invalid">>}
+    end.
+
+%% @private
+%% @doc 必填外层字段：存在且为非空 binary（不校验内容语义）
+-spec require_envelope_fields(term()) -> ok | {error, binary()}.
+require_envelope_fields(M) when is_map(M) ->
+    Required = [<<"protected_header">>, <<"header_hash">>, <<"ciphertext">>],
+    case lists:all(fun(K) -> is_non_empty_binary(maps:get(K, M, undefined)) end, Required) of
+        true -> ok;
+        false -> {error, <<"e2ee_envelope_invalid">>}
+    end;
+require_envelope_fields(_) ->
+    {error, <<"e2ee_envelope_invalid">>}.
+
+%% @private
+%% @doc 外层信封尺寸上界
+%%
+%% 默认 1 MiB：远大于任何合法信封（PFv3 header 客户端上限 8 KiB，
+%% C2C fan-out 只针对对端少数几台设备），又低于 cowboy 的
+%% max_frame_size（2 MiB），保证超限时先返回稳定业务错误而不是断连。
+%% ponytail: 这里为取尺寸多做一次 jsone:encode；正常信封只有几 KB，
+%% 相对"投递不可解密消息"的代价可以忽略。若成为热点再换增量计数。
+-spec e2ee_envelope_within_limit(map()) -> boolean().
+e2ee_envelope_within_limit(E2EE) ->
+    Max = application:get_env(imboy, e2ee_envelope_max_bytes, 1048576),
+    try
+        byte_size(jsone:encode(E2EE, [native_utf8])) =< Max
+    catch
+        _:_ -> false
+    end.
 
 %% @private
 %% @doc 验证消息发送方和接收方字段
