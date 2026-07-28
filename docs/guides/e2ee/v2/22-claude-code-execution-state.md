@@ -2766,3 +2766,72 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   人工优先事项不变（ADR 16 签字 / profile 接受 / 061 三项拍板 /
   是否放行纯函数实施刀 / 012-024-025 回退裁定）。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 20:00 — E2EE-062：限流 scope 的配置守护
+
+- Session ID: 20260729-2000-claude-code
+- Repository: imboy
+- Status: 守护已落地并实证。E2EE-062 仍 `PARTIAL`
+- **本刀不改任何生产代码与配置**（只加测试 + 门禁清单一行）
+- Changed files:
+  - `test/api/e2ee_throttle_scope_config_tests.erl`（新，4 例，**已入门禁**）
+  - `Makefile`（Modules 清单 +1）
+- **先否掉了上一刀点名的「告警规则」**：① 阈值需基线数据——
+  `deploy/prometheus/rules/imboy-alerts.yml` 已有 12+ 组告警但**零条 E2EE/Olm 相关**，
+  耗尽速率多高算异常本项目没有任何观测数据；② **`promtool` 本机不可用**
+  （`which promtool` 无输出），仓库与 CI 也无 `check rules` 步骤，PromQL 语法验不了。
+  **猜阈值 + 验不了语法 = 伪工作，记为需人工/部署侧介入，不自行编造。**
+- ⚠️ **本刀钉死的缺口**：第二刀实证过 `throttle:check/2` 遇未注册 scope 返回
+  `rate_not_set` 不崩，生产代码识别后**仍放行**（刻意取舍）。净效果是
+  **从 `config/sys.config` 删掉一行，整道 OTK 限流就消失**，唯一信号是一条运行时
+  ERROR 日志——**没有任何测试会红**。而 E2EE-062 前八刀的抗耗尽工作全部建立在
+  `olm_claim` / `olm_claim_target` 这两个 scope 之上。
+- ⚠️ **空验证就是「执行那个要防的操作」**：临时从 `sys.config` 删掉
+  `{olm_claim_target, 60, per_minute}` → `Failed:2 Passed:2`
+  （存在性与单位两条同时红），对照组与执行性用例仍绿。
+  恢复后 `git diff --stat config/sys.config` 无输出，复跑 4/4。
+- 四条用例职责：
+  1. **对照组** 未注册 scope 返回 `rate_not_set`——**本守护的全部理由就是这个返回值**；
+     它一旦不成立，该重写的是守护本身而非配置；
+  2. 两个 scope 存在于**随发布的** `sys.config`（用 `file:consult` 直接读那一份，
+     而非 `application:get_env`——测试环境加载的是 gitignored 的 `sys.local.config`，
+     守护它没有意义）；
+  3. 两者周期均为 `per_minute`；
+  4. **正向可用性 / 单位正确性**：用独立探针 scope（3/min）验「第 3 次放行、
+     第 4 次拒」。**为什么「存在」还不够**：scope 在、但把 `per_minute` 误写成
+     `per_second`，**既不触发 `rate_not_set` 也没有日志**，前两条全绿而实际防护变形。
+     这条同时否掉「一律拒绝」的实现。
+- Verification:
+  - `IMBOYENV=local make eunit t=e2ee_throttle_scope_config_tests` → **All 4 passed**
+  - `make e2ee-verify` → **All 361 tests passed**（上一轮 357）
+  - `erlfmt --check` / `git diff --check` 通过；imboyapp 侧未改动
+- Evidence: `evidence/E2EE-062-throttle-scope-config-guard.md`
+- Residual:
+  1. **告警规则仍未做** —— 需基线数据定阈值 + promtool/CI 验 PromQL（见上）。
+     **仍是"运维不再盲"的最后一段，现已明确记为需人工/部署侧介入**；
+  2. **守护只覆盖两个 OTK scope** —— `sys.config` 里还有 `e2ee_report_key` /
+     `e2ee_backup` / `e2ee_transfer` 等，同样会因删行而静默失效。
+     **刻意只钉 E2EE-062 直接依赖的两个**，避免写成「把整份配置抄一遍」那种
+     一改就红的噪音测试。其余 scope 的同类风险为**推理**（同一机制），未逐个实证；
+  3. **常量双写**（30/60 per_minute 同时在 config 与测试宏）——刻意为之，
+     守护的价值正来自「两处必须同时改」这个摩擦；
+  4. **「60/min 是正确阈值」仍未验证** —— 本刀验的是"声明与执行一致"，
+     不是"数字选得对"；
+  5. E2EE-062 其余残留不变（fallback 签名非必填、留存期 ≈2 周期、端到端未实证、
+     单租户/全局限流、真机等）。
+- **Next task**：E2EE-062 里**能靠纯代码推进且有真实价值的项已见底**。
+  连续三刀（metrics 导出实证 / metrics IP 门 / 本刀配置守护）都是在给已有工作
+  补"不会被静默拆掉"的守护，这条线也到头了。剩余全部需外部条件：
+  1. **需部署侧配置 + 基线数据 + promtool**：告警规则；
+  2. **需联调 / 真机 / 起服务**：端到端实证、nginx 403 实跑、60/min 压测、真机；
+  3. **需等外部条件**：fallback 签名改必填（等客户端普及）、
+     单租户/全局限流（有意识缺口，网关承担）。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  **人工优先事项（不变，按解锁价值排序）**：
+  1. ADR 16 §3.1/§5/§6 五方签字 —— 一次解锁 E2EE-064/065/066（两项是 GA-C2C 硬门禁）；
+  2. transparency profile 的安全 reviewer 接受（`29-...profile-v1.md`）；
+  3. E2EE-061 三项拍板，拍板后剩余八刀可自动推进；
+  4. **是否放行"纯函数实施刀"**（061 Slice 2/3、065 Slice 4）——
+     **放行后 loop 可继续无人值守推进相当一段时间**；
+  5. E2EE-012/024/025 的 PASS 回退裁定（停放区）。
+- Reviewer decision: Pending
