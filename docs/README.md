@@ -1,67 +1,58 @@
-# IMBoy 文档门户
+# IMBoy 后端文档
 
-> 文档体系说明：本目录按 [Divio 四象限](./documentation-system/README.md) 组织——教程（学习）、指南（办事）、参考（查阅）、解释（理解）。过程材料（评审/审计/已完成计划）在 [archive/](./archive/)，进行中的工作在 [planning/](./planning/)。
+> 本目录是 `imboy` 后端仓库的技术文档真源。面向开发、部署、集成、审计和维护；营销介绍请看 [imboy.pub](https://imboy.pub/)，轻量部署入口请看 [Wiki](https://github.com/imboy-pub/imboy/wiki)。
 
-## 我从这里开始（按角色）
+## 按目标开始
 
-| 我是谁 | 入口 |
-|--------|------|
-| 新加入的后端工程师 | [教程：本地跑通后端（15 分钟）](./tutorials/quickstart-backend.md) → [工程约定 CONVENTIONS](./CONVENTIONS.md) |
-| 运维 / 私有化部署 | [生产部署](../deploy/README.md) → [备份与恢复](./guides/operations/deployment/backup-restore.md) |
-| 前端 / 移动端开发 | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
-| SDK 使用者（外部） | imboy-sdk-js 仓库 README（快速开始） |
-| 插件开发者 | imboy-plugin-marketplace 仓库 README |
-| 架构评审 / 技术买家 | [后端架构](./architecture/overview.md) → [ADR 决策记录](./adr/) |
+| 目标 | 入口 |
+|---|---|
+| 本地跑通后端 | [后端快速上手](./tutorials/quickstart-backend.md) |
+| 生产部署 | [部署 README](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) → [Day-1 部署](./guides/operations/deployment/day1-quickstart.md) |
+| 备份、恢复、升级 | [备份恢复](./guides/operations/deployment/backup-restore.md) · [升级手册](./guides/operations/upgrade-runbook.md) |
+| 对接 REST / WebSocket | [API 格式](./reference/api-format.md) → [REST API 目录](./reference/rest-api-v1-catalog.md) → [WebSocket 协议](./reference/ws-protocol-contract.md) |
+| 理解后端架构 | [架构总览](./architecture/overview.md) → [模块地图](./architecture/module-map.md) |
+| 审核 E2EE / 合规 | [E2EE 协议](./reference/e2ee-protocol-specification.md) · [E2EE 策略](./compliance/e2ee-policy.md) · [等保清单](./compliance/mlps2-checklist.md) |
+| 查看历史结论 | [规划中](./planning/) · [已归档](./archive/) |
 
-## 四象限导航
+## 文档分类
 
-| 象限 | 目录 | 用途 |
-|------|------|------|
-| 教程 | [tutorials/](./tutorials/) | 跟着做，做出可运行的成果 |
-| 操作指南 | [guides/](./guides/) | 完成具体任务（备份、升级、配置、支付、安全加固） |
-| 参考 | [reference/](./reference/) | 查事实（API、协议、错误码、工程笔记） |
-| 解释 | [explanation/](./explanation/) | 理解设计理由与权衡 |
+| 分类 | 回答的问题 | 目录 |
+|---|---|---|
+| 教程 | 我怎样从零做出一个可运行结果？ | [tutorials](./tutorials/) |
+| 操作指南 | 我怎样完成部署、备份、测试或发布？ | [guides](./guides/) |
+| 参考 | 参数、接口、协议和错误码是什么？ | [reference](./reference/) |
+| 解释 | 为什么采用这种架构或安全设计？ | [explanation](./explanation/) · [architecture](./architecture/) |
+| 业务与合规 | 产品边界、商业、安全披露是什么？ | [business](./business/) · [compliance](./compliance/) · [legal](./legal/) |
+| 决策与过程 | 方案、审计和阶段性结论是什么？ | [adr](./adr/) · [planning](./planning/) · [archive](./archive/) |
 
-## 业务与规划
+判断规则：教技能是“教程”，办事情是“指南”，查事实是“参考”，讲原理是“解释”。一次性计划和已完成审计不进入稳定入口，完成后放入 `archive/`。
 
-| 目录 | 内容 |
-|------|------|
-| [roadmap/](./roadmap/) | 产品与工程路线图（含 AI Agent 载体路线图） |
-| [planning/](./planning/) | 进行中的计划：P0/P1 方案、执行清单、风险台账 |
-| [business/](./business/) | 商业分析：变现策略、竞品对比 |
-| [guides/release/](./guides/release/) | 发版流程与应用商店清单 |
-| [legal/](./legal/) · [compliance/](./compliance/) | 法务（软著）与合规（等保、E2EE 披露） |
-| [archive/](./archive/) | 归档：历史评审、审计、已完成计划（只进不出） |
+## 真源与发布关系
 
-## 常用专题
+- **代码事实**：以 `src/`、`api/openapi.yaml`、`api/asyncapi.yaml`、`deploy/` 和可执行测试为准。
+- **后端文档真源**：本目录 `imboy/docs/`；[GitHub Pages](https://imboy-pub.github.io/imboy/) 由 CI 构建发布，不在站点副本上直接改文档。
+- **客户端文档**：见相邻仓库 [`imboyapp/docs`](https://github.com/imboy-pub/imboy-flutter/tree/main/docs)；管理后台、SDK 和插件分别维护自己的 README/文档。
+- **Wiki**：只保留用户和运维最常用的短入口；详细协议、内部架构、审计证据不在 Wiki 复制。
+- **产品官网**：只负责定位、能力和商业信息，不承担 API 或部署契约。
 
-### 开发
+## 更新规则
 
-- [后端架构](./architecture/overview.md)：系统分层和核心组件
-- [模块地图](./architecture/module-map.md)：功能对应的代码位置
-- [数据库访问](./architecture/database-access.md)：Repo 与 SQL 规范
-- [API 格式](./reference/api-format.md)：请求、响应和分页约定
-- [错误码](./reference/error-codes.md)：错误码定义与使用
-- [REST API 目录](./reference/rest-api-v1-catalog.md)：`/api/v1` 接口速查
-- [WebSocket 协议](./reference/ws-protocol-contract.md)：消息信封与事件约定
+1. API 或 WebSocket 变更，先更新机器可读契约，再更新对应参考文档和客户端说明。
+2. 部署命令、环境变量或端口变更，同时更新 `deploy/` 与操作指南，并验证命令可执行。
+3. 安全、合规和产品能力只写已实现或明确标注状态的事实；不要把规划写成现状。
+4. 新文档先判断能否并入现有页面；阶段性产物完成后移入 `archive/`，不要继续挂在主入口。
+5. 不提交生产数据、真实密钥、个人联系方式和环境专属配置。
 
-### 部署与运维
+写作规范、模板和 CI 约束见 [documentation-system](./documentation-system/README.md)。
 
-- [生产部署](../deploy/README.md)
-- [备份与恢复](./guides/operations/deployment/backup-restore.md)
-- [版本升级](./guides/operations/upgrade-runbook.md)
-- [Garage 附件存储](./guides/operations/garage-deployment.md)
-- [监控](./guides/operations/deployment/monitoring.md)
+## 常用命令
 
-### 安全
+```bash
+cd imboy
+make compile
+IMBOYENV=local make run
+make eunit
+make dialyze
+```
 
-- [运行安全](./guides/operations/security.md)
-- [安全加固](./guides/security/security-hardening.md)
-- [漏洞报告](../SECURITY.md)
-
-## 文档维护
-
-- 写新文档前，先读 [写作规范](./documentation-system/writing-guide.md)，并从 [模板库](./documentation-system/templates/) 复制对应模板。
-- 优先更新现有文档，不为一次性任务新建长期文档——一次性产物（评审/审计/计划）完成后归 [archive/](./archive/)。
-- 本索引只收录稳定、仍可执行的内容；进行中的工作看 [planning/](./planning/)。
-- 接口或部署方式变化时，同步更新根 README 和对应专题文档。
+完整开发与部署步骤以仓库根目录 [README](https://github.com/imboy-pub/imboy/blob/main/README.md) 和 [deploy/README](https://github.com/imboy-pub/imboy/blob/main/deploy/README.md) 为准。
