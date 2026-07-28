@@ -17,6 +17,7 @@
 -export([claim_keys/4]).
 -export([batch_claim_keys/3]).
 -export([batch_claim_keys/4]).
+-export([count_one_time_keys/2]).
 -export([cleanup_consumed_one_time_keys/1]).
 
 %% one-time keys 上报上限（防存储放大 DoS）
@@ -344,6 +345,30 @@ normalize_device_ids(DeviceIds) ->
         Uniq when length(Uniq) > ?MAX_BATCH_CLAIM_DEVICES -> {error, <<"too_many_devices">>};
         Uniq -> {ok, Uniq}
     end.
+
+%% ===================================================================
+%% OTK 余量查询（E2EE-062：低水位补传的信号来源）
+%% ===================================================================
+
+%% @doc 查询某用户某设备**尚未被领取**的 one-time key 数量。
+%%  调用方（handler）必须保证 UserId/DeviceId 取自 token 而非请求入参——
+%%  否则该能力就是「探测谁的池快空了」的接口，正好给耗尽攻击择时。
+%%  查询失败返回 {error, _}，**不得**降级为 0：0 是「该补传了」的有效信号，
+%%  用它掩盖故障会让真正的池见底与数据库故障无法区分。
+-spec count_one_time_keys(integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, binary()}.
+count_one_time_keys(UserId, DeviceId) when
+    is_integer(UserId), UserId > 0, is_binary(DeviceId), DeviceId =/= <<>>
+->
+    case olm_identity_ds:count_one_time_keys(UserId, DeviceId) of
+        {ok, N} when is_integer(N) ->
+            {ok, N};
+        {error, Reason} ->
+            _ = ?ERROR_LOG({olm_count_otk_error, UserId, DeviceId, Reason}),
+            {error, <<"internal_error">>}
+    end;
+count_one_time_keys(_, _) ->
+    {error, <<"bad_request">>}.
 
 %% ===================================================================
 %% cleanup 已消费 OTK 审计行（olm_otk_cleanup_worker 调用）

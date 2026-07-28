@@ -39,6 +39,8 @@ init(Req0, State0) ->
                 claim_key(Req0, State);
             batch_claim ->
                 batch_claim(Req0, State);
+            prekey_count ->
+                prekey_count(Req0, State);
             _ ->
                 elib_response:error(Req0, <<"not_found">>, 404)
         end,
@@ -363,6 +365,41 @@ do_claim_key1(Req0, CurrentUid) ->
                     elib_response:success(Req0, Payload);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg, ?ERR_NOT_FOUND)
+            end
+    end.
+
+%% ===================================================================
+%% GET /api/v1/e2ee/olm/prekey_count — 本设备 OTK 余量（E2EE-062 低水位补传）
+%% 返回: {count: N}
+%% ===================================================================
+
+-spec prekey_count(cowboy_req:req(), map()) -> cowboy_req:req().
+prekey_count(Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_prekey_count(Req0, State);
+        {error, Req1} ->
+            Req1
+    end.
+
+%% 查询对象（uid + device_id）**只取自 token，不接受任何入参**。
+%% 接受入参就等于对外开放「探测某用户某设备的 prekey 池还剩多少」——
+%% 攻击者据此可以精确判断耗尽攻击何时奏效（见 E2EE-062 目标级限流的威胁模型）。
+%% 余量本身不是秘密，但「谁的池快空了」是。
+-spec do_prekey_count(cowboy_req:req(), map()) -> cowboy_req:req().
+do_prekey_count(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    case auth_ds:current_did(State) of
+        <<>> ->
+            %% legacy token 未绑定设备：与其余 crypto 端点同一 fail-closed 语义
+            %% （E2EE-013），要求重新登录换取绑定 token。
+            elib_response:error(Req0, <<"device_binding_required">>, ?ERR_FORBIDDEN);
+        Did ->
+            case olm_identity_logic:count_one_time_keys(CurrentUid, Did) of
+                {ok, Count} ->
+                    elib_response:success(Req0, #{<<"count">> => Count});
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_INTERNAL_SERVER_ERROR)
             end
     end.
 

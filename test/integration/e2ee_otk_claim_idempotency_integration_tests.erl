@@ -30,7 +30,8 @@ otk_idempotency_test_() ->
                 {"并发同 request_id：50 路并发只消费一条（TOCTOU 由唯一索引兜住）",
                     fun concurrent_same_request_consumes_once/0},
                 {"batch fan-out：同 request_id 跨设备不串键，重放每设备只消费一条",
-                    fun batch_same_request_across_devices/0}
+                    fun batch_same_request_across_devices/0},
+                {"logic 层余量查询随消费递减，且幂等重放不改变余量", fun count_reflects_consumption/0}
             ]};
         {error, _Reason} ->
             {"Database not available", fun() -> {skip, "Database not available"} end}
@@ -148,6 +149,31 @@ concurrent_same_request_consumes_once() ->
         "50 路并发同 request_id 必须恒返回同一条 key；>1 说明 TOCTOU 未被唯一索引兜住"
     ),
     ?assertEqual(49, available(Target)).
+
+%% E2EE-062 第五刀：低水位补传的信号来源。
+%% 打的是 `olm_identity_logic:count_one_time_keys/2` —— handler
+%% `do_prekey_count/2` 的唯一下探点（生产链路
+%% `GET /api/v1/e2ee/olm/prekey_count → do_prekey_count → 本函数`）。
+%% 真 PG 上钉死两件事：余量随消费**真的**递减；幂等重放**不**改变余量。
+count_reflects_consumption() ->
+    #{target := Target, claimer := Claimer} = ctx(),
+    ok = seed(Target, ?DID, 5),
+    ?assertEqual({ok, 5}, olm_identity_logic:count_one_time_keys(Target, ?DID)),
+    ReqId = <<"req-count-001">>,
+    {ok, _} = olm_identity_repo:claim_one_time_key(Target, ?DID, Claimer, ReqId),
+    ?assertEqual({ok, 4}, olm_identity_logic:count_one_time_keys(Target, ?DID)),
+    %% 幂等重放命中租约 → 池不变 → 余量不变
+    {ok, _} = olm_identity_repo:claim_one_time_key(Target, ?DID, Claimer, ReqId),
+    ?assertEqual(
+        {ok, 4},
+        olm_identity_logic:count_one_time_keys(Target, ?DID),
+        "幂等重放不消费，余量必须不变——否则补传信号会被重放次数污染"
+    ),
+    %% 未注册的设备：0 是合法答案，不是错误
+    ?assertEqual({ok, 0}, olm_identity_logic:count_one_time_keys(Target, <<"dev-never-seen">>)),
+    %% 入参非法必须 fail-closed 为错误，**不得**降级成 0
+    ?assertMatch({error, _}, olm_identity_logic:count_one_time_keys(Target, <<>>)),
+    ?assertMatch({error, _}, olm_identity_logic:count_one_time_keys(0, ?DID)).
 
 %% E2EE-062 第三刀的核心设计判断：batch fan-out **不按设备派生** request_id，
 %% 而是把同一条原样传给每个设备——依据是部分唯一索引

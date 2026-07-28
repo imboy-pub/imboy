@@ -58,7 +58,7 @@ overall_status: IN_PROGRESS
 |---|---|---|---|
 | 1 | ~~**A2-a** 后端 `sender_did` 持久化~~ | — | ✅ **DONE**（2026-07-28 会话 20260728-1730）。迁移 48 + staging/msg_c2c 双表加列 + 六接缝贯通；真 PostgreSQL 端到端已实证。证据：`evidence/E2EE-A2-a-offline-sender-did.md`。⚠️ 教训：`stage/10`、`write_msg/8` **必须保留原调用形状**，改成「新 arity + 默认值」会让按 arity 挂 meck 期望的既有测试静默穿透（实证回归 6 例） |
 | 2 | ~~**A2-b** 客户端 decrypt-on-read v3 接线~~ | A2-a ✅ | ✅ **DONE**（2026-07-28 会话 20260728-1810）。SQLite v25 加 `msg_c2c.sender_did` + `toTypeMessage()` 经 `decryptInboundV3` 分流；结构守护断言已反转，正向可用性用例已补。证据：`evidence/E2EE-A2-b-decrypt-on-read-v3.md`。⚠️ 真机仍未验证；迁移前旧离线行永久不可读（fail-closed 设计选择）。原文：接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
-| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 315）——见 `evidence/E2EE-062-per-target-throttle.md`。**第三刀已做**：`batch_claim` 幂等（`batch_claim_keys/4` 逐设备走 `claim_keys/4` + handler 透传 `request_id`，e2ee-verify 321、真 PG 6/6）——见 `evidence/E2EE-062-batch-claim-idempotency.md`；**不派生 per-device key**，依据是迁移 49 部分唯一索引键已含 `device_id`，派生反而溢出 `varchar(64)`，该判断已在真 PG 实证。**第四刀已做**：客户端发送 `request_id`（`OlmClaimRequestId` 进程内挂起 + `OlmApi.buildClaimBody` + `_establishOutboundSession` 首尾 issue/complete，e2ee 345、service 1225）——见 `evidence/E2EE-062-client-request-id.md`；**幂等键作用域是一次建会话尝试而非一对设备**，恒定 id 会让该对端此后所有会话复用同一条已消费 OTK，破坏 one-time 一次性。**未做（本项仍未完成，下次接着做）**：① **端到端未实证**——服务端半边真 PG 实证、客户端半边单测实证，两半拼接只有文件级论证；② **低水位补传与耗尽告警**（⚠️ `OlmApi.countPrekeys` 是恒返回 0 的桩实现，补传链路实际不完整，已实证）——「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立；③ 租约无独立 TTL；④ fallback 未验签；⑤ 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；⑥ 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑦ `olm_claim` 门仍朴素写法。证据：`evidence/E2EE-062-batch-claim-idempotency.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
+| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 315）——见 `evidence/E2EE-062-per-target-throttle.md`。**第三刀已做**：`batch_claim` 幂等（`batch_claim_keys/4` 逐设备走 `claim_keys/4` + handler 透传 `request_id`，e2ee-verify 321、真 PG 6/6）——见 `evidence/E2EE-062-batch-claim-idempotency.md`；**不派生 per-device key**，依据是迁移 49 部分唯一索引键已含 `device_id`，派生反而溢出 `varchar(64)`，该判断已在真 PG 实证。**第四刀已做**：客户端发送 `request_id`（`OlmClaimRequestId` 进程内挂起 + `OlmApi.buildClaimBody` + `_establishOutboundSession` 首尾 issue/complete，e2ee 345、service 1225）——见 `evidence/E2EE-062-client-request-id.md`；**幂等键作用域是一次建会话尝试而非一对设备**，恒定 id 会让该对端此后所有会话复用同一条已消费 OTK，破坏 one-time 一次性。**第五刀已做**：后端 OTK 余量端点 `GET /api/v1/e2ee/olm/prekey_count`（logic `count_one_time_keys/2` + handler `prekey_count` + 路由，e2ee-verify 328、真 PG 7/7）——见 `evidence/E2EE-062-prekey-count-endpoint.md`；**查询对象只取自 token 不接受入参**（否则就是「探测谁的池快空了」的接口）、legacy token fail-closed 403、**查询失败不得降级为 0**。**未做（本项仍未完成，下次接着做）**：① **补传闭环未闭合——客户端 `OlmApi.countPrekeys` 仍是恒 0 桩实现，下一刀就是它**；② 耗尽告警/运维指标缺失；③ **端到端未实证**——幂等链路服务端半边真 PG 实证、客户端半边单测实证，两半拼接只有文件级论证——「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立；③ 租约无独立 TTL；④ fallback 未验签；⑤ 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；⑥ 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑦ `olm_claim` 门仍朴素写法。证据：`evidence/E2EE-062-batch-claim-idempotency.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
 | 6 | **E2EE-065/066** Key Transparency | — | 最大件：**只产出调研与设计文档**，不改任何生产代码 |
@@ -1508,4 +1508,56 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   自动推进的一项，但它需要后端补 OTK count 端点 + 客户端补传链路，是跨两仓的
   较大件；残留 1（端到端）需真机/联调。建议下一轮先做**后端 OTK count 端点**
   这一小刀，或按队列进第 4 项 **E2EE-064**（可撤销 device-bound session）。
+- Reviewer decision: Pending
+
+### Session 2026-07-28 23:00 — E2EE-062（第五刀：OTK 余量查询端点）
+
+- Session ID: 20260728-2300-claude-code
+- Repository: imboy
+- Before HEAD: dd021b61
+- After HEAD: （见本次提交）
+- Status: PARTIAL（E2EE-062 整体仍未完成，残留见下）
+- Changed files:
+  - `src/logic/olm_identity_logic.erl`（新增 `count_one_time_keys/2`）
+  - `src/api/olm_handler.erl`（新增 `prekey_count` action + `do_prekey_count/2`）
+  - `src/imboy_router.erl`（新增 `GET /api/v1/e2ee/olm/prekey_count`，与 claim 同段认证路由）
+  - `Makefile`（e2ee-verify Modules 加 `e2ee_otk_count_tests`）
+- Tests added:
+  - `test/api/e2ee_otk_count_tests.erl`（7 例，已入门禁清单）
+  - `test/integration/e2ee_otk_claim_idempotency_integration_tests.erl` 新增
+    `count_reflects_consumption`（真 PG，**不**入门禁清单）
+- ⚠️ **RED 第一次暴露了一条假绿，已修正**：`prekey_count_respects_e2ee_gate_test_`
+  原本只断言 `{responded, error, _, _}`，而端点**根本不存在**时的
+  `{responded, error, <<"not_found">>, 404}` 同样满足该模式（第一次 RED 是
+  `Failed:5 Passed:2`）。按「对照组红=harness 缺陷即刻停下」的同一精神，
+  「绿得没有意义」也要停下修：改为断言具体的 `?ERR_FEATURE_DISABLED`(5190)，
+  收紧后 **`Failed:6 Passed:1`**，6 红全为行为失败（全部实得 404）。
+  **唯一的 1 绿是对照组**（未知 action 仍走 404），改前改后都绿。
+- 三处设计取舍（均取安全那侧）：
+  1. **查询对象只取自 token，不接受任何入参** —— 余量本身不是秘密，但
+     「谁的池快空了」是；带参端点等于给耗尽攻击提供择时接口，正好抵消第二刀；
+  2. legacy token（`current_did` 为空）→ `device_binding_required` 403，
+     与其余 crypto 端点同一 fail-closed 语义（E2EE-013）；
+  3. **查询失败不得降级为 0** —— 0 是「该补传了」的有效信号，
+     用它掩盖 DB 故障会让真正的池见底与故障无法区分。
+- Verification:
+  - `make e2ee-verify` → **All 328 tests passed**（上一刀 321）
+  - `IMBOYENV=local make eunit t=e2ee_otk_claim_idempotency_integration_tests \
+     EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"` → **All 7 tests passed**（上一刀 6）
+  - `git diff --check` / `erlfmt --check` 通过
+- Evidence: `evidence/E2EE-062-prekey-count-endpoint.md`
+- Residual（详见 evidence §5）:
+  1. **补传闭环未闭合** —— 服务端出口已开，但客户端 `OlmApi.countPrekeys`
+     仍是**恒 0 桩实现**，`_refillOneTimeKeys` 拿不到真实余量。**下一刀就是它。**（已实证）
+  2. 耗尽告警/运维指标缺失（本刀只做查询，未做可观测性）；
+  3. 端到端未实证（第四刀残留）；
+  4. 进程重启后重投仍消费新 OTK（第四刀有意识取舍）；
+  5. 客户端无 batch_claim 调用方（全仓 grep 零命中）；
+  6. 租约无独立 TTL；fallback 未验签；「耗尽绝不降级 RSA/明文」无守护用例；
+     单租户/全局限流未做；`olm_claim` 门仍朴素写法；60/min 未压测；
+  7. 真机双端未验证。
+- Next task: **E2EE-062 第六刀** = imboyapp 把 `OlmApi.countPrekeys` 接到
+  `GET /api/v1/e2ee/olm/prekey_count`，并让 `_refillOneTimeKeys` 用真实余量做
+  低水位判断（残留 1）。之后 E2EE-062 服务端+客户端主链路即闭合，
+  剩余项多需运维设施或真机；再按队列进第 4 项 **E2EE-064**。
 - Reviewer decision: Pending
