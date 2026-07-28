@@ -96,11 +96,28 @@ identity_log (
 )
 ```
 
-`seq` 用 `bigserial` 与 `trust_audit` 同范式。
-⚠️ **`bigserial` 在并发下会产生空洞**（事务回滚后序号不回收），
-而 playbook 要求「并发 append 1000 events 得到**唯一连续**位置」。
-两者冲突，必须在实施前定夺：要么接受空洞并把 leaf index 与 `seq` 解耦
-（另建单调计数），要么用串行化写入。**这是 Slice 1 要实证的问题，不是可推断的。**
+~~`seq` 用 `bigserial` 与 `trust_audit` 同范式。~~
+
+⛔ **Slice 1 已实证：`bigserial` 不能直接充当 KT leaf index。**
+（2026-07-29 真 PG 探针，见 `evidence/E2EE-065-slice1-bigserial-probe.md`，
+探针模块 `test/integration/kt_seq_contiguity_probe_tests.erl`）
+
+| 探针问题 | 实证结果 |
+|---|---|
+| 顺序提交时 seq 连续？ | **是**（对照组，相邻差恒为 1） |
+| 回滚后序号回收？ | **否** —— 留下**永久空洞**，那一行永不出现 |
+| 分配顺序 = 提交可见顺序？ | **否** —— 先取号者后提交时，按 `seq` 扫描会看到空洞，**且该空洞稍后追溯填上** |
+
+第三条对 Merkle 日志是**致命**的，而不只是"不好看"：
+读者在 t1 扫到 `[.., SeqB]`（缺 SeqA）算出 root R1；
+A 提交后在 t2 扫到 `[.., SeqA, SeqB]` 算出 root R2 ≠ R1。
+**同一 tree size 先后算出不同 root**——这与 §2.4 要检出的 split view **形状完全一致**，
+即日志会自己制造出无法与真实攻击区分的告警。consistency proof 亦直接失效。
+
+**据此定案（安全那一侧）**：leaf index **必须与 `bigserial` 解耦**。
+append 走「先提交行、再由单一串行化 sequencer 分配 leaf index」两阶段，
+sequencer 只处理**已提交可见**的行。这也顺带满足 playbook 的「唯一连续位置」。
+具体机制留给 Slice 3，但**不得**再把 `bigserial` 直接当 leaf index。
 
 ### 2.2 Transparency profile 必须先冻结（playbook 第 1 步）
 
@@ -165,7 +182,7 @@ E2EE-065 的**实施**受此阻塞（本调研文档不受阻塞——被卡的�
 
 | # | Slice | 仓库 | 内容 | 验收对象 |
 |---|---|---|---|---|
-| 1 | **`bigserial` 并发空洞实证** | imboy | 真 PG 上验证 §2.1 的冲突：1000 并发 append 能否得到唯一**连续**位置 | 真 PG，产出实证结论；决定 Slice 3 的形状 |
+| 1 | ~~**`bigserial` 并发空洞实证**~~ | imboy | ✅ **DONE**（2026-07-29）。结论：不能直接当 leaf index，须两阶段解耦，见 §2.1 | 真 PG 探针 3/3 绿，表测完即 DROP |
 | 2 | **transparency profile 冻结** | 文档 | hash / domain separation / 空树值 / canonical bytes / tree-head 签名输入 / proof wire / 轮换。**无 `TBD`** | 安全 reviewer 接受（人工） |
 | 3 | **identity_log append-only 表 + 同事务写入** | imboy | 迁移 + repo；`upsert_identity` 成功后同事务追加 | 真 PG；**正向可用性**：现有 identity 读路径不受影响 |
 | 4 | **Merkle 树与 proof（纯函数）** | imboy | leaf/node hash、inclusion、consistency | 标准 Merkle fixture 100%；golden vector 跨实现 |
@@ -175,8 +192,9 @@ E2EE-065 的**实施**受此阻塞（本调研文档不受阻塞——被卡的�
 | 8 | **gossip**（⛔ 阻塞于 §3.1） | 两仓 | tree-head digest 传播 | 两客户端 split view 下一次 gossip 检出 |
 | 9 | **独立 monitor** | 运维 | 独立网络比对 signed tree heads，只处理公开 hash | 人工演练告警；monitor 停止时客户端仍 fail-closed |
 
-**建议起点：Slice 1**（纯实证、零改动，且其结论决定 Slice 3 的形状）。
-Slice 2/4 是纯文档 / 纯函数，可在解签字前推进；
+~~**建议起点：Slice 1**~~ —— **已完成**。
+下一个可在解签字前推进的是 **Slice 2（profile 冻结，纯文档）** 与
+**Slice 4（Merkle 纯函数）**；
 Slice 3 及之后触及生产写路径，须先解 §3.2/§3.3。
 
 ---
@@ -192,7 +210,9 @@ Slice 3 及之后触及生产写路径，须先解 §3.2/§3.3。
 | 已存在双语言对齐的 canonical 编码可复用 | **已实证**（Dart `trust_event_canonical.dart` + Erlang `e2ee_trust_logic:canonical_payload/1`） |
 | PFv3 加字段即改协议规范 | **已实证**（ADR 15 §3.3 字段集固定 + 接收侧硬比对） |
 | ADR 16 transparency log 仍 Proposed | **已实证**（ADR 16 头部第 3 行逐字） |
-| `bigserial` 并发下是否产生空洞、与「唯一连续位置」是否冲突 | **未实证** —— Slice 1 的全部内容 |
+| `bigserial` 回滚留永久空洞 | **已实证**（Slice 1 真 PG 探针） |
+| **分配顺序 ≠ 提交可见顺序，空洞会追溯填上** | **已实证**（同上）——对 Merkle 日志致命，见 §2.1 |
+| leaf index 必须与 `bigserial` 解耦 | **已定案**（由上述实证直接推出） |
 | 本设计能让 DT-05/06/07 成立 | **设计推理，未实证** |
 
 ---

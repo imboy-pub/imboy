@@ -61,7 +61,7 @@ overall_status: IN_PROGRESS
 | 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 315）——见 `evidence/E2EE-062-per-target-throttle.md`。**第三刀已做**：`batch_claim` 幂等（`batch_claim_keys/4` 逐设备走 `claim_keys/4` + handler 透传 `request_id`，e2ee-verify 321、真 PG 6/6）——见 `evidence/E2EE-062-batch-claim-idempotency.md`；**不派生 per-device key**，依据是迁移 49 部分唯一索引键已含 `device_id`，派生反而溢出 `varchar(64)`，该判断已在真 PG 实证。**第四刀已做**：客户端发送 `request_id`（`OlmClaimRequestId` 进程内挂起 + `OlmApi.buildClaimBody` + `_establishOutboundSession` 首尾 issue/complete，e2ee 345、service 1225）——见 `evidence/E2EE-062-client-request-id.md`；**幂等键作用域是一次建会话尝试而非一对设备**，恒定 id 会让该对端此后所有会话复用同一条已消费 OTK，破坏 one-time 一次性。**第五刀已做**：后端 OTK 余量端点 `GET /api/v1/e2ee/olm/prekey_count`（logic `count_one_time_keys/2` + handler `prekey_count` + 路由，e2ee-verify 328、真 PG 7/7）——见 `evidence/E2EE-062-prekey-count-endpoint.md`；**查询对象只取自 token 不接受入参**（否则就是「探测谁的池快空了」的接口）、legacy token fail-closed 403、**查询失败不得降级为 0**。**第六刀已做**：客户端接真实余量（`otkRefillCount` 纯策略 + `countPrekeys` 返回 `int?` + 注册走 `seed`，e2ee 355、service 1235）——见 `evidence/E2EE-062-client-refill-wiring.md`；⚠️ 旧行为不只是「缺信号」：`remaining` 恒 0 → 恒判低水位 → 每次入站建会话都对**全量替换式**的 `report_one_time_keys` 发一次全量重发，等于持续把自己的 OTK 池推倒重来。**服务端+客户端主链路至此闭合。第七刀已做**：per-claimant 门的配置漂移可见性（`scope_limited/2` 收敛为**所有** OTK 限流门的唯一判定点，显式识别 `rate_not_set` 并打 ERROR，e2ee-verify 333）——见 `evidence/E2EE-062-claimant-scope-drift.md`；此前只修了目标层、领取方层被记为残留，本刀收敛后新增门只需调用同一函数，不会重演。**第八刀已做**：耗尽/限流绝不触发明文降级（`shouldBlockPlaintextRetry` + `MessageRetry._isPlaintextRetryBlocked`，e2ee 360、service 1240）——见 `evidence/E2EE-062-retry-plaintext-guard.md`。⚠️⚠️ **本轮实证发现真缺陷**：发送侧加密失败虽 fail-closed 拒发，但明文行已落库且被标 error，而 `MessageRetry` 的重试状态集含 `{sending,pendingRetry,error}`、`_retryMessage` 直接取库中 payload/e2ee 发 WS，**完全不经 encryptPayload 与 PolicyGate** → OTK 耗尽/限流 → 明文经重发路径出网。`policy_gate.dart:55-62` 注释早已记载该旁路，对策是「策略门不标 error」，但 `sending` 本就在重试集里、且加密失败路径明确标 error，**绕法两头都不挡**。**第九刀已做**：闸门接线实证（真 SQLite + 真事件总线驱动 `retryFailedMessages()`，断言有无 `WebSocketMessageSendRequestEvent` 出网，e2ee 364、service 1244，**不改生产代码**）——见 `evidence/E2EE-062-retry-guard-wiring-proof.md`。⚠️ **RED 用「临时把闸门还原成载体」的空验证取得，其失败输出逐字带出了明文帧（`e2ee:null` + 明文 payload）**，把第八刀标为「文件级推理，未实证」的「明文经重发路径出网」升级为**已实证**。**未做（本项仍未完成）**：① 被拦消息会被扫描器反复捡起（**不出网**，仅日志重复）；② 滞留后 UX 无提示；③ **C2G/群级 E2EE 分支未实证**（本刀只覆盖 C2C）；④ **耗尽告警/运维指标缺失**——补传是客户端自愈，运维侧对耗尽攻击仍然盲；② **端到端未实证**——各半边分别实证，拼接只有文件级论证（`countPrekeys` 的 HTTP 失败分支亦未实证，本仓无 Dio mock 基建）——「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立；③ 租约无独立 TTL；④ fallback 未验签；⑤ 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；⑥ 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑦ `olm_claim` 门仍朴素写法。证据：`evidence/E2EE-062-batch-claim-idempotency.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | ⛔ **BLOCKED**（2026-07-29 会话 20260729-0400）。playbook E2EE-030 依赖「ADR 16 Accepted」，而 ADR 16 头部第 3 行写明其 Accepted 是**范围收敛豁免**，豁免范围**明确排除 §3.1「device-bound session 完整体」**——正是本项要实现的东西，仍为 Proposed 待五方人工签字。**loop 不得代签，不得绕行。**解除条件=人工签字。同时阻塞 E2EE-065/066（依赖 064）。详见 `evidence/E2EE-061-design-and-slicing.md` §1 |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | ✅ **设计阶段 DONE**（2026-07-29 会话 20260729-0400），任务整体仍 `PENDING`（实施需人工确认）。交付物：`27-e2ee-061-attachment-encryption-design.md`（九刀切片计划）+ `evidence/E2EE-061-design-and-slicing.md`。⚠️ **实证结论：附件面今天完全没有 E2EE**——字节明文直传 Garage、`file_hash256` 明文哈希上报服务端、缩略图独立对象亦明文，ATT-01..05 全部不成立。⚠️ 三条「加密了内容仍泄漏」的旁路必须同期改：明文哈希上报=已知文件识别、Content-Type 泄漏且 presign/PUT 须同刀改、缩略图不加密=预览即泄漏。⚠️ 初始假设「process=true 触发服务端处理」**已被实证推翻**（只是进度 UI）。三项需人工拍板见设计 §6 |
-| 6 | **E2EE-065/066** Key Transparency | — | ✅ **调研与设计阶段 DONE**（2026-07-29 会话 20260729-0500），任务整体仍 `PENDING`。交付物：`28-e2ee-065-066-key-transparency-research.md`（九刀切片计划）+ `evidence/E2EE-065-066-research-and-design.md`。⚠️⚠️ **核心实证发现：身份键是就地覆盖**——`olm_identity_repo.erl:46` 用 `ON CONFLICT DO UPDATE SET ed25519_key=EXCLUDED...`，服务端替换某账号 identity key 后**数据库里连痕迹都不留**（TOFU 只对已固定指纹的对端有效，且证据仅在各客户端本地）。⚠️ `trust_audit` 虽 append-only 且带身份键快照，但记录的是「谁信任谁」而非「账号发布了哪些键」——**从未被信任过的设备根本不入流**，且是冻结表；误判可复用会得出错误设计。✅ 正面资产：`trust_event_canonical.dart` + `e2ee_trust_logic:canonical_payload/1` 是已在产双语言对齐的 canonical 编码，KT profile 可直接复用而非引入第三套。⛔ 实施三重阻塞见 evidence §3 |
+| 6 | **E2EE-065/066** Key Transparency | — | ✅ **调研与设计阶段 DONE**（2026-07-29 会话 20260729-0500），任务整体仍 `PENDING`。交付物：`28-e2ee-065-066-key-transparency-research.md`（九刀切片计划）+ `evidence/E2EE-065-066-research-and-design.md`。⚠️⚠️ **核心实证发现：身份键是就地覆盖**——`olm_identity_repo.erl:46` 用 `ON CONFLICT DO UPDATE SET ed25519_key=EXCLUDED...`，服务端替换某账号 identity key 后**数据库里连痕迹都不留**（TOFU 只对已固定指纹的对端有效，且证据仅在各客户端本地）。⚠️ `trust_audit` 虽 append-only 且带身份键快照，但记录的是「谁信任谁」而非「账号发布了哪些键」——**从未被信任过的设备根本不入流**，且是冻结表；误判可复用会得出错误设计。✅ 正面资产：`trust_event_canonical.dart` + `e2ee_trust_logic:canonical_payload/1` 是已在产双语言对齐的 canonical 编码，KT profile 可直接复用而非引入第三套。⛔ 实施三重阻塞见 evidence §3。**Slice 1 已于 2026-07-29 会话 20260729-0600 完成**（真 PG 探针 3/3）：⛔ **`bigserial` 不能当 KT leaf index**——回滚留永久空洞，且**分配顺序 ≠ 提交可见顺序、空洞会追溯填上**，导致同一 tree size 先后算出不同 root，与 split view 形状**完全一致**（日志自造无法与攻击区分的告警），consistency proof 直接失效。**已定案：leaf index 必须与 bigserial 解耦**（两阶段 sequencer，只处理已提交可见的行）。见 `evidence/E2EE-065-slice1-bigserial-probe.md` |
 
 ### 停放区（需人工签字 / 真机 / 架构点头——loop 一律不得触碰）
 
@@ -1892,4 +1892,65 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   若人工暂不介入，loop 可做的只剩两条**纯实证零改动**的刀：
   061 Slice 1（Garage presign 是否把 Content-Type 纳入签名）与
   065 Slice 1（bigserial 并发空洞）——二者都不触碰生产代码与协议。
+- Reviewer decision: Pending
+
+### Session 2026-07-29 06:00 — E2EE-065 Slice 1（bigserial 探针，纯实证）
+
+- Session ID: 20260729-0600-claude-code
+- Repository: imboy
+- Status: Slice 1 完成；E2EE-065/066 整体仍 `PENDING`
+- **本刀不改任何生产代码**，只新增一个真 PG 探针测试模块
+- Changed files:
+  - `test/integration/kt_seq_contiguity_probe_tests.erl`（新，3 例，**不入门禁清单**）
+  - `docs/guides/e2ee/v2/28-e2ee-065-066-key-transparency-research.md`（§2.1/§4/§5 按实证结论更新）
+  - `docs/guides/e2ee/v2/evidence/E2EE-065-slice1-bigserial-probe.md`（新）
+- 背景：上一刀设计文档把「`bigserial` 与 playbook 要求的**唯一连续位置**是否冲突」
+  标为**未实证**，并要求「不得凭 PostgreSQL 通例推断，须真 PG 验证后再定表结构」。
+- ⚠️ **对照组第一次就红了 —— 停下重估，未接着钻**：
+  首跑 `Failed:3 Passed:0`（含对照组）。按铁律没有去调被测断言，先查 harness：
+  `{badmatch,{ok,[#{<<"seq">> => 2}]}}` → 根因是 **`elib_pg:query/2` 返回
+  `{ok,[Map]}` 而非 epgsql 三元组 `{ok,Cols,Rows}`**。修正取值形状后三例全绿。
+  **若当时不看对照组、直接把断言改到"能过"，会得到一个测什么都对的探针。**
+  该坑已写进探针模块 `insert_one/1` 上方注释。
+- ⛔ **实证结论：`bigserial` 不能直接充当 KT leaf index**
+  | 探针问题 | 结果 |
+  |---|---|
+  | 对照组：顺序提交 seq 连续？ | **是**（相邻差恒为 1） |
+  | 回滚后序号回收？ | **否**，留**永久空洞**，那一行永不出现 |
+  | 分配顺序 = 提交可见顺序？ | **否** |
+  第三条最致命：A 先取号不提交、B 后取号先提交 → 按 seq 扫描**只见 B 出现洞**；
+  A 提交后洞被**追溯填上**。于是
+  `t1 → root R1(size N)`、`t2 → root R2(size N)`，**R2 ≠ R1**——
+  **同一 tree size 先后算出不同 root，与 split view 形状完全一致**，
+  即日志会自己制造出无法与真实攻击区分的告警；consistency proof 亦失效。
+- **已定案（取安全那一侧）**：leaf index **必须与 `bigserial` 解耦**——
+  两阶段 append（先提交行，再由单一串行化 sequencer 分配 leaf index，
+  sequencer 只处理**已提交可见**的行）。机制留给 Slice 3，
+  但设计 §2.1 已写死「不得再把 bigserial 直接当 leaf index」。
+  另两条路更差：接受空洞会让 inclusion proof 语义崩坏；靠加锁强行连续等价于
+  串行化却把它藏进序列分配、更难审计，且回滚仍留洞（探针 #2 已实证）。
+- Verification:
+  - `IMBOYENV=local make eunit t=kt_seq_contiguity_probe_tests \
+     EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"` → **All 3 tests passed**
+  - `erlfmt --check` / `git diff --check` 通过
+  - 探针表清理已核实：`to_regclass('public.kt_seq_probe')` → `DROPPED`（临时核实脚本已删）
+  - `make e2ee-verify` 未跑：不改生产代码、未向门禁清单增删模块
+- Evidence: `evidence/E2EE-065-slice1-bigserial-probe.md`
+- Residual:
+  1. **并发规模未压到 playbook 要求的 1000** —— 探针用 2 个并发事务证明了**性质**；
+     1000 并发是吞吐与唯一性验收，属 Slice 3/5。**性质已实证，规模未验。**
+  2. 两阶段 sequencer 的**具体机制未设计**，其并发正确性需再次真 PG 验收；
+  3. 探针表建在本地开发库（已 DROP 并核实）；该模块不在硬门禁内，CI 默认不触发；
+  4. E2EE-065/066 **实施**仍受三重阻塞（PFv3 改协议 / ADR 16 待签字 / 上游 064 BLOCKED）；
+  5. E2EE-062 既有残留不变。
+- **Next task**：队列内仍无可自动推进的**实施**项。剩余纯实证/纯文档可做的只有：
+  1. **E2EE-061 Slice 1**（Garage presign 是否把 Content-Type 纳入签名）——
+     需本地 Garage 就绪，**未确认可用**；若不可用则记 BLOCKED；
+  2. **E2EE-065 Slice 2**（transparency profile 冻结，纯文档）——
+     但 playbook 要求「由安全 reviewer 接受」，loop 只能出草案，**签字仍需人工**；
+  3. **E2EE-065 Slice 4**（Merkle 纯函数 + golden vector）——
+     这是**唯一**不需人工、不碰协议、不碰生产写路径的可实施项，
+     但它属 KT 实施范畴，与队列第 6 项「只产出调研与设计文档」的界定冲突，
+     **是否放行需人工确认**。
+  人工优先事项不变：ADR 16 五方签字 > E2EE-061 三项拍板 > E2EE-012/024/025 回退裁定。
 - Reviewer decision: Pending
