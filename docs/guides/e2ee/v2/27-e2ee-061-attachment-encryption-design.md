@@ -92,15 +92,37 @@ confirm body 今天上报明文 SHA-256。即使内容加密，只要还上报�
 处置：confirm 只能上报**密文**哈希（用于对象完整性），明文哈希只进
 `attachment_descriptor`。这需要后端 `attachment` 表字段语义同步变更。
 
-### 3.2 Content-Type 泄漏，且 presign 与 PUT 必须同步改
+### 3.2 Content-Type 泄漏 —— **原表述已被实证推翻，结论比原来更强**
 
 PUT 声明真实 MIME。加密后仍声明 `image/jpeg` 等于告诉服务端这是什么类型的文件。
-应统一声明 `application/octet-stream`。
 
-⚠️ **presigned URL 的签名通常覆盖 Content-Type**：只改 PUT 不改 presign 请求会导致
-签名失配、直传直接失败。两侧必须同一刀改完，否则上传全线中断。
-**认识论状态：Garage presign 是否把 Content-Type 纳入签名，未实证**——
-实施前必须先在本地 Garage 上验证，不得凭 S3 通例推断。
+> ⚠️ **本节原写着**「presigned URL 的签名**通常覆盖** Content-Type：只改 PUT 不改
+> presign 请求会导致签名失配、直传直接失败」，并标为未实证、要求先验 Garage。
+> **该表述错误**，已由 Slice 1 推翻（`evidence/E2EE-061-slice1-presign-mime-binding.md`）。
+
+Slice 1 实证结论（探针 `test/lib/e2ee_presign_mime_binding_tests.erl`，5/5）：
+
+| 性质 | 结果 |
+|---|---|
+| `X-Amz-SignedHeaders` 内容 | **只有 `host`** —— PUT 请求的 Content-Type **请求头不被签名覆盖** |
+| MIME 在何处进签名 | 以 **query 参数** `Content-Type=<mime>` 进入 canonical query string，**因而被绑进签名** |
+| 改 MIME 的后果 | 必然换 URL（不同 MIME → 不同签名），**必须重新 presign** |
+| 空 MIME | 不产出 `Content-Type=` 参数（`presign_get`/`presign_delete` 走此路） |
+
+**修正后的结论（更强）**：
+
+1. 只改客户端 PUT 请求头**不会**导致签名失配——但**也毫无用处**：
+   MIME 已经写在 presigned URL 的 query 参数里；
+2. 真正的问题不是「PUT 与 presign 同刀改」，而是**整个 presign/confirm 契约**：
+   服务端在 `presign` 请求里收 `mime_type`、在 `confirm` 里又存一次
+   （`attachment_api.dart` 的 `confirmBody`）——**服务端本来就知道真实 MIME**。
+   隐藏 MIME 必须改这两处契约，而不只是改客户端请求头；
+3. 权威来源是**我方的 `elib_s3_sign:presign_url/6`**，不是 Garage 的行为——
+   签名覆盖什么由我们自己的实现决定。原设计要求「先验 Garage」**找错了地方**。
+
+**残余未实证**：Garage 是否**校验** PUT 请求头的 Content-Type 与 URL 里的 query
+参数一致。该问题只影响「改了 presign 后客户端要不要同步改请求头」这一细节，
+**不影响上面三条结论**；需本地 Garage 就绪后确认。
 
 ### 3.3 缩略图不加密 = 预览即泄漏
 
@@ -130,7 +152,7 @@ PUT 声明真实 MIME。加密后仍声明 `image/jpeg` 等于告诉服务端这
 
 | # | Slice | 仓库 | 内容 | 验收对象 |
 |---|---|---|---|---|
-| 1 | **presign / PUT 的 Content-Type 实证** | imboyapp + 本地 Garage | 先验证 §3.2 的未实证点：Garage presign 是否把 Content-Type 纳入签名 | 本地 Garage 实跑，产出实证结论 |
+| 1 | ~~**presign / PUT 的 Content-Type 实证**~~ | imboy | ✅ **DONE**（2026-07-29）。权威来源是我方 `elib_s3_sign`，非 Garage；原 §3.2 表述已推翻 | 单测 5/5，已入 e2ee-verify 门禁 |
 | 2 | **分块 AEAD 编解码器（纯函数）** | imboyapp | encrypt/decrypt chunk、nonce 派生、AAD 构造。**不接线** | 往返 + 篡改矩阵（ATT-02 的密码学部分） |
 | 3 | **`attachment_descriptor` codec** | imboyapp | 结构定义、canonical 编码、严格 parser | 往返 + 字段篡改拒收（ATT-03） |
 | 4 | **上传侧接线** | imboyapp | `uploadViaPresign` 前置加密；confirm 改上报密文哈希与密文大小 | 上传产物是密文（ATT-04 的一半） |
@@ -140,9 +162,9 @@ PUT 声明真实 MIME。加密后仍声明 `image/jpeg` 等于告诉服务端这
 | 8 | **临时明文生命周期** | imboyapp | 解密临时文件的权限、崩溃恢复清理 | ATT-05 |
 | 9 | **兼容性回归** | 两仓 | 历史明文对象仍可读 | **正向可用性**：旧附件不得因本改动不可读 |
 
-**建议起点**：Slice 1。它是唯一一条**纯实证、零改动**的刀，且其结论会决定
-Slice 4 的形状（若 Content-Type 进签名，presign 接口需同刀改）。
-在它之前做 Slice 2/3 也可以（纯函数、无外部依赖），但 Slice 4 不得早于 Slice 1。
+~~**建议起点**：Slice 1~~ —— **已完成**。其结论已并入 §3.2：
+Slice 4（上传侧接线）必须连带改 **presign 与 confirm 的 MIME 契约**，
+而不只是改客户端 PUT 请求头。下一个可推进的是 **Slice 2 / 3**（纯函数、无外部依赖）。
 
 ---
 
@@ -170,7 +192,11 @@ Slice 4 的形状（若 Content-Type 进签名，presign 接口需同刀改）�
 | PUT 声明真实 MIME | **已实证** |
 | `process` 与服务端处理无关（推翻初始假设） | **已实证**（`_rawDioPut` 的 `onSendProgress`） |
 | ATT-01..05 今天均不成立 | **已实证**（由上述事实直接推出） |
-| Garage presign 是否把 Content-Type 纳入签名 | **未实证** —— Slice 1 的全部内容 |
+| `SignedHeaders` 只含 `host`，请求头 Content-Type 不被签名覆盖 | **已实证**（Slice 1，5/5） |
+| MIME 以 query 参数被绑进签名，改 MIME 必须重新 presign | **已实证**（同上） |
+| 服务端在 presign 与 confirm 两处都拿到真实 MIME | **已实证**（`elib_s3_sign` + `attachment_api.dart`） |
+| 原「签名覆盖 Content-Type 请求头」表述 | **已被推翻**（见 §3.2） |
+| Garage 是否校验请求头与 query 参数一致 | **未实证**（本地 Garage 未运行；不影响上述结论） |
 | 本设计能让 ATT-01..05 全部成立 | **设计推理，未实证** —— 需按切片计划逐刀验收 |
 
 ---
