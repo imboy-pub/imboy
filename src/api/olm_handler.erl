@@ -267,10 +267,10 @@ batch_claim(Req0, State) ->
 do_batch_claim(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     %% S1.3 / P1：per-claimant 限流，防止高频 claim 耗尽目标 OTK 池
-    case throttle:check(olm_claim, CurrentUid) of
-        {limit_exceeded, _, _} ->
+    case scope_limited(olm_claim, CurrentUid) of
+        true ->
             elib_response:error(Req0, <<"rate_limited">>, 429);
-        _ ->
+        false ->
             do_batch_claim1(Req0, CurrentUid)
     end.
 
@@ -328,10 +328,10 @@ claim_key(Req0, State) ->
 do_claim_key(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
     %% S1.3 / P1：per-claimant 限流，防止高频 claim 耗尽目标 OTK 池
-    case throttle:check(olm_claim, CurrentUid) of
-        {limit_exceeded, _, _} ->
+    case scope_limited(olm_claim, CurrentUid) of
+        true ->
             elib_response:error(Req0, <<"rate_limited">>, 429);
-        _ ->
+        false ->
             do_claim_key1(Req0, CurrentUid)
     end.
 
@@ -507,14 +507,31 @@ normalize_request_id(_) ->
 %%  整个 E2EE 建会话不可用，代价远大于「限流暂时失效」。
 -spec target_rate_limited(term()) -> boolean().
 target_rate_limited(TargetUid) when is_integer(TargetUid), TargetUid > 0 ->
-    case throttle:check(olm_claim_target, TargetUid) of
+    scope_limited(olm_claim_target, TargetUid);
+target_rate_limited(_) ->
+    false.
+
+%% @private E2EE-062：**所有** OTK 限流门的统一判定。
+%%
+%%  两道门（per-claimant `olm_claim` 与 per-target `olm_claim_target`）此前各写
+%%  一份 case，目标层修过 `rate_not_set` 而领取方层没修——正是这种复制粘贴让
+%%  同一个缺陷在一处修好、在另一处继续存在。此处收敛成唯一判定点。
+%%
+%%  ⚠️ 已实证：`throttle:check/2` 遇到**未注册的 scope** 返回原子 `rate_not_set`
+%%  （不崩）。朴素的 `_ -> false` 会把它当成「未超限」静默放行——也就是说
+%%  `sys.config` 少写一条 scope，整道限流**无声消失**且没有任何信号。
+%%  这里显式识别该原子并打 ERROR 日志，让配置漂移可见。
+%%
+%%  **不**改成 fail-closed：scope 缺失是配置错误而非攻击，拒掉全部 claim 会让
+%%  整个 E2EE 建会话不可用，代价远大于「限流暂时失效」。
+-spec scope_limited(atom(), term()) -> boolean().
+scope_limited(Scope, Key) ->
+    case throttle:check(Scope, Key) of
         {limit_exceeded, _, _} ->
             true;
         rate_not_set ->
-            _ = ?ERROR_LOG({olm_claim_target_scope_missing, olm_claim_target}),
+            _ = ?ERROR_LOG({olm_throttle_scope_missing, Scope}),
             false;
         _ ->
             false
-    end;
-target_rate_limited(_) ->
-    false.
+    end.
