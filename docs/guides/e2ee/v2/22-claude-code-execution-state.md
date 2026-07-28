@@ -58,7 +58,7 @@ overall_status: IN_PROGRESS
 |---|---|---|---|
 | 1 | ~~**A2-a** 后端 `sender_did` 持久化~~ | — | ✅ **DONE**（2026-07-28 会话 20260728-1730）。迁移 48 + staging/msg_c2c 双表加列 + 六接缝贯通；真 PostgreSQL 端到端已实证。证据：`evidence/E2EE-A2-a-offline-sender-did.md`。⚠️ 教训：`stage/10`、`write_msg/8` **必须保留原调用形状**，改成「新 arity + 默认值」会让按 arity 挂 meck 期望的既有测试静默穿透（实证回归 6 例） |
 | 2 | ~~**A2-b** 客户端 decrypt-on-read v3 接线~~ | A2-a ✅ | ✅ **DONE**（2026-07-28 会话 20260728-1810）。SQLite v25 加 `msg_c2c.sender_did` + `toTypeMessage()` 经 `decryptInboundV3` 分流；结构守护断言已反转，正向可用性用例已补。证据：`evidence/E2EE-A2-b-decrypt-on-read-v3.md`。⚠️ 真机仍未验证；迁移前旧离线行永久不可读（fail-closed 设计选择）。原文：接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
-| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 315）——见 `evidence/E2EE-062-per-target-throttle.md`。**第三刀已做**：`batch_claim` 幂等（`batch_claim_keys/4` 逐设备走 `claim_keys/4` + handler 透传 `request_id`，e2ee-verify 321、真 PG 6/6）——见 `evidence/E2EE-062-batch-claim-idempotency.md`；**不派生 per-device key**，依据是迁移 49 部分唯一索引键已含 `device_id`，派生反而溢出 `varchar(64)`，该判断已在真 PG 实证。**第四刀已做**：客户端发送 `request_id`（`OlmClaimRequestId` 进程内挂起 + `OlmApi.buildClaimBody` + `_establishOutboundSession` 首尾 issue/complete，e2ee 345、service 1225）——见 `evidence/E2EE-062-client-request-id.md`；**幂等键作用域是一次建会话尝试而非一对设备**，恒定 id 会让该对端此后所有会话复用同一条已消费 OTK，破坏 one-time 一次性。**第五刀已做**：后端 OTK 余量端点 `GET /api/v1/e2ee/olm/prekey_count`（logic `count_one_time_keys/2` + handler `prekey_count` + 路由，e2ee-verify 328、真 PG 7/7）——见 `evidence/E2EE-062-prekey-count-endpoint.md`；**查询对象只取自 token 不接受入参**（否则就是「探测谁的池快空了」的接口）、legacy token fail-closed 403、**查询失败不得降级为 0**。**第六刀已做**：客户端接真实余量（`otkRefillCount` 纯策略 + `countPrekeys` 返回 `int?` + 注册走 `seed`，e2ee 355、service 1235）——见 `evidence/E2EE-062-client-refill-wiring.md`；⚠️ 旧行为不只是「缺信号」：`remaining` 恒 0 → 恒判低水位 → 每次入站建会话都对**全量替换式**的 `report_one_time_keys` 发一次全量重发，等于持续把自己的 OTK 池推倒重来。**服务端+客户端主链路至此闭合。第七刀已做**：per-claimant 门的配置漂移可见性（`scope_limited/2` 收敛为**所有** OTK 限流门的唯一判定点，显式识别 `rate_not_set` 并打 ERROR，e2ee-verify 333）——见 `evidence/E2EE-062-claimant-scope-drift.md`；此前只修了目标层、领取方层被记为残留，本刀收敛后新增门只需调用同一函数，不会重演。**未做（本项仍未完成）**：① **「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例（残留中安全性最高的一项，未实证）**；② **耗尽告警/运维指标缺失**——补传是客户端自愈，运维侧对耗尽攻击仍然盲；② **端到端未实证**——各半边分别实证，拼接只有文件级论证（`countPrekeys` 的 HTTP 失败分支亦未实证，本仓无 Dio mock 基建）——「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立；③ 租约无独立 TTL；④ fallback 未验签；⑤ 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；⑥ 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑦ `olm_claim` 门仍朴素写法。证据：`evidence/E2EE-062-batch-claim-idempotency.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
+| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 315）——见 `evidence/E2EE-062-per-target-throttle.md`。**第三刀已做**：`batch_claim` 幂等（`batch_claim_keys/4` 逐设备走 `claim_keys/4` + handler 透传 `request_id`，e2ee-verify 321、真 PG 6/6）——见 `evidence/E2EE-062-batch-claim-idempotency.md`；**不派生 per-device key**，依据是迁移 49 部分唯一索引键已含 `device_id`，派生反而溢出 `varchar(64)`，该判断已在真 PG 实证。**第四刀已做**：客户端发送 `request_id`（`OlmClaimRequestId` 进程内挂起 + `OlmApi.buildClaimBody` + `_establishOutboundSession` 首尾 issue/complete，e2ee 345、service 1225）——见 `evidence/E2EE-062-client-request-id.md`；**幂等键作用域是一次建会话尝试而非一对设备**，恒定 id 会让该对端此后所有会话复用同一条已消费 OTK，破坏 one-time 一次性。**第五刀已做**：后端 OTK 余量端点 `GET /api/v1/e2ee/olm/prekey_count`（logic `count_one_time_keys/2` + handler `prekey_count` + 路由，e2ee-verify 328、真 PG 7/7）——见 `evidence/E2EE-062-prekey-count-endpoint.md`；**查询对象只取自 token 不接受入参**（否则就是「探测谁的池快空了」的接口）、legacy token fail-closed 403、**查询失败不得降级为 0**。**第六刀已做**：客户端接真实余量（`otkRefillCount` 纯策略 + `countPrekeys` 返回 `int?` + 注册走 `seed`，e2ee 355、service 1235）——见 `evidence/E2EE-062-client-refill-wiring.md`；⚠️ 旧行为不只是「缺信号」：`remaining` 恒 0 → 恒判低水位 → 每次入站建会话都对**全量替换式**的 `report_one_time_keys` 发一次全量重发，等于持续把自己的 OTK 池推倒重来。**服务端+客户端主链路至此闭合。第七刀已做**：per-claimant 门的配置漂移可见性（`scope_limited/2` 收敛为**所有** OTK 限流门的唯一判定点，显式识别 `rate_not_set` 并打 ERROR，e2ee-verify 333）——见 `evidence/E2EE-062-claimant-scope-drift.md`；此前只修了目标层、领取方层被记为残留，本刀收敛后新增门只需调用同一函数，不会重演。**第八刀已做**：耗尽/限流绝不触发明文降级（`shouldBlockPlaintextRetry` + `MessageRetry._isPlaintextRetryBlocked`，e2ee 360、service 1240）——见 `evidence/E2EE-062-retry-plaintext-guard.md`。⚠️⚠️ **本轮实证发现真缺陷**：发送侧加密失败虽 fail-closed 拒发，但明文行已落库且被标 error，而 `MessageRetry` 的重试状态集含 `{sending,pendingRetry,error}`、`_retryMessage` 直接取库中 payload/e2ee 发 WS，**完全不经 encryptPayload 与 PolicyGate** → OTK 耗尽/限流 → 明文经重发路径出网。`policy_gate.dart:55-62` 注释早已记载该旁路，对策是「策略门不标 error」，但 `sending` 本就在重试集里、且加密失败路径明确标 error，**绕法两头都不挡**。**未做（本项仍未完成）**：① **闸门接线未实证**（纯函数已实证，缺 MessageRetry 集成测试）；② 被拦消息会被扫描器反复捡起（不出网，仅日志重复）；③ 滞留后 UX 无提示；④ **耗尽告警/运维指标缺失**——补传是客户端自愈，运维侧对耗尽攻击仍然盲；② **端到端未实证**——各半边分别实证，拼接只有文件级论证（`countPrekeys` 的 HTTP 失败分支亦未实证，本仓无 Dio mock 基建）——「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立；③ 租约无独立 TTL；④ fallback 未验签；⑤ 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；⑥ 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑦ `olm_claim` 门仍朴素写法。证据：`evidence/E2EE-062-batch-claim-idempotency.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
 | 6 | **E2EE-065/066** Key Transparency | — | 最大件：**只产出调研与设计文档**，不改任何生产代码 |
@@ -1666,4 +1666,65 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
 - Next task: **E2EE-062 第八刀** = 「耗尽 / 限流时绝不降级到 RSA / Megolm / 明文」
   守护用例（残留 1）。这是 062 残留里安全性最高且不需真机/运维设施的一项。
   之后 062 可自动推进的部分基本见底，按队列进第 4 项 **E2EE-064**。
+- Reviewer decision: Pending
+
+### Session 2026-07-29 02:00 — E2EE-062（第八刀：重发路径明文闸门）
+
+- Session ID: 20260729-0200-claude-code
+- Repository: imboyapp
+- Status: PARTIAL（E2EE-062 整体仍未完成，残留见下）
+- Changed files:
+  - `lib/service/e2ee/retry_plaintext_guard.dart`（新，纯函数 `shouldBlockPlaintextRetry`）
+  - `lib/service/message_retry.dart`（`_isPlaintextRetryBlocked/1`；`_retryMessage`
+    在构造报文**之前**拦截）
+  - `test/service/message_retry_state_test.dart`（显式声明 E2EE 前置条件，**断言一字未改**）
+- Tests added:
+  - `test/service/e2ee/retry_plaintext_guard_test.dart`（5 例）
+- ⚠️⚠️ **本轮实证发现真缺陷（残留 ① 的具体形态）**：
+  发送侧加密失败是 fail-closed 的（catch → toast → return false，不发送），
+  **但消息行早已落库**（payload 明文、e2ee 空）并被标 `error`；
+  `MessageRetry` 的重试状态集是 `{sending, pendingRetry, error}`，
+  `_retryMessage` 直接从库里读 payload/e2ee 拼报文发 WS，
+  **完全不经过 encryptPayload，也不经过 PolicyGate**。
+  链路：OTK 抽干/429 → 加密失败 → 置 error 拒发 → 重试扫到 → **明文出网**。
+  `policy_gate.dart:55-62` 注释**早已记载**该旁路，对策是「策略门路径不标 error」，
+  但 `sending` 本就在重试集里、且加密失败路径明确标 error → **绕法两头都不挡**。
+- RED 记录：`+3 -2`，**2 红均为行为失败**（明文行未被拦下、空 e2ee map 未被拦下）。
+  **3 绿全部是正向可用性/对照组**（已加密的行照常重发、不需加密的行照常重发、
+  两个维度互不干扰）——「一律拦下」的实现在"不泄漏明文"指标上恒满分，被它们否掉。
+- ⚠️ **既有 4 个 retry 状态机测试被打红 —— 是真信号不是噪音**：
+  该文件从未初始化 `EncryptionModeService`，PolicyGate 对 C2C 抛异常 →
+  按「未知即拦」判为需加密 → 明文 fixture 全被拦。
+  **没有据此放宽闸门**，而是把此前**隐式**的前提显式化：在 setUp 加
+  `EncryptionModeService.debugSet(mode: plaintext, initialized: true)`
+  （既有 `@visibleForTesting` 注入点，非本刀新增）。
+  断言一字未改，未删除未 skip，理由已写入该文件 setUp 注释与 evidence §2.2。
+- 三处取舍：
+  1. **只做拒发，不在重发路径上补加密** —— 重试状态机不持有加密上下文
+     （对端设备表/Olm session/PFv3 messageId·messageType 同源约束），
+     在那里补加密等于复制一份发送路径，且极易重犯 E2EE-012/024 的 context binding 事故；
+  2. **策略取不到时按「需要加密」处理**（未知即拦，不 fail-open），
+     与发送路径对同一异常的处置方向一致；
+  3. **判据与发送路径同源**（群级 E2EE 强制 or `shouldEncryptOutgoingPayload`），
+     只用后者会漏掉「全局策略不要求、但该群开了群级 E2EE」。
+- Verification（imboyapp 侧）:
+  - `flutter test test/service/e2ee/retry_plaintext_guard_test.dart` → **All 5 tests passed**
+  - `flutter test test/service/e2ee/` → **360 passed**（上一刀 355）
+  - `flutter test test/service/` → **1240 passed**（上一刀 1235）
+  - `dart analyze lib` → 1 issue（既有 info）
+- Evidence: `evidence/E2EE-062-retry-plaintext-guard.md`
+- Residual（详见 evidence §5）:
+  1. **闸门接线未实证** —— 纯函数已实证，但「MessageRetry 真的会调它、且在发送
+     之前」缺集成测试（需 SQLite + 事件总线 + 策略状态三者同时就位）。**本刀最大验收缺口。**
+  2. 被拦下的消息会被扫描器反复捡起（**不出网、不耗流量**，仅日志重复）；
+     未动 `_scanAndRetryFailedMessages` 状态集以免扩大爆炸半径；
+  3. 滞留后 UX 无提示（PolicyGate 注释里记的「安全策略未就绪 UX 门」仍未做）；
+  4. 耗尽告警 / 运维指标缺失（服务端侧）；
+  5. 端到端未实证；单租户/全局限流未做；租约无 TTL；fallback 未验签；
+     60/min 未压测；进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  6. 真机双端未验证。
+- Next task: E2EE-062 可自动推进的部分**基本见底**——剩余残留需集成测试基建
+  （残留 1）、UX 设计（残留 3）、运维设施（残留 4）或真机（残留 6）。
+  建议按队列进第 4 项 **E2EE-064**（可撤销 device-bound session，后端 PostgreSQL schema）。
+  若要继续压 062，最小项是残留 1 的 MessageRetry 拦截集成测试。
 - Reviewer decision: Pending
