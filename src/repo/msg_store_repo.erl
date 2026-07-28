@@ -22,6 +22,7 @@
 
 %% 写入操作
 -export([stage/10]).
+-export([stage/11]).
 
 %% 删除操作
 -export([unstage/2]).
@@ -81,11 +82,42 @@ tablename() ->
     binary()
 ) ->
     {ok, term()} | {ok, term(), term()} | {error, term()}.
-stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) when
+stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
+    stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, <<>>).
+
+%% @doc 写入备份表（A2-a：带服务端验证过的发送者设备标识）
+%%
+%% 相比 stage/10 多一个 SenderDid：PFv3 接收侧 context binding 第 6 项拿
+%% 信封顶层的 `sender_did` 与受认证的 `protected_header.sender_did` 硬比对
+%% （ADR 15 §3.3）。实时投递靠 `message_ds:with_sender_device/2` 现场盖章，
+%% 离线（decrypt-on-read）路径没有「现场」——必须在 staging 落库时就存下来，
+%% 否则重连拉取的 v3 消息永久判 `context_mismatch_sender_did` 不可读。
+%%
+%% SenderDid 为 `<<>>` 时**不写该列**（保持 NULL）：空串不是设备标识，
+%% 写空串会让接收侧把「服务端没提供」误判成「设备 ID 是空串」。
+%%
+%% @param SenderDid 发送者设备 ID（取自 WebSocket 连接认证态，客户端不可伪造）
+-spec stage(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map(),
+    binary(),
+    integer(),
+    integer() | [integer()],
+    binary(),
+    binary(),
+    binary()
+) ->
+    {ok, term()} | {ok, term(), term()} | {error, term()}.
+stage(
+    Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, SenderDid
+) when
     is_integer(ToId)
 ->
     Tb = tablename(),
-    Data = #{
+    Data0 = #{
         type => Type,
         msg_id => MsgId,
         msg_type => MsgType,
@@ -102,6 +134,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
         server_ts => ServerTs,
         retry_count => 0
     },
+    Data = put_sender_did(Data0, SenderDid),
     %% 预生成 TSID
     GenId = elib_tsid:generate(msg_store),
     Data2 = Data#{id => GenId},
@@ -118,11 +151,13 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
         {error, Reason} ->
             {error, Reason}
     end;
-stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, ServerTs) when
+stage(
+    Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, ServerTs, SenderDid
+) when
     is_list(ToIdList)
 ->
     Tb = tablename(),
-    Data = #{
+    Data0 = #{
         type => Type,
         msg_id => MsgId,
         msg_type => MsgType,
@@ -139,6 +174,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, 
         server_ts => ServerTs,
         retry_count => 0
     },
+    Data = put_sender_did(Data0, SenderDid),
     %% 预生成 TSID
     GenId2 = elib_tsid:generate(msg_store),
     Data3 = Data#{id => GenId2},
@@ -156,6 +192,15 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, 
             {error, Reason}
     end.
 
+%% @private
+%% @doc 仅在设备标识非空时写该列；空值一律保持 NULL。
+%% 与 message_ds:with_sender_device/2 的「缺字段时不补空值」同一语义。
+-spec put_sender_did(map(), term()) -> map().
+put_sender_did(Data, Did) when is_binary(Did), Did =/= <<>> ->
+    Data#{sender_did => Did};
+put_sender_did(Data, _Did) ->
+    Data.
+
 %% @doc 删除备份表记录（消息成功写入正式表后调用）
 -spec unstage(binary(), binary()) -> {ok, integer()} | {error, any()}.
 unstage(Type, MsgId) ->
@@ -170,7 +215,7 @@ claim_pending(Limit, LeaseSeconds) ->
     elib_pg:with_tx(fun(Conn) ->
         Sql = <<
             "SELECT id, type, msg_id, payload, from_id, to_id, to_id_list, created_at, server_ts, retry_count, "
-            "msg_type, action, e2ee "
+            "msg_type, action, e2ee, sender_did "
             "FROM ",
             Tb/binary,
             " WHERE processed_at IS NULL ",
@@ -281,6 +326,10 @@ ensure_table_exists() ->
                 "            msg_type VARCHAR(50),\n"
                 "            action VARCHAR(50),\n"
                 "            e2ee JSONB,\n"
+                %% A2-a：发送者设备标识（PFv3 context binding #6）。本 DDL 只覆盖
+                %% 全新安装；存量部署由 priv/migrations/00000048 的 ALTER 补列——
+                %% 两处必须同步，漏一处即新老部署 schema 分叉。
+                "            sender_did VARCHAR(128),\n"
                 "            payload JSONB NOT NULL,\n"
                 "            from_id BIGINT NOT NULL,\n"
                 "            to_id BIGINT,\n"

@@ -18,6 +18,7 @@
 -export([check_and_notify_offline_msgs/1, check_and_notify_offline_msgs/2]).
 -export([inject_sender_device/2]).
 -export([stamp_sender_device/2, with_sender_device/2]).
+-export([offline_envelope/2]).
 -export([build_adm_union_sql/1]).
 
 %% ===================================================================
@@ -447,6 +448,29 @@ sent_offline_msg(_Uid, _DID, _Type, []) ->
     ok;
 sent_offline_msg(Uid, DID, Type, [Row | Tail]) ->
     ok = ?DEBUG_LOG([<<"Sending offline msg ">>, Type, <<" to Uid ">>, Uid]),
+    MsgId = maps:get(<<"id">>, Row),
+    Msg = offline_envelope(Type, Row),
+
+    ok = ?DEBUG_LOG({sent_offline_msg, MsgId, maps:get(<<"from">>, Msg, <<>>)}),
+
+    MsgJson = jsone:encode(Msg, [native_utf8]),
+    MsLi = elib_retry_config:intervals(<<"pull">>),
+    send_next(Uid, MsgId, MsgJson, MsLi, did_whitelist(DID), true),
+    sent_offline_msg(Uid, DID, Type, Tail).
+
+%% @doc 把一行离线消息（msg_c2c / msg_c2g / msg_s2c 的读取结果）组装成出站信封。
+%%
+%% 从 sent_offline_msg/4 抽出，唯一生产调用方即 sent_offline_msg/4
+%% （链路：websocket_handler → message_ds:check_and_notify_offline_msgs/2
+%% → handle_offline_msgs/5 → sent_offline_msg/4 → 本函数）。
+%% 抽成纯函数只为可测：离线信封的字段集是 PFv3 接收侧的硬依赖，
+%% 必须能在不起 syn / 不发真实 WS 帧的前提下被断言。
+%%
+%% @param Type 消息类别（<<"C2C">> / <<"C2G">> / <<"S2C">>）
+%% @param Row  数据库行（binary key map）
+%% @return 出站信封 map
+-spec offline_envelope(binary(), map()) -> map().
+offline_envelope(Type, Row) ->
     % 统一从 from_id 和 to_id 获取（确保是 integer）
     MsgId = maps:get(<<"id">>, Row),
     FromId = maps:get(<<"from_id">>, Row),
@@ -476,13 +500,14 @@ sent_offline_msg(Uid, DID, Type, [Row | Tail]) ->
         <<"created_at">> => maps:get(<<"created_at">>, Row2, CreatedAtRaw),
         <<"server_ts">> => maps:get(<<"server_ts">>, Row2, ServerTsRaw)
     }),
-
-    ok = ?DEBUG_LOG({sent_offline_msg, MsgId, FromId, ToId}),
-
-    MsgJson = jsone:encode(Msg, [native_utf8]),
-    MsLi = elib_retry_config:intervals(<<"pull">>),
-    send_next(Uid, MsgId, MsgJson, MsLi, did_whitelist(DID), true),
-    sent_offline_msg(Uid, DID, Type, Tail).
+    %% encode_websocket_message/1 是白名单，sender_did 必须在其后单独并入。
+    %% 与 with_sender_device/2 同一原则：**没有就不补**——补 <<>> 会让接收侧
+    %% 把「服务端没提供」误判成「设备 ID 是空串」，两者失败语义不同。
+    %% 旧行（迁移 48 之前落库）与非 C2C 类型的列值为 null，走此分支。
+    case maps:get(<<"sender_did">>, Row, null) of
+        Did when is_binary(Did), Did =/= <<>> -> Msg#{<<"sender_did">> => Did};
+        _ -> Msg
+    end.
 
 %% @doc 将发送者设备信息注入到消息 payload 中
 %%

@@ -9,6 +9,7 @@
 
 -export([write_msg/6]).
 -export([write_msg/8]).
+-export([write_msg/9]).
 -export([write_msg_with_reply/11]).
 -export([revoke_offline_msg/5]).
 -export([revoke_offline_msg/9]).
@@ -104,7 +105,53 @@ write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
     % 检查并清理溢出消息
     ok = check_and_delete_overflow(To),
+    %% 保持对 msg_c2c_repo:write_msg/8 的原调用形状——不要改写成
+    %% write_msg_with_sender/9 + null：既有调用方的测试按 arity 挂 meck 期望，
+    %% 换 arity 会让它们静默穿透到真实实现。
     msg_c2c_repo:write_msg(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
+
+%% @doc 存储点对点消息（A2-a：带服务端验证过的发送者设备标识）
+%%
+%% SenderDid 落 msg_c2c.sender_did 列，供离线拉取时随信封下发；
+%% PFv3 接收侧 context binding 第 6 项（ADR 15 §3.3）拿它与受认证的
+%% protected_header.sender_did 硬比对。null / <<>> 时列保持 NULL——
+%% 空串不是设备标识，不得伪造。
+%%
+%% @param SenderDid 发送者设备 ID（binary）或 null
+-spec write_msg(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary() | integer(),
+    binary(),
+    map() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE, SenderDid) when
+    is_map(Payload); is_list(Payload)
+->
+    write_msg(
+        CreatedAt,
+        Id,
+        jsone:encode(Payload, [native_utf8]),
+        From,
+        To,
+        ServerTS,
+        MsgType,
+        E2EE,
+        SenderDid
+    );
+write_msg(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE, SenderDid) ->
+    % 统一转换时间戳为 RFC3339 binary 格式（timestamptz 列需要）
+    CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
+    ServerTS2 = elib_dt:to_rfc3339(ServerTS),
+    % 检查并清理溢出消息
+    ok = check_and_delete_overflow(To),
+    msg_c2c_repo:write_msg_with_sender(
+        CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE, SenderDid
+    ).
 
 %% @doc 读取点对点消息
 %%
@@ -367,7 +414,11 @@ check_and_delete_overflow(ToUid) ->
 %% @returns list() 处理后的消息列表
 -spec read_msg_filter(binary(), integer(), list()) -> [map()].
 read_msg_filter(Where, Limit, Params) ->
-    Column = <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee">>,
+    %% sender_did（A2-a）：PFv3 接收侧 context binding 第 6 项要拿它与受认证的
+    %% protected_header.sender_did 硬比对。漏列 = 离线拉取的 v3 消息永久判
+    %% context_mismatch_sender_did 不可读。见 evidence/E2EE-A2-a-offline-sender-did.md
+    Column =
+        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
     Res = msg_c2c_repo:read_msg(Where, Column, Limit, Params),
     % ?DEBUG_LOG([Res]),
     case Res of

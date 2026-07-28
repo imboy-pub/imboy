@@ -70,7 +70,7 @@
 -export([start_link/0]).
 
 %% 备份与入队
--export([stage/10, enqueue/3, unstage/1, find_staged/1]).
+-export([stage/10, stage/11, enqueue/3, unstage/1, find_staged/1]).
 
 %% 状态查询
 -export([len/0, status/0]).
@@ -144,11 +144,65 @@ start_link() ->
     binary()
 ) -> {ok, new} | {ok, duplicate} | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
-    case
+    %% 保持对 msg_store_repo:stage/10 的原调用形状——不要改写成
+    %% stage/11 + <<>>：既有调用方的测试按 arity 挂 meck 期望，
+    %% 换 arity 会让它们静默穿透到真实实现。
+    handle_stage_result(
+        Type,
+        MsgId,
         msg_store_repo:stage(
             Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs
         )
-    of
+    ).
+
+%%-------------------------------------------------------------------
+%% @doc  备份消息到 staging 表，并持久化发送者设备标识（A2-a）
+%%
+%% 相比 stage/10 多一个 SenderDid（服务端在 WebSocket 认证态里取到的
+%% 发送方设备 ID，客户端不可伪造）。PFv3 接收侧 context binding 第 6 项
+%% （ADR 15 §3.3）需要它；实时投递现场盖章即可，**离线路径必须落库**。
+%%
+%% SenderDid 为 `<<>>` 时行为与 stage/10 完全一致（列保持 NULL）。
+%%
+%% @see stage/10
+%% @end
+%%-------------------------------------------------------------------
+-spec stage(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map(),
+    binary(),
+    integer(),
+    integer() | [integer()],
+    binary(),
+    binary(),
+    binary()
+) -> {ok, new} | {ok, duplicate} | error.
+stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, SenderDid) ->
+    handle_stage_result(
+        Type,
+        MsgId,
+        msg_store_repo:stage(
+            Type,
+            MsgId,
+            MsgType,
+            Action,
+            E2EE,
+            Payload,
+            FromId,
+            ToId,
+            CreatedAt,
+            ServerTs,
+            SenderDid
+        )
+    ).
+
+%% @private stage/10 与 stage/11 共用的落库结果归一化
+-spec handle_stage_result(binary(), binary(), term()) -> {ok, new} | {ok, duplicate} | error.
+handle_stage_result(Type, MsgId, Result) ->
+    case Result of
         {ok, _} ->
             _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
             {ok, new};

@@ -28,7 +28,9 @@ e2ee_pipeline_test_() ->
                 {"经 msg_c2c_logic:c2c/3 正常路径发送的 e2ee 消息全链路保真",
                     fun test_via_c2c_logic_survives_pipeline/0},
                 {"E2EE-060 PFv3 per-device fan-out 信封落 jsonb 后再出站线上帧逐字节保真",
-                    fun test_pfv3_fanout_survives_pipeline_and_wire/0}
+                    fun test_pfv3_fanout_survives_pipeline_and_wire/0},
+                {"A2-a sender_did 从 staging 经 worker 落 msg_c2c，并出现在离线信封顶层",
+                    fun test_sender_did_survives_pipeline_to_offline_envelope/0}
             ]};
         {error, _Reason} ->
             {"Database not available", fun() -> {skip, "Database not available"} end}
@@ -185,9 +187,89 @@ test_pfv3_fanout_survives_pipeline_and_wire() ->
     WireMap = jsone:decode(WirePayload, [{object_format, map}]),
     ?assertEqual(E2EE, maps:get(<<"e2ee">>, WireMap)).
 
+%% A2-a：离线（decrypt-on-read）路径的 sender_did 全链路。
+%%
+%% 闭合 "msg_store_ds:stage/11 → msg_store_worker → msg_c2c.sender_did →
+%% msg_c2c_ds:read_msg_for_device/4 → message_ds:offline_envelope/2" 这一整条链。
+%% 单测只能证明每个接缝的调用姿势；本用例证明**真 PostgreSQL 上真的存住并读回**。
+%%
+%% 正向可用性（不是只验拒收）：断言的是「离线信封带着正确的设备标识出来」，
+%% 且 payload / e2ee 与写入时逐字段一致——一个丢弃所有消息的实现拿不到这个分。
+test_sender_did_survives_pipeline_to_offline_envelope() ->
+    Context = get_context(),
+    User1 = maps:get(user1, Context),
+    User2 = maps:get(user2, Context),
+
+    MsgId = integer_to_binary(elib_tsid:generate()),
+    SenderDid = <<"dev-a2a-sender-01">>,
+    E2EE = #{
+        <<"meta_version">> => 3,
+        <<"protocol">> => <<"olm">>,
+        <<"fan_out">> => <<"per_device">>,
+        <<"devices">> => #{
+            <<"dev-recv-01">> => #{
+                <<"protected_header">> => <<"omh2ImlkIqJtZXNzYWdlX2lk-_Ag">>,
+                <<"header_hash">> => <<"dGVzdC1oYXNoLWEyYQ">>,
+                <<"ciphertext">> => <<"YTJhLWNpcGhlcnRleHQtc2FtcGxl-_09">>
+            }
+        }
+    },
+    Now = elib_dt:now(),
+
+    ?assertMatch(
+        {ok, _},
+        msg_store_ds:stage(
+            <<"c2c">>,
+            MsgId,
+            <<"text">>,
+            <<"message">>,
+            E2EE,
+            <<>>,
+            User1,
+            User2,
+            Now,
+            Now,
+            SenderDid
+        )
+    ),
+
+    %% 1) worker 把 staging 行搬进 msg_c2c 时不得丢字段
+    {ok, Row} = wait_for_sender_did_row(MsgId),
+    ?assertEqual(SenderDid, maps:get(<<"sender_did">>, Row)),
+
+    %% 2) 离线读取列集必须把它读出来（read_msg_filter/3 的 Column）
+    Rows = msg_c2c_ds:read_msg_for_device(User2, <<"dev-recv-01">>, 50, undefined),
+    [OfflineRow] = [R || R <- Rows, maps:get(<<"msg_id">>, R, <<>>) =:= MsgId],
+    ?assertEqual(SenderDid, maps:get(<<"sender_did">>, OfflineRow)),
+
+    %% 3) 出站离线信封顶层带上它——这正是接收侧 context binding #6 要读的位置
+    Envelope = message_ds:offline_envelope(<<"C2C">>, OfflineRow),
+    ?assertEqual(SenderDid, maps:get(<<"sender_did">>, Envelope)),
+    %% 正向可用性：信封的 e2ee 与写入时完全一致（E2EE-060 不透明透传）
+    ?assertEqual(E2EE, maps:get(<<"e2ee">>, Envelope)).
+
 %% ===================================================================
 %% 辅助函数
 %% ===================================================================
+
+%% 轮询正式表直到 worker 落库；额外选 sender_did 列
+wait_for_sender_did_row(MsgId) ->
+    wait_for_sender_did_row(MsgId, 100).
+
+wait_for_sender_did_row(_MsgId, 0) ->
+    error(final_row_not_ready);
+wait_for_sender_did_row(MsgId, AttemptsLeft) ->
+    Tb = msg_c2c_repo:tablename(),
+    Sql = <<"SELECT payload, e2ee, sender_did FROM ", Tb/binary, " WHERE msg_id = $1 LIMIT 1">>,
+    case elib_pg:query(Sql, [MsgId]) of
+        {ok, [Row | _]} ->
+            {ok, Row};
+        {ok, []} ->
+            timer:sleep(50),
+            wait_for_sender_did_row(MsgId, AttemptsLeft - 1);
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 get_context() ->
     persistent_term:get({?MODULE, test_context}).

@@ -211,7 +211,12 @@ do_write(c2c, Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
-    Res = msg_c2c_ds:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE),
+    %% A2-a：把 staging 行里的发送者设备标识搬进正式表；离线拉取时
+    %% PFv3 context binding 第 6 项要用（漏搬 = 静默丢字段，不会报错）
+    SenderDid = maps:get(<<"sender_did">>, Row, null),
+    Res = msg_c2c_ds:write_msg(
+        CreatedAt, MsgId, PayloadBin, FromId, ToId, ServerTs, MsgType, E2EE, SenderDid
+    ),
     %% 【P0-1】ACK 先于落库竞态：落库后若该消息已被全部活跃设备确认则立即清理
     ok = msg_operation_ds:maybe_clean_delivered(c2c, MsgId, ToId),
     Res;

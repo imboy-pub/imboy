@@ -21,8 +21,11 @@ last_updated: 2026-07-28
 # 后端把 sender_did 注入 payload 内部，而 v3 的 payload 恒为空串 → 注入不发生
 # → 接收侧 context binding #6 必然失配 → 生产 C2C v3 消息 100% 不可读。
 # 实时投递路径已修（message_ds:stamp_sender_device/2 盖信封顶层）；
-# **离线拉取路径未修，需 DB 迁移**（msg_c2c 表无设备列）——见
-# evidence/E2EE-012-024-025-029-reacceptance.md §6.1。
+# 离线拉取路径的**后端半边**已于 2026-07-28 修复（A2-a：迁移 48 + staging/msg_c2c
+# 双表 sender_did 列 + 六接缝贯通，真 PostgreSQL 端到端已实证，见
+# evidence/E2EE-A2-a-offline-sender-did.md）。
+# ⚠️ 但离线 v3 消息**仍不可读**：客户端 decrypt-on-read 尚未接线（A2-b），
+# 见 evidence/E2EE-012-024-025-029-reacceptance.md §6.1.2。
 # E2EE-023 经人工裁定维持 PASS；其余四项状态标记仍未擅改。
 release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
@@ -50,8 +53,8 @@ overall_status: IN_PROGRESS
 
 | # | 任务 | 依赖 | 关键约束 |
 |---|---|---|---|
-| 1 | **A2-a** 后端 `sender_did` 持久化 | — | 迁移序号 **48**；须**同时**改 `ALTER TABLE IF EXISTS ... ADD COLUMN IF NOT EXISTS`（存量部署）与 `msg_store_repo:ensure_table_exists/0` 的 DDL（全新安装），漏一处即新老部署 schema 分叉；`msg_store_repo/ds:stage/10` 扩参波及全部调用方；`msg_c2c_ds:read_msg_filter/3` 列集同步；**不存** `sender_dtype`。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.3 |
-| 2 | **A2-b** 客户端 decrypt-on-read v3 接线 | A2-a | 接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见同文件 §6.1.2 |
+| 1 | ~~**A2-a** 后端 `sender_did` 持久化~~ | — | ✅ **DONE**（2026-07-28 会话 20260728-1730）。迁移 48 + staging/msg_c2c 双表加列 + 六接缝贯通；真 PostgreSQL 端到端已实证。证据：`evidence/E2EE-A2-a-offline-sender-did.md`。⚠️ 教训：`stage/10`、`write_msg/8` **必须保留原调用形状**，改成「新 arity + 默认值」会让按 arity 挂 meck 期望的既有测试静默穿透（实证回归 6 例） |
+| 2 | **A2-b** 客户端 decrypt-on-read v3 接线 | A2-a ✅ | **下一件**。接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
 | 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | 后端为主 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
@@ -1204,4 +1207,57 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
 - Verification: `flutter test test/service/e2ee/` → **335 passed**（上一条日志 332）；
   `dart analyze lib` → 1 条既有 info
 - Evidence: `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2
+- Reviewer decision: Pending
+
+### Session 2026-07-28 17:30 — A2-a（离线路径 sender_did 持久化）
+
+- Session ID: 20260728-1730-claude-code
+- Repository: imboy
+- Before HEAD: b967e36e
+- Status: **PASS**（后端持久化闭环；离线 v3 可读性仍待 A2-b）
+- Changed files:
+  - `priv/migrations/00000048_msg_sender_did.up.sql`（新增）
+  - `priv/migrations/00000048_msg_sender_did.down.sql`（新增）
+  - `src/repo/msg_store_repo.erl`（`stage/11`、`claim_pending` 列集、`ensure_table_exists` DDL、`put_sender_did/2`）
+  - `src/ds/msg_store_ds.erl`（`stage/11`、`handle_stage_result/3`）
+  - `src/ds/msg_store_worker.erl`（`do_write(c2c, _)` 搬运该列）
+  - `src/repo/msg_c2c_repo.erl`（`write_msg_with_sender/9`、`null_if_empty/1`）
+  - `src/ds/msg_c2c_ds.erl`（`write_msg/9`、`read_msg_filter/3` 列集）
+  - `src/ds/message_ds.erl`（抽出 `offline_envelope/2` 并并入 `sender_did`）
+  - `src/logic/msg_c2c_logic.erl`（从 `Data` 取 `sender_did`，传入 4 处 stage）
+  - `Makefile`（新测试模块入 e2ee-verify 清单）
+- Tests added:
+  - `test/ds/e2ee_offline_sender_did_tests.erl`（12 例，已入门禁清单）
+  - `test/integration/e2ee_message_pipeline_integration_tests.erl`
+    新增 `test_sender_did_survives_pipeline_to_offline_envelope/0`（真 PostgreSQL）
+- RED 记录：
+  - 第一次 8 红/4 绿 → 其中 2 红是 harness 缺陷（`elib_tsid` 未注册），
+    按纪律停下修 harness，未继续钻；
+  - 修完 harness 后 6 红/6 绿 = 6 个真实断点（5 例行为失败 + 1 例 `undef`）；
+  - 4 绿对照组（含正向可用性 `payload`/`e2ee` 逐字段透传）改前改后恒绿 → harness 有效。
+- Verification commands / result:
+  - `make e2ee-verify` → **All 304 tests passed**（基线 292，+12 全为新增）
+  - `IMBOYENV=local make eunit t=e2ee_message_pipeline_integration_tests …` → **All 4 tests passed**（真 PostgreSQL）
+  - 直连 PG 核实：`schema_migrations` 最高版本 = 48；`msg_c2c` / `msg_store_staging`
+    及全部 TimescaleDB chunk 均已有 `sender_did varchar(128)`
+  - 回归：`msg_store_ds_tests` 13/13、`msg_c2c_ds_tests` 21/21、
+    `msg_store_repo_tests` 32/32、`message_ds_tests` 10/10
+  - `git diff --check` 通过；`erlfmt --check` 全部改动文件通过
+- **预存基线失败（非本次引入，未删未 skip）**：
+  `msg_c2c_repo_tests` 2 例（`read_msg/3` 早已从公共 API 移除，测试未同步）；
+  `msg_reply_integration_tests` 1 例（断言 `ok`，生产设计行为是 `{reply, msg_not_found}`）
+- Evidence: `evidence/E2EE-A2-a-offline-sender-did.md`
+- Residual risks:
+  1. **离线 v3 消息仍不可读** —— 缺 A2-b 客户端接线，本 Slice 是必要非充分条件；
+  2. 引用回复路径两个写点 `created_at`/`server_ts` 互换 → 可能落两行，
+     其中 `write_msg_with_reply` 那行无 `sender_did`（**文件级阅读结论，未实证**）；
+  3. `sender_dtype` 按既定裁决不持久化；
+  4. `msg_archive_repo:archive/1` 未同步（**未实证**）；
+  5. C2G 未覆盖（当前走 Megolm v2，不受影响）；
+  6. 真机双端始终未验证；
+  7. 迁移 48 之前的旧行 `sender_did` 为 NULL，积压的离线 v3 消息永久不可读。
+- ⚠️ 供后续会话的教训：`stage/10` / `write_msg/8` **必须保留原调用形状**。
+  第一版把旧 arity 委托给新 arity，导致 6 例既有测试（按 arity 挂 meck 期望）
+  静默穿透到真实实现而回归。已改为两条 arity 各自直调、共用结果归一化函数。
+- Next task: **A2-b** 客户端 decrypt-on-read v3 接线（队列第 2 项）
 - Reviewer decision: Pending

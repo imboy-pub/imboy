@@ -11,6 +11,7 @@
 -export([find_msg_by_id/1]).
 -export([write_msg/8]).
 -export([write_msg/9]).
+-export([write_msg_with_sender/9]).
 -export([write_msg_if_absent/8]).
 -export([write_msg_with_reply/11]).
 -export([delete_msg/1]).
@@ -95,6 +96,23 @@ read_msg(Where, Column, Limit, Params) ->
     binary(), binary(), binary(), integer(), integer(), binary(), binary(), map() | null
 ) -> ok | {error, term()}.
 write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
+    write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, null).
+
+%% @doc 写入C2C离线消息（A2-a：带发送者设备标识）
+%% @param SenderDid 发送者设备ID（binary）或 null；null/<<>> 时列保持 NULL
+%% @see write_msg/8
+-spec write_msg_with_sender(
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    map() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, SenderDid) ->
     %% from_id 和 to_id 是 bigint 类型，必须传入 integer
     Tb = tablename(),
     E2EEValue =
@@ -113,18 +131,32 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE) ->
     Sql = [
         <<"INSERT INTO ">>,
         Tb,
-        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee)">>,
-        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)">>,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did)">>,
+        <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
         elib_pg:query(Sql, [
-            GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue
+            GenId,
+            Payload,
+            FromId,
+            ToId,
+            CreatedAt,
+            ServerTS,
+            Id,
+            MsgType,
+            E2EEValue,
+            null_if_empty(SenderDid)
         ])
     of
         {ok, _Rows} -> ok;
         {error, Reason} -> {error, Reason}
     end.
+
+%% @private 空串不是设备标识，一律写 NULL（与 msg_store_repo:put_sender_did/2 同语义）
+-spec null_if_empty(term()) -> binary() | null.
+null_if_empty(Bin) when is_binary(Bin), Bin =/= <<>> -> Bin;
+null_if_empty(_) -> null.
 
 %% @doc 写入C2C离线消息（按 (msg_id, to_id) 判重，MSG-P2-2）
 %% 撤回/已读等旁路写点绕开 staging 幂等层，重试时 created_at 不同会绕过

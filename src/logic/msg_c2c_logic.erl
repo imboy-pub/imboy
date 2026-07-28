@@ -196,6 +196,13 @@ stage_and_send_c2c(
     % T1.2：构建决策退化为外壳调用 message_policy:encode_payload/1
     PayloadJson = message_policy:encode_payload(Payload),
 
+    %% A2-a：服务端验证过的发送者设备标识（websocket_handler 已用
+    %% websocket_logic:stamp_sender_device/2 盖进 Data 顶层，客户端不可伪造）。
+    %% 实时投递靠下面的 with_sender_device/2 现场带上；**离线路径没有现场**，
+    %% 必须在 staging 落库时存下来，否则重连拉取的 v3 消息永久判
+    %% context_mismatch_sender_did 不可读。缺失时为 <<>>，落库列保持 NULL。
+    SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
+
     %% 部署级 E2EE fail-closed 门（与 msg_c2g_logic:do_send_c2g 同一入口范式）：
     %% e2ee_mode=required/compliance 或 storage_mode=*_e2ee 的部署拒收明文内容消息。
     %% 明文判定在 imboy_policy:encrypted_message_body/3——顶层 e2ee 为非空 map 且
@@ -228,7 +235,8 @@ stage_and_send_c2c(
                             CurrentUid,
                             ToId,
                             CreatedAtRfc,
-                            NowTs
+                            NowTs,
+                            SenderDid
                         );
                     {reply, _, _, _} ->
                         % 有引用信息，需要先验证被引用的消息是否存在
@@ -244,7 +252,8 @@ stage_and_send_c2c(
                                     CurrentUid,
                                     ToId,
                                     CreatedAtRfc,
-                                    NowTs
+                                    NowTs,
+                                    SenderDid
                                 );
                             {error, not_found} ->
                                 % 被引用的消息不存在，直接返回错误 reply（不使用 self() ! 副作用）
@@ -265,7 +274,8 @@ stage_and_send_c2c(
                                     CurrentUid,
                                     ToId,
                                     CreatedAtRfc,
-                                    NowTs
+                                    NowTs,
+                                    SenderDid
                                 );
                             Other ->
                                 ok = ?ERROR_LOG(
@@ -282,7 +292,8 @@ stage_and_send_c2c(
                                     CurrentUid,
                                     ToId,
                                     CreatedAtRfc,
-                                    NowTs
+                                    NowTs,
+                                    SenderDid
                                 )
                         end
                 end,
