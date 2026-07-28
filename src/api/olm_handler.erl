@@ -13,6 +13,7 @@
 -export([device_write_decision/2]).
 
 -include("common.hrl").
+-include("log.hrl").
 -include("error_code.hrl").
 
 %% one-time keys 单次上报上限（与 logic 层 ?MAX_OTK_PER_REPORT 对齐）
@@ -277,9 +278,13 @@ do_batch_claim1(Req0, CurrentUid) ->
     TargetUidEnc = maps:get(<<"target_uid">>, PostVals, <<"">>),
     TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),
     DeviceIds = normalize_device_ids(maps:get(<<"device_ids">>, PostVals, [])),
+    %% E2EE-062 续：同一条抽干路径（一次请求多设备），目标级限流不得漏
+    TargetLimited = target_rate_limited(TargetUid),
     case is_integer(TargetUid) andalso TargetUid > 0 andalso DeviceIds =/= [] of
         false ->
             elib_response:error(Req0, <<"bad_request">>, 400);
+        true when TargetLimited ->
+            elib_response:error(Req0, <<"rate_limited">>, 429);
         true ->
             case olm_identity_logic:batch_claim_keys(CurrentUid, TargetUid, DeviceIds) of
                 {ok, Payload} ->
@@ -321,9 +326,14 @@ do_claim_key1(Req0, CurrentUid) ->
     TargetUidEnc = maps:get(<<"target_uid">>, PostVals, <<"">>),
     TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),
     DeviceId = maps:get(<<"device_id">>, PostVals, <<>>),
+    %% E2EE-062 续：目标级抗耗尽限流。在参数校验**之后**才计入配额——
+    %% 非法 target_uid 不得消耗目标的预算，否则畸形请求即可把合法用户挡在门外。
+    TargetLimited = target_rate_limited(TargetUid),
     case is_integer(TargetUid) andalso TargetUid > 0 andalso byte_size(DeviceId) > 0 of
         false ->
             elib_response:error(Req0, <<"bad_request">>, 400);
+        true when TargetLimited ->
+            elib_response:error(Req0, <<"rate_limited">>, 429);
         true ->
             %% E2EE-062：幂等租约键（可选）。同一领取方重放同一 request_id
             %% 只消费一条 OTK；缺省 <<>> 时保持旧的逐次消费语义（旧客户端零破坏）。
@@ -424,3 +434,37 @@ normalize_request_id(Bin) when is_binary(Bin), byte_size(Bin) > 0, byte_size(Bin
     end;
 normalize_request_id(_) ->
     <<>>.
+
+%% @private E2EE-062 续：**目标级**抗耗尽限流。
+%%
+%%  per-claimant 那一层（`throttle:check(olm_claim, CurrentUid)`）的键是
+%%  **领取方**，与被抽干的**目标**无关——换个账号就绕过。幂等租约也只挡
+%%  「同一个 request_id 重放」，挡不住「每次换新 request_id」。
+%%  因此必须再加一层以**目标 uid** 为键的限流，否则：
+%%    - N 个协同账号，每个都在自己的 30/min 之内；
+%%    - 或单账号每次换新 request_id；
+%%  都能把同一个用户的 OTK 池抽干，把其所有新会话逼到复用同一条
+%%  fallback prekey（前向保密显著下降）。
+%%
+%%  ponytail: 只做单目标一层；playbook 还要求单租户 / 全局两层。
+%%    单机部署下「单租户」与「全局」等价，且全局面更应由网关承担；
+%%    等真有多租户部署或压测暴露出全局面时再加，届时在本函数内扩展。
+%%  ⚠️ 已实证：`throttle:check/2` 遇到**未注册的 scope** 返回原子
+%%  `rate_not_set`（不崩），会被 `_ -> false` 当成「未超限」静默放行——
+%%  也就是说配置漂移（sys.config 少了这条 scope）会让整道限流**无声消失**。
+%%  这里显式识别该原子并打 ERROR 日志，让配置错误可见。
+%%  不改成 fail-closed：scope 缺失是配置错误而非攻击，拒掉全部 claim 会让
+%%  整个 E2EE 建会话不可用，代价远大于「限流暂时失效」。
+-spec target_rate_limited(term()) -> boolean().
+target_rate_limited(TargetUid) when is_integer(TargetUid), TargetUid > 0 ->
+    case throttle:check(olm_claim_target, TargetUid) of
+        {limit_exceeded, _, _} ->
+            true;
+        rate_not_set ->
+            _ = ?ERROR_LOG({olm_claim_target_scope_missing, olm_claim_target}),
+            false;
+        _ ->
+            false
+    end;
+target_rate_limited(_) ->
+    false.

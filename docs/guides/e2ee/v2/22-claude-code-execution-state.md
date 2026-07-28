@@ -58,7 +58,7 @@ overall_status: IN_PROGRESS
 |---|---|---|---|
 | 1 | ~~**A2-a** 后端 `sender_did` 持久化~~ | — | ✅ **DONE**（2026-07-28 会话 20260728-1730）。迁移 48 + staging/msg_c2c 双表加列 + 六接缝贯通；真 PostgreSQL 端到端已实证。证据：`evidence/E2EE-A2-a-offline-sender-did.md`。⚠️ 教训：`stage/10`、`write_msg/8` **必须保留原调用形状**，改成「新 arity + 默认值」会让按 arity 挂 meck 期望的既有测试静默穿透（实证回归 6 例） |
 | 2 | ~~**A2-b** 客户端 decrypt-on-read v3 接线~~ | A2-a ✅ | ✅ **DONE**（2026-07-28 会话 20260728-1810）。SQLite v25 加 `msg_c2c.sender_did` + `toTypeMessage()` 经 `decryptInboundV3` 分流；结构守护断言已反转，正向可用性用例已补。证据：`evidence/E2EE-A2-b-decrypt-on-read-v3.md`。⚠️ 真机仍未验证；迁移前旧离线行永久不可读（fail-closed 设计选择）。原文：接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
-| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**未做（本项仍未完成，下次接着做）**：① per-target 限流——现只有 per-claimant，N 个账号协同仍可定向耗尽同一目标；② `batch_claim` 未接幂等；③ fallback 未验签；④ 客户端未发送 `request_id`，**生产流量一条也走不到幂等路径**。证据：`evidence/E2EE-062-otk-claim-idempotent-lease.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
+| 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 314）——见 `evidence/E2EE-062-per-target-throttle.md`。**未做（本项仍未完成，下次接着做）**：① 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑤ **低水位补传与耗尽告警**——这是「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立，是最重要的配套缺口；② `batch_claim` 未接幂等；③ fallback 未验签；④ 客户端未发送 `request_id`，**生产流量一条也走不到幂等路径**。证据：`evidence/E2EE-062-otk-claim-idempotent-lease.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | 后端 PostgreSQL schema |
 | 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | 大件：**先只产出设计与切片计划**，不实施；实施需人工确认 |
 | 6 | **E2EE-065/066** Key Transparency | — | 最大件：**只产出调研与设计文档**，不改任何生产代码 |
@@ -1369,4 +1369,48 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
 - Evidence: `evidence/E2EE-062-otk-claim-idempotent-lease.md`
 - Next task: **E2EE-062 续**（per-target 限流 + batch_claim 幂等），
   完成后再进队列第 4 项 **E2EE-064**
+- Reviewer decision: Pending
+
+### Session 2026-07-28 20:20 — E2EE-062 续（OTK claim 目标级限流）
+
+- Session ID: 20260728-2020-claude-code
+- Repository: imboy
+- Before HEAD: f33e57e3
+- Status: 本刀完成；**E2EE-062 整体仍 PARTIAL**
+- Changed files:
+  - `src/api/olm_handler.erl`（`do_claim_key1/2` + `do_batch_claim1/2` 加目标层门；
+    新增 `target_rate_limited/1`）
+  - `config/sys.config`（`{olm_claim_target, 60, per_minute}`）
+  - `config/sys.local.config`（`{olm_claim_target, 120, per_minute}`）
+  - `Makefile`（新单测模块入 e2ee-verify 清单）
+- Tests added:
+  - `test/api/e2ee_otk_target_throttle_tests.erl`（5 例，已入门禁清单）
+- RED 记录：`Failed: 4, Passed: 1`。4 红 = 从未按目标 uid 限流 + 目标层超限仍到达
+  logic（耗尽向量逐字复现）；1 绿 = 对照组（per-claimant 层今天就生效、改后必须仍生效）。
+  关键用例的 mock **让 per-claimant 层显式返回 ok**，建模「N 个协同账号各自都在配额内」。
+  两条 scope 用例同时断言 `{responded, success}` —— 正向可用性，否掉「一律 429」的作弊实现。
+- Verification:
+  - `make e2ee-verify` → **All 315 tests passed**（上一轮 309）
+  - `IMBOYENV=local make eunit t=e2ee_otk_claim_idempotency_integration_tests …`
+    → 应用带新 scope 正常启动 + **All 5 tests passed**（scope 落地已实证）
+  - `git diff --check` / `erlfmt --check` 通过
+- Residual（详见 `evidence/E2EE-062-per-target-throttle.md` §5）:
+  1. 单租户/全局两层限流未做（有意识缺口）；
+  2. `batch_claim` 仍未接幂等租约（未实证）；
+  3. 租约无独立 TTL；
+  4. fallback prekey 未验签（未实证）；
+  5. 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；
+  6. **低水位补传与耗尽告警缺失** —— 这是「限流只拖慢、靠补传恢复」的前提，
+     目前前提不成立，是最重要的配套缺口；
+  7. 客户端未发送 `request_id`；
+  8. 60/min 阈值未压测校准（推理值）；
+  9. **实证发现（本轮意外收获）**：`throttle:check/2` 遇未注册 scope 返回原子
+     `rate_not_set` 而非崩溃，朴素写法会把它当「未超限」**静默放行**——
+     配置少一条 scope，整道限流无声消失。目标层已显式识别 + ERROR 日志；
+     **`olm_claim`（per-claimant）那道门仍是朴素写法，同样会静默失效，未修**；
+  10. `config/sys.local.config` 是 gitignored，本地配置漂移不受版本控制约束；
+  11. 真机未验证。
+- Evidence: `evidence/E2EE-062-per-target-throttle.md`
+- Next task: **E2EE-062 第三刀** = `batch_claim` 幂等（残留 2），
+  之后按队列进第 4 项 **E2EE-064**
 - Reviewer decision: Pending
