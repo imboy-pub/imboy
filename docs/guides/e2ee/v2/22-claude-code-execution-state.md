@@ -11,10 +11,11 @@
 state_version: 1
 last_updated: 2026-07-28
 # ⚠️ 读本文件前必看：evidence/E2EE-v3-receive-path-not-wired.md
-# PFv3 接收侧（verifyOuterEnvelope / _validateContextBinding / _decryptV3Payload）
-# 在生产 WS 路径上**完全未接线**：message.dart::_handleE2EEMessage 走的是
-# decryptE2EEMessage，不做任何 PFv3 校验，且 v3 消息因外层 payload 为空
-# 在第一步即以 empty_payload 失败。E2EE-012/023/024/025/029 的 PASS 均受此影响。
+# PFv3 接收侧此前在生产 WS 路径上**完全未接线**（v3 消息被静默丢弃）。
+# 已于 2026-07-28 接线：新增 E2EEService.decryptInboundV3 纯函数作为 v3 唯一
+# 进入点，_receiveMessage / _handleE2EEMessage 两处放行+分流。
+# ⚠️ 但 E2EE-012/023/024/025/029 的 PASS 仍受影响——它们的验收全部建立在
+# 一条生产不走的旁路上，需按新边界重新验收；且真机双端始终未验证。
 release_track: PREVIEW
 current_gate: G1_P0_CLOSURE
 current_batch: B10

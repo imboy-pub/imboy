@@ -148,9 +148,68 @@ return E2eeCiphertext('', envelope);
 
 ---
 
-## 7. 本次改动
+## 7. 接线（已实施）
 
-无代码改动。本文件为诊断记录。
+采用「把解密从 `_receiveMessage` 副作用链中解耦」的方向，最小落地：
+
+### 7.1 新增可测边界
+
+`E2EEService.decryptInboundV3(data)` —— **纯函数**，无 DB / 事件 / provider 副作用。
+返回 `null` 表示「非 v3，调用方继续走既有 v1/v2 路径」。
+
+它与此前被测的 `decryptIncomingPayload` 有本质区别：
+**它是生产路径实际调用的入口**，而不是一条生产不走的旁路。
+
+### 7.2 两处放行 + 分流
+
+| 位置 | 改动 |
+|---|---|
+| `message.dart::_receiveMessage` | `if (payloadRaw.isEmpty) return;` 改为**仅对非 v3 生效**——此前正是这行让每条 v3 消息被静默丢弃 |
+| `message.dart::_handleE2EEMessage` | 第 0 步调用 `decryptInboundV3`；命中即返回（成功返回明文，失败返回带 `_e2ee_reason` 的占位），未命中则继续既有 v1/v2 路径 |
+
+v1/v2 路径**未改动**，其错误分类（含 `No key found for device` 的精确判定）
+原样保留，避免误伤既有行为。
+
+### 7.3 验收
+
+```
+$ flutter test test/service/e2ee/v3_receive_path_e2e_test.dart
+  All tests passed!   (4)
+    - v3 fan-out 消息必须被识别并解出明文
+    - 非 v3 信封必须返回 null，交回 v1/v2 路径（不得撞 invalid_keys）
+    - 无 e2ee 的明文消息必须返回 null
+    - v3 信封损坏必须返回失败分类（no_device_envelope），不得静默丢弃
+
+$ flutter test test/service/e2ee/     → 321 passed 0 failed 0 skipped（此前 317）
+$ flutter test test/service/          → 1201 passed
+$ dart analyze lib                    → 基线（1 条既有 info）
+```
+
+### 7.4 仍未闭合
+
+1. **「`_handleE2EEMessage` 确实委托给 `decryptInboundV3`」目前靠代码审查保证，
+   无自动化断言。** 真正的端到端门仍待建。
+2. 端到端 harness 尝试失败的记录见 §7.5，其暴露的架构问题未解决。
+3. **真机双端未验证**——本会话所有 E2EE 修复（session_ref / message_id /
+   message_type / counter 语义 / 本次接线）都只在单测层证明。
+
+### 7.5 端到端 harness 尝试失败的记录（保留以免重复踩）
+
+试过从 `MessageService.processMessage` 端到端验证，失败：
+
+- ✅ `processMessage` 能在测试宿主跑起来；
+- ✅ 协议重复注册（`already registered: olm`）可解——先
+  `E2eeBootstrap.ensureRegistered()` 置位再 `resetForTest()` 换入假协议；
+- ❌ `contact.account_type` 缺列：内嵌基线 DDL 是 v16，当前 schema 是 v24，
+  而 `MigrationService.migrate` 在 in-memory 库上未生效（疑与快照/文件路径
+  依赖有关，未深查）；
+- ⚠️ `_providerContainer` 未初始化（已被生产代码 catch）。
+
+**暴露的架构问题**：`_receiveMessage` 把 E2EE 解密与 contact 仓储、会话
+provider、通知等**与 E2EE 无关**的依赖耦合在一条链上，导致「从生产入口
+验证解密」代价极高。这正是此前所有验收都退到内部方法上测的根本原因——
+那条路好测，但生产不走。本次接线把解密抽成纯函数是朝正确方向走了一步，
+但副作用链本身未解耦。
 
 需要修正的既有文档（已在 §1 声明，原文件保留以存证）：
 `evidence/E2EE-025-production-wiring-finding.md`、
