@@ -2459,3 +2459,68 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
   人工优先事项不变。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 15:00 — E2EE-062：fallback key 轮换评估
+
+- Session ID: 20260729-1500-claude-code
+- Repository: imboyapp
+- Status: 评估完成，**结论=是缺口，需实施周期轮换**；**实施未做**。E2EE-062 仍 `PARTIAL`
+- **本刀不改任何生产代码**（`git diff --stat lib/` 无输出）
+- Changed files:
+  - `test/service/e2ee/fallback_key_rotation_characterization_test.dart`（新，4 例）
+- 方法：**读文档只能形成假设**（本项目已多次被实证推翻），故用**真 vodozemac 账号**
+  做特征测试，把库行为钉死后再下结论。
+- **实证结果（4/4）**：
+  | 问题 | 结果 |
+  |---|---|
+  | 对照组：新账号生成前空 / 生成后 1 把 | 成立（红了说明没在测轮换） |
+  | `markKeysAsPublished()` 后 `fallbackKey` | **变空**——文档里 "unpublished" 是字面意思；
+    生产代码 `if (fbKey.isNotEmpty)` 的分支条件依赖于此 |
+  | 再次 `generateFallbackKey()` | **换出新 keyid**，确实是轮换而非幂等空操作 |
+  | 轮换后用**旧** fallback key 建的会话 | **仍可解密**——旧私钥被保留 |
+  末条两层含义：轮换是**安全**的（在途 pre-key 消息不丢）；
+  且**不调 `forgetFallbackKey()` 就意味着旧私钥一直留在 pickle 里**。
+- ⚠️ **评估结论：是缺口。** vodozemac 保留 current+previous 两把私钥，而我们**只在登录
+  时轮换** → **长期不登出的会话，其 fallback key 永不被替换**。
+  这与前几刀**互相咬合**：整个系列都在处理「OTK 会被耗尽」，而耗尽的结果就是
+  **所有新会话改用 fallback key**。攻击者可先抽干 OTK 池（前几刀让这件事变慢、
+  可观测，但**没有变成不可能**），迫使此后所有新会话走那把**可能已存在数月**的 key，
+  一旦拿到该私钥即可**回溯性**解开这期间通过它建立的每一条会话。
+- **严重程度的诚实界定**：不是"立刻可利用"（前提是拿到存放于加密 pickle 的私钥），
+  但**是一个放大器**——把「单点私钥泄漏」放大成「一段**无上界**时间内全部 fallback
+  会话泄漏」。
+- **为什么现在才发现**：前几刀注意力都在「耗尽路径能不能被拖慢/被看见/不被降级」，
+  默认了「回退到 fallback 是安全兜底」。本刀检查的是**兜底本身的时效性**——
+  防御链上游做完功课后才暴露出来的问题。
+- **触发点必须先定**（实施的真正难点）：现在唯一触发是登录，而"长期不登录"正是问题
+  本身。倾向**挂到 `_refillOneTimeKeys`**——它在每次入站建会话后都会跑，活跃用户
+  天然触发，**无需引入调度器**；其余候选（应用启动 / 定时器）分别漏掉长期不重启的
+  设备、或需要新的调度基建。无论哪种都需**持久化上次轮换时间**，并定义宽限期后才调
+  `forgetFallbackKey()`——**过早遗忘会丢在途消息**（已实证）。
+- **未实施的理由**：需同时定下「触发点 + 轮换周期 + 遗忘宽限期 + 时间戳持久化」四项，
+  且触发点选择会改变 `_refillOneTimeKeys` 的职责边界。按「一轮一件、宁可多跑几轮」
+  拆成下一刀更稳。**在实施前缺口仍然存在。**
+- Verification（imboyapp 侧）:
+  - `flutter test .../fallback_key_rotation_characterization_test.dart` → **All 4 passed**
+  - `flutter test test/service/e2ee/` → **381 passed**（上一刀 377）
+  - `flutter test test/service/` → **1261 passed**（上一刀 1257）
+  - `dart analyze lib` → 1 issue（既有 info）
+  - `git diff --stat lib/` → 无输出；imboy 侧未改动，`make e2ee-verify` 不适用
+- Evidence: `evidence/E2EE-062-fallback-rotation-assessment.md`
+- Residual（E2EE-062 仍 PARTIAL）:
+  1. **⚠️ fallback key 轮换未实施**（本刀只确认缺口）；
+  2. **`forgetFallbackKey()` 从未被调用**，旧私钥长期留在 pickle（与 1 同刀处理）；
+  3. 服务端 fallback 签名仍非必填；客户端 fallback 只覆盖注册/登录路径；
+  4. `report_identity` 每次登录无条件上报；其 signature 只校验非空、未验证；
+  5. 告警规则未做；`/metrics` 输出未实证；
+  6. 被拦下的重发行仍被扫描器每轮捡起（不写库、不出网）；滞留后 UX 无提示；
+  7. 幂等/补传链路端到端未实证；单租户/全局限流未做；租约无 TTL；60/min 未压测；
+     进程重启后重投仍消费新 OTK；客户端无 batch_claim 调用方；
+  8. 真机双端未验证。
+- **Next task**：**实施 fallback key 周期轮换**（残留 1+2）——
+  触发点挂 `_refillOneTimeKeys`、持久化上次轮换时间、宽限期后 `forgetFallbackKey()`。
+  设计要点已在 `evidence/E2EE-062-fallback-rotation-assessment.md` §3 写清，
+  库语义已由本刀的特征测试钉死，可直接开工。
+  队列其余项不变：第 4 项 BLOCKED；第 5/6 项设计已出、实施需人工放行。
+  人工优先事项不变。
+- Reviewer decision: Pending
