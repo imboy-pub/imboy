@@ -1,5 +1,14 @@
 # E2EE-025 —— 生产 wiring 实证：C2C Olm v3 消息在接收侧被整条拒绝
 
+> ⚠️ **本文件的因果判断已被后续实证纠正**，见
+> [`E2EE-v3-receive-path-not-wired.md`](./E2EE-v3-receive-path-not-wired.md)。
+> 下文所述 `context_mismatch_session_id` 是在 `E2EEService.decryptIncomingPayload`
+> 上观察到的，而**生产 WS 接收路径不调用该方法**——真实断点在更前面
+> （`message.dart::_handleE2EEMessage` 因 v3 外层 payload 为空，
+> 第一步即返回 `empty_payload`）。
+> 结论方向不变（生产 v3 链路是断的），但断点位置与机制以纠正文件为准。
+> 本文件保留原文以存证。
+
 - **会话**：`20260728-1141-claude-code`
 - **性质**：**已确认的 P0 生产缺陷**（实证复现，非静态推断）
 - **状态**：缺陷已锁定并留有失败守护测试；**修复未实施**（等待人工拍板，见 §5）

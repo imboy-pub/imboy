@@ -1,5 +1,12 @@
 # E2EE-012 / E2EE-024 复核 —— 两项 `PASS` 判定均不成立
 
+> ⚠️ **补充纠正**：见
+> [`E2EE-v3-receive-path-not-wired.md`](./E2EE-v3-receive-path-not-wired.md)。
+> 本文件 §2 所述 `context_mismatch_id` / `context_mismatch_msg_type` 是在
+> `decryptIncomingPayload` 上观察到的，而**生产 WS 接收路径不调用该方法**。
+> 结论（两项 PASS 不成立）不变且更强：验收对象整体在生产 WS 路径上未接线。
+> §5 的修复仍然必要（接线的前置条件），但在接线前不产生运行时效果。
+
 - **会话**：`20260728-1141-claude-code`
 - **触发**：E2EE-025 诊断发现「测试内手工对齐 sessionRef」的方法论问题，怀疑同源
 - **结论**：**E2EE-012 与 E2EE-024 的 `PASS` 均不成立**，且复核过程中发现**第二个独立 P0**
