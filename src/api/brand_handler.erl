@@ -22,7 +22,9 @@
 %% 缺省即开源 imboy 品牌。URL 类与联系方式类默认留空——
 %% 客服/隐私链接属对外联系方式，必须由部署方人工填写，代码不得预置任何值。
 -define(DEFAULT_SITE_NAME, <<"imboy"/utf8>>).
--define(DEFAULT_PRIMARY_COLOR, <<"#07C160">>).
+%% 与 imboyapp lib/theme/default/app_colors.dart 的 AppColors.primary 保持一致，
+%% 保证「未配置任何 brand_* = 当前 imboy 原生外观」端到端成立。
+-define(DEFAULT_PRIMARY_COLOR, <<"#2474E5">>).
 -define(DEFAULT_THEME, <<"light">>).
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.

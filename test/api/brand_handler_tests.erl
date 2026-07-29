@@ -17,7 +17,7 @@
 default_fixture_test() ->
     D = brand_handler:defaults(),
     ?assertEqual(<<"imboy"/utf8>>, maps:get(<<"site_name">>, D)),
-    ?assertEqual(<<"#07C160">>, maps:get(<<"primary_color">>, D)),
+    ?assertEqual(<<"#2474E5">>, maps:get(<<"primary_color">>, D)),
     ?assertEqual(<<"light">>, maps:get(<<"theme">>, D)),
     %% 客服/隐私等对外联系方式默认必须为空，代码不得预置
     ?assertEqual(<<>>, maps:get(<<"support_url">>, D)),
@@ -140,7 +140,7 @@ one_bad_field_does_not_poison_others_test() ->
     }),
     ?assertEqual(<<"某企业IM"/utf8>>, maps:get(<<"site_name">>, Got)),
     ?assertEqual(<<"https://cdn.example.com/logo.png">>, maps:get(<<"logo_url">>, Got)),
-    ?assertEqual(<<"#07C160">>, maps:get(<<"primary_color">>, Got)).
+    ?assertEqual(<<"#2474E5">>, maps:get(<<"primary_color">>, Got)).
 
 %% 缺失字段补默认；未知键丢弃（不透传到客户端）
 partial_config_and_unknown_keys_test() ->
