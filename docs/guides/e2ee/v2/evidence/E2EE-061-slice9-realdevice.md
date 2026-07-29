@@ -10,15 +10,14 @@
 
 ## 0. 一句话结论
 
-本轮**没有跑成真机**，但把「开工前必须先确认后端就绪」那一步做到了底，
-并在那一步上**抓到一条此前无人知道的硬阻塞**：
-`imboy/priv/migrations/` 存在**两个 `00000050`**，
-`erlang_migrate_source:scan/1` 对重号返回 `{error, duplicate_versions}` ——
-**不是跳过重号那一条，是整个扫描失败、一步迁移都不会执行**。
+本轮**没有跑成真机**（阻塞 B/C，见 §3/§4），但把「开工前必须先确认后端就绪」
+那一步做到了底，并确认了 cipher 契约两端对得上（§1.3）。
 
-⇒ 生产（以及任何新建库、CI）**无法通过迁移到达 Slice 5 就绪状态**。
-这条不解决，真机轮即便有设备也测不出有效结论：confirm 会被 fail-closed 拒掉，
-而归因会落到客户端头上。
+⚠️ **本文件曾把「迁移 `00000050` 重号」列为阻塞 A。该结论在本轮结束前已失效** ——
+并发会话于 **2026-07-29 15:10:22** 的提交 `84398520 fix` 把
+`00000050_attachment_cipher` 重编号为 `00000052_attachment_cipher`，重号消除。
+复测：`scan OK count=51 max_version=52`。**阻塞 A 已解除，无需人工处理**。
+发现过程与教训保留在 §2（那段实证在当时为真，15:05 取得）。
 
 ---
 
@@ -37,7 +36,7 @@ $ psql -h 127.0.0.1 -p 4323 -U imboy_user -d imboy_v1 \
 --------------+-------------------
  size         | bigint
  file_hash256 | character varying
- cipher       | character varying     ← 迁移 00000050_attachment_cipher 已落地
+ cipher       | character varying     ← 附件密文判别位已落地（该迁移现名 00000052_attachment_cipher）
 ```
 
 `schema_migrations` = `version 50, dirty f, applied_at 2026-07-29 10:24:23`；
@@ -82,7 +81,21 @@ normalize(bogus)={error,unsupported_cipher}
 
 ---
 
-## 2. ⛔ 阻塞 A（新发现，本轮最重要的产出）：迁移 `00000050` 重号
+## 2. ~~阻塞 A~~ ✅ 已解除：迁移 `00000050` 重号（发现于 15:05，解除于 15:10）
+
+> ⚠️ **本节记录的是一个已被解决的问题**，保留是因为过程有方法论价值。
+> **当前状态：`priv/migrations/` 无重号，`scan` 返回 `{ok, 51 条, max=52}`。**
+> 解除者：并发会话提交 `84398520 fix`（2026-07-29 15:10:22），
+> 把 `00000050_attachment_cipher` → `00000052_attachment_cipher`
+> ——**与本文件 §2.4 给出的建议一致**，但由并发会话执行，本线未动手。
+>
+> ⚠️⚠️ **方法论教训（本轮真正的收获）**：本线在 15:05 对真实目录取得
+> `{error, duplicate_versions}` 的**硬实证**，并据此写下「生产全都跑不了迁移」
+> 的结论；五分钟后该结论就被另一条会话的提交推翻。
+> **并发会话下，仓库是移动靶——实证有保质期。**
+> 结论落纸前应重新核实一次磁盘状态，尤其是跨线共享的目录。
+> 本轮是靠 `grep` 引用面时读到 `docs/roadmap/tasks.md:581` 的
+> `post_merge_evidence` 才发现结论已过时的，属**偶然发现，不是流程保证**。
 
 ### 2.1 事实
 
@@ -135,9 +148,21 @@ scan RESULT={error,duplicate_versions}
   而**保留 50 的那条会在生产被判「已应用」而永远跳过**。
   这是跨线的部署决策，不是本线可单方面拍板的事。
 
-⇒ 记 BLOCKED，交人工协调。**建议**：把 `00000050_attachment_cipher`
-重编号为 `00000052`（当前最大为 `00000051_user_log_type_export`），
-让 billing 那条继续占 50。但该建议**未执行**。
+⇒ 当时记 BLOCKED 并给出**建议**：把 `00000050_attachment_cipher`
+重编号为 `00000052`（当时最大为 `00000051_user_log_type_export`），
+让 billing 那条继续占 50。
+
+✅ **该建议已由并发会话在 `84398520` 中执行**（本线未动手）。落地后的推演：
+
+| 环境 | `history` 最高 | 重编号后行为 |
+|---|---|---|
+| 生产 | 49（未应用 50） | 依次跑 50(billing) → 51 → 52(attachment_cipher)，**三条全部应用** ✅ |
+| 本机 | 50 | 50 判已应用而跳过（`owner_uid` 列已在，无害）；51、52 会跑，两条 SQL 均 `IF NOT EXISTS` ⇒ **幂等安全** ✅ |
+
+⚠️ 一处语义漂移需知悉：`history` 只记版本号不记文件名，本机那行 `50`
+**当初是 attachment 那条写的，现在会被解释成 billing 那条**。
+后果无害（两条 SQL 幂等、两列都已存在），但**本机的迁移历史与文件名已不再对应**。
+`52` 从未进过 history，下次 `migrate` 会重跑它 —— 安全，且正好让本机回到自洽。
 
 ---
 
@@ -171,8 +196,9 @@ scan RESULT={error,duplicate_versions}
 （`.env.local_office` 被 gitignore，改 IP 不污染仓库，但 `env_local_office.g.dart`
 **是被跟踪的**，envied obfuscate 需重跑 build_runner 才生效 —— 会让仓库变脏。）
 
-生产环境不可用：**未应用迁移 50**（且现在因阻塞 A 也应用不了），
+生产环境不可用：**尚未应用附件密文判别位那条迁移**（重编号后为 `00000052`），
 `normalize_cipher` 会把带 `cipher` 的 confirm 整条拒掉；而部署生产**明令禁止**。
+（阻塞 A 解除后生产**可以**应用了，但「可以应用」不等于「已经应用」。）
 
 ⇒ 即使有人在场手工操作真机，**也没有一个合格后端可打**。
 
@@ -230,20 +256,23 @@ boundary violation: user_handler.erl directly references unexpected module user_
 | 本地 DB 有 `attachment.cipher` 列，迁移 50 已应用 | **已实证**（psql 查 information_schema） |
 | 运行节点加载了含 `normalize_cipher/1` 的 Slice 5 代码 | **已实证**（RPC `function_exported` + 三分支真实调用） |
 | 客户端发的 cipher 字符串正是后端唯一接受值 | **已实证**（两侧代码定位 + 后端行为 RPC 实证） |
-| 迁移目录因重号导致 `scan` 整体失败 | **已实证**（运行节点上对真实目录调用 `erlang_migrate_source:scan/1`） |
+| 迁移目录因重号导致 `scan` 整体失败 | **15:05 已实证**，但 **15:10 起不再成立**（并发会话 `84398520` 已重编号）——⚠️ **实证有保质期** |
+| 当前 `priv/migrations` 无重号、`scan` 返回 `{ok, 51 条, max=52}` | **已实证**（同一 RPC 复测） |
+| 重编号后生产可依次应用 50/51/52，本机重跑 52 幂等安全 | **推理**（两条 SQL 均 `IF NOT EXISTS`），**未在生产或干净库实测** |
 | Mobile MCP 不认那台有线 iOS 真机 | **已实证**（`list_devices` 全表无该 UDID） |
 | 无 Android 真机 | **已实证**（`adb devices` 空） |
 | 三个 `.env` 的 API 地址均与本机网段不符 | **已实证**（读文件 + `ipconfig getifaddr en0`） |
 | 生产尚未应用迁移 50 | **沿用任务书前提，本轮未连生产核实**（禁止操作生产） |
-| 重编号 `00000050_attachment_cipher` 为 52 是安全修法 | **推理**（两条 SQL 均 `IF NOT EXISTS`，幂等），**未执行、未实证** |
+| 重编号 `00000050_attachment_cipher` 为 52 是安全修法 | 建议**已被并发会话执行**（`84398520`）；安全性本身仍是**推理** |
 | 验收 1–7 全部七项 | **未实证**（BLOCKED，非「验证不通过」） |
 
 ---
 
 ## 8. 残留风险
 
-1. ⛔ **迁移重号是当前最高优先级的部署阻塞**，且影响面**远超 E2EE** ——
-   任何环境现在都跑不了迁移。E2EE-061 与 P0 商业化两条线**同时**被它挡住。
+1. ✅ ~~迁移重号~~ **已由并发会话解除**（`84398520`）；遗留一处无害语义漂移：
+   本机 `history` 的 `50` 现在指向 billing 而非 attachment（见 §2.4）。
+   ⚠️ 真正的教训是**实证有保质期**——并发会话下仓库是移动靶。
 2. ⚠️ **生产附件路径依旧明文直传**，ATT-01..05 仍不成立。开关自 Slice 4 起为 `false`，
    本轮未动。不得据本线各刀认为附件加密「已经有了」。
 3. ⚠️ imboy 侧 `make e2ee-verify` 门当前红（并发会话的模块边界违规）。
@@ -256,7 +285,7 @@ boundary violation: user_handler.erl directly references unexpected module user_
 
 | # | 阻塞 | 解除动作 |
 |---|---|---|
-| A | 迁移 `00000050` 重号 | 跨线协调后重编号其一（建议 attachment_cipher → `00000052`），并确认另一条在生产的应用状态 |
+| ~~A~~ | ~~迁移 `00000050` 重号~~ | ✅ **已解除**（并发会话 `84398520` 重编号为 `00000052`）。剩余动作仅：在生产迁移窗口确认 50/51/52 三条依次应用 |
 | B | 无可驱动真机 | 接一台 Android 真机（Mobile MCP 可驱动），或由人工在 iPhone 16e 上按 §5 七项手工操作 |
 | C | 真机够不到合格后端 | 把某个 `.env.*` 的 `API_BASE_URL`/`WS_URL` 指向本机当前网段并重跑 build_runner；后端须为解除 A 之后的环境 |
 | D | 三客户端 | 群验收需发送者 / uk3 内成员 / 第三成员各一个客户端 |
