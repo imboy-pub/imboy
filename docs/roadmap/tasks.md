@@ -498,7 +498,7 @@
 
 ### C0-LICENSE-01
 - title: License max_nodes 硬 gate 与续费边界
-- status: in_progress
+- status: done
 - deps: none
 - wave: C0
 - tag: commercialization
@@ -506,7 +506,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-LICENSE-01
 - action: 接入 max_nodes 硬 gate；补签名、域名、过期、宽限、用户数和节点数 fixture 测试；完善脱敏状态 API。
 - verify: make compile && make eunit；max_nodes=1 拒绝第二节点；License API 不泄露原文/私钥。
-- evidence: worktree /Users/leeyi/project/imboy-wt-p0-commercialization (branch claude-p0-commercialization)。实现：imboy_license.erl 新增 check_node_quota/1（可测超限分支）与 public_info/0（白名单脱敏）；imboy_cluster.erl 新增 join_allowed/0 前瞻硬 gate（加入前拒绝超授权节点，join_cluster 返回 {error,node_quota_exceeded}），connect/1 抽出；adm_stats_handler.erl GET/POST license 统一走 public_info/0，POST 不再回显 license_text。测试：test/lib/imboy_license_tests.erl 新增 8 例（节点配额边界、集群加入硬 gate、域名匹配/不匹配、宽限期 grace、过期后续费恢复、专业版/企业版 fixture、public_info 脱敏）。命令：`make app` 通过（注意本仓无 make compile 目标）；`make eunit t=imboy_license_tests` → All 17 tests passed。**未完成**：全量 `make eunit` 得 Passed 4568 / Failed 125，失败全部为 missing_config(pg_conf) 等环境级级联（日志 /tmp/p0_eunit_full.log），已确认 125 项中无 license/cluster/adm_stats 相关；但尚未与基线 commit dd021b61 做同口径对比以证明为预存基线，故保持 in_progress。加 `-config` 重跑会覆盖 erlang.mk 默认 -pa 导致首个测试模块即 not found（/tmp/p0_eunit_cfg.log），该次运行无效不作为证据。
+- evidence: worktree /Users/leeyi/project/imboy-wt-p0-commercialization (branch claude-p0-commercialization)。实现：imboy_license.erl 新增 check_node_quota/1（可测超限分支）与 public_info/0（白名单脱敏）；imboy_cluster.erl 新增 join_allowed/0 前瞻硬 gate（加入前拒绝超授权节点，join_cluster 返回 {error,node_quota_exceeded}），connect/1 抽出；adm_stats_handler.erl GET/POST license 统一走 public_info/0，POST 不再回显 license_text。测试：test/lib/imboy_license_tests.erl 新增 8 例（节点配额边界、集群加入硬 gate、域名匹配/不匹配、宽限期 grace、过期后续费恢复、专业版/企业版 fixture、public_info 脱敏）。命令：`make app` 通过（注意本仓无 make compile 目标）；`make eunit t=imboy_license_tests` → All 17 tests passed。**未完成**：全量 `make eunit` 得 Passed 4568 / Failed 125，失败全部为 missing_config(pg_conf) 等环境级级联（日志 /tmp/p0_eunit_full.log），已确认 125 项中无 license/cluster/adm_stats 相关；但尚未与基线 commit dd021b61 做同口径对比以证明为预存基线，加 `-config` 重跑会覆盖 erlang.mk 默认 -pa 导致首个测试模块即 not found（/tmp/p0_eunit_cfg.log），该次运行无效不作为证据。**基线同口径对比已完成**：在 detached worktree /Users/leeyi/project/imboy-wt-baseline @ dd021b61 复制同一份 deps 后跑 `make app && make eunit` → Passed 4560 / Failed 125（/tmp/p0_eunit_baseline.log）；本分支 Passed 4568 / Failed 125。失败数完全一致、通过数恰好 +8（= 本次新增 8 例），证明 125 项失败为预存环境基线（missing_config pg_conf 级联，需 -config 与 DB 夹具），本次改动零回归。基线 worktree 已清理。提交：41257f3b（实现）。
 
 ### C0-BRAND-01
 - title: Flutter/Admin 白标构建配置
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 0 | 0 | 4 | 4 | GATE-C0 blocked |
+| C0 | 8 | 1 | 0 | 3 | 4 | GATE-C0 blocked |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
