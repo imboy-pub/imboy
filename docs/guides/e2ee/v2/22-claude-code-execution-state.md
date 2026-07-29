@@ -60,7 +60,7 @@ overall_status: IN_PROGRESS
 | 2 | ~~**A2-b** 客户端 decrypt-on-read v3 接线~~ | A2-a ✅ | ✅ **DONE**（2026-07-28 会话 20260728-1810）。SQLite v25 加 `msg_c2c.sender_did` + `toTypeMessage()` 经 `decryptInboundV3` 分流；结构守护断言已反转，正向可用性用例已补。证据：`evidence/E2EE-A2-b-decrypt-on-read-v3.md`。⚠️ 真机仍未验证；迁移前旧离线行永久不可读（fail-closed 设计选择）。原文：接线 `message_model_mapper.dart::toTypeMessage()`；**必须**同步反转 `decrypt_on_read_v3_gap_test.dart` 的结构守护断言并补正向可用性用例。详见 `evidence/E2EE-012-024-025-029-reacceptance.md` §6.1.2。注意：`MessageModel` / SQLite 消息表仍无 `sender_did` 字段，需先落客户端侧承载点 |
 | 3 | **E2EE-062** OTK/fallback 抗耗尽与幂等租约 | — | ⚠️ **PARTIAL**（2026-07-28 会话 20260728-1930）。**已做**：幂等租约（迁移 49 + `claim_one_time_key/4`，真 PG 100 次重放 / 50 路并发均只消费一条）。**第二刀已做**：per-target 限流（`olm_claim_target` scope + handler 双入口门，e2ee-verify 315）——见 `evidence/E2EE-062-per-target-throttle.md`。**第三刀已做**：`batch_claim` 幂等（`batch_claim_keys/4` 逐设备走 `claim_keys/4` + handler 透传 `request_id`，e2ee-verify 321、真 PG 6/6）——见 `evidence/E2EE-062-batch-claim-idempotency.md`；**不派生 per-device key**，依据是迁移 49 部分唯一索引键已含 `device_id`，派生反而溢出 `varchar(64)`，该判断已在真 PG 实证。**第四刀已做**：客户端发送 `request_id`（`OlmClaimRequestId` 进程内挂起 + `OlmApi.buildClaimBody` + `_establishOutboundSession` 首尾 issue/complete，e2ee 345、service 1225）——见 `evidence/E2EE-062-client-request-id.md`；**幂等键作用域是一次建会话尝试而非一对设备**，恒定 id 会让该对端此后所有会话复用同一条已消费 OTK，破坏 one-time 一次性。**第五刀已做**：后端 OTK 余量端点 `GET /api/v1/e2ee/olm/prekey_count`（logic `count_one_time_keys/2` + handler `prekey_count` + 路由，e2ee-verify 328、真 PG 7/7）——见 `evidence/E2EE-062-prekey-count-endpoint.md`；**查询对象只取自 token 不接受入参**（否则就是「探测谁的池快空了」的接口）、legacy token fail-closed 403、**查询失败不得降级为 0**。**第六刀已做**：客户端接真实余量（`otkRefillCount` 纯策略 + `countPrekeys` 返回 `int?` + 注册走 `seed`，e2ee 355、service 1235）——见 `evidence/E2EE-062-client-refill-wiring.md`；⚠️ 旧行为不只是「缺信号」：`remaining` 恒 0 → 恒判低水位 → 每次入站建会话都对**全量替换式**的 `report_one_time_keys` 发一次全量重发，等于持续把自己的 OTK 池推倒重来。**服务端+客户端主链路至此闭合。第七刀已做**：per-claimant 门的配置漂移可见性（`scope_limited/2` 收敛为**所有** OTK 限流门的唯一判定点，显式识别 `rate_not_set` 并打 ERROR，e2ee-verify 333）——见 `evidence/E2EE-062-claimant-scope-drift.md`；此前只修了目标层、领取方层被记为残留，本刀收敛后新增门只需调用同一函数，不会重演。**第八刀已做**：耗尽/限流绝不触发明文降级（`shouldBlockPlaintextRetry` + `MessageRetry._isPlaintextRetryBlocked`，e2ee 360、service 1240）——见 `evidence/E2EE-062-retry-plaintext-guard.md`。⚠️⚠️ **本轮实证发现真缺陷**：发送侧加密失败虽 fail-closed 拒发，但明文行已落库且被标 error，而 `MessageRetry` 的重试状态集含 `{sending,pendingRetry,error}`、`_retryMessage` 直接取库中 payload/e2ee 发 WS，**完全不经 encryptPayload 与 PolicyGate** → OTK 耗尽/限流 → 明文经重发路径出网。`policy_gate.dart:55-62` 注释早已记载该旁路，对策是「策略门不标 error」，但 `sending` 本就在重试集里、且加密失败路径明确标 error，**绕法两头都不挡**。**第九刀已做**：闸门接线实证（真 SQLite + 真事件总线驱动 `retryFailedMessages()`，断言有无 `WebSocketMessageSendRequestEvent` 出网，e2ee 364、service 1244，**不改生产代码**）——见 `evidence/E2EE-062-retry-guard-wiring-proof.md`。⚠️ **RED 用「临时把闸门还原成载体」的空验证取得，其失败输出逐字带出了明文帧（`e2ee:null` + 明文 payload）**，把第八刀标为「文件级推理，未实证」的「明文经重发路径出网」升级为**已实证**。**残留 3（C2G 分支）已于 2026-07-29 会话 20260729-0900 关闭**：真 SQLite + 真事件总线 + secure storage channel 实证 C2G 分支，空验证（摘除 `groupMegolm` 项）后**唯独核心用例变红**，证明该项确实在起作用；e2ee 367 / service 1247，**不改生产代码**。见 `evidence/E2EE-062-retry-guard-c2g-proof.md`。**残留 1 的有害部分已于 2026-07-29 会话 20260729-1000 关闭**：⚠️ 此前记的「仅日志重复」**不完整**——闸门原排在 CAS **之后**，被拦行每轮都被写库翻成 `sending`，用户永远看到「发送中」而非「失败」，DB 写入无上限，且 retryCount 每轮被丢弃**永远到不了放弃上限**。已把 find+闸门前移到 CAS 之前（拦下 = 这一轮什么都不该发生，包括不该动库），e2ee 369 / service 1249。见 `evidence/E2EE-062-retry-guard-before-cas.md`。**未做（本项仍未完成）**：① 被拦行仍会被扫描器每轮重新捡起（现在**只剩** find+判定+一行日志，不写库不翻状态不出网）；② 滞留后 UX 无具体提示（用户现在能正确看到「失败」）；③ **耗尽指标已于 2026-07-29 会话 20260729-1100 落地**（`olm_otk_exhausted_total` / `olm_prekey_unavailable_total`，经既有 `elib_metric` → `/metrics`，e2ee-verify 343）；**指标不携带 uid**——「谁的池快空了」正是耗尽攻击的择时信号，第五刀 prekey_count 端点为此刻意不收 uid，指标端漏出去等于从后门推翻那道设计。见 `evidence/E2EE-062-otk-exhaustion-metric.md`。**仍未做：告警规则**（阈值/通知渠道属部署侧，且需基线数据）——补传是客户端自愈，运维侧对耗尽攻击仍然盲；② **端到端未实证**——各半边分别实证，拼接只有文件级论证（`countPrekeys` 的 HTTP 失败分支亦未实证，本仓无 Dio mock 基建）——「限流只拖慢、靠补传恢复」的前提，目前该前提尚不成立；③ 租约无独立 TTL；④ fallback 未验签；⑤ 「耗尽/限流绝不触发 RSA/Megolm/明文」无守护用例；⑥ 单租户/全局两层限流（有意识缺口，网关承担更合适）；⑦ `olm_claim` 门仍朴素写法。证据：`evidence/E2EE-062-batch-claim-idempotency.md` §5。⚠️⚠️ **本会话第二次踩「新增 arity 时把旧 arity 改成委托」的坑**——既有测试按 arity 挂 meck 期望，会静默穿透到真实实现。新增 arity 一律保留旧 arity 的原调用形状 |
 | 4 | **E2EE-064** 可撤销 device-bound session | — | ⛔ **BLOCKED**（2026-07-29 会话 20260729-0400）。playbook E2EE-030 依赖「ADR 16 Accepted」，而 ADR 16 头部第 3 行写明其 Accepted 是**范围收敛豁免**，豁免范围**明确排除 §3.1「device-bound session 完整体」**——正是本项要实现的东西，仍为 Proposed 待五方人工签字。**loop 不得代签，不得绕行。**解除条件=人工签字。同时阻塞 E2EE-065/066（依赖 064）。详见 `evidence/E2EE-061-design-and-slicing.md` §1 |
-| 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | ✅ **设计阶段 DONE**（2026-07-29 会话 20260729-0400），任务整体仍 `PENDING`（实施需人工确认）。交付物：`27-e2ee-061-attachment-encryption-design.md`（九刀切片计划）+ `evidence/E2EE-061-design-and-slicing.md`。⚠️ **实证结论：附件面今天完全没有 E2EE**——字节明文直传 Garage、`file_hash256` 明文哈希上报服务端、缩略图独立对象亦明文，ATT-01..05 全部不成立。⚠️ 三条「加密了内容仍泄漏」的旁路必须同期改：明文哈希上报=已知文件识别、Content-Type 泄漏且 presign/PUT 须同刀改、缩略图不加密=预览即泄漏。⚠️ 初始假设「process=true 触发服务端处理」**已被实证推翻**（只是进度 UI）。三项需人工拍板见设计 §6。**Slice 1 已于 2026-07-29 会话 20260729-0700 完成**（单测 5/5，已入门禁，e2ee-verify 338）：⚠️ **原 §3.2 表述被推翻**——`SignedHeaders` **只有 host**，PUT 请求头 Content-Type **不被签名覆盖**，故「只改 PUT 会签名失配、上传全线中断」不成立；但 MIME 以 **query 参数**进 canonical query string 被绑进签名，**改 MIME 必须重新 presign**。⚠️ 更重要：**求证对象原本就找错了**——签名覆盖什么由我方 `elib_s3_sign:presign_url/6` 决定，不由 Garage 决定。修正后结论**更强**：服务端在 presign 与 confirm 两处都拿到真实 MIME，隐藏 MIME 须改**整个 presign/confirm 契约**，Slice 4 须连带改。见 `evidence/E2EE-061-slice1-presign-mime-binding.md`。**Slice 2 已于 2026-07-29 会话 20260729-2300 完成**（用户本轮明确放行「纯函数实施刀」＝`30-...` §2 决策四；**该放行只覆盖纯函数刀，不覆盖接线刀，也不构成对 §6 三项拍板的授权**）：`attachment_chunk_codec.dart` + 34 例，e2ee 428 / service 1308。nonce 用 XOR 派生保留全部 96 bit 熵，AAD 复用已在产 canonical CBOR（切分歧义已验）。⚠️ 空验证抓出**两条真发现**：① `chunk_index` 进 AAD 对重排**是冗余防线**——删掉它测试**全绿**（nonce 派生已单射先挡住了），复核两次成立，**保留作纵深防御并已实证记录**；② 原「抽 1000 个 index」的 nonce 单射用例**只碰得到末两个字节**，把高位字节从派生里删掉**不会有任何测试变红**，而那正是 nonce 复用的成因，已补四字节位置全覆盖用例（补后删 `>>24` / `>>16` 均唯独该例变红）。⚠️ **仍未接线**：`grep` 实证 `lib/` 内零个 import 指向本模块，**生产附件路径至今明文直传**，不得据本刀认为附件加密"已经有了"。见 `evidence/E2EE-061-slice2-chunk-aead-codec.md`。**Slice 3 已于 2026-07-29 会话 20260729-2330 完成**：`attachment_descriptor.dart` + 43 例，e2ee 471 / service 1351。⚠️ 关键增补 **`chunk_count` 自洽闸门**——`chunk_count` 虽进每块 AAD，但 **AAD 只保证「发送方当初声明的那个数」，不保证它与文件自洽**（一个从头就按 3 块封装、实际内容少 1/4 的附件，每块都验得过），故 parser 强制 `chunk_count == ceil(plain_size/chunk_size)`，空文件取 1 而非 0（0 块 = 一个字节都没被认证）。另：未知字段一律拒收、cipher 不做套件协商（`none` 与 `AES-128-GCM` 均显式钉死）、thumb 必须独立 key/nonce 且走**完全同一套**校验、`toString` 抹掉 content_key（HOTFIX-01 同类风险：descriptor 里躺的是能解开整个附件的密钥）。七个空验证逐条精确变红且无正向用例塌方；其中「取消 cipher 钉死」同时红主体与 thumb 两条，实证 thumb 不走宽松分支。⚠️ **同样未接线**（`grep` 实证 `lib/` 零 import）。⚠️ **放行范围内的纯函数刀在 061 内至此用尽**：Slice 4..9 全是接线或后端字段语义，且 Slice 4 开工前必须先拍板 §6 三项（尤其 `chunk_size`——Slice 2/3 均刻意不设默认值，未预支该决定）。见 `evidence/E2EE-061-slice3-attachment-descriptor.md` |
+| 5 | **E2EE-061** 附件独立 content key 与分块 AEAD | — | ✅ **设计阶段 DONE**（2026-07-29 会话 20260729-0400），任务整体仍 `PENDING`（实施需人工确认）。交付物：`27-e2ee-061-attachment-encryption-design.md`（九刀切片计划）+ `evidence/E2EE-061-design-and-slicing.md`。⚠️ **实证结论：附件面今天完全没有 E2EE**——字节明文直传 Garage、`file_hash256` 明文哈希上报服务端、缩略图独立对象亦明文，ATT-01..05 全部不成立。⚠️ 三条「加密了内容仍泄漏」的旁路必须同期改：明文哈希上报=已知文件识别、Content-Type 泄漏且 presign/PUT 须同刀改、缩略图不加密=预览即泄漏。⚠️ 初始假设「process=true 触发服务端处理」**已被实证推翻**（只是进度 UI）。三项需人工拍板见设计 §6。**Slice 1 已于 2026-07-29 会话 20260729-0700 完成**（单测 5/5，已入门禁，e2ee-verify 338）：⚠️ **原 §3.2 表述被推翻**——`SignedHeaders` **只有 host**，PUT 请求头 Content-Type **不被签名覆盖**，故「只改 PUT 会签名失配、上传全线中断」不成立；但 MIME 以 **query 参数**进 canonical query string 被绑进签名，**改 MIME 必须重新 presign**。⚠️ 更重要：**求证对象原本就找错了**——签名覆盖什么由我方 `elib_s3_sign:presign_url/6` 决定，不由 Garage 决定。修正后结论**更强**：服务端在 presign 与 confirm 两处都拿到真实 MIME，隐藏 MIME 须改**整个 presign/confirm 契约**，Slice 4 须连带改。见 `evidence/E2EE-061-slice1-presign-mime-binding.md`。**Slice 2 已于 2026-07-29 会话 20260729-2300 完成**（用户本轮明确放行「纯函数实施刀」＝`30-...` §2 决策四；**该放行只覆盖纯函数刀，不覆盖接线刀，也不构成对 §6 三项拍板的授权**）：`attachment_chunk_codec.dart` + 34 例，e2ee 428 / service 1308。nonce 用 XOR 派生保留全部 96 bit 熵，AAD 复用已在产 canonical CBOR（切分歧义已验）。⚠️ 空验证抓出**两条真发现**：① `chunk_index` 进 AAD 对重排**是冗余防线**——删掉它测试**全绿**（nonce 派生已单射先挡住了），复核两次成立，**保留作纵深防御并已实证记录**；② 原「抽 1000 个 index」的 nonce 单射用例**只碰得到末两个字节**，把高位字节从派生里删掉**不会有任何测试变红**，而那正是 nonce 复用的成因，已补四字节位置全覆盖用例（补后删 `>>24` / `>>16` 均唯独该例变红）。⚠️ **仍未接线**：`grep` 实证 `lib/` 内零个 import 指向本模块，**生产附件路径至今明文直传**，不得据本刀认为附件加密"已经有了"。见 `evidence/E2EE-061-slice2-chunk-aead-codec.md`。**Slice 3 已于 2026-07-29 会话 20260729-2330 完成**：`attachment_descriptor.dart` + 43 例，e2ee 471 / service 1351。⚠️ 关键增补 **`chunk_count` 自洽闸门**——`chunk_count` 虽进每块 AAD，但 **AAD 只保证「发送方当初声明的那个数」，不保证它与文件自洽**（一个从头就按 3 块封装、实际内容少 1/4 的附件，每块都验得过），故 parser 强制 `chunk_count == ceil(plain_size/chunk_size)`，空文件取 1 而非 0（0 块 = 一个字节都没被认证）。另：未知字段一律拒收、cipher 不做套件协商（`none` 与 `AES-128-GCM` 均显式钉死）、thumb 必须独立 key/nonce 且走**完全同一套**校验、`toString` 抹掉 content_key（HOTFIX-01 同类风险：descriptor 里躺的是能解开整个附件的密钥）。七个空验证逐条精确变红且无正向用例塌方；其中「取消 cipher 钉死」同时红主体与 thumb 两条，实证 thumb 不走宽松分支。⚠️ **同样未接线**（`grep` 实证 `lib/` 零 import）。⚠️ **放行范围内的纯函数刀在 061 内至此用尽**：Slice 4..9 全是接线或后端字段语义，且 Slice 4 开工前必须先拍板 §6 三项（尤其 `chunk_size`——Slice 2/3 均刻意不设默认值，未预支该决定）。见 `evidence/E2EE-061-slice3-attachment-descriptor.md`。**Slice 4a/4b/5 及 Slice 4 接线刀已于 2026-07-30 完成**（详见会话日志 0400/0500/0600/0700）：`attachment_encryptor.dart` 封装/开封内核、`uploadViaPresign` 的 `seal` 参数、`attachment_seal_policy.dart` 封装闸门、后端迁移 `00000050_attachment_cipher`（判别位，行为零变化），以及本轮把三者接进 `attachment_handler.dart` **全部 6 条上传路径**。⚠️ **两项人工拍板（2026-07-30）**：块 AAD 改用**方案甲**`SHA-256(canonical{ctx,message_id,conversation_id,sender_uid})`（原设计的 `header_hash` **已实证不可实现**——一条消息对 N 台设备有 N 个 header，附件对象只有一份）；**不隐藏 MIME**（保住服务端类型白名单与预览行为，代价是 §3.2 泄漏旁路持续存在，**不得对外宣称附件元数据完全不可见**）。⚠️⚠️ **接线刀抓到一条会让群附件全员不可读的错**：绑定值的 `conversation_id` **不能用 `conversationUk3`**（群 uk3 是 `C2G_<本机uid>_<gid>`，逐用户不同），已改用两端一致的 `scope_ref`；另**差点**把 `encryptPayload` 内部更宽的 `groupMegolm ||` 判据并进封装判定——`sendWsMsg` 在 `shouldEncryptOutgoingPayload` 为假时**根本不调用**它，那样会让 content key 明文出网。⚠️⚠️ **推出开关 `kAttachmentSealRolloutEnabled` 默认 `false`**：**Slice 6（下载侧解密）未接线**（`grep` 实证 `lib/` 零处调用 `AttachmentEncryptor.open`），此时开启 = E2EE 会话新附件对谁都打不开。⇒ **生产附件路径至今仍是明文直传，ATT-01..05 仍不成立**，不得据本线各刀认为附件加密「已经有了」。⚠️ 全部未真机验证，按用户 2026-07-30 决定**一律标 PARTIAL 不标 PASS**。下一件 = **Slice 6 下载侧接线 + 完整性门**（翻开开关的前置）。见 `evidence/E2EE-061-slice4-upload-handler-wiring.md` |
 | 6 | **E2EE-065/066** Key Transparency | — | ✅ **调研与设计阶段 DONE**（2026-07-29 会话 20260729-0500），任务整体仍 `PENDING`。交付物：`28-e2ee-065-066-key-transparency-research.md`（九刀切片计划）+ `evidence/E2EE-065-066-research-and-design.md`。⚠️⚠️ **核心实证发现：身份键是就地覆盖**——`olm_identity_repo.erl:46` 用 `ON CONFLICT DO UPDATE SET ed25519_key=EXCLUDED...`，服务端替换某账号 identity key 后**数据库里连痕迹都不留**（TOFU 只对已固定指纹的对端有效，且证据仅在各客户端本地）。⚠️ `trust_audit` 虽 append-only 且带身份键快照，但记录的是「谁信任谁」而非「账号发布了哪些键」——**从未被信任过的设备根本不入流**，且是冻结表；误判可复用会得出错误设计。✅ 正面资产：`trust_event_canonical.dart` + `e2ee_trust_logic:canonical_payload/1` 是已在产双语言对齐的 canonical 编码，KT profile 可直接复用而非引入第三套。⛔ 实施三重阻塞见 evidence §3。**Slice 1 已于 2026-07-29 会话 20260729-0600 完成**（真 PG 探针 3/3）：⛔ **`bigserial` 不能当 KT leaf index**——回滚留永久空洞，且**分配顺序 ≠ 提交可见顺序、空洞会追溯填上**，导致同一 tree size 先后算出不同 root，与 split view 形状**完全一致**（日志自造无法与攻击区分的告警），consistency proof 直接失效。**已定案：leaf index 必须与 bigserial 解耦**（两阶段 sequencer，只处理已提交可见的行）。见 `evidence/E2EE-065-slice1-bigserial-probe.md`。**Slice 2 已于 2026-07-29 会话 20260729-0800 完成**：产出 `29-e2ee-065-transparency-profile-v1.md`（**冻结草案，未签字**），九项冻结条目**无一处 TBD**，golden vector 经 **Erlang + Python 两套独立实现逐字节核验**（空树根等于公认 `SHA-256("")`、`MTH([E1])==leaf(E1)` 两重外部自校验通过；n=3 刻意取最小非平衡树以区分 RFC 6962 分裂规则与朴素两两配对）。⚠️ **profile 的接受动作必须人工**（playbook「由安全 reviewer 接受」），loop 不得自我接受；向量尚未被测试钉死（属 Slice 4）。见 `evidence/E2EE-065-slice2-transparency-profile.md`。**Slice 4 已于 2026-07-30 会话 20260730-0000 完成**：`src/lib/e2ee_kt_merkle.erl` + 24 例（已入 e2ee-verify 门禁，385）。生成侧直译 RFC 6962 递归定义（PATH/SUBPROOF，最贴规范原文因而最可核对），验证侧走迭代算法（验证方拿不到整棵树），**两者穷举交叉核验** n≤16 全部 (m,n) 与 (index,size)；另一次性扫到 n≤64（2080+2080 组合，0 失败，未进门禁）。⚠️⚠️ **该方法当场抓到真 bug**：`verify_consistency` 左兄弟判据写成只判奇、**漏了 `orelse Node =:= Last`**，导致 `Node =:= Last` 时左兄弟被当右兄弟、旧根那一路永不更新——**只在非平衡树上失败**（m=5,n=6 / m=9..11,n=10..12 / m=13,n=14 共 8 组），平衡树上完全看不出来。⚠️ 中途我还判断错一次方向（以为不该有沿右脊爬升那一步，删掉后失败集一模一样）——**静态判断哪里不对不可靠，得让穷举告诉你**。profile §8 golden vector 已全部钉死（含 96/168 两处长度），`29-...` §10 残留 1 就此关闭。⚠️⚠️ **实现 profile ≠ 接受 profile**：`29-...` 仍是未签字冻结草案，接受动作必须人工，**loop 未自我接受**，`human_gate` 未动。⚠️ 空验证五条中 **D（去掉最终 `Last =:= 0` 校验）全绿**——无用例能区分它，**未删除也未编造用例**，按抗碰撞假设判为不可达并**明确标注为推理而非实证**。⚠️ 未接线：`olm_identity_repo.erl:46` 的 `ON CONFLICT DO UPDATE` 就地覆盖身份键问题**本刀一分未动**；签名/key_id/双签过渡窗口全部未做。见 `evidence/E2EE-065-slice4-merkle-and-proofs.md` |
 
 ### 停放区（需人工签字 / 真机 / 架构点头——loop 一律不得触碰）
@@ -3429,4 +3429,89 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   （`attachment_handler.dart` 多个构造点）；② 上传前调用本闸门决定是否传 `seal`；
   ③ descriptor 放进消息**加密 payload**（`metadata`），并同期处理残留 3
   （`metadata.file_hash256` 的明文暴露）。⚠️ 完成后**必须真机验证**方可标 PASS。
+- Reviewer decision: Pending
+
+### Session 2026-07-30 07:00 — E2EE-061 Slice 4：上传路径接线（三步）
+
+- Session ID: 20260730-0700-claude-code
+- Repository: imboyapp（代码）、imboy（文档）
+- Status: **PARTIAL**。接线完成、判定已实证；**推出开关默认关闭 + 未真机验证**，
+  E2EE-061 整体仍 `PENDING`。按用户 2026-07-30 决定（真机验证单列一轮），
+  061 后续各刀真机验证前**一律不得标 PASS**。
+- 完成 Slice 4b 记的三步：① `message_id` 提前到上传之前生成并贯穿；
+  ② 上传前调 `AttachmentSealPolicy.decide` 决定是否传 `seal`；
+  ③ descriptor 进消息 **metadata**（→ `getMsgFromTMsg` 并入 payload → 随 PFv3 加密）。
+- ① **一次覆盖全部 6 条上传路径**（不是只改图片那条）：任意文件 / 相机图片 /
+  相册图片 / FilePicker 图片（华为 ROM fallback）/ 视频本体 / 语音 / 位置快照。
+  三个 `handleXxxUpload` 新增的是**可选命名参数**，旧调用形状原样保留
+  （既有 `test/page/chat/chat/attachment_handler_test.dart` 一行未改仍 212 绿）。
+- Changed files（imboyapp）:
+  - `lib/page/chat/chat/attachment_handler.dart`（6 条路径 + `buildSealRequest`
+    唯一入口 + `sealConversationId` + `_withDescriptor` + 推出开关）
+  - `lib/store/api/attachment_api.dart`（`seal` 透传 4 个 wrapper；
+    `uploadedFileHash256` 回填；`uploadBytesViaPresignMeta` 补三个注入 seam）
+  - `lib/service/e2ee/attachment_seal_policy.dart`（`descriptorPayloadKey` +
+    `carriesContentKey`）
+  - `lib/service/e2ee/retry_plaintext_guard.dart` + `lib/service/message_retry.dart`
+    （重发路径的 content key 闸门）
+  - `lib/page/chat/chat/services/chat_network_service.dart`（明文分支拒发）
+  - `test/service/e2ee/attachment_seal_wiring_test.dart`（新，15 例）
+  - `test/service/e2ee/retry_plaintext_guard_test.dart`（+3 例）
+- ⚠️⚠️ **开工即抓到一条会让群附件全员不可读的错**：方案甲的 `conversation_id`
+  **不能用 `conversationUk3`** —— `ConversationUk3Generator._generateGroupUk3`
+  产出 `C2G_<本机uid>_<gid>`，**逐用户不同**，除发送者外无人能算出同一个 AAD。
+  改用 `_uploadScope.scopeRef`（C2C `c2c:min:max` 整数归一化、C2G group_id，
+  两端一致；private → 空串 → 闸门判 missingBinding 不封装）。
+  ⚠️ Slice 4b 的闸门只校验「非空」——**「非空」不等于「两端一致」**，
+  非空的错值它拦不住。
+- ⚠️⚠️ **差点自己造一个密钥泄漏**：一度打算把 `encryptPayload` 内部的
+  `groupMegolm ||` 并进封装判据（"让群 E2EE 附件也加密"）。**那是错的**：
+  `sendWsMsg` 在 `shouldEncryptOutgoingPayload` 为假时**根本不调用**
+  `encryptPayload`，直接走明文分支 ⇒ 群级 Megolm 开着而全局策略明文时，
+  封装会被批准而 payload 明文出网，**content key 明文送达服务端**。
+  判据固定抄 `sendWsMsg` 实际用的那个。**又一次「必须看调用方」。**
+- 残留 3 的处置：封装后消息体 `file_hash256` 换成**密文**哈希（与 confirm 同值）。
+  理由：`user_collect.attach_file_hash256` ↔ `attachment.file_hash256` 按值 JOIN，
+  带明文哈希会断掉收藏引用计数，最坏情况**对象被判无人引用而清理**。
+  明文哈希只留在 descriptor 的 `plain_sha256`（拍板 ①）；`size` 仍是明文大小。
+- **本刀新造出来的两个面同刀补了闸门**：descriptor 带 content key，
+  ① `sendWsMsg` 明文分支拒发；② `MessageRetry` 重发路径**不看**
+  `encryptionRequired` 就拦（判定在上传那一刻、重发可能在几小时后，
+  中间策略翻明文旧判据会放行）。`carriesContentKey` 入参刻意用 `Object?`
+  ——库里读出的是 `Map<dynamic, dynamic>`，强转失败静默放行正是最怕的失效。
+- ⚠️⚠️ **推出开关 `kAttachmentSealRolloutEnabled` 默认 `false`**：
+  **Slice 6 未接线**（`grep` 实证 `lib/` 内零处调用 `AttachmentEncryptor.open`），
+  此时开启 = E2EE 会话里所有新附件对谁都打不开（含发送者自己）。
+  按裁决规则选 fail-closed 的默认值；不是数据丢失（descriptor 落库，
+  Slice 6 上线后旧密文仍可解）。翻开条件 = Slice 6 合入 + 真机验证；
+  翻开动作 = 改那一行。测试已按 `sealRollout: true` 覆盖开启后的判定路径。
+- 空验证五条**全部精确变红**：去掉推出闸门(1) / 忽略封装判定(**5**，恰是闸门全部判据) /
+  绑定改用 uk3(**3**，恰是两端一致那三条) / meta 回退明文哈希(1) /
+  去掉重发的 content key 分支(1)。恢复后 23/23 绿。
+  ⚠️ **一条防线无用例覆盖**：`sendWsMsg` 明文分支的拒发（依赖单例，进不了单测），
+  如实记为**文件级阅读结论，未实证**——不编造用例、不删防线。
+- Verification:
+  - `flutter test test/service/e2ee/` → **539 passed**（上轮 521）
+  - `flutter test test/service/` → **1419 passed**（上轮 1401）
+  - `flutter test test/store` → **397 passed**（未变）
+  - `flutter test test/page/chat/chat` → **212 passed**（⚠️ 该目录**不在任何门内**，
+    与上轮发现 `test/store/` 红三周同类；本刀手动跑但**未**加进门，属测试基建）
+  - `dart analyze lib` → 1 issue（既有 info）
+  - imboy 侧仅文档，`make e2ee-verify` 不适用（385 未动）
+- Evidence: `evidence/E2EE-061-slice4-upload-handler-wiring.md`
+- Residual:
+  1. ⚠️⚠️ **开关默认关闭 ⇒ 生产附件路径依旧明文直传**，ATT-01..05 仍不成立；
+  2. ⚠️ **未真机验证**（故标 PARTIAL）；
+  3. ⚠️ **接线点本身无自动化覆盖**（IO + 静态方法），只有真机腿能证
+     「handler 真的把 seal 传下去了」；
+  4. `sendWsMsg` 明文拒发分支未实证；
+  5. **缩略图仍明文**（视频缩略图 / 位置快照是独立对象，本刀只封装视频本体）
+     ——设计 §3.3，ATT-04 在缩略图上不成立（Slice 7）；
+  6. C2G-Megolm-但全局明文的会话不封装（fail-closed 取舍，非泄漏）；
+  7. MIME 旁路按拍板保留；绑定强度弱于原设计（均已接受）；
+  8. 整文件入内存未在低端机实测；未与后端做真实密文 confirm 往返。
+- **Next task**：**Slice 6 下载侧接线 + 完整性门**（解密、块顺序/数量/tag/
+  明文 hash 全通过后才交预览器）。它是翻开推出开关的前置。
+  ⚠️ 之后才是「Slice 4+6 一起真机验证附件收发」那一轮。
+  其余卡点不变（ADR 16 五方签字 / profile 接受 / 012-024-025 回退裁定）。
 - Reviewer decision: Pending
