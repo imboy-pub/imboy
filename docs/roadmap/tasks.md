@@ -546,7 +546,7 @@
 
 ### C0-GOV-01
 - title: 数据导出、审计和 RBAC fail-closed
-- status: ready
+- status: done
 - deps: C0-IAM-01
 - wave: C0
 - tag: commercialization
@@ -554,7 +554,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-GOV-01
 - action: 实现受限范围 export_data；补关键动作审计；RBAC 不可用时拒绝敏感写操作；留存/Legal Hold 未实现时显式标记。
 - verify: make compile && make eunit；导出 schema/敏感字段断言通过；模拟 rbac 404 时敏感写操作被拒。
-- evidence:
+- evidence: **export_data 从 501 占位接成真**：user_ds:export_data/1 早已实现且被 user_deletion_logic 使用，但 user_handler 的 export_data action 一直直接返回 501，功能实际从未接通。新增 src/logic/user_export_logic.erl（遵守 Handler→Logic→DS 分层）：export/2 复用既有 DS 取数，Uid 只取 auth_ds:current_uid(State)，不接受任何请求参数指定 uid（否则任意用户可导出他人数据），非法 uid 返回 {error,invalid_uid} 且不回退默认账号；user_handler.erl export_data/2 改为 current_uid 校验 → 调 logic → success/500/403。**敏感字段兜底剥离**：user_ds:export_data/1 对 user_setting 用 `SELECT *`，将来新增凭据类列会自动流进导出结果；sanitize/1 递归剥离 map/list 中命中 password/passwd/secret/token/private/salt/credential/api_key/apikey/access_key/secret_key 的键（大小写不敏感、兼容 atom 键），黑名单兜底保证「新增敏感列不会静默泄漏」。**Legal Hold 显式不支持**：响应体带 legal_hold={supported:false,reason:...}，不静默省略——省略会让合规审计误以为已支持。**导出审计**：复用既有 user_log_ds:add_internal/5 写不可变追加记录，type=130（100=登录 120=管理员操作），body 含 action=user_data_export 与 ip/did/vsn；审计失败只记 ERROR 不阻断导出（用户数据权优先）。**RBAC fail-closed（imboyadmin，真 bug）**：src/components/shared/BatchActionBar.tsx:134 原判定为 `!hasPermissionRequirement || grantedPermissions.size === 0 || ...`，即 /rbac/me 不可达导致权限集为空时**无条件放行**——批量删除/封禁对所有登录管理员开放；src/hooks/useAdminPermission.ts 亦有标注为 `SECURITY(H11): fail-open design` 的角色级降级。修复采取分级策略而非全局改 fail-closed（全局改会在 /rbac/me 抖动时把管理员锁死在门外）：BatchActionBar 复用既有 riskLevel 字段（'low'|'medium'|'high'，仓内已有 6 处标注 high 的破坏性操作），riskLevel='high' 时权限集为空一律拒绝，低/中风险维持原降级；useAdminPermission 新增 sensitive?: boolean 选项，为 true 时 RBAC 不可用直接返回 false 并输出 SECURITY 告警。未新增平行的 sensitive 字段到 BatchActionItem——复用 riskLevel 更 DRY 且现有调用方已标注到位。**验收命令与结果**：`make app` 干净（期间修掉 OTP28 下裸 catch 被当作错误的两处编译失败，改 try...catch）；`make eunit t=user_export_logic_tests` All 11 tests passed（导出 schema 六字段齐备、敏感键剥离含嵌套/list/atom 键/大小写、SELECT * 新增列被兜底、legal_hold 显式 false、非法 uid 四种取值全拒且不触达 DS、DS 错误透传、审计写失败不阻断导出、审计记录 type=130 且 action=user_data_export）；全量 `make eunit` = Passed 4599 / Failed 125，对比基线 dd021b61 的 4560/125，失败数持平、通过数 +39（恰为本分支累计新增 8+11+1+8+11），零回归。imboyadmin：`bun test src/components/shared/batchActionGate.test.ts` 6 pass 0 fail（高风险 + 空权限集必拒、低/中风险维持放行、无权限约束不受影响、权限集非空时按权限判定）；`bun run lint` 干净；`bun run build` ✓ built in 327ms。⚠️ 未做（已记录，非本任务验收项）：msg_archive/moment 等大表的异步打包与加密 zip 落对象存储、单用户导出冷却期与并发配额、Legal Hold 本体实现；这些在 user_handler 注释与响应体中均已显式标注，不静默掩盖。⚠️ 计划要求的「审计登录、管理员权限变更、License 变更、计费」四类：登录已由 passport_logic 写 user_log type=100、管理员操作已由 adm_user_handler 等写 adm_operation_log，本轮只补齐缺失的导出审计，未重复造设施。
 
 ### C0-CONTRACT-01
 - title: 商业 API 合同与三仓发布门
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 4 | 0 | 1 | 3 | GATE-C0 blocked |
+| C0 | 8 | 5 | 0 | 0 | 3 | GATE-C0 blocked |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
