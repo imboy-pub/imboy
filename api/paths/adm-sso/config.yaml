@@ -1,0 +1,86 @@
+# ----------------------------------------------------------------------------
+# GET|POST /api/adm/sso/config — SSO 外部认证配置（读取 / 按 provider upsert）
+# Router: imboy_router.erl 行 820（adm_sso_handler#config），权限 settings:view
+# Schema 来源：sso_logic:get_config/0、save_config/1（src/logic/sso_logic.erl:41-84）
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin]
+  summary: 读取 SSO 配置（密钥脱敏）
+  description: |
+    ## 中文
+    返回已配置的 provider（`ldap` / `saml` / `oauth2`），未配置的 provider 不含该键。
+    密钥类字段非空时脱敏为 `***`，并附 `has_<field>: true|false` 供前端实现
+    「留空 = 不修改」约定。需要 `settings:view` 权限。
+    ## English
+    Returns configured providers with secret fields masked as `***` plus a
+    `has_<field>` boolean for each secret. Requires `settings:view`.
+  operationId: adm_sso_config
+  responses:
+    '200':
+      description: 三 provider 配置（缺省 provider 不出现）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 键为 provider 名，值为该 provider 的配置对象（密钥已脱敏）
+                    properties:
+                      ldap:
+                        $ref: '../../components/schemas/SsoProviderConfig.yaml'
+                      saml:
+                        $ref: '../../components/schemas/SsoProviderConfig.yaml'
+                      oauth2:
+                        $ref: '../../components/schemas/SsoProviderConfig.yaml'
+    '4XX':
+      description: 无 `settings:view` 权限 / 读取失败 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+
+post:
+  tags: [admin]
+  summary: 保存单个 provider 的 SSO 配置
+  description: |
+    ## 中文
+    请求体即单个 provider 的配置对象（必须含 `provider`），按 provider upsert。
+    **fail-closed**：只有已实现登录链路的 provider（当前仅 `oauth2`）允许
+    `enabled=true`；`ldap` / `saml` 传 `enabled` 为真（兼容 `true` / `"true"` / `1`）
+    会被拒绝，信封 `code`=400，msg 形如「ldap 登录链路尚未实现，不能启用
+    （可先以 enabled=false 保存配置）。」。允许以 `enabled=false` 预存配置。
+    ## English
+    Upserts one provider config. Fail-closed: only providers with an implemented
+    login chain (currently `oauth2`) may be enabled; others can be stored with
+    `enabled=false` only.
+  operationId: adm_sso_config_save
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          allOf:
+            - type: object
+              required: [provider]
+              properties:
+                provider:
+                  type: string
+                  enum: [ldap, saml, oauth2]
+                enabled:
+                  description: 是否启用；兼容 boolean / "true" / 1
+                  oneOf:
+                    - type: boolean
+                    - type: string
+                    - type: integer
+            - $ref: '../../components/schemas/SsoProviderConfig.yaml'
+  responses:
+    '200':
+      description: 保存成功（msg「保存成功」）；provider 非法或未实现却要求启用时信封 code=400
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+    '4XX':
+      description: 无 `settings:view` 权限 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+

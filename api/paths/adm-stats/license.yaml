@@ -1,0 +1,124 @@
+# ----------------------------------------------------------------------------
+# GET|POST /api/adm/stats/license — License 授权状态查询 / 授权文件写入
+# Router: imboy_router.erl 行 840（adm_stats_handler#license）
+# Schema 来源：imboy_license:public_info/0（src/lib/imboy_license.erl:293）
+#             + adm_stats_handler:license/3（src/adm/adm_stats_handler.erl:46-75）
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin]
+  summary: 查询 License 授权状态（规模/配额）
+  description: |
+    ## 中文
+    只输出 `imboy_license:public_info/0` 的 7 个脱敏白名单字段，外加当前实际用量
+    （`current_users` / `current_nodes`）。**不含** license 原文、签名材料或内部
+    校验失败原因——那些属于 `info/0` 内部态，禁止经该端点透传。
+    ## English
+    Returns the 7 whitelisted license fields plus current usage counters. License
+    text, signature material and internal validation reasons are never exposed.
+  operationId: adm_stats_license
+  responses:
+    '200':
+      description: 授权状态
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required:
+                      [
+                        edition,
+                        valid,
+                        status,
+                        max_users,
+                        max_nodes,
+                        licensee,
+                        expires_at,
+                        current_users,
+                        current_nodes,
+                      ]
+                    properties:
+                      edition:
+                        type: string
+                        description: 版本标识，无 license 时为 `community`
+                      valid:
+                        type: boolean
+                        description: 授权是否有效（无 license 时 false）
+                      status:
+                        type: string
+                        description: 授权状态原子的字符串形式（如 community / trial / valid / expired / grace）
+                      max_users:
+                        type: integer
+                        description: 授权最大用户数；0 表示不限量
+                      max_nodes:
+                        type: integer
+                        description: 授权最大节点数
+                      licensee:
+                        type: string
+                        description: 被授权方名称；无 license 时为空串
+                      expires_at:
+                        type: integer
+                        description: 到期时间戳（毫秒）；无 license 时为 0
+                      current_users:
+                        type: integer
+                        description: 当前实际用户数（`user_ds:count/0`）
+                      current_nodes:
+                        type: integer
+                        description: 当前集群节点数（`length(nodes()) + 1`）
+    '4XX':
+      description: 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+
+post:
+  tags: [admin]
+  summary: 写入并热加载 License 文件
+  description: |
+    ## 中文
+    需要 `license:write` 权限。请求体的 `license_text` 写入 `IMBOY_LICENSE_FILE`
+    指向的文件（缺省 `priv/license.key`）后立即热加载，无需重启。
+    响应**不回显** `license_text`，只返回脱敏后的授权状态（同 GET 的 7 字段）。
+    `license_text` 为空、写文件失败或校验失败时 HTTP 仍为 200，信封 `code` = 400。
+    ## English
+    Requires `license:write`. Writes the license file and hot-reloads it. The
+    response never echoes the license text back.
+  operationId: adm_stats_license_write
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [license_text]
+          properties:
+            license_text:
+              type: string
+              description: License 文件全文（非空）
+  responses:
+    '200':
+      description: 写入并热加载成功，返回脱敏授权状态；失败时信封 code=400
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [edition, valid, status, max_users, max_nodes, licensee, expires_at]
+                    properties:
+                      edition: { type: string }
+                      valid: { type: boolean }
+                      status: { type: string }
+                      max_users: { type: integer }
+                      max_nodes: { type: integer }
+                      licensee: { type: string }
+                      expires_at: { type: integer }
+    '4XX':
+      description: 无 `license:write` 权限 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

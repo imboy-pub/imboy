@@ -1,0 +1,51 @@
+# ----------------------------------------------------------------------------
+# POST /api/adm/finance/billing/plan — 创建计费套餐
+# Router: imboy_router.erl 行 759（adm_finance_handler#billing_plan_create），需写权限
+# Schema 来源：adm_finance_handler:billing_plan_create/3（src/adm/adm_finance_handler.erl:333）
+#             + billing_logic:create_plan/1
+# ----------------------------------------------------------------------------
+post:
+  tags: [admin]
+  summary: 创建计费套餐（运营后台）
+  description: |
+    ## 中文
+    创建套餐，成功返回新套餐 `id`（TSID 字符串），msg「套餐已创建」。
+    参数不合法时 HTTP 仍为 200，信封 `code`=400，msg 为具体校验原因。
+    需要财务写权限。管理端套餐 CRUD 已从 `/api/v1/billing/*` 迁至本路径。
+    ## English
+    Creates a billing plan and returns the new TSID as a string. Requires finance
+    write permission. Validation failures come back as envelope `code`=400.
+  operationId: adm_finance_billing_plan_create
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [code, name, price, billing_period]
+          properties:
+            code: { type: string, description: 套餐编码（唯一） }
+            name: { type: string }
+            price: { type: integer, description: 价格（分） }
+            billing_period: { type: string, description: 'month | year' }
+            quota_config: { type: object, description: 配额配置（jsonb） }
+            description: { type: string }
+            status: { type: integer, description: 上下架状态 }
+  responses:
+    '200':
+      description: 创建成功；校验失败时信封 code=400
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: string, description: 新套餐 ID（TSID 字符串） }
+    '4XX':
+      description: 无写权限 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -1,0 +1,25 @@
+# ----------------------------------------------------------------------------
+# imboy/api/components/schemas/SsoProviderConfig.yaml
+# SSO provider 配置对象 / SSO provider config object
+#
+# 来源：src/logic/sso_logic.erl（get_config/0 + mask_secrets/1）、sso_config_ds
+# 调用方：api/paths/adm-sso/config.yaml、api/paths/adm-sso/test.yaml
+# ----------------------------------------------------------------------------
+type: object
+description: |
+  ## 中文
+  单个 provider 的配置对象。字段随 provider 而异（ldap：host / port / base_dn …；
+  saml：metadata_url …；oauth2：client_id / authorize_url …），故允许附加属性。
+  读取时密钥类字段非空会被脱敏为 `***`，并伴随 `has_<field>: true|false`，
+  供前端实现「留空 = 不修改」。
+  ## English
+  Per-provider config. Field set varies by provider, so additional properties are
+  allowed. On read, secret fields are masked to `***` with a `has_<field>` flag.
+additionalProperties: true
+properties:
+  provider:
+    type: string
+    enum: [ldap, saml, oauth2]
+  enabled:
+    type: boolean
+    description: 是否启用；仅已实现登录链路的 provider（当前 oauth2）可为 true

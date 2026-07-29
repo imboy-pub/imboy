@@ -1,0 +1,87 @@
+# ----------------------------------------------------------------------------
+# GET /brand — 运行时白标品牌配置（公开端点，免鉴权）
+# Router: imboy_router.erl 行 23（brand_handler#info），并列入 open/0 白名单
+# Schema 来源：brand_handler:defaults/0 + normalize/1 + imboy_license:edition/0
+# ----------------------------------------------------------------------------
+get:
+  tags: [system]
+  summary: 读取品牌配置（白标）
+  description: |
+    ## 中文
+    客户端启动时拉取品牌配置，实现 logo / 产品名 / 主题色配置化白标：私有化客户
+    无需改前端源码重新构建，只需在管理端写入 `brand_*` 配置项。
+    字段逐个校验，任一字段非法只回退**该字段**默认值（不整体回退）；URL 类字段
+    只接受 http(s) 绝对地址或空串（挡掉 `javascript:` / `data:` 等可注入 scheme）。
+    URL 与联系方式类默认留空，代码不预置任何联系方式。
+    ## English
+    Public white-label branding config fetched by clients at startup. Each field
+    is validated independently and falls back to its own default when invalid.
+    URL fields accept only absolute http(s) URLs or an empty string.
+  operationId: brandInfo
+  security: []
+  responses:
+    '200':
+      description: 品牌配置（永远可用；未配置时即开源 imboy 默认外观）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required:
+                      [
+                        site_name,
+                        logo_url,
+                        splash_url,
+                        primary_color,
+                        accent_color,
+                        theme,
+                        slogan,
+                        copyright,
+                        company,
+                        support_url,
+                        privacy_url,
+                        edition,
+                      ]
+                    properties:
+                      site_name:
+                        type: string
+                        description: 产品名，默认 `imboy`（非空校验）
+                      logo_url:
+                        type: string
+                        description: Logo 绝对 URL；默认空串
+                      splash_url:
+                        type: string
+                        description: 启动图绝对 URL；默认空串
+                      primary_color:
+                        type: string
+                        description: 主色 `#RRGGBB`，默认 `#2474E5`（与客户端 AppColors.primary 一致）
+                      accent_color:
+                        type: string
+                        description: 强调色 `#RRGGBB` 或空串
+                      theme:
+                        type: string
+                        enum: [light, dark]
+                        description: 默认主题，默认 `light`
+                      slogan:
+                        type: string
+                      copyright:
+                        type: string
+                      company:
+                        type: string
+                      support_url:
+                        type: string
+                        description: 客服/支持页绝对 URL；默认空串，须部署方人工填写
+                      privacy_url:
+                        type: string
+                        description: 隐私政策绝对 URL；默认空串，须部署方人工填写
+                      edition:
+                        type: string
+                        description: 授权版本（`imboy_license:edition/0`，如 community / professional）
+    '4XX':
+      description: 方法不允许（非 GET）
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

@@ -38,7 +38,7 @@ post:
                     type: object
                     properties:
                       payment_method: { type: string, description: alipay/wechat/stripe/mock }
-                      payment_no: { type: string, nullable: true, description: 第三方支付单号 }
+                      payment_no: { type: [string, 'null'], description: 第三方支付单号 }
                       pay_params: { type: object, description: 网关支付参数（alipay order_str / wechat prepay_id 等） }
                       order_no: { type: string }
                       amount: { type: integer, description: 金额（分），取自订单快照 }

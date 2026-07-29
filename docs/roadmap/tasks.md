@@ -558,7 +558,7 @@
 
 ### C0-CONTRACT-01
 - title: 商业 API 合同与三仓发布门
-- status: ready
+- status: done
 - deps: C0-BILL-01,C0-GOV-01
 - wave: C0
 - tag: commercialization
@@ -566,7 +566,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-CONTRACT-01
 - action: 补 finance/billing/license/sso/export_data OpenAPI；增加三仓构建、测试、版本和迁移一致性检查。
 - verify: redocly lint api/openapi.yaml；make compile && make eunit；bun test && bun run build；flutter analyze && flutter test。
-- evidence:
+- evidence: **核心发现（真 bug，线上级）**：`src/repo/billing_subscription_repo.erl:30` 的 `?COLUMNS` 没有 `owner_uid`，而 C0-BILL-01 的迁移 `00000050_billing_owner_uid` 已加该列、`billing_logic:assert_owner/2`（`src/logic/billing_logic.erl:208-218`）与 `billing_handler:sub_owned_by/2`（`src/api/billing_handler.erl:310-312`）都从查询结果读 `<<"owner_uid">>` —— 选列缺失 ⇒ 读到默认 0 ⇒ fail-closed 归属校验把**合法订阅人**一并拒绝：renew / cancel / usage / quota / invoice_generate / invoice_list 全部 403，`GET /billing/subscription` 恒返回 `{}`。既有单测把 `billing_subscription_ds:find_by_id/1` 整个 mock 掉，因此完全看不到这条 SQL 少选列。修复：`?COLUMNS` 补 `owner_uid` 并新增 `columns/0` 访问器，新增 `test/repo/billing_subscription_repo_tests.erl`（2 例：授权/契约字段全覆盖、选列不得退化为 `SELECT *`），模块名与源模块同名故确实进入全量（Passed 4609→4611，+2）。**契约漂移修复**：`api/paths/user/export-data.yaml` 原写「异步任务 + task_id + 下载短链、handler 待实现」，实际 C0-GOV-01 已改成同步受限范围导出 —— 按 `user_export_logic:export/2` + `user_ds:export_data/1` 重写，含 `legal_hold{supported:false,reason}`、敏感键剥离说明与 user_log type=130 审计说明；`api/paths/billing/subscription.yaml` 的 `current_period_start_ms/end_ms` 与 `status: string` 与 repo 选列不符，改为 `current_period_start/end` + `status: integer(0=试用 1=生效 2=过期 3=取消)` 并补 `owner_uid`/`auto_renew`、写明非归属人返回 `{}`。**新增契约 8 个端点**：`api/paths/system/brand.yaml`（11 字段 + edition，含新增 splash_url/support_url/privacy_url，`security: []`）、`api/paths/adm-stats/license.yaml`（GET 只暴露 `public_info/0` 7 白名单字段 + current_users/current_nodes；POST 需 `license:write` 且**不回显** license_text）、`api/paths/adm-sso/{config,test}.yaml`（密钥脱敏 `***` + `has_<field>`；fail-closed：仅 oauth2 可 enabled；ldap/saml 的 test success 恒 false）、`api/paths/adm-finance/{billing-plans,billing-plan-create,billing-plan-update,billing-subscriptions,billing-invoices}.yaml`（分页信封 `{total,page,size,list}`，TSID 输出为字符串）、新组件 `api/components/schemas/SsoProviderConfig.yaml`；`api/paths/billing/` 的 6 个 `with_owned_sub` 端点与 invoice-pay 补写「HTTP 恒 200 + 信封 code=403 / 无权操作该订阅」语义（此前误导客户端按 HTTP 403 处理）。**修复 8 个预存 lint error**：`api/paths/wallet/recharge_{order,create,pay}.yaml` 的 OAS 3.0 遗留 `nullable: true` 在 3.1 非法，改 `type: [x, 'null']`。**新增发布门**：`scripts/check_release_consistency.sh`（版本 VERSION↔relx.config、迁移 up/down 成对 + 序号唯一、License 资产 + `public_info/0` 不泄漏授权材料、备份/恢复/演练/部署脚本 `bash -n`、22 条商业路由双向对账「契约↔router」、支持矩阵声明）+ `scripts/test/check_release_consistency_test.sh`（18 例，其中 **12 例为反例**：漏 bump 版本 / 缺 down / 序号重复 / public_info 泄漏 license_text / 恢复脚本语法错 / 契约漏写 / 幽灵端点 / 支持矩阵缺项都必须失败）+ 新建 `docs/ops/support-matrix.md`（OTP 28+ / PostgreSQL 18+ / Flutter 3.8+ / Docker、授权与身份能力状态、备份恢复升级流程）。**验收命令与结果**：`bunx @redocly/cli@2.41.1 lint api/openapi.yaml` → 「Your API description is valid. 🎉 You have 25 warnings」，**errors 8→0**，25 warnings 与基线同数且新增/改动文件零命中（rg 过滤 adm-sso|adm-finance|adm-stats/license|system/brand|user/export-data|paths/billing 无输出）；`make app` 干净；`make eunit t=billing_subscription_repo_tests` 2 tests passed；全量 `make eunit` = **Passed 4611 / Failed 125**，对比基线 `dd021b61` 的 4560/125 与上一提交的 4609/125，失败数持平、通过数 +2（恰为本次新增），零回归；`bash scripts/check_release_consistency.sh` 通过 18 / 失败 0（exit 0）；`bash scripts/test/check_release_consistency_test.sh` 通过 18 / 失败 0；`git diff --check` CLEAN。imboyadmin：`bun run lint` 干净、`bun run build` ✓ built in 334ms；`bun test --timeout 10000` 复现**既有**挂死（`src/services/api/rbac.test.ts`，与本任务无关，本任务未改动该仓任何文件）。imboyapp：`flutter analyze` 151 issues = 既有基线未增（本任务未改动该仓）；`flutter test` 本轮长时间无输出未取到结论，同理不受本任务影响。⚠️ 未做（已记录，非本任务验收项）：`/api/adm/finance/` 下 wallets / withdrawals / recharge-orders / payment-transactions 等 10 条非 billing 路由仍零契约覆盖，不属本任务五组范围，需另立任务；`api/.redocly.lint-ignore.yaml` 在 redocly 2.41.1 下键格式不生效导致 25 条 warning 未被抑制，本轮未动它（避免与 CI 既有门禁冲突）。
 
 ### GATE-C0
 - title: P0 商业化自动验收闸门
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 6 | 0 | 1 | 1 | GATE-C0 blocked |
+| C0 | 8 | 7 | 0 | 0 | 1 | GATE-C0 blocked（deps 已全 done，待结算） |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。

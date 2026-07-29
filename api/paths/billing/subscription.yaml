@@ -2,7 +2,12 @@
 get:
   tags: [user]
   summary: 查询当前订阅
-  description: 查询指定租户当前的订阅状态。
+  description: |
+    查询当前租户生效/试用中的订阅。**归属过滤**：`tenant_id` 只作逻辑分组，
+    不作授权依据；订阅的 `owner_uid` 与当前登录用户不一致时返回**空对象** `{}`
+    而非详情（否则传别人的 tenant_id 就能看到他人订阅）。未登录时 HTTP 仍为
+    200，信封 `code`=403、msg「未登录」。
+    （src/api/billing_handler.erl:131-141）
   operationId: billingSubscription
   parameters:
     - name: tenant_id
@@ -12,7 +17,7 @@ get:
       description: 租户 ID（默认 0，单租户）
   responses:
     '200':
-      description: 订阅详情（无订阅时为空对象）
+      description: 订阅详情；无订阅或非本人订阅时 payload 为空对象 {}
       content:
         application/json:
           schema:
@@ -22,14 +27,16 @@ get:
                 properties:
                   payload:
                     type: object
-                    description: 订阅对象（无订阅时字段为空）
+                    description: 订阅对象；无订阅或非归属人时为空对象
                     properties:
                       id: { type: integer, format: int64 }
                       plan_id: { type: integer, format: int64 }
-                      status: { type: string, description: 'active | canceled | expired' }
-                      current_period_start_ms: { type: integer }
-                      current_period_end_ms: { type: integer }
+                      status: { type: integer, description: '0=试用 1=生效 2=过期 3=取消' }
+                      owner_uid: { type: integer, format: int64, description: 归属用户（授权依据） }
+                      current_period_start: { type: integer, description: 当前计费周期起（毫秒时间戳） }
+                      current_period_end: { type: integer, description: 当前计费周期止（毫秒时间戳） }
+                      auto_renew: { type: boolean }
     '4XX':
-      description: 参数非法
+      description: 方法不允许
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

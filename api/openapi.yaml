@@ -94,6 +94,8 @@ paths:
     $ref: './paths/auth/qr-subscribe.yaml'
   /api/v1/user/export_data:
     $ref: './paths/user/export-data.yaml'
+  /brand:
+    $ref: './paths/system/brand.yaml'
 
   /api/adm/setup/status:
     $ref: './paths/adm/setup-status.yaml'
@@ -1018,6 +1020,26 @@ paths:
     $ref: './paths/ai-agent/list.yaml'
   /api/adm/ai_agent/onboarding_config:
     $ref: './paths/adm-ai-agent/onboarding-config.yaml'
+
+  # --------------------------------------------------------------------------
+  # 商业化管理端（C0-CONTRACT-01）：License 状态、SSO 配置、finance/billing 运营
+  # --------------------------------------------------------------------------
+  /api/adm/stats/license:
+    $ref: './paths/adm-stats/license.yaml'
+  /api/adm/sso/config:
+    $ref: './paths/adm-sso/config.yaml'
+  /api/adm/sso/test:
+    $ref: './paths/adm-sso/test.yaml'
+  /api/adm/finance/billing/plans:
+    $ref: './paths/adm-finance/billing-plans.yaml'
+  /api/adm/finance/billing/plan:
+    $ref: './paths/adm-finance/billing-plan-create.yaml'
+  /api/adm/finance/billing/plan/update:
+    $ref: './paths/adm-finance/billing-plan-update.yaml'
+  /api/adm/finance/billing/subscriptions:
+    $ref: './paths/adm-finance/billing-subscriptions.yaml'
+  /api/adm/finance/billing/invoices:
+    $ref: './paths/adm-finance/billing-invoices.yaml'
 
 components:
   securitySchemes:

@@ -12,6 +12,7 @@
 %%%
 
 -export([tablename/0]).
+-export([columns/0]).
 -export([create/1]).
 -export([find_by_id/1]).
 -export([find_active_by_tenant/1]).
@@ -27,8 +28,13 @@
 -define(STATUS_EXPIRED, 2).
 -define(STATUS_CANCELLED, 3).
 
+%% ⚠️ owner_uid 必须在选列里：billing_logic:assert_owner/2 与 billing_handler 的
+%% sub_owned_by/2 都从查询结果读 <<"owner_uid">>，缺列时读到默认 0，归属校验
+%% fail-closed 会连**合法订阅人**一起拒绝（renew/cancel/usage/quota/invoice 全部
+%% 403，/billing/subscription 恒返回 {}）。单测 mock 掉 ds 层看不出来，
+%% 故用 columns/0 + billing_subscription_repo_tests 把选列锁死。
 -define(COLUMNS,
-    <<"id, tenant_id, plan_id, status, current_period_start, current_period_end, ",
+    <<"id, tenant_id, plan_id, owner_uid, status, current_period_start, current_period_end, ",
         "auto_renew, created_at, updated_at">>
 ).
 
@@ -36,6 +42,11 @@
 -spec tablename() -> binary().
 tablename() ->
     elib_pg_sql:public_tablename(<<"billing_subscription">>).
+
+%% @doc 查询选列（供测试锁定：归属校验与契约字段不得漏选）
+-spec columns() -> binary().
+columns() ->
+    ?COLUMNS.
 
 %% @doc 创建订阅
 %% @param Data map，须含 tenant_id, plan_id；可选 status, current_period_start/end, auto_renew
