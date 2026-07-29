@@ -16,12 +16,19 @@
 %%%
 
 -export([get_config/0, save_config/1, test_connection/2]).
+-export([implemented_providers/0, is_implemented/1]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
 -include("common.hrl").
 
 -define(VALID_PROVIDERS, [<<"ldap">>, <<"saml">>, <<"oauth2">>]).
+%% 真正实现了登录链路的 provider。oauth2 走 auth_oidc_logic 的
+%% authorize→callback→exchange；ldap/saml 只有配置表，没有任何认证端点
+%% （imboy_router 里没有 saml/ldap 路由，代码里没有 eldap/SAMLResponse 实现）。
+%% 配置可以先存下来，但绝不能报「连接成功」或允许 enabled=true —— 那会让
+%% 管理员以为 SSO 已可用，实际用户永远登不进来。
+-define(IMPLEMENTED_PROVIDERS, [<<"oauth2">>]).
 -define(TCP_TIMEOUT, 3000).
 -define(HTTP_TIMEOUT, 5000).
 
@@ -62,13 +69,41 @@ mask_secrets(Cfg) ->
 save_config(ConfigMap) when is_map(ConfigMap) ->
     Provider = maps:get(<<"provider">>, ConfigMap, undefined),
     case lists:member(Provider, ?VALID_PROVIDERS) of
-        true ->
-            sso_config_ds:upsert(Provider, ConfigMap);
         false ->
-            {error, <<"无效的 provider（应为 ldap|saml|oauth2）"/utf8>>}
+            {error, <<"无效的 provider（应为 ldap|saml|oauth2）"/utf8>>};
+        true ->
+            %% fail-closed：未实现登录链路的 provider 不允许启用。
+            %% 允许以 enabled=false 预存配置，等实现落地后再打开。
+            case {wants_enabled(ConfigMap), is_implemented(Provider)} of
+                {true, false} ->
+                    {error, unimplemented_message(Provider)};
+                _ ->
+                    sso_config_ds:upsert(Provider, ConfigMap)
+            end
     end;
 save_config(_) ->
     {error, <<"参数错误"/utf8>>}.
+
+%% @doc 已实现登录链路的 provider 列表
+-spec implemented_providers() -> [binary()].
+implemented_providers() -> ?IMPLEMENTED_PROVIDERS.
+
+-spec is_implemented(binary()) -> boolean().
+is_implemented(Provider) -> lists:member(Provider, ?IMPLEMENTED_PROVIDERS).
+
+%% enabled 兼容 boolean 与字符串（管理端表单可能传 "true"）
+-spec wants_enabled(map()) -> boolean().
+wants_enabled(Cfg) ->
+    case maps:get(<<"enabled">>, Cfg, false) of
+        true -> true;
+        <<"true">> -> true;
+        1 -> true;
+        _ -> false
+    end.
+
+-spec unimplemented_message(binary()) -> binary().
+unimplemented_message(Provider) ->
+    <<Provider/binary, " 登录链路尚未实现，不能启用（可先以 enabled=false 保存配置）。"/utf8>>.
 
 %% @doc 连通性 + 字段校验，返回 {Success, Message}
 -spec test_connection(binary(), map()) -> {boolean(), binary()}.
@@ -85,6 +120,9 @@ test_connection(_, _) ->
 %% Internal: provider 探测
 %% ===================================================================
 
+%% ⚠️ LDAP/SAML 未实现登录链路：即使字段合法、网络可达，也必须返回 false。
+%% 返回 true 会让管理端显示「连接成功」，管理员据此认为 SSO 可用 —— 但没有任何
+%% LDAP bind / SAML ACS 端点，用户永远登不进来。探测结果只作为诊断信息附在消息里。
 -spec test_ldap(map()) -> {boolean(), binary()}.
 test_ldap(Config) ->
     Host = maps:get(<<"host">>, Config, <<>>),
@@ -95,7 +133,8 @@ test_ldap(Config) ->
         {_, false} ->
             {false, <<"LDAP port 无效（应为 1-65535 整数）"/utf8>>};
         {true, true} ->
-            probe_tcp(Host, Port)
+            {_Reachable, ProbeMsg} = probe_tcp(Host, Port),
+            {false, unimplemented_probe_message(<<"ldap">>, ProbeMsg)}
     end.
 
 -spec test_saml(map()) -> {boolean(), binary()}.
@@ -105,8 +144,13 @@ test_saml(Config) ->
         false ->
             {false, <<"SAML metadata_url 无效（需 http:// 或 https:// 开头）"/utf8>>};
         true ->
-            probe_http(Url)
+            {_Reachable, ProbeMsg} = probe_http(Url),
+            {false, unimplemented_probe_message(<<"saml">>, ProbeMsg)}
     end.
+
+-spec unimplemented_probe_message(binary(), binary()) -> binary().
+unimplemented_probe_message(Provider, ProbeMsg) ->
+    <<"连通性探测："/utf8, ProbeMsg/binary, "；但 ", Provider/binary, " 登录链路尚未实现，不可启用。"/utf8>>.
 
 -spec test_oauth2(map()) -> {boolean(), binary()}.
 test_oauth2(Config) ->

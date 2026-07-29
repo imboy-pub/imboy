@@ -513,3 +513,33 @@ exchange_invalid_otc_test_() ->
             ?assertEqual({error, ?FAIL_MSG}, auth_oidc_logic:exchange(<<"nope">>))
         end
     ).
+
+%% ===================================================================
+%% 多节点一次性状态自检（C0-OPS/C0-IAM）
+%% state/otc 存节点本地 ETS，多节点无粘性会话时回调会随机打到取不到
+%% state 的节点。判定口径必须与 deploy/preflight.sh 的 4b 段一致。
+%% ===================================================================
+
+state_sharing_single_node_ok_test() ->
+    %% 单节点（0 个对端）无论是否粘性都安全
+    ?assertEqual(ok, auth_oidc_logic:state_sharing_status(0, false)),
+    ?assertEqual(ok, auth_oidc_logic:state_sharing_status(0, true)).
+
+state_sharing_multinode_without_sticky_rejected_test() ->
+    ?assertEqual(
+        {error, oidc_state_not_shared},
+        auth_oidc_logic:state_sharing_status(1, false)
+    ),
+    ?assertEqual(
+        {error, oidc_state_not_shared},
+        auth_oidc_logic:state_sharing_status(5, false)
+    ).
+
+state_sharing_multinode_with_sticky_ok_test() ->
+    ?assertEqual(ok, auth_oidc_logic:state_sharing_status(1, true)),
+    ?assertEqual(ok, auth_oidc_logic:state_sharing_status(9, true)).
+
+%% 自检只告警不阻断：单节点承载回调时功能本身是好的，硬失败会误伤。
+%% 真正的硬闸门在 preflight，这里只保证不抛异常、不改变 authorize 行为。
+warn_if_state_not_shared_never_raises_test() ->
+    ?assertEqual(ok, auth_oidc_logic:warn_if_state_not_shared()).

@@ -15,23 +15,109 @@
 %% save_config/1
 %% ===================================================================
 
-%% @doc 合法 provider -> 透传到 ds:upsert
+%% @doc 已实现的 provider（oauth2）启用时透传到 ds:upsert
 save_config_valid_provider_test_() ->
     ?WITH_MECKS(
         [
             {sso_config_ds, [
                 {'upsert', 2, fun(Provider, Cfg) ->
-                    ?assertEqual(<<"ldap">>, Provider),
+                    ?assertEqual(<<"oauth2">>, Provider),
                     ?assertEqual(true, maps:get(<<"enabled">>, Cfg)),
                     {ok, #{}}
                 end}
             ]}
         ],
         fun() ->
-            Cfg = #{<<"provider">> => <<"ldap">>, <<"enabled">> => true, <<"host">> => <<"h">>},
+            Cfg = #{
+                <<"provider">> => <<"oauth2">>,
+                <<"enabled">> => true,
+                <<"auth_url">> => <<"https://idp.example.com/auth">>
+            },
             ?assertEqual({ok, #{}}, sso_logic:save_config(Cfg))
         end
     ).
+
+%% @doc 未实现登录链路的 provider 不得被启用（fail-closed）。
+%% imboy_router 无 saml/ldap 路由、代码无 eldap/SAMLResponse 实现，
+%% 允许 enabled=true 会让管理员以为 SSO 可用而用户永远登不进来。
+save_config_rejects_enabling_unimplemented_test_() ->
+    ?WITH_MECKS(
+        [
+            {sso_config_ds, [
+                {'upsert', 2, fun(_P, _C) ->
+                    erlang:error(should_not_reach_ds)
+                end}
+            ]}
+        ],
+        fun() ->
+            lists:foreach(
+                fun(P) ->
+                    lists:foreach(
+                        fun(EnabledVal) ->
+                            Cfg = #{
+                                <<"provider">> => P,
+                                <<"enabled">> => EnabledVal,
+                                <<"host">> => <<"h">>
+                            },
+                            ?assertMatch({error, _}, sso_logic:save_config(Cfg))
+                        end,
+                        %% 管理端表单可能传字符串/数字，都要挡住
+                        [true, <<"true">>, 1]
+                    )
+                end,
+                [<<"ldap">>, <<"saml">>]
+            )
+        end
+    ).
+
+%% @doc 未实现的 provider 允许以 enabled=false 预存配置
+save_config_allows_disabled_unimplemented_test_() ->
+    ?WITH_MECKS(
+        [
+            {sso_config_ds, [
+                {'upsert', 2, fun(Provider, _Cfg) ->
+                    ?assertEqual(<<"ldap">>, Provider),
+                    {ok, #{}}
+                end}
+            ]}
+        ],
+        fun() ->
+            Cfg = #{
+                <<"provider">> => <<"ldap">>, <<"enabled">> => false, <<"host">> => <<"h">>
+            },
+            ?assertEqual({ok, #{}}, sso_logic:save_config(Cfg))
+        end
+    ).
+
+%% @doc 已实现 provider 清单：只有 oauth2
+implemented_providers_test() ->
+    ?assertEqual([<<"oauth2">>], sso_logic:implemented_providers()),
+    ?assert(sso_logic:is_implemented(<<"oauth2">>)),
+    ?assertNot(sso_logic:is_implemented(<<"ldap">>)),
+    ?assertNot(sso_logic:is_implemented(<<"saml">>)).
+
+%% @doc 字段合法且网络可达时，ldap/saml 也必须报失败 —— 不得假报「连接成功」。
+%% 用回环地址上确实监听的端口做探测，确保走到「探测成功」分支后仍返回 false。
+test_connection_unimplemented_never_reports_success_test() ->
+    {ok, Listen} = gen_tcp:listen(0, [binary, {active, false}]),
+    {ok, Port} = inet:port(Listen),
+    try
+        {LdapOk, LdapMsg} = sso_logic:test_connection(
+            <<"ldap">>, #{<<"host">> => <<"127.0.0.1">>, <<"port">> => Port}
+        ),
+        ?assertEqual(false, LdapOk),
+        ?assertNotEqual(nomatch, binary:match(LdapMsg, <<"尚未实现"/utf8>>))
+    after
+        gen_tcp:close(Listen)
+    end,
+    %% SAML 探测走 httpc，需要 inets 起来
+    {ok, _} = application:ensure_all_started(inets),
+    %% URL 合法即可，探测成功与否都不能返回 true
+    {SamlOk, SamlMsg} = sso_logic:test_connection(
+        <<"saml">>, #{<<"metadata_url">> => <<"https://127.0.0.1:1/metadata">>}
+    ),
+    ?assertEqual(false, SamlOk),
+    ?assertNotEqual(nomatch, binary:match(SamlMsg, <<"尚未实现"/utf8>>)).
 
 %% @doc 非法 provider -> 拒绝，不触达 ds
 save_config_invalid_provider_test() ->

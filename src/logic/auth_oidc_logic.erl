@@ -27,6 +27,8 @@
 -export([authorize/1, callback/2, exchange/1]).
 %% 供 imboy_app 启动期建表（长驻属主）与定时清扫
 -export([init_table/0, sweep_expired/0]).
+%% 多节点一次性状态自检（供测试与 preflight 同口径判断）
+-export([state_sharing_status/2, warn_if_state_not_shared/0]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
@@ -56,6 +58,7 @@
 authorize(Client) ->
     case enabled_provider() of
         {ok, Cfg} ->
+            ok = warn_if_state_not_shared(),
             State = rand_token(),
             Nonce = rand_token(),
             Verifier = rand_token(),
@@ -186,6 +189,37 @@ consume_state(State) ->
 %%       delete 是 gen_server call，两步之间存在并发窗口 —— 实测 32 个并发进程
 %%       可用同一个 otc 各换到一份登录 payload。ets:take/2 是单个原子操作
 %%       （查+删），并发下有且只有一个调用方拿到值，其余得 []。
+
+%% @doc 多节点一次性状态自检（纯函数，与 deploy/preflight.sh 的 4b 段同口径）。
+%%
+%% state/otc 存节点本地 ETS：多节点部署时 authorize 落在 A 节点、callback 被
+%% 负载均衡打到 B 节点就取不到，登录以「state 无效」失败，表现得像遭攻击。
+%% 粘性会话下同一浏览器会话固定打到同一后端，节点本地状态才是安全的。
+-spec state_sharing_status(non_neg_integer(), boolean()) -> ok | {error, atom()}.
+state_sharing_status(PeerNodeCount, _Sticky) when PeerNodeCount =< 0 ->
+    ok;
+state_sharing_status(_PeerNodeCount, true) ->
+    ok;
+state_sharing_status(_PeerNodeCount, false) ->
+    {error, oidc_state_not_shared}.
+
+%% @doc authorize 时自检并告警。只记日志不阻断登录：
+%% 单节点承载回调时功能其实是好的，硬失败会误伤；真正的硬闸门在 preflight。
+-spec warn_if_state_not_shared() -> ok.
+warn_if_state_not_shared() ->
+    Sticky = application:get_env(imboy, lb_sticky_session, false) =:= true,
+    case state_sharing_status(length(nodes()), Sticky) of
+        ok ->
+            ok;
+        {error, oidc_state_not_shared} ->
+            ?WARN_LOG(
+                "[oidc] 集群 ~p 个对端节点且未声明粘性会话；state/otc 仅存本节点 ETS，"
+                "回调若落到其他节点将以 state 无效失败。"
+                "请开启负载均衡粘性会话并设置 lb_sticky_session=true，或单节点承载 OIDC 回调。",
+                [length(nodes())]
+            ),
+            ok
+    end.
 
 %% @doc 启动期由长驻进程建表（imboy_app 调用）。
 %% 必须在此显式建表：否则表由首个惰性建表的 Cowboy 请求进程持有，

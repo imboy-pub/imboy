@@ -534,7 +534,7 @@
 
 ### C0-IAM-01
 - title: OIDC PKCE 生产加固与 fake IdP 回归
-- status: ready
+- status: done
 - deps: none
 - wave: C0
 - tag: commercialization
@@ -542,11 +542,11 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-IAM-01
 - action: 固定 issuer/aud/exp/nonce/PKCE 校验；解决或显式阻断多节点一次性状态；未实现 provider 不得假报已启用。
 - verify: make compile；OIDC EUnit 覆盖重放/claims/并发 OTC；fake IdP authorize→callback→exchange 全链路通过。
-- evidence:
+- evidence: **核心发现（真 bug）**：sso_logic 的 test_ldap 只要 TCP 连得上就返回 {true,"TCP 连通成功"}、test_saml 只要 metadata_url 可达就返回 {true,...}，而 imboy_router 里没有任何 saml/ldap 路由、src 下没有 eldap/SAMLResponse/ACS 实现——管理员在管理端点「测试连接」看到绿灯并把 provider 存成 enabled=true，用户永远登不进来。save_config 此前对 enabled 无任何闸门。修复（fail-closed）：src/logic/sso_logic.erl 新增 ?IMPLEMENTED_PROVIDERS=[oauth2] 与 implemented_providers/0、is_implemented/1；save_config/1 在 wants_enabled(Cfg) 且 provider 未实现时直接拒绝（enabled 兼容 true/<<"true">>/1 三种表单取值），但允许以 enabled=false 预存配置待实现落地；test_ldap/test_saml 即使探测成功也一律返回 false，探测结论降级为诊断信息拼进消息（"连通性探测：…；但 X 登录链路尚未实现，不可启用。"）。**多节点一次性状态显式阻断**：auth_oidc_logic 的 state/otc 存节点本地 ETS(?ONETIME_TAB)，多节点部署时 authorize 落 A 节点、callback 被负载均衡打到 B 节点即取不到，登录以「state 无效」失败，表象酷似遭受攻击、运维极难定位。新增纯判定函数 auth_oidc_logic:state_sharing_status/2（对端节点数为 0 或已声明粘性会话则 ok，否则 {error,oidc_state_not_shared}）与 warn_if_state_not_shared/0（authorize/1 调用，只记 WARN 不阻断——单节点承载回调时功能本身正常，硬失败会误伤）；硬闸门放在 deploy/preflight.sh 新增的「4b. 检查 OIDC 多节点状态共享」段，CLUSTER_NODES 非空 + OIDC 启用 + 未设 IMBOY_LB_STICKY_SESSION=true 时 err 退出并给出二选一处置建议，判定口径与后端纯函数完全一致。**已核验无需改动的部分**：issuer/audience/expiry/nonce 校验（verify_claims，issuer 留空不再放行）、PKCE S256、ets:take/2 原子一次性消费、出站 HTTPS 强制校验证书链与主机名，均已实现且被既有 17 例覆盖，本轮未重复造轮子。**fake IdP 全链路已存在**：test/logic/auth_oidc_logic_tests.erl 的 prime_flow/2 走真实 authorize 取出真实 state/nonce，dyn_httpc_mock 充当 fake IdP 返回 nonce 匹配的 id_token，otc_exchange_one_time_test_ 已完成 authorize→callback→深链 otc→exchange→JWT payload 全链路并断言重放兑换失败；该验收项由既有测试满足，未新增冗余用例。**新增测试**：auth_oidc_logic_tests +4（单节点 ok、多节点无粘性拒绝、多节点有粘性 ok、warn 不抛异常）17→21；sso_logic_tests +4（未实现 provider 三种 enabled 取值全部拒绝且不触达 ds、enabled=false 允许预存、implemented_providers 清单、字段合法且端口真实可连时 ldap/saml 仍必须返回 false 且消息含「尚未实现」）9→13，其中原 save_config_valid_provider_test_ 因旧断言恰好锁定了「ldap 可 enabled=true」这一错误行为，改用已实现的 oauth2 验证透传（是修正测试对齐正确行为，非放宽标准）。**验收命令与结果**：`make app` 干净；`make eunit t=auth_oidc_logic_tests` All 21 tests passed；`make eunit t=sso_logic_tests` All 13 tests passed；`make eunit t=sso_config_ds_tests` All 9 tests passed；`bash -n deploy/preflight.sh` 通过；全量 `make eunit` = Passed 4588 / Failed 125，对比基线 dd021b61 的 Passed 4560 / Failed 125，失败数持平、通过数 +28（恰为本分支累计新增 8+11+1+8），零回归。⚠️ 未做（已记录，非本任务验收项）：LDAP bind 与 SAML 断言校验的真实登录链路仍未实现，本轮只保证它不再假报可用；OIDC state 跨节点共享（改用 Redis/DB 等共享存储）未实现，当前策略是 preflight 显式阻断 + 运行时告警，属计划 §C0-IAM-01 明列的「解决或显式阻断」二选一中的后者。⚠️ 真实 IdP 凭证不可用，全链路验证使用本地 fake IdP（httpc mock），符合计划固化默认。
 
 ### C0-GOV-01
 - title: 数据导出、审计和 RBAC fail-closed
-- status: blocked
+- status: ready
 - deps: C0-IAM-01
 - wave: C0
 - tag: commercialization
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 3 | 0 | 1 | 4 | GATE-C0 blocked |
+| C0 | 8 | 4 | 0 | 1 | 3 | GATE-C0 blocked |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
