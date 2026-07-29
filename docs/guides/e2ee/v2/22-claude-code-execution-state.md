@@ -3169,3 +3169,66 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   OpenAPI 同步，并保证**旧明文附件仍可读**（Slice 9 的正向可用性提前进这一刀）。
   ⚠️ 这是本 061 线上**第一刀触及生产写路径**的改动，不再是零生产影响。
 - Reviewer decision: Pending
+
+### Session 2026-07-30 02:00 — E2EE-061 Slice 5：后端密文判别位（迁移 000050）
+
+- Session ID: 20260730-0200-claude-code
+- Repository: imboy
+- Status: 后端 expand 完成。**客户端未切换**，E2EE-061 整体仍 `PENDING`
+- ⚠️ **本刀是 061 线上第一刀触及生产写路径**（迁移 + 落库字段），但**行为零变化**：
+  不传 `cipher` 的旧客户端逐字节不变，落库 `cipher IS NULL` = 明文。
+- **修正上一刀的判断**：上一刀写「Slice 4/5 不可分开交付」。更准确的说法是
+  **不能让客户端先走**——客户端先发密文哈希、后端语义仍是明文哈希才不自洽。
+  **后端先扩展（expand-then-migrate）没有这个问题**，故本刀独立成立。
+- Changed files:
+  - `priv/migrations/00000050_attachment_cipher.{up,down}.sql`（新）
+  - `src/logic/attach_logic.erl`（`normalize_cipher/1` + `do_save` 前置校验）
+  - `src/repo/attachment_repo.erl`（`cipher` 透传，缺省 null）
+  - `src/api/attach_handler.erl`（`unsupported_cipher` 分支）
+  - `test/repo/attachment_cipher_tests.erl`（新，6 例，**真 PG，按规定不入硬门禁**）
+  - `docs/guides/e2ee/v2/evidence/E2EE-061-slice5-backend-cipher-column.md`（新）
+- 设计取舍：① 可空**字符串**而非 boolean——boolean 表达不了「是哪一种套件」，
+  而客户端 descriptor 里 `cipher` 本就是具名字段，两侧用同一个概念；
+  ② **fail-closed 不做套件协商**——未知套件拒绝整个 confirm。
+  ⚠️ 把未知套件落成 NULL 才是真正危险的降级：**会把密文对象标记成明文**，
+  日后回迁盘点漏掉它、读取侧当明文直读；
+  ③ 新增部分索引 `WHERE cipher IS NULL`，即拍板 ② 的"预留"（盘点明文积压/分批回迁）。
+- ⚠️ **实测发现 `size` 无需改动**：`attach_logic` 原本就「mime_type/size 一律采用
+  服务端 HEAD 核实的真实值」，上传密文后 HEAD 到的就是密文大小，**自动正确**。
+- ⚠️ **引用计数触发器已核实不受影响**（`user_collect.attach_file_hash256` ↔
+  `attachment.file_hash256` 按值 JOIN，同代匹配）。但语义已变：加密附件该值是密文哈希，
+  **跨用户去重就此不再成立**——拍板 ① 的既定后果，已写入迁移注释。
+  ⚠️ 该结论是**推理，未构造收藏场景实测**。
+- 空验证两条：未知套件静默降级为 null(1 红，唯独 fail-closed 用例) /
+  repo 不再透传 cipher(3 红)。恢复后 6/6。
+- Verification:
+  - `IMBOYENV=local make eunit t=attachment_cipher_tests
+    EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"` → **All 6 passed**
+    （DB 就绪，走的是真 PG 分支而非 skip 分支）
+  - `make e2ee-verify` → **All 385 passed**（未变；真 PG 模块按规定不入清单，
+    否则无 DB 时 skip 进硬门禁只得假绿）
+  - 迁移已在本地真 PG 应用：`cipher | varchar | YES | NULL`，既有 6 行全部 NULL（零回填）
+  - `erlfmt --check`（4 个改动文件）/ `git diff --check` 通过
+- Evidence: `evidence/E2EE-061-slice5-backend-cipher-column.md`
+- ⚠️⚠️ **浮出第四项待人工拍板：MIME 是否隐藏**。设计 §3.2 要求隐藏 Content-Type，
+  但**不在已拍板的三项之内**，且本轮实测发现它比设计描述更纠缠：
+  `confirm` 对**服务端 HEAD 到的** Content-Type 跑 `elib_oss:validate_file_type/1`
+  **白名单**——客户端若改成 `application/octet-stream`，白名单要么放行一切、
+  要么拒绝全部加密附件；且隐藏后下载 URL 不再带真实 Content-Type，**预览行为会变**。
+  即：隐藏 MIME = 放弃服务端类型白名单这道防线 + 改变预览行为，
+  **是独立的产品/安全取舍**。本刀未擅自决定，也未做任何 MIME 相关改动。
+- Residual:
+  1. ⚠️ **客户端未切换**——至今无任何调用方传 `cipher`，**生产附件路径依旧明文直传**；
+  2. **MIME 隐藏未决**（见上）；
+  3. **`down.sql` 有损**——回滚丢失「哪些对象是密文」，仅在尚无加密上传时无损；
+  4. **OpenAPI 未同步**（`cipher` 入参）——刻意留到客户端切换那一刀，
+     避免文档先于实现宣称能力；
+  5. admin 侧未适配（运营看不出哪些是密文）；
+  6. 读取侧未动（解密在客户端，Slice 6）；
+  7. **迁移未在生产执行**。
+- **Next task**：**Slice 4 客户端上传接线**——`uploadViaPresign` 前置加密、
+  confirm 传 `cipher` 与**密文**哈希，且**必须一次覆盖 `attachment_api.dart` 全部 5 处
+  明文 `sha256`**（166/306/342/420 + 缩略图 meta），否则四条路径继续上报明文哈希。
+  ⚠️ 开工前建议先拍板 MIME（第四项），否则 Slice 4 做完仍留一条泄漏旁路。
+  ⚠️ 完成后需真机验证附件收发（真机腿仍在停放区）。
+- Reviewer decision: Pending

@@ -16,6 +16,11 @@
 
 -export([presign/5, confirm/5, view_url/2]).
 
+-ifdef(TEST).
+%% 纯函数，导出仅为可直接验收「不做套件协商」这一 fail-closed 语义
+-export([normalize_cipher/1]).
+-endif.
+
 -include("log.hrl").
 
 %% 上传 URL 有效期：1 小时（足够单文件上传）
@@ -113,12 +118,34 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
 ) ->
     {ok, map()} | {error, term()}.
 do_save(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType) ->
+    case normalize_cipher(maps:get(<<"cipher">>, Meta, undefined)) of
+        {error, unsupported_cipher} ->
+            %% fail-closed：不做套件协商。落库成 null 会把密文对象**标成明文**，
+            %% 那才是真正危险的降级——日后回迁盘点会漏掉它，读取侧也会当明文直读。
+            {error, unsupported_cipher};
+        Cipher ->
+            do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher)
+    end.
+
+%% 只接受 null（明文，含全部旧客户端）与冻结的唯一套件名。
+%% 与客户端 AttachmentDescriptor.supportedCipher 保持同一个值。
+normalize_cipher(undefined) -> null;
+normalize_cipher(null) -> null;
+normalize_cipher(<<>>) -> null;
+normalize_cipher(<<"AES-256-GCM">>) -> <<"AES-256-GCM">>;
+normalize_cipher(_) -> {error, unsupported_cipher}.
+
+do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
     Attach = #{
         %% file_hash256（SHA-256）仅作完整性参考，不作安全边界。
         %% 双读兼容：新客户端传 file_hash256，旧客户端过渡期仍传 md5。
+        %% ⚠️ E2EE-061 拍板 ①：cipher 非 NULL 时这里存的是**密文**哈希，
+        %% 明文哈希只在客户端加密的 attachment_descriptor 内，永不到达服务端。
         <<"file_hash256">> => maps:get(
             <<"file_hash256">>, Meta, maps:get(<<"md5">>, Meta, <<>>)
         ),
+        %% 密文判别位（迁移 000050）。null = 明文对象，旧客户端语义完全不变。
+        <<"cipher">> => Cipher,
         %% mime_type/size 一律采用服务端 HEAD 核实的真实值
         <<"mime_type">> => RealType,
         <<"name">> => filename:basename(ObjectKey),

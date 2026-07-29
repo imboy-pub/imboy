@@ -79,6 +79,9 @@ confirm(<<"POST">>, Req0, State) ->
             elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_BAD_REQUEST);
         {error, invalid_file_type} ->
             elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, unsupported_cipher} ->
+            %% fail-closed：宁可拒绝 confirm，也不把密文对象落成「明文」
+            elib_response:error(Req0, <<"不支持的附件加密套件"/utf8>>, ?ERR_BAD_REQUEST);
         {error, _Reason} ->
             elib_response:error(Req0, <<"附件落库失败"/utf8>>, ?ERR_BAD_REQUEST)
     end;

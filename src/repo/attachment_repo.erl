@@ -79,6 +79,9 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     %% 读鉴权范围与绑定实体（缺省 private/NULL，兼容历史调用）
     Scope = maps:get(<<"scope">>, Attach, <<"private">>),
     ScopeRef = maps:get(<<"scope_ref">>, Attach, null),
+    %% E2EE-061 密文判别位（迁移 000050）：null = 明文对象。
+    %% 缺省 null 保证历史调用方（收藏、转发等不经 confirm 的写入）语义不变。
+    Cipher = maps:get(<<"cipher">>, Attach, null),
     Ext = filename:extension(Path),
 
     Ext2 = ec_cnv:to_binary(Ext),
@@ -127,6 +130,7 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         <<"creator_user_id">> => Uid,
         <<"scope">> => Scope,
         <<"scope_ref">> => ScopeRef,
+        <<"cipher">> => Cipher,
         <<"updated_at">> => CreatedAt,
         <<"created_at">> => CreatedAt,
         <<"status">> => 1
