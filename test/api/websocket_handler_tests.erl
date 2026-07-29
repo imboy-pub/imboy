@@ -555,12 +555,15 @@ protobuf_client_ack_success_test_() ->
                     <<"payload">> => AckPayload
                 }
             ),
-            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+            %% ACK 响应带 in_reply_to（T14 契约），IMBoyMessage schema 装不下，
+            %% 故一律退回 JSON 载荷 —— 见 imboy_codec:pb_lossless/1
+            {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
                 {binary, PbMsg}, State
             ),
             ?assert(byte_size(RespBin) > 0),
-            Decoded = imboy_codec:decode(protobuf, RespBin),
-            ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded))
+            Decoded = imboy_codec:decode(json, RespBin),
+            ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"msg_pb_1">>, maps:get(<<"in_reply_to">>, Decoded))
         end
     ).
 
@@ -594,11 +597,17 @@ protobuf_client_ack_did_mismatch_test_() ->
                     <<"payload">> => AckPayload
                 }
             ),
-            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+            {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
                 {binary, PbMsg}, State
             ),
-            Decoded = imboy_codec:decode(protobuf, RespBin),
-            ?assertEqual(<<"CLIENT_ACK_ERROR">>, maps:get(<<"action">>, Decoded))
+            Decoded = imboy_codec:decode(json, RespBin),
+            ?assertEqual(<<"CLIENT_ACK_ERROR">>, maps:get(<<"action">>, Decoded)),
+            %% 客户端靠 id / in_reply_to 关联回原消息，reason 说明被拒原因；
+            %% 三者任一丢失都会退化成"确认超时→无限重发"
+            ?assertEqual(<<"CLIENT_ACK_ERROR">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"msg_pb_2">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(<<"msg_pb_2">>, maps:get(<<"in_reply_to">>, Decoded)),
+            ?assert(maps:is_key(<<"reason">>, Decoded))
         end
     ).
 
@@ -626,12 +635,13 @@ text_client_ack_protobuf_response_test_() ->
         fun() ->
             %% protobuf 客户端发送文本格式的 CLIENT_ACK（向后兼容）
             State = #{did => <<"did_1">>, current_uid => 123, protocol => protobuf},
-            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+            {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
                 {text, <<"CLIENT_ACK,C2C,msg_t1,did_1">>}, State
             ),
             ?assert(byte_size(RespBin) > 0),
-            Decoded = imboy_codec:decode(protobuf, RespBin),
-            ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded))
+            Decoded = imboy_codec:decode(json, RespBin),
+            ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"msg_t1">>, maps:get(<<"in_reply_to">>, Decoded))
         end
     ).
 
@@ -717,8 +727,11 @@ v2_msg_c2s_text_client_ack_test_() ->
             {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
                 {binary, Frame}, State
             ),
-            Decoded = imboy_codec:decode(protobuf, RespBin),
-            ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded))
+            %% v2 连接：帧头保留，载荷退回 JSON
+            {ok, RespFrame} = imboy_codec:unwrap_v2_frame(RespBin),
+            Decoded = imboy_codec:decode(json, imboy_frame:payload(RespFrame)),
+            ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"msg_v2_1">>, maps:get(<<"in_reply_to">>, Decoded))
         end
     ).
 
@@ -839,10 +852,10 @@ protobuf_client_ack_bypasses_throttle_test_() ->
                 }
             ),
             %% 即使速率限制触发，CLIENT_ACK 也应成功
-            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+            {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
                 {binary, PbMsg}, State
             ),
-            Decoded = imboy_codec:decode(protobuf, RespBin),
+            Decoded = imboy_codec:decode(json, RespBin),
             ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded))
         end
     ).

@@ -211,18 +211,49 @@ encode_ws_frame(protobuf, EncodedMsg) ->
     {text, binary()} | {binary, binary()}.
 encode_ws_msg(protobuf, v2, FrameType, Msg) when is_map(Msg) ->
     Encoded =
-        case e2ee_pb_lossless(Msg) of
+        case pb_lossless(Msg) of
             true -> encode(protobuf, Msg);
             false -> encode(json, Msg)
         end,
     {binary, wrap_v2_frame(FrameType, 0, Encoded)};
 encode_ws_msg(protobuf, _Framing, _FrameType, Msg) when is_map(Msg) ->
-    case e2ee_pb_lossless(Msg) of
+    case pb_lossless(Msg) of
         true -> encode_ws_frame(protobuf, encode(protobuf, Msg));
         false -> encode_ws_frame(json, encode(json, Msg))
     end;
 encode_ws_msg(Protocol, _Framing, _FrameType, Msg) when is_map(Msg) ->
     encode_ws_frame(Protocol, encode(Protocol, Msg)).
+
+%% @doc IMBoyMessage schema 能否无损承载整条消息
+%%
+%% 除 e2ee 信封外还有两个漏斗，都会让客户端收到无法关联的空壳帧：
+%%   1. type 不在 MsgDirection 枚举内（如 CLIENT_ACK_ERROR）→ to_pb_map
+%%      压成 MSG_DIRECTION_UNSPECIFIED，客户端认不出这是什么响应；
+%%   2. to_pb_map 只搬 schema 里的字段，控制帧的 in_reply_to / reason
+%%      被静默丢弃 → 客户端无法把 ACK_ERROR 关联回原消息，确认超时
+%%      重发，形成刷屏死循环。
+%% 命中任一即退回 JSON：v2 frame 的 payload 本就允许 JSON 原文，客户端
+%% protobuf 解码失败后按 UTF-8 JSON 解析（与 e2ee 超纲同款回退）。
+-spec pb_lossless(map()) -> boolean().
+pb_lossless(Msg) when is_map(Msg) ->
+    e2ee_pb_lossless(Msg) andalso
+        direction_pb_lossless(Msg) andalso
+        ctrl_fields_pb_lossless(Msg);
+pb_lossless(_) ->
+    true.
+
+%% @private type 非空且不落在 MsgDirection 枚举内 → 不可无损表达
+direction_pb_lossless(Msg) ->
+    case maps:get(<<"type">>, Msg, <<>>) of
+        <<>> -> true;
+        Type -> msg_direction_to_enum(Type) =/= 'MSG_DIRECTION_UNSPECIFIED'
+    end.
+
+%% @private to_pb_map 没有对应字段、会被丢弃的控制帧键
+%% ponytail: 只列当前已知被丢的两个键；将来 to_pb_map 增字段时同步维护，
+%% 若丢字段的场景变多，改成对 schema 字段做白名单更省心。
+ctrl_fields_pb_lossless(Msg) ->
+    not (maps:is_key(<<"in_reply_to">>, Msg) orelse maps:is_key(<<"reason">>, Msg)).
 
 %% @doc protobuf 的 E2EEMeta 能否无损承载该消息的 e2ee 信封
 %%
