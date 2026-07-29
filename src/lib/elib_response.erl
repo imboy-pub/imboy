@@ -4,6 +4,7 @@
 %%%
 -export([success/4, success/1, success/2, success/3]).
 -export([error/4, error/1, error/2, error/3]).
+-export([error_with_status/4]).
 -export([error_with_code/2, error_with_code/3]).
 -export([handle_logic_result/2, handle_logic_result_with/4]).
 -export([json_decode_field/2, json_decode_list_field/2]).
@@ -88,6 +89,19 @@ error(Req, Msg, Code) ->
 error(Req, Msg, Code, Options) ->
     reply_json(Code, Msg, #{}, Req, Options).
 
+%% @doc 返回带 HTTP 状态码的错误响应。
+%% 普通业务错误继续使用 HTTP 200 + envelope code；认证/协议边界错误
+%% 可使用此函数发送真实 HTTP 状态码，同时保持相同的 JSON envelope。
+%% @param Req cowboy 请求对象
+%% @param HttpStatus HTTP 状态码
+%% @param Msg 错误消息
+%% @param Code envelope 中的业务错误码
+%% @returns cowboy_req:req() 更新后的请求对象
+-spec error_with_status(cowboy_req:req(), pos_integer(), binary() | list(), integer()) ->
+    cowboy_req:req().
+error_with_status(Req, HttpStatus, Msg, Code) ->
+    reply_json_with_status(HttpStatus, Code, Msg, #{}, Req, #{}).
+
 %% @doc 尝试解析指定字段的JSON字符串为结构化数据
 %% @param Row 数据行（map 或 proplists:proplist() 格式）
 %% @param Field 要解析的字段名
@@ -160,6 +174,13 @@ reply_json(Code, Msg, Payload, Req) ->
 -spec reply_json(integer(), binary() | list(), map() | list(), cowboy_req:req(), map()) ->
     cowboy_req:req().
 reply_json(Code, Msg, Payload, Req, Options) ->
+    reply_json_with_status(200, Code, Msg, Payload, Req, Options).
+
+%% @doc 生成带指定 HTTP 状态码的 JSON 响应。
+-spec reply_json_with_status(
+    pos_integer(), integer(), binary() | list(), map() | list(), cowboy_req:req(), map()
+) -> cowboy_req:req().
+reply_json_with_status(HttpStatus, Code, Msg, Payload, Req, Options) ->
     Msg2 =
         if
             is_list(Msg) ->
@@ -190,7 +211,7 @@ reply_json(Code, Msg, Payload, Req, Options) ->
 
     %% 发送响应
     cowboy_req:reply(
-        200,
+        HttpStatus,
         #{
             <<"content-type">> => <<"application/json; charset=utf-8">>,
             <<"Referrer-Policy">> => <<"strict-origin-when-cross-origin">>

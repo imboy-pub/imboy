@@ -195,19 +195,9 @@ NOAUTH_BODY="$(curl -s --max-time 20 -X POST "${BASE_URL}/api/v1/billing/renew" 
   -H 'Content-Type: application/json' -d "{\"subscription_id\":${SUB_ID}}")"
 NOAUTH_HTTP="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 -X POST "${BASE_URL}/api/v1/billing/renew" \
   -H 'Content-Type: application/json' -d "{\"subscription_id\":${SUB_ID}}")"
-# 断言「业务逻辑没被执行」，而不是断言某个具体状态码：
-# 当前中间件对无 Authorization 头的请求 `{stop, Req}` 且不回包，cowboy 补 204 空响应，
-# 客户端分不清「未登录」与「成功但无内容」。这是 W0-ARCH-01-P0（tag: security）的范畴，
-# 不在本商业化闸门内修；此处只保证鉴权确实拦住了，并在下面显式提示该缺陷。
-if [ "$NOAUTH_HTTP" != "200" ] && [ -z "$(printf '%s' "$NOAUTH_BODY" | tr -d '[:space:]')" ]; then
-  ok "未登录调用写端点未进入业务逻辑（HTTP ${NOAUTH_HTTP}，空响应体）"
-else
-  bad "未登录调用写端点疑似穿透（HTTP ${NOAUTH_HTTP}）"
-fi
-if [ "$NOAUTH_HTTP" != "401" ]; then
-  echo "  ⚠ 已知缺陷（非本闸门范围）：未登录返回 ${NOAUTH_HTTP} 而非 401 + 错误信封"
-  echo "    根因 src/ds/auth_ds.erl:198 do_authorization(undefined,...) -> {stop, Req} 未回包；归 W0-ARCH-01-P0"
-fi
+assert_eq "未登录调用返回 HTTP 401" "$NOAUTH_HTTP" "401"
+assert_eq "未登录调用错误码为 401" "$(env_code "$NOAUTH_BODY")" "401"
+assert_contains "未登录调用返回认证错误信封" "$(env_msg "$NOAUTH_BODY")" "未登录"
 
 # ------------------------------------------------------------
 # 5. mock 支付（禁止真实商户）

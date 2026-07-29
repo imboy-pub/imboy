@@ -99,6 +99,8 @@ default_refresh_mods() ->
         user_handler,
         imboy_cluster,
         imboy_license,
+        auth_ds,
+        elib_response,
         auth_oidc_logic,
         billing_logic,
         payment_callback_logic,

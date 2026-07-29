@@ -196,7 +196,10 @@ condition(_, _, Authorization, Req, Env) ->
 -spec do_authorization(binary() | undefined, cowboy_req:req(), map()) ->
     {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
 do_authorization(undefined, Req, _Env) ->
-    {stop, Req};
+    Req1 = elib_response:error_with_status(
+        Req, 401, <<"未登录，请先登录"/utf8>>, ?ERR_TOKEN_MISSING
+    ),
+    {stop, Req1};
 do_authorization(Authorization, Req, Env) ->
     case verify_token(Authorization) of
         {ok, UserId, Did} ->
@@ -211,7 +214,13 @@ do_authorization(Authorization, Req, Env) ->
             },
             {ok, Req, Env2};
         {error, Code, Msg} ->
-            Req1 = elib_response:error(Req, Msg, Code),
+            Req1 =
+                case Code of
+                    ?ERR_UNAUTHORIZED ->
+                        elib_response:error_with_status(Req, 401, Msg, Code);
+                    _ ->
+                        elib_response:error(Req, Msg, Code)
+                end,
             {stop, Req1}
     end.
 

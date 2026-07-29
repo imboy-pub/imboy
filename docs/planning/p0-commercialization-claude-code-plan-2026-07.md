@@ -114,13 +114,13 @@
 - 依赖：`C0-BILL-01,C0-GOV-01`
 - 标签：`commercialization,contract`
 - 动作：补 finance、billing、License、SSO、export_data OpenAPI；以 handler 实际 payload 生成 schema；加入版本、迁移、License、备份、恢复、升级和支持矩阵检查；增加三仓最小回归。
-- 自动验收：`redocly lint api/openapi.yaml`；`make compile && make eunit`；`cd ../imboyadmin && bun test && bun run build`；`cd ../imboyapp && flutter analyze && flutter test`；`git diff --check`。
+- 自动验收：`redocly lint api/openapi.yaml`；`make compile && make eunit`；`cd ../imboyadmin && bun test && bun run build`；`cd ../imboyapp && flutter analyze && flutter test`；`git diff --check`。若仓库存在已确认的基线失败，必须提供同基线对比并证明本任务未新增失败，不能把“零回归”写成“绝对全绿”。
 
 ## P0 闸门：GATE-C0
 
 - 状态：`blocked`
 - 依赖：`C0-BILL-01,C0-LICENSE-01,C0-BRAND-01,C0-OPS-01,C0-IAM-01,C0-GOV-01,C0-CONTRACT-01`
-- 自动验收：所有依赖 `done`；三仓检查全绿；本地 mock 商业冒烟通过：注册→License quota→OIDC→订阅→mock 支付→审计→导出→备份；`git diff --check`；工作区不存在新增密钥、联系方式或生产数据。
+- 自动验收：所有依赖 `done`；三仓本次变更范围检查通过且相对基线无新增失败；本地 mock 商业冒烟通过：注册→License quota→OIDC→订阅→mock 支付→审计→导出→备份；迁移 up/down 成对且版本号唯一；`git diff --check`；工作区不存在新增密钥、联系方式或生产数据。
 - 通过输出：`P0-COMMERCIALIZATION: READY_FOR_EXTERNAL_CHECKS`。
 
 ## 不自动执行的任务
@@ -138,6 +138,7 @@
 ## 失败、恢复和幂等规则
 
 - 所有迁移必须有 down 脚本；重复运行前检测 schema、索引和配置是否已存在。
+- 合并多个并行分支后必须重新运行迁移版本唯一性检查；迁移一旦可能在环境中应用，不得直接改写其编号，新增迁移应使用下一个未占用编号并在部署前核对 `schema_migrations_history`。
 - 所有 fixture 使用固定 ID、临时目录和 mock 外部服务；测试结束必须清理。
 - 禁止 `git reset --hard`、`git checkout --`、盲目 `stash pop` 和 push。
 - 发现非本任务 dirty 文件时只记录，不修改、不暂存、不提交。

@@ -198,3 +198,20 @@ current_uid_default_test() ->
 current_did_default_test() ->
     ?assertEqual(<<"dev-9">>, auth_ds:current_did(#{current_did => <<"dev-9">>})),
     ?assertEqual(<<>>, auth_ds:current_did(#{})).
+
+%% 未登录请求必须发送 401 + 统一错误信封，不能让 Cowboy 自动结束为 204 空响应。
+do_authorization_without_token_test_() ->
+    ?WITH_MECK(
+        elib_response,
+        [
+            {'error_with_status', 4, fun(#{}, 401, <<"未登录，请先登录"/utf8>>, ?ERR_TOKEN_MISSING) ->
+                unauthorized_req
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {stop, unauthorized_req},
+                auth_ds:condition(false, false, undefined, #{}, #{})
+            )
+        end
+    ).
