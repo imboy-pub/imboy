@@ -3331,3 +3331,59 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   **全部 5 处**明文 `sha256`（166/306/342/420 + 缩略图 meta）、confirm 传 `cipher`
   与密文哈希。⚠️ 触及生产写路径，完成后需真机验证附件收发（真机腿仍在停放区）。
 - Reviewer decision: Pending
+
+### Session 2026-07-30 05:00 — E2EE-061 Slice 4（第一半）：上传漏斗加密接线
+
+- Session ID: 20260730-0500-claude-code
+- Repository: imboyapp
+- Status: 上传漏斗已能发密文；**尚无调用方开启**，E2EE-061 整体仍 `PENDING`
+- Changed files:
+  - `lib/store/api/attachment_api.dart`（新增 `AttachmentSealRequest` + `uploadViaPresign`
+    的可选 `seal` 参数）
+  - `test/service/e2ee/attachment_upload_sealed_test.dart`（新，11 例）
+  - `test/store/attachment_upload_presign_test.dart`（**修既有陈旧断言**，见下）
+  - `imboy/docs/.../evidence/E2EE-061-slice4-upload-wiring.md`（新）
+- **为什么先做漏斗**：5 个上传入口**全部经由 `uploadViaPresign` 这一个漏斗**。
+  在漏斗里做一次，入口只需各传一个 `seal`，而不是在 5 处各写一遍加密。
+  上一刀记的「5 处明文 `sha256`」里，**漏斗这处是唯一决定上送内容的**，
+  其余 4 处构造的是返回给调用方的 meta（随消息体一起处理，属下一刀）。
+- **为什么用可变承载不改返回类型**：改返回类型会让 5 个入口全部跟着改，
+  而它们本刀内还不需要加密。`AttachmentSealRequest` 把「要不要加密」与
+  「谁需要 descriptor」解耦，未接线入口**一行不用动**。
+- ⚠️ **MIME 拍板带来的意外收益**：因为「不隐藏 MIME」，PUT 的 Content-Type
+  与 presign 的 `mime_type` 都保持真实值，故 **presign/confirm 契约无需任何改动**。
+  Slice 1 曾判定「改 MIME 必须重新 presign」，该约束因这次拍板而**不触发**。
+- 实现要点：封装**必须在 presign 之后**（descriptor 要带 `object_key`）；
+  `validateUpload` 仍按**明文**长度校验上限；content key/nonce 每次 `Random.secure()`
+  新生成不复用；descriptor 含 content key，已注释标明**必须随 PFv3 加密 payload 发送，
+  绝不可写日志、绝不可进未加密字段**。
+- 空验证四条**全部精确变红**：照旧 PUT 明文(**4 红**) / confirm 改回明文哈希(1) /
+  去掉 `cipher`(1) / `size` 改回明文大小(1)。A 红 4 条说明这些断言**确实穿过了真实上传字节**。
+- ⚠️ **顺带修复一个已红约三周的既有测试**：
+  `test/store/attachment_upload_presign_test.dart` 「快乐路径」断言 `confirmBody`
+  含 `'md5'`，但该字段已于 **2026-07-09 commit `71d20283`** 重命名为 `file_hash256`
+  并改算法，**该提交未同步本测试**（测试文件上次改动 2026-06-20）。
+  已核实**与本刀无关**（`git show HEAD:` 第 169 行本就发 `file_hash256`）。
+  断言按现行契约更新（**收紧**到 SHA-256，非放宽），废止理由与出处写进用例注释。
+  ⚠️ **这说明 `test/store/` 此前不在任何绿灯门内——红了三周无人发现。**
+- Verification:
+  - `flutter test .../attachment_upload_sealed_test.dart` → **All 11 passed**
+  - `flutter test test/service/e2ee/` → **513**（上轮 502）
+  - `flutter test test/service/` → **1393**（上轮 1382）
+  - `flutter test test/store` → **397 passed**（修复前 396 passed 1 failed）
+  - `dart analyze lib` → 1 issue（既有 info）
+- Evidence: `evidence/E2EE-061-slice4-upload-wiring.md`
+- Residual:
+  1. ⚠️ **无任何调用方传 `seal`** —— 生产附件路径**依旧明文直传**，ATT-01..05 仍不成立；
+  2. ⚠️ **`message_id` 仍未提前生成** —— 绑定值算不出来，**没有它就无法开启加密**，
+     是下一刀首要工作；
+  3. 其余 4 处明文 `sha256` 未动；⚠️ 它们的 `file_hash256` 会进消息 payload，
+     **非 E2EE 会话下是明文**，需一并评估；
+  4. 缩略图未加密（Slice 7；设计 §3.3「缩略图不加密 = 预览即泄漏」）；
+  5. 整文件入内存，100MB 上限下低端机未实测；
+  6. 未真机验证；未与后端做真实的密文 confirm 往返。
+- **Next task**：Slice 4 第二半 —— ① 把 `message_id` 提前到上传之前生成并贯穿；
+  ② 在 5 个入口按会话是否 E2EE 决定是否传 `seal`；③ 把 descriptor 放进消息
+  **加密 payload**；④ 评估 meta 里 `file_hash256` 进消息体的明文暴露。
+  ⚠️ 这一刀会真正改变生产行为，完成后**必须真机验证附件收发**（真机腿在停放区）。
+- Reviewer decision: Pending
