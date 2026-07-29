@@ -570,7 +570,7 @@
 
 ### GATE-C0
 - title: P0 商业化自动验收闸门
-- status: blocked
+- status: ready
 - deps: C0-BILL-01,C0-LICENSE-01,C0-BRAND-01,C0-OPS-01,C0-IAM-01,C0-GOV-01,C0-CONTRACT-01
 - wave: C0
 - tag: commercialization
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 7 | 0 | 0 | 1 | GATE-C0 blocked（deps 已全 done，待结算） |
+| C0 | 8 | 7 | 0 | 1 | 0 | GATE-C0 ready（deps 全 done，待结算冒烟） |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
