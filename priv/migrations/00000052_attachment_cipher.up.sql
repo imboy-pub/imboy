@@ -1,4 +1,4 @@
--- 00000050_attachment_cipher.up.sql
+-- 00000052_attachment_cipher.up.sql
 -- E2EE-061 Slice 5（后端字段语义）：附件密文判别位与哈希/大小语义变更。
 --
 -- 背景与人工拍板（2026-07-30，见 docs/guides/e2ee/v2/27-...design.md §6）：

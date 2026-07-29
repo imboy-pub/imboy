@@ -1,4 +1,4 @@
--- 00000050_attachment_cipher.down.sql
+-- 00000052_attachment_cipher.down.sql
 --
 -- ⚠️ 回滚会**丢失「哪些对象是密文」这一事实**：cipher 列被删除后，
 --   已加密上传的行与明文行不再可区分，而它们的 file_hash256/size 是密文语义。
