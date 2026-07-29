@@ -522,7 +522,7 @@
 
 ### C0-OPS-01
 - title: 备份恢复与健康告警闭环
-- status: ready
+- status: done
 - deps: none
 - wave: C0
 - tag: commercialization
@@ -530,7 +530,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-OPS-01
 - action: 接入受支持的备份调度、Pushgateway 成功指标、TLS 证书告警、支付结果指标和临时库 restore smoke。
 - verify: bash -n scripts/backup_pg.sh scripts/backup_garage.sh deploy/preflight.sh；docker compose config；helm lint；promtool check rules。
-- evidence:
+- evidence: 闭合「备份→指标→告警→恢复验证」全链路。**核心真 bug**：deploy/prometheus/rules/imboy-alerts.yml 的 IMBoyBackupNotRunning 依赖 imboy_backup_last_success_timestamp，但两个备份脚本从不推送该指标 → absent() 分支使该告警一旦接入即永久 CRITICAL（告警存在、指标产出方缺失的断链）。修复：新增 scripts/lib/metrics_push.sh 公共推送库（build_backup_payload/push_backup_result/build_tls_payload/push_tls_expiry；PUSHGATEWAY_URL 未设置静默跳过；推送失败只告警不改变作业退出码——备份已成功不能因监控故障判失败；失败时刻意不刷新 last_success_timestamp，否则 IMBoyBackupNotRunning 永不触发），backup_pg.sh / backup_garage.sh 以 EXIT trap 接入，成功失败两条路径都上报。**调度受版本控制**：新增 deploy/cron/imboy-ops.cron（此前调度只存在于文档 crontab 示例，各部署各写一套，无法审计），含 PG 备份 03:00 / Garage 03:30 / 恢复冒烟 04:30 / TLS 巡检每 6 小时。**恢复冒烟**：新增 scripts/restore_smoke.sh，恢复最新备份到一次性临时库并断言 public schema 表数 ≥ MIN_TABLES，EXIT trap 清理；安全红线=临时库名固定 imboy_smoke_ 前缀且与生产库同名时直接拒绝执行，只 DROP 自建临时库，提供 DRY_RUN=1 只验守卫不连库。**TLS 告警**：栈内无 Prometheus 采集服务、无 blackbox_exporter，且计划引用的 deploy/docker-compose.prod.yml 并不存在（仓内只有 docker-compose.demo.yml）；因此不虚构 probe_ssl_earliest_cert_expiry，改由新增 scripts/check_tls_expiry.sh 经同一条 Pushgateway 通路自产 imboy_tls_cert_expiry_timestamp（openssl 取 notAfter，兼容 BSD/GNU date），新增告警组 imboy.tls：ExpiringSoon(14d,warning) / Expired(critical) / CheckStale(absent 6h，防检查脚本停跑导致过期静默）。**支付指标/告警**：后端原先零支付指标；在 src/logic/payment_callback_logic.erl 的唯一出入口 handle/3 包一层 record_result_metric/2 产出 payment_callback_total{gateway,result=paid|already|error}（不散落各分支避免漏计），验签失败额外产出 payment_callback_sign_failed_total（安全信号，阈值独立于业务错误，不混入 result="error"）；均为 gen_server:cast，指标故障不会拖垮支付回调；新增告警组 imboy.payment：ErrorRateHigh(>10%/10m，分母 clamp_min 防除零) / SignFailureSpike(security)；另补 IMBoyBackupJobFailed(last_status==0)。**验收命令与结果**：`bash -n scripts/backup_pg.sh scripts/backup_garage.sh scripts/check_tls_expiry.sh scripts/restore_smoke.sh scripts/lib/metrics_push.sh scripts/test/metrics_push_test.sh deploy/preflight.sh` 全通过；`bash scripts/test/metrics_push_test.sh` mock 测试 16/16 通过（覆盖成功/失败 payload、失败不刷新成功时间戳、Pushgateway 缺失与不可达时退出码仍为 0、两脚本确已接入 trap、restore_smoke 生产库守卫）；`promtool check rules deploy/prometheus/rules/imboy-alerts.yml` → SUCCESS: 27 rules found；`helm lint deploy/helm -f deploy/helm/values.prod.yaml` → 1 chart linted, 0 failed（仅 icon 建议）；`docker compose -f deploy/docker-compose.demo.yml config` 通过；`make app` 干净；`make eunit t=payment_callback_logic_tests` All 4 tests passed（新增指标断言）；全量 `make eunit` = Passed 4580 / Failed 125，与基线 dd021b61 的 Passed 4560 / Failed 125 相比失败数持平、通过数 +20（恰为本分支累计新增测试 8+11+1），零回归。⚠️ 偏离计划已记录：计划验收写的 `docker compose -f deploy/docker-compose.prod.yml config` 因该文件在仓内不存在，改用实际存在的 docker-compose.demo.yml 执行；prod compose 缺失本身属 C0-OPS-01 之外的部署资产缺口，未擅自新建。⚠️ 本机原先无 helm/promtool，已 brew 安装后才执行校验；docker 可执行文件在 ~/.docker/bin 不在默认 PATH。⚠️ 未做（非本任务验收项）：Pushgateway 与 Prometheus 采集栈本身未纳入 compose，指标推送在生产需部署方提供 PUSHGATEWAY_URL；/etc/imboy/ops.env 含部署方私有配置按设计不入库。
 
 ### C0-IAM-01
 - title: OIDC PKCE 生产加固与 fake IdP 回归
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 2 | 0 | 2 | 4 | GATE-C0 blocked |
+| C0 | 8 | 3 | 0 | 1 | 4 | GATE-C0 blocked |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。

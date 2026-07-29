@@ -29,6 +29,14 @@ BUCKET="${BUCKET:-imboy}"                       # Garage bucket 名
 DEST="${DEST:-./data/backups/garage}"           # 备份目标（本地路径或 rclone remote）
 RETENTION_DAYS="${RETENTION_DAYS:-30}"          # 仅对本地路径目标生效
 
+# shellcheck source=scripts/lib/metrics_push.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/metrics_push.sh"
+
+START_TS="$(date -u +%s)"
+BACKUP_OK=0
+# 同 backup_pg.sh：任何退出路径都上报一次，避免失败静默
+trap 'push_backup_result garage "$BACKUP_OK" "$START_TS"' EXIT
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info() { echo -e "${GREEN}[backup_garage]${NC} $*"; }
 warn() { echo -e "${YELLOW}[backup_garage]${NC} $*"; }
@@ -64,5 +72,6 @@ if [[ "$DEST" != *:* ]]; then
   [ "${DELETED:-0}" -gt 0 ] && info "清理 ${DELETED} 个超过 ${RETENTION_DAYS} 天的旧备份"
 fi
 
+BACKUP_OK=1
 info "Garage 备份完成: ${TARGET}"
 warn "注意：仅备份 Garage 中的附件对象。数据库（含附件元数据/object_key）请用 backup_pg.sh 一并备份，二者需时间一致。"
