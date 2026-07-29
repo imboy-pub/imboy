@@ -30,6 +30,8 @@
 -export([list_plans_page/3]).
 %% 订阅
 -export([subscribe/3]).
+%% 归属校验（W0-SEC-01 / C0-BILL-01）
+-export([assert_owner/2, assert_invoice_owner/2]).
 -export([renew/1]).
 -export([cancel/1]).
 -export([get_subscription/1]).
@@ -72,6 +74,9 @@
 
 %% 一天毫秒数
 -define(MS_PER_DAY, 86400000).
+
+%% 归属校验统一错误文案：不区分「不存在」与「非本人」，避免枚举他人订阅 id
+-define(ERR_MSG_FORBIDDEN, <<"无权操作该订阅"/utf8>>).
 
 %%===================================================================
 %%% 套餐 CRUD
@@ -175,6 +180,9 @@ subscribe(TenantId, PlanId, Opts) ->
                 end,
             Data = #{
                 <<"tenant_id">> => TenantId,
+                %% 归属人取自 auth 中间件注入的 current_uid（由 handler 经 Opts 传入），
+                %% 不取客户端传来的 tenant_id —— 后者不能作为授权依据。
+                <<"owner_uid">> => maps:get(owner_uid, Opts, 0),
                 <<"plan_id">> => PlanId,
                 <<"status">> => Status,
                 <<"current_period_start">> => {raw, <<"NOW()">>},
@@ -188,6 +196,57 @@ subscribe(TenantId, PlanId, Opts) ->
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
+
+%% @doc 订阅归属校验（fail-closed）。
+%%
+%% 只有订阅的 owner_uid 与当前登录用户一致才放行。三种情况一律拒绝：
+%%   - 订阅不存在（不区分「不存在」与「非本人」，避免枚举他人订阅 id）
+%%   - owner_uid=0 的历史无主订阅（只允许管理端处理，用户端不得接管）
+%%   - owner_uid 与 Uid 不一致
+%% 客户端传来的 tenant_id 永远不作为授权依据。
+-spec assert_owner(integer(), integer()) -> ok | {error, binary()}.
+assert_owner(SubId, Uid) when is_integer(SubId), SubId > 0, is_integer(Uid), Uid > 0 ->
+    Sub = billing_subscription_ds:find_by_id(SubId),
+    case map_size(Sub) =:= 0 of
+        true ->
+            {error, ?ERR_MSG_FORBIDDEN};
+        false ->
+            case owner_uid_of(Sub) of
+                Uid -> ok;
+                _ -> {error, ?ERR_MSG_FORBIDDEN}
+            end
+    end;
+assert_owner(_SubId, _Uid) ->
+    {error, ?ERR_MSG_FORBIDDEN}.
+
+%% @doc 账单归属校验：invoice → subscription 反查归属人。
+%% 账单本身不存 owner_uid，归属只能来自其订阅，避免两处归属不一致。
+-spec assert_invoice_owner(binary(), integer()) -> ok | {error, binary()}.
+assert_invoice_owner(InvoiceNo, Uid) when is_binary(InvoiceNo), InvoiceNo =/= <<>> ->
+    Inv = billing_invoice_ds:find_by_invoice_no(InvoiceNo),
+    case map_size(Inv) =:= 0 of
+        true ->
+            {error, ?ERR_MSG_FORBIDDEN};
+        false ->
+            assert_owner(to_int_or_zero(maps:get(<<"subscription_id">>, Inv, 0)), Uid)
+    end;
+assert_invoice_owner(_InvoiceNo, _Uid) ->
+    {error, ?ERR_MSG_FORBIDDEN}.
+
+-spec owner_uid_of(map()) -> integer().
+owner_uid_of(Sub) ->
+    to_int_or_zero(maps:get(<<"owner_uid">>, Sub, 0)).
+
+-spec to_int_or_zero(term()) -> integer().
+to_int_or_zero(V) when is_integer(V) -> V;
+to_int_or_zero(V) when is_binary(V) ->
+    try
+        binary_to_integer(V)
+    catch
+        _:_ -> 0
+    end;
+to_int_or_zero(_) ->
+    0.
 
 %% @doc 续费：按套餐周期推进 current_period_end，状态置生效
 %% @returns {ok, NewEndMs} | {error, binary()}

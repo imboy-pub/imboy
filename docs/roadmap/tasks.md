@@ -90,7 +90,7 @@
 
 ### W0-SEC-01
 - title: 计费 9 端点补 current_uid 归属校验
-- status: ready
+- status: done
 - deps: none
 - wave: 0
 - tag: security
@@ -98,7 +98,7 @@
 - source: risk-report P1-A1；security-review H-01；SEC-01
 - action: `billing_handler.erl:70,91,117,133,147,174,201,226,246`（subscribe/renew/cancel/subscription/report_usage/check_quota/invoice_generate/invoice_pay/invoice_list 函数头）每端点加 current_uid 归属校验（照支付 owner_uid 红线），invoice_pay 优先。
 - verify: 每端点新增"跨租户请求被拒"测试；A 租户 token 操作 B 租户对象返回拒绝。
-- evidence:
+- evidence: 与 C0-BILL-01 合并实现（同一批提交）。详见 C0-BILL-01 的 evidence：billing_handler 9 端点统一经 with_uid/with_owned_sub 取 auth 中间件注入的 current_uid，billing_logic:assert_owner/2 做归属断言，invoice_pay 走 assert_invoice_owner/2 反查；test/logic/billing_logic_tests.erl 新增 10 类跨用户拒绝场景（7→17 全绿）；全量 make eunit 4609/125 对基线 4560/125 零回归。
 
 ### W0-SEC-02
 - title: 钱包借记补 frozen/status 守卫 + 表级 CHECK
@@ -486,7 +486,7 @@
 
 ### C0-BILL-01
 - title: Billing 归属与跨租户越权修复
-- status: blocked
+- status: done
 - deps: W0-SEC-01
 - wave: C0
 - tag: commercialization
@@ -494,7 +494,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-BILL-01
 - action: 增加 owner_uid 迁移；handler 注入 current_uid；logic 统一 assert_owner；invoice_pay 反查订阅归属；补 8 类跨用户 EUnit。
 - verify: make compile && make eunit；billing 授权测试全绿；billing handler 不再丢弃 State；owner_uid schema 存在。
-- evidence:
+- evidence: 与 W0-SEC-01 合并实现（两者 action 是同一件事被拆到两个 wave：都是 billing 端点补 current_uid 归属校验，分开做会重复改同一批文件并冲突）。**漏洞确认**：billing_handler 的 9 个端点此前签名全是 `(Req0, _State)`，只从请求参数取 tenant_id/subscription_id/invoice_no，从不校验请求者身份 —— 任意持有合法 JWT 的用户可续费、取消、生成账单、支付、查看他人订阅与账单；tenant_id 由客户端传入却被当作数据归属依据。**迁移**：priv/migrations/00000050_billing_owner_uid.{up,down}.sql 为 billing_subscription 增加 owner_uid bigint DEFAULT 0 NOT NULL + idx_billing_sub_owner 索引 + 列注释，down 脚本对称回滚；全部用 IF NOT EXISTS/IF EXISTS 保证重复执行幂等。**Logic 层**：billing_logic 新增 assert_owner/2（fail-closed：订阅不存在、owner_uid=0 的历史无主订阅、owner_uid 不匹配，三种一律拒绝）与 assert_invoice_owner/2（账单不存 owner_uid，归属只能由 invoice.subscription_id 反查订阅，避免两处归属不一致）；统一错误文案宏 ?ERR_MSG_FORBIDDEN 不区分「不存在」与「非本人」，防止枚举他人订阅 id；subscribe/3 的 Data 增加 owner_uid，取自 Opts 中由 handler 传入的 current_uid，不取 tenant_id。**Handler 层**：新增三个守卫 with_uid/3（未登录 403，current_uid 只取 auth 中间件注入的 State）、with_owned_sub/4（取用户 + 校验订阅归属，两关都过才执行）、sub_owned_by/2（查询类端点过滤而非报错）；subscribe 注入 owner_uid；renew/cancel/report_usage/check_quota/invoice_generate/invoice_list 走 with_owned_sub；invoice_pay 走 assert_invoice_owner；subscription 查询按归属过滤，他人订阅返回空对象而非详情。plan_list 保持 (Req0,_State) —— 公开套餐列表无归属可校验，是唯一合理的例外。模块头注释新增「授权红线」段落说明 tenant_id 不得作为授权依据。**测试**：10 类归属场景并入 test/logic/billing_logic_tests.erl（7→17）：本人放行、他人订阅拒绝、owner_uid=0 无主订阅两种身份都拒绝、订阅不存在拒绝、subscription_id 非法四种取值拒绝且不触达 DS、uid 非法四种取值拒绝且不触达 DS、账单反查归属放行、他人账单拒绝、账单不存在/账单号非法拒绝、拒绝文案不泄露存在性。**验收命令与结果**：`make app` 干净；`make eunit t=billing_logic_tests` All 17 tests passed；schema 断言 `rg -c owner_uid priv/migrations/00000050_billing_owner_uid.up.sql` = 6；handler 覆盖断言 `rg -c "with_uid\(|with_owned_sub\(" src/api/billing_handler.erl` = 14；残留 `(Req0, _State)` 端点 = 1（仅 plan_list，合理）；全量 `make eunit` = Passed 4609 / Failed 125，对比基线 dd021b61 的 4560/125，失败数持平、通过数 +49（累计 8+11+1+8+11+10），零回归。⚠️ 过程教训（已记入检查点）：测试最初写成独立模块 billing_owner_guard_tests，`make eunit t=` 单模块能跑且 10/10 绿，但**全量 eunit 计数不涨** —— erlang.mk 只发现「与源模块同名 + _tests」的测试模块，billing_owner_guard 无对应源模块故从未进全量；已并入 billing_logic_tests 解决。若只看单模块绿灯就结项，会留下一组永远不进 CI 的测试。⚠️ 未做（非本任务验收项）：owner_uid=0 的历史无主订阅的管理端接管流程未实现，当前只保证用户端一律拒绝；迁移 50 未在本地库实际执行（需 DB 迁移窗口），schema 断言基于迁移脚本内容。
 
 ### C0-LICENSE-01
 - title: License max_nodes 硬 gate 与续费边界
@@ -558,7 +558,7 @@
 
 ### C0-CONTRACT-01
 - title: 商业 API 合同与三仓发布门
-- status: blocked
+- status: ready
 - deps: C0-BILL-01,C0-GOV-01
 - wave: C0
 - tag: commercialization
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 5 | 0 | 0 | 3 | GATE-C0 blocked |
+| C0 | 8 | 6 | 0 | 1 | 1 | GATE-C0 blocked |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
