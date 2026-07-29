@@ -570,7 +570,7 @@
 
 ### GATE-C0
 - title: P0 商业化自动验收闸门
-- status: ready
+- status: in_progress
 - deps: C0-BILL-01,C0-LICENSE-01,C0-BRAND-01,C0-OPS-01,C0-IAM-01,C0-GOV-01,C0-CONTRACT-01
 - wave: C0
 - tag: commercialization
@@ -578,7 +578,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §P0 闸门
 - action: 执行本地 mock 商业冒烟并汇总三仓验收证据；不触发真实支付、商店发布或真机操作。
 - verify: 所有 deps done；三仓检查全绿；注册→License→OIDC→订阅→mock 支付→审计→导出→备份 smoke 全绿；git diff --check。
-- evidence:
+- evidence: **本地 mock 商业冒烟已建成并全绿**：新增 `scripts/smoke/commercial_smoke.sh`（八段链路 45 项断言）+ `scripts/smoke/commercial_rpc.escript`（token/license/user_count/seed_plan/refresh/fresh_check，全部调运行中节点的真实业务函数，不绕校验），提交 `97607f5f` 与 `a6e2a3a1`。`bash scripts/smoke/commercial_smoke.sh` = **通过 45 / 失败 0（exit 0）**：注册走真实 getcode→验证码落库→signup（无旁路）；License quota 实测拦截（max_users=100 < current_users=440 → code 402「用户数已达授权上限…」）且 `public_info/0` 七字段齐备、license_text/signature/private_key/reason 均不外泄；OIDC 未配置时 fail-closed 返回 400（非 500）+ fake IdP 全链路 `make eunit t=auth_oidc_logic_tests` 21 tests passed；订阅段端到端验证本波次修复点（归属人可见详情且 owner_uid 匹配、**非归属人查询返回空对象**、非归属人续费 code=403「无权操作该订阅」）；mock 支付走 MOCK_ 通道且重复支付幂等拦截；导出返回 legal_hold.supported=false、六字段齐备、**敏感键零残留**；审计 user_log type=130 计数增长且 body 含 action=user_data_export；备份 `scripts/backup_pg.sh` 产出 1,025,003 字节可用 dump。**冒烟过程抓到两个真 bug 与一个环境缺口**：① `chk_user_log_type` 仍是建库时的 ARRAY[100,102,110,901,902,903]，type=130 插入被 23514 check_violation 拦下，而审计写入包在 try...catch 里失败只记 ERROR —— GDPR 导出**一条审计都没留**（本地库 type=130 行数实测为 0），已由迁移 `00000051_user_log_type_export`（含 down，刻意不删既有审计行）修复，修复后计数 1→2→3 可复验；② 未登录调用 `/api/v1/billing/renew` 返回 **204 空响应而非 401+错误信封**（根因 `src/ds/auth_ds.erl:198` `do_authorization(undefined,...) -> {stop, Req}` 未回包），属 W0-ARCH-01-P0（tag: security）范畴，本闸门不越界修，冒烟改为断言「业务逻辑未被执行」并显式打印该缺陷；③ 本地库虽记 schema_migrations=50 但 `billing_subscription.owner_uid` 实际不存在，已用迁移 50 的幂等 up.sql 补齐（冒烟前置已加该列存在性断言）。**冒烟防假绿**：脚本第 0 段强制校验节点代码新鲜度（`imboy_license:public_info/0` 可调用），因为本轮实测本地 9800 dev 节点已连续运行 37 小时、代码早于 C0-LICENSE-01，直接打过去等于测陈旧代码；已用 `commercial_rpc.escript refresh` 把本分支 12 个改动模块热加载后再跑。**其余验收**：全量 `make eunit` = Passed 4611 / Failed 125（基线 dd021b61 = 4560/125，零回归）；`bunx @redocly/cli@2.41.1 lint api/openapi.yaml` = valid，0 errors / 25 预存 warnings；`bash scripts/check_release_consistency.sh` 18/0；`bash scripts/test/check_release_consistency_test.sh` 18/0；imboyadmin `bun run lint` 干净、`bun run build` ✓ 384ms；后端 `git diff --check` CLEAN；`git diff main...HEAD` 全量扫描无新增密钥/联系方式/生产数据（唯一命中 `test/lib/imboy_license_tests.erl:301` 的 `-----BEGIN RSA PRIVATE KEY-----` 是**反向测试夹具**，用于断言 public_info/0 不泄漏该字段，无密钥材料）。**外部阻塞（逐条标注，均不自动执行）**：真实支付宝/微信/Stripe = blocked/external（需商户凭证与测试环境金额确认，本轮只用 mock 通道）；Apple/Google 签名与上架 = blocked/external（需人工发布窗口）；SAML/LDAP/SCIM 完整适配 = P1（当前 fail-closed 不可启用，冒烟已覆盖该拒绝行为）；合规/法律宣传语 = blocked/decision（需法务确认）。**未闭合项（故本任务保持 in_progress，不标 done）**：imboyapp `flutter test` = **4696 passed / 208 skipped / 89 failed**，失败集中在 integration/route smoke/widget 类（group_tag_manage_ui 18、contact_tag_relation_ui 18、route_smoke 10、moment UI 18 等），与项目已知的「无头 widget 与异步页固有不兼容」一致，且本闸门未改动 imboyapp 任何源码 —— 但尚未与 main 基线同口径对比取证，未取证前不得按「三仓全绿」结项。另：为让该仓能编译，本轮补了 gitignored 依赖（symlink `.env.local_office`/`.env.local_home`、从主仓 cp `lib/config/env_{dev,pro}.dart` 与 4 个 `env_*.g.dart`），并因跑 build_runner 产生 37 个 riverpod `.g.dart` 的 hash 差异（纯生成物、未提交、无功能改动）。
 
 ---
 
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 7 | 0 | 1 | 0 | GATE-C0 ready（deps 全 done，待结算冒烟） |
+| C0 | 8 | 7 | 1 | 0 | 0 | GATE-C0 in_progress（冒烟 45/45 绿，待 flutter 失败基线取证） |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
