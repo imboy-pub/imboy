@@ -3280,3 +3280,54 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   并顺带拍板 MIME（第四项）。两项落定后 Slice 4 才能动工。
   其余卡点不变（ADR 16 五方签字 / profile 接受 / 012-024-025 回退裁定）。
 - Reviewer decision: Pending
+
+### Session 2026-07-30 04:00 — E2EE-061：AAD 改用方案甲 + MIME 拍板（解除 Slice 4 阻塞）
+
+- Session ID: 20260730-0400-claude-code
+- Repository: imboyapp（代码）、imboy（文档）
+- Status: Slice 4 **阻塞已解除**；接线未做，E2EE-061 整体仍 `PENDING`
+- ⚠️ **两项人工拍板（2026-07-30）**：
+  ① 块 AAD 改用**方案甲**
+  `SHA-256(canonical_cbor{ctx, message_id, conversation_id, sender_uid})`
+  —— 三个值上传前即可确定且全设备一致，ATT-01 由 `message_id` 成立。
+  **已知代价：绑定强度弱于原设计**（不含 `message_type`/`action`/`created_at_ms`/
+  `session_ref`/`epoch_or_counter`），拍板时接受；
+  ② **不隐藏 MIME** —— 保住服务端类型白名单（`elib_oss:validate_file_type/1`）
+  与现有预览行为。⚠️ **代价：§3.2 的泄漏旁路持续存在**，服务端仍知道
+  「这是一张 jpg / 一个 pdf」，**不得对外宣称附件元数据完全不可见**；
+  ATT 系列在 MIME 这一项上不成立，属已知且已接受的缺口。已写入 `27-...` §2.1。
+- Changed files:
+  - `imboyapp/lib/service/e2ee/attachment_binding.dart`（新，纯函数）
+  - `imboyapp/lib/service/e2ee/attachment_chunk_codec.dart`（`headerHash`→`bindingHash`、
+    `headerHashLength`→`bindingLength`、AAD key `header_hash`→`binding`）
+  - `imboyapp/lib/service/e2ee/attachment_encryptor.dart`（同步重命名）
+  - `imboyapp/lib/service/e2ee/attachment_descriptor.dart`（新增本地 `sha256Length`）
+  - 三个测试文件同步 + `attachment_binding_test.dart`（新，12 例）
+  - `imboy/docs/guides/e2ee/v2/27-...design.md`、`evidence/E2EE-061-aad-binding-scheme-a.md`（新）
+- **为什么必须改名**：该值**已被实证不是** PFv3 的 header hash。留着 `headerHash`
+  会让下一个读代码的人按错误心智模型接线——正是本项目反复付出代价的那类错误。
+- **为什么把 `sha256Length` 从 codec 拆出**：descriptor 原本借用
+  `AttachmentChunkCodec.headerHashLength` 校验 `plain_sha256`。两者恰好都是 32 字节但
+  **语义无关**，借用会让将来任一方改长度时另一方被无声带偏。
+- 空验证四条**全部精确变红**：去掉 `message_id`(**2 红**，含端到端 ATT-01) /
+  去掉 `conversation_id`(1) / 允许空 `message_id`(1) / 字节拼接替代 CBOR(1)。
+  ⚠️ A 同时红两条说明**端到端那条确实穿过了绑定值**，不是只在纯函数层自说自话。
+- Verification（imboyapp 侧）:
+  - `flutter test .../attachment_binding_test.dart` → **All 12 passed**
+  - `flutter test test/service/e2ee/` → **502 passed**（上轮 490）
+  - `flutter test test/service/` → **1382 passed**（上轮 1370）
+  - `dart analyze lib` → 1 issue（既有 info）
+- Evidence: `evidence/E2EE-061-aad-binding-scheme-a.md`
+- Residual:
+  1. ⚠️ **接线仍未做** —— `AttachmentBinding` 目前只被测试引用，
+     **生产附件路径依旧明文直传**；
+  2. ⚠️ **`message_id` 必须在上传前生成并贯穿到发送** —— 当前链路是先上传后建消息，
+     `message_id` 在哪生成、如何传到上传处**尚未落实**，是 Slice 4 的首要工作；
+  3. MIME 泄漏旁路按拍板保留（已知缺口）；
+  4. 绑定强度弱于原设计（已接受）；
+  5. 「改用甲案消除了 `epoch_or_counter` 失配」是**推理，未构造重发实测**。
+- **Next task**：**Slice 4 客户端上传接线**（阻塞已解除，可动工）。首要工作是
+  把 `message_id` 提前到上传之前生成并贯穿；随后一次覆盖 `attachment_api.dart`
+  **全部 5 处**明文 `sha256`（166/306/342/420 + 缩略图 meta）、confirm 传 `cipher`
+  与密文哈希。⚠️ 触及生产写路径，完成后需真机验证附件收发（真机腿仍在停放区）。
+- Reviewer decision: Pending

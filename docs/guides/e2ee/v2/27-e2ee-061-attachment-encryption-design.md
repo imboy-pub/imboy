@@ -89,6 +89,28 @@ E2EE 消息里被 PFv3 保护的只有 **object_key**（消息 payload 的一个
 > 见 `evidence/E2EE-061-slice4-blocked-header-hash-binding.md` §4。
 > ⚠️ **Slice 2/3/5 均不受影响、无需返工**（codec 只要求「32 字节绑定值」，
 > 换成别的摘要一行不用改）。
+>
+> ### ✅ 已拍板（2026-07-30）：采用**方案甲**
+>
+> 块 AAD 的绑定值改为
+> `binding = SHA-256(canonical(message_id, conversation_id, sender_uid))`——
+> 三个值**均在上传前即可确定且全设备一致**。
+>
+> - **ATT-01 仍成立**：附件对象搬到另一条消息 → `message_id` 变 → AAD 失配；
+> - 搬到另一个会话或换发送方 → `conversation_id`/`sender_uid` 变 → 同样失配；
+> - ⚠️ **绑定强度弱于原设计**：只绑三个字段而非整个 header（不含
+>   `message_type`/`action`/`created_at_ms`/`session_ref`/`epoch_or_counter`）。
+>   **代价已知并接受**；descriptor 本身仍在 PFv3 加密 payload 内，
+>   仍受**完整** header 认证，故改写 descriptor 仍不可行；
+> - 实施约束：`message_id` **必须在上传前生成**并原样贯穿到发送。
+>
+> ### ✅ 已拍板（2026-07-30）：**不隐藏 MIME**
+>
+> 保留真实 MIME，即保住服务端类型白名单
+> （`elib_oss:validate_file_type/1`）这道防线与现有预览行为。
+> ⚠️ **代价：§3.2 点名的泄漏旁路持续存在**——服务端仍知道
+> 「这是一张 jpg / 一个 pdf」。对外表述须明示，**不得宣称附件元数据完全不可见**。
+> ATT 系列在 MIME 这一项上不成立，属**已知且已接受**的缺口。
 
 ### 2.2 接收端
 
