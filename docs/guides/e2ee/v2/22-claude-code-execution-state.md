@@ -3387,3 +3387,46 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   **加密 payload**；④ 评估 meta 里 `file_hash256` 进消息体的明文暴露。
   ⚠️ 这一刀会真正改变生产行为，完成后**必须真机验证附件收发**（真机腿在停放区）。
 - Reviewer decision: Pending
+
+### Session 2026-07-30 06:00 — E2EE-061 Slice 4：封装判定闸门
+
+- Session ID: 20260730-0600-claude-code
+- Repository: imboyapp
+- Status: 闸门已落地并实证；**未接线**，E2EE-061 整体仍 `PENDING`
+- ⚠️ **用户已明确决定**：「先把代码写完，真机验证留作单独一轮」。
+  故 061 的后续各刀在真机验证前**一律不得标 PASS**。
+- Changed files:
+  - `lib/service/e2ee/attachment_seal_policy.dart`（新，纯函数）
+  - `test/service/e2ee/attachment_seal_policy_test.dart`（新，8 例）
+  - `imboy/docs/.../evidence/E2EE-061-slice4-seal-policy-gate.md`（新）
+- ⚠️⚠️ **这道闸门防的是一个比现状更糟的失效**：descriptor 带 **content key**，
+  只有随 PFv3 加密 payload 发送才安全。若在 payload 不加密的会话里封装，
+  descriptor 会**明文出网**——既上传了密文让用户以为受保护，**又把钥匙贴在旁边**。
+  故 fail-closed：拿不准就不封装，退回今天已知的明文行为。
+- 刻意做成**唯一判定入口**（E2EE-062 第七刀教训：判定散落多处时，
+  新增那处漏判不会有任何测试变红）。
+- 两处取舍：① `payloadWillBeEncrypted` 由调用方传入而非模块内自查——保持纯函数
+  可直接验收，且让「谁决定加密」留在原位；② 跳过返回 `SealSkipped` 而**不抛异常**——
+  本闸门只决定「要不要加密」，不决定「能不能传」；改成抛异常会让附件功能在
+  非 E2EE 会话里**整体失效**，该语义已由 `returnsNormally` 用例钉死。
+- 空验证三条全部精确变红：忽略加密标志(**3 红**，核心闸门) / 忽略空绑定输入(3 红) /
+  **恒返回 skip(1 红，唯独正向锚点)**。C 的存在正因为恒 skip 在全部负向用例上满分。
+- Verification:
+  - `flutter test .../attachment_seal_policy_test.dart` → **All 8 passed**
+  - `flutter test test/service/e2ee/` → **521**（上轮 513）
+  - `flutter test test/service/` → **1401**（上轮 1393）
+  - `dart analyze lib` → 1 issue（既有 info）
+- Evidence: `evidence/E2EE-061-slice4-seal-policy-gate.md`
+- Residual:
+  1. ⚠️ **未接线** —— 上传路径尚未调用本闸门，生产附件路径依旧明文直传；
+  2. ⚠️ **`message_id` 仍在上传之后生成** —— `attachment_handler.dart:308`/`:337`
+     的 `id: Xid().toString()` 写在消息构造里，接线前必须先提前（**已实证行号**）；
+  3. ⚠️ **明文哈希进消息体已实证** —— `attachment_handler.dart:317`/`:349` 的
+     `metadata: {'file_hash256': …}`。即便附件字节加密，**非 E2EE 会话下明文哈希
+     仍随消息明文上行**，已知文件识别旁路照旧成立。**本闸门不解决这一条**；
+  4. **未真机验证**（按用户决定，留作单独一轮）。
+- **Next task**：接线三步 —— ① `message_id` 提前到上传之前生成并贯穿
+  （`attachment_handler.dart` 多个构造点）；② 上传前调用本闸门决定是否传 `seal`；
+  ③ descriptor 放进消息**加密 payload**（`metadata`），并同期处理残留 3
+  （`metadata.file_hash256` 的明文暴露）。⚠️ 完成后**必须真机验证**方可标 PASS。
+- Reviewer decision: Pending
