@@ -3232,3 +3232,51 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   ⚠️ 开工前建议先拍板 MIME（第四项），否则 Slice 4 做完仍留一条泄漏旁路。
   ⚠️ 完成后需真机验证附件收发（真机腿仍在停放区）。
 - Reviewer decision: Pending
+
+### Session 2026-07-30 03:00 — E2EE-061 Slice 4：⛔ BLOCKED（AAD 绑定不可实现）
+
+- Session ID: 20260730-0300-claude-code
+- Repository: imboyapp（只读核实）、imboy（仅文档）
+- Status: ⛔ **BLOCKED**。**未写任何代码。** E2EE-061 整体仍 `PENDING`
+- **开工前核实，发现设计 §2.1 的 AAD 构成在当前发送链路上不可实现**，两条独立原因：
+  1. **上传先于消息组装** —— `attachment_handler.dart:271` 先
+     `uploadImageEntityViaPresign` 拿到 meta，**之后**才 `handleImageUploadPresign`
+     去建消息。上传时 `message_id`/`created_at_ms`/`session_ref`/`epoch_or_counter`
+     全未确定；
+  2. ⚠️⚠️ **决定性：header 是「每收件设备一份」而非「每消息一份」** ——
+     `chat_network_service.dart:636` 是**逐设备 `for` 循环**，循环内
+     `ensureSessionId(toId, peerDid)` 取**逐设备不同**的 `session_ref`，
+     再逐设备调 `encryptV3` 建信封（`devices[peerDid] = envelope`）。
+     ⇒ 一条消息有 **N 个 `header_hash`**，而**附件对象只有一份**。
+     发往 3 台设备 = 3 个 header_hash 对 1 个对象，密文块只能绑其中一个，
+     **另两台必然打不开**。此外 `epoch_or_counter` 加密时才定、重发会前进，
+     即便单设备也会失配。
+- ⚠️ **一条方法论教训**：我中途只看 `e2ee_outbound_router.dart` 内部「只有一次
+  `encodeOuterEnvelope` 调用」，据此得出「header 每消息一份」的**错误**中间结论；
+  往上追到**调用方**才看到那个 `for` 循环。
+  **判断一个值是否唯一，必须看调用方，不能只看被调函数内部**——
+  与本项目多次记录的失效模式同类（另见 065 Slice 4 的「静态判断不可靠」）。
+- **为什么不自行改掉**：把 `header_hash` 换成上传前可定且全设备一致的值
+  （如 `message_id+conversation_id+sender_uid`）技术可行，但这是**改动密码学绑定的构成**：
+  ① 削弱设计原文声称的绑定强度；② 绑定内容是接收侧拒收判据的一部分，属安全语义；
+  ③ 设计明文把 `header_hash` 称作「ATT-01 的**直接依据**」，换它就是换验收依据。
+  **不在「两种合理实现选安全那个」可自行裁决的范围**，按裁决规则记 BLOCKED，不代改。
+- 三个候选（甲改绑 / 乙每设备一份密文对象 / 丙上传移到加密之后且禁重加密）
+  与各自代价见 evidence §4，**未做推荐、未做取舍**。
+- ✅ **Slice 2/3/5 均不受影响、无需返工**：`AttachmentChunkCodec` 的 AAD 参数只要求
+  「32 字节绑定值」，叫 `headerHash` 只是命名，换成别的摘要**一行不用改**；
+  descriptor 与后端 `cipher` 列都与该绑定无关。
+- Changed files（仅文档）:
+  - `docs/guides/e2ee/v2/27-...design.md`（§2.1 加 ⛔ 实证阻塞块）
+  - `docs/guides/e2ee/v2/evidence/E2EE-061-slice4-blocked-header-hash-binding.md`（新）
+- Verification: 本刀不改代码，两侧验收命令不适用；已核实两仓无生产代码漂移
+- Evidence: `evidence/E2EE-061-slice4-blocked-header-hash-binding.md`
+- Residual:
+  1. `epoch_or_counter` 重发前进导致失配是**推理**，未构造重发实测；
+  2. 方案甲的绑定强度是否足以支撑 ATT-01，**未验证**，属待拍板内容；
+  3. 上一刀浮出的**第四项待拍板（MIME 是否隐藏）仍未决**；
+  4. 生产附件路径依旧明文直传。
+- **Next task**：**无。** 需人工修订设计 §2.1 的 AAD 构成（三候选见 evidence §4），
+  并顺带拍板 MIME（第四项）。两项落定后 Slice 4 才能动工。
+  其余卡点不变（ADR 16 五方签字 / profile 接受 / 012-024-025 回退裁定）。
+- Reviewer decision: Pending

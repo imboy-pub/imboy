@@ -72,6 +72,24 @@ E2EE 消息里被 PFv3 保护的只有 **object_key**（消息 payload 的一个
   —— `header_hash` 来自 PFv3 protected header，这是 ATT-01 的直接依据：
   换一条消息 → header_hash 变 → AAD 失配 → 拒绝打开。
 
+> ⛔⛔ **本条已被实证证明在当前发送链路上不可实现（2026-07-30，Slice 4 开工核实）。**
+> 两条独立原因：
+> ① 附件上传发生在消息组装**之前**，上传时 header 尚未存在
+>    （`attachment_handler.dart:271`）；
+> ② **决定性**：同一条消息对每个收件设备各建一份 protected_header
+>    （`chat_network_service.dart:636` 逐设备循环 + `ensureSessionId(toId, peerDid)`
+>    ⇒ `session_ref` 逐设备不同 ⇒ `header_hash` 逐设备不同），
+>    而**附件对象只有一份**。3 台设备 = 3 个 header_hash 对 1 个对象，
+>    密文块只能绑其中一个，另两台**必然打不开**。
+> 此外 `epoch_or_counter` 在加密时才定、重发会前进，即便单设备也会失配。
+>
+> **Slice 4 据此 BLOCKED，等待人工修订本条的 AAD 构成。**
+> 三个候选（甲：改绑 `message_id+conversation_id+sender_uid`；
+> 乙：每设备一份密文附件对象；丙：上传移到加密之后且禁止重加密）与各自代价，
+> 见 `evidence/E2EE-061-slice4-blocked-header-hash-binding.md` §4。
+> ⚠️ **Slice 2/3/5 均不受影响、无需返工**（codec 只要求「32 字节绑定值」，
+> 换成别的摘要一行不用改）。
+
 ### 2.2 接收端
 
 按 ADR 15 §9：验证块顺序、数量、每块 tag、完整明文 hash 与声明大小**全部通过后**
