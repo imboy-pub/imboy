@@ -3112,3 +3112,60 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   4. E2EE-012/024/025 的 PASS 回退裁定（停放区）。
   在任一决策落地前，后续 loop 触发应当**只报告不动手**。
 - Reviewer decision: Pending
+
+### Session 2026-07-30 01:00 — E2EE-061：三项拍板落地 + 封装/开封内核
+
+- Session ID: 20260730-0100-claude-code
+- Repository: imboyapp（代码）、imboy（文档）
+- Status: Slice 4/6 的**纯函数内核**完成。**接线未做**，E2EE-061 整体仍 `PENDING`
+- ⚠️ **人工拍板（2026-07-30）**：设计 §6 三项待决全部由用户拍板，自此是**约束输入**：
+  ① confirm **只上报密文哈希**（明文 SHA-256 只进加密的 descriptor；服务端就此
+  失去跨用户秒传/去重/已知违规文件识别，涉 ADR 18 合规边界）；
+  ② **暂不回迁历史明文附件，但预留判别位**（旧对象保持明文且必须仍可读，
+  须能区分明文旧对象/密文新对象——只多一个字段，不多一条分支）；
+  ③ `chunk_size` = **1 MiB**（100MB 上限 → ≤100 块）。已写入 `27-...` §6 抬头。
+- Changed files:
+  - `imboyapp/lib/service/e2ee/attachment_encryptor.dart`（新，纯函数，**未接线**）
+  - `imboyapp/test/service/e2ee/attachment_encryptor_test.dart`（新，19 例）
+  - `imboy/docs/guides/e2ee/v2/27-...design.md`（§6 拍板落地）
+  - `imboy/docs/guides/e2ee/v2/evidence/E2EE-061-slice4a-encryptor-core.md`（新）
+- 为什么先做内核：Slice 4（上传接线）与 Slice 6（下载完整性门）需要的是**同一块**逻辑。
+  先做成可穷举验收的纯函数，接线那一刀就只剩「从哪儿拿字节、往哪儿写」，
+  不必在触及生产上传路径的同时调试密码学编排。
+- 空验证四条：去掉总长闸门(1 红，截断) / 去掉明文哈希闸门(1 红，谎报) /
+  **去掉明文大小闸门(全 19 绿)** / 把上报值改回明文哈希(2 红，决定 ① 的断言)。
+  第三条：明文大小闸门与总长闸门**是数学上冗余的**（总长闸门通过 ⇒ 各块明文长之和
+  恒等于 `plainSize`），不是「碰撞才可达」而是**恒等式**。未删除也未编造用例，
+  **标注为推导而非实证**。
+- ⚠️⚠️ **本轮实测发现：原设计低估了 Slice 4 的工作量**。
+  `attachment_api.dart` 里 `sha256.convert(bytes)` 出现在**至少 5 处**
+  （166/306/342/420 行 + 缩略图 meta 路径），分别服务五条上传入口。
+  原设计只写「confirm 改上报密文哈希与密文大小」，读起来像改一处——
+  **只改第 166 行会让其余四条路径继续上报明文哈希**，正是「只补 ticket 点名那条路径、
+  兄弟调用方全漏」的典型。
+  且 Slice 1 已实证隐藏 MIME 必须改**整个 presign/confirm 契约**、服务端两处都收
+  `mime_type` ⇒ **Slice 4 与 Slice 5 实质不可分开交付**，否则中间态是
+  「客户端发密文哈希、后端字段语义仍是明文哈希」的不自洽状态。
+  **建议把 Slice 4/5 重划为一刀「上传接线 + 后端字段语义」两仓同批**，
+  决定 ② 的判别位并入该刀的迁移。**本轮未擅改切片表编号**，仅记录建议。
+- Verification（imboyapp 侧）:
+  - `flutter test .../attachment_encryptor_test.dart` → **All 19 passed**
+  - `flutter test test/service/e2ee/` → **490 passed**（上轮 471，+19）
+  - `flutter test test/service/` → **1370 passed**（上轮 1351，+19）
+  - `dart analyze lib` → 1 issue（既有 info）
+  - imboy 侧仅文档，`make e2ee-verify` 不适用
+- Evidence: `evidence/E2EE-061-slice4a-encryptor-core.md`
+- Residual:
+  1. ⚠️ **仍未接线**（`grep` 实证 `lib/` 零 import）——**生产附件路径至今明文直传**；
+  2. 决定 ② 的判别位**尚无承载点**（本刀不碰 attachment 表与 confirm 契约）；
+  3. **1 MiB 分块只降低了 AEAD 工作集，没有降低「整个文件先读进内存」的峰值**；
+     真正的流式上传属接线刀，100MB 上限下低端机仍需实测；
+  4. `open` 一次性拼出整个明文，临时明文的落盘与生命周期是 Slice 8；
+  5. 明文大小闸门冗余（推导非实证）；
+  6. 未与后端互操作（密文对象、confirm 字段语义、OpenAPI 均未动）。
+- **Next task**：**Slice 4+5 合并刀「上传接线 + 后端字段语义」，两仓同批**——
+  须一次覆盖 `attachment_api.dart` 的**全部 5 处**明文 `sha256`、presign/confirm
+  的 MIME 契约、`attachment` 表 hash/size 语义 + 迁移（含决定 ② 的判别位）、
+  OpenAPI 同步，并保证**旧明文附件仍可读**（Slice 9 的正向可用性提前进这一刀）。
+  ⚠️ 这是本 061 线上**第一刀触及生产写路径**的改动，不再是零生产影响。
+- Reviewer decision: Pending
