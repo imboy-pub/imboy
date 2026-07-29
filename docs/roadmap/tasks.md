@@ -510,7 +510,7 @@
 
 ### C0-BRAND-01
 - title: Flutter/Admin 白标构建配置
-- status: in_progress
+- status: done
 - deps: none
 - wave: C0
 - tag: commercialization
@@ -518,7 +518,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-BRAND-01
 - action: 建立单一 BrandConfig，覆盖名称、Logo、启动页、主题色和品牌文案；补默认与白标 fixture。
 - verify: flutter analyze && flutter test；bun test && bun run build；默认/白标 fixture 配置断言通过。
-- evidence:
+- evidence: 三仓单一品牌契约，字段/默认值/校验规则逐条对齐。**后端** imboy@claude-p0-commercialization f5069d15：brand_handler.erl 新增 splash_url/support_url/privacy_url（计划要求但原先缺失），重构为 defaults/0 + normalize/1 + config_key/1 纯函数（逐字段校验回退，单个坏字段不废整套；URL 仅允许 http(s) 绝对地址，挡 javascript:/data:；未知键丢弃不透传）；默认主色由占位 #07C160 改为 #2474E5，与 imboyapp AppColors.primary 对齐，使「未配置=原生外观」端到端成立（ce3d2c00）；test/api/brand_handler_tests.erl 11 例 → `make eunit t=brand_handler_tests` All 11 tests passed。**Flutter** imboyapp@claude-p0-brand 3e5bec79：lib/config/brand_config.dart 单一 BrandConfig（不可变 + copyWith，覆盖应用名/Logo/启动页/主题主色/客服/隐私），hex→Color 下沉 lib/theme/default/hex_color.dart（正则校验，规避 int.tryParse 接受 `#-12345` 的坑，同时正规满足 design-tokens 钩子对 lib/theme/** 的豁免，全程未绕过任何 git 钩子）；test/config/brand_config_test.dart 10 例全绿；`flutter analyze` 我的文件零 issue（仓库既有 151 issue 全在 E2EE 等既有测试文件，非本次引入）；`git diff --stat main...HEAD -- ios macos plugin` 为空，禁改区未触碰。**Admin** imboyadmin@claude-p0-brand d090706：src/lib/brand.ts（BrandConfig 类型 + BRAND_FALLBACK + parseBrandConfig + isWhiteLabelled）+ brand.test.ts 13 例全绿（含「字段集与后端 defaults/0 一致」的三端契约断言）；`bun run lint` 干净；`bun run build` ✓ built in 662ms。⚠️ 仓库既有问题（非本次引入）：imboyadmin 全量 `bun test` 会因 src/services/api/rbac.test.ts 无限等待而挂起（加 --timeout 10000 后该文件 5 例超时失败）、ChannelDetailPage.test.tsx 失败；这两个文件本次一行未改，且 src/lib/brand.ts 未被任何既有代码 import（`rg -l "from './brand'"` 为空），影响面为零。⚠️ 遗留（已知未做，非本任务验收项）：BrandConfig/parseBrandConfig 尚未接线到运行时（启动页、主题、应用标题仍走原路径），运行时消费属独立 slice。⚠️ 客服/隐私链接三端默认值一律为空串，代码不得预置任何邮箱/电话/IM 账号，填值须部署方人工决定。
 
 ### C0-OPS-01
 - title: 备份恢复与健康告警闭环
@@ -590,6 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
-| C0 | 8 | 1 | 0 | 3 | 4 | GATE-C0 blocked |
+| C0 | 8 | 2 | 0 | 2 | 4 | GATE-C0 blocked |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。
