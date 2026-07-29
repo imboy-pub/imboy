@@ -185,7 +185,7 @@ E2EE-065 的**实施**受此阻塞（本调研文档不受阻塞——被卡的�
 | 1 | ~~**`bigserial` 并发空洞实证**~~ | imboy | ✅ **DONE**（2026-07-29）。结论：不能直接当 leaf index，须两阶段解耦，见 §2.1 | 真 PG 探针 3/3 绿，表测完即 DROP |
 | 2 | **transparency profile 冻结** | 文档 | hash / domain separation / 空树值 / canonical bytes / tree-head 签名输入 / proof wire / 轮换。**无 `TBD`** | 安全 reviewer 接受（人工） |
 | 3 | **identity_log append-only 表 + 同事务写入** | imboy | 迁移 + repo；`upsert_identity` 成功后同事务追加 | 真 PG；**正向可用性**：现有 identity 读路径不受影响 |
-| 4 | **Merkle 树与 proof（纯函数）** | imboy | leaf/node hash、inclusion、consistency | 标准 Merkle fixture 100%；golden vector 跨实现 |
+| 4 | ~~**Merkle 树与 proof（纯函数）**~~ | imboy | ✅ **DONE**（2026-07-30）。`src/lib/e2ee_kt_merkle.erl`，24 例已入 e2ee-verify 门禁。生成侧直译 RFC 6962 递归定义、验证侧走迭代算法，**穷举 n≤16 全部 (m,n)/(index,size) 交叉核验**（另一次性扫到 n≤64，2080+2080 组合 0 失败）。⚠️ 该方法当场抓到真 bug：`verify_consistency` 左兄弟判据漏 `orelse Node =:= Last`，**只在非平衡树上失败**（m=5,n=6 等 8 组）| profile §8 golden vector 全部钉死（§10 残留 1 关闭）；见 `evidence/E2EE-065-slice4-merkle-and-proofs.md` |
 | 5 | **signed tree head + proof API** | imboy | 端点 + signing key 外置 + 写权限分离 | 篡改/删除/重排历史 leaf 后新旧 proof 不能同时通过 |
 | 6 | **split view 检出** | imboy | `(tree_size, root)` 唯一约束 + 告警，**不得 upsert** | 同 size 异 root 被识别 |
 | 7 | **客户端 proof verifier** | imboyapp | 保存每账号最高 tree size/root，验证 inclusion/consistency | rollback size / 错误 proof / 同 size 异 root / 过期 key 均阻断新设备信任 |

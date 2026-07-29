@@ -264,8 +264,15 @@ print(mth([E1,E2,E3]).hex())
 EOF
 ```
 
-⚠️ **这些向量目前只存在于本文档**。playbook 要求它们由测试钉死；
-该测试属 **Slice 4（Merkle 纯函数实现）**，尚未开工——见 §10 残留 1。
+~~⚠️ **这些向量目前只存在于本文档**。playbook 要求它们由测试钉死；
+该测试属 **Slice 4（Merkle 纯函数实现）**，尚未开工——见 §10 残留 1。~~
+
+✅ **已由测试钉死**（2026-07-30，Slice 4）：`test/lib/e2ee_kt_merkle_tests.erl`
+覆盖上述全部向量（含 `E1` 的 96 字节与 canonical head 的 168 字节两处**长度**），
+已进 `make e2ee-verify` 硬门禁。见 `evidence/E2EE-065-slice4-merkle-and-proofs.md`。
+
+⚠️ **钉死向量不等于接受 profile**：本文件仍是未签字的冻结草案，
+接受动作必须由安全 reviewer 人工完成，loop 不得自我接受。
 
 ---
 
