@@ -46,16 +46,18 @@ dispatch(Node, ["user_count"]) ->
     io:format("~p~n", [rpc(Node, user_ds, count, [])]);
 dispatch(Node, ["seed_plan", Code]) ->
     CodeBin = list_to_binary(Code),
-    case rpc(Node, billing_logic, create_plan, [
-        #{
-            <<"code">> => CodeBin,
-            <<"name">> => <<"冒烟套餐"/utf8>>,
-            <<"price">> => 100,
-            <<"billing_period">> => <<"month">>,
-            <<"quota_config">> => #{<<"api_call">> => 1000},
-            <<"description">> => <<"commercial smoke fixture"/utf8>>
-        }
-    ]) of
+    case
+        rpc(Node, billing_logic, create_plan, [
+            #{
+                <<"code">> => CodeBin,
+                <<"name">> => <<"冒烟套餐"/utf8>>,
+                <<"price">> => 100,
+                <<"billing_period">> => <<"month">>,
+                <<"quota_config">> => #{<<"api_call">> => 1000},
+                <<"description">> => <<"commercial smoke fixture"/utf8>>
+            }
+        ])
+    of
         {ok, Id} ->
             io:format("~p~n", [Id]);
         {error, Msg} ->
@@ -65,10 +67,58 @@ dispatch(Node, ["seed_plan", Code]) ->
                 Id -> io:format("~p~n", [Id])
             end
     end;
+dispatch(Node, ["refresh" | Mods0]) ->
+    %% 把本 worktree 编译出的 beam 热加载进运行中的节点。
+    %% 冒烟必须打在**本分支代码**上：长期运行的 dev 节点可能落后好几天，
+    %% 对陈旧代码跑出来的绿灯是假绿。默认只刷商业化模块，不碰其他域。
+    Mods =
+        case Mods0 of
+            [] -> default_refresh_mods();
+            _ -> [list_to_atom(M) || M <- Mods0]
+        end,
+    lists:foreach(fun(M) -> refresh_mod(Node, M) end, Mods);
+dispatch(Node, ["fresh_check"]) ->
+    %% 新鲜度探针：本分支引入的函数在节点上必须可调用
+    case rpc:call(Node, erlang, function_exported, [imboy_license, public_info, 0], 20000) of
+        true -> io:format("fresh~n");
+        _ -> die("stale: 节点上 imboy_license:public_info/0 不存在，先跑 refresh", [])
+    end;
 dispatch(_Node, Args) ->
-    die("用法: commercial_rpc.escript token <uid> [did] | license | user_count | seed_plan <code>~n实参: ~p", [
-        Args
-    ]).
+    die(
+        "用法: commercial_rpc.escript token <uid> [did] | license | user_count |"
+        " seed_plan <code> | refresh [模块...] | fresh_check~n实参: ~p",
+        [Args]
+    ).
+
+%% 本分支相对 main 改动的模块（`git diff --name-only main...HEAD -- src`）
+default_refresh_mods() ->
+    [
+        adm_stats_handler,
+        billing_handler,
+        brand_handler,
+        user_handler,
+        imboy_cluster,
+        imboy_license,
+        auth_oidc_logic,
+        billing_logic,
+        payment_callback_logic,
+        sso_logic,
+        user_export_logic,
+        billing_subscription_repo
+    ].
+
+refresh_mod(Node, Mod) ->
+    File = filename:join("ebin", atom_to_list(Mod) ++ ".beam"),
+    case file:read_file(File) of
+        {error, Reason} ->
+            die("ERROR: 读不到 ~s: ~p（先 make app）", [File, Reason]);
+        {ok, Bin} ->
+            _ = rpc:call(Node, code, purge, [Mod], 20000),
+            case rpc:call(Node, code, load_binary, [Mod, File, Bin], 20000) of
+                {module, Mod} -> io:format("loaded ~s~n", [Mod]);
+                Other -> die("ERROR: 加载 ~s 失败: ~p", [Mod, Other])
+            end
+    end.
 
 find_plan(Node, CodeBin) ->
     Plans = rpc(Node, billing_logic, list_plans, []),
