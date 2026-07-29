@@ -510,7 +510,7 @@
 
 ### C0-BRAND-01
 - title: Flutter/Admin 白标构建配置
-- status: ready
+- status: in_progress
 - deps: none
 - wave: C0
 - tag: commercialization
