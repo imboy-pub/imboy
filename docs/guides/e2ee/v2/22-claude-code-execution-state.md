@@ -2996,3 +2996,55 @@ C2G 若将来上 PFv3 需同步接 `with_sender_device`；未 commit / 未 push 
   （Merkle 树与 proof + golden vector 钉死）。
   ⚠️ 两者做完后，放行范围内的纯函数刀即告用尽，届时仍需人工决策一/二/三/五。
 - Reviewer decision: Pending
+
+### Session 2026-07-29 23:30 — E2EE-061 Slice 3：attachment_descriptor codec
+
+- Session ID: 20260729-2330-claude-code
+- Repository: imboyapp（代码）、imboy（文档）
+- Status: Slice 3 完成。**E2EE-061 整体仍 `PENDING`**
+- Changed files:
+  - `imboyapp/lib/service/e2ee/attachment_descriptor.dart`（新，纯函数，**未接线**）
+  - `imboyapp/test/service/e2ee/attachment_descriptor_test.dart`（新，43 例）
+  - `imboy/docs/guides/e2ee/v2/27-...-design.md`（Slice 表 + 起点段）
+  - `imboy/docs/guides/e2ee/v2/evidence/E2EE-061-slice3-attachment-descriptor.md`（新）
+- Tests added: 43（正向可用性 5 / chunk_count 自洽 7 / 严格 parser 16 / 安全字段边界 9 /
+  缩略图独立性 5 / 日志泄漏 2）
+- ⚠️ **本刀最有价值的一条：`chunk_count` 自洽闸门**。`chunk_count` 进每块 AAD（Slice 2），
+  但 **AAD 只保证「发送方当初声明的那个数」，不保证那个数与文件本身自洽**——
+  一个从头到尾就按 3 块封装、实际内容却少 1/4 的附件，每块都验得过。
+  故 parser 强制 `chunk_count == ceil(plain_size/chunk_size)`；空文件取 1 而非 0
+  （0 块意味着**一个字节都没被认证**）。闸门不是「只准一种取值」：三者同步改动仍接受，
+  已有正向用例。
+- 其余裁决：未知字段一律拒收（静默忽略 = 给未来的降级字段留后门）；
+  `cipher` 不做套件协商，`AES-128-GCM` 与 `none`（明文伪装成套件）均显式钉死；
+  thumb 必须独立 key/nonce；`toString` 抹掉 `content_key`/`base_nonce`
+  ——HOTFIX-01 同类风险，**descriptor 里躺的是能解开整个附件的密钥**，
+  一次 `'$d'` 就写进日志。`maxPlainSize` 直接引用 `AttachmentApi.maxUploadBytes`
+  （已核实 `attachment_api.dart:53`），不另立数字。
+- ⚠️ **空验证七条，全部精确变红且无正向用例塌方**：接受未知字段(1) /
+  关掉 chunk_count 自洽(**4**) / 允许 thumb 复用 key(1) / 取消 cipher 钉死(**2**) /
+  把 key 放回 toString(1) / 取消 key 长度校验(1) / 空文件返回 0 块(1)。
+  **取消 cipher 钉死同时红主体与 thumb 两条**——实证 thumb 走的是完全同一套严格校验，
+  而非一条宽松分支（设计 §3.3 要求缩略图同等加密）。恢复后 43/43 无漂移。
+- Verification（imboyapp 侧）:
+  - `flutter test .../attachment_descriptor_test.dart` → **All 43 passed**
+  - `flutter test test/service/e2ee/` → **471 passed**（上轮 428，+43）
+  - `flutter test test/service/` → **1351 passed**（上轮 1308，+43）
+  - `dart analyze lib` → 1 issue（既有 info，`ios_settings_ui.dart`）
+  - imboy 侧仅文档，`make e2ee-verify` 不适用
+- Evidence: `evidence/E2EE-061-slice3-attachment-descriptor.md`
+- Residual:
+  1. ⚠️ **未接线** —— `grep` 实证 `lib/` 零个 import，生产附件路径至今明文直传，
+     ATT-01..05 全部不成立；
+  2. **`chunk_size` 仍未拍板** —— parser 只校验「≥1 且不超上传上限」，不设默认值；
+  3. **descriptor 只保证自洽，未与真实密文对象交叉校验** —— 属 Slice 6；
+  4. `plain_sha256` 只校验长度，真实性要解密完才能验（Slice 6）；
+  5. `mime`/`name` 只校验非空——隐藏 MIME 需改整个 presign/confirm 契约（Slice 4/5），
+     **本刀不碰契约，故这里的 mime 只是承载，不代表服务端已看不到它**；
+  6. `_sameBytes` 非恒定时间（只用于本端自检，不构成对外 oracle），不得复用到比对外部输入。
+- **Next task**：**E2EE-065 Slice 4**（Merkle 树与 inclusion/consistency proof
+  + `29-...profile-v1.md` 的 golden vector 钉死，纯函数，在本轮放行范围内）。
+  ⚠️ **061 内的纯函数刀已用尽**：Slice 4..9 全是接线或后端字段语义，
+  且 Slice 4 需先拍板 §6 三项。065 Slice 4 做完后，
+  **本轮放行范围内的纯函数刀即全部用尽**，届时仍需人工决策一/二/三/五。
+- Reviewer decision: Pending
