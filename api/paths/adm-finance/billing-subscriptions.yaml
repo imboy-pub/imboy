@@ -1,0 +1,77 @@
+# ----------------------------------------------------------------------------
+# GET /api/adm/finance/billing/subscriptions — 订阅分页列表
+# Router: imboy_router.erl 行 763（adm_finance_handler#billing_subscriptions），需读权限
+# Schema 来源：adm_finance_handler:billing_subscriptions/3（src/adm/adm_finance_handler.erl:386）
+#             + billing_logic:list_subscriptions_page/3
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin]
+  summary: 订阅分页列表（运营后台）
+  description: |
+    ## 中文
+    分页查询订阅，支持按 `status` / `plan_id` / `tenant_id` 过滤。
+    `id` 与 `plan_id` 均为 TSID，输出为字符串。需要财务读权限。
+    ## English
+    Paginated subscription list. `id` and `plan_id` are TSIDs serialized as
+    strings. Requires finance read permission.
+  operationId: adm_finance_billing_subscriptions
+  parameters:
+    - name: page
+      in: query
+      required: false
+      schema: { type: integer, default: 1 }
+      description: 页码，从 1 开始
+    - name: size
+      in: query
+      required: false
+      schema: { type: integer, default: 10 }
+      description: 每页条数
+    - name: status
+      in: query
+      required: false
+      schema: { type: integer }
+      description: 订阅状态过滤（0-3）
+    - name: plan_id
+      in: query
+      required: false
+      schema: { type: integer, format: int64 }
+      description: 套餐 ID 过滤
+    - name: tenant_id
+      in: query
+      required: false
+      schema: { type: integer }
+      description: 租户 ID 过滤（单租户为 0）
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [total, page, size, list]
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, description: 订阅 ID（TSID 字符串） }
+                            plan_id: { type: string, description: 套餐 ID（TSID 字符串） }
+                            tenant_id: { type: integer }
+                            owner_uid: { type: integer, format: int64, description: 归属用户（权限校验依据） }
+                            status: { type: integer, description: '0=试用 1=生效 2=过期 3=取消' }
+                            current_period_start: { type: integer, description: 当前计费周期起（毫秒时间戳） }
+                            current_period_end: { type: integer, description: 当前计费周期止（毫秒时间戳） }
+                            auto_renew: { type: boolean }
+    '4XX':
+      description: 无权限 / 查询失败 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

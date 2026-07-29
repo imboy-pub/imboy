@@ -2,7 +2,15 @@
 post:
   tags: [user]
   summary: 生成账单
-  description: 为指定订阅生成当期账单。若当期已生成则返回 already_generated=true。
+  description: |
+    为指定订阅生成当期账单。若当期已生成则返回 already_generated=true。
+
+    **归属校验（fail-closed）**：须登录且 `subscription_id` 归属当前用户，
+    否则 HTTP 仍为 200，信封 `code`=403 —— 未登录 msg「未登录」；
+    订阅不存在 / 无主（owner_uid=0）/ 非本人一律 msg「无权操作该订阅」
+    （不区分「不存在」与「非本人」，避免枚举他人订阅 id）。
+    （src/api/billing_handler.erl:293-307、src/logic/billing_logic.erl:208）
+
   operationId: billingInvoiceGenerate
   requestBody:
     required: true

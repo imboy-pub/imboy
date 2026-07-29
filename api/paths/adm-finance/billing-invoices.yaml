@@ -1,0 +1,77 @@
+# ----------------------------------------------------------------------------
+# GET /api/adm/finance/billing/invoices — 账单分页列表
+# Router: imboy_router.erl 行 766（adm_finance_handler#billing_invoices），需读权限
+# Schema 来源：adm_finance_handler:billing_invoices/3（src/adm/adm_finance_handler.erl:412）
+#             + billing_invoice_repo:?COLUMNS（src/repo/billing_invoice_repo.erl:30）
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin]
+  summary: 账单分页列表（运营后台）
+  description: |
+    ## 中文
+    分页查询计费账单，支持按 `status` 与 `subscription_id` 过滤。
+    账单本身不存归属人：归属只能经 `subscription_id` 反查订阅的 `owner_uid`
+    （避免两处归属不一致）。需要财务读权限。
+    ## English
+    Paginated invoice list. Invoices carry no owner column: ownership is resolved
+    through the parent subscription. Requires finance read permission.
+  operationId: adm_finance_billing_invoices
+  parameters:
+    - name: page
+      in: query
+      required: false
+      schema: { type: integer, default: 1 }
+      description: 页码，从 1 开始
+    - name: size
+      in: query
+      required: false
+      schema: { type: integer, default: 10 }
+      description: 每页条数
+    - name: status
+      in: query
+      required: false
+      schema: { type: integer }
+      description: 账单状态过滤（0-2）
+    - name: subscription_id
+      in: query
+      required: false
+      schema: { type: integer, format: int64 }
+      description: 订阅 ID 过滤
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [total, page, size, list]
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, description: 账单 ID（TSID 字符串） }
+                            invoice_no: { type: string, description: 账单号 }
+                            subscription_id: { type: string, description: 订阅 ID（TSID 字符串） }
+                            amount: { type: integer, description: 金额（分） }
+                            currency: { type: string }
+                            status: { type: integer, description: 账单状态 }
+                            payment_no: { type: [string, 'null'], description: 支付流水号；未支付为 null }
+                            period_start: { type: integer, description: 账期起（毫秒时间戳） }
+                            period_end: { type: integer, description: 账期止（毫秒时间戳） }
+                            paid_at: { type: [integer, 'null'], description: 支付时间；未支付为 null }
+                            created_at: { type: integer }
+                            updated_at: { type: integer }
+    '4XX':
+      description: 无权限 / 查询失败 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

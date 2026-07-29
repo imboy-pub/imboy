@@ -491,3 +491,120 @@ groups:
             1. 手动触发备份：bash imboy/scripts/backup_pg.sh
             2. 检查 cron 任务是否正常：crontab -l | grep backup
             3. 检查 Pushgateway 是否在线：curl http://pushgateway:9091/metrics
+
+      # 备份作业本身失败（脚本已退出但状态为失败）→ WARNING
+      # Backup job reported failure status → WARNING
+      - alert: IMBoyBackupJobFailed
+        expr: imboy_backup_last_status == 0
+        for: 0m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "备份作业上报失败 / Backup job reported failure"
+          description: >
+            component={{ $labels.component }} 的最近一次备份以失败状态结束。
+            The most recent backup for component={{ $labels.component }} ended in a failed state.
+          runbook: >
+            1. 查看日志：tail -100 /var/log/imboy/backup_pg.log
+            2. 确认 PG 容器在跑：docker ps | grep imboy_pg
+            3. 确认备份目录可写且磁盘未满：df -h
+
+  - name: imboy.tls
+    interval: 300s
+    rules:
+
+      # 指标由 scripts/check_tls_expiry.sh 经 Pushgateway 推送
+      # Metric is pushed by scripts/check_tls_expiry.sh via Pushgateway
+      - alert: IMBoyTLSCertExpiringSoon
+        expr: (imboy_tls_cert_expiry_timestamp - time()) < 14 * 86400
+        for: 10m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "TLS 证书 14 天内到期 / TLS certificate expires within 14 days"
+          description: >
+            域名 {{ $labels.component }} 的证书将在 14 天内到期。
+            The certificate for {{ $labels.component }} expires within 14 days.
+          runbook: >
+            1. 手动续期：certbot renew
+            2. 确认自动续期定时器：systemctl list-timers | grep certbot
+            3. 续期后重载 nginx：nginx -s reload
+
+      - alert: IMBoyTLSCertExpired
+        expr: (imboy_tls_cert_expiry_timestamp - time()) <= 0
+        for: 0m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "TLS 证书已过期 / TLS certificate has expired"
+          description: >
+            域名 {{ $labels.component }} 的证书已过期，客户端将无法建立连接。
+            The certificate for {{ $labels.component }} has expired; clients cannot connect.
+          runbook: >
+            1. 立即续期：certbot renew --force-renewal
+            2. 重载 nginx：nginx -s reload
+            3. 确认 check_tls_expiry.sh 的 cron 为何未提前告警
+
+      # 检查脚本本身停跑（指标消失）也要能发现，否则过期会静默
+      - alert: IMBoyTLSCheckStale
+        expr: absent(imboy_tls_cert_expiry_timestamp)
+        for: 6h
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "TLS 到期检查指标缺失 / TLS expiry metric missing"
+          description: >
+            超过 6 小时没有收到 imboy_tls_cert_expiry_timestamp，
+            check_tls_expiry.sh 可能未运行或 IMBOY_TLS_DOMAINS 未配置。
+            No TLS expiry metric received for over 6 hours.
+          runbook: >
+            1. 检查 cron：cat /etc/cron.d/imboy-ops
+            2. 手动跑一次：IMBOY_TLS_DOMAINS=... bash scripts/check_tls_expiry.sh
+            3. 确认 /etc/imboy/ops.env 里 IMBOY_TLS_DOMAINS 与 PUSHGATEWAY_URL 已设置
+
+  - name: imboy.payment
+    interval: 60s
+    rules:
+
+      # 指标由 src/logic/payment_callback_logic.erl 的 handle/3 唯一出入口产出
+      # Metric is emitted from the single choke point in payment_callback_logic:handle/3
+      - alert: IMBoyPaymentCallbackErrorRateHigh
+        expr: >
+          sum(rate(payment_callback_total{result="error"}[10m]))
+          /
+          clamp_min(sum(rate(payment_callback_total[10m])), 0.001)
+          > 0.1
+        for: 10m
+        labels:
+          severity: critical
+          team: payment
+        annotations:
+          summary: "支付回调错误率超过 10% / Payment callback error rate above 10%"
+          description: >
+            近 10 分钟支付回调错误率超过 10%，可能是订单查不到、金额校验失败或下游异常。
+            Payment callback error rate exceeded 10% over the last 10 minutes.
+          runbook: >
+            1. 查错误日志：grep payment_callback /var/log/imboy/*.log | tail -50
+            2. 确认 payment_transaction 表写入是否正常
+            3. 确认第三方网关状态页是否有故障
+
+      # 验签失败是安全信号（伪造回调 / 密钥不一致），阈值独立于业务错误
+      - alert: IMBoyPaymentSignFailureSpike
+        expr: sum(rate(payment_callback_sign_failed_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+        annotations:
+          summary: "支付回调验签失败激增 / Spike in payment callback signature failures"
+          description: >
+            近 5 分钟支付回调验签失败率异常，可能是伪造回调攻击或网关密钥配置不一致。
+            Abnormal rate of payment callback signature verification failures.
+          runbook: >
+            1. 确认来源 IP 是否为网关官方回调地址
+            2. 核对网关公钥/密钥配置是否与商户后台一致
+            3. 必要时在 nginx 层临时限制回调来源

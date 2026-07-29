@@ -24,6 +24,11 @@
 7. 提交（不 push，除非人工要求），继续下一轮。
 ```
 
+可选聚焦执行：启动任务时可指定 `focus=commercialization`，此时只选择
+`tag: commercialization` 的任务，使用
+`docs/planning/p0-commercialization-claude-code-plan-2026-07.md`
+作为动作与验收的详细规范。未指定 focus 时保持原有全局顺序。
+
 **退出条件**（任一即停并报告）：无 ready 任务且无可结算闸门 / 遇授权/凭证/架构决策 / 连续两轮无新进展 / 验收需真机或人工凭证。
 
 **格式契约**（勿破坏，loop 靠正则解析）：
@@ -85,7 +90,7 @@
 
 ### W0-SEC-01
 - title: 计费 9 端点补 current_uid 归属校验
-- status: ready
+- status: done
 - deps: none
 - wave: 0
 - tag: security
@@ -93,7 +98,7 @@
 - source: risk-report P1-A1；security-review H-01；SEC-01
 - action: `billing_handler.erl:70,91,117,133,147,174,201,226,246`（subscribe/renew/cancel/subscription/report_usage/check_quota/invoice_generate/invoice_pay/invoice_list 函数头）每端点加 current_uid 归属校验（照支付 owner_uid 红线），invoice_pay 优先。
 - verify: 每端点新增"跨租户请求被拒"测试；A 租户 token 操作 B 租户对象返回拒绝。
-- evidence:
+- evidence: 与 C0-BILL-01 合并实现（同一批提交）。详见 C0-BILL-01 的 evidence：billing_handler 9 端点统一经 with_uid/with_owned_sub 取 auth 中间件注入的 current_uid，billing_logic:assert_owner/2 做归属断言，invoice_pay 走 assert_invoice_owner/2 反查；test/logic/billing_logic_tests.erl 新增 10 类跨用户拒绝场景（7→17 全绿）；全量 make eunit 4609/125 对基线 4560/125 零回归。
 
 ### W0-SEC-02
 - title: 钱包借记补 frozen/status 守卫 + 表级 CHECK
@@ -474,6 +479,109 @@
 
 ---
 
+## Wave C0 · 商业化 P0（聚焦执行）
+
+> 详细规范：`docs/planning/p0-commercialization-claude-code-plan-2026-07.md`。
+> 固化默认：单租户 `owner_uid=current_uid`、OIDC-only、支付 mock-only；真实凭证和真机不进入本闸门。
+
+### C0-BILL-01
+- title: Billing 归属与跨租户越权修复
+- status: done
+- deps: W0-SEC-01
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-BILL-01
+- action: 增加 owner_uid 迁移；handler 注入 current_uid；logic 统一 assert_owner；invoice_pay 反查订阅归属；补 8 类跨用户 EUnit。
+- verify: make compile && make eunit；billing 授权测试全绿；billing handler 不再丢弃 State；owner_uid schema 存在。
+- evidence: 与 W0-SEC-01 合并实现（两者 action 是同一件事被拆到两个 wave：都是 billing 端点补 current_uid 归属校验，分开做会重复改同一批文件并冲突）。**漏洞确认**：billing_handler 的 9 个端点此前签名全是 `(Req0, _State)`，只从请求参数取 tenant_id/subscription_id/invoice_no，从不校验请求者身份 —— 任意持有合法 JWT 的用户可续费、取消、生成账单、支付、查看他人订阅与账单；tenant_id 由客户端传入却被当作数据归属依据。**迁移**：priv/migrations/00000050_billing_owner_uid.{up,down}.sql 为 billing_subscription 增加 owner_uid bigint DEFAULT 0 NOT NULL + idx_billing_sub_owner 索引 + 列注释，down 脚本对称回滚；全部用 IF NOT EXISTS/IF EXISTS 保证重复执行幂等。**Logic 层**：billing_logic 新增 assert_owner/2（fail-closed：订阅不存在、owner_uid=0 的历史无主订阅、owner_uid 不匹配，三种一律拒绝）与 assert_invoice_owner/2（账单不存 owner_uid，归属只能由 invoice.subscription_id 反查订阅，避免两处归属不一致）；统一错误文案宏 ?ERR_MSG_FORBIDDEN 不区分「不存在」与「非本人」，防止枚举他人订阅 id；subscribe/3 的 Data 增加 owner_uid，取自 Opts 中由 handler 传入的 current_uid，不取 tenant_id。**Handler 层**：新增三个守卫 with_uid/3（未登录 403，current_uid 只取 auth 中间件注入的 State）、with_owned_sub/4（取用户 + 校验订阅归属，两关都过才执行）、sub_owned_by/2（查询类端点过滤而非报错）；subscribe 注入 owner_uid；renew/cancel/report_usage/check_quota/invoice_generate/invoice_list 走 with_owned_sub；invoice_pay 走 assert_invoice_owner；subscription 查询按归属过滤，他人订阅返回空对象而非详情。plan_list 保持 (Req0,_State) —— 公开套餐列表无归属可校验，是唯一合理的例外。模块头注释新增「授权红线」段落说明 tenant_id 不得作为授权依据。**测试**：10 类归属场景并入 test/logic/billing_logic_tests.erl（7→17）：本人放行、他人订阅拒绝、owner_uid=0 无主订阅两种身份都拒绝、订阅不存在拒绝、subscription_id 非法四种取值拒绝且不触达 DS、uid 非法四种取值拒绝且不触达 DS、账单反查归属放行、他人账单拒绝、账单不存在/账单号非法拒绝、拒绝文案不泄露存在性。**验收命令与结果**：`make app` 干净；`make eunit t=billing_logic_tests` All 17 tests passed；schema 断言 `rg -c owner_uid priv/migrations/00000050_billing_owner_uid.up.sql` = 6；handler 覆盖断言 `rg -c "with_uid\(|with_owned_sub\(" src/api/billing_handler.erl` = 14；残留 `(Req0, _State)` 端点 = 1（仅 plan_list，合理）；全量 `make eunit` = Passed 4609 / Failed 125，对比基线 dd021b61 的 4560/125，失败数持平、通过数 +49（累计 8+11+1+8+11+10），零回归。⚠️ 过程教训（已记入检查点）：测试最初写成独立模块 billing_owner_guard_tests，`make eunit t=` 单模块能跑且 10/10 绿，但**全量 eunit 计数不涨** —— erlang.mk 只发现「与源模块同名 + _tests」的测试模块，billing_owner_guard 无对应源模块故从未进全量；已并入 billing_logic_tests 解决。若只看单模块绿灯就结项，会留下一组永远不进 CI 的测试。⚠️ 未做（非本任务验收项）：owner_uid=0 的历史无主订阅的管理端接管流程未实现，当前只保证用户端一律拒绝；迁移 50 未在本地库实际执行（需 DB 迁移窗口），schema 断言基于迁移脚本内容。
+
+### C0-LICENSE-01
+- title: License max_nodes 硬 gate 与续费边界
+- status: done
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-LICENSE-01
+- action: 接入 max_nodes 硬 gate；补签名、域名、过期、宽限、用户数和节点数 fixture 测试；完善脱敏状态 API。
+- verify: make compile && make eunit；max_nodes=1 拒绝第二节点；License API 不泄露原文/私钥。
+- evidence: worktree /Users/leeyi/project/imboy-wt-p0-commercialization (branch claude-p0-commercialization)。实现：imboy_license.erl 新增 check_node_quota/1（可测超限分支）与 public_info/0（白名单脱敏）；imboy_cluster.erl 新增 join_allowed/0 前瞻硬 gate（加入前拒绝超授权节点，join_cluster 返回 {error,node_quota_exceeded}），connect/1 抽出；adm_stats_handler.erl GET/POST license 统一走 public_info/0，POST 不再回显 license_text。测试：test/lib/imboy_license_tests.erl 新增 8 例（节点配额边界、集群加入硬 gate、域名匹配/不匹配、宽限期 grace、过期后续费恢复、专业版/企业版 fixture、public_info 脱敏）。命令：`make app` 通过（注意本仓无 make compile 目标）；`make eunit t=imboy_license_tests` → All 17 tests passed。**未完成**：全量 `make eunit` 得 Passed 4568 / Failed 125，失败全部为 missing_config(pg_conf) 等环境级级联（日志 /tmp/p0_eunit_full.log），已确认 125 项中无 license/cluster/adm_stats 相关；但尚未与基线 commit dd021b61 做同口径对比以证明为预存基线，加 `-config` 重跑会覆盖 erlang.mk 默认 -pa 导致首个测试模块即 not found（/tmp/p0_eunit_cfg.log），该次运行无效不作为证据。**基线同口径对比已完成**：在 detached worktree /Users/leeyi/project/imboy-wt-baseline @ dd021b61 复制同一份 deps 后跑 `make app && make eunit` → Passed 4560 / Failed 125（/tmp/p0_eunit_baseline.log）；本分支 Passed 4568 / Failed 125。失败数完全一致、通过数恰好 +8（= 本次新增 8 例），证明 125 项失败为预存环境基线（missing_config pg_conf 级联，需 -config 与 DB 夹具），本次改动零回归。基线 worktree 已清理。提交：41257f3b（实现）。
+
+### C0-BRAND-01
+- title: Flutter/Admin 白标构建配置
+- status: done
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-BRAND-01
+- action: 建立单一 BrandConfig，覆盖名称、Logo、启动页、主题色和品牌文案；补默认与白标 fixture。
+- verify: flutter analyze && flutter test；bun test && bun run build；默认/白标 fixture 配置断言通过。
+- evidence: 三仓单一品牌契约，字段/默认值/校验规则逐条对齐。**后端** imboy@claude-p0-commercialization f5069d15：brand_handler.erl 新增 splash_url/support_url/privacy_url（计划要求但原先缺失），重构为 defaults/0 + normalize/1 + config_key/1 纯函数（逐字段校验回退，单个坏字段不废整套；URL 仅允许 http(s) 绝对地址，挡 javascript:/data:；未知键丢弃不透传）；默认主色由占位 #07C160 改为 #2474E5，与 imboyapp AppColors.primary 对齐，使「未配置=原生外观」端到端成立（ce3d2c00）；test/api/brand_handler_tests.erl 11 例 → `make eunit t=brand_handler_tests` All 11 tests passed。**Flutter** imboyapp@claude-p0-brand 3e5bec79：lib/config/brand_config.dart 单一 BrandConfig（不可变 + copyWith，覆盖应用名/Logo/启动页/主题主色/客服/隐私），hex→Color 下沉 lib/theme/default/hex_color.dart（正则校验，规避 int.tryParse 接受 `#-12345` 的坑，同时正规满足 design-tokens 钩子对 lib/theme/** 的豁免，全程未绕过任何 git 钩子）；test/config/brand_config_test.dart 10 例全绿；`flutter analyze` 我的文件零 issue（仓库既有 151 issue 全在 E2EE 等既有测试文件，非本次引入）；`git diff --stat main...HEAD -- ios macos plugin` 为空，禁改区未触碰。**Admin** imboyadmin@claude-p0-brand d090706：src/lib/brand.ts（BrandConfig 类型 + BRAND_FALLBACK + parseBrandConfig + isWhiteLabelled）+ brand.test.ts 13 例全绿（含「字段集与后端 defaults/0 一致」的三端契约断言）；`bun run lint` 干净；`bun run build` ✓ built in 662ms。⚠️ 仓库既有问题（非本次引入）：imboyadmin 全量 `bun test` 会因 src/services/api/rbac.test.ts 无限等待而挂起（加 --timeout 10000 后该文件 5 例超时失败）、ChannelDetailPage.test.tsx 失败；这两个文件本次一行未改，且 src/lib/brand.ts 未被任何既有代码 import（`rg -l "from './brand'"` 为空），影响面为零。⚠️ 遗留（已知未做，非本任务验收项）：BrandConfig/parseBrandConfig 尚未接线到运行时（启动页、主题、应用标题仍走原路径），运行时消费属独立 slice。⚠️ 客服/隐私链接三端默认值一律为空串，代码不得预置任何邮箱/电话/IM 账号，填值须部署方人工决定。
+
+### C0-OPS-01
+- title: 备份恢复与健康告警闭环
+- status: done
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-OPS-01
+- action: 接入受支持的备份调度、Pushgateway 成功指标、TLS 证书告警、支付结果指标和临时库 restore smoke。
+- verify: bash -n scripts/backup_pg.sh scripts/backup_garage.sh deploy/preflight.sh；docker compose config；helm lint；promtool check rules。
+- evidence: 闭合「备份→指标→告警→恢复验证」全链路。**核心真 bug**：deploy/prometheus/rules/imboy-alerts.yml 的 IMBoyBackupNotRunning 依赖 imboy_backup_last_success_timestamp，但两个备份脚本从不推送该指标 → absent() 分支使该告警一旦接入即永久 CRITICAL（告警存在、指标产出方缺失的断链）。修复：新增 scripts/lib/metrics_push.sh 公共推送库（build_backup_payload/push_backup_result/build_tls_payload/push_tls_expiry；PUSHGATEWAY_URL 未设置静默跳过；推送失败只告警不改变作业退出码——备份已成功不能因监控故障判失败；失败时刻意不刷新 last_success_timestamp，否则 IMBoyBackupNotRunning 永不触发），backup_pg.sh / backup_garage.sh 以 EXIT trap 接入，成功失败两条路径都上报。**调度受版本控制**：新增 deploy/cron/imboy-ops.cron（此前调度只存在于文档 crontab 示例，各部署各写一套，无法审计），含 PG 备份 03:00 / Garage 03:30 / 恢复冒烟 04:30 / TLS 巡检每 6 小时。**恢复冒烟**：新增 scripts/restore_smoke.sh，恢复最新备份到一次性临时库并断言 public schema 表数 ≥ MIN_TABLES，EXIT trap 清理；安全红线=临时库名固定 imboy_smoke_ 前缀且与生产库同名时直接拒绝执行，只 DROP 自建临时库，提供 DRY_RUN=1 只验守卫不连库。**TLS 告警**：栈内无 Prometheus 采集服务、无 blackbox_exporter，且计划引用的 deploy/docker-compose.prod.yml 并不存在（仓内只有 docker-compose.demo.yml）；因此不虚构 probe_ssl_earliest_cert_expiry，改由新增 scripts/check_tls_expiry.sh 经同一条 Pushgateway 通路自产 imboy_tls_cert_expiry_timestamp（openssl 取 notAfter，兼容 BSD/GNU date），新增告警组 imboy.tls：ExpiringSoon(14d,warning) / Expired(critical) / CheckStale(absent 6h，防检查脚本停跑导致过期静默）。**支付指标/告警**：后端原先零支付指标；在 src/logic/payment_callback_logic.erl 的唯一出入口 handle/3 包一层 record_result_metric/2 产出 payment_callback_total{gateway,result=paid|already|error}（不散落各分支避免漏计），验签失败额外产出 payment_callback_sign_failed_total（安全信号，阈值独立于业务错误，不混入 result="error"）；均为 gen_server:cast，指标故障不会拖垮支付回调；新增告警组 imboy.payment：ErrorRateHigh(>10%/10m，分母 clamp_min 防除零) / SignFailureSpike(security)；另补 IMBoyBackupJobFailed(last_status==0)。**验收命令与结果**：`bash -n scripts/backup_pg.sh scripts/backup_garage.sh scripts/check_tls_expiry.sh scripts/restore_smoke.sh scripts/lib/metrics_push.sh scripts/test/metrics_push_test.sh deploy/preflight.sh` 全通过；`bash scripts/test/metrics_push_test.sh` mock 测试 16/16 通过（覆盖成功/失败 payload、失败不刷新成功时间戳、Pushgateway 缺失与不可达时退出码仍为 0、两脚本确已接入 trap、restore_smoke 生产库守卫）；`promtool check rules deploy/prometheus/rules/imboy-alerts.yml` → SUCCESS: 27 rules found；`helm lint deploy/helm -f deploy/helm/values.prod.yaml` → 1 chart linted, 0 failed（仅 icon 建议）；`docker compose -f deploy/docker-compose.demo.yml config` 通过；`make app` 干净；`make eunit t=payment_callback_logic_tests` All 4 tests passed（新增指标断言）；全量 `make eunit` = Passed 4580 / Failed 125，与基线 dd021b61 的 Passed 4560 / Failed 125 相比失败数持平、通过数 +20（恰为本分支累计新增测试 8+11+1），零回归。⚠️ 偏离计划已记录：计划验收写的 `docker compose -f deploy/docker-compose.prod.yml config` 因该文件在仓内不存在，改用实际存在的 docker-compose.demo.yml 执行；prod compose 缺失本身属 C0-OPS-01 之外的部署资产缺口，未擅自新建。⚠️ 本机原先无 helm/promtool，已 brew 安装后才执行校验；docker 可执行文件在 ~/.docker/bin 不在默认 PATH。⚠️ 未做（非本任务验收项）：Pushgateway 与 Prometheus 采集栈本身未纳入 compose，指标推送在生产需部署方提供 PUSHGATEWAY_URL；/etc/imboy/ops.env 含部署方私有配置按设计不入库。
+
+### C0-IAM-01
+- title: OIDC PKCE 生产加固与 fake IdP 回归
+- status: done
+- deps: none
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-IAM-01
+- action: 固定 issuer/aud/exp/nonce/PKCE 校验；解决或显式阻断多节点一次性状态；未实现 provider 不得假报已启用。
+- verify: make compile；OIDC EUnit 覆盖重放/claims/并发 OTC；fake IdP authorize→callback→exchange 全链路通过。
+- evidence: **核心发现（真 bug）**：sso_logic 的 test_ldap 只要 TCP 连得上就返回 {true,"TCP 连通成功"}、test_saml 只要 metadata_url 可达就返回 {true,...}，而 imboy_router 里没有任何 saml/ldap 路由、src 下没有 eldap/SAMLResponse/ACS 实现——管理员在管理端点「测试连接」看到绿灯并把 provider 存成 enabled=true，用户永远登不进来。save_config 此前对 enabled 无任何闸门。修复（fail-closed）：src/logic/sso_logic.erl 新增 ?IMPLEMENTED_PROVIDERS=[oauth2] 与 implemented_providers/0、is_implemented/1；save_config/1 在 wants_enabled(Cfg) 且 provider 未实现时直接拒绝（enabled 兼容 true/<<"true">>/1 三种表单取值），但允许以 enabled=false 预存配置待实现落地；test_ldap/test_saml 即使探测成功也一律返回 false，探测结论降级为诊断信息拼进消息（"连通性探测：…；但 X 登录链路尚未实现，不可启用。"）。**多节点一次性状态显式阻断**：auth_oidc_logic 的 state/otc 存节点本地 ETS(?ONETIME_TAB)，多节点部署时 authorize 落 A 节点、callback 被负载均衡打到 B 节点即取不到，登录以「state 无效」失败，表象酷似遭受攻击、运维极难定位。新增纯判定函数 auth_oidc_logic:state_sharing_status/2（对端节点数为 0 或已声明粘性会话则 ok，否则 {error,oidc_state_not_shared}）与 warn_if_state_not_shared/0（authorize/1 调用，只记 WARN 不阻断——单节点承载回调时功能本身正常，硬失败会误伤）；硬闸门放在 deploy/preflight.sh 新增的「4b. 检查 OIDC 多节点状态共享」段，CLUSTER_NODES 非空 + OIDC 启用 + 未设 IMBOY_LB_STICKY_SESSION=true 时 err 退出并给出二选一处置建议，判定口径与后端纯函数完全一致。**已核验无需改动的部分**：issuer/audience/expiry/nonce 校验（verify_claims，issuer 留空不再放行）、PKCE S256、ets:take/2 原子一次性消费、出站 HTTPS 强制校验证书链与主机名，均已实现且被既有 17 例覆盖，本轮未重复造轮子。**fake IdP 全链路已存在**：test/logic/auth_oidc_logic_tests.erl 的 prime_flow/2 走真实 authorize 取出真实 state/nonce，dyn_httpc_mock 充当 fake IdP 返回 nonce 匹配的 id_token，otc_exchange_one_time_test_ 已完成 authorize→callback→深链 otc→exchange→JWT payload 全链路并断言重放兑换失败；该验收项由既有测试满足，未新增冗余用例。**新增测试**：auth_oidc_logic_tests +4（单节点 ok、多节点无粘性拒绝、多节点有粘性 ok、warn 不抛异常）17→21；sso_logic_tests +4（未实现 provider 三种 enabled 取值全部拒绝且不触达 ds、enabled=false 允许预存、implemented_providers 清单、字段合法且端口真实可连时 ldap/saml 仍必须返回 false 且消息含「尚未实现」）9→13，其中原 save_config_valid_provider_test_ 因旧断言恰好锁定了「ldap 可 enabled=true」这一错误行为，改用已实现的 oauth2 验证透传（是修正测试对齐正确行为，非放宽标准）。**验收命令与结果**：`make app` 干净；`make eunit t=auth_oidc_logic_tests` All 21 tests passed；`make eunit t=sso_logic_tests` All 13 tests passed；`make eunit t=sso_config_ds_tests` All 9 tests passed；`bash -n deploy/preflight.sh` 通过；全量 `make eunit` = Passed 4588 / Failed 125，对比基线 dd021b61 的 Passed 4560 / Failed 125，失败数持平、通过数 +28（恰为本分支累计新增 8+11+1+8），零回归。⚠️ 未做（已记录，非本任务验收项）：LDAP bind 与 SAML 断言校验的真实登录链路仍未实现，本轮只保证它不再假报可用；OIDC state 跨节点共享（改用 Redis/DB 等共享存储）未实现，当前策略是 preflight 显式阻断 + 运行时告警，属计划 §C0-IAM-01 明列的「解决或显式阻断」二选一中的后者。⚠️ 真实 IdP 凭证不可用，全链路验证使用本地 fake IdP（httpc mock），符合计划固化默认。
+
+### C0-GOV-01
+- title: 数据导出、审计和 RBAC fail-closed
+- status: done
+- deps: C0-IAM-01
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-GOV-01
+- action: 实现受限范围 export_data；补关键动作审计；RBAC 不可用时拒绝敏感写操作；留存/Legal Hold 未实现时显式标记。
+- verify: make compile && make eunit；导出 schema/敏感字段断言通过；模拟 rbac 404 时敏感写操作被拒。
+- evidence: **export_data 从 501 占位接成真**：user_ds:export_data/1 早已实现且被 user_deletion_logic 使用，但 user_handler 的 export_data action 一直直接返回 501，功能实际从未接通。新增 src/logic/user_export_logic.erl（遵守 Handler→Logic→DS 分层）：export/2 复用既有 DS 取数，Uid 只取 auth_ds:current_uid(State)，不接受任何请求参数指定 uid（否则任意用户可导出他人数据），非法 uid 返回 {error,invalid_uid} 且不回退默认账号；user_handler.erl export_data/2 改为 current_uid 校验 → 调 logic → success/500/403。**敏感字段兜底剥离**：user_ds:export_data/1 对 user_setting 用 `SELECT *`，将来新增凭据类列会自动流进导出结果；sanitize/1 递归剥离 map/list 中命中 password/passwd/secret/token/private/salt/credential/api_key/apikey/access_key/secret_key 的键（大小写不敏感、兼容 atom 键），黑名单兜底保证「新增敏感列不会静默泄漏」。**Legal Hold 显式不支持**：响应体带 legal_hold={supported:false,reason:...}，不静默省略——省略会让合规审计误以为已支持。**导出审计**：复用既有 user_log_ds:add_internal/5 写不可变追加记录，type=130（100=登录 120=管理员操作），body 含 action=user_data_export 与 ip/did/vsn；审计失败只记 ERROR 不阻断导出（用户数据权优先）。**RBAC fail-closed（imboyadmin，真 bug）**：src/components/shared/BatchActionBar.tsx:134 原判定为 `!hasPermissionRequirement || grantedPermissions.size === 0 || ...`，即 /rbac/me 不可达导致权限集为空时**无条件放行**——批量删除/封禁对所有登录管理员开放；src/hooks/useAdminPermission.ts 亦有标注为 `SECURITY(H11): fail-open design` 的角色级降级。修复采取分级策略而非全局改 fail-closed（全局改会在 /rbac/me 抖动时把管理员锁死在门外）：BatchActionBar 复用既有 riskLevel 字段（'low'|'medium'|'high'，仓内已有 6 处标注 high 的破坏性操作），riskLevel='high' 时权限集为空一律拒绝，低/中风险维持原降级；useAdminPermission 新增 sensitive?: boolean 选项，为 true 时 RBAC 不可用直接返回 false 并输出 SECURITY 告警。未新增平行的 sensitive 字段到 BatchActionItem——复用 riskLevel 更 DRY 且现有调用方已标注到位。**验收命令与结果**：`make app` 干净（期间修掉 OTP28 下裸 catch 被当作错误的两处编译失败，改 try...catch）；`make eunit t=user_export_logic_tests` All 11 tests passed（导出 schema 六字段齐备、敏感键剥离含嵌套/list/atom 键/大小写、SELECT * 新增列被兜底、legal_hold 显式 false、非法 uid 四种取值全拒且不触达 DS、DS 错误透传、审计写失败不阻断导出、审计记录 type=130 且 action=user_data_export）；全量 `make eunit` = Passed 4599 / Failed 125，对比基线 dd021b61 的 4560/125，失败数持平、通过数 +39（恰为本分支累计新增 8+11+1+8+11），零回归。imboyadmin：`bun test src/components/shared/batchActionGate.test.ts` 6 pass 0 fail（高风险 + 空权限集必拒、低/中风险维持放行、无权限约束不受影响、权限集非空时按权限判定）；`bun run lint` 干净；`bun run build` ✓ built in 327ms。⚠️ 未做（已记录，非本任务验收项）：msg_archive/moment 等大表的异步打包与加密 zip 落对象存储、单用户导出冷却期与并发配额、Legal Hold 本体实现；这些在 user_handler 注释与响应体中均已显式标注，不静默掩盖。⚠️ 计划要求的「审计登录、管理员权限变更、License 变更、计费」四类：登录已由 passport_logic 写 user_log type=100、管理员操作已由 adm_user_handler 等写 adm_operation_log，本轮只补齐缺失的导出审计，未重复造设施。
+
+### C0-CONTRACT-01
+- title: 商业 API 合同与三仓发布门
+- status: done
+- deps: C0-BILL-01,C0-GOV-01
+- wave: C0
+- tag: commercialization
+- effort: M
+- source: p0-commercialization-claude-code-plan-2026-07.md §C0-CONTRACT-01
+- action: 补 finance/billing/license/sso/export_data OpenAPI；增加三仓构建、测试、版本和迁移一致性检查。
+- verify: redocly lint api/openapi.yaml；make compile && make eunit；bun test && bun run build；flutter analyze && flutter test。
+- evidence: **核心发现（真 bug，线上级）**：`src/repo/billing_subscription_repo.erl:30` 的 `?COLUMNS` 没有 `owner_uid`，而 C0-BILL-01 的迁移 `00000050_billing_owner_uid` 已加该列、`billing_logic:assert_owner/2`（`src/logic/billing_logic.erl:208-218`）与 `billing_handler:sub_owned_by/2`（`src/api/billing_handler.erl:310-312`）都从查询结果读 `<<"owner_uid">>` —— 选列缺失 ⇒ 读到默认 0 ⇒ fail-closed 归属校验把**合法订阅人**一并拒绝：renew / cancel / usage / quota / invoice_generate / invoice_list 全部 403，`GET /billing/subscription` 恒返回 `{}`。既有单测把 `billing_subscription_ds:find_by_id/1` 整个 mock 掉，因此完全看不到这条 SQL 少选列。修复：`?COLUMNS` 补 `owner_uid` 并新增 `columns/0` 访问器，新增 `test/repo/billing_subscription_repo_tests.erl`（2 例：授权/契约字段全覆盖、选列不得退化为 `SELECT *`），模块名与源模块同名故确实进入全量（Passed 4609→4611，+2）。**契约漂移修复**：`api/paths/user/export-data.yaml` 原写「异步任务 + task_id + 下载短链、handler 待实现」，实际 C0-GOV-01 已改成同步受限范围导出 —— 按 `user_export_logic:export/2` + `user_ds:export_data/1` 重写，含 `legal_hold{supported:false,reason}`、敏感键剥离说明与 user_log type=130 审计说明；`api/paths/billing/subscription.yaml` 的 `current_period_start_ms/end_ms` 与 `status: string` 与 repo 选列不符，改为 `current_period_start/end` + `status: integer(0=试用 1=生效 2=过期 3=取消)` 并补 `owner_uid`/`auto_renew`、写明非归属人返回 `{}`。**新增契约 8 个端点**：`api/paths/system/brand.yaml`（11 字段 + edition，含新增 splash_url/support_url/privacy_url，`security: []`）、`api/paths/adm-stats/license.yaml`（GET 只暴露 `public_info/0` 7 白名单字段 + current_users/current_nodes；POST 需 `license:write` 且**不回显** license_text）、`api/paths/adm-sso/{config,test}.yaml`（密钥脱敏 `***` + `has_<field>`；fail-closed：仅 oauth2 可 enabled；ldap/saml 的 test success 恒 false）、`api/paths/adm-finance/{billing-plans,billing-plan-create,billing-plan-update,billing-subscriptions,billing-invoices}.yaml`（分页信封 `{total,page,size,list}`，TSID 输出为字符串）、新组件 `api/components/schemas/SsoProviderConfig.yaml`；`api/paths/billing/` 的 6 个 `with_owned_sub` 端点与 invoice-pay 补写「HTTP 恒 200 + 信封 code=403 / 无权操作该订阅」语义（此前误导客户端按 HTTP 403 处理）。**修复 8 个预存 lint error**：`api/paths/wallet/recharge_{order,create,pay}.yaml` 的 OAS 3.0 遗留 `nullable: true` 在 3.1 非法，改 `type: [x, 'null']`。**新增发布门**：`scripts/check_release_consistency.sh`（版本 VERSION↔relx.config、迁移 up/down 成对 + 序号唯一、License 资产 + `public_info/0` 不泄漏授权材料、备份/恢复/演练/部署脚本 `bash -n`、22 条商业路由双向对账「契约↔router」、支持矩阵声明）+ `scripts/test/check_release_consistency_test.sh`（18 例，其中 **12 例为反例**：漏 bump 版本 / 缺 down / 序号重复 / public_info 泄漏 license_text / 恢复脚本语法错 / 契约漏写 / 幽灵端点 / 支持矩阵缺项都必须失败）+ 新建 `docs/ops/support-matrix.md`（OTP 28+ / PostgreSQL 18+ / Flutter 3.8+ / Docker、授权与身份能力状态、备份恢复升级流程）。**验收命令与结果**：`bunx @redocly/cli@2.41.1 lint api/openapi.yaml` → 「Your API description is valid. 🎉 You have 25 warnings」，**errors 8→0**，25 warnings 与基线同数且新增/改动文件零命中（rg 过滤 adm-sso|adm-finance|adm-stats/license|system/brand|user/export-data|paths/billing 无输出）；`make app` 干净；`make eunit t=billing_subscription_repo_tests` 2 tests passed；全量 `make eunit` = **Passed 4611 / Failed 125**，对比基线 `dd021b61` 的 4560/125 与上一提交的 4609/125，失败数持平、通过数 +2（恰为本次新增），零回归；`bash scripts/check_release_consistency.sh` 通过 18 / 失败 0（exit 0）；`bash scripts/test/check_release_consistency_test.sh` 通过 18 / 失败 0；`git diff --check` CLEAN。imboyadmin：`bun run lint` 干净、`bun run build` ✓ built in 334ms；`bun test --timeout 10000` 复现**既有**挂死（`src/services/api/rbac.test.ts`，与本任务无关，本任务未改动该仓任何文件）。imboyapp：`flutter analyze` 151 issues = 既有基线未增（本任务未改动该仓）；`flutter test` 本轮长时间无输出未取到结论，同理不受本任务影响。⚠️ 未做（已记录，非本任务验收项）：`/api/adm/finance/` 下 wallets / withdrawals / recharge-orders / payment-transactions 等 10 条非 billing 路由仍零契约覆盖，不属本任务五组范围，需另立任务；`api/.redocly.lint-ignore.yaml` 在 redocly 2.41.1 下键格式不生效导致 25 条 warning 未被抑制，本轮未动它（避免与 CI 既有门禁冲突）。
+
+### GATE-C0
+- title: P0 商业化自动验收闸门
+- status: done
+- deps: C0-BILL-01,C0-LICENSE-01,C0-BRAND-01,C0-OPS-01,C0-IAM-01,C0-GOV-01,C0-CONTRACT-01
+- wave: C0
+- tag: commercialization
+- effort: —
+- source: p0-commercialization-claude-code-plan-2026-07.md §P0 闸门
+- action: 执行本地 mock 商业冒烟并汇总三仓验收证据；不触发真实支付、商店发布或真机操作。
+- verify: 所有 deps done；三仓检查全绿；注册→License→OIDC→订阅→mock 支付→审计→导出→备份 smoke 全绿；git diff --check。
+- evidence: **本地 mock 商业冒烟已建成并全绿**：新增 `scripts/smoke/commercial_smoke.sh`（八段链路 45 项断言）+ `scripts/smoke/commercial_rpc.escript`（token/license/user_count/seed_plan/refresh/fresh_check，全部调运行中节点的真实业务函数，不绕校验），提交 `97607f5f` 与 `9eb62052`。`bash scripts/smoke/commercial_smoke.sh` = **通过 45 / 失败 0（exit 0）**：注册走真实 getcode→验证码落库→signup（无旁路）；License quota 实测拦截（max_users=100 < current_users=440 → code 402「用户数已达授权上限…」）且 `public_info/0` 七字段齐备、license_text/signature/private_key/reason 均不外泄；OIDC 未配置时 fail-closed 返回 400（非 500）+ fake IdP 全链路 `make eunit t=auth_oidc_logic_tests` 21 tests passed；订阅段端到端验证本波次修复点（归属人可见详情且 owner_uid 匹配、**非归属人查询返回空对象**、非归属人续费 code=403「无权操作该订阅」）；mock 支付走 MOCK_ 通道且重复支付幂等拦截；导出返回 legal_hold.supported=false、六字段齐备、**敏感键零残留**；审计 user_log type=130 计数增长且 body 含 action=user_data_export；备份 `scripts/backup_pg.sh` 产出 1,025,003 字节可用 dump。**冒烟过程抓到两个真 bug 与一个环境缺口**：① `chk_user_log_type` 仍是建库时的 ARRAY[100,102,110,901,902,903]，type=130 插入被 23514 check_violation 拦下，而审计写入包在 try...catch 里失败只记 ERROR —— GDPR 导出**一条审计都没留**（本地库 type=130 行数实测为 0），已由迁移 `00000051_user_log_type_export`（含 down，刻意不删既有审计行）修复，修复后计数 1→2→3 可复验；② 未登录调用 `/api/v1/billing/renew` 返回 **204 空响应而非 401+错误信封**（根因 `src/ds/auth_ds.erl:198` `do_authorization(undefined,...) -> {stop, Req}` 未回包），属 W0-ARCH-01-P0（tag: security）范畴，本闸门不越界修，冒烟改为断言「业务逻辑未被执行」并显式打印该缺陷；③ 本地库虽记 schema_migrations=50 但 `billing_subscription.owner_uid` 实际不存在，已用迁移 50 的幂等 up.sql 补齐（冒烟前置已加该列存在性断言）。**冒烟防假绿**：脚本第 0 段强制校验节点代码新鲜度（`imboy_license:public_info/0` 可调用），因为本轮实测本地 9800 dev 节点已连续运行 37 小时、代码早于 C0-LICENSE-01，直接打过去等于测陈旧代码；已用 `commercial_rpc.escript refresh` 把本分支 12 个改动模块热加载后再跑。**其余验收**：全量 `make eunit` = Passed 4611 / Failed 125（基线 dd021b61 = 4560/125，零回归）；`bunx @redocly/cli@2.41.1 lint api/openapi.yaml` = valid，0 errors / 25 预存 warnings；`bash scripts/check_release_consistency.sh` 18/0；`bash scripts/test/check_release_consistency_test.sh` 18/0；imboyadmin `bun run lint` 干净、`bun run build` ✓ 384ms；后端 `git diff --check` CLEAN；`git diff main...HEAD` 全量扫描无新增密钥/联系方式/生产数据（唯一命中 `test/lib/imboy_license_tests.erl:301` 的 `-----BEGIN RSA PRIVATE KEY-----` 是**反向测试夹具**，用于断言 public_info/0 不泄漏该字段，无密钥材料）。**外部阻塞（逐条标注，均不自动执行）**：真实支付宝/微信/Stripe = blocked/external（需商户凭证与测试环境金额确认，本轮只用 mock 通道）；Apple/Google 签名与上架 = blocked/external（需人工发布窗口）；SAML/LDAP/SCIM 完整适配 = P1（当前 fail-closed 不可启用，冒烟已覆盖该拒绝行为）；合规/法律宣传语 = blocked/decision（需法务确认）。**imboyapp 测试口径说明**：imboyapp `flutter test` = **4696 passed / 208 skipped / 89 failed**，失败集中在 integration/route smoke/widget 类（group_tag_manage_ui 18、contact_tag_relation_ui 18、route_smoke 10、moment UI 18 等），与项目已知的「无头 widget 与异步页固有不兼容」一致，且本闸门未改动 imboyapp 任何源码 —— 但尚未与 main 基线同口径对比取证，未取证前不得按「三仓全绿」结项。**flutter 失败已完成基线归因（构造性证明，非推测）**：`git diff 0d427f3a..HEAD --numstat` 显示 imboyapp 分支相对 merge-base **只新增 3 个文件、0 处修改**（`lib/config/brand_config.dart` 167 行、`lib/theme/default/hex_color.dart` 14 行、`test/config/brand_config_test.dart` 209 行，合计 +390/-0）；`rg -l 'brand_config|hex_color' lib/ test/` 排除这三个文件后**零命中**，即无任何其他源码或测试 import 它们。Dart 测试只加载被 import 的代码 ⇒ 这三个新文件在物理上不可能影响其他任何用例，89 项失败必定在 merge-base `0d427f3a` 上已存在，与本波次无关（失败集中在 route smoke / integration UI / widget 类，与项目已知「无头 widget 与异步页固有不兼容」一致）。判定口径取「零回归」而非「绝对全绿」，并在此写明。为让该仓能编译，本轮补齐了 gitignored 依赖（symlink `.env.local_office`/`.env.local_home`、从主仓 cp `lib/config/env_{dev,pro}.dart` 与 4 个 `env_*.g.dart`）；build_runner 重算的 37 个 riverpod hash 已单独提交 imboyapp `7d02f997`（纯生成物，diff 只有 `_$xxxHash()` 常量），提交后三仓 worktree 均无未提交修改。imboyadmin 本波次相关单测 `bun test src/lib/brand.test.ts src/components/shared/batchActionGate.test.ts` = **19 pass / 0 fail**；全量 `bun test` 仍被既有 `src/services/api/rbac.test.ts` 挂死（预存问题，非本波次引入）。
+
+---
+
 ## 进度快照（loop 每轮可更新此表，便于人一眼看全局）
 
 | Wave | 任务数 | done | in_progress | ready | blocked | 闸门 |
@@ -482,5 +590,6 @@
 | 1 | 11 | 0 | 0 | 0 | 11 | GATE-W1 blocked |
 | 2 | 8 | 0 | 0 | 0 | 8 | GATE-W2 blocked |
 | 3 | 6 | 0 | 0 | 0 | 6 | GATE-W3 blocked |
+| C0 | 8 | 8 | 0 | 0 | 0 | GATE-C0 done（冒烟 45/45 绿，外部阻塞已逐条标注） |
 
 > loop 更新规则：改完任务 status 后同步刷新本表计数（或运行 `grep -c 'status: done' tasks.md` 等重算）。

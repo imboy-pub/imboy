@@ -26,6 +26,17 @@ info()  { echo -e "${GREEN}[backup_pg]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[backup_pg]${NC} $*"; }
 fail()  { echo -e "${RED}[backup_pg] ERROR:${NC} $*" >&2; exit 1; }
 
+# ---------- 指标推送（闭合 IMBoyBackupNotRunning 告警的产出方）----------
+# shellcheck source=scripts/lib/metrics_push.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/metrics_push.sh"
+
+START_TS="$(date -u +%s)"
+BACKUP_OK=0
+OUT=""
+# 无论从哪条路径退出（含 fail() 的 exit 1）都上报一次结果，
+# 避免失败静默 —— 静默失败正是 absent() 告警要防的场景。
+trap 'push_backup_result pg "$BACKUP_OK" "$START_TS" "$OUT"' EXIT
+
 # ---------- 前置检查 ----------
 command -v docker >/dev/null 2>&1 || fail "docker 未安装"
 docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER" \
@@ -68,4 +79,5 @@ fi
 DELETED="$(find "$BACKUP_DIR" -name "${POSTGRES_DB}_*.dump" -type f -mtime "+${RETENTION_DAYS}" -print -delete | wc -l | tr -d ' ')"
 [ "$DELETED" -gt 0 ] && info "清理 ${DELETED} 个超过 ${RETENTION_DAYS} 天的旧备份"
 
+BACKUP_OK=1
 info "全部完成。最新备份: ${OUT}"

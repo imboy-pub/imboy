@@ -336,25 +336,29 @@ convert_user_id(User) ->
 %% @doc 个人数据全量导出（GDPR 第 20 条 - Right to data portability）
 %% POST /v1/user/export_data
 %%
-%% 实现状态：占位（D-cleanup phase 27, 2026-05-17）。
-%% router 早已注册到 export_data action，但 user_logic 尚未实现真正的
-%% 异步打包逻辑。本占位返回 501 ERR_NOT_IMPLEMENTED 让客户端能感知"功能
-%% 已契约化但服务侧未就绪"，而不是返回 false 兜底掩盖问题。
+%% 实现状态：受限范围同步导出（C0-GOV-01）。
+%% 只导出当前登录用户自己的 user_info/friends/groups/settings；Uid 取自 auth
+%% 中间件注入的 current_uid，不接受任何请求参数指定 uid（否则可导出他人数据）。
+%% 敏感字段由 user_export_logic:sanitize/1 兜底剥离；导出行为写 user_log 审计。
 %%
-%% 真正实现时需要：
-%% - 异步任务：扫描 user / friend / group / msg_archive / moment / setting
-%%   等表，打包为加密 zip → 写入对象存储
-%% - 返回 task_id + 预期 ETA + 完成后的下载短链通知方式
-%% - 配额：单用户冷却期、并发限制
+%% 尚未覆盖（不在 P0 范围，需要时另立任务）：
+%% - msg_archive / moment 等大表的异步打包与加密 zip 落对象存储
+%% - 单用户冷却期与并发配额
+%% - Legal Hold：响应体内显式声明 supported=false，不静默省略
 %%
 %% @param Req0 Cowboy请求对象
-%% @param _State 状态映射，包含 current_uid
-%% @return 501 ERR_NOT_IMPLEMENTED 响应
+%% @param State 状态映射，包含 current_uid
 %% @end
 -spec export_data(cowboy_req:req(), map()) -> cowboy_req:req().
-export_data(Req0, _State) ->
-    elib_response:error(
-        Req0,
-        <<"个人数据导出功能正在开发中，敬请期待"/utf8>>,
-        ?ERR_NOT_IMPLEMENTED
-    ).
+export_data(Req0, State) ->
+    case auth_ds:current_uid(State) of
+        Uid when is_integer(Uid), Uid > 0 ->
+            case user_export_logic:export(Uid, Req0) of
+                {ok, Data} ->
+                    elib_response:success(Req0, Data);
+                {error, _Reason} ->
+                    elib_response:error(Req0, <<"数据导出失败，请稍后重试"/utf8>>, 500)
+            end;
+        _ ->
+            elib_response:error(Req0, <<"未登录"/utf8>>, ?ERR_FORBIDDEN)
+    end.

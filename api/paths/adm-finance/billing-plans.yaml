@@ -1,0 +1,73 @@
+# ----------------------------------------------------------------------------
+# GET /api/adm/finance/billing/plans — 运营后台套餐分页列表
+# Router: imboy_router.erl 行 758（adm_finance_handler#billing_plans），需读权限
+# Schema 来源：adm_finance_handler:billing_plans/3（src/adm/adm_finance_handler.erl:311）
+#             + billing_logic:list_plans_page/3 + elib_pg:page_with_total/6
+# ----------------------------------------------------------------------------
+get:
+  tags: [admin]
+  summary: 套餐分页列表（运营后台）
+  description: |
+    ## 中文
+    分页查询计费套餐，支持按 `status` 与 `billing_period` 过滤。
+    `id` 为 TSID，经 `normalize_billing_payload` 转为字符串输出，避免 JS 精度丢失。
+    `quota_config` 为解码后的 jsonb 对象。需要财务读权限；无权限时信封 `code` 非 0。
+    ## English
+    Paginated billing plan list for the ops console. TSID `id` is serialized as a
+    string to avoid JS precision loss. Requires finance read permission.
+  operationId: adm_finance_billing_plans
+  parameters:
+    - name: page
+      in: query
+      required: false
+      schema: { type: integer, default: 1 }
+      description: 页码，从 1 开始
+    - name: size
+      in: query
+      required: false
+      schema: { type: integer, default: 10 }
+      description: 每页条数
+    - name: status
+      in: query
+      required: false
+      schema: { type: integer }
+      description: 套餐状态过滤
+    - name: billing_period
+      in: query
+      required: false
+      schema: { type: string }
+      description: 计费周期过滤（month | year）
+  responses:
+    '200':
+      description: 分页结果
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [total, page, size, list]
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, description: 套餐 ID（TSID 字符串） }
+                            code: { type: string }
+                            name: { type: string }
+                            price: { type: integer, description: 价格（分） }
+                            billing_period: { type: string, description: 'month | year' }
+                            quota_config: { type: object, description: 配额配置（jsonb 解码后） }
+                            description: { type: string }
+                            status: { type: integer }
+    '4XX':
+      description: 无权限 / 查询失败 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

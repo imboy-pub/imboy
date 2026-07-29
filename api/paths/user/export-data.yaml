@@ -1,34 +1,103 @@
 # ----------------------------------------------------------------------------
-# POST /api/v1/user/export_data — 个人数据导出 (GDPR 类) / Personal data export
-# Router: 行 227 注册到 user_handler#export_data
-# 注意：截至本契约编写时（2026-05-17），user_handler:handle_action/3 中
-#       **未列出** export_data 分支——可能是 router 已注册但 handler 待实现。
-#       本契约描述目标行为；客户端调用可能短期内返回 false 兜底。
-# M24: 代码使用 post，yaml 改为 post（当前实现仅返回 501）
+# POST /api/v1/user/export_data — 个人数据导出（GDPR 第 20 条 数据可携带权）
+# Router: imboy_router.erl 行 120（user_handler#export_data）
+# Schema 来源：user_export_logic:export/2（src/logic/user_export_logic.erl:28）
+#             + user_ds:export_data/1（src/ds/user_ds.erl:412）
+#
+# 契约修订（C0-CONTRACT-01）：旧版描述为「异步任务 + task_id + 下载短链、handler
+# 待实现」，与实现不符 —— C0-GOV-01 已把它接成**同步**受限范围导出。此处按
+# handler 实际 payload 重写，消除契约漂移。
 # ----------------------------------------------------------------------------
 post:
   tags: [user]
-  summary: 当前用户的个人数据全量导出（GDPR 合规）
+  summary: 导出当前登录用户自己的个人数据（GDPR 合规）
   description: |
     ## 中文
-    异步触发当前用户全部数据的打包导出（账户资料、好友、群组、消息、
-    moment、设置等）。返回打包任务 ID + 下载短链。
-    法规背景：GDPR 第 20 条 "Right to data portability"。
-    实现状态：router 已挂载，handler 待补 export_data 分支；本契约描述
-    目标行为，客户端应处理 400 兜底。
+    **同步**返回当前登录用户的受限范围个人数据。Uid 只取 auth 中间件注入的
+    `current_uid`，不接受任何请求参数指定 uid（否则任意用户可导出他人数据）。
+    响应中的敏感键（password / passwd / secret / token / private / salt /
+    credential / api_key / apikey / access_key / secret_key，大小写不敏感的子串
+    匹配）由 `user_export_logic:sanitize/1` 递归剥离；`settings` 取自 `SELECT *`，
+    将来新增的敏感列由该黑名单兜底，不会静默泄漏。
+    每次导出写入 `user_log`（type=130，body 含 `action=user_data_export` 与
+    ip/did/vsn）；审计写失败只记 ERROR，不阻断导出（用户数据权优先）。
+    未覆盖（不在本版本范围，已在响应中显式标注而非静默省略）：msg_archive /
+    moment 等大表的异步打包与加密 zip 落对象存储、单用户导出冷却期与并发配额、
+    Legal Hold 本体实现。
     ## English
-    Asynchronously trigger a complete data export for the current user
-    (profile, friends, groups, messages, moments, settings, ...).
-    Returns a job id + signed download URL. Background: GDPR Art. 20
-    Right to data portability. Implementation status: router-mounted,
-    handler dispatch pending.
+    Synchronously returns the caller's own data. The user id comes from the auth
+    middleware (`current_uid`) only — never from request parameters. Sensitive
+    keys are stripped recursively and every export is appended to the immutable
+    `user_log` audit trail.
   operationId: exportUserData
   responses:
     '200':
-      description: 任务受理；payload 含 task_id / 预期 ETA / 通知方式
+      description: |
+        导出成功。未登录或 uid 非法时 HTTP 仍为 200，信封 `code` 非 0
+        （全站统一响应信封，错误不改 HTTP 状态码）。
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [user_info, friends, groups, settings, exported_at, legal_hold]
+                    properties:
+                      user_info:
+                        type: object
+                        description: 账户资料
+                        properties:
+                          id: { type: integer, format: int64 }
+                          account: { type: string }
+                          nickname: { type: string }
+                          avatar: { type: string }
+                          sign: { type: string }
+                          region: { type: string }
+                          gender: { type: integer }
+                          created_at: { type: integer, description: 毫秒时间戳 }
+                      friends:
+                        type: array
+                        description: 好友关系（status=1）
+                        items:
+                          type: object
+                          properties:
+                            to_user_id: { type: integer, format: int64 }
+                            remark: { type: string }
+                            created_at: { type: integer }
+                      groups:
+                        type: array
+                        description: 所属群组
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer, format: int64 }
+                            title: { type: string }
+                            created_at: { type: integer }
+                      settings:
+                        type: object
+                        description: |
+                          用户设置（来自 `SELECT *`，敏感键已被兜底剥离，
+                          故字段集合不固定）。
+                        additionalProperties: true
+                      exported_at:
+                        type: integer
+                        description: 导出时间（服务端时间戳）
+                      legal_hold:
+                        type: object
+                        description: |
+                          Legal Hold（诉讼保全）支持状态。本版本未实现，显式声明
+                          `supported=false` 而非静默省略——省略会让合规审计误判为已支持。
+                        required: [supported, reason]
+                        properties:
+                          supported:
+                            type: boolean
+                            description: 恒为 false（本版本未实现 Legal Hold）
+                          reason:
+                            type: string
     '4XX':
-      description: handler 待实现 / 配额超限 / 上次导出未过冷却期
+      description: 方法不允许（非 POST）
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

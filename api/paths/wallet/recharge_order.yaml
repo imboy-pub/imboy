@@ -38,11 +38,11 @@ get:
                       amount: { type: integer, description: 金额（分） }
                       currency: { type: string, description: 币种，如 CNY }
                       payment_method: { type: string, description: 支付方式 alipay/wechat/wallet/mock }
-                      payment_no: { type: string, nullable: true, description: 第三方支付单号，下单阶段可能为空 }
+                      payment_no: { type: [string, 'null'], description: 第三方支付单号，下单阶段可能为空 }
                       status: { type: integer, description: '0=待支付, 1=已支付' }
-                      paid_at: { type: string, nullable: true, format: date-time }
-                      expires_at: { type: string, nullable: true, format: date-time }
-                      extra_data: { type: object, nullable: true }
+                      paid_at: { type: [string, 'null'], format: date-time }
+                      expires_at: { type: [string, 'null'], format: date-time }
+                      extra_data: { type: [object, 'null'] }
                       created_at: { type: string, format: date-time }
                       updated_at: { type: string, format: date-time }
     '4XX':

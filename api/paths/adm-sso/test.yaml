@@ -1,0 +1,60 @@
+# ----------------------------------------------------------------------------
+# POST /api/adm/sso/test — SSO 连通性 / 字段校验测试
+# Router: imboy_router.erl 行 821（adm_sso_handler#test），权限 settings:view
+# Schema 来源：adm_sso_handler:test/3 + sso_logic:test_connection/2
+#             （src/logic/sso_logic.erl:109-155）
+# ----------------------------------------------------------------------------
+post:
+  tags: [admin]
+  summary: 测试 SSO provider 配置
+  description: |
+    ## 中文
+    对指定 provider 做字段完整性校验与基础连通性探测，返回 `{success, message}`。
+    ⚠️ **`ldap` / `saml` 的 `success` 恒为 `false`**：这两条登录链路尚未实现
+    （无 LDAP bind、无 SAML ACS 端点），即使字段合法、网络可达也不得报成功——
+    否则管理员会据此认为 SSO 可用，而用户永远登不进来。探测结论只作为诊断信息
+    拼进 `message`（形如「连通性探测：…；但 X 登录链路尚未实现，不可启用。」）。
+    未知 provider 返回 `success=false`，message「无效的 provider（应为 ldap|saml|oauth2）」。
+    需要 `settings:view` 权限。
+    ## English
+    Validates the provider config and probes connectivity. `ldap` / `saml` always
+    return `success=false` because their login chains are not implemented; the
+    probe result is only surfaced as diagnostic text in `message`.
+  operationId: adm_sso_test
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [provider, config]
+          properties:
+            provider:
+              type: string
+              enum: [ldap, saml, oauth2]
+            config:
+              $ref: '../../components/schemas/SsoProviderConfig.yaml'
+  responses:
+    '200':
+      description: 测试结论（HTTP 恒 200，成败看 payload.success）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [success, message]
+                    properties:
+                      success:
+                        type: boolean
+                        description: 是否可用；ldap / saml 恒为 false（登录链路未实现）
+                      message:
+                        type: string
+                        description: 人类可读结论，含探测诊断信息
+    '4XX':
+      description: 无 `settings:view` 权限 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

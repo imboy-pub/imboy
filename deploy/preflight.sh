@@ -226,6 +226,26 @@ check_port "${BACKEND_PORT:-9800}"
 check_port "${PG_PORT:-5432}"
 check_port "${GRAFANA_PORT:-3000}"
 
+# ── 4b. OIDC 多节点一次性状态 ─────────────────────────────────────────────────
+# auth_oidc_logic 的 state/otc 存在**节点本地 ETS**（?ONETIME_TAB）。
+# 多节点部署时，authorize 在 A 节点写入的 state，callback 若被负载均衡打到
+# B 节点就取不到，登录会以「state 无效」失败 —— 表现得像遭到攻击，运维极难定位。
+# 因此多节点 + 启用 OIDC 必须显式拦下，而不是让它上线后随机失败。
+echo ""
+echo "▶ 4b. 检查 OIDC 多节点状态共享 / Checking OIDC multi-node state"
+
+OIDC_ENABLED="${IMBOY_OIDC_ENABLED:-${SSO_OAUTH2_ENABLED:-}}"
+if [[ -z "${CLUSTER_NODES:-}" ]]; then
+    ok "单节点部署，OIDC 节点本地状态可用"
+elif [[ "$OIDC_ENABLED" != "true" && "$OIDC_ENABLED" != "1" ]]; then
+    info "多节点部署但未启用 OIDC，跳过"
+elif [[ "${IMBOY_LB_STICKY_SESSION:-}" == "true" || "${IMBOY_LB_STICKY_SESSION:-}" == "1" ]]; then
+    # 粘性会话下同一浏览器会话固定打到同一后端，节点本地状态是安全的
+    ok "多节点 + OIDC，已声明负载均衡启用粘性会话"
+else
+    err "多节点（CLUSTER_NODES 已设置）+ 启用 OIDC，但 OIDC state/otc 只存节点本地 ETS。请二选一：a) 负载均衡开启粘性会话并设置 IMBOY_LB_STICKY_SESSION=true；b) 改为单节点承载 OIDC 回调（CLUSTER_NODES 留空）"
+fi
+
 # ── 5. Docker 检查（可选）────────────────────────────────────────────────────
 if [[ "${1:-}" == "--docker" ]]; then
     echo ""

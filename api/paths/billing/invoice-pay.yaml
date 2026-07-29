@@ -2,7 +2,14 @@
 post:
   tags: [user]
   summary: 支付账单
-  description: 使用指定支付方式支付账单。invoice_no 全局唯一。
+  description: |
+    使用指定支付方式支付账单。invoice_no 全局唯一。
+
+    **归属校验（fail-closed）**：须登录；账单不存 owner_uid，归属经
+    `subscription_id` 反查订阅的 `owner_uid`。非归属人时 HTTP 仍为 200，
+    信封 `code`=403、msg「无权操作该订阅」。
+    （src/logic/billing_logic.erl:226-234）
+
   operationId: billingInvoicePay
   requestBody:
     required: true

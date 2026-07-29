@@ -47,6 +47,47 @@ pick_test() ->
         )
     ).
 
+%% 支付回调结果指标必须在唯一出入口产出（C0-OPS-01）。
+%% deploy/prometheus/rules/imboy-alerts.yml 的 imboy.payment 告警组依赖这两个
+%% 计数器；若未来重构把 increment 丢了，告警会变成永远不触发的死规则。
+callback_result_metric_test_() ->
+    {setup, fun metric_setup/0, fun metric_cleanup/1, [
+        fun sign_failure_emits_both_counters/0
+    ]}.
+
+metric_setup() ->
+    meck:new(elib_metric, [passthrough, non_strict]),
+    meck:expect(elib_metric, increment, fun(_N, _D, _L) -> ok end),
+    meck:new(payment_sign, [passthrough, non_strict]),
+    meck:expect(payment_sign, verify, fun(_G, _R, _H) -> {error, bad_sign} end),
+    ok.
+
+metric_cleanup(_) ->
+    catch meck:unload(payment_sign),
+    catch meck:unload(elib_metric),
+    ok.
+
+sign_failure_emits_both_counters() ->
+    ?assertEqual(
+        {error, <<"验签失败"/utf8>>},
+        payment_callback_logic:handle(<<"alipay">>, #{}, #{raw => <<>>, headers => #{}})
+    ),
+    Calls = [Args || {_Pid, {elib_metric, increment, Args}, _Ret} <- meck:history(elib_metric)],
+    Names = [N || [N | _] <- Calls],
+    %% 验签失败要同时计入「安全信号」与「总结果」两个维度
+    ?assert(lists:member(payment_callback_sign_failed_total, Names)),
+    ?assert(lists:member(payment_callback_total, Names)),
+    %% 总结果维度必须带 result="error" 标签，否则告警的 result 过滤失效
+    ?assert(
+        lists:any(
+            fun
+                ([payment_callback_total, _D, #{result := <<"error">>}]) -> true;
+                (_) -> false
+            end,
+            Calls
+        )
+    ).
+
 %% 频道订单金额 元 → 分
 yuan_to_fen_test() ->
     ?assertEqual(900, payment_callback_logic:yuan_to_fen(9)),

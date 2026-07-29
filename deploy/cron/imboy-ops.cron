@@ -1,0 +1,35 @@
+# ============================================================
+# IMBoy 运维定时任务 / IMBoy ops schedule
+# ------------------------------------------------------------
+# 受版本控制的备份与巡检调度入口。此前调度只存在于文档里的
+# crontab 示例，不同部署各写各的，无法审计也无法回归。
+#
+# 安装 / Install:
+#   sudo cp deploy/cron/imboy-ops.cron /etc/cron.d/imboy-ops
+#   sudo chown root:root /etc/cron.d/imboy-ops
+#   sudo chmod 644 /etc/cron.d/imboy-ops
+#
+# 前置 / Prerequisites:
+#   - /opt/imboy 为部署根目录（否则改下面的路径）
+#   - /etc/imboy/ops.env 提供 PUSHGATEWAY_URL、IMBOY_TLS_DOMAINS、
+#     POSTGRES_* 等变量；该文件含部署方私有配置，不入库
+#
+# 注意：/etc/cron.d 下的文件必须带用户名字段（这里是 root），
+# 且文件名不能含点号，否则 cron 会静默忽略。
+# ============================================================
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+# 每日 03:00 UTC 全量备份 PostgreSQL
+0 3 * * * root . /etc/imboy/ops.env; cd /opt/imboy && bash scripts/backup_pg.sh >> /var/log/imboy/backup_pg.log 2>&1
+
+# 每日 03:30 UTC 备份 Garage 附件（与 PG 备份错开，避免争 IO）
+30 3 * * * root . /etc/imboy/ops.env; cd /opt/imboy && bash scripts/backup_garage.sh >> /var/log/imboy/backup_garage.log 2>&1
+
+# 每日 04:30 UTC 恢复冒烟：证明备份真的可恢复（只用临时库，不碰生产库）
+30 4 * * * root . /etc/imboy/ops.env; cd /opt/imboy && bash scripts/restore_smoke.sh >> /var/log/imboy/restore_smoke.log 2>&1
+
+# 每 6 小时检查 TLS 证书到期时间并推指标
+17 */6 * * * root . /etc/imboy/ops.env; cd /opt/imboy && bash scripts/check_tls_expiry.sh >> /var/log/imboy/tls_expiry.log 2>&1

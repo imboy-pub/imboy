@@ -1,0 +1,50 @@
+# ----------------------------------------------------------------------------
+# POST /api/adm/finance/billing/plan/update — 更新计费套餐
+# Router: imboy_router.erl 行 760（adm_finance_handler#billing_plan_update），需写权限
+# Schema 来源：adm_finance_handler:billing_plan_update/3（src/adm/adm_finance_handler.erl:355）
+# ----------------------------------------------------------------------------
+post:
+  tags: [admin]
+  summary: 更新计费套餐（运营后台）
+  description: |
+    ## 中文
+    请求体必须含 `id`，其余键即待更新列；除 `id` 外至少提供一个字段，否则信封
+    `code`=400，msg「至少提供一个可更新字段」。成功时 `payload` 为空对象，
+    msg「套餐已更新」。需要财务写权限。
+    ## English
+    Body must contain `id` plus at least one column to update. On success the
+    payload is an empty object. Requires finance write permission.
+  operationId: adm_finance_billing_plan_update
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [id]
+          properties:
+            id: { type: string, description: 套餐 ID（TSID，可传字符串或整数） }
+            code: { type: string }
+            name: { type: string }
+            price: { type: integer, description: 价格（分） }
+            billing_period: { type: string, description: 'month | year' }
+            quota_config: { type: object }
+            description: { type: string }
+            status: { type: integer }
+  responses:
+    '200':
+      description: 更新成功（payload 为 {}）；id 缺失/非法或无可更新字段时信封 code=400
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    description: 空对象
+    '4XX':
+      description: 无写权限 / 方法不允许
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

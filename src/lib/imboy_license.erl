@@ -32,8 +32,8 @@
 -export([max_users/0]).
 -export([max_nodes/0]).
 -export([check_user_quota/1]).
--export([check_node_quota/0]).
--export([licensee/0, expires_at/0, info/0]).
+-export([check_node_quota/0, check_node_quota/1]).
+-export([licensee/0, expires_at/0, info/0, public_info/0]).
 %% 供测试与内部：试用期判定纯函数 + 试用起始时间读取
 -export([evaluate_trial/2, trial_start_ms/0]).
 
@@ -287,6 +287,22 @@ expires_at() -> maps:get(expires_at, state(), 0).
 -spec info() -> map().
 info() -> state().
 
+%% @doc 对外可见的脱敏授权状态：仅白名单字段。
+%% 禁止外泄 license 原文、签名、私钥/公钥材料与内部降级原因（reason 可能含
+%% 文件路径等部署细节）。所有对外 API/指标必须经此函数，不得直接透传 info/0。
+-spec public_info() -> map().
+public_info() ->
+    S = state(),
+    #{
+        edition => maps:get(edition, S, <<"community">>),
+        valid => maps:get(valid, S, false),
+        status => atom_to_binary(maps:get(status, S, community), utf8),
+        max_users => maps:get(max_users, S, 0),
+        max_nodes => maps:get(max_nodes, S, 1),
+        licensee => maps:get(licensee, S, <<>>),
+        expires_at => maps:get(expires_at, S, 0)
+    }.
+
 %% @doc 规模 gate：当前用户数是否在 license 上限内。
 %% max_users=0 表示不限量。CurrentCount >= Max 时拒绝。
 -spec check_user_quota(integer()) -> ok | {error, quota_exceeded}.
@@ -299,14 +315,18 @@ check_user_quota(CurrentCount) when is_integer(CurrentCount) ->
 
 %% @doc 节点规模 gate：当前集群节点数是否在 license 上限内。
 %% max_nodes=0 表示不限量；当前节点数 = 已连接节点数 + 本节点。
-%% 供 imboy_cluster 在节点加入时调用（超限可拒绝加入或仅告警）。
 -spec check_node_quota() -> ok | {error, node_quota_exceeded, integer(), integer()}.
 check_node_quota() ->
+    check_node_quota(length(nodes()) + 1).
+
+%% @doc 按给定节点数判定配额（纯函数，便于在非分布式环境下测试超限分支）。
+%% 供 imboy_cluster 在节点加入前做「加入后是否超限」的前瞻判定。
+-spec check_node_quota(integer()) -> ok | {error, node_quota_exceeded, integer(), integer()}.
+check_node_quota(Count) when is_integer(Count) ->
     Max = max_nodes(),
-    Current = length(nodes()) + 1,
-    case Max =< 0 orelse Current =< Max of
+    case Max =< 0 orelse Count =< Max of
         true -> ok;
-        false -> {error, node_quota_exceeded, Current, Max}
+        false -> {error, node_quota_exceeded, Count, Max}
     end.
 
 %%===================================================================

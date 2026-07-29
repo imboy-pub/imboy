@@ -55,6 +55,27 @@
 %% @return {ok, paid} | {ok, already} | {error, binary()}
 -spec handle(binary(), map(), map()) -> {ok, paid | already} | {error, binary()}.
 handle(Gateway, Notify0, Ctx) ->
+    Result = do_handle(Gateway, Notify0, Ctx),
+    ok = record_result_metric(Gateway, Result),
+    Result.
+
+%% @doc 支付回调结果指标（唯一出入口统计，避免散落各分支漏计）。
+%% 供 deploy/prometheus/rules/imboy-alerts.yml 的 imboy.payment 告警组消费。
+-spec record_result_metric(binary(), {ok, paid | already} | {error, binary()}) -> ok.
+record_result_metric(Gateway, Result) ->
+    Outcome =
+        case Result of
+            {ok, paid} -> <<"paid">>;
+            {ok, already} -> <<"already">>;
+            {error, _} -> <<"error">>
+        end,
+    _ = elib_metric:increment(
+        payment_callback_total, 1, #{gateway => Gateway, result => Outcome}
+    ),
+    ok.
+
+-spec do_handle(binary(), map(), map()) -> {ok, paid | already} | {error, binary()}.
+do_handle(Gateway, Notify0, Ctx) ->
     RawBody = maps:get(raw, Ctx, <<>>),
     Headers = maps:get(headers, Ctx, #{}),
     %% 1) 验签；live 透出 erlang_pay 解密明文(微信加密回调必需)，非空则取代
@@ -69,6 +90,11 @@ handle(Gateway, Notify0, Ctx) ->
             handle_verified(Gateway, Notify, RawBody);
         {error, Reason} ->
             ?WARN_LOG([payment_callback, sign_failed, Gateway, Reason]),
+            %% 验签失败单独计数：这是安全信号（伪造回调/密钥不一致），
+            %% 与普通业务错误的告警阈值不同，不能混在 result="error" 里。
+            _ = elib_metric:increment(
+                payment_callback_sign_failed_total, 1, #{gateway => Gateway}
+            ),
             {error, <<"验签失败"/utf8>>}
     end.
 
