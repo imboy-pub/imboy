@@ -153,7 +153,7 @@ Slice 1 实证结论（探针 `test/lib/e2ee_presign_mime_binding_tests.erl`，5
 | # | Slice | 仓库 | 内容 | 验收对象 |
 |---|---|---|---|---|
 | 1 | ~~**presign / PUT 的 Content-Type 实证**~~ | imboy | ✅ **DONE**（2026-07-29）。权威来源是我方 `elib_s3_sign`，非 Garage；原 §3.2 表述已推翻 | 单测 5/5，已入 e2ee-verify 门禁 |
-| 2 | **分块 AEAD 编解码器（纯函数）** | imboyapp | encrypt/decrypt chunk、nonce 派生、AAD 构造。**不接线** | 往返 + 篡改矩阵（ATT-02 的密码学部分） |
+| 2 | ~~**分块 AEAD 编解码器（纯函数）**~~ | imboyapp | ✅ **DONE**（2026-07-29）。`attachment_chunk_codec.dart`，34 例。nonce 用 XOR 派生（保留全部 96 bit 熵）、AAD 复用已在产的 canonical CBOR（切分歧义已验）。⚠️ 空验证暴露两条：`chunk_index` 进 AAD 对重排**是冗余防线**（nonce 已单射，已实证并保留作纵深防御）；原 nonce 单射用例**只覆盖末两字节**，高位丢弃不会有任何测试变红，已补四字节位置全覆盖用例 | 往返 + 篡改矩阵 10 例 + 空验证逐条精确变红；见 `evidence/E2EE-061-slice2-chunk-aead-codec.md` |
 | 3 | **`attachment_descriptor` codec** | imboyapp | 结构定义、canonical 编码、严格 parser | 往返 + 字段篡改拒收（ATT-03） |
 | 4 | **上传侧接线** | imboyapp | `uploadViaPresign` 前置加密；confirm 改上报密文哈希与密文大小 | 上传产物是密文（ATT-04 的一半） |
 | 5 | **后端字段语义** | imboy | `attachment` 表 hash/size 语义变更 + 迁移；OpenAPI 同步 | 真 PG 集成测试 |
@@ -164,7 +164,11 @@ Slice 1 实证结论（探针 `test/lib/e2ee_presign_mime_binding_tests.erl`，5
 
 ~~**建议起点**：Slice 1~~ —— **已完成**。其结论已并入 §3.2：
 Slice 4（上传侧接线）必须连带改 **presign 与 confirm 的 MIME 契约**，
-而不只是改客户端 PUT 请求头。下一个可推进的是 **Slice 2 / 3**（纯函数、无外部依赖）。
+而不只是改客户端 PUT 请求头。~~下一个可推进的是 **Slice 2 / 3**~~ ——
+**Slice 2 已完成**（2026-07-29，用户放行「纯函数实施刀」后）。
+下一个可推进的是 **Slice 3**（`attachment_descriptor` codec，同为纯函数）。
+⚠️ **Slice 4 开工前必须先拍板 §6 的三项**——尤其 `chunk_size`：
+Slice 2 刻意让它作为调用方传入的参数、编解码器内不设默认值，因此**未预支**该决定。
 
 ---
 
