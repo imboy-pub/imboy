@@ -44,18 +44,11 @@ init(Req0, State0) ->
 %% @doc License 授权状态（规模/配额）查询
 -spec license(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 license(<<"GET">>, Req0, _State) ->
-    Info = imboy_license:info(),
-    Result = #{
-        edition => maps:get(edition, Info, <<"community">>),
-        valid => maps:get(valid, Info, false),
-        status => atom_to_binary(maps:get(status, Info, community), utf8),
-        max_users => maps:get(max_users, Info, 0),
-        max_nodes => maps:get(max_nodes, Info, 1),
+    %% 只经 public_info/0 输出脱敏白名单字段，禁止透传 info/0 内部态
+    Result = maps:merge(imboy_license:public_info(), #{
         current_users => user_ds:count(),
-        current_nodes => length(nodes()) + 1,
-        licensee => maps:get(licensee, Info, <<>>),
-        expires_at => maps:get(expires_at, Info, 0)
-    },
+        current_nodes => length(nodes()) + 1
+    }),
     elib_response:success(Req0, Result);
 license(<<"POST">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"license:write">>, Req0) of
@@ -71,19 +64,8 @@ license(<<"POST">>, Req0, State) ->
                 _ ->
                     case license_write_and_reload(LicenseText) of
                         ok ->
-                            Info = imboy_license:info(),
-                            Result = #{
-                                edition => maps:get(edition, Info, <<"community">>),
-                                valid => maps:get(valid, Info, false),
-                                status => atom_to_binary(
-                                    maps:get(status, Info, community), utf8
-                                ),
-                                max_users => maps:get(max_users, Info, 0),
-                                max_nodes => maps:get(max_nodes, Info, 0),
-                                licensee => maps:get(licensee, Info, <<>>),
-                                expires_at => maps:get(expires_at, Info, 0)
-                            },
-                            elib_response:success(Req1, Result);
+                            %% 不回显 license_text，只返回脱敏后的授权状态
+                            elib_response:success(Req1, imboy_license:public_info());
                         {error, Msg} ->
                             elib_response:error(Req1, Msg, 400)
                     end

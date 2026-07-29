@@ -498,7 +498,7 @@
 
 ### C0-LICENSE-01
 - title: License max_nodes 硬 gate 与续费边界
-- status: ready
+- status: in_progress
 - deps: none
 - wave: C0
 - tag: commercialization
@@ -506,7 +506,7 @@
 - source: p0-commercialization-claude-code-plan-2026-07.md §C0-LICENSE-01
 - action: 接入 max_nodes 硬 gate；补签名、域名、过期、宽限、用户数和节点数 fixture 测试；完善脱敏状态 API。
 - verify: make compile && make eunit；max_nodes=1 拒绝第二节点；License API 不泄露原文/私钥。
-- evidence:
+- evidence: worktree /Users/leeyi/project/imboy-wt-p0-commercialization (branch claude-p0-commercialization)。实现：imboy_license.erl 新增 check_node_quota/1（可测超限分支）与 public_info/0（白名单脱敏）；imboy_cluster.erl 新增 join_allowed/0 前瞻硬 gate（加入前拒绝超授权节点，join_cluster 返回 {error,node_quota_exceeded}），connect/1 抽出；adm_stats_handler.erl GET/POST license 统一走 public_info/0，POST 不再回显 license_text。测试：test/lib/imboy_license_tests.erl 新增 8 例（节点配额边界、集群加入硬 gate、域名匹配/不匹配、宽限期 grace、过期后续费恢复、专业版/企业版 fixture、public_info 脱敏）。命令：`make app` 通过（注意本仓无 make compile 目标）；`make eunit t=imboy_license_tests` → All 17 tests passed。**未完成**：全量 `make eunit` 得 Passed 4568 / Failed 125，失败全部为 missing_config(pg_conf) 等环境级级联（日志 /tmp/p0_eunit_full.log），已确认 125 项中无 license/cluster/adm_stats 相关；但尚未与基线 commit dd021b61 做同口径对比以证明为预存基线，故保持 in_progress。加 `-config` 重跑会覆盖 erlang.mk 默认 -pa 导致首个测试模块即 not found（/tmp/p0_eunit_cfg.log），该次运行无效不作为证据。
 
 ### C0-BRAND-01
 - title: Flutter/Admin 白标构建配置

@@ -27,7 +27,15 @@ license_test_() ->
         fun expired_license_downgrade_/0,
         fun trial_fresh_/0,
         fun trial_expired_/0,
-        fun trial_file_init_/0
+        fun trial_file_init_/0,
+        fun node_quota_boundaries_/0,
+        fun cluster_join_hard_gate_/0,
+        fun domain_bound_match_/0,
+        fun domain_bound_mismatch_/0,
+        fun grace_period_/0,
+        fun renewal_after_expiry_/0,
+        fun edition_fixtures_/0,
+        fun public_info_sanitized_/0
     ]}.
 
 setup() ->
@@ -190,8 +198,171 @@ trial_file_init_() ->
     end.
 
 %%%===================================================================
+%%% 节点规模硬 gate（C0-LICENSE-01）
+%%%===================================================================
+
+%% 用 check_node_quota/1 显式给出节点数，可在非分布式测试节点上覆盖超限分支
+node_quota_boundaries_() ->
+    put_state(base_state(#{max_nodes => 1})),
+    ?assertEqual(ok, imboy_license:check_node_quota(1)),
+    ?assertEqual(
+        {error, node_quota_exceeded, 2, 1}, imboy_license:check_node_quota(2)
+    ),
+    put_state(base_state(#{max_nodes => 3})),
+    ?assertEqual(ok, imboy_license:check_node_quota(3)),
+    ?assertEqual(
+        {error, node_quota_exceeded, 4, 3}, imboy_license:check_node_quota(4)
+    ),
+    %% max_nodes=0 不限量
+    put_state(base_state(#{max_nodes => 0})),
+    ?assertEqual(ok, imboy_license:check_node_quota(9999)).
+
+%% max_nodes=1 时，集群加入前瞻 gate 必须拒绝「第二个节点」
+cluster_join_hard_gate_() ->
+    Would = length(nodes()) + 2,
+    put_state(base_state(#{max_nodes => 1})),
+    ?assertEqual(
+        {error, node_quota_exceeded, Would, 1}, imboy_cluster:join_allowed()
+    ),
+    %% 授权 3 节点或不限量时放行
+    put_state(base_state(#{max_nodes => 3})),
+    ?assertEqual(ok, imboy_cluster:join_allowed()),
+    put_state(base_state(#{max_nodes => 0})),
+    ?assertEqual(ok, imboy_cluster:join_allowed()).
+
+%%%===================================================================
+%%% 域名绑定 / 宽限期 / 续费
+%%%===================================================================
+
+domain_bound_match_() ->
+    with_host(<<"im.example.com">>, fun() ->
+        load_signed(#{<<"domains">> => [<<"im.example.com">>, <<"im2.example.com">>]}),
+        ?assertEqual(true, imboy_license:is_valid()),
+        ?assertEqual(<<"professional">>, imboy_license:edition())
+    end).
+
+domain_bound_mismatch_() ->
+    with_host(<<"evil.example.net">>, fun() ->
+        load_signed(#{<<"domains">> => [<<"im.example.com">>]}),
+        ?assertEqual(false, imboy_license:is_valid()),
+        ?assertEqual(<<"community">>, imboy_license:edition())
+    end).
+
+%% 过期但在 7 天宽限期内：仍按授权运行，状态标记为 grace
+grace_period_() ->
+    Now = erlang:system_time(millisecond),
+    load_signed(#{<<"expires_at">> => Now - 3 * 86400000}),
+    ?assertEqual(true, imboy_license:is_valid()),
+    ?assertEqual(grace, maps:get(status, imboy_license:info())),
+    ?assertEqual(500, imboy_license:max_users()).
+
+%% 续费：已过期降级社区版后，写入新 license 重新加载即恢复授权
+renewal_after_expiry_() ->
+    Now = erlang:system_time(millisecond),
+    load_signed(#{<<"expires_at">> => Now - 30 * 86400000}),
+    ?assertEqual(false, imboy_license:is_valid()),
+    ?assertEqual(<<"community">>, imboy_license:edition()),
+    load_signed(#{
+        <<"expires_at">> => Now + 365 * 86400000,
+        <<"max_users">> => 2000,
+        <<"max_nodes">> => 5
+    }),
+    ?assertEqual(true, imboy_license:is_valid()),
+    ?assertEqual(valid, maps:get(status, imboy_license:info())),
+    ?assertEqual(2000, imboy_license:max_users()),
+    ?assertEqual(5, imboy_license:max_nodes()).
+
+%% 专业版 / 企业版 fixture：配额随 payload 生效
+edition_fixtures_() ->
+    load_signed(#{
+        <<"edition">> => <<"professional">>, <<"max_users">> => 500, <<"max_nodes">> => 3
+    }),
+    ?assertEqual(<<"professional">>, imboy_license:edition()),
+    ?assertEqual(#{max_users => 500, max_nodes => 3}, imboy_license:limits()),
+    ?assertEqual(ok, imboy_license:check_node_quota(3)),
+    ?assertMatch({error, node_quota_exceeded, _, _}, imboy_license:check_node_quota(4)),
+    load_signed(#{
+        <<"edition">> => <<"enterprise">>, <<"max_users">> => 0, <<"max_nodes">> => 0
+    }),
+    ?assertEqual(<<"enterprise">>, imboy_license:edition()),
+    ?assertEqual(#{max_users => 0, max_nodes => 0}, imboy_license:limits()),
+    ?assertEqual(ok, imboy_license:check_user_quota(1000000)),
+    ?assertEqual(ok, imboy_license:check_node_quota(1000)).
+
+%%%===================================================================
+%%% 脱敏状态 API：不得泄露原文 / 签名 / 私钥 / 内部降级原因
+%%%===================================================================
+
+public_info_sanitized_() ->
+    put_state(
+        maps:merge(base_state(#{}), #{
+            reason => <<"/opt/imboy/priv/license.key 读取失败"/utf8>>,
+            raw => <<"PAYLOAD.SIGNATURE">>,
+            private_key => <<"-----BEGIN RSA PRIVATE KEY-----">>
+        })
+    ),
+    Pub = imboy_license:public_info(),
+    %% 仅白名单字段
+    ?assertEqual(
+        lists:sort([edition, valid, status, max_users, max_nodes, licensee, expires_at]),
+        lists:sort(maps:keys(Pub))
+    ),
+    ?assertEqual(false, maps:is_key(reason, Pub)),
+    ?assertEqual(false, maps:is_key(raw, Pub)),
+    ?assertEqual(false, maps:is_key(private_key, Pub)),
+    %% 序列化后不含任何签名/密钥材料
+    Json = jsone:encode(Pub, [native_utf8]),
+    ?assertEqual(nomatch, binary:match(Json, <<"PRIVATE KEY">>)),
+    ?assertEqual(nomatch, binary:match(Json, <<"SIGNATURE">>)),
+    ?assertEqual(nomatch, binary:match(Json, <<"license.key">>)),
+    %% status 已转为 binary，可安全 JSON 序列化
+    ?assert(is_binary(maps:get(status, Pub))).
+
+%%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+%% 用一次性密钥对签发含 Over 覆盖字段的 license，加载并在调用方断言
+load_signed(Over) ->
+    {Priv, PubPem} = gen_keypair(),
+    Now = erlang:system_time(millisecond),
+    Base = #{
+        <<"edition">> => <<"professional">>,
+        <<"max_users">> => 500,
+        <<"max_nodes">> => 3,
+        <<"domains">> => [],
+        <<"licensee">> => <<"测试公司"/utf8>>,
+        <<"issued_at">> => Now,
+        <<"expires_at">> => Now + 365 * 86400000
+    },
+    Payload = encode_payload(maps:merge(Base, Over)),
+    License = make_license(Payload, Priv),
+    PubFile = write_tmp("pub", PubPem),
+    LicFile = write_tmp("lic", License),
+    OldPub = os:getenv("IMBOY_LICENSE_PUBKEY"),
+    OldLic = os:getenv("IMBOY_LICENSE_FILE"),
+    os:putenv("IMBOY_LICENSE_PUBKEY", PubFile),
+    os:putenv("IMBOY_LICENSE_FILE", LicFile),
+    try
+        ok = imboy_license:load_and_validate()
+    after
+        restore_env("IMBOY_LICENSE_PUBKEY", OldPub),
+        restore_env("IMBOY_LICENSE_FILE", OldLic),
+        catch file:delete(PubFile),
+        catch file:delete(LicFile)
+    end.
+
+with_host(Host, Fun) ->
+    Old = application:get_env(imboy, host),
+    application:set_env(imboy, host, Host),
+    try
+        Fun()
+    after
+        case Old of
+            {ok, V} -> application:set_env(imboy, host, V);
+            undefined -> application:unset_env(imboy, host)
+        end
+    end.
 
 put_state(M) ->
     persistent_term:put(?PT_KEY, M).
