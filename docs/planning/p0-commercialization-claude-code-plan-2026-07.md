@@ -1,9 +1,9 @@
 # IMBoy 商业化 P0：Claude Code 可重复执行计划
 
-> 版本：2026-07-28  
-> 范围：排除 E2EE 实现本身；只处理“安全可卖、可交付、可续费”的商业化底座。  
-> 状态唯一真源：[`docs/roadmap/tasks.md`](../roadmap/tasks.md) 中 `tag: commercialization` 的任务块。  
-> 执行方式：每轮只执行一个 `status: ready` 且依赖全部 `done` 的任务；验收通过后才改为 `done`。
+> - 版本：2026-07-28
+> - 范围：排除 E2EE 实现本身；只处理“安全可卖、可交付、可续费”的商业化底座。
+> - 状态唯一真源：[`docs/roadmap/tasks.md`](../roadmap/tasks.md) 中 `tag: commercialization` 的任务块。
+> - 执行方式：每轮只执行一个 `status: ready` 且依赖全部 `done` 的任务；验收通过后才改为 `done`。
 
 ## 目标
 
