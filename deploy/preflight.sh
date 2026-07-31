@@ -80,6 +80,10 @@ check_var "ADM_COOKIE_SECRET"
 check_var "IMBOY_SOLIDIFIED_KEY"
 check_var "IMBOY_SOLIDIFIED_KEY_IV"
 check_var "GRAFANA_ADMIN_PASSWORD"
+# LiveKit：compose 中该服务无条件启动。此前用 ${LIVEKIT_API_KEY:-devkey} 兜底，
+# 忘配即以公开已知密钥上线 —— 任何人可签发 token 加入或录制任意通话。
+check_var "LIVEKIT_API_KEY"
+check_var "LIVEKIT_API_SECRET"
 
 # RSA 密钥文件（检查路径已设置且文件存在）
 check_rsa_key() {

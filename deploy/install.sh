@@ -77,7 +77,8 @@ cat <<EOF
 
    管理后台 / Admin : https://${adm}   （首次访问自动进入 /setup 创建超管）
    API / WebSocket  : https://${api}
-   Grafana          : http://<本机IP>:3000  (admin / ${graf})
+   Grafana          : http://127.0.0.1:3000  (admin / 口令见 .env 的 GRAFANA_ADMIN_PASSWORD)
+                      默认仅监听本机；远程访问请走 nginx 反代或 SSH 隧道
 
    服务状态 : $COMPOSE ps
    后端日志 : $COMPOSE logs -f imboy_backend
