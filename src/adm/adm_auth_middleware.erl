@@ -253,20 +253,12 @@ check_ip_allowlist(Req) ->
             end
     end.
 
-%% @doc 判断 IP 是否在白名单内（精确匹配或前缀匹配）
+%% @doc 判断 IP 是否在白名单内（精确匹配或前缀匹配）。
+%% 实现已提升到 elib_req 作为唯一真源（支付回调白名单 A-04 复用同一语义），
+%% 本函数保留为薄委托：与原实现的唯一差别是空串条目不再命中所有 IP。
 -spec ip_in_allowlist(binary() | undefined, [binary() | list()]) -> boolean().
-ip_in_allowlist(undefined, _) ->
-    false;
-ip_in_allowlist(Ip, Allowlist) when is_binary(Ip) ->
-    lists:any(
-        fun(Cidr) ->
-            CidrBin = normalize_binary(Cidr),
-            Ip =:= CidrBin orelse
-                %% 简单前缀匹配（如 "10.0.0." 匹配 "10.0.0.1"）
-                (binary:longest_common_prefix([Ip, CidrBin]) =:= byte_size(CidrBin))
-        end,
-        Allowlist
-    ).
+ip_in_allowlist(Ip, Allowlist) ->
+    elib_req:ip_in_allowlist(Ip, Allowlist).
 
 %% @doc 返回 403 Forbidden（IP 不在白名单）
 -spec reply_ip_forbidden(cowboy_req:req()) -> {stop, cowboy_req:req()}.

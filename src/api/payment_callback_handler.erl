@@ -41,9 +41,14 @@ init(Req0, State0) ->
                     ?ERR_FEATURE_DISABLED
                 );
             true ->
-                case Action of
-                    notify -> notify(Req0);
-                    _ -> Req0
+                case callback_ip_allowed(Req0) of
+                    false ->
+                        reply_ip_forbidden(Req0);
+                    true ->
+                        case Action of
+                            notify -> notify(Req0);
+                            _ -> Req0
+                        end
                 end
         end,
     {ok, Req1, State}.
@@ -51,6 +56,47 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+%% @doc 回调来源 IP 白名单（纵深防御，默认不启用）。
+%%
+%% **验签始终是唯一的强制门** —— 白名单为空即整道门不生效，安全性完全由
+%% `payment_callback_logic:handle/3' 的验签保证。配置了才生效，作用是在验签
+%% 之前挡掉网关出口 IP 段以外的探测/重放流量，减少打到验签逻辑上的噪声。
+%%
+%% 为什么不默认启用：各网关的回调出口 IP 段都不承诺固定（支付宝、微信均在文档
+%% 里明说会调整）。默认开着，等网关某天换段就变成静默丢单 —— 那比它挡掉的风险
+%% 贵得多。运维确认自己网关的出口段后再显式配置。
+-spec callback_ip_allowed(cowboy_req:req()) -> boolean().
+callback_ip_allowed(Req) ->
+    case config_ds:env(payment_callback_ip_allowlist, []) of
+        [] ->
+            true;
+        Allowlist ->
+            Ip = elib_req:get_client_ip(Req),
+            case elib_req:ip_in_allowlist(Ip, Allowlist) of
+                true ->
+                    true;
+                false ->
+                    ?WARN_LOG([
+                        payment_callback_ip_blocked,
+                        #{ip => Ip, path => cowboy_req:path(Req)}
+                    ]),
+                    false
+            end
+    end.
+
+%% @doc IP 不在白名单：403，不是 200。
+%%
+%% 回 200（哪怕带 "failure" 文本）会让部分网关按"已成功接收"停止重推，白名单
+%% 一旦配错就变成静默丢单。403 让网关按自身策略继续重推，运维有机会从
+%% `payment_callback_ip_blocked' 日志里发现配置问题并补上正确网段。
+-spec reply_ip_forbidden(cowboy_req:req()) -> cowboy_req:req().
+reply_ip_forbidden(Req) ->
+    Body = jsone:encode(
+        #{<<"code">> => ?ERR_FORBIDDEN, <<"msg">> => <<"IP not in payment callback allowlist">>},
+        [native_utf8]
+    ),
+    cowboy_req:reply(403, json_headers(), Body, Req).
 
 %% @doc 处理回调通知
 -spec notify(cowboy_req:req()) -> cowboy_req:req().

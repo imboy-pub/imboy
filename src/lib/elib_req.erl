@@ -5,6 +5,7 @@
 
 -export([peer_ip/1]).
 -export([get_client_ip/1]).
+-export([ip_in_allowlist/2]).
 -export([cookie/2]).
 -export([get/1, get/2]).
 -export([post/2, post/3]).
@@ -215,6 +216,41 @@ first_forwarded_ip(ForwardedFor, Fallback) when is_binary(ForwardedFor) ->
     end;
 first_forwarded_ip(_, Fallback) ->
     Fallback.
+
+%% @doc 判断客户端 IP 是否命中白名单（全站唯一实现）。
+%%
+%% 支持精确匹配（`"192.168.1.1"'）与前缀匹配（`"10.0.0."' 命中 `"10.0.0.1"'）——
+%% 精确匹配是前缀匹配的特例，无需分开判断。条目可为 binary 或 string。
+%%
+%% **空白名单一律返回 false**：`"未配置 = 不启用"' 是调用方的策略，不在此兜底。
+%% 若在此把空列表当"全部放行"，调用方漏判空时就会把"没配置"静默变成"全放行"。
+%%
+%% 空串条目同样不命中 —— 空前缀会匹配任意 IP，配置里多一个 `""' 就等于关掉整道门。
+-spec ip_in_allowlist(binary() | undefined, [binary() | string() | term()]) -> boolean().
+ip_in_allowlist(Ip, Allowlist) when is_binary(Ip), is_list(Allowlist) ->
+    lists:any(
+        fun(Entry) ->
+            case allowlist_entry(Entry) of
+                <<>> -> false;
+                Prefix -> binary:longest_common_prefix([Ip, Prefix]) =:= byte_size(Prefix)
+            end
+        end,
+        Allowlist
+    );
+ip_in_allowlist(_Ip, _Allowlist) ->
+    false.
+
+%% @private 白名单条目归一化；非字符串条目归一为 <<>> 从而永不命中
+-spec allowlist_entry(term()) -> binary().
+allowlist_entry(Entry) when is_binary(Entry) ->
+    Entry;
+allowlist_entry(Entry) when is_list(Entry) ->
+    case unicode:characters_to_binary(Entry) of
+        Bin when is_binary(Bin) -> Bin;
+        _ -> <<>>
+    end;
+allowlist_entry(_Entry) ->
+    <<>>.
 
 -spec req(atom(), binary() | list(), map() | list(), list()) ->
     {ok, map()} | {error, any()} | {error, integer(), map()}.
