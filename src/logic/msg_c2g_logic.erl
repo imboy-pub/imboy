@@ -105,8 +105,9 @@ c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
                         true ->
                             case group_member_ds:check_admin(CurrentUid, ToGID) of
                                 true ->
-                                    MemberUids = group_ds:member_uids(ToGID),
-                                    do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids);
+                                    send_c2g_fail_closed(
+                                        MsgId, CurrentUid, Data, Gid, ToGID
+                                    );
                                 false ->
                                     _ = ?WARN_LOG("用户 ~p 尝试使用 @所有人功能但没有管理员权限", [CurrentUid]),
                                     self() !
@@ -120,8 +121,7 @@ c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
                                     ok
                             end;
                         false ->
-                            MemberUids = group_ds:member_uids(ToGID),
-                            do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids)
+                            send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID)
                     end;
                 false ->
                     _ = ?WARN_LOG("用户 ~p 尝试向非成员群组 ~p 发送消息", [CurrentUid, ToGID]),
@@ -134,6 +134,40 @@ c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
                         }},
                     ok
             end
+    end.
+
+%% @private
+%% @doc 取群成员并投递；成员查询失败时拒绝发送（fail-closed）。
+%%
+%% 此前两个调用点都用 group_ds:member_uids/1，它把 {error,_} 折成 []，
+%% 于是 DB 抖动的瞬间发出的群消息会以**空收件人列表**写进 staging：
+%% 消息落库、发送方看到成功、但没有任何人是收件人，DB 恢复后也永远
+%% 投递不出去。宁可让发送方看到一个明确的失败并重发，也不要产生一条
+%% 永久不可投递却看起来成功的消息。
+%%
+%% 错误帧格式与本函数上方的 @所有人/非成员分支保持一致（C2G_ERROR）。
+-spec send_c2g_fail_closed(binary(), integer(), map(), binary(), integer()) -> ok.
+send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID) ->
+    case group_ds:member_uids_strict(ToGID) of
+        {ok, MemberUids} ->
+            do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids);
+        {error, Reason} ->
+            ok = ?ERROR_LOG(
+                "C2G 拒绝发送：群 ~p 成员查询失败 ~p（fail-closed，避免空收件人落库）~n",
+                [ToGID, Reason]
+            ),
+            _ = elib_metric:increment(msg_c2g_rejected_total, 1, #{
+                reason => <<"member_lookup_failed">>
+            }),
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_ERROR">>,
+                    <<"error">> =>
+                        <<"Group member lookup failed, please retry"/utf8>>,
+                    <<"code">> => 503
+                }},
+            ok
     end.
 
 %% @private

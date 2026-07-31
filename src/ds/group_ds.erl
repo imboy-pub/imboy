@@ -14,6 +14,7 @@
 -export([find_by_creator_and_sum/2]).
 
 -export([member_uids/1]).
+-export([member_uids_strict/1]).
 -export([is_member/2]).
 -export([e2ee_mode/1]).
 -export([flush_e2ee_mode/1]).
@@ -67,23 +68,57 @@ is_member(Uid, Gid) ->
 %% @param Gid 群组ID
 %% @returns list() 成员用户ID列表
 % group_ds:member_uids(1).
+%% @doc 群成员 uid 列表（宽松版：失败返回 []）。
+%%
+%% 保留此签名是因为它有 30 个调用点（展示、计数、@提及候选等），对这些
+%% 场景"查不到就当空"是可接受的降级。但**投递路径不得使用本函数** —
+%% 详见 member_uids_strict/1。
+%%
+%% 与此前的差别：查询失败不再完全静默，会打 ERROR_LOG 并计数，
+%% 否则 DB 抖动在监控上完全不可见。
 -spec member_uids(integer()) -> [integer()].
 member_uids(Gid) ->
+    case member_uids_strict(Gid) of
+        {ok, Li} ->
+            Li;
+        {error, Reason} ->
+            ok = ?ERROR_LOG("group_ds:member_uids gid=~p failed: ~p~n", [Gid, Reason]),
+            _ = elib_metric:increment(group_member_uids_failed_total, 1, #{}),
+            []
+    end.
+
+%% @doc 群成员 uid 列表（fail-closed 版：查询失败原样返回 {error, Reason}）。
+%%
+%% 语义与同模块 e2ee_mode/1 一致：DS 层如实报告失败，由调用方兑现
+%% fail-closed。投递路径必须用这个版本。
+%%
+%% 为什么必须区分：宽松版把 {error,_} 折成 []，使"DB 抖动"与"空群"不可
+%% 区分。msg_c2g_logic 拿到 [] 后仍会继续 do_send_c2g，把空收件人列表
+%% 作为 to_id_list 写进 staging —— 消息落库了、发送方看到成功、但
+%% **收件人为空，DB 恢复后也永久不可投递**。这类静默丢消息在监控上
+%% 表现为"一切正常"，是最难被发现的一种。
+-spec member_uids_strict(integer()) -> {ok, [integer()]} | {error, term()}.
+member_uids_strict(Gid) ->
     CacheKey = ?GROUP_CACHE_KEY(Gid),
     case imboy_cache:get(CacheKey) of
+        {ok, Li} ->
+            {ok, Li};
         undefined ->
             case group_member_repo:list_by_gid(Gid, <<"user_id">>) of
                 {ok, []} ->
-                    [];
+                    %% 空群是合法结果，但不写缓存：避免把"刚建群还没加人"
+                    %% 的瞬时空态缓存 1 小时。
+                    {ok, []};
                 {ok, Items} ->
                     Li = [Uid || #{<<"user_id">> := Uid} <- Items],
                     imboy_cache:set(CacheKey, Li, ?HOUR),
-                    Li;
-                _ ->
-                    []
-            end;
-        {ok, Li} ->
-            Li
+                    {ok, Li};
+                {error, Reason} ->
+                    {error, Reason};
+                Other ->
+                    %% 非 {ok,_} / {error,_} 的第三种形态：当作失败而非空群。
+                    {error, {unexpected_repo_result, Other}}
+            end
     end.
 
 %% 安全关键缓存短 TTL：生产 dsync_enabled=false 时 flush 不跨节点广播，

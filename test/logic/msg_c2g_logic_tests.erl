@@ -13,7 +13,9 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
-                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
+                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(100) -> {ok, [1001, 1002, 1003]} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
@@ -189,7 +191,9 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
-                {'member_uids', 1, fun(100) -> [1001, 1002] end}
+                {'member_uids', 1, fun(100) -> [1001, 1002] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(100) -> {ok, [1001, 1002]} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
@@ -326,7 +330,9 @@ read_stats_success_returns_read_and_total_counts_test_() ->
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end},
-                {'member_uids', 1, fun(88) -> [1001, 1002, 1003, 1004] end}
+                {'member_uids', 1, fun(88) -> [1001, 1002, 1003, 1004] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(88) -> {ok, [1001, 1002, 1003, 1004]} end}
             ]},
             {msg_c2g_repo, [
                 {'count_read', 1, fun(<<"msg_stats_001">>) -> 2 end}
@@ -396,7 +402,9 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end},
-                {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end}
+                {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(88) -> {ok, [1001, 1002, 1003]} end}
             ]},
             {msg_c2g_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_revoke_001">>) ->
@@ -492,7 +500,9 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 88) -> true end},
-                {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end}
+                {'member_uids', 1, fun(88) -> [1001, 1002, 1003] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(88) -> {ok, [1001, 1002, 1003]} end}
             ]},
             {msg_c2g_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_001">>) ->
@@ -593,7 +603,9 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
-                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
+                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(100) -> {ok, [1001, 1002, 1003]} end}
             ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) ->
@@ -638,7 +650,9 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
                 %% B4 群级 fail-closed 门默认关（{ok,0}），门行为专测见 group_e2ee_logic_tests
                 {'e2ee_mode', 1, fun(_) -> {ok, 0} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
-                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
+                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(100) -> {ok, [1001, 1002, 1003]} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
@@ -796,7 +810,9 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
             {group_ds, [
                 {'e2ee_mode', 1, fun(_) -> {ok, 1} end},
                 {'is_member', 2, fun(1001, 100) -> true end},
-                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end}
+                {'member_uids', 1, fun(100) -> [1001, 1002, 1003] end},
+                %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
+                {'member_uids_strict', 1, fun(100) -> {ok, [1001, 1002, 1003]} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},

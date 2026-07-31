@@ -125,12 +125,25 @@ with_conn(Driver, Fun, Retries, Delay) ->
                             "DB operation failed: ~p:~p stack=~p~n",
                             [Class, Reason, Stacktrace]
                         ),
-                        {error, Class, Reason}
+                        %% 通用异常同样必须回滚。
+                        %% 上面两个 throw 分支都发了 ROLLBACK，唯独这里没有，
+                        %% 而 after 子句无条件把连接还池 —— 连接带着 aborted
+                        %% transaction 回到池里，下一个借到它的请求所有语句都会
+                        %% 报 "current transaction is aborted, commands ignored"，
+                        %% 直到该连接被回收。squery 本身失败也无所谓（连接已死时
+                        %% 归还后会被池剔除），故用 _ = 忽略返回值。
+                        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
+                        %% 归一为二元组。此前返回 {error, Class, Reason} 三元组，
+                        %% 而 query/2、execute/3 与全项目调用方一律按 {error, Reason}
+                        %% 二元组匹配 —— 三元组必然 case_clause 崩溃（本文件
+                        %% 109-118 行记录过 {rollback, _} 的同类事故，当时只修了
+                        %% throw 分支，这一条漏了）。
+                        {error, {db_exception, Class, Reason}}
                 after
                     pooler:return_member(Driver, Conn)
                 end,
             case Result of
-                {error, _C, _R} when Retries > 0 ->
+                {error, {db_exception, _Class, _Reason}} when Retries > 0 ->
                     timer:sleep(Delay),
                     with_conn(Driver, Fun, Retries - 1, Delay + 1000);
                 _ ->
@@ -149,13 +162,23 @@ with_conn(Driver, Fun, Retries, Delay) ->
 with_tx(F) ->
     with_tx(F, [{reraise, true}]).
 
+%% 事务禁止自动重试（Retries = 0）。
+%%
+%% with_conn/4 对通用异常会盲目重试 3 次，这对读是安全的，对写事务不是：
+%% "语句已在服务端执行成功、但响应在返回途中丢失"（连接被 RST、超时、
+%% 节点抖动）与"事务真的失败了"在客户端无法区分，重放整个事务体就是
+%% 重复入账。钱路径（wallet_repo / transfer_repo / recharge_order_repo /
+%% red_packet_repo）全部经由 with_tx，代价不可接受。
+%%
+%% 需要重试的场景由调用方按业务幂等性显式决定（多数已有 reference_no /
+%% 订单 CAS 之类的幂等键），而不是在这一层无差别重放。
+%% 连接获取失败（error_no_members）的重试在 with_conn/4 内部，不受影响。
 -spec with_tx(fun((epgsql:connection() | pid()) -> R), epgsql:transaction_opts()) ->
     R | {rollback, term()} | no_return()
 when
     R :: term().
 with_tx(F, Opts0) ->
-    % 最大重试3次，初始延迟100毫秒
-    with_tx(F, Opts0, 3, 200).
+    with_tx(F, Opts0, 0, 0).
 
 %% ===================================================================
 %% 事务封装
