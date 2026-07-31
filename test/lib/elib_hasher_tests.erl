@@ -137,8 +137,20 @@ decoded_val_reads_legacy_sql_literal_test_() ->
 
 decoded_val_tolerates_corrupt_legacy_literal_test_() ->
     ?WITH_KEY(?K1, fun() ->
+        %% 内层不是合法 base64 → 空，不抛异常
         ?assertEqual(<<>>, elib_hasher:decoded_val(<<"encode(encrypt('%%%not-base64%%%'">>)),
+        %% 长度不是 4 的倍数 → 空
         ?assertEqual(<<>>, elib_hasher:decoded_val(<<"encode(encrypt('truncated">>))
+    end).
+
+%% 截断行（无收尾单引号）必须与迁移 00000053 的 split_part 语义一致：
+%% 迁移会把它转成明文，读取侧就不能判定失败，否则出现「迁移前读不出、
+%% 迁移后读得出」的窗口期不一致，`--apply` 也会跳过迁移能处理的行。
+decoded_val_matches_migration_on_truncated_literal_test_() ->
+    ?WITH_KEY(?K1, fun() ->
+        Plain = <<"{\"t\":1}">>,
+        B64 = base64:encode(Plain),
+        ?assertEqual(Plain, elib_hasher:decoded_val(<<"encode(encrypt('", B64/binary>>))
     end).
 
 %% 形态 3：迁移 00000053 清洗后的明文，原样返回

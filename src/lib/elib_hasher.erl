@@ -117,15 +117,14 @@ aes_key() ->
 %% 形态：encode(encrypt('<base64(明文)>', '<主密钥>', 'aes-cbc/pad:pkcs'), 'base64')
 -spec legacy_literal_plaintext(binary()) -> binary().
 legacy_literal_plaintext(Rest) ->
-    case binary:split(Rest, <<"'">>) of
-        [B64, _] ->
-            try
-                base64:decode(B64)
-            catch
-                _:_ -> <<>>
-            end;
-        _ ->
-            <<>>
+    %% 与迁移 00000053 的 split_part(substr(info, 17), '''', 1) 语义对齐：
+    %% 取到下一个单引号为止；截断行没有收尾引号时取全部剩余，而不是判定失败。
+    %% 不对齐会出现「迁移前读不出、迁移后读得出」的窗口期不一致。
+    [B64 | _] = binary:split(Rest, <<"'">>),
+    try
+        base64:decode(B64)
+    catch
+        _:_ -> <<>>
     end.
 
 -spec decode_row_field(term(), binary()) -> term().

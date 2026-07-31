@@ -127,16 +127,77 @@ run(Opts0) ->
     report_counts(Conn),
     Rows = fetch_pending(Conn, maps:get(batch, Opts0)),
     io:format("待处理行数: ~p~n", [length(Rows)]),
+    Clean = precheck(Rows),
     case Mode of
         dry_run ->
             sample(Rows),
-            io:format("~n[dry-run] 未写入任何数据。~n", []);
+            io:format("~n[dry-run] 未写入任何数据。~n", []),
+            ok = epgsql:close(Conn),
+            %% 预检有问题时以非零码退出，让 runbook 4.2 成为真正的前置门
+            Clean orelse halt(5);
         apply ->
             N = apply_rows(Conn, Rows, Key),
             io:format("已重加密 ~p 行。~n", [N]),
-            report_counts(Conn)
-    end,
-    ok = epgsql:close(Conn).
+            report_counts(Conn),
+            ok = epgsql:close(Conn)
+    end.
+
+%%%===================================================================
+%%% 部署前预检
+%%%===================================================================
+
+%% @doc 扫描待处理行，点名两类会出问题的数据。返回 true 表示全部干净。
+%%
+%% 1) 非法 UTF-8 —— 迁移 00000053 用 convert_from(..., 'UTF8') 还原明文，
+%%    遇非法字节序列会**抛错**。imboy_migrate 是启动期 fail-fast，
+%%    一行坏数据就能挡住整个部署，且只能手工改库才恢复。
+%% 2) 提取失败 —— 形态像历史脏数据但抠不出明文。迁移的 base64 字符集守卫
+%%    同样会跳过它们，结果是**主密钥继续留在这些行里**，且没有任何报错。
+%%
+%% 两类都可以用本脚本 --apply 处理掉（转成 aesg1_ 密文后迁移不再命中）。
+precheck([]) ->
+    true;
+precheck(Rows) ->
+    {Stuck, BadUtf8} = lists:foldl(
+        fun({Id, Info}, {S, B}) ->
+            case plaintext_of(Info) of
+                <<>> ->
+                    {[Id | S], B};
+                Plain ->
+                    case is_utf8(Plain) of
+                        true -> {S, B};
+                        false -> {S, [Id | B]}
+                    end
+            end
+        end,
+        {[], []},
+        Rows
+    ),
+    report_precheck("非法 UTF-8（会让迁移 00000053 抛错并挡住启动）", lists:reverse(BadUtf8)),
+    report_precheck("无法提取明文（迁移会跳过，主密钥将继续留在行里）", lists:reverse(Stuck)),
+    case {Stuck, BadUtf8} of
+        {[], []} ->
+            io:format("预检: 通过（迁移 00000053 不会因编码报错，无残留密钥行）~n"),
+            true;
+        _ ->
+            io:format(
+                standard_error,
+                "  处理办法：先跑本脚本 --apply 把这些行转成 aesg1_ 密文"
+                "（迁移即不再命中），或人工核实后清理。~n",
+                []
+            ),
+            false
+    end.
+
+report_precheck(_What, []) ->
+    ok;
+report_precheck(What, Ids) ->
+    io:format(standard_error, "⚠️ 预检失败 —— ~ts：~p 行~n  id=~p~n", [
+        What, length(Ids), Ids
+    ]).
+
+is_utf8(Bin) ->
+    is_binary(unicode:characters_to_binary(Bin, utf8, utf8)).
 
 require(undefined, What) ->
     io:format(standard_error, "错误: 缺少 ~ts~n", [What]),
@@ -217,15 +278,14 @@ apply_rows(Conn, Rows, Key) ->
 
 %% 形态 1：从含主密钥的 SQL 表达式字面值里抠出 base64(明文)
 plaintext_of(<<"encode(encrypt('", Rest/binary>>) ->
-    case binary:split(Rest, <<"'">>) of
-        [B64, _] ->
-            try
-                base64:decode(B64)
-            catch
-                _:_ -> <<>>
-            end;
-        _ ->
-            <<>>
+    %% 与迁移 00000053 的 split_part(substr(info, 17), '''', 1) 语义对齐：
+    %% 取到下一个单引号为止；截断行没有收尾引号时取全部剩余，而不是判定失败。
+    %% 两边不一致会导致 --apply 跳过、迁移却处理，同一行两种结果。
+    [B64 | _] = binary:split(Rest, <<"'">>),
+    try
+        base64:decode(B64)
+    catch
+        _:_ -> <<>>
     end;
 %% 形态 2：明文
 plaintext_of(Info) when is_binary(Info) ->
