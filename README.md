@@ -14,7 +14,7 @@ IMBoy 是可私有部署的即时通讯平台。本仓库包含 Erlang/OTP 后�
 - HTTP API 与 WebSocket 长连接
 - 可选端到端加密（E2EE）
 - PostgreSQL 持久化与 Garage S3 附件直传
-- Docker Compose / Helm 生产部署
+- Docker Compose 单节点生产部署（Helm/Kubernetes 为实验性，未经生产集群验证）
 
 ## 系统架构
 

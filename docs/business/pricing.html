@@ -121,7 +121,7 @@
     <div class="wrap">
       <span class="eyebrow">自托管 · 数据主权 · 端到端加密</span>
       <h1>为掌控而生的<br />即时通讯平台</h1>
-      <p class="sub">开箱即用的 IM 内核：C2C/C2G 消息、E2EE 端对端加密、付费频道、钱包支付、可观测部署栈。开源即用，按规模升级。</p>
+      <p class="sub">开箱即用的 IM 内核：C2C/C2G 消息、E2EE 端对端加密、付费频道、站内钱包账务、可观测部署栈。开源即用，按规模升级。</p>
     </div>
   </header>
 
@@ -130,8 +130,8 @@
       <div class="why-grid">
         <div class="why-tile"><h4>🔒 端到端加密</h4><p>RSA-OAEP-256 + AES-256-GCM，服务端不解密密文，数据主权完全自主。</p></div>
         <div class="why-tile"><h4>⚡ Erlang 高并发</h4><p>OTP 28 内核，单机支撑上万并发长连接，比 Java 系显著省服务器。</p></div>
-        <div class="why-tile"><h4>💰 内置钱包支付</h4><p>金融级钱包 + 付费频道 + 订阅，原生支撑创作者经济与付费社群。</p></div>
-        <div class="why-tile"><h4>🚀 一键部署白标</h4><p>一条命令拉起全栈 + Grafana 可观测；改一处配置即可换牌定制。</p></div>
+        <div class="why-tile"><h4>💰 内置钱包账务</h4><p>站内钱包、红包与付费频道账务已内置。<strong>外部支付网关收款与订阅计费为路线图项，当前未交付。</strong></p></div>
+        <div class="why-tile"><h4>🚀 脚本化部署白标</h4><p>部署脚本一次拉起全栈 + Grafana 可观测；改一处配置即可换牌定制。</p></div>
       </div>
       <div class="cost">同等规模商业 IM（如 Slack / 企微 200 人）约 <strong>$21,000 / 年</strong>，自托管 imboy 硬件成本 <strong>&lt; ¥3,000 / 年</strong>，且数据不出私网。</div>
     </div>
@@ -148,9 +148,9 @@
         <ul class="feats">
           <li>单聊 / 群聊 / 朋友圈</li>
           <li>E2EE 端到端加密</li>
-          <li>钱包 / 付费频道 / 支付</li>
+          <li>钱包 / 付费频道（站内账务）</li>
           <li>单机部署 + 可观测性栈</li>
-          <li class="off">集群水平扩展</li>
+          <li class="off">集群水平扩展（路线图）</li>
           <li class="off">白标 / 品牌定制</li>
           <li class="off">信创国产化适配</li>
         </ul>
@@ -160,16 +160,16 @@
       <!-- 专业版 -->
       <div class="card featured">
         <h3 class="tier">专业版</h3>
-        <p class="tier-note">私有化授权买断，含集群与白标，适合企业自主可控部署。</p>
+        <p class="tier-note">私有化授权买断，含白标与运营后台，适合企业自主可控单节点部署。</p>
         <div class="price">¥3.9<small> 万 / 套</small></div>
         <p class="price-sub">终身授权 · 绑定域名 · 含 1 年升级</p>
         <ul class="feats">
           <li>社区版全部功能</li>
-          <li><strong>集群部署</strong>（水平扩展）</li>
           <li><strong>运行时白标</strong> / 换肤</li>
           <li>付费频道运营后台</li>
           <li>加密对象存储增强</li>
           <li>优先技术支持 SLA</li>
+          <li class="off">集群水平扩展（路线图）</li>
           <li class="off">信创国产化 / SSO 审计</li>
         </ul>
         <a class="cta solid" href="#contact">联系销售</a>
@@ -206,10 +206,11 @@
           <tr class="group"><td colspan="4">核心 IM</td></tr>
           <tr><td>单聊 / 群聊 / 朋友圈</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
           <tr><td>E2EE 端到端加密</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
-          <tr><td>钱包 / 付费频道 / 支付</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>钱包 / 付费频道（站内账务）</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>外部支付网关收款 / 订阅计费</td><td><span class="n">路线图</span></td><td><span class="n">路线图</span></td><td><span class="n">路线图</span></td></tr>
           <tr class="group"><td colspan="4">部署与运营</td></tr>
           <tr><td>单机部署 + 可观测性</td><td><span class="y">✓</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
-          <tr><td>集群部署（水平扩展）</td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
+          <tr><td>集群部署（水平扩展）</td><td><span class="n">路线图</span></td><td><span class="n">路线图</span></td><td><span class="n">路线图</span></td></tr>
           <tr><td>运行时白标 / 换肤</td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
           <tr><td>付费频道运营后台</td><td><span class="n">—</span></td><td><span class="y">✓</span></td><td><span class="y">✓</span></td></tr>
           <tr class="group"><td colspan="4">合规与信创</td></tr>
@@ -222,6 +223,7 @@
         </tbody>
       </table>
       <p class="note">价格为建议参考价（专业版对标主流私有化 IM 终身授权区间）。最终授权方式、规模上限与信创适配范围以商务报价为准。社区版规模上限由 License 授权层控制，购买专业版/企业版解锁更高上限。</p>
+      <p class="note"><strong>交付形态说明：</strong>当前所有版次均按<strong>单节点</strong>交付。标注为「路线图」的能力尚未交付、不构成合同承诺，其排期以正式商务合同为准。</p>
     </div>
   </section>
 

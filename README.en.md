@@ -14,7 +14,7 @@ IMBoy is a self-hostable instant messaging platform. This repository contains th
 - HTTP APIs and persistent WebSocket connections
 - Optional end-to-end encryption (E2EE)
 - PostgreSQL persistence and direct uploads to Garage S3
-- Production deployment with Docker Compose or Helm
+- Single-node production deployment with Docker Compose (Helm/Kubernetes is experimental and not validated on a production cluster)
 
 ## System architecture
 

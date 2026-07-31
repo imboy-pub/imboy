@@ -150,9 +150,11 @@ cat deploy/docker-compose.prod.yml | head -20
 ```
 
 > **说**：「Docker Compose 一键起：PostgreSQL、后端、管理后台、
-> Nginx TLS、Prometheus 监控、Grafana 仪表盘——全部在你自己的机器上。
-> 也支持 Helm Chart 部署到 K8s。
+> Nginx TLS、Prometheus 监控、Grafana 仪表盘——全部在你自己的机器上，单节点交付。
 > 社区版免费，100 用户以内不限量。需要更多，聊 License。」
+
+> ⚠️ **不要提 Helm / K8s 集群**。仓内的 Helm chart 是实验性的，未经生产集群验证；
+> 客户主动问起时照实说"路线图项，当前按单节点交付"。
 
 **收尾**：递上安全简报（`docs/business/e2ee-security-brief.md` 的 PDF 打印版）
 
@@ -163,11 +165,11 @@ cat deploy/docker-compose.prod.yml | head -20
 | 问题 | 回答要点 |
 |------|---------|
 | 「和钉钉/飞书比有什么优势？」 | 数据主权 + E2EE + 无 SaaS 依赖。他们做不到服务端零知识——商业模式不允许。 |
-| 「性能怎么样？」 | Erlang/OTP 原生并发，单节点 10 万+ WebSocket 连接。可集群水平扩展。 |
+| 「性能怎么样？」 | Erlang/OTP 原生并发，单节点长连接密度高。**具体数字须以我方压测报告为准，无报告时不要报数**。**集群水平扩展是路线图项，当前不承诺**——问到就照实说单节点交付。 |
 | 「支持哪些平台？」 | iOS / Android / macOS（Flutter），管理后台 Web（React），JS SDK 供第三方集成。 |
 | 「加密算法是什么？」 | X3DH 密钥协商 + Olm/Megolm 双棘轮（vodozemac 实现，与 Signal/Matrix 同源），AES-256-GCM。 |
 | 「怎么证明你们看不到？」 | CI 脚本 `check_server_zero_crypto.sh` grep 全部后端代码，发现解密函数调用即构建失败。开源可审计。 |
-|「私有化部署需要什么配置？」 | 4C8G 起步（100 人），Docker 环境，一个域名。10 分钟部署完成。 |
+|「私有化部署需要什么配置？」 | 4C8G 起步（100 人），Docker 环境，一个域名。**部署耗时以实测为准，不要承诺"10 分钟"**（当前基线未达标，见 Gate 0）。生产 compose 文件随商务交付渠道提供，不在开源仓内。 |
 |「数据迁移怎么做？」 | PostgreSQL 标准备份恢复 + Garage S3 rsync。提供迁移脚本和文档。 |
 
 ---

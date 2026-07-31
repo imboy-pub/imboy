@@ -55,7 +55,7 @@ imboy 是**服务端零密码学**的企业私有化即时通讯平台——服�
 | 能力 | imboy | 钉钉/飞书/企微 | Matrix (Element) |
 |------|-------|--------------|-----------------|
 | 真 E2EE（服务端零知识） | 是 | 否（TLS 传输加密，服务端可读） | 是 |
-| 私有化部署 | 是（Docker Compose / Helm） | 部分（需商务定制） | 是 |
+| 私有化部署 | 是（Docker Compose 单节点） | 部分（需商务定制） | 是 |
 | PFS + PCS | 是（Double Ratchet） | 不适用 | 是 |
 | 降级防护 | 是（HWM + fail-closed） | 不适用 | 部分 |
 | 合规密钥托管 | 是（compliance 模式双密钥） | 服务端全权 | 否 |
@@ -65,8 +65,9 @@ imboy 是**服务端零密码学**的企业私有化即时通讯平台——服�
 
 ## 部署形态
 
-- **Docker Compose**（单机 / 小规模 PoC）：`cd deploy && docker compose up -d`
-- **Helm Chart**（Kubernetes 生产集群）：含 Prometheus + Grafana + Loki 可观测性栈
+- **Docker Compose（单节点）** —— **当前唯一受支持的交付形态**：含 Prometheus + Grafana + Loki 可观测性栈
+- **Helm Chart（Kubernetes）** —— **实验性，未经生产集群验证，不在交付与支持范围内**。
+  集群水平扩展为路线图项。
 - 数据主权：全部数据（PostgreSQL + Garage S3 附件）留在客户机房
 
 ---
