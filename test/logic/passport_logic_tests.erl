@@ -369,6 +369,10 @@ send_code_with_email_type_succeeds_test_() ->
             ]},
             {elib_email, [
                 {'send', 2, fun(_To, _Msg) -> ok end}
+            ]},
+            %% email 路径已补 throttle 守卫（此前只有 sms 有）
+            {throttle, [
+                {'check', 2, fun(per_minute_once, {send_code, _Target}) -> ok end}
             ]}
         ],
         fun() ->

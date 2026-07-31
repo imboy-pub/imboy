@@ -92,7 +92,15 @@ send_code(Mobile, <<"sms">>) ->
             send_sms_code(Mobile)
     end;
 send_code(EMail, <<"email">>) ->
-    send_email_code(EMail);
+    %% email 路径此前完全没有 throttle 守卫（只有 sms 有），补齐。
+    %% 两条路径都按目标（手机号/邮箱）计数而非按调用方自报的值，
+    %% 攻击者换 key 就等于换受害目标，无法用来放大对单一目标的轰炸。
+    case throttle:check(per_minute_once, {send_code, EMail}) of
+        {limit_exceeded, _, _} ->
+            {error, <<"per_minute_once">>};
+        _ ->
+            send_email_code(EMail)
+    end;
 send_code(_, _) ->
     {error, <<"验证码类型不支持，仅支持 sms 或 email"/utf8>>}.
 
@@ -434,10 +442,13 @@ send_email_code(ToEmail) ->
         %  Now - 1m < CreatedAt
         #{<<"created_at">> := CreatedAt} when NowP1M < CreatedAt ->
             {ok, <<"一分钟内重复请求不发送Email"/utf8>>};
-        #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
-            Msg = <<"Code is ", Code/binary, " will expire in 10 minutes.">>,
-            _ = elib_email:send(ToEmail, Msg),
-            {ok, <<"验证码已发送"/utf8>>};
+        %% 【已移除】原先这里有一条"有效期内重发同一个码"的分支，且重发时
+        %% 不调用 save/4 刷新 created_at。后果有两个：
+        %%   1) 同一个 6 位码稳定存活 10 分钟，给穷举 000000-999999 留出窗口；
+        %%   2) created_at 永远停在首次发送时刻，上面那条"一分钟内不重发"
+        %%      的守卫过了 1 分钟就永久失效 —— 可无限次触发真实发信。
+        %% 现在一律落到下面的分支重新生成并 save，两个问题一起消失：
+        %% 新码使攻击者已猜过的空间作废，created_at 随之刷新使守卫真正生效。
         _ ->
             VerifyCode = elib_cipher:num_random(6),
             VerifyCodeBinary = integer_to_binary(VerifyCode),
@@ -465,15 +476,9 @@ send_sms_code(Mobile) ->
         % 120000 = 120 * 1000 = 2分钟
         #{<<"created_at">> := CreatedAt} when NowP2M < CreatedAt ->
             {ok, <<"两分钟内重复请求不会重复发送"/utf8>>};
-        #{<<"code">> := Code, <<"validity_at">> := ValidityAt} when Now < ValidityAt ->
-            Content =
-                <<"【IMBoy】您的验证码： "/utf8, (ec_cnv:to_binary(Code))/binary,
-                    " ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
-            case imboy_sms:send(Mobile, Content, <<"yjsms">>) of
-                ok -> ok;
-                {error, SmsErr} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr})
-            end,
-            {ok, <<"验证码已发送"/utf8>>};
+        %% 【已移除】同 send_email_code/1：原"有效期内重发同一个码"分支不刷新
+        %% created_at，使码存活 10 分钟且两分钟守卫过期后可无限触发真实短信
+        %% （直接烧运营商账单）。改为一律重新生成。
         _ ->
             Code = elib_cipher:num_random(6),
             CodeBinary = ec_cnv:to_binary(Code),
