@@ -6,6 +6,17 @@
 > 两条路线并不矛盾：现行路线基于静态清单 + policy 策略引擎；动态平台路线（本契约 §2+ 描述的 OTP application 热插拔、marketplace 拉取、Ed25519 签名验证等）为 **roadmap-only**，代码已冻结（`imboy_plugin_loader` 等 v2 模块标注 `@status FROZEN`）。
 >
 > This contract describes the dynamic plugin platform as a **long-term optional route**. Current production uses config-driven profile modulation (§3.1 in the architecture doc). Dynamic hot-plug, marketplace fetch, and Ed25519 signing are **roadmap-only**; related v2 code is frozen.
+>
+> ⚠️ **「代码已冻结」需要一处更正（2026-07-31 实测）**：冻结的是**投入**，不是**暴露面**。
+> `src/imboy_router.erl:824-835` 实际挂载了 **12 个 `/api/adm/plugin/*` 端点**
+> （含 `install` / `enable` / `disable` / `upgrade` / `uninstall` / `force_uninstall` / `reset`），
+> 由 `adm_plugin_handler` 直连 `imboy_plugin_manager`（`@status FROZEN`）。
+> 也就是说：**冻结质量的动态加载代码，当前是可通过 admin API 触达的活路径。**
+>
+> 两点后果：
+> 1. **对外口径**：仍不得宣称"插件热加载生态"——该路径未经生产验证。
+> 2. **安全**：`install` 接受路径参数并加载代码，等价于 admin 权限下的代码加载面，
+>    需在 Phase 1 单独评估（是否下线写操作、只保留 `list`/`detail`/`state`/`health` 只读端点）。
 
 > **Last Updated**: 2026-04-29（架构评审反馈整合版）
 > **Status**: 长期插件架构契约文档（Phase 0 立项版，contract_version=1.0）

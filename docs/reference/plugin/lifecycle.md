@@ -1,5 +1,19 @@
 # 插件生命周期状态机 / Plugin Lifecycle State Machine
 
+> ⚠️ **架构定位声明（2026-07 补）/ Architecture Status**
+>
+> 本文档描述的是**动态插件平台的远期设计**，不是当前交付形态。
+> 生产环境实际运行的是 **模块化功能开关**：`imboy_plugin_registry` 的静态清单
+> + policy 特性旗标（`required_feature/3`），由 `priv/plugins/*/plugin.config` 声明，
+> 启动期一次性加载，**不支持运行时热加载**。
+>
+> 本文所述 `imboy_plugin_lifecycle` / `imboy_plugin_dependency` / `imboy_plugin_signature`
+> 均标注 `@status FROZEN`，为 roadmap-only。**不得据此对外宣称"插件热加载生态"。**
+>
+> This document describes the **long-term dynamic plugin platform design**, not the
+> current delivery. Production runs modular feature toggles only — static manifests
+> loaded once at boot, no runtime hot-loading.
+
 > **Last Updated**: 2026-04-29（Phase 4-T1 实施前置设计）
 > **Status**: Phase 4 实施前置设计文档（lifecycle_version=1.0）
 > **Scope**: 定义 `imboy_plugin_lifecycle` gen_statem 的状态枚举、事件、转换、回滚、超时、依赖联动、Admin REST API 与审计日志

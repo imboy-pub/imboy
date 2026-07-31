@@ -1,5 +1,14 @@
 # 前端联动协议 / Frontend Integration Protocol
 
+> ⚠️ **架构定位声明（2026-07 补）/ Architecture Status**
+>
+> 本文档为**远期设计**。当前生产交付的是**模块化功能开关**，不是动态插件平台：
+> `/api/v1/app/manifest` 返回的条目源自 `imboy_plugin_registry` 的静态清单 + policy
+> 特性旗标，启动期加载，**不支持运行时热加载**。§7「灰度 / 多租户」为 roadmap-only ——
+> imboy 当前**无多租户实体表**（见 `docs/planning/p0-billing-multitenant-authz-2026-07.md`）。
+>
+> **不得据此对外宣称"插件热加载生态"或"多租户"。**
+
 > **Last Updated**: 2026-04-29
 > **Status**: 长期协议设计文档（Phase 5 前置）
 > **Scope**: 后端 `/v1/app/manifest` + WS push + Flutter / Vue 双端集成
