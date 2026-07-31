@@ -205,8 +205,30 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
 %% 客户端发送 code 字段代替 pwd
 -spec do_login_by_code(binary(), binary(), binary(), binary(), binary()) ->
     {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
+%% 与密码登录路径（do_login_verify/4，:286 起）对齐三件事，缺一不可：
+%%   1) 前置 check_login_allowed —— 此前验证码路径完全没有锁定门；
+%%   2) 失败时 record_login_failure —— 此前失败不计数，等于给 6 位码
+%%      开了无限次尝试；
+%%   3) 用 consume/2 而不是 verify_code/2 —— 验证成功后立即失效，
+%%      杜绝同一个码被反复使用。
+%% 三者叠加才关得住爆破：只做 (3) 的话攻击者仍可无限猜；只做 (1)(2)
+%% 的话正确的码被撞出来后仍可复用。
+%%
+%% Ip 用 <<>> 与密码路径保持一致（见 do_login_by_code_verify/3 注释）。
 do_login_by_code(Type, Account, Code, DType, Did) ->
-    case verify_code(Account, Code) of
+    Ip = <<>>,
+    case login_security_logic:check_login_allowed(Account, Ip) of
+        {error, LockMsg} ->
+            {error, LockMsg};
+        _ ->
+            do_login_by_code_checked(Type, Account, Code, DType, Did, Ip)
+    end.
+
+%% @private 已过锁定门，开始消费验证码
+-spec do_login_by_code_checked(binary(), binary(), binary(), binary(), binary(), binary()) ->
+    {ok, map()} | {{error, conflict}, map()} | {error, binary()}.
+do_login_by_code_checked(Type, Account, Code, DType, Did, Ip) ->
+    case consume_code(Account, Code) of
         {ok, _} ->
             User =
                 case Type of
@@ -217,6 +239,8 @@ do_login_by_code(Type, Account, Code, DType, Did) ->
                 end,
             do_login_by_code_verify(User, DType, Did);
         {error, Msg} ->
+            %% 关键：验证码错误必须计数，否则 6 位码等于可无限尝试
+            _ = login_security_logic:record_login_failure(Account, Ip),
             {error, Msg}
     end.
 
@@ -229,7 +253,12 @@ do_login_by_code_verify(User, DType, Did) ->
     Account = maps:get(
         <<"account">>, User, maps:get(<<"mobile">>, User, maps:get(<<"email">>, User, <<>>))
     ),
-    Ip = Did,
+    %% Ip 用 <<>>，与密码登录路径（do_login_verify/4）一致。
+    %% 此前这里是 Ip = Did —— Did 来自客户端自报的请求头，攻击者每次换一个
+    %% did 就换一个锁定计数 key，account 级锁定形同虚设；而且同一账号在
+    %% 密码路径（Ip=<<>>）与验证码路径（Ip=Did）落在两个不同的键空间里，
+    %% 两条路径的失败次数互不累加。
+    Ip = <<>>,
     % 验证码登录：验证通过后即视为成功，重置失败计数
     _ = login_security_logic:record_login_success(Account, Ip),
     Status = maps:get(<<"status">>, User, -2),
@@ -344,7 +373,7 @@ do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
     case elib_type:is_email(Email) of
         true ->
             % 校验验证码
-            case verify_code(Email, Code) of
+            case consume_code(Email, Code) of
                 {ok, _} ->
                     do_signup_by_email(Email, Pwd, PostVals);
                 {error, Msg} ->
@@ -355,7 +384,7 @@ do_signup(<<"email">>, Email, Pwd, Code, PostVals) ->
     end;
 do_signup(<<"mobile">>, Mobile, Pwd, Code, PostVals) ->
     % 校验验证码
-    case verify_code(Mobile, Code) of
+    case consume_code(Mobile, Code) of
         {ok, _} ->
             do_signup_by_mobile(Mobile, Pwd, PostVals);
         {error, Msg} ->
@@ -377,7 +406,7 @@ find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
     case elib_type:is_email(Email) of
         true ->
             % 校验验证码
-            case verify_code(Email, Code) of
+            case consume_code(Email, Code) of
                 {ok, _} ->
                     find_password_by_email(Email, Pwd, PostVals);
                 {error, Msg} ->
@@ -469,9 +498,14 @@ send_sms_code(Mobile) ->
 
 %% 校验验证码，委托给 verification_code_ds:verify_code/2
 %% 万能码通过 {imboy, verification_master_code} 配置，不再硬编码
--spec verify_code(binary(), binary()) -> {error, binary()} | {ok, binary()}.
-verify_code(Id, Code) ->
-    verification_code_ds:verify_code(Id, Code).
+%% @doc 校验并**消费**验证码（一次性）。
+%%
+%% 原名 verify_code/2，只读不写：验证成功后码仍有效直到自然过期，
+%% 同一个码可被反复使用。注册、找回密码、验证码登录都是"验证通过即产生
+%% 权限变更"的入口，必须一次性消费，否则一次撞对可以反复利用。
+-spec consume_code(binary(), binary()) -> {error, binary()} | {ok, binary()}.
+consume_code(Id, Code) ->
+    verification_code_ds:consume(Id, Code).
 
 -spec do_signup_by_email(binary(), binary(), map()) ->
     {ok, map()} | {error, binary()} | {error, binary(), Code :: integer()}.

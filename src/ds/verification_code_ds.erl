@@ -10,6 +10,7 @@
 -export([find_by_id/1]).
 -export([save/4]).
 -export([verify_code/2]).
+-export([consume/2]).
 
 %% ===================================================================
 %% API functions
@@ -51,9 +52,43 @@ verify_code(Id, Code) ->
             end
     end.
 
+%% @doc 校验验证码并**立即失效**（一次性消费语义）。
+%%
+%% verify_code/2 只读不写：验证成功后码仍然有效，直到 10 分钟有效期自然过期。
+%% 叠加"有效期内重复请求会重发同一个码"，同一个 6 位码可以稳定存活 10 分钟，
+%% 攻击者有一个足够宽的窗口穷举 000000-999999 —— 这是账号接管链的一环。
+%%
+%% 凡是"验证通过即产生权限变更"的入口（验证码登录、找回密码、换绑）都必须
+%% 走本函数，而不是 verify_code/2。
+%%
+%% 失效方式：把 validity_at 改写为当前时刻（`Now < ValidityAt` 立即为假），
+%% 同时清空 code。不用 DELETE 是因为 verification_code_repo 只有 save/4，
+%% 加一个 delete 会牵动 repo 契约；覆写在语义上等价且改动面最小。
+-spec consume(binary(), binary()) -> {ok, binary()} | {error, binary()}.
+consume(Id, Code) ->
+    case verify_code(Id, Code) of
+        {ok, Msg} ->
+            ok = invalidate(Id, Code),
+            {ok, Msg};
+        {error, _} = Err ->
+            Err
+    end.
+
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @private 使验证码立即失效。万能码不落库，无需（也无法）失效。
+-spec invalidate(binary(), binary()) -> ok.
+invalidate(Id, Code) ->
+    case is_master_code(Code) of
+        true ->
+            ok;
+        false ->
+            Now = elib_dt:now(),
+            _ = verification_code_repo:save(Id, <<>>, Now, Now),
+            ok
+    end.
 
 %% 检查是否为万能验证码；仅限非生产环境且配置非空时生效
 -spec is_master_code(binary()) -> boolean().
