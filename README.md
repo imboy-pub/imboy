@@ -101,10 +101,16 @@ docs/          架构、协议与运维文档
 
 ```bash
 cd deploy
-cp .env.example .env
-bash preflight.sh --docker
-docker compose -f docker-compose.prod.yml up -d
+bash install.sh
 ```
+
+脚本会自动生成 `.env`、10 个随机密钥和 RSA 登录密钥对，然后停下来让你填 3 项机器
+无从知晓的信息（两个域名 + 证书通知邮箱）。填好后再跑一次同一条命令，它会完成
+前置检查、拉起服务、签发 TLS 证书并自检。
+
+> ⚠️ **生产编排文件 `deploy/docker-compose.prod.yml` 不随开源仓分发**，需通过商务
+> 交付渠道获取（leeyisoft@qq.com）后放入 `deploy/` 目录。`install.sh` 会在缺失时
+> 明确提示。仅作评估可先用下方的最小演示环境，无需该文件。
 
 生产环境还需要域名、TLS 和强密钥，完整步骤见 [部署指南](./deploy/README.md)。
 

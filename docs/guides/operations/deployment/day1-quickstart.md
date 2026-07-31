@@ -1,5 +1,21 @@
 # Day-1 部署快速上手 / Day-1 Deployment Quickstart
 
+> ⚠️ **先选对路径 / Pick the right path first**
+>
+> **要用 Docker Compose 部署（绝大多数人）→ 不要看本文**，直接：
+> ```bash
+> cd deploy && bash install.sh
+> ```
+> 见 [`deploy/README.md`](../../../../deploy/README.md)。那条路径的密钥、RSA 密钥对与
+> TLS 证书全部自动生成，只需人工填两个域名 + 一个邮箱。
+>
+> **本文是裸机 / release 包部署路径**：变量名带 `IMBOY_` 前缀、密钥路径形如
+> `/etc/imboy/keys/`，与 compose 路径的 `.env` 字段名和挂载点**不通用**，照抄会配错。
+>
+> If you deploy with Docker Compose (most people), use `deploy/install.sh` instead —
+> this document covers the bare-metal / release-package path and its variable names
+> are **not** interchangeable with the compose `.env`.
+
 > 简体中文 / English — bilingual
 > 适用版本 / Applies to: imboy v1.0.0-rc.1+
 > 目标 / Goal: 5 分钟内跑通生产部署的最小可用配置 / Stand up a minimal production deployment in 5 minutes.

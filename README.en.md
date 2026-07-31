@@ -101,10 +101,19 @@ Business calls follow `Handler → Logic → DS → Repo`. A new endpoint usuall
 
 ```bash
 cd deploy
-cp .env.example .env
-bash preflight.sh --docker
-docker compose -f docker-compose.prod.yml up -d
+bash install.sh
 ```
+
+The script generates `.env`, ten random secrets, and the RSA login key pair, then stops
+so you can fill in the three things a machine cannot know (two domains and the
+certificate notification e-mail). Run the same command again afterwards: it runs the
+pre-flight checks, starts the services, issues the TLS certificate, and self-checks.
+
+> ⚠️ **`deploy/docker-compose.prod.yml` is not distributed with the open-source
+> repository.** Obtain it through the commercial delivery channel
+> (leeyisoft@qq.com) and place it in `deploy/`. `install.sh` tells you explicitly when
+> it is missing. For evaluation only, use the minimal demo stack below — it does not
+> need that file.
 
 Production also requires domains, TLS, and strong secrets. See the full [deployment guide](./deploy/README.md).
 

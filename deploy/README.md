@@ -7,10 +7,15 @@ One-command deployment of IMBoy to a Linux server.
 
 ## 交付清单 / Deliverables
 
+> ⚠️ **`docker-compose.prod.yml` 不随开源仓分发**，需通过商务交付渠道获取
+> （leeyisoft@qq.com）后放入本目录。`install.sh` 会在缺失时明确提示并给出索取方式。
+> 仅作评估可用 `docker-compose.demo.yml`（最小两服务，无需该文件）。
+
 ```
 deploy/
-├── docker-compose.prod.yml      # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
-│                                # 7-service orchestration: pg18 + backend + admin + nginx + certbot + prometheus + grafana
+├── install.sh                   # 一键部署入口（推荐）/ One-command installer (recommended)
+├── docker-compose.prod.yml      # ⚠️ 走单独交付渠道，不在开源仓内 / NOT in the open-source repo
+│                                # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
 ├── .env.example                 # 环境变量模板 / Environment variables template
 ├── nginx/
 │   ├── templates/
@@ -36,26 +41,38 @@ deploy/
 - 已解析到本机的两个域名：`api.example.com`、`admin.example.com`
 - 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
 
-## 五步部署
-
-### 1. 前置检查
+## 推荐：一键部署
 
 ```bash
 cd /path/to/imboy/deploy
-bash preflight.sh --docker
+bash install.sh
 ```
 
-任何 `ERROR` 都必须修复后再继续。
+第一次运行会生成 `.env`、10 个随机密钥与 RSA 登录密钥对，然后停下来，
+只需人工填 3 项（`API_DOMAIN` / `ADMIN_DOMAIN` / `CERTBOT_EMAIL`）。
+填好后再跑一次同一条命令，它会依次完成：前置检查 → 起服务 → 签发 TLS →
+等待健康 → 部署后自检 → 打印访问地址。证书签发失败会直接中止并列出常见原因，
+**不会在 TLS 没起来的情况下谎报"部署完成"**。
 
-### 2. 准备配置
+---
+
+## 手工五步部署（仅在需要逐步排查时使用）
+
+> ⚠️ **顺序不可颠倒**：`preflight.sh` 在 `.env` 不存在时直接 `exit 1`，
+> 所以必须**先备好 `.env` 再跑前置检查**。此前本文档把前置检查写在第 1 步，
+> 照做必然失败。
+
+### 1. 准备配置
 
 ```bash
-cd deploy
+cd /path/to/imboy/deploy
 cp .env.example .env
 $EDITOR .env
 ```
 
 **必须修改的字段 / Required fields to change:**
+
+> 用 `install.sh` 的话，下表中除三个人工项外全部自动生成，无需手填。
 
 | 变量 / Variable | 说明 / Description |
 |------|------|
@@ -67,7 +84,38 @@ $EDITOR .env
 | `ADM_COOKIE_SECRET` | 32 字节随机 / 32-byte random |
 | `GRAFANA_ADMIN_PASSWORD` | Grafana 仪表盘登录密码 / Grafana dashboard password |
 | `CERTBOT_EMAIL` | Let's Encrypt 账号邮箱（证书到期提醒）/ Let's Encrypt account email |
+| `IMBOY_SOLIDIFIED_KEY` | 32 字节随机：`openssl rand -hex 16` |
+| `IMBOY_SOLIDIFIED_KEY_IV` | 16 字节随机：`openssl rand -hex 8` |
+| `IMBOY_PASSWORD_SALT` | 32 字节随机。**一旦有用户注册就不可更改**，改了存量用户全部无法登录 |
+| `LIVEKIT_API_KEY` | 32 字节随机 / 32-byte random |
+| `LIVEKIT_API_SECRET` | ≥32 字符随机：`openssl rand -hex 24` |
 | `SENTRY_DSN` | 可选，生产错误监控 / Optional, production error monitoring |
+
+**还须生成 RSA 登录密钥对**（`.env` 里配的是容器内路径，宿主机要写到挂载点）：
+
+```bash
+mkdir -p ./data/backend_priv/keys
+openssl genrsa -out ./data/backend_priv/keys/login_rsa_priv.pem 2048
+openssl rsa -in ./data/backend_priv/keys/login_rsa_priv.pem -pubout \
+        -out ./data/backend_priv/keys/login_rsa_pub.pem
+chmod 600 ./data/backend_priv/keys/login_rsa_priv.pem
+```
+
+> 注意是 `data/backend_priv/keys/`，不是 `data/keys/` —— 后者没有被挂载进容器，
+> 写在那里后端读不到。
+
+**外部支付网关默认关闭**（`IMBOY_PAYMENT_GATEWAY_ENABLED=false`）：充值、网关回调、
+提现端点会返回「功能未启用」，站内钱包账务（余额/流水/红包/转账）不受影响。
+需要对外收款时置为 `true`，此时 `IMBOY_PAYMENT_MODE` 必须是 `live` 且至少一个网关
+凭据完整，否则节点 fail-fast。
+
+### 2. 前置检查
+
+```bash
+bash preflight.sh --docker
+```
+
+任何 `ERROR` 都必须修复后再继续。
 
 ### 3. 创建网络 & 启动
 

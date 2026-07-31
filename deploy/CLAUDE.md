@@ -71,12 +71,19 @@ deploy/
 ```bash
 cd deploy
 
-# 1. 前置检查（验证 Docker、端口、域名解析）
-bash preflight.sh
+# 推荐：一键部署（自动生成 .env + 10 个密钥 + RSA 密钥对，只需人工填 3 项域名/邮箱）
+bash install.sh
 
-# 2. 配置环境变量
+# ── 以下为手工路径，仅在需要逐步排查时使用 ──
+# ⚠️ 顺序不可颠倒：preflight.sh 在 .env 不存在时直接 exit 1，
+#    必须先备好 .env 再跑前置检查。
+
+# 1. 配置环境变量
 cp .env.example .env
-$EDITOR .env          # 填写 DB 密码、JWT_SECRET、域名等
+$EDITOR .env          # 域名/邮箱 + 10 个密钥 + 生成 RSA 对到 data/backend_priv/keys/
+
+# 2. 前置检查（验证 Docker、端口、域名解析）
+bash preflight.sh
 
 # 3. 创建网络并启动
 docker network create imboy-network
@@ -144,4 +151,7 @@ helm uninstall imboy --namespace imboy
 - 不修改 `docker-compose.prod.yml` 中的服务名（其他配置文件硬引用了服务名）。
 - 生产环境必须修改 `.env` 中的 `JWT_SECRET`、`DB_PASSWORD`、`ADMIN_SECRET`、`CERTBOT_EMAIL`，不得使用默认值。
 - Grafana 首次启动后立即修改 `admin` 默认密码。
-- Helm HPA (`hpa.yaml`) 默认配置最小 2 副本、最大 10 副本，根据实际负载调整。
+- Helm **后端固定单副本**（`backend.replicaCount: 1`），后端 HPA 默认**关闭**。
+  后端是有状态的 Erlang 分布式节点，跨 Pod 的 `syn` 进程注册与消息路由未经生产集群
+  验证，多副本下消息投递不确定。集群水平扩展为路线图项，**不得对外承诺**。
+  admin 是无状态静态前端，多副本安全，其 HPA 不受此限。详见 `helm/README.md` 顶部警示。
