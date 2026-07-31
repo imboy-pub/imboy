@@ -23,7 +23,7 @@ page_success_with_filters_test_() ->
                 end}
             ]},
             {elib_hasher, [
-                {'decoded_field', 1, fun(_Field) -> <<"info">> end}
+                {'decode_list_field', 2, fun(List, _Field) -> List end}
             ]},
             {user_collect_repo, [
                 {'tablename', 0, fun() -> <<"public.user_collect">> end}
@@ -78,7 +78,6 @@ page_success_with_filters_test_() ->
         end
     ).
 
-
 add_success_test_() ->
     ?WITH_MECKS(
         [
@@ -122,7 +121,6 @@ add_success_test_() ->
         end
     ).
 
-
 remove_success_test_() ->
     ?WITH_MECKS(
         [
@@ -157,7 +155,6 @@ remove_success_test_() ->
             meck_helper:verify_called(user_collect_logic, remove, 2)
         end
     ).
-
 
 change_remark_success_test_() ->
     ?WITH_MECKS(

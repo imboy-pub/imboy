@@ -368,11 +368,13 @@ collect_list(<<"GET">>, Req0, _State) ->
                     <<"recent_use">> -> <<"updated_at desc, id desc">>;
                     _ -> <<"id desc">>
                 end,
-            Info = elib_hasher:decoded_field(<<"info">>),
-            Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
+            % A-05：info 取原始列，解密在应用层做（历史实现把主密钥内联进 SQL 列表达式）
+            Column = <<"kind, kind_id, source, created_at, updated_at, tag, info">>,
             case user_collect_ds:page(Column, Where, Order, Page, Size) of
                 {ok, Payload0} ->
-                    List = maps:get(list, Payload0, []),
+                    List = elib_hasher:decode_list_field(
+                        maps:get(list, Payload0, []), <<"info">>
+                    ),
                     Payload = maps:put(
                         list, elib_response:json_decode_list_field(List, <<"info">>), Payload0
                     ),

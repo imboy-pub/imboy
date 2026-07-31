@@ -46,7 +46,7 @@ collect_page_success_test_() ->
                 end}
             ]},
             {elib_hasher, [
-                {'decoded_field', 1, fun(_Field) -> <<"info">> end}
+                {'decode_list_field', 2, fun(List, _Field) -> List end}
             ]},
             {user_collect_repo, [
                 {'tablename', 0, fun() -> <<"public.user_collect">> end}
@@ -70,7 +70,6 @@ collect_page_success_test_() ->
             meck_helper:verify_called(elib_pg, page_with_total, 6)
         end
     ).
-
 
 collect_page_tag_not_found_returns_empty_test_() ->
     ?WITH_MECKS(
@@ -112,7 +111,6 @@ collect_page_tag_not_found_returns_empty_test_() ->
             ?assertEqual(0, maps:get(total, Body))
         end
     ).
-
 
 collect_page_invalid_tag_id_test_() ->
     ?WITH_MECKS(

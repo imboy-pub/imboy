@@ -101,12 +101,12 @@ page(Req0, State) ->
         end,
 
     % Build column list
-    Info = elib_hasher:decoded_field(<<"info">>),
-    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
+    % A-05：info 取原始列，解密在应用层做（历史实现把主密钥内联进 SQL 列表达式）
+    Column = <<"kind, kind_id, source, created_at, updated_at, tag, info">>,
 
     {ok, Payload} = user_collect_logic:page(Column, WhereMap, Order, Page, Size),
     % Parse info field JSON string to structured data
-    List = maps:get(list, Payload, []),
+    List = elib_hasher:decode_list_field(maps:get(list, Payload, []), <<"info">>),
     List2 = elib_response:json_decode_list_field(List, <<"info">>),
     Payload2 = maps:put(list, List2, Payload),
     elib_response:success(Req0, Payload2).

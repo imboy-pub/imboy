@@ -24,6 +24,12 @@
 -export([safe_rsa_decrypt/2]).
 -export([num_random/1]).
 
+%% AES-256-GCM 通用 AEAD 加解密
+-export([
+    aes_gcm_encrypt/2,
+    aes_gcm_decrypt/2
+]).
+
 %% 密钥备份相关功能
 -export([
     derive_master_password/2,
@@ -443,20 +449,23 @@ derive_master_password(MasterPassword, Salt) when is_binary(MasterPassword), is_
             {error, derivation_failed}
     end.
 
-%% @doc 使用 AES-256-GCM 加密私钥
-%% @param PrivateKey 要加密的私钥（PEM 格式或二进制）
+%% @doc 使用 AES-256-GCM 加密任意二进制（AEAD，通用）
+%% @param Plain 要加密的明文二进制
 %% @param EncryptionKey 加密密钥（32 字节）
 %% @returns {ok, EncryptedData} | {error, Reason}
 %%
-%% 使用 AES-256-GCM 模式加密，每次加密使用随机 IV 和盐值
-%% 返回格式: base64(salt + iv + ciphertext + tag)
+%% 每次加密使用随机 IV（12 字节）和随机盐（16 字节，同时作为 AAD）。
+%% 返回格式: base64(salt(16) + iv(12) + ciphertext + tag(16))
+%%
+%% 相比 aes_encrypt/3（AES-CBC）的优势：AEAD 自带完整性校验，
+%% 且随机 IV 保证同一明文每次密文不同（审计 #26）。新代码一律用本函数。
 %%
 %% @example
 %% Key = crypto:strong_rand_bytes(32),
-%% {ok, Encrypted} = elib_cipher:encrypt_private_key(PrivateKeyPEM, Key).
--spec encrypt_private_key(binary(), binary()) -> {ok, binary()} | {error, term()}.
-encrypt_private_key(PrivateKey, EncryptionKey) when
-    is_binary(PrivateKey), byte_size(EncryptionKey) =:= 32
+%% {ok, Encrypted} = elib_cipher:aes_gcm_encrypt(<<"secret">>, Key).
+-spec aes_gcm_encrypt(binary(), binary()) -> {ok, binary()} | {error, term()}.
+aes_gcm_encrypt(Plain, EncryptionKey) when
+    is_binary(Plain), is_binary(EncryptionKey), byte_size(EncryptionKey) =:= 32
 ->
     try
         % 生成随机 IV (12 字节，GCM 推荐值)
@@ -470,7 +479,7 @@ encrypt_private_key(PrivateKey, EncryptionKey) when
             aes_256_gcm,
             EncryptionKey,
             IV,
-            PrivateKey,
+            Plain,
             % AAD (Additional Authenticated Data)
             Salt,
             % Tag 长度 (16 字节)
@@ -488,21 +497,25 @@ encrypt_private_key(PrivateKey, EncryptionKey) when
         _:_:_ ->
             {error, encryption_failed}
     end;
-encrypt_private_key(_PrivateKey, EncryptionKey) when byte_size(EncryptionKey) =/= 32 ->
+aes_gcm_encrypt(_Plain, EncryptionKey) when
+    is_binary(EncryptionKey), byte_size(EncryptionKey) =/= 32
+->
     {error, invalid_key_length};
-encrypt_private_key(_PrivateKey, _EncryptionKey) ->
+aes_gcm_encrypt(_Plain, _EncryptionKey) ->
     {error, invalid_input}.
 
-%% @doc 使用 AES-256-GCM 解密私钥
-%% @param EncryptedData 加密的私钥数据（Base64 编码）
+%% @doc 使用 AES-256-GCM 解密 aes_gcm_encrypt/2 产出的密文
+%% @param EncryptedData 加密数据（Base64 编码）
 %% @param EncryptionKey 解密密钥（32 字节）
-%% @returns {ok, PrivateKey} | {error, Reason}
+%% @returns {ok, Plain} | {error, Reason}
+%%
+%% Tag 校验失败返回 {error, authentication_failed}，不会回落明文。
 %%
 %% @example
-%% {ok, Decrypted} = elib_cipher:decrypt_private_key(EncryptedBase64, Key).
--spec decrypt_private_key(binary(), binary()) -> {ok, binary()} | {error, term()}.
-decrypt_private_key(EncryptedData, EncryptionKey) when
-    is_binary(EncryptedData), byte_size(EncryptionKey) =:= 32
+%% {ok, Decrypted} = elib_cipher:aes_gcm_decrypt(EncryptedBase64, Key).
+-spec aes_gcm_decrypt(binary(), binary()) -> {ok, binary()} | {error, term()}.
+aes_gcm_decrypt(EncryptedData, EncryptionKey) when
+    is_binary(EncryptedData), is_binary(EncryptionKey), byte_size(EncryptionKey) =:= 32
 ->
     try
         % Base64 解码
@@ -546,10 +559,22 @@ decrypt_private_key(EncryptedData, EncryptionKey) when
         _:_ ->
             {error, decryption_failed}
     end;
-decrypt_private_key(_EncryptedData, EncryptionKey) when byte_size(EncryptionKey) =/= 32 ->
+aes_gcm_decrypt(_EncryptedData, EncryptionKey) when
+    is_binary(EncryptionKey), byte_size(EncryptionKey) =/= 32
+->
     {error, invalid_key_length};
-decrypt_private_key(_EncryptedData, _EncryptionKey) ->
+aes_gcm_decrypt(_EncryptedData, _EncryptionKey) ->
     {error, invalid_input}.
+
+%% @doc 加密私钥（AES-256-GCM），语义化别名，实现见 aes_gcm_encrypt/2
+-spec encrypt_private_key(binary(), binary()) -> {ok, binary()} | {error, term()}.
+encrypt_private_key(PrivateKey, EncryptionKey) ->
+    aes_gcm_encrypt(PrivateKey, EncryptionKey).
+
+%% @doc 解密私钥（AES-256-GCM），语义化别名，实现见 aes_gcm_decrypt/2
+-spec decrypt_private_key(binary(), binary()) -> {ok, binary()} | {error, term()}.
+decrypt_private_key(EncryptedData, EncryptionKey) ->
+    aes_gcm_decrypt(EncryptedData, EncryptionKey).
 
 %% ===================================================================
 %% RSA-OAEP 加密/解密

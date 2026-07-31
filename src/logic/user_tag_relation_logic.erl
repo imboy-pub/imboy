@@ -291,11 +291,11 @@ collect_page_by_tagname(Uid, Page, Size, TagName, Kwd) ->
             false ->
                 BaseWhere
         end,
-    Info = elib_hasher:decoded_field(<<"info">>),
-    Column = <<"kind, kind_id, source, created_at, updated_at, tag, ", Info/binary>>,
+    % A-05：info 取原始列，解密在应用层做（历史实现把主密钥内联进 SQL 列表达式）
+    Column = <<"kind, kind_id, source, created_at, updated_at, tag, info">>,
     case user_collect_ds:page(Column, WhereMap, <<"id desc">>, Page, Size) of
         {ok, Payload} ->
-            List = maps:get(list, Payload, []),
+            List = elib_hasher:decode_list_field(maps:get(list, Payload, []), <<"info">>),
             Payload#{list => elib_response:json_decode_list_field(List, <<"info">>)};
         {error, _Reason} ->
             #{total => 0, page => Page, size => Size, list => []}

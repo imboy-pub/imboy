@@ -113,9 +113,7 @@ get(Key, Default) ->
         {ok, Val} ->
             Val;
         undefined ->
-            Val = elib_hasher:decoded_field(<<"value">>),
-            % 使用安全的参数化查询，避免SQL注入
-            case elib_pg:pluck_value(<<"config">>, Val, #{key => Key2}, #{}, Default) of
+            case pluck_decrypted_value(Key2, Default) of
                 Default ->
                     Default;
                 B ->
@@ -204,6 +202,32 @@ config_file() ->
     {imboy, _, Vsn} = lists:keyfind(imboy, 1, application:which_applications()),
     code:root_dir() ++ "/releases/" ++ Vsn ++ "/sys.config".
 
+%% @private 读取并解密 config.value（A-07，审计缺陷 #26）
+%%
+%% 主密钥走绑定参数 $1，不再由 elib_hasher:decoded_field/1 内联进 SQL 列表达式 ——
+%% 后者会让密钥进入慢查询日志、pg_stat_statements 归一化文本与异常堆栈。
+%%
+%% 说明：config.value 走的是 pgcrypto 真加密（见 do_aes_encrypt/2 的 $2 绑定参数），
+%% 与 user_collect.info 的历史脏数据不同，这里的密文有效，只需把密钥挪出 SQL 文本。
+-spec pluck_decrypted_value(binary(), D) -> binary() | D when D :: term().
+pluck_decrypted_value(Key, Default) ->
+    Sql = <<
+        "SELECT decode(encode(decrypt(decode(replace(value, 'aes_cbc_', ''), 'base64'), "
+        "$1, 'aes-cbc/pad:pkcs'), 'escape'), 'base64') AS value "
+        "FROM public.config WHERE key = $2 LIMIT 1"
+    >>,
+    case elib_pg:query(Sql, [env(postgre_aes_key), Key]) of
+        {ok, [#{<<"value">> := Val} | _]} when is_binary(Val) ->
+            Val;
+        _ ->
+            Default
+    end.
+
+%% 审计 #26 其余两点在此处的结论：
+%% - pgcrypto encrypt/3 固定全零 IV → 同一明文密文确定性。config 表是运维配置、
+%%   非用户数据，且 value 在写入前已 base64，未做改造；新代码一律改用
+%%   elib_cipher:aes_gcm_encrypt/2（随机 IV + AEAD），见 elib_hasher:encoded_val/1。
+%% - 密钥在 do_aes_encrypt/2 里走的是 $2 绑定参数，从未进入 SQL 文本，无泄漏。
 do_aes_encrypt(Key, <<"aes_cbc_", _Val/binary>>) ->
     % 已经加密，直接返回
     elib_pg:pluck_value(<<"config">>, <<"value">>, #{key => Key}, #{}, <<>>);
