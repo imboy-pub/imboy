@@ -909,7 +909,11 @@ open() ->
         %% 免鉴权 API（/api/v1 前缀，v0 裸路径已下架）
         % /ws 有自己的auth
         <<"/api/v1/ws">>,
-        <<"/api/v1/conversation/online">>,
+        %% /api/v1/conversation/online 已移出免鉴权白名单：
+        %% 它返回全站在线用户的 uid / did / pid / node —— did 是 E2EE 与设备
+        %% 绑定体系的关键标识，pid/node 直接暴露集群拓扑。无 token 即可
+        %% ?type=list&limit=99999 批量拉取，等于把在线用户与设备清单公开。
+        %% 端点本身保留，登录用户与管理端照常可用。
         <<"/api/v1/init">>,
         <<"/api/v1/app/features">>,
         <<"/api/v1/app/manifest">>,

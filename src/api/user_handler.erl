@@ -315,7 +315,13 @@ show(Req0, _State) ->
                 {error, Req} ->
                     Req;
                 {ok, DecodedUid} ->
-                    Column = <<"id, nickname, avatar, background, account, sign">>,
+                    %% 不返回 account：该端点在 imboy_router:open/0 的免鉴权
+                    %% 白名单里，而 account 在手机号注册路径下就是登录手机号
+                    %% （passport_logic 注册时把 mobile 写进 account）。此前
+                    %% 任何人无需 token 遍历 ?id=<TSID> 即可批量导出全站手机号，
+                    %% 再喂给同样免鉴权的登录接口撞库。
+                    %% 端点保持公开（扫码看资料等场景依赖它），只收窄返回字段。
+                    Column = <<"id, nickname, avatar, background, sign">>,
                     User = user_logic:find_by_id(DecodedUid, Column),
                     User2 = convert_user_id(User),
                     elib_response:success(Req0, User2)
