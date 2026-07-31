@@ -1,0 +1,48 @@
+# Promtail 配置 —— IMBoy 生产部署
+# 挂载路径：/etc/promtail/config.yml
+# 对应服务：imboy_promtail（docker-compose.prod.yml）
+#
+# 收集目标：所有容器的 json-file stdout 日志（含 imboy_backend / imboy_nginx / imboy_admin）。
+# nginx 访问日志默认输出到容器 stdout，由 docker_containers job 一并采集。
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/promtail-positions.yaml
+
+clients:
+  - url: http://imboy_loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  # ===== 1. Docker 容器日志（json-file driver）=====
+  # Docker 默认将 json-file 日志写到 /var/lib/docker/containers/<id>/<id>-json.log
+  # 通过挂载 /var/lib/docker/containers 进行采集
+
+  - job_name: docker_containers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker
+          host: imboy_prod
+          __path__: /var/lib/docker/containers/*/*-json.log
+
+    pipeline_stages:
+      # 解析 Docker json-file 格式
+      - json:
+          expressions:
+            output: log
+            stream: stream
+            time: time
+            container_name: attrs.name
+      - labels:
+          stream:
+          container_name:
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+      - output:
+          source: output

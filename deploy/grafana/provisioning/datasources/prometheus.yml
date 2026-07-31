@@ -1,0 +1,39 @@
+# Grafana 数据源自动配置
+# 挂载路径: /etc/grafana/provisioning/datasources/prometheus.yml
+#
+# 变更历史：
+#   2024-xx-xx  初始版本：仅 Prometheus
+#   2026-05-27  新增 Loki 数据源（日志聚合，对应 imboy_loki 服务）
+
+apiVersion: 1
+
+datasources:
+  # ===== Prometheus（指标）=====
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://imboy_prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+
+  # ===== Loki（日志）=====
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://imboy_loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      # 最长查询窗口
+      maxLines: 1000
+      # 关联 Prometheus（点击日志行可跳转到对应时间的指标）
+      derivedFields:
+        - datasourceUid: prometheus
+          matcherRegex: "trace_id=(\\w+)"
+          name: TraceID
+          url: "$${__value.raw}"
+    # Grafana 11+ 需要同时声明 uid 以便 derivedFields 引用
+    uid: loki

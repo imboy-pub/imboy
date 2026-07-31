@@ -40,7 +40,10 @@ docker/img_fastdfs_data
 docker/pgsql15data
 docker/imboy_pg15
 imboy_v1.sql
-*pro*.yml
+# 生产 compose 走单独交付渠道，不随开源仓分发。
+# 原模式 `*pro*.yml` 过宽，误伤了 prometheus/promtail/grafana 数据源等无密钥的可观测性配置，
+# 导致从远端 clone 的部署方拿不到监控栈配置。
+deploy/docker-compose.prod.yml
 *pro*.config
 *.dev.config
 *.dev.args

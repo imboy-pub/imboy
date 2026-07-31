@@ -1,0 +1,54 @@
+# Prometheus 抓取配置（IMBoy 生产部署示例）
+#
+# 使用方式：
+#   1. 将本文件挂载到 prometheus 容器：
+#      -v ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+#   2. IMBoy 后端已在 /metrics 暴露指标（Erlang vm + cowboy + 业务计数器）
+#   3. 若 PG / 节点导出器未部署，相应 job 可注释掉
+#
+# 与 deploy/docker-compose.prod.yml 集成：参见 README 的 "可观测性" 章节
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: imboy-prod
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - imboy_alertmanager:9093
+
+scrape_configs:
+  # IMBoy Erlang 后端
+  - job_name: imboy_backend
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - imboy_backend:9800
+        labels:
+          service: imboy_backend
+          tier: app
+
+  # PostgreSQL exporter（可选）
+  - job_name: postgres_exporter
+    static_configs:
+      - targets:
+          - postgres_exporter:9187
+        labels:
+          service: postgres
+          tier: data
+
+  # Node exporter（宿主机资源，可选）
+  - job_name: node_exporter
+    static_configs:
+      - targets:
+          - node_exporter:9100
+        labels:
+          service: host
+          tier: infra
