@@ -36,7 +36,9 @@ page_with_custom_values_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
-            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"3">>}, {<<"size">>, <<"50">>}] end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) ->
+                [{<<"page">>, <<"3">>}, {<<"size">>, <<"50">>}]
+            end),
             {Page, Size} = elib_param:page(Req0),
             ?assertEqual(3, Page),
             ?assertEqual(50, Size),
@@ -52,7 +54,9 @@ page_with_zero_page_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
-            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"0">>}, {<<"size">>, <<"10">>}] end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) ->
+                [{<<"page">>, <<"0">>}, {<<"size">>, <<"10">>}]
+            end),
             {Page, Size} = elib_param:page(Req0),
             ?assertEqual(1, Page),
             ?assertEqual(10, Size),
@@ -68,7 +72,9 @@ page_with_negative_page_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
-            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"-5">>}, {<<"size">>, <<"10">>}] end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) ->
+                [{<<"page">>, <<"-5">>}, {<<"size">>, <<"10">>}]
+            end),
             {Page, Size} = elib_param:page(Req0),
             ?assertEqual(1, Page),
             ?assertEqual(10, Size),
@@ -84,7 +90,9 @@ page_with_large_size_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
-            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"1">>}, {<<"size">>, <<"2000">>}] end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) ->
+                [{<<"page">>, <<"1">>}, {<<"size">>, <<"2000">>}]
+            end),
             {Page, Size} = elib_param:page(Req0),
             ?assertEqual(1, Page),
             ?assertEqual(1000, Size),
@@ -100,7 +108,9 @@ page_with_zero_size_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
-            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"1">>}, {<<"size">>, <<"0">>}] end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) ->
+                [{<<"page">>, <<"1">>}, {<<"size">>, <<"0">>}]
+            end),
             {Page, Size} = elib_param:page(Req0),
             ?assertEqual(1, Page),
             ?assertEqual(20, Size),
@@ -116,7 +126,9 @@ page_with_invalid_values_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"GET">> end),
-            meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [{<<"page">>, <<"abc">>}, {<<"size">>, <<"xyz">>}] end),
+            meck:expect(cowboy_req, parse_qs, fun(_Req0) ->
+                [{<<"page">>, <<"abc">>}, {<<"size">>, <<"xyz">>}]
+            end),
             {Page, Size} = elib_param:page(Req0),
             ?assertEqual(1, Page),
             ?assertEqual(20, Size),
@@ -151,8 +163,12 @@ int_from_post_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
-            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"count\":42}">>, Req0} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"json">>, []}
+            end),
+            meck:expect(cowboy_req, read_body, fun(_Req0, _Opts) ->
+                {ok, <<"{\"count\":42}">>, Req0}
+            end),
             {ok, Count} = elib_param:int(count, Req0, 0),
             ?assertEqual(42, Count),
             ?assert(meck:validate(cowboy_req))
@@ -296,8 +312,12 @@ post_from_json_body_test_() ->
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
             meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
-            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"email\":\"test@example.com\",\"password\":\"secret\"}">>, Req0} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"json">>, []}
+            end),
+            meck:expect(cowboy_req, read_body, fun(_Req0, _Opts) ->
+                {ok, <<"{\"email\":\"test@example.com\",\"password\":\"secret\"}">>, Req0}
+            end),
             Email = elib_param:post(email, Req0, <<>>),
             ?assertEqual(<<"test@example.com">>, Email),
             ?assert(meck:validate(cowboy_req))
@@ -313,8 +333,12 @@ post_with_default_value_test_() ->
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
             meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
-            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"name\":\"Test\"}">>, Req0} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"json">>, []}
+            end),
+            meck:expect(cowboy_req, read_body, fun(_Req0, _Opts) ->
+                {ok, <<"{\"name\":\"Test\"}">>, Req0}
+            end),
             Value = elib_param:post(missing, Req0, <<"default">>),
             ?assertEqual(<<"default">>, Value),
             ?assert(meck:validate(cowboy_req))
@@ -349,8 +373,12 @@ param_from_post_when_get_missing_test_() ->
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
             meck:expect(cowboy_req, parse_qs, fun(_Req0) -> [] end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
-            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"action\":\"submit\"}">>, Req0} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"json">>, []}
+            end),
+            meck:expect(cowboy_req, read_body, fun(_Req0, _Opts) ->
+                {ok, <<"{\"action\":\"submit\"}">>, Req0}
+            end),
             Value = elib_param:param(action, Req0, <<>>),
             ?assertEqual(<<"submit">>, Value),
             ?assert(meck:validate(cowboy_req))
@@ -384,8 +412,12 @@ post_json_body_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
-            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<"{\"username\":\"john\",\"age\":30,\"active\":true}">>, Req0} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"json">>, []}
+            end),
+            meck:expect(cowboy_req, read_body, fun(_Req0, _Opts) ->
+                {ok, <<"{\"username\":\"john\",\"age\":30,\"active\":true}">>, Req0}
+            end),
             Params = elib_param:post(Req0),
             ?assertEqual(<<"john">>, maps:get(<<"username">>, Params)),
             ?assertEqual(30, maps:get(<<"age">>, Params)),
@@ -402,8 +434,12 @@ post_urlencoded_body_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"x-www-form-urlencoded">>, []} end),
-            meck:expect(cowboy_req, read_urlencoded_body, fun(_Req0, _) -> {ok, [{<<"name">>, <<"Alice">>}, {<<"city">>, <<"NYC">>}], Req0} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"x-www-form-urlencoded">>, []}
+            end),
+            meck:expect(cowboy_req, read_urlencoded_body, fun(_Req0, _) ->
+                {ok, [{<<"name">>, <<"Alice">>}, {<<"city">>, <<"NYC">>}], Req0}
+            end),
             Params = elib_param:post(Req0),
             ?assertEqual(<<"Alice">>, maps:get(<<"name">>, Params)),
             ?assertEqual(<<"NYC">>, maps:get(<<"city">>, Params)),
@@ -419,7 +455,9 @@ post_urlencoded_body_duplicate_keys_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"x-www-form-urlencoded">>, []} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"x-www-form-urlencoded">>, []}
+            end),
             meck:expect(cowboy_req, read_urlencoded_body, fun(_Req0, _) ->
                 {ok, [{<<"tag">>, <<"a">>}, {<<"tag">>, <<"b">>}], Req0}
             end),
@@ -437,8 +475,10 @@ post_empty_body_test_() ->
         try
             Req0 = #{},
             meck:expect(cowboy_req, method, fun(_Req0) -> <<"POST">> end),
-            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) -> {<<"application">>, <<"json">>, []} end),
-            meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, <<>>, Req0} end),
+            meck:expect(cowboy_req, parse_header, fun(<<"content-type">>, _Req0) ->
+                {<<"application">>, <<"json">>, []}
+            end),
+            meck:expect(cowboy_req, read_body, fun(_Req0, _Opts) -> {ok, <<>>, Req0} end),
             Params = elib_param:post(Req0),
             ?assertEqual(#{}, Params),
             ?assert(meck:validate(cowboy_req))
@@ -460,7 +500,9 @@ get_required_existing_value_test_() ->
 get_required_missing_or_empty_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual({error, missing_param}, elib_param:get_required(<<"missing">>, #{})),
-        ?assertEqual({error, missing_param}, elib_param:get_required(<<"empty">>, #{<<"empty">> => <<>>}))
+        ?assertEqual(
+            {error, missing_param}, elib_param:get_required(<<"empty">>, #{<<"empty">> => <<>>})
+        )
     end).
 
 get_optional_uses_default_test_() ->

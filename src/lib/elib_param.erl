@@ -109,6 +109,22 @@ binary(Key, Req, Def) ->
             end
     end.
 
+%% POST 请求体上限 1 MiB / 读取窗口 15s。
+%%
+%% 此前为 length=640000000(610MB) + period=50000(50s)。post/1 是全站 POST 的
+%% 统一入口，而 /api/v1/passport/{login,signup,getcode} 等免认证端点都经过它：
+%% 并发若干条慢速大 body 即可把节点内存打满（无需任何凭据）。
+%%
+%% 超限行为：cowboy_req:read_urlencoded_body/2 在 {more, _, _} 时
+%% exit({request_error, payload_too_large, _})，由 cowboy_stream_h:133
+%% 统一映射为 HTTP 413；JSON 分支在下方显式复刻同一 exit 语义，
+%% 避免 {ok,_,_} 硬匹配把超限打成 badmatch 500。
+%%
+%% 为何 1 MiB 够用：附件走 presign 直传（attach_logic），支付回调 / 频道
+%% webhook / 群文件各自用 read_raw_body，均不经过本函数。
+-define(MAX_POST_BODY_BYTES, 1048576).
+-define(MAX_POST_BODY_PERIOD, 15000).
+
 %% @doc 从请求体中解析POST参数
 %% 支持 application/x-www-form-urlencoded 和 application/json 格式
 %% @param Req cowboy请求对象
@@ -127,19 +143,42 @@ post(Req) ->
                     {<<"application">>, <<"x-www-form-urlencoded">>, _} ->
                         {ok, Params, _Req} =
                             cowboy_req:read_urlencoded_body(Req, #{
-                                length => 640000000, period => 50000
+                                length => ?MAX_POST_BODY_BYTES,
+                                period => ?MAX_POST_BODY_PERIOD
                             }),
                         urlencoded_to_map(Params);
                     {<<"application">>, <<"json">>, _} ->
-                        {ok, Body, _Req} = cowboy_req:read_body(Req),
-                        try
-                            case jsone:decode(Body, [{object_format, map}]) of
-                                Map when is_map(Map) -> Map;
-                                _ -> #{}
-                            end
-                        catch
-                            _:_ ->
-                                #{}
+                        ReadOpts = #{
+                            length => ?MAX_POST_BODY_BYTES,
+                            period => ?MAX_POST_BODY_PERIOD
+                        },
+                        case cowboy_req:read_body(Req, ReadOpts) of
+                            {ok, Body, _Req} ->
+                                try
+                                    case jsone:decode(Body, [{object_format, map}]) of
+                                        Map when is_map(Map) -> Map;
+                                        _ -> #{}
+                                    end
+                                catch
+                                    _:_ ->
+                                        #{}
+                                end;
+                            {more, Partial, _Req1} ->
+                                %% 复刻 cowboy_req:read_urlencoded_body/2 的语义：
+                                %% 读满上限仍未收完 => 超大；未读满则是读取超时。
+                                %% 两者都由 cowboy_stream_h 转 4xx（413 / 408）。
+                                case byte_size(Partial) < ?MAX_POST_BODY_BYTES of
+                                    true ->
+                                        exit(
+                                            {request_error, timeout,
+                                                'The request body was not received within the configured time.'}
+                                        );
+                                    false ->
+                                        exit(
+                                            {request_error, payload_too_large,
+                                                'The request body is larger than allowed by configuration.'}
+                                        )
+                                end
                         end;
                     _ ->
                         ok = elib_log:error(
