@@ -237,6 +237,10 @@ quick_login(Req0) ->
             Data2 = Data#{<<"setting">> => Setting},
             % ?DEBUG_LOG(["Data2", Data2]),
             elib_response:success(Req0, Data2, "success.");
+        %% quota_guard 返回三元组（402 用户数达授权上限），必须显式接住：
+        %% 只匹配 {error, Msg} 会在配额满时 case_clause 崩溃。
+        {error, Msg, Code} ->
+            elib_response:error(Req0, Msg, Code);
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.

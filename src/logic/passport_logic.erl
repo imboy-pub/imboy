@@ -36,7 +36,7 @@
 %% @param PostVals 请求参数
 %% @returns {ok, Data} | {error, Msg}
 -spec quick_login(binary(), binary() | undefined, binary(), map()) ->
-    {ok, map()} | {error, binary() | map()}.
+    {ok, map()} | {error, binary() | map()} | {error, binary(), integer()}.
 
 quick_login(<<>>, _, _, _) ->
     {error, <<"未指定登录服务"/utf8>>};
@@ -54,23 +54,31 @@ quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
             Uid = maps:get(<<"id">>, User, 0),
             case Uid of
                 0 ->
-                    Data = pick_data_for_insert(
-                        #{
-                            <<"source">> => <<"jverify">>,
-                            <<"mobile">> => Mobile2,
-                            <<"password">> => <<>>
-                        },
-                        PostVals
-                    ),
-                    case user_ds:insert_and_get_id(Data) of
-                        {ok, Uid2} ->
-                            User2 = user_ds:find_by_id(Uid2, ?LOGIN_COLUMN),
-                            {ok,
-                                login_resp(User2, Did, #{
-                                    <<"action">> => <<"need_set_password">>
-                                })};
-                        {error, Reason} ->
-                            {error, Reason}
+                    %% License 规模 gate：用户数达授权上限时拒绝新注册（402）。
+                    %% 只挡"号码首次出现即注册"这一条分支——已存在用户走下面的
+                    %% login_resp，配额满时不能把老用户一起锁在门外。
+                    case quota_guard() of
+                        {error, _, _} = QErr ->
+                            QErr;
+                        ok ->
+                            Data = pick_data_for_insert(
+                                #{
+                                    <<"source">> => <<"jverify">>,
+                                    <<"mobile">> => Mobile2,
+                                    <<"password">> => <<>>
+                                },
+                                PostVals
+                            ),
+                            case user_ds:insert_and_get_id(Data) of
+                                {ok, Uid2} ->
+                                    User2 = user_ds:find_by_id(Uid2, ?LOGIN_COLUMN),
+                                    {ok,
+                                        login_resp(User2, Did, #{
+                                            <<"action">> => <<"need_set_password">>
+                                        })};
+                                {error, Reason} ->
+                                    {error, Reason}
+                            end
                     end;
                 _ ->
                     {ok, login_resp(User, Did, #{})}
