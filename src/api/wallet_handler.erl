@@ -13,6 +13,7 @@
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
 -include("common.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -23,35 +24,61 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Req1 =
-        case Action of
-            balance ->
-                balance(Req0, State);
-            transactions ->
-                transactions(Req0, State);
-            topup ->
-                topup(Req0, State);
-            recharge_order ->
-                recharge_order(Req0, State);
-            recharge_pay ->
-                recharge_pay(Req0, State);
-            recharge_query ->
-                recharge_query(Req0, State);
-            red_packet_send ->
-                red_packet_send(Req0, State);
-            red_packet_open ->
-                red_packet_open(Req0, State);
-            red_packet_detail ->
-                red_packet_detail(Req0, State);
-            transfer_send ->
-                transfer_send(Req0, State);
-            transfer_accept ->
-                transfer_accept(Req0, State);
-            withdraw ->
-                withdraw(Req0, State);
+        case needs_gateway(Action) andalso not payment_gateway:enabled() of
+            true ->
+                gateway_disabled(Req0);
             false ->
-                Req0
+                dispatch(Action, Req0, State)
         end,
     {ok, Req1, State}.
+
+%% @doc 依赖外部支付网关的 action。
+%% 其余（余额/流水/红包/转账）是纯站内账务，与网关无关，不受总开关影响。
+-spec needs_gateway(atom()) -> boolean().
+needs_gateway(recharge_order) -> true;
+needs_gateway(recharge_pay) -> true;
+needs_gateway(recharge_query) -> true;
+needs_gateway(withdraw) -> true;
+needs_gateway(_) -> false.
+
+-spec gateway_disabled(cowboy_req:req()) -> cowboy_req:req().
+gateway_disabled(Req0) ->
+    elib_response:error(
+        Req0,
+        imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+        ?ERR_FEATURE_DISABLED
+    ).
+
+-spec dispatch(atom(), cowboy_req:req(), map()) -> cowboy_req:req().
+dispatch(Action, Req0, State) ->
+    case Action of
+        balance ->
+            balance(Req0, State);
+        transactions ->
+            transactions(Req0, State);
+        topup ->
+            topup(Req0, State);
+        recharge_order ->
+            recharge_order(Req0, State);
+        recharge_pay ->
+            recharge_pay(Req0, State);
+        recharge_query ->
+            recharge_query(Req0, State);
+        red_packet_send ->
+            red_packet_send(Req0, State);
+        red_packet_open ->
+            red_packet_open(Req0, State);
+        red_packet_detail ->
+            red_packet_detail(Req0, State);
+        transfer_send ->
+            transfer_send(Req0, State);
+        transfer_accept ->
+            transfer_accept(Req0, State);
+        withdraw ->
+            withdraw(Req0, State);
+        false ->
+            Req0
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

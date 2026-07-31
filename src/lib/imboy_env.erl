@@ -314,6 +314,7 @@ override_payment() ->
     ok = override_binary_key("IMBOY_STRIPE_WEBHOOK_SECRET", stripe_webhook_secret),
     %% 网关运行模式：sandbox（默认）| live
     ok = override_payment_mode(),
+    ok = override_payment_gateway_enabled(),
     ok.
 
 %% @doc 覆盖受信反向代理白名单（逗号分隔，如 "127.0.0.1,10.0.0.5"）。
@@ -375,6 +376,28 @@ override_payment_mode() ->
                     _ -> live
                 end,
             application:set_env(imboy, payment_mode, Mode),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖外部支付网关总开关（boolean，默认 false）
+%%
+%% 方向与 override_payment_mode/0 相反：这里只有精确的 "true"/"1"（忽略大小写
+%% 与首尾空白）才开启，其余一律关闭。因为"关闭"是安全方向 —— 关闭时网关端点
+%% 直接拒绝，误配最多是功能不可用；而误开启会让一个未配凭据的部署方在
+%% strict 环境下 fail-fast，或更糟：以为自己配好了收款其实没有。
+-spec override_payment_gateway_enabled() -> ok.
+override_payment_gateway_enabled() ->
+    case os:getenv("IMBOY_PAYMENT_GATEWAY_ENABLED") of
+        Value when is_list(Value), length(Value) > 0 ->
+            Enabled =
+                case string:trim(string:lowercase(Value)) of
+                    "true" -> true;
+                    "1" -> true;
+                    _ -> false
+                end,
+            application:set_env(imboy, payment_gateway_enabled, Enabled),
             ok;
         _ ->
             ok

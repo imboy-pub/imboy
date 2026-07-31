@@ -338,10 +338,11 @@ validate_runtime_config() ->
             %% 验证数据库密码不是默认值（pg_conf + super_account 同步检查）
             ok = ensure_pg_password_not_default(),
             ok = ensure_super_account_password_not_default(),
-            %% 生产环境禁止支付 sandbox 直通（sandbox_verify/3 不做任何验签）
-            ok = ensure_payment_mode_safe(),
-            %% live 支付模式必须配置至少一个网关的完整凭据
-            ok = ensure_payment_live_credentials_if_live(),
+            %% 外部支付网关未启用时，整段网关校验不适用 —— 端点已在 handler
+            %% 层返回 ?ERR_FEATURE_DISABLED，不存在"零验签通道"可言。
+            %% 此前无条件校验，导致没有真实商户凭据的部署方**根本装不起来**：
+            %% sandbox 在 strict 环境 fail-fast，live 又缺凭据 fail-fast。
+            ok = ensure_payment_gateway_config(),
             ok;
         false ->
             ok
@@ -414,6 +415,24 @@ ensure_super_account_password_not_default() ->
 %%
 %% 本函数只在 validate_runtime_config/0 的 strict 分支被调用，
 %% 因此 dev/local/test 仍可显式使用 sandbox，不影响开发与测试。
+%% @doc 支付网关启用时才做网关相关的启动校验。
+%%
+%% 关闭（默认）时不校验，因为此时 wallet_handler / payment_callback_handler
+%% 会把网关端点全部拒掉 —— 没有可被伪造的回调入口，原校验保护的东西不存在。
+%% 启用时一字不改地沿用原有两条强约束。
+-spec ensure_payment_gateway_config() -> ok.
+ensure_payment_gateway_config() ->
+    case payment_gateway:enabled() of
+        false ->
+            ok;
+        true ->
+            %% 生产环境禁止支付 sandbox 直通（sandbox_verify/3 不做任何验签）
+            ok = ensure_payment_mode_safe(),
+            %% live 支付模式必须配置至少一个网关的完整凭据
+            ok = ensure_payment_live_credentials_if_live(),
+            ok
+    end.
+
 -spec ensure_payment_mode_safe() -> ok.
 ensure_payment_mode_safe() ->
     case application:get_env(imboy, payment_mode, live) of

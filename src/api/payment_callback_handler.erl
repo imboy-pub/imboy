@@ -23,15 +23,28 @@
 -export([init/2]).
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
     Action = maps:get(action, State0, notify),
     State = maps:remove(action, State0),
     Req1 =
-        case Action of
-            notify -> notify(Req0);
-            _ -> Req0
+        case payment_gateway:enabled() of
+            false ->
+                %% 网关未启用时本端点必须拒绝，不能只是"跳过校验后继续"。
+                %% 它免 JWT，是全站唯一由第三方直接触达的入账入口 ——
+                %% 放行等于开一条无人把守的凭空充值通道。
+                elib_response:error(
+                    Req0,
+                    imboy_error:error_msg(?ERR_FEATURE_DISABLED),
+                    ?ERR_FEATURE_DISABLED
+                );
+            true ->
+                case Action of
+                    notify -> notify(Req0);
+                    _ -> Req0
+                end
         end,
     {ok, Req1, State}.
 

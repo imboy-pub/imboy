@@ -155,7 +155,17 @@ echo ""
 echo "▶ 2b. 检查支付配置 / Checking payment configuration"
 
 PAYMENT_MODE="${IMBOY_PAYMENT_MODE:-sandbox}"
-if [[ "$PAYMENT_MODE" == "live" ]]; then
+GATEWAY_ENABLED="$(echo "${IMBOY_PAYMENT_GATEWAY_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+
+# 外部支付网关总开关关闭时，网关端点（充值/回调/提现）由 handler 直接返回
+# ERR_FEATURE_DISABLED，后端也跳过网关凭据的启动校验，因此这里不该拦人。
+# 关闭是默认值：没有真实商户凭据的部署方本来就装不起来（sandbox 在 strict
+# 环境 fail-fast，live 又缺凭据 fail-fast），那是死锁不是安全。
+if [[ "$GATEWAY_ENABLED" != "true" && "$GATEWAY_ENABLED" != "1" ]]; then
+    info "IMBOY_PAYMENT_GATEWAY_ENABLED=${GATEWAY_ENABLED}（外部支付网关未启用）"
+    info "  充值 / 网关回调 / 提现端点将返回「功能未启用」；站内钱包账务（余额/流水/红包/转账）不受影响"
+    info "  需要对外收款时：置为 true，并按下方要求配齐 IMBOY_PAYMENT_MODE=live + 至少一个网关的完整凭据"
+elif [[ "$PAYMENT_MODE" == "live" ]]; then
     ok "IMBOY_PAYMENT_MODE=live（真实扣款模式）"
     # 检查至少一个网关凭据完整
     WECHAT_OK=false
