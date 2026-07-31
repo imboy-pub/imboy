@@ -76,12 +76,13 @@ kubectl get ingress -n imboy
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `backend.replicaCount` | 2 | 后端副本数 |
-| `admin.replicaCount` | 1 | 前端副本数 |
+| `backend.replicaCount` | **1** | 后端副本数。**不要调大** —— 多副本未验证，见顶部警示 |
+| `admin.replicaCount` | 1 | 前端副本数（无状态静态站，可安全调大） |
 | `ingress.api.host` | api.example.com | 后端 API 域名 |
 | `ingress.admin.host` | admin.example.com | 管理后台域名 |
 | `externalDatabase.host` | postgres.example.com | 外部 PG 主机 |
-| `hpa.backend.maxReplicas` | 10 | 后端最大副本数 |
+| `hpa.backend.enabled` | **false** | 后端自动扩缩。**默认关闭** —— 开启等于自动触发未验证的多节点路径 |
+| `hpa.admin.enabled` | false（prod: true） | 前端自动扩缩，无状态可用 |
 
 ### 镜像版本升级
 
@@ -95,9 +96,17 @@ helm upgrade imboy ./deploy/helm \
 
 ### 临时扩容
 
+⚠️ **后端不支持扩容。** `imboy-backend` 是有状态的 Erlang 分布式节点，跨 Pod 的 syn
+进程注册与消息路由未经生产验证，扩到多副本会导致会话落在不同 Pod、消息投递不确定。
+
+无状态的前端可以扩：
+
 ```bash
-kubectl scale deployment imboy-release-imboy-backend --replicas=5 -n imboy
+kubectl scale deployment imboy-release-imboy-admin --replicas=3 -n imboy
 ```
+
+后端如需承载更高负载，当前只能纵向扩（调大 `backend.resources.limits`）。
+横向扩展是路线图项，验证通过前不要执行 `kubectl scale ...-backend`。
 
 ## 目录结构
 

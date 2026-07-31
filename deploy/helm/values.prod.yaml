@@ -13,7 +13,8 @@ global:
   timezone: Asia/Shanghai
 
 backend:
-  replicaCount: 3
+  # ⚠️ 固定为 1，理由同 values.yaml：后端多副本未经生产集群验证。
+  replicaCount: 1
   image:
     tag: "1.0.0-rc.1"    # CI/CD 自动替换此值
     pullPolicy: Always
@@ -54,9 +55,10 @@ externalDatabase:
 
 hpa:
   backend:
-    enabled: true
-    minReplicas: 3
-    maxReplicas: 20
+    # ⚠️ 默认关闭，理由同 values.yaml。原值 3→20 会自动放大未验证的多节点路径。
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 1
     targetCPUUtilizationPercentage: 65
   admin:
     enabled: true

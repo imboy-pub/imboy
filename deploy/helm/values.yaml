@@ -14,7 +14,10 @@ global:
 # ---------- 后端：Erlang/OTP + Cowboy ----------
 backend:
   enabled: true
-  replicaCount: 2
+  # ⚠️ 固定为 1。后端是有状态的 Erlang 分布式节点，跨 Pod 的 syn 进程注册与消息
+  # 路由从未在生产集群验证过，多副本下会话可能落在不同 Pod 而消息投递不确定。
+  # 集群水平扩展是路线图项，验证通过前不要调大（见 deploy/helm/README.md 顶部警示）。
+  replicaCount: 1
 
   image:
     repository: imboy/imboy-backend
@@ -174,9 +177,11 @@ secrets:
 # ---------- HPA 自动扩缩容 ----------
 hpa:
   backend:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 10
+    # ⚠️ 默认关闭：自动扩缩后端等于自动触发未验证的多节点路径。
+    # 后端集群化验证通过前不要开启（admin 是无状态静态前端，不受此限）。
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 1
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: 80
   admin:
