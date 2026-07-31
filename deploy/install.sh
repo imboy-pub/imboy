@@ -56,6 +56,26 @@ if [ ! -f "$COMPOSE_FILE" ]; then
       docker compose -f docker-compose.demo.yml up -d"
 fi
 
+# ── 0b) 交付来的 compose 是否是当前版本 ───────────────────────────────────────
+# 这个文件是唯一不受版本控制的部署组件（走单独交付渠道），因此仓库里没有任何
+# 东西能发现"渠道发了旧版本"。而它恰恰承载着三处**装不上或不安全**的改动：
+#   · IMBOY_PASSWORD_SALT 透传    —— 缺了后端 {missing_required_config} 起不来
+#   · IMBOY_PAYMENT_GATEWAY_ENABLED 透传 —— 缺了支付总开关失效，回落到旧死锁
+#   · 127.0.0.1 端口绑定默认值    —— 缺了 PG/后端/Grafana 直接暴露公网
+# 与其让买家在容器日志里刨根，不如在这里一次性列全。
+missing=""
+grep -q 'IMBOY_PASSWORD_SALT' "$COMPOSE_FILE" \
+  || missing="$missing\n    · IMBOY_PASSWORD_SALT 未透传（后端会以 missing_required_config 启动失败）"
+grep -q 'IMBOY_PAYMENT_GATEWAY_ENABLED' "$COMPOSE_FILE" \
+  || missing="$missing\n    · IMBOY_PAYMENT_GATEWAY_ENABLED 未透传（支付总开关失效，无商户凭据将无法启动）"
+grep -q '127\.0\.0\.1' "$COMPOSE_FILE" \
+  || missing="$missing\n    · 缺少 127.0.0.1 端口绑定默认值（PostgreSQL / 后端 / Grafana 会直接暴露到公网）"
+
+if [ -n "$missing" ]; then
+  # shellcheck disable=SC2059
+  die "$(printf "%s 版本过旧，缺少以下必需项：\n%b\n\n  请向交付渠道索取最新版本后重试。\n  索取方式：leeyisoft@qq.com" "$COMPOSE_FILE" "$missing")"
+fi
+
 # ── 1) 配置 .env（必须在 preflight 之前）──────────────────────────────────────
 # preflight.sh 在 .env 不存在时会直接 exit 1。此前本脚本把 preflight 放在
 # .env 生成之前，导致首次运行必然 die 在 preflight，下面整段生成逻辑是死代码。
