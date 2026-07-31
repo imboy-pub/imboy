@@ -583,6 +583,15 @@ upgrade A V → V':
 
 P4-T4 实施前置。所有 endpoint 在 `/v1/adm/plugins/*`，需 admin JWT。
 
+> **⚠️ A-28 门控（2026-07-31）**：实际实现的写端点（`/api/adm/plugin/*` 的
+> `install` / `enable` / `disable` / `upgrade` / `uninstall` / `reset` /
+> `force_uninstall`）受 `IMBOY_PLUGIN_LIFECYCLE_ENABLED` 环境变量门控，**默认关闭**，
+> 关闭时返回 `ERR_FEATURE_DISABLED`。理由：动态加载子系统 `@status FROZEN`，
+> `install` 的 Path 参数无白名单（审计 #43）、签名 100% 放行（#44），admin 可达即代码
+> 加载面。**内置功能开关（channel/moment/location/group_collab）是纯 manifest、只读
+> 可见，不受此开关影响。** 置 `=true` 才放行（需自行承担动态加载的安全风险）。详见
+> `imboy_plugin_manager:lifecycle_enabled/0` 与 `deploy/.env.example`。
+
 ### 10.1 endpoint 一览 / Endpoint summary
 
 | Method | Path | 语义 |

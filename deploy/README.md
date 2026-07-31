@@ -109,6 +109,13 @@ chmod 600 ./data/backend_priv/keys/login_rsa_priv.pem
 需要对外收款时置为 `true`，此时 `IMBOY_PAYMENT_MODE` 必须是 `live` 且至少一个网关
 凭据完整，否则节点 fail-fast。
 
+**动态插件生命周期写操作默认关闭**（`IMBOY_PLUGIN_LIFECYCLE_ENABLED=false`）：
+`/api/adm/plugin/*` 的 `install`/`enable`/`disable`/`upgrade`/`uninstall`/`reset`/
+`force_uninstall` 七个写端点会返回「功能未启用」。该子系统冻结（`@status FROZEN`），
+`install` 的路径参数无白名单（审计 #43）、签名校验 100% 放行（#44），admin 可达即等于
+代码加载面。**内置功能开关**（channel/moment/location/group_collab）是纯 manifest、
+只读可见，不受此开关影响。需要时置为 `true`（需自行承担动态加载的安全风险）。
+
 ### 2. 前置检查
 
 ```bash

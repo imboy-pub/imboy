@@ -96,7 +96,7 @@ AdmRoutes = [
 | `adm_feedback_handler` | 用户反馈处理与回复 |
 | `adm_message_handler` | 消息管理接口 |
 | `adm_moment_handler` | 动态/瞬间内容管理 |
-| `adm_plugin_handler` | 插件市场管理接口 |
+| `adm_plugin_handler` | 插件管理接口（写操作受 `IMBOY_PLUGIN_LIFECYCLE_ENABLED` 门控，默认关，A-28） |
 | `adm_report_handler` | 举报与违规管理 |
 
 ### 群组管理

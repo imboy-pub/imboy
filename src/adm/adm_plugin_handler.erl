@@ -8,7 +8,7 @@
 -export([init/2]).
 
 -ifdef(TEST).
--export([safe_plugin_name/1]).
+-export([safe_plugin_name/1, is_lifecycle_mutation/1]).
 -endif.
 
 -include_lib("eunit/include/eunit.hrl").
@@ -27,22 +27,46 @@ init(Req0, State0) ->
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
     Req1 =
-        case Action of
-            list -> do_list(Method, Req0, State);
-            detail -> do_detail(Method, Req0, State);
-            state_query -> do_state_query(Method, Req0, State);
-            health -> do_health(Method, Req0, State);
-            install -> do_install(Method, Req0, State);
-            enable -> do_enable(Method, Req0, State);
-            disable -> do_disable(Method, Req0, State);
-            upgrade -> do_upgrade(Method, Req0, State);
-            uninstall -> do_uninstall(Method, Req0, State);
-            reset -> do_reset(Method, Req0, State);
-            force_uninstall -> do_force_uninstall(Method, Req0, State);
-            logs -> do_logs(Method, Req0, State);
-            _ -> Req0
+        %% A-28：动态插件生命周期写操作默认禁用（IMBOY_PLUGIN_LIFECYCLE_ENABLED）。
+        %% 该子系统 @status FROZEN，install 的 Path 无白名单（审计 #43）、签名 100%
+        %% 放行（#44），admin 可达即代码加载面。内置开关是纯 manifest，不受影响。
+        case is_lifecycle_mutation(Action) andalso not imboy_plugin_manager:lifecycle_enabled() of
+            true ->
+                elib_response:error(
+                    Req0, imboy_error:error_msg(?ERR_FEATURE_DISABLED), ?ERR_FEATURE_DISABLED
+                );
+            false ->
+                case Action of
+                    list -> do_list(Method, Req0, State);
+                    detail -> do_detail(Method, Req0, State);
+                    state_query -> do_state_query(Method, Req0, State);
+                    health -> do_health(Method, Req0, State);
+                    install -> do_install(Method, Req0, State);
+                    enable -> do_enable(Method, Req0, State);
+                    disable -> do_disable(Method, Req0, State);
+                    upgrade -> do_upgrade(Method, Req0, State);
+                    uninstall -> do_uninstall(Method, Req0, State);
+                    reset -> do_reset(Method, Req0, State);
+                    force_uninstall -> do_force_uninstall(Method, Req0, State);
+                    logs -> do_logs(Method, Req0, State);
+                    _ -> Req0
+                end
         end,
     {ok, Req1, State}.
+
+%% @doc 是否为动态插件生命周期写操作（A-28 门控对象）。
+%% 7 个写 action 受 IMBOY_PLUGIN_LIFECYCLE_ENABLED 门控；5 个只读端点不受影响。
+-spec is_lifecycle_mutation(atom()) -> boolean().
+is_lifecycle_mutation(Action) ->
+    lists:member(Action, [
+        install,
+        enable,
+        disable,
+        upgrade,
+        uninstall,
+        reset,
+        force_uninstall
+    ]).
 
 %% ===================================================================
 %% GET endpoints

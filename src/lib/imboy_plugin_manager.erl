@@ -29,8 +29,22 @@
     uninstall/2,
     reset/1,
     force_uninstall/2,
-    find_lifecycle/1
+    find_lifecycle/1,
+    lifecycle_enabled/0
 ]).
+
+%% @doc 动态插件生命周期写操作总开关（默认关闭，A-28）。
+%%
+%% 关闭时 adm_plugin_handler 的 7 个写端点（install/enable/disable/upgrade/
+%% uninstall/reset/force_uninstall）返回 ?ERR_FEATURE_DISABLED。为什么默认关：
+%% 该子系统 @status FROZEN，且 install 的 Path 参数无白名单（审计 #43）、签名
+%% 100% 放行（#44），admin 可达即等于代码加载面。内置功能开关（channel/moment/
+%% location/group_collab）是纯 manifest、只读可见，不受此开关影响。
+%%
+%% 这是收紧冻结面的暴露，**不是**重启动态平台方向（冻结≠移除）。
+-spec lifecycle_enabled() -> boolean().
+lifecycle_enabled() ->
+    application:get_env(imboy, plugin_lifecycle_enabled, false) =:= true.
 
 %% @doc 列出所有已注册插件及其状态。
 -spec list_plugins() -> {ok, [map()]}.

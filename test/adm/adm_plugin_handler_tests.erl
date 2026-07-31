@@ -31,3 +31,23 @@ too_long_test() ->
 %% 空 → {error, _}
 empty_test() ->
     ?assertMatch({error, _}, adm_plugin_handler:safe_plugin_name(<<>>)).
+
+%% ===== A-28: is_lifecycle_mutation/1 门控分类 =====
+
+%% 7 个写 action 受 IMBOY_PLUGIN_LIFECYCLE_ENABLED 门控
+lifecycle_mutation_writes_test() ->
+    Writes = [install, enable, disable, upgrade, uninstall, reset, force_uninstall],
+    [
+        ?assert(adm_plugin_handler:is_lifecycle_mutation(A))
+     || A <- Writes
+    ].
+
+%% 5 个只读 action + 未知/缺省（false）不被门控
+lifecycle_mutation_reads_test() ->
+    Reads = [list, detail, state_query, health, logs],
+    [
+        ?assertNot(adm_plugin_handler:is_lifecycle_mutation(A))
+     || A <- Reads
+    ],
+    ?assertNot(adm_plugin_handler:is_lifecycle_mutation(unknown_action)),
+    ?assertNot(adm_plugin_handler:is_lifecycle_mutation(false)).

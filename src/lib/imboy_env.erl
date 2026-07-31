@@ -140,6 +140,9 @@ override_from_env() ->
     %% 支付网关凭据（微信/支付宝/Stripe）+ 运行模式
     ok = override_payment(),
 
+    %% A-28：动态插件生命周期写操作总开关（默认关）
+    ok = override_plugin_lifecycle_enabled(),
+
     %% 版次标记（community|professional|enterprise）：仅标识 + 启动日志
     ok = override_edition(),
 
@@ -398,6 +401,27 @@ override_payment_gateway_enabled() ->
                     _ -> false
                 end,
             application:set_env(imboy, payment_gateway_enabled, Enabled),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖动态插件生命周期写操作总开关（boolean，默认 false，A-28）。
+%%
+%% 镜像 override_payment_gateway_enabled/0：只有精确的 "true"/"1" 才开启，其余一律
+%% 关闭。关闭时 adm_plugin_handler 的 7 个写端点返回 ?ERR_FEATURE_DISABLED（审计
+%% #43/#44：install 的 Path 无白名单 + 签名 100% 放行，admin 可达即代码加载面）。
+-spec override_plugin_lifecycle_enabled() -> ok.
+override_plugin_lifecycle_enabled() ->
+    case os:getenv("IMBOY_PLUGIN_LIFECYCLE_ENABLED") of
+        Value when is_list(Value), length(Value) > 0 ->
+            Enabled =
+                case string:trim(string:lowercase(Value)) of
+                    "true" -> true;
+                    "1" -> true;
+                    _ -> false
+                end,
+            application:set_env(imboy, plugin_lifecycle_enabled, Enabled),
             ok;
         _ ->
             ok

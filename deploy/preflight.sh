@@ -150,6 +150,16 @@ else
     ok "SENTRY_DSN 已设置"
 fi
 
+# ── 2c. 插件生命周期开关 / Plugin lifecycle switch (A-28) ──────────────────────
+PLUGIN_LIFECYCLE="$(echo "${IMBOY_PLUGIN_LIFECYCLE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+if [[ "$PLUGIN_LIFECYCLE" != "true" && "$PLUGIN_LIFECYCLE" != "1" ]]; then
+    info "IMBOY_PLUGIN_LIFECYCLE_ENABLED=${PLUGIN_LIFECYCLE}（动态插件写操作未启用，默认期望态）"
+    info "  /api/adm/plugin/* 的 install/enable/disable/upgrade/uninstall/reset/force_uninstall 返回「功能未启用」"
+    info "  内置功能开关（channel/moment/location/group_collab）是纯 manifest，不受影响"
+else
+    info "IMBOY_PLUGIN_LIFECYCLE_ENABLED=true（动态插件写操作已放行，需自行承担安全风险）"
+fi
+
 # ── 2b. 支付模式与凭据检查 / Payment mode & credentials ───────────────────────
 echo ""
 echo "▶ 2b. 检查支付配置 / Checking payment configuration"
