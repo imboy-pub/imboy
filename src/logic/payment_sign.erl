@@ -106,9 +106,18 @@ parse_form(_) ->
 %%% 配置读取
 %%%===================================================================
 
+%% @doc 支付模式。
+%%
+%% 默认值必须是 live：sandbox_verify/3 是无条件直通（不做任何密码学验签），
+%% 而 /api/v1/payment/callback/:gateway 是免 JWT 的第三方入口。二者叠加时，
+%% 任何人 POST 一条自造回调即可给自己的充值单入账。把默认值放在 live 一侧，
+%% 使"漏配 IMBOY_PAYMENT_MODE"的后果是拒绝入账（可发现），而不是放行入账
+%% （不可发现）。开发/测试需要直通时必须显式设置 sandbox。
+%%
+%% 配套：imboy_app:ensure_payment_mode_safe/0 在 strict env 下禁止 sandbox。
 -spec payment_mode() -> sandbox | live | term().
 payment_mode() ->
-    application:get_env(imboy, payment_mode, sandbox).
+    application:get_env(imboy, payment_mode, live).
 
 -spec cfg(atom()) -> binary().
 cfg(Key) ->

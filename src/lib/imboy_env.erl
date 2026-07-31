@@ -314,15 +314,25 @@ override_payment() ->
     ok.
 
 %% @doc 覆盖支付网关运行模式（atom：sandbox | live）
-%% 非法值回退 sandbox（安全默认，避免误走真实扣款）。
+%%
+%% 只有精确的 "sandbox"（忽略大小写与首尾空白）才进 sandbox，其余一律 live。
+%%
+%% 此前的规则是反的：非法值回退 sandbox，注释理由写"安全默认，避免误走真实
+%% 扣款"。但这句话只覆盖了一半风险 —— payment_sign:sandbox_verify/3 是
+%% **完全跳过验签**，而 /api/v1/payment/callback/:gateway 免 JWT。对回调验签
+%% 这一侧，sandbox 才是危险方向：`IMBOY_PAYMENT_MODE=production`、`live `
+%% （尾空格）、`LIVE-` 之类的误配都会静默落到"任何人都能伪造回调入账"。
+%%
+%% 反过来，误配落到 live 的后果是拿不到凭据 → {error, no_credential} → 回调
+%% 被拒绝：吵闹、可见、可修，且不会造成资金损失。两害相权取可见的那个。
 -spec override_payment_mode() -> ok.
 override_payment_mode() ->
     case os:getenv("IMBOY_PAYMENT_MODE") of
         Value when is_list(Value), length(Value) > 0 ->
             Mode =
-                case string:lowercase(Value) of
-                    "live" -> live;
-                    _ -> sandbox
+                case string:trim(string:lowercase(Value)) of
+                    "sandbox" -> sandbox;
+                    _ -> live
                 end,
             application:set_env(imboy, payment_mode, Mode),
             ok;

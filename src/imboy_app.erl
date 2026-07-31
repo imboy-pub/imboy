@@ -338,6 +338,8 @@ validate_runtime_config() ->
             %% 验证数据库密码不是默认值（pg_conf + super_account 同步检查）
             ok = ensure_pg_password_not_default(),
             ok = ensure_super_account_password_not_default(),
+            %% 生产环境禁止支付 sandbox 直通（sandbox_verify/3 不做任何验签）
+            ok = ensure_payment_mode_safe(),
             %% live 支付模式必须配置至少一个网关的完整凭据
             ok = ensure_payment_live_credentials_if_live(),
             ok;
@@ -399,6 +401,29 @@ ensure_super_account_password_not_default() ->
                 false ->
                     ok
             end;
+        _ ->
+            ok
+    end.
+
+%% @doc 生产环境（is_strict_env）禁止 payment_mode = sandbox。
+%%
+%% payment_sign:sandbox_verify/3 无条件返回 {ok, #{}}，即完全跳过验签；而
+%% /api/v1/payment/callback/:gateway 免 JWT。生产上一旦是 sandbox，任何人
+%% POST 一条自造回调即可凭空充值。此前该值默认就是 sandbox，且没有任何
+%% 启动期检查——"忘了改配置"与"被人套现"之间没有任何护栏。
+%%
+%% 本函数只在 validate_runtime_config/0 的 strict 分支被调用，
+%% 因此 dev/local/test 仍可显式使用 sandbox，不影响开发与测试。
+-spec ensure_payment_mode_safe() -> ok.
+ensure_payment_mode_safe() ->
+    case application:get_env(imboy, payment_mode, live) of
+        sandbox ->
+            erlang:error(
+                {insecure_payment_mode,
+                    "payment_mode=sandbox is not allowed in a strict environment: "
+                    "callback signature verification is bypassed entirely, which lets "
+                    "anyone forge a payment callback. Set IMBOY_PAYMENT_MODE=live."}
+            );
         _ ->
             ok
     end.
