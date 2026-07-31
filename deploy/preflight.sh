@@ -79,6 +79,10 @@ check_var "POSTGRE_AES_KEY"
 check_var "ADM_COOKIE_SECRET"
 check_var "IMBOY_SOLIDIFIED_KEY"
 check_var "IMBOY_SOLIDIFIED_KEY_IV"
+# password_salt 是 imboy_app:validate_runtime_config/0 的 ensure_required_secret 强制项，
+# 但此前 .env.example / preflight / compose 三处都没有它 —— 后端会以
+# {missing_required_config, password_salt} 启动失败，且报错只在容器日志里。
+check_var "IMBOY_PASSWORD_SALT"
 check_var "GRAFANA_ADMIN_PASSWORD"
 # LiveKit：compose 中该服务无条件启动。此前用 ${LIVEKIT_API_KEY:-devkey} 兜底，
 # 忘配即以公开已知密钥上线 —— 任何人可签发 token 加入或录制任意通话。
@@ -86,15 +90,40 @@ check_var "LIVEKIT_API_KEY"
 check_var "LIVEKIT_API_SECRET"
 
 # RSA 密钥文件（检查路径已设置且文件存在）
+#
+# ⚠️ .env 里配的是**容器内**路径（/opt/imboy/priv_runtime/...），而本脚本跑在
+# 宿主机上。直接 `[[ -f "$path" ]]` 检查容器路径在宿主机必然为假 —— 这会让
+# preflight 无条件报两个 ERROR，install.sh 因此永远过不去。
+# compose 的映射是 ${DATA_DIR}/backend_priv → /opt/imboy/priv_runtime，
+# 按此把容器路径翻译回宿主机路径再检查。
+container_to_host_path() {
+    local p="$1"
+    case "$p" in
+        /opt/imboy/priv_runtime/*)
+            echo "${SCRIPT_DIR}/${DATA_DIR:-./data}/backend_priv/${p#/opt/imboy/priv_runtime/}"
+            ;;
+        /opt/imboy/log/*)
+            echo "${SCRIPT_DIR}/${DATA_DIR:-./data}/backend_log/${p#/opt/imboy/log/}"
+            ;;
+        *)
+            echo "$p"
+            ;;
+    esac
+}
+
 check_rsa_key() {
     local var_name="$1"
     local path="${!var_name:-}"
+    local host_path
     if [[ -z "$path" ]]; then
         err "$var_name 未设置（生产 fail-fast）"
-    elif [[ ! -f "$path" ]]; then
-        err "$var_name=$path 文件不存在（生成方式见 .env.example）"
+        return
+    fi
+    host_path="$(container_to_host_path "$path")"
+    if [[ ! -f "$host_path" ]]; then
+        err "$var_name=$path 文件不存在（宿主机路径 ${host_path}；由 install.sh 自动生成，或见 .env.example 的生成方式）"
     else
-        ok "$var_name 文件存在"
+        ok "$var_name 文件存在（宿主机 ${host_path}）"
     fi
 }
 check_rsa_key "IMBOY_LOGIN_RSA_PUB_KEY_FILE"
@@ -220,7 +249,7 @@ check_port() {
             ok "端口 $port 可用"
         fi
     else
-        info "无法检查端口 $port（ss/lsof 不可用）"
+        info "无法检查端口 ${port}（ss/lsof 不可用）"
     fi
 }
 
@@ -259,7 +288,7 @@ if [[ "${1:-}" == "--docker" ]]; then
         err "docker 命令不存在，请安装 Docker 24+"
     else
         DOCKER_VER=$(docker version --format '{{.Server.Version}}' 2>/dev/null || echo "unknown")
-        ok "Docker 已安装（版本：$DOCKER_VER）"
+        ok "Docker 已安装（版本：${DOCKER_VER}）"
     fi
 
     if ! docker compose version &>/dev/null 2>&1; then
