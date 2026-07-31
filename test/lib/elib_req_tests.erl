@@ -11,62 +11,12 @@
 %%%===================================================================
 
 %% ===================================================================
-%% get_client_ip/1 测试
+%% get_client_ip/1 测试已迁出到 test/lib/elib_req_client_ip_tests.erl
+%%
+%% 原先这里的 5 个用例断言的是"无条件采信 x-forwarded-for 首段"，
+%% 那正是被修掉的漏洞本身（限流桶 key 可被请求头任意伪造）。
+%% 新文件按受信代理白名单语义重写，用例数 5 -> 6，覆盖更严。
 %% ===================================================================
-
-get_client_ip_with_x_forwarded_for_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        meck:new(cowboy_req, [unstick, passthrough]),
-        try
-            Req0 = #{},
-            meck:expect(cowboy_req, header, fun(<<"x-forwarded-for">>, _Req0, undefined) -> <<"1.2.3.4,5.6.7.8">> end),
-            ?assertEqual(<<"1.2.3.4">>, elib_req:get_client_ip(Req0)),
-            ?assert(meck:validate(cowboy_req))
-        after
-            meck:unload(cowboy_req)
-        end
-    end).
-
-get_client_ip_without_x_forwarded_for_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        meck:new(cowboy_req, [unstick, passthrough]),
-        try
-            Req0 = #{},
-            meck:expect(cowboy_req, header, fun(<<"x-forwarded-for">>, _Req0, undefined) -> undefined end),
-            meck:expect(cowboy_req, peer, fun(_Req0) -> {{127, 0, 0, 1}, 1234} end),
-            ?assertEqual(<<"127.0.0.1">>, elib_req:get_client_ip(Req0)),
-            ?assert(meck:validate(cowboy_req))
-        after
-            meck:unload(cowboy_req)
-        end
-    end).
-
-get_client_ip_with_spaces_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        meck:new(cowboy_req, [unstick, passthrough]),
-        try
-            Req0 = #{},
-            meck:expect(cowboy_req, header, fun(<<"x-forwarded-for">>, _Req0, undefined) -> <<"  192.168.1.1  ,  10.0.0.1  ">> end),
-            ?assertEqual(<<"192.168.1.1">>, elib_req:get_client_ip(Req0)),
-            ?assert(meck:validate(cowboy_req))
-        after
-            meck:unload(cowboy_req)
-        end
-    end).
-
-get_client_ip_ipv6_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        meck:new(cowboy_req, [unstick, passthrough]),
-        try
-            Req0 = #{},
-            meck:expect(cowboy_req, header, fun(<<"x-forwarded-for">>, _Req0, undefined) -> undefined end),
-            meck:expect(cowboy_req, peer, fun(_Req0) -> {{0,0,0,0,0,0,0,1}, 1234} end),
-            ?assertEqual(<<"::1">>, elib_req:get_client_ip(Req0)),
-            ?assert(meck:validate(cowboy_req))
-        after
-            meck:unload(cowboy_req)
-        end
-    end).
 
 %% ===================================================================
 %% peer_ip/1 测试
@@ -107,7 +57,9 @@ cookie_existing_test_() ->
         meck:new(cowboy_req, [unstick, passthrough]),
         try
             Req0 = #{},
-            meck:expect(cowboy_req, parse_cookies, fun(_Req0) -> [{<<"session_id">>, <<"abc123">>}, {<<"user">>, <<"john">>}] end),
+            meck:expect(cowboy_req, parse_cookies, fun(_Req0) ->
+                [{<<"session_id">>, <<"abc123">>}, {<<"user">>, <<"john">>}]
+            end),
             ?assertEqual(<<"abc123">>, elib_req:cookie(<<"session_id">>, Req0)),
             ?assert(meck:validate(cowboy_req))
         after
@@ -120,7 +72,9 @@ cookie_nonexistent_test_() ->
         meck:new(cowboy_req, [unstick, passthrough]),
         try
             Req0 = #{},
-            meck:expect(cowboy_req, parse_cookies, fun(_Req0) -> [{<<"session_id">>, <<"abc123">>}] end),
+            meck:expect(cowboy_req, parse_cookies, fun(_Req0) ->
+                [{<<"session_id">>, <<"abc123">>}]
+            end),
             ?assertEqual(false, elib_req:cookie(<<"nonexistent">>, Req0)),
             ?assert(meck:validate(cowboy_req))
         after
@@ -150,8 +104,12 @@ body_json_test_() ->
         meck:new(cowboy_req, [unstick, passthrough]),
         try
             Req0 = req0,
-            meck:expect(cowboy_req, read_body, fun(req0) -> {ok, <<"{\"name\":\"Alice\",\"age\":25}">>, req1} end),
-            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) -> <<"application/json">> end),
+            meck:expect(cowboy_req, read_body, fun(req0) ->
+                {ok, <<"{\"name\":\"Alice\",\"age\":25}">>, req1}
+            end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) ->
+                <<"application/json">>
+            end),
             {ok, Body, Req1} = elib_req:body(Req0, []),
             ?assertEqual(req1, Req1),
             ?assertEqual(<<"Alice">>, maps:get(<<"name">>, Body)),
@@ -168,7 +126,9 @@ body_urlencoded_test_() ->
         try
             Req0 = req0,
             meck:expect(cowboy_req, read_body, fun(req0) -> {ok, <<"a=1&b=2">>, req1} end),
-            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) -> <<"application/x-www-form-urlencoded">> end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) ->
+                <<"application/x-www-form-urlencoded">>
+            end),
             {ok, Body, Req1} = elib_req:body(Req0, []),
             ?assertEqual(req1, Req1),
             ?assertEqual(<<"1">>, maps:get(<<"a">>, Body)),
@@ -188,7 +148,9 @@ body_chunked_more_test_() ->
                 (req0) -> {more, <<"x=1&">>, req1};
                 (req1) -> {ok, <<"y=2">>, req2}
             end),
-            meck:expect(cowboy_req, header, fun(<<"content-type">>, req2, <<>>) -> <<"application/x-www-form-urlencoded">> end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req2, <<>>) ->
+                <<"application/x-www-form-urlencoded">>
+            end),
             {ok, Body, Req2} = elib_req:body(Req0, []),
             ?assertEqual(req2, Req2),
             ?assertEqual(<<"1">>, maps:get(<<"x">>, Body)),
@@ -220,7 +182,9 @@ body_invalid_json_falls_back_to_key_value_test_() ->
         try
             Req0 = req0,
             meck:expect(cowboy_req, read_body, fun(req0) -> {ok, <<"a=1&b=2">>, req1} end),
-            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) -> <<"application/json">> end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, req1, <<>>) ->
+                <<"application/json">>
+            end),
             {ok, Body, Req1} = elib_req:body(Req0, []),
             ?assertEqual(req1, Req1),
             ?assertEqual(<<"1">>, maps:get(<<"a">>, Body)),
@@ -238,7 +202,9 @@ post_params_urlencoded_test_() ->
             Req0 = #{},
             Body = <<"username=john&password=secret&age=30">>,
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
-            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) -> <<"application/x-www-form-urlencoded; charset=utf-8">> end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
+                <<"application/x-www-form-urlencoded; charset=utf-8">>
+            end),
             Params = elib_req:post_params(Req0),
             ?assertEqual(<<"john">>, maps:get(<<"username">>, Params)),
             ?assertEqual(<<"secret">>, maps:get(<<"password">>, Params)),
@@ -256,7 +222,9 @@ post_params_json_test_() ->
             Req0 = #{},
             Body = <<"{\"name\":\"Alice\",\"age\":25,\"active\":true}">>,
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
-            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) -> <<"application/json">> end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
+                <<"application/json">>
+            end),
             Params = elib_req:post_params(Req0),
             ?assertEqual(<<"Alice">>, maps:get(<<"name">>, Params)),
             ?assertEqual(25, maps:get(<<"age">>, Params)),
@@ -288,7 +256,9 @@ post_params_multipart_test_() ->
             Req0 = #{},
             Body = <<"multipart data">>,
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
-            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) -> <<"multipart/form-data; boundary=----WebKitFormBoundary">> end),
+            meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
+                <<"multipart/form-data; boundary=----WebKitFormBoundary">>
+            end),
             Params = elib_req:post_params(Req0),
             ?assertEqual(#{}, Params),
             ?assert(meck:validate(cowboy_req))
@@ -398,7 +368,7 @@ parse_json_body_array_test_() ->
     ?TEST_SIMPLE(fun() ->
         Body = <<"[1,2,3]">>,
         {ok, Result} = elib_req:parse_json_body(Body),
-        ?assertEqual([1,2,3], Result)
+        ?assertEqual([1, 2, 3], Result)
     end).
 
 parse_json_body_string_test_() ->
@@ -609,7 +579,8 @@ parse_body_application_json_test_() ->
             Body = <<"{\"name\":\"Test\",\"value\":123}">>,
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
             meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
-                <<"application/json">> end),
+                <<"application/json">>
+            end),
             Params = elib_req:post_params(Req0),
             ?assertEqual(<<"Test">>, maps:get(<<"name">>, Params)),
             ?assertEqual(123, maps:get(<<"value">>, Params)),
@@ -627,7 +598,8 @@ parse_body_no_content_type_test_() ->
             Body = <<"{\"test\":\"data\"}">>,
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
             meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
-                <<>> end),
+                <<>>
+            end),
             Params = elib_req:post_params(Req0),
             ?assertEqual(<<"data">>, maps:get(<<"test">>, Params)),
             ?assert(meck:validate(cowboy_req))
@@ -644,7 +616,8 @@ parse_body_text_plain_test_() ->
             Body = <<"text/plain content">>,
             meck:expect(cowboy_req, read_body, fun(_Req0) -> {ok, Body, Req0} end),
             meck:expect(cowboy_req, header, fun(<<"content-type">>, _Req0, <<>>) ->
-                <<"text/plain">> end),
+                <<"text/plain">>
+            end),
             Params = elib_req:post_params(Req0),
             ?assert(is_map(Params))
         after
@@ -732,19 +705,4 @@ add_value_accumulates_test_() ->
 
         Acc4 = elib_req:add_value(<<"a">>, <<"v3">>, Acc3),
         ?assertEqual([<<"v1">>, <<"v2">>, <<"v3">>], maps:get(<<"a">>, Acc4))
-    end).
-
-get_client_ip_multiple_proxies_test_() ->
-    ?TEST_WITH_APP(fun() ->
-        meck:new(cowboy_req, [unstick, passthrough]),
-        try
-            Req0 = #{},
-            meck:expect(cowboy_req, header, fun(<<"x-forwarded-for">>, _Req0, undefined) ->
-                <<"1.1.1.1, 2.2.2.2, 3.3.3.3">>
-            end),
-            ?assertEqual(<<"1.1.1.1">>, elib_req:get_client_ip(Req0)),
-            ?assert(meck:validate(cowboy_req))
-        after
-            meck:unload(cowboy_req)
-        end
     end).

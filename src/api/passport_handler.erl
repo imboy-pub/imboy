@@ -16,23 +16,18 @@
 -include("imboy_const.hrl").
 -include("error_code.hrl").
 
-%% @doc 获取可信任的真实客户端 IP
-%% 只有来自受信任代理的请求才信任 x-forwarded-for；否则使用直连 IP
+%% @doc 获取可信任的真实客户端 IP。
+%%
+%% 实现已提升到 elib_req:get_client_ip/1 作为全站唯一真源：此前本模块与
+%% elib_req 各有一份，本模块这份是对的（带受信代理白名单），而
+%% throttle_middleware 用的那份无条件采信 XFF —— 于是登录接口自己的
+%% 锁定计数按真实 IP 记，限流中间件却按可伪造的 IP 记，攻击者只要每次
+%% 换一个 XFF 就能绕过限流。两份实现分叉本身就是这个洞的成因。
+%%
+%% 保留本函数是为了不改动 4 个调用点的写法；语义完全不变。
 -spec get_real_ip(cowboy_req:req()) -> binary().
 get_real_ip(Req) ->
-    {PeerIp, _Port} = cowboy_req:peer(Req),
-    PeerIpBin = list_to_binary(inet:ntoa(PeerIp)),
-    TrustedProxies = config_ds:env(trusted_proxy_ips, [<<"127.0.0.1">>, <<"::1">>]),
-    case lists:member(PeerIpBin, TrustedProxies) of
-        true ->
-            % 来自受信任代理，可以信任 x-forwarded-for 头
-            ForwardedFor = cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin),
-            % 取第一个 IP（最接近真实客户端）
-            hd(binary:split(ForwardedFor, [<<",">>, <<" ">>], [trim_all]));
-        false ->
-            % 不信任代理，直接使用连接 IP
-            PeerIpBin
-    end.
+    elib_req:get_client_ip(Req).
 
 %% ===================================================================
 %% API

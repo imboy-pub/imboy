@@ -105,6 +105,9 @@ override_from_env() ->
     %% 百度千帆 API 配置覆盖
     ok = override_qianfan(),
 
+    %% 受信反向代理白名单（决定是否采信 x-forwarded-for）
+    ok = override_trusted_proxy_ips(),
+
     %% 新增敏感配置环境变量覆盖
     ok = override_binary_key("IMBOY_API_AUTH_SWITCH", api_auth_switch),
     ok = override_binary_key("IMBOY_PASSWORD_SALT", password_salt),
@@ -312,6 +315,43 @@ override_payment() ->
     %% 网关运行模式：sandbox（默认）| live
     ok = override_payment_mode(),
     ok.
+
+%% @doc 覆盖受信反向代理白名单（逗号分隔，如 "127.0.0.1,10.0.0.5"）。
+%%
+%% elib_req:get_client_ip/1 只有在**直连对端**命中本名单时才采信
+%% x-forwarded-for；该 IP 是 throttle_middleware 两个限流桶的 key。
+%%
+%% 默认 [127.0.0.1, ::1] 与 deploy/nginx 的 proxy_pass http://127.0.0.1:9800
+%% 一致，标准单机 compose 部署无需配置。
+%%
+%% 什么时候必须配：后端前面还有云 LB / 额外一层 nginx / k8s ingress ——
+%% 此时直连对端不是 127.0.0.1，XFF 会被全部忽略，所有客户端在限流器眼里
+%% 变成同一个 IP（那一跳的出口 IP），共用一个桶 → 正常用户互相挤掉、
+%% 出现莫名其妙的登录频率限制。这是 fail-closed 方向的故障，安全但影响可用性，
+%% 需要把各跳出口 IP 显式列进来。
+%%
+%% 空值/全空白条目会被丢弃；若最终为空列表则保留原配置不覆盖，
+%% 避免一个手误的空环境变量把白名单清空（那会让 XFF 永久失效）。
+-spec override_trusted_proxy_ips() -> ok.
+override_trusted_proxy_ips() ->
+    case os:getenv("IMBOY_TRUSTED_PROXY_IPS") of
+        Value when is_list(Value), length(Value) > 0 ->
+            Ips = [
+                list_to_binary(Trimmed)
+             || Part <- string:split(Value, ",", all),
+                Trimmed <- [string:trim(Part)],
+                Trimmed =/= ""
+            ],
+            case Ips of
+                [] ->
+                    ok;
+                _ ->
+                    application:set_env(imboy, trusted_proxy_ips, Ips),
+                    ok
+            end;
+        _ ->
+            ok
+    end.
 
 %% @doc 覆盖支付网关运行模式（atom：sandbox | live）
 %%

@@ -27,11 +27,13 @@ get(Url) ->
 get(Url, Headers) ->
     req(get, Url, #{}, Headers).
 
--spec post(binary() | list(), map() | list()) -> {ok, map()} | {error, any()} | {error, integer(), map()}.
+-spec post(binary() | list(), map() | list()) ->
+    {ok, map()} | {error, any()} | {error, integer(), map()}.
 post(Url, Params) ->
     req(post, Url, Params, ?ReqHeaders).
 
--spec post(binary() | list(), map() | list(), list()) -> {ok, map()} | {error, any()} | {error, integer(), map()}.
+-spec post(binary() | list(), map() | list(), list()) ->
+    {ok, map()} | {error, any()} | {error, integer(), map()}.
 post(Url, Params, Headers) ->
     req(post, Url, Params, Headers).
 
@@ -68,8 +70,12 @@ read_full_body(Req0, Acc0) ->
 
 -spec parse_body_by_content_type(binary(), binary()) -> {ok, map()} | {error, atom()}.
 parse_body_by_content_type(Body, ContentType) ->
-    case {has_content_type(ContentType, <<"application/x-www-form-urlencoded">>),
-          has_content_type(ContentType, <<"multipart/form-data">>)} of
+    case
+        {
+            has_content_type(ContentType, <<"application/x-www-form-urlencoded">>),
+            has_content_type(ContentType, <<"multipart/form-data">>)
+        }
+    of
         {true, _} ->
             parse_urlencoded_body(Body);
         {false, true} ->
@@ -167,25 +173,51 @@ peer_ip(Req) ->
     {IP, _Port} = cowboy_req:peer(Req),
     list_to_binary(inet:ntoa(IP)).
 
+%% @doc 获取可信任的真实客户端 IP（全站唯一实现）。
+%%
+%% 只有当**直连对端**本身在受信代理白名单内时，才采信 x-forwarded-for；
+%% 否则一律用直连 IP。
+%%
+%% 此前的实现无条件采信 XFF 首段，而本函数是 throttle_middleware 的
+%% passport_per_ip(10/min) 与 api_per_ip(60/min) 两个限流桶的 key 来源：
+%% 每个请求带一个随机 `X-Forwarded-For: 1.2.3.x` 就能让桶 key 每次都新，
+%% 全站 IP 维度限流 100% 失效 —— 登录爆破、验证码轰炸、注册刷量的防护
+%% 一起归零。这个洞同时是验证码爆破链的放大器。
+%%
+%% 本实现原为 passport_handler:get_real_ip/1（写法是对的，只是没被复用），
+%% 现提升到 lib 层作为唯一真源，passport_handler 改为委托调用。
+%%
+%% 默认白名单 [127.0.0.1, ::1] 与 deploy/nginx 的 proxy_pass
+%% http://127.0.0.1:9800 一致；多层代理/云 LB 需在 trusted_proxy_ips
+%% 中显式列出各跳的出口 IP。
 -spec get_client_ip(cowboy_req:req()) -> binary().
 get_client_ip(Req) ->
-    case cowboy_req:header(<<"x-forwarded-for">>, Req, undefined) of
-        undefined ->
-            case cowboy_req:peer(Req) of
-                {Ip, _Port} when is_tuple(Ip) ->
-                    ec_cnv:to_binary(inet:ntoa(Ip))
-            end;
-        XForwardedFor when is_binary(XForwardedFor) ->
-            case binary:split(XForwardedFor, <<",">>) of
-                [FirstIp | _] ->
-                    ec_cnv:to_binary(string:trim(FirstIp));
-                _ ->
-                    XForwardedFor
-            end
+    {PeerIp, _Port} = cowboy_req:peer(Req),
+    PeerIpBin = ec_cnv:to_binary(inet:ntoa(PeerIp)),
+    TrustedProxies = config_ds:env(trusted_proxy_ips, [<<"127.0.0.1">>, <<"::1">>]),
+    case lists:member(PeerIpBin, TrustedProxies) of
+        true ->
+            first_forwarded_ip(
+                cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin), PeerIpBin
+            );
+        false ->
+            PeerIpBin
     end.
 
+%% @private 取 XFF 最左一段（最接近真实客户端的那一跳）。
+%% 空头 / 全分隔符时回退直连 IP —— 原 passport_handler 版本用 hd/1，
+%% 遇到 `X-Forwarded-For: ` 这种空值头会 badarg 崩掉请求。
+-spec first_forwarded_ip(binary(), binary()) -> binary().
+first_forwarded_ip(ForwardedFor, Fallback) when is_binary(ForwardedFor) ->
+    case binary:split(ForwardedFor, [<<",">>, <<" ">>], [trim_all, global]) of
+        [First | _] -> First;
+        [] -> Fallback
+    end;
+first_forwarded_ip(_, Fallback) ->
+    Fallback.
+
 -spec req(atom(), binary() | list(), map() | list(), list()) ->
-          {ok, map()} | {error, any()} | {error, integer(), map()}.
+    {ok, map()} | {error, any()} | {error, integer(), map()}.
 req(Method, Url, Params, Headers) ->
     _ = application:ensure_started(ssl),
     _ = application:ensure_started(inets),
