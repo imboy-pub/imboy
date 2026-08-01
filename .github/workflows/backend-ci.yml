@@ -89,8 +89,9 @@ jobs:
       - name: Run Moment Targeted EUnit
         run: |
           # -config + 显式 application:load(imboy)：config 提供 env 须应用 load 后
-          # get_env 才可见（如 sql_driver→public. 表名前缀）；meck 测试不起 app 无需 PG
-          IMBOYENV=local make eunit EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests' EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test -eval 'application:load(imboy)'"
+          # get_env 才可见（如 sql_driver→public. 表名前缀）；meck 测试不起 app 无需 PG。
+          # ⚠️ 必须用仓内 sys.config：sys.local.config 被 gitignore，CI 检出不存在
+          IMBOYENV=local make eunit EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests' EUNIT_ERL_OPTS="-config config/sys -pa ebin -pa test -eval 'application:load(imboy)'"
 
   # ----------------------------------------------------------------
   # 全量 EUnit — 基线收集（continue-on-error，暂不阻塞）
