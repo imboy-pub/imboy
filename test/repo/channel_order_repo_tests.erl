@@ -35,14 +35,20 @@ order_no_format_test_() ->
         OrderNos = [generate_test_order_no() || _ <- lists:seq(1, 10)],
 
         % 验证所有订单号以 "CH" 开头
-        lists:foreach(fun(OrderNo) ->
-            ?assertEqual(<<"CH">>, binary:part(OrderNo, {0, 2}))
-        end, OrderNos),
+        lists:foreach(
+            fun(OrderNo) ->
+                ?assertEqual(<<"CH">>, binary:part(OrderNo, {0, 2}))
+            end,
+            OrderNos
+        ),
 
         % 验证订单号长度 (CH + 13位时间戳 + 6位随机数 = 21)
-        lists:foreach(fun(OrderNo) ->
-            ?assertEqual(21, byte_size(OrderNo))
-        end, OrderNos),
+        lists:foreach(
+            fun(OrderNo) ->
+                ?assertEqual(21, byte_size(OrderNo))
+            end,
+            OrderNos
+        ),
 
         % 验证订单号唯一性
         ?assertEqual(length(OrderNos), length(lists:usort(OrderNos)))
@@ -124,14 +130,20 @@ order_amount_validation_test_() ->
         InvalidAmounts = [-1.0, -99.99],
 
         % 验证有效金额
-        lists:foreach(fun(Amount) ->
-            ?assert(Amount >= 0)
-        end, ValidAmounts),
+        lists:foreach(
+            fun(Amount) ->
+                ?assert(Amount >= 0)
+            end,
+            ValidAmounts
+        ),
 
         % 验证无效金额
-        lists:foreach(fun(Amount) ->
-            ?assert(Amount < 0)
-        end, InvalidAmounts)
+        lists:foreach(
+            fun(Amount) ->
+                ?assert(Amount < 0)
+            end,
+            InvalidAmounts
+        )
     end).
 
 %% ===================================================================
@@ -144,9 +156,12 @@ currency_validation_test_() ->
         ValidCurrencies = [<<"CNY">>, <<"USD">>, <<"EUR">>, <<"JPY">>],
 
         % 验证货币类型格式
-        lists:foreach(fun(Currency) ->
-            ?assert(byte_size(Currency) == 3)
-        end, ValidCurrencies)
+        lists:foreach(
+            fun(Currency) ->
+                ?assert(byte_size(Currency) == 3)
+            end,
+            ValidCurrencies
+        )
     end).
 
 %% ===================================================================
@@ -166,48 +181,59 @@ payment_no_format_test_() ->
     end).
 
 %% ===================================================================
-%% pay/2 行为测试（P0-2 补充）
+%% pay/2 行为测试（P0-2 补充；B-08 起 pay/2 委托 pay/3 且宽限为 0）
 %% ===================================================================
 
 pay_updates_order_status_without_subscription_side_effect_test_() ->
-    ?WITH_MECKS([
-        {elib_dt, [
-            {'now', 0, fun() -> 1700000000000 end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(Sql, Params) ->
-                SqlBin = iolist_to_binary(Sql),
-                ?assert(re:run(SqlBin, <<"UPDATE channel_order">>) =/= nomatch),
-                ?assertEqual(nomatch, re:run(SqlBin, <<"channel_subscription">>)),
-                ?assertEqual(6, length(Params)),
-                {ok, 1}
-            end}
-        ]}
-    ], fun() ->
-        Result = channel_order_repo:pay(
-            <<"ORD_PAY_OK">>,
-            #{payment_no => <<"PAY123">>, payment_method => <<"mock">>}
-        ),
-        ?assertEqual(ok, Result),
-        ?assertEqual(1, meck:num_calls(elib_pg, execute, 2))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> 1700000000000 end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(Sql, Params) ->
+                    SqlBin = iolist_to_binary(Sql),
+                    ?assert(re:run(SqlBin, <<"UPDATE channel_order">>) =/= nomatch),
+                    ?assertEqual(nomatch, re:run(SqlBin, <<"channel_subscription">>)),
+                    %% B-08：新增第 7 个参数 = 过期宽限分钟数。
+                    %% pay/2（用户主动支付路径）必须仍是 0 —— 订单过期就该重新下单，
+                    %% 宽限只给第三方回调（钱已真收）。
+                    ?assertEqual(7, length(Params)),
+                    ?assertEqual(0, lists:last(Params)),
+                    ?assert(re:run(SqlBin, <<"make_interval">>) =/= nomatch),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_order_repo:pay(
+                <<"ORD_PAY_OK">>,
+                #{payment_no => <<"PAY123">>, payment_method => <<"mock">>}
+            ),
+            ?assertEqual(ok, Result),
+            ?assertEqual(1, meck:num_calls(elib_pg, execute, 2))
+        end
+    ).
 
 pay_returns_not_found_or_expired_when_no_pending_order_updated_test_() ->
-    ?WITH_MECKS([
-        {elib_dt, [
-            {'now', 0, fun() -> 1700000000000 end}
-        ]},
-        {elib_pg, [
-            {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
-        ]}
-    ], fun() ->
-        Result = channel_order_repo:pay(
-            <<"ORD_PAY_MISS">>,
-            #{payment_no => <<"PAY456">>, payment_method => <<"mock">>}
-        ),
-        ?assertEqual({error, not_found_or_expired}, Result),
-        ?assertEqual(1, meck:num_calls(elib_pg, execute, 2))
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> 1700000000000 end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_order_repo:pay(
+                <<"ORD_PAY_MISS">>,
+                #{payment_no => <<"PAY456">>, payment_method => <<"mock">>}
+            ),
+            ?assertEqual({error, not_found_or_expired}, Result),
+            ?assertEqual(1, meck:num_calls(elib_pg, execute, 2))
+        end
+    ).
 
 %% ===================================================================
 %% 辅助函数
@@ -225,3 +251,50 @@ generate_test_payment_no() ->
     Timestamp = erlang:system_time(millisecond),
     Random = rand:uniform(1000000) - 1,
     iolist_to_binary(["PAY", integer_to_binary(Timestamp), integer_to_binary(Random)]).
+
+%% B-08：pay/3 把宽限分钟数原样传进 SQL —— 回调侧靠它让迟到的真实付款仍能入账
+pay_with_grace_passes_grace_minutes_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> 1700000000000 end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(Sql, Params) ->
+                    SqlBin = iolist_to_binary(Sql),
+                    ?assert(re:run(SqlBin, <<"make_interval">>) =/= nomatch),
+                    ?assertEqual(10080, lists:last(Params)),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                channel_order_repo:pay(
+                    <<"ORD_LATE">>,
+                    #{payment_no => <<"WX_1">>, payment_method => <<"wechat">>},
+                    10080
+                )
+            )
+        end
+    ).
+
+%% 负数宽限被夹到 0，不会拼出非法 interval
+pay_with_negative_grace_is_clamped_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> 1700000000000 end}
+            ]},
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, Params) ->
+                    ?assertEqual(0, lists:last(Params)),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, channel_order_repo:pay(<<"ORD_NEG">>, #{}, -5))
+        end
+    ).

@@ -131,7 +131,7 @@ cb_setup() ->
             <<"status">> => 0
         }}
     end),
-    meck:expect(channel_order_ds, pay, fun(_OrderNo, _PaymentData) -> ok end),
+    meck:expect(channel_order_ds, pay, fun(_OrderNo, _PaymentData, _Grace) -> ok end),
     meck:expect(channel_ds, subscribe, fun(_ChannelId, _Uid) -> ok end),
     %% 无既有流水 → 走首次回调路径
     meck:expect(payment_transaction_ds, find_by_gateway_no, fun(_G, _No) -> #{} end),
@@ -199,3 +199,26 @@ yuan_to_fen_test() ->
     ?assertEqual(990, payment_callback_logic:yuan_to_fen(<<"9.90">>)),
     ?assertEqual(10001, payment_callback_logic:yuan_to_fen(<<"100.01">>)),
     ?assertEqual(0, payment_callback_logic:yuan_to_fen(<<"bad">>)).
+
+%%%===================================================================
+%%% B-08：回调侧带过期宽限 —— 第 31 分钟到达的回调仍能入账。
+%%% 钱是真收了的，被 expires_at 守卫挡掉等于"收了钱不发货"。
+%%%===================================================================
+
+callback_grace_test_() ->
+    {foreach, fun cb_setup/0, fun cb_cleanup/1, [
+        fun callback_pay_passes_grace_minutes/0
+    ]}.
+
+%% 回调必须走 pay/3 并带上非 0 宽限
+callback_pay_passes_grace_minutes() ->
+    meck:expect(channel_order_ds, pay, fun(_OrderNo, _PaymentData, _Grace) -> ok end),
+    ?assertEqual({ok, paid}, cb_handle()),
+    [Grace] = [
+        G
+     || {_P, {channel_order_ds, pay, [_O, _D, G]}, _R} <- meck:history(channel_order_ds)
+    ],
+    ?assert(is_integer(Grace)),
+    ?assert(Grace > 30).
+
+%% 反向对照：用户主动支付路径仍是 pay/2（宽限 0），过期就该重新下

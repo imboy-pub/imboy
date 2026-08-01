@@ -299,7 +299,10 @@ credit_channel_order(Fields) ->
                         payment_no => maps:get(gateway_payment_no, Fields),
                         payment_method => maps:get(gateway, Fields)
                     },
-                    case channel_order_ds:pay(OrderNo, PaymentData) of
+                    %% B-08：回调侧带过期宽限。钱是真收了的，第 31 分钟到达的回调
+                    %% 若被 expires_at 守卫挡掉，就成了"收了钱不发货"。
+                    Grace = callback_grace_minutes(),
+                    case channel_order_ds:pay(OrderNo, PaymentData, Grace) of
                         ok ->
                             ensure_subscribed(ChannelId, Uid);
                         {error, not_found_or_expired} ->
@@ -312,6 +315,19 @@ credit_channel_order(Fields) ->
             end;
         _ ->
             {error, <<"频道订单不存在"/utf8>>}
+    end.
+
+%% @doc 回调补单的过期宽限（分钟）。默认 7 天：网关重推可以持续很久，而
+%% 宽限期内订单仍是 status=0，放宽它只影响"迟到的真实付款能否入账"，
+%% 不会让任何未付款订单变成已支付。下限 0（即退化成原来的严格行为）。
+-define(DEFAULT_CALLBACK_GRACE_MINUTES, 10080).
+
+-spec callback_grace_minutes() -> non_neg_integer().
+callback_grace_minutes() ->
+    case config_ds:env(channel_order_callback_grace_minutes, ?DEFAULT_CALLBACK_GRACE_MINUTES) of
+        N when is_integer(N), N >= 0 -> N;
+        N when is_binary(N) -> to_int(N);
+        _ -> ?DEFAULT_CALLBACK_GRACE_MINUTES
     end.
 
 -spec ensure_subscribed(integer(), integer()) -> ok | {error, binary()}.

@@ -15,7 +15,7 @@
 -export([tablename/0]).
 -export([create_order/1]).
 -export([find_by_order_no/1]).
--export([pay/2]).
+-export([pay/2, pay/3]).
 -export([refund/3]).
 -export([cancel/1]).
 -export([list_by_user/2]).
@@ -122,6 +122,15 @@ find_by_order_no(OrderNo) ->
 %% @param PaymentData 支付数据 #{payment_no, payment_method, ...}
 -spec pay(binary(), map()) -> ok | {error, term()}.
 pay(OrderNo, PaymentData) ->
+    pay(OrderNo, PaymentData, 0).
+
+%% @doc 支付订单，允许 GraceMinutes 分钟的过期宽限（B-08）。
+%%
+%% 用户主动支付走 pay/2（宽限 0）：订单过期就该重新下单。
+%% **第三方回调走 pay/3 带宽限**：钱是真收了的，第 31 分钟到达的回调若被
+%% `expires_at > NOW()` 挡掉，等于我们收了钱不发货 —— 比订单超时严重得多。
+-spec pay(binary(), map(), non_neg_integer()) -> ok | {error, term()}.
+pay(OrderNo, PaymentData, GraceMinutes) ->
     PaymentNo = maps:get(payment_no, PaymentData, <<>>),
     PaymentMethod = maps:get(payment_method, PaymentData, <<"mock">>),
     SubscriptionStart = maps:get(subscription_start_at, PaymentData, elib_dt:millisecond()),
@@ -133,10 +142,17 @@ pay(OrderNo, PaymentData) ->
             "SET status = $1, payment_no = $2, payment_method = $3, payment_at = NOW(), ",
             "subscription_start_at = to_timestamp($4::bigint / 1000), ",
             "subscription_end_at = CASE WHEN $5 IS NULL THEN NULL ELSE to_timestamp($5::bigint / 1000) END, ",
-            "updated_at = NOW() ", "WHERE order_no = $6 AND status = 0 AND expires_at > NOW()">>,
+            "updated_at = NOW() ", "WHERE order_no = $6 AND status = 0 ",
+            "AND expires_at > NOW() - make_interval(mins => $7::int)">>,
     case
         elib_pg:execute(Sql, [
-            ?STATUS_PAID, PaymentNo, PaymentMethod, SubscriptionStart, SubscriptionEnd, OrderNo
+            ?STATUS_PAID,
+            PaymentNo,
+            PaymentMethod,
+            SubscriptionStart,
+            SubscriptionEnd,
+            OrderNo,
+            max(0, GraceMinutes)
         ])
     of
         {ok, 0} -> {error, not_found_or_expired};

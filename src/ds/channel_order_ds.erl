@@ -9,7 +9,7 @@
 %% ==================== API ====================
 -export([create_order/1]).
 -export([find_by_order_no/1]).
--export([pay/2]).
+-export([pay/2, pay/3]).
 -export([refund/3]).
 -export([cancel/1]).
 -export([has_purchased/2]).
@@ -25,6 +25,11 @@ find_by_order_no(OrderNo) -> channel_order_repo:find_by_order_no(OrderNo).
 
 -spec pay(binary(), map()) -> ok | {error, term()}.
 pay(OrderNo, PaymentData) -> channel_order_repo:pay(OrderNo, PaymentData).
+
+%% @doc 带过期宽限的支付（B-08）：仅第三方回调侧使用，见 channel_order_repo:pay/3。
+-spec pay(binary(), map(), non_neg_integer()) -> ok | {error, term()}.
+pay(OrderNo, PaymentData, GraceMinutes) ->
+    channel_order_repo:pay(OrderNo, PaymentData, GraceMinutes).
 
 %% @doc 退款：将已支付(1)订单更新为已退款(2)，并记录退款原因/时间
 -spec refund(binary(), integer(), binary()) -> ok | {error, term()}.
