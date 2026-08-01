@@ -46,6 +46,22 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
                     PutUrl = elib_oss:presign_put_for_key(
                         Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
                     ),
+                    %% #20：登记待确认。不登记的话，"PUT 上去但从不 confirm"
+                    %% 的对象在库里没有任何行，attachment_repo 的孤儿清理
+                    %% （只扫 attachment 表）永远看不见它，空间收不回来。
+                    %% 登记失败不阻断签发 —— 拿不到 URL 是功能故障，
+                    %% 漏登记只是这一个对象暂时收不回，代价不对等。
+                    _ =
+                        case attachment_ds:pending_add(ObjectKey, Bucket, Scope, Uid) of
+                            ok ->
+                                ok;
+                            {error, PendReason} ->
+                                ?ERROR_LOG([
+                                    "attach_logic presign pending_add failed: ",
+                                    ObjectKey,
+                                    PendReason
+                                ])
+                        end,
                     Base = #{
                         <<"put_url">> => PutUrl,
                         <<"object_key">> => ObjectKey,
@@ -161,6 +177,22 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
         ok = elib_pg:with_tx(fun(Conn) ->
             attachment_ds:save(Conn, Now, Uid, [Attach])
         end),
+        %% #20：转正后销账。放在事务**之后**——销早了若落库失败，
+        %% 对象既不在 attachment 表也不在 pending 表，就永久收不回了。
+        %% 销账失败也不会误删：attach_pending_repo:list_expired/1 带
+        %% `NOT EXISTS (attachment.path = object_key)` 守卫，已转正的对象
+        %% 清理器一律不碰。但仍要留痕，残留行会一直被扫到。
+        _ =
+            case attachment_ds:pending_remove(ObjectKey) of
+                ok ->
+                    ok;
+                {error, PendReason} ->
+                    ?ERROR_LOG([
+                        "attach_logic confirm pending_remove failed: ",
+                        ObjectKey,
+                        PendReason
+                    ])
+            end,
         {ok, maybe_public_url(Scope, ObjectKey, #{<<"object_key">> => ObjectKey})}
     catch
         Class:Reason ->

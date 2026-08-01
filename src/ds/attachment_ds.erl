@@ -15,6 +15,7 @@
 -export([page/3]).
 -export([disable/1, enable/1, soft_delete/1]).
 -export([orphan_stats/1, orphan_cleanup/1]).
+-export([pending_add/4, pending_remove/1, pending_cleanup/1]).
 -export([find_by_path_and_uid/2]).
 -export([find_by_path/1]).
 -export([bind_moment_scope_ref/2]).
@@ -85,6 +86,61 @@ orphan_cleanup(Opts) ->
                     {ok, #{cleaned => length(OkIds), errors => ErrorCount}};
                 {error, DbReason} ->
                     ?ERROR_LOG(["orphan_cleanup hard_delete_by_ids failed: ", DbReason]),
+                    {error, DbReason}
+            end;
+        {error, R} ->
+            {error, R}
+    end.
+
+%% ===================================================================
+%% 待确认 presign 登记（#20）
+%% ===================================================================
+
+%% @doc presign 签发时登记，使未 confirm 的对象对清理器可见
+-spec pending_add(binary(), binary(), binary(), integer()) -> ok | {error, term()}.
+pending_add(ObjectKey, Bucket, Scope, Uid) ->
+    attach_pending_repo:add(ObjectKey, Bucket, Scope, Uid).
+
+%% @doc confirm 成功后销账
+-spec pending_remove(binary()) -> ok | {error, term()}.
+pending_remove(ObjectKey) ->
+    attach_pending_repo:remove(ObjectKey).
+
+%% @doc 回收超龄仍未 confirm 的对象（先删 S3，再删登记行）
+%%
+%% 与 orphan_cleanup/1 的区别：那边删的是**已确认但长期未被引用**的附件
+%% （30 天 + 7 天下限），这边删的是**从未确认**的垃圾（小时级）。
+%% 且这边用 delete_object/2 显式带桶——pending 行记了 bucket，不能像
+%% orphan_cleanup 那样走 delete_object/1 的默认桶。
+-spec pending_cleanup(integer()) ->
+    {ok, #{cleaned := integer(), errors := integer()}} | {error, term()}.
+pending_cleanup(AgeHours) ->
+    case attach_pending_repo:list_expired(AgeHours) of
+        {ok, []} ->
+            {ok, #{cleaned => 0, errors => 0}};
+        {ok, Rows} ->
+            {OkKeys, ErrorCount} = lists:foldl(
+                fun(Row, {Acc, ErrCnt}) ->
+                    Key = maps:get(<<"object_key">>, Row),
+                    Bucket = maps:get(<<"bucket">>, Row, <<>>),
+                    Res =
+                        case Bucket of
+                            <<>> -> elib_oss:delete_object(Key);
+                            B -> elib_oss:delete_object(B, Key)
+                        end,
+                    case Res of
+                        ok -> {[Key | Acc], ErrCnt};
+                        {error, _Rsn} -> {Acc, ErrCnt + 1}
+                    end
+                end,
+                {[], 0},
+                Rows
+            ),
+            case attach_pending_repo:delete_by_keys(OkKeys) of
+                ok ->
+                    {ok, #{cleaned => length(OkKeys), errors => ErrorCount}};
+                {error, DbReason} ->
+                    ?ERROR_LOG(["pending_cleanup delete_by_keys failed: ", DbReason]),
                     {error, DbReason}
             end;
         {error, R} ->
