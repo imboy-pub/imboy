@@ -52,9 +52,16 @@ increment(Name) ->
     increment(Name, 1).
 
 %% @doc 增加计数器（指定增量）
--spec increment(term(), pos_integer()) -> ok.
+%%
+%% Delta =< 0 返回 {error, invalid_delta}，与 increment/3 保持一致。
+%% 此前 /2 缺这条子句而 /3 有 —— 调用方传一个**算出来的**计数（如
+%% length(Rows)）在"这轮 0 条"时会 function_clause 崩掉整个调用者，
+%% 而同样的写法用 /3 却只是静默跳过。这种不对称本身就是陷阱。
+-spec increment(term(), integer()) -> ok | {error, invalid_delta}.
 increment(Name, Delta) when is_integer(Delta), Delta > 0 ->
-    gen_server:cast(?MODULE, {increment, Name, Delta}).
+    gen_server:cast(?MODULE, {increment, Name, Delta});
+increment(_Name, Delta) when is_integer(Delta), Delta =< 0 ->
+    {error, invalid_delta}.
 
 %% @doc 增加带标签的计数器
 %% Labels 是 map，如 #{plugin => channel}

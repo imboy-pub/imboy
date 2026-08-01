@@ -6,6 +6,12 @@
 -include("log.hrl").
 
 -export([send/5, open/2, detail/2]).
+%% ecron 入口（B-10）
+-export([run_expire_refund/0, run_expire_refund/1]).
+
+%% 单轮最多处理多少个过期红包。有上限是为了让一轮事务时间可预期；
+%% 处理不完的下一轮继续（每小时一轮，正常量级远吃不满）。
+-define(DEFAULT_EXPIRE_BATCH, 500).
 
 %% @doc 发送红包（原子扣减钱包余额 + 创建红包）
 -spec send(integer(), binary(), integer(), integer(), binary()) ->
@@ -121,8 +127,67 @@ detail(PacketId, ViewerUid) ->
     end.
 
 %% ===================================================================
+%% B-10 ecron 入口：过期红包未领完的余额退回发送者
+%% ===================================================================
+
+%% @doc ecron 入口。恒 ok，任何异常记日志后跳过，绝不抛给调度器。
+-spec run_expire_refund() -> ok.
+run_expire_refund() ->
+    Batch = config_ds:env(red_packet_expire_batch, ?DEFAULT_EXPIRE_BATCH),
+    run_expire_refund(Batch).
+
+-spec run_expire_refund(integer()) -> ok.
+run_expire_refund(Batch0) ->
+    Batch = max(1, to_int(Batch0)),
+    try
+        Rows = red_packet_repo:list_expired_active(Batch),
+        %% 心跳：scanned 在"本轮 0 条"时不会产出序列，没有它分不清"没过期红包"和"job 死了"
+        _ = elib_metric:increment(red_packet_expire_run_total, 1),
+        _ = elib_metric:increment(red_packet_expire_scanned_total, length(Rows)),
+        lists:foreach(fun refund_one/1, Rows),
+        ok
+    catch
+        Class:Reason:St ->
+            ?ERROR_LOG([red_packet_expire, run_failed, Class, Reason, St]),
+            _ = elib_metric:increment(red_packet_expire_error_total, 1),
+            ok
+    end.
+
+%% @doc 单个红包退款。失败只计数不中断后续 —— 一个坏行不能让整批停摆。
+-spec refund_one(map()) -> ok.
+refund_one(Row) ->
+    PacketId = to_int(maps:get(<<"id">>, Row, 0)),
+    Result =
+        try red_packet_repo:expire_and_refund(PacketId) of
+            {ok, _Amount} -> refunded;
+            {rollback, already_settled} -> skipped;
+            {rollback, Why} -> log_expire_failed(PacketId, Why);
+            {error, Why} -> log_expire_failed(PacketId, Why)
+        catch
+            Class:Why:St -> log_expire_failed(PacketId, {Class, Why, St})
+        end,
+    _ = elib_metric:increment(red_packet_expire_total, 1, #{outcome => Result}),
+    ok.
+
+-spec log_expire_failed(integer(), term()) -> failed.
+log_expire_failed(PacketId, Why) ->
+    ?ERROR_LOG([red_packet_expire, refund_failed, PacketId, Why]),
+    failed.
+
+%% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+-spec to_int(term()) -> integer().
+to_int(V) when is_integer(V) -> V;
+to_int(V) when is_binary(V) ->
+    try
+        binary_to_integer(V)
+    catch
+        _:_ -> 0
+    end;
+to_int(_) ->
+    0.
 
 gen_ref_no() ->
     Id = elib_tsid:generate(wallet_transaction),
