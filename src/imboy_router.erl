@@ -25,6 +25,11 @@ get_routes() ->
             % Prometheus 指标端点
             {"/metrics", metrics_handler, #{}},
 
+            % C-49 健康检查：200=依赖就绪可接流量 / 503=进程活着但 PG 不可用。
+            % 此前 /healthz 只在 throttle_middleware 白名单里出现，没有路由 → 404，
+            % compose/helm 的 healthcheck 配了也永远不健康。
+            {"/healthz", healthz_handler, #{}},
+
             {"/privacy-policy", cowboy_static,
                 {priv_file, imboy, "static/legal/privacy_policy.html"}},
             {"/account-deletion", cowboy_static,
@@ -901,6 +906,7 @@ open() ->
         <<"/brand">>,
         <<"/privacy-policy">>,
         <<"/account-deletion">>,
+        <<"/healthz">>,
         <<"/metrics">>,
         %% Phase 4 T4.1：A2A 发现端点按规范匿名可达
         <<"/.well-known/agent.json">>,
