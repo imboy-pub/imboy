@@ -1,0 +1,104 @@
+# ============================================================
+# 可观测性叠加层 / Observability overlay
+# ------------------------------------------------------------
+# 用法 / Usage:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.observability.yml up -d
+#
+# 为什么是独立 overlay 而不是写进 docker-compose.prod.yml：
+#   那个文件被 .gitignore 排除（走单独交付渠道，见 Phase 0 决策与 A-25）。
+#   写在那里的服务定义**不受 git 跟踪、不进 review、买家也拿不到** ——
+#   B-23/B-24 会变成"本机能跑、交付出去就没有"。放在这里才真正可交付。
+#
+# 本文件补齐 prometheus.yml 里**早就写好却一直没有对应服务**的三个抓取目标：
+#   pushgateway / node_exporter / postgres_exporter
+# 它们缺席的后果不是"少了几个面板"，而是：
+#   - imboy_backup_last_success_timestamp 从不存在 → 备份告警 absent() 永久 CRITICAL
+#   - 磁盘使用率、PG 连接池面板永久 "No data"
+#   - 噪声告警＝没有告警
+# ============================================================
+
+services:
+  # ---------- Pushgateway：短命 cron 作业的指标出口（B-23）----------
+  # 备份/TLS 检查没有常驻端点供抓取，只能由作业自己推。
+  # 产出方已就绪：scripts/lib/metrics_push.sh 的 push_backup_result / push_tls_expiry。
+  imboy_pushgateway:
+    image: prom/pushgateway:v1.9.0
+    container_name: imboy_pushgateway
+    restart: unless-stopped
+    command:
+      # 持久化：默认只存内存，重启后 last_success_timestamp 归零，
+      # 会让"备份没跑"在每次运维重启后误报一轮。
+      - '--persistence.file=/data/pushgateway.store'
+      - '--persistence.interval=5m'
+    volumes:
+      - pushgateway_data:/data
+    ports:
+      # ⚠️ 绑 127.0.0.1 而不是只 expose：备份/TLS 作业跑在**宿主机**上
+      # （见 deploy/cron/imboy-ops.cron），解析不到 compose 网络里的服务名。
+      # 只绑 loopback 不上公网 —— 任何能访问 pushgateway 的人都能伪造指标。
+      - "127.0.0.1:9091:9091"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ---------- node_exporter：宿主机资源（B-24）----------
+  # 面板 node_filesystem_avail_bytes / node_filesystem_size_bytes 依赖它。
+  imboy_node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    restart: unless-stopped
+    # ⚠️ 必须 host pid + 挂载宿主机根：否则采到的是**容器自己**的文件系统，
+    # 磁盘使用率面板会显示一个与真实宿主机无关的数字（比没数据更危险）。
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    command:
+      - '--path.rootfs=/host'
+      # 排除容器/临时文件系统，否则每个容器层都会变成一条 mountpoint 序列，
+      # 面板被噪声淹没且序列数暴涨。
+      - '--collector.filesystem.mount-points-exclude=^/(host/)?(sys|proc|dev|run|var/lib/docker/.+)($$|/)'
+    expose:
+      - "9100"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  # ---------- postgres_exporter：PG 指标（B-24）----------
+  # 面板/告警 pg_stat_database_numbackends、pg_settings_max_connections、
+  # pg_stat_database_xact_commit/rollback 依赖它。
+  imboy_postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter
+    restart: unless-stopped
+    environment:
+      # 从主 compose 的同一套 .env 取值，不另起一份凭据。
+      # ⚠️ 建议为它单建一个只读账号（pg_monitor 角色）而不是复用超级用户 ——
+      # exporter 只需要读统计视图。
+      # 主机名是 imboy_pg18（容器名），不是 imboy_pg —— 已对着 prod compose 核过。
+      DATA_SOURCE_NAME: "postgresql://${PG_EXPORTER_USER:-${POSTGRES_USER}}:${PG_EXPORTER_PASSWORD:-${POSTGRES_PASSWORD}}@imboy_pg18:5432/${POSTGRES_DB}?sslmode=disable"
+    expose:
+      - "9187"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  pushgateway_data:
