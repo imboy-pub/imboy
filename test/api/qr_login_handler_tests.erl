@@ -15,11 +15,14 @@ create_stores_session_and_returns_tokens_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'set', 3, fun({qr_login, SessionToken}, SessionData, 60) ->
-                        ?assertEqual(SessionToken, maps:get(<<"session_token">>, SessionData)),
-                        ?assertEqual(<<"waiting">>, maps:get(<<"status">>, SessionData)),
-                        ?assertMatch(<<_/binary>>, maps:get(<<"qr_token">>, SessionData)),
-                        ok
+                    {'set', 3, fun
+                        ({qr_login_qr, _QRToken}, _SessionToken, 60) ->
+                            ok;
+                        ({qr_login, SessionToken}, SessionData, 60) ->
+                            ?assertEqual(SessionToken, maps:get(<<"session_token">>, SessionData)),
+                            ?assertEqual(<<"waiting">>, maps:get(<<"status">>, SessionData)),
+                            ?assertMatch(<<_/binary>>, maps:get(<<"qr_token">>, SessionData)),
+                            ok
                     end}
                 ]}
             ],
@@ -34,8 +37,14 @@ create_stores_session_and_returns_tokens_test_() ->
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => create}),
             {success, Payload} = response_result(Req1),
             ?assertEqual(60, maps:get(<<"expires_in">>, Payload)),
-            ?assertMatch(<<_/binary>>, maps:get(<<"session_token">>, Payload)),
-            ?assertMatch(<<_/binary>>, maps:get(<<"qr_token">>, Payload))
+            SessTok = maps:get(<<"session_token">>, Payload),
+            QRTok = maps:get(<<"qr_token">>, Payload),
+            ?assertMatch(<<_/binary>>, SessTok),
+            ?assertMatch(<<_/binary>>, QRTok),
+            %% 反转断言（Rule 7）：旧实现 qr_token = base64(session_token ++ ":" ++ ts)，
+            %% 截屏二维码即可反解 session_token 并窃取 login_token。现在必须不可反解。
+            ?assertEqual(nomatch, binary:match(QRTok, SessTok)),
+            ?assertEqual(nomatch, binary:match(base64:decode(QRTok), base64:decode(SessTok)))
         end
     ).
 
@@ -45,11 +54,16 @@ status_returns_confirmed_with_login_token_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"confirmed">>,
-                            <<"login_token">> => <<"jwt-token-1">>
-                        }}
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"confirmed">>,
+                                <<"login_token">> => <<"jwt-token-1">>
+                            }}
+                        end)},
+                    {'delete', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken -> ok
                     end}
                 ]}
             ],
@@ -59,6 +73,39 @@ status_returns_confirmed_with_login_token_test_() ->
             ?assertEqual(
                 {success, #{<<"status">> => <<"confirmed">>, <<"token">> => <<"jwt-token-1">>}},
                 response_result(Req1)
+            ),
+            %% 反转断言（Rule 7）：旧实现取走 token 后仍保留会话，会话剩余 TTL 内
+            %% 任何知道 session_token 的人都能重复取到同一个可登录 token。
+            ?assert(
+                meck:called(imboy_cache, delete, [{qr_login, SessionToken}]),
+                "confirmed 分支必须一次性消费会话"
+            )
+        end
+    ).
+
+%% 非 confirmed 状态（如 scanned）不得销毁会话，否则 Web 端下一轮轮询会误判过期
+status_does_not_delete_session_when_not_confirmed_test_() ->
+    SessionToken = <<"session-status-scanned">>,
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                {imboy_cache, [
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{<<"status">> => <<"scanned">>}}
+                        end)},
+                    {'delete', 1, fun(_Key) -> ok end}
+                ]}
+            ],
+        fun() ->
+            Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, SessionToken}]),
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => status}),
+            ?assertEqual({success, #{<<"status">> => <<"scanned">>}}, response_result(Req1)),
+            ?assertNot(
+                meck:called(imboy_cache, delete, ['_']),
+                "scanned 状态不应删除会话"
             )
         end
     ).
@@ -70,14 +117,17 @@ scan_updates_status_to_scanned_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"waiting">>,
-                            <<"expires_at">> => future_ms(),
-                            <<"device_name">> => <<"Chrome 120"/utf8>>,
-                            <<"platform">> => <<"web">>
-                        }}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"waiting">>,
+                                <<"expires_at">> => future_ms(),
+                                <<"device_name">> => <<"Chrome 120"/utf8>>,
+                                <<"platform">> => <<"web">>
+                            }}
+                        end)},
                     {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when
                         KeyToken =:= SessionToken
                     ->
@@ -113,12 +163,15 @@ scan_returns_empty_device_fields_when_session_lacks_them_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"waiting">>,
-                            <<"expires_at">> => future_ms()
-                        }}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"waiting">>,
+                                <<"expires_at">> => future_ms()
+                            }}
+                        end)},
                     {'set', 3, fun(_Key, _Data, 60) -> ok end}
                 ]}
             ],
@@ -145,16 +198,19 @@ confirm_marks_session_confirmed_and_records_device_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"scanned">>,
-                            <<"scanned_by">> => 1001,
-                            <<"expires_at">> => future_ms(),
-                            <<"device_id">> => <<"web-device-1">>,
-                            <<"device_name">> => <<"Safari">>,
-                            <<"platform">> => <<"web">>
-                        }}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"scanned">>,
+                                <<"scanned_by">> => 1001,
+                                <<"expires_at">> => future_ms(),
+                                <<"device_id">> => <<"web-device-1">>,
+                                <<"device_name">> => <<"Safari">>,
+                                <<"platform">> => <<"web">>
+                            }}
+                        end)},
                     {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when
                         KeyToken =:= SessionToken
                     ->
@@ -199,12 +255,15 @@ cancel_updates_status_to_cancelled_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"waiting">>,
-                            <<"expires_at">> => future_ms()
-                        }}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"waiting">>,
+                                <<"expires_at">> => future_ms()
+                            }}
+                        end)},
                     {'set', 3, fun({qr_login, KeyToken}, SessionData, 60) when
                         KeyToken =:= SessionToken
                     ->
@@ -228,12 +287,15 @@ scan_returns_expired_when_session_outdated_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"waiting">>,
-                            <<"expires_at">> => past_ms()
-                        }}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"waiting">>,
+                                <<"expires_at">> => past_ms()
+                            }}
+                        end)},
                     {'delete', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken -> ok
                     end}
                 ]}
@@ -257,13 +319,16 @@ confirm_returns_already_used_for_duplicate_confirm_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"confirmed">>,
-                            <<"scanned_by">> => 1001,
-                            <<"expires_at">> => future_ms()
-                        }}
-                    end}
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"confirmed">>,
+                                <<"scanned_by">> => 1001,
+                                <<"expires_at">> => future_ms()
+                            }}
+                        end)}
                 ]}
             ],
         fun() ->
@@ -285,13 +350,16 @@ confirm_returns_forbidden_for_cross_user_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"scanned">>,
-                            <<"scanned_by">> => 2002,
-                            <<"expires_at">> => future_ms()
-                        }}
-                    end}
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"scanned">>,
+                                <<"scanned_by">> => 2002,
+                                <<"expires_at">> => future_ms()
+                            }}
+                        end)}
                 ]}
             ],
         fun() ->
@@ -304,16 +372,23 @@ confirm_returns_forbidden_for_cross_user_test_() ->
     ).
 
 scan_returns_invalid_qr_token_for_illegal_token_test_() ->
-    ?WITH_MECKS(common_mocks(), fun() ->
-        Body = jsx:encode(#{<<"qr_token">> => <<"not_a_valid_base64_token">>}),
-        Req0 = req(<<"POST">>, Body, []),
-        State = #{action => scan, current_uid => 1001},
-        {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
-        ?assertEqual(
-            {error, <<"无效的二维码"/utf8>>, ?ERR_INVALID_QR_TOKEN},
-            response_result(Req1)
-        )
-    end).
+    ?WITH_MECKS(
+        common_mocks() ++
+            [
+                %% 未登记的 qr_token 在缓存里查不到映射
+                {imboy_cache, [{'get', 1, fun({qr_login_qr, _QRToken}) -> undefined end}]}
+            ],
+        fun() ->
+            Body = jsx:encode(#{<<"qr_token">> => <<"not_a_valid_base64_token">>}),
+            Req0 = req(<<"POST">>, Body, []),
+            State = #{action => scan, current_uid => 1001},
+            {stop, Req1, _State} = qr_login_handler:handle_request(Req0, State),
+            ?assertEqual(
+                {error, <<"无效的二维码"/utf8>>, ?ERR_INVALID_QR_TOKEN},
+                response_result(Req1)
+            )
+        end
+    ).
 
 %% ===================================================================
 %% PR-2β: handle_scan/handle_confirm 成功路径必须广播事件
@@ -327,14 +402,17 @@ scan_broadcasts_scanned_event_on_success_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"waiting">>,
-                            <<"expires_at">> => future_ms(),
-                            <<"device_name">> => <<"Chrome">>,
-                            <<"platform">> => <<"web">>
-                        }}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"waiting">>,
+                                <<"expires_at">> => future_ms(),
+                                <<"device_name">> => <<"Chrome">>,
+                                <<"platform">> => <<"web">>
+                            }}
+                        end)},
                     {'set', 3, fun(_Key, _Data, 60) -> ok end}
                 ]},
                 {qr_login_event_ds, [
@@ -375,9 +453,12 @@ scan_does_not_broadcast_when_expired_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{<<"status">> => <<"waiting">>, <<"expires_at">> => past_ms()}}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{<<"status">> => <<"waiting">>, <<"expires_at">> => past_ms()}}
+                        end)},
                     {'delete', 1, fun(_) -> ok end}
                 ]},
                 {qr_login_event_ds, [
@@ -404,16 +485,19 @@ confirm_broadcasts_confirmed_event_with_token_on_success_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"scanned">>,
-                            <<"scanned_by">> => 1001,
-                            <<"expires_at">> => future_ms(),
-                            <<"device_id">> => <<"web-d1">>,
-                            <<"device_name">> => <<"Safari">>,
-                            <<"platform">> => <<"web">>
-                        }}
-                    end},
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"scanned">>,
+                                <<"scanned_by">> => 1001,
+                                <<"expires_at">> => future_ms(),
+                                <<"device_id">> => <<"web-d1">>,
+                                <<"device_name">> => <<"Safari">>,
+                                <<"platform">> => <<"web">>
+                            }}
+                        end)},
                     {'set', 3, fun(_Key, _Data, 60) -> ok end}
                 ]},
                 {token_ds, [
@@ -459,13 +543,16 @@ confirm_does_not_broadcast_when_forbidden_test_() ->
         common_mocks() ++
             [
                 {imboy_cache, [
-                    {'get', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken ->
-                        {ok, #{
-                            <<"status">> => <<"scanned">>,
-                            <<"scanned_by">> => 2002,
-                            <<"expires_at">> => future_ms()
-                        }}
-                    end}
+                    {'get', 1,
+                        qr_lookup(SessionToken, fun({qr_login, KeyToken}) when
+                            KeyToken =:= SessionToken
+                        ->
+                            {ok, #{
+                                <<"status">> => <<"scanned">>,
+                                <<"scanned_by">> => 2002,
+                                <<"expires_at">> => future_ms()
+                            }}
+                        end)}
                 ]},
                 {qr_login_event_ds, [
                     {'notify', 2, fun(_, _) -> {ok, 1} end}
@@ -516,5 +603,15 @@ future_ms() ->
 past_ms() ->
     erlang:system_time(millisecond) - 1000.
 
+%% 测试用 qr_token：只是一个不透明串。真实实现是随机值 + 缓存映射，
+%% **不可**由 session_token 推导（见 qr_login_handler:generate_qr_token/1）。
 make_qr_token(SessionToken) ->
-    base64:encode(<<SessionToken/binary, ":1700000000000">>).
+    <<"qr-opaque-", SessionToken/binary>>.
+
+%% 给 imboy_cache:get/1 的 mock 包一层 qr_token → session_token 反查，
+%% 使各用例保留原有的 {qr_login, SessionToken} 子句不必逐个改写。
+qr_lookup(SessionToken, SessionGet) ->
+    fun
+        ({qr_login_qr, _QRToken}) -> {ok, SessionToken};
+        (Key) -> SessionGet(Key)
+    end.

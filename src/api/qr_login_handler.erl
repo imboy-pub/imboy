@@ -3,11 +3,11 @@
 %%% 提供 WhatsApp Web 风格的扫码登录功能
 %%%
 %%% API 端点:
-%%% - POST /v1/passport/qr_login/create  - 创建登录二维码
-%%% - GET  /v1/passport/qr_login/status  - 查询扫码状态
-%%% - POST /v1/passport/qr_login/scan    - 扫码（手机端调用）
-%%% - POST /v1/passport/qr_login/confirm - 确认登录（手机端调用）
-%%% - POST /v1/passport/qr_login/cancel  - 取消登录
+%%% - POST /api/v1/passport/qr_login/create  - 创建登录二维码
+%%% - GET  /api/v1/passport/qr_login/status  - 查询扫码状态
+%%% - POST /api/v1/passport/qr_login/scan    - 扫码（手机端调用）
+%%% - POST /api/v1/passport/qr_login/confirm - 确认登录（手机端调用）
+%%% - POST /api/v1/passport/qr_login/cancel  - 取消登录
 %%% @end
 %%%-------------------------------------------------------------------
 -module(qr_login_handler).
@@ -72,7 +72,7 @@ handle_request(Req0, State) ->
 %% ===================================================================
 
 %% @doc 创建登录二维码
-%% POST /v1/passport/qr_login/create
+%% POST /api/v1/passport/qr_login/create
 %% Body: {"device_id": "xxx", "device_name": "Web Browser", "platform": "web"}
 handle_create(Req) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
@@ -114,7 +114,7 @@ handle_create(Req) ->
     end.
 
 %% @doc 查询扫码状态
-%% GET /v1/passport/qr_login/status?session_token=xxx
+%% GET /api/v1/passport/qr_login/status?session_token=xxx
 handle_status(Req) ->
     % 使用 parse_qs 安全地获取查询参数
     Qs = cowboy_req:parse_qs(Req),
@@ -133,6 +133,12 @@ handle_status(Req) ->
 
                     case Status of
                         <<"confirmed">> when LoginToken =/= null ->
+                            %% login_token 一次性消费：取走即销毁会话，
+                            %% 否则会话剩余 TTL 内任何知道 session_token 的人
+                            %% 都能重复取到同一个可登录 token。
+                            %% ponytail: 只删会话本体；qr_token 映射 60s 自然过期，
+                            %% 且会话已消失时它单独存在无意义（scan/confirm 会判"已过期"）。
+                            delete_session(SessionToken),
                             Payload = #{
                                 <<"status">> => <<"confirmed">>,
                                 <<"token">> => LoginToken
@@ -148,7 +154,7 @@ handle_status(Req) ->
     end.
 
 %% @doc 扫码（手机端调用）
-%% POST /v1/passport/qr_login/scan
+%% POST /api/v1/passport/qr_login/scan
 %% Body: {"qr_token": "xxx"}
 handle_scan(Req, State) ->
     Uid = maps:get(current_uid, State, 0),
@@ -251,7 +257,7 @@ handle_scan(Req, State) ->
     end.
 
 %% @doc 确认登录（手机端调用）
-%% POST /v1/passport/qr_login/confirm
+%% POST /api/v1/passport/qr_login/confirm
 %% Body: {"qr_token": "xxx"}
 handle_confirm(Req, State) ->
     Uid = maps:get(current_uid, State, 0),
@@ -368,7 +374,7 @@ handle_confirm(Req, State) ->
     end.
 
 %% @doc 取消登录
-%% POST /v1/passport/qr_login/cancel
+%% POST /api/v1/passport/qr_login/cancel
 %% Body: {"session_token": "xxx"}
 handle_cancel(Req, _State) ->
     {ok, Body, _} = cowboy_req:read_body(Req),
@@ -407,22 +413,24 @@ generate_session_token() ->
     base64:encode(Data).
 
 %% @doc 生成 QR Token
+%%
+%% 二维码图像会展示在屏幕上（截屏、投屏、肩窥都能拿到），因此其内容
+%% **不得可反解出 session_token**。旧实现是 base64(session_token ++ ":" ++ ts)，
+%% 见到二维码 = 拿到 session_token = 可轮询 /status 或订阅 /subscribe，
+%% 在真实用户手机确认的瞬间窃取 login_token 接管账号。
+%% 现改为独立随机值 + 缓存反查映射，TTL 与会话同为 60 秒。
 -spec generate_qr_token(binary()) -> binary().
 generate_qr_token(SessionToken) ->
-    % 简单编码：base64(session_token + timestamp)
-    Timestamp = integer_to_binary(erlang:system_time(millisecond)),
-    Data = <<SessionToken/binary, ":", Timestamp/binary>>,
-    base64:encode(Data).
+    QRToken = base64:encode(crypto:strong_rand_bytes(32)),
+    imboy_cache:set({qr_login_qr, QRToken}, SessionToken, 60),
+    QRToken.
 
-%% @doc 解析 QR Token
+%% @doc 解析 QR Token（缓存反查，不可由 QR 内容推导）
 -spec parse_qr_token(binary()) -> {ok, binary()} | {error, term()}.
 parse_qr_token(QRToken) ->
-    try
-        Decoded = base64:decode(QRToken),
-        [SessionToken, _Timestamp] = binary:split(Decoded, <<":">>),
-        {ok, SessionToken}
-    catch
-        _:_ -> {error, invalid_format}
+    case imboy_cache:get({qr_login_qr, QRToken}) of
+        {ok, SessionToken} when is_binary(SessionToken) -> {ok, SessionToken};
+        _ -> {error, invalid_format}
     end.
 
 %% @doc 生成登录 Token（E2EE-013：绑定被登录设备的 DID）
