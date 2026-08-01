@@ -7,15 +7,23 @@
 %   POST /api/v1/channel/:channel_id/webhook/:webhook_id/disable
 %   GET  /api/v1/channel/:channel_id/webhook/list
 %
-% 入站端点（免 JWT/免 902 签名，token 即凭证，放行见 auth_middleware_api_v1
-% 的 IsChannelWebhook 前缀，复刻支付回调范式）：
-%   POST /api/v1/webhook/channel/:token   body: {"text": "..."}（1MB 上限）
+% 入站端点（token 即凭证，无 JWT）：
+%   POST /api/v1/webhook/channel/:token   body: {"text": "..."}（总量上限见 read_raw_body）
+% ⚠️ 当前不在 imboy_router:open/0、被 902 签名门拦死（同 payment_callback，待修）。
 %   应答：200 {"ok":true} | 400 | 404（无效/停用统一 404）| 429 限流
 %%%
 
 -behavior(cowboy_handler).
 
 -export([init/2]).
+
+-ifdef(TEST).
+-export([read_raw_body/2]).
+-endif.
+
+%% read_raw_body 总量上限：cowboy 的 length 是单次读取窗口非总量上限，
+%% 递归累加须有总量守卫防匿名 OOM。8MB 远超合理 webhook 报文（text < 1MB）。
+-define(MAX_RAW_BODY_BYTES, 8 * 1048576).
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
@@ -113,6 +121,9 @@ read_raw_body(Req0) ->
     read_raw_body(Req0, <<>>).
 
 -spec read_raw_body(cowboy_req:req(), binary()) -> {binary(), cowboy_req:req()}.
+read_raw_body(Req0, Acc) when byte_size(Acc) >= ?MAX_RAW_BODY_BYTES ->
+    %% 超总量上限：停止累加返回已读部分，extract_text 得空 → 发布失败 → 400。
+    {Acc, Req0};
 read_raw_body(Req0, Acc) ->
     case cowboy_req:read_body(Req0, #{length => 1048576, period => 5000}) of
         {ok, Data, Req1} ->

@@ -2,7 +2,9 @@
 %%%
 % 统一支付回调处理器 / Unified payment webhook handler
 %
-% 路由：POST /v1/payment/callback/:gateway （免 JWT 认证，见 imboy_router:open/0）
+% 路由：POST /api/v1/payment/callback/:gateway （第三方支付服务器回调，无 JWT）
+% ⚠️ 当前不在 imboy_router:open/0、被 auth_middleware 902 签名门拦死
+%    （该中间件只认 /v1/ 前缀，/api/v1/* 落兜底）→ 收款闭环断，待修。
 %
 % 职责（纯 HTTP 入口，不含业务）：
 %   1) 读取路径 :gateway 与回调原始报文 RawBody（验签必须用原始字节）。
@@ -24,6 +26,14 @@
 
 -include("log.hrl").
 -include("error_code.hrl").
+
+-ifdef(TEST).
+-export([read_raw_body/2]).
+-endif.
+
+%% read_raw_body 总量上限：cowboy 的 length 是单次读取窗口非总量上限，
+%% 递归累加须有总量守卫防匿名 OOM。8MB 远超合理回调报文（各网关 < 64KB）。
+-define(MAX_RAW_BODY_BYTES, 8 * 1048576).
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
@@ -131,6 +141,9 @@ read_raw_body(Req0) ->
     read_raw_body(Req0, <<>>).
 
 -spec read_raw_body(cowboy_req:req(), binary()) -> {binary(), cowboy_req:req()}.
+read_raw_body(Req0, Acc) when byte_size(Acc) >= ?MAX_RAW_BODY_BYTES ->
+    %% 超总量上限：停止累加返回已读部分，验签自然失败 → 回调被拒。
+    {Acc, Req0};
 read_raw_body(Req0, Acc) ->
     case cowboy_req:read_body(Req0, #{length => 1048576, period => 5000}) of
         {ok, Data, Req1} ->
