@@ -111,6 +111,15 @@ join(Req0, State) ->
             _ ->
                 JoinMode
         end,
+    %% 邀请他人入群必须自己先是群成员；自己加入自己（扫码 / 面对面入群）除外。
+    %% 缺这道门则任何持 token 的用户都能把任意 uid 塞进任意有容量的群。
+    IsSelfJoin =
+        is_list(MemberUids) andalso
+            [ec_cnv:to_binary(U) || U <- MemberUids] ==
+                [ec_cnv:to_binary(CurrentUid)],
+    IsMember =
+        Gid2 /= 0 andalso
+            maps:size(group_member_logic:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>)) > 0,
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
@@ -120,6 +129,8 @@ join(Req0, State) ->
             elib_response:error(Req0, <<"member_uids 必须是list"/utf8>>);
         _ when MemberUids == [] ->
             elib_response:error(Req0, <<"member_uids 不能为空"/utf8>>);
+        _ when not IsSelfJoin, not IsMember ->
+            elib_response:error(Req0, <<"你不是群成员"/utf8>>);
         _ ->
             case group_member_logic:get_group_capacity(Gid2) of
                 {error, _Reason} ->
