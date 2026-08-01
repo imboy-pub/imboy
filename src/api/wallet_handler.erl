@@ -231,7 +231,10 @@ red_packet_send(Req0, State) ->
     Amount = maps:get(<<"amount">>, PostVals, 0),
     Count = maps:get(<<"count">>, PostVals, 1),
     Greeting = maps:get(<<"greeting">>, PostVals, <<"恭喜发财，大吉大利"/utf8>>),
-    case red_packet_logic:send(CurrentUid, Type, Amount, Count, Greeting) of
+    %% B-11：会话作用域。客户端在聊天页发红包时本就持有 (type, to)，
+    %% 这里把它落库，使 open 侧能判定"非该群成员"。缺省不带 = 旧客户端，放行。
+    Scope = build_scope(PostVals),
+    case red_packet_logic:send(CurrentUid, Type, Amount, Count, Greeting, Scope) of
         {ok, PacketId} ->
             elib_response:success(
                 Req0, #{<<"red_packet_id">> => integer_to_binary(PacketId)}, "success."
@@ -378,3 +381,26 @@ withdraw_logic_is_valid(_, _) -> false.
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+%% @doc 从请求体提取红包会话作用域（B-11）。
+%% scope_type 取 C2C/C2G，scope_id 为群 id 或对端 uid；任一缺失即视为未绑定。
+-spec build_scope(map()) -> map().
+build_scope(PostVals) ->
+    ScopeType = maps:get(<<"scope_type">>, PostVals, undefined),
+    ScopeId = scope_id(maps:get(<<"scope_id">>, PostVals, undefined)),
+    case {ScopeType, ScopeId} of
+        {<<"C2C">>, Id} when Id > 0 -> #{scope_type => <<"C2C">>, scope_id => Id};
+        {<<"C2G">>, Id} when Id > 0 -> #{scope_type => <<"C2G">>, scope_id => Id};
+        _ -> #{}
+    end.
+
+-spec scope_id(term()) -> integer().
+scope_id(V) when is_integer(V) -> V;
+scope_id(V) when is_binary(V) ->
+    try
+        binary_to_integer(V)
+    catch
+        _:_ -> 0
+    end;
+scope_id(_) ->
+    0.

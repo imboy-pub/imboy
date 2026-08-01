@@ -6,7 +6,7 @@
 -include("log.hrl").
 
 -export([tablename/0, receive_tablename/0]).
--export([create/6, find_by_id/1, get_receivers/1, find_receive_by_user/2, grab/2]).
+-export([create/6, create/7, find_by_id/1, get_receivers/1, find_receive_by_user/2, grab/2]).
 -export([list_expired_active/1, expire_and_refund/1]).
 
 %% ===================================================================
@@ -25,6 +25,14 @@ receive_tablename() ->
 -spec create(integer(), binary(), integer(), integer(), binary(), integer()) ->
     {ok, integer()} | {error, term()}.
 create(SenderUid, Type, Amount, Count, Greeting, ExpiresAt) ->
+    create(SenderUid, Type, Amount, Count, Greeting, ExpiresAt, #{}).
+
+%% @doc 创建红包并绑定会话作用域（B-11）。
+%% Scope :: #{scope_type => binary(), scope_id => integer()}；空 map 表示不绑定
+%% （旧客户端），此时 open/2 沿用旧的"任何人凭 id 可领"行为。
+-spec create(integer(), binary(), integer(), integer(), binary(), integer(), map()) ->
+    {ok, integer()} | {error, term()}.
+create(SenderUid, Type, Amount, Count, Greeting, ExpiresAt, Scope) ->
     Tb = tablename(),
     Id = elib_tsid:generate(red_packet),
     Data = #{
@@ -39,7 +47,8 @@ create(SenderUid, Type, Amount, Count, Greeting, ExpiresAt) ->
         <<"status">> => <<"active">>,
         <<"expires_at">> => elib_dt:to_rfc3339(ExpiresAt)
     },
-    {Sql, Params} = elib_pg_sql:insert(Tb, Data),
+    Data2 = apply_scope(Data, Scope),
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Sql, Params) of
         {ok, _Count} -> {ok, Id};
         {error, Reason} -> {error, Reason}
@@ -50,8 +59,12 @@ create(SenderUid, Type, Amount, Count, Greeting, ExpiresAt) ->
 find_by_id(Id) ->
     Tb = tablename(),
     Sql =
-        <<"SELECT id, sender_uid, type, amount, count, remain_amount, remain_count, greeting, status, created_at, expires_at FROM ",
-            Tb/binary, " WHERE id = $1 LIMIT 1">>,
+        <<
+            "SELECT id, sender_uid, type, amount, count, remain_amount, remain_count, greeting,"
+            " status, created_at, expires_at, scope_type, scope_id FROM ",
+            Tb/binary,
+            " WHERE id = $1 LIMIT 1"
+        >>,
     case elib_pg:query(Sql, [Id]) of
         {ok, [Row | _]} -> Row;
         _ -> #{}
@@ -251,6 +264,17 @@ do_expire_refund(Conn, Tb, WalletTb, TxTb, PacketId, SenderUid, RemainAmount) ->
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+%% @doc 作用域两列同进同退 —— 迁移 00000056 的 chk_red_packet_scope_pair 也是这么约束的，
+%% 只写一半会被 PG 直接拒掉。
+-spec apply_scope(map(), map()) -> map().
+apply_scope(Data, Scope) ->
+    ScopeType = maps:get(scope_type, Scope, undefined),
+    ScopeId = maps:get(scope_id, Scope, undefined),
+    case is_binary(ScopeType) andalso is_integer(ScopeId) andalso ScopeId > 0 of
+        true -> Data#{<<"scope_type">> => ScopeType, <<"scope_id">> => ScopeId};
+        false -> Data
+    end.
 
 calculate_amount(<<"fixed">>, RemainAmount, RemainCount) ->
     case RemainCount of

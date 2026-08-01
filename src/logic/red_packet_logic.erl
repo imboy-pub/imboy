@@ -5,7 +5,7 @@
 
 -include("log.hrl").
 
--export([send/5, open/2, detail/2]).
+-export([send/5, send/6, open/2, detail/2]).
 %% ecron 入口（B-10）
 -export([run_expire_refund/0, run_expire_refund/1]).
 
@@ -17,6 +17,23 @@
 -spec send(integer(), binary(), integer(), integer(), binary()) ->
     {ok, integer()} | {error, term()}.
 send(SenderUid, Type, Amount, Count, Greeting) ->
+    send(SenderUid, Type, Amount, Count, Greeting, #{}).
+
+%% @doc 发送红包并绑定会话作用域（B-11）。
+%% Scope :: #{scope_type => <<"C2C">>|<<"C2G">>, scope_id => integer()}。
+%% 未绑定时沿用旧行为（任何人凭 id 可领），直到 {red_packet_require_scope, true}
+%% 打开后拒绝无作用域的请求 —— 客户端全量升级前不能打开。
+-spec send(integer(), binary(), integer(), integer(), binary(), map()) ->
+    {ok, integer()} | {error, term()}.
+send(SenderUid, Type, Amount, Count, Greeting, Scope) ->
+    case validate_scope(SenderUid, Scope) of
+        ok -> do_send(SenderUid, Type, Amount, Count, Greeting, Scope);
+        {error, _} = Err -> Err
+    end.
+
+-spec do_send(integer(), binary(), integer(), integer(), binary(), map()) ->
+    {ok, integer()} | {error, term()}.
+do_send(SenderUid, Type, Amount, Count, Greeting, Scope) ->
     %% 校验参数 / Validate input
     case is_integer(Amount) andalso Amount >= 100 andalso is_integer(Count) andalso Count >= 1 of
         false ->
@@ -45,7 +62,7 @@ send(SenderUid, Type, Amount, Count, Greeting) ->
                             ExpiresAt = elib_dt:second() + 86400,
                             case
                                 red_packet_repo:create(
-                                    SenderUid, Type, Amount, Count, Greeting, ExpiresAt
+                                    SenderUid, Type, Amount, Count, Greeting, ExpiresAt, Scope
                                 )
                             of
                                 {ok, PacketId} ->
@@ -88,6 +105,13 @@ open(PacketId, ReceiverUid) ->
     %% 若领取者从未开通钱包则命中 0 行 → 硬匹配 {ok, 1, _} badmatch → 事务崩溃回滚，
     %% 红包名额被占又领不到钱。ensure_wallet 幂等，与发红包(send)入账前置一致。
     _ = wallet_ds:ensure_wallet(ReceiverUid),
+    case check_open_scope(PacketId, ReceiverUid) of
+        ok -> do_open(PacketId, ReceiverUid);
+        {error, _} = Err -> Err
+    end.
+
+-spec do_open(integer(), integer()) -> {ok, integer()} | {error, term()}.
+do_open(PacketId, ReceiverUid) ->
     case red_packet_repo:grab(PacketId, ReceiverUid) of
         {ok, GrabAmount} ->
             {ok, GrabAmount};
@@ -124,6 +148,72 @@ detail(PacketId, ViewerUid) ->
                     },
                     {ok, Payload}
             end
+    end.
+
+%% ===================================================================
+%% B-11 会话作用域：非该群成员不得领取
+%% ===================================================================
+
+%% @doc 发送侧作用域校验。
+%% - 未带作用域：默认放行（旧客户端），除非 {red_packet_require_scope, true}。
+%% - 带 C2G：发送者自己必须是该群成员，否则等于往一个自己都不在的群里塞钱。
+-spec validate_scope(integer(), map()) -> ok | {error, binary()}.
+validate_scope(SenderUid, Scope) ->
+    ScopeType = maps:get(scope_type, Scope, undefined),
+    ScopeId = to_int(maps:get(scope_id, Scope, 0)),
+    case {ScopeType, ScopeId} of
+        {undefined, _} ->
+            case config_ds:env(red_packet_require_scope, false) of
+                true -> {error, <<"缺少会话信息，请升级客户端后重试"/utf8>>};
+                _ -> ok
+            end;
+        {<<"C2G">>, Gid} when Gid > 0 ->
+            case group_member_ds:is_member(Gid, SenderUid) of
+                true -> ok;
+                false -> {error, <<"无权操作：您不是该群成员"/utf8>>}
+            end;
+        {<<"C2C">>, Uid} when Uid > 0 ->
+            ok;
+        _ ->
+            {error, <<"会话信息不合法"/utf8>>}
+    end.
+
+%% @doc 领取侧作用域校验 —— B-11 判据本体。
+%%
+%% 未绑定作用域的红包（旧数据/旧客户端）沿用旧行为放行：若在这里 fail-closed，
+%% 上线当天所有在途红包会立刻全部领不了。代价是这条越权面在客户端全量升级 +
+%% 打开 red_packet_require_scope 之前**依然存在**，必须当作未完成项跟踪。
+-spec check_open_scope(integer(), integer()) -> ok | {error, binary()}.
+check_open_scope(PacketId, ReceiverUid) ->
+    Packet = red_packet_repo:find_by_id(PacketId),
+    case map_size(Packet) =:= 0 of
+        true ->
+            %% 不存在交给 grab 去报"红包不存在"，这里不抢它的错误语义
+            ok;
+        false ->
+            scope_allows(Packet, ReceiverUid)
+    end.
+
+-spec scope_allows(map(), integer()) -> ok | {error, binary()}.
+scope_allows(Packet, ReceiverUid) ->
+    SenderUid = to_int(maps:get(<<"sender_uid">>, Packet, 0)),
+    case maps:get(<<"scope_type">>, Packet, null) of
+        <<"C2G">> ->
+            Gid = to_int(maps:get(<<"scope_id">>, Packet, 0)),
+            case Gid > 0 andalso group_member_ds:is_member(Gid, ReceiverUid) of
+                true -> ok;
+                false -> {error, <<"无权操作：您不是该群成员"/utf8>>}
+            end;
+        <<"C2C">> ->
+            %% 单聊红包只有收发双方可领
+            Peer = to_int(maps:get(<<"scope_id">>, Packet, 0)),
+            case ReceiverUid =:= Peer orelse ReceiverUid =:= SenderUid of
+                true -> ok;
+                false -> {error, <<"无权操作：该红包不属于当前会话"/utf8>>}
+            end;
+        _ ->
+            %% NULL / 未知：未绑定作用域，沿用旧行为
+            ok
     end.
 
 %% ===================================================================
