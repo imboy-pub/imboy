@@ -190,7 +190,8 @@ peer_ip(Req) ->
 %%
 %% 默认白名单 [127.0.0.1, ::1] 与 deploy/nginx 的 proxy_pass
 %% http://127.0.0.1:9800 一致；多层代理/云 LB 需在 trusted_proxy_ips
-%% 中显式列出各跳的出口 IP。
+%% 中显式列出各跳的出口 IP，并把 trusted_proxy_hops 设为实际代理层数
+%% （默认 1 = 单层 nginx）。
 -spec get_client_ip(cowboy_req:req()) -> binary().
 get_client_ip(Req) ->
     {PeerIp, _Port} = cowboy_req:peer(Req),
@@ -198,23 +199,39 @@ get_client_ip(Req) ->
     TrustedProxies = config_ds:env(trusted_proxy_ips, [<<"127.0.0.1">>, <<"::1">>]),
     case lists:member(PeerIpBin, TrustedProxies) of
         true ->
-            first_forwarded_ip(
-                cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin), PeerIpBin
+            forwarded_ip_at_hop(
+                cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin),
+                PeerIpBin,
+                config_ds:env(trusted_proxy_hops, 1)
             );
         false ->
             PeerIpBin
     end.
 
-%% @private 取 XFF 最左一段（最接近真实客户端的那一跳）。
-%% 空头 / 全分隔符时回退直连 IP —— 原 passport_handler 版本用 hd/1，
-%% 遇到 `X-Forwarded-For: ` 这种空值头会 badarg 崩掉请求。
--spec first_forwarded_ip(binary(), binary()) -> binary().
-first_forwarded_ip(ForwardedFor, Fallback) when is_binary(ForwardedFor) ->
-    case binary:split(ForwardedFor, [<<",">>, <<" ">>], [trim_all, global]) of
-        [First | _] -> First;
-        [] -> Fallback
+%% @private 从 XFF **右**数第 Hops 段。
+%%
+%% 取最左段是错的：deploy/nginx/templates/imboy.conf.template 用
+%% `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`，其语义是
+%% 「客户端自带的 XFF 原样留在左边 ++ 本跳看到的 remote_addr 追加到右边」。
+%% 因此最左段 100% 由攻击者控制：每个请求带一个随机 `X-Forwarded-For: 1.2.3.x`
+%% 就能让限流桶 key 每次都新，IP 维度限流全站失效。
+%% 只有**代理自己追加的那些右侧段**不可伪造。
+%%
+%% 用固定跳数而不是"丢弃所有受信 IP"：后者可被 `XFF: evil, 127.0.0.1` 这类
+%% 受信 IP 填充绕过（贪心丢完就把 evil 当成了客户端）。
+%% Hops = 请求到达前经过的代理层数：单 nginx（默认部署）= 1 → 取最后一段；
+%% 云 LB → nginx = 2 → 取倒数第二段。段数不足时回退直连 IP（不可伪造）。
+%% 空头 / 全分隔符同样回退 —— 原实现用 hd/1，空值头会 badarg 崩掉请求。
+-spec forwarded_ip_at_hop(binary(), binary(), integer()) -> binary().
+forwarded_ip_at_hop(ForwardedFor, Fallback, Hops) when
+    is_binary(ForwardedFor), is_integer(Hops), Hops >= 1
+->
+    Segments = binary:split(ForwardedFor, [<<",">>, <<" ">>], [trim_all, global]),
+    case length(Segments) >= Hops of
+        true -> lists:nth(Hops, lists:reverse(Segments));
+        false -> Fallback
     end;
-first_forwarded_ip(_, Fallback) ->
+forwarded_ip_at_hop(_, Fallback, _) ->
     Fallback.
 
 %% @doc 判断客户端 IP 是否命中白名单（全站唯一实现）。
