@@ -31,8 +31,11 @@ execute(Req, Env) ->
             % /api 前缀的 Admin 路由同样委托给 adm_auth_middleware，
             % 避免落入客户端默认分支误走 verify_sign 客户端签名门（902）
             adm_auth_middleware:execute(Req, Env);
-        <<"/v1/", _Tail/binary>> ->
+        <<"/api/v1/", _Tail/binary>> ->
             % API v1 路由委托给 auth_middleware_api_v1
+            % 2026-07-08 路由由 /v1/* 改名 /api/v1/*，此处前缀当时漏改，
+            % 导致 auth_middleware_api_v1 永不被调用（318 条路由全落兜底）：
+            % 支付回调/频道 webhook 被 902 拦死、passport 等丢失签名门。
             auth_middleware_api_v1:execute(Req, Env);
         <<"/webrtc/", _Tail/binary>> ->
             {ok, Req, Env};
