@@ -175,5 +175,45 @@ else
 fi
 
 echo
+echo "== B-25c 钉钉转换器地址契约 =="
+
+DT_OVERLAY="deploy/docker-compose.alert-dingtalk.yml"
+ENV_EX="deploy/alertmanager/alertmanager.env.example"
+
+# 转换器对外地址由三部分决定：container_name + 端口 + profile 名。
+# 三者与 env 示例里的 URL 必须逐字一致 —— 对不上**不会报错**，
+# 告警只是静默发不出去（同 B-26 指标名那类坑）。
+if [ ! -f "$DT_OVERLAY" ]; then
+  bad "钉钉转换器 overlay 不存在" ""
+else
+  CN="$(grep -E '^\s+container_name:' "$DT_OVERLAY" | head -1 | awk '{print $2}')"
+  PORT="$(grep -oE 'web.listen-address=:[0-9]+' "$DT_OVERLAY" | head -1 | grep -oE '[0-9]+')"
+  PROF="$(grep -oE 'ding\.profile=[a-z0-9_]+=' "$DT_OVERLAY" | head -1 | sed 's/ding\.profile=//;s/=$//')"
+  EXPECT="http://${CN}:${PORT}/dingtalk/${PROF}/send"
+  if grep -qF "$EXPECT" "$ENV_EX"; then
+    ok "env 示例里的转换器地址与 overlay 一致（${EXPECT}）"
+  else
+    bad "转换器地址与 overlay 对不上（告警会静默发不出去）" \
+        "overlay 推导=${EXPECT} / env 示例=$(grep -oE 'http://[^ ]*dingtalk[^ ]*' "$ENV_EX" | head -1)"
+  fi
+fi
+
+# 该 overlay 必须是 opt-in 的单独文件：它没有真实机器人 URL 就会崩溃循环，
+# 并进 observability overlay 会让"没配钉钉"变成"多一个反复重启的容器"。
+if grep -q "dingtalk" deploy/docker-compose.observability.yml 2>/dev/null; then
+  bad "钉钉转换器被并进了 observability overlay（未配置时会崩溃循环）" ""
+else
+  ok "钉钉转换器保持独立 opt-in overlay"
+fi
+
+# 仓库里不得出现真实机器人 token
+if grep -rnE 'oapi\.dingtalk\.com|access_token=[A-Za-z0-9]{8,}' "$DT_OVERLAY" "$ENV_EX" >/dev/null 2>&1; then
+  bad "overlay/示例里出现了疑似真实机器人地址或 token" \
+      "$(grep -rnE 'oapi\.dingtalk\.com|access_token=' "$DT_OVERLAY" "$ENV_EX" | head -2)"
+else
+  ok "overlay/示例无真实机器人地址或 token"
+fi
+
+echo
 echo "总计: PASS=${PASS} FAIL=${FAIL}"
 [ "$FAIL" -eq 0 ]

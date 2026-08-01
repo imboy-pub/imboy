@@ -1,0 +1,52 @@
+# ============================================================
+# 钉钉告警转换器 / DingTalk alert webhook adapter
+# ------------------------------------------------------------
+# 用法 / Usage（**只有配置了机器人 URL 才加这一个 -f**）:
+#   docker compose -f docker-compose.prod.yml \
+#                  -f docker-compose.healthcheck.yml \
+#                  -f docker-compose.observability.yml \
+#                  -f docker-compose.alert-dingtalk.yml up -d
+#
+# 为什么单独成文件而不是并进 observability overlay：
+#   本服务**必须**有一个真实的机器人 URL 才能启动，没配就会崩溃循环。
+#   做成独立 opt-in 文件后，"没配" = "不加这个 -f" = 什么也不会发生，
+#   而不是多出一个反复重启的容器。
+#   （B-25 那版把空值 receiver 写进 alertmanager.yml，正是同一个错误的另一面：
+#    未配置不该恶化成"起不来"。）
+#
+# 为什么是钉钉：git 历史里 alertmanager.yml 原本就注释着
+#   `http://dingtalk-webhook:8060/dingtalk/ops/send`，本仓原定路线即 DingTalk。
+#   ⚠️ 若你用的是**飞书/企业微信**，转换器不是这个，告诉我另配 —— 各家的
+#   webhook 报文格式不同，不能混用。
+#
+# 需要的值（写进 deploy/alertmanager/alertmanager.env，该文件已 gitignore）：
+#   DINGTALK_ROBOT_URL   钉钉群机器人的 Webhook 地址（含 access_token）
+#
+# ⚠️ 机器人安全设置三选一：
+#   - 关键词 / IP 段：本 overlay 够用
+#   - **加签**：需要额外的 secret，CLI 的 --ding.profile 表达不了，
+#     得改用配置文件形式（targets.ops.secret）。用加签就告诉我，我再补。
+# ============================================================
+
+services:
+  imboy_dingtalk_adapter:
+    image: timonwong/prometheus-webhook-dingtalk:v2.1.0
+    container_name: dingtalk-webhook
+    restart: unless-stopped
+    command:
+      - '--web.listen-address=:8060'
+      # profile 名 'ops' 决定了对外端点是 /dingtalk/ops/send，
+      # 必须与 alertmanager.env 里的 ALERT_WEBHOOK_URL 逐字一致 ——
+      # 对不上不会报错，告警只是**静默发不出去**（B-26 指标名那类坑的同款）。
+      - '--ding.profile=ops=${DINGTALK_ROBOT_URL}'
+    expose:
+      - "8060"
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
