@@ -34,6 +34,35 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$BACKUP_FILE" ] || fail "用法: bash script/restore_pg.sh <backup-file.dump> [--target DB]"
+
+# ---------- B-28 生产库守卫（在任何连库动作之前）----------
+# 本脚本第 50 行起会 `DROP DATABASE IF EXISTS <target>` —— 目标写错就是**不可逆的
+# 生产数据删除**。而 --target 缺省值恰好就是生产库名（SOURCE_DB），
+# 也就是说"忘了带 --target"这一个手滑，默认后果就是删生产。
+#
+# 真实灾难恢复确实需要恢复回生产库，所以守卫**可覆盖但必须显式**：
+#   ALLOW_PRODUCTION_TARGET=1 bash scripts/restore_pg.sh <file> --target imboy_pro
+# 且即使覆盖，也仍要走下面的交互确认（FORCE=1 不能同时绕过两道）。
+assert_target_not_production() {
+  local target="$1" production="$2"
+  [ "$target" = "$production" ] || return 0
+
+  if [ "${ALLOW_PRODUCTION_TARGET:-}" = "1" ]; then
+    warn "⚠️  目标是生产库 '${production}'，已由 ALLOW_PRODUCTION_TARGET=1 显式放行"
+    if [ "${FORCE:-}" = "1" ]; then
+      fail "拒绝执行：恢复到生产库时不允许同时使用 FORCE=1 跳过人工确认"
+    fi
+    return 0
+  fi
+
+  fail "拒绝执行：目标库 '${target}' 就是生产库。
+  本脚本会先 DROP 目标库，误操作不可逆。
+  - 演练/验证请指定独立目标：--target imboy_restore_test
+  - 确属灾难恢复：ALLOW_PRODUCTION_TARGET=1 bash \$0 <file> --target ${production}
+    （该模式下不接受 FORCE=1，必须人工输入 yes）"
+}
+assert_target_not_production "$TARGET_DB" "$SOURCE_DB"
+
 [ -f "$BACKUP_FILE" ] || fail "备份文件不存在: $BACKUP_FILE"
 command -v docker >/dev/null 2>&1 || fail "docker 未安装"
 docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER" || fail "PG 容器 '$PG_CONTAINER' 未运行"
