@@ -174,3 +174,64 @@ wallet_ships_immediately() ->
     ?assertEqual(1, maps:get(<<"status">>, Envelope)),
     ?assert(meck:called(channel_order_ds, pay, '_')),
     ?assert(meck:called(channel_ds, subscribe, [?CID, ?UID])).
+
+%%%===================================================================
+%%% B-03：超时未支付订单在**查询时**显示为已过期(4)。
+%%% 不写库 —— 迟到的回调仍要能按 B-08 补单。
+%%%===================================================================
+
+order_expiry_view_test_() ->
+    {foreach, fun setup/0, fun cleanup/1, [
+        fun expired_pending_order_reads_as_expired/0,
+        fun unexpired_pending_order_keeps_pending/0,
+        fun paid_order_never_marked_expired/0,
+        fun missing_expires_at_keeps_pending/0
+    ]}.
+
+%% 构造一个 status/expires_at 可控的订单
+stub_order(Status, ExpiresAt) ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => Status,
+            <<"expires_at">> => ExpiresAt
+        }}
+    end).
+
+%% PG timestamptz 经 epgsql 回来是 {{Y,M,D},{H,Mi,S}}（UTC）
+utc_datetime(OffsetMs) ->
+    Secs = (elib_dt:millisecond() + OffsetMs) div 1000,
+    calendar:gregorian_seconds_to_datetime(Secs + 62167219200).
+
+expired_pending_order_reads_as_expired() ->
+    stub_order(0, utc_datetime(-60 * 1000)),
+    {ok, Order} = channel_logic_order:get_order(?UID, <<"ORD_E1">>),
+    ?assertEqual(4, maps:get(<<"status">>, Order)).
+
+unexpired_pending_order_keeps_pending() ->
+    stub_order(0, utc_datetime(10 * 60 * 1000)),
+    {ok, Order} = channel_logic_order:get_order(?UID, <<"ORD_E2">>),
+    ?assertEqual(0, maps:get(<<"status">>, Order)).
+
+%% 已支付订单即使 expires_at 早已过去也不能被改成过期
+paid_order_never_marked_expired() ->
+    stub_order(1, utc_datetime(-86400 * 1000)),
+    {ok, Order} = channel_logic_order:get_order(?UID, <<"ORD_E3">>),
+    ?assertEqual(1, maps:get(<<"status">>, Order)).
+
+%% 取不到 expires_at 时按未过期处理，不误杀
+missing_expires_at_keeps_pending() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => 0
+        }}
+    end),
+    {ok, Order} = channel_logic_order:get_order(?UID, <<"ORD_E4">>),
+    ?assertEqual(0, maps:get(<<"status">>, Order)).

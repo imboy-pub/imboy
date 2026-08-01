@@ -22,9 +22,10 @@
 %% 必须等 payment_callback_logic 收到回调才发货 —— 否则即"零元购"。
 -define(INSTANT_SETTLE_METHODS, [<<"wallet">>, <<"mock">>]).
 
-%% channel_order.status
+%% channel_order.status（迁移 00000003 列注释：0待支付 1已支付 2已退款 3已取消 4已过期）
 -define(STATUS_PENDING, 0).
 -define(STATUS_PAID, 1).
+-define(STATUS_EXPIRED, 4).
 
 -spec create_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 create_order(Uid, ChannelIdBin) ->
@@ -424,6 +425,55 @@ decode_positive_id(Value) ->
             0
     end.
 
+%% @doc 出参整形：把「已超时但仍是待支付」的订单显示为已过期(4)。
+%%
+%% B-03：`channel_order_repo:pay/2` 的 SQL 带 `expires_at > NOW()` 守卫，超时订单
+%% 事实上已经付不了了，但库里 status 永远停在 0 —— 用户和管理后台看到的是一个
+%% 永久「待支付」的僵尸订单。这里在读取侧派生，**不写库**：
+%%   - 迟到的回调仍能按 B-08 补单（一旦落库改状态，补单就再无可能）
+%%   - 不需要新的定时任务
+%%
+%% 取值 4(已过期) 而非计划判据写的 3(已取消)：迁移 00000003 的列注释是
+%% 「0待支付 1已支付 2已退款 3已取消 4已过期」，3 是用户主动取消(cancel/1 用的就是它)。
+%% 混用会让管理后台分不清"用户放弃"和"超时作废"。
+%%
+%% ponytail: 用节点时钟比 PG 的 expires_at，与 pay 的 NOW() 守卫存在时钟漂移窗口
+%%   （只影响显示，不影响能否支付）。要精确一致就把 `expires_at <= NOW()` 放进
+%%   SELECT 让 PG 自己判。
 -spec order_transfer(map()) -> map().
 order_transfer(Order) ->
-    Order.
+    case maps:get(<<"status">>, Order, -1) =:= ?STATUS_PENDING of
+        false -> Order;
+        true -> maybe_mark_expired(Order)
+    end.
+
+-spec maybe_mark_expired(map()) -> map().
+maybe_mark_expired(Order) ->
+    case expires_at_ms(maps:get(<<"expires_at">>, Order, undefined)) of
+        Ms when is_integer(Ms), Ms =< 0 -> Order;
+        Ms when is_integer(Ms) ->
+            case elib_dt:millisecond() >= Ms of
+                true -> Order#{<<"status">> => ?STATUS_EXPIRED};
+                false -> Order
+            end;
+        _ ->
+            Order
+    end.
+
+%% @doc PG `timestamp with time zone` 经 epgsql 回来是 {{Y,M,D},{H,Mi,S}}（UTC，S 可能是浮点秒）。
+%% 取不到或形状不认识（含非法日期）时返回 0 → 按"未过期"处理，不误杀正常订单。
+%% 注：`elib_dt:datetime_to/2` 明示为内部函数不导出，这里直接用 stdlib calendar。
+-define(EPOCH_GREGORIAN_SECS, 62167219200).
+
+-spec expires_at_ms(term()) -> integer().
+expires_at_ms({{_, _, _}, {H, Mi, S}} = Dt) when is_number(H), is_number(Mi), is_number(S) ->
+    {Date, {_, _, _}} = Dt,
+    try calendar:datetime_to_gregorian_seconds({Date, {trunc(H), trunc(Mi), trunc(S)}}) of
+        Secs -> (Secs - ?EPOCH_GREGORIAN_SECS) * 1000
+    catch
+        _:_ -> 0
+    end;
+expires_at_ms(Ms) when is_integer(Ms), Ms > 0 ->
+    Ms;
+expires_at_ms(_) ->
+    0.
