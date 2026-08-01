@@ -46,19 +46,15 @@ receivers:
   # 只进 UI，不通知任何人。**这是未配置时的兜底，不是可接受的生产状态。**
   - name: 'null'
 
-  - name: 'email'
-    email_configs:
-      - to: ''
-        send_resolved: true
-        headers:
-          Subject: '[IMBoy][{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+# ⚠️ 下面两段由 render.sh 按是否真的被使用来**保留或整段删除**。
+#   原因：receiver 里留空的 url/to 字段会让 Alertmanager 拒绝加载**整份**配置，
+#   于是「没填渠道」会从「只进 UI」恶化成「整个 Alertmanager 起不来」——
+#   比修之前更糟。没配就不输出，未配置态的产物形状与原文件一致（只有 null）。
+#   标记行本身也会被 render.sh 去掉，不会出现在产物里。
+
 
   # 钉钉/飞书等 IM 群机器人。webhook_configs 是通用的：
   # 钉钉需经 prometheus-webhook-dingtalk 之类的转换器，飞书同理。
-  - name: 'webhook'
-    webhook_configs:
-      - url: ''
-        send_resolved: true
 
 inhibit_rules:
   # 节点整体挂掉时，抑制它派生出的其它告警，避免一次故障刷屏几十条

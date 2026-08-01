@@ -85,7 +85,31 @@ check_receiver "ALERT_RECEIVER_DEFAULT"  "$ALERT_RECEIVER_DEFAULT"
 check_receiver "ALERT_RECEIVER_CRITICAL" "$ALERT_RECEIVER_CRITICAL"
 
 # ---------- 渲染 ----------
-RENDERED="$(envsubst < "$TEMPLATE")"
+# 只保留**真的被某条 route 指向**的 receiver。
+# 为什么必须这么做：Alertmanager 对 `url: ''` / `to: ''` 这种空值 receiver 会
+# 拒绝加载整份配置 —— 于是"没填渠道"会从「只进 UI」恶化成「Alertmanager 起不来」，
+# 比修之前更糟。没配就整段不输出。
+keep_receiver() {  # keep_receiver <name> -> 0 保留 / 1 删除
+  [ "$ALERT_RECEIVER_DEFAULT" = "$1" ] || [ "$ALERT_RECEIVER_CRITICAL" = "$1" ]
+}
+
+# 按 #>>>RECEIVER:x / #<<<RECEIVER:x 标记整段保留或删除；标记行本身始终去掉
+strip_unused_receivers() {
+  local keep_email=0 keep_webhook=0
+  keep_receiver email   && keep_email=1
+  keep_receiver webhook && keep_webhook=1
+  awk -v ke="$keep_email" -v kw="$keep_webhook" '
+    /^#>>>RECEIVER:email$/   { blk="email";   next }
+    /^#<<<RECEIVER:email$/   { blk="";        next }
+    /^#>>>RECEIVER:webhook$/ { blk="webhook"; next }
+    /^#<<<RECEIVER:webhook$/ { blk="";        next }
+    blk == "email"   && ke != 1 { next }
+    blk == "webhook" && kw != 1 { next }
+    { print }
+  '
+}
+
+RENDERED="$(envsubst < "$TEMPLATE" | strip_unused_receivers)"
 
 if [ "$DRY_RUN" = "1" ]; then
   info "DRY_RUN=1：校验通过，未落盘"

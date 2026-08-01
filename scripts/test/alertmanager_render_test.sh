@@ -106,5 +106,74 @@ else
 fi
 
 echo
+echo "== B-25b 未使用的 receiver 不得输出（空值会让 Alertmanager 拒绝加载）=="
+
+# Alertmanager 对 `url: ''` / `to: ''` 会拒绝加载**整份**配置。
+# 若没配渠道时仍输出这些空壳，"没填渠道"就会从「只进 UI」恶化成
+# 「Alertmanager 起不来」—— 比修之前更糟。
+render_to() {  # render_to <env内容> <输出文件>
+  printf '%s\n' "$1" > "$WORK/am.env"
+  ALERT_ENV_FILE="$WORK/am.env" ALERT_OUT_FILE="$2" bash "$R" >"$WORK/log" 2>&1
+  echo $?
+}
+
+# 1) 未配置：只能有 null，且不得出现任何空值字段
+RC="$(render_to "ALERT_RECEIVER_CRITICAL=null" "$WORK/none.yml")"
+if [ "$RC" != "0" ] || [ ! -f "$WORK/none.yml" ]; then
+  bad "未配置态渲染失败" "$(cat "$WORK/log")"
+elif grep -qE "^[[:space:]]+-?[[:space:]]*(url|to): ''$" "$WORK/none.yml"; then
+  # ⚠️ 必须锚到真实 YAML 行：只按字面量 grep 会命中模板里**描述这个问题的注释**，
+  #    第一版就是这样报了假阳性（本会话第五次同类）。注释行以 # 开头，已排除。
+  bad "未配置态输出了空值 receiver（Alertmanager 会拒绝加载）" \
+      "$(grep -nE "^[[:space:]]+-?[[:space:]]*(url|to): ''$" "$WORK/none.yml")"
+else
+  ok "未配置态不输出空值 receiver"
+fi
+if grep -qE "^\s+- name: '(email|webhook)'" "$WORK/none.yml"; then
+  bad "未配置态仍输出了 email/webhook receiver" "$(grep -nE "name: '" "$WORK/none.yml")"
+else
+  ok "未配置态 receivers 只剩 null"
+fi
+
+# 2) 只配 webhook：email 段必须整段消失
+RC="$(render_to "ALERT_RECEIVER_CRITICAL=webhook
+ALERT_WEBHOOK_URL=http://hook:8060/send" "$WORK/wh.yml")"
+if [ "$RC" = "0" ] && grep -q "name: 'webhook'" "$WORK/wh.yml" \
+   && ! grep -q "name: 'email'" "$WORK/wh.yml"; then
+  ok "只配 webhook 时 email 段整段删除"
+else
+  bad "只配 webhook 时 receiver 集合不对" "$(grep -nE "name: '" "$WORK/wh.yml" 2>/dev/null)"
+fi
+
+# 3) 标记行不得泄漏进产物
+if grep -q "RECEIVER:" "$WORK/wh.yml"; then
+  bad "模板标记行泄漏进产物" "$(grep -n 'RECEIVER:' "$WORK/wh.yml")"
+else
+  ok "模板标记行未泄漏"
+fi
+
+# 4) **核心不变量**：route 指向的每个 receiver 都必须真的定义了。
+#    指向一个不存在的 receiver，Alertmanager 同样拒绝加载整份配置。
+RC="$(render_to "ALERT_RECEIVER_CRITICAL=webhook
+ALERT_RECEIVER_DEFAULT=email
+ALERT_WEBHOOK_URL=http://hook:8060/send
+ALERT_SMTP_SMARTHOST=smtp.example.com:587
+ALERT_SMTP_FROM=am@example.com
+ALERT_EMAIL_TO=ops@example.com" "$WORK/both.yml")"
+if [ "$RC" != "0" ]; then
+  bad "双渠道组合渲染失败" "$(cat "$WORK/log")"
+else
+  MISSING=""
+  for want in $(grep -oE "receiver: '[a-z]+'" "$WORK/both.yml" | sed "s/receiver: '//;s/'//" | sort -u); do
+    grep -q "name: '${want}'" "$WORK/both.yml" || MISSING="$MISSING $want"
+  done
+  if [ -z "$MISSING" ]; then
+    ok "route 指向的 receiver 全部已定义（双渠道）"
+  else
+    bad "route 指向了未定义的 receiver:$MISSING" "$(grep -nE "name: '|receiver: '" "$WORK/both.yml")"
+  fi
+fi
+
+echo
 echo "总计: PASS=${PASS} FAIL=${FAIL}"
 [ "$FAIL" -eq 0 ]
