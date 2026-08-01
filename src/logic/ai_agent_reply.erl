@@ -146,14 +146,52 @@ deliver_reply(_FromUid, _ToId, _MsgId, <<>>) ->
     ok;
 deliver_reply(FromUid, ToId, MsgId, Result) ->
     Content = elib_str:replace_single_quote(Result),
+    %% text/content 双键：兼容不同渲染消费者
+    PayloadMap = #{<<"text">> => Content, <<"content">> => Content},
+    PayloadJson = jsone:encode(PayloadMap, [native_utf8]),
+    %% 部署级 E2EE fail-closed 门：本模块直写 msg_store_ds:stage/enqueue，
+    %% 不经 msg_c2c_logic:stage_and_send_c2c，必须自带同款门（照
+    %% ai_agent_proactive:send_text/3），否则 required 部署下 agent 明文会从
+    %% 这条旁路灌进 msg_c2c。
+    case imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, null, PayloadJson) of
+        ok ->
+            do_deliver_reply(FromUid, ToId, MsgId, PayloadMap, PayloadJson);
+        {error, Reason} ->
+            %% 拒发而非降级：agent 无设备私钥，没有"加密后再发"这条路。
+            ok = ?WARN_LOG("[AGENT_REPLY_BLOCKED] to=~p reason=~p~n", [FromUid, Reason]),
+            ok
+    end.
+
+%% @private 过门后的实际投递。
+%%
+%% B-30：此前只调 message_ds:send_next —— 那只推 imboy_syn 里的**在线**设备，
+%% 不写 staging / msg_c2c / archive。用户切后台或断网时 agent 的回复**永久丢失**，
+%% 且离线 pull 拉不到、历史里也没有。演示能过、生产必挂的典型。
+%% 修法照 ai_agent_proactive:do_send_text/4（同一问题已在那边修好）：
+%% 先 stage 写 staging 表（同步安全），再 enqueue 触发 msg_store_worker
+%% claim staging → 写 msg_c2c，最后才 send_next 推在线设备。
+-spec do_deliver_reply(integer(), integer(), binary(), map(), binary()) -> ok.
+do_deliver_reply(FromUid, ToId, MsgId, PayloadMap, PayloadJson) ->
+    %% 命名警告：本模块的 FromUid 是**收消息的人类**，ToId 是 agent。
+    %% 落库的 from_id/to_id 必须按"消息方向"填，不能照抄变量名。
+    NowTs = elib_dt:now(),
+    _ = msg_store_ds:stage(
+        <<"c2c">>, MsgId, <<"text">>, <<>>, null, PayloadJson, ToId, FromUid, NowTs, NowTs
+    ),
+    msg_store_ds:enqueue(<<"c2c">>, MsgId, #{
+        payload => PayloadMap,
+        from_id => ToId,
+        to_id => FromUid,
+        created_at => NowTs,
+        server_ts => NowTs
+    }),
     Msg = #{
         <<"id">> => MsgId,
         <<"type">> => <<"C2C">>,
         <<"from">> => ec_cnv:to_binary(ToId),
         <<"to">> => ec_cnv:to_binary(FromUid),
         <<"msg_type">> => <<"text">>,
-        %% text/content 双键：兼容不同渲染消费者
-        <<"payload">> => #{<<"text">> => Content, <<"content">> => Content},
+        <<"payload">> => PayloadMap,
         <<"created_at">> => elib_dt:millisecond()
     },
     MsgJson = jsone:encode(Msg, [native_utf8]),

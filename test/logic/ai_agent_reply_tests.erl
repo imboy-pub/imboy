@@ -18,6 +18,22 @@
     ]}
 ).
 
+%% B-30：回复必须先 stage/enqueue 落库再推在线设备，故这两个边界要打桩。
+%% 不打桩会穿透打真库 —— 这三条用例此前正是因此变红。
+-define(STAGE_STUB,
+    {msg_store_ds, [
+        {'stage', 10, fun(_T, _Id, _MT, _E, _E2, _P, _From, _To, _C, _S) -> ok end},
+        {'enqueue', 3, fun(_T, _Id, _Meta) -> ok end}
+    ]}
+).
+
+%% E2EE 部署级门放行（本模块只测投递编排，门本身有独立测试）
+-define(POLICY_OK,
+    {imboy_policy, [
+        {'validate_message_write', 5, fun(_T, _MT, _E, _E2, _P) -> ok end}
+    ]}
+).
+
 %% 限流器放行（隔离 agent_rate_limiter，本模块只测 dispatch 编排，不测限流内部）
 -define(ALLOW_RL,
     {agent_rate_limiter, [
@@ -56,7 +72,9 @@ agent_dm_triggers_llm_and_delivers_reply_test_() ->
             ]},
             {message_ds, [
                 {'send_next', 4, fun(_ToUid, _MsgId, _Json, _MsLi) -> ok end}
-            ]}
+            ]},
+            ?STAGE_STUB,
+            ?POLICY_OK
         ],
         fun() ->
             Data = #{
@@ -89,7 +107,9 @@ rate_limited_denies_no_llm_test_() ->
             ]},
             {imboy_llm_registry, [{'lookup', 1, fun(_) -> {ok, #{module => x, opts => #{}}} end}]},
             {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
-            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?STAGE_STUB,
+            ?POLICY_OK
         ],
         fun() ->
             Data = #{
@@ -166,7 +186,9 @@ provider_missing_no_delivery_test_() ->
             ]},
             {imboy_llm_registry, [{'lookup', 1, fun(<<"ghost">>) -> undefined end}]},
             {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
-            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?STAGE_STUB,
+            ?POLICY_OK
         ],
         fun() ->
             Data = #{<<"payload">> => #{<<"content">> => <<"hi">>}},
@@ -188,7 +210,9 @@ llm_error_no_delivery_test_() ->
             ]},
             {imboy_llm_openai, [{'chat', 3, fun(_, _, _) -> {error, timeout} end}]},
             {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
-            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?STAGE_STUB,
+            ?POLICY_OK
         ],
         fun() ->
             Data = #{<<"payload">> => #{<<"content">> => <<"hi">>}},
@@ -229,7 +253,9 @@ agent_dm_streams_deltas_then_finalizes_test_() ->
                 end}
             ]},
             {imboy_syn, [{'publish', 2, fun(_Uid, _Json) -> {ok, 1} end}]},
-            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?STAGE_STUB,
+            ?POLICY_OK
         ],
         fun() ->
             application:set_env(imboy, llm_stream_enabled, true),
@@ -285,7 +311,9 @@ stream_error_finalizes_partial_test_() ->
             ]},
             {imboy_syn, [{'publish', 2, fun(_, _) -> {ok, 1} end}]},
             {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
-            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]}
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?STAGE_STUB,
+            ?POLICY_OK
         ],
         fun() ->
             application:set_env(imboy, llm_stream_enabled, true),
@@ -300,5 +328,102 @@ stream_error_finalizes_partial_test_() ->
             after
                 application:unset_env(imboy, llm_stream_enabled)
             end
+        end
+    ).
+
+%% ===================================================================
+%% B-30：agent 的 C2C 回复必须落库，用户离线也不丢
+%%
+%% 此前 deliver_reply 只调 message_ds:send_next —— 那只推 imboy_syn 里的
+%% **在线**设备，不写 staging/msg_c2c/archive。用户切后台或断网时回复永久丢失，
+%% 离线 pull 拉不到、历史里也没有。演示能过、生产必挂。
+%% ===================================================================
+
+%% 判据本体：回复先 stage 再 enqueue，最后才推在线设备
+reply_is_persisted_before_push_test_() ->
+    ?WITH_MECKS(
+        [
+            ?SYNC_ASYNC,
+            ?ALLOW_RL,
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(42) ->
+                    {true, #{<<"provider">> => <<"openai">>, <<"model">> => <<"m">>}}
+                end}
+            ]},
+            {imboy_llm_registry, [
+                {'lookup', 1, fun(<<"openai">>) ->
+                    {ok, #{module => imboy_llm_openai, opts => #{}}}
+                end}
+            ]},
+            {imboy_llm_openai, [
+                {'chat', 3, fun(42, _M, _O) -> {ok, #{<<"result">> => <<"hi">>}} end}
+            ]},
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?STAGE_STUB,
+            ?POLICY_OK
+        ],
+        fun() ->
+            Data = #{
+                <<"payload">> => #{<<"content">> => <<"?">>},
+                <<"msg_type">> => <<"text">>
+            },
+            ?assertEqual(ok, ai_agent_reply:maybe_dispatch(7, 42, Data)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, '_')),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, '_')),
+            %% 方向必须是 agent(42) → human(7)。本模块的 FromUid 是收消息的人类、
+            %% ToId 是 agent，照抄变量名就会把方向写反。
+            [StageArgs] = [
+                A
+             || {_P, {msg_store_ds, stage, A}, _R} <- meck:history(msg_store_ds)
+            ],
+            ?assertEqual(42, lists:nth(7, StageArgs)),
+            ?assertEqual(7, lists:nth(8, StageArgs)),
+            [_T, _Id, Meta] = hd([
+                A
+             || {_P, {msg_store_ds, enqueue, A}, _R} <- meck:history(msg_store_ds)
+            ]),
+            ?assertEqual(42, maps:get(from_id, Meta)),
+            ?assertEqual(7, maps:get(to_id, Meta))
+        end
+    ).
+
+%% E2EE required 部署下必须**拒发而非降级**：agent 无设备私钥，没有"加密后再发"
+%% 这条路。不挡则 agent 明文从这条旁路灌进 msg_c2c。
+reply_blocked_by_policy_gate_test_() ->
+    ?WITH_MECKS(
+        [
+            ?SYNC_ASYNC,
+            ?ALLOW_RL,
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(42) ->
+                    {true, #{<<"provider">> => <<"openai">>, <<"model">> => <<"m">>}}
+                end}
+            ]},
+            {imboy_llm_registry, [
+                {'lookup', 1, fun(<<"openai">>) ->
+                    {ok, #{module => imboy_llm_openai, opts => #{}}}
+                end}
+            ]},
+            {imboy_llm_openai, [
+                {'chat', 3, fun(42, _M, _O) -> {ok, #{<<"result">> => <<"hi">>}} end}
+            ]},
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?STAGE_STUB,
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(_, _, _, _, _) -> {error, e2ee_required} end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"payload">> => #{<<"content">> => <<"?">>},
+                <<"msg_type">> => <<"text">>
+            },
+            ?assertEqual(ok, ai_agent_reply:maybe_dispatch(7, 42, Data)),
+            %% 一个都不许发生：不落库、不推送
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, '_')),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, '_')),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, '_'))
         end
     ).
