@@ -415,6 +415,63 @@ jobs:
           retention-days: 14
 
   # ----------------------------------------------------------------
+  # E2EE Verify — 安全门禁（阻塞）
+  # security-gate（服务端零密码学守护 + 模块边界守护）+ 38 个 E2EE eunit 模块。
+  # 本地基线 2026-08-02：387/387 绿。Critical 套件：cancelled 测试=失败（禁止 skip 降级）。
+  # ----------------------------------------------------------------
+  e2ee-verify:
+    name: E2EE Verify Gate (security-gate + eunit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [compile]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Compile
+        run: IMBOYENV=local make test-build
+
+      - name: Run E2EE verify suite
+        run: |
+          set -o pipefail
+          make e2ee-verify 2>&1 | tee e2ee-verify.log
+
+      - name: Guard against cancelled tests (critical no-skip)
+        run: |
+          cancelled="$(grep -ciE 'cancelled' e2ee-verify.log || true)"
+          echo "cancelled lines: ${cancelled}"
+          if [ "${cancelled}" -gt 0 ]; then
+            echo "ERROR: E2EE critical suite 存在 cancelled 测试（禁止 skip 降级）:" >&2
+            grep -iE 'cancelled' e2ee-verify.log | head -10 >&2
+            exit 1
+          fi
+
+      - name: Upload E2EE verify log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2ee-verify-log
+          path: e2ee-verify.log
+          retention-days: 14
+
+  # ----------------------------------------------------------------
   # DCO — 仅 PR 检查，验证所有 commits 带有 Signed-off-by
   # ----------------------------------------------------------------
   dco-check:
