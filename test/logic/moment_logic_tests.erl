@@ -166,6 +166,17 @@ feed_filters_invisible_posts_test_() ->
                 end},
                 {'can_view_post', 2, fun(1001, Post) ->
                     maps:get(<<"id">>, Post) =:= 11
+                end},
+                {'liked_post_ids', 2, fun(_PostIds, _Uid) -> {ok, []} end},
+                {'recent_likers_by_posts', 2, fun(_PostIds, _Limit) -> {ok, []} end},
+                {'recent_comments_by_posts', 2, fun(_PostIds, _Limit) -> {ok, []} end}
+            ]},
+            {user_ds, [
+                {'list_by_ids', 2, fun(Ids, _Fields) ->
+                    {ok, [
+                        #{<<"id">> => I, <<"nickname">> => <<"n">>, <<"avatar">> => <<>>}
+                     || I <- Ids
+                    ]}
                 end}
             ]}
         ],
@@ -291,7 +302,18 @@ user_posts_success_returns_payload_test_() ->
                         }
                     ]}
                 end},
-                {'can_view_post', 2, fun(1001, _Post) -> true end}
+                {'can_view_post', 2, fun(1001, _Post) -> true end},
+                {'liked_post_ids', 2, fun(_PostIds, _Uid) -> {ok, []} end},
+                {'recent_likers_by_posts', 2, fun(_PostIds, _Limit) -> {ok, []} end},
+                {'recent_comments_by_posts', 2, fun(_PostIds, _Limit) -> {ok, []} end}
+            ]},
+            {user_ds, [
+                {'list_by_ids', 2, fun(Ids, _Fields) ->
+                    {ok, [
+                        #{<<"id">> => I, <<"nickname">> => <<"n">>, <<"avatar">> => <<>>}
+                     || I <- Ids
+                    ]}
+                end}
             ]}
         ],
         fun() ->
