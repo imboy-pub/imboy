@@ -154,6 +154,7 @@ refund_payment_transaction(TradeNo) ->
             Status = maps:get(<<"status">>, Row, -1),
             case Status of
                 3 -> {error, <<"该支付流水已退款，请勿重复操作"/utf8>>};
+                5 -> {error, <<"该支付流水正在退款处理中，请勿重复操作"/utf8>>};
                 1 -> refund_payment_by_biz(Row, TradeNo, maps:get(<<"biz_type">>, Row, 0));
                 _ -> {error, <<"仅「支付成功」的流水可退款"/utf8>>}
             end
@@ -173,18 +174,58 @@ refund_payment_by_biz(Row, TradeNo, _BizType) ->
         <<>> ->
             {error, <<"该流水缺少网关支付单号，无法原路退回"/utf8>>};
         _ ->
-            case payment_gateway:refund(Gateway, GwPayNo, Amount) of
-                ok ->
-                    case payment_transaction_ds:mark_refunded(TradeNo) of
-                        {ok, 1} -> {ok, refunded};
-                        {ok, 0} -> {error, <<"支付流水状态已变更（可能已退款）"/utf8>>};
-                        {error, R} -> {error, elib_cnv:safe_to_binary(R)}
-                    end;
-                {error, Msg} when is_binary(Msg) ->
-                    {error, Msg};
-                {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+            %% B-09 三态：**先占位再调网关**。
+            %% 旧写法是"调网关 → 标记"，一旦 mark_refunded 失败，流水仍是 status=1，
+            %% 管理员重试会**第二次调网关** → 重复退款。占位后重试拿不到 CAS，
+            %% 走不到网关那一步。
+            case payment_transaction_ds:mark_refunding(TradeNo) of
+                {ok, 1} ->
+                    do_gateway_refund(Gateway, GwPayNo, Amount, TradeNo);
+                {ok, 0} ->
+                    {error, <<"该支付流水状态已变更（可能正在退款或已退款）"/utf8>>};
+                {error, R} ->
+                    {error, elib_cnv:safe_to_binary(R)}
             end
+    end.
+
+%% @doc 占位成功后的网关退款。失败时释放占位，让管理员可以重试。
+%%
+%% ⚠️ 网关**超时**这类语义不明的失败也会释放占位 —— 钱可能其实已经退了。
+%% 挡住重复退款的第二道防线是网关侧幂等键（同一笔退款用同一 key）。
+%% 三态只能保证"我们不会主动发起第二次调用"，不能保证"第一次调用没生效"。
+-spec do_gateway_refund(binary(), binary(), integer(), binary()) ->
+    {ok, refunded} | {error, binary()}.
+do_gateway_refund(Gateway, GwPayNo, Amount, TradeNo) ->
+    case payment_gateway:refund(Gateway, GwPayNo, Amount) of
+        ok ->
+            case payment_transaction_ds:mark_refunded(TradeNo) of
+                {ok, 1} ->
+                    {ok, refunded};
+                {ok, 0} ->
+                    {error, <<"支付流水状态已变更（可能已退款）"/utf8>>};
+                {error, R} ->
+                    %% 钱已退、状态没落地：**不释放占位**。留在 5 让重试被挡住，
+                    %% 由人工核对后收尾 —— 释放回 1 才是真正危险的那条路。
+                    ?ERROR_LOG([finance_refund, mark_refunded_failed, TradeNo, R]),
+                    {error, <<"退款已提交但状态更新失败，请人工核对该流水"/utf8>>}
+            end;
+        {error, Msg} ->
+            _ = release_refunding_quietly(TradeNo),
+            case Msg of
+                M when is_binary(M) -> {error, M};
+                Other -> {error, elib_cnv:safe_to_binary(Other)}
+            end
+    end.
+
+-spec release_refunding_quietly(binary()) -> ok.
+release_refunding_quietly(TradeNo) ->
+    case payment_transaction_ds:release_refunding(TradeNo) of
+        {ok, _} ->
+            ok;
+        {error, R} ->
+            %% 释放失败只会让这笔卡在"退款中"，不会造成资金损失，记日志即可
+            ?ERROR_LOG([finance_refund, release_refunding_failed, TradeNo, R]),
+            ok
     end.
 
 %% @doc 冻结钱包资金（管理端）：把 Amount（分）从可用余额移入冻结额。

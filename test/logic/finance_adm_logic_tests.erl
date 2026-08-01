@@ -278,6 +278,8 @@ refund_payment_tx_billing_success_test_() ->
                         <<"amount">> => 500
                     }
                 end},
+                %% B-09：占位(1→5) 必须先于网关调用
+                {'mark_refunding', 1, fun(<<"T1">>) -> {ok, 1} end},
                 {'mark_refunded', 1, fun(<<"T1">>) -> {ok, 1} end}
             ]},
             {payment_gateway, [
@@ -285,7 +287,9 @@ refund_payment_tx_billing_success_test_() ->
             ]}
         ],
         fun() ->
-            ?assertEqual({ok, refunded}, finance_adm_logic:refund_payment_transaction(<<"T1">>))
+            ?assertEqual({ok, refunded}, finance_adm_logic:refund_payment_transaction(<<"T1">>)),
+            ?assertEqual(1, meck:num_calls(payment_transaction_ds, mark_refunding, '_')),
+            ?assertEqual(1, meck:num_calls(payment_gateway, refund, '_'))
         end
     ).
 
@@ -303,6 +307,7 @@ refund_payment_tx_mark_race_test_() ->
                         <<"amount">> => 500
                     }
                 end},
+                {'mark_refunding', 1, fun(_) -> {ok, 1} end},
                 {'mark_refunded', 1, fun(_) -> {ok, 0} end}
             ]},
             {payment_gateway, [
@@ -367,5 +372,121 @@ unfreeze_wallet_blocked_test_() ->
         [{'unfreeze', 2, fun(_, _) -> {ok, 0} end}],
         fun() ->
             ?assertMatch({error, _}, finance_adm_logic:unfreeze_wallet(100, 500))
+        end
+    ).
+
+%% ===================================================================
+%% B-09 三态退款：mark_refunded 失败后重试**不产生第二次网关调用**
+%% ===================================================================
+
+%% 判据本体：占位成功 → 网关退款 ok → mark_refunded 报错 → 流水留在 5(退款中)。
+%% 管理员重试时 find_by_trade_no 返回 5，直接被拒，网关一次都不再调。
+refund_payment_tx_retry_after_mark_failure_test_() ->
+    ?WITH_MECKS(
+        [
+            {payment_transaction_ds, [
+                {'find_by_trade_no', 1, fun(_) ->
+                    #{
+                        <<"status">> => 5,
+                        <<"biz_type">> => 3,
+                        <<"gateway">> => <<"alipay">>,
+                        <<"gateway_payment_no">> => <<"GW123">>,
+                        <<"amount">> => 500
+                    }
+                end}
+            ]},
+            {payment_gateway, [
+                {'refund', 3, fun(_, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>)),
+            %% 这一条就是 B-09 的判据
+            ?assertEqual(0, meck:num_calls(payment_gateway, refund, '_'))
+        end
+    ).
+
+%% 占位抢不到（并发第二个请求 / 已在退款中）→ 网关不得被调用
+refund_payment_tx_cas_lost_skips_gateway_test_() ->
+    ?WITH_MECKS(
+        [
+            {payment_transaction_ds, [
+                {'find_by_trade_no', 1, fun(_) ->
+                    #{
+                        <<"status">> => 1,
+                        <<"biz_type">> => 3,
+                        <<"gateway">> => <<"alipay">>,
+                        <<"gateway_payment_no">> => <<"GW123">>,
+                        <<"amount">> => 500
+                    }
+                end},
+                {'mark_refunding', 1, fun(_) -> {ok, 0} end}
+            ]},
+            {payment_gateway, [
+                {'refund', 3, fun(_, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>)),
+            ?assertEqual(0, meck:num_calls(payment_gateway, refund, '_'))
+        end
+    ).
+
+%% 网关明确失败 → 释放占位(5→1)，让管理员还能重试；不得留下永久卡死的流水
+refund_payment_tx_gateway_error_releases_placeholder_test_() ->
+    ?WITH_MECKS(
+        [
+            {payment_transaction_ds, [
+                {'find_by_trade_no', 1, fun(_) ->
+                    #{
+                        <<"status">> => 1,
+                        <<"biz_type">> => 3,
+                        <<"gateway">> => <<"alipay">>,
+                        <<"gateway_payment_no">> => <<"GW123">>,
+                        <<"amount">> => 500
+                    }
+                end},
+                {'mark_refunding', 1, fun(_) -> {ok, 1} end},
+                {'release_refunding', 1, fun(_) -> {ok, 1} end}
+            ]},
+            {payment_gateway, [
+                {'refund', 3, fun(_, _, _) -> {error, <<"网关拒绝"/utf8>>} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"网关拒绝"/utf8>>},
+                finance_adm_logic:refund_payment_transaction(<<"T1">>)
+            ),
+            ?assertEqual(1, meck:num_calls(payment_transaction_ds, release_refunding, '_'))
+        end
+    ).
+
+%% 网关成功但收尾报错 → **故意不释放占位**，留在 5 让重试被挡住，人工收尾。
+%% 释放回 1 才是真正危险的那条路（下一次重试就会二次退款）。
+refund_payment_tx_mark_error_keeps_placeholder_test_() ->
+    ?WITH_MECKS(
+        [
+            {payment_transaction_ds, [
+                {'find_by_trade_no', 1, fun(_) ->
+                    #{
+                        <<"status">> => 1,
+                        <<"biz_type">> => 3,
+                        <<"gateway">> => <<"alipay">>,
+                        <<"gateway_payment_no">> => <<"GW123">>,
+                        <<"amount">> => 500
+                    }
+                end},
+                {'mark_refunding', 1, fun(_) -> {ok, 1} end},
+                {'mark_refunded', 1, fun(_) -> {error, db_down} end},
+                {'release_refunding', 1, fun(_) -> {ok, 1} end}
+            ]},
+            {payment_gateway, [
+                {'refund', 3, fun(_, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, _}, finance_adm_logic:refund_payment_transaction(<<"T1">>)),
+            ?assertEqual(0, meck:num_calls(payment_transaction_ds, release_refunding, '_'))
         end
     ).

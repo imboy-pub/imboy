@@ -14,6 +14,7 @@
 -export([find_by_gateway_no/2]).
 -export([update_status/3]).
 -export([mark_refunded/1]).
+-export([mark_refunding/1, release_refunding/1]).
 -export([mark_success/2]).
 -export([mark_failed/2]).
 -export([page/5]).
@@ -49,6 +50,15 @@ update_status(TradeNo, Status, Extra) ->
 -spec mark_refunded(binary()) -> {ok, 0 | 1} | {error, term()}.
 mark_refunded(TradeNo) ->
     payment_transaction_repo:mark_refunded(TradeNo).
+
+%% @doc B-09 退款占位（1→5）/ 释放占位（5→1），见 payment_transaction_repo。
+-spec mark_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
+mark_refunding(TradeNo) ->
+    payment_transaction_repo:mark_refunding(TradeNo).
+
+-spec release_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
+release_refunding(TradeNo) ->
+    payment_transaction_repo:release_refunding(TradeNo).
 
 %% @doc 标记成功 —— 记录 gateway_payment_no / notify_data，落 paid_at
 -spec mark_success(binary(), map()) -> {ok, non_neg_integer()} | {error, term()}.
