@@ -96,7 +96,7 @@ dep_esq = hex 2.0.7
 # bbmustache 一个无逻辑的模板。 deps by relx
 # https://github.com/soranoba/bbmustache
 #dep_bbmustache = git https://gitee.com/imboy-tripartite-deps/bbmustache.git 1.10.0
-dep_bbmustache = hex 1.14.1
+dep_bbmustache = hex 1.12.2
 
 # Relx 是一个组装 Erlang/OTP 版本的库。给定发布规范和要在其中搜索 OTP 应用程序的目录列表，它将生成发布输出。
 # https://github.com/erlware/relx
