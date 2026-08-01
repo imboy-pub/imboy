@@ -17,6 +17,15 @@
 %% 非生产环境额外允许 mock 支付（用于测试/开发）
 -define(DEV_ALLOWED_PAYMENT_METHODS, [<<"mock">> | ?ALLOWED_PAYMENT_METHODS]).
 
+%% 即时入账网关：钱包(余额同步扣减)与 mock(沙箱联调)，钱在 pay/3 返回时已真实划走。
+%% 其余网关(alipay/wechat/stripe)的 pay/3 只创建**支付意图**，用户尚未付款，
+%% 必须等 payment_callback_logic 收到回调才发货 —— 否则即"零元购"。
+-define(INSTANT_SETTLE_METHODS, [<<"wallet">>, <<"mock">>]).
+
+%% channel_order.status
+-define(STATUS_PENDING, 0).
+-define(STATUS_PAID, 1).
+
 -spec create_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 create_order(Uid, ChannelIdBin) ->
     ChannelId = decode_positive_id(ChannelIdBin),
@@ -124,23 +133,9 @@ pay_order(Uid, OrderNo) ->
                                         )
                                     of
                                         {ok, PayNo, Extra} ->
-                                            PaymentData = #{
-                                                payment_no => PayNo,
-                                                payment_method => Method
-                                            },
-                                            Envelope = #{
-                                                <<"payment_method">> => Method,
-                                                <<"payment_no">> => PayNo,
-                                                <<"pay_params">> => Extra
-                                            },
-                                            case
-                                                do_pay_order(
-                                                    ChannelId, Uid, OrderNo, PaymentData, Order
-                                                )
-                                            of
-                                                ok -> {ok, Envelope};
-                                                {error, _} = Err -> Err
-                                            end;
+                                            settle(
+                                                Method, ChannelId, Uid, OrderNo, PayNo, Extra, Order
+                                            );
                                         {error, PayReason} ->
                                             {error, PayReason}
                                     end
@@ -149,6 +144,30 @@ pay_order(Uid, OrderNo) ->
             end;
         {error, not_found} ->
             {error, <<"订单不存在"/utf8>>}
+    end.
+
+%% @doc 按网关结算模式决定是否就地发货。
+%%   即时入账(wallet/mock)：钱已划走 → 标记已支付 + 订阅频道 + 通知。
+%%   第三方(alipay/wechat/stripe)：仅创建支付意图 → 订单保持待支付、**频道不可见**，
+%%     发货交给 payment_callback_logic 的 biz_type=2 分支（那侧已完整：
+%%     双保险幂等 + 金额从订单反查 + 验签失败单独计数）。
+-spec settle(binary(), integer(), integer(), binary(), binary(), map(), map()) ->
+    {ok, map()} | {error, binary()}.
+settle(Method, ChannelId, Uid, OrderNo, PayNo, Extra, Order) ->
+    Envelope = #{
+        <<"payment_method">> => Method,
+        <<"payment_no">> => PayNo,
+        <<"pay_params">> => Extra
+    },
+    case lists:member(Method, ?INSTANT_SETTLE_METHODS) of
+        false ->
+            {ok, Envelope#{<<"status">> => ?STATUS_PENDING}};
+        true ->
+            PaymentData = #{payment_no => PayNo, payment_method => Method},
+            case do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) of
+                ok -> {ok, Envelope#{<<"status">> => ?STATUS_PAID}};
+                {error, _} = Err -> Err
+            end
     end.
 
 %% @doc 归一网关返回：兼容 {ok, PayNo} 与 {ok, PayNo, Extra}，

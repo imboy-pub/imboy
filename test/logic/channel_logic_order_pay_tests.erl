@@ -5,9 +5,13 @@
 %%% @doc channel_logic_order:pay_order/2 统一支付信封契约测试。
 %%%
 %%% 验证 S4 缺口修复：pay_order 把网关返回的支付参数透传为统一信封
-%%%   #{<<"payment_method">>, <<"payment_no">>, <<"pay_params">>}（binary key）。
-%%%   - wallet/mock：pay_params 为空 map（即时入账，无第三方拉起）。
-%%%   - alipay：pay_params 含 #{<<"order_str">>}。
+%%%   #{<<"payment_method">>, <<"payment_no">>, <<"pay_params">>, <<"status">>}（binary key）。
+%%%   - wallet/mock：pay_params 为空 map（即时入账，无第三方拉起），status=1。
+%%%   - alipay：pay_params 含 #{<<"order_str">>}，status=0。
+%%%
+%%% 并验证 B-01：第三方网关的 pay/3 只创建**支付意图**，此时用户尚未付款，
+%%%   pay_order 不得标记订单已支付、不得订阅频道（否则等于零元购）。
+%%%   发货由 payment_callback_logic 收到回调后完成。
 %%%
 %%% 手法：meck 所有 DS/Logic 边界（channel_order_ds / channel_ds /
 %%%   channel_logic_notify）+ payment_gateway，绝不触真实 PG。
@@ -49,7 +53,9 @@ pay_order_envelope_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
         fun mock_method_returns_envelope_with_empty_pay_params/0,
         fun thirdparty_method_returns_envelope_with_pay_params/0,
-        fun gateway_error_propagated/0
+        fun gateway_error_propagated/0,
+        fun thirdparty_does_not_ship_before_callback/0,
+        fun wallet_ships_immediately/0
     ]}.
 
 %% mock 网关（无第三元组）→ 信封 pay_params 为空 map
@@ -72,7 +78,8 @@ mock_method_returns_envelope_with_empty_pay_params() ->
         {ok, #{
             <<"payment_method">> => <<"mock">>,
             <<"payment_no">> => <<"MOCK_ORD_M1">>,
-            <<"pay_params">> => #{}
+            <<"pay_params">> => #{},
+            <<"status">> => 1
         }},
         Result
     ).
@@ -99,7 +106,8 @@ thirdparty_method_returns_envelope_with_pay_params() ->
         {ok, #{
             <<"payment_method">> => <<"alipay">>,
             <<"payment_no">> => <<"ALIPAY_ORD_T1">>,
-            <<"pay_params">> => #{<<"order_str">> => <<"orderstr_xyz">>}
+            <<"pay_params">> => #{<<"order_str">> => <<"orderstr_xyz">>},
+            <<"status">> => 0
         }},
         Result
     ).
@@ -123,3 +131,46 @@ gateway_error_propagated() ->
         {error, <<"支付网关未配置真实凭据"/utf8>>},
         channel_logic_order:pay_order(?UID, <<"ORD_T2">>)
     ).
+
+%% B-01 核心断言：第三方网关下单后订单仍待支付、频道不可见。
+%% 支付意图 ≠ 已付款；发货必须由回调触发，否则调 /order/pay 即白拿频道。
+thirdparty_does_not_ship_before_callback() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => 0,
+            <<"payment_method">> => <<"wechat">>
+        }}
+    end),
+    meck:expect(payment_gateway, pay, fun(<<"wechat">>, OrderNo, _Opts) ->
+        {ok, <<"WX_", OrderNo/binary>>, #{<<"prepay_id">> => <<"pp_1">>}}
+    end),
+    {ok, Envelope} = channel_logic_order:pay_order(?UID, <<"ORD_T3">>),
+    ?assertEqual(0, maps:get(<<"status">>, Envelope)),
+    %% 三个发货动作一个都不许发生
+    ?assertNot(meck:called(channel_order_ds, pay, '_')),
+    ?assertNot(meck:called(channel_ds, subscribe, '_')),
+    ?assertNot(meck:called(channel_logic_notify, notify_order_paid, '_')).
+
+%% 反向对照：钱包余额是同步扣走的，必须就地发货，不能等一个永远不会来的回调。
+wallet_ships_immediately() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => 0,
+            <<"payment_method">> => <<"wallet">>
+        }}
+    end),
+    meck:expect(payment_gateway, pay, fun(<<"wallet">>, OrderNo, _Opts) ->
+        {ok, <<"WPY_", OrderNo/binary>>}
+    end),
+    {ok, Envelope} = channel_logic_order:pay_order(?UID, <<"ORD_W1">>),
+    ?assertEqual(1, maps:get(<<"status">>, Envelope)),
+    ?assert(meck:called(channel_order_ds, pay, '_')),
+    ?assert(meck:called(channel_ds, subscribe, [?CID, ?UID])).
