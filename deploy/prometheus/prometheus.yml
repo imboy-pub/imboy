@@ -35,6 +35,18 @@ scrape_configs:
           service: imboy_backend
           tier: app
 
+  # Pushgateway（B-23：备份/TLS 等短命 cron 作业的指标出口）
+  # honor_labels: true 是**必须的** —— 否则 Prometheus 会用 job="pushgateway"
+  # 覆盖掉作业自己推上来的 job="imboy_backup"/"imboy_tls" 标签，
+  # 告警里按 job 过滤就全部落空。
+  - job_name: pushgateway
+    honor_labels: true
+    static_configs:
+      - targets:
+          - imboy_pushgateway:9091
+        labels:
+          tier: infra
+
   # PostgreSQL exporter（可选）
   - job_name: postgres_exporter
     static_configs:
