@@ -95,6 +95,7 @@
 -export([update_admin_role/4]).
 
 -export([get_channel_stats/2]).
+-export([get_channel_stats_admin/1]).
 -export([record_message_view/3]).
 -export([add_reaction/4]).
 -export([remove_reaction/4]).
@@ -191,6 +192,10 @@ update_admin_role(Uid, ChannelId, TargetUid, Role) ->
 
 get_channel_stats(Uid, ChannelIdBin) ->
     channel_logic_stats:get_channel_stats(Uid, ChannelIdBin).
+
+-spec get_channel_stats_admin(binary()) -> {ok, map()} | {error, binary()}.
+get_channel_stats_admin(ChannelIdBin) ->
+    channel_logic_stats:get_channel_stats_admin(ChannelIdBin).
 
 record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
     channel_logic_stats:record_message_view(Uid, ChannelIdBin, MessageIdBin).

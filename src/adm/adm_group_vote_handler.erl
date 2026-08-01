@@ -126,7 +126,7 @@ vote_close(<<"POST">>, Req0, State) ->
                 <<>> ->
                     elib_response:error(Req0, "参数错误");
                 _ ->
-                    case group_vote_logic:close_vote(VoteId) of
+                    case group_vote_logic:close_vote(VoteId, maps:get(adm_user_id, State, 0)) of
                         ok ->
                             GroupId = resolve_vote_group_id(VoteId),
                             _ = audit_group_governance(

@@ -34,6 +34,7 @@
 -export([memo/1, memo/2, memo/3, memo/4]).
 -export([set/2, set/3, set/4, get/1, get_wait/1, get/2, get_subkey/2]).
 -export([flush/0, flush/1, delete/1, size/0, record_depcache_event/1]).
+-export([broadcast/1]).
 -export([in_process_server/0, in_process_server/1, in_process/1, flush_process_dict/0]).
 
 %% @doc 启动基于站点配置的 depcache 实例

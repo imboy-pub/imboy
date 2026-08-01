@@ -483,7 +483,7 @@ stats(<<"GET">>, Req0) ->
             elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
         {ok, ChannelId} ->
             ChannelIdBin = integer_to_binary(ChannelId),
-            case channel_logic:get_channel_stats(ChannelIdBin) of
+            case channel_logic:get_channel_stats_admin(ChannelIdBin) of
                 {ok, Stats} ->
                     Payload = #{
                         <<"channel_id">> => ChannelId,

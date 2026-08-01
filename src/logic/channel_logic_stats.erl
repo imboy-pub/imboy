@@ -2,6 +2,7 @@
 -compile([nowarn_deprecated_catch]).
 
 -export([get_channel_stats/2]).
+-export([get_channel_stats_admin/1]).
 -export([record_message_view/3]).
 -export([add_reaction/4]).
 -export([remove_reaction/4]).
@@ -18,24 +19,39 @@ get_channel_stats(Uid, ChannelIdBin) ->
                 {error, Reason} ->
                     {error, Reason};
                 ok ->
-                    case channel_ds:find_by_id(ChannelId, <<"id,name,subscriber_count">>) of
-                        {error, _} ->
-                            {error, <<"频道不存在"/utf8>>};
-                        Channel when is_map(Channel) ->
-                            {ok, TotalMessages, TotalViews} = get_message_stats(ChannelId),
-                            {ok, Reactions} = channel_ds:get_reaction_count(ChannelId),
-                            Stats = #{
-                                <<"channel_id">> => ChannelIdBin,
-                                <<"subscriber_count">> => maps:get(
-                                    <<"subscriber_count">>, Channel, 0
-                                ),
-                                <<"total_messages">> => TotalMessages,
-                                <<"total_views">> => TotalViews,
-                                <<"total_reactions">> => Reactions
-                            },
-                            {ok, Stats}
-                    end
+                    fetch_channel_stats(ChannelId, ChannelIdBin)
             end
+    end.
+
+%% @doc 管理后台统计：跳过频道订阅者访问校验（adm 侧已做管理员鉴权，
+%% 管理员通常无频道角色，走 ensure_channel_content_access 恒被拒）。
+-spec get_channel_stats_admin(binary()) -> {ok, map()} | {error, binary()}.
+get_channel_stats_admin(ChannelIdBin) ->
+    ChannelId = decode_positive_id(ChannelIdBin),
+    case ChannelId of
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
+        _ ->
+            fetch_channel_stats(ChannelId, ChannelIdBin)
+    end.
+
+fetch_channel_stats(ChannelId, ChannelIdBin) ->
+    case channel_ds:find_by_id(ChannelId, <<"id,name,subscriber_count">>) of
+        {error, _} ->
+            {error, <<"频道不存在"/utf8>>};
+        Channel when is_map(Channel) ->
+            {ok, TotalMessages, TotalViews} = get_message_stats(ChannelId),
+            {ok, Reactions} = channel_ds:get_reaction_count(ChannelId),
+            Stats = #{
+                <<"channel_id">> => ChannelIdBin,
+                <<"subscriber_count">> => maps:get(
+                    <<"subscriber_count">>, Channel, 0
+                ),
+                <<"total_messages">> => TotalMessages,
+                <<"total_views">> => TotalViews,
+                <<"total_reactions">> => Reactions
+            },
+            {ok, Stats}
     end.
 
 -spec get_message_stats(integer()) ->
