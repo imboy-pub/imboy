@@ -220,37 +220,72 @@ format_prometheus(Metrics) ->
     ),
 
     HistLines = maps:fold(
-        fun(Name, Buckets, Acc) ->
-            NameBin = metric_name(Name),
-            Count = length(Buckets),
-            Sum = lists:foldl(
-                fun
-                    (#{value := V}, S) -> S + V;
-                    (_, S) -> S
-                end,
-                0,
-                Buckets
-            ),
-            [
-                Acc,
-                <<"# TYPE ">>,
-                NameBin,
-                <<" summary\n">>,
-                NameBin,
-                <<"_count ">>,
-                integer_to_binary(Count),
-                <<"\n">>,
-                NameBin,
-                <<"_sum ">>,
-                number_to_binary(Sum),
-                <<"\n">>
-            ]
-        end,
+        fun(Name, Hist, Acc) -> [Acc, format_histogram(metric_name(Name), Hist)] end,
         [],
         Histograms
     ),
 
     iolist_to_binary([CounterLines, HistLines]).
+
+%% @doc 导出 Prometheus histogram：`_bucket{le="..."}` 累积序列 + `_sum` + `_count`。
+%%
+%% B-27：此前导出的是 `# TYPE ... summary` 且只有 _sum/_count，**没有任何
+%% _bucket 序列** —— `histogram_quantile()` 需要的输入根本不存在，
+%% p50/p95/p99 面板在数据模型层就不可能算出来，不是 Grafana 配错了。
+%%
+%% 注意 _bucket 必须是**累积**的（le=0.1 的值包含所有 <=0.1 的观测），
+%% 且必须有 le="+Inf" 那一行，否则 Prometheus 认为序列不完整。
+-spec format_histogram(binary(), map()) -> iodata().
+format_histogram(NameBin, #{counts := Counts, sum := Sum, count := Count}) ->
+    Bounds = elib_metric:bucket_bounds(),
+    {Lines, _} = lists:mapfoldl(
+        fun(B, Acc0) ->
+            Acc1 = Acc0 + maps:get(B, Counts, 0),
+            {bucket_line(NameBin, bound_to_binary(B), Acc1), Acc1}
+        end,
+        0,
+        Bounds
+    ),
+    [
+        <<"# TYPE ">>,
+        NameBin,
+        <<" histogram\n">>,
+        Lines,
+        %% +Inf 桶等于总观测数（含超出最大边界的 infinity 那部分）
+        bucket_line(NameBin, <<"+Inf">>, Count),
+        NameBin,
+        <<"_sum ">>,
+        number_to_binary(Sum),
+        <<"\n">>,
+        NameBin,
+        <<"_count ">>,
+        integer_to_binary(Count),
+        <<"\n">>
+    ];
+format_histogram(NameBin, _Other) ->
+    %% 兼容旧形态（升级瞬间 ETS 里可能还留着老结构）：不导出残缺序列，
+    %% 宁可这一轮没数据，也不要导出会让分位数算错的半截桶。
+    [<<"# TYPE ">>, NameBin, <<" histogram\n">>].
+
+-spec bucket_line(binary(), binary(), non_neg_integer()) -> iodata().
+bucket_line(NameBin, Le, Cumulative) ->
+    [
+        NameBin,
+        <<"_bucket{le=\"">>,
+        Le,
+        <<"\"} ">>,
+        integer_to_binary(Cumulative),
+        <<"\n">>
+    ].
+
+%% @doc 桶边界必须**原值**输出，不能走 number_to_binary（它只留 2 位小数）：
+%% 那样 0.005 与 0.01 会双双渲染成 "0.01"（同一个 le 出现两次 = 无效的
+%% Prometheus 输出），0.025 会变成 "0.03"（边界被改写，分位数插值随之错位）。
+%% float_to_binary(short) 给最短往返表示：0.005 → "0.005"，2.5 → "2.5"。
+-spec bound_to_binary(number()) -> binary().
+bound_to_binary(B) when is_integer(B) -> integer_to_binary(B);
+bound_to_binary(B) when is_float(B) -> float_to_binary(B, [short]);
+bound_to_binary(B) -> number_to_binary(B).
 
 %% @doc 格式化标签 map 为 Prometheus label 格式: plugin="channel",method="get"
 -spec format_labels_map(map()) -> iodata().

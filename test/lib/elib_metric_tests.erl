@@ -160,3 +160,41 @@ metric_increment_delta_validation_test_() ->
             ?_assertEqual(ok, elib_metric:increment(pos_delta, 2))
         ]
     end}.
+
+%% ===================================================================
+%% 8. B-27 直方图：固定分桶 + 累积 _bucket 序列
+%%
+%% 旧实现把每次观测 cons 进一个 list（永不收敛 = 热路径上的内存泄漏），
+%% 且只导出 _sum/_count —— histogram_quantile 需要的 _bucket{le=...} 根本不存在，
+%% p50/p95/p99 在**数据模型层**就算不出来，不是 Grafana 配错了。
+%% ===================================================================
+
+metric_histogram_fixed_buckets_test_() ->
+    {setup, fun setup_metric/0, fun cleanup_metric/1, fun(_) ->
+        [
+            ?_test(begin
+                ok = elib_metric:record(lat_seconds, 0.003),
+                ok = elib_metric:record(lat_seconds, 0.2),
+                ok = elib_metric:record(lat_seconds, 30),
+                timer:sleep(50),
+                #{histograms := H} = elib_metric:get_all_metrics(),
+                Hist = maps:get(lat_seconds, H),
+                %% 存的是固定桶聚合，不是观测列表
+                ?assertMatch(#{counts := _, sum := _, count := _}, Hist),
+                ?assertEqual(3, maps:get(count, Hist)),
+                %% 超过最大边界(10)的观测落 infinity 桶，不被丢弃
+                ?assertEqual(1, maps:get(infinity, maps:get(counts, Hist)))
+            end),
+            %% 内存与观测次数无关：记 500 次后桶数仍受边界数约束
+            ?_test(begin
+                lists:foreach(
+                    fun(N) -> elib_metric:record(bulk_seconds, N / 1000) end, lists:seq(1, 500)
+                ),
+                timer:sleep(80),
+                #{histograms := H} = elib_metric:get_all_metrics(),
+                Counts = maps:get(counts, maps:get(bulk_seconds, H)),
+                ?assertEqual(500, maps:get(count, maps:get(bulk_seconds, H))),
+                ?assert(maps:size(Counts) =< length(elib_metric:bucket_bounds()) + 1)
+            end)
+        ]
+    end}.

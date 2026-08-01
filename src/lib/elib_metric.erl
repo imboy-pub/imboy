@@ -29,6 +29,7 @@
 -export([reset/0]).
 -export([reset_counter/1]).
 -export([reset_histogram/1]).
+-export([bucket_bounds/0]).
 -export([log_message_format/2]).
 
 %% gen_server 回调
@@ -205,8 +206,8 @@ handle_call(get_all_metrics, _From, State) ->
     % 获取所有直方图
     Histograms = ets:foldl(
         fun
-            ({{histogram, Name}, Buckets}, Acc) ->
-                Acc#{Name => lists:reverse(Buckets)};
+            ({{histogram, Name}, #{counts := _} = H}, Acc) ->
+                Acc#{Name => H};
             (_, Acc) ->
                 Acc
         end,
@@ -248,18 +249,19 @@ handle_cast({increment_labeled, Name, Delta, Labels}, State) ->
     {noreply, State};
 handle_cast({record, Name, Value}, State) ->
     Key = {histogram, Name},
-    % 简单的桶实现：记录值和计数
-    Bucket = #{
-        value => Value,
-        count => 1,
-        timestamp => erlang:system_time(millisecond)
-    },
-    NewBuckets =
+    %% B-27：改为**固定分桶**聚合。
+    %%
+    %% 旧实现把每一次观测都 cons 进一个 list（`[Bucket | Buckets]`），永不收敛 ——
+    %% 投递延迟这种每条消息都记一次的热路径上，那是个无上限的内存泄漏。
+    %% 而且它只能算出 _sum/_count，**分位数在数据模型层就不可能算出**
+    %% （histogram_quantile 需要 _bucket{le=...} 累积序列）。
+    %% 固定分桶后内存是 O(桶数)，与观测次数无关。
+    Prev =
         case ets:lookup(?METRICS_ETS, Key) of
-            [{Key, Buckets}] -> [Bucket | Buckets];
-            [] -> [Bucket]
+            [{Key, #{counts := _} = H}] -> H;
+            _ -> #{counts => #{}, sum => 0, count => 0}
         end,
-    ets:insert(?METRICS_ETS, {Key, NewBuckets}),
+    ets:insert(?METRICS_ETS, {Key, observe_bucket(Prev, Value)}),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -284,3 +286,27 @@ code_change(_OldVsn, State, _Extra) ->
 -spec sort_labels(map()) -> [{atom(), atom()}].
 sort_labels(Labels) ->
     lists:sort(maps:to_list(Labels)).
+
+%% @doc 直方图桶边界（秒）。取 Prometheus 客户端库的默认梯度 ——
+%% 覆盖 5ms~10s，投递延迟正好落在这个量级。
+%% 改动这里会让历史序列与新序列的 le 标签不一致，Grafana 上表现为分位数断层。
+-spec bucket_bounds() -> [number()].
+bucket_bounds() ->
+    [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10].
+
+%% @private 把一次观测计入固定桶。counts 存**每个边界的非累积计数**，
+%% 累积在导出时做（Prometheus 要求 _bucket 是累积的）。
+-spec observe_bucket(map(), number()) -> map().
+observe_bucket(#{counts := Counts, sum := Sum, count := Count}, Value) ->
+    Le = pick_bound(Value, bucket_bounds()),
+    #{
+        counts => maps:update_with(Le, fun(N) -> N + 1 end, 1, Counts),
+        sum => Sum + Value,
+        count => Count + 1
+    }.
+
+%% @private 落入第一个 >= Value 的边界；超过最大边界记 infinity
+-spec pick_bound(number(), [number()]) -> number() | infinity.
+pick_bound(_Value, []) -> infinity;
+pick_bound(Value, [B | _]) when Value =< B -> B;
+pick_bound(Value, [_ | Rest]) -> pick_bound(Value, Rest).
