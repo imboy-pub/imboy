@@ -37,10 +37,15 @@
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State) ->
+    Vsn = app_vsn(),
     {Code, Body} =
         case cached_db_ok() of
-            true -> {200, <<"{\"status\":\"ok\",\"db\":\"up\"}">>};
-            false -> {503, <<"{\"status\":\"degraded\",\"db\":\"down\"}">>}
+            true ->
+                {200, <<"{\"status\":\"ok\",\"db\":\"up\",\"version\":\"", Vsn/binary, "\"}">>};
+            false ->
+                {503,
+                    <<"{\"status\":\"degraded\",\"db\":\"down\",\"version\":\"", Vsn/binary,
+                        "\"}">>}
         end,
     Req = cowboy_req:reply(
         Code,
@@ -81,6 +86,17 @@ probe_db() ->
         %% （attach presign 那次已经踩过同一个坑），这里必须 catch，
         %% 否则 PG 挂掉时探针返回 500 而不是判据要求的 503。
         _:_ -> false
+    end.
+
+%% @doc 上报自身版本。C-51 的部署就绪判断要用它区分"端口通了"和
+%% "**我要的这个版本**通了" —— 目标色端口上残留着上一版进程时，
+%% 只探端口会让部署误判成功，把流量切到旧二进制上。
+-spec app_vsn() -> binary().
+app_vsn() ->
+    case application:get_key(imboy, vsn) of
+        {ok, V} when is_list(V) -> list_to_binary(V);
+        {ok, V} when is_binary(V) -> V;
+        _ -> <<"unknown">>
     end.
 
 -spec cache_ttl_ms() -> pos_integer().

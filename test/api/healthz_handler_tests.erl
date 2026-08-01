@@ -60,8 +60,9 @@ probe_is_cached() ->
 healthz_handler_probe_via_cache() ->
     meck:new(cowboy_req, [no_link, non_strict]),
     try
-        meck:expect(cowboy_req, reply, fun(Code, _H, _B, Req) ->
+        meck:expect(cowboy_req, reply, fun(Code, _H, Body, Req) ->
             put(last_code, Code),
+            put(last_body, Body),
             Req
         end),
         {ok, _, _} = healthz_handler:init(fake_req, #{}),
@@ -84,3 +85,22 @@ healthy_returns_200() ->
 unhealthy_returns_503() ->
     meck:expect(elib_pg, query, fun(_S, _A) -> erlang:error(no_pool) end),
     ?assertEqual(503, healthz_handler_probe_via_cache()).
+
+%% C-51：响应必须带版本号 —— 部署就绪判断靠它区分"端口通了"和
+%% "**我要的那个版本**通了"（目标色端口有残留旧进程时只探端口会误判成功）。
+%% 健康与不健康两条路径都要带，否则 503 时拿不到版本没法定位是谁在占端口。
+version_in_body_test_() ->
+    {foreach, fun setup/0, fun cleanup/1, [
+        fun healthy_body_has_version/0,
+        fun unhealthy_body_has_version/0
+    ]}.
+
+healthy_body_has_version() ->
+    meck:expect(elib_pg, query, fun(_S, _A) -> {ok, [#{}]} end),
+    ?assertEqual(200, healthz_handler_probe_via_cache()),
+    ?assertNotEqual(nomatch, binary:match(iolist_to_binary(get(last_body)), <<"\"version\":">>)).
+
+unhealthy_body_has_version() ->
+    meck:expect(elib_pg, query, fun(_S, _A) -> erlang:error(no_pool) end),
+    ?assertEqual(503, healthz_handler_probe_via_cache()),
+    ?assertNotEqual(nomatch, binary:match(iolist_to_binary(get(last_body)), <<"\"version\":">>)).

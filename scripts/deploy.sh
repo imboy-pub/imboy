@@ -146,6 +146,34 @@ ssh_capture() {
 # Poll until port is bound, timeout 40 s (2 s × 20 attempts)
 # 单次 SSH 调用在远端执行整个等待循环，避免 20 次往返
 # Single SSH call runs the entire wait loop remotely, avoiding 20 round trips
+# C-51：只探端口是**不够**的。
+#   目标色端口上残留着上一次部署的进程时，`ss` 立刻就能看到端口被监听，
+#   于是部署判定"就绪"→ 切流 → 流量被打到**旧二进制**上，而部署日志全绿。
+#   本次改为探 /healthz 并核对它自报的版本号：
+#     - HTTP 200  ⇒ 进程真的能服务（且 PG 可达，见 C-49 的 503 语义）
+#     - version 匹配 ⇒ 端口后面站着的确实是这次要发的那个版本
+# 缺任何一条都判失败，宁可部署中止也不要把流量切到错误的进程上。
+wait_for_health() {
+  local port=$1 expect_vsn=$2
+  ssh_exec "
+    for i in \$(seq 1 20); do
+      BODY=\$(curl -fsS --max-time 3 \"http://127.0.0.1:$port/healthz\" 2>/dev/null || true)
+      case \"\$BODY\" in
+        *'\"status\":\"ok\"'*)
+          case \"\$BODY\" in
+            *'\"version\":\"$expect_vsn\"'*) exit 0 ;;
+            *) echo \"就绪但版本不符 / ready but version mismatch: \$BODY\" >&2 ;;
+          esac
+          ;;
+      esac
+      sleep 2
+    done
+    exit 1
+  "
+}
+
+# 保留端口探测供"旧节点是否还活着"这类不关心版本的判断使用。
+# ⚠️ 不要再拿它当**部署就绪**判据 —— 那正是 C-51 修掉的坑。
 wait_for_port() {
   local port=$1
   ssh_exec "
@@ -295,8 +323,14 @@ ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro HTTP_PORT='$APP_PORT' IMBOY_HTTP_POR
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers
-wait_for_port "$APP_PORT" || fail "新节点 40s 内未就绪 / Node not ready within 40s (port=$APP_PORT)"
-ok "新节点已就绪 (port=$APP_PORT) / New node ready"
+# C-51：探 /healthz + 校验版本，而不是只看端口有没有被监听。
+# 失败信息刻意点名"可能是残留进程"——这是实际最常见的原因，
+# 直接写出来能省掉一轮排查。
+wait_for_health "$APP_PORT" "$VSN" \
+  || fail "新节点 40s 内未就绪或版本不符 / Node not ready or version mismatch within 40s (port=$APP_PORT, expect=$VSN)。
+  常见原因：目标色端口上有上一次部署的残留进程。
+  排查：ssh $SERVER_HOST \"ss -tlnp 'sport = :$APP_PORT'\" 并确认进程的 -root 目录"
+ok "新节点已就绪且版本匹配 (port=$APP_PORT, vsn=$VSN) / New node ready, version verified"
 
 # =============================================================================
 # 6️⃣ 数据库迁移 / Run DB migrations
