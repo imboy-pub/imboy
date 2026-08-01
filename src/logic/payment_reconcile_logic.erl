@@ -79,23 +79,26 @@ run_hourly(Hours0) ->
     catch
         Class:Reason:St ->
             ?ERROR_LOG([payment_reconcile, run_failed, Class, Reason, St]),
-            _ = elib_metric:increment(payment_reconcile_error_total, 1, #{}),
+            _ = elib_metric:increment(payment_reconcile_error_total, 1),
             ok
     end.
 
 -spec do_run(binary(), binary()) -> ok.
 do_run(FromTs, ToTs) ->
+    %% 心跳：其余计数器在"本轮 0 条"时不会产出序列（increment 拒绝 Delta=<0），
+    %% 没有这条就无法区分"对账全都一致"和"对账 job 早就死了"。
+    _ = elib_metric:increment(payment_reconcile_run_total, 1),
     case check(FromTs, ToTs) of
         {ok, #{total := Total, mismatched := N, mismatches := Mismatches}} ->
-            _ = elib_metric:increment(payment_reconcile_checked_total, Total, #{}),
-            _ = elib_metric:increment(payment_reconcile_mismatch_total, N, #{}),
+            _ = elib_metric:increment(payment_reconcile_checked_total, Total),
+            _ = elib_metric:increment(payment_reconcile_mismatch_total, N),
             case N of
                 0 -> ok;
                 _ -> repair_all(Mismatches)
             end;
         {error, Reason} ->
             ?ERROR_LOG([payment_reconcile, check_failed, Reason]),
-            _ = elib_metric:increment(payment_reconcile_error_total, 1, #{}),
+            _ = elib_metric:increment(payment_reconcile_error_total, 1),
             ok
     end.
 
@@ -109,7 +112,7 @@ repair_all(Mismatches) ->
 repair_one(#{reason := <<"order_missing">>} = M) ->
     %% 业务订单根本不存在 —— 补不了，只能人工介入（可能是脏流水或订单被误删）。
     ?ERROR_LOG([payment_reconcile, unrepairable, maps:get(trade_no, M, <<>>)]),
-    _ = elib_metric:increment(payment_reconcile_unrepairable_total, 1, #{}),
+    _ = elib_metric:increment(payment_reconcile_unrepairable_total, 1),
     ok;
 repair_one(M) ->
     BizType = to_int(maps:get(biz_type, M, 0)),

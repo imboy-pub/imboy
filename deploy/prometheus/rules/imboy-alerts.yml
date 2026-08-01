@@ -608,3 +608,74 @@ groups:
             1. 确认来源 IP 是否为网关官方回调地址
             2. 核对网关公钥/密钥配置是否与商户后台一致
             3. 必要时在 nginx 层临时限制回调来源
+
+      # ── B-07 对账（指标由 src/logic/payment_reconcile_logic.erl 的 ecron 入口产出）──
+      # Reconciliation metrics come from payment_reconcile_logic:run_hourly/0 (ecron).
+      # 指标名与 metrics_handler:metric_name/1 的输出**逐字一致**（atom 原样，无前缀）——
+      # 这一条是刻意核对过的，不要照抄本文件其它组里那些不匹配的名字（见 B-26）。
+
+      # 收了钱但业务侧没落地 = 漏单。补单是自动的，但发生本身必须有人知道。
+      - alert: IMBoyPaymentReconcileMismatch
+        expr: increase(payment_reconcile_mismatch_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: payment
+        annotations:
+          summary: "支付对账发现不一致 / Payment reconciliation found mismatches"
+          description: >
+            对账 job 发现「payment_transaction 已成功但业务订单未落地」的流水。
+            系统已尝试自动补单，但差异本身说明入账链路有缺口，必须查因。
+            Reconciliation found successful transactions whose business order was not credited.
+          runbook: >
+            1. 查日志：grep payment_reconcile /var/log/imboy/*.log | tail -50
+            2. 看 payment_reconcile_repair_total{outcome="failed"} 是否同时上涨
+            3. 若 outcome=repaired 则钱已补上，仍需定位为何回调当时没入账
+
+      # 补单失败：钱收了、补也补不上，属人工介入级别
+      - alert: IMBoyPaymentReconcileRepairFailed
+        expr: increase(payment_reconcile_repair_total{outcome="failed"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          team: payment
+        annotations:
+          summary: "支付对账补单失败 / Payment reconciliation repair failed"
+          description: >
+            对账发现漏单但自动补单失败，用户已付款而权益未发放，需人工处理。
+            Automatic repair failed; the user paid but did not receive the entitlement.
+          runbook: >
+            1. 按 trade_no 在日志里定位 repair_failed 记录
+            2. 核对 payment_transaction 与业务订单的实际状态
+            3. 手工补单后确认 channel_order/recharge_order 状态为已支付
+
+      # 流水存在但业务订单查不到 —— 补不了，只能人工判定是脏流水还是订单被误删
+      - alert: IMBoyPaymentReconcileUnrepairable
+        expr: increase(payment_reconcile_unrepairable_total[6h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          team: payment
+        annotations:
+          summary: "支付流水找不到对应业务订单 / Payment transaction has no business order"
+          description: >
+            对账发现成功流水的业务订单不存在，无法自动补单。
+          runbook: >
+            1. 按 trade_no 核对该流水来源
+            2. 确认业务订单是否被误删或订单号写错
+
+      # 心跳：job 该跑没跑，等同于对账形同虚设（悄悄失效比报错更危险）
+      - alert: IMBoyPaymentReconcileStalled
+        expr: increase(payment_reconcile_run_total[3h]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          team: payment
+        annotations:
+          summary: "支付对账 job 已停摆 / Payment reconciliation job stalled"
+          description: >
+            近 3 小时没有一次对账执行（正常每小时一次），漏单将无人发现。
+          runbook: >
+            1. 确认节点存活且 ecron 已启动：make ctl ARGS="node status"
+            2. 查 sys.config 的 ecron jobs 是否还有 payment_reconcile 项
+            3. 查 payment_reconcile_error_total 是否在涨（跑了但一直失败）
