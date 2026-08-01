@@ -71,14 +71,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
-docker exec -i "$PG_CONTAINER" \
-  psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE \"${SMOKE_DB}\";" >/dev/null \
-  || fail "创建临时库失败"
+# ---------- B-21：演练必须走与真实恢复**同一份代码** ----------
+# 此前这里是就地一句 `pg_restore ... < $LATEST`，而真实恢复
+# （scripts/restore_pg.sh）额外包了 timescaledb_pre_restore()/post_restore()。
+# imboy 的核心消息表是 hypertable，缺这层包裹时 chunk 的 dimension slices 恢复不出来
+# —— **表还在、数据没了**。于是每日演练稳稳变绿，真实灾难恢复丢掉全部消息。
+#
+# 修法不是"把那段包裹也抄一份到这里"：重复正是这个 bug 的成因，抄完照样会再次漂移。
+# 直接委托给 restore_pg.sh，**只留一份恢复实现**，"同路径"就变成结构上成立而不是
+# 靠人记得同步。
+#
+# 传参说明：
+#   FORCE=1  跳过交互确认（cron 里没有 tty）。目标是 imboy_smoke_* 不是生产库，
+#            B-28 的生产库守卫会拦住任何写错成生产库的情况，且那条路径下
+#            FORCE=1 会被显式拒绝 —— 这里用 FORCE 是安全的。
+#   --target 临时库；restore_pg.sh 自己会 DROP+CREATE，不必先建。
+info "委托 scripts/restore_pg.sh 执行恢复（与真实灾难恢复同一代码路径）"
+RESTORE_LOG="$(mktemp)"
+trap 'rm -f "$RESTORE_LOG"; cleanup' EXIT
 
-# pg_restore 对扩展/属主类对象常有非致命告警，只要后续断言通过即算成功
-docker exec -i "$PG_CONTAINER" \
-  pg_restore -U "$POSTGRES_USER" -d "$SMOKE_DB" --no-owner --no-privileges < "$LATEST" \
-  >/dev/null 2>&1 || warn "pg_restore 有非零退出（可能是扩展/属主告警），继续做数据断言"
+if FORCE=1 PG_CONTAINER="$PG_CONTAINER" POSTGRES_USER="$POSTGRES_USER" POSTGRES_DB="$POSTGRES_DB" \
+     bash "$(dirname "$0")/restore_pg.sh" "$LATEST" --target "$SMOKE_DB" >"$RESTORE_LOG" 2>&1; then
+  info "restore_pg.sh 返回成功"
+else
+  warn "restore_pg.sh 返回非零（自定义格式恢复常有可忽略告警），继续做数据断言"
+  tail -20 "$RESTORE_LOG" >&2 || true
+fi
 
 # ---------- 断言：恢复出来的库确实有内容 ----------
 TABLE_COUNT="$(docker exec -i "$PG_CONTAINER" \

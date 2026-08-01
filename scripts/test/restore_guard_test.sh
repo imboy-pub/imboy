@@ -59,5 +59,39 @@ else
 fi
 
 echo
-echo "结果: PASS=${PASS} FAIL=${FAIL}"
+echo "== B-21 演练与真实恢复同路径 =="
+
+SMOKE="scripts/restore_smoke.sh"
+
+# 演练脚本必须**委托** restore_pg.sh，而不是自己再写一遍 pg_restore。
+# 这条断言就是"同路径"的尺子：有人把恢复逻辑抄回来时它先红。
+if grep -q 'restore_pg.sh' "$SMOKE"; then
+  ok "restore_smoke.sh 委托 restore_pg.sh 执行恢复"
+else
+  bad "restore_smoke.sh 未委托 restore_pg.sh（同路径判据不成立）" "$(grep -n 'pg_restore\|restore_pg' "$SMOKE" || true)"
+fi
+
+# 反向：演练脚本里不得再出现直接调用 pg_restore 的恢复语句。
+# （restore_pg.sh 里那句才是唯一的恢复实现）
+if grep -qE '^[^#]*pg_restore -U' "$SMOKE"; then
+  bad "restore_smoke.sh 仍在直接调用 pg_restore（会绕开 timescaledb 包裹）" "$(grep -nE '^[^#]*pg_restore -U' "$SMOKE")"
+else
+  ok "restore_smoke.sh 不再直接调用 pg_restore"
+fi
+
+# 真实恢复脚本必须保留 timescaledb 包裹 —— 它现在是唯一实现，丢了就是两条路径一起坏。
+# ⚠️ 必须匹配**真实的 SQL 调用**而不是函数名字符串：注释和 `|| fail "..." ` 的错误
+#    文案里也有这个名字，光 grep 名字的断言在把 SQL 换成 SELECT 1 时照样是绿的
+#    （RED 验证时实测过，第一版就是这么写的）。
+for fn in timescaledb_pre_restore timescaledb_post_restore; do
+  if grep -q "SELECT ${fn}()" "$SCRIPT"; then
+    ok "restore_pg.sh 保留 SELECT ${fn}()"
+  else
+    bad "restore_pg.sh 缺少 SELECT ${fn}()（hypertable 数据会静默丢失）" \
+        "$(grep -n "$fn" "$SCRIPT" || true)"
+  fi
+done
+
+echo
+echo "总计: PASS=${PASS} FAIL=${FAIL}"
 [ "$FAIL" -eq 0 ]
