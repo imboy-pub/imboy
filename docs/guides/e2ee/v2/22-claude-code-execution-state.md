@@ -9,7 +9,7 @@
 
 ```yaml
 state_version: 1
-last_updated: 2026-07-28
+last_updated: 2026-08-02
 # ⚠️ 读本文件前必看：evidence/E2EE-v3-receive-path-not-wired.md
 # PFv3 接收侧此前在生产 WS 路径上**完全未接线**（v3 消息被静默丢弃）。
 # 已于 2026-07-28 接线：新增 E2EEService.decryptInboundV3 纯函数作为 v3 唯一
@@ -41,8 +41,8 @@ blocked:
   required_action: "有线连接真机并由人工提供测试账号凭证，执行真机 at-rest 取证 + 强杀重启验证后方可将 E2EE-030 置为 PASS"
   safe_alternative: "自动化不变量守护已闭环（见 evidence/E2EE-030.md），但不得据此标 PASS"
 human_gate:
-  adr_14_19: BLOCKED
-  adr_14_19_reason: "仍为 Proposed；不得自行代签"
+  adr_14_19: ACCEPTED
+  adr_14_19_reason: "2026-08-02 leeyi solo 一人决策全签（14/15/16/17/18+31；19 MLS 维持 Proposed 见 ADR 31）；记录见 evidence/E2EE-P0-ruling-2026-08-02.md"
   release_track_choice_after_c2c: PENDING
 overall_status: IN_PROGRESS
 ```
@@ -65,24 +65,25 @@ overall_status: IN_PROGRESS
 
 ### 停放区（需人工签字 / 真机 / 架构点头——loop 一律不得触碰）
 
-- 提案 25 §7 第 3、4 项签字；E2EE-012/024/025 的 `PASS` 回退裁定
-  （`22` §3 状态机不含 `PASS -> PARTIAL`，转换路径须人工先定）
-- ADR 14–19 人工接受（`human_gate.adr_14_19: BLOCKED`）
+- ~~提案 25 §7 第 3、4 项签字；E2EE-012/024/025 的 `PASS` 回退裁定~~ ✅ 2026-08-02 leeyi 已裁定（见 `evidence/E2EE-P0-ruling-2026-08-02.md`）
+- ~~ADR 14–19 人工接受~~ ✅ 2026-08-02 leeyi solo 全签（19 维持 Proposed）
 - E2EE-030 真机 PFS 攻击测试；以及全部真机腿：`session_ref` / `message_id` /
   `message_type` / ADR 26 counter 语义 / PFv3 接收侧接线 / 图片消息端到端
 - 候选任务 B：`_receiveMessage` 副作用链解耦（重构）
-- `git push`、部署、访问生产、通知第三方
+- ~~`git push`~~ ✅ 2026-08-02 leeyi 批准三 remote 推送（本批执行）；部署、访问生产、通知第三方仍需逐项人工授权
 
 ---
 
-当前发布声明只能是 `Preview`。在下列条件全部满足前，不得对外宣称 `GA-C2C` 或 `GA-Top-Tier`：
+当前发布声明只能是 `Preview`。GA-Top-Tier 判定自 2026-08-02 起以 **ADR 31** 为准
+（按 `standard/top-tier-standard-2026.md` 全部 MUST 条目验收，MLS 非前提，转路线图 TT-R2）。
+在下列条件全部满足前，不得对外宣称 `GA-C2C` 或 `GA-Top-Tier`：
 
 - 单聊完成每设备 Olm，而不是 C2C Megolm；
 - 设备身份签名、设备信任、Protected Frame v3 和设备撤销完成；
 - PFS、PCS、事务性 CryptoStore 和恢复完成；
-- 群聊 MLS 完成并通过独立互操作；
+- 群聊 Megolm 完备（成员双向隔离/轮换单调性/大群分发成本实测）；
 - 真实 Android/iOS 多设备测试完成；
-- 外部安全审计没有未解决的 Critical/High 问题。
+- 审计就绪包交付，且自审计报告没有未解决的 Critical/High 问题。
 
 ## 2. 每次新 Claude Code 会话的启动指令
 
@@ -147,6 +148,7 @@ PENDING -> IN_PROGRESS -> BLOCKED
 PARTIAL -> IN_PROGRESS     只能在残留项明确后继续
 BLOCKED -> PENDING          只能在阻塞原因解决后继续
 PASS -> SUPERSEDED          只能由新的协议决策或任务替代
+PASS -> PARTIAL             只能由人工裁定（验收失效复核通道，2026-08-02 leeyi 裁定增设）
 ```
 
 禁止：
@@ -227,7 +229,7 @@ blocked:
 | E2EE-001 | B00 | ADR14–19 人工接受 | `BLOCKED` | 仍为 Proposed，不得代签 |
 | E2EE-010 | B01 | Policy Gate fail-closed | `PASS` | `evidence/E2EE-HOTFIX-02.md` 已合规群聊密钥路径 |
 | E2EE-011 | B01 | Room Key 禁止 RSA 静默降级 | `PASS` | `evidence/E2EE-HOTFIX-03.md` 已完成发送侧失败闭环 |
-| E2EE-012 | B02 | Protected Context 纵向闭环 | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-012.md`；⚠️ `evidence/E2EE-012-024-review.md`：验收只验「篡改能否拒收」，从未验「生产未篡改消息能否收下」；evidence 自记「改测试对齐 sessionRef」。状态未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
+| E2EE-012 | B02 | Protected Context 纵向闭环 | `PARTIAL`（2026-08-02 leeyi 裁定回退；待 P1-2 生产路径重验） | `evidence/E2EE-012.md`；⚠️ `evidence/E2EE-012-024-review.md`：验收只验「篡改能否拒收」，从未验「生产未篡改消息能否收下」；evidence 自记「改测试对齐 sessionRef」。状态未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
 | E2EE-013 | B03 | 设备所有权与 Token 绑定 | `PASS` | `evidence/E2EE-013.md` |
 | E2EE-014 | B03 | Trust Event、身份新鲜度和幂等 | `PASS` | `evidence/E2EE-014.md` |
 | E2EE-015 | B04 | Secret Inventory、登出和残留清理 | `PASS` | `evidence/E2EE-015.md` |
@@ -237,8 +239,8 @@ blocked:
 | E2EE-021 | B06 | Signed Capabilities | `PASS` | `evidence/E2EE-021.md` |
 | E2EE-022 | B06 | 客户端身份签名验证 | `PASS` | `evidence/E2EE-022.md` |
 | E2EE-023 | B07 | Protected Frame v3 canonical encoding | `PASS` | `evidence/E2EE-023.md`；2026-07-28 复核**维持 PASS**（人工已裁定）：验收对象是纯 codec，发送侧 `encryptV3` 与接收侧 `_decryptV3Payload` 均有真实生产调用方，不同于 012/024 掉在旁路上。仅撤回「Residual risks: None」。见 `evidence/E2EE-012-024-025-029-reacceptance.md` §5 |
-| E2EE-024 | B07 | Context binding 和 mutation matrix | `PASS`（⚠️ **复核判定不成立，强烈建议回退**） | `evidence/E2EE-024.md`；⚠️ `evidence/E2EE-012-024-review.md`：「100% Mutation Rejection Rate」在一个拒绝所有消息的实现上恒成立，不构成正确性证据。状态未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
-| E2EE-025 | B07 | Replay、counter 和 epoch | `PASS`（⚠️ **强烈建议回退**） | `evidence/E2EE-025.md`；⚠️⚠️ **`evidence/E2EE-025-production-wiring-finding.md` 实证：生产 C2C Olm v3 消息被接收侧整条拒绝（`context_mismatch_session_id`），不是"少一层防御"而是链路不通**。counter 语义已定案选项 C；修复因触及 ADR 02 冻结接口的循环依赖而未实施，两个方案的取舍待人工拍板。状态标记未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
+| E2EE-024 | B07 | Context binding 和 mutation matrix | `PARTIAL`（2026-08-02 leeyi 裁定回退；待 P1-3 生产路径重验） | `evidence/E2EE-024.md`；⚠️ `evidence/E2EE-012-024-review.md`：「100% Mutation Rejection Rate」在一个拒绝所有消息的实现上恒成立，不构成正确性证据。状态未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
+| E2EE-025 | B07 | Replay、counter 和 epoch | `PARTIAL`（2026-08-02 leeyi 裁定回退；待 P1-1 修复+重验） | `evidence/E2EE-025.md`；⚠️⚠️ **`evidence/E2EE-025-production-wiring-finding.md` 实证：生产 C2C Olm v3 消息被接收侧整条拒绝（`context_mismatch_session_id`），不是"少一层防御"而是链路不通**。counter 语义已定案选项 C；修复因触及 ADR 02 冻结接口的循环依赖而未实施，两个方案的取舍待人工拍板。状态标记未擅改 ⚠️ 2026-07-28 任务 A 复核：**仍不成立**，且发现接线后第 4 个断点（sender_did 未盖信封层）已修实时侧；见 `evidence/E2EE-012-024-025-029-reacceptance.md`。状态未擅改 |
 | E2EE-026 | B08 | Transactional CryptoStore | `PASS` | `evidence/E2EE-026.md` |
 | E2EE-027 | B08 | Outbox、dedupe 和 crash recovery | `PARTIAL` | `evidence/E2EE-027.md` + `evidence/E2EE-027-followup.md`；outbox 提交已改 fail-closed；残留=读侧未接线（重发仍重新 encrypt）、ratchet+outbox 非同一事务（受 ADR 02 冻结接口限制） |
 | E2EE-029 | B09 | C2C per-device Olm fan-out | `PASS` | `evidence/E2EE-029.md`；2026-07-28 **接收侧首获实证**（多设备 fan-out 只取本机信封，在生产入口 `decryptInboundV3` 上），见 `evidence/E2EE-012-024-025-029-reacceptance.md` §3.1 | 新 C2C 禁止 Megolm/RSA |

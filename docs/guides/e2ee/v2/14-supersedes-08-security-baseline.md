@@ -1,6 +1,6 @@
 # ADR 14 — 行业顶级 E2EE 安全基线与发布治理
 
-> **状态**：Accepted（**范围收敛豁免** — leeyi 单方授权 alpha.15 pre-GA，仅作为 E2EE-014 trust-event 子集（ADR 16 §3.3.1）的基线依赖；本 ADR 的完整发布判定/威胁矩阵/PFv3/MLS/恢复仍为 Proposed 待五方人工签字，未签字前不改变 00–13 的 Frozen 状态、不得对外宣称 Strong/GA。草拟：Claude Code 代笔，2026-07-20）
+> **状态**：**Accepted**（2026-08-02 leeyi solo 一人决策全签，单人开发一人兼五方；此前为范围收敛豁免 2026-07-20，豁免限制解除，全文生效。ADR 19 MLS 除外——维持 Proposed，见 ADR 31）
 > **拟替代**：ADR 08 的威胁边界、可追溯矩阵与发布判定；补充 ADR 00/01 的治理闸门
 > **关联提案**：ADR 15–19；实施与验收见 `20-implementation-and-acceptance-plan.md`
 > **触发原因**：2026-07-20 实现复核表明，当前系统仍有未认证的 legacy fallback、设备身份未绑定登录会话、恢复材料不完整、合规路径 fail-open、群聊缺少可证明 PCS 等差距，不能宣称达到行业顶级产品水平。

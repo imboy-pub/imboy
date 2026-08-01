@@ -406,7 +406,7 @@ internal dogfood
 | 审计 | Critical/High 0；Critical tests 0 skip |
 | 运维 | 灰度停止、回滚、根轮换、设备撤销、透明度分叉 runbook 均演练 |
 
-只有 C2C 范围达到表中对应门禁，可发布 `GA-C2C`；只有 MLS 群范围也达到，才可发布 `GA-Top-Tier`。
+只有 C2C 范围达到表中对应门禁，可发布 `GA-C2C`；GA-Top-Tier 的判定自 2026-08-02 起以 **ADR 31** 为准：按 `standard/top-tier-standard-2026.md` 全部 MUST 条目（安全属性）验收，**不再以 MLS 群聊为前提**（MLS 转路线图 TT-R2）。
 
 ---
 

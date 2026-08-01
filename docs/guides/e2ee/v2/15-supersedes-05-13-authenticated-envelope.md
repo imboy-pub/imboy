@@ -1,6 +1,6 @@
 # ADR 15 — Protected Frame v3 与禁止未认证降级
 
-> **状态**：Accepted（**范围收敛豁免** — leeyi 单方授权 alpha.15 pre-GA，仅解锁 **E2EE-014 trust-event 签名负载扩展**（ADR 16 §3.3.1）；PFv3 消息 header 绑定（E2EE-012）与 Olm→RSA 降级禁止仍为 Proposed 待五方人工签字。草拟：Claude Code 代笔，2026-07-20）
+> **状态**：**Accepted**（2026-08-02 leeyi solo 一人决策全签；豁免解除，PFv3 消息 header 绑定与 Olm→RSA 降级禁止全文生效）
 > **拟替代**：ADR 05 的新写入 metadata 格式；ADR 13 的 Olm→RSA 接收 fallback 与单包退出路径
 > **保留**：ADR 05 的 legacy 解析；ADR 13 的历史 RSA/Megolm 解密能力
 > **依赖**：ADR 14 安全基线、ADR 16 设备身份

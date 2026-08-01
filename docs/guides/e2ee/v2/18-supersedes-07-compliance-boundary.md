@@ -1,6 +1,6 @@
 # ADR 18 — Strict 与 Compliance 的信任边界
 
-> **状态**：Proposed
+> **状态**：**Accepted**（2026-08-02 leeyi solo 一人决策全签）
 > **拟替代**：ADR 07/13 中合规接收方的信任与 fallback 语义
 > **保留**：服务端不持有合规私钥、服务端不解密消息的既有决定
 > **依赖**：ADR 14–17

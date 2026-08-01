@@ -1,6 +1,6 @@
 # 29 — IMBoy Transparency Profile v1（冻结草案）
 
-> **状态**：**冻结草案，未签字**。playbook E2EE-033 第 1 步要求
+> **状态**：**Accepted**（2026-08-02 leeyi solo 一人决策接受；原 2026-07-29 冻结草案）。playbook E2EE-033 第 1 步要求
 > 「先冻结 transparency profile … **由安全 reviewer 接受**」——
 > loop 只能产出草案，**接受动作必须人工**。
 > **本文件不改动任何生产代码。**

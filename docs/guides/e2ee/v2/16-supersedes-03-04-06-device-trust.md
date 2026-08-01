@@ -1,6 +1,6 @@
 # ADR 16 — Device-bound Auth、Cross-signing 与 Key Transparency
 
-> **状态**：Accepted（**范围收敛豁免** — leeyi 单方授权 alpha.15 pre-GA，仅解锁 **E2EE-014 trust-event freshness/唯一性/幂等子集**（§3.3.1）；device-bound session 完整体（§3.1）、cross-signing（§5）、transparency log 仍为 Proposed 待五方人工签字。五方签字未过前不得对外宣称达成 ADR 14 的“Strong/GA”发布判定。草拟：Claude Code 代笔，2026-07-20）
+> **状态**：**Accepted**（2026-08-02 leeyi solo 一人决策全签；豁免解除，§3.1 device-bound session 完整体、§5 cross-signing、transparency log 全文生效）
 > **拟替代**：ADR 03 的设备身份写入授权、ADR 04 的 capability 信任来源、ADR 06 的“仅预留 CrossSigningService”决定
 > **保留**：现有 Safety Number 作为人工核验入口；现有 trust state 数据迁移后继续使用
 > **依赖**：ADR 14、ADR 15；恢复根密钥见 ADR 17
