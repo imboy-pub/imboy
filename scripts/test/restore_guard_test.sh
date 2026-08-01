@@ -93,5 +93,57 @@ for fn in timescaledb_pre_restore timescaledb_post_restore; do
 done
 
 echo
+echo "== B-22 行数断言与演练指标 =="
+
+# 判据是"恢复后消息表行数 > 0"。只数表数量抓不到 timescaledb 那个坑 ——
+# 缺包裹时表全在、只是空的。
+if grep -q 'SELECT count(\*) FROM public' "$SMOKE"; then
+  ok "restore_smoke.sh 核对消息表行数（不只是表数量）"
+else
+  bad "restore_smoke.sh 未核对行数" ""
+fi
+
+# 与源库对照而非硬断言 >0：msg_c2c 是投递队列，ACK 后行会被删，
+# 安静的小部署里它合法地就是 0 行，硬断言会假失败。
+# ⚠️ 必须匹配真实的 fail 调用，不能只 grep 中文短语 —— 注释里也有同样的话，
+#    那样的断言在把 fail 换成 warn 之后照样是绿的（RED 时实测过）。
+if grep -qE '^[[:space:]]*fail ".*源库有' "$SMOKE"; then
+  ok "源库有数据而恢复为 0 行时 fail（空库不假失败，丢数据必被抓）"
+else
+  bad "行数不一致时未 fail" "$(grep -n '源库有' "$SMOKE" || true)"
+fi
+
+# 失败必须推指标，否则演练失败只留在 cron 日志里，没人会被通知到
+if grep -q 'push_restore_result 0' "$SMOKE"; then
+  ok "演练失败推 status=0 指标"
+else
+  bad "演练失败未推指标（Alertmanager 收不到）" ""
+fi
+
+# DRY_RUN 不得推成功指标：cron 里误设 DRY_RUN=1 会让"备份可恢复"永远显示为绿
+DRY_SECTION="$(sed -n '/DRY_RUN.*=.*"1"/,/^fi$/p' "$SMOKE")"
+if printf '%s' "$DRY_SECTION" | grep -q 'push_restore_result 1'; then
+  bad "DRY_RUN 分支推了成功指标（会造成假绿）" "$DRY_SECTION"
+else
+  ok "DRY_RUN 分支不推成功指标"
+fi
+
+# 共享库必须提供 push_restore_result
+if grep -q 'push_restore_result()' scripts/lib/metrics_push.sh; then
+  ok "metrics_push.sh 提供 push_restore_result"
+else
+  bad "metrics_push.sh 缺 push_restore_result" ""
+fi
+
+# 告警规则必须引用脚本真实推出去的指标名（B-26 那类"名字对不上"的坑）
+for m in imboy_restore_drill_last_status imboy_restore_drill_last_success_timestamp; do
+  if grep -q "$m" deploy/prometheus/rules/imboy-alerts.yml && grep -q "$m" scripts/lib/metrics_push.sh; then
+    ok "指标名两侧一致: ${m}"
+  else
+    bad "指标名两侧不一致: ${m}（告警永远不触发）" ""
+  fi
+done
+
+echo
 echo "总计: PASS=${PASS} FAIL=${FAIL}"
 [ "$FAIL" -eq 0 ]

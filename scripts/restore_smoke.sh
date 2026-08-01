@@ -29,6 +29,26 @@ info() { echo -e "${GREEN}[restore_smoke]${NC} $*"; }
 warn() { echo -e "${YELLOW}[restore_smoke]${NC} $*"; }
 fail() { echo -e "${RED}[restore_smoke] ERROR:${NC} $*" >&2; exit 1; }
 
+# ---------- B-22：演练结果推 Pushgateway（供 Alertmanager 消费）----------
+# 没有这一步，演练失败只会安静地留在 cron 日志里 —— 没有人会去看，
+# 等于"备份不可恢复"这件事永远不会有人被通知到。
+START_TS="$(date -u +%s)"
+DRILL_ROWS=0
+# shellcheck source=scripts/lib/metrics_push.sh
+. "$(dirname "$0")/lib/metrics_push.sh"
+
+# 无论从哪条路径退出都推一次结果：exit 0 记成功，非 0 记失败。
+# 挂在 EXIT 上而不是散在各个 fail 点 —— 散着写迟早漏掉一条分支。
+report_drill() {
+  local rc=$?
+  if [ "$rc" -eq 0 ]; then
+    push_restore_result 1 "$START_TS" "$DRILL_ROWS" || true
+  else
+    push_restore_result 0 "$START_TS" "$DRILL_ROWS" || true
+  fi
+  return $rc
+}
+
 # 临时库名：固定前缀 + 时间戳 + 进程号，保证唯一且可被守卫识别
 SMOKE_DB="imboy_smoke_$(date -u +%Y%m%d%H%M%S)_$$"
 
@@ -51,6 +71,8 @@ info "临时库名: ${SMOKE_DB}（生产库 ${POSTGRES_DB} 不受影响）"
 
 if [ "$DRY_RUN" = "1" ]; then
   info "DRY_RUN=1：守卫校验通过，跳过实际恢复"
+  # ⚠️ DRY_RUN **不推成功指标**：它没有真的恢复过任何东西。
+  # 若这里推 1，cron 里误设 DRY_RUN=1 会让"备份可恢复"永远显示为绿。
   exit 0
 fi
 
@@ -69,7 +91,7 @@ cleanup() {
     psql -U "$POSTGRES_USER" -d postgres -c "DROP DATABASE IF EXISTS \"${SMOKE_DB}\";" >/dev/null 2>&1 || true
   info "已清理临时库 ${SMOKE_DB}"
 }
-trap cleanup EXIT
+trap 'cleanup; report_drill' EXIT
 
 # ---------- B-21：演练必须走与真实恢复**同一份代码** ----------
 # 此前这里是就地一句 `pg_restore ... < $LATEST`，而真实恢复
@@ -88,7 +110,7 @@ trap cleanup EXIT
 #   --target 临时库；restore_pg.sh 自己会 DROP+CREATE，不必先建。
 info "委托 scripts/restore_pg.sh 执行恢复（与真实灾难恢复同一代码路径）"
 RESTORE_LOG="$(mktemp)"
-trap 'rm -f "$RESTORE_LOG"; cleanup' EXIT
+trap 'rm -f "$RESTORE_LOG"; cleanup; report_drill' EXIT
 
 if FORCE=1 PG_CONTAINER="$PG_CONTAINER" POSTGRES_USER="$POSTGRES_USER" POSTGRES_DB="$POSTGRES_DB" \
      bash "$(dirname "$0")/restore_pg.sh" "$LATEST" --target "$SMOKE_DB" >"$RESTORE_LOG" 2>&1; then
@@ -98,7 +120,7 @@ else
   tail -20 "$RESTORE_LOG" >&2 || true
 fi
 
-# ---------- 断言：恢复出来的库确实有内容 ----------
+# ---------- 断言 1：表结构恢复出来了 ----------
 TABLE_COUNT="$(docker exec -i "$PG_CONTAINER" \
   psql -U "$POSTGRES_USER" -d "$SMOKE_DB" -tAc \
   "SELECT count(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null | tr -d ' ')"
@@ -108,6 +130,43 @@ info "恢复出 ${TABLE_COUNT} 张表（阈值 ${MIN_TABLES}）"
 
 if [ "$TABLE_COUNT" -lt "$MIN_TABLES" ]; then
   fail "恢复结果表数量 ${TABLE_COUNT} 低于阈值 ${MIN_TABLES}，备份可能不完整"
+fi
+
+# ---------- 断言 2（B-22）：hypertable 的**数据**也恢复出来了 ----------
+# 只数表数量是抓不到 timescaledb 那个坑的：缺 pre/post_restore 包裹时
+# **表照样都在、只是全空**，表数量断言稳稳通过。必须数行。
+#
+# 判据写的是"消息表行数 > 0"，但直接断言 >0 会误报：msg_c2c 是投递队列，
+# 全部设备 ACK 后行会被删，一个安静的小部署里它合法地就是 0 行。
+# 改成**与源库对照**：源库有数据而恢复出来是 0 行，才是真的丢了。
+# 空库演练因此不会假失败，而 timescaledb 丢数据一定被抓到。
+row_count() {  # row_count <db> <table>
+  docker exec -i "$PG_CONTAINER" psql -U "$POSTGRES_USER" -d "$1" -tAc \
+    "SELECT count(*) FROM public.\"$2\";" 2>/dev/null | tr -d ' \r'
+}
+
+MSG_TABLES="${MSG_TABLES:-msg_c2c msg_c2g msg_store msg_s2c}"
+CHECKED=0
+DATA_OK=0
+for TBL in $MSG_TABLES; do
+  SRC="$(row_count "$POSTGRES_DB" "$TBL")"
+  DST="$(row_count "$SMOKE_DB" "$TBL")"
+  # 表不存在/查不到就跳过（不同版本表集合会变，不能因此判失败）
+  case "$SRC$DST" in ''|*[!0-9]*) warn "跳过 ${TBL}（源或临时库查不到该表）"; continue ;; esac
+  CHECKED=$((CHECKED + 1))
+  info "  ${TBL}: 源库 ${SRC} 行 / 恢复 ${DST} 行"
+  if [ "$SRC" -gt 0 ] && [ "$DST" -eq 0 ]; then
+    fail "${TBL} 源库有 ${SRC} 行但恢复后 0 行 —— hypertable 数据未恢复（典型为缺少 timescaledb_pre_restore 包裹）"
+  fi
+  [ "$DST" -gt 0 ] && DATA_OK=1
+  DRILL_ROWS=$((DRILL_ROWS + DST))
+done
+
+[ "$CHECKED" -gt 0 ] || warn "未能核对任何消息表行数（表名可能已变，请核对 MSG_TABLES）"
+if [ "$DATA_OK" = "1" ]; then
+  info "消息表数据核对通过（至少一张表恢复出非空数据）"
+else
+  warn "所有被核对的消息表在源库也是 0 行 —— 本次演练只证明了结构可恢复，未证明数据可恢复"
 fi
 
 info "恢复冒烟通过：备份可恢复且内容非空"

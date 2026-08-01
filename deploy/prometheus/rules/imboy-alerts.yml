@@ -510,6 +510,46 @@ groups:
             2. 确认 PG 容器在跑：docker ps | grep imboy_pg
             3. 确认备份目录可写且磁盘未满：df -h
 
+
+      # ── B-22 恢复演练（指标由 scripts/restore_smoke.sh 经 Pushgateway 推送）──
+      # 备份"能生成"和备份"能恢复"是两件事。此前每日演练的结果只留在 cron 日志里，
+      # 没有人会去看 —— 等于"备份不可恢复"永远不会有人被通知到。
+
+      - alert: IMBoyRestoreDrillFailed
+        expr: imboy_restore_drill_last_status == 0
+        for: 0m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "备份恢复演练失败 / Restore drill failed"
+          description: >
+            最近一次恢复演练未通过。这意味着**备份可能无法恢复** ——
+            备份文件生成成功不等于能恢复出数据。
+          runbook: >
+            1. 查演练日志：tail -200 /var/log/imboy/restore_smoke.log
+            2. 重点看是否报"源库有 N 行但恢复后 0 行" —— 那是 hypertable 未恢复
+               （典型为缺 timescaledb_pre_restore 包裹）
+            3. 手工重跑：bash scripts/restore_smoke.sh
+
+      # 演练本身停摆比演练失败更隐蔽：没有结果就没有告警，看起来一切正常
+      - alert: IMBoyRestoreDrillStalled
+        expr: >
+          absent(imboy_restore_drill_last_success_timestamp)
+          or (time() - imboy_restore_drill_last_success_timestamp) > 172800
+        for: 30m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "恢复演练超过 48 小时未成功 / Restore drill has not succeeded for 48h"
+          description: >
+            演练每日执行，超过 48 小时没有一次成功即说明它没在跑或一直失败。
+          runbook: >
+            1. 确认 cron 生效：cat /etc/cron.d/imboy-ops
+            2. 确认 /etc/imboy/ops.env 里 PUSHGATEWAY_URL 已设置（见 deploy/ops.env.example）
+            3. 确认 DRY_RUN 未被误设为 1 —— 该模式**不推成功指标**，正是为了避免假绿
+
   - name: imboy.tls
     interval: 300s
     rules:

@@ -82,6 +82,38 @@ push_backup_result() {
     "$(build_backup_payload "$component" "$status" "$start_ts" "$size_bytes")"
 }
 
+# 构造恢复演练结果指标文本（B-22，纯函数便于测试断言 payload）
+# 参数：status(1成功/0失败)  start_ts  [restored_rows]
+build_restore_payload() {
+  local status="$1" start_ts="$2" rows="${3:-0}"
+  local now duration
+  now="$(date -u +%s)"
+  duration="$((now - start_ts))"
+
+  printf '%s\n' \
+    "# TYPE imboy_restore_drill_last_status gauge" \
+    "imboy_restore_drill_last_status ${status}" \
+    "# TYPE imboy_restore_drill_last_duration_seconds gauge" \
+    "imboy_restore_drill_last_duration_seconds ${duration}" \
+    "# TYPE imboy_restore_drill_restored_rows gauge" \
+    "imboy_restore_drill_restored_rows ${rows}"
+
+  # 与备份指标同样的取舍：只有成功才刷新 last_success_timestamp，
+  # 失败时保留旧值，让"距上次成功多久"能正确计时。
+  if [ "$status" = "1" ]; then
+    printf '%s\n' \
+      "# TYPE imboy_restore_drill_last_success_timestamp gauge" \
+      "imboy_restore_drill_last_success_timestamp ${now}"
+  fi
+}
+
+# 推送恢复演练结果
+# 参数：status(1/0)  start_ts  [restored_rows]
+push_restore_result() {
+  _metrics_push_raw "imboy_restore_drill" "pg" \
+    "$(build_restore_payload "$1" "$2" "${3:-0}")"
+}
+
 # 构造 TLS 证书到期指标文本
 # 参数：expiry_unix_ts
 build_tls_payload() {
