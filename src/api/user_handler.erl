@@ -359,7 +359,7 @@ convert_user_id(User) ->
 export_data(Req0, State) ->
     case auth_ds:current_uid(State) of
         Uid when is_integer(Uid), Uid > 0 ->
-            case user_export_logic:export(Uid, Req0) of
+            case user_logic:export(Uid, Req0) of
                 {ok, Data} ->
                     elib_response:success(Req0, Data);
                 {error, _Reason} ->

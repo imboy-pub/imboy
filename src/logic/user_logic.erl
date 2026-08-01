@@ -31,6 +31,7 @@
 -export([change_chat_state/2]).
 -export([save_settings/2]).
 -export([find_by_keyword/1]).
+-export([export/2]).
 
 %% ===================================================================
 %% API
@@ -427,3 +428,9 @@ send_bind_email(Uid, Email) ->
             "tps://www.imboy.pub/"/utf8>>,
     _ = elib_email:send(Email, <<"IMBoy绑定邮箱确认"/utf8>>, Body),
     {ok, <<"success">>}.
+
+%% @doc 个人数据全量导出透传（GDPR 第 20 条）。
+%% Handler 只允许调本域 logic，实际实现见 user_export_logic:export/2。
+-spec export(integer(), cowboy_req:req()) -> {ok, map()} | {error, term()}.
+export(Uid, Req0) ->
+    user_export_logic:export(Uid, Req0).
