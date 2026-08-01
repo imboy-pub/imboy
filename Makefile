@@ -34,9 +34,18 @@ DEPS += epgsql pooler erlang_migrate depcache syn ecron uid
 # Ops / Observability
 DEPS += telemetry lager observer_cli recon redbug
 # Template / Captcha
-DEPS += simple_captcha erlydtl sync
+DEPS += simple_captcha erlydtl
 # Payment（同工作区本地纯 Erlang 第三方支付库，ln 本地路径 dep）
 DEPS += erlang_pay
+
+# 开发期热重载：sync 会扫描源码目录自动重编译并热加载改动的模块。
+# DEPS 会被 erlang.mk 写进 ebin/imboy.app 的 applications，随 release 发布
+# 并在节点启动时自动 start —— 生产机上任意 .erl 写入即升级为任意代码执行。
+# 全仓零代码引用 sync:*，因此只在本地开发挂载；
+# 生产打包走 scripts/deploy.sh 的 `IMBOYENV=pro make rel`，天然不含。
+ifeq ($(IMBOYENV),local)
+DEPS += sync
+endif
 
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
 BUILD_DEPS = relx gpb bbmustache
