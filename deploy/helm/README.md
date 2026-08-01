@@ -2,10 +2,10 @@
 
 > ⚠️ **实验性，不在交付与支持范围内。**
 >
-> 当前受支持的生产形态是 **Docker Compose 单节点**。本 chart 的多副本配置
-> （`values.yaml` 的 `backend.replicaCount: 2`、`values.prod.yaml` 的 `3`，以及下文的
-> `kubectl scale --replicas=5`）**从未在生产集群上验证过**。后端跨 Pod 的 `syn`
-> 分布式注册与消息路由未经压测，多副本下存在消息投递不确定性。
+> 当前受支持的生产形态是 **Docker Compose 单节点**。本 chart 的后端副本数已固定为
+> **1**（`values.yaml` 与 `values.prod.yaml` 的 `backend.replicaCount`，后端 HPA 亦默认
+> 关闭）—— 因为后端多副本**从未在生产集群上验证过**：跨 Pod 的 `syn` 分布式注册与
+> 消息路由未经压测，调大副本数会导致会话落在不同 Pod、消息投递不确定。
 >
 > **不得据此向客户承诺集群水平扩展** —— 该能力是路线图项，见
 > [`docs/business/edition-boundary.md`](../../docs/business/edition-boundary.md)。
