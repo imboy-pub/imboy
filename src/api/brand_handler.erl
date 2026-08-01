@@ -75,7 +75,7 @@ config_key(Field) -> <<"brand_", Field/binary>>.
 
 %% @doc 校验并回退：只保留 defaults/0 中的字段（多余键丢弃），
 %% 每个字段非法即回退该字段默认值（不整体回退，避免一个坏字段废掉整套品牌）。
--spec normalize(map()) -> map().
+-spec normalize(term()) -> map().
 normalize(Raw) when is_map(Raw) ->
     maps:map(
         fun(Field, Default) ->
