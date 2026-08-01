@@ -51,8 +51,12 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
                     %% （只扫 attachment 表）永远看不见它，空间收不回来。
                     %% 登记失败不阻断签发 —— 拿不到 URL 是功能故障，
                     %% 漏登记只是这一个对象暂时收不回，代价不对等。
+                    %% 必须 try/catch 而不只是判返回值：DB 不可用时
+                    %% elib_pg:execute 是**抛异常**不是返回 {error,_}，
+                    %% 只写 case 会让 presign 整个失败——签不出 URL 是功能中断，
+                    %% 漏登记只是这一个对象暂时收不回，代价不对等。
                     _ =
-                        case attachment_ds:pending_add(ObjectKey, Bucket, Scope, Uid) of
+                        try attachment_ds:pending_add(ObjectKey, Bucket, Scope, Uid) of
                             ok ->
                                 ok;
                             {error, PendReason} ->
@@ -60,6 +64,14 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
                                     "attach_logic presign pending_add failed: ",
                                     ObjectKey,
                                     PendReason
+                                ])
+                        catch
+                            PClass:PReason ->
+                                ?ERROR_LOG([
+                                    "attach_logic presign pending_add crashed: ",
+                                    ObjectKey,
+                                    PClass,
+                                    PReason
                                 ])
                         end,
                     Base = #{
@@ -182,8 +194,12 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
         %% 销账失败也不会误删：attach_pending_repo:list_expired/1 带
         %% `NOT EXISTS (attachment.path = object_key)` 守卫，已转正的对象
         %% 清理器一律不碰。但仍要留痕，残留行会一直被扫到。
+        %% 同样必须 try/catch：这段在外层 try 里，pending_remove 抛异常会被
+        %% 外层 catch 成 {error, Reason} —— 附件其实**已经落库成功**了，却给
+        %% 调用方返回失败，客户端会重试或提示上传失败。销账失败无伤大雅
+        %% （list_expired 有 NOT EXISTS 守卫兜底），绝不能反过来污染 confirm 结果。
         _ =
-            case attachment_ds:pending_remove(ObjectKey) of
+            try attachment_ds:pending_remove(ObjectKey) of
                 ok ->
                     ok;
                 {error, PendReason} ->
@@ -191,6 +207,14 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
                         "attach_logic confirm pending_remove failed: ",
                         ObjectKey,
                         PendReason
+                    ])
+            catch
+                PClass:PReason ->
+                    ?ERROR_LOG([
+                        "attach_logic confirm pending_remove crashed: ",
+                        ObjectKey,
+                        PClass,
+                        PReason
                     ])
             end,
         {ok, maybe_public_url(Scope, ObjectKey, #{<<"object_key">> => ObjectKey})}
