@@ -83,13 +83,47 @@ api_init(Req0) ->
             ),
             erlang:error({bad_crypto_config, #{key_len => KeyLen, iv_len => IvLen}})
     end,
-    Bin = elib_cipher:aes_encrypt(aes_256_cbc, jsone:encode(Data), Key, IV),
+    Json = jsone:encode(Data),
+    %% res_v2：AES-256-GCM（AEAD 自带完整性 + 每次随机 IV），自包含格式
+    %% base64(Salt16 ++ IV12 ++ CT ++ Tag16)，AAD=Salt。
+    %%
+    %% 原 res 是 AES-256-CBC + 固定 IV（solidified_key_iv）且**无认证标签**：
+    %% 客户端无法分辨密文是否被篡改，攻击者可在无 TLS 保护的链路上重定向
+    %% ws_url / upload_url / login_rsa_pub_key。elib_cipher:aes_gcm_encrypt/2
+    %% 的注释已写明"新代码一律用本函数"（审计 #26），此处对齐。
+    %%
+    %% 注意：这不解决"密钥编译期 baked 进 APK"—— 对称密钥内嵌在客户端里，
+    %% 逆向即可取得，加 MAC 也挡不住持有该密钥的人自行构造密文。彻底解决
+    %% 需服务端私钥签名 + 客户端公钥验签，属独立改造。
+    ResV2 =
+        case elib_cipher:aes_gcm_encrypt(Json, Key) of
+            {ok, B64} ->
+                B64;
+            {error, Reason} ->
+                ?ERROR_LOG(
+                    "index_handler api_init: aes_gcm_encrypt failed ~p", [Reason]
+                ),
+                <<>>
+        end,
+    %% 过渡期同时下发 CBC 密文供存量客户端使用。客户端全量升级到读 res_v2 后，
+    %% 把 init_config_legacy_cbc 置 off 关掉降级路径 —— 只要 res 还在，
+    %% 攻击者就能直接走旧路径，本次加固不算真正闭合。
+    Payload =
+        case ec_cnv:to_binary(config_ds:env(init_config_legacy_cbc, <<"on">>)) of
+            <<"on">> ->
+                #{
+                    res => elib_cipher:aes_encrypt(aes_256_cbc, Json, Key, IV),
+                    res_v2 => ResV2
+                };
+            _ ->
+                #{res_v2 => ResV2}
+        end,
     Test =
         case elib_pg:query(<<"SELECT to_tsquery('jiebacfg', '软件中国')"/utf8>>, []) of
             {ok, [Row]} -> Row;
             _ -> #{}
         end,
-    elib_response:success(Req0, #{test => Test, res => Bin}, "success.").
+    elib_response:success(Req0, Payload#{test => Test}, "success.").
 
 %% ===================================================================
 %% Internal Function Definitions
