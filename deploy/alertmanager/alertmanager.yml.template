@@ -18,12 +18,12 @@
 
 global:
   resolve_timeout: 5m
-  smtp_smarthost: ''
-  smtp_from: ''
-  smtp_auth_username: ''
-  smtp_auth_password: ''
+  smtp_smarthost: '${ALERT_SMTP_SMARTHOST}'
+  smtp_from: '${ALERT_SMTP_FROM}'
+  smtp_auth_username: '${ALERT_SMTP_USERNAME}'
+  smtp_auth_password: '${ALERT_SMTP_PASSWORD}'
   # 自建/内网 SMTP 常见无 TLS；有 TLS 就设 true（默认 true 更安全，按需在 env 覆盖）
-  smtp_require_tls: true
+  smtp_require_tls: ${ALERT_SMTP_REQUIRE_TLS}
 
 route:
   group_by: ['alertname', 'severity']
@@ -31,7 +31,7 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   # 非 critical 的默认去向。未配置时为 'null'（只进 UI）。
-  receiver: 'null'
+  receiver: '${ALERT_RECEIVER_DEFAULT}'
 
   routes:
     # critical 走独立分支：更短的聚合等待 + 更频繁的重复提醒。
@@ -40,7 +40,7 @@ route:
         severity: critical
       group_wait: 10s
       repeat_interval: 1h
-      receiver: 'null'
+      receiver: '${ALERT_RECEIVER_CRITICAL}'
 
 receivers:
   # 只进 UI，不通知任何人。**这是未配置时的兜底，不是可接受的生产状态。**
@@ -48,7 +48,7 @@ receivers:
 
   - name: 'email'
     email_configs:
-      - to: ''
+      - to: '${ALERT_EMAIL_TO}'
         send_resolved: true
         headers:
           Subject: '[IMBoy][{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
@@ -57,7 +57,7 @@ receivers:
   # 钉钉需经 prometheus-webhook-dingtalk 之类的转换器，飞书同理。
   - name: 'webhook'
     webhook_configs:
-      - url: ''
+      - url: '${ALERT_WEBHOOK_URL}'
         send_resolved: true
 
 inhibit_rules:

@@ -104,3 +104,8 @@ api/openapi.bundled.json
 /.elp/
 /.gradualizer/
 /tools/
+
+# B-25：Alertmanager 通知渠道取值（收件邮箱 / webhook URL）。
+# webhook URL 本身就是凭据，谁拿到谁就能往群里发消息 —— 绝不入库。
+# 仓库里只保留 alertmanager.env.example（全部留空）与模板。
+deploy/alertmanager/alertmanager.env
