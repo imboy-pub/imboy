@@ -29,6 +29,7 @@ set -Eeuo pipefail
 #   bash ./scripts/deploy.sh -l 10.0.0.10 1.0.0-rc.1 dbg           # 本地源码 rsync（无需推 tag）
 #   bash ./scripts/deploy.sh -v -l 10.0.0.10 1.0.0-rc.1 dbg        # 本地 rsync + 详细输出
 #   bash ./scripts/deploy.sh -M 10.0.0.10 1.0.0-rc.1 001           # 跳过迁移（由上层调用方负责）
+#   bash ./scripts/deploy.sh --rollback 10.0.0.10 1.0.0-rc.1 001   # 切回另一色（不回滚迁移）
 #
 # 环境变量（均可选）/ Environment variables (all optional):
 #   IMBOY_DEPLOY_USER        SSH 用户       SSH user            (default: root)
@@ -49,12 +50,14 @@ set -Eeuo pipefail
 SILENT=1
 LOCAL_MODE=0
 SKIP_MIGRATE=0
+ROLLBACK=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--verbose)    SILENT=0; shift ;;
     -s|--silent)     SILENT=1; shift ;;
     -l|--local)      LOCAL_MODE=1; shift ;;
     -M|--no-migrate) SKIP_MIGRATE=1; shift ;;
+    --rollback)      ROLLBACK=1; shift ;;
     --) shift; break ;;
     -*) echo "未知参数 / Unknown flag: $1" >&2; exit 1 ;;
     *)  break ;;
@@ -184,6 +187,49 @@ wait_for_port() {
     exit 1
   "
 }
+
+# =============================================================================
+# 0️⃣ 回滚模式 / Rollback mode（C-52）
+#
+# 蓝绿部署的价值一半在"能快速切回去"，而此前脚本**没有任何回滚入口** ——
+# 出事时只能手工 sed nginx 配置，正是最不该手工操作的时刻。
+#
+# 回滚只做一件事：把 nginx 切回另一色，并在切之前**确认那一色真的健康**。
+# ⚠️ 它**不回滚数据库迁移**。迁移已应用的 schema 变更无法靠切流撤销，
+#   这也是 expand/contract 纪律不可省的原因（见 7️⃣ 的说明）。
+#   同理，只有当初部署时 IMBOY_DEPLOY_STOP_OLD=false 保留了旧节点，
+#   回滚才有目标可切 —— 否则脚本会直接告诉你旧节点已不在。
+# =============================================================================
+if [ "$ROLLBACK" -eq 1 ]; then
+  log "回滚模式 / Rollback mode"
+  CUR="$(ssh_capture "
+    if   lsof -i:$BLUE_PORT  >/dev/null 2>&1; then echo blue
+    elif lsof -i:$GREEN_PORT >/dev/null 2>&1; then echo green
+    else echo none
+    fi")"
+  case "$CUR" in
+    blue)  RB_PORT="$GREEN_PORT"; RB_COLOR=green; CUR_PORT="$BLUE_PORT" ;;
+    green) RB_PORT="$BLUE_PORT";  RB_COLOR=blue;  CUR_PORT="$GREEN_PORT" ;;
+    *)     fail "未检测到运行中的节点，无法回滚 / No running node detected" ;;
+  esac
+
+  # 切之前必须确认目标色真的能服务 —— 切到一个死节点上比不回滚更糟。
+  # 这里不校验版本：回滚的目标本来就是**旧**版本。
+  ssh_exec "curl -fsS --max-time 3 \"http://127.0.0.1:$RB_PORT/healthz\" | grep -q '\"status\":\"ok\"'" \
+    || fail "目标色 $RB_COLOR (port=$RB_PORT) 不健康或未运行，拒绝回滚 / rollback target not healthy。
+  若当初部署时设了 IMBOY_DEPLOY_STOP_OLD=true，旧节点已被停止，需先手工启动它。"
+
+  ssh_exec "
+    cp '$NGINX_CONF' '$NGINX_CONF'.bak
+    sed -i 's|server 127.0.0.1:$CUR_PORT;|server 127.0.0.1:$RB_PORT;|g' '$NGINX_CONF'
+    grep -q 'server 127.0.0.1:$RB_PORT;' '$NGINX_CONF' \
+      || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; echo 'Nginx upstream 替换失败，已回滚 / replacement failed' >&2; exit 1; }
+    nginx -t && nginx -s reload
+  " || fail "Nginx 回滚失败 / Nginx rollback failed"
+
+  ok "已回滚至 $RB_COLOR (port=$RB_PORT) / Rolled back。⚠️ 数据库迁移未回滚，请人工确认 schema 与该版本兼容"
+  exit 0
+fi
 
 # =============================================================================
 # 1️⃣ 检测当前运行色 / Detect active color
@@ -333,23 +379,7 @@ wait_for_health "$APP_PORT" "$VSN" \
 ok "新节点已就绪且版本匹配 (port=$APP_PORT, vsn=$VSN) / New node ready, version verified"
 
 # =============================================================================
-# 6️⃣ 数据库迁移 / Run DB migrations
-# =============================================================================
-if [ "$SKIP_MIGRATE" -eq 1 ]; then
-  log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
-else
-  log "执行数据库迁移... / Running DB migrations..."
-  # CTL_NODE 必须显式指定为本次刚启动的节点名，Makefile 默认值 imboy@127.0.0.1
-  # 与 vm.args 里实际写入的 ${NODE_NAME}@${NODE_HOST} 不一致，不传会报
-  # "cannot reach 'imboy@127.0.0.1'" 并中止部署（实测复现）。同理 cookie
-  # 也必须显式传 IMBOY_CTL_COOKIE，否则 imboy_ctl 默认 cookie=imboy，
-  # 当 IMBOY_DEPLOY_COOKIE（如 .env.deploy 的 imboycookie）不是默认值时连不上。
-  ssh_exec "cd '$PROJECT_DIR' && CTL_NODE='${NODE_NAME}@${NODE_HOST}' IMBOY_CTL_COOKIE='${COOKIE}' make ctl ARGS='db migrate'"
-  ok "数据库迁移完成 / DB migrations applied"
-fi
-
-# =============================================================================
-# 7️⃣ 切换 Nginx upstream / Switch Nginx upstream
+# 6️⃣ 切换 Nginx upstream / Switch Nginx upstream（C-52：迁移已移到本步之后）
 # 首次部署（OLD_PORT 为空）跳过自动切换，提示人工配置
 # Skip auto-switch on first deploy (OLD_PORT empty); prompt for manual config
 # =============================================================================
@@ -366,6 +396,38 @@ if [ -n "$OLD_PORT" ]; then
 else
   echo "ℹ️  首次部署：请手动将 Nginx upstream 设为 127.0.0.1:$APP_PORT，然后执行 nginx -s reload"
   echo "ℹ️  First deploy: set Nginx upstream to 127.0.0.1:$APP_PORT, then run nginx -s reload"
+fi
+
+# =============================================================================
+# 7️⃣ 数据库迁移 / Run DB migrations（C-52：**移到切流之后**）
+#
+# 为什么在切流之后：此前迁移跑在「新节点已起、nginx 仍指向旧节点」的窗口里，
+# 也就是**旧节点正在服务流量时执行破坏性迁移** —— 一个 DROP COLUMN 会当场
+# 打断正在被使用的旧代码。切流之后旧节点已不接流量，破坏性变更才安全。
+#
+# ⚠️ 代价必须写明：切流到迁移完成之间，**新节点是在未迁移的库上服务的**。
+#   因此 expand/contract 纪律仍然是强制的：
+#     - 新增列/表（expand）必须先于依赖它的新代码发布，或新代码能容忍其缺失
+#     - 删除列/表（contract）只能在旧代码彻底下线后的**下一次**发布里做
+#   本次调整解决的是"contract 撞上仍在服务的旧节点"，不是免除 expand/contract。
+#
+# 迁移失败时**不自动切回** nginx：此刻新节点已在服务，贸然切回旧节点可能撞上
+# 已部分应用的 schema。改为显式提示 --rollback，由人判断。
+# =============================================================================
+if [ "$SKIP_MIGRATE" -eq 1 ]; then
+  log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
+else
+  log "执行数据库迁移... / Running DB migrations..."
+  # CTL_NODE 必须显式指定为本次刚启动的节点名，Makefile 默认值 imboy@127.0.0.1
+  # 与 vm.args 里实际写入的 ${NODE_NAME}@${NODE_HOST} 不一致，不传会报
+  # "cannot reach 'imboy@127.0.0.1'" 并中止部署（实测复现）。同理 cookie
+  # 也必须显式传 IMBOY_CTL_COOKIE，否则 imboy_ctl 默认 cookie=imboy，
+  # 当 IMBOY_DEPLOY_COOKIE（如 .env.deploy 的 imboycookie）不是默认值时连不上。
+  ssh_exec "cd '$PROJECT_DIR' && CTL_NODE='${NODE_NAME}@${NODE_HOST}' IMBOY_CTL_COOKIE='${COOKIE}' make ctl ARGS='db migrate'" \
+    || fail "数据库迁移失败 / DB migration failed。流量已切到新节点且 schema 可能部分应用。
+  回滚请显式执行：bash ./scripts/deploy.sh --rollback $SERVER_HOST $VSN $NODE_NAME
+  （回滚只切回 nginx，**不回滚已应用的迁移**）"
+  ok "数据库迁移完成 / DB migrations applied"
 fi
 
 # =============================================================================

@@ -145,5 +145,45 @@ for m in imboy_restore_drill_last_status imboy_restore_drill_last_success_timest
 done
 
 echo
+echo "== C-51/C-52 部署脚本 =="
+
+DEPLOY="scripts/deploy.sh"
+
+# C-51：就绪判断必须探 /healthz 并校验版本，不能只看端口
+if grep -q 'wait_for_health "\$APP_PORT" "\$VSN"' "$DEPLOY"; then
+  ok "部署就绪判断使用 wait_for_health + 版本"
+else
+  bad "部署仍用端口探测判就绪（残留进程会被误判成功）" "$(grep -n 'wait_for_port "\$APP_PORT"' "$DEPLOY" || true)"
+fi
+
+if grep -qE '^\s*BODY=.*healthz' "$DEPLOY"; then
+  ok "wait_for_health 真的探 /healthz"
+else
+  bad "wait_for_health 未探 /healthz" ""
+fi
+
+# C-52：迁移必须排在切流之后。用行号比较，比 grep 关键词可靠。
+SW_LINE="$(grep -n '切换 Nginx upstream / Switch Nginx upstream' "$DEPLOY" | head -1 | cut -d: -f1)"
+MG_LINE="$(grep -n "make ctl ARGS='db migrate'" "$DEPLOY" | head -1 | cut -d: -f1)"
+if [ -n "$SW_LINE" ] && [ -n "$MG_LINE" ] && [ "$MG_LINE" -gt "$SW_LINE" ]; then
+  ok "数据库迁移排在切流之后（行 ${MG_LINE} > ${SW_LINE}）"
+else
+  bad "迁移仍在切流之前（破坏性迁移会打断仍在服务的旧节点）" "switch=${SW_LINE} migrate=${MG_LINE}"
+fi
+
+# C-52：回滚入口存在，且切之前会探目标色健康
+if grep -q -- '--rollback)' "$DEPLOY"; then
+  ok "存在 --rollback 子命令"
+else
+  bad "无回滚入口（出事只能手工改 nginx）" ""
+fi
+
+if sed -n '/ROLLBACK.*-eq 1/,/^fi$/p' "$DEPLOY" | grep -q 'healthz'; then
+  ok "回滚前先探目标色健康（不切到死节点上）"
+else
+  bad "回滚未校验目标色健康" ""
+fi
+
+echo
 echo "总计: PASS=${PASS} FAIL=${FAIL}"
 [ "$FAIL" -eq 0 ]
