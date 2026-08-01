@@ -14,9 +14,16 @@
 %%% 切到一个连不上库的节点上，比不切更糟。
 %%%
 %%% 这个端点在**每次探活**时被打，因此：
-%%%   - 不查业务表，只做一次最轻的连通性探测
-%%%   - 结果短时缓存，避免探活频率变成对 PG 的压力
+%%%   - 不查业务表，只做一次最轻的连通性探测（SELECT 1）
 %%%   - 任何异常都收敛成 503，绝不 500（探针拿到 500 与拿到 503 的处置不同）
+%%%
+%%% ⚠️ 这里**刻意不做缓存**。初版用 persistent_term 缓存 2s，是错的：
+%%%   persistent_term:put/2 每次写会触发**全局 GC**（扫描所有进程寻找旧值引用），
+%%%   代价与进程数成正比 —— 本节点每个 WS 连接一个进程，量级上千。
+%%%   而探活恰好在**部署期**最密集（deploy.sh 每 2s 探一次），等于在系统最吃紧
+%%%   的时刻反复触发全局 GC。
+%%%   缓存本来要省的那点开销：SELECT 1 对 PG 是白菜价，探活间隔 30s、
+%%%   部署轮询总共也就 20 次。**为省一个不存在的开销引入一个真实的抖动源。**
 %%% @end
 %%%===================================================================
 
@@ -26,20 +33,19 @@
 %% 但 release 自带 `bin/imboy eval`，直接调这个函数即可，无需额外工具。
 -export([probe_db/0]).
 
--ifdef(TEST).
--export([cache_ttl_ms/0]).
--endif.
-
-%% 探测结果缓存时长：探活通常 5~10s 一次，2s 缓存足以削掉重复探测，
-%% 又不会让"PG 刚挂"这件事被掩盖太久。
--define(CACHE_TTL_MS, 2000).
--define(CACHE_KEY, {healthz, db}).
-
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State) ->
-    Vsn = app_vsn(),
+    %% ⚠️ 版本号**只对内网可见**。nginx 对 /metrics 返 403，但**没有拦 /healthz**，
+    %% 所以本端点是公网可达且匿名的；向匿名者精确报版本号等于替攻击者做 CVE 匹配。
+    %% 外部 LB 需要的只是 200/503，不需要版本。
+    %% C-51 的部署探活走 ssh 到 127.0.0.1，属内网，照样拿得到版本。
+    Vsn =
+        case is_internal(Req0) of
+            true -> app_vsn();
+            false -> <<"hidden">>
+        end,
     {Code, Body} =
-        case cached_db_ok() of
+        case probe_db() of
             true ->
                 {200, <<"{\"status\":\"ok\",\"db\":\"up\",\"version\":\"", Vsn/binary, "\"}">>};
             false ->
@@ -59,20 +65,6 @@ init(Req0, State) ->
     ),
     {ok, Req, State}.
 
-%% @doc 带短时缓存的 DB 探测。缓存放 persistent_term 而不是 ETS/进程：
-%% 无需额外进程、读是无锁的，写频率被 TTL 限制在每 2 秒一次。
--spec cached_db_ok() -> boolean().
-cached_db_ok() ->
-    Now = erlang:monotonic_time(millisecond),
-    case persistent_term:get(?CACHE_KEY, undefined) of
-        {Ok, At} when is_integer(At), Now - At < ?CACHE_TTL_MS ->
-            Ok;
-        _ ->
-            Ok = probe_db(),
-            persistent_term:put(?CACHE_KEY, {Ok, Now}),
-            Ok
-    end.
-
 %% @doc 最轻的连通性探测：`SELECT 1`。
 %% 不查任何业务表 —— 业务表为空是合法状态，不该被判成不健康。
 -spec probe_db() -> boolean().
@@ -88,6 +80,19 @@ probe_db() ->
         _:_ -> false
     end.
 
+%% @doc 请求是否来自内网。复用 metrics_handler 里已有的判定，不另写一份 ——
+%% 两份网段判定迟早会漂（B-26 那类"同一知识抄多份"的坑）。
+-spec is_internal(cowboy_req:req()) -> boolean().
+is_internal(Req) ->
+    try
+        {Ip, _Port} = cowboy_req:peer(Req),
+        metrics_handler:is_internal_ip(Ip)
+    catch
+        %% 取不到 peer（测试桩/异常代理）时按**外网**处理：宁可少报版本，
+        %% 不可因判定失败而泄露。
+        _:_ -> false
+    end.
+
 %% @doc 上报自身版本。C-51 的部署就绪判断要用它区分"端口通了"和
 %% "**我要的这个版本**通了" —— 目标色端口上残留着上一版进程时，
 %% 只探端口会让部署误判成功，把流量切到旧二进制上。
@@ -98,6 +103,3 @@ app_vsn() ->
         {ok, V} when is_binary(V) -> V;
         _ -> <<"unknown">>
     end.
-
--spec cache_ttl_ms() -> pos_integer().
-cache_ttl_ms() -> ?CACHE_TTL_MS.

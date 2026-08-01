@@ -27,7 +27,7 @@ probe_test_() ->
         fun db_up_is_healthy/0,
         fun db_error_tuple_is_unhealthy/0,
         fun db_exception_is_unhealthy_not_crash/0,
-        fun probe_is_cached/0
+        fun probe_is_not_cached/0
     ]}.
 
 db_up_is_healthy() ->
@@ -47,14 +47,15 @@ db_exception_is_unhealthy_not_crash() ->
     meck:expect(elib_pg, query, fun(_Sql, _Args) -> throw(nope) end),
     ?assertNot(healthz_handler:probe_db()).
 
-%% 探针每次探活都被打；不缓存的话探活频率会变成对 PG 的压力
-probe_is_cached() ->
+%% 评审发现后反转：**刻意不缓存**。初版用 persistent_term 缓存，而
+%% persistent_term:put/2 每次写触发全局 GC（扫描所有进程），代价与进程数成正比；
+%% 本节点每个 WS 连接一个进程。探活又恰在部署期最密集（每 2s 一次）——
+%% 等于在系统最吃紧时反复触发全局 GC。这条断言钉住"别再把缓存加回来"。
+probe_is_not_cached() ->
     meck:expect(elib_pg, query, fun(_Sql, _Args) -> {ok, [#{}]} end),
-    %% 走公开入口两次，底层只应查一次
     _ = healthz_handler_probe_via_cache(),
     _ = healthz_handler_probe_via_cache(),
-    ?assertEqual(1, meck:num_calls(elib_pg, query, '_')),
-    ?assert(healthz_handler:cache_ttl_ms() > 0).
+    ?assertEqual(2, meck:num_calls(elib_pg, query, '_')).
 
 %% cached_db_ok/0 未导出，经 init/2 触发（不给生产代码开 -ifdef(TEST) 后门）
 healthz_handler_probe_via_cache() ->
@@ -99,6 +100,31 @@ healthy_body_has_version() ->
     meck:expect(elib_pg, query, fun(_S, _A) -> {ok, [#{}]} end),
     ?assertEqual(200, healthz_handler_probe_via_cache()),
     ?assertNotEqual(nomatch, binary:match(iolist_to_binary(get(last_body)), <<"\"version\":">>)).
+
+%% 评审发现：nginx 拦了 /metrics 却**没拦 /healthz**，本端点公网可达且匿名。
+%% 向匿名者精确报版本号＝替攻击者做 CVE 匹配。取不到 peer 时按外网处理
+%% （宁可少报版本，不可因判定失败而泄露）。
+version_hidden_from_external_test_() ->
+    {foreach, fun setup/0, fun cleanup/1, [
+        fun external_peer_gets_hidden_version/0
+    ]}.
+
+external_peer_gets_hidden_version() ->
+    meck:expect(elib_pg, query, fun(_S, _A) -> {ok, [#{}]} end),
+    meck:new(cowboy_req, [no_link, non_strict]),
+    try
+        meck:expect(cowboy_req, peer, fun(_Req) -> {{203, 0, 113, 7}, 51000} end),
+        meck:expect(cowboy_req, reply, fun(_C, _H, Body, Req) ->
+            put(last_body, Body),
+            Req
+        end),
+        {ok, _, _} = healthz_handler:init(fake_req, #{}),
+        Body = iolist_to_binary(get(last_body)),
+        ?assertNotEqual(nomatch, binary:match(Body, <<"hidden">>)),
+        ?assertEqual(nomatch, binary:match(Body, <<"1.0">>))
+    after
+        catch meck:unload(cowboy_req)
+    end.
 
 unhealthy_body_has_version() ->
     meck:expect(elib_pg, query, fun(_S, _A) -> erlang:error(no_pool) end),
