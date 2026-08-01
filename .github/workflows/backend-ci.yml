@@ -88,7 +88,9 @@ jobs:
 
       - name: Run Moment Targeted EUnit
         run: |
-          IMBOYENV=local make eunit EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests'
+          # -config + 显式 application:load(imboy)：config 提供 env 须应用 load 后
+          # get_env 才可见（如 sql_driver→public. 表名前缀）；meck 测试不起 app 无需 PG
+          IMBOYENV=local make eunit EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests' EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test -eval 'application:load(imboy)'"
 
   # ----------------------------------------------------------------
   # 全量 EUnit — 基线收集（continue-on-error，暂不阻塞）
@@ -447,6 +449,10 @@ jobs:
 
       - name: Compile
         run: IMBOYENV=local make test-build
+
+      - name: Install ripgrep (check_module_boundaries.sh 依赖)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
 
       - name: Run E2EE verify suite
         run: |
