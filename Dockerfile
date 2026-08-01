@@ -64,8 +64,17 @@ WORKDIR /opt/imboy
 EXPOSE 9800
 
 # 启动初期 EPMD/迁移需要时间，start-period 给足 60s
+#
+# C-50：`ping` 只证明 **Erlang 节点活着**，不证明它能服务 —— PG 连不上时
+# 节点照样 ping 得通，于是 nginx 会被放行去把流量打到一个连不上库的后端。
+# 改为复用 /healthz 的同一个探测（healthz_handler:probe_db/0）。
+# 用 `bin/imboy eval` 而不是 curl：运行镜像是 debian-slim，**没有装 curl/wget**。
+# 两段与关系：先 ping（节点没起来时 eval 会超时/报错，先 ping 出错更清晰），
+# 再探依赖。
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD /opt/imboy/bin/imboy ping || exit 1
+    CMD /opt/imboy/bin/imboy ping >/dev/null 2>&1 \
+     && /opt/imboy/bin/imboy eval 'case healthz_handler:probe_db() of true -> ok; _ -> halt(1) end.' \
+     || exit 1
 
 # foreground 让进程前台运行交给 Docker 托管（勿用 start，后台 daemon 会让容器立即退出）
 CMD ["/opt/imboy/bin/imboy", "foreground"]

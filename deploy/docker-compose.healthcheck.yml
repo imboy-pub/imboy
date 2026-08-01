@@ -1,0 +1,48 @@
+# ============================================================
+# 启动顺序与健康检查叠加层 / Startup ordering + healthcheck overlay
+# ------------------------------------------------------------
+# 用法 / Usage:
+#   docker compose -f docker-compose.prod.yml \
+#                  -f docker-compose.healthcheck.yml \
+#                  -f docker-compose.observability.yml up -d
+#
+# 为什么是独立 overlay：docker-compose.prod.yml 被 .gitignore 排除
+# （走单独交付渠道，见 Phase 0 决策与 A-25）。写进那里的配置不受 git 跟踪、
+# 不进 review、买家也拿不到 —— 等于"本机能跑、交付出去就没有"。
+#
+# 本文件修的是 C-50：
+#   基础文件里 imboy_nginx 的 depends_on 是**短列表形式**
+#   （[imboy_backend, imboy_admin, imboy_livekit]），它只等容器**启动**，
+#   不等就绪。而后端启动要跑迁移、连 PG，这期间 nginx 已经在转发 ——
+#   部署后头一段时间的请求直接 502，看起来像"服务不稳定"。
+#   （imboy_backend 自己等 PG 那条是对的：condition: service_healthy。）
+#
+# 后端的 healthcheck 定义在 Dockerfile 里（已随 C-49/C-50 升级为
+# "节点活着 且 PG 可达"，不再只是 bin/imboy ping）。这里只负责**等它健康**。
+# ============================================================
+
+services:
+  imboy_nginx:
+    # ⚠️ 从短列表改为长映射形式。compose 会把基础文件里的短形式规范化成
+    # {service: {condition: service_started}} 再与本文件合并，因此这里逐个
+    # 写全，避免"只覆盖了一个、其余悄悄退回 service_started"。
+    depends_on:
+      imboy_backend:
+        condition: service_healthy
+      imboy_admin:
+        # 镜像自带 HEALTHCHECK，可以等到真就绪而不只是"起来了"
+        condition: service_healthy
+      imboy_livekit:
+        condition: service_started
+
+  # ⚠️ imboy_admin **不在这里配 healthcheck**：它的镜像（nginx:alpine 系）
+  # Dockerfile 里已经有 HEALTHCHECK（探 /health）。再写一份只会重复且迟早漂移
+  # —— 我第一版就把路径写成了 / 而不是 /health。核实过镜像再决定，别照抄模板。
+
+  imboy_redis:
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

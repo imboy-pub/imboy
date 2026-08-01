@@ -21,9 +21,13 @@
 %%%===================================================================
 
 -export([init/2]).
+%% probe_db/0 也是**容器 healthcheck 的入口**（C-50）：
+%% 运行镜像是 debian-slim，没有 curl/wget，探不了 HTTP；
+%% 但 release 自带 `bin/imboy eval`，直接调这个函数即可，无需额外工具。
+-export([probe_db/0]).
 
 -ifdef(TEST).
--export([probe_db/0, cache_ttl_ms/0]).
+-export([cache_ttl_ms/0]).
 -endif.
 
 %% 探测结果缓存时长：探活通常 5~10s 一次，2s 缓存足以削掉重复探测，
