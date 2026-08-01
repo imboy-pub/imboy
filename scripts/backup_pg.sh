@@ -29,6 +29,9 @@ fail()  { echo -e "${RED}[backup_pg] ERROR:${NC} $*" >&2; exit 1; }
 # ---------- 指标推送（闭合 IMBoyBackupNotRunning 告警的产出方）----------
 # shellcheck source=scripts/lib/metrics_push.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/metrics_push.sh"
+# ---------- B-29 加密 + 异地副本 ----------
+# shellcheck source=scripts/lib/backup_offsite.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/backup_offsite.sh"
 
 START_TS="$(date -u +%s)"
 BACKUP_OK=0
@@ -74,6 +77,17 @@ if docker exec -i "$PG_CONTAINER" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA
 else
   warn "WAL archive_mode=off：仅有全量备份，无法做时间点恢复（PITR）。生产建议开启。"
 fi
+
+# ---------- B-29：加密 + 异地副本 ----------
+# 顺序刻意是「先校验完整性 → 再加密 → 再推异地」：
+#   - 校验必须在明文上做（pg_restore --list 读不了密文）
+#   - 推上去的必须是密文（异地那份我们控制不了访问面）
+# 两项都未配置时只警告不失败，但警告写得刺眼 —— 生产上"没有异地副本"
+# 等于备份没做（本机故障即全部丢失），不能悄悄跳过。
+# 本地保留**明文**：私钥按设计不在服务器上，加密本地那份会让每日恢复演练
+# （restore_smoke.sh）解不开、做不成 —— "备份能恢复"必须每天被验证，
+# 优先级高于"本地那份也加密"。加密只作用于离开本机的副本。
+push_offsite "$OUT" || fail "异地推送失败：本地备份已生成但**没有异地副本**"
 
 # ---------- 清理过期备份 ----------
 DELETED="$(find "$BACKUP_DIR" -name "${POSTGRES_DB}_*.dump" -type f -mtime "+${RETENTION_DAYS}" -print -delete | wc -l | tr -d ' ')"
