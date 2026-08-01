@@ -202,10 +202,30 @@ get_client_ip(Req) ->
             forwarded_ip_at_hop(
                 cowboy_req:header(<<"x-forwarded-for">>, Req, PeerIpBin),
                 PeerIpBin,
-                config_ds:env(trusted_proxy_hops, 1)
+                trusted_proxy_hops()
             );
         false ->
             PeerIpBin
+    end.
+
+%% @private 代理层数，归一化成 >= 1 的整数。
+%%
+%% 必须归一化：`trusted_proxy_hops` 经 IMBOY_* 环境变量注入时是 binary（环境
+%% 变量天然是字符串），而 forwarded_ip_at_hop/3 的守卫是 is_integer/1 ——
+%% 类型不符会**静默**落到兜底子句、永远返回直连 IP。单层 nginx 下无害，但多层
+%% LB 部署时那等于全站共用一个限流桶，正是本函数要修的失效形态本身。
+%% 配置非法时留痕并按 1 处理（= 默认单层，最保守且不可伪造）。
+-spec trusted_proxy_hops() -> pos_integer().
+trusted_proxy_hops() ->
+    Raw = config_ds:env(trusted_proxy_hops, 1),
+    case elib_cnv:safe_to_integer(Raw) of
+        N when N >= 1 ->
+            N;
+        _ ->
+            ?ERROR_LOG([
+                "elib_req: trusted_proxy_hops 配置非法，按 1 处理", Raw
+            ]),
+            1
     end.
 
 %% @private 从 XFF **右**数第 Hops 段。

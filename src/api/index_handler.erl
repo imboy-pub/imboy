@@ -70,18 +70,30 @@ api_init(Req0) ->
     % elib_response:success(Req0, Data, "success.").
     IV = config_ds:env(solidified_key_iv),
     Key = elib_hasher:md5(SignKey),
-    %% AES-256-CBC 强约束：Key 必须 32 字节，IV 必须 16 字节
-    %% 配置缺失时 fail fast，避免 crypto_init 崩到 cowboy stream（Bad iv size）
-    case {byte_size(IV), iolist_size(Key)} of
-        {16, 32} ->
+    LegacyCbc = ec_cnv:to_binary(config_ds:env(init_config_legacy_cbc, <<"on">>)),
+    %% Key 32 字节是 GCM 与 CBC 的共同要求；**IV 只有 legacy CBC 用得上**。
+    %% 关掉 legacy 之后 solidified_key_iv 已无用途，不该再因为它缺失/长度不对
+    %% 而崩掉 /api/v1/init —— 否则 #94 的收尾（把开关置 off）会当场打断客户端
+    %% 初始化。配置缺失时仍 fail fast，避免 crypto_init 崩到 cowboy stream。
+    case {LegacyCbc, byte_size(IV), iolist_size(Key)} of
+        {<<"on">>, 16, 32} ->
             ok;
-        {IvLen, KeyLen} ->
+        {<<"on">>, IvLen, KeyLen} ->
             ?ERROR_LOG(
                 "index_handler api_init: bad crypto params, key_len=~p iv_len=~p (expect key=32, iv=16). "
                 "Set {solidified_key, <<32-bytes>>} and {solidified_key_iv, <<16-bytes>>} in sys.config.",
                 [KeyLen, IvLen]
             ),
-            erlang:error({bad_crypto_config, #{key_len => KeyLen, iv_len => IvLen}})
+            erlang:error({bad_crypto_config, #{key_len => KeyLen, iv_len => IvLen}});
+        {_, _, 32} ->
+            ok;
+        {_, _, KeyLen2} ->
+            ?ERROR_LOG(
+                "index_handler api_init: bad crypto params, key_len=~p (expect 32). "
+                "Set {solidified_key, <<32-bytes>>} in sys.config.",
+                [KeyLen2]
+            ),
+            erlang:error({bad_crypto_config, #{key_len => KeyLen2}})
     end,
     Json = jsone:encode(Data),
     %% res_v2：AES-256-GCM（AEAD 自带完整性 + 每次随机 IV），自包含格式
@@ -109,7 +121,7 @@ api_init(Req0) ->
     %% 把 init_config_legacy_cbc 置 off 关掉降级路径 —— 只要 res 还在，
     %% 攻击者就能直接走旧路径，本次加固不算真正闭合。
     Payload =
-        case ec_cnv:to_binary(config_ds:env(init_config_legacy_cbc, <<"on">>)) of
+        case LegacyCbc of
             <<"on">> ->
                 #{
                     res => elib_cipher:aes_encrypt(aes_256_cbc, Json, Key, IV),

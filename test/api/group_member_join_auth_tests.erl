@@ -92,3 +92,50 @@ empty_member_uids_still_rejected_before_membership_check_test_() ->
 
 non_list_member_uids_still_rejected_test_() ->
     assert_join(<<"999">>, not_member(), <<"member_uids 必须是list"/utf8>>).
+
+%% ===================================================================
+%% 成员身份查询必须惰性：限流/参数校验先拦，别让 DB 被放大
+%% ===================================================================
+
+%% 早先版本把 IsMember 提到 case 之前求值，导致**被限流拒绝的请求也照打一次
+%% DB 查询** —— 限流就挡不住数据库放大了。这里断言限流命中时根本不查库。
+membership_query_skipped_when_throttled_test_() ->
+    Mocks = lists:keyreplace(
+        throttle,
+        1,
+        mocks([999], not_member()),
+        {throttle, [
+            {'check', 2, fun(three_second_once, {group_member, ?UID}) ->
+                {limit_exceeded, 1, 1}
+            end}
+        ]}
+    ),
+    ?WITH_MECKS(Mocks, fun() ->
+        {ok, Req, _} = group_member_handler:init(#{}, #{action => join}),
+        ?assertEqual(<<"在处理中，请稍后重试"/utf8>>, maps:get(err, Req, no_error)),
+        ?assertNot(
+            meck:called(group_member_logic, find_by_gid_and_uid, ['_', '_', '_']),
+            "限流命中时不得查询成员身份"
+        )
+    end).
+
+%% 参数非法时同样不该查库（gid 格式错 / member_uids 为空都在成员门之前）
+membership_query_skipped_on_invalid_params_test_() ->
+    ?WITH_MECKS(mocks([], not_member()), fun() ->
+        {ok, Req, _} = group_member_handler:init(#{}, #{action => join}),
+        ?assertEqual(<<"member_uids 不能为空"/utf8>>, maps:get(err, Req, no_error)),
+        ?assertNot(
+            meck:called(group_member_logic, find_by_gid_and_uid, ['_', '_', '_']),
+            "参数校验失败时不得查询成员身份"
+        )
+    end).
+
+%% 自加入路径也不该查库（member_uids == [自己] 直接放行）
+membership_query_skipped_on_self_join_test_() ->
+    ?WITH_MECKS(mocks([?UID], not_member()), fun() ->
+        {ok, _Req, _} = group_member_handler:init(#{}, #{action => join}),
+        ?assertNot(
+            meck:called(group_member_logic, find_by_gid_and_uid, ['_', '_', '_']),
+            "自加入不需要成员身份查询"
+        )
+    end).

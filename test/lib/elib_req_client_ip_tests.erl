@@ -64,6 +64,8 @@ get_client_ip_test_() ->
         fun trusted_proxy_padding_with_trusted_ips_does_not_bypass/0,
         fun trusted_proxy_two_hops_takes_second_from_right/0,
         fun trusted_proxy_falls_back_when_segments_fewer_than_hops/0,
+        fun trusted_proxy_hops_accepts_binary_config/0,
+        fun trusted_proxy_hops_falls_back_to_one_when_config_garbage/0,
         fun trusted_proxy_without_xff_falls_back_to_peer/0,
         fun trusted_proxy_with_empty_xff_does_not_crash/0,
         fun trusted_proxy_trims_whitespace/0
@@ -117,6 +119,21 @@ trusted_proxy_falls_back_when_segments_fewer_than_hops() ->
     mock_hops(3),
     mock_xff(<<"1.2.3.4, 10.0.0.1">>),
     ?assertEqual(<<"127.0.0.1">>, elib_req:get_client_ip(req())).
+
+%% IMBOY_* 环境变量注入进来的是 binary，不是 integer。原实现的 is_integer 守卫
+%% 会**静默**落到兜底、永远返回直连 IP —— 多层 LB 下那等于全站共用一个限流桶。
+trusted_proxy_hops_accepts_binary_config() ->
+    mock_peer(?TRUSTED),
+    mock_hops(<<"2">>),
+    mock_xff(<<"1.2.3.4, 198.51.100.7, 10.0.0.1">>),
+    ?assertEqual(<<"198.51.100.7">>, elib_req:get_client_ip(req())).
+
+%% 配置成非数字时按 1 处理（默认单层，最保守），而不是静默退化
+trusted_proxy_hops_falls_back_to_one_when_config_garbage() ->
+    mock_peer(?TRUSTED),
+    mock_hops(<<"abc">>),
+    mock_xff(<<"1.2.3.4, 10.0.0.1">>),
+    ?assertEqual(<<"10.0.0.1">>, elib_req:get_client_ip(req())).
 
 trusted_proxy_without_xff_falls_back_to_peer() ->
     mock_peer(?TRUSTED),

@@ -52,6 +52,41 @@ init_legacy_cbc_off_omits_res_test_() ->
         end
     ).
 
+%% #94 收尾防线：把 init_config_legacy_cbc 置 off 之后，solidified_key_iv 已无
+%% 用途。早先版本无条件强校验 IV 必须 16 字节，会在关开关的当天直接
+%% erlang:error 崩掉 /api/v1/init，打断全部客户端初始化。
+init_legacy_off_tolerates_missing_iv_test_() ->
+    Mocks = lists:keyreplace(
+        config_ds,
+        1,
+        init_mocks(<<"off">>),
+        {config_ds, [
+            {'env', 1, fun
+                (solidified_key) -> <<"sol_key">>;
+                %% IV 未配置（sys.config 默认就是空 binary）
+                (solidified_key_iv) -> <<>>;
+                (login_rsa_pub_key) -> <<"rsa_pub">>
+            end},
+            {'env', 2, fun
+                (ws_url, _D) -> <<"wss://example.test/ws">>;
+                (upload_url, _D) -> <<"https://example.test/upload">>;
+                (upload_key, _D) -> <<"upload_key">>;
+                (upload_scene, _D) -> <<"upload_scene">>;
+                (login_pwd_rsa_encrypt, _D) -> false;
+                (init_config_legacy_cbc, _D) -> <<"off">>
+            end}
+        ]}
+    ),
+    ?WITH_MECKS(Mocks, fun() ->
+        Req = mock_request(),
+        {ok, RespReq, _State} = index_handler:init(Req, #{action => init}),
+        Payload = maps:get(payload, RespReq),
+        ?assertEqual(<<"gcm_bin">>, maps:get(res_v2, Payload)),
+        ?assertNot(maps:is_key(res, Payload)),
+        _ = erase(captured_init_data),
+        ok
+    end).
+
 %% LegacyCbc = default（取 env 默认值 <<"on">>）| <<"off">>
 init_mocks(LegacyCbc) ->
     [

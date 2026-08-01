@@ -117,9 +117,6 @@ join(Req0, State) ->
         is_list(MemberUids) andalso
             [ec_cnv:to_binary(U) || U <- MemberUids] ==
                 [ec_cnv:to_binary(CurrentUid)],
-    IsMember =
-        Gid2 /= 0 andalso
-            maps:size(group_member_logic:find_by_gid_and_uid(Gid2, CurrentUid, <<"id">>)) > 0,
     case throttle:check(three_second_once, {group_member, CurrentUid}) of
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
@@ -129,77 +126,95 @@ join(Req0, State) ->
             elib_response:error(Req0, <<"member_uids 必须是list"/utf8>>);
         _ when MemberUids == [] ->
             elib_response:error(Req0, <<"member_uids 不能为空"/utf8>>);
-        _ when not IsSelfJoin, not IsMember ->
-            elib_response:error(Req0, <<"你不是群成员"/utf8>>);
+        %% 邀请他人入群必须自己先是群成员；自己加入自己（扫码 / 面对面入群）除外。
+        %% 成员身份查询刻意放在**限流与参数校验之后**惰性求值：早先版本把它
+        %% 提到 case 之前，导致被限流拒绝的请求也照打一次 DB 查询，
+        %% 等于限流挡不住数据库放大。
+        _ when not IsSelfJoin ->
+            case is_group_member(Gid2, CurrentUid) of
+                false ->
+                    elib_response:error(Req0, <<"你不是群成员"/utf8>>);
+                true ->
+                    join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2)
+            end;
         _ ->
-            case group_member_logic:get_group_capacity(Gid2) of
-                {error, _Reason} ->
-                    elib_response:error(Req0, <<"群组不存在"/utf8>>);
-                G ->
-                    Max = maps:get(<<"member_max">>, G, 0),
-                    Count = maps:get(<<"member_count">>, G, 0),
-                    Len = length(MemberUids),
-                    Diff = Max - Count,
-                    if
-                        Diff == 0 ->
-                            elib_response:error(Req0, <<"群成员已满。"/utf8>>);
-                        Len > Diff ->
-                            elib_response:error(
-                                Req0,
-                                elib_cnv:implode(
-                                    <<>>,
-                                    [
-                                        <<"还可以加入"/utf8>>,
-                                        ec_cnv:to_binary(Diff),
-                                        <<"名群成员"/utf8>>
-                                    ]
-                                )
-                            );
-                        true ->
-                            MemberUids2 = [elib_cnv:safe_to_integer(Id) || Id <- MemberUids],
-                            MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
-                            % ?DEBUG_LOG([MemberListRes]),
-                            case MemberListRes of
-                                {ok, []} ->
-                                    elib_pg:with_tx(fun(Conn) ->
-                                        [
-                                            group_member_logic:join_group(
-                                                Conn,
-                                                JoinMode2,
-                                                Uid2,
-                                                Gid2,
-                                                #{}
-                                            )
-                                         || Uid2 <- MemberUids2
-                                        ]
-                                    end),
-                                    {ok, MemberListRes2} =
-                                        group_member_logic:list_member(Gid2, MemberUids2),
-                                    Sum = group_member_logic:get_user_id_sum(Gid2),
-                                    elib_response:success(
-                                        Req0,
-                                        #{
-                                            <<"gid">> => Gid,
-                                            <<"user_id_sum">> => Sum,
-                                            <<"member_list">> =>
-                                                group_member_transfer:member_list(MemberListRes2)
-                                        },
-                                        "success."
-                                    );
-                                {ok, MemberList} ->
-                                    % 已经是成员，直接使用查询结果
-                                    Sum = group_member_logic:get_user_id_sum(Gid2),
-                                    elib_response:success(
-                                        Req0,
-                                        #{
-                                            <<"gid">> => Gid,
-                                            <<"user_id_sum">> => Sum,
-                                            <<"member_list">> =>
-                                                group_member_transfer:member_list(MemberList)
-                                        },
-                                        "success."
+            join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2)
+    end.
+
+%% @private 自己是否已在群内
+is_group_member(Gid, Uid) ->
+    Gid /= 0 andalso
+        maps:size(group_member_logic:find_by_gid_and_uid(Gid, Uid, <<"id">>)) > 0.
+
+%% @private 通过成员身份门之后的容量校验与入群
+join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
+    case group_member_logic:get_group_capacity(Gid2) of
+        {error, _Reason} ->
+            elib_response:error(Req0, <<"群组不存在"/utf8>>);
+        G ->
+            Max = maps:get(<<"member_max">>, G, 0),
+            Count = maps:get(<<"member_count">>, G, 0),
+            Len = length(MemberUids),
+            Diff = Max - Count,
+            if
+                Diff == 0 ->
+                    elib_response:error(Req0, <<"群成员已满。"/utf8>>);
+                Len > Diff ->
+                    elib_response:error(
+                        Req0,
+                        elib_cnv:implode(
+                            <<>>,
+                            [
+                                <<"还可以加入"/utf8>>,
+                                ec_cnv:to_binary(Diff),
+                                <<"名群成员"/utf8>>
+                            ]
+                        )
+                    );
+                true ->
+                    MemberUids2 = [elib_cnv:safe_to_integer(Id) || Id <- MemberUids],
+                    MemberListRes = group_member_logic:list_member(Gid2, MemberUids2),
+                    % ?DEBUG_LOG([MemberListRes]),
+                    case MemberListRes of
+                        {ok, []} ->
+                            elib_pg:with_tx(fun(Conn) ->
+                                [
+                                    group_member_logic:join_group(
+                                        Conn,
+                                        JoinMode2,
+                                        Uid2,
+                                        Gid2,
+                                        #{}
                                     )
-                            end
+                                 || Uid2 <- MemberUids2
+                                ]
+                            end),
+                            {ok, MemberListRes2} =
+                                group_member_logic:list_member(Gid2, MemberUids2),
+                            Sum = group_member_logic:get_user_id_sum(Gid2),
+                            elib_response:success(
+                                Req0,
+                                #{
+                                    <<"gid">> => Gid,
+                                    <<"user_id_sum">> => Sum,
+                                    <<"member_list">> =>
+                                        group_member_transfer:member_list(MemberListRes2)
+                                },
+                                "success."
+                            );
+                        {ok, MemberList} ->
+                            % 已经是成员，直接使用查询结果
+                            Sum = group_member_logic:get_user_id_sum(Gid2),
+                            elib_response:success(
+                                Req0,
+                                #{
+                                    <<"gid">> => Gid,
+                                    <<"user_id_sum">> => Sum,
+                                    <<"member_list">> =>
+                                        group_member_transfer:member_list(MemberList)
+                                },
+                                "success."
+                            )
                     end
             end
     end.
