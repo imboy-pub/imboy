@@ -77,11 +77,15 @@ start(_Type, _Args) ->
                         throttle_middleware,
                         cowboy_handler
                     ],
-                    % metrics_callback => do_metrics_callback(),
+                    %% B-26：imboy_http_requests_total{method,status} 的产出点。
+                    %% 用 cowboy 自带的 metrics_callback 而不是自己在中间件里数 ——
+                    %% 中间件拿不到最终响应状态码，而 5xx 错误率告警正是按 status 过滤的。
+                    %% cowboy_metrics_h 必须排在 cowboy_stream_h **之前**。
+                    metrics_callback => fun imboy_http_metrics:observe/1,
                     stream_handlers => [
+                        cowboy_metrics_h,
                         cowboy_compress_h,
                         cowboy_stream_h
-                        % , cowboy_metrics_h
                     ],
                     tcp_opts => [
                         % 【关键修复】禁用 Nagle 算法，消除小消息延迟

@@ -249,6 +249,12 @@ find_staged(MsgId) ->
 %%-------------------------------------------------------------------
 -spec enqueue(binary(), binary(), map()) -> ok.
 enqueue(Type, MsgId, Data) ->
+    %% B-26：imboy_msg_sent_total{type} 的唯一产出点。面板
+    %% `sum(rate(imboy_msg_sent_total[1m])) by (type)` 引用它，而此前**没有任何代码
+    %% 产出这个名字** → 消息吞吐面板永久 "No data"。
+    %% 选 enqueue 而非 send_next 作为口径：这里是"消息被接受并将落库"的唯一漏斗，
+    %% send_next 按在线设备重试会重复计数，口径会虚高。
+    _ = elib_metric:increment(imboy_msg_sent_total, 1, #{type => Type}),
     gen_server:cast(?SERVER, {enqueue, Type, MsgId, Data}).
 
 %%-------------------------------------------------------------------

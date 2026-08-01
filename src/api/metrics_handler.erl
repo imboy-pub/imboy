@@ -120,20 +120,37 @@ collect_system_metrics() ->
 
     %% License 指标（fail-safe，避免 metrics 因 License 异常不可用）
     LicenseMetrics = license_metrics(),
+    %% B-26 指标名对账：下列名字**逐字**对齐 deploy/grafana/dashboards/imboy-overview.json
+    %% 与 deploy/prometheus/rules/imboy-alerts.yml。此前导出的是
+    %% erlang_process_count / erlang_memory_total_bytes / ws_connections_current，
+    %% 而面板和告警引用的是 erlang_vm_* / imboy_ws_connections_total —— 名字对不上，
+    %% 面板永远 "No data"、告警永远不触发。改名而不是留双份：旧名零消费者
+    %% （deploy/ 下 0 命中），留着只会让下一个人再对一次账。
+    %% 改这里之前先 grep deploy/ 确认新名字确实是那边引用的那个。
     maps:merge(
         maps:merge(
             #{
-                erlang_process_count => ProcessCount,
-                erlang_memory_total_bytes => MemTotal,
-                erlang_memory_processes_bytes => MemProc,
-                erlang_memory_ets_bytes => MemEts,
+                erlang_vm_process_count => ProcessCount,
+                erlang_vm_port_count => erlang:system_info(port_count),
+                %% kind 标签对应面板的 legendFormat "{{kind}}"
+                {erlang_vm_memory_bytes_total, #{kind => total}} => MemTotal,
+                {erlang_vm_memory_bytes_total, #{kind => processes}} => MemProc,
+                {erlang_vm_memory_bytes_total, #{kind => ets}} => MemEts,
+                process_uptime_seconds => uptime_seconds(),
                 imboy_online_users => OnlineCount,
-                ws_connections_current => WsConnections
+                imboy_ws_connections_total => WsConnections
             },
             PoolStatus
         ),
         LicenseMetrics
     ).
+
+%% @doc 节点运行时长（秒）。告警 IMBoyBackendRestarted 用它判断"刚重启"，
+%% 面板也直接展示；此前根本没导出，那条告警从来不会响。
+-spec uptime_seconds() -> non_neg_integer().
+uptime_seconds() ->
+    {Ms, _} = erlang:statistics(wall_clock),
+    Ms div 1000.
 
 -spec license_metrics() -> map().
 license_metrics() ->
