@@ -23,7 +23,7 @@
 | B2 | ✅待证 | TOFU fail-closed `olm_session_service.dart:692-725`；S2C 告警 `e2ee_peer_key_warning_rule.dart`+`chat_page.dart:632` | P1/P2 闭环 |
 | B3 | 🟡 Merkle 库完成未接线；profile 未签字；身份键就地覆盖无痕 | `e2ee_kt_merkle.erl`（golden 钉死）；`olm_identity_repo.erl:46` ON CONFLICT DO UPDATE；bigserial 失效已实证 | P3-8（依赖 P0-1） |
 | B4 | 🟡→**群聊已可恢复**（2026-08-02，imboyapp `9426e7e4`）：备份含 `megolm_inbound` 段（收集/回填/往返实证 9/9，v1 旧包兼容）；**1:1 Olm 历史仍不可恢复=有意设计**（跨设备还原双棘轮会 key reuse/ratchet 分叉，同 Signal/Matrix）；**UI 明示与恢复文档已补**（2026-08-02）：导入成功对话框文案由含糊的「旧消息可能无法访问」改为分类明示「群聊已恢复/单聊不可恢复」，10 语言对齐；`docs/guides/e2ee/history-recoverability.md` 给出用户与支持口径。**残留=换设备"前"的备份提醒未加**（用户可能没备份就换机） | `megolm_backup_section.dart`；`e2ee_local_backup_service` pack/unpack；导入页 `_applyRestoredKeys`；`e2eeBackupImportSuccessNote`×10 语言；`history-recoverability.md` | 换机前提醒（P5-4） |
-| B5 | ❌ 无策略文档 | 强制验证先例=Element 2026-10 | P3-4 配套、P5-1 |
+| B5 | 🟡 **策略文档已建，选型待拍板**（2026-08-02） | `standard/device-verification-policy.md`。先把事实说清：今天**不存在「已验证设备」这个层级**——Safety Number 生产零调用，用户没有任何途径标记设备为已验证，故 TT-B5 问的「未验证设备能做什么」答案是「所有设备都是未验证设备、能做全部事情」，**这不是策略是策略缺位**。唯一实际生效的门是 TOFU（首次固定 fingerprint，变化则 fail-closed）。**新发现**：`CryptoStore` 不可用时 TOFU **整体跳过且无任何上限**（此前只存在于一行代码注释），与 `is_active` 的 fail-open 同源但 014 有 60s TTL 封顶、本条没有——已登记 IMB-2026-028。四个选项 A 维持现状/B 软提示/C 高风险操作前强制/D 全面强制(Element 路线)已列，推荐 **B 起步 C 为目标态、暂不做 D**（D 的失败模式是用户被自己的加密锁在门外）。⚠️ **所有选项在 IMB-2026-006 关闭前均不可实施** | 🔒 选型待拍板；实施依赖 P3-4/P3-5 |
 | B6 | 🟡 TOFU+变更告警有；KT 自动检测无 | 同 B2/B3 | P3-8 |
 
 ## C 类：自动化测试

@@ -36,8 +36,8 @@
 
 | SHOULD（6 条） | 数量 |
 |---|---|
-| 🟡 部分 | 4 |
-| ❌ 未达 | 2 |
+| 🟡 部分 | 5 |
+| ❌ 未达 | 1 |
 
 > **26 条 MUST 里只有 6 条达成且有证据。** 这是本报告最重要的一个数字，
 > 不加修饰地放在最前面。项目当前处于「实现大体完成、验证严重滞后」的状态。
@@ -66,7 +66,7 @@
 | TT-D2 | [`../v2/08-threat-model.md`](../v2/08-threat-model.md)（T1–T11，含 T10 附件 / T11 分叉视图） |
 | TT-D3 | [`crypto-inventory.md`](./crypto-inventory.md) + [`../../../legal/third-party-licenses.md`](../../../legal/third-party-licenses.md)（143 条，机器可查） |
 | TT-D4 | [`../key-lifecycle.md`](../key-lifecycle.md) |
-| TT-D6 | [`known-issues-ledger.md`](./known-issues-ledger.md)（IMB-2026-001..027） |
+| TT-D6 | [`known-issues-ledger.md`](./known-issues-ledger.md)（IMB-2026-001..029） |
 | TT-E4 | 设备吊销级联清 Olm 材料（`olm_identity_repo:delete_by_device/2`），测试含顺序断言与删除维度断言 |
 
 > ⚠️ 这 6 条**全部是 D 类（文档）与 E4**。换句话说：本轮达标的是**可审计性**，
@@ -84,9 +84,9 @@ A1 A2 A3 A4 · B3 B4 B6 · C1 C3 C5 C6 C7 · D7 · E1 E3 E5
 | 条款 | 状态 |
 |---|---|
 | TT-A5 | 🟡 依赖库已审计；本地 pickle 层未核 |
-| TT-B5 | ❌ 无强制验证策略文档 |
+| TT-B5 | 🟡 策略文档已建（`device-verification-policy.md`），**选型待拍板**；实施依赖 Safety Number 接线（IMB-2026-006） |
 | TT-C4 | ❌ 无进程/网络操纵能力 |
-| TT-D5 | 🟡 就绪包 **7/8**（仅缺本报告本身，见 §5） |
+| TT-D5 | 🟡 就绪包**八件全部到位**；本报告 §5 **签字栏留空**故计部分 |
 | TT-E2 | 🟡 PBKDF2-310k + 端点限流；无 HSM/OPAQUE；XFF 限流根基被推翻 |
 | TT-E6 | 🟡 SECURITY.md 待审 |
 
@@ -118,10 +118,10 @@ A1 A2 A3 A4 · B3 B4 B6 · C1 C3 C5 C6 C7 · D7 · E1 E3 E5
 ## 4. 发现清单
 
 不在此重复列举。完整披露见 [`known-issues-ledger.md`](./known-issues-ledger.md)：
-`IMB-2026-001..027`，三态 `Acknowledged` / `Open` / `Blocked`，各带理由与负责人。
+`IMB-2026-001..029`，三态 `Acknowledged` / `Open` / `Blocked`，各带理由与负责人。
 
 分布：分发阻断 4 条（Critical）· 名义防御与运行时不符 3 条（High）·
-有意接受的取舍 7 条 · 已知未决 6 条 · 验证与流程缺口 7 条。
+有意接受的取舍 7 条 · 已知未决 8 条 · 验证与流程缺口 7 条。
 
 **本报告不新增 finding 编号**——自审计的发现就是台账本身，两处记录会立刻分叉。
 

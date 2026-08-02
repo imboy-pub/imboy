@@ -78,6 +78,8 @@
 | IMB-2026-018 | 客户端 e2ee API **fail-open 残留**（查询侧） | `Open` | 第一批写操作已改抛（`8b4330fb`）；查询侧经下游 fail-closed 属有意保留，待第二批复核。追踪 **X8 / P3-2** |
 | IMB-2026-019 | **XFF 限流根基被推翻**：取最左 forwarded IP = 攻击者可控 | `Blocked` | OTK claim 限流与备份端点限流的有效性**依赖该修复**，而修复在别线（sellable #5）。追踪 **X14** |
 | IMB-2026-020 | 身份键就地覆盖**无痕迹** | `Open` | 无 append-only 历史则旧身份被替换不可追溯。追踪 **B3** |
+| IMB-2026-028 | **`CryptoStore` 不可用时 TOFU 整体跳过，且无任何时间/次数上限** | `Open` | `olm_session_service.dart` `_enforceTofu` 首行 `if (store == null) return;`。本地存储故障期间 identity 变化检测完全失效、通信照常、用户无感。与 IMB-2026-014 同为 fail-open，但**014 有 60s 缓存 TTL 封顶，本条没有上限**——故障持续多久就裸奔多久。此前只存在于一行代码注释，无文档无台账。处置选项与推荐见 [`device-verification-policy.md`](./device-verification-policy.md) §4 |
+| IMB-2026-029 | **未验证设备的能力边界无显式策略**（TT-B5 ❌） | `Blocked` | 今天**不存在「已验证设备」这个层级**——Safety Number 生产零调用，用户没有任何途径标记设备为已验证，故"所有设备都是未验证设备且能做全部事情"。这不是策略，是策略缺位。决策空间已整理但**在 IMB-2026-006 关闭前不可实施**（没有验证入口，任何区别对待都只会惩罚全部用户） |
 
 ---
 
