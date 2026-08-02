@@ -44,7 +44,7 @@
 |---|---|---|---|
 | D1 | ❌ | ADR 00-30 散落，无统一白皮书 | P5-3 |
 | D2 | 🟡 08-threat-model 停留在旧协议态 | `v2/08-threat-model.md`（未含 PFv3/附件/KT） | P5-1 |
-| D3 | ❌ 无清单；AGPL 未标注 | pubspec.yaml:221-222 vodozemac ^0.5.0 AGPL-3.0；仓内 grep AGPL 零命中 | P5-2（联动 P0-6） |
+| D3 | ✅ **清单已建 + AGPL 已标注**（2026-08-02） | `scripts/license_inventory.sh` 按 LICENSE **正文**判定（非包元数据），`docs/legal/third-party-licenses.md` + 生成态清单 143 条（Erlang 34 + Flutter direct main 109，含 path/git/sdk 三种来源）。**新增 3 项真实发现**：`simple_captcha`（无正文无元数据）、`ic_storage_space`（LICENSE 仅 `Copyright 2021` 无授权条款）——**无许可证 = 无再分发权，与 AGPL 同级阻断**；`jwerl` 仅元数据声明 BSD-3 待补正文。已澄清 `gpb` LGPL-2.1 带链接例外且不覆盖生成代码，**不构成阻断**。`--check` 门禁就绪但**暂不接 CI**（现必红，X15 后再接+补 NOTICE）。残留 ❌=Flutter 传递依赖 / imboyadmin npm / sdk-js 三段未扫（已在文档显式声明"真未扫"，非静默截断） | P5-2（联动 P0-6/X15） |
 | D4 | ❌ | 生命周期各环节散落各 ADR | P5-4 |
 | D5 | 🟡 就绪包未组装 | 审计交付物惯例已调研（research/public-audit-cases.md §3） | P5-6/5-7/5-8 |
 | D6 | 🟡 残留项散落各 evidence，无统一台账 | evidence/E2EE-*.md 残留段 | P5-5 |
