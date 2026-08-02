@@ -90,4 +90,4 @@
 | X14 | XFF 限流根基被推翻（sellable 线 #5：`elib_req:first_forwarded_ip/2` 取最左=攻击者可控）——OTK claim 限流、备份端点限流的有效性**依赖该修复**；修复落地后本线复核（P3-9） | ⛔别线依赖 | P0-8（已登记）→P3-9 复核 |
 | X15 | 自建 Apache-2.0 FFI 绑定替换 flutter_vodozemac（R4 裁定 ③）：基于 Apache-2.0 vodozemac crate 写自有绑定（flutter_rust_bridge 先例在仓），保持 `fvod` 调用面兼容使 lib/ 零改动；完成后 NOTICE 更新+许可证扫描进 CI | ❌ 待实施（排期建议 P3 段，不阻塞 P1/P2） | P0-6 后续（2026-08-02 裁定） |
 | X16 | 全量 coverage 套件 6 例环境敏感失败（CI 首跑暴露）：e2ee_health_check_service_test ×4（依赖网络/真实 API）、conversation_authority_sync_event_test ×1（时序敏感）、另 1 例待定位——coverage 步暂 continue-on-error，修复后删行 | 🟡 基线登记（2026-08-02） | 待立项（P4 测试体系段复核） |
-| X17 | imboyapp 格式门 CI/本地 dart_style 版本差 1 文件（CI 1372 中 1 changed，本地 0）：已把门输出改 --output=show 暴露文件名，下轮按 CI dart 修 | 🟡 修复中 | P0-4 收尾 |
+| X17 | 格式门红因定位（2026-08-02 worktree 复刻实证）：`test/page/chat/chat/chat_page_utils_test.dart` **HEAD 提交版**是旧格式；别线工作树已改好（本地门 0 changed）但未提交→CI 检出旧版必红。处置=格式门暂排该单文件（已加注释），**别线提交落仓后必须撤销排除** | 🟡 门暂排中 | 别线提交后撤销排除即关 |
