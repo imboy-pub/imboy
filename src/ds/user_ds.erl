@@ -265,6 +265,17 @@ delete_all_related_data(Conn, Uid) ->
     % E2EE 级联清理（被遗忘权）：云端加密备份按 uid 清理。
     % 自研社交恢复分片/可信联系人/设备传输会话已下线，相关表随迁移下线。
     ok = delete_from_table_if_exists(Conn, <<"public.e2ee_local_backups">>, <<"uid = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, <<"public.e2ee_key_backups">>, <<"uid = $1">>, [Uid]),
+    % Olm 材料必须在这里显式删：上面删 user_device 走的是直接 SQL，不经
+    % user_device_ds:delete/2，因此设备吊销级联在注销路径**不会触发**。
+    % 不删的后果与设备吊销同类且更严重——账号都注销了，别人仍能 claim 到它的
+    % one-time key，并与一个不存在的账号建立 Olm 会话。
+    ok = delete_from_table_if_exists(Conn, <<"public.olm_identity">>, <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, <<"public.olm_one_time_key">>, <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, <<"public.olm_fallback_key">>, <<"user_id = $1">>, [Uid]),
+    % ⚠️ 未清 public.trust_audit（设备信任决策审计流水，含 actor_uid/target_uid）。
+    % 审计留存与被遗忘权的取舍是政策判断而非代码判断，需显式拍板后再动，
+    % 不在此处默默删除。见 standard/gap-matrix.md E1。
     ok = delete_from_table_if_exists(Conn, user_repo:tablename(), <<"id = $1">>, [Uid]),
     ok.
 
