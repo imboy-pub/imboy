@@ -15,7 +15,7 @@
 | 5 | 已知问题台账 | Acknowledged/Open/Blocked 状态机 | ✅ [`known-issues-ledger.md`](./known-issues-ledger.md)（IMB-2026-001..027，按问题而非按标准条款组织；含 §2「名义防御与运行时不符」三条与 §6 审计方使用说明） | P5-5 |
 | 6 | 审计范围书（SOW 模板） | 范围锚定/方法/环境复现/交付物格式/答疑通道 | ❌ 待建（格式依据 `research/public-audit-cases.md` §3 八条惯例） | P5-6 |
 | 附 A | 自审计报告 | 按 `top-tier-standard-2026.md` 逐条核验+证据链接+签字 | ❌ 待建 | P5-7 |
-| 附 B | Evidence Manifest | 版本/commit/依赖 hash/测试计数/真机结果/向量 hash/故障注入计数（半自动生成） | 🟡 格式=v2/20 §13 | P5-8 |
+| 附 B | Evidence Manifest | 版本/commit/依赖 hash/测试计数/真机结果/向量 hash/故障注入计数 | ✅ [`evidence-manifest.generated.md`](./evidence-manifest.generated.md)，由 `scripts/evidence_manifest.sh` 生成（格式=v2/20 §13）。**11 项拿不到的字段全部打印「⛔ 未提供 + 原因」而非省略**——漏报的证据清单比没有清单更危险 | P5-8 |
 
 ## 2. 审计方快速上手（SOW 模板核心段草稿）
 
