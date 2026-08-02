@@ -89,5 +89,5 @@
 | X13 | 并发会话领地：imboy 9 个 staged 文件（AI 助手/消息策略线）、imboyapp 7 个 staged 文件——**勿碰勿卷入**；e2ee-verify 当前红=并发线 `user_handler→user_export_logic` 模块边界违规，归该线 owner 修，本线不代修 | ⛔别线领地 | P0-8（已登记，2026-08-02） |
 | X14 | XFF 限流根基被推翻（sellable 线 #5：`elib_req:first_forwarded_ip/2` 取最左=攻击者可控）——OTK claim 限流、备份端点限流的有效性**依赖该修复**；修复落地后本线复核（P3-9） | ⛔别线依赖 | P0-8（已登记）→P3-9 复核 |
 | X15 | 自建 Apache-2.0 FFI 绑定替换 flutter_vodozemac（R4 裁定 ③）：基于 Apache-2.0 vodozemac crate 写自有绑定（flutter_rust_bridge 先例在仓），保持 `fvod` 调用面兼容使 lib/ 零改动；完成后 NOTICE 更新+许可证扫描进 CI | ❌ 待实施（排期建议 P3 段，不阻塞 P1/P2） | P0-6 后续（2026-08-02 裁定） |
-| X16 | 全量 coverage 套件 6 例环境敏感失败（CI 首跑暴露）：e2ee_health_check_service_test ×4（依赖网络/真实 API）、conversation_authority_sync_event_test ×1（时序敏感）、另 1 例待定位——coverage 步暂 continue-on-error，修复后删行 | 🟡 基线登记（2026-08-02） | 待立项（P4 测试体系段复核） |
+| X16 | 全量套件 6 例环境依赖失败（CI 首跑暴露，2026-08-02 全部定位）：e2ee_health_check_service_test ×5（直接实例化 E2EEApi 打真实后端，本地 9800 在跑则全绿）+ db_migration_encryption_test ×1（isEncryptionSupported 断言 macOS 平台行为）。处置=ubuntu CI glob 暂排两文件（已加注释）；**正解=测试注入 API mock/平台守卫（非排除）**，P4 段复核撤销排除 | 🟡 暂排中（coverage 步已随全量绿恢复阻塞力） | P4 复核 |
 | X17 | 格式门红因定位（2026-08-02 worktree 复刻实证）：`test/page/chat/chat/chat_page_utils_test.dart` **HEAD 提交版**是旧格式；别线工作树已改好（本地门 0 changed）但未提交→CI 检出旧版必红。处置=格式门暂排该单文件（已加注释），**别线提交落仓后必须撤销排除** | 🟡 门暂排中 | 别线提交后撤销排除即关 |
