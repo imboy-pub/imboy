@@ -77,7 +77,7 @@
 | X1 | E2EE-012/024/025 三个 PASS 复核判不成立（验收建立在生产旁路） | ✅ **已裁定回退**（2026-08-02 leeyi；状态机已补 PASS→PARTIAL） | P1-1/1-2/1-3 重验 |
 | X2 | 真机双端从未验证（真机腿全在 22 号文件停放区） | ⛔人工门 | P2 全阶段 |
 | X3 | 双仓 411 提交未推送（imboy 248/app 163） | ✅ **已推送三仓对齐**（2026-08-02：imboy→345da003、imboyapp→9711b3b8，gitee/github/gitcode） | P0-4（CI 首轮观察） |
-| X4 | pro 缺 Olm 端点部署（代码已全，路由 155-163） | ⛔生产操作待授权 | P0-5 |
+| X4 | pro 缺 Olm 端点部署（代码已全，路由 155-163） | ✅ **已在线（2026-08-02 实证）**：生产跑 alpha.17（07-29 部署），8 Olm 端点+trust/record+backup 全部 200/902 鉴权正常；前提记忆已过时。**全量升级**（当前 main + 迁移 53）另行——迁移 53 是 sellable 线 user_collect_info_recrypt（连带密钥轮换），须该线 runbook 对齐，不可顺手跑 | P2 端点侧已解锁 |
 | X5 | AGPL 发布门（flutter_vodozemac AGPL-3.0） | ✅ **已拍板③自建 Apache-2.0 绑定**（2026-08-02） | X15 实施；分发前必须完成 |
 | X6 | ADR 14-19 签字门（cross-signing/064/KT profile 全 BLOCKED） | ✅ **已全签**（2026-08-02 leeyi solo；19 维持 Proposed） | P3-4/3-8/3-11 解锁 |
 | X7 | 全量 eunit >40min 不可用（harness 结构性慢） | ❌ | P4-7 |
