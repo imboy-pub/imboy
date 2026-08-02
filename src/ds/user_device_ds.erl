@@ -112,7 +112,36 @@ save(Now, Uid, DID, PostVals) ->
 %% @return ok
 -spec delete(integer(), binary()) -> ok.
 delete(Uid, DID) ->
-    user_device_repo:delete(Uid, DID).
+    %% 顺序不可颠倒：先删设备行（= token 吊销，安全关键），再清 Olm 材料。
+    %% 反过来若删行失败，会变成"密钥没了但 token 还有效"的最坏组合。
+    ok = user_device_repo:delete(Uid, DID),
+    ok = cleanup_olm_material(Uid, DID),
+    ok.
+
+%% @doc 吊销级联：清掉该设备的 Olm 身份键/一次性键/fallback 键。
+%%
+%% 不清的后果是**吊销对 E2EE 不生效**——已吊销设备仍会被 list_devices_with_identity
+%% 列为收件人（扇出继续向死设备加密），其 one-time key 仍可被 claim。
+%%
+%% 清理失败**不回滚、不阻断**：设备行已删 = token 已吊销，这是安全关键部分且已完成。
+%% 此时中止只会让调用方以为吊销失败而重试，反而更糟。但必须 ERROR 级别记下来——
+%% 残留的 Olm 材料会持续造成不可解密的密文，是需要人工介入的状态，不能静默。
+-spec cleanup_olm_material(integer(), binary()) -> ok.
+cleanup_olm_material(Uid, DID) ->
+    try olm_identity_repo:delete_by_device(Uid, DID) of
+        {ok, 0} ->
+            ok;
+        {ok, Cnt} ->
+            ok = ?INFO_LOG({device_olm_material_purged, Uid, DID, Cnt}),
+            ok;
+        {error, Reason} ->
+            ok = ?ERROR_LOG({device_olm_cleanup_failed, Uid, DID, Reason}),
+            ok
+    catch
+        Class:CatchReason ->
+            ok = ?ERROR_LOG({device_olm_cleanup_crashed, Uid, DID, Class, CatchReason}),
+            ok
+    end.
 
 %% @doc 设备是否仍活跃（未被移除）——token 吊销的唯一判据
 %% 缓存 60s：吊销延迟上限 60s；删除设备时 user_device_logic:delete/2 会

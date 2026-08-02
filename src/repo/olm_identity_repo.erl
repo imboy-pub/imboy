@@ -19,6 +19,7 @@
 -export([cleanup_consumed_one_time_keys/1]).
 -export([upsert_fallback_key/4]).
 -export([claim_fallback_key/2]).
+-export([delete_by_device/2]).
 
 %% ===================================================================
 %% 表名
@@ -356,3 +357,44 @@ claim_fallback_key(UserId, DeviceId) ->
         {ok, []} -> {error, exhausted};
         {error, _Reason} -> {error, exhausted}
     end.
+
+%% ===================================================================
+%% 设备吊销级联
+%% ===================================================================
+
+%% @doc 清除某设备的全部 Olm 材料（身份键 + 一次性键 + fallback 键）。
+%%
+%% 为什么必须做：user_device 行是设备白名单，删行即吊销 token。但 Olm 材料存在
+%% 独立三张表里，不随之消失。留着的后果不是"占点空间"，是**吊销对 E2EE 不生效**：
+%%   1. list_devices_with_identity/1 仍把已吊销设备列为收件人 → 扇出继续向死设备
+%%      加密，发送方每条消息都白算一次且永远等不到该设备的 ACK；
+%%   2. claim_one_time_key/3 仍能领到它的预共享密钥 → 对端与一个不存在的设备
+%%      建立 Olm 会话，密文无人能解。
+%%
+%% 三张表分别 DELETE 而非靠外键级联：这三张表未建 FK 到 user_device（设备行是
+%% 硬删的白名单，建 FK 只会让删设备被 Olm 行阻塞）。
+%%
+%% 返回删除的总行数，供调用方记日志/断言。任一语句失败即短路返回 {error, _}——
+%% 吊销清理失败必须让上层看见，不能静默吞掉。
+-spec delete_by_device(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
+delete_by_device(UserId, DeviceId) when is_integer(UserId), is_binary(DeviceId) ->
+    Tbs = [tablename_identity(), tablename_one_time_key(), tablename_fallback_key()],
+    lists:foldl(
+        fun
+            (_Tb, {error, _} = Err) ->
+                Err;
+            (Tb, {ok, Acc}) ->
+                Sql = <<"DELETE FROM ", Tb/binary, " WHERE user_id = $1 AND device_id = $2">>,
+                %% elib_pg:execute/2 契约含 {ok, N} 与 {ok, N, Rows} 两种成功形态
+                %% （后者用于 RETURNING）。两者都算成功，别让将来加 RETURNING 的人
+                %% 掉进"成功被判成 error"的坑。
+                case elib_pg:execute(Sql, [UserId, DeviceId]) of
+                    {ok, Cnt} when is_integer(Cnt) -> {ok, Acc + Cnt};
+                    {ok, Cnt, _Rows} when is_integer(Cnt) -> {ok, Acc + Cnt};
+                    {error, Reason} -> {error, Reason};
+                    Other -> {error, Other}
+                end
+        end,
+        {ok, 0},
+        Tbs
+    ).

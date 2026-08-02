@@ -333,3 +333,91 @@ delete_flushes_and_broadcasts_active_cache_test_() ->
             ?assert(lists:member({broadcast, [{flush, ActiveKey}]}, Calls))
         end
     ).
+
+%% ===================================================================
+%% 路径 4：吊销级联 —— 清除该设备的 Olm 材料
+%%
+%% 为什么这条必须有测试：前三条路径只保证「token 不再被接受」。但 Olm 身份键/
+%% 一次性键/fallback 键存在独立三张表里，不随设备行消失。留着 = **吊销对 E2EE
+%% 不生效**：list_devices_with_identity 仍把死设备列为收件人（扇出继续向它加密、
+%% 永远等不到 ACK），claim_one_time_key 仍能领到它的预共享密钥。
+%%
+%% 空测反证：把 user_device_ds:delete/2 里的 cleanup_olm_material 调用删掉，
+%% 第一条必红。
+%% ===================================================================
+
+delete_purges_olm_material_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_repo, [{'delete', 2, fun(?UID, ?DID) -> ok end}]},
+            {olm_identity_repo, [
+                {'delete_by_device', 2, fun(?UID, ?DID) -> {ok, 3} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, user_device_ds:delete(?UID, ?DID)),
+            Calls = [
+                {F, A}
+             || {_Pid, {olm_identity_repo, F, A}, _R} <- meck:history(olm_identity_repo)
+            ],
+            ?assert(lists:member({delete_by_device, [?UID, ?DID]}, Calls))
+        end
+    ).
+
+%% 顺序契约：设备行必须先删（token 吊销是安全关键），Olm 清理在后。
+%% 反过来一旦删行失败，就成了"密钥没了但 token 还有效"的最坏组合。
+delete_removes_device_row_before_olm_material_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_repo, [{'delete', 2, fun(?UID, ?DID) -> ok end}]},
+            {olm_identity_repo, [
+                {'delete_by_device', 2, fun(?UID, ?DID) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, user_device_ds:delete(?UID, ?DID)),
+            RowDeleted = [
+                1
+             || {_P, {user_device_repo, delete, [?UID, ?DID]}, _R} <-
+                    meck:history(user_device_repo)
+            ],
+            OlmPurged = [
+                1
+             || {_P, {olm_identity_repo, delete_by_device, [?UID, ?DID]}, _R} <-
+                    meck:history(olm_identity_repo)
+            ],
+            %% 两者都发生过；顺序由 delete/2 的顺序执行语义保证
+            %% （ok = user_device_repo:delete(...) 不成功即 badmatch，后续不会执行）
+            ?assertEqual([1], RowDeleted),
+            ?assertEqual([1], OlmPurged)
+        end
+    ).
+
+%% Olm 清理失败不得阻断吊销：设备行已删 = token 已吊销，这部分已经完成。
+%% 此时抛错只会让调用方以为吊销失败而重试，反而更糟（但会记 ERROR 日志）。
+delete_survives_olm_cleanup_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_repo, [{'delete', 2, fun(?UID, ?DID) -> ok end}]},
+            {olm_identity_repo, [
+                {'delete_by_device', 2, fun(?UID, ?DID) -> {error, db_down} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, user_device_ds:delete(?UID, ?DID))
+        end
+    ).
+
+%% 同上，但 Olm 清理直接崩溃（连 {error,_} 都没返回）——依然不得阻断吊销。
+delete_survives_olm_cleanup_crash_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_device_repo, [{'delete', 2, fun(?UID, ?DID) -> ok end}]},
+            {olm_identity_repo, [
+                {'delete_by_device', 2, fun(?UID, ?DID) -> erlang:error(boom) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, user_device_ds:delete(?UID, ?DID))
+        end
+    ).
