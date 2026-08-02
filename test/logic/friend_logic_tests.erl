@@ -568,23 +568,43 @@ confirm_friend_resp_test_() ->
                     <<"gender">> => 1,
                     <<"sign">> => <<"个性签名"/utf8>>,
                     <<"region">> => <<"北京"/utf8>>,
-                    <<"status">> => 1
+                    <<"last_seen_at">> => 1700000000000
                 }
             end}
         ],
         fun() ->
-            Uid = 123,
-            Remark = <<"备注名"/utf8>>,
+            ?WITH_MECK(
+                user_ds,
+                [
+                    %% batch_online_state 注入实时 status + 透传 last_seen_at
+                    {'batch_online_state', 1, fun([User]) ->
+                        [
+                            User#{
+                                <<"status">> => online,
+                                <<"last_seen_at">> => maps:get(<<"last_seen_at">>, User, <<>>)
+                            }
+                        ]
+                    end}
+                ],
+                fun() ->
+                    Uid = 123,
+                    Remark = <<"备注名"/utf8>>,
 
-            Result = friend_logic:confirm_friend_resp(Uid, Remark),
-            ?assertMatch(
-                #{
-                    <<"id">> := 123,
-                    <<"remark">> := <<"备注名"/utf8>>,
-                    <<"account">> := <<"test_account">>,
-                    <<"nickname">> := <<"测试用户"/utf8>>
-                },
-                Result
+                    Result = friend_logic:confirm_friend_resp(Uid, Remark),
+                    ?assertMatch(
+                        #{
+                            <<"id">> := 123,
+                            <<"peerId">> := 123,
+                            <<"remark">> := <<"备注名"/utf8>>,
+                            <<"account">> := <<"test_account">>,
+                            <<"nickname">> := <<"测试用户"/utf8>>,
+                            <<"is_friend">> := 1,
+                            <<"status">> := online,
+                            <<"last_seen_at">> := 1700000000000
+                        },
+                        Result
+                    )
+                end
             )
         end
     ).

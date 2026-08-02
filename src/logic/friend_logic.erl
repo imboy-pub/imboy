@@ -273,13 +273,28 @@ confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID) -
     {ok, FromID, Remark2, Source}.
 
 %% @doc 生成确认好友响应
+%%
+%% 历史问题：旧实现只返回 user 表基础列，缺少 is_friend / last_seen_at，
+%% 且 `status` 是 user 表的静态列而非实时在线状态。前端 accept 流程
+%% （confirm_new_friend_provider._storeContactInfo）依赖这些字段落库，
+%% 字段缺失会导致 contact.is_friend 不被置 1 → 通讯录查不到新好友。
+%%
+%% 现补充：
+%%   - is_friend = 1（accept 语义即已是好友，省去前端推断）
+%%   - peerId = Uid（兼容前端 ContactModel.fromMap 同时支持 id/peer_id）
+%%   - last_seen_at（从 user 表取，供详情页"最后上线"显示）
+%%   - status 经 batch_online_state 计算为实时 online/offline
 -spec confirm_friend_resp(integer(), binary()) -> map().
 confirm_friend_resp(Uid, Remark) ->
-    Column = <<"id,account,nickname,avatar,gender,sign,region,status">>,
-    User = user_logic:find_by_id(Uid, Column),
-    User#{
+    Column = <<"id,account,nickname,avatar,gender,sign,region,last_seen_at">>,
+    User0 = user_logic:find_by_id(Uid, Column),
+    %% 复用 batch_online_state 计算实时在线状态（与 friend/list 一致）
+    [User1] = user_ds:batch_online_state([User0]),
+    User1#{
         <<"id">> => Uid,
-        <<"remark">> => Remark
+        <<"peerId">> => Uid,
+        <<"remark">> => Remark,
+        <<"is_friend">> => 1
     }.
 
 %% @doc 拒绝好友申请（T3.4 余项）：仅当存在 From→CurrentUid 的 pending(status=0)
