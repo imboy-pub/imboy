@@ -19,6 +19,7 @@
 | **Backup Passphrase** | Critical | 仅用户记忆 | 备份可解（叠 PBKDF2 成本） |
 | **Device Trust State**（verified/revoked） | High | 客户端 + 服务端审计日志 | 可被篡改诱导误信伪造设备 |
 | **Safety Number**（身份键指纹） | High | derived（不单独存储） | 可被篡改诱导跳过验证 |
+| **Attachment Content Key**（每附件独立，随 descriptor 走加密 payload） | Critical | 客户端本地 + PFv3 加密 payload 内 | 该附件密文可解；缩略图另持独立 key |
 | **Compliance Public Key** | Medium | 服务端 | 审计能力丧失（不影响机密性） |
 | **Metadata**（发送方/接收方/时间戳/长度/在线状态/关系图谱/流量模式） | Low（不保护） | 服务端可见 | 与 Signal/WhatsApp 一致，IM 固有特性 |
 
@@ -45,6 +46,8 @@
 | T7 | **Malicious Client** | 伪造客户端，越权操作 / 重放 / 乱序 / 复制消息 | ✅ 防御 | 04, 服务端鉴权, 05 |
 | T8 | **Social Engineer** | 诱导用户手动验证伪造设备 | ⚠️ 部分防御 | 06(Safety Number) |
 | T9 | **Rollback / State Rewind** | 攻击者（含被攻陷服务端）重放旧 device identity / 旧 OTK / 旧 session state | ⚠️ 部分防御 | 03, 05 |
+| T10 | **Object-Store Adversary**（附件） | 读取/替换/挪用 Garage 对象存储里的附件对象，或据其元数据做流量分析 | ❌ **今天不防御**（实现在、开关未翻开） | 27（E2EE-061） |
+| T11 | **Key-Server Equivocation**（分叉视图） | 服务端对不同用户提供**不同的**设备身份视图（split-view），或干脆略去某个设备不返回 | ❌ **今天不防御**（KT 未部署） | 29（Transparency Profile v1，冻结未上线） |
 
 ---
 
@@ -191,6 +194,44 @@
 
 ---
 
+### T10 — Object-Store Adversary（附件）
+
+**场景**：附件走 Garage S3 直传，密文/明文以独立对象存放，其访问控制与消息通道是两套机制。攻击者取得对象（越权、凭证泄漏、或本就是运营方）后可读取、替换或把 A 消息的附件对象挪到 B 消息。
+
+ADR 27 已把该面拆成 **ATT-01..05** 五条验收用例：
+
+| 用例 | 攻击 |
+|---|---|
+| ATT-01 | 附件对象从消息 A 换到消息 B |
+| ATT-02 | 交换 / 删除 / 重复 / 截断 chunk |
+| ATT-03 | 篡改 MIME / name / size / hash / chunk_count |
+| ATT-04 | 未授权方拿到原始对象 |
+| ATT-05 | 下载解密中途被 kill 或磁盘满，残留明文 |
+
+**今天的判定：❌ 不防御。** 分块 AEAD、AAD 绑定（`attachment_binding.dart`，绑 `message_id` 而非 `header_hash`——后者已实证不可实现）、封装编排、加密闸门、临时明文清理均**已实现**，但**开关未翻开**（gap-matrix **X12**，Slice 9 真机 BLOCKED）。开关未翻开意味着附件今天**以明文存放于对象存储**，ATT-04 直接失败，ATT-01/02/03 因无 AAD 绑定同样不成立。
+
+**审计口径**：不要因为仓里有 `attachment_encryptor.dart` 就认为附件已加密。判据是运行时开关，不是代码存在性。
+
+**残留风险（即使开关翻开后）**：对象大小与上传时序仍是元数据，属 §3 显式不保护项；缩略图需独立 content key 同样加密，否则 ATT-04 在缩略图上照样失败。
+
+---
+
+### T11 — Key-Server Equivocation（分叉视图）
+
+**场景**：被攻陷或恶意的服务端对不同用户返回**不同的**设备身份视图——给 Alice 看真实的 Bob 设备列表，给 Charlie 看一份多插了一台攻击者设备的列表；或反过来，对某些查询干脆略去一台设备（non-inclusion）。因为每个客户端只能看到自己那一份，单凭本地视角**无法察觉不一致**。
+
+这是 T2（Compromised Server）中**单靠端到端加密无法覆盖**的那一块：加密保证了信道，但设备列表本身来自服务端。
+
+**今天的判定：❌ 不防御。** IMBoy Transparency Profile v1（ADR 29）已冻结树结构、canonical event bytes、STH、proof wire 格式与跨实现 golden vectors，但**未部署**（P3-8）。没有 Merkle 一致性证明与 gossip/witness，分叉视图在今天**不可检测**。
+
+**理论上的当前防线及其实际状态**：
+- **Safety Number 人工比对** —— §4 矩阵把它列为 T2/T8 的防御点。⚠️ **但 `safety_number.dart` 在生产代码里零调用**（`grep -rl "SafetyNumber" lib/` 只命中它自己），算法有守护测试、产品用不到。**这条防御在今天的产品里事实上不存在**（gap-matrix B1，P3-4/P3-5）。
+- **TOFU + 降级告警** —— 已接线，但只能发现"变了"，无法发现"从一开始就是分叉的"。
+
+**残留风险**：即便 KT 部署，split-view 的检测仍依赖客户端间的 gossip 或第三方 witness；只有 STH 而无 gossip 时，服务端仍可对**长期隔离**的用户维持一致的假视图。
+
+---
+
 ## 3. 不防御的明确声明（诚实清单）
 
 | 不防御项 | 原因 |
@@ -200,6 +241,9 @@
 | 设备攻陷后的实时解密 | E2EE 根本限制，PFS 仅保护历史 |
 | 用户主动误操作（验证伪造设备） | UX 限制 |
 | 量子计算攻击 | 不在本架构范围（后量子签名为未来研究方向） |
+| **附件机密性（T10）** | 加密实现已在仓内但**运行时开关未翻开**（X12）。今天附件以明文存于对象存储，ATT-01..05 全部不成立。**这是当前状态，不是设计意图** |
+| **服务端分叉视图（T11）** | KT profile v1 已冻结但未部署（P3-8）。名义防线 Safety Number **生产零调用**（B1），故今天无任何可用的分叉检测手段 |
+| Megolm room key 分发列表的规模元数据 | 列表长度暴露群设备数量级；上限 4096 条仅防 DoS，不隐藏规模 |
 
 ---
 
@@ -215,7 +259,7 @@
 | Post-Compromise Security | T5 | 02 | `olm_pcs_recovery_test`：状态泄漏后 ratchet 推进恢复 |
 | AEAD (AES-256-GCM) | T4 | 02 | `aes_gcm_tamper_fails_test` |
 | Ed25519 身份键签名 | T2, T4 | 03 | `device_identity_signature_verify_test` |
-| Safety Number | T2, T8 | 06 | `e2ee_safety_number_test`（指纹稳定 + 篡改检测） |
+| Safety Number | T2, T8 | 06 | `e2ee_safety_number_test`（指纹稳定 + 篡改检测）⚠️ **算法有测试，生产零调用**（B1） |
 | Signed Capabilities | T2 | 04 | `capability_signature_forgery_fails_test` |
 | 本地降级告警 | T2 | 04 | `capability_shrink_triggers_tofu_alert_test` |
 | OTK 原子 claim | T7 | 03 | `otk_concurrent_claim_uniqueness_test` |
@@ -225,6 +269,17 @@
 | Trust State 审计 | T2, T8 | 06 | `device_trust_state_change_audit_log_test` |
 | Device identity 版本单调 | T9 | 03 | `device_identity_rollback_rejected_test` |
 | Megolm session rotate 单调 | T9 | 02 | `megolm_old_session_rejected_test` |
+| PFv3 canonical CBOR + 资源上限 | T4, T7 | 15, 26 | `protected_frame_v3_test` / `protected_frame_v3_roundtrip_test`（10 MiB 信封 / 8 KiB header / 深度 16 / 128 项） |
+| 附件分块 AEAD + AAD 绑定 `message_id` | T10(ATT-01/02) | 27 | `attachment_binding_test` / `attachment_chunk_codec_test` / `attachment_open_e2e_test` ⚠️ **开关未翻开，运行时未生效** |
+| 附件解密临时明文清理 | T10(ATT-05) | 27 | `attachment_temp_hygiene_test` ⚠️ 同上 |
+| 附件加密闸门（descriptor 只随加密 payload 走） | T10(ATT-04) | 27 | `attachment_seal_policy_test` / `attachment_seal_wiring_test` ⚠️ 同上 |
+| 缩略图独立 content key 同样加密 | T10(ATT-04) | 27 | `attachment_thumb_seal_test` ⚠️ 同上 |
+| Merkle 一致性证明 / STH | T11 | 29 | ❌ **未部署**，仅有跨实现 golden vectors |
+
+> ⚠️ **矩阵读法警告（2026-08-02 加）**：本矩阵证明的是「**该防御的算法被测试覆盖**」，
+> 不等于「**该防御在产品运行时生效**」。上表已逐条核实 16 条原有守护测试**全部真实存在**，
+> 但其中 Safety Number 在生产代码零调用、附件三项的运行时开关未翻开。
+> 审计时请把「有守护测试」与「已接线并启用」当作两个独立问题分别求证。
 
 **测试命名约定**：`<主题>_<场景>_test`，放在对应模块的 `test/` 子目录；守护测试必须在 CI 关键路径（非 nightly）。
 
