@@ -31,16 +31,20 @@ jobs:
         uses: erlef/setup-beam@v1
         with:
           otp-version: '28'
+          # elvis 只能从源码 escriptize，必须有 rebar3。
+          # setup-beam 不给 rebar3-version 就不装它——这正是本步骤此前 exit 127 的原因。
+          rebar3-version: '3'
 
       - name: Install elvis
         run: |
-          # elvis 5.0.3 from brew formula source (escript build via rebar3)
+          # 只走源码构建。原先先 curl release 资产、失败再 fallback 到源码，
+          # 但 inaka/elvis **所有 release 都不带任何资产**，那条 curl 从来不可能成功；
+          # 它唯一的作用是把真实路径伪装成"兜底"，掩盖了 rebar3 缺失的根因。
           set -euo pipefail
           mkdir -p ~/bin
-          curl -fsSL https://github.com/inaka/elvis/releases/download/5.0.3/elvis -o ~/bin/elvis || \
-            (echo "fallback: build from source"; \
-             git clone --depth 1 -b 5.0.3 https://github.com/inaka/elvis /tmp/elvis && \
-             cd /tmp/elvis && rebar3 escriptize && cp _build/default/bin/elvis ~/bin/elvis)
+          git clone --depth 1 -b 5.0.3 https://github.com/inaka/elvis /tmp/elvis
+          (cd /tmp/elvis && rebar3 escriptize)
+          cp /tmp/elvis/_build/default/bin/elvis ~/bin/elvis
           chmod +x ~/bin/elvis
           echo "$HOME/bin" >> "$GITHUB_PATH"
           ~/bin/elvis --version || true
@@ -229,18 +233,36 @@ jobs:
       - name: Check layer boundaries
         run: |
           set -euo pipefail
+
+          # 注释里提到一个模块名不是调用它。原先只排除 "%%"，但 Erlang 注释
+          # 用几个 % 都合法——attach_pending_repo.erl:5 的单 % 注释就让这道门
+          # 假红了。假红的门比没有门更糟：它训练所有人忽略红灯。
+          # 这里剥掉 file:line 前缀后从第一个 % 截断，再重新判定。
+          violations() {
+            grep -rn "$1" "$2" --include="*.erl" 2>/dev/null | awk -v pat="$1" '
+              { line = $0
+                sub(/^[^:]*:[0-9]+:/, "", line)   # 去掉 grep 的 file:line: 前缀
+                sub(/%.*/, "", line)              # 从第一个 % 起截断（注释）
+                if (line ~ pat) print
+              }' || true
+          }
+
           echo "=== API → Repo (must be 0) ==="
-          api_repo=$(grep -rn "_repo:" src/api/ --include="*.erl" | grep -v "%%" | wc -l || echo 0)
+          api_repo_hits=$(violations "_repo:" src/api/)
+          api_repo=$(printf '%s' "$api_repo_hits" | grep -c . || true)
           echo "API→Repo violations: $api_repo"
           if [ "$api_repo" -gt 0 ]; then
+            echo "$api_repo_hits"
             echo "::error::API layer must not call Repo directly ($api_repo violations)"
             exit 1
           fi
 
           echo "=== Repo → Logic (must be 0) ==="
-          repo_logic=$(grep -rn "_logic:" src/repo/ --include="*.erl" | grep -v "%%" | wc -l || echo 0)
+          repo_logic_hits=$(violations "_logic:" src/repo/)
+          repo_logic=$(printf '%s' "$repo_logic_hits" | grep -c . || true)
           echo "Repo→Logic violations: $repo_logic"
           if [ "$repo_logic" -gt 0 ]; then
+            echo "$repo_logic_hits"
             echo "::error::Repo layer must not call Logic directly ($repo_logic violations)"
             exit 1
           fi
