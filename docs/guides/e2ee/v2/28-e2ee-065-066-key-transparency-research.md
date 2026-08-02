@@ -1,7 +1,15 @@
 # 28 — E2EE-065/066 Key Transparency：调研与设计
 
-> **状态**：调研与设计草案（**不改任何生产代码**）。队列第 6 项明确规定
-> 「最大件：只产出调研与设计文档」。
+> **状态**（2026-08-02 更正）：**部分已实施，KT 整体未部署**。
+>
+> 原状态头写「调研与设计草案（**不改任何生产代码**）」——**该表述已失真**：
+> 后端 Merkle 库 `src/lib/e2ee_kt_merkle.erl` 已落地并有 `test/lib/e2ee_kt_merkle_tests.erl`；
+> 客户端 `trust_event_canonical.dart` 已被 2 个生产文件引用。
+> **未接线部分**：`e2ee_kt_merkle` 除自身与测试外无调用方；`trust_event_client.dart`
+> 生产零引用。
+>
+> ⚠️ **后果**：KT 未部署，服务端分叉视图（split-view / non-inclusion）**不可检测**。
+> 见 `standard/known-issues-ledger.md` IMB-2026-007、威胁模型 T11。
 > **上位约束**：ADR 14 T8、ADR 16 §5/§6（transparency log，**仍为 Proposed**）、
 > `20-implementation-and-acceptance-plan.md` G3「独立 monitor 已运行并演练 split view」
 > **对应 playbook**：E2EE-033（日志与 proof API）、E2EE-034（客户端、gossip、monitor）
