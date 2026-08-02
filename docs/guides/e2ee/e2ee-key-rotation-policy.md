@@ -1,4 +1,18 @@
-> **整理提示**：本文档从 standards/ 迁入。内容与 guides/e2ee/v2/ 密钥轮换文档有重叠，待 E2EE owner 并入统一文档后移除本提示。
+> # ⛔ 本文档已被取代（2026-08-02），不可作为当前实现的依据
+>
+> 权威文档：**[key-lifecycle.md](./key-lifecycle.md)**
+>
+> 本文写于 RSA 时代（下方"基于代码版本"里列的 `e2ee_transfer_service.dart`、
+> `shamir_secret_sharing.dart` 今天都已不存在）。以下内容**已确认不成立**：
+>
+> - §1.1 把 RSA-2048 / `RSA-OAEP-256+AES-256-GCM` 当作主协议 —— v2 已 Olm-only
+>   cutover，RSA 降为**仅解密**（ADR 24）。
+> - §1.2 存储清单**漏掉了几乎全部真实密钥材料**（Olm account/session pickle、
+>   Megolm inbound session、OTK、fallback key、SQLCipher DB key）。
+> - §5.2 社交恢复（Shamir Secret Sharing）—— 已从代码删除。
+> - §4 设备迁移引用的 `e2ee_transfer_handler` —— 已删除（迁移 38）。
+>
+> 保留原文仅为追溯当时的决策语境。
 
 # E2EE 密钥旋转策略
 # E2EE Key Rotation Policy
