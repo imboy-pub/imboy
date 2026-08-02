@@ -12,7 +12,7 @@
 | 2 | 密码学清单 | 原语/参数/曲线/库/版本/许可证；**AGPL 状态醒目标注** | ✅ [`crypto-inventory.md`](./crypto-inventory.md)（原语与参数，每行标注 📄本仓实证 / 📕上游规范 / ⚙️上游默认）+ [`../../../legal/third-party-licenses.md`](../../../legal/third-party-licenses.md)（143 条许可证清单）。**未含 SBOM hash 锚** | P5-2 |
 | 3 | 协议规范白皮书 | wire v1/v2/v3、PFv3 canonical、room-key 双包、trust 11 字段、附件 descriptor、KT profile v1、备份容器；golden 向量附录；修订史 | 🟡 素材=ADR 00-31，待汇总 | P5-3 |
 | 4 | 密钥生命周期 | 生成/存储/轮换/备份/销毁/吊销级联全链路 | ✅ [`../key-lifecycle.md`](../key-lifecycle.md)（10 类密钥材料矩阵 + 服务端 8 表敏感度分级 + 三条销毁路径 + 可验证性主张） | P5-4 |
-| 5 | 已知问题台账 | Resolved/Acknowledged 状态机（含 Olm 1:1 历史不可恢复、MIME 不隐藏、PBKDF2 无 HSM、元数据、AGPL 等） | 🟡 散落各 evidence | P5-5 |
+| 5 | 已知问题台账 | Acknowledged/Open/Blocked 状态机 | ✅ [`known-issues-ledger.md`](./known-issues-ledger.md)（IMB-2026-001..027，按问题而非按标准条款组织；含 §2「名义防御与运行时不符」三条与 §6 审计方使用说明） | P5-5 |
 | 6 | 审计范围书（SOW 模板） | 范围锚定/方法/环境复现/交付物格式/答疑通道 | ❌ 待建（格式依据 `research/public-audit-cases.md` §3 八条惯例） | P5-6 |
 | 附 A | 自审计报告 | 按 `top-tier-standard-2026.md` 逐条核验+证据链接+签字 | ❌ 待建 | P5-7 |
 | 附 B | Evidence Manifest | 版本/commit/依赖 hash/测试计数/真机结果/向量 hash/故障注入计数（半自动生成） | 🟡 格式=v2/20 §13 | P5-8 |
