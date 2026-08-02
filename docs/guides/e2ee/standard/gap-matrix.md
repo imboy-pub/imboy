@@ -35,7 +35,7 @@
 | C3 | 🟡 覆盖较强但 6❌ | `TEST_COVERAGE_MATRIX.md`：#3/#4/#7/#9/#15/#16❌，#12⚠️ | P4-4、P3-5/3-6/3-10 |
 | C4 | ❌ | 无进程/网络操纵能力 | P4-2 配套 |
 | C5 | 🟡 回归散落在各测试，无公开索引 | evidence 系列 vs 测试名未建映射 | P4-9 |
-| C6 | ❌ **CI 从未运行**（origin→gitee；GitHub 落后 84/114/12） | 2026-07-31 审计报告；`.github/workflows/backend-ci.yml` 存在但未执行 | P0-3、P0-4、P4-1 |
+| C6 | 🟡 **CI 已复活，后端门已全绿**（2026-08-02） | 推 github 后首次执行即暴露 4 条常红并逐条修完（`803618d0`+`fa882554`）：①`dependabot-auto-merge.yml` 文件级 YAML 解析失败→每次 push 凭空多一条 0 秒失败 run；②架构层边界门**假阳性**（只排除 `%%`，单 `%` 注释漏网）；③elvis 安装 `exit 127`（setup-beam 未装 rebar3；且其 curl 分支永不可能成功——inaka/elvis 所有 release 无资产）；④trivy 钉死已删除的 v0.52.2（**我先误判为 sudo 权限，实为 404**）。gitleaks 改用免费 CLI 替代对组织仓收费的 action，历史扫描保留（本地实证 1386 commits/0 leak）。棘轮重设为实测值：elvis 8824/239→10352/298、文件大小 6→13（**债务被承认非被修复**，清单已写进 workflow 注释）。本提交实测 `imboy Quality Gate` ✅ / `SBOM Diff Report` ✅（两者此前长期红）；`Backend CI` 与 `Docs Site` 本轮仍在跑，此前连续 4 次绿、本线未动其配置。**残留**：`imboy SonarCloud` 报 Not authorized or project not found（需 SONAR_TOKEN + sonarcloud.io 建项目，🔒凭证待拍板）；imboyapp 6 条工作流仍全红（含同一个 `dependabot-auto-merge.yml` bug，该仓提交被并发线阻塞） | P0-4（后端段已闭）、P4-1 |
 | C7 | 🟡 auditor 未建 | KT 未接线 | P3-8+P4-1 |
 
 ## D 类：审计就绪
