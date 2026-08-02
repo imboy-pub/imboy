@@ -83,7 +83,7 @@
 | X7 | 全量 eunit >40min 不可用（harness 结构性慢） | ❌ | P4-7 |
 | X8 | e2ee 三 API 文件 fail-open（olm_api/e2ee_api/e2ee_backup_api 0 throwIfFailed） | ❌ | P3-2 |
 | X9 | policy 缓存无 TTL | ❌ | P3-9 |
-| X10 | E2EE-027 outbox 残留（读侧未接线/非同一事务） | 🟡 | P1-5 |
+| X10 | E2EE-027 outbox 残留（读侧未接线/非同一事务） | ✅ **读侧已关闭**（2026-08-02：confirmOutbox 接入 ACK 汇聚点+重发 byte-for-byte 实证 3/3；纠正"重发重新 encrypt"为不实——实际复用库中信封；原子性维持 Acknowledged=ADR 02 冻结项） | evidence/E2EE-027-read-side-wiring-2026-08-02.md |
 | X11 | E2EE-062 残留 7 项（拼接实证/租约 TTL/fallback 验签守护/降级守护/告警规则等） | 🟡 | P3-7 |
 | X12 | 附件加密开关未翻开（Slice 9 真机 BLOCKED+两项拍板） | 🟡 | P2-2 |
 | X13 | 并发会话领地：imboy 9 个 staged 文件（AI 助手/消息策略线）、imboyapp 7 个 staged 文件——**勿碰勿卷入**；e2ee-verify 当前红=并发线 `user_handler→user_export_logic` 模块边界违规，归该线 owner 修，本线不代修 | ⛔别线领地 | P0-8（已登记，2026-08-02） |
