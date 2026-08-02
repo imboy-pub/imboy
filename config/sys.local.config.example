@@ -124,8 +124,6 @@
         , {depcache, [
             {depcache_memory_max, 100}
         ]}
-        , {redis_options, [{password, "CHANGE_ME_REDIS_PASSWORD"}, {database, 0}, {host, "127.0.0.1"}, {port, 6378}]}
-
         , {msg_archive_enabled, true}
 
         %% Feature flags

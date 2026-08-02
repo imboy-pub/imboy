@@ -3,16 +3,20 @@
 #
 # 分两级门 / Two staged gates:
 #   Stage 1（仅需后端）: POST /api/v1/rtc/room/join → 断言 ws_url/token/room_name
-#   Stage 2（需 LiveKit + lk CLI + Garage）:
-#     lk 发测试流入房 → 启动 RoomComposite 录制 → 轮询 Garage 桶出现录制对象
+#   Stage 2（需 LiveKit + lk CLI）:
+#     lk 发测试流入房 → 断言 SFU 真的建出该房间（媒体面通）
+#
+# ⚠️ 原 Stage 2b/2c（RoomComposite 录制 → 轮询 Garage 桶）已删除：
+#    录制依赖 livekit/egress，而 egress 与 livekit-server 之间**只有 Redis 一条
+#    总线**。项目级约束「全栈不引入 Redis」下 egress 无法部署，且该功能三端从未
+#    接线（后端零 egress 调用）。要恢复录制 = 先解除 Redis 约束。
 #
 # 用法 / Usage:
 #   API_BASE=http://127.0.0.1:9800 TOKEN=<jwt> GROUP_ID=<gid> \
 #   bash scripts/rtc_e2e_test.sh                    # 只跑 Stage 1
 #
-#   追加 LIVEKIT_URL=ws://127.0.0.1:7880 LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=... \
-#   GARAGE_ENDPOINT=... GARAGE_BUCKET=imboy-recordings \
-#   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...  # 跑 Stage 2
+#   追加 LIVEKIT_URL=ws://127.0.0.1:7880 \
+#         LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=...  # 跑 Stage 2
 #
 # TOKEN 获取: 登录取 access_token；GROUP_ID 须是该用户所在群。
 set -euo pipefail
@@ -51,8 +55,6 @@ fi
 
 command -v lk >/dev/null || fail "Stage 2 需要 lk CLI（brew install livekit-cli）"
 : "${LIVEKIT_API_KEY:?}" "${LIVEKIT_API_SECRET:?}"
-: "${GARAGE_ENDPOINT:?}" "${GARAGE_BUCKET:?}"
-: "${AWS_ACCESS_KEY_ID:?}" "${AWS_SECRET_ACCESS_KEY:?}"
 
 export LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET
 
@@ -60,40 +62,17 @@ echo "==> Stage 2: 发布测试流入房"
 lk room join --identity e2e_publisher --publish-demo "$ROOM" >/dev/null 2>&1 &
 PUB_PID=$!
 trap 'kill $PUB_PID 2>/dev/null || true' EXIT
-sleep 3
 
-echo "==> Stage 2b: 启动 RoomComposite 录制"
-OUT_KEY="rtc-e2e/$(date +%s).mp4"
-EGRESS_JSON=$(mktemp)
-cat > "$EGRESS_JSON" <<EOF
-{
-  "room_name": "$ROOM",
-  "file_outputs": [{
-    "filepath": "$OUT_KEY",
-    "s3": {
-      "access_key": "$AWS_ACCESS_KEY_ID",
-      "secret": "$AWS_SECRET_ACCESS_KEY",
-      "region": "garage",
-      "endpoint": "$GARAGE_ENDPOINT",
-      "bucket": "$GARAGE_BUCKET",
-      "force_path_style": true
-    }
-  }]
-}
-EOF
-EGRESS_ID=$(lk egress start --type room-composite "$EGRESS_JSON" | grep -oE 'EG_[A-Za-z0-9]+' | head -1)
-[ -n "$EGRESS_ID" ] || fail "egress 启动失败"
-pass "egress 启动 $EGRESS_ID"
-
-sleep 10
-lk egress stop --id "$EGRESS_ID" >/dev/null
-echo "==> Stage 2c: 轮询 Garage 出现录制对象"
-for i in $(seq 1 30); do
-    HTTP=$(curl -s -o /dev/null -w '%{http_code}' \
-        --aws-sigv4 "aws:amz:garage:s3" \
-        --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
-        "$GARAGE_ENDPOINT/$GARAGE_BUCKET/$OUT_KEY")
-    [ "$HTTP" = "200" ] && { pass "录制对象已落桶 $OUT_KEY"; echo "RECORDING_OK"; exit 0; }
+# 断言 SFU 真的建出了房间。房间是**参与者连上才被创建**的，因此
+# "room list 里出现 $ROOM" 等价于「token 有效 + 信令握手成功 + 媒体面接纳发布者」——
+# 这是单节点 SFU 能在无 egress 前提下拿到的最强证据。
+echo "==> Stage 2b: 轮询 SFU 房间就绪"
+for _ in $(seq 1 15); do
+    if lk room list 2>/dev/null | grep -q "$ROOM"; then
+        pass "SFU 已建房 $ROOM（发布者已接入）"
+        echo "SFU_OK"
+        exit 0
+    fi
     sleep 2
 done
-fail "录制对象 60s 内未出现在 Garage：$OUT_KEY"
+fail "30s 内 SFU 未出现房间 $ROOM（检查 LIVEKIT_URL / API key / 媒体端口放行）"

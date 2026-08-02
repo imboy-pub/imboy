@@ -21,7 +21,8 @@
 %     ets:take/2（查+删单个原子操作），同一 state/otc 并发下只有一个进程能取到。
 %     ponytail: 单节点原子性已解决；仍是节点本地存储 —— 各节点 ETS 独立，
 %     多节点部署时 authorize/callback/exchange 必须落在同一节点（现单 upstream
-%     成立）。真要多节点无粘性，换 DB/Redis 做跨节点一次性消费。
+%     成立）。真要多节点无粘性，换 DB 做跨节点一次性消费（PostgreSQL 的
+%     DELETE ... RETURNING 天然原子）——项目级约束：不引入 Redis。
 %%%
 
 -export([authorize/1, callback/2, exchange/1]).

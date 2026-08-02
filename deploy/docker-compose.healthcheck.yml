@@ -38,11 +38,6 @@ services:
   # ⚠️ imboy_admin **不在这里配 healthcheck**：它的镜像（nginx:alpine 系）
   # Dockerfile 里已经有 HEALTHCHECK（探 /health）。再写一份只会重复且迟早漂移
   # —— 我第一版就把路径写成了 / 而不是 /health。核实过镜像再决定，别照抄模板。
-
-  imboy_redis:
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG || exit 1"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
+  #
+  # ⚠️ 这里曾有 imboy_redis 的 healthcheck，已随「全栈去 Redis」删除。overlay 里给
+  # 基础文件中不存在的服务写配置，compose 会合并出无 image 的残缺服务并直接报错。

@@ -29,9 +29,24 @@
 | 语言 | Erlang/OTP 28+ |
 | Web 框架 | Cowboy 2.10 (HTTP/WS) |
 | 数据库 | PostgreSQL 18+ (pg_jieba, postgis, timescaledb, pgcrypto) |
-| 缓存 | depcache (Erlang 内存缓存) |
+| 缓存 | depcache (Erlang 内存缓存) — **禁止引入 Redis**（见下方约束） |
 | 连接池 | epgsql + pooler |
 | 日志 | lager |
+
+### ⛔ 项目级约束：全栈不引入 Redis
+
+**任何模块、任何部署形态都不得依赖 Redis。** 缓存用进程内 depcache，跨节点共享状态用
+PostgreSQL（`DELETE ... RETURNING` 天然原子），进程发现用 `syn`。
+
+已按此清除（2026-08-02）：`imboy_redis` / `imboy_rtc_redis` 容器、LiveKit 的 `redis:`
+配置段、`imboy_egress` 录制服务、`redis_options` 配置键与 `imboy_env:override_redis/0`。
+
+引申影响，提新方案前先看：
+- **LiveKit 只能单节点**（`redis:` 段仅多节点分布式路由需要）。要横向扩展用**应用层
+  按房间分片**：imboy 在 `/api/v1/rtc/room/join` 里按 `consistent_hash(room_name)`
+  决定返回哪个独立 LiveKit 节点的 `ws_url`，同房间参与者必落同一节点 → 节点间无需通信。
+- **LiveKit Egress 房间录制不可用**：egress 与 livekit-server 之间只有 Redis 一条总线，
+  无替代传输。该功能三端本就从未接线，删除零损失；要恢复须先解除本约束。
 
 ---
 
