@@ -81,7 +81,7 @@
 | X5 | AGPL 发布门（flutter_vodozemac AGPL-3.0） | ✅ **已拍板③自建 Apache-2.0 绑定**（2026-08-02） | X15 实施；分发前必须完成 |
 | X6 | ADR 14-19 签字门（cross-signing/064/KT profile 全 BLOCKED） | ✅ **已全签**（2026-08-02 leeyi solo；19 维持 Proposed） | P3-4/3-8/3-11 解锁 |
 | X7 | 全量 eunit >40min 不可用（harness 结构性慢） | ❌ | P4-7 |
-| X8 | e2ee 三 API 文件 fail-open（olm_api/e2ee_api/e2ee_backup_api 0 throwIfFailed） | ❌ | P3-2 |
+| X8 | e2ee 三 API 文件 fail-open（olm_api/e2ee_api/e2ee_backup_api 0 throwIfFailed） | ✅ **第一批已修**（2026-08-02，imboyapp `8b4330fb`）：olm 三写操作+备份链三方法改抛（e2ee 591/591 零回归）；**保留=有意决策**：countPrekeys null 语义、查询侧经下游 fail-closed、reportDeviceKey ok:false 已有检查——见下轮复核 | P3-2 第二批（查询侧+调用方深化） |
 | X9 | policy 缓存无 TTL | ❌ | P3-9 |
 | X10 | E2EE-027 outbox 残留（读侧未接线/非同一事务） | ✅ **读侧已关闭**（2026-08-02：confirmOutbox 接入 ACK 汇聚点+重发 byte-for-byte 实证 3/3；纠正"重发重新 encrypt"为不实——实际复用库中信封；原子性维持 Acknowledged=ADR 02 冻结项） | evidence/E2EE-027-read-side-wiring-2026-08-02.md |
 | X11 | E2EE-062 残留 7 项（拼接实证/租约 TTL/fallback 验签守护/降级守护/告警规则等） | 🟡 | P3-7 |
