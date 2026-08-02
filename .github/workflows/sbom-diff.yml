@@ -33,14 +33,12 @@ jobs:
       - name: Install Trivy
         run: |
           set -euo pipefail
-          # 装到 $HOME/.local/bin 而不是 /usr/local/bin：安装脚本能查到版本却
-          # 在落盘那步 exit 1，推断是写系统目录要 sudo（无 runner 无法本地实证，
-          # 以下一次 CI 运行为准）。装进用户可写目录后不需要提权。
-          mkdir -p "$HOME/.local/bin"
+          # 版本必须是仍存在的 release：v0.52.2 已被上游删除（tag 查询 404），
+          # 安装脚本只做字符串拼接、不校验 tag 是否存在，所以日志里会先打印
+          # "found version: 0.52.2" 再在下载那步 exit 1——看起来像权限问题，其实是 404。
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b "$HOME/.local/bin" v0.52.2
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/trivy" --version
+            | sh -s -- -b /usr/local/bin v0.72.0
+          trivy --version
 
       # ── 2. 生成当前 SBOM（CycloneDX JSON）──────────────────────────
       - name: Generate SBOM (CycloneDX JSON)
