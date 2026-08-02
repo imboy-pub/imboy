@@ -54,10 +54,10 @@
 
 | TT | 现状 | 证据 | 关闭任务 |
 |---|---|---|---|
-| E1 | 🟡 机器可查下限有，全量可执行证明无；**吊销级联缺失** | PEM 拒收/密文保真/FTS 排除；`user_device_repo:delete/2` 不清 olm 三表；`user_ds:delete_all_related_data` 不含 olm_* 与 e2ee_key_backups | P3-3、P4-6 |
+| E1 | 🟡 机器可查下限有，全量可执行证明无；**设备吊销级联已补**（2026-08-02 `26f21e64`），**账号注销级联仍缺** | PEM 拒收/密文保真/FTS 排除；~~`user_device_repo:delete/2` 不清 olm 三表~~ 已修；`user_ds:delete_all_related_data` 仍不含 olm_* 与 e2ee_key_backups（注销账号后密钥残留） | P4-6 |
 | E2 | 🟡 PBKDF2-310k+端点限流；无 HSM/OPAQUE；XFF 限流被推翻（别线#5） | `e2ee_crypto_service.dart`；`sys.config` throttle；`elib_req:first_forwarded_ip/2` 取最左 | P3-9、台账 Acknowledged |
 | E3 | 🟡 trust_audit 有；KT 日志无 | 迁移 44/47 append-only | P3-8 |
-| E4 | ❌ 吊销不清键=被吊销设备仍可被 claim | 同 E1 证据 | P3-3（🔒需重新拍板，2026-07-25 曾暂缓） |
+| E4 | ✅ **已修**（2026-08-02，`26f21e64`）：`olm_identity_repo:delete_by_device/2` 一次清 olm 三表，接在 `user_device_ds:delete/2` 这个共享汇聚点，登出与删设备两条吊销路径同时生效；先删设备行后清键（避免"密钥没了但 token 还有效"），清理失败不阻断吊销但记 ERROR | `device_revocation_tests` 路径 4 共 4 例（16→20）：接线/顺序/error 不阻断/crash 不阻断；空测反证摘掉级联后恰前 2 例变红 | — |
 | E5 | 🟡 append-only 有，树头签名无 | `trust_audit_repo.erl`（无 update/delete） | P3-8 后补签名 |
 | E6 | 🟡 SECURITY.md 待审 | — | P5-9 |
 
