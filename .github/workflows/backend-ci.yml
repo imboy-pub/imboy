@@ -40,7 +40,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -76,7 +76,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -116,7 +116,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -169,7 +169,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies, build artifacts and PLT
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -226,7 +226,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -236,7 +236,7 @@ jobs:
           key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
       - name: Cache Gradualizer escript
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: tools/gradualizer
           key: ${{ runner.os }}-otp28-gradualizer-23533d7eb7541d8a146a507e837fdfff6499a202
@@ -301,7 +301,7 @@ jobs:
           java-version: "17"
 
       - name: Cache dependencies and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -311,7 +311,7 @@ jobs:
           key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
       - name: Cache ELP binary and eqwalizer_support
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .elp
           key: ${{ runner.os }}-elp-2026-06-10-${{ hashFiles('.elp.toml', 'Makefile') }}
@@ -376,7 +376,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
@@ -439,7 +439,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Cache dependencies and build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             deps
