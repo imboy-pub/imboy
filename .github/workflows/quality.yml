@@ -115,7 +115,7 @@ jobs:
           echo "::notice::Bundle clean — $(wc -l < api/openapi.bundled.yaml) lines"
 
       - name: Upload bundled OpenAPI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openapi-bundled
           path: api/openapi.bundled.yaml
