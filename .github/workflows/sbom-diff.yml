@@ -190,7 +190,7 @@ jobs:
 
       # ── 5. 上传当前 SBOM artifact（保留 30 天）────────────────────
       - name: Upload current SBOM as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-cyclonedx
           path: /tmp/sbom-current.json

@@ -140,7 +140,7 @@ jobs:
 
       - name: Upload EUnit log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eunit-full-log
           path: eunit-full.log
@@ -193,7 +193,7 @@ jobs:
 
       - name: Upload Dialyzer log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dialyze-log
           path: dialyze.log
@@ -261,7 +261,7 @@ jobs:
 
       - name: Upload Gradualizer logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gradualizer-logs
           path: .gradualizer/logs
@@ -347,7 +347,7 @@ jobs:
 
       - name: Upload eqWAlizer logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eqwalizer-lib-logs
           path: .elp/logs
@@ -411,7 +411,7 @@ jobs:
 
       - name: Upload Xref log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xref-log
           path: xref.log
@@ -472,7 +472,7 @@ jobs:
 
       - name: Upload E2EE verify log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2ee-verify-log
           path: e2ee-verify.log
