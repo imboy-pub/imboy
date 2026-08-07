@@ -25,7 +25,7 @@ jobs:
     name: Erlang lint (elvis)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Erlang/OTP
         uses: erlef/setup-beam@v1
@@ -77,7 +77,7 @@ jobs:
     name: Contract lint (redocly)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -132,12 +132,12 @@ jobs:
     if: github.event_name == 'pull_request'
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: head
 
       - name: Checkout PR base
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: base
@@ -195,7 +195,7 @@ jobs:
     name: Secrets scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # gitleaks 需要历史
 
@@ -240,7 +240,7 @@ jobs:
     name: Architecture gates (layer / size / silent-catch)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check layer boundaries
         run: |
@@ -328,7 +328,7 @@ jobs:
     name: API→DS 层违规不得增长
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: 检查 API→DS 违规数(上限 131)
         run: |
           COUNT=$(grep -rn "_ds:" src/api/ --include="*.erl" \
