@@ -87,8 +87,8 @@ get_channel(ChannelIdBin, Uid) ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
                     IsSubscribed =
                         case UserRole of
-                            0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
-                            _ -> true
+                            3 -> true; % 创建者恒订阅
+                            _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
                         end,
                     Channel2 = Channel#{
                         user_role => UserRole,
@@ -114,8 +114,8 @@ get_channel_by_custom_id(CustomId, Uid) ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
                     IsSubscribed =
                         case UserRole of
-                            0 -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
-                            _ -> true
+                            3 -> true; % 创建者恒订阅
+                            _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
                         end,
                     Channel2 = Channel#{
                         user_role => UserRole,
@@ -137,23 +137,65 @@ update_channel(Uid, ChannelIdBin, Data) ->
                 false ->
                     {error, <<"无权限操作"/utf8>>};
                 true ->
-                    AllowedFields = [<<"name">>, <<"description">>, <<"avatar">>, <<"tags">>],
+                    AllowedFields = [
+                        <<"name">>, <<"description">>, <<"avatar">>, <<"tags">>, <<"custom_id">>
+                    ],
                     FilteredData = maps:filter(
                         fun(K, _) -> lists:member(K, AllowedFields) end, Data
                     ),
-                    case channel_ds:update(ChannelId, FilteredData#{updated_at => elib_dt:now()}) of
-                        {ok, _} ->
-                            case channel_ds:find_by_id(ChannelId, <<"*">>) of
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                Channel when is_map(Channel) ->
-                                    channel_logic_notify:notify_channel_update(ChannelId, Channel),
-                                    {ok, channel_transfer(Channel)}
-                            end;
-                        {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                    case resolve_custom_id_update(ChannelId, FilteredData) of
+                        {ok, Data2} ->
+                            do_update_channel(ChannelId, Data2);
+                        {error, _} = Err ->
+                            Err
                     end
             end
+    end.
+
+%% @doc update 路径的 custom_id 二次校验（对齐客户端注释中的 resolve_custom_id_update 语义）：
+%% 设过即锁定——仅当频道当前 custom_id 为空（未设过）时允许补设，已设过则忽略本次传入；
+%% 校验规则与 create_channel 一致（仅接受非空 binary + 唯一性检查），
+%% 对显式传入的非法值返回明确错误，避免静默过滤（BUG#134）。
+-spec resolve_custom_id_update(integer(), map()) -> {ok, map()} | {error, binary()}.
+resolve_custom_id_update(ChannelId, Data) ->
+    case maps:find(<<"custom_id">>, Data) of
+        error ->
+            {ok, Data};
+        {ok, CustomId} when is_binary(CustomId), CustomId =/= <<>> ->
+            case channel_ds:find_by_id(ChannelId, <<"custom_id">>) of
+                Channel when is_map(Channel) ->
+                    case maps:get(<<"custom_id">>, Channel, <<>>) of
+                        Current when is_binary(Current), Current =/= <<>> ->
+                            % 已设过即锁定：忽略本次传入，不覆盖
+                            {ok, maps:remove(<<"custom_id">>, Data)};
+                        _ ->
+                            case channel_ds:find_by_custom_id(CustomId) of
+                                {error, _} ->
+                                    {ok, Data};
+                                _ ->
+                                    {error, <<"自定义ID已被使用"/utf8>>}
+                            end
+                    end;
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
+            end;
+        {ok, _Invalid} ->
+            {error, <<"自定义ID格式无效"/utf8>>}
+    end.
+
+-spec do_update_channel(integer(), map()) -> {ok, map()} | {error, binary()}.
+do_update_channel(ChannelId, Data) ->
+    case channel_ds:update(ChannelId, Data#{updated_at => elib_dt:now()}) of
+        {ok, _} ->
+            case channel_ds:find_by_id(ChannelId, <<"*">>) of
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)};
+                Channel when is_map(Channel) ->
+                    channel_logic_notify:notify_channel_update(ChannelId, Channel),
+                    {ok, channel_transfer(Channel)}
+            end;
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec delete_channel(integer(), binary()) -> ok | {error, binary()}.

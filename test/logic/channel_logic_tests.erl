@@ -286,7 +286,7 @@ get_channel_by_custom_id_includes_role_for_admin_test_() ->
             {'get_role', 2, fun(11, 1001) -> 2 end}
         ]},
         {channel_subscription_repo, [
-            {'is_subscribed', 2, fun(_, _) -> erlang:error(should_not_check_subscription) end}
+            {'is_subscribed', 2, fun(11, 1001) -> false end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -296,8 +296,8 @@ get_channel_by_custom_id_includes_role_for_admin_test_() ->
             ?assertMatch({ok, _}, Result),
             {ok, Channel} = Result,
             ?assertEqual(2, maps:get(user_role, Channel)),
-            ?assertEqual(true, maps:get(is_subscribed, Channel)),
-            ?assertEqual(0, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
+            ?assertEqual(false, maps:get(is_subscribed, Channel)),
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, is_subscribed, 2))
         end)
     end}.
 

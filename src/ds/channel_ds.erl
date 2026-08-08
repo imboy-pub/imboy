@@ -296,7 +296,23 @@ list_managed(Uid) -> channel_repo:list_managed(Uid).
 find_by_custom_id(CustomId) -> channel_repo:find_by_custom_id(CustomId).
 
 -spec update(integer(), map()) -> {ok, integer()} | {error, any()}.
-update(ChannelId, Data) -> channel_repo:update(ChannelId, Data).
+update(ChannelId, Data) -> channel_repo:update(ChannelId, encode_update_fields(Data)).
+
+%% @doc update 路径对 jsonb 字段做与 create 路径一致的编码（对齐 add_optional_fields）。
+%% channel 表仅 tags 为 jsonb 列；空列表编码为 <<"[]">>（清空标签），
+%% 其余字段（name/description/avatar 等 text/varchar）原样透传。
+-spec encode_update_fields(map()) -> map().
+encode_update_fields(Data) ->
+    maps:fold(
+        fun
+            (Key, Val, Acc) when (Key =:= tags orelse Key =:= <<"tags">>), is_list(Val) ->
+                Acc#{Key => jsone:encode(Val, [native_utf8])};
+            (Key, Val, Acc) ->
+                Acc#{Key => Val}
+        end,
+        #{},
+        Data
+    ).
 
 -spec delete(integer()) -> {ok, integer()} | {error, any()}.
 delete(ChannelId) -> channel_repo:delete(ChannelId).

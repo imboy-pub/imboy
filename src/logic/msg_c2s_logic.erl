@@ -260,12 +260,18 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
 %% @doc AI 角色聊天处理
 %% 从 config_ds:env(ai_roles) 读取角色 system_prompt，通过千帆 API 回复
 %% ai_roles 配置示例：#{<<"doctor">> => <<"你是一名专业的医生助手..."/utf8>>}
+%% 读取顺序：sys.config 静态 env 优先，未配置时兜底读 admin 持久化的
+%% config_ds:get(<<"ai_roles">>)（ai_agent_ds:save_role/2 写入，运行时即生效）。
 -spec c2s_to_role_chat(binary(), integer(), map()) -> ok | {reply, map()}.
 c2s_to_role_chat(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     RoleId = maps:get(<<"role_id">>, Payload, <<"doctor">>),
     % 从配置读取角色 system_prompt；未配置时使用通用助手提示
-    Roles = config_ds:env(ai_roles, #{}),
+    Roles =
+        case config_ds:env(ai_roles, undefined) of
+            undefined -> config_ds:get(<<"ai_roles">>, #{});
+            Roles0 -> Roles0
+        end,
     SystemPrompt = maps:get(
         RoleId,
         Roles,

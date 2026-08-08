@@ -260,6 +260,7 @@ add_internal(Uid, Scene, Tag) ->
     case TagId of
         0 ->
             Data = #{
+                id => elib_tsid:generate(user_tag),
                 creator_user_id => Uid,
                 scene => Scene,
                 name => Tag,

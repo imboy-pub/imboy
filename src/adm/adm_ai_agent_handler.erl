@@ -13,6 +13,9 @@
 %   POST /adm/ai_agent/onboarding_config -> 半量保存新手引导配置（白名单键校验）
 %   GET  /adm/ai_agent/knowledge_config  -> 读取知识库配置（群规/FAQ，供 @管家 注入）
 %   POST /adm/ai_agent/knowledge_config  -> 半量保存知识库配置（白名单键校验）
+%   GET  /adm/ai_agent/roles            -> 读取 ai_roles 人格 KV 全量
+%   POST /adm/ai_agent/roles            -> 保存/删除单个角色（action=save|delete, role_id, prompt?）
+%   POST /adm/ai_agent/upload_avatar    -> multipart 上传头像到 Garage，返回 URL
 %   POST /adm/ai_agent/mandate_create-> 【admin 应急入口】代运营为 agent 创建受控支付授权
 %
 % 权限：users:read 读，users:create 建，users:update 改，finance:write 授权代付。
@@ -48,6 +51,8 @@ init(Req0, State0) ->
             set_status -> set_status(Method, Req0, State);
             onboarding_config -> onboarding_config(Method, Req0, State);
             knowledge_config -> knowledge_config(Method, Req0, State);
+            roles -> roles(Method, Req0, State);
+            upload_avatar -> upload_avatar(Method, Req0, State);
             mandate_create -> mandate_create(Method, Req0, State);
             _ -> Req0
         end,
@@ -61,7 +66,8 @@ init(Req0, State0) ->
 list(<<"GET">>, Req0, State) ->
     with_perm(?PERM_READ, State, Req0, fun() ->
         {Page, Size} = elib_param:page(Req0),
-        case ai_agent_ds:list(Page, Size) of
+        Category = elib_param:get(category, Req0, <<>>),
+        case ai_agent_ds:list(Page, Size, Category) of
             {ok, P} -> elib_response:success(Req0, P);
             {error, _} -> elib_response:error(Req0, <<"读取 Agent 列表失败"/utf8>>, ?ERR_BAD_REQUEST)
         end
@@ -166,6 +172,107 @@ knowledge_config(<<"POST">>, Req0, State) ->
     end);
 knowledge_config(_, Req0, _State) ->
     method_not_allowed(Req0).
+
+%% @doc ai_roles 人格 KV 管理：GET 读全量；POST 保存/删除单个角色。
+%% Body: {"action": "save"|"delete", "role_id": "...", "prompt": "..."}
+%% 保存后回全量角色，前端下拉与列表直接回显。
+-spec roles(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+roles(<<"GET">>, Req0, State) ->
+    with_perm(?PERM_READ, State, Req0, fun() ->
+        elib_response:success(Req0, #{<<"roles">> => ai_agent_ds:roles()})
+    end);
+roles(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_UPDATE, State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        Action = maps:get(<<"action">>, PostVals, <<>>),
+        RoleId = maps:get(<<"role_id">>, PostVals, <<>>),
+        case {Action, RoleId} of
+            {<<"save">>, RId} when RId =/= <<>> ->
+                Prompt = maps:get(<<"prompt">>, PostVals, <<>>),
+                case Prompt of
+                    <<>> ->
+                        elib_response:error(Req0, <<"角色提示词不能为空"/utf8>>, ?ERR_BAD_REQUEST);
+                    _ ->
+                        ok = ai_agent_ds:save_role(RId, Prompt),
+                        elib_response:success(Req0, #{<<"roles">> => ai_agent_ds:roles()})
+                end;
+            {<<"delete">>, RId} when RId =/= <<>> ->
+                ok = ai_agent_ds:delete_role(RId),
+                elib_response:success(Req0, #{<<"roles">> => ai_agent_ds:roles()});
+            _ ->
+                elib_response:error(Req0, <<"参数不合法"/utf8>>, ?ERR_BAD_REQUEST)
+        end
+    end);
+roles(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc multipart 上传头像到 Garage，返回 URL（前端存入表单随 update 提交，
+%% 由 ai_agent_ds:update 同步写 user.avatar）。
+%% 复用 group_file_handler 的流式 part 读取模式（read_all_parts 未导出，
+%% 此处按同一结构内联，字段仅取 file）。
+-spec upload_avatar(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+upload_avatar(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_UPDATE, State, Req0, fun() ->
+        {Parts, Req1} = read_all_parts(Req0),
+        case find_file_part(Parts) of
+            {ok, FileName, FileBinary, FileType} ->
+                case elib_oss:upload(FileBinary, FileName, #{mime_type => FileType}) of
+                    {ok, FileUrl, _FileId} ->
+                        elib_response:success(Req1, #{<<"url">> => FileUrl});
+                    {error, file_too_large} ->
+                        elib_response:error(
+                            Req1, <<"文件大小超出限制"/utf8>>, ?ERR_FILE_SIZE_EXCEEDED
+                        );
+                    {error, invalid_file_type} ->
+                        elib_response:error(
+                            Req1, <<"不允许的文件类型"/utf8>>, ?ERR_FILE_TYPE_NOT_ALLOWED
+                        );
+                    {error, _} ->
+                        elib_response:error(Req1, <<"文件上传失败"/utf8>>, ?ERR_FILE_UPLOAD_FAILED)
+                end;
+            error ->
+                elib_response:error(Req1, <<"缺少文件参数"/utf8>>, ?ERR_MISSING_PARAM)
+        end
+    end);
+upload_avatar(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc 流式读完 multipart part，归一化为 [{FieldName, Value}]：
+%% 普通字段 Value 为 binary；文件字段为 #{filename, data, content_type}。
+-spec read_all_parts(cowboy_req:req()) -> {list(), cowboy_req:req()}.
+read_all_parts(Req0) ->
+    read_all_parts(Req0, []).
+
+read_all_parts(Req0, Acc) ->
+    case cowboy_req:read_part(Req0) of
+        {ok, Headers, Req1} ->
+            case cow_multipart:form_data(Headers) of
+                {data, FieldName} ->
+                    {Body, Req2} = read_full_part_body(Req1, <<>>),
+                    read_all_parts(Req2, [{FieldName, Body} | Acc]);
+                {file, FieldName, Filename, CType} ->
+                    {Body, Req2} = read_full_part_body(Req1, <<>>),
+                    read_all_parts(Req2, [{FieldName, #{filename => Filename, data => Body, content_type => CType}} | Acc])
+            end;
+        {done, Req1} ->
+            {lists:reverse(Acc), Req1}
+    end.
+
+read_full_part_body(Req0, Acc) ->
+    case cowboy_req:read_part_body(Req0) of
+        {ok, Data, Req1} -> {<<Acc/binary, Data/binary>>, Req1};
+        {more, Data, Req1} -> read_full_part_body(Req1, <<Acc/binary, Data/binary>>)
+    end.
+
+%% 从 parts 提取 file 字段：{ok, FileName, FileBinary, FileType} | error
+-spec find_file_part(list()) -> {ok, binary(), binary(), binary()} | error.
+find_file_part([{<<"file">>, #{filename := FileName, data := Data, content_type := Type}} | _])
+        when FileName =/= undefined, Data =/= undefined ->
+    {ok, FileName, Data, Type};
+find_file_part([_ | Rest]) ->
+    find_file_part(Rest);
+find_file_part([]) ->
+    error.
 
 %% @doc 【admin 应急入口(c)】代运营为指定 agent 创建受控支付授权。
 %% ⚠️ owner_uid **不取管理员身份**，而是目标 agent 的 ai_agent.owner_uid

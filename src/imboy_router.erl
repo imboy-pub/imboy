@@ -613,6 +613,10 @@ get_routes() ->
         {"/api/adm/ai_agent/create", adm_ai_agent_handler, #{action => create}},
         {"/api/adm/ai_agent/update", adm_ai_agent_handler, #{action => update}},
         {"/api/adm/ai_agent/set_status", adm_ai_agent_handler, #{action => set_status}},
+        % ai_roles 人格 KV 管理：GET 读 / POST 保存删除（users:read|update）
+        {"/api/adm/ai_agent/roles", adm_ai_agent_handler, #{action => roles}},
+        % 头像上传（multipart → Garage）：POST（users:update）
+        {"/api/adm/ai_agent/upload_avatar", adm_ai_agent_handler, #{action => upload_avatar}},
         % 新手引导配置（AI 冷启动）：GET 读 / POST 半量保存（users:read|update）
         {"/api/adm/ai_agent/onboarding_config", adm_ai_agent_handler, #{
             action => onboarding_config

@@ -179,7 +179,9 @@ list_subscribed(Uid, Column) ->
     SubTb = channel_subscription_repo:tablename(),
     AdminTb = channel_admin_repo:tablename(),
     Sql =
-        <<"SELECT ", Column/binary,
+        % BUG#123: 三表 join 下裸 * 会展开为 c.*+s.*+a.* 全部列，
+        % epgsql 重复键覆盖导致返回行 id 非频道 id；必须限定 c. 前缀
+        <<"SELECT c.", Column/binary,
             ", "
             "COALESCE(a.role, 0) as user_role, "
             "true as is_subscribed "

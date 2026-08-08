@@ -212,6 +212,9 @@ add_success_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ]},
+        {elib_tsid, [
+            {'generate', 1, fun(user_tag) -> 42 end}
+        ]},
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
                 <<"public.user_tag">>
@@ -224,7 +227,8 @@ add_success_test_() ->
             {'pluck_value', 5, fun(_Tb, _Column, _Where, _Opts, _Default) ->
                 0
             end},
-            {'insert', 3, fun(_Tb, _Data, _Returning) ->
+            {'insert', 3, fun(_Tb, Data, _Returning) ->
+                ?assertEqual(42, maps:get(id, Data)),
                 {ok, 1, #{<<"id">> => 1}}
             end}
         ]}
@@ -466,6 +470,9 @@ add_with_long_tag_name_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ]},
+        {elib_tsid, [
+            {'generate', 1, fun(user_tag) -> 42 end}
+        ]},
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
                 <<"public.user_tag">>
@@ -494,6 +501,9 @@ add_with_utf8_tag_name_test_() ->
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ]},
+        {elib_tsid, [
+            {'generate', 1, fun(user_tag) -> 42 end}
+        ]},
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
                 <<"public.user_tag">>
@@ -521,6 +531,9 @@ add_with_special_scene_test_() ->
     ?WITH_MECKS([
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(user_tag) -> 42 end}
         ]},
         {elib_pg_sql, [
             {'public_tablename', 1, fun(_Table) ->
@@ -591,6 +604,9 @@ complete_tag_lifecycle_test_() ->
     ?WITH_MECKS([
         {elib_dt, [
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
+        ]},
+        {elib_tsid, [
+            {'generate', 1, fun(user_tag) -> 42 end}
         ]},
         {elib_pg_sql, [
             {'parse_result', 1, fun(_Result) ->

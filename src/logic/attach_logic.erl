@@ -249,9 +249,20 @@ can_upload(Uid, <<"group">>, ScopeRef) ->
         error ->
             {error, forbidden}
     end;
-%% channel 上传侧本期未上线，dispatch 占位（读鉴权 authorize/2 已就位）
-can_upload(_Uid, <<"channel">>, _ScopeRef) ->
-    {error, upload_not_supported};
+%% channel：发帖人须是该频道订阅者（scope_ref=频道 id），与读鉴权
+%% authorize/2 同款判定。此前是 upload_not_supported 占位：客户端频道发帖页
+%% 标 scope=channel 后 presign 被拒 → 新图发不出去；不标则落库 private，
+%% 订阅者 view_url 授权失败（BUG#124）。
+can_upload(Uid, <<"channel">>, ScopeRef) ->
+    case to_int(ScopeRef) of
+        {ok, ChannelId} ->
+            case channel_subscription_ds:is_subscribed(ChannelId, Uid) of
+                true -> ok;
+                false -> {error, forbidden}
+            end;
+        error ->
+            {error, forbidden}
+    end;
 %% moment：任何登录用户可为自己的动态上传媒体（scope_ref 发帖时未知，
 %% 上传放行；真正可见性在读时由 authorize_moment 按帖子 ACL 卡）。
 %% 发帖后 moment_logic:create_post 会把这些附件 scope_ref 回填成 momentId。

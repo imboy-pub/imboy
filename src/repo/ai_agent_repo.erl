@@ -23,7 +23,9 @@ tablename() ->
 %% @doc 创建或更新 agent 绑定（按 user_id upsert）
 %% Data 键：user_id(必填), provider(必填), model, role_id, system_prompt,
 %%          owner_uid, trigger_policy(已编码 JSON binary), status,
-%%          description(专属简介), visibility(0=私有 1=公开可发现)
+%%          description(专属简介), visibility(0=私有 1=公开可发现),
+%%          category, voice_id, greeting, capabilities(已编码 JSON binary),
+%%          temperature（迁移 000057 扩展列）
 -spec upsert(map()) -> {ok, [map()]} | {error, term()}.
 upsert(#{user_id := UserId, provider := Provider} = Data) ->
     Tb = tablename(),
@@ -35,17 +37,26 @@ upsert(#{user_id := UserId, provider := Provider} = Data) ->
     Status = maps:get(status, Data, 1),
     Description = maps:get(description, Data, <<>>),
     Visibility = maps:get(visibility, Data, 0),
+    Category = maps:get(category, Data, <<>>),
+    VoiceId = maps:get(voice_id, Data, <<>>),
+    Greeting = maps:get(greeting, Data, <<>>),
+    Capabilities = maps:get(capabilities, Data, <<"{}">>),
+    Temperature = maps:get(temperature, Data, 0.7),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (user_id, provider, model, role_id, system_prompt, owner_uid,"
-            "  trigger_policy, status, description, visibility, created_at, updated_at)"
-            " VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,NOW(),NOW())"
+            "  trigger_policy, status, description, visibility, category, voice_id,"
+            "  greeting, capabilities, temperature, created_at, updated_at)"
+            " VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,NOW(),NOW())"
             " ON CONFLICT (user_id) DO UPDATE SET"
             " provider = EXCLUDED.provider, model = EXCLUDED.model,"
             " role_id = EXCLUDED.role_id, system_prompt = EXCLUDED.system_prompt,"
             " owner_uid = EXCLUDED.owner_uid, trigger_policy = EXCLUDED.trigger_policy,"
             " status = EXCLUDED.status, description = EXCLUDED.description,"
-            " visibility = EXCLUDED.visibility, updated_at = NOW()"
+            " visibility = EXCLUDED.visibility, category = EXCLUDED.category,"
+            " voice_id = EXCLUDED.voice_id, greeting = EXCLUDED.greeting,"
+            " capabilities = EXCLUDED.capabilities, temperature = EXCLUDED.temperature,"
+            " updated_at = NOW()"
             " RETURNING user_id">>,
     case
         elib_pg:query(Sql, [
@@ -58,7 +69,12 @@ upsert(#{user_id := UserId, provider := Provider} = Data) ->
             TriggerJson,
             Status,
             Description,
-            Visibility
+            Visibility,
+            Category,
+            VoiceId,
+            Greeting,
+            Capabilities,
+            Temperature
         ])
     of
         {ok, Rows} ->
@@ -75,7 +91,8 @@ find(UserId) ->
     Sql =
         <<
             "SELECT user_id, provider, model, role_id, system_prompt, owner_uid,"
-            " trigger_policy, status, description, visibility FROM ",
+            " trigger_policy, status, description, visibility, category, voice_id,"
+            " greeting, capabilities, temperature FROM ",
             Tb/binary,
             " WHERE user_id = $1"
         >>,
@@ -105,19 +122,29 @@ set_status(UserId, Status) ->
 
 %% @doc 分页列出 agent（管理后台）
 -spec page(pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
+page(Page, Size) ->
+    page(Page, Size, <<>>).
+
+%% @doc 分页列出 agent（管理后台，可选分类筛选）
 %% @doc admin 管理列表：JOIN user 拿 nickname/avatar，补 visibility/description，
 %% 便于后台识别与编辑（不含 system_prompt 长文本，编辑走 find/1 详情）。
+%% category 为空时回退全量（不带 WHERE）；非空时 WHERE a.category = $1 参数化。
 %% ponytail: LIMIT/OFFSET 整数来自已校验分页（Page/Size>0），内联安全。
 %% 上限：安全性实际由 integer_to_binary/1 兜底——非整数直接 badarg 崩在拼串前，
 %%   不存在可注入的字符串路径；代价是该保证只覆盖这两个位置。
 %% 升级触发：无升级路径（设计约束，非延期）——只要 LIMIT/OFFSET 仍经
 %%   integer_to_binary/1 拼接，注入面恒为零；反之若改成直传 binary/字符串，
 %%   就不再是简化而是缺陷，必须换回参数化。
-page(Page, Size) when Page > 0, Size > 0 ->
+page(Page, Size, Category) when Page > 0, Size > 0 ->
     ATb = tablename(),
     UTb = user_repo:tablename(),
     From = <<" FROM ", ATb/binary, " a JOIN ", UTb/binary, " u ON u.id = a.user_id ">>,
-    case elib_pg:query(<<"SELECT count(*) AS total", From/binary>>, []) of
+    {Where, Params} =
+        case Category of
+            <<>> -> {<<>>, []};
+            _ -> {<<" WHERE a.category = $1">>, [Category]}
+        end,
+    case elib_pg:query(<<"SELECT count(*) AS total", From/binary, Where/binary>>, Params) of
         {ok, [#{<<"total">> := 0} | _]} ->
             {ok, empty_page(Page, Size)};
         {ok, [#{<<"total">> := Total} | _]} ->
@@ -125,14 +152,16 @@ page(Page, Size) when Page > 0, Size > 0 ->
             ListSql =
                 <<
                     "SELECT a.user_id, u.nickname, u.avatar, a.provider, a.model,"
-                    " a.description, a.visibility, a.status, a.owner_uid, a.created_at",
+                    " a.description, a.visibility, a.status, a.owner_uid, a.category,"
+                    " a.created_at",
                     From/binary,
+                    Where/binary,
                     " ORDER BY a.created_at DESC LIMIT ",
                     (integer_to_binary(Size))/binary,
                     " OFFSET ",
                     (integer_to_binary(Offset))/binary
                 >>,
-            case elib_pg:query(ListSql, []) of
+            case elib_pg:query(ListSql, Params) of
                 {ok, Rows} ->
                     {ok, #{total => Total, page => Page, size => Size, list => Rows}};
                 {error, Reason} ->

@@ -204,3 +204,62 @@ is_subscribed_returns_false_when_subscription_missing_test_() ->
             ?assertEqual(false, channel_ds:is_subscribed(1, 100))
         end
     ).
+
+%% 回归：update 路径 tags 必须 jsonb 编码（对齐 create 路径 add_optional_fields），
+%% 否则 epgsql 把 Erlang list 拼进 jsonb 参数导致 PG 22P02（频道更新必失败）。
+update_encodes_tags_as_jsonb_before_update_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_repo, [
+                {'update', 2, fun(11, Data) ->
+                    ?assertEqual(
+                        [<<"a">>, <<"b">>],
+                        jsone:decode(maps:get(<<"tags">>, Data))
+                    ),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_ds:update(11, #{
+                <<"tags">> => [<<"a">>, <<"b">>],
+                <<"name">> => <<"Channel X">>
+            }),
+            ?assertEqual({ok, 1}, Result)
+        end
+    ).
+
+update_encodes_empty_tags_list_as_empty_json_array_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_repo, [
+                {'update', 2, fun(11, Data) ->
+                    ?assertEqual([], jsone:decode(maps:get(<<"tags">>, Data))),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_ds:update(11, #{
+                <<"tags">> => [],
+                <<"avatar">> => <<"u1">>
+            }),
+            ?assertEqual({ok, 1}, Result)
+        end
+    ).
+
+update_passes_through_text_fields_when_no_tags_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_repo, [
+                {'update', 2, fun(11, Data) ->
+                    ?assertEqual(#{<<"name">> => <<"Channel X">>}, Data),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = channel_ds:update(11, #{<<"name">> => <<"Channel X">>}),
+            ?assertEqual({ok, 1}, Result)
+        end
+    ).

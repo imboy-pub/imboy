@@ -92,19 +92,37 @@ presign_group_non_member_forbidden_test_() ->
         end
     ).
 
-presign_channel_upload_not_supported_test() ->
-    set_garage_env(),
-    ?assertEqual(
-        {error, upload_not_supported},
-        attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"channel">>, <<"9">>)
+presign_channel_subscriber_ok_test_() ->
+    ?WITH_MECK(
+        channel_subscription_ds,
+        [{'is_subscribed', 2, fun(9, 1) -> true end}],
+        fun() ->
+            set_garage_env(),
+            {ok, Data} = attach_logic:presign(
+                1, <<"a.png">>, <<"image/png">>, <<"channel">>, <<"9">>
+            ),
+            ?assertMatch(<<"u1/channel/", _/binary>>, maps:get(<<"object_key">>, Data))
+        end
     ).
 
-presign_moment_upload_not_supported_test() ->
-    set_garage_env(),
-    ?assertEqual(
-        {error, upload_not_supported},
-        attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"moment">>, <<"9">>)
+presign_channel_non_subscriber_forbidden_test_() ->
+    ?WITH_MECK(
+        channel_subscription_ds,
+        [{'is_subscribed', 2, fun(_, _) -> false end}],
+        fun() ->
+            set_garage_env(),
+            ?assertEqual(
+                {error, forbidden},
+                attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"channel">>, <<"9">>)
+            )
+        end
     ).
+
+%% moment 上传设计上放行（scope_ref 发帖时未知，可见性在读时按帖子 ACL 卡）
+presign_moment_ok_test() ->
+    set_garage_env(),
+    {ok, Data} = attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"moment">>, undefined),
+    ?assertMatch(<<"u1/moment/", _/binary>>, maps:get(<<"object_key">>, Data)).
 
 %% ===================================================================
 %% confirm：越权守卫（上报他人命名空间 key 应被拒，不触达 DB/存储）
@@ -262,7 +280,7 @@ confirm_persists_real_metadata_and_scope_test_() ->
             [Attach] = meck:capture(first, attachment_ds, save, ['_', '_', '_', '_'], 4),
             ?assertEqual(2048, maps:get(<<"size">>, Attach)),
             ?assertEqual(<<"image/png">>, maps:get(<<"mime_type">>, Attach)),
-            ?assertEqual(<<"deadbeef">>, maps:get(<<"md5">>, Attach)),
+            ?assertEqual(<<"deadbeef">>, maps:get(<<"file_hash256">>, Attach)),
             ?assertEqual(<<"private">>, maps:get(<<"scope">>, Attach)),
             ?assertEqual(null, maps:get(<<"scope_ref">>, Attach))
         end
@@ -436,6 +454,28 @@ authorize_channel_non_subscriber_denies_test_() ->
         ],
         fun() ->
             ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u1/ch9/a.png">>))
+        end
+    ).
+
+%% 上传者本人：channel scope 下「订阅者可访问」语义优先于 creator 归属，
+%% 上传者（creator=查看者）若仍订阅则该频道附件可访问（退订后不可访问，同上例）。
+authorize_channel_uploader_subscribed_grants_test_() ->
+    ?WITH_MECKS(
+        [
+            {attachment_ds, [
+                {'find_by_path', 1, fun(_K) ->
+                    {ok, #{
+                        <<"scope">> => <<"channel">>,
+                        <<"scope_ref">> => <<"9">>,
+                        <<"creator_user_id">> => 7
+                    }}
+                end}
+            ]},
+            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 7) -> true end}]},
+            {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
+        ],
+        fun() ->
+            ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u7/ch9/a.png">>))
         end
     ).
 

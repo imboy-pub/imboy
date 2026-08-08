@@ -135,7 +135,10 @@ pin_conversation(Req0, State) ->
         end,
 
     CurrentUid = auth_ds:current_uid(State),
-    ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),
+    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+    ConversationId = normalize_conversation_id(ConversationId0),
     Type = maps:get(<<"type">>, Payload, <<"c2c">>),
 
     case conversation_pin_logic:pin(CurrentUid, ConversationId, Type) of
@@ -164,7 +167,10 @@ unpin_conversation(Req0, State) ->
         end,
 
     CurrentUid = auth_ds:current_uid(State),
-    ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),
+    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+    ConversationId = normalize_conversation_id(ConversationId0),
     Type = maps:get(<<"type">>, Payload, <<"c2c">>),
 
     ok = conversation_pin_logic:unpin(CurrentUid, ConversationId, Type),
@@ -205,7 +211,10 @@ delete_conversation(Req0, State) ->
         end,
 
     CurrentUid = auth_ds:current_uid(State),
-    ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),
+    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+    ConversationId = normalize_conversation_id(ConversationId0),
     Type = maps:get(<<"type">>, Payload, <<"c2c">>),
 
     case conversation_logic:delete(CurrentUid, ConversationId, Type) of
@@ -234,8 +243,21 @@ restore_conversation(Req0, State) ->
         end,
 
     CurrentUid = auth_ds:current_uid(State),
-    ConversationId = maps:get(<<"conversation_id">>, Payload, <<>>),
+    ConversationId0 = maps:get(<<"conversation_id">>, Payload, <<>>),
+    % conversation_id 客户端按 TSID 契约以 string 传输（防 JS 精度丢失），
+    % 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+    ConversationId = normalize_conversation_id(ConversationId0),
     Type = maps:get(<<"type">>, Payload, <<"c2c">>),
 
     ok = conversation_logic:restore(CurrentUid, ConversationId, Type),
     elib_response:success(Req0, #{<<"restored">> => true}).
+
+%% @doc 归一化 conversation_id 参数
+%% 客户端按 TSID 契约以 string 传输 conversation_id（防 JS 精度丢失），
+%% 系统边界统一转回 integer 供 logic/ds/repo 使用；非数字原样返回交给 logic 守卫拒绝
+%% @end
+-spec normalize_conversation_id(term()) -> term().
+normalize_conversation_id(Id) when is_binary(Id) ->
+    try binary_to_integer(Id) catch _:_ -> Id end;
+normalize_conversation_id(Id) ->
+    Id.

@@ -226,3 +226,43 @@ find_by_id_with_price_returns_error_on_db_failure_test_() ->
             ?assertEqual({error, timeout}, channel_repo:find_by_id_with_price(99))
         end
     ).
+
+%% BUG#123: list_subscribed/2 三表 join（channel c + channel_subscription s +
+%% channel_admin a）下裸 `*` 会展开为三表全部列，channel_subscription / channel_admin
+%% 均有 id 主键，epgsql 行转 map 重复键覆盖导致返回行 <<"id">> 非频道 id。
+%% 必须限定为 c. 前缀，只展开频道表列。
+list_subscribed_uses_qualified_column_prefix_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]},
+            {channel_subscription_repo, [
+                {'tablename', 0, fun() -> <<"public.channel_subscription">> end}
+            ]},
+            {channel_admin_repo, [
+                {'tablename', 0, fun() -> <<"public.channel_admin">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, [11]) ->
+                    SqlBin = iolist_to_binary(Sql),
+                    ?assertMatch(
+                        {match, _},
+                        re:run(SqlBin, <<"SELECT c\\.\\*,">>),
+                        "SELECT 须限定为 c.* 前缀"
+                    ),
+                    ?assertEqual(
+                        nomatch,
+                        re:run(SqlBin, <<"SELECT \\*,">>),
+                        "不允许出现裸 SELECT * 前缀"
+                    ),
+                    {ok, [#{<<"id">> => 42, <<"name">> => <<"Tech">>, <<"user_role">> => 0}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, [Row]} = channel_repo:list_subscribed(11, <<"*">>),
+            ?assertEqual(42, maps:get(<<"id">>, Row)),
+            ?assertEqual(0, maps:get(<<"user_role">>, Row))
+        end
+    ).

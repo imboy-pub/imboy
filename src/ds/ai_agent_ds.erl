@@ -12,8 +12,12 @@
 -export([update/2]).
 -export([get/1]).
 -export([list/2]).
+-export([list/3]).
 -export([set_status/2]).
 -export([is_agent/1]).
+-export([roles/0]).
+-export([save_role/2]).
+-export([delete_role/1]).
 
 -include("log.hrl").
 
@@ -58,7 +62,7 @@ create(ConfigMap) when is_map(ConfigMap) ->
     end.
 
 %% @doc 更新既有 agent 绑定（不新建 user，按 user_id upsert 元数据）；
-%% ConfigMap 含非空 nickname 时同步 user 表昵称（agent 资料管理后台可配）。
+%% ConfigMap 含非空 nickname/avatar 时同步 user 表（agent 资料管理后台可配）。
 -spec update(integer(), map()) -> {ok, map()} | {error, binary()}.
 update(UserId, ConfigMap) when is_map(ConfigMap) ->
     case trim(maps:get(<<"provider">>, ConfigMap, <<>>)) of
@@ -67,7 +71,7 @@ update(UserId, ConfigMap) when is_map(ConfigMap) ->
         Provider ->
             case ai_agent_repo:upsert(agent_data(UserId, Provider, ConfigMap)) of
                 {ok, _} ->
-                    ok = maybe_update_nickname(UserId, ConfigMap),
+                    ok = maybe_update_user_profile(UserId, ConfigMap),
                     {ok, #{<<"user_id">> => UserId}};
                 {error, Reason} ->
                     ?ERROR_LOG("ai_agent_ds:update user_id=~p error ~p~n", [UserId, Reason]),
@@ -75,23 +79,54 @@ update(UserId, ConfigMap) when is_map(ConfigMap) ->
             end
     end.
 
-%% nickname 非空则同步 user 表；失败仅记日志（元数据更新已成功，昵称可重试）
--spec maybe_update_nickname(integer(), map()) -> ok.
-maybe_update_nickname(UserId, ConfigMap) ->
-    case trim(maps:get(<<"nickname">>, ConfigMap, <<>>)) of
-        <<>> ->
+%% nickname/avatar 任一非空则同步 user 表（一次 update 合并）；
+%% 失败仅记日志（元数据更新已成功，资料可重试）
+-spec maybe_update_user_profile(integer(), map()) -> ok.
+maybe_update_user_profile(UserId, ConfigMap) ->
+    Profile = maps:from_list([
+        {K, V}
+     || {K, V} <- [
+            {nickname, trim(maps:get(<<"nickname">>, ConfigMap, <<>>))},
+            {avatar, trim(maps:get(<<"avatar">>, ConfigMap, <<>>))}
+        ],
+        V =/= <<>>
+    ]),
+    case map_size(Profile) of
+        0 ->
             ok;
-        Nickname ->
-            case user_repo:update(UserId, #{nickname => Nickname}) of
+        _ ->
+            case user_repo:update(UserId, Profile) of
                 {ok, _} ->
                     ok;
                 {error, Reason} ->
-                    ?ERROR_LOG("ai_agent_ds:update nickname user_id=~p error ~p~n", [
+                    ?ERROR_LOG("ai_agent_ds:update profile user_id=~p error ~p~n", [
                         UserId, Reason
                     ]),
                     ok
             end
     end.
+
+%% ===================================================================
+%% ai_roles 人格 KV 管理（admin 角色管理页后端）
+%% 持久层走 config_ds get/set（DB config 表 + 缓存）；
+%% 消费点 msg_c2s_logic:c2s_to_role_chat 读 env(ai_roles) 优先、
+%% config_ds:get 兜底——admin 保存的角色运行时即生效。
+%% ===================================================================
+
+%% @doc 读取全部角色：#{RoleId => SystemPrompt}
+-spec roles() -> map().
+roles() ->
+    config_ds:get(<<"ai_roles">>, #{}).
+
+%% @doc 保存/覆盖单个角色 system_prompt
+-spec save_role(binary(), binary()) -> ok.
+save_role(RoleId, Prompt) when is_binary(RoleId), is_binary(Prompt) ->
+    config_ds:set(<<"ai_roles">>, (roles())#{RoleId => Prompt}).
+
+%% @doc 删除单个角色（不存在也返回 ok，幂等）
+-spec delete_role(binary()) -> ok.
+delete_role(RoleId) ->
+    config_ds:set(<<"ai_roles">>, maps:remove(RoleId, roles())).
 
 %% @doc 读取单个 agent（解码 trigger_policy jsonb 为 map）
 -spec get(integer()) -> {ok, map()} | {error, notfound | term()}.
@@ -107,6 +142,11 @@ get(UserId) ->
 -spec list(pos_integer(), pos_integer()) -> {ok, map()} | {error, term()}.
 list(Page, Size) ->
     ai_agent_repo:page(Page, Size).
+
+%% @doc 分页列出 agent（管理后台，按分类筛选；空分类回退全量）
+-spec list(pos_integer(), pos_integer(), binary()) -> {ok, map()} | {error, term()}.
+list(Page, Size, Category) when Page > 0, Size > 0 ->
+    ai_agent_repo:page(Page, Size, Category).
 
 %% @doc 启用/停用 agent
 -spec set_status(integer(), 0 | 1) -> {ok, non_neg_integer()} | {error, term()}.
@@ -146,10 +186,11 @@ create_agent_user(Uid, Nickname, Account) ->
             {error, Reason}
     end.
 
-%% 组装 ai_agent 行数据（trigger_policy map → JSON binary）
+%% 组装 ai_agent 行数据（trigger_policy/capabilities map → JSON binary）
 -spec agent_data(integer(), binary(), map()) -> map().
 agent_data(Uid, Provider, ConfigMap) ->
     TriggerMap = maps:get(<<"trigger_policy">>, ConfigMap, #{}),
+    Capabilities = maps:get(<<"capabilities">>, ConfigMap, #{}),
     #{
         user_id => Uid,
         provider => Provider,
@@ -161,7 +202,13 @@ agent_data(Uid, Provider, ConfigMap) ->
         status => 1,
         %% 可选：管理后台传则透传，缺省保持列 DEFAULT（description='' visibility=0）
         description => maps:get(<<"description">>, ConfigMap, <<>>),
-        visibility => ec_cnv:to_integer(maps:get(<<"visibility">>, ConfigMap, 0))
+        visibility => ec_cnv:to_integer(maps:get(<<"visibility">>, ConfigMap, 0)),
+        %% 迁移 000057 新增的可定制属性
+        category => trim(maps:get(<<"category">>, ConfigMap, <<>>)),
+        voice_id => trim(maps:get(<<"voice_id">>, ConfigMap, <<>>)),
+        greeting => trim(maps:get(<<"greeting">>, ConfigMap, <<>>)),
+        capabilities => jsone:encode(Capabilities, [native_utf8]),
+        temperature => maps:get(<<"temperature">>, ConfigMap, 0.7)
     }.
 
 -spec decode_trigger(map()) -> map().

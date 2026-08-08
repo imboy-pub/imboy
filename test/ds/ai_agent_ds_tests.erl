@@ -181,3 +181,215 @@ update_skips_nickname_when_absent_or_blank_test_() ->
             ?assertNot(meck:called(user_repo, update, '_'))
         end
     ).
+
+%% ===================================================================
+%% update/2 — 扩展属性（category/voice_id/greeting/capabilities/temperature）
+%% + avatar 同步 user 表（迁移 000057 新增 5 字段）
+%% ===================================================================
+
+update_persists_extended_fields_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {ai_agent_repo, [
+                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+            ]}
+        ],
+        fun() ->
+            {ok, _} = ai_agent_ds:update(7, #{
+                <<"provider">> => <<"bailian">>,
+                <<"model">> => <<"qwen-flash">>,
+                <<"role_id">> => <<"doctor">>,
+                <<"system_prompt">> => <<"你是医生"/utf8>>,
+                <<"description">> => <<"客服助手"/utf8>>,
+                <<"visibility">> => 1,
+                <<"category">> => <<"客服"/utf8>>,
+                <<"voice_id">> => <<"xiaoyan">>,
+                <<"greeting">> => <<"您好，我是客服助手"/utf8>>,
+                <<"capabilities">> => #{<<"knowledge">> => true, <<"proactive">> => false},
+                <<"temperature">> => 0.3
+            }),
+            %% 5 个新字段全部透传到 repo upsert（capabilities 编码为 JSON binary，
+            %% temperature 透传数值）
+            ?assert(
+                meck:called(ai_agent_repo, upsert, [
+                    #{
+                        user_id => 7,
+                        provider => <<"bailian">>,
+                        model => <<"qwen-flash">>,
+                        role_id => <<"doctor">>,
+                        system_prompt => <<"你是医生"/utf8>>,
+                        owner_uid => 0,
+                        trigger_policy => <<"{}">>,
+                        status => 1,
+                        description => <<"客服助手"/utf8>>,
+                        visibility => 1,
+                        category => <<"客服"/utf8>>,
+                        voice_id => <<"xiaoyan">>,
+                        greeting => <<"您好，我是客服助手"/utf8>>,
+                        capabilities => <<"{\"knowledge\":true,\"proactive\":false}">>,
+                        temperature => 0.3
+                    }
+                ])
+            )
+        end
+    ).
+
+update_syncs_avatar_when_present_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {ai_agent_repo, [
+                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+            ]}
+        ],
+        fun() ->
+            {ok, _} = ai_agent_ds:update(7, #{
+                <<"provider">> => <<"bailian">>,
+                <<"avatar">> => <<"https://s3.example.com/u7/avatar.png">>
+            }),
+            ?assert(meck:called(user_repo, update, [
+                7,
+                #{avatar => <<"https://s3.example.com/u7/avatar.png">>}
+            ]))
+        end
+    ).
+
+update_skips_avatar_when_absent_or_blank_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
+            {ai_agent_repo, [
+                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+            ]}
+        ],
+        fun() ->
+            {ok, _} = ai_agent_ds:update(7, #{<<"provider">> => <<"bailian">>}),
+            {ok, _} = ai_agent_ds:update(7, #{
+                <<"provider">> => <<"bailian">>, <<"avatar">> => <<"  ">>
+            }),
+            ?assertNot(meck:called(user_repo, update, '_'))
+        end
+    ).
+
+%% ===================================================================
+%% roles/0, save_role/2, delete_role/1 — ai_roles 人格 KV 管理
+%% （持久层走 config_ds get/set，与 msg_c2s_logic 的 ai_roles 消费点对齐）
+%% ===================================================================
+
+roles_returns_empty_map_when_unset_test_() ->
+    ?WITH_MECKS(
+        [{config_ds, [{'get', 2, fun(<<"ai_roles">>, Default) -> Default end}]}],
+        fun() ->
+            ?assertEqual(#{}, ai_agent_ds:roles())
+        end
+    ).
+
+roles_reads_back_saved_roles_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun(<<"ai_roles">>, Default) ->
+                    case get(saved_roles) of
+                        undefined -> Default;
+                        Saved -> Saved
+                    end
+                end},
+                {'set', 2, fun(<<"ai_roles">>, Map) -> put(saved_roles, Map), ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(#{}, ai_agent_ds:roles()),
+            %% 保存两个角色后读回
+            ok = ai_agent_ds:save_role(<<"doctor">>, <<"你是医生"/utf8>>),
+            ok = ai_agent_ds:save_role(<<"lawyer">>, <<"你是律师"/utf8>>),
+            ?assertEqual(
+                #{
+                    <<"doctor">> => <<"你是医生"/utf8>>,
+                    <<"lawyer">> => <<"你是律师"/utf8>>
+                },
+                ai_agent_ds:roles()
+            )
+        end
+    ).
+
+save_role_overwrites_existing_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun(<<"ai_roles">>, Default) ->
+                    case get(saved_roles) of
+                        undefined -> Default;
+                        Saved -> Saved
+                    end
+                end},
+                {'set', 2, fun(<<"ai_roles">>, Map) -> put(saved_roles, Map), ok end}
+            ]}
+        ],
+        fun() ->
+            ok = ai_agent_ds:save_role(<<"doctor">>, <<"旧版"/utf8>>),
+            ok = ai_agent_ds:save_role(<<"doctor">>, <<"新版"/utf8>>),
+            ?assertEqual(
+                #{<<"doctor">> => <<"新版"/utf8>>},
+                ai_agent_ds:roles()
+            )
+        end
+    ).
+
+delete_role_removes_existing_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun(<<"ai_roles">>, Default) ->
+                    case get(saved_roles) of
+                        undefined -> Default;
+                        Saved -> Saved
+                    end
+                end},
+                {'set', 2, fun(<<"ai_roles">>, Map) -> put(saved_roles, Map), ok end}
+            ]}
+        ],
+        fun() ->
+            ok = ai_agent_ds:save_role(<<"doctor">>, <<"你是医生"/utf8>>),
+            ok = ai_agent_ds:save_role(<<"lawyer">>, <<"你是律师"/utf8>>),
+            ok = ai_agent_ds:delete_role(<<"doctor">>),
+            ?assertEqual(
+                #{<<"lawyer">> => <<"你是律师"/utf8>>},
+                ai_agent_ds:roles()
+            )
+        end
+    ).
+
+%% ===================================================================
+%% list/3 — 分类筛选透传
+%% ===================================================================
+
+list_with_category_calls_repo_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_repo, [
+                {'page', 3, fun(Page, Size, <<"medical">>) ->
+                    {ok, #{total => 1, page => Page, size => Size, list => [x]}}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, #{list := [x]}} = ai_agent_ds:list(1, 10, <<"medical">>),
+            ?assert(meck:called(ai_agent_repo, page, [1, 10, <<"medical">>]))
+        end
+    ).
+
+list_without_category_falls_back_to_page2_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_repo, [
+                {'page', 2, fun(Page, Size) ->
+                    {ok, #{total => 0, page => Page, size => Size, list => []}}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, #{list := []}} = ai_agent_ds:list(2, 10),
+            ?assert(meck:called(ai_agent_repo, page, [2, 10]))
+        end
+    ).

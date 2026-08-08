@@ -210,7 +210,11 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
             WhereMap =
                 case bit_size(Kwd) > 0 of
                     true ->
-                        KwdPattern = <<"%", Kwd/binary, ",%">>,
+                        % 搜索模式必须 %kwd% 而非 %kwd,%：f.tag 是逗号分隔多值字段，
+                        % 但 remark/nickname/sign 是普通单值字段——尾逗号模式要求
+                        % 关键词后紧跟逗号，搜昵称片段（如"张"）永不能命中 → 搜索必空。
+                        % 与 collect_page_by_tagname 的 %kwd% 对齐（同款对称性 bug）。
+                        Like = <<"%", Kwd/binary, "%">>,
                         #{
                             <<"__and">> => [
                                 #{
@@ -220,10 +224,10 @@ page_by_tag(Uid, Page, Size, TagId, Kwd) when Page > 0 ->
                                 },
                                 #{
                                     <<"__or">> => [
-                                        #{<<"f.tag">> => {op, <<"LIKE">>, KwdPattern}},
-                                        #{<<"f.remark">> => {op, <<"LIKE">>, KwdPattern}},
-                                        #{<<"u.nickname">> => {op, <<"LIKE">>, KwdPattern}},
-                                        #{<<"u.sign">> => {op, <<"LIKE">>, KwdPattern}}
+                                        #{<<"f.tag">> => {op, <<"LIKE">>, Like}},
+                                        #{<<"f.remark">> => {op, <<"LIKE">>, Like}},
+                                        #{<<"u.nickname">> => {op, <<"LIKE">>, Like}},
+                                        #{<<"u.sign">> => {op, <<"LIKE">>, Like}}
                                     ]
                                 }
                             ]

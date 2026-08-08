@@ -207,3 +207,40 @@ pin_and_restore_actions_success_test_() ->
             ?assertEqual(req_ok, RestoreReq)
         end
     ).
+
+%% @doc BUG#129 回归：客户端按 TSID 契约以 string 传 conversation_id，
+%% handler 系统边界必须转回 integer 再交给 logic（logic 层 is_integer 守卫会拒绝 string）
+tsid_string_conversation_id_converted_to_integer_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'read_body', 1, fun(_Req) ->
+                    {ok,
+                        <<"{\"conversation_id\":\"8601234567890123\",\"type\":\"c2c\"}">>,
+                        req_after_body}
+                end}
+            ]},
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 100 end}
+            ]},
+            {conversation_pin_logic, [
+                {'pin', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end}
+            ]},
+            {conversation_logic, [
+                {'delete', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Data) -> req_ok end}
+            ]}
+        ],
+        fun() ->
+            {ok, PinReq, _S1} = conversation_handler:init(req_mock(), #{
+                action => pin_conversation, current_uid => 100
+            }),
+            ?assertEqual(req_ok, PinReq),
+            {ok, DeleteReq, _S2} = conversation_handler:init(req_mock(), #{
+                action => delete_conversation, current_uid => 100
+            }),
+            ?assertEqual(req_ok, DeleteReq)
+        end
+    ).
