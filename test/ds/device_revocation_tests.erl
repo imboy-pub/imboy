@@ -299,15 +299,15 @@ is_active_cache_miss_active_row_test_() ->
         end
     ).
 
-%% DB 查不出来 ≠ 查无此行：fail-open，避免一次抖动把所有人踢下线
-is_active_db_error_fails_open_test_() ->
+%% DB 查不出来时 fail-closed：不可确认设备仍活跃就拒绝绑定 token
+is_active_db_error_fails_closed_test_() ->
     ?WITH_MECKS(
         [
             {imboy_cache, [{'memo', 3, fun(Fun, _Key, 60) -> Fun() end}]},
             {user_device_repo, [{'is_active', 2, fun(_, _) -> {error, timeout} end}]}
         ],
         fun() ->
-            ?assert(user_device_ds:is_active(?UID, ?DID))
+            ?assertNot(user_device_ds:is_active(?UID, ?DID))
         end
     ).
 

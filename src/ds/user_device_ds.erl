@@ -157,12 +157,11 @@ is_active(Uid, DID) ->
         {ok, Active} when is_boolean(Active) ->
             Active;
         Other ->
-            %% ponytail: DB 查不出来时 fail-open（放行），只有"确定查无此行"才判吊销。
-            %% 否则一次 DB 抖动会把所有 did 绑定 token 的用户全端踢下线。
-            %% 上限：DB 故障期间已被移除的设备仍能访问（最长 60s 缓存 TTL）。
-            %% 升级触发：需要强一致吊销时改 fail-closed + 熔断降级。
+            %% 安全不变量：设备活跃状态无法确认时必须 fail-closed。
+            %% 删除设备会主动清缓存并跨节点广播；数据库短暂不可用时宁可
+            %% 暂停 did 绑定 token，也不能放行已被吊销的设备。
             ok = ?WARN_LOG({user_device_is_active_unavailable, Uid, DID, Other}),
-            true
+            false
     end.
 
 %% @doc 根据设备ID更新设备信息

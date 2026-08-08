@@ -825,6 +825,12 @@ c2c_duplicate_resend_acks_without_redelivery_test_() ->
             ]},
             {imboy_message_helper, [
                 {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {ai_agent_reply, [
+                {'maybe_dispatch', 3, fun(_, _, _) -> ok end}
+            ]},
+            {billing_meter, [
+                {'meter', 2, fun(_, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -851,7 +857,10 @@ c2c_duplicate_resend_acks_without_redelivery_test_() ->
             ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
             %% 投递管道不得再次执行
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4))
+            ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4)),
+            %% duplicate 不得重复触发旁路副作用
+            ?assertEqual(0, meck:num_calls(ai_agent_reply, maybe_dispatch, 3)),
+            ?assertEqual(0, meck:num_calls(billing_meter, meter, 2))
         end
     ).
 

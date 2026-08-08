@@ -85,11 +85,8 @@ c2c_send(MsgId, CurrentUid, To, ToId, Data) ->
             %% 下面两个副作用：agent 旁路会以**明文** C2C 回投用户，等于绕过刚刚生效
             %% 的明文拒收门；billing 也会给一条从未发出的消息计量。
             %% 与 C2G 侧「agent 触发只在 {ok,new} 分支内旁路」同一范式。
-            %% ponytail: 只区分 ok / {reply,_}，客户端重发（stage 返回 {ok,duplicate}）
-            %%   仍会重复触发一次 agent 与计量；要精确到 {ok,new} 需把 stage 结果透传出
-            %%   stage_and_send_c2c，等重发导致的重复计费真出现再改。
             case Result of
-                ok ->
+                {ok, new} ->
                     %% T1.4：若 To 是 AI agent 账号，旁路异步触发 LLM 回复（agent→human）。
                     %% fire-and-forget，不改变原 C2C 返回值/投递；E2EE 消息在内部被跳过。
                     %% ponytail: maybe_dispatch 对每条非 E2EE 文本 C2C 多做一次 ai_agent
@@ -99,10 +96,16 @@ c2c_send(MsgId, CurrentUid, To, ToId, Data) ->
                     %% 绝不阻塞主返回；无订阅/失败均 no-op（详见 billing_meter）。
                     _ = billing_meter:meter(<<"messages_sent">>, 1),
                     ok;
+                {ok, duplicate} ->
+                    %% duplicate 只补 SERVER_ACK；不得重复触发 agent 或 billing 副作用。
+                    ok;
                 _ ->
                     ok
             end,
-            Result;
+            case Result of
+                {ok, _} -> ok;
+                _ -> Result
+            end;
         {reject, in_denylist} ->
             Msg = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, To),
             {reply, Msg};
@@ -193,7 +196,7 @@ prepare_c2c_data(CurrentUid, Data) ->
     integer(),
     map()
 ) ->
-    ok | {reply, map()}.
+    {ok, new | duplicate} | {reply, map()}.
 stage_and_send_c2c(
     MsgId, To, ToId, From, Payload, MsgType, Action, E2EE, Timestamps, CurrentUid, Data
 ) ->
@@ -314,7 +317,7 @@ stage_and_send_c2c(
                     % 客户端重发（未收到 SERVER_ACK）：只补发 ACK，
                     % 跳过整条投递管道，避免接收端重复推送
                     self() ! {reply, message_policy:build_server_ack(MsgId, NowMS)},
-                    ok;
+                    {ok, duplicate};
                 {ok, new} ->
                     % 立即响应和投递
                     % T1.2：ACK 构建退化为外壳调用 message_policy:build_server_ack/2
@@ -395,7 +398,7 @@ stage_and_send_c2c(
                             )
                         end
                     ),
-                    ok
+                    {ok, new}
                 % end case StageResult
             end;
         {error, Reason} ->
