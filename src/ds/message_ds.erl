@@ -739,6 +739,11 @@ validate_message_by_type(_Type, _Msg) ->
 -spec validate_e2ee_envelope(term()) -> ok | {error, binary()}.
 validate_e2ee_envelope(null) ->
     ok;
+%% 未加密占位：契约（docs/reference/websocket-api-2.md）允许未加密消息
+%% e2ee 字段为不存在或空字符串 ""，客户端 action 帧（message_revoke 等）
+%% 按契约发 ""；空串等价于 null，不得按畸形信封拒绝（BUG#141）。
+validate_e2ee_envelope(<<>>) ->
+    ok;
 validate_e2ee_envelope(E2EE) when is_map(E2EE) ->
     case e2ee_envelope_within_limit(E2EE) of
         false ->

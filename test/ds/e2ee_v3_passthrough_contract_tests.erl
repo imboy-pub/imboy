@@ -391,6 +391,26 @@ validate_accepts_v3_envelope_with_unknown_extension_test() ->
     E2EE = (v3_single_envelope_e2ee_map())#{<<"future_field">> => <<"x">>},
     ?assertMatch({ok, _}, message_ds:validate_message(c2c_msg_with(E2EE))).
 
+%% BUG#141: 契约（docs/reference/websocket-api-2.md）允许未加密消息 e2ee 字段
+%% 为不存在或空字符串 ""；客户端 action 帧（message_revoke 等）按契约发 ""，
+%% 服务端不得当作畸形信封拒绝。反证：去掉 validate_e2ee_envelope 的 <<>> 子句即红。
+validate_accepts_empty_string_e2ee_placeholder_test() ->
+    ?assertMatch({ok, _}, message_ds:validate_message(c2c_msg_with(<<>>))).
+
+%% BUG#141: 完整撤回帧（客户端 sendRevokeMessage 实际构造）必须通过校验
+validate_accepts_revoke_frame_with_empty_e2ee_test() ->
+    Revoke = #{
+        <<"id">> => <<"d9rdg10pa1i1co0ktq20">>,
+        <<"type">> => <<"C2C">>,
+        <<"from">> => <<"100">>,
+        <<"to">> => <<"200">>,
+        <<"msg_type">> => <<"custom">>,
+        <<"action">> => <<"message_revoke">>,
+        <<"e2ee">> => <<>>,
+        <<"payload">> => #{<<"original_msg_id">> => <<"d9rdfqgpa1i1co0ktq0g">>}
+    },
+    ?assertMatch({ok, _}, message_ds:validate_message(Revoke)).
+
 %% ---------- 出站线上帧：客户端实际收到的字节必须保住信封 ----------
 
 %% 模拟 Dart v2 客户端：帧载荷先按 JSON 解，再回退 protobuf
