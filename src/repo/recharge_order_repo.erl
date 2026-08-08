@@ -256,8 +256,9 @@ refund_in_tx(OrderNo) ->
     already_refunded | order_not_refundable.
 order_not_refundable_state(Conn, Tb, OrderNo) ->
     Sql = <<"SELECT status FROM ", Tb/binary, " WHERE order_no = $1">>,
-    case elib_pg:execute(Conn, Sql, [OrderNo]) of
-        {ok, _, [{?STATUS_REFUNDED}]} -> already_refunded;
+    %% SELECT 必须用 query/3：execute 对 SELECT 只返回 {ok, Rows}，三元组必败
+    case elib_pg:query(Conn, Sql, [OrderNo]) of
+        {ok, [#{<<"status">> := ?STATUS_REFUNDED}]} -> already_refunded;
         _ -> order_not_refundable
     end.
 

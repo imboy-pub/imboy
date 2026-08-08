@@ -110,8 +110,21 @@ grab(PacketId, ReceiverUid) ->
         LockSql =
             <<"SELECT type, amount, count, remain_amount, remain_count, status,",
                 " (expires_at > NOW()) AS alive FROM ", Tb/binary, " WHERE id = $1 FOR UPDATE">>,
-        case elib_pg:execute(Conn, LockSql, [PacketId]) of
-            {ok, 1, [{Type, _TotalAmount, _TotalCount, RemainAmount, RemainCount, Status, Alive}]} ->
+        %% ⚠️ 事务内 SELECT 必须用 query/3（equery）：epgsql 的 execute_batch 对
+        %% SELECT 只返回 {ok, Rows}（decode_complete 把 SELECT tag 解码成原子 select），
+        %% 三元组 {ok, Count, Rows} 匹配必败 → 曾致抢红包永远报「红包不存在」。
+        case elib_pg:query(Conn, LockSql, [PacketId]) of
+            {ok, [
+                #{
+                    <<"type">> := Type,
+                    <<"amount">> := _TotalAmount,
+                    <<"count">> := _TotalCount,
+                    <<"remain_amount">> := RemainAmount,
+                    <<"remain_count">> := RemainCount,
+                    <<"status">> := Status,
+                    <<"alive">> := Alive
+                }
+            ]} ->
                 %% 2. 检查状态 / Check status
                 case Status =:= <<"active">> andalso RemainCount > 0 andalso Alive =:= true of
                     true ->
@@ -119,8 +132,8 @@ grab(PacketId, ReceiverUid) ->
                         CheckSql =
                             <<"SELECT id FROM ", RecvTb/binary,
                                 " WHERE red_packet_id = $1 AND receiver_uid = $2 LIMIT 1">>,
-                        case elib_pg:execute(Conn, CheckSql, [PacketId, ReceiverUid]) of
-                            {ok, 1, [_]} ->
+                        case elib_pg:query(Conn, CheckSql, [PacketId, ReceiverUid]) of
+                            {ok, [_]} ->
                                 throw({rollback, already_received});
                             _ ->
                                 %% 4. 计算领取金额 / Calculate random/fixed amount
@@ -209,15 +222,21 @@ expire_and_refund(PacketId) ->
         LockSql =
             <<"SELECT sender_uid, remain_amount, status FROM ", Tb/binary,
                 " WHERE id = $1 AND expires_at <= NOW() FOR UPDATE">>,
-        case elib_pg:execute(Conn, LockSql, [PacketId]) of
-            {ok, 1, [{SenderUid, RemainAmount, <<"active">>}]} when RemainAmount > 0 ->
+        case elib_pg:query(Conn, LockSql, [PacketId]) of
+            {ok, [
+                #{
+                    <<"sender_uid">> := SenderUid,
+                    <<"remain_amount">> := RemainAmount,
+                    <<"status">> := <<"active">>
+                }
+            ]} when RemainAmount > 0 ->
                 do_expire_refund(Conn, Tb, WalletTb, TxTb, PacketId, SenderUid, RemainAmount);
-            {ok, 1, [{_S, _R, <<"active">>}]} ->
+            {ok, [#{<<"status">> := <<"active">>}]} ->
                 %% 余额已为 0：只收尾状态，不动钱
                 ExpSql = <<"UPDATE ", Tb/binary, " SET status = 'expired' WHERE id = $1">>,
                 {ok, 1} = elib_pg:execute(Conn, ExpSql, [PacketId]),
                 {ok, 0};
-            {ok, 1, [_]} ->
+            {ok, [_]} ->
                 %% 已被并发处理成 expired/finished
                 throw({rollback, already_settled});
             _ ->
