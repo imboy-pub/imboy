@@ -211,13 +211,13 @@ publish(Code, Version, PublishedBy) ->
                 reason => Reason
             }),
             {error, Reason};
-        {ok, _} ->
+        {ok, Value} ->
             audit_event(role_published, #{
                 role_code => Code,
                 version => Version,
                 published_by => PublishedBy
             }),
-            Result;
+            {ok, Value};
         _ ->
             Result
     end.
