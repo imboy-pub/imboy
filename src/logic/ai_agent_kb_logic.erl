@@ -180,14 +180,18 @@ select_matching_context(Kb, Query, MaxBytes) ->
 -spec line_matches(binary(), binary()) -> boolean().
 line_matches(<<>>, _Query) ->
     false;
-line_matches(Line, Query) ->
+line_matches(_Line, <<>>) ->
+    false;
+line_matches(<<_:8, _/binary>> = Line, <<_:8, _/binary>> = Query) ->
     case binary:match(Line, Query) of
         nomatch ->
             Tokens = string:lexemes(binary_to_list(Query), " \t\r\n,.;:!?，。！？："),
             lists:any(
                 fun(Token) ->
-                    TokenBin = unicode:characters_to_binary(Token),
-                    byte_size(TokenBin) > 1 andalso binary:match(Line, TokenBin) =/= nomatch
+                    case unicode:characters_to_binary(Token) of
+                        <<_:16, _/binary>> = TokenBin -> binary:match(Line, TokenBin) =/= nomatch;
+                        _ -> false
+                    end
                 end,
                 Tokens
             );

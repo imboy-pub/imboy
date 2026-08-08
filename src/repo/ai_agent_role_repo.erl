@@ -218,8 +218,8 @@ publish(Code, Version, PublishedBy) ->
                 published_by => PublishedBy
             }),
             {ok, Value};
-        Other ->
-            Other
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 publish_tx(Conn, Code, Version, PublishedBy) ->
