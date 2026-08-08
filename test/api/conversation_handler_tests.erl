@@ -209,14 +209,14 @@ pin_and_restore_actions_success_test_() ->
     ).
 
 %% @doc BUG#129 回归：客户端按 TSID 契约以 string 传 conversation_id，
-%% handler 系统边界必须转回 integer 再交给 logic（logic 层 is_integer 守卫会拒绝 string）
+%% handler 系统边界必须转回 integer 再交给 logic（logic 层 is_integer 守卫会拒绝 string）。
+%% 覆盖全部四端点：pin/unpin/delete/restore。
 tsid_string_conversation_id_converted_to_integer_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
                 {'read_body', 1, fun(_Req) ->
-                    {ok,
-                        <<"{\"conversation_id\":\"8601234567890123\",\"type\":\"c2c\"}">>,
+                    {ok, <<"{\"conversation_id\":\"8601234567890123\",\"type\":\"c2c\"}">>,
                         req_after_body}
                 end}
             ]},
@@ -224,10 +224,12 @@ tsid_string_conversation_id_converted_to_integer_test_() ->
                 {'current_uid', 1, fun(_State) -> 100 end}
             ]},
             {conversation_pin_logic, [
-                {'pin', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end}
+                {'pin', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end},
+                {'unpin', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end}
             ]},
             {conversation_logic, [
-                {'delete', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end}
+                {'delete', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end},
+                {'restore', 3, fun(100, 8601234567890123, <<"c2c">>) -> ok end}
             ]},
             {elib_response, [
                 {'success', 2, fun(_Req, _Data) -> req_ok end}
@@ -238,9 +240,53 @@ tsid_string_conversation_id_converted_to_integer_test_() ->
                 action => pin_conversation, current_uid => 100
             }),
             ?assertEqual(req_ok, PinReq),
-            {ok, DeleteReq, _S2} = conversation_handler:init(req_mock(), #{
+            {ok, UnpinReq, _S2} = conversation_handler:init(req_mock(), #{
+                action => unpin_conversation, current_uid => 100
+            }),
+            ?assertEqual(req_ok, UnpinReq),
+            {ok, DeleteReq, _S3} = conversation_handler:init(req_mock(), #{
                 action => delete_conversation, current_uid => 100
             }),
-            ?assertEqual(req_ok, DeleteReq)
+            ?assertEqual(req_ok, DeleteReq),
+            {ok, RestoreReq, _S4} = conversation_handler:init(req_mock(), #{
+                action => restore_conversation, current_uid => 100
+            }),
+            ?assertEqual(req_ok, RestoreReq)
+        end
+    ).
+
+%% @doc BUG#129 补充：logic 层 unpin/restore 必须与 pin/delete 一致，
+%% 拒绝非 integer（含非数字 string）会话 ID，而非把 binary 直传 PG bigint 导致 500。
+unpin_restore_reject_invalid_conversation_id_test_() ->
+    ?WITH_MECKS(
+        [
+            {conversation_pin_ds, [
+                {'unpin_conversation', 3, fun(_Uid, _ConversationId, _Type) ->
+                    error(unexpected_call)
+                end}
+            ]},
+            {conversation_delete_ds, [
+                {'restore_conversation', 3, fun(_Uid, _ConversationId, _Type) ->
+                    error(unexpected_call)
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"会话ID无效"/utf8>>},
+                conversation_pin_logic:unpin(100, <<"8601234567890123">>, <<"c2c">>)
+            ),
+            ?assertEqual(
+                {error, <<"会话ID无效"/utf8>>},
+                conversation_pin_logic:unpin(100, 0, <<"c2c">>)
+            ),
+            ?assertEqual(
+                {error, <<"会话ID无效"/utf8>>},
+                conversation_logic:restore(100, <<"8601234567890123">>, <<"c2c">>)
+            ),
+            ?assertEqual(
+                {error, <<"会话ID无效"/utf8>>},
+                conversation_logic:restore(100, 0, <<"c2c">>)
+            )
         end
     ).

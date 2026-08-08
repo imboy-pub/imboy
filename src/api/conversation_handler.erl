@@ -173,8 +173,12 @@ unpin_conversation(Req0, State) ->
     ConversationId = normalize_conversation_id(ConversationId0),
     Type = maps:get(<<"type">>, Payload, <<"c2c">>),
 
-    ok = conversation_pin_logic:unpin(CurrentUid, ConversationId, Type),
-    elib_response:success(Req0, #{<<"updated">> => true}).
+    case conversation_pin_logic:unpin(CurrentUid, ConversationId, Type) of
+        ok ->
+            elib_response:success(Req0, #{<<"updated">> => true});
+        {error, Msg} when is_binary(Msg) ->
+            elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED)
+    end.
 
 %% @doc 获取置顶会话列表
 %% 获取当前用户的置顶会话列表
@@ -249,8 +253,12 @@ restore_conversation(Req0, State) ->
     ConversationId = normalize_conversation_id(ConversationId0),
     Type = maps:get(<<"type">>, Payload, <<"c2c">>),
 
-    ok = conversation_logic:restore(CurrentUid, ConversationId, Type),
-    elib_response:success(Req0, #{<<"restored">> => true}).
+    case conversation_logic:restore(CurrentUid, ConversationId, Type) of
+        ok ->
+            elib_response:success(Req0, #{<<"restored">> => true});
+        {error, Msg} when is_binary(Msg) ->
+            elib_response:error(Req0, Msg, ?ERR_OPERATION_FAILED)
+    end.
 
 %% @doc 归一化 conversation_id 参数
 %% 客户端按 TSID 契约以 string 传输 conversation_id（防 JS 精度丢失），
@@ -258,6 +266,10 @@ restore_conversation(Req0, State) ->
 %% @end
 -spec normalize_conversation_id(term()) -> term().
 normalize_conversation_id(Id) when is_binary(Id) ->
-    try binary_to_integer(Id) catch _:_ -> Id end;
+    try
+        binary_to_integer(Id)
+    catch
+        _:_ -> Id
+    end;
 normalize_conversation_id(Id) ->
     Id.

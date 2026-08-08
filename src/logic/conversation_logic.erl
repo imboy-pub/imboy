@@ -71,8 +71,10 @@ delete(Uid, ConversationId, Type) ->
 %% @param Uid 用户ID
 %% @param ConversationId 会话ID
 %% @param Type 会话类型（c2c/c2g）
-%% @return ok 成功
--spec restore(integer(), integer(), binary()) -> ok.
+%% @return ok 成功 | {error, Reason} 失败
+-spec restore(integer(), integer(), binary()) -> ok | {error, binary()}.
+restore(_Uid, ConversationId, _Type) when not is_integer(ConversationId); ConversationId =< 0 ->
+    {error, <<"会话ID无效"/utf8>>};
 restore(Uid, ConversationId, Type) ->
     conversation_delete_ds:restore_conversation(Uid, ConversationId, Type),
     notify_conversation_change(Uid, ConversationId, Type, <<"conversation_restored">>),
