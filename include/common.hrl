@@ -8,7 +8,7 @@
 
 
 -define (LOGIN_COLUMN, <<"id,account,mobile,password,email,
-        nickname,avatar,background,gender,region,sign,birthday,status">>).
+        nickname,avatar,background,gender,region,sign,birthday,profession,school,interests,status">>).
 
 -define (DEF_USER_COLUMN, <<"id,account,
-        nickname,avatar,background,sign,gender,region,birthday,account_type">>).
+        nickname,avatar,background,sign,gender,region,birthday,profession,school,interests,account_type">>).
