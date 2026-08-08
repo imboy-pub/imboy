@@ -103,11 +103,13 @@ change_name(Count, _Uid, _Scene, _TagId, TagName) when Count > 0 ->
     <<TagName/binary, " 已存在"/utf8>>;
 change_name(0, Uid, Scene, TagId, TagName) ->
     case get_relation_objects(Scene, Uid, TagId) of
-        {ok, Rows} when length(Rows) > 0 ->
+        {ok, Rows} ->
             CreatedAt = elib_dt:now(),
             % 使用事务更新
             elib_pg:with_tx(fun(Conn) ->
-                % 更新 user_tag
+                % 更新 user_tag：标签名恒更新。旧实现 `when length(Rows) > 0`
+                % 只覆盖有关联对象的标签，空标签（0 个联系人）走 `_ -> ok`
+                % 分支零写入，接口却返回 success —— 假成功（真机批次72 实证）
                 UpdateResult = user_tag_relation_repo:update_tag(
                     Conn, TagId, TagName, Uid, CreatedAt
                 ),
@@ -120,14 +122,19 @@ change_name(0, Uid, Scene, TagId, TagName) ->
                         ok
                 end,
 
-                % 更新所有关联对象的 tag
-                [
-                    change_scene_tag(Conn, Scene, Uid, maps:get(<<"object_id">>, Row), [
-                        {TagId, TagName}
-                    ])
-                 || Row <- Rows
-                ],
-                ok
+                % 更新所有关联对象的 tag（空标签跳过）
+                case Rows of
+                    [] ->
+                        ok;
+                    _ ->
+                        [
+                            change_scene_tag(Conn, Scene, Uid, maps:get(<<"object_id">>, Row), [
+                                {TagId, TagName}
+                            ])
+                         || Row <- Rows
+                        ],
+                        ok
+                end
             end);
         _ ->
             ok
@@ -191,7 +198,7 @@ get_relation_objects(Scene, Uid, TagId) ->
 %% @param Tag 标签列表
 %% @return ok
 -spec change_scene_tag(pid() | undefined, integer(), integer(), any(), list()) -> ok.
-change_scene_tag(_Conn, Scene, Uid, ObjectId, Tag) when is_list(Tag) ->
+change_scene_tag(Conn, Scene, Uid, ObjectId, Tag) when is_list(Tag) ->
     {Table, WhereColumn} =
         case Scene of
             1 ->
@@ -201,7 +208,7 @@ change_scene_tag(_Conn, Scene, Uid, ObjectId, Tag) when is_list(Tag) ->
         end,
 
     % 合并新旧tag，排重，不修改tag顺序
-    TagBin = merge_tag(Tag, Scene, Uid, ObjectId),
+    TagBin = merge_tag(Conn, Tag, Scene, Uid, ObjectId),
 
     Sql =
         case Scene of
@@ -215,7 +222,14 @@ change_scene_tag(_Conn, Scene, Uid, ObjectId, Tag) when is_list(Tag) ->
 
     TagBinWithComma = <<TagBin/binary, ",">>,
     ObjectId2 = normalize_scene_object_id(Scene, ObjectId),
-    {ok, _} = elib_pg:execute(Sql, [TagBinWithComma, Uid, ObjectId2]),
+    % 事务内必须用传入的 Conn：池连接（execute/2）读不到本事务未提交的
+    % user_tag 改名（READ COMMITTED），merge_tag JOIN 会读到旧标签名，
+    % 导致 friend.tag 残留旧名（真机批次72 实证 "新名,旧名,"）。
+    % 非事务调用（Conn=undefined）回退池连接。
+    case Conn of
+        undefined -> {ok, _} = elib_pg:execute(Sql, [TagBinWithComma, Uid, ObjectId2]);
+        _ -> {ok, _} = elib_pg:execute(Conn, Sql, [TagBinWithComma, Uid, ObjectId2])
+    end,
     ok.
 
 %% @doc 清理缓存
@@ -305,20 +319,38 @@ update_tag_in_objects(Conn, Scene, Tag, _TagId) ->
             1 -> elib_pg_sql:public_tablename(<<"user_collect">>);
             2 -> elib_pg_sql:public_tablename(<<"user_friend">>)
         end,
-    UpSql = <<"UPDATE ", UpTb/binary, " SET tag = replace(tag, $1, '') WHERE tag LIKE $2">>,
-    TagPattern = <<Tag/binary, ",%">>,
-    {ok, _} = elib_pg:execute(Conn, UpSql, [TagPattern, TagPattern]),
+    % tag 字段为逗号分隔、每项带尾逗号（"a,b,"）。旧实现 replace(tag, 'name,%', '')
+    % 是字面替换，'%' 并非通配 → 尾标签（"name," 无后继逗号）删不掉；
+    % 且 WHERE tag LIKE 'name,%' 只匹配以 name 开头的串 → 中间位置标签同样残留
+    % （真机批次72 清理数据实证 friend.tag 残留 "qqqa-rn-10c,"）。
+    % regexp_replace 按标签边界 (^|,)name, 替换为捕获组 \1（保留前导逗号）：
+    % 直接替换为 '' 会吞掉分隔逗号（"a,name,b," → "ab,"），且吞逗号后的串不再
+    % 匹配模式 → 后续删除失效（alpha.23 生产实证残留 "qa-del-1"）。
+    % WHERE 守卫与替换同一模式。
+    % 注意：占位符必须不同编号——PG 服务端对重复编号只返回 1 个参数描述，
+    % epgsql_cmd_batch 按描述数与传参 zip，重复编号会 function_clause 崩连接
+    % （alpha.22 生产实证 delete 500 + pooler child_terminated）。
+    % ponytail: 标签名含正则元字符会破坏模式（旧 LIKE 实现同样有此缺陷），
+    % 需要时升级为 regexp 转义（\Q..\E）。
+    UpSql = <<
+        "UPDATE ",
+        UpTb/binary,
+        " SET tag = regexp_replace(tag, $1, $2, 'g') WHERE tag ~ $3"
+    >>,
+    TagPattern = <<"(^|,)", Tag/binary, ",">>,
+    {ok, _} = elib_pg:execute(Conn, UpSql, [TagPattern, <<"\\1">>, TagPattern]),
     ok.
 
 %% @doc 合并标签
 %% @private
+%% @param Conn 数据库连接（事务内传事务连接，否则 undefined 回退池连接）
 %% @param Tag 新标签列表
 %% @param Scene 场景
 %% @param Uid 用户ID
 %% @param ObjectId 对象ID
 %% @return binary() 合并后的标签字符串
--spec merge_tag(list(), integer(), integer(), any()) -> binary().
-merge_tag(Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
+-spec merge_tag(pid() | undefined, list(), integer(), integer(), any()) -> binary().
+merge_tag(Conn, Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
     % 获取现有标签
     Sql = <<
         "SELECT t.id, t.name FROM public.user_tag_relation ut\n"
@@ -326,8 +358,13 @@ merge_tag(Tag, Scene, Uid, ObjectId) when is_list(Tag) ->
         "             WHERE ut.scene = $1 AND ut.user_id = $2 AND ut.object_id = $3"
     >>,
 
+    QRes =
+        case Conn of
+            undefined -> elib_pg:query(Sql, [Scene, Uid, ObjectId]);
+            _ -> elib_pg:query(Conn, Sql, [Scene, Uid, ObjectId])
+        end,
     TagOldLi =
-        case elib_pg:query(Sql, [Scene, Uid, ObjectId]) of
+        case QRes of
             {ok, Rows} -> Rows;
             _ -> []
         end,
