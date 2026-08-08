@@ -59,7 +59,7 @@ publish(Code, Version, PublishedBy) ->
 set_status(Code, Status) ->
     ai_agent_role_repo:set_status(Code, Status).
 
--spec normalize_policy(map()) -> {ok, map()} | {error, term()}.
+-spec normalize_policy(term()) -> {ok, map()} | {error, term()}.
 normalize_policy(Policy) when is_map(Policy) ->
     case unknown_policy_key(Policy) of
         none ->
@@ -77,7 +77,7 @@ normalize_policy(Policy) when is_map(Policy) ->
 normalize_policy(_) ->
     {error, policy_must_be_map}.
 
--spec validate_config(map()) -> {ok, map()} | {error, term()}.
+-spec validate_config(term()) -> {ok, map()} | {error, term()}.
 validate_config(Data) when is_map(Data) ->
     case required_binary(Data, <<"code">>, code_required) of
         ok ->
@@ -121,7 +121,7 @@ validate_config(Data) when is_map(Data) ->
 validate_config(_) ->
     {error, config_must_be_map}.
 
--spec normalize_capabilities(map()) -> {ok, map()} | {error, term()}.
+-spec normalize_capabilities(term()) -> {ok, map()} | {error, term()}.
 normalize_capabilities(Capabilities) when is_map(Capabilities) ->
     Allowed = [<<"knowledge">>, <<"group_reply">>, <<"proactive">>],
     case [Key || Key <- maps:keys(Capabilities), not lists:member(Key, Allowed)] of

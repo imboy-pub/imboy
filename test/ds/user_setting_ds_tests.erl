@@ -54,6 +54,96 @@ chat_state_hide_true_when_chat_state_hide_test_() ->
         ?assert(is_boolean(Result))
     end).
 
+chat_state_hide_defaults_to_hidden_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ok = meck:new(user_setting_ds, [passthrough, no_link]),
+        try
+            meck:expect(user_setting_ds, find_by_uid, 1, #{}),
+            ?assertEqual(true, user_setting_ds:chat_state_hide(1))
+        after
+            meck:unload(user_setting_ds)
+        end
+    end).
+
+chat_state_hide_explicit_online_is_visible_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ok = meck:new(user_setting_ds, [passthrough, no_link]),
+        try
+            meck:expect(
+                user_setting_ds,
+                find_by_uid,
+                1,
+                #{<<"chat_state">> => <<"online">>}
+            ),
+            ?assertEqual(false, user_setting_ds:chat_state_hide(1))
+        after
+            meck:unload(user_setting_ds)
+        end
+    end).
+
+find_by_uid_invalid_json_defaults_to_empty_settings_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ok = meck:new(user_setting_repo, [no_link]),
+        ok = meck:new(fts_user_repo, [no_link]),
+        try
+            meck:expect(
+                user_setting_repo,
+                find_by_uid,
+                2,
+                #{<<"setting">> => <<"{invalid-json">>}
+            ),
+            meck:expect(fts_user_repo, allow_search, 1, false),
+            ?assertEqual(
+                #{<<"allow_search">> => false},
+                user_setting_ds:find_by_uid(1)
+            )
+        after
+            meck:unload([user_setting_repo, fts_user_repo])
+        end
+    end).
+
+batch_chat_state_hide_defaults_to_hidden_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ok = meck:new(user_setting_repo, [no_link]),
+        ok = meck:new(elib_pg, [no_link]),
+        try
+            meck:expect(user_setting_repo, tablename, 0, <<"user_setting">>),
+            meck:expect(
+                elib_pg,
+                query,
+                2,
+                {ok, [
+                    #{<<"user_id">> => 1, <<"setting">> => <<>>},
+                    #{<<"user_id">> => 2, <<"setting">> => <<"{}">>},
+                    #{<<"user_id">> => 3, <<"setting">> => <<"{invalid-json">>},
+                    #{<<"user_id">> => 4, <<"setting">> => <<"{\"chat_state\":\"online\"}">>}
+                ]}
+            ),
+            ?assertEqual(
+                #{1 => true, 2 => true, 3 => true, 4 => false},
+                user_setting_ds:batch_chat_state_hide([1, 2, 3, 4])
+            )
+        after
+            meck:unload([user_setting_repo, elib_pg])
+        end
+    end).
+
+batch_chat_state_hide_query_failure_defaults_to_hidden_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ok = meck:new(user_setting_repo, [no_link]),
+        ok = meck:new(elib_pg, [no_link]),
+        try
+            meck:expect(user_setting_repo, tablename, 0, <<"user_setting">>),
+            meck:expect(elib_pg, query, 2, {error, timeout}),
+            ?assertEqual(
+                #{1 => true, 2 => true},
+                user_setting_ds:batch_chat_state_hide([1, 2])
+            )
+        after
+            meck:unload([user_setting_repo, elib_pg])
+        end
+    end).
+
 %% ===================================================================
 %% save/3 测试
 %% ===================================================================

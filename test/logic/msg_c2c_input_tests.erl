@@ -38,6 +38,35 @@ input_forwards_when_friend_online_test_() ->
         end
     ).
 
+input_forwards_when_online_status_is_hidden_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [{'is_friend', 2, fun(7, 5) -> true end}]},
+            {user_logic, [{'is_online', 1, fun(7) -> true end}]},
+            {user_setting_ds, [{'chat_state_hide', 1, fun(7) -> true end}]},
+            {imboy_message_helper, [
+                {'encode_and_send', 4, fun(ToId, _MsgId, _Msg, _Type) ->
+                    self() ! {sent, ToId},
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"7">>,
+                <<"action">> => <<"message_input">>,
+                <<"payload">> => #{<<"status">> => <<"start">>}
+            },
+            ?assertEqual(ok, msg_c2c_logic:c2c_input(<<"typ-hidden">>, 5, Data)),
+            receive
+                {sent, ToId} ->
+                    ?assertEqual(7, ToId)
+            after 100 ->
+                ?assert(false, "hidden online status must not block typing delivery")
+            end
+        end
+    ).
+
 input_dropped_when_offline_test_() ->
     ?WITH_MECKS(
         [

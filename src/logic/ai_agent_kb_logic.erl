@@ -178,6 +178,8 @@ select_matching_context(Kb, Query, MaxBytes) ->
     bounded(join_lines(Matched), MaxBytes).
 
 -spec line_matches(binary(), binary()) -> boolean().
+line_matches(<<>>, _Query) ->
+    false;
 line_matches(Line, Query) ->
     case binary:match(Line, Query) of
         nomatch ->

@@ -58,11 +58,11 @@ find_by_uid(Uid) ->
 -spec chat_state_hide(integer()) -> true | false.
 chat_state_hide(Uid) ->
     Setting = user_setting_ds:find_by_uid(Uid),
-    case maps:get(<<"chat_state">>, Setting, false) of
-        <<"hide">> ->
-            true;
+    case maps:get(<<"chat_state">>, Setting, <<"hide">>) of
+        <<"online">> ->
+            false;
         _ ->
-            false
+            true
     end.
 
 %% @doc 批量检查多个用户是否隐藏在线状态
@@ -88,33 +88,32 @@ batch_chat_state_hide(Uids) when is_list(Uids) ->
     Sql =
         <<"SELECT user_id, setting FROM ", Tb/binary, " WHERE user_id IN (", InClause/binary, ")">>,
 
+    Default = maps:from_list([{Uid, true} || Uid <- Uids]),
     case elib_pg:query(Sql, Uids) of
         {ok, Rows} ->
             lists:foldl(
-                fun(#{<<"user_id">> := Uid, <<"setting">> := SettingBin}, Acc) ->
-                    IsHide =
-                        case SettingBin of
-                            <<>> ->
-                                false;
-                            _ ->
-                                try jsone:decode(SettingBin, [{object_format, map}]) of
-                                    Setting ->
-                                        case maps:get(<<"chat_state">>, Setting, false) of
-                                            <<"hide">> -> true;
-                                            _ -> false
-                                        end
-                                catch
-                                    _:_ -> false
-                                end
-                        end,
-                    maps:put(Uid, IsHide, Acc)
+                fun(Row, Acc) ->
+                    Uid = maps:get(<<"user_id">>, Row),
+                    SettingBin = maps:get(<<"setting">>, Row, <<>>),
+                    maps:put(Uid, chat_state_hide_from_setting(SettingBin), Acc)
                 end,
-                #{},
+                Default,
                 Rows
             );
         {error, _Reason} ->
-            % 查询失败时返回空映射（所有用户默认不隐藏）
-            #{}
+            % 查询失败时按隐私安全默认值处理，所有用户均不展示在线状态
+            Default
+    end.
+
+chat_state_hide_from_setting(<<>>) ->
+    true;
+chat_state_hide_from_setting(SettingBin) ->
+    try jsone:decode(SettingBin, [{object_format, map}]) of
+        Setting ->
+            maps:get(<<"chat_state">>, Setting, <<"hide">>) =/= <<"online">>
+    catch
+        _:_ ->
+            true
     end.
 
 %% @doc 保存用户设置

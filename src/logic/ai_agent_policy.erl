@@ -6,7 +6,7 @@
 
 -include("log.hrl").
 
--spec effective(map()) -> map().
+-spec effective(term()) -> map().
 effective(Agent) when is_map(Agent) ->
     case has_role_policy(Agent) of
         true ->
