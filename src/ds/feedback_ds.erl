@@ -59,7 +59,7 @@
     binary(),
     binary()
 ) ->
-    ok | {ok, non_neg_integer()}.
+    ok | {ok, non_neg_integer()} | {error, any()}.
 % feedback_ds:add(Uid, Did, COS, COSV, AppVsn, ContactDetail, Body, Attach)
 add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
     FeedbackMd5 = elib_hasher:md5(
@@ -95,10 +95,15 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
                     FeedbackMd5
                 )
             of
-                {ok, _} -> ok;
-                {error, Reason} -> ?ERROR_LOG([feedback_add_failed, Uid, Reason])
-            end,
-            ok
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    ?ERROR_LOG([feedback_add_failed, Uid, Reason]),
+                    % 失败必须向上传递：此前吞错无条件返回 ok，handler 无法
+                    % 感知插入失败 → 客户端假成功「你的反馈问题我们已经收到了」，
+                    % 数据实际从未入库（CHECK 约束/DB 错误被静默）。
+                    {error, Reason}
+            end
     end.
 
 -spec remove(integer(), integer()) -> ok.

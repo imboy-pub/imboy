@@ -54,8 +54,15 @@ c2c_send(MsgId, CurrentUid, To, ToId, Data) ->
     % 【优化】使用联合查询函数同时检查好友关系和黑名单状态
     {IsFriend, InDenylist} = friend_ds:check_relationship(ToId, CurrentUid),
     elib_log:info([<<"msg_c2c">>, CurrentUid, ToId, IsFriend, InDenylist]),
+    %% AI agent 豁免好友校验：启用中的 agent（ai_agent_ds:is_agent）允许任何用户私聊
+    %% 触发回复，无需互为好友；黑名单（InDenylist）依然优先拦截。
+    SendIsFriend =
+        case ai_agent_ds:is_agent(ToId) of
+            {true, _} -> true;
+            false -> IsFriend
+        end,
     %% T1.2：可发决策退化为外壳调用纯函数 message_policy:send_decision/2
-    case message_policy:send_decision(IsFriend, InDenylist) of
+    case message_policy:send_decision(SendIsFriend, InDenylist) of
         allow ->
             {From, PayloadJson, MsgType, Action, E2EE, Timestamps} = prepare_c2c_data(
                 CurrentUid, Data

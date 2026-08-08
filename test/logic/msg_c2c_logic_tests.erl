@@ -8,13 +8,16 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {true, false} end}
             ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_async, [
@@ -62,7 +65,7 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
             ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
         end
@@ -73,6 +76,10 @@ c2c_not_friend_returns_reply_test_() ->
         [
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {false, 0} end}
+            ]},
+            {ai_agent_ds, [
+                %% ToId=456 非 agent：好友校验原样生效
+                {'is_agent', 1, fun(456) -> false end}
             ]},
             {message_ds, [
                 {'assemble_s2c', 3, fun(MsgId, <<"not_a_friend">>, <<"456">>) ->
@@ -97,6 +104,9 @@ c2c_in_denylist_returns_reply_test_() ->
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {true, 2} end}
             ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
             {message_ds, [
                 {'assemble_s2c', 3, fun(MsgId, <<"in_denylist">>, <<"456">>) ->
                     #{<<"id">> => MsgId, <<"error">> => <<"in_denylist">>}
@@ -114,11 +124,138 @@ c2c_in_denylist_returns_reply_test_() ->
         end
     ).
 
+%% ===================================================================
+%% AI agent 免好友校验（T1.4 配套）：agent 是公开服务账号，任何用户
+%% 可直接对话；但用户主动拉黑 agent 后仍拒发（黑名单优先）。
+%% ===================================================================
+
+c2c_to_enabled_agent_skips_friend_check_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                %% 非好友 + 未拉黑（check_relationship 真实协议为 {boolean(), boolean()}）：
+                %% 无豁免时会被 not_a_friend 拒绝
+                {'check_relationship', 2, fun(456, 123) -> {false, false} end}
+            ]},
+            {ai_agent_ds, [
+                %% ToId=456 是启用中 agent → 应豁免好友校验
+                {'is_agent', 1, fun(456) -> {true, #{}} end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+                {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'enqueue', 3, fun(_, _, _) -> ok end}
+            ]},
+            {elib_async, [
+                %% agent 回复旁路 fire-and-forget：异步不执行，避免真实 LLM 调用
+                {'async', 1, fun(_) -> ok end}
+            ]},
+            {agent_rate_limiter, [
+                {'allow', 2, fun(_, _) -> allow end}
+            ]},
+            {push_notification_logic, [
+                {'maybe_push_for_c2c', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {message_ds, [
+                {'assemble_msg', 8, fun(_, _, _, _, MsgId, _, _, _) -> #{<<"id">> => MsgId} end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2c_agent_ok_001">>,
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"payload">> => #{<<"content">> => <<"hello">>},
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => null
+            },
+
+            ok = msg_c2c_logic:c2c(MsgId, 123, Data),
+
+            Reply =
+                receive
+                    {reply, Msg} -> Msg
+                after 1000 ->
+                    timeout
+                end,
+            ?assertNotEqual(timeout, Reply),
+            ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
+            ?assertEqual(<<"C2C_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
+            %% 消息真正走 stage（未被 not_a_friend 拦截）
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11))
+        end
+    ).
+
+c2c_to_agent_still_blocked_when_denylisted_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                %% 用户拉黑了 agent（InDenylist=2）：黑名单优先，仍拒发
+                {'check_relationship', 2, fun(456, 123) -> {false, 2} end}
+            ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> {true, #{}} end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(MsgId, <<"in_denylist">>, <<"456">>) ->
+                    #{<<"id">> => MsgId, <<"error">> => <<"in_denylist">>}
+                end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2c_agent_deny_001">>,
+            Data = #{<<"to">> => <<"456">>},
+
+            Result = msg_c2c_logic:c2c(MsgId, 123, Data),
+            ?assertMatch({reply, _}, Result),
+            {reply, Msg} = Result,
+            ?assertEqual(<<"in_denylist">>, maps:get(<<"error">>, Msg))
+        end
+    ).
+
+c2c_to_non_agent_keeps_friend_check_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(456, 123) -> {false, 0} end}
+            ]},
+            {ai_agent_ds, [
+                %% 普通用户不是 agent：好友校验原样生效
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(MsgId, <<"not_a_friend">>, <<"456">>) ->
+                    #{<<"id">> => MsgId, <<"error">> => <<"not_a_friend">>}
+                end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2c_nonagent_001">>,
+            Data = #{<<"to">> => <<"456">>},
+
+            Result = msg_c2c_logic:c2c(MsgId, 123, Data),
+            ?assertMatch({reply, _}, Result),
+            {reply, Msg} = Result,
+            ?assertEqual(<<"not_a_friend">>, maps:get(<<"error">>, Msg))
+        end
+    ).
+
 c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ?WITH_MECKS(
         [
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {true, false} end}
+            ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
@@ -134,7 +271,7 @@ c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end}
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end}
             ]}
         ],
         fun() ->
@@ -153,7 +290,7 @@ c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
             {reply, Reply} = msg_c2c_logic:c2c(MsgId, 123, Data),
 
             ?assertEqual(<<"MSG_NOT_FOUND">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11))
         end
     ).
 
@@ -229,13 +366,16 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {true, false} end}
             ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) ->
                     {error, <<"encrypted_message_required">>}
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]}
         ],
@@ -257,7 +397,7 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -268,6 +408,9 @@ c2c_e2ee_message_allowed_when_encryption_required_test_() ->
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {true, false} end}
             ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
@@ -277,7 +420,7 @@ c2c_e2ee_message_allowed_when_encryption_required_test_() ->
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_async, [
@@ -313,7 +456,7 @@ c2c_e2ee_message_allowed_when_encryption_required_test_() ->
             },
 
             ok = msg_c2c_logic:c2c(MsgId, 123, Data),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -668,13 +811,16 @@ c2c_duplicate_resend_acks_without_redelivery_test_() ->
             {friend_ds, [
                 {'check_relationship', 2, fun(456, 123) -> {true, false} end}
             ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, duplicate} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, duplicate} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {imboy_message_helper, [
@@ -738,6 +884,9 @@ c2c_pipeline_mecks() ->
         {friend_ds, [
             {'check_relationship', 2, fun(456, 123) -> {true, false} end}
         ]},
+        {ai_agent_ds, [
+            {'is_agent', 1, fun(_) -> false end}
+        ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
             {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
@@ -745,7 +894,7 @@ c2c_pipeline_mecks() ->
             {'millisecond', 0, fun() -> 1708768800000 end}
         ]},
         {msg_store_ds, [
-            {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+            {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
             {'enqueue', 3, fun(_, _, _) -> ok end}
         ]},
         {elib_async, [
@@ -794,7 +943,7 @@ c2c_plaintext_allowed_when_deployment_does_not_require_e2ee_test_() ->
             ?assertEqual(
                 ok, msg_c2c_logic:c2c(<<"msg_plain_allowed_001">>, 123, plaintext_c2c_data())
             ),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
         end
@@ -811,7 +960,7 @@ c2c_plaintext_allowed_when_e2ee_disabled_test_() ->
             ?assertEqual(
                 ok, msg_c2c_logic:c2c(<<"msg_plain_allowed_002">>, 123, plaintext_c2c_data())
             ),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11))
         end
     ).
 
@@ -829,7 +978,7 @@ c2c_plaintext_blocked_by_real_policy_when_e2ee_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(0, meck:num_calls(imboy_message_helper, encode_and_send, 4))
         end
@@ -844,7 +993,7 @@ c2c_plaintext_blocked_when_storage_mode_secure_e2ee_test_() ->
                 <<"msg_plain_blocked_002">>, 123, plaintext_c2c_data()
             ),
             ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11))
         end
     ).
 
@@ -871,7 +1020,7 @@ c2c_encrypted_allowed_when_msg_type_stays_text_test_() ->
                 }
             },
             ?assertEqual(ok, msg_c2c_logic:c2c(<<"msg_enc_allowed_001">>, 123, Data)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -890,7 +1039,7 @@ c2c_encrypted_allowed_when_payload_is_map_test_() ->
                 <<"e2ee">> => #{<<"e2ee">> => true, <<"nonce">> => <<"bm9uY2U=">>}
             },
             ?assertEqual(ok, msg_c2c_logic:c2c(<<"msg_enc_allowed_002">>, 123, Data)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11))
         end
     ).
 

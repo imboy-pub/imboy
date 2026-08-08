@@ -129,8 +129,22 @@ add(Req0, State) ->
     Did = cowboy_req:header(<<"did">>, Req0),
 
     PostVals = elib_param:post(Req0),
-    Type = maps:get(<<"type">>, PostVals, <<>>),
-    Rating = maps:get(<<"rating">>, PostVals, <<"0">>),
+    % 空串视为未提供（旧客户端发送 "" 使 maps:get 默认值失效），
+    % 回落合法默认值：type=bugReport / rating=neutral；
+    % 否则撞 feedback 表 CHECK 约束（chk_feedback_type / chk_feedback_rating），
+    % 旧默认 <<"0">> 本身也不在 chk_feedback_rating 白名单内，必插入失败。
+    TypeBin = ec_cnv:to_binary(maps:get(<<"type">>, PostVals, <<"bugReport">>)),
+    TypeBin1 =
+        case TypeBin of
+            <<>> -> <<"bugReport">>;
+            _ -> TypeBin
+        end,
+    RatingBin = ec_cnv:to_binary(maps:get(<<"rating">>, PostVals, <<"neutral">>)),
+    RatingBin1 =
+        case RatingBin of
+            <<>> -> <<"neutral">>;
+            _ -> RatingBin
+        end,
     ContactDetail = maps:get(<<"contact_detail">>, PostVals, <<>>),
     % 支持两种字段名：content 和 description
     Description =
@@ -147,19 +161,32 @@ add(Req0, State) ->
             elib_response:error(Req0, <<"反馈内容不能为空"/utf8>>);
         _ ->
             COSV = maps:get(<<"sys_version">>, PostVals, <<>>),
-            feedback_logic:add(
-                CurrentUid,
-                Did,
-                COS,
-                COSV,
-                AppVsn,
-                ec_cnv:to_binary(Type),
-                ec_cnv:to_binary(Rating),
-                ec_cnv:to_binary(ContactDetail),
-                ec_cnv:to_binary(Description),
-                Attach
-            ),
-            elib_response:success(Req0)
+            case
+                feedback_logic:add(
+                    CurrentUid,
+                    Did,
+                    COS,
+                    COSV,
+                    AppVsn,
+                    TypeBin1,
+                    RatingBin1,
+                    ec_cnv:to_binary(ContactDetail),
+                    ec_cnv:to_binary(Description),
+                    Attach
+                )
+            of
+                ok ->
+                    elib_response:success(Req0);
+                {error, Reason} ->
+                    % 插入失败必须返回错误：此前忽略返回值无条件 success，
+                    % 客户端 showSuccess 假成功，反馈数据从未入库。
+                    ?ERROR_LOG([feedback_add_failed, CurrentUid, Reason]),
+                    elib_response:error(
+                        Req0,
+                        <<"反馈提交失败，请稍后重试"/utf8>>,
+                        ?ERR_SERVER_ERROR
+                    )
+            end
     end.
 
 %% @doc 删除用户反馈
