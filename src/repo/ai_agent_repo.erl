@@ -8,6 +8,7 @@
 
 -export([tablename/0]).
 -export([upsert/1]).
+-export([patch/2]).
 -export([find/1]).
 -export([active_ids/0]).
 -export([set_status/2]).
@@ -84,6 +85,80 @@ upsert(#{user_id := UserId, provider := Provider} = Data) ->
             {error, Reason}
     end.
 
+%% @doc 部分更新既有 agent；未提交的行为字段保持原值，避免管理端编辑资料时清空兼容配置。
+-spec patch(integer(), map()) -> {ok, [map()]} | {error, term()}.
+patch(UserId, Data) when is_integer(UserId), is_map(Data) ->
+    Tb = tablename(),
+    Fields = patch_fields(Data),
+    case Fields of
+        [] ->
+            {ok, []};
+        _ ->
+            Assignments = [
+                patch_assignment(Column, Cast, Index)
+             || {{Column, _Value, Cast}, Index} <- lists:zip(
+                    Fields, lists:seq(1, length(Fields))
+                )
+            ],
+            WhereIndex = length(Fields) + 1,
+            Sql = iolist_to_binary([
+                <<"UPDATE ">>,
+                Tb,
+                <<" SET ">>,
+                join_binary(Assignments),
+                <<" WHERE user_id = $">>,
+                integer_to_binary(WhereIndex),
+                <<" RETURNING user_id">>
+            ]),
+            Params = [Value || {_Column, Value, _Cast} <- Fields] ++ [UserId],
+            case elib_pg:query(Sql, Params) of
+                {ok, Rows} ->
+                    {ok, Rows};
+                {error, Reason} ->
+                    ?ERROR_LOG("ai_agent_repo:patch user_id=~p error ~p~n", [UserId, Reason]),
+                    {error, Reason}
+            end
+    end.
+
+patch_fields(Data) ->
+    [
+        {Column, Value, Cast}
+     || {Key, Column, Cast} <- [
+            {provider, <<"provider">>, <<>>},
+            {model, <<"model">>, <<>>},
+            {role_id, <<"role_id">>, <<>>},
+            {system_prompt, <<"system_prompt">>, <<>>},
+            {owner_uid, <<"owner_uid">>, <<>>},
+            {trigger_policy, <<"trigger_policy">>, <<"::jsonb">>},
+            {status, <<"status">>, <<>>},
+            {description, <<"description">>, <<>>},
+            {visibility, <<"visibility">>, <<>>},
+            {category, <<"category">>, <<>>},
+            {voice_id, <<"voice_id">>, <<>>},
+            {greeting, <<"greeting">>, <<>>},
+            {capabilities, <<"capabilities">>, <<"::jsonb">>},
+            {temperature, <<"temperature">>, <<>>}
+        ],
+        {ok, Value} <- [maps:find(Key, Data)]
+    ].
+
+patch_assignment(Column, Cast, Index) ->
+    iolist_to_binary([
+        Column,
+        <<" = $">>,
+        integer_to_binary(Index),
+        Cast
+    ]).
+
+join_binary([]) ->
+    <<>>;
+join_binary([First | Rest]) ->
+    lists:foldl(
+        fun(Item, Acc) -> <<Acc/binary, ", ", Item/binary>> end,
+        First,
+        Rest
+    ).
+
 %% @doc 按 user_id 查单个 agent 元数据行
 -spec find(integer()) -> {ok, map()} | {error, notfound | term()}.
 find(UserId) ->
@@ -138,7 +213,10 @@ page(Page, Size) ->
 page(Page, Size, Category) when Page > 0, Size > 0 ->
     ATb = tablename(),
     UTb = user_repo:tablename(),
-    From = <<" FROM ", ATb/binary, " a JOIN ", UTb/binary, " u ON u.id = a.user_id ">>,
+    RoleTb = elib_pg_sql:public_tablename(<<"ai_agent_role">>),
+    From =
+        <<" FROM ", ATb/binary, " a JOIN ", UTb/binary, " u ON u.id = a.user_id", " LEFT JOIN ",
+            RoleTb/binary, " r ON r.code = a.role_id ">>,
     {Where, Params} =
         case Category of
             <<>> -> {<<>>, []};
@@ -153,6 +231,7 @@ page(Page, Size, Category) when Page > 0, Size > 0 ->
                 <<
                     "SELECT a.user_id, u.nickname, u.avatar, a.provider, a.model,"
                     " a.description, a.visibility, a.status, a.owner_uid, a.category,"
+                    " a.role_id, r.name AS role_name, r.active_version AS role_version,"
                     " a.created_at",
                     From/binary,
                     Where/binary,

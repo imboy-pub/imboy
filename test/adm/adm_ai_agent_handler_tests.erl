@@ -18,11 +18,13 @@ with_perm_ok() ->
     [{adm_acl, [{'ensure_permission', 3, fun(_State, _Perm, _Req) -> ok end}]}].
 
 response_ok() ->
-    [{elib_response, [
-        {'success', 2, fun(Req, Data) -> Req#{response_status => 200, data => Data} end},
-        {'success', 3, fun(Req, Data, _Msg) -> Req#{response_status => 200, data => Data} end},
-        {'error', 3, fun(Req, _Msg, Code) -> Req#{response_status => Code} end}
-    ]}].
+    [
+        {elib_response, [
+            {'success', 2, fun(Req, Data) -> Req#{response_status => 200, data => Data} end},
+            {'success', 3, fun(Req, Data, _Msg) -> Req#{response_status => 200, data => Data} end},
+            {'error', 3, fun(Req, _Msg, Code) -> Req#{response_status => Code} end}
+        ]}
+    ].
 
 %% ===================================================================
 %% roles — GET 全量 / POST save|delete
@@ -149,8 +151,11 @@ upload_avatar_success_returns_url_test_() ->
                     {'method', 1, fun(_) -> <<"POST">> end},
                     {'read_part', 1, fun(Req) ->
                         case get(read_part_calls) of
-                            undefined -> put(read_part_calls, 1), {ok, #{}, Req};
-                            _ -> {done, Req}
+                            undefined ->
+                                put(read_part_calls, 1),
+                                {ok, #{}, Req};
+                            _ ->
+                                {done, Req}
                         end
                     end},
                     {'read_part_body', 1, fun(Req) -> {ok, <<"PNGDATA">>, Req} end}
@@ -161,7 +166,9 @@ upload_avatar_success_returns_url_test_() ->
                     end}
                 ]},
                 {elib_oss, [
-                    {'upload', 3, fun(<<"PNGDATA">>, <<"avatar.png">>, #{mime_type := <<"image/png">>}) ->
+                    {'upload', 3, fun(
+                        <<"PNGDATA">>, <<"avatar.png">>, #{mime_type := <<"image/png">>}
+                    ) ->
                         {ok, <<"https://s3.example.com/avatar.png">>, <<"file123">>}
                     end}
                 ]}
@@ -186,8 +193,11 @@ upload_avatar_rejects_oversize_test_() ->
                     {'method', 1, fun(_) -> <<"POST">> end},
                     {'read_part', 1, fun(Req) ->
                         case get(read_part_calls) of
-                            undefined -> put(read_part_calls, 1), {ok, #{}, Req};
-                            _ -> {done, Req}
+                            undefined ->
+                                put(read_part_calls, 1),
+                                {ok, #{}, Req};
+                            _ ->
+                                {done, Req}
                         end
                     end},
                     {'read_part_body', 1, fun(Req) -> {ok, <<"BIG">>, Req} end}
@@ -241,7 +251,9 @@ list_category_filter_passed_to_ds_test_() ->
                 ]},
                 {ai_agent_ds, [
                     {'list', 3, fun(Page, Size, Category) ->
-                        {ok, #{total => 0, page => Page, size => Size, list => [], category => Category}}
+                        {ok, #{
+                            total => 0, page => Page, size => Size, list => [], category => Category
+                        }}
                     end}
                 ]}
             ] ++ response_ok(),
@@ -275,5 +287,62 @@ list_without_category_passes_empty_test_() ->
             Req = mock_req(),
             {ok, RespReq, _} = adm_ai_agent_handler:init(Req, #{action => list, adm_user_id => 1}),
             ?assertEqual(200, maps:get(response_status, RespReq))
+        end
+    ).
+
+role_list_passes_keyword_and_status_filters_test_() ->
+    ?WITH_MECKS(
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"GET">> end}]},
+                {elib_param, [
+                    {'page', 1, fun(_) -> {2, 20} end},
+                    {'get', 3, fun
+                        (keyword, _Req, _Def) -> <<"doctor">>;
+                        (status, _Req, _Def) -> <<"1">>
+                    end}
+                ]},
+                {ai_agent_role_ds, [
+                    {'page', 3, fun(2, 20, #{keyword := <<"doctor">>, status := 1}) ->
+                        {ok, #{total => 1, page => 2, size => 20, list => []}}
+                    end}
+                ]}
+            ] ++ response_ok(),
+        fun() ->
+            Req = mock_req(),
+            {ok, RespReq, _} =
+                adm_ai_agent_handler:init(Req, #{action => role_list, adm_user_id => 1}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(1, maps:get(total, maps:get(data, RespReq)))
+        end
+    ).
+
+role_publish_passes_operator_and_version_test_() ->
+    ?WITH_MECKS(
+        with_perm_ok() ++
+            [
+                {cowboy_req, [{'method', 1, fun(_) -> <<"POST">> end}]},
+                {elib_param, [
+                    {'post', 1, fun(_) ->
+                        #{
+                            <<"role_code">> => <<"doctor">>,
+                            <<"version">> => <<"3">>,
+                            <<"admin_uid">> => <<"99">>
+                        }
+                    end}
+                ]},
+                {ai_agent_role_ds, [
+                    {'publish', 3, fun(<<"doctor">>, 3, 1) -> {ok, #{published => true}} end}
+                ]}
+            ] ++ response_ok(),
+        fun() ->
+            Req = mock_req(),
+            {ok, RespReq, _} =
+                adm_ai_agent_handler:init(Req, #{action => role_publish, adm_user_id => 1}),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(
+                #{published => true},
+                maps:get(data, RespReq)
+            )
         end
     ).

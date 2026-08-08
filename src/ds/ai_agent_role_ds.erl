@@ -6,6 +6,7 @@
     page/3,
     find/1,
     create/1,
+    update_metadata/2,
     save_draft/2,
     publish/3,
     set_status/2,
@@ -22,20 +23,30 @@ page(Page, Size, Filters) ->
 find(Code) ->
     ai_agent_role_repo:find(Code).
 
--spec create(map()) -> {ok, [map()]} | {error, term()}.
+-spec create(map()) -> {ok, map()} | {error, term()}.
 create(Data) ->
-    case validate_config(Data) of
+    case validate_role_identity(Data) of
         {ok, Config} ->
             ai_agent_role_repo:create(Config);
         {error, Reason} ->
             {error, Reason}
     end.
 
+-spec update_metadata(binary(), map()) -> {ok, term()} | {error, term()}.
+update_metadata(Code, Patch) ->
+    case validate_metadata(Patch) of
+        {ok, Normalized} -> ai_agent_role_repo:update_metadata(Code, Normalized);
+        {error, Reason} -> {error, Reason}
+    end.
+
 -spec save_draft(binary(), map()) -> {ok, [map()]} | {error, term()}.
 save_draft(Code, Data) ->
-    case validate_config(Data) of
+    case validate_config(Data#{<<"code">> => Code}) of
         {ok, Config} ->
-            ai_agent_role_repo:save_draft(Code, Config);
+            case ai_agent_role_repo:update_metadata(Code, Config) of
+                {ok, _} -> ai_agent_role_repo:save_draft(Code, Config);
+                {error, _} = Error -> Error
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
@@ -76,10 +87,12 @@ validate_config(Data) when is_map(Data) ->
                         ok ->
                             Capabilities = maps:get(<<"capabilities">>, Data, #{}),
                             Policy = maps:get(<<"knowledge_policy">>, Data, #{}),
-                            case {is_map(Capabilities), normalize_policy(Policy)} of
-                                {false, _} ->
-                                    {error, capabilities_must_be_map};
-                                {true, {ok, NormalizedPolicy}} ->
+                            case {normalize_capabilities(Capabilities), normalize_policy(Policy)} of
+                                {{error, _} = Error, _} ->
+                                    Error;
+                                {_, {error, _} = Error} ->
+                                    Error;
+                                {{ok, NormalizedCapabilities}, {ok, NormalizedPolicy}} ->
                                     {ok, #{
                                         code => maps:get(<<"code">>, Data),
                                         name => maps:get(<<"name">>, Data),
@@ -88,13 +101,13 @@ validate_config(Data) when is_map(Data) ->
                                         created_by => maps:get(<<"created_by">>, Data, 0),
                                         version => maps:get(<<"version">>, Data, 1),
                                         system_prompt => maps:get(<<"system_prompt">>, Data),
-                                        capabilities => jsone:encode(Capabilities, [native_utf8]),
+                                        capabilities => jsone:encode(
+                                            NormalizedCapabilities, [native_utf8]
+                                        ),
                                         knowledge_policy => jsone:encode(
                                             NormalizedPolicy, [native_utf8]
                                         )
-                                    }};
-                                {true, {error, Reason}} ->
-                                    {error, Reason}
+                                    }}
                             end;
                         error ->
                             {error, system_prompt_required}
@@ -108,6 +121,62 @@ validate_config(Data) when is_map(Data) ->
 validate_config(_) ->
     {error, config_must_be_map}.
 
+-spec normalize_capabilities(map()) -> {ok, map()} | {error, term()}.
+normalize_capabilities(Capabilities) when is_map(Capabilities) ->
+    Allowed = [<<"knowledge">>, <<"group_reply">>, <<"proactive">>],
+    case [Key || Key <- maps:keys(Capabilities), not lists:member(Key, Allowed)] of
+        [Key | _] ->
+            {error, {unknown_capability, Key}};
+        [] ->
+            case
+                [
+                    Key
+                 || {Key, Value} <- maps:to_list(Capabilities),
+                    not is_boolean(Value)
+                ]
+            of
+                [BadKey | _] -> {error, {capability_must_be_boolean, BadKey}};
+                [] -> {ok, Capabilities}
+            end
+    end;
+normalize_capabilities(_) ->
+    {error, capabilities_must_be_map}.
+
+validate_role_identity(Data) when is_map(Data) ->
+    case required_binary(Data, <<"code">>, code_required) of
+        ok ->
+            case required_binary(Data, <<"name">>, name_required) of
+                ok ->
+                    {ok, #{
+                        code => maps:get(<<"code">>, Data),
+                        name => maps:get(<<"name">>, Data),
+                        description => maps:get(<<"description">>, Data, <<>>),
+                        status => maps:get(<<"status">>, Data, 1),
+                        created_by => maps:get(<<"created_by">>, Data, 0)
+                    }};
+                error ->
+                    {error, name_required}
+            end;
+        error ->
+            {error, code_required}
+    end;
+validate_role_identity(_) ->
+    {error, config_must_be_map}.
+
+validate_metadata(Data) when is_map(Data) ->
+    Name = maps:get(<<"name">>, Data, maps:get(name, Data, <<>>)),
+    Description = maps:get(<<"description">>, Data, maps:get(description, Data, <<>>)),
+    case {valid_text(Name), is_binary(Description)} of
+        {true, true} -> {ok, #{name => Name, description => Description}};
+        {false, _} -> {error, name_required};
+        {_, false} -> {error, description_must_be_binary}
+    end;
+validate_metadata(_) ->
+    {error, metadata_must_be_map}.
+
+valid_text(Value) ->
+    is_binary(Value) andalso byte_size(Value) > 0.
+
 -spec effective_config(map(), map()) -> {ok, map()} | {error, term()}.
 effective_config(Agent, Role) when is_map(Agent), is_map(Role) ->
     Policy = maps:get(<<"knowledge_policy">>, Role, #{}),
@@ -116,6 +185,7 @@ effective_config(Agent, Role) when is_map(Agent), is_map(Role) ->
             {ok, Agent#{
                 <<"role_code">> => maps:get(<<"code">>, Role),
                 <<"role_version">> => maps:get(<<"version">>, Role),
+                <<"role_status">> => maps:get(<<"status">>, Role, 1),
                 <<"system_prompt">> => maps:get(<<"system_prompt">>, Role),
                 <<"capabilities">> => maps:get(<<"capabilities">>, Role, #{}),
                 <<"knowledge_policy">> => NormalizedPolicy,
@@ -151,7 +221,7 @@ normalize_knowledge(Value) when is_map(Value) ->
         false ->
             {error, {invalid_mode, <<"knowledge">>, Mode}};
         true ->
-            case valid_member(Source, [<<"all">>, <<"role">>]) of
+            case valid_member(Source, [<<"all">>, <<"faq">>, <<"group_rule">>]) of
                 false ->
                     {error, {invalid_source, Source}};
                 true when is_integer(MaxBytes), MaxBytes >= 0, MaxBytes =< 8000 ->

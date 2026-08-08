@@ -8,11 +8,14 @@
     version_tablename/0,
     page/3,
     find/1,
+    find_published/1,
     create/1,
+    update_metadata/2,
     save_draft/2,
     publish/3,
     set_status/2,
-    count_bound_agents/1
+    count_bound_agents/1,
+    count_published_version/1
 ]).
 
 -include("log.hrl").
@@ -76,14 +79,29 @@ find(Code) ->
         <<
             "SELECT r.code, r.name, r.description, r.status, r.active_version,"
             " r.created_by, r.created_at, r.updated_at,"
-            " v.id AS version_id, v.version, v.state, v.system_prompt,"
-            " v.capabilities, v.knowledge_policy, v.created_by AS version_created_by,"
-            " v.published_by, v.created_at AS version_created_at, v.published_at"
+            " COALESCE(d.id, v.id) AS version_id,"
+            " COALESCE(d.version, v.version) AS version,"
+            " COALESCE(d.state, v.state) AS state,"
+            " COALESCE(d.system_prompt, v.system_prompt) AS system_prompt,"
+            " COALESCE(d.capabilities, v.capabilities) AS capabilities,"
+            " COALESCE(d.knowledge_policy, v.knowledge_policy) AS knowledge_policy,"
+            " COALESCE(d.created_by, v.created_by) AS version_created_by,"
+            " COALESCE(d.published_by, v.published_by) AS published_by,"
+            " COALESCE(d.created_at, v.created_at) AS version_created_at,"
+            " COALESCE(d.published_at, v.published_at) AS published_at"
             " FROM ",
             Tb/binary,
             " r LEFT JOIN ",
             VersionTb/binary,
             " v ON v.role_code = r.code AND v.version = r.active_version"
+            " LEFT JOIN LATERAL ("
+            " SELECT d.id, d.version, d.state, d.system_prompt, d.capabilities,"
+            " d.knowledge_policy, d.created_by, d.published_by, d.created_at, d.published_at"
+            " FROM ",
+            VersionTb/binary,
+            " d WHERE d.role_code = r.code AND d.state = 'draft'"
+            " ORDER BY d.version DESC LIMIT 1"
+            " ) d ON TRUE"
             " WHERE r.code = $1"
         >>,
     case elib_pg:query(Sql, [Code]) of
@@ -92,7 +110,33 @@ find(Code) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec create(map()) -> {ok, [map()]} | {error, term()}.
+-spec find_published(binary()) -> {ok, map()} | {error, notfound | term()}.
+find_published(Code) ->
+    Tb = tablename(),
+    VersionTb = version_tablename(),
+    Sql =
+        <<
+            "SELECT r.code, r.name, r.description, r.status, r.active_version,"
+            " r.created_by, r.created_at, r.updated_at,"
+            " v.id AS version_id, v.version, v.state, v.system_prompt,"
+            " v.capabilities, v.knowledge_policy, v.created_by AS version_created_by,"
+            " v.published_by, v.created_at AS version_created_at, v.published_at"
+            " FROM ",
+            Tb/binary,
+            " r LEFT JOIN ",
+            VersionTb/binary,
+            " v ON v.role_code = r.code"
+            " AND v.version = r.active_version"
+            " AND v.state = 'published'"
+            " WHERE r.code = $1"
+        >>,
+    case elib_pg:query(Sql, [Code]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, notfound};
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec create(map()) -> {ok, map()} | {error, term()}.
 create(Data) ->
     Tb = tablename(),
     Sql =
@@ -107,7 +151,22 @@ create(Data) ->
         maps:get(status, Data, 1),
         maps:get(created_by, Data, 0)
     ],
-    elib_pg:query(Sql, Params).
+    case elib_pg:query(Sql, Params) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, create_empty_result};
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec update_metadata(binary(), map()) -> {ok, term()} | {error, term()}.
+update_metadata(Code, Patch) when is_binary(Code), is_map(Patch) ->
+    Tb = tablename(),
+    Allowed = maps:with([name, description], Patch),
+    case map_size(Allowed) of
+        0 ->
+            {ok, 0};
+        _ ->
+            elib_pg:update(Tb, Allowed#{updated_at => elib_dt:now()}, <<"code = $1">>, [Code])
+    end.
 
 -spec save_draft(binary(), map()) -> {ok, [map()]} | {error, term()}.
 save_draft(Code, Data) ->
@@ -134,10 +193,36 @@ save_draft(Code, Data) ->
         maps:get(knowledge_policy, Data, <<"{}">>),
         maps:get(created_by, Data, 0)
     ],
-    elib_pg:query(Sql, Params).
+    Result = elib_pg:query(Sql, Params),
+    case Result of
+        {ok, _} -> audit_event(role_draft_saved, #{role_code => Code, version => Version});
+        _ -> ok
+    end,
+    Result.
 
 -spec publish(binary(), pos_integer(), integer()) -> {ok, term()} | {error, term()}.
 publish(Code, Version, PublishedBy) ->
+    Result = elib_pg:with_tx(fun(Conn) -> publish_tx(Conn, Code, Version, PublishedBy) end),
+    case Result of
+        {rollback, Reason} ->
+            audit_event(role_publish_failed, #{
+                role_code => Code,
+                version => Version,
+                reason => Reason
+            }),
+            {error, Reason};
+        {ok, _} ->
+            audit_event(role_published, #{
+                role_code => Code,
+                version => Version,
+                published_by => PublishedBy
+            }),
+            Result;
+        _ ->
+            Result
+    end.
+
+publish_tx(Conn, Code, Version, PublishedBy) ->
     VersionTb = version_tablename(),
     RoleTb = tablename(),
     ArchiveSql =
@@ -151,18 +236,18 @@ publish(Code, Version, PublishedBy) ->
     RoleSql =
         <<"UPDATE ", RoleTb/binary,
             " SET active_version = $2, updated_at = NOW() WHERE code = $1">>,
-    case elib_pg:query(ArchiveSql, [Code, Version]) of
+    case elib_pg:query(Conn, ArchiveSql, [Code, Version]) of
         {ok, _} ->
-            case elib_pg:query(PublishSql, [Code, Version, PublishedBy]) of
+            case elib_pg:query(Conn, PublishSql, [Code, Version, PublishedBy]) of
                 {ok, []} ->
-                    {error, draft_not_found};
+                    throw({rollback, draft_not_found});
                 {ok, _} ->
-                    elib_pg:query(RoleSql, [Code, Version]);
+                    elib_pg:query(Conn, RoleSql, [Code, Version]);
                 {error, Reason} ->
-                    {error, Reason}
+                    throw({rollback, Reason})
             end;
         {error, Reason} ->
-            {error, Reason}
+            throw({rollback, Reason})
     end.
 
 -spec set_status(binary(), 0 | 1) -> {ok, term()} | {error, term()}.
@@ -176,6 +261,18 @@ count_bound_agents(Code) ->
     Sql = <<"SELECT count(*) AS total FROM ", AgentTb/binary, " WHERE role_id = $1">>,
     case elib_pg:query(Sql, [Code]) of
         {ok, [#{<<"total">> := Total} | _]} -> {ok, Total};
+        {ok, []} -> {ok, 0};
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec count_published_version(binary()) -> {ok, non_neg_integer()} | {error, term()}.
+count_published_version(Code) ->
+    VersionTb = version_tablename(),
+    Sql =
+        <<"SELECT version FROM ", VersionTb/binary,
+            " WHERE role_code = $1 AND state = 'published' LIMIT 1">>,
+    case elib_pg:query(Sql, [Code]) of
+        {ok, [#{<<"version">> := Version} | _]} -> {ok, Version};
         {ok, []} -> {ok, 0};
         {error, Reason} -> {error, Reason}
     end.
@@ -200,3 +297,11 @@ build_where(Filters) ->
 
 empty_page(Page, Size) ->
     #{total => 0, page => Page, size => Size, list => []}.
+
+audit_event(Name, Details) ->
+    try
+        ?INFO_LOG([Name, Details])
+    catch
+        _:_ -> ok
+    end,
+    ok.

@@ -92,3 +92,59 @@ page_forwards_filters_to_repo_test_() ->
             )
         end
     ).
+
+validate_config_rejects_unknown_capability_name_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error, {unknown_capability, <<"web_search">>}},
+            ai_agent_role_ds:validate_config(#{
+                <<"code">> => <<"doctor">>,
+                <<"name">> => <<"assistant">>,
+                <<"system_prompt">> => <<"prompt">>,
+                <<"capabilities">> => #{<<"web_search">> => true}
+            })
+        )
+    end).
+
+create_accepts_role_identity_before_first_draft_test_() ->
+    ?WITH_MECK(
+        ai_agent_role_repo,
+        [
+            {'create', 1, fun(#{code := <<"doctor">>, name := <<"Doctor">>}) ->
+                {ok, #{code => <<"doctor">>}}
+            end}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, _},
+                ai_agent_role_ds:create(#{
+                    <<"code">> => <<"doctor">>,
+                    <<"name">> => <<"Doctor">>
+                })
+            )
+        end
+    ).
+
+save_draft_accepts_role_code_payload_test_() ->
+    ?WITH_MECK(
+        ai_agent_role_repo,
+        [
+            {'update_metadata', 2, fun(<<"doctor">>, #{name := <<"Doctor">>}) ->
+                {ok, 1}
+            end},
+            {'save_draft', 2, fun(<<"doctor">>, #{version := 1, system_prompt := <<"prompt">>}) ->
+                {ok, [#{version => 1}]}
+            end}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, [_]},
+                ai_agent_role_ds:save_draft(<<"doctor">>, #{
+                    <<"role_code">> => <<"doctor">>,
+                    <<"version">> => 1,
+                    <<"name">> => <<"Doctor">>,
+                    <<"system_prompt">> => <<"prompt">>
+                })
+            )
+        end
+    ).

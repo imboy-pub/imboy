@@ -63,21 +63,26 @@ do_maybe_dispatch(FromUid, ToGID, Data, MemberUids) ->
 maybe_trigger(_FromUid, _ToGID, _AgentUid, _Agent, <<>>, _MemberUids) ->
     ok;
 maybe_trigger(FromUid, ToGID, AgentUid, Agent, Text, MemberUids) ->
-    Policy = maps:get(<<"trigger_policy">>, Agent, #{}),
-    Ctx = #{mentioned => true, text => Text, group_id => ToGID},
-    case agent_trigger_policy:should_trigger(Policy, Ctx) of
+    case ai_agent_policy:allows(Agent, <<"group_reply">>) of
         false ->
             ok;
         true ->
-            case agent_rate_limiter:allow(AgentUid, FromUid) of
-                {deny, Reason} ->
-                    ok = ?WARN_LOG(
-                        "[AGENT_GROUP_RATE_LIMITED] agent=~p gid=~p from=~p reason=~p~n",
-                        [AgentUid, ToGID, FromUid, Reason]
-                    ),
+            Policy = maps:get(<<"trigger_policy">>, Agent, #{}),
+            Ctx = #{mentioned => true, text => Text, group_id => ToGID},
+            case agent_trigger_policy:should_trigger(Policy, Ctx) of
+                false ->
                     ok;
-                allow ->
-                    dispatch(ToGID, AgentUid, Agent, Text, MemberUids)
+                true ->
+                    case agent_rate_limiter:allow(AgentUid, FromUid) of
+                        {deny, Reason} ->
+                            ok = ?WARN_LOG(
+                                "[AGENT_GROUP_RATE_LIMITED] agent=~p gid=~p from=~p reason=~p~n",
+                                [AgentUid, ToGID, FromUid, Reason]
+                            ),
+                            ok;
+                        allow ->
+                            dispatch(ToGID, AgentUid, Agent, Text, MemberUids)
+                    end
             end
     end.
 

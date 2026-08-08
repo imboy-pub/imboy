@@ -209,3 +209,163 @@ kb_text_config_crash_safe_test_() ->
             ?assertEqual(<<>>, ai_agent_kb_logic:kb_text())
         end
     ).
+
+context_off_does_not_read_config_test_() ->
+    ?WITH_MECKS(
+        [{config_ds, [{'get', 2, fun(_, _) -> error(config_must_not_be_read) end}]}],
+        fun() ->
+            ?assertEqual(
+                <<>>,
+                ai_agent_kb_logic:context(
+                    #{
+                        <<"knowledge_policy">> => #{
+                            <<"knowledge">> => #{<<"mode">> => <<"off">>}
+                        }
+                    },
+                    <<"refund">>
+                )
+            )
+        end
+    ).
+
+context_on_demand_selects_matching_lines_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"ai_agent.kb.enabled">>, _) -> true;
+                    (<<"ai_agent.kb.group_rule">>, _) -> <<"refund: 7 days\ninvoice: contact">>;
+                    (<<"ai_agent.kb.faq">>, _) -> <<>>
+                end}
+            ]}
+        ],
+        fun() ->
+            Context = ai_agent_kb_logic:context(
+                #{
+                    <<"knowledge_policy">> => #{
+                        <<"knowledge">> => #{
+                            <<"mode">> => <<"on_demand">>,
+                            <<"max_context_bytes">> => 2400
+                        }
+                    }
+                },
+                <<"refund">>
+            ),
+            ?assertNotEqual(nomatch, binary:match(Context, <<"refund">>)),
+            ?assertEqual(nomatch, binary:match(Context, <<"invoice">>))
+        end
+    ).
+
+context_zero_limit_returns_empty_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"ai_agent.kb.enabled">>, _) -> true;
+                    (<<"ai_agent.kb.group_rule">>, _) -> <<"禁止刷屏">>;
+                    (<<"ai_agent.kb.faq">>, _) -> <<>>
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                <<>>,
+                ai_agent_kb_logic:context(
+                    #{
+                        <<"knowledge_policy">> => #{
+                            <<"knowledge">> => #{
+                                <<"mode">> => <<"required">>,
+                                <<"max_context_bytes">> => 0
+                            }
+                        }
+                    },
+                    <<"问题">>
+                )
+            )
+        end
+    ).
+
+context_disabled_knowledge_capability_does_not_inject_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"ai_agent.kb.enabled">>, _) -> true;
+                    (<<"ai_agent.kb.group_rule">>, _) -> <<"禁止刷屏">>;
+                    (<<"ai_agent.kb.faq">>, _) -> <<>>
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                <<>>,
+                ai_agent_kb_logic:context(
+                    #{
+                        <<"capabilities">> => #{<<"knowledge">> => false},
+                        <<"knowledge_policy">> => #{
+                            <<"knowledge">> => #{
+                                <<"mode">> => <<"required">>,
+                                <<"max_context_bytes">> => 2400
+                            }
+                        }
+                    },
+                    <<"问题">>
+                )
+            )
+        end
+    ).
+
+context_source_limits_retrieval_to_faq_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"ai_agent.kb.enabled">>, _) -> true;
+                    (<<"ai_agent.kb.group_rule">>, _) -> <<"refund: group rule">>;
+                    (<<"ai_agent.kb.faq">>, _) -> <<"refund: faq answer">>
+                end}
+            ]}
+        ],
+        fun() ->
+            Context = ai_agent_kb_logic:context(
+                #{
+                    <<"knowledge_policy">> => #{
+                        <<"knowledge">> => #{
+                            <<"mode">> => <<"required">>,
+                            <<"source">> => <<"faq">>
+                        }
+                    }
+                },
+                <<"refund">>
+            ),
+            ?assertNotEqual(nomatch, binary:match(Context, <<"faq answer">>)),
+            ?assertEqual(nomatch, binary:match(Context, <<"group rule">>))
+        end
+    ).
+
+context_required_is_bounded_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"ai_agent.kb.enabled">>, _) -> true;
+                    (<<"ai_agent.kb.group_rule">>, _) -> <<"1234567890">>;
+                    (<<"ai_agent.kb.faq">>, _) -> <<>>
+                end}
+            ]}
+        ],
+        fun() ->
+            Context = ai_agent_kb_logic:context(
+                #{
+                    <<"knowledge_policy">> => #{
+                        <<"knowledge">> => #{
+                            <<"mode">> => <<"required">>,
+                            <<"max_context_bytes">> => 5
+                        }
+                    }
+                },
+                <<"anything">>
+            ),
+            ?assertEqual(5, byte_size(Context))
+        end
+    ).

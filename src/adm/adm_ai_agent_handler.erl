@@ -51,6 +51,12 @@ init(Req0, State0) ->
             set_status -> set_status(Method, Req0, State);
             onboarding_config -> onboarding_config(Method, Req0, State);
             knowledge_config -> knowledge_config(Method, Req0, State);
+            role_list -> role_list(Method, Req0, State);
+            role_detail -> role_detail(Method, Req0, State);
+            role_create -> role_create(Method, Req0, State);
+            role_draft -> role_draft(Method, Req0, State);
+            role_publish -> role_publish(Method, Req0, State);
+            role_set_status -> role_set_status(Method, Req0, State);
             roles -> roles(Method, Req0, State);
             upload_avatar -> upload_avatar(Method, Req0, State);
             mandate_create -> mandate_create(Method, Req0, State);
@@ -173,6 +179,105 @@ knowledge_config(<<"POST">>, Req0, State) ->
 knowledge_config(_, Req0, _State) ->
     method_not_allowed(Req0).
 
+%% @doc 版本化角色模板分页管理。角色模板是唯一行为配置来源，助手只绑定 code。
+-spec role_list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+role_list(<<"GET">>, Req0, State) ->
+    with_perm(?PERM_READ, State, Req0, fun() ->
+        {Page, Size} = elib_param:page(Req0),
+        Keyword = elib_param:get(keyword, Req0, <<>>),
+        Status = parse_optional_status(elib_param:get(status, Req0, <<>>)),
+        Filters = maybe_status_filter(#{keyword => Keyword}, Status),
+        case ai_agent_role_ds:page(Page, Size, Filters) of
+            {ok, P} -> elib_response:success(Req0, P);
+            {error, _} -> elib_response:error(Req0, <<"读取 AI 角色列表失败"/utf8>>, ?ERR_BAD_REQUEST)
+        end
+    end);
+role_list(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+-spec role_detail(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+role_detail(<<"GET">>, Req0, State) ->
+    with_perm(?PERM_READ, State, Req0, fun() ->
+        Code = elib_param:get(role_code, Req0, <<>>),
+        case ai_agent_role_ds:find(Code) of
+            {ok, Role} -> elib_response:success(Req0, Role);
+            {error, notfound} -> elib_response:error(Req0, <<"AI 角色不存在"/utf8>>, ?ERR_BAD_REQUEST);
+            {error, _} -> elib_response:error(Req0, <<"读取 AI 角色详情失败"/utf8>>, ?ERR_BAD_REQUEST)
+        end
+    end);
+role_detail(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+-spec role_create(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+role_create(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_CREATE, State, Req0, fun() ->
+        PostVals = (elib_param:post(Req0))#{<<"created_by">> => maps:get(adm_user_id, State, 0)},
+        case ai_agent_role_ds:create(PostVals) of
+            {ok, Result} -> elib_response:success(Req0, Result, <<"创建角色成功"/utf8>>);
+            {error, Reason} -> elib_response:error(Req0, reason_binary(Reason), ?ERR_BAD_REQUEST)
+        end
+    end);
+role_create(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+-spec role_draft(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+role_draft(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_UPDATE, State, Req0, fun() ->
+        PostVals = (elib_param:post(Req0))#{<<"created_by">> => maps:get(adm_user_id, State, 0)},
+        Code = maps:get(<<"role_code">>, PostVals, <<>>),
+        case ai_agent_role_ds:save_draft(Code, PostVals) of
+            {ok, Result} -> elib_response:success(Req0, Result, <<"草稿已保存"/utf8>>);
+            {error, Reason} -> elib_response:error(Req0, reason_binary(Reason), ?ERR_BAD_REQUEST)
+        end
+    end);
+role_draft(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+-spec role_publish(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+role_publish(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_UPDATE, State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        Code = maps:get(<<"role_code">>, PostVals, <<>>),
+        Version = ec_cnv:to_integer(maps:get(<<"version">>, PostVals, 0)),
+        %% 发布人必须来自已认证管理态，不能由请求体伪造。
+        AdminUid = ec_cnv:to_integer(maps:get(adm_user_id, State, 0)),
+        case ai_agent_role_ds:publish(Code, Version, AdminUid) of
+            {ok, Result} -> elib_response:success(Req0, Result, <<"角色已发布"/utf8>>);
+            {error, Reason} -> elib_response:error(Req0, reason_binary(Reason), ?ERR_BAD_REQUEST)
+        end
+    end);
+role_publish(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+-spec role_set_status(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+role_set_status(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_UPDATE, State, Req0, fun() ->
+        PostVals = elib_param:post(Req0),
+        Code = maps:get(<<"role_code">>, PostVals, <<>>),
+        Status = ec_cnv:to_integer(maps:get(<<"status">>, PostVals, 1)),
+        case ai_agent_role_ds:set_status(Code, Status) of
+            {ok, Result} -> elib_response:success(Req0, Result, <<"角色状态已更新"/utf8>>);
+            {error, Reason} -> elib_response:error(Req0, reason_binary(Reason), ?ERR_BAD_REQUEST)
+        end
+    end);
+role_set_status(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+parse_optional_status(<<>>) ->
+    undefined;
+parse_optional_status(Value) ->
+    ec_cnv:to_integer(Value).
+
+maybe_status_filter(Filters, undefined) ->
+    Filters;
+maybe_status_filter(Filters, Status) ->
+    Filters#{status => Status}.
+
+reason_binary(Reason) when is_binary(Reason) ->
+    Reason;
+reason_binary(Reason) ->
+    ec_cnv:to_binary(Reason).
+
 %% @doc ai_roles 人格 KV 管理：GET 读全量；POST 保存/删除单个角色。
 %% Body: {"action": "save"|"delete", "role_id": "...", "prompt": "..."}
 %% 保存后回全量角色，前端下拉与列表直接回显。
@@ -252,7 +357,10 @@ read_all_parts(Req0, Acc) ->
                     read_all_parts(Req2, [{FieldName, Body} | Acc]);
                 {file, FieldName, Filename, CType} ->
                     {Body, Req2} = read_full_part_body(Req1, <<>>),
-                    read_all_parts(Req2, [{FieldName, #{filename => Filename, data => Body, content_type => CType}} | Acc])
+                    read_all_parts(Req2, [
+                        {FieldName, #{filename => Filename, data => Body, content_type => CType}}
+                        | Acc
+                    ])
             end;
         {done, Req1} ->
             {lists:reverse(Acc), Req1}
@@ -266,8 +374,9 @@ read_full_part_body(Req0, Acc) ->
 
 %% 从 parts 提取 file 字段：{ok, FileName, FileBinary, FileType} | error
 -spec find_file_part(list()) -> {ok, binary(), binary(), binary()} | error.
-find_file_part([{<<"file">>, #{filename := FileName, data := Data, content_type := Type}} | _])
-        when FileName =/= undefined, Data =/= undefined ->
+find_file_part([{<<"file">>, #{filename := FileName, data := Data, content_type := Type}} | _]) when
+    FileName =/= undefined, Data =/= undefined
+->
     {ok, FileName, Data, Type};
 find_file_part([_ | Rest]) ->
     find_file_part(Rest);

@@ -7,8 +7,10 @@
 %%% 覆盖：收敛后的消息构建 helper + A3-2 知识库注入 + E2EE 红线判定。
 %%%===================================================================
 
-%% mock ai_agent_kb_logic:kb_text/0 返回指定文本（知识库注入点）
--define(KB_MECK(KbText), {ai_agent_kb_logic, [{'kb_text', 0, fun() -> KbText end}]}).
+%% mock ai_agent_kb_logic:context/2 返回指定上下文（策略过滤在 KB 模块独立测试）
+-define(KB_MECK(KbText),
+    {ai_agent_kb_logic, [{'context', 2, fun(_, _) -> KbText end}]}
+).
 
 %% ===================================================================
 %% build_messages：system_prompt + 知识库注入组合
@@ -69,6 +71,49 @@ build_messages_kb_without_system_prompt_test_() ->
             ?assertEqual(2, length(Msgs)),
             [Sys, _User] = Msgs,
             ?assertEqual(<<"【群规】禁刷屏"/utf8>>, maps:get(<<"content">>, Sys))
+        end
+    ).
+
+build_messages_knowledge_off_skips_kb_lookup_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun(_, _) ->
+                    put(kb_read, true),
+                    error(config_must_not_be_read)
+                end}
+            ]}
+        ],
+        fun() ->
+            Agent = #{
+                <<"system_prompt">> => <<"你是助理">>,
+                <<"knowledge_policy">> => #{
+                    <<"knowledge">> => #{<<"mode">> => <<"off">>}
+                }
+            },
+            [Sys, _User] = ai_agent_prompt:build_messages(Agent, <<"问题">>),
+            ?assertEqual(<<"你是助理">>, maps:get(<<"content">>, Sys)),
+            ?assertEqual(undefined, get(kb_read))
+        end
+    ).
+
+build_messages_on_demand_only_injects_matching_context_test_() ->
+    ?WITH_MECKS(
+        [?KB_MECK(<<"退款规则：7天内可退款">>)],
+        fun() ->
+            Agent = #{
+                <<"system_prompt">> => <<"你是助理">>,
+                <<"knowledge_policy">> => #{
+                    <<"knowledge">> => #{
+                        <<"mode">> => <<"on_demand">>,
+                        <<"max_context_bytes">> => 2400
+                    }
+                }
+            },
+            [Sys, _User] = ai_agent_prompt:build_messages(Agent, <<"退款规则">>),
+            Content = maps:get(<<"content">>, Sys),
+            ?assertNotEqual(nomatch, binary:match(Content, <<"退款规则">>)),
+            ?assertEqual(nomatch, binary:match(Content, <<"发票规则">>))
         end
     ).
 

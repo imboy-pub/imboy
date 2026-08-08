@@ -625,6 +625,15 @@ get_routes() ->
         {"/api/adm/ai_agent/knowledge_config", adm_ai_agent_handler, #{
             action => knowledge_config
         }},
+        % 版本化 AI 角色模板：分页、详情、创建、草稿、发布、状态
+        {"/api/adm/ai_agent/role/list", adm_ai_agent_handler, #{action => role_list}},
+        {"/api/adm/ai_agent/role/detail", adm_ai_agent_handler, #{action => role_detail}},
+        {"/api/adm/ai_agent/role/create", adm_ai_agent_handler, #{action => role_create}},
+        {"/api/adm/ai_agent/role/draft", adm_ai_agent_handler, #{action => role_draft}},
+        {"/api/adm/ai_agent/role/publish", adm_ai_agent_handler, #{action => role_publish}},
+        {"/api/adm/ai_agent/role/set_status", adm_ai_agent_handler, #{
+            action => role_set_status
+        }},
         % admin 应急入口(c)：代运营为 agent 创建受控支付授权（finance:write RBAC）
         {"/api/adm/ai_agent/mandate_create", adm_ai_agent_handler, #{action => mandate_create}},
         {"/api/adm/mcp/clients", adm_mcp_handler, #{action => list}},

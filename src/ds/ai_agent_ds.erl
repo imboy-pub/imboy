@@ -69,7 +69,7 @@ update(UserId, ConfigMap) when is_map(ConfigMap) ->
         <<>> ->
             {error, <<"provider 不能为空"/utf8>>};
         Provider ->
-            case ai_agent_repo:upsert(agent_data(UserId, Provider, ConfigMap)) of
+            case ai_agent_repo:patch(UserId, patch_data(UserId, Provider, ConfigMap)) of
                 {ok, _} ->
                     ok = maybe_update_user_profile(UserId, ConfigMap),
                     {ok, #{<<"user_id">> => UserId}};
@@ -133,7 +133,7 @@ delete_role(RoleId) ->
 get(UserId) ->
     case ai_agent_repo:find(UserId) of
         {ok, Row} ->
-            {ok, decode_trigger(Row)};
+            {ok, decode_agent(Row)};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -159,7 +159,11 @@ set_status(UserId, Status) when Status =:= 0; Status =:= 1 ->
 is_agent(UserId) ->
     case ai_agent_repo:find(UserId) of
         {ok, #{<<"status">> := 1} = Row} ->
-            {true, decode_trigger(Row)};
+            Effective = decode_agent(Row),
+            case maps:get(<<"role_status">>, Effective, 1) of
+                1 -> {true, Effective};
+                _ -> false
+            end;
         _ ->
             false
     end.
@@ -211,11 +215,102 @@ agent_data(Uid, Provider, ConfigMap) ->
         temperature => maps:get(<<"temperature">>, ConfigMap, 0.7)
     }.
 
+-spec patch_data(integer(), binary(), map()) -> map().
+patch_data(Uid, Provider, ConfigMap) ->
+    Full = agent_data(Uid, Provider, ConfigMap),
+    maps:filter(
+        fun
+            (provider, _) -> true;
+            (Key, _) -> maps:is_key(atom_to_binary(Key, utf8), ConfigMap)
+        end,
+        Full
+    ).
+
 -spec decode_trigger(map()) -> map().
 decode_trigger(#{<<"trigger_policy">> := Tp} = Row) ->
     Row#{<<"trigger_policy">> => decode_json(Tp)};
 decode_trigger(Row) ->
     Row.
+
+-spec decode_agent(map()) -> map().
+decode_agent(Row) ->
+    Effective = inherit_role(decode_capabilities(decode_trigger(Row))),
+    Policy = ai_agent_policy:effective(Effective),
+    Effective#{<<"policy_source">> => maps:get(<<"policy_source">>, Policy)}.
+
+-spec decode_capabilities(map()) -> map().
+decode_capabilities(#{<<"capabilities">> := Capabilities} = Row) ->
+    Row#{<<"capabilities">> => decode_json(Capabilities)};
+decode_capabilities(Row) ->
+    Row.
+
+%% 角色是行为配置的唯一来源；角色不存在、未发布或配置异常时保留 agent
+%% 旧配置，保证历史助手可以继续工作并允许后台逐步迁移。
+-spec inherit_role(map()) -> map().
+inherit_role(#{<<"role_id">> := RoleCode} = Agent) when
+    is_binary(RoleCode), RoleCode =/= <<>>
+->
+    try ai_agent_role_repo:find_published(RoleCode) of
+        {ok, RoleRow} ->
+            case role_config(RoleCode, RoleRow) of
+                {ok, Role} ->
+                    case ai_agent_role_ds:effective_config(Agent, Role) of
+                        {ok, Effective} ->
+                            Effective;
+                        {error, Reason} ->
+                            log_role_fallback(RoleCode, {invalid_role_policy, Reason}),
+                            Agent
+                    end;
+                error ->
+                    log_role_fallback(RoleCode, unpublished_or_invalid),
+                    Agent
+            end;
+        {error, Reason} ->
+            log_role_fallback(RoleCode, Reason),
+            Agent;
+        Other ->
+            log_role_fallback(RoleCode, Other),
+            Agent
+    catch
+        Class:Reason ->
+            log_role_fallback(RoleCode, {Class, Reason}),
+            Agent
+    end;
+inherit_role(Agent) ->
+    Agent.
+
+log_role_fallback(RoleCode, Reason) ->
+    try
+        ?WARN_LOG([
+            ai_agent_role_legacy_fallback,
+            #{role_code => RoleCode, reason => Reason}
+        ])
+    catch
+        _:_ -> ok
+    end,
+    ok.
+
+-spec role_config(binary(), map()) -> {ok, map()} | error.
+role_config(RoleCode, Row) ->
+    Version = maps:get(<<"version">>, Row, maps:get(<<"active_version">>, Row, 0)),
+    Prompt = maps:get(<<"system_prompt">>, Row, <<>>),
+    case
+        is_integer(Version) andalso Version > 0 andalso is_binary(Prompt) andalso Prompt =/= <<>>
+    of
+        true ->
+            {ok, #{
+                <<"code">> => maps:get(<<"code">>, Row, RoleCode),
+                <<"version">> => Version,
+                <<"status">> => maps:get(<<"status">>, Row, 1),
+                <<"system_prompt">> => Prompt,
+                <<"capabilities">> => decode_json(maps:get(<<"capabilities">>, Row, #{})),
+                <<"knowledge_policy">> => decode_json(
+                    maps:get(<<"knowledge_policy">>, Row, #{})
+                )
+            }};
+        false ->
+            error
+    end.
 
 -spec decode_json(binary() | map()) -> map().
 decode_json(V) when is_map(V) ->

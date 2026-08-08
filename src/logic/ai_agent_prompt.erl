@@ -9,8 +9,8 @@
 %%% maybe_dispatch 仍保留差异逻辑（C2C 单查 vs C2G mentions 多查 / 支付旁路 /
 %%% 触发策略 / 防环 / 投递目标），但「消息如何构建」收敛到本模块单一入口。
 %%%
-%%% A3-2 知识库注入落点：build_messages 在此读 ai_agent_kb_logic:kb_text() 追加到
-%%% system content——改一处即让 C2C/C2G/欢迎三路同时带上知识库上下文。
+%%% 知识库注入落点：build_messages 在此按角色 knowledge_policy 取有限上下文，
+%%% 避免每轮把完整知识库发送给模型。
 %%%
 
 -export([
@@ -22,7 +22,7 @@
     first_nonempty/1
 ]).
 
-%% @doc OpenAI 兼容 messages：可选 system_prompt（+ 知识库）开场 + 用户文本。
+%% @doc OpenAI 兼容 messages：可选 system_prompt（+ 按需知识上下文）开场 + 用户文本。
 %% A3-2：当 ai_agent_kb_logic:kb_text() 非空时，追加到 system content。
 -spec build_messages(map(), binary()) -> [map()].
 build_messages(Agent, Text) ->
@@ -32,7 +32,7 @@ build_messages(Agent, Text) ->
 %% @doc 同 build_messages/2，但 user 段由调用方提供（proactive 欢迎指令场景）
 -spec build_messages_with_user(map(), map()) -> [map()].
 build_messages_with_user(Agent, #{<<"role">> := <<"user">>} = User) ->
-    SystemContent = system_content(Agent),
+    SystemContent = system_content(Agent, maps:get(<<"content">>, User, <<>>)),
     case SystemContent of
         <<>> ->
             [User];
@@ -40,12 +40,11 @@ build_messages_with_user(Agent, #{<<"role">> := <<"user">>} = User) ->
             [#{<<"role">> => <<"system">>, <<"content">> => SystemContent}, User]
     end.
 
-%% 拼装 system content：agent.system_prompt + 知识库文本（A3-2 注入点）
--spec system_content(map()) -> binary().
-system_content(Agent) ->
+%% 拼装 system content：agent.system_prompt + 角色策略筛出的知识上下文。
+-spec system_content(map(), binary()) -> binary().
+system_content(Agent, Query) ->
     SP = maps:get(<<"system_prompt">>, Agent, <<>>),
-    %% A3-2: 知识库上下文注入（kb_text 内部做 enabled 门控 + 故障安全）
-    case ai_agent_kb_logic:kb_text() of
+    case ai_agent_kb_logic:context(Agent, Query) of
         <<>> ->
             SP;
         KB when is_binary(SP), SP =/= <<>> ->

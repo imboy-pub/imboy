@@ -67,7 +67,7 @@ page=1&size=10&keyword=welcome&status=1
 
 ## 4. 角色详情
 
-### `GET /ai_agent/role/detail?code=official_welcome`
+### `GET /ai_agent/role/detail?role_code=official_welcome`
 
 响应 payload：
 
@@ -79,16 +79,15 @@ page=1&size=10&keyword=welcome&status=1
   "status": 1,
   "active_version": 2,
   "bound_agent_count": 3,
-  "published": {
-    "version": 2,
-    "system_prompt": "你是 imboy 官方 AI 新手助手……",
-    "capabilities": {
-      "knowledge": { "mode": "on_demand", "source": "faq", "max_context_bytes": 2400 },
-      "group_reply": { "mode": "off" },
-      "proactive": { "mode": "welcome_only", "daily_limit": 1 }
-    }
-  },
-  "draft": null
+  "version": 2,
+  "state": "published",
+  "system_prompt": "你是 imboy 官方 AI 新手助手……",
+  "capabilities": { "knowledge": true },
+  "knowledge_policy": {
+    "knowledge": { "mode": "on_demand", "source": "all", "max_context_bytes": 2400 },
+    "group_reply": { "mode": "off" },
+    "proactive": { "mode": "welcome_only", "daily_limit": 0 }
+  }
 }
 ```
 
@@ -112,12 +111,13 @@ page=1&size=10&keyword=welcome&status=1
 
 ```json
 {
-  "code": "official_welcome",
+  "role_code": "official_welcome",
   "system_prompt": "你是 imboy 官方 AI 新手助手……",
-  "capabilities": {
-    "knowledge": { "mode": "on_demand", "source": "faq", "max_context_bytes": 2400 },
+  "capabilities": { "knowledge": true },
+  "knowledge_policy": {
+    "knowledge": { "mode": "on_demand", "source": "all", "max_context_bytes": 2400 },
     "group_reply": { "mode": "off" },
-    "proactive": { "mode": "welcome_only", "daily_limit": 1 }
+    "proactive": { "mode": "welcome_only", "daily_limit": 0 }
   }
 }
 ```
@@ -132,13 +132,12 @@ page=1&size=10&keyword=welcome&status=1
 
 ```json
 {
-  "code": "official_welcome",
-  "version": 3,
-  "confirm_bound_agent_count": 3
+  "role_code": "official_welcome",
+  "version": 3
 }
 ```
 
-服务端必须再次读取真实绑定数量；确认数量不一致时拒绝发布并要求前端重新加载。发布成功后所有绑定 Agent 使用新版本。
+发布操作本身是显式影响确认；服务端从已认证管理态记录 published_by，不接受请求体伪造发布人。发布成功后所有绑定 Agent 使用新版本。
 
 ## 7. Agent 列表和详情补充
 
@@ -152,7 +151,7 @@ Agent 管理列表行增加：
 }
 ```
 
-Agent 更新只接受 `role_code`，不接受新的 `system_prompt` 或 `capabilities` 覆盖。旧接口在兼容期可继续读取 legacy 字段，但后台新页面不得发送它们。
+Agent 运行时只接受已发布角色作为行为来源；旧接口保留 system_prompt、capabilities 字段用于未绑定角色的兼容回退。绑定角色的后台编辑不应依赖这些字段覆盖角色。
 
 ## 8. 统一错误
 

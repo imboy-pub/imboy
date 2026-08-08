@@ -89,17 +89,22 @@ do_send_text(AgentUid, ToUid, PayloadMap, PayloadJson) ->
 %% 时走 LLM 个性化（过 rate limiter），失败/限流一律回退模板保证可达。
 -spec send_welcome(integer(), integer(), binary(), map()) -> ok.
 send_welcome(AgentUid, ToUid, Nickname, Cfg) ->
-    Template = template_of(Cfg),
-    case maps:get(welcome_llm_enabled, Cfg, false) of
+    case proactive_allowed(AgentUid) of
+        false ->
+            ok;
         true ->
-            case llm_welcome(AgentUid, ToUid, Nickname) of
-                {ok, Text} when is_binary(Text), Text =/= <<>> ->
-                    send_text(AgentUid, ToUid, Text);
+            Template = template_of(Cfg),
+            case maps:get(welcome_llm_enabled, Cfg, false) of
+                true ->
+                    case llm_welcome(AgentUid, ToUid, Nickname) of
+                        {ok, Text} when is_binary(Text), Text =/= <<>> ->
+                            send_text(AgentUid, ToUid, Text);
+                        _ ->
+                            send_text(AgentUid, ToUid, render(Template, Nickname))
+                    end;
                 _ ->
                     send_text(AgentUid, ToUid, render(Template, Nickname))
-            end;
-        _ ->
-            send_text(AgentUid, ToUid, render(Template, Nickname))
+            end
     end.
 
 %% ===================================================================
@@ -162,4 +167,17 @@ template_of(Cfg) ->
     case maps:get(welcome_template, Cfg, ?DEFAULT_TEMPLATE) of
         T when is_binary(T), T =/= <<>> -> T;
         _ -> ?DEFAULT_TEMPLATE
+    end.
+
+-spec proactive_allowed(integer()) -> boolean().
+proactive_allowed(AgentUid) ->
+    try ai_agent_ds:is_agent(AgentUid) of
+        {true, Agent} ->
+            ai_agent_policy:allows(Agent, <<"proactive">>);
+        false ->
+            false
+    catch
+        _:_ ->
+            %% 兼容旧部署/单测：无法读取角色时不改变原欢迎消息语义。
+            true
     end.

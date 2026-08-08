@@ -75,6 +75,30 @@ update_rejects_empty_provider_test_() ->
         end
     ).
 
+update_preserves_omitted_behavior_fields_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_repo, [
+                {'patch', 2, fun(7, Data) ->
+                    ?assertEqual(
+                        #{
+                            provider => <<"qianfan">>,
+                            greeting => <<"新的欢迎语"/utf8>>
+                        },
+                        Data
+                    ),
+                    {ok, [#{<<"user_id">> => 7}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, _} = ai_agent_ds:update(7, #{
+                <<"provider">> => <<"qianfan">>,
+                <<"greeting">> => <<"新的欢迎语"/utf8>>
+            })
+        end
+    ).
+
 %% ===================================================================
 %% is_agent/1 — 消息路由判定
 %% ===================================================================
@@ -117,6 +141,100 @@ is_agent_false_for_notfound_test_() ->
         end
     ).
 
+is_agent_inherits_published_role_behavior_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_repo, [
+                {'find', 1, fun(42) ->
+                    {ok, #{
+                        <<"user_id">> => 42,
+                        <<"provider">> => <<"qianfan">>,
+                        <<"model">> => <<"qwen-flash">>,
+                        <<"role_id">> => <<"doctor">>,
+                        <<"system_prompt">> => <<"legacy prompt">>,
+                        <<"capabilities">> => <<"{\"knowledge\":false}">>,
+                        <<"status">> => 1
+                    }}
+                end}
+            ]},
+            {ai_agent_role_repo, [
+                {'find_published', 1, fun(<<"doctor">>) ->
+                    {ok, #{
+                        <<"code">> => <<"doctor">>,
+                        <<"active_version">> => 2,
+                        <<"version">> => 2,
+                        <<"system_prompt">> => <<"role prompt">>,
+                        <<"capabilities">> => <<"{\"knowledge\":true}">>,
+                        <<"knowledge_policy">> => <<"{}">>
+                    }}
+                end}
+            ]}
+        ],
+        fun() ->
+            {true, Agent} = ai_agent_ds:is_agent(42),
+            ?assertEqual(<<"role prompt">>, maps:get(<<"system_prompt">>, Agent)),
+            ?assertEqual(#{<<"knowledge">> => true}, maps:get(<<"capabilities">>, Agent)),
+            ?assertEqual(<<"doctor">>, maps:get(<<"role_code">>, Agent)),
+            ?assertEqual(2, maps:get(<<"role_version">>, Agent)),
+            ?assertEqual(<<"role">>, maps:get(<<"policy_source">>, Agent))
+        end
+    ).
+
+is_agent_ignores_unpublished_role_draft_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_repo, [
+                {'find', 1, fun(42) ->
+                    {ok, #{
+                        <<"user_id">> => 42,
+                        <<"role_id">> => <<"doctor">>,
+                        <<"system_prompt">> => <<"legacy prompt">>,
+                        <<"capabilities">> => <<"{\"knowledge\":false}">>,
+                        <<"status">> => 1
+                    }}
+                end}
+            ]},
+            {ai_agent_role_repo, [
+                {'find_published', 1, fun(<<"doctor">>) -> {error, notfound} end}
+            ]}
+        ],
+        fun() ->
+            {true, Agent} = ai_agent_ds:is_agent(42),
+            ?assertEqual(<<"legacy prompt">>, maps:get(<<"system_prompt">>, Agent)),
+            ?assertEqual(#{<<"knowledge">> => false}, maps:get(<<"capabilities">>, Agent))
+        end
+    ).
+
+is_agent_false_when_bound_role_is_disabled_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_repo, [
+                {'find', 1, fun(42) ->
+                    {ok, #{
+                        <<"user_id">> => 42,
+                        <<"role_id">> => <<"disabled">>,
+                        <<"status">> => 1
+                    }}
+                end}
+            ]},
+            {ai_agent_role_repo, [
+                {'find_published', 1, fun(<<"disabled">>) ->
+                    {ok, #{
+                        <<"code">> => <<"disabled">>,
+                        <<"version">> => 1,
+                        <<"status">> => 0,
+                        <<"system_prompt">> => <<"prompt">>,
+                        <<"capabilities">> => <<"{}">>,
+                        <<"knowledge_policy">> => <<"{}">>
+                    }}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(false, ai_agent_ds:is_agent(42))
+        end
+    ).
+
 %% ===================================================================
 %% get/1 — trigger_policy jsonb 解码
 %% ===================================================================
@@ -151,7 +269,9 @@ update_syncs_nickname_when_present_test_() ->
         [
             {user_repo, [{'update', 2, fun(_Uid, _Data) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+                {'patch', 2, fun(_Uid, _Data) ->
+                    {ok, [#{<<"user_id">> => 7}]}
+                end}
             ]}
         ],
         fun() ->
@@ -168,7 +288,9 @@ update_skips_nickname_when_absent_or_blank_test_() ->
         [
             {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+                {'patch', 2, fun(_Uid, _Data) ->
+                    {ok, [#{<<"user_id">> => 7}]}
+                end}
             ]}
         ],
         fun() ->
@@ -192,7 +314,9 @@ update_persists_extended_fields_test_() ->
         [
             {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+                {'patch', 2, fun(_Uid, _Data) ->
+                    {ok, [#{<<"user_id">> => 7}]}
+                end}
             ]}
         ],
         fun() ->
@@ -209,19 +333,16 @@ update_persists_extended_fields_test_() ->
                 <<"capabilities">> => #{<<"knowledge">> => true, <<"proactive">> => false},
                 <<"temperature">> => 0.3
             }),
-            %% 5 个新字段全部透传到 repo upsert（capabilities 编码为 JSON binary，
+            %% 5 个新字段全部透传到 repo patch（capabilities 编码为 JSON binary，
             %% temperature 透传数值）
             ?assert(
-                meck:called(ai_agent_repo, upsert, [
+                meck:called(ai_agent_repo, patch, [
+                    7,
                     #{
-                        user_id => 7,
                         provider => <<"bailian">>,
                         model => <<"qwen-flash">>,
                         role_id => <<"doctor">>,
                         system_prompt => <<"你是医生"/utf8>>,
-                        owner_uid => 0,
-                        trigger_policy => <<"{}">>,
-                        status => 1,
                         description => <<"客服助手"/utf8>>,
                         visibility => 1,
                         category => <<"客服"/utf8>>,
@@ -240,7 +361,9 @@ update_syncs_avatar_when_present_test_() ->
         [
             {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+                {'patch', 2, fun(_Uid, _Data) ->
+                    {ok, [#{<<"user_id">> => 7}]}
+                end}
             ]}
         ],
         fun() ->
@@ -248,10 +371,12 @@ update_syncs_avatar_when_present_test_() ->
                 <<"provider">> => <<"bailian">>,
                 <<"avatar">> => <<"https://s3.example.com/u7/avatar.png">>
             }),
-            ?assert(meck:called(user_repo, update, [
-                7,
-                #{avatar => <<"https://s3.example.com/u7/avatar.png">>}
-            ]))
+            ?assert(
+                meck:called(user_repo, update, [
+                    7,
+                    #{avatar => <<"https://s3.example.com/u7/avatar.png">>}
+                ])
+            )
         end
     ).
 
@@ -260,7 +385,9 @@ update_skips_avatar_when_absent_or_blank_test_() ->
         [
             {user_repo, [{'update', 2, fun(_, _) -> {ok, 1} end}]},
             {ai_agent_repo, [
-                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+                {'patch', 2, fun(_Uid, _Data) ->
+                    {ok, [#{<<"user_id">> => 7}]}
+                end}
             ]}
         ],
         fun() ->
@@ -295,7 +422,10 @@ roles_reads_back_saved_roles_test_() ->
                         Saved -> Saved
                     end
                 end},
-                {'set', 2, fun(<<"ai_roles">>, Map) -> put(saved_roles, Map), ok end}
+                {'set', 2, fun(<<"ai_roles">>, Map) ->
+                    put(saved_roles, Map),
+                    ok
+                end}
             ]}
         ],
         fun() ->
@@ -323,7 +453,10 @@ save_role_overwrites_existing_test_() ->
                         Saved -> Saved
                     end
                 end},
-                {'set', 2, fun(<<"ai_roles">>, Map) -> put(saved_roles, Map), ok end}
+                {'set', 2, fun(<<"ai_roles">>, Map) ->
+                    put(saved_roles, Map),
+                    ok
+                end}
             ]}
         ],
         fun() ->
@@ -346,7 +479,10 @@ delete_role_removes_existing_test_() ->
                         Saved -> Saved
                     end
                 end},
-                {'set', 2, fun(<<"ai_roles">>, Map) -> put(saved_roles, Map), ok end}
+                {'set', 2, fun(<<"ai_roles">>, Map) ->
+                    put(saved_roles, Map),
+                    ok
+                end}
             ]}
         ],
         fun() ->

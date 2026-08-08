@@ -118,6 +118,23 @@ send_welcome_template_default_when_missing_test_() ->
         end
     ).
 
+send_welcome_disabled_agent_does_not_deliver_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(42) -> false end}
+            ]},
+            {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
+            {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
+            {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
+            ?MSG_STORE_MECK
+        ],
+        fun() ->
+            ?assertEqual(ok, ai_agent_proactive:send_welcome(42, 7, <<"小明">>, #{})),
+            ?assertNot(meck:called(message_ds, send_next, '_'))
+        end
+    ).
+
 %% ===================================================================
 %% send_welcome/4：LLM 路（闸门 + 回退）
 %% ===================================================================
