@@ -8,6 +8,7 @@
 -export([tablename/0]).
 -export([add/1]).
 -export([add/2]).
+-export([add_with_request_id/2]).
 -export([find_by_id/1]).
 -export([list_by_channel/3]).
 -export([update/2]).
@@ -53,6 +54,56 @@ add(Conn, Data) ->
     case elib_pg:execute(Conn, Sql, Params) of
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
+    end.
+
+%% @doc 使用客户端 request_id 幂等添加频道消息。
+%% 同一作者、频道和 request_id 的同内容重试返回原消息；内容不一致拒绝复用。
+-spec add_with_request_id(map(), binary()) ->
+    {ok, integer(), inserted | duplicate} | {error, term()}.
+add_with_request_id(Data, RequestId) ->
+    Tb = tablename(),
+    Id = elib_tsid:generate(channel_message),
+    Data2 = Data#{<<"id">> => Id, request_id => RequestId},
+    {Sql0, Params} = elib_pg_sql:insert(Tb, Data2),
+    Sql = iolist_to_binary([
+        Sql0,
+        <<
+            " ON CONFLICT (author_id, channel_id, request_id) "
+            "WHERE request_id IS NOT NULL DO NOTHING"
+        >>
+    ]),
+    case elib_pg:execute(Sql, Params) of
+        {ok, Count} when Count > 0 ->
+            {ok, Id, inserted};
+        {ok, 0} ->
+            find_idempotent_message(Tb, Data, RequestId);
+        {error, _} = Err ->
+            Err
+    end.
+
+find_idempotent_message(Tb, Data, RequestId) ->
+    Sql = <<
+        "SELECT id FROM ",
+        Tb/binary,
+        " WHERE author_id = $1 AND channel_id = $2 AND request_id = $3",
+        "   AND content = $4 AND msg_type = $5 AND payload = $6::jsonb",
+        " LIMIT 1"
+    >>,
+    Params = [
+        maps:get(author_id, Data),
+        maps:get(channel_id, Data),
+        RequestId,
+        maps:get(content, Data),
+        maps:get(msg_type, Data),
+        maps:get(payload, Data)
+    ],
+    case elib_pg:query(Sql, Params) of
+        {ok, [#{<<"id">> := MessageId} | _]} ->
+            {ok, MessageId, duplicate};
+        {ok, []} ->
+            {error, request_id_conflict};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 根据ID查找消息

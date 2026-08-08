@@ -10,6 +10,7 @@
 -export([update_channel/3]).
 -export([delete_channel/2]).
 -export([publish_message/5]).
+-export([publish_message/6]).
 -export([get_messages/4]).
 -export([mark_as_read/3]).
 -export([search_channels/2]).
@@ -87,7 +88,8 @@ get_channel(ChannelIdBin, Uid) ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
                     IsSubscribed =
                         case UserRole of
-                            3 -> true; % 创建者恒订阅
+                            % 创建者恒订阅
+                            3 -> true;
                             _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
                         end,
                     Channel2 = Channel#{
@@ -114,7 +116,8 @@ get_channel_by_custom_id(CustomId, Uid) ->
                     UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
                     IsSubscribed =
                         case UserRole of
-                            3 -> true; % 创建者恒订阅
+                            % 创建者恒订阅
+                            3 -> true;
                             _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
                         end,
                     Channel2 = Channel#{
@@ -224,6 +227,16 @@ delete_channel(Uid, ChannelIdBin) ->
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
     {ok, map()} | {error, binary()}.
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
+    do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, legacy).
+
+-spec publish_message(integer(), binary(), binary(), binary(), map(), binary()) ->
+    {ok, map()} | {error, binary()}.
+publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, RequestId) ->
+    do_publish_message(
+        Uid, ChannelIdBin, Content, MsgType, Payload, {request_id, RequestId}
+    ).
+
+do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
         0 ->
@@ -234,17 +247,18 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
                 true ->
                     {error, <<"只有管理员可以发布消息"/utf8>>};
                 false ->
-                    case channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload) of
-                        {ok, MessageId} ->
+                    case
+                        store_channel_message(
+                            StoreMode, ChannelId, Uid, Content, MsgType, Payload
+                        )
+                    of
+                        {ok, MessageId, Status} ->
                             case channel_message_ds:find_by_id(MessageId) of
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)};
                                 Message when is_map(Message) ->
                                     Message2 = message_transfer(Message),
-                                    channel_logic_notify:broadcast_channel_message(
-                                        ChannelId, Message2
-                                    ),
-                                    push_unread_updates(ChannelId),
+                                    maybe_notify_new_message(ChannelId, Message2, Status),
                                     {ok, Message2}
                             end;
                         {error, Reason} ->
@@ -252,6 +266,22 @@ publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
                     end
             end
     end.
+
+store_channel_message(legacy, ChannelId, Uid, Content, MsgType, Payload) ->
+    case channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload) of
+        {ok, MessageId} -> {ok, MessageId, inserted};
+        Error -> Error
+    end;
+store_channel_message(
+    {request_id, RequestId}, ChannelId, Uid, Content, MsgType, Payload
+) ->
+    channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload, RequestId).
+
+maybe_notify_new_message(ChannelId, Message, inserted) ->
+    channel_logic_notify:broadcast_channel_message(ChannelId, Message),
+    push_unread_updates(ChannelId);
+maybe_notify_new_message(_ChannelId, _Message, duplicate) ->
+    ok.
 
 -spec get_messages(integer(), binary(), integer(), integer()) ->
     {ok, list(map())} | {error, binary()}.

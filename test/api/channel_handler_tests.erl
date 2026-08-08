@@ -47,6 +47,46 @@ publish_message_uses_path_channel_id_test_() ->
         end
     ).
 
+publish_message_passes_request_id_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"content">> => <<"幂等公告"/utf8>>,
+                        <<"msg_type">> => <<"text">>,
+                        <<"request_id">> => <<"req-1">>
+                    }
+                end}
+            ]},
+            {cowboy_req, [
+                {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
+            ]},
+            {channel_logic, [
+                {'publish_message', 6, fun(
+                    1001,
+                    <<"ch_hash_path">>,
+                    <<"幂等公告"/utf8>>,
+                    <<"text">>,
+                    #{},
+                    <<"req-1">>
+                ) ->
+                    {ok, #{<<"id">> => <<"msg_1">>}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Msg) -> {ok_resp, Msg} end}
+            ]}
+        ],
+        fun() ->
+            Req = req_mock(),
+            State = #{current_uid => 1001},
+
+            Result = channel_handler:handle_action(publish_message, Req, State),
+            ?assertMatch({ok_resp, #{<<"id">> := <<"msg_1">>}}, Result)
+        end
+    ).
+
 publish_message_prefers_path_channel_id_over_body_test_() ->
     ?WITH_MECKS(
         [

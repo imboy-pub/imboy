@@ -17,6 +17,8 @@
 -spec delete_channel(integer(), binary()) -> ok | {error, binary()}.
 -spec publish_message(integer(), binary(), binary(), binary(), map()) ->
     {ok, map()} | {error, binary()}.
+-spec publish_message(integer(), binary(), binary(), binary(), map(), binary()) ->
+    {ok, map()} | {error, binary()}.
 -spec get_messages(integer(), binary(), integer(), integer()) ->
     {ok, list(map())} | {error, binary()}.
 -spec mark_as_read(integer(), binary(), binary()) -> ok | {error, binary()}.
@@ -80,6 +82,7 @@
 -export([remove_subscriber/3]).
 
 -export([publish_message/5]).
+-export([publish_message/6]).
 -export([get_messages/4]).
 -export([mark_as_read/3]).
 -export([pin_message/3]).
@@ -156,6 +159,11 @@ remove_subscriber(Uid, ChannelId, TargetUid) ->
 
 publish_message(Uid, ChannelIdBin, Content, MsgType, Payload) ->
     channel_logic_message:publish_message(Uid, ChannelIdBin, Content, MsgType, Payload).
+
+publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, RequestId) ->
+    channel_logic_message:publish_message(
+        Uid, ChannelIdBin, Content, MsgType, Payload, RequestId
+    ).
 
 get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
     channel_logic_message:get_messages(Uid, ChannelIdBin, Cursor, Limit).

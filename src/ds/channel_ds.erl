@@ -10,6 +10,7 @@
 -export([subscribe/2]).
 -export([unsubscribe/2]).
 -export([publish_message/5]).
+-export([publish_message/6]).
 -export([list_by_ids_since/2]).
 %% G3 thin wrappers for channel_logic_*
 -export([find_by_id/2]).
@@ -208,6 +209,15 @@ unsubscribe(ChannelId, Uid) ->
 -spec publish_message(integer(), integer(), binary(), binary(), map()) ->
     {ok, integer()} | {error, any()}.
 publish_message(ChannelId, AuthorId, Content, MsgType, Payload) ->
+    case publish_message(ChannelId, AuthorId, Content, MsgType, Payload, <<>>) of
+        {ok, MessageId, _Status} -> {ok, MessageId};
+        Error -> Error
+    end.
+
+%% @doc 发布频道消息，支持客户端 request_id 幂等重试。
+-spec publish_message(integer(), integer(), binary(), binary(), map(), binary()) ->
+    {ok, integer(), inserted | duplicate} | {error, any()}.
+publish_message(ChannelId, AuthorId, Content, MsgType, Payload, RequestId) ->
     % 获取作者信息
     User = user_repo:find_by_id(AuthorId, <<"nickname,avatar">>),
     AuthorName = maps:get(<<"nickname">>, User, <<>>),
@@ -232,13 +242,29 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload) ->
         created_at => Now
     },
 
-    case channel_message_repo:add(Data) of
-        {ok, MessageId} ->
+    Result =
+        case RequestId of
+            <<>> ->
+                case channel_message_repo:add(Data) of
+                    {ok, NewMessageId} -> {ok, NewMessageId, inserted};
+                    {error, Reason} -> {error, normalize_error(Reason)}
+                end;
+            _ ->
+                case channel_message_repo:add_with_request_id(Data, RequestId) of
+                    {ok, NewMessageId, NewStatus} -> {ok, NewMessageId, NewStatus};
+                    {error, Reason} -> {error, normalize_error(Reason)}
+                end
+        end,
+    case Result of
+        {ok, MessageId, Status} ->
             % 增加所有订阅者的未读计数
-            increment_all_unread(ChannelId, AuthorId),
-            {ok, MessageId};
-        {error, Reason} ->
-            {error, normalize_error(Reason)}
+            case Status of
+                inserted -> increment_all_unread(ChannelId, AuthorId);
+                duplicate -> ok
+            end,
+            {ok, MessageId, Status};
+        Error ->
+            Error
     end.
 
 %% @doc 增加所有订阅者的未读计数

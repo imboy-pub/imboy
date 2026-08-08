@@ -402,7 +402,7 @@
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
-| POST | /api/v1/channel/:channel_id/message | JWT | channel_handler#publish_message | 发布消息 / Publish | path `channel_id`；body `content`*,`msg_type`(默认 text),`payload` | Message object（`id`/`channel_id` TSID） |
+| POST | /api/v1/channel/:channel_id/message | JWT | channel_handler#publish_message | 发布消息 / Publish | path `channel_id`；body `content`*,`msg_type`(默认 text),`payload`,`request_id`(可选幂等键) | Message object（`id`/`channel_id` TSID） |
 | GET | /api/v1/channel/:channel_id/messages | JWT | channel_handler#messages | 消息列表 / List | path `channel_id`*；`cursor`(默认0),`limit`(默认20,1-200) | `{list}` |
 | POST | /api/v1/channel/:channel_id/read | JWT | channel_handler#mark_read | 标记已读 / Mark read | path `channel_id`；body `message_id` | `{}` |
 | POST | /api/v1/channel/:channel_id/message/:message_id/view | JWT | channel_handler#record_view | 记录阅读 / Record view | path `channel_id`,`message_id`* | `{}` |

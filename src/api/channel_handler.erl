@@ -252,20 +252,33 @@ publish_message(Req0, State) ->
     Content = maps:get(<<"content">>, PostVals, <<>>),
     MsgType = maps:get(<<"msg_type">>, PostVals, <<"text">>),
     Payload = maps:get(<<"payload">>, PostVals, #{}),
+    RequestId = maps:get(<<"request_id">>, PostVals, <<>>),
 
     case ChannelId of
         <<>> ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         _ when Content == <<>> ->
             elib_response:error(Req0, <<"消息内容不能为空"/utf8>>);
+        _ when not is_binary(RequestId); byte_size(RequestId) > 64 ->
+            elib_response:error(Req0, <<"request_id 无效"/utf8>>);
         _ ->
-            case channel_logic:publish_message(Uid, ChannelId, Content, MsgType, Payload) of
+            Result = publish_channel_message(
+                Uid, ChannelId, Content, MsgType, Payload, RequestId
+            ),
+            case Result of
                 {ok, Message} ->
                     elib_response:success(Req0, Message);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
     end.
+
+publish_channel_message(Uid, ChannelId, Content, MsgType, Payload, <<>>) ->
+    channel_logic:publish_message(Uid, ChannelId, Content, MsgType, Payload);
+publish_channel_message(Uid, ChannelId, Content, MsgType, Payload, RequestId) ->
+    channel_logic:publish_message(
+        Uid, ChannelId, Content, MsgType, Payload, RequestId
+    ).
 
 %% @doc 获取频道消息列表
 -spec messages(cowboy_req:req(), map()) -> cowboy_req:req().

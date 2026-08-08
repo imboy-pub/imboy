@@ -85,7 +85,7 @@ Covered endpoints:
 | My subscribed channels | `GET` | `/api/v1/channels/subscribed` | `cursor?`, `limit?` | - | `{list, cursor, limit}` |
 | My managed channels | `GET` | `/api/v1/channels/managed` | - | - | `{list}` |
 | Unread summary | `GET` | `/api/v1/channels/unread/summary` | - | - | `{total_unread, unread_channels, channels[]}` |
-| Publish message | `POST` | `/api/v1/channel/:channel_id/message` | - | `content`, `msg_type`, `payload?` | Message object |
+| Publish message | `POST` | `/api/v1/channel/:channel_id/message` | - | `content`, `msg_type`, `payload?`, `request_id?`（同作者/频道内幂等） | Message object |
 | Message list | `GET` | `/api/v1/channel/:channel_id/messages` | `cursor?`, `limit?` | - | `{list}` |
 | Mark read | `POST` | `/api/v1/channel/:channel_id/read` | - | `message_id` | `{}` |
 | Search channels | `GET` | `/api/v1/channels/search` | `keyword`, `limit?` | - | `{list}` |
