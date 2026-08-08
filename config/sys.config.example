@@ -18,13 +18,24 @@
         %%   api_key  : 可选 binary，敏感值——请用占位符，生产经 IMBOY_* 环境变量注入
         %%   model    : 可选 binary，模型名
         %% maps:without([name, module], Provider) 之外的字段会作为 chat/3 的 Opts 透传。
+        %%
+        %% 阿里云百炼为 OpenAI 兼容端点，复用 imboy_llm_openai：
+        %%   通用 DashScope：base_url=https://dashscope.aliyuncs.com/compatible-mode/v1
+        %%   专属模型网关（key 以 sk-ws- 开头）：base_url 以 CSV 交付的
+        %%   openAiCompatible 字段为准（本示例即专属网关）
+        %%   export BAILIAN_API_KEY=<你的 dashscope api key>
+        %%   export BAILIAN_MODEL=<模型ID>  （缺省 qwen3.7-flash）
         {llm_providers, [
             #{name => <<"qianfan">>, module => imboy_llm_qianfan},
             #{name => <<"openai">>, module => imboy_llm_openai,
               base_url => <<"https://api.deepseek.com/v1">>,
               %% 请勿在此写入真实密钥，运行时用 IMBOY_LLM_OPENAI_API_KEY 等注入
               api_key => <<"YOUR_API_KEY_HERE">>,
-              model => <<"deepseek-chat">>}
+              model => <<"deepseek-chat">>},
+            #{name => <<"bailian">>, module => imboy_llm_openai,
+              base_url => <<"https://llm-zyz63lgdmo1wvx8k.cn-beijing.maas.aliyuncs.com/compatible-mode/v1">>,
+              api_key => {env, <<"BAILIAN_API_KEY">>},
+              model => {env, <<"BAILIAN_MODEL">>, <<"qwen3.7-flash">>}}
         ]},
 
         %% Stage 1 product policy skeleton:
