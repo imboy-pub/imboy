@@ -176,6 +176,7 @@ atomic_transfer(Debit, Credit) ->
     } = Credit,
     DRemark = maps:get(remark, Debit, <<>>),
     CRemark = maps:get(remark, Credit, <<>>),
+    AfterTransfer = maps:get(after_transfer, Credit, undefined),
     elib_pg:with_tx(fun(Conn) ->
         %% 1. 借记付款方（守卫余额充足，行锁 + 乐观锁 version+1）
         DebitBal = do_debit(Conn, Tb, DUid, DAmt),
@@ -185,8 +186,24 @@ atomic_transfer(Debit, Credit) ->
         CreditBal = do_credit(Conn, Tb, CUid, CAmt),
         %% 4. 贷记流水（正数增量）
         ok = insert_tx(Conn, TxTb, CWid, CUid, CAmt, CreditBal, CType, CRemark, CRef),
+        %% 可选的同事务回调：用于在钱腿提交前标记外部补偿状态。
+        %% 回调失败必须 rollback，避免钱已变更但 outbox 仍可被补偿 worker 处理。
+        ok = run_after_transfer(AfterTransfer, Conn),
         {ok, #{debit_balance => DebitBal, credit_balance => CreditBal}}
     end).
+
+-spec run_after_transfer(
+    undefined | fun((epgsql:connection()) -> ok | {error, term()}),
+    epgsql:connection()
+) -> ok | no_return().
+run_after_transfer(undefined, _Conn) ->
+    ok;
+run_after_transfer(Fun, Conn) when is_function(Fun, 1) ->
+    case Fun(Conn) of
+        ok -> ok;
+        {error, Reason} -> throw({rollback, Reason});
+        Other -> throw({rollback, {after_transfer_failed, Other}})
+    end.
 
 %% 借记单腿（事务内）。守卫 status=1（不动冻结/停用钱包）且 balance - Amt >= 0；
 %% 0 行匹配=余额不足/钱包不存在/已停用。显式带 status，不依赖 ensure_wallet 的连带效应。

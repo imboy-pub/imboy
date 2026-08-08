@@ -105,3 +105,93 @@ reject_and_refund_ok_test_() ->
             ?assertEqual({ok, 1}, wallet_repo:reject_and_refund(555))
         end
     ).
+
+%% atomic_transfer：贷记流水成功后，补偿状态回调仍失败 → 整个钱包事务回滚
+atomic_transfer_after_transfer_callback_test_() ->
+    Debit = #{
+        user_id => 200,
+        wallet_id => 300,
+        amount => 100,
+        tx_type => 20,
+        reference_no => <<"D1">>
+    },
+    Credit = #{
+        user_id => 201,
+        wallet_id => 301,
+        amount => 100,
+        tx_type => 21,
+        reference_no => <<"C1">>,
+        after_transfer => fun(_Conn) -> {error, compensation_not_settling} end
+    },
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                with_tx_stub(),
+                {'execute', 3, fun(_Conn, Sql, _Params) ->
+                    case binary:match(Sql, <<"INSERT">>) of
+                        nomatch ->
+                            case binary:match(Sql, <<"balance = balance -">>) of
+                                nomatch -> {ok, 1, [{600}]};
+                                _ -> {ok, 1, [{900}]}
+                            end;
+                        _ ->
+                            {ok, 1}
+                    end
+                end}
+            ]},
+            sql_stub(),
+            tsid_stub()
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, compensation_not_settling},
+                wallet_repo:atomic_transfer(Debit, Credit)
+            )
+        end
+    ).
+
+%% atomic_transfer：补偿状态回调在钱事务提交前成功执行
+atomic_transfer_after_transfer_callback_ok_test_() ->
+    Debit = #{
+        user_id => 200,
+        wallet_id => 300,
+        amount => 100,
+        tx_type => 20,
+        reference_no => <<"D2">>
+    },
+    Credit = #{
+        user_id => 201,
+        wallet_id => 301,
+        amount => 100,
+        tx_type => 21,
+        reference_no => <<"C2">>,
+        after_transfer => fun(mock_conn) ->
+            put(callback_conn, mock_conn),
+            ok
+        end
+    },
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                with_tx_stub(),
+                {'execute', 3, fun(_Conn, Sql, _Params) ->
+                    case binary:match(Sql, <<"INSERT">>) of
+                        nomatch ->
+                            case binary:match(Sql, <<"balance = balance -">>) of
+                                nomatch -> {ok, 1, [{600}]};
+                                _ -> {ok, 1, [{900}]}
+                            end;
+                        _ ->
+                            {ok, 1}
+                    end
+                end}
+            ]},
+            sql_stub(),
+            tsid_stub()
+        ],
+        fun() ->
+            erase(callback_conn),
+            ?assertMatch({ok, _}, wallet_repo:atomic_transfer(Debit, Credit)),
+            ?assertEqual(mock_conn, get(callback_conn))
+        end
+    ).

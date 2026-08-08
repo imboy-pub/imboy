@@ -6,7 +6,7 @@
 % pay_with_mandate/4 串联三道闸门，任一不过绝不扣款：
 %   ① mandate 有效：agent 有未过期、status=1 的授权（find_active 已在 SQL 侧过滤）
 %   ② 额度门控：单笔 <= max_amount_fen（本层纯判定）；周期累计 + 本笔 <= max_total_fen
-%              （try_reserve 原子预留，窗口过期自动重置）
+%              （try_reserve_with_compensation 原子预留 + 补偿 outbox，窗口过期自动重置）
 %   ③ 原子结算：wallet_ds:atomic_transfer 单事务内「借记 owner_uid + 贷记 ToUid」，
 %              各写一条 wallet_transaction 流水（借记用 RefNo、贷记用 RefNo<>"_CR"）。
 %              前置 find_transaction_by_ref(RefNo) 挡重放；两腿不同 RefNo 撞唯一索引兜底。
@@ -15,7 +15,7 @@
 %   - 付款人恒为 mandate.owner_uid，绝不是 agent 自己；收款方=ToUid。
 %   - 结算是**单事务两腿原子**：借记成功 + 贷记失败 无法发生（任一步失败整笔 rollback），
 %     故不存在「扣了付款人却没到账」的资金丢失窗口。
-%   - 结算失败 → release 释放已预留额度，周期额度不被空耗、无资金变动。
+%   - 结算失败 → compensation outbox 在同一事务中释放已预留额度，周期额度不被空耗、无资金变动。
 %   - 幂等：同 RefNo 重放不重复预留、不重复结算。
 %%%
 
@@ -27,6 +27,8 @@
 %% ⚠️ 值域受 chk_wallet_tx_type 约束，须由迁移 00000030 放行 20/21
 -define(TX_TYPE_AGENT_PAYMENT, 20).
 -define(TX_TYPE_AGENT_PAYMENT_CREDIT, 21).
+-define(RELEASE_RETRY_COUNT, 3).
+-define(RELEASE_RETRY_DELAY_MS, 100).
 
 %% @doc Agent 凭 mandate 受控扣款。付款人=mandate.owner_uid，收款方=ToUid。
 %% @returns {ok, map()} | {error, Reason}
@@ -106,9 +108,20 @@ maybe_settle(MandateId, OwnerUid, AgentUid, ToUid, AmountFen, RefNo) ->
             %% 该 RefNo 已入账，直接返回幂等成功（不重复预留/扣款）
             {ok, #{ref_no => RefNo, idempotent => true}};
         false ->
-            case agent_payment_mandate_ds:try_reserve(MandateId, AmountFen) of
-                {ok, _NewSpent} ->
-                    settle(MandateId, OwnerUid, AgentUid, ToUid, AmountFen, RefNo);
+            case
+                agent_payment_mandate_ds:try_reserve_with_compensation(
+                    MandateId, AmountFen, RefNo
+                )
+            of
+                {ok, _NewSpent, CompensationId} ->
+                    settle(
+                        OwnerUid,
+                        AgentUid,
+                        ToUid,
+                        AmountFen,
+                        RefNo,
+                        CompensationId
+                    );
                 {error, exceeds_total_limit} ->
                     {error, exceeds_total_limit};
                 {error, Reason} ->
@@ -116,14 +129,12 @@ maybe_settle(MandateId, OwnerUid, AgentUid, ToUid, AmountFen, RefNo) ->
             end
     end.
 
-%% 闸门③：单事务两腿原子结算（借记 owner + 贷记 ToUid）；失败则释放预留额度。
-%% ponytail: try_reserve 与结算不在同一 DB 事务，失败靠 release/2 两步补偿。进程/节点
-%%   在「结算已失败」与「release 完成」之间崩溃会永久泄漏该笔预留（只缩小预算、不超付/不资损）。
-%%   PoC 地基可接受；生产化再上 outbox/补偿队列强化。
--spec settle(integer(), integer(), integer(), integer(), integer(), binary()) ->
+%% 闸门③：单事务两腿原子结算（借记 owner + 贷记 ToUid）。
+%% compensation outbox 在此事务内标记 settled；失败时由同一 outbox 事务释放额度。
+-spec settle(integer(), integer(), integer(), integer(), binary(), integer()) ->
     {ok, map()} | {error, atom()}.
-settle(MandateId, OwnerUid, AgentUid, ToUid, AmountFen, RefNo) ->
-    case settle_transfer(OwnerUid, AgentUid, ToUid, AmountFen, RefNo) of
+settle(OwnerUid, AgentUid, ToUid, AmountFen, RefNo, CompensationId) ->
+    case settle_transfer(OwnerUid, AgentUid, ToUid, AmountFen, RefNo, CompensationId) of
         {ok, #{debit_balance := OwnerBal, credit_balance := PayeeBal}} ->
             {ok, #{
                 ref_no => RefNo,
@@ -134,15 +145,38 @@ settle(MandateId, OwnerUid, AgentUid, ToUid, AmountFen, RefNo) ->
                 payee_balance => PayeeBal
             }};
         {error, Reason} ->
-            _ = agent_payment_mandate_ds:release(MandateId, AmountFen),
+            _ = release_reservation(CompensationId),
             {error, Reason}
+    end.
+
+-spec release_reservation(integer()) -> ok | {error, term()}.
+release_reservation(CompensationId) ->
+    Retry = elib_retry:with_retry(
+        fun() ->
+            case agent_payment_compensation_ds:release(CompensationId) of
+                ok -> ok;
+                {error, ReleaseReason} -> erlang:error({release_failed, ReleaseReason});
+                Other -> erlang:error({release_unexpected, Other})
+            end
+        end,
+        ?RELEASE_RETRY_COUNT,
+        ?RELEASE_RETRY_DELAY_MS
+    ),
+    case Retry of
+        {ok, ok} ->
+            ok;
+        {error, RetryReason} ->
+            ok = ?ERROR_LOG(
+                {agent_payment_reservation_release_failed, CompensationId, RetryReason}
+            ),
+            {error, RetryReason}
     end.
 
 %% 组装借/贷两腿并原子结算。付款人=OwnerUid、收款方=ToUid，绝不互换。
 %% 借记腿 RefNo，贷记腿 credit_ref(RefNo)（不同 RefNo 避免撞唯一索引）。
--spec settle_transfer(integer(), integer(), integer(), integer(), binary()) ->
+-spec settle_transfer(integer(), integer(), integer(), integer(), binary(), integer()) ->
     {ok, map()} | {error, atom()}.
-settle_transfer(OwnerUid, AgentUid, ToUid, AmountFen, RefNo) ->
+settle_transfer(OwnerUid, AgentUid, ToUid, AmountFen, RefNo, CompensationId) ->
     OwnerWallet = wallet_ds:ensure_wallet(OwnerUid),
     ToWallet = wallet_ds:ensure_wallet(ToUid),
     case (map_size(OwnerWallet) =:= 0) orelse (map_size(ToWallet) =:= 0) of
@@ -164,7 +198,10 @@ settle_transfer(OwnerUid, AgentUid, ToUid, AmountFen, RefNo) ->
                 amount => AmountFen,
                 tx_type => ?TX_TYPE_AGENT_PAYMENT_CREDIT,
                 remark => Remark,
-                reference_no => credit_ref(RefNo)
+                reference_no => credit_ref(RefNo),
+                after_transfer => fun(Conn) ->
+                    agent_payment_compensation_ds:mark_settled(CompensationId, Conn)
+                end
             },
             case wallet_ds:atomic_transfer(Debit, Credit) of
                 {ok, _} = Ok -> Ok;

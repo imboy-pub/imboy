@@ -142,6 +142,16 @@ init([]) ->
         modules => [olm_otk_cleanup_worker]
     },
 
+    % Agent 支付预留补偿 worker：持久化 outbox 崩溃恢复，默认必须启用
+    AgentPaymentCompensationWorker = #{
+        id => agent_payment_compensation_worker,
+        start => {agent_payment_compensation_worker, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [agent_payment_compensation_worker]
+    },
+
     % 登录失败次数限制（ETS 表 login_attempt_ets 由此 gen_server 创建）
     LoginAttemptServer = #{
         id => login_attempt_ds,
@@ -249,6 +259,7 @@ init([]) ->
             LicenseNoticeWorker,
             BillingInvoiceWorker,
             OlmOtkCleanupWorker,
+            AgentPaymentCompensationWorker,
             AiAgentRuntime,
             McpRegistry,
             McpSession,

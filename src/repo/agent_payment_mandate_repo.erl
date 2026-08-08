@@ -13,7 +13,7 @@
 -export([find/1]).
 -export([find_active/1]).
 -export([reserve/2]).
--export([release/2]).
+-export([reserve_with_compensation/3]).
 -export([set_status/2]).
 
 -include("log.hrl").
@@ -121,18 +121,52 @@ reserve(MandateId, AmountFen) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 释放预留（扣款失败补偿）。spent_fen -= AmountFen（下限 0），保证周期额度不被空耗。
--spec release(integer(), integer()) -> ok | {error, term()}.
-release(MandateId, AmountFen) ->
-    Tb = tablename(),
-    Sql =
-        <<"UPDATE ", Tb/binary,
-            " SET spent_fen = GREATEST(spent_fen - $2, 0), updated_at = NOW()"
-            " WHERE id = $1">>,
-    case elib_pg:query(Sql, [MandateId, AmountFen]) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
+%% @doc 原子预留额度 + 创建补偿 outbox。
+%% 预留成功但 outbox 写入失败时整笔事务回滚，避免留下无法恢复的孤儿预留。
+-spec reserve_with_compensation(integer(), integer(), binary()) ->
+    {ok, integer(), integer()} | {error, exceeds_total_limit | term()}.
+reserve_with_compensation(MandateId, AmountFen, RefNo) ->
+    MandateTb = tablename(),
+    CompensationTb = elib_pg_sql:public_tablename(<<"agent_payment_compensation">>),
+    CompensationId = elib_tsid:generate(agent_payment_compensation),
+    ReserveSql =
+        <<"UPDATE ", MandateTb/binary,
+            " SET spent_fen = CASE"
+            "        WHEN EXTRACT(EPOCH FROM (NOW() - window_start)) >= period_secs"
+            "        THEN $2 ELSE spent_fen + $2 END,"
+            "     window_start = CASE"
+            "        WHEN EXTRACT(EPOCH FROM (NOW() - window_start)) >= period_secs"
+            "        THEN NOW() ELSE window_start END,"
+            "     updated_at = NOW()"
+            " WHERE id = $1 AND status = 1"
+            "   AND (CASE"
+            "        WHEN EXTRACT(EPOCH FROM (NOW() - window_start)) >= period_secs"
+            "        THEN $2 ELSE spent_fen + $2 END) <= max_total_fen"
+            " RETURNING spent_fen">>,
+    InsertSql =
+        <<"INSERT INTO ", CompensationTb/binary,
+            " (id, mandate_id, amount_fen, reference_no, status,"
+            "  next_attempt_at, created_at, updated_at)"
+            " VALUES ($1, $2, $3, $4, 'settling', NOW(), NOW(), NOW())">>,
+    elib_pg:with_tx(fun(Conn) ->
+        case elib_pg:execute(Conn, ReserveSql, [MandateId, AmountFen]) of
+            {ok, 1, [{NewSpent}]} ->
+                case
+                    elib_pg:execute(
+                        Conn,
+                        InsertSql,
+                        [CompensationId, MandateId, AmountFen, RefNo]
+                    )
+                of
+                    {ok, _} -> {ok, NewSpent, CompensationId};
+                    {error, Reason} -> throw({rollback, Reason})
+                end;
+            {ok, 0} ->
+                {error, exceeds_total_limit};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end).
 
 %% @doc 撤销/启用授权（status 1=有效 0=撤销）
 -spec set_status(integer(), 0 | 1) -> {ok, non_neg_integer()} | {error, term()}.

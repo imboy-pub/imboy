@@ -24,7 +24,7 @@ mandate() ->
     }.
 
 clear() ->
-    lists:foreach(fun erase/1, [reserved, released, transfer, transferred]),
+    lists:foreach(fun erase/1, [reserved, released, release_attempts, transfer, transferred]),
     ok.
 
 %% 两钱包 mock：owner 999 → wallet 7；ToUid 200 → wallet 8
@@ -41,7 +41,7 @@ happy_path_test_() ->
         [
             {agent_payment_mandate_ds, [
                 {find_active, 1, fun(100) -> {ok, mandate()} end},
-                {try_reserve, 2, fun(555, 5000) -> {ok, 5000} end}
+                {try_reserve_with_compensation, 3, fun(555, 5000, _) -> {ok, 5000, 7001} end}
             ]},
             {wallet_ds, [
                 {find_transaction_by_ref, 1, fun(_) -> #{} end},
@@ -115,7 +115,9 @@ over_total_limit_test_() ->
         [
             {agent_payment_mandate_ds, [
                 {find_active, 1, fun(100) -> {ok, mandate()} end},
-                {try_reserve, 2, fun(555, 5000) -> {error, exceeds_total_limit} end}
+                {try_reserve_with_compensation, 3, fun(555, 5000, _) ->
+                    {error, exceeds_total_limit}
+                end}
             ]},
             {wallet_ds, [
                 {find_transaction_by_ref, 1, fun(_) -> #{} end},
@@ -229,8 +231,10 @@ settle_failure_releases_reservation_test_() ->
         [
             {agent_payment_mandate_ds, [
                 {find_active, 1, fun(100) -> {ok, mandate()} end},
-                {try_reserve, 2, fun(555, 5000) -> {ok, 5000} end},
-                {release, 2, fun(555, 5000) ->
+                {try_reserve_with_compensation, 3, fun(555, 5000, _) -> {ok, 5000, 7001} end}
+            ]},
+            {agent_payment_compensation_ds, [
+                {release, 1, fun(7001) ->
                     put(released, true),
                     ok
                 end}
@@ -255,8 +259,10 @@ settle_rollback_maps_payment_failed_test_() ->
         [
             {agent_payment_mandate_ds, [
                 {find_active, 1, fun(100) -> {ok, mandate()} end},
-                {try_reserve, 2, fun(555, 5000) -> {ok, 5000} end},
-                {release, 2, fun(555, 5000) ->
+                {try_reserve_with_compensation, 3, fun(555, 5000, _) -> {ok, 5000, 7001} end}
+            ]},
+            {agent_payment_compensation_ds, [
+                {release, 1, fun(7001) ->
                     put(released, true),
                     ok
                 end}
@@ -282,8 +288,10 @@ settle_unknown_error_releases_reservation_test_() ->
         [
             {agent_payment_mandate_ds, [
                 {find_active, 1, fun(100) -> {ok, mandate()} end},
-                {try_reserve, 2, fun(555, 5000) -> {ok, 5000} end},
-                {release, 2, fun(555, 5000) ->
+                {try_reserve_with_compensation, 3, fun(555, 5000, _) -> {ok, 5000, 7001} end}
+            ]},
+            {agent_payment_compensation_ds, [
+                {release, 1, fun(7001) ->
                     put(released, true),
                     ok
                 end}
@@ -299,6 +307,46 @@ settle_unknown_error_releases_reservation_test_() ->
             R = agent_payment_logic:pay_with_mandate(100, 200, 5000, <<"REF8">>),
             ?assertEqual({error, payment_failed}, R),
             ?assertEqual(true, get(released))
+        end
+    ).
+
+%% 释放预留遇到瞬时数据库错误 → 有限重试后成功，不把周期额度永久空耗
+release_reservation_retries_transient_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {agent_payment_mandate_ds, [
+                {find_active, 1, fun(100) -> {ok, mandate()} end},
+                {try_reserve_with_compensation, 3, fun(555, 5000, _) -> {ok, 5000, 7001} end}
+            ]},
+            {agent_payment_compensation_ds, [
+                {release, 1, fun(7001) ->
+                    Attempt =
+                        case get(release_attempts) of
+                            undefined -> 0;
+                            Value -> Value
+                        end,
+                    put(release_attempts, Attempt + 1),
+                    case Attempt of
+                        0 ->
+                            {error, timeout};
+                        _ ->
+                            put(released, true),
+                            ok
+                    end
+                end}
+            ]},
+            {wallet_ds, [
+                {find_transaction_by_ref, 1, fun(_) -> #{} end},
+                {ensure_wallet, 1, ensure_wallet_fun()},
+                {atomic_transfer, 2, fun(_, _) -> {error, payment_unavailable} end}
+            ]}
+        ],
+        fun() ->
+            clear(),
+            R = agent_payment_logic:pay_with_mandate(100, 200, 5000, <<"REF_RETRY">>),
+            ?assertEqual({error, payment_failed}, R),
+            ?assertEqual(true, get(released)),
+            ?assertEqual(2, get(release_attempts))
         end
     ).
 

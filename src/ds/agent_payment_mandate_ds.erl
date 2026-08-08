@@ -10,7 +10,7 @@
 -export([get/1]).
 -export([find_active/1]).
 -export([try_reserve/2]).
--export([release/2]).
+-export([try_reserve_with_compensation/3]).
 -export([revoke/1]).
 
 %% @doc 创建授权（见 repo:create/1 的 Data 键说明）
@@ -34,10 +34,11 @@ find_active(AgentUid) ->
 try_reserve(MandateId, AmountFen) ->
     agent_payment_mandate_repo:reserve(MandateId, AmountFen).
 
-%% @doc 释放预留（扣款失败补偿）
--spec release(integer(), integer()) -> ok | {error, term()}.
-release(MandateId, AmountFen) ->
-    agent_payment_mandate_repo:release(MandateId, AmountFen).
+%% @doc 原子预留周期额度并创建失败补偿 outbox。
+-spec try_reserve_with_compensation(integer(), integer(), binary()) ->
+    {ok, integer(), integer()} | {error, exceeds_total_limit | term()}.
+try_reserve_with_compensation(MandateId, AmountFen, RefNo) ->
+    agent_payment_mandate_repo:reserve_with_compensation(MandateId, AmountFen, RefNo).
 
 %% @doc 撤销授权
 -spec revoke(integer()) -> {ok, non_neg_integer()} | {error, term()}.
