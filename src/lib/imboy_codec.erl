@@ -408,6 +408,10 @@ content_type_to_enum(<<"text">>) -> 'TEXT';
 content_type_to_enum(<<"image">>) -> 'IMAGE';
 content_type_to_enum(<<"video">>) -> 'VIDEO';
 content_type_to_enum(<<"audio">>) -> 'AUDIO';
+%% 客户端全站发送口径是 <<"voice">>（JSON 通道原样透传），protobuf
+%% 通道须映射到 AUDIO 而非 CONTENT_TYPE_UNSPECIFIED——否则客户端
+%% protobuf 解码 default 成 <<"text">>，语音消息被渲染成文本。
+content_type_to_enum(<<"voice">>) -> 'AUDIO';
 content_type_to_enum(<<"file">>) -> 'FILE';
 content_type_to_enum(<<"location">>) -> 'LOCATION';
 content_type_to_enum(<<"custom">>) -> 'CUSTOM';

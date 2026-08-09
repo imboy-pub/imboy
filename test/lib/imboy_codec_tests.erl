@@ -32,7 +32,8 @@ codec_test_() ->
         {"v2 frame unwrap error on bad input", fun v2_frame_unwrap_error/0},
         {"a2a_task_update accepted on JSON channel", fun a2a_task_update_json_channel/0},
         {"CLIENT_ACK_ERROR 在 v2 帧内保留 id/in_reply_to/reason", fun client_ack_error_v2_lossless/0},
-        {"普通 C2C 消息仍走 protobuf 编码", fun c2c_still_protobuf/0}
+        {"普通 C2C 消息仍走 protobuf 编码", fun c2c_still_protobuf/0},
+        {"语音 voice 映射 AUDIO 且 protobuf 往返不丢类型", fun voice_content_type_roundtrip/0}
     ]}.
 
 %%%===================================================================
@@ -244,6 +245,24 @@ c2c_still_protobuf() ->
     ?assertEqual(<<"msg-test-001">>, maps:get(<<"id">>, DecodedMsg)),
     ?assertEqual(<<"C2C">>, maps:get(<<"type">>, DecodedMsg)).
 
+%% @doc 语音 voice 在 protobuf 通道映射 AUDIO 且往返不丢类型。
+%%
+%% 客户端全站发送口径是 <<"voice">>（JSON 通道原样透传），protobuf
+%% 通道若落 CONTENT_TYPE_UNSPECIFIED，客户端解码 default 成 <<"text">>
+%% ——语音消息被渲染成文本（比「不支持的消息类型」更隐蔽）。
+voice_content_type_roundtrip() ->
+    Msg = test_c2c_message(<<"voice">>),
+    {binary, Frame} = imboy_codec:encode_ws_msg(
+        protobuf, v2, ?FRAME_TYPE_MSG_C2C, Msg
+    ),
+    {ok, Decoded} = imboy_codec:unwrap_v2_frame(Frame),
+    DecodedMsg = imboy_codec:decode(protobuf, imboy_frame:payload(Decoded)),
+    %% enum 解码侧口径是 <<"audio">>（客户端 normalize 再归一为 voice 渲染）；
+    %% 修复前落 CONTENT_TYPE_UNSPECIFIED → 解码空串 → 客户端 default 'text'
+    ?assertEqual(<<"audio">>, maps:get(<<"msg_type">>, DecodedMsg)),
+    ?assertEqual(<<"msg-test-001">>, maps:get(<<"id">>, DecodedMsg)),
+    ?assertEqual(<<"C2C">>, maps:get(<<"type">>, DecodedMsg)).
+
 %% @doc v2 frame unwrap 错误用例
 v2_frame_unwrap_error() ->
     %% 魔数不对
@@ -331,12 +350,15 @@ e2ee_megolm_roundtrip() ->
 %%%===================================================================
 
 test_c2c_message() ->
+    test_c2c_message(<<"text">>).
+
+test_c2c_message(MsgType) ->
     #{
         <<"id">> => <<"msg-test-001">>,
         <<"type">> => <<"C2C">>,
         <<"from">> => 123456789,
         <<"to">> => 987654321,
-        <<"msg_type">> => <<"text">>,
+        <<"msg_type">> => MsgType,
         <<"action">> => <<>>,
         <<"e2ee">> => null,
         <<"payload">> => #{<<"body">> => <<"Hello IMBoy">>},
