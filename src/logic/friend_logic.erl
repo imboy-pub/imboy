@@ -282,11 +282,12 @@ confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID) -
 %% 现补充：
 %%   - is_friend = 1（accept 语义即已是好友，省去前端推断）
 %%   - peerId = Uid（兼容前端 ContactModel.fromMap 同时支持 id/peer_id）
-%%   - last_seen_at（从 user 表取，供详情页"最后上线"显示）
+%%   - last_seen_at 由 batch_online_state 兜底为 <<>>（user 表无此列，
+%%     该列属 user_friend；勿在 Column 中引用，SQL 会报错被吞成空 map 致崩溃）
 %%   - status 经 batch_online_state 计算为实时 online/offline
 -spec confirm_friend_resp(integer(), binary()) -> map().
 confirm_friend_resp(Uid, Remark) ->
-    Column = <<"id,account,nickname,avatar,gender,sign,region,last_seen_at">>,
+    Column = <<"id,account,nickname,avatar,gender,sign,region">>,
     User0 = user_logic:find_by_id(Uid, Column),
     %% 复用 batch_online_state 计算实时在线状态（与 friend/list 一致）
     [User1] = user_ds:batch_online_state([User0]),
