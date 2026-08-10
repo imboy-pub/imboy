@@ -81,7 +81,18 @@ list_member(Gid, MemberUids) when length(MemberUids) > 0 ->
     GMTb = group_member_repo:tablename(),
     UserTb = user_repo:tablename(),
     Column = <<"u.nickname,u.account,u.avatar,u.sign, gm.*">>,
-    Placeholders = elib_pg_sql:placeholders(length(MemberUids)),
+    % $1 已由 group_id 占用；成员筛选参数必须从 $2 开始。
+    % 旧实现从 $1 开始，导致 SQL 占位符数量小于 Params，epgsql 在生产
+    % 直接抛出 lists:zip([], Params, fail)，群成员邀请返回 500。
+    Placeholders = iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [
+                <<"$", (integer_to_binary(I))/binary>>
+             || I <- lists:seq(2, length(MemberUids) + 1)
+            ]
+        )
+    ),
     Sql =
         <<"SELECT ", Column/binary, " FROM ", GMTb/binary, " gm LEFT JOIN ", UserTb/binary,
             " u ON u.id = gm.user_id WHERE gm.group_id = $1 AND gm.user_id IN (",
