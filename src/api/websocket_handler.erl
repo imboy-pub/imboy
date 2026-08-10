@@ -249,11 +249,13 @@ dispatch_v2_frame(?FRAME_TYPE_ACK, Flags, <<MsgIdInt:64/big-unsigned>>, State) -
     Direction = ack_dir_to_binary(imboy_frame:ack_direction(Flags)),
     ok = ?DEBUG_LOG({v2_ack, MsgIdInt, Direction}),
     %% 将 msg_id 适配为现有 protobuf ACK 处理管道
+    %% gpb maps 模式要求 atom 键 + enum atom/integer 值（imboy_pb.erl 类型声明），
+    %% 此前用 binary 键/值导致字段全部按缺省编码，服务端解码出空值判 invalid_type
     MsgIdBin = integer_to_binary(MsgIdInt),
     AckPayload = #{
-        <<"msg_id">> => MsgIdBin,
-        <<"did">> => maps:get(did, State, <<>>),
-        <<"msg_direction">> => Direction
+        msg_id => MsgIdBin,
+        did => maps:get(did, State, <<>>),
+        msg_direction => binary_to_atom(Direction, utf8)
     },
     %% 构造 payload bytes：重用 protobuf 子消息，交给 handle_protobuf_client_ack
     EncodedPayload = imboy_codec:encode_payload(protobuf, <<"client_ack">>, AckPayload),
