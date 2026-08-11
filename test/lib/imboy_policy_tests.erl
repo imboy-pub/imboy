@@ -2134,3 +2134,32 @@ ensure_policy_module_loaded() ->
         Error ->
             erlang:error({failed_to_load_policy_module, Error})
     end.
+
+%% ===================================================================
+%% encrypted_message_body/3 — PFv3 Olm fan-out 信封契约（2026-08-11 生产实证）
+%% ===================================================================
+
+%% Olm per-device fan-out 密文内容全在 e2ee.devices，payload 恒为空串；
+%% strict 模式不得误拒（此前被判 encrypted_message_required 拒收）。
+encrypted_message_body_accepts_olm_fanout_empty_payload_test() ->
+    E2EE = #{
+        <<"e2ee">> => true,
+        <<"protocol">> => <<"olm">>,
+        <<"fan_out">> => <<"per_device">>,
+        <<"devices">> => #{<<"did-A">> => #{<<"ct">> => <<"abc">>}}
+    },
+    ?assertEqual(true, imboy_policy:encrypted_message_body(<<"text">>, E2EE, <<>>)).
+
+encrypted_message_body_matrix_test() ->
+    %% 明文（e2ee=null）必拒
+    ?assertEqual(false, imboy_policy:encrypted_message_body(<<"text">>, null, <<"plain">>)),
+    %% 空 e2ee map + 有 payload：拒（防空壳冒充）
+    ?assertEqual(false, imboy_policy:encrypted_message_body(<<"text">>, #{}, <<"{\"x\":1}">>)),
+    %% 空 devices 信封 + 空 payload：拒（无内容的空信封）
+    ?assertEqual(
+        false, imboy_policy:encrypted_message_body(<<"text">>, #{<<"devices">> => #{}}, <<>>)
+    ),
+    %% 非空 e2ee + 非空 payload：放行（Megolm/RSA 路径形态）
+    ?assertEqual(
+        true, imboy_policy:encrypted_message_body(<<"text">>, #{<<"e2ee">> => true}, <<"nonempty">>)
+    ).

@@ -195,9 +195,21 @@ content_bearing_action(_) ->
 %% 且 payload 非空即视为已加密，不再要求 msg_type=<<"e2ee">>——旧契约与客户端
 %% 实际发送行为冲突，会导致 required 模式下加密消息被误判为明文而拒收。
 encrypted_message_body(_MsgType, E2EE, Payload) when is_map(E2EE), is_binary(Payload) ->
-    map_size(E2EE) > 0 andalso Payload =/= <<>>;
+    %% PFv3 Olm per-device fan-out 密文全在 e2ee.devices 信封、payload 恒为空串
+    %% （客户端 _encryptC2COlmFanOut 返回 'payload': ''）。2026-08-11 生产实证：
+    %% 旧判定要求 payload 非空，strict 模式把每条合法 Olm 密文误判成明文拒收
+    %% （encrypted_message_required）。空 devices 空信封+空 payload 仍拒收（防空壳）。
+    map_size(E2EE) > 0 andalso (Payload =/= <<>> orelse has_device_envelopes(E2EE));
 encrypted_message_body(_, _, _) ->
     false.
+
+%% @private PFv3 fan-out 信封判定：e2ee.devices 为非空 map 即存在逐设备密文。
+-spec has_device_envelopes(map()) -> boolean().
+has_device_envelopes(E2EE) when is_map(E2EE) ->
+    case maps:get(<<"devices">>, E2EE, undefined) of
+        Devices when is_map(Devices) -> map_size(Devices) > 0;
+        _ -> false
+    end.
 
 %% §4 委托至 imboy_policy_persistence（持久化层）
 -spec save_admin_config(map()) -> {ok, map()} | {error, binary()} | {error, binary(), map()}.
