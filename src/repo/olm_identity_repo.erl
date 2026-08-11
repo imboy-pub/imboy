@@ -113,14 +113,19 @@ list_devices_with_identity(UserId) when is_integer(UserId) ->
 %% 参见 ADR 03 §8.3：claim 语义由「即删」演进为「UPDATE 审计」（migration 00000045）。
 %% ===================================================================
 
-%% @doc 批量上报 one-time keys（替换「可用」keys；保留 status='claimed' 的审计行）。
+%% @doc 批量上报 one-time keys（全量替换：删净该设备全部旧行后插入新批次；
+%%  claimed 审计行一并删除——重装后客户端 key_id 从头编号，残留行会撞唯一约束）。
 -spec upsert_one_time_keys(integer(), binary(), [{binary(), binary()}], pos_integer()) ->
     {ok, non_neg_integer()} | {error, term()}.
 upsert_one_time_keys(UserId, DeviceId, Keys, _MaxKeys) when is_list(Keys) ->
     Tb = tablename_one_time_key(),
+    %% 全量替换必须删净该设备全部旧行（含 claimed）：设备重装后客户端
+    %% key_id 会从头编号，残留的 claimed 行与新 key_id 撞唯一约束
+    %% （olm_one_time_key_user_device_keyid）→ 上报永远 400、设备 E2EE
+    %% 永久死亡（2026-08-11 生产实证：(4,HUAWEIMRD-AL00,AAAAAAAAAA4)）。
+    %% claimed 行绑定旧身份键的会话已密码学失效，删除无损失。
     DeleteSql =
-        <<"DELETE FROM ", Tb/binary,
-            " WHERE user_id = $1 AND device_id = $2 AND status = 'available'">>,
+        <<"DELETE FROM ", Tb/binary, " WHERE user_id = $1 AND device_id = $2">>,
     case elib_pg:execute(DeleteSql, [UserId, DeviceId]) of
         {ok, _} ->
             Rows = [
