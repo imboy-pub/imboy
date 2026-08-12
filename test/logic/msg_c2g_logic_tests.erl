@@ -799,6 +799,64 @@ c2g_edit_plaintext_blocked_when_group_e2ee_required_test_() ->
         end
     ).
 
+c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'is_member', 2, fun(1001, 88) -> true end},
+                {'e2ee_mode', 1, fun(88) -> {ok, 0} end},
+                {'member_uids', 1, fun(88) -> [1001, 1002] end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_e2ee_001">>) ->
+                    {ok, #{
+                        <<"from_id">> => 1001,
+                        <<"created_at">> => 1700000000000
+                    }}
+                end},
+                {'write_msg', 8, fun(
+                    _, <<"c2g_edit_e2ee_001">>, _, 1001, [1002], 88, <<"text">>, _
+                ) ->
+                    ok
+                end}
+            ]},
+            {elib_dt, [
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                {'millisecond', 0, fun() -> 1700000065000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            ]},
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {elib_retry_config, [
+                {'intervals', 1, fun(<<"c2g">>) -> [0, 200] end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(1002, <<"c2g_edit_e2ee_001">>, _Json, [0, 200]) -> ok end}
+            ]}
+        ],
+        fun() ->
+            OpaquePayload = <<"v3-megolm-ciphertext-edit-body">>,
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"msg_type">> => <<"text">>,
+                <<"payload">> => OpaquePayload,
+                <<"e2ee">> => #{
+                    <<"meta_version">> => 3,
+                    <<"edit_of">> => <<"orig_c2g_edit_e2ee_001">>,
+                    <<"relay_action">> => <<"message_edit">>
+                }
+            },
+
+            {reply, Reply} = msg_c2g_logic:c2g_edit(<<"c2g_edit_e2ee_001">>, 1001, Data),
+            ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(OpaquePayload, maps:get(<<"payload">>, Reply)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(1, meck:num_calls(msg_c2g_ds, write_msg, 8))
+        end
+    ).
+
 %% P0-B B4 零信任守护线：e2ee_room_key 群密钥分发消息
 %% ① 具名 action 不触群级门（零查库）②密钥密文 payload 存储/入队/投递逐字节透传
 c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->

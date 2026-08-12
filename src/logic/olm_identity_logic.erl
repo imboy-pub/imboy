@@ -209,12 +209,27 @@ no_ctrl_chars(List) ->
 -spec verify_ed25519(binary(), binary(), binary()) -> boolean().
 verify_ed25519(Ed25519B64, Canonical, SignatureB64) ->
     try
-        PubKey = base64:decode(Ed25519B64),
-        Sig = base64:decode(SignatureB64),
+        %% vodozemac 的 toBase64() 输出无尾随 '='；Erlang 的
+        %% base64:decode/1 要求标准填充。只补齐缺失的填充，不改变
+        %% 字节内容，也不放宽 Ed25519 验签本身。
+        PubKey = decode_base64(Ed25519B64),
+        Sig = decode_base64(SignatureB64),
         crypto:verify(eddsa, none, Canonical, Sig, [PubKey, ed25519])
     catch
         _:_ -> false
     end.
+
+%% @private 接受标准 base64 与 vodozemac 的无填充 base64。
+-spec decode_base64(binary()) -> binary().
+decode_base64(B64) when is_binary(B64) ->
+    Padding =
+        case byte_size(B64) rem 4 of
+            0 -> <<>>;
+            2 -> <<"==">>;
+            3 -> <<"=">>;
+            _ -> erlang:error(invalid_base64_padding)
+        end,
+    base64:decode(<<B64/binary, Padding/binary>>).
 
 %% ===================================================================
 %% 查询身份键

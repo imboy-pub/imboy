@@ -499,20 +499,25 @@ c2g_revoke_ack(MsgId, CurrentUid, Data) ->
 %% 客户端编辑消息 for c2g
 -spec c2g_edit(binary(), integer(), map()) -> ok | {reply, map()}.
 c2g_edit(MsgId, CurrentUid, Data) ->
-    Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
-    NewContent = maps:get(<<"content">>, Payload),
-    MsgType = maps:get(<<"msg_type">>, Payload),
-    %% v2.0: msg_type 和 action 提升到顶层
-    EditPayload = #{
-        <<"content">> => NewContent,
-        <<"original_msg_id">> => OriginalMsgId
-    },
-    ActionMsgExtra = #{
-        <<"msg_type">> => MsgType,
-        <<"action">> => <<"message_edit_ack">>
-    },
-    handle_group_action(MsgId, CurrentUid, Data, EditPayload, ActionMsgExtra, edit).
+    case encrypted_edit_target(Data) of
+        {ok, OriginalMsgId} ->
+            handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId);
+        error ->
+            Payload = maps:get(<<"payload">>, Data),
+            OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
+            NewContent = maps:get(<<"content">>, Payload),
+            MsgType = maps:get(<<"msg_type">>, Payload),
+            %% v2.0: msg_type 和 action 提升到顶层
+            EditPayload = #{
+                <<"content">> => NewContent,
+                <<"original_msg_id">> => OriginalMsgId
+            },
+            ActionMsgExtra = #{
+                <<"msg_type">> => MsgType,
+                <<"action">> => <<"message_edit_ack">>
+            },
+            handle_group_action(MsgId, CurrentUid, Data, EditPayload, ActionMsgExtra, edit)
+    end.
 
 %% 客户端编辑消息确认 for c2g
 -spec c2g_edit_ack(binary(), integer(), Data :: map()) -> ok.
@@ -530,6 +535,126 @@ c2g_edit_ack(MsgId, CurrentUid, Data) ->
     },
     persist_action_payload(OriginalMsgId, AckPayload),
     ok.
+
+%% @private E2EE 编辑：服务端只读取 edit_of 做权限/时间窗校验，正文密文原样转发。
+-spec handle_encrypted_group_edit(binary(), integer(), map(), binary()) -> {reply, map()}.
+handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
+    To = maps:get(<<"to">>, Data),
+    From = maps:get(<<"from">>, Data),
+    ToGID = ec_cnv:to_integer(To),
+    FromId = ec_cnv:to_integer(From),
+    MsgType = maps:get(<<"msg_type">>, Data, <<"text">>),
+    E2EE = maps:get(<<"e2ee">>, Data, null),
+    Payload = maps:get(<<"payload">>, Data, <<>>),
+    PayloadBin = encrypted_payload_binary(Payload),
+    case {CurrentUid =:= FromId, group_ds:is_member(CurrentUid, ToGID)} of
+        {true, true} ->
+            FindResult =
+                case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
+                    {ok, Found} -> {ok, Found};
+                    _ -> msg_store_ds:find_staged(OriginalMsgId)
+                end,
+            case FindResult of
+                {ok, #{<<"from_id">> := FromId} = MsgData} ->
+                    CreatedAt = maps:get(<<"created_at">>, MsgData),
+                    CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
+                    NowMS = elib_dt:millisecond(),
+                    WindowMs = msg_edit_window_ms(),
+                    case
+                        WindowMs > 0 andalso is_integer(CreatedAtMs) andalso
+                            NowMS - CreatedAtMs > WindowMs
+                    of
+                        true ->
+                            {reply, #{
+                                <<"id">> => MsgId,
+                                <<"type">> => <<"C2G">>,
+                                <<"from">> => From,
+                                <<"to">> => To,
+                                <<"msg_type">> => <<"custom">>,
+                                <<"action">> => <<"message_edit_error">>,
+                                <<"payload">> => #{
+                                    <<"original_msg_id">> => OriginalMsgId,
+                                    <<"error">> => <<"超过编辑时间限制"/utf8>>,
+                                    <<"code">> => ?ERR_REVOKE_TIMEOUT
+                                },
+                                <<"server_ts">> => NowMS
+                            }};
+                        false ->
+                            case encrypted_edit_policy(MsgType, E2EE, PayloadBin, ToGID) of
+                                ok ->
+                                    MemberUids = group_ds:member_uids(ToGID),
+                                    RecipientUids = [Uid || Uid <- MemberUids, Uid =/= CurrentUid],
+                                    ActionMsg = #{
+                                        <<"id">> => MsgId,
+                                        <<"type">> => <<"C2G">>,
+                                        <<"from">> => From,
+                                        <<"to">> => To,
+                                        <<"msg_type">> => MsgType,
+                                        %% 与 PFv3 protected_header.action 保持一致。
+                                        <<"action">> => <<"message_edit">>,
+                                        <<"e2ee">> => E2EE,
+                                        <<"payload">> => Payload,
+                                        <<"server_ts">> => NowMS
+                                    },
+                                    ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
+                                    MsLi = elib_retry_config:intervals(<<"c2g">>),
+                                    [
+                                        message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi)
+                                     || Uid <- RecipientUids
+                                    ],
+                                    _ = msg_c2g_ds:write_msg(
+                                        elib_dt:now(),
+                                        MsgId,
+                                        PayloadBin,
+                                        FromId,
+                                        RecipientUids,
+                                        ToGID,
+                                        MsgType,
+                                        E2EE
+                                    ),
+                                    {reply, ActionMsg};
+                                {error, Reason} ->
+                                    policy_violation_reply(MsgId, Reason)
+                            end
+                    end;
+                {ok, _} ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
+                _ ->
+                    {reply, message_ds:assemble_s2c(MsgId, <<"msg_not_found">>, To)}
+            end;
+        {false, _} ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
+        {_, false} ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"not_group_member">>, To)}
+    end.
+
+-spec encrypted_edit_policy(binary(), term(), binary(), integer()) -> ok | {error, binary()}.
+encrypted_edit_policy(MsgType, E2EE, Payload, Gid) ->
+    case
+        imboy_policy:validate_message_write(
+            <<"C2G">>, MsgType, <<"message_edit">>, E2EE, Payload
+        )
+    of
+        ok -> group_e2ee_gate(Gid, MsgType, <<"message_edit">>, E2EE, Payload);
+        {error, _} = Error -> Error
+    end.
+
+-spec encrypted_edit_target(map()) -> {ok, binary()} | error.
+encrypted_edit_target(Data) ->
+    case maps:get(<<"e2ee">>, Data, null) of
+        #{<<"edit_of">> := OriginalMsgId} when is_binary(OriginalMsgId), OriginalMsgId =/= <<>> ->
+            {ok, OriginalMsgId};
+        _ ->
+            error
+    end.
+
+-spec encrypted_payload_binary(term()) -> binary().
+encrypted_payload_binary(Payload) when is_binary(Payload) ->
+    Payload;
+encrypted_payload_binary(Payload) when is_map(Payload) ->
+    jsone:encode(Payload, [native_utf8]);
+encrypted_payload_binary(_) ->
+    <<>>.
 
 %% ===================================================================
 %% Internal Function Definitions

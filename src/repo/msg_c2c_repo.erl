@@ -13,6 +13,7 @@
 -export([write_msg/9]).
 -export([write_msg_with_sender/9]).
 -export([write_msg_if_absent/8]).
+-export([write_msg_if_absent_with_sender/9]).
 -export([write_msg_with_reply/11]).
 -export([delete_msg/1]).
 -export([delete_msg/2]).
@@ -189,6 +190,61 @@ write_msg_if_absent(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2E
     case
         elib_pg:query(Sql, [
             GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue
+        ])
+    of
+        {ok, _Rows} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 写入带发送设备标识的 C2C 离线消息，并按 (msg_id, to_id) 判重。
+%% E2EE 编辑等透明转发消息必须同时保留 sender_did，否则接收侧 PFv3
+%% context binding 会在离线重连时拒绝该消息。
+-spec write_msg_if_absent_with_sender(
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    map() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg_if_absent_with_sender(
+    CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, SenderDid
+) ->
+    Tb = tablename(),
+    E2EEValue =
+        case E2EE of
+            null -> null;
+            <<>> -> null;
+            Map when is_map(Map) -> jsone:encode(Map, [native_utf8]);
+            Bin when is_binary(Bin) -> Bin;
+            _ -> null
+        end,
+    GenId = elib_tsid:generate(msg_c2c),
+    Sql = [
+        <<"INSERT INTO ">>,
+        Tb,
+        <<" (id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did)">>,
+        <<" SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10">>,
+        <<" WHERE NOT EXISTS (SELECT 1 FROM ">>,
+        Tb,
+        <<" WHERE msg_id = $7 AND to_id = $4)">>,
+        <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
+    ],
+    case
+        elib_pg:query(Sql, [
+            GenId,
+            Payload,
+            FromId,
+            ToId,
+            CreatedAt,
+            ServerTS,
+            Id,
+            MsgType,
+            E2EEValue,
+            null_if_empty(SenderDid)
         ])
     of
         {ok, _Rows} -> ok;

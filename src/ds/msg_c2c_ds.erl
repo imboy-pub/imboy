@@ -15,6 +15,7 @@
 -export([revoke_offline_msg/9]).
 -export([edit_offline_msg/5]).
 -export([read_offline_msg/5]).
+-export([write_msg_if_absent_with_sender/9]).
 -export([read_msg/2]).
 -export([read_msg/3]).
 -export([read_msg_for_device/4]).
@@ -371,6 +372,43 @@ write_msg_once(CreatedAt, Id, Payload, From, To, ServerTS, MsgType, E2EE) ->
     CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
     ServerTS2 = elib_dt:to_rfc3339(ServerTS),
     msg_c2c_repo:write_msg_if_absent(CreatedAt2, Id, Payload, From, To, ServerTS2, MsgType, E2EE).
+
+%% @doc 带 sender_did 的透明 E2EE 离线消息按 (msg_id, to_id) 判重。
+-spec write_msg_if_absent_with_sender(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    integer(),
+    binary() | integer(),
+    binary(),
+    map() | null,
+    binary() | null
+) -> ok | {error, term()}.
+write_msg_if_absent_with_sender(
+    CreatedAt,
+    Id,
+    Payload,
+    From,
+    To,
+    ServerTS,
+    MsgType,
+    E2EE,
+    SenderDid
+) ->
+    CreatedAt2 = elib_dt:to_rfc3339(CreatedAt),
+    ServerTS2 = elib_dt:to_rfc3339(ServerTS),
+    msg_c2c_repo:write_msg_if_absent_with_sender(
+        CreatedAt2,
+        Id,
+        Payload,
+        From,
+        To,
+        ServerTS2,
+        MsgType,
+        E2EE,
+        SenderDid
+    ).
 
 %% @doc 检查并清理溢出消息（公共逻辑，DRY）
 %%

@@ -509,6 +509,50 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
         end
     ).
 
+c2c_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                {'millisecond', 0, fun() -> 1700000065000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_e2ee_001">>) ->
+                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                end}
+            ]},
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {user_logic, [
+                {'is_online', 1, fun(456) -> true end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_and_send', 4, fun(456, <<"c2c_edit_e2ee_001">>, _Msg, <<"c2s">>) -> ok end}
+            ]}
+        ],
+        fun() ->
+            OpaquePayload = <<"v3-ciphertext-edit-body">>,
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"payload">> => OpaquePayload,
+                <<"msg_type">> => <<"text">>,
+                <<"e2ee">> => #{
+                    <<"meta_version">> => 3,
+                    <<"edit_of">> => <<"orig_c2c_edit_e2ee_001">>,
+                    <<"relay_action">> => <<"message_edit">>
+                }
+            },
+
+            {reply, Reply} = msg_c2c_logic:c2c_edit(<<"c2c_edit_e2ee_001">>, 123, Data),
+            ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(OpaquePayload, maps:get(<<"payload">>, Reply)),
+            ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
+        end
+    ).
+
 c2c_revoke_success_online_sends_revoke_ack_test_() ->
     ?WITH_MECKS(
         [
@@ -618,6 +662,63 @@ c2c_edit_success_online_sends_edit_ack_test_() ->
             ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, Reply)),
             ?assertEqual(<<"edited content">>, maps:get(<<"content">>, ReplyPayload)),
             ?assertEqual(1, meck:num_calls(imboy_message_helper, encode_and_send, 4))
+        end
+    ).
+
+c2c_edit_e2ee_offline_is_idempotent_and_keeps_sender_did_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
+                {'millisecond', 0, fun() -> 1700000065000 end},
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
+                {'to_rfc3339', 1, fun(Value) -> Value end}
+            ]},
+            {msg_c2c_ds, [
+                {'find_msg_by_id', 1, fun(<<"orig_c2c_edit_e2ee_offline_001">>) ->
+                    {ok, #{<<"from_id">> => 123, <<"created_at">> => 1700000000000}}
+                end},
+                {'write_msg_if_absent_with_sender', 9, fun(
+                    <<"2026-02-28T12:00:00Z">>,
+                    <<"c2c_edit_e2ee_offline_001">>,
+                    <<"opaque-edit-ciphertext">>,
+                    123,
+                    456,
+                    <<"2026-02-28T12:00:00Z">>,
+                    <<"text">>,
+                    _E2EE,
+                    <<"did-sender">>
+                ) ->
+                    ok
+                end}
+            ]},
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {user_logic, [
+                {'is_online', 1, fun(456) -> false end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"from">> => <<"123">>,
+                <<"msg_type">> => <<"text">>,
+                <<"payload">> => <<"opaque-edit-ciphertext">>,
+                <<"sender_did">> => <<"did-sender">>,
+                <<"e2ee">> => #{
+                    <<"meta_version">> => 3,
+                    <<"edit_of">> => <<"orig_c2c_edit_e2ee_offline_001">>,
+                    <<"relay_action">> => <<"message_edit">>
+                }
+            },
+
+            {reply, Reply} = msg_c2c_logic:c2c_edit(
+                <<"c2c_edit_e2ee_offline_001">>, 123, Data
+            ),
+            ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(<<"opaque-edit-ciphertext">>, maps:get(<<"payload">>, Reply)),
+            ?assertEqual(1, meck:num_calls(msg_c2c_ds, write_msg_if_absent_with_sender, 9))
         end
     ).
 

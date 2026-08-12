@@ -132,6 +132,13 @@ offline_envelope_preserves_payload_and_e2ee_test() ->
     ?assertEqual(100, maps:get(<<"from">>, Msg)),
     ?assertEqual(200, maps:get(<<"to">>, Msg)).
 
+%% msg_c2c 正式行同时含内部 TSID(id) 与客户端业务 ID(msg_id)；PFv3
+%% protected_header.message_id 绑定的是后者，离线信封不能误发内部 TSID。
+offline_envelope_prefers_business_msg_id_test() ->
+    Row = row(#{<<"id">> => 424242, <<"msg_id">> => <<"client-msg-1">>}),
+    Msg = message_ds:offline_envelope(<<"C2C">>, Row),
+    ?assertEqual(<<"client-msg-1">>, maps:get(<<"id">>, Msg)).
+
 %% ===================================================================
 %% 3. staging 写入
 %% ===================================================================

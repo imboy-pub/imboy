@@ -158,7 +158,7 @@ get_history(ConvKey, AfterSeq, Limit, Order) ->
         end,
     Sql =
         <<"SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, ",
-            "e2ee, payload, created_at, server_ts ", "FROM ", ?TABLE/binary,
+            "e2ee, sender_did, payload, created_at, server_ts ", "FROM ", ?TABLE/binary,
             " WHERE conv_key = $1 AND conv_seq", Cmp/binary, "$2 ", "ORDER BY conv_seq ",
             OrderBin/binary, " LIMIT $3">>,
     elib_pg:query(Sql, [ConvKey, AfterSeq, Limit]).
@@ -182,13 +182,13 @@ get_history_batch(Cursors, Limit) ->
     {ValuesSql, Params} = build_cursor_values(Cursors),
     Sql = <<
         "SELECT c.conv_key AS conv_key, h.msg_id, h.chat_type, h.conv_seq, h.msg_type, ",
-        "h.from_id, h.to_id, h.group_id, h.e2ee, h.payload, h.created_at, h.server_ts ",
+        "h.from_id, h.to_id, h.group_id, h.e2ee, h.sender_did, h.payload, h.created_at, h.server_ts ",
         "FROM (VALUES ",
         ValuesSql/binary,
         ") AS c(conv_key, after_seq) ",
         "CROSS JOIN LATERAL ("
         "SELECT msg_id, chat_type, conv_seq, msg_type, from_id, to_id, group_id, "
-        "e2ee, payload, created_at, server_ts "
+        "e2ee, sender_did, payload, created_at, server_ts "
         "FROM ",
         ?TABLE/binary,
         " m "
@@ -224,6 +224,7 @@ build_archive_data(<<"c2c">>, Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
+    SenderDid = maps:get(<<"sender_did">>, Row, null),
     Payload = maps:get(<<"payload">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
     ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
@@ -237,6 +238,7 @@ build_archive_data(<<"c2c">>, Row) ->
         to_id => ToId,
         group_id => null,
         e2ee => E2EE,
+        sender_did => SenderDid,
         payload => Payload,
         created_at => CreatedAt,
         server_ts => ServerTs
@@ -247,6 +249,7 @@ build_archive_data(<<"c2g">>, Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
+    SenderDid = maps:get(<<"sender_did">>, Row, null),
     Payload = maps:get(<<"payload">>, Row),
     CreatedAt = maps:get(<<"created_at">>, Row),
     ServerTs = maps:get(<<"server_ts">>, Row, CreatedAt),
@@ -263,6 +266,7 @@ build_archive_data(<<"c2g">>, Row) ->
                 to_id => null,
                 group_id => Gid,
                 e2ee => E2EE,
+                sender_did => SenderDid,
                 payload => Payload,
                 created_at => CreatedAt,
                 server_ts => ServerTs

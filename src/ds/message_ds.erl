@@ -448,7 +448,10 @@ sent_offline_msg(_Uid, _DID, _Type, []) ->
     ok;
 sent_offline_msg(Uid, DID, Type, [Row | Tail]) ->
     ok = ?DEBUG_LOG([<<"Sending offline msg ">>, Type, <<" to Uid ">>, Uid]),
-    MsgId = maps:get(<<"id">>, Row),
+    %% msg_c2c/msg_c2g 的 `id` 是数据库内部 TSID，`msg_id` 才是客户端
+    %% 受保护头绑定的业务消息 ID。离线帧必须沿用后者，否则 PFv3
+    %% 接收侧会稳定命中 context_mismatch_id。
+    MsgId = maps:get(<<"msg_id">>, Row, maps:get(<<"id">>, Row)),
     Msg = offline_envelope(Type, Row),
 
     ok = ?DEBUG_LOG({sent_offline_msg, MsgId, maps:get(<<"from">>, Msg, <<>>)}),
@@ -472,13 +475,16 @@ sent_offline_msg(Uid, DID, Type, [Row | Tail]) ->
 -spec offline_envelope(binary(), map()) -> map().
 offline_envelope(Type, Row) ->
     % 统一从 from_id 和 to_id 获取（确保是 integer）
-    MsgId = maps:get(<<"id">>, Row),
+    %% 优先使用业务 msg_id；兼容没有独立 msg_id 的旧系统消息行时回退 id。
+    MsgId = maps:get(<<"msg_id">>, Row, maps:get(<<"id">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),
     ToId = maps:get(<<"to_id">>, Row),
     Payload = maps:get(<<"payload">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
-    Action = maps:get(<<"action">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
+    %% action 旧表结构没有独立列；E2EE 编辑旁路将 relay_action 放在
+    %% 可见元数据中，供离线帧恢复顶层 action，而不读取密文正文。
+    Action = maps:get(<<"action">>, Row, e2ee_relay_action(E2EE)),
     CreatedAtRaw = maps:get(<<"created_at">>, Row, undefined),
     ServerTsRaw = maps:get(<<"server_ts">>, Row, undefined),
 
@@ -508,6 +514,12 @@ offline_envelope(Type, Row) ->
         Did when is_binary(Did), Did =/= <<>> -> Msg#{<<"sender_did">> => Did};
         _ -> Msg
     end.
+
+-spec e2ee_relay_action(term()) -> binary().
+e2ee_relay_action(E2EE) when is_map(E2EE) ->
+    maps:get(<<"relay_action">>, E2EE, <<>>);
+e2ee_relay_action(_) ->
+    <<>>.
 
 %% @doc 将发送者设备信息注入到消息 payload 中
 %%

@@ -104,6 +104,7 @@ fb_test_() ->
         [
             {"对照组：未带签名的旧客户端仍照常落库", fun unsigned_still_accepted/0},
             {"正向可用性：有效签名照常落库", fun valid_signature_accepted/0},
+            {"兼容 vodozemac 无填充 base64 的身份键和签名", fun unpadded_base64_accepted/0},
             {"无效签名 → 拒绝且不落库", fun invalid_signature_rejected/0},
             {"签名覆盖 key_base64：换 key 复用签名必须失效", fun signature_binds_key/0},
             {"设备未注册 identity → 无从验证即拒绝", fun unregistered_device_rejected/0},
@@ -132,6 +133,20 @@ valid_signature_accepted() ->
         ok,
         olm_identity_logic:report_fallback_key(?UID, ?DID, ?KID, ?KB64, valid_sig()),
         "「一律拒绝」的实现在拦伪造上恒满分，必须被这条否掉"
+    ),
+    ?assertEqual([{?UID, ?DID, ?KID, ?KB64}], upserts()).
+
+unpadded_base64_accepted() ->
+    reset(),
+    {Pub, _} = persistent_term:get({?MODULE, keys}),
+    meck:expect(olm_identity_ds, find_identity, fun(_U, _D) ->
+        {ok, #{<<"ed25519_key">> => unpad(base64:encode(Pub))}}
+    end),
+    ?assertEqual(
+        ok,
+        olm_identity_logic:report_fallback_key(
+            ?UID, ?DID, ?KID, ?KB64, unpad(valid_sig())
+        )
     ),
     ?assertEqual([{?UID, ?DID, ?KID, ?KB64}], upserts()).
 
@@ -189,6 +204,14 @@ signed_not_counted_as_unsigned() ->
     reset(),
     ok = olm_identity_logic:report_fallback_key(?UID, ?DID, ?KID, ?KB64, valid_sig()),
     ?assertNot(lists:member(olm_fallback_unsigned_total, metrics())).
+
+unpad(<<>>) ->
+    <<>>;
+unpad(Bin) ->
+    case binary:last(Bin) of
+        $= -> unpad(binary:part(Bin, 0, byte_size(Bin) - 1));
+        _ -> Bin
+    end.
 
 %% ⚠️ 跨语言 golden vector。客户端（imboyapp `fallbackKeyCanonical`）必须产出
 %% **逐字节相同**的载荷，否则服务端验签必然失败 → 该设备发布不了 fallback key

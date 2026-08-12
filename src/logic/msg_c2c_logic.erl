@@ -415,8 +415,16 @@ c2c_client_ack(MsgId, CurrentUid, DID) ->
 c2c_revoke(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
-    Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
+    OriginalMsgId =
+        case encrypted_edit_target(Data) of
+            {ok, EncryptedOriginalMsgId} ->
+                EncryptedOriginalMsgId;
+            error ->
+                case maps:get(<<"payload">>, Data, #{}) of
+                    Payload when is_map(Payload) -> maps:get(<<"original_msg_id">>, Payload, <<>>);
+                    _ -> <<>>
+                end
+        end,
     ToId = ec_cnv:to_integer(To),
     FromId = ec_cnv:to_integer(From),
     % ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
@@ -559,8 +567,15 @@ c2c_revoke_ack(MsgId, CurrentUid, Data) ->
 c2c_edit(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
-    Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
+    %% E2EE 编辑的 payload 是密文，不得按 map 解析；编辑目标只从
+    %% 已认证的可见 e2ee.edit_of 读取。明文协议继续从 payload 兼容读取。
+    Payload = maps:get(<<"payload">>, Data, #{}),
+    OriginalMsgId =
+        case encrypted_edit_target(Data) of
+            {ok, EncryptedOriginalMsgId} -> EncryptedOriginalMsgId;
+            error when is_map(Payload) -> maps:get(<<"original_msg_id">>, Payload, <<>>);
+            error -> <<>>
+        end,
     FromId = ec_cnv:to_integer(From),
 
     % 验证权限：只能编辑自己发送的消息
@@ -601,6 +616,16 @@ c2c_edit(MsgId, CurrentUid, Data) ->
 %% @private c2c_edit 通过权限与时间窗校验后的原编辑逻辑
 -spec do_c2c_edit(binary(), integer(), map()) -> ok | {reply, Msg :: map()}.
 do_c2c_edit(MsgId, CurrentUid, Data) ->
+    case encrypted_edit_target(Data) of
+        {ok, OriginalMsgId} ->
+            do_c2c_encrypted_edit(MsgId, CurrentUid, Data, OriginalMsgId);
+        error ->
+            do_c2c_edit_plain(MsgId, CurrentUid, Data)
+    end.
+
+%% @private 兼容既有明文编辑协议；E2EE 编辑走透明转发分支，服务端不解密正文。
+-spec do_c2c_edit_plain(binary(), integer(), map()) -> ok | {reply, Msg :: map()}.
+do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
     To = maps:get(<<"to">>, Data),
     From = maps:get(<<"from">>, Data),
     Payload = maps:get(<<"payload">>, Data),
@@ -665,6 +690,76 @@ do_c2c_edit(MsgId, CurrentUid, Data) ->
         {error, Reason} ->
             policy_violation_reply(MsgId, Reason)
     end.
+
+%% @private E2EE 编辑：服务端只验证 edit_of 的归属/时间窗并原样转发密文。
+-spec do_c2c_encrypted_edit(binary(), integer(), map(), binary()) -> ok | {reply, Msg :: map()}.
+do_c2c_encrypted_edit(MsgId, CurrentUid, Data, _OriginalMsgId) ->
+    To = maps:get(<<"to">>, Data),
+    From = maps:get(<<"from">>, Data),
+    MsgType = maps:get(<<"msg_type">>, Data, <<"text">>),
+    E2EE = maps:get(<<"e2ee">>, Data, null),
+    Payload = maps:get(<<"payload">>, Data, <<>>),
+    PayloadBin = encrypted_payload_binary(Payload),
+    ToId = ec_cnv:to_integer(To),
+    NowTs = elib_dt:now(),
+    NowMS = elib_dt:millisecond(),
+    case
+        imboy_policy:validate_message_write(
+            <<"C2C">>, MsgType, <<"message_edit">>, E2EE, PayloadBin
+        )
+    of
+        ok ->
+            EditMsg = #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2C">>,
+                <<"from">> => From,
+                <<"to">> => To,
+                <<"msg_type">> => MsgType,
+                %% 保持 message_edit，与 PFv3 protected_header.action 一致。
+                <<"action">> => <<"message_edit">>,
+                <<"e2ee">> => E2EE,
+                <<"payload">> => Payload,
+                <<"server_ts">> => NowMS
+            },
+            case user_logic:is_online(ToId) of
+                true ->
+                    imboy_message_helper:encode_and_send(ToId, MsgId, EditMsg, <<"c2s">>);
+                false ->
+                    _ = msg_c2c_ds:write_msg_if_absent_with_sender(
+                        NowTs,
+                        MsgId,
+                        PayloadBin,
+                        CurrentUid,
+                        ToId,
+                        NowTs,
+                        MsgType,
+                        E2EE,
+                        maps:get(<<"sender_did">>, Data, <<>>)
+                    )
+            end,
+            {reply, EditMsg};
+        {error, Reason} ->
+            policy_violation_reply(MsgId, Reason)
+    end.
+
+%% @private 仅从认证后的 E2EE 元数据读取编辑目标；正文永远不在服务端解析。
+-spec encrypted_edit_target(map()) -> {ok, binary()} | error.
+encrypted_edit_target(Data) ->
+    E2EE = maps:get(<<"e2ee">>, Data, null),
+    case E2EE of
+        #{<<"edit_of">> := OriginalMsgId} when is_binary(OriginalMsgId), OriginalMsgId =/= <<>> ->
+            {ok, OriginalMsgId};
+        _ ->
+            error
+    end.
+
+-spec encrypted_payload_binary(term()) -> binary().
+encrypted_payload_binary(Payload) when is_binary(Payload) ->
+    Payload;
+encrypted_payload_binary(Payload) when is_map(Payload) ->
+    jsone:encode(Payload, [native_utf8]);
+encrypted_payload_binary(_) ->
+    <<>>.
 
 %% @private 编辑时间窗校验：查原消息（staging 兜底），核对归属并检查是否超窗
 -spec c2c_edit_window_check(binary(), integer()) ->
