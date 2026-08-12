@@ -381,7 +381,8 @@ ssh_exec "
     echo '缺少 config/sys.pro.config：拒绝生成销售版 release' >&2
     exit 1
   }
-  escript scripts/validate_sales_release_config.escript config/sys.pro.config
+  IMBOY_SALES_RELEASE=${IMBOY_DEPLOY_SALES_RELEASE:-true} \
+    escript scripts/validate_sales_release_config.escript config/sys.pro.config
   # 全量清理后重编：-l 模式 rsync 会同步本地自动生成的 ebin/imboy.app（已列新模块），
   # 但 --exclude='*.beam' 排除了对应 beam，致 erlang.mk 因 .app mtime 较新而跳过重建，
   # release 组装时报 module_not_found。make clean 强制从源码全量重编，规避此陷阱。

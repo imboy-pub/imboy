@@ -10,7 +10,8 @@
 main([]) ->
     main(["config/sys.pro.config"]);
 main(["--self-test"]) ->
-    Good = [[
+    %% 销售版（默认 SALES_RELEASE=true）：必须满足 e2ee_mode + 三 feature + 支付 live。
+    Sales = [[
         {imboy, [
             {product_profile, community},
             {capabilities, #{e2ee_mode => required}},
@@ -23,14 +24,14 @@ main(["--self-test"]) ->
             }}
         ]}
     ]],
-    case validate(Good) of
-        {ok, _} ->
-            io:format("SALES_RELEASE_CONFIG_SELF_TEST=PASS~n"),
-            halt(0);
-        Other ->
-            io:format(standard_error, "SALES_RELEASE_CONFIG_SELF_TEST=FAIL ~p~n", [Other]),
-            halt(1)
-    end;
+    %% 社区版（SALES_RELEASE=false）：宽松，仅 {imboy,...} 存在即可。
+    Community = [[{imboy, [{product_profile, community}]}]],
+    ok = expect_ok(sales_strict, validate(Sales)),
+    os:putenv("IMBOY_SALES_RELEASE", "false"),
+    ok = expect_ok(community_relaxed, validate(Community)),
+    os:unsetenv("IMBOY_SALES_RELEASE"),
+    io:format("SALES_RELEASE_CONFIG_SELF_TEST=PASS~n"),
+    halt(0);
 main([Path | _]) ->
     case file:consult(Path) of
         {ok, Terms} ->
@@ -51,34 +52,41 @@ validate(Terms) ->
     Config = unwrap_config(Terms),
     case lists:keyfind(imboy, 1, Config) of
         {imboy, AppConfig} when is_list(AppConfig) ->
-            Capabilities = proplists:get_value(capabilities, AppConfig, #{}),
-            Features = proplists:get_value(features, AppConfig, #{}),
             Profile = proplists:get_value(product_profile, AppConfig, undefined),
-            E2eeMode = capability_value(e2ee_mode, Capabilities),
-            RequiredFeatures = [e2ee, channel, channel_order],
-            MissingFeatures = [
-                Name
-             || Name <- RequiredFeatures,
-                feature_enabled(Name, Features) =/= true
-            ],
-            SalesRelease = sales_release_enabled(),
-            Missing =
-                case SalesRelease of
-                    true -> payment_missing(AppConfig, []);
-                    false -> []
-                end,
-            MissingSalesFlags = MissingFeatures ++ Missing,
-            case {normalize_mode(E2eeMode), MissingSalesFlags} of
-                {Mode, []} when Mode =:= required; Mode =:= compliance ->
+            case sales_release_enabled() of
+                false ->
+                    %% 社区/演示部署（IMBOY_SALES_RELEASE=false）：宽松，不强制 E2EE/频道/支付。
+                    %% 现网以明文 C2C 为主，强制 e2ee_mode=required/compliance 会被
+                    %% imboy_policy:message_encryption_required/0 拒收（明文断生产）。
+                    %% 销售策略门禁仅对 SALES_RELEASE=true 生效（见 deploy/README.md）。
                     {ok, io_lib:format(
-                        "profile=~p e2ee_mode=~p e2ee=true channel=true channel_order=true payment=~p",
-                        [Profile, Mode, payment_summary(SalesRelease)]
+                        "profile=~p community release (SALES_RELEASE=false), policy relaxed",
+                        [Profile]
                     )};
-                {Mode, _} ->
-                    {error, io_lib:format(
-                        "profile=~p e2ee_mode=~p missing_or_disabled_sales_flags=~p",
-                        [Profile, Mode, MissingSalesFlags]
-                    )}
+                true ->
+                    Capabilities = proplists:get_value(capabilities, AppConfig, #{}),
+                    Features = proplists:get_value(features, AppConfig, #{}),
+                    E2eeMode = capability_value(e2ee_mode, Capabilities),
+                    RequiredFeatures = [e2ee, channel, channel_order],
+                    MissingFeatures = [
+                        Name
+                     || Name <- RequiredFeatures,
+                        feature_enabled(Name, Features) =/= true
+                    ],
+                    Missing = payment_missing(AppConfig, []),
+                    MissingSalesFlags = MissingFeatures ++ Missing,
+                    case {normalize_mode(E2eeMode), MissingSalesFlags} of
+                        {Mode, []} when Mode =:= required; Mode =:= compliance ->
+                            {ok, io_lib:format(
+                                "profile=~p e2ee_mode=~p e2ee=true channel=true channel_order=true payment=~p",
+                                [Profile, Mode, payment_summary(true)]
+                            )};
+                        {Mode, _} ->
+                            {error, io_lib:format(
+                                "profile=~p e2ee_mode=~p missing_or_disabled_sales_flags=~p",
+                                [Profile, Mode, MissingSalesFlags]
+                            )}
+                    end
             end;
         _ ->
             {error, "missing imboy application config"}
@@ -118,6 +126,12 @@ sales_release_enabled() ->
 
 payment_summary(true) -> live;
 payment_summary(false) -> not_required.
+
+expect_ok(_Label, {ok, _}) ->
+    ok;
+expect_ok(Label, Other) ->
+    io:format(standard_error, "SALES_RELEASE_CONFIG_SELF_TEST=FAIL ~p: ~p~n", [Label, Other]),
+    halt(1).
 
 capability_value(Name, Capabilities) when is_map(Capabilities) ->
     maps:get(Name, Capabilities, maps:get(atom_to_binary(Name), Capabilities, undefined));
