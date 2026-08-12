@@ -43,6 +43,12 @@
 %   IMBOY_ALIPAY_APP_ID / IMBOY_ALIPAY_PRIVATE_KEY / IMBOY_ALIPAY_PUBLIC_KEY
 %   IMBOY_STRIPE_SECRET_KEY / IMBOY_STRIPE_WEBHOOK_SECRET
 %   IMBOY_PAYMENT_MODE     -> {imboy, payment_mode}  (sandbox | live)
+%   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile} (community | enterprise)
+%   IMBOY_E2EE_MODE         -> {imboy, capabilities.e2ee_mode}
+%                              (disabled | optional | required | compliance)
+%   IMBOY_FEATURE_E2EE      -> {imboy, features.e2ee.enabled}
+%   IMBOY_FEATURE_CHANNEL   -> {imboy, features.channel.enabled}
+%   IMBOY_FEATURE_CHANNEL_ORDER -> {imboy, features.channel_order.enabled}
 %%%
 
 -export([override_from_env/0]).
@@ -89,6 +95,10 @@ override_from_env() ->
     %% URL 配置覆盖（生产环境必须通过这两个变量消除 sys.config 中的 dev URL）
     ok = override_binary_key("IMBOY_BASE_URL", base_url),
     ok = override_binary_key("IMBOY_WS_URL", ws_url),
+
+    %% 产品销售策略覆盖：容器镜像不携带被忽略的 sys.pro.config，生产入口
+    %% 必须通过显式环境变量决定 E2EE、频道和付费频道是否开启。
+    ok = override_product_policy(),
 
     %% PostgreSQL 连接配置覆盖
     ok = override_pg_conf(),
@@ -151,6 +161,90 @@ override_from_env() ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+%% @doc 覆盖产品档位、E2EE 强度和销售版核心功能开关。
+%% 所有非空非法值都 fail-fast，避免拼写错误静默降级成不安全策略。
+-spec override_product_policy() -> ok.
+override_product_policy() ->
+    ok = override_product_profile(),
+    ok = override_e2ee_mode(),
+    ok = override_feature_switch("IMBOY_FEATURE_E2EE", e2ee),
+    ok = override_feature_switch("IMBOY_FEATURE_CHANNEL", channel),
+    ok = override_feature_switch("IMBOY_FEATURE_CHANNEL_ORDER", channel_order),
+    ok.
+
+-spec override_product_profile() -> ok.
+override_product_profile() ->
+    case os:getenv("IMBOY_PRODUCT_PROFILE") of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            case string:trim(string:lowercase(Value)) of
+                "community" -> application:set_env(imboy, product_profile, community);
+                "enterprise" -> application:set_env(imboy, product_profile, enterprise);
+                Other -> erlang:error({invalid_env, "IMBOY_PRODUCT_PROFILE", Other})
+            end,
+            ok;
+        _ ->
+            ok
+    end.
+
+-spec override_e2ee_mode() -> ok.
+override_e2ee_mode() ->
+    case os:getenv("IMBOY_E2EE_MODE") of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            Mode =
+                case string:trim(string:lowercase(Value)) of
+                    "disabled" -> disabled;
+                    "optional" -> optional;
+                    "required" -> required;
+                    "compliance" -> compliance;
+                    Other -> erlang:error({invalid_env, "IMBOY_E2EE_MODE", Other})
+                end,
+            Current =
+                case application:get_env(imboy, capabilities, #{}) of
+                    M when is_map(M) -> M;
+                    _ -> #{}
+                end,
+            application:set_env(imboy, capabilities, Current#{e2ee_mode => Mode}),
+            ok;
+        _ ->
+            ok
+    end.
+
+-spec override_feature_switch(string(), atom()) -> ok.
+override_feature_switch(EnvVar, FeatureName) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            Enabled = parse_feature_boolean(EnvVar, Value),
+            Current =
+                case application:get_env(imboy, features, #{}) of
+                    M when is_map(M) -> M;
+                    _ -> #{}
+                end,
+            application:set_env(
+                imboy,
+                features,
+                Current#{FeatureName => #{enabled => Enabled}}
+            ),
+            ok;
+        _ ->
+            ok
+    end.
+
+-spec parse_feature_boolean(string(), string()) -> boolean().
+parse_feature_boolean(EnvVar, Value) ->
+    case string:trim(string:lowercase(Value)) of
+        "true" -> true;
+        "1" -> true;
+        "false" -> false;
+        "0" -> false;
+        Other -> erlang:error({invalid_env, EnvVar, Other})
+    end.
 
 %% @doc 覆盖 binary 类型的简单 app env key
 -spec override_binary_key(string(), atom()) -> ok.

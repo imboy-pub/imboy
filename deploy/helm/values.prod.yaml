@@ -28,6 +28,11 @@ backend:
   env:
     IMBOYENV: pro
     ERL_MAX_PORTS: "1048576"
+    IMBOY_PRODUCT_PROFILE: community
+    IMBOY_E2EE_MODE: required
+    IMBOY_FEATURE_E2EE: "true"
+    IMBOY_FEATURE_CHANNEL: "true"
+    IMBOY_FEATURE_CHANNEL_ORDER: "true"
 
 admin:
   replicaCount: 2

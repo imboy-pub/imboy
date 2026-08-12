@@ -14,7 +14,8 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 COMPOSE_FILE="docker-compose.prod.yml"
-COMPOSE="docker compose -f $COMPOSE_FILE"
+POLICY_FILE="docker-compose-sales-policy.yml"
+COMPOSE="docker compose -f $COMPOSE_FILE -f $POLICY_FILE"
 
 # 需要随机密钥的字段（域名与邮箱不在内，必须人工填）
 # 长度约束来自 preflight.sh 与后端启动校验：
@@ -54,6 +55,13 @@ if [ ! -f "$COMPOSE_FILE" ]; then
   索取方式：leeyisoft@qq.com
   仅评估/试用可先用最小演示环境（无需该文件）：
       docker compose -f docker-compose.demo.yml up -d"
+fi
+
+if [ ! -f "$POLICY_FILE" ]; then
+  die "缺少 $POLICY_FILE
+
+  该文件负责把严格 E2EE、频道和付费频道策略传入后端容器，不能省略。
+  请从仓库恢复该文件后重跑本脚本。"
 fi
 
 # ── 0b) 交付来的 compose 是否是当前版本 ───────────────────────────────────────

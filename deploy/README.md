@@ -16,6 +16,7 @@ deploy/
 ├── install.sh                   # 一键部署入口（推荐）/ One-command installer (recommended)
 ├── docker-compose.prod.yml      # ⚠️ 走单独交付渠道，不在开源仓内 / NOT in the open-source repo
 │                                # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
+├── docker-compose-sales-policy.yml # 销售版策略覆盖（无密钥）/ sales policy overlay
 ├── .env.example                 # 环境变量模板 / Environment variables template
 ├── nginx/
 │   ├── templates/
@@ -104,10 +105,11 @@ chmod 600 ./data/backend_priv/keys/login_rsa_priv.pem
 > 注意是 `data/backend_priv/keys/`，不是 `data/keys/` —— 后者没有被挂载进容器，
 > 写在那里后端读不到。
 
-**外部支付网关默认关闭**（`IMBOY_PAYMENT_GATEWAY_ENABLED=false`）：充值、网关回调、
+**未启用外部支付网关时**（`IMBOY_PAYMENT_GATEWAY_ENABLED=false`）：充值、网关回调、
 提现端点会返回「功能未启用」，站内钱包账务（余额/流水/红包/转账）不受影响。
 需要对外收款时置为 `true`，此时 `IMBOY_PAYMENT_MODE` 必须是 `live` 且至少一个网关
-凭据完整，否则节点 fail-fast。
+凭据完整，否则节点 fail-fast。销售版默认 `IMBOY_SALES_RELEASE=true`，前置检查会
+强制要求以上条件；仅钱包演示/社区部署需显式设置 `IMBOY_SALES_RELEASE=false`。
 
 **动态插件生命周期写操作默认关闭**（`IMBOY_PLUGIN_LIFECYCLE_ENABLED=false`）：
 `/api/adm/plugin/*` 的 `install`/`enable`/`disable`/`upgrade`/`uninstall`/`reset`/
@@ -128,8 +130,13 @@ bash preflight.sh --docker
 
 ```bash
 docker network create imboy-network 2>/dev/null || true
-docker compose -f docker-compose.prod.yml up -d
+docker compose \
+  -f docker-compose.prod.yml \
+  -f docker-compose-sales-policy.yml \
+  up -d
 ```
+
+销售版必须同时合并 `docker-compose-sales-policy.yml`，以显式开启严格 E2EE、频道和付费频道入口；该覆盖文件不含密钥。
 
 **首次部署需一次性签发 TLS 证书**（域名 A 记录须先指向本机，80 端口可公网访问）：
 
@@ -142,8 +149,8 @@ bash nginx/init-letsencrypt.sh
 ### 4. 查看启动状态
 
 ```bash
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f imboy_backend
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml ps
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml logs -f imboy_backend
 ```
 
 等待看到 `imboy started on port 9800` 字样。首次启动需要等待 PG 健康检查 + DB 迁移，约 30-60 秒。
@@ -175,11 +182,11 @@ docker compose -f docker-compose.prod.yml logs -f imboy_backend
 ```bash
 cd deploy
 # 1) 拉新镜像
-docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml pull
 # 2) 滚动更新（PG 不动，只重启 backend/admin）
-docker compose -f docker-compose.prod.yml up -d imboy_backend imboy_admin
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml up -d imboy_backend imboy_admin
 # 3) 查日志确认迁移成功
-docker compose -f docker-compose.prod.yml logs -f imboy_backend
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml logs -f imboy_backend
 ```
 
 ### 备份
@@ -195,16 +202,16 @@ docker exec imboy_pg18 pg_dump -U imboy_user -Fc imboy_pro > backup_$(date +%F).
 
 ```bash
 # 停止（保留数据）
-docker compose -f docker-compose.prod.yml stop
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml stop
 
 # 启动
-docker compose -f docker-compose.prod.yml start
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml start
 
 # 销毁容器（保留数据卷）
-docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml down
 
 # ⚠️ 销毁一切包括数据（危险）
-docker compose -f docker-compose.prod.yml down -v
+docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml down -v
 rm -rf ./data
 ```
 

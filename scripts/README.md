@@ -26,6 +26,16 @@ export IMBOY_CTL_COOKIE=imboycookie
 escript scripts/imboy_ctl db migrate
 ```
 
+### 蓝绿发布的迁移时序
+
+`imboy-deploy.sh all/api` 会在新节点通过 `/healthz` 且版本匹配后、切换
+Nginx 之前，执行 `.env.deploy` 中 `DEPLOY_EXPAND_MIGRATIONS` 列出的可加性
+迁移；本版本必须包含 `00000064_msg_store_sender_did.up.sql`，并验证
+`public.msg_store.sender_did` 已存在。完整 `db migrate` 仍在切流后执行。
+
+`DEPLOY_EXPAND_MIGRATIONS` 只允许放入已经完成兼容性评审的 expand SQL，不能
+把删除列/表等 contract 迁移提前。
+
 ## 备份与恢复
 
 | 脚本 | 用途 |

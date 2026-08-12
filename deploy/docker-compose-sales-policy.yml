@@ -1,0 +1,12 @@
+# IMBoy 销售版策略覆盖（不含任何密钥）
+# 与商务交付的 docker-compose.prod.yml 合并使用：
+#   docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml up -d
+
+services:
+  imboy_backend:
+    environment:
+      IMBOY_PRODUCT_PROFILE: ${IMBOY_PRODUCT_PROFILE:-community}
+      IMBOY_E2EE_MODE: ${IMBOY_E2EE_MODE:-required}
+      IMBOY_FEATURE_E2EE: ${IMBOY_FEATURE_E2EE:-true}
+      IMBOY_FEATURE_CHANNEL: ${IMBOY_FEATURE_CHANNEL:-true}
+      IMBOY_FEATURE_CHANNEL_ORDER: ${IMBOY_FEATURE_CHANNEL_ORDER:-true}

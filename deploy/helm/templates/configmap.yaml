@@ -15,6 +15,11 @@ data:
   IMBOYENV: {{ .Values.backend.env.IMBOYENV | default "pro" | quote }}
   IMBOY_HTTP_PORT: {{ .Values.backend.service.port | toString | quote }}
   ERL_MAX_PORTS: {{ .Values.backend.env.ERL_MAX_PORTS | default "1048576" | quote }}
+  IMBOY_PRODUCT_PROFILE: {{ .Values.backend.env.IMBOY_PRODUCT_PROFILE | default "community" | quote }}
+  IMBOY_E2EE_MODE: {{ .Values.backend.env.IMBOY_E2EE_MODE | default "required" | quote }}
+  IMBOY_FEATURE_E2EE: {{ .Values.backend.env.IMBOY_FEATURE_E2EE | default "true" | quote }}
+  IMBOY_FEATURE_CHANNEL: {{ .Values.backend.env.IMBOY_FEATURE_CHANNEL | default "true" | quote }}
+  IMBOY_FEATURE_CHANNEL_ORDER: {{ .Values.backend.env.IMBOY_FEATURE_CHANNEL_ORDER | default "true" | quote }}
 
   # ---------- 外部 PostgreSQL 连接（非敏感部分）----------
   IMBOY_PG_HOST: {{ .Values.externalDatabase.host | quote }}

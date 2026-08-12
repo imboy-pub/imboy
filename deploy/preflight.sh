@@ -136,6 +136,28 @@ else
     ok "IMBOY_API_AUTH_SWITCH=on"
 fi
 
+# 销售版核心策略：不得把 E2EE、频道或付费频道入口以默认关闭状态发布。
+PRODUCT_PROFILE="$(echo "${IMBOY_PRODUCT_PROFILE:-community}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+E2EE_MODE="$(echo "${IMBOY_E2EE_MODE:-required}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+if [[ "$PRODUCT_PROFILE" != "community" && "$PRODUCT_PROFILE" != "enterprise" ]]; then
+    err "IMBOY_PRODUCT_PROFILE 必须为 community 或 enterprise"
+else
+    ok "IMBOY_PRODUCT_PROFILE=${PRODUCT_PROFILE}"
+fi
+if [[ "$E2EE_MODE" != "required" && "$E2EE_MODE" != "compliance" ]]; then
+    err "IMBOY_E2EE_MODE 必须为 required 或 compliance（销售版严格 E2EE）"
+else
+    ok "IMBOY_E2EE_MODE=${E2EE_MODE}"
+fi
+for FEATURE_ENV in IMBOY_FEATURE_E2EE IMBOY_FEATURE_CHANNEL IMBOY_FEATURE_CHANNEL_ORDER; do
+    FEATURE_VALUE="$(echo "${!FEATURE_ENV:-true}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+    if [[ "$FEATURE_VALUE" != "true" && "$FEATURE_VALUE" != "1" ]]; then
+        err "$FEATURE_ENV 必须为 true/1（销售版核心能力不可关闭）"
+    else
+        ok "$FEATURE_ENV=true"
+    fi
+done
+
 # Garage S3（附件存储，不配置则文件上传失败）
 if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
     warn "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY），文件上传将失败"
@@ -166,15 +188,29 @@ echo "▶ 2b. 检查支付配置 / Checking payment configuration"
 
 PAYMENT_MODE="${IMBOY_PAYMENT_MODE:-sandbox}"
 GATEWAY_ENABLED="$(echo "${IMBOY_PAYMENT_GATEWAY_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+SALES_RELEASE_RAW="$(echo "${IMBOY_SALES_RELEASE:-true}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$SALES_RELEASE_RAW" in
+    true|1) SALES_RELEASE=true ;;
+    false|0) SALES_RELEASE=false ;;
+    *)
+        err "IMBOY_SALES_RELEASE 必须为 true/1 或 false/0"
+        SALES_RELEASE=false
+        ;;
+esac
 
 # 外部支付网关总开关关闭时，网关端点（充值/回调/提现）由 handler 直接返回
 # ERR_FEATURE_DISABLED，后端也跳过网关凭据的启动校验，因此这里不该拦人。
 # 关闭是默认值：没有真实商户凭据的部署方本来就装不起来（sandbox 在 strict
 # 环境 fail-fast，live 又缺凭据 fail-fast），那是死锁不是安全。
 if [[ "$GATEWAY_ENABLED" != "true" && "$GATEWAY_ENABLED" != "1" ]]; then
-    info "IMBOY_PAYMENT_GATEWAY_ENABLED=${GATEWAY_ENABLED}（外部支付网关未启用）"
-    info "  充值 / 网关回调 / 提现端点将返回「功能未启用」；站内钱包账务（余额/流水/红包/转账）不受影响"
-    info "  需要对外收款时：置为 true，并按下方要求配齐 IMBOY_PAYMENT_MODE=live + 至少一个网关的完整凭据"
+    if [[ "$SALES_RELEASE" == "true" ]]; then
+        err "销售发布要求 IMBOY_PAYMENT_GATEWAY_ENABLED=true；当前外部支付网关未启用"
+        info "  若仅运行社区/钱包演示，请显式设置 IMBOY_SALES_RELEASE=false"
+    else
+        info "IMBOY_PAYMENT_GATEWAY_ENABLED=${GATEWAY_ENABLED}（外部支付网关未启用）"
+        info "  充值 / 网关回调 / 提现端点将返回「功能未启用」；站内钱包账务（余额/流水/红包/转账）不受影响"
+        info "  需要对外收款时：置为 true，并按下方要求配齐 IMBOY_PAYMENT_MODE=live + 至少一个网关的完整凭据"
+    fi
 elif [[ "$PAYMENT_MODE" == "live" ]]; then
     ok "IMBOY_PAYMENT_MODE=live（真实扣款模式）"
     # 检查至少一个网关凭据完整
@@ -195,7 +231,11 @@ elif [[ "$PAYMENT_MODE" == "live" ]]; then
         info "  Stripe：IMBOY_STRIPE_SECRET_KEY + IMBOY_STRIPE_WEBHOOK_SECRET"
     fi
 else
-    warn "IMBOY_PAYMENT_MODE=${PAYMENT_MODE}（沙箱模式，回调不验签）— 上线前须改为 live"
+    if [[ "$SALES_RELEASE" == "true" ]]; then
+        err "销售发布要求 IMBOY_PAYMENT_MODE=live；当前为 ${PAYMENT_MODE}"
+    else
+        warn "IMBOY_PAYMENT_MODE=${PAYMENT_MODE}（沙箱模式，回调不验签）— 上线前须改为 live"
+    fi
 fi
 
 # License 检查

@@ -42,6 +42,10 @@ set -Eeuo pipefail
 #   IMBOY_DEPLOY_COOKIE      节点 cookie    Node cookie         (default: imboy)
 #   IMBOY_DEPLOY_BRANCH      部署分支       Deploy branch       (default: main)
 #   IMBOY_DEPLOY_STOP_OLD    完成后停旧节点 Stop old node after deploy (default: true)
+#   IMBOY_DEPLOY_DB_CONTAINER PostgreSQL 容器名  PostgreSQL container
+#   IMBOY_DEPLOY_DB_NAME      PostgreSQL 数据库名 Database name
+#   IMBOY_DEPLOY_DB_USER      PostgreSQL 用户名  Database user
+#   IMBOY_DEPLOY_EXPAND_MIGRATIONS 切流前执行的可加性迁移文件（空格分隔）
 # =============================================================================
 
 # ---------- 静默控制 / Verbosity control ----------
@@ -84,6 +88,10 @@ NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
 COOKIE="${IMBOY_DEPLOY_COOKIE:-imboy}"
 BRANCH="${IMBOY_DEPLOY_BRANCH:-main}"
 STOP_OLD="${IMBOY_DEPLOY_STOP_OLD:-true}"
+DB_CONTAINER="${IMBOY_DEPLOY_DB_CONTAINER:-}"
+DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
+DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
+EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
 # --local 模式：从本地 rsync 源码到远端，跳过 git pull
 # --local mode: rsync local source to remote, skip git pull
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -100,6 +108,18 @@ RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
 [[ "$NODE_NAME" =~ ^[a-zA-Z0-9_-]+$  ]] || { echo "NODE_NAME 含非法字符 / invalid NODE_NAME: $NODE_NAME" >&2; exit 1; }
 [[ "$COOKIE"    =~ ^[a-zA-Z0-9_-]+$  ]] || { echo "COOKIE 含非法字符 / invalid COOKIE: $COOKIE" >&2; exit 1; }
 [[ "$RELEASE_DIR" == /usr/local/imboy-?* ]] || { echo "RELEASE_DIR 路径异常 / anomalous RELEASE_DIR: $RELEASE_DIR" >&2; exit 1; }
+if [[ -n "$DB_CONTAINER" && ! "$DB_CONTAINER" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+  echo "IMBOY_DEPLOY_DB_CONTAINER 含非法字符 / invalid DB container" >&2
+  exit 1
+fi
+if [[ -n "$DB_NAME" && ! "$DB_NAME" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+  echo "IMBOY_DEPLOY_DB_NAME 含非法字符 / invalid DB name" >&2
+  exit 1
+fi
+if [[ -n "$DB_USER" && ! "$DB_USER" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
+  echo "IMBOY_DEPLOY_DB_USER 含非法字符 / invalid DB user" >&2
+  exit 1
+fi
 
 # 规范化 STOP_OLD：接受 true/1/yes（大小写不敏感）
 # Normalize STOP_OLD: accept true/1/yes case-insensitively
@@ -186,6 +206,55 @@ wait_for_port() {
     done
     exit 1
   "
+}
+
+# =============================================================================
+# Expand 迁移：切流前先补齐新代码必需的可空列
+#
+# 本轮 00000064 为纯 expand：只给 msg_store 增加可空 sender_did 列，旧节点
+# 不会受影响，新节点却会在归档读写 SQL 中直接引用它。不能把它留到切流之后
+# 的全量迁移阶段，否则新节点会先接流量再因 schema 不完整报错。
+#
+# 这里只执行显式列出的、经过发布评审确认的 expand SQL；完整迁移仍在切流后
+# 由 db migrate 执行并登记版本。这样不会把未知的 contract 迁移整体提前。
+# =============================================================================
+run_expand_migrations() {
+  local migration
+  local remote_file
+  local -a migrations=()
+
+  # 源码同步/编译已完成，若本次 release 带有 00000064，就强制要求配置
+  # expand 清单，避免调用方无意间绕过 schema 兼容门。
+  if ssh_exec "test -f '$PROJECT_DIR/priv/migrations/00000064_msg_store_sender_did.up.sql'"; then
+    [ -n "$EXPAND_MIGRATIONS" ] || fail "检测到 00000064，但未配置 IMBOY_DEPLOY_EXPAND_MIGRATIONS，拒绝切流"
+  fi
+  [ -n "$EXPAND_MIGRATIONS" ] || {
+    log "无显式 expand 迁移，跳过切流前 schema 扩展"
+    return 0
+  }
+  [ -n "$DB_CONTAINER" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_CONTAINER"
+  [ -n "$DB_NAME" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_NAME"
+  [ -n "$DB_USER" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_USER"
+
+  read -r -a migrations <<< "$EXPAND_MIGRATIONS"
+  [ "${#migrations[@]}" -gt 0 ] || fail "IMBOY_DEPLOY_EXPAND_MIGRATIONS 为空"
+  for migration in "${migrations[@]}"; do
+    [[ "$migration" =~ ^[a-zA-Z0-9._-]+\.up\.sql$ ]] \
+      || fail "expand 迁移文件名非法: $migration"
+    remote_file="$PROJECT_DIR/priv/migrations/$migration"
+    ssh_exec "test -s '$remote_file'" \
+      || fail "远端缺少 expand 迁移文件: $remote_file"
+    log "执行切流前 expand 迁移: $migration"
+    ssh_exec "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -f - < '$remote_file'" \
+      || fail "expand 迁移失败: $migration"
+  done
+
+  # 对本轮关键列做机器验证；不把 psql 输出带回日志，避免泄漏环境细节。
+  if printf '%s\n' "${migrations[@]}" | grep -qx '00000064_msg_store_sender_did.up.sql'; then
+    ssh_exec "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_store' AND column_name='sender_did'\" | grep -qx 1" \
+      || fail "schema 验证失败：public.msg_store.sender_did 不存在"
+    ok "schema 已确认：public.msg_store.sender_did"
+  fi
 }
 
 # =============================================================================
@@ -306,6 +375,13 @@ log "编译 release... / Building release..."
 ssh_exec "
   set -e
   cd '$PROJECT_DIR'
+  # 销售版必须显式开启严格 E2EE、频道和付费频道入口；sys.pro.config
+  # 是部署环境提供的忽略文件，校验器只输出策略布尔值，不输出任何密钥。
+  test -f config/sys.pro.config || {
+    echo '缺少 config/sys.pro.config：拒绝生成销售版 release' >&2
+    exit 1
+  }
+  escript scripts/validate_sales_release_config.escript config/sys.pro.config
   # 全量清理后重编：-l 模式 rsync 会同步本地自动生成的 ebin/imboy.app（已列新模块），
   # 但 --exclude='*.beam' 排除了对应 beam，致 erlang.mk 因 .app mtime 较新而跳过重建，
   # release 组装时报 module_not_found。make clean 强制从源码全量重编，规避此陷阱。
@@ -379,7 +455,14 @@ wait_for_health "$APP_PORT" "$VSN" \
 ok "新节点已就绪且版本匹配 (port=$APP_PORT, vsn=$VSN) / New node ready, version verified"
 
 # =============================================================================
-# 6️⃣ 切换 Nginx upstream / Switch Nginx upstream（C-52：迁移已移到本步之后）
+# 5.5️⃣ 切流前 Expand schema / Apply additive schema changes before traffic switch
+#
+# 新节点尚未接收业务流量，此时给数据库增加可空列对旧节点兼容；完成后再切流。
+# =============================================================================
+run_expand_migrations
+
+# =============================================================================
+# 6️⃣ 切换 Nginx upstream / Switch Nginx upstream
 # 首次部署（OLD_PORT 为空）跳过自动切换，提示人工配置
 # Skip auto-switch on first deploy (OLD_PORT empty); prompt for manual config
 # =============================================================================
@@ -399,17 +482,18 @@ else
 fi
 
 # =============================================================================
-# 7️⃣ 数据库迁移 / Run DB migrations（C-52：**移到切流之后**）
+# 7️⃣ 数据库迁移 / Run remaining DB migrations（C-52：完整迁移仍在切流之后）
 #
-# 为什么在切流之后：此前迁移跑在「新节点已起、nginx 仍指向旧节点」的窗口里，
+# 为什么完整迁移在切流之后：此前迁移跑在「新节点已起、nginx 仍指向旧节点」的窗口里，
 # 也就是**旧节点正在服务流量时执行破坏性迁移** —— 一个 DROP COLUMN 会当场
 # 打断正在被使用的旧代码。切流之后旧节点已不接流量，破坏性变更才安全。
 #
-# ⚠️ 代价必须写明：切流到迁移完成之间，**新节点是在未迁移的库上服务的**。
-#   因此 expand/contract 纪律仍然是强制的：
+# 切流前的 run_expand_migrations 只执行显式批准的、旧代码兼容的增量 DDL，
+# 解决新代码在切流瞬间依赖新列的问题；其余迁移仍须遵循 expand/contract 纪律：
 #     - 新增列/表（expand）必须先于依赖它的新代码发布，或新代码能容忍其缺失
 #     - 删除列/表（contract）只能在旧代码彻底下线后的**下一次**发布里做
-#   本次调整解决的是"contract 撞上仍在服务的旧节点"，不是免除 expand/contract。
+#   本次调整解决的是"expand 迟于切流"与"contract 撞上旧节点"两个相反时序，
+#   不是免除迁移评审。
 #
 # 迁移失败时**不自动切回** nginx：此刻新节点已在服务，贸然切回旧节点可能撞上
 # 已部分应用的 schema。改为显式提示 --rollback，由人判断。

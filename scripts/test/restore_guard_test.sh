@@ -171,6 +171,23 @@ else
   bad "迁移仍在切流之前（破坏性迁移会打断仍在服务的旧节点）" "switch=${SW_LINE} migrate=${MG_LINE}"
 fi
 
+# 本轮 E2EE 归档改动：00000064 是新代码切流前必需的 additive schema。
+# 它必须在切流前执行，但完整 migrate 仍保留在切流之后。
+EXPAND_DEF_LINE="$(grep -n '^run_expand_migrations()' "$DEPLOY" | head -1 | cut -d: -f1)"
+EXPAND_CALL_LINE="$(grep -n '^run_expand_migrations$' "$DEPLOY" | tail -1 | cut -d: -f1)"
+if [ -n "$EXPAND_DEF_LINE" ] && [ -n "$EXPAND_CALL_LINE" ] && [ "$EXPAND_CALL_LINE" -lt "$SW_LINE" ]; then
+  ok "切流前执行显式 expand 迁移（行 ${EXPAND_CALL_LINE} < ${SW_LINE}）"
+else
+  bad "缺少切流前 expand 迁移门禁" "expand=${EXPAND_CALL_LINE} switch=${SW_LINE}"
+fi
+
+if grep -q '00000064_msg_store_sender_did.up.sql' "$DEPLOY" \
+   && grep -q 'public.msg_store.sender_did' "$DEPLOY"; then
+  ok "00000064 sender_did schema 执行与验证均已接入"
+else
+  bad "00000064 sender_did 未纳入切流前 schema 门禁" ""
+fi
+
 # C-52：回滚入口存在，且切之前会探目标色健康
 if grep -q -- '--rollback)' "$DEPLOY"; then
   ok "存在 --rollback 子命令"
