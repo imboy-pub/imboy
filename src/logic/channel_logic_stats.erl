@@ -40,18 +40,32 @@ fetch_channel_stats(ChannelId, ChannelIdBin) ->
         {error, _} ->
             {error, <<"频道不存在"/utf8>>};
         Channel when is_map(Channel) ->
-            {ok, TotalMessages, TotalViews} = get_message_stats(ChannelId),
-            {ok, Reactions} = channel_ds:get_reaction_count(ChannelId),
-            Stats = #{
-                <<"channel_id">> => ChannelIdBin,
-                <<"subscriber_count">> => maps:get(
-                    <<"subscriber_count">>, Channel, 0
-                ),
-                <<"total_messages">> => TotalMessages,
-                <<"total_views">> => TotalViews,
-                <<"total_reactions">> => Reactions
-            },
-            {ok, Stats}
+            case get_message_stats(ChannelId) of
+                {ok, TotalMessages, TotalViews} ->
+                    case channel_ds:get_reaction_count(ChannelId) of
+                        {ok, Reactions} ->
+                            Stats = #{
+                                <<"channel_id">> => ChannelIdBin,
+                                <<"subscriber_count">> => maps:get(
+                                    <<"subscriber_count">>, Channel, 0
+                                ),
+                                <<"total_messages">> => TotalMessages,
+                                <<"total_views">> => TotalViews,
+                                <<"total_reactions">> => Reactions
+                            },
+                            {ok, Stats};
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        UnexpectedReactions ->
+                            {error, elib_cnv:safe_to_binary(UnexpectedReactions)}
+                    end;
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)};
+                UnexpectedStats ->
+                    {error, elib_cnv:safe_to_binary(UnexpectedStats)}
+            end;
+        _Unexpected ->
+            {error, <<"频道不存在"/utf8>>}
     end.
 
 -spec get_message_stats(integer()) ->
@@ -86,8 +100,13 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
                                         )
                                     of
                                         {ok, _} -> ok;
-                                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
-                                    end
+                                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                                        Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
+                                    end;
+                                {error, Reason} ->
+                                    {error, elib_cnv:safe_to_binary(Reason)};
+                                Unexpected ->
+                                    {error, elib_cnv:safe_to_binary(Unexpected)}
                             end
                     end;
                 {error, Reason} ->
@@ -118,7 +137,8 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
                                 )
                             of
                                 {ok, _} -> ok;
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
                             end
                     end;
                 {error, Reason} ->
@@ -146,7 +166,8 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
                                 channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType)
                             of
                                 {ok, _} -> ok;
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
                             end
                     end;
                 {error, Reason} ->
@@ -183,8 +204,12 @@ get_daily_stats(Uid, ChannelIdBin, Days) ->
                     case channel_ds:get_daily_stats(ChannelId, Days) of
                         {ok, Stats} when is_list(Stats) ->
                             {ok, [S || S <- Stats, is_map(S)]};
+                        {ok, UnexpectedStats} ->
+                            {error, elib_cnv:safe_to_binary(UnexpectedStats)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end
             end
     end.

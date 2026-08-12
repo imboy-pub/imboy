@@ -25,6 +25,27 @@ setup_test_() ->
         end
     end).
 
+has_purchased_ignores_expired_subscription_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'query', 2, fun(Sql, [10001, 1001]) ->
+                    SqlBin = iolist_to_binary(Sql),
+                    ?assert(
+                        re:run(
+                            SqlBin,
+                            <<"subscription_end_at IS NULL OR subscription_end_at > NOW">>
+                        ) =/= nomatch
+                    ),
+                    {ok, [#{<<"cnt">> => 0}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(false, channel_order_repo:has_purchased(10001, 1001))
+        end
+    ).
+
 %% ===================================================================
 %% 订单号生成测试
 %% ===================================================================
@@ -195,6 +216,8 @@ pay_updates_order_status_without_subscription_side_effect_test_() ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(re:run(SqlBin, <<"UPDATE channel_order">>) =/= nomatch),
                     ?assertEqual(nomatch, re:run(SqlBin, <<"channel_subscription">>)),
+                    %% PostgreSQL 需要从 NULL 分支也能推断第 5 个参数类型。
+                    ?assert(re:run(SqlBin, <<"::bigint IS NULL">>) =/= nomatch),
                     %% B-08：新增第 7 个参数 = 过期宽限分钟数。
                     %% pay/2（用户主动支付路径）必须仍是 0 —— 订单过期就该重新下单，
                     %% 宽限只给第三方回调（钱已真收）。

@@ -4,6 +4,7 @@
 -export([
     create_order/2,
     pay_order/2,
+    cancel_order/2,
     order_status/2,
     refund_order/2,
     my_orders/2,
@@ -19,6 +20,7 @@ init(Req0, State0) ->
 
 handle_action(create_order, Req, State) -> create_order(Req, State);
 handle_action(pay_order, Req, State) -> pay_order(Req, State);
+handle_action(cancel_order, Req, State) -> cancel_order(Req, State);
 handle_action(order_status, Req, State) -> order_status(Req, State);
 handle_action(refund_order, Req, State) -> refund_order(Req, State);
 handle_action(my_orders, Req, State) -> my_orders(Req, State);
@@ -34,12 +36,15 @@ create_order(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     ChannelId = resolve_channel_id(Req0, PostVals),
+    PaymentMethod = normalize_payment_method(
+        maps:get(<<"payment_method">>, PostVals, <<"wallet">>)
+    ),
 
     case ChannelId of
         <<>> ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         _ ->
-            case channel_logic:create_order(Uid, ChannelId) of
+            case channel_logic:create_order(Uid, ChannelId, PaymentMethod) of
                 {ok, Order} ->
                     elib_response:success(Req0, Order);
                 {error, Msg} ->
@@ -47,7 +52,7 @@ create_order(Req0, State) ->
             end
     end.
 
-%% @doc 支付订单（模拟支付）
+%% @doc 支付订单（钱包即时扣款；第三方返回支付意图，等待回调确认）
 -spec pay_order(cowboy_req:req(), map()) -> cowboy_req:req().
 pay_order(Req0, State) ->
     Uid = maps:get(current_uid, State),
@@ -62,6 +67,24 @@ pay_order(Req0, State) ->
                 {ok, Envelope} ->
                     %% 统一支付信封：payment_method / payment_no / pay_params（binary key）
                     elib_response:success(Req0, Envelope);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 取消待支付订单；已支付订单必须使用退款接口。
+-spec cancel_order(cowboy_req:req(), map()) -> cowboy_req:req().
+cancel_order(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    OrderNo = normalize_non_empty_binary(maps:get(<<"order_no">>, PostVals, <<>>)),
+    case OrderNo of
+        <<>> ->
+            elib_response:error(Req0, <<"订单号不能为空"/utf8>>);
+        _ ->
+            case channel_logic:cancel_order(Uid, OrderNo) of
+                ok ->
+                    elib_response:success(Req0, #{});
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -155,3 +178,10 @@ normalize_non_empty_binary(Value) when is_integer(Value) ->
     integer_to_binary(Value);
 normalize_non_empty_binary(_) ->
     <<>>.
+
+-spec normalize_payment_method(term()) -> binary().
+normalize_payment_method(Value) ->
+    case normalize_non_empty_binary(Value) of
+        <<>> -> <<"wallet">>;
+        Method -> Method
+    end.

@@ -20,12 +20,20 @@ sync_channels(Uid, Since) ->
                                  || C <- Channels, is_map(C)
                                 ],
                             {ok, #{channels => Transferred, server_time => Now}};
+                        {ok, UnexpectedChannels} ->
+                            {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end
             end;
+        {ok, UnexpectedSubscriptions} ->
+            {error, elib_cnv:safe_to_binary(UnexpectedSubscriptions)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec extract_channel_ids(list()) -> list(integer()).

@@ -2,9 +2,12 @@
 -compile([nowarn_deprecated_catch]).
 
 -export([create_order/2]).
+-export([create_order/3]).
 -export([pay_order/2]).
+-export([cancel_order/2]).
 -export([get_my_orders/1]).
 -export([get_order/2]).
+-export([payment_data_with_subscription/2]).
 
 -ifdef(TEST).
 -export([to_gateway_amount/2, yuan_to_fen/1]).
@@ -26,9 +29,23 @@
 -define(STATUS_PENDING, 0).
 -define(STATUS_PAID, 1).
 -define(STATUS_EXPIRED, 4).
+-define(STATUS_CANCELLED, 3).
 
+%% 兼容旧调用方：未指定支付方式时默认钱包支付；mock 只能由调用方显式选择。
 -spec create_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 create_order(Uid, ChannelIdBin) ->
+    create_order(Uid, ChannelIdBin, <<"wallet">>).
+
+-spec create_order(integer(), binary(), binary()) -> {ok, map()} | {error, binary()}.
+create_order(Uid, ChannelIdBin, PaymentMethod) ->
+    case is_payment_method_allowed(PaymentMethod) of
+        false ->
+            {error, <<"不支持的支付方式"/utf8>>};
+        true ->
+            create_order_for_method(Uid, ChannelIdBin, PaymentMethod)
+    end.
+
+create_order_for_method(Uid, ChannelIdBin, PaymentMethod) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
         0 ->
@@ -50,45 +67,71 @@ create_order(Uid, ChannelIdBin) ->
                         Type =/= 2 ->
                             {error, <<"只有付费频道支持购买"/utf8>>};
                         true ->
-                            do_create_order(ChannelId, Uid)
-                    end
+                            do_create_order(ChannelId, Uid, PaymentMethod)
+                    end;
+                _Unexpected ->
+                    {error, <<"频道不存在"/utf8>>}
             end
     end.
 
--spec do_create_order(integer(), integer()) -> {ok, map()} | {error, binary()}.
-do_create_order(ChannelId, Uid) ->
+-spec do_create_order(integer(), integer(), binary()) -> {ok, map()} | {error, binary()}.
+do_create_order(ChannelId, Uid, PaymentMethod) ->
     case channel_order_ds:has_purchased(ChannelId, Uid) of
         true ->
             {error, <<"您已购买此频道"/utf8>>};
         false ->
             case channel_order_ds:get_price(ChannelId) of
-                {ok, Price} ->
+                {ok, Price} when is_map(Price) ->
                     Amount = maps:get(<<"price">>, Price, 0),
                     Currency = maps:get(<<"currency">>, Price, <<"CNY">>),
-                    Data = #{
-                        channel_id => ChannelId,
-                        user_id => Uid,
-                        amount => Amount,
-                        currency => Currency
-                    },
-                    case channel_order_ds:create_order(Data) of
-                        {ok, OrderNo} ->
-                            case channel_order_ds:find_by_order_no(OrderNo) of
-                                {ok, Order} when is_map(Order) ->
-                                    {ok, order_transfer(Order)};
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)}
-                            end;
-                        {error, Reason} when is_binary(Reason) ->
-                            {error, Reason};
-                        {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                    case normalize_subscription_type(maps:get(<<"subscription_type">>, Price, 1)) of
+                        {error, invalid} ->
+                            {error, <<"频道订阅类型无效"/utf8>>};
+                        {ok, SubscriptionType} ->
+                            case is_positive_amount(Amount) of
+                                false ->
+                                    {error, <<"频道价格无效"/utf8>>};
+                                true ->
+                                    Data = #{
+                                        channel_id => ChannelId,
+                                        user_id => Uid,
+                                        amount => Amount,
+                                        currency => Currency,
+                                        payment_method => PaymentMethod,
+                                        extra_data => #{
+                                            <<"subscription_type">> => SubscriptionType
+                                        }
+                                    },
+                                    case channel_order_ds:create_order(Data) of
+                                        {ok, OrderNo} ->
+                                            case channel_order_ds:find_by_order_no(OrderNo) of
+                                                {ok, Order} when is_map(Order) ->
+                                                    {ok, order_transfer(Order)};
+                                                {ok, _InvalidOrder} ->
+                                                    {error, <<"订单不存在"/utf8>>};
+                                                {error, Reason} ->
+                                                    {error, error_binary(Reason)};
+                                                _UnexpectedOrder ->
+                                                    {error, <<"订单数据异常"/utf8>>}
+                                            end;
+                                        {error, Reason} ->
+                                            {error, error_binary(Reason)};
+                                        _UnexpectedCreate ->
+                                            {error, <<"订单创建结果异常"/utf8>>}
+                                    end
+                            end
                     end;
                 {error, not_found} ->
                     {error, <<"频道价格未配置"/utf8>>};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
-            end
+                    {error, error_binary(Reason)};
+                _UnexpectedPrice ->
+                    {error, <<"频道价格数据异常"/utf8>>}
+            end;
+        {error, Reason} ->
+            {error, error_binary(Reason)};
+        _UnexpectedPurchased ->
+            {error, <<"购买状态数据异常"/utf8>>}
     end.
 
 %% @returns {ok, Envelope} | {error, binary()}
@@ -122,29 +165,84 @@ pay_order(Uid, OrderNo) ->
                                     {error, <<"不支持的支付方式"/utf8>>};
                                 true ->
                                     Amount = maps:get(<<"amount">>, Order, 0),
-                                    %% channel_order.amount 单位为「元」；按目标网关期望单位适配：
-                                    %% wallet 网关期望元(内部换分)，第三方网关期望分(分=元×100)。
-                                    PayOpts = #{
-                                        uid => Uid,
-                                        amount => to_gateway_amount(Method, Amount)
-                                    },
-                                    case
-                                        normalize_pay_result(
-                                            payment_gateway:pay(Method, OrderNo, PayOpts)
-                                        )
-                                    of
-                                        {ok, PayNo, Extra} ->
-                                            settle(
-                                                Method, ChannelId, Uid, OrderNo, PayNo, Extra, Order
-                                            );
-                                        {error, PayReason} ->
-                                            {error, PayReason}
+                                    case is_positive_amount(Amount) of
+                                        false ->
+                                            {error, <<"订单金额无效"/utf8>>};
+                                        true ->
+                                            %% channel_order.amount 单位为「元」；按目标网关期望单位适配：
+                                            %% wallet 网关期望元(内部换分)，第三方网关期望分(分=元×100)。
+                                            PayOpts = #{
+                                                uid => Uid,
+                                                amount => to_gateway_amount(Method, Amount)
+                                            },
+                                            case
+                                                normalize_pay_result(
+                                                    payment_gateway:pay(Method, OrderNo, PayOpts)
+                                                )
+                                            of
+                                                {ok, PayNo, Extra} ->
+                                                    settle(
+                                                        Method,
+                                                        ChannelId,
+                                                        Uid,
+                                                        OrderNo,
+                                                        PayNo,
+                                                        Extra,
+                                                        Order
+                                                    );
+                                                {error, PayReason} ->
+                                                    {error, PayReason}
+                                            end
                                     end
                             end
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>}
+            {error, <<"订单不存在"/utf8>>};
+        {error, LookupReason} ->
+            {error, error_binary(LookupReason)};
+        {ok, _InvalidOrder} ->
+            {error, <<"订单不存在"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
+    end.
+
+%% @doc 用户取消待支付订单；已支付订单必须走退款，避免绕过支付网关。
+-spec cancel_order(integer(), binary()) -> ok | {error, binary()}.
+cancel_order(Uid, OrderNo) ->
+    case channel_order_ds:find_by_order_no(OrderNo) of
+        {ok, Order} when is_map(Order) ->
+            OrderUserId = elib_cnv:safe_to_integer(maps:get(<<"user_id">>, Order, 0)),
+            Status = elib_cnv:safe_to_integer(
+                maps:get(<<"status">>, Order, ?STATUS_PENDING)
+            ),
+            case is_integer(OrderUserId) andalso OrderUserId > 0 of
+                false ->
+                    {error, <<"订单不存在"/utf8>>};
+                true when OrderUserId =/= Uid ->
+                    {error, <<"无权操作此订单"/utf8>>};
+                true when Status =/= ?STATUS_PENDING ->
+                    {error, <<"订单状态不允许取消"/utf8>>};
+                true ->
+                    case channel_order_ds:cancel(OrderNo) of
+                        ok ->
+                            ok;
+                        {error, not_found_or_not_pending} ->
+                            {error, <<"订单状态不允许取消"/utf8>>};
+                        {error, Reason} ->
+                            {error, error_binary(Reason)};
+                        _UnexpectedCancel ->
+                            {error, <<"订单取消结果异常"/utf8>>}
+                    end
+            end;
+        {error, not_found} ->
+            {error, <<"订单不存在"/utf8>>};
+        {error, LookupReason} ->
+            {error, error_binary(LookupReason)};
+        {ok, _InvalidOrder} ->
+            {error, <<"订单不存在"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 %% @doc 按网关结算模式决定是否就地发货。
@@ -174,12 +272,14 @@ settle(Method, ChannelId, Uid, OrderNo, PayNo, Extra, Order) ->
 %% @doc 归一网关返回：兼容 {ok, PayNo} 与 {ok, PayNo, Extra}，
 %% 统一成 {ok, PayNo, Extra::map()}，错误原样透传（wallet/mock 无第三元组 → 空 map）。
 -spec normalize_pay_result(term()) -> {ok, binary(), map()} | {error, term()}.
-normalize_pay_result({ok, PayNo, Extra}) when is_map(Extra) ->
+normalize_pay_result({ok, PayNo, Extra}) when is_binary(PayNo), is_map(Extra) ->
     {ok, PayNo, Extra};
-normalize_pay_result({ok, PayNo}) ->
+normalize_pay_result({ok, PayNo}) when is_binary(PayNo) ->
     {ok, PayNo, #{}};
-normalize_pay_result({error, _} = Err) ->
-    Err.
+normalize_pay_result({error, Reason}) ->
+    {error, error_binary(Reason)};
+normalize_pay_result(_Unexpected) ->
+    {error, <<"支付网关返回格式异常"/utf8>>}.
 
 -spec do_pay_order(integer(), integer(), binary(), map(), map()) -> ok | {error, binary()}.
 do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->
@@ -190,29 +290,82 @@ do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->
                 ok ->
                     channel_logic_notify:notify_order_paid(ChannelId, Uid);
                 {error, _} ->
-                    {error, <<"订单已支付"/utf8>>}
+                    {error, <<"订单已支付"/utf8>>};
+                _UnexpectedSubscribe ->
+                    {error, <<"订阅结果异常"/utf8>>}
             end;
         _ ->
-            case channel_order_ds:pay(OrderNo, PaymentData) of
+            case
+                channel_order_ds:pay(
+                    OrderNo,
+                    payment_data_with_subscription(Order, PaymentData)
+                )
+            of
                 ok ->
                     case channel_ds:subscribe(ChannelId, Uid) of
                         ok ->
                             channel_logic_notify:notify_order_paid(ChannelId, Uid);
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, error_binary(Reason)};
+                        _UnexpectedSubscribe ->
+                            {error, <<"订阅结果异常"/utf8>>}
                     end;
                 {error, not_found_or_expired} ->
                     %% payment race: check final state, compensate if already paid
                     maybe_compensate_subscription(OrderNo);
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+                    {error, error_binary(Reason)};
+                _UnexpectedPay ->
+                    {error, <<"订单支付结果异常"/utf8>>}
             end
     end.
+
+%% @doc 将下单时锁定的订阅类型转换为支付时的有效期。
+%% 旧订单缺失 extra_data 时按一次性购买兼容，不会意外延长权益。
+-spec payment_data_with_subscription(map(), map()) -> map().
+payment_data_with_subscription(Order, PaymentData) ->
+    Start = normalize_subscription_start(maps:get(subscription_start_at, PaymentData, undefined)),
+    Type = order_subscription_type(Order),
+    End = subscription_end(Start, Type),
+    PaymentData#{subscription_start_at => Start, subscription_end_at => End}.
+
+-spec normalize_subscription_start(term()) -> integer().
+normalize_subscription_start(Start) when is_integer(Start), Start > 0 -> Start;
+normalize_subscription_start(_) -> elib_dt:millisecond().
+
+-spec subscription_end(integer(), 1 | 2 | 3) -> null | integer().
+subscription_end(_Start, 1) -> null;
+subscription_end(Start, 2) -> Start + 30 * 24 * 60 * 60 * 1000;
+subscription_end(Start, 3) -> Start + 365 * 24 * 60 * 60 * 1000.
+
+-spec order_subscription_type(map()) -> 1 | 2 | 3.
+order_subscription_type(Order) ->
+    Extra = maps:get(<<"extra_data">>, Order, maps:get(extra_data, Order, #{})),
+    Raw =
+        case Extra of
+            M when is_map(M) ->
+                maps:get(<<"subscription_type">>, M, maps:get(subscription_type, M, 1));
+            _ ->
+                1
+        end,
+    case normalize_subscription_type(Raw) of
+        {ok, Type} -> Type;
+        {error, invalid} -> 1
+    end.
+
+-spec normalize_subscription_type(term()) -> {ok, 1 | 2 | 3} | {error, invalid}.
+normalize_subscription_type(1) -> {ok, 1};
+normalize_subscription_type(2) -> {ok, 2};
+normalize_subscription_type(3) -> {ok, 3};
+normalize_subscription_type(<<"1">>) -> {ok, 1};
+normalize_subscription_type(<<"2">>) -> {ok, 2};
+normalize_subscription_type(<<"3">>) -> {ok, 3};
+normalize_subscription_type(_) -> {error, invalid}.
 
 -spec maybe_compensate_subscription(binary()) -> ok | {error, binary()}.
 maybe_compensate_subscription(OrderNo) ->
     case channel_order_ds:find_by_order_no(OrderNo) of
-        {ok, Order} ->
+        {ok, Order} when is_map(Order) ->
             case maps:get(<<"status">>, Order, 0) of
                 1 ->
                     ChannelId = maps:get(<<"channel_id">>, Order),
@@ -227,7 +380,9 @@ maybe_compensate_subscription(OrderNo) ->
                     {error, <<"订单不存在或已过期"/utf8>>}
             end;
         {error, _} ->
-            {error, <<"订单不存在或已过期"/utf8>>}
+            {error, <<"订单不存在或已过期"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 -spec get_my_orders(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -239,7 +394,9 @@ get_my_orders(Uid) ->
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, error_binary(Reason)};
+        _UnexpectedOrders ->
+            {error, <<"订单列表数据异常"/utf8>>}
     end.
 
 -spec get_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
@@ -259,7 +416,13 @@ get_order(Uid, OrderNo) ->
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>}
+            {error, <<"订单不存在"/utf8>>};
+        {error, LookupReason} ->
+            {error, error_binary(LookupReason)};
+        {ok, _InvalidOrder} ->
+            {error, <<"订单不存在"/utf8>>};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 -spec refund_order(integer(), binary()) -> ok | {error, binary()}.
@@ -296,7 +459,11 @@ refund_order(Uid, OrderNo, Reason0) ->
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>}
+            {error, <<"订单不存在"/utf8>>};
+        {error, LookupReason} ->
+            {error, error_binary(LookupReason)};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 %% @doc 管理端代发退款：不做订单归属校验，管理员可退任意订单。
@@ -330,7 +497,11 @@ admin_refund_order(OrderNo, Reason0) ->
                     end
             end;
         {error, not_found} ->
-            {error, <<"订单不存在"/utf8>>}
+            {error, <<"订单不存在"/utf8>>};
+        {error, LookupReason} ->
+            {error, error_binary(LookupReason)};
+        _UnexpectedOrder ->
+            {error, <<"订单数据异常"/utf8>>}
     end.
 
 %% @doc 退款执行：网关退款 → 改订单状态为已退款(2) → 取消频道订阅
@@ -341,22 +512,29 @@ do_refund_order(ChannelId, Uid, OrderNo, Order, Reason) ->
     Method = maps:get(<<"payment_method">>, Order, <<"wallet">>),
     PaymentNo = maps:get(<<"payment_no">>, Order, <<>>),
     Amount = maps:get(<<"amount">>, Order, 0),
-    case payment_gateway:refund(Method, PaymentNo, to_gateway_amount(Method, Amount)) of
-        ok ->
-            %% 网关退款成功后再更新订单状态（带 status=1 守卫，并发安全）
-            case channel_order_ds:refund(OrderNo, Uid, Reason) of
+    case is_payment_method_allowed(Method) of
+        false ->
+            {error, <<"不支持的支付方式"/utf8>>};
+        true ->
+            case payment_gateway:refund(Method, PaymentNo, to_gateway_amount(Method, Amount)) of
                 ok ->
-                    %% 退款成功后取消该用户对频道的订阅（失败不回退退款，仅记录）
-                    _ = channel_ds:unsubscribe(ChannelId, Uid),
-                    ok;
-                {error, not_found_or_not_paid} ->
-                    %% 并发场景：状态已被其他流程改变，按已退款处理
-                    {error, <<"订单已退款"/utf8>>};
-                {error, RefReason} ->
-                    {error, elib_cnv:safe_to_binary(RefReason)}
-            end;
-        {error, PayReason} ->
-            {error, PayReason}
+                    %% 网关退款成功后再更新订单状态（带 status=1 守卫，并发安全）
+                    case channel_order_ds:refund(OrderNo, Uid, Reason) of
+                        ok ->
+                            %% 退款成功后取消该用户对频道的订阅（失败不回退退款，仅记录）
+                            _ = channel_ds:unsubscribe(ChannelId, Uid),
+                            ok;
+                        {error, not_found_or_not_paid} ->
+                            %% 并发场景：状态已被其他流程改变，按已退款处理
+                            {error, <<"订单已退款"/utf8>>};
+                        {error, RefReason} ->
+                            {error, elib_cnv:safe_to_binary(RefReason)}
+                    end;
+                {error, PayReason} ->
+                    {error, error_binary(PayReason)};
+                _UnexpectedRefund ->
+                    {error, <<"退款网关返回格式异常"/utf8>>}
+            end
     end.
 
 %% @doc 按目标网关期望单位适配金额（修复 channel 第三方支付收款/退款 100 倍偏差）：
@@ -397,6 +575,16 @@ safe_int(B) ->
         _ -> 0
     end.
 
+-spec is_positive_amount(term()) -> boolean().
+is_positive_amount(Amount) ->
+    yuan_to_fen(Amount) > 0.
+
+-spec error_binary(term()) -> binary().
+error_binary(Reason) when is_binary(Reason) ->
+    Reason;
+error_binary(Reason) ->
+    elib_cnv:safe_to_binary(Reason).
+
 -spec normalize_refund_reason(term()) -> binary().
 normalize_refund_reason(Reason) when is_binary(Reason), Reason =/= <<>> ->
     Reason;
@@ -405,8 +593,9 @@ normalize_refund_reason(_) ->
 
 -spec is_payment_method_allowed(binary()) -> boolean().
 is_payment_method_allowed(Method) ->
-    Env = config_ds:env(env, <<"local">>),
-    EnvBin = ec_cnv:to_binary(Env),
+    %% 统一使用启动环境解析器：未配置时 current/0 fail-safe 为 production，
+    %% 避免生产部署遗漏 imboy.env 时意外放行 mock 支付。
+    EnvBin = imboy_env:current(),
     Allowed =
         case EnvBin of
             <<"pro">> -> ?ALLOWED_PAYMENT_METHODS;
@@ -414,7 +603,9 @@ is_payment_method_allowed(Method) ->
             <<"production">> -> ?ALLOWED_PAYMENT_METHODS;
             _ -> ?DEV_ALLOWED_PAYMENT_METHODS
         end,
-    lists:member(Method, Allowed).
+    lists:member(Method, Allowed) andalso
+        (lists:member(Method, ?INSTANT_SETTLE_METHODS) orelse
+            payment_gateway:enabled()).
 
 -spec decode_positive_id(term()) -> integer().
 decode_positive_id(Value) ->

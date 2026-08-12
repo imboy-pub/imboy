@@ -14,6 +14,11 @@
 -include("common.hrl").
 -include("error_code.hrl").
 
+-ifdef(TEST).
+-export([validate_price_inputs/4]).
+-export([validate_price_channel/1]).
+-endif.
+
 -define(ADM_CHANNEL_AUDIT_TYPE, 901).
 -define(CHANNEL_CACHE_KEY(ChannelId), {channel, ChannelId}).
 -define(CHANNEL_SUBS_KEY(ChannelId), {channel_subs, ChannelId}).
@@ -643,41 +648,115 @@ set_price_action(<<"PUT">>, Req0, State) ->
                 {_, undefined} ->
                     elib_response:error(Req0, <<"price_fen 不能为空"/utf8>>, ?ERR_BAD_REQUEST);
                 _ ->
-                    ChannelId = ec_cnv:to_integer(ChannelIdBin),
-                    PriceYuan = ec_cnv:to_float(PriceFen) / 100.0,
-                    OrigFen = maps:get(<<"original_price_fen">>, PostVals, 0),
-                    OrigYuan = ec_cnv:to_float(OrigFen) / 100.0,
+                    OrigFen = strict_integer(maps:get(<<"original_price_fen">>, PostVals, 0)),
                     Currency = maps:get(<<"currency">>, PostVals, <<"CNY">>),
-                    SubType = ec_cnv:to_integer(maps:get(<<"subscription_type">>, PostVals, 1)),
+                    SubType = strict_integer(maps:get(<<"subscription_type">>, PostVals, 1)),
                     Desc = maps:get(<<"description">>, PostVals, <<>>),
-                    Now = elib_dt:now(),
-                    PriceTb = elib_pg_sql:public_tablename(<<"channel_price">>),
-                    NewId = elib_tsid:generate(channel_price),
-                    Sql =
-                        <<"INSERT INTO ", PriceTb/binary,
-                            " (id, channel_id, price, currency, subscription_type, original_price,"
-                            " description, status, created_at, updated_at)"
-                            " VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$8)"
-                            " ON CONFLICT (channel_id) DO UPDATE SET"
-                            " price=$3, currency=$4, subscription_type=$5, original_price=$6,"
-                            " description=$7, status=1, updated_at=$8">>,
-                    case
-                        elib_pg:query(Sql, [
-                            NewId, ChannelId, PriceYuan, Currency, SubType, OrigYuan, Desc, Now
-                        ])
-                    of
-                        {ok, _} ->
-                            elib_response:success(Req0, #{}, <<"频道价格已更新"/utf8>>);
-                        {error, Reason} ->
-                            ?DEBUG_LOG("设置频道价格失败: ~p", [Reason]),
-                            elib_response:error(
-                                Req0, <<"设置价格失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
-                            )
+                    ChannelId = ec_cnv:to_integer(ChannelIdBin),
+                    PriceFenInt = strict_integer(PriceFen),
+                    case validate_price_inputs(ChannelId, PriceFenInt, OrigFen, SubType) of
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                        ok ->
+                            case validate_price_channel(ChannelId) of
+                                {error, Msg2} ->
+                                    elib_response:error(Req0, Msg2, ?ERR_BAD_REQUEST);
+                                ok ->
+                                    PriceYuan = PriceFenInt / 100.0,
+                                    OrigYuan = ec_cnv:to_float(OrigFen) / 100.0,
+                                    Now = elib_dt:now(),
+                                    PriceTb = elib_pg_sql:public_tablename(<<"channel_price">>),
+                                    NewId = elib_tsid:generate(channel_price),
+                                    Sql =
+                                        <<"INSERT INTO ", PriceTb/binary,
+                                            " (id, channel_id, price, currency, subscription_type, original_price,"
+                                            " description, status, created_at, updated_at)"
+                                            " VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8,$8)"
+                                            " ON CONFLICT (channel_id) DO UPDATE SET"
+                                            " price=$3, currency=$4, subscription_type=$5, original_price=$6,"
+                                            " description=$7, status=1, updated_at=$8">>,
+                                    case
+                                        elib_pg:query(Sql, [
+                                            NewId,
+                                            ChannelId,
+                                            PriceYuan,
+                                            Currency,
+                                            SubType,
+                                            OrigYuan,
+                                            Desc,
+                                            Now
+                                        ])
+                                    of
+                                        {ok, _} ->
+                                            elib_response:success(Req0, #{}, <<"频道价格已更新"/utf8>>);
+                                        {error, Reason} ->
+                                            ?DEBUG_LOG("设置频道价格失败: ~p", [Reason]),
+                                            elib_response:error(
+                                                Req0, <<"设置价格失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                                            )
+                                    end
+                            end
                     end
             end
     end;
 set_price_action(_, Req0, _State) ->
     Req0.
+
+%% @doc 价格接口的服务端边界校验；不能只依赖 admin 前端表单。
+%% price_fen 必须是正整数，原价只能为非负整数，订阅类型限定为一次性/月/年。
+-spec validate_price_inputs(term(), term(), term(), term()) -> ok | {error, binary()}.
+validate_price_inputs(ChannelId0, PriceFen0, OriginalFen0, SubType0) ->
+    ChannelId = strict_integer(ChannelId0),
+    PriceFen = strict_integer(PriceFen0),
+    OriginalFen = strict_integer(OriginalFen0),
+    SubType = strict_integer(SubType0),
+    case
+        {
+            ChannelId > 0,
+            PriceFen > 0,
+            OriginalFen >= 0,
+            lists:member(SubType, [1, 2, 3])
+        }
+    of
+        {true, true, true, true} ->
+            ok;
+        _ ->
+            {error, <<"价格配置无效：价格必须大于 0，订阅类型必须为 1/2/3"/utf8>>}
+    end.
+
+%% 价格只能挂在存活的付费频道上；否则运营端可能误给公开/私有频道
+%% 写入价格配置，导致后台显示与内容访问规则不一致。
+-spec validate_price_channel(term()) -> ok | {error, binary()}.
+validate_price_channel(ChannelId0) ->
+    ChannelId = strict_integer(ChannelId0),
+    case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
+        #{<<"type">> := Type0, <<"status">> := Status0} ->
+            Type = strict_integer(Type0),
+            Status = strict_integer(Status0),
+            case {Type, Status} of
+                {2, 1} -> ok;
+                {_, 1} -> {error, <<"只有付费频道可以配置价格"/utf8>>};
+                _ -> {error, <<"频道不存在或已禁用"/utf8>>}
+            end;
+        _ ->
+            {error, <<"频道不存在或已禁用"/utf8>>}
+    end.
+
+-spec strict_integer(term()) -> integer().
+strict_integer(Value) when is_integer(Value) ->
+    Value;
+strict_integer(Value) when is_binary(Value) ->
+    case catch list_to_integer(string:trim(binary_to_list(Value))) of
+        Int when is_integer(Int) -> Int;
+        _ -> -1
+    end;
+strict_integer(Value) when is_list(Value) ->
+    case catch list_to_integer(string:trim(Value)) of
+        Int when is_integer(Int) -> Int;
+        _ -> -1
+    end;
+strict_integer(_) ->
+    -1.
 
 delete_action(<<"DELETE">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"channels:delete">>, Req0) of

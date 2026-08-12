@@ -256,8 +256,8 @@ validate_amount(_) ->
 %% @doc 支付方式白名单校验（生产禁用 mock）
 -spec is_payment_method_allowed(binary()) -> boolean().
 is_payment_method_allowed(Method) when is_binary(Method) ->
-    Env = config_ds:env(env, <<"local">>),
-    EnvBin = elib_cnv:safe_to_binary(Env),
+    %% 与订单逻辑统一使用启动环境解析器；未配置时 fail-safe 为生产。
+    EnvBin = imboy_env:current(),
     Allowed =
         case EnvBin of
             <<"pro">> -> ?ALLOWED_PAYMENT_METHODS;

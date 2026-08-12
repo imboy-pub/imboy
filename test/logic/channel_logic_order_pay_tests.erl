@@ -22,7 +22,9 @@
 -define(CID, 11).
 
 setup() ->
-    %% 非生产环境（默认 local）允许 mock 支付方式；env 默认即可。
+    %% 测试显式固定为 local；imboy_env 未配置时按 production fail-closed，
+    %% 不能依赖宿主机环境偶然放行 mock。
+    meck:new(imboy_env, [no_link, passthrough]),
     meck:new(channel_order_ds, [no_link, passthrough]),
     meck:new(channel_ds, [no_link, passthrough]),
     meck:new(channel_logic_notify, [no_link, passthrough]),
@@ -40,9 +42,12 @@ setup() ->
     meck:expect(channel_order_ds, pay, fun(_OrderNo, _PaymentData) -> ok end),
     meck:expect(channel_ds, subscribe, fun(_ChannelId, _Uid) -> ok end),
     meck:expect(channel_logic_notify, notify_order_paid, fun(_ChannelId, _Uid) -> ok end),
+    meck:expect(imboy_env, current, fun() -> <<"local">> end),
+    meck:expect(payment_gateway, enabled, fun() -> true end),
     ok.
 
 cleanup(_) ->
+    meck:unload(imboy_env),
     meck:unload(payment_gateway),
     meck:unload(channel_logic_notify),
     meck:unload(channel_ds),

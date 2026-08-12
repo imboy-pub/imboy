@@ -3,8 +3,8 @@
 % 统一支付回调处理器 / Unified payment webhook handler
 %
 % 路由：POST /api/v1/payment/callback/:gateway （第三方支付服务器回调，无 JWT）
-% ⚠️ 当前不在 imboy_router:open/0、被 auth_middleware 902 签名门拦死
-%    （该中间件只认 /v1/ 前缀，/api/v1/* 落兜底）→ 收款闭环断，待修。
+% 该回调没有 JWT；auth_middleware_api_v1 按 `/api/v1/payment/callback/`
+% 前缀放行，实际入站安全门是网关验签、可选来源 IP 白名单和幂等入账。
 %
 % 职责（纯 HTTP 入口，不含业务）：
 %   1) 读取路径 :gateway 与回调原始报文 RawBody（验签必须用原始字节）。

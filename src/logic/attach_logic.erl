@@ -256,7 +256,7 @@ can_upload(Uid, <<"group">>, ScopeRef) ->
 can_upload(Uid, <<"channel">>, ScopeRef) ->
     case to_int(ScopeRef) of
         {ok, ChannelId} ->
-            case channel_subscription_ds:is_subscribed(ChannelId, Uid) of
+            case has_channel_attachment_access(Uid, ChannelId) of
                 true -> ok;
                 false -> {error, forbidden}
             end;
@@ -341,7 +341,7 @@ authorize(<<"group">>, Uid, Rec) ->
     end;
 authorize(<<"channel">>, Uid, Rec) ->
     case to_int(scope_ref(Rec)) of
-        {ok, ChannelId} -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
+        {ok, ChannelId} -> has_channel_attachment_access(Uid, ChannelId);
         error -> false
     end;
 authorize(<<"moment">>, Uid, Rec) ->
@@ -360,6 +360,25 @@ authorize_moment(Uid, MomentId) ->
             moment_ds:can_view_post(Uid, Post);
         _ ->
             false
+    end.
+
+%% 频道附件必须跟频道正文使用同一权益模型：免费/私有频道保持原有的
+%% 「订阅者可访问」语义；付费频道只接受有效购买或频道管理角色，不能因为
+%% 历史脏订阅而绕过正文的购买校验。
+-spec has_channel_attachment_access(integer(), integer()) -> boolean().
+has_channel_attachment_access(Uid, ChannelId) ->
+    case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
+        #{<<"type">> := 2} -> paid_channel_attachment_access(Uid, ChannelId);
+        #{<<"type">> := <<"2">>} -> paid_channel_attachment_access(Uid, ChannelId);
+        #{<<"type">> := _} -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
+        _ -> false
+    end.
+
+-spec paid_channel_attachment_access(integer(), integer()) -> boolean().
+paid_channel_attachment_access(Uid, ChannelId) ->
+    case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
+        ok -> true;
+        _ -> false
     end.
 
 %% ===================================================================

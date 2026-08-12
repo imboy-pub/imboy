@@ -58,7 +58,9 @@
 
 %% channel_logic_order delegates
 -spec create_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
+-spec create_order(integer(), binary(), binary()) -> {ok, map()} | {error, binary()}.
 -spec pay_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
+-spec cancel_order(integer(), binary()) -> ok | {error, binary()}.
 -spec get_my_orders(integer()) -> {ok, [map()]} | {error, binary()}.
 -spec get_order(integer(), binary()) -> {ok, map()} | {error, binary()}.
 
@@ -115,7 +117,9 @@
 -export([get_sent_invitations/1]).
 
 -export([create_order/2]).
+-export([create_order/3]).
 -export([pay_order/2]).
+-export([cancel_order/2]).
 -export([get_my_orders/1]).
 -export([get_order/2]).
 
@@ -235,8 +239,14 @@ get_sent_invitations(Uid) ->
 create_order(Uid, ChannelIdBin) ->
     channel_logic_order:create_order(Uid, ChannelIdBin).
 
+create_order(Uid, ChannelIdBin, PaymentMethod) ->
+    channel_logic_order:create_order(Uid, ChannelIdBin, PaymentMethod).
+
 pay_order(Uid, OrderNo) ->
     channel_logic_order:pay_order(Uid, OrderNo).
+
+cancel_order(Uid, OrderNo) ->
+    channel_logic_order:cancel_order(Uid, OrderNo).
 
 get_my_orders(Uid) ->
     channel_logic_order:get_my_orders(Uid).

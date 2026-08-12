@@ -59,7 +59,11 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
                     end
             end;
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        {ok, UnexpectedChannels} ->
+            {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 do_create_channel(Uid, Name, Type, Opts) ->
@@ -67,7 +71,8 @@ do_create_channel(Uid, Name, Type, Opts) ->
         {ok, ChannelId} ->
             case channel_ds:find_by_id(ChannelId, <<"*">>) of
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                Channel when is_map(Channel) -> {ok, channel_transfer(Channel)}
+                Channel when is_map(Channel) -> {ok, channel_transfer(Channel)};
+                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end;
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
@@ -85,18 +90,10 @@ get_channel(ChannelIdBin, Uid) ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel), map_size(Channel) =:= 0 -> {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
-                    UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
-                    IsSubscribed =
-                        case UserRole of
-                            % 创建者恒订阅
-                            3 -> true;
-                            _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
-                        end,
-                    Channel2 = Channel#{
-                        user_role => UserRole,
-                        is_subscribed => IsSubscribed
-                    },
-                    {ok, channel_transfer(Channel2)}
+                    Channel2 = add_user_channel_state(Channel, ChannelId, Uid),
+                    {ok, channel_transfer(Channel2)};
+                _Unexpected ->
+                    {error, <<"频道不存在"/utf8>>}
             end
     end.
 
@@ -113,19 +110,61 @@ get_channel_by_custom_id(CustomId, Uid) ->
                 false ->
                     {error, <<"频道不存在"/utf8>>};
                 true ->
-                    UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
-                    IsSubscribed =
-                        case UserRole of
-                            % 创建者恒订阅
-                            3 -> true;
-                            _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
-                        end,
-                    Channel2 = Channel#{
-                        user_role => UserRole,
-                        is_subscribed => IsSubscribed
-                    },
-                    {ok, channel_transfer(Channel2)}
-            end
+                    case channel_with_price_for_custom_id(Channel, ChannelId) of
+                        {error, _} ->
+                            {error, <<"频道不存在"/utf8>>};
+                        ChannelWithPrice when is_map(ChannelWithPrice) ->
+                            Channel2 = add_user_channel_state(ChannelWithPrice, ChannelId, Uid),
+                            {ok, channel_transfer(Channel2)};
+                        _Unexpected ->
+                            {error, <<"频道不存在"/utf8>>}
+                    end
+            end;
+        _Unexpected ->
+            {error, <<"频道不存在"/utf8>>}
+    end.
+
+%% @doc 详情接口返回与当前用户有关的频道状态；付费频道的内容权益只认购买订单。
+-spec add_user_channel_state(map(), integer(), integer()) -> map().
+add_user_channel_state(Channel, ChannelId, Uid) ->
+    UserRole = channel_logic_common:get_user_role(ChannelId, Uid),
+    IsSubscribed =
+        case UserRole of
+            % 创建者恒订阅
+            3 -> true;
+            _ -> channel_subscription_ds:is_subscribed(ChannelId, Uid)
+        end,
+    Channel#{
+        user_role => UserRole,
+        is_subscribed => IsSubscribed,
+        has_purchased => has_purchased(Channel, ChannelId, Uid)
+    }.
+
+-spec has_purchased(map(), integer(), integer()) -> boolean().
+has_purchased(Channel, ChannelId, Uid) ->
+    case maps:get(<<"type">>, Channel, maps:get(type, Channel, 0)) of
+        2 -> channel_order_ds:has_purchased(ChannelId, Uid);
+        <<"2">> -> channel_order_ds:has_purchased(ChannelId, Uid);
+        _ -> false
+    end.
+
+-spec channel_with_price_for_custom_id(map(), integer()) -> map() | {error, term()}.
+channel_with_price_for_custom_id(Channel, ChannelId) ->
+    case maps:get(<<"type">>, Channel, maps:get(type, Channel, 0)) of
+        2 ->
+            case channel_ds:find_by_id_with_price(ChannelId) of
+                Row when is_map(Row) -> Row;
+                {error, Reason} -> {error, Reason};
+                _ -> {error, not_found}
+            end;
+        <<"2">> ->
+            case channel_ds:find_by_id_with_price(ChannelId) of
+                Row when is_map(Row) -> Row;
+                {error, Reason} -> {error, Reason};
+                _ -> {error, not_found}
+            end;
+        _ ->
+            Channel
     end.
 
 -spec update_channel(integer(), binary(), map()) -> {ok, map()} | {error, binary()}.
@@ -195,7 +234,9 @@ do_update_channel(ChannelId, Data) ->
                     {error, elib_cnv:safe_to_binary(Reason)};
                 Channel when is_map(Channel) ->
                     channel_logic_notify:notify_channel_update(ChannelId, Channel),
-                    {ok, channel_transfer(Channel)}
+                    {ok, channel_transfer(Channel)};
+                Unexpected ->
+                    {error, elib_cnv:safe_to_binary(Unexpected)}
             end;
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
@@ -297,8 +338,12 @@ get_messages(Uid, ChannelIdBin, Cursor, Limit) ->
                         {ok, Messages} when is_list(Messages) ->
                             Messages2 = [message_transfer(M) || M <- Messages, is_map(M)],
                             {ok, attach_my_reactions(Uid, Messages2)};
+                        {ok, UnexpectedMessages} ->
+                            {error, elib_cnv:safe_to_binary(UnexpectedMessages)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end;
                 {error, Reason} ->
                     {error, Reason}
@@ -332,8 +377,12 @@ search_channels(Keyword, Limit) ->
     case channel_ds:search(Keyword, Limit, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
+        {ok, UnexpectedChannels} ->
+            {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec get_discover_channels(integer()) -> {ok, list(map())} | {error, binary()}.
@@ -341,8 +390,12 @@ get_discover_channels(Limit) ->
     case channel_ds:list_discover(Limit, <<"*">>) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
+        {ok, UnexpectedChannels} ->
+            {error, elib_cnv:safe_to_binary(UnexpectedChannels)};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec add_admin(integer(), binary(), integer(), integer()) -> ok | {error, binary()}.
@@ -429,7 +482,9 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                             end;
                         false ->
                             {error, <<"消息不存在"/utf8>>}
-                    end
+                    end;
+                _UnexpectedMessage ->
+                    {error, <<"消息不存在"/utf8>>}
             end
     end.
 
@@ -470,7 +525,9 @@ delete_message(Uid, MessageIdBin) ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
                                     end
                             end
-                    end
+                    end;
+                _UnexpectedMessage ->
+                    {error, <<"消息不存在"/utf8>>}
             end
     end.
 
@@ -537,13 +594,20 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
                                                                         {error,
                                                                             elib_cnv:safe_to_binary(
                                                                                 Reason
+                                                                            )};
+                                                                    UnexpectedRevoke ->
+                                                                        {error,
+                                                                            elib_cnv:safe_to_binary(
+                                                                                UnexpectedRevoke
                                                                             )}
                                                                 end
                                                         end
                                                 end
                                         end
                                 end
-                        end
+                        end;
+                    _UnexpectedMessage ->
+                        {error, <<"消息不存在"/utf8>>}
                 end
         end,
     channel_logic_common:log_channel_action(
@@ -635,6 +699,8 @@ get_admins(ChannelId) ->
     case channel_admin_ds:list_by_channel(ChannelId) of
         {ok, Admins} when is_list(Admins) ->
             {ok, [A || A <- Admins, is_map(A)]};
+        {ok, UnexpectedAdmins} ->
+            {error, elib_cnv:safe_to_binary(UnexpectedAdmins)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
@@ -672,7 +738,7 @@ attach_my_reactions(_Uid, []) ->
 attach_my_reactions(Uid, Messages) ->
     MsgIds = [Id || #{<<"id">> := Id} <- Messages, is_integer(Id)],
     ByMsg =
-        case channel_ds:list_user_reactions(Uid, MsgIds) of
+        case catch channel_ds:list_user_reactions(Uid, MsgIds) of
             {ok, Rows} when is_list(Rows) ->
                 lists:foldl(
                     fun
@@ -686,6 +752,12 @@ attach_my_reactions(Uid, Messages) ->
                 );
             {error, Reason} ->
                 ?ERROR_LOG(["channel_list_user_reactions_failed", Uid, Reason]),
+                #{};
+            {'EXIT', Reason} ->
+                ?ERROR_LOG(["channel_list_user_reactions_crashed", Uid, Reason]),
+                #{};
+            Unexpected ->
+                ?ERROR_LOG(["channel_list_user_reactions_invalid", Uid, Unexpected]),
                 #{}
         end,
     [

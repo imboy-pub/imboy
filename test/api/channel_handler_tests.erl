@@ -637,7 +637,7 @@ create_order_prefers_path_channel_id_over_body_test_() ->
                 {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
             ]},
             {channel_logic, [
-                {'create_order', 2, fun(1001, <<"ch_hash_path">>) ->
+                {'create_order', 3, fun(1001, <<"ch_hash_path">>, <<"wallet">>) ->
                     {ok, #{<<"order_no">> => <<"ORD001">>}}
                 end}
             ]},

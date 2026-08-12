@@ -109,7 +109,8 @@ channel_callback_test_() ->
         fun callback_marks_paid_and_subscribes/0,
         fun repeat_callback_is_idempotent/0,
         fun subscribe_failure_does_not_report_paid/0,
-        fun amount_comes_from_order_not_callback/0
+        fun amount_comes_from_order_not_callback/0,
+        fun callback_payment_data_contains_subscription_window/0
     ]}.
 
 cb_setup() ->
@@ -192,6 +193,28 @@ amount_comes_from_order_not_callback() ->
     ],
     ?assertEqual(990, maps:get(<<"amount">>, Data)),
     ?assertEqual(?CB_UID, maps:get(<<"user_id">>, Data)).
+
+callback_payment_data_contains_subscription_window() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CB_CID,
+            <<"user_id">> => ?CB_UID,
+            <<"amount">> => <<"9.90">>,
+            <<"status">> => 0,
+            <<"extra_data">> => #{<<"subscription_type">> => 2}
+        }}
+    end),
+    ?assertEqual({ok, paid}, cb_handle()),
+    [{_Pid, {channel_order_ds, pay, [_OrderNo, PaymentData, _Grace]}, _Ret}] = [
+        H
+     || H = {_Pid, {channel_order_ds, pay, [_O, _D, _G]}, _Ret} <-
+            meck:history(channel_order_ds)
+    ],
+    Start = maps:get(subscription_start_at, PaymentData),
+    End = maps:get(subscription_end_at, PaymentData),
+    ?assert(is_integer(Start)),
+    ?assertEqual(30 * 24 * 60 * 60 * 1000, End - Start).
 
 %% 频道订单金额 元 → 分
 yuan_to_fen_test() ->

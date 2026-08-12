@@ -255,8 +255,10 @@ is_subscribed(ChannelId, Uid) ->
     Sql =
         <<"SELECT 1 FROM ", Tb/binary,
             " WHERE channel_id = $1 AND user_id = $2 AND status = 1 LIMIT 1">>,
+    %% elib_pg:one/2 uses #{} as its no-row default.  Treating every
+    %% {ok, _} as a hit turns a missing subscription into true.
     case elib_pg:one(Sql, [ChannelId, Uid]) of
-        {ok, _} -> true;
+        {ok, Row} when is_map(Row), map_size(Row) > 0 -> true;
         _ -> false
     end.
 

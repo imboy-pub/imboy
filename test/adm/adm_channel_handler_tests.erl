@@ -23,6 +23,61 @@ channel_admin_feature_enabled_mocks() ->
         ]}
     ].
 
+set_price_validation_accepts_valid_integer_and_binary_inputs_test() ->
+    ?assertEqual(
+        ok,
+        adm_channel_handler:validate_price_inputs(11, <<"990">>, <<"1990">>, <<"2">>)
+    ).
+
+set_price_validation_rejects_zero_or_negative_price_test() ->
+    ?assertMatch(
+        {error, _},
+        adm_channel_handler:validate_price_inputs(11, 0, 0, 1)
+    ),
+    ?assertMatch(
+        {error, _},
+        adm_channel_handler:validate_price_inputs(11, -1, 0, 1)
+    ).
+
+set_price_validation_rejects_invalid_original_price_or_subscription_test() ->
+    ?assertMatch(
+        {error, _},
+        adm_channel_handler:validate_price_inputs(11, 990, -1, 1)
+    ),
+    ?assertMatch(
+        {error, _},
+        adm_channel_handler:validate_price_inputs(11, 990, 0, 4)
+    ).
+
+set_price_validation_requires_active_paid_channel_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_id', 2, fun
+                    (11, <<"id,type,status">>) -> #{<<"type">> => 2, <<"status">> => 1};
+                    (12, <<"id,type,status">>) -> #{<<"type">> => 0, <<"status">> => 1};
+                    (13, <<"id,type,status">>) -> #{<<"type">> => 2, <<"status">> => 0};
+                    (14, <<"id,type,status">>) -> {error, not_found}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, adm_channel_handler:validate_price_channel(11)),
+            ?assertMatch(
+                {error, <<"只有付费频道可以配置价格"/utf8>>},
+                adm_channel_handler:validate_price_channel(12)
+            ),
+            ?assertMatch(
+                {error, <<"频道不存在或已禁用"/utf8>>},
+                adm_channel_handler:validate_price_channel(13)
+            ),
+            ?assertMatch(
+                {error, <<"频道不存在或已禁用"/utf8>>},
+                adm_channel_handler:validate_price_channel(14)
+            )
+        end
+    ).
+
 init_messages_success_test_() ->
     ?WITH_MECKS(
         channel_admin_feature_enabled_mocks() ++
@@ -838,7 +893,7 @@ init_stats_success_test_() ->
                     {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
                 ]},
                 {channel_logic, [
-                    {'get_channel_stats', 1, fun(<<"11">>) ->
+                    {'get_channel_stats_admin', 1, fun(<<"11">>) ->
                         {ok, #{
                             <<"channel_id">> => 11,
                             <<"subscriber_count">> => 37,
@@ -879,7 +934,7 @@ init_stats_not_found_test_() ->
                     {'binding', 2, fun(channel_id, _Req) -> <<"11">> end}
                 ]},
                 {channel_logic, [
-                    {'get_channel_stats', 1, fun(<<"11">>) ->
+                    {'get_channel_stats_admin', 1, fun(<<"11">>) ->
                         {error, <<"频道不存在"/utf8>>}
                     end}
                 ]},

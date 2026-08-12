@@ -93,9 +93,13 @@ presign_group_non_member_forbidden_test_() ->
     ).
 
 presign_channel_subscriber_ok_test_() ->
-    ?WITH_MECK(
-        channel_subscription_ds,
-        [{'is_subscribed', 2, fun(9, 1) -> true end}],
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+            ]},
+            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 1) -> true end}]}
+        ],
         fun() ->
             set_garage_env(),
             {ok, Data} = attach_logic:presign(
@@ -106,15 +110,43 @@ presign_channel_subscriber_ok_test_() ->
     ).
 
 presign_channel_non_subscriber_forbidden_test_() ->
-    ?WITH_MECK(
-        channel_subscription_ds,
-        [{'is_subscribed', 2, fun(_, _) -> false end}],
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+            ]},
+            {channel_subscription_ds, [{'is_subscribed', 2, fun(_, _) -> false end}]}
+        ],
         fun() ->
             set_garage_env(),
             ?assertEqual(
                 {error, forbidden},
                 attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"channel">>, <<"9">>)
             )
+        end
+    ).
+
+presign_paid_channel_subscription_without_purchase_forbidden_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, _Fields) ->
+                    #{
+                        <<"id">> => 9, <<"type">> => 2, <<"status">> => 1
+                    }
+                end}
+            ]},
+            {channel_admin_ds, [{'get_role', 2, fun(9, 1) -> 0 end}]},
+            {channel_order_ds, [{'has_purchased', 2, fun(9, 1) -> false end}]},
+            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 1) -> true end}]}
+        ],
+        fun() ->
+            set_garage_env(),
+            ?assertEqual(
+                {error, forbidden},
+                attach_logic:presign(1, <<"a.png">>, <<"image/png">>, <<"channel">>, <<"9">>)
+            ),
+            ?assertEqual(0, meck:num_calls(channel_subscription_ds, is_subscribed, 2))
         end
     ).
 
@@ -434,6 +466,9 @@ authorize_channel_subscriber_grants_test_() ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
             ]},
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+            ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 7) -> true end}]},
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
         ],
@@ -450,10 +485,64 @@ authorize_channel_non_subscriber_denies_test_() ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
             ]},
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+            ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(_, _) -> false end}]}
         ],
         fun() ->
             ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u1/ch9/a.png">>))
+        end
+    ).
+
+%% 付费频道：有效购买放行，即使订阅记录不是访问权来源。
+authorize_paid_channel_purchased_grants_test_() ->
+    ?WITH_MECKS(
+        [
+            {attachment_ds, [
+                {'find_by_path', 1, fun(_K) ->
+                    {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
+                end}
+            ]},
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, _Fields) ->
+                    #{
+                        <<"id">> => 9, <<"type">> => 2, <<"status">> => 1
+                    }
+                end}
+            ]},
+            {channel_admin_ds, [{'get_role', 2, fun(9, 7) -> 0 end}]},
+            {channel_order_ds, [{'has_purchased', 2, fun(9, 7) -> true end}]},
+            {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
+        ],
+        fun() ->
+            ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u7/ch9/a.png">>))
+        end
+    ).
+
+%% 付费频道：历史订阅不能替代购买，附件下载必须与正文同样拒绝。
+authorize_paid_channel_subscription_without_purchase_denies_test_() ->
+    ?WITH_MECKS(
+        [
+            {attachment_ds, [
+                {'find_by_path', 1, fun(_K) ->
+                    {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
+                end}
+            ]},
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, _Fields) ->
+                    #{
+                        <<"id">> => 9, <<"type">> => 2, <<"status">> => 1
+                    }
+                end}
+            ]},
+            {channel_admin_ds, [{'get_role', 2, fun(9, 7) -> 0 end}]},
+            {channel_order_ds, [{'has_purchased', 2, fun(9, 7) -> false end}]},
+            {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 7) -> true end}]}
+        ],
+        fun() ->
+            ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u7/ch9/a.png">>)),
+            ?assertEqual(0, meck:num_calls(channel_subscription_ds, is_subscribed, 2))
         end
     ).
 
@@ -470,6 +559,9 @@ authorize_channel_uploader_subscribed_grants_test_() ->
                         <<"creator_user_id">> => 7
                     }}
                 end}
+            ]},
+            {channel_ds, [
+                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
             ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 7) -> true end}]},
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}

@@ -9,7 +9,8 @@
 %
 % 入站端点（token 即凭证，无 JWT）：
 %   POST /api/v1/webhook/channel/:token   body: {"text": "..."}（总量上限见 read_raw_body）
-% ⚠️ 当前不在 imboy_router:open/0、被 902 签名门拦死（同 payment_callback，待修）。
+% 入站路由由 auth_middleware_api_v1 按 `/api/v1/webhook/channel/` 前缀放行，
+% token 校验和限流在 channel_webhook_logic:incoming/3 完成。
 %   应答：200 {"ok":true} | 400 | 404（无效/停用统一 404）| 429 限流
 %%%
 

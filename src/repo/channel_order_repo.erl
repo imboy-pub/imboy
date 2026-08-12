@@ -52,7 +52,8 @@ create_order(Data) ->
     UserId = maps:get(user_id, Data),
     Amount = maps:get(amount, Data),
     Currency = maps:get(currency, Data, <<"CNY">>),
-    PaymentMethod = maps:get(payment_method, Data, <<"mock">>),
+    %% 新订单默认钱包；mock 仅允许调用方在开发/测试环境显式传入。
+    PaymentMethod = maps:get(payment_method, Data, <<"wallet">>),
     ExpiresAt = maps:get(expires_at, Data, default_expire_time()),
     ExtraData =
         case maps:get(extra_data, Data, null) of
@@ -141,7 +142,7 @@ pay(OrderNo, PaymentData, GraceMinutes) ->
         <<"UPDATE channel_order ",
             "SET status = $1, payment_no = $2, payment_method = $3, payment_at = NOW(), ",
             "subscription_start_at = to_timestamp($4::bigint / 1000), ",
-            "subscription_end_at = CASE WHEN $5 IS NULL THEN NULL ELSE to_timestamp($5::bigint / 1000) END, ",
+            "subscription_end_at = CASE WHEN $5::bigint IS NULL THEN NULL ELSE to_timestamp($5::bigint / 1000) END, ",
             "updated_at = NOW() ", "WHERE order_no = $6 AND status = 0 ",
             "AND expires_at > NOW() - make_interval(mins => $7::int)">>,
     case
@@ -189,8 +190,10 @@ refund(OrderNo, _AdminUid, Reason) ->
 -spec list_by_user(integer(), integer()) -> {ok, [map()]} | {error, term()}.
 list_by_user(UserId, Limit) ->
     Sql =
-        <<"SELECT o.id, o.channel_id, o.order_no, o.amount, o.currency, o.status, ",
-            "o.payment_method, o.payment_at, o.expires_at, o.created_at, ",
+        <<"SELECT o.id, o.channel_id, o.user_id, o.order_no, o.amount, o.currency, o.status, ",
+            "o.payment_method, o.payment_no, o.payment_at, ",
+            "o.subscription_start_at, o.subscription_end_at, o.expires_at, ",
+            "o.refund_reason, o.refund_at, o.extra_data, o.created_at, o.updated_at, ",
             "c.name as channel_name ", "FROM channel_order o ",
             "JOIN channel c ON o.channel_id = c.id ", "WHERE o.user_id = $1 ",
             "ORDER BY o.created_at DESC LIMIT $2">>,
@@ -204,7 +207,8 @@ list_by_user(UserId, Limit) ->
 has_purchased(ChannelId, UserId) ->
     Sql =
         <<"SELECT COUNT(*) as cnt FROM channel_order ",
-            "WHERE channel_id = $1 AND user_id = $2 AND status = 1">>,
+            "WHERE channel_id = $1 AND user_id = $2 AND status = 1 ",
+            "AND (subscription_end_at IS NULL OR subscription_end_at > NOW())">>,
     case elib_pg:query(Sql, [ChannelId, UserId]) of
         {ok, [#{<<"cnt">> := Count}]} when Count > 0 -> true;
         _ -> false

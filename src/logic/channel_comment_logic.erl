@@ -30,10 +30,12 @@
 create(Uid, ChannelIdBin, MessageIdBin, Content, ParentId) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
-        0 -> {error, <<"频道不存在"/utf8>>};
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
         _ ->
             case Content of
-                <<>> -> {error, <<"评论内容不能为空"/utf8>>};
+                <<>> ->
+                    {error, <<"评论内容不能为空"/utf8>>};
                 _ ->
                     case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                         ok ->
@@ -50,7 +52,8 @@ create(Uid, ChannelIdBin, MessageIdBin, Content, ParentId) ->
 list_by_message(Uid, ChannelIdBin, MessageIdBin, Cursor, Limit) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
     case ChannelId of
-        0 -> {error, <<"频道不存在"/utf8>>};
+        0 ->
+            {error, <<"频道不存在"/utf8>>};
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
@@ -84,18 +87,28 @@ delete(Uid, CommentId) ->
 
 %% @doc 点赞评论
 -spec like(integer(), integer()) -> ok | {error, binary()}.
-like(_Uid, CommentId) ->
-    case channel_comment_ds:like(CommentId) of
-        {ok, _} -> ok;
-        {error, _} -> {error, <<"操作失败"/utf8>>}
+like(Uid, CommentId) ->
+    case ensure_comment_access(Uid, CommentId) of
+        {ok, _ChannelId} ->
+            case channel_comment_ds:like(CommentId) of
+                {ok, _} -> ok;
+                {error, _} -> {error, <<"操作失败"/utf8>>}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 取消点赞
 -spec unlike(integer(), integer()) -> ok | {error, binary()}.
-unlike(_Uid, CommentId) ->
-    case channel_comment_ds:unlike(CommentId) of
-        {ok, _} -> ok;
-        {error, _} -> {error, <<"操作失败"/utf8>>}
+unlike(Uid, CommentId) ->
+    case ensure_comment_access(Uid, CommentId) of
+        {ok, _ChannelId} ->
+            case channel_comment_ds:unlike(CommentId) of
+                {ok, _} -> ok;
+                {error, _} -> {error, <<"操作失败"/utf8>>}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 评论数
@@ -103,6 +116,20 @@ unlike(_Uid, CommentId) ->
 count_by_message(MessageIdBin) ->
     MessageId = elib_cnv:safe_to_integer(MessageIdBin),
     channel_comment_ds:count_by_message(MessageId).
+
+%% 点赞/取消点赞属于付费频道互动，必须与评论读取使用同一访问门。
+%% 不能只依赖 comment_id 存在，否则未购买用户可通过枚举 ID 修改付费内容数据。
+-spec ensure_comment_access(integer(), integer()) -> {ok, integer()} | {error, binary()}.
+ensure_comment_access(Uid, CommentId) ->
+    case channel_comment_ds:find_by_id(CommentId) of
+        #{<<"channel_id">> := ChannelId} when is_integer(ChannelId), ChannelId > 0 ->
+            case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
+                ok -> {ok, ChannelId};
+                {error, Reason} -> {error, Reason}
+            end;
+        _ ->
+            {error, <<"评论不存在"/utf8>>}
+    end.
 
 %% ===================================================================
 %% Internal

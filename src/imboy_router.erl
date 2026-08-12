@@ -428,6 +428,7 @@ get_routes() ->
                     action => create_order
                 }},
                 {"/api/v1/channel/order/pay", channel_handler_order, #{action => pay_order}},
+                {"/api/v1/channel/order/cancel", channel_handler_order, #{action => cancel_order}},
                 % 退款必须置于 :order_no 通配之前，否则 "refund" 会被当作 order_no
                 {"/api/v1/channel/order/refund", channel_handler_order, #{action => refund_order}},
                 {"/api/v1/channel/orders/my", channel_handler_order, #{action => my_orders}},

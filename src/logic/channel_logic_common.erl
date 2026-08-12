@@ -103,9 +103,10 @@ ensure_channel_content_access_by_type(Uid, ChannelId, Type) ->
                 _ -> {error, <<"私有频道仅限订阅用户访问"/utf8>>}
             end;
         2 ->
-            IsSubscribed = channel_subscription_ds:is_subscribed(ChannelId, Uid),
             HasPurchased = channel_order_ds:has_purchased(ChannelId, Uid),
-            case IsSubscribed =:= true orelse HasPurchased =:= true of
+            %% 付费频道的订单购买是唯一权益来源；不能因为历史脏订阅或其他
+            %% 订阅写入路径存在，就把付费内容免费放行。
+            case HasPurchased =:= true of
                 true -> ok;
                 false -> {error, <<"付费频道需要先购买"/utf8>>}
             end;

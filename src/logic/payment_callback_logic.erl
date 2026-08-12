@@ -299,10 +299,13 @@ credit_channel_order(Fields) ->
                         payment_no => maps:get(gateway_payment_no, Fields),
                         payment_method => maps:get(gateway, Fields)
                     },
+                    PaymentData2 = channel_logic_order:payment_data_with_subscription(
+                        Order, PaymentData
+                    ),
                     %% B-08：回调侧带过期宽限。钱是真收了的，第 31 分钟到达的回调
                     %% 若被 expires_at 守卫挡掉，就成了"收了钱不发货"。
                     Grace = callback_grace_minutes(),
-                    case channel_order_ds:pay(OrderNo, PaymentData, Grace) of
+                    case channel_order_ds:pay(OrderNo, PaymentData2, Grace) of
                         ok ->
                             ensure_subscribed(ChannelId, Uid);
                         {error, not_found_or_expired} ->

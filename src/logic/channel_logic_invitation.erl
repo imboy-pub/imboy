@@ -28,7 +28,9 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                             {error, <<"只有私有频道支持邀请功能"/utf8>>};
                         true ->
                             do_create_invitation(ChannelId, Uid, InviteeUid)
-                    end
+                    end;
+                _Unexpected ->
+                    {error, <<"频道不存在"/utf8>>}
             end
     end.
 
@@ -49,13 +51,19 @@ do_create_invitation(ChannelId, InviterUid, InviteeUid) ->
                             Invitation2 = invitation_transfer(Invitation),
                             channel_logic_notify:notify_invitation_created(ChannelId, InviteeUid),
                             {ok, Invitation2};
+                        {ok, InvalidInvitation} ->
+                            {error, elib_cnv:safe_to_binary(InvalidInvitation)};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
                     end;
                 {error, Reason} when is_binary(Reason) ->
                     {error, Reason};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+                    {error, elib_cnv:safe_to_binary(Reason)};
+                UnexpectedCreate ->
+                    {error, elib_cnv:safe_to_binary(UnexpectedCreate)}
             end;
         false ->
             {error, <<"您不是频道订阅者，无法邀请他人"/utf8>>}
@@ -76,7 +84,9 @@ accept_invitation(Uid, InvitationId) ->
         {error, not_found} ->
             {error, <<"邀请不存在"/utf8>>};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec do_accept_invitation(integer(), integer(), integer(), map()) ->
@@ -109,7 +119,9 @@ do_accept_invitation(ChannelId, Uid, InvitationId, Invitation) ->
         {error, not_found} ->
             {error, <<"邀请不存在"/utf8>>};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec reject_invitation(integer(), integer()) -> ok | {error, binary()}.
@@ -120,7 +132,9 @@ reject_invitation(Uid, InvitationId) ->
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            {error, elib_cnv:safe_to_binary(Reason)};
+        Unexpected ->
+            {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
 -spec get_my_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
@@ -131,6 +145,8 @@ get_my_invitations(Uid) ->
                 fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]
             ),
             {ok, Invitations2};
+        {ok, UnexpectedInvitations} ->
+            {error, elib_cnv:safe_to_binary(UnexpectedInvitations)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
@@ -143,6 +159,8 @@ get_sent_invitations(Uid) ->
                 fun invitation_transfer/1, [I || I <- Invitations, is_map(I)]
             ),
             {ok, Invitations2};
+        {ok, UnexpectedInvitations} ->
+            {error, elib_cnv:safe_to_binary(UnexpectedInvitations)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
