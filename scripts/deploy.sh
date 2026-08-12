@@ -442,7 +442,7 @@ ok "release 已解包，vm.args 已写入 / Release extracted, vm.args written"
 # 5️⃣ 启动新节点 + 轮询确认就绪 / Start new node + poll for readiness
 # =============================================================================
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
-ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' ./bin/imboy daemon"
+ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='${IMBOY_DEPLOY_E2EE_MODE:-disabled}' ./bin/imboy daemon"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers

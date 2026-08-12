@@ -122,7 +122,23 @@ meta_view() ->
 
 -spec effective_capabilities() -> map().
 effective_capabilities() ->
-    effective_capabilities_for_profile(current_profile(), load_capability_config()).
+    Base = effective_capabilities_for_profile(current_profile(), load_capability_config()),
+    apply_capability_env_override(Base).
+
+%% @doc 叠加 IMBOY_* 运行时环境变量覆盖（imboy_env:override_e2ee_mode 在启动时
+%% set_env 的 application env capabilities）。优先级：env override > DB 持久化 > preset。
+%% 不设 IMBOY_E2EE_MODE 时 application env 为 undefined，不覆盖，保留 DB/preset。
+%% 修复点：此前 override_e2ee_mode 设的 application env 不被 effective_capabilities
+%% 读取，导致 IMBOY_E2EE_MODE 无法覆盖 DB 里的 e2ee_mode（生产 DB 存 required 但
+%% 现网明文为主，强制 required 会拒收明文 C2C）。
+-spec apply_capability_env_override(map()) -> map().
+apply_capability_env_override(Base) ->
+    case application:get_env(imboy, capabilities, undefined) of
+        Override when is_map(Override), map_size(Override) > 0 ->
+            maps:merge(Base, Override);
+        _ ->
+            Base
+    end.
 
 -spec message_search_enabled() -> boolean().
 message_search_enabled() ->
