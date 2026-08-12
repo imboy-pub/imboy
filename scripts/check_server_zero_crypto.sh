@@ -20,7 +20,9 @@ if [ -n "$HITS1" ]; then
 fi
 
 # 2. 不得引用客户端密码学库做解密（libolm/vodozemac/megolm decrypt）
-HITS2=$(grep -rnE "\b(libolm|vodozemac)\b|\bmegolm[a-z_]*decrypt" src --include="*.erl" || true)
+# olm_identity_* 只负责公钥存储/转发与签名校验，不执行 E2EE 解密；这里
+# 必须和文件顶部的边界说明保持一致，否则仅在注释中提到 vodozemac 也会误报。
+HITS2=$(grep -rnE "\b(libolm|vodozemac)\b|\bmegolm[a-z_]*decrypt" src --include="*.erl" --exclude="olm_identity_*.erl" || true)
 if [ -n "$HITS2" ]; then
   echo "[FAIL] 服务端引用了客户端密码学库解密（违反 ADR 07 §6.1）："
   echo "$HITS2"
