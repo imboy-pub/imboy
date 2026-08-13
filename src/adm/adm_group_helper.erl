@@ -126,22 +126,21 @@ maybe_add_governance_action(true, Action, Index, Parts, Params) ->
 maybe_add_governance_group_id(false, _GroupId, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_group_id(true, GroupId, Index, Parts, Params) ->
-    Pattern = <<"%\"group_id\":", (integer_to_binary(GroupId))/binary, "%">>,
-    Cond = <<" AND l.body::text ILIKE $", (integer_to_binary(Index))/binary>>,
-    {Index + 1, Parts ++ [Cond], Params ++ [Pattern]}.
+    % jsonb 列的 text 输出总带规范化空格（"group_id": 123），
+    % ILIKE 拼串模式永远匹配不到；改用 JSON 操作符精确等值
+    Cond = <<" AND (l.body->>'group_id') = $", (integer_to_binary(Index))/binary>>,
+    {Index + 1, Parts ++ [Cond], Params ++ [integer_to_binary(GroupId)]}.
 
 -spec maybe_add_governance_target_id(boolean(), binary(), pos_integer(), [binary()], list()) ->
     {pos_integer(), [binary()], list()}.
 maybe_add_governance_target_id(false, _TargetId, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_target_id(true, TargetId, Index, Parts, Params) ->
-    Pos1 = integer_to_binary(Index),
-    Pos2 = integer_to_binary(Index + 1),
-    PatternAsNumber = <<"%\"target_id\":", TargetId/binary, "%">>,
-    PatternAsString = <<"%\"target_id\":\"", TargetId/binary, "\"%">>,
-    Cond =
-        <<" AND (l.body::text ILIKE $", Pos1/binary, " OR l.body::text ILIKE $", Pos2/binary, ")">>,
-    {Index + 2, Parts ++ [Cond], Params ++ [PatternAsNumber, PatternAsString]}.
+    % 同 group_id：jsonb 规范化空格使 ILIKE 拼串失效，改 JSON 操作符
+    % ->> 返回 text，直接等值比较（数字/字符串两种存储形态统一为文本等值）
+    Pos = integer_to_binary(Index),
+    Cond = <<" AND (l.body->>'target_id') = $", Pos/binary>>,
+    {Index + 1, Parts ++ [Cond], Params ++ [TargetId]}.
 
 -spec maybe_add_from_ts(boolean(), binary(), pos_integer(), [binary()], list()) ->
     {pos_integer(), [binary()], list()}.
