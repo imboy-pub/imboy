@@ -285,9 +285,15 @@ effective_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig) ->
 
 -spec effective_view_from_configs(term(), term(), term()) -> map().
 effective_view_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig) ->
-    public_effective_policy(
-        effective_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig)
-    ).
+    Policy0 = effective_from_configs(ProfileConfig, CapabilityConfig, FeatureConfig),
+    %% env override（IMBOY_E2EE_MODE 等）同样要作用到 view：/api/v1/app/policy
+    %% 读这里，客户端据此决定是否加密（PolicyGate.requireReadyForSend）。
+    %% 漏掉会让 disabled 部署下客户端仍拿到 DB 的 required，对端无设备密钥时
+    %% E2EE 加密失败 fail-closed 拒发，C2C 文本消息发不出。与
+    %% effective_capabilities/0 的 a7e78ace 修复保持同一 override 来源。
+    Cap0 = maps:get(capabilities, Policy0, #{}),
+    Policy = Policy0#{capabilities => apply_capability_env_override(Cap0)},
+    public_effective_policy(Policy).
 
 -spec public_effective_policy(map()) -> map().
 public_effective_policy(Policy) ->
