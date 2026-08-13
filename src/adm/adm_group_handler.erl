@@ -213,7 +213,8 @@ members(<<"GET">>, Req0, State) ->
 
             case Gid > 0 of
                 true ->
-                    Column = <<"id,group_id,user_id,nickname,avatar,role,status,joined_at">>,
+                    Column =
+                        <<"gm.id,gm.group_id,gm.user_id,u.nickname,u.avatar,gm.role,gm.status,gm.created_at AS joined_at">>,
                     {ok, P} = group_member_ds:page_by_gid(Gid, Page, Size, Column),
                     P2 = normalize_member_payload(P),
                     elib_response:success(Req0, P2);

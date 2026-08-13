@@ -249,6 +249,8 @@ role_acl(1) ->
         <<"mcp_clients:approve">>,
         <<"ux:events:ingest">>,
         <<"stats:ranking:read">>,
+        <<"analytics:view">>,
+        <<"announcements:read">>,
         <<"license:write">>,
         <<"storage:view">>,
         <<"storage:disable">>,
@@ -300,7 +302,9 @@ role_acl(1) ->
         <<"/admins">>,
         <<"/roles">>,
         <<"/logs">>,
-        <<"/plugins">>
+        <<"/plugins">>,
+        <<"/analytics">>,
+        <<"/announcements">>
     ],
     apply_role_acl_override(1, {RoleName, Permissions, MenuPaths});
 role_acl(2) ->
@@ -361,6 +365,8 @@ role_acl(2) ->
         <<"mcp_clients:approve">>,
         <<"ux:events:ingest">>,
         <<"stats:ranking:read">>,
+        <<"analytics:view">>,
+        <<"announcements:read">>,
         <<"storage:disable">>,
         <<"storage:enable">>,
         <<"storage:delete">>,

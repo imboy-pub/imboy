@@ -106,7 +106,7 @@ maybe_add_governance_keyword(true, KeywordLike, Index, Parts, Params) ->
         Pos/binary,
         " OR u.nickname ILIKE $",
         Pos/binary,
-        " OR l.body ILIKE $",
+        " OR l.body::text ILIKE $",
         Pos/binary,
         ")"
     >>,
@@ -118,7 +118,7 @@ maybe_add_governance_action(false, _Action, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_action(true, Action, Index, Parts, Params) ->
     Pattern = <<"%\"action\":\"", Action/binary, "\"%">>,
-    Cond = <<" AND l.body ILIKE $", (integer_to_binary(Index))/binary>>,
+    Cond = <<" AND l.body::text ILIKE $", (integer_to_binary(Index))/binary>>,
     {Index + 1, Parts ++ [Cond], Params ++ [Pattern]}.
 
 -spec maybe_add_governance_group_id(boolean(), integer(), pos_integer(), [binary()], list()) ->
@@ -127,7 +127,7 @@ maybe_add_governance_group_id(false, _GroupId, Index, Parts, Params) ->
     {Index, Parts, Params};
 maybe_add_governance_group_id(true, GroupId, Index, Parts, Params) ->
     Pattern = <<"%\"group_id\":", (integer_to_binary(GroupId))/binary, "%">>,
-    Cond = <<" AND l.body ILIKE $", (integer_to_binary(Index))/binary>>,
+    Cond = <<" AND l.body::text ILIKE $", (integer_to_binary(Index))/binary>>,
     {Index + 1, Parts ++ [Cond], Params ++ [Pattern]}.
 
 -spec maybe_add_governance_target_id(boolean(), binary(), pos_integer(), [binary()], list()) ->
@@ -139,7 +139,8 @@ maybe_add_governance_target_id(true, TargetId, Index, Parts, Params) ->
     Pos2 = integer_to_binary(Index + 1),
     PatternAsNumber = <<"%\"target_id\":", TargetId/binary, "%">>,
     PatternAsString = <<"%\"target_id\":\"", TargetId/binary, "\"%">>,
-    Cond = <<" AND (l.body ILIKE $", Pos1/binary, " OR l.body ILIKE $", Pos2/binary, ")">>,
+    Cond =
+        <<" AND (l.body::text ILIKE $", Pos1/binary, " OR l.body::text ILIKE $", Pos2/binary, ")">>,
     {Index + 2, Parts ++ [Cond], Params ++ [PatternAsNumber, PatternAsString]}.
 
 -spec maybe_add_from_ts(boolean(), binary(), pos_integer(), [binary()], list()) ->

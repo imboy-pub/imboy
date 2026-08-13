@@ -575,6 +575,10 @@ get_routes() ->
         {"/api/adm/admin/config/feedback-workflow", adm_admin_handler, #{
             action => config_feedback_workflow
         }},
+        % UX 埋点上报（前端 uxTelemetryReporter 按 5s 批量 POST 到此端点）
+        {"/api/adm/admin/ux/events", adm_stats_handler, #{
+            action => ux_events
+        }},
         % 禁言用户管理 API
         {"/api/adm/admin/muted_users/list", adm_admin_handler, #{action => muted_users_list}},
         {"/api/adm/admin/muted_users/unmute", adm_admin_handler, #{action => muted_users_unmute}},

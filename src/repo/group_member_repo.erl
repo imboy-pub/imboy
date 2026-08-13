@@ -118,9 +118,13 @@ page_by_gid(Gid, Page, Size, Column) ->
             _ -> 0
         end,
     % 查询数据
+    % nickname/avatar 存在于 user 表（group_member 无此二列，也无 joined_at），
+    % 需 LEFT JOIN user 并以 created_at AS joined_at 保持 API 字段兼容。
     DataSql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE group_id = $1 AND status = 1 ORDER BY role DESC, joined_at ASC LIMIT $2 OFFSET $3">>,
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " AS gm",
+            " LEFT JOIN \"user\" AS u ON u.id = gm.user_id",
+            " WHERE gm.group_id = $1 AND gm.status = 1",
+            " ORDER BY gm.role DESC, gm.created_at ASC LIMIT $2 OFFSET $3">>,
     case elib_pg:query(DataSql, [Gid, Size, Offset]) of
         {ok, Items} ->
             TotalPage =
