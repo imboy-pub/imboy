@@ -13,6 +13,7 @@
 -export([active_ids/0]).
 -export([set_status/2]).
 -export([page/2]).
+-export([page/3]).
 -export([page_assistants/3]).
 
 -include("log.hrl").
