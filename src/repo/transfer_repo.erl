@@ -30,7 +30,9 @@ create(SenderUid, ReceiverUid, Amount, Remark) ->
         %% 1. 行锁并扣除发送方钱包余额
         DeductSql =
             <<"UPDATE ", WalletTb/binary,
-                " SET balance = balance - $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 AND balance >= $1 RETURNING balance, id">>,
+                " SET balance = balance - $1, version = version + 1, updated_at = NOW()"
+                " WHERE user_id = $2 AND status = 1 AND balance - frozen >= $1"
+                " RETURNING balance, id">>,
         case elib_pg:execute(Conn, DeductSql, [Amount, SenderUid]) of
             {ok, 1, [{NewBalance, WalletId}]} ->
                 %% 2. 写入发送方钱包流水（tx_type=5：转账转出）

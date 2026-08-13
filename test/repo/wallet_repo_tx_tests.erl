@@ -4,15 +4,15 @@
 
 %%% @doc wallet_repo 钱路径事务测试：atomic_balance_change/4 与 reject_and_refund/1
 %%% 钱路径必须有回归保护：余额不足拒绝、原子入账、拒绝退款幂等(no-op)、退款成功。
-%%% with_tx 测试替身复刻真实事务语义：事务体抛 {rollback,R} → 整体 {error,R}。
+%%% with_tx 测试替身复刻真实事务语义：事务体抛 {rollback,R} → 整体 {rollback,R}。
 
-%% with_tx 测试替身：执行事务体，按真实语义把 rollback throw 转成 {error,_}
+%% with_tx 测试替身：执行事务体，按真实语义把 rollback throw 原样返回。
 with_tx_stub() ->
     {'with_tx', 1, fun(F) ->
         try
             F(mock_conn)
         catch
-            throw:{rollback, Reason} -> {error, Reason}
+            throw:{rollback, Reason} -> {rollback, Reason}
         end
     end}.
 
@@ -26,7 +26,7 @@ sql_stub() ->
 tsid_stub() ->
     {elib_tsid, [{'generate', 1, fun(_) -> 123456 end}]}.
 
-%% atomic_balance_change：余额不足时 UPDATE 影响 0 行 → 事务回滚 {error, insufficient_balance}
+%% atomic_balance_change：余额不足时 UPDATE 影响 0 行 → 事务回滚 {rollback, insufficient_balance}
 atomic_balance_change_insufficient_test_() ->
     ?WITH_MECKS(
         [
@@ -35,9 +35,66 @@ atomic_balance_change_insufficient_test_() ->
         ],
         fun() ->
             ?assertEqual(
-                {error, insufficient_balance},
+                {rollback, insufficient_balance},
                 wallet_repo:atomic_balance_change(-100, 200, #{<<"tx_type">> => 1}, <<"REF1">>)
             )
+        end
+    ).
+
+%% atomic_balance_change：借记必须只消费可用余额，且停用钱包不可动账。
+%% 这里直接守护 SQL 契约，避免 mock 掉数据库后把关键 WHERE 条件一并掩盖。
+atomic_balance_change_debit_guard_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                with_tx_stub(),
+                {'execute', 3, fun(_C, Sql, _P) ->
+                    put(atomic_balance_change_debit_sql, Sql),
+                    {ok, 0}
+                end}
+            ]},
+            {elib_pg_sql, [{'public_tablename', 1, fun(T) -> T end}]}
+        ],
+        fun() ->
+            erase(atomic_balance_change_debit_sql),
+            ?assertEqual(
+                {rollback, insufficient_balance},
+                wallet_repo:atomic_balance_change(-100, 200, #{<<"tx_type">> => 1}, <<"REF-D">>)
+            ),
+            Sql = get(atomic_balance_change_debit_sql),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"status = 1">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"balance - frozen + $1 >= 0">>))
+        end
+    ).
+
+%% atomic_balance_change：贷记/退款不能被借记状态守卫误伤。
+atomic_balance_change_credit_preserves_refund_path_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                with_tx_stub(),
+                {'execute', 3, fun(_C, Sql, _P) ->
+                    case binary:match(Sql, <<"INSERT">>) of
+                        nomatch ->
+                            put(atomic_balance_change_credit_sql, Sql),
+                            {ok, 1, [{600}]};
+                        _ ->
+                            {ok, 1}
+                    end
+                end}
+            ]},
+            tsid_stub(),
+            sql_stub()
+        ],
+        fun() ->
+            erase(atomic_balance_change_credit_sql),
+            ?assertEqual(
+                {ok, 600},
+                wallet_repo:atomic_balance_change(100, 200, #{<<"tx_type">> => 3}, <<"REF-C">>)
+            ),
+            Sql = get(atomic_balance_change_credit_sql),
+            ?assertEqual(nomatch, binary:match(Sql, <<"status = 1">>)),
+            ?assertEqual(nomatch, binary:match(Sql, <<"frozen">>))
         end
     ).
 
@@ -144,7 +201,7 @@ atomic_transfer_after_transfer_callback_test_() ->
         ],
         fun() ->
             ?assertEqual(
-                {error, compensation_not_settling},
+                {rollback, compensation_not_settling},
                 wallet_repo:atomic_transfer(Debit, Credit)
             )
         end
@@ -195,3 +252,63 @@ atomic_transfer_after_transfer_callback_ok_test_() ->
             ?assertEqual(mock_conn, get(callback_conn))
         end
     ).
+
+%% atomic_transfer：两腿结算的借记腿同样只能消费可用余额。
+atomic_transfer_debit_guard_test_() ->
+    Debit = #{
+        user_id => 200,
+        wallet_id => 300,
+        amount => 100,
+        tx_type => 20,
+        reference_no => <<"D3">>
+    },
+    Credit = #{
+        user_id => 201,
+        wallet_id => 301,
+        amount => 100,
+        tx_type => 21,
+        reference_no => <<"C3">>
+    },
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                with_tx_stub(),
+                {'execute', 3, fun(_Conn, Sql, _Params) ->
+                    put(atomic_transfer_debit_sql, Sql),
+                    {ok, 0}
+                end}
+            ]},
+            {elib_pg_sql, [{'public_tablename', 1, fun(T) -> T end}]}
+        ],
+        fun() ->
+            erase(atomic_transfer_debit_sql),
+            ?assertEqual(
+                {rollback, insufficient_balance},
+                wallet_repo:atomic_transfer(Debit, Credit)
+            ),
+            Sql = get(atomic_transfer_debit_sql),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"status = 1">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"balance - frozen >= $1">>))
+        end
+    ).
+
+%% 数据库兜底必须存在且可逆；ADD 与 VALIDATE 拆成两个迁移事务，避免长时间持有 ADD 的强锁。
+wallet_available_balance_constraint_migration_test() ->
+    {ok, AddUp} = file:read_file(
+        "priv/migrations/00000065_wallet_available_balance_constraint.up.sql"
+    ),
+    {ok, AddDown} = file:read_file(
+        "priv/migrations/00000065_wallet_available_balance_constraint.down.sql"
+    ),
+    {ok, ValidateUp} = file:read_file(
+        "priv/migrations/00000066_validate_wallet_available_balance_constraint.up.sql"
+    ),
+    {ok, ValidateDown} = file:read_file(
+        "priv/migrations/00000066_validate_wallet_available_balance_constraint.down.sql"
+    ),
+    ?assertNotEqual(nomatch, binary:match(AddUp, <<"chk_wallet_frozen_le_balance">>)),
+    ?assertNotEqual(nomatch, binary:match(AddUp, <<"CHECK (frozen <= balance) NOT VALID">>)),
+    ?assertEqual(nomatch, binary:match(AddUp, <<"VALIDATE CONSTRAINT">>)),
+    ?assertNotEqual(nomatch, binary:match(AddDown, <<"DROP CONSTRAINT IF EXISTS">>)),
+    ?assertNotEqual(nomatch, binary:match(ValidateUp, <<"VALIDATE CONSTRAINT">>)),
+    ?assertNotEqual(nomatch, binary:match(ValidateDown, <<"CHECK (frozen <= balance) NOT VALID">>)).

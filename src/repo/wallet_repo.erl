@@ -113,11 +113,7 @@ atomic_balance_change(Amount, Uid, TxData, RefNo) ->
     TxTb = tx_tablename(),
     elib_pg:with_tx(fun(Conn) ->
         %% 1. 行锁 + 原子更新余额
-        UpdateSql =
-            <<"UPDATE ", Tb/binary,
-                " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
-                " WHERE user_id = $2 AND balance + $1 >= 0"
-                " RETURNING balance">>,
+        UpdateSql = balance_change_update_sql(Tb, Amount),
         case elib_pg:execute(Conn, UpdateSql, [Amount, Uid]) of
             {ok, 1, [{NewBalance}]} ->
                 %% 2. 在同一事务内写入流水
@@ -140,6 +136,18 @@ atomic_balance_change(Amount, Uid, TxData, RefNo) ->
                 throw({rollback, Reason})
         end
     end).
+
+%% 借记只能消费正常钱包的可用余额；贷记（退款/补偿）不受借记状态守卫影响。
+balance_change_update_sql(Tb, Amount) when Amount < 0 ->
+    <<"UPDATE ", Tb/binary,
+        " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
+        " WHERE user_id = $2 AND status = 1 AND balance - frozen + $1 >= 0"
+        " RETURNING balance">>;
+balance_change_update_sql(Tb, _Amount) ->
+    <<"UPDATE ", Tb/binary,
+        " SET balance = balance + $1, version = version + 1, updated_at = NOW()"
+        " WHERE user_id = $2 AND balance + $1 >= 0"
+        " RETURNING balance">>.
 
 %% @doc 原子两腿结算：**同一事务**内借记付款方 + 贷记收款方 + 各写一条流水。
 %% 绝无「借记成功/贷记失败」资金丢失窗口——任一步失败整笔 rollback（复用
@@ -205,13 +213,13 @@ run_after_transfer(Fun, Conn) when is_function(Fun, 1) ->
         Other -> throw({rollback, {after_transfer_failed, Other}})
     end.
 
-%% 借记单腿（事务内）。守卫 status=1（不动冻结/停用钱包）且 balance - Amt >= 0；
+%% 借记单腿（事务内）。守卫 status=1 且可用余额 balance-frozen >= Amt；
 %% 0 行匹配=余额不足/钱包不存在/已停用。显式带 status，不依赖 ensure_wallet 的连带效应。
 do_debit(Conn, Tb, Uid, Amt) ->
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET balance = balance - $1, version = version + 1, updated_at = NOW()"
-            " WHERE user_id = $2 AND status = 1 AND balance - $1 >= 0"
+            " WHERE user_id = $2 AND status = 1 AND balance - frozen >= $1"
             " RETURNING balance">>,
     case elib_pg:execute(Conn, Sql, [Amt, Uid]) of
         {ok, 1, [{Bal}]} -> Bal;

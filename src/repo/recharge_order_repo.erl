@@ -269,7 +269,8 @@ refund_wallet_in_tx(Conn, WalletTb, TxTb, Uid, Amount, RefNo) ->
     WSql =
         <<"UPDATE ", WalletTb/binary,
             " SET balance = balance - $1, version = version + 1, updated_at = NOW()"
-            " WHERE user_id = $2 AND balance - frozen >= $1 RETURNING balance, id">>,
+            " WHERE user_id = $2 AND status = 1 AND balance - frozen >= $1"
+            " RETURNING balance, id">>,
     case elib_pg:execute(Conn, WSql, [Amount, Uid]) of
         {ok, 1, [{NewBalance, WalletId}]} ->
             TxId = elib_tsid:generate(wallet_transaction),
