@@ -109,6 +109,11 @@ override_from_env() ->
     %% SMTP 配置覆盖
     ok = override_smtp(),
 
+    %% 限流上限覆盖：本地/CI 自动化测试需要放宽 throttle rates，
+    %% 避免每次调整都要重编 release（默认 120/min 会让连续巡检 429）
+    ok = override_throttle_rate("IMBOY_THROTTLE_API_PER_USER", api_per_user),
+    ok = override_throttle_rate("IMBOY_THROTTLE_API_PER_IP", api_per_ip),
+
     %% Redis 配置覆盖
     ok = override_redis(),
 
@@ -248,6 +253,27 @@ parse_feature_boolean(EnvVar, Value) ->
 
 %% @doc 覆盖 binary 类型的简单 app env key
 -spec override_binary_key(string(), atom()) -> ok.
+%% @doc 覆盖 throttle rates 里的单条限流（整数 + 时间单位保持 per_minute）
+override_throttle_rate(EnvVar, RateKey) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            case string:to_integer(Value) of
+                {Limit, _} when is_integer(Limit), Limit > 0 ->
+                    Rates0 = application:get_env(throttle, rates, []),
+                    Rates1 = lists:keyreplace(
+                        RateKey, 1, Rates0, {RateKey, Limit, per_minute}
+                    ),
+                    application:set_env(throttle, rates, Rates1),
+                    ok;
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
+
 override_binary_key(EnvVar, AppKey) ->
     case os:getenv(EnvVar) of
         false ->

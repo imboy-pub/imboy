@@ -63,7 +63,7 @@ detail(<<"GET">>, Req0, _State) ->
     case Uid > 0 of
         true ->
             Column =
-                <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at,updated_at">>,
+                <<"id,account,nickname,mobile,email,avatar,gender,region,sign,status,experience,created_at">>,
             User = user_ds:find_by_id(Uid, Column),
             case map_size(User) > 0 of
                 true ->
