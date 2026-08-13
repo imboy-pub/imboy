@@ -28,6 +28,39 @@ qr_login_subscribe_route_in_open_list_test() ->
         "SSE 路由 /v1/passport/qr_login/subscribe 必须在 open 列表，否则被认证中间件拒绝"
     ).
 
+%% BUG#批次78-1：scan/confirm 是手机端已登录用户调用，handler 强制要求
+%% current_uid != 0（qr_login_handler.handle_scan/handle_confirm 的 {0, _} 分支）。
+%% 若误入 open 白名单，auth_middleware_api_v1 跳过 token 解析 → current_uid 恒为 0
+%% → scan 必返回 401「未登录」→ 客户端 _checkAuthExpired 误判为会话失效
+%% 触发 quitLogin + 删除本地数据库。此测试防止该回归。
+qr_login_scan_confirm_not_in_open_list_test() ->
+    Open = imboy_router:open(),
+    MustAuthenticated = [
+        <<"/api/v1/passport/qr_login/scan">>,
+        <<"/api/v1/passport/qr_login/confirm">>
+    ],
+    Leakers = [P || P <- MustAuthenticated, lists:member(P, Open)],
+    ?assertEqual(
+        [],
+        Leakers,
+        "scan/confirm 不应在 open 白名单：handler 要求 current_uid != 0，"
+        "白名单会让 token 解析被跳过导致 401 误判，触发客户端删库（BUG#批次78-1）"
+    ).
+
+%% 同批守护：scan/confirm 路由本身仍要注册（只是不进 open 白名单，未删路由）
+qr_login_scan_confirm_route_registered_test() ->
+    Paths = [unicode:characters_to_binary(P) || {P, _H, _S} <- all_routes()],
+    [
+        ?assert(
+            lists:member(<<"/api/v1/passport/qr_login/scan">>, Paths),
+            "scan 路由必须注册（只是不进 open 白名单，不是删除路由）"
+        ),
+        ?assert(
+            lists:member(<<"/api/v1/passport/qr_login/confirm">>, Paths),
+            "confirm 路由必须注册（只是不进 open 白名单，不是删除路由）"
+        )
+    ].
+
 open_routes_map_to_route_table_test() ->
     RoutePathSet = route_path_set(),
     MissingPaths = missing_paths(imboy_router:open(), RoutePathSet),

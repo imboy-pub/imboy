@@ -948,8 +948,13 @@ open() ->
         <<"/api/v1/passport/bind_mail">>,
         <<"/api/v1/passport/qr_login/create">>,
         <<"/api/v1/passport/qr_login/status">>,
-        <<"/api/v1/passport/qr_login/scan">>,
-        <<"/api/v1/passport/qr_login/confirm">>,
+        %% scan/confirm 是手机端调用，handler 强制要求 current_uid != 0
+        %% （见 qr_login_handler:handle_scan/handle_confirm 的 {0, _} 分支）。
+        %% 若留在此白名单内，auth_middleware_api_v1 会跳过 token 解析，
+        %% current_uid 恒为 0 → scan 必返回 401「未登录」→ 客户端 _checkAuthExpired
+        %% 误判为会话失效触发 quitLogin，删除本地数据库（BUG#批次78-1）。
+        %% 故 scan/confirm 必须走鉴权链；create/status/cancel/subscribe 仍是
+        %% Web 端未登录场景使用，保留白名单。
         <<"/api/v1/passport/qr_login/cancel">>,
         %% PR-3β: SSE 端点免登录（EventSource 在握手完成前没有 token）
         <<"/api/v1/passport/qr_login/subscribe">>,
