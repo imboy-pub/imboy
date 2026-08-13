@@ -419,11 +419,18 @@ role_acl(_RoleId) ->
     {binary(), list(binary()), list(binary())}.
 apply_role_acl_override(RoleId, {RoleName, Permissions, MenuPaths}) ->
     OverrideName = resolve_role_name(RoleId, RoleName),
-    case resolve_role_permissions_override(RoleId) of
-        undefined ->
+    case RoleId =:= 1 of
+        %% 超级管理员权限锚定代码内置全集：读侧忽略历史遗留的覆盖配置，
+        %% 与 adm_role_handler 的写侧拒绝配合，防止 super_admin 被降权锁死
+        true ->
             {OverrideName, Permissions, MenuPaths};
-        OverridePermissions ->
-            {OverrideName, OverridePermissions, MenuPaths}
+        false ->
+            case resolve_role_permissions_override(RoleId) of
+                undefined ->
+                    {OverrideName, Permissions, MenuPaths};
+                OverridePermissions ->
+                    {OverrideName, OverridePermissions, MenuPaths}
+            end
     end.
 
 -spec resolve_role_permissions_override(integer()) -> undefined | list(binary()).

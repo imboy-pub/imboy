@@ -118,9 +118,19 @@ save_permissions_handle(Req0, State) ->
                 end,
             case role_exists(RoleId) of
                 true ->
-                    _ = save_role_permissions(RoleId, Permissions),
-                    _ = maybe_save_role_description(RoleId, Description),
-                    elib_response:success(Req0, #{});
+                    case RoleId of
+                        %% 超级管理员权限锚定代码内置全集，禁止通过覆盖降权——
+                        %% 否则 super_admin 一旦被配置成空权限集，所有管理员都会被锁在门外
+                        %%（本地实测：role 1 被覆盖为 [dashboard:view, users:read] 后全后台 403）
+                        1 ->
+                            elib_response:error(
+                                Req0, <<"超级管理员角色权限不可修改"/utf8>>, ?ERR_BAD_REQUEST
+                            );
+                        _ ->
+                            _ = save_role_permissions(RoleId, Permissions),
+                            _ = maybe_save_role_description(RoleId, Description),
+                            elib_response:success(Req0, #{})
+                    end;
                 false ->
                     elib_response:error(Req0, <<"角色不存在"/utf8>>, ?ERR_BAD_REQUEST)
             end;

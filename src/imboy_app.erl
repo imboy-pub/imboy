@@ -307,15 +307,28 @@ start_clear(ProtoOpts, Port) ->
 %% throttle 库通过 sys.config 的 {rates, [...]} 自动 setup，但在某些启动时序下
 %% 可能在 Cowboy 中间件就绪前未完成初始化，导致 throttle:check/2 返回 rate_not_set。
 %% 此处显式 setup 两个关键规则作为保障。
+%% 上限优先读取 {throttle, [{rates, [{Key, N, per_minute}, ...]}]} 应用配置，
+%% 读不到时回落到硬编码默认值——本地/e2e 环境可通过 sys.local.config 放宽限流，
+%% 否则管理后台一轮自动化测试（每页十余个请求）很容易打满 120/min 被踢回登录页。
 -spec init_throttle_rates() -> ok.
 init_throttle_rates() ->
+    Rates = case application:get_env(throttle, rates) of
+        {ok, R} when is_list(R) -> R;
+        _ -> []
+    end,
+    RateFor = fun(Key, Default) ->
+        case lists:keyfind(Key, 1, Rates) of
+            {Key, N, per_minute} when is_integer(N), N > 0 -> N;
+            _ -> Default
+        end
+    end,
     %% 每用户每分钟 API 调用上限（与 sys.config 保持一致）
-    ok = throttle:setup(api_per_user, 120, per_minute),
+    ok = throttle:setup(api_per_user, RateFor(api_per_user, 120), per_minute),
     %% 每 IP 每分钟 API 调用上限（与 sys.config 保持一致）
-    ok = throttle:setup(api_per_ip, 60, per_minute),
+    ok = throttle:setup(api_per_ip, RateFor(api_per_ip, 60), per_minute),
     %% GAP-09: passport 路径专用限流（登录/注册，宽松于通用 IP 限流，严于完全豁免）
     %% 每 IP 每分钟最多 10 次 passport 请求（兼容短时间内正常登录重试）
-    ok = throttle:setup(passport_per_ip, 10, per_minute),
+    ok = throttle:setup(passport_per_ip, RateFor(passport_per_ip, 10), per_minute),
     ok.
 
 -spec validate_runtime_config() -> ok.
