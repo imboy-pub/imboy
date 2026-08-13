@@ -365,13 +365,22 @@ authorize_moment(Uid, MomentId) ->
 %% 频道附件必须跟频道正文使用同一权益模型：免费/私有频道保持原有的
 %% 「订阅者可访问」语义；付费频道只接受有效购买或频道管理角色，不能因为
 %% 历史脏订阅而绕过正文的购买校验。
+%% 频道管理角色（创建者/管理员 role>0）在所有类型下都有附件读写权——
+%% 与 ensure_channel_content_access 的角色短路一致：创建者发帖不强制先订阅，
+%% 否则创建者发语音/图片会在 presign 被 403（BUG：公开频道创建者发语音
+%% 「无权向该范围上传」）。
 -spec has_channel_attachment_access(integer(), integer()) -> boolean().
 has_channel_attachment_access(Uid, ChannelId) ->
-    case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
-        #{<<"type">> := 2} -> paid_channel_attachment_access(Uid, ChannelId);
-        #{<<"type">> := <<"2">>} -> paid_channel_attachment_access(Uid, ChannelId);
-        #{<<"type">> := _} -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
-        _ -> false
+    case channel_logic_common:get_user_role(ChannelId, Uid) of
+        Role when is_integer(Role), Role > 0 ->
+            true;
+        _ ->
+            case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
+                #{<<"type">> := 2} -> paid_channel_attachment_access(Uid, ChannelId);
+                #{<<"type">> := <<"2">>} -> paid_channel_attachment_access(Uid, ChannelId);
+                #{<<"type">> := _} -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
+                _ -> false
+            end
     end.
 
 -spec paid_channel_attachment_access(integer(), integer()) -> boolean().
