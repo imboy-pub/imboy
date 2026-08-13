@@ -3612,7 +3612,8 @@ mark_as_read_returns_error_when_channel_not_found_test_() ->
 
     MockConfigs = [
         {channel_ds, [
-            {'find_by_custom_id', 1, fun(_) -> {error, not_found} end}
+            % 真实 repo 无行时返回空 map #{}，非 {error, not_found}
+            {'find_by_custom_id', 1, fun(_) -> #{} end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->

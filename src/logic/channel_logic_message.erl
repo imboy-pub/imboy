@@ -48,11 +48,16 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
                         undefined ->
                             do_create_channel(Uid, Name, Type, Opts);
                         CustomId when is_binary(CustomId), CustomId =/= <<>> ->
+                            % find_by_custom_id 无行时返回空 map #{}（elib_pg:one 的
+                            % Default=#{}），只有 SQL 真出错才返回 {error, _}；
+                            % 勿用 {error, _} 判「未占用」，否则空 map 误判已占用
                             case channel_ds:find_by_custom_id(CustomId) of
-                                {error, _} ->
+                                Channel when is_map(Channel), map_size(Channel) =:= 0 ->
                                     do_create_channel(Uid, Name, Type, Opts);
-                                _ ->
-                                    {error, <<"自定义ID已被使用"/utf8>>}
+                                Channel when is_map(Channel) ->
+                                    {error, <<"自定义ID已被使用"/utf8>>};
+                                {error, _} ->
+                                    do_create_channel(Uid, Name, Type, Opts)
                             end;
                         _ ->
                             do_create_channel(Uid, Name, Type, Opts)
@@ -211,11 +216,16 @@ resolve_custom_id_update(ChannelId, Data) ->
                             % 已设过即锁定：忽略本次传入，不覆盖
                             {ok, maps:remove(<<"custom_id">>, Data)};
                         _ ->
+                            % 无行返回空 map #{} = 未占用放行；非空 map = 已占用；
+                            % {error, _}（SQL 出错）fail-open 放行，DB 唯一约束
+                            % uk_channel_custom_id 兜底并发竞态
                             case channel_ds:find_by_custom_id(CustomId) of
-                                {error, _} ->
+                                Found when is_map(Found), map_size(Found) =:= 0 ->
                                     {ok, Data};
-                                _ ->
-                                    {error, <<"自定义ID已被使用"/utf8>>}
+                                Found when is_map(Found) ->
+                                    {error, <<"自定义ID已被使用"/utf8>>};
+                                {error, _} ->
+                                    {ok, Data}
                             end
                     end;
                 {error, Reason} ->

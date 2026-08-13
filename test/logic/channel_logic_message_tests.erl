@@ -193,7 +193,9 @@ update_channel_custom_id_first_set_persists_test_() ->
                             <<"custom_id">> => <<"ganfan">>
                         }
                 end},
-                {'find_by_custom_id', 1, fun(_CustomId) -> {error, not_found} end},
+                % 真实 repo 无行时返回空 map #{}（elib_pg:one 的 Default=#{}），
+                % 并非 {error, not_found}——mock 必须匹配真实形状，否则掩盖回归
+                {'find_by_custom_id', 1, fun(_CustomId) -> #{} end},
                 {'update', 2, fun(_ChannelId, Data) ->
                     put(captured_update, Data),
                     {ok, 1}
