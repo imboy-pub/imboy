@@ -78,13 +78,13 @@ gpb_compile:file("proto/imboy.proto", [
     {type_specs, true},
     {strings_as_binaries, true},
     {module_name, imboy_pb},
-    {o_erl, "src/lib"},
-    {o_hrl, "include"}
+    {o_erl, "./src"},
+    {o_hrl, "./include"}
 ]).
 ```
 
 生成的文件：
-- `src/lib/imboy_pb.erl` — 编解码模块
+- `src/imboy_pb.erl` — 编解码模块
 - `include/imboy_pb.hrl` — 类型定义
 
 ### Flutter/Dart (protoc)

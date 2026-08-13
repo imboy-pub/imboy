@@ -17,14 +17,19 @@
 test/
 ├── adm/                           # 后台 Handler / Middleware / Logic 测试
 ├── api/                           # App 侧 HTTP / WebSocket Handler 测试
+├── auto_test/                     # 自动化测试用例
 ├── common/                        # 测试辅助模块
-├── docs/                           # 历史压测图文资料与现场记录
+├── doc/                           # 历史压测图文资料与现场记录
+├── domain/                        # 领域聚合（DDD）测试
 ├── ds/                            # DS 层测试
 ├── integration/                   # 端到端 / 集成场景测试（EUnit 风格）
 ├── lib/                           # 公共库测试
 ├── logic/                         # 业务逻辑测试
+├── mcp/                           # MCP 协议与工具测试
 ├── performance/                   # 性能相关测试模块
 ├── repo/                          # Repo 层测试
+├── store/                         # 存储层测试
+├── stress/                        # 压力 / 并发测试
 ├── *_SUITE.erl                    # Common Test suites
 ├── test_quality_improvement_tasklist.md  # 历史测试质量专项记录
 └── README.md                      # 本文档
@@ -34,6 +39,8 @@ test/
 
 - `friend_management_flow_SUITE.erl`
 - `group_management_flow_SUITE.erl`
+- `group_notice_SUITE.erl`
+- `group_vote_SUITE.erl`
 - `messaging_flow_SUITE.erl`
 - `msg_ack_logic_SUITE.erl`
 - `msg_delivery_SUITE.erl`

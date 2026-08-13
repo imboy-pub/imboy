@@ -43,6 +43,7 @@ Nginx 之前，执行 `.env.deploy` 中 `DEPLOY_EXPAND_MIGRATIONS` 列出的可�
 | `backup_pg.sh` / `restore_pg.sh` | PostgreSQL 备份/恢复（内置 timescaledb pre/post_restore 包裹） |
 | `backup_garage.sh` | Garage S3 附件备份 |
 | `backup_imboy_db.sh` | 业务库备份 |
+| `restore_smoke.sh` | 备份恢复冒烟（验证可恢复性） |
 
 > 恢复演练记录见 [restore-drill-2026-06.md](../docs/guides/operations/deployment/restore-drill-2026-06.md)。
 
@@ -52,12 +53,14 @@ Nginx 之前，执行 `.env.deploy` 中 `DEPLOY_EXPAND_MIGRATIONS` 列出的可�
 
 ## 测试与冒烟
 
-`smoke/`（c2c/ws/ctl 冒烟）、`smoke_extended.sh`、`run_feature_flag_smoke.sh`、`rtc_e2e_test.sh`、`sso_oidc_e2e.sh`、`bench_websocket.sh`（WS 压测）、`payment_credit_in_tx_it.sh`（支付集成测试）、`verify_device_api_sql.sh`。
+`smoke/`（c2c/ws/ctl 冒烟）、`smoke_extended.sh`、`run_feature_flag_smoke.sh`、`rtc_e2e_test.sh`、`sso_oidc_e2e.sh`、`bench_websocket.sh`（WS 压测）、`payment_credit_in_tx_it.sh`（支付集成测试）、`paid_channel_fixture.sh`（付费频道闭环 fixture）、`verify_device_api_sql.sh`。
 
 ## 校验与诊断
 
-`check_module_boundaries.sh`（四层边界门禁）、`check_dco.sh`、`check_duplicate_modules.sh`、`check_server_zero_crypto.sh`、`validate_p5_manifest.sh`、`sanity_check.sh`、`erl_crashdump_analyzer.sh`（崩溃转储分析）。
+`check_module_boundaries.sh`（四层边界门禁）、`check_dco.sh`、`check_duplicate_modules.sh`、`check_server_zero_crypto.sh`、`check_release_consistency.sh`（商业化发布一致性门禁）、`check_tls_expiry.sh`（TLS 证书到期检查）、`validate_p5_manifest.sh`、`sanity_check.sh`、`erl_crashdump_analyzer.sh`（崩溃转储分析）、`websocket_diagnose.sh`（WS 连接逐层诊断：端口→HTTP→握手→在线数）。
 
 ## 其他
 
 `channel_daily_digest.sh`（频道日报）、`plugin_install.sh`（插件安装）、`gen_license.escript`（License 生成）、`sso/`（SSO 相关）、`fdfs_reference_census.sql` + `migrate_fdfs_avatars.erl`（FastDFS 历史迁移残留，一次性用途）。
+
+发布门禁与审计：`evidence_manifest.sh`（发布证据清单，审计就绪包附录 B）、`license_inventory.sh`（第三方依赖许可证清单，D3 门）、`validate_sales_release_config.escript`（销售版功能策略门禁，不读取密钥）、`recrypt_user_collect.escript`（A-06 主密钥轮换，`user_collect.info` 清洗）。`test/` 为脚本自测目录（alertmanager 渲染、异地备份、恢复守卫等）。

@@ -19,7 +19,7 @@
 - 单点生成无协调成本（雪花算法变种），分布式安全
 
 **实现**：
-- 后端（Erlang）：`tsid:generate/0` 生成；DB 列类型 `BIGINT`（不是 `BIGSERIAL`）
+- 后端（Erlang）：`elib_tsid:generate/1` 生成；DB 列类型 `BIGINT`（不是 `BIGSERIAL`）
 - DB 迁移：所有主键改 `BIGINT` + 应用层填值
 - 跨语言互操作：见「字段命名」章节的 string-encoded id 约定
 
@@ -198,7 +198,7 @@ GET /api/v1/messages?cursorAfter=123456789012345678&limit=50
 
 **Erlang 模块命名**：
 - 业务域前缀 `imboy_`（如 `imboy_user`、`imboy_msg_router`）
-- 工具模块前缀 `ec_` / `imboy_dt` / `imboy_log`
+- 工具模块前缀 `elib_`（如 `elib_tsid`、`elib_pg`、`elib_str`）
 - 一个模块单一职责，超 800 行 → 拆分（`{domain}_query` / `{domain}_command` / `{domain}_handler`）
 - 行为模块（gen_server / gen_statem）后缀加 `_srv` / `_sm`（如 `imboy_user_srv`）
 
