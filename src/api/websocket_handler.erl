@@ -542,7 +542,7 @@ handle_json_message(Msg, State) ->
 -spec websocket_info(term(), map()) ->
     {ok, map()}
     | {ok, map(), hibernate}
-    | {reply, {text, binary()} | {binary, binary()} | {close, integer(), binary()}, map(),
+    | {reply, {text, binary()} | {binary, binary()} | {close, integer(), binary()} | list(), map(),
         hibernate}
     | {stop, map()}.
 websocket_info({reply, Msg}, State) when is_map(Msg) ->
@@ -612,7 +612,7 @@ websocket_info({kick_device, ReasonMap}, State) ->
         <<"payload">> => ReasonMap,
         <<"server_ts">> => elib_dt:millisecond()
     },
-    {reply, {text, jsone:encode(Msg, [native_utf8])}, {close, 4000, Reason}, State};
+    {reply, [{text, jsone:encode(Msg, [native_utf8])}, {close, 4000, Reason}], State, hibernate};
 websocket_info(_Info, State) ->
     {ok, State}.
 

@@ -859,3 +859,21 @@ protobuf_client_ack_bypasses_throttle_test_() ->
             ?assertEqual(<<"CLIENT_ACK_CONFIRM">>, maps:get(<<"type">>, Decoded))
         end
     ).
+
+websocket_info_kick_device_test_() ->
+    ?WITH_MECKS(log_mocks(), fun() ->
+        State = #{protocol => json},
+        ReasonMap = #{<<"reason">> => <<"在其他设备登录"/utf8>>},
+        {reply,
+            [
+                {text, Bin},
+                {close, 4000, <<"在其他设备登录"/utf8>>}
+            ],
+            _State2, hibernate} = websocket_handler:websocket_info(
+            {kick_device, ReasonMap}, State
+        ),
+        Decoded = jsone:decode(Bin, [{object_format, map}]),
+        ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Decoded)),
+        ?assertEqual(<<"device_kicked">>, maps:get(<<"action">>, Decoded)),
+        ?assertEqual(ReasonMap, maps:get(<<"payload">>, Decoded))
+    end).
