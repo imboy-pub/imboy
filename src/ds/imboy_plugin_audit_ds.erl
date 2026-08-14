@@ -10,7 +10,7 @@
 %%% @copyright 2026 Imboy Project
 %%%-------------------------------------------------------------------
 
--export([write/1, list/3]).
+-export([write/1, list/3, count/1]).
 
 -include("log.hrl").
 
@@ -34,6 +34,11 @@ write_sync(Event) ->
     imboy_plugin_audit_repo:insert(Row).
 
 %% @doc 查询审计日志。
--spec list(binary(), pos_integer(), pos_integer()) -> {ok, list()} | {error, term()}.
+-spec list(binary(), non_neg_integer(), non_neg_integer()) -> {ok, list()} | {error, term()}.
 list(PluginName, Limit, Offset) ->
     imboy_plugin_audit_repo:list(PluginName, Limit, Offset).
+
+%% @doc 统计审计日志总数。
+-spec count(binary()) -> {ok, non_neg_integer()} | {error, term()}.
+count(PluginName) ->
+    imboy_plugin_audit_repo:count(PluginName).

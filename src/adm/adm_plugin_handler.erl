@@ -388,28 +388,33 @@ do_logs(<<"GET">>, Req0, State) ->
         ok ->
             QS = cowboy_req:parse_qs(Req0),
             PluginName = proplists:get_value(<<"plugin_name">>, QS, <<"">>),
-            try
+            Page = max(elib_cnv:safe_to_integer(proplists:get_value(<<"page">>, QS, <<"1">>)), 1),
+            Size = min(
+                max(elib_cnv:safe_to_integer(proplists:get_value(<<"size">>, QS, <<"20">>)), 1),
+                100
+            ),
+            Offset = (Page - 1) * Size,
+            case
                 {
-                    binary_to_integer(proplists:get_value(<<"limit">>, QS, <<"20">>)),
-                    binary_to_integer(proplists:get_value(<<"offset">>, QS, <<"0">>))
+                    imboy_plugin_audit_ds:list(PluginName, Size, Offset),
+                    imboy_plugin_audit_ds:count(PluginName)
                 }
             of
-                {Limit, Offset} ->
-                    case imboy_plugin_audit_ds:list(PluginName, Limit, Offset) of
-                        {ok, Rows} ->
-                            elib_response:success(Req0, #{
-                                <<"list">> => Rows,
-                                <<"limit">> => Limit,
-                                <<"offset">> => Offset
-                            });
-                        {error, Reason} ->
-                            elib_response:error(
-                                Req0, iolist_to_binary(io_lib:format("~p", [Reason])), 500
-                            )
-                    end
-            catch
-                error:badarg ->
-                    elib_response:error(Req0, <<"limit/offset 参数无效"/utf8>>, ?ERR_BAD_REQUEST)
+                {{ok, Rows}, {ok, Total}} ->
+                    elib_response:success(Req0, #{
+                        <<"list">> => Rows,
+                        <<"total">> => Total,
+                        <<"page">> => Page,
+                        <<"size">> => Size
+                    });
+                {{error, Reason}, _} ->
+                    elib_response:error(
+                        Req0, iolist_to_binary(io_lib:format("~p", [Reason])), 500
+                    );
+                {_, {error, Reason}} ->
+                    elib_response:error(
+                        Req0, iolist_to_binary(io_lib:format("~p", [Reason])), 500
+                    )
             end;
         {error, Req1} ->
             Req1
