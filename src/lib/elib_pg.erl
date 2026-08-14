@@ -322,8 +322,10 @@ pluck(Table, Field, Where, Opts, Default) ->
                         % 支持 "count(*) as count", "count(*) AS count", "sum(price) total" 等
                         lists:last(Parts);
                     _ ->
-                        % 没有空格，检查是否是聚合函数
-                        case Field of
+                        % 没有空格，检查是否是聚合函数。
+                        % 先折叠小写：调用方可能写 "COUNT(*)"（PG 返回列名总是小写，
+                        % 大写聚合名会因 key 不匹配而恒取默认值）
+                        case string:lowercase(Field) of
                             <<"count(", _/binary>> -> <<"count">>;
                             <<"sum(", _/binary>> -> <<"sum">>;
                             <<"avg(", _/binary>> -> <<"avg">>;
