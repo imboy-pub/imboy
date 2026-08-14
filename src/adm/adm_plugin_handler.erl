@@ -384,7 +384,7 @@ do_force_uninstall(_, Req0, _State) ->
 %% @doc 查询插件审计日志（分页）
 -spec do_logs(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 do_logs(<<"GET">>, Req0, State) ->
-    case adm_acl:ensure_permission(State, <<"plugins:view">>, Req0) of
+    case adm_acl:ensure_permission(State, <<"plugins:read">>, Req0) of
         ok ->
             QS = cowboy_req:parse_qs(Req0),
             PluginName = proplists:get_value(<<"plugin_name">>, QS, <<"">>),
