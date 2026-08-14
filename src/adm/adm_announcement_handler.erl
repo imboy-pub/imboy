@@ -90,7 +90,7 @@ update(<<"PUT">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"announcements:update">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            Id = maps:get(<<"id">>, PostVals, 0),
+            Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
             if
                 is_integer(Id), Id > 0 ->
                     case announcement_ds:update(Id, PostVals) of
@@ -114,7 +114,7 @@ delete(<<"POST">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"announcements:delete">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            Id = maps:get(<<"id">>, PostVals, 0),
+            Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
             if
                 is_integer(Id), Id > 0 ->
                     case announcement_ds:delete_by_id(Id) of
@@ -138,7 +138,7 @@ publish(<<"POST">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"announcements:publish">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            Id = maps:get(<<"id">>, PostVals, 0),
+            Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
             if
                 is_integer(Id), Id > 0 ->
                     case announcement_ds:publish(Id) of
@@ -162,7 +162,7 @@ unpublish(<<"POST">>, Req0, State) ->
     case adm_acl:ensure_permission(State, <<"announcements:publish">>, Req0) of
         ok ->
             PostVals = elib_param:post(Req0),
-            Id = maps:get(<<"id">>, PostVals, 0),
+            Id = normalize_id(maps:get(<<"id">>, PostVals, 0)),
             if
                 is_integer(Id), Id > 0 ->
                     case announcement_ds:unpublish(Id) of
@@ -183,6 +183,21 @@ unpublish(_, Req0, _State) ->
 %% ===================================================================
 %% Internal helpers
 %% ===================================================================
+
+%% @doc 归一化写操作里的公告 id。
+%% TSID 超过 JS Number 安全整数范围，前端以 JSON string 发送，
+%% 与 adm_moment_handler:safe_to_integer 同款契约：接受 integer 或数字串。
+-spec normalize_id(term()) -> integer().
+normalize_id(Id) when is_integer(Id) ->
+    Id;
+normalize_id(Id) when is_binary(Id) ->
+    try
+        binary_to_integer(Id)
+    catch
+        _:_ -> 0
+    end;
+normalize_id(_) ->
+    0.
 
 -spec filter_opts(term(), term(), term()) -> map().
 filter_opts(undefined, undefined, undefined) ->
