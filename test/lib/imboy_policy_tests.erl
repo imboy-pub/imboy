@@ -343,6 +343,32 @@ e2ee_enabled_returns_false_when_disabled_test_() ->
         end
     ).
 
+%% 回归（生产实测 2026-08-14）：storage_mode=compliance_e2ee + e2ee_mode=disabled
+%% 时 message_encryption_required()=true 要求加密，但 e2ee_enabled()=false 又
+%% 5190 拒绝 report_device_key/user_keys，客户端 no_recipient_keys 死锁。
+%% e2ee_enabled 必须与 message_encryption_required 的判定源对齐。
+e2ee_enabled_when_storage_mode_requires_encryption_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'get', 2, fun default_config_get/2},
+                {'env', 2, fun
+                    (product_profile, community) ->
+                        community;
+                    (capabilities, #{}) ->
+                        #{
+                            e2ee_mode => disabled,
+                            storage_mode => compliance_e2ee
+                        }
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(true, imboy_policy:message_encryption_required()),
+            ?assertEqual(true, imboy_policy:e2ee_enabled())
+        end
+    ).
+
 e2ee_enabled_defaults_to_profile_capability_when_missing_test_() ->
     ?WITH_MECKS(
         [

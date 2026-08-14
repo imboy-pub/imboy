@@ -171,8 +171,18 @@ message_encryption_required() ->
         E2eeMode =:= compliance.
 
 -spec e2ee_enabled() -> boolean().
+%% 与 message_encryption_required/0 的判定源对齐：storage_mode 为
+%% secure_e2ee / compliance_e2ee 时消息必须加密，此时任凭 e2ee_mode=disabled，
+%% 密钥上报/查询端点也必须放行——否则形成「要求加密却 5190 拒绝密钥上报」的
+%% 死锁（生产实测 storage_mode=compliance_e2ee + e2ee_mode=disabled 组合，
+%% 客户端 no_recipient_keys，C2C 全部发不出去）。
 e2ee_enabled() ->
-    maps:get(e2ee_mode, effective_capabilities(), disabled) =/= disabled.
+    Capabilities = effective_capabilities(),
+    StorageMode = maps:get(storage_mode, Capabilities, archived),
+    E2eeMode = maps:get(e2ee_mode, Capabilities, disabled),
+    StorageMode =:= secure_e2ee orelse
+        StorageMode =:= compliance_e2ee orelse
+        E2eeMode =/= disabled.
 
 -spec validate_message_write(binary(), binary(), binary(), term(), term()) ->
     ok | {error, binary()}.
