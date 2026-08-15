@@ -447,12 +447,15 @@ role_name_exists(RoleName) ->
 create_role_record(RoleName, Status) ->
     Tb = role_table(),
     NextSort = next_role_sort(),
+    %% adm_role.id bigint NOT NULL 无默认（TSID 迁移遗漏），应用侧生成 id，
+    %% 同 adm_channel_handler 的 channel_price 先例。
+    RoleId = elib_tsid:generate(adm_role),
     Sql = iolist_to_binary([
         <<"INSERT INTO ">>,
         Tb,
-        <<" (parent_id, sort, role_name, status) VALUES ($1, $2, $3, $4) RETURNING id">>
+        <<" (id, parent_id, sort, role_name, status) VALUES ($1, $2, $3, $4, $5) RETURNING id">>
     ]),
-    case elib_pg:one(Sql, [0, NextSort, RoleName, Status]) of
+    case elib_pg:one(Sql, [RoleId, 0, NextSort, RoleName, Status]) of
         {ok, #{<<"id">> := RoleId}} when is_integer(RoleId), RoleId > 0 ->
             {ok, RoleId};
         {ok, Row} ->

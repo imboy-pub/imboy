@@ -491,7 +491,8 @@ reject_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
     Sql =
         <<"UPDATE ", Tb/binary,
-            " SET status = 1, updated_at = NOW()"
+            %% user 表无 updated_at 列（只有 created_at），不能写该字段
+            " SET status = 1"
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
     elib_pg:query(Sql, [Uid]).
@@ -502,7 +503,7 @@ approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
     Sql =
         <<"UPDATE ", Tb/binary,
-            " SET status = -1, updated_at = NOW()"
+            " SET status = -1"
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
     elib_pg:query(Sql, [Uid]).

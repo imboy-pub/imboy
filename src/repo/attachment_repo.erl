@@ -182,7 +182,9 @@ stats() ->
 %% @doc 分页查询附件列表
 %% @param Page 页码（从1开始）
 %% @param Size 每页大小
-%% @param Opts 筛选选项 #{mime_type => binary(), keyword => binary()}
+%% @param Opts 筛选选项 #{mime_type => binary(), keyword => binary(),
+%%                         status => <<"all">> | <<"1">> | <<"0">> | <<"-1">>}
+%%   默认只查正常（status=1）；admin 传 status 筛选禁用/软删除行（否则禁用后无启用入口）
 -spec page(pos_integer(), pos_integer(), map()) -> {ok, map()} | {error, term()}.
 page(Page, Size, Opts) ->
     Tb = tablename(),
@@ -191,7 +193,7 @@ page(Page, Size, Opts) ->
     Keyword = maps:get(keyword, Opts, undefined),
 
     {WhereExtra, FilterParams} = build_filter(MimeType, Keyword),
-    BaseWhere = [<<" WHERE status = 1">>, WhereExtra],
+    BaseWhere = [status_where(maps:get(status, Opts, <<"1">>)), WhereExtra],
 
     CountSql = [<<"SELECT COUNT(*) AS count FROM ">>, Tb, BaseWhere],
     Total =
@@ -236,6 +238,13 @@ page(Page, Size, Opts) ->
         <<"total">> => Total,
         <<"total_page">> => TotalPage
     }}.
+
+%% @doc 状态 WHERE 片段（白名单字面量，无参数拼接）
+-spec status_where(binary()) -> binary().
+status_where(<<"all">>) -> <<" WHERE status >= -1">>;
+status_where(<<"0">>) -> <<" WHERE status = 0">>;
+status_where(<<"-1">>) -> <<" WHERE status = -1">>;
+status_where(_) -> <<" WHERE status = 1">>.
 
 %% @doc 构建动态 WHERE 条件
 -spec build_filter(binary() | undefined, binary() | undefined) -> {iodata(), list()}.

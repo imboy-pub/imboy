@@ -126,24 +126,37 @@ vote_close(<<"POST">>, Req0, State) ->
                 <<>> ->
                     elib_response:error(Req0, "参数错误");
                 _ ->
-                    case group_vote_logic:close_vote(VoteId, maps:get(adm_user_id, State, 0)) of
-                        ok ->
-                            GroupId = resolve_vote_group_id(VoteId),
-                            _ = audit_group_governance(
-                                maps:get(adm_user_id, State, 0),
-                                GroupId,
-                                <<"close_vote">>,
-                                VoteId,
-                                #{<<"scope">> => <<"vote">>}
-                            ),
-                            elib_response:success(Req0, #{}, "操作成功");
-                        {error, vote_not_found} ->
+                    %% 平台管理员治理操作：权限已由 adm_acl(groups:vote:close) 校验，
+                    %% 不能复用客户端 group_vote_logic:close_vote/2（会再校验
+                    %% 「creator 或群管理员」，平台管理员非群成员恒被拒）。
+                    %% 与 adm_group_task_handler:task_close 同模式，直接改状态。
+                    case group_vote_ds:find_by_vote_id(VoteId) of
+                        {error, not_found} ->
                             elib_response:error(Req0, "投票不存在");
-                        {error, vote_already_closed} ->
-                            elib_response:error(Req0, "投票已结束");
-                        {error, Reason} ->
-                            ?ERROR_LOG(["adm vote close error: ", Reason]),
-                            elib_response:error(Req0, "操作失败")
+                        {ok, Vote} ->
+                            case maps:get(<<"status">>, Vote, 0) of
+                                2 ->
+                                    elib_response:error(Req0, "投票已结束");
+                                1 ->
+                                    case group_vote_ds:update_vote_status(VoteId, 2) of
+                                        {ok, _Count} ->
+                                            GroupId = resolve_vote_group_id(VoteId),
+                                            _ = audit_group_governance(
+                                                maps:get(adm_user_id, State, 0),
+                                                GroupId,
+                                                <<"close_vote">>,
+                                                VoteId,
+                                                #{<<"scope">> => <<"vote">>}
+                                            ),
+                                            elib_response:success(Req0, #{}, "操作成功");
+                                        {error, Reason} ->
+                                            ?ERROR_LOG(["adm vote close error: ", Reason]),
+                                            elib_response:error(Req0, "操作失败")
+                                    end;
+                                _ ->
+                                    ?ERROR_LOG(["adm vote close error: invalid_vote_status"]),
+                                    elib_response:error(Req0, "操作失败")
+                            end
                     end
             end
     end.

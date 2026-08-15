@@ -82,9 +82,11 @@ validate(Account, Pwd, Nickname) ->
                         ok -> {ok, Type};
                         {error, _} = E -> E
                     end;
-                {error, _} = E -> E
+                {error, _} = E ->
+                    E
             end;
-        {error, _} = E -> E
+        {error, _} = E ->
+            E
     end.
 
 validate_account(Account) when is_binary(Account), byte_size(Account) > 0 ->
@@ -147,15 +149,18 @@ create_super_admin(AccountType, Account, Pwd, Nickname) ->
         <<"password">> => PwdHash,
         <<"nickname">> => Nickname,
         <<"status">> => 1,
-        <<"role_id">> => ?SUPER_ADMIN_ROLE_ID,
+        %% adm_user.role_id 是 bigint[]（多角色），标量 1 会类型不匹配致
+        %% INSERT 报错并拖垮事务连接（首启向导从未真实走通的原因之一）。
+        <<"role_id">> => [?SUPER_ADMIN_ROLE_ID],
         <<"created_at">> => Now
     },
-    Row = case AccountType of
-        mobile ->
-            Row0#{<<"account">> => Account, <<"mobile">> => Account};
-        email ->
-            Row0#{<<"account">> => Account, <<"email">> => Account}
-    end,
+    Row =
+        case AccountType of
+            mobile ->
+                Row0#{<<"account">> => Account, <<"mobile">> => Account};
+            email ->
+                Row0#{<<"account">> => Account, <<"email">> => Account}
+        end,
     case adm_user_ds:save(Row) of
         {ok, Id} ->
             _ = config_ds:set(?SETUP_FLAG_KEY, Now),

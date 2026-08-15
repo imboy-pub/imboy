@@ -12,6 +12,8 @@
     join_group/5,
     leave/3,
     alias/4,
+    % 管理端踢出（免群内角色校验，权限由 adm_acl 门禁把守）
+    admin_kick/3,
     % 更新群成员角色
     update_role/4,
     % 群成员禁言
@@ -121,6 +123,13 @@ leave(Uid, Gid, CurrentUid) ->
         ok -> leave_execute(Uid, Gid, CurrentUid);
         {error, _Reason} -> ok
     end.
+
+%% @doc 管理端踢出群成员：管理员不在群成员表，不能走 leave/3 的群内角色
+%% 校验（否则恒返回「你不是群成员」且被吞成假成功）。调用方（adm handler）
+%% 必须已通过 adm_acl 权限门禁。
+-spec admin_kick(integer(), integer(), integer()) -> ok.
+admin_kick(Uid, Gid, AdminUid) ->
+    leave_execute(Uid, Gid, AdminUid).
 
 -spec leave_execute(integer(), integer(), integer()) -> ok.
 leave_execute(Uid, Gid, CurrentUid) ->

@@ -113,16 +113,20 @@ update(<<"POST">>, Req0, State) ->
             case Gid > 0 of
                 true ->
                     PostVals = elib_param:post(Req0),
-                    Data0 = #{id => Gid},
-                    Data1 = maybe_put(Data0, title, maps:get(<<"title">>, PostVals, undefined)),
+                    %% group_repo:update 按 binary 键取 id/剔除 SET 列，
+                    %% atom 键会导致 maps:get(<<"id">>) 抛错（500）
+                    Data0 = #{<<"id">> => Gid},
+                    Data1 = maybe_put(
+                        Data0, <<"title">>, maps:get(<<"title">>, PostVals, undefined)
+                    ),
                     Data2 = maybe_put(
-                        Data1, introduction, maps:get(<<"introduction">>, PostVals, undefined)
+                        Data1, <<"introduction">>, maps:get(<<"introduction">>, PostVals, undefined)
                     ),
                     Data3 = maybe_put(
-                        Data2, join_limit, maps:get(<<"join_limit">>, PostVals, undefined)
+                        Data2, <<"join_limit">>, maps:get(<<"join_limit">>, PostVals, undefined)
                     ),
                     Data4 = maybe_put(
-                        Data3, member_max, maps:get(<<"member_max">>, PostVals, undefined)
+                        Data3, <<"member_max">>, maps:get(<<"member_max">>, PostVals, undefined)
                     ),
                     case map_size(Data4) > 1 of
                         true ->
@@ -153,7 +157,7 @@ dissolve(<<"POST">>, Req0, State) ->
             Gid = parse_gid_param(Req0),
             case Gid > 0 of
                 true ->
-                    case group_ds:update(#{id => Gid, status => -1}) of
+                    case group_ds:update(#{<<"id">> => Gid, <<"status">> => -1}) of
                         {ok, _} ->
                             _ = audit_group_governance(
                                 maps:get(adm_user_id, State, 0),
@@ -244,14 +248,9 @@ kick_member(<<"POST">>, Req0, State) ->
                 false ->
                     elib_response:error(Req0, <<"参数错误"/utf8>>);
                 true ->
-                    case group_member_logic:leave(Uid, Gid, AdminUid) of
-                        ok ->
-                            ok;
-                        {error, LeaveErr} ->
-                            ?ERROR_LOG("kick_member leave failed gid=~p uid=~p err=~p", [
-                                Gid, Uid, LeaveErr
-                            ])
-                    end,
+                    %% 管理员不在群成员表，必须走 admin_kick（leave/3 的群内
+                    %% 角色校验对管理员恒失败，且失败被吞成假成功）。
+                    group_member_logic:admin_kick(Uid, Gid, AdminUid),
                     _ = audit_group_governance(
                         AdminUid,
                         Gid,
@@ -265,7 +264,7 @@ kick_member(<<"POST">>, Req0, State) ->
 kick_member(_, Req0, _State) ->
     Req0.
 
--spec maybe_put(map(), atom(), term()) -> map().
+-spec maybe_put(map(), binary(), term()) -> map().
 maybe_put(Data, _Key, undefined) -> Data;
 maybe_put(Data, _Key, <<>>) -> Data;
 maybe_put(Data, Key, Value) -> Data#{Key => Value}.

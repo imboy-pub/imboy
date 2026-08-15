@@ -207,7 +207,8 @@ messages(<<"GET">>, Req0) ->
                 "id, channel_id, author_id, author_name, content, msg_type, "
                 "is_pinned, view_count, created_at, updated_at"
             >>,
-            Where = #{channel_id => ChannelId},
+            %% 只返回未删除消息（status=1），否则删除后行仍留在列表
+            Where = #{channel_id => ChannelId, status => 1},
             case channel_message_ds:page(Column, Where, <<"id desc">>, Page, Size) of
                 {ok, Payload} ->
                     Payload2 = normalize_message_payload(Payload),

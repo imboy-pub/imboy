@@ -249,6 +249,7 @@ tsid_generator_names() ->
         olm_fallback_key,
         %% ── 管理员 ──
         adm_user,
+        adm_role,
         admin_op_log,
         %% ── 插件 ──
         plugin_audit_log,

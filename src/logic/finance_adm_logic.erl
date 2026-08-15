@@ -196,7 +196,9 @@ refund_payment_by_biz(Row, TradeNo, _BizType) ->
 -spec do_gateway_refund(binary(), binary(), integer(), binary()) ->
     {ok, refunded} | {error, binary()}.
 do_gateway_refund(Gateway, GwPayNo, Amount, TradeNo) ->
-    case payment_gateway:refund(Gateway, GwPayNo, Amount) of
+    %% payment_transaction.amount 单位为「分」，须按目标网关期望单位适配，
+    %% 否则 wallet 网关把分当元 → 退款放大 100 倍（见 fen_to_gateway_amount/2）。
+    case payment_gateway:refund(Gateway, GwPayNo, fen_to_gateway_amount(Gateway, Amount)) of
         ok ->
             case payment_transaction_ds:mark_refunded(TradeNo) of
                 {ok, 1} ->
@@ -216,6 +218,15 @@ do_gateway_refund(Gateway, GwPayNo, Amount, TradeNo) ->
                 Other -> {error, elib_cnv:safe_to_binary(Other)}
             end
     end.
+
+%% @doc payment_transaction.amount（分）→ 目标网关期望单位：
+%%   wallet 网关期望「元」(payment_wallet_gateway 内部 yuan_to_fen 换回分)，
+%%   第三方网关期望「分」。对齐 channel_logic_order:to_gateway_amount/2 的
+%%   网关单位约定（其金额源是元，此处源是分，方向相反故单独实现）。
+%%   分→元→分 的 float 往返由 yuan_to_fen 的 round 兜底，2^53 内无损。
+-spec fen_to_gateway_amount(binary(), integer()) -> integer() | float().
+fen_to_gateway_amount(<<"wallet">>, Fen) -> Fen / 100;
+fen_to_gateway_amount(_Gateway, Fen) -> Fen.
 
 -spec release_refunding_quietly(binary()) -> ok.
 release_refunding_quietly(TradeNo) ->

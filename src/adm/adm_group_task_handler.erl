@@ -196,7 +196,11 @@ task_review(<<"POST">>, Req0, State) ->
                                 #{score => Score, comment => Comment}
                             ),
                             ReviewerId = maps:get(adm_user_id, State, 0),
-                            case group_task_logic:review(AssignmentPk, ReviewerId, ReviewData) of
+                            case
+                                group_task_logic:review_as_admin(
+                                    AssignmentPk, ReviewerId, ReviewData
+                                )
+                            of
                                 ok ->
                                     Extra = maps:filter(
                                         fun(_K, V) -> V =/= undefined end,
@@ -219,9 +223,9 @@ task_review(<<"POST">>, Req0, State) ->
                                         Extra
                                     ),
                                     elib_response:success(Req0, #{}, "操作成功");
-                                {error, Reason} ->
-                                    ?ERROR_LOG(["adm task review error: ", Reason]),
-                                    elib_response:error(Req0, "操作失败")
+                                {error, Msg, Code} ->
+                                    ?ERROR_LOG(["adm task review error: ", Msg, Code]),
+                                    elib_response:error(Req0, Msg, Code)
                             end;
                         {error, not_found} ->
                             elib_response:error(Req0, "作业分配不存在")

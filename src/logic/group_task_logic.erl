@@ -16,6 +16,7 @@
 -export([submit/3]).
 %% 批改作业
 -export([review/3]).
+-export([review_as_admin/3]).
 %% 查询作业详情（内部/管理端原语，不做群成员校验，调用方需自行鉴权）
 -export([detail/1]).
 %% 查询作业详情（用户侧：额外校验 ViewerUid 为该作业所属群成员）
@@ -286,6 +287,47 @@ review(AssignmentId, ReviewerId, Data) when
                 ?ERR_TASK_ASSIGNMENT_NOT_FOUND}
     end;
 review(_AssignmentId, _ReviewerId, _Data) ->
+    {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
+
+%% @doc 批改作业（管理端入口）
+%% 权限由 adm 层 RBAC（groups:task:review）把关；管理员 adm_user_id 与
+%% 用户侧 creator_id 分属两个 ID 空间，不做创建者归属校验。
+%% @param AssignmentId 分配主键
+%% @param ReviewerId 管理员 adm_user_id（记入 reviewed_by 审计字段）
+%% @param Data 批改数据（score, comment）
+%% @return ok | {error, Msg, Code}
+-spec review_as_admin(integer(), integer(), map()) -> ok | {error, binary(), integer()}.
+review_as_admin(AssignmentId, ReviewerId, Data) when
+    is_integer(AssignmentId),
+    AssignmentId > 0,
+    is_integer(ReviewerId),
+    ReviewerId > 0
+->
+    case group_task_ds:assignment_find_by_id(AssignmentId) of
+        {ok, Assignment} ->
+            Status = maps:get(<<"status">>, Assignment, 0),
+            case Status of
+                2 ->
+                    Now = elib_dt:now(),
+                    ReviewData = #{
+                        status => 3,
+                        reviewed_by => ReviewerId,
+                        reviewed_at => Now
+                    },
+                    ReviewData2 = maps:merge(ReviewData, Data),
+                    _ = group_task_ds:assignment_update(AssignmentId, ReviewData2),
+                    ok;
+                3 ->
+                    {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),
+                        ?ERR_TASK_ALREADY_REVIEWED};
+                _ ->
+                    {error, <<"作业未提交，无法批改"/utf8>>, ?ERR_BAD_REQUEST}
+            end;
+        {error, not_found} ->
+            {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND),
+                ?ERR_TASK_ASSIGNMENT_NOT_FOUND}
+    end;
+review_as_admin(_AssignmentId, _ReviewerId, _Data) ->
     {error, imboy_error:error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST}.
 
 %% @doc 查询作业详情

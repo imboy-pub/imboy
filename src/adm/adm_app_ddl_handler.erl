@@ -110,6 +110,10 @@ delete_action(<<"DELETE">>, Req0, State) ->
 
             % 使用安全的参数化查询，避免 SQL 注入
             case app_ddl_ds:delete(Id) of
+                {ok, 0} ->
+                    %% app_ddl_ds:delete/1 仅删 status=0（已禁用）的行；
+                    %% 0 行受影响 = 配置不存在或仍启用，不能当成功（假成功）
+                    elib_response:error(Req0, <<"DDL 配置不存在或未禁用，无法删除"/utf8>>);
                 {ok, _Count} ->
                     elib_response:success(Req0, PostVals, <<"success."/utf8>>);
                 {error, Reason} ->

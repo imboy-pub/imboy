@@ -27,11 +27,12 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
-    Req1 = case Action of
-        status -> status(Method, Req0);
-        init_setup -> init_setup(Method, Req0);
-        _ -> cowboy_req:reply(404, #{}, <<"Not Found">>, Req0)
-    end,
+    Req1 =
+        case Action of
+            status -> status(Method, Req0);
+            init_setup -> init_setup(Method, Req0);
+            _ -> cowboy_req:reply(404, #{}, <<"Not Found">>, Req0)
+        end,
     {ok, Req1, State}.
 
 %% ===================================================================
@@ -48,9 +49,34 @@ status(_, Req0) ->
 -spec init_setup(binary(), cowboy_req:req()) -> cowboy_req:req().
 init_setup(<<"POST">>, Req0) ->
     PostVals = elib_param:post(Req0),
+    %% 前端 password 是 RSA-OAEP 加密的 md5(password)（同登录链路，
+    %% 见 adm_passport_handler:decrypt_password）。缺解密时密文 base64
+    %% 长度 > 64 恒被 validate_password_strength 拒成「首启参数无效」。
+    case decrypt_password(maps:get(<<"password">>, PostVals, <<>>)) of
+        <<>> ->
+            elib_response:error(Req0, <<"密码有误"/utf8>>, ?ERR_SETUP_INVALID_PARAMS);
+        Password ->
+            do_init_setup(Req0, PostVals, Password)
+    end;
+init_setup(_, Req0) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc 解密登录密码，失败时返回空二进制，避免请求进程崩溃
+%% （与 adm_passport_handler:decrypt_password/1 同模式）
+-spec decrypt_password(term()) -> binary().
+decrypt_password(Pwd) ->
+    try elib_cipher:rsa_decrypt(Pwd) of
+        Password when is_binary(Password) -> Password;
+        _ -> <<>>
+    catch
+        _:_ -> <<>>
+    end.
+
+-spec do_init_setup(cowboy_req:req(), map(), binary()) -> cowboy_req:req().
+do_init_setup(Req0, PostVals, Password) ->
     Params = #{
-        <<"account">>  => to_bin(maps:get(<<"account">>,  PostVals, <<>>)),
-        <<"password">> => to_bin(maps:get(<<"password">>, PostVals, <<>>)),
+        <<"account">> => to_bin(maps:get(<<"account">>, PostVals, <<>>)),
+        <<"password">> => Password,
         <<"nickname">> => to_bin(maps:get(<<"nickname">>, PostVals, <<>>))
     },
     case adm_setup_logic:do_init(Params) of
@@ -60,12 +86,12 @@ init_setup(<<"POST">>, Req0) ->
             Msg = maps:get(Code, ?ERROR_MSG_MAP, <<"首启参数无效"/utf8>>),
             elib_response:error(Req0, Msg, Code);
         {error, _} ->
-            elib_response:error(Req0,
-                                <<"首启初始化失败"/utf8>>,
-                                ?ERR_SETUP_INVALID_PARAMS)
-    end;
-init_setup(_, Req0) ->
-    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+            elib_response:error(
+                Req0,
+                <<"首启初始化失败"/utf8>>,
+                ?ERR_SETUP_INVALID_PARAMS
+            )
+    end.
 
 to_bin(V) when is_binary(V) -> V;
 to_bin(V) when is_list(V) -> list_to_binary(V);

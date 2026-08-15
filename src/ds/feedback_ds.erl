@@ -132,8 +132,13 @@ remove(Uid, FeedbackId) ->
 
 % feedback_ds:add_reply(#{feedback_id => 1, feedback_reply_pid => 0, replier_user_id => 1, replier_name => <<"sss">>, body => "", created_at => elib_dt:now()})
 -spec add_reply(map()) -> ok.
-add_reply(Data) ->
-    FeedbackId = maps:get(<<"feedback_id">>, Data),
+add_reply(Data0) ->
+    FeedbackId = maps:get(<<"feedback_id">>, Data0),
+    % feedback_reply.id 无库级默认值，必须显式生成 TSID
+    Data = Data0#{
+        <<"id">> => elib_tsid:generate(feedback_reply),
+        <<"status">> => 1
+    },
     Tb = feedback_reply_repo:tablename(),
     {Sql, Params} = elib_pg_sql:insert(Tb, Data, <<"">>),
     case elib_pg:execute(Sql, Params) of

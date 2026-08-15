@@ -65,7 +65,9 @@ index(<<"GET">>, Req0, State) ->
             Qs = cowboy_req:parse_qs(Req0),
             MimeType = proplists:get_value(<<"mime_type">>, Qs, undefined),
             Keyword = proplists:get_value(<<"keyword">>, Qs, undefined),
-            Opts = #{mime_type => MimeType, keyword => Keyword},
+            %% status 筛选（all/1/0/-1，repo 白名单校验），不传默认只查正常
+            Status = proplists:get_value(<<"status">>, Qs, undefined),
+            Opts = #{mime_type => MimeType, keyword => Keyword, status => Status},
             case attachment_ds:page(Page, Size, Opts) of
                 {ok, Result} ->
                     elib_response:success(Req0, Result, "success.");

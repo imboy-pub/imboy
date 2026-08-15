@@ -85,7 +85,8 @@ refund(PaymentNo, Amount) ->
 -spec refund_fen(binary(), integer()) -> ok | {error, binary()}.
 refund_fen(_PaymentNo, Fen) when Fen =< 0 ->
     {error, <<"退款金额无效"/utf8>>};
-refund_fen(PaymentNo, Fen) ->
+%% payment_no 可能为 DB NULL（epgsql 返回 null atom），无支付流水号即无原支付流水
+refund_fen(PaymentNo, Fen) when is_binary(PaymentNo), PaymentNo =/= <<>> ->
     RefundRef = <<"R_", PaymentNo/binary>>,
     %% 幂等：已退款直接返回成功
     case wallet_ds:find_transaction_by_ref(RefundRef) of
@@ -93,7 +94,9 @@ refund_fen(PaymentNo, Fen) ->
             ok;
         _ ->
             do_refund(PaymentNo, Fen, RefundRef)
-    end.
+    end;
+refund_fen(_PaymentNo, _Fen) ->
+    {error, <<"原支付流水不存在"/utf8>>}.
 
 -spec do_refund(binary(), integer(), binary()) -> ok | {error, binary()}.
 do_refund(PaymentNo, Fen, RefundRef) ->

@@ -302,9 +302,14 @@ do_login_by_code_verify(User, DType, Did) ->
                 _ = user_log_ds:add_internal(undefined, 100, Uid, LogBody, elib_dt:now())
             end),
             case user_device_logic:check_login_conflict(Uid, DType) of
-                {ok, no_conflict} -> {ok, Data};
-                {ok, conflict, ConflictInfo} -> {{error, conflict}, ConflictInfo};
-                {error, _} -> {ok, Data}
+                {ok, no_conflict} ->
+                    {ok, Data};
+                {ok, conflict, ConflictInfo} ->
+                    ConflictDID = maps:get(<<"device_id">>, ConflictInfo),
+                    _ = user_device_logic:kick_device(Uid, DType, ConflictDID),
+                    {ok, Data};
+                {error, _} ->
+                    {ok, Data}
             end;
         2 ->
             {ok, login_resp(User, Did, #{})}
@@ -363,8 +368,10 @@ do_login_verify(Pwd, User, DType, Did) ->
                                     % 无冲突，正常登录
                                     {ok, Data};
                                 {ok, conflict, ConflictInfo} ->
-                                    % 有冲突，返回冲突信息
-                                    {{error, conflict}, ConflictInfo};
+                                    % 有冲突，自动将老会话踢下线，允许新设备登录
+                                    ConflictDID = maps:get(<<"device_id">>, ConflictInfo),
+                                    _ = user_device_logic:kick_device(Uid, DType, ConflictDID),
+                                    {ok, Data};
                                 {error, _Reason} ->
                                     % 检查失败，允许登录
                                     {ok, Data}
