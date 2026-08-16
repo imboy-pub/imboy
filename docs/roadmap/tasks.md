@@ -102,15 +102,15 @@
 
 ### W0-SEC-02
 - title: 钱包借记补 frozen/status 守卫 + 表级 CHECK
-- status: ready
+- status: in_progress
 - deps: none
 - wave: 0
 - tag: security
 - effort: S
 - source: risk-report P1-D1；SEC-02
-- action: `wallet_repo.erl:117-120`（atomic_balance_change 补 status+frozen）、`:193-197`（do_debit 补 frozen）、`:271-275`；加迁移表级 CHECK `frozen<=balance`。
-- verify: 冻结态借记被拒测试 + CHECK 拦 frozen>balance；转账/红包回归绿。
-- evidence:
+- action: 四条直接借记路径（通用扣款、Agent 两腿结算、好友转账、充值退款扣回）统一在原子 UPDATE 内守卫 `status=1` 与 `balance-frozen`；迁移 65/66 分两事务添加并验证 `frozen<=balance` CHECK。
+- verify: 仓储 SQL 契约与钱包支付/提现/红包/Agent 支付/转账/充值退款/付费频道回归绿；发布前仍须在 PostgreSQL 18 副本完成历史违规预检、CHECK SQLSTATE 23514、65 up→66 up→66 down→65 down 与锁等待演练。
+- evidence: 实现已进入 `b35b1c7f`（当前 `origin/main` 已包含）；2026-08-16 最新 HEAD 上 `make app` 通过，12 个相关 EUnit 模块共 99 项全绿，release consistency 18/18、其自测 18/18、erlfmt 与 diff-check 通过。真实 PostgreSQL 验收未完成：本机 5432 无服务，隔离 PG 初始化被沙箱共享内存权限阻止，故保持 in_progress，不以 mock/静态 SQL 冒充数据库证据。
 
 ### W0-SEC-00
 - title: AGPL vodozemac 法务裁决（产品决策，非工程）

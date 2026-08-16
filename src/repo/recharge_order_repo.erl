@@ -298,7 +298,7 @@ refund_wallet_in_tx(Conn, WalletTb, TxTb, Uid, Amount, RefNo) ->
             throw({rollback, Reason})
     end.
 
-%% @doc 钱包扣款 0 行时区分"钱包不存在"与"可用余额不足"
+%% @doc 钱包扣款 0 行时区分"钱包不存在"与"钱包存在但不可借记（停用/可用余额不足）"
 -spec wallet_refund_block_reason(term(), binary(), integer()) ->
     insufficient_available | wallet_not_found.
 wallet_refund_block_reason(Conn, WalletTb, Uid) ->

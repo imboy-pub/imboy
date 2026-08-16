@@ -155,7 +155,7 @@ balance_change_update_sql(Tb, _Amount) ->
 %% **不嵌套** atomic_balance_change/4，因其自开事务会破坏原子性）。
 %% Debit/Credit 均为 map（amount 为正整数分，方向由借/贷腿决定）：
 %%   #{user_id, wallet_id, amount, tx_type, remark, reference_no}
-%% 借记腿守卫 `balance - amount >= 0`（余额不足 → {rollback, insufficient_balance}）；
+%% 借记腿守卫 `balance - frozen >= amount`（可用余额不足 → {rollback, insufficient_balance}）；
 %% 贷记腿要求收款钱包存在（{ok,0} → {rollback, credit_wallet_missing}）。
 %% 流水 amount 存**带符号增量**：借记 -amount、贷记 +amount（与既有 ledger 一致）。
 %% 幂等靠 reference_no 唯一索引：两腿须用不同 RefNo，重放时 INSERT 撞索引 → 整笔 rollback。
@@ -186,7 +186,7 @@ atomic_transfer(Debit, Credit) ->
     CRemark = maps:get(remark, Credit, <<>>),
     AfterTransfer = maps:get(after_transfer, Credit, undefined),
     elib_pg:with_tx(fun(Conn) ->
-        %% 1. 借记付款方（守卫余额充足，行锁 + 乐观锁 version+1）
+        %% 1. 借记付款方（守卫可用余额充足，行锁 + 乐观锁 version+1）
         DebitBal = do_debit(Conn, Tb, DUid, DAmt),
         %% 2. 借记流水（负数增量）
         ok = insert_tx(Conn, TxTb, DWid, DUid, -DAmt, DebitBal, DType, DRemark, DRef),
