@@ -1698,6 +1698,9 @@ admins_uses_path_channel_id_test_() ->
             {cowboy_req, [
                 {'binding', 2, fun(channel_id, _Req) -> <<"ch_hash_path">> end}
             ]},
+            {channel_logic_common, [
+                {'get_user_role', 2, fun(_, _) -> 0 end}
+            ]},
             {channel_logic_subscription, [
                 {'is_subscribed', 2, fun(_, _) -> true end}
             ]},
@@ -1714,6 +1717,41 @@ admins_uses_path_channel_id_test_() ->
             Req = req_mock(),
             Result = channel_handler_admin:handle_action(admins, Req, #{}),
             ?assertEqual({ok_resp, #{list => [#{<<"user_id">> => <<"uid_1">>}]}}, Result)
+        end
+    ).
+
+% BUG#135 回归（生产实证 8/14+8/16 qa-batch84-admin 管理员列表恒空）：
+% 创建频道只写 channel_admin（role=3），不写 channel_subscription，创建者
+% 在订阅表无行 → is_subscribed 恒 false → 403 → 客户端静默显示空列表。
+% 权限已放宽为「频道管理员（含创建者）或订阅者」任一满足即可。
+admins_allows_creator_without_subscription_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'binding', 2, fun(channel_id, _Req) -> <<"ch_creator_no_subs">> end}
+            ]},
+            {channel_logic_common, [
+                {'get_user_role', 2, fun(_, _) -> 3 end}
+            ]},
+            {channel_logic_subscription, [
+                {'is_subscribed', 2, fun(_, _) -> false end}
+            ]},
+            {channel_logic, [
+                {'get_admins', 1, fun(<<"ch_creator_no_subs">>) ->
+                    {ok, [#{<<"user_id">> => <<"uid_creator">>}]}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            ]}
+        ],
+        fun() ->
+            Req = req_mock(),
+            Result = channel_handler_admin:handle_action(admins, Req, #{}),
+            ?assertEqual(
+                {ok_resp, #{list => [#{<<"user_id">> => <<"uid_creator">>}]}},
+                Result
+            )
         end
     ).
 

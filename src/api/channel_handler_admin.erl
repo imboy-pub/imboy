@@ -136,7 +136,13 @@ admins(Req0, State) ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
             ChannelIdInt = elib_cnv:safe_to_integer(ChannelId),
-            case channel_logic_subscription:is_subscribed(ChannelIdInt, Uid) of
+            % BUG#135（生产实证 8/14+8/16 qa-batch84-admin 管理员列表恒空）：
+            % 创建频道只写 channel_admin（role=3），不写 channel_subscription，
+            % 创建者/管理员在订阅表无行 → is_subscribed 恒 false → 403 业务码
+            % （HTTP 仍 200）→ 客户端把无 list 的响应静默当空列表。
+            % 权限放宽为：频道管理员（含创建者，role>0）或订阅者。
+            Role = channel_logic_common:get_user_role(ChannelIdInt, Uid),
+            case Role > 0 orelse channel_logic_subscription:is_subscribed(ChannelIdInt, Uid) of
                 false ->
                     elib_response:error(Req0, <<"无权限查看该频道管理员"/utf8>>, 403);
                 true ->
