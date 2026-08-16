@@ -95,6 +95,12 @@ add(Uid, Did, COS, COSV, AppVsn, Type, Rating, ContactDetail, Body, Attach) ->
                     FeedbackMd5
                 )
             of
+                % BUG#134（生产实证 8/13+8/16 四次 500 空 body）：
+                % feedback_repo:add 成功契约是 ok（repo 单测锁定），此前 case 只
+                % 匹配 {ok, _}，ok 命中 case_clause → 进程崩溃 → cowboy 500 →
+                % INSERT 已提交但客户端「操作失败」。两个成功形态都放行。
+                ok ->
+                    ok;
                 {ok, _} ->
                     ok;
                 {error, Reason} ->
