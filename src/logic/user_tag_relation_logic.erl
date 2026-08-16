@@ -54,11 +54,13 @@
 %% ===================================================================
 %% API
 %% ===================================================================
--spec remove(integer(), binary(), integer(), integer()) -> ok.
+-spec remove(integer(), binary() | integer(), integer(), integer()) -> ok.
 remove(Uid, Scene, ObjectId, TagId) when is_binary(TagId) ->
     remove(Uid, Scene, ObjectId, binary_to_integer(TagId));
 remove(Uid, Scene, ObjectId, TagId) ->
-    Uid2 = integer_to_binary(Uid),
+    % Scene 转 integer：epgsql parse 本地推断参数类型，binary 场景值编码
+    % int4 会 integer_overflow 崩连接（生产 500 实证），与 set/5 全 integer 风格统一
+    Scene2 = ec_cnv:to_integer(Scene),
     % 使用 elib_pg:one 替代 pluck
     Tb = elib_pg_sql:public_tablename(<<"user_tag">>),
     Sql = <<"SELECT name FROM ", Tb/binary, " WHERE id = $1">>,
@@ -71,15 +73,15 @@ remove(Uid, Scene, ObjectId, TagId) ->
         % 移除 public.user_tag_relation
         user_tag_relation_ds:remove_user_tag_relation(
             Conn,
-            Scene,
-            Uid2,
+            Scene2,
+            Uid,
             TagId,
             ObjectId
         ),
         user_tag_relation_ds:replace_object_tag(
             Conn,
-            Scene,
-            Uid2,
+            Scene2,
+            Uid,
             ObjectId,
             binary_to_list(TagName),
             []

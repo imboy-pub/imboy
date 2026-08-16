@@ -158,8 +158,18 @@ remove_tag_success_test_() ->
             {'public_tablename', 1, fun(Tab) -> <<"public.", Tab/binary>> end}
         ]},
         {user_tag_relation_ds, [
-            {'remove_user_tag_relation', 5, fun(_Conn, _Scene, _Uid, _TagId, _ObjId) -> ok end},
-            {'replace_object_tag', 6, fun(_Conn, _Scene, _Uid, _ObjId, _TagName, _Tags) -> ok end},
+            % 参数断言：Scene/Uid 必须为 integer（binary 会致 epgsql int4
+            % 编码崩溃，生产 500 实证；与 set/5 全 integer 风格一致）
+            {'remove_user_tag_relation', 5, fun(_Conn, Scene, Uid, _TagId, _ObjId) ->
+                true = is_integer(Scene),
+                true = is_integer(Uid),
+                ok
+            end},
+            {'replace_object_tag', 6, fun(_Conn, Scene, Uid, _ObjId, _TagName, _Tags) ->
+                true = is_integer(Scene),
+                true = is_integer(Uid),
+                ok
+            end},
             {'flush_subtitle', 1, fun(_TagId) -> ok end},
             {'tablename', 0, fun() -> <<"public.user_tag_relation">> end}
         ]}
@@ -168,6 +178,11 @@ remove_tag_success_test_() ->
         [
             fun() ->
                 Result = user_tag_relation_logic:remove(100, 1, 1, 1),
+                ?assertEqual(ok, Result)
+            end,
+            fun() ->
+                % binary Scene 与 binary TagId 双路径：handler 传 <<"2">> 场景
+                Result = user_tag_relation_logic:remove(100, <<"2">>, 1, <<"1">>),
                 ?assertEqual(ok, Result)
             end
         ]
