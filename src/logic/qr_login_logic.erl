@@ -18,7 +18,7 @@
 %% @return ok
 -spec log_device_login(integer(), binary(), binary(), binary()) -> ok.
 log_device_login(Uid, DeviceId, DeviceName, Platform) ->
-    Now = erlang:system_time(millisecond),
+    Now = elib_dt:now(),
     PostVals = #{
         <<"device_name">> => DeviceName,
         <<"platform">> => Platform,
