@@ -130,7 +130,12 @@ set(Uid, Scene, ObjectIds, TagId, TagName) ->
             {ok, OldObjectIds} = elib_pg:query(OldSql, [Uid, <<TagName/binary, ",%">>]),
             OldObjectIds2 = [maps:get(<<"to_user_id">>, Row) || Row <- OldObjectIds],
 
-            DelObjectId = OldObjectIds2 -- ObjectIds2,
+            % to_user_id 为 int8：text 列输出（binary 数字串）须转 integer 再进
+            % execute（本地推断 int8，binary 编码致 integer_overflow 崩连接）
+            DelObjectId = [
+                binary_to_integer(I)
+             || I <- OldObjectIds2 -- ObjectIds2
+            ],
 
             _ = elib_pg:with_tx(fun(Conn) ->
                 %

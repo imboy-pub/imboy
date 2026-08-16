@@ -82,8 +82,9 @@ remove_user_tag_relation(Conn, Scene, Uid, TagId, ObjectId) ->
     ok.
 
 -spec replace_object_tag(any(), binary(), term(), term(), [any()], [any()]) -> ok.
-replace_object_tag(Conn, Scene, Uid, ObjectId, FromName, ToName) when is_integer(ObjectId) ->
-    replace_object_tag(Conn, Scene, Uid, integer_to_binary(ObjectId), FromName, ToName);
+% ObjectId 直通不转换：integer 直接进 Params（execute 推断 int8 匹配），
+% 文本 binary（如 "obj456" 场景）照原样直通。原 is_integer→binary 转换
+% 会把整数转 binary 致 int8 编码 integer_overflow 崩连接（生产 500 实证）
 replace_object_tag(Conn, Scene, Uid, ObjectId, FromName, ToName) ->
     % elib_log:error(io_lib:format("user_tag_relation_repo:replace_object_tag/6 args:~p;~n", [[Conn, Scene, Uid, ObjectId, FromName, ToName]])),
     % 使用安全的参数化查询，避免SQL注入

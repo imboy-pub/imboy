@@ -22,14 +22,17 @@ mock_connection() ->
 
 %% 测试表名获取
 tablename_test_() ->
-    ?WITH_MECKS([
-        {config_ds, [
-            {'env', 1, fun(sql_driver) -> pgsql end}
-        ]}
-    ], fun() ->
-        Result = user_tag_relation_repo:tablename(),
-        ?assertEqual(<<"public.user_tag_relation">>, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]}
+        ],
+        fun() ->
+            Result = user_tag_relation_repo:tablename(),
+            ?assertEqual(<<"public.user_tag_relation">>, Result)
+        end
+    ).
 
 %% 测试删除操作（二进制 Scene, 整数 Uid, 二进制 ObjectId）
 delete_test_() ->
@@ -173,12 +176,20 @@ replace_object_tag_scene1_test_() ->
     end).
 
 %% 测试替换对象标签（场景2：用户好友）
+%% to_user_id 为 bigint：ObjectId 必须传 integer（binary 编码致 int8
+%% integer_overflow 崩连接，生产 500 实证）。logic 层 remove/set 已保证
+%% 传 integer，此处断言 Params 全 integer 做回归保护。
 replace_object_tag_scene2_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(elib_pg, [no_link]),
         meck:new(elib_log, [no_link]),
 
-        meck:expect(elib_pg, execute, fun(_Conn, _Sql, _Params) ->
+        meck:expect(elib_pg, execute, fun(_Conn, _Sql, Params) ->
+            % Params = [Uid, ObjectId, FromName++",", ToName++","]，仅前两个
+            % 是 int8 参数位；FromName/ToName 本就是 list（text 参数）
+            [Uid, ObjId | _] = Params,
+            true = is_integer(Uid),
+            true = is_integer(ObjId),
             {ok, 1}
         end),
         meck:expect(elib_log, error, fun(_Fmt) -> ok end),
@@ -187,7 +198,7 @@ replace_object_tag_scene2_test_() ->
         try
             Conn = mock_connection(),
             Result = user_tag_relation_repo:replace_object_tag(
-                Conn, 2, ?TEST_UID, ?TEST_OBJECT_ID, "old_tag", "new_tag"
+                Conn, 2, ?TEST_UID, 99999, "old_tag", "new_tag"
             ),
             ?assertEqual(ok, Result),
             ?assert(meck:called(elib_pg, execute, 3))
@@ -203,7 +214,12 @@ replace_object_tag_int_objectid_test_() ->
         meck:new(elib_pg, [no_link]),
         meck:new(elib_log, [no_link]),
 
-        meck:expect(elib_pg, execute, fun(_Conn, _Sql, _Params) ->
+        % integer ObjectId 必须直通（不转 binary）：execute 推断 int8，
+        % binary 编码致 integer_overflow 崩连接（生产 500 实证）
+        meck:expect(elib_pg, execute, fun(_Conn, _Sql, Params) ->
+            [Uid, ObjId | _] = Params,
+            true = is_integer(Uid),
+            true = is_integer(ObjId),
             {ok, 1}
         end),
         meck:expect(elib_log, error, fun(_Fmt) -> ok end),
@@ -420,7 +436,7 @@ select_tag_test_() ->
             Result = user_tag_relation_repo:select_tag(
                 <<"scene = $1">>, [?TEST_SCENE], <<"id, name">>
             ),
-            ?assertMatch({ok, [_|_]}, Result),
+            ?assertMatch({ok, [_ | _]}, Result),
 
             {ok, Rows} = Result,
             ?assertEqual(2, length(Rows))
@@ -445,7 +461,7 @@ select_user_tag_relation_test_() ->
             Result = user_tag_relation_repo:select_user_tag_relation(
                 <<"user_id = $1 AND scene = $2">>, [?TEST_UID, ?TEST_SCENE], <<"*">>
             ),
-            ?assertMatch({ok, [_|_]}, Result),
+            ?assertMatch({ok, [_ | _]}, Result),
 
             {ok, Rows} = Result,
             ?assertEqual(1, length(Rows))
