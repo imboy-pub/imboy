@@ -71,8 +71,43 @@ upload_file_success_test_() ->
             {ok, FileId}
         end),
 
+        % BUG#137：上传成功须补写 scope=group 附件记录（Garage 私桶裸 URL
+        % 无签名且 attachment 表无记录 → 下载端 404）。验证 ObjectKey 与
+        % elib_oss:upload_to_storage/4 一致（FileId/basename）。
+        meck:new(elib_pg, [passthrough]),
+        meck:expect(elib_pg, with_tx, fun(F) -> F(conn) end),
+        meck:new(attachment_ds, [passthrough]),
+        meck:expect(attachment_ds, save, fun(Conn, CreatedAt, Uid, Attaches) ->
+            self() ! attachment_saved,
+            ?assertEqual(conn, Conn),
+            ?assertEqual(NowTs, CreatedAt),
+            ?assertEqual(UploaderId, Uid),
+            [Attach] = Attaches,
+            ?assertEqual(
+                binary:encode_hex(erlang:md5(FileBinary)), maps:get(<<"file_hash256">>, Attach)
+            ),
+            ?assertEqual(FileType, maps:get(<<"mime_type">>, Attach)),
+            ?assertEqual(FileName, maps:get(<<"name">>, Attach)),
+            ?assertEqual(<<FileId/binary, "/", FileName/binary>>, maps:get(<<"path">>, Attach)),
+            ?assertEqual(FileUrl, maps:get(<<"url">>, Attach)),
+            ?assertEqual(byte_size(FileBinary), maps:get(<<"size">>, Attach)),
+            ?assertEqual(<<"group">>, maps:get(<<"scope">>, Attach)),
+            ?assertEqual(integer_to_binary(Gid), maps:get(<<"scope_ref">>, Attach)),
+            ok
+        end),
+
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
 
+        % 反证：write_attachment 必须真实执行过（meck expect 不强制调用次数，
+        % 仅靠断言不够——save 从未被调用时测试依然会绿）
+        receive
+            attachment_saved -> ok
+        after 100 ->
+            ?assert(false)
+        end,
+
+        meck:unload(attachment_ds),
+        meck:unload(elib_pg),
         meck:unload(group_file_repo),
         meck:unload(elib_dt),
         meck:unload(elib_oss),

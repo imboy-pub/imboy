@@ -85,6 +85,21 @@ upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
                                 % repo 返回二元组 {ok, FileId}（曾误匹配三元组
                                 % {ok, _InsertId, _Details} → no case clause 生产 500）
                                 {ok, _FileId} ->
+                                    % BUG#137：elib_oss:upload 落库的是 Garage 私桶
+                                    % 裸 URL（无签名），且群文件从不写 attachment 表 →
+                                    % 客户端任何下载路径（viewUrl HMAC / view_url
+                                    % presign）都拿不到文件 → 群文件视频/音频播放 404。
+                                    % 补写 scope=group 附件记录，读鉴权才可签发 presign GET。
+                                    write_attachment(
+                                        Gid,
+                                        UploaderId,
+                                        FileName,
+                                        FileBinary,
+                                        FileType,
+                                        FileUrl,
+                                        FileId,
+                                        FileHashHex
+                                    ),
                                     {ok, FileId};
                                 {error, Reason} ->
                                     {error, Reason}
@@ -203,6 +218,42 @@ get_file_categories(Gid) ->
 %% ===================================================================
 %% 内部函数
 %% ===================================================================
+
+%% @doc BUG#137：群文件上传成功后补写 attachment 记录（scope=group）。
+%% ObjectKey 与 elib_oss:upload_to_storage/4 完全一致（FileId/basename），
+%% attachment.path 即该 key；view_url 读鉴权按 scope=group + scope_ref=Gid
+%% 校验群成员后签发 presign GET。
+%% 写入失败只记日志、不影响上传成功返回——文件已在 Garage，attachment
+%% 缺记录导致的只是下载端 404（BUG#136 曾因假失败导致数据落库但客户端
+%% 报错，这里绝不能再把写库失败放大成上传 500）。
+-spec write_attachment(
+    integer(), integer(), binary(), binary(), binary(), binary(), binary(), binary()
+) -> ok.
+write_attachment(Gid, UploaderId, FileName, FileBinary, FileType, FileUrl, FileId, FileHashHex) ->
+    SafeName = filename:basename(FileName),
+    ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
+    Attach = #{
+        <<"file_hash256">> => FileHashHex,
+        <<"mime_type">> => FileType,
+        <<"name">> => SafeName,
+        <<"path">> => ObjectKey,
+        <<"url">> => FileUrl,
+        <<"size">> => byte_size(FileBinary),
+        <<"scope">> => <<"group">>,
+        <<"scope_ref">> => integer_to_binary(Gid)
+    },
+    try
+        _ = elib_pg:with_tx(fun(Conn) ->
+            attachment_ds:save(Conn, elib_dt:now(), UploaderId, [Attach])
+        end)
+    catch
+        Class:Reason:Stack ->
+            ?ERROR_LOG([
+                "group_file_ds write_attachment failed: ",
+                io_lib:format("~p:~p ~p", [Class, Reason, Stack])
+            ])
+    end,
+    ok.
 
 %% @doc 检查删除权限
 %% @param CurrentUid 当前用户ID
