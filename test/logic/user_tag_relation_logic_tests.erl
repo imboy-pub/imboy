@@ -187,3 +187,37 @@ remove_tag_success_test_() ->
             end
         ]
     end}.
+
+%% 无效 TagId（TagName 查不到）时跳过 replace_object_tag：
+%% 若执行会退化成 replace(tag, ',', '') 清空整列标签（数据破坏防御）。
+%% meck 未 expect 的 replace_object_tag 被调用会抛异常 = 反向断言。
+remove_tag_missing_name_skips_replace_test_() ->
+    Mocks = [
+        {elib_pg, [
+            {'one', 2, fun(_Sql, _Params) -> {error, not_found} end},
+            {'with_tx', 1, fun(TxFun) ->
+                TxFun(dummy_conn),
+                ok
+            end},
+            {'query', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end},
+            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        ]},
+        {elib_pg_sql, [
+            {'public_tablename', 1, fun(Tab) -> <<"public.", Tab/binary>> end}
+        ]},
+        {user_tag_relation_ds, [
+            {'remove_user_tag_relation', 5, fun(_Conn, _Scene, _Uid, _TagId, _ObjId) ->
+                ok
+            end},
+            {'flush_subtitle', 1, fun(_TagId) -> ok end},
+            {'tablename', 0, fun() -> <<"public.user_tag_relation">> end}
+        ]}
+    ],
+    {setup, fun() -> setup_mecks(Mocks) end, fun(_) -> cleanup_mecks(Mocks) end, fun(_) ->
+        [
+            fun() ->
+                Result = user_tag_relation_logic:remove(100, 2, 1, 99999999),
+                ?assertEqual(ok, Result)
+            end
+        ]
+    end}.

@@ -78,14 +78,21 @@ remove(Uid, Scene, ObjectId, TagId) ->
             TagId,
             ObjectId
         ),
-        user_tag_relation_ds:replace_object_tag(
-            Conn,
-            Scene2,
-            Uid,
-            ObjectId,
-            binary_to_list(TagName),
-            []
-        ),
+        % TagName 查不到（无效 TagId）时跳过 replace：FromName=<<>> 会
+        % 退化成 replace(tag, ',', '') 清空整列标签（数据破坏防御）
+        case TagName of
+            <<>> ->
+                ok;
+            _ ->
+                user_tag_relation_ds:replace_object_tag(
+                    Conn,
+                    Scene2,
+                    Uid,
+                    ObjectId,
+                    binary_to_list(TagName),
+                    []
+                )
+        end,
         ok
     end),
     % 清理缓存

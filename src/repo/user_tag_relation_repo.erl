@@ -105,7 +105,14 @@ replace_object_tag(Conn, Scene, Uid, ObjectId, FromName, ToName) ->
         end,
     % 构造安全的replace函数调用
     Sql = <<"UPDATE ", Table/binary, " SET tag = replace(tag, $3, $4) WHERE ", Where/binary>>,
-    AllParams = Params ++ [FromName ++ ",", ToName ++ ","],
+    % 移除路径 ToName=[] 时替换为空串：若传 "," 会在逗号分隔列表中留下
+    % 孤立逗号（'a,b,c,' 移除 b → 'a,,c,' 数据损坏，生产复验实证）
+    ToName2 =
+        case ToName of
+            [] -> "";
+            _ -> ToName ++ ","
+        end,
+    AllParams = Params ++ [FromName ++ ",", ToName2],
     ok = elib_log:error(
         io_lib:format("user_tag_relation_repo:replace_object_tag/6 sql:~s;~n", [Sql])
     ),
