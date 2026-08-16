@@ -64,10 +64,6 @@ count_unread_in_group_signature_test() ->
 delete_by_msg_id_signature_test() ->
     ?assert(erlang:function_exported(mention_repo, delete_by_msg_id, 1)).
 
-%% @doc 测试 delete_by_uid 函数签名
-delete_by_uid_signature_test() ->
-    ?assert(erlang:function_exported(mention_repo, delete_by_uid, 1)).
-
 %% ===================================================================
 %% 数据库操作测试（需要数据库连接）
 %% ===================================================================

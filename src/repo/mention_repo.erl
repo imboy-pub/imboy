@@ -93,17 +93,17 @@ find_msg_id_by_mention_id(_, _) ->
 -spec find_by_uid(integer(), boolean() | undefined) -> {ok, list(map())} | {error, term()}.
 find_by_uid(Uid, undefined) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE mentioned_uid = $1 ORDER BY created_at DESC">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.mentioned_uid = $1 ORDER BY m.created_at DESC">>,
     elib_pg:query(Sql, [Uid]);
 find_by_uid(Uid, IsRead) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE mentioned_uid = $1 AND is_read = $2 ORDER BY created_at DESC">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.mentioned_uid = $1 AND m.is_read = $2 ORDER BY m.created_at DESC">>,
     elib_pg:query(Sql, [Uid, IsRead]).
 
 %% @doc 分页查询用户的@提及（DB 侧 LIMIT/OFFSET，避免全量拉取后内存截取）
@@ -115,17 +115,17 @@ find_by_uid(Uid, IsRead) ->
     {ok, list(map())} | {error, term()}.
 find_by_uid(Uid, undefined, Limit, Offset) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE mentioned_uid = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.mentioned_uid = $1 ORDER BY m.created_at DESC LIMIT $2 OFFSET $3">>,
     elib_pg:query(Sql, [Uid, Limit, Offset]);
 find_by_uid(Uid, IsRead, Limit, Offset) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE mentioned_uid = $1 AND is_read = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.mentioned_uid = $1 AND m.is_read = $2 ORDER BY m.created_at DESC LIMIT $3 OFFSET $4">>,
     elib_pg:query(Sql, [Uid, IsRead, Limit, Offset]).
 
 %% @doc 查询用户在指定群组的@提及
@@ -137,17 +137,17 @@ find_by_uid(Uid, IsRead, Limit, Offset) ->
     {ok, list(map())} | {error, term()}.
 find_by_group_and_uid(Gid, Uid, undefined) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE group_id = $1 AND mentioned_uid = $2 ORDER BY created_at DESC">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.group_id = $1 AND m.mentioned_uid = $2 ORDER BY m.created_at DESC">>,
     elib_pg:query(Sql, [Gid, Uid]);
 find_by_group_and_uid(Gid, Uid, IsRead) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = $3 ORDER BY created_at DESC">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.group_id = $1 AND m.mentioned_uid = $2 AND m.is_read = $3 ORDER BY m.created_at DESC">>,
     elib_pg:query(Sql, [Gid, Uid, IsRead]).
 
 %% @doc 分页查询用户在指定群组的@提及（DB 侧 LIMIT/OFFSET）
@@ -155,17 +155,17 @@ find_by_group_and_uid(Gid, Uid, IsRead) ->
     {ok, list(map())} | {error, term()}.
 find_by_group_and_uid(Gid, Uid, undefined, Limit, Offset) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE group_id = $1 AND mentioned_uid = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.group_id = $1 AND m.mentioned_uid = $2 ORDER BY m.created_at DESC LIMIT $3 OFFSET $4">>,
     elib_pg:query(Sql, [Gid, Uid, Limit, Offset]);
 find_by_group_and_uid(Gid, Uid, IsRead, Limit, Offset) ->
     Tb = tablename(),
-    Column = <<"id, msg_id, group_id, mentioned_uid, from_uid, is_read, created_at">>,
+    {Column, From} = mention_select(Tb),
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            " WHERE group_id = $1 AND mentioned_uid = $2 AND is_read = $3 ORDER BY created_at DESC LIMIT $4 OFFSET $5">>,
+        <<"SELECT ", Column/binary, From/binary,
+            " WHERE m.group_id = $1 AND m.mentioned_uid = $2 AND m.is_read = $3 ORDER BY m.created_at DESC LIMIT $4 OFFSET $5">>,
     elib_pg:query(Sql, [Gid, Uid, IsRead, Limit, Offset]).
 
 %% @doc 标记@消息为已读
@@ -241,9 +241,41 @@ count_unread_in_group(Uid, Gid) ->
 
 %% @doc 根据消息ID删除所有@提及记录
 %% @param MsgId 消息ID
-%% @return {ok, Count} | {error, Reason}
+%% @return {ok, Count} | {error, term()}
 -spec delete_by_msg_id(binary()) -> {ok, non_neg_integer()} | {error, term()}.
 delete_by_msg_id(MsgId) ->
     Tb = tablename(),
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE msg_id = $1">>,
     elib_pg:execute(Sql, [MsgId]).
+
+%% ===================================================================
+%% Internal functions
+%% ===================================================================
+
+%% @private 生成列表查询的列与 FROM 子句（LEFT JOIN 用户与群组，
+%% 带出 @我的人昵称/头像与群名，供客户端渲染条目——修复列表条目
+%% 信息全空的 BUG#批次99-1）
+-spec mention_select(binary()) -> {binary(), binary()}.
+mention_select(Tb) ->
+    Ut = quoted_public_tablename(<<"user">>),
+    Gt = quoted_public_tablename(<<"group">>),
+    Column = <<
+        "m.id, m.msg_id, m.group_id, m.mentioned_uid, m.from_uid, "
+        "m.is_read, m.created_at, u.nickname, u.avatar, g.title AS group_name"
+    >>,
+    From =
+        <<" FROM ", Tb/binary, " m LEFT JOIN ", Ut/binary,
+            " u ON u.id = m.from_uid "
+            "LEFT JOIN ", Gt/binary, " g ON g.id = m.group_id">>,
+    {Column, From}.
+
+%% @private user/group 是 PG 保留字，表名必须加双引号
+-spec quoted_public_tablename(binary()) -> binary().
+quoted_public_tablename(Tb) ->
+    case config_ds:env(sql_driver) of
+        pgsql ->
+            Base = ec_cnv:to_binary(Tb),
+            <<"public.\"", Base/binary, "\"">>;
+        _ ->
+            elib_pg_sql:public_tablename(Tb)
+    end.
