@@ -36,7 +36,7 @@
 %% @param FileType MIME类型
 %% @return {ok, FileId} | {error, Reason}
 -spec upload_file(integer(), integer(), binary(), binary(), binary()) ->
-    {ok, binary()} | {error, term()}.
+    {ok, integer()} | {error, term()}.
 upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
     % 1. 验证群成员身份
     case group_ds:is_member(UploaderId, Gid) of
@@ -82,7 +82,9 @@ upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
                             },
 
                             case group_file_repo:insert(Data) of
-                                {ok, _InsertId, _Details} ->
+                                % repo 返回二元组 {ok, FileId}（曾误匹配三元组
+                                % {ok, _InsertId, _Details} → no case clause 生产 500）
+                                {ok, _FileId} ->
                                     {ok, FileId};
                                 {error, Reason} ->
                                     {error, Reason}

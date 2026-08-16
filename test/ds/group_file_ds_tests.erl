@@ -65,7 +65,10 @@ upload_file_success_test_() ->
             ?assertEqual(1, maps:get(status, Data)),
             ?assertEqual(NowTs, maps:get(created_at, Data)),
             ?assertEqual(NowTs, maps:get(updated_at, Data)),
-            {ok, 1, #{}}
+            % 真实契约：group_file_repo:insert/1 返回 {ok, FileId} 二元组
+            % （曾 mock 成三元组 {ok, 1, #{}} 与实现一起漂移，掩盖了
+            % group_file_ds:upload_file/5 的 no case clause 生产 500）
+            {ok, FileId}
         end),
 
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
