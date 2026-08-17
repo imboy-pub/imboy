@@ -105,7 +105,7 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
              || {Pid, Info} <- Filtered,
                 begin
                     {_Dtype, DID} = Info,
-                    case imboy_cache:get({ack_received, ToUid, DID, MsgId}) of
+                    case ack_retry_cache:get({ack_received, ToUid, DID, MsgId}) of
                         {ok, true} ->
                             false;
                         _ ->
@@ -131,7 +131,7 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
              || {Pid, Info} <- Filtered,
                 begin
                     {_Dtype, DID} = Info,
-                    case imboy_cache:get({ack_received, ToUid, DID, MsgId}) of
+                    case ack_retry_cache:get({ack_received, ToUid, DID, MsgId}) of
                         {ok, true} ->
                             false;
                         _ ->
@@ -142,7 +142,7 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
             [
                 begin
                     TimerKey = {ToUid, DID, MsgId},
-                    case imboy_cache:get(TimerKey) of
+                    case ack_retry_cache:get(TimerKey) of
                         {ok, OldRef} when is_reference(OldRef) ->
                             _ = erlang:cancel_timer(OldRef),
                             ok;
@@ -150,10 +150,9 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
                             ok
                     end,
                     Ref = erlang:start_timer(Delay, Pid, {Tail, TimerKey, Msg}),
-                    %% 缓存需覆盖定时器存活期（Delay 毫秒）+ 5s 余量供 ACK 竞态取消。
-                    %% imboy_cache:set/3 的 TTL 单位是「秒」，故 (Delay + 5000) 毫秒需 div 1000；
-                    %% 此前直接把毫秒数值当秒，TTL 被放大约 1000 倍，过期 Ref 长期滞留缓存。
-                    imboy_cache:set(TimerKey, Ref, (Delay + 5000) div 1000),
+                    %% 专用 ACK ETS 的 TTL 单位为毫秒：覆盖 timer 存活期并额外保留 5s，
+                    %% 供已 fire/ACK 交错时的取消与精确清理使用。
+                    ack_retry_cache:set(TimerKey, Ref, Delay + 5000),
                     ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID, Ref})
                 end
              || {Pid, {_Dtype, DID}} <- Filtered3
@@ -366,10 +365,13 @@ check_and_notify_offline_msgs(Uid) ->
 %% C2G 仍按 uid timeline 读取（V7 另行立项）。
 -spec check_and_notify_offline_msgs(integer() | binary(), binary()) -> ok.
 check_and_notify_offline_msgs(Uid, DID) ->
-    % 检查各类型离线消息数量
-    C2CMsgs = msg_c2c_ds:read_msg_for_device(Uid, DID, ?SAVE_MSG_LIMIT, undefined),
-    C2GMsgs = msg_c2g_ds:read_msg(Uid, ?SAVE_MSG_LIMIT, undefined),
-    S2CMsgs = msg_s2c_ds:read_msg_for_device(Uid, DID, ?SAVE_MSG_LIMIT, undefined),
+    %% 只需比阈值多取一条即可判断是否改发 pull 通知；阈值内仍保留直接推送语义。
+    Threshold = get_offline_msg_threshold(),
+    %% 保留原有 SAVE_MSG_LIMIT 资源上界，避免异常的大阈值放大登录查询。
+    ProbeLimit = erlang:min(Threshold + 1, ?SAVE_MSG_LIMIT),
+    C2CMsgs = msg_c2c_ds:read_msg_for_device(Uid, DID, ProbeLimit, undefined),
+    C2GMsgs = msg_c2g_ds:read_msg(Uid, ProbeLimit, undefined),
+    S2CMsgs = msg_s2c_ds:read_msg_for_device(Uid, DID, ProbeLimit, undefined),
 
     % 计算各类型消息数量
     C2CCount = length(C2CMsgs),
@@ -379,9 +381,9 @@ check_and_notify_offline_msgs(Uid, DID) ->
     %             <<": C2C=">>, C2CCount, <<", C2G=">>, C2GCount, <<", S2C=">>, S2CCount]),
     % 处理各类型离线消息，收集是否需要发送pull通知
     {NeedPull1, NeedPull2, NeedPull3} = {
-        handle_offline_msgs(Uid, DID, <<"C2C">>, C2CMsgs, C2CCount),
-        handle_offline_msgs(Uid, DID, <<"C2G">>, C2GMsgs, C2GCount),
-        handle_offline_msgs(Uid, DID, <<"S2C">>, S2CMsgs, S2CCount)
+        handle_offline_msgs(Uid, DID, <<"C2C">>, C2CMsgs, C2CCount, Threshold),
+        handle_offline_msgs(Uid, DID, <<"C2G">>, C2GMsgs, C2GCount, Threshold),
+        handle_offline_msgs(Uid, DID, <<"S2C">>, S2CMsgs, S2CCount, Threshold)
     },
 
     % 如果任意类型需要发送pull通知，则只发送一次
@@ -402,14 +404,16 @@ check_and_notify_offline_msgs(Uid, DID) ->
 %% @param Type 消息类型（C2C、C2G、S2C）
 %% @param Msgs 消息列表
 %% @param Count 消息数量
+%% @param Threshold 本次检查使用的离线消息阈值
 %% @returns 是否需要发送pull通知
--spec handle_offline_msgs(pos_integer() | binary(), binary(), binary(), [map()], non_neg_integer()) ->
+-spec handle_offline_msgs(
+    pos_integer() | binary(), binary(), binary(), [map()], non_neg_integer(), non_neg_integer()
+) ->
     boolean().
-handle_offline_msgs(_Uid, _DID, _Type, [], _Count) ->
+handle_offline_msgs(_Uid, _DID, _Type, [], _Count, _Threshold) ->
     % 没有离线消息
     false;
-handle_offline_msgs(Uid, DID, Type, Msgs, Count) when Count > 0 ->
-    Threshold = get_offline_msg_threshold(),
+handle_offline_msgs(Uid, DID, Type, Msgs, Count, Threshold) when Count > 0 ->
     case Count > Threshold of
         true ->
             % 消息数量超过阈值，需要pull通知
@@ -465,7 +469,7 @@ sent_offline_msg(Uid, DID, Type, [Row | Tail]) ->
 %%
 %% 从 sent_offline_msg/4 抽出，唯一生产调用方即 sent_offline_msg/4
 %% （链路：websocket_handler → message_ds:check_and_notify_offline_msgs/2
-%% → handle_offline_msgs/5 → sent_offline_msg/4 → 本函数）。
+%% → handle_offline_msgs/6 → sent_offline_msg/4 → 本函数）。
 %% 抽成纯函数只为可测：离线信封的字段集是 PFv3 接收侧的硬依赖，
 %% 必须能在不起 syn / 不发真实 WS 帧的前提下被断言。
 %%
@@ -646,10 +650,19 @@ with_sender_device(Msg, _Data) ->
 %% @doc 获取离线消息阈值配置
 %% 从应用配置中获取离线消息阈值，默认值为10。
 %% 当离线消息数量超过此值时发送pull通知而非直接推送。
+%% 合法范围为 0..SAVE_MSG_LIMIT-1，确保始终能多取一条作为超阈值哨兵。
+%% 非法或越界配置回退默认值，避免登录/上线链路中断或失去判定语义。
 %% @returns 离线消息阈值数量
 -spec get_offline_msg_threshold() -> non_neg_integer().
 get_offline_msg_threshold() ->
-    application:get_env(imboy, offline_msg_threshold, 10).
+    case application:get_env(imboy, offline_msg_threshold, 10) of
+        Threshold when
+            is_integer(Threshold), Threshold >= 0, Threshold < ?SAVE_MSG_LIMIT
+        ->
+            Threshold;
+        _ ->
+            10
+    end.
 
 %% ===================================================================
 %% 消息验证功能 (v2.0)

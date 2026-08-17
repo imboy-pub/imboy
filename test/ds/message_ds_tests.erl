@@ -114,6 +114,93 @@ decode_websocket_message_defaults_ver_when_absent_test_() ->
     end).
 
 %% ===================================================================
+%% W0-PERF-01a 登录离线消息探测上限
+%% ===================================================================
+
+offline_message_probe_reads_only_threshold_plus_one_test_() ->
+    offline_message_probe_limit_test(10, 11).
+
+offline_message_probe_invalid_threshold_uses_safe_default_test_() ->
+    offline_message_probe_limit_test(<<"10">>, 11).
+
+offline_message_probe_max_valid_threshold_uses_save_limit_test_() ->
+    offline_message_probe_limit_test(?SAVE_MSG_LIMIT - 1, ?SAVE_MSG_LIMIT).
+
+offline_message_probe_oversized_threshold_uses_safe_default_test_() ->
+    offline_message_probe_limit_test(?SAVE_MSG_LIMIT, 11).
+
+offline_message_probe_max_valid_threshold_keeps_pull_sentinel_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'read_msg_for_device', 4, fun(_Uid, _DID, Limit, _StartId) ->
+                    lists:duplicate(Limit, #{})
+                end}
+            ]},
+            {msg_c2g_ds, [{'read_msg', 3, fun(_Uid, _Limit, _StartId) -> [] end}]},
+            {msg_s2c_ds, [
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _StartId) -> [] end}
+            ]},
+            {elib_id, [{'gen', 1, fun("pull_offline") -> <<"pull-offline-1">> end}]},
+            {elib_retry_config, [{'intervals', 1, fun(<<"pull">>) -> [] end}]}
+        ],
+        fun() ->
+            PreviousThreshold = application:get_env(imboy, offline_msg_threshold),
+            ok = application:set_env(imboy, offline_msg_threshold, ?SAVE_MSG_LIMIT - 1),
+            try
+                ?assertEqual(ok, message_ds:check_and_notify_offline_msgs(123, <<"device-1">>)),
+                ?assertEqual(1, meck:num_calls(elib_id, gen, 1)),
+                ?assertEqual(1, meck:num_calls(elib_retry_config, intervals, 1))
+            after
+                restore_offline_msg_threshold(PreviousThreshold)
+            end
+        end
+    ).
+
+offline_message_probe_limit_test(ConfiguredThreshold, ExpectedLimit) ->
+    ?WITH_MECKS(
+        [
+            {msg_c2c_ds, [
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _StartId) -> [] end}
+            ]},
+            {msg_c2g_ds, [{'read_msg', 3, fun(_Uid, _Limit, _StartId) -> [] end}]},
+            {msg_s2c_ds, [
+                {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _StartId) -> [] end}
+            ]}
+        ],
+        fun() ->
+            PreviousThreshold = application:get_env(imboy, offline_msg_threshold),
+            ok = application:set_env(imboy, offline_msg_threshold, ConfiguredThreshold),
+            try
+                Uid = 123,
+                DID = <<"device-1">>,
+                ?assertEqual(ok, message_ds:check_and_notify_offline_msgs(Uid, DID)),
+                ?assert(
+                    meck:called(msg_c2c_ds, read_msg_for_device, [
+                        Uid, DID, ExpectedLimit, undefined
+                    ])
+                ),
+                ?assert(meck:called(msg_c2g_ds, read_msg, [Uid, ExpectedLimit, undefined])),
+                ?assert(
+                    meck:called(msg_s2c_ds, read_msg_for_device, [
+                        Uid, DID, ExpectedLimit, undefined
+                    ])
+                ),
+                ?assertEqual(1, meck:num_calls(msg_c2c_ds, read_msg_for_device, 4)),
+                ?assertEqual(1, meck:num_calls(msg_c2g_ds, read_msg, 3)),
+                ?assertEqual(1, meck:num_calls(msg_s2c_ds, read_msg_for_device, 4))
+            after
+                restore_offline_msg_threshold(PreviousThreshold)
+            end
+        end
+    ).
+
+restore_offline_msg_threshold(undefined) ->
+    application:unset_env(imboy, offline_msg_threshold);
+restore_offline_msg_threshold({ok, Threshold}) ->
+    application:set_env(imboy, offline_msg_threshold, Threshold).
+
+%% ===================================================================
 %% 消息发送验证
 %% ===================================================================
 

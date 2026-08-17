@@ -555,30 +555,33 @@ websocket_info({reply, Msg}, State) when is_list(Msg) ->
 websocket_info({reply, Msg}, State) ->
     %% Pre-encoded binary from delivery pipeline — adapt to client protocol
     {reply, encode_delivery_frame(Msg, State), State, hibernate};
-%% 处理消息重试超时
-websocket_info({timeout, _Ref, {[], _, Msg}}, State) ->
-    ok = ?INFO_LOG({retry_timeout, stop_online_retry, Msg}),
-    {reply, encode_delivery_frame(Msg, State), State, hibernate};
 %% 定时器 fire 在「当前设备」的 WS 进程内：既重发本消息（reply），又需为该设备
 %% 续排 MsLi 剩余的重试节奏。续链必须用白名单 [DID]+true 只针对当前设备——
 %% 早前用 [DID]+false（排除当前设备）会导致：单设备时 Filtered 为空、当前设备的
 %% 重试链在第一跳后即断裂（S2C/C2S 后续多级重试全部丢失）；多设备时又给同用户
 %% 其它设备重复设定时器（那些设备各自已有独立重试链）。
-websocket_info({timeout, _Ref, {MsLi, {Uid, DID, MsgId}, Msg}}, State) ->
+websocket_info({timeout, Ref, {MsLi, {Uid, DID, MsgId} = TimerKey, Msg}}, State) ->
     ok = ?DEBUG_LOG({timeout_retry, MsgId, Uid, DID}),
-    AckReceivedKey = {ack_received, Uid, DID, MsgId},
-    case imboy_cache:get(AckReceivedKey) of
-        {ok, true} ->
-            ok = ?DEBUG_LOG({timeout_ack_received, MsgId, Uid}),
+    %% 只有原子消费了当前 Ref 的 timeout 才能续排；旧回调不得覆盖新 timer。
+    case ack_retry_cache:delete_if_value(TimerKey, Ref) of
+        false ->
+            ok = ?DEBUG_LOG({timeout_stale, MsgId, Uid, DID}),
             {ok, State, hibernate};
-        {ok, _} ->
-            ok = ?WARN_LOG({timeout_ack_flag_invalid, MsgId}),
-            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
-            {reply, encode_delivery_frame(Msg, State), State, hibernate};
-        undefined ->
-            ok = ?DEBUG_LOG({timeout_no_ack, MsgId, Uid}),
-            websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
-            {reply, encode_delivery_frame(Msg, State), State, hibernate}
+        true ->
+            AckReceivedKey = {ack_received, Uid, DID, MsgId},
+            case ack_retry_cache:get(AckReceivedKey) of
+                {ok, true} ->
+                    ok = ?DEBUG_LOG({timeout_ack_received, MsgId, Uid}),
+                    {ok, State, hibernate};
+                {ok, _} ->
+                    ok = ?WARN_LOG({timeout_ack_flag_invalid, MsgId}),
+                    websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
+                    {reply, encode_delivery_frame(Msg, State), State, hibernate};
+                undefined ->
+                    ok = ?DEBUG_LOG({timeout_no_ack, MsgId, Uid}),
+                    websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
+                    {reply, encode_delivery_frame(Msg, State), State, hibernate}
+            end
     end;
 %% 处理其他超时消息
 websocket_info({timeout, _Ref, Msg}, State) ->

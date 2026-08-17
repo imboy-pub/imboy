@@ -37,13 +37,15 @@ trap 'rm -rf "${TMP}"' EXIT
 make_fixture() {
   local d="${TMP}/$1"
   rm -rf "$d"
-  mkdir -p "$d/priv/migrations" "$d/scripts" "$d/src/lib" "$d/api" "$d/docs/ops" "$d/src"
+  mkdir -p "$d/priv/migrations" "$d/scripts/test" "$d/src/lib" "$d/api" "$d/docs/ops" "$d/src"
 
   echo "9.9.9" >"$d/VERSION"
   echo '{release, {imboy, "9.9.9"}, [imboy]}.' >"$d/relx.config"
 
   echo "-- up" >"$d/priv/migrations/00000001_a.up.sql"
   echo "-- down" >"$d/priv/migrations/00000001_a.down.sql"
+  cp "$ROOT"/priv/migrations/0000006{5_wallet_available_balance_constraint,6_validate_wallet_available_balance_constraint}.{up,down}.sql \
+    "$d/priv/migrations/"
 
   echo "MulanPSL-2.0" >"$d/LICENSE"
   echo "#!/usr/bin/env escript" >"$d/scripts/gen_license.escript"
@@ -62,6 +64,8 @@ ERL
   for f in backup_pg.sh restore_pg.sh restore_smoke.sh deploy.sh backup_garage.sh; do
     printf '#!/usr/bin/env bash\necho ok\n' >"$d/scripts/$f"
   done
+  cp "$ROOT/scripts/verify_wallet_constraint_clone.sh" "$d/scripts/"
+  cp "$ROOT/scripts/test/wallet_constraint_clone_guard_test.sh" "$d/scripts/test/"
 
   # 契约：正例包含全部商业路由；router 同步注册
   : >"$d/api/openapi.yaml"
@@ -190,6 +194,23 @@ D="$(make_fixture matrix_missing)"
 rm -f "$D/docs/ops/support-matrix.md"
 run check_support_matrix "$D"
 expect_fail "支持矩阵缺失时必须失败" $?
+
+echo "== 钱包约束克隆 Gate =="
+D="$(make_fixture wallet_gate_ok)"
+run check_wallet_constraint_gate "$D"
+expect_ok "隔离克隆 Gate 的离线守卫实际通过时放行" $?
+
+D="$(make_fixture wallet_gate_missing)"
+rm -f "$D/scripts/test/wallet_constraint_clone_guard_test.sh"
+run check_wallet_constraint_gate "$D"
+expect_fail "隔离克隆 Gate 守卫测试缺失时必须失败" $?
+
+D="$(make_fixture wallet_gate_wiring)"
+rm -f "$D/scripts/test/wallet_constraint_clone_guard_test.sh"
+CRC_PASS=0
+CRC_FAIL=0
+IMBOY_ROOT="$D" crc_main >/dev/null 2>&1
+expect_fail "总发布门禁必须真实调用隔离克隆 Gate" $?
 
 echo ""
 echo "通过 ${PASS} 项，失败 ${FAIL} 项"

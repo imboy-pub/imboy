@@ -149,6 +149,17 @@ echo "== C-51/C-52 部署脚本 =="
 
 DEPLOY="scripts/deploy.sh"
 
+# 所有用例必须在建立 SSH 前被参数 allowlist 拒绝，不触达第三方。
+assert_rejects "E2EE mode 单引号注入被拒绝" "IMBOY_DEPLOY_E2EE_MODE 非法" \
+  env "IMBOY_DEPLOY_E2EE_MODE=disabled';touch /tmp/pwn" \
+  bash "$DEPLOY" example.invalid 1.0.0 testnode
+assert_rejects "蓝端口命令注入被拒绝" "无效 BLUE_PORT" \
+  env "IMBOY_DEPLOY_BLUE_PORT=9800;touch /tmp/pwn" \
+  bash "$DEPLOY" example.invalid 1.0.0 testnode
+assert_rejects "远端项目路径命令注入被拒绝" "unsafe PROJECT_DIR" \
+  env "IMBOY_DEPLOY_PROJECT_DIR=/tmp/x';touch /tmp/pwn;'" \
+  bash "$DEPLOY" example.invalid 1.0.0 testnode
+
 # C-51：就绪判断必须探 /healthz 并校验版本，不能只看端口
 if grep -q 'wait_for_health "\$APP_PORT" "\$VSN"' "$DEPLOY"; then
   ok "部署就绪判断使用 wait_for_health + 版本"
@@ -162,23 +173,86 @@ else
   bad "wait_for_health 未探 /healthz" ""
 fi
 
-# C-52：迁移必须排在切流之后。用行号比较，比 grep 关键词可靠。
-SW_LINE="$(grep -n '切换 Nginx upstream / Switch Nginx upstream' "$DEPLOY" | head -1 | cut -d: -f1)"
-MG_LINE="$(grep -n "make ctl ARGS='db migrate'" "$DEPLOY" | head -1 | cut -d: -f1)"
-if [ -n "$SW_LINE" ] && [ -n "$MG_LINE" ] && [ "$MG_LINE" -gt "$SW_LINE" ]; then
-  ok "数据库迁移排在切流之后（行 ${MG_LINE} > ${SW_LINE}）"
+# C-52：用真实执行行证明 reload → stop/drain → migrate，不能拿章节标题充数。
+SW_LINE="$(grep -nE '^[[:space:]]*nginx -t && nginx -s reload' "$DEPLOY" | tail -1 | cut -d: -f1)"
+STOP_LINE="$(grep -nE '^[[:space:]]+stop_old_node$' "$DEPLOY" | head -1 | cut -d: -f1)"
+MG_LINE="$(grep -nE "^[[:space:]]*ssh_exec .*make ctl ARGS='db migrate'" "$DEPLOY" | head -1 | cut -d: -f1)"
+if [ -n "$SW_LINE" ] && [ -n "$STOP_LINE" ] && [ -n "$MG_LINE" ] \
+   && [ "$SW_LINE" -lt "$STOP_LINE" ] && [ "$STOP_LINE" -lt "$MG_LINE" ]; then
+  ok "真实时序为 reload → stop/drain → migrate（${SW_LINE} < ${STOP_LINE} < ${MG_LINE}）"
 else
-  bad "迁移仍在切流之前（破坏性迁移会打断仍在服务的旧节点）" "switch=${SW_LINE} migrate=${MG_LINE}"
+  bad "完整迁移前未完成真实切流与旧节点 drain" \
+    "switch=${SW_LINE} stop=${STOP_LINE} migrate=${MG_LINE}"
+fi
+
+if grep -qE 'ssh_exec .*timeout 20s .*bin/imboy.* stop' "$DEPLOY"; then
+  ok "旧节点 stop 有独立 20s 超时并在超时后阻断迁移"
+else
+  bad "旧节点 stop 缺少可执行的 20s 超时门禁" ""
 fi
 
 # 本轮 E2EE 归档改动：00000064 是新代码切流前必需的 additive schema。
 # 它必须在切流前执行，但完整 migrate 仍保留在切流之后。
 EXPAND_DEF_LINE="$(grep -n '^run_expand_migrations()' "$DEPLOY" | head -1 | cut -d: -f1)"
-EXPAND_CALL_LINE="$(grep -n '^run_expand_migrations$' "$DEPLOY" | tail -1 | cut -d: -f1)"
-if [ -n "$EXPAND_DEF_LINE" ] && [ -n "$EXPAND_CALL_LINE" ] && [ "$EXPAND_CALL_LINE" -lt "$SW_LINE" ]; then
-  ok "切流前执行显式 expand 迁移（行 ${EXPAND_CALL_LINE} < ${SW_LINE}）"
+EXPAND_CALL_LINE="$(grep -nE '^[[:space:]]*run_expand_migrations$' "$DEPLOY" | tail -1 | cut -d: -f1)"
+START_LINE="$(grep -nE "^[[:space:]]*ssh_exec .*IMBOY_AUTO_MIGRATE='\\\$START_AUTO_MIGRATE'.*bin/imboy daemon" "$DEPLOY" | head -1 | cut -d: -f1)"
+if [ -n "$EXPAND_DEF_LINE" ] && [ -n "$EXPAND_CALL_LINE" ] \
+   && [ -n "$START_LINE" ] && [ "$EXPAND_CALL_LINE" -lt "$START_LINE" ]; then
+  ok "新节点启动前执行显式 expand 迁移（行 ${EXPAND_CALL_LINE} < ${START_LINE}）"
 else
-  bad "缺少切流前 expand 迁移门禁" "expand=${EXPAND_CALL_LINE} switch=${SW_LINE}"
+  bad "expand 迁移未排在新节点启动前" "expand=${EXPAND_CALL_LINE} start=${START_LINE}"
+fi
+
+if [ -n "$START_LINE" ] \
+   && grep -q 'START_AUTO_MIGRATE=false' "$DEPLOY" \
+   && grep -q 'START_AUTO_MIGRATE=true' "$DEPLOY"; then
+  ok "蓝绿禁用启动迁移，首次空库安装保留 bootstrap 迁移"
+else
+  bad "启动迁移模式未区分蓝绿与首次安装" "start=${START_LINE}"
+fi
+
+if grep -q "grep -q '{auto_migrate,\[ \]\*false}'" "$DEPLOY"; then
+  ok "release sys.config 持久化禁用启动期迁移"
+else
+  bad "禁迁移状态只存在于单次 daemon 环境" ""
+fi
+
+UNIFIED_DEPLOY="scripts/imboy-deploy.sh"
+DEPLOY_API_BODY="$(sed -n '/^deploy_api()/,/^}/p' "$UNIFIED_DEPLOY")"
+DEPLOY_API_EXEC="$(printf '%s' "$DEPLOY_API_BODY" | sed 's/[[:space:]]*#.*$//')"
+ALL_BODY="$(sed -n '/^  all)/,/^    ;;/p' "$UNIFIED_DEPLOY")"
+if ! printf '%s' "$DEPLOY_API_EXEC" | grep -qE \
+    '^[[:space:]]*bash .*deploy\.sh'; then
+  bad "统一 api 入口缺少 deploy.sh 执行命令" ""
+elif printf '%s' "$DEPLOY_API_EXEC" | grep -q -- '--no-migrate'; then
+  bad "统一 api 入口仍绕过 deploy.sh 的迁移阶段" "--no-migrate"
+else
+  ok "统一 api 入口由 deploy.sh 原子编排切流、迁移与停旧节点"
+fi
+
+SKIP_GUARD="$(sed -n '/if \[ "$SKIP_MIGRATE" -eq 1 \].*STOP_OLD/,/^fi$/p' "$DEPLOY")"
+if printf '%s' "$SKIP_GUARD" | grep -qE '^[[:space:]]*STOP_OLD=false$'; then
+  ok "--no-migrate 强制保留旧节点"
+else
+  bad "--no-migrate 仍可能停止旧节点" "$SKIP_GUARD"
+fi
+
+if ! printf '%s' "$ALL_BODY" | grep -qE '^[[:space:]]+deploy_api$' \
+   || ! printf '%s' "$ALL_BODY" | grep -qE '^[[:space:]]+deploy_admin$'; then
+  bad "all 入口缺少 api/admin 主流程" "$ALL_BODY"
+elif printf '%s' "$ALL_BODY" | grep -qE '^[[:space:]]+deploy_migrate$'; then
+  bad "all 入口仍在 deploy_api 后重复拆分迁移" "deploy_migrate"
+else
+  ok "all 入口不再二次执行迁移"
+fi
+
+MIGRATE_BODY="$(sed -n '/^deploy_migrate()/,/^}/p' "$UNIFIED_DEPLOY")"
+if printf '%s' "$MIGRATE_BODY" | grep -q 'BLUE_STATE=.*ss -tlnH' \
+   && printf '%s' "$MIGRATE_BODY" | grep -q 'GREEN_STATE=.*ss -tlnH' \
+   && printf '%s' "$MIGRATE_BODY" | grep -q 'version.*DEPLOY_VSN'; then
+  ok "独立 migrate 在执行前证明另一蓝绿端口已关闭且目标版本健康"
+else
+  bad "独立 migrate 缺少旧节点 drain/目标版本门禁" ""
 fi
 
 if grep -q '00000064_msg_store_sender_did.up.sql' "$DEPLOY" \
@@ -199,6 +273,13 @@ if sed -n '/ROLLBACK.*-eq 1/,/^fi$/p' "$DEPLOY" | grep -q 'healthz'; then
   ok "回滚前先探目标色健康（不切到死节点上）"
 else
   bad "回滚未校验目标色健康" ""
+fi
+
+ROLLBACK_BODY="$(sed -n '/^rollback()/,/^}/p' "$UNIFIED_DEPLOY")"
+if printf '%s' "$ROLLBACK_BODY" | grep -q 'deploy.sh.*--rollback'; then
+  ok "统一入口复用 deploy.sh 的 fail-closed 回滚实现"
+else
+  bad "统一入口仍维护独立且可能漂移的回滚逻辑" ""
 fi
 
 echo

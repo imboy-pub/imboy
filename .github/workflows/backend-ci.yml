@@ -56,6 +56,11 @@ jobs:
       - name: Check server zero-crypto (E2EE 私钥/明文永不经服务端, ADR 07 §6.3 / 08 §4)
         run: bash scripts/check_server_zero_crypto.sh
 
+      - name: Check release and wallet migration gates
+        run: |
+          bash scripts/check_release_consistency.sh
+          bash scripts/test/check_release_consistency_test.sh
+
       - name: Compile
         run: IMBOYENV=local make test-build
 

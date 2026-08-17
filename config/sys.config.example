@@ -4,6 +4,8 @@
         {http_port, 9800},
         {host, '_'},
         {start_mode, http},
+        %% 蓝绿部署设 IMBOY_AUTO_MIGRATE=false，切流后再显式执行 db migrate。
+        {auto_migrate, true},
         {base_url, <<"https://dev.imboy.pub">>},
         {cluster_nodes, []},
         {channel_revoke_window_seconds, 120},

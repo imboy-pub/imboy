@@ -4,8 +4,8 @@ set -Eeuo pipefail
 # =============================================================================
 # 脚本做的事 / What this script does
 #
-# 蓝绿零停机部署 Imboy 后端到生产服务器。
-# Zero-downtime blue-green deployment of the Imboy backend to production.
+# 蓝绿部署 Imboy 后端：HTTP 持续可用，旧 WebSocket 在迁移前短暂重连。
+# Blue-green deployment: HTTP stays available; old WebSockets reconnect before migration.
 #
 # 执行流程 / Steps:
 #   1. 检测当前运行色（蓝/绿）  Detect active color (blue/green)
@@ -14,11 +14,11 @@ set -Eeuo pipefail
 #      Pull code + build self-contained release (ERTS embedded, no symlinks)
 #   4. 解包到独立目录，生成 vm.args
 #      Extract to isolated dir and write vm.args
-#   5. 以目标端口启动新节点     Start new node on target port
-#   6. 轮询端口确认启动成功     Poll until node is ready (40s timeout)
-#   7. 执行数据库迁移           Run DB migrations
-#   8. 切换 Nginx upstream 并 reload  Switch Nginx and reload
-#   9. 停止旧节点（可选）       Stop old node (optional, STOP_OLD=false 跳过)
+#   5. 执行已批准的 expand 迁移 Apply approved expand migrations
+#   6. 禁用启动迁移并启动新节点 Start node with startup migrations disabled
+#   7. 切流并停止旧节点长连接   Switch traffic and drain old node
+#   8. 显式执行完整数据库迁移   Explicitly run remaining DB migrations
+#   9. 输出部署结果              Print deployment result
 #
 # 用法 / Usage:
 #   bash ./scripts/deploy.sh [-v|--verbose] [-l|--local] [-M|--no-migrate] <SERVER_HOST> <VSN> <NODE_NAME>
@@ -28,7 +28,7 @@ set -Eeuo pipefail
 #   bash ./scripts/deploy.sh -v 10.0.0.10 1.0.0-rc.1 002           # 详细输出
 #   bash ./scripts/deploy.sh -l 10.0.0.10 1.0.0-rc.1 dbg           # 本地源码 rsync（无需推 tag）
 #   bash ./scripts/deploy.sh -v -l 10.0.0.10 1.0.0-rc.1 dbg        # 本地 rsync + 详细输出
-#   bash ./scripts/deploy.sh -M 10.0.0.10 1.0.0-rc.1 001           # 跳过迁移（由上层调用方负责）
+#   bash ./scripts/deploy.sh -M 10.0.0.10 1.0.0-rc.1 001           # 仅发布兼容代码，保留旧节点且不迁移
 #   bash ./scripts/deploy.sh --rollback 10.0.0.10 1.0.0-rc.1 001   # 切回另一色（不回滚迁移）
 #
 # 环境变量（均可选）/ Environment variables (all optional):
@@ -41,7 +41,7 @@ set -Eeuo pipefail
 #   IMBOY_DEPLOY_NODE_HOST   节点 host      Node host           (default: 127.0.0.1)
 #   IMBOY_DEPLOY_COOKIE      节点 cookie    Node cookie         (default: imboy)
 #   IMBOY_DEPLOY_BRANCH      部署分支       Deploy branch       (default: main)
-#   IMBOY_DEPLOY_STOP_OLD    完成后停旧节点 Stop old node after deploy (default: true)
+#   IMBOY_DEPLOY_STOP_OLD    完整迁移必须为 true；--no-migrate 时强制为 false
 #   IMBOY_DEPLOY_DB_CONTAINER PostgreSQL 容器名  PostgreSQL container
 #   IMBOY_DEPLOY_DB_NAME      PostgreSQL 数据库名 Database name
 #   IMBOY_DEPLOY_DB_USER      PostgreSQL 用户名  Database user
@@ -92,6 +92,8 @@ DB_CONTAINER="${IMBOY_DEPLOY_DB_CONTAINER:-}"
 DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
 DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
 EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
+SALES_RELEASE="${IMBOY_DEPLOY_SALES_RELEASE:-true}"
+E2EE_MODE="${IMBOY_DEPLOY_E2EE_MODE:-disabled}"
 # --local 模式：从本地 rsync 源码到远端，跳过 git pull
 # --local mode: rsync local source to remote, skip git pull
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -103,10 +105,28 @@ RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
 # 校验参数格式，防止注入 vm.args 或 rm -rf 路径
 # Validate inputs to prevent vm.args injection and path anomalies
 [[ "$SERVER_HOST" =~ ^[a-zA-Z0-9._-]+$  ]] || { echo "无效 SERVER_HOST / invalid SERVER_HOST: $SERVER_HOST" >&2; exit 1; }
+[[ "$SERVER_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] || { echo "无效 SERVER_USER / invalid SERVER_USER" >&2; exit 1; }
+[[ "$SERVER_PORT" =~ ^[0-9]+$ ]] && [ "$SERVER_PORT" -ge 1 ] && [ "$SERVER_PORT" -le 65535 ] \
+  || { echo "无效 SERVER_PORT / invalid SERVER_PORT" >&2; exit 1; }
 [[ "$BRANCH"      =~ ^[a-zA-Z0-9._/-]+$ ]] || { echo "无效 BRANCH / invalid BRANCH: $BRANCH" >&2; exit 1; }
+[[ "$BRANCH" != -* && "$BRANCH" != *..* ]] || { echo "危险 BRANCH / unsafe BRANCH: $BRANCH" >&2; exit 1; }
 [[ "$VSN"       =~ ^[a-zA-Z0-9._-]+$ ]] || { echo "无效 VSN / invalid VSN: $VSN" >&2; exit 1; }
 [[ "$NODE_NAME" =~ ^[a-zA-Z0-9_-]+$  ]] || { echo "NODE_NAME 含非法字符 / invalid NODE_NAME: $NODE_NAME" >&2; exit 1; }
+[[ "$NODE_HOST" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo "NODE_HOST 含非法字符 / invalid NODE_HOST" >&2; exit 1; }
 [[ "$COOKIE"    =~ ^[a-zA-Z0-9_-]+$  ]] || { echo "COOKIE 含非法字符 / invalid COOKIE: $COOKIE" >&2; exit 1; }
+[[ "$BLUE_PORT" =~ ^[0-9]+$ ]] && [ "$BLUE_PORT" -ge 1024 ] && [ "$BLUE_PORT" -le 65535 ] \
+  || { echo "无效 BLUE_PORT / invalid BLUE_PORT" >&2; exit 1; }
+[[ "$GREEN_PORT" =~ ^[0-9]+$ ]] && [ "$GREEN_PORT" -ge 1024 ] && [ "$GREEN_PORT" -le 65535 ] \
+  || { echo "无效 GREEN_PORT / invalid GREEN_PORT" >&2; exit 1; }
+[[ "$BLUE_PORT" != "$GREEN_PORT" ]] || { echo "蓝绿端口不得相同 / blue and green ports must differ" >&2; exit 1; }
+[[ "$PROJECT_DIR" =~ ^/[a-zA-Z0-9._/-]+$ && "$PROJECT_DIR" != *..* ]] \
+  || { echo "PROJECT_DIR 必须是无 .. 的安全绝对路径 / unsafe PROJECT_DIR" >&2; exit 1; }
+[[ "$NGINX_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$NGINX_CONF" != *..* ]] \
+  || { echo "NGINX_CONF 必须是无 .. 的安全绝对路径 / unsafe NGINX_CONF" >&2; exit 1; }
+[[ "$LOCAL_SRC_DIR" == /* && -d "$LOCAL_SRC_DIR" ]] \
+  || { echo "LOCAL_SRC_DIR 必须是存在的绝对目录 / invalid LOCAL_SRC_DIR" >&2; exit 1; }
+case "$SALES_RELEASE" in true|false) ;; *) echo "IMBOY_DEPLOY_SALES_RELEASE 只能为 true/false" >&2; exit 1 ;; esac
+case "$E2EE_MODE" in disabled|optional|required|compliance) ;; *) echo "IMBOY_DEPLOY_E2EE_MODE 非法" >&2; exit 1 ;; esac
 [[ "$RELEASE_DIR" == /usr/local/imboy-?* ]] || { echo "RELEASE_DIR 路径异常 / anomalous RELEASE_DIR: $RELEASE_DIR" >&2; exit 1; }
 if [[ -n "$DB_CONTAINER" && ! "$DB_CONTAINER" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
   echo "IMBOY_DEPLOY_DB_CONTAINER 含非法字符 / invalid DB container" >&2
@@ -129,6 +149,13 @@ case "$(echo "$STOP_OLD" | tr '[:upper:]' '[:lower:]')" in true|1|yes) STOP_OLD=
 log()  { echo -e "\033[36m[$(date '+%H:%M:%S')] $*\033[0m"; }
 ok()   { echo -e "\033[32m✓ $*\033[0m"; }
 fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
+
+if [ "$SKIP_MIGRATE" -eq 1 ] && [ "$STOP_OLD" = "true" ]; then
+  STOP_OLD=false
+  log "--no-migrate 强制保留旧节点；本次仅允许发布 schema 兼容代码 / keeping old node"
+elif [ "$SKIP_MIGRATE" -eq 0 ] && [ "$STOP_OLD" != "true" ]; then
+  fail "完整迁移前必须停止旧节点及其长连接；如需保留旧节点，请使用 --no-migrate"
+fi
 
 trap 'fail "脚本意外终止，使用 -v 查看详情 / Aborted — rerun with -v for details"' ERR
 
@@ -208,6 +235,35 @@ wait_for_port() {
   "
 }
 
+wait_for_port_closed() {
+  local port=$1
+  ssh_exec "
+    for i in \$(seq 1 20); do
+      LISTENERS=\$(ss -tlnH \"sport = :$port\") || exit 2
+      [ -z \"\$LISTENERS\" ] && exit 0
+      sleep 1
+    done
+    exit 1
+  "
+}
+
+stop_old_node() {
+  [ -n "$OLD_PORT" ] || return 0
+  log "停止旧节点并关闭既有长连接 (port=$OLD_PORT)... / Draining old node..."
+  OLD_DIR="$(ssh_capture \
+    "command -v lsof >/dev/null 2>&1 || exit 2; \
+     OLD_PID=\$(lsof -ti:$OLD_PORT -sTCP:LISTEN | head -1) || exit 3; \
+     [ -n \"\$OLD_PID\" ] && ps -o cmd= -p \"\$OLD_PID\" | grep -oE -- '-root [^ ]+' | awk '{print \$2}' | head -1")" || OLD_DIR=""
+  [ -n "$OLD_DIR" ] || fail "无法定位旧节点 release 目录，拒绝在旧连接仍存活时迁移"
+  [[ "$OLD_DIR" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ ]] \
+    || fail "旧节点 release 目录不符合安全模板，拒绝拼入远端命令: $OLD_DIR"
+  ssh_exec "command -v timeout >/dev/null 2>&1 && timeout 20s '$OLD_DIR/bin/imboy' stop" \
+    || fail "旧节点停止失败或 20s 超时，拒绝执行完整迁移"
+  wait_for_port_closed "$OLD_PORT" \
+    || fail "旧节点端口在 20s 后仍开放，拒绝执行完整迁移"
+  ok "旧节点已停止，既有 WebSocket 已断开并将重连到新节点"
+}
+
 # =============================================================================
 # Expand 迁移：切流前先补齐新代码必需的可空列
 #
@@ -266,20 +322,24 @@ run_expand_migrations() {
 # 回滚只做一件事：把 nginx 切回另一色，并在切之前**确认那一色真的健康**。
 # ⚠️ 它**不回滚数据库迁移**。迁移已应用的 schema 变更无法靠切流撤销，
 #   这也是 expand/contract 纪律不可省的原因（见 7️⃣ 的说明）。
-#   同理，只有当初部署时 IMBOY_DEPLOY_STOP_OLD=false 保留了旧节点，
-#   回滚才有目标可切 —— 否则脚本会直接告诉你旧节点已不在。
+#   只有 --no-migrate 的外层编排会保留旧节点；正常完整迁移为避免既有 WebSocket
+#   继续运行旧代码，会在迁移前停止旧节点，此时回滚需先人工确认 schema 兼容性。
 # =============================================================================
 if [ "$ROLLBACK" -eq 1 ]; then
   log "回滚模式 / Rollback mode"
-  CUR="$(ssh_capture "
-    if   lsof -i:$BLUE_PORT  >/dev/null 2>&1; then echo blue
-    elif lsof -i:$GREEN_PORT >/dev/null 2>&1; then echo green
-    else echo none
-    fi")"
+  if ! CUR="$(ssh_capture "
+    BLUE_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$BLUE_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
+    GREEN_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$GREEN_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
+    if [ \"\$BLUE_UPSTREAM\" -eq 1 ] && [ \"\$GREEN_UPSTREAM\" -eq 0 ]; then echo blue
+    elif [ \"\$GREEN_UPSTREAM\" -eq 1 ] && [ \"\$BLUE_UPSTREAM\" -eq 0 ]; then echo green
+    else exit 2
+    fi")"; then
+    fail "Nginx 当前 upstream 不是唯一蓝/绿色，拒绝猜测回滚方向"
+  fi
   case "$CUR" in
     blue)  RB_PORT="$GREEN_PORT"; RB_COLOR=green; CUR_PORT="$BLUE_PORT" ;;
     green) RB_PORT="$BLUE_PORT";  RB_COLOR=blue;  CUR_PORT="$GREEN_PORT" ;;
-    *)     fail "未检测到运行中的节点，无法回滚 / No running node detected" ;;
+    *)     fail "Nginx upstream 状态未知，无法回滚 / Unknown upstream" ;;
   esac
 
   # 切之前必须确认目标色真的能服务 —— 切到一个死节点上比不回滚更糟。
@@ -291,9 +351,18 @@ if [ "$ROLLBACK" -eq 1 ]; then
   ssh_exec "
     cp '$NGINX_CONF' '$NGINX_CONF'.bak
     sed -i 's|server 127.0.0.1:$CUR_PORT;|server 127.0.0.1:$RB_PORT;|g' '$NGINX_CONF'
-    grep -q 'server 127.0.0.1:$RB_PORT;' '$NGINX_CONF' \
-      || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; echo 'Nginx upstream 替换失败，已回滚 / replacement failed' >&2; exit 1; }
-    nginx -t && nginx -s reload
+    ROLLBACK_BLUE_AFTER=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$BLUE_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
+    ROLLBACK_GREEN_AFTER=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$GREEN_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
+    case '$RB_COLOR' in
+      blue)  [ \"\$ROLLBACK_BLUE_AFTER\" -eq 1 ] && [ \"\$ROLLBACK_GREEN_AFTER\" -eq 0 ] ;;
+      green) [ \"\$ROLLBACK_GREEN_AFTER\" -eq 1 ] && [ \"\$ROLLBACK_BLUE_AFTER\" -eq 0 ] ;;
+    esac || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; echo 'Nginx upstream 替换未生效，已恢复配置' >&2; exit 1; }
+    nginx -t || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; exit 1; }
+    nginx -s reload || {
+      cp '$NGINX_CONF'.bak '$NGINX_CONF'
+      nginx -t && nginx -s reload || true
+      exit 1
+    }
   " || fail "Nginx 回滚失败 / Nginx rollback failed"
 
   ok "已回滚至 $RB_COLOR (port=$RB_PORT) / Rolled back。⚠️ 数据库迁移未回滚，请人工确认 schema 与该版本兼容"
@@ -305,19 +374,35 @@ fi
 # =============================================================================
 log "检测蓝绿运行状态... / Detecting active blue-green slot..."
 
-CURRENT_COLOR="$(ssh_capture "
-  if   lsof -i:$BLUE_PORT  >/dev/null 2>&1; then echo blue
-  elif lsof -i:$GREEN_PORT >/dev/null 2>&1; then echo green
+if ! CURRENT_COLOR="$(ssh_capture "
+  command -v ss >/dev/null 2>&1 || exit 2
+  BLUE_STATE=\$(ss -tlnH \"sport = :$BLUE_PORT\") || exit 3
+  GREEN_STATE=\$(ss -tlnH \"sport = :$GREEN_PORT\") || exit 4
+  if [ -n \"\$BLUE_STATE\" ] && [ -n \"\$GREEN_STATE\" ]; then echo conflict
+  elif [ -n \"\$BLUE_STATE\" ]; then echo blue
+  elif [ -n \"\$GREEN_STATE\" ]; then echo green
   else echo none
   fi
-")"
+")"; then
+  fail "无法可靠探测蓝绿监听状态，拒绝推断为首次安装 / active-slot detection failed"
+fi
+
+case "$CURRENT_COLOR" in
+  blue|green|none) ;;
+  conflict) fail "蓝绿端口同时监听，拒绝选择部署目标 / both slots are active" ;;
+  *) fail "蓝绿监听状态返回未知结果 / unknown active-slot state: $CURRENT_COLOR" ;;
+esac
+
+if [ "$CURRENT_COLOR" = "none" ] && [ "$SKIP_MIGRATE" -eq 1 ]; then
+  fail "首次安装不能使用 --no-migrate；空库必须完成 bootstrap 迁移"
+fi
 
 # 选择对立色；首次部署（none）默认蓝
 # Pick opposite color; first deploy defaults to blue
 case "$CURRENT_COLOR" in
-  blue)  TARGET_COLOR=green; APP_PORT=$GREEN_PORT; OLD_PORT=$BLUE_PORT  ;;
-  green) TARGET_COLOR=blue;  APP_PORT=$BLUE_PORT;  OLD_PORT=$GREEN_PORT ;;
-  *)     TARGET_COLOR=blue;  APP_PORT=$BLUE_PORT;  OLD_PORT=""          ;;
+  blue)  TARGET_COLOR=green; APP_PORT=$GREEN_PORT; OLD_PORT=$BLUE_PORT; START_AUTO_MIGRATE=false ;;
+  green) TARGET_COLOR=blue;  APP_PORT=$BLUE_PORT;  OLD_PORT=$GREEN_PORT; START_AUTO_MIGRATE=false ;;
+  *)     TARGET_COLOR=blue;  APP_PORT=$BLUE_PORT;   OLD_PORT="";         START_AUTO_MIGRATE=true  ;;
 esac
 
 ok "当前: $CURRENT_COLOR → 目标: $TARGET_COLOR (port=$APP_PORT) / Current: $CURRENT_COLOR → Target: $TARGET_COLOR"
@@ -381,7 +466,7 @@ ssh_exec "
     echo '缺少 config/sys.pro.config：拒绝生成销售版 release' >&2
     exit 1
   }
-  IMBOY_SALES_RELEASE=${IMBOY_DEPLOY_SALES_RELEASE:-true} \
+  IMBOY_SALES_RELEASE=$SALES_RELEASE \
     escript scripts/validate_sales_release_config.escript config/sys.pro.config
   # 全量清理后重编：-l 模式 rsync 会同步本地自动生成的 ebin/imboy.app（已列新模块），
   # 但 --exclude='*.beam' 排除了对应 beam，致 erlang.mk 因 .app mtime 较新而跳过重建，
@@ -416,6 +501,13 @@ ssh_exec "
   REL_VSN_DIR=\$(find '$RELEASE_DIR/releases' -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
   # 解包后覆盖 http_port（tarball 内含旧值，必须在这里改）
   sed -i \"s/{http_port,[ ]*[0-9]\\+}/{http_port, $APP_PORT}/\" \"\$REL_VSN_DIR/sys.config\"
+  # 蓝绿 release 永久关闭 boot-time migrate；不依赖单次 daemon 命令的环境继承。
+  if grep -q '{auto_migrate,' \"\$REL_VSN_DIR/sys.config\"; then
+    sed -i 's/{auto_migrate,[ ]*true}/{auto_migrate, false}/' \"\$REL_VSN_DIR/sys.config\"
+  else
+    sed -i '/{imboy, \\[/a\\        {auto_migrate, false},' \"\$REL_VSN_DIR/sys.config\"
+  fi
+  grep -q '{auto_migrate,[ ]*false}' \"\$REL_VSN_DIR/sys.config\"
   cat > \"\$REL_VSN_DIR/vm.args\" <<'VMARGS'
 -name ${NODE_NAME}@${NODE_HOST}
 -setcookie ${COOKIE}
@@ -439,10 +531,22 @@ VMARGS
 ok "release 已解包，vm.args 已写入 / Release extracted, vm.args written"
 
 # =============================================================================
+# 4.5️⃣ 启动前 Expand schema / Apply additive schema before node startup
+#
+# 新代码可能在启动或健康检查阶段就引用新增字段，因此 expand 必须早于新节点启动。
+# 完整迁移仍由切流后的显式 db migrate 执行。
+# =============================================================================
+if [ "$CURRENT_COLOR" = "none" ]; then
+  log "首次安装由 application boot 执行完整迁移，跳过针对既有 schema 的 expand"
+else
+  run_expand_migrations
+fi
+
+# =============================================================================
 # 5️⃣ 启动新节点 + 轮询确认就绪 / Start new node + poll for readiness
 # =============================================================================
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
-ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='${IMBOY_DEPLOY_E2EE_MODE:-disabled}' ./bin/imboy daemon"
+ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' ./bin/imboy daemon"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers
@@ -454,13 +558,6 @@ wait_for_health "$APP_PORT" "$VSN" \
   常见原因：目标色端口上有上一次部署的残留进程。
   排查：ssh $SERVER_HOST \"ss -tlnp 'sport = :$APP_PORT'\" 并确认进程的 -root 目录"
 ok "新节点已就绪且版本匹配 (port=$APP_PORT, vsn=$VSN) / New node ready, version verified"
-
-# =============================================================================
-# 5.5️⃣ 切流前 Expand schema / Apply additive schema changes before traffic switch
-#
-# 新节点尚未接收业务流量，此时给数据库增加可空列对旧节点兼容；完成后再切流。
-# =============================================================================
-run_expand_migrations
 
 # =============================================================================
 # 6️⃣ 切换 Nginx upstream / Switch Nginx upstream
@@ -478,16 +575,21 @@ if [ -n "$OLD_PORT" ]; then
   "
   ok "Nginx 已切换至 $TARGET_COLOR / Nginx switched to $TARGET_COLOR"
 else
-  echo "ℹ️  首次部署：请手动将 Nginx upstream 设为 127.0.0.1:$APP_PORT，然后执行 nginx -s reload"
-  echo "ℹ️  First deploy: set Nginx upstream to 127.0.0.1:$APP_PORT, then run nginx -s reload"
+  echo "ℹ️  首次部署：请手动将 Nginx upstream 设为 127.0.0.1:${APP_PORT}，然后执行 nginx -s reload"
+  echo "ℹ️  First deploy: set Nginx upstream to 127.0.0.1:${APP_PORT}, then run nginx -s reload"
+fi
+
+# Nginx reload 只切换新连接；既有 WebSocket 仍停留在旧节点。完整迁移前必须
+# 显式停止旧节点并确认端口关闭，不能把 reload 误当成 connection drain。
+if [ "$SKIP_MIGRATE" -eq 0 ]; then
+  stop_old_node
 fi
 
 # =============================================================================
-# 7️⃣ 数据库迁移 / Run remaining DB migrations（C-52：完整迁移仍在切流之后）
+# 7️⃣ 数据库迁移 / Run remaining DB migrations（切流并 drain 之后）
 #
-# 为什么完整迁移在切流之后：此前迁移跑在「新节点已起、nginx 仍指向旧节点」的窗口里，
-# 也就是**旧节点正在服务流量时执行破坏性迁移** —— 一个 DROP COLUMN 会当场
-# 打断正在被使用的旧代码。切流之后旧节点已不接流量，破坏性变更才安全。
+# 为什么完整迁移在 drain 之后：Nginx reload 只影响新连接，旧 WebSocket 会继续
+# 承载业务；必须停止旧节点并确认端口关闭，才能执行可能含 contract 的完整迁移。
 #
 # 切流前的 run_expand_migrations 只执行显式批准的、旧代码兼容的增量 DDL，
 # 解决新代码在切流瞬间依赖新列的问题；其余迁移仍须遵循 expand/contract 纪律：
@@ -496,11 +598,14 @@ fi
 #   本次调整解决的是"expand 迟于切流"与"contract 撞上旧节点"两个相反时序，
 #   不是免除迁移评审。
 #
-# 迁移失败时**不自动切回** nginx：此刻新节点已在服务，贸然切回旧节点可能撞上
-# 已部分应用的 schema。改为显式提示 --rollback，由人判断。
+# 迁移失败时**不自动重启旧节点**：此刻 schema 可能已部分应用，旧版本兼容性未知。
+# 新节点启动命令固定传 IMBOY_AUTO_MIGRATE=false；否则 imboy_app:start/2 会在
+# 健康检查前先跑完整迁移，使本节的切流后时序沦为重复执行而非真实门禁。
 # =============================================================================
 if [ "$SKIP_MIGRATE" -eq 1 ]; then
   log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
+elif [ "$CURRENT_COLOR" = "none" ]; then
+  ok "首次安装已在健康检查前完成 bootstrap 迁移 / Bootstrap migrations completed during startup"
 else
   log "执行数据库迁移... / Running DB migrations..."
   # CTL_NODE 必须显式指定为本次刚启动的节点名，Makefile 默认值 imboy@127.0.0.1
@@ -510,30 +615,8 @@ else
   # 当 IMBOY_DEPLOY_COOKIE（如 .env.deploy 的 imboycookie）不是默认值时连不上。
   ssh_exec "cd '$PROJECT_DIR' && CTL_NODE='${NODE_NAME}@${NODE_HOST}' IMBOY_CTL_COOKIE='${COOKIE}' make ctl ARGS='db migrate'" \
     || fail "数据库迁移失败 / DB migration failed。流量已切到新节点且 schema 可能部分应用。
-  回滚请显式执行：bash ./scripts/deploy.sh --rollback $SERVER_HOST $VSN $NODE_NAME
-  （回滚只切回 nginx，**不回滚已应用的迁移**）"
+  旧节点已停止；请先核对 schema_migrations_history 与兼容性，再决定是否人工恢复旧节点。"
   ok "数据库迁移完成 / DB migrations applied"
-fi
-
-# =============================================================================
-# 8️⃣ 停止旧节点（可选）/ Stop old node (optional)
-# IMBOY_DEPLOY_STOP_OLD=false 保留旧节点，便于快速回滚
-# Set IMBOY_DEPLOY_STOP_OLD=false to keep old node alive for rollback
-# =============================================================================
-if [ "$STOP_OLD" = "true" ] && [ -n "$OLD_PORT" ]; then
-  log "停止旧节点 (port=$OLD_PORT)... / Stopping old node..."
-  # 按目录名版本号排序取最小值会挑到无关的历史陈旧目录（实测复现：
-  # 停了一个早已不跑的 rc.10 目录，真正占着 OLD_PORT 的进程被晾在原地）。
-  # 必须反查实际监听 OLD_PORT 的进程，从其命令行 -root 参数取真实目录。
-  OLD_DIR="$(ssh_capture \
-    "OLD_PID=\$(lsof -ti:$OLD_PORT -sTCP:LISTEN 2>/dev/null | head -1); \
-     [ -n \"\$OLD_PID\" ] && ps -o cmd= -p \"\$OLD_PID\" | grep -oE -- '-root [^ ]+' | awk '{print \$2}' | head -1")" || OLD_DIR=""
-  if [ -n "$OLD_DIR" ]; then
-    ssh_exec "$OLD_DIR/bin/imboy stop || true"
-    ok "旧节点已停止: $OLD_DIR / Old node stopped"
-  else
-    echo "⚠️  未能定位监听 port=$OLD_PORT 的进程目录，请手动确认并停止 / Could not resolve dir for port=$OLD_PORT, stop manually"
-  fi
 fi
 
 # =============================================================================

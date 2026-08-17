@@ -3,6 +3,7 @@
 
 -export([start/2]).
 -export([stop/1]).
+-export([maybe_migrate/0]).
 
 % -include("log.hrl").
 -include_lib("public_key/include/public_key.hrl").
@@ -21,7 +22,7 @@ start(_Type, _Args) ->
     ok = ensure_rsa_keys(),
     %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
     ok = imboy_license:load_and_validate(),
-    ok = imboy_migrate:migrate(),
+    ok = maybe_migrate(),
     _ = imboy_syn:init(),
     % 初始化 TSID 分布式ID生成器
     TsidDcId = application:get_env(imboy, tsid_dc_id, 1),
@@ -45,6 +46,9 @@ start(_Type, _Args) ->
     % application master 进程建表持有；否则表被首个惰性建表的短命 WS 连接进程
     % 随断线销毁 → 全局限流计数清零 → 攻击者反复连接/断开即可绕过双维上限。
     ok = agent_rate_limiter:init_table(),
+    %% 初始化 ACK 重试专用并发 ETS。必须由长驻 application master 建表，避免表由
+    %% 短命 WebSocket 进程持有并在断线时连同所有 timer/ACK 标志一起销毁。
+    ok = ack_retry_cache:init_table(),
     % 初始化 OIDC 一次性凭据（state/otc）ETS 表 + 过期清扫定时器。
     % 同上：必须由长驻的 application master 建表持有，否则表被首个惰性建表的
     % 短命 HTTP 请求进程随请求结束销毁 → 所有在途 state/otc 丢失 → 登录中断。
@@ -114,6 +118,23 @@ start(_Type, _Args) ->
             {ok, Sup};
         Other ->
             Other
+    end.
+
+%% @doc 按启动配置决定是否自动迁移。
+%% 蓝绿部署必须关闭自动迁移，由部署脚本在切流后显式调用 db migrate；
+%% 默认 true 保留本地开发、首次安装及既有手工启动行为。
+-spec maybe_migrate() -> ok.
+maybe_migrate() ->
+    case config_ds:env(auto_migrate, true) of
+        true ->
+            imboy_migrate:migrate();
+        false ->
+            logger:warning(
+                "[imboy_app] automatic migrations disabled; waiting for explicit db migrate"
+            ),
+            ok;
+        Other ->
+            erlang:error({invalid_config, auto_migrate, Other})
     end.
 
 % do_metrics_callback() ->

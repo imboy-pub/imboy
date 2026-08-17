@@ -66,27 +66,27 @@
 
 ### W0-PERF-02
 - title: depcache ACK 定时器改并发 ETS 表（write_concurrency）
-- status: ready
+- status: done
 - deps: none
 - wave: 0
 - tag: performance
 - effort: M
 - source: risk-report P0-3；PERF-02
-- action: 把 `message_ds.erl:154`、`websocket_logic.erl:58,71` 的 ACK 定时器/标志从 depcache 迁到并发 ETS 表（范本 `agent_rate_limiter.erl:84`，单 named_table+write_concurrency）。
-- verify: ACK 路径 `grep` 零 depcache call；EUnit 绿；并发压测无锁竞争热点。
-- evidence:
+- action: 新增节点本地 `ack_retry_cache_ets`（named public set，read/write_concurrency），以毫秒 TTL 保存 ACK 标志与 timer ref；application master 长驻持表，60 秒清理过期对象，ACK/timeout 交错时按 Ref 原子消费，三条生产调用链不再经过 depcache。
+- verify: `message_ds.erl`、`websocket_logic.erl`、`websocket_handler.erl` 的 ACK 路径零 `imboy_cache`/depcache 调用；专用缓存 TTL/过期/精确删除/属主存活/并发读写 EUnit 绿；发送、取消、超时与最终重试 ACK 竞态回归绿；本地并发烟测无错误。
+- evidence: 2026-08-17 测试先行：旧生产调用链在改用 `ack_retry_cache` mock 后，发送重试 5/5、ACK 取消 6 项、超时回调 6 项按预期变红；新增缓存模块测试在实现前 5/5 `undef`。实现后 `ack_retry_cache_tests` 6/6、`message_ds_ack_retry_tests` 5/5、`websocket_logic_tests` 14/14、`websocket_handler_tests` 35/35、`message_ds_tests` 15/15、`imboy_app_tests` 3/3、`imboy_codec_tests` 22/22 全绿；旧 timeout 仅在原子消费当前 Ref 成功后续排，已有后继 timer 时直接忽略；最终重试现与中间重试一样先检查 ACK，已 ACK 不再补发。32 worker 对同一 ETS 做 320000 次 set/get 本地烟测，无错误，耗时 27513µs（约 1163 万 ops/s）；该数字仅为本机微基准，不代表生产容量或集群端到端延迟。
 
 ### W0-PERF-01a
 - title: user_server 离线检查改阈值查询（急修部分）
-- status: ready
+- status: done
 - deps: none
 - wave: 0
 - tag: performance
 - effort: S
 - source: risk-report P0-2；PERF-01
-- action: `message_ds.erl:358-362` 上线离线检查从"拉 3×5000 行"改为按阈值 `chat.hrl:14` 的 COUNT/EXISTS 查询。
-- verify: 上线路径不再 SELECT 5000 行（读代码确认 + EUnit）。
-- evidence:
+- action: `message_ds.erl:368-387` 上线离线检查从“每类拉 5000 行”改为每类读取 `offline_msg_threshold + 1` 条，并保留原有 5000 硬上限；多出的 1 条仅作超过阈值的哨兵，阈值内仍直接推送。
+- verify: 三类查询均使用同一次合法阈值快照的 `Threshold + 1` 作为 LIMIT；默认阈值 10 时最多物化 33 条而非 15000 条；合法阈值限定为 0..4999，非法或越界值安全回退 10，确保始终保留 1 条超阈值哨兵且不突破原 5000 上限；相关 EUnit 与编译通过。
+- evidence: 2026-08-17 新增 5 个 `message_ds_tests` 阈值探测用例：先在旧实现上分别复现 LIMIT=5000、字符串阈值 `badarith`、大阈值无法保留哨兵，再在新实现上断言 C2C/C2G/S2C 各仅查询一次；合法/非法默认阈值 LIMIT=11，最大合法阈值 4999 对应 LIMIT=5000 且第 5000 条会触发单次 pull，5000 及以上回退默认值；`make app`、`message_ds_tests` 15/15、`user_server_tests` 24/24、`e2ee_offline_sender_did_tests` 13/13、erlfmt 全绿。该证据证明本地查询上限与消息链路回归，不代表生产负载时延实测。
 
 ### W0-SEC-01
 - title: 计费 9 端点补 current_uid 归属校验
@@ -109,8 +109,8 @@
 - effort: S
 - source: risk-report P1-D1；SEC-02
 - action: 四条直接借记路径（通用扣款、Agent 两腿结算、好友转账、充值退款扣回）统一在原子 UPDATE 内守卫 `status=1` 与 `balance-frozen`；迁移 65/66 分两事务添加并验证 `frozen<=balance` CHECK。
-- verify: 仓储 SQL 契约与钱包支付/提现/红包/Agent 支付/转账/充值退款/付费频道回归绿；发布前仍须在 PostgreSQL 18 副本完成历史违规预检、CHECK SQLSTATE 23514、65 up→66 up→66 down→65 down 与锁等待演练。
-- evidence: 实现已进入 `b35b1c7f`（当前 `origin/main` 已包含）；2026-08-16 最新 HEAD 上 `make app` 通过，12 个相关 EUnit 模块共 99 项全绿，release consistency 18/18、其自测 18/18、erlfmt 与 diff-check 通过。真实 PostgreSQL 验收未完成：本机 5432 无服务，隔离 PG 初始化被沙箱共享内存权限阻止，故保持 in_progress，不以 mock/静态 SQL 冒充数据库证据。
+- verify: 仓储 SQL 契约与钱包支付/提现/红包/Agent 支付/转账/充值退款/付费频道回归绿；本地用 `bash scripts/verify_wallet_constraint_sql.sh` 在一次性 PostgreSQL 18 实例复验约束、SQLSTATE、正反迁移与锁兼容；再按 `docs/guides/operations/wallet-constraint-clone-acceptance.md` 用 `scripts/verify_wallet_constraint_clone.sh` 在生产规模隔离可写克隆完成真实历史数据预检和时延/锁等待基线。
+- evidence: 实现已进入 `b35b1c7f`（当前 `origin/main` 已包含）；2026-08-16 最新 HEAD 上 `make app` 通过，12 个相关 EUnit 模块共 99 项全绿，release consistency 18/18、其自测 18/18、erlfmt 与 diff-check 通过。2026-08-17 新增可重复的隔离 PostgreSQL 18 Gate，强制主版本 18、仅使用私有 Unix socket 与合成数据，并对继承的 libpq/psql 环境、端口、临时目录及清理目标做安全约束；在故意注入错误 `PGHOSTADDR`/`PGSERVICE`/`PSQLRC` 的环境下，PostgreSQL 18.4 执行 `bash scripts/verify_wallet_constraint_sql.sh` 仍为 PASS=17、FAIL=0，且服务端断言连接来自脚本私有 Unix socket：65 up 在 1 条历史违规下成功且 `convalidated=false`，新违规写返回 SQLSTATE 23514；66 up 对历史违规返回 23514，修正临时 fixture 后成功且 `convalidated=true`；可用余额边界借记成功，超额/停用借记均 UPDATE 0；66 down 恢复 NOT VALID，65 down 后约束数为 0；ROW EXCLUSIVE 并发下 65 ADD 在 500ms 超时并返回 55P03，66 VALIDATE 在同一持锁事务仍存活时成功；退出后临时实例与数据目录已清理。同日修复蓝绿发布中 application boot 抢先执行完整迁移的时序缺陷：既有环境按 `expand → boot(auto_migrate=false) → health/version → Nginx reload → stop/端口关闭 → migrate` 执行，首次空库由 boot bootstrap，监听探测、停止超时、独立补跑迁移与回滚均 fail-closed；离线控制流 23/23、独立迁移入口 6/6、发布静态守卫 33/33。随后新增生产规模隔离克隆专用脚本与操作手册：每个写会话都重新核对 `system_identifier`、精确数据库标记、PG18、可写状态与最新迁移状态精确为 `64:false`；65 创建在提交前取得约束 OID，66 验证/重建和 65 删除均在同一事务锁表并核对 OID，异常清理沿用同一所有权边界且设置有界超时；21 项本地守卫全绿，含真实执行写路径、身份漂移和清理 OID 不一致反例。本机一次性 PostgreSQL 18.4 上以 1000 行合成钱包数据复跑完整流程通过，包含 55P03、并发 VALIDATE、23514、66/65 down、聚合指纹与迁移基线恢复；该结果仅证明脚本编排，不是生产规模证据。离线守卫现已纳入阻塞的 Backend CI 编译 job 与总发布一致性门禁；当前 release consistency 19/19、自测 21/21，且删除守卫测试时总门禁反例必红。发布前仍缺获授权的生产规模隔离克隆上的真实历史数据预检与时延/锁等待基线，故保持 in_progress。
 
 ### W0-SEC-00
 - title: AGPL vodozemac 法务裁决（产品决策，非工程）

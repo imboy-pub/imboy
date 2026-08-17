@@ -12,6 +12,7 @@
 #   5. 契约    商业路由（billing / adm finance billing / license / sso /
 #              export_data / brand）必须都在 api/openapi.yaml 里有契约
 #   6. 支持矩阵 docs/ops/support-matrix.md 存在且声明关键依赖版本
+#   7. 钱包约束 隔离克隆 Gate 与本地 fail-closed 守卫必须存在并实际通过
 #
 # 用法 / Usage:
 #   bash scripts/check_release_consistency.sh            # 全量
@@ -277,6 +278,36 @@ check_support_matrix() {
   return $rc
 }
 
+# ------------------------------------------------------------
+# 7. 钱包约束克隆 Gate：脚本存在、语法正确，且离线 fail-closed 守卫真实执行
+# 这里只运行 mock/输入守卫，不连接任何数据库；生产规模克隆仍是独立外部 Gate。
+# ------------------------------------------------------------
+check_wallet_constraint_gate() {
+  local root="${1:-$IMBOY_ROOT}"
+  local gate="${root}/scripts/verify_wallet_constraint_clone.sh"
+  local test="${root}/scripts/test/wallet_constraint_clone_guard_test.sh"
+  local rc=0 f
+
+  for f in "$gate" "$test"; do
+    if [ ! -f "$f" ]; then
+      crc_bad "钱包约束克隆 Gate 资产缺失：${f#"${root}/"}"
+      rc=1
+    elif ! bash -n "$f" 2>/dev/null; then
+      crc_bad "钱包约束克隆 Gate 语法错误：${f#"${root}/"}"
+      rc=1
+    fi
+  done
+  [ "$rc" -eq 0 ] || return "$rc"
+
+  if (cd "$root" && bash "$test" >/dev/null 2>&1); then
+    crc_ok "钱包约束克隆 Gate 离线守卫通过"
+  else
+    crc_bad "钱包约束克隆 Gate 离线守卫失败"
+    rc=1
+  fi
+  return "$rc"
+}
+
 crc_main() {
   echo "== 1. 版本一致性 =="
   check_version "$IMBOY_ROOT"
@@ -290,6 +321,8 @@ crc_main() {
   check_contract_coverage "$IMBOY_ROOT"
   echo "== 6. 支持矩阵 =="
   check_support_matrix "$IMBOY_ROOT"
+  echo "== 7. 钱包约束克隆 Gate =="
+  check_wallet_constraint_gate "$IMBOY_ROOT"
 
   echo ""
   echo "通过 ${CRC_PASS} 项，失败 ${CRC_FAIL} 项"

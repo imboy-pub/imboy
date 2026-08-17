@@ -43,6 +43,7 @@
 %   IMBOY_ALIPAY_APP_ID / IMBOY_ALIPAY_PRIVATE_KEY / IMBOY_ALIPAY_PUBLIC_KEY
 %   IMBOY_STRIPE_SECRET_KEY / IMBOY_STRIPE_WEBHOOK_SECRET
 %   IMBOY_PAYMENT_MODE     -> {imboy, payment_mode}  (sandbox | live)
+%   IMBOY_AUTO_MIGRATE     -> {imboy, auto_migrate}  (true | false)
 %   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile} (community | enterprise)
 %   IMBOY_E2EE_MODE         -> {imboy, capabilities.e2ee_mode}
 %                              (disabled | optional | required | compliance)
@@ -95,6 +96,9 @@ override_from_env() ->
     %% URL 配置覆盖（生产环境必须通过这两个变量消除 sys.config 中的 dev URL）
     ok = override_binary_key("IMBOY_BASE_URL", base_url),
     ok = override_binary_key("IMBOY_WS_URL", ws_url),
+
+    %% 蓝绿部署关闭启动期迁移，切流后由显式 db migrate 统一执行。
+    ok = override_boolean_key("IMBOY_AUTO_MIGRATE", auto_migrate),
 
     %% 产品销售策略覆盖：容器镜像不携带被忽略的 sys.pro.config，生产入口
     %% 必须通过显式环境变量决定 E2EE、频道和付费频道是否开启。
@@ -236,6 +240,18 @@ override_feature_switch(EnvVar, FeatureName) ->
                 features,
                 Current#{FeatureName => #{enabled => Enabled}}
             ),
+            ok;
+        _ ->
+            ok
+    end.
+
+-spec override_boolean_key(string(), atom()) -> ok.
+override_boolean_key(EnvVar, AppKey) ->
+    case os:getenv(EnvVar) of
+        false ->
+            ok;
+        Value when is_list(Value), length(Value) > 0 ->
+            application:set_env(imboy, AppKey, parse_feature_boolean(EnvVar, Value)),
             ok;
         _ ->
             ok

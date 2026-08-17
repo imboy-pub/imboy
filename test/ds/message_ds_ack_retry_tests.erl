@@ -36,7 +36,7 @@ send_next_immediate_publish_targets_only_unacked_devices_test_() ->
                     end},
                     {'publish', 3, fun(_, _, _) -> erlang:error(unexpected_publish_call) end}
                 ]},
-                {imboy_cache, [
+                {ack_retry_cache, [
                     {'get', 1, fun
                         ({ack_received, 1, <<"did_ack">>, <<"msg_1">>}) -> {ok, true};
                         ({ack_received, 1, <<"did_unacked">>, <<"msg_1">>}) -> undefined;
@@ -81,7 +81,7 @@ send_next_immediate_publish_skips_all_acked_devices_test_() ->
                     end},
                     {'publish', 3, fun(_, _, _) -> erlang:error(unexpected_publish_call) end}
                 ]},
-                {imboy_cache, [
+                {ack_retry_cache, [
                     {'get', 1, fun
                         ({ack_received, 1, <<"did_ack_1">>, <<"msg_2">>}) -> {ok, true};
                         ({ack_received, 1, <<"did_ack_2">>, <<"msg_2">>}) -> {ok, true};
@@ -123,7 +123,7 @@ send_next_delayed_publish_replaces_old_timer_for_unacked_device_test_() ->
                         [{Pid1, {<<"ios">>, <<"did_1">>}}]
                     end}
                 ]},
-                {imboy_cache, [
+                {ack_retry_cache, [
                     {'get', 1, fun
                         ({ack_received, 1, <<"did_1">>, <<"msg_3">>}) -> undefined;
                         ({1, <<"did_1">>, <<"msg_3">>}) -> {ok, OldRef};
@@ -131,8 +131,8 @@ send_next_delayed_publish_replaces_old_timer_for_unacked_device_test_() ->
                     end},
                     {'set', 3, fun({1, <<"did_1">>, <<"msg_3">>}, Ref, TTL) ->
                         ?assert(is_reference(Ref)),
-                        %% TTL 单位秒：(Delay=100 + 5000) div 1000 = 5（此前断言毫秒值 5100 已过时）
-                        ?assertEqual(5, TTL),
+                        %% ACK ETS 使用毫秒 TTL：Delay=100 + 5000ms 竞态余量。
+                        ?assertEqual(5100, TTL),
                         ok
                     end}
                 ]}
@@ -146,7 +146,7 @@ send_next_delayed_publish_replaces_old_timer_for_unacked_device_test_() ->
             after 400 ->
                 ?assert(false)
             end,
-            ?assertEqual(1, meck:num_calls(imboy_cache, set, 3)),
+            ?assertEqual(1, meck:num_calls(ack_retry_cache, set, 3)),
             [Pid1] = get(test_pids),
             exit(Pid1, kill),
             erase(test_pids)
@@ -165,7 +165,7 @@ send_next_delayed_publish_skips_already_acked_device_test_() ->
                         [{Pid1, {<<"ios">>, <<"did_1">>}}]
                     end}
                 ]},
-                {imboy_cache, [
+                {ack_retry_cache, [
                     {'get', 1, fun
                         ({ack_received, 1, <<"did_1">>, <<"msg_4">>}) -> {ok, true};
                         (_) -> undefined
@@ -180,7 +180,7 @@ send_next_delayed_publish_skips_already_acked_device_test_() ->
             after 300 ->
                 ok
             end,
-            ?assertEqual(0, meck:num_calls(imboy_cache, set, 3)),
+            ?assertEqual(0, meck:num_calls(ack_retry_cache, set, 3)),
             [Pid1] = get(test_pids),
             exit(Pid1, kill),
             erase(test_pids)
@@ -203,7 +203,7 @@ send_next_race_ack_after_immediate_publish_only_retries_unacked_device_test_() -
                         ]
                     end}
                 ]},
-                {imboy_cache, [
+                {ack_retry_cache, [
                     {'get', 1, fun
                         ({ack_received, 1, <<"did_ack_race">>, <<"msg_5">>} = Key) ->
                             Cnt =
@@ -233,8 +233,8 @@ send_next_race_ack_after_immediate_publish_only_retries_unacked_device_test_() -
                             end,
                         put(test_timer_sets, [Key | TimerSets]),
                         ?assert(is_reference(Ref)),
-                        %% TTL 单位秒：(Delay=0 或 100 + 5000) div 1000 = 5（此前断言毫秒值 5100 已过时）
-                        ?assertEqual(5, TTL),
+                        %% ACK ETS 使用毫秒 TTL：Delay=100 + 5000ms 竞态余量。
+                        ?assertEqual(5100, TTL),
                         ok
                     end}
                 ]}
@@ -268,7 +268,7 @@ send_next_race_ack_after_immediate_publish_only_retries_unacked_device_test_() -
             ?assertEqual(
                 2, get({ack_lookup_count, {ack_received, 1, <<"did_ack_race">>, <<"msg_5">>}})
             ),
-            ?assertEqual(1, meck:num_calls(imboy_cache, set, 3)),
+            ?assertEqual(1, meck:num_calls(ack_retry_cache, set, 3)),
             ?assertEqual([{1, <<"did_pending">>, <<"msg_5">>}], get(test_timer_sets)),
             [PidAckRace, PidPending] = get(test_pids),
             exit(PidAckRace, kill),

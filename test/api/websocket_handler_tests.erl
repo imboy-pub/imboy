@@ -179,7 +179,8 @@ websocket_info_timeout_without_ack_resend_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
-                {imboy_cache, [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_Key, _Ref) -> true end},
                     {'get', 1, fun(_Key) -> undefined end}
                 ]},
                 {message_ds, [
@@ -200,11 +201,38 @@ websocket_info_timeout_without_ack_resend_test_() ->
         end
     ).
 
+websocket_info_stale_timeout_does_not_resend_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_Key, stale_ref) -> false end},
+                    {'get', 1, fun(_Key) -> erlang:error(unexpected_ack_lookup) end}
+                ]},
+                {message_ds, [
+                    {'send_next', 6, fun(_, _, _, _, _, _) ->
+                        erlang:error(unexpected_stale_retry)
+                    end}
+                ]}
+            ],
+        fun() ->
+            State = #{current_uid => 1},
+            Info =
+                {timeout, stale_ref, {
+                    [100, 200], {1, <<"did_1">>, <<"msg_stale">>}, <<"raw_stale">>
+                }},
+            ?assertEqual({ok, State, hibernate}, websocket_handler:websocket_info(Info, State)),
+            ?assertEqual(0, meck:num_calls(ack_retry_cache, get, 1)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
+        end
+    ).
+
 websocket_info_timeout_with_ack_received_skip_resend_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
-                {imboy_cache, [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_Key, _Ref) -> true end},
                     {'get', 1, fun(_Key) -> {ok, true} end}
                 ]},
                 {message_ds, [
@@ -226,7 +254,8 @@ websocket_info_timeout_with_invalid_ack_flag_resend_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
-                {imboy_cache, [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_Key, _Ref) -> true end},
                     {'get', 1, fun(_Key) -> {ok, <<"invalid">>} end}
                 ]},
                 {message_ds, [
@@ -471,7 +500,8 @@ timeout_delivery_protobuf_test_() ->
     ?WITH_MECKS(
         log_mocks() ++
             [
-                {imboy_cache, [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_Key, _Ref) -> true end},
                     {'get', 1, fun(_Key) -> undefined end}
                 ]},
                 {message_ds, [
@@ -499,20 +529,56 @@ timeout_delivery_protobuf_test_() ->
     ).
 
 timeout_final_retry_protobuf_test_() ->
-    ?WITH_MECKS(log_mocks(), fun() ->
-        %% 最终重试超时也使用协议感知帧
-        Msg = #{
-            <<"id">> => <<"m4">>,
-            <<"type">> => <<"S2C">>,
-            <<"action">> => <<"test">>,
-            <<"server_ts">> => 1700000000
-        },
-        JsonMsg = jsone:encode(Msg, [native_utf8]),
-        State = #{protocol => protobuf},
-        Info = {timeout, ref2, {[], {1, <<"did_1">>, <<"m4">>}, JsonMsg}},
-        {reply, {binary, PbBin}, _, hibernate} = websocket_handler:websocket_info(Info, State),
-        ?assert(byte_size(PbBin) > 0)
-    end).
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_Key, ref2) -> true end},
+                    {'get', 1, fun(_Key) -> undefined end}
+                ]},
+                {message_ds, [
+                    {'send_next', 6, fun(1, <<"m4">>, _Msg, [], [<<"did_1">>], true) -> ok end}
+                ]}
+            ],
+        fun() ->
+            %% 最终重试超时也必须先查 ACK，再使用协议感知帧。
+            Msg = #{
+                <<"id">> => <<"m4">>,
+                <<"type">> => <<"S2C">>,
+                <<"action">> => <<"test">>,
+                <<"server_ts">> => 1700000000
+            },
+            JsonMsg = jsone:encode(Msg, [native_utf8]),
+            State = #{protocol => protobuf},
+            Info = {timeout, ref2, {[], {1, <<"did_1">>, <<"m4">>}, JsonMsg}},
+            {reply, {binary, PbBin}, _, hibernate} = websocket_handler:websocket_info(Info, State),
+            ?assert(byte_size(PbBin) > 0),
+            ?assertEqual(1, meck:num_calls(ack_retry_cache, get, 1)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 6))
+        end
+    ).
+
+timeout_final_retry_with_ack_skips_resend_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {ack_retry_cache, [
+                    {'delete_if_value', 2, fun(_Key, final_ref) -> true end},
+                    {'get', 1, fun(_Key) -> {ok, true} end}
+                ]},
+                {message_ds, [
+                    {'send_next', 6, fun(_, _, _, _, _, _) ->
+                        erlang:error(unexpected_final_retry)
+                    end}
+                ]}
+            ],
+        fun() ->
+            State = #{protocol => json},
+            Info = {timeout, final_ref, {[], {1, <<"did_1">>, <<"m5">>}, <<"raw">>}},
+            ?assertEqual({ok, State, hibernate}, websocket_handler:websocket_info(Info, State)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 6))
+        end
+    ).
 
 %% ===================================================================
 %% Iteration 5: CLIENT_ACK 协议重构

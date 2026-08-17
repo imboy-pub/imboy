@@ -28,13 +28,32 @@ escript scripts/imboy_ctl db migrate
 
 ### 蓝绿发布的迁移时序
 
-`imboy-deploy.sh all/api` 会在新节点通过 `/healthz` 且版本匹配后、切换
-Nginx 之前，执行 `.env.deploy` 中 `DEPLOY_EXPAND_MIGRATIONS` 列出的可加性
-迁移；本版本必须包含 `00000064_msg_store_sender_did.up.sql`，并验证
-`public.msg_store.sender_did` 已存在。完整 `db migrate` 仍在切流后执行。
+`imboy-deploy.sh all/api` 会在新节点启动前执行 `.env.deploy` 中
+`DEPLOY_EXPAND_MIGRATIONS` 列出的可加性迁移；本版本必须包含
+`00000064_msg_store_sender_did.up.sql`，并验证 `public.msg_store.sender_did`
+已存在。随后以 `IMBOY_AUTO_MIGRATE=false` 启动新节点，避免 application boot
+抢先执行完整迁移；该值也会写入 release 的 `sys.config`，普通重启不会恢复
+自动迁移。新节点通过 `/healthz`、切换 Nginx 后，脚本停止旧节点并确认端口
+关闭（Nginx reload 不会断开既有 WebSocket），最后才显式执行完整 `db migrate`。
 
 `DEPLOY_EXPAND_MIGRATIONS` 只允许放入已经完成兼容性评审的 expand SQL，不能
 把删除列/表等 contract 迁移提前。
+
+非蓝绿的首次安装或本地启动仍默认自动迁移；如需自行编排迁移时序，可显式设置
+`IMBOY_AUTO_MIGRATE=false`，并负责在节点启动后调用 `imboy_ctl db migrate`。
+统一入口的 `all`/`api` 模式均由底层 `deploy.sh` 在同一流程完成切流、停止旧节点
+和显式迁移；`migrate` 模式仅用于独立补跑，不参与 `all` 的正常时序。独立补跑前
+会校验 Nginx 正指向目标版本、另一蓝绿端口已关闭；无法可靠证明时拒绝迁移。
+
+`deploy.sh --no-migrate` 只用于发布对当前 schema 完全兼容的代码：它会强制保留旧节点，
+不会授权紧接着执行完整迁移。若之后使用独立 `migrate` 补跑，必须先停止另一色旧节点，
+入口会重新核对监听状态。反之，正常完整迁移必须停止旧节点及既有长连接，因此不接受
+`IMBOY_DEPLOY_STOP_OLD=false`；迁移开始后若失败，须先核对已应用 schema，再决定是否
+人工恢复旧版本，不能自动切回。
+
+管理后台远端目录固定限制在 `/www/wwwroot/<站点>`，且部署前必须由管理员在真实目录
+创建 `.imboy-admin-root` 标记文件；上传脚本会校验 `realpath` 与标记，并在同步时保留
+该标记，避免 `--delete` 或清理回退误作用于系统目录或符号链接目标。
 
 ## 备份与恢复
 
@@ -58,6 +77,13 @@ Nginx 之前，执行 `.env.deploy` 中 `DEPLOY_EXPAND_MIGRATIONS` 列出的可�
 ## 校验与诊断
 
 `check_module_boundaries.sh`（四层边界门禁）、`check_dco.sh`、`check_duplicate_modules.sh`、`check_server_zero_crypto.sh`、`check_release_consistency.sh`（商业化发布一致性门禁）、`check_tls_expiry.sh`（TLS 证书到期检查）、`validate_p5_manifest.sh`、`sanity_check.sh`、`erl_crashdump_analyzer.sh`（崩溃转储分析）、`websocket_diagnose.sh`（WS 连接逐层诊断：端口→HTTP→握手→在线数）。
+
+钱包约束有两级数据库门禁：`verify_wallet_constraint_sql.sh` 在一次性 PostgreSQL 18
+合成实例验证 SQL 语义；`verify_wallet_constraint_clone.sh` 默认只读预检，只有在显式
+确认后才对生产规模的隔离可写克隆执行 65/66 正反迁移、锁兼容与恢复演练。后者的操作
+手册见 [wallet-constraint-clone-acceptance.md](../docs/guides/operations/wallet-constraint-clone-acceptance.md)。
+其离线 fail-closed 守卫已纳入 `check_release_consistency.sh` 和 Backend CI；CI 只证明
+脚本守卫与编排，不能代替生产规模隔离克隆证据。
 
 ## 其他
 

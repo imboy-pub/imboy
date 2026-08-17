@@ -36,6 +36,28 @@ sales_policy_env_override_test() ->
         restore_os_env(SavedEnv)
     end.
 
+auto_migrate_env_override_test() ->
+    SavedApp = [{auto_migrate, application:get_env(imboy, auto_migrate)}],
+    SavedEnv = [{"IMBOY_AUTO_MIGRATE", os:getenv("IMBOY_AUTO_MIGRATE")}],
+    try
+        lists:foreach(
+            fun({Raw, Expected}) ->
+                os:putenv("IMBOY_AUTO_MIGRATE", Raw),
+                ok = imboy_env:override_from_env(),
+                ?assertEqual({ok, Expected}, application:get_env(imboy, auto_migrate))
+            end,
+            [{"true", true}, {"1", true}, {"false", false}, {"0", false}]
+        ),
+        os:putenv("IMBOY_AUTO_MIGRATE", "enabled"),
+        ?assertError(
+            {invalid_env, "IMBOY_AUTO_MIGRATE", "enabled"},
+            imboy_env:override_from_env()
+        )
+    after
+        restore_app_env(SavedApp),
+        restore_os_env(SavedEnv)
+    end.
+
 restore_app_env([]) ->
     ok;
 restore_app_env([{Key, undefined} | Rest]) ->

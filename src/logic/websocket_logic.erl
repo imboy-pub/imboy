@@ -53,14 +53,12 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
     %% 【关键修复】先设置 ACK 标志，再取消定时器
     %% 这样即使定时器消息已在队列中，投递前也会检查到 ACK
     AckReceivedKey = {ack_received, ToUid, DID, MsgId},
-    % 40 秒 TTL（覆盖最大重试窗口）——imboy_cache:set/3 的 TTL 单位是「秒」，
-    % 此前误传 40000 被当作 40000 秒（约 11 小时），导致每条已 ACK 消息的标志
-    % 在缓存中滞留 11 小时，高并发下缓存持续膨胀。
-    imboy_cache:set(AckReceivedKey, true, 40),
+    %% 专用 ACK ETS 使用毫秒 TTL；40 秒覆盖最大重试窗口。
+    ack_retry_cache:set(AckReceivedKey, true, 40000),
 
     _ = ?DEBUG_LOG({ack_cancel_processing, MsgId, ToUid, DID}),
 
-    case imboy_cache:get(TimerKey) of
+    case ack_retry_cache:get(TimerKey) of
         {ok, Ref} when is_reference(Ref) ->
             _ = ?DEBUG_LOG({ack_cancel_canceling_timer, MsgId, Ref}),
             case erlang:cancel_timer(Ref) of
@@ -69,14 +67,15 @@ handle_ack_cancel(ToUid, DID, MsgId) ->
                 Time ->
                     _ = ?DEBUG_LOG({ack_cancel_timer_canceled, MsgId, Time})
             end,
-            imboy_cache:flush(TimerKey),
+            %% 仅删除本次看到的 Ref，避免 ACK 与后继 timer 交错时误删新 timer。
+            _ = ack_retry_cache:delete_if_value(TimerKey, Ref),
             ok;
         undefined ->
             _ = ?DEBUG_LOG({ack_cancel_timer_not_found, MsgId}),
             ok;
         {ok, Other} ->
             _ = ?WARN_LOG({ack_cancel_invalid_cache_value, MsgId, Other}),
-            imboy_cache:flush(TimerKey),
+            _ = ack_retry_cache:delete_if_value(TimerKey, Other),
             ok
     end.
 
