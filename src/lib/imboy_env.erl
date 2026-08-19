@@ -453,6 +453,8 @@ override_payment() ->
     ok = override_binary_key("IMBOY_ALIPAY_ROOT_CERT_SN", alipay_root_cert_sn),
     %% 支付宝商户 PID（2088 开头，authinfo 签名串用）
     ok = override_binary_key("IMBOY_ALIPAY_PID", alipay_pid),
+    %% 支付宝接口内容加密密钥（控制台 AES 设置，base64；空则明文）
+    ok = override_binary_key("IMBOY_ALIPAY_AES_KEY", alipay_aes_key),
     %% Stripe
     ok = override_binary_key("IMBOY_STRIPE_SECRET_KEY", stripe_secret_key),
     ok = override_binary_key("IMBOY_STRIPE_WEBHOOK_SECRET", stripe_webhook_secret),

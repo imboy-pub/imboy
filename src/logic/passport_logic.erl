@@ -150,6 +150,7 @@ alipay_cfg() ->
                 app_id => AppId,
                 private_key => PriKey,
                 pid => application:get_env(imboy, alipay_pid, <<>>),
+                aes_key => application:get_env(imboy, alipay_aes_key, <<>>),
                 app_cert_sn => application:get_env(imboy, alipay_app_cert_sn, <<>>),
                 alipay_root_cert_sn => application:get_env(imboy, alipay_root_cert_sn, <<>>)
             }};

@@ -380,3 +380,52 @@ authinfo_no_pid_test() ->
 authinfo_no_credential_test() ->
     {error, Msg} = alipay_openapi:authinfo(#{app_id => <<>>, private_key => <<>>}, <<"t">>),
     ?assertEqual(<<"支付宝登录未配置凭据"/utf8>>, Msg).
+
+%%%===================================================================
+%%% AES 内容加密（控制台「接口内容加密方式」开启后：请求/响应 biz_content
+%%% 均为 AES-128-CBC + PKCS7 + base64 密文，IV 为 16 字节 0）
+%%% 测试向量由 cryptography 库预算（key = "0123456789abcdef"）
+%%%===================================================================
+
+-define(TEST_AES_KEY_B64, <<"MDEyMzQ1Njc4OWFiY2RlZg==">>).
+-define(TEST_AES_ENC_BIZ, <<"XXc2+GME4J+Npe95EdfmUjxYnkbeLHn+AHyrhMnMNw0=">>).
+-define(TEST_AES_ENC_RESP,
+    <<"sb44umJUD7auqhU6RDzOGa1sxXOWIxth2OsK89GQTNN1a5VD/RnVrK2A4Dna418ZRBzpdGSTvKSe",
+        "/uGg7o3pke+R953yKSSnm5I6BDqUyqgw0iul0aRc3BnQr7+CjaAz9jZFwqKRNQzELaWfVxhCUA==">>
+).
+
+cfg_aes() ->
+    (cfg())#{aes_key => ?TEST_AES_KEY_B64}.
+
+user_info_share_aes_request_test_() ->
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(alipay_tc_body, userinfo_resp_ok()),
+        {ok, _Info} = alipay_openapi:user_info_share(cfg_aes(), <<"at-test-token">>),
+        %% 请求侧：biz_content 为密文（与预算向量一致），签名照常可验
+        P = last_params(),
+        ?assertEqual(?TEST_AES_ENC_BIZ, maps:get(<<"biz_content">>, P)),
+        ?assert(verify_request_sign(P))
+    end).
+
+user_info_share_aes_response_test_() ->
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        %% 响应侧：response 节点值为密文 string，解密后解析字段
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"alipay_user_info_share_response">> => ?TEST_AES_ENC_RESP,
+                <<"sign">> => <<"ignored">>
+            })
+        ),
+        {ok, Info} = alipay_openapi:user_info_share(cfg_aes(), <<"at-test-token">>),
+        ?assertEqual(<<"2088302622035892">>, maps:get(<<"user_id">>, Info)),
+        ?assertEqual(<<"测试用户"/utf8>>, maps:get(<<"nick_name">>, Info))
+    end).
+
+aes_response_plaintext_fallback_test_() ->
+    %% 配了 AES 但网关返回明文 map（未加密接口）：按明文处理，不报错
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(alipay_tc_body, userinfo_resp_ok()),
+        {ok, Info} = alipay_openapi:user_info_share(cfg_aes(), <<"at-test-token">>),
+        ?assertEqual(<<"测试用户"/utf8>>, maps:get(<<"nick_name">>, Info))
+    end).

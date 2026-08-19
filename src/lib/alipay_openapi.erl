@@ -38,6 +38,7 @@
     app_id := binary(),
     private_key := binary(),
     pid => binary(),
+    aes_key => binary(),
     gateway_url => string(),
     app_cert_sn => binary(),
     alipay_root_cert_sn => binary()
@@ -144,7 +145,7 @@ do_request(Cfg, Method, Biz, RespKey, OkFun) ->
         <<"sign_type">> => <<"RSA2">>,
         <<"timestamp">> => now_beijing(),
         <<"version">> => <<"1.0">>,
-        <<"biz_content">> => jsone:encode(Biz)
+        <<"biz_content">> => encode_biz(Cfg, Biz)
     },
     Params = maybe_put(
         <<"app_cert_sn">>,
@@ -159,13 +160,14 @@ do_request(Cfg, Method, Biz, RespKey, OkFun) ->
         {ok, Sig} ->
             Signed = Params#{<<"sign">> => base64:encode(Sig)},
             Url = maps:get(gateway_url, Cfg, ?DEFAULT_GATEWAY),
-            post(Url, form_encode(Signed), RespKey, OkFun);
+            post(Url, form_encode(Signed), RespKey, OkFun, Cfg);
         {error, Reason} ->
             {error, <<"支付宝签名失败:"/utf8, (atom_to_binary(Reason, utf8))/binary>>}
     end.
 
--spec post(string(), binary(), binary(), fun((map()) -> map())) -> {ok, map()} | {error, binary()}.
-post(Url, Body, RespKey, OkFun) ->
+-spec post(string(), binary(), binary(), fun((map()) -> map()), cfg()) ->
+    {ok, map()} | {error, binary()}.
+post(Url, Body, RespKey, OkFun, Cfg) ->
     case
         httpc:request(
             post,
@@ -175,7 +177,7 @@ post(Url, Body, RespKey, OkFun) ->
         )
     of
         {ok, {{_, 200, _}, _Hdrs, RespBody}} ->
-            parse(RespBody, RespKey, OkFun);
+            parse(RespBody, RespKey, OkFun, Cfg);
         {ok, {{_, Status, _}, _, _}} ->
             {error, <<"支付宝接口 HTTP "/utf8, (integer_to_binary(Status))/binary>>};
         {error, Reason} ->
@@ -183,18 +185,18 @@ post(Url, Body, RespKey, OkFun) ->
             {error, <<"支付宝接口请求失败"/utf8>>}
     end.
 
--spec parse(binary(), binary(), fun((map()) -> map())) -> {ok, map()} | {error, binary()}.
-parse(Body, RespKey, OkFun) ->
+-spec parse(binary(), binary(), fun((map()) -> map()), cfg()) -> {ok, map()} | {error, binary()}.
+parse(Body, RespKey, OkFun, Cfg) ->
     try jsone:decode(Body) of
         #{RespKey := Resp} when is_map(Resp) ->
-            case maps:get(<<"code">>, Resp, <<>>) of
-                <<"10000">> ->
-                    {ok, OkFun(Resp)};
-                _ ->
-                    {error,
-                        maps:get(
-                            <<"sub_msg">>, Resp, maps:get(<<"msg">>, Resp, <<"接口失败"/utf8>>)
-                        )}
+            check_code(Resp, OkFun);
+        #{RespKey := Cipher} when is_binary(Cipher) ->
+            %% 控制台开启 AES 后 response 节点为密文 string：解密后再按明文走
+            case aes_decrypt_b64(Cipher, maps:get(aes_key, Cfg, <<>>)) of
+                {ok, Plain} ->
+                    decode_biz(Plain, OkFun);
+                error ->
+                    {error, <<"支付宝响应解析失败"/utf8>>}
             end;
         _ ->
             {error, <<"支付宝响应解析失败"/utf8>>}
@@ -202,6 +204,73 @@ parse(Body, RespKey, OkFun) ->
         _:_ ->
             {error, <<"支付宝响应解析失败"/utf8>>}
     end.
+
+-spec decode_biz(binary(), fun((map()) -> map())) -> {ok, map()} | {error, binary()}.
+decode_biz(Plain, OkFun) ->
+    try jsone:decode(Plain) of
+        Resp when is_map(Resp) ->
+            check_code(Resp, OkFun);
+        _ ->
+            {error, <<"支付宝响应解析失败"/utf8>>}
+    catch
+        _:_ ->
+            {error, <<"支付宝响应解析失败"/utf8>>}
+    end.
+
+-spec check_code(map(), fun((map()) -> map())) -> {ok, map()} | {error, binary()}.
+check_code(Resp, OkFun) ->
+    case maps:get(<<"code">>, Resp, <<>>) of
+        <<"10000">> ->
+            {ok, OkFun(Resp)};
+        _ ->
+            {error, maps:get(<<"sub_msg">>, Resp, maps:get(<<"msg">>, Resp, <<"接口失败"/utf8>>))}
+    end.
+
+%%%===================================================================
+%%% AES 内容加密（控制台「接口内容加密方式」）
+%%% AES-128-CBC + PKCS7，IV 为 16 字节 0；密钥/密文均 base64 传输。
+%%% 配置 aes_key 后：请求 biz_content 加密；响应节点为密文 string 时解密。
+%%%===================================================================
+
+%% biz_content 编码：aes_key 非空 → base64(AES(JSON))；否则明文 JSON
+-spec encode_biz(cfg(), map()) -> binary().
+encode_biz(Cfg, Biz) ->
+    Plain = jsone:encode(Biz),
+    case maps:get(aes_key, Cfg, <<>>) of
+        <<>> ->
+            Plain;
+        KeyB64 ->
+            Key = base64:decode(KeyB64),
+            base64:encode(
+                crypto:crypto_one_time(aes_128_cbc, Key, aes_iv(), pkcs7_pad(Plain), true)
+            )
+    end.
+
+-spec aes_decrypt_b64(binary(), binary()) -> {ok, binary()} | error.
+aes_decrypt_b64(_CipherB64, <<>>) ->
+    error;
+aes_decrypt_b64(CipherB64, KeyB64) ->
+    try
+        Key = base64:decode(KeyB64),
+        Plain = crypto:crypto_one_time(aes_128_cbc, Key, aes_iv(), base64:decode(CipherB64), false),
+        {ok, pkcs7_unpad(Plain)}
+    catch
+        _:_ -> error
+    end.
+
+-spec aes_iv() -> binary().
+aes_iv() ->
+    <<0:128>>.
+
+-spec pkcs7_pad(binary()) -> binary().
+pkcs7_pad(Data) ->
+    N = 16 - byte_size(Data) rem 16,
+    <<Data/binary, (binary:copy(<<N>>, N))/binary>>.
+
+-spec pkcs7_unpad(binary()) -> binary().
+pkcs7_unpad(Data) ->
+    N = binary:last(Data),
+    binary:part(Data, 0, byte_size(Data) - N).
 
 %% 签名串：排除 sign 与空值（保留 sign_type），key 字典序，原值 k=v& 连接
 -spec sign_content(map()) -> binary().
