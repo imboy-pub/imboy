@@ -61,6 +61,7 @@ get_routes() ->
             {"/api/v1/metrics", metrics_handler, #{}},
 
             {"/api/v1/passport/quick_login", passport_handler, #{action => quick_login}},
+            {"/api/v1/passport/alipay_login", passport_handler, #{action => alipay_login}},
             {"/api/v1/passport/login", passport_handler, #{action => login}},
             {"/api/v1/passport/signup", passport_handler, #{action => signup}},
             {"/api/v1/passport/getcode", passport_handler, #{action => getcode}},
@@ -946,6 +947,7 @@ open() ->
         <<"/api/v1/refreshtoken">>,
         <<"/api/v1/passport/login">>,
         <<"/api/v1/passport/quick_login">>,
+        <<"/api/v1/passport/alipay_login">>,
         <<"/api/v1/passport/signup">>,
         <<"/api/v1/passport/getcode">>,
         <<"/api/v1/passport/findpassword">>,

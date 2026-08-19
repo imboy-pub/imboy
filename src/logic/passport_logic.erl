@@ -16,6 +16,7 @@
 -export([find_password/5]).
 -export([verify_user/3]).
 -export([quick_login/4]).
+-export([alipay_login/2]).
 -export([find_user_setting/1]).
 -export([email_in_use/1]).
 -export([bind_email/2]).
@@ -86,6 +87,137 @@ quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
     end;
 quick_login(_, _, _, _) ->
     {error, <<"不支持的登录服务"/utf8>>}.
+
+%%%===================================================================
+%%% APP 支付宝登录：auth_code → oauth.token → user.info.share → 映射/建号 → 签发
+%%% 身份映射复用 sso_identity（provider=alipay, subject=支付宝 user_id），
+%%% 与 OIDC 登录流同一 find-or-create 范式；支付宝侧不暴露 email/手机号，
+%%% 故无"按 email 关联存量账号"分支，一律 (provider, subject) 直查。
+%%%===================================================================
+
+-define(ALIPAY_PROVIDER, <<"alipay">>).
+
+%% @doc 支付宝登录。AuthCode 为客户端 SDK 授权码；PostVals 带 did/ip/cosv。
+%% 返回 {ok, 登录态 map} | {error, Msg} | {error, Msg, Code}（402=配额满）。
+-spec alipay_login(binary(), map()) ->
+    {ok, map()} | {error, binary()} | {error, binary(), integer()}.
+alipay_login(AuthCode, PostVals) ->
+    Did = maps:get(<<"did">>, PostVals, <<>>),
+    case alipay_cfg() of
+        {ok, Cfg} ->
+            case alipay_openapi:oauth_token(Cfg, AuthCode) of
+                {ok, #{access_token := AccessToken, user_id := AlipayUid}} ->
+                    case alipay_openapi:user_info_share(Cfg, AccessToken) of
+                        {ok, Info} ->
+                            alipay_map_or_provision(AlipayUid, Info, Did, PostVals);
+                        {error, Msg} ->
+                            {error, Msg}
+                    end;
+                {error, Msg} ->
+                    {error, Msg}
+            end;
+        {error, Msg} ->
+            {error, Msg}
+    end.
+
+%% 凭据读取（IMBOY_* 注入）：app_id/private_key 必填；
+%% app_cert_sn/alipay_root_cert_sn 仅证书模式需要（部署脚本由证书 PEM 算好注入）。
+-spec alipay_cfg() -> {ok, alipay_openapi:cfg()} | {error, binary()}.
+alipay_cfg() ->
+    AppId = application:get_env(imboy, alipay_app_id, <<>>),
+    PriKey = application:get_env(imboy, alipay_private_key, <<>>),
+    case AppId =/= <<>> andalso PriKey =/= <<>> of
+        true ->
+            {ok, #{
+                app_id => AppId,
+                private_key => PriKey,
+                app_cert_sn => application:get_env(imboy, alipay_app_cert_sn, <<>>),
+                alipay_root_cert_sn => application:get_env(imboy, alipay_root_cert_sn, <<>>)
+            }};
+        false ->
+            {error, <<"支付宝登录未配置凭据"/utf8>>}
+    end.
+
+-spec alipay_map_or_provision(binary(), map(), binary(), map()) ->
+    {ok, map()} | {error, binary()} | {error, binary(), integer()}.
+alipay_map_or_provision(AlipayUid, Info, Did, PostVals) ->
+    case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
+        {ok, Uid} ->
+            alipay_finish(Uid, Did);
+        not_found ->
+            alipay_provision(AlipayUid, Info, Did, PostVals);
+        {error, Reason} ->
+            ?ERROR_LOG("alipay_login find_uid error ~p", [Reason]),
+            {error, <<"支付宝登录失败，请稍后再试"/utf8>>}
+    end.
+
+-spec alipay_provision(binary(), map(), binary(), map()) ->
+    {ok, map()} | {error, binary()} | {error, binary(), integer()}.
+alipay_provision(AlipayUid, Info, Did, PostVals) ->
+    case quota_guard() of
+        {error, _, _} = QErr ->
+            QErr;
+        ok ->
+            %% SSO 用户不走密码登录：随机密码占位（与 OIDC provision 同款）
+            RandPwd = base64:encode(crypto:strong_rand_bytes(32)),
+            Data = pick_data_for_insert(
+                #{
+                    <<"password">> => elib_password:generate(RandPwd),
+                    <<"gender">> => alipay_gender(maps:get(<<"gender">>, Info, <<>>))
+                },
+                PostVals#{
+                    <<"source">> => ?ALIPAY_PROVIDER,
+                    <<"nickname">> => alipay_nickname(
+                        maps:get(<<"nick_name">>, Info, <<>>), AlipayUid
+                    ),
+                    <<"avatar">> => maps:get(<<"avatar">>, Info, <<>>)
+                }
+            ),
+            case user_ds:insert_and_get_id(Data) of
+                {ok, Uid2} ->
+                    ok = sso_identity_ds:bind(?ALIPAY_PROVIDER, AlipayUid, Uid2, <<>>),
+                    alipay_finish(Uid2, Did);
+                {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
+                    %% 并发建号竞态：回读映射，命中即直登（与 OIDC 同款兜底）
+                    case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
+                        {ok, Uid3} ->
+                            alipay_finish(Uid3, Did);
+                        _ ->
+                            {error, <<"支付宝登录失败，请稍后再试"/utf8>>}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+%% 签发收口：status 1 启用 / 2 申请注销中 放行，其余拒绝（与 OIDC finish_login 同严）
+-spec alipay_finish(integer(), binary()) -> {ok, map()} | {error, binary()}.
+alipay_finish(Uid, Did) ->
+    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
+    case maps:get(<<"status">>, User, -2) of
+        1 ->
+            {ok, login_resp(User, Did, #{})};
+        2 ->
+            {ok, login_resp(User, Did, #{})};
+        0 ->
+            {error, <<"账号被禁用"/utf8>>};
+        _ ->
+            {error, <<"账号不存在或者已删除"/utf8>>}
+    end.
+
+%% 支付宝 gender：m 男 f 女；user 表 smallint 1 男 2 女 0 未知（chk_user_gender）
+-spec alipay_gender(term()) -> 0 | 1 | 2.
+alipay_gender(<<"m">>) -> 1;
+alipay_gender(<<"f">>) -> 2;
+alipay_gender(_) -> 0.
+
+%% 昵称兜底：用户未公开昵称时用 alipay_ + 支付宝 user_id 尾 6 位
+-spec alipay_nickname(binary(), binary()) -> binary().
+alipay_nickname(<<>>, AlipayUid) ->
+    Tail = binary:part(AlipayUid, byte_size(AlipayUid), -6),
+    <<"alipay_", Tail/binary>>;
+alipay_nickname(Nick, _AlipayUid) ->
+    Nick.
 
 % passport_logic:send_code(<<>>, <<"sms">>).
 % passport_logic:send_code(<<>>, <<"email">>).

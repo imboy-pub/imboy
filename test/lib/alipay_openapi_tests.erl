@@ -298,7 +298,8 @@ oauth_token_http_500_test_() ->
         erlang:put(alipay_tc_status, 500),
         erlang:put(alipay_tc_body, <<"<html>error</html>">>),
         {error, Msg} = alipay_openapi:oauth_token(cfg(), <<"authcode123">>),
-        ?assertMatch(<<_:(byte_size(<<"支付宝接口 HTTP "/utf8>>))/binary, _/binary>>, Msg)
+        Prefix = <<"支付宝接口 HTTP "/utf8>>,
+        ?assertEqual(Prefix, binary:part(Msg, 0, byte_size(Prefix)))
     end).
 
 oauth_token_bad_json_test_() ->

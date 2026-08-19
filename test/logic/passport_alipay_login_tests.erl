@@ -122,6 +122,7 @@ new_user_provision_test_() ->
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) -> not_found end},
                     {'bind', 4, fun(<<"alipay">>, ?ALIPAY_UID, 789, _E) -> ok end}
                 ]},
+                {account_ds, [{'allocate', 0, fun() -> <<"1000789">> end}]},
                 {user_ds, [
                     {'count', 0, fun() -> 100 end},
                     {'insert_and_get_id', 1, fun(Data) ->
@@ -170,6 +171,7 @@ nickname_fallback_test_() ->
                     {'find_uid', 2, fun(_, _) -> not_found end},
                     {'bind', 4, fun(_, _, _, _) -> ok end}
                 ]},
+                {account_ds, [{'allocate', 0, fun() -> <<"1000790">> end}]},
                 {user_ds, [
                     {'count', 0, fun() -> 1 end},
                     {'insert_and_get_id', 1, fun(Data) ->
@@ -208,6 +210,7 @@ gender_map_female_test_() ->
                     {'find_uid', 2, fun(_, _) -> not_found end},
                     {'bind', 4, fun(_, _, _, _) -> ok end}
                 ]},
+                {account_ds, [{'allocate', 0, fun() -> <<"1000790">> end}]},
                 {user_ds, [
                     {'count', 0, fun() -> 1 end},
                     {'insert_and_get_id', 1, fun(Data) ->
@@ -302,7 +305,8 @@ quota_exceeded_test_() ->
             fun() ->
                 {error, Msg, Code} = passport_logic:alipay_login(<<"authcode123">>, #{}),
                 ?assertEqual(?ERR_PAYMENT_REQUIRED, Code),
-                ?assertMatch(<<_:(byte_size(<<"用户数已达授权上限"/utf8>>))/binary, _/binary>>, Msg)
+                Prefix = <<"用户数已达授权上限"/utf8>>,
+                ?assertEqual(Prefix, binary:part(Msg, 0, byte_size(Prefix)))
             end
         )
     end}.
@@ -313,7 +317,6 @@ quota_exceeded_test_() ->
 
 provision_conflict_rebind_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
-        erlang:put(alipay_tc_find_uid_n, 0),
         ?WITH_MECKS(
             [
                 oauth_ok_mock(),
@@ -321,7 +324,12 @@ provision_conflict_rebind_test_() ->
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) ->
                         %% 第 1 次查：未绑定；冲突后第 2 次查：竞争者已绑定
-                        N = erlang:get(alipay_tc_find_uid_n),
+                        %% （计数器惰性初始化：?_test 在独立进程跑，外层 put 不可见）
+                        N =
+                            case erlang:get(alipay_tc_find_uid_n) of
+                                undefined -> 0;
+                                V -> V
+                            end,
                         erlang:put(alipay_tc_find_uid_n, N + 1),
                         case N of
                             0 -> not_found;
@@ -330,6 +338,7 @@ provision_conflict_rebind_test_() ->
                     end},
                     {'bind', 4, fun(_, _, _, _) -> ok end}
                 ]},
+                {account_ds, [{'allocate', 0, fun() -> <<"1000790">> end}]},
                 {user_ds, [
                     {'count', 0, fun() -> 1 end},
                     {'insert_and_get_id', 1, fun(_Data) ->

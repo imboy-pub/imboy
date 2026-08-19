@@ -55,6 +55,8 @@ init(Req0, State0) ->
                 login(Req0);
             quick_login ->
                 quick_login(Req0);
+            alipay_login ->
+                alipay_login(Req0);
             signup ->
                 signup(Req0);
             getcode ->
@@ -239,6 +241,35 @@ quick_login(Req0) ->
             elib_response:success(Req0, Data2, "success.");
         %% quota_guard 返回三元组（402 用户数达授权上限），必须显式接住：
         %% 只匹配 {error, Msg} 会在配额满时 case_clause 崩溃。
+        {error, Msg, Code} ->
+            elib_response:error(Req0, Msg, Code);
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
+
+%% @doc 支付宝登录（APP 授权码换登录态）
+%% 客户端支付宝 SDK 授权得 auth_code，POST 本端点换取 imboy token。
+%% did 头绑定 token 设备 claim（与 quick_login 同款），并通知 user_server 落设备行。
+%%
+%% @param Req0 Cowboy请求对象，body 含 auth_code
+%% @return 返回包含用户信息的响应
+%% @end
+-spec alipay_login(cowboy_req:req()) -> cowboy_req:req().
+alipay_login(Req0) ->
+    PostVals = elib_param:post(Req0),
+    AuthCode = maps:get(<<"auth_code">>, PostVals, <<>>),
+    Cosv = maps:get(<<"sys_version">>, PostVals, <<>>),
+    Ip = get_real_ip(Req0),
+    Did = cowboy_req:header(<<"did">>, Req0, <<>>),
+    Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip, <<"did">> => Did},
+    case passport_logic:alipay_login(AuthCode, Post2) of
+        {ok, Data} ->
+            Uid = maps:get(<<"uid">>, Data),
+            gen_server:cast(user_server, {login_success, Uid, Post2}),
+            Setting = passport_logic:find_user_setting(Uid),
+            Data2 = Data#{<<"setting">> => Setting},
+            elib_response:success(Req0, Data2, "success.");
+        %% quota_guard 三元组（402 用户数达授权上限）
         {error, Msg, Code} ->
             elib_response:error(Req0, Msg, Code);
         {error, Msg} ->
