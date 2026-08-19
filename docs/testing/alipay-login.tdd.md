@@ -102,5 +102,27 @@ Refactor 阶段无改动：实现复用既有 `quota_guard`/`pick_data_for_inser
 
 诚实说明：Flutter 侧 service/widget 测试为紧邻实现后补（非严格 RED）；
 编排层 `loginByAlipay` 无 notifier 单测（与 quickLogin 现状一致，真机联调兜底 E2E）。
-iOS 需在 `ios/Runner/Info.plist` 的 CFBundleURLTypes 增加 name=alipay 的回跳 scheme
-（tobias iOS 插件读该项），`ios/*` 为保留区，待 owner 确认后修改。
+iOS `ios/Runner/Info.plist` 的 CFBundleURLTypes 已加 name=alipay 回跳 scheme
+（owner 豁免保留区，提交 1c8462bd）。
+
+## 9. 第三轮：AES 内容加密（2026-08-19，owner 决定保留控制台 AES 设置）
+
+控制台「接口内容加密方式」开启后：请求 biz_content = base64(AES-128-CBC(JSON))，
+响应节点值变密文 string。实现：encode_biz 按 aes_key 是否配置自适应；
+parse 双兼容（string 解密 / map 明文）。IV=16 字节 0，PKCS7 padding。
+
+| 阶段 | 结果 |
+|------|------|
+| RED | 3 新用例 2 红 1 绿（明文回退用例现状即绿），14 旧用例绿 |
+| GREEN | alipay_openapi_tests 17/17；回归 passport_alipay_login 10 全绿 |
+
+缺陷记录：pkcs7_pad 初版 `N:(N*8)` 位编码错误（值 N 编码为 N 字节而非 N 重复 N 次），
+经 python cryptography 向量交叉验证定位（解密见 `\x00\x02` 应为 `\x02\x02`），
+改 `binary:copy(<<N>>, N)`。教训：padding 类原语必须用独立参考实现双向对拍，
+单测「能解密自己加密的内容」不足以抓错（自洽错误）。
+
+保证清单（21-23）：请求 biz_content 与预算向量逐字节一致（`user_info_share_aes_request_test_`）；
+响应密文解密还原字段（`user_info_share_aes_response_test_`）；
+配 AES 但网关返回明文时按明文处理不报错（`aes_response_plaintext_fallback_test_`）。
+
+提交：`4764871e feat: 支付宝接口内容 AES-128-CBC 加解密支持`
