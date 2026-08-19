@@ -198,6 +198,10 @@ parse(Body, RespKey, OkFun, Cfg) ->
                 error ->
                     {error, <<"支付宝响应解析失败"/utf8>>}
             end;
+        %% 业务错误的真实载体（签名错/SN错/code失效等）：透出 sub_msg 便于定位，
+        %% 勿掩盖成「解析失败」（真机排障曾因此多绕一轮）
+        #{<<"error_response">> := ErrResp} when is_map(ErrResp) ->
+            check_code(ErrResp, OkFun);
         _ ->
             {error, <<"支付宝响应解析失败"/utf8>>}
     catch

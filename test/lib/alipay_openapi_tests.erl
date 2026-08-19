@@ -429,3 +429,56 @@ aes_response_plaintext_fallback_test_() ->
         {ok, Info} = alipay_openapi:user_info_share(cfg_aes(), <<"at-test-token">>),
         ?assertEqual(<<"测试用户"/utf8>>, maps:get(<<"nick_name">>, Info))
     end).
+
+%%%===================================================================
+%%% error_response 节点（支付宝业务错误的真实载体：签名错/SN错/code失效
+%%% 都走它；此前 parse 只认成功节点名，把真实错误掩盖成「解析失败」）
+%%%===================================================================
+
+oauth_token_error_response_test_() ->
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"error_response">> => #{
+                    <<"code">> => <<"40002">>,
+                    <<"msg">> => <<"Invalid Arguments">>,
+                    <<"sub_code">> => <<"isv.code-invalid">>,
+                    <<"sub_msg">> => <<"授权码code无效"/utf8>>
+                },
+                <<"sign">> => <<"ignored">>
+            })
+        ),
+        {error, Msg} = alipay_openapi:oauth_token(cfg(), <<"expiredcode">>),
+        ?assertEqual(<<"授权码code无效"/utf8>>, Msg)
+    end).
+
+oauth_token_error_response_no_sub_test_() ->
+    %% 无 sub_msg 时回退 msg 字段
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"error_response">> => #{
+                    <<"code">> => <<"40002">>,
+                    <<"msg">> => <<"Invalid Arguments"/utf8>>
+                }
+            })
+        ),
+        {error, Msg} = alipay_openapi:oauth_token(cfg(), <<"x">>),
+        ?assertEqual(<<"Invalid Arguments"/utf8>>, Msg)
+    end).
+
+aes_bad_key_error_test_() ->
+    %% AES 密钥错误导致解密失败：报统一解析失败文案（不泄露密钥细节）
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"alipay_user_info_share_response">> => ?TEST_AES_ENC_RESP
+            })
+        ),
+        BadCfg = (cfg())#{aes_key => base64:encode(<<"badbadbadbadbad0">>)},
+        {error, Msg} = alipay_openapi:user_info_share(BadCfg, <<"at">>),
+        ?assertEqual(<<"支付宝响应解析失败"/utf8>>, Msg)
+    end).
