@@ -451,6 +451,8 @@ override_payment() ->
     %% 支付宝证书模式 SN（登录/支付证书加签方式；由证书 PEM 算好后注入，见 alipay_openapi:cert_sn/1）
     ok = override_binary_key("IMBOY_ALIPAY_APP_CERT_SN", alipay_app_cert_sn),
     ok = override_binary_key("IMBOY_ALIPAY_ROOT_CERT_SN", alipay_root_cert_sn),
+    %% 支付宝商户 PID（2088 开头，authinfo 签名串用）
+    ok = override_binary_key("IMBOY_ALIPAY_PID", alipay_pid),
     %% Stripe
     ok = override_binary_key("IMBOY_STRIPE_SECRET_KEY", stripe_secret_key),
     ok = override_binary_key("IMBOY_STRIPE_WEBHOOK_SECRET", stripe_webhook_secret),

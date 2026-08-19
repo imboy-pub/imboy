@@ -19,6 +19,7 @@
 %%%===================================================================
 
 -export([oauth_token/2, user_info_share/2]).
+-export([authinfo/2]).
 -export([cert_sn/1, root_cert_sn/1]).
 
 -include_lib("public_key/include/public_key.hrl").
@@ -36,6 +37,7 @@
 -type cfg() :: #{
     app_id := binary(),
     private_key := binary(),
+    pid => binary(),
     gateway_url => string(),
     app_cert_sn => binary(),
     alipay_root_cert_sn => binary()
@@ -71,6 +73,38 @@ user_info_share(Cfg, AccessToken) ->
         <<"alipay_user_info_share_response">>,
         fun(Resp) -> Resp end
     ).
+
+%% @doc 客户端唤起支付宝 SDK 的 authInfo 签名串（alipay.open.auth.sdk.code.get）。
+%% 私钥不出服务端：客户端拿本串直接喂 SDK，授权结果（auth_code）回传服务端。
+%% TargetId：商户侧生成的唯一标识（防重放），每次调用新生成。
+-spec authinfo(cfg(), binary()) -> {ok, binary()} | {error, binary()}.
+authinfo(Cfg, TargetId) ->
+    case cfg_ok(Cfg) andalso maps:get(pid, Cfg, <<>>) =/= <<>> of
+        false ->
+            {error, ?NO_CREDENTIAL};
+        true ->
+            Params = #{
+                <<"apiname">> => <<"com.alipay.account.auth">>,
+                <<"app_id">> => maps:get(app_id, Cfg),
+                <<"app_name">> => <<"mc">>,
+                <<"auth_type">> => <<"AUTHACCOUNT">>,
+                <<"biz_type">> => <<"openservice">>,
+                <<"method">> => <<"alipay.open.auth.sdk.code.get">>,
+                <<"pid">> => maps:get(pid, Cfg),
+                <<"product_id">> => <<"APP_FAST_LOGIN">>,
+                <<"scope">> => <<"kuaijie">>,
+                <<"target_id">> => TargetId,
+                <<"sign_type">> => <<"RSA2">>
+            },
+            %% 签名内容 = 全部参数按 key 字典序 k=v& 原值拼接（与 sign_content 同规则）
+            Content = sign_content(Params),
+            case epay_crypto:rsa_sign_sha256(Content, maps:get(private_key, Cfg)) of
+                {ok, Sig} ->
+                    {ok, <<Content/binary, "&sign=", (urlencode(base64:encode(Sig)))/binary>>};
+                {error, Reason} ->
+                    {error, <<"支付宝签名失败:"/utf8, (atom_to_binary(Reason, utf8))/binary>>}
+            end
+    end.
 
 -spec norm_token(map()) -> map().
 norm_token(Resp) ->

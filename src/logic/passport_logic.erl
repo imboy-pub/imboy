@@ -17,6 +17,7 @@
 -export([verify_user/3]).
 -export([quick_login/4]).
 -export([alipay_login/2]).
+-export([alipay_authinfo/0]).
 -export([find_user_setting/1]).
 -export([email_in_use/1]).
 -export([bind_email/2]).
@@ -120,6 +121,23 @@ alipay_login(AuthCode, PostVals) ->
             {error, Msg}
     end.
 
+%% @doc 生成客户端唤起支付宝 SDK 的 authInfo（私钥不出服务端）。
+%% target_id 每次新生成（16 hex），客户端拿到 authinfo 后直接喂 SDK。
+-spec alipay_authinfo() -> {ok, map()} | {error, binary()}.
+alipay_authinfo() ->
+    case alipay_cfg() of
+        {ok, Cfg} ->
+            TargetId = epay_crypto:lower_hex(crypto:strong_rand_bytes(8)),
+            case alipay_openapi:authinfo(Cfg, TargetId) of
+                {ok, Info} ->
+                    {ok, #{<<"authinfo">> => Info}};
+                {error, Msg} ->
+                    {error, Msg}
+            end;
+        {error, Msg} ->
+            {error, Msg}
+    end.
+
 %% 凭据读取（IMBOY_* 注入）：app_id/private_key 必填；
 %% app_cert_sn/alipay_root_cert_sn 仅证书模式需要（部署脚本由证书 PEM 算好注入）。
 -spec alipay_cfg() -> {ok, alipay_openapi:cfg()} | {error, binary()}.
@@ -131,6 +149,7 @@ alipay_cfg() ->
             {ok, #{
                 app_id => AppId,
                 private_key => PriKey,
+                pid => application:get_env(imboy, alipay_pid, <<>>),
                 app_cert_sn => application:get_env(imboy, alipay_app_cert_sn, <<>>),
                 alipay_root_cert_sn => application:get_env(imboy, alipay_root_cert_sn, <<>>)
             }};

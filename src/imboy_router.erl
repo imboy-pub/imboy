@@ -62,6 +62,7 @@ get_routes() ->
 
             {"/api/v1/passport/quick_login", passport_handler, #{action => quick_login}},
             {"/api/v1/passport/alipay_login", passport_handler, #{action => alipay_login}},
+            {"/api/v1/passport/alipay_authinfo", passport_handler, #{action => alipay_authinfo}},
             {"/api/v1/passport/login", passport_handler, #{action => login}},
             {"/api/v1/passport/signup", passport_handler, #{action => signup}},
             {"/api/v1/passport/getcode", passport_handler, #{action => getcode}},
@@ -948,6 +949,7 @@ open() ->
         <<"/api/v1/passport/login">>,
         <<"/api/v1/passport/quick_login">>,
         <<"/api/v1/passport/alipay_login">>,
+        <<"/api/v1/passport/alipay_authinfo">>,
         <<"/api/v1/passport/signup">>,
         <<"/api/v1/passport/getcode">>,
         <<"/api/v1/passport/findpassword">>,

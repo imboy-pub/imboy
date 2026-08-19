@@ -57,6 +57,8 @@ init(Req0, State0) ->
                 quick_login(Req0);
             alipay_login ->
                 alipay_login(Req0);
+            alipay_authinfo ->
+                alipay_authinfo(Req0);
             signup ->
                 signup(Req0);
             getcode ->
@@ -272,6 +274,16 @@ alipay_login(Req0) ->
         %% quota_guard 三元组（402 用户数达授权上限）
         {error, Msg, Code} ->
             elib_response:error(Req0, Msg, Code);
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
+
+%% @doc 获取支付宝授权签名串（客户端唤起 SDK 用，私钥不出服务端）
+-spec alipay_authinfo(cowboy_req:req()) -> cowboy_req:req().
+alipay_authinfo(Req0) ->
+    case passport_logic:alipay_authinfo() of
+        {ok, Data} ->
+            elib_response:success(Req0, Data, "success.");
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.

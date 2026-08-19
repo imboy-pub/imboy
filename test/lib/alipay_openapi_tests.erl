@@ -146,6 +146,9 @@ cfg() ->
         private_key => test_priv_key()
     }.
 
+cfg_with_pid() ->
+    (cfg())#{pid => <<"2088302622035892">>}.
+
 cfg_cert_mode() ->
     (cfg())#{
         app_cert_sn => ?TEST_APP_SN,
@@ -347,3 +350,33 @@ user_info_share_biz_error_test_() ->
         {error, Msg} = alipay_openapi:user_info_share(cfg(), <<"expired">>),
         ?assertEqual(<<"访问令牌已过期"/utf8>>, Msg)
     end).
+
+%%%===================================================================
+%%% authinfo（客户端唤起支付宝 SDK 的服务端签名串）
+%%%===================================================================
+
+authinfo_ok_test() ->
+    {ok, Info} = alipay_openapi:authinfo(cfg_with_pid(), <<"target-abc-123">>),
+    P = maps:from_list(cow_qs:parse_qs(Info)),
+    %% 固定参数
+    ?assertEqual(<<"com.alipay.account.auth">>, maps:get(<<"apiname">>, P)),
+    ?assertEqual(<<"alipay.open.auth.sdk.code.get">>, maps:get(<<"method">>, P)),
+    ?assertEqual(<<"2021004142626807">>, maps:get(<<"app_id">>, P)),
+    ?assertEqual(<<"2088302622035892">>, maps:get(<<"pid">>, P)),
+    ?assertEqual(<<"mc">>, maps:get(<<"app_name">>, P)),
+    ?assertEqual(<<"AUTHACCOUNT">>, maps:get(<<"auth_type">>, P)),
+    ?assertEqual(<<"openservice">>, maps:get(<<"biz_type">>, P)),
+    ?assertEqual(<<"APP_FAST_LOGIN">>, maps:get(<<"product_id">>, P)),
+    ?assertEqual(<<"kuaijie">>, maps:get(<<"scope">>, P)),
+    ?assertEqual(<<"target-abc-123">>, maps:get(<<"target_id">>, P)),
+    ?assertEqual(<<"RSA2">>, maps:get(<<"sign_type">>, P)),
+    %% 签名可用测试公钥验过（与 oauth 同规则：除 sign 外字典序 k=v& 原值）
+    ?assert(verify_request_sign(P)).
+
+authinfo_no_pid_test() ->
+    {error, Msg} = alipay_openapi:authinfo(cfg(), <<"target-abc-123">>),
+    ?assertEqual(<<"支付宝登录未配置凭据"/utf8>>, Msg).
+
+authinfo_no_credential_test() ->
+    {error, Msg} = alipay_openapi:authinfo(#{app_id => <<>>, private_key => <<>>}, <<"t">>),
+    ?assertEqual(<<"支付宝登录未配置凭据"/utf8>>, Msg).
