@@ -203,14 +203,18 @@ parse(Body, RespKey, OkFun, Cfg) ->
                 error ->
                     {error, <<"支付宝响应解析失败"/utf8>>}
             end;
-        %% 业务错误的真实载体（签名错/SN错/code失效等）：透出 sub_msg 便于定位，
+        %% 业务错误的真实载体（签名错/SN错/code失效等）：error_response 节点
+        %% 本身就是错误标识，不走成功判定；透出 sub_msg 便于定位，
         %% 勿掩盖成「解析失败」（真机排障曾因此多绕一轮）
         #{<<"error_response">> := ErrResp} when is_map(ErrResp) ->
-            check_code(ErrResp, OkFun);
+            ?LOG_ERROR("alipay_openapi error_response ~p", [ErrResp]),
+            {error, biz_err_msg(ErrResp)};
         _ ->
+            ?LOG_ERROR("alipay_openapi parse unrecognized body=~p", [Body]),
             {error, <<"支付宝响应解析失败"/utf8>>}
     catch
         _:_ ->
+            ?LOG_ERROR("alipay_openapi parse crash body=~p", [Body]),
             {error, <<"支付宝响应解析失败"/utf8>>}
     end.
 
@@ -220,20 +224,51 @@ decode_biz(Plain, OkFun) ->
         Resp when is_map(Resp) ->
             check_code(Resp, OkFun);
         _ ->
+            ?LOG_ERROR("alipay_openapi decode_biz unrecognized plain=~p", [Plain]),
             {error, <<"支付宝响应解析失败"/utf8>>}
     catch
         _:_ ->
+            ?LOG_ERROR("alipay_openapi decode_biz crash plain=~p", [Plain]),
             {error, <<"支付宝响应解析失败"/utf8>>}
     end.
 
+%% 成功判定对标官方 SDK 语义：无错误标识即成功。
+%% oauth.token / user.info.share 是前 biz_content 时代老接口，成功响应可
+%% 直出业务字段、无 code/msg（2026-08-19 真机「接口失败」根因：旧实现缺
+%% code 即误判失败）；有 sub_code/sub_msg 或非 10000 code 才是错误。
 -spec check_code(map(), fun((map()) -> map())) -> {ok, map()} | {error, binary()}.
 check_code(Resp, OkFun) ->
-    case maps:get(<<"code">>, Resp, <<>>) of
-        <<"10000">> ->
+    HasSub =
+        maps:get(<<"sub_code">>, Resp, <<>>) =/= <<>> orelse
+            maps:get(<<"sub_msg">>, Resp, <<>>) =/= <<>>,
+    case maps:get(<<"code">>, Resp, <<"10000">>) of
+        Code when
+            not HasSub andalso (Code =:= <<"10000">> orelse Code =:= 10000 orelse Code =:= <<>>)
+        ->
             {ok, OkFun(Resp)};
         _ ->
-            {error, maps:get(<<"sub_msg">>, Resp, maps:get(<<"msg">>, Resp, <<"接口失败"/utf8>>))}
+            ?LOG_ERROR("alipay_openapi biz error resp=~p", [Resp]),
+            {error, biz_err_msg(Resp)}
     end.
+
+%% 错误文案提取顺序：sub_msg（用户可读中文）→ msg → sub_code → code → 兜底
+-spec biz_err_msg(map()) -> binary().
+biz_err_msg(Resp) ->
+    Candidates = [
+        maps:get(<<"sub_msg">>, Resp, <<>>),
+        maps:get(<<"msg">>, Resp, <<>>),
+        maps:get(<<"sub_code">>, Resp, <<>>),
+        code_bin(maps:get(<<"code">>, Resp, <<>>))
+    ],
+    case [C || C <- Candidates, C =/= <<>>] of
+        [First | _] -> First;
+        [] -> <<"接口失败"/utf8>>
+    end.
+
+-spec code_bin(term()) -> binary().
+code_bin(Code) when is_integer(Code) -> integer_to_binary(Code);
+code_bin(Code) when is_binary(Code) -> Code;
+code_bin(_) -> <<>>.
 
 %%%===================================================================
 %%% AES 内容加密（控制台「接口内容加密方式」）

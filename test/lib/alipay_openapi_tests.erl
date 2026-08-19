@@ -485,3 +485,124 @@ aes_bad_key_error_test_() ->
         {error, Msg} = alipay_openapi:user_info_share(BadCfg, <<"at">>),
         ?assertEqual(<<"支付宝响应解析失败"/utf8>>, Msg)
     end).
+
+%%%===================================================================
+%%% 成功判定的真实形状（2026-08-19 真机「接口失败」根因：oauth.token /
+%%% user.info.share 是前 biz_content 时代老接口，成功响应可直出业务字段、
+%%% 无 code/msg；旧 check_code 缺 code 即误判失败。官方 SDK 语义 =
+%%% 无错误标识（sub_code/sub_msg/非10000 code）即成功）
+%%%===================================================================
+
+oauth_token_ok_no_code_test_() ->
+    %% 老接口成功响应直出业务字段、无 code/msg（官方老文档示例形状）
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"alipay_system_oauth_token_response">> => #{
+                    <<"access_token">> => <<"at-no-code">>,
+                    <<"user_id">> => <<"2088302622035892">>,
+                    <<"expires_in">> => 1296000,
+                    <<"refresh_token">> => <<"rt-no-code">>
+                },
+                <<"sign">> => <<"ignored">>
+            })
+        ),
+        {ok, Tok} = alipay_openapi:oauth_token(cfg(), <<"realcode">>),
+        ?assertEqual(<<"at-no-code">>, maps:get(access_token, Tok)),
+        ?assertEqual(<<"rt-no-code">>, maps:get(refresh_token, Tok))
+    end).
+
+user_info_share_ok_no_code_test_() ->
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"alipay_user_info_share_response">> => #{
+                    <<"user_id">> => <<"2088302622035892">>,
+                    <<"nick_name">> => <<"无码用户"/utf8>>,
+                    <<"avatar">> => <<"https://tfs.alipayobjects.com/a.jpg">>,
+                    <<"gender">> => <<"f">>
+                },
+                <<"sign">> => <<"ignored">>
+            })
+        ),
+        {ok, Info} = alipay_openapi:user_info_share(cfg(), <<"at">>),
+        ?assertEqual(<<"无码用户"/utf8>>, maps:get(<<"nick_name">>, Info)),
+        ?assertEqual(<<"f">>, maps:get(<<"gender">>, Info))
+    end).
+
+oauth_token_ok_integer_code_test_() ->
+    %% 防御：网关把 code 编成 JSON 数字时 10000 (integer) 也判成功
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"alipay_system_oauth_token_response">> => #{
+                    <<"code">> => 10000,
+                    <<"access_token">> => <<"at-int-code">>,
+                    <<"user_id">> => <<"2088302622035892">>
+                },
+                <<"sign">> => <<"ignored">>
+            })
+        ),
+        {ok, Tok} = alipay_openapi:oauth_token(cfg(), <<"realcode">>),
+        ?assertEqual(<<"at-int-code">>, maps:get(access_token, Tok))
+    end).
+
+biz_error_code_only_test_() ->
+    %% 无 sub_code/sub_msg/msg 的裸错误：透出 code 本身，比「接口失败」可定位
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"error_response">> => #{<<"code">> => <<"40006">>},
+                <<"sign">> => <<"ignored">>
+            })
+        ),
+        {error, Msg} = alipay_openapi:oauth_token(cfg(), <<"x">>),
+        ?assertEqual(<<"40006">>, Msg)
+    end).
+
+biz_error_sub_code_only_test_() ->
+    %% 只有 sub_code 无 sub_msg：透出 msg；msg 也无则透 sub_code
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"alipay_system_oauth_token_response">> => #{
+                    <<"code">> => <<"40002">>,
+                    <<"sub_code">> => <<"isv.broken">>
+                }
+            })
+        ),
+        {error, Msg} = alipay_openapi:oauth_token(cfg(), <<"x">>),
+        ?assertEqual(<<"isv.broken">>, Msg)
+    end).
+
+aes_resp_ok_no_code_test_() ->
+    %% AES 开启时真 code 成功路径：response 节点为密文，解密明文为
+    %% 无 code 的老接口成功形状 —— 生产最可能的真实形状，全链验证
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        Plain = jsone:encode(#{
+            <<"user_id">> => <<"2088302622035892">>,
+            <<"nick_name">> => <<"密文用户"/utf8>>,
+            <<"avatar">> => <<"https://tfs.alipayobjects.com/a.jpg">>
+        }),
+        erlang:put(
+            alipay_tc_body,
+            jsone:encode(#{
+                <<"alipay_user_info_share_response">> => aes_enc_for_test(Plain),
+                <<"sign">> => <<"ignored">>
+            })
+        ),
+        {ok, Info} = alipay_openapi:user_info_share(cfg_aes(), <<"at">>),
+        ?assertEqual(<<"密文用户"/utf8>>, maps:get(<<"nick_name">>, Info))
+    end).
+
+%% 测试侧 AES 加密（与 alipay_openapi 解密侧对偶：AES-128-CBC + PKCS7 + base64）
+aes_enc_for_test(Plain) ->
+    Key = base64:decode(?TEST_AES_KEY_B64),
+    N = 16 - byte_size(Plain) rem 16,
+    Padded = <<Plain/binary, (binary:copy(<<N>>, N))/binary>>,
+    base64:encode(crypto:crypto_one_time(aes_128_cbc, Key, <<0:128>>, Padded, true)).
