@@ -259,10 +259,11 @@ oauth_token_ok_test_() ->
         ?assertEqual(<<"RSA2">>, maps:get(<<"sign_type">>, P)),
         ?assertEqual(<<"1.0">>, maps:get(<<"version">>, P)),
         ?assertMatch(<<_Ts:19/binary>>, maps:get(<<"timestamp">>, P)),
-        %% biz_content 带授权码与授权类型
-        Biz = jsone:decode(maps:get(<<"biz_content">>, P)),
-        ?assertEqual(<<"authorization_code">>, maps:get(<<"grant_type">>, Biz)),
-        ?assertEqual(<<"authcode123">>, maps:get(<<"code">>, Biz)),
+        %% grant_type/code 为顶层参数（oauth.token 是前 biz_content 时代老接口，
+        %% 塞 biz_content JSON 会被网关前置层报「grant_type参数不正确」——生产探针实证）
+        ?assertEqual(<<"authorization_code">>, maps:get(<<"grant_type">>, P)),
+        ?assertEqual(<<"authcode123">>, maps:get(<<"code">>, P)),
+        ?assertEqual(false, maps:is_key(<<"biz_content">>, P)),
         %% 非证书模式不带 cert SN
         ?assertEqual(false, maps:is_key(<<"app_cert_sn">>, P)),
         %% 签名可用测试公钥验过
@@ -327,11 +328,11 @@ user_info_share_ok_test_() ->
         ?assertEqual(<<"测试用户"/utf8>>, maps:get(<<"nick_name">>, Info)),
         ?assertEqual(<<"m">>, maps:get(<<"gender">>, Info)),
         ?assertEqual(<<"深圳市"/utf8>>, maps:get(<<"city">>, Info)),
-        %% auth_token 作为 biz_content 字段下发
+        %% auth_token 为顶层参数（与 oauth.token 同代老接口，同样平铺）
         P = last_params(),
         ?assertEqual(<<"alipay.user.info.share">>, maps:get(<<"method">>, P)),
-        Biz = jsone:decode(maps:get(<<"biz_content">>, P)),
-        ?assertEqual(<<"at-test-token">>, maps:get(<<"auth_token">>, Biz)),
+        ?assertEqual(<<"at-test-token">>, maps:get(<<"auth_token">>, P)),
+        ?assertEqual(false, maps:is_key(<<"biz_content">>, P)),
         ?assert(verify_request_sign(P))
     end).
 
@@ -401,9 +402,11 @@ user_info_share_aes_request_test_() ->
     ?WITH_MECKS([httpc_mock()], fun() ->
         erlang:put(alipay_tc_body, userinfo_resp_ok()),
         {ok, _Info} = alipay_openapi:user_info_share(cfg_aes(), <<"at-test-token">>),
-        %% 请求侧：biz_content 为密文（与预算向量一致），签名照常可验
+        %% 请求侧：auth_token 平铺（老接口无 biz_content 可加密）；
+        %% AES 只影响响应侧解密，请求参数始终明文
         P = last_params(),
-        ?assertEqual(?TEST_AES_ENC_BIZ, maps:get(<<"biz_content">>, P)),
+        ?assertEqual(false, maps:is_key(<<"biz_content">>, P)),
+        ?assertEqual(<<"at-test-token">>, maps:get(<<"auth_token">>, P)),
         ?assert(verify_request_sign(P))
     end).
 

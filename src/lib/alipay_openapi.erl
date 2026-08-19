@@ -51,26 +51,28 @@
 
 %% @doc 授权码换访问令牌。返回归一 map：access_token/user_id/refresh_token/expires_in。
 %% user_id 优先取 user_id 字段，回退 alipay_user_id（老版响应只有后者）。
+%% 注意：oauth.token 是前 biz_content 时代接口，grant_type/code 必须平铺顶层
+%% （塞 biz_content JSON 会被网关前置层报「grant_type参数不正确」，生产探针实证）。
 -spec oauth_token(cfg(), binary()) -> {ok, map()} | {error, binary()}.
 oauth_token(Cfg, AuthCode) ->
-    Biz = #{<<"grant_type">> => <<"authorization_code">>, <<"code">> => AuthCode},
+    Extra = #{<<"grant_type">> => <<"authorization_code">>, <<"code">> => AuthCode},
     request(
         Cfg,
         <<"alipay.system.oauth.token">>,
-        Biz,
+        Extra,
         <<"alipay_system_oauth_token_response">>,
         fun norm_token/1
     ).
 
 %% @doc 访问令牌取用户公开信息（user_id/avatar/nick_name/gender/province/city）。
 %% 响应字段原样透出（binary 键 map），字段有无取决于用户授权范围。
+%% auth_token 同样平铺顶层（与 oauth.token 同代接口）。
 -spec user_info_share(cfg(), binary()) -> {ok, map()} | {error, binary()}.
 user_info_share(Cfg, AccessToken) ->
-    Biz = #{<<"auth_token">> => AccessToken},
     request(
         Cfg,
         <<"alipay.user.info.share">>,
-        Biz,
+        #{<<"auth_token">> => AccessToken},
         <<"alipay_user_info_share_response">>,
         fun(Resp) -> Resp end
     ).
@@ -122,31 +124,34 @@ norm_token(Resp) ->
 
 -spec request(cfg(), binary(), map(), binary(), fun((map()) -> map())) ->
     {ok, map()} | {error, binary()}.
-request(Cfg, Method, Biz, RespKey, OkFun) ->
+request(Cfg, Method, Extra, RespKey, OkFun) ->
     case cfg_ok(Cfg) of
         false ->
             {error, ?NO_CREDENTIAL};
         true ->
-            do_request(Cfg, Method, Biz, RespKey, OkFun)
+            do_request(Cfg, Method, Extra, RespKey, OkFun)
     end.
 
 -spec cfg_ok(cfg()) -> boolean().
 cfg_ok(Cfg) ->
     maps:get(app_id, Cfg, <<>>) =/= <<>> andalso maps:get(private_key, Cfg, <<>>) =/= <<>>.
 
+%% Extra：接口业务参数，平铺进顶层（登录链两个老接口均无 biz_content）
 -spec do_request(cfg(), binary(), map(), binary(), fun((map()) -> map())) ->
     {ok, map()} | {error, binary()}.
-do_request(Cfg, Method, Biz, RespKey, OkFun) ->
-    Params0 = #{
-        <<"app_id">> => maps:get(app_id, Cfg),
-        <<"method">> => Method,
-        <<"format">> => <<"JSON">>,
-        <<"charset">> => <<"utf-8">>,
-        <<"sign_type">> => <<"RSA2">>,
-        <<"timestamp">> => now_beijing(),
-        <<"version">> => <<"1.0">>,
-        <<"biz_content">> => encode_biz(Cfg, Biz)
-    },
+do_request(Cfg, Method, Extra, RespKey, OkFun) ->
+    Params0 = maps:merge(
+        Extra,
+        #{
+            <<"app_id">> => maps:get(app_id, Cfg),
+            <<"method">> => Method,
+            <<"format">> => <<"JSON">>,
+            <<"charset">> => <<"utf-8">>,
+            <<"sign_type">> => <<"RSA2">>,
+            <<"timestamp">> => now_beijing(),
+            <<"version">> => <<"1.0">>
+        }
+    ),
     Params = maybe_put(
         <<"app_cert_sn">>,
         maps:get(app_cert_sn, Cfg, <<>>),
@@ -232,23 +237,11 @@ check_code(Resp, OkFun) ->
 
 %%%===================================================================
 %%% AES 内容加密（控制台「接口内容加密方式」）
-%%% AES-128-CBC + PKCS7，IV 为 16 字节 0；密钥/密文均 base64 传输。
-%%% 配置 aes_key 后：请求 biz_content 加密；响应节点为密文 string 时解密。
+%%% 当前仅响应侧：AES-128-CBC + PKCS7 解密，IV 为 16 字节 0，密文 base64。
+%%% 登录链两个接口均为平铺参数（无 biz_content），请求侧无可加密对象；
+%%% 未来对接 biz_content 时代接口（如获取手机号）时恢复请求侧 encode_biz
+%%%（见 git 历史 4764871e）。
 %%%===================================================================
-
-%% biz_content 编码：aes_key 非空 → base64(AES(JSON))；否则明文 JSON
--spec encode_biz(cfg(), map()) -> binary().
-encode_biz(Cfg, Biz) ->
-    Plain = jsone:encode(Biz),
-    case maps:get(aes_key, Cfg, <<>>) of
-        <<>> ->
-            Plain;
-        KeyB64 ->
-            Key = base64:decode(KeyB64),
-            base64:encode(
-                crypto:crypto_one_time(aes_128_cbc, Key, aes_iv(), pkcs7_pad(Plain), true)
-            )
-    end.
 
 -spec aes_decrypt_b64(binary(), binary()) -> {ok, binary()} | error.
 aes_decrypt_b64(_CipherB64, <<>>) ->
@@ -265,11 +258,6 @@ aes_decrypt_b64(CipherB64, KeyB64) ->
 -spec aes_iv() -> binary().
 aes_iv() ->
     <<0:128>>.
-
--spec pkcs7_pad(binary()) -> binary().
-pkcs7_pad(Data) ->
-    N = 16 - byte_size(Data) rem 16,
-    <<Data/binary, (binary:copy(<<N>>, N))/binary>>.
 
 -spec pkcs7_unpad(binary()) -> binary().
 pkcs7_unpad(Data) ->
