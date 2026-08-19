@@ -1,6 +1,7 @@
-# TDD 证据报告：APP 支付宝登录后端对接
+# TDD 证据报告：APP 支付宝登录（后端 + Flutter 客户端）
 
-> 日期：2026-08-19 | 分支：main | 提交：44b95a51(RED) → b2d8c97b(GREEN)
+> 日期：2026-08-19 | 后端分支：main | imboy 提交：44b95a51(RED) → b2d8c97b(GREEN) → 85f98e06(authinfo GREEN)
+> Flutter 提交：imboyapp f7367b9d
 
 ## 1. 来源
 
@@ -67,4 +68,39 @@ Refactor 阶段无改动：实现复用既有 `quota_guard`/`pick_data_for_inser
 
 - RED 提交：`44b95a51 test: 支付宝登录 RED 复现用例（alipay_openapi + passport_logic:alipay_login/2）`
 - GREEN 提交：`b2d8c97b feat: APP 支付宝登录后端对接（auth_code→oauth.token→user.info.share→建号/直登）`
+- authinfo GREEN 提交：`85f98e06 feat: 支付宝 authinfo 签名端点（客户端唤起 SDK 用，私钥不出服务端）`（3 用例先红后绿，alipay_openapi_tests 14/14）
+- Flutter 提交：`f7367b9d feat(passport): 支付宝登录（tobias SDK 授权 + authinfo/auth_code 双端点对接）`（imboyapp 仓）
 - 无 squash 计划；如需 squash，本报告即 RED/GREEN 证据副本。
+
+## 7. 第二轮：authinfo 签名端点（2026-08-19）
+
+客户端唤起支付宝 SDK 需要服务端签名的 authInfo（私钥不出客户端）：
+`GET/POST /api/v1/passport/alipay_authinfo` → `passport_logic:alipay_authinfo/0`
+（target_id 每次新生成 16 hex）→ `alipay_openapi:authinfo/2`
+（alipay.open.auth.sdk.code.get 参数组装 + RSA2，sign URL 编码置尾）。
+
+| 阶段 | 结果 |
+|------|------|
+| RED | 3 新用例全红（authinfo/2 undef），11 旧用例绿 |
+| GREEN | alipay_openapi_tests 14/14；回归 passport_alipay_login 10、passport_handler 6、router_registry 17 全绿 |
+
+保证清单（18-20）：authinfo 11 个固定参数齐全 + 签名可用公钥验过（`authinfo_ok_test`）；
+缺 pid / 缺凭据均拒绝（`authinfo_no_pid_test` / `authinfo_no_credential_test`）。
+
+## 8. Flutter 客户端（imboyapp 仓）
+
+链路：`loginByAlipay` → `GET /passport/alipay_authinfo` → tobias SDK 授权 →
+`POST /passport/alipay_login {auth_code}` → `_onThirdLoginSuccess`
+（与 quickLogin 共用的落库/socket/跳转，DRY 抽取 ~50 行）。
+
+| 保证内容 | 测试位置 | 结果 |
+|---------|---------|------|
+| SDK 回调解析 7 分支（9000 Android/iOS 两形态/缺 code/6001/6002/4000/8000） | `test/unit_test/service/alipay_auth_service_test.dart` | 7/7 PASS |
+| 登录页第三方登录区渲染（按钮 Key + i18n 文案） | `test/unit_test/page/passport/login_page_test.dart` | 9/9 PASS |
+| passport 目录回归 | `flutter test test/unit_test/page/passport/` | 230/230 PASS |
+| lint | `dart analyze`（改动文件） | 0 issues |
+
+诚实说明：Flutter 侧 service/widget 测试为紧邻实现后补（非严格 RED）；
+编排层 `loginByAlipay` 无 notifier 单测（与 quickLogin 现状一致，真机联调兜底 E2E）。
+iOS 需在 `ios/Runner/Info.plist` 的 CFBundleURLTypes 增加 name=alipay 的回跳 scheme
+（tobias iOS 插件读该项），`ios/*` 为保留区，待 owner 确认后修改。
