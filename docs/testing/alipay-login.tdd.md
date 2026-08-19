@@ -126,3 +126,32 @@ parse 双兼容（string 解密 / map 明文）。IV=16 字节 0，PKCS7 padding
 配 AES 但网关返回明文时按明文处理不报错（`aes_response_plaintext_fallback_test_`）。
 
 提交：`4764871e feat: 支付宝接口内容 AES-128-CBC 加解密支持`
+
+## 10. 第四轮：真机「接口失败」根因修复 + alpha.40（2026-08-19）
+
+现象：alpha.39 部署后真机授权成功返回 APP 仍报「接口失败」（假 code 探针链
+路全通，真 code 路径未实证）。
+
+根因：`oauth.token` / `user.info.share` 是前 biz_content 时代老接口，**成功
+响应可直出业务字段、无 code/msg**（官方老文档示例形状）。旧 `check_code`
+以 `code == <<"10000">>` 为唯一成功判据，缺 code 时 `maps:get/3` 默认 `<<>>`
+误判失败，且 sub_msg/msg 俱缺 → 恰好落兜底文案「接口失败」。
+
+| 阶段 | 结果 |
+|------|------|
+| RED | 6 新用例红（无 code 成功明文/整数 code/裸 code 错误/仅 sub_code/无 code AES 密文/混合），失败值字节 = 「接口失败」UTF-8，与真机透出完全一致 |
+| GREEN | alipay_openapi_tests 26/26；回归 passport_alipay_login 10/10 |
+
+修复（对标官方 SDK「无错误标识即成功」语义）：
+- `check_code`：无 sub_code/sub_msg 且 code 缺失/`"10000"`/整数 `10000` 均判成功
+- 错误文案提取顺序 sub_msg→msg→sub_code→code→兜底，不再掩盖
+- `error_response` 节点强制按错误处理（不走成功判定）
+- parse/decode_biz/check_code 全失败路径 `LOG_ERROR` 留原始响应证据
+
+生产验证（alpha.40 blue:9800，eval 直调）：
+- 版本 `{"1.0.0-alpha.40", 1704, 0}`（vsn/jverification 私钥 1704B/jpush_app_key 空）
+- 假 code 探针仍返回 GBK「授权码code无效」（isv.code-invalid）——错误路径不回退
+- 成功路径待真机 E2E（真 auth_code 一次性，无法服务端重放）
+
+提交：`6bea889f fix: 支付宝老接口成功判定对标官方SDK`、
+`357a0172 chore: alpha.40 + jverification 私钥默认路径`
