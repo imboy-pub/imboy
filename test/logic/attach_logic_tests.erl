@@ -95,8 +95,10 @@ presign_group_non_member_forbidden_test_() ->
 presign_channel_subscriber_ok_test_() ->
     ?WITH_MECKS(
         [
+            %% 非频道管理角色（get_role → 0），走订阅判定
+            {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 0 end}]},
             {channel_ds, [
-                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+                {'find_by_id', 2, fun(9, _Fields) -> #{<<"type">> => 0} end}
             ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 1) -> true end}]}
         ],
@@ -112,8 +114,9 @@ presign_channel_subscriber_ok_test_() ->
 presign_channel_non_subscriber_forbidden_test_() ->
     ?WITH_MECKS(
         [
+            {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 0 end}]},
             {channel_ds, [
-                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+                {'find_by_id', 2, fun(9, _Fields) -> #{<<"type">> => 0} end}
             ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(_, _) -> false end}]}
         ],
@@ -466,8 +469,9 @@ authorize_channel_subscriber_grants_test_() ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
             ]},
+            {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 0 end}]},
             {channel_ds, [
-                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+                {'find_by_id', 2, fun(9, _Fields) -> #{<<"type">> => 0} end}
             ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 7) -> true end}]},
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
@@ -485,8 +489,9 @@ authorize_channel_non_subscriber_denies_test_() ->
                     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => <<"9">>}}
                 end}
             ]},
+            {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 0 end}]},
             {channel_ds, [
-                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+                {'find_by_id', 2, fun(9, _Fields) -> #{<<"type">> => 0} end}
             ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(_, _) -> false end}]}
         ],
@@ -560,8 +565,9 @@ authorize_channel_uploader_subscribed_grants_test_() ->
                     }}
                 end}
             ]},
+            {channel_admin_ds, [{'get_role', 2, fun(_, _) -> 0 end}]},
             {channel_ds, [
-                {'find_by_id', 2, fun(9, <<"id,type,status">>) -> #{<<"type">> => 0} end}
+                {'find_by_id', 2, fun(9, _Fields) -> #{<<"type">> => 0} end}
             ]},
             {channel_subscription_ds, [{'is_subscribed', 2, fun(9, 7) -> true end}]},
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
