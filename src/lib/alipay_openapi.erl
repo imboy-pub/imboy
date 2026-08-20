@@ -27,6 +27,8 @@
 
 -define(DEFAULT_GATEWAY, "https://openapi.alipay.com/gateway.do").
 -define(NO_CREDENTIAL, <<"支付宝登录未配置凭据"/utf8>>).
+%% 出站 HTTP 超时：网关挂起时避免无限阻塞 cowboy 进程（对齐 elib_oss 10000ms 惯例）
+-define(HTTP_TIMEOUT, 10000).
 
 %% X.500 属性 OID（本地定义，避免依赖 public_key.hrl 宏名稳定性）
 -define(OID_CN, {2, 5, 4, 3}).
@@ -177,7 +179,7 @@ post(Url, Body, RespKey, OkFun, Cfg) ->
         httpc:request(
             post,
             {Url, [], "application/x-www-form-urlencoded", Body},
-            [],
+            [{timeout, ?HTTP_TIMEOUT}, {connect_timeout, ?HTTP_TIMEOUT}],
             [{body_format, binary}]
         )
     of
