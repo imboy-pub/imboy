@@ -270,6 +270,38 @@ userinfo_failed_test_() ->
         )
     end}.
 
+%% oauth_token 成功但网关未回 user_id（老版响应缺字段）：空 AlipayUid 不得
+%% bind——(alipay, <<>>) 映射会让所有同类登录撞进同一账号（账号混淆）
+empty_alipay_uid_never_binds_test_() ->
+    {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
+        ?WITH_MECKS(
+            [
+                {alipay_openapi, [
+                    {'oauth_token', 2, fun(_C, _Code) ->
+                        {ok, #{
+                            access_token => <<"at">>,
+                            user_id => <<>>,
+                            refresh_token => <<"rt">>,
+                            expires_in => 1296000
+                        }}
+                    end},
+                    {'user_info_share', 2, fun(_C, _At) -> {ok, #{}} end}
+                ]},
+                {sso_identity_ds, [
+                    {'find_uid', 2, fun(_, _) -> not_found end},
+                    {'bind', 4, fun(_, _, _, _) -> ok end}
+                ]}
+            ],
+            fun() ->
+                {error, Msg} = passport_logic:alipay_login(<<"authcode123">>, #{}),
+                ?assertEqual(<<"支付宝授权失败：未获取到用户标识"/utf8>>, Msg),
+                %% 空守卫在 userinfo 外呼与身份映射之前短路
+                ?assertEqual(0, meck:num_calls(alipay_openapi, user_info_share, 2)),
+                ?assertEqual(0, meck:num_calls(sso_identity_ds, bind, 4))
+            end
+        )
+    end}.
+
 disabled_user_rejected_test_() ->
     {setup, fun env_setup/0, fun env_cleanup/1, fun(_) ->
         ?WITH_MECKS(

@@ -260,22 +260,28 @@ quick_login(Req0) ->
 alipay_login(Req0) ->
     PostVals = elib_param:post(Req0),
     AuthCode = maps:get(<<"auth_code">>, PostVals, <<>>),
-    Cosv = maps:get(<<"sys_version">>, PostVals, <<>>),
-    Ip = get_real_ip(Req0),
-    Did = cowboy_req:header(<<"did">>, Req0, <<>>),
-    Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip, <<"did">> => Did},
-    case passport_logic:alipay_login(AuthCode, Post2) of
-        {ok, Data} ->
-            Uid = maps:get(<<"uid">>, Data),
-            gen_server:cast(user_server, {login_success, Uid, Post2}),
-            Setting = passport_logic:find_user_setting(Uid),
-            Data2 = Data#{<<"setting">> => Setting},
-            elib_response:success(Req0, Data2, "success.");
-        %% quota_guard 三元组（402 用户数达授权上限）
-        {error, Msg, Code} ->
-            elib_response:error(Req0, Msg, Code);
-        {error, Msg} ->
-            elib_response:error(Req0, Msg)
+    case AuthCode of
+        <<>> ->
+            %% 空授权码直接拒绝：外呼网关必失败且浪费一次签名/HTTP 往返
+            elib_response:error(Req0, <<"授权码不能为空"/utf8>>);
+        _ ->
+            Cosv = maps:get(<<"sys_version">>, PostVals, <<>>),
+            Ip = get_real_ip(Req0),
+            Did = cowboy_req:header(<<"did">>, Req0, <<>>),
+            Post2 = PostVals#{<<"cosv">> => Cosv, <<"ip">> => Ip, <<"did">> => Did},
+            case passport_logic:alipay_login(AuthCode, Post2) of
+                {ok, Data} ->
+                    Uid = maps:get(<<"uid">>, Data),
+                    gen_server:cast(user_server, {login_success, Uid, Post2}),
+                    Setting = passport_logic:find_user_setting(Uid),
+                    Data2 = Data#{<<"setting">> => Setting},
+                    elib_response:success(Req0, Data2, "success.");
+                %% quota_guard 三元组（402 用户数达授权上限）
+                {error, Msg, Code} ->
+                    elib_response:error(Req0, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
     end.
 
 %% @doc 获取支付宝授权签名串（客户端唤起 SDK 用，私钥不出服务端）

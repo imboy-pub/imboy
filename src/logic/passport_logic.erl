@@ -107,13 +107,19 @@ alipay_login(AuthCode, PostVals) ->
     case alipay_cfg() of
         {ok, Cfg} ->
             case alipay_openapi:oauth_token(Cfg, AuthCode) of
-                {ok, #{access_token := AccessToken, user_id := AlipayUid}} ->
+                %% AlipayUid 必须非空：空 uid 若继续 bind 会创建 (alipay, <<>>)
+                %% 身份映射，所有拿不到 user_id 的登录都会撞进同一账号（混淆）
+                {ok, #{access_token := AccessToken, user_id := AlipayUid}} when
+                    AlipayUid =/= <<>>
+                ->
                     case alipay_openapi:user_info_share(Cfg, AccessToken) of
                         {ok, Info} ->
                             alipay_map_or_provision(AlipayUid, Info, Did, PostVals);
                         {error, Msg} ->
                             {error, Msg}
                     end;
+                {ok, _} ->
+                    {error, <<"支付宝授权失败：未获取到用户标识"/utf8>>};
                 {error, Msg} ->
                     {error, Msg}
             end;
