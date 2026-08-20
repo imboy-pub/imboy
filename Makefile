@@ -323,3 +323,8 @@ eqwalize-layer: ## 分层检查（预算制）: make eqwalize-layer LAYER=lib
 eqwalize-all: ## 全量检查（CI 用；解析输出判定，退出码不可信）
 	@$(ELP) eqwalize-all 2>&1 | tee .elp/eqwalize-all.log; \
 	grep -q "^error:" .elp/eqwalize-all.log && exit 1 || true
+
+# compile: erlang.mk 无原生 compile target（构建入口是 app）；
+# 历史文档/README 大量引用 make compile，加别名使其直接可用。
+.PHONY: compile
+compile: app
