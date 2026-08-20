@@ -35,7 +35,7 @@ send(SenderUid, Type, Amount, Count, Greeting, Scope) ->
     {ok, integer()} | {error, term()}.
 do_send(SenderUid, Type, Amount, Count, Greeting, Scope) ->
     %% 校验参数 / Validate input
-    case is_integer(Amount) andalso Amount >= 100 andalso is_integer(Count) andalso Count >= 1 of
+    case is_integer(Amount) andalso Amount >= 1 andalso is_integer(Count) andalso Count >= 1 of
         false ->
             {error, <<"红包参数不合法"/utf8>>};
         true ->

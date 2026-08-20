@@ -42,9 +42,9 @@ send_self_transfer_rejected() ->
         transfer_logic:send(?UID, ?UID, 1000, <<>>)
     ).
 
-%% 非法输入：金额低于下限（50 < 100）→ 拒绝
+%% 非法输入：金额低于下限（0 < 1，下限=最小货币单位 1 分）→ 拒绝
 send_amount_too_small_rejected() ->
     ?assertEqual(
         {error, <<"转账参数不合法"/utf8>>},
-        transfer_logic:send(?UID, ?OTHER, 50, <<>>)
+        transfer_logic:send(?UID, ?OTHER, 0, <<>>)
     ).

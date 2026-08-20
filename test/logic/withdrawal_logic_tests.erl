@@ -60,11 +60,11 @@ withdraw_insufficient_balance_rejected() ->
         withdrawal_logic:withdraw(?UID, 99999, <<"wechat">>, <<"wx_id">>)
     ).
 
-%% 非法输入：金额低于下限（50 < 100）→ 拒绝（不触 ds）
+%% 非法输入：金额低于下限（0 < 1，下限=最小货币单位 1 分）→ 拒绝（不触 ds）
 withdraw_amount_too_small_rejected() ->
     ?assertEqual(
         {error, <<"提现参数不合法"/utf8>>},
-        withdrawal_logic:withdraw(?UID, 50, <<"alipay">>, <<"user@example">>)
+        withdrawal_logic:withdraw(?UID, 0, <<"alipay">>, <<"user@example">>)
     ).
 
 %% 回归：事务内非余额不足的 DB 故障，with_tx 原样返回 {rollback, Reason}（非

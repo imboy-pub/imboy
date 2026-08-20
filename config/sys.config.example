@@ -407,8 +407,8 @@
         %% Stripe 凭据 IMBOY_STRIPE_SECRET_KEY / IMBOY_STRIPE_WEBHOOK_SECRET
         , {stripe_secret_key, <<>>}
         , {stripe_webhook_secret, <<>>}
-        %% 充值限额（单位：分）：默认最小 1 元、最大 50000 元
-        , {recharge_min_amount, 100}
+        %% 充值限额（单位：分）：默认最小 0.01 元、最大 50000 元
+        , {recharge_min_amount, 1}
         , {recharge_max_amount, 5000000}
     ]}
 

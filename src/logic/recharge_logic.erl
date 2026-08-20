@@ -27,8 +27,8 @@
 -define(STATUS_PENDING, 0).
 -define(STATUS_PAID, 1).
 
-%% 充值限额默认值（单位：分）
--define(DEFAULT_MIN_AMOUNT, 100).
+%% 充值限额默认值（单位：分；下限=最小货币单位，支持 0.01 元测试单）
+-define(DEFAULT_MIN_AMOUNT, 1).
 -define(DEFAULT_MAX_AMOUNT, 1000000).
 
 %% 生产环境允许的支付方式白名单（不含 mock）

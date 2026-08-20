@@ -12,7 +12,7 @@
     {ok, integer()} | {error, term()}.
 withdraw(Uid, Amount, Method, Account) ->
     case
-        is_integer(Amount) andalso Amount >= 100 andalso byte_size(Method) > 0 andalso
+        is_integer(Amount) andalso Amount >= 1 andalso byte_size(Method) > 0 andalso
             byte_size(Account) > 0
     of
         false ->

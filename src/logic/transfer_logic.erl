@@ -11,7 +11,7 @@
 -spec send(integer(), integer(), integer(), binary()) ->
     {ok, integer()} | {error, term()}.
 send(SenderUid, ReceiverUid, Amount, Remark) ->
-    case is_integer(Amount) andalso Amount >= 100 andalso SenderUid =/= ReceiverUid of
+    case is_integer(Amount) andalso Amount >= 1 andalso SenderUid =/= ReceiverUid of
         false ->
             {error, <<"转账参数不合法"/utf8>>};
         true ->
