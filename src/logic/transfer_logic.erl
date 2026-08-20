@@ -15,18 +15,25 @@ send(SenderUid, ReceiverUid, Amount, Remark) ->
         false ->
             {error, <<"转账参数不合法"/utf8>>};
         true ->
-            case transfer_repo:create(SenderUid, ReceiverUid, Amount, Remark) of
-                {ok, TransferId} ->
-                    {ok, TransferId};
-                {rollback, insufficient_balance} ->
-                    {error, <<"钱包余额不足"/utf8>>};
-                %% with_tx 对任意事务内 throw({rollback, _}) 均原样返回
-                %% {rollback, Reason}；缺此分支会 case_clause 崩溃（500）。
-                %% 事务已回滚、无资金变动，归一为可重试错误。
-                {rollback, _Reason} ->
-                    {error, <<"转账失败，请稍后再试"/utf8>>};
-                {error, Reason} ->
-                    {error, Reason}
+            %% 接收者存在性守卫：此前不校验时，转给幻影 uid（如误传 account 当 uid）
+            %% 资金永久挂 pending（转账无自动退款，只能人工 refund 回收）。
+            case map_size(user_logic:find_by_id(ReceiverUid)) > 0 of
+                false ->
+                    {error, <<"接收者不存在"/utf8>>};
+                true ->
+                    case transfer_repo:create(SenderUid, ReceiverUid, Amount, Remark) of
+                        {ok, TransferId} ->
+                            {ok, TransferId};
+                        {rollback, insufficient_balance} ->
+                            {error, <<"钱包余额不足"/utf8>>};
+                        %% with_tx 对任意事务内 throw({rollback, _}) 均原样返回
+                        %% {rollback, Reason}；缺此分支会 case_clause 崩溃（500）。
+                        %% 事务已回滚、无资金变动，归一为可重试错误。
+                        {rollback, _Reason} ->
+                            {error, <<"转账失败，请稍后再试"/utf8>>};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
             end
     end.
 
