@@ -64,7 +64,7 @@ cfg() ->
     NotifyUrl = application:get_env(imboy, alipay_notify_url, <<>>),
     case AppId =/= <<>> andalso PriKey =/= <<>> andalso PubKey =/= <<>> of
         true ->
-            {ok, #{
+            Base = #{
                 app_id => AppId,
                 private_key => PriKey,
                 public_key => PubKey,
@@ -73,7 +73,13 @@ cfg() ->
                 %% 否则收银台报「商家订单参数异常」；公钥模式留空即不下发。
                 app_cert_sn => application:get_env(imboy, alipay_app_cert_sn, <<>>),
                 alipay_root_cert_sn => application:get_env(imboy, alipay_root_cert_sn, <<>>)
-            }};
+            },
+            %% 网关地址（可选）：沙箱验收时注入 openapi-sandbox 地址；
+            %% 缺省不加键，erlang_pay 回落 ?DEFAULT_GATEWAY（生产网关）。
+            case application:get_env(imboy, alipay_gateway_url, <<>>) of
+                <<>> -> {ok, Base};
+                GwUrl -> {ok, Base#{gateway_url => GwUrl}}
+            end;
         false ->
             {error, <<"支付网关未配置真实凭据"/utf8>>}
     end.
