@@ -452,14 +452,22 @@ do_generate_invoice(SubId, Sub, Plan) ->
 do_pay_invoice(Inv, InvoiceNo, Method) ->
     Amount = maps:get(<<"amount">>, Inv, 0),
     PayOpts = #{amount => Amount, biz_type => ?BIZ_TYPE_BILLING},
-    case payment_gateway:pay(Method, InvoiceNo, PayOpts) of
-        {ok, PaymentNo} ->
+    case normalize_pay_result(payment_gateway:pay(Method, InvoiceNo, PayOpts)) of
+        {ok, PaymentNo, Extra} ->
             case billing_invoice_ds:mark_paid(InvoiceNo, PaymentNo) of
                 ok ->
+                    %% 统一信封契约（对齐 wallet recharge_pay）：
+                    %% payment_method / payment_no / pay_params / order_no / amount / status。
+                    %% pay_params 透传网关支付参数（alipay #{<<"order_str">>}，
+                    %% wechat #{<<"prepay_id">>|<<"code_url">>}，wallet/mock #{}），
+                    %% 客户端凭 order_str 拉起支付宝；order_no 即账单号。
+                    %% 保留 invoice_no 字段兼容旧客户端按账单号取值。
                     {ok, #{
                         <<"invoice_no">> => InvoiceNo,
+                        <<"order_no">> => InvoiceNo,
                         <<"payment_no">> => PaymentNo,
                         <<"payment_method">> => Method,
+                        <<"pay_params">> => Extra,
                         <<"amount">> => Amount,
                         <<"status">> => 1
                     }};
@@ -467,7 +475,10 @@ do_pay_invoice(Inv, InvoiceNo, Method) ->
                     %% 已被其它路径标记已付，幂等返回成功
                     {ok, #{
                         <<"invoice_no">> => InvoiceNo,
+                        <<"order_no">> => InvoiceNo,
                         <<"payment_no">> => PaymentNo,
+                        <<"payment_method">> => Method,
+                        <<"pay_params">> => Extra,
                         <<"status">> => 1,
                         <<"already_paid">> => true
                     }};
@@ -479,6 +490,16 @@ do_pay_invoice(Inv, InvoiceNo, Method) ->
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
+
+%% @doc 网关支付结果归一化：{ok, PaymentNo} 与 {ok, PaymentNo, Extra} 两种
+%% 合法形状统一为三元组（Extra 缺省 #{}），与 recharge_logic 同构。
+-spec normalize_pay_result(term()) -> {ok, binary(), map()} | {error, term()}.
+normalize_pay_result({ok, PaymentNo, Extra}) when is_map(Extra) ->
+    {ok, PaymentNo, Extra};
+normalize_pay_result({ok, PaymentNo}) ->
+    {ok, PaymentNo, #{}};
+normalize_pay_result({error, _} = Err) ->
+    Err.
 
 %% @doc 含增量的配额预校验：used + Delta 是否超过 limit
 -spec check_quota_with_delta(integer(), binary(), binary(), non_neg_integer()) ->

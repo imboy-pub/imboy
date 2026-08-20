@@ -175,3 +175,69 @@ t10_denial_message_does_not_leak_existence() ->
     expect_sub(#{}),
     {error, MsgMissing} = billing_logic:assert_owner(?SUB_ID, ?ATTACKER),
     ?assertEqual(MsgOther, MsgMissing).
+
+%%%===================================================================
+%%% 账单支付 pay_invoice —— 网关返回透传（对齐 wallet recharge_pay 信封）
+%%%
+%%% payment_gateway:pay/3 契约返回 {ok, PaymentNo, Extra}，Extra 携带
+%%% 支付宝 orderStr 等拉起参数；充值链路（recharge_logic:do_pay）已把
+%%% Extra 以 pay_params 透传客户端，billing 链路须同构，否则订阅支付
+%%% 无法拉起支付宝。
+%%%===================================================================
+-define(INV_NO, <<"BILL1771481621000_ABCD1234">>).
+-define(PAY_NO, <<"GW-20260820-0001">>).
+-define(ALIPAY_EXTRA, #{<<"order_str">> => <<"alipay_sdk=dev&sign=TEST">>}).
+
+pay_invoice_test_() ->
+    {foreach, fun pay_setup/0, fun pay_cleanup/1, [
+        fun t11_pay_gateway_extra_passthrough/0,
+        fun t12_pay_gateway_no_extra_compat/0,
+        fun t13_pay_envelope_aligned_with_recharge/0
+    ]}.
+
+pay_setup() ->
+    meck:new(billing_invoice_ds, [passthrough, non_strict]),
+    meck:new(payment_gateway, [passthrough, non_strict]),
+    meck:expect(billing_invoice_ds, find_by_invoice_no, fun(?INV_NO) ->
+        #{<<"invoice_no">> => ?INV_NO, <<"amount">> => 39000, <<"status">> => 0}
+    end),
+    meck:expect(billing_invoice_ds, mark_paid, fun(?INV_NO, ?PAY_NO) -> ok end),
+    ok.
+
+pay_cleanup(_) ->
+    catch meck:unload(payment_gateway),
+    catch meck:unload(billing_invoice_ds),
+    ok.
+
+%% 11) 网关返回 {ok, PaymentNo, Extra}（alipay orderStr）→ pay_params 必须透传
+t11_pay_gateway_extra_passthrough() ->
+    meck:expect(payment_gateway, pay, fun(<<"alipay">>, ?INV_NO, _Opts) ->
+        {ok, ?PAY_NO, ?ALIPAY_EXTRA}
+    end),
+    {ok, Result} = billing_logic:pay_invoice(?INV_NO, <<"alipay">>),
+    ?assertEqual(?ALIPAY_EXTRA, maps:get(<<"pay_params">>, Result, missing)).
+
+%% 12) 网关返回 {ok, PaymentNo}（wallet/mock 无额外参数）→ pay_params 缺省为空 map
+t12_pay_gateway_no_extra_compat() ->
+    meck:expect(payment_gateway, pay, fun(<<"wallet">>, ?INV_NO, _Opts) ->
+        {ok, ?PAY_NO}
+    end),
+    {ok, Result} = billing_logic:pay_invoice(?INV_NO, <<"wallet">>),
+    ?assertEqual(#{}, maps:get(<<"pay_params">>, Result, missing)),
+    ?assertEqual(?PAY_NO, maps:get(<<"payment_no">>, Result)).
+
+%% 13) 成功响应信封与 wallet recharge_pay 同构：
+%%     payment_method/payment_no/pay_params/order_no(=invoice_no)/amount/status
+t13_pay_envelope_aligned_with_recharge() ->
+    meck:expect(payment_gateway, pay, fun(<<"alipay">>, ?INV_NO, _Opts) ->
+        {ok, ?PAY_NO, ?ALIPAY_EXTRA}
+    end),
+    {ok, Result} = billing_logic:pay_invoice(?INV_NO, <<"alipay">>),
+    ?assertEqual(<<"alipay">>, maps:get(<<"payment_method">>, Result)),
+    ?assertEqual(?PAY_NO, maps:get(<<"payment_no">>, Result)),
+    ?assertEqual(?ALIPAY_EXTRA, maps:get(<<"pay_params">>, Result)),
+    ?assertEqual(?INV_NO, maps:get(<<"order_no">>, Result)),
+    ?assertEqual(39000, maps:get(<<"amount">>, Result)),
+    ?assertEqual(1, maps:get(<<"status">>, Result)),
+    %% 保留 invoice_no 字段，兼容旧客户端按账单号取值
+    ?assertEqual(?INV_NO, maps:get(<<"invoice_no">>, Result)).
