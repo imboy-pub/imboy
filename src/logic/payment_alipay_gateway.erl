@@ -68,7 +68,11 @@ cfg() ->
                 app_id => AppId,
                 private_key => PriKey,
                 public_key => PubKey,
-                notify_url => NotifyUrl
+                notify_url => NotifyUrl,
+                %% 证书模式应用（本平台即证书模式）下单/退款公共参数必带证书 SN，
+                %% 否则收银台报「商家订单参数异常」；公钥模式留空即不下发。
+                app_cert_sn => application:get_env(imboy, alipay_app_cert_sn, <<>>),
+                alipay_root_cert_sn => application:get_env(imboy, alipay_root_cert_sn, <<>>)
             }};
         false ->
             {error, <<"支付网关未配置真实凭据"/utf8>>}
