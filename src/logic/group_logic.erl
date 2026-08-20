@@ -38,9 +38,16 @@
 -include("log.hrl").
 -include("group_role.hrl").
 
-%% @doc 群转让时的数据转换（ID 已直接以 integer 返回，无需转换）
+%% @doc 群行出站 DTO 边界（ID 已直接以 integer 返回，无需转换）。
+%% 统一剥除 chat_aes_key（群消息密钥列）：detail 等端点走 SELECT *，
+%% 该列会随行带出——当前无代码读写（恒空串默认值），但任何持 JWT 的
+%% 用户（含非成员）都能经 group/detail 拿到；未来一旦启用该列即为
+%% 群密钥明文泄漏。剥在 transfer 层，三处出站点一次收口。
 -spec group_transfer(map()) -> map().
-group_transfer(G) -> G.
+group_transfer(G) when is_map(G) ->
+    maps:remove(<<"chat_aes_key">>, G);
+group_transfer(G) ->
+    G.
 
 %% @doc 面对面建群
 %% 通过随机码创建或加入附近的群组
