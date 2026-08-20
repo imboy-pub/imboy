@@ -18,8 +18,13 @@ transfer_create_debit_guard_test_() ->
         [
             {elib_pg, [
                 with_tx_stub(),
-                {'execute', 3, fun(_Conn, Sql, _Params) ->
+                %% 扣减语句带 RETURNING，生产代码走 query/3；命中 0 行返回
+                %% {ok, []}（execute_batch 语义下为 {ok, 0}），对应余额不足。
+                {'query', 3, fun(_Conn, Sql, _Params) ->
                     put(transfer_create_debit_sql, Sql),
+                    {ok, []}
+                end},
+                {'execute', 3, fun(_Conn, _Sql, _Params) ->
                     {ok, 0}
                 end}
             ]},
