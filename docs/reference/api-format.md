@@ -1,6 +1,6 @@
 # API 格式规范
 
-> Last Updated: 2026-03-08  
+> Last Updated: 2026-08-20  
 > Status: 长期接口规范文档  
 > Scope: HTTP/REST 与 WebSocket 的通用消息格式约定  
 > Source of truth: `src/lib/elib_response.erl`, `docs/api/envelope.schema.json`, `docs/reference/websocket-api-2.md`
@@ -90,7 +90,7 @@
 | `from` | binary | ✅ | 发送方 ID (TSID integer) |
 | `to` | binary | ✅ | 接收方 ID (TSID integer) |
 | `payload` | map | ✅ | 消息载荷 |
-| `created_at` | binary | ⚪ | 客户端创建时间 (RFC3339 格式)，可选 |
+| `created_at` | integer | ⚪ | 客户端创建时间（毫秒时间戳，UTC+0），可选 |
 | `server_ts` | integer | ✅ | 服务端时间戳 (毫秒，UTC+0) |
 
 ### 消息类型
@@ -160,15 +160,23 @@ handleResponse(response) {
 
 ### 时间戳格式
 
-- **server_ts**: 毫秒时间戳 (integer)，UTC+0
-- **created_at**: RFC3339 格式 (binary)
+时间字段的格式取决于出现位置，共两种：
+
+| 出现位置 | 格式 | 说明 |
+|---------|------|------|
+| REST 响应（HTTP） | **毫秒时间戳 (integer, UTC+0)** | `elib_response:success` 统一经 `elib_cnv:convert_at_timestamps`，所有以 `_at` / `_ts` 结尾的字段（DB 中为 RFC3339 串或 tuple）一律转为毫秒整数 |
+| WebSocket 消息信封 | **毫秒时间戳 (integer, UTC+0)** | `server_ts` / `created_at` 等信封级字段 |
+| WebSocket 业务 payload 内部 | **RFC3339 字符串（微秒精度）** | 部分业务通知字段（如 `channel_message_edited` 的 `edited_at`、`channel_message_revoked` 的 `revoked_at`）为服务端 `elib_dt:now()` 生成的 RFC3339 微秒串（如 `"2026-08-20T19:30:00.123456+08:00"`），**不经过** `convert_at_timestamps` 转换 |
 
 ```json
 {
   "server_ts": 1736141700000,
-  "created_at": "2025-01-06T12:35:00Z"
+  "created_at": 1736141700000
 }
 ```
+
+> 客户端注意：消费 WS 业务 payload 内的时间字段时，需按 RFC3339（含微秒）解析，
+> 不能假设所有时间字段都是整数毫秒。
 
 ### 字符串编码
 
@@ -248,8 +256,11 @@ elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 ### 请求参数
 
 ```
-GET /api/messages?page=1&limit=20
+GET /api/messages?page=1&size=20
 ```
+
+- `page`：页码，从 1 开始；缺省或 < 1 时按 1 处理
+- `size`：每页数量，默认 20，上限 1000（超出按上限截断）
 
 ### 响应格式
 
@@ -258,11 +269,10 @@ GET /api/messages?page=1&limit=20
   "code": 0,
   "msg": "success.",
   "payload": {
-    "list": [...],
     "total": 100,
     "page": 1,
-    "limit": 20,
-    "has_more": true
+    "size": 20,
+    "list": [...]
   }
 }
 ```
@@ -271,11 +281,13 @@ GET /api/messages?page=1&limit=20
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `list` | array | 数据列表 |
 | `total` | integer | 总记录数 |
 | `page` | integer | 当前页码 |
-| `limit` | integer | 每页数量 |
-| `has_more` | boolean | 是否有更多数据 |
+| `size` | integer | 每页数量 |
+| `list` | array | 数据列表 |
+
+> 注：响应无信封级 `has_more` 字段，客户端按 `page * size < total` 自行判断是否还有下一页。
+> 分页参数名是 `page` / `size`（非 `limit`），与 `elib_param:page/1` 及 `elib_pg:page_with_total` 的返回形状对应。
 
 ## 批量操作格式
 

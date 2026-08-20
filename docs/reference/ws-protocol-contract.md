@@ -4,7 +4,7 @@
 > 本文是速查契约表，不重复 API 用法（见 [websocket-api-2.md](./websocket-api-2.md)）
 > 与帧格式设计（见 `../../../.claude/plans/imboy-frame-protocol.md`）。
 >
-> 最后更新：2026-07-02
+> 最后更新：2026-08-20
 
 ---
 
@@ -86,7 +86,11 @@ ack msgId=0x1234567890ABCDEF (默认方向 C2C):
 |------|---------------|
 | C2C | `message_revoke` / `message_revoke_ack` / `message_edit` / `message_edit_ack` / `message_read` / `message_read_ack` |
 | C2G | `message_revoke` / `message_revoke_ack` / `message_edit` / `message_edit_ack` |
-| S2C | `pull_offline_msg` / `c2c_revoke` / `apply_friend` / `user_muted` / `channel_*` / ...（完整清单见 Flutter `message_s2c.dart` `switchS2C`） |
+| S2C | `pull_offline_msg` / `apply_friend` / `apply_friend_confirm` / `message_revoke_ack` / `message_read_sync` / `channel_*`（`channel_message` / `channel_message_edited` / `channel_message_revoked` / `channel_message_deleted` / `channel_updated` 等，发射点见 `src/logic/channel_logic_notify.erl`）等（完整清单见 Flutter `message_s2c.dart` `switchS2C`） |
+
+> 2026-08-20 核对：历史版本此处列过的 `user_muted`、`c2c_revoke` 在后端 `src/` **无发射点**
+> （grep 零命中，撤回实际下发的 action 是 `message_revoke_ack`），不属于现行契约，
+> 客户端不应依赖；已从上表移除。
 
 ## 7. 三端实现指针
 
@@ -125,6 +129,14 @@ ack msgId=0x1234567890ABCDEF (默认方向 C2C):
 | action | 触发 | payload | 消费方 |
 |--------|------|---------|--------|
 | `message_read_sync` | C2C 已读落库后，同步给**阅读者本人**（含其离线设备，save 落 msg_s2c） | `msg_id` / `peer` / `read_at` | 客户端更新对应会话未读数；阅读设备自身收到时按已读状态幂等忽略；旧客户端按未知 action 忽略 |
+
+### 2026-08-20 补登：channel 下行通知 action（发射点 `src/logic/channel_logic_notify.erl`）
+
+| action | 触发 | payload | 消费方 |
+|--------|------|---------|--------|
+| `channel_message_edited` | 频道消息编辑成功后通知全部订阅者（save 落 msg_s2c，离线可拉） | `channel_id` / `message_id` / `content` / `edited_at`（⚠️ `edited_at` 为 `elib_dt:now()` 生成的 **RFC3339 微秒字符串**，非整数毫秒，见 api-format.md 时间戳格式一节） | 客户端按 `message_id` 原位更新消息内容与编辑标记 |
+| `channel_message_revoked` | 频道消息撤回后通知全部订阅者 | `channel_id` / `message_id` / `revoked_by` / `revoked_at` | 客户端按 `message_id` 将消息置为撤回态 |
+| `channel_message_deleted` | 频道消息删除后通知全部订阅者 | `channel_id` / `message_id` | 客户端按 `message_id` 移除消息 |
 
 ### REST 离线接口的设备维度（2026-07-02）
 
