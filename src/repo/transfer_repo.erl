@@ -33,8 +33,11 @@ create(SenderUid, ReceiverUid, Amount, Remark) ->
                 " SET balance = balance - $1, version = version + 1, updated_at = NOW()"
                 " WHERE user_id = $2 AND status = 1 AND balance - frozen >= $1"
                 " RETURNING balance, id">>,
-        case elib_pg:execute(Conn, DeductSql, [Amount, SenderUid]) of
-            {ok, 1, [{NewBalance, WalletId}]} ->
+        %% ⚠️ 带 RETURNING 的语句在事务内必须用 query/3：execute/3（execute_batch）
+        %% 对命中 0 行的 UPDATE...RETURNING 返回 {ok, 0, []} 三元组，旧 case 只匹配
+        %% {ok, 0} 二元组 → 余额不足时 case_clause 崩溃泄露为 {db_exception,...}。
+        case elib_pg:query(Conn, DeductSql, [Amount, SenderUid]) of
+            {ok, [#{<<"balance">> := NewBalance, <<"id">> := WalletId}]} ->
                 %% 2. 写入发送方钱包流水（tx_type=5：转账转出）
                 TxSql =
                     <<"INSERT INTO ", TxTb/binary,
@@ -56,7 +59,7 @@ create(SenderUid, ReceiverUid, Amount, Remark) ->
                 {Sql, Params} = elib_pg_sql:insert(Tb, Data),
                 {ok, _} = elib_pg:execute(Conn, Sql, Params),
                 {ok, TransferId};
-            {ok, 0} ->
+            {ok, []} ->
                 throw({rollback, insufficient_balance});
             {error, Reason} ->
                 throw({rollback, Reason})
@@ -88,8 +91,18 @@ accept(TransferId, ReceiverUid) ->
         LockSql =
             <<"SELECT sender_uid, receiver_uid, amount, status FROM ", Tb/binary,
                 " WHERE id = $1 FOR UPDATE">>,
-        case elib_pg:execute(Conn, LockSql, [TransferId]) of
-            {ok, 1, [{_SenderUid, TargetReceiverUid, Amount, Status}]} ->
+        %% ⚠️ 事务内 SELECT 必须用 query/3（equery）：epgsql 的 execute_batch 对
+        %% SELECT 只返回 {ok, Rows} 二元组（decode_complete 把 SELECT tag 解码成
+        %% 原子 select），三元组 {ok, 1, [{...}]} 匹配必败 → 曾致收取转账恒报
+        %% 「转账订单不存在」（red_packet_repo.grab 同款事故）。
+        case elib_pg:query(Conn, LockSql, [TransferId]) of
+            {ok, [
+                #{
+                    <<"receiver_uid">> := TargetReceiverUid,
+                    <<"amount">> := Amount,
+                    <<"status">> := Status
+                }
+            ]} ->
                 %% 2. 验证合法性
                 case Status =:= <<"pending">> andalso TargetReceiverUid =:= ReceiverUid of
                     true ->
@@ -103,9 +116,9 @@ accept(TransferId, ReceiverUid) ->
                         CreditSql =
                             <<"UPDATE ", WalletTb/binary,
                                 " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
-                        {ok, 1, [{NewBalance, WalletId}]} = elib_pg:execute(Conn, CreditSql, [
-                            Amount, ReceiverUid
-                        ]),
+                        {ok, [#{<<"balance">> := NewBalance, <<"id">> := WalletId}]} = elib_pg:query(
+                            Conn, CreditSql, [Amount, ReceiverUid]
+                        ),
 
                         %% 5. 写入接收方钱包流水（tx_type=6：转账转入）
                         TxSql =
@@ -136,8 +149,10 @@ refund(TransferId) ->
         %% 1. 锁定订单
         LockSql =
             <<"SELECT sender_uid, amount, status FROM ", Tb/binary, " WHERE id = $1 FOR UPDATE">>,
-        case elib_pg:execute(Conn, LockSql, [TransferId]) of
-            {ok, 1, [{SenderUid, Amount, Status}]} ->
+        %% ⚠️ 同 accept/2：事务内 SELECT 用 query/3，execute_batch 对 SELECT 只返回
+        %% {ok, Rows} 二元组，三元组匹配必败 → 恒误报「转账订单不存在」。
+        case elib_pg:query(Conn, LockSql, [TransferId]) of
+            {ok, [#{<<"sender_uid">> := SenderUid, <<"amount">> := Amount, <<"status">> := Status}]} ->
                 case Status =:= <<"pending">> of
                     true ->
                         %% 2. 更新状态
@@ -150,9 +165,9 @@ refund(TransferId) ->
                         RefundSql =
                             <<"UPDATE ", WalletTb/binary,
                                 " SET balance = balance + $1, version = version + 1, updated_at = NOW() WHERE user_id = $2 RETURNING balance, id">>,
-                        {ok, 1, [{NewBalance, WalletId}]} = elib_pg:execute(Conn, RefundSql, [
-                            Amount, SenderUid
-                        ]),
+                        {ok, [#{<<"balance">> := NewBalance, <<"id">> := WalletId}]} = elib_pg:query(
+                            Conn, RefundSql, [Amount, SenderUid]
+                        ),
 
                         %% 4. 写入发送者钱包退款流水（tx_type=9：红包/转账退回）
                         TxSql =

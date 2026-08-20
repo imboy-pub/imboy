@@ -20,6 +20,7 @@ start(_Type, _Args) ->
     ok = validate_runtime_config(),
     ok = ensure_solidified_keys(),
     ok = ensure_rsa_keys(),
+    ok = ensure_alipay_keys(),
     %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
     ok = imboy_license:load_and_validate(),
     ok = maybe_migrate(),
@@ -334,10 +335,11 @@ start_clear(ProtoOpts, Port) ->
 %% 否则管理后台一轮自动化测试（每页十余个请求）很容易打满 120/min 被踢回登录页。
 -spec init_throttle_rates() -> ok.
 init_throttle_rates() ->
-    Rates = case application:get_env(throttle, rates) of
-        {ok, R} when is_list(R) -> R;
-        _ -> []
-    end,
+    Rates =
+        case application:get_env(throttle, rates) of
+            {ok, R} when is_list(R) -> R;
+            _ -> []
+        end,
     RateFor = fun(Key, Default) ->
         case lists:keyfind(Key, 1, Rates) of
             {Key, N, per_minute} when is_integer(N), N > 0 -> N;
@@ -656,6 +658,26 @@ ensure_rsa_keys() ->
             ok = application:set_env(imboy, jverification_rsa_priv_key, JvPem)
     end,
     ok.
+
+%% @doc 支付宝密钥支持文件路径形态（与 login_rsa_*_key_file 同思路）
+%% alipay_private_key/alipay_public_key 的值以 <<"/">> 开头时视为 PEM 文件路径，
+%% 启动时读取文件内容回填 application env；PEM 内联值（-----BEGIN 开头）不受影响。
+%% 业务代码（payment_alipay_gateway / payment_sign / passport_logic）始终读 env 内容，
+%% 无需感知配置形态。
+-spec ensure_alipay_keys() -> ok.
+ensure_alipay_keys() ->
+    ok = resolve_secret_file(alipay_private_key),
+    ok = resolve_secret_file(alipay_public_key).
+
+-spec resolve_secret_file(atom()) -> ok.
+resolve_secret_file(Key) ->
+    case normalize_secret(config_ds:env(Key, <<>>)) of
+        <<"/", _/binary>> = Path ->
+            {ok, Pem} = file:read_file(binary_to_list(Path)),
+            ok = application:set_env(imboy, Key, Pem);
+        _ ->
+            ok
+    end.
 
 %% @doc dev/local 环境 RSA 密钥对持久化逻辑
 %% 优先读取 priv/dev_keys/login_rsa_{pub,priv}.pem
