@@ -91,6 +91,13 @@ jobs:
             ~/.cache/rebar3
           key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
+      - name: Materialize config/sys.config from example
+        # sys.config 与 sys.local.config（*local*.config 被 gitignore）均不入仓，
+        # CI 检出后 config/sys.config 不存在；erl -config 对缺失文件直接
+        # "Could not start kernel pid ... configuration file not found" 崩溃。
+        # sys.config.example 含 sql_driver/pg_conf 等全部所需 env（meck 不起 app 无需真 PG）。
+        run: cp config/sys.config.example config/sys.config
+
       - name: Run Moment Targeted EUnit
         run: |
           # -config + 显式 application:load(imboy)：config 提供 env 须应用 load 后
