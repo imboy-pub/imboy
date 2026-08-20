@@ -112,14 +112,18 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
         {error, Reason} ->
             {error, Reason, ?ERR_BAD_REQUEST};
         {ok, ConvKey} ->
-            case msg_archive_ds:history(ConvKey, AfterSeq, Limit) of
-                {ok, Rows} ->
+            %% 多取 1 条判定 has_more：末页恰好满额（== Limit）时不再虚报
+            %% true（旧判定 >= Limit 会让客户端多拉一次空页）
+            case msg_archive_ds:history(ConvKey, AfterSeq, Limit + 1) of
+                {ok, Rows0} ->
+                    HasMore = length(Rows0) > Limit,
+                    Rows = lists:sublist(Rows0, Limit),
                     Messages = [encode_history_msg(CurrentUid, Row) || Row <- Rows],
                     NextSeq = next_seq_from_rows(Rows, AfterSeq),
                     {ok, #{
                         <<"messages">> => Messages,
                         <<"next_seq">> => NextSeq,
-                        <<"has_more">> => length(Rows) >= Limit,
+                        <<"has_more">> => HasMore,
                         <<"conv_key">> => ConvKey
                     }};
                 {error, _Reason} ->

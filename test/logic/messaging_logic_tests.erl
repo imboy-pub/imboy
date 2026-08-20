@@ -145,7 +145,9 @@ reaction_add_uses_messaging_boundary_test_() ->
 %%% 覆盖：游标推进 / 重连幂等 / gap / 空结果 / archive 未开启降级 / 参数校验
 %%%===================================================================
 
-%% 正常 range fetch：next_seq 取最后一行 conv_seq，满页 has_more=true
+%% 正常 range fetch：next_seq 取最后一行 conv_seq，满页 has_more=true。
+%% 服务端按 Limit+1 取数判定：mock 返回 3 行（> limit=2）→ has_more=true，
+%% 且第 3 行（探测行）不随 messages 下发、next_seq 取截断后末行
 history_range_fetch_advances_cursor_test_() ->
     ?WITH_MECKS(
         [
@@ -154,8 +156,40 @@ history_range_fetch_advances_cursor_test_() ->
                     <<"c2c:", (integer_to_binary(min(A, B)))/binary, ":",
                         (integer_to_binary(max(A, B)))/binary>>
                 end},
-                {'history', 3, fun(_ConvKey, AfterSeq, _Limit) ->
+                {'history', 3, fun(_ConvKey, AfterSeq, Limit) ->
                     ?assertEqual(5, AfterSeq),
+                    ?assertEqual(3, Limit),
+                    {ok, [
+                        #{<<"conv_seq">> => 6, <<"from_id">> => 100, <<"to_id">> => 200},
+                        #{<<"conv_seq">> => 7, <<"from_id">> => 200, <<"to_id">> => 100},
+                        #{<<"conv_seq">> => 8, <<"from_id">> => 100, <<"to_id">> => 200}
+                    ]}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Res} = messaging_logic:history(100, <<"c2c">>, <<"200">>, 5, 2),
+            ?assertEqual(7, maps:get(<<"next_seq">>, Res)),
+            ?assertEqual(true, maps:get(<<"has_more">>, Res)),
+            ?assertEqual(2, length(maps:get(<<"messages">>, Res))),
+            % from_id/to_id 重命名为 from/to
+            [First | _] = maps:get(<<"messages">>, Res),
+            ?assertEqual(100, maps:get(<<"from">>, First)),
+            ?assertEqual(false, maps:is_key(<<"from_id">>, First))
+        end
+    ).
+
+%% 末页恰好满额：ds 不足 Limit+1 条（恰返回 Limit 条）→ has_more=false。
+%% 旧判定 >= Limit 在此场景虚报 true，客户端多拉一次空页
+history_exact_full_page_has_more_false_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2c', 2, fun(A, B) ->
+                    <<"c2c:", (integer_to_binary(min(A, B)))/binary, ":",
+                        (integer_to_binary(max(A, B)))/binary>>
+                end},
+                {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) ->
                     {ok, [
                         #{<<"conv_seq">> => 6, <<"from_id">> => 100, <<"to_id">> => 200},
                         #{<<"conv_seq">> => 7, <<"from_id">> => 200, <<"to_id">> => 100}
@@ -165,12 +199,9 @@ history_range_fetch_advances_cursor_test_() ->
         ],
         fun() ->
             {ok, Res} = messaging_logic:history(100, <<"c2c">>, <<"200">>, 5, 2),
-            ?assertEqual(7, maps:get(<<"next_seq">>, Res)),
-            ?assertEqual(true, maps:get(<<"has_more">>, Res)),
-            % from_id/to_id 重命名为 from/to
-            [First | _] = maps:get(<<"messages">>, Res),
-            ?assertEqual(100, maps:get(<<"from">>, First)),
-            ?assertEqual(false, maps:is_key(<<"from_id">>, First))
+            ?assertEqual(false, maps:get(<<"has_more">>, Res)),
+            ?assertEqual(2, length(maps:get(<<"messages">>, Res))),
+            ?assertEqual(7, maps:get(<<"next_seq">>, Res))
         end
     ).
 
