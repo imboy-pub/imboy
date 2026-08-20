@@ -88,7 +88,11 @@ init_legacy_off_tolerates_missing_iv_test_() ->
     end).
 
 %% LegacyCbc = default（取 env 默认值 <<"on">>）| <<"off">>
+%% RsaFlag = login_pwd_rsa_encrypt 配置返回值（false = 模拟配置缺失）
 init_mocks(LegacyCbc) ->
+    init_mocks(LegacyCbc, false).
+
+init_mocks(LegacyCbc, RsaFlag) ->
     [
         {cowboy_req, [
             {'header', 3, fun
@@ -117,7 +121,7 @@ init_mocks(LegacyCbc) ->
                 (upload_scene, _D) ->
                     <<"upload_scene">>;
                 (login_pwd_rsa_encrypt, _D) ->
-                    false;
+                    RsaFlag;
                 %% 过渡期开关：default 即 env 默认值 <<"on">>（res + res_v2 并存）
                 (init_config_legacy_cbc, D) ->
                     case LegacyCbc of
@@ -171,4 +175,29 @@ init_mocks(LegacyCbc) ->
                 Req#{response_status => 200, payload => Payload}
             end}
         ]}
+    ].
+
+%% #100：login_pwd_rsa_encrypt 必须归一为线协议 1/0 下发。
+%% 客户端加密判定与服务端 safe_rsa_decrypt 都只认 <<"1">>；
+%% 此前透传配置原值 on/off，配置为 on 时加密分支静默失效（客户端
+%% 判非 "1" 不加密、回传 "on" 服务端也不解密——两端恰好都不报错）。
+init_login_pwd_rsa_flag_normalized_test_() ->
+    Run = fun(RsaFlag, Expected) ->
+        ?WITH_MECKS(
+            init_mocks(<<"off">>, RsaFlag),
+            fun() ->
+                Req = mock_request(),
+                {ok, RespReq, _State} = index_handler:init(Req, #{action => init}),
+                Payload = maps:get(payload, RespReq),
+                ?assertEqual(Expected, maps:get(login_pwd_rsa_encrypt, Payload)),
+                _ = erase(captured_init_data),
+                ok
+            end
+        )
+    end,
+    [
+        {"config=on 下发 1（激活两端 RSA 链路）", fun() -> Run(<<"on">>, <<"1">>) end},
+        {"config=1 下发 1", fun() -> Run(<<"1">>, <<"1">>) end},
+        {"config=off 下发 0", fun() -> Run(<<"off">>, <<"0">>) end},
+        {"配置缺失（env 返 false）下发 0", fun() -> Run(false, <<"0">>) end}
     ].

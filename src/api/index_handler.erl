@@ -63,7 +63,16 @@ api_init(Req0) ->
             <<"attach_presign_endpoint">> => <<"/api/v1/attachment/presign">>,
             %% 公开资源（scope=public，如头像）直读基址，客户端直拼 object_key（见 resource-access-control.md §9）
             <<"public_base_url">> => elib_oss:public_base_url(),
-            <<"login_pwd_rsa_encrypt">> => config_ds:env(login_pwd_rsa_encrypt, <<"off">>),
+            %% #100 契约修复：客户端与服务端的加解密开关只认 <<"1">>（见
+            %% passport_handler ?RSA_ENCRYPT_YES 与客户端 rsaEncrypt == "1"
+            %% 判定），配置值却是 on/off——配置为 on 时加密分支静默失效。
+            %% 此处把配置归一为线协议 1/0，旧客户端（同样判 "1"）一并打通。
+            <<"login_pwd_rsa_encrypt">> =>
+                case config_ds:env(login_pwd_rsa_encrypt, <<"off">>) of
+                    <<"on">> -> <<"1">>;
+                    <<"1">> -> <<"1">>;
+                    _ -> <<"0">>
+                end,
             <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key)
         },
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
