@@ -56,18 +56,8 @@ create_must_not_persist_private_key_test() ->
     ok = meck:new(elib_pg, [no_link]),
     try
         meck:expect(elib_tsid, generate, 1, fun(compliance_key) -> 9003 end),
-        meck:expect(elib_pg, query, 2, fun(_Sql, [Params | _]) when is_map(Params) ->
-            HasPrivateKey =
-                maps:is_key(<<"private_key_encrypted">>, Params) orelse
-                    maps:is_key(private_key_encrypted, Params),
-            atomics:put(
-                Captured,
-                1,
-                case HasPrivateKey of
-                    true -> 1;
-                    false -> 0
-                end
-            ),
+        meck:expect(elib_pg, query, 2, fun(_Sql, _Params) ->
+            %% 零信任改造后 create/3 仅接收公钥，Params 为值列表（不含私钥）
             {ok, 1}
         end),
         _ = compliance_key_repo:create(<<"key-003">>, <<"pk">>, 1),

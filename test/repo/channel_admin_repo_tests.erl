@@ -18,7 +18,7 @@ find_returns_row_when_exists_test_() ->
             {elib_pg, [
                 {'one', 2, fun(Sql, [11, 1001]) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"FROM public\\.channel_admin">>) =/= nomatch),
+                    ?assert(re:run(SqlBin, <<"FROM channel_admin">>) =/= nomatch),
                     {ok, #{<<"channel_id">> => 11, <<"user_id">> => 1001, <<"role">> => 2}}
                 end}
             ]}
@@ -111,7 +111,7 @@ list_by_channel_orders_by_role_desc_test_() ->
             {elib_pg, [
                 {'query', 2, fun(Sql, [11]) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"ORDER BY role DESC">>) =/= nomatch),
+                    ?assert(re:run(SqlBin, <<"ORDER BY ca.role DESC">>) =/= nomatch),
                     {ok, [#{<<"user_id">> => 1001, <<"role">> => 3}]}
                 end}
             ]}
