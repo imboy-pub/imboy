@@ -37,8 +37,6 @@
 ```kotlin
 // 推荐：与域名一致
 applicationId = "pub.imboy.app"
-// 或保持现有
-applicationId = "imboy.chat"
 ```
 同步修改 `JPUSH_PKGNAME` manifest placeholder 及极光推送后台注册包名。
 

@@ -6,18 +6,15 @@
 #       超期则创建 issue 提醒人工跑 claude doc-updater agent 更新
 # 备注：实际 codemap 内容更新需开发者本地用 Claude Code 的 doc-updater 跑，
 #       因 GitHub Actions 无法直接调用 Claude agent；本 workflow 仅做提醒
+#
+# ⚠️ 2026-08-20 下线：旧 docs/CODEMAPS/ 目录已于 2026-07-25 删除
+# （数据失真，见 docs/CONVENTIONS.md:231——codemap 现由 doc-updater 同步到
+#   src/*/CLAUDE.md 模块文档）。本 workflow 扫描的目标路径已不存在，恒空转
+#   （stale_count 恒 0），触发条件已被禁用。保留文件供历史参考。
 
 name: imboy codemap freshness
 
-on:
-  schedule:
-    - cron: '0 9 * * 1'  # 每周一 09:00 UTC = 17:00 北京时间
-  workflow_dispatch:     # 允许手动触发
-  pull_request:          # PR 时检查（不阻塞）
-    paths:
-      - 'src/**/*.erl'
-      - 'src/**/*.hrl'
-      - 'include/**/*.hrl'
+on: {}  # 已禁用：目标目录 docs/CODEMAPS/ 已删除，workflow 失效
 
 permissions:
   contents: read
