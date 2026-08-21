@@ -92,6 +92,9 @@ c2c_send(MsgId, CurrentUid, To, ToId, Data) ->
                     %% ponytail: maybe_dispatch 对每条非 E2EE 文本 C2C 多做一次 ai_agent
                     %%   主键查，量级可控；真成热点再给 ai_agent_ds:is_agent 加 depcache 缓存。
                     _ = ai_agent_reply:maybe_dispatch(CurrentUid, ToId, Data),
+                    %% T1.5：若 To 是 Bot（account_type=3），旁路异步推送到 Bot 的 webhook URL。
+                    %% fire-and-forget，不阻塞主路径；推送失败仅记日志，不重投。
+                    _ = maybe_webhook_push(CurrentUid, ToId, MsgId, Data),
                     %% billing 软计量埋点（金钱相邻）：fire-and-forget 累加 messages_sent，
                     %% 绝不阻塞主返回；无订阅/失败均 no-op（详见 billing_meter）。
                     _ = billing_meter:meter(<<"messages_sent">>, 1),
@@ -1081,3 +1084,30 @@ persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is
             _ = ?WARN_LOG({persist_action_payload_failed, OriginalMsgId, Reason}),
             ok
     end.
+
+%% @doc 若接收方是 Bot，异步推送消息到其 webhook URL
+%% fire-and-forget，不阻塞主路径；推送失败仅记日志
+-spec maybe_webhook_push(integer(), integer(), binary(), map()) -> ok.
+maybe_webhook_push(FromUid, ToId, MsgId, Data) ->
+    case bot_ds:is_bot(ToId) of
+        true ->
+            FromUser = #{<<"user_id">> => FromUid},
+            Payload = maps:get(<<"payload">>, Data, #{}),
+            Text = maps:get(<<"text">>, Payload, <<>>),
+            Msg = #{
+                <<"msg_id">> => MsgId,
+                <<"msg_type">> => maps:get(<<"msg_type">>, Data, <<"text">>),
+                <<"text">> => Text,
+                <<"chat_id">> => c2c_conv_key(FromUid, ToId)
+            },
+            bot_webhook_logic:push_message(ToId, FromUser, Msg);
+        false ->
+            ok
+    end.
+
+%% @doc 生成 C2C conv_key（与 msg_archive 一致）
+-spec c2c_conv_key(integer(), integer()) -> binary().
+c2c_conv_key(A, B) when A < B ->
+    <<"c2c:", (integer_to_binary(A))/binary, ":", (integer_to_binary(B))/binary>>;
+c2c_conv_key(A, B) ->
+    <<"c2c:", (integer_to_binary(B))/binary, ":", (integer_to_binary(A))/binary>>.

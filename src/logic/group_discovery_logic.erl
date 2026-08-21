@@ -53,12 +53,12 @@ search(Keyword, Page, Size, CategoryId) ->
 -spec discover(pos_integer(), pos_integer(), integer() | undefined, binary()) ->
     {ok, map()} | {error, binary()}.
 discover(Page, Size, CategoryId, Sort) ->
-    OrderBy = case Sort of
-        <<"popular">> -> <<"member_count DESC">>;
-        <<"newest">> -> <<"created_at DESC">>;
-        _ -> <<"member_count DESC">>
-    end,
-    Offset = (Page - 1) * Size,
+    OrderBy =
+        case Sort of
+            <<"popular">> -> <<"member_count DESC">>;
+            <<"newest">> -> <<"created_at DESC">>;
+            _ -> <<"member_count DESC">>
+        end,
     case fts_group_ds:discover_groups(Page, Size, CategoryId, OrderBy) of
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows, <<"total">> => length(Rows)}};
@@ -90,7 +90,8 @@ hot(Limit) ->
 -spec categories() -> {ok, map()} | {error, binary()}.
 categories() ->
     % 直接查询 group_category 表
-    Sql = <<"SELECT id, name, icon, sort_order FROM public.group_category WHERE status = 1 ORDER BY sort_order">>,
+    Sql =
+        <<"SELECT id, name, icon, sort_order FROM public.group_category WHERE status = 1 ORDER BY sort_order">>,
     case elib_pg:query(Sql, []) of
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
@@ -104,14 +105,27 @@ categories() ->
 %% @return {ok, map()} | {error, binary()}
 -spec preview(integer()) -> {ok, map()} | {error, binary()}.
 preview(GroupId) ->
-    Columns = <<"id, title, avatar, introduction, member_count, type, join_limit, "
-        "category_id, is_featured, created_at">>,
+    Columns = <<
+        "id, title, avatar, introduction, member_count, type, join_limit, "
+        "category_id, is_featured, created_at"
+    >>,
     case group_ds:find_by_id(GroupId, Columns) of
         Group when is_map(Group), map_size(Group) > 0 ->
             % 只返回公开信息，过滤敏感字段
+            % 注意：maps:with 的 key 必须是 binary（数据库返回 binary 键）
             Preview = maps:with(
-                [id, title, avatar, introduction, member_count, type, join_limit,
-                    category_id, is_featured, created_at],
+                [
+                    <<"id">>,
+                    <<"title">>,
+                    <<"avatar">>,
+                    <<"introduction">>,
+                    <<"member_count">>,
+                    <<"type">>,
+                    <<"join_limit">>,
+                    <<"category_id">>,
+                    <<"is_featured">>,
+                    <<"created_at">>
+                ],
                 Group
             ),
             {ok, Preview};

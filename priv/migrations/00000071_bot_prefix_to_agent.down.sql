@@ -1,0 +1,9 @@
+-- P4: 回滚默认 Agent 创建（幂等，仅删除迁移创建的行）
+-- 只删除通过 00000071 迁移创建的用户，不删除其他数据。
+
+BEGIN;
+
+DELETE FROM public.ai_agent WHERE user_id IN (1000000000000000001, 1000000000000000002);
+DELETE FROM public."user" WHERE id IN (1000000000000000001, 1000000000000000002);
+
+COMMIT;

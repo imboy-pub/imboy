@@ -113,6 +113,9 @@ get_routes() ->
 
                 %% AI 助手发现：供客户端列出可发起 C2S 会话的助手（JWT 认证，owner 无关）
                 {"/api/v1/agent/list", ai_agent_handler, #{action => list}},
+                {"/api/v1/agent/discover", ai_agent_handler, #{action => discover}},
+                {"/api/v1/agent/search", ai_agent_handler, #{action => search}},
+                {"/api/v1/agent/categories", ai_agent_handler, #{action => categories}},
 
                 {"/api/v1/user/qrcode", user_handler, #{action => qrcode}},
                 {"/api/v1/user/update", user_handler, #{action => update}},
@@ -461,6 +464,15 @@ get_routes() ->
                 {"/api/v1/webhook/channel/:token", channel_webhook_handler, #{
                     action => incoming
                 }},
+
+                % Bot 管理 API
+                {"/api/v1/bot/register", bot_handler, #{action => register}},
+                {"/api/v1/bot/get", bot_handler, #{action => get}},
+                {"/api/v1/bot/update", bot_handler, #{action => update}},
+                {"/api/v1/bot/disable", bot_handler, #{action => disable}},
+                {"/api/v1/bot/enable", bot_handler, #{action => enable}},
+                {"/api/v1/bot/list_mine", bot_handler, #{action => list_mine}},
+                {"/api/v1/bot/search", bot_handler, #{action => search}},
 
                 % 群文件管理 API
                 {"/api/v1/group/file/upload", group_file_handler, #{action => upload}},

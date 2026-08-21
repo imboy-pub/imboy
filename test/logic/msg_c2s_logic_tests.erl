@@ -20,38 +20,9 @@
 %% c2s/3 测试 - C2S 消息入口与路由
 %% ===================================================================
 
-c2s_with_qianfan_bot_succeeds_test_() ->
+c2s_with_qianfan_bot_deprecated_test_() ->
     ?WITH_MECKS(
-        [
-            {elib_dt, [
-                {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
-                {'millisecond', 0, fun() -> 1704067200000 end}
-            ]},
-            {msg_c2s_ds, [
-                {'write_topic', 6, fun(_Type, _TopicId, _Uid, _To, _Title, _CreatedAt) -> ok end}
-            ]},
-            {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
-                {'enqueue', 3, fun(_, _, _) -> ok end}
-            ]},
-            {qianfan_api, [
-                {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
-                    #{<<"result">> => <<"AI response">>}
-                end}
-            ]},
-            {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
-            ]},
-            {elib_str, [
-                {'replace_single_quote', 1, fun(Text) -> Text end}
-            ]},
-            {jsone, [
-                {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
-            ]},
-            {elib_retry_config, [
-                {'intervals', 1, fun(_Type) -> [2000, 5000, 7000, 11000] end}
-            ]}
-        ],
+        [],
         fun() ->
             MsgId = <<"msg_123">>,
             CurrentUid = 123,
@@ -64,7 +35,7 @@ c2s_with_qianfan_bot_succeeds_test_() ->
             },
 
             Result = msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
-            ?assert(is_atom(Result) orelse is_tuple(Result))
+            ?assertMatch({reply, #{<<"action">> := <<"bot_prefix_deprecated">>}}, Result)
         end
     ).
 
@@ -87,38 +58,9 @@ c2s_with_unsupported_bot_fails_test_() ->
         end
     ).
 
-c2s_with_lowercase_bot_name_succeeds_test_() ->
+c2s_with_lowercase_bot_name_deprecated_test_() ->
     ?WITH_MECKS(
-        [
-            {elib_dt, [
-                {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
-                {'millisecond', 0, fun() -> 1704067200000 end}
-            ]},
-            {msg_c2s_ds, [
-                {'write_topic', 6, fun(_Type, _TopicId, _Uid, _To, _Title, _CreatedAt) -> ok end}
-            ]},
-            {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
-                {'enqueue', 3, fun(_, _, _) -> ok end}
-            ]},
-            {qianfan_api, [
-                {'create_chat', 3, fun(_Uid, _Text, _Opts) ->
-                    #{<<"result">> => <<"AI response">>}
-                end}
-            ]},
-            {message_ds, [
-                {'send_next', 4, fun(_, _, _, _) -> ok end}
-            ]},
-            {elib_str, [
-                {'replace_single_quote', 1, fun(Text) -> Text end}
-            ]},
-            {jsone, [
-                {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
-            ]},
-            {elib_retry_config, [
-                {'intervals', 1, fun(_Type) -> [2000, 5000, 7000, 11000] end}
-            ]}
-        ],
+        [],
         fun() ->
             MsgId = <<"msg_123">>,
             CurrentUid = 123,
@@ -131,7 +73,7 @@ c2s_with_lowercase_bot_name_succeeds_test_() ->
             },
 
             Result = msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
-            ?assert(is_atom(Result) orelse is_tuple(Result))
+            ?assertMatch({reply, #{<<"action">> := <<"bot_prefix_deprecated">>}}, Result)
         end
     ).
 
@@ -727,91 +669,6 @@ c2s_to_external_without_topic_succeeds_test_() ->
     ).
 
 %% ===================================================================
-%% c2s_to_role_chat/3 测试 - AI 角色聊天处理
-%% 实现路由至 c2s_to_external，测试环境下 msg_store_ds:stage 失败
-%% 会走 error 分支返回 {reply, S2C}
-%% ===================================================================
-
-c2s_to_role_chat_routes_to_external_test_() ->
-    ?WITH_MECKS(
-        [
-            {elib_log, [
-                {'internal_log', 4, fun(_, _, _, _) -> ok end},
-                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-            ]},
-            {config_ds, [
-                {'env', 2, fun(ai_roles, _Default) -> #{} end}
-            ]},
-            {elib_dt, [
-                {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
-                {'millisecond', 0, fun() -> 1704067200000 end}
-            ]},
-            {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> error end}
-            ]},
-            {message_ds, [
-                {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                    #{<<"type">> => <<"S2C">>, <<"code">> => <<"internal_error">>}
-                end}
-            ]},
-            {jsone, [
-                {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
-            ]}
-        ],
-        fun() ->
-            MsgId = <<"msg_123">>,
-            CurrentUid = 123,
-            Payload = #{
-                <<"role_id">> => <<"doctor">>,
-                <<"text">> => <<"hello">>,
-                <<"topic_id">> => 0,
-                <<"topic_title">> => <<>>
-            },
-            Data = #{<<"payload">> => Payload, <<"created_at">> => 1704067200000},
-
-            Result = msg_c2s_logic:c2s_to_role_chat(MsgId, CurrentUid, Data),
-            ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-        end
-    ).
-
-c2s_to_role_chat_with_default_role_id_test_() ->
-    ?WITH_MECKS(
-        [
-            {elib_log, [
-                {'internal_log', 4, fun(_, _, _, _) -> ok end},
-                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-            ]},
-            {config_ds, [
-                {'env', 2, fun(ai_roles, _Default) -> #{} end}
-            ]},
-            {elib_dt, [
-                {'to_rfc3339', 1, fun(_Ts) -> <<"2024-01-01T00:00:00Z">> end},
-                {'millisecond', 0, fun() -> 1704067200000 end}
-            ]},
-            {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> error end}
-            ]},
-            {message_ds, [
-                {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                    #{<<"type">> => <<"S2C">>, <<"code">> => <<"internal_error">>}
-                end}
-            ]},
-            {jsone, [
-                {'encode', 2, fun(_Map, _Opts) -> <<"{\"encoded\":\"json\"}">> end}
-            ]}
-        ],
-        fun() ->
-            MsgId = <<"msg_123">>,
-            CurrentUid = 123,
-            Payload = #{<<"text">> => <<"hello">>, <<"topic_id">> => 0, <<"topic_title">> => <<>>},
-            Data = #{<<"payload">> => Payload, <<"created_at">> => 1704067200000},
-
-            Result = msg_c2s_logic:c2s_to_role_chat(MsgId, CurrentUid, Data),
-            ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-        end
-    ).
-
-%% ===================================================================
 %% 边界条件测试
 %% ===================================================================
 
@@ -1077,23 +934,16 @@ c2s_to_external_with_missing_text_in_payload_test_() ->
 %% 特殊场景测试
 %% ===================================================================
 
-c2s_with_special_characters_in_bot_name_test_() ->
+c2s_with_special_characters_in_bot_name_deprecated_test_() ->
     ?WITH_MECKS(
-        [
-            {message_ds, [
-                {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-                    #{<<"type">> => <<"S2C">>, <<"code">> => <<"c2s_unsupported">>}
-                end}
-            ]}
-        ],
+        [],
         fun() ->
             MsgId = <<"msg_123">>,
             CurrentUid = 123,
             Data = #{<<"to">> => <<"bot_with-special_char.name">>},
 
             Result = msg_c2s_logic:c2s(MsgId, CurrentUid, Data),
-            % 不支持的 bot 名称
-            ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
+            ?assertMatch({reply, #{<<"action">> := <<"bot_prefix_deprecated">>}}, Result)
         end
     ).
 

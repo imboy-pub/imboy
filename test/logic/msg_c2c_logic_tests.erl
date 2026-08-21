@@ -11,6 +11,9 @@ c2c_success_sends_server_ack_and_dispatch_test_() ->
             {ai_agent_ds, [
                 {'is_agent', 1, fun(456) -> false end}
             ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
@@ -141,6 +144,9 @@ c2c_to_enabled_agent_skips_friend_check_test_() ->
                 %% ToId=456 是启用中 agent → 应豁免好友校验
                 {'is_agent', 1, fun(456) -> {true, #{}} end}
             ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
@@ -257,6 +263,9 @@ c2c_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
             {ai_agent_ds, [
                 {'is_agent', 1, fun(456) -> false end}
             ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
@@ -369,6 +378,9 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
             {ai_agent_ds, [
                 {'is_agent', 1, fun(456) -> false end}
             ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) ->
                     {error, <<"encrypted_message_required">>}
@@ -410,6 +422,9 @@ c2c_e2ee_message_allowed_when_encryption_required_test_() ->
             ]},
             {ai_agent_ds, [
                 {'is_agent', 1, fun(456) -> false end}
+            ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
@@ -915,6 +930,9 @@ c2c_duplicate_resend_acks_without_redelivery_test_() ->
             {ai_agent_ds, [
                 {'is_agent', 1, fun(456) -> false end}
             ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
@@ -996,6 +1014,9 @@ c2c_pipeline_mecks() ->
         ]},
         {ai_agent_ds, [
             {'is_agent', 1, fun(_) -> false end}
+        ]},
+        {bot_ds, [
+            {'is_bot', 1, fun(_) -> false end}
         ]},
         {elib_dt, [
             {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},

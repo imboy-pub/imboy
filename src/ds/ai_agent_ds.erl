@@ -18,6 +18,7 @@
 -export([roles/0]).
 -export([save_role/2]).
 -export([delete_role/1]).
+-export([categories/0]).
 
 -include("log.hrl").
 
@@ -334,3 +335,8 @@ default_account(Account, _Nickname, _Uid) ->
 -spec trim(term()) -> binary().
 trim(B) when is_binary(B) -> string:trim(B);
 trim(V) -> ec_cnv:to_binary(V).
+
+%% @doc 列出启用且公开的 agent 分类（去重，非空）
+-spec categories() -> {ok, [binary()]} | {error, term()}.
+categories() ->
+    ai_agent_repo:categories().

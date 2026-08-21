@@ -66,6 +66,19 @@ IM → Feed → 算法推荐 → 广告平台
 
 ---
 
+### 账号类型语义（权威）
+
+| 值 | 常量 | 说明 |
+|----|------|------|
+| `0` | `human` | 普通人类用户 |
+| `1` | `agent` | 平台 AI 助手（绑定 `ai_agent` 表，LLM 驱动） |
+| `2` | `system_bot` | 频道 incoming webhook bot（`channel_webhook_ds` 创建，非开发者 Bot） |
+| `3` | `bot` | 开发者服务 Bot（`bot` 表，Webhook 驱动的第三方服务） |
+
+**Agent 与 Bot 分离**：Agent（`account_type=1`）是平台自带的 AI 助手，走 LLM 调用链路；Bot（`account_type=3`）是开发者注册的第三方服务，走 Webhook 推送。两类判定互不误伤——判定 Bot 须同时检查 `account_type=3` 且 `bot` 表存在该 user_id 行。
+
+---
+
 ## 构建系统规则 / Build System Rules
 
 - **禁止修改 `erlang.mk`**（vendored 第三方工具）。自定义逻辑只能在 `Makefile` 中实现。
@@ -131,6 +144,9 @@ PostgreSQL（`DELETE ... RETURNING` 天然原子），进程发现用 `syn`。
 | WebSocket | `websocket_handler` | `websocket_logic` | `websocket_ds` | - |
 | E2EE | `e2ee_handler` | `e2ee_logic` | - | `user_device_repo` |
 | 免打扰(DND) | -（待建） | -（待建） | `user_dnd_rule_ds` | `user_dnd_rule_repo` |
+| Agent 发现 | `ai_agent_handler` | `ai_agent_logic` | `ai_agent_ds` | `ai_agent_repo` |
+| Agent 对话 | - | `ai_agent_reply` | - | - |
+| Bot 管理 | `bot_handler` | `bot_logic` | `bot_ds` | `bot_repo` |
 
 ---
 

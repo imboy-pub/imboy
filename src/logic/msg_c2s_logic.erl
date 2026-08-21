@@ -9,9 +9,6 @@
 -export([c2s/3]).
 -export([c2s_client_ack/3]).
 -export([c2s_to_external/5]).
--export([llm_callback/2]).
--export([llm_callback/4]).
--export([c2s_to_role_chat/3]).
 -export([handle_sync/3]).
 
 %% ===================================================================
@@ -36,10 +33,19 @@ c2s(MsgId, CurrentUid, Data) ->
                 <<"in_reply_to">> => MsgId,
                 <<"payload">> => Result
             }};
-        <<"bot_", _/binary>> = Bot ->
-            % bot_* 统一查 imboy_llm_registry 分派（BYO-LLM）
-            % 新增 provider 只需实现 imboy_llm behaviour + llm_providers 配置
-            c2s_to_llm(MsgId, CurrentUid, Bot, Data);
+        <<"bot_", _/binary>> ->
+            % bot_* 前缀已废弃，引导用户改用 Agent（直接与 Agent 账号对话）。
+            % 参见 priv/migrations/00000071_bot_prefix_to_agent.up.sql
+            % 替代方案：向 account_type=1 的 Agent 账号发送 C2C 消息。
+            {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2S">>,
+                <<"action">> => <<"bot_prefix_deprecated">>,
+                <<"in_reply_to">> => MsgId,
+                <<"payload">> => #{
+                    <<"text">> => <<"bot_* 前缀已废弃，请直接与 AI 助手账号对话（C2C）。"/utf8>>
+                }
+            }};
         _ ->
             % 不支持的 c2s 消息（自研 E2EE 社交恢复分片通道已下线）
             Msg = message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To),
@@ -54,104 +60,6 @@ c2s_client_ack(MsgId, CurrentUid, DID) ->
 %% ===================================================================
 %% 外部服务处理函数
 %% ===================================================================
-
-%% @doc bot_* 消息按注册表分派到 LLM provider
-%% To → provider 名：bot_qian_fan → qianfan（向后兼容），bot_xxx → xxx
--spec c2s_to_llm(binary(), integer(), binary(), map()) -> ok | {reply, map()}.
-c2s_to_llm(MsgId, CurrentUid, To, Data) ->
-    %% 金钱 DoS 闸门：bot_* C2S 触发 LLM 前限流。deny 静默丢弃，不查 registry、
-    %% 不调 LLM、不给攻击者信号。与 ai_agent_reply 走同一闸门。
-    %% scope 用归一化后的 provider 名（真实计费身份）：bot_qian_fan / bot_qianfan
-    %% 等别名映射同一 provider，必须共享计数，否则可交替别名双倍突破配额。
-    case agent_rate_limiter:allow(provider_name(To), CurrentUid) of
-        {deny, Reason} ->
-            ok = ?WARN_LOG("[BOT_RATE_LIMITED] to=~p from=~p reason=~p~n", [To, CurrentUid, Reason]),
-            ok;
-        allow ->
-            case imboy_llm_registry:lookup(provider_name(To)) of
-                {ok, #{module := Mod, opts := Opts}} ->
-                    c2s_to_external(
-                        MsgId, CurrentUid, To, Data, llm_callback(Mod, Opts, To, MsgId)
-                    );
-                undefined ->
-                    {reply, message_ds:assemble_s2c(MsgId, <<"c2s_unsupported">>, To)}
-            end
-    end.
-
-%% @doc 把 imboy_llm:chat/3 桥接为 c2s_to_external/5 的 ApiCallback 契约
-%% ApiCallback 契约：fun(Uid, Text, Opts) -> RespMap（裸 map，含 result 键）
-%% 桥接：Text 包成单条 user 消息；{ok, RespMap} → RespMap；
-%% {error, _} → 抛异常触发 c2s_to_external 的 async_retry 重试（与原 qianfan
-%% crash-then-retry 一致），避免吞成空 result 给用户发空气泡。
--spec llm_callback(module(), map()) -> fun((integer(), binary(), list()) -> map()).
-llm_callback(Mod, Opts) ->
-    fun(Uid, Text, _CallbackOpts) ->
-        Messages = [#{<<"role">> => <<"user">>, <<"content">> => Text}],
-        case Mod:chat(Uid, Messages, Opts) of
-            {ok, RespMap} ->
-                RespMap;
-            {error, Reason} ->
-                ok = ?ERROR_LOG(
-                    "[C2S_LLM_FAILED] provider=~p reason=~p~n",
-                    [Mod, Reason]
-                ),
-                error({llm_failed, Reason})
-        end
-    end.
-
-%% @doc 带流式感知的回调（bot_* 通路）：provider 支持流式时先逐帧直推
-%% stream_delta（同定稿 id: bot_response+MsgId），再返回完整 RespMap 供
-%% c2s_to_external 定稿落库；否则委托 llm_callback/2 一次性桥接。
--spec llm_callback(module(), map(), binary(), binary()) ->
-    fun((integer(), binary(), list()) -> map()).
-llm_callback(Mod, Opts, To, MsgId) ->
-    SyncCb = llm_callback(Mod, Opts),
-    fun(Uid, Text, CallbackOpts) ->
-        case llm_stream:stream_capable(Mod) of
-            true ->
-                Messages = [#{<<"role">> => <<"user">>, <<"content">> => Text}],
-                stream_bot_chat(Mod, Opts, Uid, To, MsgId, Messages);
-            false ->
-                SyncCb(Uid, Text, CallbackOpts)
-        end
-    end.
-
-%% 流式 bot 回复：中间 delta 直推（同定稿 id），返回完整 RespMap 给定稿。
-%% 帧 type=C2S、from=bot 标识、to=human，与 send_service_response 定稿对齐。
--spec stream_bot_chat(module(), map(), integer(), binary(), binary(), [map()]) -> map().
-stream_bot_chat(Mod, Opts, Uid, To, MsgId, Messages) ->
-    Ctx = #{
-        stream_id => <<"bot_response", MsgId/binary>>,
-        target_uid => Uid,
-        from => To,
-        to => ec_cnv:to_binary(Uid),
-        type => <<"C2S">>
-    },
-    %% c2s_to_external 的 async_retry 在同进程递归重试，stream_id 恒定，
-    %% 每次尝试前清空进程字典状态，避免上轮残留与新一轮 delta 串味
-    ok = llm_stream:reset(Ctx),
-    StreamFun = fun(Delta) -> llm_stream:push(Ctx, Delta) end,
-    case Mod:chat_stream(Uid, Messages, Opts, StreamFun) of
-        {ok, RespMap} ->
-            llm_stream:flush_tail(Ctx),
-            RespMap;
-        {error, Reason} ->
-            %% flush 已累积 + 抛错触发 c2s_to_external async_retry（同原 crash-then-retry）
-            %% ponytail: 失败重试会重推 delta，前端按 index 幂等覆盖可容忍
-            %% 上限：重试期间同一 stream_id 的 delta 会重复下发，正确性完全依赖
-            %% 「前端按 index 覆盖」这一契约（本层不做去重）。
-            %% 升级触发：前端改为追加式渲染、或同一会话要多端同屏时，须在重试前
-            %% 下发 stream_reset（或换 stream_id）显式作废上一轮 delta。
-            llm_stream:flush_tail(Ctx),
-            ok = ?ERROR_LOG(
-                "[C2S_LLM_STREAM_FAILED] provider=~p reason=~p~n",
-                [Mod, Reason]
-            ),
-            error({llm_failed, Reason})
-    end.
-
-provider_name(<<"bot_qian_fan">>) -> <<"qianfan">>;
-provider_name(<<"bot_", Rest/binary>>) -> Rest.
 
 %% @doc C2S 消息发送到外部服务（AI/Bot/第三方 API）
 %% @param MsgId 消息ID
@@ -256,36 +164,6 @@ c2s_to_external(MsgId, CurrentUid, To, Data, ApiCallback) ->
             Msg = message_ds:assemble_s2c(MsgId, <<"internal_error">>, To),
             {reply, Msg}
     end.
-
-%% @doc AI 角色聊天处理
-%% 从 config_ds:env(ai_roles) 读取角色 system_prompt，通过千帆 API 回复
-%% ai_roles 配置示例：#{<<"doctor">> => <<"你是一名专业的医生助手..."/utf8>>}
-%% 读取顺序：sys.config 静态 env 优先，未配置时兜底读 admin 持久化的
-%% config_ds:get(<<"ai_roles">>)（ai_agent_ds:save_role/2 写入，运行时即生效）。
--spec c2s_to_role_chat(binary(), integer(), map()) -> ok | {reply, map()}.
-c2s_to_role_chat(MsgId, CurrentUid, Data) ->
-    Payload = maps:get(<<"payload">>, Data),
-    RoleId = maps:get(<<"role_id">>, Payload, <<"doctor">>),
-    % 从配置读取角色 system_prompt；未配置时使用通用助手提示
-    Roles =
-        case config_ds:env(ai_roles, undefined) of
-            undefined -> config_ds:get(<<"ai_roles">>, #{});
-            Roles0 -> Roles0
-        end,
-    SystemPrompt = maps:get(
-        RoleId,
-        Roles,
-        <<"你是一个有帮助的AI助手，请专业、友善地回答用户问题。"/utf8>>
-    ),
-    % 将 system_prompt 注入为开场历史，使千帆 API 持有角色上下文
-    RoleCallback = fun(Uid, Content, _Opts) ->
-        History = [
-            #{<<"role">> => <<"user">>, <<"content">> => SystemPrompt},
-            #{<<"role">> => <<"assistant">>, <<"content">> => <<"好的，我会按照这个角色来回答您的问题。"/utf8>>}
-        ],
-        qianfan_api:create_chat(Uid, Content, History)
-    end,
-    c2s_to_external(MsgId, CurrentUid, <<"bot_role_chat">>, Data, RoleCallback).
 
 %% ===================================================================
 %% Internal Function Definitions

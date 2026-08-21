@@ -15,6 +15,7 @@
 -export([page/2]).
 -export([page/3]).
 -export([page_assistants/3]).
+-export([categories/0]).
 
 -include("log.hrl").
 
@@ -309,3 +310,18 @@ page_assistants(Keyword, Page, Size) when Page > 0, Size > 0 ->
 -spec empty_page(pos_integer(), pos_integer()) -> map().
 empty_page(Page, Size) ->
     #{total => 0, page => Page, size => Size, list => []}.
+
+%% @doc 列出启用且公开的 agent 分类（去重，非空，按字母序）
+-spec categories() -> {ok, [binary()]} | {error, term()}.
+categories() ->
+    ATb = tablename(),
+    Sql =
+        <<"SELECT DISTINCT category FROM ", ATb/binary,
+            " WHERE status = 1 AND visibility = 1 AND category <> ''", " ORDER BY category">>,
+    case elib_pg:query(Sql, []) of
+        {ok, Rows} ->
+            {ok, [maps:get(<<"category">>, R) || R <- Rows]};
+        {error, Reason} ->
+            ?ERROR_LOG("ai_agent_repo:categories error ~p~n", [Reason]),
+            {error, Reason}
+    end.

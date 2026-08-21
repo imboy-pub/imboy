@@ -9,6 +9,7 @@
 %%%
 
 -export([list_assistants/1]).
+-export([categories/0]).
 
 -include("log.hrl").
 
@@ -25,6 +26,11 @@ list_assistants(#{page := Page, size := Size} = Params) ->
             ?ERROR_LOG("ai_agent_logic:list_assistants error ~p~n", [Reason]),
             {error, Reason}
     end.
+
+%% @doc 列出启用且公开的 agent 分类
+-spec categories() -> {ok, [binary()]} | {error, term()}.
+categories() ->
+    ai_agent_ds:categories().
 
 %% ===================================================================
 %% Internal
