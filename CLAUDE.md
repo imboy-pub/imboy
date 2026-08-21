@@ -2,7 +2,7 @@
 
 # Imboy - AI 上下文文档 / AI Context Document
 
-> **最后更新 / Last updated**: 2026-06-03 CST | **版本**: 1.0.0-alpha.26
+> **最后更新 / Last updated**: 2026-08-21 CST | **版本**: 1.0.0-alpha.26
 > **架构**: 单应用 4 层架构 Handler -> Logic -> DS -> Repo | **语言**: Erlang/OTP 28+ + PostgreSQL 18+
 
 ---
@@ -10,6 +10,59 @@
 ## 双语文档规则 / Bilingual Documentation Rule
 
 > 见根级 [CLAUDE.md](../CLAUDE.md#双语文档规则--bilingual-documentation-rule-mandatory)
+
+---
+
+## 产品定位 / Product Positioning
+
+IMBoy 的核心定位：**用户真正拥有数据、用户关系和运营权的 IM + 社群平台**。
+
+### 一句话定位
+
+> IMBoy = 开放、可私有化部署的现代 IM + 社群平台。不做单纯聊天工具，也不一开始做超级 App。
+
+### 核心对象层级
+
+```
+User → Conversation → Group → Channel → Bot/Service → 可选公域
+```
+
+| 层级 | 对象 | 关系模型 | 当前状态 |
+|------|------|---------|---------|
+| **L1 身份根** | User | 统一身份，TSID 主键，多设备 | ✅ 完善 |
+| **L2 私域通信** | Conversation (C2C) | 端到端加密，好友关系驱动 | ✅ 完善 |
+| **L3 社群** | Group | 成员角色 6 级，公开/私有群 | ✅ 完善 |
+| **L4 订阅分发** | Channel | 公开/私有/付费，纯订阅制 | ✅ 完善 |
+| **L5 可编程平台** | Bot/Service | Webhook 推送，OAuth 授权 | ⚠️ 消息通道就绪，生态缺失 |
+| **L6 公域内容** | — | 刻意不做 Feed 推荐、算法分发 | ❌ 不在路线图 |
+
+### 核心设计原则
+
+1. **私域优先**：第一优先级是 Contact/Friend/Conversation 的私域关系，第二优先级是 Group Member，最后才是 Channel 的 Follow/Subscribe。
+2. **订阅制，不做算法推荐**：Channel 服务于"用户主动订阅"，不做信息流推荐，不做 X/抖音式公域推荐作为核心能力。
+3. **用户拥有数据**：所有数据存储在用户自己的 PostgreSQL 中，不依赖中心化服务。
+4. **E2EE 是基础设施**：Olm 协议全套，服务端不解密，仅路由存储。
+5. **Bot 是开放生态**：Bot 通过 GitOps 插件市场分发，用户自托管，走 Webhook 推送。
+
+### 路线图
+
+```
+IM → Group → Channel → Bot/Service → 可选公域
+```
+
+而不是：
+
+```
+IM → Feed → 算法推荐 → 广告平台
+```
+
+### 不做的事
+
+- ❌ 公域信息流推荐引擎
+- ❌ 基于算法的内容发现
+- ❌ 广告平台
+- ❌ 超级 App 式功能堆砌
+- ❌ Redis（全栈不引入，见下方约束）
 
 ---
 
