@@ -1298,7 +1298,7 @@ init_task_review_success_writes_audit_test_() ->
                     end}
                 ]},
                 {group_task_logic, [
-                    {'review', 3, fun(501, 9001, Data) ->
+                    {'review_as_admin', 3, fun(501, 9001, Data) ->
                         ?assertEqual(95, maps:get(score, Data)),
                         ?assertEqual(<<"good">>, maps:get(comment, Data)),
                         ok
