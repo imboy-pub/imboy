@@ -61,7 +61,7 @@ find_by_uid_not_found_returns_empty_map_test_() ->
             {elib_pg, [{'one', 2, fun(_Sql, _Params) -> {ok, []} end}]}
         ],
         fun() ->
-            ?assertEqual(#{}, user_dnd_rule_repo:find_by_uid(999))
+            ?assertEqual([], user_dnd_rule_repo:find_by_uid(999))
         end
     ).
 
