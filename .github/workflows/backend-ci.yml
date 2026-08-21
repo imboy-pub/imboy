@@ -113,7 +113,8 @@ jobs:
   full-eunit:
     name: Full EUnit (baseline, non-blocking)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # 全量 eunit 本地实测 ~45 分钟（R-23 记录），40 分钟会被超时杀掉
+    timeout-minutes: 60
     needs: [compile]
     continue-on-error: true
 
