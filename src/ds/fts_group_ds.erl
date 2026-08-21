@@ -45,7 +45,7 @@ discover_groups(Page, Size, CategoryId) ->
 %% @doc 发现页群组列表（支持排序）
 -spec discover_groups(integer(), integer(), integer(), binary()) ->
     {ok, list(map())} | {error, any()}.
-discover_groups(Page, Size, CategoryId, OrderBy) ->
+discover_groups(Page, Size, CategoryId, _OrderBy) ->
     Offset = (Page - 1) * Size,
     fts_group_repo:group_search_page(<<>>, Size, Offset, CategoryId).
 
