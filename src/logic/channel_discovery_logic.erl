@@ -54,18 +54,20 @@ search(Keyword, Page, Size, CategoryId) ->
 -spec discover(pos_integer(), pos_integer(), integer() | undefined, binary()) ->
     {ok, map()} | {error, binary()}.
 discover(Page, Size, CategoryId, Sort) ->
-    OrderBy = case Sort of
-        <<"popular">> -> <<"subscriber_count DESC">>;
-        <<"newest">> -> <<"created_at DESC">>;
-        <<"active">> -> <<"updated_at DESC">>;
-        _ -> <<"subscriber_count DESC">>
-    end,
+    OrderBy =
+        case Sort of
+            <<"popular">> -> <<"subscriber_count DESC">>;
+            <<"newest">> -> <<"created_at DESC">>;
+            <<"active">> -> <<"updated_at DESC">>;
+            _ -> <<"subscriber_count DESC">>
+        end,
     Offset = (Page - 1) * Size,
     Sql = build_discover_sql(CategoryId, OrderBy),
-    Params = case CategoryId of
-        undefined -> [Size, Offset];
-        _ -> [CategoryId, Size, Offset]
-    end,
+    Params =
+        case CategoryId of
+            undefined -> [Size, Offset];
+            _ -> [CategoryId, Size, Offset]
+        end,
     case elib_pg:query(Sql, Params) of
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows, <<"total">> => length(Rows)}};
@@ -76,12 +78,14 @@ discover(Page, Size, CategoryId, Sort) ->
 %% @doc 精选频道（运营推荐）
 -spec featured(pos_integer()) -> {ok, map()} | {error, binary()}.
 featured(Limit) ->
-    Sql = <<"SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+    Sql = <<
+        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
         "WHERE c.status = 1 AND c.is_featured = true "
         "ORDER BY c.featured_at DESC NULLS LAST "
-        "LIMIT $1">>,
+        "LIMIT $1"
+    >>,
     case elib_pg:query(Sql, [Limit]) of
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
@@ -96,7 +100,8 @@ featured(Limit) ->
 -spec trending(integer(), pos_integer()) -> {ok, map()} | {error, binary()}.
 trending(Period, Limit) ->
     % 计算热门度：订阅数 + 近期消息数 + 活跃浏览数
-    Sql = <<"SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+    Sql = <<
+        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at, "
         "COALESCE(SUM(s.new_subscribers), 0) as recent_subscribers, "
         "COALESCE(SUM(s.messages_count), 0) as recent_messages, "
@@ -108,7 +113,8 @@ trending(Period, Limit) ->
         "GROUP BY c.id "
         "ORDER BY (c.subscriber_count * 0.4 + COALESCE(SUM(s.new_subscribers), 0) * 0.3 "
         "  + COALESCE(SUM(s.messages_count), 0) * 0.2 + COALESCE(SUM(s.active_viewers), 0) * 0.1) DESC "
-        "LIMIT $2">>,
+        "LIMIT $2"
+    >>,
     case elib_pg:query(Sql, [Period, Limit]) of
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
@@ -119,8 +125,10 @@ trending(Period, Limit) ->
 %% @doc 获取频道分类列表
 -spec categories() -> {ok, map()} | {error, binary()}.
 categories() ->
-    Sql = <<"SELECT id, name, icon, sort_order FROM public.channel_category "
-        "WHERE status = 1 ORDER BY sort_order">>,
+    Sql = <<
+        "SELECT id, name, icon, sort_order FROM public.channel_category "
+        "WHERE status = 1 ORDER BY sort_order"
+    >>,
     case elib_pg:query(Sql, []) of
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
@@ -135,42 +143,77 @@ categories() ->
 %% @doc 统计频道搜索结果数量
 -spec count_channel_search(binary(), integer() | undefined) -> non_neg_integer().
 count_channel_search(Keyword, CategoryId) ->
-    Sql1 = <<"select replace(to_tsquery('jiebacfg', $1)::text, ' <-> ', ' | ') as keyword from (select 1) as temp">>,
+    Sql1 =
+        <<"select replace(to_tsquery('jiebacfg', $1)::text, ' <-> ', ' | ') as keyword from (select 1) as temp">>,
     case elib_pg:one(Sql1, [Keyword]) of
         {ok, #{<<"keyword">> := Keyword2}} ->
             WhereClause = build_search_where(CategoryId),
-            Sql = <<"SELECT count(*) as count FROM public.fts_channel fts "
+            Sql = <<
+                "SELECT count(*) as count FROM public.fts_channel fts "
                 "LEFT JOIN public.channel c ON c.id = fts.channel_id "
-                "WHERE ", WhereClause/binary>>,
-            Params = case CategoryId of
-                undefined -> [Keyword2];
-                _ -> [Keyword2, CategoryId]
-            end,
+                "WHERE ",
+                WhereClause/binary
+            >>,
+            Params =
+                case CategoryId of
+                    undefined -> [Keyword2];
+                    _ -> [Keyword2, CategoryId]
+                end,
             case elib_pg:one(Sql, Params) of
                 {ok, #{<<"count">> := Count}} -> Count;
                 _ -> 0
             end;
-        _ -> 0
+        _ ->
+            0
     end.
 
 %% @doc 分页搜索频道（全文搜索）
 -spec channel_search_page(binary(), integer(), integer(), integer() | undefined) ->
     {ok, list(map())} | {error, any()}.
 channel_search_page(Keyword, Size, Offset, CategoryId) ->
-    Sql1 = <<"select replace(to_tsquery('jiebacfg', $1)::text, ' <-> ', ' | ') as keyword from (select 1) as temp">>,
+    Sql1 =
+        <<"select replace(to_tsquery('jiebacfg', $1)::text, ' <-> ', ' | ') as keyword from (select 1) as temp">>,
     case elib_pg:query(Sql1, [Keyword]) of
         {ok, [#{<<"keyword">> := Keyword2}]} ->
             WhereClause = build_search_where(CategoryId),
-            Sql = <<"SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+            Sql = <<
+                "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
                 "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at, "
                 "ts_rank_cd(fts.token, to_tsquery('jiebacfg', $1)) as rank "
                 "FROM public.fts_channel fts "
                 "LEFT JOIN public.channel c ON c.id = fts.channel_id "
-                "WHERE ", WhereClause/binary, " "
+                "WHERE ",
+                WhereClause/binary,
+                " "
                 "ORDER BY rank DESC "
-                "LIMIT $", (build_param_index(length([Keyword2 | case CategoryId of undefined -> []; _ -> [CategoryId] end]) + 1))/binary, " "
-                "OFFSET $", (build_param_index(length([Keyword2 | case CategoryId of undefined -> []; _ -> [CategoryId] end]) + 2))/binary>>,
-            Params = [Keyword2] ++ case CategoryId of undefined -> []; _ -> [CategoryId] end ++ [Size, Offset],
+                "LIMIT $",
+                (build_param_index(
+                    length([
+                        Keyword2
+                        | case CategoryId of
+                            undefined -> [];
+                            _ -> [CategoryId]
+                        end
+                    ]) + 1
+                ))/binary,
+                " "
+                "OFFSET $",
+                (build_param_index(
+                    length([
+                        Keyword2
+                        | case CategoryId of
+                            undefined -> [];
+                            _ -> [CategoryId]
+                        end
+                    ]) + 2
+                ))/binary
+            >>,
+            Params =
+                [Keyword2] ++
+                    case CategoryId of
+                        undefined -> [];
+                        _ -> [CategoryId]
+                    end ++ [Size, Offset],
             elib_pg:query(Sql, Params);
         _ ->
             {ok, []}
@@ -180,25 +223,33 @@ channel_search_page(Keyword, Size, Offset, CategoryId) ->
 -spec build_search_where(integer() | undefined) -> binary().
 build_search_where(undefined) ->
     <<"c.status = 1 AND fts.token @@ to_tsquery('jiebacfg', $1)">>;
-build_search_where(CategoryId) ->
+build_search_where(_CategoryId) ->
     <<"c.status = 1 AND c.category_id = $2 AND fts.token @@ to_tsquery('jiebacfg', $1)">>.
 
 %% @doc 构建发现页 SQL
 -spec build_discover_sql(integer() | undefined, binary()) -> binary().
 build_discover_sql(undefined, OrderBy) ->
-    <<"SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+    <<
+        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
         "WHERE c.status = 1 "
-        "ORDER BY c.", OrderBy/binary, " "
-        "LIMIT $1 OFFSET $2">>;
+        "ORDER BY c.",
+        OrderBy/binary,
+        " "
+        "LIMIT $1 OFFSET $2"
+    >>;
 build_discover_sql(_CategoryId, OrderBy) ->
-    <<"SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+    <<
+        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
         "WHERE c.status = 1 AND c.category_id = $1 "
-        "ORDER BY c.", OrderBy/binary, " "
-        "LIMIT $2 OFFSET $3">>.
+        "ORDER BY c.",
+        OrderBy/binary,
+        " "
+        "LIMIT $2 OFFSET $3"
+    >>.
 
 %% @doc 构建参数索引
 -spec build_param_index(integer()) -> binary().
