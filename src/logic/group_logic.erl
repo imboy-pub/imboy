@@ -44,10 +44,8 @@
 %% 用户（含非成员）都能经 group/detail 拿到；未来一旦启用该列即为
 %% 群密钥明文泄漏。剥在 transfer 层，三处出站点一次收口。
 -spec group_transfer(map()) -> map().
-group_transfer(G) when is_map(G) ->
-    maps:remove(<<"chat_aes_key">>, G);
 group_transfer(G) ->
-    G.
+    maps:remove(<<"chat_aes_key">>, G).
 
 %% @doc 面对面建群
 %% 通过随机码创建或加入附近的群组

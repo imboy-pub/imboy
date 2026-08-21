@@ -830,7 +830,7 @@ pick_data_for_insert(Data, PostVals) ->
     ).
 
 -spec find_password_by_email(Email :: binary(), Pwd :: binary(), PostVals :: map()) ->
-    {ok, map()} | {error, Msg :: list()}.
+    {ok, map()} | {error, Msg :: binary()}.
 find_password_by_email(Email, Pwd, _PostVals) ->
     Id = user_ds:find_id_by_email(Email),
     case Id of
