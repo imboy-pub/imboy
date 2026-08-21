@@ -16,6 +16,8 @@
 %%%===================================================================
 
 -export([pay/3, refund/2]).
+%% payment_gateway optional callback：主动查单（充值确认）
+-export([query_order/2]).
 
 -spec pay(binary(), term(), map()) ->
     {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
@@ -49,6 +51,27 @@ refund(PaymentNo, Amount) ->
             case erlang_pay:refund(alipay, Cfg, Req) of
                 {ok, _} -> ok;
                 {error, Err} -> {error, err_msg(Err)}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 主动查单：alipay.trade.query → 归一 #{trade_state, trade_no}。
+%% TRADE_SUCCESS/FINISHED→success；WAIT_BUYER_PAY→pending；
+%% 交易不存在/网络/签名错误 → {error, Msg}（调用方按"未确认"处理并记日志）。
+-spec query_order(binary(), map()) -> {ok, map()} | {error, binary()}.
+query_order(OrderNo, _Opts) ->
+    case cfg() of
+        {ok, Cfg} ->
+            case erlang_pay:query(alipay, Cfg, #{out_trade_no => OrderNo}) of
+                {ok, #{trade_state := State} = Q} ->
+                    Raw = maps:get(raw, Q, #{}),
+                    {ok, #{
+                        trade_state => State,
+                        trade_no => maps:get(<<"trade_no">>, Raw, <<>>)
+                    }};
+                {error, Err} ->
+                    {error, err_msg(Err)}
             end;
         {error, Reason} ->
             {error, Reason}

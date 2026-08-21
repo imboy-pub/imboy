@@ -37,6 +37,7 @@ init(Req0, State0) ->
 -spec needs_gateway(atom()) -> boolean().
 needs_gateway(recharge_order) -> true;
 needs_gateway(recharge_pay) -> true;
+needs_gateway(recharge_confirm) -> true;
 needs_gateway(recharge_query) -> true;
 needs_gateway(withdraw) -> true;
 needs_gateway(_) -> false.
@@ -62,6 +63,8 @@ dispatch(Action, Req0, State) ->
             recharge_order(Req0, State);
         recharge_pay ->
             recharge_pay(Req0, State);
+        recharge_confirm ->
+            recharge_confirm(Req0, State);
         recharge_query ->
             recharge_query(Req0, State);
         red_packet_send ->
@@ -198,6 +201,28 @@ recharge_pay(Req0, State) ->
             case recharge_logic:pay(CurrentUid, OrderNo) of
                 {ok, PayResult} ->
                     elib_response:success(Req0, PayResult, "success.");
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+%% @doc 主动查单确认充值（客户端支付回跳后调用）
+%% 服务端向网关查单（alipay.trade.query），TRADE_SUCCESS 则幂等入账，
+%% 弥补异步回调丢失时"已付款余额不涨"的缺口。
+%% POST /v1/wallet/recharge/confirm
+%% 参数: order_no
+-spec recharge_confirm(cowboy_req:req(), map()) -> cowboy_req:req().
+recharge_confirm(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    OrderNo = maps:get(<<"order_no">>, PostVals, <<>>),
+    case is_binary(OrderNo) andalso byte_size(OrderNo) > 0 of
+        false ->
+            elib_response:error(Req0, <<"订单号不能为空"/utf8>>);
+        true ->
+            case recharge_logic:confirm(CurrentUid, OrderNo) of
+                {ok, Result} ->
+                    elib_response:success(Req0, Result, "success.");
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end

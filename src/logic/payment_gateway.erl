@@ -24,7 +24,14 @@
 -callback refund(PaymentNo :: binary(), Amount :: term()) ->
     ok | {error, binary()}.
 
--export([pay/3, refund/3, method_module/1, registry/0]).
+%% 可选回调：主动查单（客户端支付回跳后服务端确认用）。
+%% 返回 #{trade_state => success|pending|..., trade_no => binary()}；
+%% 未实现的网关（mock 等即时入账）经 dispatcher 归一为 unsupported。
+-callback query_order(OrderNo :: binary(), Opts :: map()) ->
+    {ok, map()} | {error, binary()} | unsupported.
+-optional_callbacks([query_order/2]).
+
+-export([pay/3, refund/3, query_order/2, method_module/1, registry/0]).
 -export([enabled/0]).
 
 %% @doc 外部支付网关总开关（默认关闭）。
@@ -62,6 +69,20 @@ refund(Method, PaymentNo, Amount) ->
     case method_module(Method) of
         {ok, Module} ->
             Module:refund(PaymentNo, Amount);
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc 主动查单（充值确认用）：派发到网关的 query_order/2。
+%% 网关未实现（optional callback）时归一 unsupported，调用方按"未确认"处理。
+-spec query_order(binary(), binary()) -> {ok, map()} | {error, binary()} | unsupported.
+query_order(Method, OrderNo) ->
+    case method_module(Method) of
+        {ok, Module} ->
+            case erlang:function_exported(Module, query_order, 2) of
+                true -> Module:query_order(OrderNo, #{});
+                false -> unsupported
+            end;
         {error, _} = Err ->
             Err
     end.

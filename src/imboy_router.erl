@@ -271,6 +271,13 @@ get_routes() ->
                 {"/api/v1/group/tag/list", group_tag_handler, #{action => list}},
                 {"/api/v1/group/tag/search", group_tag_handler, #{action => search}},
                 {"/api/v1/group/tag/hot", group_tag_handler, #{action => hot}},
+                % 群组发现（公开群搜索/浏览/分类）
+                {"/api/v1/group/search", group_discovery_handler, #{action => search}},
+                {"/api/v1/group/discover", group_discovery_handler, #{action => discover}},
+                {"/api/v1/group/featured", group_discovery_handler, #{action => featured}},
+                {"/api/v1/group/hot", group_discovery_handler, #{action => hot}},
+                {"/api/v1/group/categories", group_discovery_handler, #{action => categories}},
+                {"/api/v1/group/preview", group_discovery_handler, #{action => preview}},
                 % 群组公告
                 {"/api/v1/group_notice/add", group_notice_handler, #{action => add}},
                 {"/api/v1/group_notice/edit", group_notice_handler, #{action => edit}},
@@ -343,8 +350,11 @@ get_routes() ->
                 }},
                 {"/api/v1/channel/:channel_id/messages", channel_handler, #{action => messages}},
                 {"/api/v1/channel/:channel_id/read", channel_handler, #{action => mark_read}},
-                {"/api/v1/channels/search", channel_handler, #{action => search}},
-                {"/api/v1/channels/discover", channel_handler, #{action => discover}},
+                {"/api/v1/channels/search", channel_discovery_handler, #{action => search}},
+                {"/api/v1/channels/discover", channel_discovery_handler, #{action => discover}},
+                {"/api/v1/channels/featured", channel_discovery_handler, #{action => featured}},
+                {"/api/v1/channels/trending", channel_discovery_handler, #{action => trending}},
+                {"/api/v1/channels/categories", channel_discovery_handler, #{action => categories}},
                 {"/api/v1/channel/:channel_id/admin", channel_handler, #{action => add_admin}},
                 {"/api/v1/channel/:channel_id/admins", channel_handler_admin, #{action => admins}},
                 {"/api/v1/channel/:channel_id/admin/:user_id/role", channel_handler_admin, #{
@@ -506,6 +516,7 @@ get_routes() ->
                 % 充值（真实网关）：创建充值订单 -> 拉起第三方支付 -> 查询
                 {"/api/v1/wallet/recharge/order", wallet_handler, #{action => recharge_order}},
                 {"/api/v1/wallet/recharge/pay", wallet_handler, #{action => recharge_pay}},
+                {"/api/v1/wallet/recharge/confirm", wallet_handler, #{action => recharge_confirm}},
                 {"/api/v1/wallet/recharge/:order_no", wallet_handler, #{action => recharge_query}},
                 % 红包与转账/提现 API
                 {"/api/v1/wallet/red_packet/send", wallet_handler, #{action => red_packet_send}},

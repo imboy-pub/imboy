@@ -20,6 +20,7 @@
 -export([pay/2]).
 -export([mark_paid_and_credit/2]).
 -export([query/2]).
+-export([confirm/2]).
 
 -include("log.hrl").
 
@@ -136,6 +137,69 @@ query(Uid, OrderNo) ->
                 true -> {ok, order_transfer(Order)}
             end
     end.
+
+%% @doc 主动查单确认（客户端支付回跳后调用）。
+%%
+%% 为什么需要它：入账原本只依赖异步回调（线B notify），回调丢失/不可达
+%% （沙箱无公网 notify_url、生产 notify 偶发丢包）时订单永远 pending，
+%% 用户已付款余额却不涨。confirm 由服务端主动向网关查单：
+%%   - TRADE_SUCCESS → mark_paid_and_credit 幂等入账并返回新余额；
+%%   - 其余（未付/交易不存在/网关不支持/查询失败）→ 如实返回当前状态，
+%%     不误报、不报错 —— 客户端轮询语义不变。
+%% 与回调并行双保险：谁先到谁入账，幂等保证不重复。
+-spec confirm(integer(), binary()) -> {ok, map()} | {error, binary()}.
+confirm(Uid, OrderNo) ->
+    case load_order_raw(OrderNo) of
+        {error, _} = Err ->
+            Err;
+        {ok, Order} ->
+            OrderUid = maps:get(<<"user_id">>, Order, 0),
+            Status = maps:get(<<"status">>, Order, 0),
+            Method = maps:get(<<"payment_method">>, Order, <<>>),
+            if
+                OrderUid =/= Uid ->
+                    {error, <<"无权操作此订单"/utf8>>};
+                Status =:= ?STATUS_PAID ->
+                    {ok, confirm_result(OrderNo, ?STATUS_PAID)};
+                true ->
+                    confirm_via_gateway(OrderNo, Method)
+            end
+    end.
+
+-spec confirm_via_gateway(binary(), binary()) -> {ok, map()} | {error, binary()}.
+confirm_via_gateway(OrderNo, Method) ->
+    case payment_gateway:query_order(Method, OrderNo) of
+        {ok, #{trade_state := success} = Q} ->
+            TradeNo =
+                case maps:get(trade_no, Q, <<>>) of
+                    <<>> -> OrderNo;
+                    T -> T
+                end,
+            case mark_paid_and_credit(OrderNo, TradeNo) of
+                {ok, NewBalance} when is_integer(NewBalance) ->
+                    {ok, #{
+                        <<"order_no">> => OrderNo,
+                        <<"status">> => ?STATUS_PAID,
+                        <<"balance">> => NewBalance
+                    }};
+                {ok, already_credited} ->
+                    {ok, confirm_result(OrderNo, ?STATUS_PAID)};
+                {error, _} = Err ->
+                    Err
+            end;
+        {ok, _NotPaid} ->
+            {ok, confirm_result(OrderNo, ?STATUS_PENDING)};
+        {error, Reason} ->
+            %% 查单失败（交易不存在/网络/签名）≈ 未确认；记日志供排障，不吓客户端
+            ?ERROR_LOG([recharge_confirm, gateway_query_failed, OrderNo, Reason]),
+            {ok, confirm_result(OrderNo, ?STATUS_PENDING)};
+        unsupported ->
+            {ok, confirm_result(OrderNo, ?STATUS_PENDING)}
+    end.
+
+-spec confirm_result(binary(), integer()) -> map().
+confirm_result(OrderNo, Status) ->
+    #{<<"order_no">> => OrderNo, <<"status">> => Status}.
 
 %%===================================================================
 %%% Internal Functions
