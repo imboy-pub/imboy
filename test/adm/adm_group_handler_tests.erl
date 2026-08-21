@@ -386,8 +386,11 @@ init_vote_close_success_writes_audit_test_() ->
                 {elib_param, [
                     {'post', 1, fun(_Req) -> #{<<"vote_id">> => <<"vote_1">>} end}
                 ]},
-                {group_vote_logic, [
-                    {'close_vote', 1, fun(<<"vote_1">>) -> ok end}
+                {group_vote_ds, [
+                    {'find_by_vote_id', 1, fun(<<"vote_1">>) ->
+                        {ok, #{<<"id">> => 1, <<"status">> => 1, <<"group_id">> => 66}}
+                    end},
+                    {'update_vote_status', 2, fun(<<"vote_1">>, 2) -> {ok, 1} end}
                 ]},
                 {group_vote_repo, [
                     {'find_by_vote_id', 1, fun(<<"vote_1">>) -> {ok, #{<<"group_id">> => 66}} end}
