@@ -143,7 +143,7 @@ c2s_sync_routes_to_handle_sync_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+                {'history_batch', 2, fun(_Authed, _Limit) -> {ok, []} end}
             ]}
         ],
         fun() ->
@@ -165,7 +165,7 @@ c2s_sync_uppercase_routes_correctly_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+                {'history_batch', 2, fun(_Authed, _Limit) -> {ok, []} end}
             ]}
         ],
         fun() ->
@@ -188,9 +188,10 @@ handle_sync_returns_messages_for_valid_c2c_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(<<"c2c:100:200">>, 0, 50) ->
+                {'history_batch', 2, fun(_Authed, _Limit) ->
                     {ok, [
                         #{
+                            <<"conv_key">> => <<"c2c:100:200">>,
                             <<"conv_seq">> => 1,
                             <<"from_id">> => 200,
                             <<"to_id">> => 100,
@@ -237,9 +238,10 @@ handle_sync_authorizes_c2g_member_test_() ->
                 {'is_member', 2, fun(100, 500) -> true end}
             ]},
             {msg_archive_ds, [
-                {'history', 3, fun(<<"c2g:500">>, 0, 50) ->
+                {'history_batch', 2, fun(_Authed, _Limit) ->
                     {ok, [
                         #{
+                            <<"conv_key">> => <<"c2g:500">>,
                             <<"conv_seq">> => 1,
                             <<"group_id">> => 500,
                             <<"from_id">> => 200,
@@ -286,7 +288,7 @@ handle_sync_clamps_limit_to_100_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(_ConvKey, _Seq, Limit) ->
+                {'history_batch', 2, fun(_Authed, Limit) ->
                     %% 验证 limit 被 clamp 到 100
                     ?assert(Limit =< 100),
                     {ok, []}
@@ -313,7 +315,7 @@ handle_sync_skips_empty_history_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+                {'history_batch', 2, fun(_Authed, _Limit) -> {ok, []} end}
             ]}
         ],
         fun() ->
@@ -331,10 +333,11 @@ handle_sync_has_more_flag_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(_ConvKey, _Seq, Limit) ->
+                {'history_batch', 2, fun(_Authed, Limit) ->
                     %% 返回刚好等于 limit 条数据，表示还有更多
                     Rows = [
                         #{
+                            <<"conv_key">> => <<"c2c:100:200">>,
                             <<"conv_seq">> => I,
                             <<"from_id">> => 200,
                             <<"to_id">> => 100,
@@ -389,7 +392,7 @@ authorize_conv_c2c_min_uid_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+                {'history_batch', 2, fun(_Authed, _Limit) -> {ok, []} end}
             ]}
         ],
         fun() ->
@@ -408,7 +411,7 @@ authorize_conv_c2c_max_uid_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
-                {'history', 3, fun(_ConvKey, _Seq, _Limit) -> {ok, []} end}
+                {'history_batch', 2, fun(_Authed, _Limit) -> {ok, []} end}
             ]}
         ],
         fun() ->
