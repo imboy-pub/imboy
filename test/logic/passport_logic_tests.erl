@@ -111,6 +111,10 @@ login_with_valid_credentials_succeeds_test_() ->
             ]},
             {message_ds, [
                 {'check_and_notify_offline_msgs', 2, fun(_, _) -> ok end}
+            ]},
+            {login_security_logic, [
+                {'check_login_allowed', 2, fun(_, _) -> {ok, true} end},
+                {'record_login_success', 2, fun(_, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -165,6 +169,10 @@ do_login_delegates_to_5_test_() ->
             {user_device_logic, [
                 {'validate_device_type', 1, fun(_) -> true end},
                 {'check_login_conflict', 2, fun(_, _) -> {ok, no_conflict} end}
+            ]},
+            {login_security_logic, [
+                {'check_login_allowed', 2, fun(_, _) -> {ok, true} end},
+                {'record_login_success', 2, fun(_, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -330,6 +338,7 @@ send_code_with_sms_type_calls_throttle_test_() ->
             ]},
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) -> #{} end},
+                {'consume', 2, fun(_Id, _Code) -> {ok, <<"verified">>} end},
                 {'save', 4, fun(_Id, _Code, _Validity, _Now) -> ok end}
             ]},
             {elib_cipher, [
@@ -358,6 +367,7 @@ send_code_with_email_type_succeeds_test_() ->
         [
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) -> #{} end},
+                {'consume', 2, fun(_Id, _Code) -> {ok, <<"verified">>} end},
                 {'save', 4, fun(_Id, _Code, _Validity, _Now) -> ok end}
             ]},
             {elib_cipher, [
@@ -400,7 +410,8 @@ do_signup_with_email_succeeds_test_() ->
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) ->
                     #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
-                end}
+                end},
+                {'consume', 2, fun(_Id, _Code) -> {ok, <<"verified">>} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000000 end}
@@ -420,6 +431,10 @@ do_signup_with_email_succeeds_test_() ->
             ]},
             {ec_cnv, [
                 {'to_integer', 1, fun(X) -> X end}
+            ]},
+            {login_security_logic, [
+                {'check_login_allowed', 2, fun(_, _) -> {ok, true} end},
+                {'record_login_success', 2, fun(_, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -445,7 +460,8 @@ do_signup_email_with_rsa_encrypt_off_test_() ->
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) ->
                     #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
-                end}
+                end},
+                {'consume', 2, fun(_Id, _Code) -> {ok, <<"verified">>} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000000 end}
@@ -465,6 +481,10 @@ do_signup_email_with_rsa_encrypt_off_test_() ->
             ]},
             {ec_cnv, [
                 {'to_integer', 1, fun(X) -> X end}
+            ]},
+            {login_security_logic, [
+                {'check_login_allowed', 2, fun(_, _) -> {ok, true} end},
+                {'record_login_success', 2, fun(_, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -487,7 +507,8 @@ do_signup_with_mobile_succeeds_test_() ->
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) ->
                     #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
-                end}
+                end},
+                {'consume', 2, fun(_Id, _Code) -> {ok, <<"verified">>} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000000 end}
@@ -507,6 +528,10 @@ do_signup_with_mobile_succeeds_test_() ->
             ]},
             {ec_cnv, [
                 {'to_integer', 1, fun(X) -> X end}
+            ]},
+            {login_security_logic, [
+                {'check_login_allowed', 2, fun(_, _) -> {ok, true} end},
+                {'record_login_success', 2, fun(_, _) -> ok end}
             ]}
         ],
         fun() ->
@@ -546,7 +571,8 @@ find_password_with_email_succeeds_test_() ->
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) ->
                     #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
-                end}
+                end},
+                {'consume', 2, fun(_Id, _Code) -> {ok, <<"verified">>} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000000 end}
@@ -583,7 +609,8 @@ find_password_email_not_found_fails_test_() ->
             {verification_code_ds, [
                 {'find_by_id', 1, fun(_Id) ->
                     #{<<"code">> => <<"666666">>, <<"validity_at">> => <<"2099-01-01T00:00:00Z">>}
-                end}
+                end},
+                {'consume', 2, fun(_Id, _Code) -> {ok, <<"verified">>} end}
             ]},
             {elib_dt, [
                 {'now', 0, fun() -> 1700000000000 end}
