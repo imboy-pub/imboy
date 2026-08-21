@@ -208,7 +208,8 @@ leave_success_test_() ->
     ?WITH_MECKS(
         [
             {group_member_ds, [
-                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 123456, #{}} end}
+                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 123456, #{}} end},
+                {'get_member_info', 3, fun(1, 999, <<"role">>) -> {ok, #{<<"role">> => 2}} end}
             ]},
             {group_ds, [
                 {'leave', 2, fun(_Uid, _Gid) -> ok end},
@@ -237,7 +238,8 @@ leave_with_different_current_uid_test_() ->
     ?WITH_MECKS(
         [
             {group_member_ds, [
-                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 123456, #{}} end}
+                {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 123456, #{}} end},
+                {'get_member_info', 3, fun(1, 999, <<"role">>) -> {ok, #{<<"role">> => 2}} end}
             ]},
             {group_ds, [
                 {'leave', 2, fun(_Uid, _Gid) -> ok end},
