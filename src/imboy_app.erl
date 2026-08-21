@@ -252,6 +252,7 @@ tsid_generator_names() ->
         red_packet,
         red_packet_receive,
         transfer_order,
+        agent_payment_compensation,
         %% ── SaaS 计费 ──
         billing_plan,
         billing_subscription,
@@ -287,7 +288,9 @@ tsid_generator_names() ->
         mcp_client_grant,
         mcp_audit_log,
         %% ── SSO (P0-C) ──
-        sso_identity
+        sso_identity,
+        %% ── AI Agent ──
+        ai_agent_role_version
     ].
 
 %% ===================================================================
