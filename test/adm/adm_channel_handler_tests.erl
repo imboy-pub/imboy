@@ -95,7 +95,7 @@ init_messages_success_test_() ->
                 {elib_pg, [
                     {'page_with_total', 6, fun(Tb, _Col, Where, OrderBy, Page, Size) ->
                         ?assertEqual(<<"public.channel_message">>, Tb),
-                        ?assertEqual(#{channel_id => 11}, Where),
+                        ?assertEqual(#{channel_id => 11, status => 1}, Where),
                         ?assertEqual(<<"id desc">>, OrderBy),
                         ?assertEqual(1, Page),
                         ?assertEqual(10, Size),
@@ -149,7 +149,7 @@ init_messages_accepts_legacy_channel_id_test_() ->
                 {elib_pg, [
                     {'page_with_total', 6, fun(Tb, _Col, Where, OrderBy, Page, Size) ->
                         ?assertEqual(<<"public.channel_message">>, Tb),
-                        ?assertEqual(#{channel_id => 11}, Where),
+                        ?assertEqual(#{channel_id => 11, status => 1}, Where),
                         ?assertEqual(<<"id desc">>, OrderBy),
                         ?assertEqual(1, Page),
                         ?assertEqual(10, Size),

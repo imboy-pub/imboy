@@ -210,8 +210,8 @@ init_dissolve_marks_group_disabled_test_() ->
             ]},
             {group_repo, [
                 {'update', 1, fun(Data) ->
-                    ?assertEqual(66, maps:get(id, Data)),
-                    ?assertEqual(-1, maps:get(status, Data)),
+                    ?assertEqual(66, maps:get(<<"id">>, Data)),
+                    ?assertEqual(-1, maps:get(<<"status">>, Data)),
                     {ok, 1}
                 end}
             ]},
@@ -278,7 +278,8 @@ init_members_returns_paged_members_test_() ->
                     ?assertEqual(2, Page),
                     ?assertEqual(10, Size),
                     ?assertEqual(
-                        <<"id,group_id,user_id,nickname,avatar,role,status,joined_at">>, Column
+                        <<"gm.id,gm.group_id,gm.user_id,u.nickname,u.avatar,gm.role,gm.status,gm.created_at AS joined_at">>,
+                        Column
                     ),
                     {ok, #{list => [#{<<"user_id">> => 1001}], total => 1, page => 2, size => 10}}
                 end}
