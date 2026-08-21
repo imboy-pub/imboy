@@ -98,7 +98,7 @@ bind_mail(Req0) ->
 validate_bind_mail_params(Ts, Tk, Uid, Mail) ->
     case parse_ts(Ts) of
         error ->
-            {error, "签名有误"};
+            {error, <<"签名有误"/utf8>>};
         {ok, Ts2} ->
             CacheKey = {bind_mail, Mail, Ts},
             CacheVal = imboy_cache:get(CacheKey),
