@@ -4,7 +4,7 @@
 > Status: 长期协议契约文档  
 > Scope: 通用 REST 入口、兼容性接口与基础 envelope 约定  
 > Source of truth: `src/imboy_router.erl` + 本文涉及接口对应的 handler / logic 代码  
-> Related docs: `docs/reference/rest-api-v1-catalog.md`（全量 /api/api/v1/* 端点总目录）, `docs/reference/contracts/channel-api-contract-v1.md`, `docs/reference/contracts/moment-api-contract-v1.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/reference/websocket-api-2.md`
+> Related docs: `docs/reference/rest-api-v1-catalog.md`（全量 /api/v1/* 端点总目录）, `docs/reference/contracts/channel-api-contract-v1.md`, `docs/reference/contracts/moment-api-contract-v1.md`, `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`, `docs/reference/websocket-api-2.md`
 
 ## 0. TSID 字段约定
 
@@ -51,7 +51,7 @@
 
 ## 3. 初始化接口
 
-### GET `/api/api/v1/init`
+### GET `/api/v1/init`
 
 用途：客户端启动时拉取初始化配置。
 
@@ -84,7 +84,7 @@
 
 ## 4. 会话列表契约
 
-### GET `/api/api/v1/conversation/mine`
+### GET `/api/v1/conversation/mine`
 
 用途：拉取服务端权威会话列表。
 
@@ -116,7 +116,7 @@ Query：
 
 ## 5. `@` 提及兼容接口
 
-### POST `/api/api/v1/mention/list`
+### POST `/api/v1/mention/list`
 
 用途：获取 `@我` 列表。
 
@@ -143,7 +143,7 @@ Query：
 - `is_read_bool`
 - `created_at`
 
-### POST `/api/api/v1/mention/unread`
+### POST `/api/v1/mention/unread`
 
 用途：获取未读计数。
 
@@ -155,7 +155,7 @@ Query：
 
 - `count`
 
-### POST `/api/api/v1/mention/mark_read`
+### POST `/api/v1/mention/mark_read`
 
 用途：标记已读。
 
@@ -166,7 +166,7 @@ Query：
 - `all=true`：全部标记已读
 - `group_id` / `gid`：`all=true` 时可按群全部已读
 
-### POST `/api/api/v1/mention/suggest`
+### POST `/api/v1/mention/suggest`
 
 用途：输入 `@` 时获取成员建议。
 
@@ -182,7 +182,7 @@ Query：
 
 ## 6. 群列表兼容接口
 
-### GET `/api/api/v1/group/page`
+### GET `/api/v1/group/page`
 
 用途：分页拉取群列表（按视图）。
 
@@ -206,7 +206,7 @@ Query：
 
 ## 7. 功能开关接口
 
-### GET `/api/api/v1/app/features`
+### GET `/api/v1/app/features`
 
 用途：返回 App 侧可消费的功能开关矩阵，用于启动阶段、入口显隐、路由守卫和关闭态兜底。
 
@@ -246,7 +246,7 @@ Query：
 
 权限：需要后台登录态，并具备 `settings:view` 权限。
 
-成功响应的 `payload` 与 `/api/api/v1/app/features` 完全一致。
+成功响应的 `payload` 与 `/api/v1/app/features` 完全一致。
 
 无权限响应示例：
 
@@ -275,7 +275,7 @@ Query：
 
 ## 9. Related Docs
 
-- `docs/reference/rest-api-v1-catalog.md` —— 全量 `/api/api/v1/*` 端点总目录（方法/鉴权/请求/响应一览）
+- `docs/reference/rest-api-v1-catalog.md` —— 全量 `/api/v1/*` 端点总目录（方法/鉴权/请求/响应一览）
 - `docs/reference/contracts/channel-api-contract-v1.md`
 - `docs/reference/contracts/moment-api-contract-v1.md`
 - `docs/reference/contracts/e2ee-server-persisted-shard-contract-v1.md`
