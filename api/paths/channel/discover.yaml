@@ -9,10 +9,17 @@ get:
   operationId: discoverChannels
   parameters:
     - in: query
-      name: limit
+      name: category_id
       required: false
-      description: '返回条数上限 / Max items to return'
-      schema: { type: integer, default: 20, description: '返回条数 / Max results to return' }
+      description: '分类 ID / Category filter'
+      schema: { type: integer }
+    - in: query
+      name: sort
+      required: false
+      description: '排序：popular（订阅数）/ newest（创建时间）/ active（活跃度）/ Sort order'
+      schema: { type: string, enum: [popular, newest, active], default: popular }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:
     '200':
       description: 成功

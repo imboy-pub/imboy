@@ -1,0 +1,37 @@
+# GET (group) discoverGroups
+get:
+  tags: [user]
+  summary: 发现页公开群
+  description: |
+    ## 中文 / English
+    发现页公开群列表（分类/排序/分页）
+    Discover public groups (category/sort/pagination)
+  operationId: discoverGroups
+  parameters:
+    - in: query
+      name: category_id
+      required: false
+      description: '分类 ID / Category filter'
+      schema: { type: integer }
+    - in: query
+      name: sort
+      required: false
+      description: '排序：popular（成员数）/ newest（创建时间）/ Sort order'
+      schema: { type: string, enum: [popular, newest], default: popular }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list: { type: array, items: { type: object } }
+                      total: { type: integer }

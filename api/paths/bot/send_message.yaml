@@ -1,0 +1,40 @@
+# POST (bot) botSendMessage
+post:
+  tags: [bot]
+  summary: Bot 发送消息（api_token 认证）
+  description: |
+    ## 中文 / English
+    Bot 服务器发送消息给用户。**认证方式不同**：`Authorization: Bearer <api_token>`
+    （bot.api_token，48 位强随机 hex），非用户 JWT。
+    防护：① agent_rate_limiter 限流 ② has_exchange 会话前置校验
+    （用户须先与 Bot 有过消息往来，Telegram started-chat 范式）。
+    Bot sends message via api_token Bearer auth (not user JWT).
+    Rate-limited + has_exchange guard (user must have messaged the Bot first).
+  operationId: botSendMessage
+  security: []
+  parameters: []
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [to_uid, msg_type, payload]
+          properties:
+            to_uid: { type: string, format: tsid, description: '目标用户 ID' }
+            msg_type: { type: string, description: '消息类型（text/image/...）' }
+            payload: { type: object, description: '消息载荷（msg_type 对应结构）' }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      msg_id: { type: string }

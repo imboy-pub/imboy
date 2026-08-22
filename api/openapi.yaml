@@ -283,6 +283,12 @@ paths:
     $ref: './paths/moment/delete-comment.yaml'
   /api/v1/moment/{moment_id}/report:
     $ref: './paths/moment/report.yaml'
+  /api/v1/bot/register:
+    $ref: './paths/bot/register.yaml'
+  /api/v1/bot/search:
+    $ref: './paths/bot/search.yaml'
+  /api/v1/bot/send_message:
+    $ref: './paths/bot/send_message.yaml'
   /api/v1/rtc/room/join:
     $ref: './paths/rtc/room_join.yaml'
   /api/v1/group/add:
@@ -297,6 +303,18 @@ paths:
     $ref: './paths/group/detail.yaml'
   /api/v1/group/page:
     $ref: './paths/group/page.yaml'
+  /api/v1/group/search:
+    $ref: './paths/group/search.yaml'
+  /api/v1/group/discover:
+    $ref: './paths/group/discover.yaml'
+  /api/v1/group/featured:
+    $ref: './paths/group/featured.yaml'
+  /api/v1/group/hot:
+    $ref: './paths/group/hot.yaml'
+  /api/v1/group/categories:
+    $ref: './paths/group/categories.yaml'
+  /api/v1/group/preview:
+    $ref: './paths/group/preview.yaml'
   /api/v1/group/msg_page:
     $ref: './paths/group/msg-page.yaml'
   /api/v1/group/qrcode:
@@ -481,6 +499,12 @@ paths:
     $ref: './paths/channel/search.yaml'
   /api/v1/channels/discover:
     $ref: './paths/channel/discover.yaml'
+  /api/v1/channels/featured:
+    $ref: './paths/channel/featured.yaml'
+  /api/v1/channels/trending:
+    $ref: './paths/channel/trending.yaml'
+  /api/v1/channels/categories:
+    $ref: './paths/channel/categories.yaml'
   /api/v1/channels/sync:
     $ref: './paths/channel/sync.yaml'
   /api/v1/channel/{channel_id}/webhook/create:

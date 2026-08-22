@@ -1,0 +1,29 @@
+# GET (group) hotGroups
+get:
+  tags: [user]
+  summary: 热门群（按成员数）
+  description: |
+    ## 中文 / English
+    热门公开群（按成员数排序）
+    Hot public groups by member count
+  operationId: hotGroups
+  parameters:
+    - in: query
+      name: limit
+      required: false
+      description: '返回条数 / Max results'
+      schema: { type: integer, default: 20 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list: { type: array, items: { type: object } }

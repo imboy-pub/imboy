@@ -1,0 +1,34 @@
+# GET (bot) searchBots
+get:
+  tags: [user]
+  summary: 搜索公开 Bot
+  description: |
+    ## 中文 / English
+    搜索公开 Bot（bot 注册表，is_public=true）
+    Search public bots
+  operationId: searchBots
+  parameters:
+    - in: query
+      name: q
+      required: false
+      description: '搜索关键词 / Search keyword'
+      schema: { type: string }
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list: { type: array, items: { type: object } }
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }

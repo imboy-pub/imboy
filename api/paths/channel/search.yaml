@@ -9,10 +9,15 @@ get:
   operationId: searchChannels
   parameters:
     - in: query
-      name: keyword
+      name: q
       required: false
-      description: '搜索关键词 / Search keyword'
+      description: '搜索关键词（主参数；后端兼容旧 keyword 别名）/ Search keyword'
       schema: { type: string }
+    - in: query
+      name: category_id
+      required: false
+      description: '分类 ID（频道分类筛选）/ Category filter'
+      schema: { type: integer }
     - $ref: '../../components/parameters/PaginationPage.yaml'
     - $ref: '../../components/parameters/PaginationSize.yaml'
   responses:

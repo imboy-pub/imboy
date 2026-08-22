@@ -1,0 +1,34 @@
+# GET (channel) trendingChannels
+get:
+  tags: [user]
+  summary: 热门频道（统计加权）
+  description: |
+    ## 中文 / English
+    热门频道：订阅数 + 近 7/30 天消息数 + 活跃浏览数加权排序（channel_stats_daily 统计驱动）
+    Trending channels by weighted stats (subscription + messages + active viewers)
+  operationId: trendingChannels
+  parameters:
+    - in: query
+      name: period
+      required: false
+      description: '统计周期：7d / 30d / Stats period'
+      schema: { type: string, enum: ['7d', '30d'], default: '7d' }
+    - in: query
+      name: limit
+      required: false
+      description: '返回条数 / Max results'
+      schema: { type: integer, default: 20 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list: { type: array, items: { type: object } }

@@ -1,0 +1,31 @@
+# GET (group) groupCategories
+get:
+  tags: [user]
+  summary: 公开群分类列表
+  description: |
+    ## 中文 / English
+    公开群分类列表（group_category 表，平台级分类）
+    Public group categories list
+  operationId: groupCategories
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: integer }
+                            name: { type: string }
+                            icon: { type: string }
+                            sort_order: { type: integer }

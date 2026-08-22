@@ -1,0 +1,29 @@
+# GET (channel) featuredChannels
+get:
+  tags: [user]
+  summary: 精选频道
+  description: |
+    ## 中文 / English
+    运营精选频道列表（is_featured=true）
+    Featured channels list
+  operationId: featuredChannels
+  parameters:
+    - in: query
+      name: limit
+      required: false
+      description: '返回条数 / Max results'
+      schema: { type: integer, default: 10 }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list: { type: array, items: { type: object } }

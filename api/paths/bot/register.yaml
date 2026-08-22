@@ -1,0 +1,43 @@
+# POST (bot) registerBot
+post:
+  tags: [user]
+  summary: 注册 Bot
+  description: |
+    ## 中文 / English
+    注册开发者 Bot。owner_uid 一律取自 JWT 身份（服务端从 token 推导），
+    请求体中的 owner_uid 被忽略（防止冒充注册）。
+    Register developer bot. owner_uid is derived from JWT, body value ignored.
+  operationId: registerBot
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [name, username]
+          properties:
+            name: { type: string, description: 'Bot 名称' }
+            username: { type: string, description: '唯一调用名（@提及）' }
+            description: { type: string, description: '简介' }
+            avatar: { type: string, description: '头像 URL' }
+            webhook_url: { type: string, description: 'Webhook 推送地址' }
+            commands: { type: array, items: { type: string }, description: '注册的命令' }
+            permissions: { type: array, items: { type: string }, description: '权限列表' }
+            events: { type: array, items: { type: string }, description: '订阅的事件类型' }
+            is_public: { type: boolean, default: false, description: '是否公开' }
+  responses:
+    '200':
+      description: 注册成功，返回 bot_id + api_token + verify_token（仅一次）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      user_id: { type: string, format: tsid }
+                      api_token: { type: string, description: '48 位强随机 hex，仅创建时返回' }
+                      verify_token: { type: string, description: 'Webhook 验签 token' }

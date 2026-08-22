@@ -1,0 +1,38 @@
+# GET (group) previewGroup
+get:
+  tags: [user]
+  summary: 群预览（公开访问，免加入）
+  description: |
+    ## 中文 / English
+    群预览：返回群名、头像、简介、成员数、分类、是否精选（公开字段，无需加入）
+    Group preview (public fields, no join required)
+  operationId: previewGroup
+  parameters:
+    - in: query
+      name: group_id
+      required: true
+      description: '群组 TSID / Group ID'
+      schema: { type: string, format: tsid }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      title: { type: string }
+                      avatar: { type: string }
+                      introduction: { type: string }
+                      member_count: { type: integer }
+                      type: { type: integer }
+                      join_limit: { type: integer }
+                      category_id: { type: integer, nullable: true }
+                      is_featured: { type: boolean }
+                      created_at: { type: integer }
