@@ -76,7 +76,8 @@ do_push(BotId, Event) ->
                         {"content-type", "application/json"},
                         {"X-IMBoy-Signature", binary_to_list(Signature)}
                     ],
-                    case elib_req:post(binary_to_list(WebhookUrl), Event, Headers) of
+                    %% 5s 整体超时（post/4）：挂死的 Bot 端点最多占用异步 worker 5 秒
+                    case elib_req:post(binary_to_list(WebhookUrl), Event, Headers, 5000) of
                         {ok, _Resp} ->
                             ?DEBUG_LOG([bot_webhook_push_ok, BotId, Event]),
                             ok;

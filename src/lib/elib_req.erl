@@ -8,7 +8,7 @@
 -export([ip_in_allowlist/2]).
 -export([cookie/2]).
 -export([get/1, get/2]).
--export([post/2, post/3]).
+-export([post/2, post/3, post/4]).
 -export([body/2]).
 -export([post_params/1]).
 -export([parse_urlencoded_body/1, parse_key_value_pairs/1, parse_json_body/1, add_value/3]).
@@ -19,6 +19,8 @@
     {"content-type", "application/json"},
     {"client", "imboy-req"}
 ]).
+
+-define(DefaultHttpOpts, [{timeout, 30000}, {connect_timeout, 10000}]).
 
 -spec get(binary() | list()) -> {ok, map()} | {error, any()} | {error, integer(), map()}.
 get(Url) ->
@@ -37,6 +39,13 @@ post(Url, Params) ->
     {ok, map()} | {error, any()} | {error, integer(), map()}.
 post(Url, Params, Headers) ->
     req(post, Url, Params, Headers).
+
+%% @doc 带整体超时的 POST（毫秒）。供 webhook 推送等对外调用使用，
+%% 避免慢/挂的对端长期占用调用进程。
+-spec post(binary() | list(), map() | list(), list(), pos_integer()) ->
+    {ok, map()} | {error, any()} | {error, integer(), map()}.
+post(Url, Params, Headers, TimeoutMs) ->
+    req(post, Url, Params, Headers, [{timeout, TimeoutMs}, {connect_timeout, TimeoutMs}]).
 
 -spec body(cowboy_req:req(), list()) -> {ok, map(), cowboy_req:req()}.
 body(Req0, _Opts) ->
@@ -292,6 +301,13 @@ allowlist_entry(_Entry) ->
 -spec req(atom(), binary() | list(), map() | list(), list()) ->
     {ok, map()} | {error, any()} | {error, integer(), map()}.
 req(Method, Url, Params, Headers) ->
+    %% 默认 30s 整体超时 + 10s 连接超时：httpc 裸默认可无限挂起，
+    %% 对慢/挂对端是调用进程泄漏；有界超时是严格改进。
+    req(Method, Url, Params, Headers, ?DefaultHttpOpts).
+
+-spec req(atom(), binary() | list(), map() | list(), list(), list()) ->
+    {ok, map()} | {error, any()} | {error, integer(), map()}.
+req(Method, Url, Params, Headers, HttpOpts) ->
     _ = application:ensure_started(ssl),
     _ = application:ensure_started(inets),
     ContentType = maps:get("content-type", maps:from_list(Headers), "application/json"),
@@ -303,7 +319,7 @@ req(Method, Url, Params, Headers) ->
             get ->
                 {Url, Headers}
         end,
-    Response = httpc:request(Method, Request, [], []),
+    Response = httpc:request(Method, Request, HttpOpts, []),
     ok = ?DEBUG_LOG([response, Response]),
     case Response of
         {ok, {{_, 200, _}, _RespHeaders, Body}} ->

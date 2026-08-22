@@ -16,6 +16,7 @@
 -export([page/2]).
 -export([page_by_owner/3]).
 -export([search/3]).
+-export([has_exchange/2]).
 
 -include("log.hrl").
 
@@ -308,3 +309,24 @@ search(Keyword, Page, Size) when Page > 0, Size > 0 ->
 -spec empty_page(pos_integer(), pos_integer()) -> map().
 empty_page(Page, Size) ->
     #{total => 0, page => Page, size => Size, list => []}.
+
+%% @doc 判断 Bot 与用户之间是否存在历史 C2C 消息（双向任一即算）
+%% 用于 send_message 的防骚扰前置校验：用户未先发起对话则 Bot 不可主动私信
+%% （Telegram started-chat 范式）。命中 i_c2c_fromid / i_c2c_toid 索引，EXISTS 短路。
+-spec has_exchange(integer(), integer()) -> boolean().
+has_exchange(BotId, UserId) ->
+    Sql = <<
+        "SELECT EXISTS ("
+        "  SELECT 1 FROM public.msg_c2c"
+        "  WHERE (from_id = $1 AND to_id = $2)"
+        "     OR (from_id = $2 AND to_id = $1)"
+        ") AS ok"
+    >>,
+    case elib_pg:query(Sql, [BotId, UserId]) of
+        {ok, [#{<<"ok">> := Ok} | _]} ->
+            Ok;
+        {error, Reason} ->
+            ?ERROR_LOG("bot_repo:has_exchange ~p:~p error ~p~n", [BotId, UserId, Reason]),
+            %% 查询失败按无历史处理（fail closed，阻止 Bot 主动私信）
+            false
+    end.

@@ -473,6 +473,8 @@ get_routes() ->
                 {"/api/v1/bot/enable", bot_handler, #{action => enable}},
                 {"/api/v1/bot/list_mine", bot_handler, #{action => list_mine}},
                 {"/api/v1/bot/search", bot_handler, #{action => search}},
+                % Bot 发消息（api_token 认证，路由在 open/0 白名单，校验收敛于 handler）
+                {"/api/v1/bot/send_message", bot_handler, #{action => send_message}},
 
                 % 群文件管理 API
                 {"/api/v1/group/file/upload", group_file_handler, #{action => upload}},
@@ -993,6 +995,11 @@ open() ->
         <<"/api/v1/auth/oidc/authorize">>,
         <<"/api/v1/auth/oidc/callback">>,
         <<"/api/v1/auth/oidc/exchange">>,
+
+        %% Bot 发消息：Bot 服务器无用户 JWT，凭证是 api_token
+        %% （Authorization: Bearer <api_token>，校验在 bot_handler:authenticate/1，
+        %% 并有 agent_rate_limiter + has_exchange 防骚扰闸门）
+        <<"/api/v1/bot/send_message">>,
 
         <<"/api/v1/metrics">>,
 

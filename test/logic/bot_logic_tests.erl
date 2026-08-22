@@ -100,7 +100,7 @@ get_returns_error_on_notfound_test_() ->
     ).
 
 %% ===================================================================
-%% update
+%% update（仅属主）
 %% ===================================================================
 
 update_modifies_bot_test_() ->
@@ -108,7 +108,7 @@ update_modifies_bot_test_() ->
         [
             {bot_repo, [
                 {'find', 1, fun(1) ->
-                    {ok, #{<<"user_id">> => 1, <<"name">> => <<"OldName">>}}
+                    {ok, #{<<"user_id">> => 1, <<"owner_uid">> => 100, <<"name">> => <<"OldName">>}}
                 end},
                 {'update', 2, fun(1, #{name := <<"NewName">>}) ->
                     {ok, [#{<<"user_id">> => 1}]}
@@ -116,8 +116,26 @@ update_modifies_bot_test_() ->
             ]}
         ],
         fun() ->
-            {ok, Result} = bot_logic:update(1, #{name => <<"NewName">>}),
+            {ok, Result} = bot_logic:update(1, #{name => <<"NewName">>}, 100),
             ?assertEqual(1, maps:get(<<"user_id">>, Result))
+        end
+    ).
+
+update_rejects_non_owner_test_() ->
+    ?WITH_MECKS(
+        [
+            {bot_repo, [
+                {'find', 1, fun(1) ->
+                    {ok, #{<<"user_id">> => 1, <<"owner_uid">> => 100}}
+                end},
+                {'update', 2, fun(_, _) -> exit(update_should_not_be_called) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"无权操作此 Bot"/utf8>>},
+                bot_logic:update(1, #{name => <<"Hijack">>}, 999)
+            )
         end
     ).
 
@@ -131,13 +149,13 @@ update_returns_error_on_notfound_test_() ->
         fun() ->
             ?assertEqual(
                 {error, <<"Bot 不存在"/utf8>>},
-                bot_logic:update(999, #{name => <<"NewName">>})
+                bot_logic:update(999, #{name => <<"NewName">>}, 100)
             )
         end
     ).
 
 %% ===================================================================
-%% set_status
+%% set_status（仅属主）
 %% ===================================================================
 
 set_status_enables_bot_test_() ->
@@ -145,13 +163,13 @@ set_status_enables_bot_test_() ->
         [
             {bot_repo, [
                 {'find', 1, fun(1) ->
-                    {ok, #{<<"user_id">> => 1, <<"status">> => 0}}
+                    {ok, #{<<"user_id">> => 1, <<"owner_uid">> => 100, <<"status">> => 0}}
                 end},
                 {'set_status', 2, fun(1, 1) -> {ok, 1} end}
             ]}
         ],
         fun() ->
-            {ok, Result} = bot_logic:set_status(1, 1),
+            {ok, Result} = bot_logic:set_status(1, 1, 100),
             ?assertEqual(1, maps:get(<<"user_id">>, Result)),
             ?assertEqual(1, maps:get(<<"status">>, Result))
         end
@@ -162,15 +180,33 @@ set_status_disables_bot_test_() ->
         [
             {bot_repo, [
                 {'find', 1, fun(1) ->
-                    {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
+                    {ok, #{<<"user_id">> => 1, <<"owner_uid">> => 100, <<"status">> => 1}}
                 end},
                 {'set_status', 2, fun(1, 0) -> {ok, 1} end}
             ]}
         ],
         fun() ->
-            {ok, Result} = bot_logic:set_status(1, 0),
+            {ok, Result} = bot_logic:set_status(1, 0, 100),
             ?assertEqual(1, maps:get(<<"user_id">>, Result)),
             ?assertEqual(0, maps:get(<<"status">>, Result))
+        end
+    ).
+
+set_status_rejects_non_owner_test_() ->
+    ?WITH_MECKS(
+        [
+            {bot_repo, [
+                {'find', 1, fun(1) ->
+                    {ok, #{<<"user_id">> => 1, <<"owner_uid">> => 100, <<"status">> => 1}}
+                end},
+                {'set_status', 2, fun(_, _) -> exit(set_status_should_not_be_called) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"无权操作此 Bot"/utf8>>},
+                bot_logic:set_status(1, 0, 999)
+            )
         end
     ).
 
@@ -184,7 +220,7 @@ set_status_returns_error_on_notfound_test_() ->
         fun() ->
             ?assertEqual(
                 {error, <<"Bot 不存在"/utf8>>},
-                bot_logic:set_status(999, 1)
+                bot_logic:set_status(999, 1, 100)
             )
         end
     ).

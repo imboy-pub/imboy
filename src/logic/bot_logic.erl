@@ -7,8 +7,8 @@
 
 -export([register/1]).
 -export([get/1]).
--export([update/2]).
--export([set_status/2]).
+-export([update/3]).
+-export([set_status/3]).
 -export([list_mine/2]).
 -export([search/3]).
 -export([send_message/3]).
@@ -79,14 +79,19 @@ get(BotId) ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
-%% @doc 更新 Bot 信息
--spec update(integer(), map()) -> {ok, map()} | {error, binary()}.
-update(BotId, Data) when is_integer(BotId), is_map(Data) ->
+%% @doc 更新 Bot 信息（仅属主可操作）
+-spec update(integer(), map(), integer()) -> {ok, map()} | {error, binary()}.
+update(BotId, Data, ActorUid) when is_integer(BotId), is_map(Data), is_integer(ActorUid) ->
     case bot_repo:find(BotId) of
-        {ok, _Bot} ->
-            case bot_repo:update(BotId, Data) of
-                {ok, _} -> {ok, #{<<"user_id">> => BotId}};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+        {ok, Bot} ->
+            case ensure_owner(Bot, ActorUid) of
+                ok ->
+                    case bot_repo:update(BotId, Data) of
+                        {ok, _} -> {ok, #{<<"user_id">> => BotId}};
+                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                    end;
+                {error, _} = Err ->
+                    Err
             end;
         {error, notfound} ->
             {error, <<"Bot 不存在"/utf8>>};
@@ -94,14 +99,21 @@ update(BotId, Data) when is_integer(BotId), is_map(Data) ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
-%% @doc 启用/停用 Bot（status 1=active, 0=disabled, -1=deleted）
--spec set_status(integer(), -1 | 0 | 1) -> {ok, map()} | {error, binary()}.
-set_status(BotId, Status) ->
+%% @doc 启用/停用 Bot（仅属主可操作；status 1=active, 0=disabled, -1=deleted）
+-spec set_status(integer(), -1 | 0 | 1, integer()) -> {ok, map()} | {error, binary()}.
+set_status(BotId, Status, ActorUid) ->
     case bot_repo:find(BotId) of
-        {ok, _Bot} ->
-            case bot_repo:set_status(BotId, Status) of
-                {ok, _} -> {ok, #{<<"user_id">> => BotId, <<"status">> => Status}};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+        {ok, Bot} ->
+            case ensure_owner(Bot, ActorUid) of
+                ok ->
+                    case bot_repo:set_status(BotId, Status) of
+                        {ok, _} ->
+                            {ok, #{<<"user_id">> => BotId, <<"status">> => Status}};
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end;
+                {error, _} = Err ->
+                    Err
             end;
         {error, notfound} ->
             {error, <<"Bot 不存在"/utf8>>};
@@ -129,10 +141,20 @@ search(Keyword, Page, Size) ->
 %% @doc Bot 发送消息
 %% Bot 以自身身份向指定用户发送 C2C 消息。
 %% MsgData 键：msg_type(必填), payload(必填), created_at, e2ee
+%% 先校验 Bot 存在且启用，再生成 MsgId（fail fast，避免无效请求消耗 TSID）。
 -spec send_message(integer(), integer(), map()) -> {ok, map()} | {error, binary()}.
 send_message(BotId, ToUid, MsgData) ->
-    MsgId = integer_to_binary(elib_tsid:generate()),
-    send_message(MsgId, BotId, ToUid, MsgData).
+    case bot_repo:find(BotId) of
+        {ok, #{<<"status">> := 1}} ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            send_message(MsgId, BotId, ToUid, MsgData);
+        {ok, _} ->
+            {error, <<"Bot 已停用"/utf8>>};
+        {error, notfound} ->
+            {error, <<"Bot 不存在"/utf8>>};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
 
 %% @doc Bot 发送消息（指定消息 ID）
 -spec send_message(binary(), integer(), integer(), map()) -> {ok, map()} | {error, binary()}.
@@ -167,6 +189,13 @@ send_message(MsgId, BotId, ToUid, MsgData) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+%% @doc 校验操作者是 Bot 属主
+-spec ensure_owner(map(), integer()) -> ok | {error, binary()}.
+ensure_owner(#{<<"owner_uid">> := OwnerUid}, ActorUid) when ActorUid =:= OwnerUid ->
+    ok;
+ensure_owner(_, _) ->
+    {error, <<"无权操作此 Bot"/utf8>>}.
 
 %% @doc 生成随机 token（24 字节强随机 → 48 位小写 hex）
 -spec gen_token() -> binary().

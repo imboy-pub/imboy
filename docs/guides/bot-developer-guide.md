@@ -117,15 +117,46 @@ def verify_signature(payload: bytes, signature: str, verify_token: str) -> bool:
 
 ## Bot API 参考 / Bot API Reference
 
-Bot 使用 `api_token` 进行 API 认证（`Authorization: Bearer <api_token>`）。
+管理类端点（注册/更新/启停/搜索）使用**用户 JWT** 认证（Bot 开发者本人）。
+`api_token` 用于 **Bot 服务器** 调用的端点（无用户 JWT），见下方「发送消息」。
 
-### 获取 Bot 信息
+### 发送消息（Bot 服务器调用，api_token 认证）
+
+```bash
+POST /api/v1/bot/send_message
+Content-Type: application/json
+Authorization: Bearer <api_token>
+
+{
+  "to_uid": "200",
+  "msg_type": "text",
+  "payload": { "text": "你好，这是 Bot 的回复" }
+}
+```
+
+返回：
+
+```json
+{
+  "errcode": 0,
+  "data": { "msg_id": "m1234567890" }
+}
+```
+
+**防护规则**：
+
+- **限流**：`agent_rate_limiter` 以 bot_id 为 scope 限流，超限返回错误
+- **会话前置校验**：仅允许回复与 Bot 有过消息往来的用户（`msg_c2c` 双向任一即算，Telegram started-chat 范式）。用户未先发起对话时返回「用户未与 Bot 建立会话，不可主动发送」——防止 Bot 骚扰任意用户
+
+### 管理端点（用户 JWT 认证）
+
+#### 获取 Bot 信息
 
 ```bash
 GET /api/v1/bot/get?bot_id=xxx
 ```
 
-### 更新 Bot
+#### 更新 Bot（仅属主）
 
 ```bash
 POST /api/v1/bot/update
@@ -138,20 +169,20 @@ Content-Type: application/json
 }
 ```
 
-### 启用/停用
+#### 启用/停用（仅属主）
 
 ```bash
 POST /api/v1/bot/enable
 POST /api/v1/bot/disable
 ```
 
-### 列出我的 Bot
+#### 列出我的 Bot
 
 ```bash
 GET /api/v1/bot/list_mine?page=1&size=20
 ```
 
-### 搜索 Bot（注册表）
+#### 搜索 Bot（注册表）
 
 ```bash
 GET /api/v1/bot/search?q=关键字&page=1&size=20
@@ -202,3 +233,4 @@ GET /api/v1/bot/search?q=关键字&page=1&size=20
 
 - **2026-08-21**：Bot 基础设施上线（迁移 00000070），含 `bot` 表 + `bot_oauth_grant` 表 + 7 个 API 端点
 - **2026-08-21**：Bot Webhook 推送模块上线（C2C 场景，异步，HMAC-SHA256 签名）
+- **2026-08-22**：`POST /api/v1/bot/send_message` 上线（api_token 认证 + 限流 + 会话前置校验）；管理端点补属主校验；Webhook 推送接入 5s 超时
