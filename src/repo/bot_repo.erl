@@ -191,7 +191,7 @@ join_binary([First | Rest]) ->
     ).
 
 %% @doc 设置 Bot 状态（-1=deleted, 0=disabled, 1=active）
--spec set_status(integer(), -1 | 0 | 1) -> {ok, non_neg_integer()} | {error, term()}.
+-spec set_status(integer(), -1 | 0 | 1) -> {ok, term()} | {error, term()}.
 set_status(UserId, Status) ->
     Tb = tablename(),
     elib_pg:update(Tb, #{status => Status, updated_at => elib_dt:now()}, <<"user_id = $1">>, [

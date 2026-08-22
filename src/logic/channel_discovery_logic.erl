@@ -42,7 +42,7 @@ search(Keyword, Page, Size, CategoryId) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows, <<"total">> => Total}};
         {error, Reason} ->
-            {error, Reason}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 发现页频道列表

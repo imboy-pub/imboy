@@ -41,7 +41,7 @@ search(Keyword, Page, Size, CategoryId) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows, <<"total">> => Total}};
         {error, Reason} ->
-            {error, Reason}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 发现页群组列表
@@ -63,7 +63,7 @@ discover(Page, Size, CategoryId, Sort) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows, <<"total">> => length(Rows)}};
         {error, Reason} ->
-            {error, Reason}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 精选群组（运营推荐）
@@ -73,7 +73,7 @@ featured(Limit) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
         {error, Reason} ->
-            {error, Reason}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 热门群组（按成员数排序）
@@ -83,7 +83,7 @@ hot(Limit) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
         {error, Reason} ->
-            {error, Reason}
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 获取公开群分类列表

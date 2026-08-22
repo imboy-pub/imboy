@@ -38,12 +38,13 @@ group_search_page(Keyword, Limit, Offset, CategoryId) ->
     fts_group_repo:group_search_page(Keyword, Limit, Offset, CategoryId).
 
 %% @doc 发现页群组列表（按成员数排序）
--spec discover_groups(integer(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
+-spec discover_groups(integer(), integer(), integer() | undefined) ->
+    {ok, list(map())} | {error, any()}.
 discover_groups(Page, Size, CategoryId) ->
     discover_groups(Page, Size, CategoryId, <<"member_count DESC">>).
 
 %% @doc 发现页群组列表（支持排序）
--spec discover_groups(integer(), integer(), integer(), binary()) ->
+-spec discover_groups(integer(), integer(), integer() | undefined, binary()) ->
     {ok, list(map())} | {error, any()}.
 discover_groups(Page, Size, CategoryId, _OrderBy) ->
     Offset = (Page - 1) * Size,

@@ -139,10 +139,10 @@ do_set_status(BotId, Status) ->
     end.
 
 %% @doc 列出我的 Bot
--spec list_mine(integer(), pos_integer()) -> {ok, map()} | {error, binary()}.
+-spec list_mine(integer(), integer()) -> {ok, map()} | {error, binary()}.
 list_mine(OwnerUid, Page) ->
-    Size = 20,
-    case bot_repo:page_by_owner(Page, Size, OwnerUid) of
+    Page1 = max(1, Page),
+    case bot_repo:page_by_owner(Page1, 20, OwnerUid) of
         {ok, Result} -> {ok, Result};
         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
     end.

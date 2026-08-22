@@ -78,7 +78,7 @@ is_bot(UserId) ->
     end.
 
 %% @doc 按 api_token 查找 Bot（Bot 调用 API 时认证）
--spec find_by_token(binary()) -> {ok, map()} | {error, not_found}.
+-spec find_by_token(binary()) -> {ok, map()} | {error, not_found | term()}.
 find_by_token(Token) ->
     case bot_repo:find_by_token(Token) of
         {ok, Row} -> {ok, Row};
