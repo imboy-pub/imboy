@@ -15,7 +15,6 @@ asyncapi: 3.0.0
 info:
   title: IMBoy WebSocket API
   version: 2.0.0
-  summary: IMBoy WebSocket 双向协议（v2 二进制帧封装）冻结契约
   description: |
     IMBoy 1.0.0-rc.1 起正式采用 **IMBoy v2 帧协议**：自托管二进制帧（frame header）
     包裹 JSON/Protobuf payload，向前兼容 v1 JSON。本文件冻结 v2 协议对外可见的消息
@@ -73,6 +72,8 @@ channels:
       TokenRefresh:   { $ref: '#/components/messages/TokenRefresh' }
       RevokeMessage:  { $ref: '#/components/messages/RevokeMessage' }
       EditMessage:    { $ref: '#/components/messages/EditMessage' }
+      C2SSend:        { $ref: '#/components/messages/C2SSend' }
+      C2SDeliver:     { $ref: '#/components/messages/C2SDeliver' }
 
 operations:
   sendC2C:
@@ -102,6 +103,28 @@ operations:
     summary: 服务端下发群聊消息
     messages:
       - $ref: '#/channels/root/messages/C2GDeliver'
+
+  sendC2S:
+    action: send
+    channel: { $ref: '#/channels/root' }
+    summary: 客户端发送消息给服务（Bot/Agent/系统服务）
+    description: |
+      to 字段为 Bot/Agent 的 user_id（account_type=1 或 3）或系统标识。
+      Bot（account_type=3）消息经 Webhook 推送到 Bot 服务器（见 bot_developer_guide）。
+      Agent（account_type=1）消息经 LLM 推理回复（见 agent-user-guide）。
+      bot_* 前缀已废弃，返回 bot_prefix_deprecated 提示。
+    messages:
+      - $ref: '#/channels/root/messages/C2SSend'
+
+  receiveC2S:
+    action: receive
+    channel: { $ref: '#/channels/root' }
+    summary: 服务端下发服务响应消息（Bot/Agent/系统服务）
+    description: |
+      Bot Webhook 回复 / Agent LLM 回复 / bot_* 废弃提示 均走此通路。
+      S2C action=bot_prefix_deprecated 时提示改用 Agent 账号 C2C 对话。
+    messages:
+      - $ref: '#/channels/root/messages/C2SDeliver'
 
   sendAck:
     action: send
@@ -166,7 +189,7 @@ components:
           type:   { type: string, enum: [s_ack] }
           msg_id: { type: integer, format: int64 }
           state:  { type: string, enum: [accepted, rejected, duplicated] }
-          reason: { type: string, nullable: true }
+          reason: { type: string, default: null }
 
     Heartbeat:
       name: Heartbeat
@@ -208,6 +231,62 @@ components:
           msg_id:  { type: integer, format: int64 }
           content: { type: string }
 
+    C2SSend:
+      name: C2SSend
+      title: 客户端发送消息给服务（Bot/Agent/系统）
+      payload:
+        type: object
+        required: [type, msg_id, from, to, content_type]
+        properties:
+          type:
+            type: string
+            enum: [c2s]
+          msg_id:
+            type: integer
+            format: int64
+          from:
+            type: integer
+            format: int64
+          to:
+            type: string
+            description: Bot/Agent user_id（TSID 字符串）或系统标识（sync）
+          content_type:
+            type: string
+            description: 载荷类型（text/image/audio/video/file 等）
+          payload:
+            type: object
+            description: 消息载荷（content_type 对应结构）
+
+    C2SDeliver:
+      name: C2SDeliver
+      title: 服务端下发服务响应（Bot 回复 / Agent 回复 / 废弃提示）
+      payload:
+        type: object
+        required: [type, msg_id, from, to]
+        properties:
+          type:
+            type: string
+            enum: [s2c]
+          msg_id:
+            type: integer
+            format: int64
+          from:
+            type: string
+            description: Bot/Agent user_id 或 bot_response+msg_id（流式）
+          to:
+            type: integer
+            format: int64
+          action:
+            type: string
+            description: |
+              S2C action 标识：
+              - undefined/正常 → Bot/Agent 回复内容
+              - bot_prefix_deprecated → bot_* 前缀废弃引导
+              - c2s_unsupported → 不支持的服务标识
+          payload:
+            type: object
+            description: 响应载荷
+
   schemas:
     C2CEnvelope:
       type: object
@@ -239,7 +318,7 @@ components:
           description: 类型相关业务字段（文本、URL、坐标等）
         ciphertext:
           type: string
-          nullable: true
+          default: null
           description: E2EE 场景下由客户端加密，服务端不解密
         created_at:
           type: integer
@@ -260,7 +339,7 @@ components:
           type: string
           enum: [text, image, voice, video, file, location, contact]
         content:     { type: object }
-        ciphertext:  { type: string, nullable: true }
+        ciphertext:  { type: string, default: null }
         at_uids:
           type: array
           items: { type: integer, format: int64 }
