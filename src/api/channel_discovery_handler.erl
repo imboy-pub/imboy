@@ -37,14 +37,21 @@ handle_action(false, Req, _State) -> Req.
 %% ===================================================================
 
 %% @doc 搜索频道（全文搜索）
+%% @doc 搜索频道（全文搜索）
+%% 参数兼容：`q` 为主参数，兼容旧客户端的 `keyword`（channel_handler#search 时代）；
+%% `size` 为主，兼容旧 `limit`。旧参数仅在主参数缺席时生效。
 -spec search(cowboy_req:req(), map()) -> cowboy_req:req().
 search(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
 
-    Keyword = proplists:get_value(<<"q">>, Qs, <<>>),
+    Keyword =
+        case proplists:get_value(<<"q">>, Qs, <<>>) of
+            <<>> -> proplists:get_value(<<"keyword">>, Qs, <<>>);
+            Q -> Q
+        end,
     CategoryId = safe_int_qs(<<"category_id">>, Qs),
     {ok, Page} = elib_param:int(page, Req0, 1),
-    {ok, Size} = elib_param:int(size, Req0, 20),
+    Size = legacy_size(Req0, Qs, 20),
 
     case channel_discovery_logic:search(Keyword, Page, Size, CategoryId) of
         {ok, Result} ->
@@ -54,6 +61,8 @@ search(Req0, _State) ->
     end.
 
 %% @doc 发现页频道列表
+%% `limit` 兼容旧客户端（channel_handler#discover 时代）；`category` 旧参数
+%% 当时后端即未使用（见 rest-api-v1-catalog 旧行注释），不做映射。
 -spec discover(cowboy_req:req(), map()) -> cowboy_req:req().
 discover(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
@@ -61,7 +70,7 @@ discover(Req0, _State) ->
     CategoryId = safe_int_qs(<<"category_id">>, Qs),
     Sort = proplists:get_value(<<"sort">>, Qs, <<"popular">>),
     {ok, Page} = elib_param:int(page, Req0, 1),
-    {ok, Size} = elib_param:int(size, Req0, 20),
+    Size = legacy_size(Req0, Qs, 20),
 
     case channel_discovery_logic:discover(Page, Size, CategoryId, Sort) of
         {ok, Result} ->
@@ -87,10 +96,11 @@ featured(Req0, _State) ->
 trending(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
 
-    Period = case proplists:get_value(<<"period">>, Qs) of
-        <<"30d">> -> 30;
-        _ -> 7
-    end,
+    Period =
+        case proplists:get_value(<<"period">>, Qs) of
+            <<"30d">> -> 30;
+            _ -> 7
+        end,
     {ok, Limit} = elib_param:int(limit, Req0, 20),
 
     case channel_discovery_logic:trending(Period, Limit) of
@@ -120,4 +130,18 @@ safe_int_qs(Key, Qs) ->
     case proplists:get_value(Key, Qs) of
         undefined -> undefined;
         Val -> elib_cnv:safe_to_integer(Val)
+    end.
+
+%% @doc size 主参数，缺席时回退旧客户端的 limit（非法/缺失给默认值）
+-spec legacy_size(cowboy_req:req(), list(), pos_integer()) -> pos_integer().
+legacy_size(Req0, Qs, Default) ->
+    case proplists:get_value(<<"size">>, Qs) of
+        undefined ->
+            case proplists:get_value(<<"limit">>, Qs) of
+                undefined -> Default;
+                LimitVal -> elib_cnv:safe_to_integer(LimitVal)
+            end;
+        _ ->
+            {ok, Size} = elib_param:int(size, Req0, Default),
+            Size
     end.
