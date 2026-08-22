@@ -4,6 +4,8 @@
 -export([start/2]).
 -export([stop/1]).
 -export([maybe_migrate/0]).
+%% 纯函数导出供守护测试（elib_tsid_registration_guard_tests）与运行时自省
+-export([tsid_generator_names/0]).
 
 % -include("log.hrl").
 -include_lib("public_key/include/public_key.hrl").

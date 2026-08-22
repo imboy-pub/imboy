@@ -31,7 +31,10 @@
 create(#{name := Name, username := Username, owner_uid := OwnerUid} = Data) ->
     case validate(Data) of
         ok ->
-            Uid = elib_tsid:generate(bot),
+            %% user 表主键必须用 user 命名空间生成器（与 channel_webhook_ds 同款）：
+            %% 独立生成器在同节点同毫秒可与 user 生成器产出相同值 → user.id 主键冲突；
+            %% 且未注册的生成器名会直接 crash（elib_tsid_generator_not_registered）。
+            Uid = elib_tsid:generate(user),
             Account = <<"bot_", (ec_cnv:to_binary(Uid))/binary>>,
             case create_bot_user(Uid, Name, Account) of
                 ok ->

@@ -9,6 +9,7 @@
 -export([get/1]).
 -export([update/3]).
 -export([set_status/3]).
+-export([admin_set_status/2]).
 -export([list_mine/2]).
 -export([search/3]).
 -export([send_message/3]).
@@ -106,17 +107,33 @@ set_status(BotId, Status, ActorUid) ->
         {ok, Bot} ->
             case ensure_owner(Bot, ActorUid) of
                 ok ->
-                    case bot_repo:set_status(BotId, Status) of
-                        {ok, _} ->
-                            {ok, #{<<"user_id">> => BotId, <<"status">> => Status}};
-                        {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
-                    end;
+                    do_set_status(BotId, Status);
                 {error, _} = Err ->
                     Err
             end;
         {error, notfound} ->
             {error, <<"Bot 不存在"/utf8>>};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+%% @doc 管理端启停（平台处置权，无属主校验；供 adm_bot_handler）
+-spec admin_set_status(integer(), -1 | 0 | 1) -> {ok, map()} | {error, binary()}.
+admin_set_status(BotId, Status) ->
+    case bot_repo:find(BotId) of
+        {ok, _Bot} ->
+            do_set_status(BotId, Status);
+        {error, notfound} ->
+            {error, <<"Bot 不存在"/utf8>>};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+-spec do_set_status(integer(), -1 | 0 | 1) -> {ok, map()} | {error, binary()}.
+do_set_status(BotId, Status) ->
+    case bot_repo:set_status(BotId, Status) of
+        {ok, _} ->
+            {ok, #{<<"user_id">> => BotId, <<"status">> => Status}};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.

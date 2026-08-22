@@ -762,6 +762,11 @@ get_routes() ->
         {"/api/adm/message/export", adm_message_handler, #{action => export}},
         % 频道管理 API
         {"/api/adm/channel/list", adm_channel_handler, #{action => list}},
+        % Bot 管理处置 API（平台侧，无属主校验）
+        {"/api/adm/bot/list", adm_bot_handler, #{action => list}},
+        {"/api/adm/bot/detail", adm_bot_handler, #{action => detail}},
+        {"/api/adm/bot/disable", adm_bot_handler, #{action => disable}},
+        {"/api/adm/bot/enable", adm_bot_handler, #{action => enable}},
         %% 固定段路由置于 :channel_id 通配之前，避免 order 被当作 channel_id
         {"/api/adm/channel/order/refund", adm_channel_handler, #{action => refund_order}},
         {"/api/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
