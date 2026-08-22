@@ -1,5 +1,7 @@
 # IMBoy Discovery & Agent/Bot 架构实施计划
 
+> **状态 / Status: ✅ 全部完成（2026-08-22）** — 三仓 15+ 提交，真实环境验证，E2E 101/0
+>
 > **Goal:** 落地 Group 公开搜索、Channel 发现页、Agent/Bot 架构分离（Agent=平台 AI，Bot=开发者服务）
 > **Architecture:** 4 层架构（Handler→Logic→DS→Repo），Agent/Bot 共享消息通道和身份体系，各自有独立的表、API、代码路径。
 > **Tech Stack:** Erlang/OTP 28+, Cowboy 2.10, PostgreSQL 18+ (pg_jieba), EUnit + meck
