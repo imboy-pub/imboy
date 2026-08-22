@@ -21,6 +21,10 @@
 | WebSocket ACK（4 步重试 / 跨节点 syn 广播 / 心跳）| ✅ |
 | 端到端加密 E2EE（RSA-OAEP-256 + AES-256-GCM / 设备迁移）| ✅ |
 | Tag 标签系统 / 收藏系统 / 频道系统 / 朋友圈 | ✅ |
+| 群组发现（FTS 搜索 / 分类浏览 / 精选 / 热门）| ✅ |
+| 频道发现（FTS 搜索 / 分类 / 热门统计 / 精选）| ✅ |
+| Agent 公开发现（助手广场 / 搜索 / 分类）| ✅ |
+| Bot 基础设施（注册 / Webhook 推送 / api_token 认证 / 防骚扰 / 管理后台）| ✅ |
 | Flutter 客户端（iOS / Android / macOS）| ✅ |
 | React 管理后台 | ✅ |
 | Docker Compose 一键生产部署 + nginx 反代 + certbot 自动 TLS | ✅ |
@@ -68,6 +72,8 @@
 - [ ] **消息搜索**：基于 `pg_jieba` 全文索引，客户端跨会话关键词搜索
 - [ ] **语音消息转文字**：Whisper API 集成（后端流式 + 客户端展示）
 - [ ] **Windows / Linux 客户端**：Flutter Desktop 正式打包 + 分发
+- [ ] **Bot OAuth Grant**：Bot 代表用户操作的授权流程（待真实场景，YAGNI）
+- [ ] **Bot 市场 / Inline 模式**：`@botname query` 实时卡片返回
 
 ### 开发体验 / Developer experience
 
