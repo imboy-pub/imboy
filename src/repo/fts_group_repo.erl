@@ -83,10 +83,11 @@ group_search_page(Keyword, Limit, Offset, CategoryId) ->
                 end,
             OrderClause = <<"ts_rank_cd(fts.token, to_tsquery('jiebacfg', $1)) DESC">>,
             Sql = build_search_sql(WhereClause, OrderClause),
-            Params = case CategoryId of
-                undefined -> [Keyword2, Limit, Offset];
-                _ -> [Keyword2, CategoryId, Limit, Offset]
-            end,
+            Params =
+                case CategoryId of
+                    undefined -> [Keyword2, Limit, Offset];
+                    _ -> [Keyword2, CategoryId, Limit, Offset]
+                end,
             elib_pg:query(Sql, Params);
         _ ->
             {ok, []}
@@ -97,33 +98,54 @@ group_search_page(Keyword, Limit, Offset, CategoryId) ->
 %% ===================================================================
 
 %% @doc 构建搜索 SQL（带全文搜索排序）
+%% 参数位次：keyword 恒为 $1；带 category_id 筛选时 category 为 $2 →
+%% LIMIT $3 OFFSET $4，否则 LIMIT $2 OFFSET $3（if_then_else 的 Then 分支
+%% 对应「含 category_id」情形）。
 -spec build_search_sql(binary(), binary()) -> binary().
 build_search_sql(WhereClause, OrderClause) ->
-    <<"SELECT g.id, g.title, g.avatar, g.introduction, g.member_count, "
+    <<
+        "SELECT g.id, g.title, g.avatar, g.introduction, g.member_count, "
         "g.type, g.join_limit, g.category_id, g.is_featured, g.created_at, "
         "ts_rank_cd(fts.token, to_tsquery('jiebacfg', $1)) as rank "
-        "FROM ", (tablename())/binary, " fts "
+        "FROM ",
+        (tablename())/binary,
+        " fts "
         "LEFT JOIN public.\"group\" g ON g.id = fts.group_id "
-        "WHERE ", WhereClause/binary, " "
-        "ORDER BY ", OrderClause/binary, " "
-        "LIMIT $", (build_param_index(if_then_else(WhereClause, 2, 3)))/binary, " "
-        "OFFSET $", (build_param_index(if_then_else(WhereClause, 3, 4)))/binary>>.
+        "WHERE ",
+        WhereClause/binary,
+        " "
+        "ORDER BY ",
+        OrderClause/binary,
+        " "
+        "LIMIT $",
+        (build_param_index(if_then_else(WhereClause, 3, 2)))/binary,
+        " "
+        "OFFSET $",
+        (build_param_index(if_then_else(WhereClause, 4, 3)))/binary
+    >>.
 
 %% @doc 构建发现页 SQL（无关键词，按指定排序）
 -spec build_discover_sql(integer() | undefined, binary()) -> binary().
 build_discover_sql(CategoryId, OrderClause) ->
-    WhereClause = case CategoryId of
-        undefined ->
-            <<"g.status = 1 AND g.type = 1">>;
-        _ ->
-            <<"g.status = 1 AND g.type = 1 AND g.category_id = $3">>
-    end,
-    <<"SELECT g.id, g.title, g.avatar, g.introduction, g.member_count, "
+    WhereClause =
+        case CategoryId of
+            undefined ->
+                <<"g.status = 1 AND g.type = 1">>;
+            _ ->
+                <<"g.status = 1 AND g.type = 1 AND g.category_id = $3">>
+        end,
+    <<
+        "SELECT g.id, g.title, g.avatar, g.introduction, g.member_count, "
         "g.type, g.join_limit, g.category_id, g.is_featured, g.created_at "
         "FROM public.\"group\" g "
-        "WHERE ", WhereClause/binary, " "
-        "ORDER BY g.", OrderClause/binary, " "
-        "LIMIT $1 OFFSET $2">>.
+        "WHERE ",
+        WhereClause/binary,
+        " "
+        "ORDER BY g.",
+        OrderClause/binary,
+        " "
+        "LIMIT $1 OFFSET $2"
+    >>.
 
 %% @doc 判断 WHERE 子句中是否包含 category_id 参数
 -spec if_then_else(binary(), integer(), integer()) -> integer().
