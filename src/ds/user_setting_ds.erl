@@ -155,7 +155,9 @@ save(Uid, <<"show_online_status">>, Visible) when is_boolean(Visible) ->
 save(Uid, <<"allow_add_by_phone">>, Allow) when is_boolean(Allow) ->
     priv_save(Uid, <<"allow_add_by_phone">>, Allow);
 save(Uid, <<"allow_add_by_qr">>, Allow) when is_boolean(Allow) ->
-    priv_save(Uid, <<"allow_add_by_qr">>, Allow).
+    priv_save(Uid, <<"allow_add_by_qr">>, Allow);
+save(Uid, <<"alipay">>, State) ->
+    priv_save(Uid, <<"alipay">>, State).
 
 %% @doc 内部函数：保存用户设置
 %%

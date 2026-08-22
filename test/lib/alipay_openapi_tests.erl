@@ -580,6 +580,22 @@ biz_error_sub_code_only_test_() ->
         ?assertEqual(<<"isv.broken">>, Msg)
     end).
 
+biz_error_gbk_sub_msg_test_() ->
+    %% 网关 GBK 错误（2026-08-22 生产 crash 现场：sub_msg=GBK「无效支付宝根证书
+    %% 序列号」透传响应层 jsone:encode badarg→500）。GBK sub_msg 必须被跳过，
+    %% 回退 ASCII sub_code，且返回值可安全过 jsone:encode。
+    GbkSubMsg = <<16#CA, 16#DA, 16#D0, 16#A7>>,
+    ?WITH_MECKS([httpc_mock()], fun() ->
+        erlang:put(
+            alipay_tc_body,
+            <<"{\"error_response\":{\"code\":\"40002\",\"sub_code\":\"isv.invalid-alipay-root-cert-sn\",\"sub_msg\":\"",
+                GbkSubMsg/binary, "\"}}">>
+        ),
+        {error, Msg} = alipay_openapi:oauth_token(cfg(), <<"x">>),
+        ?assertEqual(<<"isv.invalid-alipay-root-cert-sn">>, Msg),
+        ?assert(is_binary(jsone:encode(#{<<"msg">> => Msg})))
+    end).
+
 aes_resp_ok_no_code_test_() ->
     %% AES 开启时真 code 成功路径：response 节点为密文，解密明文为
     %% 无 code 的老接口成功形状 —— 生产最可能的真实形状，全链验证

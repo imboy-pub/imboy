@@ -66,6 +66,8 @@
 %% 子句顺序逐字镜像 user_logic:update/3。
 -spec validate_update(Field :: binary(), Val :: term()) ->
     {ok, update_cmd()} | {error, reject()}.
+validate_update(<<"email">>, <<>>) ->
+    {ok, {set_field, <<"email">>, <<>>}};
 validate_update(<<"email">>, Val) when is_binary(Val) ->
     case is_valid_email(Val) of
         true ->
@@ -73,6 +75,12 @@ validate_update(<<"email">>, Val) when is_binary(Val) ->
         false ->
             {error, bad_email_format}
     end;
+validate_update(<<"mobile">>, <<>>) ->
+    {ok, {set_field, <<"mobile">>, <<>>}};
+validate_update(<<"mobile">>, Val) when is_binary(Val) ->
+    {ok, {set_field, <<"mobile">>, Val}};
+validate_update(<<"alipay">>, Val) ->
+    {ok, {set_setting, <<"alipay">>, Val}};
 validate_update(<<"gender">>, Val) ->
     case validate_gender(Val) of
         {ok, N} ->

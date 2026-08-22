@@ -29,6 +29,28 @@ email_non_binary_falls_through_test() ->
         user_agg:validate_update(<<"email">>, 123)
     ).
 
+%% 邮箱解绑值 → {ok, {set_field, <<"email">>, <<>>}}
+email_unbind_test() ->
+    ?assertEqual(
+        {ok, {set_field, <<"email">>, <<>>}},
+        user_agg:validate_update(<<"email">>, <<>>)
+    ).
+
+%% 手机号与支付宝测试
+mobile_and_alipay_test() ->
+    ?assertEqual(
+        {ok, {set_field, <<"mobile">>, <<>>}},
+        user_agg:validate_update(<<"mobile">>, <<>>)
+    ),
+    ?assertEqual(
+        {ok, {set_field, <<"mobile">>, <<"+8613812345678">>}},
+        user_agg:validate_update(<<"mobile">>, <<"+8613812345678">>)
+    ),
+    ?assertEqual(
+        {ok, {set_setting, <<"alipay">>, <<"alipay-account">>}},
+        user_agg:validate_update(<<"alipay">>, <<"alipay-account">>)
+    ).
+
 %% ---- 透传字段（无校验，原样落库）----
 
 passthrough_fields_test() ->

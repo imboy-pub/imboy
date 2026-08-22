@@ -52,7 +52,8 @@
 %%%===================================================================
 
 %% @doc 授权码换访问令牌。返回归一 map：access_token/user_id/refresh_token/expires_in。
-%% user_id 优先取 user_id 字段，回退 alipay_user_id（老版响应只有后者）。
+%% user_id 回退链 user_id → alipay_user_id → open_id：2023 后新建应用走 OpenID
+%% 体系，网关只返回 open_id（生产实证 2026-08-22），无 2088 老会员号。
 %% 注意：oauth.token 是前 biz_content 时代接口，grant_type/code 必须平铺顶层
 %% （塞 biz_content JSON 会被网关前置层报「grant_type参数不正确」，生产探针实证）。
 -spec oauth_token(cfg(), binary()) -> {ok, map()} | {error, binary()}.
@@ -88,20 +89,30 @@ authinfo(Cfg, TargetId) ->
         false ->
             {error, ?NO_CREDENTIAL};
         true ->
-            Params = #{
-                <<"apiname">> => <<"com.alipay.account.auth">>,
-                <<"app_id">> => maps:get(app_id, Cfg),
-                <<"app_name">> => <<"mc">>,
-                <<"auth_type">> => <<"AUTHACCOUNT">>,
-                <<"biz_type">> => <<"openservice">>,
-                <<"method">> => <<"alipay.open.auth.sdk.code.get">>,
-                <<"pid">> => maps:get(pid, Cfg),
-                <<"product_id">> => <<"APP_FAST_LOGIN">>,
-                <<"scope">> => <<"kuaijie">>,
-                <<"target_id">> => TargetId,
-                <<"sign_type">> => <<"RSA2">>
-            },
+            Params = maybe_put(
+                <<"app_cert_sn">>,
+                maps:get(app_cert_sn, Cfg, <<>>),
+                maybe_put(
+                    <<"alipay_root_cert_sn">>,
+                    maps:get(alipay_root_cert_sn, Cfg, <<>>),
+                    #{
+                        <<"apiname">> => <<"com.alipay.account.auth">>,
+                        <<"app_id">> => maps:get(app_id, Cfg),
+                        <<"app_name">> => <<"mc">>,
+                        <<"auth_type">> => <<"AUTHACCOUNT">>,
+                        <<"biz_type">> => <<"openservice">>,
+                        <<"method">> => <<"alipay.open.auth.sdk.code.get">>,
+                        <<"pid">> => maps:get(pid, Cfg),
+                        <<"product_id">> => <<"APP_FAST_LOGIN">>,
+                        <<"scope">> => <<"kuaijie">>,
+                        <<"target_id">> => TargetId,
+                        <<"sign_type">> => <<"RSA2">>
+                    }
+                )
+            ),
             %% 签名内容 = 全部参数按 key 字典序 k=v& 原值拼接（与 sign_content 同规则）
+            %% 公钥证书模式下 app_cert_sn / alipay_root_cert_sn 必须参与签名：
+            %% 网关以 app_cert_sn 是否存在判定签名模式，缺失即按公钥模式验签 → 必败
             Content = sign_content(Params),
             case epay_crypto:rsa_sign_sha256(Content, maps:get(private_key, Cfg)) of
                 {ok, Sig} ->
@@ -115,7 +126,15 @@ authinfo(Cfg, TargetId) ->
 norm_token(Resp) ->
     #{
         access_token => maps:get(<<"access_token">>, Resp, <<>>),
-        user_id => maps:get(<<"user_id">>, Resp, maps:get(<<"alipay_user_id">>, Resp, <<>>)),
+        user_id => maps:get(
+            <<"user_id">>,
+            Resp,
+            maps:get(
+                <<"alipay_user_id">>,
+                Resp,
+                maps:get(<<"open_id">>, Resp, <<>>)
+            )
+        ),
         refresh_token => maps:get(<<"refresh_token">>, Resp, <<>>),
         expires_in => maps:get(<<"expires_in">>, Resp, 0)
     }.
@@ -194,6 +213,8 @@ post(Url, Body, RespKey, OkFun, Cfg) ->
 
 -spec parse(binary(), binary(), fun((map()) -> map()), cfg()) -> {ok, map()} | {error, binary()}.
 parse(Body, RespKey, OkFun, Cfg) ->
+    %% TODO(debug): 定位「未获取到用户标识」网关原始响应，排查后移除
+    ?LOG_INFO("alipay_openapi resp body=~tp", [Body]),
     try jsone:decode(Body) of
         #{RespKey := Resp} when is_map(Resp) ->
             check_code(Resp, OkFun);
@@ -253,7 +274,9 @@ check_code(Resp, OkFun) ->
             {error, biz_err_msg(Resp)}
     end.
 
-%% 错误文案提取顺序：sub_msg（用户可读中文）→ msg → sub_code → code → 兜底
+%% 错误文案提取顺序：sub_msg（用户可读中文）→ msg → sub_code → code → 兜底。
+%% 网关部分错误响应 charset=GBK（2026-08-22 真机 crash：GBK sub_msg 透传到
+%% 响应层 jsone:encode badarg → 500），非 UTF-8 候选直接跳过，回退 ASCII sub_code。
 -spec biz_err_msg(map()) -> binary().
 biz_err_msg(Resp) ->
     Candidates = [
@@ -262,9 +285,16 @@ biz_err_msg(Resp) ->
         maps:get(<<"sub_code">>, Resp, <<>>),
         code_bin(maps:get(<<"code">>, Resp, <<>>))
     ],
-    case [C || C <- Candidates, C =/= <<>>] of
+    case [C || C <- Candidates, C =/= <<>>, is_utf8(C)] of
         [First | _] -> First;
         [] -> <<"接口失败"/utf8>>
+    end.
+
+-spec is_utf8(binary()) -> boolean().
+is_utf8(Bin) ->
+    case unicode:characters_to_binary(Bin, utf8, utf8) of
+        B when is_binary(B) -> true;
+        _ -> false
     end.
 
 -spec code_bin(term()) -> binary().

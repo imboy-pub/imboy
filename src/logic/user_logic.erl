@@ -20,7 +20,7 @@
 -export([mine_state/1]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_ids/1, find_by_ids/2]).
--export([update/3]).
+-export([update/3, update/4]).
 % -export([send_bind_email/2]).
 -export([change_password/2]).
 -export([set_password/2]).
@@ -243,6 +243,37 @@ find_by_ids(Ids, Column) ->
         _ ->
             []
     end.
+
+-spec update(integer(), binary(), list() | binary(), binary()) ->
+    ok | {ok, integer() | binary()} | {error, any()}.
+update(Uid, <<"email">>, Email, Code) when Code =/= <<>> ->
+    case passport_logic:consume_code(Email, Code) of
+        {ok, _} ->
+            case maps:size(user_ds:find_by_email(Email, <<"id">>)) of
+                0 ->
+                    user_ds:bind_email(Uid, Email),
+                    {ok, <<"success">>};
+                _ ->
+                    {error, {1, <<"">>, <<"Email 被占用"/utf8>>}}
+            end;
+        {error, ErrMsg} ->
+            {error, {1, <<"">>, ErrMsg}}
+    end;
+update(Uid, <<"mobile">>, Mobile, Code) when Code =/= <<>> ->
+    case passport_logic:consume_code(Mobile, Code) of
+        {ok, _} ->
+            case maps:size(user_ds:find_by_mobile(Mobile, <<"id">>)) of
+                0 ->
+                    user_ds:update_field(Uid, <<"mobile">>, Mobile),
+                    {ok, <<"success">>};
+                _ ->
+                    {error, {1, <<"">>, <<"手机号被占用"/utf8>>}}
+            end;
+        {error, ErrMsg} ->
+            {error, {1, <<"">>, ErrMsg}}
+    end;
+update(Uid, Field, Val, _Code) ->
+    update(Uid, Field, Val).
 
 -spec update(integer(), binary(), list() | binary()) ->
     ok | {ok, integer() | binary()} | {error, any()}.
