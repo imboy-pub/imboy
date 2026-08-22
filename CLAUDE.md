@@ -144,9 +144,13 @@ PostgreSQL（`DELETE ... RETURNING` 天然原子），进程发现用 `syn`。
 | WebSocket | `websocket_handler` | `websocket_logic` | `websocket_ds` | - |
 | E2EE | `e2ee_handler` | `e2ee_logic` | - | `user_device_repo` |
 | 免打扰(DND) | -（待建） | -（待建） | `user_dnd_rule_ds` | `user_dnd_rule_repo` |
+| 群组发现 | `group_discovery_handler` | `group_discovery_logic` | `fts_group_ds` | `fts_group_repo` |
+| 频道发现 | `channel_discovery_handler` | `channel_discovery_logic` | - | - |
 | Agent 发现 | `ai_agent_handler` | `ai_agent_logic` | `ai_agent_ds` | `ai_agent_repo` |
 | Agent 对话 | - | `ai_agent_reply` | - | - |
 | Bot 管理 | `bot_handler` | `bot_logic` | `bot_ds` | `bot_repo` |
+| Bot Webhook | - | `bot_webhook_logic` | - | - |
+| Bot 管理后台 | `adm_bot_handler` | `bot_logic`（admin_set_status） | `bot_ds` | `bot_repo` |
 
 ---
 
