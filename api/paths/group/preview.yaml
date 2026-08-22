@@ -33,6 +33,6 @@ get:
                       member_count: { type: integer }
                       type: { type: integer }
                       join_limit: { type: integer }
-                      category_id: { type: integer, nullable: true }
+                      category_id: { type: integer, default: null }
                       is_featured: { type: boolean }
                       created_at: { type: integer }

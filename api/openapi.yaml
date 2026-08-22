@@ -59,6 +59,8 @@ tags:
     description: 用户资料
   - name: msg
     description: 消息查询与历史
+  - name: bot
+    description: 开发者服务 Bot（Webhook 推送 + api_token 认证）
   - name: admin-setup
     description: 首启初始化向导（免鉴权，仅允许执行一次）
   - name: admin
