@@ -42,11 +42,24 @@ init(Req0, State0) ->
 %% ===================================================================
 
 -spec dispatch(atom() | false, binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-dispatch(list, Method, Req0, _State) -> list(Method, Req0);
-dispatch(detail, Method, Req0, _State) -> detail(Method, Req0);
-dispatch(disable, Method, Req0, _State) -> change_status(Method, Req0, 0);
-dispatch(enable, Method, Req0, _State) -> change_status(Method, Req0, 1);
-dispatch(_, _, Req0, _State) -> Req0.
+dispatch(list, Method, Req0, State) ->
+    guard(<<"bots:read">>, Method, Req0, State, fun list/2);
+dispatch(detail, Method, Req0, State) ->
+    guard(<<"bots:read">>, Method, Req0, State, fun detail/2);
+dispatch(disable, Method, Req0, State) ->
+    guard(<<"bots:update">>, Method, Req0, State, fun(M, R) -> change_status(M, R, 0) end);
+dispatch(enable, Method, Req0, State) ->
+    guard(<<"bots:update">>, Method, Req0, State, fun(M, R) -> change_status(M, R, 1) end);
+dispatch(_, _, Req0, _State) ->
+    Req0.
+
+%% @doc RBAC 权限门（对齐 adm_group/adm_channel 的 adm_acl:ensure_permission 范式）
+-spec guard(binary(), binary(), cowboy_req:req(), map(), fun()) -> cowboy_req:req().
+guard(Permission, Method, Req0, State, Action) ->
+    case adm_acl:ensure_permission(State, Permission, Req0) of
+        ok -> Action(Method, Req0);
+        {error, RespReq} -> RespReq
+    end.
 
 %% @doc 分页列出全部 Bot（含属主昵称/头像，供后台检索）
 -spec list(binary(), cowboy_req:req()) -> cowboy_req:req().
