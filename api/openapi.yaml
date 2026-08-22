@@ -65,6 +65,12 @@ tags:
     description: 首启初始化向导（免鉴权，仅允许执行一次）
   - name: admin
     description: 管理后台鉴权端点
+  - name: system
+    description: 系统配置与品牌
+  - name: wallet
+    description: 钱包与支付
+  - name: ai-agent
+    description: AI 助手（平台 LLM 推理）
 
 # ----------------------------------------------------------------------------
 # T3.2 split phase 4 / B (2026-05-16)：paths 段由"内联端点"改为"按域 $ref"。
@@ -291,6 +297,16 @@ paths:
     $ref: './paths/bot/search.yaml'
   /api/v1/bot/send_message:
     $ref: './paths/bot/send_message.yaml'
+  /api/v1/bot/get:
+    $ref: './paths/bot/get.yaml'
+  /api/v1/bot/update:
+    $ref: './paths/bot/update.yaml'
+  /api/v1/bot/disable:
+    $ref: './paths/bot/disable.yaml'
+  /api/v1/bot/enable:
+    $ref: './paths/bot/enable.yaml'
+  /api/v1/bot/list_mine:
+    $ref: './paths/bot/list_mine.yaml'
   /api/v1/rtc/room/join:
     $ref: './paths/rtc/room_join.yaml'
   /api/v1/group/add:

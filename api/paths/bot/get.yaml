@@ -1,0 +1,42 @@
+# GET (bot) getBot
+get:
+  tags: [user]
+  summary: 获取 Bot 详情
+  description: |
+    ## 中文 / English
+    获取 Bot 详情（过滤 api_token/verify_token 敏感字段）
+    Get bot detail (sensitive fields filtered)
+  operationId: getBot
+  parameters:
+    - in: query
+      name: bot_id
+      required: true
+      description: 'Bot TSID / Bot ID'
+      schema: { type: string, format: tsid }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      user_id: { type: string, format: tsid }
+                      name: { type: string }
+                      username: { type: string }
+                      description: { type: string }
+                      avatar: { type: string }
+                      owner_uid: { type: string, format: tsid }
+                      webhook_url: { type: string }
+                      commands: { type: array, items: { type: string } }
+                      permissions: { type: array, items: { type: string } }
+                      events: { type: array, items: { type: string } }
+                      is_public: { type: boolean }
+                      status: { type: integer, enum: [-1, 0, 1] }
+                      created_at: { type: integer }
+                      updated_at: { type: integer }

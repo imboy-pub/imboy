@@ -1,0 +1,29 @@
+# GET (bot) listMyBots
+get:
+  tags: [user]
+  summary: 列出我的 Bot
+  description: |
+    ## 中文 / English
+    列出当前用户注册的全部 Bot（用户 JWT 认证，owner_uid 从 JWT 推导）
+    List my bots (owner_uid derived from JWT)
+  operationId: listMyBots
+  parameters:
+    - $ref: '../../components/parameters/PaginationPage.yaml'
+    - $ref: '../../components/parameters/PaginationSize.yaml'
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      page: { type: integer }
+                      size: { type: integer }
+                      list: { type: array, items: { type: object } }

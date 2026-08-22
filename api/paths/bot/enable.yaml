@@ -1,0 +1,33 @@
+# POST (bot) enableBot
+post:
+  tags: [user]
+  summary: 启用 Bot（仅属主）
+  description: |
+    ## 中文 / English
+    启用 Bot（仅属主可操作）。启用后 Bot 恢复收发消息。
+    Enable bot (owner only). Bot resumes send/receive after enable.
+  operationId: enableBot
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [bot_id]
+          properties:
+            bot_id: { type: string, format: tsid }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      user_id: { type: string, format: tsid }
+                      status: { type: integer, enum: [1] }

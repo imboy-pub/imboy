@@ -1,0 +1,40 @@
+# POST (bot) updateBot
+post:
+  tags: [user]
+  summary: 更新 Bot（仅属主）
+  description: |
+    ## 中文 / English
+    更新 Bot 信息（仅属主可操作；RBAC 属主校验）
+    Update bot (owner only)
+  operationId: updateBot
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [bot_id]
+          properties:
+            bot_id: { type: string, format: tsid }
+            name: { type: string }
+            description: { type: string }
+            avatar: { type: string }
+            webhook_url: { type: string }
+            commands: { type: array, items: { type: string } }
+            permissions: { type: array, items: { type: string } }
+            events: { type: array, items: { type: string } }
+            is_public: { type: boolean }
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      user_id: { type: string, format: tsid }
