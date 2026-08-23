@@ -148,13 +148,13 @@ smoke-8step:
 	@SMOKE_C2C_FROM=$(SMOKE_FROM) SMOKE_C2C_TO=$(SMOKE_TO) bash ./scripts/smoke_8step.sh
 # Golden Install 金安装门禁（Golden Gates §4，P2-G1）：cleanroom 全流程 + 计时
 # 断言 + restart 幂等。参数见 scripts/golden_install.sh --help，例：
-#   make golden-install GOLDEN_ARGS="--image-ref ghcr.io/…@sha256:… --git-ref v1.0.0-rc.1 --profile ci …"
+#   make golden-install GOLDEN_ARGS="--image-ref ghcr.io/…@sha256:… --git-ref v1.0.0-alpha.46 --profile ci …"
 golden-install:
 	@bash ./scripts/golden_install.sh $(GOLDEN_ARGS)
 # Golden Upgrade 升级门禁（Golden Gates §5，P2-U1）：安装 vN → 产生真实数据 →
 # 升级 vN+1（candidate digest）→ auto_migrate 观察 + 8 步链 + 数据保留断言。
 # 参数见 scripts/golden_upgrade.sh --help，例：
-#   make golden-upgrade GOLDEN_ARGS="--from v1.0.0-rc.1 --to-image ghcr.io/…@sha256:… --to-ref v1.0.0-rc.2 --profile ci …"
+#   make golden-upgrade GOLDEN_ARGS="--from v1.0.0-alpha.45 --to-image ghcr.io/…@sha256:… --to-ref v1.0.0-alpha.46 --profile ci …"
 golden-upgrade:
 	@bash ./scripts/golden_upgrade.sh $(GOLDEN_ARGS)
 
