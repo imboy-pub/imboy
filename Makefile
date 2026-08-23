@@ -10,6 +10,12 @@ export PROJECT_VERSION
 # 环境变量 IMBOY_* 仍由 imboy_env.erl 在运行时覆盖（优先级更高）
 _RELX_SRC := relx.config
 _SYS_RUNTIME_SRC := config/sys.config
+# sys.config 本体不入仓（alpha.42 起），裸 make（无 IMBOYENV）回退 example 模板
+# 兜底——与 Dockerfile 构建期 cp example 的口径一致；否则每次裸 make 都打印
+# cp: cannot stat 噪音（非致命但干扰判断）。
+ifeq ($(wildcard config/sys.config),)
+  _SYS_RUNTIME_SRC := config/sys.config.example
+endif
 ifneq ($(IMBOYENV),)
   ifneq ($(wildcard relx$(IMBOYENV).config),)
     _RELX_SRC := relx$(IMBOYENV).config
