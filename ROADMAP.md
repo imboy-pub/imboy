@@ -10,7 +10,7 @@
 
 ## 已完成 / Completed
 
-### 1.0.0-rc.1（当前）
+### 1.0.0-alpha.46（当前 · 公测中）
 
 **三端核心功能全部交付 / All three-component core features delivered**
 
@@ -49,7 +49,7 @@
 ### 应该完成 / Should-have
 
 - [ ] **Demo 数据脚本**：`script/seed_demo.sh`，幂等灌库（5 用户 / 2 群）
-- [ ] **升级 runbook**：`doc/operations/upgrade-runbook.md`，rc.1 → 1.0.0 滚动更新 + 回滚 + PITR
+- [x] **升级 runbook**：`docs/guides/operations/upgrade-runbook.md`，alpha → 1.0.0 滚动更新 + 回滚 + PITR
 - [ ] **DCO sign-off CI 强制**：所有 PR 要求 `Signed-off-by` 行
 - [ ] **README.en.md 英文镜像**：与 README.md 保持同步
 

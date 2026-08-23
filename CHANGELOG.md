@@ -9,7 +9,7 @@
 
 ---
 
-## [Unreleased]
+## [Unreleased — 1.0.0-alpha.46 公测线]
 
 ### Changed
 
@@ -39,10 +39,10 @@
 
 ---
 
-## [1.0.0] - 2026-04-14
+## [1.0.0-alpha.x] - 2026-04 ~ 2026-08（公测线）
 
-> **SKU-CE 1.0.0 正式版**。所有 P0（必备）和 S（应做）条目全部落地，对外可独立部署交付。
-> 从 1.0.0-rc.1 → 1.0.0 的升级步骤见 `imboy/doc/operations/upgrade-runbook.md`。
+> **公测线持续交付**。以下内容在 alpha 公测期间持续落地，尚未发布 rc.1 / 1.0.0 GA。
+> alpha → 1.0.0 的升级步骤见 `docs/guides/operations/upgrade-runbook.md`（草案）。
 
 ### Added
 
@@ -85,16 +85,7 @@
 
 ---
 
-## [1.0.0-rc.1] - 2026-04-11
-
-> **首个标准 SKU 候选版本**。IMBoy 从"开发中产品"正式进入"可对外交付 SKU"阶段。
->
-> **版本号跳跃**：此前三端版本号不一致（backend `0.7.3` / app `0.8.0` / admin `0.0.0`），
-> 本次 workspace 层统一对齐到 `1.0.0-rc.1`，以根目录 `VERSION` 文件为权威。子项目内部
-> 的历史小版本号（backend `0.7.x`、app `0.8.x`）保留在各自仓库的 changelog 中，但自
-> 1.0.0 起三端同步发版。
-
-### Highlights
+### Highlights（alpha 线核心交付）
 
 **🔒 安全底座（Phase 1-2 CRITICAL / HIGH 共 12 步）**
 - SQLCipher 加密本地数据库（客户端落地消息全加密）
@@ -141,7 +132,7 @@
 - **P0-5 首启初始化向导完整链路**（后端 handler + logic + 前端 SetupPage + 路由守卫 + E2E）
 
 ### Changed
-- **版本号**：workspace 层统一为 `1.0.0-rc.1`，三端历史小版本号停止独立递进
+- **版本号**：workspace 层当前为 `1.0.0-alpha.46`，三端历史小版本号停止独立递进
 - **DB 访问**：所有数据库操作强制通过 `elib_pg` 模块（架构门禁 CI 拦截）
 - **ID 规范**：客户端 ID 以 integer 传输，DB 存 BIGINT；不再使用 hashids 编码（`elib_hashids` 已于 2026-04-07 删除）
 - **消息顺序**：需要严格顺序的业务统一依赖 `conv_seq` 游标，不再把 `msg_id` / `TSID` 当作全局顺序依据
@@ -191,6 +182,5 @@
 
 ---
 
-[Unreleased]: https://github.com/imboy-pub/imboy/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/imboy-pub/imboy/compare/v1.0.0-rc.1...v1.0.0
-[1.0.0-rc.1]: https://github.com/imboy-pub/imboy/releases/tag/v1.0.0-rc.1
+[Unreleased — 1.0.0-alpha.46 公测线]: https://github.com/imboy-pub/imboy/compare/v1.0.0-alpha.26...HEAD
+[1.0.0-alpha.x]: https://github.com/imboy-pub/imboy/releases/tag/v1.0.0-alpha.26
