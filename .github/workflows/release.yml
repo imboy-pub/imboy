@@ -1,0 +1,510 @@
+# Release 流水线（Golden Gates Phase 1+2 / P1-A1 + P2-R1）
+#
+# 关联计划：.claude/plans/golden-gates-plan-2026-08.md
+#   - §3.1 发布链路（digest identity，钉死）：tag v* → Build Candidate →
+#     push GHCR candidate（immutable digest，:v<version>-rc）→ Golden Install /
+#     Golden Upgrade（拉该 digest 运行，不重新 build）→ 全绿 → 同一 digest
+#     打正式 semver tag → GitHub Release（三元组元数据）
+#   - §8 Release Gate Matrix：任何一步红 → 中止，不留半发布状态
+#     （candidate digest 可留存供调试，但不打正式 tag、不发 Release）
+#
+# Phase 2 已接入（P2-R1）：
+#   golden-install  — P2-G1 脚本在 ubuntu runner（cleanroom 近似）全流程跑，
+#                     T0→T1 ≤900s + restart 幂等，FAIL 即中止发布链
+#   golden-upgrade  — P2-U1 脚本 vN→vN+1 数据保留断言；首个正式版前无 vN
+#                     时显式 SKIPPED_FIRST_RELEASE（计划 §5 的 --from 设计初衷）
+#   release-finalize — 双门禁全绿后：buildx imagetools create 把 candidate
+#                     digest 复打正式 semver tag（不重新 build）+ gh release
+#                     create（三元组元数据）。RELEASES.md 更新为人工后续步骤。
+#   golden-install-nightly — G4：每日 schedule 对最新正式镜像跑 golden install，
+#                     耗时进质量债务总账（vars.GOLDEN_NIGHTLY_ENABLED 开关控制成本）
+#
+# 需用户本人操作的开关（附录 C，AI 会话不代办）：
+#   RELEASE_FINALIZE_ENABLED  Actions 仓库变量置 true 才执行发布动作
+#   GOLDEN_NIGHTLY_ENABLED    Actions 仓库变量置 true 才跑 nightly golden
+#   GHCR package 可见性       首推后默认 private，社区分发需本人改 public
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 仅 v 前缀 tag 触发；下方第一步再做严格 semver 校验
+  schedule:
+    - cron: '0 19 * * *' # 每日 19:00 UTC（北京 03:00 低峰）跑 nightly golden install（G4）
+
+# GHCR 推送/拉取需要 packages 权限；GitHub Release 仅 release-finalize 需要
+# contents:write（job 级覆写），其余 job 只读。
+permissions:
+  contents: read
+  packages: write
+
+# 按 ref 隔离的 concurrency：不同 tag 互不阻塞可并行；同一 tag 重推
+# （tag 移动）时取消旧 run。否则新旧两个 run 会竞推同一个 `<version>-rc`
+# 镜像 tag，后完成者覆盖前者，candidate 可能指向旧 commit，
+# digest identity（验证什么就发布什么）随之失效。
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------------------
+  # Build Candidate — 仓根 Dockerfile 构建 + 推 GHCR candidate
+  #   * checkout 固定在 tag ref（构建源 = 打 tag 的那个 commit，不漂移）
+  #   * 镜像 tag：<semver>-rc（candidate 语义；正式 semver tag 由 finalize 复打）
+  #   * digest（sha256:...）作为 job output —— 后续 Golden 门禁与
+  #     Release 元数据的唯一镜像标识
+  # 仅 tag push 触发（schedule 走 nightly job，不重复构建）。
+  # ----------------------------------------------------------------
+  build-candidate:
+    name: Build & push candidate image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      IMBOY_VERSION: ${{ steps.identity.outputs.IMBOY_VERSION }}
+      IMBOY_GIT_SHA: ${{ steps.identity.outputs.IMBOY_GIT_SHA }}
+      IMBOY_IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+      IMAGE_NAME: ${{ steps.identity.outputs.IMAGE_NAME }}
+      IMAGE_REF: ${{ steps.identity.outputs.IMAGE_REF }}
+      IMAGE_DIGEST_REF: ${{ steps.digest_ref.outputs.IMAGE_DIGEST_REF }}
+
+    steps:
+      - name: Checkout (pinned to tag ref)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }} # 固定检出发 tag 的 commit；fetch-depth 默认 1 足够
+
+      - name: Verify semver tag
+        run: |
+          set -euo pipefail
+          # 触发虽已限定 v*，这里再做严格 semver 校验，拦截 v-foo / v1.2 这类
+          # tag 混入发布链路（IMBOY_VERSION 与 git tag 强一致是 §3.2
+          # compose pin semver、禁止 latest 的前提）。
+          if ! grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$' <<<"${GITHUB_REF_NAME}"; then
+            echo "::error::tag '${GITHUB_REF_NAME}' 不是合法 semver（期望 vMAJOR.MINOR.PATCH[-prerelease][+build]）"
+            exit 1
+          fi
+
+      - name: Resolve release identity
+        id: identity
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          # 用 rev-parse HEAD 而非 github.sha：annotated tag 场景下 HEAD
+          # 一定是实际被检出构建的那个 commit。
+          sha="$(git rev-parse HEAD)"
+          # GHCR 镜像路径必须全小写；owner 大小写因 GitHub 账号而异，
+          # 动态引用 + bash 小写展开，禁止硬编码猜 owner。
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-backend"
+          {
+            echo "IMBOY_VERSION=${version}"
+            echo "IMBOY_GIT_SHA=${sha}"
+            echo "IMAGE_NAME=${image}"
+            echo "IMAGE_REF=${image}:${version}-rc"
+          } >> "$GITHUB_OUTPUT"
+          echo "IMAGE_NAME=${image}" >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 认证说明（Golden Gates 计划附录 C 第 1 条）：
+      # 仓库内推 GHCR 的标准做法是原生 GITHUB_TOKEN + packages:write。
+      # 若组织/仓库策略要求 PAT 级 token（或需推送其它 registry），由仓库
+      # 管理员（用户本人）配置到 GitHub Secrets 后在此替换——AI 会话不代办。
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push candidate image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.identity.outputs.IMAGE_REF }}
+        # 仓根 Dockerfile 无 build-args（多阶段 erlang:28 builder → debian
+        # slim runtime，make rel 出自包含 release）：版本不注入镜像内部，
+        # 镜像 tag 即版本，candidate = 打 tag commit 的确定性构建产物。
+        # 未启用 gha layer cache：Dockerfile 是单层 `COPY . . && make rel`，
+        # 源码任一变动即整层 miss，缓存收益趋近于零，徒增导出时间与配额。
+
+      - name: Resolve digest ref (immutable image reference)
+        id: digest_ref
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          case "${DIGEST}" in
+            sha256:*) ;;
+            *)
+              echo "::error::unexpected digest format '${DIGEST}' (expected sha256:...)"
+              exit 1
+              ;;
+          esac
+          echo "IMAGE_DIGEST_REF=${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  # ----------------------------------------------------------------
+  # Golden Install 门禁（P2-G1 脚本 / 计划 §4，G2 接入本流水线）
+  #
+  # ubuntu-latest = cleanroom 近似（一次性 VM：无既有 imboy 容器/卷/网络；
+  # 脚本内 assert_cleanroom 仍会拒绝任何脏状态）。脚本以 sudo -E 运行：
+  # /etc/hosts 注入 garage 解析需要 root；docker 对 runner 用户免 sudo。
+  #
+  # ci 模式差异（脚本报告内亦披露）：假域名 + 预置自签证书（无公网域名是
+  # CI 的客观约束），nginx 443 公网链路不在本 job 验证范围 —— 需要真域名
+  # 真签发时用 host 模式在云主机快照上手工跑同一条命令。
+  # ----------------------------------------------------------------
+  golden-install:
+    name: Golden Install gate (<=900s + restart idempotent)
+    if: github.event_name == 'push'
+    needs: [build-candidate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # 预算 900s + 拉镜像/克隆/重试余量
+    env:
+      IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+      IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
+
+    steps:
+      - name: Checkout (scripts at tag)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Login to GHCR (compose pull digest)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install smoke deps (python3-websockets)
+        run: sudo pip3 install --break-system-packages websockets 2>/dev/null || sudo pip3 install websockets
+
+      # golden 脚本自行 git clone 本仓库（digest 对应 tag）；私有仓场景用
+      # gh CLI 的 credential helper（GH_TOKEN 随 sudo -E 透传给 root）。
+      - name: Configure git credential for golden clone (root)
+        run: sudo git config --global credential.helper '!gh auth git-credential'
+
+      - name: Run golden install (ci profile)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+        run: |
+          set -euo pipefail
+          # Actions 的 env 值不做 shell 展开，密码须在 run 内生成（runner 一次性
+          # VM，argv 中的临时凭据无暴露面）
+          pw="Golden$(openssl rand -hex 6)"
+          sudo -E bash scripts/golden_install.sh \
+            --image-ref "${IMAGE_DIGEST_REF}" \
+            --git-ref "${GITHUB_REF_NAME}" \
+            --profile ci \
+            --admin-phone 13800138000 \
+            --admin-password "${pw}" \
+            --workdir /tmp/golden
+
+      - name: Upload golden-install logs (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-install-logs-${{ github.ref_name }}
+          path: /tmp/golden/
+          retention-days: 7
+
+  # ----------------------------------------------------------------
+  # Golden Upgrade 门禁（P2-U1 脚本 / 计划 §5，U2 接入本流水线）
+  #
+  # 基线 vN = 最近一个稳定 tag（无 prerelease 后缀的 vX.Y.Z），镜像与
+  # candidate 同 registry/owner（脚本从 --to-image 推导）。
+  # 首个正式版发布前不存在 vN → 输出 SKIPPED_FIRST_RELEASE 并放行
+  # （§5 U1 的 --from-image/--from-ref 显式基线即为此场景预留）。
+  # ----------------------------------------------------------------
+  golden-upgrade:
+    name: Golden Upgrade gate (data retention)
+    if: github.event_name == 'push'
+    needs: [build-candidate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60 # vN 全量安装 + 数据生成 + 迁移 + 双冒烟，无预算上限
+    outputs:
+      RESULT: ${{ steps.decide.outputs.RESULT }}
+      FROM_TAG: ${{ steps.decide.outputs.FROM_TAG }}
+
+    steps:
+      - name: Checkout (scripts at tag)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0 # 需要完整 tag 列表找 vN
+
+      - name: Resolve previous stable tag (vN)
+        id: decide
+        run: |
+          set -euo pipefail
+          # 稳定 tag = 严格 vX.Y.Z（无 -rc/-pre/-beta/-alpha/-nightly），
+          # 排除当前 tag 及其 official 形式（v1.2.3-rc.1 → v1.2.3）
+          cur_official="$(sed -E 's/^(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' <<<"${GITHUB_REF_NAME}")"
+          prev="$(git tag --list 'v*' \
+            | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' \
+            | grep -vx "${GITHUB_REF_NAME}" \
+            | grep -vx "${cur_official}" \
+            | sort -rV | head -1 || true)"
+          if [ -n "${prev}" ]; then
+            echo "RESULT=RAN" >> "$GITHUB_OUTPUT"
+            echo "FROM_TAG=${prev}" >> "$GITHUB_OUTPUT"
+            echo "vN 基线：${prev}"
+          else
+            # 首个正式版：无上一稳定 tag，升级门禁无对象可测，显式放行
+            echo "RESULT=SKIPPED_FIRST_RELEASE" >> "$GITHUB_OUTPUT"
+            echo "::notice::无上一稳定 tag（首个正式版发布），Golden Upgrade 跳过——§5 U1 设计预留"
+          fi
+
+      - name: Login to GHCR (compose pull vN + candidate)
+        if: steps.decide.outputs.RESULT == 'RAN'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install smoke deps (python3-websockets)
+        if: steps.decide.outputs.RESULT == 'RAN'
+        run: sudo pip3 install --break-system-packages websockets 2>/dev/null || sudo pip3 install websockets
+
+      - name: Configure git credential for golden clone (root)
+        if: steps.decide.outputs.RESULT == 'RAN'
+        run: sudo git config --global credential.helper '!gh auth git-credential'
+
+      - name: Run golden upgrade (vN -> candidate digest)
+        if: steps.decide.outputs.RESULT == 'RAN'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+        run: |
+          set -euo pipefail
+          pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
+          sudo -E bash scripts/golden_upgrade.sh \
+            --from "${{ steps.decide.outputs.FROM_TAG }}" \
+            --to-image "${IMAGE_DIGEST_REF}" \
+            --to-ref "${GITHUB_REF_NAME}" \
+            --profile ci \
+            --admin-phone 13800138000 \
+            --admin-password "${pw}" \
+            --workdir /tmp/golden-up
+
+      - name: Upload golden-upgrade logs (failure only)
+        if: failure() && steps.decide.outputs.RESULT == 'RAN'
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-upgrade-logs-${{ github.ref_name }}
+          path: /tmp/golden-up/
+          retention-days: 7
+
+  # ----------------------------------------------------------------
+  # Release Identity — 三元组的 workflow 级出口（单一聚合点）
+  # ----------------------------------------------------------------
+  release-identity:
+    name: Release Identity (triple)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-candidate]
+    outputs:
+      IMBOY_VERSION: ${{ needs.build-candidate.outputs.IMBOY_VERSION }}
+      IMBOY_GIT_SHA: ${{ needs.build-candidate.outputs.IMBOY_GIT_SHA }}
+      IMBOY_IMAGE_DIGEST: ${{ needs.build-candidate.outputs.IMBOY_IMAGE_DIGEST }}
+      IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
+      IMAGE_REF: ${{ needs.build-candidate.outputs.IMAGE_REF }}
+      IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+
+    steps:
+      - name: Emit Release Identity to job summary
+        env:
+          IMBOY_VERSION: ${{ needs.build-candidate.outputs.IMBOY_VERSION }}
+          IMBOY_GIT_SHA: ${{ needs.build-candidate.outputs.IMBOY_GIT_SHA }}
+          IMBOY_IMAGE_DIGEST: ${{ needs.build-candidate.outputs.IMBOY_IMAGE_DIGEST }}
+          IMAGE_REF: ${{ needs.build-candidate.outputs.IMAGE_REF }}
+          IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Release Identity（三元组，计划 §3.1）"
+            echo ""
+            echo '```'
+            echo "IMBOY_VERSION=${IMBOY_VERSION}"
+            echo "IMBOY_GIT_SHA=${IMBOY_GIT_SHA}"
+            echo "IMBOY_IMAGE_DIGEST=${IMBOY_IMAGE_DIGEST}"
+            echo '```'
+            echo ""
+            echo "- candidate 镜像：\`${IMAGE_REF}\`"
+            echo "- digest 引用（Golden 门禁消费）：\`${IMAGE_DIGEST_REF}\`"
+            echo ""
+            echo "> Golden Install / Golden Upgrade 全绿后，由 release-finalize 将此"
+            echo "> digest 复打正式 semver tag 并发 GitHub Release（§8）。"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ----------------------------------------------------------------
+  # release-finalize — 双 Golden 门禁全绿后的发布动作（P2-R1）
+  #
+  # 开关：Actions 仓库变量 RELEASE_FINALIZE_ENABLED（外向发布控制，由仓库
+  # 管理员/用户本人设置，AI 会话不代办——附录 C 第 2 条）。未设置 → 恒
+  # skipped：门禁照跑（golden-* job 不受此开关影响），但不打正式 tag、
+  # 不发 Release，不留半发布状态（§8）。
+  #
+  # 动作：
+  #   1. docker buildx imagetools create 把 candidate digest 复打正式
+  #      semver tag（纯 registry 操作，不重新 build——digest identity：
+  #      验证什么就发布什么，§3.1）
+  #   2. gh release create：<tag> 指向打 tag 的 commit，正文写入三元组
+  #      + 门禁结果（sanity_check.sh 输出处亦打印三元组，用户可核验
+  #      “装的正是被验证过的那一个”）
+  #   3. RELEASES.md 更新为人工后续步骤（§8 step 6，不自动改文档）
+  # ----------------------------------------------------------------
+  release-finalize:
+    name: Finalize semver tag + GitHub Release
+    if: vars.RELEASE_FINALIZE_ENABLED == 'true'
+    needs: [build-candidate, golden-install, golden-upgrade] # needs 只暴露直接依赖，三元组须直连 build-candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # gh release create（同时创建正式 git tag）
+      packages: write # buildx imagetools 复打镜像 tag
+
+    steps:
+      - name: Resolve official version
+        id: official
+        run: |
+          set -euo pipefail
+          # v1.2.3-rc.1 / v1.2.3+build → v1.2.3（剥 prerelease 与 build 元数据）
+          official="$(sed -E 's/^(v[0-9]+\.[0-9]+\.[0-9]+).*/\1/' <<<"${GITHUB_REF_NAME}")"
+          [ "${official}" = "${GITHUB_REF_NAME}" ] && note="（tag 本身即正式版）" || note="（自 candidate tag ${GITHUB_REF_NAME}）"
+          echo "OFFICIAL=${official}" >> "$GITHUB_OUTPUT"
+          echo "正式 semver tag：${official} ${note}"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Re-tag candidate digest as official semver (no rebuild)
+        env:
+          IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+          IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          official="${{ steps.official.outputs.OFFICIAL }}"
+          docker buildx imagetools create \
+            --tag "${IMAGE_NAME}:${official}" \
+            "${IMAGE_DIGEST_REF}"
+          echo "已复打 ${IMAGE_NAME}:${official} → ${IMAGE_DIGEST_REF}"
+
+      - name: Create GitHub Release (release identity metadata)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMBOY_VERSION: ${{ needs.build-candidate.outputs.IMBOY_VERSION }}
+          IMBOY_GIT_SHA: ${{ needs.build-candidate.outputs.IMBOY_GIT_SHA }}
+          IMBOY_IMAGE_DIGEST: ${{ needs.build-candidate.outputs.IMBOY_IMAGE_DIGEST }}
+          IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
+          IMAGE_REF: ${{ needs.build-candidate.outputs.IMAGE_REF }}
+          OFFICIAL: ${{ steps.official.outputs.OFFICIAL }}
+          UPGRADE_RESULT: ${{ needs.golden-upgrade.outputs.RESULT }}
+          UPGRADE_FROM: ${{ needs.golden-upgrade.outputs.FROM_TAG }}
+        run: |
+          set -euo pipefail
+          if [ -z "${IMBOY_GIT_SHA}" ]; then
+            echo "::error::IMBOY_GIT_SHA 为空（needs 链断裂？）"; exit 1
+          fi
+          cat > /tmp/release-notes.md <<EOF
+          ## Release Identity（计划 §3.1，可核验"装的正是被验证过的那一个"）
+
+          \`\`\`
+          IMBOY_VERSION=${IMBOY_VERSION}
+          IMBOY_GIT_SHA=${IMBOY_GIT_SHA}
+          IMBOY_IMAGE_DIGEST=${IMBOY_IMAGE_DIGEST}
+          \`\`\`
+
+          - 正式镜像：\`${IMAGE_NAME}:${OFFICIAL}\`（= candidate \`${IMAGE_REF}\` 的同一 digest 复打，未重新构建）
+          - 升级指引与版本历史：见仓库 [RELEASES.md](./RELEASES.md)
+
+          ## 发布门禁（Golden Gates §8）
+
+          - Golden Install：PASS（cleanroom 全流程 ≤900s + 8 步冒烟链 + restart 幂等）
+          - Golden Upgrade：${UPGRADE_RESULT}${UPGRADE_FROM:+（${UPGRADE_FROM} → ${IMBOY_VERSION}，数据保留断言全绿）}
+          EOF
+          gh release create "${OFFICIAL}" \
+            --target "${IMBOY_GIT_SHA}" \
+            --title "${OFFICIAL}" \
+            --notes-file /tmp/release-notes.md
+          echo "::notice::GitHub Release ${OFFICIAL} 已创建（三元组元数据见正文）。后续人工步骤：更新 RELEASES.md（§8 step 6）。"
+
+  # ----------------------------------------------------------------
+  # Golden Install Nightly（G4：每日对最新正式镜像跑 golden install，
+  # 耗时进质量债务总账；vars.GOLDEN_NIGHTLY_ENABLED 控制成本，默认关）
+  # ----------------------------------------------------------------
+  golden-install-nightly:
+    name: Golden Install nightly (latest stable image)
+    if: github.event_name == 'schedule' && vars.GOLDEN_NIGHTLY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout (default branch, for scripts)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # 找最新稳定 tag
+
+      - name: Resolve latest stable tag + digest
+        id: latest
+        run: |
+          set -euo pipefail
+          stable="$(git tag --list 'v*' | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -rV | head -1 || true)"
+          [ -n "${stable}" ] || { echo "::error::无稳定 tag（尚未发布正式版），nightly golden 无对象"; exit 1; }
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-backend"
+          digest="$(docker buildx imagetools inspect "${image}:${stable}" --format '{{.Manifest.Digest}}')"
+          case "${digest}" in sha256:*) ;; *) echo "::error::digest 格式异常：${digest}"; exit 1 ;; esac
+          {
+            echo "STABLE=${stable}"
+            echo "IMAGE_DIGEST_REF=${image}@${digest}"
+          } >> "$GITHUB_OUTPUT"
+          echo "nightly 对象：${image}:${stable}（${digest}）"
+
+      - name: Login to GHCR (compose pull digest)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install smoke deps (python3-websockets)
+        run: sudo pip3 install --break-system-packages websockets 2>/dev/null || sudo pip3 install websockets
+
+      - name: Configure git credential for golden clone (root)
+        run: sudo git config --global credential.helper '!gh auth git-credential'
+
+      - name: Run golden install against latest stable (ci profile)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_DIGEST_REF: ${{ steps.latest.outputs.IMAGE_DIGEST_REF }}
+        run: |
+          set -euo pipefail
+          pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
+          sudo -E bash scripts/golden_install.sh \
+            --image-ref "${IMAGE_DIGEST_REF}" \
+            --git-ref "${{ steps.latest.outputs.STABLE }}" \
+            --profile ci \
+            --admin-phone 13800138000 \
+            --admin-password "${pw}" \
+            --workdir /tmp/golden
+          # 耗时（TOTAL=…s 总结行）由脚本产出；每周快照进 quality-ledger（Q2）
+
+      - name: Upload nightly logs (failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-install-nightly-logs-${{ github.run_id }}
+          path: /tmp/golden/
+          retention-days: 7
