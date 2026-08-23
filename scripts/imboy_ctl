@@ -66,6 +66,11 @@
 %%%  运营工具 ops
 %%%
 %%%  escript scripts/imboy_ctl ops weekly_report   # 手动触发运营周报
+%%%
+%%%  管理后台超管 adm
+%%%
+%%%  # 创建超级管理员（仅允许一次，幂等拒绝重复创建；install.sh 无浏览器部署入口）
+%%%  escript scripts/imboy_ctl adm create --phone <手机号> --password <明文密码> [-n <昵称>]
 %%% 前置：imboy@127.0.0.1 节点已启动（或通过 --node 指定），cookie=imboy。
 
 -define(DEFAULT_NODE, 'imboy@127.0.0.1').
@@ -79,6 +84,24 @@
 cli_spec() ->
     #{
         commands => #{
+            "adm" => #{
+                help => "管理后台超管 / Admin management",
+                commands => #{
+                    "create" => #{
+                        help => "创建超级管理员（仅允许一次，幂等拒绝重复创建）",
+                        arguments => [
+                            #{name => phone, long => "-phone", short => $p,
+                              type => binary, required => true,
+                              help => "超管登录账号（手机号或邮箱）"},
+                            #{name => password, long => "-password", short => $P,
+                              type => binary, required => true,
+                              help => "明文密码（8-64 位且含字母和数字）"},
+                            #{name => nickname, long => "-nickname", short => $n,
+                              type => binary, default => <<"admin">>, help => "昵称"}
+                        ]
+                    }
+                }
+            },
             "user" => #{
                 help => "用户管理 / User management",
                 commands => #{
@@ -235,6 +258,7 @@ main(Argv) ->
             print_help()
     end.
 
+dispatch(["adm", "create"], Args) -> handle_adm_create(Args);
 dispatch(["user", "token"], Args) -> handle_user_token(Args);
 dispatch(["user", "create"], Args) -> handle_user_create(Args);
 dispatch(["user", "detail"], Args) -> handle_user_detail(Args);
@@ -265,6 +289,11 @@ dispatch(CmdPath, _Args) ->
 print_help() ->
     Help = argparse:help(cli_spec()),
     io:format("~ts~n", [Help]),
+    io:format(
+        "超管创建（无浏览器部署，仅允许一次）:~n"
+        "  escript scripts/imboy_ctl adm create --phone <手机号> "
+        "--password <明文密码> [-n <昵称>]~n",
+        []),
     halt(2).
 
 %% ---------------------------------------------------------------------------
@@ -696,3 +725,88 @@ handle_ops_weekly_report(Args) ->
     ok = do_rpc(Node, Args, ops_report_logic, run_weekly_report, []),
     io:format("WEEKLY_REPORT=SENT~n"),
     halt(0).
+
+%% ---------------------------------------------------------------------------
+%% Adm handlers
+%% ---------------------------------------------------------------------------
+
+%%% 创建超级管理员 — 无浏览器纯脚本部署入口（install.sh 以 --admin-phone /
+%%% --admin-password 传参调用，见 Golden Gates 计划 §3.4 超管 CLI）。
+%%% 完全复用 adm_setup_logic:do_init/1（与 HTTP POST /adm/setup/init 同一逻辑）：
+%%%   - 密码预处理同浏览器链路（admin 前端 js-md5 + RSA 解密后即 md5(明文)
+%%%     小写 hex）：CLI 先 md5 再交 logic，入库哈希仍由 logic 内
+%%%     elib_password:generate 统一完成（hmac_sha512+salt），不另起一套
+%%%   - 幂等双防线：config(adm.setup.completed_at) 已存在 或 adm_user 表已有
+%%%     记录时 do_init 返回 {error, 911}，CLI 以非零码退出，不覆盖已有超管
+handle_adm_create(Args) ->
+    PlainPwd = maps:get(password, Args),
+    case validate_plain_password(PlainPwd) of
+        ok -> ok;
+        {error, Weak} ->
+            io:format(standard_error,
+                      "ERROR: 密码强度不足（~p），需 8-64 位且含字母和数字~n",
+                      [Weak]),
+            halt(1)
+    end,
+    {ok, Node} = connect_node(Args),
+    Phone = maps:get(phone, Args),
+    Nickname = maps:get(nickname, Args, <<"admin">>),
+    Md5Pwd = do_rpc(Node, Args, elib_hasher, md5, [PlainPwd]),
+    Params = #{
+        <<"account">> => Phone,
+        <<"password">> => Md5Pwd,
+        <<"nickname">> => Nickname
+    },
+    case do_rpc(Node, Args, adm_setup_logic, do_init, [Params]) of
+        {ok, AdminId} ->
+            io:format("ADMIN_ID=~p~nCREATED=true~n", [AdminId]),
+            halt(0);
+        {error, Code} ->
+            io:format(standard_error, "~ts~n", [adm_create_error(Code)]),
+            halt(1);
+        Other ->
+            io:format(standard_error, "ERROR: unexpected ~p~n", [Other]),
+            halt(1)
+    end.
+
+%%% 明文密码前置强度校验（与 admin 前端 /setup 页及
+%%% adm_setup_logic:validate_password_strength 的规则一致：8-64 位 + 字母 + 数字；
+%%% logic 侧只能校验到 md5 形式，明文约束由调用端保证，此处与浏览器对齐）。
+validate_plain_password(Pwd) when is_binary(Pwd) ->
+    Len = byte_size(Pwd),
+    case Len >= 8 andalso Len =< 64 of
+        false ->
+            {error, invalid_length};
+        true ->
+            case ctl_has_letter(Pwd) andalso ctl_has_digit(Pwd) of
+                true -> ok;
+                false -> {error, missing_letter_or_digit}
+            end
+    end;
+validate_plain_password(_) ->
+    {error, invalid_type}.
+
+ctl_has_letter(<<C, _/binary>>) when (C >= $a andalso C =< $z)
+                                     orelse (C >= $A andalso C =< $Z) ->
+    true;
+ctl_has_letter(<<_, Rest/binary>>) ->
+    ctl_has_letter(Rest);
+ctl_has_letter(<<>>) ->
+    false.
+
+ctl_has_digit(<<C, _/binary>>) when C >= $0, C =< $9 ->
+    true;
+ctl_has_digit(<<_, Rest/binary>>) ->
+    ctl_has_digit(Rest);
+ctl_has_digit(<<>>) ->
+    false.
+
+%%% do_init 错误码映射（911/912 见 imboy/include/error_code.hrl：
+%%% ERR_SETUP_ALREADY_COMPLETED / ERR_SETUP_INVALID_PARAMS）
+adm_create_error(911) ->
+    "ERROR: 系统已完成首启初始化，拒绝重复创建超管"
+    "（config adm.setup.completed_at 已存在或 adm_user 表已有记录）";
+adm_create_error(912) ->
+    "ERROR: 首启参数无效（账号须为合法手机号/邮箱，或昵称为空/超长）";
+adm_create_error(Other) ->
+    lists:flatten(io_lib:format("ERROR: ~p", [Other])).
