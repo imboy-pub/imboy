@@ -313,6 +313,30 @@ remove_last_forward_slash_with_complex_path_test_() ->
     end).
 
 %% ===================================================================
+%% signing_key 空串防护测试
+%% ===================================================================
+
+%% sys.runtime.config 占位为空串 "" 时 config_ds:env 返回 <<>>，
+%% 非生产环境跳过 validate_runtime_config 的 fail-fast，signing_key
+%% 必须回落到默认值而非用空串签名（空串签名 = 任何人可伪造 admin cookie）。
+signing_key_empty_string_falls_back_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 2, fun
+                    (adm_cookie_secret, _) -> <<"">>;
+                    (_, Default) -> Default
+                end}
+            ]}
+        ],
+        fun() ->
+            Key = adm_auth_middleware:signing_key(),
+            ?assertNotEqual(<<>>, Key),
+            ?assertEqual(<<"imboy-adm-cookie">>, Key)
+        end
+    ).
+
+%% ===================================================================
 %% 边界条件测试
 %% ===================================================================
 

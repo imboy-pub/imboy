@@ -214,10 +214,16 @@ cookie_secure() ->
     StartMode =:= tls orelse StartMode =:= http_tls.
 
 %% @doc 管理后台 Cookie 签名密钥
-%% 始终使用独立的 adm_cookie_secret，不复用 jwt_key，确保密钥隔离
+%% 始终使用独立的 adm_cookie_secret，不复用 jwt_key，确保密钥隔离。
+%% 空串视为未配置（sys.runtime.config 占位为 ""）——非生产环境会跳过
+%% validate_runtime_config 的 fail-fast，若不在此兜底会用空串签名 cookie，
+%% 导致所有 admin 会话可被伪造。回落到内置默认值确保非生产环境也有有效密钥。
 -spec signing_key() -> binary().
 signing_key() ->
-    normalize_binary(config_ds:env(adm_cookie_secret, <<"imboy-adm-cookie">>)).
+    case normalize_binary(config_ds:env(adm_cookie_secret, <<"imboy-adm-cookie">>)) of
+        <<>> -> <<"imboy-adm-cookie">>;
+        Key -> Key
+    end.
 
 -spec normalize_binary(term()) -> binary().
 normalize_binary(undefined) ->
