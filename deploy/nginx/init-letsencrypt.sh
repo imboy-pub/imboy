@@ -20,7 +20,10 @@ set -a; . ./.env; set +a
 : "${ADMIN_DOMAIN:?在 .env 中设置 ADMIN_DOMAIN}"
 : "${CERTBOT_EMAIL:?在 .env 中设置 CERTBOT_EMAIL（证书到期通知邮箱）}"
 DATA_DIR="${DATA_DIR:-./data}"
-COMPOSE="docker compose -f docker-compose.prod.yml"
+# compose 文件可经环境变量覆盖：install.sh 社区版传
+# COMPOSE_FILE=docker-compose.community.yml；默认维持 prod.yml（商务版不变）。
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+COMPOSE="docker compose -f $COMPOSE_FILE"
 DOMAINS="$API_DOMAIN $ADMIN_DOMAIN"
 
 CONF="$DATA_DIR/certbot/conf"

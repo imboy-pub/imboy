@@ -60,6 +60,13 @@ ENV LANG=C.UTF-8 \
 # 复制自包含 release
 COPY --from=builder /build/_rel/imboy /opt/imboy
 
+# imboy_ctl 管理 CLI（escript）。install.sh 的 --admin-phone/--admin-password
+# 在 backend 容器内调用它创建超管（部署机只有 Docker 没有 Erlang，escript 由
+# 上方自包含 ERTS 提供）：
+#   /opt/imboy/erts-*/bin/escript /opt/imboy/bin/imboy_ctl adm create ...
+# scripts/ 未被 .dockerignore 排除，构建上下文中始终存在。
+COPY scripts/imboy_ctl /opt/imboy/bin/imboy_ctl
+
 WORKDIR /opt/imboy
 EXPOSE 9800
 

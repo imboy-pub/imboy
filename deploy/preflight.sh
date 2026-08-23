@@ -2,8 +2,12 @@
 # IMBoy 生产部署前置检查 / Pre-flight check for production deployment
 #
 # Usage:
-#   bash deploy/preflight.sh            # 检查 .env 和系统资源
-#   bash deploy/preflight.sh --docker   # 同上，附加检查 Docker 环境
+#   bash deploy/preflight.sh                                  # 检查 .env 和系统资源
+#   bash deploy/preflight.sh --docker                         # 同上，附加检查 Docker 环境
+#   bash deploy/preflight.sh --edition community [--docker]   # 社区版口径：garage 凭据
+#                                                              # 为硬校验（内置核心服务），
+#                                                              # 跳过销售发布支付强校验
+#   bash deploy/preflight.sh --edition business [--docker]    # 商务版口径（默认，同旧版行为）
 #
 # Exit codes:
 #   0 = all checks passed
@@ -15,6 +19,35 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/.env"
 ERRORS=0
 WARNINGS=0
+
+# ── 参数解析 ──────────────────────────────────────────────────────────────────
+# EDITION 默认 business：preflight 单独运行时维持既有检查口径不变（garage WARN、
+# 销售发布支付强校验）。install.sh 会按部署版本显式传入 --edition。
+DOCKER_CHECK=0
+EDITION="business"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --docker) DOCKER_CHECK=1 ;;
+        --edition)
+            [[ $# -ge 2 ]] || { echo "错误：--edition 需要值 community|business" >&2; exit 1; }
+            shift
+            EDITION="$1"
+            ;;
+        --edition=*) EDITION="${1#*=}" ;;
+        *)
+            echo "未知参数：$1（支持 --docker 与 --edition community|business）" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+case "$EDITION" in
+    community|business) ;;
+    *)
+        echo "错误：--edition 仅支持 community|business（当前: ${EDITION}）" >&2
+        exit 1
+        ;;
+esac
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -158,11 +191,26 @@ for FEATURE_ENV in IMBOY_FEATURE_E2EE IMBOY_FEATURE_CHANNEL IMBOY_FEATURE_CHANNE
     fi
 done
 
-# Garage S3（附件存储，不配置则文件上传失败）
-if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
-    warn "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY），文件上传将失败"
+# Garage S3（附件存储）
+# community：garage 是社区版 compose 的内置核心服务（默认启用，非 profile），
+#   凭据缺失会导致 compose 变量插值失败或附件上传必坏 —— 硬校验。
+#   install.sh 会自动生成全部凭据；此处拦截的是"绕过 install.sh 手工部署"
+#   或密钥被误删的场景。
+# business：维持 WARN（Garage / 外部 S3 为自选配置项，行为同旧版）。
+if [[ "$EDITION" == "community" ]]; then
+    if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
+        err "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY）——社区版 garage 为必需核心服务，缺失将导致附件上传失败（正常经 install.sh 自动生成）"
+    elif [[ -z "${GARAGE_RPC_SECRET:-}" ]]; then
+        err "GARAGE_RPC_SECRET 未设置——社区版 compose 内置 garage 的集群 RPC 密钥（正常经 install.sh 自动生成）"
+    else
+        ok "Garage S3 已配置（社区版内置核心服务）"
+    fi
 else
-    ok "Garage S3 已配置"
+    if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
+        warn "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY），文件上传将失败"
+    else
+        ok "Garage S3 已配置"
+    fi
 fi
 
 # SENTRY_DSN 是可选的，但警告
@@ -186,6 +234,14 @@ fi
 echo ""
 echo "▶ 2b. 检查支付配置 / Checking payment configuration"
 
+# 社区版：支付网关由 docker-compose.community.yml 硬编码关闭（false），.env 中的
+# 支付变量不进容器 —— 销售发布强校验（IMBOY_SALES_RELEASE / live 凭据）在社区
+# 版部署下既不适用也无法满足（无商户凭据），跳过以避免把社区安装堵死在死锁上。
+# 商务版：维持原有全部检查（行为不变）。
+if [[ "$EDITION" == "community" ]]; then
+    info "社区版：支付网关由 docker-compose.community.yml 固定关闭（IMBOY_PAYMENT_GATEWAY_ENABLED=false），跳过销售发布支付强校验"
+    info "  充值 / 网关回调 / 提现端点将返回「功能未启用」；站内钱包账务（余额/流水/红包/转账）不受影响"
+else
 PAYMENT_MODE="${IMBOY_PAYMENT_MODE:-sandbox}"
 GATEWAY_ENABLED="$(echo "${IMBOY_PAYMENT_GATEWAY_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 SALES_RELEASE_RAW="$(echo "${IMBOY_SALES_RELEASE:-true}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
@@ -237,6 +293,7 @@ else
         warn "IMBOY_PAYMENT_MODE=${PAYMENT_MODE}（沙箱模式，回调不验签）— 上线前须改为 live"
     fi
 fi
+fi  # end edition != community（商务版支付强校验）
 
 # License 检查
 LICENSE_FILE="${IMBOY_LICENSE_FILE:-}"
@@ -340,7 +397,7 @@ else
 fi
 
 # ── 5. Docker 检查（可选）────────────────────────────────────────────────────
-if [[ "${1:-}" == "--docker" ]]; then
+if [[ "$DOCKER_CHECK" -eq 1 ]]; then
     echo ""
     echo "▶ 5. 检查 Docker 环境 / Checking Docker environment"
 

@@ -1,0 +1,522 @@
+# IMBoy 社区版部署 —— 一键启动（随仓库分发 / Community edition, shipped in-repo）
+#
+# 使用：
+#   cd deploy
+#   cp .env.example .env      # 编辑 .env 填入密钥、域名、端口（或用 install.sh 自动生成）
+#   bash preflight.sh --docker
+#   docker network create imboy-network 2>/dev/null || true
+#   docker compose -f docker-compose.community.yml up -d
+#   bash nginx/init-letsencrypt.sh   # 首次部署一次性签发 TLS
+#
+# 与商务版的差异（一句话）：商务版 docker-compose.prod.yml 不随仓分发、经商务渠道交付，
+# 额外叠加 sales-policy overlay（严格 E2EE / 频道策略）并透传支付网关凭据与 License 变量；
+# 本社区版剔除全部支付/授权变量、支付网关固定关闭（IMBOY_PAYMENT_GATEWAY_ENABLED=false），
+# 并内置 Garage 对象存储为默认启用的核心服务。
+#
+# 监控栈（prometheus / alertmanager / loki / promtail / grafana）默认不启动，按需开启：
+#   docker compose -f docker-compose.community.yml --profile monitoring up -d
+#
+# ⚠️ 版本要求：garage 配置使用 compose configs.content 内联定义，需要
+#    Docker Compose v2.23.1+（Debian 13 + get.docker.com 安装的 Docker 均满足）。
+#
+# 依赖镜像（与 git tag / IMBOY_VERSION 强一致，禁止 latest）：
+#   - imboy/imboy-backend:${IMBOY_VERSION}   （release 流水线从 git tag 构建推送）
+#   - imboy/imboy-admin:${IMBOY_VERSION}     （同上）
+#   - imboy/pg18:3.6.1-2                     （已存在）
+#   - dxflrs/garage:v2.3.0                   （官方，与 scripts/garage-install.sh 同版本）
+#   - nginx:1.27-alpine / certbot/certbot:v5.7.0 / livekit/livekit-server:v1.9（官方）
+#
+# ─── 日志留存合规说明 / Log Retention Compliance Note ─────────────────────────
+# 等保2.0（GB/T 22239-2019）第三级要求：安全审计日志留存 ≥ 6 个月（约 180 天）。
+# MLPS 2.0 (GB/T 22239-2019) Level-3 requirement: security audit logs retained ≥ 6 months (≈180 days).
+#
+# 实现方案（与 prod.yml 相同策略）：
+#   核心服务（backend / nginx / postgres）：max-size=100m × max-file=30 ≈ 3GB，
+#   按平均日志量 ~500MB/天估算可覆盖 180 天（低峰期可超 360 天）。
+#   辅助服务（admin / certbot / garage / 监控栈）：max-size=50m × max-file=30。
+#
+# 注意：上述估算基于容器 stdout/stderr；业务详细日志另挂载 DATA_DIR/backend_log 目录持久化。
+# ──────────────────────────────────────────────────────────────────────────────
+
+name: imboy
+
+services:
+
+  # ========== PostgreSQL 18 + 扩展 ==========
+  imboy_pg18:
+    image: ${PG_IMAGE:-imboy/pg18:3.6.1-2}
+    container_name: imboy_pg18
+    hostname: pg.docker.imboy.pub
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      LANG: en_US.UTF-8
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ${DATA_DIR:-./data}/pg18:/var/lib/postgresql
+    expose:
+      - "5432"
+    ports:
+      # 绑定地址安全默认 127.0.0.1：把 PostgreSQL 直接发布到公网是高危配置。
+      # 需要从宿主机外直连的场景显式设 PG_BIND_ADDR=0.0.0.0（并先收紧防火墙）。
+      - "${PG_BIND_ADDR:-127.0.0.1}:${PG_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: ${PG_MEM_LIMIT:-4096M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "30"
+
+  # ========== Garage S3 对象存储（社区版默认核心服务，非 profile）==========
+  # 附件存储的后端：imboy_backend 经 compose 网络以 http://garage:3900 访问 S3 API。
+  #
+  # 幂等 init job：无需独立 init 容器，直接使用 Garage v2.3.0 官方内置的
+  # `server --single-node --default-bucket` 启动初始化（src/garage/server.rs 的
+  # initial_config），对社区版单节点部署的三条幂等保证（已对照源码验证）：
+  #   1) key 已存在不重建/不覆盖：同 access key 且 secret 不一致时启动直接报错，
+  #      一致则原样复用；凭据由 .env 的 IMBOY_GARAGE_ACCESS_KEY/SECRET_KEY 提供
+  #      （.env 是唯一真源，不存在"从集群导出再回填"的环节）；
+  #   2) bucket 幂等创建：已存在（按全局别名解析）则复用，不删除不重建；
+  #   3) 无破坏性重复操作：layout version 0 → 自动创建单节点布局，version 1 →
+  #      跳过；read/write/owner 权限重复设置是幂等写。
+  # 升级注意：若曾手工扩展过集群（layout version > 1），需移除 --single-node
+  # 参数并以完整 garage.toml 自行管理布局（超出社区版支持范围）。
+  garage:
+    image: dxflrs/garage:v2.3.0
+    container_name: imboy_garage
+    hostname: garage.docker.imboy.pub
+    restart: unless-stopped
+    command: ["/garage", "server", "--single-node", "--default-bucket"]
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 与后端共用 .env 同一组凭据（单一真源）。access key 生态惯例为 GK 前缀，
+      # 生成示例：echo "GK$(openssl rand -hex 16)"；secret：openssl rand -hex 32
+      GARAGE_DEFAULT_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:?IMBOY_GARAGE_ACCESS_KEY is required - see deploy/.env.example}
+      GARAGE_DEFAULT_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:?IMBOY_GARAGE_SECRET_KEY is required - see deploy/.env.example}
+      GARAGE_DEFAULT_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
+    configs:
+      - source: garage_config
+        target: /etc/garage.toml
+    volumes:
+      # meta + data 都持久化在 DATA_DIR/garage 下，重启/重建容器数据不丢
+      - ${DATA_DIR:-./data}/garage:/var/lib/garage
+    expose:
+      # S3 API 供 imboy_backend 经 compose 网络访问；不发布到宿主机公网
+      - "3900"
+      # Admin API 供容器网络内诊断（未配置 admin token 时默认拒绝管理请求）
+      - "3903"
+    healthcheck:
+      # 镜像 FROM scratch（无 shell），直接执行二进制。
+      # garage CLI 会读本容器挂载的 /etc/garage.toml + metadata 目录连本节点 RPC。
+      test: ["CMD", "/garage", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: ${GARAGE_MEM_LIMIT:-1024M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== imboy 后端（Erlang/OTP + Cowboy）==========
+  imboy_backend:
+    image: ${BACKEND_IMAGE:-imboy/imboy-backend:${IMBOY_VERSION:-1.0.0-rc.1}}
+    container_name: imboy_backend
+    hostname: backend.docker.imboy.pub
+    restart: unless-stopped
+    depends_on:
+      imboy_pg18:
+        condition: service_healthy
+      garage:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      IMBOYENV: pro
+      IMBOY_HTTP_PORT: "9800"
+      IMBOY_PG_HOST: imboy_pg18
+      IMBOY_PG_PORT: "5432"
+      IMBOY_PG_USER: ${POSTGRES_USER}
+      IMBOY_PG_PASSWORD: ${POSTGRES_PASSWORD}
+      IMBOY_PG_DB: ${POSTGRES_DB}
+      IMBOY_BASE_URL: https://${API_DOMAIN}
+      IMBOY_WS_URL: wss://${API_DOMAIN}/api/ws
+      IMBOY_JWT_KEY: ${JWT_KEY}
+      IMBOY_POSTGRE_AES_KEY: ${POSTGRE_AES_KEY}
+      IMBOY_ADM_COOKIE_SECRET: ${ADM_COOKIE_SECRET}
+      IMBOY_SOLIDIFIED_KEY: ${IMBOY_SOLIDIFIED_KEY}
+      IMBOY_SOLIDIFIED_KEY_IV: ${IMBOY_SOLIDIFIED_KEY_IV}
+      # 生产强制项：imboy_app 的 ensure_required_secret(password_salt) 为空即
+      # erlang:error({missing_required_config, password_salt})，节点起不来。
+      IMBOY_PASSWORD_SALT: ${IMBOY_PASSWORD_SALT}
+      IMBOY_API_AUTH_SWITCH: ${IMBOY_API_AUTH_SWITCH:-on}
+      IMBOY_LOGIN_RSA_PUB_KEY_FILE: ${IMBOY_LOGIN_RSA_PUB_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_pub.pem}
+      IMBOY_LOGIN_RSA_PRIV_KEY_FILE: ${IMBOY_LOGIN_RSA_PRIV_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_priv.pem}
+      # ── Garage S3 附件存储（默认指向本 compose 内置的 garage 服务）──────────
+      # endpoint：服务端自身 S3 调用（confirm HEAD 核实/删除/服务端上传），
+      #   仅需 compose 网络内可达，勿填公网地址（绕 TLS 出网且可能不可解析）。
+      IMBOY_GARAGE_ENDPOINT: ${IMBOY_GARAGE_ENDPOINT:-http://garage:3900}
+      # public_endpoint：presign 直传/下载 URL 的公网基址（客户端可达）。
+      #   默认经 nginx 的 /s3/ 反代（见 nginx/templates/imboy.conf.template），
+      #   客户端 PUT/GET https://<API_DOMAIN>/s3/<bucket>/<key>，由 nginx 剥前缀
+      #   转发到 garage:3900，无需把 3900 发布公网。
+      IMBOY_GARAGE_PUBLIC_ENDPOINT: ${IMBOY_GARAGE_PUBLIC_ENDPOINT:-https://${API_DOMAIN}/s3}
+      IMBOY_GARAGE_BUCKET: ${IMBOY_GARAGE_BUCKET:-imboy}
+      IMBOY_GARAGE_ACCESS_KEY: ${IMBOY_GARAGE_ACCESS_KEY:?IMBOY_GARAGE_ACCESS_KEY is required - see deploy/.env.example}
+      IMBOY_GARAGE_SECRET_KEY: ${IMBOY_GARAGE_SECRET_KEY:?IMBOY_GARAGE_SECRET_KEY is required - see deploy/.env.example}
+      # ── LiveKit SFU（群通话/屏幕共享）/ LiveKit SFU ─────────────────────────
+      IMBOY_LIVEKIT_WS_URL: ${IMBOY_LIVEKIT_WS_URL:-wss://${API_DOMAIN}/livekit}
+      IMBOY_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      # 社区版固定标记（商务版才需要 professional/enterprise + License）
+      IMBOY_EDITION: community
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      ERL_MAX_PORTS: "1048576"
+      # ── 支付网关 / Payment gateway ───────────────────────────────────────────
+      # 社区版硬编码关闭（不是剔除该变量）：镜像内 sys.pro.config 的默认值是
+      # payment_gateway_enabled=true，若不显式覆盖，无商户凭据的社区部署会在
+      # ensure_payment_gateway_config 处 fail-fast 起不来。false 时网关端点
+      # （充值/回调/提现）一律返回「功能未启用」，站内钱包账务不受影响。
+      # 支付网关凭据（微信/支付宝/Stripe）与支付模式变量已全部剔除。
+      IMBOY_PAYMENT_GATEWAY_ENABLED: "false"
+      # ── 插件生命周期 / Plugin lifecycle (A-28) ───────────────────────────────
+      # 动态插件写操作总开关（默认 false）。关闭时 /api/adm/plugin/* 的 7 个写端点
+      # 返回「功能未启用」；内置功能开关（channel/moment/...）是纯 manifest，不受影响。
+      IMBOY_PLUGIN_LIFECYCLE_ENABLED: ${IMBOY_PLUGIN_LIFECYCLE_ENABLED:-false}
+    volumes:
+      - ${DATA_DIR:-./data}/backend_log:/opt/imboy/log
+      - ${DATA_DIR:-./data}/backend_priv:/opt/imboy/priv_runtime
+    expose:
+      - "9800"
+    ports:
+      # 绑定地址安全默认 127.0.0.1：直接发布后端到公网等于绕过 nginx 的全部防护
+      # （TLS 终结、passport 登录限流 10r/m、API 限流 60r/m、/metrics 403 拦截）。
+      - "${BACKEND_BIND_ADDR:-127.0.0.1}:${BACKEND_PORT:-9800}:9800"
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEM_LIMIT:-8192M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "30"
+
+  # ========== imboy-admin-frontend（React + Vite，静态）==========
+  imboy_admin:
+    image: ${ADMIN_IMAGE:-imboy/imboy-admin:${IMBOY_VERSION:-1.0.0-rc.1}}
+    container_name: imboy_admin
+    hostname: admin.docker.imboy.pub
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      VITE_API_BASE: https://${API_DOMAIN}
+    expose:
+      - "80"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== nginx 反向代理 + certbot 自动 TLS ==========
+  # 首次部署后执行一次 `bash nginx/init-letsencrypt.sh` 签发证书；之后自动续期。
+  imboy_nginx:
+    image: nginx:1.27-alpine
+    container_name: imboy_nginx
+    restart: unless-stopped
+    depends_on:
+      - imboy_backend
+      - imboy_admin
+      - imboy_livekit
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      API_DOMAIN: ${API_DOMAIN}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      # /s3/ 反代 upstream（附件公网直传/下载）：社区版 = compose 网络内 garage 服务
+      S3_UPSTREAM: ${S3_UPSTREAM:-garage:3900}
+      # 仅替换这三个变量，保留 nginx 内置 $$host/$$remote_addr 等
+      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM)$$"
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ${DATA_DIR:-./data}/certbot/conf:/etc/letsencrypt:ro
+      - ${DATA_DIR:-./data}/certbot/www:/var/www/certbot:ro
+      - ${DATA_DIR:-./data}/nginx_log:/var/log/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    # 官方 entrypoint 先 envsubst 渲染模板，再 exec 本 command；
+    # 每 6h reload 以加载 certbot 续期后的新证书。
+    command: ["/bin/sh", "-c", "while :; do sleep 6h & wait $${!}; nginx -s reload; done & exec nginx -g 'daemon off;'"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "30"
+
+  # ========== certbot 自动签发 / 续期 TLS 证书 ==========
+  # 社区版 pin 精确版本（v5.7.0），禁止 latest —— 与 prod.yml 的差异之一。
+  imboy_certbot:
+    image: certbot/certbot:v5.7.0
+    container_name: imboy_certbot
+    restart: unless-stopped
+    volumes:
+      - ${DATA_DIR:-./data}/certbot/conf:/etc/letsencrypt
+      - ${DATA_DIR:-./data}/certbot/www:/var/www/certbot
+    # 每 12h 尝试续期（首次签发用 nginx/init-letsencrypt.sh）
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== LiveKit SFU（群通话/屏幕共享媒体面）==========
+  # WS 信令 7880 经 nginx /livekit/ 反代；媒体 UDP 50000-50200 与
+  # TCP 7881（ICE/TCP 兜底）直连宿主，需在防火墙/云安全组放行。
+  # 内置 TURN 未启用（需独立域名+TLS 证书），受限 NAT 先走 TCP 7881 兜底。
+  imboy_livekit:
+    image: livekit/livekit-server:v1.9
+    container_name: imboy_livekit
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # ⚠️ 无 redis 段 = standalone 单节点模式（项目级约束：全栈不引入 Redis）。
+      # redis 只在多节点分布式路由下必需。要横向扩展改用「应用层按房间分片」：
+      # imboy 在 /api/v1/rtc/room/join 里 consistent_hash(room_name) 决定发哪个
+      # 节点的 ws_url，同房间参与者必落同一节点 → 节点间无需通信。
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50200
+          use_external_ip: true
+        keys:
+          ${LIVEKIT_API_KEY:?LIVEKIT_API_KEY is required - see deploy/.env.example}: ${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET is required (>=32 chars) - see deploy/.env.example}
+        logging:
+          level: info
+    expose:
+      - "7880"
+    ports:
+      # 兼容宿主机 Nginx 反代（非 compose Nginx 部署）：仅绑定 loopback，
+      # 不把 LiveKit 信令端口直接暴露到公网。
+      - "127.0.0.1:7880:7880"
+      - "7881:7881"
+      - "50000-50200:50000-50200/udp"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # 以下为监控栈（默认不启动）：加 --profile monitoring 启用，例如
+  #   docker compose -f docker-compose.community.yml --profile monitoring up -d
+  # 更完整的 exporter 组合（pushgateway / node_exporter / postgres_exporter）
+  # 叠加 docker-compose.observability.yml 使用（同受 monitoring 语义约束）。
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ========== Prometheus 指标采集 / Metrics scraping ==========
+  imboy_prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: imboy_prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=180d'
+      - '--web.enable-lifecycle'
+    expose:
+      - "9090"
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== Alertmanager 告警通知 / Alert notification ==========
+  # 配置文件：./alertmanager/alertmanager.yml（默认 receiver=null，需配置邮件/钉钉后生效）
+  imboy_alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: imboy_alertmanager
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      - imboy_prometheus
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.listen-address=:9093'
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    expose:
+      - "9093"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+
+  # ========== Loki 日志聚合 / Log aggregation ==========
+  # 收集后端 + nginx 的容器日志，供 Grafana 查询
+  # 配置文件：./loki/loki.yml；数据保留：30 天（见 loki.yml limits_config.retention_period）
+  imboy_loki:
+    image: grafana/loki:3.3.2
+    container_name: imboy_loki
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    expose:
+      - "3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== Promtail 日志收集器 / Log shipper ==========
+  # 从 Docker json-file 容器日志中拉取日志，推送到 Loki
+  # 配置文件：./promtail/promtail.yml
+  imboy_promtail:
+    image: grafana/promtail:3.3.2
+    container_name: imboy_promtail
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      imboy_loki:
+        condition: service_healthy
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/config.yml:ro
+      # Docker 容器日志目录（只读）
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      # Docker socket（用于自动发现容器标签，可选）
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "9080"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+  # ========== Grafana 可视化仪表盘 / Visualization dashboard ==========
+  imboy_grafana:
+    image: grafana/grafana:11.3.0
+    container_name: imboy_grafana
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    depends_on:
+      - imboy_prometheus
+      - imboy_loki
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    expose:
+      - "3000"
+    ports:
+      # 绑定地址安全默认 127.0.0.1。Grafana 无 TLS，公网暴露等于明文传管理口令。
+      # 远程访问请走 nginx 反代或 SSH 隧道。
+      - "${GRAFANA_BIND_ADDR:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "30"
+
+configs:
+  # Garage 最小化配置（单节点）。rpc_secret 从 .env 注入（compose 会对该内容做
+  # 变量插值，要求 Compose v2.23.1+）。凭据不走本文件：见 garage 服务的
+  # GARAGE_DEFAULT_* 环境变量与 --default-bucket 启动参数。
+  garage_config:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "lmdb"
+      replication_factor = 1
+      rpc_bind_addr = "[::]:3901"
+      rpc_secret = "${GARAGE_RPC_SECRET}"
+      [s3_api]
+      s3_region = "garage"
+      api_bind_addr = "[::]:3900"
+      [admin]
+      api_bind_addr = "[::]:3903"
+
+networks:
+  default:
+    name: imboy-network
+    external: true
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+  alertmanager_data:
+    driver: local
