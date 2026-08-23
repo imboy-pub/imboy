@@ -99,22 +99,75 @@ docs/          架构、协议与运维文档
 
 ## 生产部署
 
+示例环境以 **Debian 13 (Trixie)** 为基准（其他 x86_64 Linux 同样适用）；需要
+Docker 24+ 与 Compose v2 插件，未安装时 `install.sh` 会确认后经 get.docker.com
+引导安装。
+
+### 三步安装（社区版）
+
 ```bash
-cd deploy
-bash install.sh
+# 1) 克隆仓库并进入部署目录
+git clone <本仓库地址> && cd imboy/deploy
+
+# 2) 首跑生成配置，然后按提示编辑 .env 填 3 个必填变量
+bash install.sh --edition community
+#    编辑 .env：API_DOMAIN / ADMIN_DOMAIN / CERTBOT_EMAIL
+#    （后端域名 + 管理后台域名 + 证书通知邮箱，其余密钥全部自动生成）
+
+# 3) 再跑一次同一条命令，完成安装
+bash install.sh --edition community
 ```
 
-脚本会自动生成 `.env`、10 个随机密钥和 RSA 登录密钥对，然后停下来让你填 3 项机器
-无从知晓的信息（两个域名 + 证书通知邮箱）。填好后再跑一次同一条命令，它会完成
-前置检查、拉起服务、签发 TLS 证书并自检。
+第一次运行会生成 `.env`、全部随机密钥（数据库口令、JWT、Garage 对象存储凭据等）
+和 RSA 登录密钥对，然后停下来等人填上面 3 项机器无从知晓的信息。第二次运行依次
+完成：前置检查 → 拉起服务 → 签发 TLS 证书 → 等待健康 → 部署后自检，最后打印
+Release Identity 三元组与访问地址。
 
-> ⚠️ **生产编排文件 `deploy/docker-compose.prod.yml` 不随开源仓分发**，需通过商务
-> 交付渠道获取（leeyisoft@qq.com）后放入 `deploy/` 目录。`install.sh` 会在缺失时
-> 明确提示。仅作评估可先用下方的最小演示环境，无需该文件。
+首次访问管理后台会自动进入 `/setup` 向导创建超级管理员；也可以直接用参数创建，
+实现无浏览器纯脚本部署：
 
-生产环境还需要域名、TLS 和强密钥，完整步骤见 [部署指南](./deploy/README.md)。
+```bash
+bash install.sh --edition community \
+  --admin-phone 13800138000 --admin-password 'S3curePass2026' --yes
+```
 
-## 快速演示
+全部参数说明见 `bash install.sh --help`。
+
+### 核验安装的镜像（Release Identity）
+
+安装完成后脚本会打印三元组：
+
+```text
+IMBOY_VERSION=...
+IMBOY_GIT_SHA=...
+IMBOY_IMAGE_DIGEST=sha256:...
+```
+
+正式版本发布后，GitHub Release 说明会附相同的三元组——比对两者即可确认装的是
+被发布门禁验证过的那个镜像（详见 [RELEASES.md](./RELEASES.md)）。
+
+### 社区版与商务版
+
+- **社区版**（默认）：编排文件 `deploy/docker-compose.community.yml` 随仓库分发，
+  内置 Garage 对象存储（附件上传开箱可用），支付网关固定关闭。监控栈
+  （Prometheus / Alertmanager / Loki / Promtail / Grafana）默认不启动，需要时：
+
+  ```bash
+  docker compose -f docker-compose.community.yml --profile monitoring up -d
+  ```
+
+- **商务版**：`deploy/docker-compose.prod.yml` + sales-policy overlay 不随开源仓
+  分发，需通过商务交付渠道获取（leeyisoft@qq.com），安装命令为
+  `bash install.sh --edition business`（缺文件时脚本会明确提示索取方式）。
+
+### 升级
+
+一句话：改 `deploy/.env` 的 `IMBOY_VERSION` 后 `pull` + `up -d`（迁移默认自动执行）。
+版本历史、每版升级说明与回滚指引见 [RELEASES.md](./RELEASES.md)。
+
+完整部署手册见 [部署指南](./deploy/README.md)。
+
+## 快速演示（一条命令评估）
 
 ```bash
 cd deploy
@@ -122,7 +175,7 @@ docker compose -f docker-compose.demo.yml up -d
 # 30 秒后访问 http://127.0.0.1:9800/api/v1/init
 ```
 
-最小两服务环境（PostgreSQL + 后端），适合产品评估和现场演示。
+最小两服务环境（PostgreSQL + 后端），零配置，适合产品评估和现场演示。
 详细演示流程见 [5 分钟 Demo 脚本](./docs/business/demo-runbook.md)。
 
 ## 继续阅读

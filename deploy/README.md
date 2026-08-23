@@ -7,14 +7,24 @@ One-command deployment of IMBoy to a Linux server.
 
 ## 交付清单 / Deliverables
 
-> ⚠️ **`docker-compose.prod.yml` 不随开源仓分发**，需通过商务交付渠道获取
-> （leeyisoft@qq.com）后放入本目录。`install.sh` 会在缺失时明确提示并给出索取方式。
-> 仅作评估可用 `docker-compose.demo.yml`（最小两服务，无需该文件）。
+> 双轨分发 / Dual-track distribution：
+> - **社区版 `docker-compose.community.yml` 随仓库分发**（garage 默认启用、监控栈
+>   走 `--profile monitoring`），`bash install.sh --edition community` 一键部署。
+> - **商务版 `docker-compose.prod.yml` 不随开源仓分发**，需通过商务交付渠道获取
+>   （leeyisoft@qq.com）后放入本目录。`install.sh --edition business` 会在缺失时
+>   明确提示并给出索取方式。
+> - 仅作评估可用 `docker-compose.demo.yml`（最小两服务，零配置，无需任何密钥）。
 
 ```
 deploy/
 ├── install.sh                   # 一键部署入口（推荐）/ One-command installer (recommended)
-├── docker-compose.prod.yml      # ⚠️ 走单独交付渠道，不在开源仓内 / NOT in the open-source repo
+│                                # --edition community|business（默认 community）
+├── preflight.sh                 # 前置检查（--edition 按版本切换检查口径）/ Pre-flight check
+├── docker-compose.community.yml # 社区版编排，随仓分发 / Community stack, shipped in-repo
+│                                # 7 核心服务：pg18 + garage + backend + admin + nginx
+│                                # + certbot + livekit；监控 5 服务走 --profile monitoring
+├── docker-compose.demo.yml      # 最小两服务演示栈（零配置评估）/ Minimal 2-service demo stack
+├── docker-compose.prod.yml      # ⚠️ 商务版走单独交付渠道，不在开源仓内 / Business edition, NOT in the open-source repo
 │                                # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
 ├── docker-compose-sales-policy.yml # 销售版策略覆盖（无密钥）/ sales policy overlay
 ├── .env.example                 # 环境变量模板 / Environment variables template
@@ -36,9 +46,11 @@ deploy/
 
 ## 前置条件
 
-- Linux x86_64（推荐 Ubuntu 22.04 / Debian 12 / Alma 9）
+- Linux x86_64，文档基准环境 **Debian 13 (Trixie)**（其他发行版同样适用）
 - 内存 ≥ 8 GB，磁盘 ≥ 20 GB（生产建议 ≥ 32 GB 内存 / ≥ 100 GB 盘）
-- Docker 24+ 与 `docker compose` 插件
+- Docker 24+ 与 `docker compose` v2 插件（社区版 compose 使用 configs 内联定义，
+  需要 **Compose v2.23.1+**；Debian 13 经 get.docker.com 安装的 Docker 均满足。
+  未安装 Docker 时 `install.sh` 会确认后引导安装）
 - 已解析到本机的两个域名：`api.example.com`、`admin.example.com`
 - 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
 
@@ -46,18 +58,32 @@ deploy/
 
 ```bash
 cd /path/to/imboy/deploy
-bash install.sh
+bash install.sh --edition community
 ```
 
-第一次运行会生成 `.env`、10 个随机密钥与 RSA 登录密钥对，然后停下来，
-只需人工填 3 项（`API_DOMAIN` / `ADMIN_DOMAIN` / `CERTBOT_EMAIL`）。
-填好后再跑一次同一条命令，它会依次完成：前置检查 → 起服务 → 签发 TLS →
-等待健康 → 部署后自检 → 打印访问地址。证书签发失败会直接中止并列出常见原因，
+第一次运行会生成 `.env`、全部随机密钥（数据库口令、JWT、AES、LiveKit、Garage
+对象存储凭据等）与 RSA 登录密钥对，然后停下来，只需人工填 3 项
+（`API_DOMAIN` / `ADMIN_DOMAIN` / `CERTBOT_EMAIL`）。填好后再跑一次同一条命令，
+它会依次完成：前置检查 → 起服务 → 签发 TLS → 等待健康 → 部署后自检 →
+打印 Release Identity 三元组（`IMBOY_VERSION` / `IMBOY_GIT_SHA` /
+`IMBOY_IMAGE_DIGEST`）与访问地址。证书签发失败会直接中止并列出常见原因，
 **不会在 TLS 没起来的情况下谎报"部署完成"**。
+
+可选参数（`bash install.sh --help` 查看全部）：
+
+- `--admin-phone` / `--admin-password`：装完后在 backend 容器内经
+  `imboy_ctl adm create` 创建超管，无需浏览器走 `/setup` 向导（无浏览器纯脚本部署）
+- `--yes, -y`：跳过所有确认（含 Docker 缺失时的安装确认，适合自动化）
+- `--edition business`：改用商务版 `docker-compose.prod.yml` + sales-policy
+  overlay（缺文件时提示商务索取方式）
 
 ---
 
 ## 手工五步部署（仅在需要逐步排查时使用）
+
+> 本节是**商务版**（`docker-compose.prod.yml` + sales-policy overlay）的手工路径。
+> 社区版没有手工多步的必要：`install.sh --edition community` 全自动，或参照
+> `docker-compose.community.yml` 文件头注释的手工命令。
 
 > ⚠️ **顺序不可颠倒**：`preflight.sh` 在 `.env` 不存在时直接 `exit 1`，
 > 所以必须**先备好 `.env` 再跑前置检查**。此前本文档把前置检查写在第 1 步，
@@ -73,7 +99,8 @@ $EDITOR .env
 
 **必须修改的字段 / Required fields to change:**
 
-> 用 `install.sh` 的话，下表中除三个人工项外全部自动生成，无需手填。
+> 用 `install.sh` 的话，下表中除三个人工项外全部自动生成（含 Garage 凭据
+> `IMBOY_GARAGE_ACCESS_KEY` / `IMBOY_GARAGE_SECRET_KEY` / `GARAGE_RPC_SECRET`），无需手填。
 
 | 变量 / Variable | 说明 / Description |
 |------|------|
@@ -179,6 +206,24 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml log
 
 ### 升级
 
+版本历史、每版升级说明与回滚指引见仓库根 [RELEASES.md](../RELEASES.md)。
+升级前先备份（`scripts/backup_pg.sh` 等，见 backup-restore 手册）。
+
+**社区版**（`docker-compose.community.yml`）——迁移默认自动执行（`auto_migrate=true`，
+新镜像启动时自动跑数据库迁移）：
+
+```bash
+cd deploy
+# 1) 改 .env 的 IMBOY_VERSION 为目标版本（单一版本来源）
+# 2) 拉新镜像并滚动更新（PG 不动，只重启 backend/admin）
+docker compose -f docker-compose.community.yml pull
+docker compose -f docker-compose.community.yml up -d imboy_backend imboy_admin
+# 3) 查日志确认迁移成功（看到 started on port 9800 即就绪）
+docker compose -f docker-compose.community.yml logs -f imboy_backend
+```
+
+**商务版**（prod.yml + sales-policy overlay）：
+
 ```bash
 cd deploy
 # 1) 拉新镜像
@@ -188,6 +233,9 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml up 
 # 3) 查日志确认迁移成功
 docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml logs -f imboy_backend
 ```
+
+零停机蓝绿升级用 `scripts/deploy.sh`（HTTP 持续可用；迁移时序与普通重启不同，
+详见 [scripts/README.md](../scripts/README.md)）。
 
 ### 备份
 
@@ -231,8 +279,13 @@ deploy/data/
 
 ## 可观测性 / Observability
 
-`docker compose up -d` 完成后，prometheus 和 grafana 随核心服务同时启动。
-Prometheus and Grafana start together with the core services after `docker compose up -d`.
+启动方式按版本不同 / Startup differs by edition：
+
+- **商务版**（prod.yml）：`docker compose up -d` 完成后，prometheus 和 grafana
+  随核心服务同时启动。Prometheus and Grafana start together with the core services.
+- **社区版**（community.yml）：监控栈（prometheus / alertmanager / loki / promtail
+  / grafana）默认**不启动**，需要时加 `--profile monitoring` 启用：
+  `docker compose -f docker-compose.community.yml --profile monitoring up -d`。
 
 ### Grafana 访问 / Grafana Access
 
@@ -299,6 +352,6 @@ Prometheus is accessible at `http://<server-ip>:9090` (recommended: restrict to 
 
 - ✅ G3 `scripts/sanity_check.sh` — 部署后 8 项自动验证 / Post-deploy 8-item sanity check _(done)_
 - ✅ G5 `prometheus/rules/imboy-alerts.yml` — SLO 告警规则 / SLO alerting rules _(done)_
-- ⏳ G1 `.github/workflows/release.yml` — 镜像构建发布自动化（依赖 commercialization-readiness C1）/ Image build-push automation _(pending — backend Dockerfile 已就绪，见 docs/release/RELEASE.md)_
+- ✅ G1 `.github/workflows/release.yml` — 镜像构建发布自动化 / Image build-push automation _(done — Phase 1：tag `v*` → 构建 candidate 镜像推 GHCR `<version>-rc` digest 并输出 Release Identity 三元组；Golden Install / Golden Upgrade 门禁与正式 semver tag / GitHub Release 属 Phase 2（P2-R1）接入)_
 - ⏳ G4 `.github/dependabot.yml` + Trivy SBOM 扫描 / Dependabot + Trivy SBOM scan _(pending)_
 - ⏳ P0-8 Sentry DSN 生产注入文档化 / Sentry DSN production injection docs _(pending)_
