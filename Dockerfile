@@ -8,23 +8,42 @@
 #   docker run -p 9800:9800 -e IMBOYENV=pro -e IMBOY_PG_HOST=... imboy/imboy-backend:<ver>
 
 # ─────────────────────────────────────────────────────────────
-# Stage 1: Builder（完整 erlang:28，含 wx 供 relx 组装 observer）
+# Stage 1: Builder（完整 erlang:29，含 wx 供 relx 组装 observer）
 # 不设 IMBOYENV：Makefile 用 relx.config + 完整 config/sys.config，
 # 并在 make 时自动生成 config/sys.runtime.config（Makefile:22）
+#
+# 基础镜像必须 OTP 29（与生产打包环境 scripts/deploy.sh 一致，本机 29.0.2 实测
+# make rel 通过）：relx 4.10 的 app 兜底发现走 code:lib_dir/1，OTP 28 对本项目
+# 扁平 ebin/ 布局返回 bad_name（app_not_found, imboy, undefined），OTP 29 可
+# 从 -pa 的 code path 正确解析。AGENTS.md 基线为 OTP 28+，29 满足。
 # ─────────────────────────────────────────────────────────────
-FROM erlang:28 AS builder
+FROM erlang:29 AS builder
 
-WORKDIR /build
+# WORKDIR 必须叫 /imboy（== app 名）：relx 4.10 发现主 app 走 code:lib_dir/1，
+# 其实现按 code path 目录（-pa ebin/）的父目录名匹配 app 名。本机仓目录名
+# 恰为 imboy 故 make rel 一直可跑；容器内目录名若为 /build 则 app_not_found,
+# imboy, undefined（OTP 28/29 同此行为，实测 5 轮 docker build 定位）。
+WORKDIR /imboy
 
-# 全量复制源码（.dockerignore 已排除 _build/deps/_rel/.git 等，强制干净构建）
+# 全量复制源码（.dockerignore 已排除 _build/deps/_rel/.git/ebin 等，强制干净构建）
 COPY . .
 
-# 关闭 dev_mode 出自包含 release：
-#   - dev_mode=true 会用符号链接指向源码树，拷到 runtime 阶段即断链
-#   - 关闭后 relx 默认 include_erts=true，bundle ERTS，runtime 无需装 Erlang
+# 补齐默认 sys 配置源：Makefile 默认分支（不设 IMBOYENV）要求 config/sys.config
+# 存在（cp 为 sys.runtime.config 供 relx 组装）。sys.config 本体在 alpha.42
+# （f5420d70）被移除出仓，只剩 example 模板——example 即"默认值 + IMBOY_* env
+# 覆盖"设计（见其头部注释），容器构建用它作为默认源语义正确。
+RUN cp config/sys.config.example config/sys.config
+
+# 出自包含 release（与 scripts/deploy.sh 生产打包路径一致的 RELX_* 变量）：
+#   RELX_REL_VSN=$(cat VERSION)：版本单一真源=VERSION 文件，覆盖 relx.config 的
+#     硬编码版本——两者曾漂移（alpha.45 vs rc.1）导致 relx 按 release 声明的
+#     vsn 找 ebin/imboy.app 找不到（app_not_found, imboy, undefined）
+#   RELX_DEV_MODE=false：不产生指向源码树的符号链接（拷到 runtime 阶段不断链）
+#   RELX_INCLUDE_ERTS=true：bundle ERTS，runtime 无需装 Erlang
 # make rel 会自动拉依赖 + 编译 + relx 组装；输出 _rel/imboy
-RUN sed -i 's/{dev_mode, true}/{dev_mode, false}/' relx.config \
-    && make rel
+RUN make rel RELX_REL_VSN="$(cat VERSION)" \
+    RELX_DEV_MODE=false \
+    RELX_INCLUDE_ERTS=true
 
 # 暂存 ERTS 运行所需系统库到固定目录（arch 自适应：amd64=x86_64-linux-gnu / arm64=aarch64-linux-gnu）
 # runtime 阶段单次 COPY 即可，避免写死架构路径
@@ -58,7 +77,7 @@ ENV LANG=C.UTF-8 \
     IMBOYENV=pro
 
 # 复制自包含 release
-COPY --from=builder /build/_rel/imboy /opt/imboy
+COPY --from=builder /imboy/_rel/imboy /opt/imboy
 
 # imboy_ctl 管理 CLI（escript）。install.sh 的 --admin-phone/--admin-password
 # 在 backend 容器内调用它创建超管（部署机只有 Docker 没有 Erlang，escript 由

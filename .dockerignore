@@ -4,6 +4,18 @@
 _build/
 deps/
 _rel/
+# 本机编译产物：.beam 的 debug_info 记录宿主编译路径（含 /Users/... 绝对路径），
+# 进容器会污染 erlang.mk 的依赖解析（No rule to make target '<宿主路径>/deps/.../xx.hrl'）
+ebin/
+# erlang.mk 依赖文件（imboy.d 等）：本机生成时写入宿主绝对路径，进容器后直接
+# 污染 make 依赖图（实测根因：docker build 时 COPY . . 把仓根 imboy.d 带入，
+# make app 按 .d 里的 /Users/... 路径找 hrl 必然 No rule）
+*.d
+# 散落本机产物（src/test/仓根均出现过）：同 .beam 理由全局排除
+*.beam
+recompile.log
+# 本机 Erlang LS 配置（含宿主路径），容器构建不消费
+erlang_ls.config
 .git/
 .github/
 log/
