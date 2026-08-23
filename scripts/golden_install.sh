@@ -102,6 +102,10 @@ host 模式必填（ci 模式自动生成假域名，可覆盖）:
   --admin-password <明文>  8-64 位且同时包含字母和数字
 
 可选:
+  --admin-image-ref <ref> admin 镜像 digest 引用（形如 ghcr.io/<owner>/imboy-admin@sha256:…）。
+                          提供则钉入 ADMIN_IMAGE（CI 由 build-admin-candidate 供给）；
+                          缺省时 compose 回落默认值 imboy/imboy-admin:<IMBOY_VERSION>
+                          ——该镜像须已发布到 registry，否则起栈拉取失败
   --budget <seconds>      计时预算，默认 900（计划 §4.2 钉死值）
   --repo <url>            clone 用的 git 仓库，默认 https://github.com/imboy-pub/imboy.git
   --workdir <dir>         工作目录（clone/日志所在），默认 ./.golden-install
@@ -115,6 +119,7 @@ EOF
 
 # ── 参数解析（风格与 deploy/install.sh 一致：--opt value 与 --opt=value 皆可）──
 IMAGE_REF=""
+ADMIN_IMAGE_REF=""
 GIT_REF=""
 PROFILE="host"
 API_DOMAIN=""
@@ -131,6 +136,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --image-ref)        [ $# -ge 2 ] || die "--image-ref 需要值（digest 引用）"; IMAGE_REF="$2"; shift 2 ;;
     --image-ref=*)      IMAGE_REF="${1#*=}"; shift ;;
+    --admin-image-ref)  [ $# -ge 2 ] || die "--admin-image-ref 需要值（digest 引用）"; ADMIN_IMAGE_REF="$2"; shift 2 ;;
+    --admin-image-ref=*) ADMIN_IMAGE_REF="${1#*=}"; shift ;;
     --git-ref)          [ $# -ge 2 ] || die "--git-ref 需要值（tag 或 40 位 sha）"; GIT_REF="$2"; shift 2 ;;
     --git-ref=*)        GIT_REF="${1#*=}"; shift ;;
     --profile)          [ $# -ge 2 ] || die "--profile 需要值：host|ci"; PROFILE="$2"; shift 2 ;;
@@ -167,6 +174,14 @@ case "$IMAGE_REF" in
   candidate 的不可变 digest 引用可从 release workflow 的 IMAGE_DIGEST_REF output 获取" ;;
 esac
 EXPECTED_DIGEST="${IMAGE_REF#*@}"
+
+# admin 镜像可选钉入：缺省时回落 compose 默认（要求该 tag 已发布到 registry）
+if [ -n "$ADMIN_IMAGE_REF" ]; then
+  case "$ADMIN_IMAGE_REF" in
+    *@sha256:*) ;;
+    *) die "--admin-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${ADMIN_IMAGE_REF}" ;;
+  esac
+fi
 
 [ -n "$GIT_REF" ] || die "缺少 --git-ref（clone 哪个版本）
   digest 引用不含 tag 信息，无法自动推导；请传入与镜像同源的 git tag（如 v1.0.0-rc.1）或 40 位 commit sha"
@@ -391,6 +406,7 @@ env_set_var API_DOMAIN "$API_DOMAIN"
 env_set_var ADMIN_DOMAIN "$ADMIN_DOMAIN"
 env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
 env_set_var BACKEND_IMAGE "$IMAGE_REF"
+if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
 if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
 write_compose_override
 install_ctl_wrapper

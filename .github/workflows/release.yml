@@ -149,6 +149,90 @@ jobs:
           echo "IMAGE_DIGEST_REF=${IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
   # ----------------------------------------------------------------
+  # Build Admin Candidate — 跨仓 checkout imboy-admin-frontend 构建 admin 镜像
+  #
+  # 为什么需要本 job：golden install/upgrade 起栈时 compose 会拉全部服务镜像；
+  # imboy/imboy-admin 从未发布到公共 registry（2026-08-23 实测 Docker Hub
+  # object not found），不构建 admin candidate 则 compose up 在拉取阶段必挂。
+  # admin 仓独立版本化，candidate 默认取 main（可用仓库变量 ADMIN_REPO_REF
+  # 钉住分支/tag/sha）；digest identity 与 backend 同口径——golden 门禁拉
+  # digest、finalize 复打同一 digest 为正式 tag。
+  # ----------------------------------------------------------------
+  build-admin-candidate:
+    name: Build & push admin candidate image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      ADMIN_IMAGE_NAME: ${{ steps.identity.outputs.ADMIN_IMAGE_NAME }}
+      ADMIN_IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+      ADMIN_IMAGE_DIGEST_REF: ${{ steps.digest_ref.outputs.ADMIN_IMAGE_DIGEST_REF }}
+      ADMIN_REPO_REF: ${{ steps.identity.outputs.ADMIN_REPO_REF }}
+      ADMIN_GIT_SHA: ${{ steps.identity.outputs.ADMIN_GIT_SHA }}
+
+    steps:
+      - name: Checkout imboy-admin-frontend (PUBLIC)
+        uses: actions/checkout@v7
+        with:
+          repository: imboy-pub/imboy-admin-frontend
+          ref: ${{ vars.ADMIN_REPO_REF || 'main' }}
+          path: imboyadmin
+
+      - name: Resolve admin release identity
+        id: identity
+        working-directory: imboyadmin
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          sha="$(git rev-parse HEAD)"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-admin"
+          {
+            echo "ADMIN_IMAGE_NAME=${image}"
+            echo "ADMIN_IMAGE_REF=${image}:${version}-rc"
+            echo "ADMIN_REPO_REF=${{ vars.ADMIN_REPO_REF || 'main' }}"
+            echo "ADMIN_GIT_SHA=${sha}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push admin candidate image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: imboyadmin
+          file: imboyadmin/Dockerfile
+          push: true
+          tags: ${{ steps.identity.outputs.ADMIN_IMAGE_REF }}
+        # admin 镜像构建期 bake VITE_API_BASE_URL（静态 SPA 无运行时配置注入），
+        # 生产部署若要自定义 API 域名需按部署重建——该约束属既有设计，golden
+        # 冒烟链不经 admin UI（AdminLogin 走 backend API），candidate 用默认
+        # build-arg 不影响门禁判定。
+
+      - name: Resolve digest ref (immutable image reference)
+        id: digest_ref
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          ADMIN_IMAGE_NAME: ${{ steps.identity.outputs.ADMIN_IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          case "${DIGEST}" in
+            sha256:*) ;;
+            *)
+              echo "::error::unexpected digest format '${DIGEST}' (expected sha256:...)"
+              exit 1
+              ;;
+          esac
+          echo "ADMIN_IMAGE_DIGEST_REF=${ADMIN_IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  # ----------------------------------------------------------------
   # Golden Install 门禁（P2-G1 脚本 / 计划 §4，G2 接入本流水线）
   #
   # ubuntu-latest = cleanroom 近似（一次性 VM：无既有 imboy 容器/卷/网络；
@@ -162,12 +246,13 @@ jobs:
   golden-install:
     name: Golden Install gate (<=900s + restart idempotent)
     if: github.event_name == 'push'
-    needs: [build-candidate]
+    needs: [build-candidate, build-admin-candidate]
     runs-on: ubuntu-latest
     timeout-minutes: 45 # 预算 900s + 拉镜像/克隆/重试余量
     env:
       IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
       IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
+      ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
 
     steps:
       - name: Checkout (scripts at tag)
@@ -194,6 +279,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+          ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           # Actions 的 env 值不做 shell 展开，密码须在 run 内生成（runner 一次性
@@ -201,6 +287,7 @@ jobs:
           pw="Golden$(openssl rand -hex 6)"
           sudo -E bash scripts/golden_install.sh \
             --image-ref "${IMAGE_DIGEST_REF}" \
+            --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
             --git-ref "${GITHUB_REF_NAME}" \
             --profile ci \
             --admin-phone 13800138000 \
@@ -226,7 +313,7 @@ jobs:
   golden-upgrade:
     name: Golden Upgrade gate (data retention)
     if: github.event_name == 'push'
-    needs: [build-candidate]
+    needs: [build-candidate, build-admin-candidate]
     runs-on: ubuntu-latest
     timeout-minutes: 60 # vN 全量安装 + 数据生成 + 迁移 + 双冒烟，无预算上限
     outputs:
@@ -283,12 +370,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
+          ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
           sudo -E bash scripts/golden_upgrade.sh \
             --from "${{ steps.decide.outputs.FROM_TAG }}" \
             --to-image "${IMAGE_DIGEST_REF}" \
+            --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
             --to-ref "${GITHUB_REF_NAME}" \
             --profile ci \
             --admin-phone 13800138000 \
@@ -365,7 +454,7 @@ jobs:
   release-finalize:
     name: Finalize semver tag + GitHub Release
     if: vars.RELEASE_FINALIZE_ENABLED == 'true'
-    needs: [build-candidate, golden-install, golden-upgrade] # needs 只暴露直接依赖，三元组须直连 build-candidate
+    needs: [build-candidate, build-admin-candidate, golden-install, golden-upgrade] # needs 只暴露直接依赖，三元组须直连 build-candidate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -394,6 +483,8 @@ jobs:
         env:
           IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
           IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
+          ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
+          ADMIN_IMAGE_NAME: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_NAME }}
         run: |
           set -euo pipefail
           official="${{ steps.official.outputs.OFFICIAL }}"
@@ -401,6 +492,11 @@ jobs:
             --tag "${IMAGE_NAME}:${official}" \
             "${IMAGE_DIGEST_REF}"
           echo "已复打 ${IMAGE_NAME}:${official} → ${IMAGE_DIGEST_REF}"
+          # admin 镜像同 digest 复打（与 backend 同一 digest identity 口径）
+          docker buildx imagetools create \
+            --tag "${ADMIN_IMAGE_NAME}:${official}" \
+            "${ADMIN_IMAGE_DIGEST_REF}"
+          echo "已复打 ${ADMIN_IMAGE_NAME}:${official} → ${ADMIN_IMAGE_DIGEST_REF}"
 
       - name: Create GitHub Release (release identity metadata)
         env:
@@ -428,6 +524,7 @@ jobs:
           \`\`\`
 
           - 正式镜像：\`${IMAGE_NAME}:${OFFICIAL}\`（= candidate \`${IMAGE_REF}\` 的同一 digest 复打，未重新构建）
+          - 管理后台镜像：\`${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_NAME }}:${OFFICIAL}\`（admin candidate 同 digest 复打；源 ref ${{ needs.build-admin-candidate.outputs.ADMIN_REPO_REF }}@${{ needs.build-admin-candidate.outputs.ADMIN_GIT_SHA }}）
           - 升级指引与版本历史：见仓库 [RELEASES.md](./RELEASES.md)
 
           ## 发布门禁（Golden Gates §8）

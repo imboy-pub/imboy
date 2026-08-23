@@ -73,7 +73,10 @@ Golden Upgrade 升级门禁 / Usage: bash scripts/golden_upgrade.sh --to-image <
 host 模式必填:  --api-domain <域名> / --admin-domain <域名> / --certbot-email <邮箱>
 超管（vN 安装与升级后 8 步链步骤 4 共用，必填成对）:
   --admin-phone <手机号> / --admin-password <明文>（8-64 位含字母和数字）
-可选:  --repo <url>（默认 https://github.com/imboy-pub/imboy.git）
+可选:  --admin-image-ref <ref>（admin 镜像 digest 引用；提供则在 vN 安装与升级后
+                            起栈时都钉入 ADMIN_IMAGE——基线版本的 admin 镜像可能
+                            从未发布过，CI 由 build-admin-candidate 供给）
+       --repo <url>（默认 https://github.com/imboy-pub/imboy.git）
        --workdir <dir>（默认 ./.golden-upgrade） / --keep（保留现场） / -h
 
 环境变量（干跑/测试口）:  GOLDEN_HOSTS_FILE（hosts 注入目标，默认 /etc/hosts）
@@ -87,6 +90,7 @@ FROM_IMAGE=""
 FROM_REF=""
 TO_IMAGE=""
 TO_REF=""
+ADMIN_IMAGE_REF=""
 PROFILE="ci"
 API_DOMAIN=""
 ADMIN_DOMAIN=""
@@ -107,6 +111,8 @@ while [ $# -gt 0 ]; do
     --from-ref=*)     FROM_REF="${1#*=}"; shift ;;
     --to-image)       [ $# -ge 2 ] || die "--to-image 需要值（candidate digest 引用）"; TO_IMAGE="$2"; shift 2 ;;
     --to-image=*)     TO_IMAGE="${1#*=}"; shift ;;
+    --admin-image-ref)  [ $# -ge 2 ] || die "--admin-image-ref 需要值（digest 引用）"; ADMIN_IMAGE_REF="$2"; shift 2 ;;
+    --admin-image-ref=*) ADMIN_IMAGE_REF="${1#*=}"; shift ;;
     --to-ref)         [ $# -ge 2 ] || die "--to-ref 需要值（升级目标 tag|sha）"; TO_REF="$2"; shift 2 ;;
     --to-ref=*)       TO_REF="${1#*=}"; shift ;;
     --profile)        [ $# -ge 2 ] || die "--profile 需要值：ci|host"; PROFILE="$2"; shift 2 ;;
@@ -141,6 +147,13 @@ case "$TO_IMAGE" in
   升级目标必须不可变（§3.1）；tag 引用会漂移，不能作为门禁输入" ;;
 esac
 EXPECTED_TO_DIGEST="${TO_IMAGE#*@}"
+
+if [ -n "$ADMIN_IMAGE_REF" ]; then
+  case "$ADMIN_IMAGE_REF" in
+    *@sha256:*) ;;
+    *) die "--admin-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${ADMIN_IMAGE_REF}" ;;
+  esac
+fi
 
 [ -n "$TO_REF" ] || die "缺少 --to-ref（升级目标代码 tag 或 40 位 sha）
   升级需 checkout vN+1 的 deploy/ 与 priv/migrations；digest 不含 tag 信息，必须显式给出"
@@ -700,6 +713,7 @@ env_set_var API_DOMAIN "$API_DOMAIN"
 env_set_var ADMIN_DOMAIN "$ADMIN_DOMAIN"
 env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
 env_set_var BACKEND_IMAGE "$FROM_IMAGE"
+if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
 DATA_DIR_RESOLVED="$(resolve_data_dir)"
 if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
 write_compose_override
