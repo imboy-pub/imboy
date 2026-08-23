@@ -509,23 +509,39 @@ approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     elib_pg:query(Sql, [Uid]).
 
 %% @doc 批量获取用户在线状态，避免 N+1 查询
+%%
+%% 防御：user_repo:find_by_id 经 elib_pg_sql:value_or_empty，在用户不存在或
+%% SQL 报错时返回空 map #{}。旧实现对 #{ } 做 maps:get(<<"id">>, User) 会抛
+%% badkey，把 confirm_friend_resp（单元素 [#{}}]）炸成 HTTP 500。这里跳过
+%% 无 <<"id">> 键的行——空 map 原样返回，不计算在线状态。friend/list 走
+%% 多行查询，空列表 [] 不进 foldl 行为不变。
 -spec batch_online_state([map()]) -> [map()].
 batch_online_state(Users) when is_list(Users) ->
     UidStatusMap = lists:foldl(
         fun(User, Acc) ->
-            Uid = maps:get(<<"id">>, User),
-            Status = check_online_status(Uid),
-            maps:put(Uid, Status, Acc)
+            case is_map_key(<<"id">>, User) of
+                false ->
+                    Acc;
+                true ->
+                    Uid = maps:get(<<"id">>, User),
+                    Status = check_online_status(Uid),
+                    maps:put(Uid, Status, Acc)
+            end
         end,
         #{},
         Users
     ),
     lists:map(
         fun(User) ->
-            Uid = maps:get(<<"id">>, User),
-            LastSeenAt = maps:get(<<"last_seen_at">>, User, <<>>),
-            Status = maps:get(Uid, UidStatusMap, offline),
-            User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}
+            case is_map_key(<<"id">>, User) of
+                false ->
+                    User;
+                true ->
+                    Uid = maps:get(<<"id">>, User),
+                    LastSeenAt = maps:get(<<"last_seen_at">>, User, <<>>),
+                    Status = maps:get(Uid, UidStatusMap, offline),
+                    User#{<<"status">> => Status, <<"last_seen_at">> => LastSeenAt}
+            end
         end,
         Users
     ).
@@ -545,3 +561,14 @@ check_online_status(Uid) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+-ifdef(TEST).
+
+%% find_by_id 查不到用户时经 value_or_empty 返回空 map #{}。
+%% 旧实现对 #{} 做 maps:get(<<"id">>) 抛 badkey，把 confirm_friend_resp
+%% 炸成 HTTP 500。空 map 必须原样返回、不崩、不计算在线状态。
+batch_online_state_empty_map_degrades_test() ->
+    ?assertEqual([#{}], batch_online_state([#{}])),
+    ?assertEqual([#{}, #{}], batch_online_state([#{}, #{}])).
+
+-endif.

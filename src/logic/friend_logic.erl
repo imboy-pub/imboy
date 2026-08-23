@@ -289,8 +289,29 @@ confirm_friend_do(CurrentUid, From, To, Payload, FromBin, ToBin, FromID, ToID) -
 confirm_friend_resp(Uid, Remark) ->
     Column = <<"id,account,nickname,avatar,gender,sign,region">>,
     User0 = user_logic:find_by_id(Uid, Column),
-    %% 复用 batch_online_state 计算实时在线状态（与 friend/list 一致）
-    [User1] = user_ds:batch_online_state([User0]),
+    %% 防御：find_by_id 在用户不存在/SQL 报错时经 value_or_empty 返回 #{}。
+    %% batch_online_state 已对空 map 跳过不崩，这里再降级：空用户只回必需字段，
+    %% 保证前端 _storeContactInfo 仍能落库（is_friend=1）；同时记 warning，
+    %% 便于排查刚写完好友关系却查不到 user 行这类数据缺失异常。
+    User1 =
+        case is_map_key(<<"id">>, User0) of
+            false ->
+                ?WARN_LOG("confirm_friend_resp user ~p not found; returning degraded map", [Uid]),
+                #{
+                    <<"id">> => Uid,
+                    <<"account">> => <<>>,
+                    <<"nickname">> => <<>>,
+                    <<"avatar">> => <<>>,
+                    <<"gender">> => 0,
+                    <<"sign">> => <<>>,
+                    <<"region">> => <<>>,
+                    <<"status">> => offline,
+                    <<"last_seen_at">> => <<>>
+                };
+            true ->
+                [U] = user_ds:batch_online_state([User0]),
+                U
+        end,
     User1#{
         <<"id">> => Uid,
         <<"peerId">> => Uid,
