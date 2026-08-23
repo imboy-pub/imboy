@@ -49,7 +49,11 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           ~/bin/elvis --version || true
 
-      - name: Run elvis (ratchet — 当前 baseline 10352 violations / 298 FAIL files)
+      - name: Run elvis (ratchet — baseline 10352 violations / 298 FAIL files)
+        # 2026-08-23 起 elvis.config 豁免 gpb 生成文件 src/imboy_pb.erl（贡献 9446/10397
+        # 条违规的生成命名风格噪音）。豁免后实测 951 violations / 307 FAIL files：
+        # violations 已远低于门值；fail_files 307 > 298 的 +9 净增来自 5 月以来新增的
+        # 功能模块（Discovery/Bot/群治理/财务/MCP），基线数字调整待用户裁定。
         run: |
           set -euo pipefail
           make lint-erlang 2>&1 | tee elvis-output.txt
