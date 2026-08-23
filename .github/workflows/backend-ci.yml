@@ -1,10 +1,18 @@
 name: Backend CI
 
-# A2（商业化就绪）：CI 从门面变真门禁。
-# 策略：阻塞门禁保持稳定（compile + 快速 eunit + dco）；
-#       全量 eunit 与 dialyze 先以 continue-on-error 建立"失败基线"，
-#       CI 干净环境实跑一次得到可信基线后，下一轮再按项目 ratchet 范式
-#       （见 quality.yml）收紧为硬门禁。OTP 与 README 宣称的 28 对齐。
+# P4-Q3（Golden Gates §6.2/§7 CI Gate Matrix）：本 workflow = PR/push 快速门（<10min），
+# 全部 job 阻塞、零 continue-on-error（假门零容忍）。
+# 阻塞集：compile + xref + E2EE + moment + Manifest(p5)。
+# 契约门在 contract-gate.yml（API Contract + EntityId/TSID）；Error Code Contract
+# 在 imboyapp 仓 contract.yml；慢门（full-eunit/dialyze/eqwalize/gradualize）
+# 已整体迁移至 nightly.yml（每晚 20:00 UTC，无 continue-on-error，红就是红）。
+#
+# Smoke（8 步链子集）不在此：CI 后端起链硬依赖 PG 扩展（timescaledb
+# create_hypertable ×8 / pg_jieba jiebacfg FTS 触发器 / postgis geometry 列，
+# 见 priv/migrations/00000001_foundation.up.sql 等），vanilla postgres:18 官方
+# 镜像均不含；自定义 imboy/pg18 镜像未发布公共 registry。Golden Install
+# （release.yml，8 步全链含 Garage）已覆盖该门 → CI 冒烟子集为计划遗留
+# （Golden Gates §7 Smoke 行），详见 P4-Q3 执行报告。
 
 on:
   push:
@@ -106,265 +114,40 @@ jobs:
           IMBOYENV=local make eunit EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests' EUNIT_ERL_OPTS="-config config/sys -pa ebin -pa test -eval 'application:load(imboy)'"
 
   # ----------------------------------------------------------------
-  # 全量 EUnit — 基线收集（continue-on-error，暂不阻塞）
-  # 目的：在 CI 干净环境实跑全部 test/*_tests，产出真实通过/失败基线。
-  # 收紧计划：基线明确后改为 ratchet（失败数只准减不准增），移除 continue-on-error。
+  # Manifest (p5) — 插件清单契约门禁（阻塞，Golden Gates §7）
+  # priv/plugins/*/plugin.config 必须能被 file:consult 解析且含必备键
+  # （docs/plugin/contract.md §3）。纯 escript 校验，无服务依赖、秒级完成。
+  # 脚本对"零插件"会输出 0/0 通过（空数组循环 0 次）——下面先断言仓内
+  # 至少存在一个 plugin.config，防止清单被整体误删时本门假绿。
   # ----------------------------------------------------------------
-  full-eunit:
-    name: Full EUnit (baseline, non-blocking)
+  p5-manifest:
+    name: Plugin manifest (p5, blocking)
     runs-on: ubuntu-latest
-    # 全量 eunit 本地实测 ~45 分钟（R-23 记录），40 分钟会被超时杀掉
-    timeout-minutes: 60
-    needs: [compile]
-    continue-on-error: true
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # 只需 escript（OTP 自带），无需 rebar3——不给 rebar3-version 即不安装
+      # （同 quality.yml erlang-lint 的 setup-beam 行为说明）
       - name: Setup Erlang/OTP toolchain
         uses: erlef/setup-beam@v1
         with:
           otp-version: "28"
-          rebar3-version: "3.24.0"
 
-      - name: Cache dependencies and build artifacts
-        uses: actions/cache@v6
-        with:
-          path: |
-            deps
-            _build
-            .erlang.mk
-            .dialyzer_plt
-            ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
-
-      - name: Run full EUnit suite
+      - name: "Guard: at least one plugin manifest must exist"
         run: |
-          set -o pipefail
-          IMBOYENV=local make eunit 2>&1 | tee eunit-full.log
-
-      - name: Summarize EUnit result
-        if: always()
-        run: |
-          echo "## Full EUnit baseline" >> "$GITHUB_STEP_SUMMARY"
-          # erlang.mk/eunit 汇总行形如 "Failed: N. ... Passed: M."
-          grep -iE 'failed|passed|aborted|cancelled' eunit-full.log | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
-
-      - name: Upload EUnit log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: eunit-full-log
-          path: eunit-full.log
-          retention-days: 14
-
-  # ----------------------------------------------------------------
-  # Dialyzer — 基线收集（continue-on-error，暂不阻塞）
-  # Makefile 已设 DIALYZER_WARNINGS ?= 50 阈值；先观察 CI 实际告警数，
-  # 再据此把阈值收敛为 ratchet。
-  # ----------------------------------------------------------------
-  dialyze:
-    name: Dialyzer (baseline, non-blocking)
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    needs: [compile]
-    continue-on-error: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Erlang/OTP toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "28"
-          rebar3-version: "3.24.0"
-
-      - name: Cache dependencies, build artifacts and PLT
-        uses: actions/cache@v6
-        with:
-          path: |
-            deps
-            _build
-            .erlang.mk
-            .dialyzer_plt
-            ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
-
-      - name: Run Dialyzer
-        run: |
-          set -o pipefail
-          IMBOYENV=local make dialyze 2>&1 | tee dialyze.log
-
-      - name: Summarize Dialyzer result
-        if: always()
-        run: |
-          echo "## Dialyzer baseline" >> "$GITHUB_STEP_SUMMARY"
-          warn_count="$(grep -ciE 'warning|Warning' dialyze.log || true)"
-          echo "Dialyzer warning lines: ${warn_count} (Makefile threshold DIALYZER_WARNINGS=50)" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload Dialyzer log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: dialyze-log
-          path: dialyze.log
-          retention-days: 14
-
-  # ----------------------------------------------------------------
-  # Gradualizer — 宽网类型基线（continue-on-error，暂不阻塞）
-  # 双引擎分工：Gradualizer 管"pre-push 本地快检 + CI 全仓宽网扫描"，
-  # 分层阻塞门禁由 eqWAlizer 承担（见下）。本 job 产出 failing 趋势指标；
-  # 首次跑出 CI 干净基线后，设置仓库变量 GRADUALIZE_BUDGET=观察值 即激活
-  # ratchet（只准减不准增，同 xref 范式）。
-  # 注意：Gradualizer 构建在 OTP 29+ 需 +nowarn_match_alias_pats
-  # （已固化在 make gradualizer-setup 内）。
-  # ----------------------------------------------------------------
-  gradualize:
-    name: Gradualizer (baseline, non-blocking)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [compile]
-    continue-on-error: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Erlang/OTP toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "28"
-          rebar3-version: "3.24.0"
-
-      - name: Cache dependencies and build artifacts
-        uses: actions/cache@v6
-        with:
-          path: |
-            deps
-            _build
-            .erlang.mk
-            ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
-
-      - name: Cache Gradualizer escript
-        uses: actions/cache@v6
-        with:
-          path: tools/gradualizer
-          key: ${{ runner.os }}-otp28-gradualizer-23533d7eb7541d8a146a507e837fdfff6499a202
-
-      - name: Build Gradualizer (cache hit 时秒过)
-        run: make gradualizer-setup
-
-      - name: Compile
-        run: IMBOYENV=local make test-build
-
-      - name: Run full-repo Gradualizer audit
-        run: |
-          set -o pipefail
-          make gradualize-audit GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }} 2>&1 | tee gradualize.log
-
-      - name: Summarize Gradualizer result
-        if: always()
-        run: |
-          echo "## Gradualizer 类型健康度 (baseline, non-blocking)" >> "$GITHUB_STEP_SUMMARY"
-          cat .gradualizer/metrics.txt >> "$GITHUB_STEP_SUMMARY" || true
-          echo "预算 GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }}（设为观察值即激活 ratchet，只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload Gradualizer logs
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: gradualizer-logs
-          path: .gradualizer/logs
-          retention-days: 14
-
-  # ----------------------------------------------------------------
-  # eqWAlizer (ELP) — 分层类型门禁基线（continue-on-error，暂不阻塞）
-  # 本地基线（2026-07-24, elp 1.1.0, OTP 29）：lib 层 modules=70 failing=38。
-  # 2026-07-25 R15 源码 spec 补全后：lib 层 failing=30（6 gen_server worker 清零）。
-  # CI/OTP 28 数字可能略有漂移，以生产 CI 观察值校准仓库变量 EQWALIZE_BUDGET_LIB。
-  # 收紧计划（双引擎交接）：lib 层 failing 清零 且 Gradualizer lib 层先转阻塞
-  # 稳定 2 周后，本 job 移除 continue-on-error 转阻塞。
-  # 注：eqWAlizer spec override 需 fork + 重编译 elp 二进制，R18 已证伪模块级方案。
-  # 注意：elp eqwalize 退出码恒为 0，Makefile 目标已改为解析输出判定。
-  # ----------------------------------------------------------------
-  eqwalize:
-    name: eqWAlizer lib layer (baseline, non-blocking)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [compile]
-    continue-on-error: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Setup Erlang/OTP toolchain
-        uses: erlef/setup-beam@v1
-        with:
-          otp-version: "28"
-          rebar3-version: "3.24.0"
-
-      - name: Setup JDK 17 (eqWAlizer 为 Scala jar)
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Cache dependencies and build artifacts
-        uses: actions/cache@v6
-        with:
-          path: |
-            deps
-            _build
-            .erlang.mk
-            ~/.cache/rebar3
-          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
-
-      - name: Cache ELP binary and eqwalizer_support
-        uses: actions/cache@v6
-        with:
-          path: .elp
-          key: ${{ runner.os }}-elp-2026-06-10-${{ hashFiles('.elp.toml', 'Makefile') }}
-
-      - name: Install ELP (pinned 2026-06-10, otp-28 build)
-        run: |
-          mkdir -p .elp/bin
-          if [ ! -x .elp/bin/elp ]; then
-            curl -sL "https://github.com/WhatsApp/erlang-language-platform/releases/download/2026-06-10/elp-linux-x86_64-unknown-linux-gnu-otp-28.tar.gz" | tar xz -C .elp/bin
+          set -euo pipefail
+          count="$(find priv/plugins -maxdepth 2 -name plugin.config 2>/dev/null | wc -l | tr -d ' ')"
+          echo "plugin.config count: ${count}"
+          if [ "${count}" -eq 0 ]; then
+            echo "::error::priv/plugins 下没有任何 plugin.config —— 若插件清单被移除请同步更新本门（Golden Gates §7 Manifest 行），勿留假绿" >&2
+            exit 1
           fi
-          .elp/bin/elp version
 
-      - name: Add ELP to PATH
-        run: echo "$GITHUB_WORKSPACE/.elp/bin" >> "$GITHUB_PATH"
-
-      - name: Fetch eqwalizer_support and verify setup
-        run: make elp-setup
-
-      - name: Compile
-        run: IMBOYENV=local make test-build
-
-      - name: Run eqWAlizer on lib layer
-        run: |
-          set -o pipefail
-          make eqwalize-layer LAYER=lib EQWALIZE_BUDGET=${{ vars.EQWALIZE_BUDGET_LIB || '32' }} 2>&1 | tee eqwalize.log
-
-      - name: Summarize eqWAlizer result
-        if: always()
-        run: |
-          echo "## eqWAlizer lib layer (baseline, non-blocking)" >> "$GITHUB_STEP_SUMMARY"
-          grep "== eqwalize-layer" eqwalize.log >> "$GITHUB_STEP_SUMMARY" || true
-          echo "预算 EQWALIZE_BUDGET_LIB=${{ vars.EQWALIZE_BUDGET_LIB || '32' }}（ratchet：只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload eqWAlizer logs
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: eqwalizer-lib-logs
-          path: .elp/logs
-          retention-days: 14
+      - name: Validate plugin manifests (p5)
+        run: bash scripts/validate_p5_manifest.sh
 
   # ----------------------------------------------------------------
   # Xref — 零容忍 ratchet（阻塞，undefined 数必须为 0）

@@ -1,0 +1,530 @@
+name: Backend Nightly
+
+# P4-Q3（Golden Gates §6.2/§7 CI Gate Matrix nightly 列）：
+# 慢门每晚真实执行、零 continue-on-error —— nightly 红就是红。
+# 迁移自 backend-ci.yml（原先在 PR 路径 continue-on-error 跑了不算数 = 假门，已废）。
+#
+# P4-Q1（§6.1 nightly 失败分类，已接入）：
+# 每个慢门 job 用 .qa/nightly-gate.sh 统一包装：
+#   输出 tee 落盘 -> 失败时 step 级 retry 一次（FLAKY 判定唯一实现形态） ->
+#   .qa/classify.sh 对照 .qa/known-failures.yaml 出五分类
+#   （NEW/KNOWN/FIXED/FLAKY/INFRA，语义见 §6.1 表，钉死）。
+#   NEW>0 -> job 红（零 NEW_FAILURE 棘轮）；KNOWN 存量只计数；FIXED 输出可移除建议
+#   （人工 review 后改 yaml，脚本不自动改）。
+#
+# P4-Q4：qa-issue job（本文件末尾）汇总各 gate 分类结果，NEW>0 时经 gitee API
+# 建 issue（GITEE_TOKEN 未配置则 notice + skip，不静默不红）。
+#
+# 慢门清单：full-eunit（本地实测 45min）/ dialyze / eqwalize(lib) / gradualize / elvis。
+# elvis 同时也在 quality.yml（PR/push 数字 ratchet）跑——nightly 侧负责 known 清单
+# 五分类与 FIXED 棘轮报告，两层职责不同（P4-Q1 elvis 归位决策：quality.yml 不动）。
+#
+# cron 20:00 UTC（北京 04:00）：与 release.yml golden-install-nightly（19:00 UTC）
+# 错开一小时，避免同时抢 runner 配额、日志时段分离便于排查。
+#
+# 首跑 SOP（dialyze/full-eunit 的 known 清单当前留空）：
+#   workflow_dispatch 手动触发 -> 对应 job 会因全量 NEW 而红 ->
+#   bash .qa/classify.sh <gate> <log> --emit-known 输出片段 ->
+#   人工 review 后贴回 .qa/known-failures.yaml -> 次晚转绿。
+
+on:
+  schedule:
+    - cron: '0 20 * * *' # 每日 20:00 UTC（北京 04:00）
+  workflow_dispatch: # 手动触发：棘轮/分类调试与首次验证用
+
+permissions:
+  contents: read
+
+# 防重叠：上一次 nightly 未跑完又到点（或手动+定时撞车）时，取消旧 run。
+# nightly 只对"最新状态"有意义，旧 run 的中间结果无保留价值。
+concurrency:
+  group: backend-nightly
+  cancel-in-progress: true
+
+jobs:
+  # ----------------------------------------------------------------
+  # Compile — nightly 基座（Gate Matrix nightly 列 Compile ✅）
+  # 只跑 OTP 28 权威版（PR 侧 27.3 兼容观察不在此重复消耗 runner）。
+  # ----------------------------------------------------------------
+  compile:
+    name: Compile Gate (OTP 28)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .dialyzer_plt
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Compile
+        run: IMBOYENV=local make test-build
+
+  # ----------------------------------------------------------------
+  # 全量 EUnit — nightly 真实结果（无 continue-on-error）
+  # 全量 test/*_tests 本地实测 ~45 分钟（R-23 记录）。
+  # P4-Q1：nightly-gate.sh 包装 —— retry（FLAKY）+ classify（NEW 阻断）。
+  # timeout 100：45min gate + 失败 retry 一次（45min）+ 缓冲。
+  # ----------------------------------------------------------------
+  full-eunit:
+    name: Full EUnit (nightly, classified)
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    needs: [compile]
+    outputs:
+      classify: ${{ steps.gate.outputs.summary }}
+      new_items: ${{ steps.gate.outputs.new_items }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .dialyzer_plt
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Materialize config/sys.config from example
+        # 同 backend-ci.yml moment-eunit：sys.config 不入仓，检出后必须从
+        # example 物化，否则 eunit 起节点时 config 缺失直接崩。
+        run: cp config/sys.config.example config/sys.config
+
+      - name: Run full EUnit (retry + classify)
+        id: gate
+        run: |
+          bash .qa/nightly-gate.sh full-eunit eunit-full.log \
+            -- env IMBOYENV=local make eunit
+
+      - name: Summarize EUnit result
+        if: always()
+        run: |
+          echo "## Full EUnit (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
+          grep -iE 'failed|passed|aborted|cancelled' eunit-full.log | tail -20 >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload EUnit logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eunit-full-log
+          path: |
+            eunit-full.log
+            eunit-full.log.retry
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------
+  # Dialyzer — nightly 真实结果（无 continue-on-error）
+  # classify 粒度：警告所在 src 文件（对照 known-failures.yaml dialyze 段）。
+  # 注意：Makefile DIALYZER_WARNINGS=50 是 make 层计数预算；classify 的 NEW 判定
+  # 独立于该预算（known 外警告文件即 NEW）。首跑前 known 留空 -> 首跑红+盘点回填。
+  # ----------------------------------------------------------------
+  dialyze:
+    name: Dialyzer (nightly, classified)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: [compile]
+    outputs:
+      classify: ${{ steps.gate.outputs.summary }}
+      new_items: ${{ steps.gate.outputs.new_items }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies, build artifacts and PLT
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .dialyzer_plt
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Run Dialyzer (retry + classify)
+        id: gate
+        run: |
+          bash .qa/nightly-gate.sh dialyze dialyze.log \
+            -- env IMBOYENV=local make dialyze
+
+      - name: Summarize Dialyzer result
+        if: always()
+        run: |
+          echo "## Dialyzer (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
+          warn_count="$(grep -ciE 'warning|Warning' dialyze.log || true)"
+          echo "Dialyzer warning lines: ${warn_count} (Makefile threshold DIALYZER_WARNINGS=50)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Dialyzer logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dialyze-log
+          path: |
+            dialyze.log
+            dialyze.log.retry
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------
+  # Gradualizer — nightly 真实结果（无 continue-on-error）
+  # 双引擎分工：Gradualizer 管"全仓宽网扫描"，分层阻塞门禁由 eqWAlizer 承担。
+  # GRADUALIZE_BUDGET 未设时预算 9999（宽松）；设为仓库变量观察值即激活
+  # ratchet（只准减不准增）。注意：Gradualizer 构建在 OTP 29+ 需
+  # +nowarn_match_alias_pats（已固化在 make gradualizer-setup 内）。
+  # P4-Q1：known 清单粒度=模块名，与 .gradualizer-baseline.txt（pre-push ratchet）口径一致。
+  # ----------------------------------------------------------------
+  gradualize:
+    name: Gradualizer (nightly, classified)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    needs: [compile]
+    outputs:
+      classify: ${{ steps.gate.outputs.summary }}
+      new_items: ${{ steps.gate.outputs.new_items }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Cache Gradualizer escript
+        uses: actions/cache@v6
+        with:
+          path: tools/gradualizer
+          key: ${{ runner.os }}-otp28-gradualizer-23533d7eb7541d8a146a507e837fdfff6499a202
+
+      - name: Build Gradualizer (cache hit 时秒过)
+        run: make gradualizer-setup
+
+      - name: Compile
+        run: IMBOYENV=local make test-build
+
+      - name: Run full-repo Gradualizer audit (retry + classify)
+        id: gate
+        run: |
+          bash .qa/nightly-gate.sh gradualizer gradualize.log \
+            -- make gradualize-audit GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }}
+
+      - name: Summarize Gradualizer result
+        if: always()
+        run: |
+          echo "## Gradualizer 类型健康度 (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
+          cat .gradualizer/metrics.txt >> "$GITHUB_STEP_SUMMARY" || true
+          echo "预算 GRADUALIZE_BUDGET=${{ vars.GRADUALIZE_BUDGET || '9999' }}（设为观察值即激活 ratchet，只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Gradualizer logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gradualizer-logs
+          path: .gradualizer/logs
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------
+  # eqWAlizer (ELP) — nightly 真实结果（无 continue-on-error）
+  # 本地基线（2026-07-24, elp 1.1.0, OTP 29）：lib 层 modules=70 failing=38。
+  # 2026-07-25 R15 源码 spec 补全后：lib 层 failing=30（6 gen_server worker 清零）。
+  # EQWALIZE_BUDGET_LIB 默认 32：failing 超预算时 make eqwalize-layer 非零
+  # 退出（elp eqwalize 退出码恒为 0，Makefile 目标解析输出判定），本 job 红。
+  # P4-Q1：known 清单=2026-08-22 实测 31 模块（lib 层已扩到 75 模块）。
+  # spec override 需 fork + 重编译 elp 二进制，R18 已证伪模块级方案。
+  # ----------------------------------------------------------------
+  eqwalize:
+    name: eqWAlizer lib layer (nightly, classified)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    needs: [compile]
+    outputs:
+      classify: ${{ steps.gate.outputs.summary }}
+      new_items: ${{ steps.gate.outputs.new_items }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Setup JDK 17 (eqWAlizer 为 Scala jar)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache dependencies and build artifacts
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Cache ELP binary and eqwalizer_support
+        uses: actions/cache@v6
+        with:
+          path: .elp
+          key: ${{ runner.os }}-elp-2026-06-10-${{ hashFiles('.elp.toml', 'Makefile') }}
+
+      - name: Install ELP (pinned 2026-06-10, otp-28 build)
+        run: |
+          mkdir -p .elp/bin
+          if [ ! -x .elp/bin/elp ]; then
+            curl -sL "https://github.com/WhatsApp/erlang-language-platform/releases/download/2026-06-10/elp-linux-x86_64-unknown-linux-gnu-otp-28.tar.gz" | tar xz -C .elp/bin
+          fi
+          .elp/bin/elp version
+
+      - name: Add ELP to PATH
+        run: echo "$GITHUB_WORKSPACE/.elp/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch eqwalizer_support and verify setup
+        run: make elp-setup
+
+      - name: Compile
+        run: IMBOYENV=local make test-build
+
+      - name: Run eqWAlizer on lib layer (retry + classify)
+        id: gate
+        run: |
+          bash .qa/nightly-gate.sh eqwalizer-lib eqwalize.log \
+            -- make eqwalize-layer LAYER=lib EQWALIZE_BUDGET=${{ vars.EQWALIZE_BUDGET_LIB || '32' }}
+
+      - name: Summarize eqWAlizer result
+        if: always()
+        run: |
+          echo "## eqWAlizer lib layer (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
+          grep "== eqwalize-layer" eqwalize.log >> "$GITHUB_STEP_SUMMARY" || true
+          echo "预算 EQWALIZE_BUDGET_LIB=${{ vars.EQWALIZE_BUDGET_LIB || '32' }}（ratchet：只准减不准增）" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload eqWAlizer logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: eqwalizer-lib-logs
+          path: .elp/logs
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------
+  # Elvis — nightly 分类报告（P4-Q1 elvis 归位决策）
+  # quality.yml（PR/push 数字 ratchet 10352/298）保持不动；nightly 侧负责
+  # known 清单五分类 + FIXED 棘轮报告。本机实测（2026-08-22, elvis 5.0.4）
+  # 已达 10397/308 超 quality.yml 上限 —— PR 门当前应为红，known 首版按
+  # 实测 308 文件入册；CI 5.0.3 首跑若有差异以 CI 实测回填（yaml 注释）。
+  # ----------------------------------------------------------------
+  elvis:
+    name: Elvis lint (nightly, classified)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      classify: ${{ steps.gate.outputs.summary }}
+      new_items: ${{ steps.gate.outputs.new_items }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '28'
+          # elvis 只能从源码 escriptize，必须有 rebar3（同 quality.yml）
+          rebar3-version: '3'
+
+      - name: Install elvis (pin 5.0.3，与 quality.yml 同源同版)
+        run: |
+          set -euo pipefail
+          mkdir -p ~/bin
+          git clone --depth 1 -b 5.0.3 https://github.com/inaka/elvis /tmp/elvis
+          (cd /tmp/elvis && rebar3 escriptize)
+          cp /tmp/elvis/_build/default/bin/elvis ~/bin/elvis
+          chmod +x ~/bin/elvis
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          ~/bin/elvis --version || true
+
+      - name: Run elvis rock (retry + classify)
+        id: gate
+        run: |
+          bash .qa/nightly-gate.sh elvis elvis.log -- make lint-erlang
+
+      - name: Summarize elvis result
+        if: always()
+        run: |
+          echo "## Elvis lint (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
+          # 去 ANSI 色码再统计（与 quality.yml 同口径）
+          sed -E $'s/\x1b\\[[0-9;]*m//g' elvis.log > elvis-clean.txt || true
+          violations=$(awk '/^[[:space:]]+- At line/{c++} END{print c+0}' elvis-clean.txt)
+          fail_files=$(awk '/^# .* \[FAIL\]/{c++} END{print c+0}' elvis-clean.txt)
+          echo "elvis_violations=${violations} / fail_files=${fail_files}（quality.yml PR ratchet: 10352/298）" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload elvis logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: elvis-log
+          path: |
+            elvis.log
+            elvis.log.retry
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # ----------------------------------------------------------------
+  # P4-Q4 — QA 汇总 + NEW_FAILURE 自动建 gitee issue
+  # 汇总五个慢门的 QA_CLASSIFY 机器行；存在 NEW>0 时经 gitee API v5 建 issue。
+  #   仓坐标实查：origin = git@gitee.com:imboy-pub/imboy.git（org 仓 imboy-pub/imboy；
+  #   注意 gitee remote（leeyi/imboy）是个人账号镜像，不用）。
+  #   GITEE_TOKEN 由用户本人配置到 GitHub Secrets（附录 C 同类，不代办）；
+  #   未配置 -> ::notice 显著提示 + skip（不静默、不红）。
+  #   curl 失败 -> ::error 显著提示但不红 job（慢门 job 已红，可见性不丢）。
+  # ----------------------------------------------------------------
+  qa-issue:
+    name: QA summary + gitee issue on NEW_FAILURE
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [full-eunit, dialyze, gradualize, eqwalize, elvis]
+    if: always()
+    env:
+      GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      GITEE_OWNER: imboy-pub
+      GITEE_REPO: imboy
+
+    steps:
+      - name: Collect gate classifications
+        id: collect
+        run: |
+          set -euo pipefail
+          {
+            echo '${{ needs.full-eunit.outputs.classify }}'
+            echo '${{ needs.dialyze.outputs.classify }}'
+            echo '${{ needs.gradualize.outputs.classify }}'
+            echo '${{ needs.eqwalize.outputs.classify }}'
+            echo '${{ needs.elvis.outputs.classify }}'
+          } | grep '^QA_CLASSIFY ' | tee /tmp/qa-classify-all.txt || true
+
+          total_new=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^NEW=/){sub(/^NEW=/,"",$i); s+=$i}} END{print s+0}' /tmp/qa-classify-all.txt)
+          gates_new=$(grep -E 'NEW=[1-9]' /tmp/qa-classify-all.txt | awk '{print $2}' | sed 's/gate=//' | paste -sd, -)
+          {
+            echo "total_new=${total_new}"
+            echo "gates_new=${gates_new}"
+          } >> "$GITHUB_OUTPUT"
+          echo "== nightly QA 汇总: total_new=${total_new} gates=[${gates_new}]"
+          cat /tmp/qa-classify-all.txt
+
+      - name: Notice when no NEW_FAILURE (no issue needed)
+        if: steps.collect.outputs.total_new == '0'
+        run: |
+          echo "::notice::nightly 无 NEW_FAILURE，无需建 issue（KNOWN/FLAKY/FIXED 计数见上方 QA_CLASSIFY 汇总）"
+
+      - name: Create gitee issue for NEW_FAILURE
+        if: steps.collect.outputs.total_new != '0'
+        run: |
+          set -euo pipefail
+          if [ -z "${GITEE_TOKEN}" ]; then
+            echo "::notice::secrets.GITEE_TOKEN 未配置 —— 跳过 issue 创建（请用户本人配置，附录 C）。NEW 明细见本 job 日志与各 gate artifact。"
+            exit 0
+          fi
+
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          date_str="$(date -u +%F)"
+          title="[nightly] NEW_FAILURE: ${{ steps.collect.outputs.gates_new }} (${{ steps.collect.outputs.total_new }}) ${date_str}"
+
+          {
+            echo "nightly 检出 ${{ steps.collect.outputs.total_new }} 个 NEW_FAILURE（不在 .qa/known-failures.yaml 的新失败）。"
+            echo
+            echo "Run: ${run_url}"
+            echo
+            echo '```'
+            cat /tmp/qa-classify-all.txt
+            echo '```'
+            echo
+            echo "## NEW 明细（各 gate）"
+            echo '```'
+          } > /tmp/issue-body.md
+          # NEW 明细逐 gate 追加（首 60 行/gate，防超长）
+          {
+            echo "--- full-eunit NEW:";    echo '${{ needs.full-eunit.outputs.new_items }}'
+            echo "--- dialyze NEW:";       echo '${{ needs.dialyze.outputs.new_items }}'
+            echo "--- gradualizer NEW:";   echo '${{ needs.gradualize.outputs.new_items }}'
+            echo "--- eqwalizer-lib NEW:"; echo '${{ needs.eqwalize.outputs.new_items }}'
+            echo "--- elvis NEW:";         echo '${{ needs.elvis.outputs.new_items }}'
+          } | head -300 >> /tmp/issue-body.md
+          {
+            echo '```'
+            echo
+            echo "处理：修复（preferred），或 triage 后用 \`bash .qa/classify.sh <gate> <log> --emit-known\` 盘点并经人工 review 回填 .qa/known-failures.yaml。"
+          } >> /tmp/issue-body.md
+
+          jq -n --arg tk "$GITEE_TOKEN" --arg repo "${GITEE_OWNER}/${GITEE_REPO}" \
+                --arg t "$title" --arg b "$(cat /tmp/issue-body.md)" \
+            '{access_token:$tk, repo:$repo, title:$t, body:$b}' > /tmp/issue.json
+
+          resp="$(curl -sS --max-time 30 -X POST \
+            -H "Content-Type: application/json" \
+            -d @/tmp/issue.json \
+            "https://gitee.com/api/v5/repos/${GITEE_OWNER}/${GITEE_REPO}/issues" || true)"
+          issue_url="$(printf '%s' "$resp" | jq -r '.html_url // empty' 2>/dev/null || true)"
+          if [ -n "$issue_url" ]; then
+            echo "::notice::已创建 gitee issue: ${issue_url}"
+          else
+            echo "::error::gitee issue 创建失败（响应如下，不红本 job——慢门 job 已红）"
+            printf '%s\n' "$resp" | head -5
+          fi
