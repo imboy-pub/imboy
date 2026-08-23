@@ -320,7 +320,7 @@ jobs:
       - name: Check silent error swallowing (catch _:_ must not appear)
         run: |
           set -euo pipefail
-          silent=$(grep -rn "catch _:_ ->" src/ --include="*.erl" | grep -v "%%" | wc -l || echo 0)
+          silent=$(grep -rn "catch _:_ ->" src/ --include="*.erl" | grep -vc "%%" || true)
           echo "Silent catch _:_ count: $silent"
           if [ "$silent" -gt 0 ]; then
             echo "::error::Found $silent silent catch _:_ — use catch _:Err + logger:warning instead"
@@ -336,7 +336,7 @@ jobs:
       - name: 检查 API→DS 违规数(上限 131)
         run: |
           COUNT=$(grep -rn "_ds:" src/api/ --include="*.erl" \
-            | grep -v "%%\|auth_ds:\|config_ds:" | wc -l | tr -d ' ')
+            | grep -vc "%%\|auth_ds:\|config_ds:" || true)
           echo "当前 API→DS 违规: $COUNT (上限 131)"
           if [ "$COUNT" -gt "131" ]; then
             echo "FAIL: 违规增加 $COUNT > 131"
