@@ -56,11 +56,18 @@
 | 值 | 语义 | 权威源 |
 |---|---|---|
 | 1 | 充值/入账（topup） | `src/ds/wallet_ds.erl:93` |
-| 2 | 消费/扣减 | `wallet_repo.erl:175-182`（借记腿） |
-| 3/4/5 | 退款/冻结/解冻 | admin 类型注释 `imboyadmin/src/types/billing.ts:38`（后端无独立注释，登记口径） |
+| 2 | 频道订单支付（消费/扣减，amount 写负数出账；remark="频道订单支付"） | `payment_wallet_gateway.erl:61`（charge 借记腿） |
+| 3 | 订单退款（amount 正数入账；remark="订单退款"） | `payment_wallet_gateway.erl:111`（do_refund） |
+| 4 | 保留（未使用；初始约束 1-4 的遗留值，后端无写入路径） | 代码考古 2026-08-23：全仓 grep 无 `tx_type => 4` |
+| 5 / 6 | 转账转出 / 转账转入（双端既有登记口径，后端暂无写入路径） | admin/flutter 类型注释（contract gate exact 校验中） |
+| 7 / 8 / 9 | 发红包 / 领红包 / 红包·转账退回 | `red_packet_logic.erl:54、76`（7/9 实写；8 为双端登记口径） |
 | 10 | 提现（提现流水分页固定 `tx_type=10`，`wallet_repo.erl:262-269`） | 迁移 000018、`adm_stats_handler.erl:391-395` |
 | 11 | 提现拒绝退款 | 迁移 `00000018_wallet_tx_type_withdraw_refund.up.sql`、`adm_finance_handler.erl:493` |
 | 20 / 21 | Agent 受控支付 借记(付款人)/贷记(收款方) | 迁移 `00000030_wallet_tx_type_agent_payment.up.sql` |
+
+> 2026-08-23 修订：原「3/4/5=退款/冻结/解冻（登记口径）」与 admin 注释「2=充值退款」均为以讹传讹——
+> 代码实写证明 2=频道订单支付（负数出账）、3=订单退款。本表现在以代码实写为准，
+> 双端类型注释已同步（`contract gate` exact 模式校验）。
 
 ## 4. `POST /api/v1/wallet/recharge/order`
 

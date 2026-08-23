@@ -85,6 +85,14 @@ escript scripts/imboy_ctl db migrate
 其离线 fail-closed 守卫已纳入 `check_release_consistency.sh` 和 Backend CI；CI 只证明
 脚本守卫与编排，不能代替生产规模隔离克隆证据。
 
+API 契约门禁（P3-C2）：`contract_gate.py` 从 `src/imboy_router.erl`、
+`priv/migrations` CHECK 约束、`include/error_code.hrl` 静态导出
+`.contract/api_contract.json`（确定性产物，内容不变则文件不变），并校验
+admin/flutter 枚举镜像与 EntityId/TSID 规则。用法：`make contract-export`
+（合法变更时同 PR 重导出）/ `make contract-check`（漂移非零退出；可传
+`ADMIN_DIR=` / `FLUTTER_DIR=`，缺省自动探测同级仓）。CI 见
+`.github/workflows/contract-gate.yml`。
+
 ## 其他
 
 `channel_daily_digest.sh`（频道日报）、`plugin_install.sh`（插件安装）、`gen_license.escript`（License 生成）、`sso/`（SSO 相关）、`fdfs_reference_census.sql` + `migrate_fdfs_avatars.erl`（FastDFS 历史迁移残留，一次性用途）。

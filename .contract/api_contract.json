@@ -1,0 +1,3786 @@
+{
+  "auth_open_whitelist": [
+    "/",
+    "/.well-known/agent.json",
+    "/account-deletion",
+    "/api/adm/setup/init",
+    "/api/adm/setup/status",
+    "/api/v1/app/features",
+    "/api/v1/app/manifest",
+    "/api/v1/app/policy",
+    "/api/v1/auth/oidc/authorize",
+    "/api/v1/auth/oidc/callback",
+    "/api/v1/auth/oidc/exchange",
+    "/api/v1/bot/send_message",
+    "/api/v1/init",
+    "/api/v1/metrics",
+    "/api/v1/passport/alipay_authinfo",
+    "/api/v1/passport/alipay_login",
+    "/api/v1/passport/bind_mail",
+    "/api/v1/passport/findpassword",
+    "/api/v1/passport/getcode",
+    "/api/v1/passport/login",
+    "/api/v1/passport/qr_login/cancel",
+    "/api/v1/passport/qr_login/create",
+    "/api/v1/passport/qr_login/status",
+    "/api/v1/passport/qr_login/subscribe",
+    "/api/v1/passport/quick_login",
+    "/api/v1/passport/signup",
+    "/api/v1/refreshtoken",
+    "/api/v1/user/show",
+    "/api/v1/ws",
+    "/brand",
+    "/healthz",
+    "/help",
+    "/metrics",
+    "/privacy-policy"
+  ],
+  "endpoints": {
+    "adm": [
+      {
+        "action": "index",
+        "handler": "adm_index_handler",
+        "path": "/api/adm",
+        "static": false
+      },
+      {
+        "action": "assign_role",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/assign_role",
+        "static": false
+      },
+      {
+        "action": "compliance_key_create",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/compliance_key/create",
+        "static": false
+      },
+      {
+        "action": "compliance_key_list",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/compliance_key/list",
+        "static": false
+      },
+      {
+        "action": "compliance_key_revoke",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/compliance_key/revoke",
+        "static": false
+      },
+      {
+        "action": "config_features",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/features",
+        "static": false
+      },
+      {
+        "action": "config_feedback_workflow",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/feedback-workflow",
+        "static": false
+      },
+      {
+        "action": "config_policy",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/policy",
+        "static": false
+      },
+      {
+        "action": "config_policy_bootstrap",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/policy/bootstrap",
+        "static": false
+      },
+      {
+        "action": "config_policy_meta",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/policy/meta",
+        "static": false
+      },
+      {
+        "action": "config_policy_preview",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/policy/preview",
+        "static": false
+      },
+      {
+        "action": "config_policy_saved",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/policy/saved",
+        "static": false
+      },
+      {
+        "action": "config_sidebar",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/sidebar",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/create",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/disable",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/list",
+        "static": false
+      },
+      {
+        "action": "muted_users_list",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/muted_users/list",
+        "static": false
+      },
+      {
+        "action": "muted_users_unmute",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/muted_users/unmute",
+        "static": false
+      },
+      {
+        "action": "muted_users_unmute_batch",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/muted_users/unmute_batch",
+        "static": false
+      },
+      {
+        "action": "push_token_list",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/push_token/list",
+        "static": false
+      },
+      {
+        "action": "ux_events",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/admin/ux/events",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/create",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/detail",
+        "static": false
+      },
+      {
+        "action": "knowledge_config",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/knowledge_config",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/list",
+        "static": false
+      },
+      {
+        "action": "mandate_create",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/mandate_create",
+        "static": false
+      },
+      {
+        "action": "onboarding_config",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/onboarding_config",
+        "static": false
+      },
+      {
+        "action": "role_create",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/role/create",
+        "static": false
+      },
+      {
+        "action": "role_detail",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/role/detail",
+        "static": false
+      },
+      {
+        "action": "role_draft",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/role/draft",
+        "static": false
+      },
+      {
+        "action": "role_list",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/role/list",
+        "static": false
+      },
+      {
+        "action": "role_publish",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/role/publish",
+        "static": false
+      },
+      {
+        "action": "role_set_status",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/role/set_status",
+        "static": false
+      },
+      {
+        "action": "roles",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/roles",
+        "static": false
+      },
+      {
+        "action": "set_status",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/set_status",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/update",
+        "static": false
+      },
+      {
+        "action": "upload_avatar",
+        "handler": "adm_ai_agent_handler",
+        "path": "/api/adm/ai_agent/upload_avatar",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "adm_announcement_handler",
+        "path": "/api/adm/announcement/create",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_announcement_handler",
+        "path": "/api/adm/announcement/delete",
+        "static": false
+      },
+      {
+        "action": "index",
+        "handler": "adm_announcement_handler",
+        "path": "/api/adm/announcement/index",
+        "static": false
+      },
+      {
+        "action": "publish",
+        "handler": "adm_announcement_handler",
+        "path": "/api/adm/announcement/publish",
+        "static": false
+      },
+      {
+        "action": "unpublish",
+        "handler": "adm_announcement_handler",
+        "path": "/api/adm/announcement/unpublish",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "adm_announcement_handler",
+        "path": "/api/adm/announcement/update",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_app_ddl_handler",
+        "path": "/api/adm/app_ddl/delete",
+        "static": false
+      },
+      {
+        "action": "index",
+        "handler": "adm_app_ddl_handler",
+        "path": "/api/adm/app_ddl/index",
+        "static": false
+      },
+      {
+        "action": "save",
+        "handler": "adm_app_ddl_handler",
+        "path": "/api/adm/app_ddl/save",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_app_version_handler",
+        "path": "/api/adm/app_version/delete",
+        "static": false
+      },
+      {
+        "action": "index",
+        "handler": "adm_app_version_handler",
+        "path": "/api/adm/app_version/index",
+        "static": false
+      },
+      {
+        "action": "save",
+        "handler": "adm_app_version_handler",
+        "path": "/api/adm/app_version/save",
+        "static": false
+      },
+      {
+        "action": "version_stats",
+        "handler": "adm_app_version_handler",
+        "path": "/api/adm/app_version/version_stats",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_bot_handler",
+        "path": "/api/adm/bot/detail",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "adm_bot_handler",
+        "path": "/api/adm/bot/disable",
+        "static": false
+      },
+      {
+        "action": "enable",
+        "handler": "adm_bot_handler",
+        "path": "/api/adm/bot/enable",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_bot_handler",
+        "path": "/api/adm/bot/list",
+        "static": false
+      },
+      {
+        "action": "remove_admin",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/admin/:user_id",
+        "static": false
+      },
+      {
+        "action": "update_admin_role",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/admin/:user_id/role",
+        "static": false
+      },
+      {
+        "action": "admins",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/admins",
+        "static": false
+      },
+      {
+        "action": "invitations",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/invitations",
+        "static": false
+      },
+      {
+        "action": "delete_message",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/message/:message_id/delete",
+        "static": false
+      },
+      {
+        "action": "pin_message",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/message/:message_id/pin",
+        "static": false
+      },
+      {
+        "action": "messages",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/messages",
+        "static": false
+      },
+      {
+        "action": "orders",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/orders",
+        "static": false
+      },
+      {
+        "action": "set_price",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/price",
+        "static": false
+      },
+      {
+        "action": "stats",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/stats",
+        "static": false
+      },
+      {
+        "action": "remove_subscriber",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/subscriber/:user_id",
+        "static": false
+      },
+      {
+        "action": "subscribers",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/:channel_id/subscribers",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/delete",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/detail/:channel_id",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/list",
+        "static": false
+      },
+      {
+        "action": "refund_order",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/order/refund",
+        "static": false
+      },
+      {
+        "action": "channel_batch_resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/channel/report/batch_resolve",
+        "static": false
+      },
+      {
+        "action": "channel_list",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/channel/report/list",
+        "static": false
+      },
+      {
+        "action": "channel_resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/channel/report/resolve",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "adm_channel_handler",
+        "path": "/api/adm/channel/search",
+        "static": false
+      },
+      {
+        "action": "current",
+        "handler": "adm_index_handler",
+        "path": "/api/adm/current",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_feedback_handler",
+        "path": "/api/adm/feedback/delete",
+        "static": false
+      },
+      {
+        "action": "index",
+        "handler": "adm_feedback_handler",
+        "path": "/api/adm/feedback/index",
+        "static": false
+      },
+      {
+        "action": "reply",
+        "handler": "adm_feedback_handler",
+        "path": "/api/adm/feedback/reply",
+        "static": false
+      },
+      {
+        "action": "status",
+        "handler": "adm_feedback_handler",
+        "path": "/api/adm/feedback/status",
+        "static": false
+      },
+      {
+        "action": "billing_invoices",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/billing/invoices",
+        "static": false
+      },
+      {
+        "action": "billing_plan_create",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/billing/plan",
+        "static": false
+      },
+      {
+        "action": "billing_plan_update",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/billing/plan/update",
+        "static": false
+      },
+      {
+        "action": "billing_plans",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/billing/plans",
+        "static": false
+      },
+      {
+        "action": "billing_subscriptions",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/billing/subscriptions",
+        "static": false
+      },
+      {
+        "action": "payment_transactions",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/payment-transactions",
+        "static": false
+      },
+      {
+        "action": "payment_transaction_refund",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/payment-transactions/refund",
+        "static": false
+      },
+      {
+        "action": "recharge_orders",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/recharge-orders",
+        "static": false
+      },
+      {
+        "action": "recharge_order_refund",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/recharge-orders/refund",
+        "static": false
+      },
+      {
+        "action": "wallet_transactions",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/wallet/:user_id/transactions",
+        "static": false
+      },
+      {
+        "action": "wallets",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/wallets",
+        "static": false
+      },
+      {
+        "action": "wallet_freeze",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/wallets/freeze",
+        "static": false
+      },
+      {
+        "action": "wallet_unfreeze",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/wallets/unfreeze",
+        "static": false
+      },
+      {
+        "action": "withdrawals",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/withdrawals",
+        "static": false
+      },
+      {
+        "action": "withdrawal_complete",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/withdrawals/complete",
+        "static": false
+      },
+      {
+        "action": "withdrawal_reject",
+        "handler": "adm_finance_handler",
+        "path": "/api/adm/finance/withdrawals/reject",
+        "static": false
+      },
+      {
+        "action": "album_delete",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/album/delete",
+        "static": false
+      },
+      {
+        "action": "album_detail",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/album/detail",
+        "static": false
+      },
+      {
+        "action": "album_list",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/album/list",
+        "static": false
+      },
+      {
+        "action": "category_delete",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/category/delete",
+        "static": false
+      },
+      {
+        "action": "category_list",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/category/list",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_group_handler",
+        "path": "/api/adm/group/detail",
+        "static": false
+      },
+      {
+        "action": "dissolve",
+        "handler": "adm_group_handler",
+        "path": "/api/adm/group/dissolve",
+        "static": false
+      },
+      {
+        "action": "file_delete",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/file/delete",
+        "static": false
+      },
+      {
+        "action": "file_detail",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/file/detail",
+        "static": false
+      },
+      {
+        "action": "file_list",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/file/list",
+        "static": false
+      },
+      {
+        "action": "governance_log_list",
+        "handler": "adm_group_schedule_handler",
+        "path": "/api/adm/group/governance_log/list",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_group_handler",
+        "path": "/api/adm/group/list",
+        "static": false
+      },
+      {
+        "action": "kick_member",
+        "handler": "adm_group_handler",
+        "path": "/api/adm/group/member/kick",
+        "static": false
+      },
+      {
+        "action": "members",
+        "handler": "adm_group_handler",
+        "path": "/api/adm/group/members",
+        "static": false
+      },
+      {
+        "action": "notice_delete",
+        "handler": "adm_group_notice_handler",
+        "path": "/api/adm/group/notice/delete",
+        "static": false
+      },
+      {
+        "action": "notice_detail",
+        "handler": "adm_group_notice_handler",
+        "path": "/api/adm/group/notice/detail",
+        "static": false
+      },
+      {
+        "action": "notice_list",
+        "handler": "adm_group_notice_handler",
+        "path": "/api/adm/group/notice/list",
+        "static": false
+      },
+      {
+        "action": "group_batch_resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/group/report/batch_resolve",
+        "static": false
+      },
+      {
+        "action": "group_list",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/group/report/list",
+        "static": false
+      },
+      {
+        "action": "group_resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/group/report/resolve",
+        "static": false
+      },
+      {
+        "action": "schedule_cancel",
+        "handler": "adm_group_schedule_handler",
+        "path": "/api/adm/group/schedule/cancel",
+        "static": false
+      },
+      {
+        "action": "schedule_detail",
+        "handler": "adm_group_schedule_handler",
+        "path": "/api/adm/group/schedule/detail",
+        "static": false
+      },
+      {
+        "action": "schedule_list",
+        "handler": "adm_group_schedule_handler",
+        "path": "/api/adm/group/schedule/list",
+        "static": false
+      },
+      {
+        "action": "schedule_restore",
+        "handler": "adm_group_schedule_handler",
+        "path": "/api/adm/group/schedule/restore",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "adm_group_handler",
+        "path": "/api/adm/group/search",
+        "static": false
+      },
+      {
+        "action": "tag_delete",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/tag/delete",
+        "static": false
+      },
+      {
+        "action": "tag_list",
+        "handler": "adm_group_content_handler",
+        "path": "/api/adm/group/tag/list",
+        "static": false
+      },
+      {
+        "action": "task_close",
+        "handler": "adm_group_task_handler",
+        "path": "/api/adm/group/task/close",
+        "static": false
+      },
+      {
+        "action": "task_delete",
+        "handler": "adm_group_task_handler",
+        "path": "/api/adm/group/task/delete",
+        "static": false
+      },
+      {
+        "action": "task_detail",
+        "handler": "adm_group_task_handler",
+        "path": "/api/adm/group/task/detail",
+        "static": false
+      },
+      {
+        "action": "task_list",
+        "handler": "adm_group_task_handler",
+        "path": "/api/adm/group/task/list",
+        "static": false
+      },
+      {
+        "action": "task_pending_review",
+        "handler": "adm_group_task_handler",
+        "path": "/api/adm/group/task/pending_review",
+        "static": false
+      },
+      {
+        "action": "task_restore",
+        "handler": "adm_group_task_handler",
+        "path": "/api/adm/group/task/restore",
+        "static": false
+      },
+      {
+        "action": "task_review",
+        "handler": "adm_group_task_handler",
+        "path": "/api/adm/group/task/review",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "adm_group_handler",
+        "path": "/api/adm/group/update",
+        "static": false
+      },
+      {
+        "action": "vote_close",
+        "handler": "adm_group_vote_handler",
+        "path": "/api/adm/group/vote/close",
+        "static": false
+      },
+      {
+        "action": "vote_detail",
+        "handler": "adm_group_vote_handler",
+        "path": "/api/adm/group/vote/detail",
+        "static": false
+      },
+      {
+        "action": "vote_list",
+        "handler": "adm_group_vote_handler",
+        "path": "/api/adm/group/vote/list",
+        "static": false
+      },
+      {
+        "action": "index",
+        "handler": "adm_index_handler",
+        "path": "/api/adm/index",
+        "static": false
+      },
+      {
+        "action": "audit",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/audit",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/clients",
+        "static": false
+      },
+      {
+        "action": "approve",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/clients/approve",
+        "static": false
+      },
+      {
+        "action": "grants",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/clients/grants",
+        "static": false
+      },
+      {
+        "action": "reject",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/clients/reject",
+        "static": false
+      },
+      {
+        "action": "revoke",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/clients/revoke",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_message_handler",
+        "path": "/api/adm/message/detail",
+        "static": false
+      },
+      {
+        "action": "export",
+        "handler": "adm_message_handler",
+        "path": "/api/adm/message/export",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_message_handler",
+        "path": "/api/adm/message/list",
+        "static": false
+      },
+      {
+        "action": "review_queue",
+        "handler": "adm_moderation_handler",
+        "path": "/api/adm/moderation/review-queue",
+        "static": false
+      },
+      {
+        "action": "review_moderate",
+        "handler": "adm_moderation_handler",
+        "path": "/api/adm/moderation/review-queue/:id/moderate",
+        "static": false
+      },
+      {
+        "action": "sensitive_words",
+        "handler": "adm_moderation_handler",
+        "path": "/api/adm/moderation/sensitive-words",
+        "static": false
+      },
+      {
+        "action": "sensitive_word_delete",
+        "handler": "adm_moderation_handler",
+        "path": "/api/adm/moderation/sensitive-words/:id",
+        "static": false
+      },
+      {
+        "action": "sensitive_words_import",
+        "handler": "adm_moderation_handler",
+        "path": "/api/adm/moderation/sensitive-words/import",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_moment_handler",
+        "path": "/api/adm/moment/delete",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_moment_handler",
+        "path": "/api/adm/moment/detail/:moment_id",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_moment_handler",
+        "path": "/api/adm/moment/list",
+        "static": false
+      },
+      {
+        "action": "report_batch_resolve",
+        "handler": "adm_moment_handler",
+        "path": "/api/adm/moment/report/batch_resolve",
+        "static": false
+      },
+      {
+        "action": "report_list",
+        "handler": "adm_moment_handler",
+        "path": "/api/adm/moment/report/list",
+        "static": false
+      },
+      {
+        "action": "report_resolve",
+        "handler": "adm_moment_handler",
+        "path": "/api/adm/moment/report/resolve",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_operation_log_handler",
+        "path": "/api/adm/operation_logs",
+        "static": false
+      },
+      {
+        "action": "captcha",
+        "handler": "adm_passport_handler",
+        "path": "/api/adm/passport/captcha",
+        "static": false
+      },
+      {
+        "action": "do_login",
+        "handler": "adm_passport_handler",
+        "path": "/api/adm/passport/do_login",
+        "static": false
+      },
+      {
+        "action": "login",
+        "handler": "adm_passport_handler",
+        "path": "/api/adm/passport/login",
+        "static": false
+      },
+      {
+        "action": "logout",
+        "handler": "adm_passport_handler",
+        "path": "/api/adm/passport/logout",
+        "static": false
+      },
+      {
+        "action": "meta",
+        "handler": "adm_passport_handler",
+        "path": "/api/adm/passport/meta",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/detail",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/disable",
+        "static": false
+      },
+      {
+        "action": "enable",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/enable",
+        "static": false
+      },
+      {
+        "action": "force_uninstall",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/force_uninstall",
+        "static": false
+      },
+      {
+        "action": "health",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/health",
+        "static": false
+      },
+      {
+        "action": "install",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/install",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/list",
+        "static": false
+      },
+      {
+        "action": "logs",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/logs",
+        "static": false
+      },
+      {
+        "action": "reset",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/reset",
+        "static": false
+      },
+      {
+        "action": "state_query",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/state",
+        "static": false
+      },
+      {
+        "action": "uninstall",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/uninstall",
+        "static": false
+      },
+      {
+        "action": "upgrade",
+        "handler": "adm_plugin_handler",
+        "path": "/api/adm/plugin/upgrade",
+        "static": false
+      },
+      {
+        "action": "rbac",
+        "handler": "adm_index_handler",
+        "path": "/api/adm/rbac/me",
+        "static": false
+      },
+      {
+        "action": "batch_resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/report/batch_resolve",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/report/create",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/report/list",
+        "static": false
+      },
+      {
+        "action": "resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/report/resolve",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/role/create",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/role/delete",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/role/disable",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/role/list",
+        "static": false
+      },
+      {
+        "action": "permissions_save",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/role/permission/update",
+        "static": false
+      },
+      {
+        "action": "permissions_save",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/role/permissions/save",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/roles/create",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/roles/delete",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/roles/disable",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/roles/list",
+        "static": false
+      },
+      {
+        "action": "permissions_save",
+        "handler": "adm_role_handler",
+        "path": "/api/adm/roles/permissions/save",
+        "static": false
+      },
+      {
+        "action": "init_setup",
+        "handler": "adm_setup_handler",
+        "path": "/api/adm/setup/init",
+        "static": false
+      },
+      {
+        "action": "status",
+        "handler": "adm_setup_handler",
+        "path": "/api/adm/setup/status",
+        "static": false
+      },
+      {
+        "action": "config",
+        "handler": "adm_sso_handler",
+        "path": "/api/adm/sso/config",
+        "static": false
+      },
+      {
+        "action": "test",
+        "handler": "adm_sso_handler",
+        "path": "/api/adm/sso/test",
+        "static": false
+      },
+      {
+        "action": "finance_summary",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/finance",
+        "static": false
+      },
+      {
+        "action": "finance_report",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/finance/report",
+        "static": false
+      },
+      {
+        "action": "group",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/group",
+        "static": false
+      },
+      {
+        "action": "license",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/license",
+        "static": false
+      },
+      {
+        "action": "message",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/message",
+        "static": false
+      },
+      {
+        "action": "overview",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/overview",
+        "static": false
+      },
+      {
+        "action": "ranking",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/ranking",
+        "static": false
+      },
+      {
+        "action": "user",
+        "handler": "adm_stats_handler",
+        "path": "/api/adm/stats/user",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/delete",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/disable",
+        "static": false
+      },
+      {
+        "action": "download",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/download",
+        "static": false
+      },
+      {
+        "action": "enable",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/enable",
+        "static": false
+      },
+      {
+        "action": "index",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/index",
+        "static": false
+      },
+      {
+        "action": "orphan",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/orphan",
+        "static": false
+      },
+      {
+        "action": "orphan_cleanup",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/orphan/cleanup",
+        "static": false
+      },
+      {
+        "action": "stats",
+        "handler": "adm_attach_handler",
+        "path": "/api/adm/storage/stats",
+        "static": false
+      },
+      {
+        "action": "ban",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/ban",
+        "static": false
+      },
+      {
+        "action": "collect_list",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/collect/list",
+        "static": false
+      },
+      {
+        "action": "collect_remove",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/collect/remove",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/detail",
+        "static": false
+      },
+      {
+        "action": "device_kick",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/device/kick",
+        "static": false
+      },
+      {
+        "action": "devices",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/devices",
+        "static": false
+      },
+      {
+        "action": "force_logout",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/force_logout",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/list",
+        "static": false
+      },
+      {
+        "action": "approve",
+        "handler": "adm_logout_apply_handler",
+        "path": "/api/adm/user/logout_apply/approve",
+        "static": false
+      },
+      {
+        "action": "export",
+        "handler": "adm_logout_apply_handler",
+        "path": "/api/adm/user/logout_apply/export",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_logout_apply_handler",
+        "path": "/api/adm/user/logout_apply/list",
+        "static": false
+      },
+      {
+        "action": "reject",
+        "handler": "adm_logout_apply_handler",
+        "path": "/api/adm/user/logout_apply/reject",
+        "static": false
+      },
+      {
+        "action": "user_batch_resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/user/report/batch_resolve",
+        "static": false
+      },
+      {
+        "action": "user_list",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/user/report/list",
+        "static": false
+      },
+      {
+        "action": "user_resolve",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/user/report/resolve",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/search",
+        "static": false
+      },
+      {
+        "action": "tag_delete",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/tag/delete",
+        "static": false
+      },
+      {
+        "action": "tag_list",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/tag/list",
+        "static": false
+      },
+      {
+        "action": "unban",
+        "handler": "adm_user_handler",
+        "path": "/api/adm/user/unban",
+        "static": false
+      },
+      {
+        "action": "welcome",
+        "handler": "adm_index_handler",
+        "path": "/api/adm/welcome",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "cowboy_static",
+        "path": "/static/admin/[...]",
+        "static": true
+      }
+    ],
+    "api_v1": [
+      {
+        "action": "well_known",
+        "handler": "agent_card_handler",
+        "path": "/.well-known/agent.json",
+        "static": false
+      },
+      {
+        "action": "card",
+        "handler": "agent_card_handler",
+        "path": "/api/v1/agent-card",
+        "static": false
+      },
+      {
+        "action": "categories",
+        "handler": "ai_agent_handler",
+        "path": "/api/v1/agent/categories",
+        "static": false
+      },
+      {
+        "action": "discover",
+        "handler": "ai_agent_handler",
+        "path": "/api/v1/agent/discover",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "ai_agent_handler",
+        "path": "/api/v1/agent/list",
+        "static": false
+      },
+      {
+        "action": "active",
+        "handler": "agent_mandate_handler",
+        "path": "/api/v1/agent/mandate/active",
+        "static": false
+      },
+      {
+        "action": "authorize",
+        "handler": "agent_mandate_handler",
+        "path": "/api/v1/agent/mandate/authorize",
+        "static": false
+      },
+      {
+        "action": "revoke",
+        "handler": "agent_mandate_handler",
+        "path": "/api/v1/agent/mandate/revoke",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "ai_agent_handler",
+        "path": "/api/v1/agent/search",
+        "static": false
+      },
+      {
+        "action": "approve",
+        "handler": "agent_task_handler",
+        "path": "/api/v1/agent_task/approve",
+        "static": false
+      },
+      {
+        "action": "reject",
+        "handler": "agent_task_handler",
+        "path": "/api/v1/agent_task/reject",
+        "static": false
+      },
+      {
+        "action": "features",
+        "handler": "app_feature_handler",
+        "path": "/api/v1/app/features",
+        "static": false
+      },
+      {
+        "action": "ice_servers",
+        "handler": "app_feature_handler",
+        "path": "/api/v1/app/ice_servers",
+        "static": false
+      },
+      {
+        "action": "manifest",
+        "handler": "app_manifest_handler",
+        "path": "/api/v1/app/manifest",
+        "static": false
+      },
+      {
+        "action": "policy",
+        "handler": "app_feature_handler",
+        "path": "/api/v1/app/policy",
+        "static": false
+      },
+      {
+        "action": "report",
+        "handler": "app_upgrade_log_handler",
+        "path": "/api/v1/app_upgrade/report",
+        "static": false
+      },
+      {
+        "action": "check",
+        "handler": "app_version_handler",
+        "path": "/api/v1/app_version/check",
+        "static": false
+      },
+      {
+        "action": "confirm",
+        "handler": "attach_handler",
+        "path": "/api/v1/attachment/confirm",
+        "static": false
+      },
+      {
+        "action": "presign",
+        "handler": "attach_handler",
+        "path": "/api/v1/attachment/presign",
+        "static": false
+      },
+      {
+        "action": "view_url",
+        "handler": "attach_handler",
+        "path": "/api/v1/attachment/view_url",
+        "static": false
+      },
+      {
+        "action": "authorize",
+        "handler": "auth_oidc_handler",
+        "path": "/api/v1/auth/oidc/authorize",
+        "static": false
+      },
+      {
+        "action": "callback",
+        "handler": "auth_oidc_handler",
+        "path": "/api/v1/auth/oidc/callback",
+        "static": false
+      },
+      {
+        "action": "exchange",
+        "handler": "auth_oidc_handler",
+        "path": "/api/v1/auth/oidc/exchange",
+        "static": false
+      },
+      {
+        "action": "cancel",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/cancel",
+        "static": false
+      },
+      {
+        "action": "invoice_generate",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/invoice/generate",
+        "static": false
+      },
+      {
+        "action": "invoice_list",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/invoice/list",
+        "static": false
+      },
+      {
+        "action": "invoice_pay",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/invoice/pay",
+        "static": false
+      },
+      {
+        "action": "plan_list",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/plan/list",
+        "static": false
+      },
+      {
+        "action": "check_quota",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/quota",
+        "static": false
+      },
+      {
+        "action": "renew",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/renew",
+        "static": false
+      },
+      {
+        "action": "subscribe",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/subscribe",
+        "static": false
+      },
+      {
+        "action": "subscription",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/subscription",
+        "static": false
+      },
+      {
+        "action": "report_usage",
+        "handler": "billing_handler",
+        "path": "/api/v1/billing/usage",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/disable",
+        "static": false
+      },
+      {
+        "action": "enable",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/enable",
+        "static": false
+      },
+      {
+        "action": "get",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/get",
+        "static": false
+      },
+      {
+        "action": "list_mine",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/list_mine",
+        "static": false
+      },
+      {
+        "action": "register",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/register",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/search",
+        "static": false
+      },
+      {
+        "action": "send_message",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/send_message",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "bot_handler",
+        "path": "/api/v1/bot/update",
+        "static": false
+      },
+      {
+        "action": "show",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id",
+        "static": false
+      },
+      {
+        "action": "add_admin",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/admin",
+        "static": false
+      },
+      {
+        "action": "remove_admin",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/:channel_id/admin/:user_id",
+        "static": false
+      },
+      {
+        "action": "update_admin_role",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/:channel_id/admin/:user_id/role",
+        "static": false
+      },
+      {
+        "action": "admins",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/:channel_id/admins",
+        "static": false
+      },
+      {
+        "action": "delete_comment",
+        "handler": "channel_handler_comment",
+        "path": "/api/v1/channel/:channel_id/comment/:comment_id/delete",
+        "static": false
+      },
+      {
+        "action": "like_comment",
+        "handler": "channel_handler_comment",
+        "path": "/api/v1/channel/:channel_id/comment/:comment_id/like",
+        "static": false
+      },
+      {
+        "action": "unlike_comment",
+        "handler": "channel_handler_comment",
+        "path": "/api/v1/channel/:channel_id/comment/:comment_id/unlike",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/delete",
+        "static": false
+      },
+      {
+        "action": "create_invitation",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/:channel_id/invitation",
+        "static": false
+      },
+      {
+        "action": "publish_message",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/message",
+        "static": false
+      },
+      {
+        "action": "create_comment",
+        "handler": "channel_handler_comment",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/comment",
+        "static": false
+      },
+      {
+        "action": "list_comments",
+        "handler": "channel_handler_comment",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/comments",
+        "static": false
+      },
+      {
+        "action": "delete_message",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/delete",
+        "static": false
+      },
+      {
+        "action": "edit_message",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/edit",
+        "static": false
+      },
+      {
+        "action": "pin_message",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/pin",
+        "static": false
+      },
+      {
+        "action": "add_reaction",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/reaction",
+        "static": false
+      },
+      {
+        "action": "remove_reaction",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/reaction/:reaction_type",
+        "static": false
+      },
+      {
+        "action": "revoke_message",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/revoke",
+        "static": false
+      },
+      {
+        "action": "record_view",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/message/:message_id/view",
+        "static": false
+      },
+      {
+        "action": "messages",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/messages",
+        "static": false
+      },
+      {
+        "action": "create_order",
+        "handler": "channel_handler_order",
+        "path": "/api/v1/channel/:channel_id/order",
+        "static": false
+      },
+      {
+        "action": "mark_read",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/read",
+        "static": false
+      },
+      {
+        "action": "stats",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/stats",
+        "static": false
+      },
+      {
+        "action": "stats_daily",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/stats/daily",
+        "static": false
+      },
+      {
+        "action": "subscribe",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/subscribe",
+        "static": false
+      },
+      {
+        "action": "remove_subscriber",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/:channel_id/subscriber/:user_id",
+        "static": false
+      },
+      {
+        "action": "subscribers",
+        "handler": "channel_handler_message",
+        "path": "/api/v1/channel/:channel_id/subscribers",
+        "static": false
+      },
+      {
+        "action": "unsubscribe",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/unsubscribe",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/:channel_id/update",
+        "static": false
+      },
+      {
+        "action": "disable",
+        "handler": "channel_webhook_handler",
+        "path": "/api/v1/channel/:channel_id/webhook/:webhook_id/disable",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "channel_webhook_handler",
+        "path": "/api/v1/channel/:channel_id/webhook/create",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "channel_webhook_handler",
+        "path": "/api/v1/channel/:channel_id/webhook/list",
+        "static": false
+      },
+      {
+        "action": "by_custom_id",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/by_custom_id/:custom_id",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/create",
+        "static": false
+      },
+      {
+        "action": "accept_invitation",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/invitation/accept",
+        "static": false
+      },
+      {
+        "action": "reject_invitation",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/invitation/reject",
+        "static": false
+      },
+      {
+        "action": "my_invitations",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/invitations/my",
+        "static": false
+      },
+      {
+        "action": "sent_invitations",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channel/invitations/sent",
+        "static": false
+      },
+      {
+        "action": "get_order",
+        "handler": "channel_handler_order",
+        "path": "/api/v1/channel/order/:order_no",
+        "static": false
+      },
+      {
+        "action": "cancel_order",
+        "handler": "channel_handler_order",
+        "path": "/api/v1/channel/order/cancel",
+        "static": false
+      },
+      {
+        "action": "pay_order",
+        "handler": "channel_handler_order",
+        "path": "/api/v1/channel/order/pay",
+        "static": false
+      },
+      {
+        "action": "refund_order",
+        "handler": "channel_handler_order",
+        "path": "/api/v1/channel/order/refund",
+        "static": false
+      },
+      {
+        "action": "my_orders",
+        "handler": "channel_handler_order",
+        "path": "/api/v1/channel/orders/my",
+        "static": false
+      },
+      {
+        "action": "categories",
+        "handler": "channel_discovery_handler",
+        "path": "/api/v1/channels/categories",
+        "static": false
+      },
+      {
+        "action": "discover",
+        "handler": "channel_discovery_handler",
+        "path": "/api/v1/channels/discover",
+        "static": false
+      },
+      {
+        "action": "featured",
+        "handler": "channel_discovery_handler",
+        "path": "/api/v1/channels/featured",
+        "static": false
+      },
+      {
+        "action": "managed",
+        "handler": "channel_handler",
+        "path": "/api/v1/channels/managed",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "channel_discovery_handler",
+        "path": "/api/v1/channels/search",
+        "static": false
+      },
+      {
+        "action": "subscribed",
+        "handler": "channel_handler",
+        "path": "/api/v1/channels/subscribed",
+        "static": false
+      },
+      {
+        "action": "sync",
+        "handler": "channel_handler_admin",
+        "path": "/api/v1/channels/sync",
+        "static": false
+      },
+      {
+        "action": "trending",
+        "handler": "channel_discovery_handler",
+        "path": "/api/v1/channels/trending",
+        "static": false
+      },
+      {
+        "action": "unread_summary",
+        "handler": "channel_handler",
+        "path": "/api/v1/channels/unread/summary",
+        "static": false
+      },
+      {
+        "action": "delete_conversation",
+        "handler": "conversation_handler",
+        "path": "/api/v1/conversation/delete",
+        "static": false
+      },
+      {
+        "action": "mine",
+        "handler": "conversation_handler",
+        "path": "/api/v1/conversation/mine",
+        "static": false
+      },
+      {
+        "action": "online",
+        "handler": "conversation_handler",
+        "path": "/api/v1/conversation/online",
+        "static": false
+      },
+      {
+        "action": "pin_conversation",
+        "handler": "conversation_handler",
+        "path": "/api/v1/conversation/pin",
+        "static": false
+      },
+      {
+        "action": "pinned_list",
+        "handler": "conversation_handler",
+        "path": "/api/v1/conversation/pinned",
+        "static": false
+      },
+      {
+        "action": "restore_conversation",
+        "handler": "conversation_handler",
+        "path": "/api/v1/conversation/restore",
+        "static": false
+      },
+      {
+        "action": "unpin_conversation",
+        "handler": "conversation_handler",
+        "path": "/api/v1/conversation/unpin",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "e2ee_backup_handler",
+        "path": "/api/v1/e2ee/backup/delete",
+        "static": false
+      },
+      {
+        "action": "get",
+        "handler": "e2ee_backup_handler",
+        "path": "/api/v1/e2ee/backup/get",
+        "static": false
+      },
+      {
+        "action": "info",
+        "handler": "e2ee_backup_handler",
+        "path": "/api/v1/e2ee/backup/info",
+        "static": false
+      },
+      {
+        "action": "put",
+        "handler": "e2ee_backup_handler",
+        "path": "/api/v1/e2ee/backup/put",
+        "static": false
+      },
+      {
+        "action": "compliance_key",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/compliance_key",
+        "static": false
+      },
+      {
+        "action": "list_devices",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/devices",
+        "static": false
+      },
+      {
+        "action": "batch_claim",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/devices/batch_claim",
+        "static": false
+      },
+      {
+        "action": "group_member_keys",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/group_member_keys",
+        "static": false
+      },
+      {
+        "action": "key_status",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/key/status",
+        "static": false
+      },
+      {
+        "action": "pull_notifications",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/notifications/pull",
+        "static": false
+      },
+      {
+        "action": "claim_key",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/olm/claim",
+        "static": false
+      },
+      {
+        "action": "report_fallback",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/olm/fallback_key",
+        "static": false
+      },
+      {
+        "action": "get_identity",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/olm/get_identity",
+        "static": false
+      },
+      {
+        "action": "report_identity",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/olm/identity",
+        "static": false
+      },
+      {
+        "action": "prekey_count",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/olm/prekey_count",
+        "static": false
+      },
+      {
+        "action": "report_prekeys",
+        "handler": "olm_handler",
+        "path": "/api/v1/e2ee/olm/prekeys",
+        "static": false
+      },
+      {
+        "action": "start_recovery",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/recovery/start",
+        "static": false
+      },
+      {
+        "action": "report_device_key",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/report_device_key",
+        "static": false
+      },
+      {
+        "action": "record",
+        "handler": "e2ee_trust_handler",
+        "path": "/api/v1/e2ee/trust/record",
+        "static": false
+      },
+      {
+        "action": "user_keys",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/user_keys",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "feedback_handler",
+        "path": "/api/v1/feedback/add",
+        "static": false
+      },
+      {
+        "action": "change",
+        "handler": "feedback_handler",
+        "path": "/api/v1/feedback/change",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "feedback_handler",
+        "path": "/api/v1/feedback/page",
+        "static": false
+      },
+      {
+        "action": "page_reply",
+        "handler": "feedback_handler",
+        "path": "/api/v1/feedback/page_reply",
+        "static": false
+      },
+      {
+        "action": "remove",
+        "handler": "feedback_handler",
+        "path": "/api/v1/feedback/remove",
+        "static": false
+      },
+      {
+        "action": "reply",
+        "handler": "feedback_handler",
+        "path": "/api/v1/feedback/reply",
+        "static": false
+      },
+      {
+        "action": "add_friend",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/add",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "friend_category_handler",
+        "path": "/api/v1/friend/category/add",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "friend_category_handler",
+        "path": "/api/v1/friend/category/delete",
+        "static": false
+      },
+      {
+        "action": "rename",
+        "handler": "friend_category_handler",
+        "path": "/api/v1/friend/category/rename",
+        "static": false
+      },
+      {
+        "action": "change_remark",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/change_remark",
+        "static": false
+      },
+      {
+        "action": "confirm",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/confirm",
+        "static": false
+      },
+      {
+        "action": "delete_friend",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/delete",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "user_denylist_handler",
+        "path": "/api/v1/friend/denylist/add",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "user_denylist_handler",
+        "path": "/api/v1/friend/denylist/page",
+        "static": false
+      },
+      {
+        "action": "remove",
+        "handler": "user_denylist_handler",
+        "path": "/api/v1/friend/denylist/remove",
+        "static": false
+      },
+      {
+        "action": "information",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/information",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/list",
+        "static": false
+      },
+      {
+        "action": "move",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/move",
+        "static": false
+      },
+      {
+        "action": "reject",
+        "handler": "friend_handler",
+        "path": "/api/v1/friend/reject",
+        "static": false
+      },
+      {
+        "action": "msg",
+        "handler": "fts_handler",
+        "path": "/api/v1/fts/msg",
+        "static": false
+      },
+      {
+        "action": "recently_user",
+        "handler": "fts_handler",
+        "path": "/api/v1/fts/recently_user",
+        "static": false
+      },
+      {
+        "action": "user_search",
+        "handler": "fts_handler",
+        "path": "/api/v1/fts/user_search",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "group_handler",
+        "path": "/api/v1/group/add",
+        "static": false
+      },
+      {
+        "action": "categories",
+        "handler": "group_discovery_handler",
+        "path": "/api/v1/group/categories",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "group_category_handler",
+        "path": "/api/v1/group/category/create",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "group_category_handler",
+        "path": "/api/v1/group/category/delete",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "group_category_handler",
+        "path": "/api/v1/group/category/list",
+        "static": false
+      },
+      {
+        "action": "move_group",
+        "handler": "group_category_handler",
+        "path": "/api/v1/group/category/move_group",
+        "static": false
+      },
+      {
+        "action": "rename",
+        "handler": "group_category_handler",
+        "path": "/api/v1/group/category/rename",
+        "static": false
+      },
+      {
+        "action": "sort",
+        "handler": "group_category_handler",
+        "path": "/api/v1/group/category/sort",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "group_handler",
+        "path": "/api/v1/group/detail",
+        "static": false
+      },
+      {
+        "action": "discover",
+        "handler": "group_discovery_handler",
+        "path": "/api/v1/group/discover",
+        "static": false
+      },
+      {
+        "action": "dissolve",
+        "handler": "group_handler",
+        "path": "/api/v1/group/dissolve",
+        "static": false
+      },
+      {
+        "action": "edit",
+        "handler": "group_handler",
+        "path": "/api/v1/group/edit",
+        "static": false
+      },
+      {
+        "action": "face2face",
+        "handler": "group_handler",
+        "path": "/api/v1/group/face2face",
+        "static": false
+      },
+      {
+        "action": "face2face_save",
+        "handler": "group_handler",
+        "path": "/api/v1/group/face2face_save",
+        "static": false
+      },
+      {
+        "action": "featured",
+        "handler": "group_discovery_handler",
+        "path": "/api/v1/group/featured",
+        "static": false
+      },
+      {
+        "action": "categories",
+        "handler": "group_file_handler",
+        "path": "/api/v1/group/file/categories",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "group_file_handler",
+        "path": "/api/v1/group/file/delete",
+        "static": false
+      },
+      {
+        "action": "download",
+        "handler": "group_file_handler",
+        "path": "/api/v1/group/file/download",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "group_file_handler",
+        "path": "/api/v1/group/file/list",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "group_file_handler",
+        "path": "/api/v1/group/file/search",
+        "static": false
+      },
+      {
+        "action": "upload",
+        "handler": "group_file_handler",
+        "path": "/api/v1/group/file/upload",
+        "static": false
+      },
+      {
+        "action": "hot",
+        "handler": "group_discovery_handler",
+        "path": "/api/v1/group/hot",
+        "static": false
+      },
+      {
+        "action": "msg_page",
+        "handler": "group_handler",
+        "path": "/api/v1/group/msg_page",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group/notice/detail",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group/notice/list",
+        "static": false
+      },
+      {
+        "action": "mark_read",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group/notice/mark_read",
+        "static": false
+      },
+      {
+        "action": "pin",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group/notice/pin",
+        "static": false
+      },
+      {
+        "action": "unpin",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group/notice/unpin",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "group_handler",
+        "path": "/api/v1/group/page",
+        "static": false
+      },
+      {
+        "action": "preview",
+        "handler": "group_discovery_handler",
+        "path": "/api/v1/group/preview",
+        "static": false
+      },
+      {
+        "action": "qrcode",
+        "handler": "group_handler",
+        "path": "/api/v1/group/qrcode",
+        "static": false
+      },
+      {
+        "action": "remark",
+        "handler": "group_handler",
+        "path": "/api/v1/group/remark",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "group_discovery_handler",
+        "path": "/api/v1/group/search",
+        "static": false
+      },
+      {
+        "action": "set_e2ee_mode",
+        "handler": "group_handler",
+        "path": "/api/v1/group/set_e2ee_mode",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "group_tag_handler",
+        "path": "/api/v1/group/tag/add",
+        "static": false
+      },
+      {
+        "action": "hot",
+        "handler": "group_tag_handler",
+        "path": "/api/v1/group/tag/hot",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "group_tag_handler",
+        "path": "/api/v1/group/tag/list",
+        "static": false
+      },
+      {
+        "action": "remove",
+        "handler": "group_tag_handler",
+        "path": "/api/v1/group/tag/remove",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "group_tag_handler",
+        "path": "/api/v1/group/tag/search",
+        "static": false
+      },
+      {
+        "action": "assign",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/assign",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/create",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/detail",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/list",
+        "static": false
+      },
+      {
+        "action": "my_tasks",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/my",
+        "static": false
+      },
+      {
+        "action": "pending_review",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/pending",
+        "static": false
+      },
+      {
+        "action": "review",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/review",
+        "static": false
+      },
+      {
+        "action": "submit",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/submit",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "group_task_handler",
+        "path": "/api/v1/group/task/update",
+        "static": false
+      },
+      {
+        "action": "transfer",
+        "handler": "group_handler",
+        "path": "/api/v1/group/transfer",
+        "static": false
+      },
+      {
+        "action": "cancel",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/cancel",
+        "static": false
+      },
+      {
+        "action": "cast",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/cast",
+        "static": false
+      },
+      {
+        "action": "close",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/close",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/create",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/detail",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/list",
+        "static": false
+      },
+      {
+        "action": "my_vote",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/my_vote",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "group_vote_handler",
+        "path": "/api/v1/group/vote/update",
+        "static": false
+      },
+      {
+        "action": "update_cover",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/cover/update",
+        "static": false
+      },
+      {
+        "action": "create_album",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/create",
+        "static": false
+      },
+      {
+        "action": "delete_album",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/delete",
+        "static": false
+      },
+      {
+        "action": "list_albums",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/list",
+        "static": false
+      },
+      {
+        "action": "batch_upload",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/batch",
+        "static": false
+      },
+      {
+        "action": "add_comment",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/comment",
+        "static": false
+      },
+      {
+        "action": "list_comments",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/comments",
+        "static": false
+      },
+      {
+        "action": "delete_photo",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/delete",
+        "static": false
+      },
+      {
+        "action": "photo_detail",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/detail",
+        "static": false
+      },
+      {
+        "action": "like_photo",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/like",
+        "static": false
+      },
+      {
+        "action": "list_photos",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/list",
+        "static": false
+      },
+      {
+        "action": "unlike_photo",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/unlike",
+        "static": false
+      },
+      {
+        "action": "upload_photo",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/photo/upload",
+        "static": false
+      },
+      {
+        "action": "rename_album",
+        "handler": "group_album_handler",
+        "path": "/api/v1/group_album/rename",
+        "static": false
+      },
+      {
+        "action": "alias",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/alias",
+        "static": false
+      },
+      {
+        "action": "join",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/join",
+        "static": false
+      },
+      {
+        "action": "leave",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/leave",
+        "static": false
+      },
+      {
+        "action": "mute",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/mute",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/page",
+        "static": false
+      },
+      {
+        "action": "role",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/role",
+        "static": false
+      },
+      {
+        "action": "same_group",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/same_group",
+        "static": false
+      },
+      {
+        "action": "unmute",
+        "handler": "group_member_handler",
+        "path": "/api/v1/group_member/unmute",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group_notice/add",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group_notice/delete",
+        "static": false
+      },
+      {
+        "action": "edit",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group_notice/edit",
+        "static": false
+      },
+      {
+        "action": "latest",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group_notice/latest",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group_notice/page",
+        "static": false
+      },
+      {
+        "action": "publish",
+        "handler": "group_notice_handler",
+        "path": "/api/v1/group_notice/publish",
+        "static": false
+      },
+      {
+        "action": "cancel",
+        "handler": "group_schedule_handler",
+        "path": "/api/v1/group_schedule/cancel",
+        "static": false
+      },
+      {
+        "action": "confirm",
+        "handler": "group_schedule_handler",
+        "path": "/api/v1/group_schedule/confirm",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "group_schedule_handler",
+        "path": "/api/v1/group_schedule/create",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "group_schedule_handler",
+        "path": "/api/v1/group_schedule/detail",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "group_schedule_handler",
+        "path": "/api/v1/group_schedule/list",
+        "static": false
+      },
+      {
+        "action": "my_list",
+        "handler": "group_schedule_handler",
+        "path": "/api/v1/group_schedule/my_list",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "group_schedule_handler",
+        "path": "/api/v1/group_schedule/update",
+        "static": false
+      },
+      {
+        "action": "init",
+        "handler": "index_handler",
+        "path": "/api/v1/init",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "live_room_handler",
+        "path": "/api/v1/live_room/create",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "live_room_handler",
+        "path": "/api/v1/live_room/detail",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "live_room_handler",
+        "path": "/api/v1/live_room/list",
+        "static": false
+      },
+      {
+        "action": "my_list",
+        "handler": "live_room_handler",
+        "path": "/api/v1/live_room/my_list",
+        "static": false
+      },
+      {
+        "action": "start",
+        "handler": "live_room_handler",
+        "path": "/api/v1/live_room/start",
+        "static": false
+      },
+      {
+        "action": "stop",
+        "handler": "live_room_handler",
+        "path": "/api/v1/live_room/stop",
+        "static": false
+      },
+      {
+        "action": "make_myself_unvisible",
+        "handler": "location_handler",
+        "path": "/api/v1/location/makeMyselfUnvisible",
+        "static": false
+      },
+      {
+        "action": "make_myself_visible",
+        "handler": "location_handler",
+        "path": "/api/v1/location/makeMyselfVisible",
+        "static": false
+      },
+      {
+        "action": "people_nearby",
+        "handler": "location_handler",
+        "path": "/api/v1/location/peopleNearby",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "mcp_handler",
+        "path": "/api/v1/mcp",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "mention_handler",
+        "path": "/api/v1/mention/list",
+        "static": false
+      },
+      {
+        "action": "mark_read",
+        "handler": "mention_handler",
+        "path": "/api/v1/mention/mark_read",
+        "static": false
+      },
+      {
+        "action": "suggest",
+        "handler": "mention_handler",
+        "path": "/api/v1/mention/suggest",
+        "static": false
+      },
+      {
+        "action": "unread",
+        "handler": "mention_handler",
+        "path": "/api/v1/mention/unread",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "metrics_handler",
+        "path": "/api/v1/metrics",
+        "static": false
+      },
+      {
+        "action": "show",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id",
+        "static": false
+      },
+      {
+        "action": "add_comment",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id/comment",
+        "static": false
+      },
+      {
+        "action": "delete_comment",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id/comment/:comment_id/delete",
+        "static": false
+      },
+      {
+        "action": "comments",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id/comments",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id/delete",
+        "static": false
+      },
+      {
+        "action": "like",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id/like",
+        "static": false
+      },
+      {
+        "action": "report",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id/report",
+        "static": false
+      },
+      {
+        "action": "unlike",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/:moment_id/unlike",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "moment_handler",
+        "path": "/api/v1/moment/create",
+        "static": false
+      },
+      {
+        "action": "moment_create",
+        "handler": "report_handler",
+        "path": "/api/v1/moment/report/create",
+        "static": false
+      },
+      {
+        "action": "feed",
+        "handler": "moment_handler",
+        "path": "/api/v1/moments/feed",
+        "static": false
+      },
+      {
+        "action": "user_posts",
+        "handler": "moment_handler",
+        "path": "/api/v1/moments/user/:uid",
+        "static": false
+      },
+      {
+        "action": "forward",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/forward",
+        "static": false
+      },
+      {
+        "action": "history",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/history",
+        "static": false
+      },
+      {
+        "action": "offline",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/offline",
+        "static": false
+      },
+      {
+        "action": "offline_ack",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/offline_ack",
+        "static": false
+      },
+      {
+        "action": "pin",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/pin",
+        "static": false
+      },
+      {
+        "action": "reaction_add",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/reaction/add",
+        "static": false
+      },
+      {
+        "action": "reaction_list",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/reaction/list",
+        "static": false
+      },
+      {
+        "action": "reaction_remove",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/reaction/remove",
+        "static": false
+      },
+      {
+        "action": "read_stats",
+        "handler": "msg_handler",
+        "path": "/api/v1/msg/read_stats",
+        "static": false
+      },
+      {
+        "action": "alipay_authinfo",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/alipay_authinfo",
+        "static": false
+      },
+      {
+        "action": "alipay_login",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/alipay_login",
+        "static": false
+      },
+      {
+        "action": "bind_mail",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/bind_mail",
+        "static": false
+      },
+      {
+        "action": "find_password",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/findpassword",
+        "static": false
+      },
+      {
+        "action": "getcode",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/getcode",
+        "static": false
+      },
+      {
+        "action": "login",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/login",
+        "static": false
+      },
+      {
+        "action": "cancel",
+        "handler": "qr_login_handler",
+        "path": "/api/v1/passport/qr_login/cancel",
+        "static": false
+      },
+      {
+        "action": "confirm",
+        "handler": "qr_login_handler",
+        "path": "/api/v1/passport/qr_login/confirm",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "qr_login_handler",
+        "path": "/api/v1/passport/qr_login/create",
+        "static": false
+      },
+      {
+        "action": "scan",
+        "handler": "qr_login_handler",
+        "path": "/api/v1/passport/qr_login/scan",
+        "static": false
+      },
+      {
+        "action": "status",
+        "handler": "qr_login_handler",
+        "path": "/api/v1/passport/qr_login/status",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "qr_login_sse_handler",
+        "path": "/api/v1/passport/qr_login/subscribe",
+        "static": false
+      },
+      {
+        "action": "quick_login",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/quick_login",
+        "static": false
+      },
+      {
+        "action": "signup",
+        "handler": "passport_handler",
+        "path": "/api/v1/passport/signup",
+        "static": false
+      },
+      {
+        "action": "notify",
+        "handler": "payment_callback_handler",
+        "path": "/api/v1/payment/callback/:gateway",
+        "static": false
+      },
+      {
+        "action": "push_register",
+        "handler": "user_device_handler",
+        "path": "/api/v1/push/register",
+        "static": false
+      },
+      {
+        "action": "push_unregister",
+        "handler": "user_device_handler",
+        "path": "/api/v1/push/unregister",
+        "static": false
+      },
+      {
+        "action": "refreshtoken",
+        "handler": "passport_handler",
+        "path": "/api/v1/refreshtoken",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "report_handler",
+        "path": "/api/v1/report/create",
+        "static": false
+      },
+      {
+        "action": "join",
+        "handler": "rtc_room_handler",
+        "path": "/api/v1/rtc/room/join",
+        "static": false
+      },
+      {
+        "action": "apply_logout",
+        "handler": "user_handler",
+        "path": "/api/v1/user/apply_logout",
+        "static": false
+      },
+      {
+        "action": "cancel_logout",
+        "handler": "user_handler",
+        "path": "/api/v1/user/cancel_logout",
+        "static": false
+      },
+      {
+        "action": "change_password",
+        "handler": "user_handler",
+        "path": "/api/v1/user/change_password",
+        "static": false
+      },
+      {
+        "action": "change_state",
+        "handler": "user_handler",
+        "path": "/api/v1/user/change_state",
+        "static": false
+      },
+      {
+        "action": "credential",
+        "handler": "user_handler",
+        "path": "/api/v1/user/credential",
+        "static": false
+      },
+      {
+        "action": "export_data",
+        "handler": "user_handler",
+        "path": "/api/v1/user/export_data",
+        "static": false
+      },
+      {
+        "action": "qrcode",
+        "handler": "user_handler",
+        "path": "/api/v1/user/qrcode",
+        "static": false
+      },
+      {
+        "action": "search",
+        "handler": "user_handler",
+        "path": "/api/v1/user/search",
+        "static": false
+      },
+      {
+        "action": "set_password",
+        "handler": "user_handler",
+        "path": "/api/v1/user/set_password",
+        "static": false
+      },
+      {
+        "action": "setting",
+        "handler": "user_handler",
+        "path": "/api/v1/user/setting",
+        "static": false
+      },
+      {
+        "action": "show",
+        "handler": "user_handler",
+        "path": "/api/v1/user/show",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "user_handler",
+        "path": "/api/v1/user/update",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "user_collect_handler",
+        "path": "/api/v1/user_collect/add",
+        "static": false
+      },
+      {
+        "action": "change",
+        "handler": "user_collect_handler",
+        "path": "/api/v1/user_collect/change",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "user_collect_handler",
+        "path": "/api/v1/user_collect/page",
+        "static": false
+      },
+      {
+        "action": "remove",
+        "handler": "user_collect_handler",
+        "path": "/api/v1/user_collect/remove",
+        "static": false
+      },
+      {
+        "action": "change_name",
+        "handler": "user_device_handler",
+        "path": "/api/v1/user_device/change_name",
+        "static": false
+      },
+      {
+        "action": "check_login",
+        "handler": "user_device_handler",
+        "path": "/api/v1/user_device/check_login",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "user_device_handler",
+        "path": "/api/v1/user_device/delete",
+        "static": false
+      },
+      {
+        "action": "kick",
+        "handler": "user_device_handler",
+        "path": "/api/v1/user_device/kick",
+        "static": false
+      },
+      {
+        "action": "kick_others",
+        "handler": "user_device_handler",
+        "path": "/api/v1/user_device/kick-others",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "user_device_handler",
+        "path": "/api/v1/user_device/page",
+        "static": false
+      },
+      {
+        "action": "sessions",
+        "handler": "user_device_handler",
+        "path": "/api/v1/user_device/sessions",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "user_tag_handler",
+        "path": "/api/v1/user_tag/add",
+        "static": false
+      },
+      {
+        "action": "change_name",
+        "handler": "user_tag_handler",
+        "path": "/api/v1/user_tag/change_name",
+        "static": false
+      },
+      {
+        "action": "delete",
+        "handler": "user_tag_handler",
+        "path": "/api/v1/user_tag/delete",
+        "static": false
+      },
+      {
+        "action": "page",
+        "handler": "user_tag_handler",
+        "path": "/api/v1/user_tag/page",
+        "static": false
+      },
+      {
+        "action": "add",
+        "handler": "user_tag_relation_handler",
+        "path": "/api/v1/user_tag_relation/add",
+        "static": false
+      },
+      {
+        "action": "collect_page",
+        "handler": "user_tag_relation_handler",
+        "path": "/api/v1/user_tag_relation/collect_page",
+        "static": false
+      },
+      {
+        "action": "friend_page",
+        "handler": "user_tag_relation_handler",
+        "path": "/api/v1/user_tag_relation/friend_page",
+        "static": false
+      },
+      {
+        "action": "remove",
+        "handler": "user_tag_relation_handler",
+        "path": "/api/v1/user_tag_relation/remove",
+        "static": false
+      },
+      {
+        "action": "set",
+        "handler": "user_tag_relation_handler",
+        "path": "/api/v1/user_tag_relation/set",
+        "static": false
+      },
+      {
+        "action": "balance",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/balance",
+        "static": false
+      },
+      {
+        "action": "recharge_query",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/recharge/:order_no",
+        "static": false
+      },
+      {
+        "action": "recharge_confirm",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/recharge/confirm",
+        "static": false
+      },
+      {
+        "action": "recharge_order",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/recharge/order",
+        "static": false
+      },
+      {
+        "action": "recharge_pay",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/recharge/pay",
+        "static": false
+      },
+      {
+        "action": "red_packet_detail",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/red_packet/:id/detail",
+        "static": false
+      },
+      {
+        "action": "red_packet_open",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/red_packet/open",
+        "static": false
+      },
+      {
+        "action": "red_packet_send",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/red_packet/send",
+        "static": false
+      },
+      {
+        "action": "topup",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/topup",
+        "static": false
+      },
+      {
+        "action": "transactions",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/transactions",
+        "static": false
+      },
+      {
+        "action": "transfer_accept",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/transfer/accept",
+        "static": false
+      },
+      {
+        "action": "transfer_send",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/transfer/send",
+        "static": false
+      },
+      {
+        "action": "withdraw",
+        "handler": "wallet_handler",
+        "path": "/api/v1/wallet/withdraw",
+        "static": false
+      },
+      {
+        "action": "incoming",
+        "handler": "channel_webhook_handler",
+        "path": "/api/v1/webhook/channel/:token",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "websocket_handler",
+        "path": "/api/v1/ws",
+        "static": false
+      }
+    ],
+    "main": [
+      {
+        "action": "help",
+        "handler": "index_handler",
+        "path": "/",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "cowboy_static",
+        "path": "/account-deletion",
+        "static": true
+      },
+      {
+        "action": "info",
+        "handler": "brand_handler",
+        "path": "/brand",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "healthz_handler",
+        "path": "/healthz",
+        "static": false
+      },
+      {
+        "action": "help",
+        "handler": "index_handler",
+        "path": "/help",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "metrics_handler",
+        "path": "/metrics",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "cowboy_static",
+        "path": "/privacy-policy",
+        "static": true
+      },
+      {
+        "action": null,
+        "handler": "cowboy_static",
+        "path": "/static/[...]",
+        "static": true
+      }
+    ],
+    "test_dev_only": [
+      {
+        "action": "demo",
+        "handler": "agent_task_demo_handler",
+        "path": "/api/v1/agent_task/demo",
+        "static": false
+      },
+      {
+        "action": "req_get",
+        "handler": "test_handler",
+        "path": "/api/v1/test/req_get",
+        "static": false
+      },
+      {
+        "action": "req_post",
+        "handler": "test_handler",
+        "path": "/api/v1/test/req_post",
+        "static": false
+      }
+    ]
+  },
+  "enums": {
+    "billing_invoice_status": {
+      "kind": "int",
+      "source": "priv/migrations/00000011_billing.up.sql (chk_billing_invoice_status, column status)",
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    "billing_plan_period": {
+      "kind": "str",
+      "source": "priv/migrations/00000011_billing.up.sql (chk_billing_plan_period, column billing_period)",
+      "values": [
+        "month",
+        "year"
+      ]
+    },
+    "billing_plan_status": {
+      "kind": "int",
+      "source": "priv/migrations/00000011_billing.up.sql (chk_billing_plan_status, column status)",
+      "values": [
+        0,
+        1
+      ]
+    },
+    "billing_subscription_status": {
+      "kind": "int",
+      "source": "priv/migrations/00000011_billing.up.sql (chk_billing_sub_status, column status)",
+      "values": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "payment_tx_biz_type": {
+      "kind": "int",
+      "source": "priv/migrations/00000010_payment.up.sql (chk_payment_tx_biz_type, column biz_type)",
+      "values": [
+        1,
+        2,
+        3
+      ]
+    },
+    "payment_tx_status": {
+      "kind": "int",
+      "source": "priv/migrations/00000055_payment_tx_refunding.up.sql (chk_payment_tx_status, column status)",
+      "values": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    "recharge_order_status": {
+      "kind": "int",
+      "source": "priv/migrations/00000010_payment.up.sql (chk_recharge_order_status, column status)",
+      "values": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "wallet_status": {
+      "kind": "int",
+      "source": "priv/migrations/00000004_social.up.sql (chk_wallet_status, column status)",
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    "wallet_tx_status": {
+      "kind": "int",
+      "source": "priv/migrations/00000004_social.up.sql (chk_wallet_tx_status, column status)",
+      "values": [
+        0,
+        1,
+        2
+      ]
+    },
+    "wallet_tx_type": {
+      "kind": "int",
+      "source": "priv/migrations/00000030_wallet_tx_type_agent_payment.up.sql (chk_wallet_tx_type, column tx_type)",
+      "values": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        20,
+        21
+      ]
+    }
+  },
+  "error_code_summary": {
+    "defines": 149,
+    "distinct_codes": [
+      0,
+      1,
+      400,
+      401,
+      402,
+      403,
+      404,
+      405,
+      406,
+      408,
+      409,
+      410,
+      412,
+      413,
+      415,
+      422,
+      423,
+      429,
+      500,
+      501,
+      502,
+      503,
+      504,
+      507,
+      901,
+      902,
+      903,
+      904,
+      905,
+      906,
+      907,
+      908,
+      909,
+      910,
+      911,
+      912,
+      920,
+      921,
+      922,
+      923,
+      930,
+      931,
+      932,
+      933,
+      934,
+      935,
+      940,
+      941,
+      942,
+      950,
+      951,
+      952,
+      953,
+      955,
+      956,
+      960,
+      961,
+      962,
+      963,
+      964,
+      965,
+      966,
+      967,
+      968,
+      5000,
+      5001,
+      5002,
+      5003,
+      5004,
+      5005,
+      5006,
+      5007,
+      5008,
+      5009,
+      5010,
+      5020,
+      5021,
+      5022,
+      5023,
+      5024,
+      5025,
+      5026,
+      5027,
+      5028,
+      5029,
+      5040,
+      5041,
+      5042,
+      5043,
+      5044,
+      5045,
+      5050,
+      5051,
+      5052,
+      5053,
+      5054,
+      5055,
+      5056,
+      5060,
+      5061,
+      5062,
+      5063,
+      5064,
+      5100,
+      5101,
+      5102,
+      5103,
+      5104,
+      5190,
+      5200,
+      5201,
+      5202,
+      5203,
+      5204,
+      5205,
+      5300,
+      5301,
+      5302,
+      5303,
+      5304,
+      5305,
+      5306
+    ],
+    "note": "flutter 全量契约由 C1 imboyapp/scripts/generate_error_code.dart --check 承担",
+    "segments": {
+      "0": 2,
+      "400": 16,
+      "500": 6,
+      "5000": 39,
+      "5100": 6,
+      "5200": 6,
+      "5300": 7,
+      "900": 40
+    },
+    "source": "include/error_code.hrl"
+  },
+  "format_version": 1,
+  "generator": "scripts/contract_gate.py",
+  "notes": {
+    "entity_id_tsid": "canonical: JSON integer (TSID 64-bit)；admin 网络层 safeParseBigIntJson 转 string；TS 类型一律 EntityId",
+    "method": "cowboy 路由无 method 维度（handler 内分派），method 契约不在第一版范围",
+    "plugin_routes": "插件路由为运行时 ETS 注册，静态导出不含（plugin_routes/0）",
+    "server_ts": "13 位毫秒 number（< 2^53，JSON number 安全）"
+  },
+  "sources": {
+    "error_code": "include/error_code.hrl",
+    "migrations_dir": "priv/migrations",
+    "router": "src/imboy_router.erl"
+  }
+}

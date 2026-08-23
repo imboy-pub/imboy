@@ -1,0 +1,63 @@
+name: API Contract Gate
+
+# P3-C2（Golden Gates §2.3 C2 / §2.2 契约变更流程）
+# 真源永远在后端（§2.1）：router 实况路由 + 迁移 CHECK 枚举值域 + error_code.hrl。
+# 非法漂移（只改一端）→ FAIL；合法变更 = 同一 PR 内 make contract-export 重提交产物。
+#
+# 跨仓 checkout 说明：三仓 GitHub 远端均 PUBLIC（imboy-admin-frontend /
+# imboy-flutter，2026-08-22 核实），GITHUB_TOKEN 只读 checkout 即可。
+# CI 校验的是远端 main 快照；本地未推送改动不在 CI 覆盖范围（lefthook/本地
+# make contract-check 补位）。
+# 无需 Erlang 工具链：contract_gate.py 为纯 python3 标准库静态解析。
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-contract:
+    name: API contract (router/enums/EntityId vs admin & flutter)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout imboy (contract source of truth)
+        uses: actions/checkout@v7
+
+      - name: Checkout imboyadmin (PUBLIC, enum/EntityId mirror)
+        uses: actions/checkout@v7
+        with:
+          repository: imboy-pub/imboy-admin-frontend
+          path: imboyadmin
+
+      - name: Checkout imboyapp (PUBLIC, flutter enum mirror)
+        uses: actions/checkout@v7
+        with:
+          repository: imboy-pub/imboy-flutter
+          path: imboyapp
+
+      - name: Contract check (self diff + dual-end enum diff + EntityId rules)
+        run: |
+          set -euo pipefail
+          # ① 重导出与落仓产物 diff（router/迁移/错误码漂移自检）
+          # ② admin TS 枚举值集 vs 后端注册表（billing 类型注释 + label map）
+          # ③ flutter 钱包流水类型注释值域 vs 后端注册表
+          # ④ EntityId/TSID 规则子集（safeParseBigIntJson 接入 / EntityId 定义 / 裸 number 禁令）
+          # 任一漂移非零退出并打印明细（哪个枚举、期望/实得值集）。
+          make contract-check ADMIN_DIR=imboyadmin FLUTTER_DIR=imboyapp
+
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "## API Contract Gate (P3-C2)"
+            echo "- 真源: src/imboy_router.erl + priv/migrations(CHECK) + include/error_code.hrl"
+            echo "- 产物: .contract/api_contract.json（内容不变则文件不变）"
+            echo "- 合法变更流程: 同一 PR 内 make contract-export 并提交产物"
+          } >> "$GITHUB_STEP_SUMMARY"

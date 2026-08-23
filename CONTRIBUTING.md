@@ -124,6 +124,66 @@ main                    <- 受保护，只接受 PR 合入
 
 ---
 
+## 远程仓与推送规范（双 remote 双推）
+
+三仓均配置多个远程仓。**gitee（origin）为主托管，github 为 GitHub Actions 门禁所在**——两处都必须推送，缺一不可（原因见下）。本节适用于有直推权限的 maintainer / 内部开发者；Fork 贡献者走 GitHub PR 即可（PR 事件同样触发门禁）。
+
+### 现状（2026-08-22 实查 `git remote -v`）
+
+| 仓 | `origin`（主托管） | `github`（Actions 门禁） | 其他 remote |
+|----|--------------------|--------------------------|-------------|
+| imboy | `git@gitee.com:imboy-pub/imboy.git` | `git@github.com:imboy-pub/imboy.git` | `gitee` → `git@gitee.com:leeyi/imboy.git`（个人 remote）；`gitcode` → `git@gitcode.com:imboy/imboy.git` |
+| imboyapp | `https://gitee.com/imboy-pub/imboy-flutter.git` | `git@github.com:imboy-pub/imboy-flutter.git` | `gitcode` → `git@gitcode.com:imboy/imboy-flutter.git` |
+| imboyadmin | `git@gitee.com:imboy-pub/imboy-admin-frontend.git` | `git@github.com:imboy-pub/imboy-admin-frontend.git` | `gitcode` → `git@gitcode.com:imboy/imboy-admin-frontend.git` |
+
+> gitcode 与个人名下 remote 不在强制推送规范内，按需手动推。
+
+### 为什么必须双推
+
+**GitHub Actions 只在 github.com 的事件（push / pull_request / tag）上触发**，gitee 不运行 GitHub Actions。当前三仓在 github 侧的门禁与流水线：
+
+| 仓 | github 上的 workflow |
+|----|----------------------|
+| imboy | `backend-ci.yml`、`contract-gate.yml`（API/枚举/EntityId 契约门）、`quality.yml`、`sonar.yml`、`docs.yml`、`codemap.yml`、`sbom-diff.yml`、`release.yml`（tag 触发发布链） |
+| imboyapp | `contract.yml`（错误码契约门）、`ci.yml`、`core-automation.yml`、`integration_test.yml`、`quality.yml`、`sonar.yml` |
+| imboyadmin | `admin-e2e.yml`、`ci.yml`、`quality.yml`、`sonar.yml` |
+
+**只推 gitee 不推 github = 门禁空转**：契约门（`contract-gate.yml` / `contract.yml`）不会执行，非法漂移无人拦截——等于门禁不存在；tag 漏推 github 则 `release.yml` 发布链不触发。
+
+### 标准化命令（供你本人执行；remote 配置属个人资产，本文档只给命令不代执行）
+
+**方案 A（推荐）：origin 配双 pushurl，一条 `git push` 双达**
+
+```bash
+# 以 imboy 仓为例（其余两仓按下表 URL 替换）：
+git remote set-url --add --push origin git@gitee.com:imboy-pub/imboy.git
+git remote set-url --add --push origin git@github.com:imboy-pub/imboy.git
+
+# 验证（应看到 origin 有两条 push 记录）：
+git remote -v
+```
+
+> 注意：第一条 `set-url --add --push` 的语义是**替换**（origin 无显式 pushurl 时默认继承 fetch URL，首次设置即覆盖该继承），第二条才是**追加**。两条都执行后 `git push` 一次推两处。
+>
+> URL 对照：imboyapp 的 gitee 侧为 `https://gitee.com/imboy-pub/imboy-flutter.git`；imboyadmin 的 gitee 侧为 `git@gitee.com:imboy-pub/imboy-admin-frontend.git`；github 侧三仓均为 `git@github.com:imboy-pub/<仓名>.git`。
+
+- 优点：漏推 github 从机制上不可能——这正是要根治的风险。
+- 缺点：一处失败时 git 整体非零退出但另一处可能已成功，需看输出分辨；临时只想推一处时需显式 `git push git@github.com:... <branch>`。
+
+**方案 B：保持显式双 remote（三仓 `github` remote 已配好，零配置改动）**
+
+```bash
+git push origin && git push github        # 分支
+git push origin vX.Y.Z && git push github vX.Y.Z   # tag（release.yml 只认 github 侧 tag）
+```
+
+- 优点：零配置改动、失败定位清晰。
+- 缺点：全靠人记，漏推 github 无任何告警——恰是本规范要消除的风险。
+
+**推荐**：日常用方案 A 兜底防漏推；一次性补推 / 单侧推送用方案 B 语法。
+
+---
+
 ## 提交规范 / Commit Message
 
 采用 [Conventional Commits 1.0](https://www.conventionalcommits.org/zh-hans/v1.0.0/)：
@@ -230,6 +290,107 @@ git checkout -b feat/your-feature
 - 所有 PR 需要至少 **1 位 maintainer 同意**
 - CI 必须全绿
 - 合并方式：**Squash and merge**（保持主干历史清爽）
+
+---
+
+## 契约变更 SOP（跨仓契约，必读）
+
+三仓之间共享的契约——错误码、API 端点、DB 枚举值域、EntityId/TSID 类型——实行**单一真源（Source of Truth）治理**，配套 CI 硬门禁。任何跨仓契约面改动（改错误码、加路由、扩枚举值域）前必读本节。
+
+### 铁律：真源永远在后端
+
+| 契约面 | 真源（imboy 仓） | 客户端镜像 |
+|--------|------------------|------------|
+| 错误码 | `include/error_code.hrl` | imboyapp `lib/config/error_code.dart`（生成物，入仓） |
+| API 端点 | `src/imboy_router.erl`（可执行路由实况） | `.contract/api_contract.json` 产物 + `api/openapi.yaml`（手工文档） |
+| DB 枚举值域 | `priv/migrations/*.up.sql` 的 `CHECK` 约束 | imboyadmin `src/types/billing.ts` 类型注释 / imboyapp 钱包注释 |
+| EntityId/TSID | canonical：JSON 传输层 integer（TSID 64-bit） | admin 网络层 `safeParseBigIntJson` + `EntityId` 类型 |
+
+**任何"以 Flutter 为准还是以 Admin 为准"的争论一律非法**——客户端只是真源的镜像，不存在反向"先改客户端再让后端追认"。手改客户端生成物绕过门禁同样非法。
+
+### 合法变更流程（两步跨仓提交）
+
+> 三仓是三个独立 git 仓，"同一 PR 内同时改后端真源 + Flutter 生成物"结构性不可行
+> （PR 只存在于单仓）。因此合法变更固定拆成**两步跨仓提交**，顺序不可颠倒。
+
+**第 1 步 —— imboy 仓（真源 + 契约产物，同一 PR）**
+
+```bash
+cd imboy
+# 1. 修改真源：include/error_code.hrl / src/imboy_router.erl / priv/migrations（新枚举约束需在 scripts/contract_gate.py 的 ENUM_SOURCES 登记）
+# 2. 一行重生成全部契约物：
+make contract-regen
+#    ① 重新导出 .contract/api_contract.json（确定性输出：内容不变则文件不变）
+#    ② 若并排存在 ../imboyapp，顺带重生成 imboyapp/lib/config/error_code.dart
+#    （并排仓是本地布局假设；CI 与独立 clone 缺仓时该步 WARN 跳过，到 imboyapp 仓内自行生成）
+# 3. 同一 PR 提交：真源改动 + .contract/api_contract.json
+# 4. 本地预检（可选 ADMIN_DIR= / FLUTTER_DIR= 覆盖客户端仓路径）：
+make contract-check
+```
+
+**第 2 步 —— imboyapp 仓（生成物，单独提交）**
+
+```bash
+cd imboyapp
+dart run scripts/generate_error_code.dart        # 若第 1 步未在并排布局下顺带生成
+git diff lib/config/error_code.dart              # 生成物 diff 可见可 review
+# 提交 lib/config/error_code.dart（commit message 建议 chore(contract): regen error_code from hrl@<后端短 SHA>）
+```
+
+**为什么顺序不可颠倒**：CI（见下表）checkout 的是**远端 main/dev 快照**。imboyapp 的契约门禁会双仓 checkout 后端真源做逐字比对——若 Flutter 生成物先合入而后端真源 PR 尚未推送/合并，比对必然失败（红门禁）；若后端真源被回滚，Flutter 生成物就成了无源之水。固定顺序 = **后端真源先合并 → Flutter 生成物再提交**。
+
+### 非法漂移 = 只改一端（这些 CI 会红）
+
+| 漂移场景 | 红的 CI | 检查内容 |
+|----------|---------|----------|
+| 后端真源改了，`.contract/api_contract.json` 未同步提交 | imboy `.github/workflows/contract-gate.yml` | 重导出 vs 落仓产物 diff |
+| admin / flutter 枚举与后端注册表不一致（多值、缺关键值） | imboy `.github/workflows/contract-gate.yml` | 双端枚举 diff（`scripts/contract_gate.py check`） |
+| EntityId 规则违规（ID 字段裸 `number` 等） | imboy `.github/workflows/contract-gate.yml` | EntityId/TSID 规则子集 |
+| 后端 `.hrl` 改了，imboyapp 生成物未重生成 | imboyapp `.github/workflows/contract.yml` | 双仓 checkout 后 `dart run scripts/generate_error_code.dart --check` 逐字断言 |
+| 手改 imboyapp 生成物（绕过生成器） | imboyapp `.github/workflows/contract.yml` | 同上（生成物与真源失配即红） |
+
+**本地预检（push 前跑，别等 CI）**：
+
+```bash
+# imboy 仓：自检 + admin/flutter 枚举 diff + EntityId 规则（任一漂移非零退出）
+make contract-check
+
+# imboyapp 仓：生成物 vs .hrl 逐字校验
+# 默认读跨仓相对路径 ../imboy/include/error_code.hrl；
+# 独立 clone（无并排 imboy）时用 --source= 或环境变量 IMBOY_ERROR_CODE_HRL 指定
+dart run scripts/generate_error_code.dart --check
+```
+
+### 错误码变更 SOP（与上同一逻辑）
+
+```text
+改 imboy/include/error_code.hrl
+  → make contract-regen（imboy 仓内重生成 api_contract.json + 顺带 imboyapp error_code.dart）
+  → imboy 仓提交真源 + api_contract.json（第 1 步 PR）
+  → imboyapp 仓提交 lib/config/error_code.dart（第 2 步）
+  → 双仓 contract 门禁绿
+```
+
+新增错误码必须走 `?ERR_XXX` 宏定义（不用裸数字），并注意 `contract_gate.py` 会按错误码段位（每 100 一段）做摘要入契约物。
+
+### EntityId / TSID canonical 约定
+
+- **canonical**：ID 在 JSON 传输层一律 **integer**（TSID 64-bit）；`server_ts` 等时间戳为 13 位毫秒 number（< 2^53，JSON 安全）。
+- **admin 侧**：网络层经 `safeParseBigIntJson` 转 string，TS 类型一律 `EntityId`；ID 字段（`id`、`user_id`、`wallet_id`、`plan_id`、`tenant_id`、`subscription_id`、`group_id`、`channel_id` 等）**禁止裸 `number`**。
+- **校验**：以上规则由 `scripts/contract_gate.py` 的 EntityId 检查项承担（`make contract-check` 带 admin 目录时自动执行），违规逐条列出并非零退出。
+
+### 当前已知漂移欠账（drift debt）
+
+> 已全部清零（2026-08-23）：`contract_gate.py` 所有枚举 binding 均为 `exact` 模式，
+> 无 `drift_debt` 标记。历史欠账的处理记录：
+
+| 原欠账 | 处理结果（2026-08-23） |
+|------|------------------------|
+| `payment_tx_status=5`（退款中） | ✅ admin 注释/`TX_STATUS_LABELS`/`TX_STATUS_VARIANTS`/筛选下拉已补 5，binding 转回 exact |
+| `wallet_tx_type=4` 语义缺失 | ✅ 代码考古：后端无 `tx_type => 4` 写入路径，定为「保留（未使用）」并双端登记，binding 转 exact |
+| `wallet_tx_type=2` 语义错误（隐匿欠账） | ✅ 修正：双端曾写「2=充值退款」，代码实写证明 2=频道订单支付（消费扣减、负数出账，`payment_wallet_gateway.erl:61`）、3=订单退款（`:111`）；admin/flutter/docs 三处已同步纠正 |
+| `wallet_status=2` 语义缺失 | ✅ 代码考古：仅 status=1 在用（freeze/unfreeze 守卫），0=冻结（语义预留）、2=保留（未使用），admin 注释补齐，binding 转 exact |
+| `openapi.yaml` 与 router 漂移（573 vs 494，95/16 端点差异） | ⏳ 仍为 informational（不阻塞，`make contract-check` 打印）；后续增量补齐或建立豁免清单 |
 
 ---
 
