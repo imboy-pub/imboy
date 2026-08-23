@@ -1,12 +1,18 @@
 -module(elib_oss).
 %%%
-% OSS (对象存储服务) 客户端 — Garage S3 兼容后端
-%
-% 上传流程：
-%   服务端上传：upload/2,3 → upload_to_storage/4 → httpc PUT → Garage
-%   Flutter 直传：presign_put/3 → 返回 presigned PUT URL → Flutter 直接 PUT Garage
-%
-% Garage 使用 path-style URL：endpoint/bucket/key
+%%% OSS (对象存储服务) 客户端 — Garage S3 兼容后端
+%%%
+%%% 上传流程：
+%%%   服务端上传：upload/2,3 → upload_to_storage/4 → httpc PUT → Garage
+%%%   Flutter 直传：presign_put/3 → 返回 presigned PUT URL → Flutter 直接 PUT Garage
+%%%
+%%% Garage 使用 path-style URL：endpoint/bucket/key
+%%%
+%%% endpoint 语义（双 endpoint，见 endpoint/0 与 public_endpoint/0）：
+%%%   endpoint        服务端自身 S3 调用（confirm HEAD/删除/服务端上传），内网可达即可
+%%%   public_endpoint presign/view 等发给客户端的 URL host，必须公网可达；
+%%%                  未配置时回落 endpoint（单 endpoint 部署形态）
+%%%   env 映射：IMBOY_GARAGE_ENDPOINT / IMBOY_GARAGE_PUBLIC_ENDPOINT（imboy_env）
 %%%
 
 -include_lib("kernel/include/logger.hrl").
@@ -19,6 +25,7 @@
 -export([presign_get_for_key/2, presign_get_for_key/3]).
 -export([build_object_key/2, build_object_key/4, owner_of_key/1]).
 -export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
+-export([endpoint/0, public_endpoint/0]).
 -export([delete_object/1, delete_object/2, head_object/1, head_object/2, parse_head_response/1]).
 -export([max_file_size/0]).
 -export([generate_file_id/0]).
@@ -107,7 +114,8 @@ put_object(Bucket, ObjectKey, Bin, MimeType) ->
 -spec presign_put(binary(), binary(), pos_integer()) -> binary().
 presign_put(FileName, MimeType, ExpiresSeconds) ->
     Cfg = garage_config(),
-    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
+    %% presign URL 交给公网客户端直连，host 必须客户端可达（public_endpoint）
+    Endpoint = public_endpoint(),
     Bucket = maps:get(bucket, Cfg, <<"imboy">>),
     FileId = generate_file_id(),
     SafeName = filename:basename(FileName),
@@ -122,7 +130,7 @@ presign_put_for_key(ObjectKey, MimeType, ExpiresSeconds) ->
 %% @doc 指定桶 + ObjectKey 生成 presigned PUT URL（多桶上传链路用）
 -spec presign_put_for_key(binary(), binary(), binary(), pos_integer()) -> binary().
 presign_put_for_key(Bucket, ObjectKey, MimeType, ExpiresSeconds) ->
-    Endpoint = endpoint(),
+    Endpoint = public_endpoint(),
     elib_s3_sign:presign_put(Endpoint, Bucket, ObjectKey, MimeType, ExpiresSeconds).
 
 %% @doc 生成绑定 uid 的 ObjectKey（向后兼容入口，等价 scope=private）。
@@ -204,7 +212,7 @@ presign_get_for_key(ObjectKey, ExpiresSeconds) ->
 %% @doc 指定桶生成短时下载 presigned GET URL（受限资源读鉴权链路用）
 -spec presign_get_for_key(binary(), binary(), pos_integer()) -> binary().
 presign_get_for_key(Bucket, ObjectKey, ExpiresSeconds) ->
-    Endpoint = endpoint(),
+    Endpoint = public_endpoint(),
     elib_s3_sign:presign_get(Endpoint, Bucket, ObjectKey, ExpiresSeconds).
 
 %% @doc 单文件最大尺寸（字节），供 confirm 阶段服务端核实真实大小复用
@@ -325,7 +333,7 @@ delete_object(Bucket, ObjectKey) ->
 -spec get_url(binary()) -> {ok, binary()}.
 get_url(ObjectKey) ->
     Cfg = garage_config(),
-    Endpoint = maps:get(endpoint, Cfg, <<"http://127.0.0.1:3900">>),
+    Endpoint = public_endpoint(),
     Bucket = maps:get(bucket, Cfg, <<"imboy">>),
     {ok, public_url(Endpoint, Bucket, ObjectKey)}.
 
@@ -399,7 +407,9 @@ upload_to_storage(FileId, FileName, FileBinary, MimeType) ->
         )
     of
         {ok, {{_, Code, _}, _, _}} when Code =:= 200; Code =:= 201; Code =:= 204 ->
-            {ok, public_url(Endpoint, Bucket, ObjectKey)};
+            %% 返回的 URL 会落库/回传客户端，用客户端可达的 public endpoint；
+            %% 服务端后续核实/删除走 head_object/delete_object（internal endpoint）
+            {ok, public_url(public_endpoint(), Bucket, ObjectKey)};
         {ok, {{_, Code, _}, _, Body}} ->
             ?ERROR_LOG(["elib_oss upload_to_storage failed: code=", Code, " body=", Body]),
             {error, {http_error, Code}};
@@ -416,10 +426,22 @@ public_url(Endpoint, Bucket, ObjectKey) ->
 garage_config() ->
     application:get_env(imboy, garage, #{}).
 
-%% @doc Garage S3 端点（私桶/公桶共用同一 endpoint，仅 bucket 不同）
+%% @doc Garage S3 内部端点（服务端自身 httpc 调用：put_object/head_object/
+%% delete_object/upload_to_storage 的请求 URL 与签名 host）。
+%% 只需服务运行环境可达（compose 网络内如 http://garage:3900），无需公网可达。
+%% 私桶/公桶共用同一 endpoint，仅 bucket 不同
 -spec endpoint() -> binary().
 endpoint() ->
     maps:get(endpoint, garage_config(), <<"http://127.0.0.1:3900">>).
+
+%% @doc 客户端可达端点（presign PUT/GET、get_url 等对外 URL 生产用）。
+%% 未配置 public_endpoint 时回落 endpoint()（单 endpoint 部署形态，
+%% 如裸机 https://s3.example.com 直连 Garage）；站在 nginx 反代后的部署
+%% （社区版 https://<API_DOMAIN>/s3）显式配置 IMBOY_GARAGE_PUBLIC_ENDPOINT，
+%% 服务端内部调用仍走 endpoint()，两侧签名互不干扰。
+-spec public_endpoint() -> binary().
+public_endpoint() ->
+    maps:get(public_endpoint, garage_config(), endpoint()).
 
 %% @doc 默认（私有）bucket
 -spec default_bucket() -> binary().

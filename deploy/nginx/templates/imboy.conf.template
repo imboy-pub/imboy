@@ -1,7 +1,7 @@
 # IMBoy 生产反向代理 —— nginx + certbot 自动 TLS
 #
 # 由 nginx 官方镜像 entrypoint 的 envsubst 渲染到 /etc/nginx/conf.d/imboy.conf。
-# NGINX_ENVSUBST_FILTER 限定只替换 ${API_DOMAIN} ${ADMIN_DOMAIN}，
+# NGINX_ENVSUBST_FILTER 限定只替换 ${API_DOMAIN} ${ADMIN_DOMAIN} ${S3_UPSTREAM}，
 # nginx 内置变量（$host / $remote_addr / $http_upgrade 等）原样保留。
 
 # nginx 层速率限制（等保2.0 访问控制要求）
@@ -105,6 +105,29 @@ server {
         # 通话会话是长连接 / call sessions are long-lived
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
+    }
+
+    # Garage S3 反代（社区版附件直传/下载）：公网客户端的 presign URL 形如
+    # https://<API_DOMAIN>/s3/<bucket>/<key>?X-Amz-…，此处剥掉 /s3 前缀转发到
+    # Garage S3 API，避免把 3900 端口直接发布公网。upstream 由 compose 注入
+    # （社区版默认 garage:3900；S3_UPSTREAM 必须在 NGINX_ENVSUBST_FILTER 中）。
+    # 签名有效性：presign 为 SigV4 query 签名，仅签 host + path(/bucket/key)
+    # + query（elib_s3_sign presign_url SignedHeaders=host）。转发时必须
+    # proxy_set_header Host $host（与签名 host 一致），且路径剥 /s3 后与
+    # Canonical URI 一致 —— 切勿把 Host 改为 $proxy_host，否则 Garage 重算
+    # 签名不匹配返回 403 SignatureDoesNotMatch。
+    location /s3/ {
+        proxy_pass http://${S3_UPSTREAM}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # 与后端附件上限一致（elib_oss ?MAX_FILE_SIZE = 100MB；server 级 50m
+        # 会拒绝 50-100MB 的合法附件）
+        client_max_body_size 100m;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 
     # WebSocket + REST 同源转发到后端 Cowboy

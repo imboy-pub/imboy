@@ -161,11 +161,21 @@ string_to_sign(AmzDate, DateStr, Region, CanonicalRequest) ->
 garage_config() ->
     application:get_env(imboy, garage, #{}).
 
+%% @doc 从 endpoint 提取 SigV4 签名用 host（保留显式端口，剥离路径前缀）。
+%% 支持反代形态的 public endpoint（如 https://api.example.com/s3 →
+%% api.example.com）：路径前缀不属于 Host canonical header；反代（nginx
+%% location /s3/ → proxy_pass …/ 剥前缀）转发后的 Host 必须与签名 host
+%% 一致，Garage 重算签名才能通过。
 -spec host_from_endpoint(binary()) -> binary().
 host_from_endpoint(Endpoint) ->
-    case binary:split(Endpoint, <<"://">>) of
-        [_, Host] -> Host;
-        _ -> Endpoint
+    NoScheme =
+        case binary:split(Endpoint, <<"://">>) of
+            [_, Rest] -> Rest;
+            _ -> Endpoint
+        end,
+    case binary:split(NoScheme, <<"/">>) of
+        [Host | _] -> Host;
+        [] -> NoScheme
     end.
 
 -spec format_date(calendar:datetime()) -> binary().

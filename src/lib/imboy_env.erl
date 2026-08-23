@@ -34,7 +34,10 @@
 %   IMBOY_LOGIN_RSA_PUB_KEY_FILE  -> {imboy, login_rsa_pub_key_file}
 %   IMBOY_LOGIN_RSA_PRIV_KEY_FILE -> {imboy, login_rsa_priv_key_file}
 %   IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE -> {imboy, jverification_rsa_priv_key_file}
-%   IMBOY_GARAGE_ENDPOINT  -> garage.endpoint  (e.g. http://s3.example.com)
+%   IMBOY_GARAGE_ENDPOINT  -> garage.endpoint  (服务端内网 S3 地址, e.g. http://garage:3900)
+%   IMBOY_GARAGE_PUBLIC_ENDPOINT -> garage.public_endpoint
+%                              (presign/客户端直传公网地址, e.g. https://api.example.com/s3;
+%                               未设置时 elib_oss:public_endpoint/0 回落 endpoint)
 %   IMBOY_GARAGE_BUCKET    -> garage.bucket
 %   IMBOY_GARAGE_ACCESS_KEY -> garage.access_key
 %   IMBOY_GARAGE_SECRET_KEY -> garage.secret_key
@@ -387,6 +390,8 @@ override_redis() ->
     end.
 
 %% @doc 覆盖 Garage S3 配置
+%% endpoint 为服务端内网调用地址；public_endpoint 为客户端可达的 presign
+%% 地址（经 nginx 反代的部署形态必配，见 elib_oss:public_endpoint/0）。
 -spec override_garage() -> ok.
 override_garage() ->
     case application:get_env(imboy, garage) of
@@ -394,16 +399,19 @@ override_garage() ->
             Cfg1 = maybe_override_map(Cfg, endpoint, "IMBOY_GARAGE_ENDPOINT", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            Cfg2 = maybe_override_map(Cfg1, bucket, "IMBOY_GARAGE_BUCKET", fun(V) ->
+            Cfg2 = maybe_override_map(Cfg1, public_endpoint, "IMBOY_GARAGE_PUBLIC_ENDPOINT", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            Cfg3 = maybe_override_map(Cfg2, access_key, "IMBOY_GARAGE_ACCESS_KEY", fun(V) ->
+            Cfg3 = maybe_override_map(Cfg2, bucket, "IMBOY_GARAGE_BUCKET", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            Cfg4 = maybe_override_map(Cfg3, secret_key, "IMBOY_GARAGE_SECRET_KEY", fun(V) ->
+            Cfg4 = maybe_override_map(Cfg3, access_key, "IMBOY_GARAGE_ACCESS_KEY", fun(V) ->
                 unicode:characters_to_binary(V)
             end),
-            application:set_env(imboy, garage, Cfg4),
+            Cfg5 = maybe_override_map(Cfg4, secret_key, "IMBOY_GARAGE_SECRET_KEY", fun(V) ->
+                unicode:characters_to_binary(V)
+            end),
+            application:set_env(imboy, garage, Cfg5),
             ok;
         _ ->
             ok
