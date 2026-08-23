@@ -9,6 +9,9 @@
 #     （candidate digest 可留存供调试，但不打正式 tag、不发 Release）
 #
 # Phase 2 已接入（P2-R1）：
+#   build-admin-candidate — 跨仓 checkout imboy-admin-frontend 构建 admin 镜像
+#                     candidate（ref 默认 main，可用 vars.ADMIN_REPO_REF 钉住）；
+#                     golden 门禁与 finalize 的 admin 侧输入（同 digest identity）
 #   golden-install  — P2-G1 脚本在 ubuntu runner（cleanroom 近似）全流程跑，
 #                     T0→T1 ≤900s + restart 幂等，FAIL 即中止发布链
 #   golden-upgrade  — P2-U1 脚本 vN→vN+1 数据保留断言；首个正式版前无 vN
@@ -561,13 +564,17 @@ jobs:
           stable="$(git tag --list 'v*' | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -rV | head -1 || true)"
           [ -n "${stable}" ] || { echo "::error::无稳定 tag（尚未发布正式版），nightly golden 无对象"; exit 1; }
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-backend"
+          admin_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-admin"
           digest="$(docker buildx imagetools inspect "${image}:${stable}" --format '{{.Manifest.Digest}}')"
+          admin_digest="$(docker buildx imagetools inspect "${admin_image}:${stable}" --format '{{.Manifest.Digest}}')"
           case "${digest}" in sha256:*) ;; *) echo "::error::digest 格式异常：${digest}"; exit 1 ;; esac
+          case "${admin_digest}" in sha256:*) ;; *) echo "::error::admin digest 格式异常：${admin_digest}"; exit 1 ;; esac
           {
             echo "STABLE=${stable}"
             echo "IMAGE_DIGEST_REF=${image}@${digest}"
+            echo "ADMIN_IMAGE_DIGEST_REF=${admin_image}@${admin_digest}"
           } >> "$GITHUB_OUTPUT"
-          echo "nightly 对象：${image}:${stable}（${digest}）"
+          echo "nightly 对象：${image}:${stable}（${digest}）/ ${admin_image}:${stable}（${admin_digest}）"
 
       - name: Login to GHCR (compose pull digest)
         uses: docker/login-action@v3
@@ -586,11 +593,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE_DIGEST_REF: ${{ steps.latest.outputs.IMAGE_DIGEST_REF }}
+          ADMIN_IMAGE_DIGEST_REF: ${{ steps.latest.outputs.ADMIN_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
           sudo -E bash scripts/golden_install.sh \
             --image-ref "${IMAGE_DIGEST_REF}" \
+            --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
             --git-ref "${{ steps.latest.outputs.STABLE }}" \
             --profile ci \
             --admin-phone 13800138000 \
