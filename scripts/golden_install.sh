@@ -104,7 +104,7 @@ host 模式必填（ci 模式自动生成假域名，可覆盖）:
 可选:
   --admin-image-ref <ref> admin 镜像 digest 引用（形如 ghcr.io/<owner>/imboy-admin@sha256:…）。
                           提供则钉入 ADMIN_IMAGE（CI 由 build-admin-candidate 供给）；
-                          缺省时 compose 回落默认值 imboy/imboy-admin:<IMBOY_VERSION>
+                          缺省时 compose 回落默认值 ghcr.io/imboy-pub/imboy-admin:<IMBOY_VERSION>
                           ——该镜像须已发布到 registry，否则起栈拉取失败
   --budget <seconds>      计时预算，默认 900（计划 §4.2 钉死值）
   --repo <url>            clone 用的 git 仓库，默认 https://github.com/imboy-pub/imboy.git
