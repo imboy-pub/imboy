@@ -214,10 +214,10 @@ jobs:
           file: imboyadmin/Dockerfile
           push: true
           tags: ${{ steps.identity.outputs.ADMIN_IMAGE_REF }}
-        # admin 镜像构建期 bake VITE_API_BASE_URL（静态 SPA 无运行时配置注入），
-        # 生产部署若要自定义 API 域名需按部署重建——该约束属既有设计，golden
-        # 冒烟链不经 admin UI（AdminLogin 走 backend API），candidate 用默认
-        # build-arg 不影响门禁判定。
+        # admin 镜像构建时 Vite 把 .env.production 里的占位符
+        # __IMBOY_API_HOST__ bake 进静态产物，entrypoint 启动时 sed 替换为
+        # IMBOY_API_HOST 环境变量（compose 传 https://${API_DOMAIN}）。
+        # 无需 build-arg，镜像跨环境通用。
 
       - name: Resolve digest ref (immutable image reference)
         id: digest_ref

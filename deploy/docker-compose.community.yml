@@ -228,7 +228,10 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      VITE_API_BASE: https://${API_DOMAIN}
+      # 运行时注入后端 API 地址：entrypoint sed 替换构建产物里的占位符
+      # __IMBOY_API_HOST__ → https://${API_DOMAIN}（Vite 构建时静态替换，
+      # 运行时 env 无效，必须替换文件）。未设置时回落同源 /api/adm。
+      IMBOY_API_HOST: https://${API_DOMAIN}
     expose:
       - "80"
     deploy:
