@@ -23,6 +23,7 @@ start(_Type, _Args) ->
     ok = ensure_solidified_keys(),
     ok = ensure_jwt_key(),
     ok = ensure_password_salt(),
+    ok = ensure_postgre_aes_key(),
     ok = ensure_rsa_keys(),
     ok = ensure_alipay_keys(),
     %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
@@ -643,6 +644,28 @@ ensure_password_salt() ->
             logger:warning(
                 "[imboy] password_salt not set — generated node-local dev salt. "
                 "MUST set IMBOY_PASSWORD_SALT in production."
+            ),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 确保 postgre_aes_key 已就绪
+%% 生产环境：validate_runtime_config 已 fail-fast。非生产环境空串时派生稳定
+%% dev key（精确 32 字节，满足 elib_hasher:aes_key/0 的长度校验；PG encrypt/decrypt
+%% 的 AES-256 要求 32 字节 key）。用 raw SHA256 bytes 而非 base64（后者 44 字节）。
+%% 注意：已有 aes_cbc_ 前缀的加密 config 数据用旧 key 加密，换 key 后解密会返回
+%% 默认值——非生产环境可接受（config_ds:get/2 有 Default 兜底）。
+-spec ensure_postgre_aes_key() -> ok.
+ensure_postgre_aes_key() ->
+    case normalize_secret(config_ds:env(postgre_aes_key, <<>>)) of
+        <<>> ->
+            Seed = erlang:phash2(node()),
+            DevKey = crypto:hash(sha256, integer_to_binary(Seed)),
+            ok = application:set_env(imboy, postgre_aes_key, DevKey),
+            logger:warning(
+                "[imboy] postgre_aes_key not set — generated node-local dev key. "
+                "MUST set IMBOY_POSTGRE_AES_KEY in production."
             ),
             ok;
         _ ->
