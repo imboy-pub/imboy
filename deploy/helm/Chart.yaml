@@ -3,7 +3,7 @@ name: imboy
 description: IMBoy IM 平台 —— Erlang/OTP 后端 + React 管理前端
 type: application
 version: 0.1.0
-appVersion: "1.0.0-rc.1"
+appVersion: "1.0.0-alpha.46"
 
 keywords:
   - imboy
