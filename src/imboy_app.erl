@@ -21,6 +21,8 @@ start(_Type, _Args) ->
     _ = imboy_env:current(),
     ok = validate_runtime_config(),
     ok = ensure_solidified_keys(),
+    ok = ensure_jwt_key(),
+    ok = ensure_password_salt(),
     ok = ensure_rsa_keys(),
     ok = ensure_alipay_keys(),
     %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
@@ -606,6 +608,45 @@ ensure_solidified_keys() ->
                 _ ->
                     ok
             end
+    end.
+
+%% @doc 确保 jwt_key 已就绪
+%% 生产环境：validate_runtime_config 已 fail-fast，此处无需处理。
+%% 非生产环境：未配置则基于节点名哈希派生稳定 dev key（重启不变，节点间不同），
+%% 与 ensure_solidified_keys 同模式。空串占位（sys.runtime.config）也视为未配置。
+-spec ensure_jwt_key() -> ok.
+ensure_jwt_key() ->
+    case normalize_secret(config_ds:env(jwt_key, <<>>)) of
+        <<>> ->
+            Seed = erlang:phash2(node()),
+            DevKey = base64:encode(crypto:hash(sha256, integer_to_binary(Seed))),
+            ok = application:set_env(imboy, jwt_key, DevKey),
+            logger:warning(
+                "[imboy] jwt_key not set — generated node-local dev key. "
+                "MUST set IMBOY_JWT_KEY in production."
+            ),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 确保 password_salt 已就绪
+%% 生产环境：validate_runtime_config 已 fail-fast。非生产环境空串时派生稳定 dev salt
+%% （MD5 回退路径用；新格式 HMAC-SHA512 每条记录独立盐不受影响）。
+-spec ensure_password_salt() -> ok.
+ensure_password_salt() ->
+    case normalize_secret(config_ds:env(password_salt, <<>>)) of
+        <<>> ->
+            Seed = erlang:phash2(node()),
+            DevSalt = base64:encode(crypto:hash(sha256, integer_to_binary(Seed))),
+            ok = application:set_env(imboy, password_salt, DevSalt),
+            logger:warning(
+                "[imboy] password_salt not set — generated node-local dev salt. "
+                "MUST set IMBOY_PASSWORD_SALT in production."
+            ),
+            ok;
+        _ ->
+            ok
     end.
 
 %% @doc 确保生产环境数据库密码不是常见弱密码
