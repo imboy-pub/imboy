@@ -375,12 +375,16 @@ gates:
   # elvis —— 失败标识粒度：FAIL 文件路径（"elvis rock" 输出 "# <path> [FAIL]" 行）
   # ---------------------------------------------------------------------------
   elvis:
-    source: "local 2026-08-22, elvis 5.0.4 (homebrew), 10397 violations / 308 FAIL 文件"
+    source: "local 2026-08-23, elvis 5.0.4 (homebrew), 951 violations / 307 FAIL 文件（豁免 gpb 生成代码后）"
     note: >-
-      计划参考 "elvis known 182" 与实测 308 不一致——以实测为准（182 疑为更早
-      时点 FAIL 文件数，来源不可考）。另：实测 10397/308 已超 quality.yml 内联
-      ratchet 上限（10352/298，CI elvis 5.0.3），即 PR 门当前应为红；本机 5.0.4
-      与 CI 5.0.3 存在版本差，首跑 nightly 以 CI 实测回填校正
+      2026-08-23 起 elvis.config 豁免 src/imboy_pb.erl（gpb 4.21.7 生成文件，
+      单文件贡献 9446/10397 条违规的生成命名风格噪音，见 ff962c15）——该文件
+      从本清单移除（EXCLUDED 非 FIXED：被豁免而非修复，不会再出现在 elvis 输出）。
+      豁免后实测 951/307：violations 维度已远低于 quality.yml 门值 10352；
+      fail_files 307 > 298 的 +9 净增来自 5 月以来新增功能模块，门值调整
+      （建议 950/307）待用户裁定。历史备注：计划参考 "elvis known 182" 与 8-22
+      实测 308 不一致——以实测为准（182 疑为更早点 FAIL 文件数，来源不可考）；
+      本机 5.0.4 与 CI 5.0.3 存在版本差，首跑 nightly 以 CI 实测回填校正
     known_failures:
       - include/barrel_mcp.hrl
       - include/chat.hrl
@@ -521,7 +525,6 @@ gates:
       - src/ds/user_tag_relation_ds.erl
       - src/ds/websocket_ds.erl
       - src/imboy_app.erl
-      - src/imboy_pb.erl
       - src/lib/agent_trigger_policy.erl
       - src/lib/alipay_openapi.erl
       - src/lib/e2ee_kt_merkle.erl

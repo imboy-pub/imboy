@@ -24,6 +24,7 @@
 | 周次 | contract violations | fast gate failures | nightly new | elvis baseline | app warnings | untested modules | golden install 耗时 | golden upgrade |
 |---|---|---|---|---|---|---|---|---|
 | 2026-08-22（基线 §6.3） | —（P3-C1/C2 未建，待 contract gate 首跑） | —（基线时无 CI 数据，GitHub Actions 2026-08-02 才首跑） | —（nightly.yml 当日建成，首跑未发生） | 10352 violations / 298 FAIL 文件 | 830 warn + 703 info | 148/509（29%） | —（待 CI 首跑；golden-install-nightly vars 默认关） | —（待首次 release CI 实测） |
+| 2026-08-23 | 0 漂移欠账（contract-check 本地 PASS；CI 首跑待 push） | —（待 CI） | —（待 CI） | **951 violations / 307 FAIL 文件**（elvis.config 豁免 gpb 生成文件 imboy_pb 后实测；ff962c15。known 清单 308→307，EXCLUDED 非 FIXED） | 持平（未重测） | 持平（未重测） | —（待 CI） | —（待 CI） |
 
 ## 备注（基线日的补充实测，P4-Q1 盘点 2026-08-22）
 
