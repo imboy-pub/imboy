@@ -44,8 +44,8 @@ Signed-off-by: Your Name <your@email.example>
 这表示你确认：你有权提交此代码，并同意以 [MulanPSL-2.0](./LICENSE) 授权给本项目。
 This confirms: you have the right to submit this code, and you agree to license it to this project under [MulanPSL-2.0](./LICENSE).
 
-> **CI 强制执行**：`.github/workflows/ci.yml` 中的 `dco` job 会检查 PR 中的每一个 commit。
-> **CI enforcement**: The `dco` job in `.github/workflows/ci.yml` checks every commit in the PR.
+> **CI 强制执行**：`.github/workflows/backend-ci.yml` 中的 `dco-check` job 会检查 PR 中的每一个 commit。
+> **CI enforcement**: The `dco-check` job in `.github/workflows/backend-ci.yml` checks every commit in the PR.
 
 ---
 
@@ -80,9 +80,7 @@ This confirms: you have the right to submit this code, and you agree to license 
 
 ### 前置依赖
 
-```bash
-bash script/preflight.sh --native    # 检查本地依赖
-```
+本地依赖检查由 `bash scripts/dev_setup.sh` 首步承担（docker / erlang / make）。
 
 - Erlang/OTP **28+**
 - PostgreSQL **18+**（含扩展 `pg_jieba`、`postgis`、`timescaledb`、`pgcrypto`、`pg_trgm`）

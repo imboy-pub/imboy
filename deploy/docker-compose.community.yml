@@ -24,7 +24,7 @@
 #   - imboy/imboy-admin:${IMBOY_VERSION}     （同上）
 #   - imboy/pg18:3.6.1-2                     （已存在）
 #   - dxflrs/garage:v2.3.0                   （官方，与 scripts/garage-install.sh 同版本）
-#   - nginx:1.27-alpine / certbot/certbot:v5.7.0 / livekit/livekit-server:v1.9（官方）
+#   - nginx:1.27-alpine / certbot/certbot:v5.7.0 / livekit/livekit-server:v1.9.12（官方）
 #
 # ─── 日志留存合规说明 / Log Retention Compliance Note ─────────────────────────
 # 等保2.0（GB/T 22239-2019）第三级要求：安全审计日志留存 ≥ 6 个月（约 180 天）。
@@ -298,7 +298,7 @@ services:
   # TCP 7881（ICE/TCP 兜底）直连宿主，需在防火墙/云安全组放行。
   # 内置 TURN 未启用（需独立域名+TLS 证书），受限 NAT 先走 TCP 7881 兜底。
   imboy_livekit:
-    image: livekit/livekit-server:v1.9
+    image: livekit/livekit-server:v1.9.12  # 全 pin patch（计划 §3.2 禁止浮动 tag；v1.9 线最新）
     container_name: imboy_livekit
     restart: unless-stopped
     environment:
