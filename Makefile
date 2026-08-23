@@ -130,10 +130,12 @@ feature-smoke:
 		eval "$$cmd"
 
 # Tier-0 冒烟：make smoke | make smoke-c2c | make smoke-ws | make smoke-ctl
+# 8 步应用层冒烟链（Golden Gates §4.3，Golden Install 与 CI 共用）：
+#   make smoke-8step
 SMOKE_FROM ?= 1000000051
 SMOKE_TO   ?= 1000000056
 
-.PHONY: smoke smoke-c2c smoke-ws smoke-ctl
+.PHONY: smoke smoke-c2c smoke-ws smoke-ctl smoke-8step golden-install golden-upgrade
 smoke-c2c:
 	@./scripts/smoke/c2c_smoke.sh $(SMOKE_FROM) $(SMOKE_TO)
 smoke-ws:
@@ -142,6 +144,19 @@ smoke-ctl:
 	@./scripts/smoke/ctl_smoke.sh
 smoke: smoke-c2c smoke-ws smoke-ctl
 	@echo "=== all Tier-0 smoke PASS ==="
+smoke-8step:
+	@SMOKE_C2C_FROM=$(SMOKE_FROM) SMOKE_C2C_TO=$(SMOKE_TO) bash ./scripts/smoke_8step.sh
+# Golden Install 金安装门禁（Golden Gates §4，P2-G1）：cleanroom 全流程 + 计时
+# 断言 + restart 幂等。参数见 scripts/golden_install.sh --help，例：
+#   make golden-install GOLDEN_ARGS="--image-ref ghcr.io/…@sha256:… --git-ref v1.0.0-rc.1 --profile ci …"
+golden-install:
+	@bash ./scripts/golden_install.sh $(GOLDEN_ARGS)
+# Golden Upgrade 升级门禁（Golden Gates §5，P2-U1）：安装 vN → 产生真实数据 →
+# 升级 vN+1（candidate digest）→ auto_migrate 观察 + 8 步链 + 数据保留断言。
+# 参数见 scripts/golden_upgrade.sh --help，例：
+#   make golden-upgrade GOLDEN_ARGS="--from v1.0.0-rc.1 --to-image ghcr.io/…@sha256:… --to-ref v1.0.0-rc.2 --profile ci …"
+golden-upgrade:
+	@bash ./scripts/golden_upgrade.sh $(GOLDEN_ARGS)
 
 # CLI: make ctl ARGS="node status"
 CTL_NODE ?= imboy@127.0.0.1
@@ -164,12 +179,39 @@ xref-strict: xref
 
 # 安全门禁: security-gate（CI 硬门本地可跑）
 .PHONY: security-gate
+.PHONY: contract-export contract-check contract-regen
 security-gate:
 	@echo "=== 服务端零密码学守护 (ADR 07 §6.3 / 08 §4) ==="
 	@bash scripts/check_server_zero_crypto.sh
 	@echo "=== 模块边界守护 (Handler→Logic→DS→Repo 单向依赖) ==="
 	@bash scripts/check_module_boundaries.sh
 	@echo "=== 安全门禁全部通过 ==="
+
+# P3-C2 API 契约门禁（Golden Gates §2.3 C2 / §2.2 契约变更流程）
+# 真源：src/imboy_router.erl + priv/migrations CHECK 约束 + include/error_code.hrl
+# 合法变更：改后端真源后，同一 PR 内 make contract-export 并提交 .contract/api_contract.json
+contract-export: ## 导出 API 契约产物 .contract/api_contract.json（确定性输出）
+	@python3 scripts/contract_gate.py export
+
+contract-check: ## 契约校验：落仓产物 vs 真源自检 + admin/flutter 枚举 diff + EntityId 规则（漂移非零退出）
+	@python3 scripts/contract_gate.py check \
+		$(if $(ADMIN_DIR),--admin $(ADMIN_DIR)) \
+		$(if $(FLUTTER_DIR),--flutter $(FLUTTER_DIR))
+
+# P3-C3 契约物一行重生成（Golden Gates §2.3 C3；SOP 见 CONTRIBUTING「契约变更 SOP」）
+# ① .contract/api_contract.json（复用 contract-export，本仓内）
+# ② imboyapp/lib/config/error_code.dart（跨仓调用并排仓生成器；并排 ../imboyapp
+#   是本地布局假设——CI 与他人独立 clone 不保证存在，缺仓 WARN 跳过不失败）
+IMBOYAPP_DIR ?= ../imboyapp
+contract-regen: contract-export ## 一行重生成全部契约物：api_contract.json + imboyapp error_code.dart
+	@if [ -f $(IMBOYAPP_DIR)/scripts/generate_error_code.dart ]; then \
+		echo "=== regen imboyapp/lib/config/error_code.dart（$(IMBOYAPP_DIR)）==="; \
+		cd $(IMBOYAPP_DIR) && dart run scripts/generate_error_code.dart; \
+	else \
+		echo "WARN: $(IMBOYAPP_DIR)/scripts/generate_error_code.dart 不存在（并排仓是本地布局假设，CI/独立 clone 可能分离）"; \
+		echo "WARN: 跳过 error_code.dart 重生成；请在 imboyapp 仓内执行 dart run scripts/generate_error_code.dart"; \
+	fi
+
 
 # E2EE 完整验证套件（一键可审计）
 .PHONY: e2ee-verify

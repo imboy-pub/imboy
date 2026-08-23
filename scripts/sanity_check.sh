@@ -2,19 +2,68 @@
 # IMBoy 部署后健康自检 / Post-deploy sanity check
 #
 # 用法 / Usage（从任意目录）:
-#   bash scripts/sanity_check.sh            # 完整 8 项校验
-#   bash scripts/sanity_check.sh --skip-tls # 本地无 TLS/域名时跳过 nginx/Grafana 严格项
+#   bash scripts/sanity_check.sh                # 完整 8 项校验（默认 prod compose）
+#   bash scripts/sanity_check.sh --skip-tls     # 本地无 TLS/域名时跳过 nginx/Grafana 严格项
+#   bash scripts/sanity_check.sh -f docker-compose.community.yml
+#   COMPOSE_FILE=docker-compose.community.yml bash scripts/sanity_check.sh
+#
+# 选项 / Options:
+#   --skip-tls              跳过 nginx 443 / Grafana 严格校验（本地无 TLS/域名时）
+#   -f, --compose-file FILE 指定 compose 文件（相对 deploy/ 目录；默认 docker-compose.prod.yml）
+#                           亦可用环境变量 COMPOSE_FILE 覆盖，命令行参数优先
+#   -h, --help              显示本帮助
 #
 # 退出码 / Exit code: 任一 [ERROR] -> 1；全部通过 -> 0
 set -uo pipefail
 
 SKIP_TLS=0
-[ "${1:-}" = "--skip-tls" ] && SKIP_TLS=1
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+
+usage() {
+    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --skip-tls)
+            SKIP_TLS=1
+            ;;
+        -f|--compose-file)
+            if [ $# -lt 2 ]; then
+                echo "[ERROR] $1 需要一个参数（compose 文件名）" >&2
+                exit 2
+            fi
+            COMPOSE_FILE="$2"
+            shift
+            ;;
+        --compose-file=*)
+            COMPOSE_FILE="${1#*=}"
+            [ -n "$COMPOSE_FILE" ] || { echo "[ERROR] --compose-file 不能为空" >&2; exit 2; }
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "[ERROR] 未知参数: $1（见 --help）" >&2
+            usage
+            exit 2
+            ;;
+    esac
+    shift
+done
 
 # 定位到 deploy/ 目录（compose 与 .env 所在）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_DIR="$SCRIPT_DIR/../deploy"
 cd "$DEPLOY_DIR" 2>/dev/null || { echo "[ERROR] 找不到 deploy/ 目录"; exit 1; }
+
+# compose 文件存在性检查（避免静默检错栈）
+if [ ! -f "$COMPOSE_FILE" ]; then
+    echo "[ERROR] compose 文件不存在: deploy/$COMPOSE_FILE"
+    echo "        社区版部署请用: bash scripts/sanity_check.sh -f docker-compose.community.yml"
+    exit 1
+fi
 
 # 加载 .env（取 PG 连接、端口、域名）
 if [ -f .env ]; then
@@ -24,7 +73,7 @@ POSTGRES_USER="${POSTGRES_USER:-imboy_user}"
 POSTGRES_DB="${POSTGRES_DB:-imboy_pro}"
 BACKEND_PORT="${BACKEND_PORT:-9800}"
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
-COMPOSE="docker compose -f docker-compose.prod.yml"
+COMPOSE="docker compose -f ${COMPOSE_FILE}"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
 FAIL=0; WARN=0
@@ -32,7 +81,7 @@ ok()   { echo -e "${GREEN}[OK]${NC}   $1"; }
 err()  { echo -e "${RED}[ERROR]${NC} $1"; FAIL=$((FAIL+1)); }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; WARN=$((WARN+1)); }
 
-echo "==== IMBoy 部署后自检（skip_tls=$SKIP_TLS）===="
+echo "==== IMBoy 部署后自检（compose=${COMPOSE_FILE} skip_tls=${SKIP_TLS}）===="
 
 # 1. 容器全部 running
 if $COMPOSE ps --status running 2>/dev/null | grep -q imboy_backend; then
@@ -51,7 +100,7 @@ fi
 # 3. 后端 HTTP 响应（连接成功即视为存活，根路径可能 200/404 均算 up）
 CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${BACKEND_PORT}/" 2>/dev/null || echo "000")
 if [ "$CODE" != "000" ]; then
-    ok "后端 HTTP 响应（:${BACKEND_PORT} -> $CODE）"
+    ok "后端 HTTP 响应（:${BACKEND_PORT} -> ${CODE}）"
 else
     err "后端 :${BACKEND_PORT} 无 HTTP 响应"
 fi
@@ -73,7 +122,7 @@ fi
 ROWS=$($COMPOSE exec -T imboy_pg18 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
     "SELECT count(*) FROM schema_migrations" 2>/dev/null | tr -d '[:space:]')
 if [ -n "$ROWS" ] && [ "$ROWS" -gt 0 ] 2>/dev/null; then
-    ok "数据库迁移已执行（schema_migrations=$ROWS）"
+    ok "数据库迁移已执行（schema_migrations=${ROWS}）"
 else
     err "schema_migrations 为空或不可查（迁移未跑？）"
 fi
@@ -103,12 +152,12 @@ else
     fi
     GCODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${GRAFANA_PORT}/" 2>/dev/null || echo "000")
     if [ "$GCODE" != "000" ]; then
-        ok "Grafana :${GRAFANA_PORT} 响应（$GCODE）"
+        ok "Grafana :${GRAFANA_PORT} 响应（${GCODE}）"
     else
         err "Grafana :${GRAFANA_PORT} 无响应"
     fi
 fi
 
-echo "==== 结果：失败 $FAIL 项 / 告警 $WARN 项 ===="
+echo "==== 结果：失败 ${FAIL} 项 / 告警 ${WARN} 项 ===="
 [ "$FAIL" -gt 0 ] && exit 1
 exit 0
