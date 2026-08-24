@@ -67,14 +67,13 @@ RUN make rel RELX_REL_VSN="$(cat VERSION)"
 
 # 暂存 ERTS 运行所需系统库到固定目录。不能手工维护有限的库清单：OTP 29
 # 的 beam/erlexec 还依赖 libstdc++、libgcc_s 等，缺任一个都会令启动脚本以
-# 127 退出。由 ldd 从实际打包的 ERTS 可执行文件提取依赖；先解析 /lib 等
-# usr-merge 兼容符号链接再保留真实绝对路径，避免 COPY 覆盖运行镜像的 /lib 链接，
-# 并天然适配 amd64/arm64。
+# 127 退出。由 ldd 从实际打包的 ERTS 和 release NIF 可执行文件提取依赖；先
+# 解析 /lib 等 usr-merge 兼容符号链接再保留真实绝对路径，避免 COPY 覆盖运行
+# 镜像的 /lib 链接，并天然适配 amd64/arm64。
 RUN set -eu; \
     mkdir -p /runtime-libs/etc/ssl; \
-    for executable in /imboy/_rel/imboy/erts-*/bin/*; do \
-        ldd "$executable" 2>/dev/null || true; \
-    done \
+    { find /imboy/_rel/imboy/erts-* /imboy/_rel/imboy/lib \
+        -type f -perm /111 -exec ldd {} \; 2>/dev/null || true; } \
       | awk '/=> \// { print $3 } /^\// { print $1 }' \
       | sort -u \
       | while IFS= read -r lib; do \
