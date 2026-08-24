@@ -67,15 +67,18 @@ RUN make rel RELX_REL_VSN="$(cat VERSION)" \
     RELX_DEV_MODE=false \
     RELX_INCLUDE_ERTS=true
 
-# 暂存 ERTS 运行所需系统库到固定目录（arch 自适应：amd64=x86_64-linux-gnu / arm64=aarch64-linux-gnu）
-# runtime 阶段单次 COPY 即可，避免写死架构路径
-RUN set -e; \
-    TRIPLET=$(gcc -dumpmachine 2>/dev/null || echo x86_64-linux-gnu); \
-    mkdir -p /runtime-libs/usr/lib/$TRIPLET /runtime-libs/etc/ssl; \
-    for lib in libssl.so.3 libcrypto.so.3 libtinfo.so.6 libncursesw.so.6; do \
-        cp -L /usr/lib/$TRIPLET/$lib /runtime-libs/usr/lib/$TRIPLET/ 2>/dev/null \
-        || cp -L /lib/$TRIPLET/$lib /runtime-libs/usr/lib/$TRIPLET/ 2>/dev/null || true; \
-    done; \
+# 暂存 ERTS 运行所需系统库到固定目录。不能手工维护有限的库清单：OTP 29
+# 的 beam/erlexec 还依赖 libstdc++、libgcc_s 等，缺任一个都会令启动脚本以
+# 127 退出。由 ldd 从实际打包的 ERTS 可执行文件提取依赖，保留原始绝对路径，
+# runtime 阶段一次 COPY 即可，并天然适配 amd64/arm64。
+RUN set -eu; \
+    mkdir -p /runtime-libs/etc/ssl; \
+    for executable in /imboy/_rel/imboy/erts-*/bin/*; do \
+        ldd "$executable" 2>/dev/null || true; \
+    done \
+      | awk '/=> \// { print $3 } /^\// { print $1 }' \
+      | sort -u \
+      | while IFS= read -r lib; do cp -L --parents "$lib" /runtime-libs; done; \
     cp -r /etc/ssl/certs /runtime-libs/etc/ssl/
 
 # ─────────────────────────────────────────────────────────────
