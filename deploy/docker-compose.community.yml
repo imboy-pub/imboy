@@ -44,7 +44,7 @@ services:
 
   # ========== PostgreSQL 18 + 扩展 ==========
   imboy_pg18:
-    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.66}}
+    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.67}}
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
     restart: unless-stopped
@@ -135,7 +135,7 @@ services:
 
   # ========== imboy 后端（Erlang/OTP + Cowboy）==========
   imboy_backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.66}}
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.67}}
     container_name: imboy_backend
     hostname: backend.docker.imboy.pub
     restart: unless-stopped
@@ -166,6 +166,8 @@ services:
       IMBOY_API_AUTH_SWITCH: ${IMBOY_API_AUTH_SWITCH:-on}
       IMBOY_LOGIN_RSA_PUB_KEY_FILE: ${IMBOY_LOGIN_RSA_PUB_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_pub.pem}
       IMBOY_LOGIN_RSA_PRIV_KEY_FILE: ${IMBOY_LOGIN_RSA_PRIV_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_priv.pem}
+      # 极光认证未配置独立密钥时复用登录 RSA 私钥；必须与上方相同挂载路径。
+      IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE: ${IMBOY_JVERIFICATION_RSA_PRIV_KEY_FILE:-/opt/imboy/priv_runtime/keys/login_rsa_priv.pem}
       # ── Garage S3 附件存储（默认指向本 compose 内置的 garage 服务）──────────
       # endpoint：服务端自身 S3 调用（confirm HEAD 核实/删除/服务端上传），
       #   仅需 compose 网络内可达，勿填公网地址（绕 TLS 出网且可能不可解析）。
@@ -222,7 +224,7 @@ services:
 
   # ========== imboy-admin-frontend（React + Vite，静态）==========
   imboy_admin:
-    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-1.0.0-alpha.66}}
+    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-1.0.0-alpha.67}}
     container_name: imboy_admin
     hostname: admin.docker.imboy.pub
     restart: unless-stopped
