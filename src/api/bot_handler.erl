@@ -188,13 +188,15 @@ do_send_message(Req0, BotId, _Bot) ->
             ToUid = maps:get(<<"to_uid">>, Body, 0),
             case elib_cnv:safe_to_integer(ToUid) of
                 ToId when ToId > 0 ->
-                    case bot_logic:has_exchange(BotId, ToId) of
+                    BotIdPos = positive_integer(BotId),
+                    ToIdPos = positive_integer(ToId),
+                    case bot_logic:has_exchange(BotIdPos, ToIdPos) of
                         true ->
                             MsgData = #{
                                 <<"msg_type">> => maps:get(<<"msg_type">>, Body, <<"text">>),
                                 <<"payload">> => maps:get(<<"payload">>, Body, #{})
                             },
-                            case bot_logic:send_message(BotId, ToId, MsgData) of
+                            case bot_logic:send_message(BotIdPos, ToIdPos, MsgData) of
                                 {ok, Result} ->
                                     elib_response:success(Req1, Result);
                                 {error, Reason} ->
