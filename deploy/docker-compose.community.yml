@@ -44,7 +44,7 @@ services:
 
   # ========== PostgreSQL 18 + 扩展 ==========
   imboy_pg18:
-    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.58}}
+    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.59}}
     container_name: imboy_pg18
     hostname: pg.docker.imboy.pub
     restart: unless-stopped
@@ -135,7 +135,7 @@ services:
 
   # ========== imboy 后端（Erlang/OTP + Cowboy）==========
   imboy_backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.58}}
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.59}}
     container_name: imboy_backend
     hostname: backend.docker.imboy.pub
     restart: unless-stopped
@@ -222,7 +222,7 @@ services:
 
   # ========== imboy-admin-frontend（React + Vite，静态）==========
   imboy_admin:
-    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-1.0.0-alpha.58}}
+    image: ${ADMIN_IMAGE:-ghcr.io/imboy-pub/imboy-admin:${IMBOY_VERSION:-1.0.0-alpha.59}}
     container_name: imboy_admin
     hostname: admin.docker.imboy.pub
     restart: unless-stopped

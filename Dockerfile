@@ -84,10 +84,10 @@ RUN set -e; \
 #
 # 不依赖 apt：从 builder 拷贝 ERTS 运行所需系统库 + CA 证书。
 # 原因：① 私有化客户网络常受限/无外网，构建期 apt 不可靠；
-#       ② erlang:28 与 debian:bookworm-slim 同为 bookworm/glibc 基线，ABI 兼容；
+#       ② 构建镜像 erlang:29 与运行镜像同为 trixie/glibc 基线，ABI 兼容；
 #       ③ glibc 自带 C.UTF-8，无需 locales/locale-gen。
 # ─────────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 # ERTS 运行所需系统库 + CA 证书（builder 已按本机架构暂存到 /runtime-libs）
 # crypto NIF 需 libssl/libcrypto；erlang shell 需 ncurses/tinfo；出站 TLS 需 CA 证书
