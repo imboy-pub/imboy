@@ -44,9 +44,10 @@ RUN set -eux; \
     echo "${ERLANG_PAY_ARCHIVE_SHA256}  /tmp/erlang_pay.tar.gz" | sha256sum -c -; \
     tar -xzf /tmp/erlang_pay.tar.gz -C /tmp; \
     mv "/tmp/erlang_pay-${ERLANG_PAY_COMMIT}" deps/erlang_pay; \
-    printf '%s\n' '.PHONY: all' 'all:' '\t../../.erlang.mk/rebar3/rebar3 compile' \
-      '\tmkdir -p ebin' '\tcp _build/default/lib/erlang_pay/ebin/* ebin/' \
-      > deps/erlang_pay/Makefile; \
+    { printf '%s\n' '.PHONY: all' 'all:'; \
+      printf '\t%s\n' '../../.erlang.mk/rebar3/rebar3 compile' 'mkdir -p ebin' \
+        'cp _build/default/lib/erlang_pay/ebin/* ebin/'; \
+    } > deps/erlang_pay/Makefile; \
     test -f deps/erlang_pay/rebar.config
 
 # 补齐默认 sys 配置源：Makefile 默认分支（不设 IMBOYENV）要求 config/sys.config
