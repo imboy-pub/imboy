@@ -29,4 +29,12 @@ COMMENT ON COLUMN public.msg_c2c.sender_did IS '发送方设备ID（服务端认
 ALTER TABLE IF EXISTS public.msg_store_staging
     ADD COLUMN IF NOT EXISTS sender_did character varying(128);
 
-COMMENT ON COLUMN public.msg_store_staging.sender_did IS '发送方设备ID，随 staging 行搬进 msg_c2c；NULL=未提供';
+-- 全新安装时 staging 表由 msg_store_repo:ensure_table_exists/0 在迁移之后创建；
+-- 因此注释也必须与 ALTER 一样在表存在时才执行，不能阻断首次启动。
+DO $$
+BEGIN
+    IF to_regclass('public.msg_store_staging') IS NOT NULL THEN
+        COMMENT ON COLUMN public.msg_store_staging.sender_did IS '发送方设备ID，随 staging 行搬进 msg_c2c；NULL=未提供';
+    END IF;
+END
+$$;

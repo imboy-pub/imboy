@@ -275,3 +275,12 @@ ensure_table_ddl_has_sender_did_test() ->
         persistent_term:erase({?MODULE, ddl}),
         _ = (catch meck:unload(elib_pg))
     end.
+
+%% 全新安装执行迁移时，staging 表尚未由应用启动阶段创建；字段注释必须
+%% 显式守护表存在性，否则迁移会被标记为 dirty 并阻断首次启动。
+migration_guards_absent_staging_comment_test() ->
+    {ok, Migration} = file:read_file("priv/migrations/00000048_msg_sender_did.up.sql"),
+    ?assert(binary:match(Migration, <<"DO $$">>) =/= nomatch),
+    ?assert(
+        binary:match(Migration, <<"to_regclass('public.msg_store_staging')">>) =/= nomatch
+    ).
