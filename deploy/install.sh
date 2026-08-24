@@ -334,13 +334,17 @@ else
 fi
 
 # ── 5) 等待后端健康（最多 120s）──────────────────────────────────────────────
-say "等待后端启动 (最多 120s)"
+# 不能以日志文案判定就绪：后端不承诺输出固定的 "started on port" 文本，
+# 且端口可监听也不代表 PostgreSQL 已可服务。与 Docker healthcheck/蓝绿部署
+# 保持同一语义：只有 /healthz 明确返回 status=ok 才继续。
+say "等待后端健康（/healthz，最多 120s）"
 ok=0
 for _ in $(seq 1 60); do
-  if $COMPOSE logs imboy_backend 2>/dev/null | grep -q "started on port"; then ok=1; break; fi
+  if curl -fsS --max-time 3 "http://127.0.0.1:${BACKEND_PORT:-9800}/healthz" 2>/dev/null \
+      | grep -q '"status":"ok"'; then ok=1; break; fi
   sleep 2
 done
-[ "$ok" = 1 ] || die "后端 120s 内未就绪，查日志：$COMPOSE logs imboy_backend"
+[ "$ok" = 1 ] || die "后端 120s 内未通过 /healthz，查日志：$COMPOSE logs imboy_backend"
 
 # ── 6) 部署后自检（存在才跑）─────────────────────────────────────────────────
 if [ -f ../scripts/sanity_check.sh ]; then
