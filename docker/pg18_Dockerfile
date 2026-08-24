@@ -25,7 +25,7 @@ ARG BOOST_VER=1.83.0
 # pg_jieba 依赖的 ICU 库版本
 ARG ICU_VER=76
 # PostGIS 版本定义 - 统一在此设置，可在构建时通过 --build-arg 覆盖
-ARG POSTGIS_VERSION=3.6.1+dfsg-1.pgdg13+1
+ARG POSTGIS_VERSION=3.6.4+dfsg-2.pgdg13+1
 
 # ==========================================
 # 第一阶段: Builder (编译阶段)
