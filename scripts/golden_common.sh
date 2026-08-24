@@ -116,6 +116,8 @@ capture_backend_failure_log() {
   {
     printf '%s\n' '== docker compose ps =='
     $COMPOSE ps
+    printf '%s\n' '== imboy_backend runtime state =='
+    docker inspect -f 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}' imboy_backend || true
     printf '%s\n' '== imboy_pg18 logs (tail 300) =='
     $COMPOSE logs --tail=300 imboy_pg18
     printf '%s\n' '== imboy_backend logs (tail 300) =='
