@@ -22,6 +22,7 @@
 -export([email_in_use/1]).
 -export([bind_email/2]).
 -export([mobile_registered/1]).
+-export([consume_code/2]).
 %% P0-C: OIDC 登录流复用（auth_oidc_logic）——签发收口 + License 配额闸门 + 建号数据组装
 -export([login_resp/2]).
 -export([quota_guard/0]).
