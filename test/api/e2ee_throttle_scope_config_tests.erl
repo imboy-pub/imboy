@@ -34,10 +34,15 @@ ensure_throttle() ->
     {ok, _} = application:ensure_all_started(throttle),
     ok.
 
-%% 直接读**随发布走的那份** config/sys.config，而不是测试环境的 sys.local.config
-%% （后者是 gitignored 的，守护它没有意义）。
+%% 优先读部署时实际使用的 config/sys.config；该文件不入仓时，读随发布走的
+%% sys.config.example。测试环境的 sys.local.config 被 gitignore，不应作为守护对象。
 shipped_rates() ->
-    {ok, [Config]} = file:consult("config/sys.config"),
+    ConfigPath =
+        case filelib:is_regular("config/sys.config") of
+            true -> "config/sys.config";
+            false -> "config/sys.config.example"
+        end,
+    {ok, [Config]} = file:consult(ConfigPath),
     Throttle = proplists:get_value(throttle, Config, []),
     proplists:get_value(rates, Throttle, []).
 
