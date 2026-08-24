@@ -50,7 +50,8 @@ search(Req0, _State) ->
             Q -> Q
         end,
     CategoryId = safe_int_qs(<<"category_id">>, Qs),
-    {ok, Page} = elib_param:int(page, Req0, 1),
+    {ok, Page0} = elib_param:int(page, Req0, 1),
+    Page = positive_integer(Page0, 1),
     Size = legacy_size(Req0, Qs, 20),
 
     case channel_discovery_logic:search(Keyword, Page, Size, CategoryId) of
@@ -69,7 +70,8 @@ discover(Req0, _State) ->
 
     CategoryId = safe_int_qs(<<"category_id">>, Qs),
     Sort = proplists:get_value(<<"sort">>, Qs, <<"popular">>),
-    {ok, Page} = elib_param:int(page, Req0, 1),
+    {ok, Page0} = elib_param:int(page, Req0, 1),
+    Page = positive_integer(Page0, 1),
     Size = legacy_size(Req0, Qs, 20),
 
     case channel_discovery_logic:discover(Page, Size, CategoryId, Sort) of
@@ -82,7 +84,8 @@ discover(Req0, _State) ->
 %% @doc 精选频道
 -spec featured(cowboy_req:req(), map()) -> cowboy_req:req().
 featured(Req0, _State) ->
-    {ok, Limit} = elib_param:int(limit, Req0, 10),
+    {ok, Limit0} = elib_param:int(limit, Req0, 10),
+    Limit = positive_integer(Limit0, 10),
 
     case channel_discovery_logic:featured(Limit) of
         {ok, Result} ->
@@ -101,7 +104,8 @@ trending(Req0, _State) ->
             <<"30d">> -> 30;
             _ -> 7
         end,
-    {ok, Limit} = elib_param:int(limit, Req0, 20),
+    {ok, Limit0} = elib_param:int(limit, Req0, 20),
+    Limit = positive_integer(Limit0, 20),
 
     case channel_discovery_logic:trending(Period, Limit) of
         {ok, Result} ->
@@ -139,9 +143,13 @@ legacy_size(Req0, Qs, Default) ->
         undefined ->
             case proplists:get_value(<<"limit">>, Qs) of
                 undefined -> Default;
-                LimitVal -> elib_cnv:safe_to_integer(LimitVal)
+                LimitVal -> positive_integer(elib_cnv:safe_to_integer(LimitVal), Default)
             end;
         _ ->
             {ok, Size} = elib_param:int(size, Req0, Default),
-            Size
+            positive_integer(Size, Default)
     end.
+
+-spec positive_integer(integer(), pos_integer()) -> pos_integer().
+positive_integer(Value, _Default) when Value > 0 -> Value;
+positive_integer(_, Default) -> Default.

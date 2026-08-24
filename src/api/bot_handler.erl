@@ -64,9 +64,7 @@ register(Req0, State) ->
                     elib_response:success(Req1, Result);
                 {error, Reason} ->
                     elib_response:error(Req1, Reason)
-            end;
-        {error, _} = Err ->
-            elib_response:error(Req0, Err)
+            end
     end.
 
 %% @doc 获取 Bot 信息
@@ -119,9 +117,7 @@ update(Req0, State) ->
                     end;
                 false ->
                     elib_response:error(Req1, <<"Bot ID 不能为空"/utf8>>)
-            end;
-        {error, _} = Err ->
-            elib_response:error(Req0, Err)
+            end
     end.
 
 %% @doc 停用 Bot（仅属主）
@@ -151,8 +147,10 @@ list_mine(Req0, State) ->
 search(Req0, _State) ->
     Qs = cowboy_req:parse_qs(Req0),
     Keyword = proplists:get_value(<<"q">>, Qs, <<>>),
-    {ok, Page} = elib_param:int(page, Req0, 1),
-    {ok, Size} = elib_param:int(size, Req0, 20),
+    {ok, Page0} = elib_param:int(page, Req0, 1),
+    {ok, Size0} = elib_param:int(size, Req0, 20),
+    Page = positive_integer(Page0),
+    Size = positive_integer(Size0),
     case bot_logic:search(Keyword, Page, Size) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
@@ -221,7 +219,7 @@ authenticate(Req0) ->
     Authorization = cowboy_req:header(<<"authorization">>, Req0, <<>>),
     case Authorization of
         <<"Bearer ", Token/binary>> when byte_size(Token) > 0 ->
-            case bot_ds:find_by_token(string:trim(Token)) of
+            case bot_ds:find_by_token(Token) of
                 {ok, #{<<"status">> := 1} = Bot} ->
                     {ok, Bot};
                 {ok, _} ->
@@ -250,9 +248,7 @@ change_status(Req0, State, Status) ->
                     end;
                 false ->
                     elib_response:error(Req1, <<"Bot ID 不能为空"/utf8>>)
-            end;
-        {error, _} = Err ->
-            elib_response:error(Req0, Err)
+            end
     end.
 
 %% @doc 安全地从查询字符串中获取整数值
@@ -262,3 +258,7 @@ safe_int_qs(Key, Qs) ->
         undefined -> undefined;
         Val -> elib_cnv:safe_to_integer(Val)
     end.
+
+-spec positive_integer(integer()) -> pos_integer().
+positive_integer(Value) when Value > 0 -> Value;
+positive_integer(_) -> 1.

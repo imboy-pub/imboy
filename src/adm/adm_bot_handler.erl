@@ -64,7 +64,8 @@ guard(Permission, Method, Req0, State, Action) ->
 %% @doc 分页列出全部 Bot（含属主昵称/头像，供后台检索）
 -spec list(binary(), cowboy_req:req()) -> cowboy_req:req().
 list(<<"GET">>, Req0) ->
-    {Page, Size} = elib_param:page(Req0),
+    {Page0, Size} = elib_param:page(Req0),
+    Page = positive_integer(Page0),
     case bot_repo:page(Page, Size) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
@@ -74,6 +75,10 @@ list(<<"GET">>, Req0) ->
     end;
 list(_, Req0) ->
     Req0.
+
+-spec positive_integer(integer()) -> pos_integer().
+positive_integer(Value) when Value > 0 -> Value;
+positive_integer(_) -> 1.
 
 %% @doc Bot 详情（复用 bot_logic:get/1 的敏感字段过滤）
 -spec detail(binary(), cowboy_req:req()) -> cowboy_req:req().

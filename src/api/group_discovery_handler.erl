@@ -44,8 +44,10 @@ search(Req0, _State) ->
 
     Keyword = proplists:get_value(<<"q">>, Qs, <<>>),
     CategoryId = safe_int_qs(<<"category_id">>, Qs),
-    {ok, Page} = elib_param:int(page, Req0, 1),
-    {ok, Size} = elib_param:int(size, Req0, 20),
+    {ok, Page0} = elib_param:int(page, Req0, 1),
+    {ok, Size0} = elib_param:int(size, Req0, 20),
+    Page = positive_integer(Page0, 1),
+    Size = positive_integer(Size0, 20),
 
     case group_discovery_logic:search(Keyword, Page, Size, CategoryId) of
         {ok, Result} ->
@@ -61,8 +63,10 @@ discover(Req0, _State) ->
 
     CategoryId = safe_int_qs(<<"category_id">>, Qs),
     Sort = proplists:get_value(<<"sort">>, Qs, <<"popular">>),
-    {ok, Page} = elib_param:int(page, Req0, 1),
-    {ok, Size} = elib_param:int(size, Req0, 20),
+    {ok, Page0} = elib_param:int(page, Req0, 1),
+    {ok, Size0} = elib_param:int(size, Req0, 20),
+    Page = positive_integer(Page0, 1),
+    Size = positive_integer(Size0, 20),
 
     case group_discovery_logic:discover(Page, Size, CategoryId, Sort) of
         {ok, Result} ->
@@ -74,7 +78,8 @@ discover(Req0, _State) ->
 %% @doc 精选群组
 -spec featured(cowboy_req:req(), map()) -> cowboy_req:req().
 featured(Req0, _State) ->
-    {ok, Limit} = elib_param:int(limit, Req0, 10),
+    {ok, Limit0} = elib_param:int(limit, Req0, 10),
+    Limit = positive_integer(Limit0, 10),
 
     case group_discovery_logic:featured(Limit) of
         {ok, Result} ->
@@ -86,7 +91,8 @@ featured(Req0, _State) ->
 %% @doc 热门群组
 -spec hot(cowboy_req:req(), map()) -> cowboy_req:req().
 hot(Req0, _State) ->
-    {ok, Limit} = elib_param:int(limit, Req0, 20),
+    {ok, Limit0} = elib_param:int(limit, Req0, 20),
+    Limit = positive_integer(Limit0, 20),
 
     case group_discovery_logic:hot(Limit) of
         {ok, Result} ->
@@ -94,6 +100,10 @@ hot(Req0, _State) ->
         {error, Reason} ->
             elib_response:error(Req0, Reason)
     end.
+
+-spec positive_integer(integer(), pos_integer()) -> pos_integer().
+positive_integer(Value, _Default) when Value > 0 -> Value;
+positive_integer(_, Default) -> Default.
 
 %% @doc 公开群分类列表
 -spec categories(cowboy_req:req(), map()) -> cowboy_req:req().

@@ -71,11 +71,13 @@ create(#{name := Name, username := Username, owner_uid := OwnerUid} = Data) ->
 
 %% @doc 检查 user_id 是否为 Bot（account_type=3）
 -spec is_bot(integer()) -> boolean().
-is_bot(UserId) ->
+is_bot(UserId) when UserId > 0 ->
     case user_repo:find_by_id(UserId, <<"account_type">>) of
         #{<<"account_type">> := ?ACCOUNT_TYPE_BOT} -> true;
         _ -> false
-    end.
+    end;
+is_bot(_) ->
+    false.
 
 %% @doc 按 api_token 查找 Bot（Bot 调用 API 时认证）
 -spec find_by_token(binary()) -> {ok, map()} | {error, not_found | term()}.
@@ -92,7 +94,7 @@ find_by_token(Token) ->
 
 %% @doc 创建 Bot 用户行并标记 account_type=3
 -spec create_bot_user(integer(), binary(), binary()) -> ok | {error, term()}.
-create_bot_user(BotUid, Nickname, Account) ->
+create_bot_user(BotUid, Nickname, Account) when BotUid > 0 ->
     case user_repo:create(#{id => BotUid, nickname => Nickname, account => Account}) of
         ok ->
             case user_repo:update(BotUid, #{account_type => ?ACCOUNT_TYPE_BOT}) of
@@ -101,7 +103,9 @@ create_bot_user(BotUid, Nickname, Account) ->
             end;
         {error, Reason} ->
             {error, Reason}
-    end.
+    end;
+create_bot_user(_, _, _) ->
+    {error, invalid_bot_uid}.
 
 %% @doc 验证 Bot 创建参数
 -spec validate(map()) -> ok | {error, binary()}.
