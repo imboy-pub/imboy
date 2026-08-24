@@ -85,12 +85,16 @@ RUN set -eu; \
 # Stage 2: Runtime（debian-slim，glibc 匹配 builder 的 ERTS）
 # 勿用 alpine：ERTS 针对 glibc 编译，musl 会崩
 #
-# 不依赖 apt：从 builder 拷贝 ERTS 运行所需系统库 + CA 证书。
-# 原因：① 私有化客户网络常受限/无外网，构建期 apt 不可靠；
-#       ② 构建镜像 erlang:29 与运行镜像同为 trixie/glibc 基线，ABI 兼容；
-#       ③ glibc 自带 C.UTF-8，无需 locales/locale-gen。
+# release 启动脚本在输出第一条日志前就用 awk 解析 vm.args；debian:slim 不保证
+# 提供它，缺失会静默以 127 退出。因此在镜像构建期装最小运行工具 mawk。私有化
+# 用户只拉取已构建镜像，不依赖其现场网络。其余 ERTS 库与 CA 从 builder 拷贝：
+# ① builder/runtime 同为 trixie/glibc 基线；② glibc 自带 C.UTF-8，无需 locales。
 # ─────────────────────────────────────────────────────────────
 FROM debian:trixie-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends mawk \
+    && rm -rf /var/lib/apt/lists/*
 
 # ERTS 运行所需系统库 + CA 证书（builder 已按本机架构暂存到 /runtime-libs）
 # crypto NIF 需 libssl/libcrypto；erlang shell 需 ncurses/tinfo；出站 TLS 需 CA 证书
