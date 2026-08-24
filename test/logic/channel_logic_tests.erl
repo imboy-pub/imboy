@@ -2,6 +2,14 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% P1-7b：与 src/logic/channel_logic_message.erl /
+%% channel_logic_subscription.erl 的 ?CHANNEL_SAFE_COLUMNS 保持一致。
+%% 钉住精确列清单可防 <<"*">> 宽列查询回流。
+-define(CHANNEL_SAFE_COLUMNS, <<
+    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "is_verified,tags,created_at,updated_at"
+>>).
+
 %%%===================================================================
 %%% @doc
 %%% channel_logic 模块的 EUnit 测试
@@ -457,7 +465,7 @@ update_channel_success_still_returns_ok_when_notify_crashes_test_() ->
                 ?assert(maps:is_key(updated_at, Data)),
                 {ok, 1}
             end},
-            {'find_by_id', 2, fun(11, <<"*">>) ->
+            {'find_by_id', 2, fun(11, ?CHANNEL_SAFE_COLUMNS) ->
                 #{
                     <<"id">> => 11,
                     <<"creator_uid">> => 1001,
@@ -522,7 +530,7 @@ update_channel_success_still_returns_ok_when_notify_fails_test_() ->
                 ?assert(maps:is_key(updated_at, Data)),
                 {ok, 1}
             end},
-            {'find_by_id', 2, fun(11, <<"*">>) ->
+            {'find_by_id', 2, fun(11, ?CHANNEL_SAFE_COLUMNS) ->
                 #{
                     <<"id">> => 11,
                     <<"creator_uid">> => 1001,
@@ -558,7 +566,7 @@ update_channel_returns_error_when_reload_payload_not_map_test_() ->
         ]},
         {channel_ds, [
             {'update', 2, fun(11, _) -> {ok, 1} end},
-            {'find_by_id', 2, fun(11, <<"*">>) -> invalid_payload end}
+            {'find_by_id', 2, fun(11, ?CHANNEL_SAFE_COLUMNS) -> invalid_payload end}
         ]},
         {channel_logic_notify, [
             {'notify_channel_update', 2, fun(_, _) ->
@@ -3739,7 +3747,7 @@ create_channel_returns_error_when_reload_payload_not_map_test_() ->
         {channel_ds, [
             {'list_managed', 1, fun(1001) -> {ok, []} end},
             {'create_channel', 4, fun(1001, <<"my-channel">>, 0, #{}) -> {ok, 11} end},
-            {'find_by_id', 2, fun(11, <<"*">>) -> invalid_payload end}
+            {'find_by_id', 2, fun(11, ?CHANNEL_SAFE_COLUMNS) -> invalid_payload end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -4961,7 +4969,7 @@ get_subscribers_delegates_to_subscription_module_test_() ->
 get_subscribed_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_subscribed', 2, fun(1001, <<"*">>) -> {error, db_down} end}
+            {'list_subscribed', 2, fun(1001, ?CHANNEL_SAFE_COLUMNS) -> {error, db_down} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -4980,7 +4988,7 @@ get_subscribed_channels_returns_error_when_repo_fails_test_() ->
 get_subscribed_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_subscribed', 2, fun(1001, <<"*">>) -> {ok, invalid_payload} end}
+            {'list_subscribed', 2, fun(1001, ?CHANNEL_SAFE_COLUMNS) -> {ok, invalid_payload} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -4999,7 +5007,7 @@ get_subscribed_channels_returns_error_when_repo_payload_not_list_test_() ->
 get_subscribed_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_subscribed', 2, fun(1001, <<"*">>) ->
+            {'list_subscribed', 2, fun(1001, ?CHANNEL_SAFE_COLUMNS) ->
                 {ok, [
                     #{<<"id">> => 11, <<"name">> => <<"ch11">>},
                     invalid_item
@@ -5152,7 +5160,7 @@ get_subscribers_filters_non_map_entries_test_() ->
 search_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'search', 3, fun(<<"ops">>, 20, <<"*">>) -> {error, db_down} end}
+            {'search', 3, fun(<<"ops">>, 20, ?CHANNEL_SAFE_COLUMNS) -> {error, db_down} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5171,7 +5179,7 @@ search_channels_returns_error_when_repo_fails_test_() ->
 search_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'search', 3, fun(<<"ops">>, 20, <<"*">>) -> {ok, invalid_payload} end}
+            {'search', 3, fun(<<"ops">>, 20, ?CHANNEL_SAFE_COLUMNS) -> {ok, invalid_payload} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5190,7 +5198,7 @@ search_channels_returns_error_when_repo_payload_not_list_test_() ->
 search_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'search', 3, fun(<<"ops">>, 20, <<"*">>) ->
+            {'search', 3, fun(<<"ops">>, 20, ?CHANNEL_SAFE_COLUMNS) ->
                 {ok, [
                     #{<<"id">> => 11, <<"name">> => <<"ops">>},
                     invalid_item
@@ -5218,7 +5226,7 @@ search_channels_filters_non_map_entries_test_() ->
 get_discover_channels_returns_error_when_repo_fails_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_discover', 2, fun(15, <<"*">>) -> {error, db_down} end}
+            {'list_discover', 2, fun(15, ?CHANNEL_SAFE_COLUMNS) -> {error, db_down} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5237,7 +5245,7 @@ get_discover_channels_returns_error_when_repo_fails_test_() ->
 get_discover_channels_returns_error_when_repo_payload_not_list_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_discover', 2, fun(15, <<"*">>) -> {ok, invalid_payload} end}
+            {'list_discover', 2, fun(15, ?CHANNEL_SAFE_COLUMNS) -> {ok, invalid_payload} end}
         ]},
         {channel_logic_common, [
             {'channel_transfer', 1, fun(_) ->
@@ -5256,7 +5264,7 @@ get_discover_channels_returns_error_when_repo_payload_not_list_test_() ->
 get_discover_channels_filters_non_map_entries_test_() ->
     MockConfigs = [
         {channel_ds, [
-            {'list_discover', 2, fun(15, <<"*">>) ->
+            {'list_discover', 2, fun(15, ?CHANNEL_SAFE_COLUMNS) ->
                 {ok, [
                     #{<<"id">> => 12, <<"name">> => <<"discover">>},
                     invalid_item

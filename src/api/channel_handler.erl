@@ -492,19 +492,16 @@ normalize_non_empty_binary(Value) ->
 
 -spec normalize_error_binary(term(), binary()) -> binary().
 normalize_error_binary(Msg, Default) ->
-    Bin0 =
-        case Msg of
-            Value when is_binary(Value); is_list(Value); is_integer(Value) ->
-                normalize_non_empty_binary(Value);
-            _ ->
-                elib_cnv:safe_to_binary(Msg)
-        end,
-    % ponytail: Bin0 is always binary here; skip normalize_non_empty_binary to avoid dead-pattern warnings
-    % ceiling: only the empty-binary fallback runs; the safe_to_binary/1 branch is never
-    %   trimmed, so a whitespace-only non-binary Msg is returned as-is instead of Default
-    % upgrade: none (design constraint, not a deferral) — both branches above already
-    %   yield a binary, so a second normalize call is an unreachable clause by construction
-    case Bin0 of
-        <<>> -> Default;
-        Bin -> Bin
+    case Msg of
+        Value when is_binary(Value); is_list(Value); is_integer(Value) ->
+            case normalize_non_empty_binary(Value) of
+                <<>> ->
+                    Default;
+                Bin ->
+                    Bin
+            end;
+        _ ->
+            %% atom / epgsql 错误元组等：不 dump term 给用户，记日志后用中文兜底
+            ?ERROR_LOG([<<"channel_handler op failed">>, Msg]),
+            Default
     end.

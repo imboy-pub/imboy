@@ -3,7 +3,8 @@
 
 %%%===================================================================
 %%% @doc LLM provider 配置文件契约测试（Bailian 接入）
-%%% 保护对象：config/sys.config 与 config/sys.local.config 的 llm_providers
+%%% 保护对象：发布配置源（config/sys.config 或 sys.config.example）与
+%%% config/sys.local.config 的 llm_providers
 %%% 必须包含可用的 bailian（阿里云百炼 OpenAI 兼容）provider——
 %%% 这是「AI agent 收不到回复」修复的可测保证：agent 的 provider 字段
 %%% 一旦切到 bailian，注册表 lookup 必须命中这条配置，否则又是静默无回复。
@@ -44,12 +45,12 @@ providers_from(File) ->
     end.
 
 %% ===================================================================
-%% sys.config（生产默认模板）契约
+%% 生产默认配置源契约
 %% ===================================================================
 
 sys_config_has_bailian_provider_test_() ->
     {timeout, 10, fun() ->
-        Providers = providers_from("config/sys.config"),
+        Providers = providers_from(shipped_config_path()),
         Bailian = find_provider(<<"bailian">>, Providers),
         ?assertMatch(#{name := <<"bailian">>, module := imboy_llm_openai}, Bailian),
         ?assertEqual(?EXPECTED_BASE_URL, maps:get(base_url, Bailian)),
@@ -105,4 +106,10 @@ find_provider(Name, Providers) ->
     case [P || P <- Providers, is_map(P), maps:get(name, P, undefined) =:= Name] of
         [Found | _] -> Found;
         [] -> erlang:error({provider_not_configured, Name})
+    end.
+
+shipped_config_path() ->
+    case filelib:is_file("config/sys.config") of
+        true -> "config/sys.config";
+        false -> "config/sys.config.example"
     end.

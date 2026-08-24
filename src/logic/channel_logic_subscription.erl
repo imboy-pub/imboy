@@ -14,6 +14,15 @@
 -define(CHANNEL_CACHE_KEY(ChannelId), {channel, ChannelId}).
 -define(CHANNEL_SUBS_KEY(ChannelId), {channel_subs, ChannelId}).
 
+%% 用户侧出站安全列白名单（P1-7b 宽列治理）：替代 <<"*">>，
+%% 防止 channel 表未来新增敏感列随行自动泄漏进 payload。
+%% 内部状态列 status（审核/软删）不下发；与 channel_logic_message.erl
+%% 中的 ?CHANNEL_SAFE_COLUMNS 保持一致，新增列前必须评估敏感性。
+-define(CHANNEL_SAFE_COLUMNS, <<
+    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "is_verified,tags,created_at,updated_at"
+>>).
+
 -spec subscribe(integer(), binary()) -> ok | {error, binary()}.
 subscribe(Uid, ChannelIdBin) ->
     ChannelId = decode_positive_id(ChannelIdBin),
@@ -117,7 +126,7 @@ unsubscribe(Uid, ChannelIdBin) ->
 
 -spec get_subscribed_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_subscribed_channels(Uid) ->
-    case channel_ds:list_subscribed(Uid, <<"*">>) of
+    case channel_ds:list_subscribed(Uid, ?CHANNEL_SAFE_COLUMNS) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_logic_common:channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, UnexpectedChannels} ->

@@ -267,10 +267,10 @@ setting(Req0, State) ->
             elib_response:success(Req0, #{}, "success.")
     catch
         error:function_clause ->
-            elib_response:error(Req0, <<"undefined setting key">>);
+            elib_response:error(Req0, <<"不支持的设置项"/utf8>>);
         error:Err1 ->
             ok = ?DEBUG_LOG([err1, Err1]),
-            elib_response:error(Req0, <<"unknown"/utf8>>, ?ERR_OPERATION_FAILED)
+            elib_response:error(Req0, <<"设置保存失败"/utf8>>, ?ERR_OPERATION_FAILED)
     end.
 
 %% @doc 修改用户信息

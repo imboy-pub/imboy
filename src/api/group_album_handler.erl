@@ -76,10 +76,12 @@ create_album(Req0, State) ->
             case group_album_logic:create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) of
                 {ok, AlbumData} ->
                     elib_response:success(Req1, AlbumData, <<"创建相册成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"创建相册失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(create_album, Reason, <<"创建相册失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -104,10 +106,12 @@ list_albums(Req0, State) ->
             case group_album_logic:list_albums(Gid, CurrentUid, Page, Size) of
                 {ok, AlbumList} ->
                     elib_response:success(Req0, AlbumList, <<"查询成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req0, <<"查询失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req0,
+                        fmt_reason(list_albums, Reason, <<"查询失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -133,10 +137,12 @@ rename_album(Req0, State) ->
             case group_album_logic:rename_album(AlbumId, NewName, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"重命名成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"重命名失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(rename_album, Reason, <<"重命名失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -163,10 +169,12 @@ delete_album(Req0, State) ->
                     elib_response:error(Req1, <<"相册不存在"/utf8>>, ?ERR_ALBUM_NOT_FOUND);
                 {error, <<"相册权限不足"/utf8>>} ->
                     elib_response:error(Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(delete_album, Reason, <<"删除失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -222,10 +230,12 @@ upload_photo_multipart(Req0, CurrentUid) ->
                             elib_response:error(
                                 Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
                             );
-                        {error, Reason} when is_binary(Reason) ->
-                            elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                        {error, _Reason} ->
-                            elib_response:error(Req1, <<"上传失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                        {error, Reason} ->
+                            elib_response:error(
+                                Req1,
+                                fmt_reason(upload_photo, Reason, <<"上传失败"/utf8>>),
+                                ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end
             end;
         {error, malformed_multipart, Req1} ->
@@ -267,10 +277,12 @@ upload_photo_json(Req0, CurrentUid) ->
                             elib_response:error(
                                 Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
                             );
-                        {error, Reason} when is_binary(Reason) ->
-                            elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                        {error, _Reason} ->
-                            elib_response:error(Req1, <<"上传失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                        {error, Reason} ->
+                            elib_response:error(
+                                Req1,
+                                fmt_reason(upload_photo_json, Reason, <<"上传失败"/utf8>>),
+                                ?ERR_INTERNAL_SERVER_ERROR
+                            )
                     end
             catch
                 _:_ ->
@@ -346,10 +358,12 @@ batch_upload(Req0, State) ->
             case group_album_logic:batch_upload_photos(Gid, CurrentUid, Photos) of
                 {ok, Results} ->
                     elib_response:success(Req1, #{results => Results}, <<"批量上传完成"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"批量上传失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(batch_upload, Reason, <<"批量上传失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -374,10 +388,12 @@ list_photos(Req0, State) ->
             case group_album_logic:list_photos(AlbumId, CurrentUid, Page, Size) of
                 {ok, PhotoList} ->
                     elib_response:success(Req0, PhotoList, <<"查询成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req0, <<"查询失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req0,
+                        fmt_reason(list_photos, Reason, <<"查询失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -401,8 +417,12 @@ photo_detail(Req0, State) ->
             case group_album_logic:get_photo_detail(PhotoIdInt, CurrentUid) of
                 {ok, PhotoDetail} ->
                     elib_response:success(Req0, PhotoDetail, <<"查询成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req0,
+                        fmt_reason(photo_detail, Reason, <<"查询失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -426,10 +446,12 @@ delete_photo(Req0, State) ->
             case group_album_logic:delete_photo(PhotoIdInt, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"删除成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"删除失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(delete_photo, Reason, <<"删除失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -452,10 +474,12 @@ like_photo(Req0, State) ->
             case group_album_logic:like_photo(PhotoId, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"点赞成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"点赞失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(like_photo, Reason, <<"点赞失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -478,10 +502,12 @@ unlike_photo(Req0, State) ->
             case group_album_logic:unlike_photo(PhotoId, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"取消点赞成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"取消点赞失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(unlike_photo, Reason, <<"取消点赞失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -507,10 +533,12 @@ add_comment(Req0, State) ->
             case group_album_logic:add_comment(PhotoId, CurrentUid, Content) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"评论成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"评论失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(add_comment, Reason, <<"评论失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -548,8 +576,12 @@ list_comments(Req0, State) ->
                     elib_response:error(Req0, <<"你不是该群成员"/utf8>>, ?ERR_FORBIDDEN);
                 {error, <<"图片不存在"/utf8>>} ->
                     elib_response:error(Req0, <<"图片不存在"/utf8>>, ?ERR_NOT_FOUND);
-                {error, _Reason} ->
-                    elib_response:error(Req0, <<"查询失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req0,
+                        fmt_reason(list_comments, Reason, <<"查询失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -575,9 +607,23 @@ update_cover(Req0, State) ->
             case group_album_logic:update_album_cover(AlbumId, PhotoId, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"更新封面成功"/utf8>>);
-                {error, Reason} when is_binary(Reason) ->
-                    elib_response:error(Req1, Reason, ?ERR_INTERNAL_SERVER_ERROR);
-                {error, _Reason} ->
-                    elib_response:error(Req1, <<"更新封面失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
+                {error, Reason} ->
+                    elib_response:error(
+                        Req1,
+                        fmt_reason(update_cover, Reason, <<"更新封面失败"/utf8>>),
+                        ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
+
+%% @doc 错误原因安全转文案：binary（logic/ds 层已中文化的业务消息，
+%% 如「相册权限不足」「你不是该群成员」）直接透传；
+%% atom / 复杂 term（epgsql 错误元组、elib_oss 内部错误等）记录日志后
+%% 兜底为 Default 中文，避免英文码与 term dump 直达用户。
+%% 与 group_member_handler:fmt_reason/1 同一约定。
+-spec fmt_reason(atom(), term(), binary()) -> binary().
+fmt_reason(_Op, Reason, _Default) when is_binary(Reason) ->
+    Reason;
+fmt_reason(Op, Reason, Default) ->
+    ?ERROR_LOG([{group_album_handler, Op}, Reason]),
+    Default.

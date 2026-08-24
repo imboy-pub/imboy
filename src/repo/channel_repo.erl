@@ -171,17 +171,25 @@ list_by_ids_since([], _Since) ->
 
 %% @doc 查询用户订阅的频道列表
 %% @param Uid 用户ID
-%% @param Column 要查询的列名
+%% @param Column 要查询的列名（channel 表列，逗号分隔、不含空格；逐列自动补 c. 前缀）
 %% @return {ok, Rows} | {error, Reason}
 -spec list_subscribed(integer(), binary()) -> {ok, list(map())} | {error, any()}.
 list_subscribed(Uid, Column) ->
     Tb = tablename(),
     SubTb = channel_subscription_repo:tablename(),
     AdminTb = channel_admin_repo:tablename(),
+    %% 三表 join 下同名列（如 created_at 同存于 channel / channel_admin）必须带
+    %% c. 前缀消歧；Column 支持 <<"*">>（→ c.*）或逗号分隔列清单（→ c.col1, c.col2）
+    Columns = iolist_to_binary(
+        lists:join(<<", ">>, [
+            <<"c.", C/binary>>
+         || C <- binary:split(Column, <<",">>, [global])
+        ])
+    ),
     Sql =
         % BUG#123: 三表 join 下裸 * 会展开为 c.*+s.*+a.* 全部列，
         % epgsql 重复键覆盖导致返回行 id 非频道 id；必须限定 c. 前缀
-        <<"SELECT c.", Column/binary,
+        <<"SELECT ", Columns/binary,
             ", "
             "COALESCE(a.role, 0) as user_role, "
             "true as is_subscribed "

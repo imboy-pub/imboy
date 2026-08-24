@@ -58,7 +58,7 @@ report_key_cross_device_must_403_test_() ->
                 action => report_device_key, current_uid => 123, current_did => <<"dev-A">>
             }),
             %% 修复后期望：返回 403 device_mismatch，不调用 e2ee_logic
-            ?assertEqual({responded, error, <<"device_mismatch">>, 403}, Result)
+            ?assertEqual({responded, error, <<"设备不匹配，请重新登录"/utf8>>, 403}, Result)
         end
     ).
 
@@ -99,7 +99,7 @@ report_key_legacy_unbound_must_403_test_() ->
             {ok, Result, _} = e2ee_handler:init(Req0, #{
                 action => report_device_key, current_uid => 123, current_did => <<>>
             }),
-            ?assertEqual({responded, error, <<"device_binding_required">>, 403}, Result)
+            ?assertEqual({responded, error, <<"设备未绑定，请先完成设备绑定"/utf8>>, 403}, Result)
         end
     ).
 

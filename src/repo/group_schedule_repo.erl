@@ -79,7 +79,11 @@ update(Id, Data) ->
 %% @doc 根据ID查询日程（默认查询所有字段）
 -spec find_by_id(integer()) -> map() | {error, term()}.
 find_by_id(Id) ->
-    find_by_id(Id, <<"*">>).
+    % P1-7b: 显式安全列（group_schedule 全列，无敏感字段）
+    find_by_id(
+        Id,
+        <<"id,group_id,schedule_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at,updated_at">>
+    ).
 
 %% @doc 根据ID查询日程
 -spec find_by_id(integer(), binary()) -> map() | {error, term()}.
@@ -98,7 +102,11 @@ find_by_id(_, _) ->
 %% @doc 根据schedule_id查询日程（默认查询所有字段）
 -spec find_by_schedule_id(binary()) -> map() | {error, term()}.
 find_by_schedule_id(ScheduleId) ->
-    find_by_schedule_id(ScheduleId, <<"*">>).
+    % P1-7b: 显式安全列（group_schedule 全列，无敏感字段）
+    find_by_schedule_id(
+        ScheduleId,
+        <<"id,group_id,schedule_id,title,description,location,creator_id,start_at,end_at,remind_before,status,created_at,updated_at">>
+    ).
 
 %% @doc 根据schedule_id查询日程
 -spec find_by_schedule_id(binary(), binary()) -> map() | {error, term()}.

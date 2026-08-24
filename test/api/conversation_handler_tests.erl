@@ -104,8 +104,10 @@ mine_action_returns_server_authoritative_conversation_list_test_() ->
                     timeout
                 end,
             ?assertNotEqual(timeout, Data),
-            ?assertEqual(2, length(Data)),
-            [FirstItem | _] = Data,
+            %% P3-9c: payload 从裸 list 改为 #{<<"list">> => List} 包
+            List = maps:get(<<"list">>, Data),
+            ?assertEqual(2, length(List)),
+            [FirstItem | _] = List,
             ?assertEqual(3001, maps:get(<<"conversation_id">>, FirstItem)),
             ?assertEqual(<<"c2g">>, maps:get(<<"conversation_type">>, FirstItem)),
             LastMsg = maps:get(<<"last_msg">>, FirstItem),

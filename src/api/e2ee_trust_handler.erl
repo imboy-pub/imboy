@@ -68,5 +68,22 @@ do_record(Req0, State) ->
         ok ->
             elib_response:success(Req0, #{<<"success">> => true});
         {error, Msg} ->
-            elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            elib_response:error(Req0, trust_msg(Msg), ?ERR_BAD_REQUEST)
     end.
+
+%% @doc e2ee_trust_logic 返回的英文错误码 → 中文人类可读消息。
+%% 逻辑层保持稳定的机器可读码（bad_request / invalid_signature 等），
+%% handler 层统一映射，避免英文码直达用户；
+%% 已中文化的 binary 直接透传，非 binary 兜底通用中文。
+-spec trust_msg(term()) -> binary().
+trust_msg(<<"bad_request">>) -> <<"请求参数有误"/utf8>>;
+trust_msg(<<"invalid_transition">>) -> <<"信任状态变更不合法"/utf8>>;
+trust_msg(<<"stale_event">>) -> <<"事件已过期，请刷新后重试"/utf8>>;
+trust_msg(<<"actor_device_not_registered">>) -> <<"设备未注册"/utf8>>;
+trust_msg(<<"actor_device_revoked">>) -> <<"设备已被吊销"/utf8>>;
+trust_msg(<<"invalid_signature">>) -> <<"签名校验失败"/utf8>>;
+trust_msg(<<"internal_error">>) -> <<"服务器内部错误，请稍后重试"/utf8>>;
+trust_msg(<<"identity_version_rollback">>) -> <<"身份密钥版本异常，操作被拒绝"/utf8>>;
+trust_msg(<<"event_id_conflict">>) -> <<"事件冲突，请刷新后重试"/utf8>>;
+trust_msg(Msg) when is_binary(Msg) -> Msg;
+trust_msg(_Reason) -> <<"操作失败，请稍后重试"/utf8>>.

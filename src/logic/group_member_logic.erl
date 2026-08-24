@@ -203,7 +203,9 @@ update_role(CurrentUid, Gid, UserId, Role) ->
                     role_change_notice(CurrentUid, Gid, UserId, Role),
                     ok;
                 {rollback, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)};
+                    % 透传原始 Reason，由 handler 层 fmt_reason/1 统一中文化兜底
+                    % （此前 safe_to_binary dump term 会把英文/技术细节直达用户）
+                    {error, Reason};
                 {error, Reason} ->
                     {error, Reason}
             end

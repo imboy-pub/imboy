@@ -78,7 +78,10 @@ detail(Req0, _State) ->
         {error, Req} ->
             Req;
         {ok, Gid2} ->
-            case group_logic:find_by_id(Gid2, <<"*">>) of
+            % P1-7b: 显式安全列（排除 chat_aes_key）
+            GroupCols =
+                <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>,
+            case group_logic:find_by_id(Gid2, GroupCols) of
                 {error, _Reason} ->
                     elib_response:error(Req0, "群组不存在");
                 G ->
@@ -157,7 +160,10 @@ face2face_save(Req0, State) ->
                 {error, Reason} ->
                     elib_response:error(Req0, Reason);
                 {ok, MemberList} ->
-                    case group_logic:find_by_id(Gid2, <<"*">>) of
+                    % P1-7b: 显式安全列（排除 chat_aes_key）
+                    GroupCols =
+                        <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>,
+                    case group_logic:find_by_id(Gid2, GroupCols) of
                         {error, Reason2} ->
                             elib_response:error(Req0, Reason2);
                         G2 ->
@@ -205,7 +211,7 @@ add(Req0, State) ->
                         {error, Reason} ->
                             elib_response:error(Req0, Reason);
                         GData ->
-                            GData3 = GData,
+                            GData3 = group_logic:group_transfer(GData),
                             case group_member_logic:list_member(Gid) of
                                 {error, Reason2} ->
                                     elib_response:error(Req0, Reason2);
@@ -227,10 +233,10 @@ add(Req0, State) ->
                 %% 不让 handler crash，统一转成可读错误返回前端。
                 {error, throw, ThrowReason} ->
                     ?ERROR_LOG([group_add_handler_throw, Uid, ThrowReason]),
-                    elib_response:error(Req0, "group_create_failed");
+                    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>);
                 Unexpected ->
                     ?ERROR_LOG([group_add_handler_unexpected, Uid, Unexpected]),
-                    elib_response:error(Req0, "group_create_failed")
+                    elib_response:error(Req0, <<"群创建失败，请稍后重试"/utf8>>)
             end
     end.
 
@@ -268,7 +274,7 @@ set_e2ee_mode(Req0, State) ->
     %% 参数/业务规则错误（含 0→1 单向限制）→ 400；越权 → 403（security-reviewer L1）
     case is_integer(Gid) andalso Gid > 0 andalso Mode =:= 1 of
         false ->
-            elib_response:error(Req0, <<"bad_request">>, 400);
+            elib_response:error(Req0, <<"参数不合法，仅支持 gid>0 且 e2ee_mode=1"/utf8>>, 400);
         true ->
             case group_logic:set_e2ee_mode(Uid, Gid, Mode) of
                 ok ->

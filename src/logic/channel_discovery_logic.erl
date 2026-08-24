@@ -42,7 +42,9 @@ search(Keyword, Page, Size, CategoryId) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows, <<"total">> => Total}};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            %% DB 错误 term 不 dump 给用户，记日志后返回中文兜底
+            ?ERROR_LOG([<<"channel_discovery search failed">>, Keyword, Reason]),
+            {error, <<"搜索失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 发现页频道列表
@@ -72,7 +74,8 @@ discover(Page, Size, CategoryId, Sort) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows, <<"total">> => length(Rows)}};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            ?ERROR_LOG([<<"channel_discovery discover failed">>, Reason]),
+            {error, <<"查询失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 精选频道（运营推荐）
@@ -90,7 +93,8 @@ featured(Limit) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            ?ERROR_LOG([<<"channel_discovery featured failed">>, Reason]),
+            {error, <<"查询失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 热门频道（基于订阅数 + 近期活跃度）
@@ -119,7 +123,8 @@ trending(Period, Limit) ->
         {ok, Rows} ->
             {ok, #{<<"list">> => Rows}};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            ?ERROR_LOG([<<"channel_discovery trending failed">>, Reason]),
+            {error, <<"查询失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 获取频道分类列表

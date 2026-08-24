@@ -61,13 +61,18 @@
 title(Uid) when is_binary(Uid) ->
     title(ec_cnv:to_integer(Uid));
 title(Uid) when is_integer(Uid) ->
-    U = user_repo:find_by_id(Uid, <<"account,nickname">>),
-    #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
-    case {Account, Nickname} of
-        {_, <<>>} ->
-            Account;
-        _ ->
-            Nickname
+    case user_repo:find_by_id(Uid, <<"account,nickname">>) of
+        U when map_size(U) =:= 0 ->
+            <<>>;
+        U ->
+            Account = maps:get(<<"account">>, U, <<>>),
+            Nickname = maps:get(<<"nickname">>, U, <<>>),
+            case {Account, Nickname} of
+                {_, <<>>} ->
+                    Account;
+                _ ->
+                    Nickname
+            end
     end.
 
 %% @doc 获取用户显示名称和昵称（模式2）
@@ -80,16 +85,21 @@ title(Uid) when is_integer(Uid) ->
 title(Uid, 2) when is_binary(Uid) ->
     title(ec_cnv:to_integer(Uid), 2);
 title(Uid, 2) when is_integer(Uid) ->
-    U = user_repo:find_by_id(Uid, <<"account,nickname">>),
-    #{<<"account">> := Account, <<"nickname">> := Nickname} = U,
-    Title =
-        case {Account, Nickname} of
-            {_, <<>>} ->
-                Account;
-            _ ->
-                Nickname
-        end,
-    {Title, Nickname}.
+    case user_repo:find_by_id(Uid, <<"account,nickname">>) of
+        U when map_size(U) =:= 0 ->
+            {<<>>, <<>>};
+        U ->
+            Account = maps:get(<<"account">>, U, <<>>),
+            Nickname = maps:get(<<"nickname">>, U, <<>>),
+            Title =
+                case {Account, Nickname} of
+                    {_, <<>>} ->
+                        Account;
+                    _ ->
+                        Nickname
+                end,
+            {Title, Nickname}
+    end.
 
 %% @doc 生成WebRTC认证凭据
 %% 为指定用户生成WebRTC连接所需的认证信息，包括TURN/STUN服务器配置。

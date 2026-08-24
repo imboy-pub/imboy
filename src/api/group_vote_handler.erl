@@ -333,12 +333,30 @@ my_vote(Req0, State) ->
 %% EUnit tests.
 %% ===================================================================
 
-%% @doc 错误原因安全转文案：atom/binary 直接转换，其余复杂 term（如
-%% epgsql 错误元组）用 ~0p 格式化，避免 ec_cnv:to_binary/1 function_clause
-%% 崩掉响应进程（生产 crash.log 2026-07-12 坐实）。
-fmt_reason(Reason) when is_atom(Reason) -> atom_to_binary(Reason, utf8);
+%% @doc 错误原因安全转文案：已知 atom 映射中文，binary 直接透传，
+%% 其余复杂 term（如 epgsql 错误元组）兜底为通用中文，
+%% 避免 atom_to_binary 英文码和 ~0p term dump 直达用户。
+fmt_reason(Reason) when is_atom(Reason) -> atom_to_msg(Reason);
 fmt_reason(Reason) when is_binary(Reason) -> Reason;
-fmt_reason(Reason) -> unicode:characters_to_binary(io_lib:format("~0p", [Reason])).
+fmt_reason(_Reason) -> <<"操作失败，请稍后重试"/utf8>>.
+
+%% @doc 投票业务 atom → 中文人类可读消息
+atom_to_msg(vote_not_found) -> <<"投票不存在"/utf8>>;
+atom_to_msg(vote_is_closed) -> <<"投票已关闭"/utf8>>;
+atom_to_msg(vote_is_cancelled) -> <<"投票已取消"/utf8>>;
+atom_to_msg(vote_is_expired) -> <<"投票已过期"/utf8>>;
+atom_to_msg(vote_already_closed) -> <<"投票已关闭"/utf8>>;
+atom_to_msg(already_voted) -> <<"您已投过票"/utf8>>;
+atom_to_msg(not_voted_yet) -> <<"您尚未投票"/utf8>>;
+atom_to_msg(not_group_member) -> <<"您不是该群成员"/utf8>>;
+atom_to_msg(permission_denied) -> <<"无权限操作"/utf8>>;
+atom_to_msg(invalid_option) -> <<"投票选项无效"/utf8>>;
+atom_to_msg(invalid_vote_status) -> <<"投票状态不允许此操作"/utf8>>;
+atom_to_msg(options_not_found) -> <<"投票选项不存在"/utf8>>;
+atom_to_msg(single_choice_requires_one_option) -> <<"单选投票请选择一个选项"/utf8>>;
+atom_to_msg(multiple_choice_requires_at_least_two_options) -> <<"多选投票请至少选择两个选项"/utf8>>;
+atom_to_msg(not_found) -> <<"记录不存在"/utf8>>;
+atom_to_msg(_) -> <<"操作失败，请稍后重试"/utf8>>.
 
 %% @doc 将请求参数中的布尔值统一转换为 boolean()
 to_boolean(true, _Default) -> true;

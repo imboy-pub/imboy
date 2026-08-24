@@ -57,7 +57,7 @@ set_password(Uid, Req0) ->
             PwdHash = elib_password:generate(PwdPlaintext),
             update_password_with_log(Uid, PwdHash, Req0, 110);
         _ ->
-            {error, "have_set"}
+            {error, <<"已设置过密码，请使用修改密码"/utf8>>}
     end.
 
 %% @doc 修改用户密码

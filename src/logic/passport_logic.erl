@@ -74,11 +74,15 @@ quick_login(<<"jverify">>, _Operator, Token, PostVals) ->
                             ),
                             case user_ds:insert_and_get_id(Data) of
                                 {ok, Uid2} ->
-                                    User2 = user_ds:find_by_id(Uid2, ?LOGIN_COLUMN),
-                                    {ok,
-                                        login_resp(User2, Did, #{
-                                            <<"action">> => <<"need_set_password">>
-                                        })};
+                                    case user_ds:find_by_id(Uid2, ?LOGIN_COLUMN) of
+                                        User2 when map_size(User2) =:= 0 ->
+                                            {error, <<"注册异常，请稍后重试"/utf8>>};
+                                        User2 ->
+                                            {ok,
+                                                login_resp(User2, Did, #{
+                                                    <<"action">> => <<"need_set_password">>
+                                                })}
+                                    end;
                                 {error, Reason} ->
                                     {error, Reason}
                             end
@@ -304,8 +308,12 @@ signup(Mobile, Pwd, Email, PostVals) when
                             Data = pick_data_for_insert(BaseData, PostVals2),
                             case user_ds:insert_and_get_id(Data) of
                                 {ok, Uid} ->
-                                    User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
-                                    {ok, login_resp(User, #{})};
+                                    case user_ds:find_by_id(Uid, ?LOGIN_COLUMN) of
+                                        User when map_size(User) =:= 0 ->
+                                            {error, <<"注册异常，请稍后重试"/utf8>>, 500};
+                                        User ->
+                                            {ok, login_resp(User, #{})}
+                                    end;
                                 {error,
                                     {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
                                     {error, <<"账号已被占用"/utf8>>, 400};

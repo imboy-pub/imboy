@@ -906,7 +906,7 @@ read_stats(MsgId, CurrentUid) ->
         {ok, []} ->
             % 消息不存在
             {error, not_found};
-        {ok, [#{<<"to_gid">> := Gid}]} ->
+        {ok, [#{<<"to_gid">> := Gid} | _]} ->
             % 检查用户是否是群成员
             case group_ds:is_member(CurrentUid, Gid) of
                 true ->
@@ -921,6 +921,9 @@ read_stats(MsgId, CurrentUid) ->
                     % 不是群成员，无权限访问
                     {error, permission_denied}
             end;
+        {ok, _} ->
+            % timeline 行缺 to_gid 键或格式异常
+            {error, not_found};
         {error, Reason} ->
             % 查询错误
             {error, Reason}

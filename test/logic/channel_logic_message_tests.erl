@@ -2,6 +2,13 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
+%% P1-7b：与 src/logic/channel_logic_message.erl 的 ?CHANNEL_SAFE_COLUMNS
+%% 保持一致，钉住精确列清单防 <<"*">> 宽列查询回流。
+-define(CHANNEL_SAFE_COLUMNS, <<
+    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "is_verified,tags,created_at,updated_at"
+>>).
+
 %% @doc BUG#125 回归：editor(role=1) 退订后 is_subscribed 必须为 false，
 %% 不能因 admin 表历史角色记录而恒返回 true。
 get_channel_editor_unsubscribed_returns_false_test_() ->
@@ -186,7 +193,7 @@ update_channel_custom_id_first_set_persists_test_() ->
                 {'find_by_id', 2, fun
                     (_ChannelId, <<"custom_id">>) ->
                         #{<<"id">> => 42, <<"custom_id">> => <<>>};
-                    (_ChannelId, <<"*">>) ->
+                    (_ChannelId, ?CHANNEL_SAFE_COLUMNS) ->
                         #{
                             <<"id">> => 42,
                             <<"name">> => <<"干饭"/utf8>>,
@@ -226,7 +233,7 @@ update_channel_custom_id_locked_ignored_test_() ->
                 {'find_by_id', 2, fun
                     (_ChannelId, <<"custom_id">>) ->
                         #{<<"id">> => 42, <<"custom_id">> => <<"old_id">>};
-                    (_ChannelId, <<"*">>) ->
+                    (_ChannelId, ?CHANNEL_SAFE_COLUMNS) ->
                         #{
                             <<"id">> => 42,
                             <<"name">> => <<"干饭"/utf8>>,

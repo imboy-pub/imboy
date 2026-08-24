@@ -67,7 +67,8 @@ index(<<"GET">>, _Ajax, Req0, State) ->
         ok ->
             {Page, Size} = elib_param:page(Req0),
             Where = #{},
-            Column = <<"*">>,
+            Column =
+                <<"id,region_code,type,package_name,app_name,vsn,download_url,description,force_update,sort,status,updated_at,created_at,min_supported_vsn,grayscale_percent,upgrade_type,changelog,file_size,file_hash">>,
             OrderBy = <<"sort desc, updated_at desc">>,
             {ok, P} = app_version_ds:page(Column, Where, OrderBy, Page, Size),
             elib_response:success(Req0, P)

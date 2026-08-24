@@ -533,8 +533,11 @@ handle_json_message(Msg, State) ->
     catch
         Class:CatchReason:Stacktrace ->
             ok = ?ERROR_LOG({json_message_error, Class, CatchReason, Stacktrace}),
-            ReasonBin = elib_cnv:safe_to_binary(CatchReason),
-            ErrorMsg2 = ws_validation_error(<<>>, <<"invalid_json">>, ReasonBin),
+            %% 崩溃原因（term dump）只进服务端日志，不下发客户端；
+            %% 客户端按 code=invalid_json 走统一错误处理
+            ErrorMsg2 = ws_validation_error(
+                <<>>, <<"invalid_json">>, <<"消息格式错误"/utf8>>
+            ),
             {reply, {text, jsone:encode(ErrorMsg2, [native_utf8])}, State, hibernate}
     end.
 

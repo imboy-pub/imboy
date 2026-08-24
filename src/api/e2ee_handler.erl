@@ -78,13 +78,13 @@ do_user_keys(Req0, State) ->
     TargetUid = elib_cnv:safe_to_integer(TargetUidEnc),
     case is_integer(TargetUid) andalso TargetUid > 0 of
         false ->
-            elib_response:error(Req0, <<"bad_request">>, 400);
+            elib_response:error(Req0, <<"参数不合法：uid 必须为正整数"/utf8>>, 400);
         true ->
             case e2ee_logic:user_keys(CurrentUid, TargetUid) of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
                 {error, Msg, Code} ->
-                    elib_response:error(Req0, Msg, Code)
+                    elib_response:error(Req0, e2ee_msg(Msg), Code)
             end
     end.
 
@@ -104,13 +104,13 @@ do_group_member_keys(Req0, State) ->
     Gid = elib_cnv:safe_to_integer(GidEnc),
     case is_integer(Gid) andalso Gid > 0 of
         false ->
-            elib_response:error(Req0, <<"bad_request">>, 400);
+            elib_response:error(Req0, <<"参数不合法：gid 必须为正整数"/utf8>>, 400);
         true ->
             case e2ee_logic:group_member_keys(CurrentUid, Gid) of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
                 {error, Msg, Code} ->
-                    elib_response:error(Req0, Msg, Code)
+                    elib_response:error(Req0, e2ee_msg(Msg), Code)
             end
     end.
 
@@ -156,9 +156,9 @@ do_report_device_key(Req0, State) ->
                                         KeyId
                                     );
                                 device_binding_required ->
-                                    elib_response:error(Req0, <<"device_binding_required">>, 403);
+                                    elib_response:error(Req0, <<"设备未绑定，请先完成设备绑定"/utf8>>, 403);
                                 device_mismatch ->
-                                    elib_response:error(Req0, <<"device_mismatch">>, 403)
+                                    elib_response:error(Req0, <<"设备不匹配，请重新登录"/utf8>>, 403)
                             end
                     end
             end
@@ -182,7 +182,7 @@ do_report_device_key1(Req0, CurrentUid, DeviceId, DeviceType, DeviceName, Public
                 <<"has_other_device">> => OtherDeviceCount > 0
             });
         {error, Reason} ->
-            elib_response:error(Req0, Reason, 500)
+            elib_response:error(Req0, e2ee_msg(Reason), 500)
     end.
 
 %% @doc 读取上报参数
@@ -196,7 +196,7 @@ read_report_params(Req) ->
     PublicKey = maps:get(<<"public_key">>, PostVals, <<>>),
     KeyId = maps:get(<<"key_id">>, PostVals, <<>>),
     case DeviceId of
-        <<>> -> {error, <<"device_id_required">>};
+        <<>> -> {error, <<"缺少 device_id 参数"/utf8>>};
         _ -> {ok, DeviceId, DeviceType, DeviceName, PublicKey, KeyId}
     end.
 
@@ -211,10 +211,10 @@ validate_params(DeviceId, DeviceType, PublicKey, KeyId) ->
     Condition3 = byte_size(PublicKey) > 0,
     Condition4 = byte_size(KeyId) > 0,
     case {Condition1, Condition2, Condition3, Condition4} of
-        {false, _, _, _} -> {error, <<"device_id_required">>};
-        {_, false, _, _} -> {error, <<"invalid_device_type">>};
-        {_, _, false, _} -> {error, <<"public_key_required">>};
-        {_, _, _, false} -> {error, <<"key_id_required">>};
+        {false, _, _, _} -> {error, <<"缺少 device_id 参数"/utf8>>};
+        {_, false, _, _} -> {error, <<"device_type 不合法"/utf8>>};
+        {_, _, false, _} -> {error, <<"缺少 public_key 参数"/utf8>>};
+        {_, _, _, false} -> {error, <<"缺少 key_id 参数"/utf8>>};
         {true, true, true, true} -> ok
     end.
 
@@ -247,7 +247,9 @@ do_key_status(Req0, State) ->
                 {ok, Status} ->
                     elib_response:success(Req0, Status);
                 {error, Reason} ->
-                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                    elib_response:error(
+                        Req0, e2ee_msg(Reason), ?ERR_INTERNAL_SERVER_ERROR
+                    )
             end
     end.
 
@@ -276,7 +278,7 @@ do_pull_notifications(Req0, State) ->
                 <<"count">> => length(Notifications)
             });
         {error, Reason} ->
-            elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+            elib_response:error(Req0, e2ee_msg(Reason), ?ERR_INTERNAL_SERVER_ERROR)
     end.
 
 %% @doc 启动自动恢复
@@ -329,9 +331,9 @@ do_start_recovery(Req0, Uid, DeviceId, Method) ->
         {ok, Result} ->
             elib_response:success(Req0, Result);
         {error, {Msg, Code}} ->
-            elib_response:error(Req0, Msg, Code);
+            elib_response:error(Req0, e2ee_msg(Msg), Code);
         {error, Reason} ->
-            elib_response:error(Req0, Reason, ?ERR_E2EE_RECOVERY_FAILED)
+            elib_response:error(Req0, e2ee_msg(Reason), ?ERR_E2EE_RECOVERY_FAILED)
     end.
 
 %% @doc 获取当前活跃的合规公钥
@@ -362,3 +364,13 @@ do_compliance_key(Req0) ->
         {error, _Reason} ->
             elib_response:error(Req0, <<"合规密钥查询失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
     end.
+
+%% @doc e2ee_logic / e2ee_recovery_logic 返回的英文错误码 → 中文人类可读消息。
+%% 逻辑层保持稳定的机器可读码（internal_error / forbidden 等），
+%% handler 层统一映射，避免英文码直达用户；
+%% 已中文化的 binary 直接透传，非 binary 兜底通用中文。
+-spec e2ee_msg(term()) -> binary().
+e2ee_msg(<<"internal_error">>) -> <<"服务器内部错误，请稍后重试"/utf8>>;
+e2ee_msg(<<"forbidden">>) -> <<"无权限访问"/utf8>>;
+e2ee_msg(Msg) when is_binary(Msg) -> Msg;
+e2ee_msg(_Reason) -> <<"操作失败，请稍后重试"/utf8>>.

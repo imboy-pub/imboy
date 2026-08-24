@@ -112,7 +112,7 @@ mine(Req0, State) ->
         })
     of
         {ok, List} ->
-            elib_response:success(Req0, List);
+            elib_response:success(Req0, #{<<"list">> => List});
         {error, Reason} ->
             ?ERROR_LOG([conversation_mine_failed, CurrentUid, Reason]),
             elib_response:error(Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED)

@@ -308,7 +308,14 @@ refreshtoken(Req0) ->
     case throttle:check(refreshtoken, Refreshtoken) of
         {limit_exceeded, _, _} ->
             % elib_log:warning("Auth ~p exceeded api limit~n", [Refreshtoken]),
-            cowboy_req:reply(429, Req0);
+            % P2-8f: 429 响应必须返回完整 envelope（code/msg/sv_ts/payload），
+            % 避免客户端拿不到业务错误信息
+            elib_response:error_with_status(
+                Req0,
+                429,
+                <<"刷新过于频繁，请稍后再试"/utf8>>,
+                429
+            );
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of
                 {ok, Id, _ExpireDAt, <<"rtk">>, Did} ->
@@ -366,7 +373,7 @@ getcode(Req0) ->
     % ?DEBUG_LOG([Type, Account, "MobileExists ", MobileExists, Type == <<"sms">>, Scene == <<"signup">>]),
     if
         MobileExists ->
-            elib_response:error(Req0, "paramAlreadyExist");
+            elib_response:error(Req0, <<"该手机号已注册"/utf8>>);
         true ->
             % elib_response:success(Req0, #{}, "success.")
             case passport_logic:send_code(Account, Type) of

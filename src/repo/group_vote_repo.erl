@@ -114,7 +114,8 @@ insert_vote(Data) ->
 -spec find_by_vote_id(binary()) -> {ok, map()} | {error, not_found | term()}.
 find_by_vote_id(VoteId) when is_binary(VoteId), byte_size(VoteId) > 0 ->
     Tb = tablename(),
-    Column = <<"*">>,
+    Column =
+        <<"id,group_id,vote_id,title,description,creator_id,vote_type,is_anonymous,status,end_at,created_at,updated_at">>,
     Where = <<"vote_id = $1">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [VoteId]) of
@@ -388,7 +389,7 @@ find_record_by_vote_and_user(VoteId, UserId) when
     is_binary(VoteId), byte_size(VoteId) > 0, is_integer(UserId), UserId > 0
 ->
     Tb = tablename_record(),
-    Column = <<"*">>,
+    Column = <<"id,vote_id,user_id,option_ids,created_at">>,
     Where = <<"vote_id = $1 AND user_id = $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [VoteId, UserId]) of

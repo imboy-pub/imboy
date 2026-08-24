@@ -27,6 +27,16 @@
 
 -include("log.hrl").
 
+%% 用户侧出站安全列白名单（P1-7b 宽列治理）：替代 <<"*">>，
+%% 防止 channel 表未来新增敏感列随行自动泄漏进 payload / WS 通知。
+%% 内部状态列 status（审核/软删，查询恒过滤 status=1）不下发；
+%% 向本清单新增列前必须评估其用户侧敏感性。
+%% 注意与 channel_logic_subscription.erl 中的同名宏保持一致。
+-define(CHANNEL_SAFE_COLUMNS, <<
+    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "is_verified,tags,created_at,updated_at"
+>>).
+
 -spec channel_transfer(map()) -> map().
 channel_transfer(Channel) when is_map(Channel) ->
     channel_logic_common:channel_transfer(Channel).
@@ -74,7 +84,7 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
 do_create_channel(Uid, Name, Type, Opts) ->
     case channel_ds:create_channel(Uid, Name, Type, Opts) of
         {ok, ChannelId} ->
-            case channel_ds:find_by_id(ChannelId, <<"*">>) of
+            case channel_ds:find_by_id(ChannelId, ?CHANNEL_SAFE_COLUMNS) of
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                 Channel when is_map(Channel) -> {ok, channel_transfer(Channel)};
                 Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
@@ -239,7 +249,7 @@ resolve_custom_id_update(ChannelId, Data) ->
 do_update_channel(ChannelId, Data) ->
     case channel_ds:update(ChannelId, Data#{updated_at => elib_dt:now()}) of
         {ok, _} ->
-            case channel_ds:find_by_id(ChannelId, <<"*">>) of
+            case channel_ds:find_by_id(ChannelId, ?CHANNEL_SAFE_COLUMNS) of
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)};
                 Channel when is_map(Channel) ->
@@ -384,7 +394,7 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
 
 -spec search_channels(binary(), integer()) -> {ok, list(map())} | {error, binary()}.
 search_channels(Keyword, Limit) ->
-    case channel_ds:search(Keyword, Limit, <<"*">>) of
+    case channel_ds:search(Keyword, Limit, ?CHANNEL_SAFE_COLUMNS) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, UnexpectedChannels} ->
@@ -397,7 +407,7 @@ search_channels(Keyword, Limit) ->
 
 -spec get_discover_channels(integer()) -> {ok, list(map())} | {error, binary()}.
 get_discover_channels(Limit) ->
-    case channel_ds:list_discover(Limit, <<"*">>) of
+    case channel_ds:list_discover(Limit, ?CHANNEL_SAFE_COLUMNS) of
         {ok, Channels} when is_list(Channels) ->
             {ok, [channel_transfer(C) || C <- Channels, is_map(C)]};
         {ok, UnexpectedChannels} ->

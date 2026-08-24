@@ -271,7 +271,7 @@ alias(Req0, State) ->
                 ok ->
                     elib_response:success(Req0, #{<<"gid">> => Gid}, "success.");
                 {error, Reason} ->
-                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -352,7 +352,7 @@ mute(Req0, State) ->
                         Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success."
                     );
                 {error, Reason} ->
-                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -388,7 +388,7 @@ unmute(Req0, State) ->
                         Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success."
                     );
                 {error, Reason} ->
-                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -426,7 +426,7 @@ role(Req0, State) ->
                         Req0, #{<<"gid">> => Gid, <<"user_id">> => UserId}, "success."
                     );
                 {error, Reason} ->
-                    elib_response:error(Req0, elib_cnv:safe_to_binary(Reason))
+                    elib_response:error(Req0, fmt_reason(Reason))
             end
     end.
 
@@ -454,3 +454,15 @@ payload_list_key(Payload) ->
                 false -> list
             end
     end.
+
+%% @doc 错误原因安全转文案：binary（logic 层已中文化的业务消息，
+%% 如「你没有权限禁言群成员」）直接透传；atom / 复杂 term
+%% （如 epgsql 错误元组）记录日志后兜底为通用中文，
+%% 避免英文码和 term dump 直达用户。
+%% 与 group_vote_handler:fmt_reason/1 同一约定。
+-spec fmt_reason(term()) -> binary().
+fmt_reason(Reason) when is_binary(Reason) ->
+    Reason;
+fmt_reason(Reason) ->
+    ?ERROR_LOG([<<"group_member_handler op failed">>, Reason]),
+    <<"操作失败，请稍后重试"/utf8>>.

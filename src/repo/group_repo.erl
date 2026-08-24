@@ -61,10 +61,15 @@ create(Data0) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 兼容旧接口：按 gid 查询群组
+%% @doc 兼容旧接口：按 gid 查询群组（排除 chat_aes_key 列）
 -spec find_by_gid(integer() | binary()) -> {ok, map()} | {error, term()}.
 find_by_gid(Gid) ->
-    case find_by_id(Gid, <<"*">>) of
+    case
+        find_by_id(
+            Gid,
+            <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>
+        )
+    of
         #{} = Row when map_size(Row) > 0 ->
             {ok, Row};
         #{} ->

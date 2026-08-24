@@ -26,7 +26,7 @@ success(Req) ->
 %% @param Req cowboy请求对象
 %% @param Payload0 响应数据
 %% @returns cowboy_req:req() 更新后的请求对象
--spec success(cowboy_req:req(), map() | list()) -> cowboy_req:req().
+-spec success(cowboy_req:req(), map()) -> cowboy_req:req().
 success(Req, Payload0) ->
     Payload = elib_cnv:convert_at_timestamps(Payload0),
     reply_json(0, "success", Payload, Req).
@@ -36,7 +36,7 @@ success(Req, Payload0) ->
 %% @param Payload0 响应数据
 %% @param Msg 响应消息
 %% @returns cowboy_req:req() 更新后的请求对象
--spec success(cowboy_req:req(), map() | list(), binary() | list()) -> cowboy_req:req().
+-spec success(cowboy_req:req(), map(), binary() | list()) -> cowboy_req:req().
 success(Req, Payload0, Msg) ->
     Payload = elib_cnv:convert_at_timestamps(Payload0),
     reply_json(0, Msg, Payload, Req).
@@ -47,7 +47,7 @@ success(Req, Payload0, Msg) ->
 %% @param Msg 响应消息
 %% @param Options 额外选项
 %% @returns cowboy_req:req() 更新后的请求对象
--spec success(cowboy_req:req(), map() | list(), binary() | list(), map()) -> cowboy_req:req().
+-spec success(cowboy_req:req(), map(), binary() | list(), map()) -> cowboy_req:req().
 success(Req, Payload0, Msg, Options) ->
     %% 转换时间字段
     Payload = elib_cnv:convert_at_timestamps(Payload0),

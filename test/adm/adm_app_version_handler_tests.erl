@@ -29,7 +29,9 @@ init_index_pagination_success_test_() ->
             {elib_pg, [
                 {'page_with_total', 6, fun(Tb, Column, Where, OrderBy, Page, Size) ->
                     ?assertEqual(<<"public.app_version">>, Tb),
-                    ?assertEqual(<<"*">>, Column),
+                    %% 显式安全列（排除 sign_key），不再使用 SELECT *
+                    ?assert(binary:match(Column, <<"sign_key">>) =:= nomatch),
+                    ?assert(binary:match(Column, <<"id">>) =/= nomatch),
                     ?assertEqual(#{}, Where),
                     ?assertEqual(<<"sort desc, updated_at desc">>, OrderBy),
                     ?assertEqual(2, Page),

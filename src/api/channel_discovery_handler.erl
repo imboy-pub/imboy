@@ -57,8 +57,11 @@ search(Req0, _State) ->
     case channel_discovery_logic:search(Keyword, Page, Size, CategoryId) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"channel_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 发现页频道列表
@@ -77,8 +80,11 @@ discover(Req0, _State) ->
     case channel_discovery_logic:discover(Page, Size, CategoryId, Sort) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"channel_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 精选频道
@@ -90,8 +96,11 @@ featured(Req0, _State) ->
     case channel_discovery_logic:featured(Limit) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"channel_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 热门频道
@@ -110,8 +119,11 @@ trending(Req0, _State) ->
     case channel_discovery_logic:trending(Period, Limit) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"channel_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 频道分类列表
@@ -120,8 +132,11 @@ categories(Req0, _State) ->
     case channel_discovery_logic:categories() of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"channel_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% ===================================================================

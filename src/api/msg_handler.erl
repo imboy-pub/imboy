@@ -219,7 +219,12 @@ pin(Req0, State) ->
                                         Req0, <<"无权限操作该消息"/utf8>>, ?ERR_FORBIDDEN
                                     );
                                 {error, Reason} ->
-                                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                                    ?ERROR_LOG([<<"msg_handler pin failed">>, MsgId, Reason]),
+                                    elib_response:error(
+                                        Req0,
+                                        <<"操作失败，请稍后重试"/utf8>>,
+                                        ?ERR_INTERNAL_SERVER_ERROR
+                                    )
                             end;
                         false ->
                             case msg_pinned_logic:unpin(MsgId, CurrentUid) of
@@ -236,7 +241,12 @@ pin(Req0, State) ->
                                         Req0, <<"无权限操作该消息"/utf8>>, ?ERR_FORBIDDEN
                                     );
                                 {error, Reason} ->
-                                    elib_response:error(Req0, Reason, ?ERR_INTERNAL_SERVER_ERROR)
+                                    ?ERROR_LOG([<<"msg_handler unpin failed">>, MsgId, Reason]),
+                                    elib_response:error(
+                                        Req0,
+                                        <<"操作失败，请稍后重试"/utf8>>,
+                                        ?ERR_INTERNAL_SERVER_ERROR
+                                    )
                             end
                     end
             end

@@ -68,7 +68,8 @@ create_order(Uid, Amount, PaymentMethod) ->
                         {error, Reason} when is_binary(Reason) ->
                             {error, Reason};
                         {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                            ?ERROR_LOG([<<"recharge create_order failed">>, Uid, Reason]),
+                            {error, <<"创建充值订单失败，请稍后重试"/utf8>>}
                     end
             end
     end.
@@ -285,7 +286,8 @@ credit_order(Order, OrderNo, GatewayPaymentNo) ->
         {rollback, wallet_not_found} ->
             {error, <<"钱包不可用"/utf8>>};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            ?ERROR_LOG([<<"recharge credit_in_tx failed">>, OrderNo, Reason]),
+            {error, <<"充值入账失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 并发竞态后回查最终态
@@ -352,7 +354,8 @@ load_order_raw(OrderNo) ->
         {error, Reason} when is_binary(Reason) ->
             {error, Reason};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            ?ERROR_LOG([<<"recharge load_order failed">>, OrderNo, Reason]),
+            {error, <<"订单查询失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 面向前端的订单字段整形

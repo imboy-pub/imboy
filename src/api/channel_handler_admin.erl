@@ -16,6 +16,7 @@
     remove_admin/2
 ]).
 -include("error_code.hrl").
+-include("log.hrl").
 
 init(Req0, State0) ->
     Action = maps:get(action, State0),
@@ -351,16 +352,16 @@ normalize_non_empty_binary(Value) ->
 
 -spec normalize_error_binary(term(), binary()) -> binary().
 normalize_error_binary(Msg, Default) ->
-    Bin0 =
-        case Msg of
-            Value when is_binary(Value); is_list(Value); is_integer(Value) ->
-                normalize_non_empty_binary(Value);
-            _ ->
-                elib_cnv:safe_to_binary(Msg)
-        end,
-    case normalize_non_empty_binary(Bin0) of
-        <<>> ->
-            Default;
-        Bin ->
-            Bin
+    case Msg of
+        Value when is_binary(Value); is_list(Value); is_integer(Value) ->
+            case normalize_non_empty_binary(Value) of
+                <<>> ->
+                    Default;
+                Bin ->
+                    Bin
+            end;
+        _ ->
+            %% atom / epgsql 错误元组等：不 dump term 给用户，记日志后用中文兜底
+            ?ERROR_LOG([<<"channel_handler_admin op failed">>, Msg]),
+            Default
     end.

@@ -34,17 +34,19 @@ ensure_throttle() ->
     {ok, _} = application:ensure_all_started(throttle),
     ok.
 
-%% 优先读部署时实际使用的 config/sys.config；该文件不入仓时，读随发布走的
-%% sys.config.example。测试环境的 sys.local.config 被 gitignore，不应作为守护对象。
+%% 直接读**随发布走的那份**配置源，而不是测试环境的 sys.local.config
+%% （后者是 gitignored 的，守护它没有意义）。alpha.42 起 sys.config 不入仓，
+%% Makefile 会回退到 sys.config.example；测试必须与该发布契约保持一致。
 shipped_rates() ->
-    ConfigPath =
-        case filelib:is_regular("config/sys.config") of
-            true -> "config/sys.config";
-            false -> "config/sys.config.example"
-        end,
-    {ok, [Config]} = file:consult(ConfigPath),
+    {ok, [Config]} = file:consult(shipped_config_path()),
     Throttle = proplists:get_value(throttle, Config, []),
     proplists:get_value(rates, Throttle, []).
+
+shipped_config_path() ->
+    case filelib:is_file("config/sys.config") of
+        true -> "config/sys.config";
+        false -> "config/sys.config.example"
+    end.
 
 %% ===================================================================
 %% 1. 对照组：未注册 scope 返回 rate_not_set（本守护存在的前提）

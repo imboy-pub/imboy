@@ -67,10 +67,15 @@ create(Data0) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 兼容旧接口：按 uid 查询用户
+%% @doc 兼容旧接口：按 uid 查询用户（排除 password 列）
 -spec find_by_uid(integer() | binary()) -> {ok, map()} | {error, term()}.
 find_by_uid(Uid) ->
-    case find_by_id(ec_cnv:to_integer(Uid), <<"*">>) of
+    case
+        find_by_id(
+            ec_cnv:to_integer(Uid),
+            <<"id,account,nickname,avatar,background,sign,gender,region,birthday,profession,school,interests,account_type,status,created_at,updated_at">>
+        )
+    of
         #{} = Row when map_size(Row) > 0 ->
             {ok, Row};
         #{} ->

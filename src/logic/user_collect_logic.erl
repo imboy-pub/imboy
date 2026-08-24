@@ -70,12 +70,12 @@ add(Uid, <<"4">>, KindId, Info, Source, Remark) when is_map(Info) ->
             Payload = ensure_map(maps:get(<<"payload">>, Info, #{})),
             % ?DEBUG_LOG([4, 'Payload', Payload]),
             Thumb = ensure_map(maps:get(<<"thumb">>, Payload, #{})),
-            ThumbUri = maps:get(<<"uri">>, Thumb),
+            ThumbUri = maps:get(<<"uri">>, Thumb, <<>>),
             {ThumbMap, _} = elib_uri:get_params(ThumbUri),
             ThumbPath = maps:get(path, ThumbMap),
 
             Video = ensure_map(maps:get(<<"video">>, Payload, #{})),
-            VideoUri = maps:get(<<"uri">>, Video),
+            VideoUri = maps:get(<<"uri">>, Video, <<>>),
             {VideoMap, _} = elib_uri:get_params(VideoUri),
             VideoPath = maps:get(path, VideoMap),
 

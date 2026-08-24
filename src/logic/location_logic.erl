@@ -28,9 +28,9 @@
 %% @return ok | {error, Reason}
 -spec make_myself_visible(integer(), binary(), binary()) -> ok | {error, binary()}.
 make_myself_visible(_Uid, <<>>, _Lng) ->
-    {error, <<"latitude is empty">>};
+    {error, <<"纬度不能为空"/utf8>>};
 make_myself_visible(_Uid, _Lat, <<>>) ->
-    {error, <<"longitude is empty">>};
+    {error, <<"经度不能为空"/utf8>>};
 make_myself_visible(Uid, Lat, Lng) ->
     user_setting_ds:save(Uid, <<"people_nearby_visible">>, true),
     _ = geo_people_nearby_ds:save(Uid, Lat, Lng),

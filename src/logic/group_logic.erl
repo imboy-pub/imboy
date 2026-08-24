@@ -385,9 +385,9 @@ face2face_notify_payload(Uid, Gid) ->
     Payload = #{
         <<"gid">> => Gid,
         <<"user_id_sum">> => lists:sum(ToUidLi2),
-        <<"nickname">> => maps:get(<<"nickname">>, User),
-        <<"avatar">> => maps:get(<<"avatar">>, User),
-        <<"account">> => maps:get(<<"account">>, User)
+        <<"nickname">> => maps:get(<<"nickname">>, User, <<>>),
+        <<"avatar">> => maps:get(<<"avatar">>, User, <<>>),
+        <<"account">> => maps:get(<<"account">>, User, <<>>)
     },
     #{to_uid_list => ToUidLi2, payload => Payload}.
 
@@ -498,7 +498,7 @@ set_e2ee_mode(Uid, Gid, 1) ->
                 {error, Reason} ->
                     %% 内部 PG 错误详情只进日志，不透传客户端（security-reviewer M1）
                     _ = ?ERROR_LOG([set_e2ee_mode_update_failed, Gid, Reason]),
-                    {error, <<"e2ee_mode_update_failed">>}
+                    {error, <<"操作失败，请稍后重试"/utf8>>}
             end
     end.
 
@@ -566,7 +566,12 @@ msg_page(Where, Page, Size) ->
 %% @return map()
 -spec find_member(integer(), integer()) -> map().
 find_member(Gid, Uid) ->
-    group_member_ds:find_by_gid_and_uid(Gid, Uid, <<"*">>).
+    % P1-7b: 显式安全列（group_member 全列，无敏感字段）
+    group_member_ds:find_by_gid_and_uid(
+        Gid,
+        Uid,
+        <<"id,group_id,user_id,invite_code,alias,description,role,is_join,join_mode,status,updated_at,created_at,remark,mute_until,category_id">>
+    ).
 
 %% @doc 获取当前用户对指定群的备注
 %% @param Gid 群组ID

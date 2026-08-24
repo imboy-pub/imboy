@@ -52,7 +52,7 @@ search_with_category_filters_by_category_test_() ->
         end
     ).
 
-%% DS 层返回错误时透传
+%% DS 层返回错误时不透传原始 term（P2-8e 中文化兜底），返回通用中文文案
 search_propagates_ds_error_test_() ->
     ?WITH_MECKS(
         [
@@ -64,7 +64,8 @@ search_propagates_ds_error_test_() ->
             ]}
         ],
         fun() ->
-            ?assertMatch({error, db_error}, group_discovery_logic:search(<<"test">>, 1, 20))
+            {error, Msg} = group_discovery_logic:search(<<"test">>, 1, 20),
+            ?assertEqual(<<"搜索失败，请稍后重试"/utf8>>, Msg)
         end
     ).
 

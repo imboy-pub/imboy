@@ -55,7 +55,12 @@ find_by_id(FileId) when is_list(FileId); is_binary(FileId) ->
     find_by_id(ec_cnv:to_integer(FileId));
 find_by_id(FileId) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, <<"*">>, #{id => FileId}, #{limit => 1}),
+    {Sql, Params} = elib_pg_sql:build_select(
+        Tb,
+        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
+        #{id => FileId},
+        #{limit => 1}
+    ),
     case elib_pg:one(Sql, Params) of
         {ok, Row} -> Row;
         {error, _Reason} -> #{}
@@ -67,7 +72,12 @@ find_by_id(FileId) ->
 -spec find_by_file_id(binary()) -> map().
 find_by_file_id(FileId) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:build_select(Tb, <<"*">>, #{file_id => FileId}, #{limit => 1}),
+    {Sql, Params} = elib_pg_sql:build_select(
+        Tb,
+        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
+        #{file_id => FileId},
+        #{limit => 1}
+    ),
     case elib_pg:one(Sql, Params) of
         {ok, Row} -> Row;
         {error, _Reason} -> #{}
@@ -92,7 +102,7 @@ list_by_group(Gid, Page, Size, Options) ->
         end,
     {Sql, Params} = elib_pg_sql:build_select(
         Tb,
-        <<"*">>,
+        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
         Where,
         #{order_by => [{created_at, desc}], limit => Size, offset => Offset}
     ),
@@ -110,8 +120,9 @@ search_by_name(Gid, Keyword, Page, Size) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
     Sql =
-        <<"SELECT * FROM ", Tb/binary, " WHERE group_id = $1 ", " AND status = 1 ",
-            " AND file_name LIKE $2 ", " ORDER BY created_at DESC ", " LIMIT $3 OFFSET $4">>,
+        <<"SELECT id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at FROM ",
+            Tb/binary, " WHERE group_id = $1 ", " AND status = 1 ", " AND file_name LIKE $2 ",
+            " ORDER BY created_at DESC ", " LIMIT $3 OFFSET $4">>,
     Params = [Gid, <<"%", Keyword/binary, "%">>, Size, Offset],
     elib_pg:query(Sql, Params).
 
@@ -128,7 +139,7 @@ list_by_category(Gid, Category, Page, Size) ->
     Offset = (Page - 1) * Size,
     {Sql, Params} = elib_pg_sql:build_select(
         Tb,
-        <<"*">>,
+        <<"id,group_id,file_id,file_name,file_size,file_type,file_category,file_url,file_hash,uploader_id,download_count,status,created_at,updated_at">>,
         #{group_id => Gid, status => 1, file_category => Category},
         #{order_by => [{created_at, desc}], limit => Size, offset => Offset}
     ),

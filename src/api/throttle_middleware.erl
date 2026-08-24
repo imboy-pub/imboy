@@ -114,18 +114,16 @@ get_current_uid(Env) ->
     end.
 
 %% @doc 返回 HTTP 429 JSON 响应
+%% P2-8f: 统一走 elib_response:error_with_status/4，保证 envelope 完整
+%% （code/msg/sv_ts/payload），并使用中文 msg 与全站其它错误响应保持一致
 %% @private
 -spec reply_429(cowboy_req:req()) -> {stop, cowboy_req:req()}.
 reply_429(Req) ->
-    Body = jsone:encode(#{
-        <<"code">> => 429,
-        <<"msg">> => <<"rate_limit_exceeded">>
-    }),
-    Req1 = cowboy_req:reply(
+    Req1 = elib_response:error_with_status(
+        Req,
         429,
-        #{<<"content-type">> => <<"application/json; charset=utf-8">>},
-        Body,
-        Req
+        <<"请求过于频繁，请稍后重试"/utf8>>,
+        429
     ),
     {stop, Req1}.
 

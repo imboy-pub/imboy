@@ -170,6 +170,8 @@ update_schedule(
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, not_found} ->
             {error, not_found};
+        M when map_size(M) =:= 0 ->
+            {error, not_found};
         Schedule ->
             #{<<"creator_id">> := ScheduleCreatorId, <<"status">> := Status} = Schedule,
             % 验证权限
@@ -199,10 +201,14 @@ do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt) ->
         end_at => EndAt
     },
 
-    #{<<"id">> := ScheduleDbId} = group_schedule_ds:find_by_schedule_id(ScheduleId),
-    case group_schedule_ds:update_schedule(ScheduleDbId, UpdateData) of
-        {ok, 1} -> ok;
-        {error, Reason} -> {error, Reason}
+    case group_schedule_ds:find_by_schedule_id(ScheduleId) of
+        #{<<"id">> := ScheduleDbId} ->
+            case group_schedule_ds:update_schedule(ScheduleDbId, UpdateData) of
+                {ok, 1} -> ok;
+                {error, Reason} -> {error, Reason}
+            end;
+        _ ->
+            {error, not_found}
     end.
 
 %% @doc 取消群组日程
@@ -210,6 +216,8 @@ do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt) ->
 cancel_schedule(ScheduleId, CreatorId) ->
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, not_found} ->
+            {error, not_found};
+        M when map_size(M) =:= 0 ->
             {error, not_found};
         Schedule ->
             #{
@@ -432,6 +440,8 @@ create_remind_records(ScheduleId, [UserId | Rest], RemindAt) ->
 send_remind_notification(ScheduleId, UserId) ->
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         {error, _} ->
+            skip;
+        M when map_size(M) =:= 0 ->
             skip;
         Schedule ->
             #{<<"title">> := Title, <<"start_at">> := StartAt} = Schedule,

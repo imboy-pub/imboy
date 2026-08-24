@@ -83,7 +83,8 @@ update(_NoticeId, _Data) ->
 -spec find_by_id(integer()) -> {ok, map()} | {error, not_found}.
 find_by_id(NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
     Tb = tablename(),
-    Column = <<"*">>,
+    Column =
+        <<"id,group_id,user_id,edit_user_id,body,status,expired_at,updated_at,created_at,pinned,deleted_at,read_count,title">>,
     Where = <<"id = $1 AND deleted_at IS NULL">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE ", Where/binary>>,
     case elib_pg:query(Sql, [NoticeId]) of

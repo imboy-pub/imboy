@@ -52,8 +52,11 @@ search(Req0, _State) ->
     case group_discovery_logic:search(Keyword, Page, Size, CategoryId) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"group_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 发现页群组列表
@@ -71,8 +74,11 @@ discover(Req0, _State) ->
     case group_discovery_logic:discover(Page, Size, CategoryId, Sort) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"group_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 精选群组
@@ -84,8 +90,11 @@ featured(Req0, _State) ->
     case group_discovery_logic:featured(Limit) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"group_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 热门群组
@@ -97,8 +106,11 @@ hot(Req0, _State) ->
     case group_discovery_logic:hot(Limit) of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"group_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 -spec positive_integer(integer(), pos_integer()) -> pos_integer().
@@ -111,8 +123,11 @@ categories(Req0, _State) ->
     case group_discovery_logic:categories() of
         {ok, Result} ->
             elib_response:success(Req0, Result);
+        {error, Reason} when is_binary(Reason) ->
+            elib_response:error(Req0, Reason);
         {error, Reason} ->
-            elib_response:error(Req0, Reason)
+            ?ERROR_LOG([<<"group_discovery_handler op failed">>, Reason]),
+            elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
     end.
 
 %% @doc 群组预览（公开访问，无需加入）
@@ -129,8 +144,11 @@ preview(Req0, _State) ->
             case group_discovery_logic:preview(GroupId2) of
                 {ok, Result} ->
                     elib_response:success(Req0, Result);
+                {error, Reason} when is_binary(Reason) ->
+                    elib_response:error(Req0, Reason);
                 {error, Reason} ->
-                    elib_response:error(Req0, Reason)
+                    ?ERROR_LOG([<<"group_discovery_handler preview failed">>, Reason]),
+                    elib_response:error(Req0, <<"查询失败，请稍后重试"/utf8>>)
             end;
         _ ->
             elib_response:error(Req0, <<"无效的群组ID"/utf8>>)

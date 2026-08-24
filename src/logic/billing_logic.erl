@@ -108,9 +108,13 @@ create_plan(Params) ->
                 <<"status">> => maps:get(<<"status">>, Params, 1)
             },
             case billing_plan_ds:create(Data) of
-                {ok, Id} -> {ok, Id};
-                {error, duplicate} -> {error, <<"套餐编码已存在"/utf8>>};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                {ok, Id} ->
+                    {ok, Id};
+                {error, duplicate} ->
+                    {error, <<"套餐编码已存在"/utf8>>};
+                {error, Reason} ->
+                    ?ERROR_LOG([<<"billing create_plan failed">>, Reason]),
+                    {error, <<"创建套餐失败，请稍后重试"/utf8>>}
             end
     end.
 
@@ -126,8 +130,11 @@ update_plan(PlanId, Params0) ->
                 Params0
         end,
     case billing_plan_ds:update(PlanId, Params) of
-        {ok, Count} -> {ok, Count};
-        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+        {ok, Count} ->
+            {ok, Count};
+        {error, Reason} ->
+            ?ERROR_LOG([<<"billing update_plan failed">>, PlanId, Reason]),
+            {error, <<"更新套餐失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 获取套餐（quota_config 解码为 map）
@@ -191,9 +198,13 @@ subscribe(TenantId, PlanId, Opts) ->
                 <<"auto_renew">> => maps:get(auto_renew, Opts, true)
             },
             case billing_subscription_ds:create(Data) of
-                {ok, Id} -> {ok, Id};
-                {error, duplicate} -> {error, <<"该租户已有生效订阅"/utf8>>};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                {ok, Id} ->
+                    {ok, Id};
+                {error, duplicate} ->
+                    {error, <<"该租户已有生效订阅"/utf8>>};
+                {error, Reason} ->
+                    ?ERROR_LOG([<<"billing subscribe failed">>, TenantId, Reason]),
+                    {error, <<"创建订阅失败，请稍后重试"/utf8>>}
             end
     end.
 
@@ -270,8 +281,11 @@ renew(SubId) ->
                     NewStartMs = BaseMs,
                     NewEndMs = BaseMs + period_ms(Period),
                     case billing_subscription_ds:renew(SubId, NewStartMs, NewEndMs) of
-                        {ok, _} -> {ok, NewEndMs};
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                        {ok, _} ->
+                            {ok, NewEndMs};
+                        {error, Reason} ->
+                            ?ERROR_LOG([<<"billing renew failed">>, SubId, Reason]),
+                            {error, <<"续费失败，请稍后重试"/utf8>>}
                     end
             end
     end.
@@ -285,8 +299,11 @@ cancel(SubId) ->
             #{<<"status">> => ?SUB_CANCELLED, <<"auto_renew">> => false}
         )
     of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            ?ERROR_LOG([<<"billing cancel failed">>, SubId, Reason]),
+            {error, <<"取消订阅失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 获取订阅
@@ -324,8 +341,11 @@ report_usage(SubId, Metric, Delta, Period0) when is_integer(Delta), Delta >= 0 -
             Err;
         ok ->
             case billing_usage_ds:incr(SubId, Metric, Period, Delta) of
-                {ok, Used} -> {ok, Used};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                {ok, Used} ->
+                    {ok, Used};
+                {error, Reason} ->
+                    ?ERROR_LOG([<<"billing report_usage failed">>, SubId, Metric, Reason]),
+                    {error, <<"用量上报失败，请稍后重试"/utf8>>}
             end
     end;
 report_usage(_SubId, _Metric, _Delta, _Period) ->
@@ -442,9 +462,13 @@ do_generate_invoice(SubId, Sub, Plan) ->
         period_end => EndMs
     },
     case billing_invoice_ds:create(Data) of
-        {ok, Id} -> {ok, Id};
-        {error, duplicate} -> {ok, already_generated};
-        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+        {ok, Id} ->
+            {ok, Id};
+        {error, duplicate} ->
+            {ok, already_generated};
+        {error, Reason} ->
+            ?ERROR_LOG([<<"billing generate_invoice failed">>, SubId, Reason]),
+            {error, <<"账单生成失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 账单支付实现
@@ -483,12 +507,14 @@ do_pay_invoice(Inv, InvoiceNo, Method) ->
                         <<"already_paid">> => true
                     }};
                 {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+                    ?ERROR_LOG([<<"billing mark_paid failed">>, InvoiceNo, Reason]),
+                    {error, <<"支付状态更新失败，请稍后重试"/utf8>>}
             end;
         {error, Msg} when is_binary(Msg) ->
             {error, Msg};
         {error, Reason} ->
-            {error, elib_cnv:safe_to_binary(Reason)}
+            ?ERROR_LOG([<<"billing pay_invoice gateway failed">>, InvoiceNo, Reason]),
+            {error, <<"支付失败，请稍后重试"/utf8>>}
     end.
 
 %% @doc 网关支付结果归一化：{ok, PaymentNo} 与 {ok, PaymentNo, Extra} 两种
