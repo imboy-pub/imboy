@@ -12,6 +12,8 @@
 #   build-admin-candidate — 跨仓 checkout imboy-admin-frontend 构建 admin 镜像
 #                     candidate（ref 默认 main，可用 vars.ADMIN_REPO_REF 钉住）；
 #                     golden 门禁与 finalize 的 admin 侧输入（同 digest identity）
+#   build-pg-candidate — 构建带 TimescaleDB/PostGIS/pg_jieba 的 PostgreSQL 18
+#                     镜像；社区 compose 与 Golden 门禁均消费其不可变 digest
 #   golden-install  — P2-G1 脚本在 ubuntu runner（cleanroom 近似）全流程跑，
 #                     T0→T1 ≤900s + restart 幂等，FAIL 即中止发布链
 #   golden-upgrade  — P2-U1 脚本 vN→vN+1 数据保留断言；首个正式版前无 vN
@@ -236,6 +238,73 @@ jobs:
           echo "ADMIN_IMAGE_DIGEST_REF=${ADMIN_IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
 
   # ----------------------------------------------------------------
+  # Build PostgreSQL 18 Candidate — 社区版需要 pg_jieba、PostGIS、TimescaleDB
+  # 等扩展，不能回落到 vanilla postgres，更不能引用不存在的 imboy/pg18。
+  # 与后端/admin 相同：Golden 和 finalize 都只消费这一次构建的 digest。
+  # ----------------------------------------------------------------
+  build-pg-candidate:
+    name: Build & push PostgreSQL 18 candidate image
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      PG_IMAGE_NAME: ${{ steps.identity.outputs.PG_IMAGE_NAME }}
+      PG_IMAGE_DIGEST: ${{ steps.push.outputs.digest }}
+      PG_IMAGE_DIGEST_REF: ${{ steps.digest_ref.outputs.PG_IMAGE_DIGEST_REF }}
+
+    steps:
+      - name: Checkout (pinned to tag ref)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Resolve PostgreSQL release identity
+        id: identity
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-pg18"
+          {
+            echo "PG_IMAGE_NAME=${image}"
+            echo "PG_IMAGE_REF=${image}:${version}-rc"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push PostgreSQL 18 candidate image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/pg18_Dockerfile
+          push: true
+          tags: ${{ steps.identity.outputs.PG_IMAGE_REF }}
+
+      - name: Resolve digest ref (immutable image reference)
+        id: digest_ref
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          PG_IMAGE_NAME: ${{ steps.identity.outputs.PG_IMAGE_NAME }}
+        run: |
+          set -euo pipefail
+          case "${DIGEST}" in
+            sha256:*) ;;
+            *)
+              echo "::error::unexpected PostgreSQL digest format '${DIGEST}' (expected sha256:...)"
+              exit 1
+              ;;
+          esac
+          echo "PG_IMAGE_DIGEST_REF=${PG_IMAGE_NAME}@${DIGEST}" >> "$GITHUB_OUTPUT"
+
+  # ----------------------------------------------------------------
   # Golden Install 门禁（P2-G1 脚本 / 计划 §4，G2 接入本流水线）
   #
   # ubuntu-latest = cleanroom 近似（一次性 VM：无既有 imboy 容器/卷/网络；
@@ -249,13 +318,14 @@ jobs:
   golden-install:
     name: Golden Install gate (<=900s + restart idempotent)
     if: github.event_name == 'push'
-    needs: [build-candidate, build-admin-candidate]
+    needs: [build-candidate, build-admin-candidate, build-pg-candidate]
     runs-on: ubuntu-latest
     timeout-minutes: 45 # 预算 900s + 拉镜像/克隆/重试余量
     env:
       IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
       IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
       ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
+      PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
 
     steps:
       - name: Checkout (scripts at tag)
@@ -283,6 +353,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
           ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
+          PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           # Actions 的 env 值不做 shell 展开，密码须在 run 内生成（runner 一次性
@@ -291,6 +362,7 @@ jobs:
           sudo -E bash scripts/golden_install.sh \
             --image-ref "${IMAGE_DIGEST_REF}" \
             --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
+            --pg-image-ref "${PG_IMAGE_DIGEST_REF}" \
             --git-ref "${GITHUB_REF_NAME}" \
             --profile ci \
             --admin-phone 13800138000 \
@@ -302,7 +374,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-install-logs-${{ github.ref_name }}
-          path: /tmp/golden/
+          path: /tmp/golden/run-*/install_run.log
           retention-days: 7
 
   # ----------------------------------------------------------------
@@ -316,7 +388,7 @@ jobs:
   golden-upgrade:
     name: Golden Upgrade gate (data retention)
     if: github.event_name == 'push'
-    needs: [build-candidate, build-admin-candidate]
+    needs: [build-candidate, build-admin-candidate, build-pg-candidate]
     runs-on: ubuntu-latest
     timeout-minutes: 60 # vN 全量安装 + 数据生成 + 迁移 + 双冒烟，无预算上限
     outputs:
@@ -374,6 +446,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IMAGE_DIGEST_REF: ${{ needs.build-candidate.outputs.IMAGE_DIGEST_REF }}
           ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
+          PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
@@ -381,6 +454,7 @@ jobs:
             --from "${{ steps.decide.outputs.FROM_TAG }}" \
             --to-image "${IMAGE_DIGEST_REF}" \
             --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
+            --pg-image-ref "${PG_IMAGE_DIGEST_REF}" \
             --to-ref "${GITHUB_REF_NAME}" \
             --profile ci \
             --admin-phone 13800138000 \
@@ -392,7 +466,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-upgrade-logs-${{ github.ref_name }}
-          path: /tmp/golden-up/
+          path: /tmp/golden-up/run-*/install_vn.log
           retention-days: 7
 
   # ----------------------------------------------------------------
@@ -457,7 +531,7 @@ jobs:
   release-finalize:
     name: Finalize semver tag + GitHub Release
     if: vars.RELEASE_FINALIZE_ENABLED == 'true'
-    needs: [build-candidate, build-admin-candidate, golden-install, golden-upgrade] # needs 只暴露直接依赖，三元组须直连 build-candidate
+    needs: [build-candidate, build-admin-candidate, build-pg-candidate, golden-install, golden-upgrade] # needs 只暴露直接依赖，三元组须直连 build-candidate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -488,6 +562,8 @@ jobs:
           IMAGE_NAME: ${{ needs.build-candidate.outputs.IMAGE_NAME }}
           ADMIN_IMAGE_DIGEST_REF: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_DIGEST_REF }}
           ADMIN_IMAGE_NAME: ${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_NAME }}
+          PG_IMAGE_DIGEST_REF: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_DIGEST_REF }}
+          PG_IMAGE_NAME: ${{ needs.build-pg-candidate.outputs.PG_IMAGE_NAME }}
         run: |
           set -euo pipefail
           official="${{ steps.official.outputs.OFFICIAL }}"
@@ -500,6 +576,10 @@ jobs:
             --tag "${ADMIN_IMAGE_NAME}:${official}" \
             "${ADMIN_IMAGE_DIGEST_REF}"
           echo "已复打 ${ADMIN_IMAGE_NAME}:${official} → ${ADMIN_IMAGE_DIGEST_REF}"
+          docker buildx imagetools create \
+            --tag "${PG_IMAGE_NAME}:${official}" \
+            "${PG_IMAGE_DIGEST_REF}"
+          echo "已复打 ${PG_IMAGE_NAME}:${official} → ${PG_IMAGE_DIGEST_REF}"
 
       - name: Create GitHub Release (release identity metadata)
         env:
@@ -528,6 +608,7 @@ jobs:
 
           - 正式镜像：\`${IMAGE_NAME}:${OFFICIAL}\`（= candidate \`${IMAGE_REF}\` 的同一 digest 复打，未重新构建）
           - 管理后台镜像：\`${{ needs.build-admin-candidate.outputs.ADMIN_IMAGE_NAME }}:${OFFICIAL}\`（admin candidate 同 digest 复打；源 ref ${{ needs.build-admin-candidate.outputs.ADMIN_REPO_REF }}@${{ needs.build-admin-candidate.outputs.ADMIN_GIT_SHA }}）
+          - PostgreSQL 18 镜像：\`${{ needs.build-pg-candidate.outputs.PG_IMAGE_NAME }}:${OFFICIAL}\`（同一 candidate digest 复打，含社区版所需扩展）
           - 升级指引与版本历史：见仓库 [RELEASES.md](./RELEASES.md)
 
           ## 发布门禁（Golden Gates §8）
@@ -565,16 +646,20 @@ jobs:
           [ -n "${stable}" ] || { echo "::error::无稳定 tag（尚未发布正式版），nightly golden 无对象"; exit 1; }
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-backend"
           admin_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-admin"
+          pg_image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/imboy-pg18"
           digest="$(docker buildx imagetools inspect "${image}:${stable}" --format '{{.Manifest.Digest}}')"
           admin_digest="$(docker buildx imagetools inspect "${admin_image}:${stable}" --format '{{.Manifest.Digest}}')"
+          pg_digest="$(docker buildx imagetools inspect "${pg_image}:${stable}" --format '{{.Manifest.Digest}}')"
           case "${digest}" in sha256:*) ;; *) echo "::error::digest 格式异常：${digest}"; exit 1 ;; esac
           case "${admin_digest}" in sha256:*) ;; *) echo "::error::admin digest 格式异常：${admin_digest}"; exit 1 ;; esac
+          case "${pg_digest}" in sha256:*) ;; *) echo "::error::PostgreSQL digest 格式异常：${pg_digest}"; exit 1 ;; esac
           {
             echo "STABLE=${stable}"
             echo "IMAGE_DIGEST_REF=${image}@${digest}"
             echo "ADMIN_IMAGE_DIGEST_REF=${admin_image}@${admin_digest}"
+            echo "PG_IMAGE_DIGEST_REF=${pg_image}@${pg_digest}"
           } >> "$GITHUB_OUTPUT"
-          echo "nightly 对象：${image}:${stable}（${digest}）/ ${admin_image}:${stable}（${admin_digest}）"
+          echo "nightly 对象：${image}:${stable}（${digest}）/ ${admin_image}:${stable}（${admin_digest}）/ ${pg_image}:${stable}（${pg_digest}）"
 
       - name: Login to GHCR (compose pull digest)
         uses: docker/login-action@v3
@@ -594,12 +679,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           IMAGE_DIGEST_REF: ${{ steps.latest.outputs.IMAGE_DIGEST_REF }}
           ADMIN_IMAGE_DIGEST_REF: ${{ steps.latest.outputs.ADMIN_IMAGE_DIGEST_REF }}
+          PG_IMAGE_DIGEST_REF: ${{ steps.latest.outputs.PG_IMAGE_DIGEST_REF }}
         run: |
           set -euo pipefail
           pw="Golden$(openssl rand -hex 6)" # env 值不做 shell 展开，须 run 内生成
           sudo -E bash scripts/golden_install.sh \
             --image-ref "${IMAGE_DIGEST_REF}" \
             --admin-image-ref "${ADMIN_IMAGE_DIGEST_REF}" \
+            --pg-image-ref "${PG_IMAGE_DIGEST_REF}" \
             --git-ref "${{ steps.latest.outputs.STABLE }}" \
             --profile ci \
             --admin-phone 13800138000 \
@@ -612,5 +699,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-install-nightly-logs-${{ github.run_id }}
-          path: /tmp/golden/
+          path: /tmp/golden/run-*/install_run.log
           retention-days: 7

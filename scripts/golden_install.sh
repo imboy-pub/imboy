@@ -106,6 +106,8 @@ host 模式必填（ci 模式自动生成假域名，可覆盖）:
                           提供则钉入 ADMIN_IMAGE（CI 由 build-admin-candidate 供给）；
                           缺省时 compose 回落默认值 ghcr.io/imboy-pub/imboy-admin:<IMBOY_VERSION>
                           ——该镜像须已发布到 registry，否则起栈拉取失败
+  --pg-image-ref <ref>    PostgreSQL 18 镜像 digest 引用（形如 ghcr.io/<owner>/imboy-pg18@sha256:…）。
+                          提供则钉入 PG_IMAGE；缺省时 compose 回落与 IMBOY_VERSION 对应的公开镜像
   --budget <seconds>      计时预算，默认 900（计划 §4.2 钉死值）
   --repo <url>            clone 用的 git 仓库，默认 https://github.com/imboy-pub/imboy.git
   --workdir <dir>         工作目录（clone/日志所在），默认 ./.golden-install
@@ -120,6 +122,7 @@ EOF
 # ── 参数解析（风格与 deploy/install.sh 一致：--opt value 与 --opt=value 皆可）──
 IMAGE_REF=""
 ADMIN_IMAGE_REF=""
+PG_IMAGE_REF=""
 GIT_REF=""
 PROFILE="host"
 API_DOMAIN=""
@@ -138,6 +141,8 @@ while [ $# -gt 0 ]; do
     --image-ref=*)      IMAGE_REF="${1#*=}"; shift ;;
     --admin-image-ref)  [ $# -ge 2 ] || die "--admin-image-ref 需要值（digest 引用）"; ADMIN_IMAGE_REF="$2"; shift 2 ;;
     --admin-image-ref=*) ADMIN_IMAGE_REF="${1#*=}"; shift ;;
+    --pg-image-ref)     [ $# -ge 2 ] || die "--pg-image-ref 需要值（digest 引用）"; PG_IMAGE_REF="$2"; shift 2 ;;
+    --pg-image-ref=*)   PG_IMAGE_REF="${1#*=}"; shift ;;
     --git-ref)          [ $# -ge 2 ] || die "--git-ref 需要值（tag 或 40 位 sha）"; GIT_REF="$2"; shift 2 ;;
     --git-ref=*)        GIT_REF="${1#*=}"; shift ;;
     --profile)          [ $# -ge 2 ] || die "--profile 需要值：host|ci"; PROFILE="$2"; shift 2 ;;
@@ -180,6 +185,12 @@ if [ -n "$ADMIN_IMAGE_REF" ]; then
   case "$ADMIN_IMAGE_REF" in
     *@sha256:*) ;;
     *) die "--admin-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${ADMIN_IMAGE_REF}" ;;
+  esac
+fi
+if [ -n "$PG_IMAGE_REF" ]; then
+  case "$PG_IMAGE_REF" in
+    *@sha256:*) ;;
+    *) die "--pg-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${PG_IMAGE_REF}" ;;
   esac
 fi
 
@@ -407,6 +418,7 @@ env_set_var ADMIN_DOMAIN "$ADMIN_DOMAIN"
 env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
 env_set_var BACKEND_IMAGE "$IMAGE_REF"
 if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
+if [ -n "$PG_IMAGE_REF" ]; then env_set_var PG_IMAGE "$PG_IMAGE_REF"; fi
 if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
 write_compose_override
 install_ctl_wrapper

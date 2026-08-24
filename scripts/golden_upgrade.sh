@@ -76,6 +76,8 @@ host 模式必填:  --api-domain <域名> / --admin-domain <域名> / --certbot-
 可选:  --admin-image-ref <ref>（admin 镜像 digest 引用；提供则在 vN 安装与升级后
                             起栈时都钉入 ADMIN_IMAGE——基线版本的 admin 镜像可能
                             从未发布过，CI 由 build-admin-candidate 供给）
+       --pg-image-ref <ref>（PostgreSQL 18 镜像 digest 引用；提供则在 vN 安装与
+                            升级后都钉入 PG_IMAGE，避免依赖未发布的 Docker Hub 镜像）
        --repo <url>（默认 https://github.com/imboy-pub/imboy.git）
        --workdir <dir>（默认 ./.golden-upgrade） / --keep（保留现场） / -h
 
@@ -91,6 +93,7 @@ FROM_REF=""
 TO_IMAGE=""
 TO_REF=""
 ADMIN_IMAGE_REF=""
+PG_IMAGE_REF=""
 PROFILE="ci"
 API_DOMAIN=""
 ADMIN_DOMAIN=""
@@ -113,6 +116,8 @@ while [ $# -gt 0 ]; do
     --to-image=*)     TO_IMAGE="${1#*=}"; shift ;;
     --admin-image-ref)  [ $# -ge 2 ] || die "--admin-image-ref 需要值（digest 引用）"; ADMIN_IMAGE_REF="$2"; shift 2 ;;
     --admin-image-ref=*) ADMIN_IMAGE_REF="${1#*=}"; shift ;;
+    --pg-image-ref)     [ $# -ge 2 ] || die "--pg-image-ref 需要值（digest 引用）"; PG_IMAGE_REF="$2"; shift 2 ;;
+    --pg-image-ref=*)   PG_IMAGE_REF="${1#*=}"; shift ;;
     --to-ref)         [ $# -ge 2 ] || die "--to-ref 需要值（升级目标 tag|sha）"; TO_REF="$2"; shift 2 ;;
     --to-ref=*)       TO_REF="${1#*=}"; shift ;;
     --profile)        [ $# -ge 2 ] || die "--profile 需要值：ci|host"; PROFILE="$2"; shift 2 ;;
@@ -152,6 +157,12 @@ if [ -n "$ADMIN_IMAGE_REF" ]; then
   case "$ADMIN_IMAGE_REF" in
     *@sha256:*) ;;
     *) die "--admin-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${ADMIN_IMAGE_REF}" ;;
+  esac
+fi
+if [ -n "$PG_IMAGE_REF" ]; then
+  case "$PG_IMAGE_REF" in
+    *@sha256:*) ;;
+    *) die "--pg-image-ref 必须是 digest 引用（含 @sha256:…）：当前 ${PG_IMAGE_REF}" ;;
   esac
 fi
 
@@ -714,6 +725,7 @@ env_set_var ADMIN_DOMAIN "$ADMIN_DOMAIN"
 env_set_var CERTBOT_EMAIL "$CERTBOT_EMAIL"
 env_set_var BACKEND_IMAGE "$FROM_IMAGE"
 if [ -n "$ADMIN_IMAGE_REF" ]; then env_set_var ADMIN_IMAGE "$ADMIN_IMAGE_REF"; fi
+if [ -n "$PG_IMAGE_REF" ]; then env_set_var PG_IMAGE "$PG_IMAGE_REF"; fi
 DATA_DIR_RESOLVED="$(resolve_data_dir)"
 if [ "$PROFILE" = "ci" ]; then preset_ci_certs; fi
 write_compose_override

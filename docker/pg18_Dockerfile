@@ -63,7 +63,7 @@ RUN set -ex \
 
 # --- TimescaleDB 编译 ---
 RUN set -ex \
-    && git clone --depth 1 --branch ${TIMESCALEDB_VERSION} https://gitee.com/imboy-tripartite-deps/timescaledb.git /timescaledb \
+    && git clone --depth 1 --branch ${TIMESCALEDB_VERSION} https://github.com/timescale/timescaledb.git /timescaledb \
     && cd /timescaledb \
     && ./bootstrap -DPG_CONFIG=/usr/lib/postgresql/18/bin/pg_config \
     && cd build && make -j$(nproc) && make install \
@@ -71,7 +71,7 @@ RUN set -ex \
 
 # --- pg_roaringbitmap 编译 ---
 RUN set -ex \
-    && git clone --depth 1 --branch ${PG_ROARINGBITMAP_VERSION} https://gitee.com/imboy-tripartite-deps/pg_roaringbitmap.git /pg_roaringbitmap \
+    && git clone --depth 1 --branch ${PG_ROARINGBITMAP_VERSION} https://github.com/ChenHuajun/pg_roaringbitmap.git /pg_roaringbitmap \
     && cd /pg_roaringbitmap \
     && git submodule update --init --recursive \
     && make -j$(nproc) && make install \
@@ -79,7 +79,7 @@ RUN set -ex \
 
 # --- pg_jieba 编译 ---
 RUN set -ex \
-    && git clone --depth 1 -b master https://gitee.com/imboy-tripartite-deps/pg_jieba.git /pg_jieba \
+    && git clone --depth 1 -b master https://github.com/jaiminpan/pg_jieba.git /pg_jieba \
     && cd /pg_jieba \
     && git submodule update --init --recursive \
     && mkdir build && cd build \
@@ -89,7 +89,7 @@ RUN set -ex \
 
 # --- pgRouting 编译 ---
 RUN set -ex \
-    && git clone --depth 1 --branch ${PGROUTING_VERSION} https://gitee.com/imboy-tripartite-deps/pgrouting.git /pgrouting \
+    && git clone --depth 1 --branch ${PGROUTING_VERSION} https://github.com/pgRouting/pgrouting.git /pgrouting \
     && cd /pgrouting \
     && mkdir build && cd build \
     && cmake .. \
