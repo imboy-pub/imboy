@@ -12,6 +12,7 @@
 -export([admin_set_status/2]).
 -export([list_mine/2]).
 -export([search/3]).
+-export([has_exchange/2]).
 -export([send_message/3]).
 -export([send_message/4]).
 
@@ -154,6 +155,11 @@ search(Keyword, Page, Size) ->
         {ok, Result} -> {ok, Result};
         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
     end.
+
+%% @doc 判断 Bot 与用户是否已有双向历史消息；查询失败时按无历史处理。
+-spec has_exchange(pos_integer(), pos_integer()) -> boolean().
+has_exchange(BotId, UserId) ->
+    bot_repo:has_exchange(BotId, UserId).
 
 %% @doc Bot 发送消息
 %% Bot 以自身身份向指定用户发送 C2C 消息。

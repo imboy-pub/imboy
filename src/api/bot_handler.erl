@@ -188,7 +188,7 @@ do_send_message(Req0, BotId, _Bot) ->
             ToUid = maps:get(<<"to_uid">>, Body, 0),
             case elib_cnv:safe_to_integer(ToUid) of
                 ToId when ToId > 0 ->
-                    case bot_repo:has_exchange(BotId, ToId) of
+                    case bot_logic:has_exchange(BotId, ToId) of
                         true ->
                             MsgData = #{
                                 <<"msg_type">> => maps:get(<<"msg_type">>, Body, <<"text">>),

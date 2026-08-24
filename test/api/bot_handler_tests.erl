@@ -183,10 +183,8 @@ send_message_with_valid_token_sends_message_test_() ->
                         fake_req}
                 end}
             ]},
-            {bot_repo, [
-                {'has_exchange', 2, fun(1, 200) -> true end}
-            ]},
             {bot_logic, [
+                {'has_exchange', 2, fun(1, 200) -> true end},
                 {'send_message', 3, fun(1, 200, #{<<"msg_type">> := <<"text">>}) ->
                     {ok, #{<<"msg_id">> => <<"m123">>}}
                 end}
@@ -253,12 +251,8 @@ send_message_rejects_user_without_prior_exchange_test_() ->
                     {ok, #{<<"to_uid">> => 999}, fake_req}
                 end}
             ]},
-            {bot_repo, [
-                {'has_exchange', 2, fun(1, 999) -> false end},
-                %% 无历史会话时绝不能触达发送逻辑
-                {'find', 1, fun(_) -> exit(find_should_not_be_called) end}
-            ]},
             {bot_logic, [
+                {'has_exchange', 2, fun(1, 999) -> false end},
                 {'send_message', 3, fun(_, _, _) -> exit(send_should_not_be_called) end}
             ]},
             {elib_response, [
