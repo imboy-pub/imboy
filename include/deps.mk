@@ -1,7 +1,8 @@
-# 下列依赖放到 https://gitee.com/imboy-tripartite-deps 只是为了在中国加载代码快速一些
-# The following dependencies are placed at https://gitee.com/imboy-tripartite-deps just to make loading code in China faster
-# 特此声明：下列依赖，被人未改动过原作者源码
-# Hereby declare: the following dependencies have not been modified by the original author source code
+# Gitee entries below are historical China mirrors and optional development
+# dependencies. Every dependency in Makefile's release graph uses its verified
+# upstream public source so an external Docker builder never depends on mirror
+# login redirects. Mirror and upstream tags were checked to resolve to the same
+# commit before this switch.
 
 # Release builders run outside the China mirror network.  Use the upstream
 # public repository here so a clean Docker build never follows Gitee's login
@@ -13,27 +14,27 @@ dep_hex_core = git https://github.com/hexpm/hex_core.git v0.11.0
 # https://erlang.mk/guide/deps.html
 # https://github.com/ninenines/ranch/tags
 # Ranch is a socket acceptor pool for TCP protocols.
-dep_ranch = git https://gitee.com/imboy-tripartite-deps/ranch.git 2.2.0
-dep_cowlib = git https://gitee.com/imboy-tripartite-deps/cowlib 2.16.0
-dep_cowboy = git https://gitee.com/imboy-tripartite-deps/cowboy 2.14.2
-dep_gun = git https://gitee.com/imboy-tripartite-deps/gun.git 2.2.0
+dep_ranch = git https://github.com/ninenines/ranch.git 2.2.0
+dep_cowlib = git https://github.com/ninenines/cowlib.git 2.16.0
+dep_cowboy = git https://github.com/ninenines/cowboy.git 2.14.2
+dep_gun = git https://github.com/ninenines/gun.git 2.2.0
 
 # gen_smtp Email服务端、客户端
 # https://github.com/gen-smtp/gen_smtp.git
-dep_gen_smtp = git https://gitee.com/imboy-tripartite-deps/gen_smtp 1.3.0
+dep_gen_smtp = git https://github.com/gen-smtp/gen_smtp.git 1.3.0
 
 # jsone An Erlang library for encoding, decoding JSON data.
 # 4months  https://github.com/sile/jsone
-dep_jsone = git https://gitee.com/imboy-tripartite-deps/jsone 1.9.0
+dep_jsone = git https://github.com/sile/jsone.git 1.9.0
 
 # depcache is an in-memory caching server for Erlang with dependency checks, cache expiration and local in process memoization of lookups.
 # https://github.com/zotonic/depcache.git
-dep_depcache = git https://gitee.com/imboy-tripartite-deps/depcache.git 2.0.0
+dep_depcache = git https://github.com/zotonic/depcache.git 2.0.0
 
 # jsx an erlang application for consuming, producing and manipulating json
 # 2years https://github.com/talentdeficit/jsx/tags
 # dep by jwerl
-dep_jsx = git https://gitee.com/imboy-tripartite-deps/jsx.git v3.1.0
+dep_jsx = git https://github.com/talentdeficit/jsx.git v3.1.0
 
 # https://github.com/rabbitmq/ra
 # A Multi-Raft implementation for Erlang and Elixir that
@@ -44,12 +45,12 @@ dep_khepri = git https://gitee.com/imboy-tripartite-deps/khepri.git main
 
 # jwerl JWT library
 # 2years https://github.com/G-Corp/jwerl
-dep_jwerl = git https://gitee.com/imboy-tripartite-deps/jwerl 1.2.0
+dep_jwerl = git https://github.com/G-Corp/jwerl.git 1.2.0
 # dep_jwerl = git https://gitee.com/mirrors_emqx/jwerl 1.1.1
 
 # goldrush 提供了快速的事件流处理
 # 6years
-dep_goldrush = git https://gitee.com/imboy-tripartite-deps/goldrush 0.2.0
+dep_goldrush = git https://github.com/DeadZen/goldrush.git 0.2.0
 
 # https://github.com/hnc-agency/shq.git
 # 进程间共享队列
@@ -62,11 +63,11 @@ dep_hnc_csv = git https://github.com/hnc-agency/hnc-csv main
 # syn 全局进程注册表和进程组管理器，能够自动管理动态集群（添加/删除节点）并从网络分裂中恢复。
 # Syn 是 Erlang/OTP global的 registry 和 pg模块的替代品。Syn 实现了 强最终一致性。
 # https://github.com/ostinelli/syn
-dep_syn = git https://gitee.com/imboy-tripartite-deps/syn.git 3.3.0
+dep_syn = git https://github.com/ostinelli/syn.git 3.3.0
 
 # erlware_commons 为与 Erlang 一起分发的 stdlib 应用程序的扩展，被 qdate 依赖
 # https://github.com/erlware/erlware_commons.git
-dep_erlware_commons = git https://gitee.com/imboy-tripartite-deps/erlware_commons v1.8.1
+dep_erlware_commons = git https://github.com/erlware/erlware_commons.git v1.8.1
 # qdate_localtime 这是 erlang_localtime 的一个分支 ，专门针对与 qdate的兼容性进行了修改。两者大多兼容，但多年来出现了一些分歧。
 # 被 qdate 依赖
 # https://github.com/choptastic/qdate_localtime.git
@@ -78,12 +79,12 @@ dep_qdate = hex 0.7.3
 
 # Erlang/OTP 应用程序限制资源访问速率
 # 4years https://github.com/lambdaclass/throttle.git
-dep_throttle = git https://gitee.com/imboy-tripartite-deps/throttle.git 0.3.0
+dep_throttle = git https://github.com/lambdaclass/throttle.git 0.3.0
 
 
 # ecron 用于 Erlang 的轻量级/高效的类似 cron 的作业调度库。
 # https://github.com/zhongwencool/ecron
-dep_ecron = git https://gitee.com/imboy-tripartite-deps/ecron.git v1.1.0
+dep_ecron = git https://github.com/zhongwencool/ecron.git v1.1.0
 # Erlang 的纯函数式和泛型编程
 # 6months
 dep_datum = git https://gitee.com/imboy-tripartite-deps/datum.git 4.6.1
@@ -107,17 +108,17 @@ dep_relx = hex 4.10.0
 
 # lager 日志库
 # https://github.com/erlang-lager/lager
-dep_lager = git https://gitee.com/imboy-tripartite-deps/lager 3.9.2
+dep_lager = git https://github.com/erlang-lager/lager.git 3.9.2
 
 # hut 小型的日志处理库
 # 2years
 dep_hut = git https://gitee.com/imboy-tripartite-deps/hut.git 1.4.0
 # Observer CLI 是一个可以被放入任何 Beam 节点的库，用于帮助 DevOps 人员诊断生产节点中的问题
 # 8months
-dep_observer_cli = git https://gitee.com/imboy-tripartite-deps/observer_cli.git 1.7.4
+dep_observer_cli = git https://github.com/zhongwencool/observer_cli.git 1.7.4
 # Recon 希望成为一套可用于生产环境的工具，用于诊断 Erlang 问题或安全地检查生产环境。
 # 4months
-dep_recon = git https://gitee.com/imboy-tripartite-deps/recon.git 2.5.4
+dep_recon = git https://github.com/ferd/recon.git 2.5.4
 # fs Native Listener (Mac Windows Linux) 被 sync 依赖
 # 8months
 dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
@@ -126,13 +127,13 @@ dep_fs = git https://gitee.com/imboy-tripartite-deps/fs.git 6.1
 dep_sync = git https://gitee.com/imboy-tripartite-deps/sync.git v0.4.1
 # telemetry 用于指标和仪器的动态调度库。
 # 3months
-dep_telemetry = git https://gitee.com/imboy-tripartite-deps/telemetry.git v1.2.1
+dep_telemetry = git https://github.com/beam-telemetry/telemetry.git v1.2.1
 # 8months
 dep_system_monitor = git https://gitee.com/imboy-tripartite-deps/system_monitor.git 2.2.6
 # erlang tracing debugger
 # 4months
 # https://github.com/massemanet/redbug.git
-dep_redbug = git https://gitee.com/imboy-tripartite-deps/redbug.git 2.0.10
+dep_redbug = git https://github.com/massemanet/redbug.git 2.0.10
 # PropEr：一个受 QuickCheck 启发的 Erlang 基于属性的测试工具
 # 6months https://github.com/proper-testing/proper.git
 dep_proper = git https://gitee.com/imboy-tripartite-deps/proper.git v1.5.0
@@ -143,10 +144,10 @@ dep_aho_corasick = git https://gitee.com/imboy-tripartite-deps/aho-corasick.git 
 
 # erlang fault tolerant service to generate unique identities
 # 6months https://github.com/fogfish/uid.git
-dep_uid = git https://gitee.com/imboy-tripartite-deps/uid.git master
+dep_uid = git https://github.com/fogfish/uid.git master
 # Django templates for Erlang
 # 8years
-dep_erlydtl = git https://gitee.com/imboy-tripartite-deps/erlydtl.git 0.14.0
+dep_erlydtl = git https://github.com/erlydtl/erlydtl.git 0.14.0
 
 # Erlang Postgres 客户端和连接池
 # https://github.com/erleans/pgo.git
@@ -160,20 +161,20 @@ dep_pg_types = ln ../../pg_types
 # https://gitee.com/imboy-pub/erlang_pay
 dep_erlang_pay = git https://gitee.com/imboy-pub/erlang_pay.git main
 
-dep_pooler = git https://gitee.com/imboy-tripartite-deps/pooler.git 1.6.0
-dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git 4.8.0
+dep_pooler = git https://github.com/epgsql/pooler.git 1.6.0
+dep_epgsql = git https://github.com/epgsql/epgsql.git 4.8.0
 # https://github.com/epgsql/epgsql.git
 #dep_epgsql = git https://gitee.com/imboy-tripartite-deps/epgsql.git devel
 # dep_epgsql = ln ../../epgsql
 
-dep_erlang_migrate = git https://gitee.com/imboy-pub/erlang_migrate.git v0.3.1
+dep_erlang_migrate = git https://github.com/imboy-pub/erlang_migrate.git v0.3.1
 dep_idna = hex 6.1.1 idna
 dep_hackney = git https://gitee.com/imboy-tripartite-deps/hackney.git 1.20.1
 dep_guanco = git https://gitee.com/imboy-tripartite-deps/guanco.git main
 
 # dep_simple_captcha = git https://github.com/ziyouchutuwenwu/simple_captcha.git master
 # 1years 8commits
-dep_simple_captcha = git https://gitee.com/imboy-tripartite-deps/simple_captcha.git master
+dep_simple_captcha = git https://github.com/ziyouchutuwenwu/simple_captcha.git master
 dep_eimp = git https://github.com/processone/eimp.git master
 # SEMVER library for Erlang
 # /erlware_commons/src/ec_semver.erl
@@ -207,4 +208,4 @@ dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
 
 # gpb - Google Protocol Buffers compiler for Erlang
 # https://github.com/tomas-abrahamsson/gpb
-dep_gpb = git https://gitee.com/imboy-tripartite-deps/gpb.git 4.21.7
+dep_gpb = git https://github.com/tomas-abrahamsson/gpb.git 4.21.7

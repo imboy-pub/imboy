@@ -28,6 +28,24 @@ WORKDIR /imboy
 # 全量复制源码（.dockerignore 已排除 _build/deps/_rel/.git/ebin 等，强制干净构建）
 COPY . .
 
+# erlang_pay 目前只在 Gitee 公开发布。发布构建不能依赖该站点的 Git
+# smart-HTTP（GitHub runner 会被重定向至登录页），因此拉取固定提交的公开
+# 归档并校验 SHA-256。预置到 deps/ 后 erlang.mk 不会再次克隆该依赖。
+ARG ERLANG_PAY_COMMIT=e06909e67fb996ec0b954b388b19e95177cb33c6
+ARG ERLANG_PAY_ARCHIVE_SHA256=ae5a379bddabd0c85f2bd641fb0645a217d938c8142d8c3907923ba9cd8b79f4
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p deps; \
+    curl --fail --location --retry 3 --retry-delay 2 \
+      "https://gitee.com/imboy-pub/erlang_pay/repository/archive/${ERLANG_PAY_COMMIT}.tar.gz" \
+      -o /tmp/erlang_pay.tar.gz; \
+    echo "${ERLANG_PAY_ARCHIVE_SHA256}  /tmp/erlang_pay.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/erlang_pay.tar.gz -C /tmp; \
+    mv "/tmp/erlang_pay-${ERLANG_PAY_COMMIT}" deps/erlang_pay; \
+    test -f deps/erlang_pay/rebar.config
+
 # 补齐默认 sys 配置源：Makefile 默认分支（不设 IMBOYENV）要求 config/sys.config
 # 存在（cp 为 sys.runtime.config 供 relx 组装）。sys.config 本体在 alpha.42
 # （f5420d70）被移除出仓，只剩 example 模板——example 即"默认值 + IMBOY_* env
