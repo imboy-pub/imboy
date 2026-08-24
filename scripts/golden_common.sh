@@ -110,6 +110,17 @@ wait_healthz() { # <max_seconds> <label>
 # pipefail 下 grep 无匹配的 rc=1 若传出，会触发 set -e 误杀调用方赋值语句
 anchor_ts() { grep -F "$1" "$INSTALL_LOG" 2>/dev/null | head -1 | cut -d' ' -f1 || true; }
 
+capture_backend_failure_log() {
+  # 失败制品只收集明确列出的诊断日志，绝不打包 RUN_DIR/.env/数据目录，
+  # 以免把安装期生成的凭据或私钥带出 cleanroom。
+  {
+    printf '%s\n' '== docker compose ps =='
+    $COMPOSE ps
+    printf '%s\n' '== imboy_backend logs (tail 300) =='
+    $COMPOSE logs --tail=300 imboy_backend
+  } > "$RUN_DIR/backend_failure.log" 2>&1 || true
+}
+
 run_install_phase2() {
   local rc=0
   printf '\n'
@@ -120,9 +131,9 @@ run_install_phase2() {
         printf '%s\n' "$line"
         printf '%s %s\n' "$(now)" "$line" >&3
       done 3>>"$INSTALL_LOG" || rc=$?
-  [ "$rc" -eq 0 ] || { STAGE_HINT="install.sh 退出码 ${rc}。完整日志: $INSTALL_LOG
+  [ "$rc" -eq 0 ] || { capture_backend_failure_log; STAGE_HINT="install.sh 退出码 ${rc}。完整日志: $INSTALL_LOG
       容器状态: $COMPOSE ps
-      后端日志: $COMPOSE logs --tail=100 imboy_backend"; return "$rc"; }
+      后端日志: $RUN_DIR/backend_failure.log"; return "$rc"; }
 }
 
 # 从打点日志提取 install.sh 内部环节（say() 锚点行；缺失则记 0 并注明）

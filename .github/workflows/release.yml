@@ -374,7 +374,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-install-logs-${{ github.ref_name }}
-          path: /tmp/golden/run-*/install_run.log
+          path: |
+            /tmp/golden/run-*/install_run.log
+            /tmp/golden/run-*/backend_failure.log
           retention-days: 7
 
   # ----------------------------------------------------------------
@@ -466,7 +468,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-upgrade-logs-${{ github.ref_name }}
-          path: /tmp/golden-up/run-*/install_vn.log
+          path: |
+            /tmp/golden-up/run-*/install_vn.log
+            /tmp/golden-up/run-*/backend_failure.log
           retention-days: 7
 
   # ----------------------------------------------------------------
@@ -699,5 +703,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: golden-install-nightly-logs-${{ github.run_id }}
-          path: /tmp/golden/run-*/install_run.log
+          path: |
+            /tmp/golden/run-*/install_run.log
+            /tmp/golden/run-*/backend_failure.log
           retention-days: 7
