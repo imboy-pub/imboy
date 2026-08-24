@@ -371,7 +371,7 @@ jobs:
 
       - name: Upload golden-install logs (failure only)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: golden-install-logs-${{ github.ref_name }}
           path: |
@@ -465,7 +465,7 @@ jobs:
 
       - name: Upload golden-upgrade logs (failure only)
         if: failure() && steps.decide.outputs.RESULT == 'RAN'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: golden-upgrade-logs-${{ github.ref_name }}
           path: |
@@ -700,7 +700,7 @@ jobs:
 
       - name: Upload nightly logs (failure only)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: golden-install-nightly-logs-${{ github.run_id }}
           path: |
