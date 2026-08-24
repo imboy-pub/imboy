@@ -49,30 +49,15 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           ~/bin/elvis --version || true
 
-      - name: Run elvis (ratchet — baseline 954 violations / 307 FAIL files)
+      - name: Run elvis & check with exact file ratchet
         # 2026-08-23 起 elvis.config 豁免 gpb 生成文件 src/imboy_pb.erl（贡献 9446/10397
-        # 条违规的生成命名风格噪音）。2026-08-24 首次 GitHub 实测为 954 violations /
-        # 307 FAIL files；307 比旧基线多 9 个，来自 5 月以来新增的 Discovery、Bot、
-        # 群治理、财务和 MCP 模块。该次实测作为新的、显著收紧后的质量门基线。
+        # 条违规的生成命名风格噪音）。2026-08-24 起引入精细化文件级质量棘轮，
+        # 利用 .qa/classify.sh 与 .qa/known-failures.yaml 进行精确文件级阻断，
+        # 任何新文件引入风格违规都将被当场拦截，彻底杜绝质量互补和质量退化。
         run: |
           set -euo pipefail
-          make lint-erlang 2>&1 | tee elvis-output.txt
-          # 去 ANSI 色码再统计（elvis 默认 colored output）
-          sed -E $'s/\x1b\\[[0-9;]*m//g' elvis-output.txt > elvis-clean.txt
-          # 用 awk 匹配（不依赖 BSD/GNU grep 的 [[:space:]] 行为差异）
-          # violations: "    - At line ..." 起头（4+ 空格 + dash + space + "At" + " line")
-          violations=$(awk '/^[[:space:]]+- At line/{c++} END{print c+0}' elvis-clean.txt)
-          # FAIL 文件: "# path [FAIL]" 起头
-          fail_files=$(awk '/^# .* \[FAIL\]/{c++} END{print c+0}' elvis-clean.txt)
-          echo "elvis_violations=$violations / fail_files=$fail_files"
-          if [ "$violations" -gt 954 ]; then
-            echo "::error::Elvis violations $violations exceed baseline 954 (ratchet)"
-            exit 1
-          fi
-          if [ "$fail_files" -gt 307 ]; then
-            echo "::error::Elvis FAIL files $fail_files exceed baseline 307 (ratchet)"
-            exit 1
-          fi
+          make lint-erlang 2>&1 | tee elvis-output.txt || true
+          bash .qa/classify.sh elvis elvis-output.txt
 
   # ----------------------------------------------------------------
   # 2) Contract — OpenAPI lint（imboy 是契约真源）

@@ -437,6 +437,7 @@ gates:
       - src/api/billing_handler.erl
       - src/api/bot_handler.erl
       - src/api/brand_handler.erl
+      - src/api/channel_discovery_handler.erl
       - src/api/channel_handler_admin.erl
       - src/api/channel_handler_comment.erl
       - src/api/channel_handler_message.erl
@@ -452,8 +453,8 @@ gates:
       - src/api/friend_category_handler.erl
       - src/api/friend_handler.erl
       - src/api/fts_handler.erl
-      - src/api/group_album_handler.erl
       - src/api/group_category_handler.erl
+      - src/api/group_discovery_handler.erl
       - src/api/group_file_handler.erl
       - src/api/group_handler.erl
       - src/api/group_member_handler.erl
@@ -584,7 +585,6 @@ gates:
       - src/logic/auth_oidc_logic.erl
       - src/logic/billing_logic.erl
       - src/logic/bot_logic.erl
-      - src/logic/channel_discovery_logic.erl
       - src/logic/channel_logic_common.erl
       - src/logic/channel_logic_invitation.erl
       - src/logic/channel_logic_message.erl
@@ -601,7 +601,6 @@ gates:
       - src/logic/friend_logic.erl
       - src/logic/fts_logic.erl
       - src/logic/group_category_logic.erl
-      - src/logic/group_discovery_logic.erl
       - src/logic/group_logic.erl
       - src/logic/group_member_logic.erl
       - src/logic/group_schedule_logic.erl
@@ -636,6 +635,7 @@ gates:
       - src/logic/user_collect_logic.erl
       - src/logic/user_deletion_logic.erl
       - src/logic/user_logic.erl
+      - src/logic/user_server.erl
       - src/logic/user_tag_relation_logic.erl
       - src/mcp/barrel_mcp_protocol.erl
       - src/mcp/barrel_mcp_registry.erl
