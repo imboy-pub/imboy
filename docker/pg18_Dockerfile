@@ -149,6 +149,11 @@ COPY ./docker/pg-update-imboy.sh /docker-entrypoint-initdb.d/20_update.sh
 # 从顶层 ARG 继承，确保容器运行时和初始化脚本可用
 ENV POSTGIS_VERSION=${POSTGIS_VERSION}
 
+# 官方 entrypoint 会先启动一个临时 PostgreSQL 来执行 initdb 脚本；
+# TimescaleDB 必须在该首次启动前预加载，不能仅由初始化脚本在运行后写入配置。
+# 此命令也会原样用于最终的 PostgreSQL 进程。
+CMD ["postgres", "-c", "shared_preload_libraries=pgcrypto, pg_jieba, timescaledb, vector, pg_stat_statements"]
+
 # ---------- 运行时权限和环境设置 ----------
 RUN set -ex \
     # 设置初始化脚本为不可执行
