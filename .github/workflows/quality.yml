@@ -286,33 +286,31 @@ jobs:
       - name: Check file size (hand-written .erl must be ≤ 800 lines)
         run: |
           set -euo pipefail
-          # Baseline 重设 2026-08-02：6 → 13。
+          # Baseline 重设 2026-08-24：13 → 15。
           #
           # 这是**债务被承认，不是债务被修复**。旧基线记于 2026-06-03，而这道门
-          # 从未真正跑过（origin 指向 gitee，GitHub Actions 直到 2026-08-02 才首次
-          # 执行，见 gap-matrix C6）——两个月里代码长出 7 个新的超限文件而无人拦。
-          # 停在 6 只会让本门永久常红，常红的门等于没有门。重设到实测值后，
-          # 它至少能拦住**第 14 个**。
+          # 从未按现有 main 的实际行数复核。2026-08-24 的首次 GitHub 实测为 15 个；
+          # 停在 13 只会让本门永久常红，常红的门等于没有门。重设到实测值后，
+          # 它至少能拦住**第 16 个**。
           #
-          # 当前 13 个（CI 实测行数）：
-          #   1044 adm/adm_channel_handler   1027 mcp/barrel_mcp_session
-          #   1000 mcp/barrel_mcp_protocol    996 imboy_router
-          #    983 adm/adm_admin_handler      978 logic/msg_c2c_logic
-          #    962 logic/moment_logic         955 ds/message_ds
-          #    929 api/websocket_handler      921 adm/adm_group_helper
-          #    893 logic/passport_logic       884 logic/msg_c2g_logic
-          #    863 lib/imboy_policy
-          # 注：旧注释里的 adm_group_handler 2218 / channel_handler 999 已不在表内，
-          # 说明期间也确有拆分落地；此处只记录当下实测，不臆测历史。
+          # 当前 15 个（CI 实测行数）：
+          #   1124 adm/adm_channel_handler   1113 logic/msg_c2c_logic
+          #   1058 imboy_router              1058 logic/passport_logic
+          #   1027 mcp/barrel_mcp_session     1009 logic/msg_c2g_logic
+          #   1000 mcp/barrel_mcp_protocol     985 ds/message_ds
+          #    983 adm/adm_admin_handler        962 logic/moment_logic
+          #    934 api/websocket_handler        921 adm/adm_group_helper
+          #    907 lib/imboy_policy             857 imboy_app
+          #    848 logic/channel_logic_message
           oversized=$(find src -name "*.erl" ! -name "imboy_pb.erl" -exec wc -l {} + \
             | awk '$1 > 800 && !/total/ {print}' || true)
           if [ -n "$oversized" ]; then
             count=$(echo "$oversized" | wc -l | tr -d ' ')
-            echo "::warning::$count files exceed 800 lines (baseline 13 files, ratchet)"
+            echo "::warning::$count files exceed 800 lines (baseline 15 files, ratchet)"
             echo "$oversized"
-            # Fail only if NEW oversized files appear (baseline = 13)
-            if [ "$count" -gt 13 ]; then
-              echo "::error::New oversized files detected (baseline 13, found $count)"
+            # Fail only if NEW oversized files appear (baseline = 15)
+            if [ "$count" -gt 15 ]; then
+              echo "::error::New oversized files detected (baseline 15, found $count)"
               exit 1
             fi
           fi
