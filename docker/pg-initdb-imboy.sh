@@ -21,10 +21,13 @@ POSTGIS_VERSION="${POSTGIS_VERSION%%+*}"
 
 # 本镜像基于官方 postgres（而不是 postgis/postgis），没有由上游预创建的
 # template_postgis。向不存在的模板库执行 psql 会让首次初始化直接退出并触发
-# 容器重启；只在实际创建的业务库（以及调用方显式传入的库）安装扩展。
-for DB in "$POSTGRES_DB" "${@}"; do
-    echo "Updating PostGIS extensions '$DB' to $POSTGIS_VERSION"
-    psql --dbname="$DB" -c "
+# 容器重启；只在实际创建的业务库安装扩展。
+#
+# docker-entrypoint-initdb.d 会把当前脚本路径作为位置参数传入；不能使用
+# "$@"，否则会尝试连接名为该路径的数据库并导致首次初始化失败。
+DB="$POSTGRES_DB"
+echo "Updating PostGIS extensions '$DB' to $POSTGIS_VERSION"
+psql --dbname="$DB" -c "
         -- Upgrade PostGIS (includes raster)
         CREATE EXTENSION IF NOT EXISTS postgis VERSION '$POSTGIS_VERSION';
         ALTER EXTENSION postgis UPDATE TO '$POSTGIS_VERSION';
@@ -38,5 +41,4 @@ for DB in "$POSTGRES_DB" "${@}"; do
         -- Upgrade US Tiger Geocoder
         CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder VERSION '$POSTGIS_VERSION';
         ALTER EXTENSION postgis_tiger_geocoder UPDATE TO '$POSTGIS_VERSION';
-    "
-done
+"

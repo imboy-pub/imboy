@@ -1,5 +1,5 @@
 #
-# PostgreSQL 18-trixie + PostGIS 3.6.1 + TimescaleDB 2.23.1 + pgRouting 4.0
+# PostgreSQL 18-trixie + PostGIS 3.6.4 + TimescaleDB 2.23.1 + pgRouting 4.0
 # + pg_roaringbitmap 1.1 + pg_jieba 中文分词扩展
 #
 # 使用分阶段构建，生产环境镜像轻量化，只包含运行所需文件
