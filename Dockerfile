@@ -108,6 +108,11 @@ ENV LANG=C.UTF-8 \
 # 复制自包含 release
 COPY --from=builder /imboy/_rel/imboy /opt/imboy
 
+# 在最终运行层执行 ERTS 二进制，防止构建绿但运行时因缺动态加载器/共享库以
+# 127 静默退出。该自检不启动应用、不依赖 PostgreSQL；它失败时构建日志会保留
+# 底层加载器报错，避免把问题拖到 Golden Install 的 120 秒健康超时才发现。
+RUN /opt/imboy/erts-*/bin/erlexec -version
+
 # imboy_ctl 管理 CLI（escript）。install.sh 的 --admin-phone/--admin-password
 # 在 backend 容器内调用它创建超管（部署机只有 Docker 没有 Erlang，escript 由
 # 上方自包含 ERTS 提供）：
