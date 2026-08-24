@@ -361,6 +361,9 @@ init_throttle_rates() ->
     %% GAP-09: passport 路径专用限流（登录/注册，宽松于通用 IP 限流，严于完全豁免）
     %% 每 IP 每分钟最多 10 次 passport 请求（兼容短时间内正常登录重试）
     ok = throttle:setup(passport_per_ip, RateFor(passport_per_ip, 10), per_minute),
+    %% webrtc_* 信令独立高限额桶：ICE trickle 一次通话可发 8~20 条 candidate，
+    %% 与普通消息共用 60/min 会随机丢弃 candidate 致公网通话间歇性失败
+    ok = throttle:setup(webrtc_per_user, RateFor(webrtc_per_user, 240), per_minute),
     ok.
 
 -spec validate_runtime_config() -> ok.

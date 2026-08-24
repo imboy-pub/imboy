@@ -38,22 +38,16 @@ event(CurrentUid, ToUid, MsgId, Msg) when
     InDenylist = user_denylist_logic:in_denylist(ToUid, CurrentUid),
     case {IsFriend, InDenylist} of
         {true, 0} ->
-            %% MsLi: 消息状态列表，[0] 表示未读
-            MsLi = [0],
-            message_ds:send_next(ToUid, MsgId, Msg, MsLi),
-            %% 回执 WEBRTC_SERVER_ACK：发送方确知服务端已收，
-            %% 否则客户端机制A（_pendingMessages）对每条 webrtc 信令必报确认超时。
-            %% 必须走 JSON 预编码投递路径（websocket_info 的 binary 分支，
-            %% v2 连接包 MSG_S2C 帧且 payload 恒为 JSON）；不能 {reply, Map}——
-            %% 该路径对 protobuf 客户端走枚举编码，MsgDirection 无 WEBRTC_SERVER_ACK 会丢 type。
-            Ack = #{
-                <<"id">> => MsgId,
-                <<"type">> => <<"WEBRTC_SERVER_ACK">>,
-                <<"in_reply_to">> => MsgId,
-                <<"server_ts">> => elib_dt:millisecond()
-            },
-            self() ! {reply, jsone:encode(Ack, [native_utf8])},
-            ok;
+            case is_webrtc_offer(Msg) andalso imboy_syn:list_by_uid(ToUid) =:= [] of
+                true ->
+                    %% 对端无任何在线设备：offer 若照常 send_next 会因无在线
+                    %% 订阅者被静默丢弃，主叫只能空等 60s 超时并误显示
+                    %% “对方无应答”。直接回 S2C peer_offline 让主叫快速失败。
+                    MsgMap = message_ds:assemble_s2c(MsgId, <<"peer_offline">>, ToUid),
+                    {reply, jsone:encode(MsgMap, [native_utf8])};
+                false ->
+                    do_send_next(ToUid, MsgId, Msg)
+            end;
         {_, InDenylist2} when InDenylist2 > 0 ->
             MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, ToUid),
             {reply, jsone:encode(MsgMap, [native_utf8])};
@@ -66,7 +60,39 @@ event(CurrentUid, ToUid, MsgId, Msg) when
 %% Internal Function Definitions
 %% ===================================================================
 
-%
+%% @doc 好友/黑名单校验通过后的常规转发 + SERVER_ACK 回执
+do_send_next(ToUid, MsgId, Msg) ->
+    %% MsLi: 消息状态列表，[0] 表示未读
+    MsLi = [0],
+    message_ds:send_next(ToUid, MsgId, Msg, MsLi),
+    %% 回执 WEBRTC_SERVER_ACK：发送方确知服务端已收，
+    %% 否则客户端机制A（_pendingMessages）对每条 webrtc 信令必报确认超时。
+    %% 必须走 JSON 预编码投递路径（websocket_info 的 binary 分支，
+    %% v2 连接包 MSG_S2C 帧且 payload 恒为 JSON）；不能 {reply, Map}——
+    %% 该路径对 protobuf 客户端走枚举编码，MsgDirection 无 WEBRTC_SERVER_ACK 会丢 type。
+    Ack = #{
+        <<"id">> => MsgId,
+        <<"type">> => <<"WEBRTC_SERVER_ACK">>,
+        <<"in_reply_to">> => MsgId,
+        <<"server_ts">> => elib_dt:millisecond()
+    },
+    self() ! {reply, jsone:encode(Ack, [native_utf8])},
+    ok.
+
+%% @doc 判断信令是否为呼叫邀请（offer）。
+%% webrtc_* 信令是整包透传 JSON，此处只做类型识别，不改写内容。
+is_webrtc_offer(Msg) when is_binary(Msg) ->
+    try jsone:decode(Msg) of
+        #{<<"type">> := Type} when is_binary(Type) ->
+            cowboy_bstr:to_lower(Type) =:= <<"webrtc_offer">>;
+        _ ->
+            false
+    catch
+        _:_ ->
+            false
+    end;
+is_webrtc_offer(_) ->
+    false.
 
 %% ===================================================================
 %% EUnit tests.

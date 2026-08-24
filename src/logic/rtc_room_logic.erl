@@ -71,6 +71,10 @@ build_grant(Uid, Did, RoomName, Perms) ->
     Claims = #{
         iss => ApiKey,
         sub => Identity,
+        %% name claim：参与者的展示名。LiveKit 客户端的 Participant.name
+        %% 直接取此值；不签发时客户端只能回退显示 identity（形如
+        %% “1024_abc123”的技术标识）。查不到昵称时回退 uid。
+        name => display_name(Uid),
         nbf => Now - 10,
         exp => Now + ?TOKEN_TTL_SECONDS,
         video => #{
@@ -87,3 +91,16 @@ build_grant(Uid, Did, RoomName, Perms) ->
         <<"token">> => Token,
         <<"room_name">> => RoomName
     }.
+
+%% @doc 参与者展示名：优先用户昵称，异常/缺失时回退 uid 字符串
+-spec display_name(integer()) -> binary().
+display_name(Uid) ->
+    try user_ds:find_by_id(Uid, <<"nickname">>) of
+        #{<<"nickname">> := Nickname} when is_binary(Nickname), Nickname =/= <<>> ->
+            Nickname;
+        _ ->
+            integer_to_binary(Uid)
+    catch
+        _:_ ->
+            integer_to_binary(Uid)
+    end.

@@ -158,7 +158,7 @@ websocket_handle({text, <<"CLIENT_ACK,", Tail/binary>>}, State) ->
 websocket_handle({text, Msg}, State) ->
     %% 对用户发送的业务消息进行速率限制（CLIENT_ACK 不受限）
     CurrentUid = auth_ds:current_uid(State),
-    case throttle:check(msg_per_user, CurrentUid) of
+    case ws_throttle_check(CurrentUid, Msg) of
         {limit_exceeded, _, _} ->
             ok = ?WARN_LOG({msg_rate_limited, CurrentUid}),
             RateLimitMsg = ws_validation_error(
@@ -181,6 +181,37 @@ websocket_handle({binary, Msg}, State) ->
     end;
 websocket_handle(_Frame, State) ->
     {ok, State, hibernate}.
+
+%% @doc WS 业务消息限流：webrtc_* 信令走独立高限额桶。
+%% ICE trickle 一次通话可发 8~20 条 candidate，与普通聊天消息共用
+%% msg_per_user(60/min) 时极易超限——超限回 rate_limited 会随机丢弃
+%% candidate，表现为公网通话间歇性建立失败且难以排查。
+%% webrtc_per_user 未配置时 throttle:check 返回 rate_not_set（不限制）。
+ws_throttle_check(Uid, Msg) ->
+    case is_webrtc_signaling_json(Msg) of
+        true ->
+            throttle:check(webrtc_per_user, Uid);
+        false ->
+            throttle:check(msg_per_user, Uid)
+    end.
+
+%% @doc 判断 JSON 载荷是否为 webrtc_* 信令（大小写不敏感前缀，与
+%% message_router_logic 的路由规则一致）。解码失败按非信令处理。
+is_webrtc_signaling_json(Msg) when is_binary(Msg) ->
+    try jsone:decode(Msg) of
+        #{<<"type">> := Type} when is_binary(Type) ->
+            case cowboy_bstr:to_lower(Type) of
+                <<"webrtc_", _/binary>> -> true;
+                _ -> false
+            end;
+        _ ->
+            false
+    catch
+        _:_ ->
+            false
+    end;
+is_webrtc_signaling_json(_) ->
+    false.
 
 %% @doc 非 v2 framing 下的 binary 帧处理（原有逻辑）
 handle_legacy_binary(Msg, Protocol, State) ->
@@ -277,7 +308,7 @@ dispatch_v2_frame(Type, _Flags, Payload, State) when
     Type =:= ?FRAME_TYPE_MSG_C2S
 ->
     CurrentUid = auth_ds:current_uid(State),
-    case throttle:check(msg_per_user, CurrentUid) of
+    case ws_throttle_check(CurrentUid, Payload) of
         {limit_exceeded, _, _} ->
             ok = ?WARN_LOG({msg_rate_limited, CurrentUid}),
             RateLimitMsg = ws_validation_error(

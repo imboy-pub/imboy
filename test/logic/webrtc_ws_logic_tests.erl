@@ -748,3 +748,71 @@ event_handles_reject_message_test_() ->
             ?assertEqual(ok, Result)
         end
     ).
+
+%% ===================================================================
+%% event/4 测试 - 对端离线快速失败
+%% ===================================================================
+
+event_replies_peer_offline_when_recipient_has_no_online_device_test_() ->
+    %% offer 且对端无任何在线设备：必须回 S2C peer_offline 让主叫快速
+    %% 失败，且不得调用 send_next（否则邀请被静默丢弃，主叫空等 60s）。
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'is_friend', 2, fun(_ToUid, _CurrentUid) -> true end}
+            ]},
+            {user_denylist_logic, [
+                {'in_denylist', 2, fun(_ToUid, _CurrentUid) -> 0 end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(_ToUid, _MsgId, _Msg, _MsLi) ->
+                    ?assert(false, "send_next must not be called for offline peer")
+                end},
+                {'assemble_s2c', 3, fun(MsgId, Action, To) ->
+                    #{
+                        <<"id">> => MsgId,
+                        <<"action">> => Action,
+                        <<"to">> => To
+                    }
+                end}
+            ]},
+            {imboy_syn, [
+                {'list_by_uid', 1, fun(_Uid) -> [] end}
+            ]}
+        ],
+        fun() ->
+            Msg = <<"{\"id\":\"m1\",\"type\":\"webrtc_offer\",\"payload\":{}}">>,
+            Result = webrtc_ws_logic:event(123, 456, <<"m1">>, Msg),
+            ?assertMatch({reply, _}, Result),
+            {reply, ReplyBin} = Result,
+            ?assert(string:find(ReplyBin, "peer_offline") =/= nomatch)
+        end
+    ).
+
+event_forwards_offer_when_recipient_online_test_() ->
+    %% offer 且对端有在线设备：正常转发路径不受离线检查影响。
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'is_friend', 2, fun(_ToUid, _CurrentUid) -> true end}
+            ]},
+            {user_denylist_logic, [
+                {'in_denylist', 2, fun(_ToUid, _CurrentUid) -> 0 end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(_ToUid, _MsgId, _Msg, _MsLi) -> ok end}
+            ]},
+            {imboy_syn, [
+                {'list_by_uid', 1, fun(_Uid) ->
+                    [{self(), {<<"android">>, <<"did1">>}}]
+                end}
+            ]}
+        ],
+        fun() ->
+            Msg = <<"{\"id\":\"m2\",\"type\":\"webrtc_offer\",\"payload\":{}}">>,
+            ?assertEqual(
+                ok,
+                webrtc_ws_logic:event(123, 456, <<"m2">>, Msg)
+            )
+        end
+    ).

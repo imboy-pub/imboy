@@ -17,11 +17,14 @@ setup() ->
     }),
     meck:new(group_member_ds, [passthrough]),
     meck:new(friend_ds, [passthrough]),
+    meck:new(user_ds),
+    meck:expect(user_ds, find_by_id, fun(_Uid, _Col) -> #{<<"nickname">> => <<"测试用户"/utf8>>} end),
     ok.
 
 cleanup(_) ->
     meck:unload(group_member_ds),
     meck:unload(friend_ds),
+    meck:unload(user_ds),
     ok.
 
 rtc_room_logic_test_() ->
@@ -73,6 +76,8 @@ test_token_claims() ->
     {ok, Claims} = jwerl:verify(Token, hs256, ?TEST_SECRET),
     ?assertEqual(<<"testkey">>, maps:get(iss, Claims)),
     ?assertEqual(<<"5_devA">>, maps:get(sub, Claims)),
+    %% name claim：参与者展示名（客户端 Participant.name 直接取此值）
+    ?assertEqual(<<"测试用户"/utf8>>, maps:get(name, Claims)),
     Video = maps:get(video, Claims),
     ?assertEqual(<<"rtc_group_200">>, maps:get(room, Video)),
     ?assertEqual(true, maps:get(roomJoin, Video)),
