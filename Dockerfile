@@ -45,6 +45,7 @@ RUN set -eux; \
     tar -xzf /tmp/erlang_pay.tar.gz -C /tmp; \
     mv "/tmp/erlang_pay-${ERLANG_PAY_COMMIT}" deps/erlang_pay; \
     printf '%s\n' '.PHONY: all' 'all:' '\t../../.erlang.mk/rebar3/rebar3 compile' \
+      '\tmkdir -p ebin' '\tcp _build/default/lib/erlang_pay/ebin/* ebin/' \
       > deps/erlang_pay/Makefile; \
     test -f deps/erlang_pay/rebar.config
 
