@@ -21,13 +21,13 @@
 
 -spec pay(binary(), term(), map()) ->
     {ok, binary()} | {ok, binary(), map()} | {error, binary()}.
-pay(OrderNo, Amount, _Opts) ->
+pay(OrderNo, Amount, Opts) ->
     case cfg() of
         {ok, Cfg} ->
             Order = #{
                 out_trade_no => OrderNo,
                 amount_fen => to_fen(Amount),
-                subject => <<"充值"/utf8>>
+                subject => maps:get(subject, Opts, <<"充值"/utf8>>)
             },
             case erlang_pay:create_payment(alipay, Cfg, Order) of
                 {ok, #{order_str := OrderStr}} ->

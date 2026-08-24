@@ -8,6 +8,7 @@
 -export([tablename/0, receive_tablename/0]).
 -export([create/6, create/7, find_by_id/1, get_receivers/1, find_receive_by_user/2, grab/2]).
 -export([list_expired_active/1, expire_and_refund/1]).
+-export([list_active_unscoped/1]).
 
 %% ===================================================================
 %% API Functions
@@ -199,6 +200,22 @@ list_expired_active(Limit) ->
         <<"SELECT id, sender_uid, remain_amount FROM ", Tb/binary,
             " WHERE status = 'active' AND expires_at <= NOW() AND remain_amount > 0",
             " ORDER BY expires_at ASC LIMIT $1">>,
+    case elib_pg:query(Sql, [Limit]) of
+        {ok, Rows} -> Rows;
+        _ -> []
+    end.
+
+%% @doc B-11 迁移：盘点 active 且 scope 为空的历史红包。
+%% 这些红包无法确认会话范围，在启用 red_packet_require_scope 前应到期退款。
+%% remain_amount = 0 的不返回（没钱可退，仅状态未收尾，不值得单独跑事务）。
+%% 可重复执行 —— 已处理的（status != 'active'）会被 expire_and_refund 的 CAS 跳过。
+-spec list_active_unscoped(pos_integer()) -> [map()].
+list_active_unscoped(Limit) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT id, sender_uid, remain_amount FROM ", Tb/binary,
+            " WHERE status = 'active' AND scope_type IS NULL AND remain_amount > 0",
+            " ORDER BY id ASC LIMIT $1">>,
     case elib_pg:query(Sql, [Limit]) of
         {ok, Rows} -> Rows;
         _ -> []

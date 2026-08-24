@@ -17,10 +17,12 @@
 -export([find_by_order_no/1]).
 -export([pay/2, pay/3]).
 -export([refund/3]).
+-export([mark_refunding/1, finalize_refund/3, release_refunding/1]).
 -export([cancel/1]).
 -export([list_by_user/2]).
 -export([has_purchased/2]).
 -export([get_active_subscription/2]).
+-export([set_gateway_params/3]).
 
 %%===================================================================
 %%% Constants
@@ -29,6 +31,7 @@
 -define(STATUS_PENDING, 0).
 -define(STATUS_PAID, 1).
 -define(STATUS_REFUNDED, 2).
+-define(STATUS_REFUNDING, 5).
 -define(STATUS_CANCELLED, 3).
 -define(STATUS_EXPIRED, 4).
 
@@ -186,6 +189,34 @@ refund(OrderNo, _AdminUid, Reason) ->
         {error, Err} -> {error, Err}
     end.
 
+%% @doc B-09 退款占位：paid(1) → refunding(5)，CAS 抢占。
+%% 抢占成功才允许调第三方网关；并发/重试的第二个请求拿不到 {ok,1}，
+%% 走不到网关那一步，防重复退款。
+%% @returns {ok, 1} 抢占成功 | {ok, 0} 非已支付态（已在退款中/已退款/从未支付）
+-spec mark_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
+mark_refunding(OrderNo) ->
+    cas_status(OrderNo, ?STATUS_PAID, ?STATUS_REFUNDING).
+
+%% @doc B-09 退款收尾：refunding(5) → refunded(2)。网关退款成功后调用。
+%% 落 refund_reason / refund_at。
+-spec finalize_refund(binary(), integer(), binary()) -> ok | {error, term()}.
+finalize_refund(OrderNo, _AdminUid, Reason) ->
+    Sql =
+        <<"UPDATE channel_order ",
+            "SET status = $1, refund_reason = $2, refund_at = NOW(), updated_at = NOW() ",
+            "WHERE order_no = $3 AND status = $4">>,
+    case elib_pg:execute(Sql, [?STATUS_REFUNDED, Reason, OrderNo, ?STATUS_REFUNDING]) of
+        {ok, 0} -> {error, not_found_or_not_refunding};
+        {ok, _} -> ok;
+        {error, Err} -> {error, Err}
+    end.
+
+%% @doc B-09 释放退款占位：refunding(5) → paid(1)。网关退款确定失败时回滚。
+%% @returns {ok, 1} 已释放 | {ok, 0} 不在退款中 | {error, term()}
+-spec release_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
+release_refunding(OrderNo) ->
+    cas_status(OrderNo, ?STATUS_REFUNDING, ?STATUS_PAID).
+
 %% @doc 获取用户的订单列表
 -spec list_by_user(integer(), integer()) -> {ok, [map()]} | {error, term()}.
 list_by_user(UserId, Limit) ->
@@ -229,6 +260,26 @@ get_active_subscription(ChannelId, UserId) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% @doc 存储网关支付参数（首次 payment_gateway:pay 成功后调用）。
+%% 将 PayNo 写入 payment_no 列，将 Extra 合并入 extra_data jsonb，
+%% 后续 pay_order 调用可复用，避免重复创建支付意图。
+%% 仅对 status=0 的订单生效（已支付/已退款/已取消的订单不更新）。
+-spec set_gateway_params(binary(), binary(), map()) -> ok | {error, term()}.
+set_gateway_params(OrderNo, PayNo, Extra) ->
+    Wrapped = #{<<"gateway_pay_no">> => PayNo, <<"gateway_extra">> => Extra},
+    ExtraJson = jsone:encode(Wrapped, [native_utf8]),
+    Sql =
+        <<
+            "UPDATE channel_order SET payment_no = $1, "
+            "extra_data = coalesce(extra_data, '{}'::jsonb) || $2::jsonb, "
+            "updated_at = NOW() WHERE order_no = $3 AND status = 0"
+        >>,
+    case elib_pg:execute(Sql, [PayNo, ExtraJson, OrderNo]) of
+        {ok, 0} -> {error, not_found_or_not_pending};
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
+
 %%===================================================================
 %%% Internal Functions
 %%===================================================================
@@ -246,3 +297,16 @@ generate_order_no() ->
 -spec default_expire_time() -> integer().
 default_expire_time() ->
     elib_dt:millisecond() + (?ORDER_EXPIRE_MINUTES * 60 * 1000).
+
+%% @doc CAS 状态更新：仅当当前 status=From 时更新为 To
+-spec cas_status(binary(), integer(), integer()) -> {ok, 0 | 1} | {error, term()}.
+cas_status(OrderNo, From, To) ->
+    Sql =
+        <<
+            "UPDATE channel_order SET status = $1, updated_at = NOW() "
+            "WHERE order_no = $2 AND status = $3"
+        >>,
+    case elib_pg:execute(Sql, [To, OrderNo, From]) of
+        {ok, N} -> {ok, N};
+        {error, Reason} -> {error, Reason}
+    end.

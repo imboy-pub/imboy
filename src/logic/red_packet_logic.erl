@@ -8,6 +8,8 @@
 -export([send/5, send/6, open/2, detail/2]).
 %% ecron 入口（B-10）
 -export([run_expire_refund/0, run_expire_refund/1]).
+%% B-11 迁移入口：处理历史无 scope 红包
+-export([expire_unscoped/0, expire_unscoped/1]).
 
 %% 单轮最多处理多少个过期红包。有上限是为了让一轮事务时间可预期；
 %% 处理不完的下一轮继续（每小时一轮，正常量级远吃不满）。
@@ -35,7 +37,10 @@ send(SenderUid, Type, Amount, Count, Greeting, Scope) ->
     {ok, integer()} | {error, term()}.
 do_send(SenderUid, Type, Amount, Count, Greeting, Scope) ->
     %% 校验参数 / Validate input
-    case is_integer(Amount) andalso Amount >= 1 andalso is_integer(Count) andalso Count >= 1 of
+    case
+        is_integer(Amount) andalso Amount >= 1 andalso is_integer(Count) andalso Count >= 1 andalso
+            Amount >= Count
+    of
         false ->
             {error, <<"红包参数不合法"/utf8>>};
         true ->
@@ -240,6 +245,31 @@ run_expire_refund(Batch0) ->
         Class:Reason:St ->
             ?ERROR_LOG([red_packet_expire, run_failed, Class, Reason, St]),
             _ = elib_metric:increment(red_packet_expire_error_total, 1),
+            ok
+    end.
+
+%% @doc B-11 迁移：处理 active 且 scope 为空的历史无范围红包。
+%% 这些红包无法确认会话范围，调用 expire_and_refund 到期退款给发送者。
+%% 幂等：expire_and_refund 的 CAS 保证第二次跑跳过已处理行。
+%% 可重复执行，不重复退款，不删除资金记录。
+%%
+%% 用法：全量客户端升级后，运维在 shell 中执行
+%%   red_packet_logic:expire_unscoped().
+-spec expire_unscoped() -> ok.
+expire_unscoped() ->
+    Batch = config_ds:env(red_packet_expire_batch, ?DEFAULT_EXPIRE_BATCH),
+    expire_unscoped(Batch).
+
+-spec expire_unscoped(integer()) -> ok.
+expire_unscoped(Batch0) ->
+    Batch = max(1, to_int(Batch0)),
+    try
+        Rows = red_packet_repo:list_active_unscoped(Batch),
+        lists:foreach(fun refund_one/1, Rows),
+        ok
+    catch
+        Class:Reason:St ->
+            ?ERROR_LOG([red_packet_expire_unscoped, run_failed, Class, Reason, St]),
             ok
     end.
 

@@ -40,6 +40,7 @@ setup() ->
         }}
     end),
     meck:expect(channel_order_ds, pay, fun(_OrderNo, _PaymentData) -> ok end),
+    meck:expect(channel_order_ds, set_gateway_params, fun(_, _, _) -> ok end),
     meck:expect(channel_ds, subscribe, fun(_ChannelId, _Uid) -> ok end),
     meck:expect(channel_logic_notify, notify_order_paid, fun(_ChannelId, _Uid) -> ok end),
     meck:expect(imboy_env, current, fun() -> <<"local">> end),
@@ -60,7 +61,9 @@ pay_order_envelope_test_() ->
         fun thirdparty_method_returns_envelope_with_pay_params/0,
         fun gateway_error_propagated/0,
         fun thirdparty_does_not_ship_before_callback/0,
-        fun wallet_ships_immediately/0
+        fun wallet_ships_immediately/0,
+        fun pay_order_already_paid_returns_directly/0,
+        fun pay_order_reuses_existing_gateway_params/0
     ]}.
 
 %% mock 网关（无第三元组）→ 信封 pay_params 为空 map
@@ -179,6 +182,65 @@ wallet_ships_immediately() ->
     ?assertEqual(1, maps:get(<<"status">>, Envelope)),
     ?assert(meck:called(channel_order_ds, pay, '_')),
     ?assert(meck:called(channel_ds, subscribe, [?CID, ?UID])).
+
+%% 已支付订单 → 直接返回 paid 信封，不调 payment_gateway:pay
+pay_order_already_paid_returns_directly() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => 1,
+            <<"payment_method">> => <<"wallet">>,
+            <<"payment_no">> => <<"WPY_ORD_AP">>
+        }}
+    end),
+    Result = channel_logic_order:pay_order(?UID, <<"ORD_AP">>),
+    ?assertEqual(
+        {ok, #{
+            <<"payment_method">> => <<"wallet">>,
+            <<"payment_no">> => <<"WPY_ORD_AP">>,
+            <<"pay_params">> => #{},
+            <<"status">> => 1
+        }},
+        Result
+    ),
+    %% payment_gateway:pay 不得被调用
+    ?assertNot(meck:called(payment_gateway, pay, '_')),
+    %% 已支付订单不知从 gateway 调起，因此也不得调 settle 路径
+    ?assertNot(meck:called(channel_order_ds, pay, '_')).
+
+%% 待支付订单已有 gateway_pay_no → 复用，不调 payment_gateway:pay
+pay_order_reuses_existing_gateway_params() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => 0,
+            <<"payment_method">> => <<"alipay">>,
+            <<"extra_data">> => #{
+                <<"gateway_pay_no">> => <<"ALIPAY_ORD_RE">>,
+                <<"gateway_extra">> => #{<<"order_str">> => <<"cached_order_str">>}
+            }
+        }}
+    end),
+    Result = channel_logic_order:pay_order(?UID, <<"ORD_RE">>),
+    ?assertEqual(
+        {ok, #{
+            <<"payment_method">> => <<"alipay">>,
+            <<"payment_no">> => <<"ALIPAY_ORD_RE">>,
+            <<"pay_params">> => #{<<"order_str">> => <<"cached_order_str">>},
+            <<"status">> => 0
+        }},
+        Result
+    ),
+    %% 复用路径不得调 payment_gateway:pay
+    ?assertNot(meck:called(payment_gateway, pay, '_')),
+    %% 复用路径不得调 set_gateway_params（第二次调用没必要再存）
+    ?assertNot(meck:called(channel_order_ds, set_gateway_params, '_')).
 
 %%%===================================================================
 %%% B-03：超时未支付订单在**查询时**显示为已过期(4)。

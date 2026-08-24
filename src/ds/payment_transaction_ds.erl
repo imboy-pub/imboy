@@ -12,6 +12,7 @@
 -export([create/1]).
 -export([find_by_trade_no/1]).
 -export([find_by_gateway_no/2]).
+-export([find_by_biz_order_no/2]).
 -export([update_status/3]).
 -export([mark_refunded/1]).
 -export([mark_refunding/1, release_refunding/1]).
@@ -39,6 +40,11 @@ find_by_trade_no(TradeNo) ->
 -spec find_by_gateway_no(binary(), binary()) -> map().
 find_by_gateway_no(Gateway, GatewayPaymentNo) ->
     payment_transaction_repo:find_by_gateway_no(Gateway, GatewayPaymentNo).
+
+%% @doc 按 (biz_type, biz_order_no) 查询 —— 退款时关联业务订单用
+-spec find_by_biz_order_no(integer(), binary()) -> map().
+find_by_biz_order_no(BizType, BizOrderNo) ->
+    payment_transaction_repo:find_by_biz_order_no(BizType, BizOrderNo).
 
 %% @doc 更新状态（薄封装）
 -spec update_status(binary(), integer(), map()) ->

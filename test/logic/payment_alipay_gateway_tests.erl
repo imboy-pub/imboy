@@ -39,7 +39,8 @@ alipay_gateway_test_() ->
         fun pay_amount_is_minor_unit/0,
         fun pay_maps_gateway_error_to_binary/0,
         fun missing_credential_rejected/0,
-        fun empty_notify_url_still_passed/0
+        fun empty_notify_url_still_passed/0,
+        fun pay_subject_from_opts_override_default/0
     ]}.
 
 %% cfg/0 把 notify_url 读入 Cfg（atom key，erlang_pay maybe_put 消费）
@@ -95,3 +96,11 @@ empty_notify_url_still_passed() ->
         {ok, #{order_str => <<"s">>}}
     end),
     _ = payment_alipay_gateway:pay(<<"ORD_A6">>, 100, #{}).
+
+%% Opts 中携带 subject → 覆盖默认 "充值" 为频道购买语义
+pay_subject_from_opts_override_default() ->
+    meck:expect(erlang_pay, create_payment, fun(alipay, _Cfg, Order) ->
+        ?assertEqual(<<"频道购买"/utf8>>, maps:get(subject, Order)),
+        {ok, #{order_str => <<"s">>}}
+    end),
+    _ = payment_alipay_gateway:pay(<<"ORD_A7">>, 100, #{subject => <<"频道购买"/utf8>>}).

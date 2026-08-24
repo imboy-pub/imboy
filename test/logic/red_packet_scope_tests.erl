@@ -121,3 +121,47 @@ require_scope_flag_rejects_unbound() ->
     after
         catch meck:unload(config_ds)
     end.
+
+%% ===================================================================
+%% B-11 迁移：盘点并处理历史无 scope 红包
+%% ===================================================================
+
+unscoped_migration_test_() ->
+    {foreach, fun unscoped_setup/0, fun unscoped_cleanup/1, [
+        fun list_active_unscoped_finds_only_unscoped/0,
+        fun expire_unscoped_skips_already_expired/0
+    ]}.
+
+unscoped_setup() ->
+    meck:new(red_packet_repo, [no_link, passthrough]),
+    ok.
+
+unscoped_cleanup(_) ->
+    catch meck:unload(red_packet_repo),
+    ok.
+
+%% list_active_unscoped 只返回 scope_type IS NULL 的 active 红包
+list_active_unscoped_finds_only_unscoped() ->
+    meck:expect(red_packet_repo, list_active_unscoped, fun(_Limit) ->
+        [#{<<"id">> => 1, <<"sender_uid">> => ?SENDER, <<"remain_amount">> => 100}]
+    end),
+    meck:expect(red_packet_repo, expire_and_refund, fun(_Id) -> {ok, 100} end),
+    ?assertEqual(ok, red_packet_logic:expire_unscoped(10)),
+    ?assert(meck:called(red_packet_repo, list_active_unscoped, [10])),
+    ?assert(meck:called(red_packet_repo, expire_and_refund, [1])).
+
+%% 已处理的红包（CAS 返回 already_settled）被跳过，不报错
+expire_unscoped_skips_already_expired() ->
+    meck:expect(red_packet_repo, list_active_unscoped, fun(_Limit) ->
+        [
+            #{<<"id">> => 1, <<"sender_uid">> => ?SENDER, <<"remain_amount">> => 100},
+            #{<<"id">> => 2, <<"sender_uid">> => ?SENDER, <<"remain_amount">> => 50}
+        ]
+    end),
+    meck:expect(red_packet_repo, expire_and_refund, fun
+        (1) -> {ok, 100};
+        (2) -> {rollback, already_settled}
+    end),
+    ?assertEqual(ok, red_packet_logic:expire_unscoped(10)),
+    %% 两个都调了，第二个被跳过不报错
+    ?assertEqual(2, meck:num_calls(red_packet_repo, expire_and_refund, '_')).

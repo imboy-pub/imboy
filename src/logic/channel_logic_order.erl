@@ -169,29 +169,21 @@ pay_order(Uid, OrderNo) ->
                                         false ->
                                             {error, <<"订单金额无效"/utf8>>};
                                         true ->
-                                            %% channel_order.amount 单位为「元」；按目标网关期望单位适配：
-                                            %% wallet 网关期望元(内部换分)，第三方网关期望分(分=元×100)。
-                                            PayOpts = #{
-                                                uid => Uid,
-                                                amount => to_gateway_amount(Method, Amount)
-                                            },
-                                            case
-                                                normalize_pay_result(
-                                                    payment_gateway:pay(Method, OrderNo, PayOpts)
-                                                )
-                                            of
-                                                {ok, PayNo, Extra} ->
-                                                    settle(
-                                                        Method,
+                                            Status = maps:get(<<"status">>, Order, 0),
+                                            case Status of
+                                                ?STATUS_PAID ->
+                                                    {ok, paid_envelope(Order, Method)};
+                                                ?STATUS_PENDING ->
+                                                    pay_with_gateway(
+                                                        OrderNo,
                                                         ChannelId,
                                                         Uid,
-                                                        OrderNo,
-                                                        PayNo,
-                                                        Extra,
+                                                        Method,
+                                                        Amount,
                                                         Order
                                                     );
-                                                {error, PayReason} ->
-                                                    {error, PayReason}
+                                                _ ->
+                                                    {error, <<"订单状态不允许支付"/utf8>>}
                                             end
                                     end
                             end
@@ -280,6 +272,43 @@ normalize_pay_result({error, Reason}) ->
     {error, error_binary(Reason)};
 normalize_pay_result(_Unexpected) ->
     {error, <<"支付网关返回格式异常"/utf8>>}.
+
+%% @doc 已支付订单的统一信封。
+-spec paid_envelope(map(), binary()) -> map().
+paid_envelope(Order, Method) ->
+    #{
+        <<"payment_method">> => Method,
+        <<"payment_no">> => maps:get(<<"payment_no">>, Order, <<>>),
+        <<"pay_params">> => #{},
+        <<"status">> => ?STATUS_PAID
+    }.
+
+%% @doc 支付网关执行：优先复用已有支付参数，否则创建新支付意图。
+%% 复用路径：extra_data 中的 gateway_pay_no / gateway_extra 来自前一次 pay_order 调用。
+%% B-00：复用时不检查订单是否过期（settle → do_pay_order 的 channel_order_ds:pay/2
+%% 自带 expires_at 守卫，过期订单会自然失败）。
+-spec pay_with_gateway(binary(), integer(), integer(), binary(), term(), map()) ->
+    {ok, map()} | {error, binary()}.
+pay_with_gateway(OrderNo, ChannelId, Uid, Method, Amount, Order) ->
+    ExtraData = maps:get(<<"extra_data">>, Order, #{}),
+    case maps:find(<<"gateway_pay_no">>, ExtraData) of
+        {ok, ExistingPayNo} ->
+            ExistingExtra = maps:get(<<"gateway_extra">>, ExtraData, #{}),
+            settle(Method, ChannelId, Uid, OrderNo, ExistingPayNo, ExistingExtra, Order);
+        error ->
+            PayOpts = #{
+                uid => Uid,
+                amount => to_gateway_amount(Method, Amount),
+                subject => <<"频道购买"/utf8>>
+            },
+            case normalize_pay_result(payment_gateway:pay(Method, OrderNo, PayOpts)) of
+                {ok, PayNo, Extra} ->
+                    _ = channel_order_ds:set_gateway_params(OrderNo, PayNo, Extra),
+                    settle(Method, ChannelId, Uid, OrderNo, PayNo, Extra, Order);
+                {error, PayReason} ->
+                    {error, PayReason}
+            end
+    end.
 
 -spec do_pay_order(integer(), integer(), binary(), map(), map()) -> ok | {error, binary()}.
 do_pay_order(ChannelId, Uid, OrderNo, PaymentData, Order) ->
@@ -448,10 +477,12 @@ refund_order(Uid, OrderNo, Reason0) ->
                 true when OrderUserId =/= Uid ->
                     {error, <<"无权操作此订单"/utf8>>};
                 true ->
-                    %% 幂等：已退款订单直接返回提示，不重复退
+                    %% 幂等：已退款/退款中订单直接返回，不重复处理
                     case Status of
                         2 ->
                             {error, <<"订单已退款"/utf8>>};
+                        5 ->
+                            {error, <<"订单退款中，请稍后重试"/utf8>>};
                         1 ->
                             do_refund_order(ChannelId, Uid, OrderNo, Order, Reason);
                         _ ->
@@ -486,10 +517,12 @@ admin_refund_order(OrderNo, Reason0) ->
                 false ->
                     {error, <<"订单不存在"/utf8>>};
                 true ->
-                    %% 幂等：已退款订单直接返回提示，不重复退
+                    %% 幂等：已退款/退款中订单直接返回，不重复处理
                     case Status of
                         2 ->
                             {error, <<"订单已退款"/utf8>>};
+                        5 ->
+                            {error, <<"订单退款中，请稍后重试"/utf8>>};
                         1 ->
                             do_refund_order(ChannelId, OrderUserId, OrderNo, Order, Reason);
                         _ ->
@@ -504,8 +537,13 @@ admin_refund_order(OrderNo, Reason0) ->
             {error, <<"订单数据异常"/utf8>>}
     end.
 
-%% @doc 退款执行：网关退款 → 改订单状态为已退款(2) → 取消频道订阅
+%% @doc 退款执行：CAS 占位(1→5) → 调网关 → CAS 收尾(5→2) → 取消订阅。
 %% 金额单位：channel_order.amount 为元；按目标网关期望单位适配(wallet 元 / 第三方 分)。
+%%
+%% B-09 CAS 模式的好处：
+%%   - 并发退款抢占：第二个请求拿不到 1→5 的 CAS，走不到网关调用那一步
+%%   - 网关失败可重试：释放占位(5→1)后重试仍能走完整流程
+%%   - 同步 payment_transaction 状态，避免对账系统误判
 -spec do_refund_order(integer(), integer(), binary(), map(), binary()) ->
     ok | {error, binary()}.
 do_refund_order(ChannelId, Uid, OrderNo, Order, Reason) ->
@@ -516,25 +554,91 @@ do_refund_order(ChannelId, Uid, OrderNo, Order, Reason) ->
         false ->
             {error, <<"不支持的支付方式"/utf8>>};
         true ->
-            case payment_gateway:refund(Method, PaymentNo, to_gateway_amount(Method, Amount)) of
-                ok ->
-                    %% 网关退款成功后再更新订单状态（带 status=1 守卫，并发安全）
-                    case channel_order_ds:refund(OrderNo, Uid, Reason) of
-                        ok ->
-                            %% 退款成功后取消该用户对频道的订阅（失败不回退退款，仅记录）
-                            _ = channel_ds:unsubscribe(ChannelId, Uid),
-                            ok;
-                        {error, not_found_or_not_paid} ->
-                            %% 并发场景：状态已被其他流程改变，按已退款处理
-                            {error, <<"订单已退款"/utf8>>};
-                        {error, RefReason} ->
-                            {error, elib_cnv:safe_to_binary(RefReason)}
-                    end;
-                {error, PayReason} ->
-                    {error, error_binary(PayReason)};
-                _UnexpectedRefund ->
-                    {error, <<"退款网关返回格式异常"/utf8>>}
-            end
+            %% Step 1: CAS 抢占退款占位
+            do_refund_cas(ChannelId, Uid, OrderNo, Method, PaymentNo, Amount, Reason)
+    end.
+
+-spec do_refund_cas(integer(), integer(), binary(), binary(), binary(), term(), binary()) ->
+    ok | {error, binary()}.
+do_refund_cas(ChannelId, Uid, OrderNo, Method, PaymentNo, Amount, Reason) ->
+    case channel_order_ds:mark_refunding(OrderNo) of
+        {ok, 0} ->
+            {error, <<"订单已退款或退款中"/utf8>>};
+        {ok, 1} ->
+            do_refund_gateway(ChannelId, Uid, OrderNo, Method, PaymentNo, Amount, Reason);
+        {error, Err} ->
+            {error, elib_cnv:safe_to_binary(Err)}
+    end.
+
+-spec do_refund_gateway(integer(), integer(), binary(), binary(), binary(), term(), binary()) ->
+    ok | {error, binary()}.
+do_refund_gateway(ChannelId, Uid, OrderNo, Method, PaymentNo, Amount, Reason) ->
+    %% Step 2: 同步标记 payment_transaction 为退款中（best-effort）
+    _ = mark_payment_tx_refunding(OrderNo),
+    %% Step 3: 调网关退款
+    case payment_gateway:refund(Method, PaymentNo, to_gateway_amount(Method, Amount)) of
+        ok ->
+            do_refund_finalize(ChannelId, Uid, OrderNo, Reason);
+        {error, PayReason} ->
+            %% 网关失败：释放占位回到 paid(1)，允许重试
+            _ = channel_order_ds:release_refunding(OrderNo),
+            _ = release_payment_tx_refunding(OrderNo),
+            {error, error_binary(PayReason)};
+        _UnexpectedRefund ->
+            _ = channel_order_ds:release_refunding(OrderNo),
+            _ = release_payment_tx_refunding(OrderNo),
+            {error, <<"退款网关返回格式异常"/utf8>>}
+    end.
+
+-spec do_refund_finalize(integer(), integer(), binary(), binary()) ->
+    ok | {error, binary()}.
+do_refund_finalize(ChannelId, Uid, OrderNo, Reason) ->
+    %% Step 4: CAS 收尾 — 订单状态 refunding(5) → refunded(2)
+    case channel_order_ds:finalize_refund(OrderNo, Uid, Reason) of
+        ok ->
+            %% Step 5: 同步 payment_transaction 为已退款（best-effort）
+            _ = finalize_payment_tx_refund(OrderNo),
+            %% Step 6: 取消订阅（失败不回退退款，仅告警日志）
+            _ = channel_ds:unsubscribe(ChannelId, Uid),
+            ok;
+        {error, not_found_or_not_refunding} ->
+            {error, <<"订单状态异常，退款无法完成"/utf8>>};
+        {error, RefReason} ->
+            {error, elib_cnv:safe_to_binary(RefReason)}
+    end.
+
+%% ===================================================================
+%% 退款支付流水同步（best-effort 辅助，不阻断退款主流程）
+%% ===================================================================
+
+-spec mark_payment_tx_refunding(binary()) -> ok.
+mark_payment_tx_refunding(OrderNo) ->
+    case payment_transaction_ds:find_by_biz_order_no(2, OrderNo) of
+        #{<<"trade_no">> := TradeNo, <<"status">> := 1} ->
+            _ = payment_transaction_ds:mark_refunding(TradeNo),
+            ok;
+        _ ->
+            ok
+    end.
+
+-spec release_payment_tx_refunding(binary()) -> ok.
+release_payment_tx_refunding(OrderNo) ->
+    case payment_transaction_ds:find_by_biz_order_no(2, OrderNo) of
+        #{<<"trade_no">> := TradeNo, <<"status">> := 5} ->
+            _ = payment_transaction_ds:release_refunding(TradeNo),
+            ok;
+        _ ->
+            ok
+    end.
+
+-spec finalize_payment_tx_refund(binary()) -> ok.
+finalize_payment_tx_refund(OrderNo) ->
+    case payment_transaction_ds:find_by_biz_order_no(2, OrderNo) of
+        #{<<"trade_no">> := TradeNo} ->
+            _ = payment_transaction_ds:mark_refunded(TradeNo),
+            ok;
+        _ ->
+            ok
     end.
 
 %% @doc 按目标网关期望单位适配金额（修复 channel 第三方支付收款/退款 100 倍偏差）：

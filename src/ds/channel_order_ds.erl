@@ -16,6 +16,8 @@
 -export([get_price/1]).
 -export([list_by_user/2]).
 -export([page/5]).
+-export([set_gateway_params/3]).
+-export([mark_refunding/1, finalize_refund/3, release_refunding/1]).
 
 -spec create_order(map()) -> {ok, binary()} | {error, term()}.
 create_order(Data) -> channel_order_repo:create_order(Data).
@@ -63,3 +65,22 @@ list_by_user(UserId, Limit) -> channel_order_repo:list_by_user(UserId, Limit).
 page(Column, Where, Order, Page, Size) ->
     Tb = channel_order_repo:tablename(),
     elib_pg:page_with_total(Tb, Column, Where, Order, Page, Size).
+
+-spec set_gateway_params(binary(), binary(), map()) -> ok | {error, term()}.
+set_gateway_params(OrderNo, PayNo, Extra) ->
+    channel_order_repo:set_gateway_params(OrderNo, PayNo, Extra).
+
+%% @doc B-09 CAS 退款占位：paid(1) → refunding(5)
+-spec mark_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
+mark_refunding(OrderNo) ->
+    channel_order_repo:mark_refunding(OrderNo).
+
+%% @doc B-09 CAS 退款收尾：refunding(5) → refunded(2)
+-spec finalize_refund(binary(), integer(), binary()) -> ok | {error, term()}.
+finalize_refund(OrderNo, Uid, Reason) ->
+    channel_order_repo:finalize_refund(OrderNo, Uid, Reason).
+
+%% @doc B-09 CAS 释放退款占位：refunding(5) → paid(1)
+-spec release_refunding(binary()) -> {ok, 0 | 1} | {error, term()}.
+release_refunding(OrderNo) ->
+    channel_order_repo:release_refunding(OrderNo).

@@ -16,6 +16,7 @@
 -export([create/1]).
 -export([find_by_trade_no/1]).
 -export([find_by_gateway_no/2]).
+-export([find_by_biz_order_no/2]).
 -export([update_status/3]).
 -export([mark_refunded/1]).
 -export([mark_refunding/1, release_refunding/1]).
@@ -90,6 +91,22 @@ find_by_gateway_no(Gateway, GatewayPaymentNo) ->
             "gateway_payment_no, amount, currency, status, paid_at, created_at FROM ", Tb/binary,
             " WHERE gateway = $1 AND gateway_payment_no = $2 LIMIT 1">>,
     case elib_pg:query(Sql, [Gateway, GatewayPaymentNo]) of
+        {ok, [Row | _]} -> Row;
+        _ -> #{}
+    end.
+
+%% @doc 按 (biz_type, biz_order_no) 查询流水 —— 退款时关联业务订单用
+%% @param BizType 业务类型（1=充值, 2=频道订单, 3=SaaS 账单）
+%% @param BizOrderNo 业务订单号
+%% @return map() 找到的行，或 #{} 未找到
+-spec find_by_biz_order_no(integer(), binary()) -> map().
+find_by_biz_order_no(BizType, BizOrderNo) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT id, trade_no, biz_type, biz_order_no, user_id, gateway, ",
+            "gateway_payment_no, amount, currency, status, paid_at, created_at FROM ", Tb/binary,
+            " WHERE biz_type = $1 AND biz_order_no = $2 LIMIT 1">>,
+    case elib_pg:query(Sql, [BizType, BizOrderNo]) of
         {ok, [Row | _]} -> Row;
         _ -> #{}
     end.
