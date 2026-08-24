@@ -116,8 +116,15 @@ if (policyMode == EncryptionMode.complianceE2ee) {
 - **服务端零接触私钥**：`compliance_key_repo:create/3` 只存公钥；
   migration `00000046` 已 `DROP COLUMN private_key_encrypted`；
   死代码 `find_by_key_id/1`（原唯一读取私钥的入口）已删除。
-- **合规公钥下发**：客户端经 `GET /api/v1/e2ee/compliance_key` 取活跃合规公钥（仅 `key_id` + `public_key`），
-  用于在 compliance 模式下额外 wrap 一份 AES key（见 §3.1）。
+- **合规公钥下发**：客户端经 `GET /api/v1/e2ee/compliance_key` 取活跃合规公钥（`key_id` + `public_key` +
+  `algorithm` + `created_at`，2026-08-24 起透传），用于在 compliance 模式下额外 wrap 一份 AES key（见 §3.1）。
+- **客户端 TOFU 锚定（审计 P1-1，2026-08-24）**：客户端对首次拉取的合规公钥计算 SHA-256 指纹并
+  持久化固定（`compliance_key_pin`，SecureStorage）。此后每次获取，`key_id` 或指纹与固定值不一致时：
+  1) 发送路径 fail-closed 拒发（`compliance_key_changed`，绝不带未确认的新钥继续加密）；
+  2) 用户弹窗确认——确认管理员轮换后 re-pin，拒绝则保持旧固定值继续 fail-closed；
+  3) 设置页"合规审计密钥"页展示服务端公钥与本地固定指纹，供与管理员公布值比对。
+  **局限（明示）**：TOFU 只能防"已固定后的服务端偷换"；首次接触的恶意服务端仍可注入首钥，
+  根治依赖 Key Transparency（台账 IMB-2026-007）。
 - **审计解密路径**：审计员在自己设备上导入本地保管的合规私钥 → 读取消息 `e2ee.keys[]` 中
   `did:compliance-audit` 条目的 `ek` → RSA-OAEP-256 解出 AES key → 解密消息。**整条链路服务端零参与**。
 - `e2ee_mode` 只有显式配置为 `compliance` 时才启用合规双 wrap；`required`（strict）模式**不**进行合规 wrap，是纯端到端。

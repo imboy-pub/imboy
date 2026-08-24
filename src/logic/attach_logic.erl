@@ -172,7 +172,7 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
         <<"file_hash256">> => maps:get(
             <<"file_hash256">>, Meta, maps:get(<<"md5">>, Meta, <<>>)
         ),
-        %% 密文判别位（迁移 000050）。null = 明文对象，旧客户端语义完全不变。
+        %% 密文判别位（迁移 00000052）。null = 明文对象，旧客户端语义完全不变。
         <<"cipher">> => Cipher,
         %% mime_type/size 一律采用服务端 HEAD 核实的真实值
         <<"mime_type">> => RealType,

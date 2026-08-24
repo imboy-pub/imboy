@@ -46,8 +46,8 @@
 
 | ID | 问题 | 状态 | 理由 / 处置 |
 |---|---|---|---|
-| IMB-2026-005 | **附件今天以明文存于对象存储**。分块 AEAD、AAD 绑定、加密闸门、临时明文清理、缩略图独立 key 全部已实现且有 13 个测试文件，但**加密开关未翻开** | `Blocked` | Slice 9 真机验证 BLOCKED + 两项待拍板（**X12**）。后果：威胁模型 **T10** 的 ATT-01..05 全部不成立。**这是当前状态，不是设计意图** |
-| IMB-2026-006 | **Safety Number 生产零调用**。`grep -rl "SafetyNumber" lib/` 只命中它自己 —— 算法有守护测试 `e2ee_safety_number_test`，产品用不到 | `Open` | 威胁模型 §4 矩阵原本把它列为 T2/T8 的防御点，**该防御在今天的产品里事实上不存在**。追踪 **B1 / P3-4 / P3-5** |
+| IMB-2026-005 | **附件加密已启用**（2026-08-24）。分块 AEAD、AAD 绑定、加密闸门、临时明文清理、缩略图独立 key 已实现且测试在位；读取侧 Slice 6（`AttachmentOpenRegistry.materialize`）与后端 `cipher` 列（00000052）就绪后，发布开关 `kAttachmentSealRolloutEnabled` 已翻为 `true` | `Resolved` | 处置见 `attachment_handler.dart` 开关注释与 wiring 测试组 6（防回退门）。遗留：registry 冷启动空窗（Slice 8 持久化未做）、旧客户端读新密文得坏图（同步发版过渡）。威胁模型 **T10** ATT-01..05 恢复成立 |
+| IMB-2026-006 | **Safety Number 已接线（2026-08-24，阶段 1：C2C）**。聊天设置页与联系人资料页新增"安全码验证"入口，展示 60 位 Signal FingerprintProtocol v2 兼容安全码（本端 identity 走 OlmSessionService 权威副本；对端 identity 走 Ed25519 自签核验 + TOFU pin 的已验证路径），支持本地"标记已验证" | `Partially Resolved` | 遗留：① `POST /api/v1/e2ee/trust/record` 上报未接线（缺 actor_device_generation/target_identity_version 客户端数据通路 + wire 往返验证）；② 群聊成员级安全码未做（peerId 为群 id，需成员列表逐人校验）；③ 多设备聚合（Signal v2 语义）未实现，当前以双方主设备为准。威胁模型 T2/T8 的**首触 MITM 用户可检测**已恢复 |
 | IMB-2026-007 | **KT 未部署**，服务端分叉视图（split-view / non-inclusion）不可检测 | `Open` | Transparency Profile v1（ADR 29）已冻结树结构/STH/proof/golden vectors，无运行时。追踪 **P3-8**。与 006 叠加后，T11 今天**无任何可用检测手段** |
 
 ---

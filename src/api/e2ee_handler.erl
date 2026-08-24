@@ -353,11 +353,15 @@ compliance_key(Req0, _State) ->
 do_compliance_key(Req0) ->
     %% get_active_compliance_key/0 返回二元组 {ok, Map}（compliance_key_repo:find_active），
     %% 此前用三元组 {ok, KeyId, PublicKey} 匹配会触发 case_clause 崩溃（500）。
+    %% algorithm/created_at 一并透传：客户端用于合规公钥 TOFU 锚定的指纹展示与
+    %% 变更告警（审计 P1-1：无锚定时恶意服务端可换自己的公钥静默解密）。
     case e2ee_logic:get_active_compliance_key() of
-        {ok, #{<<"key_id">> := KeyId, <<"public_key">> := PublicKey}} ->
+        {ok, #{<<"key_id">> := KeyId, <<"public_key">> := PublicKey} = Row} ->
             elib_response:success(Req0, #{
                 <<"key_id">> => KeyId,
-                <<"public_key">> => PublicKey
+                <<"public_key">> => PublicKey,
+                <<"algorithm">> => maps:get(<<"algorithm">>, Row, <<"RSA-OAEP-256">>),
+                <<"created_at">> => maps:get(<<"created_at">>, Row, null)
             });
         {error, not_found} ->
             elib_response:error(Req0, <<"无活跃合规密钥"/utf8>>, ?ERR_NOT_FOUND);

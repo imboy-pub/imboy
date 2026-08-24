@@ -25,381 +25,520 @@ invoke_group_member_keys(Req0, State0) ->
 %% ===================================================================
 
 init_with_user_keys_action_test_() ->
-    ?WITH_MECKS([
-        {imboy_policy, [
-            {'e2ee_enabled', 0, fun() -> true end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">>; (_, _Req, Default) -> Default end}
-        ]},
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {e2ee_logic, [
-            {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {ok, #{<<"uid">> => <<"456">>, <<"devices">> => []}}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end},
-            {'error', 3, fun(_Req, _Msg, _Code) -> cowboy_req_ok end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun
+                    (<<"uid">>, _Req, _Default) -> <<"456">>;
+                    (_, _Req, Default) -> Default
+                end}
+            ]},
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {e2ee_logic, [
+                {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
+                    {ok, #{<<"uid">> => <<"456">>, <<"devices">> => []}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end},
+                {'error', 3, fun(_Req, _Msg, _Code) -> cowboy_req_ok end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_ok, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_ok, Result)
+        end
+    ).
 
 init_with_group_member_keys_action_test_() ->
-    ?WITH_MECKS([
-        {imboy_policy, [
-            {'e2ee_enabled', 0, fun() -> true end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">>; (_, _Req, Default) -> Default end}
-        ]},
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {e2ee_logic, [
-            {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
-                {ok, #{<<"gid">> => <<"1">>, <<"members">> => []}}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end},
-            {'error', 3, fun(_Req, _Msg, _Code) -> cowboy_req_ok end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun
+                    (<<"gid">>, _Req, _Default) -> <<"1">>;
+                    (_, _Req, Default) -> Default
+                end}
+            ]},
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {e2ee_logic, [
+                {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
+                    {ok, #{<<"gid">> => <<"1">>, <<"members">> => []}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end},
+                {'error', 3, fun(_Req, _Msg, _Code) -> cowboy_req_ok end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_group_member_keys(Req0, State),
-        ?assertEqual(cowboy_req_ok, Result)
-    end).
+            Result = invoke_group_member_keys(Req0, State),
+            ?assertEqual(cowboy_req_ok, Result)
+        end
+    ).
 
 init_with_unknown_action_returns_404_test_() ->
-    ?WITH_MECK(elib_response, [
-        {'error', 3, fun(_Req, _Msg, 404) -> cowboy_req_404 end}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State0 = #{action => unknown_action},
+    ?WITH_MECK(
+        elib_response,
+        [
+            {'error', 3, fun(_Req, _Msg, 404) -> cowboy_req_404 end}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State0 = #{action => unknown_action},
 
-        {ok, Req1, _State} = e2ee_handler:init(Req0, State0),
-        ?assertEqual(cowboy_req_404, Req1)
-    end).
+            {ok, Req1, _State} = e2ee_handler:init(Req0, State0),
+            ?assertEqual(cowboy_req_404, Req1)
+        end
+    ).
 
 %% ===================================================================
 %% user_keys/2 测试
 %% ===================================================================
 
 user_keys_with_valid_uid_returns_success_test_() ->
-    ?WITH_MECKS([
-        {imboy_policy, [
-            {'e2ee_enabled', 0, fun() -> true end}
-        ]},
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">> end}
-        ]},
-        {e2ee_logic, [
-            {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {ok, #{<<"uid">> => <<"456">>, <<"devices">> => []}}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">> end}
+            ]},
+            {e2ee_logic, [
+                {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
+                    {ok, #{<<"uid">> => <<"456">>, <<"devices">> => []}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_ok, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_ok, Result)
+        end
+    ).
 
 user_keys_with_invalid_uid_returns_400_test_() ->
-    ?WITH_MECKS([
-        {imboy_policy, [
-            {'e2ee_enabled', 0, fun() -> true end}
-        ]},
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"invalid_uid">> end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"invalid_uid">> end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_400, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_400, Result)
+        end
+    ).
 
 user_keys_with_forbidden_returns_403_test_() ->
-    ?WITH_MECKS([
-        {imboy_policy, [
-            {'e2ee_enabled', 0, fun() -> true end}
-        ]},
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"789">> end}
-        ]},
-        {e2ee_logic, [
-            {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {error, <<"forbidden">>, 403}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 403) -> cowboy_req_403 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"789">> end}
+            ]},
+            {e2ee_logic, [
+                {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
+                    {error, <<"forbidden">>, 403}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 403) -> cowboy_req_403 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_403, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_403, Result)
+        end
+    ).
 
 user_keys_with_internal_error_returns_500_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">> end}
-        ]},
-        {e2ee_logic, [
-            {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {error, <<"internal_error">>, 500}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 500) -> cowboy_req_500 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"456">> end}
+            ]},
+            {e2ee_logic, [
+                {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
+                    {error, <<"internal_error">>, 500}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 500) -> cowboy_req_500 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_500, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_500, Result)
+        end
+    ).
 
 %% ===================================================================
 %% group_member_keys/2 测试
 %% ===================================================================
 
 group_member_keys_with_valid_gid_returns_success_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
-        ]},
-        {e2ee_logic, [
-            {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
-                {ok, #{
-                    <<"gid">> => <<"1">>,
-                    <<"members">> => [
-                        #{<<"uid">> => <<"123">>, <<"devices">> => []}
-                    ]
-                }}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
+            ]},
+            {e2ee_logic, [
+                {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
+                    {ok, #{
+                        <<"gid">> => <<"1">>,
+                        <<"members">> => [
+                            #{<<"uid">> => <<"123">>, <<"devices">> => []}
+                        ]
+                    }}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_group_member_keys(Req0, State),
-        ?assertEqual(cowboy_req_ok, Result)
-    end).
+            Result = invoke_group_member_keys(Req0, State),
+            ?assertEqual(cowboy_req_ok, Result)
+        end
+    ).
 
 group_member_keys_with_invalid_gid_returns_400_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"invalid_gid">> end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"invalid_gid">> end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_group_member_keys(Req0, State),
-        ?assertEqual(cowboy_req_400, Result)
-    end).
+            Result = invoke_group_member_keys(Req0, State),
+            ?assertEqual(cowboy_req_400, Result)
+        end
+    ).
 
 group_member_keys_with_non_member_returns_403_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"999">> end}
-        ]},
-        {e2ee_logic, [
-            {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
-                {error, <<"forbidden">>, 403}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 403) -> cowboy_req_403 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"999">> end}
+            ]},
+            {e2ee_logic, [
+                {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
+                    {error, <<"forbidden">>, 403}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 403) -> cowboy_req_403 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_group_member_keys(Req0, State),
-        ?assertEqual(cowboy_req_403, Result)
-    end).
+            Result = invoke_group_member_keys(Req0, State),
+            ?assertEqual(cowboy_req_403, Result)
+        end
+    ).
 
 group_member_keys_with_database_error_returns_500_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
-        ]},
-        {e2ee_logic, [
-            {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
-                {error, <<"internal_error">>, 500}
-            end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 500) -> cowboy_req_500 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
+            ]},
+            {e2ee_logic, [
+                {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
+                    {error, <<"internal_error">>, 500}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 500) -> cowboy_req_500 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_group_member_keys(Req0, State),
-        ?assertEqual(cowboy_req_500, Result)
-    end).
+            Result = invoke_group_member_keys(Req0, State),
+            ?assertEqual(cowboy_req_500, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 边界条件测试
 %% ===================================================================
 
 user_keys_with_same_user_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"123">> end}
-        ]},
-        {e2ee_logic, [
-            {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
-                {ok, #{<<"uid">> => <<"123">>, <<"devices">> => []}}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"123">> end}
+            ]},
+            {e2ee_logic, [
+                {'user_keys', 2, fun(_CurrentUid, _TargetUid) ->
+                    {ok, #{<<"uid">> => <<"123">>, <<"devices">> => []}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_ok, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_ok, Result)
+        end
+    ).
 
 group_member_keys_with_empty_group_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
-        ]},
-        {e2ee_logic, [
-            {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
-                {ok, #{<<"gid">> => <<"1">>, <<"members">> => []}}
-            end}
-        ]},
-        {elib_response, [
-            {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
+            ]},
+            {e2ee_logic, [
+                {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
+                    {ok, #{<<"gid">> => <<"1">>, <<"members">> => []}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, _Payload) -> cowboy_req_ok end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_group_member_keys(Req0, State),
-        ?assertEqual(cowboy_req_ok, Result)
-    end).
+            Result = invoke_group_member_keys(Req0, State),
+            ?assertEqual(cowboy_req_ok, Result)
+        end
+    ).
 
 user_keys_with_zero_uid_returns_400_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"0">> end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"0">> end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_400, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_400, Result)
+        end
+    ).
 
 user_keys_with_negative_uid_returns_400_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"invalid">> end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"uid">>, _Req, _Default) -> <<"invalid">> end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_user_keys(Req0, State),
-        ?assertEqual(cowboy_req_400, Result)
-    end).
+            Result = invoke_user_keys(Req0, State),
+            ?assertEqual(cowboy_req_400, Result)
+        end
+    ).
 
 group_member_keys_with_zero_gid_returns_400_test_() ->
-    ?WITH_MECKS([
-        {auth_ds, [
-            {'current_uid', 1, fun(_State) -> 123 end}
-        ]},
-        {elib_param, [
-            {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"0">> end}
-        ]},
-        {elib_response, [
-            {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
-        ]}
-    ], fun() ->
-        Req0 = cowboy_req_ok,
-        State = #{},
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"0">> end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
 
-        Result = invoke_group_member_keys(Req0, State),
-        ?assertEqual(cowboy_req_400, Result)
-    end).
+            Result = invoke_group_member_keys(Req0, State),
+            ?assertEqual(cowboy_req_400, Result)
+        end
+    ).
+
+%% ===================================================================
+%% compliance_key 测试（审计 P1-1：响应须透传 algorithm/created_at，
+%% 供客户端 TOFU 锚定核验）
+%% ===================================================================
+
+invoke_compliance_key(Req0, State0) ->
+    invoke_action(compliance_key, Req0, State0).
+
+compliance_key_returns_meta_fields_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {e2ee_logic, [
+                {'get_active_compliance_key', 0, fun() ->
+                    {ok, #{
+                        <<"key_id">> => <<"ck_1">>,
+                        <<"public_key">> => <<"-----BEGIN PUBLIC KEY-----">>,
+                        <<"algorithm">> => <<"RSA-OAEP-256">>,
+                        <<"created_at">> => <<"2026-08-24T00:00:00Z">>
+                    }}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Payload) -> Payload end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
+            Payload = invoke_compliance_key(Req0, State),
+            ?assertEqual(<<"ck_1">>, maps:get(<<"key_id">>, Payload)),
+            ?assertEqual(<<"RSA-OAEP-256">>, maps:get(<<"algorithm">>, Payload)),
+            ?assertEqual(<<"2026-08-24T00:00:00Z">>, maps:get(<<"created_at">>, Payload))
+        end
+    ).
+
+compliance_key_missing_meta_defaults_test_() ->
+    %% repo 行缺 algorithm/created_at 时（历史行），响应仍须补默认值而非崩溃
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {e2ee_logic, [
+                {'get_active_compliance_key', 0, fun() ->
+                    {ok, #{<<"key_id">> => <<"ck_old">>, <<"public_key">> => <<"pk">>}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Payload) -> Payload end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
+            Payload = invoke_compliance_key(Req0, State),
+            ?assertEqual(<<"ck_old">>, maps:get(<<"key_id">>, Payload)),
+            ?assertEqual(<<"RSA-OAEP-256">>, maps:get(<<"algorithm">>, Payload)),
+            ?assertEqual(null, maps:get(<<"created_at">>, Payload))
+        end
+    ).
+
+compliance_key_not_found_test_() ->
+    ?WITH_MECKS(
+        [
+            {imboy_policy, [
+                {'e2ee_enabled', 0, fun() -> true end}
+            ]},
+            {e2ee_logic, [
+                {'get_active_compliance_key', 0, fun() -> {error, not_found} end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 404) -> cowboy_req_404 end}
+            ]}
+        ],
+        fun() ->
+            Req0 = cowboy_req_ok,
+            State = #{},
+            ?assertEqual(cowboy_req_404, invoke_compliance_key(Req0, State))
+        end
+    ).
