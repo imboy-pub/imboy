@@ -735,8 +735,15 @@ ensure_rsa_keys() ->
 %% 无需感知配置形态。
 -spec ensure_alipay_keys() -> ok.
 ensure_alipay_keys() ->
-    ok = resolve_secret_file(alipay_private_key),
-    ok = resolve_secret_file(alipay_public_key).
+    case payment_gateway:enabled() of
+        false ->
+            %% 社区版关闭外部支付网关时，默认模板中的支付证书路径不应成为
+            %% 启动依赖；相关端点已在 handler 层拒绝。
+            ok;
+        true ->
+            ok = resolve_secret_file(alipay_private_key),
+            ok = resolve_secret_file(alipay_public_key)
+    end.
 
 -spec resolve_secret_file(atom()) -> ok.
 resolve_secret_file(Key) ->
