@@ -19,8 +19,10 @@ echo "shared_preload_libraries = 'pgcrypto, pg_jieba, timescaledb, vector, pg_st
 # 移除完整版本号的后缀部分，只保留主版本号（例如 3.6.1）
 POSTGIS_VERSION="${POSTGIS_VERSION%%+*}"
 
-# Load PostGIS into both template_database and $POSTGRES_DB
-for DB in template_postgis "$POSTGRES_DB" "${@}"; do
+# 本镜像基于官方 postgres（而不是 postgis/postgis），没有由上游预创建的
+# template_postgis。向不存在的模板库执行 psql 会让首次初始化直接退出并触发
+# 容器重启；只在实际创建的业务库（以及调用方显式传入的库）安装扩展。
+for DB in "$POSTGRES_DB" "${@}"; do
     echo "Updating PostGIS extensions '$DB' to $POSTGIS_VERSION"
     psql --dbname="$DB" -c "
         -- Upgrade PostGIS (includes raster)
