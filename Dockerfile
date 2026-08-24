@@ -60,12 +60,10 @@ RUN cp config/sys.config.example config/sys.config
 #   RELX_REL_VSN=$(cat VERSION)：版本单一真源=VERSION 文件，覆盖 relx.config 的
 #     硬编码版本——两者曾漂移（alpha.45 vs rc.1）导致 relx 按 release 声明的
 #     vsn 找 ebin/imboy.app 找不到（app_not_found, imboy, undefined）
-#   RELX_DEV_MODE=false：不产生指向源码树的符号链接（拷到 runtime 阶段不断链）
-#   RELX_INCLUDE_ERTS=true：bundle ERTS，runtime 无需装 Erlang
+#   relx.config 中的 dev_mode=false / include_erts=true：不产生指向源码树的
+#     符号链接，并 bundle ERTS，runtime 无需装 Erlang。
 # make rel 会自动拉依赖 + 编译 + relx 组装；输出 _rel/imboy
-RUN make rel RELX_REL_VSN="$(cat VERSION)" \
-    RELX_DEV_MODE=false \
-    RELX_INCLUDE_ERTS=true
+RUN make rel RELX_REL_VSN="$(cat VERSION)"
 
 # 暂存 ERTS 运行所需系统库到固定目录。不能手工维护有限的库清单：OTP 29
 # 的 beam/erlexec 还依赖 libstdc++、libgcc_s 等，缺任一个都会令启动脚本以
