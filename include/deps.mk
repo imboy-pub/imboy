@@ -3,10 +3,12 @@
 # 特此声明：下列依赖，被人未改动过原作者源码
 # Hereby declare: the following dependencies have not been modified by the original author source code
 
+# Release builders run outside the China mirror network.  Use the upstream
+# public repository here so a clean Docker build never follows Gitee's login
+# redirect; the tag below is verified to match the mirror.
 # https://github.com/hexpm/hex_core.git
-# https://gitee.com/imboy-tripartite-deps/hex_core.git
 # dep_hex_core = hex 0.11.0
-dep_hex_core = git https://gitee.com/imboy-tripartite-deps/hex_core.git v0.11.0
+dep_hex_core = git https://github.com/hexpm/hex_core.git v0.11.0
 
 # https://erlang.mk/guide/deps.html
 # https://github.com/ninenines/ranch/tags
