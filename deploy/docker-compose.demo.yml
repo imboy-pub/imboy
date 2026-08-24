@@ -19,7 +19,7 @@ services:
 
   # ========== PostgreSQL 18 + 扩展 ==========
   imboy_pg18:
-    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.53}}
+    image: ${PG_IMAGE:-ghcr.io/imboy-pub/imboy-pg18:${IMBOY_VERSION:-1.0.0-alpha.54}}
     container_name: imboy_demo_pg18
     restart: unless-stopped
     environment:
@@ -40,7 +40,7 @@ services:
 
   # ========== imboy 后端（Erlang/OTP + Cowboy）==========
   imboy_backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.53}}
+    image: ${BACKEND_IMAGE:-ghcr.io/imboy-pub/imboy-backend:${IMBOY_VERSION:-1.0.0-alpha.54}}
     container_name: imboy_demo_backend
     restart: unless-stopped
     depends_on:
