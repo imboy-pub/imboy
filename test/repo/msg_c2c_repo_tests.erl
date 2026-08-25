@@ -522,7 +522,8 @@ find_msgs_by_reply_to_msg_id_test_() ->
             Result = msg_c2c_repo:find_by_reply_to_msg_id(OriginalMsgId),
             ?assertEqual({ok, []}, Result)
         end
-    );
+    ).
+
 %% ===================================================================
 %% ON CONFLICT DO NOTHING 返回值处理回归测试
 %%
