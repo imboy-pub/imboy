@@ -42,6 +42,8 @@ setup() ->
     %% Fallback 池：{TargetUid, DeviceId} → KeyId | undefined
     FbTab = ets:new(fallback_pool, [set, public]),
     meck:new(olm_identity_ds, [passthrough, no_link]),
+    meck:new(friend_ds, [passthrough, no_link]),
+    meck:expect(friend_ds, is_friend, fun(_, _) -> true end),
     %% claim_one_time_key(TargetUid, DeviceId, CurrentUid)
     meck:expect(olm_identity_ds, claim_one_time_key, fun(Uid, Did, _Claimer) ->
         case ets:lookup(Tab, {Uid, Did}) of
@@ -86,6 +88,7 @@ setup() ->
 
 cleanup({Tab, FbTab}) ->
     meck:unload(olm_identity_ds),
+    meck:unload(friend_ds),
     ets:delete(Tab),
     ets:delete(FbTab).
 

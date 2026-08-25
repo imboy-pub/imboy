@@ -56,6 +56,8 @@ setup(OtkResult, FbResult) ->
     persistent_term:erase(?MK),
     meck:new(olm_identity_ds, [passthrough, no_link]),
     meck:new(elib_metric, [passthrough, no_link]),
+    meck:new(friend_ds, [passthrough, no_link]),
+    meck:expect(friend_ds, is_friend, fun(_, _) -> true end),
     meck:expect(olm_identity_ds, find_identity, fun(_U, _D) ->
         {ok, #{<<"identity_key">> => <<"ik">>}}
     end),
@@ -79,6 +81,7 @@ setup(OtkResult, FbResult) ->
 cleanup(_) ->
     _ = (catch meck:unload(elib_metric)),
     _ = (catch meck:unload(olm_identity_ds)),
+    _ = (catch meck:unload(friend_ds)),
     persistent_term:erase(?MK),
     ok.
 

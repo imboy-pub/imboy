@@ -2,7 +2,8 @@
 %%%
 %%% olm_identity_logic — Olm (X3DH + Double Ratchet) 设备密钥业务逻辑层。
 %%%
-%%% 职责：参数校验、claim 聚合（OTK 优先，耗尽回退 fallback）、跨设备批量查询。
+%%% 职责：参数校验、claim 授权（仅好友/同群成员可领 OTK）、
+%%%       claim 聚合（OTK 优先，耗尽回退 fallback）、跨设备批量查询。
 %%% 零信任不变量：服务端只存/转公钥侧，无私钥；不做任何加解密。
 %%%
 
@@ -46,16 +47,25 @@ report_identity(UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceTy
             byte_size(Signature) > 0
     of
         true ->
-            case
-                olm_identity_ds:upsert_identity(
-                    UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
-                )
-            of
-                {ok, _} ->
-                    ok;
-                {error, Reason} ->
-                    _ = ?ERROR_LOG({olm_report_identity_error, UserId, DeviceId, Reason}),
-                    {error, <<"internal_error">>}
+            %% E2EE-013 PoP：用 Ed25519 公钥验签（客户端用 Ed25519 私钥对
+            %% curve25519 公钥的 base64 字符串签名），确保上传者确实持有
+            %% 对应的 Ed25519 私钥，防止仅盗 token 的攻击者替换身份键。
+            case verify_ed25519(Ed25519Key, Curve25519Key, Signature) of
+                true ->
+                    case
+                        olm_identity_ds:upsert_identity(
+                            UserId, DeviceId, Ed25519Key, Curve25519Key, Signature, DeviceType
+                        )
+                    of
+                        {ok, _} ->
+                            ok;
+                        {error, Reason} ->
+                            _ = ?ERROR_LOG({olm_report_identity_error, UserId, DeviceId, Reason}),
+                            {error, <<"internal_error">>}
+                    end;
+                false ->
+                    _ = elib_metric:increment(olm_identity_pop_rejected_total),
+                    {error, <<"invalid_signature">>}
             end;
         false ->
             {error, <<"invalid_identity_keys">>}
@@ -281,15 +291,20 @@ list_devices(_) ->
 claim_keys(CurrentUid, TargetUid, DeviceId) when
     is_integer(CurrentUid), is_integer(TargetUid), is_binary(DeviceId)
 ->
-    %% 先查身份键（claim 必须附带身份键供客户端 createOutboundSession）
-    case olm_identity_ds:find_identity(TargetUid, DeviceId) of
-        {ok, not_found} ->
-            {error, <<"device_not_registered">>};
-        {ok, Identity} ->
-            claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity);
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_claim_identity_error, TargetUid, DeviceId, Reason}),
-            {error, <<"internal_error">>}
+    case ensure_claim_authorized(CurrentUid, TargetUid) of
+        ok ->
+            %% 先查身份键（claim 必须附带身份键供客户端 createOutboundSession）
+            case olm_identity_ds:find_identity(TargetUid, DeviceId) of
+                {ok, not_found} ->
+                    {error, <<"device_not_registered">>};
+                {ok, Identity} ->
+                    claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity);
+                {error, Reason} ->
+                    _ = ?ERROR_LOG({olm_claim_identity_error, TargetUid, DeviceId, Reason}),
+                    {error, <<"internal_error">>}
+            end;
+        {error, _} = Err ->
+            Err
     end;
 claim_keys(_, _, _) ->
     {error, <<"bad_request">>}.
@@ -301,14 +316,19 @@ claim_keys(_, _, _) ->
 claim_keys(CurrentUid, TargetUid, DeviceId, RequestId) when
     is_integer(CurrentUid), is_integer(TargetUid), is_binary(DeviceId), is_binary(RequestId)
 ->
-    case olm_identity_ds:find_identity(TargetUid, DeviceId) of
-        {ok, not_found} ->
-            {error, <<"device_not_registered">>};
-        {ok, Identity} ->
-            claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId);
-        {error, Reason} ->
-            _ = ?ERROR_LOG({olm_claim_identity_error, TargetUid, DeviceId, Reason}),
-            {error, <<"internal_error">>}
+    case ensure_claim_authorized(CurrentUid, TargetUid) of
+        ok ->
+            case olm_identity_ds:find_identity(TargetUid, DeviceId) of
+                {ok, not_found} ->
+                    {error, <<"device_not_registered">>};
+                {ok, Identity} ->
+                    claim_with_identity(CurrentUid, TargetUid, DeviceId, Identity, RequestId);
+                {error, Reason} ->
+                    _ = ?ERROR_LOG({olm_claim_identity_error, TargetUid, DeviceId, Reason}),
+                    {error, <<"internal_error">>}
+            end;
+        {error, _} = Err ->
+            Err
     end;
 claim_keys(_, _, _, _) ->
     {error, <<"bad_request">>}.
@@ -509,3 +529,53 @@ cleanup_consumed_one_time_keys(RetentionDays) when
     end;
 cleanup_consumed_one_time_keys(_) ->
     {error, <<"invalid_retention">>}.
+
+%% ===================================================================
+%% OTK claim 授权检查（E2EE-013：仅好友/同群可领 OTK，防耗尽攻击）
+%% ===================================================================
+
+%% @doc 检查当前用户是否有权领取目标用户的 OTK。
+%% 允许的情况：
+%%  - 自身（多设备同步，self-claim）
+%%  - 好友关系
+%%  - 同群成员（共享群组）
+%% 否则拒接，防任意用户抽干他人 OTK 池。
+-spec ensure_claim_authorized(integer(), integer()) -> ok | {error, binary()}.
+ensure_claim_authorized(CurrentUid, TargetUid) when
+    is_integer(CurrentUid), is_integer(TargetUid)
+->
+    case CurrentUid =:= TargetUid of
+        true ->
+            ok;
+        false ->
+            case friend_ds:is_friend(CurrentUid, TargetUid) of
+                true ->
+                    ok;
+                false ->
+                    case share_common_group(CurrentUid, TargetUid) of
+                        true ->
+                            ok;
+                        false ->
+                            _ = elib_metric:increment(olm_claim_unauthorized_total),
+                            {error, <<"claim_not_authorized">>}
+                    end
+            end
+    end;
+ensure_claim_authorized(_, _) ->
+    {error, <<"bad_request">>}.
+
+%% @private 检查两个用户是否同属至少一个群组。
+-spec share_common_group(integer(), integer()) -> boolean().
+share_common_group(Uid1, Uid2) ->
+    try
+        {ok, _, _, Rows} = elib_pg:query(
+            "SELECT 1 FROM group_member a "
+            "JOIN group_member b ON a.group_id = b.group_id "
+            "WHERE a.uid = $1 AND b.uid = $2 AND a.status = 'active' AND b.status = 'active' "
+            "LIMIT 1",
+            [Uid1, Uid2]
+        ),
+        Rows =/= []
+    catch
+        _:_ -> false
+    end.

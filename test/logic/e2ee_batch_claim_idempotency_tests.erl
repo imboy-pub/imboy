@@ -63,6 +63,8 @@ setup() ->
     Pool = ets:new(otk_pool, [set, public]),
     Lease = ets:new(otk_lease, [set, public]),
     meck:new(olm_identity_ds, [passthrough, no_link]),
+    meck:new(friend_ds, [passthrough, no_link]),
+    meck:expect(friend_ds, is_friend, fun(_, _) -> true end),
 
     meck:expect(olm_identity_ds, claim_one_time_key, fun(Uid, Did, Claimer, ReqId) ->
         LeaseKey = {Claimer, Uid, Did, ReqId},

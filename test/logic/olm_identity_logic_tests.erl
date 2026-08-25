@@ -34,12 +34,19 @@ report_identity_rejects_bad_args_test() ->
     ).
 
 report_identity_ok_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    %% 使用有效 base64（P1-2 添加了 verify_ed25519 需 decode_base64 成功）
+    ?WITH_MECKS([olm_identity_ds, crypto], fun() ->
         meck:expect(olm_identity_ds, upsert_identity, 6, fun(_, _, _, _, _, _) -> {ok, 1} end),
+        meck:expect(crypto, verify, 5, fun(eddsa, none, _, _, _) -> true end),
         ?assertEqual(
             ok,
             olm_identity_logic:report_identity(
-                100, <<"dev-A">>, <<"e">>, <<"c">>, <<"s">>, <<"ios">>
+                100,
+                <<"dev-A">>,
+                <<"ZQ==">>,
+                <<"Yw==">>,
+                <<"cw==">>,
+                <<"ios">>
             )
         )
     end).
@@ -79,7 +86,8 @@ report_one_time_keys_ok_test() ->
 %% ===================================================================
 
 claim_keys_prefers_one_time_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         Identity = #{<<"device_id">> => <<"dev-B">>, <<"ed25519_key">> => <<"e">>},
         meck:expect(olm_identity_ds, find_identity, 2, fun(_Uid, _Did) -> {ok, Identity} end),
         meck:expect(
@@ -98,7 +106,8 @@ claim_keys_prefers_one_time_test() ->
 
 %% claim_keys 优先级：OTK 耗尽 → fallback 兜底
 claim_keys_falls_back_when_otk_exhausted_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         Identity = #{<<"device_id">> => <<"dev-B">>, <<"ed25519_key">> => <<"e">>},
         meck:expect(olm_identity_ds, find_identity, 2, fun(_Uid, _Did) -> {ok, Identity} end),
         meck:expect(
@@ -120,7 +129,8 @@ claim_keys_falls_back_when_otk_exhausted_test() ->
 
 %% claim_keys：OTK + fallback 都耗尽 → no_prekey_available
 claim_keys_returns_no_prekey_available_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         Identity = #{<<"device_id">> => <<"dev-B">>},
         meck:expect(olm_identity_ds, find_identity, 2, fun(_Uid, _Did) -> {ok, Identity} end),
         meck:expect(
@@ -140,7 +150,8 @@ claim_keys_returns_no_prekey_available_test() ->
 
 %% claim_keys：对端未注册身份键 → device_not_registered
 claim_keys_unknown_device_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         meck:expect(olm_identity_ds, find_identity, 2, fun(_Uid, _Did) -> {ok, not_found} end),
         ?assertEqual(
             {error, <<"device_not_registered">>},
@@ -204,7 +215,8 @@ list_devices_maps_ds_error_test() ->
 
 %% 多设备各自 claim 成功，聚合到 claimed，failed 为空
 batch_claim_all_ok_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         Identity = #{<<"device_id">> => <<"d">>},
         meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {ok, Identity} end),
         meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, Did, _) ->
@@ -219,7 +231,8 @@ batch_claim_all_ok_test() ->
 
 %% 部分设备未注册 → 该设备落 failed，不中断其他设备
 batch_claim_partial_failure_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         meck:expect(olm_identity_ds, find_identity, 2, fun
             (_, <<"good">>) -> {ok, #{<<"device_id">> => <<"good">>}};
             (_, <<"bad">>) -> {ok, not_found}
@@ -235,7 +248,8 @@ batch_claim_partial_failure_test() ->
 
 %% 去重：重复 device_id 只 claim 一次
 batch_claim_dedups_device_ids_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) ->
             {ok, #{<<"device_id">> => <<"a">>}}
         end),
@@ -292,7 +306,8 @@ contract_list_devices_shape_test() ->
 %% 契约冻结：batch_claim 响应恰含 {claimed, failed}；claimed 项恰含
 %% {type, key_id, key_base64, identity}（X3DH 客户端 createOutboundSession 依赖）
 contract_batch_claim_shape_test() ->
-    ?WITH_MECKS([olm_identity_ds], fun() ->
+    ?WITH_MECKS([olm_identity_ds, friend_ds], fun() ->
+        meck:expect(friend_ds, is_friend, 2, fun(_, _) -> true end),
         Identity = #{<<"device_id">> => <<"a">>, <<"ed25519_key">> => <<"e">>},
         meck:expect(olm_identity_ds, find_identity, 2, fun(_, _) -> {ok, Identity} end),
         meck:expect(olm_identity_ds, claim_one_time_key, 3, fun(_, _, _) ->

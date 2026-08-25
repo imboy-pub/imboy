@@ -42,6 +42,8 @@ setup() ->
     ok = ensure_metric_server(),
     %% 只 mock DS 层制造"耗尽"，**不碰 elib_metric**
     meck:new(olm_identity_ds, [passthrough, no_link]),
+    meck:new(friend_ds, [passthrough, no_link]),
+    meck:expect(friend_ds, is_friend, fun(_, _) -> true end),
     meck:expect(olm_identity_ds, find_identity, fun(_U, _D) ->
         {ok, #{<<"identity_key">> => <<"ik">>}}
     end),
@@ -54,6 +56,7 @@ setup() ->
 
 cleanup(_) ->
     _ = (catch meck:unload(olm_identity_ds)),
+    _ = (catch meck:unload(friend_ds)),
     ok.
 
 exposition_text() ->

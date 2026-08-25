@@ -54,6 +54,8 @@ setup() ->
     Lease = ets:new(otk_lease, [set, public]),
     Fb = ets:new(fallback_pool, [set, public]),
     meck:new(olm_identity_ds, [passthrough, no_link]),
+    meck:new(friend_ds, [passthrough, no_link]),
+    meck:expect(friend_ds, is_friend, fun(_, _) -> true end),
 
     %% claim_one_time_key/4：带 request_id 的幂等租约语义。
     %% mock 忠实复刻**服务端应有的行为**：
