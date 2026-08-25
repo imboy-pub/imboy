@@ -194,7 +194,7 @@ websocket_info_timeout_without_ack_resend_test_() ->
         fun() ->
             State = #{current_uid => 1},
             Info = {timeout, ref1, {[100, 200], {1, <<"did_1">>, <<"msg_1">>}, <<"raw_msg">>}},
-            {reply, {text, <<"raw_msg">>}, State2, hibernate} = websocket_handler:websocket_info(
+            {ok, State2, hibernate} = websocket_handler:websocket_info(
                 Info, State
             ),
             ?assertEqual(State, State2)
@@ -269,7 +269,7 @@ websocket_info_timeout_with_invalid_ack_flag_resend_test_() ->
         fun() ->
             State = #{current_uid => 1},
             Info = {timeout, ref3, {[100, 200], {1, <<"did_1">>, <<"msg_3">>}, <<"raw_msg_3">>}},
-            {reply, {text, <<"raw_msg_3">>}, State2, hibernate} = websocket_handler:websocket_info(
+            {ok, State2, hibernate} = websocket_handler:websocket_info(
                 Info, State
             ),
             ?assertEqual(State, State2),
@@ -521,10 +521,9 @@ timeout_delivery_protobuf_test_() ->
             JsonMsg = jsone:encode(Msg, [native_utf8]),
             State = #{current_uid => 1, protocol => protobuf},
             Info = {timeout, ref1, {[100], {1, <<"did_1">>, <<"m3">>}, JsonMsg}},
-            {reply, {binary, PbBin}, _, hibernate} = websocket_handler:websocket_info(Info, State),
-            ?assert(byte_size(PbBin) > 0),
-            Decoded = imboy_codec:decode(protobuf, PbBin),
-            ?assertEqual(<<"m3">>, maps:get(<<"id">>, Decoded))
+            {ok, _, hibernate} = websocket_handler:websocket_info(Info, State),
+            ?assertEqual(1, meck:num_calls(ack_retry_cache, get, 1)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 6))
         end
     ).
 
@@ -551,8 +550,7 @@ timeout_final_retry_protobuf_test_() ->
             JsonMsg = jsone:encode(Msg, [native_utf8]),
             State = #{protocol => protobuf},
             Info = {timeout, ref2, {[], {1, <<"did_1">>, <<"m4">>}, JsonMsg}},
-            {reply, {binary, PbBin}, _, hibernate} = websocket_handler:websocket_info(Info, State),
-            ?assert(byte_size(PbBin) > 0),
+            {ok, _, hibernate} = websocket_handler:websocket_info(Info, State),
             ?assertEqual(1, meck:num_calls(ack_retry_cache, get, 1)),
             ?assertEqual(1, meck:num_calls(message_ds, send_next, 6))
         end
