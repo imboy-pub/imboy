@@ -1087,7 +1087,7 @@ subscribed_propagates_logic_error_test_() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
             Result = channel_handler:handle_action(subscribed, Req, State),
-            ?assertEqual({error_resp, <<"db_down">>}, Result)
+            ?assertEqual({error_resp, <<"查询失败"/utf8>>}, Result)
         end
     ).
 
@@ -1343,7 +1343,7 @@ search_propagates_logic_error_test_() ->
         fun() ->
             Req = req_mock(),
             Result = channel_handler:handle_action(search, Req, #{}),
-            ?assertEqual({error_resp, <<"timeout">>}, Result)
+            ?assertEqual({error_resp, <<"查询失败"/utf8>>}, Result)
         end
     ).
 
@@ -2019,7 +2019,7 @@ my_invitations_propagates_logic_error_test_() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
             Result = channel_handler_admin:handle_action(my_invitations, Req, State),
-            ?assertEqual({error_resp, <<"db_down">>}, Result)
+            ?assertEqual({error_resp, <<"查询失败"/utf8>>}, Result)
         end
     ).
 
@@ -2113,7 +2113,7 @@ unread_summary_normalizes_non_binary_error_test_() ->
             Req = req_mock(),
             State = #{current_uid => 1001},
             Result = channel_handler:handle_action(unread_summary, Req, State),
-            ?assertEqual({error_resp, <<"db_down">>}, Result)
+            ?assertEqual({error_resp, <<"查询失败"/utf8>>}, Result)
         end
     ).
 

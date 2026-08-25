@@ -36,6 +36,10 @@ setup() ->
         {ok, _Driver, _Conn} -> ok;
         {error, _Reason} -> throw({skip, "Database not available"})
     end,
+    % 性能测试会连发大量消息，提高限流阈值避免触发 auto-mute（60 条/分钟默认值）。
+    % 否则 check_and_record 返回 {error, muted} → 消息被 rate_limited，测的是限流而非性能。
+    application:set_env(imboy, msg_rate_mute_threshold, 100000),
+    application:set_env(imboy, msg_rate_warn_threshold, 100000),
     % 创建测试用户
     {ok, User1} = create_test_user(<<"perf_user1">>),
     {ok, User2} = create_test_user(<<"perf_user2">>),
@@ -206,6 +210,17 @@ test_query_performance() ->
         lists:seq(1, 50)
     ),
 
+    % 消息发送走异步暂存（stage → msg_store_worker 批量落库），查询前必须先等
+    % staging 写入 msg_c2c，否则立即 find_msg_by_id 会 {error, not_found}。
+    % 主动 kick worker 触发一轮 drain，再轮询等待全部消息可查。
+    catch gen_statem:cast(msg_store_worker, kick),
+    lists:foreach(
+        fun(MsgId) ->
+            wait_for_msg(MsgId, 100)
+        end,
+        MsgIds
+    ),
+
     % 测试单条消息查询性能
     QueryTimes = lists:map(
         fun(MsgId) ->
@@ -346,3 +361,16 @@ create_test_group(OwnerId, Name) ->
     ok = group_repo:create(Group),
     ok = group_member_ds:add_member(Gid, OwnerId),
     {ok, Gid}.
+
+%% 轮询等待消息落库（msg_store_worker 异步批量写入，最多等 Attempts*10ms）
+wait_for_msg(_MsgId, 0) ->
+    ok;
+wait_for_msg(MsgId, Attempts) ->
+    case msg_c2c_repo:find_msg_by_id(MsgId) of
+        {ok, _} ->
+            ok;
+        {error, not_found} ->
+            timer:sleep(10),
+            catch gen_statem:cast(msg_store_worker, kick),
+            wait_for_msg(MsgId, Attempts - 1)
+    end.

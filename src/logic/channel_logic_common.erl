@@ -66,7 +66,7 @@ get_user_role(ChannelId, Uid) ->
 
 -spec ensure_channel_content_access(integer(), integer()) -> ok | {error, binary()}.
 ensure_channel_content_access(Uid, ChannelId) ->
-    case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
+    case channel_ds:find_by_id(ChannelId, <<"id,access_type,visibility,status">>) of
         {error, _} ->
             {error, <<"频道不存在"/utf8>>};
         Channel when is_map(Channel), map_size(Channel) =:= 0 ->
@@ -82,8 +82,11 @@ ensure_channel_content_access(Uid, ChannelId) ->
                         true ->
                             ok;
                         false ->
-                            ensure_channel_content_access_by_type(
-                                Uid, ChannelId, maps:get(<<"type">>, Channel, 0)
+                            ensure_channel_content_access_by_fields(
+                                Uid,
+                                ChannelId,
+                                maps:get(<<"access_type">>, Channel, 0),
+                                maps:get(<<"visibility">>, Channel, 0)
                             )
                     end
             end;
@@ -91,18 +94,11 @@ ensure_channel_content_access(Uid, ChannelId) ->
             {error, <<"频道不存在"/utf8>>}
     end.
 
--spec ensure_channel_content_access_by_type(integer(), integer(), integer()) ->
+-spec ensure_channel_content_access_by_fields(integer(), integer(), integer(), integer()) ->
     ok | {error, binary()}.
-ensure_channel_content_access_by_type(Uid, ChannelId, Type) ->
-    case Type of
-        0 ->
-            ok;
+ensure_channel_content_access_by_fields(Uid, ChannelId, AccessType, Visibility) ->
+    case AccessType of
         1 ->
-            case channel_subscription_ds:is_subscribed(ChannelId, Uid) of
-                true -> ok;
-                _ -> {error, <<"私有频道仅限订阅用户访问"/utf8>>}
-            end;
-        2 ->
             HasPurchased = channel_order_ds:has_purchased(ChannelId, Uid),
             %% 付费频道的订单购买是唯一权益来源；不能因为历史脏订阅或其他
             %% 订阅写入路径存在，就把付费内容免费放行。
@@ -111,7 +107,15 @@ ensure_channel_content_access_by_type(Uid, ChannelId, Type) ->
                 false -> {error, <<"付费频道需要先购买"/utf8>>}
             end;
         _ ->
-            {error, <<"频道类型无效"/utf8>>}
+            case Visibility of
+                1 ->
+                    case channel_subscription_ds:is_subscribed(ChannelId, Uid) of
+                        true -> ok;
+                        _ -> {error, <<"私有频道仅限订阅用户访问"/utf8>>}
+                    end;
+                _ ->
+                    ok
+            end
     end.
 
 -spec channel_revoke_window_seconds() -> non_neg_integer().

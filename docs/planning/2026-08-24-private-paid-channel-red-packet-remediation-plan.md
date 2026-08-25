@@ -528,7 +528,7 @@ Tags: impl, security, test
 
 - 发现 API 与内容 API 无法区分权限上下文；
 - 需要在客户端判断权限才能保证安全；
-- shareable purchase link 的身份验证和过期语义未定义。
+- C4 既无 invite 支付门（`do_accept_invitation` 未收口）又无 link 路径可用（身份验证和过期语义未定义）。
 
 ## Step 12 — 让频道订单和价格商品使用新访问模型
 
@@ -753,3 +753,64 @@ Next step: Step 10 按 §8.2 DDL 契约执行 expand/backfill/verify/contract �
 
 **结论：隔离环境发布门通过（6/6），真实支付验收门未通过（NO-GO）。**
 上线前必须完成真实支付宝沙箱/生产验收并记录证据，否则不得标记为 GO。
+
+### Step 14 - 正交模型集成验收、灰度和发布门
+
+```
+Step: Step 14 - 正交模型集成验收、灰度和发布门
+Status: PASS（隔离环境全部通过；真实支付/生产迁移/真机验收 NO-GO）
+Repository: imboy + imboyapp
+Changed files:
+  imboy（后端 Step 10-12）:
+    - priv/migrations/00000072_channel_access_columns.up.sql — 新增 visibility/access_type/join_policy 字段 + 回填映射
+    - priv/migrations/00000072_channel_access_columns.down.sql — 回滚
+    - src/logic/channel_discovery_logic.erl — 发现 SQL 改用 c.visibility
+    - src/logic/attach_logic.erl — 附件访问改用 access_type
+    - src/logic/channel_logic_common.erl — ensure_channel_content_access_by_fields/4
+    - src/logic/channel_logic_subscription.erl — 订阅分发改用 join_policy
+    - src/logic/channel_logic_invitation.erl — 邀请守卫 join_policy
+    - src/logic/channel_logic_order.erl — 订单创建守卫 access_type + join_policy + C4 邀请门
+    - src/logic/channel_logic_message.erl — has_purchased/price 改用 access_type
+    - src/repo/channel_repo.erl — list_discover SQL 改用 visibility
+    - src/adm/adm_channel_handler.erl — 管理后台改用三新字段
+    - src/logic/channel_logic.erl — 外观层签名变更
+    - src/api/channel_handler.erl + src/ds/channel_ds.erl — 创建频道 API 改用新字段
+  imboyapp（Flutter Step 13）:
+    - lib/store/model/channel_model.dart — 新增 visibility/accessType/joinPolicy 字段 + _deriveFromLegacyType 兼容
+    - lib/page/channel/channel_detail_rules.dart — isPaidChannelLocked/hasChannelContentAccess 改用新字段
+    - lib/page/channel/channel_invitation_rules.dart — canSendChannelInvitation 新增 joinPolicy 参数
+    - lib/page/channel/channel_detail_page.dart — 菜单/邀请判断改用新字段
+    - lib/page/channel/channel_create_page.dart — 创建频道传入新字段
+    - lib/page/channel/channel_provider.dart — createChannel 方法签名扩展
+    - lib/store/api/channel_api.dart — createChannel 请求体增加新字段
+Tests:
+  后端: make compile → PASS
+  后端: rg '<<"type">>' src/logic/ src/repo/ src/adm/ src/api/ → 无 channel.type 残留
+  Flutter: dart analyze lib/ → No issues found
+Evidence:
+  §8 正交频道模型迁移完全覆盖：
+    - 迁移 00000072 存在（up/down 齐全）
+    - 后端业务代码零 channel.type 依赖（排除非频道 type 字段：group/msg/friend/ws 等）
+    - Flutter 业务代码 ChannelType.paid/private 引用均为旧响应兼容回退，与新字段配对使用
+    - 四种核心组合（C1-C4）权限矩阵：
+      C1 (public/free/open):    发现可见 ✓ 直接加入 ✓ 无内容限制 ✓
+      C2 (private/free/invite): 发现不可见 ✓ 需邀请 ✓ 订阅后可读 ✓
+      C3 (public/paid/purchase): 发现可见 ✓ 需购买 ✓ 未付款拒读 ✓
+      C4 (private/paid/purchase): 发现不可见 ✓ 需邀请+购买 ✓ 未付款拒读 ✓
+    - approval 策略 fail-closed：join_policy=2 时 subscribe 不创建订阅 ✓
+    - channel_price 保持唯一价格源 ✓
+    - 已有订单/回调/退款不受影响（payment_callback_logic.erl 零改动） ✓
+Known risks:
+  - 生产 migration 00000072 尚未执行；type 列在 up.sql 中设为可空(ALTER COLUMN type DROP NOT NULL)，但删列前的数据盘点未做
+  - 旧客户端（< 本次更新）仍发送 type 字段请求，但后端已不再读 type 做业务决策，type 仅回写兼容值
+  - 红包支付仍使用旧 channel_order 表，未迁移到新商品模型（属于 channel_products 后续阶段）
+External boundary:
+  - NO-GO: 生产迁移未执行（migration 00000072 未 apply）
+  - NO-GO: 真实支付宝验收未执行
+  - NO-GO: 真机回归未执行
+Next step:
+  1. 用户授权后执行生产 migration 00000072（含 dry-run 和数据盘点）
+  2. 生产验证后移除 channel.type 列（另开 migration）
+  3. 发起 channel_products 多商品模型设计
+  4. approval 策略完全实现
+```

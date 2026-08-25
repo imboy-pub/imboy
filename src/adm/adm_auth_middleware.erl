@@ -8,6 +8,7 @@
 -export([condition/4]).
 -export([remove_last_forward_slash/1]).
 -export([sign_admin_cookie/1]).
+-export([signing_key/0]).
 
 %% 这个是回调函数
 %% @doc 执行认证中间件

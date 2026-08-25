@@ -8,21 +8,21 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% 压力测试参数
--define(LARGE_GROUP_SIZE, 500).          % 大群成员数
--define(MEGA_GROUP_SIZE, 1000).          % 超大群成员数
--define(MAX_GROUP_MEMBERS, 2000).        % 群成员上限
+
+% 大群成员数
+-define(LARGE_GROUP_SIZE, 500).
+% 超大群成员数
+-define(MEGA_GROUP_SIZE, 1000).
+% 群成员上限
+-define(MAX_GROUP_MEMBERS, 2000).
 
 %% 测试夹具
 group_limit_test_() ->
-    {foreach,
-     fun setup/0,
-     fun cleanup/1,
-     [
-      {"大群组成员管理压力测试", fun test_large_group_management/0},
-      {"大群消息广播压力测试", fun test_large_group_broadcast/0},
-      {"群成员上限边界测试", fun test_member_limit_boundary/0}
-     ]
-    }.
+    {foreach, fun setup/0, fun cleanup/1, [
+        {"大群组成员管理压力测试", fun test_large_group_management/0},
+        {"大群消息广播压力测试", fun test_large_group_broadcast/0},
+        {"群成员上限边界测试", fun test_member_limit_boundary/0}
+    ]}.
 
 setup() ->
     _ = eunit_runner:eunit_setup(),
@@ -32,13 +32,17 @@ setup() ->
         {error, _Reason} -> throw({skip, "Database not available"})
     end,
     % 创建群主
+    _ = (catch elib_tsid:init(#{dc_id => 0, node_id => 0, dc_bits => 3})),
     {ok, Owner} = create_test_user(<<"group_owner">>),
 
     % 创建大量成员
-    MemberIds = lists:map(fun(N) ->
-        {ok, Uid} = create_test_user(<<"member", N/integer>>),
-        Uid
-    end, lists:seq(1, ?MEGA_GROUP_SIZE)),
+    MemberIds = lists:map(
+        fun(N) ->
+            {ok, Uid} = create_test_user(<<"member", (integer_to_binary(N))/binary>>),
+            Uid
+        end,
+        lists:seq(1, ?MEGA_GROUP_SIZE)
+    ),
 
     Context = #{owner => Owner, members => MemberIds},
     persistent_term:put({?MODULE, test_context}, Context),
@@ -68,16 +72,19 @@ test_large_group_management() ->
     % 2. 批量添加成员
     StartTime = erlang:monotonic_time(millisecond),
 
-    AddResults = lists:map(fun(MemberId) ->
-        try
-            case group_member_ds:add_member(Group, MemberId) of
-                ok -> success;
-                _ -> failure
+    AddResults = lists:map(
+        fun(MemberId) ->
+            try
+                case group_member_ds:add_member(Group, MemberId) of
+                    ok -> success;
+                    _ -> failure
+                end
+            catch
+                _:_ -> error
             end
-        catch
-            _:_ -> error
-        end
-    end, lists:sublist(Members, ?LARGE_GROUP_SIZE)),
+        end,
+        lists:sublist(Members, ?LARGE_GROUP_SIZE)
+    ),
 
     EndTime = erlang:monotonic_time(millisecond),
     AddTime = EndTime - StartTime,
@@ -99,9 +106,12 @@ test_large_group_management() ->
 
     % 4. 测试成员查询性能
     QueryStartTime = erlang:monotonic_time(millisecond),
-    QueryResults = lists:map(fun(MemberId) ->
-        group_member_ds:is_member(Group, MemberId)
-    end, lists:sublist(Members, 100)),
+    QueryResults = lists:map(
+        fun(MemberId) ->
+            group_member_ds:is_member(Group, MemberId)
+        end,
+        lists:sublist(Members, 100)
+    ),
     QueryEndTime = erlang:monotonic_time(millisecond),
     QueryTime = QueryEndTime - QueryStartTime,
 
@@ -131,32 +141,38 @@ test_large_group_broadcast() ->
     % 1. 创建群组并添加成员
     {ok, Group} = create_test_group(Owner, <<"广播测试群"/utf8>>),
 
-    lists:foreach(fun(MemberId) ->
-        group_member_ds:add_member(Group, MemberId)
-    end, lists:sublist(Members, ?LARGE_GROUP_SIZE)),
+    lists:foreach(
+        fun(MemberId) ->
+            group_member_ds:add_member(Group, MemberId)
+        end,
+        lists:sublist(Members, ?LARGE_GROUP_SIZE)
+    ),
 
     io:format("群成员数: ~p~n", [?LARGE_GROUP_SIZE]),
 
     % 2. 发送多条群消息测试广播性能
     MessageCount = 10,
-    BroadcastTimes = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "群广播测试"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
+    BroadcastTimes = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "群广播测试"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
 
-        StartTime = erlang:monotonic_time(millisecond),
-        Result = msg_c2g_logic:c2g(MsgId, Owner, MsgData#{<<"to">> => integer_to_binary(Group)}),
-        EndTime = erlang:monotonic_time(millisecond),
+            StartTime = erlang:monotonic_time(millisecond),
+            Result = msg_c2g_logic:c2g(MsgId, Owner, MsgData#{<<"to">> => integer_to_binary(Group)}),
+            EndTime = erlang:monotonic_time(millisecond),
 
-        case Result of
-            ok -> {success, EndTime - StartTime};
-            _ -> {failure, EndTime - StartTime}
-        end
-    end, lists:seq(1, MessageCount)),
+            case Result of
+                ok -> {success, EndTime - StartTime};
+                _ -> {failure, EndTime - StartTime}
+            end
+        end,
+        lists:seq(1, MessageCount)
+    ),
 
     SuccessCount = length(lists:filter(fun({R, _}) -> R =:= success end, BroadcastTimes)),
     TotalTime = lists:sum(lists:map(fun({_, T}) -> T end, BroadcastTimes)),
@@ -192,18 +208,21 @@ test_member_limit_boundary() ->
     TotalMembers = ?MAX_GROUP_MEMBERS + 100,
     ActualMembers = min(TotalMembers, length(Members)),
 
-    AddResults = lists:map(fun(N) ->
-        MemberId = lists:nth(N, Members),
-        try
-            case group_member_ds:add_member(Group, MemberId) of
-                ok -> success;
-                {error, group_full} -> group_full;
-                _ -> failure
+    AddResults = lists:map(
+        fun(N) ->
+            MemberId = lists:nth(N, Members),
+            try
+                case group_member_ds:add_member(Group, MemberId) of
+                    ok -> success;
+                    {error, group_full} -> group_full;
+                    _ -> failure
+                end
+            catch
+                _:_ -> error
             end
-        catch
-            _:_ -> error
-        end
-    end, lists:seq(1, ActualMembers)),
+        end,
+        lists:seq(1, ActualMembers)
+    ),
 
     SuccessCount = length(lists:filter(fun(R) -> R =:= success end, AddResults)),
     GroupFullCount = length(lists:filter(fun(R) -> R =:= group_full end, AddResults)),

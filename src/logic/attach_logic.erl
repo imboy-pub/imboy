@@ -375,10 +375,9 @@ has_channel_attachment_access(Uid, ChannelId) ->
         Role when is_integer(Role), Role > 0 ->
             true;
         _ ->
-            case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
-                #{<<"type">> := 2} -> paid_channel_attachment_access(Uid, ChannelId);
-                #{<<"type">> := <<"2">>} -> paid_channel_attachment_access(Uid, ChannelId);
-                #{<<"type">> := _} -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
+            case channel_ds:find_by_id(ChannelId, <<"id,access_type,status">>) of
+                #{<<"access_type">> := 1} -> paid_channel_attachment_access(Uid, ChannelId);
+                #{<<"access_type">> := _} -> channel_subscription_ds:is_subscribed(ChannelId, Uid);
                 _ -> false
             end
     end.

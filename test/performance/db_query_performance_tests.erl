@@ -35,13 +35,16 @@ db_performance_test_() ->
     end.
 
 setup() ->
+    %% 独立跑该测试时 imboy app 可能未启动，elib_tsid:init/1 不会被调用，
+    %% 兜底初始化避免 generate() 产生超 int8 的垃圾 ID（见 high_concurrency_stress_tests）。
+    _ = (catch elib_tsid:init(#{dc_id => 0, node_id => 0, dc_bits => 3})),
     % 创建测试数据
     {ok, User1} = create_test_user(<<"db_perf_user1">>),
 
     % 创建大量用户
     UserIds = lists:map(
         fun(N) ->
-            {ok, Uid} = create_test_user(<<"db_perf_user", N/integer>>),
+            {ok, Uid} = create_test_user(<<"db_perf_user", (integer_to_binary(N))/binary>>),
             Uid
         end,
         lists:seq(2, 102)

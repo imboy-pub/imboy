@@ -130,10 +130,10 @@ list(<<"GET">>, Req0) ->
     %% 可选 type 过滤（付费频道 type=2 等）下沉到服务端分页，
     %% 避免前端按 type 过滤导致 total/page 与可见行数不一致
     Where =
-        case proplists:get_value(<<"type">>, Qs) of
+        case proplists:get_value(<<"access_type">>, Qs) of
             undefined -> StatusWhere;
             <<>> -> StatusWhere;
-            TypeBin -> StatusWhere#{type => ec_cnv:to_integer(TypeBin)}
+            TypeBin -> StatusWhere#{access_type => ec_cnv:to_integer(TypeBin)}
         end,
 
     case channel_ds:page(Column, Where, <<"id desc">>, Page, Size) of
@@ -730,12 +730,12 @@ validate_price_inputs(ChannelId0, PriceFen0, OriginalFen0, SubType0) ->
 -spec validate_price_channel(term()) -> ok | {error, binary()}.
 validate_price_channel(ChannelId0) ->
     ChannelId = strict_integer(ChannelId0),
-    case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
-        #{<<"type">> := Type0, <<"status">> := Status0} ->
+    case channel_ds:find_by_id(ChannelId, <<"id,access_type,status">>) of
+        #{<<"access_type">> := Type0, <<"status">> := Status0} ->
             Type = strict_integer(Type0),
             Status = strict_integer(Status0),
             case {Type, Status} of
-                {2, 1} -> ok;
+                {1, 1} -> ok;
                 {_, 1} -> {error, <<"只有付费频道可以配置价格"/utf8>>};
                 _ -> {error, <<"频道不存在或已禁用"/utf8>>}
             end;
@@ -803,11 +803,23 @@ build_update_data(PostVals) ->
         {error, _} = Err ->
             Err;
         {ok, NameBin} ->
-            TypeResult = parse_enum_field(PostVals, <<"type">>, [0, 1, 2], <<"频道类型无效"/utf8>>),
-            case TypeResult of
-                {error, _} = Err2 ->
-                    Err2;
-                {ok, TypeVal} ->
+            VisibilityResult = parse_enum_field(
+                PostVals, <<"visibility">>, [0, 1], <<"可见性无效"/utf8>>
+            ),
+            AccessTypeResult = parse_enum_field(
+                PostVals, <<"access_type">>, [0, 1], <<"访问类型无效"/utf8>>
+            ),
+            JoinPolicyResult = parse_enum_field(
+                PostVals, <<"join_policy">>, [0, 1, 2, 3], <<"加入策略无效"/utf8>>
+            ),
+            case {VisibilityResult, AccessTypeResult, JoinPolicyResult} of
+                {{error, _} = Err, _, _} ->
+                    Err;
+                {_, {error, _} = Err, _} ->
+                    Err;
+                {_, _, {error, _} = Err} ->
+                    Err;
+                {{ok, VisibilityVal}, {ok, AccessTypeVal}, {ok, JoinPolicyVal}} ->
                     StatusResult = parse_enum_field(
                         PostVals, <<"status">>, [0, 1], <<"频道状态无效"/utf8>>
                     ),
@@ -817,17 +829,19 @@ build_update_data(PostVals) ->
                         {ok, StatusVal} ->
                             Data0 = #{},
                             Data1 = maybe_put(Data0, name, NameBin),
-                            Data2 = maybe_put(Data1, type, TypeVal),
-                            Data3 = maybe_put(Data2, status, StatusVal),
-                            Data4 = maybe_put_binary_non_empty(
-                                PostVals, Data3, <<"custom_id">>, custom_id
+                            Data2 = maybe_put(Data1, visibility, VisibilityVal),
+                            Data3 = maybe_put(Data2, access_type, AccessTypeVal),
+                            Data4 = maybe_put(Data3, join_policy, JoinPolicyVal),
+                            Data5 = maybe_put(Data4, status, StatusVal),
+                            Data6 = maybe_put_binary_non_empty(
+                                PostVals, Data5, <<"custom_id">>, custom_id
                             ),
-                            Data5 = maybe_put_binary(
-                                PostVals, Data4, <<"description">>, description
+                            Data7 = maybe_put_binary(
+                                PostVals, Data6, <<"description">>, description
                             ),
-                            Data6 = maybe_put_binary(PostVals, Data5, <<"avatar">>, avatar),
-                            case map_size(Data6) > 0 of
-                                true -> {ok, Data6};
+                            Data8 = maybe_put_binary(PostVals, Data7, <<"avatar">>, avatar),
+                            case map_size(Data8) > 0 of
+                                true -> {ok, Data8};
                                 false -> {error, <<"至少提供一个可更新字段"/utf8>>}
                             end
                     end

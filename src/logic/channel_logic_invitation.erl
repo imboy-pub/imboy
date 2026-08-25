@@ -15,17 +15,17 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
+            case channel_ds:find_by_id(ChannelId, <<"id,join_policy,status">>) of
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
-                    Type = maps:get(<<"type">>, Channel, 0),
+                    JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
                     Status = maps:get(<<"status">>, Channel, 0),
                     if
                         Status =/= 1 ->
                             {error, <<"频道已禁用或删除"/utf8>>};
-                        Type =/= 1 ->
-                            {error, <<"只有私有频道支持邀请功能"/utf8>>};
+                        JoinPolicy =/= 1 ->
+                            {error, <<"只有邀请制频道支持邀请功能"/utf8>>};
                         true ->
                             do_create_invitation(ChannelId, Uid, InviteeUid)
                     end;

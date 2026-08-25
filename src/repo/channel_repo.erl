@@ -303,8 +303,8 @@ list_discover(Limit, Column) ->
     Tb = tablename(),
     Sql =
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
-            % status=1 表示正常，type=0 表示公开频道
-            " WHERE status = 1 AND type = 0 "
+            % visibility=0 表示公开频道
+            " WHERE status = 1 AND visibility = 0 "
             "ORDER BY subscriber_count DESC, created_at DESC LIMIT $1">>,
     elib_pg:query(Sql, [Limit]).
 

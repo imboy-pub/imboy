@@ -51,7 +51,9 @@ create_order_for_method(Uid, ChannelIdBin, PaymentMethod) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_ds:find_by_id(ChannelId, <<"id,type,status">>) of
+            case
+                channel_ds:find_by_id(ChannelId, <<"id,access_type,join_policy,visibility,status">>)
+            of
                 {error, not_found} ->
                     {error, <<"频道不存在"/utf8>>};
                 {error, Reason} when is_binary(Reason) ->
@@ -59,13 +61,23 @@ create_order_for_method(Uid, ChannelIdBin, PaymentMethod) ->
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)};
                 Channel when is_map(Channel) ->
-                    Type = maps:get(<<"type">>, Channel, 0),
+                    AccessType = maps:get(<<"access_type">>, Channel, 0),
+                    JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
+                    Visibility = maps:get(<<"visibility">>, Channel, 0),
                     Status = maps:get(<<"status">>, Channel, 0),
                     if
                         Status =/= 1 ->
                             {error, <<"频道已禁用或删除"/utf8>>};
-                        Type =/= 2 ->
+                        AccessType =/= 1 ->
                             {error, <<"只有付费频道支持购买"/utf8>>};
+                        JoinPolicy =/= 3 ->
+                            {error, <<"该频道暂不支持购买"/utf8>>};
+                        Visibility =:= 1 ->
+                            %% C4: private paid — 必须有有效邀请或购买链接上下文
+                            case channel_invitation_ds:is_invited(ChannelId, Uid) of
+                                true -> do_create_order(ChannelId, Uid, PaymentMethod);
+                                false -> {error, <<"私有付费频道需要邀请才能购买"/utf8>>}
+                            end;
                         true ->
                             do_create_order(ChannelId, Uid, PaymentMethod)
                     end;

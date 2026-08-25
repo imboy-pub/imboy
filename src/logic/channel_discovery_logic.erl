@@ -82,7 +82,7 @@ discover(Page, Size, CategoryId, Sort) ->
 -spec featured(pos_integer()) -> {ok, map()} | {error, binary()}.
 featured(Limit) ->
     Sql = <<
-        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+        "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
         "WHERE c.status = 1 AND c.is_featured = true "
@@ -105,7 +105,7 @@ featured(Limit) ->
 trending(Period, Limit) ->
     % 计算热门度：订阅数 + 近期消息数 + 活跃浏览数
     Sql = <<
-        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+        "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at, "
         "COALESCE(SUM(s.new_subscribers), 0) as recent_subscribers, "
         "COALESCE(SUM(s.messages_count), 0) as recent_messages, "
@@ -113,7 +113,7 @@ trending(Period, Limit) ->
         "FROM public.channel c "
         "LEFT JOIN public.channel_stats_daily s ON c.id = s.channel_id "
         "AND s.stats_date >= CURRENT_DATE - $1::integer "
-        "WHERE c.status = 1 "
+        "WHERE c.status = 1 AND c.visibility = 0 "
         "GROUP BY c.id "
         "ORDER BY (c.subscriber_count * 0.4 + COALESCE(SUM(s.new_subscribers), 0) * 0.3 "
         "  + COALESCE(SUM(s.messages_count), 0) * 0.2 + COALESCE(SUM(s.active_viewers), 0) * 0.1) DESC "
@@ -182,7 +182,7 @@ channel_search_page(Keyword, Size, Offset, CategoryId) ->
         {ok, [#{<<"keyword">> := Keyword2}]} ->
             WhereClause = build_search_where(CategoryId),
             Sql = <<
-                "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+                "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
                 "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at, "
                 "ts_rank_cd(fts.token, to_tsquery('jiebacfg', $1)) as rank "
                 "FROM public.fts_channel fts "
@@ -235,10 +235,10 @@ build_search_where(_CategoryId) ->
 -spec build_discover_sql(integer() | undefined, binary()) -> binary().
 build_discover_sql(undefined, OrderBy) ->
     <<
-        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+        "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
-        "WHERE c.status = 1 "
+        "WHERE c.status = 1 AND c.visibility = 0 "
         "ORDER BY c.",
         OrderBy/binary,
         " "
@@ -246,10 +246,10 @@ build_discover_sql(undefined, OrderBy) ->
     >>;
 build_discover_sql(_CategoryId, OrderBy) ->
     <<
-        "SELECT c.id, c.name, c.description, c.avatar, c.type, c.custom_id, "
+        "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
-        "WHERE c.status = 1 AND c.category_id = $1 "
+        "WHERE c.status = 1 AND c.visibility = 0 AND c.category_id = $1 "
         "ORDER BY c.",
         OrderBy/binary,
         " "

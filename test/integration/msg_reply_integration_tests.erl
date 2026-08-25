@@ -15,21 +15,16 @@ msg_reply_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
-            {foreach,
-             fun setup/0,
-             fun cleanup/1,
-             [
-              {"单聊引用回复", fun test_c2c_reply/0},
-              {"群聊引用回复", fun test_c2g_reply/0},
-              {"引用消息摘要生成", fun test_reply_snippet/0},
-              {"引用不存在的消息", fun test_reply_nonexistent_msg/0},
-              {"引用回复消息列表查询", fun test_get_reply_chain/0},
-              {"批量引用回复", fun test_batch_reply/0}
-             ]
-            };
+            {foreach, fun setup/0, fun cleanup/1, [
+                {"单聊引用回复", fun test_c2c_reply/0},
+                {"群聊引用回复", fun test_c2g_reply/0},
+                {"引用消息摘要生成", fun test_reply_snippet/0},
+                {"引用不存在的消息", fun test_reply_nonexistent_msg/0},
+                {"引用回复消息列表查询", fun test_get_reply_chain/0},
+                {"批量引用回复", fun test_batch_reply/0}
+            ]};
         {error, _Reason} ->
-            {"Database not available",
-             fun() -> {skip, "Database not available"} end}
+            {"Database not available", fun() -> {skip, "Database not available"} end}
     end.
 
 setup() ->
@@ -136,7 +131,9 @@ test_reply_snippet() ->
     OriginalMsgId = integer_to_binary(elib_tsid:generate()),
     LongContent = <<"这是一条很长的消息，用于测试消息摘要功能。消息摘要应该只截取前50个字符，以便在引用回复时显示简洁的预览。"/utf8>>,
     NowTs = elib_dt:now(),
-    ok = msg_c2c_repo:write_msg(NowTs, OriginalMsgId, LongContent, User1, User2, NowTs, <<"text">>, null),
+    ok = msg_c2c_repo:write_msg(
+        NowTs, OriginalMsgId, LongContent, User1, User2, NowTs, <<"text">>, null
+    ),
 
     % 2. 基于当前实现直接提取引用摘要
     ReplyData = #{
@@ -153,10 +150,11 @@ test_reply_snippet() ->
 
     % 3. 验证摘要提取结果
     ExpectedSnippet0 = binary:part(LongContent, {0, min(byte_size(LongContent), 50)}),
-    ExpectedSnippet = case byte_size(LongContent) > 50 of
-        true -> <<ExpectedSnippet0/binary, "..."/utf8>>;
-        false -> ExpectedSnippet0
-    end,
+    ExpectedSnippet =
+        case byte_size(LongContent) > 50 of
+            true -> <<ExpectedSnippet0/binary, "..."/utf8>>;
+            false -> ExpectedSnippet0
+        end,
     ?assertEqual(OriginalMsgId, ReplyToMsgId),
     ?assertEqual(User1, ReplyToFromId),
     ?assertEqual(ExpectedSnippet, ReplySnippet).
@@ -179,10 +177,10 @@ test_reply_nonexistent_msg() ->
         <<"created_at">> => elib_dt:millisecond()
     },
 
-    % 验证行为：可以选择允许发送但标记为无效引用，或者拒绝发送
-    % 这里假设允许发送
+    % 行为契约：引用不存在的消息会被拒绝（msg_c2c_logic 校验被引用消息存在性），
+    % 返回 {reply, #{action => msg_not_found, ...}}，不落库。
     Result = msg_c2c_logic:c2c(ReplyMsgId, User1, ReplyData#{<<"to">> => integer_to_binary(User2)}),
-    ?assertMatch(ok, Result).
+    ?assertMatch({reply, #{<<"action">> := <<"msg_not_found">>}}, Result).
 
 test_get_reply_chain() ->
     Context = get_context(),
@@ -192,7 +190,9 @@ test_get_reply_chain() ->
     % 1. 写入一条原始消息
     MsgId1 = integer_to_binary(elib_tsid:generate()),
     NowTs = elib_dt:now(),
-    ok = msg_c2c_repo:write_msg(NowTs, MsgId1, <<"消息1"/utf8>>, User1, User2, NowTs, <<"text">>, null),
+    ok = msg_c2c_repo:write_msg(
+        NowTs, MsgId1, <<"消息1"/utf8>>, User1, User2, NowTs, <<"text">>, null
+    ),
 
     % 2. 当前 repo 尚未支持按 reply_to 查询，保持兼容返回空列表
     {ok, Chain} = msg_c2c_repo:find_by_reply_to_msg_id(MsgId1),
@@ -206,35 +206,43 @@ test_batch_reply() ->
     User2 = maps:get(user2, Context),
 
     % 1. 发送多条消息
-    MsgIds = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "批量回复测试消息"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
-        MsgId
-    end, lists:seq(1, 3)),
+    MsgIds = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "批量回复测试消息"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
+            ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
+            MsgId
+        end,
+        lists:seq(1, 3)
+    ),
     ok = wait_for_c2c_messages(MsgIds),
 
     % 2. 对多条消息进行引用回复
-    lists:foreach(fun(OriginalMsgId) ->
-        ReplyMsgId = integer_to_binary(elib_tsid:generate()),
-        ReplyData = #{
-            <<"payload">> => <<"批量回复"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"reply">>,
-            <<"reply_to">> => #{
-                <<"msg_id">> => OriginalMsgId,
-                <<"from_id">> => integer_to_binary(User1)
+    lists:foreach(
+        fun(OriginalMsgId) ->
+            ReplyMsgId = integer_to_binary(elib_tsid:generate()),
+            ReplyData = #{
+                <<"payload">> => <<"批量回复"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"reply">>,
+                <<"reply_to">> => #{
+                    <<"msg_id">> => OriginalMsgId,
+                    <<"from_id">> => integer_to_binary(User1)
+                },
+                <<"created_at">> => elib_dt:millisecond()
             },
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{<<"to">> => integer_to_binary(User1)}),
-        ok = wait_for_c2c_message(ReplyMsgId)
-    end, MsgIds),
+            ok = msg_c2c_logic:c2c(ReplyMsgId, User2, ReplyData#{
+                <<"to">> => integer_to_binary(User1)
+            }),
+            ok = wait_for_c2c_message(ReplyMsgId)
+        end,
+        MsgIds
+    ),
 
     ok.
 
@@ -293,20 +301,24 @@ wait_for_c2g_timeline_message(MsgId, AttemptsLeft) ->
 
 ensure_friends(User1, User2) ->
     NowTs = elib_dt:now(),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
-                                  User1,
-                                  User2,
-                                  <<>>,
-                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
-                                  User2,
-                                  User1,
-                                  <<>>,
-                                  #{<<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User1, User2),
+        User1,
+        User2,
+        <<>>,
+        #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User2, User1),
+        User2,
+        User1,
+        <<>>,
+        #{<<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
     ok = friend_ds:invalidate_cache(User1, User2),
     imboy_cache:flush({check_relationship3, User1, User2}),
     imboy_cache:flush({check_relationship3, User2, User1}),

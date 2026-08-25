@@ -1,4 +1,4 @@
--- 00000057_channel_order_refunding.up.sql
+-- 00000073_channel_order_refunding.up.sql
 -- B-09 (channel_order)：增加 status=5「退款中」占位态
 --
 -- 背景：

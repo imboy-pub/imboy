@@ -87,6 +87,9 @@ init_create_role_success_test_() ->
                     }
                 end}
             ]},
+            {elib_tsid, [
+                {'generate', 1, fun(_Table) -> 12 end}
+            ]},
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(<<"adm_role">>) -> <<"public.adm_role">> end}
             ]},
@@ -104,7 +107,7 @@ init_create_role_success_test_() ->
                     case binary:match(Sql, <<"SELECT COALESCE(MAX(sort), 99)">>) of
                         nomatch ->
                             ?assertNotEqual(nomatch, binary:match(Sql, <<"INSERT INTO">>)),
-                            ?assertEqual([0, 100, <<"content_ops">>, 1], Params),
+                            ?assertEqual([12, 0, 100, <<"content_ops">>, 1], Params),
                             {ok, #{<<"id">> => 12}};
                         _ ->
                             {ok, #{<<"max_sort">> => 99}}

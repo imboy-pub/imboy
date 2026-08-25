@@ -65,7 +65,9 @@ create(Req0, State) ->
     Uid = maps:get(current_uid, State),
     PostVals = elib_param:post(Req0),
     Name = maps:get(<<"name">>, PostVals, <<>>),
-    Type = elib_cnv:safe_to_integer(maps:get(<<"type">>, PostVals, 0)),
+    Visibility = elib_cnv:safe_to_integer(maps:get(<<"visibility">>, PostVals, 0)),
+    AccessType = elib_cnv:safe_to_integer(maps:get(<<"access_type">>, PostVals, 0)),
+    JoinPolicy = elib_cnv:safe_to_integer(maps:get(<<"join_policy">>, PostVals, 0)),
     Description = maps:get(<<"description">>, PostVals, <<>>),
     Avatar = maps:get(<<"avatar">>, PostVals, <<>>),
     CustomId = maps:get(<<"custom_id">>, PostVals, undefined),
@@ -74,21 +76,27 @@ create(Req0, State) ->
     case Name of
         <<>> ->
             elib_response:error(Req0, <<"频道名称不能为空"/utf8>>);
-        _ when Type < 0; Type > 2 ->
-            elib_response:error(Req0, <<"频道类型无效"/utf8>>);
         _ ->
-            Opts = #{
-                description => Description,
-                avatar => Avatar,
-                custom_id => CustomId,
-                tags => Tags
-            },
-            MaxChannels = 20,
-            case channel_logic:create_channel(Uid, Name, Type, Opts, MaxChannels) of
-                {ok, Channel} ->
-                    elib_response:success(Req0, Channel);
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
+            case validate_access_policy(Visibility, AccessType, JoinPolicy) of
+                true ->
+                    Opts = #{
+                        description => Description,
+                        avatar => Avatar,
+                        custom_id => CustomId,
+                        tags => Tags,
+                        visibility => Visibility,
+                        access_type => AccessType,
+                        join_policy => JoinPolicy
+                    },
+                    MaxChannels = 20,
+                    case channel_logic:create_channel(Uid, Name, Opts, MaxChannels) of
+                        {ok, Channel} ->
+                            elib_response:success(Req0, Channel);
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end;
+                false ->
+                    elib_response:error(Req0, <<"频道访问策略组合无效"/utf8>>)
             end
     end.
 
@@ -505,3 +513,15 @@ normalize_error_binary(Msg, Default) ->
             ?ERROR_LOG([<<"channel_handler op failed">>, Msg]),
             Default
     end.
+
+%% @doc 验证频道访问策略组合（ADR §8.3.1）
+-spec validate_access_policy(non_neg_integer(), non_neg_integer(), non_neg_integer()) -> boolean().
+% C1: public/free/open
+validate_access_policy(0, 0, 0) -> true;
+% C2: private/free/invite
+validate_access_policy(1, 0, 1) -> true;
+% C3: public/paid/purchase
+validate_access_policy(0, 1, 3) -> true;
+% C4: private/paid/purchase
+validate_access_policy(1, 1, 3) -> true;
+validate_access_policy(_, _, _) -> false.

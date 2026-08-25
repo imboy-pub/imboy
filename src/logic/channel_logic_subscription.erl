@@ -30,17 +30,18 @@ subscribe(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_ds:find_by_id(ChannelId, <<"id,type">>) of
+            case channel_ds:find_by_id(ChannelId, <<"id,access_type,join_policy">>) of
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
                     % 直接走订阅流程，底层 upsert_active 保证幂等，
                     % 避免先 is_subscribed 再 subscribe 的 TOCTOU 竞态
-                    Type = maps:get(<<"type">>, Channel, 0),
-                    case Type of
+                    _AccessType = maps:get(<<"access_type">>, Channel, 0),
+                    JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
+                    case JoinPolicy of
                         1 ->
                             subscribe_private_channel(Uid, ChannelId);
-                        2 ->
+                        3 ->
                             subscribe_paid_channel(Uid, ChannelId);
                         _ ->
                             case channel_ds:subscribe(ChannelId, Uid) of

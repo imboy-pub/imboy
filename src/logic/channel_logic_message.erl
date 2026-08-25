@@ -157,22 +157,15 @@ add_user_channel_state(Channel, ChannelId, Uid) ->
 
 -spec has_purchased(map(), integer(), integer()) -> boolean().
 has_purchased(Channel, ChannelId, Uid) ->
-    case maps:get(<<"type">>, Channel, maps:get(type, Channel, 0)) of
-        2 -> channel_order_ds:has_purchased(ChannelId, Uid);
-        <<"2">> -> channel_order_ds:has_purchased(ChannelId, Uid);
+    case maps:get(<<"access_type">>, Channel, 0) of
+        1 -> channel_order_ds:has_purchased(ChannelId, Uid);
         _ -> false
     end.
 
 -spec channel_with_price_for_custom_id(map(), integer()) -> map() | {error, term()}.
 channel_with_price_for_custom_id(Channel, ChannelId) ->
-    case maps:get(<<"type">>, Channel, maps:get(type, Channel, 0)) of
-        2 ->
-            case channel_ds:find_by_id_with_price(ChannelId) of
-                Row when is_map(Row) -> Row;
-                {error, Reason} -> {error, Reason};
-                _ -> {error, not_found}
-            end;
-        <<"2">> ->
+    case maps:get(<<"access_type">>, Channel, 0) of
+        1 ->
             case channel_ds:find_by_id_with_price(ChannelId) of
                 Row when is_map(Row) -> Row;
                 {error, Reason} -> {error, Reason};
