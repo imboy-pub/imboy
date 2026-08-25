@@ -96,6 +96,7 @@ list_devices_with_identity(UserId) when is_integer(UserId) ->
     Sql = <<
         "SELECT ud.device_id, ud.device_type, ud.capabilities, ud.trust_state,",
         "       ud.identity_blob, ud.identity_signature,",
+        "       ud.device_generation, ud.identity_version,",
         "       oi.ed25519_key, oi.curve25519_key, oi.signature",
         " FROM ",
         UdTb/binary,

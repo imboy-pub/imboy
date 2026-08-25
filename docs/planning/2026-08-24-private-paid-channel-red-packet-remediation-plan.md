@@ -707,6 +707,38 @@ Next step:
       固定/随机均不产生 0 份，无需代码改动）
 ```
 
+### Step 9 - 设计频道字段、兼容映射与发布策略
+
+```text
+Step: Step 9 - 设计频道字段、兼容映射与发布策略
+Status: PASS
+Repository: imboy
+Changed files: docs/architecture/adr-channel-access-and-payment-2026-08.md（追加 §8 Phase 2 正交频道模型，+155 行）
+Tests: 无（design 步骤，无代码改动，无测试命令）
+Evidence: §8 章节 11 小节全覆盖 Step 9 契约：
+  §8.1 架构决策（三正交字段，type 降级为 legacy projection，不扩枚举不走路径 A/B）
+  §8.2 字段矩阵（DDL 契约：visibility/access_type/join_policy + CHECK + 默认值全 0）
+  §8.3 组合矩阵（C1-C4 四组合 + approval fail-closed，唯一无门=C1）
+  §8.4 权限矩阵（discovery/detail/join/content/退款/管理员绕过 × C1-C4）
+  §8.5 Legacy API 双向投影矩阵（读取 type→新字段回填 + 写入新字段→type 投影，不变量：旧客户端永不得 type>2）
+  §8.6 approval 契约（保留枚举 fail-closed 不宣称已实现）
+  §8.7 channel_price 单商品价格源（不新增并行价格表）
+  §8.8 private+purchase invite/shareable link 上下文（C4 专属，停止条件）
+  §8.9 订单退款矩阵（C1/C2 N/A，C3/C4 状态机 + settle + refund CAS）
+  §8.10 Step 9 验收对照（全部 ✅）
+  §8.11 Step 9 停止条件核对（三个 ❎ 已排除）
+  ADR 从 126 行扩展到 281 行；§1-7 历史基线保留不动
+Known risks:
+  - type=2 → public/paid/purchase 回填假设须 Step 10 逐条盘点核实，禁止猜测覆盖
+  - approval（join_policy=2）本阶段 fail-closed，未实现，不得宣称已支持
+  - shareable purchase link 的身份验证/签名/过期/单次多次语义待 Step 11 定义，定义前 C4 link 路径不得上线
+External boundary: 无（design 步骤，无真实支付/真机/生产依赖）
+Next step: Step 10 按 §8.2 DDL 契约执行 expand/backfill/verify/contract 迁移
+  — 须先盘点 type=2 历史频道可见性，禁止猜测覆盖
+  — 迁移顺序：ADD COLUMN DEFAULT NOT NULL → UPDATE WHERE type=N 回填 → type 列原地保留不删
+  — 生产迁移前只允许 dry-run，提供可重复验证和安全回滚方案
+```
+
 ### 最终通过标准核对 / Final Gate Checklist
 
 | # | 标准 | 结果 |

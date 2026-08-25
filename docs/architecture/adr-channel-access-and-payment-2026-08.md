@@ -123,3 +123,158 @@
    - 现有 `type=0`（公开）/`type=1`（私有，邀请）/`type=2`（付费，订单）语义即最终契约。
    - Step 1 → PASS；Step 2/3/6 针对 type=2 推进；Step 4/5/7（红包）独立并行。
    - M3 的两条候选路径（A 新增 type=3 / B 组合标志）保留在 4.2 节作为历史参考，**当前不执行、不迁移**。未来若产品改判，须另起 ADR 并单独设计迁移。
+
+---
+
+## 8. Phase 2 — 正交频道模型（Step 9 冻结契约）
+
+> 日期：2026-08-25 | 状态：**PASS（契约冻结，待 Step 10 落盘迁移）** | 关联计划 Step 9
+>
+> 产品方向（2026-08-25 确认）：**不把 `type` 从 3 种扩成 4 种**。改为三个正交维度，四种情况是组合而非死枚举。
+> 三层语义顺序：**Visibility（谁能发现）→ Join Policy（怎么加入）→ Monetization（是否付费）**。
+
+### 8.1 架构决策
+
+将 `channel.type` **降级为 legacy projection**，新增三个正交字段成为后端权威：
+
+| 维度 | 字段 | 语义层 | 决定 |
+|------|------|--------|------|
+| 可见性 | `visibility` | Visibility | 谁能**发现**这个频道 |
+| 加入策略 | `join_policy` | Join Policy | **怎么加入**这个频道 |
+| 付费属性 | `access_type` | Monetization | **是否付费**（语义别名 `monetization`） |
+
+- **不扩展 `type` 枚举**（不走 §4.2 路径 A 新增 `type=3`）。
+- **不引入组合标志**（不走 §4.2 路径 B `requires_invitation` 布尔）。
+- §2.2 待定模型 M3「私有且付费」**从待定升级为四个正交组合之一（C4）**，无需新增 `type` 值。
+- `type` 列原地保留，不再承担新领域语义，只作旧客户端兼容投影（§8.5）。
+
+### 8.2 字段矩阵（DDL 契约，Step 10 落盘）
+
+```sql
+ALTER TABLE channel ADD COLUMN visibility  smallint NOT NULL DEFAULT 0
+  CHECK (visibility = ANY(ARRAY[0,1]));
+ALTER TABLE channel ADD COLUMN access_type smallint NOT NULL DEFAULT 0
+  CHECK (access_type = ANY(ARRAY[0,1]));
+ALTER TABLE channel ADD COLUMN join_policy  smallint NOT NULL DEFAULT 0
+  CHECK (join_policy = ANY(ARRAY[0,1,2,3]));
+```
+
+| 字段 | 类型 | 值域 | 默认 | 含义 |
+|------|------|------|------|------|
+| `visibility` | smallint NOT NULL | 0=public, 1=private | 0 | 0 公开可发现 / 1 私有不可发现 |
+| `access_type` | smallint NOT NULL | 0=free, 1=paid | 0 | 0 免费 / 1 付费（语义别名 monetization） |
+| `join_policy` | smallint NOT NULL | 0=open, 1=invite, 2=approval, 3=purchase | 0 | 0 直接 / 1 邀请 / 2 审批(本阶段 fail-closed) / 3 购买 |
+
+- 默认值全 `0` 对齐回填基线（`type=0 → public/free/open`）。
+- 迁移顺序（Step 10）：`ADD COLUMN ... DEFAULT ... NOT NULL` → `UPDATE ... WHERE type=N` 回填 → `type` 列原地保留不删。
+- v1 只实现 `open`/`invite`/`purchase`；`approval` 保留枚举但 fail-closed（§8.6）。
+
+### 8.3 组合矩阵（四种核心组合 = 四个组合，非死枚举）
+
+| 组合 | visibility | access_type | join_policy | 旧 type 投影 | 准入门 | 语义 |
+|------|-----------|-------------|-------------|-------------|--------|------|
+| **C1** 公开免费 | 0 public | 0 free | 0 open | `type=0` | 无 | 直接订阅 |
+| **C2** 私有免费 | 1 private | 0 free | 1 invite | `type=1` | 邀请 | 邀请 accept → 订阅 |
+| **C3** 公开付费 | 0 public | 1 paid | 3 purchase | `type=2` | 购买 | 可发现 + 付费下单 → 订阅 |
+| **C4** 私有付费 | 1 private | 1 paid | 3 purchase | `type=1`（安全降级） | 邀请或 link | 不可发现 + 付费下单（须合法上下文） |
+| approval | * | * | 2 approval | `type=1`（fail-closed） | — | 本阶段未实现，拒绝 |
+
+- **唯一无门组合是 C1**。C2/C3/C4 均有准入门。验收点：除 C1 外，无组合错误表现为「公开+免费+免邀请」（即不得误把付费/私有组合投影成无门公开）。
+- C4 = §2.2 待定 M3 的正交落地，**无需新增 `type` 值**，旧客户端安全降级为 `type=1`（私有）。
+
+### 8.4 权限矩阵（对照现有代码 → Step 11/12 收口）
+
+| 维度 | C1 public/free/open | C2 private/free/invite | C3 public/paid/purchase | C4 private/paid/purchase |
+|------|---|---|---|---|
+| discovery（发现） | ✅ 可发现 | ❌ 不可发现 | ✅ 可发现 | ❌ 不可发现 |
+| detail（详情） | ✅ | ✅（须合法邀请/link 上下文） | ✅（展示购买入口） | ❌（无合法上下文拒绝） |
+| join（加入） | ✅ 直接订阅 | ✅ 邀请 accept → subscribe | ✅ 付费 → subscribe | ❌ 无上下文拒绝；有上下文 → 付费 → subscribe |
+| content（内容） | ✅ `ok` | `is_subscribed` | `has_purchased` | `has_purchased`（订单为唯一权益） |
+| 退款后权益 | N/A | N/A | `unsubscribe` | `unsubscribe` |
+| 管理员绕过 | `role>0 → ok` | 同左 | 同左 | 同左 |
+
+**现有代码分派（Step 11/12 收口目标）**：
+
+- `channel_logic_common.erl:96-112` `ensure_channel_content_access_by_type/3` 按 `type` 分派（0=ok，1=is_subscribed，2=has_purchased）→ **Step 11** 改 `channel_access_policy` 模块按正交字段判定。
+- `channel_logic_subscription.erl:44-58` `subscribe/2` 按 `type` 分派（1=invitation 链，2=has_purchased，0=直接 subscribe）→ **Step 11** 改按 `join_policy` 判定。
+- `channel_logic_order.erl:67` `Type =/= 2` 硬编码「只有付费频道支持购买」→ **Step 12** 放宽为 `access_type=paid AND join_policy=purchase`。
+
+### 8.5 Legacy API 投影矩阵（双向）
+
+**读取侧（DB 迁移时 `type → 新字段` 回填）：**
+
+| 旧 type | visibility | access_type | join_policy | 备注 |
+|---------|-----------|-------------|-------------|------|
+| 0 | 0 public | 0 free | 0 open | 无歧义 |
+| 1 | 1 private | 0 free | 1 invite | 无歧义 |
+| 2 | 0 public | 1 paid | 3 purchase | ⚠️ **假设历史付费频道均公开，须 Step 10 逐条盘点核实，不猜测覆盖** |
+| NULL/未知 | — | — | — | 报告并阻止自动猜测，不回填 |
+
+**写入侧（新字段 → `type` 投影给旧客户端）：**
+
+| 组合 | 投影 type | 安全语义 |
+|------|---------|---------|
+| C1 (0,0,0) | 0 | 直接映射 |
+| C2 (1,0,1) | 1 | 直接映射 |
+| C3 (0,1,3) | 2 | 直接映射 |
+| C4 (1,1,3) | **1** | **安全降级为私有**：旧客户端看不到付费属性，但不会 fail-open（旧客户端按私有邀请处理，不会误开放） |
+| approval（含 join_policy=2） | **1** | **fail-closed**：投影为私有，旧客户端按私有处理 |
+
+**不变量**：
+- 旧客户端**永不会得到 `type>2`**。
+- fail-closed 组合（C4、approval）投影为 `type=1`，**不 fail-open**。
+- `type=2 → public/paid/purchase` 回填假设须 Step 10 盘点核实；若发现历史付费频道实际私有，按 C4 处理，不猜测覆盖。
+
+### 8.6 approval 契约（保留枚举，本阶段 fail-closed）
+
+- `join_policy=2`（approval）保留为枚举值，**本阶段不实现**。
+- 行为：fail-closed，返回明确错误（如「该加入策略暂未开放」），不创建订单、不开通订阅。
+- 旧客户端投影 `type=1`（私有），旧客户端按私有邀请处理，不会 fail-open。
+- **不得宣称已实现**。未来实现须另起 ADR 并单独设计审批流。
+
+### 8.7 channel_price 作为 v1 单商品价格源
+
+- 现有 `channel_price` 表（`subscription_type` 1一次性/2月/3年）**继续作为 `access_type=paid` 频道唯一金额权威**。
+- **不新增并行价格表**。C3/C4 下单金额一律由后端读 `channel_price`，**客户端不传价格**（金额以服务端订单为权威，对照 Step 2 实现要求）。
+- 未来多商品演进为 `channel_products` 是**下一阶段事项**，不在 Step 9 范围。
+
+### 8.8 private+purchase 的 invite / shareable purchase link 上下文（C4 专属）
+
+C4（私有付费）**不能因 `join_policy=purchase` 就出现在公开发现列表**。须通过合法上下文进入购买：
+
+| 路径 | 机制 | 状态 |
+|------|------|------|
+| **invite 路径** | 复用 `channel_invitation` 表；invitee accept 后进入购买页，付款后才 subscribe | 可先行（依赖现有 invitation 链） |
+| **shareable purchase link 路径** | 带签名的可分享购买链接 | ⏳ 待 Step 11 定义身份验证/签名/过期/单次多次语义 |
+
+- 无合法上下文时，**discovery / detail / join 三维度均拒绝**。
+- **停止条件**：link 身份验证和过期语义未定义前，C4 的 link 路径**不得上线**；invite 路径可先行。
+
+### 8.9 订单与退款矩阵
+
+| 维度 | C1/C2 | C3/C4 |
+|------|-------|-------|
+| 创建订单 | ❌ N/A | ✅ 创建 `channel_order` |
+| 状态机 | N/A | 0待支付 → 1已支付 → 2已退款 / 3已取消 / 4已过期 / 5退款中 |
+| settle | N/A | wallet/mock 即时入账；alipay/wechat/stripe 第三方回调发货（回调前不开通） |
+| refund | N/A | CAS `1 → 5(refunding) → 2(refunded)` 幂等；同步 `payment_transaction` 状态 |
+| 对账 | N/A | `payment_reconcile` 不再误判已退款为「已收款未发货」 |
+| C4 下单条件 | — | **Step 12**：`access_type=paid AND join_policy=purchase` + 合法购买上下文 |
+
+- `channel_logic_order.erl:67` `Type =/= 2` 在 **Step 12** 放宽为 `access_type=paid AND join_policy=purchase`。
+- 退款状态机 `refunding(5)` 占位态为 Step 3 已交付（`b02e674b`）。
+
+### 8.10 Step 9 验收对照
+
+- ✅ 更新本 ADR（追加 §8，保留 §1-7 历史基线不动）；
+- ✅ 输出字段（§8.2）、组合（§8.3）、权限（§8.4）、发现（§8.4 discovery 行）、订单（§8.9）、退款（§8.9）和 legacy API 投影矩阵（§8.5）；
+- ✅ 明确 `channel_price` 作为 v1 单商品价格源，不新增并行价格表（§8.7）；
+- ✅ 明确 private+purchase 的 invite/shareable link 上下文（§8.8）；
+- ✅ **无组合同时表现为公开、免费、免邀请**：除 C1 外无组合投影为 `(0,0,0)`，C4/approval 均降级为 `type=1` 不 fail-open；
+- ✅ **旧客户端不会因未知类型 fail-open**：旧客户端永不得 `type>2`，fail-closed 组合投影 `type=1`。
+
+### 8.11 Step 9 停止条件核对
+
+- ❎ ~~无法保证 private+paid 对旧客户端安全降级~~ → 已保证：C4 → `type=1` 安全降级（§8.5）。
+- ❎ ~~迁移需要猜测历史频道可见性~~ → `type=0/1` 映射无歧义；`type=2 → public` 假设须 Step 10 逐条盘点，**不猜测覆盖**（§8.5）。
+- ❎ ~~approval 被误认为本阶段已实现~~ → 明确 fail-closed + 标注未实现（§8.6）。
