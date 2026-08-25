@@ -58,8 +58,8 @@ save_read(MsgId, FromUid, ToUid, ToDid, ReadAt) ->
         <<" WHERE msg_id = $1 AND to_uid = $3 AND to_did = $4)">>,
         <<" ON CONFLICT (msg_id, to_uid, to_did, created_at) DO NOTHING">>
     ],
-    case elib_pg:query(Sql, [MsgId, FromUid, ToUid, ToDid, ReadAt]) of
-        {ok, _} -> ok;
+    case elib_pg:execute(Sql, [MsgId, FromUid, ToUid, ToDid, ReadAt]) of
+        {ok, _Count} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 

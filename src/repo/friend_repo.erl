@@ -82,8 +82,8 @@ insert_pending(FromID, ToID, Setting, NowTs) ->
         " VALUES ($1, $2, $3, 0, 0, $4, $5)"
         " ON CONFLICT (from_user_id, to_user_id) DO NOTHING"
     >>,
-    case elib_pg:query(Sql, [Id, FromID, ToID, SettingJson, NowTs]) of
-        {ok, _} ->
+    case elib_pg:execute(Sql, [Id, FromID, ToID, SettingJson, NowTs]) of
+        {ok, _Count} ->
             ok;
         {error, Reason} ->
             ?ERROR_LOG({pending_insert_failed, FromID, ToID, Reason}),

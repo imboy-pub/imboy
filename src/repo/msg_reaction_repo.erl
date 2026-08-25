@@ -56,8 +56,8 @@ add(MsgId, MsgType, UserId, Emoji) ->
                     " (id, msg_id, msg_type, user_id, emoji) "
                     "VALUES ($1, $2, $3, $4, $5) "
                     "ON CONFLICT (msg_id, msg_type, user_id, emoji) DO NOTHING">>,
-            case elib_pg:query(Sql, [GenId, MsgId, MsgType, UserId, Emoji]) of
-                {ok, _} -> ok;
+            case elib_pg:execute(Sql, [GenId, MsgId, MsgType, UserId, Emoji]) of
+                {ok, _Count} -> ok;
                 {error, Reason} -> {error, Reason}
             end
     end.

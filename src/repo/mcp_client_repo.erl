@@ -69,9 +69,9 @@ ensure(OwnerUid, Name) ->
                     " (client_id, owner_uid, name, status, created_at, updated_at)"
                     " VALUES ($1,$2,$3,'pending',NOW(),NOW())"
                     " ON CONFLICT (owner_uid) DO NOTHING">>,
-            case elib_pg:query(Sql, [ClientId, OwnerUid, Name]) of
-                {ok, _} ->
-                    %% 若刚好被并发抢先插入，重查取权威 client_id
+            case elib_pg:execute(Sql, [ClientId, OwnerUid, Name]) of
+                {ok, _Count} ->
+                    %% 若刚好被并发抢先插入，冲突跳过→重查取权威 client_id
                     case find_by_owner(OwnerUid) of
                         {ok, #{<<"client_id">> := Cid}} -> {ok, Cid};
                         Other -> Other
