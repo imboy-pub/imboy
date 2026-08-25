@@ -141,8 +141,10 @@ event_returns_in_denylist_error_when_user_blocked_test_() ->
             Result = webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, Msg),
             ?assertMatch({reply, _}, Result),
             {reply, ReplyMsg} = Result,
-            ?assert(is_binary(ReplyMsg)),
-            ?assert(string:find(ReplyMsg, "in_denylist") =/= nomatch)
+            % 回执为 map（调用方 websocket_handler 统一编码），
+            % 预编码 binary 会被 JSON 路径二次编码、protobuf 路径 function_clause。
+            ?assert(is_map(ReplyMsg)),
+            ?assertEqual(<<"in_denylist">>, maps:get(<<"action">>, ReplyMsg))
         end
     ).
 
@@ -207,8 +209,8 @@ event_returns_not_a_friend_error_when_not_friends_test_() ->
             Result = webrtc_ws_logic:event(CurrentUid, ToUid, MsgId, Msg),
             ?assertMatch({reply, _}, Result),
             {reply, ReplyMsg} = Result,
-            ?assert(is_binary(ReplyMsg)),
-            ?assert(string:find(ReplyMsg, "not_a_friend") =/= nomatch)
+            ?assert(is_map(ReplyMsg)),
+            ?assertEqual(<<"not_a_friend">>, maps:get(<<"action">>, ReplyMsg))
         end
     ).
 
@@ -242,8 +244,7 @@ event_prioritizes_denylist_over_friend_status_test_() ->
             ?assertMatch({reply, _}, Result),
             {reply, ReplyMsg} = Result,
             % 应该是 in_denylist 错误，而不是 not_a_friend
-            ?assert(string:find(ReplyMsg, "in_denylist") =/= nomatch),
-            ?assert(string:find(ReplyMsg, "not_a_friend") =:= nomatch)
+            ?assertEqual(<<"in_denylist">>, maps:get(<<"action">>, ReplyMsg))
         end
     ).
 
@@ -528,17 +529,12 @@ event_returns_valid_json_for_in_denylist_error_test_() ->
             ?assertMatch({reply, _}, Result),
             {reply, ReplyMsg} = Result,
 
-            % 验证返回的是有效的 JSON
-            ?assert(is_binary(ReplyMsg)),
-            ?assertNotEqual(<<>>, ReplyMsg),
-
-            % 尝试解析 JSON（不抛出异常即为有效）
-            try
-                _ = jsone:decode(ReplyMsg),
-                ?assert(true)
-            catch
-                _:_ -> ?assert(false, "Invalid JSON response")
-            end
+            % 回执为 map：调用方（websocket_handler）按连接协议统一编码
+            ?assert(is_map(ReplyMsg)),
+            ?assert(
+                maps:is_key(<<"action">>, ReplyMsg) orelse
+                    maps:is_key(<<"id">>, ReplyMsg)
+            )
         end
     ).
 
@@ -570,17 +566,12 @@ event_returns_valid_json_for_not_a_friend_error_test_() ->
             ?assertMatch({reply, _}, Result),
             {reply, ReplyMsg} = Result,
 
-            % 验证返回的是有效的 JSON
-            ?assert(is_binary(ReplyMsg)),
-            ?assertNotEqual(<<>>, ReplyMsg),
-
-            % 尝试解析 JSON
-            try
-                _ = jsone:decode(ReplyMsg),
-                ?assert(true)
-            catch
-                _:_ -> ?assert(false, "Invalid JSON response")
-            end
+            % 回执为 map：调用方（websocket_handler）按连接协议统一编码
+            ?assert(is_map(ReplyMsg)),
+            ?assert(
+                maps:is_key(<<"action">>, ReplyMsg) orelse
+                    maps:is_key(<<"id">>, ReplyMsg)
+            )
         end
     ).
 
@@ -685,7 +676,7 @@ event_not_friend_and_in_denylist_returns_denylist_error_test_() ->
             ?assertMatch({reply, _}, Result),
             {reply, ReplyMsg} = Result,
             % 应该返回 in_denylist（黑名单优先级高于好友关系）
-            ?assert(string:find(ReplyMsg, "in_denylist") =/= nomatch)
+            ?assertEqual(<<"in_denylist">>, maps:get(<<"action">>, ReplyMsg))
         end
     ).
 
@@ -784,8 +775,10 @@ event_replies_peer_offline_when_recipient_has_no_online_device_test_() ->
             Msg = <<"{\"id\":\"m1\",\"type\":\"webrtc_offer\",\"payload\":{}}">>,
             Result = webrtc_ws_logic:event(123, 456, <<"m1">>, Msg),
             ?assertMatch({reply, _}, Result),
-            {reply, ReplyBin} = Result,
-            ?assert(string:find(ReplyBin, "peer_offline") =/= nomatch)
+            {reply, ReplyMap} = Result,
+            %% 回执为 map：websocket_handler 按连接协议统一编码（预编码
+            %% binary 会被 JSON 路径二次编码、protobuf 路径 function_clause）。
+            ?assertEqual(<<"peer_offline">>, maps:get(<<"action">>, ReplyMap))
         end
     ).
 

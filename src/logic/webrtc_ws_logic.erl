@@ -10,7 +10,7 @@
 %% @param ToUid 目标用户ID
 %% @param MsgId 消息ID
 %% @param Msg 消息内容（JSON 格式）
-%% @returns ok | {reply, binary()}
+%% @returns ok | {reply, map()}
 -export([event/4]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -23,7 +23,12 @@
 %% ===================================================================
 
 % for webrtc
--spec event(integer(), integer(), binary(), binary()) -> ok | {reply, binary()}.
+-spec event(integer(), integer(), binary(), binary()) -> ok | {reply, map()}.
+%% ⚠️ 错误回执必须返回 map（不预编码）：websocket_handler 的 JSON 路径
+%% 会对返回值再做一次 jsone:encode（binary 会被二次编码成 JSON 字符串
+%% 标量，客户端 jsonDecode 后无法当对象解析）；protobuf 路径 reply_frame/2
+%% 只有 is_map 子句，binary 触发 function_clause 被 catch 吞成 invalid_protobuf。
+%% 两条协议路径都在调用方统一编码。
 event(CurrentUid, ToUid, MsgId, Msg) when
     is_integer(CurrentUid),
     CurrentUid > 0,
@@ -44,16 +49,16 @@ event(CurrentUid, ToUid, MsgId, Msg) when
                     %% 订阅者被静默丢弃，主叫只能空等 60s 超时并误显示
                     %% “对方无应答”。直接回 S2C peer_offline 让主叫快速失败。
                     MsgMap = message_ds:assemble_s2c(MsgId, <<"peer_offline">>, ToUid),
-                    {reply, jsone:encode(MsgMap, [native_utf8])};
+                    {reply, MsgMap};
                 false ->
                     do_send_next(ToUid, MsgId, Msg)
             end;
         {_, InDenylist2} when InDenylist2 > 0 ->
             MsgMap = message_ds:assemble_s2c(MsgId, <<"in_denylist">>, ToUid),
-            {reply, jsone:encode(MsgMap, [native_utf8])};
+            {reply, MsgMap};
         {false, _InDenylist} ->
             MsgMap = message_ds:assemble_s2c(MsgId, <<"not_a_friend">>, ToUid),
-            {reply, jsone:encode(MsgMap, [native_utf8])}
+            {reply, MsgMap}
     end.
 
 %% ===================================================================
