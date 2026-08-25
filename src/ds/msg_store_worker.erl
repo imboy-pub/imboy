@@ -166,6 +166,13 @@ process_row(Row) ->
             maybe_archive(Row),
             msg_store_ds:unstage(MsgId),
             _ = ?DEBUG_LOG([msg_store_worker, write_success, TypeAtom, MsgId]);
+        %% ON CONFLICT DO NOTHING 冲突跳过（msg_c2c_repo:write_msg_with_sender
+        %% 改用 execute 后返回的 0 行插入）：消息已存在=幂等成功，unstage 即可，
+        %% 但记 WARN 以便排查"冲突但正式表里没有行"的异常场景。
+        {error, conflict_no_insert} ->
+            maybe_archive(Row),
+            msg_store_ds:unstage(MsgId),
+            _ = ?WARN_LOG([msg_store_worker, write_conflict_no_insert, TypeAtom, MsgId]);
         {error, Reason} ->
             BackoffSeconds = backoff_seconds(RetryCount),
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),

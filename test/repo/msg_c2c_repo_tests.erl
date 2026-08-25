@@ -81,7 +81,7 @@ write_msg_with_valid_data_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -106,7 +106,7 @@ write_msg_with_e2ee_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -131,12 +131,12 @@ write_msg_if_absent_with_sender_preserves_idempotency_and_did_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'query', 2, fun(Sql, Params) ->
+                {'execute', 2, fun(Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(binary:match(SqlBin, <<"WHERE NOT EXISTS">>) =/= nomatch),
                     ?assert(binary:match(SqlBin, <<"sender_did">>) =/= nomatch),
                     ?assertEqual(<<"did-c2c-1">>, lists:last(Params)),
-                    {ok, []}
+                    {ok, 1}
                 end}
             ]}
         ],
@@ -445,7 +445,7 @@ write_msg_with_reply_info_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -521,5 +521,141 @@ find_msgs_by_reply_to_msg_id_test_() ->
             OriginalMsgId = <<"original_msg_789">>,
             Result = msg_c2c_repo:find_by_reply_to_msg_id(OriginalMsgId),
             ?assertEqual({ok, []}, Result)
+        end
+    );
+%% ===================================================================
+%% ON CONFLICT DO NOTHING 返回值处理回归测试
+%%
+%% 背景：write_msg_with_sender/8/9 用 ON CONFLICT (msg_id, created_at) DO NOTHING
+%% 时，elib_pg:query 丢弃了 PG 的受影响行数 Count，{ok, []} 被映射为 ok，
+%% 导致 worker 认为"写入成功"但实际 0 行插入——消息持久化丢失。
+%%
+%% 修复：改用 elib_pg:execute（返回 {ok, Count}），Count=0 时返回
+%% {error, conflict_no_insert}，worker 把它当幂等成功 unstage 但记 WARN。
+%% ===================================================================
+
+write_msg_with_sender_conflict_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_c2c_repo:write_msg_with_sender(
+                <<"2026-08-25T12:00:00Z">>,
+                <<"conflict-msg">>,
+                <<>>,
+                1,
+                2,
+                <<"2026-08-25T12:00:00Z">>,
+                <<"text">>,
+                null,
+                <<"did-1">>
+            ),
+            ?assertEqual({error, conflict_no_insert}, Result)
+        end
+    ).
+
+write_msg_with_sender_inserted_returns_ok_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_c2c_repo:write_msg_with_sender(
+                <<"2026-08-25T12:00:00Z">>,
+                <<"ok-msg">>,
+                <<>>,
+                1,
+                2,
+                <<"2026-08-25T12:00:00Z">>,
+                <<"text">>,
+                null,
+                <<"did-1">>
+            ),
+            ?assertEqual(ok, Result)
+        end
+    ).
+
+write_msg_with_expire_conflict_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_c2c_repo:write_msg(
+                <<"2026-08-25T12:00:00Z">>,
+                <<"expire-conflict">>,
+                <<>>,
+                1,
+                2,
+                <<"2026-08-25T12:00:00Z">>,
+                <<"text">>,
+                null,
+                <<"2026-08-26T12:00:00Z">>
+            ),
+            ?assertEqual({error, conflict_no_insert}, Result)
+        end
+    ).
+
+write_msg_with_reply_conflict_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_c2c_repo:write_msg_with_reply(
+                <<"2026-08-25T12:00:00Z">>,
+                <<"reply-conflict">>,
+                <<>>,
+                1,
+                2,
+                <<"2026-08-25T12:00:00Z">>,
+                <<"text">>,
+                null,
+                <<"original_msg_456">>,
+                3,
+                <<"原始消息内容摘要"/utf8>>
+            ),
+            ?assertEqual({error, conflict_no_insert}, Result)
+        end
+    ).
+
+write_msg_if_absent_conflict_returns_error_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {elib_pg, [
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 0} end}
+            ]}
+        ],
+        fun() ->
+            Result = msg_c2c_repo:write_msg_if_absent(
+                <<"2026-08-25T12:00:00Z">>,
+                <<"absent-conflict">>,
+                <<>>,
+                1,
+                2,
+                <<"2026-08-25T12:00:00Z">>,
+                <<"text">>,
+                null
+            ),
+            ?assertEqual({error, conflict_no_insert}, Result)
         end
     ).

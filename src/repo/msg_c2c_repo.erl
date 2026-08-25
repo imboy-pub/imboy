@@ -136,8 +136,14 @@ write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E
         <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)">>,
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
+    %% 【BUG 修复】改用 elib_pg:execute/3 替代 elib_pg:query/3：
+    %% query 对 INSERT 返回 {ok, []}（丢弃了 PG 的受影响行数 Count），
+    %% ON CONFLICT DO NOTHING 冲突跳过时 Count=0 但返回值仍被映射为 ok，
+    %% 导致 worker 认为"写入成功"并 unstage，实际 0 行插入——消息持久化丢失。
+    %% execute 返回 {ok, Count}，Count=0 时返回 {error, conflict_no_insert}，
+    %% 由上层（msg_store_worker）按幂等语义处理。
     case
-        elib_pg:query(Sql, [
+        elib_pg:execute(Sql, [
             GenId,
             Payload,
             FromId,
@@ -150,7 +156,9 @@ write_msg_with_sender(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E
             null_if_empty(SenderDid)
         ])
     of
-        {ok, _Rows} -> ok;
+        {ok, Count} when Count > 0 -> ok;
+        {ok, 0} -> {error, conflict_no_insert};
+        {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
@@ -188,11 +196,13 @@ write_msg_if_absent(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2E
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
-        elib_pg:query(Sql, [
+        elib_pg:execute(Sql, [
             GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue
         ])
     of
-        {ok, _Rows} -> ok;
+        {ok, Count} when Count > 0 -> ok;
+        {ok, 0} -> {error, conflict_no_insert};
+        {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
@@ -234,7 +244,7 @@ write_msg_if_absent_with_sender(
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
-        elib_pg:query(Sql, [
+        elib_pg:execute(Sql, [
             GenId,
             Payload,
             FromId,
@@ -247,7 +257,9 @@ write_msg_if_absent_with_sender(
             null_if_empty(SenderDid)
         ])
     of
-        {ok, _Rows} -> ok;
+        {ok, Count} when Count > 0 -> ok;
+        {ok, 0} -> {error, conflict_no_insert};
+        {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
@@ -285,11 +297,13 @@ write_msg(CreatedAt, Id, Payload, FromId, ToId, ServerTS, MsgType, E2EE, ExpireA
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
-        elib_pg:query(Sql, [
+        elib_pg:execute(Sql, [
             GenId, Payload, FromId, ToId, CreatedAt, ServerTS, Id, MsgType, E2EEValue, ExpireAt
         ])
     of
-        {ok, _Rows} -> ok;
+        {ok, Count} when Count > 0 -> ok;
+        {ok, 0} -> {error, conflict_no_insert};
+        {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 
@@ -541,7 +555,7 @@ write_msg_with_reply(
         <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
     ],
     case
-        elib_pg:query(Sql, [
+        elib_pg:execute(Sql, [
             GenId,
             Payload,
             FromId,
@@ -556,7 +570,9 @@ write_msg_with_reply(
             ReplySnippetVal
         ])
     of
-        {ok, _Rows} -> ok;
+        {ok, Count} when Count > 0 -> ok;
+        {ok, 0} -> {error, conflict_no_insert};
+        {ok, _Count, _Returning} -> ok;
         {error, Reason} -> {error, Reason}
     end.
 

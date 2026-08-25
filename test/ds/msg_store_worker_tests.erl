@@ -124,7 +124,9 @@ batch_write_by_type_c2g_test_() ->
     ?TEST_SIMPLE(fun() ->
         MsgType = c2g,
         MsgList = [
-            {c2g, <<"msg1">>, #{payload => <<"test1">>, from_id => 123, to_id => 789, to_id_list => [1, 2, 3]}}
+            {c2g, <<"msg1">>, #{
+                payload => <<"test1">>, from_id => 123, to_id => 789, to_id_list => [1, 2, 3]
+            }}
         ],
         ?assertEqual(c2g, MsgType),
         {_Type, _MsgId, Data} = hd(MsgList),
@@ -179,7 +181,10 @@ batch_write_with_negative_count_test_() ->
 
 write_to_db_with_large_list_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Items = [{c2c, <<"msg", (integer_to_binary(I))/binary>>, #{payload => <<"test">>}} || I <- lists:seq(1, 1000)],
+        Items = [
+            {c2c, <<"msg", (integer_to_binary(I))/binary>>, #{payload => <<"test">>}}
+         || I <- lists:seq(1, 1000)
+        ],
         ?assert(is_list(Items)),
         ?assertEqual(1000, length(Items))
     end).
@@ -272,11 +277,12 @@ flush_queue_returns_ok_test_() ->
 
 c2c_message_structure_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Item = {c2c, <<"msg1">>, #{
-            payload => <<"{\"text\":\"hello\"}">>,
-            from_id => 123,
-            to_id => 456
-        }},
+        Item =
+            {c2c, <<"msg1">>, #{
+                payload => <<"{\"text\":\"hello\"}">>,
+                from_id => 123,
+                to_id => 456
+            }},
         ?assertEqual(c2c, element(1, Item)),
         ?assertEqual(<<"msg1">>, element(2, Item)),
         ?assert(is_map(element(3, Item)))
@@ -284,36 +290,39 @@ c2c_message_structure_test_() ->
 
 c2g_message_structure_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Item = {c2g, <<"msg2">>, #{
-            payload => <<"{\"text\":\"group\"}">>,
-            from_id => 123,
-            to_id => 789,
-            to_id_list => [1, 2, 3]
-        }},
+        Item =
+            {c2g, <<"msg2">>, #{
+                payload => <<"{\"text\":\"group\"}">>,
+                from_id => 123,
+                to_id => 789,
+                to_id_list => [1, 2, 3]
+            }},
         ?assertEqual(c2g, element(1, Item)),
         ?assert(is_list(maps:get(to_id_list, element(3, Item))))
     end).
 
 s2c_message_structure_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Item = {s2c, <<"msg3">>, #{
-            payload => <<"{\"text\":\"system\"}">>,
-            from_id => 999,
-            to_id => 111
-        }},
+        Item =
+            {s2c, <<"msg3">>, #{
+                payload => <<"{\"text\":\"system\"}">>,
+                from_id => 999,
+                to_id => 111
+            }},
         ?assertEqual(s2c, element(1, Item))
     end).
 
 c2s_message_structure_test_() ->
     ?TEST_SIMPLE(fun() ->
-        Item = {c2s, <<"msg4">>, #{
-            status => 12,
-            topic_id => 0,
-            from_id => 123,
-            to_id_str => <<"456">>,
-            payload => <<"{\"text\":\"c2s\"}">>,
-            created_at => 1704067200
-        }},
+        Item =
+            {c2s, <<"msg4">>, #{
+                status => 12,
+                topic_id => 0,
+                from_id => 123,
+                to_id_str => <<"456">>,
+                payload => <<"{\"text\":\"c2s\"}">>,
+                created_at => 1704067200
+            }},
         ?assertEqual(c2s, element(1, Item)),
         ?assert(is_integer(maps:get(status, element(3, Item))))
     end).
