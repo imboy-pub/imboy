@@ -637,7 +637,8 @@ do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
     MsgType = maps:get(<<"msg_type">>, Payload),
     E2EE = maps:get(<<"e2ee">>, Data, null),
     ToId = ec_cnv:to_integer(To),
-    ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
+    %% 安全审计 P2-1：Data 含明文消息体，已注释。默认日志级别已改为 info。
+    % ok = ?DEBUG_LOG([From, To, ToId, CurrentUid, Data]),
     NowTs = elib_dt:now(),
     NowMS = elib_dt:millisecond(),
 
@@ -807,9 +808,10 @@ msg_edit_window_ms() ->
 c2c_edit_ack(MsgId, CurrentUid, Data) ->
     Payload = maps:get(<<"payload">>, Data),
     OriginalMsgId = maps:get(<<"original_msg_id">>, Payload, <<>>),
-    NewContent = maps:get(<<"content">>, Payload),
-    EditedAt = maps:get(<<"edited_at">>, Payload),
-    ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
+    _NewContent = maps:get(<<"content">>, Payload),
+    _EditedAt = maps:get(<<"edited_at">>, Payload),
+    %% 安全审计 P2-1：NewContent 含编辑后明文，已注释。
+    % ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
     AckPayload = Payload#{
         <<"action">> => <<"message_edit_ack">>,
         <<"ack_msg_id">> => MsgId,

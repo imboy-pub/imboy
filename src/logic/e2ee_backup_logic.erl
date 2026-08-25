@@ -20,7 +20,7 @@
 %% base64 密文包上限（1MB，身份私钥 + 房间 session keys 远小于此）
 -define(MAX_PAYLOAD_BYTES, 1048576).
 %% KDF 迭代下限（客户端保证 >=310000；服务端存储下限防降级攻击，与 DB CHECK 一致）
--define(MIN_KDF_ITERATIONS, 100000).
+-define(MIN_KDF_ITERATIONS, 310000).
 %% 元数据字段上限（security-reviewer M1：拦掉 kdf_salt 存储放大面；与 DB 约束一致）
 -define(MAX_SALT_BYTES, 256).
 -define(MAX_HASH_BYTES, 128).

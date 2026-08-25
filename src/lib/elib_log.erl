@@ -25,7 +25,7 @@
 %% 这样可以避免 Dialyzer 无法提取 Core Erlang 的问题
 
 %% 日志级别阈值
--define(LOG_LEVEL, debug).
+-define(LOG_LEVEL, info).
 
 internal_log(Level, Msg, Module, Line) ->
     safe_log(Level, Msg, Module, Line).

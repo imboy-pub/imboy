@@ -16,6 +16,10 @@
 
 -define(WITH_MECKS(Modules, Fun),
     (fun() ->
+        %% 逐模块清理残余 mock（meck:unload/1 列表形式遇非 mock 模块会
+        %% 提前抛出 not_mocked 异常，导致后续模块无法被清理），避免
+        %% ok = meck:new 抛出 already_started 导致 after 不执行。
+        _ = [catch meck:unload(M) || M <- Modules],
         ok = meck:new(Modules, [passthrough, no_link]),
         try
             Fun()
@@ -82,8 +86,7 @@ report_device_key_update_error_opaque_test() ->
 %% ===================================================================
 
 pull_key_changes_db_error_opaque_test() ->
-    ok = meck:new([elib_pg, elib_dt, friend_ds, elib_cnv], [no_link]),
-    try
+    ?WITH_MECKS([elib_pg, elib_dt, friend_ds, elib_cnv], fun() ->
         meck:expect(elib_cnv, safe_to_integer, fun
             (V) when is_integer(V) -> V;
             (_) -> 0
@@ -99,9 +102,7 @@ pull_key_changes_db_error_opaque_test() ->
         {error, Msg} = Result,
         ?assertEqual(nomatch, binary:match(Msg, <<"08006">>)),
         ?assertEqual(nomatch, binary:match(Msg, <<"connection">>))
-    after
-        meck:unload([elib_pg, elib_dt, friend_ds, elib_cnv])
-    end.
+    end).
 
 %% ===================================================================
 %% e2ee_recovery_logic:start_server_backup_recovery — 备份查询失败

@@ -609,12 +609,16 @@ websocket_info({timeout, Ref, {MsLi, {Uid, DID, MsgId} = TimerKey, Msg}}, State)
                     {ok, State, hibernate};
                 {ok, _} ->
                     ok = ?WARN_LOG({timeout_ack_flag_invalid, MsgId}),
+                    %% 安全审计 P2-5：send_next 续排（含 0-delay 立即投递）交由
+                    %% send_next_loop 内部的 ACK 检查与重试逻辑处理，此处不再
+                    %% 发送 {reply, ...} 避免双投递（send_next 本身的 0-delay 分支
+                    %% 会通过 erlang:start_timer(0, Pid, Msg) 触发另一次投递）。
                     websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
-                    {reply, encode_delivery_frame(Msg, State), State, hibernate};
+                    {ok, State, hibernate};
                 undefined ->
                     ok = ?DEBUG_LOG({timeout_no_ack, MsgId, Uid}),
                     websocket_logic:send_next(Uid, MsgId, Msg, MsLi, [DID], true),
-                    {reply, encode_delivery_frame(Msg, State), State, hibernate}
+                    {ok, State, hibernate}
             end
     end;
 %% 处理其他超时消息
@@ -789,7 +793,9 @@ maybe_send_upgrade_notice(AppVsn, DType, DID) ->
 -spec handle_protobuf_message_decoded(map(), map()) ->
     {ok, map(), hibernate} | {reply, {text, binary()} | {binary, binary()}, map(), hibernate}.
 handle_protobuf_message_decoded(Data0, State) ->
-    ok = ?DEBUG_LOG({protobuf_message, Data0}),
+    %% 安全审计 P2-1：protobuf 消息整帧含明文 payload，默认日志级别已改为 info 不输出。
+    %% 如需临时排查，开发环境改 LOG_LEVEL = debug，严禁在生产泄露。
+    % ok = ?DEBUG_LOG({protobuf_message, Data0}),
     try
         CurrentUid = auth_ds:current_uid(State),
 
