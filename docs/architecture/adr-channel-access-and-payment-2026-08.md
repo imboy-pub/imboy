@@ -137,7 +137,7 @@
 
 ### 8.1 架构决策
 
-将 `channel.type` **降级为 legacy projection**，新增三个正交字段成为后端权威：
+删除 `channel.type`，以三个正交字段作为后端、API 和客户端的唯一权威：
 
 | 维度 | 字段 | 语义层 | 决定 |
 |------|------|--------|------|
@@ -148,7 +148,7 @@
 - **不扩展 `type` 枚举**（不走 §4.2 路径 A 新增 `type=3`）。
 - **不引入组合标志**（不走 §4.2 路径 B `requires_invitation` 布尔）。
 - §2.2 待定模型 M3「私有且付费」**从待定升级为四个正交组合之一（C4）**，无需新增 `type` 值。
-- `type` 列原地保留，不再承担新领域语义，只作旧客户端兼容投影（§8.5）。
+- `type` 只在迁移前的历史数据盘点与一次性回填中读取；迁移完成后删除，运行时不接收、不返回、不推导该字段。
 
 ### 8.2 字段矩阵（DDL 契约，Step 10 落盘）
 
@@ -196,22 +196,22 @@ UPDATE channel SET visibility=0, access_type=0, join_policy=0
 -- type=1/2 同理加 AND 默认态条件
 ```
 
-**设计决策：删除 type 列，无触发器**：旧 `type` 列在回填后删除，不再保留兼容桥架。无双向投影触发器——单源事实（三正交字段）零歧义。Step 11 应用代码必须使用 `visibility/access_type/join_policy` 显式写入；API 响应中需要 `type` 字段的，由应用层 `compute_type()` 从三字段计算。此设计消除了 Step 10→11 窗口期脏数据风险（没有触发器就没有投影方向错误），代价是要求 Step 11 应用代码在迁移前部署或同步部署。
+**设计决策：删除 type 列，无触发器、无运行时投影**：旧 `type` 列在回填后删除，不保留兼容桥架。应用代码必须显式读写 `visibility/access_type/join_policy`；任何缺失或未支持组合均 fail-closed。迁移与应用部署必须同步，以免出现接口字段不完整的窗口。
 
 **type=2 人工盘点强制门（F2）**：`type=2 → public` 回填假设无法在 SQL 内自动判定可见性（visibility 是新增字段）。迁移文件内建 `channel_access_type2_audit` 表 + `RAISE EXCEPTION` 守卫：存在 type=2 存量行且无审计行 → 迁移中止并回滚；空库/无 type=2 行 → 自动放行。运维流程：`SELECT id, name, type FROM channel WHERE type=2` 人工核对 → 确认后 `INSERT INTO channel_access_type2_audit` 写入审计行 → 重跑迁移。
 
 ### 8.3 组合矩阵（四种核心组合 = 四个组合，非死枚举）
 
-| 组合 | visibility | access_type | join_policy | 旧 type 投影 | 准入门 | 语义 |
-|------|-----------|-------------|-------------|-------------|--------|------|
-| **C1** 公开免费 | 0 public | 0 free | 0 open | `type=0` | 无 | 直接订阅 |
-| **C2** 私有免费 | 1 private | 0 free | 1 invite | `type=1` | 邀请 | 邀请 accept → 订阅 |
-| **C3** 公开付费 | 0 public | 1 paid | 3 purchase | `type=2` | 购买 | 可发现 + 付费下单 → 订阅 |
-| **C4** 私有付费 | 1 private | 1 paid | 3 purchase | `type=1`（安全降级） | 邀请或 link | 不可发现 + 付费下单（须合法上下文） |
-| approval | * | * | 2 approval | `type=1`（fail-closed） | — | 本阶段未实现，拒绝 |
+| 组合 | visibility | access_type | join_policy | 准入门 | 语义 |
+|------|-----------|-------------|-------------|--------|------|
+| **C1** 公开免费 | 0 public | 0 free | 0 open | 无 | 直接订阅 |
+| **C2** 私有免费 | 1 private | 0 free | 1 invite | 邀请 | 邀请 accept → 订阅 |
+| **C3** 公开付费 | 0 public | 1 paid | 3 purchase | 购买 | 可发现 + 付费下单 → 订阅 |
+| **C4** 私有付费 | 1 private | 1 paid | 3 purchase | 邀请或 link | 不可发现 + 付费下单（须合法上下文） |
+| approval | * | * | 2 approval | — | 本阶段未实现，拒绝 |
 
 - **唯一无门组合是 C1**。C2/C3/C4 均有准入门。验收点：除 C1 外，无组合错误表现为「公开+免费+免邀请」（即不得误把付费/私有组合投影成无门公开）。
-- C4 = §2.2 待定 M3 的正交落地，**无需新增 `type` 值**，旧客户端安全降级为 `type=1`（私有）。
+- C4 是 §2.2 待定 M3 的正交落地；不支持三字段契约的客户端不得用于本版本频道访问。
 
 #### 8.3.1 非法组合与默认投影（fail-closed 不变量）
 
@@ -230,7 +230,7 @@ UPDATE channel SET visibility=0, access_type=0, join_policy=0
 
 - **矛盾组合**（free+purchase、paid+open）由应用层 `channel_access_policy`（Step 11）创建时拒绝。DB 不做复合 CHECK（避免迁移复杂度），可加防御性 `CHECK (NOT (access_type=0 AND join_policy=3))` 禁最危险矛盾（Step 10 可选纵深防御）。
 - **延期组合** v1 不实现，按 fail-closed 处理。
-- **默认投影不变量**：所有未在 C1-C4+approval 枚举的组合，投影 `type=1`（fail-closed），**不得回落 `type=0`**。若回落 type=0，paid 频道对旧客户端获无门公开访问——正是验收 C 要堵的口子。此不变量使验收 C 在投影层有显式保证。
+- **fail-closed 不变量**：所有未在 C1-C4+approval 枚举的组合不得创建、发现、订阅、下单或读取内容；不得以任意默认值回落到 C1。
 
 ### 8.4 权限矩阵（对照现有代码 → Step 11/12 收口）
 
@@ -251,9 +251,9 @@ UPDATE channel SET visibility=0, access_type=0, join_policy=0
 - **`channel_logic_invitation.erl:94-125` `do_accept_invitation/4`**（CRITICAL 第四收口点）：第 97 行接受邀请后**直接** `channel_ds:subscribe(ChannelId, Uid)` 无 has_purchased/type/join_policy 检查；第 111-115 行 `not_found_or_expired` 竞态分支也直接 subscribe 且吞错误 `({error, _} -> ok)`。C4 受邀者 accept 后免费订阅付费频道。此路径**不调用 `subscribe/2`** 而直接调 `channel_ds:subscribe`，Step 11 对 `subscribe/2` 的修复无法覆盖 → **Step 11 须将 `do_accept_invitation` 列为第四收口点**：对 `join_policy=purchase` 接受后不直接 subscribe，返回购买上下文，仅 `payment_callback_logic:ensure_subscribed` 确认 `status=1` 已支付后才 subscribe；同时修复竞态分支无条件 subscribe+吞错。
 - **Discovery SQL 收口点**（HIGH）：`channel_discovery_logic.erl` 的 `discover`/`featured`/`trending` SQL 仅 `WHERE c.status=1`（第 88/116/241/252 行），无 type/visibility 过滤 → C2/C4 私有频道泄漏到公开发现列表。`channel_repo:list_discover`（第 307 行）`WHERE status=1 AND type=0` → 迁移后按 type 过滤会错误排除 C3（公开付费应可发现）。**Step 11** 须将 discovery SQL 从 `type=0` 改为 `visibility=0` 过滤。
 
-### 8.5 Legacy API 投影矩阵（双向）
+### 8.5 历史迁移映射（仅迁移期）
 
-**读取侧（DB 迁移时 `type → 新字段` 回填）：**
+迁移期执行一次性 `type → 新字段` 回填：
 
 | 旧 type | visibility | access_type | join_policy | 备注 |
 |---------|-----------|-------------|-------------|------|
@@ -262,29 +262,16 @@ UPDATE channel SET visibility=0, access_type=0, join_policy=0
 | 2 | 0 public | 1 paid | 3 purchase | ⚠️ **假设历史付费频道均公开，须 Step 10 逐条盘点核实，不猜测覆盖** |
 | NULL/未知 | — | — | — | 报告并阻止自动猜测，不回填 |
 
-**写入侧（新字段 → `type` 投影给旧客户端）：**
-
-| 组合 | 投影 type | 安全语义 |
-|------|---------|---------|
-| C1 (0,0,0) | 0 | 直接映射 |
-| C2 (1,0,1) | 1 | 直接映射 |
-| C3 (0,1,3) | 2 | 直接映射 |
-| C4 (1,1,3) | **1** | **安全降级为私有**：旧客户端看不到付费属性，但不会 fail-open（旧客户端按私有邀请处理，不会误开放） |
-| approval（含 join_policy=2） | **1** | **fail-closed**：投影为私有，旧客户端按私有处理 |
-
 **不变量**：
-- 旧客户端**永不会得到 `type>2`**。
-- fail-closed 组合（C4、approval）投影为 `type=1`，**不 fail-open**。
 - `type=2 → public/paid/purchase` 回填假设须 Step 10 盘点核实；若发现历史付费频道实际私有，按 C4 处理，不猜测覆盖。
-- **未识别组合默认投影**：所有未在 C1-C4+approval 枚举的组合（§8.3.1 的 8 种未定义），写入侧投影 `type=1`（fail-closed），**不得回落 `type=0`**——验收 C 在投影层的显式保证。
-- **写入侧投影落地层**：选定 DB `BEFORE INSERT OR UPDATE` 触发器据 `NEW.visibility/access_type/join_policy` 计算 `NEW.type`（§8.2.1），Step 10 迁移同步落地。`channel_handler:create`（第 77 行守卫 `Type<0;Type>2`）与 `channel_ds:create_channel` 参数列表须在 Step 11 收口为接受新正交字段。
-- **C4 迁移影响**：若 Step 10 盘点发现私有 type=2 频道，重分类为 C4 后旧客户端可见 type 从 2→1，行为变更为 fail-closed（更严格），属安全降级。
+- NULL/未知 `type` 必须报告并中止迁移，不得自动猜测。
+- 回填和验证完成后删除 `type`；后续 API 与数据库操作不允许重建该列或投影值。
 
 ### 8.6 approval 契约（保留枚举，本阶段 fail-closed）
 
 - `join_policy=2`（approval）保留为枚举值，**本阶段不实现**。
 - 行为：fail-closed，返回明确错误（如「该加入策略暂未开放」），不创建订单、不开通订阅。
-- 旧客户端投影 `type=1`（私有），旧客户端按私有邀请处理，不会 fail-open。
+- 缺少三字段或使用 approval 的客户端请求均 fail-closed，不创建订单、不开通订阅。
 - **不得宣称已实现**。未来实现须另起 ADR 并单独设计审批流。
 
 ### 8.7 channel_price 作为 v1 单商品价格源

@@ -20,7 +20,7 @@
 %% 中的 ?CHANNEL_SAFE_COLUMNS 保持一致，新增列前必须评估敏感性。
 -define(CHANNEL_SAFE_COLUMNS, <<
     "id,name,description,avatar,custom_id,creator_uid,subscriber_count,"
-    "is_verified,tags,created_at,updated_at"
+    "is_verified,tags,visibility,access_type,join_policy,created_at,updated_at"
 >>).
 
 -spec subscribe(integer(), binary()) -> ok | {error, binary()}.

@@ -34,7 +34,7 @@
 %% 注意与 channel_logic_subscription.erl 中的同名宏保持一致。
 -define(CHANNEL_SAFE_COLUMNS, <<
     "id,name,description,avatar,custom_id,creator_uid,subscriber_count,"
-    "is_verified,tags,created_at,updated_at"
+    "is_verified,tags,visibility,access_type,join_policy,created_at,updated_at"
 >>).
 
 -spec channel_transfer(map()) -> map().

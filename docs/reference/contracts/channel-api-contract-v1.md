@@ -57,11 +57,12 @@ App/Admin callers should pass canonical path params and avoid body duplicates.
 
 ### 2.4 Channel Content Access Rule (Private/Paid)
 
-For channel content endpoints, server enforces access based on channel type:
+For channel content endpoints, server enforces access based on the authoritative access tuple: `visibility`, `access_type`, and `join_policy`.
 
-1. Public channel (`type=0`): readable by authenticated users.
-2. Private channel (`type=1`): only subscribers/admins/creator can read content.
-3. Paid channel (`type=2`): only purchased-or-subscribed users/admins/creator can read content.
+1. Public/free/open (`0/0/0`): readable by authenticated users.
+2. Private/free/invite (`1/0/1`): only subscribers/admins/creator can read content.
+3. Public/paid/purchase (`0/1/3`) and private/paid/purchase (`1/1/3`): only purchased-or-subscribed users/admins/creator can read content; private paid purchase additionally requires an invitation or equivalent authorized purchase context.
+4. Missing or unsupported tuples are denied (fail-closed), except for channel managers performing management operations.
 
 Covered endpoints:
 
@@ -75,7 +76,7 @@ Covered endpoints:
 
 | Action | Method | Path | Query | Body | Payload (success) |
 |---|---|---|---|---|---|
-| Create channel | `POST` | `/api/v1/channel/create` | - | `name`, `type`, `description?`, `avatar?`, `custom_id?`, `tags?` | Channel object |
+| Create channel | `POST` | `/api/v1/channel/create` | - | `name`, `visibility`, `access_type`, `join_policy`, `description?`, `avatar?`, `custom_id?`, `tags?` | Channel object |
 | Get channel | `GET` | `/api/v1/channel/:channel_id` | - | - | Channel object |
 | Get by custom id | `GET` | `/api/v1/channel/by_custom_id/:custom_id` | - | - | Channel object |
 | Update channel | `PUT/POST` | `/api/v1/channel/:channel_id/update` | - | `name?`, `description?`, `avatar?`, `tags?` | Channel object |

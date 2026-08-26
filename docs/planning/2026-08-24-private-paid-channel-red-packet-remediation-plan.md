@@ -1,9 +1,9 @@
 # 私有/付费频道与红包修复执行计划
 
-版本：v2.0
+版本：v3.0
 日期：2026-08-25
 适用仓库：`imboy` 后端、`imboyapp` Flutter 客户端  
-目标：在已完成付费频道/红包第一阶段修复的基础上，落地正交频道模型、兼容迁移、后端访问策略和 Flutter 客户端兼容。
+目标：在已完成付费频道/红包第一阶段修复的基础上，落地正交频道模型、一次性迁移、后端访问策略和三端客户端契约。
 
 ## 0. 执行规则
 
@@ -23,10 +23,10 @@
 
 ### 0.3 当前产品事实
 
-- 旧 `channel.type` 继续作为兼容字段，不再承担新的领域语义：`0=公开免费`、`1=私有免费`、`2=历史付费频道`。
+- `channel.type` 已删除；它不再存在于数据库、API、客户端模型或业务决策中。
 - 新模型拆分为三个维度：`visibility`（public/private）、`access_type`（free/paid）、`join_policy`（open/invite/approval/purchase）。
 - v1 只实现 `open`、`invite`、`purchase`；`approval` 只保留枚举和 fail-closed 行为，不在本阶段宣称已支持。
-- 兼容回填基线：`type=0 → public/free/open`，`type=1 → private/free/invite`，`type=2 → public/paid/purchase`。如果数据盘点发现历史频道可见性不同，必须逐条确认，禁止猜测覆盖。
+- 迁移前历史数据映射基线：`type=0 → public/free/open`，`type=1 → private/free/invite`，`type=2 → public/paid/purchase`。数据盘点发现例外时必须逐条确认，禁止猜测覆盖；迁移完成后仅保留三个新字段。
 - 当前 `channel_price` 作为单频道单商品的兼容价格表；本阶段不创建第二套并行价格表，未来多商品再独立演进为 `channel_products`。
 - 私有付费频道必须通过邀请或 shareable purchase link 进入购买上下文，不能因为 `join_policy=purchase` 就让私有频道出现在公开发现列表。
 
@@ -418,7 +418,7 @@ Tags: design, db, plan
 
 ### 目标
 
-将 `channel.type` 降级为 legacy projection，确定 `visibility`、`access_type`、`join_policy` 的字段类型、约束、组合矩阵、旧客户端投影和迁移/回滚策略。
+确定 `visibility`、`access_type`、`join_policy` 的字段类型、约束、组合矩阵、迁移/回滚策略；迁移完成后它们是唯一领域事实来源。
 
 ### 必须冻结的契约
 
@@ -428,23 +428,15 @@ access_type: 0=free, 1=paid
 join_policy: 0=open, 1=invite, 2=approval, 3=purchase
 ```
 
-兼容投影：
-
-```text
-public/free/open       -> type=0
-private/free/invite    -> type=1
-public/paid/purchase   -> type=2
-private/paid/purchase  -> type=1  # 旧客户端安全降级为私有
-approval               -> type=1  # 本阶段 fail-closed
-```
+迁移历史映射仅用于一次性回填；运行时 API 不返回、不接收、也不推导 `type`。不支持的 `approval` 组合必须 fail-closed。
 
 ### 交付物与验收
 
 - 更新 `docs/architecture/adr-channel-access-and-payment-2026-08.md`；
-- 输出字段、组合、权限、发现、订单、退款和 legacy API 投影矩阵；
+- 输出字段、组合、权限、发现、订单和退款矩阵；
 - 明确 `channel_price` 作为 v1 单商品价格源，不新增并行价格表；
 - 明确 private+purchase 的 invite/shareable link 上下文；
-- 验收：无组合同时表现为公开、免费、免邀请；旧客户端不会因未知类型 fail-open。
+- 验收：无组合同时表现为公开、免费、免邀请；缺少或不支持的新字段组合时，客户端和服务端均不得 fail-open。
 
 ### 停止条件
 
@@ -460,7 +452,7 @@ Tags: migration, db, security, test
 
 ### 目标
 
-以 expand/backfill/verify/contract 顺序新增字段，不删除 `channel.type`，保证旧 API、旧客户端和历史订单可继续工作。
+以盘点/backfill/verify/contract 顺序新增三个字段并删除 `channel.type`，保证历史订单可继续工作。
 
 ### 修改范围
 
@@ -474,8 +466,8 @@ Tags: migration, db, security, test
 - 新增 `visibility`、`access_type`、`join_policy`，带 CHECK 约束和合理默认值；
 - 先盘点非法/未知 `type` 和历史频道，再执行回填；
 - 回填映射必须符合 Step 9，private+paid 不得投影为公开；
-- 新字段成为后端权威，旧 `type` 保留为兼容投影；
-- 不删除旧列、不重写历史订单、不复制 `channel_price` 为第二价格表；
+- 三个新字段是后端与客户端唯一权威；
+- 删除旧列、不重写历史订单、不复制 `channel_price` 为第二价格表；
 - 提供可重复验证和安全回滚方案，生产迁移前只允许 dry-run。
 
 ### 测试与验收
@@ -538,7 +530,7 @@ Tags: impl, db, security, test
 
 ### 目标
 
-将频道下单条件从 `type=2` 改为 `access_type=paid + join_policy=purchase`，保持当前 `channel_price` 单商品模式，并兼容已有订单、回调、退款和订阅。
+将频道下单条件固定为 `access_type=paid + join_policy=purchase`，保持当前 `channel_price` 单商品模式，并兼容已有订单、回调、退款和订阅。
 
 ### 修改范围
 
@@ -550,7 +542,7 @@ Tags: impl, db, security, test
 
 - public paid 和 private paid 均按新策略创建订单；
 - private paid 无购买上下文时拒绝，有合法上下文时允许下单；
-- 旧 type=2 订单可以完成回调、订阅、退款和对账；
+- 历史订单可以按既有 `channel_id/user_id/amount` 完成回调、订阅、退款和对账，不依赖已删除的 `type`；
 - `channel_price` 仍是金额权威，没有重复价格源；
 - 相关测试和串行 `make eunit-local` 通过。
 
@@ -568,7 +560,7 @@ Tags: impl, review, test
 
 ### 目标
 
-在保留 legacy `type` 解析的同时支持 `visibility`、`access_type`、`join_policy` 和嵌套 access policy，避免旧接口或未知枚举导致 fail-open。
+仅使用 `visibility`、`access_type`、`join_policy` 及嵌套 access policy；缺少或未知枚举必须 fail-closed。
 
 ### 修改范围
 
@@ -579,7 +571,7 @@ Tags: impl, review, test
 
 ### 测试与验收
 
-- 旧响应仅有 `type` 时行为不变，新响应有 access policy 时使用新字段；
+- 响应必须携带完整三字段；缺少字段时非管理用户不得获得访问、订阅或购买放行；
 - public paid 展示购买入口，private free 展示邀请状态，private paid 展示受保护购买入口；
 - 未知/approval 策略默认拒绝，不显示可直接加入；
 - Flutter 单测、`flutter analyze` 和相关页面测试通过，不触碰无关脏改动。
@@ -587,7 +579,7 @@ Tags: impl, review, test
 ### 停止条件
 
 - API 响应字段和后端契约不一致；
-- 旧客户端兼容会造成公开或未付费访问；
+- 客户端/服务端任一端缺失三字段会造成公开或未付费访问；
 - 需要真机、真实支付或生产账号才能完成且未获授权。
 
 ## Step 14 — 正交模型集成验收、灰度和发布门
@@ -600,7 +592,7 @@ Tags: test, e2e, docs, review
 
 - migration dry-run、升级、回滚和数据盘点证据；
 - 四种核心频道组合的 API/后端权限矩阵；
-- 旧客户端 type-only、新客户端 access-policy、历史订单和退款回归；
+- 三字段客户端契约、历史订单和退款回归；
 - public paid/private paid 的隔离支付 fixture 流程；
 - Flutter 单测、静态检查和相关集成测试；
 - 灰度开关、监控指标、回滚步骤和运维文档。
@@ -608,7 +600,7 @@ Tags: test, e2e, docs, review
 ### 最终通过标准
 
 - 新字段无空值、无非法组合、无未解释历史数据；
-- legacy API 不越权，新 API 不破坏旧订单；
+- 三字段 API 不越权，且不破坏旧订单；
 - private paid 不出现在公开发现列表，只能通过合法上下文购买；
 - approval 明确标记为未实现并 fail-closed；
 - 本地 fixture/测试证据与真实支付宝验收严格分开；
@@ -707,7 +699,7 @@ Next step:
       固定/随机均不产生 0 份，无需代码改动）
 ```
 
-### Step 9 - 设计频道字段、兼容映射与发布策略
+### Step 9 - 历史执行记录（v2.0，已被本计划 v3.0 替代）
 
 ```text
 Step: Step 9 - 设计频道字段、兼容映射与发布策略
@@ -716,11 +708,11 @@ Repository: imboy
 Changed files: docs/architecture/adr-channel-access-and-payment-2026-08.md（追加 §8 Phase 2 正交频道模型，+155 行）
 Tests: 无（design 步骤，无代码改动，无测试命令）
 Evidence: §8 章节 11 小节全覆盖 Step 9 契约：
-  §8.1 架构决策（三正交字段，type 降级为 legacy projection，不扩枚举不走路径 A/B）
+  §8.1 架构决策（三正交字段；其中 `type` 投影结论已由 v3.0 的删除决策替代）
   §8.2 字段矩阵（DDL 契约：visibility/access_type/join_policy + CHECK + 默认值全 0）
   §8.3 组合矩阵（C1-C4 四组合 + approval fail-closed，唯一无门=C1）
   §8.4 权限矩阵（discovery/detail/join/content/退款/管理员绕过 × C1-C4）
-  §8.5 Legacy API 双向投影矩阵（读取 type→新字段回填 + 写入新字段→type 投影，不变量：旧客户端永不得 type>2）
+  §8.5 历史投影矩阵（仅可用于迁移审计，不得作为运行时 API 契约）
   §8.6 approval 契约（保留枚举 fail-closed 不宣称已实现）
   §8.7 channel_price 单商品价格源（不新增并行价格表）
   §8.8 private+purchase invite/shareable link 上下文（C4 专属，停止条件）
@@ -733,9 +725,9 @@ Known risks:
   - approval（join_policy=2）本阶段 fail-closed，未实现，不得宣称已支持
   - shareable purchase link 的身份验证/签名/过期/单次多次语义待 Step 11 定义，定义前 C4 link 路径不得上线
 External boundary: 无（design 步骤，无真实支付/真机/生产依赖）
-Next step: Step 10 按 §8.2 DDL 契约执行 expand/backfill/verify/contract 迁移
+Next step: Step 10 按 §8.2 DDL 契约执行盘点/backfill/verify/contract 迁移
   — 须先盘点 type=2 历史频道可见性，禁止猜测覆盖
-  — 迁移顺序：ADD COLUMN DEFAULT NOT NULL → UPDATE WHERE type=N 回填 → type 列原地保留不删
+  — 迁移顺序：ADD COLUMN → UPDATE WHERE type=N 回填 → 验证 → 删除 type 列
   — 生产迁移前只允许 dry-run，提供可重复验证和安全回滚方案
 ```
 
@@ -802,7 +794,7 @@ Evidence:
     - 已有订单/回调/退款不受影响（payment_callback_logic.erl 零改动） ✓
 Known risks:
   - 生产 migration 00000072 尚未执行；type 列在 up.sql 中设为可空(ALTER COLUMN type DROP NOT NULL)，但删列前的数据盘点未做
-  - 旧客户端（< 本次更新）仍发送 type 字段请求，但后端已不再读 type 做业务决策，type 仅回写兼容值
+  - 旧客户端发送的 `type` 字段不再受支持；客户端必须升级到三字段契约
   - 红包支付仍使用旧 channel_order 表，未迁移到新商品模型（属于 channel_products 后续阶段）
 External boundary:
   - NO-GO: 生产迁移未执行（migration 00000072 未 apply）
@@ -810,7 +802,7 @@ External boundary:
   - NO-GO: 真机回归未执行
 Next step:
   1. 用户授权后执行生产 migration 00000072（含 dry-run 和数据盘点）
-  2. 生产验证后移除 channel.type 列（另开 migration）
+  2. 生产验证三个字段的读写、发现和订单访问控制
   3. 发起 channel_products 多商品模型设计
   4. approval 策略完全实现
 ```

@@ -582,7 +582,7 @@ BillingSubscription 字段：
 | Path 参数 | `channel_id`：频道 TSID（整数字符串） |
 
 **前置条件**：
-- 频道类型 `type=2`（付费频道）且 `status=1`（已启用）
+- `access_type=1`、`join_policy=3`（付费购买频道）且 `status=1`（已启用）；私有付费频道还必须具备邀请或等价的授权购买上下文
 - 当前用户未购买过该频道
 - DB 约束：`uniq_channel_order_pending`——同一用户同一频道只允许一笔待支付订单
 
