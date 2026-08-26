@@ -6,6 +6,8 @@ services:
   imboy_backend:
     environment:
       IMBOY_PRODUCT_PROFILE: ${IMBOY_PRODUCT_PROFILE:-community}
+      # 双体验 T1：chat（默认）| workspace；非法值后端 fail-safe 降级 chat
+      IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
       IMBOY_E2EE_MODE: ${IMBOY_E2EE_MODE:-required}
       IMBOY_FEATURE_E2EE: ${IMBOY_FEATURE_E2EE:-true}
       IMBOY_FEATURE_CHANNEL: ${IMBOY_FEATURE_CHANNEL:-true}

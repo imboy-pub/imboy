@@ -186,6 +186,8 @@ services:
       IMBOY_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
       # 社区版固定标记（商务版才需要 professional/enterprise + License）
       IMBOY_EDITION: community
+      # 双体验 T1：chat（默认，经典 IM）| workspace；非法值后端 fail-safe 降级 chat
+      IMBOY_PRODUCT_EXPERIENCE: ${IMBOY_PRODUCT_EXPERIENCE:-chat}
       SENTRY_DSN: ${SENTRY_DSN:-}
       ERL_MAX_PORTS: "1048576"
       # ── 支付网关 / Payment gateway ───────────────────────────────────────────

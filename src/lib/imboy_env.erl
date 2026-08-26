@@ -48,6 +48,8 @@
 %   IMBOY_PAYMENT_MODE     -> {imboy, payment_mode}  (sandbox | live)
 %   IMBOY_AUTO_MIGRATE     -> {imboy, auto_migrate}  (true | false)
 %   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile} (community | enterprise)
+%   IMBOY_PRODUCT_EXPERIENCE -> {imboy, product_experience} (chat | workspace)
+%                              (体验开关；缺失/非法值 fail-safe 为 chat，只告警不拒启)
 %   IMBOY_E2EE_MODE         -> {imboy, capabilities.e2ee_mode}
 %                              (disabled | optional | required | compliance)
 %   IMBOY_FEATURE_E2EE      -> {imboy, features.e2ee.enabled}
@@ -106,6 +108,10 @@ override_from_env() ->
     %% 产品销售策略覆盖：容器镜像不携带被忽略的 sys.pro.config，生产入口
     %% 必须通过显式环境变量决定 E2EE、频道和付费频道是否开启。
     ok = override_product_policy(),
+
+    %% 产品体验开关（chat|workspace，双体验 §4.1）：与销售档位语义不同，
+    %% 体验开关错误值不构成安全风险，fail-safe 降级 chat 而非拒启。
+    ok = override_product_experience(),
 
     %% PostgreSQL 连接配置覆盖
     ok = override_pg_conf(),
@@ -682,6 +688,35 @@ override_edition() ->
         end,
     application:set_env(imboy, edition, Edition),
     ?LOG_NOTICE("IMBoy edition: ~ts", [Edition]),
+    ok.
+
+%% @doc 覆盖产品体验开关（chat | workspace，安装级，双体验 §4.1 / Decision Brief R4.4）。
+%%
+%% 与 override_product_profile/0 的 fail-closed（非法值 erlang:error 拒启）语义
+%% **刻意不同**：product_profile 是销售档位，拼错意味着策略放行面错误，必须吵闹；
+%% product_experience 只决定客户端呈现 chat / workspace 哪种形态，错误值的后果
+%% 是"形态不对"而非安全问题，缺失/非法值一律降级 chat 并记 warning，不拒启。
+%% 读取/校验 API 见 product_experience.erl；/api/v1/init 下发
+%% {effective_product_experience, config_version} 两字段。
+-spec override_product_experience() -> ok.
+override_product_experience() ->
+    Experience =
+        case os:getenv("IMBOY_PRODUCT_EXPERIENCE") of
+            E when is_list(E), length(E) > 0 ->
+                Bin = unicode:characters_to_binary(string:lowercase(string:trim(E))),
+                case lists:member(Bin, [<<"chat">>, <<"workspace">>]) of
+                    true ->
+                        binary_to_atom(Bin, utf8);
+                    false ->
+                        ?LOG_WARNING(
+                            "invalid IMBOY_PRODUCT_EXPERIENCE '~ts', fallback to chat", [Bin]
+                        ),
+                        chat
+                end;
+            _ ->
+                chat
+        end,
+    application:set_env(imboy, product_experience, Experience),
     ok.
 
 %% @doc 返回当前版次（binary），缺省 community。

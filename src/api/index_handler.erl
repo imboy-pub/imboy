@@ -73,7 +73,13 @@ api_init(Req0) ->
                     <<"1">> -> <<"1">>;
                     _ -> <<"0">>
                 end,
-            <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key)
+            <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key),
+            %% T1 双体验（§4.1）：产品体验服务端唯一真相源。仅此两个白名单
+            %% 字段，不暴露其他 application env；客户端 AppInitializer 缓存并
+            %% 按 config_version 比对失效（experience 或后端版本变化必变化）。
+            <<"effective_product_experience">> =>
+                product_experience:effective_binary(),
+            <<"config_version">> => product_experience:config_version()
         },
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % elib_response:success(Req0, Data, "success.").

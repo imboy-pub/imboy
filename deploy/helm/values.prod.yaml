@@ -29,6 +29,8 @@ backend:
     IMBOYENV: pro
     ERL_MAX_PORTS: "1048576"
     IMBOY_PRODUCT_PROFILE: community
+    # 双体验 T1：chat（默认）| workspace；非法值后端 fail-safe 降级 chat
+    IMBOY_PRODUCT_EXPERIENCE: chat
     IMBOY_E2EE_MODE: required
     IMBOY_FEATURE_E2EE: "true"
     IMBOY_FEATURE_CHANNEL: "true"
