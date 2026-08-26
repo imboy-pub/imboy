@@ -12,8 +12,14 @@ zero_price_fixture_never_creates_order_test_() ->
                 {'current', 0, fun() -> <<"local">> end}
             ]},
             {channel_ds, [
-                {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                    #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
+                {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                    #{
+                        <<"id">> => 11,
+                        <<"access_type">> => 1,
+                        <<"join_policy">> => 3,
+                        <<"visibility">> => 0,
+                        <<"status">> => 1
+                    }
                 end}
             ]},
             {channel_order_ds, [
@@ -65,8 +71,14 @@ invalid_subscription_price_never_creates_order_test_() ->
         [
             {imboy_env, [{'current', 0, fun() -> <<"local">> end}]},
             {channel_ds, [
-                {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                    #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
+                {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                    #{
+                        <<"id">> => 11,
+                        <<"access_type">> => 1,
+                        <<"join_policy">> => 3,
+                        <<"visibility">> => 0,
+                        <<"status">> => 1
+                    }
                 end}
             ]},
             {channel_order_ds, [
@@ -90,8 +102,14 @@ create_order_locks_subscription_type_test_() ->
         [
             {imboy_env, [{'current', 0, fun() -> <<"local">> end}]},
             {channel_ds, [
-                {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                    #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
+                {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                    #{
+                        <<"id">> => 11,
+                        <<"access_type">> => 1,
+                        <<"join_policy">> => 3,
+                        <<"visibility">> => 0,
+                        <<"status">> => 1
+                    }
                 end}
             ]},
             {channel_order_ds, [

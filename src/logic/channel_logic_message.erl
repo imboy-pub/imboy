@@ -4,7 +4,7 @@
 
 -export([channel_transfer/1]).
 -export([message_transfer/1]).
--export([create_channel/5]).
+-export([create_channel/4]).
 -export([get_channel/2]).
 -export([get_channel_by_custom_id/2]).
 -export([update_channel/3]).
@@ -33,7 +33,7 @@
 %% 向本清单新增列前必须评估其用户侧敏感性。
 %% 注意与 channel_logic_subscription.erl 中的同名宏保持一致。
 -define(CHANNEL_SAFE_COLUMNS, <<
-    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "id,name,description,avatar,custom_id,creator_uid,subscriber_count,"
     "is_verified,tags,created_at,updated_at"
 >>).
 
@@ -45,9 +45,9 @@ channel_transfer(Channel) when is_map(Channel) ->
 message_transfer(Message) when is_map(Message) ->
     Message.
 
--spec create_channel(integer(), binary(), integer(), map(), integer()) ->
+-spec create_channel(integer(), binary(), map(), integer()) ->
     {ok, map()} | {error, binary()}.
-create_channel(Uid, Name, Type, Opts, MaxChannels) ->
+create_channel(Uid, Name, Opts, MaxChannels) ->
     case channel_ds:list_managed(Uid) of
         {ok, Channels} when is_list(Channels) ->
             case length(Channels) >= MaxChannels of
@@ -56,21 +56,18 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
                 false ->
                     case maps:get(custom_id, Opts, undefined) of
                         undefined ->
-                            do_create_channel(Uid, Name, Type, Opts);
+                            do_create_channel(Uid, Name, Opts);
                         CustomId when is_binary(CustomId), CustomId =/= <<>> ->
-                            % find_by_custom_id 无行时返回空 map #{}（elib_pg:one 的
-                            % Default=#{}），只有 SQL 真出错才返回 {error, _}；
-                            % 勿用 {error, _} 判「未占用」，否则空 map 误判已占用
                             case channel_ds:find_by_custom_id(CustomId) of
                                 Channel when is_map(Channel), map_size(Channel) =:= 0 ->
-                                    do_create_channel(Uid, Name, Type, Opts);
+                                    do_create_channel(Uid, Name, Opts);
                                 Channel when is_map(Channel) ->
                                     {error, <<"自定义ID已被使用"/utf8>>};
                                 {error, _} ->
-                                    do_create_channel(Uid, Name, Type, Opts)
+                                    do_create_channel(Uid, Name, Opts)
                             end;
                         _ ->
-                            do_create_channel(Uid, Name, Type, Opts)
+                            do_create_channel(Uid, Name, Opts)
                     end
             end;
         {error, Reason} ->
@@ -81,8 +78,8 @@ create_channel(Uid, Name, Type, Opts, MaxChannels) ->
             {error, elib_cnv:safe_to_binary(Unexpected)}
     end.
 
-do_create_channel(Uid, Name, Type, Opts) ->
-    case channel_ds:create_channel(Uid, Name, Type, Opts) of
+do_create_channel(Uid, Name, Opts) ->
+    case channel_ds:create_channel(Uid, Name, Opts) of
         {ok, ChannelId} ->
             case channel_ds:find_by_id(ChannelId, ?CHANNEL_SAFE_COLUMNS) of
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};

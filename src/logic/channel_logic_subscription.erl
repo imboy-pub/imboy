@@ -19,7 +19,7 @@
 %% 内部状态列 status（审核/软删）不下发；与 channel_logic_message.erl
 %% 中的 ?CHANNEL_SAFE_COLUMNS 保持一致，新增列前必须评估敏感性。
 -define(CHANNEL_SAFE_COLUMNS, <<
-    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "id,name,description,avatar,custom_id,creator_uid,subscriber_count,"
     "is_verified,tags,created_at,updated_at"
 >>).
 
@@ -41,6 +41,8 @@ subscribe(Uid, ChannelIdBin) ->
                     case JoinPolicy of
                         1 ->
                             subscribe_private_channel(Uid, ChannelId);
+                        2 ->
+                            {error, <<"该加入策略暂未开放"/utf8>>};
                         3 ->
                             subscribe_paid_channel(Uid, ChannelId);
                         _ ->

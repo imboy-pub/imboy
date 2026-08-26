@@ -133,6 +133,7 @@ override_from_env() ->
     %% 新增敏感配置环境变量覆盖
     ok = override_binary_key("IMBOY_API_AUTH_SWITCH", api_auth_switch),
     ok = override_binary_key("IMBOY_PASSWORD_SALT", password_salt),
+    ok = override_binary_key("IMBOY_HASHIDS_SALT", hashids_salt),
     ok = override_binary_key("IMBOY_ETURNAL_SECRET", eturnal_secret),
     ok = override_binary_key("IMBOY_JPUSH_APP_KEY", jpush_app_key),
     ok = override_binary_key("IMBOY_JPUSH_MASTER_SECRET", jpush_master_secret),

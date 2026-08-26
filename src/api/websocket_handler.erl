@@ -286,7 +286,7 @@ dispatch_v2_frame(?FRAME_TYPE_ACK, Flags, <<MsgIdInt:64/big-unsigned>>, State) -
     AckPayload = #{
         msg_id => MsgIdBin,
         did => maps:get(did, State, <<>>),
-        msg_direction => binary_to_atom(Direction, utf8)
+        msg_direction => binary_to_existing_atom(Direction, utf8)
     },
     %% 构造 payload bytes：重用 protobuf 子消息，交给 handle_protobuf_client_ack
     EncodedPayload = imboy_codec:encode_payload(protobuf, <<"client_ack">>, AckPayload),

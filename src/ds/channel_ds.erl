@@ -4,7 +4,7 @@
 % 频道领域服务层，提供缓存和复杂业务操作
 %%%
 
--export([create_channel/4]).
+-export([create_channel/3]).
 -export([is_subscribed/2]).
 -export([subscriber_uids/1]).
 -export([subscribe/2]).
@@ -45,14 +45,18 @@
 %% @doc 创建频道（事务）
 %% @param Uid 创建者用户ID
 %% @param Name 频道名称
-%% @param Type 频道类型
-%% @param Opts 其他选项（description, avatar, custom_id, tags）
--spec create_channel(integer(), binary(), integer(), map()) -> {ok, integer()} | {error, any()}.
-create_channel(Uid, Name, Type, Opts) ->
+%% @param Opts 其他选项（description, avatar, custom_id, tags, visibility, access_type, join_policy）
+-spec create_channel(integer(), binary(), map()) -> {ok, integer()} | {error, any()}.
+create_channel(Uid, Name, Opts) ->
+    Visibility = maps:get(visibility, Opts, 0),
+    AccessType = maps:get(access_type, Opts, 0),
+    JoinPolicy = maps:get(join_policy, Opts, 0),
     Now = elib_dt:now(),
     Data = #{
         name => Name,
-        type => Type,
+        visibility => Visibility,
+        access_type => AccessType,
+        join_policy => JoinPolicy,
         creator_uid => Uid,
         created_at => Now,
         updated_at => Now

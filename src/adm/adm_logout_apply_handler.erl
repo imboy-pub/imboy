@@ -344,8 +344,11 @@ row_get(Row, Key, Default) ->
         {ok, Value} ->
             Value;
         error ->
-            AtomKey = binary_to_atom(Key, utf8),
-            maps:get(AtomKey, Row, Default)
+            try binary_to_existing_atom(Key, utf8) of
+                AtomKey -> maps:get(AtomKey, Row, Default)
+            catch
+                error:badarg -> Default
+            end
     end.
 
 -spec csv_header_with_bom() -> binary().

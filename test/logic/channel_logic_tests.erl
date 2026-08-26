@@ -6,7 +6,7 @@
 %% channel_logic_subscription.erl 的 ?CHANNEL_SAFE_COLUMNS 保持一致。
 %% 钉住精确列清单可防 <<"*">> 宽列查询回流。
 -define(CHANNEL_SAFE_COLUMNS, <<
-    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "id,name,description,avatar,custom_id,creator_uid,subscriber_count,"
     "is_verified,tags,created_at,updated_at"
 >>).
 
@@ -666,8 +666,14 @@ get_messages_paid_channel_requires_purchase_test_() ->
         {channel_ds, [
             {'find_by_id', 2, fun(11, Fields) ->
                 case Fields of
-                    <<"id,type,status">> ->
-                        #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1};
+                    <<"id,access_type,visibility,status">> ->
+                        #{
+                            <<"id">> => 11,
+                            <<"access_type">> => 1,
+                            <<"visibility">> => 0,
+                            <<"join_policy">> => 3,
+                            <<"status">> => 1
+                        };
                     <<"*">> ->
                         #{<<"id">> => 11, <<"creator_uid">> => 1001}
                 end
@@ -703,8 +709,14 @@ get_messages_paid_channel_allows_purchased_user_test_() ->
         {channel_ds, [
             {'find_by_id', 2, fun(11, Fields) ->
                 case Fields of
-                    <<"id,type,status">> ->
-                        #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1};
+                    <<"id,access_type,visibility,status">> ->
+                        #{
+                            <<"id">> => 11,
+                            <<"access_type">> => 1,
+                            <<"visibility">> => 0,
+                            <<"join_policy">> => 3,
+                            <<"status">> => 1
+                        };
                     <<"*">> ->
                         #{<<"id">> => 11, <<"creator_uid">> => 1001}
                 end
@@ -747,8 +759,14 @@ get_messages_paid_channel_rejects_subscription_without_purchase_test_() ->
     MockConfigs = [
         {channel_ds, [
             {'find_by_id', 2, fun
-                (11, <<"id,type,status">>) ->
-                    #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1};
+                (11, <<"id,access_type,visibility,status">>) ->
+                    #{
+                        <<"id">> => 11,
+                        <<"access_type">> => 1,
+                        <<"visibility">> => 0,
+                        <<"join_policy">> => 3,
+                        <<"status">> => 1
+                    };
                 (11, <<"*">>) ->
                     #{<<"id">> => 11, <<"creator_uid">> => 1001}
             end}
@@ -781,8 +799,14 @@ get_messages_returns_error_when_repo_query_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 0, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 0,
+                    <<"visibility">> => 0,
+                    <<"join_policy">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_admin_ds, [
@@ -803,8 +827,14 @@ get_messages_returns_error_when_repo_payload_not_list_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 0, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 0,
+                    <<"visibility">> => 0,
+                    <<"join_policy">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_admin_ds, [
@@ -825,8 +855,14 @@ get_messages_filters_non_map_entries_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 0, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 0,
+                    <<"visibility">> => 0,
+                    <<"join_policy">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_admin_ds, [
@@ -859,7 +895,7 @@ get_messages_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
+            {'find_by_id', 2, fun(11, <<"id,access_type,visibility,status">>) -> [] end}
         ]},
         {channel_message_ds, [
             {'list_by_channel', 3, fun(_, _, _) ->
@@ -1275,8 +1311,8 @@ create_invitation_success_notifies_invitee_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 1}
             end}
         ]},
         {channel_subscription_ds, [
@@ -1318,8 +1354,8 @@ create_invitation_rejects_non_private_channel_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 0, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 0, <<"status">> => 1}
             end}
         ]},
         {channel_invitation_ds, [
@@ -1330,7 +1366,7 @@ create_invitation_rejects_non_private_channel_test_() ->
         ?_test(begin
             Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
 
-            ?assertEqual({error, <<"只有私有频道支持邀请功能"/utf8>>}, Result),
+            ?assertEqual({error, <<"只有邀请制频道支持邀请功能"/utf8>>}, Result),
             ?assertEqual(0, meck:num_calls(channel_invitation_ds, create, 1))
         end)
     end}.
@@ -1339,7 +1375,7 @@ create_invitation_returns_error_when_channel_not_found_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
                 {error, not_found}
             end}
         ]},
@@ -1385,7 +1421,7 @@ create_invitation_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) -> [] end}
         ]},
         {channel_invitation_ds, [
             {'create', 1, fun(_) ->
@@ -1405,8 +1441,8 @@ create_invitation_rejects_disabled_channel_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 0}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 0}
             end}
         ]},
         {channel_invitation_ds, [
@@ -1428,8 +1464,8 @@ create_invitation_ds_binary_error_passthrough_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 1}
             end}
         ]},
         {channel_subscription_ds, [
@@ -1463,8 +1499,8 @@ create_invitation_ds_atom_error_converted_to_binary_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 1}
             end}
         ]},
         {channel_subscription_ds, [
@@ -1498,8 +1534,8 @@ create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 1}
             end}
         ]},
         {channel_subscription_ds, [
@@ -1532,8 +1568,8 @@ create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 1}
             end}
         ]},
         {channel_subscription_ds, [
@@ -1566,8 +1602,8 @@ create_invitation_returns_error_when_loading_created_invitation_payload_not_map_
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 1, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 1}
             end}
         ]},
         {channel_subscription_ds, [
@@ -1787,6 +1823,7 @@ accept_invitation_success_notifies_inviter_and_invitee_test_() ->
             {'accept', 2, fun(501, 2002) -> ok end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) -> #{<<"join_policy">> => 1} end},
             {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
@@ -1830,6 +1867,7 @@ accept_invitation_success_still_returns_ok_when_notify_fails_test_() ->
             {'accept', 2, fun(511, 2002) -> ok end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) -> #{<<"join_policy">> => 1} end},
             {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
@@ -1863,6 +1901,7 @@ accept_invitation_success_still_returns_ok_when_notify_crashes_test_() ->
             {'accept', 2, fun(512, 2002) -> ok end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) -> #{<<"join_policy">> => 1} end},
             {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
@@ -2022,6 +2061,7 @@ accept_invitation_subscribe_error_converted_to_binary_test_() ->
             {'accept', 2, fun(506, 2002) -> ok end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) -> #{<<"join_policy">> => 1} end},
             {'subscribe', 2, fun(11, 2002) -> {error, db_timeout} end}
         ]},
         {msg_s2c_ds, [
@@ -2109,8 +2149,14 @@ create_order_success_returns_transferred_order_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 1,
+                    <<"join_policy">> => 3,
+                    <<"visibility">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_order_ds, [
@@ -2151,8 +2197,14 @@ create_order_persists_requested_payment_method_test_() ->
             {'enabled', 0, fun() -> true end}
         ]},
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 1,
+                    <<"join_policy">> => 3,
+                    <<"visibility">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_order_ds, [
@@ -2186,8 +2238,14 @@ create_order_rejects_non_paid_channel_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 0, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 0,
+                    <<"join_policy">> => 0,
+                    <<"visibility">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_order_ds, [
@@ -2207,7 +2265,7 @@ create_order_propagates_channel_lookup_error_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
                 {error, db_down}
             end}
         ]},
@@ -2230,7 +2288,7 @@ create_order_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) -> [] end}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) -> [] end}
         ]},
         {channel_order_ds, [
             {'create_order', 1, fun(_) ->
@@ -2273,8 +2331,14 @@ create_order_returns_not_found_when_order_reload_returns_non_map_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 1,
+                    <<"join_policy">> => 3,
+                    <<"visibility">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_order_ds, [
@@ -2299,8 +2363,14 @@ create_order_unexpected_ds_result_converted_to_binary_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type,status">>) ->
-                #{<<"id">> => 11, <<"type">> => 2, <<"status">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy,visibility,status">>) ->
+                #{
+                    <<"id">> => 11,
+                    <<"access_type">> => 1,
+                    <<"join_policy">> => 3,
+                    <<"visibility">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_order_ds, [
@@ -2418,7 +2488,8 @@ pay_order_success_sends_paid_and_subscribed_notifications_test_() ->
                 PaymentNo = maps:get(payment_no, PaymentData),
                 ?assertEqual(<<"WALLET_PAYNO">>, PaymentNo),
                 ok
-            end}
+            end},
+            {'set_gateway_params', 3, fun(<<"ORD001">>, <<"WALLET_PAYNO">>, _Extra) -> ok end}
         ]},
         {payment_gateway, [
             {'pay', 3, fun(<<"wallet">>, <<"ORD001">>, _Opts) ->
@@ -2426,6 +2497,7 @@ pay_order_success_sends_paid_and_subscribed_notifications_test_() ->
             end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) -> #{<<"join_policy">> => 1} end},
             {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
@@ -2463,7 +2535,8 @@ pay_order_success_still_returns_ok_when_notify_fails_test_() ->
             end},
             {'pay', 2, fun(<<"ORD001_NOTIFY_ERR">>, _PaymentData) ->
                 ok
-            end}
+            end},
+            {'set_gateway_params', 3, fun(_, _, _) -> ok end}
         ]},
         {payment_gateway, [
             {'pay', 3, fun(<<"wallet">>, <<"ORD001_NOTIFY_ERR">>, _Opts) ->
@@ -2471,6 +2544,7 @@ pay_order_success_still_returns_ok_when_notify_fails_test_() ->
             end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) -> #{<<"join_policy">> => 1} end},
             {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
@@ -2505,7 +2579,8 @@ pay_order_success_still_returns_ok_when_notify_crashes_test_() ->
             end},
             {'pay', 2, fun(<<"ORD001_NOTIFY_CRASH">>, _PaymentData) ->
                 ok
-            end}
+            end},
+            {'set_gateway_params', 3, fun(_, _, _) -> ok end}
         ]},
         {payment_gateway, [
             {'pay', 3, fun(<<"wallet">>, <<"ORD001_NOTIFY_CRASH">>, _Opts) ->
@@ -2513,6 +2588,7 @@ pay_order_success_still_returns_ok_when_notify_crashes_test_() ->
             end}
         ]},
         {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) -> #{<<"join_policy">> => 1} end},
             {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
         {msg_s2c_ds, [
@@ -2544,7 +2620,8 @@ pay_order_already_paid_does_not_send_duplicate_notifications_test_() ->
             end},
             {'pay', 2, fun(<<"ORD002">>, _PaymentData) ->
                 {error, already_paid}
-            end}
+            end},
+            {'set_gateway_params', 3, fun(_, _, _) -> ok end}
         ]},
         {payment_gateway, [
             {'pay', 3, fun(<<"wallet">>, <<"ORD002">>, _Opts) ->
@@ -2585,7 +2662,8 @@ pay_order_not_found_or_expired_returns_readable_error_test_() ->
             end},
             {'pay', 2, fun(<<"ORD009">>, _PaymentData) ->
                 {error, not_found_or_expired}
-            end}
+            end},
+            {'set_gateway_params', 3, fun(_, _, _) -> ok end}
         ]},
         {payment_gateway, [
             {'pay', 3, fun(<<"wallet">>, <<"ORD009">>, _Opts) ->
@@ -3136,8 +3214,14 @@ get_messages_private_channel_requires_subscription_test_() ->
         {channel_ds, [
             {'find_by_id', 2, fun(12, Fields) ->
                 case Fields of
-                    <<"id,type,status">> ->
-                        #{<<"id">> => 12, <<"type">> => 1, <<"status">> => 1};
+                    <<"id,access_type,visibility,status">> ->
+                        #{
+                            <<"id">> => 12,
+                            <<"access_type">> => 0,
+                            <<"visibility">> => 1,
+                            <<"join_policy">> => 1,
+                            <<"status">> => 1
+                        };
                     <<"*">> ->
                         #{<<"id">> => 12, <<"creator_uid">> => 3003}
                 end
@@ -3170,8 +3254,14 @@ get_messages_private_channel_allows_subscriber_test_() ->
         {channel_ds, [
             {'find_by_id', 2, fun(12, Fields) ->
                 case Fields of
-                    <<"id,type,status">> ->
-                        #{<<"id">> => 12, <<"type">> => 1, <<"status">> => 1};
+                    <<"id,access_type,visibility,status">> ->
+                        #{
+                            <<"id">> => 12,
+                            <<"access_type">> => 0,
+                            <<"visibility">> => 1,
+                            <<"join_policy">> => 1,
+                            <<"status">> => 1
+                        };
                     <<"*">> ->
                         #{<<"id">> => 12, <<"creator_uid">> => 3003}
                 end
@@ -3205,54 +3295,18 @@ get_messages_private_channel_allows_subscriber_test_() ->
         end)
     end}.
 
-get_messages_returns_error_when_channel_type_invalid_test_() ->
-    ChannelIdBin = integer_to_binary(12),
-    MockConfigs = [
-        {channel_ds, [
-            {'find_by_id', 2, fun(12, Fields) ->
-                case Fields of
-                    <<"id,type,status">> ->
-                        #{<<"id">> => 12, <<"type">> => invalid_type, <<"status">> => 1};
-                    <<"*">> ->
-                        #{<<"id">> => 12, <<"creator_uid">> => 3003}
-                end
-            end}
-        ]},
-        {channel_admin_ds, [
-            {'get_role', 2, fun(12, 2002) -> 0 end}
-        ]},
-        {channel_subscription_ds, [
-            {'is_subscribed', 2, fun(_, _) ->
-                erlang:error(should_not_check_subscription_when_channel_type_invalid)
-            end}
-        ]},
-        {channel_order_ds, [
-            {'has_purchased', 2, fun(_, _) ->
-                erlang:error(should_not_check_purchase_when_channel_type_invalid)
-            end}
-        ]},
-        {channel_message_ds, [
-            {'list_by_channel', 3, fun(_, _, _) ->
-                erlang:error(should_not_list_messages_when_channel_type_invalid)
-            end}
-        ]}
-    ],
-    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
-        ?_test(begin
-            Result = channel_logic:get_messages(2002, ChannelIdBin, 0, 20),
-            ?assertEqual({error, <<"频道类型无效"/utf8>>}, Result),
-            ?assertEqual(0, meck:num_calls(channel_subscription_ds, is_subscribed, 2)),
-            ?assertEqual(0, meck:num_calls(channel_order_ds, has_purchased, 2)),
-            ?assertEqual(0, meck:num_calls(channel_message_ds, list_by_channel, 3))
-        end)
-    end}.
-
 get_messages_paid_channel_admin_skips_subscription_and_purchase_checks_test_() ->
     ChannelIdBin = integer_to_binary(13),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(13, <<"id,type,status">>) ->
-                #{<<"id">> => 13, <<"type">> => 2, <<"status">> => 1}
+            {'find_by_id', 2, fun(13, <<"id,access_type,visibility,status">>) ->
+                #{
+                    <<"id">> => 13,
+                    <<"access_type">> => 1,
+                    <<"visibility">> => 0,
+                    <<"join_policy">> => 3,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_admin_ds, [
@@ -3296,8 +3350,8 @@ subscribe_private_channel_already_subscribed_is_idempotent_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type">>) ->
-                #{<<"id">> => 11, <<"type">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy">>) ->
+                #{<<"id">> => 11, <<"access_type">> => 0, <<"join_policy">> => 1}
             end},
             {'subscribe', 2, fun(11, 2002) -> ok end}
         ]},
@@ -3328,8 +3382,8 @@ subscribe_public_channel_already_subscribed_is_idempotent_test_() ->
     ChannelIdBin = integer_to_binary(12),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(12, <<"id,type">>) ->
-                #{<<"id">> => 12, <<"type">> => 0}
+            {'find_by_id', 2, fun(12, <<"id,access_type,join_policy">>) ->
+                #{<<"id">> => 12, <<"access_type">> => 0, <<"join_policy">> => 0}
             end},
             {'subscribe', 2, fun(12, 2002) -> ok end}
         ]},
@@ -3351,8 +3405,8 @@ subscribe_paid_channel_already_subscribed_skips_purchase_check_test_() ->
     ChannelIdBin = integer_to_binary(13),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(13, <<"id,type">>) ->
-                #{<<"id">> => 13, <<"type">> => 2}
+            {'find_by_id', 2, fun(13, <<"id,access_type,join_policy">>) ->
+                #{<<"id">> => 13, <<"access_type">> => 1, <<"join_policy">> => 3}
             end},
             {'subscribe', 2, fun(13, 2002) -> ok end}
         ]},
@@ -3378,8 +3432,8 @@ subscribe_public_channel_propagates_ds_atom_error_as_binary_test_() ->
     ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(14, <<"id,type">>) ->
-                #{<<"id">> => 14, <<"type">> => 0}
+            {'find_by_id', 2, fun(14, <<"id,access_type,join_policy">>) ->
+                #{<<"id">> => 14, <<"access_type">> => 0, <<"join_policy">> => 0}
             end},
             {'subscribe', 2, fun(14, 2002) -> {error, db_down} end}
         ]},
@@ -3404,7 +3458,7 @@ subscribe_returns_error_when_channel_payload_invalid_test_() ->
     ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(14, <<"id,type">>) -> [] end},
+            {'find_by_id', 2, fun(14, <<"id,access_type,join_policy">>) -> [] end},
             {'subscribe', 2, fun(_, _) ->
                 erlang:error(should_not_subscribe_when_channel_payload_invalid)
             end}
@@ -3457,8 +3511,8 @@ subscribe_private_channel_rejects_unexpected_invitation_state_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(11, <<"id,type">>) ->
-                #{<<"id">> => 11, <<"type">> => 1}
+            {'find_by_id', 2, fun(11, <<"id,access_type,join_policy">>) ->
+                #{<<"id">> => 11, <<"access_type">> => 0, <<"join_policy">> => 1}
             end}
         ]},
         {channel_subscription_ds, [
@@ -3485,8 +3539,8 @@ subscribe_returns_error_when_ds_subscribe_fails_test_() ->
     ChannelIdBin = integer_to_binary(14),
     MockConfigs = [
         {channel_ds, [
-            {'find_by_id', 2, fun(14, <<"id,type">>) ->
-                #{<<"id">> => 14, <<"type">> => 0}
+            {'find_by_id', 2, fun(14, <<"id,access_type,join_policy">>) ->
+                #{<<"id">> => 14, <<"access_type">> => 0, <<"join_policy">> => 0}
             end},
             {'subscribe', 2, fun(14, 2002) -> {error, unexpected_state} end}
         ]},
@@ -3580,7 +3634,13 @@ mark_as_read_clears_unread_only_for_current_user_test_() ->
     MockConfigs = [
         {channel_ds, [
             {'find_by_id', 2, fun(_, _) ->
-                #{<<"id">> => ChannelId, <<"type">> => 0, <<"status">> => 1}
+                #{
+                    <<"id">> => ChannelId,
+                    <<"access_type">> => 0,
+                    <<"visibility">> => 0,
+                    <<"join_policy">> => 0,
+                    <<"status">> => 1
+                }
             end}
         ]},
         {channel_admin_ds, [
@@ -3644,8 +3704,14 @@ mark_as_read_falls_back_to_custom_id_when_decode_returns_unexpected_term_test_()
             end},
             {'find_by_id', 2, fun(13, Fields) ->
                 case Fields of
-                    <<"id,type,status">> ->
-                        #{<<"id">> => 13, <<"type">> => 0, <<"status">> => 1};
+                    <<"id,access_type,visibility,status">> ->
+                        #{
+                            <<"id">> => 13,
+                            <<"access_type">> => 0,
+                            <<"visibility">> => 0,
+                            <<"join_policy">> => 0,
+                            <<"status">> => 1
+                        };
                     <<"*">> ->
                         #{<<"id">> => 13, <<"creator_uid">> => 2002}
                 end

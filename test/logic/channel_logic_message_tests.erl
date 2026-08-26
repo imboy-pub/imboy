@@ -5,7 +5,7 @@
 %% P1-7b：与 src/logic/channel_logic_message.erl 的 ?CHANNEL_SAFE_COLUMNS
 %% 保持一致，钉住精确列清单防 <<"*">> 宽列查询回流。
 -define(CHANNEL_SAFE_COLUMNS, <<
-    "id,name,description,avatar,type,custom_id,creator_uid,subscriber_count,"
+    "id,name,description,avatar,custom_id,creator_uid,subscriber_count,"
     "is_verified,tags,created_at,updated_at"
 >>).
 
@@ -126,9 +126,11 @@ get_paid_channel_returns_true_for_purchased_user_test_() ->
         [
             {channel_ds, [
                 {'find_by_id_with_price', 1, fun(_ChannelId) ->
-                    #{<<"id">> => 42, <<"type">> => 2, <<"price">> => 990}
+                    #{<<"id">> => 42, <<"access_type">> => 1, <<"price">> => 990}
                 end},
-                {'find_by_id', 2, fun(_ChannelId, _Columns) -> #{<<"id">> => 42} end}
+                {'find_by_id', 2, fun(_ChannelId, _Columns) ->
+                    #{<<"id">> => 42, <<"access_type">> => 1}
+                end}
             ]},
             {channel_admin_ds, [
                 {'get_role', 2, fun(_ChannelId, _Uid) -> 0 end}
@@ -151,12 +153,14 @@ get_paid_custom_channel_includes_price_and_purchase_state_test_() ->
         [
             {channel_ds, [
                 {'find_by_custom_id', 1, fun(<<"paid_daily">>) ->
-                    #{<<"id">> => 42, <<"type">> => 2}
+                    #{<<"id">> => 42, <<"access_type">> => 1}
                 end},
                 {'find_by_id_with_price', 1, fun(42) ->
-                    #{<<"id">> => 42, <<"type">> => 2, <<"price">> => 990}
+                    #{<<"id">> => 42, <<"access_type">> => 1, <<"price">> => 990}
                 end},
-                {'find_by_id', 2, fun(42, _Columns) -> #{<<"id">> => 42} end}
+                {'find_by_id', 2, fun(42, _Columns) ->
+                    #{<<"id">> => 42, <<"access_type">> => 1}
+                end}
             ]},
             {channel_admin_ds, [
                 {'get_role', 2, fun(42, 1001) -> 0 end}

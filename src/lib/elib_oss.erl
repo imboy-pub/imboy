@@ -366,6 +366,58 @@ get_file_category(_Other) -> other.
 validate_file_type(MimeType) ->
     lists:member(MimeType, ?ALLOWED_TYPES).
 
+%% @doc 服务端文件类型校验（基于魔数签名，防止客户端伪造 MIME 类型绕过白名单）。
+%% 在 presign 阶段校验客户端声明的 MIME，在 confirm 阶段对已上传对象执行二次校验。
+%% 返回 true 当文件内容签名与声明的 MIME 类别一致。
+-spec validate_file_content(binary(), binary()) -> boolean().
+validate_file_content(FileBinary, MimeType) ->
+    case MimeType of
+        <<"image/", _/binary>> ->
+            %% 图片魔数校验：PNG/JPEG/GIF/WebP
+            case FileBinary of
+                %% PNG
+                <<137, 80, 78, 71, 13, 10, 26, 10, _/binary>> -> true;
+                %% JPEG
+                <<255, 216, _/binary>> -> true;
+                %% GIF
+                <<71, 73, 70, 56, _/binary>> -> true;
+                %% WebP
+                <<82, 73, 70, 70, _/binary>> -> true;
+                _ -> false
+            end;
+        <<"video/", _/binary>> ->
+            %% 视频魔数校验：MP4/WebM
+            case FileBinary of
+                %% MP4
+                <<0, 0, 0, _, 102, 116, 121, 112, _/binary>> -> true;
+                %% WebM/MKV
+                <<26, 69, 223, 163, _/binary>> -> true;
+                _ -> false
+            end;
+        <<"audio/", _/binary>> ->
+            %% 音频魔数校验：MP3/OGG/WAV
+            case FileBinary of
+                %% MP3 ID3
+                <<73, 68, 51, _/binary>> -> true;
+                %% MP3
+                <<255, 251, _/binary>> -> true;
+                %% OGG
+                <<79, 103, 103, 83, _/binary>> -> true;
+                %% WAV
+                <<82, 73, 70, 70, _/binary>> -> true;
+                _ -> false
+            end;
+        <<"application/pdf", _/binary>> ->
+            case FileBinary of
+                %% PDF
+                <<37, 80, 68, 70, _/binary>> -> true;
+                _ -> false
+            end;
+        _ ->
+            %% 其他类型（文档等）不做魔数校验，依赖 MIME 白名单
+            true
+    end.
+
 %% ===================================================================
 %% 内部函数
 %% ===================================================================

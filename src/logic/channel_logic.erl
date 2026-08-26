@@ -9,8 +9,7 @@
 %% ==================== Specs ====================
 
 %% channel_logic_message delegates
--spec create_channel(integer(), binary(), integer(), map(), integer()) ->
-    {ok, map()} | {error, binary()}.
+-spec create_channel(integer(), binary(), map(), integer()) -> {ok, map()} | {error, binary()}.
 -spec get_channel(binary(), integer()) -> {ok, map()} | {error, binary()}.
 -spec get_channel_by_custom_id(binary(), integer()) -> {ok, map()} | {error, binary()}.
 -spec update_channel(integer(), binary(), map()) -> {ok, map()} | {error, binary()}.
@@ -69,7 +68,7 @@
 
 %% ==================== Exports ====================
 
--export([create_channel/5]).
+-export([create_channel/4]).
 -export([get_channel/2]).
 -export([get_channel_by_custom_id/2]).
 -export([update_channel/3]).
@@ -125,8 +124,8 @@
 
 -export([sync_channels/2]).
 
-create_channel(Uid, Name, Type, Opts, MaxChannels) ->
-    channel_logic_message:create_channel(Uid, Name, Type, Opts, MaxChannels).
+create_channel(Uid, Name, Opts, MaxChannels) ->
+    channel_logic_message:create_channel(Uid, Name, Opts, MaxChannels).
 
 get_channel(ChannelIdBin, Uid) ->
     channel_logic_message:get_channel(ChannelIdBin, Uid).

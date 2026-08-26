@@ -85,7 +85,7 @@ featured(Limit) ->
         "SELECT c.id, c.name, c.description, c.avatar, c.visibility, c.custom_id, "
         "c.subscriber_count, c.is_verified, c.tags, c.category_id, c.created_at "
         "FROM public.channel c "
-        "WHERE c.status = 1 AND c.is_featured = true "
+        "WHERE c.status = 1 AND c.is_featured = true AND c.visibility = 0 "
         "ORDER BY c.featured_at DESC NULLS LAST "
         "LIMIT $1"
     >>,

@@ -20,13 +20,19 @@ setup() ->
     meck:new(channel_order_ds, [no_link, passthrough]),
     meck:new(payment_gateway, [no_link, passthrough]),
     meck:new(channel_ds, [no_link, passthrough]),
+    meck:new(payment_transaction_ds, [no_link, passthrough]),
     meck:expect(channel_ds, unsubscribe, fun(_ChannelId, _Uid) -> ok end),
+    meck:expect(channel_order_ds, mark_refunding, fun(_OrderNo) -> {ok, 1} end),
+    meck:expect(channel_order_ds, finalize_refund, fun(_, _, _) -> ok end),
+    meck:expect(channel_order_ds, release_refunding, fun(_) -> ok end),
+    meck:expect(payment_transaction_ds, find_by_biz_order_no, fun(_, _) -> not_found end),
     ok.
 
 cleanup(_) ->
     meck:unload(channel_order_ds),
     meck:unload(payment_gateway),
     meck:unload(channel_ds),
+    meck:unload(payment_transaction_ds),
     ok.
 
 admin_refund_test_() ->
@@ -42,10 +48,9 @@ admin_refund_test_() ->
 t_admin_refund_ok() ->
     meck:expect(channel_order_ds, find_by_order_no, fun(_) -> {ok, order(1)} end),
     meck:expect(payment_gateway, refund, fun(_M, _P, _A) -> ok end),
-    meck:expect(channel_order_ds, refund, fun(_O, _U, _R) -> ok end),
     ?assertEqual(ok, channel_logic_order:admin_refund_order(<<"ORD-1">>, <<"申诉退款"/utf8>>)),
     ?assertEqual(1, meck:num_calls(payment_gateway, refund, '_')),
-    ?assertEqual(1, meck:num_calls(channel_order_ds, refund, '_')).
+    ?assertEqual(1, meck:num_calls(channel_order_ds, finalize_refund, '_')).
 
 %% 已退款(status=2) → 幂等，返回提示且不调用网关
 t_admin_refund_idempotent() ->

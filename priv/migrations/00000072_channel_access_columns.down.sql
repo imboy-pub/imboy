@@ -29,6 +29,9 @@ ALTER TABLE channel DROP CONSTRAINT IF EXISTS chk_channel_no_free_purchase;
 
 DROP INDEX IF EXISTS i_channel_visibility_active;
 
+-- 删除可能存在的旧触发器（之前版本遗留的投影触发器）
+DROP TRIGGER IF EXISTS trg_channel_type_projection ON channel;
+
 ALTER TABLE channel DROP COLUMN IF EXISTS join_policy;
 ALTER TABLE channel DROP COLUMN IF EXISTS access_type;
 ALTER TABLE channel DROP COLUMN IF EXISTS visibility;

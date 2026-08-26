@@ -115,7 +115,7 @@ list(<<"GET">>, Req0) ->
     StatusFilter = proplists:get_value(<<"status">>, Qs, <<"-1">>),
 
     Column = <<
-        "id, name, type, creator_uid as owner_id, custom_id, description, avatar, "
+        "id, name, visibility, access_type, join_policy, creator_uid as owner_id, custom_id, description, avatar, "
         "subscriber_count, status, created_at, updated_at"
     >>,
 
@@ -127,7 +127,7 @@ list(<<"GET">>, Req0) ->
             _ -> #{}
         end,
 
-    %% 可选 type 过滤（付费频道 type=2 等）下沉到服务端分页，
+    %% 可选 access_type 过滤下沉到服务端分页
     %% 避免前端按 type 过滤导致 total/page 与可见行数不一致
     Where =
         case proplists:get_value(<<"access_type">>, Qs) of
@@ -612,7 +612,7 @@ search(<<"GET">>, Req0) ->
             elib_response:success(Req0, #{list => [], page => 1, size => Limit, total => 0});
         _ ->
             Column = <<
-                "id, name, type, creator_uid as owner_id, custom_id, description, "
+                "id, name, visibility, access_type, join_policy, creator_uid as owner_id, custom_id, description, "
                 "subscriber_count, status, created_at"
             >>,
             case channel_ds:search(Keyword, Limit, Column) of

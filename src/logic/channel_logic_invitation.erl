@@ -24,7 +24,7 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
                     if
                         Status =/= 1 ->
                             {error, <<"频道已禁用或删除"/utf8>>};
-                        JoinPolicy =/= 1 ->
+                        JoinPolicy =/= 1 andalso JoinPolicy =/= 3 ->
                             {error, <<"只有邀请制频道支持邀请功能"/utf8>>};
                         true ->
                             do_create_invitation(ChannelId, Uid, InviteeUid)
@@ -94,25 +94,36 @@ accept_invitation(Uid, InvitationId) ->
 do_accept_invitation(ChannelId, Uid, InvitationId, Invitation) ->
     case channel_invitation_ds:accept(InvitationId, Uid) of
         ok ->
-            case channel_ds:subscribe(ChannelId, Uid) of
-                ok ->
-                    InviterUid = maps:get(<<"inviter_uid">>, Invitation, 0),
-                    case is_integer(InviterUid) andalso InviterUid > 0 of
-                        true ->
-                            channel_logic_notify:notify_invitation_accepted(
-                                ChannelId, InviterUid, Uid
-                            );
-                        false ->
-                            ok
-                    end;
-                {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)}
+            %% 查频道 join_policy：C4(join_policy=3) 不直接 subscribe，返回购买上下文
+            case channel_ds:find_by_id(ChannelId, <<"id,join_policy">>) of
+                #{<<"join_policy">> := 3} ->
+                    {ok, #{<<"action">> => <<"purchase">>, <<"channel_id">> => ChannelId}};
+                _ ->
+                    case channel_ds:subscribe(ChannelId, Uid) of
+                        ok ->
+                            InviterUid = maps:get(<<"inviter_uid">>, Invitation, 0),
+                            case is_integer(InviterUid) andalso InviterUid > 0 of
+                                true ->
+                                    channel_logic_notify:notify_invitation_accepted(
+                                        ChannelId, InviterUid, Uid
+                                    );
+                                false ->
+                                    ok
+                            end;
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)}
+                    end
             end;
         {error, not_found_or_expired} ->
-            %% race: already accepted; ensure subscription is active
-            case channel_ds:subscribe(ChannelId, Uid) of
-                ok -> ok;
-                {error, _} -> ok
+            %% race: already accepted; check join_policy before subscribing
+            case channel_ds:find_by_id(ChannelId, <<"id,join_policy">>) of
+                #{<<"join_policy">> := 3} ->
+                    {ok, #{<<"action">> => <<"purchase">>, <<"channel_id">> => ChannelId}};
+                _ ->
+                    case channel_ds:subscribe(ChannelId, Uid) of
+                        ok -> ok;
+                        {error, _} -> ok
+                    end
             end;
         {error, already_accepted} ->
             ok;

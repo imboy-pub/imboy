@@ -54,10 +54,14 @@ set_price_validation_requires_active_paid_channel_test_() ->
         [
             {channel_ds, [
                 {'find_by_id', 2, fun
-                    (11, <<"id,type,status">>) -> #{<<"type">> => 2, <<"status">> => 1};
-                    (12, <<"id,type,status">>) -> #{<<"type">> => 0, <<"status">> => 1};
-                    (13, <<"id,type,status">>) -> #{<<"type">> => 2, <<"status">> => 0};
-                    (14, <<"id,type,status">>) -> {error, not_found}
+                    (11, <<"id,access_type,status">>) ->
+                        #{<<"access_type">> => 1, <<"status">> => 1};
+                    (12, <<"id,access_type,status">>) ->
+                        #{<<"access_type">> => 0, <<"status">> => 1};
+                    (13, <<"id,access_type,status">>) ->
+                        #{<<"access_type">> => 1, <<"status">> => 0};
+                    (14, <<"id,access_type,status">>) ->
+                        {error, not_found}
                 end}
             ]}
         ],
