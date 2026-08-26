@@ -174,6 +174,7 @@ alipay_cfg() ->
 alipay_map_or_provision(AlipayUid, Info, Did, PostVals) ->
     case sso_identity_ds:find_uid(?ALIPAY_PROVIDER, AlipayUid) of
         {ok, Uid} ->
+            auto_bind_alipay(Uid, Info, AlipayUid),
             alipay_finish(Uid, Did);
         not_found ->
             alipay_provision(AlipayUid, Info, Did, PostVals);
@@ -207,6 +208,7 @@ alipay_provision(AlipayUid, Info, Did, PostVals) ->
             case user_ds:insert_and_get_id(Data) of
                 {ok, Uid2} ->
                     ok = sso_identity_ds:bind(?ALIPAY_PROVIDER, AlipayUid, Uid2, <<>>),
+                    auto_bind_alipay(Uid2, Info, AlipayUid),
                     alipay_finish(Uid2, Did);
                 {error, {error, error, <<"23505">>, unique_violation, _Msg, _Details}} ->
                     %% 并发建号竞态：回读映射，命中即直登（与 OIDC 同款兜底）
@@ -249,6 +251,21 @@ alipay_nickname(<<>>, AlipayUid) ->
     <<"alipay_", Tail/binary>>;
 alipay_nickname(Nick, _AlipayUid) ->
     Nick.
+
+%% 支付宝登录成功时，自动填充 setting.alipay（仅首次或为空时）。
+%% 不覆盖已有值（手动填过的结算账号）。
+-spec auto_bind_alipay(integer(), map(), binary()) -> ok.
+auto_bind_alipay(Uid, Info, AlipayUid) ->
+    Setting = user_setting_ds:find_by_uid(Uid),
+    case maps:get(<<"alipay">>, Setting, <<>>) of
+        <<>> ->
+            NickName = alipay_nickname(
+                maps:get(<<"nick_name">>, Info, <<>>), AlipayUid
+            ),
+            user_setting_ds:save(Uid, <<"alipay">>, NickName);
+        _ ->
+            ok
+    end.
 
 % passport_logic:send_code(<<>>, <<"sms">>).
 % passport_logic:send_code(<<>>, <<"email">>).
