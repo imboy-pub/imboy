@@ -85,8 +85,16 @@ join_group_success_test_() ->
                 end}
             ]},
             {elib_pg, [
-                {'query', 3, fun(_Conn, _Sql, [1]) ->
-                    {ok, [#{<<"user_id_sum">> => 100, <<"member_count">> => 1}]}
+                %% T5：join_group 前置 workspace 子集校验的 scope 查询——
+                %% 返回空行（个人群/无 workspace 归属）→ 校验放行，
+                %% 保持本测试"普通群入群成功"的原有语义。
+                %% （meck 同名 expect 后注册会覆盖前者，多分支须合并为
+                %%  单个多子句 fun）
+                {'query', 3, fun
+                    (_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
+                        {ok, []};
+                    (_Conn, _Sql, [1]) ->
+                        {ok, [#{<<"user_id_sum">> => 100, <<"member_count">> => 1}]}
                 end},
                 {'update', 5, fun(_Conn, <<"group">>, Data, <<"id = $1">>, [1]) ->
                     ?assertEqual(100, maps:get(user_id_sum, Data)),
@@ -113,15 +121,22 @@ join_group_success_test_() ->
     ).
 
 join_group_already_member_returns_zero_test_() ->
-    ?WITH_MECK(
-        group_member_repo,
+    ?WITH_MECKS(
         [
-            {'tablename', 0, fun() ->
-                <<"group_member">>
-            end},
-            {'find', 3, fun(1, 100, <<"id">>) ->
-                #{<<"id">> => 1}
-            end}
+            {group_member_repo, [
+                {'tablename', 0, fun() ->
+                    <<"group_member">>
+                end},
+                {'find', 3, fun(1, 100, <<"id">>) ->
+                    #{<<"id">> => 1}
+                end}
+            ]},
+            %% T5：前置 workspace 子集校验的 scope 查询（个人群 → 空行放行）
+            {elib_pg, [
+                {'query', 3, fun(_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
+                    {ok, []}
+                end}
+            ]}
         ],
         fun() ->
             ?assertEqual({ok, 0}, group_member_ds:join_group(self(), <<"invite">>, 100, 1, #{}))

@@ -37,34 +37,102 @@ init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
     Method = cowboy_req:method(Req0),
+    %% T5（双体验 v2.5.2）：Group Notice 全部入口前置 Workspace 边界——
+    %% workspace 群的公告（gid 直挂或 notice_id 回溯）要求请求者为 active
+    %% 工作区成员（403）；personal 群公告/无群上下文零行为变化。
+    %% Group Notice 继续只属于 Group（I12），本守卫只加边界不改归属。
     Req1 =
-        case Action of
-            add ->
-                add(Method, Req0, State);
-            edit ->
-                edit(Method, Req0, State);
-            delete ->
-                delete(Method, Req0, State);
-            page ->
-                page(Method, Req0, State);
-            publish ->
-                publish(Method, Req0, State);
-            latest ->
-                latest(Method, Req0, State);
-            list ->
-                list(Method, Req0, State);
-            detail ->
-                detail(Method, Req0, State);
-            pin ->
-                pin(Method, Req0, State);
-            unpin ->
-                unpin(Method, Req0, State);
-            mark_read ->
-                mark_read(Method, Req0, State);
-            false ->
-                Req0
+        case workspace_notice_guard(Req0, maps:get(current_uid, State, 0)) of
+            {error, {403, Msg}} ->
+                elib_response:error(Req0, Msg, 403);
+            ok ->
+                notice_action(Action, Method, Req0, State)
         end,
     {ok, Req1, State}.
+
+-spec notice_action(atom(), binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+notice_action(Action, Method, Req0, State) ->
+    case Action of
+        add ->
+            add(Method, Req0, State);
+        edit ->
+            edit(Method, Req0, State);
+        delete ->
+            delete(Method, Req0, State);
+        page ->
+            page(Method, Req0, State);
+        publish ->
+            publish(Method, Req0, State);
+        latest ->
+            latest(Method, Req0, State);
+        list ->
+            list(Method, Req0, State);
+        detail ->
+            detail(Method, Req0, State);
+        pin ->
+            pin(Method, Req0, State);
+        unpin ->
+            unpin(Method, Req0, State);
+        mark_read ->
+            mark_read(Method, Req0, State);
+        false ->
+            Req0
+    end.
+
+%% @doc T5 守卫：从请求提取 gid（优先）或 notice_id（回溯群归属）后校验
+%% Workspace 成员边界。elib_param:post/1 带进程字典缓存，此处预读不影响
+%% 各 action 内再次读取。
+-spec workspace_notice_guard(cowboy_req:req(), integer()) -> ok | {error, {403, binary()}}.
+workspace_notice_guard(Req0, Uid) ->
+    PostVals =
+        try
+            elib_param:post(Req0)
+        catch
+            _:_ -> #{}
+        end,
+    Qs =
+        try
+            cowboy_req:parse_qs(Req0)
+        catch
+            _:_ -> []
+        end,
+    PostMap =
+        case PostVals of
+            Map when is_map(Map) -> Map;
+            _ -> #{}
+        end,
+    QsList =
+        case is_list(Qs) of
+            true -> Qs;
+            _ -> []
+        end,
+    Gid = first_defined([
+        maps:get(<<"gid">>, PostMap, undefined),
+        proplists:get_value(<<"gid">>, QsList, undefined)
+    ]),
+    case elib_cnv:safe_to_integer(Gid) of
+        Gid2 when Gid2 > 0 ->
+            workspace_resolver:guard_group_gid(Uid, Gid2);
+        _ ->
+            NoticeId = first_defined([
+                maps:get(<<"notice_id">>, PostMap, undefined),
+                maps:get(<<"id">>, PostMap, undefined),
+                proplists:get_value(<<"notice_id">>, QsList, undefined),
+                proplists:get_value(<<"id">>, QsList, undefined)
+            ]),
+            workspace_resolver:guard_group_notice_id(Uid, NoticeId)
+    end.
+
+-spec first_defined([term()]) -> term().
+first_defined(Values) ->
+    lists:foldl(
+        fun
+            (undefined, Acc) -> Acc;
+            (V, _) -> V
+        end,
+        undefined,
+        Values
+    ).
 
 %% ===================================================================
 %% Internal Function Definitions

@@ -223,6 +223,20 @@ list_managed(Uid) ->
     >>,
     elib_pg:query(Sql, [Uid]).
 
+%% @doc 工作区频道列表（双体验 v2.5.2 T5：scope 严格分区）
+%% 命中部分索引 i_channel_scope_ws（00000077）；personal 列表接口不受影响。
+-spec list_workspace_channels(integer(), integer()) -> {ok, list(map())} | {error, any()}.
+list_workspace_channels(WorkspaceId, Limit) ->
+    Tb = tablename(),
+    Sql = <<
+        "SELECT c.* FROM ",
+        Tb/binary,
+        " c "
+        "WHERE c.workspace_id = $1 AND c.scope = 'workspace' AND c.status = 1 "
+        "ORDER BY c.created_at DESC, c.id DESC LIMIT $2"
+    >>,
+    elib_pg:query(Sql, [WorkspaceId, Limit]).
+
 %% @doc 更新频道信息
 %% @param ChannelId 频道ID
 %% @param Data 要更新的数据

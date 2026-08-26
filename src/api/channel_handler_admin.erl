@@ -21,7 +21,16 @@
 init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = handle_action(Action, Req0, State),
+    %% T5（双体验 v2.5.2）：workspace 频道的管理员/订阅者/邀请入口前置边界——
+    %% 非工作区成员稳定 403；personal 频道/无 :channel_id 的路由
+    %% （invitation/accept 等）零行为变化。
+    Req1 =
+        case workspace_resolver:guard_channel_binding(Req0, maps:get(current_uid, State, 0)) of
+            ok ->
+                handle_action(Action, Req0, State);
+            {error, {403, Msg}} ->
+                elib_response:error(Req0, Msg, 403)
+        end,
     {ok, Req1, State}.
 
 handle_action(admins, Req, State) -> admins(Req, State);

@@ -16,6 +16,8 @@
 -export([find_by_id/2]).
 -export([find_by_id_with_price/1]).
 -export([list_managed/1]).
+%% T5（双体验 v2.5.2）：工作区频道列表（scope 分区）
+-export([list_workspace_channels/2]).
 -export([find_by_custom_id/1]).
 -export([update/2]).
 -export([delete/1]).
@@ -93,7 +95,10 @@ create_channel(Uid, Name, Opts) ->
 
 %% @doc 添加可选字段
 add_optional_fields(Data, Opts) ->
-    Fields = [description, avatar, custom_id, tags],
+    %% T5（双体验 v2.5.2）：scope/workspace_id 仅在 workspace 创建路径由
+    %% channel_logic:create_channel/5 注入 Opts；personal 路径不含这两个键，
+    %% 落 DB 默认值 'personal'/NULL——既有行为零变化。
+    Fields = [description, avatar, custom_id, tags, scope, workspace_id],
     lists:foldl(
         fun(Field, Acc) ->
             case maps:get(Field, Opts, undefined) of
@@ -321,6 +326,11 @@ find_by_id_with_price(ChannelId) -> channel_repo:find_by_id_with_price(ChannelId
 
 -spec list_managed(integer()) -> {ok, list(map())} | {error, any()}.
 list_managed(Uid) -> channel_repo:list_managed(Uid).
+
+%% T5（双体验 v2.5.2）：工作区频道列表（仅 scope='workspace'，personal 零影响）
+-spec list_workspace_channels(integer(), integer()) -> {ok, list(map())} | {error, any()}.
+list_workspace_channels(WorkspaceId, Limit) ->
+    channel_repo:list_workspace_channels(WorkspaceId, Limit).
 
 -spec find_by_custom_id(binary()) -> map() | {error, any()}.
 find_by_custom_id(CustomId) -> channel_repo:find_by_custom_id(CustomId).

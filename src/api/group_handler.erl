@@ -69,10 +69,22 @@ handle_action(false, Req, _State) ->
 %% @param _State 状态映射
 %% @return 返回包含群组详情的响应
 %% @end
+%% T5（双体验 v2.5.2）：workspace 群要求请求者为 active 工作区成员（403 边界）；
+%% personal 群零行为变化（§1.4.2 授权规则 2：已有资源 ID 不能绕过 Workspace 403）。
 -spec detail(cowboy_req:req(), map()) -> cowboy_req:req().
-detail(Req0, _State) ->
+detail(Req0, State) ->
+    Uid = maps:get(current_uid, State, 0),
     Qs1 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs1, <<>>),
+    case workspace_resolver:guard_group_gid(Uid, Gid) of
+        {error, {403, Msg}} ->
+            elib_response:error(Req0, Msg, 403);
+        ok ->
+            detail_allowed(Req0, Gid)
+    end.
+
+-spec detail_allowed(cowboy_req:req(), binary()) -> cowboy_req:req().
+detail_allowed(Req0, Gid) ->
     % 【优化】使用统一的 ID 验证函数
     case imboy_error:validate_id(Req0, Gid) of
         {error, Req} ->
@@ -80,7 +92,7 @@ detail(Req0, _State) ->
         {ok, Gid2} ->
             % P1-7b: 显式安全列（排除 chat_aes_key）
             GroupCols =
-                <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>,
+                <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,updated_at,created_at">>,
             case group_logic:find_by_id(Gid2, GroupCols) of
                 {error, _Reason} ->
                     elib_response:error(Req0, "群组不存在");
@@ -187,6 +199,8 @@ face2face_save(Req0, State) ->
 %% @param State 状态映射，包含 current_uid
 %% @return 返回包含群组信息的响应
 %% @end
+%% T5（双体验 v2.5.2）：接受可选 scope+workspace_id；
+%% 缺省/personal 与既有行为完全一致（回归红线）。
 -spec add(cowboy_req:req(), map()) -> cowboy_req:req().
 add(Req0, State) ->
     Uid = maps:get(current_uid, State),
@@ -205,7 +219,9 @@ add(Req0, State) ->
                     List when is_list(List) -> List;
                     _ -> []
                 end,
-            case group_logic:add(Count, Uid, Type, MemberUids2) of
+            Scope = maps:get(<<"scope">>, PostVals, <<"personal">>),
+            WorkspaceId = elib_cnv:safe_to_integer(maps:get(<<"workspace_id">>, PostVals, 0)),
+            case group_logic:add(Count, Uid, Type, MemberUids2, {Scope, WorkspaceId}) of
                 {ok, Gid} ->
                     case group_logic:find_by_id(Gid, <<"*">>) of
                         {error, Reason} ->
@@ -227,6 +243,9 @@ add(Req0, State) ->
                                     )
                             end
                     end;
+                {error, {Code, Msg}} ->
+                    %% T5：scope 校验错误（400/403/409）带稳定错误码
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg);
                 %% 兜底：with_tx reraise 的 throw 形态 {error, throw, Reason}
@@ -261,7 +280,17 @@ edit(Req0, State) ->
         {error, Msg} ->
             elib_response:error(Req0, Msg);
         ok ->
-            process_group_edit(Req0, Uid, Gid, Gid2, Data)
+            %% T5（双体验 v2.5.2）：scope/workspace_id 创建后不可变（§1.4.2 规则 9）。
+            %% build_group_update_data 白名单本就不含这两个键，此处显式拒绝
+            %% 提交了这两个字段的请求（400，不静默忽略）。
+            case
+                maps:is_key(<<"scope">>, PostVals) orelse maps:is_key(<<"workspace_id">>, PostVals)
+            of
+                true ->
+                    elib_response:error(Req0, <<"scope 与 workspace_id 创建后不可修改"/utf8>>, 400);
+                false ->
+                    process_group_edit(Req0, Uid, Gid, Gid2, Data)
+            end
     end.
 
 %% @doc 开启群级 E2EE（仅群主，0→1 单向，P0-B B4）
@@ -436,6 +465,17 @@ msg_page(Req0, State) ->
     Qs3 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs3, undefined),
     Gid2 = elib_cnv:safe_to_integer(Gid),
+    %% T5（双体验 v2.5.2）：workspace 群消息直访不能绕过 Workspace 边界；
+    %% personal 群零行为变化。
+    case workspace_resolver:guard_group_gid(CurrentUid, Gid2) of
+        {error, {403, Msg}} ->
+            elib_response:error(Req0, Msg, 403);
+        ok ->
+            msg_page_allowed(Req0, CurrentUid, Gid2)
+    end.
+
+-spec msg_page_allowed(cowboy_req:req(), integer(), integer()) -> cowboy_req:req().
+msg_page_allowed(Req0, CurrentUid, Gid2) ->
     GM = group_logic:is_member(Gid2, CurrentUid),
     GMSize = maps:size(GM),
     Where0 = #{to_groupid => Gid2},
@@ -576,14 +616,25 @@ qrcode(Req0, State) ->
                                         Gid2, CurrentUid
                                     ),
                                     [Gm2] = group_member_transfer:member_list([Gm]),
-                                    G3 = G#{
+                                    G3 = G2#{
                                         <<"member_count">> := maps:get(<<"member_count">>, G2),
                                         <<"type">> => <<"group">>,
                                         <<"group_member">> => Gm2
                                     },
                                     % ?DEBUG_LOG(["Gid2", Gid2, "CurrentUid ", CurrentUid, " Res ", Res, " G3 ", group_logic:group_transfer(G3)]),
                                     elib_response:success(Req0, group_logic:group_transfer(G3))
-                            end
+                            end;
+                        %% T5（双体验 v2.5.2）：workspace 群扫码加入被 DS 层
+                        %% 子集校验拒绝（abort_tx 回滚）时返回稳定 409；
+                        %% 其余错误原样透出，不再 case_clause 崩溃。
+                        {error, workspace_membership_required} ->
+                            elib_response:error(
+                                Req0,
+                                <<"workspace_membership_required：群成员必须先是该工作区的 active 工作区成员"/utf8>>,
+                                409
+                            );
+                        {error, JoinErr} ->
+                            elib_response:error(Req0, JoinErr)
                     end
             end
     end.

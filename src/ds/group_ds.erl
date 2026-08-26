@@ -7,6 +7,7 @@
 -export([check_avatar/1]).
 -export([gid/0]).
 -export([create_group/6]).
+-export([create_scoped_group/7]).
 -export([nearby_gid/6]).
 -export([face2face_create/5]).
 -export([face2face_save/3]).
@@ -262,6 +263,33 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
         creator_uid => Uid,
         created_at => Now
     },
+    do_create_group(Conn, GMap, Uid, Now).
+
+%% @doc 创建带 scope 的群组（双体验 v2.5.2 T5）
+%% scope=workspace 时 WorkspaceId 必填（DB XOR CHECK chk_group_scope_xor 兜底）；
+%% 调用方（group_logic:add/5）须先完成 Workspace Owner/Member 角色校验。
+%% scope/workspace_id 创建后不可变（§1.4.2 规则 9）。
+-spec create_scoped_group(pid(), integer(), binary(), integer(), integer(), binary(), integer()) ->
+    integer().
+create_scoped_group(Conn, Gid, Uid, Now, Type, Scope, WorkspaceId) ->
+    GMap = #{
+        id => Gid,
+        type => Type,
+        user_id_sum => Uid,
+        owner_uid => Uid,
+        creator_uid => Uid,
+        scope => Scope,
+        workspace_id => WorkspaceId,
+        created_at => Now
+    },
+    do_create_group(Conn, GMap, Uid, Now).
+
+%% @doc 建群公共实现：INSERT 群行 + 创建者群主成员行（同事务）
+%% （create_group/6 与 create_scoped_group/7 共用，行为一致）
+-spec do_create_group(pid(), map(), integer(), binary()) -> integer().
+do_create_group(Conn, GMap0, Uid, Now) ->
+    Gid_for_insert = maps:get(id, GMap0),
+    GMap = GMap0#{user_id_sum => Uid},
     %% 【一致性修复】INSERT 失败时 throw，让外层 with_tx 回滚事务，
     %% 避免事务进入 aborted 状态导致后续 SQL 全部 25P02。
     %% parse_result/1 返回 {ok, Id, ExtraMap} 三元组（见 elib_pg_sql.erl:602）。

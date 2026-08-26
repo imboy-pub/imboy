@@ -177,31 +177,50 @@ join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
                     % ?DEBUG_LOG([MemberListRes]),
                     case MemberListRes of
                         {ok, []} ->
-                            elib_pg:with_tx(fun(Conn) ->
-                                [
-                                    group_member_logic:join_group(
-                                        Conn,
-                                        JoinMode2,
-                                        Uid2,
-                                        Gid2,
-                                        #{}
+                            %% T5（双体验 v2.5.2）：workspace 群的入群在 DS 层做
+                            %% active workspace_member 同事务校验，失败经
+                            %% abort_tx 回滚并返回 {error, workspace_membership_required}。
+                            %% 此前直接丢弃 with_tx 结果（DB 错误也回 200 假成功），
+                            %% 现统一透传为 409 稳定错误码；personal 群不触发该校验，
+                            %% 成功路径行为零变化。
+                            JoinTx =
+                                elib_pg:with_tx(fun(Conn) ->
+                                    [
+                                        group_member_logic:join_group(
+                                            Conn,
+                                            JoinMode2,
+                                            Uid2,
+                                            Gid2,
+                                            #{}
+                                        )
+                                     || Uid2 <- MemberUids2
+                                    ]
+                                end),
+                            case JoinTx of
+                                {error, workspace_membership_required} ->
+                                    elib_response:error(
+                                        Req0,
+                                        <<"workspace_membership_required：群成员必须先是该工作区的 active 工作区成员"/utf8>>,
+                                        409
+                                    );
+                                {error, Reason} ->
+                                    ?ERROR_LOG([group_member_join_tx_failed, Gid2, Reason]),
+                                    elib_response:error(Req0, <<"入群失败，请稍后重试"/utf8>>);
+                                _ ->
+                                    {ok, MemberListRes2} =
+                                        group_member_logic:list_member(Gid2, MemberUids2),
+                                    Sum = group_member_logic:get_user_id_sum(Gid2),
+                                    elib_response:success(
+                                        Req0,
+                                        #{
+                                            <<"gid">> => Gid,
+                                            <<"user_id_sum">> => Sum,
+                                            <<"member_list">> =>
+                                                group_member_transfer:member_list(MemberListRes2)
+                                        },
+                                        "success."
                                     )
-                                 || Uid2 <- MemberUids2
-                                ]
-                            end),
-                            {ok, MemberListRes2} =
-                                group_member_logic:list_member(Gid2, MemberUids2),
-                            Sum = group_member_logic:get_user_id_sum(Gid2),
-                            elib_response:success(
-                                Req0,
-                                #{
-                                    <<"gid">> => Gid,
-                                    <<"user_id_sum">> => Sum,
-                                    <<"member_list">> =>
-                                        group_member_transfer:member_list(MemberListRes2)
-                                },
-                                "success."
-                            );
+                            end;
                         {ok, MemberList} ->
                             % 已经是成员，直接使用查询结果
                             Sum = group_member_logic:get_user_id_sum(Gid2),

@@ -17,7 +17,15 @@
 init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
-    Req1 = handle_action(Action, Req0, State),
+    %% T5（双体验 v2.5.2）：workspace 频道的评论/点赞入口前置边界——
+    %% 非工作区成员稳定 403；personal 频道零行为变化。
+    Req1 =
+        case workspace_resolver:guard_channel_binding(Req0, maps:get(current_uid, State, 0)) of
+            ok ->
+                handle_action(Action, Req0, State);
+            {error, {403, Msg}} ->
+                elib_response:error(Req0, Msg, 403)
+        end,
     {ok, Req1, State}.
 
 handle_action(list_comments, Req, State) -> list_comments(Req, State);
@@ -47,7 +55,11 @@ list_comments(Req0, State) ->
                     Qs = cowboy_req:parse_qs(Req0),
                     Cursor = parse_qs_int(proplists:get_value(<<"cursor">>, Qs, <<"0">>), 0),
                     Limit = parse_qs_int(proplists:get_value(<<"limit">>, Qs), 20, 1, 200),
-                    case channel_comment_logic:list_by_message(Uid, ChannelId, MessageId, Cursor, Limit) of
+                    case
+                        channel_comment_logic:list_by_message(
+                            Uid, ChannelId, MessageId, Cursor, Limit
+                        )
+                    of
                         {ok, Comments} ->
                             elib_response:success(Req0, #{list => Comments});
                         {error, Msg} ->
@@ -72,7 +84,9 @@ create_comment(Req0, State) ->
                     PostVals = elib_param:post(Req0),
                     Content = maps:get(<<"content">>, PostVals, <<>>),
                     ParentId = maps:get(<<"parent_id">>, PostVals, 0),
-                    case channel_comment_logic:create(Uid, ChannelId, MessageId, Content, ParentId) of
+                    case
+                        channel_comment_logic:create(Uid, ChannelId, MessageId, Content, ParentId)
+                    of
                         {ok, Comment} ->
                             elib_response:success(Req0, Comment);
                         {error, Msg} ->
@@ -133,7 +147,8 @@ unlike_comment(Req0, State) ->
 %% ===================================================================
 
 -spec parse_qs_int(binary() | undefined, integer()) -> integer().
-parse_qs_int(undefined, Default) -> Default;
+parse_qs_int(undefined, Default) ->
+    Default;
 parse_qs_int(Bin, Default) ->
     case safe_to_integer(Bin) of
         {ok, I} -> I;
@@ -141,7 +156,8 @@ parse_qs_int(Bin, Default) ->
     end.
 
 -spec parse_qs_int(binary() | undefined, integer(), integer(), integer()) -> integer().
-parse_qs_int(undefined, Default, _Min, _Max) -> Default;
+parse_qs_int(undefined, Default, _Min, _Max) ->
+    Default;
 parse_qs_int(Bin, Default, Min, Max) ->
     case safe_to_integer(Bin) of
         {ok, I} when I >= Min, I =< Max -> I;
@@ -162,4 +178,5 @@ safe_to_integer(Value) when is_list(Value) ->
     catch
         _:_ -> error
     end;
-safe_to_integer(_) -> error.
+safe_to_integer(_) ->
+    error.

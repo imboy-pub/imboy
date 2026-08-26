@@ -239,6 +239,8 @@ tsid_generator_names() ->
         channel_webhook,
         channel_comment,
         channel_price,
+        %% ── 工作区（双体验 v2.5.2 WP3/T4；workspace_member 复合主键无 id 列，不注册） ──
+        workspace,
         %% ── 反馈 ──
         feedback,
         feedback_reply,

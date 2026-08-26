@@ -5,6 +5,25 @@
 %%   channel_handler_message  (消息/置顶/反应/订阅者)
 %%   channel_handler_admin    (管理员/邀请/同步)
 %%   channel_handler_order    (订单/支付)
+%%
+%%% =====================================================================
+%%% T5 路由片段清单（双体验 v2.5.2；全部挂既有路由，无新增路由——T7 无需注册）
+%%% =====================================================================
+%%% 既有路由的行为增强（本 WP 落地）：
+%%%   POST /api/v1/channel/create           → create 新增 scope+workspace_id 参数
+%%%                                           （scope=workspace 须 Owner/Member，Guest 403；
+%%%                                            personal 默认，行为零变化）
+%%%   POST /api/v1/channel/:channel_id/update → update 拒绝改 scope/workspace_id（400，不可变）
+%%%   GET  /api/v1/channel/:channel_id 等 :channel_id 入口（show/publish/messages/
+%%%        subscribe/unsubscribe/mark_read/add_admin/stats 及 message/admin/comment/
+%%%        webhook 子 handler 全部 :channel_id 入口）→ init 前置 workspace 边界：
+%%%        workspace 频道要求请求者为 active 工作区成员，否则 403；
+%%%        personal 频道零行为变化。
+%%% 工作区频道列表（新能力，供 workspace IA 消费）：
+%%%   GET /api/v1/workspaces/:workspace_id/channels → 已落在 workspace_handler
+%%%       的 channel_list 动作（T7 按 workspace_handler 顶部清单注册；
+%%%       本 handler 不重复提供，避免双入口）
+%%% =====================================================================
 
 -behavior(cowboy_rest).
 
@@ -27,16 +46,30 @@ init(Req0, State0) ->
     Req1 =
         case imboy_plugin_registry:required_feature(api, channel_handler, Action) of
             undefined ->
-                handle_action(Action, Req0, State);
+                guarded_handle(Action, Req0, State);
             Feature ->
                 case imboy_feature:ensure_enabled(Req0, Feature) of
                     ok ->
-                        handle_action(Action, Req0, State);
+                        guarded_handle(Action, Req0, State);
                     {error, RespReq} ->
                         RespReq
                 end
         end,
     {ok, Req1, State}.
+
+%% @doc T5 Workspace 边界前置校验（镜像 JWT 前置校验模式）：
+%% 路由带 :channel_id 的入口，若目标频道 scope=workspace，要求请求者为
+%% active 工作区成员（§1.4.2 授权规则 2），非成员稳定 403；
+%% personal 频道 / 无频道上下文 / 频道不存在 → 放行走既有流程（零行为变化）。
+-spec guarded_handle(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
+guarded_handle(Action, Req0, State) ->
+    Uid = maps:get(current_uid, State, 0),
+    case workspace_resolver:guard_channel_binding(Req0, Uid) of
+        ok ->
+            handle_action(Action, Req0, State);
+        {error, {403, Msg}} ->
+            elib_response:error(Req0, Msg, 403)
+    end.
 
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
 handle_action(create, Req, State) -> create(Req, State);
@@ -60,6 +93,8 @@ handle_action(stats_daily, Req, State) -> stats_daily(Req, State);
 handle_action(false, Req, _State) -> Req.
 
 %% @doc 创建频道
+%% T5（双体验 v2.5.2）：接受可选 scope+workspace_id；
+%% 缺省/ personal 与既有行为完全一致（回归红线）。
 -spec create(cowboy_req:req(), map()) -> cowboy_req:req().
 create(Req0, State) ->
     Uid = maps:get(current_uid, State),
@@ -72,6 +107,8 @@ create(Req0, State) ->
     Avatar = maps:get(<<"avatar">>, PostVals, <<>>),
     CustomId = maps:get(<<"custom_id">>, PostVals, undefined),
     Tags = maps:get(<<"tags">>, PostVals, []),
+    Scope = maps:get(<<"scope">>, PostVals, <<"personal">>),
+    WorkspaceId = elib_cnv:safe_to_integer(maps:get(<<"workspace_id">>, PostVals, 0)),
 
     case Name of
         <<>> ->
@@ -89,14 +126,69 @@ create(Req0, State) ->
                         join_policy => JoinPolicy
                     },
                     MaxChannels = 20,
-                    case channel_logic:create_channel(Uid, Name, Opts, MaxChannels) of
+                    case
+                        channel_logic:create_channel(
+                            Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}
+                        )
+                    of
                         {ok, Channel} ->
                             elib_response:success(Req0, Channel);
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code);
                         {error, Msg} ->
                             elib_response:error(Req0, Msg)
                     end;
                 false ->
                     elib_response:error(Req0, <<"频道访问策略组合无效"/utf8>>)
+            end
+    end.
+
+%% @doc 通过自定义ID获取频道
+-spec by_custom_id(cowboy_req:req(), map()) -> cowboy_req:req().
+by_custom_id(Req0, State) ->
+    Uid = maps:get(current_uid, State, 0),
+    case cowboy_req:binding(custom_id, Req0) of
+        undefined ->
+            elib_response:error(Req0, <<"自定义ID不能为空"/utf8>>);
+        CustomId ->
+            %% T5：custom_id 直访不能绕过 Workspace 边界（§1.4.2 规则 2）
+            case workspace_resolver:guard_channel_custom_id(Uid, CustomId) of
+                {error, {403, Msg}} ->
+                    elib_response:error(Req0, Msg, 403);
+                ok ->
+                    case channel_logic:get_channel_by_custom_id(CustomId, Uid) of
+                        {ok, Channel} ->
+                            elib_response:success(Req0, Channel);
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end
+            end
+    end.
+
+%% @doc 更新频道信息
+%% T5（双体验 v2.5.2）：scope/workspace_id 创建后不可变（§1.4.2 规则 9），
+%% 提交这两个字段之一即 400（不静默忽略）；其余字段走既有更新路径。
+-spec update(cowboy_req:req(), map()) -> cowboy_req:req().
+update(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    PostVals = elib_param:post(Req0),
+    ChannelId = resolve_channel_id(Req0, PostVals),
+    Data = maps:without([<<"channel_id">>], PostVals),
+
+    case ChannelId of
+        <<>> ->
+            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
+        _ ->
+            case maps:is_key(<<"scope">>, Data) orelse maps:is_key(<<"workspace_id">>, Data) of
+                true ->
+                    elib_response:error(Req0, <<"scope 与 workspace_id 创建后不可修改"/utf8>>, 400);
+                false ->
+                    case channel_logic:update_channel(Uid, ChannelId, Data) of
+                        {ok, Channel} ->
+                            elib_response:success(Req0, Channel);
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg)
+                    end
             end
     end.
 
@@ -109,42 +201,6 @@ show(Req0, State) ->
             elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
         ChannelId ->
             case channel_logic:get_channel(ChannelId, Uid) of
-                {ok, Channel} ->
-                    elib_response:success(Req0, Channel);
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
-            end
-    end.
-
-%% @doc 通过自定义ID获取频道
--spec by_custom_id(cowboy_req:req(), map()) -> cowboy_req:req().
-by_custom_id(Req0, State) ->
-    Uid = maps:get(current_uid, State, 0),
-    case cowboy_req:binding(custom_id, Req0) of
-        undefined ->
-            elib_response:error(Req0, <<"自定义ID不能为空"/utf8>>);
-        CustomId ->
-            case channel_logic:get_channel_by_custom_id(CustomId, Uid) of
-                {ok, Channel} ->
-                    elib_response:success(Req0, Channel);
-                {error, Msg} ->
-                    elib_response:error(Req0, Msg)
-            end
-    end.
-
-%% @doc 更新频道信息
--spec update(cowboy_req:req(), map()) -> cowboy_req:req().
-update(Req0, State) ->
-    Uid = maps:get(current_uid, State),
-    PostVals = elib_param:post(Req0),
-    ChannelId = resolve_channel_id(Req0, PostVals),
-    Data = maps:without([<<"channel_id">>], PostVals),
-
-    case ChannelId of
-        <<>> ->
-            elib_response:error(Req0, <<"频道ID不能为空"/utf8>>);
-        _ ->
-            case channel_logic:update_channel(Uid, ChannelId, Data) of
                 {ok, Channel} ->
                     elib_response:success(Req0, Channel);
                 {error, Msg} ->

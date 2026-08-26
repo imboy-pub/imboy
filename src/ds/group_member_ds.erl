@@ -118,6 +118,14 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
     Role = maps:get(role, OptData, 1),
     _GMTb = group_member_repo:tablename(),
 
+    % T5（双体验 v2.5.2）：Group Member ⊆ Workspace Member 应用层同事务校验。
+    % scope=workspace 的群，加入者必须是同 workspace 的 active workspace_member，
+    % 否则 throw({abort_tx, workspace_membership_required}) 整体回滚
+    % （调用方 with_tx 返回 {error, workspace_membership_required}）。
+    % DB 触发器 trg_group_member_ws_subset（00000077，DEFERRABLE）是第二道兜底。
+    % scope=personal / 群不存在 → 跳过校验，既有行为零变化。
+    ok = ensure_workspace_membership(Conn, Gid, Uid),
+
     % 检查是否已是成员
     case group_member_repo:find(Gid, Uid, <<"id">>) of
         #{<<"id">> := _Id} ->
@@ -149,6 +157,45 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+%% @doc T5：workspace 群成员子集校验（同事务）
+%% 目标群 scope=workspace 时，加入者须为同 workspace 的 active workspace_member；
+%% personal 群 / 群不存在 → 直接放行（走既有流程，零行为变化）。
+%% 失败用 throw({abort_tx, ...}) 让外层 with_tx 回滚并返回
+%% {error, workspace_membership_required}（应用层 409；DB 触发器是第二道兜底）。
+-spec ensure_workspace_membership(pid(), integer(), integer()) -> ok.
+ensure_workspace_membership(Conn, Gid, Uid) ->
+    case
+        elib_pg:query(
+            Conn,
+            <<"SELECT workspace_id FROM \"group\" WHERE id = $1 AND scope = 'workspace'">>,
+            [Gid]
+        )
+    of
+        {ok, [#{<<"workspace_id">> := WsId} | _]} when WsId =/= null ->
+            case
+                elib_pg:query(
+                    Conn,
+                    <<"SELECT role FROM workspace_member",
+                        " WHERE workspace_id = $1 AND user_id = $2 AND status = 'active'">>,
+                    [WsId, Uid]
+                )
+            of
+                {ok, [_ | _]} ->
+                    ok;
+                {ok, []} ->
+                    throw({abort_tx, workspace_membership_required});
+                {error, Reason} ->
+                    ?ERROR_LOG([workspace_membership_check_failed, Gid, Uid, Reason]),
+                    throw({abort_tx, {workspace_membership_check_failed, Reason}})
+            end;
+        {ok, []} ->
+            %% personal 群（或群行不存在——由后续既有流程给出"群不存在"语义）
+            ok;
+        {error, Reason2} ->
+            ?ERROR_LOG([group_scope_check_failed, Gid, Reason2]),
+            throw({abort_tx, {group_scope_check_failed, Reason2}})
     end.
 
 %% @doc 用户离开群组（事务版本）

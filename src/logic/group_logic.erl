@@ -35,6 +35,12 @@
 -export([get_remark/2]).
 -export([update_remark/3]).
 
+%% ==================== T5 scope 感知（双体验 v2.5.2 WP3/T5）====================
+%% 新增函数，不改上方任何既有函数签名；personal 路径行为零变化。
+-export([add/5]).
+-export([edit_checked/3]).
+-export([list_workspace_groups/2]).
+
 -include("log.hrl").
 -include("group_role.hrl").
 
@@ -598,3 +604,110 @@ update_remark(Gid, Uid, Remark) ->
 %% ===================================================================
 %% EUnit tests.
 %% ===================================================================
+
+%% ===================================================================
+%% T5 scope 感知函数（双体验 v2.5.2 WP3/T5）
+%% ===================================================================
+
+%% @doc scope 感知的群创建（§1.4.2 授权规则：创建 Workspace Group 须为该
+%% Workspace 的 Owner/Member；Guest 403；非成员 403）。
+%% ScopeCtx：
+%%   {personal, 0}     → 完全走既有 add/4 路径（零行为变化）
+%%   {workspace, WsId} → 校验角色后带 scope 单事务创建（不走
+%%                        find_by_creator_and_sum 语义键幂等——工作区群允许同名）
+%%   {OtherScope, _}   → 400
+%% 初始成员入群时由 group_member_ds:join_group/5 在同事务校验
+%% active workspace_member（Group Member ⊆ Workspace Member 应用层双保险，
+%% DB 触发器 trg_group_member_ws_subset 是第二道兜底）。
+%% scope/workspace_id 创建后不可变（§1.4.2 规则 9，edit_checked 拒绝改）。
+-spec add(
+    non_neg_integer(), integer(), integer(), [binary()], {binary(), integer()}
+) ->
+    {ok, integer()} | {error, binary()} | {error, {integer(), binary()}}.
+add(_Count, _Uid, _Type, _MemberUids, {Scope, _WorkspaceId}) when
+    Scope =/= <<"personal">>, Scope =/= <<"workspace">>
+->
+    {error, {400, <<"scope 仅支持 personal|workspace"/utf8>>}};
+add(_Count, _Uid, _Type, _MemberUids, {<<"workspace">>, WorkspaceId}) when
+    is_integer(WorkspaceId) =:= false orelse WorkspaceId =< 0
+->
+    {error, {400, <<"scope=workspace 时 workspace_id 必须"/utf8>>}};
+add(Count, Uid, Type, MemberUids, {<<"workspace">>, WorkspaceId}) ->
+    case workspace_logic:ensure_can_create_resource(WorkspaceId, Uid) of
+        {error, {Code, Msg}} ->
+            {error, {Code, Msg}};
+        ok when Count > 100 ->
+            {error, <<"每人最多创建100个群"/utf8>>};
+        ok ->
+            MemberUids2 =
+                case MemberUids of
+                    List when is_list(List) -> List;
+                    _ -> []
+                end,
+            MemberUids3 = [ec_cnv:to_integer(Id) || Id <- MemberUids2, is_binary(Id)],
+            %% 【防御性编程】确保创建者不会被重复添加
+            MemberUids4 = lists:usort([U || U <- MemberUids3, U =/= Uid]),
+            workspace_add_tx(Uid, Type, MemberUids4, WorkspaceId)
+    end;
+add(Count, Uid, Type, MemberUids, {<<"personal">>, _WorkspaceId}) ->
+    add(Count, Uid, Type, MemberUids).
+
+-spec workspace_add_tx(integer(), integer(), [integer()], integer()) ->
+    {ok, integer()} | {error, binary()}.
+workspace_add_tx(Uid, Type, MemberUids4, WorkspaceId) ->
+    Now = elib_dt:now(),
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            Gid = elib_tsid:generate(group_info),
+            Gid2 = group_ds:create_scoped_group(
+                Conn, Gid, Uid, Now, Type, <<"workspace">>, WorkspaceId
+            ),
+            %% 初始成员入群：非 active workspace_member 的成员在 DS 层
+            %% throw({abort_tx, workspace_membership_required}) 整体回滚
+            _ = [
+                group_member_logic:join_group(
+                    Conn, <<"workspace_group_create">>, Uid2, Gid2, #{}
+                )
+             || Uid2 <- MemberUids4
+            ],
+            {ok, Gid2}
+        end)
+    of
+        {ok, Gid2} ->
+            {ok, Gid2};
+        {error, workspace_membership_required} ->
+            {error, {409, <<"workspace_membership_required：初始成员必须先是该工作区的 active 工作区成员"/utf8>>}};
+        {error, Reason} ->
+            ?ERROR_LOG([workspace_group_create_failed, Uid, WorkspaceId, Reason]),
+            {error, <<"群创建失败，请稍后重试"/utf8>>}
+    end.
+
+%% @doc 更新入口守卫：scope 与 workspace_id 创建后不可变（§1.4.2 规则 9）。
+%% 提交了这两个字段之一即拒绝（不静默忽略，防止客户端误以为已改归属）。
+-spec edit_checked(integer(), integer(), map()) ->
+    ok | {error, binary()} | {error, {400, binary()}}.
+edit_checked(Uid, Gid, Data) ->
+    case maps:is_key(<<"scope">>, Data) orelse maps:is_key(<<"workspace_id">>, Data) of
+        true ->
+            {error, {400, <<"scope 与 workspace_id 创建后不可修改"/utf8>>}};
+        false ->
+            edit(Uid, Gid, Data)
+    end.
+
+%% @doc 工作区群列表（scope 严格分区：仅 scope='workspace' 且 status=1；
+%% personal 群列表接口零行为变化）。命中部分索引 i_group_scope_ws。
+-spec list_workspace_groups(integer(), integer()) -> {ok, [map()]} | {error, binary()}.
+list_workspace_groups(WorkspaceId, Limit) ->
+    Sql =
+        <<"SELECT id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,",
+            "member_max,member_count,introduction,avatar,title,status,scope,workspace_id,",
+            "updated_at,created_at FROM \"group\"",
+            " WHERE workspace_id = $1 AND scope = 'workspace' AND status = 1",
+            " ORDER BY created_at DESC, id DESC LIMIT $2">>,
+    case elib_pg:query(Sql, [WorkspaceId, Limit]) of
+        {ok, Rows} ->
+            {ok, [group_transfer(R) || R <- Rows]};
+        {error, Reason} ->
+            ?ERROR_LOG([list_workspace_groups_failed, WorkspaceId, Reason]),
+            {error, <<"查询失败，请稍后重试"/utf8>>}
+    end.

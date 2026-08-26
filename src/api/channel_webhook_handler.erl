@@ -30,12 +30,29 @@
 init(Req0, State0) ->
     Action = maps:get(action, State0),
     State = maps:remove(action, State0),
+    %% T5（双体验 v2.5.2）：JWT 管理端点（create/disable/list，:channel_id 路由）
+    %% 前置 Workspace 边界——非工作区成员稳定 403；personal 频道零行为变化。
+    %% incoming（token 免 JWT 机器入口）不在此守卫：无用户上下文，
+    %% 归档/边界按 channel.scope 行级条件由 T7 统一实现（R3 #7 已记录）。
     Req1 =
         case Action of
-            create -> create(Req0, State);
-            disable -> disable(Req0, State);
-            list -> list(Req0, State);
-            incoming -> incoming(Req0)
+            incoming ->
+                incoming(Req0);
+            _ ->
+                case
+                    workspace_resolver:guard_channel_binding(
+                        Req0, maps:get(current_uid, State, 0)
+                    )
+                of
+                    ok ->
+                        case Action of
+                            create -> create(Req0, State);
+                            disable -> disable(Req0, State);
+                            list -> list(Req0, State)
+                        end;
+                    {error, {403, Msg}} ->
+                        elib_response:error(Req0, Msg, 403)
+                end
         end,
     {ok, Req1, State}.
 

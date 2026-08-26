@@ -124,6 +124,14 @@
 
 -export([sync_channels/2]).
 
+%% ==================== T5 scope 感知（双体验 v2.5.2 WP3/T5）====================
+%% 新增函数，不改上方任何既有函数签名；personal 路径行为零变化。
+-export([create_channel/5]).
+-export([update_channel_checked/3]).
+-export([list_workspace_channels/2]).
+
+%% ==================== Delegates ====================
+
 create_channel(Uid, Name, Opts, MaxChannels) ->
     channel_logic_message:create_channel(Uid, Name, Opts, MaxChannels).
 
@@ -305,3 +313,62 @@ refund_order(Uid, OrderNo) ->
 -spec refund_order(integer(), binary(), binary()) -> ok | {error, binary()}.
 refund_order(Uid, OrderNo, Reason) ->
     channel_logic_order:refund_order(Uid, OrderNo, Reason).
+
+%% ===================================================================
+%% T5 scope 感知函数（双体验 v2.5.2 WP3/T5）
+%% ===================================================================
+
+%% @doc scope 感知的频道创建（§1.4.2 授权规则：创建 Workspace Channel 须为
+%% 该 Workspace 的 Owner/Member；Guest 403；非成员 403）。
+%% ScopeCtx：
+%%   {personal, 0}            → 完全走既有 create_channel/4 路径（零行为变化）
+%%   {workspace, WsId}        → 校验角色后带 scope 字段创建
+%%   {OtherScope, _}          → 400
+%% scope/workspace_id 创建后不可变（§1.4.2 规则 9，更新接口拒绝改这两字段）。
+-spec create_channel(integer(), binary(), map(), integer(), {binary(), integer()}) ->
+    {ok, map()} | {error, binary()} | {error, {integer(), binary()}}.
+create_channel(Uid, Name, Opts, MaxChannels, {Scope, WorkspaceId}) ->
+    case Scope of
+        <<"personal">> ->
+            create_channel(Uid, Name, Opts, MaxChannels);
+        <<"workspace">> ->
+            case is_integer(WorkspaceId) andalso WorkspaceId > 0 of
+                false ->
+                    {error, {400, <<"scope=workspace 时 workspace_id 必须"/utf8>>}};
+                true ->
+                    %% 仅 Owner/Member 可建（Guest 拒建，§1.4.2 矩阵）
+                    case workspace_logic:ensure_can_create_resource(WorkspaceId, Uid) of
+                        {error, {Code, Msg}} ->
+                            {error, {Code, Msg}};
+                        ok ->
+                            Opts2 = Opts#{
+                                scope => <<"workspace">>,
+                                workspace_id => WorkspaceId
+                            },
+                            create_channel(Uid, Name, Opts2, MaxChannels)
+                    end
+            end;
+        _ ->
+            {error, {400, <<"scope 仅支持 personal|workspace"/utf8>>}}
+    end.
+
+%% @doc 更新入口守卫：scope 与 workspace_id 创建后不可变（§1.4.2 规则 9）。
+%% 提交了这两个字段之一即拒绝（不静默忽略，防止客户端误以为已改归属）。
+-spec update_channel_checked(integer(), binary(), map()) ->
+    {ok, map()} | {error, binary()} | {error, {400, binary()}}.
+update_channel_checked(Uid, ChannelIdBin, Data) ->
+    case maps:is_key(<<"scope">>, Data) orelse maps:is_key(<<"workspace_id">>, Data) of
+        true ->
+            {error, {400, <<"scope 与 workspace_id 创建后不可修改"/utf8>>}};
+        false ->
+            update_channel(Uid, ChannelIdBin, Data)
+    end.
+
+%% @doc 工作区频道列表（scope 严格分区：仅 scope='workspace' 且 status=1，
+%% personal 频道列表接口零行为变化）。
+-spec list_workspace_channels(integer(), integer()) -> {ok, [map()]} | {error, binary()}.
+list_workspace_channels(WorkspaceId, Limit) ->
+    case channel_ds:list_workspace_channels(WorkspaceId, Limit) of
+        {ok, Channels} -> {ok, [channel_logic_common:channel_transfer(C) || C <- Channels]};
+        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+    end.
