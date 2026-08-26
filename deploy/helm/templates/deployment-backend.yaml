@@ -147,6 +147,26 @@ spec:
                 secretKeyRef:
                   name: {{ include "imboy.secretName" . }}
                   key: IMBOY_ALIPAY_PUBLIC_KEY
+            - name: IMBOY_ALIPAY_PID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_PID
+            - name: IMBOY_ALIPAY_APP_CERT_SN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_APP_CERT_SN
+            - name: IMBOY_ALIPAY_ROOT_CERT_SN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_ROOT_CERT_SN
+            - name: IMBOY_ALIPAY_AES_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "imboy.secretName" . }}
+                  key: IMBOY_ALIPAY_AES_KEY
             - name: IMBOY_ALIPAY_NOTIFY_URL
               valueFrom:
                 secretKeyRef:

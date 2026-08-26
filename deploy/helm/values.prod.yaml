@@ -84,6 +84,10 @@ hpa:
 #   --set secrets.alipayAppId="$(cat /run/secrets/alipay_app_id)"
 #   --set secrets.alipayPrivateKey="$(cat /run/secrets/alipay_private_key)"
 #   --set secrets.alipayPublicKey="$(cat /run/secrets/alipay_public_key)"
+#   --set secrets.alipayPid="$(cat /run/secrets/alipay_pid)"
+#   --set secrets.alipayAppCertSn="$(cat /run/secrets/alipay_app_cert_sn)" # 证书模式
+#   --set secrets.alipayRootCertSn="$(cat /run/secrets/alipay_root_cert_sn)" # 证书模式
+#   --set secrets.alipayAesKey="$(cat /run/secrets/alipay_aes_key)" # 如启用内容加密
 #   --set secrets.alipayNotifyUrl="https://api.example.com/v1/payment/callback/alipay"
 #   --set secrets.stripeSecretKey="$(cat /run/secrets/stripe_secret_key)"
 #   --set secrets.stripeWebhookSecret="$(cat /run/secrets/stripe_webhook_secret)"
