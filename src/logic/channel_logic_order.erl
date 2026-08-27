@@ -295,6 +295,22 @@ paid_envelope(Order, Method) ->
         <<"status">> => ?STATUS_PAID
     }.
 
+%% @doc jsonb 列经 repo 读回是 JSON 字符串（repo 层不做解码），
+%% 直接当 map 用会 badmap（order/pay 恒 500 的根因）；统一归一成 map。
+-spec normalize_extra_data(term()) -> map().
+normalize_extra_data(Bin) when is_binary(Bin) ->
+    try jsone:decode(Bin, [{object_format, map}]) of
+        Map when is_map(Map) -> Map;
+        _ -> #{}
+    catch
+        _:_ ->
+            #{}
+    end;
+normalize_extra_data(Map) when is_map(Map) ->
+    Map;
+normalize_extra_data(_) ->
+    #{}.
+
 %% @doc 支付网关执行：优先复用已有支付参数，否则创建新支付意图。
 %% 复用路径：extra_data 中的 gateway_pay_no / gateway_extra 来自前一次 pay_order 调用。
 %% B-00：复用时不检查订单是否过期（settle → do_pay_order 的 channel_order_ds:pay/2
@@ -302,7 +318,7 @@ paid_envelope(Order, Method) ->
 -spec pay_with_gateway(binary(), integer(), integer(), binary(), term(), map()) ->
     {ok, map()} | {error, binary()}.
 pay_with_gateway(OrderNo, ChannelId, Uid, Method, Amount, Order) ->
-    ExtraData = maps:get(<<"extra_data">>, Order, #{}),
+    ExtraData = normalize_extra_data(maps:get(<<"extra_data">>, Order, null)),
     case maps:find(<<"gateway_pay_no">>, ExtraData) of
         {ok, ExistingPayNo} ->
             ExistingExtra = maps:get(<<"gateway_extra">>, ExtraData, #{}),

@@ -63,7 +63,8 @@ pay_order_envelope_test_() ->
         fun thirdparty_does_not_ship_before_callback/0,
         fun wallet_ships_immediately/0,
         fun pay_order_already_paid_returns_directly/0,
-        fun pay_order_reuses_existing_gateway_params/0
+        fun pay_order_reuses_existing_gateway_params/0,
+        fun pay_order_reuses_gateway_params_from_jsonb_binary_extra_data/0
     ]}.
 
 %% mock 网关（无第三元组）→ 信封 pay_params 为空 map
@@ -240,6 +241,37 @@ pay_order_reuses_existing_gateway_params() ->
     %% 复用路径不得调 payment_gateway:pay
     ?assertNot(meck:called(payment_gateway, pay, '_')),
     %% 复用路径不得调 set_gateway_params（第二次调用没必要再存）
+    ?assertNot(meck:called(channel_order_ds, set_gateway_params, '_')).
+
+%% 回归（DF-13）：jsonb 列经 repo 读回是 JSON 字符串而非 map，
+%% 复用路径曾对 binary 直接 maps:find → {badmap,...} → order/pay 恒 500。
+pay_order_reuses_gateway_params_from_jsonb_binary_extra_data() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => 0,
+            <<"payment_method">> => <<"alipay">>,
+            <<"extra_data">> =>
+                <<
+                    "{\"gateway_pay_no\": \"ALIPAY_ORD_RE\", "
+                    "\"gateway_extra\": {\"order_str\": \"cached_order_str\"}}"
+                >>
+        }}
+    end),
+    Result = channel_logic_order:pay_order(?UID, <<"ORD_REJ">>),
+    ?assertEqual(
+        {ok, #{
+            <<"payment_method">> => <<"alipay">>,
+            <<"payment_no">> => <<"ALIPAY_ORD_RE">>,
+            <<"pay_params">> => #{<<"order_str">> => <<"cached_order_str">>},
+            <<"status">> => 0
+        }},
+        Result
+    ),
+    ?assertNot(meck:called(payment_gateway, pay, '_')),
     ?assertNot(meck:called(channel_order_ds, set_gateway_params, '_')).
 
 %%%===================================================================
