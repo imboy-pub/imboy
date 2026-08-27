@@ -110,6 +110,12 @@
         "static": false
       },
       {
+        "action": "config_product_experience",
+        "handler": "adm_admin_handler",
+        "path": "/api/adm/admin/config/product-experience",
+        "static": false
+      },
+      {
         "action": "config_sidebar",
         "handler": "adm_admin_handler",
         "path": "/api/adm/admin/config/sidebar",
@@ -1070,6 +1076,18 @@
         "static": false
       },
       {
+        "action": "project_detail",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/project/detail",
+        "static": false
+      },
+      {
+        "action": "project_list",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/project/list",
+        "static": false
+      },
+      {
         "action": "rbac",
         "handler": "adm_index_handler",
         "path": "/api/adm/rbac/me",
@@ -1403,6 +1421,36 @@
         "action": "welcome",
         "handler": "adm_index_handler",
         "path": "/api/adm/welcome",
+        "static": false
+      },
+      {
+        "action": "archive",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/workspace/archive",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/workspace/detail",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/workspace/list",
+        "static": false
+      },
+      {
+        "action": "members",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/workspace/members",
+        "static": false
+      },
+      {
+        "action": "restore",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/workspace/restore",
         "static": false
       },
       {
@@ -1921,6 +1969,12 @@
         "action": "my_orders",
         "handler": "channel_handler_order",
         "path": "/api/v1/channel/orders/my",
+        "static": false
+      },
+      {
+        "action": "qrcode",
+        "handler": "channel_handler",
+        "path": "/api/v1/channel/qrcode",
         "static": false
       },
       {
@@ -3142,6 +3196,30 @@
         "static": false
       },
       {
+        "action": "show",
+        "handler": "project_handler",
+        "path": "/api/v1/projects/:project_id",
+        "static": false
+      },
+      {
+        "action": "update_status",
+        "handler": "project_handler",
+        "path": "/api/v1/projects/:project_id/status",
+        "static": false
+      },
+      {
+        "action": "tasks",
+        "handler": "project_task_handler",
+        "path": "/api/v1/projects/:project_id/tasks",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "project_handler",
+        "path": "/api/v1/projects/:project_id/update",
+        "static": false
+      },
+      {
         "action": "push_register",
         "handler": "user_device_handler",
         "path": "/api/v1/push/register",
@@ -3169,6 +3247,24 @@
         "action": "join",
         "handler": "rtc_room_handler",
         "path": "/api/v1/rtc/room/join",
+        "static": false
+      },
+      {
+        "action": "show",
+        "handler": "project_task_handler",
+        "path": "/api/v1/tasks/:task_id",
+        "static": false
+      },
+      {
+        "action": "update_status",
+        "handler": "project_task_handler",
+        "path": "/api/v1/tasks/:task_id/status",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "project_task_handler",
+        "path": "/api/v1/tasks/:task_id/update",
         "static": false
       },
       {
@@ -3448,6 +3544,102 @@
         "static": false
       },
       {
+        "action": "create",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces",
+        "static": false
+      },
+      {
+        "action": "show",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id",
+        "static": false
+      },
+      {
+        "action": "archive",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/archive",
+        "static": false
+      },
+      {
+        "action": "branding",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/branding",
+        "static": false
+      },
+      {
+        "action": "channel_list",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/channels",
+        "static": false
+      },
+      {
+        "action": "group_list",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/groups",
+        "static": false
+      },
+      {
+        "action": "member_list",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/members",
+        "static": false
+      },
+      {
+        "action": "member_invite",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/members/invite",
+        "static": false
+      },
+      {
+        "action": "member_remove",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/members/remove",
+        "static": false
+      },
+      {
+        "action": "member_role",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/members/role",
+        "static": false
+      },
+      {
+        "action": "owner_transfer",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/members/transfer_owner",
+        "static": false
+      },
+      {
+        "action": "overview",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/overview",
+        "static": false
+      },
+      {
+        "action": "projects",
+        "handler": "project_handler",
+        "path": "/api/v1/workspaces/:workspace_id/projects",
+        "static": false
+      },
+      {
+        "action": "restore",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/restore",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/update",
+        "static": false
+      },
+      {
+        "action": "mine",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/mine",
+        "static": false
+      },
+      {
         "action": null,
         "handler": "websocket_handler",
         "path": "/api/v1/ws",
@@ -3632,7 +3824,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 149,
+    "defines": 150,
     "distinct_codes": [
       0,
       1,
@@ -3698,6 +3890,7 @@
       966,
       967,
       968,
+      980,
       5000,
       5001,
       5002,
@@ -3766,7 +3959,7 @@
       "5100": 6,
       "5200": 6,
       "5300": 7,
-      "900": 40
+      "900": 41
     },
     "source": "include/error_code.hrl"
   },
