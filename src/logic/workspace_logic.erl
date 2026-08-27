@@ -31,6 +31,13 @@
 -export([ensure_member/2]).
 -export([ensure_can_create_resource/2]).
 -export([valid_role/1]).
+%% Admin 运营管理入口（双体验 v2.5.2 WP7/T11b；鉴权在 adm_workspace_handler 层
+%% 走 adm_acl，此处不做 Owner 校验——运营归档/恢复是平台侧动作）
+-export([admin_page/4]).
+-export([admin_detail/1]).
+-export([admin_member_page/3]).
+-export([admin_archive/2]).
+-export([admin_restore/2]).
 
 -include("log.hrl").
 
@@ -636,3 +643,176 @@ membership_conflict_msg(#{unfinished_tasks := Tasks}) ->
     <<"membership_conflict：该用户有未完成任务（"/utf8, Titles/binary, "），须先改派或完成后再移除"/utf8>>;
 membership_conflict_msg(_) ->
     <<"membership_conflict：该用户存在未完成的成员关系冲突"/utf8>>.
+
+%% ===================================================================
+%% Admin 运营管理（双体验 v2.5.2 WP7/T11b）
+%% 与 Owner 侧 archive/restore 并存：本段不做 Owner 校验（平台运营动作），
+%% 归档同样写审计列并触发 T7 写守卫（980）。
+%% ===================================================================
+
+%% @doc Admin 工作区分页列表（搜索/状态筛选；批量资源计数防 N+1）
+-spec admin_page(integer(), integer(), binary() | all, binary()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_page(Page, Size, Status, Keyword) ->
+    case workspace_ds:admin_page(Page, Size, normalize_admin_status(Status), Keyword) of
+        {ok, #{list := []} = Result} ->
+            %% 空页跳过资源计数查询
+            {ok, Result};
+        {ok, #{list := Rows} = Result} ->
+            Counts = workspace_ds:admin_batch_resource_counts([
+                maps:get(<<"id">>, Row, 0)
+             || Row <- Rows
+            ]),
+            List2 = [attach_admin_counts(Row, Counts) || Row <- Rows],
+            {ok, Result#{list => List2}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([workspace_admin_page_failed, Reason]),
+            {error, {500, <<"查询失败，请稍后重试"/utf8>>}}
+    end.
+
+%% @doc Admin 工作区详情：基本信息 + branding 公共视图 + 工作区成员（分页）+ 资源清单
+-spec admin_detail(integer()) -> {ok, map()} | {error, {404, binary()}}.
+admin_detail(WsId) ->
+    case workspace_ds:find_by_id(WsId) of
+        WS when is_map(WS), map_size(WS) > 0 ->
+            Owner = user_ds:find_by_id(
+                maps:get(<<"owner_id">>, WS, 0), <<"id,nickname,avatar,account">>
+            ),
+            {ok, Members} = workspace_member_repo:page_by_workspace(
+                WsId,
+                1,
+                20,
+                <<"wm.workspace_id,wm.user_id,wm.role,wm.joined_at,wm.status,",
+                    "u.nickname,u.avatar,u.account">>
+            ),
+            {ok, Projects} = workspace_ds:admin_resource_list(project, WsId, 20),
+            {ok, Groups} = workspace_ds:admin_resource_list(group, WsId, 20),
+            {ok, Channels} = workspace_ds:admin_resource_list(channel, WsId, 20),
+            {ok, WS#{
+                owner => Owner,
+                members => Members,
+                projects => Projects,
+                groups => Groups,
+                channels => Channels
+            }};
+        _ ->
+            {error, {404, <<"工作区不存在"/utf8>>}}
+    end.
+
+%% @doc Admin 工作区成员分页（详情页"工作区成员"列表，role 徽标数据源）
+-spec admin_member_page(integer(), integer(), integer()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_member_page(WsId, Page0, Size0) ->
+    Size = max(1, min(Size0, 100)),
+    Page = max(Page0, 1),
+    case
+        workspace_member_repo:page_by_workspace(
+            WsId,
+            Page,
+            Size,
+            <<"wm.workspace_id,wm.user_id,wm.role,wm.invited_by,wm.joined_at,wm.status,",
+                "u.nickname,u.avatar,u.account">>
+        )
+    of
+        {ok, Result} ->
+            {ok, Result};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([workspace_admin_member_page_failed, WsId, Reason]),
+            {error, {500, <<"查询失败，请稍后重试"/utf8>>}}
+    end.
+
+%% @doc 运营归档（平台侧；不做 Owner 校验；同样写审计列 archived_by=操作管理员）
+%% 归档后 T7 写守卫（稳定错误码 980）对全部 workspace 业务写生效。
+-spec admin_archive(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
+admin_archive(AdmUserId, WsId) ->
+    case workspace_ds:find_by_id(WsId, <<"id">>) of
+        #{<<"id">> := _} ->
+            case elib_pg:with_tx(fun(Conn) -> admin_archive_tx(Conn, WsId, AdmUserId) end) of
+                {ok, Result} ->
+                    _ = ?INFO_LOG([workspace_admin_archived, WsId, AdmUserId]),
+                    {ok, Result};
+                {error, already_archived} ->
+                    {error, {409, <<"工作区已处于归档状态"/utf8>>}};
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([workspace_admin_archive_failed, WsId, AdmUserId, Reason]),
+                    {error, {500, <<"归档失败，请稍后重试"/utf8>>}}
+            end;
+        _ ->
+            {error, {404, <<"工作区不存在"/utf8>>}}
+    end.
+
+admin_archive_tx(Conn, WsId, AdmUserId) ->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE workspace SET status = 'archived', archived_at = $1,",
+            " archived_by = $2, updated_at = $1", " WHERE id = $3 AND status = 'active'">>,
+    case elib_pg:execute(Conn, Sql, [Now, AdmUserId, WsId]) of
+        {ok, 1} ->
+            {ok, #{
+                workspace_id => WsId,
+                status => <<"archived">>,
+                archived_by => AdmUserId,
+                archived_at => Now
+            }};
+        {ok, 0} ->
+            throw({abort_tx, already_archived});
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end.
+
+%% @doc 运营恢复（平台侧；清空归档审计列；恢复后写守卫放行）
+-spec admin_restore(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
+admin_restore(AdmUserId, WsId) ->
+    case workspace_ds:find_by_id(WsId, <<"id">>) of
+        #{<<"id">> := _} ->
+            case elib_pg:with_tx(fun(Conn) -> admin_restore_tx(Conn, WsId) end) of
+                {ok, Result} ->
+                    _ = ?INFO_LOG([workspace_admin_restored, WsId, AdmUserId]),
+                    {ok, Result};
+                {error, not_archived} ->
+                    {error, {409, <<"工作区不处于归档状态"/utf8>>}};
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([workspace_admin_restore_failed, WsId, AdmUserId, Reason]),
+                    {error, {500, <<"恢复失败，请稍后重试"/utf8>>}}
+            end;
+        _ ->
+            {error, {404, <<"工作区不存在"/utf8>>}}
+    end.
+
+admin_restore_tx(Conn, WsId) ->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE workspace SET status = 'active', archived_at = NULL,",
+            " archived_by = NULL, updated_at = $1", " WHERE id = $2 AND status = 'archived'">>,
+    case elib_pg:execute(Conn, Sql, [Now, WsId]) of
+        {ok, 1} ->
+            {ok, #{workspace_id => WsId, status => <<"active">>}};
+        {ok, 0} ->
+            throw({abort_tx, not_archived});
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end.
+
+%% Admin 状态筛选归一：仅认 active/archived，其余 all
+-spec normalize_admin_status(binary() | all) -> binary() | all.
+normalize_admin_status(<<"active">>) -> <<"active">>;
+normalize_admin_status(<<"archived">>) -> <<"archived">>;
+normalize_admin_status(_) -> all.
+
+%% 列表行附加批量资源计数（缺省 0）
+-spec attach_admin_counts(map(), map()) -> map().
+attach_admin_counts(Row, Counts) ->
+    WsId = maps:get(<<"id">>, Row, 0),
+    Row#{
+        <<"project_count">> => count_of(Counts, <<"project_count">>, WsId),
+        <<"group_count">> => count_of(Counts, <<"group_count">>, WsId),
+        <<"channel_count">> => count_of(Counts, <<"channel_count">>, WsId),
+        <<"member_count">> => count_of(Counts, <<"member_count">>, WsId)
+    }.
+
+-spec count_of(map(), binary(), integer()) -> integer().
+count_of(Counts, Key, WsId) ->
+    case maps:get(Key, Counts, #{}) of
+        Map when is_map(Map) -> maps:get(WsId, Map, 0);
+        _ -> 0
+    end.

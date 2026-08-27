@@ -146,7 +146,11 @@ page(Page, Size) ->
 page(Page, Size, Where, OrderBy) ->
     Tb = tablename(),
     Column =
-        <<"id,title,avatar,owner_uid,creator_uid,type,join_limit,member_count,introduction,status,created_at">>,
+        %% scope/workspace_id：双体验 v2.5.2（00000077）新列，admin 列表展示归属
+        <<
+            "id,title,avatar,owner_uid,creator_uid,type,join_limit,member_count,introduction,"
+            "status,scope,workspace_id,created_at"
+        >>,
     elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
 
 %% @doc 更新群组信息

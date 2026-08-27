@@ -23,6 +23,8 @@ init(Req0, State0) ->
                 assign_role_action(Method, Req0, State);
             config_features ->
                 config_features_action(Method, Req0, State);
+            config_product_experience ->
+                config_product_experience_action(Method, Req0, State);
             config_policy_bootstrap ->
                 config_policy_bootstrap_action(Method, Req0, State);
             config_policy_meta ->
@@ -68,6 +70,52 @@ config_features_action(<<"GET">>, Req0, State) ->
     end;
 config_features_action(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% @doc Product Experience 安装级配置只读（双体验 v2.5.2 WP7/T11）
+%% 读 product_experience（服务端唯一真相源，T1）；无任何运行时写接口——
+%% 不 application:set_env、不写 config_ds、不落 DB；变更 = 修改部署配置
+%% 并受控重启（Release 阶段人工运维动作）。
+-spec config_product_experience_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+config_product_experience_action(<<"GET">>, Req0, State) ->
+    case ensure_permission(State, <<"settings:view">>, Req0) of
+        ok ->
+            {Configured, ConfiguredRaw} = configured_experience(),
+            Payload = #{
+                <<"effective_product_experience">> => product_experience:effective_binary(),
+                <<"config_version">> => product_experience:config_version(),
+                <<"configured_value">> => Configured,
+                <<"configured_raw">> => ConfiguredRaw,
+                <<"source">> => <<"install_env">>,
+                <<"level">> => <<"install">>
+            },
+            elib_response:success(Req0, Payload);
+        {error, Req1} ->
+            Req1
+    end;
+config_product_experience_action(_, Req0, _State) ->
+    cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
+
+%% 安装级配置原始值（fail-safe 透明化：非法/缺失值降级 chat 时可见）
+-spec configured_experience() -> {binary(), binary()}.
+configured_experience() ->
+    Raw = application:get_env(imboy, product_experience, chat),
+    Bin = raw_to_binary(Raw),
+    {normalize_experience_binary(Bin), Bin}.
+
+-spec raw_to_binary(term()) -> binary().
+raw_to_binary(V) when is_atom(V) -> atom_to_binary(V, utf8);
+raw_to_binary(V) when is_binary(V) -> V;
+raw_to_binary(V) when is_list(V) ->
+    case catch unicode:characters_to_binary(V) of
+        B when is_binary(B) -> B;
+        _ -> <<"undefined">>
+    end;
+raw_to_binary(_) ->
+    <<"undefined">>.
+
+-spec normalize_experience_binary(binary()) -> binary().
+normalize_experience_binary(<<"workspace">>) -> <<"workspace">>;
+normalize_experience_binary(_) -> <<"chat">>.
 
 -spec config_policy_bootstrap_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 config_policy_bootstrap_action(<<"GET">>, Req0, State) ->

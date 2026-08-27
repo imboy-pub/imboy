@@ -30,6 +30,10 @@
 -export([update/4]).
 -export([update_status/3]).
 -export([valid_status/1]).
+%% Admin 运营管理入口（双体验 v2.5.2 WP7/T11b；只读，无写操作；
+%% 鉴权在 adm_workspace_handler 层走 adm_acl）
+-export([admin_page/4]).
+-export([admin_detail/1]).
 
 -include("log.hrl").
 
@@ -223,3 +227,64 @@ valid_name(_) ->
 -spec normalize_description(term()) -> binary().
 normalize_description(D) when is_binary(D) -> D;
 normalize_description(_) -> <<>>.
+
+%% ===================================================================
+%% Admin 运营管理（双体验 v2.5.2 WP7/T11b；只读展示 + assignee 概览）
+%% ===================================================================
+
+%% @doc Admin 项目分页列表（搜索/状态筛选；批量任务计数防 N+1）
+-spec admin_page(integer(), integer(), binary() | all, binary()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+admin_page(Page, Size, Status, Keyword) ->
+    Status2 = normalize_admin_status(Status),
+    case project_ds:admin_page(Page, Size, Status2, Keyword) of
+        {ok, #{list := []} = Result} ->
+            %% 空页跳过任务计数查询
+            {ok, Result};
+        {ok, #{list := Rows} = Result} ->
+            Counts = project_ds:admin_batch_task_counts([maps:get(<<"id">>, Row, 0) || Row <- Rows]),
+            List2 = [attach_task_counts(Row, Counts) || Row <- Rows],
+            {ok, Result#{list => List2}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([project_admin_page_failed, Reason]),
+            {error, {500, <<"查询失败，请稍后重试"/utf8>>}}
+    end.
+
+%% @doc Admin 项目详情（只读：基本信息 + workspace 概要 + task 状态分布 + assignee 概览）
+%% W0 无 project member——不展示成员表，仅 assignee 聚合（Admin 不提供成员增删）。
+-spec admin_detail(integer()) -> {ok, map()} | {error, {404, binary()}}.
+admin_detail(ProjectId) ->
+    case load_project(ProjectId) of
+        {error, NotFound} ->
+            {error, NotFound};
+        {ok, Project} ->
+            WsId = maps:get(<<"workspace_id">>, Project),
+            WS = workspace_ds:find_by_id(WsId, <<"id,name,status,owner_id">>),
+            Owner = user_ds:find_by_id(
+                maps:get(<<"owner_id">>, Project, 0), <<"id,nickname,avatar,account">>
+            ),
+            TaskStats = project_ds:admin_task_status_stats(ProjectId),
+            {ok, Assignees} = project_ds:admin_assignee_overview(ProjectId, 20),
+            {ok, Project#{
+                workspace => WS,
+                owner => Owner,
+                task_stats => TaskStats,
+                assignees => Assignees
+            }}
+    end.
+
+%% Admin 状态筛选归一：仅认 active/done，其余 all
+-spec normalize_admin_status(binary() | all) -> binary() | all.
+normalize_admin_status(<<"active">>) -> <<"active">>;
+normalize_admin_status(<<"done">>) -> <<"done">>;
+normalize_admin_status(_) -> all.
+
+%% 列表行附加任务计数（缺省 0）
+-spec attach_task_counts(map(), map()) -> map().
+attach_task_counts(Row, Counts) ->
+    Pid = maps:get(<<"id">>, Row, 0),
+    Entry = maps:get(Pid, Counts, #{}),
+    Row#{
+        <<"task_total">> => maps:get(total, Entry, 0),
+        <<"task_done">> => maps:get(done, Entry, 0)
+    }.

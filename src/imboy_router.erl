@@ -654,6 +654,10 @@ get_routes() ->
         {"/api/adm/welcome", adm_index_handler, #{action => welcome}},
         {"/api/adm/feedback/index", adm_feedback_handler, #{action => index}},
         {"/api/adm/admin/config/features", adm_admin_handler, #{action => config_features}},
+        % Product Experience 安装级配置只读（双体验 v2.5.2 WP7/T11；无运行时写接口）
+        {"/api/adm/admin/config/product-experience", adm_admin_handler, #{
+            action => config_product_experience
+        }},
         {"/api/adm/admin/config/policy/bootstrap", adm_admin_handler, #{
             action => config_policy_bootstrap
         }},
@@ -778,6 +782,15 @@ get_routes() ->
         {"/api/adm/user/logout_apply/export", adm_logout_apply_handler, #{action => export}},
         {"/api/adm/user/logout_apply/reject", adm_logout_apply_handler, #{action => reject}},
         {"/api/adm/user/logout_apply/approve", adm_logout_apply_handler, #{action => approve}},
+        % Workspace/Project 运营管理 API（双体验 v2.5.2 WP7/T11b）
+        % 鉴权：adm_acl workspaces:read / workspaces:update（fail-closed 403）
+        {"/api/adm/workspace/list", adm_workspace_handler, #{action => list}},
+        {"/api/adm/workspace/detail", adm_workspace_handler, #{action => detail}},
+        {"/api/adm/workspace/members", adm_workspace_handler, #{action => members}},
+        {"/api/adm/workspace/archive", adm_workspace_handler, #{action => archive}},
+        {"/api/adm/workspace/restore", adm_workspace_handler, #{action => restore}},
+        {"/api/adm/project/list", adm_workspace_handler, #{action => project_list}},
+        {"/api/adm/project/detail", adm_workspace_handler, #{action => project_detail}},
         % 群组管理 API
         {"/api/adm/group/list", adm_group_handler, #{action => list}},
         {"/api/adm/group/detail", adm_group_handler, #{action => detail}},

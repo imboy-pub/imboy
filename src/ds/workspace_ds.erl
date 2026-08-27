@@ -32,6 +32,10 @@
 -export([ws_transfer_tx/3]).
 -export([branding_public_view/1]).
 -export([resource_counts/1]).
+%% Admin 运营管理查询（双体验 v2.5.2 WP7/T11b；仅供 workspace_logic admin 函数调用）
+-export([admin_page/4]).
+-export([admin_batch_resource_counts/1]).
+-export([admin_resource_list/3]).
 
 -include("log.hrl").
 
@@ -346,6 +350,137 @@ count_rows(Tb, WsId, ExtraWhere) ->
 -spec ws_transfer_tx(any(), integer(), integer()) -> ok | {error, term()}.
 ws_transfer_tx(Conn, WsId, NewOwnerUid) ->
     workspace_repo:update_owner_tx(Conn, WsId, NewOwnerUid).
+
+%% ===================================================================
+%% Admin 运营管理查询（双体验 v2.5.2 WP7/T11b）
+%% ===================================================================
+
+%% @doc Admin 工作区分页列表（含 owner 用户摘要；keyword 模糊匹配名称）
+%% 排序 created_at DESC,id DESC（稳定排序）；Size 上限 100。
+-spec admin_page(integer(), integer(), binary() | all, binary()) ->
+    {ok, map()} | {error, term()}.
+admin_page(Page0, Size0, Status, Keyword) ->
+    Page = max(Page0, 1),
+    Size = clamp(Size0, 1, 100),
+    WsTb = workspace_repo:tablename(),
+    UTb = user_repo:tablename(),
+    {WhereSql, Params} = admin_page_where(Status, Keyword),
+    CountSql =
+        <<"SELECT COUNT(*) AS count FROM ", WsTb/binary, " w", WhereSql/binary>>,
+    Total =
+        case elib_pg:one(CountSql, Params) of
+            {ok, #{<<"count">> := C}} -> C;
+            _ -> 0
+        end,
+    Offset = (Page - 1) * Size,
+    DataSql = [
+        <<"SELECT w.id, w.name, w.logo, w.owner_id, w.status, w.branding,",
+            " w.archived_at, w.archived_by, w.created_at, w.updated_at,",
+            " u.nickname AS owner_nickname, u.account AS owner_account", " FROM ", WsTb/binary,
+            " w LEFT JOIN ", UTb/binary, " u ON u.id = w.owner_id">>,
+        WhereSql,
+        <<" ORDER BY w.created_at DESC, w.id DESC LIMIT $">>,
+        integer_to_binary(length(Params) + 1),
+        <<" OFFSET $">>,
+        integer_to_binary(length(Params) + 2)
+    ],
+    case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
+        {ok, Items} ->
+            TotalPage =
+                case Total > 0 of
+                    true -> ((Total - 1) div Size) + 1;
+                    false -> 0
+                end,
+            {ok, #{
+                list => Items,
+                page => Page,
+                size => Size,
+                total => Total,
+                total_page => TotalPage
+            }};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% status= all | <<"active">> | <<"archived">>；keyword 非空时 name ILIKE（防注入走参数）
+-spec admin_page_where(binary() | all, binary()) -> {binary(), [term()]}.
+admin_page_where(all, Keyword) when byte_size(Keyword) > 0 ->
+    {<<" WHERE w.name ILIKE $1">>, [<<"%", Keyword/binary, "%">>]};
+admin_page_where(all, _Keyword) ->
+    {<<>>, []};
+admin_page_where(Status, Keyword) when byte_size(Keyword) > 0 ->
+    {<<" WHERE w.status = $1 AND w.name ILIKE $2">>, [Status, <<"%", Keyword/binary, "%">>]};
+admin_page_where(Status, _Keyword) ->
+    {<<" WHERE w.status = $1">>, [Status]}.
+
+%% @doc 批量资源计数（projects/groups/channels/members；每类一条 GROUP BY，
+%% 与页大小无关——避免逐行 COUNT 的 N+1）
+-spec admin_batch_resource_counts([integer()]) -> map().
+admin_batch_resource_counts([]) ->
+    #{};
+admin_batch_resource_counts(WsIds) ->
+    IdsSql = join_int_ids(WsIds),
+    #{
+        <<"project_count">> => group_count(<<"project">>, <<"status = 'active'">>, IdsSql),
+        <<"group_count">> =>
+            group_count(<<"\"group\"">>, <<"scope = 'workspace' AND status = 1">>, IdsSql),
+        <<"channel_count">> =>
+            group_count(<<"channel">>, <<"scope = 'workspace' AND status = 1">>, IdsSql),
+        <<"member_count">> =>
+            group_count(<<"workspace_member">>, <<"status = 'active'">>, IdsSql)
+    }.
+
+group_count(Tb, ExtraWhere, IdsSql) ->
+    Sql = [
+        <<"SELECT workspace_id AS ws_id, COUNT(*) AS count FROM ", Tb/binary,
+            " WHERE workspace_id IN (", IdsSql/binary, ") AND ", ExtraWhere/binary,
+            " GROUP BY workspace_id">>
+    ],
+    case elib_pg:query(Sql, []) of
+        {ok, Rows} ->
+            maps:from_list([
+                {maps:get(<<"ws_id">>, Row, 0), maps:get(<<"count">>, Row, 0)}
+             || Row <- Rows
+            ]);
+        _ ->
+            #{}
+    end.
+
+%% @doc 工作区归属资源清单（详情页展示；每类前 Limit 行）
+-spec admin_resource_list(binary(), integer(), integer()) -> {ok, [map()]} | {error, term()}.
+admin_resource_list(project, WsId, Limit) ->
+    Tb = project_repo:tablename(),
+    elib_pg:query(
+        [
+            <<"SELECT id, name, status, owner_id, created_at FROM ", Tb/binary,
+                " WHERE workspace_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2">>
+        ],
+        [WsId, Limit]
+    );
+admin_resource_list(group, WsId, Limit) ->
+    Tb = group_repo:tablename(),
+    elib_pg:query(
+        [
+            <<"SELECT id, title, status, owner_uid, member_count, created_at FROM ", Tb/binary,
+                " WHERE workspace_id = $1 AND scope = 'workspace'",
+                " ORDER BY created_at DESC, id DESC LIMIT $2">>
+        ],
+        [WsId, Limit]
+    );
+admin_resource_list(channel, WsId, Limit) ->
+    Tb = channel_repo:tablename(),
+    elib_pg:query(
+        [
+            <<"SELECT id, name, status, creator_uid, subscriber_count, created_at FROM ", Tb/binary,
+                " WHERE workspace_id = $1 AND scope = 'workspace'",
+                " ORDER BY created_at DESC, id DESC LIMIT $2">>
+        ],
+        [WsId, Limit]
+    ).
+
+-spec join_int_ids([integer()]) -> binary().
+join_int_ids(WsIds) ->
+    elib_cnv:implode(<<",">>, [integer_to_binary(Id) || Id <- WsIds]).
 
 %% ===================================================================
 %% Internal Function Definitions

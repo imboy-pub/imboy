@@ -116,6 +116,7 @@ list(<<"GET">>, Req0) ->
 
     Column = <<
         "id, name, visibility, access_type, join_policy, creator_uid as owner_id, custom_id, description, avatar, "
+        "scope, workspace_id, "
         "subscriber_count, status, created_at, updated_at"
     >>,
 
@@ -613,6 +614,7 @@ search(<<"GET">>, Req0) ->
         _ ->
             Column = <<
                 "id, name, visibility, access_type, join_policy, creator_uid as owner_id, custom_id, description, "
+                "scope, workspace_id, "
                 "subscriber_count, status, created_at"
             >>,
             case channel_ds:search(Keyword, Limit, Column) of
@@ -1116,9 +1118,10 @@ normalize_channel_payload(Payload) ->
 
 %% @doc 规范化单条频道数据（编码ID字段）
 %% Admin API 将 TSID 整数转为字符串，避免 JS 精度丢失。
+%% workspace_id（双体验 v2.5.2 归属列）同为 TSID bigint 一并转换；scope 是 text 原样。
 -spec normalize_channel(map()) -> map().
 normalize_channel(Channel) ->
-    elib_id:tsid_keys_to_bin(Channel, [<<"id">>, <<"owner_id">>]).
+    elib_id:tsid_keys_to_bin(Channel, [<<"id">>, <<"owner_id">>, <<"workspace_id">>]).
 
 %% @doc 规范化消息分页数据（编码ID字段）
 -spec normalize_message_payload(map()) -> map().

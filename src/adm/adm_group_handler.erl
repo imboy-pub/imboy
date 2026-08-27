@@ -84,7 +84,10 @@ detail(<<"GET">>, Req0, State) ->
             case Gid > 0 of
                 true ->
                     Column =
-                        <<"id,title,avatar,introduction,owner_uid,creator_uid,member_count,member_max,type,join_limit,status,created_at">>,
+                        <<
+                            "id,title,avatar,introduction,owner_uid,creator_uid,member_count,"
+                            "member_max,type,join_limit,status,scope,workspace_id,created_at"
+                        >>,
                     Group = group_ds:find_by_id(Gid, Column),
                     case map_size(Group) > 0 of
                         true ->
@@ -299,7 +302,10 @@ normalize_group_payload(Payload) ->
 
 -spec normalize_group(map()) -> map().
 normalize_group(Group) ->
-    elib_id:tsid_keys_to_bin(Group, [<<"id">>, <<"owner_uid">>, <<"creator_uid">>]).
+    %% workspace_id：TSID bigint，必须转 string 防 JS 精度丢失（scope 是 text 原样）
+    elib_id:tsid_keys_to_bin(Group, [
+        <<"id">>, <<"owner_uid">>, <<"creator_uid">>, <<"workspace_id">>
+    ]).
 
 -spec normalize_member_payload(map()) -> map().
 normalize_member_payload(Payload) ->

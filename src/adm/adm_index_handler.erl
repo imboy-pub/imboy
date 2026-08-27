@@ -227,6 +227,9 @@ role_acl(1) ->
         <<"channels:update">>,
         <<"channels:delete">>,
         <<"channel_order_refund">>,
+        %% Workspace/Project 运营管理（双体验 v2.5.2 WP7/T11b）
+        <<"workspaces:read">>,
+        <<"workspaces:update">>,
         %% Bot 开发者服务（平台处置：浏览 + 启停）
         <<"bots:read">>,
         <<"bots:update">>,
@@ -302,6 +305,8 @@ role_acl(1) ->
         <<"/messages">>,
         <<"/logout-applications">>,
         <<"/channels">>,
+        <<"/workspaces">>,
+        <<"/projects">>,
         <<"/finance">>,
         <<"/reports">>,
         <<"/feedback">>,
@@ -352,6 +357,9 @@ role_acl(2) ->
         <<"channels:update">>,
         <<"channels:delete">>,
         <<"channel_order_refund">>,
+        %% Workspace/Project 运营管理（双体验 v2.5.2 WP7/T11b）
+        <<"workspaces:read">>,
+        <<"workspaces:update">>,
         %% Bot 开发者服务（平台处置：浏览 + 启停）
         <<"bots:read">>,
         <<"bots:update">>,
@@ -401,6 +409,8 @@ role_acl(2) ->
         <<"/messages">>,
         <<"/logout-applications">>,
         <<"/channels">>,
+        <<"/workspaces">>,
+        <<"/projects">>,
         <<"/finance">>,
         <<"/reports">>,
         <<"/feedback">>,
