@@ -60,7 +60,7 @@ allowed_modules_for_handler() {
       echo "auth_ds feedback_logic"
       ;;
     channel_handler.erl)
-      echo "channel_logic"
+      echo "auth_ds channel_logic config_ds"
       ;;
     moment_handler.erl)
       echo "moment_logic"

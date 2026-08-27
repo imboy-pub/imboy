@@ -61,6 +61,33 @@ qr_login_scan_confirm_route_registered_test() ->
         )
     ].
 
+%% DF-20：channel/qrcode 必须注册为专属路由，且排在 /channel/:channel_id
+%% 通配之前——否则 "qrcode" 被当作 channel_id 进入 show，
+%% 退化为「频道不存在」的误导性业务错误（08-18 起的历史缺陷）。
+channel_qrcode_route_registered_before_wildcard_test() ->
+    Routes = all_routes(),
+    Paths = [unicode:characters_to_binary(P) || {P, _H, _S} <- Routes],
+    ?assert(
+        lists:member(<<"/api/v1/channel/qrcode">>, Paths),
+        "频道二维码路由 /v1/channel/qrcode 未注册（会被 :channel_id 通配捕获）"
+    ),
+    QrIdx = index_of(<<"/api/v1/channel/qrcode">>, Paths),
+    WildIdx = index_of(<<"/api/v1/channel/:channel_id">>, Paths),
+    ?assert(
+        is_integer(QrIdx) andalso is_integer(WildIdx) andalso QrIdx < WildIdx,
+        "channel/qrcode 必须排在 :channel_id 通配之前，否则通配先命中"
+    ).
+
+index_of(Value, List) ->
+    index_of(Value, List, 1).
+
+index_of(_Value, [], _Idx) ->
+    not_found;
+index_of(Value, [Value | _Rest], Idx) ->
+    Idx;
+index_of(Value, [_H | Rest], Idx) ->
+    index_of(Value, Rest, Idx + 1).
+
 open_routes_map_to_route_table_test() ->
     RoutePathSet = route_path_set(),
     MissingPaths = missing_paths(imboy_router:open(), RoutePathSet),

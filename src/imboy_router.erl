@@ -335,6 +335,7 @@ get_routes() ->
 
                 % 频道功能 API
                 {"/api/v1/channel/create", channel_handler, #{action => create}},
+                {"/api/v1/channel/qrcode", channel_handler, #{action => qrcode}},
                 {"/api/v1/channel/:channel_id", channel_handler, #{action => show}},
                 {"/api/v1/channel/by_custom_id/:custom_id", channel_handler, #{
                     action => by_custom_id

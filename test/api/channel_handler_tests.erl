@@ -2121,5 +2121,105 @@ handle_action_false_returns_original_req_test() ->
     Req = req_mock(),
     ?assertEqual(Req, channel_handler:handle_action(false, Req, #{})).
 
+%%%===================================================================
+%%% DF-20 回归：频道二维码解析（/api/v1/channel/qrcode）
+%%% 契约与 user/group 二维码一致：exp(毫秒)+tk(md5(exp_solidifiedKey))，
+%%% 未登录/坏 tk → 302；过期 → 业务错误；成功回读名片 type=channel。
+%%%===================================================================
+
+qrcode_returns_channel_card_test_() ->
+    Key = <<"eunit_qrcode_key">>,
+    Exp = <<"4102444800000">>,
+    ValidTk = elib_hasher:md5(<<Exp/binary, "_", Key/binary>>),
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'parse_qs', 1, fun(_Req) ->
+                    [
+                        {<<"id">>, <<"ch_card_1">>},
+                        {<<"exp">>, Exp},
+                        {<<"tk">>, ValidTk}
+                    ]
+                end}
+            ]},
+            {config_ds, [
+                {'env', 1, fun(solidified_key) -> Key end}
+            ]},
+            {channel_logic, [
+                {'get_channel', 2, fun(<<"ch_card_1">>, 1001) ->
+                    {ok, #{<<"id">> => <<"ch_card_1">>, <<"name">> => <<"名片频道"/utf8>>}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Payload) -> {ok_resp, Payload} end}
+            ]}
+        ],
+        fun() ->
+            Req = req_mock(),
+            State = #{current_uid => 1001},
+            Result = channel_handler:handle_action(qrcode, Req, State),
+            ?assertMatch(
+                {ok_resp, #{<<"type">> := <<"channel">>, <<"name">> := <<"名片频道"/utf8>>}},
+                Result
+            )
+        end
+    ).
+
+qrcode_rejects_expired_tk_test_() ->
+    Key = <<"eunit_qrcode_key">>,
+    %% exp 为过去时间（2021 年），tk 与该 exp 匹配
+    Exp = <<"1620000000000">>,
+    ExpiredTk = elib_hasher:md5(<<Exp/binary, "_", Key/binary>>),
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'parse_qs', 1, fun(_Req) ->
+                    [{<<"id">>, <<"ch_1">>}, {<<"exp">>, Exp}, {<<"tk">>, ExpiredTk}]
+                end}
+            ]},
+            {config_ds, [
+                {'env', 1, fun(solidified_key) -> Key end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end}
+            ]}
+        ],
+        fun() ->
+            Req = req_mock(),
+            Result = channel_handler:handle_action(qrcode, Req, #{current_uid => 1001}),
+            ?assertEqual({error_resp, "验证码已过期"}, Result)
+        end
+    ).
+
+qrcode_redirects_on_bad_tk_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'parse_qs', 1, fun(_Req) ->
+                    [
+                        {<<"id">>, <<"ch_1">>},
+                        {<<"exp">>, <<"4102444800000">>},
+                        {<<"tk">>, <<"bad">>}
+                    ]
+                end},
+                {'reply', 3, fun(Status, Headers, _Req) ->
+                    {redirected, Status, maps:get(<<"Location">>, Headers)}
+                end}
+            ]},
+            {config_ds, [
+                {'env', 1, fun(solidified_key) -> <<"eunit_qrcode_key">> end},
+                {'env', 2, fun(_K, Default) -> Default end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Msg) -> {error_resp, Msg} end}
+            ]}
+        ],
+        fun() ->
+            Req = req_mock(),
+            Result = channel_handler:handle_action(qrcode, Req, #{current_uid => 1001}),
+            ?assertEqual({redirected, 302, <<"http://www.imboy.pub">>}, Result)
+        end
+    ).
+
 req_mock() ->
     #{mock_req => true}.

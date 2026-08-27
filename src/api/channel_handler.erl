@@ -74,6 +74,7 @@ guarded_handle(Action, Req0, State) ->
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
 handle_action(create, Req, State) -> create(Req, State);
 handle_action(show, Req, State) -> show(Req, State);
+handle_action(qrcode, Req, State) -> qrcode(Req, State);
 handle_action(by_custom_id, Req, State) -> by_custom_id(Req, State);
 handle_action(update, Req, State) -> update(Req, State);
 handle_action(delete, Req, State) -> delete(Req, State);
@@ -210,6 +211,58 @@ show(Req0, State) ->
                     elib_response:error(Req0, Msg)
             end
     end.
+
+%% @doc 频道二维码解析（扫码名片）。
+%% 与 user/group 二维码同契约：exp 为毫秒时间戳、tk=md5(exp_solidifiedKey)；
+%% 未登录或 tk 校验失败 302 跳转，过期回业务错误。
+%% 只回读频道名片、不自动订阅：订阅必须走 /subscribe 的
+%% access_type/join_policy 与付费门禁，GET 扫码不得绕过订单。
+-spec qrcode(cowboy_req:req(), map()) -> cowboy_req:req().
+qrcode(Req0, State) ->
+    Qs = cowboy_req:parse_qs(Req0),
+    ChannelId = proplists:get_value(<<"id">>, Qs, undefined),
+    ExpiredAt = proplists:get_value(<<"exp">>, Qs, undefined),
+    Tk = proplists:get_value(<<"tk">>, Qs, undefined),
+    Key = config_ds:env(solidified_key),
+    ExpiredAt2 = ec_cnv:to_binary(ExpiredAt),
+    %% 非法/缺失 exp 参数时安全返回 0，避免 binary_to_integer badarg 崩溃
+    ExpiredAtInt = elib_cnv:safe_to_integer(ExpiredAt2),
+    Verified =
+        elib_hasher:md5(
+            <<ExpiredAt2/binary, "_", (ec_cnv:to_binary(Key))/binary>>
+        ) ==
+            Tk,
+    NowInt = elib_dt:rfc3339_to(elib_dt:now()),
+    CurrentUid = auth_ds:current_uid(State),
+    case {CurrentUid, Verified} of
+        {0, _} ->
+            qrcode_redirect(Req0);
+        {_, false} ->
+            qrcode_redirect(Req0);
+        {_, true} when NowInt > ExpiredAtInt ->
+            elib_response:error(Req0, "验证码已过期");
+        _ ->
+            case channel_logic:get_channel(ChannelId, CurrentUid) of
+                {ok, Channel} ->
+                    elib_response:success(
+                        Req0,
+                        Channel#{<<"type">> => <<"channel">>}
+                    );
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
+            end
+    end.
+
+-spec qrcode_redirect(cowboy_req:req()) -> cowboy_req:req().
+qrcode_redirect(Req0) ->
+    cowboy_req:reply(
+        302,
+        #{<<"Location">> => config_ds:env(redirect_url, <<"http://www.imboy.pub">>)},
+        Req0
+    ).
 
 %% @doc 删除频道
 -spec delete(cowboy_req:req(), map()) -> cowboy_req:req().
