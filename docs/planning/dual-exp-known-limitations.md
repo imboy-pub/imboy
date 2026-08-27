@@ -41,6 +41,8 @@ R3 穷举表中除上述已接入点外仍有少量写路径未接 980 守卫（
 `erlang_migrate:down(Config, N)` / `goto` 到中间版本**；必须 down 后立即
 `erlang_migrate:force(Config, <目标版本>)` 校正（实测有效，见 T3 报告 §2.4）。
 
+**上游修复已就绪（2026-08-27）**：根因实为 `down(N<all)/goto` 的 PrevVersion 从 sublist 内部推导——滚完 N 份 Rest 耗尽即 undefined，PG driver 按约定清空整条升级历史。本地 `erlang_migrate` 仓分支 `fix/partial-down-tracking`（base_version_for 贯穿 + 3 个语义钉子用例，全仓 110/110 绿）已修；imboy 切换需更新 deps.mk 的 pin 到该分支 commit 并回归 T3 演练后再用于生产回滚预案。
+
 ### B2. 00000074/75 无 down 文件（历史遗留）
 74/75 为上游合并基线既有状况，非本计划引入；整体回滚到 ≤73 需手工脚本。
 
