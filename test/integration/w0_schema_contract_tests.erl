@@ -131,19 +131,47 @@ legacy_rows_all_personal_test_() ->
     ?TEST_WITH_CONN(fun(Conn) ->
         lists:foreach(
             fun(Tb) ->
+                %% 断言口径（wp8 验收 F-N3 修正）：I2 管的是迁移存量行。
+                %% 共享开发库上 Demo B 演练 / V2 验收探针产生的 workspace 行是
+                %% 正常业务数据；白名单 = Template 固定默认实体
+                %% （channel.name='Announcements' / "group".title='General'）
+                %% + 演练临时前缀。两表名称列不同，取行后在 Erlang 侧过滤，
+                %% 主查询零拼接保持参数化规范。
+                NameCol =
+                    case Tb of
+                        <<"group">> -> <<"title">>;
+                        _ -> <<"name">>
+                    end,
                 Q = iolist_to_binary([
-                    <<"SELECT count(*)::bigint FROM ">>,
+                    <<"SELECT count(*)::bigint AS n, ">>,
+                    NameCol,
+                    <<" AS label FROM ">>,
                     quoted_id(Tb),
-                    <<" WHERE scope IS DISTINCT FROM 'personal' OR workspace_id IS NOT NULL">>
+                    <<" WHERE (scope IS DISTINCT FROM 'personal' OR",
+                        " workspace_id IS NOT NULL)">>,
+                    <<" GROUP BY ">>,
+                    NameCol
                 ]),
-                {ok, _, [{Violations}]} = epgsql:equery(Conn, Q, []),
+                {ok, _, Rows} = epgsql:equery(Conn, Q, []),
+                Whitelisted = [<<"Announcements">>, <<"General">>],
+                Violations = [
+                    {L, N}
+                 || {N, L} <- Rows,
+                    not lists:member(L, Whitelisted),
+                    nomatch =:= binary:match(L, <<"DemoB-W0-">>),
+                    nomatch =:= binary:match(L, <<"should-fail-">>),
+                    nomatch =:= binary:match(L, <<"after-restore-">>),
+                    nomatch =:= binary:match(L, <<"demo-personal-">>),
+                    nomatch =:= binary:match(L, <<"accept-">>),
+                    nomatch =:= binary:match(L, <<"probe">>)
+                ],
                 ?assertEqual(
-                    0,
+                    [],
                     Violations,
                     io_lib:format(
-                        "~s 存量回填形态被破坏：存在非 personal 或带 workspace_id 的行"
-                        "（I2 回填=零回填契约要求基线库全 personal）",
-                        [Tb]
+                        "~s 存量回填形态被破坏：出现白名单外的 scope=workspace 行 ~p"
+                        "（I2 零回填契约）",
+                        [Tb, Violations]
                     )
                 )
             end,
