@@ -4268,7 +4268,9 @@ add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_() ->
     MockConfigs = [
         {channel_logic_common, [
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
-            {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
+            {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end},
+            %% T7 归档写守卫（非 passthrough meck 需显式 expect 新增函数）
+            {'guard_channel_writable', 1, fun(11) -> ok end}
         ]},
         {channel_message_ds, [
             {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
@@ -4289,7 +4291,9 @@ remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
     MockConfigs = [
         {channel_logic_common, [
             {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
-            {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
+            {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end},
+            %% T7 归档写守卫（非 passthrough meck 需显式 expect 新增函数）
+            {'guard_channel_writable', 1, fun(11) -> ok end}
         ]},
         {channel_message_ds, [
             {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}

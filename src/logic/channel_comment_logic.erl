@@ -39,7 +39,15 @@ create(Uid, ChannelIdBin, MessageIdBin, Content, ParentId) ->
                 _ ->
                     case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                         ok ->
-                            do_create_comment(Uid, ChannelId, MessageIdBin, Content, ParentId);
+                            %% T7 归档写守卫（R3 #9）
+                            case channel_logic_common:guard_channel_writable(ChannelId) of
+                                ok ->
+                                    do_create_comment(
+                                        Uid, ChannelId, MessageIdBin, Content, ParentId
+                                    );
+                                {error, Reason} ->
+                                    {error, Reason}
+                            end;
                         {error, Reason} ->
                             {error, Reason}
                     end
@@ -73,13 +81,23 @@ list_by_message(Uid, ChannelIdBin, MessageIdBin, Cursor, Limit) ->
 -spec delete(integer(), integer()) -> ok | {error, binary()}.
 delete(Uid, CommentId) ->
     case channel_comment_ds:find_by_id(CommentId) of
-        #{<<"user_id">> := Uid} ->
-            do_delete(CommentId);
+        #{<<"user_id">> := Uid, <<"channel_id">> := OwnChannelId} ->
+            %% T7 归档写守卫（R3 #9）
+            case channel_logic_common:guard_channel_writable(OwnChannelId) of
+                ok -> do_delete(CommentId);
+                {error, Reason} -> {error, Reason}
+            end;
         #{<<"channel_id">> := ChannelId} ->
             Role = channel_logic_common:get_user_role(ChannelId, Uid),
             case Role >= ?CHANNEL_ROLE_ADMIN of
-                true -> do_delete(CommentId);
-                false -> {error, <<"无权删除该评论"/utf8>>}
+                true ->
+                    %% T7 归档写守卫（R3 #9）
+                    case channel_logic_common:guard_channel_writable(ChannelId) of
+                        ok -> do_delete(CommentId);
+                        {error, Reason} -> {error, Reason}
+                    end;
+                false ->
+                    {error, <<"无权删除该评论"/utf8>>}
             end;
         {error, _} ->
             {error, <<"评论不存在"/utf8>>}
@@ -89,10 +107,16 @@ delete(Uid, CommentId) ->
 -spec like(integer(), integer()) -> ok | {error, binary()}.
 like(Uid, CommentId) ->
     case ensure_comment_access(Uid, CommentId) of
-        {ok, _ChannelId} ->
-            case channel_comment_ds:like(CommentId) of
-                {ok, _} -> ok;
-                {error, _} -> {error, <<"操作失败"/utf8>>}
+        {ok, ChannelId} ->
+            %% T7 归档写守卫（R3 #9）
+            case channel_logic_common:guard_channel_writable(ChannelId) of
+                ok ->
+                    case channel_comment_ds:like(CommentId) of
+                        {ok, _} -> ok;
+                        {error, _} -> {error, <<"操作失败"/utf8>>}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}
@@ -102,10 +126,16 @@ like(Uid, CommentId) ->
 -spec unlike(integer(), integer()) -> ok | {error, binary()}.
 unlike(Uid, CommentId) ->
     case ensure_comment_access(Uid, CommentId) of
-        {ok, _ChannelId} ->
-            case channel_comment_ds:unlike(CommentId) of
-                {ok, _} -> ok;
-                {error, _} -> {error, <<"操作失败"/utf8>>}
+        {ok, ChannelId} ->
+            %% T7 归档写守卫（R3 #9）
+            case channel_logic_common:guard_channel_writable(ChannelId) of
+                ok ->
+                    case channel_comment_ds:unlike(CommentId) of
+                        {ok, _} -> ok;
+                        {error, _} -> {error, <<"操作失败"/utf8>>}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         {error, Reason} ->
             {error, Reason}

@@ -107,6 +107,9 @@ delete_comment(Req0, State) ->
             case channel_comment_logic:delete(Uid, elib_cnv:safe_to_integer(CommentId)) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -122,8 +125,13 @@ like_comment(Req0, State) ->
             elib_response:error(Req0, <<"评论ID不能为空"/utf8>>);
         CommentId ->
             case channel_comment_logic:like(Uid, elib_cnv:safe_to_integer(CommentId)) of
-                ok -> elib_response:success(Req0, #{});
-                {error, Msg} -> elib_response:error(Req0, Msg)
+                ok ->
+                    elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
             end
     end.
 
@@ -137,8 +145,13 @@ unlike_comment(Req0, State) ->
             elib_response:error(Req0, <<"评论ID不能为空"/utf8>>);
         CommentId ->
             case channel_comment_logic:unlike(Uid, elib_cnv:safe_to_integer(CommentId)) of
-                ok -> elib_response:success(Req0, #{});
-                {error, Msg} -> elib_response:error(Req0, Msg)
+                ok ->
+                    elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg)
             end
     end.
 

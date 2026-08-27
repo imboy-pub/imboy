@@ -9,6 +9,7 @@
 -export([add/1]).
 -export([add/2]).
 -export([add_with_request_id/2]).
+-export([add_with_request_id/3]).
 -export([find_by_id/1]).
 -export([list_by_channel/3]).
 -export([update/2]).
@@ -79,6 +80,57 @@ add_with_request_id(Data, RequestId) ->
             find_idempotent_message(Tb, Data, RequestId);
         {error, _} = Err ->
             Err
+    end.
+
+%% @doc 使用客户端 request_id 幂等添加频道消息（事务连接版，T7 归档写守卫
+%% 同事务接入用——channel_ds:publish_message 包 with_tx 后走本版本）
+-spec add_with_request_id(any(), map(), binary()) ->
+    {ok, integer(), inserted | duplicate} | {error, term()}.
+add_with_request_id(Conn, Data, RequestId) ->
+    Tb = tablename(),
+    Id = elib_tsid:generate(channel_message),
+    Data2 = Data#{<<"id">> => Id, request_id => RequestId},
+    {Sql0, Params} = elib_pg_sql:insert(Tb, Data2),
+    Sql = iolist_to_binary([
+        Sql0,
+        <<
+            " ON CONFLICT (author_id, channel_id, request_id) "
+            "WHERE request_id IS NOT NULL DO NOTHING"
+        >>
+    ]),
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, Count} when Count > 0 ->
+            {ok, Id, inserted};
+        {ok, 0} ->
+            find_idempotent_message_tx(Conn, Tb, Data, RequestId);
+        {error, _} = Err ->
+            Err
+    end.
+
+%% 事务连接版幂等回查（与 add_with_request_id/3 配套）
+find_idempotent_message_tx(Conn, Tb, Data, RequestId) ->
+    Sql = <<
+        "SELECT id FROM ",
+        Tb/binary,
+        " WHERE author_id = $1 AND channel_id = $2 AND request_id = $3",
+        "   AND content = $4 AND msg_type = $5 AND payload = $6::jsonb",
+        " LIMIT 1"
+    >>,
+    Params = [
+        maps:get(author_id, Data),
+        maps:get(channel_id, Data),
+        RequestId,
+        maps:get(content, Data),
+        maps:get(msg_type, Data),
+        maps:get(payload, Data)
+    ],
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [#{<<"id">> := MessageId} | _]} ->
+            {ok, MessageId, duplicate};
+        {ok, []} ->
+            {error, request_id_conflict};
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 find_idempotent_message(Tb, Data, RequestId) ->

@@ -574,7 +574,72 @@ get_routes() ->
                 % 附件直传成功回调落库（需 JWT 认证）
                 {"/api/v1/attachment/confirm", attach_handler, #{action => confirm}},
                 % 附件下载短时签发 URL，替代 bucket 公开读（需 JWT 认证）
-                {"/api/v1/attachment/view_url", attach_handler, #{action => view_url}}
+                {"/api/v1/attachment/view_url", attach_handler, #{action => view_url}},
+
+                %% ============================================================
+                %% 工作区 / 项目 / 任务（双体验 v2.5.2 WP3+WP4）
+                %% T7 统一注册：按 workspace_handler / project_handler /
+                %% project_task_handler 三个文件顶部路由片段清单合并（唯一一次
+                %% router 修改）；全部走 /api/v1/* JWT 默认门。
+                %% mine 固定路径必须注册在 :workspace_id 通配之前防遮蔽；
+                %% branding / projects / tasks 集合路径同路径双语义由
+                %% handler 按 method 分派。
+                %% ============================================================
+                {"/api/v1/workspaces", workspace_handler, #{action => create}},
+                {"/api/v1/workspaces/mine", workspace_handler, #{action => mine}},
+                {"/api/v1/workspaces/:workspace_id", workspace_handler, #{action => show}},
+                {"/api/v1/workspaces/:workspace_id/update", workspace_handler, #{
+                    action => update
+                }},
+                {"/api/v1/workspaces/:workspace_id/branding", workspace_handler, #{
+                    action => branding
+                }},
+                {"/api/v1/workspaces/:workspace_id/overview", workspace_handler, #{
+                    action => overview
+                }},
+                {"/api/v1/workspaces/:workspace_id/channels", workspace_handler, #{
+                    action => channel_list
+                }},
+                {"/api/v1/workspaces/:workspace_id/groups", workspace_handler, #{
+                    action => group_list
+                }},
+                {"/api/v1/workspaces/:workspace_id/members", workspace_handler, #{
+                    action => member_list
+                }},
+                {"/api/v1/workspaces/:workspace_id/members/invite", workspace_handler, #{
+                    action => member_invite
+                }},
+                {"/api/v1/workspaces/:workspace_id/members/remove", workspace_handler, #{
+                    action => member_remove
+                }},
+                {"/api/v1/workspaces/:workspace_id/members/role", workspace_handler, #{
+                    action => member_role
+                }},
+                {"/api/v1/workspaces/:workspace_id/members/transfer_owner", workspace_handler, #{
+                    action => owner_transfer
+                }},
+                {"/api/v1/workspaces/:workspace_id/archive", workspace_handler, #{
+                    action => archive
+                }},
+                {"/api/v1/workspaces/:workspace_id/restore", workspace_handler, #{
+                    action => restore
+                }},
+                {"/api/v1/workspaces/:workspace_id/projects", project_handler, #{
+                    action => projects
+                }},
+                {"/api/v1/projects/:project_id", project_handler, #{action => show}},
+                {"/api/v1/projects/:project_id/update", project_handler, #{action => update}},
+                {"/api/v1/projects/:project_id/status", project_handler, #{
+                    action => update_status
+                }},
+                {"/api/v1/projects/:project_id/tasks", project_task_handler, #{
+                    action => tasks
+                }},
+                {"/api/v1/tasks/:task_id", project_task_handler, #{action => show}},
+                {"/api/v1/tasks/:task_id/update", project_task_handler, #{action => update}},
+                {"/api/v1/tasks/:task_id/status", project_task_handler, #{
+                    action => update_status
+                }}
             ],
 
     % Admin routes (原 imadm)

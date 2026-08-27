@@ -87,7 +87,11 @@ pin(CurrentUid, NoticeId) ->
             % 验证权限（仅群主和管理员）
             case check_admin_permission(CurrentUid, Gid) of
                 ok ->
-                    group_notice_ds:pin(NoticeId);
+                    %% T7 归档写守卫（R3 #17）：group→workspace 前置检查
+                    case guard_notice_writable(Gid) of
+                        ok -> group_notice_ds:pin(NoticeId);
+                        {error, Reason} -> {error, Reason}
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -107,7 +111,11 @@ unpin(CurrentUid, NoticeId) ->
             % 验证权限（仅群主和管理员）
             case check_admin_permission(CurrentUid, Gid) of
                 ok ->
-                    group_notice_ds:unpin(NoticeId);
+                    %% T7 归档写守卫（R3 #17）
+                    case guard_notice_writable(Gid) of
+                        ok -> group_notice_ds:unpin(NoticeId);
+                        {error, Reason} -> {error, Reason}
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -127,7 +135,11 @@ delete(CurrentUid, NoticeId) ->
             % 验证权限（仅群主和管理员）
             case check_admin_permission(CurrentUid, Gid) of
                 ok ->
-                    group_notice_ds:soft_delete(NoticeId);
+                    %% T7 归档写守卫（R3 #17）
+                    case guard_notice_writable(Gid) of
+                        ok -> group_notice_ds:soft_delete(NoticeId);
+                        {error, Reason} -> {error, Reason}
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -147,7 +159,11 @@ mark_as_read(CurrentUid, NoticeId) ->
             % 验证群成员身份
             case group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"id">>) of
                 GM when map_size(GM) > 0 ->
-                    group_notice_ds:mark_as_read(NoticeId);
+                    %% T7 派生已读写（R3 #18）：archived 时跳过计数、不 403 读取
+                    case workspace_guard:ensure_writable({group, Gid}) of
+                        ok -> group_notice_ds:mark_as_read(NoticeId);
+                        _ -> {ok, Notice}
+                    end;
                 _ ->
                     {error, ?ERR_NOT_GROUP_MEMBER}
             end;
@@ -212,8 +228,14 @@ publish_notice(Uid, Gid, NoticeId) ->
 insert(CurrentUid, Data) ->
     Gid = maps:get(group_id, Data, 0),
     case check_admin_permission(CurrentUid, Gid) of
-        ok -> group_notice_ds:insert(Data);
-        {error, Reason} -> {error, Reason}
+        ok ->
+            %% T7 归档写守卫（R3 #17）
+            case guard_notice_writable(Gid) of
+                ok -> group_notice_ds:insert(Data);
+                {error, Reason} -> {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc 更新群公告字段（仅群主和管理员），委托 DS 层持久化
@@ -227,8 +249,14 @@ update(CurrentUid, NoticeId, Data) ->
         {ok, Notice} ->
             Gid = maps:get(<<"group_id">>, Notice),
             case check_admin_permission(CurrentUid, Gid) of
-                ok -> group_notice_ds:update(NoticeId, Data);
-                {error, Reason} -> {error, Reason}
+                ok ->
+                    %% T7 归档写守卫（R3 #17）
+                    case guard_notice_writable(Gid) of
+                        ok -> group_notice_ds:update(NoticeId, Data);
+                        {error, Reason} -> {error, Reason}
+                    end;
+                {error, Reason} ->
+                    {error, Reason}
             end;
         {error, _Reason} ->
             {error, not_found}
@@ -280,6 +308,20 @@ latest_published(CurrentUid, Gid) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc T7 归档写守卫（R3 #17）：group→workspace 前置检查。
+%% Group Notice repo 全自动提交（R3 记录 0 个 with_tx），本 W0 采用最小可行
+%% 接入：logic 层前置检查，存在"检查-写窗口"（检查通过后、写提交前归档的
+%% 竞态最多漏拦一条 Notice 写入；读取与历史不受影响）——残留风险已列 WP4 报告。
+guard_notice_writable(Gid) ->
+    case workspace_guard:ensure_writable({group, Gid}) of
+        ok ->
+            ok;
+        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+            {error, ?ERR_WORKSPACE_ARCHIVED};
+        {error, {Code, Msg}} when is_integer(Code) ->
+            {error, {Code, Msg}}
+    end.
 
 %% @doc 检查管理员权限（群主或管理员）
 %% @param CurrentUid 当前用户ID

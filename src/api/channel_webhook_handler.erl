@@ -112,6 +112,9 @@ incoming(Req0) ->
             reply_json(429, <<"{\"ok\":false,\"error\":\"rate_limited\"}">>, Req1);
         {error, not_found} ->
             reply_json(404, <<"{\"ok\":false,\"error\":\"not_found\"}">>, Req1);
+        %% T7 归档写守卫：workspace 频道所属工作区已归档（稳定错误码 workspace_archived）
+        {error, workspace_archived} ->
+            reply_json(409, <<"{\"ok\":false,\"error\":\"workspace_archived\"}">>, Req1);
         {error, _Msg} ->
             %% text 为空/发布失败等：不细分泄露内部原因
             reply_json(400, <<"{\"ok\":false,\"error\":\"bad_request\"}">>, Req1)

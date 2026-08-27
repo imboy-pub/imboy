@@ -34,28 +34,35 @@ subscribe(Uid, ChannelIdBin) ->
                 {error, _} ->
                     {error, <<"频道不存在"/utf8>>};
                 Channel when is_map(Channel) ->
-                    % 直接走订阅流程，底层 upsert_active 保证幂等，
-                    % 避免先 is_subscribed 再 subscribe 的 TOCTOU 竞态
-                    _AccessType = maps:get(<<"access_type">>, Channel, 0),
-                    JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
-                    case JoinPolicy of
-                        1 ->
-                            subscribe_private_channel(Uid, ChannelId);
-                        2 ->
-                            {error, <<"该加入策略暂未开放"/utf8>>};
-                        3 ->
-                            subscribe_paid_channel(Uid, ChannelId);
-                        _ ->
-                            case channel_ds:subscribe(ChannelId, Uid) of
-                                ok ->
-                                    channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
-                                    ok;
-                                {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)}
-                            end
+                    %% T7 归档写守卫（R3 #11）：订阅写前置检查
+                    case channel_logic_common:guard_channel_writable(ChannelId) of
+                        {error, Reason0} -> {error, Reason0};
+                        ok -> subscribe_by_join_policy(Uid, ChannelId, Channel)
                     end;
                 _Unexpected ->
                     {error, <<"频道不存在"/utf8>>}
+            end
+    end.
+
+%% 按 join_policy 走订阅流程：底层 upsert_active 保证幂等，
+%% 避免先 is_subscribed 再 subscribe 的 TOCTOU 竞态
+-spec subscribe_by_join_policy(integer(), integer(), map()) -> ok | {error, binary()}.
+subscribe_by_join_policy(Uid, ChannelId, Channel) ->
+    JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
+    case JoinPolicy of
+        1 ->
+            subscribe_private_channel(Uid, ChannelId);
+        2 ->
+            {error, <<"该加入策略暂未开放"/utf8>>};
+        3 ->
+            subscribe_paid_channel(Uid, ChannelId);
+        _ ->
+            case channel_ds:subscribe(ChannelId, Uid) of
+                ok ->
+                    channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
+                    ok;
+                {error, Reason} ->
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 
@@ -116,14 +123,20 @@ unsubscribe(Uid, ChannelIdBin) ->
         0 ->
             {error, <<"频道不存在"/utf8>>};
         _ ->
-            case channel_ds:unsubscribe(ChannelId, Uid) of
+            %% T7 归档写守卫（R3 #11）：退订写前置检查
+            case channel_logic_common:guard_channel_writable(ChannelId) of
+                {error, Reason0} ->
+                    {error, Reason0};
                 ok ->
-                    channel_logic_notify:notify_channel_unsubscribed(ChannelId, Uid),
-                    ok;
-                {error, Reason} ->
-                    {error, elib_cnv:safe_to_binary(Reason)};
-                Unexpected ->
-                    {error, elib_cnv:safe_to_binary(Unexpected)}
+                    case channel_ds:unsubscribe(ChannelId, Uid) of
+                        ok ->
+                            channel_logic_notify:notify_channel_unsubscribed(ChannelId, Uid),
+                            ok;
+                        {error, Reason} ->
+                            {error, elib_cnv:safe_to_binary(Reason)};
+                        Unexpected ->
+                            {error, elib_cnv:safe_to_binary(Unexpected)}
+                    end
             end
     end.
 

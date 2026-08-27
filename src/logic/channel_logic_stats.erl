@@ -126,23 +126,32 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case ensure_message_in_channel(MessageId, ChannelId) of
-                        {error, Reason} ->
-                            {error, Reason};
+                    %% T7 归档写守卫（R3 #10）
+                    case channel_logic_common:guard_channel_writable(ChannelId) of
+                        {error, Reason0} ->
+                            {error, Reason0};
                         ok ->
-                            Now = elib_dt:millisecond(),
-                            case
-                                channel_ds:insert_reaction(
-                                    ChannelId, MessageId, Uid, ReactionType, Now
-                                )
-                            of
-                                {ok, _} -> ok;
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
-                            end
+                            do_add_reaction(ChannelId, MessageId, Uid, ReactionType)
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
+            end
+    end.
+
+do_add_reaction(ChannelId, MessageId, Uid, ReactionType) ->
+    case ensure_message_in_channel(MessageId, ChannelId) of
+        {error, Reason} ->
+            {error, Reason};
+        ok ->
+            Now = elib_dt:millisecond(),
+            case
+                channel_ds:insert_reaction(
+                    ChannelId, MessageId, Uid, ReactionType, Now
+                )
+            of
+                {ok, _} -> ok;
+                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end
     end.
 
@@ -158,20 +167,27 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case ensure_message_in_channel(MessageId, ChannelId) of
-                        {error, Reason} ->
-                            {error, Reason};
+                    %% T7 归档写守卫（R3 #10）
+                    case channel_logic_common:guard_channel_writable(ChannelId) of
+                        {error, Reason0} ->
+                            {error, Reason0};
                         ok ->
-                            case
-                                channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType)
-                            of
-                                {ok, _} -> ok;
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
-                            end
+                            do_remove_reaction(ChannelId, MessageId, Uid, ReactionType)
                     end;
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
+            end
+    end.
+
+do_remove_reaction(ChannelId, MessageId, Uid, ReactionType) ->
+    case ensure_message_in_channel(MessageId, ChannelId) of
+        {error, Reason} ->
+            {error, Reason};
+        ok ->
+            case channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
+                {ok, _} -> ok;
+                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end
     end.
 

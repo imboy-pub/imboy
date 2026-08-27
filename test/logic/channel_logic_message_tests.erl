@@ -6,7 +6,7 @@
 %% 保持一致，钉住精确列清单防 <<"*">> 宽列查询回流。
 -define(CHANNEL_SAFE_COLUMNS, <<
     "id,name,description,avatar,custom_id,creator_uid,subscriber_count,"
-    "is_verified,tags,created_at,updated_at"
+    "is_verified,tags,visibility,access_type,join_policy,created_at,updated_at"
 >>).
 
 %% @doc BUG#125 回归：editor(role=1) 退订后 is_subscribed 必须为 false，

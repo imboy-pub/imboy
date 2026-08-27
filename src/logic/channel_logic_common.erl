@@ -9,6 +9,7 @@
 -export([channel_revoke_window_seconds/0]).
 -export([channel_edit_window_seconds/0]).
 -export([log_channel_action/6]).
+-export([guard_channel_writable/1]).
 
 -include("log.hrl").
 
@@ -171,3 +172,18 @@ result_tag({error, _}) ->
     <<"error">>;
 result_tag(_) ->
     <<"unknown">>.
+
+%% @doc T7 归档写守卫（R3 #9-13）：channel→workspace 前置检查。
+%% W0 最小可行接入：这些写路径 repo 自动提交，无法与业务写同事务，
+%% 存在"检查-写窗口"（检查通过后、写提交前归档的竞态最多漏拦一次写）；
+%% 残留风险已列 WP4 报告。失败返回 {error, {980, Msg}} 元组形态，
+%% 各 handler 已有 is_integer(Code) 分支透传 envelope code；
+%% personal 频道由 resolver 直通（零行为变化）。
+-spec guard_channel_writable(integer()) -> ok | {error, {integer(), binary()}}.
+guard_channel_writable(ChannelId) ->
+    case workspace_guard:ensure_writable({channel, ChannelId}) of
+        ok ->
+            ok;
+        {error, {Code, Msg}} when is_integer(Code) ->
+            {error, {Code, Msg}}
+    end.

@@ -185,6 +185,11 @@ add(<<"POST">>, Req0, State) ->
             case group_notice_logic:insert(Uid, Data) of
                 {ok, NoticeId} ->
                     elib_response:success(Req0, #{<<"notice_id">> => NoticeId});
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -238,6 +243,11 @@ edit(<<"POST">>, Req0, State) ->
                     elib_response:success(Req0, #{<<"notice_id">> => Id});
                 {error, not_found} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -284,6 +294,11 @@ publish(<<"POST">>, Req0, State) ->
                     elib_response:success(Req0, #{<<"notice_id">> => Id});
                 {error, not_found} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -317,6 +332,11 @@ delete(<<"POST">>, Req0, State) ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
                 {error, ?ERR_GROUP_PERMISSION_DENIED} ->
                     elib_response:error(Req0, <<"你没有权限删除公告"/utf8>>, ?ERR_GROUP_PERMISSION_DENIED);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -353,6 +373,11 @@ page(<<"GET">>, Req0, State) ->
                 {error, ?ERR_NOT_GROUP_MEMBER} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
                     );
                 {error, _} ->
                     elib_response:error(
@@ -392,6 +417,11 @@ latest(<<"GET">>, Req0, State) ->
                 {error, ?ERR_NOT_GROUP_MEMBER} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
                     );
                 {error, _} ->
                     elib_response:error(
@@ -433,6 +463,11 @@ list(<<"GET">>, Req0, State) ->
                     elib_response:error(
                         Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
                     );
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -468,6 +503,11 @@ detail(<<"GET">>, Req0, State) ->
                     );
                 {error, ?ERR_NOT_FOUND} ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -501,6 +541,11 @@ pin(<<"POST">>, Req0, State) ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
                 {error, ?ERR_GROUP_PERMISSION_DENIED} ->
                     elib_response:error(Req0, <<"你没有权限置顶公告"/utf8>>, ?ERR_GROUP_PERMISSION_DENIED);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -534,6 +579,11 @@ unpin(<<"POST">>, Req0, State) ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
                 {error, ?ERR_GROUP_PERMISSION_DENIED} ->
                     elib_response:error(Req0, <<"你没有权限取消置顶"/utf8>>, ?ERR_GROUP_PERMISSION_DENIED);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_OPERATION_FAILED), ?ERR_OPERATION_FAILED
@@ -567,6 +617,11 @@ mark_read(<<"POST">>, Req0, State) ->
                 {error, ?ERR_NOT_GROUP_MEMBER} ->
                     elib_response:error(
                         Req0, error_msg(?ERR_NOT_GROUP_MEMBER), ?ERR_NOT_GROUP_MEMBER
+                    );
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    %% T7 归档写守卫稳定错误码（R3 #17）
+                    elib_response:error(
+                        Req0, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
                     );
                 {error, _} ->
                     elib_response:error(

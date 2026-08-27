@@ -65,6 +65,9 @@ pin_message(Req0, State) ->
             case channel_logic:pin_message(Uid, MessageId, Pinned) of
                 {ok, Message} ->
                     elib_response:success(Req0, Message);
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -80,6 +83,9 @@ unpin_message(Req0, State) ->
             case channel_logic:pin_message(Uid, MessageId, false) of
                 {ok, Message} ->
                     elib_response:success(Req0, Message);
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -95,6 +101,9 @@ pinned_messages(Req0, State) ->
             case channel_logic:get_pinned_messages(Uid, ChannelId) of
                 {ok, Messages} ->
                     elib_response:success(Req0, #{list => Messages});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -110,6 +119,9 @@ delete_message(Req0, State) ->
             case channel_logic:delete_message(Uid, MessageId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -130,6 +142,9 @@ revoke_message(Req0, State) ->
             case channel_logic:revoke_message(Uid, ChannelId, MessageId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -153,6 +168,9 @@ edit_message(Req0, State) ->
             case channel_logic_message:edit_message(Uid, ChannelId, MessageId, Content) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -173,6 +191,9 @@ record_view(Req0, State) ->
             case channel_logic:record_message_view(Uid, ChannelId, MessageId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -194,6 +215,9 @@ add_reaction(Req0, State) ->
             case channel_logic:add_reaction(Uid, ChannelId, MessageId, ReactionType) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -215,6 +239,9 @@ remove_reaction(Req0, State) ->
             case channel_logic:remove_reaction(Uid, ChannelId, MessageId, ReactionType) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -237,6 +264,9 @@ send_message(Req0, State) ->
             case channel_logic:publish_message(Uid, ChannelId, Content, MsgType, Payload) of
                 {ok, Message} ->
                     elib_response:success(Req0, Message);
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -265,6 +295,9 @@ message_reactions(Req0, State) ->
             case channel_logic:get_message_reactions(Uid, ChannelId, MessageId) of
                 {ok, Reactions} ->
                     elib_response:success(Req0, #{list => Reactions});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end

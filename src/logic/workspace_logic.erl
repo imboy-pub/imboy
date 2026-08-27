@@ -25,6 +25,8 @@
 -export([change_role/4]).
 -export([transfer_owner/3]).
 -export([member_list/4]).
+-export([archive/2]).
+-export([restore/2]).
 -export([my_role/2]).
 -export([ensure_member/2]).
 -export([ensure_can_create_resource/2]).
@@ -453,6 +455,83 @@ member_list(Uid, WsId, Page0, Size0) ->
                     _ = ?ERROR_LOG([workspace_member_page_failed, WsId, Reason]),
                     {error, {500, <<"查询失败，请稍后重试"/utf8>>}}
             end
+    end.
+
+%% ===================================================================
+%% 生命周期：归档/恢复（T7；Owner only；写 archived_at/archived_by 审计列）
+%% ===================================================================
+
+%% @doc 归档工作区（仅 Owner；审计列 archived_at/archived_by；服务端日志审计）
+%% 归档后所有 workspace 资源写操作被 workspace_guard 拒绝（稳定错误码 980）；
+%% 读取/历史浏览不受影响；personal 资源永不受 guard 影响。
+-spec archive(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
+archive(Uid, WsId) ->
+    case ensure_owner(WsId, Uid) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, _WS} ->
+            case elib_pg:with_tx(fun(Conn) -> archive_tx(Conn, WsId, Uid) end) of
+                {ok, Result} ->
+                    _ = ?INFO_LOG([workspace_archived, WsId, Uid]),
+                    {ok, Result};
+                {error, already_archived} ->
+                    {error, {409, <<"工作区已处于归档状态"/utf8>>}};
+                {error, Reason2} ->
+                    _ = ?ERROR_LOG([workspace_archive_failed, WsId, Uid, Reason2]),
+                    {error, {500, <<"归档失败，请稍后重试"/utf8>>}}
+            end
+    end.
+
+archive_tx(Conn, WsId, Uid) ->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE workspace SET status = 'archived', archived_at = $1,",
+            " archived_by = $2, updated_at = $1", " WHERE id = $3 AND status = 'active'">>,
+    case elib_pg:execute(Conn, Sql, [Now, Uid, WsId]) of
+        {ok, 1} ->
+            {ok, #{
+                workspace_id => WsId,
+                status => <<"archived">>,
+                archived_by => Uid,
+                archived_at => Now
+            }};
+        {ok, 0} ->
+            throw({abort_tx, already_archived});
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end.
+
+%% @doc 恢复工作区（仅 Owner；清空归档审计列；恢复后写操作放行）
+-spec restore(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
+restore(Uid, WsId) ->
+    case ensure_owner(WsId, Uid) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, _WS} ->
+            case elib_pg:with_tx(fun(Conn) -> restore_tx(Conn, WsId) end) of
+                {ok, Result} ->
+                    _ = ?INFO_LOG([workspace_restored, WsId, Uid]),
+                    {ok, Result};
+                {error, not_archived} ->
+                    {error, {409, <<"工作区不处于归档状态"/utf8>>}};
+                {error, Reason2} ->
+                    _ = ?ERROR_LOG([workspace_restore_failed, WsId, Uid, Reason2]),
+                    {error, {500, <<"恢复失败，请稍后重试"/utf8>>}}
+            end
+    end.
+
+restore_tx(Conn, WsId) ->
+    Now = elib_dt:now(),
+    Sql =
+        <<"UPDATE workspace SET status = 'active', archived_at = NULL,",
+            " archived_by = NULL, updated_at = $1", " WHERE id = $2 AND status = 'archived'">>,
+    case elib_pg:execute(Conn, Sql, [Now, WsId]) of
+        {ok, 1} ->
+            {ok, #{workspace_id => WsId, status => <<"active">>}};
+        {ok, 0} ->
+            throw({abort_tx, not_archived});
+        {error, Reason} ->
+            throw({abort_tx, Reason})
     end.
 
 %% ===================================================================

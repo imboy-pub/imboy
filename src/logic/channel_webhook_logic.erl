@@ -121,6 +121,9 @@ publish(BotUid, ChannelId, Text) ->
         )
     of
         {ok, _Message} -> ok;
+        %% T7 归档写守卫（R3 #7）：免 JWT 机器入口按 channel.scope+workspace.status
+        %% 行级条件拒绝，映射稳定 atom 供 handler 回 409 workspace_archived
+        {error, {980, _Msg}} -> {error, workspace_archived};
         {error, _} = Err -> Err
     end.
 

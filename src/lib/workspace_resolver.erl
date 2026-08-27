@@ -10,6 +10,8 @@
 %        / channel_comment(经 channel_id) / channel_reaction(经 channel_id)
 %        / channel_subscription(经 channel_id) / channel_admin(经 channel_id)
 %        / channel_webhook(经 channel_id) / workspace
+%        project(经 workspace_id，恒 workspace 归属) / project_task(经 project)
+%        （后两者 WP4/T7 为 workspace_guard 写守卫扩展）
 %        attachment(经 scope_ref→group/channel；其余 scope 回溯复杂，本期返回
 %        personal 并标 TODO_T7，与任务卡"复杂回溯可先返回 personal"授权一致)。
 %   2. ensure_channel_member_access/2 / ensure_group_member_access/2：
@@ -45,6 +47,27 @@ resolve_workspace({workspace, WsId}) ->
     case one_row(<<"SELECT id FROM workspace WHERE id = $1">>, [WsId]) of
         #{<<"id">> := _} -> {ok, elib_cnv:safe_to_integer(WsId)};
         _ -> {error, not_found}
+    end;
+resolve_workspace({project, ProjectId}) ->
+    %% project 恒属 workspace（无 scope 概念，I7/迁移 00000078）
+    case one_row(<<"SELECT workspace_id FROM project WHERE id = $1">>, [ProjectId]) of
+        #{<<"workspace_id">> := WsId} when WsId =/= null ->
+            {ok, elib_cnv:safe_to_integer(WsId)};
+        _ ->
+            {error, not_found}
+    end;
+resolve_workspace({project_task, TaskId}) ->
+    case
+        one_row(
+            <<"SELECT p.workspace_id FROM project_task t",
+                " JOIN project p ON p.id = t.project_id WHERE t.id = $1">>,
+            [TaskId]
+        )
+    of
+        #{<<"workspace_id">> := WsId} when WsId =/= null ->
+            {ok, elib_cnv:safe_to_integer(WsId)};
+        _ ->
+            {error, not_found}
     end;
 resolve_workspace({group, Gid}) ->
     group_scope(Gid);

@@ -203,6 +203,9 @@ show(Req0, State) ->
             case channel_logic:get_channel(ChannelId, Uid) of
                 {ok, Channel} ->
                     elib_response:success(Req0, Channel);
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -222,6 +225,9 @@ delete(Req0, State) ->
             case channel_logic:delete_channel(Uid, ChannelId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -241,6 +247,9 @@ subscribe(Req0, State) ->
             case channel_logic:subscribe(Uid, ChannelId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -260,6 +269,9 @@ unsubscribe(Req0, State) ->
             case channel_logic:unsubscribe(Uid, ChannelId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -332,6 +344,9 @@ publish_message(Req0, State) ->
             case Result of
                 {ok, Message} ->
                     elib_response:success(Req0, Message);
+                %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -363,6 +378,9 @@ messages(Req0, State) ->
             case channel_logic:get_messages(Uid, ChannelId, Cursor, Limit) of
                 {ok, Messages} ->
                     elib_response:success(Req0, #{list => Messages});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -383,6 +401,9 @@ mark_read(Req0, State) ->
             case channel_logic:mark_as_read(Uid, ChannelId, MessageId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -441,6 +462,9 @@ add_admin(Req0, State) ->
             case channel_logic:add_admin(Uid, ChannelId, NewAdminUid, Role) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -483,6 +507,9 @@ stats_daily(Req0, State) ->
             case channel_logic:get_daily_stats(Uid, ChannelId, Days) of
                 {ok, Stats} ->
                     elib_response:success(Req0, #{list => Stats});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end

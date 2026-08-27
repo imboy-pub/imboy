@@ -251,22 +251,32 @@ publish_message(ChannelId, AuthorId, Content, MsgType, Payload, RequestId) ->
         created_at => Now
     },
 
+    %% T7 归档写守卫（R3 #6/#7）：发帖主链路事务化——守卫（channel→workspace
+    %% 行锁）+ 消息插入 + 未读计数同一事务提交，消除"检查-写窗口"；
+    %% 免 JWT 的 webhook incoming（#7）复用本函数，行级条件按
+    %% channel.scope + workspace.status 判定（无用户上下文）；
+    %% personal 频道由 resolver 直通，零行为变化。
     Result =
-        case RequestId of
-            <<>> ->
-                case channel_message_repo:add(Data) of
-                    {ok, NewMessageId} -> {ok, NewMessageId, inserted};
-                    {error, Reason} -> {error, normalize_error(Reason)}
-                end;
-            _ ->
-                case channel_message_repo:add_with_request_id(Data, RequestId) of
-                    {ok, NewMessageId, NewStatus} -> {ok, NewMessageId, NewStatus};
-                    {error, Reason} -> {error, normalize_error(Reason)}
-                end
-        end,
+        elib_pg:with_tx(fun(Conn) ->
+            ok = workspace_guard:abort_on_error(
+                workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
+            ),
+            case RequestId of
+                <<>> ->
+                    case channel_message_repo:add(Conn, Data) of
+                        {ok, NewMessageId} -> {ok, NewMessageId, inserted};
+                        {error, Reason} -> {error, normalize_error(Reason)}
+                    end;
+                _ ->
+                    case channel_message_repo:add_with_request_id(Conn, Data, RequestId) of
+                        {ok, NewMessageId, NewStatus} -> {ok, NewMessageId, NewStatus};
+                        {error, Reason} -> {error, normalize_error(Reason)}
+                    end
+            end
+        end),
     case Result of
         {ok, MessageId, Status} ->
-            % 增加所有订阅者的未读计数
+            % 增加所有订阅者的未读计数（与插入同事务完成后执行）
             case Status of
                 inserted -> increment_all_unread(ChannelId, AuthorId);
                 duplicate -> ok

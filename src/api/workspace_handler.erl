@@ -14,8 +14,8 @@
 %%% GET    /api/v1/workspaces/:workspace_id                   → show
 %%% GET    /api/v1/workspaces/mine                            → mine（须注册在 :id 之前）
 %%% POST   /api/v1/workspaces/:workspace_id/update            → update
-%%% GET    /api/v1/workspaces/:workspace_id/branding          → branding_read
-%%% POST   /api/v1/workspaces/:workspace_id/branding          → branding_write
+%%% GET    /api/v1/workspaces/:workspace_id/branding          → branding（method 分派：GET=读）
+%%% POST   /api/v1/workspaces/:workspace_id/branding          → branding（method 分派：POST=写）
 %%% GET    /api/v1/workspaces/:workspace_id/overview          → overview
 %%% GET    /api/v1/workspaces/:workspace_id/channels          → channel_list（T5 scope 分区列表）
 %%% GET    /api/v1/workspaces/:workspace_id/groups            → group_list（T5 scope 分区列表）
@@ -24,6 +24,8 @@
 %%% POST   /api/v1/workspaces/:workspace_id/members/remove    → member_remove
 %%% POST   /api/v1/workspaces/:workspace_id/members/role      → member_role
 %%% POST   /api/v1/workspaces/:workspace_id/members/transfer_owner → owner_transfer
+%%% POST   /api/v1/workspaces/:workspace_id/archive           → archive（T7 归档，Owner only）
+%%% POST   /api/v1/workspaces/:workspace_id/restore           → restore（T7 恢复，Owner only）
 %%%
 %%% 全部路由 JWT 保护（auth_middleware /api/v1/* 默认门），State 携带 current_uid。
 %%% =====================================================================
@@ -41,10 +43,21 @@
 
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, State0) ->
-    Action = maps:get(action, State0),
+    Action = resolve_action(maps:get(action, State0), Req0),
     State = maps:remove(action, State0),
     Req1 = handle_action(Action, Req0, State),
     {ok, Req1, State}.
+
+%% branding 路径同路径双语义：POST=写 / GET=读（T7 统一注册时合并为单一
+%% action，method 分派镜像 adm_sso_handler / agent_mandate_handler 模式）
+-spec resolve_action(atom(), cowboy_req:req()) -> atom().
+resolve_action(branding, Req) ->
+    case cowboy_req:method(Req) of
+        <<"POST">> -> branding_write;
+        _ -> branding_read
+    end;
+resolve_action(Action, _Req) ->
+    Action.
 
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
 handle_action(create, Req, State) -> create(Req, State);
@@ -61,6 +74,8 @@ handle_action(member_invite, Req, State) -> member_invite(Req, State);
 handle_action(member_remove, Req, State) -> member_remove(Req, State);
 handle_action(member_role, Req, State) -> member_role(Req, State);
 handle_action(owner_transfer, Req, State) -> owner_transfer(Req, State);
+handle_action(archive, Req, State) -> archive(Req, State);
+handle_action(restore, Req, State) -> restore(Req, State);
 handle_action(false, Req, _State) -> Req.
 
 %% @doc 创建工作区（Template 原子初始化；request_id 幂等）
@@ -317,6 +332,41 @@ owner_transfer(Req0, State) ->
         {ok, WsId} ->
             TargetUid = elib_cnv:safe_to_integer(maps:get(<<"user_id">>, PostVals, 0)),
             case workspace_logic:transfer_owner(Uid, WsId, TargetUid) of
+                {ok, Result} ->
+                    elib_response:success(Req0, Result);
+                {error, {Code, Msg}} ->
+                    elib_response:error(Req0, Msg, Code)
+            end
+    end.
+
+%% @doc 归档工作区（T7；仅 Owner；审计 archived_at/archived_by；归档后写路径
+%% 被 workspace_guard 以稳定错误码 980 拒绝，读取/历史浏览不受影响）
+-spec archive(cowboy_req:req(), map()) -> cowboy_req:req().
+archive(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    case resolve_workspace_id(Req0, PostVals) of
+        {error, Req} ->
+            Req;
+        {ok, WsId} ->
+            case workspace_logic:archive(Uid, WsId) of
+                {ok, Result} ->
+                    elib_response:success(Req0, Result);
+                {error, {Code, Msg}} ->
+                    elib_response:error(Req0, Msg, Code)
+            end
+    end.
+
+%% @doc 恢复工作区（T7；仅 Owner；清空审计列；恢复后写操作放行）
+-spec restore(cowboy_req:req(), map()) -> cowboy_req:req().
+restore(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    case resolve_workspace_id(Req0, PostVals) of
+        {error, Req} ->
+            Req;
+        {ok, WsId} ->
+            case workspace_logic:restore(Uid, WsId) of
                 {ok, Result} ->
                     elib_response:success(Req0, Result);
                 {error, {Code, Msg}} ->

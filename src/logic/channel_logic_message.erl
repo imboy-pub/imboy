@@ -312,6 +312,10 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                                     maybe_notify_new_message(ChannelId, Message2, Status),
                                     {ok, Message2}
                             end;
+                        %% T7 归档写守卫稳定错误码（980）：元组形态透传给
+                        %% handler 映射 envelope code，不做 binary 折叠
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            {error, {Code, Msg}};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end
@@ -369,14 +373,23 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    case channel_subscription_ds:clear_unread(ChannelId, Uid) of
-                        {ok, _} ->
+                    %% T7 派生已读写（R3 #12）：archived 时跳过计数（保持冻结），
+                    %% 不 403 读取——mark_read 仍返回成功
+                    case channel_logic_common:guard_channel_writable(ChannelId) of
+                        ok ->
+                            case channel_subscription_ds:clear_unread(ChannelId, Uid) of
+                                {ok, _} ->
+                                    ok;
+                                {error, ClearReason} ->
+                                    ?ERROR_LOG([
+                                        "channel_clear_unread_failed", ChannelId, Uid, ClearReason
+                                    ])
+                            end,
+                            channel_logic_notify:notify_channel_unread_count(ChannelId, Uid, 0),
                             ok;
-                        {error, ClearReason} ->
-                            ?ERROR_LOG(["channel_clear_unread_failed", ChannelId, Uid, ClearReason])
-                    end,
-                    channel_logic_notify:notify_channel_unread_count(ChannelId, Uid, 0),
-                    ok;
+                        _Archived ->
+                            ok
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end
@@ -420,18 +433,25 @@ add_admin(Uid, ChannelIdBin, NewAdminUid, Role) ->
                 false ->
                     {error, <<"只有创建者可以添加管理员"/utf8>>};
                 true ->
-                    Now = elib_dt:now(),
-                    Data = #{
-                        channel_id => ChannelId,
-                        user_id => NewAdminUid,
-                        role => Role,
-                        created_at => Now
-                    },
-                    case channel_admin_ds:add(Data) of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                    %% T7 归档写守卫（R3 #13）
+                    case channel_logic_common:guard_channel_writable(ChannelId) of
+                        {error, Reason0} -> {error, Reason0};
+                        ok -> do_add_admin(ChannelId, NewAdminUid, Role)
                     end
             end
+    end.
+
+do_add_admin(ChannelId, NewAdminUid, Role) ->
+    Now = elib_dt:now(),
+    Data = #{
+        channel_id => ChannelId,
+        user_id => NewAdminUid,
+        role => Role,
+        created_at => Now
+    },
+    case channel_admin_ds:add(Data) of
+        {ok, _} -> ok;
+        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 -spec remove_admin(integer(), binary(), integer()) -> ok | {error, binary()}.
@@ -446,9 +466,15 @@ remove_admin(Uid, ChannelIdBin, AdminUid) ->
                 false ->
                     {error, <<"只有创建者可以移除管理员"/utf8>>};
                 true ->
-                    case channel_admin_ds:delete(ChannelId, AdminUid) of
-                        {ok, _} -> ok;
-                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                    %% T7 归档写守卫（R3 #13）
+                    case channel_logic_common:guard_channel_writable(ChannelId) of
+                        {error, Reason0} ->
+                            {error, Reason0};
+                        ok ->
+                            case channel_admin_ds:delete(ChannelId, AdminUid) of
+                                {ok, _} -> ok;
+                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+                            end
                     end
             end
     end.
@@ -731,9 +757,15 @@ update_admin_role(_Uid, ChannelId, _TargetUid, _Role) when
 update_admin_role(Uid, ChannelId, TargetUid, Role) ->
     case channel_logic_common:get_user_role(ChannelId, Uid) of
         3 ->
-            case channel_admin_ds:update_role(ChannelId, TargetUid, Role) of
-                {ok, _} -> ok;
-                {error, _} -> {error, <<"更新角色失败"/utf8>>}
+            %% T7 归档写守卫（R3 #13）
+            case channel_logic_common:guard_channel_writable(ChannelId) of
+                {error, Reason0} ->
+                    {error, Reason0};
+                ok ->
+                    case channel_admin_ds:update_role(ChannelId, TargetUid, Role) of
+                        {ok, _} -> ok;
+                        {error, _} -> {error, <<"更新角色失败"/utf8>>}
+                    end
             end;
         _ ->
             {error, <<"无权限操作，仅创建者可修改角色"/utf8>>}

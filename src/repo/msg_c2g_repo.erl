@@ -90,6 +90,12 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
     TbTimeline = msg_c2g_timeline_repo:tablename(),
 
     elib_pg:with_tx(fun(Conn) ->
+        %% T7 归档写守卫（R3 #1）：group→workspace→status 同事务检查。
+        %% 事务首语句锁 workspace 行（FOR UPDATE）——与归档事务线性化：
+        %% 先拿锁者胜；personal 群由 resolver 直通，零行为变化。
+        ok = workspace_guard:abort_on_error(
+            workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+        ),
         %% ---------- 插入群离线消息 ----------
         MsgData = #{
             payload => Payload,
