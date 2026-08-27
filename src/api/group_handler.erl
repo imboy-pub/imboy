@@ -478,7 +478,8 @@ msg_page(Req0, State) ->
 msg_page_allowed(Req0, CurrentUid, Gid2) ->
     GM = group_logic:is_member(Gid2, CurrentUid),
     GMSize = maps:size(GM),
-    Where0 = #{to_groupid => Gid2},
+    %% msg_c2g 的群列是 to_id（见 00000006_msg_c2g.up.sql），不是 to_groupid
+    Where0 = #{to_id => Gid2},
     Where =
         case elib_param:int(last_time, Req0, 0) of
             {ok, Last} when Last > 0 ->
