@@ -30,6 +30,7 @@
 | 归档+验收尾批 | review 报告入仓 + worktree 回归修复 | ✅ | c6bc0444 + worktree 807d330c |
 | 契约同步 | api_contract.json(+195 行新路由) + error_code.dart(980) 双仓再生；Contract Gate PASS | ✅ | e8a375d3 + worktree c72ab6b5 |
 | 守卫域回归复跑 | subset/boundary/scope 三组套件全绿（join 980 改动域） | ✅ | HEAD e8a375d3 实测 |
+| 上游修复 | erlang_migrate 分支 fix/partial-down-tracking：down(N)/goto 不再清空升级历史；110/110 绿含 3 新钉子用例（未 push，imboy 切换需 bump deps pin） | ✅ | 0054908 |
 
 ❌ 未完成 / BLOCKED 清单：
 1. **真机 Demo A/B 的 UI+媒体链路**（两台真机不可得）——API 层全链替代取证；
