@@ -350,6 +350,10 @@ change_role_checked(_Uid, WsId, TargetUid, Role) ->
     case maps:get(<<"status">>, Member, <<>>) of
         <<"active">> ->
             CurrentRole = maps:get(<<"role">>, Member, <<>>),
+            %% 并发窗口声明（known-limitations §E5）：两路并发 demote 最后 Owner
+            %% 均可读到 count<=1 通过此预检；最终一致性由 DB 侧 workspace 状态治理
+            %% 兜底（Owner 缺失的 workspace 归档/转移接口仍可恢复）。事务内移动计数的
+            %% 改造收益低于锁代价，V0 登记为取舍。
             LastOwnerProtected =
                 CurrentRole =:= <<"owner">> andalso Role =/= <<"owner">> andalso
                     workspace_member_repo:count_by_role(WsId, <<"owner">>) =< 1,

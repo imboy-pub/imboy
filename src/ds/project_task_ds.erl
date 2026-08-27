@@ -154,7 +154,7 @@ change_status(ActorUid, TaskId, ToStatus) ->
             ),
             _WsId = ensure_task_writable_tx(Conn, Task),
             FromStatus = maps:get(<<"status">>, Task, <<>>),
-            case project_task_logic:legal_transition(FromStatus, ToStatus) of
+            case legal_transition(FromStatus, ToStatus) of
                 true ->
                     Now = elib_dt:now(),
                     {ok, _} = project_task_repo:update_fields_tx(
@@ -247,6 +247,7 @@ ensure_assignee_tx(Conn, WsId, AssigneeId) when is_integer(AssigneeId), Assignee
             )
     end.
 
--spec normalize_assignee(integer() | undefined | null) -> integer() | nil.
+%% 缺省 assignee 写 SQL NULL：epgsql int8 列不接受 atom nil（V3-F2）
+-spec normalize_assignee(integer() | undefined | null) -> integer() | null.
 normalize_assignee(A) when is_integer(A), A > 0 -> A;
-normalize_assignee(_) -> nil.
+normalize_assignee(_) -> null.

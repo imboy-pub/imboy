@@ -97,7 +97,16 @@ schema 层仅保证 user 存在外键；active Workspace Member 校验由 T6b �
 执行（W0 无 project_member 表，DB 层触发器只管 project.owner）。指派已移除成员由
 API 400 拒绝并透出消息（有测试覆盖）。
 
-### E3. resolver attachment TODO（A2 同源）
+### E5. change_role 最后 Owner 保护的并发预检窗口（V1-F3 裁决入册）
+两路并发 demote 最后 Owner 均可在事务外读到 owner 计数<=1 通过预检；结构性修复需事务内
+FOR UPDATE 计数，改造收益低于锁代价，V0 登记为知情取舍。DB 无兜底触发器覆盖角色变更。
+
+### E4. 频道创建后首帖的角色读缓存竞态窗口
+频道创建（admin 行同事务落库）后立即以创建者身份发帖，偶发命中 get_role 读缓存旧值
+被拒"只有管理员可以发布消息"，数秒内重试成功。Demo B 已加重试自愈；底层为既有
+imboy_cache 失效策略域，非本计划引入。
+
+### E3.
 c2c/moment/private 附件不经 workspace_resolver 解析 workspace 归属。
 
 ### F. 其他

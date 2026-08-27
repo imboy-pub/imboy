@@ -203,6 +203,13 @@ join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
                                         <<"workspace_membership_required：群成员必须先是该工作区的 active 工作区成员"/utf8>>,
                                         409
                                     );
+                                {error, 980} ->
+                                    %% V3-F3：归档工作区新入群拒绝（T7 写守卫同语义）
+                                    elib_response:error(
+                                        Req0,
+                                        <<"工作区已归档，禁止加入其群组"/utf8>>,
+                                        980
+                                    );
                                 {error, Reason} ->
                                     ?ERROR_LOG([group_member_join_tx_failed, Gid2, Reason]),
                                     elib_response:error(Req0, <<"入群失败，请稍后重试"/utf8>>);

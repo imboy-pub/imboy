@@ -174,6 +174,13 @@ ensure_workspace_membership(Conn, Gid, Uid) ->
         )
     of
         {ok, [#{<<"workspace_id">> := WsId} | _]} when WsId =/= null ->
+            %% V3-F3（wp8 验收轮补齐）：归档工作区禁止新入群（980 写守卫同语义）
+            case elib_pg:query(Conn, <<"SELECT status FROM workspace WHERE id = $1">>, [WsId]) of
+                {ok, [#{<<"status">> := <<"archived">>} | _]} ->
+                    throw({abort_tx, 980});
+                _ ->
+                    ok
+            end,
             case
                 elib_pg:query(
                     Conn,

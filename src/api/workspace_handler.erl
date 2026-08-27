@@ -276,9 +276,9 @@ member_invite(Req0, State) ->
             Role = maps:get(<<"role">>, PostVals, <<"member">>),
             case workspace_logic:invite(Uid, WsId, TargetUid, Role) of
                 {ok, changed, Member} ->
-                    elib_response:success(Req0, Member#{status => changed});
+                    elib_response:success(Req0, Member#{status_flag => changed});
                 {ok, unchanged, Member} ->
-                    elib_response:success(Req0, Member#{status => unchanged});
+                    elib_response:success(Req0, Member#{status_flag => unchanged});
                 {error, {Code, Msg}} ->
                     elib_response:error(Req0, Msg, Code)
             end

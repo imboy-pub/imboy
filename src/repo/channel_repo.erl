@@ -19,6 +19,7 @@
 -export([delete/1]).
 -export([increment_subscribers/2]).
 -export([increment_subscribers/3]).
+-export([list_workspace_channels/2]).
 -export([search/3]).
 -export([list_discover/2]).
 % 统计相关
