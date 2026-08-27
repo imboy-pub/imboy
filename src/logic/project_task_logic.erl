@@ -161,7 +161,8 @@ change_status(Uid, TaskId, ToStatus) ->
                         false ->
                             {error,
                                 {400,
-                                    <<"非法任务状态流转："/utf8, FromStatus/binary, " → ", ToStatus/binary>>}}
+                                    <<"非法任务状态流转："/utf8, FromStatus/binary, " -> ",
+                                        ToStatus/binary>>}}
                     end
             end
     end.

@@ -241,3 +241,36 @@ guard_channel_binding_no_binding_test_() ->
             end}
         end
     ).
+
+%% ===================================================================
+%% 防回归（T14 Demo B 抓到的真缺陷）：ensure_member 返回 {ok, Role}，
+%% handler 便捷门契约必须归一为原子 ok——否则合法成员访问 workspace
+%% 资源会在 handler case 上 case_clause 崩成 HTTP 500。
+%% ===================================================================
+
+access_gate_normalizes_role_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'one', 2, fun(Sql, Params) -> resolve_one(Sql, Params) end}
+            ]},
+            {workspace_logic, [
+                {'ensure_member', 2, fun(_WsId, _Uid) -> {ok, <<"owner">>} end}
+            ]}
+        ],
+        fun() ->
+            [
+                {"channel access gate returns plain ok for legal member", fun() ->
+                    ?assertEqual(
+                        ok, workspace_resolver:ensure_channel_member_access(?UID, ?CID)
+                    )
+                end},
+                {"group access gate returns plain ok for legal member", fun() ->
+                    ?assertEqual(ok, workspace_resolver:ensure_group_member_access(?UID, ?GID))
+                end},
+                {"notice gate returns plain ok for legal member", fun() ->
+                    ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, 555001))
+                end}
+            ]
+        end
+    ).

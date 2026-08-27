@@ -59,7 +59,9 @@
     {ok, map(), created | existing} | {error, term()}.
 create_template(OwnerUid, Name, RequestId) ->
     case elib_pg:with_tx(fun(Conn) -> create_template_tx(Conn, OwnerUid, Name, RequestId) end) of
-        {ok, Result} -> {ok, Result, created};
+        %% with_tx 成功契约返回裸值 R（非 {ok, R}）；{error, Reason} 仅来自
+        %% throw({abort_tx, Reason}) 的回滚转换——成功分支必须匹配裸 map。
+        Result when is_map(Result) -> {ok, Result, created};
         {error, {idempotent_hit, Result}} -> {ok, Result, existing};
         {error, Reason} -> {error, Reason}
     end.
@@ -199,7 +201,13 @@ do_create_template(Conn, OwnerUid, Name, RequestId) ->
         {ok, _} -> ok;
         {error, Reason5} -> throw({abort_tx, {channel_subscribe_failed, Reason5}})
     end,
-    WS = workspace_repo:find_by_id(WsId, <<"id,name,logo,owner_id,status,branding,created_at">>),
+    %% 同事务回读：必须走本事务 Conn，否则读不到本事务未提交的行（拿回空 map）。
+    {ok, [WS]} = elib_pg:query(
+        Conn,
+        <<"SELECT id, name, logo, owner_id, status, branding, created_at",
+            " FROM workspace WHERE id = $1">>,
+        [WsId]
+    ),
     #{
         workspace_id => WsId,
         workspace => public_view(WS),

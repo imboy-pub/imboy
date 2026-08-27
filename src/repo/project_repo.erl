@@ -101,12 +101,12 @@ page_by_workspace(WsId, Page, Size, Column) ->
 -spec update_by_id(integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
 update_by_id(ProjectId, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:update(Tb, Data, #{id => ProjectId}),
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"id = $1">>, [ProjectId]),
     elib_pg:query(Sql, Params).
 
 %% @doc 事务内更新项目字段（改名/描述/状态；守卫在同事务由 DS 层前置）
 -spec update_fields_tx(any(), integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
 update_fields_tx(Conn, ProjectId, Data) ->
     Tb = tablename(),
-    {Sql, Params} = elib_pg_sql:update(Tb, Data, #{id => ProjectId}),
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"id = $1">>, [ProjectId]),
     elib_pg:execute(Conn, Sql, Params).

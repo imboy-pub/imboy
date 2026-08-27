@@ -126,7 +126,7 @@ resolve_workspace(_) ->
     ok | {error, {403, binary()}}.
 ensure_channel_member_access(Uid, ChannelId) ->
     case channel_scope(ChannelId) of
-        {ok, WsId} -> workspace_logic:ensure_member(WsId, Uid);
+        {ok, WsId} -> ensure_member_ok(WsId, Uid);
         _ -> ok
     end.
 
@@ -136,8 +136,15 @@ ensure_channel_member_access(Uid, ChannelId) ->
     ok | {error, {403, binary()}}.
 ensure_group_member_access(Uid, Gid) ->
     case group_scope(Gid) of
-        {ok, WsId} -> workspace_logic:ensure_member(WsId, Uid);
+        {ok, WsId} -> ensure_member_ok(WsId, Uid);
         _ -> ok
+    end.
+
+%% ensure_member 返回 {ok, Role}；handler 便捷门契约是 ok——此处归一。
+ensure_member_ok(WsId, Uid) ->
+    case workspace_logic:ensure_member(WsId, Uid) of
+        {ok, _Role} -> ok;
+        {error, _} = Err -> Err
     end.
 
 %% @doc handler 便捷门：读 cowboy 的 :channel_id binding（无 binding 放行）
@@ -190,7 +197,7 @@ guard_group_notice_id(Uid, NoticeId) ->
     case Id2 > 0 of
         true ->
             case resolve_workspace({group_notice, Id2}) of
-                {ok, WsId} -> workspace_logic:ensure_member(WsId, Uid);
+                {ok, WsId} -> ensure_member_ok(WsId, Uid);
                 _ -> ok
             end;
         false ->

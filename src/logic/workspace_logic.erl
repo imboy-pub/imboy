@@ -260,7 +260,7 @@ remove_member(Uid, WsId, TargetUid) ->
 
 remove_member_checked(WsId, TargetUid) ->
     case elib_pg:with_tx(fun(Conn) -> remove_member_tx(Conn, WsId, TargetUid) end) of
-        {ok, Result} ->
+        Result when is_map(Result) ->
             _ = ?INFO_LOG([
                 workspace_member_removed,
                 WsId,
@@ -478,7 +478,7 @@ archive(Uid, WsId) ->
             {error, Reason};
         {ok, _WS} ->
             case elib_pg:with_tx(fun(Conn) -> archive_tx(Conn, WsId, Uid) end) of
-                {ok, Result} ->
+                {ok, Result} when is_map(Result) ->
                     _ = ?INFO_LOG([workspace_archived, WsId, Uid]),
                     {ok, Result};
                 {error, already_archived} ->
@@ -516,7 +516,7 @@ restore(Uid, WsId) ->
             {error, Reason};
         {ok, _WS} ->
             case elib_pg:with_tx(fun(Conn) -> restore_tx(Conn, WsId) end) of
-                {ok, Result} ->
+                {ok, Result} when is_map(Result) ->
                     _ = ?INFO_LOG([workspace_restored, WsId, Uid]),
                     {ok, Result};
                 {error, not_archived} ->
@@ -728,7 +728,7 @@ admin_archive(AdmUserId, WsId) ->
     case workspace_ds:find_by_id(WsId, <<"id">>) of
         #{<<"id">> := _} ->
             case elib_pg:with_tx(fun(Conn) -> admin_archive_tx(Conn, WsId, AdmUserId) end) of
-                {ok, Result} ->
+                {ok, Result} when is_map(Result) ->
                     _ = ?INFO_LOG([workspace_admin_archived, WsId, AdmUserId]),
                     {ok, Result};
                 {error, already_archived} ->
@@ -766,7 +766,7 @@ admin_restore(AdmUserId, WsId) ->
     case workspace_ds:find_by_id(WsId, <<"id">>) of
         #{<<"id">> := _} ->
             case elib_pg:with_tx(fun(Conn) -> admin_restore_tx(Conn, WsId) end) of
-                {ok, Result} ->
+                {ok, Result} when is_map(Result) ->
                     _ = ?INFO_LOG([workspace_admin_restored, WsId, AdmUserId]),
                     {ok, Result};
                 {error, not_archived} ->
