@@ -28,6 +28,8 @@
 | V2 验收 | 最终验收（第三个独立会话） | ✅ | b8b93466 `dual-exp-acceptance.md` · **ACCEPTED(local/rehearsal)** |
 | 治理批 | 验收 F-N1/N3 落实 | ✅ | fe46184e · transcript 换 ALL PASS 源 + w0 断言口径修正 |
 | 归档+验收尾批 | review 报告入仓 + worktree 回归修复 | ✅ | c6bc0444 + worktree 807d330c |
+| 契约同步 | api_contract.json(+195 行新路由) + error_code.dart(980) 双仓再生；Contract Gate PASS | ✅ | e8a375d3 + worktree c72ab6b5 |
+| 守卫域回归复跑 | subset/boundary/scope 三组套件全绿（join 980 改动域） | ✅ | HEAD e8a375d3 实测 |
 
 ❌ 未完成 / BLOCKED 清单：
 1. **真机 Demo A/B 的 UI+媒体链路**（两台真机不可得）——API 层全链替代取证；
