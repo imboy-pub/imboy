@@ -49,8 +49,12 @@ DEPS += erlang_pay
 # 并在节点启动时自动 start —— 生产机上任意 .erl 写入即升级为任意代码执行。
 # 全仓零代码引用 sync:*，因此只在本地开发挂载；
 # 生产打包走 scripts/deploy.sh 的 `IMBOYENV=pro make rel`，天然不含。
+# eunit-local 传 DISABLE_SYNC=1：测试套件运行中 sync 的热重载会整批重启
+# 应用（noproc 级联污染后续模块），跑测试时必须与 sync 解耦。
 ifeq ($(IMBOYENV),local)
+ifeq ($(DISABLE_SYNC),)
 DEPS += sync
+endif
 endif
 
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
@@ -259,7 +263,7 @@ docs-stop:
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
 .PHONY: eunit-local
 eunit-local:
-	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
+	@DISABLE_SYNC=1 IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担

@@ -54,7 +54,8 @@ ct_suite_setup(Config) ->
             SetupState = eunit_setup(),
             [{setup_state, SetupState}, {old_cwd, OldCwd} | Config];
         {error, Reason} ->
-            {skip, io_lib:format("Unable to set cwd to project root (~p): ~p", [ProjectRoot, Reason])}
+            {skip,
+                io_lib:format("Unable to set cwd to project root (~p): ~p", [ProjectRoot, Reason])}
     end.
 
 %% @doc 清理 Common Test suite 运行状态
@@ -96,13 +97,16 @@ eunit_setup() ->
 
     % 启动核心依赖应用
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone, lager, depcache],
-    lists:foreach(fun(App) ->
-        case application:ensure_all_started(App) of
-            {ok, _} -> ok;
-            {error, {already_started, _}} -> ok;
-            _ -> ok
-        end
-    end, CoreApps),
+    lists:foreach(
+        fun(App) ->
+            case application:ensure_all_started(App) of
+                {ok, _} -> ok;
+                {error, {already_started, _}} -> ok;
+                _ -> ok
+            end
+        end,
+        CoreApps
+    ),
 
     % 启动 imboy 应用
     case application:ensure_all_started(imboy) of
@@ -118,9 +122,12 @@ eunit_setup() ->
 
 %% @doc 清理资源
 %% @param State setup 返回的状态
+%% 套件隔离治理：app 在全量跑期间常驻，不再逐模块 stop/start。
+%% 逐模块启停（数百次/全量）会撞启动竞态：barrel_mcp_registry 单例
+%% {already_started} 使 imboy 拒绝启动、连接池反复重建、syn 集群表重置，
+%% 之后所有模块连锁 noproc/{503,数据库忙}。各模块的 env/meck 隔离
+%% 仍由各自 setup/after 负责，应用级状态由 imboy_app 的 test 分支保证。
 eunit_cleanup({app_started, imboy}) ->
-    % 停止 imboy 应用
-    application:stop(imboy),
     ok;
 eunit_cleanup({app_already_started, imboy}) ->
     % 应用已经在运行，不需要停止
@@ -212,14 +219,19 @@ load_test_config() ->
 
 load_config_entries(ConfigList) ->
     lists:foreach(
-      fun({App, Env}) when is_atom(App) andalso is_list(Env) ->
-              lists:foreach(
-                fun({Key, Value}) ->
+        fun
+            ({App, Env}) when is_atom(App) andalso is_list(Env) ->
+                lists:foreach(
+                    fun({Key, Value}) ->
                         application:set_env(App, Key, Value)
-                end, Env);
-         (_) ->
-              ok
-      end, ConfigList).
+                    end,
+                    Env
+                );
+            (_) ->
+                ok
+        end,
+        ConfigList
+    ).
 
 test_config_path() ->
     case os:getenv("IMBOY_TEST_CONFIG") of
