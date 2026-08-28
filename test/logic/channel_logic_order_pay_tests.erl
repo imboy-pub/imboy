@@ -275,6 +275,50 @@ pay_order_reuses_gateway_params_from_jsonb_binary_extra_data() ->
     ?assertNot(meck:called(channel_order_ds, set_gateway_params, '_')).
 
 %%%===================================================================
+%%% C-2 回归（2026-08-28 发布审查）：包月/包年订阅时长必须从 jsonb binary
+%%% extra_data 归一读取。order_subscription_type 曾对 binary 直接 is_map
+%%% 匹配失败 → 恒落 1（一次性购买），subscription_end_at 被写成 null
+%%% （null = 永久权益）——付 30 天的钱拿终身访问。
+%%%===================================================================
+
+subscription_expiry_test_() ->
+    {foreach, fun setup/0, fun cleanup/1, [
+        fun wallet_monthly_order_gets_30d_expiry_from_jsonb_binary/0
+    ]}.
+
+wallet_monthly_order_gets_30d_expiry_from_jsonb_binary() ->
+    meck:expect(channel_order_ds, find_by_order_no, fun(OrderNo) ->
+        {ok, #{
+            <<"order_no">> => OrderNo,
+            <<"channel_id">> => ?CID,
+            <<"user_id">> => ?UID,
+            <<"amount">> => 9.90,
+            <<"status">> => 0,
+            <<"payment_method">> => <<"wallet">>,
+            %% 关键：jsonb 列经 repo 读回是 JSON 字符串而非 map
+            <<"extra_data">> => <<"{\"subscription_type\": 2}">>
+        }}
+    end),
+    meck:expect(payment_gateway, pay, fun(<<"wallet">>, OrderNo, _Opts) ->
+        {ok, <<"WPY_", OrderNo/binary>>}
+    end),
+    Pid = self(),
+    meck:expect(channel_order_ds, pay, fun(_OrderNo, PaymentData) ->
+        Pid ! {pay_called, PaymentData},
+        ok
+    end),
+    {ok, Envelope} = channel_logic_order:pay_order(?UID, <<"ORD_SUB2">>),
+    ?assertEqual(1, maps:get(<<"status">>, Envelope)),
+    PaymentData =
+        receive
+            {pay_called, PD} -> PD
+        after 3000 -> erlang:error(channel_order_ds_pay_not_called)
+        end,
+    %% 月付：end = start + 30 天；绝不允许 null（null = 永久权益）
+    Start = maps:get(subscription_start_at, PaymentData),
+    ?assertEqual(Start + 30 * 24 * 60 * 60 * 1000, maps:get(subscription_end_at, PaymentData)).
+
+%%%===================================================================
 %%% B-03：超时未支付订单在**查询时**显示为已过期(4)。
 %%% 不写库 —— 迟到的回调仍要能按 B-08 补单。
 %%%===================================================================

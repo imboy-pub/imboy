@@ -397,14 +397,12 @@ subscription_end(Start, 3) -> Start + 365 * 24 * 60 * 60 * 1000.
 
 -spec order_subscription_type(map()) -> 1 | 2 | 3.
 order_subscription_type(Order) ->
-    Extra = maps:get(<<"extra_data">>, Order, maps:get(extra_data, Order, #{})),
-    Raw =
-        case Extra of
-            M when is_map(M) ->
-                maps:get(<<"subscription_type">>, M, maps:get(subscription_type, M, 1));
-            _ ->
-                1
-        end,
+    %% jsonb 经 repo 读回是 JSON 字符串，必须归一（否则 subscription_type 恒落 1，
+    %% 包月/包年订单写成永久权益——2026-08-28 发布审查 C-2）
+    Extra = normalize_extra_data(
+        maps:get(<<"extra_data">>, Order, maps:get(extra_data, Order, null))
+    ),
+    Raw = maps:get(<<"subscription_type">>, Extra, maps:get(subscription_type, Extra, 1)),
     case normalize_subscription_type(Raw) of
         {ok, Type} -> Type;
         {error, invalid} -> 1
