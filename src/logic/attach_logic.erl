@@ -186,43 +186,74 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
     },
     Now = elib_dt:now(),
     try
-        ok = elib_pg:with_tx(fun(Conn) ->
-            attachment_ds:save(Conn, Now, Uid, [Attach])
-        end),
-        %% #20：转正后销账。放在事务**之后**——销早了若落库失败，
-        %% 对象既不在 attachment 表也不在 pending 表，就永久收不回了。
-        %% 销账失败也不会误删：attach_pending_repo:list_expired/1 带
-        %% `NOT EXISTS (attachment.path = object_key)` 守卫，已转正的对象
-        %% 清理器一律不碰。但仍要留痕，残留行会一直被扫到。
-        %% 同样必须 try/catch：这段在外层 try 里，pending_remove 抛异常会被
-        %% 外层 catch 成 {error, Reason} —— 附件其实**已经落库成功**了，却给
-        %% 调用方返回失败，客户端会重试或提示上传失败。销账失败无伤大雅
-        %% （list_expired 有 NOT EXISTS 守卫兜底），绝不能反过来污染 confirm 结果。
-        _ =
-            try attachment_ds:pending_remove(ObjectKey) of
-                ok ->
-                    ok;
-                {error, PendReason} ->
-                    ?ERROR_LOG([
-                        "attach_logic confirm pending_remove failed: ",
-                        ObjectKey,
-                        PendReason
-                    ])
-            catch
-                PClass:PReason ->
-                    ?ERROR_LOG([
-                        "attach_logic confirm pending_remove crashed: ",
-                        ObjectKey,
-                        PClass,
-                        PReason
-                    ])
-            end,
-        {ok, maybe_public_url(Scope, ObjectKey, #{<<"object_key">> => ObjectKey})}
+        SaveResult =
+            elib_pg:with_tx(fun(Conn) ->
+                %% T7 归档写守卫（A2 收口）：附件转正落库（attachment 元数据写）与
+                %% 守卫同事务——scope=group/channel 时按 {group, Ref}/{channel, Ref}
+                %% 锁 workspace 行（FOR UPDATE），archived 拒绝（稳定错误码 980）；
+                %% c2c/moment/private 等 personal 域直通（resolver TODO(T7) 既有登记）。
+                case attach_scope_target(Scope, ScopeRef) of
+                    {ok, Target} ->
+                        ok = workspace_guard:abort_on_error(
+                            workspace_guard:ensure_writable_tx(Conn, Target)
+                        );
+                    passthrough ->
+                        ok
+                end,
+                attachment_ds:save(Conn, Now, Uid, [Attach])
+            end),
+        case SaveResult of
+            {error, SaveReason} ->
+                %% 归档拒绝（{980, Msg}）等事务错误原样返回，不吞成 badmatch
+                ?ERROR_LOG(["attach_logic confirm save tx failed: ", SaveReason]),
+                {error, SaveReason};
+            ok ->
+                %% #20：转正后销账。放在事务**之后**——销早了若落库失败，
+                %% 对象既不在 attachment 表也不在 pending 表，就永久收不回了。
+                %% 销账失败也不会误删：attach_pending_repo:list_expired/1 带
+                %% `NOT EXISTS (attachment.path = object_key)` 守卫，已转正的对象
+                %% 清理器一律不碰。但仍要留痕，残留行会一直被扫到。
+                %% 同样必须 try/catch：这段在外层 try 里，pending_remove 抛异常会被
+                %% 外层 catch 成 {error, Reason} —— 附件其实**已经落库成功**了，却给
+                %% 调用方返回失败，客户端会重试或提示上传失败。销账失败无伤大雅
+                %% （list_expired 有 NOT EXISTS 守卫兜底），绝不能反过来污染 confirm 结果。
+                _ =
+                    try attachment_ds:pending_remove(ObjectKey) of
+                        ok ->
+                            ok;
+                        {error, PendReason} ->
+                            ?ERROR_LOG([
+                                "attach_logic confirm pending_remove failed: ",
+                                ObjectKey,
+                                PendReason
+                            ])
+                    catch
+                        PClass:PReason ->
+                            ?ERROR_LOG([
+                                "attach_logic confirm pending_remove crashed: ",
+                                ObjectKey,
+                                PClass,
+                                PReason
+                            ])
+                    end,
+                {ok, maybe_public_url(Scope, ObjectKey, #{<<"object_key">> => ObjectKey})}
+        end
     catch
         Class:Reason ->
             ?ERROR_LOG(["attach_logic confirm save failed: ", Class, Reason]),
             {error, Reason}
     end.
+
+%% @doc T7 归档写守卫目标映射：group/channel 附件按 scope_ref 解析目标资源；
+%% 其余 scope（c2c/moment/private/public）为 personal 域直通。
+-spec attach_scope_target(binary(), binary() | undefined) ->
+    {ok, {group | channel, integer() | binary()}} | passthrough.
+attach_scope_target(<<"group">>, Ref) when Ref =/= undefined, Ref =/= <<>>, Ref =/= null ->
+    {ok, {group, Ref}};
+attach_scope_target(<<"channel">>, Ref) when Ref =/= undefined, Ref =/= <<>>, Ref =/= null ->
+    {ok, {channel, Ref}};
+attach_scope_target(_Scope, _Ref) ->
+    passthrough.
 
 %% ===================================================================
 %% 上传权校验 can_upload/3（confirm/presign 共用）
