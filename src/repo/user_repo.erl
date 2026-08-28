@@ -68,12 +68,15 @@ create(Data0) ->
     end.
 
 %% @doc 兼容旧接口：按 uid 查询用户（排除 password 列）
+%% 注意：user 表自 00000001_foundation 起就没有 updated_at 列，此处列清单
+%% 不得引用它——PG 42703 会被 find_by_id 的 value_or_empty 吞成空 map，
+%% 对外表现为 {error, not_found}，极难排查。
 -spec find_by_uid(integer() | binary()) -> {ok, map()} | {error, term()}.
 find_by_uid(Uid) ->
     case
         find_by_id(
             ec_cnv:to_integer(Uid),
-            <<"id,account,nickname,avatar,background,sign,gender,region,birthday,profession,school,interests,account_type,status,created_at,updated_at">>
+            <<"id,account,nickname,avatar,background,sign,gender,region,birthday,profession,school,interests,account_type,status,created_at">>
         )
     of
         #{} = Row when map_size(Row) > 0 ->
