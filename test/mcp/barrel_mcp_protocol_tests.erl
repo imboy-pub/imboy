@@ -33,18 +33,33 @@ protocol_test_() ->
 setup() ->
     %% vendored 上下文无 barrel_mcp OTP app：直接启协议引擎所需的 gen_server
     %% （registry + session），避开 application:ensure_all_started(barrel_mcp)。
-    _ = start_srv(barrel_mcp_registry),
-    _ = start_srv(barrel_mcp_session),
+    %% 套件隔离治理：记录归属——本 fixture 自己启动的实例必须在 cleanup 停掉。
+    %% 链接进程正常退出（normal exit 信号被对端忽略）不会终止被链接者，
+    %% 不停即成不死孤儿，占住 barrel_mcp_registry 注册名，之后整轮
+    %% imboy app 启动全部在 sup child 阶段 {already_started} 失败。
+    Reg = start_srv(barrel_mcp_registry),
+    Sess = start_srv(barrel_mcp_session),
     ok = barrel_mcp_registry:wait_for_ready(),
-    ok.
+    #{reg => Reg, sess => Sess}.
 
 start_srv(Mod) ->
     case Mod:start_link() of
-        {ok, Pid} -> Pid;
-        {error, {already_started, Pid}} -> Pid
+        {ok, Pid} -> {owned, Pid};
+        {error, {already_started, Pid}} -> {borrowed, Pid}
     end.
 
-cleanup(_) ->
+%% @doc 只回收本 fixture 启动的实例；borrowed（app 或更早 fixture 的）归其所有者。
+stop_owned({owned, Pid}) ->
+    try
+        gen:stop(Pid, shutdown, 1000)
+    catch
+        _:_ -> ok
+    end,
+    ok;
+stop_owned(_) ->
+    ok.
+
+cleanup(Ctx) ->
     %% Clean up registered handlers
     lists:foreach(
         fun({Name, _}) ->
@@ -52,6 +67,8 @@ cleanup(_) ->
         end,
         barrel_mcp_registry:all(tool)
     ),
+    stop_owned(maps:get(reg, Ctx, undefined)),
+    stop_owned(maps:get(sess, Ctx, undefined)),
     ok.
 
 %%====================================================================

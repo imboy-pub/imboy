@@ -34,18 +34,33 @@ session_test_() ->
     ]}.
 
 setup() ->
-    _ = start_srv(barrel_mcp_registry),
-    _ = start_srv(barrel_mcp_session),
+    %% 套件隔离治理：本 fixture 启动的 registry/session 必须在 cleanup 停掉
+    %% （normal exit 信号不会终止被链接者，不停即成不死孤儿）。
+    Reg = start_srv(barrel_mcp_registry),
+    Sess = start_srv(barrel_mcp_session),
     ok = barrel_mcp_registry:wait_for_ready(),
-    ok.
+    #{reg => Reg, sess => Sess}.
 
 start_srv(Mod) ->
     case Mod:start_link() of
-        {ok, Pid} -> Pid;
-        {error, {already_started, Pid}} -> Pid
+        {ok, Pid} -> {owned, Pid};
+        {error, {already_started, Pid}} -> {borrowed, Pid}
     end.
 
-cleanup(_) ->
+%% @doc 只回收本 fixture 启动的实例；borrowed 归其所有者（app/更早 fixture）。
+stop_owned({owned, Pid}) ->
+    try
+        gen:stop(Pid, shutdown, 1000)
+    catch
+        _:_ -> ok
+    end,
+    ok;
+stop_owned(_) ->
+    ok.
+
+cleanup(Ctx) ->
+    stop_owned(maps:get(reg, Ctx, undefined)),
+    stop_owned(maps:get(sess, Ctx, undefined)),
     ok.
 
 test_initialize_creates_session() ->

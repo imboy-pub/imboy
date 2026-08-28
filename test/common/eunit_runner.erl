@@ -109,16 +109,75 @@ eunit_setup() ->
     ),
 
     % 启动 imboy 应用
-    case application:ensure_all_started(imboy) of
-        {ok, _} ->
-            {app_started, imboy};
-        {error, {already_started, imboy}} ->
+    case app_running(imboy) of
+        true ->
             {app_already_started, imboy};
-        {error, StartReason} ->
-            io:format("Warning: Failed to start imboy app: ~p~n", [StartReason]),
-            io:format("Tests that require app will be skipped~n"),
-            {app_not_started, test_continues}
+        false ->
+            cleanup_start_orphans(),
+            case application:ensure_all_started(imboy) of
+                {ok, _} ->
+                    {app_started, imboy};
+                {error, {already_started, imboy}} ->
+                    {app_already_started, imboy};
+                {error, _StartReason} ->
+                    % 首次尝试若被 eunit 5s 测试超时打断（caller 被杀 → app
+                    % master 中止），会留下 barrel 单例与 ranch listener 孤儿；
+                    % 清掉后重试一次，避免一次超时毒化整轮。
+                    cleanup_start_orphans(),
+                    case application:ensure_all_started(imboy) of
+                        {ok, _} ->
+                            {app_started, imboy};
+                        {error, {already_started, imboy}} ->
+                            {app_already_started, imboy};
+                        {error, RetryReason} ->
+                            io:format("Warning: Failed to start imboy app: ~p~n", [RetryReason]),
+                            io:format("Tests that require app will be skipped~n"),
+                            {app_not_started, test_continues}
+                    end
+            end
     end.
+
+app_running(App) ->
+    lists:keymember(App, 1, application:which_applications()).
+
+%% @doc 清理上次启动残骸（仅在 imboy 未运行时调用）。
+%% 两类孤儿都会毒化后续所有 app 启动，必须先清：
+%% ① barrel_mcp_registry / barrel_mcp_session 单例：mcp 测试 fixture 直接
+%%    start_link 后随 fixture 正常退出——normal exit 信号被对端忽略，进程
+%%    不死（套件隔离治理前的历史泄漏）；或 app 启动中途被杀泄漏。名字被占
+%%    → 之后每次 imboy_sup child start 都 {already_started}。
+%% ② ranch listener：启动中途被杀时已绑定 http_port，之后每次启动 eaddrinuse。
+cleanup_start_orphans() ->
+    lists:foreach(
+        fun(Name) ->
+            case whereis(Name) of
+                undefined ->
+                    ok;
+                Pid ->
+                    exit(Pid, kill)
+            end
+        end,
+        [barrel_mcp_session, barrel_mcp_registry]
+    ),
+    %% registry 的 ETS 表随属主进程消失；persistent_term 由其 terminate 清理，
+    %% kill 路径不触发 terminate，这里兜底擦除。
+    try
+        persistent_term:erase(barrel_mcp_handlers)
+    catch
+        _:_ -> ok
+    end,
+    timer:sleep(20),
+    try
+        ranch:stop_listener(imboy_listener)
+    catch
+        _:_ -> ok
+    end,
+    try
+        ranch:stop_listener(imboy_listener_tls)
+    catch
+        _:_ -> ok
+    end,
+    ok.
 
 %% @doc 清理资源
 %% @param State setup 返回的状态

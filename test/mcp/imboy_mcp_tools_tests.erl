@@ -36,8 +36,10 @@ tools_test_() ->
     ]}.
 
 setup() ->
-    _ = start_srv(barrel_mcp_registry),
-    _ = start_srv(barrel_mcp_session),
+    %% 套件隔离治理：本 fixture 启动的 registry/session 必须在 cleanup 停掉
+    %% （normal exit 信号不会终止被链接者，不停即成不死孤儿）。
+    Reg = start_srv(barrel_mcp_registry),
+    Sess = start_srv(barrel_mcp_session),
     ok = barrel_mcp_registry:wait_for_ready(),
     ok = imboy_mcp_tools:reg_all(),
     meck:new(user_logic, [no_link, passthrough]),
@@ -52,17 +54,30 @@ setup() ->
     %% 默认放行限流 + 固定 MsgId，个别用例覆盖
     meck:expect(throttle, check, fun(_, _) -> ok end),
     meck:expect(elib_tsid, generate, fun() -> 123456789 end),
-    ok.
+    #{reg => Reg, sess => Sess}.
 
-cleanup(_) ->
+cleanup(Ctx) ->
     meck:unload(),
+    stop_owned(maps:get(reg, Ctx, undefined)),
+    stop_owned(maps:get(sess, Ctx, undefined)),
     ok.
 
 start_srv(Mod) ->
     case Mod:start_link() of
-        {ok, Pid} -> Pid;
-        {error, {already_started, Pid}} -> Pid
+        {ok, Pid} -> {owned, Pid};
+        {error, {already_started, Pid}} -> {borrowed, Pid}
     end.
+
+%% @doc 只回收本 fixture 启动的实例；borrowed 归其所有者（app/更早 fixture）。
+stop_owned({owned, Pid}) ->
+    try
+        gen:stop(Pid, shutdown, 1000)
+    catch
+        _:_ -> ok
+    end,
+    ok;
+stop_owned(_) ->
+    ok.
 
 %%%===================================================================
 %%% helper：经 process/2 端到端调用一个 tool，返回 result map
