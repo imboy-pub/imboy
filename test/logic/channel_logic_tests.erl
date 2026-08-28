@@ -5522,19 +5522,103 @@ edit_message_returns_error_when_content_empty_test_() ->
 %% ===================================================================
 
 setup_mocks(MockConfigs) ->
+    %% 缺省 stub 归档写守卫：本文件用例只测订阅/邀请/已读等语义，不测守卫本身
+    %% （守卫测试在 test/lib/workspace_*）。历史上这些用例靠真实 elib_pg 调用异常
+    %% 被 fail-open 吞掉才"通过"；守卫 fail-closed 收口（2026-08-28 M-1）后必须
+    %% 显式放行。需要测守卫交互的用例在自己的 MockConfigs 里带 workspace_guard
+    %% 条目即可覆盖此缺省。
+    DefaultGuard =
+        case lists:keymember(workspace_guard, 1, MockConfigs) of
+            true -> [];
+            false -> [{workspace_guard, [{'ensure_writable', 1, fun(_) -> ok end}]}]
+        end,
     lists:foreach(
         fun({Module, Expectations}) ->
             {ok, _} = meck_helper:setup_mock(Module, [no_link, unstick], Expectations)
         end,
-        MockConfigs
+        DefaultGuard ++ MockConfigs
     ),
     ok.
 
 cleanup_mocks(MockConfigs) ->
-    lists:foreach(
-        fun({Module, _}) ->
-            meck_helper:cleanup_mock(Module)
-        end,
-        MockConfigs
-    ),
+    Modules = lists:usort([workspace_guard] ++ [M || {M, _} <- MockConfigs]),
+    lists:foreach(fun meck_helper:cleanup_mock/1, Modules),
     ok.
+
+%% ===================================================================
+%% M-2b：邀请链 980 稳定错误码透传（原 safe_to_binary 压成乱码字符串）
+%% ===================================================================
+
+-define(ARCHIVED_980, {980, <<"工作区已归档，写操作被拒绝"/utf8>>}).
+
+accept_invitation_preserves_archived_980_tuple_test_() ->
+    MockConfigs = [
+        {channel_invitation_ds, [
+            {'find_by_id', 1, fun(501) ->
+                {ok, #{
+                    <<"id">> => 501,
+                    <<"channel_id">> => 11,
+                    <<"inviter_uid">> => 1001,
+                    <<"invitee_uid">> => 2002
+                }}
+            end},
+            {'accept', 2, fun(501, 2002) -> {error, ?ARCHIVED_980} end}
+        ]},
+        {channel_ds, [
+            {'subscribe', 2, fun(_, _) -> erlang:error(should_not_subscribe_when_archived) end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            %% 980 元组必须整体透传（handler 据此映射 envelope code=980）
+            ?assertEqual(
+                {error, ?ARCHIVED_980}, channel_logic:accept_invitation(2002, 501)
+            )
+        end)
+    end}.
+
+accept_invitation_subscribe_path_preserves_archived_980_tuple_test_() ->
+    MockConfigs = [
+        {channel_invitation_ds, [
+            {'find_by_id', 1, fun(501) ->
+                {ok, #{
+                    <<"id">> => 501,
+                    <<"channel_id">> => 11,
+                    <<"inviter_uid">> => 1001,
+                    <<"invitee_uid">> => 2002
+                }}
+            end},
+            {'accept', 2, fun(501, 2002) -> ok end}
+        ]},
+        {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1}
+            end},
+            {'subscribe', 2, fun(11, 2002) -> {error, ?ARCHIVED_980} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(_, _, _, _, _, _, _) -> erlang:error(should_not_notify) end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            %% accept 成功后订阅撞归档守卫：同样 980 元组透传
+            ?assertEqual(
+                {error, ?ARCHIVED_980}, channel_logic:accept_invitation(2002, 501)
+            )
+        end)
+    end}.
+
+reject_invitation_preserves_archived_980_tuple_test_() ->
+    MockConfigs = [
+        {channel_invitation_ds, [
+            {'reject', 2, fun(501, 2002) -> {error, ?ARCHIVED_980} end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            ?assertEqual(
+                {error, ?ARCHIVED_980}, channel_logic:reject_invitation(2002, 501)
+            )
+        end)
+    end}.

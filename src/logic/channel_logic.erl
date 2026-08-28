@@ -49,9 +49,10 @@
 -spec get_daily_stats(integer(), binary(), integer()) -> {ok, list(map())} | {error, binary()}.
 
 %% channel_logic_invitation delegates
--spec create_invitation(integer(), binary(), integer()) -> {ok, map()} | {error, binary()}.
--spec accept_invitation(integer(), integer()) -> ok | {error, binary()}.
--spec reject_invitation(integer(), integer()) -> ok | {error, binary()}.
+-spec create_invitation(integer(), binary(), integer()) ->
+    {ok, map()} | {error, binary() | {integer(), binary()}}.
+-spec accept_invitation(integer(), integer()) -> ok | {error, binary() | {integer(), binary()}}.
+-spec reject_invitation(integer(), integer()) -> ok | {error, binary() | {integer(), binary()}}.
 -spec get_my_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
 -spec get_sent_invitations(integer()) -> {ok, [map()]} | {error, binary()}.
 

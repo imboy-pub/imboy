@@ -29,7 +29,10 @@ init(Req0, State0) ->
             ok ->
                 handle_action(Action, Req0, State);
             {error, {403, Msg}} ->
-                elib_response:error(Req0, Msg, 403)
+                elib_response:error(Req0, Msg, 403);
+            %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+            {error, {503, Msg}} ->
+                elib_response:error(Req0, Msg, 503)
         end,
     {ok, Req1, State}.
 
@@ -67,6 +70,9 @@ create_invitation(Req0, State) ->
             case channel_logic:create_invitation(Uid, ChannelId, InviteeUid) of
                 {ok, Invitation} ->
                     elib_response:success(Req0, Invitation);
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -86,6 +92,9 @@ accept_invitation(Req0, State) ->
             case channel_logic:accept_invitation(Uid, InvitationId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
@@ -105,6 +114,9 @@ reject_invitation(Req0, State) ->
             case channel_logic:reject_invitation(Uid, InvitationId) of
                 ok ->
                     elib_response:success(Req0, #{});
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 归档写守卫稳定错误码（980）透传 envelope code
+                    elib_response:error(Req0, Msg, Code);
                 {error, Msg} ->
                     elib_response:error(Req0, Msg)
             end
