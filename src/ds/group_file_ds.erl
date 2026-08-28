@@ -3,6 +3,12 @@
 %%%
 % group_file_ds 是 group file domain service 缩写
 % 群文件数据服务层，封装群文件业务逻辑和数据访问
+%
+% T7 归档写守卫（P0 后续批）：上传/删除为内容写——upload_file 的 OSS 上传
+% 是对外副作用，无法进 DB 事务，故在动 Garage 之前 ensure_writable 预检
+% （归档后零上传），落库在 write_tx 守卫事务内；delete_file 同事务守卫；
+% download_file 的下载计数是派生读写（freeze：归档跳过计数，下载读取
+% 永不 403）；soft_delete（adm 治理 G3 入口）同事务守卫（{group_file,PK}）。
 %%%
 
 -export([upload_file/5]).
@@ -48,66 +54,88 @@ upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
                 false ->
                     {error, invalid_file_type};
                 true ->
-                    % 3. 上传文件到 OSS
-                    case elib_oss:upload(FileBinary, FileName, #{mime_type => FileType}) of
-                        {error, file_too_large} ->
-                            {error, file_too_large};
-                        {error, invalid_file_type} ->
-                            {error, invalid_file_type};
-                        {ok, FileUrl, FileId} ->
-                            % 4. 计算文件哈希（可选）
-                            FileHash = erlang:md5(FileBinary),
-                            FileHashHex = binary:encode_hex(FileHash),
-
-                            % 5. 获取文件分类
-                            Category = elib_oss:get_file_category(FileType),
-                            CategoryBin = atom_to_binary(Category, utf8),
-
-                            % 6. 保存文件记录
-                            Now = elib_dt:now(),
-                            Data = #{
-                                group_id => Gid,
-                                file_id => FileId,
-                                file_name => FileName,
-                                file_size => byte_size(FileBinary),
-                                file_type => FileType,
-                                file_category => CategoryBin,
-                                file_url => FileUrl,
-                                file_hash => FileHashHex,
-                                uploader_id => UploaderId,
-                                download_count => 0,
-                                status => 1,
-                                created_at => Now,
-                                updated_at => Now
-                            },
-
-                            case group_file_repo:insert(Data) of
-                                % repo 返回二元组 {ok, FileId}（曾误匹配三元组
-                                % {ok, _InsertId, _Details} → no case clause 生产 500）
-                                {ok, _FileId} ->
-                                    % BUG#137：elib_oss:upload 落库的是 Garage 私桶
-                                    % 裸 URL（无签名），且群文件从不写 attachment 表 →
-                                    % 客户端任何下载路径（viewUrl HMAC / view_url
-                                    % presign）都拿不到文件 → 群文件视频/音频播放 404。
-                                    % 补写 scope=group 附件记录，读鉴权才可签发 presign GET。
-                                    write_attachment(
-                                        Gid,
-                                        UploaderId,
-                                        FileName,
-                                        FileBinary,
-                                        FileType,
-                                        FileUrl,
-                                        FileId,
-                                        FileHashHex
-                                    ),
-                                    {ok, FileId};
-                                {error, Reason} ->
-                                    {error, Reason}
-                            end;
-                        {error, UploadErr} ->
-                            {error, UploadErr}
+                    % 3. T7 归档写守卫（OSS 前预检）：OSS 上传是对外副作用，无法进
+                    %    DB 事务——归档群在动 Garage 之前稳定拒绝（980），
+                    %    确保归档后零上传副作用。
+                    case workspace_guard:ensure_writable({group, Gid}) of
+                        {error, Reason} ->
+                            {error, Reason};
+                        ok ->
+                            do_upload_file(
+                                Gid, UploaderId, FileName, FileBinary, FileType
+                            )
                     end
             end
+    end.
+
+%% @doc OSS 上传 + 落库（T7：预检通过后执行；落库在 {group, Gid} 守卫事务内，
+%% 预检与落库之间存在归档竞态窗口——落库被拒时 Garage 残留孤儿对象，
+%% 无 DB 不一致，可接受）。
+-spec do_upload_file(integer(), integer(), binary(), binary(), binary()) ->
+    {ok, integer()} | {error, term()}.
+do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
+    % 上传文件到 OSS
+    case elib_oss:upload(FileBinary, FileName, #{mime_type => FileType}) of
+        {error, file_too_large} ->
+            {error, file_too_large};
+        {error, invalid_file_type} ->
+            {error, invalid_file_type};
+        {ok, FileUrl, FileId} ->
+            % 计算文件哈希（可选）
+            FileHash = erlang:md5(FileBinary),
+            FileHashHex = binary:encode_hex(FileHash),
+
+            % 获取文件分类
+            Category = elib_oss:get_file_category(FileType),
+            CategoryBin = atom_to_binary(Category, utf8),
+
+            % 保存文件记录（T7：{group, Gid} 行锁与写入同事务）
+            Now = elib_dt:now(),
+            Data = #{
+                group_id => Gid,
+                file_id => FileId,
+                file_name => FileName,
+                file_size => byte_size(FileBinary),
+                file_type => FileType,
+                file_category => CategoryBin,
+                file_url => FileUrl,
+                file_hash => FileHashHex,
+                uploader_id => UploaderId,
+                download_count => 0,
+                status => 1,
+                created_at => Now,
+                updated_at => Now
+            },
+
+            case
+                workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                    group_file_repo:insert_tx(Conn, Data)
+                end)
+            of
+                % repo 返回二元组 {ok, FileId}（曾误匹配三元组
+                % {ok, _InsertId, _Details} → no case clause 生产 500）
+                {ok, _FileId} ->
+                    % BUG#137：elib_oss:upload 落库的是 Garage 私桶
+                    % 裸 URL（无签名），且群文件从不写 attachment 表 →
+                    % 客户端任何下载路径（viewUrl HMAC / view_url
+                    % presign）都拿不到文件 → 群文件视频/音频播放 404。
+                    % 补写 scope=group 附件记录，读鉴权才可签发 presign GET。
+                    write_attachment(
+                        Gid,
+                        UploaderId,
+                        FileName,
+                        FileBinary,
+                        FileType,
+                        FileUrl,
+                        FileId,
+                        FileHashHex
+                    ),
+                    {ok, FileId};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {error, UploadErr} ->
+            {error, UploadErr}
     end.
 
 %% @doc 下载文件
@@ -124,9 +152,14 @@ download_file(FileId, CurrentUid) ->
                 false ->
                     {error, not_member};
                 true ->
-                    % 3. 增加下载计数
+                    % 3. 增加下载计数（T7 派生读写 freeze：归档时跳过计数，
+                    %    下载读取永不 403）
                     spawn(fun() ->
-                        group_file_repo:increment_download(FileId)
+                        _ =
+                            workspace_guard:write_tx_or_skip({group, Gid}, fun(Conn) ->
+                                group_file_repo:increment_download_tx(Conn, FileId)
+                            end),
+                        ok
                     end),
                     {ok, FileUrl}
             end;
@@ -146,8 +179,12 @@ delete_file(FileId, CurrentUid) ->
             % 2. 验证权限（上传者或管理员）
             case check_delete_permission(CurrentUid, UploaderId, Gid) of
                 {ok, true} ->
-                    % 3. 软删除文件
-                    case group_file_repo:soft_delete(FileId) of
+                    % 3. 软删除文件（T7：{group, Gid} 行锁与写入同事务）
+                    case
+                        workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                            group_file_repo:soft_delete_tx(Conn, FileId)
+                        end)
+                    of
                         {ok, _AffectedRows} ->
                             ok;
                         {error, Reason} ->
@@ -244,6 +281,12 @@ write_attachment(Gid, UploaderId, FileName, FileBinary, FileType, FileUrl, FileI
     },
     try
         _ = elib_pg:with_tx(fun(Conn) ->
+            %% T7 归档写守卫：主记录已落库后的补写路径——若此处已归档
+            %% （极小竞态窗口），abort 抛出后被下方 catch 吞掉只记日志，
+            %% 不放大成上传失败（BUG#136 教训）。
+            ok = workspace_guard:abort_on_error(
+                workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+            ),
             attachment_ds:save(Conn, elib_dt:now(), UploaderId, [Attach])
         end)
     catch
@@ -285,7 +328,11 @@ find_by_id(FileId) -> group_file_repo:find_by_id(FileId).
 find_by_file_id(FileId) -> group_file_repo:find_by_file_id(FileId).
 
 -spec soft_delete(integer()) -> {ok, integer()} | {error, term()}.
-soft_delete(FileId) -> group_file_repo:soft_delete(FileId).
+soft_delete(FileId) ->
+    %% T7 归档写守卫：{group_file, PK} → group → workspace（adm 治理 G3 入口）
+    workspace_guard:write_tx({group_file, FileId}, fun(Conn) ->
+        group_file_repo:soft_delete_tx(Conn, FileId)
+    end).
 
 -spec search_by_name(integer(), binary(), pos_integer(), pos_integer()) ->
     {ok, list(map())} | {error, term()}.

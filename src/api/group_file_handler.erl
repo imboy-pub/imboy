@@ -83,6 +83,12 @@ upload(Req0, State) ->
                     elib_response:error(Req1, <<"文件大小超出限制"/utf8>>, ?ERR_FILE_SIZE_EXCEEDED);
                 {error, invalid_file_type} ->
                     elib_response:error(Req1, <<"不允许的文件类型"/utf8>>, ?ERR_FILE_TYPE_NOT_ALLOWED);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _Reason} ->
                     elib_response:error(Req1, <<"文件上传失败"/utf8>>, ?ERR_FILE_UPLOAD_FAILED)
             end
@@ -177,6 +183,12 @@ delete(Req0, State) ->
                     elib_response:error(Req1, <<"群组权限不足"/utf8>>, ?ERR_GROUP_PERMISSION_DENIED);
                 {error, not_found} ->
                     elib_response:error(Req1, <<"文件不存在"/utf8>>, ?ERR_FILE_NOT_FOUND);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _Reason} ->
                     elib_response:error(Req1, <<"文件删除失败"/utf8>>, ?ERR_FILE_DELETE_FAILED)
             end

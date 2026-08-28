@@ -14,6 +14,7 @@
 -export([get_categories/2]).
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API 函数
@@ -32,7 +33,11 @@ upload(Gid, CurrentUid, FileName, FileBinary, FileType) ->
     Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层上传文件
-    case group_file_ds:upload_file(Gid2, CurrentUid, FileName, FileBinary, FileType) of
+    case
+        normalize_write_result(
+            group_file_ds:upload_file(Gid2, CurrentUid, FileName, FileBinary, FileType)
+        )
+    of
         {ok, FileId} ->
             % 3. 返回文件信息
             FileData = #{
@@ -62,7 +67,7 @@ download(FileId, CurrentUid) ->
 %% @return ok | {error, Reason}
 -spec delete(integer(), integer()) -> ok | {error, term()}.
 delete(FileId, CurrentUid) ->
-    group_file_ds:delete_file(FileId, CurrentUid).
+    normalize_write_result(group_file_ds:delete_file(FileId, CurrentUid)).
 
 %% @doc 查询群文件列表
 %% @param Gid 群组ID（整数）
@@ -157,3 +162,15 @@ get_categories(Gid, CurrentUid) ->
                     {error, Reason}
             end
     end.
+
+%% ===================================================================
+%% 内部辅助函数
+%% ===================================================================
+
+%% @doc T7 归档写守卫：DS 写事务返回的稳定错误 {error, {980, Msg}} 归一为
+%% 既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}（handler 按 980 识别），
+%% 其余结果原样透传。
+normalize_write_result({error, {?ERR_WORKSPACE_ARCHIVED, _Msg}}) ->
+    {error, ?ERR_WORKSPACE_ARCHIVED};
+normalize_write_result(Other) ->
+    Other.

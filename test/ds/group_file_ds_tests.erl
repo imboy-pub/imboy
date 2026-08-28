@@ -50,7 +50,10 @@ upload_file_success_test_() ->
         meck:expect(elib_dt, now, fun() -> NowTs end),
 
         meck:new(group_file_repo, [passthrough]),
-        meck:expect(group_file_repo, insert, fun(Data) ->
+        %% T7 归档写守卫收口适配：personal 直通（DS 走 insert_tx + write_tx）
+        meck:new(workspace_resolver, [passthrough]),
+        meck:expect(workspace_resolver, resolve_workspace, fun(_Target) -> personal end),
+        meck:expect(group_file_repo, insert_tx, fun(_Conn, Data) ->
             ExpectedHashHex = binary:encode_hex(erlang:md5(FileBinary)),
             ?assertEqual(Gid, maps:get(group_id, Data)),
             ?assertEqual(FileId, maps:get(file_id, Data)),
@@ -65,7 +68,7 @@ upload_file_success_test_() ->
             ?assertEqual(1, maps:get(status, Data)),
             ?assertEqual(NowTs, maps:get(created_at, Data)),
             ?assertEqual(NowTs, maps:get(updated_at, Data)),
-            % 真实契约：group_file_repo:insert/1 返回 {ok, FileId} 二元组
+            % 真实契约：group_file_repo:insert_tx/2 返回 {ok, FileId} 二元组
             % （曾 mock 成三元组 {ok, 1, #{}} 与实现一起漂移，掩盖了
             % group_file_ds:upload_file/5 的 no case clause 生产 500）
             {ok, FileId}
@@ -109,6 +112,7 @@ upload_file_success_test_() ->
         meck:unload(attachment_ds),
         meck:unload(elib_pg),
         meck:unload(group_file_repo),
+        meck:unload(workspace_resolver),
         meck:unload(elib_dt),
         meck:unload(elib_oss),
         meck:unload(group_ds),
@@ -176,10 +180,15 @@ download_file_success_test_() ->
         meck:expect(group_file_repo, find_by_id, fun(_) ->
             #{<<"id">> => 1, <<"group_id">> => 1, <<"file_url">> => FileUrl}
         end),
-        meck:expect(group_file_repo, increment_download, fun(DownloadFileId) ->
+        meck:expect(group_file_repo, increment_download_tx, fun(_Conn, DownloadFileId) ->
             Parent ! {increment_download_called, DownloadFileId},
             {ok, 1}
         end),
+        %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑（下载计数 freeze 路径）
+        meck:new(workspace_resolver, [passthrough]),
+        meck:expect(workspace_resolver, resolve_workspace, fun(_Target) -> personal end),
+        meck:new(elib_pg, [passthrough]),
+        meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
 
         meck:new(group_ds, [passthrough]),
         meck:expect(group_ds, is_member, fun(_, _) -> true end),
@@ -194,6 +203,8 @@ download_file_success_test_() ->
         end,
 
         meck:unload(group_ds),
+        meck:unload(elib_pg),
+        meck:unload(workspace_resolver),
         meck:unload(group_file_repo),
         ok
     end.
@@ -251,10 +262,17 @@ delete_file_as_uploader_test_() ->
         meck:expect(group_file_repo, find_by_id, fun(_) ->
             #{<<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 100}
         end),
-        meck:expect(group_file_repo, soft_delete, fun(_) -> {ok, 1} end),
+        meck:expect(group_file_repo, soft_delete_tx, fun(_Conn, _) -> {ok, 1} end),
+        %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+        meck:new(workspace_resolver, [passthrough]),
+        meck:expect(workspace_resolver, resolve_workspace, fun(_Target) -> personal end),
+        meck:new(elib_pg, [passthrough]),
+        meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
 
         Result = group_file_ds:delete_file(FileId, CurrentUid),
 
+        meck:unload(elib_pg),
+        meck:unload(workspace_resolver),
         meck:unload(group_file_repo),
 
         ?assertMatch(ok, Result)
@@ -269,7 +287,12 @@ delete_file_as_admin_test_() ->
         meck:expect(group_file_repo, find_by_id, fun(_) ->
             #{<<"id">> => 1, <<"group_id">> => 1, <<"uploader_id">> => 200}
         end),
-        meck:expect(group_file_repo, soft_delete, fun(_) -> {ok, 1} end),
+        meck:expect(group_file_repo, soft_delete_tx, fun(_Conn, _) -> {ok, 1} end),
+        %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+        meck:new(workspace_resolver, [passthrough]),
+        meck:expect(workspace_resolver, resolve_workspace, fun(_Target) -> personal end),
+        meck:new(elib_pg, [passthrough]),
+        meck:expect(elib_pg, with_tx, fun(F) -> F(fake_conn) end),
 
         meck:new(group_member_repo, [passthrough]),
         meck:expect(group_member_repo, find, fun(_, _, _) ->
@@ -280,6 +303,8 @@ delete_file_as_admin_test_() ->
         Result = group_file_ds:delete_file(FileId, CurrentUid),
 
         meck:unload(group_member_repo),
+        meck:unload(elib_pg),
+        meck:unload(workspace_resolver),
         meck:unload(group_file_repo),
 
         ?assertMatch(ok, Result)
