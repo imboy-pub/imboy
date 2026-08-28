@@ -3,10 +3,12 @@
 %%% @doc 密码哈希和验证模块
 %%% 使用 HMAC-SHA512 算法生成密码哈希，支持密码验证
 %%%
-%%% 前端密码预哈希格式（2026-08-26 从 MD5 迁移到 SHA-256）：
-%%%   旧协议：前端发送 md5(plaintext)，后端验证 hmac_sha512(md5(plaintext), salt)
-%%%   新协议：前端发送 sha256(plaintext)，后端验证 hmac_sha512(sha256(plaintext), salt)
-%%% 兼容性：verify/2 先尝试新格式，失败后自动回退旧格式，验证成功时升级存储。
+%%% 前端密码预哈希格式：
+%%%   现行协议：前端发送 md5(plaintext)（hex），后端验证 hmac_sha512(md5(plaintext), salt)。
+%%%   sha256 切换（暂缓）：须先落地 rehash-on-login（验证成功后升级存储）再切前端——
+%%%   存量 default_md5 行从 sha256 值数学上不可反推验证，先切前端 = 存量用户全部锁死
+%%%   （2026-08-28 发布审查 C-1：verify 曾缺直比较分支导致 generate/verify 往返必假）。
+%%% 兼容性：verify/2 依次尝试 hmac 直值 / sha256 预哈希 / md5 预哈希，最后回退 default_md5 旧行。
 %%%
 %%% Pwd = elib_password:generate(<<"admin888">>).
 %%% elib_password:verify(<<"admin888">>, Pwd).
@@ -124,22 +126,28 @@ verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
     Ciphertext2 = elib_hasher:hmac_sha512(Plaintext, Salt),
     eq(Ciphertext, Ciphertext2).
 
-%% @private 尝试验证 HMAC-SHA512 格式密码（支持新旧预哈希兼容）
-%% 先尝试新格式（SHA-256 预哈希），失败后回退旧格式（MD5 预哈希）。
+%% @private 验证 HMAC-SHA512 格式密码（按预哈希变体依次尝试，全部走 eq/2 常数时间比较）
+%% ① 直值：与 generate/1 存储的 hmac(P, Salt) 成对，必须最先尝试——
+%%    缺此分支则 generate/verify 往返必假（2026-08-28 发布审查 C-1）
+%% ② SHA-256 预哈希：为前端 sha256 切换预留
+%% ③ MD5 预哈希：兼容旧协议 hmac 行
 -spec verify_hmac_sha512(iodata(), binary(), binary()) -> {ok, []} | {error, binary()}.
 verify_hmac_sha512(Plaintext, Salt, Ciphertext) ->
-    %% 新格式：hmac_sha512(sha256(plaintext), salt)
-    Sha256Plain = crypto:hash(sha256, Plaintext),
-    case elib_hasher:hmac_sha512(Sha256Plain, Salt) =:= Ciphertext of
-        true ->
-            {ok, []};
-        false ->
-            %% 旧格式兼容：hmac_sha512(md5(plaintext), salt)
-            Md5Plain = elib_hasher:md5(binary_to_list(Plaintext)),
-            case elib_hasher:hmac_sha512(Md5Plain, Salt) =:= Ciphertext of
-                true -> {ok, []};
-                false -> {error, <<"errorPassword">>}
-            end
+    PlainBin = iolist_to_binary(Plaintext),
+    Candidates = [
+        PlainBin,
+        crypto:hash(sha256, PlainBin),
+        elib_hasher:md5(binary_to_list(PlainBin))
+    ],
+    verify_candidates(Candidates, Salt, Ciphertext).
+
+-spec verify_candidates([binary()], binary(), binary()) -> {ok, []} | {error, binary()}.
+verify_candidates([], _Salt, _Ciphertext) ->
+    {error, <<"errorPassword">>};
+verify_candidates([P | Rest], Salt, Ciphertext) ->
+    case eq(Ciphertext, elib_hasher:hmac_sha512(P, Salt)) of
+        {ok, _} = Ok -> Ok;
+        _ -> verify_candidates(Rest, Salt, Ciphertext)
     end.
 
 -spec eq(binary(), binary()) -> {ok, []} | {error, binary()}.
