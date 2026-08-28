@@ -10,6 +10,7 @@
 % 提供群内投票创建、投票、查询、统计等功能
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 -export([create_vote/6]).
 -export([cast_vote/3]).
@@ -102,9 +103,9 @@ do_create_vote(Gid, CreatorId, Title, Options, Extra) ->
     ),
 
     % 插入投票和选项
-    case group_vote_ds:insert_vote(VoteData) of
+    case normalize_write_result(group_vote_ds:insert_vote(VoteData)) of
         {ok, _VoteId, _} ->
-            case group_vote_ds:insert_options_batch(OptionsData) of
+            case normalize_write_result(group_vote_ds:insert_options_batch(OptionsData)) of
                 {ok, _Count} ->
                     {ok, #{
                         <<"vote_id">> => VoteId,
@@ -218,7 +219,7 @@ do_cast_vote(VoteId, UserId, OptionIds) ->
         user_id => UserId,
         option_ids => OptionIdsJson
     },
-    case group_vote_ds:insert_record(RecordData) of
+    case normalize_write_result(group_vote_ds:insert_record(RecordData)) of
         {ok, _RecordId, _} ->
             {ok, #{<<"vote_id">> => VoteId}};
         {error, Reason} ->
@@ -289,7 +290,7 @@ do_update_vote(Record, VoteId, _UserId, OptionIds) ->
     RecordId = maps:get(<<"id">>, Record),
     OptionIdsJson = jsone:encode(OptionIds),
     Data = #{option_ids => OptionIdsJson},
-    case group_vote_ds:update_record(RecordId, Data) of
+    case normalize_write_result(group_vote_ds:update_record(RecordId, Data)) of
         {ok, _Count} ->
             {ok, #{<<"vote_id">> => VoteId}};
         {error, Reason} ->
@@ -307,7 +308,7 @@ cancel_vote(VoteId, UserId) ->
             {error, not_voted_yet};
         {ok, Record} ->
             RecordId = maps:get(<<"id">>, Record),
-            case group_vote_ds:delete_record(RecordId) of
+            case normalize_write_result(group_vote_ds:delete_record(RecordId)) of
                 {ok, _Count} ->
                     ok;
                 {error, Reason} ->
@@ -446,7 +447,11 @@ close_vote(VoteId, CurrentUid) ->
                         2 ->
                             {error, vote_already_closed};
                         1 ->
-                            case group_vote_ds:update_vote_status(VoteId, 2) of
+                            case
+                                normalize_write_result(
+                                    group_vote_ds:update_vote_status(VoteId, 2)
+                                )
+                            of
                                 {ok, _Count} ->
                                     ok;
                                 {error, Reason} ->
@@ -477,6 +482,18 @@ get_my_vote(VoteId, UserId) ->
                 <<"created_at">> => CreatedAt
             }}
     end.
+
+%% ===================================================================
+%% Internal Functions
+%% ===================================================================
+
+%% @doc T7 归档写守卫：DS 写事务返回的稳定错误 {error, {980, Msg}} 归一为
+%% 既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}（handler 按 980 识别），
+%% 其余结果原样透传。
+normalize_write_result({error, {?ERR_WORKSPACE_ARCHIVED, _Msg}}) ->
+    {error, ?ERR_WORKSPACE_ARCHIVED};
+normalize_write_result(Other) ->
+    Other.
 
 %% ===================================================================
 %% EUnit tests.

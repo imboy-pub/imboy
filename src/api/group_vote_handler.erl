@@ -9,6 +9,7 @@
 -export([handle_action/3]).
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -99,6 +100,12 @@ create(Req0, State) ->
                     elib_response:error(Req0, <<"参数错误: ", (ec_cnv:to_binary(Reason))/binary>>);
                 {error, not_group_member} ->
                     elib_response:error(Req0, "您不是该群成员");
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, fmt_reason(Reason))
             end
@@ -201,6 +208,12 @@ cast(Req0, State) ->
                     elib_response:error(Req0, "多选投票至少选择两个选项");
                 {error, not_group_member} ->
                     elib_response:error(Req0, "您不是该群成员");
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, fmt_reason(Reason))
             end
@@ -239,6 +252,12 @@ update(Req0, State) ->
                     elib_response:error(Req0, "无效的选项");
                 {error, not_group_member} ->
                     elib_response:error(Req0, "您不是该群成员");
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, fmt_reason(Reason))
             end
@@ -266,6 +285,12 @@ cancel(Req0, State) ->
                     elib_response:success(Req0, #{<<"vote_id">> => VoteId}, <<"取消投票成功"/utf8>>);
                 {error, not_voted_yet} ->
                     elib_response:error(Req0, "您还未投票");
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, fmt_reason(Reason))
             end
@@ -297,6 +322,12 @@ close(Req0, State) ->
                     elib_response:error(Req0, "投票已结束");
                 {error, permission_denied} ->
                     elib_response:error(Req0, "无权限结束该投票");
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(Req0, fmt_reason(Reason))
             end

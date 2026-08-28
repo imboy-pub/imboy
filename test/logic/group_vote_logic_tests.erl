@@ -17,14 +17,17 @@
 create_vote_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {elib_id, [
                 {'gen', 1, fun(_Prefix) -> <<"vote_abc123">> end}
             ]},
             {group_vote_repo, [
-                {'insert_vote', 1, fun(_Data) ->
+                {'insert_vote_tx', 2, fun(_Conn, _Data) ->
                     {ok, 1001, [{<<"id">>, 1001}, {<<"vote_id">>, <<"vote123">>}]}
                 end},
-                {'insert_options_batch', 1, fun(_Options) ->
+                {'insert_options_batch_tx', 2, fun(_Conn, _Options) ->
                     {ok, 2}
                 end}
             ]},
@@ -61,14 +64,17 @@ create_vote_success_test_() ->
 create_vote_with_options_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {elib_id, [
                 {'gen', 1, fun(_Prefix) -> <<"vote_opt_xyz789">> end}
             ]},
             {group_vote_repo, [
-                {'insert_vote', 1, fun(_Data) ->
+                {'insert_vote_tx', 2, fun(_Conn, _Data) ->
                     {ok, 1001, [{<<"id">>, 1001}, {<<"vote_id">>, <<"vote123">>}]}
                 end},
-                {'insert_options_batch', 1, fun(_Options) ->
+                {'insert_options_batch_tx', 2, fun(_Conn, _Options) ->
                     {ok, 3}
                 end}
             ]},
@@ -127,6 +133,9 @@ create_vote_non_member_rejected_test_() ->
 cast_vote_single_choice_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_vote_repo, [
                 {'find_by_vote_id', 1, fun(_VoteId) ->
                     {ok, #{
@@ -145,7 +154,7 @@ cast_vote_single_choice_test_() ->
                         #{<<"option_id">> => <<"opt2">>}
                     ]}
                 end},
-                {'insert_record', 1, fun(_Data) ->
+                {'insert_record_tx', 2, fun(_Conn, _Data) ->
                     {ok, 3001, [{<<"id">>, 3001}]}
                 end}
             ]},
@@ -160,6 +169,9 @@ cast_vote_single_choice_test_() ->
 cast_vote_multiple_choice_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_vote_repo, [
                 {'find_by_vote_id', 1, fun(_VoteId) ->
                     {ok, #{
@@ -179,7 +191,7 @@ cast_vote_multiple_choice_test_() ->
                         #{<<"option_id">> => <<"opt3">>}
                     ]}
                 end},
-                {'insert_record', 1, fun(_Data) ->
+                {'insert_record_tx', 2, fun(_Conn, _Data) ->
                     {ok, 3001, [{<<"id">>, 3001}]}
                 end}
             ]},
@@ -301,6 +313,9 @@ cast_vote_non_member_rejected_test_() ->
 update_vote_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_vote_repo, [
                 {'find_record_by_vote_and_user', 2, fun(_VoteId, _UserId) ->
                     {ok, #{<<"id">> => 3001}}
@@ -318,7 +333,7 @@ update_vote_success_test_() ->
                         #{<<"option_id">> => <<"opt2">>}
                     ]}
                 end},
-                {'update_record', 2, fun(_RecordId, _Data) ->
+                {'update_record_tx', 3, fun(_Conn, _RecordId, _Data) ->
                     {ok, 1}
                 end}
             ]},
@@ -349,15 +364,19 @@ update_vote_not_voted_test_() ->
 %% ===================================================================
 
 cancel_vote_success_test_() ->
-    ?WITH_MECK(
-        group_vote_repo,
+    ?WITH_MECKS(
         [
-            {'find_record_by_vote_and_user', 2, fun(_VoteId, _UserId) ->
-                {ok, #{<<"id">> => 3001}}
-            end},
-            {'delete_record', 1, fun(_RecordId) ->
-                {ok, 1}
-            end}
+            {group_vote_repo, [
+                {'find_record_by_vote_and_user', 2, fun(_VoteId, _UserId) ->
+                    {ok, #{<<"id">> => 3001}}
+                end},
+                {'delete_record_tx', 2, fun(_Conn, _RecordId) ->
+                    {ok, 1}
+                end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
         ],
         fun() ->
             Result = group_vote_logic:cancel_vote(<<"vote123">>, 789),
@@ -497,20 +516,24 @@ list_votes_4_non_member_rejected_test_() ->
 %% ===================================================================
 
 close_vote_success_test_() ->
-    ?WITH_MECK(
-        group_vote_repo,
+    ?WITH_MECKS(
         [
-            {'find_by_vote_id', 1, fun(_VoteId) ->
-                {ok, #{
-                    <<"vote_id">> => <<"vote123">>,
-                    <<"status">> => 1,
-                    <<"creator_id">> => 456,
-                    <<"group_id">> => 101
-                }}
-            end},
-            {'update_vote_status', 2, fun(_VoteId, _Status) ->
-                {ok, 1}
-            end}
+            {group_vote_repo, [
+                {'find_by_vote_id', 1, fun(_VoteId) ->
+                    {ok, #{
+                        <<"vote_id">> => <<"vote123">>,
+                        <<"status">> => 1,
+                        <<"creator_id">> => 456,
+                        <<"group_id">> => 101
+                    }}
+                end},
+                {'update_vote_status_tx', 3, fun(_Conn, _VoteId, _Status) ->
+                    {ok, 1}
+                end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
         ],
         fun() ->
             Result = group_vote_logic:close_vote(<<"vote123">>, 456),

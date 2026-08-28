@@ -8,21 +8,27 @@
 -export([tablename/0]).
 
 -export([insert_vote/1]).
+-export([insert_vote_tx/2]).
 -export([find_by_vote_id/1]).
 -export([list_votes_by_group_id/3]).
 -export([count_votes_by_group_id/1]).
 -export([update_vote_status/2]).
+-export([update_vote_status_tx/3]).
 -export([update_vote/2]).
 
 -export([insert_option/1]).
 -export([insert_options_batch/1]).
+-export([insert_options_batch_tx/2]).
 -export([list_options_by_vote_id/1]).
 -export([delete_vote_option_by_option_id/1]).
 
 -export([insert_record/1]).
+-export([insert_record_tx/2]).
 -export([find_record_by_vote_and_user/2]).
 -export([update_record/2]).
+-export([update_record_tx/3]).
 -export([delete_record/1]).
+-export([delete_record_tx/2]).
 
 -export([count_votes_by_option_id/1]).
 -export([count_total_votes_by_vote_id/1]).
@@ -63,6 +69,18 @@ tablename_record() ->
 %% 注意：刻意返回 3-tuple，与其他 repo 的 {ok, Id} 2-tuple 约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert_vote(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_vote(Data) ->
+    insert_vote_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入群投票（归档写守卫同事务，DS 层 write_tx 调用）
+-spec insert_vote_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+insert_vote_tx(Conn, Data) ->
+    insert_vote_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_vote_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+) ->
+    {ok, integer(), map()} | {error, term()}.
+insert_vote_run(Exec, Data) ->
     Tb = tablename(),
     % 验证必填字段
     case
@@ -100,7 +118,7 @@ insert_vote(Data) ->
             Id = elib_tsid:generate(group_vote),
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
-            case elib_pg:query(Sql, Params) of
+            case Exec(Sql, Params) of
                 {ok, _Count} -> {ok, Id, Data3};
                 {error, _} = Err -> Err
             end;
@@ -196,6 +214,18 @@ update_vote_status(VoteId, Status) when
 update_vote_status(_VoteId, _Status) ->
     {error, invalid_param}.
 
+%% @doc 事务内更新投票状态（归档写守卫同事务；用户 close 与 adm 治理共用）
+-spec update_vote_status_tx(any(), binary(), integer()) -> {ok, integer()} | {error, term()}.
+update_vote_status_tx(Conn, VoteId, Status) when
+    is_binary(VoteId), byte_size(VoteId) > 0, is_integer(Status), Status > 0
+->
+    Tb = tablename(),
+    Where = <<"vote_id = $1">>,
+    Data = #{status => Status, updated_at => elib_dt:now()},
+    elib_pg:update(Conn, Tb, Data, Where, [VoteId]);
+update_vote_status_tx(_Conn, _VoteId, _Status) ->
+    {error, invalid_param}.
+
 %% @doc 更新投票信息
 %% @param VoteId 投票ID (字符串)
 %% @param Data 要更新的数据
@@ -258,7 +288,23 @@ insert_option(Data) ->
 %% @param Options 选项列表
 %% @return {ok, Count} | {error, Reason}
 -spec insert_options_batch([map()]) -> {ok, integer()} | {error, term()}.
-insert_options_batch(Options) when is_list(Options), length(Options) > 0 ->
+insert_options_batch(Options) ->
+    insert_options_batch_run(
+        fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Options
+    ).
+
+%% @doc 事务内批量插入投票选项（归档写守卫同事务，DS 层 write_tx 调用）
+-spec insert_options_batch_tx(any(), [map()]) -> {ok, integer()} | {error, term()}.
+insert_options_batch_tx(Conn, Options) ->
+    insert_options_batch_run(
+        fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Options
+    ).
+
+-spec insert_options_batch_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), [map()]
+) ->
+    {ok, integer()} | {error, term()}.
+insert_options_batch_run(Exec, Options) when is_list(Options), length(Options) > 0 ->
     Tb = tablename_option(),
     Now = elib_dt:now(),
 
@@ -298,11 +344,8 @@ insert_options_batch(Options) when is_list(Options), length(Options) > 0 ->
             " (id, vote_id, option_id, option_text, sort_order, created_at) VALUES ",
             (iolist_to_binary(ValuesStr))/binary>>,
 
-    case elib_pg:query(Sql, Params) of
-        {ok, Count} -> {ok, Count};
-        {error, Reason} -> {error, Reason}
-    end;
-insert_options_batch(_Options) ->
+    Exec(Sql, Params);
+insert_options_batch_run(_Exec, _Options) ->
     {error, invalid_param}.
 
 %% @doc 查询投票选项列表
@@ -350,6 +393,18 @@ delete_vote_option_by_option_id(_OptionId) ->
 %% 注意：刻意返回 3-tuple，与其他 repo 的 {ok, Id} 2-tuple 约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert_record(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_record(Data) ->
+    insert_record_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入投票记录（归档写守卫同事务）
+-spec insert_record_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+insert_record_tx(Conn, Data) ->
+    insert_record_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_record_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+) ->
+    {ok, integer(), map()} | {error, term()}.
+insert_record_run(Exec, Data) ->
     Tb = tablename_record(),
     % 验证必填字段
     case
@@ -371,7 +426,7 @@ insert_record(Data) ->
             Id = elib_tsid:generate(group_vote),
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
-            case elib_pg:query(Sql, Params) of
+            case Exec(Sql, Params) of
                 {ok, _Count} -> {ok, Id, Data3};
                 {error, _} = Err -> Err
             end;
@@ -415,6 +470,15 @@ update_record(RecordId, Data) when is_integer(RecordId), RecordId > 0, is_map(Da
 update_record(_RecordId, _Data) ->
     {error, invalid_param}.
 
+%% @doc 事务内更新投票记录（归档写守卫同事务）
+-spec update_record_tx(any(), integer(), map()) -> {ok, integer()} | {error, term()}.
+update_record_tx(Conn, RecordId, Data) when is_integer(RecordId), RecordId > 0, is_map(Data) ->
+    Tb = tablename_record(),
+    Where = <<"id = $1">>,
+    elib_pg:update(Conn, Tb, Data, Where, [RecordId]);
+update_record_tx(_Conn, _RecordId, _Data) ->
+    {error, invalid_param}.
+
 %% @doc 删除投票记录
 %% @param RecordId 记录ID (整数)
 %% @return {ok, Count} | {error, Reason}
@@ -427,6 +491,15 @@ delete_record(RecordId) when is_integer(RecordId), RecordId > 0 ->
         {error, Reason} -> {error, Reason}
     end;
 delete_record(_RecordId) ->
+    {error, invalid_param}.
+
+%% @doc 事务内删除投票记录（归档写守卫同事务）
+-spec delete_record_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
+delete_record_tx(Conn, RecordId) when is_integer(RecordId), RecordId > 0 ->
+    Tb = tablename_record(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE id = $1">>,
+    elib_pg:execute(Conn, Sql, [RecordId]);
+delete_record_tx(_Conn, _RecordId) ->
     {error, invalid_param}.
 
 %% ===================================================================
