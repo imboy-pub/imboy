@@ -15,8 +15,10 @@
 %   - 所有失败路径对外统一返回 <<"SSO 登录失败"/utf8>>，细节只进服务端日志
 %     （License 配额拒绝除外，402 语义对外可见）。
 %   - token_url 必须 https（127.0.0.1/localhost 白名单供本地 E2E）。
-%   - MVP 不做 JWKS 验签：id_token 经 TLS 直连 token endpoint 取得，
-%     依赖信道 + iss/aud/exp/nonce claims 校验（OIDC Core §3.1.3.7）。
+%   - id_token 强制 JWKS 验签（SEC-01，auth_oidc_jwks）：算法白名单
+%     RS256/ES256 + kid 选 key + discovery/JWKS 缓存轮换，fail-closed；
+%     再叠加 iss/aud/exp/nonce claims 校验（OIDC Core §3.1.3.7）。
+%     oidc_verify_signature=false 为存量部署的显式降级开关（默认开启）。
 %   - state/otc 存本模块自有 ETS 表（?ONETIME_TAB，单节点内存），消费走
 %     ets:take/2（查+删单个原子操作），同一 state/otc 并发下只有一个进程能取到。
 %     ponytail: 单节点原子性已解决；仍是节点本地存储 —— 各节点 ETS 独立，
@@ -315,8 +317,8 @@ http_post_form(Url, Body) ->
     end.
 
 %% @doc 出站 HTTPS 请求选项：强制校验证书链 + 主机名（防 MITM 伪造 IdP 响应）
-%% 安全：id_token 的信任依赖 TLS 信道完整性（本 MVP 未做 JWKS 验签），
-%%       故到 IdP 的出站请求必须 verify_peer，否则中间人可伪造 token/userinfo。
+%% 安全：id_token / userinfo / JWKS 的信任都依赖出站信道完整性，
+%%       到 IdP 的出站请求必须 verify_peer，否则中间人可伪造响应。
 https_request_opts() ->
     SslOpts = [
         {verify, verify_peer},
@@ -378,32 +380,54 @@ email_verified(Info) ->
     end.
 
 %% ===================================================================
-%% Internal: id_token claims 校验（TLS 信道 + iss/aud/exp/nonce）
+%% Internal: id_token 验签 + claims 校验（JWKS 验签 + iss/aud/exp/nonce）
 %% ===================================================================
 
+%% @doc 验签前置（SEC-01）：先做 JWS 签名验证（auth_oidc_jwks，fail-closed），
+%% 再校验 claims；验签失败不进入任何后续流程（不落会话）。
 verify_claims(IdToken, Cfg, Nonce) ->
-    case id_token_payload(IdToken) of
+    case verify_signature(IdToken, Cfg) of
         {ok, Claims} ->
-            CfgIss = maps:get(<<"issuer">>, Cfg, <<>>),
-            ClientId = maps:get(<<"client_id">>, Cfg, <<>>),
-            Iss = maps:get(<<"iss">>, Claims, <<>>),
-            Aud = maps:get(<<"aud">>, Claims, <<>>),
-            Exp = maps:get(<<"exp">>, Claims, 0),
-            TokNonce = maps:get(<<"nonce">>, Claims, <<>>),
-            Now = erlang:system_time(second),
-            %% 安全：issuer 必须已配置且匹配（留空不再放行，否则 iss 校验形同虚设）
-            IssOk = CfgIss =/= <<>> andalso Iss =:= CfgIss,
-            AudOk = aud_ok(Aud, ClientId),
-            ExpOk = is_integer(Exp) andalso Exp > Now,
-            NonceOk = TokNonce =/= <<>> andalso TokNonce =:= Nonce,
-            case {IssOk, AudOk, ExpOk, NonceOk} of
-                {true, true, true, true} ->
-                    {ok, Claims};
-                Flags ->
-                    {error, {claims_mismatch, Flags}}
-            end;
+            check_claims(Claims, Cfg, Nonce);
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% @doc 验签开关：默认启用（fail-closed，不留默认关闭的后门）；
+%% oidc_verify_signature=false 仅供存量部署无法提供 JWKS 的场景显式降级。
+verify_signature(IdToken, Cfg) ->
+    case signature_verification_enabled() of
+        true ->
+            auth_oidc_jwks:verify_id_token(IdToken, Cfg);
+        false ->
+            id_token_payload(IdToken)
+    end.
+
+signature_verification_enabled() ->
+    case application:get_env(imboy, oidc_verify_signature, true) of
+        false -> false;
+        <<"false">> -> false;
+        _ -> true
+    end.
+
+check_claims(Claims, Cfg, Nonce) ->
+    CfgIss = maps:get(<<"issuer">>, Cfg, <<>>),
+    ClientId = maps:get(<<"client_id">>, Cfg, <<>>),
+    Iss = maps:get(<<"iss">>, Claims, <<>>),
+    Aud = maps:get(<<"aud">>, Claims, <<>>),
+    Exp = maps:get(<<"exp">>, Claims, 0),
+    TokNonce = maps:get(<<"nonce">>, Claims, <<>>),
+    Now = erlang:system_time(second),
+    %% 安全：issuer 必须已配置且匹配（留空不再放行，否则 iss 校验形同虚设）
+    IssOk = CfgIss =/= <<>> andalso Iss =:= CfgIss,
+    AudOk = aud_ok(Aud, ClientId),
+    ExpOk = is_integer(Exp) andalso Exp > Now,
+    NonceOk = TokNonce =/= <<>> andalso TokNonce =:= Nonce,
+    case {IssOk, AudOk, ExpOk, NonceOk} of
+        {true, true, true, true} ->
+            {ok, Claims};
+        Flags ->
+            {error, {claims_mismatch, Flags}}
     end.
 
 %% aud 可能是字符串或数组（OIDC Core §2）
