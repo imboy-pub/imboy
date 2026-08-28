@@ -340,13 +340,19 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = elib_tsid:generate(),
-    Group = #{
-        <<"gid">> => Gid,
+    %% 套件隔离治理：group_repo:add/2 会重新生成 group_info TSID 作为群行
+    %% 真实 id（8fba5140 修 42701 重复列引入），调用方自造 gid 被丢弃，
+    %% 且 create/1 只返回 ok。直接走 add/2 拿真实 id，成员行/断言才有
+    %% 正确的 group_id；此前沿用自造 gid 时成员行挂在孤儿 group_id 上，
+    %% 「按 Gid 反查群行」类断言（如转让守卫）随生成器序列对齐与否假绿或炸。
+    Data = #{
         <<"owner_uid">> => OwnerId,
-        <<"name">> => Name,
-        <<"created_at">> => elib_dt:millisecond()
+        <<"creator_uid">> => OwnerId,
+        <<"title">> => Name,
+        <<"status">> => 1,
+        <<"created_at">> => elib_dt:now(),
+        <<"updated_at">> => elib_dt:now()
     },
-    ok = group_repo:create(Group),
+    {ok, Gid} = elib_pg:with_tx(fun(Conn) -> group_repo:add(Conn, Data) end),
     ok = group_member_ds:add_member(Gid, OwnerId),
     {ok, Gid}.

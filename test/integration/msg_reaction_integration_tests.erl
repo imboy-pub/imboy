@@ -20,24 +20,19 @@ msg_reaction_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
-            {foreach,
-             fun setup/0,
-             fun cleanup/1,
-             [
-              {"单聊添加表情回应", fun test_c2c_add_reaction/0},
-              {"群聊添加表情回应", fun test_c2g_add_reaction/0},
-              {"移除表情回应", fun test_remove_reaction/0},
-              {"重复添加表情（幂等性）", fun test_duplicate_reaction/0},
-              {"查询表情列表", fun test_list_reactions/0},
-              {"表情统计", fun test_reaction_stats/0},
-              {"多种表情组合", fun test_multiple_emojis/0},
-              {"多人回应同一消息", fun test_multiple_users_reaction/0},
-              {"检查用户是否已回应", fun test_is_reacted/0}
-             ]
-            };
+            {foreach, fun setup/0, fun cleanup/1, [
+                {"单聊添加表情回应", fun test_c2c_add_reaction/0},
+                {"群聊添加表情回应", fun test_c2g_add_reaction/0},
+                {"移除表情回应", fun test_remove_reaction/0},
+                {"重复添加表情（幂等性）", fun test_duplicate_reaction/0},
+                {"查询表情列表", fun test_list_reactions/0},
+                {"表情统计", fun test_reaction_stats/0},
+                {"多种表情组合", fun test_multiple_emojis/0},
+                {"多人回应同一消息", fun test_multiple_users_reaction/0},
+                {"检查用户是否已回应", fun test_is_reacted/0}
+            ]};
         {error, _Reason} ->
-            {"Database not available",
-             fun() -> {skip, "Database not available"} end}
+            {"Database not available", fun() -> {skip, "Database not available"} end}
     end.
 
 setup() ->
@@ -81,9 +76,12 @@ test_c2c_add_reaction() ->
     ?assertEqual(?EMOJI_LIKE, maps:get(<<"emoji">>, Result)),
     {ok, Stats} = msg_reaction_logic:stats(MsgId, <<"c2c">>),
     ?assertEqual(1, maps:get(<<"total_count">>, Stats)),
-    [LikeStat | _] = lists:filter(fun(S) ->
-        maps:get(<<"emoji">>, S) =:= ?EMOJI_LIKE
-    end, maps:get(<<"reactions">>, Stats)),
+    [LikeStat | _] = lists:filter(
+        fun(S) ->
+            maps:get(<<"emoji">>, S) =:= ?EMOJI_LIKE
+        end,
+        maps:get(<<"reactions">>, Stats)
+    ),
     ?assertEqual(1, maps:get(<<"count">>, LikeStat)),
 
     ok.
@@ -140,9 +138,12 @@ test_duplicate_reaction() ->
 
     % 5. 验证计数仍然是1
     {ok, Stats} = msg_reaction_logic:stats(MsgId, <<"c2c">>),
-    EmojiStats = lists:filter(fun(S) ->
-        maps:get(<<"emoji">>, S) =:= ?EMOJI_LIKE
-    end, maps:get(<<"reactions">>, Stats)),
+    EmojiStats = lists:filter(
+        fun(S) ->
+            maps:get(<<"emoji">>, S) =:= ?EMOJI_LIKE
+        end,
+        maps:get(<<"reactions">>, Stats)
+    ),
     ?assertEqual(1, length(EmojiStats)),
     [Stat | _] = EmojiStats,
     ?assertEqual(1, maps:get(<<"count">>, Stat)),
@@ -197,9 +198,12 @@ test_reaction_stats() ->
 
     % 5. 验证每个 emoji 的统计
     Reactions = maps:get(<<"reactions">>, Stats),
-    LikeStats = lists:filter(fun(S) ->
-        maps:get(<<"emoji">>, S) =:= ?EMOJI_LIKE
-    end, Reactions),
+    LikeStats = lists:filter(
+        fun(S) ->
+            maps:get(<<"emoji">>, S) =:= ?EMOJI_LIKE
+        end,
+        Reactions
+    ),
     [LikeStat | _] = LikeStats,
     ?assertEqual(2, maps:get(<<"count">>, LikeStat)),
 
@@ -302,20 +306,24 @@ wait_for_c2g_message(MsgId, AttemptsLeft) ->
 
 ensure_friends(User1, User2) ->
     NowTs = elib_dt:now(),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
-                                  User1,
-                                  User2,
-                                  <<>>,
-                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
-                                  User2,
-                                  User1,
-                                  <<>>,
-                                  #{<<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User1, User2),
+        User1,
+        User2,
+        <<>>,
+        #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User2, User1),
+        User2,
+        User1,
+        <<>>,
+        #{<<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
     ok = friend_ds:invalidate_cache(User1, User2),
     imboy_cache:flush({check_relationship3, User1, User2}),
     imboy_cache:flush({check_relationship3, User2, User1}),
@@ -337,14 +345,20 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = elib_tsid:generate(),
-    Group = #{
-        <<"gid">> => Gid,
+    %% 套件隔离治理：group_repo:add/2 会重新生成 group_info TSID 作为群行
+    %% 真实 id（8fba5140 修 42701 重复列引入），调用方自造 gid 被丢弃，
+    %% 且 create/1 只返回 ok。直接走 add/2 拿真实 id，成员行/断言才有
+    %% 正确的 group_id；此前沿用自造 gid 时成员行挂在孤儿 group_id 上，
+    %% 「按 Gid 反查群行」类断言（如转让守卫）随生成器序列对齐与否假绿或炸。
+    Data = #{
         <<"owner_uid">> => OwnerId,
-        <<"name">> => Name,
-        <<"created_at">> => elib_dt:millisecond()
+        <<"creator_uid">> => OwnerId,
+        <<"title">> => Name,
+        <<"status">> => 1,
+        <<"created_at">> => elib_dt:now(),
+        <<"updated_at">> => elib_dt:now()
     },
-    ok = group_repo:create(Group),
+    {ok, Gid} = elib_pg:with_tx(fun(Conn) -> group_repo:add(Conn, Data) end),
     ok = group_member_ds:add_member(Gid, OwnerId),
     {ok, Gid}.
 

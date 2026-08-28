@@ -17,24 +17,19 @@ group_member_role_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
-            {foreach,
-             fun setup/0,
-             fun cleanup/1,
-             [
-              {"设置管理员", fun test_set_admin/0},
-              {"移除管理员", fun test_remove_admin/0},
-              {"转让群主", fun test_transfer_owner/0},
-              {"移除普通成员", fun test_remove_member/0},
-              {"禁言成员", fun test_mute_member/0},
-              {"取消禁言", fun test_unmute_member/0},
-              {"管理员权限验证", fun test_admin_permission/0},
-              {"普通成员权限限制", fun test_member_permission/0},
-              {"批量设置管理员", fun test_batch_set_admin/0}
-             ]
-            };
+            {foreach, fun setup/0, fun cleanup/1, [
+                {"设置管理员", fun test_set_admin/0},
+                {"移除管理员", fun test_remove_admin/0},
+                {"转让群主", fun test_transfer_owner/0},
+                {"移除普通成员", fun test_remove_member/0},
+                {"禁言成员", fun test_mute_member/0},
+                {"取消禁言", fun test_unmute_member/0},
+                {"管理员权限验证", fun test_admin_permission/0},
+                {"普通成员权限限制", fun test_member_permission/0},
+                {"批量设置管理员", fun test_batch_set_admin/0}
+            ]};
         {error, _Reason} ->
-            {"Database not available",
-             fun() -> {skip, "Database not available"} end}
+            {"Database not available", fun() -> {skip, "Database not available"} end}
     end.
 
 setup() ->
@@ -191,11 +186,18 @@ test_batch_set_admin() ->
     ok = group_member_logic:update_role(Owner, Group, Admin2, ?ROLE_ADMIN),
 
     {ok, Members} = group_member_repo:list_by_gid(Group, <<"user_id, role">>),
-    AdminMembers = [Member || Member <- Members,
-                              lists:member(maps:get(<<"user_id">>, Member, 0),
-                                           [Owner, Admin1, Admin2]),
-                              lists:member(maps:get(<<"role">>, Member, ?ROLE_MEMBER),
-                                           [?ROLE_ADMIN, ?ROLE_OWNER, ?ROLE_VICE_OWNER])],
+    AdminMembers = [
+        Member
+     || Member <- Members,
+        lists:member(
+            maps:get(<<"user_id">>, Member, 0),
+            [Owner, Admin1, Admin2]
+        ),
+        lists:member(
+            maps:get(<<"role">>, Member, ?ROLE_MEMBER),
+            [?ROLE_ADMIN, ?ROLE_OWNER, ?ROLE_VICE_OWNER]
+        )
+    ],
     ?assertEqual(3, length(AdminMembers)),
 
     ok.
@@ -223,14 +225,20 @@ create_test_user(Nickname) ->
     {ok, Uid}.
 
 create_test_group(OwnerId, Name) ->
-    Gid = elib_tsid:generate(),
-    Group = #{
-        <<"gid">> => Gid,
+    %% 套件隔离治理：group_repo:add/2 会重新生成 group_info TSID 作为群行
+    %% 真实 id（8fba5140 修 42701 重复列引入），调用方自造 gid 被丢弃，
+    %% 且 create/1 只返回 ok。直接走 add/2 拿真实 id，成员行/断言才有
+    %% 正确的 group_id；此前沿用自造 gid 时成员行挂在孤儿 group_id 上，
+    %% 「按 Gid 反查群行」类断言（如转让守卫）随生成器序列对齐与否假绿或炸。
+    Data = #{
         <<"owner_uid">> => OwnerId,
-        <<"name">> => Name,
-        <<"created_at">> => elib_dt:millisecond()
+        <<"creator_uid">> => OwnerId,
+        <<"title">> => Name,
+        <<"status">> => 1,
+        <<"created_at">> => elib_dt:now(),
+        <<"updated_at">> => elib_dt:now()
     },
-    ok = group_repo:create(Group),
+    {ok, Gid} = elib_pg:with_tx(fun(Conn) -> group_repo:add(Conn, Data) end),
     ok = group_member_ds:add_member(Gid, OwnerId),
     ok = group_member_ds:update_role(undefined, Gid, OwnerId, ?ROLE_OWNER),
     {ok, Gid}.
