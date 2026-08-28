@@ -63,13 +63,15 @@ execute_rejects_new_admin_api_path_without_cookie_test_() ->
         end
     ).
 
-execute_keeps_redirect_for_adm_root_without_cookie_test_() ->
+%% 页面入口契约（should_redirect_to_login）：仅 /adm、/adm/index 保持 302
+%% 跳转登录页；其余路径（含 /api/adm/*）一律 401 JSON
+execute_keeps_redirect_for_adm_page_entry_without_cookie_test_() ->
     ?WITH_MECKS(
         [
             {cowboy_req, [
-                {'path', 1, fun(_Req) -> <<"/api/adm/">> end},
+                {'path', 1, fun(_Req) -> <<"/adm">> end},
                 {'method', 1, fun(_Req) -> <<"GET">> end},
-                {'uri', 1, fun(_Req) -> <<"https://example.com/adm/">> end},
+                {'uri', 1, fun(_Req) -> <<"https://example.com/adm">> end},
                 {'set_resp_cookie', 4, fun(_Name, _Value, Req, _Opts) -> Req end},
                 {'reply', 3, fun(Code, Headers, Req) ->
                     Req#{response_status => Code, response_headers => Headers}

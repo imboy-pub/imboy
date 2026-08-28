@@ -56,24 +56,24 @@ mention_repo_exports_contract_test() ->
 
 mention_migration_contains_table_test() ->
     Migration = read_file(mention_migration_path()),
-    ?assert(
-        binary:match(Migration, <<"CREATE TABLE IF NOT EXISTS public.msg_mention">>) =/= nomatch
-    ),
+    ?assert(binary:match(Migration, <<"CREATE TABLE public.msg_mention">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"mentioned_uid bigint NOT NULL">>) =/= nomatch),
-    ?assert(binary:match(Migration, <<"is_read boolean NOT NULL DEFAULT false">>) =/= nomatch).
+    ?assert(binary:match(Migration, <<"is_read boolean DEFAULT false NOT NULL">>) =/= nomatch).
 
 read_file(Path) ->
     {ok, Bin} = file:read_file(Path),
     Bin.
 
+%% 2026 迁移基线压缩（203ec9e0，70 个迁移并为 9 个文件）后，
+%% msg_mention 的 DDL 并入 00000002_message_aux
 mention_migration_path() ->
-    case filelib:wildcard("priv/migrations/*msg_mentions.sql") of
+    case filelib:wildcard("priv/migrations/*message_aux*.up.sql") of
         [Path] ->
             Path;
         Paths when is_list(Paths), length(Paths) > 1 ->
             lists:last(lists:sort(Paths));
         [] ->
-            error({missing_mention_migration, "priv/migrations/*msg_mentions.sql"})
+            error({missing_mention_migration, "priv/migrations/*message_aux*.up.sql"})
     end.
 
 ensure_module_loaded(Module) ->

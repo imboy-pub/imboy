@@ -13,9 +13,8 @@ cache_key_combines_identifier_and_ip_test_() ->
 
         Key = login_attempt_ds:cache_key(Identifier, Ip),
 
-        % 键应该包含标识符和IP
-        ?assert(is_binary(Key)),
-        ?assertEqual(<<"test@example.com:127.0.0.1">>, Key)
+        % 键为 {login_attempt, Id, Ip} 三元组（避免二进制拼接歧义），两分量都在
+        ?assertEqual({login_attempt, Identifier, Ip}, Key)
     end).
 
 cache_key_is_deterministic_test_() ->
@@ -40,11 +39,11 @@ cache_key_is_different_for_different_inputs_test_() ->
 cache_key_with_empty_identifier_test_() ->
     ?TEST_SIMPLE(fun() ->
         Key = login_attempt_ds:cache_key(<<>>, <<"127.0.0.1">>),
-        ?assertEqual(<<":127.0.0.1">>, Key)
+        ?assertEqual({login_attempt, <<>>, <<"127.0.0.1">>}, Key)
     end).
 
 cache_key_with_empty_ip_test_() ->
     ?TEST_SIMPLE(fun() ->
         Key = login_attempt_ds:cache_key(<<"test@example.com">>, <<>>),
-        ?assertEqual(<<"test@example.com:">>, Key)
+        ?assertEqual({login_attempt, <<"test@example.com">>, <<>>}, Key)
     end).

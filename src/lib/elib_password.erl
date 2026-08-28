@@ -43,22 +43,24 @@ generate(Plaintext, hmac_sha512) ->
 %% elib_password:verify(<<"admin888">>, Pwd).
 -spec verify(iodata(), iodata()) -> {ok, []} | {error, binary()}.
 verify(Plaintext, Ciphertext) ->
+    % 统一收敛为 binary：verify_hmac_sha512 的 md5 回退路径用 binary_to_list，
+    % 列表输入会 badarg；spec 声明 iodata，两态皆须可用
+    PlainBin = iolist_to_binary(Plaintext),
     % 首先尝试解码为 hmac_sha512 格式
     Decoded = try_decode_hmac_sha512(Ciphertext),
     case Decoded of
         {ok, Salt, Ciphertext3} ->
             % 尝试新格式（SHA-256 预哈希，2026-08-26 迁移）
-            case verify_hmac_sha512(Plaintext, Salt, Ciphertext3) of
+            case verify_hmac_sha512(PlainBin, Salt, Ciphertext3) of
                 {ok, _} = Ok ->
                     Ok;
                 _ ->
-                    % 回退旧格式（MD5 预哈希，兼容存量密码）
-                    _Md5Plain = elib_hasher:md5(binary_to_list(Plaintext)),
-                    verify(Plaintext, default_md5, config_ds:env(password_salt, <<>>), Ciphertext)
+                    % 回退旧格式（MD5 预哈希，兼容存量密码；verify/4 内部自行计算 md5）
+                    verify(PlainBin, default_md5, config_ds:env(password_salt, <<>>), Ciphertext)
             end;
         _ ->
             % 回退到旧的 md5 格式（仅用于存量旧密码，password_salt 从 sys.config 读取）
-            verify(Plaintext, default_md5, config_ds:env(password_salt, <<>>), Ciphertext)
+            verify(PlainBin, default_md5, config_ds:env(password_salt, <<>>), Ciphertext)
     end.
 
 %% @private 尝试解码为 hmac_sha512 格式
