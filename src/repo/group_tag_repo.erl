@@ -14,8 +14,11 @@
 -export([list_by_group/2]).
 -export([list_by_tag_name/2]).
 -export([delete/2]).
+-export([delete_tx/3]).
 -export([delete_by_group_id/1]).
+-export([delete_by_group_id_tx/2]).
 -export([exists/2]).
+-export([exists_tx/3]).
 -export([count/0]).
 -export([count_by_group/1]).
 -export([hot_tags/1]).
@@ -113,6 +116,15 @@ delete(GroupId, TagName) when GroupId > 0, is_binary(TagName), TagName =/= <<>> 
 delete(_, _) ->
     {ok, 0}.
 
+%% @doc 事务内删除指定群组的指定标签（归档写守卫同事务）
+-spec delete_tx(any(), integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
+delete_tx(Conn, GroupId, TagName) when GroupId > 0, is_binary(TagName), TagName =/= <<>> ->
+    Tb = tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE group_id = $1 AND tag_name = $2">>,
+    elib_pg:execute(Conn, Sql, [GroupId, TagName]);
+delete_tx(_Conn, _, _) ->
+    {ok, 0}.
+
 %% @doc 删除指定群组的所有标签
 %% @param GroupId 群组ID
 %% @return {ok, AffectedRows} | {error, Reason}
@@ -122,6 +134,15 @@ delete_by_group_id(GroupId) when GroupId > 0 ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE group_id = $1">>,
     elib_pg:execute(Sql, [GroupId]);
 delete_by_group_id(_) ->
+    {ok, 0}.
+
+%% @doc 事务内删除指定群组的所有标签（归档写守卫同事务）
+-spec delete_by_group_id_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+delete_by_group_id_tx(Conn, GroupId) when GroupId > 0 ->
+    Tb = tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE group_id = $1">>,
+    elib_pg:execute(Conn, Sql, [GroupId]);
+delete_by_group_id_tx(_Conn, _) ->
     {ok, 0}.
 
 %% @doc 检查指定群组是否存在指定标签
@@ -134,6 +155,18 @@ exists(GroupId, TagName) when GroupId > 0, is_binary(TagName), TagName =/= <<>> 
     Count = elib_pg:pluck_value(Tb, <<"COUNT(*)">>, #{group_id => GroupId, tag_name => TagName}, 0),
     Count > 0;
 exists(_, _) ->
+    false.
+
+%% @doc 事务内检查指定群组是否存在指定标签（与插入同事务，消除查-插竞态）
+-spec exists_tx(any(), integer(), binary()) -> boolean().
+exists_tx(Conn, GroupId, TagName) when GroupId > 0, is_binary(TagName), TagName =/= <<>> ->
+    Tb = tablename(),
+    Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE group_id = $1 AND tag_name = $2">>,
+    case elib_pg:query(Conn, Sql, [GroupId, TagName]) of
+        {ok, [#{<<"count">> := Count}]} when Count > 0 -> true;
+        _ -> false
+    end;
+exists_tx(_Conn, _, _) ->
     false.
 
 %% @doc 统计标签总数
@@ -164,7 +197,8 @@ count_by_group(_) ->
 -spec hot_tags(integer()) -> {ok, list(map())} | {error, any()}.
 hot_tags(Limit) when Limit > 0 ->
     Tb = tablename(),
-    Sql = <<"SELECT tag_name, COUNT(*) as count FROM ", Tb/binary,
+    Sql =
+        <<"SELECT tag_name, COUNT(*) as count FROM ", Tb/binary,
             " GROUP BY tag_name ORDER BY count DESC LIMIT $1">>,
     case elib_pg:query(Sql, [Limit]) of
         {ok, Rows} -> {ok, Rows};

@@ -12,6 +12,7 @@
 -export([handle_action/3]).
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API
@@ -61,6 +62,12 @@ add(Req0, State) ->
                             elib_response:success(
                                 Req0, #{<<"tag_id">> => TagId}, <<"标签添加成功"/utf8>>
                             );
+                        {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                            elib_response:error(
+                                Req0,
+                                imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                                ?ERR_WORKSPACE_ARCHIVED
+                            );
                         {error, Reason} ->
                             elib_response:error(Req0, Reason)
                     end
@@ -91,6 +98,12 @@ remove(Req0, State) ->
                     case group_tag_logic:remove(Gid3, Uid, TagName2) of
                         ok ->
                             elib_response:success(Req0, #{}, <<"标签删除成功"/utf8>>);
+                        {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                            elib_response:error(
+                                Req0,
+                                imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED),
+                                ?ERR_WORKSPACE_ARCHIVED
+                            );
                         {error, Reason} ->
                             elib_response:error(Req0, Reason)
                     end

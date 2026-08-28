@@ -6,6 +6,7 @@
 %%%
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 %% 导出函数
 -export([add/3]).
@@ -40,7 +41,7 @@ add(GroupId, Uid, TagName) ->
     MemberUids = group_ds:member_uids(GroupId),
     case lists:member(Uid, MemberUids) of
         true ->
-            group_tag_ds:add(GroupId, Uid, TagName);
+            normalize_write_result(group_tag_ds:add(GroupId, Uid, TagName));
         false ->
             {error, <<"只有群成员可以添加标签"/utf8>>}
     end.
@@ -62,7 +63,7 @@ remove(GroupId, Uid, TagName) ->
     MemberUids = group_ds:member_uids(GroupId),
     case lists:member(Uid, MemberUids) of
         true ->
-            case group_tag_ds:remove(GroupId, Uid, TagName) of
+            case normalize_write_result(group_tag_ds:remove(GroupId, Uid, TagName)) of
                 ok -> ok;
                 {error, Reason} -> {error, Reason}
             end;
@@ -106,3 +107,11 @@ hot_tags(Limit) when Limit > 0 ->
     group_tag_ds:hot_tags(Limit);
 hot_tags(_) ->
     {ok, []}.
+
+%% @doc T7 归档写守卫：DS 写事务返回的稳定错误 {error, {980, Msg}} 归一为
+%% 既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}（handler 按 980 识别），
+%% 其余结果原样透传。
+normalize_write_result({error, {?ERR_WORKSPACE_ARCHIVED, _Msg}}) ->
+    {error, ?ERR_WORKSPACE_ARCHIVED};
+normalize_write_result(Other) ->
+    Other.

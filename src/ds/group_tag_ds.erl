@@ -3,6 +3,11 @@
 %%%
 % group_tag_ds 是群组标签数据服务层
 % 封装群组标签的数据操作和业务逻辑
+%
+% T7 归档写守卫（P0 后续批）：内容写路径（加/删标签）经
+% workspace_guard:write_tx 同事务守卫（{group, Gid} → workspace 行锁），
+% 归档后拒绝（980）；add 的去重检查与插入同事务（顺带消除查-插竞态）；
+% 查询路径不加守卫。
 %%%
 
 -include("log.hrl").
@@ -37,22 +42,24 @@ add(_GroupId, _Uid, TagName) when TagName =:= <<>> ->
 add(_GroupId, _Uid, TagName) when byte_size(TagName) > 50 ->
     {error, <<"标签名过长，最多50个字符"/utf8>>};
 add(GroupId, Uid, TagName) ->
-    % 检查标签是否已存在
-    case group_tag_repo:exists(GroupId, TagName) of
-        true ->
-            {error, <<"标签已存在"/utf8>>};
-        false ->
-            Data = #{
-                group_id => GroupId,
-                tag_name => TagName,
-                created_by => Uid,
-                created_at => elib_dt:now()
-            },
-            case group_tag_repo:add(undefined, Data) of
-                {ok, TagId} -> {ok, TagId};
-                {error, Reason} -> {error, ec_cnv:to_binary(Reason)}
-            end
-    end.
+    %% T7 归档写守卫：{group, GroupId} 行锁 + 去重检查 + 插入同事务
+    workspace_guard:write_tx({group, GroupId}, fun(Conn) ->
+        case group_tag_repo:exists_tx(Conn, GroupId, TagName) of
+            true ->
+                {error, <<"标签已存在"/utf8>>};
+            false ->
+                Data = #{
+                    group_id => GroupId,
+                    tag_name => TagName,
+                    created_by => Uid,
+                    created_at => elib_dt:now()
+                },
+                case group_tag_repo:add(Conn, Data) of
+                    {ok, TagId} -> {ok, TagId};
+                    {error, Reason} -> {error, ec_cnv:to_binary(Reason)}
+                end
+        end
+    end).
 
 %% @doc 删除群组标签
 %% @param GroupId 群组ID
@@ -60,10 +67,17 @@ add(GroupId, Uid, TagName) ->
 %% @param TagName 标签名称
 %% @return ok | {error, Reason}
 -spec remove(integer(), integer(), binary()) -> ok | {error, binary()}.
+remove(GroupId, _Uid, _TagName) when GroupId =< 0 ->
+    {error, <<"无效的群组ID"/utf8>>};
 remove(_GroupId, _Uid, TagName) when TagName =:= <<>> ->
     {error, <<"标签名不能为空"/utf8>>};
 remove(GroupId, _Uid, TagName) ->
-    case group_tag_repo:delete(GroupId, TagName) of
+    %% T7 归档写守卫：{group, GroupId} 行锁与删除同事务
+    case
+        workspace_guard:write_tx({group, GroupId}, fun(Conn) ->
+            group_tag_repo:delete_tx(Conn, GroupId, TagName)
+        end)
+    of
         {ok, _} -> ok;
         {error, Reason} -> {error, ec_cnv:to_binary(Reason)}
     end.
@@ -124,4 +138,8 @@ list_by_group(Gid, Column) -> group_tag_repo:list_by_group(Gid, Column).
 count_by_group(Gid) -> group_tag_repo:count_by_group(Gid).
 
 -spec delete(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.
-delete(GroupId, TagName) -> group_tag_repo:delete(GroupId, TagName).
+delete(GroupId, TagName) ->
+    %% T7 归档写守卫：{group, GroupId}（adm 治理 G3 入口）
+    workspace_guard:write_tx({group, GroupId}, fun(Conn) ->
+        group_tag_repo:delete_tx(Conn, GroupId, TagName)
+    end).
