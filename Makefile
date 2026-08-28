@@ -257,9 +257,15 @@ docs-stop:
 #       make eunit-local t=elib_uri_tests   # 单模块
 # 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
+# worktree 兼容：code:lib_dir/priv_dir 的 lib 位注册要求 code path 中 ebin 的
+# 父目录名与 app 同名（imboy/ebin）。git worktree 根名是 rg-*，-pa ebin 注册不了
+# lib 位 → code:priv_dir(imboy) bad_name → imboy app 启动即崩
+# （ensure_dev_rsa_keypair / imboy_migrate 均依赖 priv_dir），?TEST_WITH_DB 全
+# skip。补 -pa imboy/ebin：worktree 内 `ln -s . imboy` 后 lib 位可解析；主树无
+# imboy/ 子目录，该 -pa 指向不存在目录被 erl 静默忽略，零副作用。
 .PHONY: eunit-local
 eunit-local:
-	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
+	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa imboy/ebin -pa ebin -pa test"
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担

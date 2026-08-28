@@ -5,7 +5,12 @@
 %
 % 职责：webhook 编排（生成 token + 建 system_bot 用户 + bot 加频道编辑 + 落表）、
 %       token 查询、停用、列表。屏蔽 repo 存储细节。
-% 范式：建 bot 账号镜像 ai_agent_ds:create_agent_user（建 user 行 + 标 account_type=2）。
+% 事务（TX-01）：create/3 四步写【建 system_bot user 行 + 标 account_type=2 +
+%       bot 加频道编辑(role=1) + 落 channel_webhook 表】收进
+%       workspace_guard:write_tx 单事务，任一步失败整体回滚，零孤儿行
+%       （原 bot user 两写在事务外 auto-commit，事务失败时残留无主 bot user）。
+% 范式：镜像 ai_agent_ds / bot_ds 的 with_tx 收口（user_repo:create_tx/update_tx
+%       尊重传入 id，user 行 id 与 bot_uid/webhook.bot_uid 贯穿同一 id）。
 %%%
 
 -export([create/3]).
@@ -22,58 +27,78 @@
 %% API
 %% ===================================================================
 
-%% @doc 创建 webhook：归档前置检查（避免建孤儿 bot user）→ 生成 token →
-%% 建 system_bot 用户 → 单事务【归档写守卫（FOR UPDATE 行锁）+ bot 加频道
-%% 编辑(role=1) + 落 channel_webhook 表】。token 仅创建时明文返回一次。
-%% ponytail: bot user 行建在事务外（user 域非 workspace 资源，回滚无意义）；
-%%   事务失败时 bot user 可能残留（镜像 ai_agent_ds:create 的取舍），管理端
-%%   重建即可；归档拒绝由前置检查提前短路（事务内守卫为权威兜底）。
+%% @doc 创建 webhook：归档前置检查（避免归档频道上白跑）→ 生成 token →
+%% 单事务【建 system_bot 用户 + 标 account_type=2 + 归档写守卫（FOR UPDATE 行锁）
+%% + bot 加频道编辑(role=1) + 落 channel_webhook 表】。token 仅创建时明文返回一次。
+%% TX-01 事务收敛：bot user 两写并入同一事务（镜像 ai_agent_ds/bot_ds 收口），
+%%   任一步失败整体回滚——杜绝"事务失败残留无主 bot user"（原 ponytail 取舍）
+%%   与"webhook/admin 行已提交而 bot user 缺失"两类孤儿；因此不再需要事务后
+%%   channel_admin 尽力补偿（回滚即撤销全部四写）。
 -spec create(integer(), binary(), integer()) ->
     {ok, map()} | {error, binary() | {integer(), binary()}}.
 create(ChannelId, Name, CreatorUid) ->
-    %% T7 归档写守卫（A2 收口）：前置短路，避免归档频道上白建 bot user；
-    %% 权威拒绝在下方事务内（ensure_writable_tx 行锁与落表原子）。
+    %% T7 归档写守卫（A2 收口）：前置短路（快速失败），权威拒绝在事务内
+    %% （ensure_writable_tx 行锁与全部写原子）。
     case workspace_guard:ensure_writable({channel, ChannelId}) of
         {error, Reason} ->
             {error, Reason};
         ok ->
             Token = gen_token(),
             BotUid = elib_tsid:generate(user),
-            case create_bot_user(BotUid, Name) of
-                ok ->
-                    AdminData = #{
-                        channel_id => ChannelId,
-                        user_id => BotUid,
-                        role => 1,
-                        created_at => elib_dt:now()
-                    },
+            AdminData = #{
+                channel_id => ChannelId,
+                user_id => BotUid,
+                role => 1,
+                created_at => elib_dt:now()
+            },
+            case
+                workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+                    ok = workspace_guard:abort_on_error(
+                        create_bot_user_tx(Conn, BotUid, Name)
+                    ),
+                    ok = workspace_guard:abort_on_error(
+                        case channel_admin_repo:add(Conn, AdminData) of
+                            {ok, _} -> ok;
+                            {error, AddReason} -> {error, {channel_admin, AddReason}}
+                        end
+                    ),
+                    %% 第 4 步失败同样必须整体回滚：不能把 {error, _} 作为
+                    %% WriteFun 的正常返回值——epgsql:with_transaction 视为成功
+                    %% 而 COMMIT，会留下 bot user + channel_admin 孤儿（step4
+                    %% 故障注入用例抓出）。失败抛 abort_tx，成功值原样透传。
                     case
-                        workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
-                            case channel_admin_repo:add(Conn, AdminData) of
-                                {ok, _} ->
-                                    insert_webhook_tx(
-                                        Conn, ChannelId, Name, Token, BotUid, CreatorUid
-                                    );
-                                {error, Reason} ->
-                                    {error, Reason}
-                            end
-                        end)
+                        insert_webhook_tx(
+                            Conn, ChannelId, Name, Token, BotUid, CreatorUid
+                        )
                     of
                         {ok, _} = Ok ->
                             Ok;
-                        %% 稳定错误码（980 竞态兜底等）透传 + 尽力回滚编辑授权
-                        {error, {Code, Msg}} when is_integer(Code) ->
-                            _ = channel_admin_repo:delete(ChannelId, BotUid),
-                            {error, {Code, Msg}};
-                        {error, Reason} ->
-                            %% 尽力回滚频道编辑授权，避免留下无主且现有管理端
-                            %% 不可发现的 channel_admin 权限残留（security-review M2）
-                            _ = channel_admin_repo:delete(ChannelId, BotUid),
-                            {error, elib_cnv:safe_to_binary(Reason)}
-                    end;
+                        {error, InsertReason} ->
+                            throw({abort_tx, {webhook_insert, InsertReason}})
+                    end
+                end)
+            of
+                {ok, _} = Ok ->
+                    Ok;
+                %% 稳定错误码（980 归档拒绝/竞态兜底等）透传
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    {error, {Code, Msg}};
+                %% 单层匹配：elib_pg:with_tx 捕获 throw({abort_tx, Payload}) 后
+                %% ROLLBACK 并原样返回 {error, Payload}（不再额外包裹一层）
+                {error, {channel_admin, Reason}} ->
+                    ?ERROR_LOG(
+                        "channel_webhook_ds:create admin error ~p~n",
+                        [Reason]
+                    ),
+                    {error, <<"创建 webhook 失败"/utf8>>};
+                {error, {webhook_insert, Reason}} ->
+                    ?ERROR_LOG(
+                        "channel_webhook_ds:create insert abort ~p~n",
+                        [Reason]
+                    ),
+                    {error, elib_cnv:safe_to_binary(Reason)};
                 {error, Reason} ->
-                    ?ERROR_LOG("channel_webhook_ds:create bot user error ~p~n", [Reason]),
-                    {error, <<"创建 Bot 账号失败"/utf8>>}
+                    {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 
@@ -109,19 +134,29 @@ list_by_channel(ChannelId) ->
 %% Internal
 %% ===================================================================
 
-%% 建 bot 用户行并标记 account_type=2（镜像 ai_agent_ds:create_agent_user）
--spec create_bot_user(integer(), binary()) -> ok | {error, term()}.
-create_bot_user(BotUid, Nickname) ->
+%% 建 bot 用户行并标记 account_type=2（TX-01：事务内，镜像 bot_ds/create_bot_user_tx；
+%% create_tx 尊重传入 id——user 行 id 与 bot_uid/webhook.bot_uid 贯穿同一 id，
+%% update_tx 影响 0 行即回滚，杜绝 id 脱钩静默损坏）
+-spec create_bot_user_tx(any(), integer(), binary()) -> ok | {error, term()}.
+create_bot_user_tx(Conn, BotUid, Nickname) when BotUid > 0 ->
     Account = <<"chbot_", (ec_cnv:to_binary(BotUid))/binary>>,
-    case user_repo:create(#{id => BotUid, nickname => Nickname, account => Account}) of
-        ok ->
-            case user_repo:update(BotUid, #{account_type => ?ACCOUNT_TYPE_SYSTEM_BOT}) of
-                {ok, _} -> ok;
-                {error, Reason} -> {error, Reason}
+    case user_repo:create_tx(Conn, #{id => BotUid, nickname => Nickname, account => Account}) of
+        {ok, BotUid} ->
+            case user_repo:update_tx(Conn, BotUid, #{account_type => ?ACCOUNT_TYPE_SYSTEM_BOT}) of
+                {ok, 1} ->
+                    ok;
+                {ok, Other} ->
+                    {error, {account_type_rows, Other}};
+                {error, Reason} ->
+                    {error, Reason}
             end;
+        {ok, Other} ->
+            {error, {id_mismatch, Other}};
         {error, Reason} ->
             {error, Reason}
-    end.
+    end;
+create_bot_user_tx(_, _, _) ->
+    {error, invalid_bot_uid}.
 
 -spec insert_webhook_tx(any(), integer(), binary(), binary(), integer(), integer()) ->
     {ok, map()} | {error, binary()}.

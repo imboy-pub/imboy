@@ -10,18 +10,32 @@
 
 %% ===================================================================
 %% create/1 — 建号 + 绑定编排
+%% TX-01：三步写收进 elib_pg:with_tx 单事务；meck 用例以 fake_conn 模拟
+%% 事务连接（abort_tx 归一 {error, Reason}，与 elib_pg:with_tx 语义一致），
+%% 真库故障注入矩阵见文件末尾 TX-01 段（?TEST_WITH_DB 直连 SQL 断言）。
 %% ===================================================================
 
 create_ok_promotes_user_and_binds_test_() ->
     ?WITH_MECKS(
         [
-            {elib_tsid, [{'generate', 0, fun() -> 999 end}]},
+            {elib_tsid, [{'generate', 1, fun(user) -> 999 end}]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(fake_conn)
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
+            ]},
             {user_repo, [
-                {'create', 1, fun(_) -> ok end},
-                {'update', 2, fun(_Uid, _Data) -> {ok, 1} end}
+                {'create_tx', 2, fun(_Conn, #{id := 999}) -> {ok, 999} end},
+                {'update_tx', 3, fun(_Conn, 999, #{account_type := 1}) -> {ok, 1} end}
             ]},
             {ai_agent_repo, [
-                {'upsert', 1, fun(#{user_id := Uid}) -> {ok, [#{<<"user_id">> => Uid}]} end}
+                {'upsert_tx', 2, fun(_Conn, #{user_id := 999}) ->
+                    {ok, [#{<<"user_id">> => 999}]}
+                end}
             ]}
         ],
         fun() ->
@@ -32,29 +46,29 @@ create_ok_promotes_user_and_binds_test_() ->
             },
             {ok, #{<<"user_id">> := Uid}} = ai_agent_ds:create(Cfg),
             ?assertEqual(999, Uid),
-            %% account_type 被标记为 1（agent）
-            ?assert(meck:called(user_repo, update, [Uid, #{account_type => 1}])),
+            %% account_type 被标记为 1（agent），同一事务连接贯穿三步
+            ?assert(meck:called(user_repo, update_tx, [fake_conn, 999, #{account_type => 1}])),
             %% ai_agent 绑定被调用（provider 透传，trigger_policy 编码为 JSON binary）
-            ?assert(meck:called(ai_agent_repo, upsert, '_'))
+            ?assert(meck:called(ai_agent_repo, upsert_tx, '_'))
         end
     ).
 
 create_rejects_empty_nickname_test_() ->
     ?WITH_MECKS(
-        [{user_repo, [{'create', 1, fun(_) -> ok end}]}],
+        [{user_repo, [{'create_tx', 2, fun(_Conn, _Data) -> {ok, 1} end}]}],
         fun() ->
             ?assertEqual(
                 {error, <<"nickname 不能为空"/utf8>>},
                 ai_agent_ds:create(#{<<"provider">> => <<"qianfan">>})
             ),
             %% 校验失败不应触碰建号
-            ?assertNot(meck:called(user_repo, create, '_'))
+            ?assertNot(meck:called(user_repo, create_tx, '_'))
         end
     ).
 
 create_rejects_empty_provider_test_() ->
     ?WITH_MECKS(
-        [{user_repo, [{'create', 1, fun(_) -> ok end}]}],
+        [{user_repo, [{'create_tx', 2, fun(_Conn, _Data) -> {ok, 1} end}]}],
         fun() ->
             ?assertEqual(
                 {error, <<"provider 不能为空"/utf8>>},
@@ -529,3 +543,239 @@ list_without_category_falls_back_to_page2_test_() ->
             ?assert(meck:called(ai_agent_repo, page, [2, 10]))
         end
     ).
+
+%% ===================================================================
+%% TX-01 事务收敛 — 真库直连（scratch 库）
+%% 故障注入矩阵 + 正常路径 + 并发幂等；断言全部直连 SQL。
+%% ===================================================================
+
+tx01_create_success_persists_user_and_agent_rows_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Account = tx01_unique_account(<<"ok">>),
+        tx01_cleanup_account(Account),
+        {ok, #{<<"user_id">> := Uid}} =
+            ai_agent_ds:create(#{
+                <<"nickname">> => <<"真库 Agent"/utf8>>,
+                <<"provider">> => <<"qianfan">>,
+                <<"account">> => Account,
+                <<"trigger_policy">> => #{<<"mention">> => true}
+            }),
+        %% user 行存在且 account_type=1、account 透传
+        {ok, [User]} =
+            elib_pg:query(
+                <<"SELECT id, account, account_type, nickname FROM ",
+                    (user_repo:tablename())/binary, " WHERE id = $1">>,
+                [Uid]
+            ),
+        ?assertEqual(1, maps:get(<<"account_type">>, User)),
+        ?assertEqual(Account, maps:get(<<"account">>, User)),
+        %% ai_agent 绑定行存在且 provider/status 正确
+        {ok, [Agent]} =
+            elib_pg:query(
+                <<
+                    "SELECT user_id, provider, status, trigger_policy FROM ai_agent"
+                    " WHERE user_id = $1"
+                >>,
+                [Uid]
+            ),
+        ?assertEqual(<<"qianfan">>, maps:get(<<"provider">>, Agent)),
+        ?assertEqual(1, maps:get(<<"status">>, Agent)),
+        tx01_cleanup_account(Account)
+    end).
+
+tx01_step1_user_insert_failure_leaves_zero_orphans_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Account = tx01_unique_account(<<"s1">>),
+        tx01_cleanup_account(Account),
+        {Result, Uid} = tx01_run_create_with_injection(step1, Account),
+        ?assertEqual({error, <<"创建 Agent 账号失败"/utf8>>}, Result),
+        tx01_assert_zero_orphans(Uid, Account),
+        tx01_cleanup_account(Account)
+    end).
+
+tx01_step2_account_type_failure_leaves_zero_orphans_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Account = tx01_unique_account(<<"s2">>),
+        tx01_cleanup_account(Account),
+        {Result, Uid} = tx01_run_create_with_injection(step2, Account),
+        ?assertEqual({error, <<"创建 Agent 账号失败"/utf8>>}, Result),
+        tx01_assert_zero_orphans(Uid, Account),
+        tx01_cleanup_account(Account)
+    end).
+
+tx01_step3_bind_failure_leaves_zero_orphans_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Account = tx01_unique_account(<<"s3">>),
+        tx01_cleanup_account(Account),
+        {Result, Uid} = tx01_run_create_with_injection(step3, Account),
+        ?assertEqual({error, <<"绑定 Agent 元数据失败"/utf8>>}, Result),
+        tx01_assert_zero_orphans(Uid, Account),
+        tx01_cleanup_account(Account)
+    end).
+
+%% 重试幂等：第 3 步失败整体回滚后，重跑（同参数）成功且无残留
+tx01_retry_after_step3_failure_succeeds_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Account = tx01_unique_account(<<"retry">>),
+        tx01_cleanup_account(Account),
+        {Result, Uid} = tx01_run_create_with_injection(step3, Account),
+        ?assertEqual({error, <<"绑定 Agent 元数据失败"/utf8>>}, Result),
+        tx01_assert_zero_orphans(Uid, Account),
+        {ok, #{<<"user_id">> := _Uid2}} =
+            ai_agent_ds:create(#{
+                <<"nickname">> => <<"重试 Agent"/utf8>>,
+                <<"provider">> => <<"qianfan">>,
+                <<"account">> => Account
+            }),
+        tx01_cleanup_account(Account)
+    end).
+
+%% 并发重复：同 account（user.account 唯一约束为幂等 identifier）并发两次
+%% create → 恰一个实体（一个 {ok,_}，一个整体回滚 {error,_}）
+%% 并发用例真库 + spawn 往返可能超过 eunit 默认 5s：timeout 须经
+%% TEST_WITH_DB_TIMEOUT 放在 setup 体内（外包 {timeout, T, ?TEST_WITH_DB(...)}
+%% 不生效——带 fixture 的 group 不下推 timeout，见 eunit_setup.hrl 注释）
+tx01_duplicate_account_concurrent_exactly_one_entity_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        Account = tx01_unique_account(<<"conc">>),
+        tx01_cleanup_account(Account),
+        Parent = self(),
+        Worker = fun() ->
+            Parent !
+                {tx01_done,
+                    ai_agent_ds:create(#{
+                        <<"nickname">> => <<"并发 Agent"/utf8>>,
+                        <<"provider">> => <<"qianfan">>,
+                        <<"account">> => Account
+                    })}
+        end,
+        spawn(Worker),
+        spawn(Worker),
+        Results = tx01_collect_results(2, []),
+        OkCount = length([X || {ok, X} <- Results]),
+        ?assertEqual(1, OkCount, {results, Results}),
+        %% 恰一实体：user 表恰 1 行（同 account），ai_agent 表恰 1 行
+        {ok, [#{<<"n">> := 1, <<"uid">> := Uid}]} =
+            elib_pg:query(
+                <<"SELECT id AS uid, count(*) AS n FROM ", (user_repo:tablename())/binary,
+                    " WHERE account = $1 GROUP BY id">>,
+                [Account]
+            ),
+        {ok, [#{<<"n">> := 1}]} =
+            elib_pg:query(
+                <<"SELECT count(*) AS n FROM ai_agent WHERE user_id = $1">>,
+                [Uid]
+            ),
+        tx01_cleanup_account(Account)
+    end).
+
+%% ===================================================================
+%% TX-01 Internal — 数据准备、断言与故障注入
+%% ===================================================================
+
+tx01_unique_account(Prefix) ->
+    <<
+        "tx01_agent_",
+        Prefix/binary,
+        "_",
+        (integer_to_binary(erlang:unique_integer([positive])))/binary
+    >>.
+
+tx01_cleanup_account(Account) ->
+    {ok, Uids} =
+        elib_pg:query(
+            <<"SELECT id FROM ", (user_repo:tablename())/binary, " WHERE account = $1">>,
+            [Account]
+        ),
+    lists:foreach(
+        fun(#{<<"id">> := Uid}) ->
+            _ = elib_pg:query(<<"DELETE FROM ai_agent WHERE user_id = $1">>, [Uid]),
+            _ = elib_pg:query(
+                <<"DELETE FROM ", (user_repo:tablename())/binary, " WHERE id = $1">>,
+                [Uid]
+            )
+        end,
+        Uids
+    ),
+    ok.
+
+%% 零孤儿断言：user 行（含 account_type 标记）与 ai_agent 行全查空（直连 SQL）
+tx01_assert_zero_orphans(Uid, Account) ->
+    {ok, UserRows} =
+        elib_pg:query(
+            <<"SELECT id, account_type FROM ", (user_repo:tablename())/binary,
+                " WHERE id = $1 OR account = $2">>,
+            [Uid, Account]
+        ),
+    ?assertEqual([], UserRows, {orphan_user_rows, UserRows}),
+    {ok, AgentRows} =
+        elib_pg:query(
+            <<"SELECT user_id FROM ai_agent WHERE user_id = $1">>,
+            [Uid]
+        ),
+    ?assertEqual([], AgentRows, {orphan_agent_rows, AgentRows}),
+    ok.
+
+%% 收齐 N 条结果立即返回；兜底 40s（外层 TEST_WITH_DB_TIMEOUT 60s 内）
+tx01_collect_results(N, Acc) when N > 0 ->
+    receive
+        {tx01_done, Result} -> tx01_collect_results(N - 1, [Result | Acc])
+    after 40000 ->
+        lists:reverse([{tx01_timeout, N} | Acc])
+    end;
+tx01_collect_results(_, Acc) ->
+    lists:reverse(Acc).
+
+%% 故障注入：meck 只覆盖被 expect 的函数（passthrough 其余走真库），
+%% 注入 fun 先捕获本次要写入的 user id（供零孤儿断言精确定位），再返回 error。
+%% 返回 {CreateResult, CapturedUid}。
+tx01_run_create_with_injection(Step, Account) ->
+    Ets = ets:new(tx01_agent_capture, [public, set]),
+    MeckMod =
+        case Step of
+            step3 -> ai_agent_repo;
+            _ -> user_repo
+        end,
+    Expectations =
+        case Step of
+            step1 ->
+                [
+                    {'create_tx', 2, fun(_Conn, Data) ->
+                        ets:insert(Ets, {uid, maps:get(id, Data)}),
+                        {error, {injected, step1}}
+                    end}
+                ];
+            step2 ->
+                [
+                    {'create_tx', 2, fun(Conn, Data) ->
+                        Ret = meck:passthrough([Conn, Data]),
+                        ets:insert(Ets, {uid, element(2, Ret)}),
+                        Ret
+                    end},
+                    {'update_tx', 3, fun(_Conn, Id, _Data) ->
+                        ets:insert(Ets, {uid, Id}),
+                        {error, {injected, step2}}
+                    end}
+                ];
+            step3 ->
+                [
+                    {'upsert_tx', 2, fun(_Conn, Data) ->
+                        ets:insert(Ets, {uid, maps:get(user_id, Data)}),
+                        {error, {injected, step3}}
+                    end}
+                ]
+        end,
+    _ = meck_helper:setup_mock(MeckMod, Expectations),
+    Result =
+        try
+            ai_agent_ds:create(#{
+                <<"nickname">> => <<"注入 Agent"/utf8>>,
+                <<"provider">> => <<"qianfan">>,
+                <<"account">> => Account
+            })
+        after
+            meck_helper:cleanup_mock(MeckMod)
+        end,
+    [{uid, Uid}] = ets:lookup(Ets, uid),
+    ets:delete(Ets),
+    {Result, Uid}.
