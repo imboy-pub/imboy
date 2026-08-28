@@ -43,6 +43,7 @@
 
 -include("log.hrl").
 -include("group_role.hrl").
+-include("error_code.hrl").
 
 %% @doc 群行出站 DTO 边界（ID 已直接以 integer 返回，无需转换）。
 %% 统一剥除 chat_aes_key（群消息密钥列）：detail 等端点走 SELECT *，
@@ -192,6 +193,11 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, _G) ->
                 #{<<"id">> := _} ->
                     % 使用事务更新群主和双方角色
                     elib_pg:with_tx(fun(Conn) ->
+                        %% T7 归档写守卫（P0 收口）：转让与守卫同事务
+                        %% （{group, Gid} 行锁；personal 群直通）
+                        ok = workspace_guard:abort_on_error(
+                            workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+                        ),
                         case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
                             ok ->
                                 case
@@ -302,6 +308,10 @@ do_transfer(CurrentUid, Gid, NewOwnerUid, OwnerUid, KeepAsAdmin, _G) ->
                 #{<<"id">> := _} ->
                     % 使用事务更新群主和双方角色
                     elib_pg:with_tx(fun(Conn) ->
+                        %% T7 归档写守卫（P0 收口）：转让与守卫同事务
+                        ok = workspace_guard:abort_on_error(
+                            workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+                        ),
                         case group_ds:update_owner_tx(Conn, Gid, NewOwnerUid) of
                             ok ->
                                 % 更新原群主角色
@@ -501,6 +511,9 @@ set_e2ee_mode(Uid, Gid, 1) ->
                         save
                     ),
                     ok;
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    %% T7 收口：归档守卫（980）等稳定错误码原样透传
+                    {error, {Code, Msg}};
                 {error, Reason} ->
                     %% 内部 PG 错误详情只进日志，不透传客户端（security-reviewer M1）
                     _ = ?ERROR_LOG([set_e2ee_mode_update_failed, Gid, Reason]),
@@ -658,6 +671,12 @@ workspace_add_tx(Uid, Type, MemberUids4, WorkspaceId) ->
     Now = elib_dt:now(),
     case
         elib_pg:with_tx(fun(Conn) ->
+            %% T7 归档写守卫（P0 收口）：workspace 域建群 = 对 workspace 的写入，
+            %% archived 时整事务拒绝（{workspace, WsId} 行锁与建群同事务；
+            %% 镜像 project_ds:create 模板）。
+            ok = workspace_guard:abort_on_error(
+                workspace_guard:ensure_writable_tx(Conn, {workspace, WorkspaceId})
+            ),
             Gid = elib_tsid:generate(group_info),
             Gid2 = group_ds:create_scoped_group(
                 Conn, Gid, Uid, Now, Type, <<"workspace">>, WorkspaceId
@@ -675,6 +694,8 @@ workspace_add_tx(Uid, Type, MemberUids4, WorkspaceId) ->
     of
         {ok, Gid2} ->
             {ok, Gid2};
+        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+            {error, ?ERR_WORKSPACE_ARCHIVED};
         {error, workspace_membership_required} ->
             {error, {409, <<"workspace_membership_required：初始成员必须先是该工作区的 active 工作区成员"/utf8>>}};
         {error, Reason} ->

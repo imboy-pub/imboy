@@ -482,6 +482,12 @@ dissolve_group(Uid, Gid, _, G) ->
 
     case
         elib_pg:with_tx(fun(Conn) ->
+            %% T7 归档写守卫（P0 收口）：解散 = workspace 域群的最大写操作，
+            %% archived 时整事务拒绝（{group, Gid} 行锁与解散同事务）；
+            %% personal 群由 resolver 直通，零行为变化。
+            ok = workspace_guard:abort_on_error(
+                workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+            ),
             % 添加群日志
             case
                 group_log_repo:add(
@@ -557,6 +563,9 @@ dissolve_group(Uid, Gid, _, G) ->
             Payload = #{<<"gid">> => Gid},
             msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
             ok;
+        {980, _ArchivedMsg} = Archived ->
+            %% T7 收口：归档拒绝（稳定错误码 980）原样透传，不吞成通用失败
+            {error, Archived};
         Err ->
             ?ERROR_LOG([dissolve_group_tx_failed, Gid, Uid, Err]),
             {error, <<"解散群组失败"/utf8>>}
@@ -625,8 +634,11 @@ exists(Gid) ->
 %% @return {ok, Count} | {error, Reason}
 -spec update_by_id(integer(), map()) -> {ok, integer()} | {error, any()}.
 update_by_id(Gid, Data) ->
-    Tb = group_repo:tablename(),
-    elib_pg:update(Tb, Data, <<"id = $1">>, [Gid]).
+    %% T7 归档写守卫（P0 收口）：群资料更新（edit/set_e2ee_mode 共用本入口）
+    %% 与守卫同事务（{group, Gid} → workspace 行锁）；personal 群直通。
+    workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+        group_repo:update_by_id_tx(Conn, Gid, Data)
+    end).
 
 %% @doc 插入群组记录
 %% @param Data 群组数据

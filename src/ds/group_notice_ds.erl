@@ -3,18 +3,23 @@
 % group_notice 数据服务模块
 % group_notice data service module
 % 提供群公告相关的数据服务，封装 Repo 层操作
+%
+% T7 归档写守卫（R3 #17 收口）：全部内容写路径（insert/update/soft_delete/
+% pin/unpin）经 workspace_guard:write_tx 与守卫同事务提交（group/group_notice
+% → workspace 行锁），消除原 logic 层前置检查的"检查-写窗口"；
+% mark_as_read（派生已读计数，R3 #18）保持 logic 层 skip 语义不在此收口。
 %%%
 
 %% API
--export ([insert/1]).
--export ([update/2]).
--export ([find_by_id/1]).
--export ([list_by_group_id/3]).
--export ([count_by_group_id/1]).
--export ([soft_delete/1]).
--export ([pin/1]).
--export ([unpin/1]).
--export ([mark_as_read/1]).
+-export([insert/1]).
+-export([update/2]).
+-export([find_by_id/1]).
+-export([list_by_group_id/3]).
+-export([count_by_group_id/1]).
+-export([soft_delete/1]).
+-export([pin/1]).
+-export([unpin/1]).
+-export([mark_as_read/1]).
 -export([page/5]).
 -export([latest_published/2]).
 
@@ -44,12 +49,11 @@ insert(Data) ->
                 false ->
                     {error, {string_too_long, field}};
                 true ->
-                    case group_notice_repo:insert(Data) of
-                        {ok, NoticeId} ->
-                            {ok, NoticeId};
-                        {error, Reason} ->
-                            {error, Reason}
-                    end
+                    %% T7 归档写守卫（R3 #17 收口）：{group, Gid} 行锁与写入同事务
+                    Gid = maps:get(group_id, Data),
+                    workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                        group_notice_repo:insert_tx(Conn, Data)
+                    end)
             end
     end.
 
@@ -68,7 +72,13 @@ update(NoticeId, Data) when is_integer(NoticeId), NoticeId > 0 ->
                 false ->
                     {error, {string_too_long, field}};
                 true ->
-                    case group_notice_repo:update(NoticeId, Data) of
+                    %% T7 归档写守卫（R3 #17 收口）：{group_notice, Id} → workspace
+                    %% 行锁（FOR UPDATE）与写入同事务；{ok,1}/{ok,0} 语义保持。
+                    case
+                        workspace_guard:write_tx({group_notice, NoticeId}, fun(Conn) ->
+                            group_notice_repo:update_tx(Conn, NoticeId, Data)
+                        end)
+                    of
                         {ok, 1} ->
                             {ok, NoticeId};
                         {ok, 0} ->
@@ -78,7 +88,10 @@ update(NoticeId, Data) when is_integer(NoticeId), NoticeId > 0 ->
                     end
             end;
         false ->
-            group_notice_repo:update(NoticeId, Data)
+            %% 无 title/body 字段的更新（publish 置状态等）：守卫同事务，结果原样
+            workspace_guard:write_tx({group_notice, NoticeId}, fun(Conn) ->
+                group_notice_repo:update_tx(Conn, NoticeId, Data)
+            end)
     end;
 update(_NoticeId, _Data) ->
     {error, invalid_notice_id}.
@@ -122,33 +135,30 @@ count_by_group_id(GroupId) ->
 %% @return ok | {error, Reason}
 -spec soft_delete(integer()) -> ok | {error, term()}.
 soft_delete(NoticeId) ->
-    case group_notice_repo:soft_delete(NoticeId) of
-        {ok, 1} -> ok;
-        {ok, 0} -> {error, not_found};
-        {error, Reason} -> {error, Reason}
-    end.
+    %% T7 归档写守卫（R3 #17 收口）：守卫与写入同事务
+    notice_write_tx(NoticeId, fun(Conn) ->
+        group_notice_repo:soft_delete_tx(Conn, NoticeId)
+    end).
 
 %% @doc 置顶公告
 %% @param NoticeId 公告ID
 %% @return ok | {error, Reason}
 -spec pin(integer()) -> ok | {error, term()}.
 pin(NoticeId) ->
-    case group_notice_repo:pin(NoticeId) of
-        {ok, 1} -> ok;
-        {ok, 0} -> {error, not_found};
-        {error, Reason} -> {error, Reason}
-    end.
+    %% T7 归档写守卫（R3 #17 收口）：守卫与写入同事务
+    notice_write_tx(NoticeId, fun(Conn) ->
+        group_notice_repo:pin_tx(Conn, NoticeId)
+    end).
 
 %% @doc 取消置顶公告
 %% @param NoticeId 公告ID
 %% @return ok | {error, Reason}
 -spec unpin(integer()) -> ok | {error, term()}.
 unpin(NoticeId) ->
-    case group_notice_repo:unpin(NoticeId) of
-        {ok, 1} -> ok;
-        {ok, 0} -> {error, not_found};
-        {error, Reason} -> {error, Reason}
-    end.
+    %% T7 归档写守卫（R3 #17 收口）：守卫与写入同事务
+    notice_write_tx(NoticeId, fun(Conn) ->
+        group_notice_repo:unpin_tx(Conn, NoticeId)
+    end).
 
 %% @doc 标记公告为已读
 %% @param NoticeId 公告ID
@@ -177,8 +187,8 @@ page(Gid, Column, Order, Page, Size) ->
 -spec latest_published(integer(), binary()) -> {ok, [map()]} | {error, term()}.
 latest_published(Gid, Column) ->
     Tb = group_notice_repo:tablename(),
-    Sql = <<"SELECT ", Column/binary,
-            " FROM ", Tb/binary,
+    Sql =
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE status = 1 AND group_id = $1"
             " ORDER BY id desc">>,
     elib_pg:query(Sql, [Gid]).
@@ -186,6 +196,19 @@ latest_published(Gid, Column) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% @doc 按公告 ID 的守卫事务写（pin/unpin/soft_delete 共用）：
+%% {group_notice, NoticeId} 解析 → workspace 行锁（FOR UPDATE）→ WriteFun(Conn)，
+%% 与归档事务线性化；{ok,_}/{ok,0} 语义与原自动提交版一致，
+%% 稳定错误码（980）原样透传。
+-spec notice_write_tx(integer(), fun((any()) -> {ok, integer()} | {error, term()})) ->
+    ok | {error, term()}.
+notice_write_tx(NoticeId, WriteFun) ->
+    case workspace_guard:write_tx({group_notice, NoticeId}, WriteFun) of
+        {ok, 0} -> {error, not_found};
+        {ok, _} -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 
 %% @doc 验证公告数据
 %% @param Data 公告数据

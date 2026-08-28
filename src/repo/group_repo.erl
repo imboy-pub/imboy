@@ -12,6 +12,7 @@
 -export([list_by_uid/2, list_by_uid/3]).
 -export([page/2, page/4]).
 -export([update/1]).
+-export([update_by_id_tx/3]).
 -export([update_owner_tx/3]).
 
 -ifdef(EUNIT).
@@ -160,6 +161,14 @@ update(Data) ->
     Id = maps:get(<<"id">>, Data),
     UpdateData = maps:without([<<"id">>], Data),
     elib_pg:update(Tb, UpdateData, <<"id = $1">>, [Id]).
+
+%% @doc 事务内按 ID 更新群组（归档写守卫同事务，DS 层 write_tx 调用）
+-spec update_by_id_tx(any(), integer(), map()) -> {ok, non_neg_integer()} | {error, any()}.
+update_by_id_tx(Conn, Gid, Data) ->
+    Tb = tablename(),
+    UpdateData = maps:without([<<"id">>], Data),
+    {Sql, Params} = elib_pg_sql:update(Tb, UpdateData, <<"id = $1">>, [Gid]),
+    elib_pg:execute(Conn, Sql, Params).
 
 %% @doc 在事务中更新群主
 %% 更新指定群组的群主ID

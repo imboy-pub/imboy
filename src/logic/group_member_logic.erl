@@ -84,7 +84,16 @@ join_group(JoinMode, Uid, Gid, OptData) when is_map(OptData) ->
             % 使用事务执行加入操作
             case
                 elib_pg:with_tx(
-                    fun(Conn) -> join_group(Conn, JoinMode, Uid, Gid, OptData) end
+                    fun(Conn) ->
+                        %% T7 归档写守卫（P0 收口）：入群与守卫同事务
+                        %% （{group, Gid} 行锁；personal 群直通）。
+                        %% 注意：workspace_add_tx 等已在外层事务守卫的调用方
+                        %% 使用 join_group/5（Conn 版），不经过本入口。
+                        ok = workspace_guard:abort_on_error(
+                            workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+                        ),
+                        join_group(Conn, JoinMode, Uid, Gid, OptData)
+                    end
                 )
             of
                 {ok, _UidSum} ->
@@ -134,7 +143,17 @@ admin_kick(Uid, Gid, AdminUid) ->
 -spec leave_execute(integer(), integer(), integer()) -> ok.
 leave_execute(Uid, Gid, CurrentUid) ->
     % 使用事务执行离开操作
-    case elib_pg:with_tx(fun(Conn) -> leave_internal(Conn, Uid, Gid, CurrentUid) end) of
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            %% T7 归档写守卫（P0 收口）：退群与守卫同事务（{group, Gid} 行锁）；
+            %% personal 群直通。archived → 事务回滚 → 落入下方既有静默 ok 分支
+            %% （freeze 语义：归档群成员冻结，leave 为 fire-and-forget 契约）。
+            ok = workspace_guard:abort_on_error(
+                workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+            ),
+            leave_internal(Conn, Uid, Gid, CurrentUid)
+        end)
+    of
         {ok, _UidSum, _GM} ->
             % 更新内存缓存
             group_ds:leave(Uid, Gid),
@@ -195,6 +214,10 @@ update_role(CurrentUid, Gid, UserId, Role) ->
             % 使用事务执行角色更新操作
             case
                 elib_pg:with_tx(fun(Conn) ->
+                    %% T7 归档写守卫（P0 收口）：角色变更与守卫同事务
+                    ok = workspace_guard:abort_on_error(
+                        workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+                    ),
                     update_role_internal(Conn, CurrentUid, Gid, UserId, Role, Now)
                 end)
             of
@@ -232,7 +255,15 @@ mute(CurrentUid, Gid, UserId, Duration) ->
             % 计算禁言到期时间
             MuteUntil = Now + Duration * 1000,
             % 使用事务执行禁言操作
-            case elib_pg:with_tx(fun(Conn) -> mute_internal(Conn, Gid, UserId, MuteUntil) end) of
+            case
+                elib_pg:with_tx(fun(Conn) ->
+                    %% T7 归档写守卫（P0 收口）：禁言与守卫同事务
+                    ok = workspace_guard:abort_on_error(
+                        workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+                    ),
+                    mute_internal(Conn, Gid, UserId, MuteUntil)
+                end)
+            of
                 ok ->
                     % 发送禁言通知
                     mute_notice(CurrentUid, Gid, UserId, MuteUntil),
@@ -264,7 +295,13 @@ unmute(CurrentUid, Gid, UserId) ->
         ok ->
             case
                 elib_pg:with_tx(
-                    fun(Conn) -> group_member_ds:update_mute(Conn, Gid, UserId, null) end
+                    fun(Conn) ->
+                        %% T7 归档写守卫（P0 收口）：解禁与守卫同事务
+                        ok = workspace_guard:abort_on_error(
+                            workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+                        ),
+                        group_member_ds:update_mute(Conn, Gid, UserId, null)
+                    end
                 )
             of
                 ok ->

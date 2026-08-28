@@ -7,13 +7,18 @@
 
 -export([tablename/0]).
 -export([insert/1]).
+-export([insert_tx/2]).
 -export([update/2]).
+-export([update_tx/3]).
 -export([find_by_id/1]).
 -export([list_by_group_id/3]).
 -export([count_by_group_id/1]).
 -export([soft_delete/1]).
+-export([soft_delete_tx/2]).
 -export([pin/1]).
+-export([pin_tx/2]).
 -export([unpin/1]).
+-export([unpin_tx/2]).
 -export([increment_read_count/1]).
 -export([get_pinned_notices/1]).
 
@@ -37,6 +42,16 @@ tablename() ->
 %% @return {ok, NoticeId} | {error, Reason}
 -spec insert(map()) -> {ok, integer()} | {error, term()}.
 insert(Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入群公告（归档写守卫同事务，DS 层 write_tx 调用）
+-spec insert_tx(any(), map()) -> {ok, integer()} | {error, term()}.
+insert_tx(Conn, Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_run(fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()) ->
+    {ok, integer()} | {error, term()}.
+insert_run(Exec, Data) ->
     Tb = tablename(),
     % 验证必填字段
     case {maps:get(group_id, Data, undefined), maps:get(user_id, Data, undefined)} of
@@ -57,7 +72,7 @@ insert(Data) ->
             Id = elib_tsid:generate(group_notice),
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
-            case elib_pg:query(Sql, Params) of
+            case Exec(Sql, Params) of
                 {ok, _Count} -> {ok, Id};
                 {error, _} = Err -> Err
             end;
@@ -73,8 +88,19 @@ insert(Data) ->
 update(NoticeId, Data) when is_integer(NoticeId), NoticeId > 0 ->
     Tb = tablename(),
     Where = <<"id = $1 AND deleted_at IS NULL">>,
-    elib_pg:update(Tb, Data, Where, [NoticeId]);
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:query(Sql, Params);
 update(_NoticeId, _Data) ->
+    {error, invalid_notice_id}.
+
+%% @doc 事务内更新群公告（归档写守卫同事务）
+-spec update_tx(any(), integer(), map()) -> {ok, integer()} | {error, term()}.
+update_tx(Conn, NoticeId, Data) when is_integer(NoticeId), NoticeId > 0 ->
+    Tb = tablename(),
+    Where = <<"id = $1 AND deleted_at IS NULL">>,
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:execute(Conn, Sql, Params);
+update_tx(_Conn, _NoticeId, _Data) ->
     {error, invalid_notice_id}.
 
 %% @doc 根据ID查询群公告
@@ -156,8 +182,21 @@ soft_delete(NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
     Now = elib_dt:now(),
     Data = #{deleted_at => Now},
     Where = <<"id = $1 AND deleted_at IS NULL">>,
-    elib_pg:update(Tb, Data, Where, [NoticeId]);
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:query(Sql, Params);
 soft_delete(_NoticeId) ->
+    {error, invalid_notice_id}.
+
+%% @doc 事务内软删群公告（归档写守卫同事务，DS 层 write_tx 调用）
+-spec soft_delete_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
+soft_delete_tx(Conn, NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Data = #{deleted_at => Now},
+    Where = <<"id = $1 AND deleted_at IS NULL">>,
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:execute(Conn, Sql, Params);
+soft_delete_tx(_Conn, _NoticeId) ->
     {error, invalid_notice_id}.
 
 %% @doc 置顶公告
@@ -168,8 +207,20 @@ pin(NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
     Tb = tablename(),
     Data = #{pinned => true},
     Where = <<"id = $1 AND deleted_at IS NULL">>,
-    elib_pg:update(Tb, Data, Where, [NoticeId]);
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:query(Sql, Params);
 pin(_NoticeId) ->
+    {error, invalid_notice_id}.
+
+%% @doc 事务内置顶公告（归档写守卫同事务）
+-spec pin_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
+pin_tx(Conn, NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
+    Tb = tablename(),
+    Data = #{pinned => true},
+    Where = <<"id = $1 AND deleted_at IS NULL">>,
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:execute(Conn, Sql, Params);
+pin_tx(_Conn, _NoticeId) ->
     {error, invalid_notice_id}.
 
 %% @doc 取消置顶公告
@@ -180,8 +231,20 @@ unpin(NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
     Tb = tablename(),
     Data = #{pinned => false},
     Where = <<"id = $1 AND deleted_at IS NULL">>,
-    elib_pg:update(Tb, Data, Where, [NoticeId]);
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:query(Sql, Params);
 unpin(_NoticeId) ->
+    {error, invalid_notice_id}.
+
+%% @doc 事务内取消置顶公告（归档写守卫同事务）
+-spec unpin_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
+unpin_tx(Conn, NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
+    Tb = tablename(),
+    Data = #{pinned => false},
+    Where = <<"id = $1 AND deleted_at IS NULL">>,
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, Where, [NoticeId]),
+    elib_pg:execute(Conn, Sql, Params);
+unpin_tx(_Conn, _NoticeId) ->
     {error, invalid_notice_id}.
 
 %% @doc 增加公告已读数

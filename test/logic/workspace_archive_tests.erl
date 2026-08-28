@@ -170,6 +170,7 @@ archived_write_rejection_test_() ->
                 ({workspace, ?WS_ID}) -> {ok, ?WS_ID};
                 ({group, ?GID}) -> {ok, ?WS_ID};
                 ({channel, ?CID}) -> {ok, ?WS_ID};
+                ({group_notice, 123}) -> {ok, ?WS_ID};
                 (_) -> personal
             end}
         ]},
@@ -184,17 +185,15 @@ archived_write_rejection_test_() ->
             end},
             {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}
         ]},
+    %% P0 收口后：写守卫在 group_notice_ds 写事务内（真 DS 跑通），logic 只做
+    %% 读取（find_by_id）与权限检查，故仅 mock 读函数与权限函数。
     NoticeMocks =
         {group_notice_ds, [
-            {'find_by_id', 1, fun(_) -> {ok, #{<<"group_id">> => ?GID}} end},
-            {'pin', 1, fun(_) -> {error, must_not_pin} end},
-            {'soft_delete', 1, fun(_) -> {error, must_not_delete} end},
-            {'insert', 1, fun(_) -> {error, must_not_insert} end},
-            {'update', 2, fun(_, _) -> {error, must_not_update} end}
+            {'find_by_id', 1, fun(_) -> {ok, #{<<"group_id">> => ?GID}} end}
         ]},
     PermMocks =
         {group_member_ds, [
-            {'get_member_info', 2, fun(_, ?OWNER, <<"role">>) -> {ok, #{<<"role">> => 4}} end},
+            {'get_member_info', 3, fun(_, ?OWNER, <<"role">>) -> {ok, #{<<"role">> => 4}} end},
             {'find_by_gid_and_uid', 3, fun(_, _, _) -> #{<<"id">> => 1} end}
         ]},
     [
@@ -215,11 +214,15 @@ archived_write_rejection_test_() ->
                 )
             end)
         end},
-        {"group notice write rejected (R3 #17)", fun() ->
+        {"group notice write rejected (R3 #17, P0 收口后同事务守卫)", fun() ->
             ?WITH_MECKS([ArchivedMocks, PgMock, NoticeMocks, PermMocks], fun() ->
                 ?assertEqual(
                     {error, ?ERR_WORKSPACE_ARCHIVED},
                     group_notice_logic:pin(?OWNER, 123)
+                ),
+                ?assertEqual(
+                    {error, ?ERR_WORKSPACE_ARCHIVED},
+                    group_notice_logic:unpin(?OWNER, 123)
                 ),
                 ?assertEqual(
                     {error, ?ERR_WORKSPACE_ARCHIVED},
@@ -228,6 +231,10 @@ archived_write_rejection_test_() ->
                 ?assertEqual(
                     {error, ?ERR_WORKSPACE_ARCHIVED},
                     group_notice_logic:insert(?OWNER, #{group_id => ?GID})
+                ),
+                ?assertEqual(
+                    {error, ?ERR_WORKSPACE_ARCHIVED},
+                    group_notice_logic:update(?OWNER, 123, #{title => <<"t">>})
                 )
             end)
         end},

@@ -87,11 +87,9 @@ pin(CurrentUid, NoticeId) ->
             % 验证权限（仅群主和管理员）
             case check_admin_permission(CurrentUid, Gid) of
                 ok ->
-                    %% T7 归档写守卫（R3 #17）：group→workspace 前置检查
-                    case guard_notice_writable(Gid) of
-                        ok -> group_notice_ds:pin(NoticeId);
-                        {error, Reason} -> {error, Reason}
-                    end;
+                    %% T7 归档写守卫（R3 #17 收口）：守卫已下沉 group_notice_ds
+                    %% 写事务（FOR UPDATE 同事务），此处不再前置检查。
+                    normalize_write_result(group_notice_ds:pin(NoticeId));
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -111,11 +109,8 @@ unpin(CurrentUid, NoticeId) ->
             % 验证权限（仅群主和管理员）
             case check_admin_permission(CurrentUid, Gid) of
                 ok ->
-                    %% T7 归档写守卫（R3 #17）
-                    case guard_notice_writable(Gid) of
-                        ok -> group_notice_ds:unpin(NoticeId);
-                        {error, Reason} -> {error, Reason}
-                    end;
+                    %% T7 归档写守卫（R3 #17 收口）：守卫在 DS 写事务内
+                    normalize_write_result(group_notice_ds:unpin(NoticeId));
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -135,11 +130,8 @@ delete(CurrentUid, NoticeId) ->
             % 验证权限（仅群主和管理员）
             case check_admin_permission(CurrentUid, Gid) of
                 ok ->
-                    %% T7 归档写守卫（R3 #17）
-                    case guard_notice_writable(Gid) of
-                        ok -> group_notice_ds:soft_delete(NoticeId);
-                        {error, Reason} -> {error, Reason}
-                    end;
+                    %% T7 归档写守卫（R3 #17 收口）：守卫在 DS 写事务内
+                    normalize_write_result(group_notice_ds:soft_delete(NoticeId));
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -229,11 +221,8 @@ insert(CurrentUid, Data) ->
     Gid = maps:get(group_id, Data, 0),
     case check_admin_permission(CurrentUid, Gid) of
         ok ->
-            %% T7 归档写守卫（R3 #17）
-            case guard_notice_writable(Gid) of
-                ok -> group_notice_ds:insert(Data);
-                {error, Reason} -> {error, Reason}
-            end;
+            %% T7 归档写守卫（R3 #17 收口）：守卫已下沉 group_notice_ds 写事务
+            normalize_write_result(group_notice_ds:insert(Data));
         {error, Reason} ->
             {error, Reason}
     end.
@@ -242,7 +231,7 @@ insert(CurrentUid, Data) ->
 %% @param CurrentUid 当前用户ID
 %% @param NoticeId 公告ID
 %% @param Data 待更新字段 Map
-%% @return {ok, integer()} | {error, term()}
+%% @return {ok, integer()} | {error, Reason}
 -spec update(integer(), integer(), map()) -> {ok, integer()} | {error, term()}.
 update(CurrentUid, NoticeId, Data) ->
     case group_notice_ds:find_by_id(NoticeId) of
@@ -250,11 +239,8 @@ update(CurrentUid, NoticeId, Data) ->
             Gid = maps:get(<<"group_id">>, Notice),
             case check_admin_permission(CurrentUid, Gid) of
                 ok ->
-                    %% T7 归档写守卫（R3 #17）
-                    case guard_notice_writable(Gid) of
-                        ok -> group_notice_ds:update(NoticeId, Data);
-                        {error, Reason} -> {error, Reason}
-                    end;
+                    %% T7 归档写守卫（R3 #17 收口）：守卫在 DS 写事务内
+                    normalize_write_result(group_notice_ds:update(NoticeId, Data));
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -309,19 +295,13 @@ latest_published(CurrentUid, Gid) ->
 %% Internal Function Definitions
 %% ===================================================================
 
-%% @doc T7 归档写守卫（R3 #17）：group→workspace 前置检查。
-%% Group Notice repo 全自动提交（R3 记录 0 个 with_tx），本 W0 采用最小可行
-%% 接入：logic 层前置检查，存在"检查-写窗口"（检查通过后、写提交前归档的
-%% 竞态最多漏拦一条 Notice 写入；读取与历史不受影响）——残留风险已列 WP4 报告。
-guard_notice_writable(Gid) ->
-    case workspace_guard:ensure_writable({group, Gid}) of
-        ok ->
-            ok;
-        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
-            {error, ?ERR_WORKSPACE_ARCHIVED};
-        {error, {Code, Msg}} when is_integer(Code) ->
-            {error, {Code, Msg}}
-    end.
+%% @doc T7 归档写守卫（R3 #17 收口）：DS 写事务返回的稳定错误
+%% {error, {980, Msg}} 归一为既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}
+%% （handler/测试按 980 识别），其余结果原样透传。
+normalize_write_result({error, {?ERR_WORKSPACE_ARCHIVED, _Msg}}) ->
+    {error, ?ERR_WORKSPACE_ARCHIVED};
+normalize_write_result(Other) ->
+    Other.
 
 %% @doc 检查管理员权限（群主或管理员）
 %% @param CurrentUid 当前用户ID
