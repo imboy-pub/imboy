@@ -93,6 +93,10 @@ existing_user_login_test_() ->
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) -> {ok, 456} end},
                     {'bind', 4, fun(_, _, _, _) -> ok end}
                 ]},
+                {user_setting_ds, [
+                    {'find_by_uid', 1, fun(_Uid) -> #{} end},
+                    {'save', 3, fun(_, _, _) -> ok end}
+                ]},
                 {user_ds, [
                     {'find_by_id', 2, fun(456, _Cols) -> user_map(456, 1) end}
                 ]}
@@ -123,6 +127,10 @@ new_user_provision_test_() ->
                     {'bind', 4, fun(<<"alipay">>, ?ALIPAY_UID, 789, _E) -> ok end}
                 ]},
                 {account_ds, [{'allocate', 0, fun() -> <<"1000789">> end}]},
+                {user_setting_ds, [
+                    {'find_by_uid', 1, fun(_Uid) -> #{} end},
+                    {'save', 3, fun(_, _, _) -> ok end}
+                ]},
                 {user_ds, [
                     {'count', 0, fun() -> 100 end},
                     {'insert_and_get_id', 1, fun(Data) ->
@@ -172,6 +180,10 @@ nickname_fallback_test_() ->
                     {'bind', 4, fun(_, _, _, _) -> ok end}
                 ]},
                 {account_ds, [{'allocate', 0, fun() -> <<"1000790">> end}]},
+                {user_setting_ds, [
+                    {'find_by_uid', 1, fun(_Uid) -> #{} end},
+                    {'save', 3, fun(_, _, _) -> ok end}
+                ]},
                 {user_ds, [
                     {'count', 0, fun() -> 1 end},
                     {'insert_and_get_id', 1, fun(Data) ->
@@ -211,6 +223,10 @@ gender_map_female_test_() ->
                     {'bind', 4, fun(_, _, _, _) -> ok end}
                 ]},
                 {account_ds, [{'allocate', 0, fun() -> <<"1000790">> end}]},
+                {user_setting_ds, [
+                    {'find_by_uid', 1, fun(_Uid) -> #{} end},
+                    {'save', 3, fun(_, _, _) -> ok end}
+                ]},
                 {user_ds, [
                     {'count', 0, fun() -> 1 end},
                     {'insert_and_get_id', 1, fun(Data) ->
@@ -309,6 +325,10 @@ disabled_user_rejected_test_() ->
                 oauth_ok_mock(),
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) -> {ok, 456} end}
+                ]},
+                {user_setting_ds, [
+                    {'find_by_uid', 1, fun(_Uid) -> #{} end},
+                    {'save', 3, fun(_, _, _) -> ok end}
                 ]},
                 {user_ds, [
                     {'find_by_id', 2, fun(456, _Cols) -> user_map(456, 0) end}
