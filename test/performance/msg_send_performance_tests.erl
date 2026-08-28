@@ -58,6 +58,9 @@ setup() ->
     Context.
 
 cleanup(_Context) ->
+    %% 还原 setup 抬高的限流阈值，防止污染同 VM 后续模块
+    application:unset_env(imboy, msg_rate_mute_threshold),
+    application:unset_env(imboy, msg_rate_warn_threshold),
     persistent_term:erase({?MODULE, test_context}),
     ok.
 
