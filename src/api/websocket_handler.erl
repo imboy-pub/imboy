@@ -195,13 +195,20 @@ ws_throttle_check(Uid, Msg) ->
             throttle:check(msg_per_user, Uid)
     end.
 
+%% webrtc 信令字段白名单（按真实契约）：to 为 message_router_logic 路由
+%% webrtc_* 分支的硬依赖字段（maps:get(<<"to">>, Data)，缺失即无法路由）；
+%% sdp/candidate 为信令载荷字段（webrtc_* 整包透传契约，见 webrtc_ws_logic）。
+-define(WEBRTC_SIGNALING_FIELDS, [<<"to">>, <<"sdp">>, <<"candidate">>]).
+
 %% @doc 判断 JSON 载荷是否为 webrtc_* 信令（大小写不敏感前缀，与
 %% message_router_logic 的路由规则一致）。解码失败按非信令处理。
+%% M-3b 收紧：仅 type 前缀不足以进高限额桶——任意 {"type":"webrtc_x"}
+%% 垃圾帧都可自选 240/min 桶；须同时含至少一个合法信令字段（白名单）。
 is_webrtc_signaling_json(Msg) when is_binary(Msg) ->
     try jsone:decode(Msg) of
-        #{<<"type">> := Type} when is_binary(Type) ->
+        #{<<"type">> := Type} = Data when is_binary(Type) ->
             case cowboy_bstr:to_lower(Type) of
-                <<"webrtc_", _/binary>> -> true;
+                <<"webrtc_", _/binary>> -> has_webrtc_signaling_field(Data);
                 _ -> false
             end;
         _ ->
@@ -212,6 +219,9 @@ is_webrtc_signaling_json(Msg) when is_binary(Msg) ->
     end;
 is_webrtc_signaling_json(_) ->
     false.
+
+has_webrtc_signaling_field(Data) when is_map(Data) ->
+    lists:any(fun(Field) -> maps:is_key(Field, Data) end, ?WEBRTC_SIGNALING_FIELDS).
 
 %% @doc 非 v2 framing 下的 binary 帧处理（原有逻辑）
 handle_legacy_binary(Msg, Protocol, State) ->

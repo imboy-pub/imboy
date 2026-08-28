@@ -941,3 +941,77 @@ websocket_info_kick_device_test_() ->
         ?assertEqual(<<"device_kicked">>, maps:get(<<"action">>, Decoded)),
         ?assertEqual(ReasonMap, maps:get(<<"payload">>, Decoded))
     end).
+
+%% ===================================================================
+%% M-3b：webrtc 高限额桶收紧——仅 type 前缀不再自选 webrtc_per_user 桶，
+%% 须含至少一个合法信令字段（to/sdp/candidate，按路由真实契约）。
+%% ===================================================================
+
+webrtc_garbage_prefix_frame_uses_normal_bucket_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [{'current_uid', 1, fun(_) -> 123 end}]},
+                {elib_dt, [{'millisecond', 0, fun() -> 1700000000123 end}]},
+                {throttle, [
+                    %% 反向断言：webrtc 桶被调用即失败
+                    {'check', 2, fun
+                        (webrtc_per_user, _) ->
+                            erlang:error(must_not_use_webrtc_bucket);
+                        (msg_per_user, _) ->
+                            {limit_exceeded, 10, 60}
+                    end}
+                ]}
+            ],
+        fun() ->
+            %% 无任何信令字段的 webrtc_ 前缀垃圾帧 → 普通消息桶 → rate_limited
+            Msg = jsone:encode(#{<<"type">> => <<"webrtc_x">>, <<"payload">> => <<"junk">>}),
+            {reply, {text, Bin}, _, hibernate} = websocket_handler:websocket_handle(
+                {text, Msg}, #{current_uid => 123}
+            ),
+            Decoded = jsone:decode(Bin, [{object_format, map}]),
+            ?assertEqual(<<"rate_limited">>, maps:get(<<"action">>, Decoded)),
+            ?assertEqual(1, meck:num_calls(throttle, check, 2))
+        end
+    ).
+
+webrtc_real_signaling_frame_uses_webrtc_bucket_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [{'current_uid', 1, fun(_) -> 123 end}]},
+                {throttle, [
+                    {'check', 2, fun
+                        (webrtc_per_user, _) -> ok;
+                        (msg_per_user, _) -> erlang:error(must_not_use_msg_bucket)
+                    end}
+                ]},
+                {websocket_logic, [
+                    {'decode_message', 1, fun(Bin) ->
+                        jsone:decode(Bin, [{object_format, map}])
+                    end},
+                    {'convert_v1_to_v2', 1, fun(M) -> M end},
+                    {'validate_message', 1, fun(M) -> {ok, M} end},
+                    {'inject_sender_device', 2, fun(P, _State) -> P end},
+                    {'stamp_sender_device', 2, fun(D, _State) -> D end}
+                ]},
+                {message_router_logic, [
+                    {'route', 5, fun(_, _, _, _, _) -> ok end}
+                ]}
+            ],
+        fun() ->
+            %% 真实信令帧（含 to 路由字段 + sdp）→ webrtc 高限额桶
+            Msg = jsone:encode(#{
+                <<"id">> => <<"m_rtc_1">>,
+                <<"type">> => <<"webrtc_offer">>,
+                <<"to">> => <<"222">>,
+                <<"sdp">> => <<"v=0...">>
+            }),
+            State = #{current_uid => 123},
+            ?assertEqual(
+                {ok, State, hibernate},
+                websocket_handler:websocket_handle({text, Msg}, State)
+            ),
+            ?assertEqual(1, meck:num_calls(throttle, check, 2))
+        end
+    ).
