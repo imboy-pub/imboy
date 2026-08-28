@@ -809,7 +809,7 @@ init_tag_delete_success_writes_audit_test_() ->
                 end}
             ]},
             {group_tag_repo, [
-                {'delete', 2, fun(66, <<"urgent">>) ->
+                {'delete_tx', 3, fun(_Conn, 66, <<"urgent">>) ->
                     {ok, 1}
                 end}
             ]},
@@ -819,6 +819,9 @@ init_tag_delete_success_writes_audit_test_() ->
                     {ok, 1}
                 end}
             ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {elib_response, [
                 {'success', 3, fun(Req, Payload, Msg) ->
                     Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -939,7 +942,7 @@ init_file_delete_success_writes_audit_test_() ->
                         <<"file_id">> => <<"file_11">>
                     }
                 end},
-                {'soft_delete', 1, fun(11) ->
+                {'soft_delete_tx', 2, fun(_Conn, 11) ->
                     {ok, 1}
                 end}
             ]},
@@ -949,6 +952,9 @@ init_file_delete_success_writes_audit_test_() ->
                     {ok, 1}
                 end}
             ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {elib_response, [
                 {'success', 3, fun(Req, Payload, Msg) ->
                     Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -1065,7 +1071,7 @@ init_album_delete_success_writes_audit_test_() ->
                         <<"album_id">> => <<"alb_7">>
                     }
                 end},
-                {'delete_album', 1, fun(7) ->
+                {'delete_album_tx', 2, fun(_Conn, 7) ->
                     {ok, 1}
                 end}
             ]},
@@ -1075,6 +1081,9 @@ init_album_delete_success_writes_audit_test_() ->
                     {ok, 1}
                 end}
             ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {elib_response, [
                 {'success', 3, fun(Req, Payload, Msg) ->
                     Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -1391,7 +1400,7 @@ init_task_close_success_writes_audit_test_() ->
                             <<"status">> => 1
                         }}
                     end},
-                    {'update', 2, fun(99, #{status := 3}) -> {ok, 1} end}
+                    {'update_tx', 3, fun(_Conn, 99, #{status := 3}) -> {ok, 1} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(Data) ->
@@ -1399,6 +1408,9 @@ init_task_close_success_writes_audit_test_() ->
                         {ok, 1}
                     end}
                 ]},
+                %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+                {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+                {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
                 {elib_response, [
                     {'success', 3, fun(Req, Payload, Msg) ->
                         Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -1481,7 +1493,7 @@ init_task_restore_success_writes_audit_test_() ->
                             <<"deleted_at">> => <<"2026-02-24T08:00:00+08:00">>
                         }}
                     end},
-                    {'restore', 1, fun(99) -> {ok, 1} end}
+                    {'restore_tx', 2, fun(_Conn, 99) -> {ok, 1} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(Data) ->
@@ -1489,6 +1501,9 @@ init_task_restore_success_writes_audit_test_() ->
                         {ok, 1}
                     end}
                 ]},
+                %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+                {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+                {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
                 {elib_response, [
                     {'success', 3, fun(Req, Payload, Msg) ->
                         Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -1562,7 +1577,7 @@ init_task_delete_success_writes_audit_test_() ->
                     {'find_by_id', 1, fun(99) ->
                         {ok, #{<<"group_id">> => 66, <<"task_id">> => <<"task_uid_9">>}}
                     end},
-                    {'soft_delete', 1, fun(99) -> {ok, 1} end}
+                    {'soft_delete_tx', 2, fun(_Conn, 99) -> {ok, 1} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(Data) ->
@@ -1570,6 +1585,9 @@ init_task_delete_success_writes_audit_test_() ->
                         {ok, 1}
                     end}
                 ]},
+                %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+                {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+                {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
                 {elib_response, [
                     {'success', 3, fun(Req, Payload, Msg) ->
                         Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -1658,7 +1676,7 @@ init_schedule_cancel_success_writes_audit_test_() ->
                             <<"schedule_id">> => <<"sched_abc">>
                         }
                     end},
-                    {'update_status', 2, fun(77, 4) ->
+                    {'update_status_tx', 3, fun(_Conn, 77, 4) ->
                         {ok, 1}
                     end}
                 ]},
@@ -1668,6 +1686,9 @@ init_schedule_cancel_success_writes_audit_test_() ->
                         {ok, 1}
                     end}
                 ]},
+                %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+                {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+                {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
                 {elib_response, [
                     {'success', 3, fun(Req, Payload, Msg) ->
                         Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -1746,7 +1767,7 @@ init_schedule_restore_success_writes_audit_test_() ->
                             <<"schedule_id">> => <<"sched_abc">>
                         }
                     end},
-                    {'update_status', 2, fun(77, 1) ->
+                    {'update_status_tx', 3, fun(_Conn, 77, 1) ->
                         {ok, 1}
                     end}
                 ]},
@@ -1756,6 +1777,9 @@ init_schedule_restore_success_writes_audit_test_() ->
                         {ok, 1}
                     end}
                 ]},
+                %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+                {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+                {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
                 {elib_response, [
                     {'success', 3, fun(Req, Payload, Msg) ->
                         Req#{response_status => 200, payload => Payload, msg => Msg}
@@ -2003,8 +2027,11 @@ init_task_delete_soft_delete_success_test_() ->
                     {'find_by_id', 1, fun(99) ->
                         {ok, #{<<"group_id">> => 66, <<"task_id">> => <<"task_uid_1">>}}
                     end},
-                    {'soft_delete', 1, fun(99) -> {ok, 1} end}
+                    {'soft_delete_tx', 2, fun(_Conn, 99) -> {ok, 1} end}
                 ]},
+                %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+                {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+                {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
                 {elib_response, [
                     {'success', 3, fun(Req, Payload, Msg) ->
                         Req#{response_status => 200, payload => Payload, msg => Msg}

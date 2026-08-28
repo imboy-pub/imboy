@@ -20,6 +20,23 @@
 %%%   入群 join_group / 角色变更 update_role（原无守卫）、退群 leave（freeze：静默
 %%%   ok 不落库）、工作区建群 workspace_add_tx（原无守卫）；
 %%%   附件：转正落库 verify_and_save（group/channel scope，原无守卫）。
+%%%
+%%% P0 后续批（群子功能域 7 域，均原无守卫 → DS 层同事务守卫）：
+%%%   vote：insert_vote/insert_options_batch/insert_record/update_record/
+%%%         delete_record/update_vote_status（980）；
+%%%   schedule：insert_schedule/update_schedule/update_status/insert_participant/
+%%%         update_participant_status/delete_participant/insert_remind（980）、
+%%%         update_remind_sent + process_reminders 提醒推送门控（freeze：归档
+%%%         零推送泄漏）；
+%%%   album：create_album/upload_photo（OSS 前预检）/delete_photo/like/unlike/
+%%%          add_comment/update_album/update_album_cover/delete_album（980）；
+%%%   file：upload_file（OSS 前预检）/delete_file/soft_delete（980）、
+%%%         download_file 下载计数（freeze：下载读取永不 403）；
+%%%   task：insert_task/update_task/soft_delete/restore/assignment_insert/
+%%%         assignment_update（980，含 adm 治理共用入口；logic 侧不再吞错）；
+%%%   tag：add（去重+插入同事务）/remove/delete（980）；
+%%%   category：move_group_to_category（freeze：用户个人归类静默跳过）；
+%%%   分类 CRUD 为 user_id 键控个人数据，不加守卫（personal 红线）。
 
 -define(WS_ID, 800001).
 -define(UID, 900001).
@@ -29,6 +46,18 @@
 -define(COMMENT_ID, 444001).
 -define(NOTICE_ID, 333001).
 -define(INV_ID, 222001).
+%% P0 后续批：群子功能域资源 ID
+-define(VOTE_ID, <<"vote_t1">>).
+-define(VOTE_REC_ID, 111001).
+-define(SCHED_SID, <<"sched_t1">>).
+-define(SCHED_PK, 112001).
+-define(REMIND_ID, 113001).
+-define(ALBUM_PK, 114001).
+-define(PHOTO_ID, <<"photo_t1">>).
+-define(FILE_PK, 115001).
+-define(TASK_PK, 116001).
+-define(TASK_ID, <<"task_t1">>).
+-define(ASSIGN_ID, 117001).
 
 tx_fun() ->
     fun(Fun) ->
@@ -51,6 +80,18 @@ archived_mocks() ->
                 ({channel_comment, ?COMMENT_ID}) -> {ok, ?WS_ID};
                 ({group_notice, ?NOTICE_ID}) -> {ok, ?WS_ID};
                 ({channel_invitation, ?INV_ID}) -> {ok, ?WS_ID};
+                %% P0 后续批：群子功能域
+                ({group_vote, ?VOTE_ID}) -> {ok, ?WS_ID};
+                ({group_vote_record, ?VOTE_REC_ID}) -> {ok, ?WS_ID};
+                ({group_schedule, ?SCHED_SID}) -> {ok, ?WS_ID};
+                ({group_schedule, ?SCHED_PK}) -> {ok, ?WS_ID};
+                ({group_schedule_remind, ?REMIND_ID}) -> {ok, ?WS_ID};
+                ({group_album, ?ALBUM_PK}) -> {ok, ?WS_ID};
+                ({group_album_photo, ?PHOTO_ID}) -> {ok, ?WS_ID};
+                ({group_file, ?FILE_PK}) -> {ok, ?WS_ID};
+                ({group_task, ?TASK_PK}) -> {ok, ?WS_ID};
+                ({group_task, ?TASK_ID}) -> {ok, ?WS_ID};
+                ({group_task_assignment, ?ASSIGN_ID}) -> {ok, ?WS_ID};
                 (_) -> personal
             end}
         ]},
@@ -404,6 +445,440 @@ group_closure_test_() ->
             ?WITH_MECKS(personal_mocks() ++ RepoOk, fun() ->
                 ?assertMatch(
                     {ok, 1}, group_ds:update_by_id(?GID, #{title => <<"x">>})
+                )
+            end)
+        end}
+    ].
+
+%%% ===================================================================
+%%% 群子功能域（P0 后续批）
+%%% ===================================================================
+
+subdomain_closure_test_() ->
+    [
+        {"vote writes rejected 980 (create/cast/close/record)", fun() ->
+            MustNot = [
+                {group_vote_repo, [
+                    {'insert_vote_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'insert_options_batch_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'insert_record_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'update_record_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'delete_record_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'update_vote_status_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_vote_ds:insert_vote(#{
+                        group_id => ?GID,
+                        vote_id => ?VOTE_ID,
+                        title => <<"t">>,
+                        creator_id => ?UID
+                    })
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_vote_ds:insert_options_batch([
+                        #{vote_id => ?VOTE_ID, option_id => <<"o1">>, option_text => <<"a">>}
+                    ])
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_vote_ds:insert_record(#{
+                        vote_id => ?VOTE_ID, user_id => ?UID, option_ids => <<"[]">>
+                    })
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_vote_ds:update_record(?VOTE_REC_ID, #{option_ids => <<"[]">>})
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_vote_ds:delete_record(?VOTE_REC_ID)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_vote_ds:update_vote_status(?VOTE_ID, 2)
+                )
+            end)
+        end},
+        {"vote logic normalizes 980 (close_vote)", fun() ->
+            RepoOk = [
+                {group_vote_repo, [
+                    {'find_by_vote_id', 1, fun(_) ->
+                        {ok, #{
+                            <<"creator_id">> => ?UID,
+                            <<"group_id">> => ?GID,
+                            <<"status">> => 1
+                        }}
+                    end},
+                    {'update_vote_status_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
+                ]},
+                {group_member_ds, [
+                    {'check_admin', 2, fun(_, _) -> false end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ RepoOk, fun() ->
+                ?assertEqual(
+                    {error, 980}, group_vote_logic:close_vote(?VOTE_ID, ?UID)
+                )
+            end)
+        end},
+        {"schedule writes rejected 980 (create/update/cancel/participant/remind)", fun() ->
+            MustNot = [
+                {group_schedule_repo, [
+                    {'insert_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'update_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'update_status_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'insert_participant_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'update_participant_status_tx', 4, fun(_, _, _, _) ->
+                        {error, must_not_write}
+                    end},
+                    {'delete_participant_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'insert_remind_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_schedule_ds:insert_schedule(#{
+                        group_id => ?GID, title => <<"t">>
+                    })
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_schedule_ds:update_schedule(?SCHED_PK, #{})
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_schedule_ds:update_status(?SCHED_PK, 4)
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_schedule_ds:insert_participant(#{
+                        schedule_id => ?SCHED_SID, user_id => ?UID
+                    })
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_schedule_ds:update_participant_status(?SCHED_SID, ?UID, 1)
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_schedule_ds:delete_participant(?SCHED_SID, ?UID)
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_schedule_ds:insert_remind(#{schedule_id => ?SCHED_SID})
+                )
+            end)
+        end},
+        {"schedule remind marking skips + zero push leak when archived", fun() ->
+            Reminds = [
+                #{
+                    <<"id">> => ?REMIND_ID,
+                    <<"schedule_id">> => ?SCHED_SID,
+                    <<"user_id">> => ?UID
+                }
+            ],
+            Mocks = [
+                {group_schedule_repo, [
+                    {'list_pending_reminds', 0, fun() -> {ok, Reminds} end},
+                    {'update_remind_sent_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]},
+                {msg_s2c_ds, [
+                    {'send', 7, fun(_, _, _, _, _, _, _) -> erlang:error(must_not_push) end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ Mocks, fun() ->
+                %% freeze：已发送标记跳过不报错
+                ?assertEqual({ok, 0}, group_schedule_ds:update_remind_sent(?REMIND_ID)),
+                %% 归档后提醒推送零泄漏（通知发送在守卫之后才会执行）
+                ?assertEqual({ok, 0}, group_schedule_logic:process_reminders()),
+                ?assertEqual(0, meck:num_calls(msg_s2c_ds, send, 7))
+            end)
+        end},
+        {"album writes rejected 980 (album/photo/like/comment)", fun() ->
+            MemberOk = [
+                {group_ds, [
+                    {'is_member', 2, fun(_, _) -> true end}
+                ]},
+                {group_album_repo, [
+                    {'find_photo_by_id', 1, fun(_) ->
+                        #{
+                            <<"id">> => 1,
+                            <<"group_id">> => ?GID,
+                            <<"uploader_id">> => ?UID,
+                            <<"album_id">> => <<"alb">>
+                        }
+                    end},
+                    {'is_liked', 2, fun(_, _) -> false end},
+                    {'create_album_tx', 5, fun(_, _, _, _, _) -> {error, must_not_write} end},
+                    {'insert_photo_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'delete_photo_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'like_photo_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'unlike_photo_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'add_comment_tx', 4, fun(_, _, _, _) -> {error, must_not_write} end},
+                    {'update_album_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'delete_album_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_album_ds:create_album(?GID, ?UID, <<"album">>, undefined)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_album_ds:delete_photo(1, ?UID)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_album_ds:like_photo(?PHOTO_ID, ?UID)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_album_ds:unlike_photo(?PHOTO_ID, ?UID)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_album_ds:add_comment(?PHOTO_ID, ?UID, <<"c">>)
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_album_ds:update_album(#{<<"id">> => ?ALBUM_PK, album_name => <<"n">>})
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_album_ds:delete_album(?ALBUM_PK)
+                )
+            end)
+        end},
+        {"album upload_photo short-circuits before OSS when archived", fun() ->
+            MemberOk = [
+                {group_ds, [
+                    {'is_member', 2, fun(_, _) -> true end}
+                ]},
+                {elib_oss, [
+                    {'upload', 3, fun(_, _, _) -> erlang:error(must_not_upload) end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_album_ds:upload_photo(?GID, ?UID, <<"alb">>, <<0, 0, 0>>, <<"a.png">>)
+                ),
+                ?assertEqual(0, meck:num_calls(elib_oss, upload, 3))
+            end)
+        end},
+        {"file upload/delete rejected 980 (upload before OSS)", fun() ->
+            MemberOk = [
+                {group_ds, [
+                    {'is_member', 2, fun(_, _) -> true end}
+                ]},
+                {group_file_repo, [
+                    {'find_by_id', 1, fun(_) ->
+                        #{
+                            <<"id">> => ?FILE_PK,
+                            <<"group_id">> => ?GID,
+                            <<"uploader_id">> => ?UID,
+                            <<"file_url">> => <<"u">>
+                        }
+                    end},
+                    {'insert_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'soft_delete_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]},
+                {elib_oss, [
+                    {'validate_file_type', 1, fun(_) -> true end},
+                    {'upload', 3, fun(_, _, _) -> erlang:error(must_not_upload) end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_file_ds:upload_file(?GID, ?UID, <<"a.txt">>, <<0>>, <<"text/plain">>)
+                ),
+                ?assertEqual(0, meck:num_calls(elib_oss, upload, 3)),
+                ?assertMatch(
+                    {error, {980, _}}, group_file_ds:delete_file(?FILE_PK, ?UID)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_file_ds:soft_delete(?FILE_PK)
+                )
+            end)
+        end},
+        {"file download stays open with frozen counter when archived", fun() ->
+            MemberOk = [
+                {group_ds, [
+                    {'is_member', 2, fun(_, _) -> true end}
+                ]},
+                {group_file_repo, [
+                    {'find_by_id', 1, fun(_) ->
+                        #{
+                            <<"id">> => ?FILE_PK,
+                            <<"group_id">> => ?GID,
+                            <<"file_url">> => <<"u">>
+                        }
+                    end},
+                    {'increment_download_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+                %% 归档可读红线：下载读取永不 403（计数在 spawn 内 freeze 跳过）
+                ?assertEqual({ok, <<"u">>}, group_file_ds:download_file(?FILE_PK, ?UID))
+            end)
+        end},
+        {"task writes rejected 980 (task/assignment/adm)", fun() ->
+            MustNot = [
+                {group_task_repo, [
+                    {'insert_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'update_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'soft_delete_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'restore_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]},
+                {group_task_assignment_repo, [
+                    {'insert_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'update_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_task_ds:insert_task(#{
+                        group_id => ?GID, task_id => ?TASK_ID, title => <<"t">>
+                    })
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_task_ds:update_task(?TASK_PK, #{status => 3})
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_task_ds:soft_delete(?TASK_PK)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_task_ds:restore(?TASK_PK)
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_task_ds:assignment_insert(#{
+                        task_id => ?TASK_ID, user_id => ?UID
+                    })
+                ),
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_task_ds:assignment_update(?ASSIGN_ID, #{status => 2})
+                )
+            end)
+        end},
+        {"task logic propagates 980 instead of swallowing (create/assign)", fun() ->
+            MemberOk = [
+                {group_ds, [
+                    {'is_member', 2, fun(_, _) -> true end}
+                ]},
+                {group_task_repo, [
+                    {'find_by_id', 1, fun(_) ->
+                        {ok, #{<<"creator_id">> => ?UID, <<"task_id">> => ?TASK_ID}}
+                    end},
+                    {'insert_tx', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'update_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
+                ]},
+                {group_task_assignment_repo, [
+                    {'find_by_task_and_user', 2, fun(_, _) -> {error, not_found} end},
+                    {'insert_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+                ?assertMatch(
+                    {error, _, 980},
+                    group_task_logic:create(?GID, ?UID, <<"t">>, #{})
+                ),
+                ?assertMatch(
+                    {error, _, 980},
+                    group_task_logic:assign(?TASK_PK, [?UID + 1], ?UID)
+                )
+            end)
+        end},
+        {"tag writes rejected 980 (add/remove/delete)", fun() ->
+            MustNot = [
+                {group_tag_repo, [
+                    {'exists_tx', 3, fun(_, _, _) -> false end},
+                    {'add', 2, fun(_, _) -> {error, must_not_write} end},
+                    {'delete_tx', 3, fun(_, _, _) -> {error, must_not_write} end},
+                    {'delete_by_group_id_tx', 2, fun(_, _) -> {error, must_not_write} end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+                ?assertMatch(
+                    {error, {980, _}}, group_tag_ds:add(?GID, ?UID, <<"tag">>)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_tag_ds:remove(?GID, ?UID, <<"tag">>)
+                ),
+                ?assertMatch(
+                    {error, {980, _}}, group_tag_ds:delete(?GID, <<"tag">>)
+                )
+            end)
+        end},
+        {"category move_group freezes silently when archived (personal org)", fun() ->
+            MustNot = [
+                {group_category_repo, [
+                    {'update_group_category_tx', 4, fun(_, _, _, _) ->
+                        {error, must_not_write}
+                    end}
+                ]}
+            ],
+            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+                %% freeze：用户个人群归类静默跳过（与退群 leave 同族），
+                %% 分类 CRUD 本身为 user_id 键控个人数据不加守卫。
+                ?assertEqual(
+                    {ok, 0}, group_category_ds:move_group_to_category(?UID, ?GID, 1)
+                )
+            end)
+        end},
+        {"personal sub-domain writes pass without workspace lock", fun() ->
+            RepoOk = [
+                {group_ds, [
+                    {'is_member', 2, fun(_, _) -> true end}
+                ]},
+                {group_vote_repo, [
+                    {'insert_vote_tx', 2, fun(_, _) -> {ok, 1, #{}} end}
+                ]},
+                {group_schedule_repo, [
+                    {'insert_tx', 2, fun(_, _) -> {ok, 1, #{}} end}
+                ]},
+                {group_task_repo, [
+                    {'insert_tx', 2, fun(_, _) -> {ok, 1, #{}} end}
+                ]},
+                {group_tag_repo, [
+                    {'exists_tx', 3, fun(_, _, _) -> false end},
+                    {'add', 2, fun(_, _) -> {ok, 1} end}
+                ]},
+                {group_category_repo, [
+                    {'update_group_category_tx', 4, fun(_, _, _, _) -> {ok, 1} end}
+                ]},
+                {group_album_repo, [
+                    {'create_album_tx', 5, fun(_, _, _, _, _) -> {ok, 1} end}
+                ]}
+            ],
+            ?WITH_MECKS(personal_mocks() ++ RepoOk, fun() ->
+                ?assertMatch(
+                    {ok, 1, _},
+                    group_vote_ds:insert_vote(#{
+                        group_id => ?GID,
+                        vote_id => ?VOTE_ID,
+                        title => <<"t">>,
+                        creator_id => ?UID
+                    })
+                ),
+                ?assertMatch(
+                    {ok, 1, _},
+                    group_schedule_ds:insert_schedule(#{group_id => ?GID, title => <<"t">>})
+                ),
+                ?assertMatch(
+                    {ok, 1, _},
+                    group_task_ds:insert_task(#{
+                        group_id => ?GID, task_id => ?TASK_ID, title => <<"t">>
+                    })
+                ),
+                ?assertMatch(
+                    {ok, 1}, group_tag_ds:add(?GID, ?UID, <<"tag">>)
+                ),
+                ?assertEqual(
+                    {ok, 1}, group_category_ds:move_group_to_category(?UID, ?GID, 1)
+                ),
+                ?assertMatch(
+                    {ok, _}, group_album_ds:create_album(?GID, ?UID, <<"album">>, undefined)
                 )
             end)
         end}
