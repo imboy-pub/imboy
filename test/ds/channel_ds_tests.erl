@@ -16,6 +16,7 @@ subscribe_increments_counter_when_state_changes_test_() ->
             {channel_repo, [
                 {'increment_subscribers', 3, fun(fake_conn, 1, 1) -> {ok, 1} end}
             ]},
+            writable_guard_mock(),
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]},
@@ -45,6 +46,7 @@ subscribe_is_idempotent_when_already_active_test_() ->
             {channel_repo, [
                 {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(should_not_increment) end}
             ]},
+            writable_guard_mock(),
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]},
@@ -74,6 +76,7 @@ unsubscribe_decrements_counter_when_state_changes_test_() ->
             {channel_repo, [
                 {'increment_subscribers', 3, fun(fake_conn, 1, -1) -> {ok, 1} end}
             ]},
+            writable_guard_mock(),
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]},
@@ -103,6 +106,7 @@ unsubscribe_is_idempotent_when_already_inactive_test_() ->
             {channel_repo, [
                 {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(should_not_increment) end}
             ]},
+            writable_guard_mock(),
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]},
@@ -132,6 +136,7 @@ subscribe_returns_error_when_tx_aborts_test_() ->
             {channel_repo, [
                 {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(should_not_increment) end}
             ]},
+            writable_guard_mock(),
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->
                     try
@@ -161,6 +166,7 @@ unsubscribe_returns_error_when_tx_aborts_test_() ->
             {channel_repo, [
                 {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(should_not_increment) end}
             ]},
+            writable_guard_mock(),
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) ->
                     try
@@ -180,6 +186,79 @@ unsubscribe_returns_error_when_tx_aborts_test_() ->
             ?assertEqual(0, meck:num_calls(imboy_cache, flush, 1))
         end
     ).
+
+subscribe_rejects_archived_workspace_in_same_transaction_test_() ->
+    ?WITH_MECKS(
+        [
+            archived_guard_mock(),
+            {channel_subscription_repo, [
+                {'upsert_active', 3, fun(_, _, _) -> erlang:error(must_not_write) end}
+            ]},
+            {channel_repo, [
+                {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(must_not_write) end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(fake_conn)
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
+            ]},
+            {imboy_cache, [
+                {'flush', 1, fun(_) -> erlang:error(must_not_flush) end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, <<_/binary>>}, channel_ds:subscribe(1, 100))
+        end
+    ).
+
+unsubscribe_rejects_archived_workspace_in_same_transaction_test_() ->
+    ?WITH_MECKS(
+        [
+            archived_guard_mock(),
+            {channel_subscription_repo, [
+                {'delete', 3, fun(_, _, _) -> erlang:error(must_not_write) end}
+            ]},
+            {channel_repo, [
+                {'increment_subscribers', 3, fun(_, _, _) -> erlang:error(must_not_write) end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(fake_conn)
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
+            ]},
+            {imboy_cache, [
+                {'flush', 1, fun(_) -> erlang:error(must_not_flush) end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch({error, <<_/binary>>}, channel_ds:unsubscribe(1, 100))
+        end
+    ).
+
+writable_guard_mock() ->
+    {workspace_guard, [
+        {'ensure_writable_tx', 2, fun(fake_conn, {channel, 1}) -> ok end},
+        {'abort_on_error', 1, fun(ok) -> ok end}
+    ]}.
+
+archived_guard_mock() ->
+    {workspace_guard, [
+        {'ensure_writable_tx', 2, fun(fake_conn, {channel, 1}) ->
+            {error, {980, <<"工作区已归档，写操作被拒绝"/utf8>>}}
+        end},
+        {'abort_on_error', 1, fun
+            (ok) -> ok;
+            ({error, Reason}) -> throw({abort_tx, Reason})
+        end}
+    ]}.
 
 is_subscribed_returns_true_when_subscription_exists_test_() ->
     ?WITH_MECKS(
@@ -207,11 +286,19 @@ is_subscribed_returns_false_when_subscription_missing_test_() ->
 
 %% 回归：update 路径 tags 必须 jsonb 编码（对齐 create 路径 add_optional_fields），
 %% 否则 epgsql 把 Erlang list 拼进 jsonb 参数导致 PG 22P02（频道更新必失败）。
+%% P0 收口后 update 走 write_tx（归档守卫同事务）：mock 守卫 + with_tx + update_tx。
 update_encodes_tags_as_jsonb_before_update_test_() ->
     ?WITH_MECKS(
         [
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                {'abort_on_error', 1, fun(ok) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
             {channel_repo, [
-                {'update', 2, fun(11, Data) ->
+                {'update_tx', 3, fun(fake_conn, 11, Data) ->
                     ?assertEqual(
                         [<<"a">>, <<"b">>],
                         jsone:decode(maps:get(<<"tags">>, Data))
@@ -232,8 +319,15 @@ update_encodes_tags_as_jsonb_before_update_test_() ->
 update_encodes_empty_tags_list_as_empty_json_array_test_() ->
     ?WITH_MECKS(
         [
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                {'abort_on_error', 1, fun(ok) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
             {channel_repo, [
-                {'update', 2, fun(11, Data) ->
+                {'update_tx', 3, fun(fake_conn, 11, Data) ->
                     ?assertEqual([], jsone:decode(maps:get(<<"tags">>, Data))),
                     {ok, 1}
                 end}
@@ -251,8 +345,15 @@ update_encodes_empty_tags_list_as_empty_json_array_test_() ->
 update_passes_through_text_fields_when_no_tags_test_() ->
     ?WITH_MECKS(
         [
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                {'abort_on_error', 1, fun(ok) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
             {channel_repo, [
-                {'update', 2, fun(11, Data) ->
+                {'update_tx', 3, fun(fake_conn, 11, Data) ->
                     ?assertEqual(#{<<"name">> => <<"Channel X">>}, Data),
                     {ok, 1}
                 end}

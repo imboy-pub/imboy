@@ -9,7 +9,8 @@
 %        group / group_notice(经 group_id) / channel / channel_message(经 channel_id)
 %        / channel_comment(经 channel_id) / channel_reaction(经 channel_id)
 %        / channel_subscription(经 channel_id) / channel_admin(经 channel_id)
-%        / channel_webhook(经 channel_id) / workspace
+%        / channel_webhook(经 channel_id) / channel_invitation(经 channel_id)
+%        / workspace
 %        project(经 workspace_id，恒 workspace 归属) / project_task(经 project)
 %        （后两者 WP4/T7 为 workspace_guard 写守卫扩展）
 %        attachment(经 scope_ref→group/channel；其余 scope 回溯复杂，本期返回
@@ -99,6 +100,11 @@ resolve_workspace({channel_admin, ChannelId}) ->
     channel_scope(ChannelId);
 resolve_workspace({channel_webhook, WebhookId}) ->
     case one_row(<<"SELECT channel_id FROM channel_webhook WHERE id = $1">>, [WebhookId]) of
+        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({channel_invitation, InvitationId}) ->
+    case one_row(<<"SELECT channel_id FROM channel_invitation WHERE id = $1">>, [InvitationId]) of
         #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
         _ -> {error, not_found}
     end;

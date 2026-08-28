@@ -99,9 +99,15 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
                                             ChannelId, MessageId, Uid, Now
                                         )
                                     of
-                                        {ok, _} -> ok;
-                                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
-                                        Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
+                                        {ok, _} ->
+                                            ok;
+                                        %% 稳定错误码原样透传（archived 时 DS 已 skip 返回 ok）
+                                        {error, {Code, Msg}} when is_integer(Code) ->
+                                            {error, {Code, Msg}};
+                                        {error, Reason} ->
+                                            {error, elib_cnv:safe_to_binary(Reason)};
+                                        Unexpected ->
+                                            {error, elib_cnv:safe_to_binary(Unexpected)}
                                     end;
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)};
@@ -126,13 +132,9 @@ add_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    %% T7 归档写守卫（R3 #10）
-                    case channel_logic_common:guard_channel_writable(ChannelId) of
-                        {error, Reason0} ->
-                            {error, Reason0};
-                        ok ->
-                            do_add_reaction(ChannelId, MessageId, Uid, ReactionType)
-                    end;
+                    %% T7 归档写守卫（R3 #10 收口）：守卫已下沉 channel_ds
+                    %% 反应写事务（FOR UPDATE 同事务），此处不再前置检查。
+                    do_add_reaction(ChannelId, MessageId, Uid, ReactionType);
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
             end
@@ -150,6 +152,8 @@ do_add_reaction(ChannelId, MessageId, Uid, ReactionType) ->
                 )
             of
                 {ok, _} -> ok;
+                %% 稳定错误码（980 等）原样透传供 handler envelope 映射
+                {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                 Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end
@@ -167,13 +171,8 @@ remove_reaction(Uid, ChannelIdBin, MessageIdBin, ReactionType) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    %% T7 归档写守卫（R3 #10）
-                    case channel_logic_common:guard_channel_writable(ChannelId) of
-                        {error, Reason0} ->
-                            {error, Reason0};
-                        ok ->
-                            do_remove_reaction(ChannelId, MessageId, Uid, ReactionType)
-                    end;
+                    %% T7 归档写守卫（R3 #10 收口）：守卫已下沉 channel_ds 反应写事务
+                    do_remove_reaction(ChannelId, MessageId, Uid, ReactionType);
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
             end
@@ -186,6 +185,8 @@ do_remove_reaction(ChannelId, MessageId, Uid, ReactionType) ->
         ok ->
             case channel_ds:delete_reaction(ChannelId, MessageId, Uid, ReactionType) of
                 {ok, _} -> ok;
+                %% 稳定错误码（980 等）原样透传供 handler envelope 映射
+                {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
                 {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
                 Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end

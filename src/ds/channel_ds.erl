@@ -67,6 +67,17 @@ create_channel(Uid, Name, Opts) ->
 
     case
         elib_pg:with_tx(fun(Conn) ->
+            %% T7 归档写守卫（P0 收口）：workspace 域频道创建 = 对 workspace 的
+            %% 写入，archived 时拒绝（{workspace, WsId} 行锁与建频道同事务）；
+            %% personal 频道无 workspace_id，直通（零行为变化）。
+            case maps:get(workspace_id, Data2, undefined) of
+                WsId when is_integer(WsId), WsId > 0 ->
+                    ok = workspace_guard:abort_on_error(
+                        workspace_guard:ensure_writable_tx(Conn, {workspace, WsId})
+                    );
+                _ ->
+                    ok
+            end,
             % 创建频道
             case channel_repo:add(Conn, Data2) of
                 {ok, ChannelId} ->
@@ -87,6 +98,9 @@ create_channel(Uid, Name, Opts) ->
             end
         end)
     of
+        {error, {Code, Msg}} when is_integer(Code) ->
+            %% 归档守卫（980）等稳定错误码原样透传供 handler envelope 映射，不 flatten
+            {error, {Code, Msg}};
         {error, Reason} ->
             {error, normalize_error(Reason)};
         Result ->
@@ -140,12 +154,16 @@ subscriber_uids(ChannelId) ->
             end
     end.
 
-%% @doc 订阅频道（使用事务保证原子性，P0-2 修复）
+%% @doc 订阅频道（归档守卫、订阅关系与计数同一事务提交）
 -spec subscribe(integer(), integer()) -> ok | {error, any()}.
 subscribe(ChannelId, Uid) ->
     StartMs = elib_dt:millisecond(),
-    % 使用事务保证订阅和计数更新的原子性
+    % P0：所有调用方（含支付/邀请旁路）统一在事务内锁定 Workspace，
+    % 避免 logic 层前置检查与订阅写入之间留下归档竞态窗口。
     Result = elib_pg:with_tx(fun(Conn) ->
+        ok = workspace_guard:abort_on_error(
+            workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
+        ),
         case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of
             {ok, true} ->
                 % 仅在真实状态变更时增加计数
@@ -177,12 +195,15 @@ subscribe(ChannelId, Uid) ->
             {error, normalize_error(Reason)}
     end.
 
-%% @doc 取消订阅频道（添加幂等检查，P0-2 修复）
+%% @doc 取消订阅频道（归档守卫、订阅关系与计数同一事务提交）
 -spec unsubscribe(integer(), integer()) -> ok | {error, any()}.
 unsubscribe(ChannelId, Uid) ->
     StartMs = elib_dt:millisecond(),
-    % 使用事务保证删除和计数更新的原子性
+    % 与 subscribe/2 保持同一归档线性化语义，不能让支付/邀请等调用方绕过。
     Result = elib_pg:with_tx(fun(Conn) ->
+        ok = workspace_guard:abort_on_error(
+            workspace_guard:ensure_writable_tx(Conn, {channel, ChannelId})
+        ),
         case channel_subscription_repo:delete(Conn, ChannelId, Uid) of
             {ok, Affected} when Affected > 0 ->
                 % 只有实际发生状态变更才更新计数
@@ -346,7 +367,11 @@ list_workspace_channels(WorkspaceId, Limit) ->
 find_by_custom_id(CustomId) -> channel_repo:find_by_custom_id(CustomId).
 
 -spec update(integer(), map()) -> {ok, integer()} | {error, any()}.
-update(ChannelId, Data) -> channel_repo:update(ChannelId, encode_update_fields(Data)).
+update(ChannelId, Data) ->
+    %% T7 归档写守卫（P0 收口）：频道设置更新与守卫同事务（原自动提交写）。
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        channel_repo:update_tx(Conn, ChannelId, encode_update_fields(Data))
+    end).
 
 %% @doc update 路径对 jsonb 字段做与 create 路径一致的编码（对齐 add_optional_fields）。
 %% channel 表仅 tags 为 jsonb 列；空列表编码为 <<"[]">>（清空标签），
@@ -365,7 +390,11 @@ encode_update_fields(Data) ->
     ).
 
 -spec delete(integer()) -> {ok, integer()} | {error, any()}.
-delete(ChannelId) -> channel_repo:delete(ChannelId).
+delete(ChannelId) ->
+    %% T7 归档写守卫（P0 收口）：频道软删与守卫同事务（原自动提交写）。
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        channel_repo:delete_tx(Conn, ChannelId)
+    end).
 
 -spec search(binary(), integer(), binary()) -> {ok, list(map())} | {error, any()}.
 search(Keyword, Limit, Column) -> channel_repo:search(Keyword, Limit, Column).
@@ -390,17 +419,34 @@ has_viewed_message(MessageId, UserId) -> channel_repo:has_viewed_message(Message
 -spec insert_message_view(integer(), integer(), integer(), integer()) ->
     {ok, integer()} | {error, term()}.
 insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
-    channel_repo:insert_message_view(ChannelId, MessageId, UserId, ViewedAt).
+    %% T7 派生读写（R3 #12 同族）：浏览计数归档时跳过（读取不受影响），
+    %% active/personal 正常落库；守卫与插入同事务。
+    case
+        workspace_guard:write_tx_or_skip({channel, ChannelId}, fun(Conn) ->
+            channel_repo:insert_message_view_tx(Conn, ChannelId, MessageId, UserId, ViewedAt)
+        end)
+    of
+        {written, Ret} -> Ret;
+        skipped -> {ok, 0}
+    end.
 
 -spec insert_reaction(integer(), integer(), integer(), binary(), integer()) ->
     {ok, integer()} | {error, term()}.
 insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
-    channel_repo:insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt).
+    %% T7 归档写守卫（R3 #10 收口）：反应插入与守卫同事务（原自动提交写）。
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        channel_repo:insert_reaction_tx(
+            Conn, ChannelId, MessageId, UserId, ReactionType, CreatedAt
+        )
+    end).
 
 -spec delete_reaction(integer(), integer(), integer(), binary()) ->
     {ok, non_neg_integer()} | {error, any()}.
 delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
-    channel_repo:delete_reaction(ChannelId, MessageId, UserId, ReactionType).
+    %% T7 归档写守卫（R3 #10 收口）：反应删除与守卫同事务（原自动提交写）。
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        channel_repo:delete_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType)
+    end).
 
 -spec list_user_reactions(integer(), [integer()]) -> {ok, [map()]} | {error, term()}.
 list_user_reactions(UserId, MessageIds) ->

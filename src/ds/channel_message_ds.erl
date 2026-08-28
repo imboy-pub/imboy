@@ -24,14 +24,26 @@ list_by_channel(ChannelId, Cursor, Limit) ->
     channel_message_repo:list_by_channel(ChannelId, Cursor, Limit).
 
 -spec update(integer(), map()) -> {ok, integer()} | {error, any()}.
-update(MessageId, Data) -> channel_message_repo:update(MessageId, Data).
+update(MessageId, Data) ->
+    %% T7 归档写守卫（P0 收口）：置顶/编辑等消息更新与守卫同事务
+    %% （{channel_message, Id} → channel → workspace 行锁）。
+    workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
+        channel_message_repo:update_tx(Conn, MessageId, Data)
+    end).
 
 -spec delete(integer()) -> {ok, integer()} | {error, any()}.
-delete(MessageId) -> channel_message_repo:delete(MessageId).
+delete(MessageId) ->
+    %% T7 归档写守卫（P0 收口）：消息软删与守卫同事务
+    workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
+        channel_message_repo:delete_tx(Conn, MessageId)
+    end).
 
 -spec revoke(integer(), integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
 revoke(MessageId, RevokedBy, RevokedAt) ->
-    channel_message_repo:revoke(MessageId, RevokedBy, RevokedAt).
+    %% T7 归档写守卫（P0 收口）：消息撤回与守卫同事务
+    workspace_guard:write_tx({channel_message, MessageId}, fun(Conn) ->
+        channel_message_repo:revoke_tx(Conn, MessageId, RevokedBy, RevokedAt)
+    end).
 
 %% G3: channel_logic_stats 不应直调 channel_message_repo:tablename()
 -spec get_stats(integer()) -> {ok, non_neg_integer(), non_neg_integer()} | {error, term()}.

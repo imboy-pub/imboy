@@ -86,6 +86,13 @@ delete(ChannelId, Uid) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2">>,
     elib_pg:execute(Sql, [ChannelId, Uid]).
 
+%% @doc 事务内删除管理员（归档写守卫同事务，DS 层 write_tx 调用）
+-spec delete_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+delete_tx(Conn, ChannelId, Uid) ->
+    Tb = tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE channel_id = $1 AND user_id = $2">>,
+    elib_pg:execute(Conn, Sql, [ChannelId, Uid]).
+
 %% @doc 检查用户是否为频道管理员
 -spec is_admin(integer(), integer()) -> boolean().
 is_admin(ChannelId, Uid) ->
@@ -104,6 +111,17 @@ get_role(ChannelId, Uid) ->
 update_role(ChannelId, Uid, Role) ->
     Tb = tablename(),
     elib_pg:update(Tb, #{role => Role}, <<"channel_id = $1 AND user_id = $2">>, [ChannelId, Uid]).
+
+%% @doc 事务内更新管理员角色（归档写守卫同事务）
+-spec update_role_tx(any(), integer(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
+update_role_tx(Conn, ChannelId, Uid, Role) ->
+    Tb = tablename(),
+    {Sql, Params} =
+        elib_pg_sql:update(Tb, #{role => Role}, <<"channel_id = $1 AND user_id = $2">>, [
+            ChannelId, Uid
+        ]),
+    elib_pg:execute(Conn, Sql, Params).
 
 %% ===================================================================
 %% Internal Function Definitions

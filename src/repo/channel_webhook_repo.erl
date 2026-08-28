@@ -6,9 +6,11 @@
 
 -export([tablename/0]).
 -export([add/1]).
+-export([add_tx/2]).
 -export([find_by_token/1]).
 -export([list_by_channel/1]).
 -export([set_status/3]).
+-export([set_status_tx/4]).
 
 %% ===================================================================
 %% API functions
@@ -27,6 +29,18 @@ add(Data) ->
     Data2 = Data#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc 事务内新增 webhook（归档写守卫同事务，DS 层 write_tx 调用）
+-spec add_tx(any(), map()) -> {ok, integer()} | {error, term()}.
+add_tx(Conn, Data) ->
+    Tb = tablename(),
+    Id = elib_tsid:generate(channel_webhook),
+    Data2 = Data#{<<"id">> => Id},
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:execute(Conn, Sql, Params) of
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
     end.
@@ -59,3 +73,17 @@ set_status(ChannelId, WebhookId, Status) ->
         <<"id = $1 AND channel_id = $2">>,
         [WebhookId, ChannelId]
     ).
+
+%% @doc 事务内更新 webhook 状态（归档写守卫同事务）
+-spec set_status_tx(any(), integer(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
+set_status_tx(Conn, ChannelId, WebhookId, Status) ->
+    Tb = tablename(),
+    {Sql, Params} =
+        elib_pg_sql:update(
+            Tb,
+            #{status => Status},
+            <<"id = $1 AND channel_id = $2">>,
+            [WebhookId, ChannelId]
+        ),
+    elib_pg:execute(Conn, Sql, Params).

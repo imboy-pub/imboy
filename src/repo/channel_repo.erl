@@ -16,7 +16,9 @@
 -export([list_subscribed/2]).
 -export([list_managed/1]).
 -export([update/2]).
+-export([update_tx/3]).
 -export([delete/1]).
+-export([delete_tx/2]).
 -export([increment_subscribers/2]).
 -export([increment_subscribers/3]).
 -export([list_workspace_channels/2]).
@@ -26,8 +28,11 @@
 -export([get_reaction_count/1]).
 -export([has_viewed_message/2]).
 -export([insert_message_view/4]).
+-export([insert_message_view_tx/5]).
 -export([insert_reaction/5]).
+-export([insert_reaction_tx/6]).
 -export([delete_reaction/4]).
+-export([delete_reaction_tx/5]).
 -export([list_user_reactions/2]).
 -export([get_daily_stats/2]).
 
@@ -248,6 +253,14 @@ update(ChannelId, Data) ->
     UpdateData = maps:without([<<"id">>], Data),
     elib_pg:update(Tb, UpdateData, <<"id = $1">>, [ChannelId]).
 
+%% @doc 事务内更新频道信息（归档写守卫同事务，DS 层 workspace_guard:write_tx 调用）
+-spec update_tx(any(), integer(), map()) -> {ok, non_neg_integer()} | {error, any()}.
+update_tx(Conn, ChannelId, Data) ->
+    Tb = tablename(),
+    UpdateData = maps:without([<<"id">>], Data),
+    {Sql, Params} = elib_pg_sql:update(Tb, UpdateData, <<"id = $1">>, [ChannelId]),
+    elib_pg:execute(Conn, Sql, Params).
+
 %% @doc 删除频道（软删除）
 %% @param ChannelId 频道ID
 %% @return {ok, Count} | {error, Reason}
@@ -255,6 +268,13 @@ update(ChannelId, Data) ->
 delete(ChannelId) ->
     Tb = tablename(),
     elib_pg:update(Tb, #{status => -1}, <<"id = $1">>, [ChannelId]).
+
+%% @doc 事务内软删频道（归档写守卫同事务）
+-spec delete_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+delete_tx(Conn, ChannelId) ->
+    Tb = tablename(),
+    {Sql, Params} = elib_pg_sql:update(Tb, #{status => -1}, <<"id = $1">>, [ChannelId]),
+    elib_pg:execute(Conn, Sql, Params).
 
 %% @doc 增减订阅者数量
 %% @param ChannelId 频道ID
@@ -360,6 +380,21 @@ insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
         {error, _} = Err -> Err
     end.
 
+%% @doc 事务内插入消息阅读记录（派生读写：archived 时由守卫 skip，不落库）
+-spec insert_message_view_tx(any(), integer(), integer(), integer(), integer()) ->
+    {ok, integer()} | {error, term()}.
+insert_message_view_tx(Conn, ChannelId, MessageId, UserId, ViewedAt) ->
+    Id = elib_tsid:generate(channel_message_view),
+    Sql = <<
+        "INSERT INTO channel_message_view (id, channel_id, message_id, user_id, viewed_at) "
+        "VALUES ($1, $2, $3, $4, $5) "
+        "ON CONFLICT (message_id, user_id) DO NOTHING"
+    >>,
+    case elib_pg:execute(Conn, Sql, [Id, ChannelId, MessageId, UserId, ViewedAt]) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
+
 %% @doc 插入消息反应
 -spec insert_reaction(integer(), integer(), integer(), binary(), integer()) ->
     {ok, integer()} | {error, term()}.
@@ -371,6 +406,21 @@ insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
         "ON CONFLICT (message_id, user_id, reaction_type) DO NOTHING"
     >>,
     case elib_pg:execute(Sql, [Id, ChannelId, MessageId, UserId, ReactionType, CreatedAt]) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc 事务内插入消息反应（归档写守卫同事务）
+-spec insert_reaction_tx(any(), integer(), integer(), integer(), binary(), integer()) ->
+    {ok, integer()} | {error, term()}.
+insert_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
+    Id = elib_tsid:generate(channel),
+    Sql = <<
+        "INSERT INTO channel_reaction (id, channel_id, message_id, user_id, reaction_type, created_at) "
+        "VALUES ($1, $2, $3, $4, $5, $6) "
+        "ON CONFLICT (message_id, user_id, reaction_type) DO NOTHING"
+    >>,
+    case elib_pg:execute(Conn, Sql, [Id, ChannelId, MessageId, UserId, ReactionType, CreatedAt]) of
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
     end.
@@ -396,6 +446,16 @@ delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
         "WHERE channel_id = $1 AND message_id = $2 AND user_id = $3 AND reaction_type = $4"
     >>,
     elib_pg:execute(Sql, [ChannelId, MessageId, UserId, ReactionType]).
+
+%% @doc 事务内删除消息反应（归档写守卫同事务）
+-spec delete_reaction_tx(any(), integer(), integer(), integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+delete_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType) ->
+    Sql = <<
+        "DELETE FROM channel_reaction "
+        "WHERE channel_id = $1 AND message_id = $2 AND user_id = $3 AND reaction_type = $4"
+    >>,
+    elib_pg:execute(Conn, Sql, [ChannelId, MessageId, UserId, ReactionType]).
 
 %% @doc 获取频道每日统计数据
 -spec get_daily_stats(integer(), integer()) -> {ok, list(map())} | {error, term()}.

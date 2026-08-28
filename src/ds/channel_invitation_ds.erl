@@ -18,7 +18,12 @@
 -export([page/5]).
 
 -spec create(map()) -> {ok, integer()} | {error, term()}.
-create(Data) -> channel_invitation_repo:create(Data).
+create(Data) ->
+    %% T7 归档写守卫（P0 收口）：邀请创建与守卫同事务（{channel, Id} 行锁）
+    ChannelId = maps:get(channel_id, Data, 0),
+    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+        channel_invitation_repo:create_tx(Conn, Data)
+    end).
 
 -spec find_by_id(integer()) -> {ok, map()} | {error, any()}.
 find_by_id(Id) -> channel_invitation_repo:find_by_id(Id).
@@ -33,10 +38,18 @@ is_invited(ChannelId, InviteeUid) ->
     channel_invitation_repo:is_invited(ChannelId, InviteeUid).
 
 -spec accept(integer(), integer()) -> ok | {error, term()}.
-accept(InvitationId, Uid) -> channel_invitation_repo:accept(InvitationId, Uid).
+accept(InvitationId, Uid) ->
+    %% T7 归档写守卫（P0 收口）：接受邀请与守卫同事务（{channel_invitation, Id}）
+    workspace_guard:write_tx({channel_invitation, InvitationId}, fun(Conn) ->
+        channel_invitation_repo:accept_tx(Conn, InvitationId, Uid)
+    end).
 
 -spec reject(integer(), integer()) -> ok | {error, term()}.
-reject(InvitationId, Uid) -> channel_invitation_repo:reject(InvitationId, Uid).
+reject(InvitationId, Uid) ->
+    %% T7 归档写守卫（P0 收口）：拒绝邀请与守卫同事务
+    workspace_guard:write_tx({channel_invitation, InvitationId}, fun(Conn) ->
+        channel_invitation_repo:reject_tx(Conn, InvitationId, Uid)
+    end).
 
 -spec list_pending_by_invitee(integer()) -> {ok, list(map())} | {error, any()}.
 list_pending_by_invitee(InviteeUid) ->

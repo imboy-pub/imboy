@@ -14,11 +14,14 @@
 
 -export([tablename/0]).
 -export([create/1]).
+-export([create_tx/2]).
 -export([find_by_id/1]).
 -export([find_by_channel_and_invitee/2]).
 -export([find_pending_by_channel_and_invitee/2]).
 -export([accept/2]).
+-export([accept_tx/3]).
 -export([reject/2]).
+-export([reject_tx/3]).
 -export([list_pending_by_invitee/1]).
 -export([list_by_inviter/2]).
 -export([is_invited/2]).
@@ -50,6 +53,16 @@ tablename() ->
 %% @returns {ok, Id} | {error, Reason}
 -spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data) ->
+    create_run(fun(Sql, Params) -> elib_pg:execute(Sql, Params) end, Data).
+
+%% @doc 事务内创建邀请（归档写守卫同事务，DS 层 write_tx 调用）
+-spec create_tx(any(), map()) -> {ok, integer()} | {error, term()}.
+create_tx(Conn, Data) ->
+    create_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec create_run(fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()) ->
+    {ok, integer()} | {error, term()}.
+create_run(Exec, Data) ->
     ChannelId = maps:get(channel_id, Data),
     InviterUid = maps:get(inviter_uid, Data),
     InviteeUid = maps:get(invitee_uid, Data),
@@ -64,7 +77,7 @@ create(Data) ->
             "(id, channel_id, inviter_uid, invitee_uid, invitation_code, message, status, expires_at, created_at) ",
             "VALUES ($1, $2, $3, $4, $5, $6, $7, to_timestamp($8::bigint/1000), to_timestamp($9::bigint/1000))">>,
     case
-        elib_pg:execute(Sql, [
+        Exec(Sql, [
             Id,
             ChannelId,
             InviterUid,
@@ -130,10 +143,22 @@ find_pending_by_channel_and_invitee(ChannelId, InviteeUid) ->
 %% @doc 接受邀请
 -spec accept(integer(), integer()) -> ok | {error, term()}.
 accept(Id, InviteeUid) ->
+    accept_exec(fun(Sql, Params) -> elib_pg:execute(Sql, Params) end, Id, InviteeUid).
+
+%% @doc 事务内接受邀请（归档写守卫同事务，DS 层 write_tx 调用）
+-spec accept_tx(any(), integer(), integer()) -> ok | {error, term()}.
+accept_tx(Conn, Id, InviteeUid) ->
+    accept_exec(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Id, InviteeUid).
+
+-spec accept_exec(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), integer(), integer()
+) ->
+    ok | {error, term()}.
+accept_exec(Exec, Id, InviteeUid) ->
     Sql =
         <<"UPDATE channel_invitation ", "SET status = $1, accepted_at = NOW(), updated_at = NOW() ",
             "WHERE id = $2 AND invitee_uid = $3 AND status = 0 AND expires_at > NOW()">>,
-    case elib_pg:execute(Sql, [?STATUS_ACCEPTED, Id, InviteeUid]) of
+    case Exec(Sql, [?STATUS_ACCEPTED, Id, InviteeUid]) of
         {ok, 0} -> {error, not_found_or_expired};
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
@@ -142,10 +167,22 @@ accept(Id, InviteeUid) ->
 %% @doc 拒绝邀请
 -spec reject(integer(), integer()) -> ok | {error, term()}.
 reject(Id, InviteeUid) ->
+    reject_exec(fun(Sql, Params) -> elib_pg:execute(Sql, Params) end, Id, InviteeUid).
+
+%% @doc 事务内拒绝邀请（归档写守卫同事务）
+-spec reject_tx(any(), integer(), integer()) -> ok | {error, term()}.
+reject_tx(Conn, Id, InviteeUid) ->
+    reject_exec(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Id, InviteeUid).
+
+-spec reject_exec(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), integer(), integer()
+) ->
+    ok | {error, term()}.
+reject_exec(Exec, Id, InviteeUid) ->
     Sql =
         <<"UPDATE channel_invitation ", "SET status = $1, updated_at = NOW() ",
             "WHERE id = $2 AND invitee_uid = $3 AND status = 0">>,
-    case elib_pg:execute(Sql, [?STATUS_REJECTED, Id, InviteeUid]) of
+    case Exec(Sql, [?STATUS_REJECTED, Id, InviteeUid]) of
         {ok, 0} -> {error, not_found};
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}

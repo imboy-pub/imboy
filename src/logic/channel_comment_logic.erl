@@ -39,15 +39,12 @@ create(Uid, ChannelIdBin, MessageIdBin, Content, ParentId) ->
                 _ ->
                     case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                         ok ->
-                            %% T7 归档写守卫（R3 #9）
-                            case channel_logic_common:guard_channel_writable(ChannelId) of
-                                ok ->
-                                    do_create_comment(
-                                        Uid, ChannelId, MessageIdBin, Content, ParentId
-                                    );
-                                {error, Reason} ->
-                                    {error, Reason}
-                            end;
+                            %% T7 归档写守卫（R3 #9 收口）：守卫已下沉
+                            %% channel_comment_ds 写事务（FOR UPDATE 同事务），
+                            %% 此处不再前置检查（消除"检查-写窗口"）。
+                            do_create_comment(
+                                Uid, ChannelId, MessageIdBin, Content, ParentId
+                            );
                         {error, Reason} ->
                             {error, Reason}
                     end
@@ -81,21 +78,15 @@ list_by_message(Uid, ChannelIdBin, MessageIdBin, Cursor, Limit) ->
 -spec delete(integer(), integer()) -> ok | {error, binary()}.
 delete(Uid, CommentId) ->
     case channel_comment_ds:find_by_id(CommentId) of
-        #{<<"user_id">> := Uid, <<"channel_id">> := OwnChannelId} ->
-            %% T7 归档写守卫（R3 #9）
-            case channel_logic_common:guard_channel_writable(OwnChannelId) of
-                ok -> do_delete(CommentId);
-                {error, Reason} -> {error, Reason}
-            end;
+        #{<<"user_id">> := Uid, <<"channel_id">> := _OwnChannelId} ->
+            %% T7 归档写守卫（R3 #9 收口）：守卫在 DS 写事务内（{channel_comment, Id}）
+            do_delete(CommentId);
         #{<<"channel_id">> := ChannelId} ->
             Role = channel_logic_common:get_user_role(ChannelId, Uid),
             case Role >= ?CHANNEL_ROLE_ADMIN of
                 true ->
-                    %% T7 归档写守卫（R3 #9）
-                    case channel_logic_common:guard_channel_writable(ChannelId) of
-                        ok -> do_delete(CommentId);
-                        {error, Reason} -> {error, Reason}
-                    end;
+                    %% T7 归档写守卫（R3 #9 收口）：同上，DS 事务内
+                    do_delete(CommentId);
                 false ->
                     {error, <<"无权删除该评论"/utf8>>}
             end;
@@ -107,16 +98,13 @@ delete(Uid, CommentId) ->
 -spec like(integer(), integer()) -> ok | {error, binary()}.
 like(Uid, CommentId) ->
     case ensure_comment_access(Uid, CommentId) of
-        {ok, ChannelId} ->
-            %% T7 归档写守卫（R3 #9）
-            case channel_logic_common:guard_channel_writable(ChannelId) of
-                ok ->
-                    case channel_comment_ds:like(CommentId) of
-                        {ok, _} -> ok;
-                        {error, _} -> {error, <<"操作失败"/utf8>>}
-                    end;
-                {error, Reason} ->
-                    {error, Reason}
+        {ok, _ChannelId} ->
+            %% T7 归档写守卫（R3 #9 收口）：守卫在 DS 写事务内；
+            %% 稳定错误码（980 等）原样透传供 handler envelope 映射
+            case channel_comment_ds:like(CommentId) of
+                {ok, _} -> ok;
+                {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
+                {error, _} -> {error, <<"操作失败"/utf8>>}
             end;
         {error, Reason} ->
             {error, Reason}
@@ -126,16 +114,12 @@ like(Uid, CommentId) ->
 -spec unlike(integer(), integer()) -> ok | {error, binary()}.
 unlike(Uid, CommentId) ->
     case ensure_comment_access(Uid, CommentId) of
-        {ok, ChannelId} ->
-            %% T7 归档写守卫（R3 #9）
-            case channel_logic_common:guard_channel_writable(ChannelId) of
-                ok ->
-                    case channel_comment_ds:unlike(CommentId) of
-                        {ok, _} -> ok;
-                        {error, _} -> {error, <<"操作失败"/utf8>>}
-                    end;
-                {error, Reason} ->
-                    {error, Reason}
+        {ok, _ChannelId} ->
+            %% T7 归档写守卫（R3 #9 收口）：守卫在 DS 写事务内；稳定错误码透传
+            case channel_comment_ds:unlike(CommentId) of
+                {ok, _} -> ok;
+                {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
+                {error, _} -> {error, <<"操作失败"/utf8>>}
             end;
         {error, Reason} ->
             {error, Reason}
@@ -185,6 +169,9 @@ do_create_comment(Uid, ChannelId, MessageIdBin, Content, ParentId) ->
                 {ok, CommentId} ->
                     Comment = channel_comment_ds:find_by_id(CommentId),
                     {ok, comment_transfer(Comment)};
+                %% 稳定错误码（980 等）原样透传供 handler envelope 映射
+                {error, {Code, Msg}} when is_integer(Code) ->
+                    {error, {Code, Msg}};
                 {error, _} ->
                     {error, <<"评论失败"/utf8>>}
             end;
@@ -195,6 +182,8 @@ do_create_comment(Uid, ChannelId, MessageIdBin, Content, ParentId) ->
 do_delete(CommentId) ->
     case channel_comment_ds:delete(CommentId) of
         {ok, _} -> ok;
+        %% 稳定错误码（980 等）原样透传供 handler envelope 映射
+        {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
         {error, _} -> {error, <<"删除失败"/utf8>>}
     end.
 

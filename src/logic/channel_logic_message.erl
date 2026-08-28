@@ -248,6 +248,9 @@ do_update_channel(ChannelId, Data) ->
                 Unexpected ->
                     {error, elib_cnv:safe_to_binary(Unexpected)}
             end;
+        %% T7 收口：归档守卫（980）等稳定错误码透传
+        {error, {Code, Msg}} when is_integer(Code) ->
+            {error, {Code, Msg}};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
@@ -269,6 +272,9 @@ delete_channel(Uid, ChannelIdBin) ->
                         {ok, _} ->
                             channel_logic_notify:notify_channel_deleted(ChannelId, SubscriberUids),
                             ok;
+                        %% T7 收口：归档守卫（980）等稳定错误码透传
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            {error, {Code, Msg}};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end
@@ -433,11 +439,9 @@ add_admin(Uid, ChannelIdBin, NewAdminUid, Role) ->
                 false ->
                     {error, <<"只有创建者可以添加管理员"/utf8>>};
                 true ->
-                    %% T7 归档写守卫（R3 #13）
-                    case channel_logic_common:guard_channel_writable(ChannelId) of
-                        {error, Reason0} -> {error, Reason0};
-                        ok -> do_add_admin(ChannelId, NewAdminUid, Role)
-                    end
+                    %% T7 归档写守卫（R3 #13 收口）：守卫已下沉 channel_admin_ds
+                    %% 写事务（FOR UPDATE 同事务），此处不再前置检查。
+                    do_add_admin(ChannelId, NewAdminUid, Role)
             end
     end.
 
@@ -451,6 +455,8 @@ do_add_admin(ChannelId, NewAdminUid, Role) ->
     },
     case channel_admin_ds:add(Data) of
         {ok, _} -> ok;
+        %% 稳定错误码（980 等）原样透传供 handler envelope 映射
+        {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
         {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
@@ -466,15 +472,11 @@ remove_admin(Uid, ChannelIdBin, AdminUid) ->
                 false ->
                     {error, <<"只有创建者可以移除管理员"/utf8>>};
                 true ->
-                    %% T7 归档写守卫（R3 #13）
-                    case channel_logic_common:guard_channel_writable(ChannelId) of
-                        {error, Reason0} ->
-                            {error, Reason0};
-                        ok ->
-                            case channel_admin_ds:delete(ChannelId, AdminUid) of
-                                {ok, _} -> ok;
-                                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
-                            end
+                    %% T7 归档写守卫（R3 #13 收口）：守卫已下沉 channel_admin_ds 写事务
+                    case channel_admin_ds:delete(ChannelId, AdminUid) of
+                        {ok, _} -> ok;
+                        {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
+                        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
                     end
             end
     end.
@@ -512,6 +514,9 @@ pin_message(Uid, MessageIdBin, IsPinned) ->
                                                 Message2 when is_map(Message2) ->
                                                     {ok, message_transfer(Message2)}
                                             end;
+                                        %% T7 收口：归档守卫（980）等稳定错误码透传
+                                        {error, {Code, Msg}} when is_integer(Code) ->
+                                            {error, {Code, Msg}};
                                         {error, Reason} ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
                                     end
@@ -557,6 +562,9 @@ delete_message(Uid, MessageIdBin) ->
                                                 ChannelId, MessageId
                                             ),
                                             ok;
+                                        %% T7 收口：归档守卫（980）等稳定错误码透传
+                                        {error, {Code, Msg}} when is_integer(Code) ->
+                                            {error, {Code, Msg}};
                                         {error, Reason} ->
                                             {error, elib_cnv:safe_to_binary(Reason)}
                                     end
@@ -626,6 +634,11 @@ revoke_message(Uid, ChannelIdBin, MessageIdBin) ->
                                                                             RevokedAt
                                                                         ),
                                                                         ok;
+                                                                    %% T7 收口：归档守卫（980）等稳定错误码透传
+                                                                    {error, {Code, Msg}} when
+                                                                        is_integer(Code)
+                                                                    ->
+                                                                        {error, {Code, Msg}};
                                                                     {error, Reason} ->
                                                                         {error,
                                                                             elib_cnv:safe_to_binary(
@@ -714,6 +727,9 @@ do_edit_message(Uid, ChannelId, MessageId, NewContent, Message) ->
                                 ChannelId, MessageId, NewContent, EditedAt
                             ),
                             ok;
+                        %% T7 收口：归档守卫（980）等稳定错误码透传
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            {error, {Code, Msg}};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end
@@ -757,15 +773,12 @@ update_admin_role(_Uid, ChannelId, _TargetUid, _Role) when
 update_admin_role(Uid, ChannelId, TargetUid, Role) ->
     case channel_logic_common:get_user_role(ChannelId, Uid) of
         3 ->
-            %% T7 归档写守卫（R3 #13）
-            case channel_logic_common:guard_channel_writable(ChannelId) of
-                {error, Reason0} ->
-                    {error, Reason0};
-                ok ->
-                    case channel_admin_ds:update_role(ChannelId, TargetUid, Role) of
-                        {ok, _} -> ok;
-                        {error, _} -> {error, <<"更新角色失败"/utf8>>}
-                    end
+            %% T7 归档写守卫（R3 #13 收口）：守卫已下沉 channel_admin_ds 写事务
+            case channel_admin_ds:update_role(ChannelId, TargetUid, Role) of
+                {ok, _} -> ok;
+                %% 稳定错误码（980 等）原样透传供 handler envelope 映射
+                {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
+                {error, _} -> {error, <<"更新角色失败"/utf8>>}
             end;
         _ ->
             {error, <<"无权限操作，仅创建者可修改角色"/utf8>>}
