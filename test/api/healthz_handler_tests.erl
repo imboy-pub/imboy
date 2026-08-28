@@ -55,7 +55,10 @@ probe_is_not_cached() ->
     meck:expect(elib_pg, query, fun(_Sql, _Args) -> {ok, [#{}]} end),
     _ = healthz_handler_probe_via_cache(),
     _ = healthz_handler_probe_via_cache(),
-    ?assertEqual(2, meck:num_calls(elib_pg, query, '_')).
+    %% 套件隔离治理：app 常驻后后台 worker（msg_store_worker 排空等）也会
+    %% 调 elib_pg:query 并被 passthrough meck 记账，通配 '_' 计数随负载漂移
+    %% （run #12 实测 2→3）。改为只数探针自己的 SELECT 1 调用。
+    ?assertEqual(2, meck:num_calls(elib_pg, query, [<<"SELECT 1">>, '_'])).
 
 %% cached_db_ok/0 未导出，经 init/2 触发（不给生产代码开 -ifdef(TEST) 后门）
 healthz_handler_probe_via_cache() ->
