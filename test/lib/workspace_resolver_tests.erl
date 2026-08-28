@@ -102,9 +102,34 @@ resolve_workspace_test_() ->
                         {ok, ?WS_ID}, workspace_resolver:resolve_workspace({attachment, 333002})
                     )
                 end},
-                {"c2c attachment stays personal (T7 TODO path)", fun() ->
+                {"c2c attachment stays personal (T7 closed: personal domain)", fun() ->
                     ?assertEqual(
                         personal, workspace_resolver:resolve_workspace({attachment, 333003})
+                    )
+                end},
+                {"moment attachment stays personal (T7 closed: personal domain)", fun() ->
+                    ?assertEqual(
+                        personal, workspace_resolver:resolve_workspace({attachment, 333004})
+                    )
+                end},
+                {"private attachment stays personal (T7 closed: personal domain)", fun() ->
+                    ?assertEqual(
+                        personal, workspace_resolver:resolve_workspace({attachment, 333005})
+                    )
+                end},
+                {"public attachment stays personal (T7 closed: personal domain)", fun() ->
+                    ?assertEqual(
+                        personal, workspace_resolver:resolve_workspace({attachment, 333006})
+                    )
+                end},
+                {"group attachment without scope_ref degrades to personal", fun() ->
+                    ?assertEqual(
+                        personal, workspace_resolver:resolve_workspace({attachment, 333007})
+                    )
+                end},
+                {"missing attachment row stays personal (legacy fallback)", fun() ->
+                    ?assertEqual(
+                        personal, workspace_resolver:resolve_workspace({attachment, 333099})
                     )
                 end},
                 {"unknown resource type is personal", fun() ->
@@ -147,6 +172,18 @@ resolve_one(<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333002]) -
     {ok, #{<<"scope">> => <<"channel">>, <<"scope_ref">> => ?CID}};
 resolve_one(<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333003]) ->
     {ok, #{<<"scope">> => <<"c2c">>, <<"scope_ref">> => ?UID}};
+resolve_one(<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333004]) ->
+    %% T7：moment 附件 scope_ref 发帖后回填为 momentId（两阶段绑定），
+    %% 与 workspace 无任何关联（moment 全模块无 workspace 字段）
+    {ok, #{<<"scope">> => <<"moment">>, <<"scope_ref">> => <<"990001">>}};
+resolve_one(<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333005]) ->
+    {ok, #{<<"scope">> => <<"private">>, <<"scope_ref">> => null}};
+resolve_one(<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333006]) ->
+    {ok, #{<<"scope">> => <<"public">>, <<"scope_ref">> => null}};
+resolve_one(<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333007]) ->
+    %% scope=group 但 scope_ref 为 null（降级/脏数据）：无目标可解析，
+    %% 沿 personal 兜底（与历史行为一致，守卫放行不吞 404 语义）
+    {ok, #{<<"scope">> => <<"group">>, <<"scope_ref">> => null}};
 resolve_one(_, _) ->
     {error, no_rows}.
 

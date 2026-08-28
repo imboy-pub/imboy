@@ -49,6 +49,9 @@ upload(Gid, CurrentUid, FileName, FileBinary, FileType) ->
                 <<"created_at">> => elib_dt:timestamp()
             },
             {ok, FileData};
+        %% T7 归档拒绝归一为稳定错误码（handler 直接映射 envelope code 980）
+        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+            {error, ?ERR_WORKSPACE_ARCHIVED};
         {error, Reason} ->
             {error, Reason}
     end.

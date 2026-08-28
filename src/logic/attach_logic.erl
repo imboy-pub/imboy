@@ -191,7 +191,9 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
                 %% T7 归档写守卫（A2 收口）：附件转正落库（attachment 元数据写）与
                 %% 守卫同事务——scope=group/channel 时按 {group, Ref}/{channel, Ref}
                 %% 锁 workspace 行（FOR UPDATE），archived 拒绝（稳定错误码 980）；
-                %% c2c/moment/private 等 personal 域直通（resolver TODO(T7) 既有登记）。
+                %% c2c/moment/private/public 为个人域直通（T7 结项：scope 落库不可变
+                %% + 读 ACL 恒绑定原 scope，无进 workspace 路径——设计决定非遗漏，
+                %% 判定依据详见 workspace_resolver 的 attachment 子句注释）。
                 case attach_scope_target(Scope, ScopeRef) of
                     {ok, Target} ->
                         ok = workspace_guard:abort_on_error(
@@ -245,7 +247,10 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
     end.
 
 %% @doc T7 归档写守卫目标映射：group/channel 附件按 scope_ref 解析目标资源；
-%% 其余 scope（c2c/moment/private/public）为 personal 域直通。
+%% 其余 scope（c2c/moment/private/public）为个人域直通（T7 结项结论：
+%% attachment.scope 落库后不可变、读 ACL 恒绑定原 scope、进群/频道的唯一
+%% 途径是上传时即带 group/channel scope——个人域附件不存在落入 workspace
+%% 范围的路径，守卫 N/A 是设计决定而非遗漏）。
 -spec attach_scope_target(binary(), binary() | undefined) ->
     {ok, {group | channel, integer() | binary()}} | passthrough.
 attach_scope_target(<<"group">>, Ref) when Ref =/= undefined, Ref =/= <<>>, Ref =/= null ->
