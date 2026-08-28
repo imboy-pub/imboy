@@ -153,3 +153,49 @@ abort_on_error_test_() ->
             )
         end}
     ].
+
+%%% ===================================================================
+%%% M-1 收口：DB 异常 fail-closed（原 one_row 吞异常 → not_found → 放行）
+%%% ===================================================================
+
+ensure_writable_resolver_db_error_returns_503_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_resolver, [
+                %% 模拟 one_row 抛出的解析层 DB 异常
+                {'resolve_workspace', 1, fun(_) ->
+                    erlang:error({resolver_db_error, simulated_db_down})
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {503, _}}, workspace_guard:ensure_writable({group, ?GID})
+            )
+        end
+    ).
+
+ensure_writable_status_query_error_returns_503_test_() ->
+    %% guard_mocks(none)：resolve 成功但 workspace 状态查询返回 {error, db_error}
+    ?WITH_MECKS(guard_mocks(none), fun() ->
+        ?assertMatch(
+            {error, {503, _}}, workspace_guard:ensure_writable({group, ?GID})
+        )
+    end).
+
+ensure_writable_tx_resolver_db_error_returns_503_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_resolver, [
+                {'resolve_workspace', 1, fun(_) ->
+                    erlang:error({resolver_db_error, simulated_db_down})
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {503, _}},
+                workspace_guard:ensure_writable_tx(fake_conn, {group, ?GID})
+            )
+        end
+    ).

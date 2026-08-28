@@ -26,7 +26,9 @@
 %      Workspace 边界执行前置校验——scope=workspace 的资源要求请求者是
 %      active workspace_member（§1.4.2 授权规则 2），非成员稳定 403；
 %      scope=personal 恒 ok（personal 零行为变化，回归红线）；
-%      资源不存在恒 ok（放行给既有 404 流程，不吞既有语义）。
+%      资源不存在恒 ok（放行给既有 404 流程，不吞既有语义）；
+%      DB 异常 fail-closed：稳定 {error, {503, Msg}}（M-1/M-2 收口，
+%      不再吞异常放行）。
 %   3. guard_channel_binding/2 / guard_group_gid/2：handler 层便捷门，
 %      从 cowboy 路径 binding / 参数中取资源 ID 后执行 2。
 %
@@ -245,21 +247,25 @@ resolve_workspace(_) ->
 %% @doc 频道入口边界：workspace 频道要求请求者是 active 工作区成员
 %% personal 频道 / 频道不存在 → ok（既有流程继续，零行为变化）。
 -spec ensure_channel_member_access(integer(), integer() | binary()) ->
-    ok | {error, {403, binary()}}.
+    ok | {error, {403 | 503, binary()}}.
 ensure_channel_member_access(Uid, ChannelId) ->
-    case channel_scope(ChannelId) of
+    try channel_scope(ChannelId) of
         {ok, WsId} -> ensure_member_ok(WsId, Uid);
         _ -> ok
+    catch
+        error:{resolver_db_error, _} -> resolver_db_unavailable()
     end.
 
 %% @doc 群入口边界：workspace 群要求请求者是 active 工作区成员
 %% personal 群 / 群不存在 → ok。
 -spec ensure_group_member_access(integer(), integer() | binary()) ->
-    ok | {error, {403, binary()}}.
+    ok | {error, {403 | 503, binary()}}.
 ensure_group_member_access(Uid, Gid) ->
-    case group_scope(Gid) of
+    try group_scope(Gid) of
         {ok, WsId} -> ensure_member_ok(WsId, Uid);
         _ -> ok
+    catch
+        error:{resolver_db_error, _} -> resolver_db_unavailable()
     end.
 
 %% ensure_member 返回 {ok, Role}；handler 便捷门契约是 ok——此处归一。
@@ -274,8 +280,10 @@ ensure_member_ok(WsId, Uid) ->
 %% channel_handler_comment / channel_webhook_handler 的 init/2 前置校验。
 %% binding 读取带 catch：单测中 Req 常为普通 map（非 cowboy req），
 %% 真实 cowboy_req:binding 会 function_clause，按"无 binding"处理。
+%% 无 binding/资源不存在放行是安全的：下游 action 处理必有独立 ACL/查询
+%% （频道成员校验、404 流程）；DB 异常则 fail-closed 503（不吞异常放行）。
 -spec guard_channel_binding(cowboy_req:req() | map(), integer()) ->
-    ok | {error, {403, binary()}}.
+    ok | {error, {403 | 503, binary()}}.
 guard_channel_binding(Req, Uid) ->
     case catch cowboy_req:binding(channel_id, Req) of
         ChannelId when is_binary(ChannelId); is_integer(ChannelId) ->
@@ -286,13 +294,18 @@ guard_channel_binding(Req, Uid) ->
 
 %% @doc handler 便捷门：custom_id 入口（by_custom_id 路由的直访通道）
 %% 自定义 ID 命中的频道若为 workspace scope，同样不能绕过 403。
-%% DB 查询带 catch（与 row_scope 同理）：连接层异常按"未命中"放行，
-%% 走既有流程（后续业务查询仍会失败，无绕过泄漏窗口）。
--spec guard_channel_custom_id(integer(), binary()) -> ok | {error, {403, binary()}}.
+%% 未命中（#{} 空行）放行是安全的：下游 get_channel_by_custom_id 必有
+%% 独立查询/404 流程；DB 错误（{error, _}）与连接层异常（'EXIT'）
+%% fail-closed 503，不再按"未命中"吞掉放行（M-2 T5 收口）。
+-spec guard_channel_custom_id(integer(), binary()) -> ok | {error, {403 | 503, binary()}}.
 guard_channel_custom_id(Uid, CustomId) when is_binary(CustomId), CustomId =/= <<>> ->
     case catch channel_ds:find_by_custom_id(CustomId) of
         Channel when is_map(Channel), map_size(Channel) > 0 ->
             ensure_channel_member_access(Uid, maps:get(<<"id">>, Channel, 0));
+        {error, _Reason} ->
+            resolver_db_unavailable();
+        {'EXIT', _Reason} ->
+            resolver_db_unavailable();
         _ ->
             ok
     end;
@@ -301,7 +314,9 @@ guard_channel_custom_id(_Uid, _CustomId) ->
 
 %% @doc handler 便捷门：群入口（gid 参数，POST body 或 query string 均可传值）
 %% 用于 group_handler:detail/msg_page 与 group_notice_handler 全部入口。
--spec guard_group_gid(integer(), integer() | binary()) -> ok | {error, {403, binary()}}.
+%% gid 非法/群不存在放行：下游 detail/msg_page 必有独立群成员校验；
+%% DB 异常经 ensure_group_member_access fail-closed 503。
+-spec guard_group_gid(integer(), integer() | binary()) -> ok | {error, {403 | 503, binary()}}.
 guard_group_gid(Uid, Gid) ->
     Gid2 = elib_cnv:safe_to_integer(Gid),
     case Gid2 > 0 of
@@ -311,16 +326,19 @@ guard_group_gid(Uid, Gid) ->
 
 %% @doc handler 便捷门：群公告入口（notice_id 参数）
 %% notice → group_id → scope 解析后执行同一 Workspace 成员边界；
-%% personal 群公告 / 公告不存在 → ok（走既有 404/群成员校验流程）。
+%% personal 群公告 / 公告不存在 → ok（走既有 404/群成员校验流程，
+%% 下游必有独立 ACL）；DB 异常 fail-closed 503。
 %% Group Notice 继续只属于 Group（I12），本守卫只加 Workspace 边界前置。
--spec guard_group_notice_id(integer(), integer() | binary()) -> ok | {error, {403, binary()}}.
+-spec guard_group_notice_id(integer(), integer() | binary()) -> ok | {error, {403 | 503, binary()}}.
 guard_group_notice_id(Uid, NoticeId) ->
     Id2 = elib_cnv:safe_to_integer(NoticeId),
     case Id2 > 0 of
         true ->
-            case resolve_workspace({group_notice, Id2}) of
+            try resolve_workspace({group_notice, Id2}) of
                 {ok, WsId} -> ensure_member_ok(WsId, Uid);
                 _ -> ok
+            catch
+                error:{resolver_db_error, _} -> resolver_db_unavailable()
             end;
         false ->
             ok
@@ -348,9 +366,9 @@ channel_scope(ChannelId) ->
     end.
 
 %% 通用 scope 行查询：返回 {ok, Scope, WorkspaceId} | {error, not_found}
-%% DB 调用带 catch：连接层崩溃（如测试环境无池）按 not_found 处理——
-%% 守卫放行走既有权限流程（生产 DB 正常时边界照常生效；DB 不可用时
-%% 后续业务查询同样失败，不存在绕过泄漏窗口）。
+%% 零行（one_row 返回 #{}）按 not_found 处理；DB 异常由 one_row 抛出
+%% {resolver_db_error, _}，交守卫入口归一 503 fail-closed（M-1/M-2 收口：
+%% 原 catch 吞 DB 崩溃按 not_found 放行，是归档守卫 fail-open 的根因）。
 -spec row_scope(binary(), integer() | binary()) ->
     {ok, binary() | nil, integer() | nil} | {error, not_found}.
 row_scope(Tb, Id) ->
@@ -360,7 +378,7 @@ row_scope(Tb, Id) ->
             {error, not_found};
         true ->
             Sql = <<"SELECT scope, workspace_id FROM ", Tb/binary, " WHERE id = $1">>,
-            case catch one_row(Sql, [Id2]) of
+            case one_row(Sql, [Id2]) of
                 Row = #{<<"scope">> := Scope} ->
                     {ok, Scope, maps:get(<<"workspace_id">>, Row, undefined)};
                 _ ->
@@ -368,9 +386,23 @@ row_scope(Tb, Id) ->
             end
     end.
 
+%% DB 异常 fail-closed 根因修复（M-1）：elib_pg:one 零行返回 {ok, #{}}
+%% （Default），{error, _} 与连接层异常才是真 DB 故障——原实现全部吞成
+%% #{}，经 not_found 让 5 个 ensure_writable 自动提交调用点 fail-open。
+%% 现零行仍返回 #{}（业务空），DB 故障抛 {resolver_db_error, _} 交上层
+%% 守卫归一 503。
 -spec one_row(iodata(), [term()]) -> map().
 one_row(Sql, Params) ->
     case catch elib_pg:one(Sql, Params) of
-        {ok, Row} when is_map(Row) -> Row;
-        _ -> #{}
+        {ok, Row} when is_map(Row), map_size(Row) > 0 ->
+            Row;
+        {ok, _ZeroRowDefault} ->
+            #{};
+        Failed ->
+            erlang:error({resolver_db_error, Failed})
     end.
+
+%% DB 异常 fail-closed 稳定错误（与 workspace_guard:ensure_writable_tx 同文案）
+-spec resolver_db_unavailable() -> {error, {503, binary()}}.
+resolver_db_unavailable() ->
+    {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}.

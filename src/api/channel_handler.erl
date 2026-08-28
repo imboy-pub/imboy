@@ -68,7 +68,10 @@ guarded_handle(Action, Req0, State) ->
         ok ->
             handle_action(Action, Req0, State);
         {error, {403, Msg}} ->
-            elib_response:error(Req0, Msg, 403)
+            elib_response:error(Req0, Msg, 403);
+        %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+        {error, {503, Msg}} ->
+            elib_response:error(Req0, Msg, 503)
     end.
 
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
@@ -156,6 +159,9 @@ by_custom_id(Req0, State) ->
             case workspace_resolver:guard_channel_custom_id(Uid, CustomId) of
                 {error, {403, Msg}} ->
                     elib_response:error(Req0, Msg, 403);
+                %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+                {error, {503, Msg}} ->
+                    elib_response:error(Req0, Msg, 503);
                 ok ->
                     case channel_logic:get_channel_by_custom_id(CustomId, Uid) of
                         {ok, Channel} ->

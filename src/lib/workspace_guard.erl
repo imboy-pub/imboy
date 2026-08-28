@@ -68,19 +68,30 @@ is_archived_error(_) ->
 
 %% @doc 归档写守卫（自动提交版，logic 层前置检查）
 %% Target = {ResourceType, ResourceId}，ResourceType 见 workspace_resolver。
-%% personal / 资源不存在 → ok；workspace 且 archived → {error, {980, Msg}}。
+%% personal / 资源不存在 → ok；workspace 且 archived → {error, {980, Msg}}；
+%% 解析或状态查询的 DB 异常 → {error, {503, Msg}} fail-closed（M-1 收口：
+%% 原 one_row 吞 DB 异常为 not_found 放行，5 个自动提交调用点全部 fail-open）。
 -spec ensure_writable({atom(), integer() | binary()}) ->
     ok | {error, {integer(), binary()}}.
 ensure_writable(Target) ->
-    case workspace_resolver:resolve_workspace(Target) of
+    try workspace_resolver:resolve_workspace(Target) of
         {ok, WsId} ->
             case workspace_status(WsId) of
-                <<"archived">> -> archived_error();
-                _ -> ok
+                {ok, <<"archived">>} ->
+                    archived_error();
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([workspace_guard_status_failed, WsId, Reason]),
+                    {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
             end;
         _ ->
             %% personal 直通；not_found 放行走既有 404（不吞既有语义）
             ok
+    catch
+        error:{resolver_db_error, Reason} ->
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Reason]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
     end.
 
 %% @doc 归档写守卫（事务版，with_tx Fun(Conn) 内调用）
@@ -90,7 +101,7 @@ ensure_writable(Target) ->
 -spec ensure_writable_tx(any(), {atom(), integer() | binary()}) ->
     ok | {error, {integer(), binary()}}.
 ensure_writable_tx(Conn, Target) ->
-    case workspace_resolver:resolve_workspace(Target) of
+    try workspace_resolver:resolve_workspace(Target) of
         {ok, WsId} ->
             Sql = <<"SELECT status FROM workspace WHERE id = $1 FOR UPDATE">>,
             case elib_pg:query(Conn, Sql, [WsId]) of
@@ -105,6 +116,12 @@ ensure_writable_tx(Conn, Target) ->
             end;
         _ ->
             ok
+    catch
+        error:{resolver_db_error, Reason} ->
+            %% 归属解析 DB 异常同样 fail-closed（abort_tx 由 with_tx 归一
+            %% 回 {error, {503, Msg}}，保持事务版不抛异常的契约）
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Reason]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
     end.
 
 %% @doc with_tx 内零样板：ok 原样返回；{error, Reason} → throw({abort_tx, Reason})
@@ -150,9 +167,12 @@ write_tx_or_skip(Target, WriteFun) ->
 %% Internal Function Definitions
 %% ===================================================================
 
--spec workspace_status(integer()) -> binary() | undefined.
+%% 返回 {ok, Status} | {error, Reason}：行不存在为 {ok, undefined}（保守按
+%% 未归档放行，走既有 404 语义），DB 错误为 {error, _} 交调用方 fail-closed 503。
+-spec workspace_status(integer()) -> {ok, binary() | undefined} | {error, term()}.
 workspace_status(WsId) ->
     case elib_pg:one(<<"SELECT status FROM workspace WHERE id = $1">>, [WsId]) of
-        {ok, #{<<"status">> := Status}} -> Status;
-        _ -> undefined
+        {ok, #{<<"status">> := Status}} -> {ok, Status};
+        {ok, _NoRow} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
     end.

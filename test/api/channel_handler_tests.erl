@@ -174,6 +174,11 @@ publish_message_with_empty_content_returns_error_test_() ->
 by_custom_id_uses_current_uid_for_role_test_() ->
     ?WITH_MECKS(
         [
+            %% 显式放行 T5 边界守卫：本用例测 role 语义，不测守卫
+            %% （守卫 fail-closed 收口后，未 stub 会走 503 分支）
+            {workspace_resolver, [
+                {'guard_channel_custom_id', 2, fun(_Uid, _CustomId) -> ok end}
+            ]},
             {cowboy_req, [
                 {'binding', 2, fun(custom_id, _Req) -> <<"tech_daily">> end}
             ]},

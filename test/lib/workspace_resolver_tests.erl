@@ -148,7 +148,8 @@ resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [?GID]) ->
 resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [777099]) ->
     {ok, personal_group_row()};
 resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [1]) ->
-    {error, no_rows};
+    %% 真实零行形态：elib_pg:one 对空结果返回 {ok, Default=#{}}
+    {ok, #{}};
 resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [777777]) ->
     %% notice 回溯 personal 群
     {ok, personal_group_row()};
@@ -185,7 +186,12 @@ resolve_one(<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333007]) -
     %% 沿 personal 兜底（与历史行为一致，守卫放行不吞 404 语义）
     {ok, #{<<"scope">> => <<"group">>, <<"scope_ref">> => null}};
 resolve_one(_, _) ->
-    {error, no_rows}.
+    %% 未匹配的 id 一律按零行处理（真实零行形态 {ok, #{}}）
+    {ok, #{}}.
+
+%% DB 错误形态（真实故障形态：{error, Reason}，区别于零行的 {ok, #{}}）
+db_error_one() ->
+    fun(_, _) -> {error, {pgsql_error, #{code => <<"57P01">>}}} end.
 
 %% ===================================================================
 %% Workspace 成员边界（T5 直访越权红线）
@@ -269,7 +275,7 @@ guard_channel_binding_no_binding_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'one', 2, fun(_, _) -> {error, no_rows} end}
+                {'one', 2, fun(_, _) -> {ok, #{}} end}
             ]}
         ],
         fun() ->
@@ -309,5 +315,102 @@ access_gate_normalizes_role_test_() ->
                     ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, 555001))
                 end}
             ]
+        end
+    ).
+
+%% ===================================================================
+%% M-1/M-2 收口：DB 异常 fail-closed（503），业务空 not_found 语义不变
+%% ===================================================================
+
+resolver_db_error_fail_closed_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [{'one', 2, db_error_one()}]}
+        ],
+        fun() ->
+            [
+                {"one_row DB error propagates from resolve_workspace", fun() ->
+                    ?assertError(
+                        {resolver_db_error, _},
+                        workspace_resolver:resolve_workspace({group, ?GID})
+                    )
+                end},
+                {"group boundary guard returns 503 on DB error (not ok)", fun() ->
+                    ?assertMatch(
+                        {error, {503, _}}, workspace_resolver:ensure_group_member_access(?UID, ?GID)
+                    )
+                end},
+                {"channel boundary guard returns 503 on DB error (not ok)", fun() ->
+                    ?assertMatch(
+                        {error, {503, _}},
+                        workspace_resolver:ensure_channel_member_access(?UID, ?CID)
+                    )
+                end},
+                {"notice guard returns 503 on DB error", fun() ->
+                    ?assertMatch(
+                        {error, {503, _}}, workspace_resolver:guard_group_notice_id(?UID, 555001)
+                    )
+                end}
+            ]
+        end
+    ).
+
+guard_channel_binding_db_error_fail_closed_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'binding', 2, fun(channel_id, _Req) -> ?CID end}
+            ]},
+            {elib_pg, [{'one', 2, db_error_one()}]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {503, _}}, workspace_resolver:guard_channel_binding(fake_req, ?UID)
+            )
+        end
+    ).
+
+guard_channel_custom_id_db_error_fail_closed_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_custom_id', 1, fun(<<"db-down">>) ->
+                    {error, {pgsql_error, #{code => <<"57P01">>}}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {503, _}}, workspace_resolver:guard_channel_custom_id(?UID, <<"db-down">>)
+            )
+        end
+    ).
+
+guard_channel_custom_id_ds_crash_fail_closed_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_custom_id', 1, fun(_) -> erlang:error(simulated_crash) end}
+            ]}
+        ],
+        fun() ->
+            %% 连接层崩溃（'EXIT'）同样 503，不按"未命中"放行
+            ?assertMatch(
+                {error, {503, _}}, workspace_resolver:guard_channel_custom_id(?UID, <<"boom">>)
+            )
+        end
+    ).
+
+guard_channel_custom_id_miss_still_passes_test_() ->
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                %% repo 零行形态：find_by_custom_id 返回 #{} 空行
+                {'find_by_custom_id', 1, fun(_) -> #{} end}
+            ]}
+        ],
+        fun() ->
+            %% not_found 语义保持：未命中放行走既有 404（下游必有独立 ACL）
+            ?assertEqual(ok, workspace_resolver:guard_channel_custom_id(?UID, <<"no-such">>))
         end
     ).

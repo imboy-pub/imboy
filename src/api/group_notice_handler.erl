@@ -45,6 +45,9 @@ init(Req0, State0) ->
         case workspace_notice_guard(Req0, maps:get(current_uid, State, 0)) of
             {error, {403, Msg}} ->
                 elib_response:error(Req0, Msg, 403);
+            %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+            {error, {503, Msg}} ->
+                elib_response:error(Req0, Msg, 503);
             ok ->
                 notice_action(Action, Method, Req0, State)
         end,
@@ -82,7 +85,8 @@ notice_action(Action, Method, Req0, State) ->
 %% @doc T5 守卫：从请求提取 gid（优先）或 notice_id（回溯群归属）后校验
 %% Workspace 成员边界。elib_param:post/1 带进程字典缓存，此处预读不影响
 %% 各 action 内再次读取。
--spec workspace_notice_guard(cowboy_req:req(), integer()) -> ok | {error, {403, binary()}}.
+-spec workspace_notice_guard(cowboy_req:req(), integer()) ->
+    ok | {error, {403 | 503, binary()}}.
 workspace_notice_guard(Req0, Uid) ->
     PostVals =
         try

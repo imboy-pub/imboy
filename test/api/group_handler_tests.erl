@@ -129,6 +129,11 @@ page_unknown_attr_falls_back_to_owner_test_() ->
 msg_page_preserves_atom_list_payload_test_() ->
     ?WITH_MECKS(
         [
+            %% 显式放行 T5 边界守卫：本用例测 msg_page 的 to_id/转换语义，不测守卫
+            %% （守卫 fail-closed 收口后，未 stub 会走 503 分支）
+            {workspace_resolver, [
+                {'guard_group_gid', 2, fun(_Uid, _Gid) -> ok end}
+            ]},
             {cowboy_req, [
                 {'parse_qs', 1, fun(req0) -> [{<<"gid">>, <<"101">>}] end}
             ]},

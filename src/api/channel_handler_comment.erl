@@ -24,7 +24,10 @@ init(Req0, State0) ->
             ok ->
                 handle_action(Action, Req0, State);
             {error, {403, Msg}} ->
-                elib_response:error(Req0, Msg, 403)
+                elib_response:error(Req0, Msg, 403);
+            %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+            {error, {503, Msg}} ->
+                elib_response:error(Req0, Msg, 503)
         end,
     {ok, Req1, State}.
 

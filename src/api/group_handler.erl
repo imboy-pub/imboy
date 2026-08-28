@@ -79,6 +79,9 @@ detail(Req0, State) ->
     case workspace_resolver:guard_group_gid(Uid, Gid) of
         {error, {403, Msg}} ->
             elib_response:error(Req0, Msg, 403);
+        %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+        {error, {503, Msg}} ->
+            elib_response:error(Req0, Msg, 503);
         ok ->
             detail_allowed(Req0, Gid)
     end.
@@ -470,6 +473,9 @@ msg_page(Req0, State) ->
     case workspace_resolver:guard_group_gid(CurrentUid, Gid2) of
         {error, {403, Msg}} ->
             elib_response:error(Req0, Msg, 403);
+        %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+        {error, {503, Msg}} ->
+            elib_response:error(Req0, Msg, 503);
         ok ->
             msg_page_allowed(Req0, CurrentUid, Gid2)
     end.

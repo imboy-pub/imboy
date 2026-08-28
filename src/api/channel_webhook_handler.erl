@@ -51,7 +51,10 @@ init(Req0, State0) ->
                             list -> list(Req0, State)
                         end;
                     {error, {403, Msg}} ->
-                        elib_response:error(Req0, Msg, 403)
+                        elib_response:error(Req0, Msg, 403);
+                    %% 边界守卫 DB 异常 fail-closed（503，不吞异常放行）
+                    {error, {503, Msg}} ->
+                        elib_response:error(Req0, Msg, 503)
                 end
         end,
     {ok, Req1, State}.
