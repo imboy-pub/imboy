@@ -27,7 +27,7 @@
 %% @param Uid 操作者用户ID
 %% @param TagName 标签名称
 %% @return {ok, TagId} | {error, Reason}
--spec add(integer(), integer(), binary()) -> {ok, integer()} | {error, binary()}.
+-spec add(integer(), integer(), binary()) -> {ok, integer()} | {error, binary() | integer()}.
 add(GroupId, _Uid, _TagName) when GroupId =< 0 ->
     {error, <<"无效的群组ID"/utf8>>};
 add(_GroupId, Uid, _TagName) when Uid =< 0 ->
@@ -51,7 +51,7 @@ add(GroupId, Uid, TagName) ->
 %% @param Uid 操作者用户ID
 %% @param TagName 标签名称
 %% @return ok | {error, Reason}
--spec remove(integer(), integer(), binary()) -> ok | {error, binary()}.
+-spec remove(integer(), integer(), binary()) -> ok | {error, binary() | integer()}.
 remove(GroupId, _Uid, _TagName) when GroupId =< 0 ->
     {error, <<"无效的群组ID"/utf8>>};
 remove(_GroupId, Uid, _TagName) when Uid =< 0 ->
@@ -63,10 +63,7 @@ remove(GroupId, Uid, TagName) ->
     MemberUids = group_ds:member_uids(GroupId),
     case lists:member(Uid, MemberUids) of
         true ->
-            case normalize_write_result(group_tag_ds:remove(GroupId, Uid, TagName)) of
-                ok -> ok;
-                {error, Reason} -> {error, Reason}
-            end;
+            normalize_write_result(group_tag_ds:remove(GroupId, Uid, TagName));
         false ->
             {error, <<"只有群成员可以删除标签"/utf8>>}
     end.
@@ -109,9 +106,15 @@ hot_tags(_) ->
     {ok, []}.
 
 %% @doc T7 归档写守卫：DS 写事务返回的稳定错误 {error, {980, Msg}} 归一为
-%% 既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}（handler 按 980 识别），
-%% 其余结果原样透传。
+%% 既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}（handler 按 980 识别）；
+%% binary 错误消息原样透传；DS 透传的其余形态（{pgsql_error, _} 等 DB
+%% 错误元组）归一为可下发 binary——handler 的 elib_response:error 契约
+%% 只收 binary，喂元组会再崩一次 500（H-2 修复的下半段）。
 normalize_write_result({error, {?ERR_WORKSPACE_ARCHIVED, _Msg}}) ->
     {error, ?ERR_WORKSPACE_ARCHIVED};
+normalize_write_result({error, Reason}) when is_binary(Reason) ->
+    {error, Reason};
+normalize_write_result({error, Reason}) ->
+    {error, elib_cnv:safe_to_binary(Reason)};
 normalize_write_result(Other) ->
     Other.

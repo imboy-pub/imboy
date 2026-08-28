@@ -34,7 +34,7 @@
 %% @param Uid 操作者用户ID
 %% @param TagName 标签名称
 %% @return {ok, TagId} | {error, Reason}
--spec add(integer(), integer(), binary()) -> {ok, integer()} | {error, binary()}.
+-spec add(integer(), integer(), binary()) -> {ok, integer()} | {error, term()}.
 add(GroupId, _Uid, _TagName) when GroupId =< 0 ->
     {error, <<"无效的群组ID"/utf8>>};
 add(_GroupId, _Uid, TagName) when TagName =:= <<>> ->
@@ -54,10 +54,10 @@ add(GroupId, Uid, TagName) ->
                     created_by => Uid,
                     created_at => elib_dt:now()
                 },
-                case group_tag_repo:add(Conn, Data) of
-                    {ok, TagId} -> {ok, TagId};
-                    {error, Reason} -> {error, ec_cnv:to_binary(Reason)}
-                end
+                %% repo 错误（含 {pgsql_error, _} 元组）原样透传：ec_cnv:to_binary
+                %% 无元组子句会 function_clause 崩 500；归一由
+                %% group_tag_logic:normalize_write_result 统一处理
+                group_tag_repo:add(Conn, Data)
         end
     end).
 
@@ -66,7 +66,7 @@ add(GroupId, Uid, TagName) ->
 %% @param Uid 操作者用户ID（未使用，保留用于权限验证）
 %% @param TagName 标签名称
 %% @return ok | {error, Reason}
--spec remove(integer(), integer(), binary()) -> ok | {error, binary()}.
+-spec remove(integer(), integer(), binary()) -> ok | {error, term()}.
 remove(GroupId, _Uid, _TagName) when GroupId =< 0 ->
     {error, <<"无效的群组ID"/utf8>>};
 remove(_GroupId, _Uid, TagName) when TagName =:= <<>> ->
@@ -79,7 +79,10 @@ remove(GroupId, _Uid, TagName) ->
         end)
     of
         {ok, _} -> ok;
-        {error, Reason} -> {error, ec_cnv:to_binary(Reason)}
+        %% {980/503, Msg} 稳定错误码与 DB 错误元组原样透传：ec_cnv:to_binary
+        %% 对元组 function_clause 崩 500；归一由
+        %% group_tag_logic:normalize_write_result 统一处理
+        {error, _} = Err -> Err
     end.
 
 %% @doc 查询群组的标签列表

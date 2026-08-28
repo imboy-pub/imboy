@@ -100,3 +100,66 @@ count_repo_error_returns_zero_test_() ->
             ?assertEqual({ok, 0}, group_tag_ds:count(1))
         end
     ).
+
+%% ===================================================================
+%% H-2：DS 写事务错误形态透传（原 ec_cnv:to_binary 对元组 function_clause 崩 500）
+%% ===================================================================
+
+%% with_tx mock 须模拟 epgsql:with_transaction 的 abort_tx 归一语义
+tx_abort_mock() ->
+    {'with_tx', 1, fun(Fun) ->
+        try
+            Fun(fake_conn)
+        catch
+            throw:{abort_tx, Reason} -> {error, Reason}
+        end
+    end}.
+
+remove_archived_error_tuple_no_crash_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_resolver, [
+                {'resolve_workspace', 1, fun({group, 1}) -> {ok, 800001} end}
+            ]},
+            {elib_pg, [
+                tx_abort_mock(),
+                {'query', 3, fun(
+                    fake_conn,
+                    <<"SELECT status FROM workspace WHERE id = $1 FOR UPDATE">>,
+                    [800001]
+                ) ->
+                    {ok, [#{<<"status">> => <<"archived">>}]}
+                end}
+            ]},
+            {group_tag_repo, [
+                {'delete_tx', 3, fun(_Conn, _Gid, _Tag) ->
+                    erlang:error(unexpected_delete_after_archived)
+                end}
+            ]}
+        ],
+        fun() ->
+            %% 归档守卫 980 元组必须原样透传（不崩、不压成乱码 binary）
+            ?assertMatch({error, {980, _}}, group_tag_ds:remove(1, 100, <<"tag-a">>))
+        end
+    ).
+
+add_repo_db_error_tuple_no_crash_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [{'now', 0, fun() -> <<"2026-03-16T00:00:00Z">> end}]},
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [tx_abort_mock()]},
+            {group_tag_repo, [
+                {'exists_tx', 3, fun(_Conn, _Gid, _Tag) -> false end},
+                {'add', 2, fun(_Conn, _Data) ->
+                    {error, {pgsql_error, #{code => <<"23505">>}}}
+                end}
+            ]}
+        ],
+        fun() ->
+            %% repo DB 错误元组必须原样透传（归一交 logic 层）
+            ?assertMatch(
+                {error, {pgsql_error, _}}, group_tag_ds:add(1, 100, <<"tag-a">>)
+            )
+        end
+    ).
