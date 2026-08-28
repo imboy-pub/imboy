@@ -190,6 +190,10 @@ subscribe(ChannelId, Uid) ->
             imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"noop">>, StartMs),
             ok;
+        {error, {Code, _} = Coded} when is_integer(Code) ->
+            %% 归档守卫（980）等稳定错误码原样透传，与 create_channel 同款，不 flatten
+            log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"error">>, StartMs),
+            {error, Coded};
         {error, Reason} ->
             log_subscription_action(Uid, ChannelId, <<"subscribe">>, <<"error">>, StartMs),
             {error, normalize_error(Reason)}
@@ -230,6 +234,10 @@ unsubscribe(ChannelId, Uid) ->
             imboy_cache:flush(?CHANNEL_CACHE_KEY(ChannelId)),
             log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"noop">>, StartMs),
             ok;
+        {error, {Code, _} = Coded} when is_integer(Code) ->
+            %% 归档守卫（980）等稳定错误码原样透传，与 create_channel 同款，不 flatten
+            log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"error">>, StartMs),
+            {error, Coded};
         {error, Reason} ->
             log_subscription_action(Uid, ChannelId, <<"unsubscribe">>, <<"error">>, StartMs),
             {error, normalize_error(Reason)}

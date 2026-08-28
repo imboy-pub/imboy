@@ -23,7 +23,7 @@
     "is_verified,tags,visibility,access_type,join_policy,created_at,updated_at"
 >>).
 
--spec subscribe(integer(), binary()) -> ok | {error, binary()}.
+-spec subscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 subscribe(Uid, ChannelIdBin) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
@@ -46,7 +46,8 @@ subscribe(Uid, ChannelIdBin) ->
 
 %% 按 join_policy 走订阅流程：底层 upsert_active 保证幂等，
 %% 避免先 is_subscribed 再 subscribe 的 TOCTOU 竞态
--spec subscribe_by_join_policy(integer(), integer(), map()) -> ok | {error, binary()}.
+-spec subscribe_by_join_policy(integer(), integer(), map()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 subscribe_by_join_policy(Uid, ChannelId, Channel) ->
     JoinPolicy = maps:get(<<"join_policy">>, Channel, 0),
     case JoinPolicy of
@@ -61,12 +62,16 @@ subscribe_by_join_policy(Uid, ChannelId, Channel) ->
                 ok ->
                     channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
                     ok;
+                {error, {Code, _} = Coded} when is_integer(Code) ->
+                    %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
+                    {error, Coded};
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
             end
     end.
 
--spec subscribe_private_channel(integer(), integer()) -> ok | {error, binary()}.
+-spec subscribe_private_channel(integer(), integer()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 subscribe_private_channel(Uid, ChannelId) ->
     case channel_invitation_ds:is_invited(ChannelId, Uid) of
         true ->
@@ -79,6 +84,9 @@ subscribe_private_channel(Uid, ChannelId) ->
                                 ok ->
                                     channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
                                     ok;
+                                {error, {Code, _} = Coded} when is_integer(Code) ->
+                                    %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
+                                    {error, Coded};
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)}
                             end;
@@ -88,9 +96,15 @@ subscribe_private_channel(Uid, ChannelId) ->
                                 ok ->
                                     channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
                                     ok;
+                                {error, {Code, _} = Coded} when is_integer(Code) ->
+                                    %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
+                                    {error, Coded};
                                 {error, Reason} ->
                                     {error, elib_cnv:safe_to_binary(Reason)}
                             end;
+                        {error, {Code, _} = Coded} when is_integer(Code) ->
+                            %% 邀请 accept 的同事务守卫（980）保留 tuple 透传
+                            {error, Coded};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)}
                     end;
@@ -101,7 +115,8 @@ subscribe_private_channel(Uid, ChannelId) ->
             {error, <<"私有频道需要邀请才能订阅"/utf8>>}
     end.
 
--spec subscribe_paid_channel(integer(), integer()) -> ok | {error, binary()}.
+-spec subscribe_paid_channel(integer(), integer()) ->
+    ok | {error, binary() | {integer(), binary()}}.
 subscribe_paid_channel(Uid, ChannelId) ->
     case channel_order_ds:has_purchased(ChannelId, Uid) of
         true ->
@@ -109,6 +124,9 @@ subscribe_paid_channel(Uid, ChannelId) ->
                 ok ->
                     channel_logic_notify:notify_channel_subscribed(ChannelId, Uid),
                     ok;
+                {error, {Code, _} = Coded} when is_integer(Code) ->
+                    %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
+                    {error, Coded};
                 {error, Reason} ->
                     {error, elib_cnv:safe_to_binary(Reason)}
             end;
@@ -116,7 +134,7 @@ subscribe_paid_channel(Uid, ChannelId) ->
             {error, <<"付费频道需要先购买"/utf8>>}
     end.
 
--spec unsubscribe(integer(), binary()) -> ok | {error, binary()}.
+-spec unsubscribe(integer(), binary()) -> ok | {error, binary() | {integer(), binary()}}.
 unsubscribe(Uid, ChannelIdBin) ->
     ChannelId = decode_positive_id(ChannelIdBin),
     case ChannelId of
@@ -132,6 +150,9 @@ unsubscribe(Uid, ChannelIdBin) ->
                         ok ->
                             channel_logic_notify:notify_channel_unsubscribed(ChannelId, Uid),
                             ok;
+                        {error, {Code, _} = Coded} when is_integer(Code) ->
+                            %% 归档守卫（980）等稳定错误码保留 tuple 供 handler envelope 映射
+                            {error, Coded};
                         {error, Reason} ->
                             {error, elib_cnv:safe_to_binary(Reason)};
                         Unexpected ->

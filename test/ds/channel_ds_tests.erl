@@ -211,7 +211,11 @@ subscribe_rejects_archived_workspace_in_same_transaction_test_() ->
             ]}
         ],
         fun() ->
-            ?assertMatch({error, <<_/binary>>}, channel_ds:subscribe(1, 100))
+            %% 980 稳定错误码必须以 tuple 原样透传（handler envelope 映射），不得压平
+            ?assertEqual(
+                {error, {980, <<"工作区已归档，写操作被拒绝"/utf8>>}},
+                channel_ds:subscribe(1, 100)
+            )
         end
     ).
 
@@ -239,7 +243,11 @@ unsubscribe_rejects_archived_workspace_in_same_transaction_test_() ->
             ]}
         ],
         fun() ->
-            ?assertMatch({error, <<_/binary>>}, channel_ds:unsubscribe(1, 100))
+            %% 980 稳定错误码必须以 tuple 原样透传（handler envelope 映射），不得压平
+            ?assertEqual(
+                {error, {980, <<"工作区已归档，写操作被拒绝"/utf8>>}},
+                channel_ds:unsubscribe(1, 100)
+            )
         end
     ).
 
