@@ -310,7 +310,7 @@ deliver_to_all_devices(_Config) ->
         ]
     end),
     % 未 ACK 才投递：mock cache get 返回 undefined，避免设备被 ack 过滤
-    meck:new(imboy_cache, [unstick]),
+    meck:new(imboy_cache, [unstick, passthrough]),
     meck:expect(imboy_cache, get, fun(_) -> undefined end),
 
     % 投递消息
@@ -340,7 +340,7 @@ ack_from_single_device(_Config) ->
     meck:new(imboy_syn, [unstick]),
     meck:expect(imboy_syn, broadcast_ack_cancel, fun(_, _, _) -> ok end),
 
-    meck:new(imboy_cache, [unstick]),
+    meck:new(imboy_cache, [unstick, passthrough]),
     meck:expect(imboy_cache, set, fun(_, _, _) -> ok end),
     meck:expect(imboy_cache, get, fun(_) -> undefined end),
     meck:expect(imboy_cache, flush, fun(_) -> ok end),

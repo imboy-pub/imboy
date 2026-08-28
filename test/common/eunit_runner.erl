@@ -117,17 +117,26 @@ eunit_setup() ->
     ensure_boot_coordinator(),
     Ref = make_ref(),
     eunit_boot_coordinator ! {boot, self(), Ref},
-    receive
-        {Ref, {ok, State}} ->
-            State;
-        {Ref, {error, Reason}} ->
-            io:format("Warning: Failed to start imboy app: ~p~n", [Reason]),
-            io:format("Tests that require app will be skipped~n"),
+    State =
+        receive
+            {Ref, {ok, S}} ->
+                S;
+            {Ref, {error, Reason}} ->
+                io:format("Warning: Failed to start imboy app: ~p~n", [Reason]),
+                io:format("Tests that require app will be skipped~n"),
+                {app_not_started, test_continues}
+        after 60000 ->
+            io:format("Warning: boot coordinator timeout~n"),
             {app_not_started, test_continues}
-    after 60000 ->
-        io:format("Warning: boot coordinator timeout~n"),
-        {app_not_started, test_continues}
-    end.
+        end,
+    % 缓存实例自愈（详见 do_ensure_cache）：每次 setup 顺带检查命名表
+    Ref2 = make_ref(),
+    eunit_boot_coordinator ! {ensure_cache, self(), Ref2},
+    receive
+        {Ref2, ok} -> ok
+    after 10000 -> ok
+    end,
+    State.
 
 ensure_boot_coordinator() ->
     case whereis(eunit_boot_coordinator) of
@@ -155,7 +164,30 @@ boot_coord_loop() ->
     receive
         {boot, From, Ref} ->
             From ! {Ref, do_boot()},
+            boot_coord_loop();
+        {ensure_cache, From, Ref} ->
+            From ! {Ref, do_ensure_cache()},
             boot_coord_loop()
+    end.
+
+do_ensure_cache() ->
+    case ets:whereis('m:imboy_cache') of
+        undefined ->
+            %% 套件隔离治理自愈：imboy_cache:start_link 内部
+            %% `_ = depcache:start_link(...)` 吞掉 {already_started} 且返回
+            %% {ok, self()}，使 sup 记录的 child pid 失真——测试窗口中的
+            %% imboy_cache/depcache meck 误杀实例后，sup 既感知不到也不重启，
+            %% 命名表 'm:imboy_cache' 永久消失 → 所有缓存调用 badarg。
+            %% 此处由长驻协调进程重建一个挂在自身上的实例恢复命名表。
+            case whereis(imboy_cache) of
+                undefined -> ok;
+                StalePid -> catch gen_server:stop(StalePid, normal, 300)
+            end,
+            timer:sleep(30),
+            _ = imboy_cache:start_link([{depcache_memory_max, 100}]),
+            ok;
+        _ ->
+            ok
     end.
 
 do_boot() ->

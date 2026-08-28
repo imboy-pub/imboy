@@ -209,8 +209,14 @@ update_4_complex_where_test_() ->
         nomatch = binary:match(SqlBin, <<"= $1,">>),
         nomatch = binary:match(SqlBin, <<"= $2,">>),
         nomatch = binary:match(SqlBin, <<"= $3,">>),
-        % 3) 参数顺序：WHERE 参数在前，SET 参数（按 Map 的迭代序）在后
-        ?assertEqual([789, 1, <<"2023-01-01">>, <<"Frank">>, 35, <<"2024-01-01">>], Params)
+        % 3) 参数顺序：WHERE 参数在前；SET 参数按 Map 的迭代序跟随在后
+        %    （迭代序跨 VM 不稳定——atom 哈希含每 VM 随机成分——故 SET 值做
+        %    排序比较，只钉「WHERE 全部在前」这一契约）
+        [789, 1, <<"2023-01-01">> | SetVals] = Params,
+        ?assertEqual(
+            lists:sort([<<"Frank">>, 35, <<"2024-01-01">>]),
+            lists:sort(SetVals)
+        )
     end).
 
 update_4_with_in_clause_test_() ->

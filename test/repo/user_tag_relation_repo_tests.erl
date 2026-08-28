@@ -475,7 +475,7 @@ select_user_tag_relation_test_() ->
 tag_subtitle_scene2_with_data_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(elib_pg, [no_link]),
-        meck:new(imboy_cache, [no_link]),
+        meck:new(imboy_cache, [no_link, passthrough]),
 
         MemoFun = fun(Fun, _Key, _TTL) -> Fun() end,
         meck:expect(imboy_cache, memo, MemoFun),
@@ -501,7 +501,7 @@ tag_subtitle_scene2_with_data_test_() ->
 tag_subtitle_scene2_no_data_test_() ->
     ?TEST_WITH_APP(fun() ->
         meck:new(elib_pg, [no_link]),
-        meck:new(imboy_cache, [no_link]),
+        meck:new(imboy_cache, [no_link, passthrough]),
 
         MemoFun = fun(Fun, _Key, _TTL) -> Fun() end,
         meck:expect(imboy_cache, memo, MemoFun),
@@ -529,7 +529,7 @@ tag_subtitle_scene1_test_() ->
 %% 测试刷新副标题
 flush_subtitle_test_() ->
     ?TEST_WITH_APP(fun() ->
-        meck:new(imboy_cache, [no_link]),
+        meck:new(imboy_cache, [no_link, passthrough]),
 
         meck:expect(imboy_cache, flush, fun(_Key) -> ok end),
 
