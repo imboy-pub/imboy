@@ -16,24 +16,19 @@ group_category_tag_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
-            {foreach,
-             fun setup/0,
-             fun cleanup/1,
-             [
-              {"创建群分组", fun test_create_category/0},
-              {"更新群分组", fun test_update_category/0},
-              {"删除群分组", fun test_delete_category/0},
-              {"群分组排序", fun test_category_sort/0},
-              {"将群加入分组", fun test_add_group_to_category/0},
-              {"创建群标签", fun test_create_tag/0},
-              {"为群添加标签", fun test_add_tag_to_group/0},
-              {"按标签筛选群", fun test_filter_groups_by_tag/0},
-              {"批量操作", fun test_batch_operations/0}
-             ]
-            };
+            {foreach, fun setup/0, fun cleanup/1, [
+                {"创建群分组", fun test_create_category/0},
+                {"更新群分组", fun test_update_category/0},
+                {"删除群分组", fun test_delete_category/0},
+                {"群分组排序", fun test_category_sort/0},
+                {"将群加入分组", fun test_add_group_to_category/0},
+                {"创建群标签", fun test_create_tag/0},
+                {"为群添加标签", fun test_add_tag_to_group/0},
+                {"按标签筛选群", fun test_filter_groups_by_tag/0},
+                {"批量操作", fun test_batch_operations/0}
+            ]};
         {error, _Reason} ->
-            {"Database not available",
-             fun() -> {skip, "Database not available"} end}
+            {"Database not available", fun() -> {skip, "Database not available"} end}
     end.
 
 setup() ->
@@ -147,7 +142,9 @@ test_add_group_to_category() ->
     ok = group_category_logic:move_group(User1, Group2, CategoryId),
 
     % 3. 获取分组内的群
-    {ok, Groups} = group_category_repo:list_groups_by_category(User1, CategoryId, <<"gm.group_id">>),
+    {ok, Groups} = group_category_repo:list_groups_by_category(
+        User1, CategoryId, <<"gm.group_id">>
+    ),
     GroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- Groups]),
 
     % 4. 验证数量
@@ -168,9 +165,14 @@ test_create_tag() ->
     % 2. 验证返回结果
     ?assert(is_integer(TagId)),
     {ok, Tags} = group_tag_logic:list(Group1, User1),
-    ?assert(lists:any(fun(Tag) ->
-        maps:get(<<"id">>, Tag) =:= TagId andalso maps:get(<<"tag_name">>, Tag) =:= TagName
-    end, Tags)),
+    ?assert(
+        lists:any(
+            fun(Tag) ->
+                maps:get(<<"id">>, Tag) =:= TagId andalso maps:get(<<"tag_name">>, Tag) =:= TagName
+            end,
+            Tags
+        )
+    ),
 
     ok.
 
@@ -200,8 +202,9 @@ test_filter_groups_by_tag() ->
     Group2 = maps:get(group2, Context),
     Group3 = maps:get(group3, Context),
 
-    % 1. 创建标签
-    TagName = <<"公共标签"/utf8>>,
+    % 1. 创建标签（套件隔离治理：search 是全库过滤，固定标签名会与本机
+    %    历史 run 遗留数据串扰；每次运行生成唯一标签）
+    TagName = unique_tag(<<"公共标签"/utf8>>),
     {ok, _} = group_tag_logic:add(Group1, User1, TagName),
     {ok, _} = group_tag_logic:add(Group2, User1, TagName),
 
@@ -230,21 +233,29 @@ test_batch_operations() ->
     {ok, CategoryId} = group_category_logic:create(User1, <<"批量测试分组"/utf8>>),
 
     % 2. 批量将群加入分组
-    lists:foreach(fun(GroupId) ->
-        ok = group_category_logic:move_group(User1, GroupId, CategoryId)
-    end, [Group1, Group2, Group3]),
+    lists:foreach(
+        fun(GroupId) ->
+            ok = group_category_logic:move_group(User1, GroupId, CategoryId)
+        end,
+        [Group1, Group2, Group3]
+    ),
 
     % 3. 验证所有群都已加入
-    {ok, Groups} = group_category_repo:list_groups_by_category(User1, CategoryId, <<"gm.group_id">>),
+    {ok, Groups} = group_category_repo:list_groups_by_category(
+        User1, CategoryId, <<"gm.group_id">>
+    ),
     GroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- Groups]),
     ?assertEqual(3, length(Groups)),
     ?assertEqual(lists:sort([Group1, Group2, Group3]), GroupIds),
 
-    % 4. 创建标签
-    TagName = <<"批量标签"/utf8>>,
-    lists:foreach(fun(GroupId) ->
-        {ok, _} = group_tag_logic:add(GroupId, User1, TagName)
-    end, [Group1, Group2, Group3]),
+    % 4. 创建标签（唯一标签，同上）
+    TagName = unique_tag(<<"批量标签"/utf8>>),
+    lists:foreach(
+        fun(GroupId) ->
+            {ok, _} = group_tag_logic:add(GroupId, User1, TagName)
+        end,
+        [Group1, Group2, Group3]
+    ),
 
     % 5. 批量为群添加标签
     {ok, TaggedGroups0} = group_tag_logic:search(TagName),
@@ -268,10 +279,18 @@ test_batch_operations() ->
 get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
+%% @doc 生成每次运行唯一的标签名：group_tag.search 是全库过滤，
+%% 固定标签名会与本机历史 run 遗留的标签串扰（断言计数膨胀）。
+unique_tag(Base) ->
+    Suffix = integer_to_binary(erlang:phash2(elib_tsid:generate(), 1000000000)),
+    <<Base/binary, "-", Suffix/binary>>.
+
 custom_category_ids(Categories) ->
-    [maps:get(<<"id">>, Category)
+    [
+        maps:get(<<"id">>, Category)
      || Category <- Categories,
-        maps:get(<<"id">>, Category) =/= 0].
+        maps:get(<<"id">>, Category) =/= 0
+    ].
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
