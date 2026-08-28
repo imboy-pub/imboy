@@ -13,6 +13,11 @@
 %        / workspace
 %        project(经 workspace_id，恒 workspace 归属) / project_task(经 project)
 %        （后两者 WP4/T7 为 workspace_guard 写守卫扩展）
+%        群子功能域（P0 后续批，均经所属 group 行解析）：
+%        group_vote / group_vote_record / group_schedule(含 remind)
+%        / group_album(含 photo) / group_file / group_task(含 assignment)
+%        ——引用 integer = 内部 PK、binary = 对外业务 ID（vote_id/schedule_id/
+%        album_id/photo_id/task_id）。
 %        attachment(经 scope_ref→group/channel；其余 scope 回溯复杂，本期返回
 %        personal 并标 TODO_T7，与任务卡"复杂回溯可先返回 personal"授权一致)。
 %   2. ensure_channel_member_access/2 / ensure_group_member_access/2：
@@ -74,6 +79,92 @@ resolve_workspace({group, Gid}) ->
     group_scope(Gid);
 resolve_workspace({group_notice, NoticeId}) ->
     case one_row(<<"SELECT group_id FROM group_notice WHERE id = $1">>, [NoticeId]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+%% ---- 群子功能域（P0 后续批：vote/schedule/album/file/task）----
+%% 均经所属 group 行解析 scope；解析读（归属不可变）走自动提交连接是安全的。
+%% 引用类型按参数类型分派：integer = 内部 PK，binary = 对外业务 ID。
+resolve_workspace({group_vote, VoteId}) when is_binary(VoteId) ->
+    case one_row(<<"SELECT group_id FROM group_vote WHERE vote_id = $1">>, [VoteId]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_vote_record, RecordId}) ->
+    case
+        one_row(
+            <<"SELECT v.group_id AS group_id FROM group_vote_record r",
+                " JOIN group_vote v ON v.vote_id = r.vote_id WHERE r.id = $1">>,
+            [RecordId]
+        )
+    of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_schedule, ScheduleRef}) when is_binary(ScheduleRef) ->
+    case one_row(<<"SELECT group_id FROM group_schedule WHERE schedule_id = $1">>, [ScheduleRef]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_schedule, SchedulePk}) ->
+    case one_row(<<"SELECT group_id FROM group_schedule WHERE id = $1">>, [SchedulePk]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_schedule_remind, RemindId}) ->
+    case
+        one_row(
+            <<"SELECT gs.group_id AS group_id FROM group_schedule_remind r",
+                " JOIN group_schedule gs ON gs.schedule_id = r.schedule_id WHERE r.id = $1">>,
+            [RemindId]
+        )
+    of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_album, AlbumRef}) when is_binary(AlbumRef) ->
+    case one_row(<<"SELECT group_id FROM group_album WHERE album_id = $1">>, [AlbumRef]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_album, AlbumPk}) ->
+    case one_row(<<"SELECT group_id FROM group_album WHERE id = $1">>, [AlbumPk]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_album_photo, PhotoRef}) when is_binary(PhotoRef) ->
+    case one_row(<<"SELECT group_id FROM group_album_photo WHERE photo_id = $1">>, [PhotoRef]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_album_photo, PhotoPk}) ->
+    case one_row(<<"SELECT group_id FROM group_album_photo WHERE id = $1">>, [PhotoPk]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_file, FilePk}) ->
+    case one_row(<<"SELECT group_id FROM group_file WHERE id = $1">>, [FilePk]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_task, TaskRef}) when is_binary(TaskRef) ->
+    case one_row(<<"SELECT group_id FROM group_task WHERE task_id = $1">>, [TaskRef]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_task, TaskPk}) ->
+    case one_row(<<"SELECT group_id FROM group_task WHERE id = $1">>, [TaskPk]) of
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        _ -> {error, not_found}
+    end;
+resolve_workspace({group_task_assignment, AssignmentId}) ->
+    case
+        one_row(
+            <<"SELECT t.group_id AS group_id FROM group_task_assignment a",
+                " JOIN group_task t ON t.task_id = a.task_id WHERE a.id = $1">>,
+            [AssignmentId]
+        )
+    of
         #{<<"group_id">> := Gid} -> group_scope(Gid);
         _ -> {error, not_found}
     end;
