@@ -177,12 +177,11 @@ send_friend_request_to_blocked_user_fails(_Config) ->
     Payload = #{<<"msg">> => <<"test">>},
     Result = friend_logic:add_friend(MsgId, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
-    % 验证请求失败（或返回 ok 但消息未投递）
-    % 根据 friend_logic 的实现，如果被拉黑仍然返回 ok，但消息不会被投递
-    ?assertEqual(ok, Result),
+    % T3.4 状态机契约：拉黑后发起申请被显式拒绝（blocked），不再静默吞掉
+    ?assertMatch({error, <<"blocked">>, _Msg}, Result),
 
     cleanup_users([Uid1, Uid2]),
-    {comment, "向黑名单用户发送好友请求处理正确"}.
+    {comment, "向黑名单用户发送好友请求被显式拒绝"}.
 
 send_duplicate_friend_request(_Config) ->
     ct:log("测试重复发送好友请求"),
@@ -197,11 +196,11 @@ send_duplicate_friend_request(_Config) ->
     MsgId2 = <<"friend_request_004b">>,
     Result = friend_logic:add_friend(MsgId2, Uid1, integer_to_binary(Uid2), Payload, elib_dt:now()),
 
-    % 验证请求仍然成功（幂等性）
-    ?assertEqual(ok, Result),
+    % T3.4 状态机契约：重复申请显式拒绝（already_requested），不再幂等静默 ok
+    ?assertMatch({error, <<"already_requested">>, _Msg}, Result),
 
     cleanup_users([Uid1, Uid2]),
-    {comment, "重复发送好友请求处理正确（幂等性）"}.
+    {comment, "重复发送好友请求被显式拒绝（T3.4 状态机去重）"}.
 
 %% ===================================================================
 %% 好友确认测试
