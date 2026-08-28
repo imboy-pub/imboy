@@ -428,6 +428,60 @@ init_vote_close_success_writes_audit_test_() ->
         end
     ).
 
+init_vote_close_archived_workspace_returns_code_980_test_() ->
+    %% Workspace 归档写守卫（980）透传：adm 治理 envelope 必须携带稳定错误码，
+    %% 不再压平为通用"操作失败"（adm 层 980 透传收口回归钉子）。
+    ?WITH_MECKS(
+        group_vote_feature_enabled_mocks() ++
+            [
+                {adm_acl, [
+                    {'ensure_permission', 3, fun(_State, _Perm, _Req) -> ok end}
+                ]},
+                {adm_user_logic, [
+                    {'find', 3, fun(9001, <<"id,role_id">>, _Key) ->
+                        #{<<"id">> => 9001, <<"role_id">> => 2}
+                    end}
+                ]},
+                {elib_param, [
+                    {'post', 1, fun(_Req) -> #{<<"vote_id">> => <<"vote_1">>} end}
+                ]},
+                {group_vote_ds, [
+                    {'find_by_vote_id', 1, fun(<<"vote_1">>) ->
+                        {ok, #{<<"id">> => 1, <<"status">> => 1, <<"group_id">> => 66}}
+                    end},
+                    {'update_vote_status', 2, fun(<<"vote_1">>, 2) ->
+                        {error, {980, <<"工作区已归档，写操作被拒绝"/utf8>>}}
+                    end}
+                ]},
+                {group_vote_repo, [
+                    {'find_by_vote_id', 1, fun(<<"vote_1">>) -> {ok, #{<<"group_id">> => 66}} end}
+                ]},
+                {user_log_repo, [
+                    {'add', 1, fun(_Data) ->
+                        erlang:error(must_not_audit_when_archived_rejected)
+                    end}
+                ]},
+                {elib_response, [
+                    {'error', 3, fun(Req, Msg, Code) ->
+                        Req#{response_status => 500, msg => Msg, error_code => Code}
+                    end}
+                ]}
+            ],
+        fun() ->
+            Req = #{method => <<"POST">>},
+            {ok, RespReq, _State} = adm_group_vote_handler:init(Req, #{
+                action => vote_close, adm_user_id => 9001
+            }),
+            ?assertEqual(980, maps:get(error_code, RespReq)),
+            ?assertEqual(
+                <<"工作区已归档，写操作被拒绝"/utf8>>, maps:get(msg, RespReq)
+            ),
+            ?assertEqual(
+                0, meck:num_calls(user_log_repo, add, 1), <<"归档拒绝不得写治理审计">>
+            )
+        end
+    ).
+
 init_vote_close_permission_denied_test_() ->
     ?WITH_MECKS(
         group_vote_feature_enabled_mocks() ++

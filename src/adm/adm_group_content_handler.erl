@@ -217,6 +217,9 @@ tag_delete(<<"POST">>, Req0, State) ->
                             elib_response:success(Req0, #{}, "操作成功");
                         {ok, 0} ->
                             elib_response:error(Req0, "标签不存在");
+                        {error, {Code, Msg}} when is_integer(Code) ->
+                            %% Workspace 归档写守卫（980）等稳定错误码透传 envelope
+                            elib_response:error(Req0, Msg, Code);
                         {error, Reason} ->
                             ?ERROR_LOG(["adm tag delete error: ", Reason]),
                             elib_response:error(Req0, "操作失败")
@@ -306,6 +309,9 @@ file_delete(<<"POST">>, Req0, State) ->
                                     elib_response:success(Req0, #{}, "操作成功");
                                 {ok, 0} ->
                                     elib_response:error(Req0, "文件不存在");
+                                {error, {Code, Msg}} when is_integer(Code) ->
+                                    %% Workspace 归档写守卫（980）等稳定错误码透传 envelope
+                                    elib_response:error(Req0, Msg, Code);
                                 {error, Reason} ->
                                     ?ERROR_LOG(["adm file delete error: ", Reason]),
                                     elib_response:error(Req0, "操作失败")
@@ -395,6 +401,9 @@ album_delete(<<"POST">>, Req0, State) ->
                                     elib_response:success(Req0, #{}, "操作成功");
                                 {ok, 0} ->
                                     elib_response:error(Req0, "相册不存在");
+                                {error, {Code, Msg}} when is_integer(Code) ->
+                                    %% Workspace 归档写守卫（980）等稳定错误码透传 envelope
+                                    elib_response:error(Req0, Msg, Code);
                                 {error, Reason} ->
                                     ?ERROR_LOG(["adm album delete error: ", Reason]),
                                     elib_response:error(Req0, "操作失败")

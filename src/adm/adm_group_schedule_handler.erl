@@ -148,6 +148,9 @@ schedule_cancel(<<"POST">>, Req0, State) ->
                                     elib_response:success(Req0, #{}, "操作成功");
                                 {ok, 0} ->
                                     elib_response:error(Req0, "日程不存在");
+                                {error, {Code, Msg}} when is_integer(Code) ->
+                                    %% Workspace 归档写守卫（980）等稳定错误码透传 envelope
+                                    elib_response:error(Req0, Msg, Code);
                                 {error, Reason} ->
                                     ?ERROR_LOG(["adm schedule cancel error: ", Reason]),
                                     elib_response:error(Req0, "操作失败")
@@ -191,6 +194,9 @@ schedule_restore(<<"POST">>, Req0, State) ->
                                     elib_response:success(Req0, #{}, "操作成功");
                                 {ok, 0} ->
                                     elib_response:error(Req0, "日程不存在");
+                                {error, {Code, Msg}} when is_integer(Code) ->
+                                    %% Workspace 归档写守卫（980）等稳定错误码透传 envelope
+                                    elib_response:error(Req0, Msg, Code);
                                 {error, Reason} ->
                                     ?ERROR_LOG(["adm schedule restore error: ", Reason]),
                                     elib_response:error(Req0, "操作失败")

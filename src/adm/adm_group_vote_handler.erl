@@ -149,6 +149,9 @@ vote_close(<<"POST">>, Req0, State) ->
                                                 #{<<"scope">> => <<"vote">>}
                                             ),
                                             elib_response:success(Req0, #{}, "操作成功");
+                                        {error, {Code, Msg}} when is_integer(Code) ->
+                                            %% Workspace 归档写守卫（980）等稳定错误码透传 envelope
+                                            elib_response:error(Req0, Msg, Code);
                                         {error, Reason} ->
                                             ?ERROR_LOG(["adm vote close error: ", Reason]),
                                             elib_response:error(Req0, "操作失败")
