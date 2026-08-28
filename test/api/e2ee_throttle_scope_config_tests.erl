@@ -104,3 +104,37 @@ declared_rate_is_actually_enforced_test() ->
         "配额内的调用必须全部放行——否则这是个「一律拒绝」的实现"
     ),
     ?assertMatch({limit_exceeded, _, _}, throttle:check(Scope, Key)).
+
+%% ===================================================================
+%% 4. RT-P3-02（2026-08-27）：启动期代码级兜底——scope 不可被配置漂移抹掉
+%% ===================================================================
+
+imboy_app_boot_registers_olm_scopes_test() ->
+    ok = ensure_throttle(),
+    %% 幂等重跑启动期初始化（与 imboy_app start/2 同一函数）
+    ok = imboy_app:init_throttle_rates(),
+    R1 = throttle:check(olm_claim, self()),
+    R2 = throttle:check(olm_claim_target, self()),
+    ?assertMatch(
+        {ok, _, _},
+        R1,
+        "olm_claim 必须由 init_throttle_rates 兜底注册；"
+        "出现 rate_not_set 说明代码级默认被移除，抗耗尽门重新暴露于配置漂移"
+    ),
+    ?assertMatch(
+        {ok, _, _},
+        R2,
+        "olm_claim_target 同上：per-target 抗抽干层不允许静默消失"
+    ).
+
+throttled_request_counts_when_scope_registered_test() ->
+    %% 单位/正向可用性兜底：兜底注册产出的 scope 必须真实执行限额（2/min → 第 3 次拒）
+    ok = ensure_throttle(),
+    Key = {self(), make_ref()},
+    ok = throttle:setup(olm_claim_boot_probe, 2, per_minute),
+    Results = [throttle:check(olm_claim_boot_probe, Key) || _ <- lists:seq(1, 3)],
+    ?assertMatch(
+        {limit_exceeded, _, _},
+        lists:last(Results),
+        "第 3 次调用必须触发 limit_exceeded（限额=2/min）：兜底注册不能只注册不计数"
+    ).

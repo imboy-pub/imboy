@@ -552,7 +552,20 @@ write_msg_with_reply(
             " reply_to_msg_id, reply_to_from_id, reply_snippet)"
         >>,
         <<" VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)">>,
-        <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>
+        %% RT-P3-03（2026-08-27）：本写入与 staging worker 双写并发存在竞态——
+        %% 若 worker 先插入无引用行，原 DO NOTHING 让本次 reply 直写变 no-op，
+        %% 引用元数据静默丢失。改为条件补洞：仅当既有行尚未携带引用时回填三列；
+        %% 正常重放（reply 已有值）WHERE 不满足 → 0 行变更，
+        %% 上游 conflict_no_insert 幂等语义保持不变。
+        <<
+            " ON CONFLICT (msg_id, created_at) DO UPDATE SET "
+            "reply_to_msg_id = EXCLUDED.reply_to_msg_id, "
+            "reply_to_from_id = EXCLUDED.reply_to_from_id, "
+            "reply_snippet = EXCLUDED.reply_snippet "
+            "WHERE "
+        >>,
+        Tb,
+        <<".reply_to_msg_id IS NULL">>
     ],
     case
         elib_pg:execute(Sql, [

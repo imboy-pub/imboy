@@ -345,7 +345,11 @@ decode_websocket_message(Data) ->
         <<"e2ee">> => E2EE,
         <<"expire_secs">> => ExpireSecs,
         <<"payload">> => maps:get(<<"payload">>, Msg, #{}),
-        <<"created_at">> => maps:get(<<"created_at">>, Msg, elib_dt:millisecond())
+        <<"created_at">> => maps:get(<<"created_at">>, Msg, elib_dt:millisecond()),
+        %% RT-P3-03（2026-08-27）：引用回复元数据必须在 Data 中存活——此前本
+        %% 白名单不透传 reply_to，extract_reply_info 永远拿不到，回复三列自
+        %% 上线以来从未落库。undefined 由 extract_reply_info 兜底为无引用。
+        <<"reply_to">> => maps:get(<<"reply_to">>, Msg, undefined)
     }.
 
 %% @doc 检查并通知离线消息

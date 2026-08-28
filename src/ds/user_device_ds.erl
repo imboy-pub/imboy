@@ -144,24 +144,35 @@ cleanup_olm_material(Uid, DID) ->
     end.
 
 %% @doc 设备是否仍活跃（未被移除）——token 吊销的唯一判据
-%% 缓存 60s：吊销延迟上限 60s；删除设备时 user_device_logic:delete/2 会
-%% 主动 flush 并跨节点广播，正常路径是即时生效。
+%% 正结果缓存 60s（删除设备时 user_device_logic:delete/2 主动 flush 并跨节点
+%% 广播，撤销传播语义不变）；**负结果不缓存**（RT-P3-04，2026-08-27）：
+%% login 成功后设备行由 user_server 异步落库，客户端立即开 WS 时本函数会
+%% 读到"行未落库"的 false——原实现把它负缓存 60s，把一次竞态放大成整分钟
+%% 的 device_revoked 401。false 每次直查 DB：被吊销设备本来就该失效，
+%% 点查成本低，正确性优先于缓存收益。
 %% @param Uid 用户ID
 %% @param DID 设备ID
 %% @return boolean()
 -spec is_active(integer(), binary()) -> boolean().
 is_active(Uid, DID) ->
     Key = {user_device_active, Uid, DID},
-    Fun = fun() -> user_device_repo:is_active(Uid, DID) end,
-    case imboy_cache:memo(Fun, Key, 60) of
-        {ok, Active} when is_boolean(Active) ->
-            Active;
-        Other ->
-            %% 安全不变量：设备活跃状态无法确认时必须 fail-closed。
-            %% 删除设备会主动清缓存并跨节点广播；数据库短暂不可用时宁可
-            %% 暂停 did 绑定 token，也不能放行已被吊销的设备。
-            ok = ?WARN_LOG({user_device_is_active_unavailable, Uid, DID, Other}),
-            false
+    case imboy_cache:get(Key) of
+        {ok, {ok, Cached}} when is_boolean(Cached) ->
+            Cached;
+        _ ->
+            case user_device_repo:is_active(Uid, DID) of
+                {ok, true} = OkTrue ->
+                    _ = imboy_cache:memo(fun() -> OkTrue end, Key, 60),
+                    true;
+                {ok, false} ->
+                    false;
+                Other ->
+                    %% 安全不变量：设备活跃状态无法确认时必须 fail-closed。
+                    %% 删除设备会主动清缓存并跨节点广播；数据库短暂不可用时宁可
+                    %% 暂停 did 绑定 token，也不能放行已被吊销的设备。
+                    ok = ?WARN_LOG({user_device_is_active_unavailable, Uid, DID, Other}),
+                    false
+            end
     end.
 
 %% @doc 根据设备ID更新设备信息

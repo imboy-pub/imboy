@@ -40,6 +40,11 @@ ensure_metric_server() ->
 
 setup() ->
     ok = ensure_metric_server(),
+    %% 幂等兜底：本模块在 suite 中紧跟同样 mock 这两个 DS 的
+    %% e2ee_fallback_signature_tests 运行；任一前置模块清理不净，
+    %% meck:new 会 already_started 并级联取消后续模块（2026-08-27 回归发现）。
+    _ = (catch meck:unload(olm_identity_ds)),
+    _ = (catch meck:unload(friend_ds)),
     %% 只 mock DS 层制造"耗尽"，**不碰 elib_metric**
     meck:new(olm_identity_ds, [passthrough, no_link]),
     meck:new(friend_ds, [passthrough, no_link]),

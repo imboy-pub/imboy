@@ -954,31 +954,20 @@ extract_reply_info(Data) ->
                     _ ->
                         case msg_c2g_ds:find_msg_by_id(ReplyToMsgId) of
                             {ok, OriginalMsg} ->
-                                Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
-                                % 尝试解析 JSON 并提取 content 字段
-                                try jsone:decode(Payload) of
-                                    PayloadMap when is_map(PayloadMap) ->
-                                        Content = maps:get(<<"content">>, PayloadMap, <<>>),
-                                        % 截取前50个字符作为摘要
-                                        Snippet = binary:part(
-                                            Content, {0, min(byte_size(Content), 50)}
-                                        ),
-                                        case byte_size(Content) > 50 of
-                                            true -> <<Snippet/binary, "..."/utf8>>;
-                                            false -> Snippet
-                                        end;
+                                %% RT-P2-05/RT-P3-03（2026-08-27）：E2EE 短路前置——
+                                %% 引用的是加密消息时摘要一律占位，不依赖能否解码
+                                %% （外壳 JSON 可解码也无明文 content）。
+                                %% jsonb 经驱动可能返回文本 binary 或 map，
+                                %% 故用「存在且非空」而非结构判定。
+                                case maps:get(<<"e2ee">>, OriginalMsg, undefined) of
+                                    Undefined when
+                                        Undefined =:= undefined;
+                                        Undefined =:= null;
+                                        Undefined =:= <<>>
+                                    ->
+                                        extract_snippet_plain(OriginalMsg);
                                     _ ->
-                                        <<>>
-                                catch
-                                    _:_ ->
-                                        % 如果解析失败，截取原始 payload 的前50个字符
-                                        Snippet = binary:part(
-                                            Payload, {0, min(byte_size(Payload), 50)}
-                                        ),
-                                        case byte_size(Payload) > 50 of
-                                            true -> <<Snippet/binary, "..."/utf8>>;
-                                            false -> Snippet
-                                        end
+                                        <<"[encrypted]"/utf8>>
                                 end;
                             _ ->
                                 <<>>
@@ -989,7 +978,28 @@ extract_reply_info(Data) ->
             {<<>>, 0, <<>>}
     end.
 
-%% @doc 设置C2G消息的自毁时间
+%% @private 非 E2EE 原有摘要提取逻辑（decode 失败退回密文碎片截取仅适用历史行）
+extract_snippet_plain(OriginalMsg) ->
+    Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
+    try jsone:decode(Payload) of
+        PayloadMap when is_map(PayloadMap) ->
+            Content = maps:get(<<"content">>, PayloadMap, <<>>),
+            Snippet = binary:part(Content, {0, min(byte_size(Content), 50)}),
+            case byte_size(Content) > 50 of
+                true -> <<Snippet/binary, "..."/utf8>>;
+                false -> Snippet
+            end;
+        _ ->
+            <<>>
+    catch
+        _:_ ->
+            Snippet = binary:part(Payload, {0, min(byte_size(Payload), 50)}),
+            case byte_size(Payload) > 50 of
+                true -> <<Snippet/binary, "..."/utf8>>;
+                false -> Snippet
+            end
+        %% @doc 设置C2G消息的自毁时间
+    end.
 %% @param MsgId 消息ID
 %% @param ExpireAt 过期时间（RFC3339 binary）
 -spec set_c2g_expire_at(binary(), binary()) -> ok.

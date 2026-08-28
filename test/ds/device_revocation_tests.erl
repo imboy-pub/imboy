@@ -260,15 +260,15 @@ ws_legacy_didless_token_unaffected_test_() ->
 %% 判据与缓存：user_device_ds:is_active/2
 %% ===================================================================
 
-%% 缓存窗口内：命中缓存直接返回，不触达 repo（repo 未 mock，被调用即 undef）
+%% 缓存窗口内：命中缓存直接返回，不触达 repo（repo 未 mock，被调用即 undef），
+%% 且不得走 memo 回填（RT-P3-04 起：命中判定在 get，条件式写缓存在回源之后）
 is_active_within_cache_ttl_skips_repo_test_() ->
     ?WITH_MECK(
         imboy_cache,
         [
-            {'memo', 3, fun(_Fun, Key, MaxAge) ->
-                ?assertEqual({user_device_active, ?UID, ?DID}, Key),
-                ?assertEqual(60, MaxAge),
-                {ok, true}
+            {'get', 1, fun({user_device_active, ?UID, ?DID}) -> {ok, {ok, true}} end},
+            {'memo', 3, fun(_F, _K, _TTL) ->
+                erlang:error(memo_must_not_be_called_on_cache_hit)
             end}
         ],
         fun() ->
@@ -276,11 +276,18 @@ is_active_within_cache_ttl_skips_repo_test_() ->
         end
     ).
 
-%% 缓存窗口外（miss）：回源 repo，查无此行 → 判吊销
+%% 缓存窗口外（miss）：回源 repo，查无此行 → 判吊销。
+%% RT-P3-04 关键契约：**负结果绝不允许写入缓存**——login 后设备行异步落库，
+%% 把竞态期的 false 负缓存 60s 会放大成整分钟 device_revoked。
 is_active_cache_miss_queries_repo_test_() ->
     ?WITH_MECKS(
         [
-            {imboy_cache, [{'memo', 3, fun(Fun, _Key, 60) -> Fun() end}]},
+            {imboy_cache, [
+                {'get', 1, fun(_Key) -> undefined end},
+                {'memo', 3, fun(_F, _K, _TTL) ->
+                    erlang:error(negative_result_must_not_be_cached)
+                end}
+            ]},
             {user_device_repo, [{'is_active', 2, fun(?UID, ?DID) -> {ok, false} end}]}
         ],
         fun() ->
@@ -288,10 +295,18 @@ is_active_cache_miss_queries_repo_test_() ->
         end
     ).
 
+%% 缓存窗口外（miss）：活跃行 → 正结果以 60s TTL 写入缓存
 is_active_cache_miss_active_row_test_() ->
     ?WITH_MECKS(
         [
-            {imboy_cache, [{'memo', 3, fun(Fun, _Key, 60) -> Fun() end}]},
+            {imboy_cache, [
+                {'get', 1, fun(_Key) -> undefined end},
+                {'memo', 3, fun(_Fun, Key, MaxAge) ->
+                    ?assertEqual({user_device_active, ?UID, ?DID}, Key),
+                    ?assertEqual(60, MaxAge),
+                    {ok, {ok, true}}
+                end}
+            ]},
             {user_device_repo, [{'is_active', 2, fun(?UID, ?DID) -> {ok, true} end}]}
         ],
         fun() ->
@@ -303,7 +318,10 @@ is_active_cache_miss_active_row_test_() ->
 is_active_db_error_fails_closed_test_() ->
     ?WITH_MECKS(
         [
-            {imboy_cache, [{'memo', 3, fun(Fun, _Key, 60) -> Fun() end}]},
+            {imboy_cache, [
+                {'get', 1, fun(_Key) -> undefined end},
+                {'memo', 3, fun(_F, _K, _TTL) -> erlang:error(db_error_must_not_be_cached) end}
+            ]},
             {user_device_repo, [{'is_active', 2, fun(_, _) -> {error, timeout} end}]}
         ],
         fun() ->

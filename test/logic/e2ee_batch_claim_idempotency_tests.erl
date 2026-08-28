@@ -105,6 +105,8 @@ setup() ->
 
 cleanup({Pool, Lease}) ->
     _ = (catch meck:unload(olm_identity_ds)),
+    %% friend_ds 也要卸：泄漏会级联炸掉 suite 中后续 mock 它的模块（2026-08-27）
+    _ = (catch meck:unload(friend_ds)),
     persistent_term:erase({?MODULE, tabs}),
     ets:delete(Pool),
     ets:delete(Lease),

@@ -1,5 +1,5 @@
--name imboy_dev@127.0.0.1
--setcookie imboycookie
+-name imboy@127.0.0.1
+-setcookie imboy
 -heart
 -kernel inet_dist_use_interface {127,0,0,1}
 +K true

@@ -351,8 +351,12 @@ stage_and_send_c2c(
                                     ok;
                                 {reply, _, _, _} ->
                                     % 有引用信息，存储到数据库
+                                    %% RT-P3-03 续：CreatedAt 必须与 enqueue/staging 使用同一时间串（CreatedAtRfc）。
+                                    % 此前传 NowTs 毫秒经 to_rfc3339 与 staging 的精度不一致，
+                                    % 唯一键 (msg_id, created_at) 永不碰撞，双写各插一行。
+                                    % 复用同一 RFC 串后两路碰撞，由补洞子句收敛为一行。
                                     msg_c2c_ds:write_msg_with_reply(
-                                        NowTs,
+                                        CreatedAtRfc,
                                         MsgId,
                                         PayloadJson,
                                         CurrentUid,
@@ -1030,31 +1034,20 @@ extract_reply_info(Data) ->
                     _ ->
                         case msg_c2c_ds:find_msg_by_id(ReplyToMsgId) of
                             {ok, OriginalMsg} ->
-                                Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
-                                % 尝试解析 JSON 并提取 content 字段
-                                try jsone:decode(Payload) of
-                                    PayloadMap when is_map(PayloadMap) ->
-                                        Content = maps:get(<<"content">>, PayloadMap, <<>>),
-                                        % 截取前50个字符作为摘要
-                                        Snippet = binary:part(
-                                            Content, {0, min(byte_size(Content), 50)}
-                                        ),
-                                        case byte_size(Content) > 50 of
-                                            true -> <<Snippet/binary, "..."/utf8>>;
-                                            false -> Snippet
-                                        end;
+                                %% RT-P2-05 / RT-P3-03（2026-08-27）：引用的若为
+                                %% E2EE 消息，摘要一律落固定占位，不再依赖能否
+                                %% 解码（decode 成功的外壳 JSON 也无明文 content）。
+                                %% jsonb 经驱动可能返回文本 binary 或 map，
+                                %% 故用「存在且非空」而非结构判定。
+                                case maps:get(<<"e2ee">>, OriginalMsg, undefined) of
+                                    Undefined when
+                                        Undefined =:= undefined;
+                                        Undefined =:= null;
+                                        Undefined =:= <<>>
+                                    ->
+                                        extract_snippet_plain(OriginalMsg);
                                     _ ->
-                                        <<>>
-                                catch
-                                    _:_ ->
-                                        % 如果解析失败，截取原始 payload 的前50个字符
-                                        Snippet = binary:part(
-                                            Payload, {0, min(byte_size(Payload), 50)}
-                                        ),
-                                        case byte_size(Payload) > 50 of
-                                            true -> <<Snippet/binary, "..."/utf8>>;
-                                            false -> Snippet
-                                        end
+                                        <<"[encrypted]"/utf8>>
                                 end;
                             _ ->
                                 <<>>
@@ -1063,6 +1056,29 @@ extract_reply_info(Data) ->
             {ReplyToMsgId, ReplyToFromId, ReplySnippet};
         _ ->
             {<<>>, 0, <<>>}
+    end.
+
+%% @private 非 E2EE 行的原有摘要提取逻辑（decode 失败退回 payload 头部截取，
+%% 仅适用于历史遗留的非加密行）
+extract_snippet_plain(OriginalMsg) ->
+    Payload = maps:get(<<"payload">>, OriginalMsg, <<>>),
+    try jsone:decode(Payload) of
+        PayloadMap when is_map(PayloadMap) ->
+            Content = maps:get(<<"content">>, PayloadMap, <<>>),
+            Snippet = binary:part(Content, {0, min(byte_size(Content), 50)}),
+            case byte_size(Content) > 50 of
+                true -> <<Snippet/binary, "..."/utf8>>;
+                false -> Snippet
+            end;
+        _ ->
+            <<>>
+    catch
+        _:_ ->
+            Snippet = binary:part(Payload, {0, min(byte_size(Payload), 50)}),
+            case byte_size(Payload) > 50 of
+                true -> <<Snippet/binary, "..."/utf8>>;
+                false -> Snippet
+            end
     end.
 
 %% @doc 设置C2C消息的自毁时间
@@ -1094,15 +1110,21 @@ maybe_webhook_push(FromUid, ToId, MsgId, Data) ->
     case bot_ds:is_bot(ToId) of
         true ->
             FromUser = #{<<"user_id">> => FromUid},
-            Payload = maps:get(<<"payload">>, Data, #{}),
-            Text = maps:get(<<"text">>, Payload, <<>>),
-            Msg = #{
-                <<"msg_id">> => MsgId,
-                <<"msg_type">> => maps:get(<<"msg_type">>, Data, <<"text">>),
-                <<"text">> => Text,
-                <<"chat_id">> => c2c_conv_key(FromUid, ToId)
-            },
-            bot_webhook_logic:push_message(ToId, FromUser, Msg);
+            %% RT-P2-05（2026-08-27）：E2EE 会话里 payload 是密文二进制而非 map，
+            %% bot webhook 本不支持端到端加密消息——跳过推送，不在 badmap 上崩。
+            case maps:get(<<"payload">>, Data, #{}) of
+                Payload when is_map(Payload) ->
+                    Text = maps:get(<<"text">>, Payload, <<>>),
+                    Msg = #{
+                        <<"msg_id">> => MsgId,
+                        <<"msg_type">> => maps:get(<<"msg_type">>, Data, <<"text">>),
+                        <<"text">> => Text,
+                        <<"chat_id">> => c2c_conv_key(FromUid, ToId)
+                    },
+                    bot_webhook_logic:push_message(ToId, FromUser, Msg);
+                _ ->
+                    ok
+            end;
         false ->
             ok
     end.

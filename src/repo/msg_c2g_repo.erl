@@ -39,7 +39,31 @@ tablename() ->
 insert_msg_idempotent(Conn, TbMsg, MsgData) ->
     {Sql0, Params} = elib_pg_sql:insert(TbMsg, MsgData),
     Sql = iolist_to_binary([Sql0, <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>]),
-    elib_pg:execute(Conn, Sql, Params).
+    {ok, _} =
+        elib_pg:execute(Conn, Sql, Params),
+    ok.
+
+%% @private RT-P3-03（2026-08-27）：带引用回复的幂等插入。
+%% 冲突子句为「条件补洞」：仅当既有行 reply_to_msg_id IS NULL 时才回填三列；
+%% 正常重放（已有引用值）WHERE 不满足 → 0 行变更 → 上层按 conflict 处理，
+%% 原 DO NOTHING 幂等语义不变，但 worker 无引用行先行时不再吞掉引用元数据。
+insert_msg_with_reply_idempotent(Conn, TbMsg, MsgData) ->
+    {Sql0, Params} = elib_pg_sql:insert(TbMsg, MsgData),
+    Sql = iolist_to_binary([
+        Sql0,
+        <<
+            " ON CONFLICT (msg_id, created_at) DO UPDATE SET "
+            "reply_to_msg_id = EXCLUDED.reply_to_msg_id, "
+            "reply_to_from_id = EXCLUDED.reply_to_from_id, "
+            "reply_snippet = EXCLUDED.reply_snippet "
+            "WHERE "
+        >>,
+        TbMsg,
+        <<".reply_to_msg_id IS NULL">>
+    ]),
+    {ok, _} =
+        elib_pg:execute(Conn, Sql, Params),
+    ok.
 
 % msg_c2g_repo:write_msg(1707686743435, <<"msg_id_1">>,  <<"{\"a\":1}">>,  1, [2,3,107], 7, <<"text">>, <<>>).
 % msg_c2g_repo:write_msg(<<"2026-01-01 05:50:28.465444+00:00">>, <<"msg_id_1">>, <<"{\"a\":1}">>, 1, [2,3,107], 7, <<"image">>, <<"{\"key\":\"...\"}">>).
@@ -81,6 +105,35 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     binary() | null
 ) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, ExpireAt) ->
+    write_msg_impl(
+        CreatedAtRaw,
+        MsgId,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ExpireAt,
+        undefined
+    ).
+
+%% @private RT-P3-03：统一写入主体。ReplyMeta = undefined | {ReplyToMsgId,
+%% ReplyToFromId, ReplySnippet}——非 undefined 时把引用三列并入正式表 INSERT，
+%% 且冲突子句升级为「条件补洞 UPDATE」（仅当既有行 reply_to_msg_id IS NULL），
+%% 与 staging worker 的无引用双写竞态不再互相吞没。
+write_msg_impl(
+    CreatedAtRaw,
+    MsgId,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ExpireAt,
+    ReplyMeta
+) ->
     %% ---------- 统一转换 CreatedAt ----------
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
 
@@ -121,10 +174,29 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
                 null -> MsgData;
                 _ -> MsgData#{expire_at => ExpireAt}
             end,
+        %% RT-P3-03：仅当带引用回复元数据时添加三列
+        MsgDataR =
+            case ReplyMeta of
+                undefined ->
+                    MsgData2;
+                {RTMId, RTFromId, RSnip} ->
+                    MsgData2#{
+                        reply_to_msg_id => RTMId,
+                        reply_to_from_id => RTFromId,
+                        reply_snippet => RSnip
+                    }
+            end,
         GenId = elib_tsid:generate(msg_c2g),
-        MsgData3 = MsgData2#{id => GenId},
-        case insert_msg_idempotent(Conn, TbMsg, MsgData3) of
-            {ok, _} ->
+        MsgData3 = MsgDataR#{id => GenId},
+        InsertResult =
+            case ReplyMeta of
+                undefined ->
+                    insert_msg_idempotent(Conn, TbMsg, MsgData3);
+                _ ->
+                    insert_msg_with_reply_idempotent(Conn, TbMsg, MsgData3)
+            end,
+        case InsertResult of
+            ok ->
                 ok;
             {error, InsertReason} ->
                 ?ERROR_LOG({msg_c2g_insert_failed, MsgId, InsertReason}),
@@ -294,13 +366,24 @@ write_msg_with_reply(
     Gid,
     MsgType,
     E2EE,
-    _ReplyToMsgId,
-    _ReplyToFromId,
-    _ReplySnippet
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet
 ) ->
-    % 当前数据库表不支持 reply_to_msg_id 等字段
-    % 直接调用 write_msg/9 忽略回复信息
-    write_msg(CreatedAt, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE).
+    %% RT-P3-03（2026-08-27）：表自建库迁移 00000006 起即有 reply 三列，
+    %% 原"不支持"注释系误记导致引用元数据被静默丢弃；改走真实现。
+    write_msg_impl(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        null,
+        {ReplyToMsgId, ReplyToFromId, ReplySnippet}
+    ).
 
 %% @doc 根据被引用消息ID查找所有回复消息
 %% 注意：当前数据库表不支持 reply_to_msg_id 字段，此函数返回空列表

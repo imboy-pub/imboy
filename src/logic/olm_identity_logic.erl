@@ -114,6 +114,9 @@ report_one_time_keys(_, _, _, _) ->
 
 %% ===================================================================
 %% 上报 fallback key
+%%
+%%  /4 是无签名底层 upsert：仅由 /5 验签成功路径与既有测试复用，
+%%  HTTP 层（olm_handler）只走 /5——无签名上传已在 /5 被拒。
 %% ===================================================================
 
 -spec report_fallback_key(integer(), binary(), binary(), binary()) ->
@@ -145,17 +148,17 @@ report_fallback_key(_, _, _, _) ->
 %%  fallback 的会话，用的都是攻击者的预密钥。要求由**已注册的 ed25519 身份键**
 %%  签名，就把 fallback key 绑到了 token 窃取者拿不到的秘密上。
 %%
-%%  ⚠️ 签名为空时**仍然接受**（并计数）：今天没有任何客户端发送签名，此刻要求
-%%  必填等于所有设备都发布不了 fallback key —— 每次 OTK 耗尽都变成
-%%  `no_prekey_available`，新会话直接建不起来。这是两阶段推进的第一阶段，
-%%  与第四刀（客户端发 request_id）同一形状：先服务端能验、并让缺口可见，
-%%  待客户端普遍带上签名后再改为必填。**在那之前本项不算关闭。**
+%%  ⚠️ 空签名已改为**拒绝**（E2EE-062 第二阶段，2026-08-27 红队 RT-P1-01 落地）：
+%%  第一阶段期间运行时攻击实证——盗 token 者可用空签名把设备 fallback prekey
+%%  覆盖为自己控制的公钥；受害者 OTK 耗尽后对端新会话即落在攻击者预密钥上，
+%%  且 identity 未变、TOFU 不告警。客户端（imboyapp olm_session_service）自
+%%  E2EE-062 起已随上传携带 Ed25519 签名，必填不再阻断现役客户端。
+%%  空签名仍计数（olm_fallback_unsigned_total），让旧客户端兼容缺口在运维侧可见。
 -spec report_fallback_key(integer(), binary(), binary(), binary(), binary()) ->
     ok | {error, binary()}.
-report_fallback_key(UserId, DeviceId, KeyId, KeyB64, <<>>) ->
+report_fallback_key(_UserId, _DeviceId, _KeyId, _KeyB64, <<>>) ->
     _ = elib_metric:increment(olm_fallback_unsigned_total),
-    %% 保留对 report_fallback_key/4 的原调用形状（既有测试按 arity 挂 meck 期望）
-    report_fallback_key(UserId, DeviceId, KeyId, KeyB64);
+    {error, <<"fallback_signature_required">>};
 report_fallback_key(UserId, DeviceId, KeyId, KeyB64, Signature) when
     is_integer(UserId),
     is_binary(DeviceId),

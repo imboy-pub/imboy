@@ -77,7 +77,8 @@
 - 传输层强制 TLS（生产部署通过 nginx 反代 + certbot 自动签发/续期 Let's Encrypt）
 - 密码使用 **HMAC-SHA512 + 随机盐**存储（`elib_password` 内置 dual-verify，兼容早期 MD5 格式并在登录时自然淘汰）
 - JWT + 刷新 token 机制
-- E2EE 采用 RSA-OAEP-256 + AES-256-GCM，服务端不持有私钥、不解密 `ciphertext`
+- E2EE 主链路：单聊 **Olm（X3DH + Double Ratchet，vodozemac）per_device 扇出**，群聊 **Megolm**（room key 经 Olm 包裹分发、成员/设备集变化即轮换），统一 PFv3 信封（protected_header 认证加密绑定路由字段）；范围限于 C2C/C2G 正文与聊天附件，**频道、朋友圈、RTC 媒体不在 E2EE 内**。早期 RSA-OAEP-256 + AES-256-GCM 套件已退役为仅解密兼容。服务端零密码学、不持有任何私钥；fallback prekey 上传强制 Ed25519 身份验签（2026-08-27 起，RT-P1-01）
+- 合规部署提示：`storage_mode=compliance_e2ee` 模式下群 room key 会按监管要求额外向合规方公钥分发一份——该模式服务端/审计方可解密群消息，对隐私有严格要求的部署应使用 strict 模式
 - 管理后台使用独立 cookie secret + CSRF token
 
 已记录在案的**已知限制**（不视为新漏洞，但欢迎参与讨论）：

@@ -6,6 +6,8 @@
 -export([maybe_migrate/0]).
 %% 纯函数导出供守护测试（elib_tsid_registration_guard_tests）与运行时自省
 -export([tsid_generator_names/0]).
+%% 导出供守护测试直调（e2ee_throttle_scope_config_tests：RT-P3-02 兜底注册）
+-export([init_throttle_rates/0]).
 
 % -include("log.hrl").
 -include_lib("public_key/include/public_key.hrl").
@@ -370,6 +372,13 @@ init_throttle_rates() ->
     %% webrtc_* 信令独立高限额桶：ICE trickle 一次通话可发 8~20 条 candidate，
     %% 与普通消息共用 60/min 会随机丢弃 candidate 致公网通话间歇性失败
     ok = throttle:setup(webrtc_per_user, RateFor(webrtc_per_user, 240), per_minute),
+    %% RT-P3-02（2026-08-27）：OTK claim 双层限流 scope 启动期兜底注册。
+    %% 此前它们只存在于 sys.config——漏配即 rate_not_set 静默放行（scoped ERROR
+    %% 日志是唯一信号），配置漂移会让 E2EE-062 抗耗尽门无声消失。给与
+    %% sys.config.example 相同数值的代码级默认后，两个 scope 不可能未注册，
+    %% 配置仅用于覆写速率。改动须同步 e2ee_throttle_scope_config_tests。
+    ok = throttle:setup(olm_claim, RateFor(olm_claim, 30), per_minute),
+    ok = throttle:setup(olm_claim_target, RateFor(olm_claim_target, 60), per_minute),
     ok.
 
 -spec validate_runtime_config() -> ok.

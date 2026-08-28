@@ -102,7 +102,7 @@ valid_sig() ->
 fb_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun(_) ->
         [
-            {"对照组：未带签名的旧客户端仍照常落库", fun unsigned_still_accepted/0},
+            {"内部 /4：无签名底层 upsert（仅验签成功路径复用）", fun internal_unsigned_upsert_ok/0},
             {"正向可用性：有效签名照常落库", fun valid_signature_accepted/0},
             {"兼容 vodozemac 无填充 base64 的身份键和签名", fun unpadded_base64_accepted/0},
             {"无效签名 → 拒绝且不落库", fun invalid_signature_rejected/0},
@@ -118,13 +118,16 @@ reset() -> persistent_term:erase(?SK).
 
 %% ===================================================================
 
-unsigned_still_accepted() ->
+%% E2EE-062 第二阶段（2026-08-27）：HTTP 层只走 /5，空签名已被拒。
+%% /4 降级为无签名底层 upsert，仅由 /5 验签成功路径复用——本条钉住其语义，
+%% 防止日后有人在 /4 上误开新的对外入口。
+internal_unsigned_upsert_ok() ->
     reset(),
     ?assertEqual(ok, olm_identity_logic:report_fallback_key(?UID, ?DID, ?KID, ?KB64)),
     ?assertEqual(
         [{?UID, ?DID, ?KID, ?KB64}],
         upserts(),
-        "旧客户端不发签名；此刻拒绝它们等于所有设备都发布不了 fallback key"
+        "底层 /4 不做签名校验；验签责任在 /5，HTTP 入口不得绕过"
     ).
 
 valid_signature_accepted() ->
@@ -187,15 +190,18 @@ unregistered_device_rejected() ->
     ?assertEqual([], upserts()).
 
 %% 走**生产实际路径**：handler 统一调 /5，未带签名时传 <<>>（见 olm_handler
-%% do_report_fallback1）。直接调 /4 不是生产入口——/4 也被 /5 验签成功后内部
-%% 复用，若把计数打在 /4 上，签名合法的上传会被误计成"未签名"。
+%% do_report_fallback1）。E2EE-062 第二阶段起空签名 = 拒绝 + 计数。
 unsigned_is_counted() ->
     reset(),
-    ok = olm_identity_logic:report_fallback_key(?UID, ?DID, ?KID, ?KB64, <<>>),
+    ?assertEqual(
+        {error, <<"fallback_signature_required">>},
+        olm_identity_logic:report_fallback_key(?UID, ?DID, ?KID, ?KB64, <<>>),
+        "盗 token 者若无签名即可覆盖 fallback prekey，OTK 耗尽后即成 MITM"
+    ),
+    ?assertEqual([], upserts(), "无签名不得落库"),
     ?assert(
         lists:member(olm_fallback_unsigned_total, metrics()),
-        "未签名上传仍被接受（旧客户端兼容），但必须计数——"
-        "否则「这道防护还没铺开」这件事在运维侧完全不可见"
+        "拒绝仍须计数——旧客户端兼容缺口在运维侧必须可见"
     ).
 
 %% /5 验签成功后内部复用 /4；若计数打在 /4 上，合法签名的上传会被误计成"未签名"，

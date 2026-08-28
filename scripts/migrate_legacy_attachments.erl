@@ -47,15 +47,9 @@ run(Mode) ->
 
 %% @doc 确保 legacy_key 列存在。
 ensure_legacy_key_column() ->
-    {ok, _, _, [{0}]} = elib_pg:query(
-        "SELECT 1 FROM information_schema.columns "
-        "WHERE table_schema='public' AND table_name='attachment' "
-        "AND column_name='legacy_key'",
-        []
-    ),
-    ok;
-ensure_legacy_key_column() ->
-    {ok, _, _, _} = elib_pg:query(
+    %% 2026-08-27 修正：原子句用 badmatch 处理"列不存在"，而 badmatch 是异常
+    %% 不是子句失配——ALTER 分支永远不可达。改为无条件幂等 DDL。
+    {ok, _} = elib_pg:query(
         "ALTER TABLE public.attachment "
         "ADD COLUMN IF NOT EXISTS legacy_key text DEFAULT NULL",
         []
@@ -64,8 +58,10 @@ ensure_legacy_key_column() ->
 
 %% @doc 查找所有明文附件（cipher IS NULL）。
 find_plaintext_attachments(all) ->
-    {ok, _, _, Rows} = elib_pg:query(
-        "SELECT id, path, bucket, file_hash256, mime_type "
+    %% 2026-08-27 修正：attachment 表没有 bucket 列——桶由 scope 派生
+    %% （elib_oss:get_bucket/1），不落库；elib_pg:query 返回 {ok, Rows}。
+    {ok, Rows} = elib_pg:query(
+        "SELECT id, path, scope, file_hash256, mime_type "
         "FROM public.attachment "
         "WHERE cipher IS NULL "
         "ORDER BY id",
@@ -73,8 +69,8 @@ find_plaintext_attachments(all) ->
     ),
     Rows;
 find_plaintext_attachments({count, N}) ->
-    {ok, _, _, Rows} = elib_pg:query(
-        "SELECT id, path, bucket, file_hash256, mime_type "
+    {ok, Rows} = elib_pg:query(
+        "SELECT id, path, scope, file_hash256, mime_type "
         "FROM public.attachment "
         "WHERE cipher IS NULL "
         "ORDER BY id LIMIT $1",
@@ -82,8 +78,14 @@ find_plaintext_attachments({count, N}) ->
     ),
     Rows.
 
+%% 2026-08-27 修正：elib_pg:query 返回 map 行（列名为 binary key），
+%% 原 tuple 解构永不匹配。
 %% @doc 迁移单条附件。
-migrate_one({Id, ObjectKey, Bucket, _Hash, _MimeType}) ->
+migrate_one(Row) ->
+    Id = maps:get(<<"id">>, Row),
+    ObjectKey = maps:get(<<"path">>, Row),
+    Scope = maps:get(<<"scope">>, Row, <<"private">>),
+    Bucket = elib_oss:get_bucket(Scope),
     try
         io:format("  [~p] 处理 attachment id=~p key=~s~n", [self(), Id, ObjectKey]),
         %% 1. 从 Garage 读取明文
@@ -100,7 +102,7 @@ migrate_one({Id, ObjectKey, Bucket, _Hash, _MimeType}) ->
                 {ok, EncryptedKey} = elib_cipher:aes_gcm_encrypt(ContentKey, MasterKey),
                 KeyB64 = base64:encode(EncryptedKey),
                 %% 6. 更新 DB
-                {ok, _, _, [{1}]} = elib_pg:query(
+                {ok, 1} = elib_pg:query(
                     "UPDATE public.attachment "
                     "SET cipher = 'AES-256-GCM', legacy_key = $1 "
                     "WHERE id = $2 AND cipher IS NULL",
@@ -113,9 +115,9 @@ migrate_one({Id, ObjectKey, Bucket, _Hash, _MimeType}) ->
                 {error, {Id, Reason}}
         end
     catch
-        Class:Reason:Stack ->
-            io:format("  [~p] 异常 attachment id=~p: ~p:~p~n  ~p~n", [self(), Id, Class, Reason, Stack]),
-            {error, {Id, {Class, Reason}}}
+        Class:Rz:Stack ->
+            io:format("  [~p] 异常 attachment id=~p: ~p:~p~n  ~p~n", [self(), Id, Class, Rz, Stack]),
+            {error, {Id, {Class, Rz}}}
     end.
 
 %% @doc 从 Garage 读取对象。
