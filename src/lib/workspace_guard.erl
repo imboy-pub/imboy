@@ -8,6 +8,8 @@
 %      解析 target→workspace；scope=personal 恒放行（回归红线：个人资源永不受
 %      守卫影响）；scope=workspace 读 workspace.status，archived → 稳定错误码
 %      ?ERR_WORKSPACE_ARCHIVED(980)。资源不存在恒放行（走既有 404 流程）。
+%      SEC-03 fail-closed：归属解析 DB 异常 / status 读失败 / 未知资源类型
+%      → {error, {503, Msg}} 拒绝，绝不 ok 放行。
 %      ⚠️ 本版本存在"检查-写窗口"（读与写不在同一事务），仅用于无法进同事务
 %      的写路径（R3 #9-13/#17 的最小可行接入），残留风险见 WP4 报告。
 %   2. ensure_writable_tx/2（事务版）：供 elib_pg:with_tx 的 Fun(Conn) 内调用——
@@ -68,25 +70,42 @@ is_archived_error(_) ->
 
 %% @doc 归档写守卫（自动提交版，logic 层前置检查）
 %% Target = {ResourceType, ResourceId}，ResourceType 见 workspace_resolver。
-%% personal / 资源不存在 → ok；workspace 且 archived → {error, {980, Msg}}。
+%% personal / 资源不存在 → ok；workspace 且 archived → {error, {980, Msg}}；
+%% 归属解析失败（db_error / unsupported_*，SEC-03）→ {error, {503, Msg}}
+%% fail-closed 拒绝，绝不 ok 放行（DB 故障不得成为绕过归档守卫的窗口）。
 -spec ensure_writable({atom(), integer() | binary()}) ->
     ok | {error, {integer(), binary()}}.
 ensure_writable(Target) ->
     case workspace_resolver:resolve_workspace(Target) of
         {ok, WsId} ->
             case workspace_status(WsId) of
-                <<"archived">> -> archived_error();
-                _ -> ok
+                {ok, <<"archived">>} ->
+                    archived_error();
+                {ok, _Active} ->
+                    ok;
+                {error, not_found} ->
+                    ok;
+                {error, {db_error, Reason}} ->
+                    %% status 读失败按 fail-closed 拒绝（不静默放行）
+                    _ = ?ERROR_LOG([workspace_guard_status_failed, WsId, Reason]),
+                    resolve_denied_error()
             end;
-        _ ->
-            %% personal 直通；not_found 放行走既有 404（不吞既有语义）
-            ok
+        personal ->
+            ok;
+        {error, not_found} ->
+            %% 资源不存在放行走既有 404（不吞既有语义）
+            ok;
+        {error, Reason} ->
+            %% db_error / unsupported_resource / unsupported_scope：fail-closed
+            _ = ?ERROR_LOG([workspace_guard_resolve_denied, Target, Reason]),
+            resolve_denied_error()
     end.
 
 %% @doc 归档写守卫（事务版，with_tx Fun(Conn) 内调用）
 %% 与业务写同事务：SELECT ... FOR UPDATE 锁 workspace 行并读 status。
 %% personal / 资源不存在 → ok；archived → {error, {980, Msg}}（不抛异常，
-%% 调用方用 abort_on_error/1 或 case 决定回滚）。
+%% 调用方用 abort_on_error/1 或 case 决定回滚）；归属解析失败（db_error /
+%% unsupported_*，SEC-03）→ {error, {503, Msg}} fail-closed 拒绝。
 -spec ensure_writable_tx(any(), {atom(), integer() | binary()}) ->
     ok | {error, {integer(), binary()}}.
 ensure_writable_tx(Conn, Target) ->
@@ -103,8 +122,13 @@ ensure_writable_tx(Conn, Target) ->
                     _ = ?ERROR_LOG([workspace_guard_lock_failed, WsId, Reason]),
                     {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
             end;
-        _ ->
-            ok
+        personal ->
+            ok;
+        {error, not_found} ->
+            ok;
+        {error, Reason} ->
+            _ = ?ERROR_LOG([workspace_guard_resolve_denied_tx, Target, Reason]),
+            resolve_denied_error()
     end.
 
 %% @doc with_tx 内零样板：ok 原样返回；{error, Reason} → throw({abort_tx, Reason})
@@ -150,9 +174,27 @@ write_tx_or_skip(Target, WriteFun) ->
 %% Internal Function Definitions
 %% ===================================================================
 
--spec workspace_status(integer()) -> binary() | undefined.
+%% @doc 归属解析失败（db_error / unsupported_*）的 fail-closed 稳定错误
+-spec resolve_denied_error() -> {error, {integer(), binary()}}.
+resolve_denied_error() ->
+    {error, {?ERR_SERVICE_UNAVAILABLE, <<"资源归属校验暂不可用，请稍后重试"/utf8>>}}.
+
+%% @doc workspace.status 读（三态，SEC-03）：
+%% {ok, Status} | {error, not_found}（行不存在，保持既有放行语义）
+%% | {error, {db_error, Reason}}（查询失败，调用方 fail-closed）。
+-spec workspace_status(integer()) ->
+    {ok, binary()} | {error, not_found} | {error, {db_error, term()}}.
 workspace_status(WsId) ->
-    case elib_pg:one(<<"SELECT status FROM workspace WHERE id = $1">>, [WsId]) of
-        {ok, #{<<"status">> := Status}} -> Status;
-        _ -> undefined
+    case catch elib_pg:one(<<"SELECT status FROM workspace WHERE id = $1">>, [WsId]) of
+        {ok, #{<<"status">> := Status}} ->
+            {ok, Status};
+        {ok, _EmptyDefault} ->
+            %% elib_pg:one/2 无行时返回默认 #{}——workspace 行不存在
+            {error, not_found};
+        {error, Reason} ->
+            {error, {db_error, Reason}};
+        {'EXIT', Reason} ->
+            {error, {db_error, Reason}};
+        Other ->
+            {error, {db_error, Other}}
     end.

@@ -23,8 +23,9 @@ init(Req0, State0) ->
         case workspace_resolver:guard_channel_binding(Req0, maps:get(current_uid, State, 0)) of
             ok ->
                 handle_action(Action, Req0, State);
-            {error, {403, Msg}} ->
-                elib_response:error(Req0, Msg, 403)
+            {error, {Code, Msg}} ->
+                %% SEC-03：403=非工作区成员；503=归属校验 DB 故障（fail-closed）
+                elib_response:error(Req0, Msg, Code)
         end,
     {ok, Req1, State}.
 

@@ -67,8 +67,9 @@ guarded_handle(Action, Req0, State) ->
     case workspace_resolver:guard_channel_binding(Req0, Uid) of
         ok ->
             handle_action(Action, Req0, State);
-        {error, {403, Msg}} ->
-            elib_response:error(Req0, Msg, 403)
+        {error, {Code, Msg}} ->
+            %% SEC-03：403=非工作区成员；503=归属校验 DB 故障（fail-closed）
+            elib_response:error(Req0, Msg, Code)
     end.
 
 -spec handle_action(atom() | false, cowboy_req:req(), map()) -> cowboy_req:req().
@@ -154,8 +155,9 @@ by_custom_id(Req0, State) ->
         CustomId ->
             %% T5：custom_id 直访不能绕过 Workspace 边界（§1.4.2 规则 2）
             case workspace_resolver:guard_channel_custom_id(Uid, CustomId) of
-                {error, {403, Msg}} ->
-                    elib_response:error(Req0, Msg, 403);
+                {error, {Code, Msg}} ->
+                    %% SEC-03：403=非工作区成员；503=归属校验 DB 故障（fail-closed）
+                    elib_response:error(Req0, Msg, Code);
                 ok ->
                     case channel_logic:get_channel_by_custom_id(CustomId, Uid) of
                         {ok, Channel} ->

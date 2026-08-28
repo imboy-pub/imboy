@@ -77,8 +77,9 @@ detail(Req0, State) ->
     Qs1 = cowboy_req:parse_qs(Req0),
     Gid = proplists:get_value(<<"gid">>, Qs1, <<>>),
     case workspace_resolver:guard_group_gid(Uid, Gid) of
-        {error, {403, Msg}} ->
-            elib_response:error(Req0, Msg, 403);
+        {error, {Code, Msg}} ->
+            %% SEC-03：403=非工作区成员；503=归属校验 DB 故障（fail-closed）
+            elib_response:error(Req0, Msg, Code);
         ok ->
             detail_allowed(Req0, Gid)
     end.
@@ -468,8 +469,9 @@ msg_page(Req0, State) ->
     %% T5（双体验 v2.5.2）：workspace 群消息直访不能绕过 Workspace 边界；
     %% personal 群零行为变化。
     case workspace_resolver:guard_group_gid(CurrentUid, Gid2) of
-        {error, {403, Msg}} ->
-            elib_response:error(Req0, Msg, 403);
+        {error, {Code, Msg}} ->
+            %% SEC-03：403=非工作区成员；503=归属校验 DB 故障（fail-closed）
+            elib_response:error(Req0, Msg, Code);
         ok ->
             msg_page_allowed(Req0, CurrentUid, Gid2)
     end.

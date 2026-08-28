@@ -50,8 +50,9 @@ init(Req0, State0) ->
                             disable -> disable(Req0, State);
                             list -> list(Req0, State)
                         end;
-                    {error, {403, Msg}} ->
-                        elib_response:error(Req0, Msg, 403)
+                    {error, {Code, Msg}} ->
+                        %% SEC-03：403=非工作区成员；503=归属校验 DB 故障（fail-closed）
+                        elib_response:error(Req0, Msg, Code)
                 end
         end,
     {ok, Req1, State}.

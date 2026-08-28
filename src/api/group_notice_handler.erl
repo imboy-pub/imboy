@@ -43,8 +43,9 @@ init(Req0, State0) ->
     %% Group Notice 继续只属于 Group（I12），本守卫只加边界不改归属。
     Req1 =
         case workspace_notice_guard(Req0, maps:get(current_uid, State, 0)) of
-            {error, {403, Msg}} ->
-                elib_response:error(Req0, Msg, 403);
+            {error, {Code, Msg}} ->
+                %% SEC-03：403=非工作区成员；503=归属校验 DB 故障（fail-closed）
+                elib_response:error(Req0, Msg, Code);
             ok ->
                 notice_action(Action, Method, Req0, State)
         end,
@@ -81,8 +82,9 @@ notice_action(Action, Method, Req0, State) ->
 
 %% @doc T5 守卫：从请求提取 gid（优先）或 notice_id（回溯群归属）后校验
 %% Workspace 成员边界。elib_param:post/1 带进程字典缓存，此处预读不影响
-%% 各 action 内再次读取。
--spec workspace_notice_guard(cowboy_req:req(), integer()) -> ok | {error, {403, binary()}}.
+%% 各 action 内再次读取。SEC-03：门错误码可为 403（非成员）/503（归属校验故障）。
+-spec workspace_notice_guard(cowboy_req:req(), integer()) ->
+    ok | {error, {integer(), binary()}}.
 workspace_notice_guard(Req0, Uid) ->
     PostVals =
         try
