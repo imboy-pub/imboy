@@ -6,6 +6,12 @@
 % 封装 group_schedule_repo（及其参与者 / 提醒子表）对 Logic 层的访问。
 % Pass-through wrapper over group_schedule_repo and its participant/remind
 % sub-tables, enforcing Handler→Logic→DS→Repo boundary.
+%
+% T7 归档写守卫（P0 后续批）：内容写路径（建/改/取消日程、参与者增改删、
+% 建提醒）经 workspace_guard:write_tx 同事务守卫（{group,Gid} /
+% {group_schedule,PK|ScheduleId} → workspace 行锁），归档后拒绝（980）；
+% update_remind_sent（提醒生命周期簿记）用 write_tx_or_skip freeze 语义；
+% 查询路径不加守卫。
 %%%
 
 -export([
@@ -53,11 +59,29 @@ find_by_schedule_id(ScheduleId) -> group_schedule_repo:find_by_schedule_id(Sched
 %% schedule main table
 %% ===================================================================
 
-insert_schedule(Data) -> group_schedule_repo:insert(Data).
+insert_schedule(Data) ->
+    %% T7 归档写守卫：{group, Gid} 行锁与写入同事务（Data 自带 group_id）；
+    %% group_id 缺失/非法时走 repo 自动提交版保留校验错误契约。
+    case maps:get(group_id, Data, undefined) of
+        Gid when is_integer(Gid), Gid > 0 ->
+            workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                group_schedule_repo:insert_tx(Conn, Data)
+            end);
+        _ ->
+            group_schedule_repo:insert(Data)
+    end.
 
-update_schedule(Id, Data) -> group_schedule_repo:update(Id, Data).
+update_schedule(Id, Data) ->
+    %% T7 归档写守卫：{group_schedule, PK}（PK → group → workspace）
+    workspace_guard:write_tx({group_schedule, Id}, fun(Conn) ->
+        group_schedule_repo:update_tx(Conn, Id, Data)
+    end).
 
-update_status(Id, Status) -> group_schedule_repo:update_status(Id, Status).
+update_status(Id, Status) ->
+    %% T7 归档写守卫：{group_schedule, PK}；用户 cancel 与 adm 治理共用本入口。
+    workspace_guard:write_tx({group_schedule, Id}, fun(Conn) ->
+        group_schedule_repo:update_status_tx(Conn, Id, Status)
+    end).
 
 list_by_group_id(GroupId, StartAt, EndAt, Page, Size) ->
     group_schedule_repo:list_by_group_id(GroupId, StartAt, EndAt, Page, Size).
@@ -72,24 +96,60 @@ list_by_user_id(UserId, StartAt, EndAt, Page, Size) ->
 %% participants
 %% ===================================================================
 
-insert_participant(Data) -> group_schedule_repo:insert_participant(Data).
+insert_participant(Data) ->
+    %% T7 归档写守卫：{group_schedule, ScheduleId}（Data 自带对外 schedule_id）；
+    %% schedule_id 缺失时走 repo 自动提交版保留插入行为契约。
+    case maps:get(schedule_id, Data, undefined) of
+        ScheduleId when is_binary(ScheduleId), ScheduleId =/= <<>> ->
+            workspace_guard:write_tx({group_schedule, ScheduleId}, fun(Conn) ->
+                group_schedule_repo:insert_participant_tx(Conn, Data)
+            end);
+        _ ->
+            group_schedule_repo:insert_participant(Data)
+    end.
 
 update_participant_status(ScheduleId, UserId, Status) ->
-    group_schedule_repo:update_participant_status(ScheduleId, UserId, Status).
+    %% T7 归档写守卫：{group_schedule, ScheduleId}（参加/不参加为内容写，980）
+    workspace_guard:write_tx({group_schedule, ScheduleId}, fun(Conn) ->
+        group_schedule_repo:update_participant_status_tx(Conn, ScheduleId, UserId, Status)
+    end).
 
 list_participants(ScheduleId) -> group_schedule_repo:list_participants(ScheduleId).
 
 count_participants(ScheduleId) -> group_schedule_repo:count_participants(ScheduleId).
 
 delete_participant(ScheduleId, UserId) ->
-    group_schedule_repo:delete_participant(ScheduleId, UserId).
+    %% T7 归档写守卫：{group_schedule, ScheduleId}
+    workspace_guard:write_tx({group_schedule, ScheduleId}, fun(Conn) ->
+        group_schedule_repo:delete_participant_tx(Conn, ScheduleId, UserId)
+    end).
 
 %% ===================================================================
 %% reminds
 %% ===================================================================
 
-insert_remind(Data) -> group_schedule_repo:insert_remind(Data).
+insert_remind(Data) ->
+    %% T7 归档写守卫：{group_schedule, ScheduleId}（提醒记录属日程内容派生，
+    %% 归档后不再新建提醒）
+    case maps:get(schedule_id, Data, undefined) of
+        ScheduleId when is_binary(ScheduleId), ScheduleId =/= <<>> ->
+            workspace_guard:write_tx({group_schedule, ScheduleId}, fun(Conn) ->
+                group_schedule_repo:insert_remind_tx(Conn, Data)
+            end);
+        _ ->
+            group_schedule_repo:insert_remind(Data)
+    end.
 
 list_pending_reminds() -> group_schedule_repo:list_pending_reminds().
 
-update_remind_sent(RemindId) -> group_schedule_repo:update_remind_sent(RemindId).
+update_remind_sent(RemindId) ->
+    %% T7 派生读写（freeze 语义）：提醒已发送标记为生命周期簿记，
+    %% 归档时跳过标记（提醒保持待发，恢复工作区后续跑）；读取/扫描不受影响。
+    case
+        workspace_guard:write_tx_or_skip({group_schedule_remind, RemindId}, fun(Conn) ->
+            group_schedule_repo:update_remind_sent_tx(Conn, RemindId)
+        end)
+    of
+        {written, Ret} -> Ret;
+        skipped -> {ok, 0}
+    end.

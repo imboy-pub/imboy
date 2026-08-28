@@ -8,6 +8,7 @@
 %%%
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 %% 日程管理
 -export([create_schedule/9]).
@@ -120,7 +121,7 @@ do_create_schedule(
     },
 
     % 插入日程
-    case group_schedule_ds:insert_schedule(ScheduleData) of
+    case normalize_write_result(group_schedule_ds:insert_schedule(ScheduleData)) of
         {ok, _ScheduleDbId, #{<<"id">> := ScheduleDbId}} ->
             % 插入创建者作为参与人
             CreatorParticipantData = #{
@@ -203,7 +204,11 @@ do_update_schedule(ScheduleId, Title, Description, Location, StartAt, EndAt) ->
 
     case group_schedule_ds:find_by_schedule_id(ScheduleId) of
         #{<<"id">> := ScheduleDbId} ->
-            case group_schedule_ds:update_schedule(ScheduleDbId, UpdateData) of
+            case
+                normalize_write_result(
+                    group_schedule_ds:update_schedule(ScheduleDbId, UpdateData)
+                )
+            of
                 {ok, 1} -> ok;
                 {error, Reason} -> {error, Reason}
             end;
@@ -235,7 +240,11 @@ cancel_schedule(ScheduleId, CreatorId) ->
                         4 ->
                             {error, already_cancelled};
                         _ ->
-                            case group_schedule_ds:update_status(ScheduleDbId, 4) of
+                            case
+                                normalize_write_result(
+                                    group_schedule_ds:update_status(ScheduleDbId, 4)
+                                )
+                            of
                                 {ok, 1} -> ok;
                                 {error, Reason} -> {error, Reason}
                             end
@@ -360,7 +369,11 @@ confirm_participation(ScheduleId, UserId, Accept) ->
                     % 不参加
                     false -> 2
                 end,
-            case group_schedule_ds:update_participant_status(ScheduleId, UserId, Status) of
+            case
+                normalize_write_result(
+                    group_schedule_ds:update_participant_status(ScheduleId, UserId, Status)
+                )
+            of
                 {ok, 1} -> ok;
                 {ok, 0} -> {error, participant_not_found};
                 {error, Reason} -> {error, Reason}
@@ -383,6 +396,11 @@ process_reminders() ->
     end.
 
 %% @doc 处理提醒列表
+%% T7 归档副作用门控：发送提醒通知（msg_s2c 推送 = 对外副作用）之前先经
+%% workspace_guard:write_tx_or_skip 判定归档状态（{group_schedule_remind, Id}
+%% → schedule → group → workspace 行锁线性化）——归档后零提醒推送泄漏
+%% （不发送、不标记，提醒保持待发，恢复工作区后续跑）；active/personal
+%% 照常发送并标记。
 process_remind_list([], Acc) ->
     Acc;
 process_remind_list([Remind | Rest], Acc) ->
@@ -392,13 +410,21 @@ process_remind_list([Remind | Rest], Acc) ->
         <<"user_id">> := UserId
     } = Remind,
 
-    % 发送提醒通知
-    send_remind_notification(ScheduleId, UserId),
+    case
+        workspace_guard:write_tx_or_skip({group_schedule_remind, RemindId}, fun(_Conn) -> ok end)
+    of
+        skipped ->
+            %% 工作区已归档：不发送、不标记（读取不受影响）
+            process_remind_list(Rest, Acc);
+        {written, _} ->
+            % 发送提醒通知
+            send_remind_notification(ScheduleId, UserId),
 
-    % 标记为已发送
-    _ = group_schedule_ds:update_remind_sent(RemindId),
+            % 标记为已发送
+            _ = group_schedule_ds:update_remind_sent(RemindId),
 
-    process_remind_list(Rest, Acc + 1).
+            process_remind_list(Rest, Acc + 1)
+    end.
 
 %% @doc 安排提醒
 -spec schedule_reminders(binary(), binary(), integer() | undefined, [integer()]) -> ok.
@@ -463,6 +489,14 @@ get_schedule_id_by_pk(Id) ->
 %% ===================================================================
 %% 内部辅助函数
 %% ===================================================================
+
+%% @doc T7 归档写守卫：DS 写事务返回的稳定错误 {error, {980, Msg}} 归一为
+%% 既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}（handler 按 980 识别），
+%% 其余结果原样透传。
+normalize_write_result({error, {?ERR_WORKSPACE_ARCHIVED, _Msg}}) ->
+    {error, ?ERR_WORKSPACE_ARCHIVED};
+normalize_write_result(Other) ->
+    Other.
 
 %% @doc 插入参与人列表
 insert_participants(_ScheduleId, [], _Now) ->

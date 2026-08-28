@@ -144,6 +144,12 @@ create(Req0, State) ->
                     elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
                 {error, {invalid_time_range, _, _}} ->
                     elib_response:error(Req0, <<"结束时间必须晚于开始时间"/utf8>>, ?ERR_BAD_REQUEST);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     ?LOG_ERROR("创建日程失败: ~p", [Reason]),
                     elib_response:error(Req0, <<"创建日程失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
@@ -181,6 +187,12 @@ update(Req0, State) ->
                     elib_response:error(Req0, error_msg(?ERR_FORBIDDEN), ?ERR_FORBIDDEN);
                 {error, already_cancelled} ->
                     elib_response:error(Req0, <<"日程已取消，无法修改"/utf8>>, ?ERR_BAD_REQUEST);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     ?LOG_ERROR("修改日程失败: ~p", [Reason]),
                     elib_response:error(Req0, <<"修改日程失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
@@ -208,6 +220,12 @@ cancel(Req0, State) ->
                     elib_response:error(Req0, error_msg(?ERR_FORBIDDEN), ?ERR_FORBIDDEN);
                 {error, already_cancelled} ->
                     elib_response:error(Req0, <<"日程已取消"/utf8>>, ?ERR_BAD_REQUEST);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     ?LOG_ERROR("取消日程失败: ~p", [Reason]),
                     elib_response:error(Req0, <<"取消日程失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)
@@ -317,6 +335,12 @@ confirm(Req0, State) ->
                     elib_response:error(Req0, error_msg(?ERR_NOT_FOUND), ?ERR_NOT_FOUND);
                 {error, participant_not_found} ->
                     elib_response:error(Req0, <<"您不在参与人列表中"/utf8>>, ?ERR_FORBIDDEN);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req0,
+                        error_msg(?ERR_WORKSPACE_ARCHIVED),
+                        ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     ?LOG_ERROR("确认参与失败: ~p", [Reason]),
                     elib_response:error(Req0, <<"确认参与失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR)

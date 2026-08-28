@@ -10,7 +10,9 @@
 %% 日程表操作
 -export([tablename/0]).
 -export([insert/1]).
+-export([insert_tx/2]).
 -export([update/2]).
+-export([update_tx/3]).
 -export([find_by_id/1]).
 -export([find_by_id/2]).
 -export([find_by_schedule_id/1]).
@@ -22,24 +24,30 @@
 -export([list_by_user_id/4]).
 -export([list_by_user_id/5]).
 -export([update_status/2]).
+-export([update_status_tx/3]).
 -export([count_by_group_id/1]).
 -export([count_by_group_id/3]).
 
 %% 参与人表操作
 -export([participant_tablename/0]).
 -export([insert_participant/1]).
+-export([insert_participant_tx/2]).
 -export([update_participant_status/3]).
+-export([update_participant_status_tx/4]).
 -export([list_participants/1]).
 -export([list_participants/2]).
 -export([count_participants/1]).
 -export([delete_participant/2]).
+-export([delete_participant_tx/3]).
 
 %% 提醒表操作
 -export([remind_tablename/0]).
 -export([insert_remind/1]).
+-export([insert_remind_tx/2]).
 -export([list_pending_reminds/0]).
 -export([list_pending_reminds/1]).
 -export([update_remind_sent/1]).
+-export([update_remind_sent_tx/2]).
 
 %% ===================================================================
 %% API functions - 日程表
@@ -53,6 +61,18 @@ tablename() ->
 %% @doc 插入新日程
 -spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
 insert(Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入新日程（归档写守卫同事务，DS 层 write_tx 调用）
+-spec insert_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+insert_tx(Conn, Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+) ->
+    {ok, integer(), map()} | {error, term()}.
+insert_run(Exec, Data) ->
     Tb = tablename(),
     % 验证必填字段
     case validate_schedule_data(Data) of
@@ -60,7 +80,7 @@ insert(Data) ->
             Id = elib_tsid:generate(group_schedule),
             Data2 = Data#{<<"id">> => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-            case elib_pg:query(Sql, Params) of
+            case Exec(Sql, Params) of
                 {ok, _Count} -> {ok, Id, Data2};
                 {error, _} = Err -> Err
             end;
@@ -75,6 +95,14 @@ update(Id, Data) ->
     UpdateData = maps:without([<<"id">>], Data),
     UpdateData2 = UpdateData#{<<"updated_at">> => elib_dt:now()},
     elib_pg:update(Tb, UpdateData2, <<"id = $1">>, [Id]).
+
+%% @doc 事务内更新日程（归档写守卫同事务）
+-spec update_tx(any(), integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+update_tx(Conn, Id, Data) ->
+    Tb = tablename(),
+    UpdateData = maps:without([<<"id">>], Data),
+    UpdateData2 = UpdateData#{<<"updated_at">> => elib_dt:now()},
+    elib_pg:update(Conn, Tb, UpdateData2, <<"id = $1">>, [Id]).
 
 %% @doc 根据ID查询日程（默认查询所有字段）
 -spec find_by_id(integer()) -> map() | {error, term()}.
@@ -221,6 +249,15 @@ update_status(Id, Status) when is_integer(Status), Status >= 1, Status =< 4 ->
 update_status(_, _) ->
     {error, invalid_status}.
 
+%% @doc 事务内更新日程状态（归档写守卫同事务；用户 cancel 与 adm 治理共用）
+-spec update_status_tx(any(), integer(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+update_status_tx(Conn, Id, Status) when is_integer(Status), Status >= 1, Status =< 4 ->
+    Tb = tablename(),
+    Data = #{status => Status, updated_at => elib_dt:now()},
+    elib_pg:update(Conn, Tb, Data, <<"id = $1">>, [Id]);
+update_status_tx(_Conn, _, _) ->
+    {error, invalid_status}.
+
 %% @doc 统计群组的日程数量
 -spec count_by_group_id(integer()) -> {ok, non_neg_integer()} | {error, term()}.
 count_by_group_id(GroupId) when GroupId > 0 ->
@@ -256,11 +293,23 @@ participant_tablename() ->
 %% @doc 插入参与人
 -spec insert_participant(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_participant(Data) ->
+    insert_participant_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入参与人（归档写守卫同事务）
+-spec insert_participant_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+insert_participant_tx(Conn, Data) ->
+    insert_participant_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_participant_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+) ->
+    {ok, integer(), map()} | {error, term()}.
+insert_participant_run(Exec, Data) ->
     Tb = participant_tablename(),
     Id = elib_tsid:generate(group_schedule),
     Data2 = Data#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Sql, Params) of
+    case Exec(Sql, Params) of
         {ok, _Count} -> {ok, Id, Data2};
         {error, _} = Err -> Err
     end.
@@ -275,6 +324,20 @@ update_participant_status(ScheduleId, UserId, Status) when
     Data = #{status => Status, updated_at => elib_dt:now()},
     elib_pg:update(Tb, Data, <<"schedule_id = $1 AND user_id = $2">>, [ScheduleId, UserId]);
 update_participant_status(_, _, _) ->
+    {error, invalid_status}.
+
+%% @doc 事务内更新参与人状态（归档写守卫同事务）
+-spec update_participant_status_tx(any(), binary(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+update_participant_status_tx(Conn, ScheduleId, UserId, Status) when
+    is_integer(Status), Status >= 0, Status =< 2
+->
+    Tb = participant_tablename(),
+    Data = #{status => Status, updated_at => elib_dt:now()},
+    elib_pg:update(
+        Conn, Tb, Data, <<"schedule_id = $1 AND user_id = $2">>, [ScheduleId, UserId]
+    );
+update_participant_status_tx(_Conn, _, _, _) ->
     {error, invalid_status}.
 
 %% @doc 查询日程的参与人列表（默认字段）
@@ -312,6 +375,14 @@ delete_participant(ScheduleId, UserId) ->
     Sql = <<"DELETE FROM ", Tb/binary, " WHERE schedule_id = $1 AND user_id = $2">>,
     elib_pg:query(Sql, [ScheduleId, UserId]).
 
+%% @doc 事务内删除参与人（归档写守卫同事务）
+-spec delete_participant_tx(any(), binary(), integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+delete_participant_tx(Conn, ScheduleId, UserId) ->
+    Tb = participant_tablename(),
+    Sql = <<"DELETE FROM ", Tb/binary, " WHERE schedule_id = $1 AND user_id = $2">>,
+    elib_pg:execute(Conn, Sql, [ScheduleId, UserId]).
+
 %% ===================================================================
 %% API functions - 提醒表
 %% ===================================================================
@@ -324,11 +395,23 @@ remind_tablename() ->
 %% @doc 插入提醒记录
 -spec insert_remind(map()) -> {ok, integer(), map()} | {error, term()}.
 insert_remind(Data) ->
+    insert_remind_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入提醒记录（归档写守卫同事务）
+-spec insert_remind_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+insert_remind_tx(Conn, Data) ->
+    insert_remind_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_remind_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+) ->
+    {ok, integer(), map()} | {error, term()}.
+insert_remind_run(Exec, Data) ->
     Tb = remind_tablename(),
     Id = elib_tsid:generate(group_schedule_reminder),
     Data2 = Data#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Sql, Params) of
+    case Exec(Sql, Params) of
         {ok, _Count} -> {ok, Id, Data2};
         {error, _} = Err -> Err
     end.
@@ -356,6 +439,15 @@ update_remind_sent(Id) when Id > 0 ->
     Data = #{is_sent => true},
     elib_pg:update(Tb, Data, <<"id = $1">>, [Id]);
 update_remind_sent(_) ->
+    {error, invalid_id}.
+
+%% @doc 事务内更新提醒为已发送（归档 freeze 语义，DS 层 write_tx_or_skip 调用）
+-spec update_remind_sent_tx(any(), integer()) -> {ok, non_neg_integer()} | {error, term()}.
+update_remind_sent_tx(Conn, Id) when Id > 0 ->
+    Tb = remind_tablename(),
+    Data = #{is_sent => true},
+    elib_pg:update(Conn, Tb, Data, <<"id = $1">>, [Id]);
+update_remind_sent_tx(_Conn, _) ->
     {error, invalid_id}.
 
 %% ===================================================================
