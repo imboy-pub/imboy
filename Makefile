@@ -262,11 +262,14 @@ docs-stop:
 # 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
 .PHONY: eunit-local
+# 只清理本仓库主目录遗留的 eunit beam（全量跑的 erl 偶发 halt 后悬空，
+# 持有 19800 与连接池会毒化下次运行）。显式排除 .worktrees/ 里的并行
+# 会话运行——绝不可误伤。
 eunit-local:
-	@pkill -f 'eunit:test' 2>/dev/null; true
+	@for p in $$(pgrep -f 'eunit:test' 2>/dev/null); do cmd=$$(ps -p $$p -o command= 2>/dev/null); case "$$cmd" in *".worktrees/"*) ;; *) kill -9 $$p 2>/dev/null;; esac; done
 	@sleep 1
 	@DISABLE_SYNC=1 IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
-	@pkill -f 'eunit:test' 2>/dev/null; true
+	@for p in $$(pgrep -f 'eunit:test' 2>/dev/null); do cmd=$$(ps -p $$p -o command= 2>/dev/null); case "$$cmd" in *".worktrees/"*) ;; *) kill -9 $$p 2>/dev/null;; esac; done
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担
