@@ -31,19 +31,37 @@
 
 （bug 1-3 属 group_management 轮次，4 属 messaging_flow 轮次，5 属 user_auth_flow 轮次。均未被单测发现：离线/转让/改密路径要么被 mock 走在线分支跳过，要么无对应单测。）
 
-## B 类 — eunit 类死测试（7 个，可能污染 `make eunit` 全量，同 auth_ds/elib_uri 模式）
+## B 类 — eunit 类死测试（7 个，可能污染 `make eunit` 全量，同 auth_ds/elib_uri 模式）✅ 已全部清理（2026-08-28，用户授权）
 
-| 文件 | 死调用 |
+普查所列 7 文件的最终去向：
+
+| 文件 | 去向 |
 |---|---|
-| `test/api/fts_logic_tests_simple.erl` | `fts_logic:search/4`（实为 `search_msg/5,6`）|
-| `test/ds/adm_user_ds_tests.erl` | `adm_user_ds:list/2` |
-| `test/lib/imboy_cache_sync_tests_simple.erl` | `imboy_cache_sync:set/3`、`handle_message/1` |
-| `test/integration/group_notice_integration_tests.erl` | `group_notice_logic:create/3`、`group_member_ds:set_role/3` |
-| `test/performance/db_query_performance_tests.erl` | `fts_logic:search/3`、`friend_repo:list/1`、`msg_c2c_repo:list/4` |
-| `test/performance/msg_send_performance_tests.erl` | `msg_c2c_repo:list/4` |
-| `test/performance/websocket_performance_tests.erl` | `websocket_ds:connect/3`、`disconnect/1`、`heartbeat/1` |
+| `test/api/fts_logic_tests_simple.erl` | 已被并行会话删除（源码不存在） |
+| `test/ds/adm_user_ds_tests.erl` | 死调用已被并行会话移除（文件内留 NOTE），非死测试 |
+| `test/lib/imboy_cache_sync_tests_simple.erl` | 已被并行会话删除 |
+| `test/integration/group_notice_integration_tests.erl` | 已被并行会话删除（源码与 beam 均无） |
+| `test/performance/db_query_performance_tests.erl` | 死调用已被并行会话移除，保留为活测试 |
+| `test/performance/msg_send_performance_tests.erl` | 同上，保留为活测试 |
+| `test/performance/websocket_performance_tests.erl` | 已被并行会话删除（源码不存在） |
 
-**决策项**：这些与已清的 auth_ds/elib_uri 同模式（调已删函数必 undef）。可逐个确认后删除（每个需先核对该函数确无新等价实现、非漏改名）。**授权后**可批量清理。
+### 收尾时新发现的死测试（普查后新增，2026-08-28 一并清理，用户授权）
+
+1. **`test/imboy_test_suite.erl`（聚合器，整文件删除）**：`all_tests_test_/0` 的 13 个条目全部调
+   `Mod:test_/0`，但所有目标模块均用自定义生成器名（`msg_forward_test_` 等），无一导出 `test_/0`
+   → 全量跑 13 连 undef；还引用了已不存在的 `websocket_performance_tests`/`group_notice_integration_tests`
+   模块。且该聚合器自身被 eunit 自动发现，导致所有集成测试在全量跑时**重复执行两遍**（放大状态污染）。
+   无 Makefile/脚本引用，删除零覆盖损失。
+2. **`test/logic/msg_c2s_logic_llm_tests.erl`（整文件删除，7/7 全死）**：产线 437601b0
+   （Discovery & Agent/Bot 架构）把 `bot_*` 分派改为前缀废弃引导（migration 00000071），
+   `msg_c2s_logic:llm_callback` 与 `imboy_llm_registry` 查表均已下线。4 用例 undef（调已删函数）+
+   3 用例断言失败（测已移除的注册表分派行为）。现行行为覆盖在 `msg_c2s_logic_tests`（35/35 绿）
+   与 `test/integration/bot_e2e_tests.erl`，删除零覆盖损失。
+3. **残留孤儿 beam**：`test/msg_c2s_logic_llm_tests.beam`（快 harness 扁平产物，源删后残留）已清；
+   复扫 `test/**` 零孤儿。
+
+**效果**：全量 `make eunit-local` 的 undef 类失败 17 → 0（13 聚合器条目 + 4 llm undef）。
+验证：`make eunit-local t=msg_c2s_logic_tests` 35/35 绿。
 
 ## B' 类 — 已排除（非死测试，勿删）
 
