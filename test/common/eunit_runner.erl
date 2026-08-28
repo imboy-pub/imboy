@@ -237,7 +237,38 @@ cleanup_start_orphans() ->
                     exit(Pid, kill)
             end
         end,
-        [barrel_mcp_session, barrel_mcp_registry]
+        %% imboy 单例孤儿黑名单（覆盖 imboy_sup/imboy_plugin_sup/msg_store_sup
+        %% 全部 {local} 注册的子进程）：app 死亡时这些 gen_server 可能经
+        %% normal-exit 吞信号幸存（run #11 实测 imboy_ws_action_registry 幸存
+        %% → 之后每次 boot 的 plugin_sup child 必 {already_started} → 级联）。
+        %% 仅在 app 未运行时执行，杀掉的必然是幸存残骸而非在役实例。
+        [
+            ack_retry_cache,
+            agent_payment_compensation_worker,
+            agent_rate_limiter,
+            ai_agent_runtime,
+            barrel_mcp_registry,
+            barrel_mcp_session,
+            billing_invoice_worker,
+            elib_metric,
+            imboy_cache,
+            imboy_cache_sync,
+            imboy_domain_event,
+            imboy_mcp_tools,
+            imboy_plugin_loader,
+            imboy_plugin_sup,
+            imboy_router_registry,
+            imboy_ws_action_registry,
+            license_notice_worker,
+            login_attempt_ds,
+            msg_burn_logic,
+            msg_store_ds,
+            msg_store_sup,
+            msg_store_worker,
+            olm_otk_cleanup_worker,
+            user_deletion_logic,
+            user_server
+        ]
     ),
     %% registry 的 ETS 表随属主进程消失；persistent_term 由其 terminate 清理，
     %% kill 路径不触发 terminate，这里兜底擦除。
