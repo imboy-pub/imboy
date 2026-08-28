@@ -511,8 +511,11 @@ ack_direction_to_type(Bin) when is_binary(Bin) -> Bin;
 ack_direction_to_type(_) -> <<>>.
 
 %% @doc 处理 JSON 消息（包括普通消息和 action 消息）
+%% 回执一律经 reply_frame/2 按连接 protocol/framing 编码：v2 连接回
+%% imboy_frame 包裹的 binary 帧，v1 连接保持 JSON text 帧。
 -spec handle_json_message(binary(), map()) ->
-    {ok, map(), hibernate} | {reply, {text, binary()}, map(), hibernate}.
+    {ok, map(), hibernate}
+    | {reply, {text, binary()} | {binary, binary()}, map(), hibernate}.
 handle_json_message(Msg, State) ->
     ok = ?DEBUG_LOG({json_message, byte_size(Msg)}),
     try
@@ -527,7 +530,7 @@ handle_json_message(Msg, State) ->
                 MsgId0 = maps:get(<<"id">>, Data, <<>>),
                 ok = ?WARN_LOG({json_message_invalid, Reason, MsgId0}),
                 ErrorMsg = ws_validation_error(MsgId0, <<"invalid_message">>, Reason),
-                {reply, {text, jsone:encode(ErrorMsg, [native_utf8])}, State, hibernate};
+                {reply, reply_frame(ErrorMsg, State), State, hibernate};
             {ok, ValidatedData} ->
                 MsgId = maps:get(<<"id">>, ValidatedData, <<>>),
                 Type = maps:get(<<"type">>, ValidatedData, <<>>),
@@ -551,7 +554,11 @@ handle_json_message(Msg, State) ->
                     ok ->
                         {ok, State, hibernate};
                     {reply, Msg2} ->
-                        {reply, {text, jsone:encode(Msg2, [native_utf8])}, State, hibernate};
+                        %% C2G_ERROR / unknown_action 等 route 回执与 protobuf
+                        %% 分支（handle_protobuf_message_decoded）同样走
+                        %% reply_frame，修复 v2 连接上裸 text 下发导致 Dart
+                        %% 客户端解帧失败丢弃回执的问题
+                        {reply, reply_frame(Msg2, State), State, hibernate};
                     Other ->
                         %% 路由返回异常结果（如 staging 失败时 logic 返回裸 error）：
                         %% 原先落 case_clause 崩掉 WS 进程，客户端只见 invalid_json。
@@ -569,7 +576,7 @@ handle_json_message(Msg, State) ->
             ErrorMsg2 = ws_validation_error(
                 <<>>, <<"invalid_json">>, <<"消息格式错误"/utf8>>
             ),
-            {reply, {text, jsone:encode(ErrorMsg2, [native_utf8])}, State, hibernate}
+            {reply, reply_frame(ErrorMsg2, State), State, hibernate}
     end.
 
 %% @doc 处理从其他进程发送到 WebSocket 进程的消息

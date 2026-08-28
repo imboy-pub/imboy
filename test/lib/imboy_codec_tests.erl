@@ -32,6 +32,8 @@ codec_test_() ->
         {"v2 frame unwrap error on bad input", fun v2_frame_unwrap_error/0},
         {"a2a_task_update accepted on JSON channel", fun a2a_task_update_json_channel/0},
         {"CLIENT_ACK_ERROR 在 v2 帧内保留 id/in_reply_to/reason", fun client_ack_error_v2_lossless/0},
+        {"C2S_SERVER_ACK 在 v2 帧内保留 id/in_reply_to", fun c2s_server_ack_v2_lossless/0},
+        {"C2G_ERROR 在 v2 帧内保留 id/error/code", fun c2g_error_v2_lossless/0},
         {"普通 C2C 消息仍走 protobuf 编码", fun c2c_still_protobuf/0},
         {"语音 voice 映射 AUDIO 且 protobuf 往返不丢类型", fun voice_content_type_roundtrip/0}
     ]}.
@@ -233,6 +235,55 @@ client_ack_error_v2_lossless() ->
     ?assertEqual(
         <<"invalid_did">>, maps:get(<<"reason">>, imboy_codec:decode(json, Json))
     ).
+
+%% @doc C2S_SERVER_ACK（msg_c2s_logic 经 self()!{reply,Map} 下发）走
+%% protobuf/v2 时退回 JSON 载荷：in_reply_to 无 schema 字段，protobuf 编码
+%% 会被静默丢弃，客户端无法把 ACK 关联回原消息。
+c2s_server_ack_v2_lossless() ->
+    Msg = #{
+        <<"id">> => <<"msg-c2s-ack-001">>,
+        <<"type">> => <<"C2S_SERVER_ACK">>,
+        <<"in_reply_to">> => <<"msg-c2s-ack-001">>,
+        <<"server_ts">> => 1785312537582
+    },
+    {binary, Frame} = imboy_codec:encode_ws_msg(
+        protobuf, v2, ?FRAME_TYPE_MSG_S2C, Msg
+    ),
+    {ok, Decoded} = imboy_codec:unwrap_v2_frame(Frame),
+    DecodedMsg = imboy_codec:decode(json, imboy_frame:payload(Decoded)),
+    ?assertEqual(<<"C2S_SERVER_ACK">>, maps:get(<<"type">>, DecodedMsg)),
+    ?assertEqual(<<"msg-c2s-ack-001">>, maps:get(<<"id">>, DecodedMsg)),
+    ?assertEqual(<<"msg-c2s-ack-001">>, maps:get(<<"in_reply_to">>, DecodedMsg)),
+    ?assertEqual(1785312537582, maps:get(<<"server_ts">>, DecodedMsg)),
+    %% 非 v2 的 protobuf 连接同样退回 JSON text 帧
+    {text, Json} = imboy_codec:encode_ws_msg(protobuf, none, ?FRAME_TYPE_MSG_S2C, Msg),
+    ?assertEqual(
+        <<"msg-c2s-ack-001">>,
+        maps:get(<<"in_reply_to">>, imboy_codec:decode(json, Json))
+    ).
+
+%% @doc C2G_ERROR（msg_c2g_logic 经 route 返回值 / self()! 下发）走
+%% protobuf/v2 时退回 JSON 载荷：C2G_ERROR 不在 MsgDirection 枚举内，
+%% protobuf 编码会压成 MSG_DIRECTION_UNSPECIFIED 空壳帧。
+c2g_error_v2_lossless() ->
+    Msg = #{
+        <<"id">> => <<"msg-c2g-err-001">>,
+        <<"type">> => <<"C2G_ERROR">>,
+        <<"error">> => <<"Not a group member">>,
+        <<"code">> => 403
+    },
+    {binary, Frame} = imboy_codec:encode_ws_msg(
+        protobuf, v2, ?FRAME_TYPE_MSG_S2C, Msg
+    ),
+    {ok, Decoded} = imboy_codec:unwrap_v2_frame(Frame),
+    DecodedMsg = imboy_codec:decode(json, imboy_frame:payload(Decoded)),
+    ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, DecodedMsg)),
+    ?assertEqual(<<"msg-c2g-err-001">>, maps:get(<<"id">>, DecodedMsg)),
+    ?assertEqual(403, maps:get(<<"code">>, DecodedMsg)),
+    ?assertEqual(<<"Not a group member">>, maps:get(<<"error">>, DecodedMsg)),
+    %% 非 v2 的 protobuf 连接同样退回 JSON text 帧
+    {text, Json} = imboy_codec:encode_ws_msg(protobuf, none, ?FRAME_TYPE_MSG_S2C, Msg),
+    ?assertEqual(403, maps:get(<<"code">>, imboy_codec:decode(json, Json))).
 
 %% @doc schema 装得下的普通消息不受回退影响，仍走 protobuf
 c2c_still_protobuf() ->

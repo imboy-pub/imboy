@@ -941,3 +941,366 @@ websocket_info_kick_device_test_() ->
         ?assertEqual(<<"device_kicked">>, maps:get(<<"action">>, Decoded)),
         ?assertEqual(ReasonMap, maps:get(<<"payload">>, Decoded))
     end).
+
+%% ===================================================================
+%% BE-02: JSON 分支回执按连接 protocol/framing 编码
+%% handle_json_message 的校验错误 / route {reply,...} / invalid_json
+%% 三条路径在 v2 连接上必须回 v2 frame（binary + imboy_frame 包 JSON
+%% 载荷），v1 连接保持裸 JSON text 帧不变。
+%% 矩阵：v1/v2 × C2S_SERVER_ACK / C2G_ERROR / CLIENT_ACK_ERROR。
+%% ===================================================================
+
+%% v2 连接：校验错误回执必须是 v2 frame，而非裸 text
+v2_json_validation_error_replies_v2_frame_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {throttle, [
+                    {'check', 2, fun(_Bucket, _Key) -> ok end}
+                ]},
+                {message_ds, [
+                    {'decode_websocket_message', 1, fun(Bin) ->
+                        jsone:decode(Bin, [{object_format, map}])
+                    end},
+                    {'convert_v1_to_v2', 1, fun(M) -> M end},
+                    {'validate_message', 1, fun(_M) -> {error, <<"missing to">>} end}
+                ]}
+            ],
+        fun() ->
+            State = #{
+                did => <<"did_ve">>,
+                current_uid => 123,
+                protocol => protobuf,
+                framing => v2
+            },
+            JsonBin = jsone:encode(
+                #{
+                    <<"id">> => <<"mid-ve-1">>,
+                    <<"type">> => <<"C2C">>,
+                    <<"from">> => 111,
+                    <<"to">> => 222,
+                    <<"payload">> => #{<<"text">> => <<"hi">>}
+                },
+                [native_utf8]
+            ),
+            Frame = imboy_codec:wrap_v2_frame(16#20, 0, JsonBin),
+            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+                {binary, Frame}, State
+            ),
+            {ok, RespFrame} = imboy_codec:unwrap_v2_frame(RespBin),
+            %% 校验错误属确认类消息 → 契约落 MSG_S2C（0x23）
+            ?assertEqual(16#23, imboy_frame:type(RespFrame)),
+            Decoded = imboy_codec:decode(json, imboy_frame:payload(RespFrame)),
+            ?assertEqual(<<"invalid_message">>, maps:get(<<"action">>, Decoded)),
+            ?assertEqual(<<"mid-ve-1">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(<<"mid-ve-1">>, maps:get(<<"in_reply_to">>, Decoded)),
+            ?assertEqual(
+                <<"missing to">>,
+                maps:get(<<"reason">>, maps:get(<<"payload">>, Decoded))
+            )
+        end
+    ).
+
+%% v2 连接：route 返回 {reply, Msg2}（C2G_ERROR 形状）必须是 v2 frame
+v2_route_reply_c2g_error_replies_v2_frame_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {throttle, [
+                    {'check', 2, fun(_Bucket, _Key) -> ok end}
+                ]},
+                {message_ds, [
+                    {'decode_websocket_message', 1, fun(Bin) ->
+                        jsone:decode(Bin, [{object_format, map}])
+                    end},
+                    {'convert_v1_to_v2', 1, fun(M) -> M end},
+                    {'validate_message', 1, fun(M) -> {ok, M} end},
+                    {'inject_sender_device', 2, fun(P, _State) -> P end},
+                    {'stamp_sender_device', 2, fun(D, _State) -> D end}
+                ]},
+                {message_router_logic, [
+                    {'route', 5, fun(<<"mid-c2g-1">>, 123, _Data, <<"C2G">>, _Raw) ->
+                        {reply, #{
+                            <<"id">> => <<"mid-c2g-1">>,
+                            <<"type">> => <<"C2G_ERROR">>,
+                            <<"error">> => <<"Not a group member">>,
+                            <<"code">> => 403
+                        }}
+                    end}
+                ]}
+            ],
+        fun() ->
+            State = #{
+                did => <<"did_c2g">>,
+                current_uid => 123,
+                protocol => protobuf,
+                framing => v2
+            },
+            JsonBin = jsone:encode(
+                #{
+                    <<"id">> => <<"mid-c2g-1">>,
+                    <<"type">> => <<"C2G">>,
+                    <<"from">> => 111,
+                    <<"to">> => 333,
+                    <<"payload">> => #{<<"text">> => <<"hello group">>}
+                },
+                [native_utf8]
+            ),
+            Frame = imboy_codec:wrap_v2_frame(16#21, 0, JsonBin),
+            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+                {binary, Frame}, State
+            ),
+            {ok, RespFrame} = imboy_codec:unwrap_v2_frame(RespBin),
+            ?assertEqual(16#23, imboy_frame:type(RespFrame)),
+            Decoded = imboy_codec:decode(json, imboy_frame:payload(RespFrame)),
+            %% 错误载荷字段 id/type/error/code 必须完整保留
+            ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"mid-c2g-1">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(403, maps:get(<<"code">>, Decoded)),
+            ?assertEqual(<<"Not a group member">>, maps:get(<<"error">>, Decoded))
+        end
+    ).
+
+%% v2 连接：JSON 解析崩溃（invalid_json）必须回 v2 frame
+v2_invalid_json_replies_v2_frame_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {throttle, [
+                    {'check', 2, fun(_Bucket, _Key) -> ok end}
+                ]}
+            ],
+        fun() ->
+            %% text 帧承载损坏 JSON：decode 抛错走 handle_json_message catch 分支
+            State = #{
+                did => <<"did_badjson">>,
+                current_uid => 123,
+                protocol => protobuf,
+                framing => v2
+            },
+            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+                {text, <<"{not-valid-json">>}, State
+            ),
+            {ok, RespFrame} = imboy_codec:unwrap_v2_frame(RespBin),
+            ?assertEqual(16#23, imboy_frame:type(RespFrame)),
+            %% invalid_json 帧 type=S2C 且无 in_reply_to/顶层 reason →
+            %% pb_lossless=true → v2 payload 按设计走 protobuf 编码
+            %% （Dart 客户端 imboy_frame 双路解析 JSON/protobuf payload）
+            Decoded = imboy_codec:decode(protobuf, imboy_frame:payload(RespFrame)),
+            ?assertEqual(<<"S2C">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"invalid_json">>, maps:get(<<"action">>, Decoded)),
+            %% payload map 经 ensure_binary 序列化为 JSON bytes，二次解码取 reason
+            PbPayload = maps:get(<<"payload">>, Decoded),
+            Reason =
+                case is_binary(PbPayload) of
+                    true ->
+                        maps:get(
+                            <<"reason">>, jsone:decode(PbPayload, [{object_format, map}])
+                        );
+                    false ->
+                        maps:get(<<"reason">>, PbPayload)
+                end,
+            ?assertEqual(<<"消息格式错误"/utf8>>, Reason)
+        end
+    ).
+
+%% v1 连接：校验错误回执保持裸 JSON text 帧（回归保护）
+v1_json_validation_error_stays_text_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {throttle, [
+                    {'check', 2, fun(_Bucket, _Key) -> ok end}
+                ]},
+                {message_ds, [
+                    {'decode_websocket_message', 1, fun(Bin) ->
+                        jsone:decode(Bin, [{object_format, map}])
+                    end},
+                    {'convert_v1_to_v2', 1, fun(M) -> M end},
+                    {'validate_message', 1, fun(_M) -> {error, <<"missing payload">>} end}
+                ]}
+            ],
+        fun() ->
+            State = #{did => <<"did_v1">>, current_uid => 123, protocol => json, framing => none},
+            JsonBin = jsone:encode(
+                #{
+                    <<"id">> => <<"mid-v1-1">>,
+                    <<"type">> => <<"C2C">>,
+                    <<"from">> => 111,
+                    <<"to">> => 222,
+                    <<"payload">> => #{<<"text">> => <<"hi">>}
+                },
+                [native_utf8]
+            ),
+            {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+                {text, JsonBin}, State
+            ),
+            Decoded = jsone:decode(RespBin, [{object_format, map}]),
+            ?assertEqual(<<"invalid_message">>, maps:get(<<"action">>, Decoded)),
+            ?assertEqual(<<"mid-v1-1">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(<<"mid-v1-1">>, maps:get(<<"in_reply_to">>, Decoded))
+        end
+    ).
+
+%% v1 连接：route {reply,...}（C2G_ERROR 形状）保持裸 JSON text 帧（回归保护）
+v1_route_reply_c2g_error_stays_text_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {throttle, [
+                    {'check', 2, fun(_Bucket, _Key) -> ok end}
+                ]},
+                {message_ds, [
+                    {'decode_websocket_message', 1, fun(Bin) ->
+                        jsone:decode(Bin, [{object_format, map}])
+                    end},
+                    {'convert_v1_to_v2', 1, fun(M) -> M end},
+                    {'validate_message', 1, fun(M) -> {ok, M} end},
+                    {'inject_sender_device', 2, fun(P, _State) -> P end},
+                    {'stamp_sender_device', 2, fun(D, _State) -> D end}
+                ]},
+                {message_router_logic, [
+                    {'route', 5, fun(<<"mid-v1-c2g">>, 123, _Data, <<"C2G">>, _Raw) ->
+                        {reply, #{
+                            <<"id">> => <<"mid-v1-c2g">>,
+                            <<"type">> => <<"C2G_ERROR">>,
+                            <<"error">> => <<"You are muted in this group">>,
+                            <<"code">> => 403
+                        }}
+                    end}
+                ]}
+            ],
+        fun() ->
+            State = #{did => <<"did_v1c">>, current_uid => 123, protocol => json, framing => none},
+            JsonBin = jsone:encode(
+                #{
+                    <<"id">> => <<"mid-v1-c2g">>,
+                    <<"type">> => <<"C2G">>,
+                    <<"from">> => 111,
+                    <<"to">> => 333,
+                    <<"payload">> => #{<<"text">> => <<"hi">>}
+                },
+                [native_utf8]
+            ),
+            {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+                {text, JsonBin}, State
+            ),
+            Decoded = jsone:decode(RespBin, [{object_format, map}]),
+            ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"mid-v1-c2g">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(403, maps:get(<<"code">>, Decoded)),
+            ?assertEqual(<<"You are muted in this group">>, maps:get(<<"error">>, Decoded))
+        end
+    ).
+
+%% v1 连接：invalid_json 保持裸 JSON text 帧（回归保护）
+v1_invalid_json_stays_text_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {throttle, [
+                    {'check', 2, fun(_Bucket, _Key) -> ok end}
+                ]}
+            ],
+        fun() ->
+            State = #{did => <<"did_v1b">>, current_uid => 123, protocol => json, framing => none},
+            {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+                {text, <<"{not-valid-json">>}, State
+            ),
+            Decoded = jsone:decode(RespBin, [{object_format, map}]),
+            ?assertEqual(<<"invalid_json">>, maps:get(<<"action">>, Decoded))
+        end
+    ).
+
+%% 矩阵：C2S_SERVER_ACK（self()!{reply,Map} → websocket_info）v2 连接回 v2 frame
+websocket_info_c2s_server_ack_v2_frame_test_() ->
+    ?WITH_MECKS(log_mocks(), fun() ->
+        State = #{protocol => protobuf, framing => v2},
+        Msg = #{
+            <<"id">> => <<"mid-sa-1">>,
+            <<"type">> => <<"C2S_SERVER_ACK">>,
+            <<"in_reply_to">> => <<"mid-sa-1">>,
+            <<"server_ts">> => 1785312537582
+        },
+        {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_info(
+            {reply, Msg}, State
+        ),
+        {ok, RespFrame} = imboy_codec:unwrap_v2_frame(RespBin),
+        %% SERVER_ACK 属确认类 → 契约落 MSG_S2C，payload 因 in_reply_to 退回 JSON
+        ?assertEqual(16#23, imboy_frame:type(RespFrame)),
+        Decoded = imboy_codec:decode(json, imboy_frame:payload(RespFrame)),
+        ?assertEqual(<<"C2S_SERVER_ACK">>, maps:get(<<"type">>, Decoded)),
+        ?assertEqual(<<"mid-sa-1">>, maps:get(<<"id">>, Decoded)),
+        ?assertEqual(<<"mid-sa-1">>, maps:get(<<"in_reply_to">>, Decoded)),
+        ?assertEqual(1785312537582, maps:get(<<"server_ts">>, Decoded))
+    end).
+
+%% 矩阵：C2S_SERVER_ACK v1 连接回裸 JSON text 帧（回归保护）
+websocket_info_c2s_server_ack_v1_text_test_() ->
+    ?WITH_MECKS(log_mocks(), fun() ->
+        State = #{protocol => json, framing => none},
+        Msg = #{
+            <<"id">> => <<"mid-sa-2">>,
+            <<"type">> => <<"C2S_SERVER_ACK">>,
+            <<"in_reply_to">> => <<"mid-sa-2">>,
+            <<"server_ts">> => 1785312537583
+        },
+        {reply, {text, RespBin}, _, hibernate} = websocket_handler:websocket_info(
+            {reply, Msg}, State
+        ),
+        Decoded = jsone:decode(RespBin, [{object_format, map}]),
+        ?assertEqual(<<"C2S_SERVER_ACK">>, maps:get(<<"type">>, Decoded)),
+        ?assertEqual(<<"mid-sa-2">>, maps:get(<<"in_reply_to">>, Decoded))
+    end).
+
+%% 矩阵：CLIENT_ACK_ERROR 非快乐路径在 v2 连接回 v2 frame
+%% （reply_frame 既有正确路径，字段完整性回归）
+v2_client_ack_did_mismatch_replies_v2_frame_test_() ->
+    ?WITH_MECKS(
+        log_mocks() ++
+            [
+                {auth_ds, [
+                    {'current_uid', 1, fun(_State) -> 123 end}
+                ]},
+                {elib_dt, [
+                    {'millisecond', 0, fun() -> 1785312537584 end}
+                ]}
+            ],
+        fun() ->
+            State = #{
+                did => <<"did_real3">>,
+                current_uid => 123,
+                protocol => protobuf,
+                framing => v2
+            },
+            {reply, {binary, RespBin}, _, hibernate} = websocket_handler:websocket_handle(
+                {text, <<"CLIENT_ACK,C2C,msg_v2_err,did_fake">>}, State
+            ),
+            {ok, RespFrame} = imboy_codec:unwrap_v2_frame(RespBin),
+            ?assertEqual(16#23, imboy_frame:type(RespFrame)),
+            Decoded = imboy_codec:decode(json, imboy_frame:payload(RespFrame)),
+            %% id / in_reply_to / reason 缺一不可（丢失即"确认超时→重发"死循环）
+            ?assertEqual(<<"CLIENT_ACK_ERROR">>, maps:get(<<"type">>, Decoded)),
+            ?assertEqual(<<"msg_v2_err">>, maps:get(<<"id">>, Decoded)),
+            ?assertEqual(<<"msg_v2_err">>, maps:get(<<"in_reply_to">>, Decoded)),
+            ?assertEqual(<<"did_mismatch">>, maps:get(<<"reason">>, Decoded))
+        end
+    ).
