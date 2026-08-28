@@ -17,8 +17,11 @@
 create_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_task_repo, [
-                {'insert', 1, fun(_Data) ->
+                {'insert_tx', 2, fun(_Conn, _Data) ->
                     {ok, 1001, [{<<"id">>, 1001}]}
                 end}
             ]},
@@ -46,8 +49,11 @@ create_with_missing_title_test_() ->
 create_task_id_is_binary_contract_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_task_repo, [
-                {'insert', 1, fun(Data) ->
+                {'insert_tx', 2, fun(_Conn, Data) ->
                     self() ! {captured_task_id, maps:get(task_id, Data)},
                     {ok, 1001, [{<<"id">>, 1001}]}
                 end}
@@ -84,15 +90,19 @@ create_non_member_rejected_test_() ->
 %% ===================================================================
 
 update_success_test_() ->
-    ?WITH_MECK(
-        group_task_repo,
+    ?WITH_MECKS(
         [
-            {'find_by_id', 1, fun(_Id) ->
-                {ok, #{<<"id">> => 1001, <<"creator_id">> => 456, <<"status">> => 1}}
-            end},
-            {'update', 2, fun(_Id, _Data) ->
-                {ok, 1}
-            end}
+            {group_task_repo, [
+                {'find_by_id', 1, fun(_Id) ->
+                    {ok, #{<<"id">> => 1001, <<"creator_id">> => 456, <<"status">> => 1}}
+                end},
+                {'update_tx', 3, fun(_Conn, _Id, _Data) ->
+                    {ok, 1}
+                end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
         ],
         fun() ->
             Result = group_task_logic:update(1001, 456, #{
@@ -103,16 +113,20 @@ update_success_test_() ->
     ).
 
 update_success_with_atom_keys_test_() ->
-    ?WITH_MECK(
-        group_task_repo,
+    ?WITH_MECKS(
         [
-            {'find_by_id', 1, fun(_Id) ->
-                {ok, #{<<"id">> => 1001, <<"creator_id">> => 456, <<"status">> => 1}}
-            end},
-            {'update', 2, fun(_Id, Data) ->
-                ?assertEqual(<<"Atom Key 标题"/utf8>>, maps:get(title, Data)),
-                {ok, 1}
-            end}
+            {group_task_repo, [
+                {'find_by_id', 1, fun(_Id) ->
+                    {ok, #{<<"id">> => 1001, <<"creator_id">> => 456, <<"status">> => 1}}
+                end},
+                {'update_tx', 3, fun(_Conn, _Id, Data) ->
+                    ?assertEqual(<<"Atom Key 标题"/utf8>>, maps:get(title, Data)),
+                    {ok, 1}
+                end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
         ],
         fun() ->
             Result = group_task_logic:update(1001, 456, #{
@@ -145,6 +159,9 @@ update_not_creator_test_() ->
 assign_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_task_repo, [
                 {'find_by_id', 1, fun(_Id) ->
                     {ok, #{
@@ -156,7 +173,7 @@ assign_success_test_() ->
                 {'find_by_task_and_user', 2, fun(_TaskId, _UserId) ->
                     {error, not_found}
                 end},
-                {'insert', 1, fun(_Data) ->
+                {'insert_tx', 2, fun(_Conn, _Data) ->
                     {ok, 2001, [{<<"id">>, 2001}]}
                 end}
             ]}
@@ -195,6 +212,9 @@ assign_empty_list_test_() ->
 submit_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_task_repo, [
                 {'find_by_task_id', 1, fun(_TaskId) ->
                     {ok, #{
@@ -208,7 +228,7 @@ submit_success_test_() ->
                 {'find_by_task_and_user', 2, fun(_TaskId, _UserId) ->
                     {ok, #{<<"id">> => 2001, <<"status">> => 0}}
                 end},
-                {'update', 2, fun(_Id, _Data) ->
+                {'update_tx', 3, fun(_Conn, _Id, _Data) ->
                     {ok, 1}
                 end}
             ]}
@@ -250,11 +270,14 @@ submit_assignment_not_found_test_() ->
 review_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]},
             {group_task_assignment_repo, [
                 {'find_by_id', 1, fun(_Id) ->
                     {ok, #{<<"id">> => 2001, <<"status">> => 2, <<"task_id">> => <<"task123">>}}
                 end},
-                {'update', 2, fun(_Id, _Data) ->
+                {'update_tx', 3, fun(_Conn, _Id, _Data) ->
                     {ok, 1}
                 end}
             ]},

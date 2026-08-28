@@ -7,7 +7,9 @@
 
 -export([tablename/0]).
 -export([insert/1]).
+-export([insert_tx/2]).
 -export([update/2]).
+-export([update_tx/3]).
 -export([find_by_id/1]).
 -export([find_by_task_and_user/2]).
 -export([list_by_task_id/3]).
@@ -35,6 +37,18 @@ tablename() ->
 %% @return {ok, AssignmentId, InsertResult} | {error, Reason}
 -spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
 insert(Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入群作业分配（归档写守卫同事务，DS 层 write_tx 调用）
+-spec insert_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+insert_tx(Conn, Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+) ->
+    {ok, integer(), map()} | {error, term()}.
+insert_run(Exec, Data) ->
     Tb = tablename(),
     % 验证必填字段
     case {maps:get(task_id, Data, undefined), maps:get(user_id, Data, undefined)} of
@@ -55,7 +69,7 @@ insert(Data) ->
             Id = elib_tsid:generate(group_task_assignment),
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
-            case elib_pg:query(Sql, Params) of
+            case Exec(Sql, Params) of
                 {ok, _Count} -> {ok, Id};
                 {error, _} = Err -> Err
             end;
@@ -75,6 +89,17 @@ update(AssignmentId, Data) when is_integer(AssignmentId), AssignmentId > 0 ->
     Where = <<"id = $1">>,
     elib_pg:update(Tb, Data2, Where, [AssignmentId]);
 update(_AssignmentId, _Data) ->
+    {error, invalid_assignment_id}.
+
+%% @doc 事务内更新群作业分配（归档写守卫同事务）
+-spec update_tx(any(), integer(), map()) -> {ok, integer()} | {error, term()}.
+update_tx(Conn, AssignmentId, Data) when is_integer(AssignmentId), AssignmentId > 0 ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Data2 = Data#{updated_at => Now},
+    Where = <<"id = $1">>,
+    elib_pg:update(Conn, Tb, Data2, Where, [AssignmentId]);
+update_tx(_Conn, _AssignmentId, _Data) ->
     {error, invalid_assignment_id}.
 
 %% @doc 根据ID查询群作业分配

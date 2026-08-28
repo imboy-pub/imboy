@@ -7,7 +7,9 @@
 
 -export([tablename/0]).
 -export([insert/1]).
+-export([insert_tx/2]).
 -export([update/2]).
+-export([update_tx/3]).
 -export([find_by_id/1]).
 -export([find_by_task_id/1]).
 -export([find_any_by_id/1]).
@@ -23,7 +25,9 @@
 -export([count_deleted_by_group_id/1]).
 -export([count_deleted_by_group_id/2]).
 -export([soft_delete/1]).
+-export([soft_delete_tx/2]).
 -export([restore/1]).
+-export([restore_tx/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
@@ -47,6 +51,18 @@ tablename() ->
 %% 与其他 repo 的 {ok, Id}（2-tuple）约定不同，调用方不可改为 2-tuple 匹配。
 -spec insert(map()) -> {ok, integer(), map()} | {error, term()}.
 insert(Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:query(Sql, Params) end, Data).
+
+%% @doc 事务内插入群作业（归档写守卫同事务，DS 层 write_tx 调用）
+-spec insert_tx(any(), map()) -> {ok, integer(), map()} | {error, term()}.
+insert_tx(Conn, Data) ->
+    insert_run(fun(Sql, Params) -> elib_pg:execute(Conn, Sql, Params) end, Data).
+
+-spec insert_run(
+    fun((binary(), [term()]) -> {ok, non_neg_integer()} | {error, term()}), map()
+) ->
+    {ok, integer(), map()} | {error, term()}.
+insert_run(Exec, Data) ->
     Tb = tablename(),
     % 验证必填字段
     case
@@ -78,7 +94,7 @@ insert(Data) ->
             Id = elib_tsid:generate(group_task),
             Data3 = Data2#{id => Id},
             {Sql, Params} = elib_pg_sql:insert(Tb, Data3),
-            case elib_pg:query(Sql, Params) of
+            case Exec(Sql, Params) of
                 {ok, _Count} -> {ok, Id, Data3};
                 {error, _} = Err -> Err
             end;
@@ -98,6 +114,17 @@ update(TaskId, Data) when is_integer(TaskId), TaskId > 0 ->
     Where = <<"id = $1">>,
     elib_pg:update(Tb, Data2, Where, [TaskId]);
 update(_TaskId, _Data) ->
+    {error, invalid_task_id}.
+
+%% @doc 事务内更新群作业（归档写守卫同事务；用户更新与 adm 治理共用）
+-spec update_tx(any(), integer(), map()) -> {ok, integer()} | {error, term()}.
+update_tx(Conn, TaskId, Data) when is_integer(TaskId), TaskId > 0 ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Data2 = Data#{updated_at => Now},
+    Where = <<"id = $1">>,
+    elib_pg:update(Conn, Tb, Data2, Where, [TaskId]);
+update_tx(_Conn, _TaskId, _Data) ->
     {error, invalid_task_id}.
 
 %% @doc 根据ID查询群作业
@@ -424,6 +451,17 @@ soft_delete(TaskId) when is_integer(TaskId), TaskId > 0 ->
 soft_delete(_TaskId) ->
     {error, invalid_task_id}.
 
+%% @doc 事务内软删除群作业（归档写守卫同事务；adm 治理共用）
+-spec soft_delete_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
+soft_delete_tx(Conn, TaskId) when is_integer(TaskId), TaskId > 0 ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Data = #{deleted_at => Now, updated_at => Now},
+    Where = <<"id = $1 AND deleted_at IS NULL">>,
+    elib_pg:update(Conn, Tb, Data, Where, [TaskId]);
+soft_delete_tx(_Conn, _TaskId) ->
+    {error, invalid_task_id}.
+
 %% @doc 恢复已软删除群作业
 %% @param TaskId 作业ID
 %% @return {ok, Count} | {error, Reason}
@@ -438,6 +476,20 @@ restore(TaskId) when is_integer(TaskId), TaskId > 0 ->
     Where = <<"id = $1 AND deleted_at IS NOT NULL">>,
     elib_pg:update(Tb, Data, Where, [TaskId]);
 restore(_TaskId) ->
+    {error, invalid_task_id}.
+
+%% @doc 事务内恢复已软删除群作业（归档写守卫同事务；adm 治理共用）
+-spec restore_tx(any(), integer()) -> {ok, integer()} | {error, term()}.
+restore_tx(Conn, TaskId) when is_integer(TaskId), TaskId > 0 ->
+    Tb = tablename(),
+    Now = elib_dt:now(),
+    Data = #{
+        deleted_at => {raw, <<"NULL">>},
+        updated_at => Now
+    },
+    Where = <<"id = $1 AND deleted_at IS NOT NULL">>,
+    elib_pg:update(Conn, Tb, Data, Where, [TaskId]);
+restore_tx(_Conn, _TaskId) ->
     {error, invalid_task_id}.
 
 %% ===================================================================

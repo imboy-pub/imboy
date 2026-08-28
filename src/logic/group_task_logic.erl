@@ -84,6 +84,9 @@ create(GroupId, CreatorId, Title, Data) when
             case group_task_ds:insert_task(TaskData2) of
                 {ok, Id, _} ->
                     {ok, Id};
+                {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+                    %% T7 归档写守卫：稳定错误码 980 透传（不吞成 500）
+                    archived_error();
                 {error, {missing_field, _Field}} ->
                     {error, imboy_error:error_msg(?ERR_TASK_TITLE_REQUIRED),
                         ?ERR_TASK_TITLE_REQUIRED};
@@ -126,8 +129,19 @@ update(TaskId, CreatorId, Data) when
                                 0 ->
                                     {error, <<"没有要更新的字段"/utf8>>, ?ERR_BAD_REQUEST};
                                 _ ->
-                                    _ = group_task_ds:update_task(TaskId, UpdateData),
-                                    ok
+                                    %% T7 归档写守卫：更新结果必须检查
+                                    %%（原 `_ =` 吞错会把 980 吞成假成功）
+                                    case group_task_ds:update_task(TaskId, UpdateData) of
+                                        {ok, _} ->
+                                            ok;
+                                        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+                                            archived_error();
+                                        {error, Reason} ->
+                                            _ = ?ERROR_LOG({group_task_update_db_error, Reason}),
+                                            {error,
+                                                imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR),
+                                                ?ERR_INTERNAL_SERVER_ERROR}
+                                    end
                             end
                     end;
                 _ ->
@@ -158,27 +172,8 @@ assign(TaskId, UserIds, CurrentUid) when
                     case CreatorId of
                         CurrentUid ->
                             TaskIdStr = maps:get(<<"task_id">>, Task, <<>>),
-                            % 批量插入作业分配
-                            lists:foreach(
-                                fun(UserId) ->
-                                    case
-                                        group_task_ds:assignment_find_by_task_and_user(
-                                            TaskIdStr, UserId
-                                        )
-                                    of
-                                        {error, not_found} ->
-                                            group_task_ds:assignment_insert(#{
-                                                task_id => TaskIdStr,
-                                                user_id => UserId,
-                                                status => 0
-                                            });
-                                        _ ->
-                                            ok
-                                    end
-                                end,
-                                UserIds
-                            ),
-                            ok;
+                            % 批量插入作业分配（T7：逐条检查结果，归档 980 fail-fast）
+                            assign_users(TaskIdStr, UserIds);
                         _ ->
                             {error, imboy_error:error_msg(?ERR_TASK_PERMISSION_DENIED),
                                 ?ERR_TASK_PERMISSION_DENIED}
@@ -230,8 +225,25 @@ submit(TaskId, UserId, Data) when
                                         submitted_at => Now
                                     },
                                     SubmitData2 = maps:merge(SubmitData, Data),
-                                    _ = group_task_ds:assignment_update(AssignmentId, SubmitData2),
-                                    ok
+                                    %% T7 归档写守卫：提交结果必须检查
+                                    %%（原 `_ =` 吞错会把 980 吞成假成功）
+                                    case
+                                        group_task_ds:assignment_update(
+                                            AssignmentId, SubmitData2
+                                        )
+                                    of
+                                        {ok, _} ->
+                                            ok;
+                                        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+                                            archived_error();
+                                        {error, Reason} ->
+                                            _ = ?ERROR_LOG({task_submit_db_error, Reason}),
+                                            {error,
+                                                imboy_error:error_msg(
+                                                    ?ERR_INTERNAL_SERVER_ERROR
+                                                ),
+                                                ?ERR_INTERNAL_SERVER_ERROR}
+                                    end
                             end;
                         {error, not_found} ->
                             {error, imboy_error:error_msg(?ERR_TASK_ASSIGNMENT_NOT_FOUND),
@@ -273,8 +285,17 @@ review(AssignmentId, ReviewerId, Data) when
                                 reviewed_at => Now
                             },
                             ReviewData2 = maps:merge(ReviewData, Data),
-                            _ = group_task_ds:assignment_update(AssignmentId, ReviewData2),
-                            ok;
+                            %% T7 归档写守卫：批改结果必须检查（原 `_ =` 吞错）
+                            case group_task_ds:assignment_update(AssignmentId, ReviewData2) of
+                                {ok, _} ->
+                                    ok;
+                                {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+                                    archived_error();
+                                {error, Reason} ->
+                                    _ = ?ERROR_LOG({task_review_db_error, Reason}),
+                                    {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR),
+                                        ?ERR_INTERNAL_SERVER_ERROR}
+                            end;
                         3 ->
                             {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),
                                 ?ERR_TASK_ALREADY_REVIEWED};
@@ -315,8 +336,17 @@ review_as_admin(AssignmentId, ReviewerId, Data) when
                         reviewed_at => Now
                     },
                     ReviewData2 = maps:merge(ReviewData, Data),
-                    _ = group_task_ds:assignment_update(AssignmentId, ReviewData2),
-                    ok;
+                    %% T7 归档写守卫：批改结果必须检查（原 `_ =` 吞错）
+                    case group_task_ds:assignment_update(AssignmentId, ReviewData2) of
+                        {ok, _} ->
+                            ok;
+                        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+                            archived_error();
+                        {error, Reason} ->
+                            _ = ?ERROR_LOG({task_review_as_admin_db_error, Reason}),
+                            {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR),
+                                ?ERR_INTERNAL_SERVER_ERROR}
+                    end;
                 3 ->
                     {error, imboy_error:error_msg(?ERR_TASK_ALREADY_REVIEWED),
                         ?ERR_TASK_ALREADY_REVIEWED};
@@ -574,6 +604,43 @@ task_uid_by_id(Id) ->
 %% ===================================================================
 %% Internal Functions
 %% ===================================================================
+
+%% @doc T7 归档写守卫稳定错误（本模块既有 {error, Msg, Code} 三元组契约）
+-spec archived_error() -> {error, binary(), integer()}.
+archived_error() ->
+    {error, imboy_error:error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED}.
+
+%% @doc 批量分配：逐条检查写入结果，归档 980 fail-fast（不再静默丢弃错误）
+-spec assign_users(binary(), [integer()]) -> ok | {error, binary(), integer()}.
+assign_users(_TaskIdStr, []) ->
+    ok;
+assign_users(TaskIdStr, [UserId | Rest]) ->
+    Insert = fun() ->
+        group_task_ds:assignment_insert(#{
+            task_id => TaskIdStr,
+            user_id => UserId,
+            status => 0
+        })
+    end,
+    Result =
+        case group_task_ds:assignment_find_by_task_and_user(TaskIdStr, UserId) of
+            {error, not_found} ->
+                Insert();
+            _ ->
+                {ok, skip}
+        end,
+    case Result of
+        {ok, _} ->
+            assign_users(TaskIdStr, Rest);
+        %% 兼容 assignment repo 历史 3-tuple 返回形态 {ok, Id, Data}
+        {ok, _, _} ->
+            assign_users(TaskIdStr, Rest);
+        {error, {?ERR_WORKSPACE_ARCHIVED, _Msg}} ->
+            archived_error();
+        {error, Reason} ->
+            _ = ?ERROR_LOG({task_assign_db_error, Reason}),
+            {error, imboy_error:error_msg(?ERR_INTERNAL_SERVER_ERROR), ?ERR_INTERNAL_SERVER_ERROR}
+    end.
 
 %% @doc 检查截止时间是否已过
 %% @param Deadline 截止时间
