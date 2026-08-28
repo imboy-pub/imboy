@@ -2,6 +2,13 @@
 %%%
 % group_album_ds 是群相册 domain service 缩写
 % 群相册数据服务层，封装群相册业务逻辑和数据访问
+%
+% T7 归档写守卫（P0 后续批）：内容写路径（建相册/传图/删图/点赞/评论/
+% 改封面/重命名/删相册）经 workspace_guard:write_tx 同事务守卫
+% （{group,Gid} / {group_album,PK|AlbumId} / {group_album_photo,PhotoId}
+% → workspace 行锁），归档后拒绝（980）；upload_photo 的 OSS 上传是对外
+% 副作用，无法进 DB 事务——OSS 之前先 ensure_writable 预检（归档后零
+% 上传），落库与相册计数在守卫事务内原子提交；查询路径不加守卫。
 %%%
 
 -export([create_album/4]).
@@ -61,8 +68,14 @@ create_album(Gid, CreatorId, AlbumName, CoverPhotoId) ->
                     % 3. 生成相册ID
                     AlbumId = generate_album_id(),
 
-                    % 4. 创建相册
-                    case group_album_repo:create_album(Gid, AlbumId, AlbumName, CreatorId) of
+                    % 4. 创建相册（T7 归档写守卫：{group, Gid} 行锁与写入同事务）
+                    case
+                        workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                            group_album_repo:create_album_tx(
+                                Conn, Gid, AlbumId, AlbumName, CreatorId
+                            )
+                        end)
+                    of
                         {ok, Id} ->
                             AlbumData = #{
                                 <<"id">> => Id,
@@ -106,67 +119,97 @@ upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName) ->
                         false ->
                             {error, <<"图片类型无效"/utf8>>};
                         true ->
-                            % 4. 上传到OSS
-                            case
-                                elib_oss:upload(PhotoBinary, PhotoName, #{mime_type => MimeType})
-                            of
+                            % 4. T7 归档写守卫（OSS 前预检）：OSS 上传是对外副作用，
+                            %    无法进 DB 事务——归档群在动 Garage 之前稳定拒绝（980），
+                            %    确保归档后零上传副作用。
+                            case workspace_guard:ensure_writable({group, Gid}) of
                                 {error, Reason} ->
                                     {error, Reason};
-                                {ok, PhotoUrl, FileId} ->
-                                    % 5. 生成缩略图URL（占位符实现）
-                                    ThumbnailUrl = generate_thumbnail_url(PhotoUrl),
-
-                                    % 6. 生成图片ID
-                                    PhotoId = FileId,
-
-                                    % 7. 保存图片记录
-                                    PhotoData = #{
-                                        group_id => Gid,
-                                        album_id => AlbumId,
-                                        photo_id => PhotoId,
-                                        photo_name => PhotoName,
-                                        photo_url => PhotoUrl,
-                                        thumbnail_url => ThumbnailUrl,
-                                        photo_size => PhotoSize,
-                                        % 占位符，实际应从图片中提取
-                                        width => 0,
-                                        % 占位符，实际应从图片中提取
-                                        height => 0,
-                                        uploader_id => UploaderId
-                                    },
-
-                                    case group_album_repo:insert_photo(PhotoData) of
-                                        {ok, InsertId} ->
-                                            % 8. 增加相册照片计数（通过相册ID查找）
-                                            _ =
-                                                case
-                                                    group_album_repo:find_album_by_album_id(AlbumId)
-                                                of
-                                                    #{<<"id">> := AlbumRecordId} ->
-                                                        group_album_repo:increment_photo_count(
-                                                            AlbumRecordId
-                                                        );
-                                                    _ ->
-                                                        ok
-                                                end,
-
-                                            Result = #{
-                                                <<"id">> => InsertId,
-                                                <<"photo_id">> => PhotoId,
-                                                <<"photo_name">> => PhotoName,
-                                                <<"photo_url">> => PhotoUrl,
-                                                <<"thumbnail_url">> => ThumbnailUrl,
-                                                <<"photo_size">> => PhotoSize,
-                                                <<"width">> => 0,
-                                                <<"height">> => 0,
-                                                <<"created_at">> => elib_dt:timestamp()
-                                            },
-                                            {ok, Result};
-                                        {error, Reason} ->
-                                            {error, Reason}
-                                    end
+                                ok ->
+                                    do_upload_photo(
+                                        Gid,
+                                        UploaderId,
+                                        AlbumId,
+                                        PhotoBinary,
+                                        PhotoName,
+                                        PhotoSize,
+                                        MimeType
+                                    )
                             end
                     end
+            end
+    end.
+
+%% @doc OSS 上传 + 落库（T7：落库与相册计数在守卫事务内原子提交；
+%% 预检与落库之间存在归档竞态窗口——落库被拒时 Garage 残留孤儿对象，
+%% 无 DB 不一致、无成员可见副作用，可接受）。
+-spec do_upload_photo(
+    integer(), integer(), binary(), binary(), binary(), integer(), binary()
+) ->
+    {ok, map()} | {error, term()}.
+do_upload_photo(Gid, UploaderId, AlbumId, PhotoBinary, PhotoName, PhotoSize, MimeType) ->
+    % 上传到OSS
+    case elib_oss:upload(PhotoBinary, PhotoName, #{mime_type => MimeType}) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, PhotoUrl, FileId} ->
+            % 生成缩略图URL（占位符实现）
+            ThumbnailUrl = generate_thumbnail_url(PhotoUrl),
+
+            % 生成图片ID
+            PhotoId = FileId,
+
+            % 保存图片记录（T7：{group, Gid} 行锁 + 插入 + 计数同事务）
+            PhotoData = #{
+                group_id => Gid,
+                album_id => AlbumId,
+                photo_id => PhotoId,
+                photo_name => PhotoName,
+                photo_url => PhotoUrl,
+                thumbnail_url => ThumbnailUrl,
+                photo_size => PhotoSize,
+                % 占位符，实际应从图片中提取
+                width => 0,
+                % 占位符，实际应从图片中提取
+                height => 0,
+                uploader_id => UploaderId
+            },
+
+            case
+                workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                    case group_album_repo:insert_photo_tx(Conn, PhotoData) of
+                        {ok, InsertId} ->
+                            % 增加相册照片计数（同事务；album PK 读取为归属只读）
+                            case group_album_repo:find_album_by_album_id(AlbumId) of
+                                #{<<"id">> := AlbumRecordId} ->
+                                    _ =
+                                        group_album_repo:increment_photo_count_tx(
+                                            Conn, AlbumRecordId
+                                        ),
+                                    {ok, InsertId};
+                                _ ->
+                                    {ok, InsertId}
+                            end;
+                        {error, Reason} ->
+                            {error, Reason}
+                    end
+                end)
+            of
+                {ok, InsertId} ->
+                    Result = #{
+                        <<"id">> => InsertId,
+                        <<"photo_id">> => PhotoId,
+                        <<"photo_name">> => PhotoName,
+                        <<"photo_url">> => PhotoUrl,
+                        <<"thumbnail_url">> => ThumbnailUrl,
+                        <<"photo_size">> => PhotoSize,
+                        <<"width">> => 0,
+                        <<"height">> => 0,
+                        <<"created_at">> => elib_dt:timestamp()
+                    },
+                    {ok, Result};
+                {error, Reason} ->
+                    {error, Reason}
             end
     end.
 
@@ -217,20 +260,30 @@ delete_photo(PhotoId, CurrentUid) ->
             % 2. 验证权限
             case check_delete_permission(CurrentUid, UploaderId, Gid) of
                 {ok, true} ->
-                    % 3. 软删除图片
-                    case group_album_repo:delete_photo(PhotoId) of
-                        {ok, _} ->
-                            % 4. 减少相册照片计数（通过相册ID查找）
-                            _ =
-                                case group_album_repo:find_album_by_album_id(AlbumId) of
-                                    #{<<"id">> := AlbumRecordId} ->
-                                        group_album_repo:decrement_photo_count(AlbumRecordId);
-                                    _ ->
-                                        ok
-                                end,
-                            ok;
-                        {error, Reason} ->
-                            {error, Reason}
+                    % 3. 软删除图片（T7：{group, Gid} 行锁 + 删除 + 计数递减同事务）
+                    case
+                        workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                            case group_album_repo:delete_photo_tx(Conn, PhotoId) of
+                                {ok, _} ->
+                                    % 减少相册照片计数（同事务）
+                                    case group_album_repo:find_album_by_album_id(AlbumId) of
+                                        #{<<"id">> := AlbumRecordId} ->
+                                            _ =
+                                                group_album_repo:decrement_photo_count_tx(
+                                                    Conn, AlbumRecordId
+                                                ),
+                                            ok;
+                                        _ ->
+                                            ok
+                                    end;
+                                {error, Reason} ->
+                                    {error, Reason}
+                            end
+                        end)
+                    of
+                        ok -> ok;
+                        {ok, _} -> ok;
+                        {error, Reason} -> {error, Reason}
                     end;
                 {error, Reason} ->
                     {error, Reason}
@@ -260,7 +313,12 @@ like_photo(PhotoId, UserId) ->
         true ->
             {error, <<"已点赞该图片"/utf8>>};
         false ->
-            case group_album_repo:like_photo(PhotoId, UserId) of
+            %% T7 归档写守卫：{group_album_photo, PhotoId} → group → workspace
+            case
+                workspace_guard:write_tx({group_album_photo, PhotoId}, fun(Conn) ->
+                    group_album_repo:like_photo_tx(Conn, PhotoId, UserId)
+                end)
+            of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}
             end
@@ -272,7 +330,12 @@ like_photo(PhotoId, UserId) ->
 %% @return ok | {error, Reason}
 -spec unlike_photo(binary(), integer()) -> ok | {error, term()}.
 unlike_photo(PhotoId, UserId) ->
-    case group_album_repo:unlike_photo(PhotoId, UserId) of
+    %% T7 归档写守卫：{group_album_photo, PhotoId}
+    case
+        workspace_guard:write_tx({group_album_photo, PhotoId}, fun(Conn) ->
+            group_album_repo:unlike_photo_tx(Conn, PhotoId, UserId)
+        end)
+    of
         {ok, _} -> ok;
         {error, Reason} -> {error, Reason}
     end.
@@ -289,7 +352,12 @@ add_comment(PhotoId, UserId, Content) ->
         {error, Reason} ->
             {error, Reason};
         ok ->
-            case group_album_repo:add_comment(PhotoId, UserId, Content) of
+            %% T7 归档写守卫：{group_album_photo, PhotoId} → group → workspace
+            case
+                workspace_guard:write_tx({group_album_photo, PhotoId}, fun(Conn) ->
+                    group_album_repo:add_comment_tx(Conn, PhotoId, UserId, Content)
+                end)
+            of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}
             end
@@ -389,9 +457,14 @@ get_photo_detail(PhotoId, CurrentUid) ->
 -spec update_album_cover(binary(), binary()) -> ok | {error, term()}.
 update_album_cover(AlbumId, PhotoId) ->
     case group_album_repo:find_album_by_album_id(AlbumId) of
-        #{<<"id">> := Id} ->
+        #{<<"id">> := Id, <<"group_id">> := Gid} ->
             UpdateData = #{id => Id, album_cover => PhotoId},
-            case group_album_repo:update_album(UpdateData) of
+            %% T7 归档写守卫：{group, Gid}（相册行归属群）行锁与写入同事务
+            case
+                workspace_guard:write_tx({group, Gid}, fun(Conn) ->
+                    group_album_repo:update_album_tx(Conn, UpdateData)
+                end)
+            of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}
             end;
@@ -465,10 +538,19 @@ generate_thumbnail_url(PhotoUrl) ->
 find_album_by_album_id(AlbumId) -> group_album_repo:find_album_by_album_id(AlbumId).
 
 -spec delete_album(integer()) -> {ok, non_neg_integer()} | {error, term()}.
-delete_album(Id) -> group_album_repo:delete_album(Id).
+delete_album(Id) ->
+    %% T7 归档写守卫：{group_album, PK} → group → workspace（用户删除与 adm 治理共用）
+    workspace_guard:write_tx({group_album, Id}, fun(Conn) ->
+        group_album_repo:delete_album_tx(Conn, Id)
+    end).
 
 -spec update_album(map()) -> {ok, non_neg_integer()} | {error, term()}.
-update_album(UpdateData) -> group_album_repo:update_album(UpdateData).
+update_album(UpdateData) ->
+    %% T7 归档写守卫：{group_album, PK}（UpdateData 携带 <<"id">> 主键）
+    AlbumPk = maps:get(<<"id">>, UpdateData, undefined),
+    workspace_guard:write_tx({group_album, AlbumPk}, fun(Conn) ->
+        group_album_repo:update_album_tx(Conn, UpdateData)
+    end).
 
 %% G3: group_album_handler 不应直调 group_album_repo
 -spec list_comments(binary(), integer()) -> {ok, list(map())} | {error, term()}.

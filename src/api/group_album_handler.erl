@@ -11,6 +11,7 @@
 -include("log.hrl").
 -include("error_code.hrl").
 -include("imboy_const.hrl").
+-import(imboy_error, [error_msg/1]).
 
 %% ===================================================================
 %% API 函数
@@ -76,6 +77,10 @@ create_album(Req0, State) ->
             case group_album_logic:create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) of
                 {ok, AlbumData} ->
                     elib_response:success(Req1, AlbumData, <<"创建相册成功"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -137,6 +142,10 @@ rename_album(Req0, State) ->
             case group_album_logic:rename_album(AlbumId, NewName, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"重命名成功"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -169,6 +178,10 @@ delete_album(Req0, State) ->
                     elib_response:error(Req1, <<"相册不存在"/utf8>>, ?ERR_ALBUM_NOT_FOUND);
                 {error, <<"相册权限不足"/utf8>>} ->
                     elib_response:error(Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -230,6 +243,10 @@ upload_photo_multipart(Req0, CurrentUid) ->
                             elib_response:error(
                                 Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
                             );
+                        {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                            elib_response:error(
+                                Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                            );
                         {error, Reason} ->
                             elib_response:error(
                                 Req1,
@@ -276,6 +293,10 @@ upload_photo_json(Req0, CurrentUid) ->
                         {error, <<"相册权限不足"/utf8>>} ->
                             elib_response:error(
                                 Req1, <<"相册权限不足"/utf8>>, ?ERR_ALBUM_PERMISSION_DENIED
+                            );
+                        {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                            elib_response:error(
+                                Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
                             );
                         {error, Reason} ->
                             elib_response:error(
@@ -358,6 +379,10 @@ batch_upload(Req0, State) ->
             case group_album_logic:batch_upload_photos(Gid, CurrentUid, Photos) of
                 {ok, Results} ->
                     elib_response:success(Req1, #{results => Results}, <<"批量上传完成"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -446,6 +471,10 @@ delete_photo(Req0, State) ->
             case group_album_logic:delete_photo(PhotoIdInt, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"删除成功"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -474,6 +503,10 @@ like_photo(Req0, State) ->
             case group_album_logic:like_photo(PhotoId, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"点赞成功"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -502,6 +535,10 @@ unlike_photo(Req0, State) ->
             case group_album_logic:unlike_photo(PhotoId, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"取消点赞成功"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -533,6 +570,10 @@ add_comment(Req0, State) ->
             case group_album_logic:add_comment(PhotoId, CurrentUid, Content) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"评论成功"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,
@@ -607,6 +648,10 @@ update_cover(Req0, State) ->
             case group_album_logic:update_album_cover(AlbumId, PhotoId, CurrentUid) of
                 ok ->
                     elib_response:success(Req1, #{}, <<"更新封面成功"/utf8>>);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    elib_response:error(
+                        Req1, error_msg(?ERR_WORKSPACE_ARCHIVED), ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, Reason} ->
                     elib_response:error(
                         Req1,

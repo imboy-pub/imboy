@@ -21,6 +21,7 @@
 -export([list_comments/3]).
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API 函数
@@ -39,7 +40,11 @@ create_album(Gid, CurrentUid, AlbumName, CoverPhotoId) ->
     Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层创建相册
-    case group_album_ds:create_album(Gid2, CurrentUid, AlbumName, CoverPhotoId) of
+    case
+        normalize_write_result(
+            group_album_ds:create_album(Gid2, CurrentUid, AlbumName, CoverPhotoId)
+        )
+    of
         {ok, AlbumData} ->
             % 3. 编码ID
             AlbumId = maps:get(<<"id">>, AlbumData),
@@ -67,7 +72,11 @@ upload_photo(Gid, CurrentUid, AlbumId, PhotoBinary, PhotoName) ->
     Gid2 = ec_cnv:to_integer(Gid),
 
     % 2. 调用DS层上传图片
-    case group_album_ds:upload_photo(Gid2, CurrentUid, AlbumId, PhotoBinary, PhotoName) of
+    case
+        normalize_write_result(
+            group_album_ds:upload_photo(Gid2, CurrentUid, AlbumId, PhotoBinary, PhotoName)
+        )
+    of
         {ok, PhotoData} ->
             % 3. 编码ID
             PhotoId = maps:get(<<"id">>, PhotoData),
@@ -134,7 +143,7 @@ delete_album(AlbumId, CurrentUid) ->
         #{<<"id">> := Id, <<"group_id">> := Gid, <<"creator_id">> := CreatorId} ->
             case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
                 ok ->
-                    case group_album_ds:delete_album(Id) of
+                    case normalize_write_result(group_album_ds:delete_album(Id)) of
                         {ok, _} ->
                             ok;
                         {error, Reason} ->
@@ -153,7 +162,7 @@ delete_album(AlbumId, CurrentUid) ->
 %% @return ok | {error, Reason}
 -spec delete_photo(integer(), integer()) -> ok | {error, term()}.
 delete_photo(PhotoId, CurrentUid) ->
-    group_album_ds:delete_photo(PhotoId, CurrentUid).
+    normalize_write_result(group_album_ds:delete_photo(PhotoId, CurrentUid)).
 
 %% @doc 点赞图片
 %% @param PhotoId 图片ID
@@ -162,7 +171,7 @@ delete_photo(PhotoId, CurrentUid) ->
 -spec like_photo(binary(), integer()) -> ok | {error, term()}.
 like_photo(PhotoId, CurrentUid) ->
     case ensure_photo_group_member(PhotoId, CurrentUid) of
-        ok -> group_album_ds:like_photo(PhotoId, CurrentUid);
+        ok -> normalize_write_result(group_album_ds:like_photo(PhotoId, CurrentUid));
         {error, Reason} -> {error, Reason}
     end.
 
@@ -173,7 +182,7 @@ like_photo(PhotoId, CurrentUid) ->
 -spec unlike_photo(binary(), integer()) -> ok | {error, term()}.
 unlike_photo(PhotoId, CurrentUid) ->
     case ensure_photo_group_member(PhotoId, CurrentUid) of
-        ok -> group_album_ds:unlike_photo(PhotoId, CurrentUid);
+        ok -> normalize_write_result(group_album_ds:unlike_photo(PhotoId, CurrentUid));
         {error, Reason} -> {error, Reason}
     end.
 
@@ -203,7 +212,7 @@ add_comment(PhotoId, CurrentUid, Content) ->
         {error, Reason} ->
             {error, Reason};
         ok ->
-            group_album_ds:add_comment(PhotoId, CurrentUid, Content)
+            normalize_write_result(group_album_ds:add_comment(PhotoId, CurrentUid, Content))
     end.
 
 %% @doc 查询相册列表
@@ -248,8 +257,10 @@ update_album_cover(AlbumId, PhotoId, CurrentUid) ->
     case group_album_ds:find_album_by_album_id(AlbumId) of
         #{<<"group_id">> := Gid, <<"creator_id">> := CreatorId} ->
             case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
-                ok -> group_album_ds:update_album_cover(AlbumId, PhotoId);
-                {error, Reason} -> {error, Reason}
+                ok ->
+                    normalize_write_result(group_album_ds:update_album_cover(AlbumId, PhotoId));
+                {error, Reason} ->
+                    {error, Reason}
             end;
         _ ->
             {error, <<"相册不存在"/utf8>>}
@@ -267,7 +278,7 @@ rename_album(AlbumId, NewName, CurrentUid) ->
             case check_album_delete_permission(CurrentUid, CreatorId, Gid) of
                 ok ->
                     UpdateData = #{id => Id, album_name => NewName},
-                    case group_album_ds:update_album(UpdateData) of
+                    case normalize_write_result(group_album_ds:update_album(UpdateData)) of
                         {ok, _} -> ok;
                         {error, Reason} -> {error, Reason}
                     end;
@@ -304,3 +315,11 @@ check_album_delete_permission(CurrentUid, _CreatorId, Gid) ->
         _ ->
             {error, <<"相册权限不足"/utf8>>}
     end.
+
+%% @doc T7 归档写守卫：DS 写事务返回的稳定错误 {error, {980, Msg}} 归一为
+%% 既有契约 {error, ?ERR_WORKSPACE_ARCHIVED}（handler 按 980 识别），
+%% 其余结果原样透传。
+normalize_write_result({error, {?ERR_WORKSPACE_ARCHIVED, _Msg}}) ->
+    {error, ?ERR_WORKSPACE_ARCHIVED};
+normalize_write_result(Other) ->
+    Other.

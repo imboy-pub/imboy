@@ -34,8 +34,11 @@ delete_album_by_creator_case() ->
                         <<"creator_id">> => 100
                     }
                 end},
-                {'delete_album', 1, fun(11) -> {ok, 1} end}
-            ]}
+                {'delete_album_tx', 2, fun(_Conn, 11) -> {ok, 1} end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
         ],
         fun() ->
             ?assertEqual(ok, group_album_logic:delete_album(<<"album_1">>, 100))
@@ -54,13 +57,16 @@ delete_album_by_admin_case() ->
                         <<"creator_id">> => 101
                     }
                 end},
-                {'delete_album', 1, fun(12) -> {ok, 1} end}
+                {'delete_album_tx', 2, fun(_Conn, 12) -> {ok, 1} end}
             ]},
             {group_member_repo, [
                 {'find', 3, fun(21, 100, <<"role">>) ->
                     #{<<"role">> => 3}
                 end}
-            ]}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
         ],
         fun() ->
             ?assertEqual(ok, group_album_logic:delete_album(<<"album_2">>, 100))
