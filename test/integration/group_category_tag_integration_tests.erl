@@ -296,16 +296,19 @@ create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
     Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
     User = #{
-        <<"uid">> => Uid,
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
         <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
-        <<"created_at">> => elib_dt:millisecond()
+        <<"reg_ip">> => <<"127.0.0.1">>,
+        <<"reg_cosv">> => <<"perf-test">>
     },
-    ok = user_repo:create(User),
-    {ok, Uid}.
+    %% 套件隔离治理：user_repo:save/1 强制服务端生成 TSID（create/1 只返回
+    %% ok 且丢弃调用方 uid），必须取返回的真实 id；否则成员/好友/消息等
+    %% 全部引用一个不存在的用户行（孤儿用户）。
+    {ok, RealUid} = user_ds:insert_and_get_id(User),
+    {ok, RealUid}.
 
 create_test_group(OwnerId, Name) ->
     %% 套件隔离治理：group_repo:add/2 会重新生成 group_info TSID 作为群行
