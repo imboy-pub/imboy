@@ -27,34 +27,43 @@ cleanup(_) ->
 %% ===================================================================
 
 public_tablename_without_prefix_test_() ->
-    ?WITH_MECKS([
-        {config_ds, [
-            {'env', 1, fun(sql_driver) -> pgsql end}
-        ]}
-    ], fun() ->
-        Result = elib_pg_sql:public_tablename(<<"user">>),
-        ?assertEqual(<<"public.user">>, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]}
+        ],
+        fun() ->
+            Result = elib_pg_sql:public_tablename(<<"user">>),
+            ?assertEqual(<<"public.user">>, Result)
+        end
+    ).
 
 public_tablename_with_prefix_test_() ->
-    ?WITH_MECKS([
-        {config_ds, [
-            {'env', 1, fun(sql_driver) -> pgsql end}
-        ]}
-    ], fun() ->
-        Result = elib_pg_sql:public_tablename(<<"public.user">>),
-        ?assertEqual(<<"public.user">>, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]}
+        ],
+        fun() ->
+            Result = elib_pg_sql:public_tablename(<<"public.user">>),
+            ?assertEqual(<<"public.user">>, Result)
+        end
+    ).
 
 public_tablename_nested_prefix_test_() ->
-    ?WITH_MECKS([
-        {config_ds, [
-            {'env', 1, fun(sql_driver) -> pgsql end}
-        ]}
-    ], fun() ->
-        Result = elib_pg_sql:public_tablename(<<"public.public.user">>),
-        ?assertEqual(<<"public.user">>, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]}
+        ],
+        fun() ->
+            Result = elib_pg_sql:public_tablename(<<"public.public.user">>),
+            ?assertEqual(<<"public.user">>, Result)
+        end
+    ).
 
 %% ===================================================================
 %% insert/2 测试
@@ -155,7 +164,9 @@ update_4_single_where_param_test_() ->
         {Sql, Params} = elib_pg_sql:update(Table, Map, WhereSql, WhereParams),
         SqlBin = iolist_to_binary(Sql),
         % WHERE 参数是 $1，SET 参数从 $2 开始
-        ?assertMatch({_, _}, binary:match(SqlBin, <<"UPDATE user SET name = $2,age = $3 WHERE id = $1">>)),
+        ?assertMatch(
+            {_, _}, binary:match(SqlBin, <<"UPDATE user SET name = $2,age = $3 WHERE id = $1">>)
+        ),
         % 参数顺序：WHERE 参数在前，SET 参数在后
         ?assertEqual([123, <<"Eve">>, 28], Params)
     end).
@@ -169,7 +180,10 @@ update_4_multiple_where_params_test_() ->
         {Sql, Params} = elib_pg_sql:update(Table, Map, WhereSql, WhereParams),
         SqlBin = iolist_to_binary(Sql),
         % WHERE 参数是 $1, $2，SET 参数从 $3 开始
-        ?assertMatch({_, _}, binary:match(SqlBin, <<"UPDATE user SET status = $3 WHERE id = $1 AND status = $2">>)),
+        ?assertMatch(
+            {_, _},
+            binary:match(SqlBin, <<"UPDATE user SET status = $3 WHERE id = $1 AND status = $2">>)
+        ),
         % 参数顺序：WHERE 参数在前，SET 参数在后
         ?assertEqual([456, 1, 2], Params)
     end).
@@ -182,9 +196,20 @@ update_4_complex_where_test_() ->
         WhereParams = [789, 1, <<"2023-01-01">>],
         {Sql, Params} = elib_pg_sql:update(Table, Map, WhereSql, WhereParams),
         SqlBin = iolist_to_binary(Sql),
-        % WHERE 参数是 $1, $2, $3，SET 参数从 $4 开始
-        ?assertMatch({_, _}, binary:match(SqlBin, <<"UPDATE user SET name = $4,age = $5,updated_at = $6 WHERE id = $1 OR (status = $2 AND created_at > $3)">>)),
-        % 参数顺序：WHERE 参数在前，SET 参数在后
+        % 套件隔离治理：SET 子句内列的先后取决于 maps:to_list 的迭代序，
+        % 不对整段 SQL 做字面断言；改为逐段钉死契约：
+        % 1) 前缀与 WHERE 子句原样保留；
+        ?assertMatch({_, _}, binary:match(SqlBin, <<"UPDATE user SET">>)),
+        ?assertMatch(
+            {_, _},
+            binary:match(SqlBin, <<"WHERE id = $1 OR (status = $2 AND created_at > $3)">>)
+        ),
+        % 2) WHERE 参数 $1..$3 不被改写，SET 占位符从 WHERE 参数数量+1（$4）起；
+        ?assertMatch({_, _}, binary:match(SqlBin, <<"= $4">>)),
+        nomatch = binary:match(SqlBin, <<"= $1,">>),
+        nomatch = binary:match(SqlBin, <<"= $2,">>),
+        nomatch = binary:match(SqlBin, <<"= $3,">>),
+        % 3) 参数顺序：WHERE 参数在前，SET 参数（按 Map 的迭代序）在后
         ?assertEqual([789, 1, <<"2023-01-01">>, <<"Frank">>, 35, <<"2024-01-01">>], Params)
     end).
 
@@ -196,7 +221,9 @@ update_4_with_in_clause_test_() ->
         WhereParams = [1, 2, 3],
         {Sql, Params} = elib_pg_sql:update(Table, Map, WhereSql, WhereParams),
         SqlBin = iolist_to_binary(Sql),
-        ?assertMatch({_, _}, binary:match(SqlBin, <<"UPDATE user SET status = $4 WHERE id IN ($1, $2, $3)">>)),
+        ?assertMatch(
+            {_, _}, binary:match(SqlBin, <<"UPDATE user SET status = $4 WHERE id IN ($1, $2, $3)">>)
+        ),
         ?assertEqual([1, 2, 3, 0], Params)
     end).
 
@@ -427,7 +454,9 @@ build_where_mixed_conditions_test_() ->
         },
         {Sql, Params} = elib_pg_sql:build_where_clause(Where),
         % maps:fold iterates in key order: id, name, status
-        ?assertMatch({_, _}, binary:match(Sql, <<"WHERE id IN ($1,$2) AND name = $3 AND status > $4">>)),
+        ?assertMatch(
+            {_, _}, binary:match(Sql, <<"WHERE id IN ($1,$2) AND name = $3 AND status > $4">>)
+        ),
         ?assertEqual([1, 2, <<"Alice">>, 0], Params)
     end).
 
@@ -444,10 +473,12 @@ build_where_with_or_test_() ->
         % 测试 OR 连接多个条件组
         % 注意：maps:fold 迭代顺序不保证，字段在 SQL 中的出现顺序不确定，
         % 因此只验证结构特征和参数集合，不匹配精确 SQL 字符串
-        Where = #{<<"__or">> => [
-            #{a => 1, b => 3},
-            #{a => 4, b => 5, c => {op, <<"LIKE">>, <<"%c%">>}}
-        ]},
+        Where = #{
+            <<"__or">> => [
+                #{a => 1, b => 3},
+                #{a => 4, b => 5, c => {op, <<"LIKE">>, <<"%c%">>}}
+            ]
+        },
         {Sql, Params} = elib_pg_sql:build_where_clause(Where),
         % 验证整体结构：WHERE (... OR ...)，外层和内层各有一组括号
         ?assertMatch({_, _}, binary:match(Sql, <<"WHERE ((">>)),
@@ -462,11 +493,13 @@ build_where_with_or_test_() ->
 build_where_with_and_test_() ->
     ?TEST_WITH_DB(fun() ->
         % 测试 AND 连接多个条件组
-        Where = #{<<"__and">> => [
-            #{a => 1},
-            #{b => 2},
-            #{c => 3}
-        ]},
+        Where = #{
+            <<"__and">> => [
+                #{a => 1},
+                #{b => 2},
+                #{c => 3}
+            ]
+        },
         {Sql, Params} = elib_pg_sql:build_where_clause(Where),
         % build_condition_group produces inner parens, build_where_clause wraps the whole AND group
         ?assertMatch({_, _}, binary:match(Sql, <<"WHERE ((a = $1) AND (b = $2) AND (c = $3))">>)),
@@ -478,10 +511,12 @@ build_where_with_nested_or_and_test_() ->
         % 测试 OR 条件组；注意：嵌套 __and 在 OR 元素的 map 内会被 build_map_conditions 过滤掉，
         % 因为 build_condition_group 对每个 map 只调用 build_map_conditions（它过滤 __or/__and 键）。
         % 所以 #{a => 1, <<"__and">> => ...} 只产出 a=1 条件。
-        Where = #{<<"__or">> => [
-            #{a => 1, <<"__and">> => [#{b => 2}, #{b => 3}]},
-            #{a => 4}
-        ]},
+        Where = #{
+            <<"__or">> => [
+                #{a => 1, <<"__and">> => [#{b => 2}, #{b => 3}]},
+                #{a => 4}
+            ]
+        },
         {Sql, Params} = elib_pg_sql:build_where_clause(Where),
         ?assertMatch({_, _}, binary:match(Sql, <<"WHERE ((a = $1) OR (a = $2))">>)),
         ?assertEqual([1, 4], Params)
@@ -492,18 +527,22 @@ build_where_with_complex_nested_test_() ->
         % 测试复杂嵌套: (a=1 AND b=2) OR (c=3 AND d=4) OR (e=5 AND f=6)
         % 注意：maps:fold 迭代顺序不保证，字段在 SQL 中的出现顺序不确定，
         % 因此只验证结构特征和参数集合，不匹配精确 SQL 字符串
-        Where = #{<<"__or">> => [
-            #{a => 1, b => 2},
-            #{c => 3, d => 4},
-            #{e => 5, f => 6}
-        ]},
+        Where = #{
+            <<"__or">> => [
+                #{a => 1, b => 2},
+                #{c => 3, d => 4},
+                #{e => 5, f => 6}
+            ]
+        },
         {Sql, Params} = elib_pg_sql:build_where_clause(Where),
         % 验证整体结构：WHERE (... OR ... OR ...)，外层和内层各有一组括号
         ?assertMatch({_, _}, binary:match(Sql, <<"WHERE ((">>)),
         ?assertMatch({_, _}, binary:match(Sql, <<"))">>)),
         % 验证有两个 OR 连接符（3 个条件组之间）
         {Pos1, _} = binary:match(Sql, <<" OR ">>),
-        ?assertMatch({_, _}, binary:match(Sql, <<" OR ">>, [{scope, {Pos1 + 4, byte_size(Sql) - Pos1 - 4}}])),
+        ?assertMatch(
+            {_, _}, binary:match(Sql, <<" OR ">>, [{scope, {Pos1 + 4, byte_size(Sql) - Pos1 - 4}}])
+        ),
         % 验证参数集合正确（排序后比较）
         ?assertEqual(lists:sort([1, 2, 3, 4, 5, 6]), lists:sort(Params))
     end).
@@ -522,7 +561,12 @@ page_basic_test_() ->
         Offset = 0,
         {Sql, Params} = elib_pg_sql:page(Table, Column, WhereMap, OrderBy, Limit, Offset),
         SqlBin = iolist_to_binary(Sql),
-        ?assertMatch({_, _}, binary:match(SqlBin, <<"SELECT * FROM user WHERE id > 0 ORDER BY id DESC LIMIT $1 OFFSET $2">>)),
+        ?assertMatch(
+            {_, _},
+            binary:match(
+                SqlBin, <<"SELECT * FROM user WHERE id > 0 ORDER BY id DESC LIMIT $1 OFFSET $2">>
+            )
+        ),
         ?assertEqual([10, 0], Params)
     end).
 

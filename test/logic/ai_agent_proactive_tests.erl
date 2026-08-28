@@ -74,6 +74,12 @@ send_text_empty_text_no_op_test_() ->
 send_welcome_template_path_test_() ->
     ?WITH_MECKS(
         [
+            % 套件隔离治理：app 常驻后 proactive_allowed/imboy_policy 走真实
+            % DB 与部署策略（单测靠 catch 兼容分支侥幸通过的时代已结束），
+            % 显式钉死三道门。
+            {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
+            {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
+            {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
             {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
@@ -100,6 +106,10 @@ send_welcome_template_path_test_() ->
 send_welcome_template_default_when_missing_test_() ->
     ?WITH_MECKS(
         [
+            % 钉死三道门（同 send_welcome_template_path_test_）
+            {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
+            {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
+            {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
             {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
@@ -216,6 +226,10 @@ send_welcome_rate_limited_falls_back_to_template_test_() ->
             {agent_rate_limiter, [{'allow', 2, fun(_, _) -> {deny, agent_rate} end}]},
             {imboy_llm_registry, [{'lookup', 1, fun(_) -> {ok, #{module => x, opts => #{}}} end}]},
             {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]},
+            % 钉死 proactive 门与部署级策略门（app 常驻后走真实实现）
+            {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{}} end}]},
+            {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]},
+            {imboy_policy, [{'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}]},
             {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},

@@ -263,7 +263,10 @@ docs-stop:
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
 .PHONY: eunit-local
 eunit-local:
+	@pkill -f 'eunit:test' 2>/dev/null; true
+	@sleep 1
 	@DISABLE_SYNC=1 IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
+	@pkill -f 'eunit:test' 2>/dev/null; true
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担

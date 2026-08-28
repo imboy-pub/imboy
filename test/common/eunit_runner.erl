@@ -108,17 +108,67 @@ eunit_setup() ->
         CoreApps
     ),
 
-    % 启动 imboy 应用
+    % 启动 imboy 应用：全部经由单例启动协调进程串行化。
+    % eunit 各模块 setup 并发进入时，若无协调器会出现并发 cleanup/并发
+    % ensure_all_started：互杀对方 boot 中的 barrel/ranch listener，
+    % 制造半启动孤儿（run #6 的开机 eaddrinuse + 'm:imboy_cache' 表丢失
+    % 连锁 badarg 即此类）。协调器由长驻进程持有 boot，调用方 5s 测试
+    % 超时被杀也不再中止启动，下个 setup 自愈拿到已启动的 app。
+    ensure_boot_coordinator(),
+    Ref = make_ref(),
+    eunit_boot_coordinator ! {boot, self(), Ref},
+    receive
+        {Ref, {ok, State}} ->
+            State;
+        {Ref, {error, Reason}} ->
+            io:format("Warning: Failed to start imboy app: ~p~n", [Reason]),
+            io:format("Tests that require app will be skipped~n"),
+            {app_not_started, test_continues}
+    after 60000 ->
+        io:format("Warning: boot coordinator timeout~n"),
+        {app_not_started, test_continues}
+    end.
+
+ensure_boot_coordinator() ->
+    case whereis(eunit_boot_coordinator) of
+        undefined ->
+            Pid = erlang:spawn(fun boot_coord_loop/0),
+            case
+                try
+                    erlang:register(eunit_boot_coordinator, Pid)
+                catch
+                    _:_ -> error
+                end
+            of
+                true ->
+                    ok;
+                _ ->
+                    % 并发竞争输家：赢家已注册，回收自己的进程
+                    exit(Pid, kill),
+                    ok
+            end;
+        _Pid ->
+            ok
+    end.
+
+boot_coord_loop() ->
+    receive
+        {boot, From, Ref} ->
+            From ! {Ref, do_boot()},
+            boot_coord_loop()
+    end.
+
+do_boot() ->
     case app_running(imboy) of
         true ->
-            {app_already_started, imboy};
+            {ok, {app_already_started, imboy}};
         false ->
             cleanup_start_orphans(),
             case application:ensure_all_started(imboy) of
                 {ok, _} ->
-                    {app_started, imboy};
+                    {ok, {app_started, imboy}};
                 {error, {already_started, imboy}} ->
-                    {app_already_started, imboy};
+                    {ok, {app_already_started, imboy}};
                 {error, _StartReason} ->
                     % 首次尝试若被 eunit 5s 测试超时打断（caller 被杀 → app
                     % master 中止），会留下 barrel 单例与 ranch listener 孤儿；
@@ -126,13 +176,11 @@ eunit_setup() ->
                     cleanup_start_orphans(),
                     case application:ensure_all_started(imboy) of
                         {ok, _} ->
-                            {app_started, imboy};
+                            {ok, {app_started, imboy}};
                         {error, {already_started, imboy}} ->
-                            {app_already_started, imboy};
+                            {ok, {app_already_started, imboy}};
                         {error, RetryReason} ->
-                            io:format("Warning: Failed to start imboy app: ~p~n", [RetryReason]),
-                            io:format("Tests that require app will be skipped~n"),
-                            {app_not_started, test_continues}
+                            {error, RetryReason}
                     end
             end
     end.

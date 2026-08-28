@@ -30,6 +30,9 @@ signup_with_valid_data_succeeds_test_() ->
                 {'allocate', 0, fun() -> <<"test_account">> end}
             ]},
             {user_ds, [
+                % 套件隔离治理：本地库累积用户已超社区版 License 配额，
+                % quota_guard 会 402 拒注册；钉死 count=0 保持单测语义。
+                {'count', 0, fun() -> 0 end},
                 {'find_by_mobile', 2, fun(_Mobile, _Fields) -> #{} end},
                 {'insert_and_get_id', 1, fun(_Data) -> {ok, 1001} end},
                 {'find_by_id', 2, fun(_Id, _Fields) ->
@@ -420,6 +423,8 @@ do_signup_with_email_succeeds_test_() ->
                 {'current', 0, fun() -> <<"local">> end}
             ]},
             {user_ds, [
+                % 钉死 count=0：绕过 License 配额 402（见文件头说明）
+                {'count', 0, fun() -> 0 end},
                 {'find_id_by_email', 1, fun(_) -> 0 end},
                 {'insert_and_get_id', 1, fun(_Data) -> {ok, 2001} end}
             ]},
@@ -470,6 +475,8 @@ do_signup_email_with_rsa_encrypt_off_test_() ->
                 {'current', 0, fun() -> <<"local">> end}
             ]},
             {user_ds, [
+                % 钉死 count=0：绕过 License 配额 402（见文件头说明）
+                {'count', 0, fun() -> 0 end},
                 {'find_id_by_email', 1, fun(_) -> 0 end},
                 {'insert_and_get_id', 1, fun(_Data) -> {ok, 2002} end}
             ]},
@@ -520,6 +527,8 @@ do_signup_with_mobile_succeeds_test_() ->
                 {'allocate', 0, fun() -> <<"test_account_signup">> end}
             ]},
             {user_ds, [
+                % 钉死 count=0：绕过 License 配额 402（见文件头说明）
+                {'count', 0, fun() -> 0 end},
                 {'find_id_by_mobile', 1, fun(_) -> 0 end},
                 {'insert_and_get_id', 1, fun(_Data) -> {ok, 3001} end}
             ]},
