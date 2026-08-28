@@ -25,10 +25,9 @@
 %%     ?assertMatch({ok, _}, Result)
 %% end).
 -define(TEST_WITH_APP(TestFun),
-    {setup,
-     fun eunit_runner:eunit_setup/0,
-     fun eunit_runner:eunit_cleanup/1,
-     fun(_State) -> ?_test((TestFun)()) end}
+    {setup, fun eunit_runner:eunit_setup/0, fun eunit_runner:eunit_cleanup/1, fun(_State) ->
+        ?_test((TestFun)())
+    end}
 ).
 
 %% @doc 创建一个需要数据库的测试
@@ -40,22 +39,24 @@
 %% end).
 -define(TEST_WITH_DB(TestFun),
     {setup,
-     fun() ->
-         case eunit_runner:eunit_setup_with_db() of
-             {ok, Conn} ->
-                 {ok, Conn};
-             {error, _Reason} ->
-                 skip
-         end
-     end,
-     fun({ok, Conn}) -> eunit_runner:eunit_cleanup_db(Conn);
-        (skip) -> ok
-     end,
-     fun({ok, _Conn}) ->
-             ?_test((TestFun)());
-        (skip) ->
-             []
-     end}).
+        fun() ->
+            case eunit_runner:eunit_setup_with_db() of
+                {ok, Conn} ->
+                    {ok, Conn};
+                {error, _Reason} ->
+                    skip
+            end
+        end,
+        fun
+            ({ok, Conn}) -> eunit_runner:eunit_cleanup_db(Conn);
+            (skip) -> ok
+        end, fun
+            ({ok, _Conn}) ->
+                ?_test((TestFun)());
+            (skip) ->
+                []
+        end}
+).
 
 %% @doc 创建一个简单的测试（不需要应用）
 %% 用法：
@@ -81,34 +82,25 @@
 %% end).
 
 -define(TEST_WITH_CONN(TestFun),
-
     {setup,
 
-     fun() ->
+        fun() ->
+            case eunit_runner:eunit_setup_with_db() of
+                {ok, Conn} -> Conn;
+                {error, _} -> skip
+            end
+        end,
 
-         case eunit_runner:eunit_setup_with_db() of
+        fun
+            (Conn) when is_pid(Conn) -> eunit_runner:eunit_cleanup_db(Conn);
+            (skip) -> ok
+        end,
 
-             {ok, Conn} -> Conn;
-
-             {error, _} -> skip
-
-         end
-
-     end,
-
-     fun(Conn) when is_pid(Conn) -> eunit_runner:eunit_cleanup_db(Conn);
-
-        (skip) -> ok
-
-     end,
-
-     fun(Conn) when is_pid(Conn) -> ?_test((TestFun)(Conn));
-
-        (skip) -> []
-
-     end}).
-
-
+        fun
+            (Conn) when is_pid(Conn) -> ?_test((TestFun)(Conn));
+            (skip) -> []
+        end}
+).
 
 %% @doc 创建一个带 Mock 的测试
 
@@ -129,24 +121,20 @@
 %% end).
 
 -define(TEST_WITH_MOCK(MockConfigs, TestFun),
-
     {setup,
 
-     fun() -> test_helper:setup_mock(MockConfigs) end,
+    fun() -> test_helper:setup_mock(MockConfigs) end,
 
-     fun(Mocks) -> test_helper:cleanup_mock(Mocks) end,
+    fun(Mocks) -> test_helper:cleanup_mock(Mocks) end,
 
-     fun(_Mocks) -> ?_test((TestFun)()) end}).
-
-
+    fun(_Mocks) -> ?_test((TestFun)()) end}
+).
 
 %% ===================================================================
 
 %% Mock 测试宏 (需要 test_helper 模块)
 
 %% ===================================================================
-
-
 
 %% @doc 创建带Mock的测试
 
@@ -161,16 +149,14 @@
 %% end).
 
 -define(WITH_MOCK(Module, Expectations, TestFun),
-
     {setup,
 
-     fun() -> test_helper:setup_mock(Module, Expectations) end,
+    fun() -> test_helper:setup_mock(Module, Expectations) end,
 
-     fun(_) -> test_helper:cleanup_mock(Module) end,
+    fun(_) -> test_helper:cleanup_mock(Module) end,
 
-     fun(_) -> ?_test((TestFun)()) end}).
-
-
+    fun(_) -> ?_test((TestFun)()) end}
+).
 
 %% @doc 创建带多个Mock的测试
 
@@ -183,28 +169,25 @@
 %% end).
 
 -define(WITH_MOCKS(MockConfigs, TestFun),
-
     {setup,
 
-     fun() ->
+        fun() ->
+            lists:foreach(
+                fun({Mod, Exp}) ->
+                    test_helper:setup_mock(Mod, Exp)
+                end,
+                MockConfigs
+            )
+        end,
 
-         lists:foreach(fun({Mod, Exp}) ->
+        fun(_) ->
+            Modules = [Mod || {Mod, _} <- MockConfigs],
 
-             test_helper:setup_mock(Mod, Exp)
+            test_helper:cleanup_mocks(Modules)
+        end,
 
-         end, MockConfigs)
-
-     end,
-
-     fun(_) ->
-
-         Modules = [Mod || {Mod, _} <- MockConfigs],
-
-         test_helper:cleanup_mocks(Modules)
-
-     end,
-
-     fun(_) -> ?_test((TestFun)()) end}).
+        fun(_) -> ?_test((TestFun)()) end}
+).
 
 %% @doc 创建带多个 Mock 的测试（使用 meck_helper）
 %% 用法：
@@ -212,22 +195,36 @@
 %%             {user_repo, [{'find', 1, fun() -> ... end}]}], fun() ->
 %%     % 测试代码
 %% end).
+%% 套件隔离治理：setup 先确保 imboy app 已启动。passthrough 类 mock 会透传
+%% 到真实 elib_pg/pooler，app 未启动时（全量跑的早期窗口）必然以
+%% {503,数据库忙} 失败——run #2 实测 31 个用例属此类。app 生命周期由
+%% eunit_runner 常驻策略管理：这里只负责启动，cleanup 不停止。
 -define(WITH_MECKS(MockConfigs, TestFun),
     {setup,
-     fun() ->
-         lists:foreach(fun({Module, Expectations}) ->
-             case meck_helper:setup_mock(Module, Expectations) of
-                 {ok, _} -> ok;
-                 {error, Reason} -> ?debugFmt("Mock setup failed for ~p: ~p", [Module, Reason])
-             end
-         end, MockConfigs)
-     end,
-     fun(_) ->
-         lists:foreach(fun({Module, _Expectations}) ->
-             meck_helper:cleanup_mock(Module)
-         end, MockConfigs)
-     end,
-     fun(_) -> ?_test((TestFun)()) end}).
+        fun() ->
+            _ = eunit_runner:eunit_setup(),
+            lists:foreach(
+                fun({Module, Expectations}) ->
+                    case meck_helper:setup_mock(Module, Expectations) of
+                        {ok, _} ->
+                            ok;
+                        {error, Reason} ->
+                            ?debugFmt("Mock setup failed for ~p: ~p", [Module, Reason])
+                    end
+                end,
+                MockConfigs
+            )
+        end,
+        fun(_) ->
+            lists:foreach(
+                fun({Module, _Expectations}) ->
+                    meck_helper:cleanup_mock(Module)
+                end,
+                MockConfigs
+            )
+        end,
+        fun(_) -> ?_test((TestFun)()) end}
+).
 
 %% @doc 创建带单个 Mock 的测试（使用 meck_helper）
 %% 用法：
@@ -236,16 +233,18 @@
 %% end).
 -define(WITH_MECK(Module, Expectations, TestFun),
     {setup,
-     fun() ->
-         case meck_helper:setup_mock(Module, Expectations) of
-             {ok, _} -> ok;
-             {error, Reason} -> ?debugFmt("Mock setup failed for ~p: ~p", [Module, Reason])
-         end
-     end,
-     fun(_) ->
-         meck_helper:cleanup_mock(Module)
-     end,
-     fun(_) -> ?_test((TestFun)()) end}).
+        fun() ->
+            _ = eunit_runner:eunit_setup(),
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> ?debugFmt("Mock setup failed for ~p: ~p", [Module, Reason])
+            end
+        end,
+        fun(_) ->
+            meck_helper:cleanup_mock(Module)
+        end,
+        fun(_) -> ?_test((TestFun)()) end}
+).
 
 %% ===================================================================
 %% 强断言宏（替代标准 EUnit 宏）
@@ -253,16 +252,20 @@
 
 %% @doc 强相等断言
 -define(ASSERT_EQUAL(Expected, Actual),
-    ?assertEqual(Expected, Actual)).
+    ?assertEqual(Expected, Actual)
+).
 
 %% @doc 强匹配断言
 -define(ASSERT_MATCH(Pattern, Value),
-    ?assertMatch(Pattern, Value)).
+    ?assertMatch(Pattern, Value)
+).
 
 %% @doc 强 OK 断言
 -define(ASSERT_OK(Result),
-    ?assertMatch({ok, _}, Result)).
+    ?assertMatch({ok, _}, Result)
+).
 
 %% @doc 强 ERROR 断言
 -define(ASSERT_ERROR(Result),
-    ?assertMatch({error, _}, Result)).
+    ?assertMatch({error, _}, Result)
+).

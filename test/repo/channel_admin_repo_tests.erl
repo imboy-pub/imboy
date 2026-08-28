@@ -8,8 +8,12 @@
 
 tablename_returns_public_channel_admin_table_test_() ->
     ?TEST_SIMPLE(fun() ->
-        %% eunit_runner 未加载时 sql_driver 未设，public_tablename 不加前缀
-        ?assertEqual(<<"channel_admin">>, channel_admin_repo:tablename())
+        %% 套件隔离治理：显式钉死 sql_driver 两个分支的结果，
+        %% 不依赖「app 是否已启动」这一套件全局状态。
+        application:set_env(imboy, sql_driver, stub_driver),
+        ?assertEqual(<<"channel_admin">>, channel_admin_repo:tablename()),
+        application:set_env(imboy, sql_driver, pgsql),
+        ?assertEqual(<<"public.channel_admin">>, channel_admin_repo:tablename())
     end).
 
 find_returns_row_when_exists_test_() ->
@@ -18,7 +22,7 @@ find_returns_row_when_exists_test_() ->
             {elib_pg, [
                 {'one', 2, fun(Sql, [11, 1001]) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"FROM channel_admin">>) =/= nomatch),
+                    ?assert(re:run(SqlBin, <<"FROM public\.channel_admin">>) =/= nomatch),
                     {ok, #{<<"channel_id">> => 11, <<"user_id">> => 1001, <<"role">> => 2}}
                 end}
             ]}

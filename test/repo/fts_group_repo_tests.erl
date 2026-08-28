@@ -9,7 +9,12 @@
 
 tablename_returns_fts_group_table_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(<<"fts_group">>, fts_group_repo:tablename())
+        %% 套件隔离治理：显式钉死 sql_driver 两个分支的结果，
+        %% 不依赖「app 是否已启动」这一套件全局状态。
+        application:set_env(imboy, sql_driver, stub_driver),
+        ?assertEqual(<<"fts_group">>, fts_group_repo:tablename()),
+        application:set_env(imboy, sql_driver, pgsql),
+        ?assertEqual(<<"public.fts_group">>, fts_group_repo:tablename())
     end).
 
 %% 空关键词计数返回 0

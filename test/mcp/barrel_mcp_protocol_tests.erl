@@ -51,7 +51,7 @@ start_srv(Mod) ->
 %% @doc 只回收本 fixture 启动的实例；borrowed（app 或更早 fixture 的）归其所有者。
 stop_owned({owned, Pid}) ->
     try
-        gen:stop(Pid, shutdown, 1000)
+        gen:stop(Pid, normal, 1000)
     catch
         _:_ -> ok
     end,
