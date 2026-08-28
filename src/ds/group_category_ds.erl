@@ -3,6 +3,14 @@
 %%%
 % group_category_ds 是 group_category domain service 缩写
 % 群组分类数据服务层，提供群组分类的数据操作和业务逻辑
+%
+% T7 归档写守卫（P0 后续批）判定：分类 CRUD（add/rename/delete/
+% update_sort_order）操作的是 user_group_category——按 user_id 键控的
+% 用户个人数据，不属于 workspace 范围资源，不加守卫（personal 红线：
+% 个人数据永不受守卫影响）；唯一群耦合写 move_group_to_category 只改
+% 调用者自己 group_member 行上的 category_id（用户个人的群归类展示
+% 元数据，非群内容/成员关系变更），用 write_tx_or_skip freeze 语义——
+% 归档时静默跳过返回 {ok, 0}（与退群 leave freeze 同族），读取不受影响。
 %%%
 
 -include("log.hrl").
@@ -182,11 +190,16 @@ update_sort_order(Uid, CategoryId, SortOrder) ->
 %% @return {ok, 1} 操作成功 | {error, Reason} 操作失败
 -spec move_group_to_category(integer(), integer(), integer()) -> {ok, integer()} | {error, term()}.
 move_group_to_category(Uid, Gid, CategoryId) ->
-    case group_category_repo:update_group_category(Uid, Gid, CategoryId) of
-        {ok, Count} when Count >= 0 ->
-            {ok, Count};
-        {error, Reason} ->
-            {error, Reason}
+    %% T7 派生读写（freeze 语义）：{group, Gid} → workspace 行锁；
+    %% 归档时跳过写入返回 {ok, 0}（用户个人归类静默跳过，与 leave freeze
+    %% 同族——不吞错也不 980），active/personal 正常更新。
+    case
+        workspace_guard:write_tx_or_skip({group, Gid}, fun(Conn) ->
+            group_category_repo:update_group_category_tx(Conn, Uid, Gid, CategoryId)
+        end)
+    of
+        {written, Ret} -> Ret;
+        skipped -> {ok, 0}
     end.
 
 %% G3: group_category_logic 不应直调 group_category_repo

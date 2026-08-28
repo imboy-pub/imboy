@@ -159,12 +159,17 @@ update_sort_order_success_test_() ->
     ).
 
 move_group_to_category_returns_updated_count_test_() ->
-    ?WITH_MECK(
-        group_category_repo,
+    ?WITH_MECKS(
         [
-            {'update_group_category', 3, fun(100, 2001, 9) ->
-                {ok, 1}
-            end}
+            {group_category_repo, [
+                {'update_group_category_tx', 4, fun(_Conn, 100, 2001, 9) ->
+                    {ok, 1}
+                end}
+            ]},
+            %% T7 归档写守卫收口适配：personal 直通 + with_tx 直跑
+            %%（move_group_to_category 为 freeze 语义路径）
+            {workspace_resolver, [{'resolve_workspace', 1, fun(_) -> personal end}]},
+            {elib_pg, [{'with_tx', 1, fun(TxFun) -> TxFun(fake_conn) end}]}
         ],
         fun() ->
             ?assertEqual({ok, 1}, group_category_ds:move_group_to_category(100, 2001, 9))

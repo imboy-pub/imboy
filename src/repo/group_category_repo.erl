@@ -22,6 +22,7 @@
 
 %% 群组成员分类操作
 -export([update_group_category/3]).
+-export([update_group_category_tx/4]).
 -export([list_groups_by_category/3]).
 -export([count_groups_grouped_by_category/1]).
 
@@ -145,10 +146,19 @@ delete(Uid, CategoryId) ->
 update_group_category(Uid, Gid, CategoryId) ->
     Tb = group_member_repo:tablename(),
     Sql =
-        <<"UPDATE ", Tb/binary,
-            " SET category_id = $1, updated_at = $2 "
+        <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2 ",
             "WHERE group_id = $3 AND user_id = $4">>,
     elib_pg:execute(Sql, [CategoryId, elib_dt:now(), Gid, Uid]).
+
+%% @doc 事务内更新群组成员的分类ID（归档 freeze 语义，DS 层 write_tx_or_skip 调用）
+-spec update_group_category_tx(any(), integer(), integer(), integer()) ->
+    {ok, integer()} | {error, term()}.
+update_group_category_tx(Conn, Uid, Gid, CategoryId) ->
+    Tb = group_member_repo:tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET category_id = $1, updated_at = $2 ",
+            "WHERE group_id = $3 AND user_id = $4">>,
+    elib_pg:execute(Conn, Sql, [CategoryId, elib_dt:now(), Gid, Uid]).
 
 %% @doc 查询指定分类下的群组列表
 %% @param Uid 用户ID
