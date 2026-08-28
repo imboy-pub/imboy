@@ -24,6 +24,11 @@
 -include("cache.hrl").
 -include("log.hrl").
 
+-ifdef(TEST).
+%% 内部函数，导出仅为归档守卫收口测试可直调「窗口竞态兜底」路径
+-export([write_attachment/8]).
+-endif.
+
 %% ===================================================================
 %% API 函数
 %% ===================================================================
@@ -43,70 +48,88 @@ upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
         false ->
             {error, not_member};
         true ->
-            % 2. 验证文件类型
-            case elib_oss:validate_file_type(FileType) of
-                false ->
+            % 1.5 T7 归档写守卫（前置检查版）：群文件上传向（可能属 workspace
+            % 范围的）群写两笔记录（group_file 行 + scope=group 的 attachment
+            % 补写行）。workspace 群已归档 → 稳定错误码 980 拒绝，在白传 OSS
+            % 之前拦截。检查与写之间存在窗口（OSS 上传非 DB 操作无法同事务，
+            % 与 R3 #9-13/#17 前置检查版同款残留）；附件补写落库点在
+            % write_attachment 内另接同事务守卫兜底。
+            case workspace_guard:ensure_writable({group, Gid}) of
+                ok ->
+                    do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType);
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+%% @doc 成员身份与归档守卫通过后的实际上传流程
+%% （类型校验 → OSS 上传 → group_file 落库 → attachment 补写）
+-spec do_upload_file(integer(), integer(), binary(), binary(), binary()) ->
+    {ok, binary()} | {error, term()}.
+do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
+    % 2. 验证文件类型
+    case elib_oss:validate_file_type(FileType) of
+        false ->
+            {error, invalid_file_type};
+        true ->
+            % 3. 上传文件到 OSS
+            case elib_oss:upload(FileBinary, FileName, #{mime_type => FileType}) of
+                {error, file_too_large} ->
+                    {error, file_too_large};
+                {error, invalid_file_type} ->
                     {error, invalid_file_type};
-                true ->
-                    % 3. 上传文件到 OSS
-                    case elib_oss:upload(FileBinary, FileName, #{mime_type => FileType}) of
-                        {error, file_too_large} ->
-                            {error, file_too_large};
-                        {error, invalid_file_type} ->
-                            {error, invalid_file_type};
-                        {ok, FileUrl, FileId} ->
-                            % 4. 计算文件哈希（可选）
-                            FileHash = erlang:md5(FileBinary),
-                            FileHashHex = binary:encode_hex(FileHash),
+                {ok, FileUrl, FileId} ->
+                    % 4. 计算文件哈希（可选）
+                    FileHash = erlang:md5(FileBinary),
+                    FileHashHex = binary:encode_hex(FileHash),
 
-                            % 5. 获取文件分类
-                            Category = elib_oss:get_file_category(FileType),
-                            CategoryBin = atom_to_binary(Category, utf8),
+                    % 5. 获取文件分类
+                    Category = elib_oss:get_file_category(FileType),
+                    CategoryBin = atom_to_binary(Category, utf8),
 
-                            % 6. 保存文件记录
-                            Now = elib_dt:now(),
-                            Data = #{
-                                group_id => Gid,
-                                file_id => FileId,
-                                file_name => FileName,
-                                file_size => byte_size(FileBinary),
-                                file_type => FileType,
-                                file_category => CategoryBin,
-                                file_url => FileUrl,
-                                file_hash => FileHashHex,
-                                uploader_id => UploaderId,
-                                download_count => 0,
-                                status => 1,
-                                created_at => Now,
-                                updated_at => Now
-                            },
+                    % 6. 保存文件记录
+                    Now = elib_dt:now(),
+                    Data = #{
+                        group_id => Gid,
+                        file_id => FileId,
+                        file_name => FileName,
+                        file_size => byte_size(FileBinary),
+                        file_type => FileType,
+                        file_category => CategoryBin,
+                        file_url => FileUrl,
+                        file_hash => FileHashHex,
+                        uploader_id => UploaderId,
+                        download_count => 0,
+                        status => 1,
+                        created_at => Now,
+                        updated_at => Now
+                    },
 
-                            case group_file_repo:insert(Data) of
-                                % repo 返回二元组 {ok, FileId}（曾误匹配三元组
-                                % {ok, _InsertId, _Details} → no case clause 生产 500）
-                                {ok, _FileId} ->
-                                    % BUG#137：elib_oss:upload 落库的是 Garage 私桶
-                                    % 裸 URL（无签名），且群文件从不写 attachment 表 →
-                                    % 客户端任何下载路径（viewUrl HMAC / view_url
-                                    % presign）都拿不到文件 → 群文件视频/音频播放 404。
-                                    % 补写 scope=group 附件记录，读鉴权才可签发 presign GET。
-                                    write_attachment(
-                                        Gid,
-                                        UploaderId,
-                                        FileName,
-                                        FileBinary,
-                                        FileType,
-                                        FileUrl,
-                                        FileId,
-                                        FileHashHex
-                                    ),
-                                    {ok, FileId};
-                                {error, Reason} ->
-                                    {error, Reason}
-                            end;
-                        {error, UploadErr} ->
-                            {error, UploadErr}
-                    end
+                    case group_file_repo:insert(Data) of
+                        % repo 返回二元组 {ok, FileId}（曾误匹配三元组
+                        % {ok, _InsertId, _Details} → no case clause 生产 500）
+                        {ok, _FileId} ->
+                            % BUG#137：elib_oss:upload 落库的是 Garage 私桶
+                            % 裸 URL（无签名），且群文件从不写 attachment 表 →
+                            % 客户端任何下载路径（viewUrl HMAC / view_url
+                            % presign）都拿不到文件 → 群文件视频/音频播放 404。
+                            % 补写 scope=group 附件记录，读鉴权才可签发 presign GET。
+                            write_attachment(
+                                Gid,
+                                UploaderId,
+                                FileName,
+                                FileBinary,
+                                FileType,
+                                FileUrl,
+                                FileId,
+                                FileHashHex
+                            ),
+                            {ok, FileId};
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                {error, UploadErr} ->
+                    {error, UploadErr}
             end
     end.
 
@@ -244,6 +267,15 @@ write_attachment(Gid, UploaderId, FileName, FileBinary, FileType, FileUrl, FileI
     },
     try
         _ = elib_pg:with_tx(fun(Conn) ->
+            %% T7 同事务归档写守卫：scope=group 附件补写落库点（与
+            %% attach_logic:do_save_1 转正同款）。archived → abort_tx 回滚，
+            %% 兜住 upload_file 前置检查与本次写之间的归档竞态窗口——
+            %% 已归档 workspace 绝不新增附件行。本函数 fail-open 设计不变：
+            %% 守卫拒绝经外层 catch 只记日志、返回 ok，不放大成上传失败
+            %% （前置检查已拦截绝大多数，此处仅竞态兜底）。
+            ok = workspace_guard:abort_on_error(
+                workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+            ),
             attachment_ds:save(Conn, elib_dt:now(), UploaderId, [Attach])
         end)
     catch

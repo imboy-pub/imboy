@@ -13,8 +13,10 @@
 %        / workspace
 %        project(经 workspace_id，恒 workspace 归属) / project_task(经 project)
 %        （后两者 WP4/T7 为 workspace_guard 写守卫扩展）
-%        attachment(经 scope_ref→group/channel；其余 scope 回溯复杂，本期返回
-%        personal 并标 TODO_T7，与任务卡"复杂回溯可先返回 personal"授权一致)。
+%        attachment(经 scope_ref→group/channel；T7 结项：c2c/moment/private/
+%        public 为个人域——scope 落库不可变 + 读 ACL 恒绑定原 scope，附件进
+%        workspace 的唯一途径是上传时即带 group/channel scope（落库点均接
+%        同事务守卫），无需回溯，显式返回 personal，见 attachment 子句注释)。
 %   2. ensure_channel_member_access/2 / ensure_group_member_access/2：
 %      Workspace 边界执行前置校验——scope=workspace 的资源要求请求者是
 %      active workspace_member（§1.4.2 授权规则 2），非成员稳定 403；
@@ -114,8 +116,31 @@ resolve_workspace({attachment, AttachId}) ->
             group_scope(elib_cnv:safe_to_integer(Ref));
         #{<<"scope">> := <<"channel">>, <<"scope_ref">> := Ref} when Ref =/= null ->
             channel_scope(elib_cnv:safe_to_integer(Ref));
-        %% TODO(T7)：c2c/moment/private 附件需经消息/动态回溯目标群/频道，
-        %% 归档写守卫接入时统一实现；当前按 personal 放行（personal 不受守卫影响）。
+        %% T7 结项（2026-08 调查）：c2c/moment/private/public 附件显式归为
+        %% personal（个人域），不做 workspace 回溯——判定依据三条不变量：
+        %%   1. attachment.scope 落库后不可变：全库唯一后置 UPDATE 是
+        %%      bind_moment_scope_ref（仅回填 moment 行的 scope_ref），ON
+        %%      CONFLICT 只递增 referer 计数——个人域附件不存在事后改挂
+        %%      群/频道/workspace 的写路径；
+        %%   2. 读 ACL 恒绑定原始 scope（attach_logic:authorize）：c2c 附件被
+        %%      转发进群（msg_forward 只建 forward 型新消息、不改附件行）后，
+        %%      群成员 view_url 仍按 c2c 会话成员判定（拒绝）、private 附件仅
+        %%      creator 可读——跨域引用不解锁读取，附件不会成为群可读资源；
+        %%   3. 附件进入 workspace 范围的唯一途径是上传时即携带 scope=group/
+        %%      channel（scope_ref=目标 id，上传点已知目标、无需回溯），其全部
+        %%      落库点（attach_logic:do_save_1 转正 + group_file_ds:
+        %%      write_attachment 群文件补写）均已接入同事务归档写守卫（980）。
+        %% 故 workspace 归档不影响个人域附件的转正与读取——personal 是设计
+        %% 决定而非回溯缺失（原 TODO(T7) 结项）。
+        #{<<"scope">> := Scope} when
+            Scope =:= <<"c2c">>;
+            Scope =:= <<"moment">>;
+            Scope =:= <<"private">>;
+            Scope =:= <<"public">>
+        ->
+            personal;
+        %% 行不存在 / 未知 scope 值沿历史 personal 兜底（守卫对两者均放行，
+        %% not_found 交既有 404 流程，不吞既有语义）。
         _ ->
             personal
     end;

@@ -476,6 +476,124 @@ attachment_save_closure_test_() ->
                     )
                 )
             end)
+        end},
+        %% T7 结项钉子：workspace 已归档（群/频道可解析到 archived workspace）
+        %% 也不影响 moment/private 附件转正——个人域与 workspace 归档正交，
+        %% 守卫 N/A 是设计决定而非遗漏。
+        {"moment-scope attachment confirm passes under archived workspace (T7 closed)", fun() ->
+            SaveOk2 =
+                {attachment_ds, [
+                    {'save', 4, fun(_, _, _, _) -> ok end},
+                    {'pending_remove', 1, fun(_) -> ok end}
+                ]},
+            MomentOss =
+                {elib_oss, [
+                    {'get_bucket', 1, fun(<<"moment">>) -> <<"bucket">> end},
+                    {'head_object', 2, fun(_, _) ->
+                        {ok, #{size => 10, content_type => <<"image/png">>}}
+                    end},
+                    {'max_file_size', 0, fun() -> 1000 end},
+                    {'validate_file_type', 1, fun(_) -> true end}
+                ]},
+            ?WITH_MECKS(archived_mocks() ++ [MomentOss, SaveOk2], fun() ->
+                ?assertMatch(
+                    {ok, _},
+                    attach_logic:verify_and_save(?UID, <<"k">>, <<"moment">>, undefined, Meta)
+                )
+            end)
+        end},
+        {"private-scope attachment confirm passes under archived workspace (T7 closed)", fun() ->
+            SaveOk3 =
+                {attachment_ds, [
+                    {'save', 4, fun(_, _, _, _) -> ok end},
+                    {'pending_remove', 1, fun(_) -> ok end}
+                ]},
+            PrivateOss =
+                {elib_oss, [
+                    {'get_bucket', 1, fun(<<"private">>) -> <<"bucket">> end},
+                    {'head_object', 2, fun(_, _) ->
+                        {ok, #{size => 10, content_type => <<"image/png">>}}
+                    end},
+                    {'max_file_size', 0, fun() -> 1000 end},
+                    {'validate_file_type', 1, fun(_) -> true end}
+                ]},
+            ?WITH_MECKS(archived_mocks() ++ [PrivateOss, SaveOk3], fun() ->
+                ?assertMatch(
+                    {ok, _},
+                    attach_logic:verify_and_save(?UID, <<"k">>, <<"private">>, undefined, Meta)
+                )
+            end)
+        end}
+    ].
+
+%%% ===================================================================
+%%% 群文件上传附件补写（group_file_ds，T7 收口：scope=group 附件的
+%%% 第二个落库点——上传入口前置守卫 + 补写事务同事务守卫双保险）
+%%% ===================================================================
+
+group_file_upload_closure_test_() ->
+    [
+        {"group file upload into archived workspace rejected 980 before OSS", fun() ->
+            MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            OssMustNot =
+                {elib_oss, [
+                    {'validate_file_type', 1, fun(_) -> true end},
+                    {'upload', 3, fun(_, _, _) -> {error, must_not_upload} end}
+                ]},
+            ?WITH_MECKS(archived_mocks() ++ [MemberMock, OssMustNot], fun() ->
+                ?assertMatch(
+                    {error, {980, _}},
+                    group_file_ds:upload_file(
+                        ?GID, ?UID, <<"a.png">>, <<"bin">>, <<"image/png">>
+                    )
+                )
+            end)
+        end},
+        {"group file attachment write aborted in-tx on archived (window race)", fun() ->
+            %% 前置检查通过后归档竞态落进检查-写窗口：write_attachment 的
+            %% 同事务守卫兜底——attachment 行绝不落库（save 不执行），
+            %% 且 fail-open 设计不变（返回 ok、只记日志，不放大成上传失败）。
+            SaveMustNot =
+                {attachment_ds, [
+                    {'save', 4, fun(_, _, _, _) -> must_not_save end}
+                ]},
+            ?WITH_MECKS(archived_mocks() ++ [SaveMustNot], fun() ->
+                ?assertEqual(
+                    ok,
+                    group_file_ds:write_attachment(
+                        ?GID,
+                        ?UID,
+                        <<"a.png">>,
+                        <<"bin">>,
+                        <<"image/png">>,
+                        <<"http://u">>,
+                        <<"fid">>,
+                        <<"hash">>
+                    )
+                )
+            end)
+        end},
+        {"personal group file upload unaffected (zero regression)", fun() ->
+            MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            OssMock =
+                {elib_oss, [
+                    {'validate_file_type', 1, fun(_) -> true end},
+                    {'upload', 3, fun(_, _, _) -> {ok, <<"http://u">>, <<"fid">>} end},
+                    {'get_file_category', 1, fun(_) -> image end}
+                ]},
+            InsertMock = {group_file_repo, [{'insert', 1, fun(_) -> {ok, 1} end}]},
+            SaveOk = {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]},
+            ?WITH_MECKS(
+                personal_mocks() ++ [MemberMock, OssMock, InsertMock, SaveOk],
+                fun() ->
+                    ?assertMatch(
+                        {ok, _},
+                        group_file_ds:upload_file(
+                            777099, ?UID, <<"a.png">>, <<"bin">>, <<"image/png">>
+                        )
+                    )
+                end
+            )
         end}
     ].
 

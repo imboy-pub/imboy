@@ -83,6 +83,12 @@ upload(Req0, State) ->
                     elib_response:error(Req1, <<"文件大小超出限制"/utf8>>, ?ERR_FILE_SIZE_EXCEEDED);
                 {error, invalid_file_type} ->
                     elib_response:error(Req1, <<"不允许的文件类型"/utf8>>, ?ERR_FILE_TYPE_NOT_ALLOWED);
+                {error, ?ERR_WORKSPACE_ARCHIVED} ->
+                    % T7 归档写守卫（群文件上传 = group_file 行 + scope=group
+                    % 附件补写行两笔 workspace 范围写）
+                    elib_response:error(
+                        Req1, <<"工作区已归档，写操作被拒绝"/utf8>>, ?ERR_WORKSPACE_ARCHIVED
+                    );
                 {error, _Reason} ->
                     elib_response:error(Req1, <<"文件上传失败"/utf8>>, ?ERR_FILE_UPLOAD_FAILED)
             end
