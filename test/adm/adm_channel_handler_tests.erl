@@ -198,11 +198,19 @@ init_pin_message_success_test_() ->
                 {elib_dt, [
                     {'now', 0, fun() -> <<"2026-02-21T10:00:00Z">> end}
                 ]},
+                %% P0 收口后消息更新走 write_tx（归档守卫同事务）
+                {workspace_guard, [
+                    {'ensure_writable_tx', 2, fun(fake_conn, {channel_message, 22}) -> ok end},
+                    {'abort_on_error', 1, fun(ok) -> ok end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
                 {channel_message_repo, [
                     {'find_by_id', 1, fun(22) ->
                         #{<<"id">> => 22, <<"channel_id">> => 11}
                     end},
-                    {'update', 2, fun(22, Data) ->
+                    {'update_tx', 3, fun(_Conn, 22, Data) ->
                         ?assertEqual(false, maps:get(is_pinned, Data)),
                         ?assertEqual(<<"2026-02-21T10:00:00Z">>, maps:get(updated_at, Data)),
                         {ok, 1}
@@ -611,6 +619,14 @@ init_update_admin_role_success_test_() ->
                 {elib_param, [
                     {'post', 1, fun(_Req) -> #{<<"role">> => 2} end}
                 ]},
+                %% P0 收口后 admin 写走 write_tx（归档守卫同事务）
+                {workspace_guard, [
+                    {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                    {'abort_on_error', 1, fun(ok) -> ok end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
                 {channel_admin_repo, [
                     {'find', 2, fun(11, 22) ->
                         #{
@@ -620,7 +636,7 @@ init_update_admin_role_success_test_() ->
                             <<"role">> => 1
                         }
                     end},
-                    {'update_role', 3, fun(11, 22, 2) -> {ok, 1} end}
+                    {'update_role_tx', 4, fun(_Conn, 11, 22, 2) -> {ok, 1} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(Data) ->
@@ -649,7 +665,7 @@ init_update_admin_role_success_test_() ->
             ),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(<<"管理员角色已更新"/utf8>>, maps:get(success_msg, RespReq)),
-            ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role, 3)),
+            ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role_tx, 4)),
             ?assertEqual(1, meck:num_calls(user_log_repo, add, 1))
         end
     ).
@@ -671,6 +687,14 @@ init_update_admin_role_repo_failure_no_audit_test_() ->
                 {elib_param, [
                     {'post', 1, fun(_Req) -> #{<<"role">> => 2} end}
                 ]},
+                %% P0 收口后 admin 写走 write_tx（归档守卫同事务）
+                {workspace_guard, [
+                    {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                    {'abort_on_error', 1, fun(ok) -> ok end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
                 {channel_admin_repo, [
                     {'find', 2, fun(11, 22) ->
                         #{
@@ -680,7 +704,7 @@ init_update_admin_role_repo_failure_no_audit_test_() ->
                             <<"role">> => 1
                         }
                     end},
-                    {'update_role', 3, fun(11, 22, 2) -> {error, <<"db_down">>} end}
+                    {'update_role_tx', 4, fun(_Conn, 11, 22, 2) -> {error, <<"db_down">>} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(_) -> erlang:error(should_not_audit) end}
@@ -699,7 +723,7 @@ init_update_admin_role_repo_failure_no_audit_test_() ->
             ),
             ?assertEqual(500, maps:get(response_status, RespReq)),
             ?assertEqual(<<"更新失败"/utf8>>, maps:get(error_msg, RespReq)),
-            ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role, 3)),
+            ?assertEqual(1, meck:num_calls(channel_admin_repo, update_role_tx, 4)),
             ?assertEqual(0, meck:num_calls(user_log_repo, add, 1))
         end
     ).
@@ -718,6 +742,14 @@ init_remove_admin_success_test_() ->
                         end
                     end}
                 ]},
+                %% P0 收口后 admin 写走 write_tx（归档守卫同事务）
+                {workspace_guard, [
+                    {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                    {'abort_on_error', 1, fun(ok) -> ok end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
                 {channel_admin_repo, [
                     {'find', 2, fun(11, 22) ->
                         #{
@@ -727,7 +759,7 @@ init_remove_admin_success_test_() ->
                             <<"role">> => 2
                         }
                     end},
-                    {'delete', 2, fun(11, 22) -> {ok, 1} end}
+                    {'delete_tx', 3, fun(_Conn, 11, 22) -> {ok, 1} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(Data) ->
@@ -756,7 +788,7 @@ init_remove_admin_success_test_() ->
             ),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(<<"管理员已移除"/utf8>>, maps:get(success_msg, RespReq)),
-            ?assertEqual(1, meck:num_calls(channel_admin_repo, delete, 2)),
+            ?assertEqual(1, meck:num_calls(channel_admin_repo, delete_tx, 3)),
             ?assertEqual(1, meck:num_calls(user_log_repo, add, 1))
         end
     ).
@@ -970,11 +1002,18 @@ init_delete_message_success_test_() ->
                         end
                     end}
                 ]},
+                {workspace_guard, [
+                    {'ensure_writable_tx', 2, fun(fake_conn, {channel_message, 22}) -> ok end},
+                    {'abort_on_error', 1, fun(ok) -> ok end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
                 {channel_message_repo, [
                     {'find_by_id', 1, fun(22) ->
                         #{<<"id">> => 22, <<"channel_id">> => 11}
                     end},
-                    {'delete', 1, fun(22) -> {ok, 1} end}
+                    {'delete_tx', 2, fun(_Conn, 22) -> {ok, 1} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(Data) ->
@@ -1003,7 +1042,7 @@ init_delete_message_success_test_() ->
             ),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             ?assertEqual(<<"消息已删除"/utf8>>, maps:get(success_msg, RespReq)),
-            ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, delete_tx, 2)),
             ?assertEqual(1, meck:num_calls(user_log_repo, add, 1))
         end
     ).
@@ -1022,11 +1061,18 @@ init_delete_message_repo_failure_no_audit_test_() ->
                         end
                     end}
                 ]},
+                {workspace_guard, [
+                    {'ensure_writable_tx', 2, fun(fake_conn, {channel_message, 22}) -> ok end},
+                    {'abort_on_error', 1, fun(ok) -> ok end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
                 {channel_message_repo, [
                     {'find_by_id', 1, fun(22) ->
                         #{<<"id">> => 22, <<"channel_id">> => 11}
                     end},
-                    {'delete', 1, fun(22) -> {error, <<"db_down">>} end}
+                    {'delete_tx', 2, fun(_Conn, 22) -> {error, <<"db_down">>} end}
                 ]},
                 {user_log_repo, [
                     {'add', 1, fun(_) -> erlang:error(should_not_audit) end}
@@ -1045,7 +1091,7 @@ init_delete_message_repo_failure_no_audit_test_() ->
             ),
             ?assertEqual(500, maps:get(response_status, RespReq)),
             ?assertEqual(<<"删除失败"/utf8>>, maps:get(error_msg, RespReq)),
-            ?assertEqual(1, meck:num_calls(channel_message_repo, delete, 1)),
+            ?assertEqual(1, meck:num_calls(channel_message_repo, delete_tx, 2)),
             ?assertEqual(0, meck:num_calls(user_log_repo, add, 1))
         end
     ).
