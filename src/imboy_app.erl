@@ -427,9 +427,26 @@ validate_runtime_config() ->
             %% 此前无条件校验，导致没有真实商户凭据的部署方**根本装不起来**：
             %% sandbox 在 strict 环境 fail-fast，live 又缺凭据 fail-fast。
             ok = ensure_payment_gateway_config(),
+            %% SEC-02（审计 #44）：商务版（product_profile=enterprise）强制
+            %% 插件可信签名 —— 强制档位下没有有效可信公钥属于不完备部署
+            %% （install 必然全部 no_trusted_keys 拒绝），启动即拒。
+            %% community 默认宽松（lifecycle 默认关闭，不受影响）。
+            ok = ensure_plugin_signature_config(),
             ok;
         false ->
             ok
+    end.
+
+%% @doc 强制签名档位（商务版 / 显式 plugin_signature_required=true）下，
+%% 必须至少配置一个有效可信公钥，否则启动 fail-fast。
+%% 判定与加载全部收敛在 imboy_plugin_signature（与 install 时同一套口径）。
+-spec ensure_plugin_signature_config() -> ok.
+ensure_plugin_signature_config() ->
+    case imboy_plugin_signature:validate_config() of
+        ok ->
+            ok;
+        {error, Reason} ->
+            erlang:error({invalid_plugin_signature_config, Reason})
     end.
 
 %% @doc 若开启了 push.enabled = true，则 jpush_app_key/jpush_master_secret 必须配置

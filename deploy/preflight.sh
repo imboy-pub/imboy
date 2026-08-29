@@ -227,7 +227,31 @@ if [[ "$PLUGIN_LIFECYCLE" != "true" && "$PLUGIN_LIFECYCLE" != "1" ]]; then
     info "  /api/adm/plugin/* 的 install/enable/disable/upgrade/uninstall/reset/force_uninstall 返回「功能未启用」"
     info "  内置功能开关（channel/moment/location/group_collab）是纯 manifest，不受影响"
 else
-    info "IMBOY_PLUGIN_LIFECYCLE_ENABLED=true（动态插件写操作已放行，需自行承担安全风险）"
+    info "IMBOY_PLUGIN_LIFECYCLE_ENABLED=true（动态插件写操作已放行）"
+    info "  SEC-02 收口生效：install path 必须位于受控插件根（IMBOY_PLUGIN_ROOT，默认 priv/plugins）内"
+    # SEC-02（审计 #44）：商务档（IMBOY_PRODUCT_PROFILE=enterprise）强制插件可信签名。
+    # Erlang 侧 imboy_plugin_signature:signature_required/0 对 enterprise 恒为 true，
+    # 缺有效可信公钥时生产启动 fail-fast（imboy_app:ensure_plugin_signature_config/0）
+    # 且 install 全部拒绝 —— 此处在部署前就把死配置拦下，避免带病上线。
+    if [[ "$PRODUCT_PROFILE" == "enterprise" ]]; then
+        if [[ -z "${IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES:-}" ]]; then
+            err "商务档（IMBOY_PRODUCT_PROFILE=enterprise）启用动态插件生命周期必须配置可信签名公钥：IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES（逗号分隔 32 字节 Ed25519 公钥文件路径），否则后端启动 fail-fast、install 全部拒绝"
+        else
+            MISSING=0
+            IFS=',' read -ra KEY_FILES <<< "$IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES"
+            for KEY_FILE in "${KEY_FILES[@]}"; do
+                KEY_FILE="$(echo "$KEY_FILE" | xargs)"
+                [[ -z "$KEY_FILE" ]] && continue
+                if [[ ! -f "$KEY_FILE" ]]; then
+                    err "可信公钥文件不存在：$KEY_FILE（后端加载时跳过该 key，等价缺配置）"
+                    MISSING=1
+                fi
+            done
+            if [[ $MISSING -eq 0 ]]; then
+                ok "商务档插件签名可信公钥文件已配置"
+            fi
+        fi
+    fi
 fi
 
 # ── 2b. 支付模式与凭据检查 / Payment mode & credentials ───────────────────────

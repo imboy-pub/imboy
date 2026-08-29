@@ -430,11 +430,31 @@ execute_undo_best_effort(UndoLog) ->
 
 %% @doc 安装步骤 (lifecycle.md §5.1)。
 %% 记录有副作用的步骤的撤销操作。
+%% SEC-02（审计 #43）：读 Path 处同源收口 —— realpath 解析受控插件根
+%% 白名单（manager:install/2 入口层之外的第二层防御，直接向 statem 投
+%% {install, Path} 也 fail-closed）；后续读取一律使用解析后的 canonical
+%% 路径，且 plugin.config / SIGNATURE 文件级校验不得 symlink 逃逸出根。
 run_install_steps(Path, Data) ->
-    ConfigPath = <<Path/binary, "/plugin.config">>,
-    SigPath = <<Path/binary, "/SIGNATURE">>,
+    case imboy_plugin_path:resolve(Path) of
+        {ok, CanonicalPath} ->
+            run_install_steps_canonical(CanonicalPath, Data);
+        {error, Reason} ->
+            {error, {resolve_path, Reason}, []}
+    end.
+
+run_install_steps_canonical(CanonicalPath, Data) ->
+    ConfigPath = <<CanonicalPath/binary, "/plugin.config">>,
+    SigPath = <<CanonicalPath/binary, "/SIGNATURE">>,
     erase(undo_log),
     with_steps(fun() ->
+        step_ok(
+            imboy_plugin_path:ensure_file_within(ConfigPath),
+            validate_config_path
+        ),
+        step_ok(
+            imboy_plugin_path:ensure_file_within(SigPath),
+            validate_signature_path
+        ),
         step_ok(
             imboy_plugin_signature:verify_file(ConfigPath, SigPath),
             verify_signature
@@ -456,7 +476,7 @@ run_install_steps(Path, Data) ->
         %% Extract rollback strategy from manifest
         Strategy = get_rollback_strategy(Manifest),
         {ok, Data#data{
-            path = Path,
+            path = CanonicalPath,
             manifest = Manifest,
             version = maps:get(version, Manifest, <<"1.0.0">>),
             rollback_strategy = Strategy

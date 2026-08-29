@@ -26,41 +26,67 @@ mock_components() ->
 
 mock_components(Overrides) ->
     Manifest = maps:get(manifest, Overrides, ?MANIFEST),
-    Mods = [
-        {imboy_plugin_signature, [
-            {verify_file, 2, fun(_, _) -> ok end}
-        ]},
-        {imboy_plugin_toml, [
-            {load, 1, fun(_) -> {ok, Manifest} end}
-        ]},
-        {imboy_plugin_dependency, [
-            {validate_constraints, 1, fun(_) -> ok end},
-            {check_enable_deps, 1, fun(_) -> ok end},
-            {find_dependents, 1, fun(_) -> ok end}
-        ]},
-        {imboy_plugin_loader, [
-            {scan, 0, fun() -> ok end}
-        ]},
-        {imboy_router_registry, [
-            {register, 2, fun(_, _) -> ok end},
-            {unregister, 1, fun(_) -> ok end}
+    %% SEC-02：既有状态转换用例关注状态机语义，路径收口组件与 signature/
+    %% toml/dependency 同等对待 —— mock 放行；收口本身的真实负向矩阵在
+    %% imboy_plugin_path_tests + 本文件尾部 path_fixture 组（不 mock path）。
+    PathMock = [
+        {imboy_plugin_path, [
+            {resolve, 1, fun(P) -> {ok, P} end},
+            {ensure_file_within, 1, fun(_) -> ok end}
         ]}
     ],
-    lists:foreach(fun({Mod, Exps}) ->
-        meck_helper:cleanup_mock(Mod),
-        {ok, _} = meck_helper:setup_mock(Mod, Exps)
-    end, Mods).
+    Mods =
+        PathMock ++
+            [
+                {imboy_plugin_signature, [
+                    {verify_file, 2, fun(_, _) -> ok end}
+                ]},
+                {imboy_plugin_toml, [
+                    {load, 1, fun(_) -> {ok, Manifest} end}
+                ]},
+                {imboy_plugin_dependency, [
+                    {validate_constraints, 1, fun(_) -> ok end},
+                    {check_enable_deps, 1, fun(_) -> ok end},
+                    {find_dependents, 1, fun(_) -> ok end}
+                ]},
+                {imboy_plugin_loader, [
+                    {scan, 0, fun() -> ok end}
+                ]},
+                {imboy_router_registry, [
+                    {register, 2, fun(_, _) -> ok end},
+                    {unregister, 1, fun(_) -> ok end}
+                ]}
+            ],
+    lists:foreach(
+        fun({Mod, Exps}) ->
+            meck_helper:cleanup_mock(Mod),
+            {ok, _} = meck_helper:setup_mock(Mod, Exps)
+        end,
+        Mods
+    ).
+
+%% SEC-02：手动重打 mock 的用例补路径模块放行（路径收口的真实负向
+%% 验证在 path_fixture 组，不经过此 helper）。
+mock_path_passthrough() ->
+    meck_helper:setup_mock(imboy_plugin_path, [
+        {resolve, 1, fun(P) -> {ok, P} end},
+        {ensure_file_within, 1, fun(_) -> ok end}
+    ]).
 
 unmock_components() ->
-    lists:foreach(fun(Mod) ->
-        _ = catch meck_helper:cleanup_mock(Mod)
-    end, [
-        imboy_plugin_signature,
-        imboy_plugin_toml,
-        imboy_plugin_dependency,
-        imboy_plugin_loader,
-        imboy_router_registry
-    ]).
+    lists:foreach(
+        fun(Mod) ->
+            _ = catch meck_helper:cleanup_mock(Mod)
+        end,
+        [
+            imboy_plugin_path,
+            imboy_plugin_signature,
+            imboy_plugin_toml,
+            imboy_plugin_dependency,
+            imboy_plugin_loader,
+            imboy_router_registry
+        ]
+    ).
 
 start_lifecycle() ->
     start_lifecycle(#{}).
@@ -364,8 +390,11 @@ install_calls_all_components_test_() ->
 
         meck_helper:verify_called_once(imboy_plugin_signature, verify_file, 2),
         meck_helper:verify_called_once(imboy_plugin_toml, load, 1),
-        meck_helper:verify_called_once(imboy_plugin_dependency,
-                                        validate_constraints, 1),
+        meck_helper:verify_called_once(
+            imboy_plugin_dependency,
+            validate_constraints,
+            1
+        ),
         meck_helper:verify_called_once(imboy_plugin_loader, scan, 0),
 
         gen_statem:stop(Pid),
@@ -375,6 +404,7 @@ install_calls_all_components_test_() ->
 install_fails_on_bad_signature_test_() ->
     ?_test(begin
         unmock_components(),
+        mock_path_passthrough(),
         meck_helper:setup_mock(imboy_plugin_signature, [
             {verify_file, 2, fun(_, _) -> {error, signature_mismatch} end}
         ]),
@@ -407,6 +437,7 @@ install_fails_on_bad_signature_test_() ->
 install_fails_on_bad_manifest_test_() ->
     ?_test(begin
         unmock_components(),
+        mock_path_passthrough(),
         meck_helper:setup_mock(imboy_plugin_signature, [
             {verify_file, 2, fun(_, _) -> ok end}
         ]),
@@ -415,8 +446,8 @@ install_fails_on_bad_manifest_test_() ->
         ]),
         meck_helper:setup_mock(imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
-        {check_enable_deps, 1, fun(_) -> ok end},
-        {find_dependents, 1, fun(_) -> ok end}
+            {check_enable_deps, 1, fun(_) -> ok end},
+            {find_dependents, 1, fun(_) -> ok end}
         ]),
         meck_helper:setup_mock(imboy_plugin_loader, [
             {scan, 0, fun() -> ok end}
@@ -433,8 +464,14 @@ install_fails_on_bad_manifest_test_() ->
         ?assertEqual(unknown, state_of(Pid)),
 
         %% toml failed, dependency should NOT have been called
-        ?assertEqual(0, meck:num_calls(imboy_plugin_dependency,
-                                        validate_constraints, 1)),
+        ?assertEqual(
+            0,
+            meck:num_calls(
+                imboy_plugin_dependency,
+                validate_constraints,
+                1
+            )
+        ),
 
         gen_statem:stop(Pid),
         unmock_components()
@@ -443,6 +480,7 @@ install_fails_on_bad_manifest_test_() ->
 install_fails_on_dependency_error_test_() ->
     ?_test(begin
         unmock_components(),
+        mock_path_passthrough(),
         meck_helper:setup_mock(imboy_plugin_signature, [
             {verify_file, 2, fun(_, _) -> ok end}
         ]),
@@ -450,8 +488,7 @@ install_fails_on_dependency_error_test_() ->
             {load, 1, fun(_) -> {ok, ?MANIFEST} end}
         ]),
         meck_helper:setup_mock(imboy_plugin_dependency, [
-            {validate_constraints, 1,
-             fun(_) -> {error, {missing_dep, foo, <<"^1.0">>}} end}
+            {validate_constraints, 1, fun(_) -> {error, {missing_dep, foo, <<"^1.0">>}} end}
         ]),
         meck_helper:setup_mock(imboy_plugin_loader, [
             {scan, 0, fun() -> ok end}
@@ -463,8 +500,7 @@ install_fails_on_dependency_error_test_() ->
 
         {ok, Pid} = imboy_plugin_lifecycle:start_link(#{name => ?PLUGIN}),
         Result = gen_statem:call(Pid, {install, <<"path">>}),
-        ?assertMatch({error, {validate_dependencies,
-                              {missing_dep, foo, <<"^1.0">>}}}, Result),
+        ?assertMatch({error, {validate_dependencies, {missing_dep, foo, <<"^1.0">>}}}, Result),
         %% S3: atomic rollback succeeds (no side effects) → back to unknown
         ?assertEqual(unknown, state_of(Pid)),
 
@@ -531,13 +567,16 @@ upgrade_revalidates_dependencies_test_() ->
         meck_helper:cleanup_mock(imboy_plugin_dependency),
         meck_helper:setup_mock(imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
-        {check_enable_deps, 1, fun(_) -> ok end},
-        {find_dependents, 1, fun(_) -> ok end}
+            {check_enable_deps, 1, fun(_) -> ok end},
+            {find_dependents, 1, fun(_) -> ok end}
         ]),
 
         ok = gen_statem:call(Pid, {upgrade, <<"2.0.0">>}),
-        meck_helper:verify_called_once(imboy_plugin_dependency,
-                                        validate_constraints, 1),
+        meck_helper:verify_called_once(
+            imboy_plugin_dependency,
+            validate_constraints,
+            1
+        ),
         ?assertEqual(enabled, state_of(Pid)),
 
         gen_statem:stop(Pid),
@@ -555,8 +594,7 @@ upgrade_fails_on_dep_break_test_() ->
         %% Make dependency check fail for upgrade
         meck_helper:cleanup_mock(imboy_plugin_dependency),
         meck_helper:setup_mock(imboy_plugin_dependency, [
-            {validate_constraints, 1,
-             fun(_) -> {error, {version_mismatch, bar, <<"^2.0">>}} end}
+            {validate_constraints, 1, fun(_) -> {error, {version_mismatch, bar, <<"^2.0">>}} end}
         ]),
 
         Result = gen_statem:call(Pid, {upgrade, <<"2.0.0">>}),
@@ -575,16 +613,20 @@ uninstall_cleans_up_persistent_term_test_() ->
 
         ok = gen_statem:call(Pid, {install, <<"path">>}),
         %% persistent_term should be set
-        ?assertMatch(#{name := ?PLUGIN},
-                     persistent_term:get({imboy_plugin_manifest, ?PLUGIN})),
+        ?assertMatch(
+            #{name := ?PLUGIN},
+            persistent_term:get({imboy_plugin_manifest, ?PLUGIN})
+        ),
 
         ok = gen_statem:call(Pid, {uninstall, preserve_data}),
         timer:sleep(50),
         ?assertNot(is_process_alive(Pid)),
 
         %% persistent_term should be erased (key no longer exists)
-        ?assertMatch({'EXIT', _},
-                     catch persistent_term:get({imboy_plugin_manifest, ?PLUGIN})),
+        ?assertMatch(
+            {'EXIT', _},
+            catch persistent_term:get({imboy_plugin_manifest, ?PLUGIN})
+        ),
         unmock_components()
     end).
 
@@ -623,6 +665,7 @@ install_early_fail_atomic_no_side_effects_test_() ->
     ?_test(begin
         Manifest = ?MANIFEST#{lifecycle => #{rollback_strategy => atomic}},
         unmock_components(),
+        mock_path_passthrough(),
         meck_helper:setup_mock(imboy_plugin_signature, [
             {verify_file, 2, fun(_, _) -> {error, bad_sig} end}
         ]),
@@ -631,8 +674,8 @@ install_early_fail_atomic_no_side_effects_test_() ->
         ]),
         meck_helper:setup_mock(imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
-        {check_enable_deps, 1, fun(_) -> ok end},
-        {find_dependents, 1, fun(_) -> ok end}
+            {check_enable_deps, 1, fun(_) -> ok end},
+            {find_dependents, 1, fun(_) -> ok end}
         ]),
         meck_helper:setup_mock(imboy_plugin_loader, [
             {scan, 0, fun() -> ok end}
@@ -663,6 +706,7 @@ enable_fails_manual_strategy_goes_to_failed_test_() ->
             lifecycle => #{rollback_strategy => manual}
         },
         unmock_components(),
+        mock_path_passthrough(),
         meck_helper:setup_mock(imboy_plugin_signature, [
             {verify_file, 2, fun(_, _) -> ok end}
         ]),
@@ -671,8 +715,8 @@ enable_fails_manual_strategy_goes_to_failed_test_() ->
         ]),
         meck_helper:setup_mock(imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
-        {check_enable_deps, 1, fun(_) -> ok end},
-        {find_dependents, 1, fun(_) -> ok end}
+            {check_enable_deps, 1, fun(_) -> ok end},
+            {find_dependents, 1, fun(_) -> ok end}
         ]),
         meck_helper:setup_mock(imboy_plugin_loader, [
             {scan, 0, fun() -> ok end}
@@ -725,6 +769,7 @@ enable_register_fails_atomic_back_to_installed_test_() ->
             lifecycle => #{rollback_strategy => atomic}
         },
         unmock_components(),
+        mock_path_passthrough(),
         meck_helper:setup_mock(imboy_plugin_signature, [
             {verify_file, 2, fun(_, _) -> ok end}
         ]),
@@ -733,8 +778,8 @@ enable_register_fails_atomic_back_to_installed_test_() ->
         ]),
         meck_helper:setup_mock(imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
-        {check_enable_deps, 1, fun(_) -> ok end},
-        {find_dependents, 1, fun(_) -> ok end}
+            {check_enable_deps, 1, fun(_) -> ok end},
+            {find_dependents, 1, fun(_) -> ok end}
         ]),
         meck_helper:setup_mock(imboy_plugin_loader, [
             {scan, 0, fun() -> ok end}
@@ -773,8 +818,7 @@ upgrade_fails_best_effort_to_failed_test_() ->
         %% Make dependency check fail for upgrade
         meck_helper:cleanup_mock(imboy_plugin_dependency),
         meck_helper:setup_mock(imboy_plugin_dependency, [
-            {validate_constraints, 1,
-             fun(_) -> {error, {version_mismatch, bar, <<"^2.0">>}} end}
+            {validate_constraints, 1, fun(_) -> {error, {version_mismatch, bar, <<"^2.0">>}} end}
         ]),
 
         Result = gen_statem:call(Pid, {upgrade, <<"2.0.0">>}),
@@ -820,8 +864,7 @@ upgrade_fails_atomic_no_side_effects_back_to_enabled_test_() ->
         %% Make dep fail for upgrade
         meck_helper:cleanup_mock(imboy_plugin_dependency),
         meck_helper:setup_mock(imboy_plugin_dependency, [
-            {validate_constraints, 1,
-             fun(_) -> {error, dep_broken} end}
+            {validate_constraints, 1, fun(_) -> {error, dep_broken} end}
         ]),
 
         Result = gen_statem:call(Pid, {upgrade, <<"2.0.0">>}),
@@ -893,8 +936,7 @@ enable_fails_when_deps_not_enabled_test_() ->
         meck_helper:cleanup_mock(imboy_plugin_dependency),
         meck_helper:setup_mock(imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
-            {check_enable_deps, 1,
-             fun(_) -> {error, {deps_not_enabled, [other_plugin]}} end},
+            {check_enable_deps, 1, fun(_) -> {error, {deps_not_enabled, [other_plugin]}} end},
             {find_dependents, 1, fun(_) -> ok end}
         ]),
 
@@ -902,8 +944,7 @@ enable_fails_when_deps_not_enabled_test_() ->
         ok = gen_statem:call(Pid, {install, <<"path">>}),
 
         Result = gen_statem:call(Pid, enable),
-        ?assertMatch({error, {check_enable_deps,
-                              {deps_not_enabled, [other_plugin]}}}, Result),
+        ?assertMatch({error, {check_enable_deps, {deps_not_enabled, [other_plugin]}}}, Result),
         ?assertEqual(installed, state_of(Pid)),
 
         gen_statem:stop(Pid),
@@ -919,8 +960,7 @@ disable_fails_when_has_dependents_test_() ->
         meck_helper:setup_mock(imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
             {check_enable_deps, 1, fun(_) -> ok end},
-            {find_dependents, 1,
-             fun(_) -> {error, {has_dependents, [dependent_plugin]}} end}
+            {find_dependents, 1, fun(_) -> {error, {has_dependents, [dependent_plugin]}} end}
         ]),
 
         {ok, Pid} = imboy_plugin_lifecycle:start_link(#{name => ?PLUGIN}),
@@ -936,3 +976,120 @@ disable_fails_when_has_dependents_test_() ->
         _ = catch persistent_term:erase({imboy_plugin_manifest, ?PLUGIN}),
         unmock_components()
     end).
+
+%% ── SEC-02: install Path 收口（真实 imboy_plugin_path，不 mock 路径模块） ──
+
+path_fixture_setup() ->
+    Base = <<"/tmp/imboy_lc_path_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+    Root = <<Base/binary, "/plugins">>,
+    Dir = <<Root/binary, "/ok">>,
+    ok = filelib:ensure_path(Dir),
+    Outside = <<Base/binary, "/outside">>,
+    ok = filelib:ensure_path(Outside),
+    SavedRoot = application:get_env(imboy, plugin_root),
+    ok = application:set_env(imboy, plugin_root, Root),
+    {{SavedRoot, Base}, Root, Dir, Outside}.
+
+path_fixture_cleanup({{SavedRoot, Base}, _Root, _Dir, _Outside}) ->
+    case SavedRoot of
+        undefined -> application:unset_env(imboy, plugin_root);
+        {ok, V} -> application:set_env(imboy, plugin_root, V)
+    end,
+    os:cmd("rm -rf " ++ binary_to_list(Base)),
+    ok.
+
+%% mock 除路径模块外的组件（SEC-02 路径校验真实执行）
+mock_components_except_path() ->
+    Mods = [
+        {imboy_plugin_signature, [
+            {verify_file, 2, fun(_, _) -> ok end}
+        ]},
+        {imboy_plugin_toml, [
+            {load, 1, fun(_) -> {ok, ?MANIFEST} end}
+        ]},
+        {imboy_plugin_dependency, [
+            {validate_constraints, 1, fun(_) -> ok end},
+            {check_enable_deps, 1, fun(_) -> ok end},
+            {find_dependents, 1, fun(_) -> ok end}
+        ]},
+        {imboy_plugin_loader, [
+            {scan, 0, fun() -> ok end}
+        ]},
+        {imboy_router_registry, [
+            {register, 2, fun(_, _) -> ok end},
+            {unregister, 1, fun(_) -> ok end}
+        ]}
+    ],
+    lists:foreach(
+        fun({Mod, Exps}) ->
+            meck_helper:cleanup_mock(Mod),
+            {ok, _} = meck_helper:setup_mock(Mod, Exps)
+        end,
+        Mods
+    ).
+
+%% install `..` 穿越路径 → {resolve_path, path_outside_plugin_root}，状态回 unknown
+install_dotdot_rejected_test_() ->
+    {setup, fun path_fixture_setup/0, fun path_fixture_cleanup/1, fun({_Ctx, Root, _Dir, Outside}) ->
+        fun() ->
+            mock_components_except_path(),
+            {ok, Pid} = imboy_plugin_lifecycle:start_link(#{name => ?PLUGIN}),
+            %% 根外绝对路径直接拒
+            Result = gen_statem:call(Pid, {install, Outside}),
+            ?assertMatch({error, {resolve_path, path_outside_plugin_root}}, Result),
+            ?assertEqual(unknown, state_of(Pid)),
+            %% manifest 未被注册（install 无副作用）
+            ?assertEqual(
+                undefined,
+                persistent_term:get({imboy_plugin_manifest, ?PLUGIN}, undefined)
+            ),
+            %% `..` 拼接穿越变体
+            Evil = <<Root/binary, "/../outside">>,
+            Result2 = gen_statem:call(Pid, {install, Evil}),
+            ?assertMatch({error, {resolve_path, path_outside_plugin_root}}, Result2),
+            ?assertEqual(unknown, state_of(Pid)),
+            stop_lifecycle(Pid)
+        end
+    end}.
+
+%% install 不存在路径 → 拒绝
+install_not_found_rejected_test_() ->
+    {setup, fun path_fixture_setup/0, fun path_fixture_cleanup/1, fun({_Ctx, Root, _Dir, _Outside}) ->
+        fun() ->
+            mock_components_except_path(),
+            {ok, Pid} = imboy_plugin_lifecycle:start_link(#{name => ?PLUGIN}),
+            Result = gen_statem:call(Pid, {install, <<Root/binary, "/no_such">>}),
+            ?assertMatch({error, {resolve_path, path_not_found}}, Result),
+            ?assertEqual(unknown, state_of(Pid)),
+            stop_lifecycle(Pid)
+        end
+    end}.
+
+%% install 根内合法目录（真实路径校验）→ 唯一放行面
+install_valid_dir_ok_test_() ->
+    {setup, fun path_fixture_setup/0, fun path_fixture_cleanup/1, fun({_Ctx, _Root, Dir, _Outside}) ->
+        fun() ->
+            mock_components_except_path(),
+            {ok, Pid} = imboy_plugin_lifecycle:start_link(#{name => ?PLUGIN}),
+            ok = gen_statem:call(Pid, {install, Dir}),
+            ?assertEqual(installed, state_of(Pid)),
+            stop_lifecycle(Pid)
+        end
+    end}.
+
+%% 根内目录 + plugin.config symlink 外读 → ensure_file_within 拒绝
+install_config_symlink_rejected_test_() ->
+    {setup, fun path_fixture_setup/0, fun path_fixture_cleanup/1, fun({_Ctx, _Root, Dir, Outside}) ->
+        fun() ->
+            Secret = <<Outside/binary, "/secret.config">>,
+            ok = file:write_file(Secret, <<"x">>),
+            Config = <<Dir/binary, "/plugin.config">>,
+            ok = file:make_symlink(Secret, Config),
+            mock_components_except_path(),
+            {ok, Pid} = imboy_plugin_lifecycle:start_link(#{name => ?PLUGIN}),
+            Result = gen_statem:call(Pid, {install, Dir}),
+            ?assertMatch({error, {validate_config_path, path_outside_plugin_root}}, Result),
+            ?assertEqual(unknown, state_of(Pid)),
+            stop_lifecycle(Pid)
+        end
+    end}.
