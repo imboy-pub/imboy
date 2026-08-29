@@ -138,6 +138,107 @@ ensure_writable_tx_test_() ->
     ].
 
 %%% ===================================================================
+%%% SEC-03 fail-closed：归属解析失败 / status 读失败 → 503 拒绝
+%%% ===================================================================
+
+fail_closed_test_() ->
+    [
+        {"resolver db error rejected with 503", fun() ->
+            ?WITH_MECKS(
+                [
+                    {workspace_resolver, [
+                        {'resolve_workspace', 1, fun
+                            ({group, ?GID}) -> {error, {db_error, pool_exhausted}};
+                            (_) -> personal
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {503, _}}, workspace_guard:ensure_writable({group, ?GID})
+                    )
+                end
+            )
+        end},
+        {"resolver unsupported resource rejected with 503", fun() ->
+            ?WITH_MECKS(
+                [
+                    {workspace_resolver, [
+                        {'resolve_workspace', 1, fun
+                            ({moment, 1}) -> {error, {unsupported_resource, {moment, 1}}};
+                            (_) -> personal
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {503, _}}, workspace_guard:ensure_writable({moment, 1})
+                    )
+                end
+            )
+        end},
+        {"status read db error rejected with 503 (autocommit guard)", fun() ->
+            %% guard_mocks(none)：status 查询返回 {error, db_error}
+            ?WITH_MECKS(guard_mocks(none), fun() ->
+                ?assertMatch(
+                    {error, {503, _}}, workspace_guard:ensure_writable({group, ?GID})
+                )
+            end)
+        end},
+        {"missing workspace row keeps passthrough semantics", fun() ->
+            %% workspace 行不存在（{ok, #{} 默认值）：既有语义放行（非 DB 故障）
+            ?WITH_MECKS(
+                resolver_mocks(workspace, workspace) ++
+                    [
+                        {elib_pg, [
+                            {'one', 2, fun(<<"SELECT status FROM workspace", _/binary>>, _) ->
+                                {ok, #{}}
+                            end}
+                        ]}
+                    ],
+                fun() ->
+                    ?assertEqual(ok, workspace_guard:ensure_writable({group, ?GID}))
+                end
+            )
+        end},
+        {"tx guard resolver db error rejected with 503", fun() ->
+            ?WITH_MECKS(
+                [
+                    {workspace_resolver, [
+                        {'resolve_workspace', 1, fun
+                            ({channel, ?CID}) -> {error, {db_error, no_connection}};
+                            (_) -> personal
+                        end}
+                    ]}
+                ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {503, _}},
+                        workspace_guard:ensure_writable_tx(fake_conn, {channel, ?CID})
+                    )
+                end
+            )
+        end},
+        {"tx guard lock failure stays 503 (regression)", fun() ->
+            ?WITH_MECKS(
+                resolver_mocks(workspace, workspace) ++
+                    [
+                        {elib_pg, [
+                            {'one', 2, fun(_, _) -> {ok, #{<<"status">> => <<"active">>}} end},
+                            {'query', 3, fun(_, _, _) -> {error, lock_timeout} end}
+                        ]}
+                    ],
+                fun() ->
+                    ?assertMatch(
+                        {error, {503, _}},
+                        workspace_guard:ensure_writable_tx(fake_conn, {group, ?GID})
+                    )
+                end
+            )
+        end}
+    ].
+
+%%% ===================================================================
 %%% abort_on_error 助手
 %%% ===================================================================
 

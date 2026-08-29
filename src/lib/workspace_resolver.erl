@@ -5,7 +5,9 @@
 %
 % 职责（计划 §七 T5 IMPLEMENT）：
 %   1. resolve_workspace/1：{ResourceType, ResourceId} → {ok, WorkspaceId} | personal
-%      | {error, not_found}——覆盖 R3 清单直接入口资源：
+%      | {error, not_found} | {error, {db_error, Reason}}
+%      | {error, {unsupported_resource, _}} | {error, {unsupported_scope, _}}
+%      ——覆盖 R3 清单直接入口资源：
 %        group / group_notice(经 group_id) / channel / channel_message(经 channel_id)
 %        / channel_comment(经 channel_id) / channel_reaction(经 channel_id)
 %        / channel_subscription(经 channel_id) / channel_admin(经 channel_id)
@@ -32,6 +34,36 @@
 %   3. guard_channel_binding/2 / guard_group_gid/2：handler 层便捷门，
 %      从 cowboy 路径 binding / 参数中取资源 ID 后执行 2。
 %
+% SEC-03 fail-closed 收口（不变量，全模块强制）：
+%   * DB 异常（连接池不可用/查询失败/驱动崩溃）与"资源不存在"严格三态区分，
+%     绝不把 {error, db_error} 归一成 not_found（elib_pg:one/2 无行时返回
+%     {ok, #{}（默认值），错误才是 {error, Reason}——one_row/2 按此归一）。
+%   * 归属解析失败（db_error / unsupported_resource / unsupported_scope）
+%     在所有 ensure_*/guard_* 门上返回 {error, {503, Msg}}（服务不可用），
+%     绝不 ok 放行——DB 故障不得成为越权窗口。
+%   * 未知资源类型 / 附件 scope 非法：显式错误，绝不默认 personal
+%     （不发明默认归属，任务卡 Stop 条款）。
+%
+% 附件归属最小闭环（SEC-03）：
+%   attachment.scope 枚举 public|private|c2c|group|channel|moment（迁移
+%   00000013），各 scope 的归属链以 attach_logic:authorize/3（统一读鉴权，
+%   docs/architecture/resource-access-control.md）为事实源：
+%     group / channel   → scope_ref 回溯 group/channel 行（本模块 SQL），
+%                          归属解析与读写守卫已实现（写侧另见 attach_logic
+%                          :attach_scope_target/2）；
+%     c2c               → scope_ref=conv_key，attach_logic:authorize(<<"c2c">>)
+%                          经 conv_key_vo:c2c_members/1 判两会话方——纯用户域
+%                          会话，schema 无任何 workspace 绑定 → personal（可证）；
+%     moment            → scope_ref=moment_id，attach_logic:authorize(<<"moment">)
+%                          经 moment_ds ACL；moment_post 表（迁移 00000004）仅
+%                          author_uid/visibility，无 workspace 列 → personal（可证）；
+%     private           → 仅 creator_user_id 可读（authorize(<<"private">>)）
+%                          → personal（可证）；
+%     public            → 全员可读（authorize(<<"public">>) → true）
+%                          → personal（可证，非 workspace 资源）；
+%     枚举外 scope 值 / group|channel 行 scope_ref 缺失 → {error,{unsupported_scope,_}}
+%     （脏数据显式拒绝，不发明默认归属）；附件行不存在 → {error, not_found}。
+%
 % 不变量：本模块只做"资源归属解析 + 成员边界"，不重写消息/附件/E2EE 核心，
 % 不合并 group_member/channel_subscription 进 workspace_member。
 %%%
@@ -44,27 +76,41 @@
 -export([guard_group_gid/2]).
 -export([guard_group_notice_id/2]).
 
+-include("error_code.hrl").
+-include("log.hrl").
+
 %% ===================================================================
 %% 1. 统一资源归属解析
 %% ===================================================================
 
 %% @doc 解析资源所属 Workspace
-%% {ok, WsId}：资源 scope=workspace；personal：个人资源（含 c2c 等不进守卫的）；
-%% {error, not_found}：资源不存在。
--spec resolve_workspace({atom(), integer() | binary()}) ->
-    {ok, integer()} | personal | {error, not_found}.
+%% {ok, WsId}：资源 scope=workspace；personal：个人资源（含 c2c/moment 等
+%% 不进守卫的，均有可证归属链，见模块头）；
+%% {error, not_found}：资源不存在（行未命中 / ID 非法）；
+%% {error, {db_error, Reason}}：DB 层异常（绝不与 not_found 混淆）；
+%% {error, {unsupported_resource, _}}：未知资源类型（收紧原 `_ -> personal` 兜底）；
+%% {error, {unsupported_scope, _}}：attachment.scope 脏数据 / 引用缺失。
+-spec resolve_workspace(term()) ->
+    {ok, integer()}
+    | personal
+    | {error, not_found}
+    | {error, {db_error, term()}}
+    | {error, {unsupported_resource, term()}}
+    | {error, {unsupported_scope, term()}}.
 resolve_workspace({workspace, WsId}) ->
     case one_row(<<"SELECT id FROM workspace WHERE id = $1">>, [WsId]) of
-        #{<<"id">> := _} -> {ok, elib_cnv:safe_to_integer(WsId)};
-        _ -> {error, not_found}
+        {row, _} -> {ok, elib_cnv:safe_to_integer(WsId)};
+        {error, _} = E -> E
     end;
 resolve_workspace({project, ProjectId}) ->
     %% project 恒属 workspace（无 scope 概念，I7/迁移 00000078）
     case one_row(<<"SELECT workspace_id FROM project WHERE id = $1">>, [ProjectId]) of
-        #{<<"workspace_id">> := WsId} when WsId =/= null ->
+        {row, #{<<"workspace_id">> := WsId}} when WsId =/= null ->
             {ok, elib_cnv:safe_to_integer(WsId)};
-        _ ->
-            {error, not_found}
+        {row, _} ->
+            {error, not_found};
+        {error, _} = E ->
+            E
     end;
 resolve_workspace({project_task, TaskId}) ->
     case
@@ -74,17 +120,19 @@ resolve_workspace({project_task, TaskId}) ->
             [TaskId]
         )
     of
-        #{<<"workspace_id">> := WsId} when WsId =/= null ->
+        {row, #{<<"workspace_id">> := WsId}} when WsId =/= null ->
             {ok, elib_cnv:safe_to_integer(WsId)};
-        _ ->
-            {error, not_found}
+        {row, _} ->
+            {error, not_found};
+        {error, _} = E ->
+            E
     end;
 resolve_workspace({group, Gid}) ->
     group_scope(Gid);
 resolve_workspace({group_notice, NoticeId}) ->
     case one_row(<<"SELECT group_id FROM group_notice WHERE id = $1">>, [NoticeId]) of
-        #{<<"group_id">> := Gid} -> group_scope(Gid);
-        _ -> {error, not_found}
+        {row, #{<<"group_id">> := Gid}} -> group_scope(Gid);
+        {error, _} = E -> E
     end;
 %% ---- 群子功能域（P0 后续批：vote/schedule/album/file/task）----
 %% 均经所属 group 行解析 scope；解析读（归属不可变）走自动提交连接是安全的。
@@ -176,18 +224,18 @@ resolve_workspace({channel, ChannelId}) ->
     channel_scope(ChannelId);
 resolve_workspace({channel_message, MessageId}) ->
     case one_row(<<"SELECT channel_id FROM channel_message WHERE id = $1">>, [MessageId]) of
-        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        _ -> {error, not_found}
+        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        {error, _} = E -> E
     end;
 resolve_workspace({channel_comment, CommentId}) ->
     case one_row(<<"SELECT channel_id FROM channel_comment WHERE id = $1">>, [CommentId]) of
-        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        _ -> {error, not_found}
+        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        {error, _} = E -> E
     end;
 resolve_workspace({channel_reaction, ReactionId}) ->
     case one_row(<<"SELECT channel_id FROM channel_reaction WHERE id = $1">>, [ReactionId]) of
-        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        _ -> {error, not_found}
+        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        {error, _} = E -> E
     end;
 resolve_workspace({channel_subscription, ChannelId}) ->
     channel_scope(ChannelId);
@@ -195,19 +243,24 @@ resolve_workspace({channel_admin, ChannelId}) ->
     channel_scope(ChannelId);
 resolve_workspace({channel_webhook, WebhookId}) ->
     case one_row(<<"SELECT channel_id FROM channel_webhook WHERE id = $1">>, [WebhookId]) of
-        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        _ -> {error, not_found}
+        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        {error, _} = E -> E
     end;
 resolve_workspace({channel_invitation, InvitationId}) ->
     case one_row(<<"SELECT channel_id FROM channel_invitation WHERE id = $1">>, [InvitationId]) of
-        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        _ -> {error, not_found}
+        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        {error, _} = E -> E
     end;
 resolve_workspace({attachment, AttachId}) ->
+    %% 附件归属最小闭环：见模块头"附件归属最小闭环"证明链。
     case one_row(<<"SELECT scope, scope_ref FROM attachment WHERE id = $1">>, [AttachId]) of
-        #{<<"scope">> := <<"group">>, <<"scope_ref">> := Ref} when Ref =/= null ->
+        {row, #{<<"scope">> := <<"group">>, <<"scope_ref">> := Ref}} when
+            Ref =/= null, Ref =/= <<>>
+        ->
             group_scope(elib_cnv:safe_to_integer(Ref));
-        #{<<"scope">> := <<"channel">>, <<"scope_ref">> := Ref} when Ref =/= null ->
+        {row, #{<<"scope">> := <<"channel">>, <<"scope_ref">> := Ref}} when
+            Ref =/= null, Ref =/= <<>>
+        ->
             channel_scope(elib_cnv:safe_to_integer(Ref));
         %% T7 结项（2026-08 调查）：c2c/moment/private/public 附件显式归为
         %% personal（个人域），不做 workspace 回溯——判定依据三条不变量：
@@ -237,15 +290,19 @@ resolve_workspace({attachment, AttachId}) ->
         _ ->
             personal
     end;
-resolve_workspace(_) ->
-    personal.
+resolve_workspace(Target) ->
+    %% SEC-03 收紧：未知资源类型不再默认 personal（原 fail-open 兜底）。
+    %% 全仓核查（rg resolve_workspace）：生产调用方仅传上方已知类型元组，
+    %% 无存量路径依赖 unknown→personal；测试断言已同步改为显式错误。
+    {error, {unsupported_resource, Target}}.
 
 %% ===================================================================
 %% 2. Workspace 边界执行（handler 前置校验）
 %% ===================================================================
 
 %% @doc 频道入口边界：workspace 频道要求请求者是 active 工作区成员
-%% personal 频道 / 频道不存在 → ok（既有流程继续，零行为变化）。
+%% personal 频道 / 频道不存在 → ok（既有流程继续，零行为变化）；
+%% 归属解析 DB 异常 / 非法数据 → {error, {503, _}}（fail-closed，绝不放行）。
 -spec ensure_channel_member_access(integer(), integer() | binary()) ->
     ok | {error, {403 | 503, binary()}}.
 ensure_channel_member_access(Uid, ChannelId) ->
@@ -257,7 +314,7 @@ ensure_channel_member_access(Uid, ChannelId) ->
     end.
 
 %% @doc 群入口边界：workspace 群要求请求者是 active 工作区成员
-%% personal 群 / 群不存在 → ok。
+%% personal 群 / 群不存在 → ok；DB 异常 → {error, {503, _}}（fail-closed）。
 -spec ensure_group_member_access(integer(), integer() | binary()) ->
     ok | {error, {403 | 503, binary()}}.
 ensure_group_member_access(Uid, Gid) ->
@@ -312,6 +369,10 @@ guard_channel_custom_id(Uid, CustomId) when is_binary(CustomId), CustomId =/= <<
 guard_channel_custom_id(_Uid, _CustomId) ->
     ok.
 
+custom_id_lookup_denied(Reason) ->
+    _ = ?ERROR_LOG([workspace_custom_id_lookup_denied, Reason]),
+    {error, {?ERR_SERVICE_UNAVAILABLE, <<"资源归属校验暂不可用，请稍后重试"/utf8>>}}.
+
 %% @doc handler 便捷门：群入口（gid 参数，POST body 或 query string 均可传值）
 %% 用于 group_handler:detail/msg_page 与 group_notice_handler 全部入口。
 %% gid 非法/群不存在放行：下游 detail/msg_page 必有独立群成员校验；
@@ -348,7 +409,11 @@ guard_group_notice_id(Uid, NoticeId) ->
 %% Internal Function Definitions
 %% ===================================================================
 
--spec group_scope(integer() | binary()) -> {ok, integer()} | personal | {error, not_found}.
+-spec group_scope(integer() | binary()) ->
+    {ok, integer()}
+    | personal
+    | {error, not_found}
+    | {error, {db_error, term()}}.
 group_scope(Gid) ->
     %% "group" 是保留字表名，SQL 中必须双引号（T3-④）
     case row_scope(<<"\"group\"">>, Gid) of
@@ -357,7 +422,11 @@ group_scope(Gid) ->
         Else -> Else
     end.
 
--spec channel_scope(integer() | binary()) -> {ok, integer()} | personal | {error, not_found}.
+-spec channel_scope(integer() | binary()) ->
+    {ok, integer()}
+    | personal
+    | {error, not_found}
+    | {error, {db_error, term()}}.
 channel_scope(ChannelId) ->
     case row_scope(<<"channel">>, ChannelId) of
         {ok, <<"workspace">>, WsId} when WsId =/= null -> {ok, WsId};
@@ -370,7 +439,9 @@ channel_scope(ChannelId) ->
 %% {resolver_db_error, _}，交守卫入口归一 503 fail-closed（M-1/M-2 收口：
 %% 原 catch 吞 DB 崩溃按 not_found 放行，是归档守卫 fail-open 的根因）。
 -spec row_scope(binary(), integer() | binary()) ->
-    {ok, binary() | nil, integer() | nil} | {error, not_found}.
+    {ok, binary() | nil, integer() | nil}
+    | {error, not_found}
+    | {error, {db_error, term()}}.
 row_scope(Tb, Id) ->
     Id2 = elib_cnv:safe_to_integer(Id),
     case Id2 > 0 of
@@ -381,8 +452,8 @@ row_scope(Tb, Id) ->
             case one_row(Sql, [Id2]) of
                 Row = #{<<"scope">> := Scope} ->
                     {ok, Scope, maps:get(<<"workspace_id">>, Row, undefined)};
-                _ ->
-                    {error, not_found}
+                {error, _} = E ->
+                    E
             end
     end.
 

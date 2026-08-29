@@ -8,6 +8,8 @@
 %      解析 target→workspace；scope=personal 恒放行（回归红线：个人资源永不受
 %      守卫影响）；scope=workspace 读 workspace.status，archived → 稳定错误码
 %      ?ERR_WORKSPACE_ARCHIVED(980)。资源不存在恒放行（走既有 404 流程）。
+%      SEC-03 fail-closed：归属解析 DB 异常 / status 读失败 / 未知资源类型
+%      → {error, {503, Msg}} 拒绝，绝不 ok 放行。
 %      ⚠️ 本版本存在"检查-写窗口"（读与写不在同一事务），仅用于无法进同事务
 %      的写路径（R3 #9-13/#17 的最小可行接入），残留风险见 WP4 报告。
 %   2. ensure_writable_tx/2（事务版）：供 elib_pg:with_tx 的 Fun(Conn) 内调用——
@@ -97,7 +99,8 @@ ensure_writable(Target) ->
 %% @doc 归档写守卫（事务版，with_tx Fun(Conn) 内调用）
 %% 与业务写同事务：SELECT ... FOR UPDATE 锁 workspace 行并读 status。
 %% personal / 资源不存在 → ok；archived → {error, {980, Msg}}（不抛异常，
-%% 调用方用 abort_on_error/1 或 case 决定回滚）。
+%% 调用方用 abort_on_error/1 或 case 决定回滚）；归属解析失败（db_error /
+%% unsupported_*，SEC-03）→ {error, {503, Msg}} fail-closed 拒绝。
 -spec ensure_writable_tx(any(), {atom(), integer() | binary()}) ->
     ok | {error, {integer(), binary()}}.
 ensure_writable_tx(Conn, Target) ->
