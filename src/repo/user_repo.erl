@@ -11,6 +11,7 @@
 -export([count/0]).
 -export([save/1, update/2, delete/1]).
 -export([create/1, find_by_uid/1]).
+-export([create_tx/2, update_tx/3]).
 -export([page/2, page/4]).
 
 -export([
@@ -64,6 +65,41 @@ page(Page, Size, Where, OrderBy) ->
 create(Data0) ->
     Data = normalize_legacy_create_data(Data0),
     save(Data).
+
+%% @doc 事务内创建用户行（DS 层 with_tx Fun(Conn) 内调用，TX-01）
+%% 与 create/1 的两个关键差异：
+%%   1. 显式传入的 id（>0）会被尊重——bot/agent/webhook 编排需要同一 id 贯穿
+%%      user 行、account_type 标记与元数据表绑定（id 必须来自 user 命名空间
+%%      生成器，见 bot_ds 注释：独立生成器同毫秒可与 user 生成器产出相同值
+%%      → user.id 主键冲突）；
+%%   2. 返回真实落库的 id——save/1 强制剔除调用方 id 再自生成且 create/1 丢弃
+%%      返回值，DS 持有的 Uid 与实际行 id 脱钩（account_type 打不到行、元数据
+%%      绑定到不存在的 user id，概率性静默损坏，真库实测复现）。
+%%   双 key 防御沿用 save/1 的修复：剔除 atom id / binary <<"id">> 后只注入
+%%   binary <<"id">>，杜绝 "id" 列重复（PG 42701）。
+-spec create_tx(any(), map()) -> {ok, integer()} | {error, term()}.
+create_tx(Conn, Data0) ->
+    Data = normalize_legacy_create_data(Data0),
+    Id =
+        case maps:get(id, Data, 0) of
+            N when is_integer(N), N > 0 -> N;
+            _ -> elib_tsid:generate(user)
+        end,
+    Data1 = maps:remove(id, maps:remove(<<"id">>, Data)),
+    Data2 = Data1#{<<"id">> => Id},
+    Tb = tablename(),
+    {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
+    case elib_pg:execute(Conn, Sql, Params) of
+        {ok, _Count} -> {ok, Id};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc 事务内更新用户（DS 层 with_tx Fun(Conn) 内调用，TX-01）
+-spec update_tx(any(), pos_integer(), map()) -> {ok, non_neg_integer()} | {error, term()}.
+update_tx(Conn, Id, Data) ->
+    Tb = tablename(),
+    {Sql, Params} = elib_pg_sql:update(Tb, Data, <<"id = $1">>, [Id]),
+    elib_pg:execute(Conn, Sql, Params).
 
 %% @doc 兼容旧接口：按 uid 查询用户（排除 password 列）
 %% 注意：user 表自 00000001_foundation 起就没有 updated_at 列，此处列清单

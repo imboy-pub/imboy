@@ -6,6 +6,8 @@
 % 职责：agent 账号编排（建 user 行 + 标 account_type=1 + 绑 ai_agent 元数据）、
 %       jsonb(trigger_policy) 编解码、供消息路由判定 is_agent/1。
 % 边界：屏蔽 repo 存储细节；账号类型常量集中在此。
+% 事务：create/1 三步写收进 elib_pg:with_tx 单事务（TX-01），任一步失败
+%       整体回滚，无孤儿 user 行。
 %%%
 
 -export([create/1]).
@@ -29,34 +31,51 @@
 %% API
 %% ===================================================================
 
-%% @doc 创建 agent：新建 user 账号 → 标 account_type=1 → 绑定 ai_agent 元数据
+%% @doc 创建 agent：单事务【建 user 行 → 标 account_type=1 → 绑 ai_agent 元数据】
 %% ConfigMap 键（binary key，来自管理后台 POST）：
 %%   nickname(必填) account? provider(必填) model? role_id? system_prompt?
 %%   owner_uid? trigger_policy?(map)
-%% ponytail: 三步非单事务（user_repo 走 auto-commit，非 with_tx Conn）；
-%%   agent 绑定失败会留下 account_type=1 但无 ai_agent 行的孤儿 user，
-%%   管理端可 upsert 重试修复。真需强一致再下沉到单个 with_tx。
+%% TX-01 事务收敛：三步全部走 elib_pg:with_tx 单连接，任一步失败整体回滚，
+%%   杜绝"account_type=1 但无 ai_agent 行"的孤儿 user（原先三步 auto-commit，
+%%   绑定失败留孤儿靠管理端 upsert 重试修复）。
+%% 同步修复 id 脱钩（真库实测复现）：原实现 DS 用 default 生成器取 Uid 而
+%%   user_repo:save/1 用 user 生成器另造行 id——两个生成器序列独立，同毫秒
+%%   序列重合时值恰好相同（掩盖问题），错开时 account_type 打不到行、
+%%   ai_agent 绑定到不存在的 user id。现改用 user 生成器 + create_tx/2
+%%   尊重传入 id，且 update_tx 影响 0 行即回滚（脱钩防御）。
 -spec create(map()) -> {ok, map()} | {error, binary()}.
 create(ConfigMap) when is_map(ConfigMap) ->
     Nickname = trim(maps:get(<<"nickname">>, ConfigMap, <<>>)),
     Provider = trim(maps:get(<<"provider">>, ConfigMap, <<>>)),
     case validate(Nickname, Provider) of
         ok ->
-            Uid = elib_tsid:generate(),
+            %% user 表主键必须用 user 命名空间生成器（与 bot_ds/channel_webhook_ds 同款）
+            Uid = elib_tsid:generate(user),
             Account = default_account(maps:get(<<"account">>, ConfigMap, <<>>), Nickname, Uid),
-            case create_agent_user(Uid, Nickname, Account) of
-                ok ->
-                    AgentData = agent_data(Uid, Provider, ConfigMap),
-                    case ai_agent_repo:upsert(AgentData) of
-                        {ok, _} ->
-                            {ok, #{<<"user_id">> => Uid}};
-                        {error, Reason} ->
-                            ?ERROR_LOG("ai_agent_ds:create bind error ~p~n", [Reason]),
-                            {error, <<"绑定 Agent 元数据失败"/utf8>>}
-                    end;
-                {error, Reason} ->
+            AgentData = agent_data(Uid, Provider, ConfigMap),
+            case
+                elib_pg:with_tx(fun(Conn) ->
+                    ok = workspace_guard:abort_on_error(
+                        create_agent_user_tx(Conn, Uid, Nickname, Account)
+                    ),
+                    ok = workspace_guard:abort_on_error(
+                        bind_agent_tx(Conn, AgentData)
+                    ),
+                    #{<<"user_id">> => Uid}
+                end)
+            of
+                %% with_tx(reraise) 成功返回裸 Fun 结果；失败归一 {error, Reason}
+                #{<<"user_id">> := _} ->
+                    {ok, #{<<"user_id">> => Uid}};
+                {error, {agent_user, Reason}} ->
                     ?ERROR_LOG("ai_agent_ds:create user error ~p~n", [Reason]),
-                    {error, <<"创建 Agent 账号失败"/utf8>>}
+                    {error, <<"创建 Agent 账号失败"/utf8>>};
+                {error, {agent_bind, Reason}} ->
+                    ?ERROR_LOG("ai_agent_ds:create bind error ~p~n", [Reason]),
+                    {error, <<"绑定 Agent 元数据失败"/utf8>>};
+                {error, Reason} ->
+                    ?ERROR_LOG("ai_agent_ds:create error ~p~n", [Reason]),
+                    {error, <<"创建 Agent 失败"/utf8>>}
             end;
         {error, _} = Err ->
             Err
@@ -178,17 +197,35 @@ validate(<<>>, _Provider) -> {error, <<"nickname 不能为空"/utf8>>};
 validate(_Nickname, <<>>) -> {error, <<"provider 不能为空"/utf8>>};
 validate(_Nickname, _Provider) -> ok.
 
-%% 建 agent 用户行并标记 account_type=1
--spec create_agent_user(integer(), binary(), binary()) -> ok | {error, term()}.
-create_agent_user(Uid, Nickname, Account) ->
-    case user_repo:create(#{id => Uid, nickname => Nickname, account => Account}) of
-        {ok, _} ->
-            case user_repo:update(Uid, #{account_type => ?ACCOUNT_TYPE_AGENT}) of
-                {ok, _} -> ok;
-                {error, Reason} -> {error, Reason}
+%% 事务内建 agent 用户行并标记 account_type=1（TX-01：create_tx 尊重传入 id，
+%% 返回落库 id 与传入不一致即回滚；update_tx 影响 0 行同样回滚——两道脱钩防御）
+-spec create_agent_user_tx(any(), integer(), binary(), binary()) ->
+    ok | {error, {agent_user, term()}}.
+create_agent_user_tx(Conn, Uid, Nickname, Account) ->
+    case user_repo:create_tx(Conn, #{id => Uid, nickname => Nickname, account => Account}) of
+        {ok, Uid} ->
+            case user_repo:update_tx(Conn, Uid, #{account_type => ?ACCOUNT_TYPE_AGENT}) of
+                {ok, 1} ->
+                    ok;
+                {ok, Other} ->
+                    {error, {agent_user, {account_type_rows, Other}}};
+                {error, Reason} ->
+                    {error, {agent_user, Reason}}
             end;
+        {ok, Other} ->
+            {error, {agent_user, {id_mismatch, Other}}};
         {error, Reason} ->
-            {error, Reason}
+            {error, {agent_user, Reason}}
+    end.
+
+%% 事务内绑定 ai_agent 元数据（第三步；失败与建号同事务回滚）
+-spec bind_agent_tx(any(), map()) -> ok | {error, {agent_bind, term()}}.
+bind_agent_tx(Conn, AgentData) ->
+    case ai_agent_repo:upsert_tx(Conn, AgentData) of
+        {ok, _} ->
+            ok;
+        {error, Reason} ->
+            {error, {agent_bind, Reason}}
     end.
 
 %% 组装 ai_agent 行数据（trigger_policy/capabilities map → JSON binary）

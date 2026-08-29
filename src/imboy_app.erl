@@ -61,6 +61,10 @@ start(_Type, _Args) ->
     % 同上：必须由长驻的 application master 建表持有，否则表被首个惰性建表的
     % 短命 HTTP 请求进程随请求结束销毁 → 所有在途 state/otc 丢失 → 登录中断。
     ok = auth_oidc_logic:init_table(),
+    % 初始化 OIDC JWKS 缓存 ETS 表（SEC-01 id_token 验签）。同上：必须由
+    % 长驻 application master 建表持有，否则被首个短命请求进程随请求结束
+    % 销毁 -> JWKS 缓存反复失效 -> 验签退化为每次外呼 IdP。
+    ok = auth_oidc_jwks:init_table(),
     % 显式初始化 throttle 限流规则，防止 sys.config 加载时序问题导致 rate_not_set
     ok = init_throttle_rates(),
     % khepri:start(),
