@@ -12,7 +12,6 @@
 -export([face2face_create/5]).
 -export([face2face_save/3]).
 -export([dissolve_group/4]).
--export([find_by_creator_and_sum/2]).
 
 -export([member_uids/1]).
 -export([member_uids_strict/1]).
@@ -25,7 +24,6 @@
 -export([list_by_ids/2]).
 -export([page/4]).
 -export([update/1]).
--export([get_user_id_sum/1]).
 -export([count_by_owner/1]).
 -export([exists/1]).
 -export([update_by_id/2]).
@@ -258,7 +256,6 @@ create_group(Conn, Gid, Uid, Now, Type, JoinLimit) ->
         id => Gid_for_insert,
         type => Type,
         join_limit => JoinLimit,
-        user_id_sum => Uid,
         owner_uid => Uid,
         creator_uid => Uid,
         created_at => Now
@@ -275,7 +272,6 @@ create_scoped_group(Conn, Gid, Uid, Now, Type, Scope, WorkspaceId) ->
     GMap = #{
         id => Gid,
         type => Type,
-        user_id_sum => Uid,
         owner_uid => Uid,
         creator_uid => Uid,
         scope => Scope,
@@ -287,9 +283,8 @@ create_scoped_group(Conn, Gid, Uid, Now, Type, Scope, WorkspaceId) ->
 %% @doc 建群公共实现：INSERT 群行 + 创建者群主成员行（同事务）
 %% （create_group/6 与 create_scoped_group/7 共用，行为一致）
 -spec do_create_group(pid(), map(), integer(), binary()) -> integer().
-do_create_group(Conn, GMap0, Uid, Now) ->
-    Gid_for_insert = maps:get(id, GMap0),
-    GMap = GMap0#{user_id_sum => Uid},
+do_create_group(Conn, GMap, Uid, Now) ->
+    Gid_for_insert = maps:get(id, GMap),
     %% 【一致性修复】INSERT 失败时 throw，让外层 with_tx 回滚事务，
     %% 避免事务进入 aborted 状态导致后续 SQL 全部 25P02。
     %% parse_result/1 返回 {ok, Id, ExtraMap} 三元组（见 elib_pg_sql.erl:602）。
@@ -571,19 +566,6 @@ dissolve_group(Uid, Gid, _, G) ->
             {error, <<"解散群组失败"/utf8>>}
     end.
 
-%% @doc 根据创建者和用户ID总和查找群组
-%% @param CreatorUid 创建者用户ID
-%% @param UserIdSum 用户ID总和
-%% @return integer() 群组ID，不存在返回0
--spec find_by_creator_and_sum(integer(), integer()) -> integer().
-find_by_creator_and_sum(CreatorUid, UserIdSum) ->
-    Tb = group_repo:tablename(),
-    Sql = <<"SELECT id FROM ", Tb/binary, " WHERE creator_uid = $1 AND user_id_sum = $2">>,
-    case elib_pg:query(Sql, [CreatorUid, UserIdSum]) of
-        {ok, [#{<<"id">> := Gid}]} -> Gid;
-        _ -> 0
-    end.
-
 %% G3: group_logic 不应直调 group_repo / thin DS wrappers
 -spec find_by_id(integer() | binary(), binary()) -> map() | {error, any()}.
 find_by_id(Gid, Column) ->
@@ -603,14 +585,6 @@ page(Page, Size, Where, OrderBy) -> group_repo:page(Page, Size, Where, OrderBy).
 
 -spec update(map()) -> {ok, non_neg_integer()} | {error, any()}.
 update(Data) -> group_repo:update(Data).
-
-%% @doc 获取群组 user_id_sum（群成员 uid 之和，用于判断唯一性）
-%% @param Gid 群组ID
-%% @return user_id_sum 值，不存在时返回0
--spec get_user_id_sum(integer()) -> integer().
-get_user_id_sum(Gid) ->
-    Tb = group_repo:tablename(),
-    elib_pg:pluck_value(Tb, <<"user_id_sum">>, #{id => Gid}, #{}, 0).
 
 %% @doc 统计用户拥有的有效群组数
 %% @param OwnerUid 群主UID

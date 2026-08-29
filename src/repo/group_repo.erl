@@ -81,7 +81,7 @@ find_by_gid(Gid) ->
     case
         find_by_id(
             Gid,
-            <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>
+            <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>
         )
     of
         #{} = Row when map_size(Row) > 0 ->

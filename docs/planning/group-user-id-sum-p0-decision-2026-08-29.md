@@ -64,3 +64,18 @@
 1. 是否授权 C 止血（改 `group_member_ds:update_statistics/2` + `group_logic:add/4`，产品代码）？
 2. 目标态选 B 还是 A？
 3. 若选 B：payload 字段过渡策略（置 0 / 保留读旧值）需要与移动端确认发布顺序。
+
+---
+
+## 5. 终局拍板（2026-08-29，执行记录）
+
+**产品决策：同一成员集允许创建多个不同 group（微信/Telegram 同款行为），不做任何创建幂等去重。**
+
+- §3 的三个修法（A numeric / B 签名替代 / C 饱和钳制）全部不采用；本文档 §4 的"C 止血 + B 目标态"建议作废。
+- `user_id_sum` 全量退役（迁移 00000079：DROP INDEX `i_creatorid_memberidsum` + DROP COLUMN，无替代列）：
+  - 写点：`update_statistics` 仅 COUNT；建群/workspace 默认群不再写。
+  - 载荷：join/leave 通知、入群响应、face2face payload 字段删除（前后端同版本清理，无过渡期；客户端本就 `?? 0` 弱依赖）。
+  - API 文档：rest-api-v1-catalog 与 group_api_contract 同步删除字段。
+- 实施中一度落地的 `member_set_hash`（创建意图哈希幂等）随本决策一并移除，未上主线。
+- 受影响测试终态：stress ×3 转绿（溢出根因消失）；group 域 13 模块回归全绿。
+- 归档：本文档保留作决策记录；`group-user-id-sum-cap.patch`（方案 C 遗物）未入 git 跟踪，位于共享主树，由维护者自行处置。

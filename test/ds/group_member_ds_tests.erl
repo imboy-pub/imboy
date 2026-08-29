@@ -94,11 +94,10 @@ join_group_success_test_() ->
                     (_Conn, <<"SELECT workspace_id FROM \"group\"", _/binary>>, _) ->
                         {ok, []};
                     (_Conn, _Sql, [1]) ->
-                        {ok, [#{<<"user_id_sum">> => 100, <<"member_count">> => 1}]}
+                        {ok, [#{<<"member_count">> => 100}]}
                 end},
                 {'update', 5, fun(_Conn, <<"group">>, Data, <<"id = $1">>, [1]) ->
-                    ?assertEqual(100, maps:get(user_id_sum, Data)),
-                    ?assertEqual(1, maps:get(member_count, Data)),
+                    ?assertEqual(100, maps:get(member_count, Data)),
                     {ok, 1}
                 end}
             ]},
@@ -164,11 +163,10 @@ leave_success_test_() ->
                     {ok, 1}
                 end},
                 {'query', 3, fun(_Conn, _Sql, [1]) ->
-                    {ok, [#{<<"user_id_sum">> => 200, <<"member_count">> => 2}]}
+                    {ok, [#{<<"member_count">> => 200}]}
                 end},
                 {'update', 5, fun(_Conn, <<"group">>, Data, <<"id = $1">>, [1]) ->
-                    ?assertEqual(200, maps:get(user_id_sum, Data)),
-                    ?assertEqual(2, maps:get(member_count, Data)),
+                    ?assertEqual(200, maps:get(member_count, Data)),
                     {ok, 1}
                 end}
             ]},

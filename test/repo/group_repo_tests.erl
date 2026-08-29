@@ -50,7 +50,6 @@ add_valid_group_test_() ->
                 creator_uid => 1,
                 type => 1,
                 join_limit => 1,
-                user_id_sum => 1,
                 created_at => 1700000000
             },
             Result = group_repo:add(undefined, Data),

@@ -49,12 +49,8 @@ DEPS += erlang_pay
 # 并在节点启动时自动 start —— 生产机上任意 .erl 写入即升级为任意代码执行。
 # 全仓零代码引用 sync:*，因此只在本地开发挂载；
 # 生产打包走 scripts/deploy.sh 的 `IMBOYENV=pro make rel`，天然不含。
-# eunit-local 传 DISABLE_SYNC=1：测试套件运行中 sync 的热重载会整批重启
-# 应用（noproc 级联污染后续模块），跑测试时必须与 sync 解耦。
 ifeq ($(IMBOYENV),local)
-ifeq ($(DISABLE_SYNC),)
 DEPS += sync
-endif
 endif
 
 LOCAL_DEPS = mnesia sasl ssl inets eunit crypto public_key
@@ -261,15 +257,15 @@ docs-stop:
 #       make eunit-local t=elib_uri_tests   # 单模块
 # 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
+# worktree 兼容：code:lib_dir/priv_dir 的 lib 位注册要求 code path 中 ebin 的
+# 父目录名与 app 同名（imboy/ebin）。git worktree 根名是 rg-*，-pa ebin 注册不了
+# lib 位 → code:priv_dir(imboy) bad_name → imboy app 启动即崩
+# （ensure_dev_rsa_keypair / imboy_migrate 均依赖 priv_dir），?TEST_WITH_DB 全
+# skip。补 -pa imboy/ebin：worktree 内 `ln -s . imboy` 后 lib 位可解析；主树无
+# imboy/ 子目录，该 -pa 指向不存在目录被 erl 静默忽略，零副作用。
 .PHONY: eunit-local
-# 只清理本仓库主目录遗留的 eunit beam（全量跑的 erl 偶发 halt 后悬空，
-# 持有 19800 与连接池会毒化下次运行）。显式排除 .worktrees/ 里的并行
-# 会话运行——绝不可误伤。
 eunit-local:
-	@for p in $$(pgrep -f 'eunit:test' 2>/dev/null); do cmd=$$(ps -p $$p -o command= 2>/dev/null); case "$$cmd" in *".worktrees/"*) ;; *) kill -9 $$p 2>/dev/null;; esac; done
-	@sleep 1
-	@DISABLE_SYNC=1 IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
-	@for p in $$(pgrep -f 'eunit:test' 2>/dev/null); do cmd=$$(ps -p $$p -o command= 2>/dev/null); case "$$cmd" in *".worktrees/"*) ;; *) kill -9 $$p 2>/dev/null;; esac; done
+	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa imboy/ebin -pa ebin -pa test"
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担
