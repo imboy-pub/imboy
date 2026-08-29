@@ -48,14 +48,11 @@ generate_with_different_inputs_test_() ->
 
 verify_with_correct_password_test_() ->
     ?TEST_WITH_APP(fun() ->
-        % 2026-08-26 SHA-256 迁移后的契约：generate 的入参是客户端预哈希值
-        % （新协议 sha256(明文)，旧协议 md5(明文)），verify 的入参是明文，
-        % 内部依次尝试 sha256/md5 两条预哈希路径
+        % 契约（main C-1 后实现语义）：generate 入参即明文，内部 sha256 预哈希
+        % 后 hmac 存储；verify 对称解出 → generate↔verify 明文往返闭环
         Plaintext = <<"correct_password">>,
-        Sha256Ciphertext = elib_password:generate(crypto:hash(sha256, Plaintext)),
+        Sha256Ciphertext = elib_password:generate(Plaintext),
         ?assertEqual({ok, []}, elib_password:verify(Plaintext, Sha256Ciphertext)),
-        Md5Ciphertext = elib_password:generate(elib_hasher:md5(binary_to_list(Plaintext))),
-        ?assertEqual({ok, []}, elib_password:verify(Plaintext, Md5Ciphertext)),
         % iodata 健壮性：列表输入不得崩溃（历史 badarg 回归钉子）
         ?assertEqual(
             {error, <<"errorPassword">>},
@@ -81,8 +78,8 @@ verify_with_incorrect_password_test_() ->
 
 verify_with_empty_password_test_() ->
     ?TEST_WITH_APP(fun() ->
-        % 空密码同样按预哈希契约存取：generate(sha256(<<>>)) ↔ verify(<<>>)
-        Ciphertext = elib_password:generate(crypto:hash(sha256, <<>>)),
+        % 空密码按明文往返契约：generate(<<>>) ↔ verify(<<>>)
+        Ciphertext = elib_password:generate(<<>>),
         ?assertEqual({ok, []}, elib_password:verify(<<>>, Ciphertext)),
         % 验证空密码生成的哈希格式正确
         ?assertMatch(<<_/binary>>, Ciphertext),
