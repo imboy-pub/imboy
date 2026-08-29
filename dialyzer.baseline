@@ -27,8 +27,12 @@ ai_agent_reply.erl|Invalid type specification for function ai_agent_reply:do_del
 ai_agent_reply.erl|The call msg_store_ds:stage (<<99,50,99>>, MsgId :: binary(), <<116,101,120,116>>, <<>>, 'null', PayloadJson :: binary(), ToId :: any(), FromUid :: any(), NowTs :: binary(), NowTs :: binary()) will never return since the success typing is (binary(), binary(), binary(), binary(), map(), binary(), integer(), [integer()] | integer(), binary(), binary()) -> 'error' | {'ok', 'duplicate' | 'new'} and the contract is (binary(), binary(), binary(), binary(), map(), binary(), integer(), integer() | [integer()], binary(), binary()) -> {'ok', 'new'} | {'ok', 'duplicate'} | 'error'
 ai_agent_role_ds.erl|Function default_policy/0 will never be called
 attach_handler.erl|The pattern {'error', 'upload_not_supported'} can never match the type {'error', 'forbidden'}
+bot_ds.erl|The pattern 'ok' can never match the type {'error', _}
+bot_ds.erl|The pattern 'ok' can never match the type {'error', _} | {'ok', integer()}
 bot_handler.erl|The pattern Err = {error, _} can never match the type {'ok', map(), #{'body_length' := 'undefined' | non_neg_integer(), 'cert' := 'undefined' | binary(), 'has_body' := boolean(), 'headers' := #{binary() => binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | [])}, 'host' := binary(), 'method' := binary(), 'path' := binary(), 'peer' := {{byte(), byte(), byte(), byte()} | {char(), char(), char(), char(), char(), char(), char(), char()}, char()}, 'pid' := pid(), 'port' := char(), 'qs' := binary(), 'ref' := _, 'scheme' := binary(), 'sock' := {{byte(), byte(), byte(), byte()} | {char(), char(), char(), char(), char(), char(), char(), char()}, char()}, 'streamid' := _, 'version' := atom(), 'bindings' => #{atom() => _}, 'charset' => 'undefined' | binary(), 'has_read_body' => 'true', 'has_sent_resp' => 'headers' | 'true', 'host_info' => [binary()], 'language' => 'undefined' | binary(), 'media_type' => {binary(), binary(), [{binary(), binary()}]}, 'multipart' => 'done' | {binary(), binary()}, 'path_info' => [binary()], 'proxy_header' => #{'command' := 'local' | 'proxy', 'version' := 1 | 2, 'alpn' => binary(), 'authority' => binary(), 'dest_address' => binary() | {byte(), byte(), byte(), byte()} | {char(), char(), char(), char(), char(), char(), char(), char()}, 'dest_port' => char(), 'netns' => binary(), 'raw_tlvs' => [{byte(), binary()}], 'src_address' => binary() | {byte(), byte(), byte(), byte()} | {char(), char(), char(), char(), char(), char(), char(), char()}, 'src_port' => char(), 'ssl' => #{'client' := ['cert_conn' | 'cert_sess' | 'ssl'], 'verified' := boolean(), 'cipher' => binary(), 'cn' => binary(), 'key_alg' => binary(), 'sig_alg' => binary(), 'version' => binary()}, 'transport_family' => 'ipv4' | 'ipv6' | 'undefined' | 'unix', 'transport_protocol' => 'dgram' | 'stream' | 'undefined', 'unique_id' => binary()}, 'range' => {binary(), binary() | [neg_integer() | {non_neg_integer(), 'infinity' | non_neg_integer()}]}, 'resp_body' => binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | []) | {'sendfile', non_neg_integer(), non_neg_integer(), atom() | binary() | [atom() | [any()] | char()]}, 'resp_cookies' => #{binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | []) => binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | [])}, 'resp_headers' => #{binary() => binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | [])}, 'websocket_version' => 7 | 8 | 13, _ => _}}
+bot_handler.erl|The pattern {'ok', Result} can never match the type {'error', <<_:64, _:_*8>>}
 bot_logic.erl|The pattern 'ok' can never match the type {'reply', #{<<_:16, _:_*8>> => _}}
+bot_logic.erl|The pattern {ok, #{<<117,115,101,114,95,105,100>> := BotUid}} can never match the type {'error', <<_:64, _:_*8>>}
 bot_logic.erl|The variable Other can never match since previous clauses completely covered the type {'reply', #{<<_:16, _:_*8>> => _}}
 channel_admin_ds.erl|Call to missing or unexported function channel_admin_repo:delete_tx/3
 channel_admin_ds.erl|Call to missing or unexported function channel_admin_repo:update_role_tx/4
@@ -76,7 +80,7 @@ channel_logic_order.erl|The variable _UnexpectedPay can never match since previo
 channel_logic_order.erl|The variable _UnexpectedPrice can never match since previous clauses completely covered the type {'error', _} | {'ok', map()}
 channel_logic_order.erl|The variable _UnexpectedPurchased can never match since previous clauses completely covered the type boolean()
 channel_logic_order.erl|The variable _UnexpectedRefund can never match since previous clauses completely covered the type 'ok' | {'error', binary()}
-channel_logic_order.erl|The variable _UnexpectedSubscribe can never match since previous clauses completely covered the type 'ok' | {'error', binary()}
+channel_logic_order.erl|The variable _UnexpectedSubscribe can never match since previous clauses completely covered the type 'ok' | {'error', binary() | {integer(), _}}
 channel_logic_stats.erl|The pattern {'error', Reason} can never match the type boolean()
 channel_logic_stats.erl|The pattern {'error', Reason} can never match the type {'ok', integer()}
 channel_logic_stats.erl|The pattern {'error', Reason} can never match the type {'ok', non_neg_integer(), non_neg_integer()}
@@ -90,7 +94,7 @@ channel_logic_stats.erl|The variable UnexpectedStats can never match since previ
 channel_logic_stats.erl|The variable _Unexpected can never match since previous clauses completely covered the type {'error', _} | map()
 channel_logic_subscription.erl|The pattern {'ok', UnexpectedChannels} can never match the type {'error', _}
 channel_logic_subscription.erl|The pattern {'ok', UnexpectedSubscribers} can never match the type {'error', _}
-channel_logic_subscription.erl|The variable Unexpected can never match since previous clauses completely covered the type 'ok' | {'error', binary()}
+channel_logic_subscription.erl|The variable Unexpected can never match since previous clauses completely covered the type 'ok' | {'error', binary() | {integer(), _}}
 channel_logic_subscription.erl|The variable Unexpected can never match since previous clauses completely covered the type {'error', _} | {'ok', [map()]}
 channel_logic_subscription.erl|The variable _Unexpected can never match since previous clauses completely covered the type {'error', _} | map()
 channel_logic_subscription.erl|The variable _Unexpected can never match since previous clauses completely covered the type {'error', _} | {'ok', [map()]}
@@ -106,13 +110,15 @@ conversation_handler.erl|The call elib_response:success (Req0 :: #{'body_length'
 e2ee_backup_handler.erl|The variable _Reason can never match since previous clauses completely covered the type <<_:64, _:_*8>>
 e2ee_handler.erl|The variable _Reason can never match since previous clauses completely covered the type <<_:64, _:_*8>>
 e2ee_trust_handler.erl|The variable _Reason can never match since previous clauses completely covered the type binary()
-elib_oss.erl|Function validate_file_content/2 will never be called
-elib_password.erl|The pattern <Plaintext, 'hmac_sha512', Salt, Ciphertext> can never match the type <_, 'default_md5', _, binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | [])>
+elib_password.erl|Guard test is_list (Plaintext :: binary()) can never succeed
+elib_password.erl|The pattern <Plaintext, 'hmac_sha512', Salt, Ciphertext> can never match the type <binary(), 'default_md5', _, binary() | maybe_improper_list(binary() | maybe_improper_list(any(), binary() | []) | byte(), binary() | [])>
 feedback_handler.erl|The pattern {'error', Reason} can never match the type 'ok'
 finance_adm_logic.erl|The pattern {'rollback', Reason} can never match the type {'error', _}
 finance_adm_logic.erl|The variable Other can never match since previous clauses completely covered the type binary()
 group_album_ds.erl|Invalid type specification for function group_album_ds:find_photo_group_id/1. The success typing is group_album_ds:find_photo_group_id (integer()) -> {'error', 'not_found'} | {'ok', _} But the spec is group_album_ds:find_photo_group_id (binary()) -> {'ok', integer()} | {'error', 'not_found'} They do not overlap in the 1st argument
 group_album_handler.erl|The pattern 'ok' can never match the type {'error', <<_:120, _:_*48>>}
+group_album_handler.erl|The pattern {'error', 980} can never match the type {'error', <<_:120, _:_*48>>}
+group_album_handler.erl|The pattern {'error', 980} can never match the type {'ok', []}
 group_album_handler.erl|The pattern {'error', Reason} can never match the type {'ok', []}
 group_album_handler.erl|The pattern {'ok', Comments} can never match the type {'error', <<_:120, _:_*48>>}
 group_album_logic.erl|Invalid type specification for function group_album_logic:add_comment/3. The success typing is group_album_logic:add_comment (integer(), _, _) -> {'error', <<_:120, _:_*48>>} But the spec is group_album_logic:add_comment (binary(), integer(), binary()) -> 'ok' | {'error', term()} They do not overlap in the 1st argument
@@ -123,7 +129,7 @@ group_album_logic.erl|Invalid type specification for function group_album_logic:
 group_album_logic.erl|The call group_album_ds:add_comment (PhotoId :: integer(), CurrentUid :: any(), Content :: any()) breaks the contract (binary(), integer(), binary()) -> 'ok' | {'error', term()}
 group_album_logic.erl|The call group_album_ds:like_photo (PhotoId :: integer(), CurrentUid :: any()) will never return since the success typing is (binary(), integer()) -> 'ok' | {'error', _} and the contract is (binary(), integer()) -> 'ok' | {'error', term()}
 group_album_logic.erl|The call group_album_ds:list_comments (PhotoId :: integer(), Limit :: any()) will never return since the success typing is (binary(), integer()) -> {'error', _} | {'ok', [map()]} and the contract is (binary(), integer()) -> {'ok', [map()]} | {'error', term()}
-group_album_logic.erl|The call group_album_ds:unlike_photo (PhotoId :: integer(), CurrentUid :: any()) will never return since the success typing is (binary(), integer()) -> 'ok' | {'error', _} and the contract is (binary(), integer()) -> 'ok' | {'error', term()}
+group_album_logic.erl|The call group_album_ds:unlike_photo (PhotoId :: integer(), CurrentUid :: any()) breaks the contract (binary(), integer()) -> 'ok' | {'error', term()}
 group_discovery_handler.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', <<_:192, _:_*24>>} | {'ok', #{<<_:32, _:_*8>> => [map()] | non_neg_integer()}}
 group_discovery_handler.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', <<_:216>>} | {'ok', map()}
 group_discovery_handler.erl|The pattern {'error', Reason} can never match since previous clauses completely covered the type {'error', <<_:240>>} | {'ok', #{<<_:32, _:_*8>> => [map()] | non_neg_integer()}}
