@@ -469,6 +469,7 @@ int_env(Key, Default) ->
 
 %% JWT 三段拆分；签名段不可为空（alg=none 攻击面在白名单层已拒，
 %% 这里再要求 Sig 段存在，双保险）
+%% 调用方契约恒传 binary（Dialyzer 成功类型证明 _ 兜底子句不可达，已删）
 split_token(Token) when is_binary(Token) ->
     case binary:split(Token, <<".">>, [global]) of
         [_H, _P, _S] = Parts ->
@@ -479,9 +480,7 @@ split_token(Token) when is_binary(Token) ->
             end;
         _ ->
             {error, bad_id_token}
-    end;
-split_token(_) ->
-    {error, bad_id_token}.
+    end.
 
 join_signing_input(HeaderB64, PayloadB64) ->
     <<HeaderB64/binary, ".", PayloadB64/binary>>.
