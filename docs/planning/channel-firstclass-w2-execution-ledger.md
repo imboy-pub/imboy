@@ -281,3 +281,4 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
   - imboyapp 1 笔：`122652b4` feat(workspace) W2 全量（含版本与 error_code；dart-fmt 自动格式化 17 文件后通过）
   - imboyadmin 2 笔：`e26eb54` feat(admin) 治理面（含 .gitignore evidence 忽略）→ `8345107` chore(release) 版本
   - **未 push、未打 tag**——push 批次（含三仓历史 165/100/13+ 笔领先提交随行）仍待用户指定远端后单独授权。
+- **追加（同日终）**：本地 tag 已打（**未推送**）：imboy `v1.0.0-alpha.70`、imboyapp/imboyadmin `v1.0.0-alpha.16`（`git tag -d` 可随时撤销）。真机二次探测仍不在线。**剩余唯一未完成项 = push（需用户指定远端）与 H2/H3 人工验收资源**。总控所有可独立执行的工作至此全部完成。
