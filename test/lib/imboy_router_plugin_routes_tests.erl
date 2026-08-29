@@ -60,7 +60,9 @@ plugin_routes_returns_empty_when_registry_not_started_test_() ->
             undefined ->
                 ?assertEqual([], imboy_router:plugin_routes());
             _Running ->
-                throw({skip, "registry already running (app-owned)"})
+                %% app 常驻时 registry 必在，"未启动"前提不可构造：
+                %% 退化为不崩冒烟断言（throw {skip,_} 在用例体内会记失败）
+                ?assert(is_list(imboy_router:plugin_routes()))
         end
     end).
 
