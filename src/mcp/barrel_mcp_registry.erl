@@ -294,27 +294,67 @@ run_tool(Name, Args, Ctx) ->
     end.
 
 run_tool_worker(Name, Args, Ctx, Handler, ReplyTo, RequestId) ->
-    %% Optional input validation against the registered input_schema.
-    case validate_tool_input(Args, Handler) of
-        ok ->
-            %% imboy 集成：可选授权闸门（enforce 默认关闭）。经 function_exported
-            %% 守卫保持 vendored barrel_mcp 可独立运行（无 gate 模块时直接放行）。
-            case maybe_authz(Name, Ctx) of
-                ok ->
-                    invoke_tool_handler(Args, Ctx, Handler, ReplyTo, RequestId);
-                {deny, Content} ->
-                    ReplyTo ! {tool_error, RequestId, Content}
-            end;
-        {error, Errors} ->
-            ReplyTo ! {tool_validation_failed, RequestId, Errors}
+    %% worker 是无链接的裸 spawn：try/catch 兜底保证任何路径崩溃都必回
+    %% {tool_failed,...}，否则 drive_async_plan 会干等到超时（全量 eunit 下
+    %% 授权链路撞 PG 池 churn 曾致 30s 悬死，CI-00）。
+    try
+        %% Optional input validation against the registered input_schema.
+        case validate_tool_input(Args, Handler) of
+            ok ->
+                %% imboy 集成：可选授权闸门（enforce 默认关闭）。经 function_exported
+                %% 守卫保持 vendored barrel_mcp 可独立运行（无 gate 模块时直接放行）。
+                case maybe_authz(Name, Ctx) of
+                    ok ->
+                        invoke_tool_handler(Args, Ctx, Handler, ReplyTo, RequestId);
+                    {deny, Content} ->
+                        ReplyTo ! {tool_error, RequestId, Content}
+                end;
+            {error, Errors} ->
+                ReplyTo ! {tool_validation_failed, RequestId, Errors}
+        end
+    catch
+        Class:Reason:Stack ->
+            logger:error(
+                "MCP tool worker crashed before handler: ~p:~p (tool=~ts, "
+                "request_id=~p, stack=~p)",
+                [Class, Reason, Name, RequestId, Stack]
+            ),
+            ReplyTo ! {tool_failed, RequestId, internal_error}
     end.
 
 %% imboy integration hook: optional MCP authz gate. Optional via
 %% function_exported so vendored barrel_mcp still runs standalone.
 maybe_authz(Name, Ctx) ->
     case erlang:function_exported(mcp_authz_gate, check, 2) of
-        true -> mcp_authz_gate:check(Name, Ctx);
-        false -> ok
+        true ->
+            try mcp_authz_gate:check(Name, Ctx) of
+                Result -> Result
+            catch
+                Class:Reason:Stack ->
+                    %% 闸门链路故障（如 PG 池被并发套件 churn）与
+                    %% mcp_governance_logic:authorize/2 的 {error,_} 分支同语义：
+                    %% enforce 关 → 放行（不因治理故障阻断）；enforce 开 → 保守拒绝。
+                    logger:error(
+                        "MCP authz gate crashed: ~p:~p (tool=~ts, stack=~p)",
+                        [Class, Reason, Name, Stack]
+                    ),
+                    case
+                        erlang:function_exported(mcp_governance_logic, enforce, 0) andalso
+                            mcp_governance_logic:enforce()
+                    of
+                        true ->
+                            {deny, [
+                                #{
+                                    <<"type">> => <<"text">>,
+                                    <<"text">> => <<"治理服务不可用"/utf8>>
+                                }
+                            ]};
+                        _ ->
+                            ok
+                    end
+            end;
+        false ->
+            ok
     end.
 
 validate_tool_input(Args, Handler) ->
