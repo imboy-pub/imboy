@@ -23,19 +23,13 @@ auth_test_() ->
     ]}.
 
 setup() ->
-    _ = start_srv(barrel_mcp_registry),
-    _ = start_srv(barrel_mcp_session),
+    {ok, _} = eunit_runner:ensure_named_server(barrel_mcp_registry),
+    {ok, _} = eunit_runner:ensure_named_server(barrel_mcp_session),
     ok = barrel_mcp_registry:wait_for_ready(),
     ok = barrel_mcp_registry:reg(tool, <<"whoami">>, ?MODULE, whoami, #{
         description => <<"echo caller uid">>
     }),
     ok.
-
-start_srv(Mod) ->
-    case Mod:start_link() of
-        {ok, Pid} -> Pid;
-        {error, {already_started, Pid}} -> Pid
-    end.
 
 cleanup(_) ->
     catch barrel_mcp_registry:unreg(tool, <<"whoami">>),

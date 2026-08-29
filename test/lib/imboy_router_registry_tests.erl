@@ -28,9 +28,13 @@
 setup() ->
     %% 全量 eunit 下 imboy_plugin_sup 持有命名实例或兄弟套件先启动：
     %% 复用而非杀掉（app 子进程被杀属破坏性 churn）；cleanup 只停自启实例。
-    case imboy_router_registry:start_link() of
-        {ok, Pid} -> {own, Pid};
-        {error, {already_started, Pid}} -> {reused, Pid}
+    case eunit_runner:ensure_named_server(imboy_router_registry) of
+        {ok, Pid} ->
+            {reused, Pid};
+        {error, {not_started, _}} ->
+            % app 起不来（如无 DB 环境）才自建；cleanup 只停自建实例
+            {ok, Pid} = imboy_router_registry:start_link(),
+            {own, Pid}
     end.
 
 cleanup({own, Pid}) ->
@@ -42,6 +46,9 @@ cleanup({own, Pid}) ->
             ok
     end;
 cleanup({reused, _Pid}) ->
+    %% 复用 app 实例时反注册本套件路由，避免污染后续套件
+    _ = (catch imboy_router_registry:unregister(channel)),
+    _ = (catch imboy_router_registry:unregister(moment)),
     ok.
 
 valid_route(PluginName, Path) ->

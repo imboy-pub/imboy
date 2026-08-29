@@ -10,7 +10,8 @@
     eunit_cleanup_db/1,
     eunit_try_db/0,
     eunit_setup_with_db/0,
-    eunit_setup_db_or_skip/0
+    eunit_setup_db_or_skip/0,
+    ensure_named_server/1
 ]).
 
 %%%===================================================================
@@ -136,6 +137,19 @@ eunit_cleanup({app_not_started, test_continues}) ->
     ok;
 eunit_cleanup(_State) ->
     ok.
+
+%% @doc 确保 imboy app（及其 sup 持有的命名 gen_server：barrel_mcp_*、
+%% imboy_router_registry、imboy_ws_action_registry 等）可用，返回实例 pid。
+%% 测试进程绝不能对这些 app 级命名服务自行 start_link：链接父进程（eunit
+%% fixture）正常退出时 normal 信号杀不死未 trap_exit 的 gen_server，僵尸
+%% 持名后 imboy app 每次启动都在 sup 失败，半启动/拆除循环直至
+%% "Too many processes"（CI-00 run5 全量翻车根因）。
+ensure_named_server(Mod) when is_atom(Mod) ->
+    _ = eunit_setup(),
+    case erlang:whereis(Mod) of
+        Pid when is_pid(Pid) -> {ok, Pid};
+        undefined -> {error, {not_started, Mod}}
+    end.
 
 %% @doc 尝试建立数据库连接
 %% @return {ok, Conn} | {error, Reason}

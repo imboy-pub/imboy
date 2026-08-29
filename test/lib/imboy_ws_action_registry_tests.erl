@@ -5,12 +5,14 @@
 %% WS action 注册表测试（数据驱动路由的基石）
 %% 验证：内置 action 注册、查表、动态注册（插件扩展）、unknown 兜底。
 
-%% @doc 确保注册表 gen_server 已启动（容忍已在运行）
+%% @doc 确保注册表 gen_server 可用。
+%% 注册表是 imboy_plugin_sup 子进程：先行确保 imboy app 启动并复用其
+%% 实例。测试进程严禁 start_link 占名——fixture 正常退出杀不死未
+%% trap_exit 的链接 gen_server，僵尸持名后 imboy app 每次启动都在
+%% plugin_sup 失败（CI-00 run5 全量 "Too many processes" 根因）。
 ensure_started() ->
-    case imboy_ws_action_registry:start_link() of
-        {ok, _} -> ok;
-        {error, {already_started, _}} -> ok
-    end.
+    {ok, _} = eunit_runner:ensure_named_server(imboy_ws_action_registry),
+    ok.
 
 %% @doc init_builtin 后内置 C2C/C2G action 可查
 builtin_actions_test_() ->

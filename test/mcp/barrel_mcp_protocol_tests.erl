@@ -33,16 +33,10 @@ protocol_test_() ->
 setup() ->
     %% vendored 上下文无 barrel_mcp OTP app：直接启协议引擎所需的 gen_server
     %% （registry + session），避开 application:ensure_all_started(barrel_mcp)。
-    _ = start_srv(barrel_mcp_registry),
-    _ = start_srv(barrel_mcp_session),
+    {ok, _} = eunit_runner:ensure_named_server(barrel_mcp_registry),
+    {ok, _} = eunit_runner:ensure_named_server(barrel_mcp_session),
     ok = barrel_mcp_registry:wait_for_ready(),
     ok.
-
-start_srv(Mod) ->
-    case Mod:start_link() of
-        {ok, Pid} -> Pid;
-        {error, {already_started, Pid}} -> Pid
-    end.
 
 cleanup(_) ->
     %% Clean up registered handlers

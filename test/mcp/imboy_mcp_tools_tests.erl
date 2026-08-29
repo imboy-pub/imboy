@@ -36,8 +36,8 @@ tools_test_() ->
     ]}.
 
 setup() ->
-    _ = start_srv(barrel_mcp_registry),
-    _ = start_srv(barrel_mcp_session),
+    {ok, _} = eunit_runner:ensure_named_server(barrel_mcp_registry),
+    {ok, _} = eunit_runner:ensure_named_server(barrel_mcp_session),
     ok = barrel_mcp_registry:wait_for_ready(),
     ok = imboy_mcp_tools:reg_all(),
     meck:new(user_logic, [no_link, passthrough]),
@@ -57,12 +57,6 @@ setup() ->
 cleanup(_) ->
     meck:unload(),
     ok.
-
-start_srv(Mod) ->
-    case Mod:start_link() of
-        {ok, Pid} -> Pid;
-        {error, {already_started, Pid}} -> Pid
-    end.
 
 %%%===================================================================
 %%% helper：经 process/2 端到端调用一个 tool，返回 result map
