@@ -84,7 +84,12 @@ send_welcome_template_path_test_() ->
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             {imboy_llm_registry, [{'lookup', 1, fun(_) -> {ok, #{module => x, opts => #{}}} end}]},
-            ?MSG_STORE_MECK
+            ?MSG_STORE_MECK,
+            %% CI-00 修桩：显式模拟 agent 存在且允许 proactive 的前置守卫
+            %% （原依赖 is_agent 异常回退路径：合并跑时前置模块已启动 app，
+            %%  真库无 user_id=42 的 agent，守卫按设计拒绝 -> 不发消息）。
+            {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{<<"role_status">> => 1}} end}]},
+            {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]}
         ],
         fun() ->
             Cfg = #{
@@ -113,7 +118,12 @@ send_welcome_template_default_when_missing_test_() ->
             {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
-            ?MSG_STORE_MECK
+            ?MSG_STORE_MECK,
+            %% CI-00 修桩：显式模拟 agent 存在且允许 proactive 的前置守卫
+            %% （原依赖 is_agent 异常回退路径：合并跑时前置模块已启动 app，
+            %%  真库无 user_id=42 的 agent，守卫按设计拒绝 -> 不发消息）。
+            {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{<<"role_status">> => 1}} end}]},
+            {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]}
         ],
         fun() ->
             %% Cfg 无 template 键 → 用内置默认文案
@@ -233,7 +243,12 @@ send_welcome_rate_limited_falls_back_to_template_test_() ->
             {elib_tsid, [{'generate', 0, fun() -> 8888 end}]},
             {elib_retry_config, [{'intervals', 1, fun(_) -> [0] end}]},
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
-            ?MSG_STORE_MECK
+            ?MSG_STORE_MECK,
+            %% CI-00 修桩：显式模拟 agent 存在且允许 proactive 的前置守卫
+            %% （原依赖 is_agent 异常回退路径：合并跑时前置模块已启动 app，
+            %%  真库无 user_id=42 的 agent，守卫按设计拒绝 -> 不发消息）。
+            {ai_agent_ds, [{'is_agent', 1, fun(42) -> {true, #{<<"role_status">> => 1}} end}]},
+            {ai_agent_policy, [{'allows', 2, fun(_, _) -> true end}]}
         ],
         fun() ->
             Cfg = #{welcome_llm_enabled => true},

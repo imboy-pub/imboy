@@ -72,7 +72,7 @@ setup_mocks(Mods) ->
     put(saved_manifests, RealManifests),
     ok.
 
-cleanup(_) ->
+cleanup(SavedPT) ->
     case imboy_plugin_manager:find_lifecycle(?PLUGIN) of
         undefined -> ok;
         Pid -> catch gen_statem:stop(Pid)

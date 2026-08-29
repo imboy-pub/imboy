@@ -69,7 +69,7 @@ save_read_dedups_by_three_columns_test_() ->
                         binary:match(SqlBin, <<"msg_id = $1 AND to_uid = $3 AND to_did = $4">>)
                     ),
                     ?assertEqual(5, length(Params)),
-                    {ok, []}
+                    {ok, 1}
                 end}
             ]}
         ],

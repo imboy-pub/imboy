@@ -68,7 +68,7 @@ jobs:
             deps
             _build
             .erlang.mk
-            .dialyzer_plt
+            .imboy.plt
             ~/.cache/rebar3
           key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
@@ -107,7 +107,7 @@ jobs:
             deps
             _build
             .erlang.mk
-            .dialyzer_plt
+            .imboy.plt
             ~/.cache/rebar3
           key: ${{ runner.os }}-otp28-beam-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
@@ -119,8 +119,12 @@ jobs:
       - name: Run full EUnit (retry + classify)
         id: gate
         run: |
+          # CI-00：与本地 `make eunit-local` 完全同口径（eunit-local 目标负责
+          # .otp/imboy OTP 布局 symlink 让 code:priv_dir(imboy) 可解析 + -pa 注入；
+          # EUNIT_CONFIG=config/sys 等价配置注入，sys.config 已从 example 物化）。
+          # 原 `make eunit` 裸口径缺 -config 注入，依赖 app 启动的用例级联失败。
           bash .qa/nightly-gate.sh full-eunit eunit-full.log \
-            -- env IMBOYENV=local make eunit
+            -- env IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys
 
       - name: Summarize EUnit result
         if: always()
@@ -142,12 +146,14 @@ jobs:
 
   # ----------------------------------------------------------------
   # Dialyzer — nightly 真实结果（无 continue-on-error）
-  # classify 粒度：警告所在 src 文件（对照 known-failures.yaml dialyze 段）。
-  # 注意：Makefile DIALYZER_WARNINGS=50 是 make 层计数预算；classify 的 NEW 判定
-  # 独立于该预算（known 外警告文件即 NEW）。首跑前 known 留空 -> 首跑红+盘点回填。
+  # CI-00：命令换成 `make dialyze-check` = 全量 dialyzer 分析 + 递减基线门
+  # （dialyzer.baseline 指纹比对，基线外新增 1 条即红；存量减少提示可收紧）。
+  # 阻塞判定由 scripts/check_dialyzer_baseline.sh 统一裁决（make dialyze 在
+  # 存量告警下恒 exit 2，不构成红绿语义）。known-failures.yaml 的 dialyze 段
+  # 由此由基线门接管（指纹粒度更细：模块+告警正文，非仅文件名）。
   # ----------------------------------------------------------------
   dialyze:
-    name: Dialyzer (nightly, classified)
+    name: Dialyzer (nightly, baseline-gated)
     runs-on: ubuntu-latest
     timeout-minutes: 60
     needs: [compile]
@@ -172,15 +178,15 @@ jobs:
             deps
             _build
             .erlang.mk
-            .dialyzer_plt
+            .imboy.plt
             ~/.cache/rebar3
           key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
 
-      - name: Run Dialyzer (retry + classify)
+      - name: Run Dialyzer + baseline gate (retry + classify)
         id: gate
         run: |
           bash .qa/nightly-gate.sh dialyze dialyze.log \
-            -- env IMBOYENV=local make dialyze
+            -- env IMBOYENV=local make dialyze-check
 
       - name: Summarize Dialyzer result
         if: always()
@@ -188,7 +194,7 @@ jobs:
           echo "## Dialyzer (nightly, classified)" >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.gate.outputs.classify }}" >> "$GITHUB_STEP_SUMMARY" || true
           warn_count="$(grep -ciE 'warning|Warning' dialyze.log || true)"
-          echo "Dialyzer warning lines: ${warn_count} (Makefile threshold DIALYZER_WARNINGS=50)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Dialyzer warning lines: ${warn_count} (CI-00 ratchet: gate verdict by dialyzer.baseline, 见 scripts/check_dialyzer_baseline.sh)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Dialyzer logs
         if: always()

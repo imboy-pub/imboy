@@ -55,6 +55,9 @@ mention_repo_exports_contract_test() ->
     ?assert(erlang:function_exported(mention_repo, count_unread_in_group, 2)).
 
 mention_migration_contains_table_test() ->
+    %% CI-00 修桩：迁移文件 8634ddf6（2026-05-28 迁移系统重构）已将
+    %% *msg_mentions.sql 并入 00000002_message_aux.up.sql，且 DDL 幂等化后
+    %% 去 IF NOT EXISTS、列默认值语序调整——对齐现文件实际内容。
     Migration = read_file(mention_migration_path()),
     ?assert(binary:match(Migration, <<"CREATE TABLE public.msg_mention">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"mentioned_uid bigint NOT NULL">>) =/= nomatch),

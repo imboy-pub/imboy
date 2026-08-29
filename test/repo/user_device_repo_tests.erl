@@ -26,30 +26,36 @@ cleanup_config(_) ->
 %% ===================================================================
 
 tablename_public_prefix_test_() ->
-    {setup,
-     fun setup_config/0,
-     fun cleanup_config/1,
-     ?_test(begin
-         Result = user_device_repo:tablename(),
-         %% sql_driver=pgsql → public_tablename adds "public." prefix
-         ?assertEqual(<<"public.user_device">>, Result)
-     end)}.
+    {setup, fun setup_config/0, fun cleanup_config/1,
+        ?_test(begin
+            Result = user_device_repo:tablename(),
+            %% sql_driver=pgsql → public_tablename adds "public." prefix
+            ?assertEqual(<<"public.user_device">>, Result)
+        end)}.
 
 %% ===================================================================
 %% page/3 测试
 %% ===================================================================
 
 page_basic_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
+        %% CI-00 修桩：不依赖库中残留数据——先写 uid=1 的设备记录再分页查询
+        %%（DID 唯一化保证多轮执行幂等）。
         Uid = 1,
+        Did = <<"ci00_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+        %% save/5 的 Now 契约是 RFC3339 二进制（ds 层传 elib_dt:now()）；
+        %% 传整数毫秒会让 timestamptz codec function_clause 崩掉连接
+        {ok, _} = user_device_repo:save(
+            elib_dt:now(), Uid, Did, #{<<"ip">> => <<"127.0.0.1">>}
+        ),
         Limit = 10,
         Offset = 0,
         Result = user_device_repo:page(Uid, Limit, Offset),
-        ?assertMatch({ok, [_|_]}, Result)
+        ?assertMatch({ok, [_ | _]}, Result)
     end).
 
 page_empty_result_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 9999998,
         Limit = 10,
         Offset = 0,
@@ -58,7 +64,7 @@ page_empty_result_test_() ->
     end).
 
 page_large_offset_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 1,
         Limit = 10,
         Offset = 1000,
@@ -71,7 +77,7 @@ page_large_offset_test_() ->
 %% ===================================================================
 
 count_by_uid_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 1,
         Result = user_device_repo:count_by_uid(Uid),
         ?assert(is_integer(Result)),
@@ -79,7 +85,7 @@ count_by_uid_test_() ->
     end).
 
 count_by_uid_non_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 9999997,
         Result = user_device_repo:count_by_uid(Uid),
         ?assertEqual(0, Result)
@@ -90,7 +96,7 @@ count_by_uid_non_existing_test_() ->
 %% ===================================================================
 
 device_name_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 1,
         DID = <<"test_device_id">>,
         Result = user_device_repo:device_name(Uid, DID),
@@ -98,7 +104,7 @@ device_name_test_() ->
     end).
 
 device_name_non_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 999999,
         DID = <<"nonexistent_device">>,
         Result = user_device_repo:device_name(Uid, DID),
@@ -110,7 +116,7 @@ device_name_non_existing_test_() ->
 %% ===================================================================
 
 login_count_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 1,
         DID = <<"test_device_id">>,
         Result = user_device_repo:login_count(Uid, DID),
@@ -119,7 +125,7 @@ login_count_test_() ->
     end).
 
 login_count_non_existing_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 999999,
         DID = <<"nonexistent_device">>,
         Result = user_device_repo:login_count(Uid, DID),
@@ -131,7 +137,7 @@ login_count_non_existing_test_() ->
 %% ===================================================================
 
 delete_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 999999,
         DID = <<"test_delete_device">>,
         Result = user_device_repo:delete(Uid, DID),
@@ -143,7 +149,7 @@ delete_test_() ->
 %% ===================================================================
 
 update_by_did_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 1,
         DID = <<"test_device">>,
         Set = <<"device_name = $1">>,
@@ -153,7 +159,7 @@ update_by_did_test_() ->
     end).
 
 update_by_did_no_match_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Uid = 999999,
         DID = <<"nonexistent_device">>,
         Set = <<"device_name = $1">>,
@@ -167,7 +173,7 @@ update_by_did_no_match_test_() ->
 %% ===================================================================
 
 save_new_device_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Now = elib_dt:now(),
         Uid = 999999,
         DID = <<"test_save_device">>,
@@ -183,7 +189,7 @@ save_new_device_test_() ->
     end).
 
 save_existing_device_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Now = elib_dt:now(),
         Uid = 1,
         DID = <<"test_existing_device">>,
@@ -196,7 +202,7 @@ save_existing_device_test_() ->
     end).
 
 save_empty_did_test_() ->
-    ?TEST_WITH_DB(fun() ->
+    ?TEST_WITH_DB_TIMEOUT(60, fun() ->
         Now = elib_dt:now(),
         Uid = 1,
         DID = <<>>,

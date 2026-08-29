@@ -267,5 +267,8 @@ init([]) ->
         ] ++ CacheSyncSpec,
     % intensity/period 放宽：顶层 supervisor 下挂了十余个 worker，
     % 5次/50s 门槛偏紧，短时多个worker同时重启（如DB抖动）易触发supervisor整体退出
-    Restart = #{strategy => one_for_one, intensity => 10, period => 60},
+    % CI-00：再放宽到 50/60s——全量 eunit 实测单个 child（imboy_cache）被
+    % 外部异常 kill 时 ~80ms/次的重启风暴 10 连杀即触发 intensity 上限，
+    % 拖垮整个 app（run10）；单子进程崩溃风暴不应带崩整个 IM 服务。
+    Restart = #{strategy => one_for_one, intensity => 50, period => 60},
     {ok, {Restart, Specs}}.

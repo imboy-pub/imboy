@@ -57,6 +57,7 @@ bot_ds_exports_contract_test() ->
 
 bot_logic_exports_contract_test() ->
     ensure_module_loaded(bot_logic),
+    %% CI-00 修桩：update/set_status 增加 workspace 上下文参数（/2 -> /3）。
     ?assert(erlang:function_exported(bot_logic, register, 1)),
     ?assert(erlang:function_exported(bot_logic, get, 1)),
     ?assert(erlang:function_exported(bot_logic, update, 3)),

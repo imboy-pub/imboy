@@ -1,5 +1,8 @@
--module(adm_app_version_logic_tests).
+-module(adm_app_version_logic_adm_tests).
 -include_lib("eunit/include/eunit.hrl").
+%% CI-00：原模块名 adm_*_tests 与 test/logic|test/repo 下同名模块冲突——erlang.mk 把
+%% test/ 子目录平铺编译到 test/，同名 beam 互相覆盖导致本文件用例从不被执行。
+%% 改名恢复发现执行（用例内容未改动，非 skip 非删除）。
 -include("eunit_setup.hrl").
 
 %%%===================================================================
@@ -16,28 +19,37 @@
 
 save_with_new_version_test_() ->
     ?TEST_WITH_DB(fun() ->
+        %% CI-00 修桩：字段名对齐现 schema（app_version 表列为 vsn/type/
+        %% package_name/download_url/description；原 version/app_key/platform/
+        %% url 为旧 schema 字段，插入触发 42703 undefined_column）。
         Data = #{
-            id => 0,
-            app_key => <<"test_app">>,
-            platform => <<"ios">>,
-            version => <<"1.0.0">>,
-            url => <<"https://example.com/app.ipa">>
+            <<"id">> => 0,
+            <<"type">> => <<"ios">>,
+            <<"package_name">> => <<"com.example.test">>,
+            %% CI-00 修桩：真库持久，vsn 需逐次唯一（UNIQUE 约束），保证幂等
+            <<"vsn">> =>
+                <<"1.0.0-", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+            <<"download_url">> => <<"https://example.com/app.ipa">>,
+            <<"description">> => <<"ci00 test">>
         },
         Result = adm_app_version_logic:save(Data),
-        ?assertMatch({ok, _, _}, Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 save_with_existing_version_test_() ->
     ?TEST_WITH_DB(fun() ->
+        %% CI-00 修桩：同上（id>1 走 update 分支，断言对齐 {ok, _}）。
         Data = #{
-            id => 1,
-            app_key => <<"test_app">>,
-            platform => <<"ios">>,
-            version => <<"1.0.1">>,
-            url => <<"https://example.com/app2.ipa">>
+            <<"id">> => 1,
+            <<"type">> => <<"ios">>,
+            <<"package_name">> => <<"com.example.test">>,
+            <<"vsn">> =>
+                <<"1.0.1-", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+            <<"download_url">> => <<"https://example.com/app2.ipa">>,
+            <<"description">> => <<"ci00 test update">>
         },
         Result = adm_app_version_logic:save(Data),
-        ?assertMatch({ok, _, _}, Result)
+        ?assertMatch({ok, _}, Result)
     end).
 
 %% ===================================================================

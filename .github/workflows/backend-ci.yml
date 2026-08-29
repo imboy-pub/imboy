@@ -2,10 +2,16 @@ name: Backend CI
 
 # P4-Q3（Golden Gates §6.2/§7 CI Gate Matrix）：本 workflow = PR/push 快速门（<10min），
 # 全部 job 阻塞、零 continue-on-error（假门零容忍）。
-# 阻塞集：compile + xref + E2EE + moment + Manifest(p5)。
+# 阻塞集：compile + xref + E2EE + moment + Manifest(p5) + dialyzer-baseline。
 # 契约门在 contract-gate.yml（API Contract + EntityId/TSID）；Error Code Contract
-# 在 imboyapp 仓 contract.yml；慢门（full-eunit/dialyze/eqwalize/gradualize）
+# 在 imboyapp 仓 contract.yml；慢门（full-eunit/eqwalize/gradualize）
 # 已整体迁移至 nightly.yml（每晚 20:00 UTC，无 continue-on-error，红就是红）。
+#
+# CI-00：dialyzer 以「递减基线门」形态回归 PR 路径（make dialyze-check：全量
+# 分析 + dialyzer.baseline 比对，PLT 缓存命中后分析 ~4min 可承受）——基线外
+# 新增 1 条告警即红，存量只准减不准增；nightly 侧同步换 dialyze-check 口径。
+# full-eunit 同步换成 `make eunit-local EUNIT_CONFIG=config/sys`（与本地完全
+# 同口径：OTP 布局 symlink + -config 注入，见 Makefile eunit-local）。
 #
 # Smoke（8 步链子集）不在此：CI 后端起链硬依赖 PG 扩展（timescaledb
 # create_hypertable ×8 / pg_jieba jiebacfg FTS 触发器 / postgis geometry 列，
@@ -106,12 +112,68 @@ jobs:
         # sys.config.example 含 sql_driver/pg_conf 等全部所需 env（meck 不起 app 无需真 PG）。
         run: cp config/sys.config.example config/sys.config
 
-      - name: Run Moment Targeted EUnit
+      - name: Run Moment Targeted EUnit (eunit-local 等价口径)
         run: |
-          # -config + 显式 application:load(imboy)：config 提供 env 须应用 load 后
-          # get_env 才可见（如 sql_driver→public. 表名前缀）；meck 测试不起 app 无需 PG。
-          # ⚠️ 必须用仓内 sys.config：sys.local.config 被 gitignore，CI 检出不存在
-          IMBOYENV=local make eunit EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests' EUNIT_ERL_OPTS="-config config/sys -pa ebin -pa test -eval 'application:load(imboy)'"
+          # CI-00：与本地 `make eunit-local` 完全同口径 —— eunit-local 目标负责
+          # .otp/imboy OTP 布局 symlink（code:priv_dir(imboy) 可解析）并注入
+          # -pa 布局路径；EUNIT_CONFIG=config/sys 为等价配置注入（sys.config 已
+          # 从 example 物化，eunit_runner:ensure_config_loaded/0 会 application:load
+          # 后取 env，无需 -eval）。EUNIT_MODS 经命令行变量透传子 make；
+          # meck 测试不起 app 无需真 PG。
+          IMBOYENV=local make eunit-local EUNIT_CONFIG=config/sys EUNIT_MODS='moment_repo_tests moment_logic_tests moment_handler_tests adm_moment_handler_tests'
+
+  # ----------------------------------------------------------------
+  # Dialyzer 递减基线门（CI-00，阻塞）—— make dialyze-check = 全量分析 +
+  # dialyzer.baseline 指纹比对：基线外新增 1 条告警即红（棘轮：存量只准减
+  # 不准增；减少不红，提示人工收紧基线）。指纹 = 模块文件 + 归一化告警正文
+  # （无行号列号），代码挪行不误伤。make dialyze 在存量告警下 exit 2（dialyzer
+  # 语义），dialyze-check 内部吞掉退出码、由 scripts/check_dialyzer_baseline.sh
+  # 统一裁决 —— 零 continue-on-error，不是跳过检查而是换红绿裁决器。
+  # ----------------------------------------------------------------
+  dialyzer-baseline:
+    name: "Dialyzer baseline gate (ratchet: 0 new warnings)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [compile]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Erlang/OTP toolchain
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: "28"
+          rebar3-version: "3.24.0"
+
+      - name: Cache dependencies, build artifacts and PLT
+        uses: actions/cache@v6
+        with:
+          path: |
+            deps
+            _build
+            .erlang.mk
+            .imboy.plt
+            ~/.cache/rebar3
+          key: ${{ runner.os }}-otp28-dialyzer-${{ hashFiles('Makefile', 'include/deps.mk') }}
+
+      - name: Run Dialyzer + baseline gate
+        run: IMBOYENV=local make dialyze-check
+
+      - name: Summarize Dialyzer baseline result
+        if: always()
+        run: |
+          echo "## Dialyzer baseline gate (ratchet: 0 new)" >> "$GITHUB_STEP_SUMMARY"
+          tail -5 dialyze-last.log >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload dialyze log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dialyze-check-log
+          path: dialyze-last.log
+          retention-days: 14
+          if-no-files-found: ignore
 
   # ----------------------------------------------------------------
   # Manifest (p5) — 插件清单契约门禁（阻塞，Golden Gates §7）

@@ -33,7 +33,11 @@ generate(Plaintext) ->
 -spec generate(iodata(), hmac_sha512) -> binary().
 generate(Plaintext, hmac_sha512) ->
     Salt2 = base64:encode(crypto:strong_rand_bytes(16)),
-    Ciphertext = elib_hasher:hmac_sha512(Plaintext, Salt2),
+    % CI-00 修复：对齐 verify_hmac_sha512/3 的存储格式。2026-08-26 SHA-256 预哈希
+    % 迁移只改了 verify 侧、遗漏 generate 侧——原实现直发 hmac(Plaintext, salt)，
+    % 其产物在 verify 中新旧格式分支均不命中，generate↔verify 不闭环（新注册
+    % 用户必然无法登录）。现按新协议存储 hmac(sha256(plaintext), salt)。
+    Ciphertext = elib_hasher:hmac_sha512(crypto:hash(sha256, Plaintext), Salt2),
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
 
 %% @doc 验证密码

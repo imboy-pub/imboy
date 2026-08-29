@@ -18,10 +18,27 @@
 
 %% 启动/停止 elib_metric gen_server
 setup_metric() ->
-    catch gen_server:stop(elib_metric),
-    timer:sleep(10),
-    {ok, Pid} = elib_metric:start_link(),
-    Pid.
+    %% 并发套件会抢同一个命名 metric server：stop/start 竞态下
+    %% already_started 需收割重试，否则 setup 必红
+    start_metric(5).
+
+start_metric(0) ->
+    erlang:error({elib_metric_start_failed, exhausted});
+start_metric(N) ->
+    case erlang:whereis(elib_metric) of
+        undefined ->
+            ok;
+        P ->
+            catch gen_server:stop(P),
+            timer:sleep(20)
+    end,
+    case elib_metric:start_link() of
+        {ok, Pid} ->
+            Pid;
+        {error, {already_started, _}} ->
+            timer:sleep(50),
+            start_metric(N - 1)
+    end.
 
 cleanup_metric(_Pid) ->
     catch gen_server:stop(elib_metric),

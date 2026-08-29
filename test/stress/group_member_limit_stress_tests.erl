@@ -136,6 +136,18 @@ test_large_group_management() ->
 
     ok.
 
+%% @doc 带重试的成员添加：容忍连接池抖动（noproc/connection_closed）。
+stress_add_member(_Group, _MemberId, 0) ->
+    group_member_ds:add_member(_Group, _MemberId);
+stress_add_member(Group, MemberId, Attempts) ->
+    try
+        group_member_ds:add_member(Group, MemberId)
+    catch
+        _:_ when Attempts > 1 ->
+            timer:sleep(100),
+            stress_add_member(Group, MemberId, Attempts - 1)
+    end.
+
 test_large_group_broadcast() ->
     Context = get_context(),
     Owner = maps:get(owner, Context),
@@ -148,9 +160,12 @@ test_large_group_broadcast() ->
     % 1. 创建群组并添加成员
     {ok, Group} = create_test_group(Owner, <<"广播测试群"/utf8>>),
 
+    % CI-00 加固：本地一次性 PG 在全量负载后连接池会出现已死成员
+    %（epgsql ROLLBACK noproc），add_member 逐个直调遇死连接即崩。
+    % 包一层 catch+短重试（不改变最终成功率断言，仍为 95%）。
     lists:foreach(
         fun(MemberId) ->
-            group_member_ds:add_member(Group, MemberId)
+            stress_add_member(Group, MemberId, 3)
         end,
         lists:sublist(Members, ?LARGE_GROUP_SIZE)
     ),
@@ -265,12 +280,16 @@ get_context() ->
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
+    %% account/email 唯一索引（23505）
+    Suffix = integer_to_binary(Uid),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        %% mobile 同理须全局唯一：rem 1e9 碰撞域太小（run13 ×3 撞
+        %% uk_mobile），完整 TSID 拼接 20 位 < varchar(40)
+        <<"mobile">> => <<"13", (integer_to_binary(Uid))/binary>>,
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()

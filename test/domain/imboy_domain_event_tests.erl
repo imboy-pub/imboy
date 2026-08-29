@@ -4,11 +4,21 @@
 -include_lib("eunit/include/eunit.hrl").
 
 setup() ->
-    {ok, Pid} = imboy_domain_event:start_link(),
-    Pid.
+    %% imboy_domain_event 是 imboy_sup 子进程：app 常驻时复用其总线，
+    %% 只在 app 起不来时自建；cleanup 绝不停 app 总线，只摘自身 handler。
+    case eunit_runner:ensure_named_server(imboy_domain_event) of
+        {ok, Pid} ->
+            {reused, Pid};
+        {error, {not_started, _}} ->
+            {ok, Pid} = imboy_domain_event:start_link(),
+            {own, Pid}
+    end.
 
-cleanup(Pid) ->
-    gen_event:stop(Pid).
+cleanup({own, Pid}) ->
+    catch gen_event:stop(Pid);
+cleanup({reused, _Pid}) ->
+    catch imboy_domain_event:unsubscribe(de_test_handler, ok),
+    ok.
 
 bus_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [

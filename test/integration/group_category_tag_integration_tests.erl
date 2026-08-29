@@ -38,11 +38,14 @@ setup() ->
     {ok, Group1} = create_test_group(User1, <<"group1_tag">>),
     {ok, Group2} = create_test_group(User1, <<"group2_tag">>),
     {ok, Group3} = create_test_group(User1, <<"group3_tag">>),
+    %% 运行唯一后缀：标签名是全局搜索键，通用中文名会与其他并发套件撞车
+    RunSuffix = integer_to_binary(erlang:phash2(erlang:make_ref())),
     Context = #{
         user1 => User1,
         group1 => Group1,
         group2 => Group2,
-        group3 => Group3
+        group3 => Group3,
+        run_suffix => RunSuffix
     },
     persistent_term:put({?MODULE, test_context}, Context),
     Context.
@@ -156,10 +159,11 @@ test_add_group_to_category() ->
 test_create_tag() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
+    RunSuffix = maps:get(run_suffix, Context),
     Group1 = maps:get(group1, Context),
 
     % 1. 创建群标签
-    TagName = <<"技术交流"/utf8>>,
+    TagName = <<"技术交流_"/utf8, RunSuffix/binary>>,
     {ok, TagId} = group_tag_logic:add(Group1, User1, TagName),
 
     % 2. 验证返回结果
@@ -180,10 +184,13 @@ test_add_tag_to_group() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
     Group1 = maps:get(group1, Context),
+    RunSuffix = maps:get(run_suffix, Context),
 
     % 1. 创建标签
-    {ok, _TagId1} = group_tag_logic:add(Group1, User1, <<"标签1"/utf8>>),
-    {ok, _TagId2} = group_tag_logic:add(Group1, User1, <<"标签2"/utf8>>),
+    Tag1 = <<"标签1_"/utf8, RunSuffix/binary>>,
+    {ok, _TagId1} = group_tag_logic:add(Group1, User1, Tag1),
+    Tag2 = <<"标签2_"/utf8, RunSuffix/binary>>,
+    {ok, _TagId2} = group_tag_logic:add(Group1, User1, Tag2),
 
     % 2. 为群添加标签
     {ok, Tags} = group_tag_logic:list(Group1, User1),
@@ -191,7 +198,7 @@ test_add_tag_to_group() ->
 
     % 4. 验证数量
     ?assertEqual(2, length(Tags)),
-    ?assertEqual([<<"标签1"/utf8>>, <<"标签2"/utf8>>], TagNames),
+    ?assertEqual(lists:sort([Tag1, Tag2]), TagNames),
 
     ok.
 
@@ -201,6 +208,7 @@ test_filter_groups_by_tag() ->
     Group1 = maps:get(group1, Context),
     Group2 = maps:get(group2, Context),
     Group3 = maps:get(group3, Context),
+    RunSuffix = maps:get(run_suffix, Context),
 
     % 1. 创建标签（套件隔离治理：search 是全库过滤，固定标签名会与本机
     %    历史 run 遗留数据串扰；每次运行生成唯一标签）
@@ -225,6 +233,7 @@ test_filter_groups_by_tag() ->
 test_batch_operations() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
+    RunSuffix = maps:get(run_suffix, Context),
     Group1 = maps:get(group1, Context),
     Group2 = maps:get(group2, Context),
     Group3 = maps:get(group3, Context),
@@ -294,11 +303,13 @@ custom_category_ids(Categories) ->
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
+    %% account/email 唯一索引（23505）
+    Suffix = integer_to_binary(Uid),
     User = #{
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"mobile">> => <<"13", (integer_to_binary(Uid))/binary>>,
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"reg_ip">> => <<"127.0.0.1">>,

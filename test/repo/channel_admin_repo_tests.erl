@@ -19,6 +19,11 @@ tablename_returns_public_channel_admin_table_test_() ->
 find_returns_row_when_exists_test_() ->
     ?WITH_MECKS(
         [
+            %% CI-00 修桩：SQL 前缀断言依赖 sql_driver 环境（pgsql 下为
+            %% public.channel_admin），mock config_ds 与 SQL 断言对齐真实口径。
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]},
             {elib_pg, [
                 {'one', 2, fun(Sql, [11, 1001]) ->
                     SqlBin = iolist_to_binary(Sql),

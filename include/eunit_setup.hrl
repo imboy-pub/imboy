@@ -85,6 +85,31 @@
         end}
 ).
 
+%% @doc 同 TEST_WITH_DB，但测试体套自定义超时（秒）。
+%% 注意：{timeout, T, ?TEST_WITH_DB(...)} 外包写法不生效——EUnit 带 fixture
+%% （context）的 group 不会把 group timeout 下推到内部 test（eunit_data:group/1
+%% 的 lookahead 分支对 context 非空的 group 直接原样返回），实际生效的是
+%% 默认 5 秒；因此慢测试（真库并发等）必须用本宏把 timeout 放在 setup 体内
+%% 的测试表述上（无 fixture 的单 test，timeout 可正确下推）。
+-define(TEST_WITH_DB_TIMEOUT(TimeoutSec, TestFun),
+    {setup,
+     fun() ->
+         case eunit_runner:eunit_setup_with_db() of
+             {ok, Conn} ->
+                 {ok, Conn};
+             {error, _Reason} ->
+                 skip
+         end
+     end,
+     fun({ok, Conn}) -> eunit_runner:eunit_cleanup_db(Conn);
+        (skip) -> ok
+     end,
+     fun({ok, _Conn}) ->
+             {timeout, TimeoutSec, ?_test((TestFun)())};
+        (skip) ->
+             []
+     end}).
+
 %% @doc 创建一个简单的测试（不需要应用）
 %% 用法：
 %% TEST_SIMPLE(fun() ->

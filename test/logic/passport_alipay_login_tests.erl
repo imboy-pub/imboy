@@ -59,6 +59,15 @@ oauth_ok_mock() ->
         end}
     ]}.
 
+%% CI-00 修桩：登录成功路径新增 auto_bind_alipay（读/写 user_setting 的
+%% alipay 结算账号，见 passport_logic:auto_bind_alipay/3），原桩未 mock
+%% user_setting_ds -> passthrough -> pooler noproc。
+user_setting_mock() ->
+    {user_setting_ds, [
+        {'find_by_uid', 1, fun(_Uid) -> #{<<"alipay">> => <<>>} end},
+        {'save', 3, fun(_Uid, _Key, _Val) -> ok end}
+    ]}.
+
 token_mock() ->
     {token_ds, [
         {'encrypt_token', 2, fun(Uid, _Did) ->
@@ -89,6 +98,7 @@ existing_user_login_test_() ->
             [
                 oauth_ok_mock(),
                 token_mock(),
+                user_setting_mock(),
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) -> {ok, 456} end},
                     {'bind', 4, fun(_, _, _, _) -> ok end}
@@ -122,6 +132,7 @@ new_user_provision_test_() ->
             [
                 oauth_ok_mock(),
                 token_mock(),
+                user_setting_mock(),
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) -> not_found end},
                     {'bind', 4, fun(<<"alipay">>, ?ALIPAY_UID, 789, _E) -> ok end}
@@ -179,6 +190,7 @@ nickname_fallback_test_() ->
                     {'find_uid', 2, fun(_, _) -> not_found end},
                     {'bind', 4, fun(_, _, _, _) -> ok end}
                 ]},
+                user_setting_mock(),
                 {account_ds, [{'allocate', 0, fun() -> <<"1000790">> end}]},
                 {user_setting_ds, [
                     {'find_by_uid', 1, fun(_Uid) -> #{} end},
@@ -218,6 +230,7 @@ gender_map_female_test_() ->
                     end}
                 ]},
                 token_mock(),
+                user_setting_mock(),
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(_, _) -> not_found end},
                     {'bind', 4, fun(_, _, _, _) -> ok end}
@@ -323,6 +336,7 @@ disabled_user_rejected_test_() ->
         ?WITH_MECKS(
             [
                 oauth_ok_mock(),
+                user_setting_mock(),
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) -> {ok, 456} end}
                 ]},
@@ -346,6 +360,7 @@ quota_exceeded_test_() ->
         ?WITH_MECKS(
             [
                 oauth_ok_mock(),
+                user_setting_mock(),
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(_, _) -> not_found end}
                 ]},
@@ -373,6 +388,7 @@ provision_conflict_rebind_test_() ->
             [
                 oauth_ok_mock(),
                 token_mock(),
+                user_setting_mock(),
                 {sso_identity_ds, [
                     {'find_uid', 2, fun(<<"alipay">>, ?ALIPAY_UID) ->
                         %% 第 1 次查：未绑定；冲突后第 2 次查：竞争者已绑定

@@ -96,59 +96,90 @@ with_conn(Driver, Fun, Retries, Delay) ->
         error_no_members ->
             {error, no_connection};
         Conn when is_pid(Conn) ->
-            Result =
-                try
-                    Fun(Conn)
-                catch
-                    %% 接受 throw({abort_tx, Reason})
-                    %% 业务主动失败：不重试
-                    throw:{abort_tx, Reason} ->
-                        %% 回滚事务，使得调用方返回二元组 {error, Reason};
-                        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
-                        {error, Reason};
-                    %% 接受 throw({rollback, Reason})：with_tx 内业务主动回滚信号
-                    %% （wallet_repo/transfer_repo/recharge_order_repo/red_packet_repo 等
-                    %%  钱路径广泛使用，如 insufficient_balance/already_credited）。
-                    %% with_tx 默认 reraise=true：epgsql:with_transaction 会先 ROLLBACK
-                    %% 再把该 throw 原样重新抛出；若不在此拦截，会落入下面的通用异常分支
-                    %% 被当成"未知运行时异常"重试 3 次，最终返回三元组
-                    %% {error, throw, {rollback, Reason}}——与调用方处处期望匹配的二元组
-                    %% {rollback, Reason} 完全对不上，导致 case_clause 崩溃（曾在
-                    %% withdraw/transfer/recharge/red_packet 的余额不足等路径必现）。
-                    %% 此处直接按业务回滚原样返回，不重试。
-                    throw:{rollback, Reason} ->
-                        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
-                        {rollback, Reason};
-                    %% 其他 DB / 运行时异常
-                    Class:Reason:Stacktrace ->
-                        ok = ?ERROR_LOG(
-                            "DB operation failed: ~p:~p stack=~p~n",
-                            [Class, Reason, Stacktrace]
-                        ),
-                        %% 通用异常同样必须回滚。
-                        %% 上面两个 throw 分支都发了 ROLLBACK，唯独这里没有，
-                        %% 而 after 子句无条件把连接还池 —— 连接带着 aborted
-                        %% transaction 回到池里，下一个借到它的请求所有语句都会
-                        %% 报 "current transaction is aborted, commands ignored"，
-                        %% 直到该连接被回收。squery 本身失败也无所谓（连接已死时
-                        %% 归还后会被池剔除），故用 _ = 忽略返回值。
-                        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
-                        %% 归一为二元组。此前返回 {error, Class, Reason} 三元组，
-                        %% 而 query/2、execute/3 与全项目调用方一律按 {error, Reason}
-                        %% 二元组匹配 —— 三元组必然 case_clause 崩溃（本文件
-                        %% 109-118 行记录过 {rollback, _} 的同类事故，当时只修了
-                        %% throw 分支，这一条漏了）。
-                        {error, {db_exception, Class, Reason}}
-                after
-                    pooler:return_member(Driver, Conn)
-                end,
-            case Result of
-                {error, {db_exception, _Class, _Reason}} when Retries > 0 ->
+            %% CI-00 加固：池中可能残留已死连接（epgsql 进程被杀后 pooler 尚未
+            %% 剔除），借到即用必 noproc。此处探活，死连接直接 drop 并重试取新
+            %% 连接——纯池化基础设施自愈，不改变任何业务语义。
+            case is_process_alive(Conn) of
+                false when Retries > 0 ->
+                    %% fail 归还：池侧剔除/替换死成员（pooler 契约 'ok' | 'fail'）
+                    pooler:return_member(Driver, Conn, fail),
                     timer:sleep(Delay),
                     with_conn(Driver, Fun, Retries - 1, Delay + 1000);
-                _ ->
-                    Result
+                false ->
+                    pooler:return_member(Driver, Conn, fail),
+                    {error, dead_connection};
+                true ->
+                    run_with_conn(Driver, Conn, Fun, Retries, Delay)
             end
+    end.
+
+run_with_conn(Driver, Conn, Fun, Retries, Delay) ->
+    Result =
+        try
+            Fun(Conn)
+        catch
+            %% 接受 throw({abort_tx, Reason})
+            %% 业务主动失败：不重试
+            throw:{abort_tx, Reason} ->
+                %% 回滚事务，使得调用方返回二元组 {error, Reason};
+                %% CI-00 加固：连接已死时 ROLLBACK 自身抛 noproc exit，
+                %% 会从 catch 分支逃逸崩掉调用方 —— 回滚尽力而为。
+                safe_rollback(Conn),
+                {error, Reason};
+            %% 接受 throw({rollback, Reason})：with_tx 内业务主动回滚信号
+            %% （wallet_repo/transfer_repo/recharge_order_repo/red_packet_repo 等
+            %%  钱路径广泛使用，如 insufficient_balance/already_credited）。
+            %% with_tx 默认 reraise=true：epgsql:with_transaction 会先 ROLLBACK
+            %% 再把该 throw 原样重新抛出；若不在此拦截，会落入下面的通用异常分支
+            %% 被当成"未知运行时异常"重试 3 次，最终返回三元组
+            %% {error, throw, {rollback, Reason}}——与调用方处处期望匹配的二元组
+            %% {rollback, Reason} 完全对不上，导致 case_clause 崩溃（曾在
+            %% withdraw/transfer/recharge/red_packet 的余额不足等路径必现）。
+            %% 此处直接按业务回滚原样返回，不重试。
+            throw:{rollback, Reason} ->
+                safe_rollback(Conn),
+                {rollback, Reason};
+            %% 其他 DB / 运行时异常
+            Class:Reason:Stacktrace ->
+                ok = ?ERROR_LOG(
+                    "DB operation failed: ~p:~p stack=~p~n",
+                    [Class, Reason, Stacktrace]
+                ),
+                %% 通用异常同样必须回滚。
+                %% 上面两个 throw 分支都发了 ROLLBACK，唯独这里没有，
+                %% 而 after 子句无条件把连接还池 —— 连接带着 aborted
+                %% transaction 回到池里，下一个借到它的请求所有语句都会
+                %% 报 "current transaction is aborted, commands ignored"，
+                %% 直到该连接被回收。squery 本身失败也无所谓（连接已死时
+                %% 归还后会被池剔除），故用 _ = 忽略返回值。CI-00 加固：
+                %% 同上包 safe_rollback，防死连接 noproc 逃逸。
+                safe_rollback(Conn),
+                %% 归一为二元组。此前返回 {error, Class, Reason} 三元组，
+                %% 而 query/2、execute/3 与全项目调用方一律按 {error, Reason}
+                %% 二元组匹配 —— 三元组必然 case_clause 崩溃（本文件
+                %% 109-118 行记录过 {rollback, _} 的同类事故，当时只修了
+                %% throw 分支，这一条漏了）。
+                {error, {db_exception, Class, Reason}}
+        after
+            pooler:return_member(Driver, Conn)
+        end,
+    case Result of
+        {error, {db_exception, _Class, _Reason}} when Retries > 0 ->
+            timer:sleep(Delay),
+            with_conn(Driver, Fun, Retries - 1, Delay + 1000);
+        _ ->
+            Result
+    end.
+
+%% @doc 尽力而为的回滚：连接已死时 epgsql:squery 抛 noproc exit，吞掉。
+%% @private
+safe_rollback(Conn) ->
+    try
+        _ = epgsql:squery(Conn, <<"ROLLBACK">>),
+        ok
+    catch
+        _:_:_ ->
+            ok
     end.
 
 %%--------------------------------------------------------------------

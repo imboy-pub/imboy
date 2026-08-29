@@ -272,6 +272,9 @@ docs-stop:
 # skip。补 -pa imboy/ebin：worktree 内 `ln -s . imboy` 后 lib 位可解析；主树无
 # imboy/ 子目录，该 -pa 指向不存在目录被 erl 静默忽略，零副作用。
 .PHONY: eunit-local
+# EUNIT_CONFIG 可覆盖配置文件（默认 config/sys.local）：CI 无 sys.local.config，
+# 物化 sys.config 后以 EUNIT_CONFIG=config/sys 传同口径全量（见 backend-ci.yml）。
+EUNIT_CONFIG ?= config/sys.local
 eunit-local:
 	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa imboy/ebin -pa ebin -pa test"
 

@@ -35,6 +35,8 @@ signup_with_valid_data_succeeds_test_() ->
                 {'count', 0, fun() -> 0 end},
                 {'find_by_mobile', 2, fun(_Mobile, _Fields) -> #{} end},
                 {'insert_and_get_id', 1, fun(_Data) -> {ok, 1001} end},
+                {'count', 0, fun() -> 100 end},
+
                 {'find_by_id', 2, fun(_Id, _Fields) ->
                     #{
                         <<"id">> => 1001,
@@ -49,6 +51,9 @@ signup_with_valid_data_succeeds_test_() ->
                     }
                 end}
             ]},
+            %% CI-00 修桩：显式控制 license 配额（多轮测试后真库用户数超
+            %% trial 上限，quota_guard 402 非本用例语义）。
+            {imboy_license, [{'check_user_quota', 1, fun(_) -> ok end}]},
             {token_ds, [
                 {'encrypt_token', 1, fun(_Id) -> <<"encrypted_token">> end},
                 {'encrypt_refreshtoken', 1, fun(_Id) -> <<"refresh_token">> end}
@@ -428,6 +433,8 @@ do_signup_with_email_succeeds_test_() ->
                 {'find_id_by_email', 1, fun(_) -> 0 end},
                 {'insert_and_get_id', 1, fun(_Data) -> {ok, 2001} end}
             ]},
+            {imboy_license, [{'check_user_quota', 1, fun(_) -> ok end}]},
+
             {elib_password, [
                 {'generate', 1, fun(_Pwd) -> <<"$2a$12$hash">> end}
             ]},
@@ -480,6 +487,8 @@ do_signup_email_with_rsa_encrypt_off_test_() ->
                 {'find_id_by_email', 1, fun(_) -> 0 end},
                 {'insert_and_get_id', 1, fun(_Data) -> {ok, 2002} end}
             ]},
+            {imboy_license, [{'check_user_quota', 1, fun(_) -> ok end}]},
+
             {elib_password, [
                 {'generate', 1, fun(_Pwd) -> <<"$2a$12$hash">> end}
             ]},
@@ -541,7 +550,9 @@ do_signup_with_mobile_succeeds_test_() ->
             {login_security_logic, [
                 {'check_login_allowed', 2, fun(_, _) -> {ok, true} end},
                 {'record_login_success', 2, fun(_, _) -> ok end}
-            ]}
+            ]},
+            %% CI-00 修桩：显式控制 license 配额（同上，避免真库用户数超限 402）
+            {imboy_license, [{'check_user_quota', 1, fun(_) -> ok end}]}
         ],
         fun() ->
             Result = passport_logic:do_signup(

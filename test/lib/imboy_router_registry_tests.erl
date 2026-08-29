@@ -26,17 +26,30 @@
 %% ===================================================================
 
 setup() ->
-    {ok, Pid} = imboy_router_registry:start_link(),
-    Pid.
+    %% 全量 eunit 下 imboy_plugin_sup 持有命名实例或兄弟套件先启动：
+    %% 复用而非杀掉（app 子进程被杀属破坏性 churn）；cleanup 只停自启实例。
+    case eunit_runner:ensure_named_server(imboy_router_registry) of
+        {ok, Pid} ->
+            {reused, Pid};
+        {error, {not_started, _}} ->
+            % app 起不来（如无 DB 环境）才自建；cleanup 只停自建实例
+            {ok, Pid} = imboy_router_registry:start_link(),
+            {own, Pid}
+    end.
 
-cleanup(Pid) ->
+cleanup({own, Pid}) ->
     case is_process_alive(Pid) of
         true ->
             unlink(Pid),
             gen_server:stop(Pid);
         false ->
             ok
-    end.
+    end;
+cleanup({reused, _Pid}) ->
+    %% 复用 app 实例时反注册本套件路由，避免污染后续套件
+    _ = (catch imboy_router_registry:unregister(channel)),
+    _ = (catch imboy_router_registry:unregister(moment)),
+    ok.
 
 valid_route(PluginName, Path) ->
     #{
@@ -185,7 +198,7 @@ register_rejects_malformed_spec_test_() ->
 %% ===================================================================
 
 handles_unknown_messages_test_() ->
-    {setup, fun setup/0, fun cleanup/1, fun(Pid) ->
+    {setup, fun setup/0, fun cleanup/1, fun({_Tag, Pid}) ->
         [
             ?_test(begin
                 Pid ! {random_info, 42},
