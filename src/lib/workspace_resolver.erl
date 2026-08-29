@@ -99,15 +99,16 @@
     | {error, {unsupported_scope, term()}}.
 resolve_workspace({workspace, WsId}) ->
     case one_row(<<"SELECT id FROM workspace WHERE id = $1">>, [WsId]) of
-        {row, _} -> {ok, elib_cnv:safe_to_integer(WsId)};
+        #{<<"id">> := _} -> {ok, elib_cnv:safe_to_integer(WsId)};
+        #{} -> {error, not_found};
         {error, _} = E -> E
     end;
 resolve_workspace({project, ProjectId}) ->
     %% project 恒属 workspace（无 scope 概念，I7/迁移 00000078）
     case one_row(<<"SELECT workspace_id FROM project WHERE id = $1">>, [ProjectId]) of
-        {row, #{<<"workspace_id">> := WsId}} when WsId =/= null ->
+        #{<<"workspace_id">> := WsId} when WsId =/= null ->
             {ok, elib_cnv:safe_to_integer(WsId)};
-        {row, _} ->
+        #{} ->
             {error, not_found};
         {error, _} = E ->
             E
@@ -120,9 +121,9 @@ resolve_workspace({project_task, TaskId}) ->
             [TaskId]
         )
     of
-        {row, #{<<"workspace_id">> := WsId}} when WsId =/= null ->
+        #{<<"workspace_id">> := WsId} when WsId =/= null ->
             {ok, elib_cnv:safe_to_integer(WsId)};
-        {row, _} ->
+        #{} ->
             {error, not_found};
         {error, _} = E ->
             E
@@ -131,7 +132,8 @@ resolve_workspace({group, Gid}) ->
     group_scope(Gid);
 resolve_workspace({group_notice, NoticeId}) ->
     case one_row(<<"SELECT group_id FROM group_notice WHERE id = $1">>, [NoticeId]) of
-        {row, #{<<"group_id">> := Gid}} -> group_scope(Gid);
+        #{<<"group_id">> := Gid} -> group_scope(Gid);
+        #{} -> {error, not_found};
         {error, _} = E -> E
     end;
 %% ---- 群子功能域（P0 后续批：vote/schedule/album/file/task）----
@@ -224,17 +226,17 @@ resolve_workspace({channel, ChannelId}) ->
     channel_scope(ChannelId);
 resolve_workspace({channel_message, MessageId}) ->
     case one_row(<<"SELECT channel_id FROM channel_message WHERE id = $1">>, [MessageId]) of
-        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
         {error, _} = E -> E
     end;
 resolve_workspace({channel_comment, CommentId}) ->
     case one_row(<<"SELECT channel_id FROM channel_comment WHERE id = $1">>, [CommentId]) of
-        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
         {error, _} = E -> E
     end;
 resolve_workspace({channel_reaction, ReactionId}) ->
     case one_row(<<"SELECT channel_id FROM channel_reaction WHERE id = $1">>, [ReactionId]) of
-        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
         {error, _} = E -> E
     end;
 resolve_workspace({channel_subscription, ChannelId}) ->
@@ -243,22 +245,22 @@ resolve_workspace({channel_admin, ChannelId}) ->
     channel_scope(ChannelId);
 resolve_workspace({channel_webhook, WebhookId}) ->
     case one_row(<<"SELECT channel_id FROM channel_webhook WHERE id = $1">>, [WebhookId]) of
-        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
         {error, _} = E -> E
     end;
 resolve_workspace({channel_invitation, InvitationId}) ->
     case one_row(<<"SELECT channel_id FROM channel_invitation WHERE id = $1">>, [InvitationId]) of
-        {row, #{<<"channel_id">> := ChannelId}} -> channel_scope(ChannelId);
+        #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
         {error, _} = E -> E
     end;
 resolve_workspace({attachment, AttachId}) ->
     %% 附件归属最小闭环：见模块头"附件归属最小闭环"证明链。
     case one_row(<<"SELECT scope, scope_ref FROM attachment WHERE id = $1">>, [AttachId]) of
-        {row, #{<<"scope">> := <<"group">>, <<"scope_ref">> := Ref}} when
+        #{<<"scope">> := <<"group">>, <<"scope_ref">> := Ref} when
             Ref =/= null, Ref =/= <<>>
         ->
             group_scope(elib_cnv:safe_to_integer(Ref));
-        {row, #{<<"scope">> := <<"channel">>, <<"scope_ref">> := Ref}} when
+        #{<<"scope">> := <<"channel">>, <<"scope_ref">> := Ref} when
             Ref =/= null, Ref =/= <<>>
         ->
             channel_scope(elib_cnv:safe_to_integer(Ref));
