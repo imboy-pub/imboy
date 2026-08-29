@@ -51,7 +51,8 @@ run(Opts0) when is_map(Opts0) ->
 run(_) ->
     {error, bad_options}.
 
--spec run_and_write_report(undefined | string() | binary()) -> {ok, string()} | {error, {term(), string()}}.
+-spec run_and_write_report(undefined | string() | binary()) ->
+    {ok, string()} | {error, {term(), string()}}.
 run_and_write_report(ReportPath0) ->
     ReportPath = resolve_report_path(ReportPath0),
     ok = filelib:ensure_dir(ReportPath),
@@ -186,13 +187,14 @@ normalize_uid(Uid) ->
 
 -spec build_mobile(binary()) -> binary().
 build_mobile(UidBin) ->
-    Tail10 = if
-        byte_size(UidBin) >= 10 ->
-            binary:part(UidBin, byte_size(UidBin) - 10, 10);
-        true ->
-            PaddingLen = 10 - byte_size(UidBin),
-            <<(list_to_binary(lists:duplicate(PaddingLen, $0)))/binary, UidBin/binary>>
-    end,
+    Tail10 =
+        if
+            byte_size(UidBin) >= 10 ->
+                binary:part(UidBin, byte_size(UidBin) - 10, 10);
+            true ->
+                PaddingLen = 10 - byte_size(UidBin),
+                <<(list_to_binary(lists:duplicate(PaddingLen, $0)))/binary, UidBin/binary>>
+        end,
     <<"1", Tail10/binary>>.
 
 -spec start_receiver(integer(), pid()) -> pid().
@@ -376,32 +378,52 @@ render_report(Result) ->
     SampleSize = maps:get(sample_size, Result, 0),
     ReceiveTimeoutMs = maps:get(receive_timeout_ms, Result, ?DEFAULT_RECEIVE_TIMEOUT_MS),
     [
-        "# 频道 WebSocket 推送延迟基线（", date_string(), "）\n\n",
+        "# 频道 WebSocket 推送延迟基线（",
+        date_string(),
+        "）\n\n",
         "## 1. 目标与口径\n",
         "- 指标：`ws_push_latency`\n",
-        "- 目标：`p50 < ", fmt_float(ThresholdMs), "ms`（即中位延迟 < 1s）\n",
+        "- 目标：`p50 < ",
+        fmt_float(ThresholdMs),
+        "ms`（即中位延迟 < 1s）\n",
         "- 口径：`msg_s2c_ds:send/7` 发送后，syn 已连接会话进程收到帧消息的耗时\n\n",
         "## 2. 执行参数\n",
-        "- 生成时间：`", GeneratedAt, "`\n",
-        "- 样本数：`", integer_to_list(SampleSize), "`\n",
-        "- 接收超时：`", integer_to_list(ReceiveTimeoutMs), "ms`\n",
-        "- 阈值：`", fmt_float(ThresholdMs), "ms`\n\n",
+        "- 生成时间：`",
+        GeneratedAt,
+        "`\n",
+        "- 样本数：`",
+        integer_to_list(SampleSize),
+        "`\n",
+        "- 接收超时：`",
+        integer_to_list(ReceiveTimeoutMs),
+        "ms`\n",
+        "- 阈值：`",
+        fmt_float(ThresholdMs),
+        "ms`\n\n",
         "## 3. 执行结果\n",
         "| 项目 | p50(ms) | p95(ms) | p99(ms) | avg(ms) | min(ms) | max(ms) | 结论 |\n",
         "|---|---:|---:|---:|---:|---:|---:|---|\n",
         render_metric_row(<<"ws_push_latency">>, WsPush),
         "\n",
-        "总体结论：`", pass_to_bin(OverallPass), "`\n"
+        "总体结论：`",
+        pass_to_bin(OverallPass),
+        "`\n"
     ].
 
 -spec render_failure_report(term()) -> iolist().
 render_failure_report(Reason) ->
     [
-        "# 频道 WebSocket 推送延迟基线（", date_string(), "）\n\n",
+        "# 频道 WebSocket 推送延迟基线（",
+        date_string(),
+        "）\n\n",
         "## 1. 执行状态\n",
         "- 状态：`BLOCKED`\n",
-        "- 生成时间：`", elib_dt:now(), "`\n",
-        "- 错误原因：`", format_reason(Reason), "`\n\n",
+        "- 生成时间：`",
+        elib_dt:now(),
+        "`\n",
+        "- 错误原因：`",
+        format_reason(Reason),
+        "`\n\n",
         "## 2. 指标结果\n",
         "| 项目 | p50(ms) | p95(ms) | p99(ms) | 结论 |\n",
         "|---|---:|---:|---:|---|\n",
@@ -414,13 +436,21 @@ render_failure_report(Reason) ->
 -spec render_metric_row(binary(), map()) -> iolist().
 render_metric_row(Name, Metric) ->
     [
-        "| `", Name, "` | ",
-        fmt_float(maps:get(p50_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(p95_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(p99_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(avg_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(min_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(max_ms, Metric, 0.0)), " | ",
+        "| `",
+        Name,
+        "` | ",
+        fmt_float(maps:get(p50_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(p95_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(p99_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(avg_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(min_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(max_ms, Metric, 0.0)),
+        " | ",
         pass_to_bin(maps:get(pass, Metric, false)),
         " |\n"
     ].

@@ -57,7 +57,8 @@ run(Opts0) when is_map(Opts0) ->
 run(_) ->
     {error, bad_options}.
 
--spec run_and_write_report(undefined | string() | binary()) -> {ok, string()} | {error, {term(), string()}}.
+-spec run_and_write_report(undefined | string() | binary()) ->
+    {ok, string()} | {error, {term(), string()}}.
 run_and_write_report(ReportPath0) ->
     ReportPath = resolve_report_path(ReportPath0),
     ok = filelib:ensure_dir(ReportPath),
@@ -141,12 +142,13 @@ prepare_context(Opts) ->
     ensure_user(SubscriberUid, <<"ch_perf_subscriber">>),
     ChannelName = <<"perf_channel_", (integer_to_binary(AdminUid))/binary>>,
     ChannelOpts = #{description => <<"channel performance baseline">>},
-    ChannelId = case channel_ds:create_channel(AdminUid, ChannelName, 0, ChannelOpts) of
-        {ok, Id} ->
-            Id;
-        {error, Reason} ->
-            throw({benchmark_error, {create_channel_failed, Reason}})
-    end,
+    ChannelId =
+        case channel_ds:create_channel(AdminUid, ChannelName, 0, ChannelOpts) of
+            {ok, Id} ->
+                Id;
+            {error, Reason} ->
+                throw({benchmark_error, {create_channel_failed, Reason}})
+        end,
     expect_ok(channel_ds:subscribe(ChannelId, SubscriberUid)),
     ChannelIdBin = integer_to_binary(ChannelId),
     seed_messages(
@@ -204,23 +206,29 @@ normalize_uid(Uid) ->
 
 -spec build_mobile(binary()) -> binary().
 build_mobile(UidBin) ->
-    Tail10 = if
-        byte_size(UidBin) >= 10 ->
-            binary:part(UidBin, byte_size(UidBin) - 10, 10);
-        true ->
-            PaddingLen = 10 - byte_size(UidBin),
-            <<(list_to_binary(lists:duplicate(PaddingLen, $0)))/binary, UidBin/binary>>
-    end,
+    Tail10 =
+        if
+            byte_size(UidBin) >= 10 ->
+                binary:part(UidBin, byte_size(UidBin) - 10, 10);
+            true ->
+                PaddingLen = 10 - byte_size(UidBin),
+                <<(list_to_binary(lists:duplicate(PaddingLen, $0)))/binary, UidBin/binary>>
+        end,
     <<"1", Tail10/binary>>.
 
 -spec seed_messages(integer(), binary(), non_neg_integer()) -> ok.
 seed_messages(_AdminUid, _ChannelIdBin, 0) ->
     ok;
 seed_messages(AdminUid, ChannelIdBin, Count) when Count > 0 ->
-    lists:foreach(fun(N) ->
-        Content = <<"perf_seed_", (integer_to_binary(N))/binary>>,
-        expect_ok(channel_logic:publish_message(AdminUid, ChannelIdBin, Content, <<"text">>, #{}))
-    end, lists:seq(1, Count)).
+    lists:foreach(
+        fun(N) ->
+            Content = <<"perf_seed_", (integer_to_binary(N))/binary>>,
+            expect_ok(
+                channel_logic:publish_message(AdminUid, ChannelIdBin, Content, <<"text">>, #{})
+            )
+        end,
+        lists:seq(1, Count)
+    ).
 
 %% ===================================================================
 %% Statistics helpers
@@ -302,14 +310,24 @@ render_report(Result) ->
     GeneratedAt = maps:get(generated_at, Result, <<"">>),
     SampleSize = maps:get(sample_size, Result, 0),
     [
-        "# 频道性能基线记录（", date_string(), "）\n\n",
+        "# 频道性能基线记录（",
+        date_string(),
+        "）\n\n",
         "## 1. 目标与口径\n",
         "- 目标接口：`messages`、`publish_message`、`stats`、`sync`\n",
-        "- 目标：`p95 < ", fmt_float(ThresholdMs), "ms`（测试环境）\n\n",
+        "- 目标：`p95 < ",
+        fmt_float(ThresholdMs),
+        "ms`（测试环境）\n\n",
         "## 2. 执行参数\n",
-        "- 生成时间：`", GeneratedAt, "`\n",
-        "- 样本数：`", integer_to_list(SampleSize), "`\n",
-        "- 阈值：`", fmt_float(ThresholdMs), "ms`\n\n",
+        "- 生成时间：`",
+        GeneratedAt,
+        "`\n",
+        "- 样本数：`",
+        integer_to_list(SampleSize),
+        "`\n",
+        "- 阈值：`",
+        fmt_float(ThresholdMs),
+        "ms`\n\n",
         "## 3. 执行结果\n",
         "| 项目 | p50(ms) | p95(ms) | p99(ms) | avg(ms) | min(ms) | max(ms) | 结论 |\n",
         "|---|---:|---:|---:|---:|---:|---:|---|\n",
@@ -318,17 +336,25 @@ render_report(Result) ->
         render_metric_row(<<"stats">>, Stats),
         render_metric_row(<<"sync">>, Sync),
         "\n",
-        "总体结论：`", pass_to_bin(OverallPass), "`\n"
+        "总体结论：`",
+        pass_to_bin(OverallPass),
+        "`\n"
     ].
 
 -spec render_failure_report(term()) -> iolist().
 render_failure_report(Reason) ->
     [
-        "# 频道性能基线记录（", date_string(), "）\n\n",
+        "# 频道性能基线记录（",
+        date_string(),
+        "）\n\n",
         "## 1. 执行状态\n",
         "- 状态：`BLOCKED`\n",
-        "- 生成时间：`", elib_dt:now(), "`\n",
-        "- 错误原因：`", format_reason(Reason), "`\n\n",
+        "- 生成时间：`",
+        elib_dt:now(),
+        "`\n",
+        "- 错误原因：`",
+        format_reason(Reason),
+        "`\n\n",
         "## 2. 指标结果\n",
         "| 项目 | p50(ms) | p95(ms) | p99(ms) | 结论 |\n",
         "|---|---:|---:|---:|---|\n",
@@ -344,13 +370,21 @@ render_failure_report(Reason) ->
 -spec render_metric_row(binary(), map()) -> iolist().
 render_metric_row(Name, Metric) ->
     [
-        "| `", Name, "` | ",
-        fmt_float(maps:get(p50_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(p95_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(p99_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(avg_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(min_ms, Metric, 0.0)), " | ",
-        fmt_float(maps:get(max_ms, Metric, 0.0)), " | ",
+        "| `",
+        Name,
+        "` | ",
+        fmt_float(maps:get(p50_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(p95_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(p99_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(avg_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(min_ms, Metric, 0.0)),
+        " | ",
+        fmt_float(maps:get(max_ms, Metric, 0.0)),
+        " | ",
         pass_to_bin(maps:get(pass, Metric, false)),
         " |\n"
     ].
