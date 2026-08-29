@@ -8,6 +8,7 @@
 
 -export([tablename/0]).
 -export([create/1]).
+-export([create_tx/2]).
 -export([find/1]).
 -export([find_by_username/1]).
 -export([find_by_token/1]).
@@ -28,7 +29,33 @@ tablename() ->
 %% Data 键：user_id(必填), name, username, owner_uid, webhook_url, api_token, verify_token,
 %%          commands, permissions, events, is_public, status
 -spec create(map()) -> {ok, [map()]} | {error, term()}.
-create(#{user_id := UserId, name := Name, owner_uid := OwnerUid} = Data) ->
+create(#{user_id := _UserId, name := _Name, owner_uid := _OwnerUid} = Data) ->
+    {Sql, Params} = create_sql(Data),
+    case elib_pg:query(Sql, Params) of
+        {ok, Rows} ->
+            {ok, Rows};
+        {error, Reason} ->
+            ?ERROR_LOG("bot_repo:create error ~p~n", [Reason]),
+            {error, Reason}
+    end.
+
+%% @doc 事务内创建 Bot 行（DS 层 with_tx Fun(Conn) 内调用，TX-01）；
+%% SQL 与 create/1 完全同源（create_sql/1），仅复用调用方事务连接。
+%% username 唯一约束（bot_username_key）在事务内即时拦截重复注册。
+-spec create_tx(any(), map()) -> {ok, [map()]} | {error, term()}.
+create_tx(Conn, #{user_id := UserId, name := _Name, owner_uid := _OwnerUid} = Data) ->
+    {Sql, Params} = create_sql(Data),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, Rows} ->
+            {ok, Rows};
+        {error, Reason} ->
+            ?ERROR_LOG("bot_repo:create_tx user_id=~p error ~p~n", [UserId, Reason]),
+            {error, Reason}
+    end.
+
+%% @doc create 的 SQL 构造（create/1 与 create_tx/2 共享，保证两入口永不漂移）
+-spec create_sql(map()) -> {binary(), [term()]}.
+create_sql(#{user_id := UserId, name := Name, owner_uid := OwnerUid} = Data) ->
     Tb = tablename(),
     Username = maps:get(username, Data, <<>>),
     Description = maps:get(description, Data, <<>>),
@@ -49,30 +76,22 @@ create(#{user_id := UserId, name := Name, owner_uid := OwnerUid} = Data) ->
             " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,"
             "  $13,$14,NOW(),NOW())"
             " RETURNING user_id">>,
-    case
-        elib_pg:query(Sql, [
-            UserId,
-            Name,
-            Username,
-            Description,
-            Avatar,
-            OwnerUid,
-            WebhookUrl,
-            ApiToken,
-            VerifyToken,
-            Commands,
-            Permissions,
-            Events,
-            IsPublic,
-            Status
-        ])
-    of
-        {ok, Rows} ->
-            {ok, Rows};
-        {error, Reason} ->
-            ?ERROR_LOG("bot_repo:create error ~p~n", [Reason]),
-            {error, Reason}
-    end.
+    {Sql, [
+        UserId,
+        Name,
+        Username,
+        Description,
+        Avatar,
+        OwnerUid,
+        WebhookUrl,
+        ApiToken,
+        VerifyToken,
+        Commands,
+        Permissions,
+        Events,
+        IsPublic,
+        Status
+    ]}.
 
 %% @doc 按 user_id 查单个 Bot 行
 -spec find(integer()) -> {ok, map()} | {error, notfound | term()}.

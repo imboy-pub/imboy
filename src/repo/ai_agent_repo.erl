@@ -8,6 +8,7 @@
 
 -export([tablename/0]).
 -export([upsert/1]).
+-export([upsert_tx/2]).
 -export([patch/2]).
 -export([find/1]).
 -export([active_ids/0]).
@@ -30,7 +31,32 @@ tablename() ->
 %%          category, voice_id, greeting, capabilities(已编码 JSON binary),
 %%          temperature（迁移 000057 扩展列）
 -spec upsert(map()) -> {ok, [map()]} | {error, term()}.
-upsert(#{user_id := UserId, provider := Provider} = Data) ->
+upsert(#{user_id := UserId, provider := _Provider} = Data) ->
+    {Sql, Params} = upsert_sql(Data),
+    case elib_pg:query(Sql, Params) of
+        {ok, Rows} ->
+            {ok, Rows};
+        {error, Reason} ->
+            ?ERROR_LOG("ai_agent_repo:upsert user_id=~p error ~p~n", [UserId, Reason]),
+            {error, Reason}
+    end.
+
+%% @doc 事务内创建或更新 agent 绑定（DS 层 with_tx Fun(Conn) 内调用，TX-01）；
+%% SQL 与 upsert/1 完全同源（upsert_sql/1），仅复用调用方事务连接。
+-spec upsert_tx(any(), map()) -> {ok, [map()]} | {error, term()}.
+upsert_tx(Conn, #{user_id := UserId, provider := _Provider} = Data) ->
+    {Sql, Params} = upsert_sql(Data),
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, Rows} ->
+            {ok, Rows};
+        {error, Reason} ->
+            ?ERROR_LOG("ai_agent_repo:upsert_tx user_id=~p error ~p~n", [UserId, Reason]),
+            {error, Reason}
+    end.
+
+%% @doc upsert 的 SQL 构造（upsert/1 与 upsert_tx/2 共享，保证两入口永不漂移）
+-spec upsert_sql(map()) -> {binary(), [term()]}.
+upsert_sql(#{user_id := UserId, provider := Provider} = Data) ->
     Tb = tablename(),
     Model = maps:get(model, Data, <<>>),
     RoleId = maps:get(role_id, Data, <<>>),
@@ -61,31 +87,23 @@ upsert(#{user_id := UserId, provider := Provider} = Data) ->
             " capabilities = EXCLUDED.capabilities, temperature = EXCLUDED.temperature,"
             " updated_at = NOW()"
             " RETURNING user_id">>,
-    case
-        elib_pg:query(Sql, [
-            UserId,
-            Provider,
-            Model,
-            RoleId,
-            SystemPrompt,
-            OwnerUid,
-            TriggerJson,
-            Status,
-            Description,
-            Visibility,
-            Category,
-            VoiceId,
-            Greeting,
-            Capabilities,
-            Temperature
-        ])
-    of
-        {ok, Rows} ->
-            {ok, Rows};
-        {error, Reason} ->
-            ?ERROR_LOG("ai_agent_repo:upsert user_id=~p error ~p~n", [UserId, Reason]),
-            {error, Reason}
-    end.
+    {Sql, [
+        UserId,
+        Provider,
+        Model,
+        RoleId,
+        SystemPrompt,
+        OwnerUid,
+        TriggerJson,
+        Status,
+        Description,
+        Visibility,
+        Category,
+        VoiceId,
+        Greeting,
+        Capabilities,
+        Temperature
+    ]}.
 
 %% @doc 部分更新既有 agent；未提交的行为字段保持原值，避免管理端编辑资料时清空兼容配置。
 -spec patch(integer(), map()) -> {ok, [map()]} | {error, term()}.
