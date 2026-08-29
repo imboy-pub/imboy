@@ -47,7 +47,7 @@ create_user(Tag) ->
         <<"uid">> => Uid,
         <<"nickname">> => Tag,
         <<"account">> => <<Tag/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [Uid rem 1000000000])),
+        <<"mobile">> => <<"13", (integer_to_binary(Uid))/binary>>,
         <<"email">> => <<"p0t_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
