@@ -20,7 +20,6 @@
 | `type` | int | 否 | 1 公开群组 2 私有群组 | :4263 |
 | `join_limit` | int | 否 | 加入限制：1 不需审核 2 需要审核 3 只允许邀请加入 | :4264 |
 | `content_limit` | int | 否 | 内部发布限制：1 圈内不需审核 2 圈内需要审核 3 圈外需要审核 | :4265 |
-| `user_id_sum` | int | 否 | 成员 ID 求和（建群排重/成员数校验用） | :4266 |
 | `owner_uid` | int | 否 | 群主用户 TSID（JSON number） | :4267 |
 | `creator_uid` | int | 否 | 创建者用户 TSID（JSON number） | :4268 |
 | `member_max` | int | 否 | 最大成员数（默认 1000，CHECK >0） | :4269 |
@@ -73,14 +72,14 @@ id, title, avatar, owner_uid, creator_uid, type, join_limit, member_count, intro
 
 | 端 | 文件 | 说明 |
 |---|---|---|
-| Flutter | `imboyapp/lib/store/model/group_model.dart:56-81`（GroupModel.fromJson） | 消费 C 端 detail：`group_id ?? id ?? gid`、`type/join_limit/content_limit/user_id_sum/owner_uid/creator_uid/member_max/member_count/introduction/avatar/title/status/updated_at/created_at`；时间戳经 `DateTimeHelper.parseTimestamp` 双格式容错 |
+| Flutter | `imboyapp/lib/store/model/group_model.dart:56-81`（GroupModel.fromJson） | 消费 C 端 detail：`group_id ?? id ?? gid`、`type/join_limit/content_limit/owner_uid/creator_uid/member_max/member_count/introduction/avatar/title/status/updated_at/created_at`（`user_id_sum` 已于迁移 00000079 退役，前后端同步删除）；时间戳经 `DateTimeHelper.parseTimestamp` 双格式容错 |
 | admin | `imboyadmin/src/types/group.ts`（`Group` 接口） | TSID 用 `EntityId`（string）；字段与 §3/§4 列集一致 |
 | admin | `imboyadmin/src/modules/groups/api/public.ts`（`/group/list` 请求参数 page/size/status/type/keyword，类型 `Group`） | 列表/详情请求构造 |
 
 ## 6. 已知漂移与注意事项（登记，不改代码）
 
 1. **【漂移】admin `Group.member_max` 在列表页恒 undefined**：TS 类型（`group.ts:11`）声明了 `member_max?`，但 `/api/adm/group/list` SQL 列不含 `member_max`（仅 detail 含，`group_repo.erl:143` vs `adm_group_handler.erl:87`）。列表页如展示“上限”需自行兜底。
-2. **【漂移】C 端 detail 的 TSID 为 JSON number**：`group_transfer` 恒等直出，`id/owner_uid/creator_uid/user_id_sum` 是 int（Dart int64 消费无碍；违反全局「TSID 出站转 string」约定，JS 消费方有精度风险）。与管理端 `tsid_keys_to_bin` 形成两套口径。
+2. **【漂移】C 端 detail 的 TSID 为 JSON number**：`group_transfer` 恒等直出，`id/owner_uid/creator_uid` 是 int（Dart int64 消费无碍；违反全局「TSID 出站转 string」约定，JS 消费方有精度风险）。与管理端 `tsid_keys_to_bin` 形成两套口径。
 3. **敏感字段 `chat_aes_key` 随 `SELECT *` 下发**：任何携带 gid 的登录用户均可读取（`group_handler.erl:81`）。固化为契约时登记该事实；若 E2EE 已迁移 PFv3/Megolm，此列属历史遗留，收敛需另立变更单。
 4. **C 端 detail 无权限校验**：handler 只校验 gid 合法性，不校验请求者是否群成员/群是否存在可见性（群不存在时返回错误“群组不存在”，`:82-83`）。
 5. **status 枚举**：-1 删除（管理端 dissolve 即置 -1，`adm_group_handler.erl:160`）、0 禁用、1 启用；与好友列表的 `status`（online/offline 字符串）完全不同名不同义，勿混用。

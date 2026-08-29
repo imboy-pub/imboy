@@ -270,31 +270,33 @@ alias(Uid, Gid, Alias, Description) ->
 %% @doc 更新群组统计信息
 %% @param Conn 数据库连接（可选）
 %% @param Gid 群组ID
-%% @return {ok, UidSum} | {error, Reason}
+%% @return {ok, MemberCount} | {error, Reason}
+%% P0 修复（docs/planning/group-user-id-sum-p0-decision-2026-08-29.md 方案 B）：
+%% user_id_sum（成员 TSID 算术和）已随迁移 00000079 退役——原 SUM 绑定回写
+%% 约 85 人即 {integer_overflow,int8} 崩连接（加/退群 500、大群冻结）。
+%% 现仅维护 member_count；建群幂等去重已整体废弃（P0 终局决策）。
 -spec update_statistics(pid() | undefined, integer()) -> {ok, integer()} | {error, any()}.
 update_statistics(undefined, Gid) ->
     elib_pg:with_tx(fun(Conn) -> update_statistics(Conn, Gid) end);
 update_statistics(Conn, Gid) ->
     GMTb = group_member_repo:tablename(),
-    SqlSum =
-        <<"SELECT COALESCE(SUM(user_id), 0) as user_id_sum, COUNT(*) as member_count ", "FROM ",
-            GMTb/binary, " WHERE group_id = $1 AND status > -1">>,
-    case elib_pg:query(Conn, SqlSum, [Gid]) of
-        {ok, [#{<<"user_id_sum">> := UidSum0, <<"member_count">> := MemberCount}]} ->
-            UidSum = ec_cnv:to_integer(UidSum0),
+    SqlCount =
+        <<"SELECT COUNT(*) as member_count FROM ", GMTb/binary,
+            " WHERE group_id = $1 AND status > -1">>,
+    case elib_pg:query(Conn, SqlCount, [Gid]) of
+        {ok, [#{<<"member_count">> := MemberCount}]} ->
             GroupTb = group_repo:tablename(),
             {ok, _} = elib_pg:update(
                 Conn,
                 GroupTb,
                 #{
                     member_count => ec_cnv:to_integer(MemberCount),
-                    user_id_sum => UidSum,
                     updated_at => elib_dt:now()
                 },
                 <<"id = $1">>,
                 [Gid]
             ),
-            {ok, UidSum};
+            {ok, ec_cnv:to_integer(MemberCount)};
         {error, Reason} ->
             {error, Reason}
     end.

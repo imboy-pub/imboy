@@ -32,8 +32,6 @@
     build_invite_join_mode/1,
     % 获取群组容量信息
     get_group_capacity/1,
-    % 获取群成员 user_id 总和
-    get_user_id_sum/1,
     % 查询指定群成员记录
     find_by_gid_and_uid/3,
     % 分页获取群成员列表（含用户信息）
@@ -447,11 +445,6 @@ build_invite_join_mode(Uid) ->
 -spec get_group_capacity(integer()) -> map() | {error, any()}.
 get_group_capacity(Gid) ->
     group_ds:find_by_id(Gid, <<"member_max,member_count">>).
-
-%% @doc 获取群成员 user_id 总和（用于群成员变更后同步客户端）
--spec get_user_id_sum(integer()) -> integer().
-get_user_id_sum(Gid) ->
-    group_ds:get_user_id_sum(Gid).
 
 %% @doc 查询指定群中指定用户的成员记录（用于鉴权检查）
 -spec find_by_gid_and_uid(integer(), integer(), binary()) -> map().

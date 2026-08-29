@@ -197,7 +197,6 @@ add_creates_new_group_success_test_() ->
                 {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
             ]},
             {group_ds, [
-                {'find_by_creator_and_sum', 2, fun(_Uid, _Sum) -> 0 end},
                 {'create_group', 6, fun(_Conn, _Gid, _Uid, _Now, _Type, _Status) -> 999 end}
             ]},
             {user_ds, [
@@ -221,14 +220,25 @@ add_creates_new_group_success_test_() ->
         end
     ).
 
-add_with_existing_group_returns_existing_gid_test_() ->
+%% P0 终局（决策文档 2026-08-29）：同成员集允许多群，建群无幂等去重，
+%% 任何重试/重复建群都走全新创建路径（集成级双建断言见 group_user_id_sum_p0_tests B1）。
+add_same_set_creates_new_group_test_() ->
     ?WITH_MECKS(
         [
             {elib_dt, [
                 {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
             ]},
             {group_ds, [
-                {'find_by_creator_and_sum', 2, fun(_Uid, _Sum) -> 888 end}
+                {'create_group', 6, fun(_Conn, _Gid, _Uid, _Now, _Type, _Status) -> 999 end}
+            ]},
+            {user_ds, [
+                {'title', 1, fun(_Uid) -> <<"user123">> end}
+            ]},
+            {group_member_logic, [
+                {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(self()) end}
             ]}
         ],
         fun() ->
@@ -238,7 +248,7 @@ add_with_existing_group_returns_existing_gid_test_() ->
             MemberUids = [<<"1">>],
 
             Result = group_logic:add(Count, Uid, Type, MemberUids),
-            ?assertEqual({ok, 888}, Result)
+            ?assertEqual({ok, 999}, Result)
         end
     ).
 
@@ -249,7 +259,6 @@ add_with_empty_member_list_test_() ->
                 {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
             ]},
             {group_ds, [
-                {'find_by_creator_and_sum', 2, fun(_Uid, _Sum) -> 0 end},
                 {'create_group', 6, fun(_Conn, _Gid, _Uid, _Now, _Type, _Status) -> 999 end}
             ]},
             {user_ds, [
@@ -277,7 +286,6 @@ add_with_invalid_member_list_test_() ->
                 {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
             ]},
             {group_ds, [
-                {'find_by_creator_and_sum', 2, fun(_Uid, _Sum) -> 0 end},
                 {'create_group', 6, fun(_Conn, _Gid, _Uid, _Now, _Type, _Status) -> 999 end}
             ]},
             {user_ds, [

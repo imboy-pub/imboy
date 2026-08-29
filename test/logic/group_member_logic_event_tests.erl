@@ -10,6 +10,10 @@
 join_publishes_member_added_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 999} end}
             ]},
@@ -32,6 +36,10 @@ join_publishes_member_added_test_() ->
 leave_publishes_member_removed_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 999, #{}} end}
             ]},

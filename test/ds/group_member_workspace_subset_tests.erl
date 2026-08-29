@@ -105,9 +105,9 @@ subset_query(<<"SELECT role FROM workspace_member", _/binary>>, [_, 910010]) ->
     {ok, []};
 subset_query(<<"SELECT role FROM workspace_member", _/binary>>, [_, _]) ->
     {ok, []};
-subset_query(<<"SELECT COALESCE(SUM(user_id)", _/binary>>, [_]) ->
-    %% update_statistics 的聚合查询
-    {ok, [#{<<"user_id_sum">> => 100, <<"member_count">> => 2}]};
+subset_query(<<"SELECT COUNT(*)", _/binary>>, [_]) ->
+    %% update_statistics 的聚合查询（P0 后 COUNT-only）
+    {ok, [#{<<"member_count">> => 2}]};
 subset_query(_, _) ->
     {ok, []}.
 

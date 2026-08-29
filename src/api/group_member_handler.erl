@@ -216,12 +216,10 @@ join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
                                 _ ->
                                     {ok, MemberListRes2} =
                                         group_member_logic:list_member(Gid2, MemberUids2),
-                                    Sum = group_member_logic:get_user_id_sum(Gid2),
                                     elib_response:success(
                                         Req0,
                                         #{
                                             <<"gid">> => Gid,
-                                            <<"user_id_sum">> => Sum,
                                             <<"member_list">> =>
                                                 group_member_transfer:member_list(MemberListRes2)
                                         },
@@ -230,12 +228,10 @@ join_with_capacity(Req0, Gid, Gid2, MemberUids, JoinMode2) ->
                             end;
                         {ok, MemberList} ->
                             % 已经是成员，直接使用查询结果
-                            Sum = group_member_logic:get_user_id_sum(Gid2),
                             elib_response:success(
                                 Req0,
                                 #{
                                     <<"gid">> => Gid,
-                                    <<"user_id_sum">> => Sum,
                                     <<"member_list">> =>
                                         group_member_transfer:member_list(MemberList)
                                 },

@@ -444,8 +444,8 @@ mk_friends(A, B) ->
 mk_group(Gid, OwnerUid, MemberUids) ->
     elib_pg:execute(
         <<
-            "INSERT INTO \"group\" (id, type, owner_uid, creator_uid, user_id_sum, created_at)\n"
-            "VALUES ($1, 1, $2, $2, 0, NOW())"
+            "INSERT INTO \"group\" (id, type, owner_uid, creator_uid, created_at)\n"
+            "VALUES ($1, 1, $2, $2, NOW())"
         >>,
         [Gid, OwnerUid]
     ),
