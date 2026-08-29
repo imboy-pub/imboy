@@ -66,19 +66,27 @@ insert(Table, Map, RETURNING) when is_map(Map) ->
     % 构建 VALUES 子句，处理 raw 值和参数值
     % 将 ? 替换为 $1, $2, ... 等参数占位符
     ParamNum = 1,
-    {ValuesClauses, _} = lists:mapfoldl(fun(Clause, Num) ->
-        case Clause of
-            <<"?">> ->
-                {<<"$", (integer_to_binary(Num))/binary>>, Num + 1};
-            RawSql ->
-                {RawSql, Num}
-        end
-    end, ParamNum, RawClauses),
+    {ValuesClauses, _} = lists:mapfoldl(
+        fun(Clause, Num) ->
+            case Clause of
+                <<"?">> ->
+                    {<<"$", (integer_to_binary(Num))/binary>>, Num + 1};
+                RawSql ->
+                    {RawSql, Num}
+            end
+        end,
+        ParamNum,
+        RawClauses
+    ),
     ValuesSql = lists:join(<<",">>, ValuesClauses),
     Sql = [
-        <<"INSERT INTO ">>, Table,
-        <<" (">>, join_cols(Cols), <<") VALUES (">>,
-        ValuesSql, <<") ", RETURNING/binary>>
+        <<"INSERT INTO ">>,
+        Table,
+        <<" (">>,
+        join_cols(Cols),
+        <<") VALUES (">>,
+        ValuesSql,
+        <<") ", RETURNING/binary>>
     ],
     {Sql, Vals}.
 
@@ -95,22 +103,29 @@ insert_with_params(Table, Map, RETURNING, ExtraParams) when is_map(Map) ->
     % 构建 VALUES 子句，处理 raw 值和参数值
     % 参数编号从 ExtraParams 的数量 + 1 开始
     ParamNum = length(ExtraParams) + 1,
-    {ValuesClauses, _} = lists:mapfoldl(fun(Clause, Num) ->
-        case Clause of
-            <<"?">> ->
-                {<<"$", (integer_to_binary(Num))/binary>>, Num + 1};
-            RawSql ->
-                {RawSql, Num}
-        end
-    end, ParamNum, RawClauses),
+    {ValuesClauses, _} = lists:mapfoldl(
+        fun(Clause, Num) ->
+            case Clause of
+                <<"?">> ->
+                    {<<"$", (integer_to_binary(Num))/binary>>, Num + 1};
+                RawSql ->
+                    {RawSql, Num}
+            end
+        end,
+        ParamNum,
+        RawClauses
+    ),
     ValuesSql = lists:join(<<",">>, ValuesClauses),
     Sql = [
-        <<"INSERT INTO ">>, Table,
-        <<" (">>, join_cols(Cols), <<") VALUES (">>,
-        ValuesSql, <<") ", RETURNING/binary>>
+        <<"INSERT INTO ">>,
+        Table,
+        <<" (">>,
+        join_cols(Cols),
+        <<") VALUES (">>,
+        ValuesSql,
+        <<") ", RETURNING/binary>>
     ],
     {Sql, ExtraParams ++ Vals}.
-
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -127,9 +142,12 @@ update(Table, Map, WhereSql, WhereParams) when is_map(Map) ->
     SetOffset = length(WhereParams),
     {SetSql, _} = join_set_with_offset(Cols, RawClauses, SetOffset),
     Sql = [
-        <<"UPDATE ">>, Table,
-        <<" SET ">>, SetSql,
-        <<" WHERE ">>, WhereSql
+        <<"UPDATE ">>,
+        Table,
+        <<" SET ">>,
+        SetSql,
+        <<" WHERE ">>,
+        WhereSql
     ],
     {Sql, WhereParams ++ SetVals}.
 
@@ -150,18 +168,22 @@ insert_batch(Table, Cols, Rows) ->
     ValuesSql = lists:foldl(
         fun(_Row, {SqlAcc, Offset}) ->
             Group = placeholders_with_offset(NumCols, Offset),
-            NewSql = case SqlAcc of
-                <<>> -> <<"(", Group/binary, ")">>;
-                _ -> <<SqlAcc/binary, ",(", Group/binary, ")">>
-            end,
+            NewSql =
+                case SqlAcc of
+                    <<>> -> <<"(", Group/binary, ")">>;
+                    _ -> <<SqlAcc/binary, ",(", Group/binary, ")">>
+                end,
             {NewSql, Offset + NumCols}
         end,
         {<<>>, 1},
         Rows
     ),
     Sql = [
-        <<"INSERT INTO ">>, Table,
-        <<" (">>, join_cols(Cols), <<") VALUES ">>,
+        <<"INSERT INTO ">>,
+        Table,
+        <<" (">>,
+        join_cols(Cols),
+        <<") VALUES ">>,
         element(1, ValuesSql)
     ],
     {Sql, lists:flatten(Rows)}.
@@ -174,8 +196,10 @@ insert_batch(Table, Cols, Rows) ->
     iodata().
 select(Table, WhereSql) ->
     [
-        <<"SELECT * FROM ">>, Table,
-        <<" WHERE ">>, WhereSql
+        <<"SELECT * FROM ">>,
+        Table,
+        <<" WHERE ">>,
+        WhereSql
     ].
 
 %%--------------------------------------------------------------------
@@ -190,56 +214,73 @@ select(Table, WhereSql) ->
     {iodata(), [term()]}.
 build_select(Table, Fields, Where, Opts) ->
     % 构建字段列表
-    FieldsSql = case Fields of
-        Bin when is_binary(Bin) -> Bin;
-        List when is_list(List) -> binary:join(List, <<",">>)
-    end,
+    FieldsSql =
+        case Fields of
+            Bin when is_binary(Bin) -> Bin;
+            List when is_list(List) -> binary:join(List, <<",">>)
+        end,
 
     % 构建 WHERE 条件
     {WhereSql, Params} = build_where_clause(Where),
 
     % 构建 ORDER BY
-    OrderBySql = case maps:get(order_by, Opts, undefined) of
-        undefined -> <<>>;
-        OrderBy ->
-            OrderByClauses = lists:map(fun({Field, Direction}) ->
-                FieldBin = case is_atom(Field) of
-                    true -> atom_to_binary(Field, utf8);
-                    false when is_binary(Field) -> Field;
-                    false -> ec_cnv:to_binary(Field)
-                end,
-                DirBin = case Direction of
-                    asc -> <<"ASC">>;
-                    desc -> <<"DESC">>;
-                    _ when is_binary(Direction) -> Direction;
-                    _ -> ec_cnv:to_binary(Direction)
-                end,
-                <<FieldBin/binary, " ", DirBin/binary>>
-            end, OrderBy),
-            <<" ORDER BY ", (iolist_to_binary(lists:join(<<",">>, OrderByClauses)))/binary>>
-    end,
+    OrderBySql =
+        case maps:get(order_by, Opts, undefined) of
+            undefined ->
+                <<>>;
+            OrderBy ->
+                OrderByClauses = lists:map(
+                    fun({Field, Direction}) ->
+                        FieldBin =
+                            case is_atom(Field) of
+                                true -> atom_to_binary(Field, utf8);
+                                false when is_binary(Field) -> Field;
+                                false -> ec_cnv:to_binary(Field)
+                            end,
+                        DirBin =
+                            case Direction of
+                                asc -> <<"ASC">>;
+                                desc -> <<"DESC">>;
+                                _ when is_binary(Direction) -> Direction;
+                                _ -> ec_cnv:to_binary(Direction)
+                            end,
+                        <<FieldBin/binary, " ", DirBin/binary>>
+                    end,
+                    OrderBy
+                ),
+                <<" ORDER BY ", (iolist_to_binary(lists:join(<<",">>, OrderByClauses)))/binary>>
+        end,
 
     % 构建 LIMIT 和 OFFSET，以及对应的参数
-    {LimitSql, OffsetSql, FinalParams} = case {maps:get(limit, Opts, undefined), maps:get(offset, Opts, undefined)} of
-        {undefined, undefined} ->
-            {<<>>, <<>>, Params};
-        {Limit, undefined} when Limit =/= undefined ->
-            ParamNum = length(Params) + 1,
-            {<<" LIMIT $", (integer_to_binary(ParamNum))/binary>>, <<>>, Params ++ [Limit]};
-        {undefined, Offset} when Offset =/= undefined ->
-            ParamNum = length(Params) + 1,
-            {<<>>, <<" OFFSET $", (integer_to_binary(ParamNum))/binary>>, Params ++ [Offset]};
-        {Limit, Offset} when Limit =/= undefined, Offset =/= undefined ->
-            LimitParamNum = length(Params) + 1,
-            OffsetParamNum = length(Params) + 2,
-            {<<" LIMIT $", (integer_to_binary(LimitParamNum))/binary>>,
-             <<" OFFSET $", (integer_to_binary(OffsetParamNum))/binary>>,
-             Params ++ [Limit, Offset]}
-    end,
+    {LimitSql, OffsetSql, FinalParams} =
+        case {maps:get(limit, Opts, undefined), maps:get(offset, Opts, undefined)} of
+            {undefined, undefined} ->
+                {<<>>, <<>>, Params};
+            {Limit, undefined} when Limit =/= undefined ->
+                ParamNum = length(Params) + 1,
+                {<<" LIMIT $", (integer_to_binary(ParamNum))/binary>>, <<>>, Params ++ [Limit]};
+            {undefined, Offset} when Offset =/= undefined ->
+                ParamNum = length(Params) + 1,
+                {<<>>, <<" OFFSET $", (integer_to_binary(ParamNum))/binary>>, Params ++ [Offset]};
+            {Limit, Offset} when Limit =/= undefined, Offset =/= undefined ->
+                LimitParamNum = length(Params) + 1,
+                OffsetParamNum = length(Params) + 2,
+                {
+                    <<" LIMIT $", (integer_to_binary(LimitParamNum))/binary>>,
+                    <<" OFFSET $", (integer_to_binary(OffsetParamNum))/binary>>,
+                    Params ++ [Limit, Offset]
+                }
+        end,
 
     Sql = [
-        <<"SELECT ">>, FieldsSql, <<" FROM ">>, Table,
-        WhereSql, OrderBySql, LimitSql, OffsetSql
+        <<"SELECT ">>,
+        FieldsSql,
+        <<" FROM ">>,
+        Table,
+        WhereSql,
+        OrderBySql,
+        LimitSql,
+        OffsetSql
     ],
 
     {iolist_to_binary(Sql), FinalParams}.
@@ -254,13 +295,16 @@ build_select(Table, Fields, Where, Opts) ->
 %% @param Opts #{limit => N, offset => N}
 %% @return {Sql, Params}
 %%--------------------------------------------------------------------
--spec build_select_safe(binary(), binary() | [binary()], map(), [{atom() | binary(), asc | desc}], [binary()], map()) ->
+-spec build_select_safe(
+    binary(), binary() | [binary()], map(), [{atom() | binary(), asc | desc}], [binary()], map()
+) ->
     {iodata(), [term()]}.
 build_select_safe(Table, Fields, WhereMap, OrderSpec, ValidFields, Opts) ->
-    FieldsSql = case Fields of
-        Bin when is_binary(Bin) -> Bin;
-        List when is_list(List) -> binary:join(List, <<",">>)
-    end,
+    FieldsSql =
+        case Fields of
+            Bin when is_binary(Bin) -> Bin;
+            List when is_list(List) -> binary:join(List, <<",">>)
+        end,
     {WhereSql, Params0} = build_where_clause(WhereMap),
     OrderBySql = build_order_by(OrderSpec, ValidFields),
     {LimitSql, OffsetSql, Params} =
@@ -276,13 +320,21 @@ build_select_safe(Table, Fields, WhereMap, OrderSpec, ValidFields, Opts) ->
             {Limit, Offset} ->
                 Pn1 = length(Params0) + 1,
                 Pn2 = length(Params0) + 2,
-                {<<" LIMIT $", (integer_to_binary(Pn1))/binary>>,
-                 <<" OFFSET $", (integer_to_binary(Pn2))/binary>>,
-                 Params0 ++ [Limit, Offset]}
+                {
+                    <<" LIMIT $", (integer_to_binary(Pn1))/binary>>,
+                    <<" OFFSET $", (integer_to_binary(Pn2))/binary>>,
+                    Params0 ++ [Limit, Offset]
+                }
         end,
     Sql = [
-        <<"SELECT ">>, FieldsSql, <<" FROM ">>, Table,
-        WhereSql, OrderBySql, LimitSql, OffsetSql
+        <<"SELECT ">>,
+        FieldsSql,
+        <<" FROM ">>,
+        Table,
+        WhereSql,
+        OrderBySql,
+        LimitSql,
+        OffsetSql
     ],
     {Sql, Params}.
 
@@ -301,22 +353,28 @@ build_order_by(OrderSpec, ValidFields) ->
             FieldBin = field_to_binary(Field),
             case lists:member(FieldBin, ValidFields) of
                 true ->
-                    DirBin = case Direction of
-                        asc -> <<"ASC">>;
-                        desc -> <<"DESC">>;
-                        B when is_binary(B) ->
-                            case B of
-                                <<"ASC">> -> <<"ASC">>;
-                                <<"DESC">> -> <<"DESC">>;
-                                _ -> <<"ASC">>
-                            end;
-                        _ -> <<"ASC">>
-                    end,
+                    DirBin =
+                        case Direction of
+                            asc ->
+                                <<"ASC">>;
+                            desc ->
+                                <<"DESC">>;
+                            B when is_binary(B) ->
+                                case B of
+                                    <<"ASC">> -> <<"ASC">>;
+                                    <<"DESC">> -> <<"DESC">>;
+                                    _ -> <<"ASC">>
+                                end;
+                            _ ->
+                                <<"ASC">>
+                        end,
                     {true, <<FieldBin/binary, " ", DirBin/binary>>};
                 false ->
                     false
             end
-        end, OrderSpec),
+        end,
+        OrderSpec
+    ),
     case Clauses of
         [] -> <<>>;
         _ -> <<" ORDER BY ", (iolist_to_binary(lists:join(<<",">>, Clauses)))/binary>>
@@ -334,16 +392,32 @@ build_condition_clause(Field, Value, ParamOffset) ->
             {<<FieldBin/binary, " ", RawSql/binary>>, []};
         {in, List} when is_list(List) ->
             ParamEnd = ParamOffset + length(List) - 1,
-            ParamPlaceholders = iolist_to_binary(lists:join(<<",">>,
-                [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamOffset, ParamEnd)])),
+            ParamPlaceholders = iolist_to_binary(
+                lists:join(
+                    <<",">>,
+                    [
+                        <<"$", (integer_to_binary(I))/binary>>
+                     || I <- lists:seq(ParamOffset, ParamEnd)
+                    ]
+                )
+            ),
             {<<FieldBin/binary, " IN (", ParamPlaceholders/binary, ")">>, List};
         {not_in, List} when is_list(List) ->
             ParamEnd = ParamOffset + length(List) - 1,
-            ParamPlaceholders = iolist_to_binary(lists:join(<<",">>,
-                [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(ParamOffset, ParamEnd)])),
+            ParamPlaceholders = iolist_to_binary(
+                lists:join(
+                    <<",">>,
+                    [
+                        <<"$", (integer_to_binary(I))/binary>>
+                     || I <- lists:seq(ParamOffset, ParamEnd)
+                    ]
+                )
+            ),
             {<<FieldBin/binary, " NOT IN (", ParamPlaceholders/binary, ")">>, List};
         {op, Op, Val} ->
-            {<<FieldBin/binary, " ", Op/binary, " $", (integer_to_binary(ParamOffset))/binary>>, [Val]};
+            {<<FieldBin/binary, " ", Op/binary, " $", (integer_to_binary(ParamOffset))/binary>>, [
+                Val
+            ]};
         _ ->
             {<<FieldBin/binary, " = $", (integer_to_binary(ParamOffset))/binary>>, [Value]}
     end.
@@ -352,24 +426,34 @@ build_condition_clause(Field, Value, ParamOffset) ->
 build_map_conditions(WhereMap, ParamOffset) ->
     % 过滤特殊键
     FilteredMap = maps:without([<<"__or">>, <<"__and">>], WhereMap),
-    {Clauses, Params} = maps:fold(fun(Field, Value, {ClausesAcc, ParamsAcc}) ->
-        {Clause, ClauseParams} = build_condition_clause(Field, Value, ParamOffset + length(ParamsAcc)),
-        {[Clause | ClausesAcc], ParamsAcc ++ ClauseParams}
-    end, {[], []}, FilteredMap),
+    {Clauses, Params} = maps:fold(
+        fun(Field, Value, {ClausesAcc, ParamsAcc}) ->
+            {Clause, ClauseParams} = build_condition_clause(
+                Field, Value, ParamOffset + length(ParamsAcc)
+            ),
+            {[Clause | ClausesAcc], ParamsAcc ++ ClauseParams}
+        end,
+        {[], []},
+        FilteredMap
+    ),
     Sql = iolist_to_binary(lists:join(<<" AND ">>, lists:reverse(Clauses))),
     {Sql, Params}.
 
 %% @doc 构建条件组（支持 OR/AND 嵌套），返回 {SqlFragment, Params}
 build_condition_group(Conditions, Operator, ParamOffset) ->
-    {Clauses, Params} = lists:foldl(fun(Condition, {ClausesAcc, ParamsAcc}) ->
-        case Condition of
-            Map when is_map(Map) ->
-                {Sql, NewParams} = build_map_conditions(Map, ParamOffset + length(ParamsAcc)),
-                {[<<"(", Sql/binary, ")">> | ClausesAcc], ParamsAcc ++ NewParams};
-            _ ->
-                {ClausesAcc, ParamsAcc}
-        end
-    end, {[], []}, Conditions),
+    {Clauses, Params} = lists:foldl(
+        fun(Condition, {ClausesAcc, ParamsAcc}) ->
+            case Condition of
+                Map when is_map(Map) ->
+                    {Sql, NewParams} = build_map_conditions(Map, ParamOffset + length(ParamsAcc)),
+                    {[<<"(", Sql/binary, ")">> | ClausesAcc], ParamsAcc ++ NewParams};
+                _ ->
+                    {ClausesAcc, ParamsAcc}
+            end
+        end,
+        {[], []},
+        Conditions
+    ),
     Sql = iolist_to_binary(lists:join(<<" ", Operator/binary, " ">>, lists:reverse(Clauses))),
     {Sql, Params}.
 
@@ -455,14 +539,25 @@ build_where_clause(Where) ->
             {OrSql, OrParams} =
                 case OrConditions0 of
                     OrConditions when is_list(OrConditions) ->
-                        build_condition_group(OrConditions, <<"OR">>, length(BaseParams) + length(AndParams) + 1);
+                        build_condition_group(
+                            OrConditions, <<"OR">>, length(BaseParams) + length(AndParams) + 1
+                        );
                     _ ->
                         {<<>>, []}
                 end,
             SqlParts0 = [
-                case BaseSql of <<>> -> <<>>; _ -> BaseSql end,
-                case AndSql of <<>> -> <<>>; _ -> <<"(", AndSql/binary, ")">> end,
-                case OrSql of <<>> -> <<>>; _ -> <<"(", OrSql/binary, ")">> end
+                case BaseSql of
+                    <<>> -> <<>>;
+                    _ -> BaseSql
+                end,
+                case AndSql of
+                    <<>> -> <<>>;
+                    _ -> <<"(", AndSql/binary, ")">>
+                end,
+                case OrSql of
+                    <<>> -> <<>>;
+                    _ -> <<"(", OrSql/binary, ")">>
+                end
             ],
             SqlParts = [P || P <- SqlParts0, byte_size(P) > 0],
             case SqlParts of
@@ -521,7 +616,10 @@ page(Table, Column, WhereMap, OrderBy, Limit, Offset) ->
             _ -> <<" ORDER BY ", (iolist_to_binary(OrderBy))/binary>>
         end,
     Sql = [
-        <<"SELECT ">>, Column, <<" FROM ">>, Table,
+        <<"SELECT ">>,
+        Column,
+        <<" FROM ">>,
+        Table,
         WhereSql,
         OrderBySql,
         <<" LIMIT $", (integer_to_binary(ParamNum1))/binary>>,
@@ -537,14 +635,19 @@ page(Table, Column, WhereMap, OrderBy, Limit, Offset) ->
 unzip_map(Map) ->
     List = maps:to_list(Map),
     Cols = [field_to_binary(K) || {K, _V} <- List],
-    {Vals, RawClauses} = lists:unzip(lists:map(fun({_K, V}) ->
-        case V of
-            {raw, RawSql} when is_binary(RawSql) ->
-                {undefined, RawSql};
-            _ ->
-                {V, <<"?">>}
-        end
-    end, List)),
+    {Vals, RawClauses} = lists:unzip(
+        lists:map(
+            fun({_K, V}) ->
+                case V of
+                    {raw, RawSql} when is_binary(RawSql) ->
+                        {undefined, RawSql};
+                    _ ->
+                        {V, <<"?">>}
+                end
+            end,
+            List
+        )
+    ),
     % 只保留非 raw 的参数值
     FilteredVals = [V || {V, Clause} <- lists:zip(Vals, RawClauses), Clause =:= <<"?">>],
     {Cols, FilteredVals, RawClauses}.
@@ -566,43 +669,55 @@ join_cols(Cols) ->
 %% RawClauses: raw 子句列表（每个元素是 raw SQL 或 <<"?">>）
 %% Offset: 参数编号偏移量
 %% 返回: {SetSql, ParamCount}
--spec join_set_with_offset([atom() | binary()], [binary()], non_neg_integer()) -> {iodata(), pos_integer()}.
+-spec join_set_with_offset([atom() | binary()], [binary()], non_neg_integer()) ->
+    {iodata(), pos_integer()}.
 join_set_with_offset(Cols, RawClauses, Offset) ->
-    {SetClauses, ParamCount} = lists:mapfoldl(fun({Col, Clause}, Count) ->
-        case Clause of
-            <<"?">> ->
-                {[field_to_binary(Col), <<" = $">>, integer_to_binary(Count)], Count + 1};
-            RawSql ->
-                {[field_to_binary(Col), <<" = ">>, RawSql], Count}
-        end
-    end, Offset + 1, lists:zip(Cols, RawClauses)),
+    {SetClauses, ParamCount} = lists:mapfoldl(
+        fun({Col, Clause}, Count) ->
+            case Clause of
+                <<"?">> ->
+                    {[field_to_binary(Col), <<" = $">>, integer_to_binary(Count)], Count + 1};
+                RawSql ->
+                    {[field_to_binary(Col), <<" = ">>, RawSql], Count}
+            end
+        end,
+        Offset + 1,
+        lists:zip(Cols, RawClauses)
+    ),
     {lists:join(<<",">>, SetClauses), ParamCount - Offset - 1}.
 
 -spec placeholders(non_neg_integer()) -> binary().
 placeholders(N) ->
-    iolist_to_binary(lists:join(
-        <<",">>,
-        [ <<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, N) ]
-    )).
+    iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(1, N)]
+        )
+    ).
 
 %% @doc 生成从指定偏移量开始的 N 个占位符
 %% 例如: placeholders_with_offset(3, 5) -> <<"$5,$6,$7">>
 -spec placeholders_with_offset(pos_integer(), pos_integer()) -> binary().
 placeholders_with_offset(N, Offset) ->
-    iolist_to_binary(lists:join(
-        <<",">>,
-        [ <<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(Offset, Offset + N - 1) ]
-    )).
+    iolist_to_binary(
+        lists:join(
+            <<",">>,
+            [<<"$", (integer_to_binary(I))/binary>> || I <- lists:seq(Offset, Offset + N - 1)]
+        )
+    ).
 
 -spec value_or_empty({ok, map() | undefined} | term()) -> map().
 value_or_empty({ok, Row}) when is_map(Row) -> Row;
 value_or_empty({ok, undefined}) -> #{};
 value_or_empty(_) -> #{}.
 
--spec parse_result({ok, list(), list()} | {error, term()}) -> {ok, integer(), map()} | {error, term()}.
+-spec parse_result({ok, list(), list()} | {error, term()}) ->
+    {ok, integer(), map()} | {error, term()}.
 parse_result({ok, _, [#{<<"id">> := Id}]}) -> {ok, Id, #{}};
-parse_result({ok, _, [{Id}]}) when is_integer(Id) -> {ok, Id, #{}}; % For epgsql result [{123}]
-parse_result({ok, _, [{ {Id} }]}) when is_integer(Id) -> {ok, Id, #{}}; % For epgsql result [{123}]
+% For epgsql result [{123}]
+parse_result({ok, _, [{Id}]}) when is_integer(Id) -> {ok, Id, #{}};
+% For epgsql result [{123}]
+parse_result({ok, _, [{{Id}}]}) when is_integer(Id) -> {ok, Id, #{}};
 parse_result({ok, _, [Id]}) when is_integer(Id) -> {ok, Id, #{}};
 parse_result({error, Reason}) -> {error, Reason}.
 
