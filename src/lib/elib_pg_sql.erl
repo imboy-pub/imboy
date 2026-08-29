@@ -706,10 +706,21 @@ placeholders_with_offset(N, Offset) ->
         )
     ).
 
+%% @doc 把单行查询结果解包为 map；查询不存在时返回空 map。
+%% 注意：吞错必留痕——{error, Reason} 会先打 ERROR 日志再返回 #{}。
+%% 背景：静默吞错曾把 PG 42703（列不存在）伪装成"用户不存在"，
+%% 排查耗时数小时（2026-08-29 find_by_uid 引用不存在的 updated_at 列）。
+%% 错误透传（返回 {error, Reason}）需逐个审视约 24 个上游调用点的降级
+%% 语义（登录路径须感知错误、展示路径可降级默认值），作为跟进项处理。
 -spec value_or_empty({ok, map() | undefined} | term()) -> map().
 value_or_empty({ok, Row}) when is_map(Row) -> Row;
-value_or_empty({ok, undefined}) -> #{};
-value_or_empty(_) -> #{}.
+value_or_empty({ok, undefined}) ->
+    #{};
+value_or_empty({error, Reason}) ->
+    ?ERROR_LOG([value_or_empty_swallowed_db_error, Reason]),
+    #{};
+value_or_empty(_) ->
+    #{}.
 
 -spec parse_result({ok, list(), list()} | {error, term()}) ->
     {ok, integer(), map()} | {error, term()}.
