@@ -15,17 +15,30 @@
 setup_cascade() ->
     application:set_env(imboy, env, test),
     Mods = [
+        %% SEC-02：本组关注依赖级联语义，install path 假路径由路径模块
+        %% mock 放行（真实负向矩阵见 imboy_plugin_path_tests）
+        {imboy_plugin_path, [
+            {resolve, 1, fun(P) -> {ok, P} end},
+            {ensure_file_within, 1, fun(_) -> ok end}
+        ]},
         {imboy_plugin_signature, [{verify_file, 2, fun(_, _) -> ok end}]},
         {imboy_plugin_toml, [
             {load, 1, fun(Path) ->
                 case Path =:= <<"/tmp/cascade_b/plugin.config">> of
                     true ->
-                        {ok, #{name => ?PLUGIN_B, version => <<"1.0.0">>,
-                               depends_on => #{}, routes => []}};
+                        {ok, #{
+                            name => ?PLUGIN_B,
+                            version => <<"1.0.0">>,
+                            depends_on => #{},
+                            routes => []
+                        }};
                     false ->
-                        {ok, #{name => ?PLUGIN_A, version => <<"1.0.0">>,
-                               depends_on => #{?PLUGIN_B => <<"^1.0.0">>},
-                               routes => []}}
+                        {ok, #{
+                            name => ?PLUGIN_A,
+                            version => <<"1.0.0">>,
+                            depends_on => #{?PLUGIN_B => <<"^1.0.0">>},
+                            routes => []
+                        }}
                 end
             end}
         ]},
@@ -33,33 +46,41 @@ setup_cascade() ->
             {validate_constraints, 1, fun(_) -> ok end},
             {check_enable_deps, 1, fun(Manifest) ->
                 Deps = maps:get(depends_on, Manifest, #{}),
-                NotEnabled = lists:filter(fun(DepName) ->
-                    case get_plugin_state_mock(DepName) of
-                        enabled -> false;
-                        _ -> true
-                    end
-                end, maps:keys(Deps)),
+                NotEnabled = lists:filter(
+                    fun(DepName) ->
+                        case get_plugin_state_mock(DepName) of
+                            enabled -> false;
+                            _ -> true
+                        end
+                    end,
+                    maps:keys(Deps)
+                ),
                 case NotEnabled of
                     [] -> ok;
                     _ -> {error, {deps_not_enabled, NotEnabled}}
                 end
             end},
             {find_dependents, 1, fun(PluginName) ->
-                Dependents = lists:filtermap(fun(Name) ->
-                    case persistent_term:get({imboy_plugin_manifest, Name}, undefined) of
-                        undefined -> false;
-                        MF ->
-                            Deps = maps:get(depends_on, MF, #{}),
-                            case maps:is_key(PluginName, Deps) of
-                                true ->
-                                    case get_plugin_state_mock(Name) of
-                                        enabled -> {true, Name};
-                                        _ -> false
-                                    end;
-                                false -> false
-                            end
-                    end
-                end, [?PLUGIN_A, ?PLUGIN_B]),
+                Dependents = lists:filtermap(
+                    fun(Name) ->
+                        case persistent_term:get({imboy_plugin_manifest, Name}, undefined) of
+                            undefined ->
+                                false;
+                            MF ->
+                                Deps = maps:get(depends_on, MF, #{}),
+                                case maps:is_key(PluginName, Deps) of
+                                    true ->
+                                        case get_plugin_state_mock(Name) of
+                                            enabled -> {true, Name};
+                                            _ -> false
+                                        end;
+                                    false ->
+                                        false
+                                end
+                        end
+                    end,
+                    [?PLUGIN_A, ?PLUGIN_B]
+                ),
                 case Dependents of
                     [] -> ok;
                     _ -> {error, {has_dependents, Dependents}}
@@ -72,30 +93,43 @@ setup_cascade() ->
             {unregister, 1, fun(_) -> ok end}
         ]}
     ],
-    lists:foreach(fun({Mod, Exps}) ->
-        meck_helper:cleanup_mock(Mod),
-        {ok, _} = meck_helper:setup_mock(Mod, Exps)
-    end, Mods),
+    lists:foreach(
+        fun({Mod, Exps}) ->
+            meck_helper:cleanup_mock(Mod),
+            {ok, _} = meck_helper:setup_mock(Mod, Exps)
+        end,
+        Mods
+    ),
     ok.
 
 cleanup_cascade(_) ->
-    lists:foreach(fun(Name) ->
-        case imboy_plugin_manager:find_lifecycle(Name) of
-            undefined -> ok;
-            Pid -> catch gen_statem:stop(Pid)
-        end
-    end, [?PLUGIN_A, ?PLUGIN_B]),
-    lists:foreach(fun(Key) ->
-        catch persistent_term:erase(Key)
-    end, [
-        {imboy_plugin_manifest, ?PLUGIN_A},
-        {imboy_plugin_manifest, ?PLUGIN_B},
-        {imboy_plugin_lifecycle, ?PLUGIN_A},
-        {imboy_plugin_lifecycle, ?PLUGIN_B}
-    ]),
+    lists:foreach(
+        fun(Name) ->
+            case imboy_plugin_manager:find_lifecycle(Name) of
+                undefined -> ok;
+                Pid -> catch gen_statem:stop(Pid)
+            end
+        end,
+        [?PLUGIN_A, ?PLUGIN_B]
+    ),
+    lists:foreach(
+        fun(Key) ->
+            catch persistent_term:erase(Key)
+        end,
+        [
+            {imboy_plugin_manifest, ?PLUGIN_A},
+            {imboy_plugin_manifest, ?PLUGIN_B},
+            {imboy_plugin_lifecycle, ?PLUGIN_A},
+            {imboy_plugin_lifecycle, ?PLUGIN_B}
+        ]
+    ),
     lists:foreach(fun(M) -> catch meck_helper:cleanup_mock(M) end, [
-        imboy_plugin_signature, imboy_plugin_toml, imboy_plugin_dependency,
-        imboy_plugin_loader, imboy_router_registry
+        imboy_plugin_path,
+        imboy_plugin_signature,
+        imboy_plugin_toml,
+        imboy_plugin_dependency,
+        imboy_plugin_loader,
+        imboy_router_registry
     ]),
     ok.
 
@@ -108,10 +142,13 @@ get_plugin_state_mock(Name) ->
             end;
         Pid when is_pid(Pid) ->
             case erlang:is_process_alive(Pid) of
-                false -> unknown;
+                false ->
+                    unknown;
                 true ->
-                    try gen_statem:call(Pid, get_state, 1000)
-                    catch _:_ -> unknown
+                    try
+                        gen_statem:call(Pid, get_state, 1000)
+                    catch
+                        _:_ -> unknown
                     end
             end
     end.
@@ -121,8 +158,7 @@ get_plugin_state_mock(Name) ->
 %% ===================================================================
 
 disable_b_fails_when_a_depends_test_() ->
-    {setup, fun setup_cascade/0, fun cleanup_cascade/1,
-     fun(_) ->
+    {setup, fun setup_cascade/0, fun cleanup_cascade/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN_B, <<"/tmp/cascade_b">>),
             ok = imboy_plugin_manager:enable(?PLUGIN_B),
@@ -141,7 +177,7 @@ disable_b_fails_when_a_depends_test_() ->
             ok = imboy_plugin_manager:disable(?PLUGIN_A),
             ?assertEqual(ok, imboy_plugin_manager:disable(?PLUGIN_B))
         end
-     end}.
+    end}.
 
 %% ===================================================================
 %% P4-V2: Upgrade failure — plugin stays enabled (atomic rollback)
@@ -150,11 +186,22 @@ disable_b_fails_when_a_depends_test_() ->
 setup_upgrade() ->
     application:set_env(imboy, env, test),
     Mods = [
+        %% SEC-02：路径模块 mock 放行（关注升级/回滚语义）
+        {imboy_plugin_path, [
+            {resolve, 1, fun(P) -> {ok, P} end},
+            {ensure_file_within, 1, fun(_) -> ok end}
+        ]},
         {imboy_plugin_signature, [{verify_file, 2, fun(_, _) -> ok end}]},
-        {imboy_plugin_toml, [{load, 1, fun(_) ->
-            {ok, #{name => ?PLUGIN_A, version => <<"1.0.0">>,
-                   depends_on => #{}, routes => []}}
-        end}]},
+        {imboy_plugin_toml, [
+            {load, 1, fun(_) ->
+                {ok, #{
+                    name => ?PLUGIN_A,
+                    version => <<"1.0.0">>,
+                    depends_on => #{},
+                    routes => []
+                }}
+            end}
+        ]},
         {imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
             {check_enable_deps, 1, fun(_) -> ok end},
@@ -166,10 +213,13 @@ setup_upgrade() ->
             {unregister, 1, fun(_) -> ok end}
         ]}
     ],
-    lists:foreach(fun({Mod, Exps}) ->
-        meck_helper:cleanup_mock(Mod),
-        {ok, _} = meck_helper:setup_mock(Mod, Exps)
-    end, Mods),
+    lists:foreach(
+        fun({Mod, Exps}) ->
+            meck_helper:cleanup_mock(Mod),
+            {ok, _} = meck_helper:setup_mock(Mod, Exps)
+        end,
+        Mods
+    ),
     ok.
 
 cleanup_upgrade(_) ->
@@ -180,14 +230,17 @@ cleanup_upgrade(_) ->
     catch persistent_term:erase({imboy_plugin_manifest, ?PLUGIN_A}),
     catch persistent_term:erase({imboy_plugin_lifecycle, ?PLUGIN_A}),
     lists:foreach(fun(M) -> catch meck_helper:cleanup_mock(M) end, [
-        imboy_plugin_signature, imboy_plugin_toml, imboy_plugin_dependency,
-        imboy_plugin_loader, imboy_router_registry
+        imboy_plugin_path,
+        imboy_plugin_signature,
+        imboy_plugin_toml,
+        imboy_plugin_dependency,
+        imboy_plugin_loader,
+        imboy_router_registry
     ]),
     ok.
 
 upgrade_success_test_() ->
-    {setup, fun setup_upgrade/0, fun cleanup_upgrade/1,
-     fun(_) ->
+    {setup, fun setup_upgrade/0, fun cleanup_upgrade/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN_A, <<"/tmp/rollback_a">>),
             ok = imboy_plugin_manager:enable(?PLUGIN_A),
@@ -198,11 +251,10 @@ upgrade_success_test_() ->
             {ok, #{state := StateAfter}} = imboy_plugin_manager:get_state(?PLUGIN_A),
             ?assertEqual(enabled, StateAfter)
         end
-     end}.
+    end}.
 
 upgrade_failure_rollback_test_() ->
-    {setup, fun setup_upgrade/0, fun cleanup_upgrade/1,
-     fun(_) ->
+    {setup, fun setup_upgrade/0, fun cleanup_upgrade/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN_A, <<"/tmp/rollback_a">>),
             ok = imboy_plugin_manager:enable(?PLUGIN_A),
@@ -225,4 +277,4 @@ upgrade_failure_rollback_test_() ->
             {ok, #{state := StateAfter}} = imboy_plugin_manager:get_state(?PLUGIN_A),
             ?assertEqual(enabled, StateAfter)
         end
-     end}.
+    end}.

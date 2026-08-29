@@ -50,6 +50,9 @@
 %   IMBOY_PRODUCT_PROFILE   -> {imboy, product_profile} (community | enterprise)
 %   IMBOY_PRODUCT_EXPERIENCE -> {imboy, product_experience} (chat | workspace)
 %                              (体验开关；缺失/非法值 fail-safe 为 chat，只告警不拒启)
+%   IMBOY_PLUGIN_ROOT       -> {imboy, plugin_root}  (install Path 受控插件根，SEC-02)
+%   IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES -> {imboy, plugin_trusted_public_key_files}
+%                              (逗号分隔 32B Ed25519 公钥文件路径；business 强制签名)
 %   IMBOY_E2EE_MODE         -> {imboy, capabilities.e2ee_mode}
 %                              (disabled | optional | required | compliance)
 %   IMBOY_FEATURE_E2EE      -> {imboy, features.e2ee.enabled}
@@ -171,6 +174,10 @@ override_from_env() ->
 
     %% A-28：动态插件生命周期写操作总开关（默认关）
     ok = override_plugin_lifecycle_enabled(),
+
+    %% SEC-02：install Path 受控插件根 + 可信签名公钥文件（business 强制）
+    ok = override_plugin_root(),
+    ok = override_plugin_trusted_key_files(),
 
     %% 版次标记（community|professional|enterprise）：仅标识 + 启动日志
     ok = override_edition(),
@@ -580,6 +587,40 @@ override_plugin_lifecycle_enabled() ->
                     _ -> false
                 end,
             application:set_env(imboy, plugin_lifecycle_enabled, Enabled),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖 install Path 的受控插件根（SEC-02，审计 #43）。
+%% IMBOY_PLUGIN_ROOT -> {imboy, plugin_root}（binary 路径，相对按 cwd）。
+%% 默认 priv/plugins（见 imboy_plugin_path）。
+-spec override_plugin_root() -> ok.
+override_plugin_root() ->
+    case os:getenv("IMBOY_PLUGIN_ROOT") of
+        Value when is_list(Value), length(Value) > 0 ->
+            application:set_env(
+                imboy, plugin_root, unicode:characters_to_binary(Value)
+            ),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖可信签名公钥文件列表（SEC-02，审计 #44；business 强制口径）。
+%% IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES：逗号分隔的公钥文件路径（raw 32
+%% 字节 Ed25519 公钥文件），空段跳过。与 deploy/preflight.sh 2c 段检查的
+%% 环境变量同名对齐；文件不存在/内容非法由 imboy_plugin_signature 在
+%% 加载时跳过（fail-closed：结果集合变小即更严，validate_config 拒绝）。
+-spec override_plugin_trusted_key_files() -> ok.
+override_plugin_trusted_key_files() ->
+    case os:getenv("IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES") of
+        Value when is_list(Value), length(Value) > 0 ->
+            Files = [
+                unicode:characters_to_binary(string:trim(F))
+             || F <- string:split(Value, ",", all), string:trim(F) =/= ""
+            ],
+            application:set_env(imboy, plugin_trusted_public_key_files, Files),
             ok;
         _ ->
             ok

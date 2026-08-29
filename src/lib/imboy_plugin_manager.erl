@@ -37,9 +37,13 @@
 %%
 %% 关闭时 adm_plugin_handler 的 7 个写端点（install/enable/disable/upgrade/
 %% uninstall/reset/force_uninstall）返回 ?ERR_FEATURE_DISABLED。为什么默认关：
-%% 该子系统 @status FROZEN，且 install 的 Path 参数无白名单（审计 #43）、签名
-%% 100% 放行（#44），admin 可达即等于代码加载面。内置功能开关（channel/moment/
-%% location/group_collab）是纯 manifest、只读可见，不受此开关影响。
+%% 该子系统 @status FROZEN，admin 可达即等于代码加载面（内置功能开关
+%% channel/moment/location/group_collab 是纯 manifest、只读可见，不受此
+%% 开关影响）。
+%%
+%% SEC-02 之后 install 面已收口：Path 白名单（imboy_plugin_path，审计 #43
+%% 已修复）+ 商务版强制可信签名（imboy_plugin_signature，审计 #44 已修
+%% 复）。开关默认关闭不变 —— 收口补的是"开了也不能穿越/免签"，而非放开。
 %%
 %% 这是收紧冻结面的暴露，**不是**重启动态平台方向（冻结≠移除）。
 -spec lifecycle_enabled() -> boolean().
@@ -185,8 +189,19 @@ health_check(Name) when is_atom(Name) ->
     end.
 
 %% @doc 安装插件（启动 lifecycle statem 并触发 install）。
+%% SEC-02（审计 #43）：入口层先做受控插件根白名单校验（realpath 收口），
+%% 越界路径不启动 statem、无任何副作用；lifecycle 内 run_install_steps/2
+%% 读路径处还有同源二次校验（绕过本层仍 fail-closed）。
 -spec install(atom(), binary()) -> {ok, map()} | {error, term()}.
 install(Name, Path) when is_atom(Name), is_binary(Path) ->
+    case imboy_plugin_path:resolve(Path) of
+        {error, Reason} ->
+            {error, {resolve_path, Reason}};
+        {ok, _CanonicalPath} ->
+            do_install(Name, Path)
+    end.
+
+do_install(Name, Path) ->
     case find_lifecycle(Name) of
         undefined ->
             {ok, Pid} = imboy_plugin_lifecycle:start_link(#{name => Name}),

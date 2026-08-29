@@ -365,10 +365,28 @@
         %% false 时：/api/adm/plugin/* 的 7 个写端点（install/enable/disable/upgrade/
         %%           uninstall/reset/force_uninstall）返回 ?ERR_FEATURE_DISABLED。
         %%           内置功能开关（channel/moment/location/group_collab）是纯 manifest、
-        %%           只读可见，不受影响。该子系统 @status FROZEN（审计 #43/#44）。
+        %%           只读可见，不受影响。该子系统 @status FROZEN。
         %% true  时：写端点放行（需自行承担动态加载的安全风险）。
         %% 见 imboy_plugin_manager:lifecycle_enabled/0。
         , {plugin_lifecycle_enabled, false}
+        %% install Path 的受控插件根（SEC-02，审计 #43 收口；IMBOY_PLUGIN_ROOT 可覆盖）
+        %% adm plugin install 的 path 参数经 realpath 解析（消解 `..` 与 symlink）后
+        %% 必须位于该目录内，且必须是已存在目录；plugin.config/SIGNATURE 文件级同样
+        %% 不得 symlink 逃逸出根。默认仓内受控目录 priv/plugins（相对按 cwd）。
+        %% 见 imboy_plugin_path:resolve/1。
+        , {plugin_root, <<"priv/plugins">>}
+        %% 插件签名可信公钥（SEC-02，审计 #44 收口）
+        %% plugin_trusted_public_keys：内联 32 字节 Ed25519 公钥列表（binary）
+        %% plugin_trusted_public_key_files：公钥文件路径列表（raw 32 字节公钥；
+        %%           逗号分隔环境变量 IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES 可覆盖）
+        %% plugin_signature_required：强制签名开关（community 默认 false 宽松）
+        %% ⚠️ 商务版（IMBOY_PRODUCT_PROFILE=enterprise，与 deploy/preflight.sh 的
+        %%    商务口径一致）下强制签名无视 plugin_signature_required：无可信公钥
+        %%    → 生产启动 fail-fast + install 全部拒绝；缺 SIGNATURE / 验签失败
+        %%    → install 拒绝，不降级放行。见 imboy_plugin_signature:validate_config/0。
+        , {plugin_trusted_public_keys, []}
+        , {plugin_trusted_public_key_files, []}
+        , {plugin_signature_required, false}
         %% 支付回调来源 IP 白名单（纵深防御，默认 [] = 不启用，A-04）
         %% 条目为字符串/binary，支持精确 IP 与前缀（"110.75." 匹配整段）。
         %% 命中才放行，未命中回 403（不是 200 —— 后者会让网关停止重推变成静默丢单）。

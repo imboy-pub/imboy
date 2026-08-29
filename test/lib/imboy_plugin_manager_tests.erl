@@ -10,7 +10,15 @@
 
 setup() ->
     application:set_env(imboy, env, test),
-    Mods = [
+    setup_mocks([path_mocks() | base_mocks()]).
+
+%% SEC-02 真实路径校验组：不 mock imboy_plugin_path
+setup_real_path() ->
+    application:set_env(imboy, env, test),
+    setup_mocks(base_mocks()).
+
+base_mocks() ->
+    [
         {imboy_plugin_signature, [{verify_file, 2, fun(_, _) -> ok end}]},
         {imboy_plugin_toml, [
             {load, 1, fun(_) ->
@@ -32,7 +40,18 @@ setup() ->
             {register, 2, fun(_, _) -> ok end},
             {unregister, 1, fun(_) -> ok end}
         ]}
-    ],
+    ].
+
+%% SEC-02：既有用例的 <<"/tmp/test_plugin">> 假路径关注 manager 语义，
+%% 路径收口组件 mock 放行；真实负向矩阵见文件尾 install_*_rejected 组
+%% 与 imboy_plugin_path_tests。
+path_mocks() ->
+    {imboy_plugin_path, [
+        {resolve, 1, fun(P) -> {ok, P} end},
+        {ensure_file_within, 1, fun(_) -> ok end}
+    ]}.
+
+setup_mocks(Mods) ->
     lists:foreach(
         fun({Mod, Exps}) ->
             meck_helper:cleanup_mock(Mod),
@@ -40,8 +59,8 @@ setup() ->
         end,
         Mods
     ),
-    %% 套件隔离治理：app 常驻后 priv/plugins 的真实插件（channel 等）已进入
-    %% persistent_term，list_plugins 会把它们一起列出。暂存并清空全部
+    %% 套件隔离治理（main 线）：app 常驻后 priv/plugins 的真实插件（channel 等）
+    %% 已进入 persistent_term，list_plugins 会把它们一起列出。暂存并清空全部
     %% manifest 键，cleanup 恢复，保证本模块内插件列表受控。
     RealManifests = [
         {K, V}
@@ -68,6 +87,7 @@ cleanup(_) ->
             erase(saved_manifests)
     end,
     lists:foreach(fun(M) -> catch meck_helper:cleanup_mock(M) end, [
+        imboy_plugin_path,
         imboy_plugin_signature,
         imboy_plugin_toml,
         imboy_plugin_dependency,
@@ -200,3 +220,57 @@ get_plugin_not_found_test_() ->
     {setup, fun setup/0, fun cleanup/1, fun(_) ->
         ?_assertEqual({error, not_found}, imboy_plugin_manager:get_plugin(nonexistent))
     end}.
+
+%% ===================================================================
+%% SEC-02: install Path 入口层收口（真实 imboy_plugin_path 校验）
+%% ===================================================================
+
+install_outside_root_rejected_test_() ->
+    {setup, fun setup_real_path/0, fun cleanup/1, fun(_) ->
+        fun() ->
+            %% 默认 plugin_root = priv/plugins（cwd 相对）；/tmp 在根外 → 拒，
+            %% 且不启动 lifecycle statem（无副作用）
+            Result = imboy_plugin_manager:install(?PLUGIN, <<"/tmp">>),
+            ?assertMatch({error, {resolve_path, _}}, Result),
+            ?assertEqual(undefined, imboy_plugin_manager:find_lifecycle(?PLUGIN)),
+            ?assertEqual(
+                undefined,
+                persistent_term:get({imboy_plugin_manifest, ?PLUGIN}, undefined)
+            )
+        end
+    end}.
+
+install_dotdot_rejected_test_() ->
+    {setup, fun setup_real_path/0, fun cleanup/1, fun(_) ->
+        fun() ->
+            Result = imboy_plugin_manager:install(?PLUGIN, <<"priv/plugins/../../etc">>),
+            ?assertMatch({error, {resolve_path, _}}, Result),
+            ?assertEqual(undefined, imboy_plugin_manager:find_lifecycle(?PLUGIN))
+        end
+    end}.
+
+%% 生命周期写操作总开关默认禁用回归（A-28，防止收口改动破坏现有门控）
+lifecycle_enabled_default_false_test_() ->
+    {setup,
+        fun() ->
+            Saved = application:get_env(imboy, plugin_lifecycle_enabled),
+            Saved
+        end,
+        fun(Saved) ->
+            case Saved of
+                undefined -> application:unset_env(imboy, plugin_lifecycle_enabled);
+                {ok, V} -> application:set_env(imboy, plugin_lifecycle_enabled, V)
+            end
+        end,
+        fun(Saved) ->
+            fun() ->
+                case Saved of
+                    {ok, _} -> ok;
+                    _ -> ?assertEqual(false, imboy_plugin_manager:lifecycle_enabled())
+                end,
+                application:set_env(imboy, plugin_lifecycle_enabled, true),
+                ?assertEqual(true, imboy_plugin_manager:lifecycle_enabled()),
+                application:set_env(imboy, plugin_lifecycle_enabled, false),
+                ?assertEqual(false, imboy_plugin_manager:lifecycle_enabled())
+            end
+        end}.

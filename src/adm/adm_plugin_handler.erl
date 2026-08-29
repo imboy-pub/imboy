@@ -28,8 +28,9 @@ init(Req0, State0) ->
     Method = cowboy_req:method(Req0),
     Req1 =
         %% A-28：动态插件生命周期写操作默认禁用（IMBOY_PLUGIN_LIFECYCLE_ENABLED）。
-        %% 该子系统 @status FROZEN，install 的 Path 无白名单（审计 #43）、签名 100%
-        %% 放行（#44），admin 可达即代码加载面。内置开关是纯 manifest，不受影响。
+        %% 该子系统 @status FROZEN，admin 可达即代码加载面。SEC-02 后 install 面
+        %% 已收口（Path 白名单 imboy_plugin_path + 商务版强制签名），开关默认
+        %% 关闭不变。内置开关是纯 manifest，不受影响。
         case is_lifecycle_mutation(Action) andalso not imboy_plugin_manager:lifecycle_enabled() of
             true ->
                 elib_response:error(
@@ -463,7 +464,25 @@ get_name(Req0) ->
     end.
 
 %% @doc 将 lifecycle 错误映射为 HTTP 响应。
+%% SEC-02：install Path 收口错误 → 明确错误码 ?ERR_PLUGIN_PATH_INVALID，
+%% 不 crash、不泄露插件根外的路径解析细节。
 -spec format_lifecycle_error(cowboy_req:req(), term()) -> cowboy_req:req().
+format_lifecycle_error(Req0, {resolve_path, path_outside_plugin_root}) ->
+    elib_response:error(
+        Req0, <<"插件路径不在受控插件根内"/utf8>>, ?ERR_PLUGIN_PATH_INVALID
+    );
+format_lifecycle_error(Req0, {resolve_path, Reason}) when is_atom(Reason) ->
+    elib_response:error(
+        Req0,
+        <<"插件路径无效:"/utf8, (atom_to_binary(Reason))/binary>>,
+        ?ERR_PLUGIN_PATH_INVALID
+    );
+format_lifecycle_error(Req0, {Step, _}) when
+    Step =:= validate_config_path; Step =:= validate_signature_path
+->
+    elib_response:error(
+        Req0, <<"插件文件路径不在受控插件根内"/utf8>>, ?ERR_PLUGIN_PATH_INVALID
+    );
 format_lifecycle_error(Req0, {deps_not_enabled, Names}) ->
     NameBins = [atom_to_binary(N) || N <- Names],
     elib_response:error(
