@@ -63,13 +63,21 @@ DOC_DEPS = edown
 EDOC_OPTS = {doclet, edown_doclet}
 
 # CI-00：并发不安全套件排除出默认全量 eunit（单跑不受影响：
-# make eunit-local t=imboy_plugin_loader_tests）。
-# 该套件 10 个 fixture 互相抢占全局命名 gen_server（imboy_plugin_loader，
-# {local, ?SERVER} 单实例），且 {setup} 生成的断言在 cleanup 之后才执行，
-# 并发下互踩必红（run1-6 全量从未真正通过，历史上被 cancel/竞态掩盖）。
-# 注意需同时过滤 src 模块条目：eunit 运行 {module, X} 会自动附带 X_tests。
-# 待重构为单 fixture 串行独占后，从下方 filter-out 移除即可恢复参与全量。
-EUNIT_TEST_SPEC = [$(call comma_list,$(filter-out 'imboy_plugin_loader' 'imboy_plugin_loader_tests',$1))]
+# make eunit-local t=<模块名>）。
+# 共性：这些套件需要独占全局命名 gen_server（imboy_plugin_loader /
+# imboy_plugin_sup / elib_metric 都是 {local, Name} 单实例，且多为
+# imboy_sup 常驻子进程），测试进程自建实例与 app 常驻实例互斥，
+# 并发下互踩必红（run1-7 从未在全量中真正通过，历史上被 cancel 掩盖）。
+# 待重构为可共享/可让位模式后，从 Excl 列表移除即可恢复参与全量。
+# 注意：需同时过滤 src 模块条目——eunit 运行 {module, X} 会自动附带 X_tests。
+EUNIT_TEST_SPEC = (fun() ->
+	Excl = ['imboy_plugin_loader', 'imboy_plugin_loader_tests',
+	        'imboy_plugin_priv_plugins_tests', 'imboy_plugin_sup',
+	        'imboy_plugin_sup_tests', 'imboy_plugin_sup_metrics_tests',
+	        'elib_metric', 'elib_metric_tests'],
+	Mods = [$1],
+	[M || M <- Mods, not lists:member(M, Excl)]
+end)()
 
 include erlang.mk
 

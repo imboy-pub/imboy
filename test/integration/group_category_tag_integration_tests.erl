@@ -16,24 +16,19 @@ group_category_tag_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
-            {foreach,
-             fun setup/0,
-             fun cleanup/1,
-             [
-              {"创建群分组", fun test_create_category/0},
-              {"更新群分组", fun test_update_category/0},
-              {"删除群分组", fun test_delete_category/0},
-              {"群分组排序", fun test_category_sort/0},
-              {"将群加入分组", fun test_add_group_to_category/0},
-              {"创建群标签", fun test_create_tag/0},
-              {"为群添加标签", fun test_add_tag_to_group/0},
-              {"按标签筛选群", fun test_filter_groups_by_tag/0},
-              {"批量操作", fun test_batch_operations/0}
-             ]
-            };
+            {foreach, fun setup/0, fun cleanup/1, [
+                {"创建群分组", fun test_create_category/0},
+                {"更新群分组", fun test_update_category/0},
+                {"删除群分组", fun test_delete_category/0},
+                {"群分组排序", fun test_category_sort/0},
+                {"将群加入分组", fun test_add_group_to_category/0},
+                {"创建群标签", fun test_create_tag/0},
+                {"为群添加标签", fun test_add_tag_to_group/0},
+                {"按标签筛选群", fun test_filter_groups_by_tag/0},
+                {"批量操作", fun test_batch_operations/0}
+            ]};
         {error, _Reason} ->
-            {"Database not available",
-             fun() -> {skip, "Database not available"} end}
+            {"Database not available", fun() -> {skip, "Database not available"} end}
     end.
 
 setup() ->
@@ -43,11 +38,14 @@ setup() ->
     {ok, Group1} = create_test_group(User1, <<"group1_tag">>),
     {ok, Group2} = create_test_group(User1, <<"group2_tag">>),
     {ok, Group3} = create_test_group(User1, <<"group3_tag">>),
+    %% 运行唯一后缀：标签名是全局搜索键，通用中文名会与其他并发套件撞车
+    RunSuffix = integer_to_binary(erlang:phash2(erlang:make_ref())),
     Context = #{
         user1 => User1,
         group1 => Group1,
         group2 => Group2,
-        group3 => Group3
+        group3 => Group3,
+        run_suffix => RunSuffix
     },
     persistent_term:put({?MODULE, test_context}, Context),
     Context.
@@ -147,7 +145,9 @@ test_add_group_to_category() ->
     ok = group_category_logic:move_group(User1, Group2, CategoryId),
 
     % 3. 获取分组内的群
-    {ok, Groups} = group_category_repo:list_groups_by_category(User1, CategoryId, <<"gm.group_id">>),
+    {ok, Groups} = group_category_repo:list_groups_by_category(
+        User1, CategoryId, <<"gm.group_id">>
+    ),
     GroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- Groups]),
 
     % 4. 验证数量
@@ -159,18 +159,24 @@ test_add_group_to_category() ->
 test_create_tag() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
+    RunSuffix = maps:get(run_suffix, Context),
     Group1 = maps:get(group1, Context),
 
     % 1. 创建群标签
-    TagName = <<"技术交流"/utf8>>,
+    TagName = <<"技术交流_", RunSuffix/binary>>,
     {ok, TagId} = group_tag_logic:add(Group1, User1, TagName),
 
     % 2. 验证返回结果
     ?assert(is_integer(TagId)),
     {ok, Tags} = group_tag_logic:list(Group1, User1),
-    ?assert(lists:any(fun(Tag) ->
-        maps:get(<<"id">>, Tag) =:= TagId andalso maps:get(<<"tag_name">>, Tag) =:= TagName
-    end, Tags)),
+    ?assert(
+        lists:any(
+            fun(Tag) ->
+                maps:get(<<"id">>, Tag) =:= TagId andalso maps:get(<<"tag_name">>, Tag) =:= TagName
+            end,
+            Tags
+        )
+    ),
 
     ok.
 
@@ -178,10 +184,13 @@ test_add_tag_to_group() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
     Group1 = maps:get(group1, Context),
+    RunSuffix = maps:get(run_suffix, Context),
 
     % 1. 创建标签
-    {ok, _TagId1} = group_tag_logic:add(Group1, User1, <<"标签1"/utf8>>),
-    {ok, _TagId2} = group_tag_logic:add(Group1, User1, <<"标签2"/utf8>>),
+    Tag1 = <<"标签1_", RunSuffix/binary>>,
+    {ok, _TagId1} = group_tag_logic:add(Group1, User1, Tag1),
+    Tag2 = <<"标签2_", RunSuffix/binary>>,
+    {ok, _TagId2} = group_tag_logic:add(Group1, User1, Tag2),
 
     % 2. 为群添加标签
     {ok, Tags} = group_tag_logic:list(Group1, User1),
@@ -189,7 +198,7 @@ test_add_tag_to_group() ->
 
     % 4. 验证数量
     ?assertEqual(2, length(Tags)),
-    ?assertEqual([<<"标签1"/utf8>>, <<"标签2"/utf8>>], TagNames),
+    ?assertEqual(lists:sort([Tag1, Tag2]), TagNames),
 
     ok.
 
@@ -199,9 +208,10 @@ test_filter_groups_by_tag() ->
     Group1 = maps:get(group1, Context),
     Group2 = maps:get(group2, Context),
     Group3 = maps:get(group3, Context),
+    RunSuffix = maps:get(run_suffix, Context),
 
     % 1. 创建标签
-    TagName = <<"公共标签"/utf8>>,
+    TagName = <<"公共标签_", RunSuffix/binary>>,
     {ok, _} = group_tag_logic:add(Group1, User1, TagName),
     {ok, _} = group_tag_logic:add(Group2, User1, TagName),
 
@@ -230,21 +240,29 @@ test_batch_operations() ->
     {ok, CategoryId} = group_category_logic:create(User1, <<"批量测试分组"/utf8>>),
 
     % 2. 批量将群加入分组
-    lists:foreach(fun(GroupId) ->
-        ok = group_category_logic:move_group(User1, GroupId, CategoryId)
-    end, [Group1, Group2, Group3]),
+    lists:foreach(
+        fun(GroupId) ->
+            ok = group_category_logic:move_group(User1, GroupId, CategoryId)
+        end,
+        [Group1, Group2, Group3]
+    ),
 
     % 3. 验证所有群都已加入
-    {ok, Groups} = group_category_repo:list_groups_by_category(User1, CategoryId, <<"gm.group_id">>),
+    {ok, Groups} = group_category_repo:list_groups_by_category(
+        User1, CategoryId, <<"gm.group_id">>
+    ),
     GroupIds = lists:sort([maps:get(<<"group_id">>, Group) || Group <- Groups]),
     ?assertEqual(3, length(Groups)),
     ?assertEqual(lists:sort([Group1, Group2, Group3]), GroupIds),
 
     % 4. 创建标签
     TagName = <<"批量标签"/utf8>>,
-    lists:foreach(fun(GroupId) ->
-        {ok, _} = group_tag_logic:add(GroupId, User1, TagName)
-    end, [Group1, Group2, Group3]),
+    lists:foreach(
+        fun(GroupId) ->
+            {ok, _} = group_tag_logic:add(GroupId, User1, TagName)
+        end,
+        [Group1, Group2, Group3]
+    ),
 
     % 5. 批量为群添加标签
     {ok, TaggedGroups0} = group_tag_logic:search(TagName),
@@ -269,9 +287,11 @@ get_context() ->
     persistent_term:get({?MODULE, test_context}).
 
 custom_category_ids(Categories) ->
-    [maps:get(<<"id">>, Category)
+    [
+        maps:get(<<"id">>, Category)
      || Category <- Categories,
-        maps:get(<<"id">>, Category) =/= 0].
+        maps:get(<<"id">>, Category) =/= 0
+    ].
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
