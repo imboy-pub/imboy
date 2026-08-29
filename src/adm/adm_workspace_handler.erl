@@ -50,14 +50,30 @@ init(Req0, State0) ->
 %% ===================================================================
 
 -spec dispatch(atom() | false, binary(), cowboy_req:req(), map()) -> cowboy_req:req().
-dispatch(list, Method, Req0, State) -> list_action(Method, Req0, State);
-dispatch(detail, Method, Req0, State) -> detail_action(Method, Req0, State);
-dispatch(members, Method, Req0, State) -> members_action(Method, Req0, State);
-dispatch(archive, Method, Req0, State) -> archive_action(Method, Req0, State);
-dispatch(restore, Method, Req0, State) -> restore_action(Method, Req0, State);
-dispatch(project_list, Method, Req0, State) -> project_list_action(Method, Req0, State);
-dispatch(project_detail, Method, Req0, State) -> project_detail_action(Method, Req0, State);
-dispatch(_, _Method, Req0, _State) -> Req0.
+dispatch(list, Method, Req0, State) ->
+    list_action(Method, Req0, State);
+dispatch(detail, Method, Req0, State) ->
+    detail_action(Method, Req0, State);
+dispatch(members, Method, Req0, State) ->
+    members_action(Method, Req0, State);
+dispatch(archive, Method, Req0, State) ->
+    archive_action(Method, Req0, State);
+dispatch(restore, Method, Req0, State) ->
+    restore_action(Method, Req0, State);
+dispatch(project_list, Method, Req0, State) ->
+    project_list_action(Method, Req0, State);
+dispatch(project_detail, Method, Req0, State) ->
+    project_detail_action(Method, Req0, State);
+dispatch(project_members, Method, Req0, State) ->
+    project_members_action(Method, Req0, State);
+dispatch(project_milestones, Method, Req0, State) ->
+    project_milestones_action(Method, Req0, State);
+dispatch(project_channels, Method, Req0, State) ->
+    project_channels_action(Method, Req0, State);
+dispatch(project_aggregations, Method, Req0, State) ->
+    project_aggregations_action(Method, Req0, State);
+dispatch(_, _Method, Req0, _State) ->
+    Req0.
 
 %% @doc 工作区分页列表（搜索/状态筛选；资源计数随行返回）
 -spec list_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -218,6 +234,106 @@ project_detail_action(<<"GET">>, Req0, State) ->
             end
     end;
 project_detail_action(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc 项目成员分页（W2 治理只读；ZC-05）
+-spec project_members_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+project_members_action(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"workspaces:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_project_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ProjectId} ->
+                    {Page, Size} = elib_param:page(Req0),
+                    case project_member_logic:admin_page(ProjectId, Page, Size) of
+                        {ok, P} ->
+                            elib_response:success(Req0, P);
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end;
+project_members_action(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc 项目里程碑分页（W2 治理只读；status=all|planned|reached）
+-spec project_milestones_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+project_milestones_action(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"workspaces:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_project_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ProjectId} ->
+                    {Page, Size} = elib_param:page(Req0),
+                    {ok, StatusBin} = elib_param:binary(status, Req0, <<"all">>),
+                    Status =
+                        case StatusBin of
+                            <<"planned">> -> <<"planned">>;
+                            <<"reached">> -> <<"reached">>;
+                            _ -> all
+                        end,
+                    case project_milestone_logic:admin_page(ProjectId, Status, Page, Size) of
+                        {ok, P} ->
+                            elib_response:success(Req0, P);
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end;
+project_milestones_action(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc 项目关联频道分页（W2 治理只读）
+-spec project_channels_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+project_channels_action(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"workspaces:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_project_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ProjectId} ->
+                    {Page, Size} = elib_param:page(Req0),
+                    case project_channel_logic:admin_channels(ProjectId, Page, Size) of
+                        {ok, P} ->
+                            elib_response:success(Req0, P);
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end;
+project_channels_action(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
+%% @doc 项目四类聚合只读（W2 治理；type=pinned|resources|activity|related_posts）
+-spec project_aggregations_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+project_aggregations_action(<<"GET">>, Req0, State) ->
+    case adm_acl:ensure_permission(State, <<"workspaces:read">>, Req0) of
+        {error, RespReq} ->
+            RespReq;
+        ok ->
+            case parse_project_id(Req0) of
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST);
+                {ok, ProjectId} ->
+                    {Page, Size} = elib_param:page(Req0),
+                    {ok, Type} = elib_param:binary(type, Req0, <<"pinned">>),
+                    case project_channel_logic:admin_aggregation(ProjectId, Type, Page, Size) of
+                        {ok, P} ->
+                            elib_response:success(Req0, P);
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end;
+project_aggregations_action(_, Req0, _State) ->
     method_not_allowed(Req0).
 
 %% ===================================================================

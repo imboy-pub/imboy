@@ -59,6 +59,11 @@ create(CreatorUid, WsId, Name, Description) ->
             },
             case project_repo:add_tx(Conn, Data) of
                 {ok, ProjectId} ->
+                    %% W2：Owner 自动入项目（幂等；可延迟触发器允许同事务
+                    %% 先建成员，COMMIT 时统一校验 active workspace membership）
+                    ok = project_member_ds:ensure_owner_member_tx(
+                        Conn, WsId, ProjectId, CreatorUid
+                    ),
                     {ok, ProjectId};
                 {error, Reason} ->
                     throw({abort_tx, {project_create_failed, Reason}})

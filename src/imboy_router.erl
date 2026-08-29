@@ -640,7 +640,59 @@ get_routes() ->
                 {"/api/v1/tasks/:task_id/update", project_task_handler, #{action => update}},
                 {"/api/v1/tasks/:task_id/status", project_task_handler, #{
                     action => update_status
-                }}
+                }},
+
+                %% ============================================================
+                %% Channel-first-class W2（ZC-05 整合：按 project_member_handler /
+                %% project_milestone_handler / project_channel_handler 三个文件
+                %% 顶部路由片段清单合并，唯一一次 router 修改）；全部走
+                %% /api/v1/* JWT 默认门。members/milestones/channels 集合路径
+                %% 同路径双语义由 handler 按 method 分派。
+                %% ============================================================
+                {"/api/v1/projects/:project_id/members", project_member_handler, #{
+                    action => members
+                }},
+                {"/api/v1/projects/:project_id/members/invite", project_member_handler, #{
+                    action => invite
+                }},
+                {"/api/v1/projects/:project_id/members/remove", project_member_handler, #{
+                    action => remove
+                }},
+                {"/api/v1/projects/:project_id/members/transfer_owner", project_member_handler, #{
+                    action => transfer_owner
+                }},
+                {"/api/v1/projects/:project_id/milestones", project_milestone_handler, #{
+                    action => milestones
+                }},
+                {"/api/v1/milestones/:milestone_id/update", project_milestone_handler, #{
+                    action => update
+                }},
+                {"/api/v1/milestones/:milestone_id/reach", project_milestone_handler, #{
+                    action => reach
+                }},
+                {"/api/v1/projects/:project_id/channels", project_channel_handler, #{
+                    action => channels
+                }},
+                {"/api/v1/projects/:project_id/channels/:channel_id/unlink",
+                    project_channel_handler, #{
+                        action => unlink
+                    }},
+                {"/api/v1/projects/:project_id/links/update", project_channel_handler, #{
+                    action => update_links
+                }},
+                {"/api/v1/projects/:project_id/aggregations/pinned", project_channel_handler, #{
+                    action => pinned
+                }},
+                {"/api/v1/projects/:project_id/aggregations/resources", project_channel_handler, #{
+                    action => resources
+                }},
+                {"/api/v1/projects/:project_id/aggregations/activity", project_channel_handler, #{
+                    action => activity
+                }},
+                {"/api/v1/projects/:project_id/aggregations/related_posts", project_channel_handler,
+                    #{
+                        action => related_posts
+                    }}
             ],
 
     % Admin routes (原 imadm)
@@ -792,6 +844,11 @@ get_routes() ->
         {"/api/adm/workspace/restore", adm_workspace_handler, #{action => restore}},
         {"/api/adm/project/list", adm_workspace_handler, #{action => project_list}},
         {"/api/adm/project/detail", adm_workspace_handler, #{action => project_detail}},
+        %% Channel-first-class W2 治理只读面（ZC-05）
+        {"/api/adm/project/members", adm_workspace_handler, #{action => project_members}},
+        {"/api/adm/project/milestones", adm_workspace_handler, #{action => project_milestones}},
+        {"/api/adm/project/channels", adm_workspace_handler, #{action => project_channels}},
+        {"/api/adm/project/aggregations", adm_workspace_handler, #{action => project_aggregations}},
         % 群组管理 API
         {"/api/adm/group/list", adm_group_handler, #{action => list}},
         {"/api/adm/group/detail", adm_group_handler, #{action => detail}},

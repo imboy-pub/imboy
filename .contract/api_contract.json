@@ -1076,6 +1076,18 @@
         "static": false
       },
       {
+        "action": "project_aggregations",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/project/aggregations",
+        "static": false
+      },
+      {
+        "action": "project_channels",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/project/channels",
+        "static": false
+      },
+      {
         "action": "project_detail",
         "handler": "adm_workspace_handler",
         "path": "/api/adm/project/detail",
@@ -1085,6 +1097,18 @@
         "action": "project_list",
         "handler": "adm_workspace_handler",
         "path": "/api/adm/project/list",
+        "static": false
+      },
+      {
+        "action": "project_members",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/project/members",
+        "static": false
+      },
+      {
+        "action": "project_milestones",
+        "handler": "adm_workspace_handler",
+        "path": "/api/adm/project/milestones",
         "static": false
       },
       {
@@ -2980,6 +3004,18 @@
         "static": false
       },
       {
+        "action": "reach",
+        "handler": "project_milestone_handler",
+        "path": "/api/v1/milestones/:milestone_id/reach",
+        "static": false
+      },
+      {
+        "action": "update",
+        "handler": "project_milestone_handler",
+        "path": "/api/v1/milestones/:milestone_id/update",
+        "static": false
+      },
+      {
         "action": "show",
         "handler": "moment_handler",
         "path": "/api/v1/moment/:moment_id",
@@ -3199,6 +3235,78 @@
         "action": "show",
         "handler": "project_handler",
         "path": "/api/v1/projects/:project_id",
+        "static": false
+      },
+      {
+        "action": "activity",
+        "handler": "project_channel_handler",
+        "path": "/api/v1/projects/:project_id/aggregations/activity",
+        "static": false
+      },
+      {
+        "action": "pinned",
+        "handler": "project_channel_handler",
+        "path": "/api/v1/projects/:project_id/aggregations/pinned",
+        "static": false
+      },
+      {
+        "action": "related_posts",
+        "handler": "project_channel_handler",
+        "path": "/api/v1/projects/:project_id/aggregations/related_posts",
+        "static": false
+      },
+      {
+        "action": "resources",
+        "handler": "project_channel_handler",
+        "path": "/api/v1/projects/:project_id/aggregations/resources",
+        "static": false
+      },
+      {
+        "action": "channels",
+        "handler": "project_channel_handler",
+        "path": "/api/v1/projects/:project_id/channels",
+        "static": false
+      },
+      {
+        "action": "unlink",
+        "handler": "project_channel_handler",
+        "path": "/api/v1/projects/:project_id/channels/:channel_id/unlink",
+        "static": false
+      },
+      {
+        "action": "update_links",
+        "handler": "project_channel_handler",
+        "path": "/api/v1/projects/:project_id/links/update",
+        "static": false
+      },
+      {
+        "action": "members",
+        "handler": "project_member_handler",
+        "path": "/api/v1/projects/:project_id/members",
+        "static": false
+      },
+      {
+        "action": "invite",
+        "handler": "project_member_handler",
+        "path": "/api/v1/projects/:project_id/members/invite",
+        "static": false
+      },
+      {
+        "action": "remove",
+        "handler": "project_member_handler",
+        "path": "/api/v1/projects/:project_id/members/remove",
+        "static": false
+      },
+      {
+        "action": "transfer_owner",
+        "handler": "project_member_handler",
+        "path": "/api/v1/projects/:project_id/members/transfer_owner",
+        "static": false
+      },
+      {
+        "action": "milestones",
+        "handler": "project_milestone_handler",
+        "path": "/api/v1/projects/:project_id/milestones",
         "static": false
       },
       {
@@ -3824,7 +3932,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 150,
+    "defines": 151,
     "distinct_codes": [
       0,
       1,
@@ -3936,6 +4044,7 @@
       5103,
       5104,
       5190,
+      5191,
       5200,
       5201,
       5202,
@@ -3956,7 +4065,7 @@
       "400": 16,
       "500": 6,
       "5000": 39,
-      "5100": 6,
+      "5100": 7,
       "5200": 6,
       "5300": 7,
       "900": 41
