@@ -183,7 +183,10 @@ start_link_extracts_memory_max_test_() ->
             end}
         ],
         fun() ->
-            ?assertEqual({ok, self()}, imboy_cache:start_link([{depcache_memory_max, 2048}]))
+            %% 契约（2026-08-29 修复）：start_link 必须把真实 depcache 实例
+            %% pid 透传给 supervisor（此前错误地返回 {ok, self()}，sup 记
+            %% child pid 失真导致实例被杀后永不重启）。
+            ?assertEqual({ok, spawned}, imboy_cache:start_link([{depcache_memory_max, 2048}]))
         end
     ).
 

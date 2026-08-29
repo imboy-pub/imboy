@@ -52,15 +52,24 @@ start_link(Args) ->
                 undefined
         end,
     % 启动本地depcache服务
-    _ = depcache:start_link(
-        ?DEPCACHE_SERVER,
-        #{
-            memory_max => MemoryMax,
-            callback => {?MODULE, record_depcache_event, [Args]}
-        }
-    ),
-    % 分布式缓存同步由独立的gen_server处理，不在这里启动
-    {ok, self()}.
+    % 必须把真实 depcache 实例 pid 交给 supervisor：此前返回 {ok, self()}
+    % （调用方=supervisor 自身），sup 记录的 child pid 失真——实例被杀后
+    % sup 永远感知不到，permanent 重启形同虚设，命名表 'm:imboy_cache'
+    % 消失 → 所有缓存调用 badarg。已存活的旧实例则收养其 pid 交给 sup 托管。
+    case
+        depcache:start_link(
+            ?DEPCACHE_SERVER,
+            #{
+                memory_max => MemoryMax,
+                callback => {?MODULE, record_depcache_event, [Args]}
+            }
+        )
+    of
+        {ok, Pid} ->
+            {ok, Pid};
+        {error, {already_started, Pid}} ->
+            {ok, Pid}
+    end.
 
 %% @doc 缓存函数执行结果一小时
 %% 如果缓存中已有结果则返回缓存值，否则执行函数并缓存结果
