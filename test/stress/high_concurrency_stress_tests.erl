@@ -378,17 +378,21 @@ ensure_friends(User1, User2) ->
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀/mobile 用 uid 本身：phash2(Uid, 1e9) 碰撞域太小，共享库多轮
+    %% 累计下会撞 account/mobile 唯一索引（23505，CI-00 run13 同款）；
+    %% mobile 完整 TSID 拼接 20 位 < varchar(40)。
+    Suffix = integer_to_binary(Uid),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"mobile">> => <<"13", (integer_to_binary(Uid))/binary>>,
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = user_repo:create(User),
+    %% main 的 user_repo:create 返回 {ok, Uid}（add/save 尊重调用方显式 id）
+    {ok, Uid} = user_repo:create(User),
     {ok, Uid}.
 
 stress_profile() ->
