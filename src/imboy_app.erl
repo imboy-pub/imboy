@@ -69,7 +69,7 @@ start(_Type, _Args) ->
     % cowboy_router:dispatch_rules()
     Dispatch = cowboy_router:compile(Routes),
     StartMode = config_ds:env(start_mode, http),
-    _ =
+    ListenerResult =
         if
             StartMode == quic ->
                 start_quic(Dispatch);
@@ -118,6 +118,9 @@ start(_Type, _Args) ->
                         start_clear(ProtoOpts, Port)
                 end
         end,
+    %% 监听器绑定失败必须阻断启动：此前 `_ =` 吞掉 start_clear/tls 的
+    %% {error,...}，端口被占/证书缺失时节点会以"无监听器的僵尸"状态上线。
+    ok = ensure_listener_started(ListenerResult, StartMode),
     case imboy_sup:start_link() of
         {ok, Sup} ->
             %% T2.0h: 总线就绪后挂载群组领域事件订阅者（通知桥接）。
@@ -341,6 +344,16 @@ start_clear(ProtoOpts, Port) ->
         [{port, Port}],
         ProtoOpts
     ).
+
+%% @doc 校验 HTTP/HTTPS 监听器启动结果；失败即崩溃阻断 app 启动。
+%% application master 会把崩溃转为 start/2 的 {error, {'EXIT', ...}}，
+%% 让启动方（含 eunit 引导）明确看到监听器起不来，而不是静默无监听。
+-spec ensure_listener_started({ok, pid()} | {error, term()}, term()) -> ok.
+ensure_listener_started({ok, _ListenerPid}, _StartMode) ->
+    ok;
+ensure_listener_started({error, Reason}, StartMode) ->
+    error_logger:error_report({imboy_listener_start_failed, start_mode, StartMode, reason, Reason}),
+    erlang:error({listener_start_failed, StartMode, Reason}).
 
 %% @doc 显式初始化 API throttle 限流规则
 %% throttle 库通过 sys.config 的 {rates, [...]} 自动 setup，但在某些启动时序下
