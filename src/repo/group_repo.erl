@@ -44,10 +44,18 @@ add(Conn, Data) ->
     %% "Gid>0 时用 Gid" 语义一致；缺省或非正数才预生成 TSID。此前无条件
     %% 覆盖导致 create/1 调用方的 gid 从未落库为群行主键，凡按 id 回查
     %% 群行的逻辑（群转让等）全部错位。
+    %% ec_cnv:to_integer 对非数字输入会抛 badarg/function_clause
+    %%（review-3 P2），与 normalize_legacy_create_data/1 同款 try 兜底。
     %% 仍保证 INSERT 的 id 列只出现一次（42701 回归：atom/binary 双键
     %% 先删后统一写入，见 add_with_atom_id_key 单测）。
     Id =
-        case ec_cnv:to_integer(pick_value(Data, [id, <<"id">>], 0)) of
+        case
+            try
+                ec_cnv:to_integer(pick_value(Data, [id, <<"id">>], 0))
+            catch
+                _:_ -> 0
+            end
+        of
             N when N > 0 -> N;
             _ -> elib_tsid:generate(group_info)
         end,
