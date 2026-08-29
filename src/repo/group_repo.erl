@@ -39,12 +39,18 @@ tablename() ->
 -spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(group_info),
-    %% 同 user_repo:save/1 的修复：normalize_legacy_create_data/1 用 atom
-    %% `id` key 承载调用方传入的 id/gid，这里若只无条件覆盖 binary
-    %% <<"id">>，两个 key 类型不同会同时存在，elib_pg_sql:insert/2 拼出
-    %% 的 INSERT 语句里 "id" 列重复两次，PG 报 42701（真库集成测试实测
-    %% 复现：conversation_pin_delete_integration_tests 建群即崩）。
+    %% 调用方显式给定的 id（normalize_legacy_create_data/1 会把 legacy
+    %% gid 归一到 atom id 键）优先保留，与生产链路 create_group/6 的
+    %% "Gid>0 时用 Gid" 语义一致；缺省或非正数才预生成 TSID。此前无条件
+    %% 覆盖导致 create/1 调用方的 gid 从未落库为群行主键，凡按 id 回查
+    %% 群行的逻辑（群转让等）全部错位。
+    %% 仍保证 INSERT 的 id 列只出现一次（42701 回归：atom/binary 双键
+    %% 先删后统一写入，见 add_with_atom_id_key 单测）。
+    Id =
+        case ec_cnv:to_integer(pick_value(Data, [id, <<"id">>], 0)) of
+            N when N > 0 -> N;
+            _ -> elib_tsid:generate(group_info)
+        end,
     Data1 = maps:remove(id, maps:remove(<<"id">>, Data)),
     Data2 = Data1#{<<"id">> => Id},
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),

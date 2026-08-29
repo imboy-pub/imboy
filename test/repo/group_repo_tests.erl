@@ -85,6 +85,8 @@ add_error_test_() ->
 %% 的 id/gid，add/2 曾用 binary <<"id">> key 无条件覆盖——两个 key 类型
 %% 不同、Erlang map 不会互相覆盖，elib_pg_sql:insert/2 拼出的 INSERT
 %% 语句里 "id" 列因此重复两次（同款 bug 见 user_repo_tests.erl）。
+%% 现行语义：双键先删后统一写入（防 42701 复发），且显式 id>0 保留
+%% （run12 根治：create/1 调用方的 gid 落库为群行主键）。
 add_with_atom_id_key_does_not_duplicate_id_column_test_() ->
     ?WITH_MECKS(
         [
@@ -108,7 +110,10 @@ add_with_atom_id_key_does_not_duplicate_id_column_test_() ->
                 created_at => 1700000000
             },
             Result = group_repo:add(undefined, Data),
-            ?assertEqual({ok, 600003}, Result),
+            %% 显式 id（含 normalize_legacy_create_data 归一的 legacy gid）
+            %% 必须原样保留并作为返回值——此前无条件覆盖为新生成 TSID，
+            %% create/1 调用方的 gid 从未落库为群行主键。
+            ?assertEqual({ok, 999}, Result),
             Sql = get(captured_sql),
             [_, Rest] = binary:split(Sql, <<"(">>),
             [ColsPart, _] = binary:split(Rest, <<")">>),
