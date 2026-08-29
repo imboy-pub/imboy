@@ -17,7 +17,7 @@ create_ok_promotes_user_and_binds_test_() ->
         [
             {elib_tsid, [{'generate', 0, fun() -> 999 end}]},
             {user_repo, [
-                {'create', 1, fun(_) -> ok end},
+                {'create', 1, fun(_) -> {ok, 999} end},
                 {'update', 2, fun(_Uid, _Data) -> {ok, 1} end}
             ]},
             {ai_agent_repo, [
@@ -41,7 +41,7 @@ create_ok_promotes_user_and_binds_test_() ->
 
 create_rejects_empty_nickname_test_() ->
     ?WITH_MECKS(
-        [{user_repo, [{'create', 1, fun(_) -> ok end}]}],
+        [{user_repo, [{'create', 1, fun(_) -> {ok, 999} end}]}],
         fun() ->
             ?assertEqual(
                 {error, <<"nickname 不能为空"/utf8>>},
@@ -54,7 +54,7 @@ create_rejects_empty_nickname_test_() ->
 
 create_rejects_empty_provider_test_() ->
     ?WITH_MECKS(
-        [{user_repo, [{'create', 1, fun(_) -> ok end}]}],
+        [{user_repo, [{'create', 1, fun(_) -> {ok, 999} end}]}],
         fun() ->
             ?assertEqual(
                 {error, <<"provider 不能为空"/utf8>>},

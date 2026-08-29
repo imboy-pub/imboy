@@ -364,7 +364,7 @@ create_test_group(OwnerId, Name) ->
         <<"name">> => Name,
         <<"created_at">> => elib_dt:millisecond()
     },
-    ok = group_repo:create(Group),
+    {ok, _} = group_repo:create(Group),
     ok = group_member_ds:add_member(Gid, OwnerId),
     {ok, Gid}.
 

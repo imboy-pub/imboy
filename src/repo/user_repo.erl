@@ -59,13 +59,11 @@ page(Page, Size, Where, OrderBy) ->
     elib_pg:page_with_total(Tb, Column, Where, OrderBy, Page, Size).
 
 %% @doc 兼容旧接口：创建用户
--spec create(map()) -> ok | {error, term()}.
+%% @return {ok, UserId} 创建成功返回真实用户 id | {error, Reason}
+-spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data0) ->
     Data = normalize_legacy_create_data(Data0),
-    case save(Data) of
-        {ok, _} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
+    save(Data).
 
 %% @doc 兼容旧接口：按 uid 查询用户（排除 password 列）
 %% 注意：user 表自 00000001_foundation 起就没有 updated_at 列，此处列清单
@@ -183,15 +181,28 @@ may_exist(_) ->
 -spec save(map()) -> {ok, integer()} | {error, term()}.
 save(Data) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(user),
-    %% 强制使用服务端生成的 TSID：先剔除调用方可能带入的 id/<<"id">>，
-    %% 否则 atom id 与 binary <<"id">> 会作为 map 的两个不同 key 同时存在，
-    %% elib_pg_sql:insert/2 各自转换列名却不去重，拼出 INSERT 语句里
-    %% "id" 列重复两次，PG 报 42701 column "id" specified more than once
-    %% （user_repo:create/1 经 normalize_legacy_create_data/1 传入 atom id
-    %% 时必现，真库集成测试实测复现）。
+    %% 尊重调用方显式传入的正整数 id（bot_ds/ai_agent_ds/channel_webhook_ds
+    %% 建系统用户时均预选 uid，此前被静默丢弃 → 行落在随机 TSID 上，后续
+    %% update(预选 uid) 更新 0 行却报成功，account_type 标记全部丢失）。
+    %% 缺省/0 则服务端生成 TSID。无论哪条路径都先剔除 id/<<"id">> 两种 key：
+    %% atom 与 binary key 在 map 中共存时 elib_pg_sql:insert/2 拼出重复
+    %% "id" 列，PG 报 42701（真库集成测试实测复现）。
+    RawId = maps:get(id, Data, maps:get(<<"id">>, Data, 0)),
+    Id1 =
+        try
+            ec_cnv:to_integer(RawId)
+        catch
+            _:_ -> 0
+        end,
     Data1 = maps:remove(id, maps:remove(<<"id">>, Data)),
-    Data2 = Data1#{<<"id">> => Id},
+    {Id, Data2} =
+        case Id1 > 0 of
+            true ->
+                {Id1, Data1#{<<"id">> => Id1}};
+            false ->
+                IdGen = elib_tsid:generate(user),
+                {IdGen, Data1#{<<"id">> => IdGen}}
+        end,
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Sql, Params) of
         {ok, _Count} -> {ok, Id};

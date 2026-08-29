@@ -39,14 +39,29 @@ tablename() ->
 -spec add(any(), map()) -> {ok, integer()} | {error, term()}.
 add(Conn, Data) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(group_info),
-    %% 同 user_repo:save/1 的修复：normalize_legacy_create_data/1 用 atom
-    %% `id` key 承载调用方传入的 id/gid，这里若只无条件覆盖 binary
-    %% <<"id">>，两个 key 类型不同会同时存在，elib_pg_sql:insert/2 拼出
-    %% 的 INSERT 语句里 "id" 列重复两次，PG 报 42701（真库集成测试实测
-    %% 复现：conversation_pin_delete_integration_tests 建群即崩）。
+    %% 尊重调用方显式传入的正整数 id/gid；缺省/0 则服务端生成 TSID。
+    %% （此前无条件重生成，调用方 gid 被静默丢弃，成员行/后续引用挂在
+    %% 真实群 id 上才能成立的场景全部踩坑。）
+    %% 无论哪条路径都先剔除 id/<<"id">> 两种 key：normalize_legacy_create_data
+    %% 用 atom `id` 承载调用方 id/gid，若再覆盖 binary <<"id">>，两个 key
+    %% 共存使 elib_pg_sql:insert/2 拼出重复 "id" 列，PG 报 42701
+    %% （真库集成测试实测复现：conversation_pin_delete_integration_tests）。
+    RawId = maps:get(id, Data, maps:get(<<"id">>, Data, 0)),
+    Id1 =
+        try
+            ec_cnv:to_integer(RawId)
+        catch
+            _:_ -> 0
+        end,
     Data1 = maps:remove(id, maps:remove(<<"id">>, Data)),
-    Data2 = Data1#{<<"id">> => Id},
+    {Id, Data2} =
+        case Id1 > 0 of
+            true ->
+                {Id1, Data1#{<<"id">> => Id1}};
+            false ->
+                IdGen = elib_tsid:generate(group_info),
+                {IdGen, Data1#{<<"id">> => IdGen}}
+        end,
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Conn, Sql, Params) of
         {ok, _Count} -> {ok, Id};
@@ -54,13 +69,11 @@ add(Conn, Data) ->
     end.
 
 %% @doc 兼容旧接口：创建群组
--spec create(map()) -> ok | {error, term()}.
+%% @return {ok, GroupId} 创建成功返回真实群 id | {error, Reason}
+-spec create(map()) -> {ok, integer()} | {error, term()}.
 create(Data0) ->
     Data = normalize_legacy_create_data(Data0),
-    case elib_pg:with_tx(fun(Conn) -> add(Conn, Data) end) of
-        {ok, _Gid} -> ok;
-        {error, Reason} -> {error, Reason}
-    end.
+    elib_pg:with_tx(fun(Conn) -> add(Conn, Data) end).
 
 %% @doc 兼容旧接口：按 gid 查询群组（排除 chat_aes_key 列）
 -spec find_by_gid(integer() | binary()) -> {ok, map()} | {error, term()}.

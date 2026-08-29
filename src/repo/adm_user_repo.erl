@@ -220,8 +220,24 @@ list_by_ids(Uids, Column) ->
 -spec save(map()) -> {ok, integer()} | {error, any()}.
 save(Data) ->
     Tb = tablename(),
-    Id = elib_tsid:generate(adm_user),
-    Data2 = Data#{<<"id">> => Id},
+    %% 同 user_repo:save/1：尊重调用方显式传入的正整数 id，缺省/0 则
+    %% 服务端生成 TSID；仍须先统一剔除 id/<<"id">> 防 42701 重复列。
+    RawId = maps:get(id, Data, maps:get(<<"id">>, Data, 0)),
+    Id1 =
+        try
+            ec_cnv:to_integer(RawId)
+        catch
+            _:_ -> 0
+        end,
+    Data1 = maps:remove(id, maps:remove(<<"id">>, Data)),
+    {Id, Data2} =
+        case Id1 > 0 of
+            true ->
+                {Id1, Data1#{<<"id">> => Id1}};
+            false ->
+                IdGen = elib_tsid:generate(adm_user),
+                {IdGen, Data1#{<<"id">> => IdGen}}
+        end,
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
     case elib_pg:query(Sql, Params) of
         {ok, _Count} -> {ok, Id};

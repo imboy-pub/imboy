@@ -179,7 +179,7 @@ ensure_user(Uid, Prefix) ->
         created_at => elib_dt:now()
     },
     case user_repo:create(User) of
-        ok ->
+        {ok, _} ->
             ok;
         {error, _} ->
             case user_repo:find_by_id(Uid, <<"id">>) of

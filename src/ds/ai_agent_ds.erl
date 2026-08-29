@@ -182,7 +182,7 @@ validate(_Nickname, _Provider) -> ok.
 -spec create_agent_user(integer(), binary(), binary()) -> ok | {error, term()}.
 create_agent_user(Uid, Nickname, Account) ->
     case user_repo:create(#{id => Uid, nickname => Nickname, account => Account}) of
-        ok ->
+        {ok, _} ->
             case user_repo:update(Uid, #{account_type => ?ACCOUNT_TYPE_AGENT}) of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}

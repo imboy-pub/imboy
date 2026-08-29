@@ -114,7 +114,7 @@ list_by_channel(ChannelId) ->
 create_bot_user(BotUid, Nickname) ->
     Account = <<"chbot_", (ec_cnv:to_binary(BotUid))/binary>>,
     case user_repo:create(#{id => BotUid, nickname => Nickname, account => Account}) of
-        ok ->
+        {ok, _} ->
             case user_repo:update(BotUid, #{account_type => ?ACCOUNT_TYPE_SYSTEM_BOT}) of
                 {ok, _} -> ok;
                 {error, Reason} -> {error, Reason}

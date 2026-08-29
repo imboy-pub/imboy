@@ -96,7 +96,7 @@ run_ws_push_case(Ctx, Seq, ReceiveTimeoutMs) ->
         nosave
     ),
     case wait_for_seq(Seq, ReceiveTimeoutMs) of
-        ok ->
+        {ok, _} ->
             ok;
         {error, Reason} ->
             throw({benchmark_error, Reason})
@@ -160,7 +160,7 @@ ensure_user(Uid, Prefix) ->
         created_at => elib_dt:now()
     },
     case user_repo:create(User) of
-        ok ->
+        {ok, _} ->
             ok;
         {error, _} ->
             case user_repo:find_by_id(Uid, <<"id">>) of
@@ -227,7 +227,7 @@ stop_receiver(_) ->
 -spec receiver_init(integer(), pid()) -> no_return().
 receiver_init(Uid, Parent) ->
     case imboy_syn:join(Uid, <<"bench">>, self(), <<"ws_push_latency_bench">>) of
-        ok ->
+        {ok, _} ->
             Parent ! {ws_receiver_ready, self()},
             receiver_loop(Uid, Parent);
         {error, Reason} ->

@@ -424,8 +424,11 @@ save_with_atom_id_key_does_not_duplicate_id_column_test_() ->
                 <<"password">> => <<"hashed_password">>
             },
             Result = user_repo:save(Data),
-            %% 必须使用服务端新生成的 TSID，而非调用方传入的 999
-            ?assertEqual({ok, 555666777}, Result),
+            %% 契约（2026-08-29 修复）：调用方显式传入的正整数 id 必须被
+            %% 尊重（此前被静默丢弃、改用服务端 TSID——bot/agent/webhook
+            %% 建系统用户传预选 uid 时行落在随机 id 上，account_type 标记
+            %% 全部丢失）。42701 防重复列护栏不变。
+            ?assertEqual({ok, 999}, Result),
             Sql = get(captured_sql),
             ?assertEqual(1, count_occurrences(Sql, <<"id">>))
         end
@@ -450,7 +453,9 @@ save_with_both_id_and_binary_id_keys_keeps_single_column_test_() ->
                 <<"account">> => <<"test_user_dup_id2">>
             },
             Result = user_repo:save(Data),
-            ?assertEqual({ok, 555666777}, Result),
+            %% 契约（2026-08-29 修复）：atom `id` 优先被尊重；
+            %% 42701 防重复列护栏不变
+            ?assertEqual({ok, 111}, Result),
             Sql = get(captured_sql),
             ?assertEqual(1, count_occurrences(Sql, <<"id">>))
         end

@@ -109,7 +109,9 @@ add_with_atom_id_key_does_not_duplicate_id_column_test_() ->
                 created_at => 1700000000
             },
             Result = group_repo:add(undefined, Data),
-            ?assertEqual({ok, 600003}, Result),
+            %% 契约（2026-08-29 修复）：调用方显式传入的正整数 id 被尊重，
+            %% 不再重生成 TSID；42701 防重复列护栏不变
+            ?assertEqual({ok, 999}, Result),
             Sql = get(captured_sql),
             [_, Rest] = binary:split(Sql, <<"(">>),
             [ColsPart, _] = binary:split(Rest, <<")">>),
