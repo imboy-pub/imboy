@@ -64,14 +64,25 @@ start_link(Args) ->
         {ok, Pid} ->
             {ok, Pid};
         {error, {already_started, OldPid}} ->
-            % churn 下旧实例残留（命名 ETS 仍归旧进程）：收割后重起，
-            % 保证 sup child 始终是活的 depcache server
-            try
-                gen_server:stop(OldPid, normal, 5000)
-            catch
-                _:_ -> ok
-            end,
+            % churn 下旧实例可能正处消亡窗口（sup 重启竞态）：等待其自行
+            % 退出后重试。绝不主动 gen_server:stop/kill——escalate kill 会
+            % 误杀/传播，把 sup 拖进 "exit with reason: killed" 重启风暴
+            % 直至 app 整体退出（run9 全量事故）。
+            wait_dead(OldPid, 20),
             depcache:start_link(?DEPCACHE_SERVER, Opts)
+    end.
+
+%% @doc 等待进程退出，至多 N×100ms；超时则放行（后续 start_link 以
+%% already_started 失败交还给 sup 的重启退避机制处理）。
+wait_dead(Pid, 0) when is_pid(Pid) ->
+    ok;
+wait_dead(Pid, N) when is_pid(Pid) ->
+    case erlang:is_process_alive(Pid) of
+        false ->
+            ok;
+        true ->
+            timer:sleep(100),
+            wait_dead(Pid, N - 1)
     end.
 
 %% @doc 缓存函数执行结果一小时
