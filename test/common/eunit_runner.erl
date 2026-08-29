@@ -54,7 +54,8 @@ ct_suite_setup(Config) ->
             SetupState = eunit_setup(),
             [{setup_state, SetupState}, {old_cwd, OldCwd} | Config];
         {error, Reason} ->
-            {skip, io_lib:format("Unable to set cwd to project root (~p): ~p", [ProjectRoot, Reason])}
+            {skip,
+                io_lib:format("Unable to set cwd to project root (~p): ~p", [ProjectRoot, Reason])}
     end.
 
 %% @doc 清理 Common Test suite 运行状态
@@ -96,13 +97,16 @@ eunit_setup() ->
 
     % 启动核心依赖应用
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone, lager, depcache],
-    lists:foreach(fun(App) ->
-        case application:ensure_all_started(App) of
-            {ok, _} -> ok;
-            {error, {already_started, _}} -> ok;
-            _ -> ok
-        end
-    end, CoreApps),
+    lists:foreach(
+        fun(App) ->
+            case application:ensure_all_started(App) of
+                {ok, _} -> ok;
+                {error, {already_started, _}} -> ok;
+                _ -> ok
+            end
+        end,
+        CoreApps
+    ),
 
     % 启动 imboy 应用
     case application:ensure_all_started(imboy) of
@@ -118,12 +122,14 @@ eunit_setup() ->
 
 %% @doc 清理资源
 %% @param State setup 返回的状态
+%% imboy app 一经启动即全跑常驻（不随任何套件 cleanup 整停）：eunit 并发套件
+%% 共享 app，某套件 cleanup 时整停会打开 "app 已停" 窗口，其他套件的
+%% depcache/PG 调用随即撞死表/死池（全量跑下 cache badarg、mcp 超时、stress
+%% 重启竞态三类 flake 同源）。套件间隔离靠 DB 数据与每用例自清理，app 级
+%% 状态无跨套件污染实害；VM 退出时统一回收。
 eunit_cleanup({app_started, imboy}) ->
-    % 停止 imboy 应用
-    application:stop(imboy),
     ok;
 eunit_cleanup({app_already_started, imboy}) ->
-    % 应用已经在运行，不需要停止
     ok;
 eunit_cleanup({app_not_started, test_continues}) ->
     % 应用没有启动，不需要清理
@@ -212,14 +218,19 @@ load_test_config() ->
 
 load_config_entries(ConfigList) ->
     lists:foreach(
-      fun({App, Env}) when is_atom(App) andalso is_list(Env) ->
-              lists:foreach(
-                fun({Key, Value}) ->
+        fun
+            ({App, Env}) when is_atom(App) andalso is_list(Env) ->
+                lists:foreach(
+                    fun({Key, Value}) ->
                         application:set_env(App, Key, Value)
-                end, Env);
-         (_) ->
-              ok
-      end, ConfigList).
+                    end,
+                    Env
+                );
+            (_) ->
+                ok
+        end,
+        ConfigList
+    ).
 
 test_config_path() ->
     case os:getenv("IMBOY_TEST_CONFIG") of

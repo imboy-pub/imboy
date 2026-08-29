@@ -51,16 +51,28 @@ start_link(Args) ->
             false ->
                 undefined
         end,
-    % 启动本地depcache服务
-    _ = depcache:start_link(
-        ?DEPCACHE_SERVER,
-        #{
-            memory_max => MemoryMax,
-            callback => {?MODULE, record_depcache_event, [Args]}
-        }
-    ),
-    % 分布式缓存同步由独立的gen_server处理，不在这里启动
-    {ok, self()}.
+    Opts = #{
+        memory_max => MemoryMax,
+        callback => {?MODULE, record_depcache_event, [Args]}
+    },
+    % 必须把 depcache server 本身作为 sup child 返回：此前返回 {ok, self()}
+    % （即 supervisor 自己），真实 depcache server 是被丢弃的链接进程——
+    % app stop 时 sup 先"终止"自己导致其余子树不被收割（全量 eunit 数百次
+    % churn 后进程泄漏至 system_limit "Too many processes"），且 ETS 随弃儿
+    % 消亡后无法经 sup 复活（ets:lookup badarg cause=>id）。
+    case depcache:start_link(?DEPCACHE_SERVER, Opts) of
+        {ok, Pid} ->
+            {ok, Pid};
+        {error, {already_started, OldPid}} ->
+            % churn 下旧实例残留（命名 ETS 仍归旧进程）：收割后重起，
+            % 保证 sup child 始终是活的 depcache server
+            try
+                gen_server:stop(OldPid, normal, 5000)
+            catch
+                _:_ -> ok
+            end,
+            depcache:start_link(?DEPCACHE_SERVER, Opts)
+    end.
 
 %% @doc 缓存函数执行结果一小时
 %% 如果缓存中已有结果则返回缓存值，否则执行函数并缓存结果

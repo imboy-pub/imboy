@@ -31,13 +31,10 @@ setup() ->
         {ok, _Driver, _Conn} -> ok;
         {error, _Reason} -> throw({skip, "Database not available"})
     end,
-    %% CI-00 加固：全量 eunit 下 imboy app 经数百次 stop/start churn 后，
-    %% imboy_cache 的 depcache ETS 表可能消亡（imboy_cache:start_link 返回
-    %% {ok, self()} 而 depcache server 是被丢弃的链接进程，生命周期错位；
-    %% ets:lookup badarg, cause=>id）。压力用例重依赖缓存路径，开跑前
-    %% 停净重启整个 app 保证 sup/cache/ets 全新。全量并发下其他套件会同时
-    %% stop/start app（重启竞态 {error,{imboy,{killed,...}}}），带退避重试。
-    ok = restart_imboy_fresh(10),
+    %% CI-00：imboy_cache start_link 生命周期错位已根治（depcache server 成为
+    %% 真 sup child，随 app stop/start 干净生灭），早期全量 churn 下需在此
+    %% 停净重启 app 的 workaround 已移除——重启本身会与并发套件互踩
+    %% （{error,{imboy,{killed,...}}}）并放大进程 churn。
     % 创建群主
     _ = (catch elib_tsid:init(#{dc_id => 0, node_id => 0, dc_bits => 3})),
     {ok, Owner} = create_test_user(<<"group_owner">>),
@@ -54,23 +51,6 @@ setup() ->
     Context = #{owner => Owner, members => MemberIds},
     persistent_term:put({?MODULE, test_context}, Context),
     Context.
-
-%% @doc 停净重启 imboy app，最多 Attempts 次。并发套件同时 stop/start 时
-%% start 可能被并发 stop 杀死（{error,{imboy,{killed,_}}}），退避重试。
-restart_imboy_fresh(0) ->
-    erlang:error({imboy_restart_failed, exhausted});
-restart_imboy_fresh(Attempts) ->
-    _ = (catch application:stop(imboy)),
-    timer:sleep(200),
-    case application:ensure_all_started(imboy) of
-        {ok, _} ->
-            ok;
-        {error, {already_started, imboy}} ->
-            ok;
-        _Other ->
-            timer:sleep(300 * (11 - Attempts)),
-            restart_imboy_fresh(Attempts - 1)
-    end.
 
 cleanup(_Context) ->
     persistent_term:erase({?MODULE, test_context}),
