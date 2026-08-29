@@ -70,14 +70,12 @@ EDOC_OPTS = {doclet, edown_doclet}
 # 并发下互踩必红（run1-7 从未在全量中真正通过，历史上被 cancel 掩盖）。
 # 待重构为可共享/可让位模式后，从 Excl 列表移除即可恢复参与全量。
 # 注意：需同时过滤 src 模块条目——eunit 运行 {module, X} 会自动附带 X_tests。
-EUNIT_TEST_SPEC = (fun() ->
-	Excl = ['imboy_plugin_loader', 'imboy_plugin_loader_tests',
-	        'imboy_plugin_priv_plugins_tests', 'imboy_plugin_sup',
-	        'imboy_plugin_sup_tests', 'imboy_plugin_sup_metrics_tests',
-	        'elib_metric', 'elib_metric_tests'],
-	Mods = [$1],
-	[M || M <- Mods, not lists:member(M, Excl)]
-end)()
+EUNIT_TEST_SPEC = (fun() -> Excl = ['imboy_plugin_loader', \
+	'imboy_plugin_loader_tests', 'imboy_plugin_priv_plugins_tests', \
+	'imboy_plugin_sup', 'imboy_plugin_sup_tests', \
+	'imboy_plugin_sup_metrics_tests', 'elib_metric', 'elib_metric_tests'], \
+	Mods = lists:append([$1]), \
+	[M || M <- Mods, not lists:member(M, Excl)] end)()
 
 include erlang.mk
 
