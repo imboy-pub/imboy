@@ -31,7 +31,11 @@ generate(Plaintext) ->
 -spec generate(iodata(), hmac_sha512) -> binary().
 generate(Plaintext, hmac_sha512) ->
     Salt2 = base64:encode(crypto:strong_rand_bytes(16)),
-    Ciphertext = elib_hasher:hmac_sha512(Plaintext, Salt2),
+    % CI-00 修复：对齐 verify_hmac_sha512/3 的存储格式。2026-08-26 SHA-256 预哈希
+    % 迁移只改了 verify 侧、遗漏 generate 侧——原实现直发 hmac(Plaintext, salt)，
+    % 其产物在 verify 中新旧格式分支均不命中，generate↔verify 不闭环（新注册
+    % 用户必然无法登录）。现按新协议存储 hmac(sha256(plaintext), salt)。
+    Ciphertext = elib_hasher:hmac_sha512(crypto:hash(sha256, Plaintext), Salt2),
     base64:encode(<<Salt2/binary, ":hmac_sha512:", Ciphertext/binary>>).
 
 %% @doc 验证密码
@@ -53,7 +57,9 @@ verify(Plaintext, Ciphertext) ->
                     Ok;
                 _ ->
                     % 回退旧格式（MD5 预哈希，兼容存量密码）
-                    _Md5Plain = elib_hasher:md5(binary_to_list(Plaintext)),
+                    % CI-00 修复：删除死代码 _Md5Plain（计算结果从未使用），且其对
+                    % list 输入（-spec 允许 iodata()）调用 binary_to_list 必 badarg，
+                    % 导致合法 string 密码验证直接崩溃而非走旧格式回退。
                     verify(Plaintext, default_md5, config_ds:env(password_salt, <<>>), Ciphertext)
             end;
         _ ->
@@ -133,7 +139,10 @@ verify_hmac_sha512(Plaintext, Salt, Ciphertext) ->
             {ok, []};
         false ->
             %% 旧格式兼容：hmac_sha512(md5(plaintext), salt)
-            Md5Plain = elib_hasher:md5(binary_to_list(Plaintext)),
+            % CI-00 修复：去掉 binary_to_list 包装——elib_hasher:md5/1 的 spec
+            % 本就接受 binary() | list()，对 binary 输入 erlang:md5 结果一致；
+            % 原写法对 list 输入（-spec 允许 iodata()）badarg。
+            Md5Plain = elib_hasher:md5(Plaintext),
             case elib_hasher:hmac_sha512(Md5Plain, Salt) =:= Ciphertext of
                 true -> {ok, []};
                 false -> {error, <<"errorPassword">>}

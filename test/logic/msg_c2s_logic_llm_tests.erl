@@ -3,232 +3,95 @@
 -include("eunit_setup.hrl").
 
 %%%===================================================================
-%%% @doc
-%%% msg_c2s_logic LLM 注册表分派的 EUnit 测试（Phase 0 T0.5）
+%%% @doc msg_c2s_logic LLM 分派「架构迁移守卫」（CI-00 重写）
 %%%
-%%% 目标：验证 bot_* 分派改为查 imboy_llm_registry 后的行为
-%%% 覆盖：llm_callback/2 契约桥接（{ok,_}/{error,_} → 裸 map）、
-%%%        bot_qian_fan → qianfan 向后兼容映射、未注册 bot 降级
+%%% 背景：437601b0（2026-08-21 Discovery & Agent/Bot 架构 Phase 1-7）将
+%%% msg_c2s_logic 的 llm_callback/2、llm_callback/4 与 bot_qian_fan 注册表
+%%% 分派整体移除（bot_* 前缀废弃 → bot_prefix_deprecated 引导，Agent 走
+%%% C2C），provider 解析收敛到 imboy_llm_registry:lookup/1，外呼编排迁至
+%%% ai_agent_reply（maybe_dispatch/run_and_reply，复用 c2s_to_external/5
+%%% 的 ApiCallback 注入骨架）。原 7 个用例测的是已删除内部函数（undef），
+%%% 其行为语义已由重构时同步更新的 msg_c2s_logic_tests（c2s_unsupported
+%%% 等分派用例）、bot_logic_tests、agent_rate_limiter_tests、
+%%% llm_stream_tests 覆盖。
+%%%
+%%% 本模块保留为迁移守卫：锁定现行为契约 + 旧路径不复活——
+%%% 防止有人把 provider 硬编码或 llm_callback 桥接加回 msg_c2s_logic
+%%% 形成双路径。
 %%%===================================================================
 
 %% ===================================================================
-%% llm_callback/2 — imboy_llm:chat 契约 → c2s_to_external 回调契约
+%% 旧路径守卫：llm_callback/2、/4 不得复活在 msg_c2s_logic
 %% ===================================================================
 
-llm_callback_ok_unwraps_to_bare_map_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_llm_openai, [
-                {'chat', 3, fun(_Uid, _Messages, _Opts) ->
-                    {ok, #{<<"result">> => <<"AI 回复"/utf8>>}}
-                end}
-            ]}
-        ],
-        fun() ->
-            Opts = #{model => <<"m1">>},
-            Callback = msg_c2s_logic:llm_callback(imboy_llm_openai, Opts),
-            Resp = Callback(7, <<"你好"/utf8>>, []),
-            % {ok, RespMap} → 裸 RespMap（c2s_to_external 的 ApiCallback 契约）
-            ?assertEqual(#{<<"result">> => <<"AI 回复"/utf8>>}, Resp),
-            % Text 包装为单条 user 消息，registry opts 透传给 chat/3
-            ?assert(
-                meck:called(imboy_llm_openai, chat, [
-                    7,
-                    [#{<<"role">> => <<"user">>, <<"content">> => <<"你好"/utf8>>}],
-                    Opts
-                ])
-            )
-        end
-    ).
-
-llm_callback_error_raises_to_trigger_retry_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_llm_openai, [
-                {'chat', 3, fun(_, _, _) -> {error, timeout} end}
-            ]},
-            {elib_log, [
-                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-            ]}
-        ],
-        fun() ->
-            Callback = msg_c2s_logic:llm_callback(imboy_llm_openai, #{}),
-            % {error, _} → 抛异常，让 c2s_to_external 的 async_retry 重试
-            % （不能吞成空 result，否则 Fun 不抛 → 不重试 → 用户收到空气泡）
-            ?assertError({llm_failed, timeout}, Callback(7, <<"hi">>, []))
-        end
-    ).
+llm_callback_bridge_not_resurrected_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertNot(erlang:function_exported(msg_c2s_logic, llm_callback, 2)),
+        ?assertNot(erlang:function_exported(msg_c2s_logic, llm_callback, 4))
+    end).
 
 %% ===================================================================
-%% c2s/3 分派 — 查注册表
+%% c2s/3 现行为契约
 %% ===================================================================
 
-c2s_bot_qian_fan_maps_to_qianfan_provider_test_() ->
+c2s_bot_prefix_deprecated_test_() ->
+    %% bot_* 前缀已废弃（migrations/00000071_bot_prefix_to_agent）：
+    %% 返回 bot_prefix_deprecated 引导，而非注册表分派。
+    ?TEST_SIMPLE(fun() ->
+        Data = #{
+            <<"to">> => <<"bot_qian_fan">>,
+            <<"payload">> => #{<<"text">> => <<"你好"/utf8>>},
+            <<"created_at">> => 1751990400000
+        },
+        {reply, Resp} = msg_c2s_logic:c2s(<<"mid1">>, 7, Data),
+        ?assertEqual(<<"bot_prefix_deprecated">>, maps:get(<<"action">>, Resp)),
+        ?assertEqual(<<"mid1">>, maps:get(<<"id">>, Resp))
+    end).
+
+c2s_unsupported_for_unknown_to_test_() ->
+    %% 非 sync、非 bot_* 的 to：c2s_unsupported 降级（message_ds 组装 S2C）。
     ?WITH_MECKS(
         [
-            {imboy_llm_registry, [
-                {'lookup', 1, fun(<<"qianfan">>) ->
-                    {ok, #{module => imboy_llm_openai, opts => #{}}}
-                end}
-            ]},
-            {elib_dt, [
-                {'to_rfc3339', 1, fun(_) -> <<"2026-07-09T00:00:00Z">> end}
-            ]},
-            {elib_async, [
-                {'async_retry', 1, fun(_Fun) -> ok end}
-            ]},
-            {msg_store_ds, [
-                % stage 返回 error 短路后续 enqueue/异步 API，浅层验证分派已进入骨架
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> error end}
-            ]},
             {message_ds, [
                 {'assemble_s2c', 3, fun(_MsgId, Code, _To) -> #{<<"code">> => Code} end}
-            ]},
-            {elib_log, [
-                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
             ]}
         ],
         fun() ->
             Data = #{
-                <<"to">> => <<"bot_qian_fan">>,
-                <<"payload">> => #{<<"text">> => <<"你好"/utf8>>},
+                <<"to">> => <<"external_unknown">>,
+                <<"payload">> => #{<<"text">> => <<"hi">>},
                 <<"created_at">> => 1751990400000
             },
-            Result = msg_c2s_logic:c2s(<<"mid1">>, 7, Data),
-            % 向后兼容：bot_qian_fan → 注册表键 <<"qianfan">>
-            ?assert(meck:called(imboy_llm_registry, lookup, [<<"qianfan">>])),
-            % 已进入 c2s_to_external 骨架（stage 被调用）
-            ?assert(meck:called(msg_store_ds, stage, '_')),
-            ?assertEqual({reply, #{<<"code">> => <<"internal_error">>}}, Result)
-        end
-    ).
-
-%% 金钱 DoS 闸门：bot_qian_fan / bot_qianfan 别名映射同一 provider(qianfan)，
-%% 限流按归一化后 provider 名建 scope → 必须共享计数，不能交替别名双倍突破配额。
-c2s_bot_alias_shares_rate_limit_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_llm_registry, [
-                {'lookup', 1, fun(<<"qianfan">>) -> undefined end}
-            ]},
-            {message_ds, [
-                {'assemble_s2c', 3, fun(_MsgId, Code, _To) -> #{<<"code">> => Code} end}
-            ]},
-            {elib_log, [{'internal_log', 5, fun(_, _, _, _, _) -> ok end}]}
-        ],
-        fun() ->
-            reset_rl(1),
-            try
-                D1 = #{<<"to">> => <<"bot_qian_fan">>, <<"payload">> => #{<<"text">> => <<"a">>}},
-                D2 = #{<<"to">> => <<"bot_qianfan">>, <<"payload">> => #{<<"text">> => <<"b">>}},
-                %% 别名一放行 → 走到 lookup(qianfan)（undefined → unsupported reply）
-                ?assertEqual(
-                    {reply, #{<<"code">> => <<"c2s_unsupported">>}},
-                    msg_c2s_logic:c2s(<<"m1">>, 7, D1)
-                ),
-                %% 别名二归一化到同一 scope qianfan，per_requester=1 已满 → deny 静默丢弃
-                ?assertEqual(ok, msg_c2s_logic:c2s(<<"m2">>, 7, D2)),
-                %% 关键断言：lookup 只被调 1 次——第二个别名在限流处被拦，未共享绕过
-                ?assertEqual(1, meck:num_calls(imboy_llm_registry, lookup, [<<"qianfan">>]))
-            after
-                rl_teardown()
-            end
-        end
-    ).
-
-c2s_unregistered_bot_replies_unsupported_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_llm_registry, [
-                {'lookup', 1, fun(_) -> undefined end}
-            ]},
-            {message_ds, [
-                {'assemble_s2c', 3, fun(_MsgId, Code, _To) -> #{<<"code">> => Code} end}
-            ]}
-        ],
-        fun() ->
-            Data = #{<<"to">> => <<"bot_nope">>},
-            Result = msg_c2s_logic:c2s(<<"mid2">>, 7, Data),
-            ?assert(meck:called(imboy_llm_registry, lookup, [<<"nope">>])),
-            ?assertEqual({reply, #{<<"code">> => <<"c2s_unsupported">>}}, Result)
+            {reply, Resp} = msg_c2s_logic:c2s(<<"mid2">>, 7, Data),
+            ?assertEqual(<<"c2s_unsupported">>, maps:get(<<"code">>, Resp))
         end
     ).
 
 %% ===================================================================
-%% llm_callback/4 — 流式感知（Phase 2 T2.2）
+%% 新架构入口守卫：回调注入契约与 provider 解析都在
 %% ===================================================================
 
-%% 开关开 + provider 支持流式：逐帧直推 stream_delta（同定稿 id）+ 返回完整 RespMap
-llm_callback4_streams_when_capable_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_llm_openai, [
-                {'capabilities', 0, fun() ->
-                    #{stream => true, vision => false, tools => false}
-                end},
-                {'chat_stream', 4, fun(7, _Msgs, _Opts, StreamFun) ->
-                    StreamFun(<<"部分一二三四"/utf8>>),
-                    {ok, #{<<"result">> => <<"完整回复"/utf8>>}}
-                end}
-            ]},
-            {imboy_syn, [{'publish', 2, fun(_, _) -> {ok, 1} end}]}
-        ],
-        fun() ->
-            application:set_env(imboy, llm_stream_enabled, true),
-            try
-                Cb = msg_c2s_logic:llm_callback(imboy_llm_openai, #{}, <<"bot_x">>, <<"mid9">>),
-                Resp = Cb(7, <<"hi">>, []),
-                %% 返回完整 RespMap 供 c2s_to_external 定稿
-                ?assertEqual(#{<<"result">> => <<"完整回复"/utf8>>}, Resp),
-                %% 帧：id=bot_response+MsgId，type=C2S，from=bot 标识
-                Pubs = meck:history(imboy_syn),
-                ?assert(length(Pubs) >= 1),
-                [{_, {_, publish, [7, Json]}, _} | _] = Pubs,
-                D = jsone:decode(Json),
-                ?assertEqual(<<"stream_delta">>, maps:get(<<"msg_type">>, D)),
-                ?assertEqual(<<"bot_responsemid9">>, maps:get(<<"id">>, D)),
-                ?assertEqual(<<"C2S">>, maps:get(<<"type">>, D)),
-                ?assertEqual(<<"bot_x">>, maps:get(<<"from">>, D))
-            after
-                application:unset_env(imboy, llm_stream_enabled)
-            end
-        end
-    ).
+c2s_to_external_api_callback_entry_exists_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% c2s_to_external/5：ApiCallback 由调用方注入（BYO-LLM 适配层契约）
+        ?assert(erlang:function_exported(msg_c2s_logic, c2s_to_external, 5))
+    end).
 
-%% ===================================================================
-%% 限流器测试助手（真实 ETS，清空 + 设小阈值）
-%% ===================================================================
+llm_registry_lookup_contract_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% lookup/1 返回 {ok, #{module => M, opts => Opts}}（chat/3 契约）；
+        %% qianfan 为内置 provider（向后兼容名保留）。
+        {ok, #{module := Mod}} = imboy_llm_registry:lookup(<<"qianfan">>),
+        ?assertEqual(imboy_llm_qianfan, Mod),
+        %% 未注册名称返回 undefined（由上层降级处理）
+        ?assertEqual(undefined, imboy_llm_registry:lookup(<<"no_such_provider_ci00">>))
+    end).
 
-reset_rl(PerReq) ->
-    _ = agent_rate_limiter:allow(0, 0),
-    case ets:whereis(agent_rate_limiter_ets) of
-        undefined -> ok;
-        _ -> ets:delete_all_objects(agent_rate_limiter_ets)
-    end,
-    application:set_env(imboy, agent_rl_per_requester, PerReq),
-    application:set_env(imboy, agent_rl_per_agent, 1000),
-    ok.
-
-rl_teardown() ->
-    application:unset_env(imboy, agent_rl_per_requester),
-    application:unset_env(imboy, agent_rl_per_agent),
-    ok.
-
-%% 开关关：llm_callback/4 委托 /2 一次性桥接，不推流式帧
-llm_callback4_falls_back_to_sync_test_() ->
-    ?WITH_MECKS(
-        [
-            {imboy_llm_openai, [
-                {'chat', 3, fun(_, _, _) -> {ok, #{<<"result">> => <<"sync">>}} end}
-            ]},
-            {imboy_syn, [{'publish', 2, fun(_, _) -> {ok, 1} end}]}
-        ],
-        fun() ->
-            application:unset_env(imboy, llm_stream_enabled),
-            Cb = msg_c2s_logic:llm_callback(imboy_llm_openai, #{}, <<"bot_x">>, <<"mid">>),
-            Resp = Cb(7, <<"hi">>, []),
-            ?assertEqual(#{<<"result">> => <<"sync">>}, Resp),
-            ?assertEqual(0, length(meck:history(imboy_syn))),
-            ?assert(meck:called(imboy_llm_openai, chat, '_'))
-        end
-    ).
+ai_agent_reply_dispatch_entry_exists_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        %% Agent/Bot C2S 外呼编排入口（maybe_dispatch/3 + run_and_reply/5）；
+        %% function_exported 只查已加载模块，先 ensure_loaded。
+        {module, ai_agent_reply} = code:ensure_loaded(ai_agent_reply),
+        ?assert(erlang:function_exported(ai_agent_reply, maybe_dispatch, 3)),
+        ?assert(erlang:function_exported(ai_agent_reply, run_and_reply, 5))
+    end).

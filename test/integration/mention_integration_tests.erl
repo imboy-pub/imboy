@@ -55,25 +55,27 @@ mention_repo_exports_contract_test() ->
     ?assert(erlang:function_exported(mention_repo, count_unread_in_group, 2)).
 
 mention_migration_contains_table_test() ->
+    %% CI-00 修桩：迁移文件 8634ddf6（2026-05-28 迁移系统重构）已将
+    %% *msg_mentions.sql 并入 00000002_message_aux.up.sql，且 DDL 幂等化后
+    %% 去 IF NOT EXISTS、列默认值语序调整——对齐现文件实际内容。
     Migration = read_file(mention_migration_path()),
-    ?assert(
-        binary:match(Migration, <<"CREATE TABLE IF NOT EXISTS public.msg_mention">>) =/= nomatch
-    ),
+    ?assert(binary:match(Migration, <<"CREATE TABLE public.msg_mention">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"mentioned_uid bigint NOT NULL">>) =/= nomatch),
-    ?assert(binary:match(Migration, <<"is_read boolean NOT NULL DEFAULT false">>) =/= nomatch).
+    ?assert(binary:match(Migration, <<"is_read boolean DEFAULT false NOT NULL">>) =/= nomatch).
 
 read_file(Path) ->
     {ok, Bin} = file:read_file(Path),
     Bin.
 
 mention_migration_path() ->
-    case filelib:wildcard("priv/migrations/*msg_mentions.sql") of
+    %% CI-00 修桩：新文件名（00000002_message_aux.up.sql）；保留通配以容未来调整。
+    case filelib:wildcard("priv/migrations/*message_aux.up.sql") of
         [Path] ->
             Path;
         Paths when is_list(Paths), length(Paths) > 1 ->
             lists:last(lists:sort(Paths));
         [] ->
-            error({missing_mention_migration, "priv/migrations/*msg_mentions.sql"})
+            error({missing_mention_migration, "priv/migrations/*message_aux.up.sql"})
     end.
 
 ensure_module_loaded(Module) ->

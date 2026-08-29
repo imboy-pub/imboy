@@ -10,12 +10,30 @@
 
 setup() ->
     application:set_env(imboy, env, test),
+    %% CI-00 测试隔离：list_plugins/find_lifecycle 读全局 persistent_term，
+    %% 全量运行时其他插件用例（含内置功能开关的 manifest 注册）会泄漏进
+    %% 本模块的 empty/one_installed 断言。此处快照并清空 manifest/lifecycle
+    %% 键，cleanup 按快照恢复，既隔离外部泄漏也不污染其他模块。
+    SavedPT = [
+        KV
+     || KV = {K, _} <- persistent_term:get(),
+        is_tuple(K),
+        element(1, K) =:= imboy_plugin_manifest orelse
+            element(1, K) =:= imboy_plugin_lifecycle
+    ],
+    lists:foreach(fun({K, _}) -> persistent_term:erase(K) end, SavedPT),
     Mods = [
         {imboy_plugin_signature, [{verify_file, 2, fun(_, _) -> ok end}]},
-        {imboy_plugin_toml, [{load, 1, fun(_) ->
-            {ok, #{name => ?PLUGIN, version => <<"1.0.0">>,
-                   depends_on => #{}, routes => []}}
-        end}]},
+        {imboy_plugin_toml, [
+            {load, 1, fun(_) ->
+                {ok, #{
+                    name => ?PLUGIN,
+                    version => <<"1.0.0">>,
+                    depends_on => #{},
+                    routes => []
+                }}
+            end}
+        ]},
         {imboy_plugin_dependency, [
             {validate_constraints, 1, fun(_) -> ok end},
             {check_enable_deps, 1, fun(_) -> ok end},
@@ -27,22 +45,41 @@ setup() ->
             {unregister, 1, fun(_) -> ok end}
         ]}
     ],
-    lists:foreach(fun({Mod, Exps}) ->
-        meck_helper:cleanup_mock(Mod),
-        {ok, _} = meck_helper:setup_mock(Mod, Exps)
-    end, Mods),
-    ok.
+    lists:foreach(
+        fun({Mod, Exps}) ->
+            meck_helper:cleanup_mock(Mod),
+            {ok, _} = meck_helper:setup_mock(Mod, Exps)
+        end,
+        Mods
+    ),
+    SavedPT.
 
-cleanup(_) ->
+cleanup(SavedPT) ->
     case imboy_plugin_manager:find_lifecycle(?PLUGIN) of
         undefined -> ok;
         Pid -> catch gen_statem:stop(Pid)
     end,
-    catch persistent_term:erase({imboy_plugin_manifest, ?PLUGIN}),
-    catch persistent_term:erase({imboy_plugin_lifecycle, ?PLUGIN}),
+    %% 先清掉本模块测试期间写入的键，再按快照恢复外部状态（隔离双向）
+    lists:foreach(
+        fun({K, _}) ->
+            case
+                is_tuple(K) andalso
+                    (element(1, K) =:= imboy_plugin_manifest orelse
+                        element(1, K) =:= imboy_plugin_lifecycle)
+            of
+                true -> catch persistent_term:erase(K);
+                false -> ok
+            end
+        end,
+        persistent_term:get()
+    ),
+    lists:foreach(fun({K, V}) -> catch persistent_term:put(K, V) end, SavedPT),
     lists:foreach(fun(M) -> catch meck_helper:cleanup_mock(M) end, [
-        imboy_plugin_signature, imboy_plugin_toml, imboy_plugin_dependency,
-        imboy_plugin_loader, imboy_router_registry
+        imboy_plugin_signature,
+        imboy_plugin_toml,
+        imboy_plugin_dependency,
+        imboy_plugin_loader,
+        imboy_router_registry
     ]),
     ok.
 
@@ -51,23 +88,20 @@ cleanup(_) ->
 %% ===================================================================
 
 find_lifecycle_unknown_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         ?_assertEqual(undefined, imboy_plugin_manager:find_lifecycle(?PLUGIN))
-     end}.
+    end}.
 
 list_plugins_empty_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, Items} = imboy_plugin_manager:list_plugins(),
             ?assertEqual([], Items)
         end
-     end}.
+    end}.
 
 install_success_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             Result = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             ?assertMatch({ok, #{name := ?PLUGIN}}, Result),
@@ -75,21 +109,19 @@ install_success_test_() ->
             ?assert(is_pid(Pid)),
             ?assert(persistent_term:get({imboy_plugin_manifest, ?PLUGIN}, undefined) =/= undefined)
         end
-     end}.
+    end}.
 
 install_duplicate_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             Result = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             ?assertMatch({error, {invalid_state_transition, installed}}, Result)
         end
-     end}.
+    end}.
 
 enable_success_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             Result = imboy_plugin_manager:enable(?PLUGIN),
@@ -97,11 +129,10 @@ enable_success_test_() ->
             {ok, #{state := State}} = imboy_plugin_manager:get_state(?PLUGIN),
             ?assertEqual(enabled, State)
         end
-     end}.
+    end}.
 
 disable_success_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             ok = imboy_plugin_manager:enable(?PLUGIN),
@@ -110,38 +141,34 @@ disable_success_test_() ->
             {ok, #{state := State}} = imboy_plugin_manager:get_state(?PLUGIN),
             ?assertEqual(disabled, State)
         end
-     end}.
+    end}.
 
 enable_not_found_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         ?_assertEqual({error, not_found}, imboy_plugin_manager:enable(nonexistent))
-     end}.
+    end}.
 
 get_state_installed_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             {ok, #{name := Name, state := State}} = imboy_plugin_manager:get_state(?PLUGIN),
             ?assertEqual(?PLUGIN, Name),
             ?assertEqual(installed, State)
         end
-     end}.
+    end}.
 
 health_check_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             {ok, #{name := Name}} = imboy_plugin_manager:health_check(?PLUGIN),
             ?assertEqual(?PLUGIN, Name)
         end
-     end}.
+    end}.
 
 reset_from_failed_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             Pid = imboy_plugin_manager:find_lifecycle(?PLUGIN),
@@ -152,11 +179,10 @@ reset_from_failed_test_() ->
             ?assertEqual(ok, Result),
             {ok, #{state := unknown}} = imboy_plugin_manager:get_state(?PLUGIN)
         end
-     end}.
+    end}.
 
 list_plugins_with_one_installed_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             {ok, Items} = imboy_plugin_manager:list_plugins(),
@@ -166,20 +192,18 @@ list_plugins_with_one_installed_test_() ->
             ?assertEqual(<<"1.0.0">>, maps:get(version, Item)),
             ?assertEqual(installed, maps:get(state, Item))
         end
-     end}.
+    end}.
 
 upgrade_success_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             {ok, _} = imboy_plugin_manager:install(?PLUGIN, <<"/tmp/test_plugin">>),
             Result = imboy_plugin_manager:upgrade(?PLUGIN, <<"2.0.0">>),
             ?assertEqual(ok, Result)
         end
-     end}.
+    end}.
 
 get_plugin_not_found_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         ?_assertEqual({error, not_found}, imboy_plugin_manager:get_plugin(nonexistent))
-     end}.
+    end}.

@@ -257,9 +257,28 @@ docs-stop:
 #       make eunit-local t=elib_uri_tests   # 单模块
 # 前置: 本地 imboy_v1 schema 须已应用到最新迁移，否则 imboy_app:start/2 的
 #       imboy_migrate:migrate/0 会 {out_of_order, ...} 使 app 启动失败。
+# worktree 兼容：code:lib_dir/priv_dir 的 lib 位注册要求 code path 中 ebin 的
+# 父目录名与 app 同名（imboy/ebin）。git worktree 根名是 rg-*，-pa ebin 注册不了
+# lib 位 → code:priv_dir(imboy) bad_name → imboy app 启动即崩
+# （ensure_dev_rsa_keypair / imboy_migrate 均依赖 priv_dir），?TEST_WITH_DB 全
+# skip。补 -pa imboy/ebin：worktree 内 `ln -s . imboy` 后 lib 位可解析；主树无
+# imboy/ 子目录，该 -pa 指向不存在目录被 erl 静默忽略，零副作用。
 .PHONY: eunit-local
+# EUNIT_CONFIG 可覆盖配置文件（默认 config/sys.local）：CI 无 sys.local.config，
+# 物化 sys.config 后以 EUNIT_CONFIG=config/sys 传同口径全量（见 backend-ci.yml）。
+EUNIT_CONFIG ?= config/sys.local
 eunit-local:
-	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa ebin -pa test"
+	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config $(EUNIT_CONFIG) -pa imboy/ebin -pa ebin -pa test"
+
+# ==================== Dialyzer 递减基线门（CI-00） ====================
+# make dialyze-check：全量 Dialyzer 分析（dialyze 语义下存量告警 exit 2，此处
+# 吞掉退出码）+ scripts/check_dialyzer_baseline.sh 对照 dialyzer.baseline 裁决：
+# 基线外新增 1 条告警即红；存量减少不红（提示可人工收紧基线）。棘轮只准减不准增。
+# 产物 dialyze-last.log 供基线脚本解析与 CI 摘要。
+.PHONY: dialyze-check
+dialyze-check:
+	@$(MAKE) dialyze DIALYZER_OPTS="$(DIALYZER_OPTS)" > dialyze-last.log 2>&1 || true
+	@bash scripts/check_dialyzer_baseline.sh dialyze-last.log
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担

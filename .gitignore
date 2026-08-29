@@ -110,3 +110,8 @@ api/openapi.bundled.json
 # 仓库里只保留 alertmanager.env.example（全部留空）与模板。
 deploy/alertmanager/alertmanager.env
 elvis-output.txt
+
+# git worktree 兼容 symlink：worktree 根 `ln -s . imboy`，配合 Makefile
+# eunit-local 的 -pa imboy/ebin 让 code:priv_dir(imboy) 可解析（worktree
+# 根目录名是 rg-*，不带 imboy/ebin 结构）；主树无此文件，零副作用。
+/imboy

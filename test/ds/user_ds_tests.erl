@@ -36,9 +36,19 @@ title_returns_account_when_nickname_empty_test_() ->
 
 title_decodes_binary_uid_test_() ->
     %% Ensure ec_cnv is on code path so meck can mock it
-    EcCnvEbin = filename:join([
-        filename:dirname(code:lib_dir(imboy)), "deps", "erlware_commons", "ebin"
-    ]),
+    %% 项目根推导：test beams 落在 <root>/test/，从 code:which 反推 <root>，
+    %% 兼容平铺 -pa ebin 与 .otp/imboy/ebin OTP 布局两种 code path（CI-00）。
+    TestBeam = code:which(user_ds_tests),
+    EcCnvEbin =
+        case is_list(TestBeam) of
+            true ->
+                filename:join(
+                    filename:dirname(filename:dirname(TestBeam)),
+                    ["deps", "erlware_commons", "ebin"]
+                );
+            false ->
+                ""
+        end,
     case filelib:is_dir(EcCnvEbin) of
         false ->
             %% ec_cnv not available, skip this test

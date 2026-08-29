@@ -40,7 +40,9 @@ save_read_with_valid_data_succeeds_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+                %% CI-00 修桩：save_read 实走 elib_pg:execute/2（repo 重构后 SQL
+                %% 内联），原 query/2 桩不命中 -> passthrough -> noproc。
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->
@@ -61,7 +63,8 @@ save_read_dedups_by_three_columns_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'query', 2, fun(Sql, Params) ->
+                %% CI-00 修桩：同上，save_read 走 execute/2；SQL 形状断言随之迁移。
+                {'execute', 2, fun(Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assertMatch({_, _}, binary:match(SqlBin, <<"WHERE NOT EXISTS">>)),
                     ?assertMatch(
@@ -69,7 +72,7 @@ save_read_dedups_by_three_columns_test_() ->
                         binary:match(SqlBin, <<"msg_id = $1 AND to_uid = $3 AND to_did = $4">>)
                     ),
                     ?assertEqual(5, length(Params)),
-                    {ok, []}
+                    {ok, 1}
                 end}
             ]}
         ],
@@ -93,7 +96,7 @@ save_read_is_idempotent_test_() ->
             ?MOCK_ENV,
             ?MOCK_TSID,
             {elib_pg, [
-                {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
+                {'execute', 2, fun(_Sql, _Params) -> {ok, 1} end}
             ]}
         ],
         fun() ->

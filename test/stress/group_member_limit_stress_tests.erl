@@ -129,6 +129,18 @@ test_large_group_management() ->
 
     ok.
 
+%% @doc 带重试的成员添加：容忍连接池抖动（noproc/connection_closed）。
+stress_add_member(_Group, _MemberId, 0) ->
+    group_member_ds:add_member(_Group, _MemberId);
+stress_add_member(Group, MemberId, Attempts) ->
+    try
+        group_member_ds:add_member(Group, MemberId)
+    catch
+        _:_ when Attempts > 1 ->
+            timer:sleep(100),
+            stress_add_member(Group, MemberId, Attempts - 1)
+    end.
+
 test_large_group_broadcast() ->
     Context = get_context(),
     Owner = maps:get(owner, Context),
@@ -141,9 +153,12 @@ test_large_group_broadcast() ->
     % 1. 创建群组并添加成员
     {ok, Group} = create_test_group(Owner, <<"广播测试群"/utf8>>),
 
+    % CI-00 加固：本地一次性 PG 在全量负载后连接池会出现已死成员
+    %（epgsql ROLLBACK noproc），add_member 逐个直调遇死连接即崩。
+    % 包一层 catch+短重试（不改变最终成功率断言，仍为 95%）。
     lists:foreach(
         fun(MemberId) ->
-            group_member_ds:add_member(Group, MemberId)
+            stress_add_member(Group, MemberId, 3)
         end,
         lists:sublist(Members, ?LARGE_GROUP_SIZE)
     ),

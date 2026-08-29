@@ -8,9 +8,18 @@
 %%%===================================================================
 
 tablename_returns_fts_group_table_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        ?assertEqual(<<"fts_group">>, fts_group_repo:tablename())
-    end).
+    %% CI-00 修桩：eunit-local 注入 -config 后 sql_driver=pgsql，原 “无环境”
+    %% 假设不成立；mock 非 pgsql 分支保持原断言（public. 前缀分支由
+    %% elib_pg_sql 侧测试覆盖）。
+    ?WITH_MECK(
+        config_ds,
+        [
+            {'env', 1, fun(sql_driver) -> sqlite end}
+        ],
+        fun() ->
+            ?assertEqual(<<"fts_group">>, fts_group_repo:tablename())
+        end
+    ).
 
 %% 空关键词计数返回 0
 count_for_empty_keyword_returns_zero_test_() ->

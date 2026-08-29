@@ -26,14 +26,12 @@ cleanup_config(_) ->
 %% ===================================================================
 
 tablename_public_prefix_test_() ->
-    {setup,
-     fun setup_config/0,
-     fun cleanup_config/1,
-     ?_test(begin
-         Result = user_device_repo:tablename(),
-         %% sql_driver=pgsql → public_tablename adds "public." prefix
-         ?assertEqual(<<"public.user_device">>, Result)
-     end)}.
+    {setup, fun setup_config/0, fun cleanup_config/1,
+        ?_test(begin
+            Result = user_device_repo:tablename(),
+            %% sql_driver=pgsql → public_tablename adds "public." prefix
+            ?assertEqual(<<"public.user_device">>, Result)
+        end)}.
 
 %% ===================================================================
 %% page/3 测试
@@ -41,11 +39,17 @@ tablename_public_prefix_test_() ->
 
 page_basic_test_() ->
     ?TEST_WITH_DB(fun() ->
+        %% CI-00 修桩：不依赖库中残留数据——先写 uid=1 的设备记录再分页查询
+        %%（DID 唯一化保证多轮执行幂等）。
         Uid = 1,
+        Did = <<"ci00_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+        {ok, _} = user_device_repo:save(
+            elib_dt:millisecond(), Uid, Did, #{<<"ip">> => <<"127.0.0.1">>}
+        ),
         Limit = 10,
         Offset = 0,
         Result = user_device_repo:page(Uid, Limit, Offset),
-        ?assertMatch({ok, [_|_]}, Result)
+        ?assertMatch({ok, [_ | _]}, Result)
     end).
 
 page_empty_result_test_() ->

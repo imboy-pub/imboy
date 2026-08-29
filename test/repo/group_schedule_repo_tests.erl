@@ -15,6 +15,10 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test() ->
+    %% CI-00 修桩：config_ds:env(sql_driver) 依赖 application:load(imboy) 后
+    %% 才可见——全量时靠别的模块顺带 load，分片/单跑本模块时必须显式 load，
+    %% 否则 public_tablename 走无前缀分支（sql_driver undefined）。
+    _ = catch application:load(imboy),
     _ = catch meck:unload(elib_pg_sql),
     Result = group_schedule_repo:tablename(),
     ?assertEqual(<<"public.group_schedule">>, Result).
@@ -100,9 +104,11 @@ find_by_id_success_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, one, fun(_Sql, _Params) ->
-        {ok, #{<<"id">> => 1001,
-                <<"group_id">> => 123,
-                <<"title">> => <<"会议"/utf8>>}}
+        {ok, #{
+            <<"id">> => 1001,
+            <<"group_id">> => 123,
+            <<"title">> => <<"会议"/utf8>>
+        }}
     end),
     Result = group_schedule_repo:find_by_id(1001),
     ?assertMatch(#{<<"id">> := 1001, <<"title">> := <<"会议"/utf8>>}, Result),
@@ -126,9 +132,11 @@ find_by_schedule_id_success_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, one, fun(_Sql, _Params) ->
-        {ok, #{<<"id">> => 1001,
-                <<"schedule_id">> => <<"sched_123">>,
-                <<"title">> => <<"会议"/utf8>>}}
+        {ok, #{
+            <<"id">> => 1001,
+            <<"schedule_id">> => <<"sched_123">>,
+            <<"title">> => <<"会议"/utf8>>
+        }}
     end),
     Result = group_schedule_repo:find_by_schedule_id(<<"sched_123">>),
     ?assertMatch(#{<<"schedule_id">> := <<"sched_123">>}, Result),
@@ -152,8 +160,10 @@ list_by_group_id_success_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, query, fun(_Sql, _Params) ->
-        {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
-               #{<<"id">> => 1002, <<"title">> => <<"会议2"/utf8>>}]}
+        {ok, [
+            #{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
+            #{<<"id">> => 1002, <<"title">> => <<"会议2"/utf8>>}
+        ]}
     end),
     Result = group_schedule_repo:list_by_group_id(123, 1, 20),
     ?assertMatch({ok, [_, _]}, Result),
@@ -172,7 +182,9 @@ list_by_group_id_empty_test() ->
 list_by_group_id_with_time_filter_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(Sql, [123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]) ->
+    meck:expect(elib_pg, query, fun(
+        Sql, [123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]
+    ) ->
         ?assertNotEqual(nomatch, binary:match(Sql, <<"end_at >= $2">>)),
         ?assertNotEqual(nomatch, binary:match(Sql, <<"start_at <= $3">>)),
         {ok, []}
@@ -200,8 +212,10 @@ list_by_user_id_success_test() ->
         {JoinPos, _} = binary:match(Sql, <<"INNER JOIN">>),
         {WherePos, _} = binary:match(Sql, <<"WHERE p.user_id = $1">>),
         ?assert(JoinPos < WherePos),
-        {ok, [#{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
-               #{<<"id">> => 1002, <<"title">> => <<"会议2"/utf8>>}]}
+        {ok, [
+            #{<<"id">> => 1001, <<"title">> => <<"会议1"/utf8>>},
+            #{<<"id">> => 1002, <<"title">> => <<"会议2"/utf8>>}
+        ]}
     end),
     Result = group_schedule_repo:list_by_user_id(456, 1, 20),
     ?assertMatch({ok, [_, _]}, Result),
@@ -210,7 +224,9 @@ list_by_user_id_success_test() ->
 list_by_user_id_with_time_filter_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, query, fun(Sql, [456, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]) ->
+    meck:expect(elib_pg, query, fun(
+        Sql, [456, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]
+    ) ->
         ?assertNotEqual(nomatch, binary:match(Sql, <<"gs.end_at >= $2">>)),
         ?assertNotEqual(nomatch, binary:match(Sql, <<"gs.start_at <= $3">>)),
         {ok, []}
@@ -242,7 +258,9 @@ update_status_success_test() ->
 count_by_group_id_with_time_filter_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
-    meck:expect(elib_pg, one, fun(Sql, [123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]) ->
+    meck:expect(elib_pg, one, fun(
+        Sql, [123, <<"2026-02-22T00:00:00Z">>, <<"2026-02-23T00:00:00Z">>]
+    ) ->
         ?assertNotEqual(nomatch, binary:match(Sql, <<"end_at >= $2">>)),
         ?assertNotEqual(nomatch, binary:match(Sql, <<"start_at <= $3">>)),
         {ok, #{<<"count">> => 2}}
@@ -260,6 +278,7 @@ count_by_group_id_with_time_filter_test() ->
 %% ===================================================================
 
 participant_tablename_test() ->
+    _ = catch application:load(imboy),
     _ = catch meck:unload(elib_pg_sql),
     Result = group_schedule_repo:participant_tablename(),
     ?assertEqual(<<"public.group_schedule_participant">>, Result).
@@ -295,8 +314,10 @@ list_participants_success_test() ->
     _ = catch meck:unload(elib_pg),
     meck:new(elib_pg, [passthrough, no_link]),
     meck:expect(elib_pg, query, fun(_Sql, _Params) ->
-        {ok, [#{<<"user_id">> => 789, <<"status">> => 1},
-               #{<<"user_id">> => 790, <<"status">> => 0}]}
+        {ok, [
+            #{<<"user_id">> => 789, <<"status">> => 1},
+            #{<<"user_id">> => 790, <<"status">> => 0}
+        ]}
     end),
     Result = group_schedule_repo:list_participants(<<"sched_123">>),
     ?assertMatch({ok, [_, _]}, Result),
@@ -307,6 +328,7 @@ list_participants_success_test() ->
 %% ===================================================================
 
 remind_tablename_test() ->
+    _ = catch application:load(imboy),
     _ = catch meck:unload(elib_pg_sql),
     Result = group_schedule_repo:remind_tablename(),
     ?assertEqual(<<"public.group_schedule_remind">>, Result).

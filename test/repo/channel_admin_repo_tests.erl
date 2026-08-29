@@ -6,19 +6,43 @@
 %%% @doc channel_admin_repo 的 repo 层单元测试（基于 mock，无数据库依赖）
 %%%===================================================================
 
-tablename_returns_public_channel_admin_table_test_() ->
-    ?TEST_SIMPLE(fun() ->
-        %% eunit_runner 未加载时 sql_driver 未设，public_tablename 不加前缀
-        ?assertEqual(<<"channel_admin">>, channel_admin_repo:tablename())
-    end).
+tablename_returns_unprefixed_table_when_driver_not_pgsql_test_() ->
+    %% CI-00 修桩：eunit-local 注入 -config 后 sql_driver=pgsql（原注释假设的
+    %% “未加载” 环境不再成立），mock config_ds:env 走非 pgsql 分支保持原断言。
+    ?WITH_MECK(
+        config_ds,
+        [
+            {'env', 1, fun(sql_driver) -> sqlite end}
+        ],
+        fun() ->
+            ?assertEqual(<<"channel_admin">>, channel_admin_repo:tablename())
+        end
+    ).
+
+tablename_returns_public_prefixed_table_when_pgsql_test_() ->
+    %% CI-00 补充：pgsql 分支（eunit-local 真实口径）应有 public. 前缀。
+    ?WITH_MECK(
+        config_ds,
+        [
+            {'env', 1, fun(sql_driver) -> pgsql end}
+        ],
+        fun() ->
+            ?assertEqual(<<"public.channel_admin">>, channel_admin_repo:tablename())
+        end
+    ).
 
 find_returns_row_when_exists_test_() ->
     ?WITH_MECKS(
         [
+            %% CI-00 修桩：SQL 前缀断言依赖 sql_driver 环境（pgsql 下为
+            %% public.channel_admin），mock config_ds 与 SQL 断言对齐真实口径。
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]},
             {elib_pg, [
                 {'one', 2, fun(Sql, [11, 1001]) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"FROM channel_admin">>) =/= nomatch),
+                    ?assert(re:run(SqlBin, <<"FROM public.channel_admin">>) =/= nomatch),
                     {ok, #{<<"channel_id">> => 11, <<"user_id">> => 1001, <<"role">> => 2}}
                 end}
             ]}
