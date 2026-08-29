@@ -9,6 +9,43 @@
 
 ---
 
+## [1.0.0-alpha.70] - 2026-08-29（Channel-first-class W2 / Project Workspace）
+
+> 本版本完成后端 W2 全链、Flutter/Admin W2 治理面与全部自动化验收（后端 eunit 6490/0、
+> Flutter 5940/0、Admin 1410/0、Demo B W2 双遍 66/66）。真机/真人/生产等价演练证据
+> 在 ZC-12 人工门（H2/H3）完成前不存在，本条目不声称 Release。
+
+### Added
+
+**imboy（后端 / Backend）**
+- W2 Project Workspace schema（迁移 `00000081_project_w2_foundation`，成对含 down）：`project_member`（复合 PK，重复成员只一行）、`project_milestone`（planned→reached 单向，`reached_at` CHECK 同步）、`project_channel_rel`（同 Workspace 复合 FK 强制，personal 频道不可关联）、`project.links` jsonb（形状触发器强制 `[{name,url}]`）
+- Project Member ⊆ Workspace Member 双向 fail-closed：写入端/移除端可延迟约束触发器 + 复合 FK；W0 存量回填（Owner 自动入项目，34/34 无孤儿）
+- `project_event` 事件契约扩 9 个 W2 值（member_invited/member_removed/member_owner_transferred/milestone_created/milestone_updated/milestone_reached/channel_linked/channel_unlinked/links_updated）
+- 19 条 W2 REST 路由：成员管理（list/invite/remove/transfer_owner，邀请移除幂等）、里程碑（create/list/update/reach）、Channel 关联（link/unlink 幂等）、四类有界聚合（Pinned 排公告 / Resources / Activity 无正文 / Related Posts 有界摘要，SQL 条数固定无 N+1）
+- Admin 治理只读面 4 端点（`/api/adm/project/{members,milestones,channels,aggregations}`，workspaces:read ACL fail-closed）
+- Project 创建事务内 Owner 自动入项目（幂等）
+
+**imboyapp（客户端 / Flutter）**
+- W2 项目协作页：成员管理 / 里程碑 / 频道关联 / 四聚合洞察（Tab），403 明确无权限态、Guest 只读、写操作防抖、分页复位；EntityId TSID 安全解析；中英 i18n
+
+**imboy-admin-frontend（管理后台 / Admin）**
+- ProjectDetailPage W2 治理 Tabs：成员/里程碑/频道/四聚合只读面板（403 fail-closed、服务端分页、筛选复位 page=1）
+
+### Fixed
+
+**imboy（后端 / Backend，ZC-09 独立审查后修复）**
+- 三个 meck 测试套件空转判绿改造为规范形态（67 用例恢复真实断言执行）
+- Milestone reach 并发竞态：UPDATE 加 `status='planned'` 守卫，并发下恰好一次事件
+- 成员 invite/remove 事务内 actor 权限复检（对齐 transfer 标准）
+- Channel Owner 读分支叠加 active workspace membership 校验（fail-closed 403）
+- Admin 里程碑分页 total 改独立 COUNT
+
+### Changed
+
+- `.contract/api_contract.json` 再生（endpoints=630）；imboyapp `lib/config/error_code.dart` 同步再生（无新增错误码，常量排序归一）
+- `w0_schema_contract_tests` Gate 换档：`project_member`/`project_milestone`/`project_channel_rel`/`project.links` 从 defer 清单移入 now（多态参与表仍禁止）
+- 版本：imboy `1.0.0-alpha.70`、imboyapp `1.0.0-alpha.16+6`、imboyadmin `1.0.0-alpha.16`
+
 ## [Unreleased — 1.0.0-alpha.46 公测线]
 
 ### Changed
