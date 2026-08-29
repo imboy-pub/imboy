@@ -382,3 +382,13 @@ eqwalize-all: ## 全量检查（CI 用；解析输出判定，退出码不可信
 # 历史文档/README 大量引用 make compile，加别名使其直接可用。
 .PHONY: compile
 compile: app
+
+# ==================== Dialyzer 递减基线门（CI-00） ====================
+# make dialyze-check：全量 Dialyzer 分析（dialyze 语义下存量告警 exit 2，此处
+# 吞掉退出码）+ scripts/check_dialyzer_baseline.sh 对照 dialyzer.baseline 裁决：
+# 基线外新增 1 条告警即红；存量减少不红（提示可人工收紧基线）。棘轮只准减不准增。
+# 产物 dialyze-last.log 供基线脚本解析与 CI 摘要。
+.PHONY: dialyze-check
+dialyze-check:
+	@$(MAKE) dialyze DIALYZER_OPTS="$(DIALYZER_OPTS)" > dialyze-last.log 2>&1 || true
+	@bash scripts/check_dialyzer_baseline.sh dialyze-last.log
