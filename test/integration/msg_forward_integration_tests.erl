@@ -17,25 +17,20 @@ msg_forward_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
-            {foreach,
-             fun setup/0,
-             fun cleanup/1,
-             [
-              {"单聊消息转发到单聊", fun test_c2c_to_c2c_forward/0},
-              {"单聊消息转发到群聊", fun test_c2c_to_c2g_forward/0},
-              {"群聊消息转发到单聊", fun test_c2g_to_c2c_forward/0},
-              {"群聊消息转发到群聊", fun test_c2g_to_c2g_forward/0},
-              {"批量转发消息", fun test_batch_forward/0},
-              {"转发记录溯源", fun test_forward_trace/0},
-              {"非好友转发失败", fun test_forward_to_non_friend/0},
-              {"非群成员转发失败", fun test_forward_to_non_group_member/0},
-              {"转发不存在消息失败", fun test_forward_nonexistent_message/0},
-              {"批量转发数量限制", fun test_batch_forward_limit/0}
-             ]
-            };
+            {foreach, fun setup/0, fun cleanup/1, [
+                {"单聊消息转发到单聊", fun test_c2c_to_c2c_forward/0},
+                {"单聊消息转发到群聊", fun test_c2c_to_c2g_forward/0},
+                {"群聊消息转发到单聊", fun test_c2g_to_c2c_forward/0},
+                {"群聊消息转发到群聊", fun test_c2g_to_c2g_forward/0},
+                {"批量转发消息", fun test_batch_forward/0},
+                {"转发记录溯源", fun test_forward_trace/0},
+                {"非好友转发失败", fun test_forward_to_non_friend/0},
+                {"非群成员转发失败", fun test_forward_to_non_group_member/0},
+                {"转发不存在消息失败", fun test_forward_nonexistent_message/0},
+                {"批量转发数量限制", fun test_batch_forward_limit/0}
+            ]};
         {error, _Reason} ->
-            {"Database not available",
-             fun() -> {skip, "Database not available"} end}
+            {"Database not available", fun() -> {skip, "Database not available"} end}
     end.
 
 setup() ->
@@ -167,17 +162,20 @@ test_batch_forward() ->
     User3 = maps:get(user3, Context),
 
     % 1. 发送多条消息
-    MsgIds = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "批量转发消息"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
-        MsgId
-    end, lists:seq(1, 5)),
+    MsgIds = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "批量转发消息"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
+            ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
+            MsgId
+        end,
+        lists:seq(1, 5)
+    ),
     ok = wait_for_source_messages(MsgIds),
 
     % 2. 批量转发
@@ -286,17 +284,20 @@ test_batch_forward_limit() ->
     User3 = maps:get(user3, Context),
 
     % 1. 创建超过限制的消息数量（假设限制是10条）
-    MsgIds = lists:map(fun(N) ->
-        MsgId = integer_to_binary(elib_tsid:generate()),
-        MsgData = #{
-            <<"payload">> => <<N/integer, "超限转发消息"/utf8>>,
-            <<"msg_type">> => <<"text">>,
-            <<"action">> => <<"send">>,
-            <<"created_at">> => elib_dt:millisecond()
-        },
-        ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
-        MsgId
-    end, lists:seq(1, 15)),
+    MsgIds = lists:map(
+        fun(N) ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            MsgData = #{
+                <<"payload">> => <<N/integer, "超限转发消息"/utf8>>,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<"send">>,
+                <<"created_at">> => elib_dt:millisecond()
+            },
+            ok = msg_c2c_logic:c2c(MsgId, User1, MsgData#{<<"to">> => integer_to_binary(User2)}),
+            MsgId
+        end,
+        lists:seq(1, 15)
+    ),
 
     % 2. 尝试批量转发超过限制的消息
     Result = msg_forward_logic:forward(MsgIds, User1, User3, <<"c2c">>),
@@ -346,12 +347,14 @@ source_message_ready(MsgId) ->
 find_forward_record(OriginalMsgId, ForwardMsgId) ->
     case msg_forward_repo:find_by_original_msg_id(OriginalMsgId) of
         {ok, Records} ->
-            case lists:filter(
-                fun(Record) ->
-                    maps:get(<<"forward_msg_id">>, Record, undefined) =:= ForwardMsgId
-                end,
-                Records
-            ) of
+            case
+                lists:filter(
+                    fun(Record) ->
+                        maps:get(<<"forward_msg_id">>, Record, undefined) =:= ForwardMsgId
+                    end,
+                    Records
+                )
+            of
                 [Record | _] -> {ok, Record};
                 [] -> {error, not_found}
             end;
@@ -361,12 +364,14 @@ find_forward_record(OriginalMsgId, ForwardMsgId) ->
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
+    %% account/email 唯一索引（23505）
+    Suffix = integer_to_binary(Uid),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [Uid rem 1000000000])),
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
@@ -376,20 +381,24 @@ create_test_user(Nickname) ->
 
 ensure_friends(User1, User2) ->
     NowTs = elib_dt:now(),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User1, User2),
-                                  User1,
-                                  User2,
-                                  <<>>,
-                                  #{<<"is_from">> => 1, <<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
-    ok = friend_ds:confirm_friend(friend_ds:is_friend(User2, User1),
-                                  User2,
-                                  User1,
-                                  <<>>,
-                                  #{<<"source">> => <<"test">>},
-                                  <<>>,
-                                  NowTs),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User1, User2),
+        User1,
+        User2,
+        <<>>,
+        #{<<"is_from">> => 1, <<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
+    ok = friend_ds:confirm_friend(
+        friend_ds:is_friend(User2, User1),
+        User2,
+        User1,
+        <<>>,
+        #{<<"source">> => <<"test">>},
+        <<>>,
+        NowTs
+    ),
     ok = friend_ds:invalidate_cache(User1, User2),
     imboy_cache:flush({check_relationship3, User1, User2}),
     imboy_cache:flush({check_relationship3, User2, User1}),

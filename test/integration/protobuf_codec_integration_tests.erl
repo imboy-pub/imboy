@@ -21,23 +21,22 @@
 %% ===================================================================
 
 protobuf_codec_integration_test_() ->
-    {setup,
-     fun setup/0,
-     fun cleanup/1,
-     fun
-         ({skip, Reason}) ->
-             {skip, Reason};
-         (_State) ->
-             all_tests()
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun
+        ({skip, Reason}) ->
+            {skip, Reason};
+        (_State) ->
+            all_tests()
+    end}.
 
 setup() ->
     %% 尝试启动应用；如果应用已启动（already_started）也视为成功。
     %% 数据库连接失败不应阻止纯编解码测试，但迁移 DDL 报错会导致
     %% 应用启动崩溃，此时跳过全部测试。
     case eunit_runner:eunit_setup() of
-        {app_started, _} -> started;
-        {app_already_started, _} -> started;
+        {app_started, _} ->
+            started;
+        {app_already_started, _} ->
+            started;
         {app_not_started, test_continues} ->
             %% 应用启动失败（通常是数据库/迁移问题），检查核心模块是否可用
             case code:which(imboy_codec) of
@@ -54,21 +53,21 @@ cleanup(_State) ->
 
 all_tests() ->
     [
-     {"C2C message roundtrip", fun c2c_message_roundtrip/0},
-     {"S2C message roundtrip", fun s2c_message_roundtrip/0},
-     {"C2G message roundtrip", fun c2g_message_roundtrip/0},
-     {"SERVER_ACK roundtrip", fun server_ack_roundtrip/0},
-     {"CLIENT_ACK_CONFIRM roundtrip", fun client_ack_confirm_roundtrip/0},
-     {"PayloadText roundtrip", fun payload_text_roundtrip/0},
-     {"PayloadClientAck roundtrip", fun payload_client_ack_roundtrip/0},
-     {"PayloadClientAckConfirm roundtrip", fun payload_client_ack_confirm_roundtrip/0},
-     {"JSON/Protobuf equivalence", fun json_protobuf_equivalence/0},
-     {"WS frame JSON is text", fun ws_frame_json_is_text/0},
-     {"WS frame Protobuf is binary", fun ws_frame_protobuf_is_binary/0},
-     {"Protocol atom mapping", fun protocol_atom_mapping/0},
-     {"Performance comparison", fun performance_comparison/0},
-     {"Empty payload roundtrip", fun empty_payload_roundtrip/0},
-     {"Large ID roundtrip", fun large_id_roundtrip/0}
+        {"C2C message roundtrip", fun c2c_message_roundtrip/0},
+        {"S2C message roundtrip", fun s2c_message_roundtrip/0},
+        {"C2G message roundtrip", fun c2g_message_roundtrip/0},
+        {"SERVER_ACK roundtrip", fun server_ack_roundtrip/0},
+        {"CLIENT_ACK_CONFIRM roundtrip", fun client_ack_confirm_roundtrip/0},
+        {"PayloadText roundtrip", fun payload_text_roundtrip/0},
+        {"PayloadClientAck roundtrip", fun payload_client_ack_roundtrip/0},
+        {"PayloadClientAckConfirm roundtrip", fun payload_client_ack_confirm_roundtrip/0},
+        {"JSON/Protobuf equivalence", fun json_protobuf_equivalence/0},
+        {"WS frame JSON is text", fun ws_frame_json_is_text/0},
+        {"WS frame Protobuf is binary", fun ws_frame_protobuf_is_binary/0},
+        {"Protocol atom mapping", fun protocol_atom_mapping/0},
+        {"Performance comparison", fun performance_comparison/0},
+        {"Empty payload roundtrip", fun empty_payload_roundtrip/0},
+        {"Large ID roundtrip", fun large_id_roundtrip/0}
     ].
 
 %% ===================================================================
@@ -269,12 +268,18 @@ performance_comparison() ->
     PbSize = byte_size(PbBin),
 
     io:format("~n=== Protobuf vs JSON Performance (N=~p) ===~n", [N]),
-    io:format("Encode: JSON ~.1f us/op | PB ~.1f us/op | Ratio ~.2fx~n",
-              [JsonEncUs/N, PbEncUs/N, PbEncUs/JsonEncUs]),
-    io:format("Decode: JSON ~.1f us/op | PB ~.1f us/op | Ratio ~.2fx~n",
-              [JsonDecUs/N, PbDecUs/N, PbDecUs/JsonDecUs]),
-    io:format("Size:   JSON ~p bytes | PB ~p bytes | Saving ~.1f%~n",
-              [JsonSize, PbSize, (1 - PbSize/JsonSize) * 100]),
+    io:format(
+        "Encode: JSON ~.1f us/op | PB ~.1f us/op | Ratio ~.2fx~n",
+        [JsonEncUs / N, PbEncUs / N, PbEncUs / JsonEncUs]
+    ),
+    io:format(
+        "Decode: JSON ~.1f us/op | PB ~.1f us/op | Ratio ~.2fx~n",
+        [JsonDecUs / N, PbDecUs / N, PbDecUs / JsonDecUs]
+    ),
+    io:format(
+        "Size:   JSON ~p bytes | PB ~p bytes | Saving ~.1f%~n",
+        [JsonSize, PbSize, (1 - PbSize / JsonSize) * 100]
+    ),
 
     %% Protobuf 大小应明显小于 JSON
     ?assert(PbSize < JsonSize),

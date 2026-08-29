@@ -40,12 +40,14 @@ cleanup(_Ctx) -> ok.
 
 create_user(Tag) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
+    %% account/email 唯一索引（23505）
+    Suffix = integer_to_binary(Uid),
     ok = user_repo:create(#{
         <<"uid">> => Uid,
         <<"nickname">> => Tag,
         <<"account">> => <<Tag/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [Uid rem 1000000000])),
         <<"email">> => <<"p0t_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()

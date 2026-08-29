@@ -297,12 +297,14 @@ wait_for_final_row(MsgId, AttemptsLeft) ->
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
+    %% account/email 唯一索引（23505）
+    Suffix = integer_to_binary(Uid),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [Uid rem 1000000000])),
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()

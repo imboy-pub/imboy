@@ -9,8 +9,8 @@
 runtime_registers_active_agents_in_syn_test_() ->
     {setup,
         fun() ->
-            meck:new(ai_agent_repo, [passthrough, non_strict]),
-            meck:new(imboy_syn, [passthrough, non_strict]),
+            safe_meck(ai_agent_repo),
+            safe_meck(imboy_syn),
             meck:expect(ai_agent_repo, active_ids, 0, {ok, [101, 202]}),
             meck:expect(imboy_syn, join, 4, ok),
             {ok, Pid} = ai_agent_runtime:start_link(),
@@ -41,9 +41,9 @@ runtime_registers_active_agents_in_syn_test_() ->
 runtime_survives_db_error_test_() ->
     {setup,
         fun() ->
-            meck:new(ai_agent_repo, [passthrough, non_strict]),
-            meck:new(imboy_syn, [passthrough, non_strict]),
-            meck:new(elib_log, [passthrough, non_strict]),
+            safe_meck(ai_agent_repo),
+            safe_meck(imboy_syn),
+            safe_meck(elib_log),
             meck:expect(ai_agent_repo, active_ids, 0, {error, db_down}),
             meck:expect(imboy_syn, join, 4, ok),
             meck:expect(elib_log, internal_log, 5, ok),
@@ -65,3 +65,14 @@ runtime_survives_db_error_test_() ->
                     end)}
             ]
         end}.
+
+%% @doc 兄弟套件/先前崩溃遗留的 meck_proc 未卸载时（already_started），
+%% 先卸载再重新 meck，避免 setup 必红（CI-00 run11）。
+safe_meck(Mod) ->
+    case meck:new(Mod, [passthrough, non_strict]) of
+        ok ->
+            ok;
+        {error, {already_started, _}} ->
+            catch meck:unload(Mod),
+            meck:new(Mod, [passthrough, non_strict])
+    end.

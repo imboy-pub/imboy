@@ -17,24 +17,19 @@ group_member_role_test_() ->
     application:set_env(imboy, env, test),
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
-            {foreach,
-             fun setup/0,
-             fun cleanup/1,
-             [
-              {"设置管理员", fun test_set_admin/0},
-              {"移除管理员", fun test_remove_admin/0},
-              {"转让群主", fun test_transfer_owner/0},
-              {"移除普通成员", fun test_remove_member/0},
-              {"禁言成员", fun test_mute_member/0},
-              {"取消禁言", fun test_unmute_member/0},
-              {"管理员权限验证", fun test_admin_permission/0},
-              {"普通成员权限限制", fun test_member_permission/0},
-              {"批量设置管理员", fun test_batch_set_admin/0}
-             ]
-            };
+            {foreach, fun setup/0, fun cleanup/1, [
+                {"设置管理员", fun test_set_admin/0},
+                {"移除管理员", fun test_remove_admin/0},
+                {"转让群主", fun test_transfer_owner/0},
+                {"移除普通成员", fun test_remove_member/0},
+                {"禁言成员", fun test_mute_member/0},
+                {"取消禁言", fun test_unmute_member/0},
+                {"管理员权限验证", fun test_admin_permission/0},
+                {"普通成员权限限制", fun test_member_permission/0},
+                {"批量设置管理员", fun test_batch_set_admin/0}
+            ]};
         {error, _Reason} ->
-            {"Database not available",
-             fun() -> {skip, "Database not available"} end}
+            {"Database not available", fun() -> {skip, "Database not available"} end}
     end.
 
 setup() ->
@@ -191,11 +186,18 @@ test_batch_set_admin() ->
     ok = group_member_logic:update_role(Owner, Group, Admin2, ?ROLE_ADMIN),
 
     {ok, Members} = group_member_repo:list_by_gid(Group, <<"user_id, role">>),
-    AdminMembers = [Member || Member <- Members,
-                              lists:member(maps:get(<<"user_id">>, Member, 0),
-                                           [Owner, Admin1, Admin2]),
-                              lists:member(maps:get(<<"role">>, Member, ?ROLE_MEMBER),
-                                           [?ROLE_ADMIN, ?ROLE_OWNER, ?ROLE_VICE_OWNER])],
+    AdminMembers = [
+        Member
+     || Member <- Members,
+        lists:member(
+            maps:get(<<"user_id">>, Member, 0),
+            [Owner, Admin1, Admin2]
+        ),
+        lists:member(
+            maps:get(<<"role">>, Member, ?ROLE_MEMBER),
+            [?ROLE_ADMIN, ?ROLE_OWNER, ?ROLE_VICE_OWNER]
+        )
+    ],
     ?assertEqual(3, length(AdminMembers)),
 
     ok.
@@ -209,12 +211,14 @@ get_context() ->
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
+    %% account/email 唯一索引（23505）
+    Suffix = integer_to_binary(Uid),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [Uid rem 1000000000])),
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()

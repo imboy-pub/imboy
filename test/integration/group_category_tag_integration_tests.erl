@@ -163,7 +163,7 @@ test_create_tag() ->
     Group1 = maps:get(group1, Context),
 
     % 1. 创建群标签
-    TagName = <<"技术交流_", RunSuffix/binary>>,
+    TagName = <<"技术交流_"/utf8, RunSuffix/binary>>,
     {ok, TagId} = group_tag_logic:add(Group1, User1, TagName),
 
     % 2. 验证返回结果
@@ -187,9 +187,9 @@ test_add_tag_to_group() ->
     RunSuffix = maps:get(run_suffix, Context),
 
     % 1. 创建标签
-    Tag1 = <<"标签1_", RunSuffix/binary>>,
+    Tag1 = <<"标签1_"/utf8, RunSuffix/binary>>,
     {ok, _TagId1} = group_tag_logic:add(Group1, User1, Tag1),
-    Tag2 = <<"标签2_", RunSuffix/binary>>,
+    Tag2 = <<"标签2_"/utf8, RunSuffix/binary>>,
     {ok, _TagId2} = group_tag_logic:add(Group1, User1, Tag2),
 
     % 2. 为群添加标签
@@ -211,7 +211,7 @@ test_filter_groups_by_tag() ->
     RunSuffix = maps:get(run_suffix, Context),
 
     % 1. 创建标签
-    TagName = <<"公共标签_", RunSuffix/binary>>,
+    TagName = <<"公共标签_"/utf8, RunSuffix/binary>>,
     {ok, _} = group_tag_logic:add(Group1, User1, TagName),
     {ok, _} = group_tag_logic:add(Group2, User1, TagName),
 
@@ -232,6 +232,7 @@ test_filter_groups_by_tag() ->
 test_batch_operations() ->
     Context = get_context(),
     User1 = maps:get(user1, Context),
+    RunSuffix = maps:get(run_suffix, Context),
     Group1 = maps:get(group1, Context),
     Group2 = maps:get(group2, Context),
     Group3 = maps:get(group3, Context),
@@ -256,7 +257,7 @@ test_batch_operations() ->
     ?assertEqual(lists:sort([Group1, Group2, Group3]), GroupIds),
 
     % 4. 创建标签
-    TagName = <<"批量标签"/utf8>>,
+    TagName = <<"批量标签_"/utf8, RunSuffix/binary>>,
     lists:foreach(
         fun(GroupId) ->
             {ok, _} = group_tag_logic:add(GroupId, User1, TagName)
@@ -295,12 +296,14 @@ custom_category_ids(Categories) ->
 
 create_test_user(Nickname) ->
     Uid = elib_tsid:generate(),
-    Suffix = integer_to_binary(erlang:phash2(Uid, 1000000000)),
+    %% 后缀用 uid 本身：phash2(Uid, 1e9) 在共享库多轮累计下会撞
+    %% account/email 唯一索引（23505）
+    Suffix = integer_to_binary(Uid),
     User = #{
         <<"uid">> => Uid,
         <<"nickname">> => Nickname,
         <<"account">> => <<Nickname/binary, "_", Suffix/binary>>,
-        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [erlang:phash2(Uid, 1000000000)])),
+        <<"mobile">> => list_to_binary(io_lib:format("13~9..0B", [Uid rem 1000000000])),
         <<"email">> => <<"test_", Suffix/binary, "@example.com">>,
         <<"password">> => <<"password123">>,
         <<"created_at">> => elib_dt:millisecond()
