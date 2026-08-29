@@ -201,6 +201,8 @@ init_pin_message_success_test_() ->
                 %% P0 收口后消息更新走 write_tx（归档守卫同事务）
                 {workspace_guard, [
                     {'ensure_writable_tx', 2, fun(fake_conn, {channel_message, 22}) -> ok end},
+                    %% main M-1/M-2 后 handler 走 write_tx：mock 放行并以 fake_conn 执行写函数
+                    {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end},
                     {'abort_on_error', 1, fun(ok) -> ok end}
                 ]},
                 {elib_pg, [
@@ -622,6 +624,8 @@ init_update_admin_role_success_test_() ->
                 %% P0 收口后 admin 写走 write_tx（归档守卫同事务）
                 {workspace_guard, [
                     {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                    %% main M-1/M-2 后 handler 走 write_tx：mock 放行并以 fake_conn 执行写函数
+                    {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end},
                     {'abort_on_error', 1, fun(ok) -> ok end}
                 ]},
                 {elib_pg, [
@@ -690,6 +694,8 @@ init_update_admin_role_repo_failure_no_audit_test_() ->
                 %% P0 收口后 admin 写走 write_tx（归档守卫同事务）
                 {workspace_guard, [
                     {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                    %% main M-1/M-2 后 handler 走 write_tx：mock 放行并以 fake_conn 执行写函数
+                    {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end},
                     {'abort_on_error', 1, fun(ok) -> ok end}
                 ]},
                 {elib_pg, [
@@ -745,6 +751,8 @@ init_remove_admin_success_test_() ->
                 %% P0 收口后 admin 写走 write_tx（归档守卫同事务）
                 {workspace_guard, [
                     {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
+                    %% main M-1/M-2 后 handler 走 write_tx：mock 放行并以 fake_conn 执行写函数
+                    {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end},
                     {'abort_on_error', 1, fun(ok) -> ok end}
                 ]},
                 {elib_pg, [
@@ -1004,6 +1012,8 @@ init_delete_message_success_test_() ->
                 ]},
                 {workspace_guard, [
                     {'ensure_writable_tx', 2, fun(fake_conn, {channel_message, 22}) -> ok end},
+                    %% main M-1/M-2 后 handler 走 write_tx：mock 放行并以 fake_conn 执行写函数
+                    {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end},
                     {'abort_on_error', 1, fun(ok) -> ok end}
                 ]},
                 {elib_pg, [
@@ -1063,6 +1073,8 @@ init_delete_message_repo_failure_no_audit_test_() ->
                 ]},
                 {workspace_guard, [
                     {'ensure_writable_tx', 2, fun(fake_conn, {channel_message, 22}) -> ok end},
+                    %% main M-1/M-2 后 handler 走 write_tx：mock 放行并以 fake_conn 执行写函数
+                    {'write_tx', 2, fun(_Target, WriteFun) -> WriteFun(fake_conn) end},
                     {'abort_on_error', 1, fun(ok) -> ok end}
                 ]},
                 {elib_pg, [
