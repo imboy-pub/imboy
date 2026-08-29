@@ -282,3 +282,4 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
   - imboyadmin 2 笔：`e26eb54` feat(admin) 治理面（含 .gitignore evidence 忽略）→ `8345107` chore(release) 版本
   - **未 push、未打 tag**——push 批次（含三仓历史 165/100/13+ 笔领先提交随行）仍待用户指定远端后单独授权。
 - **追加（同日终）**：本地 tag 已打（**未推送**）：imboy `v1.0.0-alpha.70`、imboyapp/imboyadmin `v1.0.0-alpha.16`（`git tag -d` 可随时撤销）。真机二次探测仍不在线。**剩余唯一未完成项 = push（需用户指定远端）与 H2/H3 人工验收资源**。总控所有可独立执行的工作至此全部完成。
+- **追加（08-30）**：iOS 模拟器冒烟尝试 **BLOCKED（禁区）**：iPhone 17 (iOS 26.5) 模拟器处于 Booted，simulator 变体构建成功但产物为 x86_64——`ios/Podfile:104` 与 `ios/Runner.xcodeproj/project.pbxproj:585` 的 `EXCLUDED_ARCHS[sdk=iphonesimulator*]=arm64`（Intel 遗留）把 arm64 排除出模拟器构建，Apple Silicon 模拟器无法安装。修复须改 `imboyapp/ios/*`——计划禁区（ZC-06 停止条件），**不修改**，交用户决策（Apple Silicon 上做 iOS 模拟器开发的前置障碍）。Android 真机二次探测仍不在线。终态不变：BLOCKED(H2,H3,H4)。
