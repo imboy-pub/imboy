@@ -66,8 +66,8 @@ find_by_id(WsId, Column) ->
     end.
 
 %% @doc 幂等语义键查询：同一 Owner + 同名 active 工作区
-%% 镜像 group_ds:find_by_creator_and_sum/2 的"先查后插于同事务"幂等模式
-%% （workspace 表无 request_id 列，见 workspace_ds:create_template/3 注释）。
+%% "先查后插于同事务"幂等模式（workspace 表无 request_id 列，
+%% 见 workspace_ds:create_template/3 注释）。
 -spec find_by_owner_and_name(integer(), binary(), binary()) -> map().
 find_by_owner_and_name(OwnerUid, Name, Conn) ->
     Tb = tablename(),

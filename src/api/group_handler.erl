@@ -95,7 +95,7 @@ detail_allowed(Req0, Gid) ->
         {ok, Gid2} ->
             % P1-7b: 显式安全列（排除 chat_aes_key）
             GroupCols =
-                <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,updated_at,created_at">>,
+                <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,updated_at,created_at">>,
             case group_logic:find_by_id(Gid2, GroupCols) of
                 {error, _Reason} ->
                     elib_response:error(Req0, "群组不存在");
@@ -177,7 +177,7 @@ face2face_save(Req0, State) ->
                 {ok, MemberList} ->
                     % P1-7b: 显式安全列（排除 chat_aes_key）
                     GroupCols =
-                        <<"id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>,
+                        <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,updated_at,created_at">>,
                     case group_logic:find_by_id(Gid2, GroupCols) of
                         {error, Reason2} ->
                             elib_response:error(Req0, Reason2);

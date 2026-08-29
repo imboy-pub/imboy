@@ -71,6 +71,10 @@ list_member_with_empty_filter_test_() ->
 join_group_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
             ]},
@@ -139,6 +143,10 @@ join_group_with_zero_max_members_returns_error_test_() ->
 join_group_within_limit_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
             ]},
@@ -171,6 +179,10 @@ join_group_within_limit_test_() ->
 join_group_with_undefined_max_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
             ]},
@@ -207,6 +219,10 @@ join_group_with_undefined_max_test_() ->
 leave_success_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'leave', 4, fun(_Conn, _Uid, _Gid, _CurrentUid) -> {ok, 123456, #{}} end},
                 {'get_member_info', 3, fun(1, 999, <<"role">>) -> {ok, #{<<"role">> => 2}} end}
@@ -362,6 +378,10 @@ validate_limit_with_undefined_max_test_() ->
 join_group_with_empty_data_map_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'join_group', 5, fun(_Conn, _Mode, _Uid, _Gid, _Data) -> {ok, 123456} end}
             ]},
@@ -672,6 +692,10 @@ update_role_admin_cannot_demote_owner_test_() ->
 update_role_to_vice_owner_test_() ->
     ?WITH_MECKS(
         [
+            %% T7 归档写守卫桩：with_tx 内 ensure_writable_tx 直通（守卫行为由 workspace 域测试覆盖）
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_Conn, _Target) -> ok end}
+            ]},
             {group_member_ds, [
                 {'get_member_info', 3, fun(_Gid, Uid, _Column) ->
                     case Uid of

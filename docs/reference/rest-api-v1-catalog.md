@@ -271,7 +271,7 @@
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
-| POST | /api/v1/group_member/join | JWT | group_member_handler#join | 邀请成员加入 / Invite | `gid`(TSID),`member_uids`(list[TSID])*,`join_mode` | `{gid,user_id_sum,member_list}` |
+| POST | /api/v1/group_member/join | JWT | group_member_handler#join | 邀请成员加入 / Invite | `gid`(TSID),`member_uids`(list[TSID])*,`join_mode` | `{gid,member_list}` |
 | POST | /api/v1/group_member/leave | JWT | group_member_handler#leave | 离群/移除成员 / Leave or remove | `gid`(TSID),`member_uids`(list[TSID]) | `{gid}` |
 | GET | /api/v1/group_member/page | JWT | group_member_handler#page | 群成员分页 / Paged members | `gid`(TSID),`page`,`size` | `total`,`page`,`size`,`list`（成员含 `id`,`role`,`alias`,`mute_until` 等） |
 | POST | /api/v1/group_member/alias | JWT | group_member_handler#alias | 设置群内昵称 / Set alias | `gid`(TSID),`alias`,`description` | `{gid}` |

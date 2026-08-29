@@ -122,26 +122,21 @@ add(_, Uid, Type, MemberUids) ->
     MemberUids3 = [ec_cnv:to_integer(Id) || Id <- MemberUids2, is_binary(Id)],
     % 【防御性编程】确保创建者不会被重复添加
     MemberUids4 = lists:usort([U || U <- MemberUids3, U =/= Uid]),
-    Sum = lists:sum(lists:usort([Uid | MemberUids4])),
-    % 使用 DS 层接口检查是否已存在相同群组
-    GidOld = group_ds:find_by_creator_and_sum(Uid, Sum),
-    case GidOld of
-        0 ->
-            % invite_[uid]_[nickname]
-            UserTitle = user_ds:title(Uid),
-            JoinMode = <<"invite_", (ec_cnv:to_binary(Uid))/binary, "_", UserTitle/binary>>,
-            elib_pg:with_tx(fun(Conn) ->
-                Gid = group_ds:create_group(Conn, 0, Uid, Now, Type, 1),
-                %% 【原子性修复】批量添加成员并检查结果
-                _ = [
-                    group_member_logic:join_group(Conn, JoinMode, Uid2, Gid, #{})
-                 || Uid2 <- MemberUids4
-                ],
-                {ok, Gid}
-            end);
-        GidOld when GidOld > 0 ->
-            {ok, GidOld}
-    end.
+    % P0 终局（docs/planning/group-user-id-sum-p0-decision-2026-08-29.md）：
+    % 同一成员集允许创建多个群（微信/Telegram 同款），不做创建幂等去重；
+    % user_id_sum 签名链已随迁移 00000079 整体退役。
+    % invite_[uid]_[nickname]
+    UserTitle = user_ds:title(Uid),
+    JoinMode = <<"invite_", (ec_cnv:to_binary(Uid))/binary, "_", UserTitle/binary>>,
+    elib_pg:with_tx(fun(Conn) ->
+        Gid = group_ds:create_group(Conn, 0, Uid, Now, Type, 1),
+        %% 【原子性修复】批量添加成员并检查结果
+        _ = [
+            group_member_logic:join_group(Conn, JoinMode, Uid2, Gid, #{})
+         || Uid2 <- MemberUids4
+        ],
+        {ok, Gid}
+    end).
 
 %% @doc 解散群组
 %% 解散指定群组，通知所有成员并清理相关数据
@@ -400,7 +395,6 @@ face2face_notify_payload(Uid, Gid) ->
     User = user_ds:find_by_id(Uid, <<"account,avatar,nickname">>),
     Payload = #{
         <<"gid">> => Gid,
-        <<"user_id_sum">> => lists:sum(ToUidLi2),
         <<"nickname">> => maps:get(<<"nickname">>, User, <<>>),
         <<"avatar">> => maps:get(<<"avatar">>, User, <<>>),
         <<"account">> => maps:get(<<"account">>, User, <<>>)
@@ -626,8 +620,8 @@ update_remark(Gid, Uid, Remark) ->
 %% Workspace 的 Owner/Member；Guest 403；非成员 403）。
 %% ScopeCtx：
 %%   {personal, 0}     → 完全走既有 add/4 路径（零行为变化）
-%%   {workspace, WsId} → 校验角色后带 scope 单事务创建（不走
-%%                        find_by_creator_and_sum 语义键幂等——工作区群允许同名）
+%%   {workspace, WsId} → 校验角色后带 scope 单事务创建（个人建群亦已无
+%%                        语义键幂等——同成员集允许多群，P0 终局见决策文档）
 %%   {OtherScope, _}   → 400
 %% 初始成员入群时由 group_member_ds:join_group/5 在同事务校验
 %% active workspace_member（Group Member ⊆ Workspace Member 应用层双保险，
@@ -720,7 +714,7 @@ edit_checked(Uid, Gid, Data) ->
 -spec list_workspace_groups(integer(), integer()) -> {ok, [map()]} | {error, binary()}.
 list_workspace_groups(WorkspaceId, Limit) ->
     Sql =
-        <<"SELECT id,type,join_limit,content_limit,user_id_sum,owner_uid,creator_uid,",
+        <<"SELECT id,type,join_limit,content_limit,owner_uid,creator_uid,",
             "member_max,member_count,introduction,avatar,title,status,scope,workspace_id,",
             "updated_at,created_at FROM \"group\"",
             " WHERE workspace_id = $1 AND scope = 'workspace' AND status = 1",

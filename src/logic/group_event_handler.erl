@@ -61,15 +61,13 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal — 通知重建（与 group_member_logic 现状语义等价）
 %% ===================================================================
 
-%% @doc 群成员加入通知（nosave）。user_id_sum 由 group_ds 查（事件不携带）。
+%% @doc 群成员加入通知（nosave）。
 -spec notify_member_join(integer(), integer()) -> ok.
 notify_member_join(Gid, Uid) ->
     ToUidLi = group_ds:member_uids(Gid),
     User = user_ds:find_by_id(Uid, <<"account,avatar,nickname">>),
-    Sum = group_ds:get_user_id_sum(Gid),
     Payload = #{
         <<"gid">> => Gid,
-        <<"user_id_sum">> => Sum,
         <<"nickname">> => maps:get(<<"nickname">>, User, <<>>),
         <<"avatar">> => maps:get(<<"avatar">>, User, <<>>),
         <<"account">> => maps:get(<<"account">>, User, <<>>)
@@ -81,10 +79,8 @@ notify_member_join(Gid, Uid) ->
 -spec notify_member_leave(integer(), integer()) -> ok.
 notify_member_leave(Gid, Uid) ->
     ToUidLi = group_ds:member_uids(Gid),
-    Sum = group_ds:get_user_id_sum(Gid),
     Payload = #{
         <<"gid">> => Gid,
-        <<"user_id_sum">> => Sum,
         <<"leave_uid">> => Uid
     },
     _ = msg_s2c_ds:send(Uid, ToUidLi, <<"group_member_leave">>, <<>>, null, Payload, save),

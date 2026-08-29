@@ -5,13 +5,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
 
-%% member_added → group_member_join 通知（nosave），payload 含 user/sum。
+%% member_added → group_member_join 通知（nosave）。
 member_added_triggers_join_notice_test_() ->
     ?WITH_MECKS(
         [
             {group_ds, [
-                {'member_uids', 1, fun(10) -> [2, 3] end},
-                {'get_user_id_sum', 1, fun(10) -> 5 end}
+                {'member_uids', 1, fun(10) -> [2, 3] end}
             ]},
             {user_ds, [
                 {'find_by_id', 2, fun(1, _Col) ->
@@ -29,7 +28,7 @@ member_added_triggers_join_notice_test_() ->
                     ?assertEqual(<<"group_member_join">>, Action),
                     ?assertEqual(nosave, Save),
                     ?assertEqual(10, maps:get(<<"gid">>, Payload)),
-                    ?assertEqual(5, maps:get(<<"user_id_sum">>, Payload)),
+                    ?assertNot(maps:is_key(<<"user_id_sum">>, Payload)),
                     ?assertEqual(<<"Bob">>, maps:get(<<"nickname">>, Payload)),
                     ?assertEqual(<<"bob">>, maps:get(<<"account">>, Payload)),
                     ok
@@ -49,8 +48,7 @@ member_removed_triggers_leave_notice_test_() ->
     ?WITH_MECKS(
         [
             {group_ds, [
-                {'member_uids', 1, fun(10) -> [2, 3] end},
-                {'get_user_id_sum', 1, fun(10) -> 7 end}
+                {'member_uids', 1, fun(10) -> [2, 3] end}
             ]},
             {msg_s2c_ds, [
                 {'send', 7, fun(From, _To, Action, _MsgType, _E2EE, Payload, Save) ->
@@ -58,7 +56,6 @@ member_removed_triggers_leave_notice_test_() ->
                     ?assertEqual(<<"group_member_leave">>, Action),
                     ?assertEqual(save, Save),
                     ?assertEqual(1, maps:get(<<"leave_uid">>, Payload)),
-                    ?assertEqual(7, maps:get(<<"user_id_sum">>, Payload)),
                     ok
                 end}
             ]}

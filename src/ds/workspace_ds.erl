@@ -12,7 +12,6 @@
 %   2. request_id 幂等：workspace 表无 request_id 列（T3 迁移未提供），
 %      采用任务卡允许的"先查后插于同事务"：
 %        a) 语义键幂等：同 Owner + 同名 active 工作区 → 直接返回既有资源
-%           （镜像 group_ds:find_by_creator_and_sum/2 的既有幂等模式）；
 %        b) request_id 幂等：request_id 写入 branding 的内部键 "_request_id"
 %           （下划线前缀键不出现在 API 输出——branding 白名单只读
 %           name/logo/primaryColor），同 Owner + 同 _request_id 命中 → 返回既有资源。
@@ -150,7 +149,6 @@ do_create_template(Conn, OwnerUid, Name, RequestId) ->
         <<"type">> => ?DEFAULT_GROUP_TYPE,
         <<"owner_uid">> => OwnerUid,
         <<"creator_uid">> => OwnerUid,
-        <<"user_id_sum">> => OwnerUid,
         <<"scope">> => <<"workspace">>,
         <<"workspace_id">> => WsId,
         <<"created_at">> => Now,
