@@ -31,6 +31,14 @@ setup() ->
         {ok, _Driver, _Conn} -> ok;
         {error, _Reason} -> throw({skip, "Database not available"})
     end,
+    %% CI-00 加固：全量 eunit 下 imboy app 经数百次 stop/start churn 后，
+    %% imboy_cache 的 depcache ETS 表可能消亡（imboy_cache:start_link 返回
+    %% {ok, self()} 而 depcache server 是被丢弃的链接进程，生命周期错位；
+    %% ets:lookup badarg, cause=>id）。压力用例重依赖缓存路径，开跑前
+    %% 停净重启整个 app 保证 sup/cache/ets 全新。
+    _ = (catch application:stop(imboy)),
+    timer:sleep(200),
+    {ok, _} = application:ensure_all_started(imboy),
     % 创建群主
     _ = (catch elib_tsid:init(#{dc_id => 0, node_id => 0, dc_bits => 3})),
     {ok, Owner} = create_test_user(<<"group_owner">>),
