@@ -152,6 +152,10 @@ upload_file_too_large_test_() ->
 
         meck:new(group_ds, [passthrough]),
         meck:expect(group_ds, is_member, fun(_, _) -> true end),
+        %% main M-1/M-2 后守卫走 resolver.group_scope（真库查 gid=1 无行
+        %% 会 fail-closed 503）——mock 守卫入口让用例聚焦大小校验
+        meck:new(workspace_guard, [passthrough]),
+        meck:expect(workspace_guard, ensure_writable, fun(_) -> ok end),
 
         meck:new(elib_oss, [passthrough]),
         meck:expect(elib_oss, validate_file_type, fun(_) -> true end),
@@ -160,6 +164,7 @@ upload_file_too_large_test_() ->
         Result = group_file_ds:upload_file(Gid, UploaderId, FileName, FileBinary, FileType),
 
         meck:unload(elib_oss),
+        meck:unload(workspace_guard),
         meck:unload(group_ds),
 
         ?assertEqual({error, file_too_large}, Result)

@@ -452,6 +452,11 @@ row_scope(Tb, Id) ->
             case one_row(Sql, [Id2]) of
                 Row = #{<<"scope">> := Scope} ->
                     {ok, Scope, maps:get(<<"workspace_id">>, Row, undefined)};
+                %% 零行：one_row 返回 #{}（无 scope 键）→ not_found 语义；
+                %% 此前漏写该分支，行不存在时 case_clause 一路抛穿守卫的
+                %% 503 归一（合并后全量 group_file_ds ×15 实证）
+                #{} ->
+                    {error, not_found};
                 {error, _} = E ->
                     E
             end
