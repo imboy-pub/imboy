@@ -19,12 +19,14 @@
 %%% 注意：本套件断言的是 schema 形态与数据回填形态，与具体测试运行顺序无关
 %%% （WP3-WP7 的关系矩阵/scope 单测均为 mock 不落库；真库写侧集成测试自清理）。
 %%% 若此断言在干净对账库失败，说明 defer 能力落表或存量回填被破坏，即为缺口。
+%%%
+%%% ⚠️ Gate 换档记录（2026-08-29）：channel-firstclass W2 Scope Contract 经 H1 放行
+%%% （execution ledger §4），project_member / project_milestone / project_channel_rel /
+%%% project.links 从 defer 清单移入 now，其 schema 断言由 w2_schema_contract_tests 承接；
+%%% 本文件保留"仍禁止"项（多态参与表）、W0 now 项与回填形态断言。
 
 -define(DEFERRED_TABLES, [
-    <<"project_member">>,
-    <<"project_milestone">>,
-    <<"project_channel_rel">>,
-    %% 禁多态万能表/万能参与关系（计划 T13 IMPLEMENT 原文）
+    %% 禁多态万能表/万能参与关系（计划 T13 IMPLEMENT 原文，W2 仍然禁止）
     <<"project_participant">>,
     <<"resource_participant">>
 ]).
@@ -61,20 +63,9 @@ deferred_tables_absent_test_() ->
 
 %%% ===================================================================
 %%% defer 项：project 无 links 列
+%%% （Gate 换档 2026-08-29：links 已随 W2 启用，存在性断言移至
+%%%   w2_schema_contract_tests，本组断言退役）
 %%% ===================================================================
-
-project_links_column_absent_test_() ->
-    ?TEST_WITH_CONN(fun(Conn) ->
-        {ok, _, [{Cnt}]} = epgsql:equery(
-            Conn,
-            <<"SELECT count(*)::bigint FROM information_schema.columns",
-                " WHERE table_schema = 'public' AND table_name = 'project'",
-                "   AND column_name = 'links'">>,
-            []
-        ),
-        ?assertEqual(0, Cnt, "W0 Scope Contract 违约：project.links 列不应存在（Resources 聚合 defer）"),
-        ok
-    end).
 
 %%% ===================================================================
 %%% now 项：scope/workspace_id 列就位 + 默认值 + XOR CHECK
