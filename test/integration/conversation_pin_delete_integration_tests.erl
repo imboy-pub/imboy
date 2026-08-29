@@ -17,16 +17,20 @@ conversation_pin_delete_test_() ->
     case eunit_runner:eunit_try_db() of
         {ok, _Driver, _Conn} ->
             {foreach, fun setup/0, fun cleanup/1, [
-                {"置顶单聊会话", fun test_pin_c2c_conversation/0},
-                {"置顶群聊会话", fun test_pin_c2g_conversation/0},
-                {"取消置顶会话", fun test_unpin_conversation/0},
-                {"获取置顶列表", fun test_get_pinned_list/0},
-                {"删除单聊会话", fun test_delete_c2c_conversation/0},
-                {"删除群聊会话", fun test_delete_c2g_conversation/0},
-                {"恢复已删除会话", fun test_restore_deleted_conversation/0},
-                {"置顶后删除会话", fun test_pin_then_delete/0},
-                {"批量置顶操作", fun test_batch_pin/0},
-                {"会话列表排序（置顶优先）", fun test_conversation_list_with_pin/0}
+                %% 真库 + QoS 每秒重投的轮询等待型用例（实测最慢 4.3s，贴
+                %% 默认 5s 超时线，全量负载下偶发超限被无堆栈 cancel；
+                %% foreach 条目直接放 {timeout, N, fun/0}，group timeout
+                %% 不会下推到 context 内部 test）
+                {"置顶单聊会话", {timeout, 60, fun test_pin_c2c_conversation/0}},
+                {"置顶群聊会话", {timeout, 60, fun test_pin_c2g_conversation/0}},
+                {"取消置顶会话", {timeout, 60, fun test_unpin_conversation/0}},
+                {"获取置顶列表", {timeout, 60, fun test_get_pinned_list/0}},
+                {"删除单聊会话", {timeout, 60, fun test_delete_c2c_conversation/0}},
+                {"删除群聊会话", {timeout, 60, fun test_delete_c2g_conversation/0}},
+                {"恢复已删除会话", {timeout, 60, fun test_restore_deleted_conversation/0}},
+                {"置顶后删除会话", {timeout, 60, fun test_pin_then_delete/0}},
+                {"批量置顶操作", {timeout, 60, fun test_batch_pin/0}},
+                {"会话列表排序（置顶优先）", {timeout, 60, fun test_conversation_list_with_pin/0}}
             ]};
         {error, _Reason} ->
             {"Database not available", fun() -> {skip, "Database not available"} end}
