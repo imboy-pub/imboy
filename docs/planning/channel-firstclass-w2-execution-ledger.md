@@ -362,3 +362,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **H4 tag 台账（均未 push）**：imboy `v1.0.0-alpha.70`→`0e7618d5`、imboyapp `v1.0.0-alpha.16`→`122652b4`、imboyadmin `v1.0.0-alpha.16`→`8345107`（=HEAD）。push 时须与各仓 main 一并推。
 - **H4 push 清单**：imboy 领先 origin/main **176**、imboyapp **102**、imboyadmin **15**（远端待用户指定）。
 - **总判定维持 `BLOCKED(H2 残余, H3, H4)`**；本条目后无新增代码变更。
+
+### 待拍板 — evidence 文件处置评估（2026-08-30，用户问询后总控评估）
+
+- **用户问询**：「截图证据与清单 JSON」有无必要加入 git 仓储。**总控评估：没必要**。
+- **量化**：`imboyadmin/tests/auto_test/evidence/` 被跟踪 **1684 文件（1536 PNG + 状态 JSON，197MB）**，是 auto_test 每轮跑批的运行时输出、可随时再生；入库代价=工作区常态性脏（本轮 18 例实证）+ clone 体积 197MB + 截图隐私永久入历史的风险 + 二进制 diff 零可审性。
+- **建议方案（已备好，等用户确认即执行）**：`git rm -r --cached tests/auto_test/evidence/` + `.gitignore` 增加该目录；工作区 1684 文件原样保留、历史不重写；此后发布证据走 release 附件或 docs 定点归档。落地为 imboyadmin 一个新提交（HEAD 越过 alpha.16 tag 属正常后续开发）。
+- **不在处置范围**：imboy `docs/guides/e2ee/**` 87 个手写审计证据文档（curated，保留）；imboyapp `test/auto_test/specs/*.json`（测试输入，保留）。
+- **状态**：待用户拍板（移出跟踪｜移出+精选归档｜保留并提交新版｜暂不处理）；未拍板前 18 个脏文件维持保护不动。
