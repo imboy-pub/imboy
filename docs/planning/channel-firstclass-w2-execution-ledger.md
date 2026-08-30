@@ -422,3 +422,9 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **结果全 PASS**：healthz **200**（约 30s 启动）；假号 `12000000001`+错密码登录 → `{"code":1,"msg":"密码有误"}`——账号命中脱敏行、哈希校验真实执行（非「账号不存在」路径）；`pg_stat_activity` 实证节点 5 连接**全部落在 imboy_drill**。
 - **过程教训**：①后台节点随工具调用进程组回收——须持久任务+`sleep |` 保 stdin（第二次实测确认）；②release 的 sys.config 在 make 解析期由 `config/sys.runtime.config` 物化（Makefile:36），改 sys.local.config 后经 make run 重建即生效。
 - **H3 流水线本地预演五步全通**：快照（sanitized_snapshot.sh，红→绿）→ 恢复（pg_restore 0 错）→ 迁移（drill_migrate.escript up）→ 冒烟（本卡）→ 回滚+复核（down/up 对账）。生产侧仅剩授权与数据源。
+
+### Release 准备卡 — 蓝绿执行卡 + CHANGELOG Unreleased（2026-08-30，「继续」驱动）
+
+- **新增 `docs/planning/w2-release-runbook.md`**：基于既有 `scripts/deploy.sh`（蓝绿全流程含 `--rollback`）的执行级序列卡——前置清单（H4/版本物/备份/H3/密钥/H2 定名规则）、执行序列（preflight→deploy→冒烟→30min 观察窗）、回滚路径（应用切色 + `drill_migrate.escript down` 迁移级回退）、证据归档与红线。生产主机一律占位符（不入真实 IP/端口）。
+- **CHANGELOG 增加 `[Unreleased]`（alpha.71 候选）**：后端三修复（due_date ISO 归一 / ctl 列宽前置校验 / ws_url 同源派生）+ 客户端三修复（peer_has_no_device 引导 / init 解密失败分类 / envied 新鲜度守卫）。定版时转正为 alpha.71 节。
+- **状态**：Release 的执行准备至此完备（工具/预演/序列/文案四件齐）；执行仍按在册条件授权的门序，待用户明确下达。

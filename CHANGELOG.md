@@ -9,6 +9,22 @@
 
 ---
 
+## [Unreleased]（1.0.0-alpha.71 候选）
+
+### Fixed
+
+**imboy（后端 / Backend）**
+- 里程碑 `due_date` 经 epgsql 原生 date codec 返回 `{Y,M,D}` 元组，列表/详情接口误透传致客户端解析失败——Repo 层归一为 ISO-8601 字符串
+- `imboy_ctl user create` 超列宽写入返回 500：account>40（同步 `user.mobile varchar(40)`）/ 昵称>80 现前置校验并给可读报错
+- `/api/v1/init` 的 `ws_url` 未配置时透传空串致客户端 WS 假成功——新增 `derive_ws_url/1` 按请求 Host 同源派生（ws/wss 随 X-Forwarded-Proto），显式配置永远优先
+
+**imboyapp（客户端 / Flutter）**
+- E2EE C2C 对端从未上线（设备数=0）时静默失败：现抛独立原因 `peer_has_no_device` 并三语引导「对方还没有在任何设备上登录过…」
+- init 配置解密失败（服务端密钥不一致/密文损坏）误报为网络问题：新增独立分类文案 `initConfigDecryptFailed`
+- 新增 envied 生成物新鲜度守卫测试：`.env.local` 与 `env_local.g.dart` 漂移即红并给处置指引
+
+---
+
 ## [1.0.0-alpha.70] - 2026-08-29（Channel-first-class W2 / Project Workspace）
 
 > 本版本完成后端 W2 全链、Flutter/Admin W2 治理面与全部自动化验收（后端 eunit 6490/0、
