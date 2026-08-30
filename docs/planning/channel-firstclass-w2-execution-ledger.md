@@ -370,3 +370,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **建议方案（已备好，等用户确认即执行）**：`git rm -r --cached tests/auto_test/evidence/` + `.gitignore` 增加该目录；工作区 1684 文件原样保留、历史不重写；此后发布证据走 release 附件或 docs 定点归档。落地为 imboyadmin 一个新提交（HEAD 越过 alpha.16 tag 属正常后续开发）。
 - **不在处置范围**：imboy `docs/guides/e2ee/**` 87 个手写审计证据文档（curated，保留）；imboyapp `test/auto_test/specs/*.json`（测试输入，保留）。
 - **状态**：待用户拍板（移出跟踪｜移出+精选归档｜保留并提交新版｜暂不处理）；未拍板前 18 个脏文件维持保护不动。
+
+### evidence 处置执行卡（2026-08-30，「继续」按推荐方案执行）
+
+- **解读留痕**：用户在评估落册（`146d0e50`）后发「继续」——按会话惯例解读为**按推荐方案执行（移出跟踪）**；如非本意，`git revert e68c984` 一步还原（历史不重写）。
+- **佐证**：`.gitignore` 早已含 `tests/auto_test/evidence/`「不入库」条目（ZC-07 提交 `e26eb54`，08-29 23:54），本卡只是补完「移出已跟踪存量」这最后一步，与仓内既有意图一致。
+- **执行**：imboyadmin `e68c984`——`git rm -r --cached tests/auto_test/evidence/`（1684 文件出索引），.gitignore 无需改。
+- **验证**：仍被跟踪 **0**；磁盘 1922 个文件全保留（`find` 口径）；`git status` **0 行**（18 个脏文件噪音永久消失）；lefthook gitleaks 绿。imboyadmin 现 `e68c984` 领先 origin **16**。
+- **影响面**：历史不重写（08-24 旧 blob 留存）；此后跑批输出只留本地；发布证据届时走 release 附件或 docs 定点归档；HEAD 越过 alpha.16 tag 属正常后续开发，tag 发布点不受影响。
