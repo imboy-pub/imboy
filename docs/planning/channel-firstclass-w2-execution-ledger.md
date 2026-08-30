@@ -507,3 +507,10 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **新基线 SHA**：imboy HEAD=`d2398d41`（领先 200）、imboyapp HEAD=`d9ac743e`（领先 102）、imboyadmin HEAD=`332d4b6`（领先 126）。**⚠️ 本台账此前各卡引用的全部旧 SHA 已失效**——旧值为重写前历史记录，查阅时按提交信息在 git log 中对应新 SHA。
 - **机检升级**：`release_gate_check.sh` H4 段新增 DCO 全覆盖检查（非空 trailer 行数比对；PASS=6 覆盖三仓）。
 - **cleanup**：backup-pre-signoff 分支 ×3、refs/original ×3、reflog expire + gc --prune=now 已执行。
+
+### CHANGELOG/头部数字收口卡（2026-08-30，「继续」驱动；提交见 git log -1）
+
+- CHANGELOG `[Unreleased]` 新增 **Documentation** 节：今天的对外可见文档与发布基建工作（openapi 28 条、catalog 22+3 端点、980 入册、release_gate_check/h3_rehearsal/一致性门豁免+relx 修复、DCO 全签）——alpha.71 定版时随版本转正，集成方可在变更清单看到 API 文档补齐。
+- `api/openapi.yaml` 头部自述更新：约 130 条/148 待补 → 实测声明 522 条（project 域全量补齐后），并指路契约真源 `.contract/api_contract.json`。
+- 复验：redocly lint valid（0 errors）、Contract Gate PASS（router 623 / openapi 522 / 交集 506）。
+- 其余 reference 文档（rest-api.md / api-format.md）为通用格式规范，无 per-域清单，无 project 缺口可言——文档面排查至此全闭环。
