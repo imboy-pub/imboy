@@ -351,3 +351,14 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **残余**：③ 的完整闭环（「更新应用」引导里的版本检查跳转）与 ④ 的「对方已上线」推送提醒属增强项，不在本卡。
 
 - **H2 亮度更新**：真机走查十项全部有实证（单机+API 对端）；**仍待人工资源**：① 第二台真机/在线对端的实时接收与 Push（JPush 未配置）；② 音视频（LiveKit 占位密钥）；③ 3 人 30 秒理解测试；④ release 签名包（缺 android/key.properties）。整体判定维持 **BLOCKED(H2 残余, H3, H4)**。
+
+### 终态全量验证 + H4 tag 台账（2026-08-30，总控收口）
+
+- **三仓 main 终态 SHA 全量绿**（无并行会话窗口期执行）：
+  - imboy `4661a806`：`make eunit-local` **All 6495 tests passed**（0 失败 0 取消）。
+  - imboyapp `55cb1021`：`flutter test` **5945 pass / 239 skip / 0 fail**（skip 为既有基线）。
+  - imboyadmin `8345107`：`bun test` **1410 pass / 0 fail**（136 文件，12.47s）。
+- **imboyadmin 工作区 18 个脏文件定性**：全部为 `tests/auto_test/evidence/` 下 p7 error-state 截图与 `_report-p10a-inventory.json`——库内版本=08-24「积压证据入库」（4f410f0），工作区版本=08-29 20:55 自动化跑批再生。良性覆盖、非源码，按保护规则不动，归入既有「已跟踪 evidence 文件处置」待拍板项。
+- **H4 tag 台账（均未 push）**：imboy `v1.0.0-alpha.70`→`0e7618d5`、imboyapp `v1.0.0-alpha.16`→`122652b4`、imboyadmin `v1.0.0-alpha.16`→`8345107`（=HEAD）。push 时须与各仓 main 一并推。
+- **H4 push 清单**：imboy 领先 origin/main **176**、imboyapp **102**、imboyadmin **15**（远端待用户指定）。
+- **总判定维持 `BLOCKED(H2 残余, H3, H4)`**；本条目后无新增代码变更。
