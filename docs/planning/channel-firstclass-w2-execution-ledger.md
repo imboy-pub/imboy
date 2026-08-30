@@ -481,3 +481,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **补齐**（提交 `3e5b1ae1`）：新增 `api/paths/project/` 14 个 path 文件——members×4 / milestones×3（list+create 双语义、update、reach 单向幂等）/ channels×3（link+list 双语义、unlink、links/update）/ 四聚合×4。双语 description、Envelope 响应、分页形状 `list/page/size/total/total_page`（与 repo 实现一致）、里程碑 due_date ISO 归一说明。
 - **验证**：redocly lint **valid（0 errors**；43 warnings 为既有基线，本次仅新增 5 个 OAS 3.1 `nullable` 语法错误并已修——可空字段用 `type:[string,"null"]`，先例 e148c9da）；`make contract-check` **PASS**——informational 覆盖 router 623 / openapi 508 / 交集 492（原 openapi 声明 494，+14）。契约真源零变更。
 - **残余**：openapi 对 project 域的 W0/W1 部分（projects/show/update/status、tasks 系列）仍未补——属既有渐进补全债务（openapi 头部自述 130/278 起步模式），非 W2 回归；已随 informational 口径登记。
+
+### OpenAPI project 域全量补齐卡 — W0/W1 + Admin 治理面 14 条（2026-08-30，「继续」驱动）
+
+- **承接上轮**：openapi 的 project 域还差 W0/W1（v1 侧）与 Admin 治理面。本轮补齐后 **project 域在 openapi 全量闭环**（W2 14 + W0/W1+Admin 14 = 28 条）。
+- **v1 侧 8 条**：workspaces/{id}/projects（GET list/POST create 双语义，Owner 事务内自动入项目）、project show/update/status（active|done 流转）、tasks 双语义 + task show/update/status（状态机 todo→doing→review→done 相邻前向/任意回退的 400 规则写入文档）。
+- **admin 侧 6 条**：adm/project list（status/keyword 过滤）、detail（owner+成员预览+资源清单）、members/milestones/channels/aggregations 只读分页（workspaces:read fail-closed）；milestones 端点的 M-7 total 妥协（total=当前页行数）已显式写进文档。
+- **验证**：redocly lint valid 0 errors（+2 警告为既有 channel 路径歧义 by_custom_id vs {channel_id}，非本域）；`make contract-check` PASS——router 623 / openapi 声明 **522** / 交集 506 / router有openapi无降至 117。
+- 提交 `f14778c9`。
