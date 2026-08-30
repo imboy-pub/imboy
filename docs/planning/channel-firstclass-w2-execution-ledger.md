@@ -342,4 +342,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **验证**：红（clean 前 SOLIDIFIED_KEY/IV 两用例失败，失败信息含处置指引）→ 绿（clean 后 3/3）；flutter analyze No issues；dart format 通过。
 - **教训**：envied 类「构建期读外部文件」的生成器都必须配一份新鲜度守卫测试；仅删除产物无法击穿缓存。
 
+### 收敛后追加卡 — 发现③④修复：E2EE 离线对端引导 + init 解密失败分类（2026-08-30）
+
+- **Owner**：总控 Agent；**最终状态**：DONE；**提交**：imboyapp `55cb1021`（未 push，imboyapp 领先 102）
+- **发现④修复**：`_encryptC2COlmFanOut` 对端设备表为空时改抛独立原因 `peer_has_no_device`（原与密钥故障共用 `no_recipient_keys`）；`getE2EEErrorMessage` 新增路由至新 i18n 键 `common.e2eeErrPeerNotOnboarded`（zh-CN/zh-Hant/en-US：「对方还没有在任何设备上登录过，暂时无法加密发送；请等对方登录后再试」）；新增映射单测 `peer_not_onboarded_message_test.dart`（2 用例：新键路由 + 既有 no_recipient_keys 路由不变）。
+- **发现③修复**：`initConfig` 的解密步骤单独 try/catch——解密失败（密钥不匹配/密文损坏）返回新键 `common.initConfigDecryptFailed`（「配置解密失败：应用与服务端安全密钥不一致，请更新应用版本或联系管理员」），不再笼统报「请检查网络连接」误导排障方向。
+- **验证**：flutter analyze 两文件 No issues；flutter test e2ee 目录 + 守卫共 **619 pass / 0 fail**；lefthook dart-fmt/analyze/gitleaks/design-tokens 全绿。
+- **残余**：③ 的完整闭环（「更新应用」引导里的版本检查跳转）与 ④ 的「对方已上线」推送提醒属增强项，不在本卡。
+
 - **H2 亮度更新**：真机走查十项全部有实证（单机+API 对端）；**仍待人工资源**：① 第二台真机/在线对端的实时接收与 Push（JPush 未配置）；② 音视频（LiveKit 占位密钥）；③ 3 人 30 秒理解测试；④ release 签名包（缺 android/key.properties）。整体判定维持 **BLOCKED(H2 残余, H3, H4)**。
