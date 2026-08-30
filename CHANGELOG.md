@@ -11,6 +11,13 @@
 
 ## [Unreleased]（1.0.0-alpha.71 候选）
 
+### Documentation
+
+**imboy（后端 / Backend）**
+- OpenAPI 契约补齐 project 协作域 28 条路径（W0/W1 项目与任务 + W2 成员/里程碑/频道关联/四聚合 + Admin 治理只读面 6 端点），`redocly lint` 0 errors
+- REST 总目录（rest-api-v1-catalog）增补项目协作域 22 端点与频道 incoming webhook 管理 3 端点；错误码文档补 960-968 与 980（工作区归档写守卫）
+- 发布基建：`release_gate_check.sh` 前置门机检、`h3_rehearsal.sh` 迁移演练单命令编排、`check_release_consistency.sh` 增无-down 迁移豁免清单（E2EE 迁移 74/75，down=安全降级/数据损毁属设计特性）并修复 relx.config 版本漏 bump；三仓未推提交 DCO Signed-off-by 全覆盖
+
 ### Fixed
 
 **imboy（后端 / Backend）**
