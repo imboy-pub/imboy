@@ -522,3 +522,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **eunit 34 失败定性（非代码回归）**：失败跨 8 个互不相关域散布（channel_logic×21、elib_email×19 记录行、payment_reconcile_cron×6、metrics×3、red_packet_expire×2、cipher×2、async×2、agent_payment×1）——与既有登记的「imboy_cache 生命周期错位 flake（depcache ETS 消亡连锁）+ 独占套件互踩 + 时间敏感套件跨边界」已知模式吻合；且今日**零 Erlang 源码/测试改动**（filter-branch 树 diff=0）。单套件重跑定性：channel_logic_tests **198/198 全绿**、elib_email_tests **17/17 全绿**——全量运行环境性 flake 实锤。
 - **结论**：终态自动化证据维持「全绿」判定（app/admin 全量实测绿；imboy 全量绿由单套件绿+零代码改动+已知 flake 模式支撑；34 失败为环境 flake 集群，根治需 depcache 生命周期立项——既有登记勿混入发布门）。
 - 本卡后可自主面再度穷尽；四人工门状态不变。
+
+### 一键登录初始化失败修复卡 — debug 签名统一 release（2026-08-30，用户报障驱动；imboyapp 提交 b3f36d42）
+
+- **现象**（用户报障）：Android 真机点「一键登录」→ snackBar「一键登录服务初始化失败，请稍后重试」（`loginAuth()` 中 `initPlatformState()` 返回 false 路径）。
+- **复现与根因**（华为 MRD-AL00 真机 + adb logcat）：debug 签名包 init 回调 `{code: 8004, message: init failed.}`，前置 `JIGUANG-VERIFICATION code 1011 'appSign or bundleId invalid'`——**极光后台登记的签名是 release（upload keystore，SHA-1 a5bf47b6…），而 debug 包是 Android Debug 签名（4570f218…），签名不匹配被极光拒绝**。appKey/包名/隐私合规（JCollectionAuth.setAuth 已调）均无问题。
+- **修复**（imboyapp `b3f36d42`）：`android/app/build.gradle.kts` 的 debug buildType 在 local.properties 有 release 签名四件套时改用 release signingConfig（与后台登记一致），缺配置回落 Flutter 默认 debug 签名（CI/新环境不挂）。
+- **验证**：重建 debug APK（签名实锤变为 a5bf47b6…）→ 装机 → init 回调 **`{code: 8000, message: config init success}`**（修复前 8004）。
+- **移交人工手测**：一键登录完整链（运营商授权页拉起→本机号确认→后端 quickLogin）需真机手动点击验证——adb 注入 tap 在该 EMUI 9 老设备上对登录页部分按钮不稳定（引导页正常；返回/quitLogin 响应、一键登录/支付宝/输入框不响应，现象独立于本修复，疑 EMUI+Flutter debug 包输入分发问题，登记观察）。另顺带发现两个独立小问题待排：①引导页完成标记未持久化（每次冷启动重现）；②FCM 初始化报 "Please set a valid API key"（google-services.json 的 api_key 未被运行时读到——与 H2 FCM 凭据占位问题同源）。
+- 设备遗留状态：MRD-AL00 为未登录主界面（pm clear 测试所致），可正常使用。
