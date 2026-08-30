@@ -17,7 +17,10 @@
 %%%   归档 Workspace 拒写允读（稳定错误码 980）。
 %%%
 %%% due_date 经应用层解析为 {Y,M,D} tuple 入库（本连接自定义 rfc3339 codec
-%%% 仅覆盖 timestamptz，date 列传 binary 会崩——ZC-01 已知坑）。
+%%% 仅覆盖 timestamptz，date 列传 binary 会崩——ZC-01 已知坑）；读路径
+%%% （find_by_id/list）由 repo 归一为 ISO YYYY-MM-DD binary（API/前端契约
+%%% 见 imboyapp project_w2_model.dart due_date(YYYY-MM-DD|null)——ZC-08
+%%% 缺陷立项修复：此前 tuple 直出被响应层格式化成 "{2026,9,30}" 串）。
 
 %%% ===================================================================
 %%% 1+2+3+7：全生命周期（create/update/reach/幂等 reach + 事件行齐全）
@@ -33,7 +36,7 @@ lifecycle_and_events_test_() ->
             {ok, Ms1} = project_milestone_logic:create(Owner, Pid, <<"M1">>, <<"2026-09-30">>),
             MsId1 = maps:get(<<"id">>, Ms1),
             ?assertEqual(<<"planned">>, maps:get(<<"status">>, Ms1)),
-            ?assertEqual({2026, 9, 30}, maps:get(<<"due_date">>, Ms1)),
+            ?assertEqual(<<"2026-09-30">>, maps:get(<<"due_date">>, Ms1)),
             ?assertEqual(null, maps:get(<<"reached_at">>, Ms1)),
             {ok, Ms2} = project_milestone_logic:create(Owner, Pid, <<"M2">>, null),
             MsId2 = maps:get(<<"id">>, Ms2),
@@ -42,7 +45,7 @@ lifecycle_and_events_test_() ->
                 maps:get(member, F), MsId1, <<"M1-renamed">>, <<"2026-10-08">>
             ),
             ?assertEqual(<<"M1-renamed">>, maps:get(<<"name">>, Updated)),
-            ?assertEqual({2026, 10, 8}, maps:get(<<"due_date">>, Updated)),
+            ?assertEqual(<<"2026-10-08">>, maps:get(<<"due_date">>, Updated)),
             ?assertEqual(<<"planned">>, maps:get(<<"status">>, Updated)),
             %% 事件行齐全：create + update + create（按 target 计）
             ?assertEqual(3, event_count(Conn, Pid)),
@@ -238,6 +241,33 @@ field_validation_test_() ->
                 project_milestone_logic:create(Owner, Pid, binary:copy(<<"长"/utf8>>, 201), null)
             ),
             ?assertEqual(0, milestone_count(Conn, Pid))
+        after
+            cleanup_full(Conn, F)
+        end
+    end).
+
+%%% ===================================================================
+%%% 8：due_date 读路径 ISO 契约（find_by_id / list 均为 YYYY-MM-DD binary；
+%%% 清空后保持 null）
+%%% ===================================================================
+
+due_date_iso_read_contract_test_() ->
+    ?TEST_WITH_CONN(fun(Conn) ->
+        F = setup_full(Conn),
+        try
+            Owner = maps:get(owner, F),
+            Pid = maps:get(project_id, F),
+            {ok, Ms} = project_milestone_logic:create(Owner, Pid, <<"ISO-M">>, <<"2026-09-30">>),
+            ?assertEqual(<<"2026-09-30">>, maps:get(<<"due_date">>, Ms)),
+            {ok, All} = project_milestone_logic:list(Owner, Pid, all, 1, 10),
+            [Row] = maps:get(list, All),
+            ?assertEqual(<<"2026-09-30">>, maps:get(<<"due_date">>, Row)),
+            %% 清空 → null（读路径保持 null，不产出 ISO 空串/占位值）
+            {ok, Cleared} =
+                project_milestone_logic:update(
+                    Owner, maps:get(<<"id">>, Ms), undefined, null
+                ),
+            ?assertEqual(null, maps:get(<<"due_date">>, Cleared))
         after
             cleanup_full(Conn, F)
         end

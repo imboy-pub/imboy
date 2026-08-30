@@ -14,6 +14,9 @@
 % 自定义 timestamptz codec（epgsql_codec_rfc3339_bin），date 列走 epgsql
 % 原生 codec，binary 参数会崩（ZC-01 已踩坑）；tuple 由 epgsql 原生 date
 % codec 编码，INSERT/UPDATE 参数类型由服务端按目标列推断，无需显式 ::date。
+% 读路径口径：find_by_id/list_by_project 将 due_date 归一为 ISO
+% YYYY-MM-DD binary（normalize_row/1）——tuple 直出会被响应层格式化成
+% "{2026,9,30}" 串（ZC-08 缺陷立项修复）；find_tx 不归一（内部窄列）。
 %
 % W2 过渡：find_project_member_tx/4、find_project_member/3 是 project_member
 % 的只读查询（权限校验用，暂寄本模块）——project_member_repo 由 ZC-02 并行
@@ -30,6 +33,7 @@
 -export([mark_reached_tx/3]).
 -export([find_project_member_tx/4]).
 -export([find_project_member/3]).
+-export([due_date_to_iso/1]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -58,13 +62,14 @@ add_tx(Conn, Data) ->
         {error, _} = Err -> Err
     end.
 
-%% @doc 按 ID 查询里程碑（自动提交；空 map = 无记录）
+%% @doc 按 ID 查询里程碑（自动提交；空 map = 无记录；due_date 读路径
+%% 归一为 ISO YYYY-MM-DD binary，见 normalize_row/1）
 -spec find_by_id(integer() | binary(), binary()) -> map() | {error, term()}.
 find_by_id(MilestoneId, Column) ->
     Tb = tablename(),
     {Sql, Params} = elib_pg_sql:build_select(Tb, Column, #{id => MilestoneId}, #{limit => 1}),
     case elib_pg:one(Sql, Params) of
-        {ok, Row} -> Row;
+        {ok, Row} -> normalize_row(Row);
         {error, Reason} -> {error, Reason}
     end.
 
@@ -96,7 +101,10 @@ list_by_project(ProjectId, Status, Page, Size) ->
         <<"SELECT id,workspace_id,project_id,name,due_date,status,reached_at,",
             "created_at,updated_at FROM ", Tb/binary, Where/binary, " ORDER BY id ASC LIMIT ",
             (integer_to_binary(Size))/binary, " OFFSET ", (integer_to_binary(Offset))/binary>>,
-    elib_pg:query(Sql, Params).
+    case elib_pg:query(Sql, Params) of
+        {ok, Rows} -> {ok, [normalize_row(R) || R <- Rows]};
+        {error, _} = Err -> Err
+    end.
 
 %% @doc 项目里程碑计数（admin_page 的独立 total 数据源，与数据页同 WHERE
 %% 语义；status all|planned|reached。M-7：分页 total 不再用当前页行数近似）
@@ -146,3 +154,23 @@ find_project_member_tx(Conn, ProjectId, Uid, Column) ->
 -spec find_project_member(integer(), integer(), binary()) -> map().
 find_project_member(ProjectId, Uid, Column) ->
     project_member_repo:find(ProjectId, Uid, Column).
+
+%% @doc 读路径归一：date 列 due_date 经 epgsql 原生 codec 回读为 {Y,M,D}
+%% tuple，直出会被响应层格式化成 "{2026,9,30}" 串（ZC-08 缺陷立项），
+%% 统一转 ISO YYYY-MM-DD binary（API/前端契约 due_date(YYYY-MM-DD|null)；
+%% 格式与 project_milestone_ds update 事件 payload 的 due_date_to_binary
+%% 保持一致，两侧均有测试钉住）。null/缺列原样透传。find_tx 不归一——
+%% 其调用方只取 id/project_id/workspace_id/status 等内部窄列。
+-spec normalize_row(map()) -> map().
+normalize_row(Row) ->
+    case maps:get(<<"due_date">>, Row, undefined) of
+        {Y, M, D} when is_integer(Y), is_integer(M), is_integer(D) ->
+            Row#{<<"due_date">> => due_date_to_iso({Y, M, D})};
+        _ ->
+            Row
+    end.
+
+%% @doc {Y,M,D} → ISO 8601 日期 binary（如 <<"2026-09-30">>）
+-spec due_date_to_iso({integer(), integer(), integer()}) -> binary().
+due_date_to_iso({Y, M, D}) ->
+    iolist_to_binary(io_lib:format("~4..0B-~2..0B-~2..0B", [Y, M, D])).

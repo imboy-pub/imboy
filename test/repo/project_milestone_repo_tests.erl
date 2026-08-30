@@ -6,7 +6,8 @@
 %%%
 %%% 覆盖：add_tx 插入（due_date 以 {Y,M,D} tuple 传参——本连接自定义
 %%% rfc3339 codec 仅覆盖 timestamptz，date 列传 binary 会崩）、
-%%% find_by_id / find_tx 回读、list_by_project 分页与 status 过滤、
+%%% find_by_id / find_tx 回读（due_date 读路径归一为 ISO YYYY-MM-DD
+%%% binary——ZC-08 缺陷立项修复契约）、list_by_project 分页与 status 过滤、
 %%% update_fields_tx 更新、find_project_member(_tx) 只读查询。
 
 repo_roundtrip_test_() ->
@@ -28,8 +29,8 @@ repo_roundtrip_test_() ->
                 MsId, <<"id,project_id,name,due_date,status,reached_at">>
             ),
             ?assertEqual(<<"M1">>, maps:get(<<"name">>, Row)),
-            %% date 列回读为 {Y,M,D} tuple（epgsql 原生 date codec）
-            ?assertEqual(DueDate, maps:get(<<"due_date">>, Row)),
+            %% date 列写入走 epgsql 原生 codec，读路径由 repo 归一为 ISO
+            ?assertEqual(<<"2026-09-30">>, maps:get(<<"due_date">>, Row)),
             ?assertEqual(<<"planned">>, maps:get(<<"status">>, Row)),
             ?assertEqual(null, maps:get(<<"reached_at">>, Row))
         after
@@ -68,7 +69,7 @@ repo_update_fields_tx_test_() ->
             }),
             Row = project_milestone_repo:find_by_id(MsId, <<"name,due_date">>),
             ?assertEqual(<<"M-new">>, maps:get(<<"name">>, Row)),
-            ?assertEqual({2026, 10, 8}, maps:get(<<"due_date">>, Row))
+            ?assertEqual(<<"2026-10-08">>, maps:get(<<"due_date">>, Row))
         after
             cleanup_project(Conn, Fixture)
         end

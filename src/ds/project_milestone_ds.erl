@@ -318,7 +318,8 @@ event_tx(Conn, ProjectId, TargetId, ActorId, EventType, PayloadExtra) ->
     }).
 
 %% update 事件 payload（name/due_date 仅记录实际提交的字段；
-%% due_date tuple 转 ISO binary 以便 jsonb 编码）
+%% due_date tuple 转 ISO binary 以便 jsonb 编码——格式与
+%% project_milestone_repo:due_date_to_iso（读路径归一口径）一致）
 -spec update_event_payload(binary() | undefined, {Y, M, D} | null | undefined) -> map() when
     Y :: integer(), M :: integer(), D :: integer().
 update_event_payload(Name, DueDate) ->
