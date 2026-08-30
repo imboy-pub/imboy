@@ -9,7 +9,9 @@
 
 ---
 
-## [Unreleased]（1.0.0-alpha.71 候选）
+## [Unreleased]
+
+## [1.0.0-alpha.71] - 2026-08-30
 
 ### Documentation
 
