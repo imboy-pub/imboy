@@ -1,0 +1,32 @@
+# GET /api/adm/project/members — 项目成员分页（Admin 治理只读，W2）
+get:
+  tags: [admin]
+  summary: Admin 项目成员分页
+  description: |
+    ## 中文
+    W2 治理只读面：项目成员分页（workspaces:read ACL，fail-closed）。
+    ## English
+    W2 governance read surface: paginated project members.
+  operationId: admProjectMembers
+  parameters:
+    - name: project_id
+      in: query
+      required: true
+      schema: { type: integer, format: int64 }
+    - name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, default: 10 }
+  responses:
+    '200':
+      description: 成员分页
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '4XX':
+      description: project_id 缺失（400）/ ACL（403）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

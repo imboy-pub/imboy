@@ -1,0 +1,37 @@
+# GET /api/adm/project/milestones — 项目里程碑分页（Admin 治理只读，W2）
+get:
+  tags: [admin]
+  summary: Admin 项目里程碑分页
+  description: |
+    ## 中文
+    W2 治理只读面：项目里程碑分页，status 过滤。注：本端点 total 为当前页
+    行数（评审 M-7 已知妥协，分页控件页数会失真）。
+    ## English
+    W2 governance read surface: paginated milestones with status filter.
+    Known compromise: total equals the current page length (review M-7).
+  operationId: admProjectMilestones
+  parameters:
+    - name: project_id
+      in: query
+      required: true
+      schema: { type: integer, format: int64 }
+    - name: status
+      in: query
+      schema: { type: string, enum: [all, planned, reached], default: all }
+    - name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, default: 10 }
+  responses:
+    '200':
+      description: 里程碑分页
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '4XX':
+      description: project_id 缺失（400）/ ACL（403）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

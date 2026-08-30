@@ -1,0 +1,96 @@
+# /api/v1/workspaces/{workspace_id}/projects — 项目列表(GET)/创建(POST)（W0/W1）
+get:
+  tags: [project]
+  summary: 工作区项目列表（分页）
+  description: |
+    ## 中文
+    工作区下项目分页列表。active 工作区成员可读。
+    ## English
+    Paginated project list of the workspace.
+  operationId: workspaceProjectsList
+  parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    - name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, default: 10 }
+  responses:
+    '200':
+      description: 项目分页（行结构见 POST payload）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list: { type: array, items: { type: object } }
+                      page: { type: integer }
+                      size: { type: integer }
+                      total: { type: integer }
+                      total_page: { type: integer }
+post:
+  tags: [project]
+  summary: 创建项目（Owner 事务内自动入项目）
+  description: |
+    ## 中文
+    在工作区下创建项目。创建者自动成为项目 Owner 与首个项目成员
+    （同事务幂等回填，W0 存量迁移同语义）。成功后写 project_event。
+    ## English
+    Create a project. The creator becomes its owner and first member
+    (idempotent backfill in the same transaction).
+  operationId: workspaceProjectsCreate
+  parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [name]
+          properties:
+            name: { type: string, maxLength: 255 }
+            description: { type: string }
+  responses:
+    '200':
+      description: 创建成功（返回项目行）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer, format: int64 }
+                      workspace_id: { type: integer, format: int64 }
+                      owner_id: { type: integer, format: int64 }
+                      name: { type: string }
+                      description: { type: [string, "null"] }
+                      status: { type: string, enum: [active, done] }
+                      links:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            url: { type: string }
+    '4XX':
+      description: name 缺失（400）/ Guest（403）/ 归档（980）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

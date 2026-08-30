@@ -1,0 +1,56 @@
+# POST /api/v1/projects/{project_id}/update — 项目更新（W0/W1）
+post:
+  tags: [project]
+  summary: 更新项目（部分更新）
+  description: |
+    ## 中文
+    更新 name / description（只传需要改的字段）。仅 Project Owner 可操作。
+    ## English
+    Partial update of project name / description (project owner only).
+  operationId: projectUpdate
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          minProperties: 1
+          properties:
+            name: { type: string, maxLength: 255 }
+            description: { type: string }
+  responses:
+    '200':
+      description: 更新成功（返回项目行）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer, format: int64 }
+                      workspace_id: { type: integer, format: int64 }
+                      owner_id: { type: integer, format: int64 }
+                      name: { type: string }
+                      description: { type: [string, "null"] }
+                      status: { type: string, enum: [active, done] }
+                      links:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            url: { type: string }
+    '404':
+      description: 项目不存在
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

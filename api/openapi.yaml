@@ -1118,6 +1118,34 @@ paths:
     $ref: './paths/project/aggregations-activity.yaml'
   /api/v1/projects/{project_id}/aggregations/related_posts:
     $ref: './paths/project/aggregations-related-posts.yaml'
+  /api/v1/workspaces/{workspace_id}/projects:
+    $ref: './paths/project/projects-list-create.yaml'
+  /api/v1/projects/{project_id}:
+    $ref: './paths/project/project-show.yaml'
+  /api/v1/projects/{project_id}/update:
+    $ref: './paths/project/project-update.yaml'
+  /api/v1/projects/{project_id}/status:
+    $ref: './paths/project/project-status.yaml'
+  /api/v1/projects/{project_id}/tasks:
+    $ref: './paths/project/tasks-list-create.yaml'
+  /api/v1/tasks/{task_id}:
+    $ref: './paths/project/task-show.yaml'
+  /api/v1/tasks/{task_id}/update:
+    $ref: './paths/project/task-update.yaml'
+  /api/v1/tasks/{task_id}/status:
+    $ref: './paths/project/task-status.yaml'
+  /api/adm/project/list:
+    $ref: './paths/project/adm-project-list.yaml'
+  /api/adm/project/detail:
+    $ref: './paths/project/adm-project-detail.yaml'
+  /api/adm/project/members:
+    $ref: './paths/project/adm-project-members.yaml'
+  /api/adm/project/milestones:
+    $ref: './paths/project/adm-project-milestones.yaml'
+  /api/adm/project/channels:
+    $ref: './paths/project/adm-project-channels.yaml'
+  /api/adm/project/aggregations:
+    $ref: './paths/project/adm-project-aggregations.yaml'
 
 components:
   securitySchemes:

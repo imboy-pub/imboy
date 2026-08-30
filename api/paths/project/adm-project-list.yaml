@@ -1,0 +1,35 @@
+# GET /api/adm/project/list — 项目分页（Admin 治理只读，W0）
+get:
+  tags: [admin]
+  summary: Admin 项目分页列表
+  description: |
+    ## 中文
+    管理后台项目分页（workspaces:read ACL，fail-closed）。status/keyword 过滤。
+    ## English
+    Admin-side paginated project list (workspaces:read ACL).
+  operationId: admProjectList
+  parameters:
+    - name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, default: 10 }
+    - name: status
+      in: query
+      schema: { type: string, enum: [all, active, done], default: all }
+    - name: keyword
+      in: query
+      schema: { type: string }
+      description: 按项目名模糊匹配
+  responses:
+    '200':
+      description: 项目分页
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '403':
+      description: ACL 不满足
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

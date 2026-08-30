@@ -1,0 +1,56 @@
+# POST /api/v1/projects/{project_id}/status — 项目状态流转（W0/W1）
+post:
+  tags: [project]
+  summary: 项目状态流转（active | done）
+  description: |
+    ## 中文
+    项目状态在 active / done 之间流转；无物理删除，done 即归档语义。
+    仅 Project Owner 可操作。
+    ## English
+    Flip project status between active and done (no hard delete).
+  operationId: projectUpdateStatus
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [status]
+          properties:
+            status: { type: string, enum: [active, done] }
+  responses:
+    '200':
+      description: 流转成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer, format: int64 }
+                      workspace_id: { type: integer, format: int64 }
+                      owner_id: { type: integer, format: int64 }
+                      name: { type: string }
+                      description: { type: [string, "null"] }
+                      status: { type: string, enum: [active, done] }
+                      links:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            url: { type: string }
+    '4XX':
+      description: status 非法（400）/ 无权限（403）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

@@ -1,0 +1,38 @@
+# POST /api/v1/tasks/{task_id}/update — 任务更新（W0/W1）
+post:
+  tags: [project]
+  summary: 更新任务（部分更新）
+  description: |
+    ## 中文
+    更新 title / assignee_id / sort（只传需要改的字段）。assignee 换人时新
+    assignee 必须是项目成员。
+    ## English
+    Partial task update (title / assignee_id / sort).
+  operationId: taskUpdate
+  parameters:
+    - name: task_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          minProperties: 1
+          properties:
+            title: { type: string, maxLength: 255 }
+            assignee_id: { type: [integer, "null"], format: int64 }
+            sort: { type: integer }
+  responses:
+    '200':
+      description: 更新成功（返回任务行）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '404':
+      description: 任务不存在
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

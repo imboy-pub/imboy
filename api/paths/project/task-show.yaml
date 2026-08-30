@@ -1,0 +1,26 @@
+# GET /api/v1/tasks/{task_id} — 任务详情（W0/W1）
+get:
+  tags: [project]
+  summary: 任务详情
+  description: |
+    ## 中文
+    单个任务详情；active 项目成员可读。
+    ## English
+    Single task detail; active project members can read.
+  operationId: taskShow
+  parameters:
+    - name: task_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  responses:
+    '200':
+      description: 任务行（结构同创建返回 payload）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '404':
+      description: 任务不存在
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
