@@ -489,3 +489,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **admin 侧 6 条**：adm/project list（status/keyword 过滤）、detail（owner+成员预览+资源清单）、members/milestones/channels/aggregations 只读分页（workspaces:read fail-closed）；milestones 端点的 M-7 total 妥协（total=当前页行数）已显式写进文档。
 - **验证**：redocly lint valid 0 errors（+2 警告为既有 channel 路径歧义 by_custom_id vs {channel_id}，非本域）；`make contract-check` PASS——router 623 / openapi 声明 **522** / 交集 506 / router有openapi无降至 117。
 - 提交 `f14778c9`。
+
+### 对外文档同步卡 — catalog project 域 + 错误码 980 + 一致性门修复（2026-08-30，「继续」驱动）
+
+- **一致性门修复（提交 1632606b）**：例行跑 `check_release_consistency.sh` 抓出 2 项失败并修复——① relx.config 漏 bump（alpha.69→70，alpha.70 定版时遗漏）；② 迁移 74/75「缺 down」经内容核实为**正确设计**（74 的 down=放松 KDF 下限恢复降级攻击面；75 的 down=DROP legacy_key 使存量附件密钥永久丢失），在脚本加带理由的豁免清单而非硬造危险 down。修复后 **19/0 全绿**。
+- **rest-api-v1-catalog.md（GitHub Pages 对外目录）**：增补「项目协作 Project Workspace（W0/W1/W2）」域 22 端点（项目/任务、成员、里程碑、频道关联与四聚合四张表，含权限模型、事件契约、分页/TSID 约定），概览数字与变更记录同步。该文档自 2026-07-08 后未同步——8 月两波新端点均缺，本轮补 W2 范围内的 project 域；**Discovery/Bot 域缺口登记为既有债务**（非 W2 范围）。
+- **error-codes.md**：业务码段补 960-968 与 **980**（W2 归档写守卫稳定码；真源 error_code.hrl:173/339），Last Updated → 2026-08-30。
+- **asyncapi 定案无缺口**：W2 三 ds 零 broadcast/publish——project_event 为落库+聚合拉取式，无 WS 推送面，WS 契约无需变更。
+- 全程 lefthook（gitleaks+conventional）通过。
