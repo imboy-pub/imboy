@@ -445,3 +445,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **三跑全绿实证**：EXIT=0；基线 81 → down 1s（80）→ up 0s（81）；行数对账通过 ✓；假号段抽检通过 ✓；总 10s（快照 /tmp/sd_green）。演练库 imboy_v1_drill 已清理，仅剩源库 imboy_v1。
 - **手册 §五 同步增补**：单命令用法与实证数字；H3 至此「快照→恢复→迁移→冒烟→回滚→对账」六环全部工具化且本地全通。
 - **教训**：escript 文件不可经 bash 间接执行；机器可读清单的尾部摘要行必须在解析侧用格式守卫排除（不可只跳头部）。
+
+### H2 签名收口卡 — release AAB 构建实证 + Play 预检（2026-08-30，「继续」驱动）
+
+- **目的**：H2 剩余清单中「android/key.properties 签名」一项此前标缺；本轮核实其实际为**已配置**，并做构建级实证收口。
+- **现状核实**：签名走 `android/local.properties`（非 key.properties）四件套——`storeFile` 指向 `imboy_deps/doc/keystore/upload-keystore.jks`、`keyAlias=upload`、双密码已配；keystore 实证有效（PKCS12、RSA 2048、别名 upload、有效期至 **2298-04-24** 不会过期、SHA-256 `55:66:0E:29:…:68:7E`）。`build.gradle.kts` signingConfigs.release + V1/V2 签名齐备。仓内两个 `android*/release.keystore`（3 月旧文件，互不相同、密码不匹配本地配置）为历史遗留干扰物，已被 gitignore，与真身无关。
+- **构建实证（4 次迭代）**：`build_play_aab.sh 6 1.0.0-alpha.16` 三连败（`GeneratedPluginRegistrant` 找不到 device_info_plus/package_info_plus 两插件类）；clean/清 android/.gradle 均无效。**真凶=Gradle build cache 坏条目**（`org.gradle.caching=true` + `~/.gradle/caches/build-cache-1` 6.8G）：历史中断构建把不完整产物写进缓存，任务恒 FROM-CACHE 恢复坏产物（实证：device_info_plus 产物缺 Plugin.class、package_info_plus 产物目录整个为空）。清插件 build 目录 + 删 build-cache-1 后第四次 **EXIT=0**，AAB 188M。
+- **验证三连**：① `jarsigner -verify`（upload keystore）= **jar 已验证**；② `check_play_release.sh`（SKIP_URL_CHECK=1，不主动访问生产）= **8 项 PASS**（merged manifest/5 项禁用权限/AAB 存在/versionCode）；③ CXX1104 NDK 警告随之消失。
+- **H2 状态更新**：「release 签名包」从缺→**已就绪（本地实证）**。H2 残余仅剩：第二台真机、JPush/LiveKit 凭据、3 人真人测试。另登记观察项：google-services.json 未登记证书指纹——不影响 FCM 基础推送，若启用 App Check/Sign-In 类功能需在 Firebase Console 补登 SHA-1/SHA-256；Play Console 侧的 App Signing key 指纹登记亦为发布时人工步骤。
+- **教训入库**：flutter clean 不清 gradle build cache；「产物缺类 + 任务恒 up-to-date/FROM-CACHE + clean 无效」三联征 → 直查模块产物目录实锤，修法=删模块 build 目录+删 `~/.gradle/caches/build-cache-1`。
