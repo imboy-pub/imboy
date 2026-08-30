@@ -6,6 +6,8 @@
 
 ## 一、前置清单（逐项勾选后方可执行）
 
+> 机检入口：`bash scripts/release_gate_check.sh [快照目录]`——只读核对本清单可自动化项（H4 未推数/版本物/备份工具/H3 快照 sha256/五密钥 SET/UNSET），输出剩余人工项汇总；发布日先跑它再逐项勾选。
+
 - [ ] **H4**：三仓按 `w2-h4-commit-execution-plan.md` §五 push（imboy / imboyapp 普通推，admin `fetch` + `--force-with-lease`）；或明确选择 deploy.sh `-l` 本地 rsync 模式（不依赖 push）
 - [ ] **版本物**：alpha.71 定版——VERSION 文件 + CHANGELOG `[Unreleased]` 转正 + 三仓 tag（tag 打制随 H4 授权）
 - [ ] **生产备份**：`scripts/backup_pg.sh` + `backup_imboy_db.sh`（恢复路径已被 H3 预演实证）

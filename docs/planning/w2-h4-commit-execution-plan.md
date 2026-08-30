@@ -118,7 +118,7 @@ git log --oneline -2 && git status --short | head -5
 # git -C imboy tag v1.0.0-alpha.70 && git -C imboy push origin v1.0.0-alpha.70
 # git -C imboyapp tag v1.0.0-alpha.16 && git -C imboyapp push origin v1.0.0-alpha.16
 # git -C imboyadmin tag v1.0.0-alpha.16 && git -C imboyadmin push origin v1.0.0-alpha.16
-# ⚠️ 三仓历史领先提交（156/99/13+）将随 main 一并推送——push 前请知悉。
+# ⚠️ 三仓历史领先提交（191/102/126，2026-08-30 实测）将随 main 一并推送——push 前请知悉。
 ```
 
 ---
@@ -129,7 +129,7 @@ git log --oneline -2 && git status --short | head -5
 
 | 仓 | HEAD | 领先/分叉 | tag（均未推） | push 方式 |
 |---|---|---|---|---|
-| imboy | `d8b98253` | 领先 origin/main **180** | `v1.0.0-alpha.70`→`0e7618d5` | 普通 push |
+| imboy | `<发布日以实测为准>` | 领先 origin/main **191**（2026-08-30 机检 release_gate_check.sh 实测；此后随每卡递增，push 前以脚本输出为准） | `v1.0.0-alpha.70`→`0e7618d5` | 普通 push |
 | imboyapp | `55cb1021` | 领先 origin/main **102** | `v1.0.0-alpha.16`→`122652b4` | 普通 push |
 | imboyadmin | `9911a28`（历史已重写：evidence 全清，`.git` 165M→1.7M） | 与三远端完全分叉（旧 `1088e7b`） | `v1.0.0-alpha.16`=`9911a28`（重写后） | **必须 --force** |
 
