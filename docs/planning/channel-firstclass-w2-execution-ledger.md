@@ -538,3 +538,4 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **修复**（imboyapp `49767cfe`）：`Keys.welcomeSeen` 新增；WelcomePage 两个出口置位；splash 未登录分支读标记直达 `/sign_in`。dart-fmt/dart-analyze 全绿（lefthook）。
 - **真机运行时验证 BLOCKED（设备空间）**：MRD-AL00 /data 99% 满（698M 可用），258M debug 包卸载旧包后仍拒装（EMUI 99% 水位硬保护）；341M 单 ABI debug 与 161M 单 ABI release 均被拒。修复已过静态门，**待设备清理空间后 `adb install` 复验**（预期：首次启动出引导 → 任一出口 → 重启直达登录页）。
 - 同源遗留：FCM "Please set a valid API key"（H2 FCM 凭据项）；adb input tap 对该设备登录页部分按钮注入不稳定（自动化观测限制）。
+- **补测（同日追加，imboyapp 提交见 git log -1）**：welcome_page_test.dart 增 welcomeSeen 组——跳过/走完两出口置位断言（mock store 进程级共享→用例内显式重置起点）；10/10 全绿含 8 存量零回归。FCM "Please set a valid API key" 定性收口：google-services.json 为占位文件（project_id=imboy-placeholder、api_key 30 位假值），客户端校验拒绝属预期——替换真实 Firebase 项目 json 即解，与 H2 FCM 凭据人工项同源，无需代码修复。
