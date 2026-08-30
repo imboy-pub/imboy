@@ -334,4 +334,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **附带发现（M-6 变体，重要）**：`index_handler_tests` 原有 `init_login_pwd_rsa_flag_normalized_test_`（#100）四用例与初版新用例均为「{Desc, fun() -> 返回 setup 对象 end}」形态——**返回值被 EUnit 丢弃，断言从不执行，故意错断言亦全绿**（已实证）。该形态与 ZC-09R 修复的「{Desc, fun} 包装式」同类但更隐蔽（返回的不是 ok 而是 setup 对象）。本卡已把 RSA 四用例改造成真实执行的 {setup, S, C, [?_test]} 形态（断言目标同步修正为捕获的 InitData）。**建议全库扫描此类形态**（特征：测试生成器 fun 内 return 一个 {setup,...} 项），待立项。
 - **教训**：真红先行是唯一防线——本卡初版测试因用例参数设计失误（mock 配置=期望值）而假绿，靠红阶段失败才暴露；若先写实现必得假绿。
 
+### 收敛后追加卡 — 发现②修复：envied 新鲜度守卫（2026-08-30）
+
+- **Owner**：总控 Agent；**最终状态**：DONE；**提交**：imboyapp `cba211bf`（未 push，imboyapp 领先 101）
+- **修复**：新增 `test/unit_test/config/env_freshness_test.dart`——把 `.env.local` 的 API_BASE_URL（明文字段）与 SOLIDIFIED_KEY/IV（混淆 List<int> XOR 还原）逐一与 `env_local.g.dart` 烘焙值比对，漂移即红并给出处置指引（删 .g.dart + build_runner，或 dart-define 覆写）。
+- **守卫立刻抓到真实过期**：clean 前的 .g.dart 烘焙的仍是旧 SOLIDIFIED_KEY——证实 `rm .g.dart` 也不够（build_runner 会从缓存按旧输入摘要还原产物）；正确姿势=`dart run build_runner clean` 后重建。clean+重建后全绿且无其他生成产物漂移（git status 仅新增测试文件）。
+- **验证**：红（clean 前 SOLIDIFIED_KEY/IV 两用例失败，失败信息含处置指引）→ 绿（clean 后 3/3）；flutter analyze No issues；dart format 通过。
+- **教训**：envied 类「构建期读外部文件」的生成器都必须配一份新鲜度守卫测试；仅删除产物无法击穿缓存。
+
 - **H2 亮度更新**：真机走查十项全部有实证（单机+API 对端）；**仍待人工资源**：① 第二台真机/在线对端的实时接收与 Push（JPush 未配置）；② 音视频（LiveKit 占位密钥）；③ 3 人 30 秒理解测试；④ release 签名包（缺 android/key.properties）。整体判定维持 **BLOCKED(H2 残余, H3, H4)**。
