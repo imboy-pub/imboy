@@ -497,3 +497,13 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **error-codes.md**：业务码段补 960-968 与 **980**（W2 归档写守卫稳定码；真源 error_code.hrl:173/339），Last Updated → 2026-08-30。
 - **asyncapi 定案无缺口**：W2 三 ds 零 broadcast/publish——project_event 为落库+聚合拉取式，无 WS 推送面，WS 契约无需变更。
 - 全程 lefthook（gitleaks+conventional）通过。
+
+### DCO 全量补签卡 — 三仓 428 笔 Signed-off-by + tag 同步重打（2026-08-30，用户授权身份后执行）
+
+- **触发**：例行跑 `check_dco.sh` 发现 imboy 187/200 笔缺 DCO 签名——push 前真实风险（DCO 非 hook 强制门，属 H4 手动验证项，此前从未列入计划）。**用户随后明确提供 committer 身份 `leeyi <leeyisoft@qq.com>`（与三仓 git config 一致），授权解除**。
+- **方案教训**：首选 `git rebase --signoff origin/main` 在 81be5938 处冲突中止（未推历史含 3+ 个有意保留的 merge 闭合提交，线性化重放必冲突）→ 换 **`git filter-branch --msg-filter 'git interpret-trailers --if-exists=doNothing --trailer …'`**：只改消息加 trailer、不重放补丁、merge 结构保留、tree 零变化，200 笔 7 秒完成。
+- **结果**：三仓 imboy 200 / imboyapp 102（98 leeyi + 4 dependabot 原带签名）/ imboyadmin 126（104+22）**全部带 Signed-off-by**；每仓树 diff=0（与补签前备份分支逐字节一致，内容零变化）。
+- **tag 同步重打**（原 tag 指向被重写提交，悬空）：imboy `v1.0.0-alpha.70`→`32c05c9c`（原 0e7618d5）、imboyapp `v1.0.0-alpha.16`→`74511847`（原 122652b4）、imboyadmin `v1.0.0-alpha.16`→`332d4b6`=新 HEAD（原 9911a28）；三枚 tag 均验证在各自 main 祖先链上。
+- **新基线 SHA**：imboy HEAD=`d2398d41`（领先 200）、imboyapp HEAD=`d9ac743e`（领先 102）、imboyadmin HEAD=`332d4b6`（领先 126）。**⚠️ 本台账此前各卡引用的全部旧 SHA 已失效**——旧值为重写前历史记录，查阅时按提交信息在 git log 中对应新 SHA。
+- **机检升级**：`release_gate_check.sh` H4 段新增 DCO 全覆盖检查（非空 trailer 行数比对；PASS=6 覆盖三仓）。
+- **cleanup**：backup-pre-signoff 分支 ×3、refs/original ×3、reflog expire + gc --prune=now 已执行。

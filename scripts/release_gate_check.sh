@@ -34,6 +34,12 @@ for pair in "imboy:普通推" "imboyapp:普通推" "imboyadmin:须先 fetch 再 
         ok "${repo}：已与 origin/main 同步"
     else
         manual "${repo}：领先 origin/main $ahead 笔未推（${mode}）——按 w2-h4-commit-execution-plan.md §五 由用户指令执行"
+        signed=$(git -C "$d" log "origin/main..HEAD" --format='%(trailers:key=Signed-off-by,valueonly,only)' | grep -vc '^$')
+        if [ "${signed}" = "$ahead" ]; then
+            ok "${repo}：DCO 签名 $ahead/$ahead 全覆盖"
+        else
+            fail "${repo}：DCO 签名 ${signed}/$ahead——补签须用户确认 committer 身份后重写历史（tag 需同步重打）"
+        fi
     fi
 done
 
