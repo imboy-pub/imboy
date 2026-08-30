@@ -405,3 +405,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **down 实证**：81→**80（0.27s，非 dirty）**；回收 project_channel_rel / project_milestone / project_member + project.links 列，与 00000081 down 文件**逐项一致**；workspace / project_event / project_task / workspace_member 属更早迁移（down 不触碰，正确）。
 - **up 实证**：→**81（0.28s）**；links 列回归；对账：project 34 行保留（links 数据按 down 语义丢弃）、project_member 34 行=**81 up.sql:298 内建 Owner 回填**（`INSERT … SELECT … FROM project p WHERE EXISTS workspace_member`，预期行为非异常）、project_milestone / project_channel_rel 重建空表（数据按 down 语义丢弃）；user 49194 / msg_store 46325 全程不变。
 - **H3 剩余**：仅差「生产库跑脱敏脚本 + 生产等价规模数据」这一授权项；迁移/回滚路径、工具链、对账方法已全部预演通过。
+
+### H4 push 前安全门（2026-08-30，gitleaks 三仓 + analyze 基线）
+
+- **imboy** `origin/main..HEAD`（169 commits scanned）：**no leaks**。
+- **imboyapp** `origin/main..HEAD`（98 commits）：**no leaks**。
+- **imboyadmin** 重写后 HEAD 全谱系（377 scanned）：40 findings 分诊=①4 个涉及提交均为 2026-03/04 旧提交且**全部已在远端旧历史**（1088e7b 祖先）——force-push 新增范围泄漏为 **0**；②2 条 private-key 为 `isValidPemFormat` 测试 fixture（`b428384` 已加 inline allow、`17a7bb4` ADM-18 删除目录）；③38 条为自定义 `admin-tsid-numeric-misuse` 代码规范规则（.gitleaks.toml:144）。**无真实密钥。**
+- **imboyapp `flutter analyze`**：**No issues found**——历史 164 条 info 基线已清零，作为 H4 移交基线记录。
+- 结论：三仓 push 安全门 PASS，可随时按 H4 计划 §五 执行。
