@@ -1,0 +1,44 @@
+# POST /api/v1/projects/{project_id}/links/update — 项目 links 更新（W2 ZC-04）
+post:
+  tags: [project]
+  summary: 更新项目外部链接集
+  description: |
+    ## 中文
+    整体替换项目的外部链接集（project.links jsonb，形状由触发器强制为
+    [{name,url}]）。成功后写 project_event=links_updated。
+    ## English
+    Replace the project's external links (jsonb, shape-enforced [{name,url}]).
+  operationId: projectLinksUpdate
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [links]
+          properties:
+            links:
+              type: array
+              maxItems: 20
+              items:
+                type: object
+                required: [name, url]
+                properties:
+                  name: { type: string, maxLength: 50 }
+                  url: { type: string, maxLength: 500 }
+  responses:
+    '200':
+      description: 更新成功（返回更新后的 links）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '4XX':
+      description: links 形状不合法（422）/ 无权限（403）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

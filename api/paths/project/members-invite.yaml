@@ -1,0 +1,51 @@
+# POST /api/v1/projects/{project_id}/members/invite — 邀请项目成员（W2 ZC-02，幂等）
+post:
+  tags: [project]
+  summary: 邀请项目成员（幂等）
+  description: |
+    ## 中文
+    邀请用户加入项目。仅 Project Owner 可操作；目标必须是同工作区 active 成员。
+    幂等：重复邀请返回既有成员（status_flag=existing），不报错、不重复入库。
+    同时写 project_event=member_invited（同事务）。
+    ## English
+    Invite a user to the project (project owner only). Idempotent — repeated
+    invites return the existing member with status_flag=existing.
+  operationId: projectMembersInvite
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [user_id]
+          properties:
+            user_id:
+              type: integer
+              format: int64
+              description: 被邀请用户 ID（须为同工作区 active 成员）
+  responses:
+    '200':
+      description: 邀请成功（created=新邀请 / existing=重复邀请幂等）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      project_id: { type: integer, format: int64 }
+                      user_id: { type: integer, format: int64 }
+                      status_flag: { type: string, enum: [created, existing] }
+    '4XX':
+      description: user_id 缺失（400）/ 无权限（403）/ 目标非工作区成员（404/422）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

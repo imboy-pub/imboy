@@ -61,6 +61,8 @@ tags:
     description: 消息查询与历史
   - name: bot
     description: 开发者服务 Bot（Webhook 推送 + api_token 认证）
+  - name: project
+    description: 项目协作（W2）：成员 / 里程碑 / 频道关联 / 四聚合
   - name: admin-setup
     description: 首启初始化向导（免鉴权，仅允许执行一次）
   - name: admin
@@ -1082,6 +1084,40 @@ paths:
     $ref: './paths/adm-finance/billing-subscriptions.yaml'
   /api/adm/finance/billing/invoices:
     $ref: './paths/adm-finance/billing-invoices.yaml'
+
+  # --------------------------------------------------------------------------
+  # Channel-first-class W2：项目协作（成员 / 里程碑 / 频道关联 / 四聚合）
+  # 真源：.contract/api_contract.json（contract-export）；Handler 见
+  # project_member_handler / project_milestone_handler / project_channel_handler
+  # --------------------------------------------------------------------------
+  /api/v1/projects/{project_id}/members:
+    $ref: './paths/project/members-list.yaml'
+  /api/v1/projects/{project_id}/members/invite:
+    $ref: './paths/project/members-invite.yaml'
+  /api/v1/projects/{project_id}/members/remove:
+    $ref: './paths/project/members-remove.yaml'
+  /api/v1/projects/{project_id}/members/transfer_owner:
+    $ref: './paths/project/members-transfer-owner.yaml'
+  /api/v1/projects/{project_id}/milestones:
+    $ref: './paths/project/milestones.yaml'
+  /api/v1/milestones/{milestone_id}/update:
+    $ref: './paths/project/milestone-update.yaml'
+  /api/v1/milestones/{milestone_id}/reach:
+    $ref: './paths/project/milestone-reach.yaml'
+  /api/v1/projects/{project_id}/channels:
+    $ref: './paths/project/channels.yaml'
+  /api/v1/projects/{project_id}/channels/{channel_id}/unlink:
+    $ref: './paths/project/channel-unlink.yaml'
+  /api/v1/projects/{project_id}/links/update:
+    $ref: './paths/project/links-update.yaml'
+  /api/v1/projects/{project_id}/aggregations/pinned:
+    $ref: './paths/project/aggregations-pinned.yaml'
+  /api/v1/projects/{project_id}/aggregations/resources:
+    $ref: './paths/project/aggregations-resources.yaml'
+  /api/v1/projects/{project_id}/aggregations/activity:
+    $ref: './paths/project/aggregations-activity.yaml'
+  /api/v1/projects/{project_id}/aggregations/related_posts:
+    $ref: './paths/project/aggregations-related-posts.yaml'
 
 components:
   securitySchemes:

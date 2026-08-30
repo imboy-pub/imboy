@@ -1,0 +1,32 @@
+# GET /api/v1/projects/{project_id}/aggregations/pinned — 四聚合之 pinned（W2 ZC-06）
+get:
+  tags: [project]
+  summary: "置顶频道流（公告优先的有界摘要）"
+  description: |
+    ## 中文
+    置顶频道流（公告优先的有界摘要）。SQL 条数固定（无 N+1），返回有界摘要。
+    ## English
+    Pinned channel stream (announcement-first bounded digest). Fixed number of SQL statements (no N+1), bounded result.
+  operationId: projectAggPinned
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    - name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, default: 10 }
+  responses:
+    '200':
+      description: 聚合摘要
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '4XX':
+      description: 无权限（403）/ 项目不存在（404）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

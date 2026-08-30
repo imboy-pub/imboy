@@ -1,0 +1,53 @@
+# POST /api/v1/milestones/{milestone_id}/update — 里程碑更新（W2 ZC-03）
+post:
+  tags: [project]
+  summary: 更新里程碑
+  description: |
+    ## 中文
+    更新里程碑的 name / due_date（部分更新，只传需要改的字段）。
+    成功后写 project_event=milestone_updated。已 reached 的里程碑仍可改名/改期。
+    ## English
+    Partial update of milestone name / due_date.
+  operationId: projectMilestonesUpdate
+  parameters:
+    - name: milestone_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          minProperties: 1
+          properties:
+            name: { type: string, maxLength: 255 }
+            due_date: { type: string, format: date }
+  responses:
+    '200':
+      description: 更新成功（返回完整里程碑行）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer, format: int64 }
+                      workspace_id: { type: integer, format: int64 }
+                      project_id: { type: integer, format: int64 }
+                      name: { type: string }
+                      due_date: { type: [string, "null"], format: date }
+                      status: { type: string, enum: [planned, reached] }
+                      reached_at: { type: [string, "null"] }
+                      created_at: { type: string }
+                      updated_at: { type: string }
+    '404':
+      description: 里程碑不存在
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

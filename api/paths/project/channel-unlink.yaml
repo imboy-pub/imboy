@@ -1,0 +1,31 @@
+# POST /api/v1/projects/{project_id}/channels/{channel_id}/unlink — 解绑频道（W2 ZC-04，幂等）
+post:
+  tags: [project]
+  summary: 从项目解绑频道（幂等）
+  description: |
+    ## 中文
+    把频道从项目解绑（不删频道本身）；重复解绑幂等。解绑经复合 FK 强制的
+    project_channel_rel 删除行，同时写 project_event=channel_unlinked。
+    ## English
+    Unlink a channel from the project (the channel itself is kept). Idempotent.
+  operationId: projectChannelsUnlink
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    - name: channel_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  responses:
+    '200':
+      description: 解绑成功（幂等）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '4XX':
+      description: 参数缺失（400）/ 无权限（403）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

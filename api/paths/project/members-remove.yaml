@@ -1,0 +1,48 @@
+# POST /api/v1/projects/{project_id}/members/remove — 移除项目成员（W2 ZC-02，幂等）
+post:
+  tags: [project]
+  summary: 移除项目成员（幂等）
+  description: |
+    ## 中文
+    把用户移出项目。Project Owner 或 Workspace Owner 可操作；幂等（重复移除
+    返回 already_removed 语义，不报错）。同时写 project_event=member_removed。
+    ## English
+    Remove a member from the project (project owner or workspace owner).
+    Idempotent.
+  operationId: projectMembersRemove
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [user_id]
+          properties:
+            user_id: { type: integer, format: int64 }
+  responses:
+    '200':
+      description: 移除成功（幂等）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      project_id: { type: integer, format: int64 }
+                      user_id: { type: integer, format: int64 }
+                      status: { type: string, enum: [removed] }
+                      status_flag: { type: string }
+    '4XX':
+      description: user_id 缺失（400）/ 无权限（403）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

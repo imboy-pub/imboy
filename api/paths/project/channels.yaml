@@ -1,0 +1,83 @@
+# /api/v1/projects/{project_id}/channels — 关联频道(POST link)/列表(GET)（W2 ZC-04）
+post:
+  tags: [project]
+  summary: 关联频道到项目（幂等）
+  description: |
+    ## 中文
+    把频道关联进项目（personal 频道不可关联；重复关联幂等返回 existing）。
+    Owner / active 项目成员（非 guest）可操作。
+    ## English
+    Link a channel to the project. Idempotent on repeat calls (existing).
+    Personal channels cannot be linked.
+  operationId: projectChannelsLink
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [channel_id]
+          properties:
+            channel_id: { type: integer, format: int64 }
+  responses:
+    '200':
+      description: 关联成功（created / existing）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      status_flag: { type: string, enum: [created, existing] }
+    '4XX':
+      description: channel_id 缺失（400）/ personal 频道（422）/ 无权限（403）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+get:
+  tags: [project]
+  summary: 项目已关联频道列表（分页）
+  description: |
+    ## 中文
+    项目已关联的频道分页列表。active 项目成员与 guest 可读。
+    ## English
+    Paginated list of channels linked to the project.
+  operationId: projectChannelsList
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    - name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, default: 10 }
+  responses:
+    '200':
+      description: 频道分页
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list: { type: array, items: { type: object } }
+                      page: { type: integer }
+                      size: { type: integer }
+                      total: { type: integer }
+                      total_page: { type: integer }

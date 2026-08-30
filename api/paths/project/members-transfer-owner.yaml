@@ -1,0 +1,52 @@
+# POST /api/v1/projects/{project_id}/members/transfer_owner — 项目 Owner 转移（W2 ZC-02）
+post:
+  tags: [project]
+  summary: 项目 Owner 转移
+  description: |
+    ## 中文
+    把项目 Owner 转移给另一名成员。仅当前 Project Owner 可操作；目标在本项目
+    有未完成任务时 409（先改派或完成）。同时写 project_event=member_owner_transferred。
+    ## English
+    Transfer project ownership to another member (project owner only).
+    409 if the target has unfinished assignee tasks in this project.
+  operationId: projectMembersTransferOwner
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [user_id]
+          properties:
+            user_id: { type: integer, format: int64, description: 新 Owner（须已是项目成员） }
+  responses:
+    '200':
+      description: 转移成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      project_id: { type: integer, format: int64 }
+                      from_owner_id: { type: integer, format: int64 }
+                      to_owner_id: { type: integer, format: int64 }
+    '4XX':
+      description: 无权限（403）/ 目标非成员（404）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
+    '409':
+      description: 目标在本项目有未完成任务
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

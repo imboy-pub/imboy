@@ -1,0 +1,46 @@
+# POST /api/v1/milestones/{milestone_id}/reach — 达成里程碑（W2 ZC-03，单向幂等）
+post:
+  tags: [project]
+  summary: 达成里程碑（planned → reached 单向）
+  description: |
+    ## 中文
+    把里程碑从 planned 推进到 reached（单向，不可逆）。并发守卫：另一事务已
+    达成时幂等返回 already_reached，不覆盖 reached_at、不重复写事件。成功时
+    reached_at 与 status 同事务写入，并写 project_event=milestone_reached。
+    返回第三元素 reached / already_reached。
+    ## English
+    Move a milestone from planned to reached (one-way). Concurrent reaches are
+    idempotent (already_reached) — reached_at is never overwritten.
+  operationId: projectMilestonesReach
+  parameters:
+    - name: milestone_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  responses:
+    '200':
+      description: 已达成或并发幂等
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id: { type: integer, format: int64 }
+                      workspace_id: { type: integer, format: int64 }
+                      project_id: { type: integer, format: int64 }
+                      name: { type: string }
+                      due_date: { type: [string, "null"], format: date }
+                      status: { type: string, enum: [planned, reached] }
+                      reached_at: { type: [string, "null"] }
+                      created_at: { type: string }
+                      updated_at: { type: string }
+    '404':
+      description: 里程碑不存在
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }

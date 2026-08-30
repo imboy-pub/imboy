@@ -1,0 +1,59 @@
+# GET /api/v1/projects/{project_id}/members — 项目成员分页列表（W2 ZC-02）
+get:
+  tags: [project]
+  summary: 项目成员列表（分页）
+  description: |
+    ## 中文
+    项目成员分页列表。Project Owner、Workspace Owner（治理）与 active
+    项目成员可读；非成员直访 403。按 joined_at 升序。
+    ## English
+    Paginated project member list. Readable by the project owner, the
+    workspace owner (governance) and active project members; 403 otherwise.
+  operationId: projectMembersList
+  parameters:
+    - name: project_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    - name: page
+      in: query
+      schema: { type: integer, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, default: 10, maximum: 100 }
+  responses:
+    '200':
+      description: 成员分页
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            workspace_id: { type: integer, format: int64 }
+                            project_id: { type: integer, format: int64 }
+                            user_id: { type: integer, format: int64 }
+                            invited_by: { type: integer, format: int64 }
+                            joined_at: { type: string }
+                            status: { type: string, enum: [active] }
+                            nickname: { type: string }
+                            avatar: { type: string }
+                            account: { type: string }
+                      page: { type: integer }
+                      size: { type: integer }
+                      total: { type: integer }
+                      total_page: { type: integer }
+    '4XX':
+      description: 无权限（403）/ 参数缺失（400）
+      content:
+        application/json:
+          schema: { $ref: '../../components/schemas/Envelope.yaml' }
