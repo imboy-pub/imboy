@@ -378,3 +378,13 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **执行**：imboyadmin `e68c984`——`git rm -r --cached tests/auto_test/evidence/`（1684 文件出索引），.gitignore 无需改。
 - **验证**：仍被跟踪 **0**；磁盘 1922 个文件全保留（`find` 口径）；`git status` **0 行**（18 个脏文件噪音永久消失）；lefthook gitleaks 绿。imboyadmin 现 `e68c984` 领先 origin **16**。
 - **影响面**：历史不重写（08-24 旧 blob 留存）；此后跑批输出只留本地；发布证据届时走 release 附件或 docs 定点归档；HEAD 越过 alpha.16 tag 属正常后续开发，tag 发布点不受影响。
+
+### evidence 处置·历史清除卡（2026-08-30，用户明确指令「不应该加入 git 仓储，给我全部处理好」）
+
+- **指令升级**：在「移出跟踪」（e68c984）基础上完成**历史清除**——旧历史 blob 才是 165M 库体积与隐私留存的主体。
+- **前置侦察**：admin 277 笔提交中 **29 笔**触及 evidence（最早 2026-08-13 `379d75f`），且已在 gitee 公开远端（origin/github/gitcode 三 remote 均=1088e7b）。全工作区八仓扫尾：**仅 admin 有此类文件**——imboyapp 127 张 png=App 图标/启动屏/聊天素材，imboy 8 张=品牌与静态资源，均为产品资产保留；imboy `docs/guides/e2ee/**`=手写审计 md 保留。
+- **备份**：`.Codex/backups/imboyadmin-pre-evidence-purge-20260830.bundle`（134MB，重写前全部历史+9 tag，HEAD e68c984）。
+- **执行**：`git filter-branch --index-filter 'git rm -rq --cached --ignore-unmatch tests/auto_test/evidence' --prune-empty --tag-name-filter cat -- --branches --tags`（不动 remote-tracking）；随后删 refs/original 与 remote-tracking 引用、reflog expire、`git gc --prune=now`。
+- **结果**：历史触及 evidence 提交 **0**、跟踪文件 **0**；提交 277→**262**（15 笔纯 evidence 提交被 --prune-empty 剪除，含 e68c984）；`.git` 165M→**1.7M**；旧 8345107 系对象物理清除；磁盘 1922 个 evidence 文件全保留；`git status` 干净；bun test **1410/0** 复绿。
+- **SHA 对照（历史引用换算）**：HEAD=v1.0.0-alpha.16 tag：`8345107`→**`9911a28`**；alpha.12/14/15 同步重写；alpha.1/2/8/9/11 不变；本仓此前台账引用的 admin SHA（8345107/e68c984）在本地已不存在，仅在远端旧历史与备份 bundle 中可考。
+- **push 影响（重要）**：imboyadmin 本地与三个远端已完全分叉，将来 push **必须 `--force`**（建议 --force-with-lease）；gitee 远端旧历史中的 evidence 在 force-push 前仍公开可见，且 force-push 后平台侧不可达对象是否物理清除取决于 gitee 的 GC 策略——彻底远端抹除属平台外部操作，待用户自行处理。
