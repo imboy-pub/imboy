@@ -463,6 +463,17 @@
 | GET | /api/v1/channel/:channel_id/stats | JWT | channel_handler#stats | 频道统计 / Stats | path `channel_id`* | Stats object |
 | GET | /api/v1/channel/:channel_id/stats/daily | JWT | channel_handler#stats_daily | 每日统计 / Daily stats | path `channel_id`*；`days`(默认7,1-365) | `{list}` |
 
+### 频道 incoming Webhook 管理 / Channel Incoming Webhook (type=2 bot)
+
+> 须频道管理员 role≥2；入站端点 `/api/v1/channel/:channel_id/incoming/:token`
+> 以 token 即凭证放行（免 JWT / 免 902 签名），详见 `docs/guides/bot-developer-guide.md`。
+
+| 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
+|---|---|---|---|---|---|---|
+| POST | /api/v1/channel/:channel_id/webhook/create | JWT | channel_webhook_handler#create | 创建 incoming webhook / Create webhook | path `channel_id`*；`name`? | webhook 行（含 token） |
+| GET | /api/v1/channel/:channel_id/webhook/list | JWT | channel_webhook_handler#list | webhook 列表 / List webhooks | path `channel_id`* | `{list}` |
+| POST | /api/v1/channel/:channel_id/webhook/:webhook_id/disable | JWT | channel_webhook_handler#disable | 停用 webhook / Disable webhook | path `channel_id`,`webhook_id`* | 空载荷成功 |
+
 ---
 
 ## AI 助手 / AI Agent（用户侧发现）
