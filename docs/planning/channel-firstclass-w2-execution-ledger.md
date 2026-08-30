@@ -473,3 +473,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **本机实证**：`release_gate_check.sh /tmp/sd_green` → PASS=3 FAIL=0 WARN=7（密钥 UNSET/待定版等发布日动作）人工项=11。runbook §一 与 H4 计划 §五 已引用/刷新（领先数 191/102/126，2026-08-30 实测）。
 - **教训**：bash 双引号内 `$var` 后紧跟全角标点（：/（/），）会把多字节字符并入变量名 → unbound variable；统一 `${var}` 花括号化。
 - **发布日工作流就此定形**：`release_gate_check.sh`（机检+剩余人工清单）→ 人工门逐项收齐 → runbook §二 执行 → §三 回滚预案 → §四 证据归档。
+
+### OpenAPI W2 补录卡 — project 域 14 条路径 + tag 材料核对（2026-08-30，「继续」驱动）
+
+- **H4 tag 材料核对（前置项）**：三仓 tag 全部健康——imboy `v1.0.0-alpha.70`→`0e7618d5`、imboyapp `v1.0.0-alpha.16`→`122652b4` 均在各自 main 祖先链上；admin 的 `v1.0.0-alpha.16` 已随历史重写同步指向新 HEAD `9911a28`（--tag-name-filter 生效实证）。
+- **真缺口发现**：wiki API-Overview 是导航页（真源指向主仓 `api/openapi.yaml`），而 openapi.yaml 对 project 域**零覆盖**——Discovery/Bot 端点此前均有补录先例，唯 W2 上线时只导出了契约真源 `.contract/api_contract.json`（22 条 project 路由全在），漏了 openapi 展示层。
+- **补齐**（提交 `3e5b1ae1`）：新增 `api/paths/project/` 14 个 path 文件——members×4 / milestones×3（list+create 双语义、update、reach 单向幂等）/ channels×3（link+list 双语义、unlink、links/update）/ 四聚合×4。双语 description、Envelope 响应、分页形状 `list/page/size/total/total_page`（与 repo 实现一致）、里程碑 due_date ISO 归一说明。
+- **验证**：redocly lint **valid（0 errors**；43 warnings 为既有基线，本次仅新增 5 个 OAS 3.1 `nullable` 语法错误并已修——可空字段用 `type:[string,"null"]`，先例 e148c9da）；`make contract-check` **PASS**——informational 覆盖 router 623 / openapi 508 / 交集 492（原 openapi 声明 494，+14）。契约真源零变更。
+- **残余**：openapi 对 project 域的 W0/W1 部分（projects/show/update/status、tasks 系列）仍未补——属既有渐进补全债务（openapi 头部自述 130/278 起步模式），非 W2 回归；已随 informational 口径登记。
