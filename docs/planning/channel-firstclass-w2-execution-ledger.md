@@ -326,4 +326,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **本地配置改动（gitignored，均留注释）**：`imboyapp/.env.local`（API_BASE_URL=192.168.2.79:9800 + SOLIDIFIED_KEY 对齐节点派生值）；`imboy/config/sys.local.config`（ws_url=192.168.2.79:9800）。
 - **环境复原**：走查测试数据全清（msg_store/workspace/user 三表 0 残留）；设备截图临时文件已删；本地节点已停（healthz 000）；设备上 App 保持 走查A 登录态供用户查看（账号 uid 已随清理删除——设备下次启动会话失效，重新登录即可）。
 - **停止条件**：未触发。
+### 收敛后追加卡 — 发现①修复：/init ws_url 同源派生（2026-08-30）
+
+- **Owner**：总控 Agent；**最终状态**：DONE；**提交**：`d8edb6c6`（未 push）
+- **修复**：`index_handler` 新增 `ws_url_for/1` + `derive_ws_url/1`——显式配置优先，未配置时按请求 Host 同源派生（ws/wss 随 X-Forwarded-Proto/scheme）。本地/内网部署删除 ws_url 配置行即可零维护（`sys.local.config` 已删该行并留注释）。
+- **TDD**：红=`index_handler_tests` 新增 3 用例（未配置派生 ws / X-Forwarded-Proto https→wss / 显式配置优先）失败 → 绿=**All 11 tests passed**。
+- **附带发现（M-6 变体，重要）**：`index_handler_tests` 原有 `init_login_pwd_rsa_flag_normalized_test_`（#100）四用例与初版新用例均为「{Desc, fun() -> 返回 setup 对象 end}」形态——**返回值被 EUnit 丢弃，断言从不执行，故意错断言亦全绿**（已实证）。该形态与 ZC-09R 修复的「{Desc, fun} 包装式」同类但更隐蔽（返回的不是 ok 而是 setup 对象）。本卡已把 RSA 四用例改造成真实执行的 {setup, S, C, [?_test]} 形态（断言目标同步修正为捕获的 InitData）。**建议全库扫描此类形态**（特征：测试生成器 fun 内 return 一个 {setup,...} 项），待立项。
+- **教训**：真红先行是唯一防线——本卡初版测试因用例参数设计失误（mock 配置=期望值）而假绿，靠红阶段失败才暴露；若先写实现必得假绿。
+
 - **H2 亮度更新**：真机走查十项全部有实证（单机+API 对端）；**仍待人工资源**：① 第二台真机/在线对端的实时接收与 Push（JPush 未配置）；② 音视频（LiveKit 占位密钥）；③ 3 人 30 秒理解测试；④ release 签名包（缺 android/key.properties）。整体判定维持 **BLOCKED(H2 残余, H3, H4)**。
