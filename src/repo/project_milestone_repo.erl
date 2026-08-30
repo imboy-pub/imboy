@@ -27,6 +27,8 @@
 -export([add_tx/2]).
 -export([find_by_id/2]).
 -export([find_tx/3]).
+-export([find_by_id_tx/2]).
+-export([full_columns/0]).
 -export([list_by_project/4]).
 -export([count_by_project/2]).
 -export([update_fields_tx/3]).
@@ -79,7 +81,29 @@ find_tx(Conn, MilestoneId, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
     case elib_pg:query(Conn, Sql, [MilestoneId]) of
-        {ok, [Row | _]} -> Row;
+        {ok, [Row | _]} ->
+            Row;
+        {error, Reason} ->
+            _ = ?ERROR_LOG([project_milestone_find_tx_failed, MilestoneId, Reason]),
+            #{};
+        _ ->
+            #{}
+    end.
+
+%% @doc 客户端可见全列（find_by_id 与事务内回读共用的单一来源）
+-spec full_columns() -> binary().
+full_columns() ->
+    <<"id,workspace_id,project_id,name,due_date,status,reached_at,created_at,updated_at">>.
+
+%% @doc 事务内按全列回读并归一（M-5：create/update/reach 改为提交前取数——
+%% 提交后 find_by_id 回读遇连接池抖动会把已成功的事务报成失败，
+%% create 非幂等，客户端重试将产生重复里程碑）
+-spec find_by_id_tx(any(), integer() | binary()) -> map().
+find_by_id_tx(Conn, MilestoneId) ->
+    Tb = tablename(),
+    Sql = <<"SELECT ", (full_columns())/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
+    case elib_pg:query(Conn, Sql, [MilestoneId]) of
+        {ok, [Row | _]} -> normalize_row(Row);
         _ -> #{}
     end.
 

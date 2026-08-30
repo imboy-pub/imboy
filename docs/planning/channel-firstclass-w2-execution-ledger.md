@@ -428,3 +428,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **新增 `docs/planning/w2-release-runbook.md`**：基于既有 `scripts/deploy.sh`（蓝绿全流程含 `--rollback`）的执行级序列卡——前置清单（H4/版本物/备份/H3/密钥/H2 定名规则）、执行序列（preflight→deploy→冒烟→30min 观察窗）、回滚路径（应用切色 + `drill_migrate.escript down` 迁移级回退）、证据归档与红线。生产主机一律占位符（不入真实 IP/端口）。
 - **CHANGELOG 增加 `[Unreleased]`（alpha.71 候选）**：后端三修复（due_date ISO 归一 / ctl 列宽前置校验 / ws_url 同源派生）+ 客户端三修复（peer_has_no_device 引导 / init 解密失败分类 / envied 新鲜度守卫）。定版时转正为 alpha.71 节。
 - **状态**：Release 的执行准备至此完备（工具/预演/序列/文案四件齐）；执行仍按在册条件授权的门序，待用户明确下达。
+
+### ZC-09 收口卡 — M-4/M-5 修复 + M-6 书面豁免（2026-08-30，「继续」驱动）
+
+- **依据**：`w2-backend-review-2026-08-29` 明文「MEDIUM 各项可由总控排卡或书面豁免」——本卡行使该授权：M-4/M-5 排卡修复，M-6 书面豁免。ZC-09 待拍板项就此清账。
+- **M-5 修复（提交后读失败把成功写报成失败；create 非幂等重试致重复）**：create/update/reach 三处改为**事务内回读**——repo 新增 `find_by_id_tx/2`（全列 + 复用 ZC-08 `normalize_row` 归一）与 `full_columns/0`（列清单单一来源）；`already_reached` 早退分支同款三处全部迁移。
+- **M-5 TDD 红绿实证**：ds_mocks 将 `find_by_id/2` 改为**常驻毒桩**（`post_commit_find_by_id_guard`，新实现永不调用）——旧实现跑套件 4 用例撞桩红（error:post_commit_find_by_id_guard），新实现 **All 15 tests passed**；毒桩同时构成防回归门。
+- **M-4 修复（repo 查询错误吞为"无记录/0"）**：member `find/3`+`find_tx/4`、milestone `find_tx/3`、channel_rel `find_channel_tx/3` 的 `_ -> #{}` 拆出 `{error, Reason}` 分支记 `?ERROR_LOG`——返回值保持空 map 的 fail-closed 语义不变（403/404 方向已安全；500 化属行为变更不在本卡）。纯日志新增，行为由既有套件覆盖。
+- **M-6 书面豁免**：W0/W1 存量 wrapped 空转 11 文件约 126 用例，迁移为 `?WITH_MECK_TESTS` 的成本大于收益（同型 H-1 三套件已在 ZC-09R 完成），豁免并登记为已知债务；约束沿用既有规定——存量文件禁新增用例、新套件必须规范形态。
+- **验证**：全量 `make eunit-local` **6496 pass / 0 failed**（6495+1 新用例）。另：`t=` 单套件模式跑 channel_ds_tests（3F）/channel_ds_idempotency_tests（2F）经 stash 红查证实与本卡无关——单套件运行口径差异，全量链下全部通过。

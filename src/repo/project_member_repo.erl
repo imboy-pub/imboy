@@ -77,8 +77,15 @@ find(ProjectId, Uid, Column) ->
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE project_id = $1 AND user_id = $2">>,
     case elib_pg:one(Sql, [ProjectId, Uid]) of
-        {ok, Row} -> Row;
-        _ -> #{}
+        {ok, Row} ->
+            Row;
+        {error, Reason} ->
+            %% M-4：DB 故障不得与"无记录"静默同形——记错误后仍按空处理
+            %% （权限判定保持 fail-closed 403 方向，但排障可见）
+            _ = ?ERROR_LOG([project_member_find_failed, ProjectId, Uid, Reason]),
+            #{};
+        _ ->
+            #{}
     end.
 
 %% @doc 查询项目成员整行（自动提交连接；空 map = 无记录；ZC-05 收敛点：
@@ -95,8 +102,13 @@ find_tx(Conn, ProjectId, Uid, Column) ->
         <<"SELECT ", Column/binary, " FROM ", Tb/binary,
             " WHERE project_id = $1 AND user_id = $2">>,
     case elib_pg:query(Conn, Sql, [ProjectId, Uid]) of
-        {ok, [Row | _]} -> Row;
-        _ -> #{}
+        {ok, [Row | _]} ->
+            Row;
+        {error, Reason} ->
+            _ = ?ERROR_LOG([project_member_find_tx_failed, ProjectId, Uid, Reason]),
+            #{};
+        _ ->
+            #{}
     end.
 
 %% @doc 事务内移除项目成员（软删 status=removed）

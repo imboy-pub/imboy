@@ -17,6 +17,7 @@
 - 里程碑 `due_date` 经 epgsql 原生 date codec 返回 `{Y,M,D}` 元组，列表/详情接口误透传致客户端解析失败——Repo 层归一为 ISO-8601 字符串
 - `imboy_ctl user create` 超列宽写入返回 500：account>40（同步 `user.mobile varchar(40)`）/ 昵称>80 现前置校验并给可读报错
 - `/api/v1/init` 的 `ws_url` 未配置时透传空串致客户端 WS 假成功——新增 `derive_ws_url/1` 按请求 Host 同源派生（ws/wss 随 X-Forwarded-Proto），显式配置永远优先
+- 里程碑 create/update/reach 在事务提交后回读失败时会把成功写报成失败（create 非幂等，重试致重复）——改为事务内取数（评审 M-5）；repo 层查询错误增加错误日志，不再与「无记录」静默同形（评审 M-4）
 
 **imboyapp（客户端 / Flutter）**
 - E2EE C2C 对端从未上线（设备数=0）时静默失败：现抛独立原因 `peer_has_no_device` 并三语引导「对方还没有在任何设备上登录过…」

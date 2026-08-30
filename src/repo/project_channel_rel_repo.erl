@@ -71,8 +71,13 @@ find_channel_tx(Conn, ChannelId, Column) ->
     Tb = elib_pg_sql:public_tablename(<<"channel">>),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
     case elib_pg:query(Conn, Sql, [ChannelId]) of
-        {ok, [Row | _]} -> Row;
-        _ -> #{}
+        {ok, [Row | _]} ->
+            Row;
+        {error, Reason} ->
+            _ = ?ERROR_LOG([project_channel_find_tx_failed, ChannelId, Reason]),
+            #{};
+        _ ->
+            #{}
     end.
 
 %% @doc 查询用户在项目下的成员关系行（空 map = 无关系）

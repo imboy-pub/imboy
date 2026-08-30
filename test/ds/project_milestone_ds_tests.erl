@@ -131,8 +131,11 @@ ds_mocks(CurrStatus) ->
                 (_Conn, ?MS_ID, _) -> ms_row(CurrStatus);
                 (_, _, _) -> #{}
             end},
-            {'find_by_id', 2, fun
-                (?MS_ID, _) -> ms_row(CurrStatus);
+            %% M-5 守卫毒桩：新实现走事务内 find_by_id_tx，绝不调用 find_by_id/2；
+            %% 若回归到提交后回读，此处即爆（无 case 需要它返回数据）
+            {'find_by_id', 2, fun(_, _) -> erlang:error(post_commit_find_by_id_guard) end},
+            {'find_by_id_tx', 2, fun
+                (_Conn, ?MS_ID) -> ms_row(CurrStatus);
                 (_, _) -> #{}
             end},
             {'find_project_member_tx', 4, fun(_Conn, _Pid, Uid, _) -> pm_row(Uid) end},
@@ -192,6 +195,21 @@ no_event() ->
     after 0 ->
         ok
     end.
+
+%%% ===================================================================
+%%% M-5：create 事务内回读；提交后 find_by_id 故障不得拖垮成功写
+%%% ===================================================================
+
+create_in_tx_read_survives_post_commit_read_failure_test_() ->
+    ?WITH_MECK_TESTS(ds_mocks(<<"planned">>), [
+        {"M-5: create 事务内回读；提交后 find_by_id 故障不影响成功返回", fun() ->
+            reset_state(),
+            ?assertMatch(
+                {ok, _},
+                project_milestone_ds:create(?OWNER, ?PROJECT_ID, <<"M1">>, {2026, 9, 30})
+            )
+        end}
+    ]).
 
 %%% ===================================================================
 %%% create：事件同 Conn + 守卫链

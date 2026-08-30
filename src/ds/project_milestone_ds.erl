@@ -76,7 +76,8 @@ create(CreatorUid, ProjectId, Name, DueDate) ->
                         )
                     of
                         {ok, _} ->
-                            {ok, MsId};
+                            %% M-5：事务内回读（提交后读抖动不再拖垮成功写）
+                            {ok, MsId, project_milestone_repo:find_by_id_tx(Conn, MsId)};
                         {error, Reason} ->
                             throw({abort_tx, {milestone_create_failed, Reason}})
                     end;
@@ -85,9 +86,9 @@ create(CreatorUid, ProjectId, Name, DueDate) ->
             end
         end),
     case Result of
-        {ok, MsId} ->
+        {ok, MsId, Row} ->
             _ = ?INFO_LOG([project_milestone_created, CreatorUid, ProjectId, MsId]),
-            {ok, find_by_id(MsId)};
+            {ok, Row};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -95,10 +96,7 @@ create(CreatorUid, ProjectId, Name, DueDate) ->
 %% @doc 里程碑详情
 -spec find_by_id(integer()) -> map() | {error, term()}.
 find_by_id(MsId) ->
-    project_milestone_repo:find_by_id(
-        MsId,
-        <<"id,workspace_id,project_id,name,due_date,status,reached_at,created_at,updated_at">>
-    ).
+    project_milestone_repo:find_by_id(MsId, project_milestone_repo:full_columns()).
 
 %% @doc 项目里程碑列表（status all|planned|reached；分页参数由 logic 层归一）
 -spec list_by_project(integer(), binary() | all, integer(), integer()) ->
@@ -148,7 +146,7 @@ update(ActorUid, MsId, Name, DueDate) ->
                         end,
                     case map_size(Data1) of
                         0 ->
-                            {ok, no_fields};
+                            {ok, no_fields, project_milestone_repo:find_by_id_tx(Conn, MsId)};
                         _ ->
                             Now = elib_dt:now(),
                             case
@@ -169,7 +167,8 @@ update(ActorUid, MsId, Name, DueDate) ->
                                         )
                                     of
                                         {ok, _} ->
-                                            {ok, updated};
+                                            {ok, updated,
+                                                project_milestone_repo:find_by_id_tx(Conn, MsId)};
                                         {error, Reason} ->
                                             throw({abort_tx, {milestone_update_failed, Reason}})
                                     end;
@@ -180,8 +179,8 @@ update(ActorUid, MsId, Name, DueDate) ->
             end
         end),
     case Result of
-        {ok, _Flag} ->
-            {ok, find_by_id(MsId)};
+        {ok, _Flag, Row} ->
+            {ok, Row};
         {error, Reason} ->
             {error, Reason}
     end.
@@ -209,7 +208,7 @@ reach(ActorUid, MsId) ->
                     case maps:get(<<"status">>, Ms, <<>>) of
                         <<"reached">> ->
                             %% 幂等：重复 reach 返回成功，不更新、不重复写事件
-                            {ok, already_reached};
+                            {ok, already_reached, project_milestone_repo:find_by_id_tx(Conn, MsId)};
                         <<"planned">> ->
                             Now = elib_dt:now(),
                             case
@@ -234,7 +233,8 @@ reach(ActorUid, MsId) ->
                                         )
                                     of
                                         {ok, _} ->
-                                            {ok, reached};
+                                            {ok, reached,
+                                                project_milestone_repo:find_by_id_tx(Conn, MsId)};
                                         {error, Reason} ->
                                             throw({abort_tx, {milestone_reach_failed, Reason}})
                                     end;
@@ -243,7 +243,8 @@ reach(ActorUid, MsId) ->
                                     %% 谓词，0 行 = 另一事务已在本事务读取后达成
                                     %% （READ COMMITTED 重评估）——幂等短路，
                                     %% 不覆盖 reached_at、不重复写事件
-                                    {ok, already_reached};
+                                    {ok, already_reached,
+                                        project_milestone_repo:find_by_id_tx(Conn, MsId)};
                                 {error, Reason2} ->
                                     throw({abort_tx, {milestone_reach_failed, Reason2}})
                             end;
@@ -253,9 +254,9 @@ reach(ActorUid, MsId) ->
             end
         end),
     case Result of
-        {ok, Flag} ->
+        {ok, Flag, Row} ->
             _ = ?INFO_LOG([project_milestone_reached, ActorUid, MsId, Flag]),
-            {ok, find_by_id(MsId), Flag};
+            {ok, Row, Flag};
         {error, Reason} ->
             {error, Reason}
     end.
