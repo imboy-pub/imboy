@@ -388,3 +388,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **结果**：历史触及 evidence 提交 **0**、跟踪文件 **0**；提交 277→**262**（15 笔纯 evidence 提交被 --prune-empty 剪除，含 e68c984）；`.git` 165M→**1.7M**；旧 8345107 系对象物理清除；磁盘 1922 个 evidence 文件全保留；`git status` 干净；bun test **1410/0** 复绿。
 - **SHA 对照（历史引用换算）**：HEAD=v1.0.0-alpha.16 tag：`8345107`→**`9911a28`**；alpha.12/14/15 同步重写；alpha.1/2/8/9/11 不变；本仓此前台账引用的 admin SHA（8345107/e68c984）在本地已不存在，仅在远端旧历史与备份 bundle 中可考。
 - **push 影响（重要）**：imboyadmin 本地与三个远端已完全分叉，将来 push **必须 `--force`**（建议 --force-with-lease）；gitee 远端旧历史中的 evidence 在 force-push 前仍公开可见，且 force-push 后平台侧不可达对象是否物理清除取决于 gitee 的 GC 策略——彻底远端抹除属平台外部操作，待用户自行处理。
+
+### H3 工具卡 — 脱敏快照脚本（2026-08-30，「继续」驱动，脚本+手册指引落库）
+
+- **背景**：H3 人工门需要「生产等价规模快照（脱敏）」，此前无工具；本卡交付 `scripts/sanitized_snapshot.sh` 并在本地库全流程实证，H3 从「等授权」推进为「授权即跑」。
+- **设计**：同实例临时库灌 schema+全量数据 → 原地 UPDATE 脱敏 → 残留 PII 扫描 → 行数对账 → `pg_dump -Fc` 导出。列级 **default-deny** 分类（1311 列）：ID/数值/时间/小基数系统枚举保留（外键完整+规模真实），mobile/account→`12` 假号段（非真实号段，主键有序确定）、nickname/email→确定性假值、reg_ip/birthday/avatar/sign→置空、token/secret/aes_key 类与 jsonb/tsvector→占位（`md5(主键)` 保唯一约束、窄 varchar 按列宽截断、复合主键取全键做基底、无主键回退 ctid）、password 保留哈希（演练登录）；产出含 `mobile_map.csv`（假↔真映射，严禁外发）与 `class.tsv`（审计）。
+- **先红后绿**：红=`--raw` 模式扫描爆红 exit 10（user.mobile 49151 真号 + user.account 11733 + adm_user 2 + 抽样 500 全命中——含数据形态「账号列实为手机号」规则的正当性实证）；绿=exit 0（**69s**，源库 712MB）。
+- **中间修复链（均有失败输出佐证）**：全角括号并入 bash 变量名、case 带空格模式未引号、pg_jieba 触发器灌入期开火（`--disable-triggers`+`session_replication_role=replica`）、NULLIFY 未兜底 NOT NULL、jsonb/tsvector 占位需 to_jsonb/to_tsvector、窄 varchar 溢出按列宽截断、复合主键 md5 基底碰撞、**timescaledb 超表**（父表 COPY 空壳、数据在 chunk → 排除超表后 `\copy (SELECT * FROM …)` 直灌）。
+- **端到端验证**：行数对账 PASS（msg_store 46325 / msg_c2g_timeline 68246 / msg_c2c 43646 … 与源一致）；`sanitized.dump` 14M（sha256=ed9a2338…）；恢复冒烟 pg_restore **0 错误**，演练库 49194 用户全落 `12000000001–12000049194` 假号段，验证库已清理。
+- **H3 解除路径更新**：授权后仅需 ① 生产库跑本脚本（PG* 指向生产，建议维护窗口）② 演练库恢复 dump（需扩展已装或超级用户）③ 按手册 §五 迁移→冒烟→回滚→对账。
