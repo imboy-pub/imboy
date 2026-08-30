@@ -454,3 +454,14 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **验证三连**：① `jarsigner -verify`（upload keystore）= **jar 已验证**；② `check_play_release.sh`（SKIP_URL_CHECK=1，不主动访问生产）= **8 项 PASS**（merged manifest/5 项禁用权限/AAB 存在/versionCode）；③ CXX1104 NDK 警告随之消失。
 - **H2 状态更新**：「release 签名包」从缺→**已就绪（本地实证）**。H2 残余仅剩：第二台真机、JPush/LiveKit 凭据、3 人真人测试。另登记观察项：google-services.json 未登记证书指纹——不影响 FCM 基础推送，若启用 App Check/Sign-In 类功能需在 Firebase Console 补登 SHA-1/SHA-256；Play Console 侧的 App Signing key 指纹登记亦为发布时人工步骤。
 - **教训入库**：flutter clean 不清 gradle build cache；「产物缺类 + 任务恒 up-to-date/FROM-CACHE + clean 无效」三联征 → 直查模块产物目录实锤，修法=删模块 build 目录+删 `~/.gradle/caches/build-cache-1`。
+
+### H2 状态复核卡 — Push/LiveKit 真实配置图景（2026-08-30，「继续」驱动）
+
+- **起因**：H2 记录长期写「JPush 未配置/LiveKit 占位符」，但 local.properties 里 JPush 凭据有值——逐层核实后两处记录均需更正。
+- **Push 定案**：推送技术栈实为 **FCM（Android）/APNs（iOS）**，非 JPush。
+  - 客户端：`firebase_messaging` 已集成 + `google-services.json` 为真实项目配置（pub.imboy.app / paytest 双客户端）；JPush 仅存注释残留（`init.dart:131` 已注释），local.properties/gradle 的 jpush 凭据与 manifest 占位为历史遗留。
+  - 服务端：链路已接线（msg_c2c/msg_c2g logic → push_notification_ds `do_send_push` → FCM HTTP v1 + APNs；离线通知 `check_and_notify_offline_msgs`；token 上报 `user_device_handler`→push_token_repo）。
+  - **阻塞点（人工项收敛为一个）**：`push.enabled=false` + `fcm_project_id`/`fcm_access_token` 占位 + APNs 空。修复=Firebase Console 取 project id 与 service account OAuth token 填入生产配置并开开关；APNs 另需 Apple 开发者侧 key（iOS 推送）。
+  - 服务端 `jpush_app_key/master_secret` 配置存在但发送实现不消费它（无 JPush 通道代码）——属遗留配置，不构成阻塞。
+- **LiveKit 定案**：`sys.pro.config` 三值（ws_url/api_key/api_secret）长度互异（27/31/51）且为域名+密钥形态——**真实凭据，非占位**。RTC 服务端已就绪，H2 音视频验证只差第二台真机资源。
+- **H2 残余重述**：① 第二台真机（Push 端到端 + 音视频对端）；② FCM/APNs 凭据（人工，第三方账号操作）；③ 3 人 30 秒真人测试。原「JPush 未配置」「LiveKit 占位」两条过时表述废止。
