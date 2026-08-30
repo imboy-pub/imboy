@@ -94,9 +94,9 @@ imboy eunit 全量 main 终态约 6262 pass / 0 failed（62 cancelled，独占�
 |---|---|---|
 | H0 工作树 | **已放行（2026-08-29）** | 用户对 Base SHA 与脏文件清单无异议并指示"继续"；三仓仅 main、无待删分支/worktree（远端分支清理不在本计划范围，另行决策） |
 | H1 W2 Scope | **已放行（2026-08-29）** | 用户对 §4 十二项 Contract（标 now）指示"继续"，视为签认；W0 契约测试同步换档 |
-| H2 外部测试 | 未开始 | 真机/测试账号/测试人员及联系方式需用户提供 |
-| H3 生产等价演练 | 未开始 | 环境、数据来源、访问授权需用户提供 |
-| H4 Release | 未开始 | git 身份、目标远端、版本、tag、发布渠道需用户确认 |
+| H2 外部测试 | **BLOCKED（用户签认终态 08-30）** | 真机/测试账号/测试人员资源未提供；APK 已备（303MB debug）；解除路径见 §6 终局签认 |
+| H3 生产等价演练 | **BLOCKED（用户签认终态 08-30）** | 脱敏快照与环境授权未提供；干净部署技术演练已完成；解除路径见 §6 终局签认 |
+| H4 Release | **BLOCKED（用户签认终态 08-30）** | commit/tag 批次已全部完成（本地），push 需用户指定远端；解除路径见 §6 终局签认 |
 
 ## 6. 执行日志（追加式，各卡不得改写他人记录）
 
@@ -283,3 +283,6 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
   - **未 push、未打 tag**——push 批次（含三仓历史 165/100/13+ 笔领先提交随行）仍待用户指定远端后单独授权。
 - **追加（同日终）**：本地 tag 已打（**未推送**）：imboy `v1.0.0-alpha.70`、imboyapp/imboyadmin `v1.0.0-alpha.16`（`git tag -d` 可随时撤销）。真机二次探测仍不在线。**剩余唯一未完成项 = push（需用户指定远端）与 H2/H3 人工验收资源**。总控所有可独立执行的工作至此全部完成。
 - **追加（08-30）**：iOS 模拟器冒烟尝试 **BLOCKED（禁区）**：iPhone 17 (iOS 26.5) 模拟器处于 Booted，simulator 变体构建成功但产物为 x86_64——`ios/Podfile:104` 与 `ios/Runner.xcodeproj/project.pbxproj:585` 的 `EXCLUDED_ARCHS[sdk=iphonesimulator*]=arm64`（Intel 遗留）把 arm64 排除出模拟器构建，Apple Silicon 模拟器无法安装。修复须改 `imboyapp/ios/*`——计划禁区（ZC-06 停止条件），**不修改**，交用户决策（Apple Silicon 上做 iOS 模拟器开发的前置障碍）。Android 真机二次探测仍不在线。终态不变：BLOCKED(H2,H3,H4)。
+- **追加（08-30 终局签认）**：用户指令原文 **「授权 BLOCKED(H2, H3, H4)」**。总控解读与落册：用户签认 H2（真机/真人）/ H3（生产等价演练）/ H4（push 远端发布）三人工门**保持 BLOCKED 为本执行计划终态**；截至签认时刻未提供任何解除资源（未指定 push 远端、无 Android 真机接入、无生产环境授权、无 iOS 禁区豁免）。依据计划规则 10（真人/生产证据缺失不得声称正式 Release），最终判定维持 **`release-candidate / BLOCKED(H2, H3, H4)`**，不升级为 READY_FOR_ALPHA_RELEASE；**本计划执行至此收敛，总控任务终结**。
+  - **封板基线（签认时终态核验）**：imboy `a76252e5`（工作树干净，领先 origin 167 笔；tag `v1.0.0-alpha.70` 在封板提交 `50fb47cd`）eunit **6490 pass / 0 fail**；imboyapp `122652b4`（干净，领先 100；tag `v1.0.0-alpha.16`）flutter **5940/0** + analyze No issues；imboyadmin `8345107`（领先 15；tag `v1.0.0-alpha.16`）bun test **1410/0**——admin 工作树另有 18 个 `tests/auto_test/evidence/` 既有 E2E 证据截图改动（与 W2 无关，按规则 2 保护未触碰）。Demo B 双遍 66/66；独立审查 HIGH=0；Contract Gate 630 endpoints；空库迁移 1→81 一次通过。
+  - **解除路径（资源到位即恢复执行，自动化侧零遗留）**：① H4：指定远端（gitee/github/gitcode）→ 按 `w2-h4-commit-execution-plan.md` §四推三仓 main 167/100/15 笔 + 3 个本地 tag；② H2：Android 真机接入 → `adb install` APK（303MB debug）跑 W2 真机冒烟 + 3 人 30 秒理解测试（JPush/LiveKit 凭据补齐后补验 Push/音视频）；③ H3：提供脱敏快照 + 环境授权 → 按 `w2-zc12-manual-execution-handbook.md` §五执行生产等价迁移回滚演练；④ 可选：授权修改 `imboyapp/ios/Podfile:104` 与 `Runner.xcodeproj/project.pbxproj:585` 的 EXCLUDED_ARCHS → 解锁 iOS 模拟器冒烟。
