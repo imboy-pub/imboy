@@ -413,3 +413,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **imboyadmin** 重写后 HEAD 全谱系（377 scanned）：40 findings 分诊=①4 个涉及提交均为 2026-03/04 旧提交且**全部已在远端旧历史**（1088e7b 祖先）——force-push 新增范围泄漏为 **0**；②2 条 private-key 为 `isValidPemFormat` 测试 fixture（`b428384` 已加 inline allow、`17a7bb4` ADM-18 删除目录）；③38 条为自定义 `admin-tsid-numeric-misuse` 代码规范规则（.gitleaks.toml:144）。**无真实密钥。**
 - **imboyapp `flutter analyze`**：**No issues found**——历史 164 条 info 基线已清零，作为 H4 移交基线记录。
 - 结论：三仓 push 安全门 PASS，可随时按 H4 计划 §五 执行。
+
+### H3 冒烟卡 — 应用冒烟本地预演（2026-08-30，「继续」驱动；手册 §五 五步全通）
+
+- **目的**：补完手册 §五 流水线最后未本地走通的一环——「应用冒烟」（脱敏库能否承载真实节点启动与请求）。
+- **方法**：imboy_drill 重新恢复 sanitized.dump → 临时切 `config/sys.local.config` 库名指向演练库（备份/还原，gitignored，工作区保持零脏）→ `IMBOYENV=local make run` 起节点 → 冒烟 → 停节点、还原配置、清库。
+- **不走 IMBOYENV=drill 的原因**：未知环境落入生产级 strict fail-fast（is_strict_env 仅 dev/local/test 宽松，缺五密钥+RSA 文件+网关校验必拒）——属正确的 fail-closed 设计，演练不绕过。
+- **结果全 PASS**：healthz **200**（约 30s 启动）；假号 `12000000001`+错密码登录 → `{"code":1,"msg":"密码有误"}`——账号命中脱敏行、哈希校验真实执行（非「账号不存在」路径）；`pg_stat_activity` 实证节点 5 连接**全部落在 imboy_drill**。
+- **过程教训**：①后台节点随工具调用进程组回收——须持久任务+`sleep |` 保 stdin（第二次实测确认）；②release 的 sys.config 在 make 解析期由 `config/sys.runtime.config` 物化（Makefile:36），改 sys.local.config 后经 make run 重建即生效。
+- **H3 流水线本地预演五步全通**：快照（sanitized_snapshot.sh，红→绿）→ 恢复（pg_restore 0 错）→ 迁移（drill_migrate.escript up）→ 冒烟（本卡）→ 回滚+复核（down/up 对账）。生产侧仅剩授权与数据源。
