@@ -1,6 +1,6 @@
-# W2 H4 提交执行清单（待用户确认后执行）
+# W2 H4 提交执行清单（仅剩 push 阶段待授权）
 
-> 生成：2026-08-29 | 状态：**待确认**——本文档仅为命令准备，未执行任何 git 写操作。
+> 生成：2026-08-29 | **2026-08-30 刷新：§一~§三 commit 序列已全部执行完毕**（其间另有 ZC-08、发现①②③④等修复与台账多笔提交，现状见 §五），**仅剩 §五 push 终版待用户指定远端后执行**；§四保留作历史。
 > **执行前置（H4 人工确认项）**：① git author/committer 身份 ② 逐仓目标远端 ③ push 批次单独授权。
 > 顺序遵循计划固定合并顺序：DB → Backend Domain → Contract → Flutter/Admin → Tests/Demo → Docs/Version。
 
@@ -120,3 +120,41 @@ git log --oneline -2 && git status --short | head -5
 # git -C imboyadmin tag v1.0.0-alpha.16 && git -C imboyadmin push origin v1.0.0-alpha.16
 # ⚠️ 三仓历史领先提交（156/99/13+）将随 main 一并推送——push 前请知悉。
 ```
+
+---
+
+## 五、push 终版（2026-08-30 刷新；§一~§四为历史记录）
+
+### 5.1 现状
+
+| 仓 | HEAD | 领先/分叉 | tag（均未推） | push 方式 |
+|---|---|---|---|---|
+| imboy | `d8b98253` | 领先 origin/main **180** | `v1.0.0-alpha.70`→`0e7618d5` | 普通 push |
+| imboyapp | `55cb1021` | 领先 origin/main **102** | `v1.0.0-alpha.16`→`122652b4` | 普通 push |
+| imboyadmin | `9911a28`（历史已重写：evidence 全清，`.git` 165M→1.7M） | 与三远端完全分叉（旧 `1088e7b`） | `v1.0.0-alpha.16`=`9911a28`（重写后） | **必须 --force** |
+
+admin 重写前完整备份：工作区 `.Codex/backups/imboyadmin-pre-evidence-purge-20260830.bundle`（134MB，含全部旧历史与 9 tag）。
+
+### 5.2 命令（`<remote>` 由用户指定：`origin`(gitee) / `github` / `gitcode`）
+
+```bash
+# imboy / imboyapp：普通 push + tag
+git -C imboy    push <remote> main && git -C imboy    push <remote> v1.0.0-alpha.70
+git -C imboyapp push <remote> main && git -C imboyapp push <remote> v1.0.0-alpha.16
+
+# imboyadmin：先 fetch 重建 tracking 引用，再 force-with-lease（比裸 --force 安全）
+git -C imboyadmin fetch <remote>
+git -C imboyadmin push --force-with-lease <remote> main
+git -C imboyadmin push --force-with-lease <remote> v1.0.0-alpha.16
+```
+
+### 5.3 push 后验证
+
+1. 每仓 `git log -1` 确认远端 HEAD 与 5.1 表一致；tag `git ls-remote --tags <remote>` 到位。
+2. 全新 clone 冒烟：admin clone 体积降至个位数 MB，且 `git ls-files | grep -c tests/auto_test/evidence` = **0**。
+3. admin 另外两个远端是否同步 force-push 由用户决定——不同步则各远端历史不一致（gitee 旧历史含 evidence 仍公开可见）。
+4. push 将触发各远端已配置的 CI。
+
+### 5.4 不变的前置（H4 人工门）
+
+① git author/committer 身份人工确认 ② 逐仓远端指定 ③ push 批次单独授权（admin 的 force 属历史覆盖，须明确知悉）。**H2/H3 未收齐前 push≠Release**（计划规则 10）。
