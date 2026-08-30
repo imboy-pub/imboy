@@ -177,27 +177,117 @@ init_mocks(LegacyCbc, RsaFlag) ->
         ]}
     ].
 
+%% H2 真机走查发现①（2026-08-30）：ws_url 未配置时按请求 Host 同源派生
+%% （ws/wss 随 X-Forwarded-Proto/scheme），杜绝本地/内网部署残留旧机器
+%% IP 的 stale 配置让客户端 WS 假成功后静默失败。显式配置永远优先
+%% （生产可指向独立网关/CDN）。
+%%
+%% 结构说明：直接生成 {Desc, {setup, S, C, [?_test(...)]}}——
+%% "{Desc, fun() -> 返回 setup 对象 end}" 包装式会让 EUnit 把返回值
+%% 丢弃、内层断言从不执行（M-6 空转判绿同类陷阱；本次以故意错断言
+%% 证伪后改造，同文件 init_login_pwd_rsa_flag_normalized 一并修复）。
+init_ws_url_fallback_test_() ->
+    Cases = [
+        {<<"未配置→按 Host 派生 ws 同源">>, <<"192.168.2.79:9800">>, <<>>, <<>>,
+            <<"ws://192.168.2.79:9800/api/v1/ws">>},
+        {<<"X-Forwarded-Proto https→派生 wss">>, <<"imboy.example">>, <<"https">>, <<>>,
+            <<"wss://imboy.example/api/v1/ws">>},
+        {<<"显式配置优先于派生">>, <<"192.168.2.79:9800">>, <<>>, <<"wss://gateway.example/ws">>,
+            <<"wss://gateway.example/ws">>}
+    ],
+    lists:map(
+        fun({Desc, Host, Proto, WsConfig, Expect}) ->
+            Mocks = ws_url_mocks(Host, Proto, WsConfig),
+            {Desc,
+                {setup, fun() -> install_mocks(Mocks) end, fun(_) -> cleanup_mocks(Mocks) end, [
+                    ?_test(begin
+                        Req = mock_request(),
+                        {ok, RespReq, _State} = index_handler:init(Req, #{action => init}),
+                        ?assertEqual(200, maps:get(response_status, RespReq)),
+                        InitData = erase(captured_init_data),
+                        ?assertEqual(Expect, maps:get(<<"ws_url">>, InitData))
+                    end)
+                ]}}
+        end,
+        Cases
+    ).
+
+ws_url_mocks(Host, Proto, WsConfig) ->
+    Base = init_mocks(<<"off">>),
+    M0 = lists:keyreplace(
+        cowboy_req,
+        1,
+        Base,
+        {cowboy_req, [
+            {'header', 3, fun
+                (<<"vsn">>, _R, _D) -> <<"1.0.0">>;
+                (<<"cos">>, _R, _D) -> <<"ios">>;
+                (<<"pkg">>, _R, _D) -> <<"com.imboy.test">>;
+                (<<"sk">>, _R, D) -> D;
+                (<<"host">>, _R, _D) -> Host;
+                (<<"x-forwarded-proto">>, _R, _D) -> Proto;
+                (_N, _R, D) -> D
+            end},
+            {'scheme', 1, fun(_R) -> http end}
+        ]}
+    ),
+    lists:keyreplace(
+        config_ds,
+        1,
+        M0,
+        {config_ds, [
+            {'env', 1, fun
+                (solidified_key) -> <<"sol_key">>;
+                (solidified_key_iv) -> <<"0123456789abcdef">>;
+                (login_rsa_pub_key) -> <<"rsa_pub">>
+            end},
+            {'env', 2, fun
+                (ws_url, _D) -> WsConfig;
+                (upload_url, _D) -> <<"https://example.test/upload">>;
+                (upload_key, _D) -> <<"upload_key">>;
+                (upload_scene, _D) -> <<"upload_scene">>;
+                (login_pwd_rsa_encrypt, _D) -> false;
+                (init_config_legacy_cbc, _D) -> <<"off">>
+            end}
+        ]}
+    ).
+
+install_mocks(Mocks) ->
+    lists:foreach(fun({M, E}) -> meck_helper:setup_mock(M, E) end, Mocks).
+
+cleanup_mocks(Mocks) ->
+    lists:foreach(fun({M, _}) -> meck_helper:cleanup_mock(M) end, Mocks).
+
 %% #100：login_pwd_rsa_encrypt 必须归一为线协议 1/0 下发。
 %% 客户端加密判定与服务端 safe_rsa_decrypt 都只认 <<"1">>；
 %% 此前透传配置原值 on/off，配置为 on 时加密分支静默失效（客户端
 %% 判非 "1" 不加密、回传 "on" 服务端也不解密——两端恰好都不报错）。
+%% 结构说明：原 {Desc, fun() -> 返回 setup 对象 end} 为 M-6 空转形态
+%%（断言从未执行，故意错断言亦全绿，2026-08-30 证伪后改造）。
 init_login_pwd_rsa_flag_normalized_test_() ->
-    Run = fun(RsaFlag, Expected) ->
-        ?WITH_MECKS(
-            init_mocks(<<"off">>, RsaFlag),
-            fun() ->
-                Req = mock_request(),
-                {ok, RespReq, _State} = index_handler:init(Req, #{action => init}),
-                Payload = maps:get(payload, RespReq),
-                ?assertEqual(Expected, maps:get(login_pwd_rsa_encrypt, Payload)),
-                _ = erase(captured_init_data),
-                ok
-            end
-        )
-    end,
-    [
-        {"config=on 下发 1（激活两端 RSA 链路）", fun() -> Run(<<"on">>, <<"1">>) end},
-        {"config=1 下发 1", fun() -> Run(<<"1">>, <<"1">>) end},
-        {"config=off 下发 0", fun() -> Run(<<"off">>, <<"0">>) end},
-        {"配置缺失（env 返 false）下发 0", fun() -> Run(false, <<"0">>) end}
-    ].
+    Cases = [
+        {<<"config=on 下发 1（激活两端 RSA 链路）">>, <<"on">>, <<"1">>},
+        {<<"config=1 下发 1">>, <<"1">>, <<"1">>},
+        {<<"config=off 下发 0">>, <<"off">>, <<"0">>},
+        {<<"配置缺失（env 返 false）下发 0">>, false, <<"0">>}
+    ],
+    lists:map(
+        fun({Desc, RsaFlag, Expect}) ->
+            Mocks = init_mocks(<<"off">>, RsaFlag),
+            {Desc,
+                {setup, fun() -> install_mocks(Mocks) end, fun(_) -> cleanup_mocks(Mocks) end, [
+                    ?_test(begin
+                        Req = mock_request(),
+                        {ok, RespReq, _State} = index_handler:init(Req, #{action => init}),
+                        ?assertEqual(200, maps:get(response_status, RespReq)),
+                        %% login_pwd_rsa_encrypt 在加密前的 Data map 内，
+                        %% 须断言捕获的 InitData（外层 payload 只有 res/res_v2）
+                        InitData = erase(captured_init_data),
+                        ?assertEqual(
+                            Expect, maps:get(<<"login_pwd_rsa_encrypt">>, InitData)
+                        )
+                    end)
+                ]}}
+        end,
+        Cases
+    ).

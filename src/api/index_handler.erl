@@ -51,7 +51,7 @@ api_init(Req0) ->
         end,
     Data =
         #{
-            <<"ws_url">> => config_ds:env(ws_url, <<>>),
+            <<"ws_url">> => ws_url_for(Req0),
             %% 旧字段保留空值，供旧版 Flutter 客户端过渡期使用
             <<"upload_url">> => config_ds:env(upload_url, <<"https://s3.imboy.pub">>),
             <<"upload_key">> => <<>>,
@@ -180,3 +180,31 @@ get_help(Req0) ->
         unicode:characters_to_binary(Body, utf8),
         Req0
     ).
+
+%% @doc ws_url 解析（H2 真机走查发现①，2026-08-30）：显式配置优先；
+%% 未配置/空值时按请求同源派生——本地/内网部署不再因残留旧机器 IP 的
+%% stale 配置而让客户端 WS 连接假成功后静默失败。
+-spec ws_url_for(cowboy_req:req()) -> binary().
+ws_url_for(Req) ->
+    case config_ds:env(ws_url, <<>>) of
+        <<>> -> derive_ws_url(Req);
+        Ws when is_binary(Ws), byte_size(Ws) > 0 -> Ws;
+        _ -> derive_ws_url(Req)
+    end.
+
+%% @doc 从请求自身派生同源 WebSocket 地址：Host 取 Host 头，
+%% ws/wss 随 X-Forwarded-Proto（反代场景）或 cowboy scheme。
+-spec derive_ws_url(cowboy_req:req()) -> binary().
+derive_ws_url(Req) ->
+    Scheme =
+        case cowboy_req:header(<<"x-forwarded-proto">>, Req, <<>>) of
+            <<"https">> ->
+                <<"wss">>;
+            _ ->
+                case cowboy_req:scheme(Req) of
+                    https -> <<"wss">>;
+                    _ -> <<"ws">>
+                end
+        end,
+    Host = cowboy_req:header(<<"host">>, Req, <<>>),
+    iolist_to_binary([Scheme, <<"://">>, Host, <<"/api/v1/ws">>]).
