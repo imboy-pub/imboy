@@ -21,7 +21,7 @@
 
 ## 概览 / Overview
 
-- 端点总数 / Total endpoints: **约 130+** 个 `/api/v1/*` REST 端点，分布于 **30** 个 handler。
+- 端点总数 / Total endpoints: **约 150+**（2026-08-30 增补项目协作域后） 个 `/api/v1/*` REST 端点，分布于 **30** 个 handler。
 - 鉴权模型 / Auth model: 三类 —— `公开 Open`（无需 token）、`可选 Optional`（有 token 才校验）、`JWT`（默认，必须 Authorization）。
 - 响应信封 / Response envelope: 绝大多数返回 `{code, msg, payload}`；少数特殊端点返回裸 body（已在对应行注明）。
 - TSID: 实体 ID（`id`/`uid`/`gid`/`channel_id` 等）为 **64 位 TSID**，以 **JSON integer** 传输；前端用 `safeParseBigIntJson` 转 string（详见 [tsid-field-convention.md](./tsid-field-convention.md)）。
@@ -598,6 +598,64 @@
 
 ---
 
+## 项目协作 / Project Workspace（W0/W1/W2）
+
+> 前缀 / Prefix：`project_handler` / `project_task_handler` / `project_member_handler` / `project_milestone_handler` / `project_channel_handler`。
+> 权限模型 / Authz：Project Owner（管理权）+ Workspace Owner（治理权）+ active 项目成员 + Guest 只读；非成员直访 403；工作区归档 980。
+> 事件 / Events：写操作同事务写 `project_event`（member_invited/member_removed/member_owner_transferred/milestone_created/milestone_updated/milestone_reached/channel_linked/channel_unlinked/links_updated）。
+> 分页 / Pagination：`{list,page,size,total,total_page}`；TSID 均为 JSON integer。
+
+### 项目与任务 / Projects & Tasks（W0/W1）
+
+| 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 说明 Description | 请求参数 Request | 响应载荷 Response payload |
+|---|---|---|---|---|---|---|
+| GET | /api/v1/workspaces/:workspace_id/projects | JWT | project_handler#projects | 工作区项目分页 / Project page | `page`,`size` | 项目分页 |
+| POST | /api/v1/workspaces/:workspace_id/projects | JWT | project_handler#projects | 创建项目；创建者自动成为 Owner 与首个成员（同事务幂等回填）/ Create project | `name`*,`description` | 项目行 |
+| GET | /api/v1/projects/:project_id | JWT | project_handler#show | 项目详情（含 links jsonb）/ Project detail | 路径 `project_id` | 项目行 |
+| POST | /api/v1/projects/:project_id/update | JWT | project_handler#update | 部分更新 name/description（仅 Owner）/ Partial update | `name`?,`description`? | 项目行 |
+| POST | /api/v1/projects/:project_id/status | JWT | project_handler#update_status | active\|done 流转（无物理删除）/ Flip status | `status`* | 项目行 |
+| GET | /api/v1/projects/:project_id/tasks | JWT | project_task_handler#tasks | 任务分页；status 过滤 all\|todo\|doing\|review\|done / Task page | `status`?,`page`,`size` | 任务分页 |
+| POST | /api/v1/projects/:project_id/tasks | JWT | project_task_handler#tasks | 创建任务；assignee 须为项目成员 / Create task | `title`*,`assignee_id`?,`sort`? | 任务行 |
+| GET | /api/v1/tasks/:task_id | JWT | project_task_handler#show | 任务详情 / Task detail | 路径 `task_id` | 任务行 |
+| POST | /api/v1/tasks/:task_id/update | JWT | project_task_handler#update | 部分更新 title/assignee_id/sort / Partial update | `title`?,`assignee_id`?,`sort`? | 任务行 |
+| POST | /api/v1/tasks/:task_id/status | JWT | project_task_handler#update_status | 状态机：前向相邻一步（跳级 400）；回退任意；同态 400 / Single-step forward | `status`* | 任务行 |
+
+### 成员 / Members（W2）
+
+| 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 说明 Description | 请求参数 Request | 响应载荷 Response payload |
+|---|---|---|---|---|---|---|
+| GET | /api/v1/projects/:project_id/members | JWT | project_member_handler#members | 成员分页（joined_at 升序，join 用户昵称/头像）/ Member page | `page`,`size` | 成员分页 |
+| POST | /api/v1/projects/:project_id/members/invite | JWT | project_member_handler#invite | 邀请成员（仅 Project Owner；目标须同工作区 active；幂等 created\|existing）/ Invite member | `user_id`* | 成员行+`status_flag` |
+| POST | /api/v1/projects/:project_id/members/remove | JWT | project_member_handler#remove | 移除成员（Project Owner 或 Workspace Owner；幂等）/ Remove member | `user_id`* | `{project_id,user_id,status:removed}`+`status_flag` |
+| POST | /api/v1/projects/:project_id/members/transfer_owner | JWT | project_member_handler#transfer_owner | Owner 转移（目标有未完成任务 409）/ Transfer ownership | `user_id`* | 转移结果 |
+
+### 里程碑 / Milestones（W2）
+
+| 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 说明 Description | 请求参数 Request | 响应载荷 Response payload |
+|---|---|---|---|---|---|---|
+| GET | /api/v1/projects/:project_id/milestones | JWT | project_milestone_handler#milestones | 里程碑分页；status 过滤 planned\|reached / Milestone page | `status`?,`page`,`size` | 里程碑分页 |
+| POST | /api/v1/projects/:project_id/milestones | JWT | project_milestone_handler#milestones | 创建里程碑；body 携带 status 被拒绝；due_date 归一为 ISO YYYY-MM-DD / Create milestone | `name`*,`due_date`? | 里程碑行（事务内取） |
+| POST | /api/v1/milestones/:milestone_id/update | JWT | project_milestone_handler#update | 部分更新 name/due_date / Partial update | `name`?,`due_date`? | 里程碑行 |
+| POST | /api/v1/milestones/:milestone_id/reach | JWT | project_milestone_handler#reach | planned→reached 单向；并发幂等 already_reached（不覆盖 reached_at）/ One-way reach | 无 | 里程碑行+`already_reached` 标志 |
+
+### 频道关联与四聚合 / Channel Links & Aggregations（W2）
+
+| 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 说明 Description | 请求参数 Request | 响应载荷 Response payload |
+|---|---|---|---|---|---|---|
+| GET | /api/v1/projects/:project_id/channels | JWT | project_channel_handler#channels | 已关联频道分页（guest 可读）/ Linked channels | `page`,`size` | 频道分页 |
+| POST | /api/v1/projects/:project_id/channels | JWT | project_channel_handler#channels | 关联频道（personal 不可关联；幂等 created\|existing）/ Link channel | `channel_id`* | `{status_flag}` |
+| POST | /api/v1/projects/:project_id/channels/:channel_id/unlink | JWT | project_channel_handler#unlink | 解绑频道（保留频道本身；幂等）/ Unlink channel | 路径 `project_id`,`channel_id` | 空载荷成功 |
+| POST | /api/v1/projects/:project_id/links/update | JWT | project_channel_handler#update_links | 整体替换外部链接集（形状触发器强制 [{name,url}]）/ Replace links | `links`*（≤20 项） | 更新后 links |
+| GET | /api/v1/projects/:project_id/aggregations/pinned | JWT | project_channel_handler#pinned | 置顶流（公告优先，SQL 条数固定）/ Pinned digest | `page`,`size` | 有界摘要 |
+| GET | /api/v1/projects/:project_id/aggregations/resources | JWT | project_channel_handler#resources | 资源流（不存在项目 404 由 logic 前置）/ Resources digest | `page`,`size` | 有界摘要 |
+| GET | /api/v1/projects/:project_id/aggregations/activity | JWT | project_channel_handler#activity | 事件元数据流（payload 清洗正文类键）/ Activity stream | `page`,`size` | 有界摘要 |
+| GET | /api/v1/projects/:project_id/aggregations/related_posts | JWT | project_channel_handler#related_posts | 相关帖子流 / Related posts digest | 无 | 有界摘要 |
+
+> Admin 治理只读面（workspaces:read，`/api/adm/project/*` 6 端点）属管理后台域，
+> 不在本 `/api/v1/*` 目录范围内；OpenAPI 层已同步覆盖（`api/openapi.yaml`）。
+
+---
+
 ## 附录：标注约定 / Appendix: Annotation Conventions
 
 - `*` 表示必填参数 / required parameter.
@@ -612,5 +670,6 @@
 
 | 日期 Date | 内容 Content |
 |---|---|
+| 2026-08-30 | 增补「项目协作 / Project Workspace（W0/W1/W2）」域 22 端点（projects/tasks/members/milestones/channels/aggregations）；Admin 治理面 `/api/adm/project/*` 在 OpenAPI 层覆盖 |
 | 2026-07-08 | 同步 43224c1f/4cc20e81 硬切换：全文档 `/api/v1/*` → `/api/v1/*`，与 `src/imboy_router.erl` 当前真实路由对齐 |
 | 2026-06-02 | 初版：并行审计 30 个 handler 真实源码，建立完整 `/api/v1/*` 端点总目录（约 130+ 端点，按 7 大类分域），交叉引用 channel/moment/e2ee/ws 详细契约 |

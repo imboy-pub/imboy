@@ -85,11 +85,20 @@ check_migrations() {
   fi
 
   local missing="" up seq base
+  # 无 down 豁免清单（down 会造成安全降级或不可逆数据损毁的迁移）：
+  #  00000074 E2EE 备份 KDF 下限收紧——down=主动放松 CHECK 约束，恢复降级攻击面
+  #  00000075 附件 legacy_key 列——down=DROP 列即丢失全部存量附件密钥
+  #（Garage 对象已被覆盖加密），造成永久不可解
+  local no_down_exempt=" 00000074 00000075 "
   for up in "$dir"/*.up.sql; do
     [ -e "$up" ] || continue
     base="${up%.up.sql}"
+    seq="$(basename "$up")"
     if [ ! -f "${base}.down.sql" ]; then
-      missing="${missing} $(basename "$up")"
+      case "$no_down_exempt" in
+        *" ${seq%%_*} "*) : ;;
+        *) missing="${missing} ${seq}" ;;
+      esac
     fi
   done
   if [ -n "$missing" ]; then

@@ -1,6 +1,6 @@
 # 错误码使用规范
 
-> Last Updated: 2026-03-08  
+> Last Updated: 2026-08-30  
 > Status: 长期接口规范文档  
 > Scope: 错误码定义、引用方式与响应使用约定  
 > Source of truth: `include/error_code.hrl`  
@@ -105,7 +105,18 @@ elib_response:error(Req, error_msg(?ERR_USER_NOT_FOUND), ?ERR_USER_NOT_FOUND).
 % 消息相关
 -define(ERR_MESSAGE_NOT_FOUND, 950).         % 消息不存在
 -define(ERR_MESSAGE_SEND_FAILED, 951).       % 消息发送失败
+
+% 内容/相册相关
+-define(ERR_PHOTO_SIZE_EXCEEDED, 966).       % 图片大小超出限制
+-define(ERR_ALBUM_PERMISSION_DENIED, 967).   % 相册权限不足
+-define(ERR_PHOTO_ALREADY_LIKED, 968).       % 已点赞该图片
+
+% 工作区相关（项目协作域 W0/W1/W2 归档写守卫）
+-define(ERR_WORKSPACE_ARCHIVED, 980).        % 工作区已归档，写操作被拒绝（归档写守卫稳定错误码；项目/任务/成员/里程碑/频道关联写路径统一 980）
 ```
+
+> 完整清单以 `include/error_code.hrl` 为权威真源（含 E2EE 5000-5099 等段）；
+> 上表仅列 REST 常用段。
 
 ## 常用错误码示例
 
