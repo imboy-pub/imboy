@@ -465,3 +465,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
   - 服务端 `jpush_app_key/master_secret` 配置存在但发送实现不消费它（无 JPush 通道代码）——属遗留配置，不构成阻塞。
 - **LiveKit 定案**：`sys.pro.config` 三值（ws_url/api_key/api_secret）长度互异（27/31/51）且为域名+密钥形态——**真实凭据，非占位**。RTC 服务端已就绪，H2 音视频验证只差第二台真机资源。
 - **H2 残余重述**：① 第二台真机（Push 端到端 + 音视频对端）；② FCM/APNs 凭据（人工，第三方账号操作）；③ 3 人 30 秒真人测试。原「JPush 未配置」「LiveKit 占位」两条过时表述废止。
+
+### Release 前置门机检卡 — release_gate_check.sh（2026-08-30，「继续」驱动）
+
+- **新增 `scripts/release_gate_check.sh`**（提交 34969e7f）：把 runbook §一 前置清单的可自动化项收成一条只读命令——三仓未推数与 admin force 提示、版本物状态（VERSION/CHANGELOG Unreleased）、备份工具在位、H3 快照 sha256+新鲜度（≤7 天）、五密钥 IMBOY_* env SET/UNSET（只报状态不回显值）；不可机检项（生产备份执行/生产快照/H2 残余）输出「人工」清单即发布日剩余门。FAIL=1 时退出码 1。
+- **顺手修复**：`backup_imboy_db.sh` 无执行位（git 100644→100755，与 backup_pg.sh 对齐）——正是机检脚本抓出来的第一个真问题。
+- **本机实证**：`release_gate_check.sh /tmp/sd_green` → PASS=3 FAIL=0 WARN=7（密钥 UNSET/待定版等发布日动作）人工项=11。runbook §一 与 H4 计划 §五 已引用/刷新（领先数 191/102/126，2026-08-30 实测）。
+- **教训**：bash 双引号内 `$var` 后紧跟全角标点（：/（/），）会把多字节字符并入变量名 → unbound variable；统一 `${var}` 花括号化。
+- **发布日工作流就此定形**：`release_gate_check.sh`（机检+剩余人工清单）→ 人工门逐项收齐 → runbook §二 执行 → §三 回滚预案 → §四 证据归档。
