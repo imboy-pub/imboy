@@ -437,3 +437,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **M-4 修复（repo 查询错误吞为"无记录/0"）**：member `find/3`+`find_tx/4`、milestone `find_tx/3`、channel_rel `find_channel_tx/3` 的 `_ -> #{}` 拆出 `{error, Reason}` 分支记 `?ERROR_LOG`——返回值保持空 map 的 fail-closed 语义不变（403/404 方向已安全；500 化属行为变更不在本卡）。纯日志新增，行为由既有套件覆盖。
 - **M-6 书面豁免**：W0/W1 存量 wrapped 空转 11 文件约 126 用例，迁移为 `?WITH_MECK_TESTS` 的成本大于收益（同型 H-1 三套件已在 ZC-09R 完成），豁免并登记为已知债务；约束沿用既有规定——存量文件禁新增用例、新套件必须规范形态。
 - **验证**：全量 `make eunit-local` **6496 pass / 0 failed**（6495+1 新用例）。另：`t=` 单套件模式跑 channel_ds_tests（3F）/channel_ds_idempotency_tests（2F）经 stash 红查证实与本卡无关——单套件运行口径差异，全量链下全部通过。
+
+### H3 编排卡 — 单命令 h3_rehearsal.sh 三跑闭环（2026-08-30，「继续」驱动）
+
+- **新增 `scripts/h3_rehearsal.sh`**（提交 15b9da1b）：把 H3 演练后四步编排为一条命令——恢复演练库（DROP+CREATE+pg_restore sanitized.dump）→ version 基线 → down 一步计时 → up 计时 → 对 manifest.txt 逐表行数对账 → `12` 假号段抽检 → 摘要与清理提示；任一步失败非零退出。参数化（快照目录），生产窗口授权后可直接复用。
+- **两轮排障**：①首跑 `bash drill_migrate.escript` 报 "fg: no job control"——escript 须直接执行（带 shebang），sed 修 3 处；②二跑对账 3 处假差异——manifest 尾部摘要行（`sha256=`/`size=`/`scan=`）被当表行，改守卫只认 `^[a-z0-9_]+$`+`^[0-9]+$` 数据行。
+- **三跑全绿实证**：EXIT=0；基线 81 → down 1s（80）→ up 0s（81）；行数对账通过 ✓；假号段抽检通过 ✓；总 10s（快照 /tmp/sd_green）。演练库 imboy_v1_drill 已清理，仅剩源库 imboy_v1。
+- **手册 §五 同步增补**：单命令用法与实证数字；H3 至此「快照→恢复→迁移→冒烟→回滚→对账」六环全部工具化且本地全通。
+- **教训**：escript 文件不可经 bash 间接执行；机器可读清单的尾部摘要行必须在解析侧用格式守卫排除（不可只跳头部）。
