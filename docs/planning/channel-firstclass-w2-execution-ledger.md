@@ -299,3 +299,31 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **提交**：`db4ef16b` fix(repo)、`8ace3f57` fix(ctl)（**未 push**；imboy 领先 origin 169）。
 - **环境复原**：测试用户行已删（DELETE 1，`w2fix%` leftover=0）；本地节点已停（healthz 000）。
 - **残余风险**：① 版本号维持 alpha.70 未 bump（两笔修复在封板 tag 之后，属 alpha.71 候选内容）；② adm create 的 phone 写入走 `adm_setup_logic` 应用层校验，未经本次前置校验覆盖（不同表不同列宽，独立场景）；③ escript 校验上限 40/80 与列宽是约定耦合，靠钉子套件漂移告警，非强约束。
+
+### 收敛后追加卡 — H2 真机走查（2026-08-30，用户接入真机触发；单机+API 对端模式）
+
+- **Owner**：总控 Agent；**Base SHA**：三仓不变（无代码提交；`.env.local`/`sys.local.config` 为 gitignored 本地配置改动）；**最终状态**：DONE（H2 由「未开始」→「大部分实证」）
+- **条件授权记录**：用户本卡中途指令「如果有必要授权你蓝绿发布 imboy 到 prod」——总控判定**当轮不必要**（本地通道已覆盖走查；对 prod 发布属 Release 动作，须 H2/H3 收齐后按门序执行），授权记入待用。
+- **环境**：华为 MRD-AL00（armeabi-v7a，Android 9，USB+WiFi 同网段 192.168.2.x）；APK `app-debug.apk`（374MB debug，`--dart-define=APP_ENV=local`）；本地后端 alpha.70（healthz 200，workspace/chat 两种体验均验证）；对端 走查B 经 REST API 驱动。
+- **走查结果（手册 §一 十项）**：
+  | # | 项 | 结果 | 证据 |
+  |---|---|---|---|
+  | 1 | 登录→进入 | ✅ | prod 对测号 15001 全链（升级弹窗可跳过→引导→登录→新设备提示→消息页）；本地 走查A 登录 ✓ |
+  | 2 | 建 Workspace→Project→Owner 自动入项 | ✅ | H2WS-Alpha70 + H2Project-1 UI 创建；成员页显示「走查A Owner」 |
+  | 3 | 邀请 B→B 直访 403 | ✅ | B 邀请前 `403 非工作区成员，禁止访问该资源`；API 邀请入 ws+project（member_invited）；B 读成员 200 |
+  | 4 | 成员管理/转移 Owner | ✅(API) | transfer_owner A→B→A 双向 success；非 Owner 发起 403（正确语义）；409 场景由 eunit 覆盖 |
+  | 5 | 里程碑 create→reach→重复 | ✅ | UI 建 M-H2-Alpha→标记达成→「已达成（不可回退）」；重复达成幂等由 eunit 覆盖；归档下 UI 建里程碑被服务端拒绝 |
+  | 6 | 频道 link→unlink | ✅ | 选择器仅列工作区频道 Announcements（personal/私信正确排除）；关联成功+解除关联按钮在位 |
+  | 7 | 四聚合 | ✅ | 置顶消息/资源链接/项目动态/相关帖子四 Tab；空态正常；项目动态实时显示 4 条事件（member_invited→milestone_created→milestone_reached→channel_linked）且无消息正文 |
+  | 8 | 归档后 W2 写 980 | ✅ | API 归档→UI 建里程碑不落库+无假成功；curl 实证 `{"code":980,"msg":"工作区已归档，写操作被拒绝"}`；restore 恢复 ✓ |
+  | 9 | Guest 只读 | ✅ | B 降 guest：读里程碑 200；写 `403 Guest 角色只能查看里程碑，写操作被拒绝`；恢复 member |
+  | 10 | C2C 收发 | ✅(E2EE) | A 设备发送→`msg_store` 落库 **OLM.V1 加密**（per_device fan_out 至 HUAWEIMRD-AL00，服务端零知识）；B 在线接收需第二台真机（H2 人工剩余） |
+- **过程中确诊的四个环境/产品发现（均已定位根因）**：
+  1. **`sys.local.config` ws_url 指向旧 IP**（192.168.0.98）→ App WS 连接失败、消息假成功后「发送失败」——改为当前 LAN IP 后 WS connected、消息即落库。**本地联调高发坑，建议 ws_url 缺省时回退 API 同源**（待立项）。
+  2. **envied 不把 .env 声明为构建输入**：改 `.env.local` 后 build_runner 走缓存、APK 烘焙旧密钥（解码 .g.dart 实证）。绕过=代码原生 dart-define 覆写（`APP_ENV`/`API_BASE_URL_OVERRIDE`/`SOLIDIFIED_KEY_OVERRIDE`/`SOLIDIFIED_KEY_IV_OVERRIDE`）。**换密钥必须用 dart-define 或删 .g.dart**（待立项）。
+  3. **服务端 local 默认 solidified_key = 节点名派生**（`base64(sha256(phash2('imboy@127.0.0.1')))`，RPC 实测 `OBsZ...upk=`）——App 侧须与之对齐；GCM 配置解密失败报 `InvalidCipherTextException` 是唯一症状，排障链路长（建议 init 失败时提示密钥不匹配，待立项）。
+  4. **E2EE fail-closed 的 UX 缺口**：对端从未上线（设备数=0）时 C2C 发送静默失败（本地「发送成功」+ 远端不投递、无提示）——加密语义正确（无法加密即不发送），但需「对方尚未上线，消息将在其首次登录后可送达/请先等待对方注册设备」类引导（待立项）。
+- **本地配置改动（gitignored，均留注释）**：`imboyapp/.env.local`（API_BASE_URL=192.168.2.79:9800 + SOLIDIFIED_KEY 对齐节点派生值）；`imboy/config/sys.local.config`（ws_url=192.168.2.79:9800）。
+- **环境复原**：走查测试数据全清（msg_store/workspace/user 三表 0 残留）；设备截图临时文件已删；本地节点已停（healthz 000）；设备上 App 保持 走查A 登录态供用户查看（账号 uid 已随清理删除——设备下次启动会话失效，重新登录即可）。
+- **停止条件**：未触发。
+- **H2 亮度更新**：真机走查十项全部有实证（单机+API 对端）；**仍待人工资源**：① 第二台真机/在线对端的实时接收与 Push（JPush 未配置）；② 音视频（LiveKit 占位密钥）；③ 3 人 30 秒理解测试；④ release 签名包（缺 android/key.properties）。整体判定维持 **BLOCKED(H2 残余, H3, H4)**。
