@@ -72,6 +72,8 @@
   - **工具已就绪（2026-08-30）**：`scripts/sanitized_snapshot.sh`——列级 default-deny 脱敏（知名 PII 列假号/置空、jsonb/tsvector 占位、自由文本置空或 `md5(主键)` 保唯一、ID/数值/时间/系统枚举保留）+ 残留 PII 扫描 + 行数对账，产出 `sanitized.dump`/`manifest.txt`/`mobile_map.csv`（假↔真映射，**严禁外发**）/`class.tsv`（分类审计）。
   - 本地实证（imboy_v1 712MB、4.9 万用户、7 张 timescale 超表）：红=`--raw` 扫描爆红（exit 10，抓出 4.9 万真号）；绿=exit 0（69s，dump 14M），恢复冒烟 pg_restore 0 错误、4.9 万用户全落 `12` 假号段、行数对账一致。
   - 注意：恢复端需已装扩展（pg_jieba/timescale 等）或超级用户；超表在快照中为普通表形态（timescale 元数据不入快照，超表特性需恢复后重建）。
+- **演练驱动工具（2026-08-30）**：`scripts/drill_migrate.escript version|up|down`——对演练库执行 erlang_migrate（strict，与 imboy_migrate:migrate/0 同口径；down=回滚一步）。在 imboy 仓根运行，PG* 环境变量定连接。
+- **本地预演已通（2026-08-30，imboy_drill=脱敏快照恢复库）**：基线 81 → `down`=**80（0.27s）**，回收 project_channel_rel / project_milestone / project_member 三表 + project.links 列，与 00000081 down 文件逐项一致（workspace / project_event / project_task 等属更早迁移，不回收）→ `up`=**81（0.28s）**，links 列回归；对账：project 34 行保留、project_member 34 行=81 up.sql:298 内建 Owner 回填（预期行为）、milestone/channel_rel 重建空表（其数据按 down 语义丢弃）、user 49194 / msg_store 46325 全程不变。
 - 步骤：快照恢复到演练库 → `make` 迁移至 alpha.70 链（00000081）→ 应用冒烟 → **回滚**（00000081.down + 应用回退）→ 复核数据一致性；
 - 记录：各阶段时长、锁窗口、回滚后行数对账（迁移 81 的 down 会拒收 W2 事件行——见 down 文件头说明，属安全特性）。
 

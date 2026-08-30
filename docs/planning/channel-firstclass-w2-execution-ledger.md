@@ -397,3 +397,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **中间修复链（均有失败输出佐证）**：全角括号并入 bash 变量名、case 带空格模式未引号、pg_jieba 触发器灌入期开火（`--disable-triggers`+`session_replication_role=replica`）、NULLIFY 未兜底 NOT NULL、jsonb/tsvector 占位需 to_jsonb/to_tsvector、窄 varchar 溢出按列宽截断、复合主键 md5 基底碰撞、**timescaledb 超表**（父表 COPY 空壳、数据在 chunk → 排除超表后 `\copy (SELECT * FROM …)` 直灌）。
 - **端到端验证**：行数对账 PASS（msg_store 46325 / msg_c2g_timeline 68246 / msg_c2c 43646 … 与源一致）；`sanitized.dump` 14M（sha256=ed9a2338…）；恢复冒烟 pg_restore **0 错误**，演练库 49194 用户全落 `12000000001–12000049194` 假号段，验证库已清理。
 - **H3 解除路径更新**：授权后仅需 ① 生产库跑本脚本（PG* 指向生产，建议维护窗口）② 演练库恢复 dump（需扩展已装或超级用户）③ 按手册 §五 迁移→冒烟→回滚→对账。
+
+### H3 预演卡 — 迁移/回滚本地全通（2026-08-30，「继续」驱动）
+
+- **新增**：`scripts/drill_migrate.escript`（version|up|down）——演练库迁移驱动，strict 模式与 imboy_migrate:migrate/0 同口径；修复两处（escript:script_dir 不可用→env/CWD 推导、deps beam 在 erlang.mk 原位 `deps/*/ebin` 而非 _build）。
+- **预演环境**：`imboy_drill` = 脱敏快照（sanitized.dump 14M）恢复库。
+- **down 实证**：81→**80（0.27s，非 dirty）**；回收 project_channel_rel / project_milestone / project_member + project.links 列，与 00000081 down 文件**逐项一致**；workspace / project_event / project_task / workspace_member 属更早迁移（down 不触碰，正确）。
+- **up 实证**：→**81（0.28s）**；links 列回归；对账：project 34 行保留（links 数据按 down 语义丢弃）、project_member 34 行=**81 up.sql:298 内建 Owner 回填**（`INSERT … SELECT … FROM project p WHERE EXISTS workspace_member`，预期行为非异常）、project_milestone / project_channel_rel 重建空表（数据按 down 语义丢弃）；user 49194 / msg_store 46325 全程不变。
+- **H3 剩余**：仅差「生产库跑脱敏脚本 + 生产等价规模数据」这一授权项；迁移/回滚路径、工具链、对账方法已全部预演通过。
