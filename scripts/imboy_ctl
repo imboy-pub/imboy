@@ -384,10 +384,13 @@ handle_user_token(Args) ->
     end.
 
 handle_user_create(Args) ->
-    {ok, Node} = connect_node(Args),
-    Uid = maps:get(uid, Args),
     Account = maps:get(account, Args, <<>>),
     Nickname = maps:get(nickname, Args, <<>>),
+    %% 列宽前置校验（ZC-08 缺陷立项根因修复）：RPC 前拦截，杜绝 22001
+    %% 在深处失败后被调用管道丢弃的静默延迟暴露
+    validate_user_create(Account, Nickname),
+    {ok, Node} = connect_node(Args),
+    Uid = maps:get(uid, Args),
     Password = maps:get(password, Args, <<>>),
     case do_rpc(Node, Args, user_repo, may_exist, [Uid]) of
         true ->
@@ -426,6 +429,49 @@ handle_user_create(Args) ->
             io:format(standard_error, "ERROR: ~p~n", [Err]),
             halt(1)
     end.
+
+%%% 用户创建列宽前置校验（ZC-08 缺陷立项根因修复）：
+%%% account 同值写入 user.mobile varchar(40)——实际上限 40 而非 account
+%%% 列的 80；>40 字符时 INSERT 报 22001 且失败易在调用管道中被丢弃
+%%% （静默延迟暴露，见 docs/planning/dual-exp-demo-b-w2-rehearsal.md R1）。
+%%% 若未来放宽列宽，test/repo/user_repo_column_limit_tests 会变红，
+%%% 提示同步修改此处上限。
+validate_user_create(Account, Nickname) ->
+    case column_len(Account) of
+        Len when Len > 40 ->
+            io:format(standard_error,
+                      "ERROR: account 长度 ~p 超过上限 40"
+                      "（account 同值写入 user.mobile varchar(40)），拒绝创建~n",
+                      [Len]),
+            halt(1);
+        _ ->
+            case column_len(Nickname) of
+                NLen when NLen > 80 ->
+                    io:format(standard_error,
+                              "ERROR: nickname 长度 ~p 超过上限 80"
+                              "（user.nickname varchar(80)），拒绝创建~n",
+                              [NLen]),
+                    halt(1);
+                _ ->
+                    ok
+            end
+    end.
+
+%% PG varchar(n) 按字符数计——Unicode 感知长度；异常输入退回字节数
+column_len(V) when is_binary(V) ->
+    try
+        string:length(V)
+    catch
+        _:_ -> byte_size(V)
+    end;
+column_len(V) when is_list(V) ->
+    try
+        string:length(unicode:characters_to_binary(V))
+    catch
+        _:_ -> length(V)
+    end;
+column_len(_) ->
+    0.
 
 handle_user_detail(Args) ->
     {ok, Node} = connect_node(Args),
