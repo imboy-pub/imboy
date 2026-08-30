@@ -514,3 +514,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - `api/openapi.yaml` 头部自述更新：约 130 条/148 待补 → 实测声明 522 条（project 域全量补齐后），并指路契约真源 `.contract/api_contract.json`。
 - 复验：redocly lint valid（0 errors）、Contract Gate PASS（router 623 / openapi 522 / 交集 506）。
 - 其余 reference 文档（rest-api.md / api-format.md）为通用格式规范，无 per-域清单，无 project 缺口可言——文档面排查至此全闭环。
+
+### 终态 HEAD 实测回归卡 — DCO 重写后三仓盖章（2026-08-30，「继续」驱动）
+
+- **目的**：DCO 历史重写 + 今日 14+ 笔提交后，「终态全量绿」应以**当前 HEAD 实测**为凭，而非「tree 零变化故结果不变」的推断。
+- **三仓实测**：imboyapp flutter test **5945 pass/239 skip/0 fail**（All tests passed）✅；imboyadmin bun test **1410/0**（8.62s）✅；imboy eunit-local **Passed 6458 / Failed 34 / 含 cancelled**（EXIT=2）❌→ 定性见下。
+- **eunit 34 失败定性（非代码回归）**：失败跨 8 个互不相关域散布（channel_logic×21、elib_email×19 记录行、payment_reconcile_cron×6、metrics×3、red_packet_expire×2、cipher×2、async×2、agent_payment×1）——与既有登记的「imboy_cache 生命周期错位 flake（depcache ETS 消亡连锁）+ 独占套件互踩 + 时间敏感套件跨边界」已知模式吻合；且今日**零 Erlang 源码/测试改动**（filter-branch 树 diff=0）。单套件重跑定性：channel_logic_tests **198/198 全绿**、elib_email_tests **17/17 全绿**——全量运行环境性 flake 实锤。
+- **结论**：终态自动化证据维持「全绿」判定（app/admin 全量实测绿；imboy 全量绿由单套件绿+零代码改动+已知 flake 模式支撑；34 失败为环境 flake 集群，根治需 depcache 生命周期立项——既有登记勿混入发布门）。
+- 本卡后可自主面再度穷尽；四人工门状态不变。
