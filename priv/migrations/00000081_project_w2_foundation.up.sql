@@ -35,7 +35,9 @@
 -- ============================================================
 -- Phase 1: channel 复合唯一（project_channel_rel 复合 FK 的引用目标）
 -- ============================================================
-ALTER TABLE channel DROP CONSTRAINT IF EXISTS uk_channel_id_workspace;
+-- CASCADE：expand 先行 + migrate 重跑序列下，fk_project_channel_rel_channel 已依赖本
+-- 约束（2BP01 dependent_objects_still_exist，alpha.14 坑3 同款）；FK 由 Phase 4 重建。
+ALTER TABLE channel DROP CONSTRAINT IF EXISTS uk_channel_id_workspace CASCADE;
 ALTER TABLE channel ADD CONSTRAINT uk_channel_id_workspace UNIQUE (workspace_id, id);
 
 -- ============================================================
