@@ -531,3 +531,10 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **验证**：重建 debug APK（签名实锤变为 a5bf47b6…）→ 装机 → init 回调 **`{code: 8000, message: config init success}`**（修复前 8004）。
 - **移交人工手测**：一键登录完整链（运营商授权页拉起→本机号确认→后端 quickLogin）需真机手动点击验证——adb 注入 tap 在该 EMUI 9 老设备上对登录页部分按钮不稳定（引导页正常；返回/quitLogin 响应、一键登录/支付宝/输入框不响应，现象独立于本修复，疑 EMUI+Flutter debug 包输入分发问题，登记观察）。另顺带发现两个独立小问题待排：①引导页完成标记未持久化（每次冷启动重现）；②FCM 初始化报 "Please set a valid API key"（google-services.json 的 api_key 未被运行时读到——与 H2 FCM 凭据占位问题同源）。
 - 设备遗留状态：MRD-AL00 为未登录主界面（pm clear 测试所致），可正常使用。
+
+### 引导页标记修复卡 — welcomeSeen 持久化（2026-08-30，「继续」驱动；imboyapp 提交 49767cfe）
+
+- **附带 bug 修复**（一键登录排障时发现）：未登录冷启动每次都重看三页引导——splash 未登录分支无条件落 `/welcome`，且 WelcomePage 跳过/走完任一出口都不写「已看过」标记。
+- **修复**（imboyapp `49767cfe`）：`Keys.welcomeSeen` 新增；WelcomePage 两个出口置位；splash 未登录分支读标记直达 `/sign_in`。dart-fmt/dart-analyze 全绿（lefthook）。
+- **真机运行时验证 BLOCKED（设备空间）**：MRD-AL00 /data 99% 满（698M 可用），258M debug 包卸载旧包后仍拒装（EMUI 99% 水位硬保护）；341M 单 ABI debug 与 161M 单 ABI release 均被拒。修复已过静态门，**待设备清理空间后 `adb install` 复验**（预期：首次启动出引导 → 任一出口 → 重启直达登录页）。
+- 同源遗留：FCM "Please set a valid API key"（H2 FCM 凭据项）；adb input tap 对该设备登录页部分按钮注入不稳定（自动化观测限制）。
