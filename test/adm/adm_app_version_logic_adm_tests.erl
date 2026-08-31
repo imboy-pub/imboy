@@ -26,14 +26,19 @@ save_with_new_version_test_() ->
             <<"id">> => 0,
             <<"type">> => <<"ios">>,
             <<"package_name">> => <<"com.example.test">>,
-            %% CI-00 修桩：真库持久，vsn 需逐次唯一（UNIQUE 约束），保证幂等
+            %% CI-00 修桩：真库持久，vsn 受 uk_vsn_pkgname_type 约束需逐次唯一；
+            %% unique_integer 跨 VM 重跑会从 1 重新计数（实测第二轮全量 23505），
+            %% 改用毫秒时间戳保证跨跑唯一
             <<"vsn">> =>
-                <<"1.0.0-", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+                <<"1.0.0-", (integer_to_binary(os:system_time(millisecond)))/binary>>,
             <<"download_url">> => <<"https://example.com/app.ipa">>,
             <<"description">> => <<"ci00 test">>
         },
         Result = adm_app_version_logic:save(Data),
-        ?assertMatch({ok, _}, Result)
+        ?assertMatch({ok, _}, Result),
+        %% 自清理：防真库跨轮累积
+        adm_app_version_logic:delete(<<"description = 'ci00 test'">>),
+        ok
     end).
 
 save_with_existing_version_test_() ->
