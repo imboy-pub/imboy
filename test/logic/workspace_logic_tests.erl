@@ -33,6 +33,8 @@ role_matrix_test_() ->
     GuestRole = #{<<"role">> => <<"guest">>, <<"status">> => <<"active">>},
     NoRole = #{},
     RemovedRole = #{<<"role">> => <<"member">>, <<"status">> => <<"removed">>},
+    %% ⚠️ TestFun 须单表达式直接断言：{Desc, fun} 列表会被 ?_test 吞掉
+    %% 静默空转（内层断言从不执行）；多断言移入下方私有辅助函数。
     ?WITH_MECKS(
         [
             {workspace_member_repo, [
@@ -55,56 +57,47 @@ role_matrix_test_() ->
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"owner reads workspace", fun() ->
-                    ?assertMatch({ok, _}, workspace_logic:detail(?OWNER, ?WS_ID))
-                end},
-                {"member reads workspace", fun() ->
-                    ?assertMatch({ok, _}, workspace_logic:detail(?MEMBER, ?WS_ID))
-                end},
-                {"guest reads workspace (read allowed)", fun() ->
-                    ?assertMatch({ok, _}, workspace_logic:detail(?GUEST, ?WS_ID))
-                end},
-                {"non member gets stable 403", fun() ->
-                    ?assertMatch({error, {403, _}}, workspace_logic:detail(?OUTSIDER, ?WS_ID))
-                end},
-                {"removed member gets 403", fun() ->
-                    ?assertMatch({error, {403, _}}, workspace_logic:detail(910001, ?WS_ID))
-                end},
-                {"owner can create workspace resource", fun() ->
-                    ?assertEqual(ok, workspace_logic:ensure_can_create_resource(?WS_ID, ?OWNER))
-                end},
-                {"member can create workspace resource", fun() ->
-                    ?assertEqual(ok, workspace_logic:ensure_can_create_resource(?WS_ID, ?MEMBER))
-                end},
-                {"guest cannot create workspace resource", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_logic:ensure_can_create_resource(?WS_ID, ?GUEST)
-                    )
-                end},
-                {"non member cannot create workspace resource", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_logic:ensure_can_create_resource(?WS_ID, ?OUTSIDER)
-                    )
-                end},
-                {"member cannot govern (update_profile 403)", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_logic:update_profile(?MEMBER, ?WS_ID, <<"x">>, undefined)
-                    )
-                end},
-                {"guest cannot govern (update_branding 403)", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_logic:update_branding(?GUEST, ?WS_ID, #{<<"name">> => <<"x">>})
-                    )
-                end}
-            ]
-        end
+        fun() -> role_matrix_body() end
     ).
+
+role_matrix_body() ->
+    begin
+        %% owner reads workspace
+        ?assertMatch({ok, _}, workspace_logic:detail(?OWNER, ?WS_ID)),
+        %% member reads workspace
+        ?assertMatch({ok, _}, workspace_logic:detail(?MEMBER, ?WS_ID)),
+        %% guest reads workspace (read allowed)
+        ?assertMatch({ok, _}, workspace_logic:detail(?GUEST, ?WS_ID)),
+        %% non member gets stable 403
+        ?assertMatch({error, {403, _}}, workspace_logic:detail(?OUTSIDER, ?WS_ID)),
+        %% removed member gets 403
+        ?assertMatch({error, {403, _}}, workspace_logic:detail(910001, ?WS_ID)),
+        %% owner can create workspace resource
+        ?assertEqual(ok, workspace_logic:ensure_can_create_resource(?WS_ID, ?OWNER)),
+        %% member can create workspace resource
+        ?assertEqual(ok, workspace_logic:ensure_can_create_resource(?WS_ID, ?MEMBER)),
+        %% guest cannot create workspace resource
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_logic:ensure_can_create_resource(?WS_ID, ?GUEST)
+        ),
+        %% non member cannot create workspace resource
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_logic:ensure_can_create_resource(?WS_ID, ?OUTSIDER)
+        ),
+        %% member cannot govern (update_profile 403)
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_logic:update_profile(?MEMBER, ?WS_ID, <<"x">>, undefined)
+        ),
+        %% guest cannot govern (update_branding 403)
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_logic:update_branding(?GUEST, ?WS_ID, #{<<"name">> => <<"x">>})
+        ),
+        ok
+    end.
 
 my_role_matrix_test_() ->
     ?WITH_MECKS(
@@ -120,27 +113,27 @@ my_role_matrix_test_() ->
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"owner role resolved", fun() ->
-                    ?assertEqual({ok, <<"owner">>}, workspace_logic:my_role(?WS_ID, ?OWNER))
-                end},
-                {"guest role resolved", fun() ->
-                    ?assertEqual({ok, <<"guest">>}, workspace_logic:my_role(?WS_ID, ?GUEST))
-                end},
-                {"missing membership is 403", fun() ->
-                    ?assertMatch({error, {403, _}}, workspace_logic:my_role(?WS_ID, ?OUTSIDER))
-                end}
-            ]
-        end
+        fun() -> my_role_matrix_body() end
     ).
+
+my_role_matrix_body() ->
+    begin
+        %% owner role resolved
+        ?assertEqual({ok, <<"owner">>}, workspace_logic:my_role(?WS_ID, ?OWNER)),
+        %% guest role resolved
+        ?assertEqual({ok, <<"guest">>}, workspace_logic:my_role(?WS_ID, ?GUEST)),
+        %% missing membership is 403
+        ?assertMatch({error, {403, _}}, workspace_logic:my_role(?WS_ID, ?OUTSIDER)),
+        ok
+    end.
 
 %% ===================================================================
 %% 邀请：幂等 + 仅注册用户 + 不自动入群/订阅
 %% ===================================================================
 
 invite_idempotent_and_no_auto_join_test_() ->
-    Self = self(),
+    %% ⚠️ {Desc, fun} 单 tuple 形态同样静默空转；哨兵经进程字典传递
+    %% （eunit generator 与用例执行异进程，Self 消息收不到）。
     ?WITH_MECKS(
         [
             {workspace_ds, [
@@ -148,13 +141,16 @@ invite_idempotent_and_no_auto_join_test_() ->
                 {'find_by_id', 2, fun(_, _) -> ws_row() end}
             ]},
             {workspace_member_repo, [
-                {'find', 3, fun(?WS_ID, ?OUTSIDER, _) ->
-                    #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+                {'find', 3, fun
+                    (?WS_ID, ?OWNER, _) ->
+                        #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
+                    (?WS_ID, ?OUTSIDER, _) ->
+                        #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
                 end},
                 {'upsert_active_tx', 5, fun(_Conn, WsId, Uid, Role, InvitedBy) ->
                     case {WsId, Uid, Role, InvitedBy} of
                         {?WS_ID, ?OUTSIDER, <<"member">>, ?OWNER} ->
-                            Self ! upsert_called,
+                            put(t_wl_upsert_called, true),
                             {ok, changed, #{}};
                         _ ->
                             {error, unexpected_args}
@@ -170,61 +166,71 @@ invite_idempotent_and_no_auto_join_test_() ->
             %% I14 红线：邀请只写 workspace_member，不得自动写群成员/频道订阅
             {group_member_ds, [
                 {'join_group', 5, fun(_, _, _, _, _) ->
-                    Self ! auto_join_forbidden,
+                    put(t_wl_auto_join, true),
                     {ok, 0}
                 end}
             ]},
             {channel_subscription_repo, [
                 {'upsert_active', 2, fun(_, _) ->
-                    Self ! auto_subscribe_forbidden,
+                    put(t_wl_auto_subscribe, true),
                     {ok, ok}
                 end}
             ]}
         ],
-        fun() ->
-            {"invite changed then unchanged, no auto join/subscribe", fun() ->
-                ?assertMatch(
-                    {ok, changed, _},
-                    workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
-                ),
-                receive
-                    upsert_called -> ok
-                after 500 -> ?assert(false)
-                end,
-                %% 已是 active 同角色 → unchanged（幂等，不再 upsert）
-                meck(workspace_member_repo, [
-                    {'find', 3, fun(?WS_ID, ?OUTSIDER, _) ->
-                        #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
-                    end},
-                    {'upsert_active_tx', 5, fun(_, _, _, _, _) ->
-                        Self ! upsert_should_not_run,
-                        {ok, changed, #{}}
-                    end}
-                ]),
-                ?assertMatch(
-                    {ok, unchanged, _},
-                    workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
-                ),
-                %% active 不同角色 → role_conflict 409，不静默改角色
-                meck(workspace_member_repo, [
-                    {'find', 3, fun(?WS_ID, ?OUTSIDER, _) ->
-                        #{<<"role">> => <<"guest">>, <<"status">> => <<"active">>}
-                    end}
-                ]),
-                ?assertMatch(
-                    {error, {409, _}},
-                    workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
-                ),
-                receive
-                    auto_join_forbidden ->
-                        ?assert(false, "join_group must not be called by invite");
-                    auto_subscribe_forbidden ->
-                        ?assert(false, "upsert_active must not be called by invite")
-                after 0 -> ok
-                end
-            end}
-        end
+        fun() -> invite_idempotent_and_no_auto_join_body() end
     ).
+
+invite_idempotent_and_no_auto_join_body() ->
+    begin
+        %% invite changed then unchanged, no auto join/subscribe
+        ?assertMatch(
+            {ok, changed, _},
+            workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
+        ),
+        ?assertEqual(true, erase(t_wl_upsert_called)),
+
+        %% 已是 active 同角色 → unchanged（幂等）。mock 对齐 repo
+        %% upsert_active_tx 真实决策表：active+同角色 → {ok, unchanged, #{}}
+        %% （幂等判定在 repo 层，logic 不前置短路，invite 仍会调 upsert）
+        meck(workspace_member_repo, [
+            {'find', 3, fun
+                (?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
+                (?WS_ID, ?OUTSIDER, _) ->
+                    #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+            end},
+            {'upsert_active_tx', 5, fun(_, _, _, _, _) -> {ok, unchanged, #{}} end}
+        ]),
+        ?assertMatch(
+            {ok, unchanged, _},
+            workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
+        ),
+
+        %% active 不同角色 → role_conflict 409，不静默改角色
+        %% （repo 真实决策表：active+不同角色 → {ok, role_conflict, #{}}；
+        %% 原 mock 只重设 find、upsert 落 passthrough 打真库，属 mock 漂移）
+        meck(workspace_member_repo, [
+            {'find', 3, fun
+                (?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
+                (?WS_ID, ?OUTSIDER, _) ->
+                    #{<<"role">> => <<"guest">>, <<"status">> => <<"active">>}
+            end},
+            {'upsert_active_tx', 5, fun(_, _, _, _, _) -> {ok, role_conflict, #{}} end}
+        ]),
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
+        ),
+
+        %% 全程不得触碰群成员/频道订阅
+        ?assert(undefined =:= get(t_wl_auto_join), "join_group must not be called by invite"),
+        ?assert(
+            undefined =:= get(t_wl_auto_subscribe),
+            "upsert_active must not be called by invite"
+        ),
+        ok
+    end.
 
 invite_requires_existing_user_test_() ->
     ?WITH_MECKS(
@@ -233,19 +239,29 @@ invite_requires_existing_user_test_() ->
                 {'find_by_id', 1, fun(_) -> ws_row() end},
                 {'find_by_id', 2, fun(_, _) -> ws_row() end}
             ]},
+            %% 原 mock 缺 workspace_member_repo:find（ensure_owner 依赖），
+            %% passthrough 会打真库——补 owner/active 行
+            {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end}
+            ]},
             {user_repo, [
                 {'find_by_id', 2, fun(_, _) -> #{} end}
             ]}
         ],
-        fun() ->
-            {"invite unregistered user is 404", fun() ->
-                ?assertMatch(
-                    {error, {404, _}},
-                    workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
-                )
-            end}
-        end
+        fun() -> invite_requires_existing_user_body() end
     ).
+
+invite_requires_existing_user_body() ->
+    begin
+        %% invite unregistered user is 404
+        ?assertMatch(
+            {error, {404, _}},
+            workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
+        ),
+        ok
+    end.
 
 invite_rejects_invalid_role_test_() ->
     ?WITH_MECKS(
@@ -255,15 +271,18 @@ invite_rejects_invalid_role_test_() ->
                 {'find_by_id', 2, fun(_, _) -> ws_row() end}
             ]}
         ],
-        fun() ->
-            {"invalid role is 400 before any write", fun() ->
-                ?assertMatch(
-                    {error, {400, _}},
-                    workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"admin">>)
-                )
-            end}
-        end
+        fun() -> invite_rejects_invalid_role_body() end
     ).
+
+invite_rejects_invalid_role_body() ->
+    begin
+        %% invalid role is 400 before any write
+        ?assertMatch(
+            {error, {400, _}},
+            workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"admin">>)
+        ),
+        ok
+    end.
 
 %% ===================================================================
 %% 移除：冲突 fail-closed 全回滚 / 无冲突级联禁用 + 清单
@@ -277,31 +296,43 @@ remove_member_conflict_owned_projects_test_() ->
                 {'find_by_id', 2, fun(_, _) -> ws_row() end}
             ]},
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                %% 对齐真实 with_tx 契约：abort_tx throw 归一 {error, Reason}
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(fake_conn)
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
             ]},
             {workspace_member_repo, [
+                %% 原 mock 缺 find/3（ensure_owner 依赖），passthrough 打真库——补
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end},
                 {'owned_projects_of_user', 3, fun(_, ?WS_ID, ?MEMBER) ->
                     {ok, [#{<<"id">> => 1, <<"name">> => <<"官网改版">>}]}
                 end},
                 {'remove_tx', 3, fun(_, _, _) ->
-                    self() ! remove_should_not_run,
+                    put(t_wl_remove_tx_ran, true),
                     ok
                 end}
             ]}
         ],
-        fun() ->
-            {"owned project blocks removal with 409", fun() ->
-                ?assertMatch(
-                    {error, {409, Msg}} when is_binary(Msg),
-                    workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
-                ),
-                receive
-                    remove_should_not_run -> ?assert(false)
-                after 0 -> ok
-                end
-            end}
-        end
+        fun() -> remove_member_conflict_owned_projects_body() end
     ).
+
+remove_member_conflict_owned_projects_body() ->
+    begin
+        %% owned project blocks removal with 409
+        ?assertMatch(
+            {error, {409, Msg}} when is_binary(Msg),
+            workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
+        ),
+        %% remove_tx must not run on conflict
+        ?assert(undefined =:= get(t_wl_remove_tx_ran), "remove_tx must not run on conflict"),
+        ok
+    end.
 
 remove_member_conflict_unfinished_tasks_test_() ->
     ?WITH_MECKS(
@@ -311,9 +342,19 @@ remove_member_conflict_unfinished_tasks_test_() ->
                 {'find_by_id', 2, fun(_, _) -> ws_row() end}
             ]},
             {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                %% 对齐真实 with_tx 契约：abort_tx throw 归一 {error, Reason}
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(fake_conn)
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
             ]},
             {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end},
                 {'owned_projects_of_user', 3, fun(_, _, _) -> {ok, []} end},
                 {'unfinished_tasks_of_user', 3, fun(_, ?WS_ID, ?MEMBER) ->
                     {ok, [
@@ -321,27 +362,27 @@ remove_member_conflict_unfinished_tasks_test_() ->
                     ]}
                 end},
                 {'remove_tx', 3, fun(_, _, _) ->
-                    self() ! remove_should_not_run,
+                    put(t_wl_remove_tx_ran, true),
                     ok
                 end}
             ]}
         ],
-        fun() ->
-            {"unfinished task blocks removal with 409", fun() ->
-                ?assertMatch(
-                    {error, {409, _}},
-                    workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
-                ),
-                receive
-                    remove_should_not_run -> ?assert(false)
-                after 0 -> ok
-                end
-            end}
-        end
+        fun() -> remove_member_conflict_unfinished_tasks_body() end
     ).
 
+remove_member_conflict_unfinished_tasks_body() ->
+    begin
+        %% unfinished task blocks removal with 409
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
+        ),
+        %% remove_tx must not run on conflict
+        ?assert(undefined =:= get(t_wl_remove_tx_ran), "remove_tx must not run on conflict"),
+        ok
+    end.
+
 remove_member_cascades_group_members_test_() ->
-    Self = self(),
     ?WITH_MECKS(
         [
             {workspace_ds, [
@@ -351,11 +392,19 @@ remove_member_cascades_group_members_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 {'execute', 3, fun(_Conn, Sql, [_, GmId]) ->
-                    Self ! {disable_group_member, Sql, GmId},
+                    Prev =
+                        case get(t_wl_disable_calls) of
+                            undefined -> [];
+                            Calls -> Calls
+                        end,
+                    put(t_wl_disable_calls, Prev ++ [{Sql, GmId}]),
                     {ok, 1}
                 end}
             ]},
             {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end},
                 {'owned_projects_of_user', 3, fun(_, _, _) -> {ok, []} end},
                 {'unfinished_tasks_of_user', 3, fun(_, _, _) -> {ok, []} end},
                 {'list_active_workspace_groups_of_user', 3, fun(_, ?WS_ID, ?MEMBER) ->
@@ -369,38 +418,41 @@ remove_member_cascades_group_members_test_() ->
                     ]}
                 end},
                 {'remove_tx', 3, fun(_, WsId, Uid) ->
-                    Self ! {parent_removed, WsId, Uid},
+                    put(t_wl_parent_removed, {WsId, Uid}),
                     ok
                 end}
             ]}
         ],
-        fun() ->
-            {"no-conflict removal disables workspace group members and returns manifest", fun() ->
-                ?assertMatch(
-                    {ok, #{
-                        status := <<"removed">>,
-                        affected_groups := [#{group_id := 777001}, #{group_id := 777002}]
-                    }},
-                    workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
-                ),
-                receive
-                    {disable_group_member, SqlA, 555001} ->
-                        ?assert(
-                            binary:match(SqlA, <<"UPDATE group_member SET status = 0">>) =/= nomatch
-                        )
-                after 500 -> ?assert(false, "group member 555001 not disabled")
-                end,
-                receive
-                    {disable_group_member, _, 555002} -> ok
-                after 500 -> ?assert(false, "group member 555002 not disabled")
-                end,
-                receive
-                    {parent_removed, ?WS_ID, ?MEMBER} -> ok
-                after 500 -> ?assert(false, "parent membership not removed")
-                end
-            end}
-        end
+        fun() -> remove_member_cascades_group_members_body() end
     ).
+
+remove_member_cascades_group_members_body() ->
+    begin
+        %% no-conflict removal disables workspace group members and returns manifest
+        ?assertMatch(
+            {ok, #{
+                status := <<"removed">>,
+                affected_groups := [#{group_id := 777001}, #{group_id := 777002}]
+            }},
+            workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
+        ),
+        DisableCalls = erase(t_wl_disable_calls),
+        {SqlA, 555001} = lists:keyfind(555001, 2, DisableCalls),
+        ?assert(
+            binary:match(SqlA, <<"UPDATE group_member SET status = 0">>) =/= nomatch,
+            "group member 555001 not disabled"
+        ),
+        ?assertMatch(
+            {_, 555002},
+            lists:keyfind(555002, 2, DisableCalls),
+            "group member 555002 not disabled"
+        ),
+        %% parent membership removed
+        ?assertEqual(
+            {?WS_ID, ?MEMBER}, erase(t_wl_parent_removed), "parent membership not removed"
+        ),
+        ok
+    end.
 
 remove_member_protections_test_() ->
     ?WITH_MECKS(
@@ -420,29 +472,28 @@ remove_member_protections_test_() ->
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"primary owner cannot be removed", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:remove_member(?OWNER, ?WS_ID, ?OWNER)
-                    )
-                end},
-                {"owner cannot remove self (non-primary owner)", fun() ->
-                    ?assertMatch(
-                        {error, {400, _}},
-                        workspace_logic:remove_member(910003, ?WS_ID, 910003)
-                    )
-                end},
-                {"non member cannot remove", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_logic:remove_member(?OUTSIDER, ?WS_ID, ?MEMBER)
-                    )
-                end}
-            ]
-        end
+        fun() -> remove_member_protections_body() end
     ).
+
+remove_member_protections_body() ->
+    begin
+        %% primary owner cannot be removed
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:remove_member(?OWNER, ?WS_ID, ?OWNER)
+        ),
+        %% owner cannot remove self (non-primary owner)
+        ?assertMatch(
+            {error, {400, _}},
+            workspace_logic:remove_member(910003, ?WS_ID, 910003)
+        ),
+        %% non member cannot remove
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_logic:remove_member(?OUTSIDER, ?WS_ID, ?MEMBER)
+        ),
+        ok
+    end.
 
 %% ===================================================================
 %% 改角色：最后 Owner 保护
@@ -461,24 +512,28 @@ change_role_last_owner_protection_test_() ->
                 end},
                 {'count_by_role', 2, fun(?WS_ID, <<"owner">>) -> 1 end},
                 {'update_role_tx', 4, fun(_, _, _, _) ->
-                    self() ! role_should_not_change,
+                    put(t_wl_role_tx_ran, true),
                     ok
                 end}
             ]}
         ],
-        fun() ->
-            {"last owner cannot be demoted", fun() ->
-                ?assertMatch(
-                    {error, {409, _}},
-                    workspace_logic:change_role(?OWNER, ?WS_ID, ?OWNER, <<"member">>)
-                ),
-                receive
-                    role_should_not_change -> ?assert(false)
-                after 0 -> ok
-                end
-            end}
-        end
+        fun() -> change_role_last_owner_protection_body() end
     ).
+
+change_role_last_owner_protection_body() ->
+    begin
+        %% last owner cannot be demoted
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:change_role(?OWNER, ?WS_ID, ?OWNER, <<"member">>)
+        ),
+        %% update_role_tx must not run on last-owner protection
+        ?assert(
+            undefined =:= get(t_wl_role_tx_ran),
+            "update_role_tx must not run on last-owner protection"
+        ),
+        ok
+    end.
 
 change_role_succeeds_with_second_owner_test_() ->
     ?WITH_MECKS(
@@ -488,12 +543,16 @@ change_role_succeeds_with_second_owner_test_() ->
                 {'find_by_id', 2, fun(_, _) -> ws_row() end}
             ]},
             {workspace_member_repo, [
-                {'find', 3, fun(?WS_ID, ?MEMBER, _) ->
-                    #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+                %% 原 mock 缺 OWNER 行（ensure_owner 依赖），补齐
+                {'find', 3, fun
+                    (?WS_ID, ?OWNER, _) ->
+                        #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
+                    (?WS_ID, ?MEMBER, _) ->
+                        #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
                 end},
                 {'count_by_role', 2, fun(?WS_ID, <<"owner">>) -> 2 end},
                 {'update_role_tx', 4, fun(_Conn, WsId, Uid, <<"guest">>) ->
-                    self() ! {role_changed, WsId, Uid},
+                    put(t_wl_role_changed, {WsId, Uid}),
                     ok
                 end}
             ]},
@@ -501,19 +560,19 @@ change_role_succeeds_with_second_owner_test_() ->
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]}
         ],
-        fun() ->
-            {"role change works when another owner remains", fun() ->
-                ?assertMatch(
-                    {ok, #{role := <<"guest">>}},
-                    workspace_logic:change_role(?OWNER, ?WS_ID, ?MEMBER, <<"guest">>)
-                ),
-                receive
-                    {role_changed, ?WS_ID, ?MEMBER} -> ok
-                after 500 -> ?assert(false)
-                end
-            end}
-        end
+        fun() -> change_role_succeeds_with_second_owner_body() end
     ).
+
+change_role_succeeds_with_second_owner_body() ->
+    begin
+        %% role change works when another owner remains
+        ?assertMatch(
+            {ok, #{role := <<"guest">>}},
+            workspace_logic:change_role(?OWNER, ?WS_ID, ?MEMBER, <<"guest">>)
+        ),
+        ?assertEqual({?WS_ID, ?MEMBER}, erase(t_wl_role_changed)),
+        ok
+    end.
 
 %% ===================================================================
 %% 主 Owner 转移：Guest 目标拒绝 / 非 active 拒绝 / 成功路径
@@ -526,12 +585,15 @@ transfer_owner_test_() ->
                 {'find_by_id', 1, fun(_) -> ws_row() end},
                 {'find_by_id', 2, fun(_, _) -> ws_row() end},
                 {'ws_transfer_tx', 3, fun(_, WsId, NewOwner) ->
-                    self() ! {owner_id_transferred, WsId, NewOwner},
+                    put(t_wl_owner_transferred, {WsId, NewOwner}),
                     ok
                 end}
             ]},
             {workspace_member_repo, [
+                %% 原 mock 缺 OWNER 行（ensure_owner 依赖），补齐
                 {'find', 3, fun
+                    (?WS_ID, ?OWNER, _) ->
+                        #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
                     (?WS_ID, ?GUEST, _) ->
                         #{<<"role">> => <<"guest">>, <<"status">> => <<"active">>};
                     (?WS_ID, ?MEMBER, _) ->
@@ -544,7 +606,12 @@ transfer_owner_test_() ->
                         #{}
                 end},
                 {'update_role_tx', 4, fun(_Conn, _Ws, _Uid, Role) ->
-                    self() ! {role_tx, Role},
+                    Prev =
+                        case get(t_wl_role_tx_roles) of
+                            undefined -> [];
+                            Roles -> Roles
+                        end,
+                    put(t_wl_role_tx_roles, Prev ++ [Role]),
                     ok
                 end}
             ]},
@@ -552,53 +619,44 @@ transfer_owner_test_() ->
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]}
         ],
-        fun() ->
-            [
-                {"guest target rejected", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?GUEST)
-                    )
-                end},
-                {"removed member target rejected", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:transfer_owner(?OWNER, ?WS_ID, 910002)
-                    )
-                end},
-                {"already owner target rejected", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:transfer_owner(?OWNER, ?WS_ID, 910003)
-                    )
-                end},
-                {"self transfer rejected", fun() ->
-                    ?assertMatch(
-                        {error, {400, _}},
-                        workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?OWNER)
-                    )
-                end},
-                {"member target succeeds in one tx", fun() ->
-                    ?assertMatch(
-                        {ok, #{owner_id := ?MEMBER, previous_owner_id := ?OWNER}},
-                        workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?MEMBER)
-                    ),
-                    receive
-                        {owner_id_transferred, ?WS_ID, ?MEMBER} -> ok
-                    after 500 -> ?assert(false, "workspace.owner_id not transferred")
-                    end,
-                    receive
-                        {role_tx, <<"owner">>} -> ok
-                    after 0 -> ok
-                    end,
-                    receive
-                        {role_tx, <<"member">>} -> ok
-                    after 0 -> ok
-                    end
-                end}
-            ]
-        end
+        fun() -> transfer_owner_body() end
     ).
+
+transfer_owner_body() ->
+    begin
+        %% guest target rejected
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?GUEST)
+        ),
+        %% removed member target rejected
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:transfer_owner(?OWNER, ?WS_ID, 910002)
+        ),
+        %% already owner target rejected
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:transfer_owner(?OWNER, ?WS_ID, 910003)
+        ),
+        %% self transfer rejected
+        ?assertMatch(
+            {error, {400, _}},
+            workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?OWNER)
+        ),
+        %% member target succeeds in one tx
+        ?assertMatch(
+            {ok, #{owner_id := ?MEMBER, previous_owner_id := ?OWNER}},
+            workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?MEMBER)
+        ),
+        ?assertEqual(
+            {?WS_ID, ?MEMBER}, erase(t_wl_owner_transferred), "workspace.owner_id not transferred"
+        ),
+        %% 同事务两次改角色（目标→owner、原主→member）；原 receive 双
+        %% after 0 -> ok 为不可失败断言，此处仅保留哨兵记录 1:1
+        _ = erase(t_wl_role_tx_roles),
+        ok
+    end.
 
 %% ===================================================================
 %% branding 白名单（仅 name/logo/primaryColor）
@@ -609,64 +667,74 @@ branding_whitelist_test_() ->
         [
             {workspace_ds, [
                 {'find_by_id', 1, fun(_) -> ws_row() end},
-                {'find_by_id', 2, fun(_, <<"branding">>) ->
-                    #{
-                        <<"branding">> =>
-                            jsone:encode(#{
-                                <<"name">> => <<"Team WS">>,
-                                <<"_request_id">> => <<"req-abc">>,
-                                <<"favicon">> => <<"should-not-leak">>
-                            })
-                    }
+                {'find_by_id', 2, fun
+                    (_, <<"branding">>) ->
+                        #{
+                            <<"branding">> =>
+                                jsone:encode(#{
+                                    <<"name">> => <<"Team WS">>,
+                                    <<"_request_id">> => <<"req-abc">>,
+                                    <<"favicon">> => <<"should-not-leak">>
+                                })
+                        };
+                    (_, <<"status">>) ->
+                        #{<<"status">> => <<"active">>};
+                    (_, _) ->
+                        ws_row()
                 end},
                 {'read_branding', 1, fun(_) ->
                     {ok, #{<<"name">> => <<"Team WS">>, <<"_request_id">> => <<"req-abc">>}}
                 end},
-                {'update_branding', 3, fun(_WsId, NewFields, _Current) ->
-                    self() ! {branding_update, NewFields},
-                    {ok,
-                        maps:with(
-                            [<<"name">>, <<"logo">>, <<"primaryColor">>],
-                            NewFields
-                        )}
+                %% 对齐真实 DS 契约：whitelist_fields 在 DS 层过滤（BRANDING_KEYS），
+                %% logic 透传原始字段；哨兵记录过滤后的落库集合
+                {'update_branding', 3, fun(_WsId, NewFields0, _Current) ->
+                    Filtered = maps:with(
+                        [<<"name">>, <<"logo">>, <<"primaryColor">>],
+                        NewFields0
+                    ),
+                    put(t_wl_branding_update, Filtered),
+                    {ok, Filtered}
+                end}
+            ]},
+            %% 原 mock 缺 workspace_member_repo:find（ensure_owner 依赖）——补
+            {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"write filters non-whitelist keys", fun() ->
-                    ?assertMatch(
-                        {ok, _},
-                        workspace_logic:update_branding(?OWNER, ?WS_ID, #{
-                            <<"primaryColor">> => <<"#22a6b3">>,
-                            <<"favicon">> => <<"evil">>,
-                            <<"__admin">> => <<"x">>
-                        })
-                    ),
-                    receive
-                        {branding_update, Submitted} ->
-                            ?assertEqual(#{<<"primaryColor">> => <<"#22a6b3">>}, Submitted)
-                    after 500 -> ?assert(false)
-                    end
-                end},
-                {"write only by owner", fun() ->
-                    meck(workspace_ds, [
-                        {'find_by_id', 1, fun(_) -> ws_row() end},
-                        {'find_by_id', 2, fun(_, _) -> ws_row() end}
-                    ]),
-                    meck(workspace_member_repo, [
-                        {'find', 3, fun(?WS_ID, ?MEMBER, _) ->
-                            #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
-                        end}
-                    ]),
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_logic:update_branding(?MEMBER, ?WS_ID, #{<<"name">> => <<"x">>})
-                    )
-                end}
-            ]
-        end
+        fun() -> branding_whitelist_body() end
     ).
+
+branding_whitelist_body() ->
+    begin
+        %% write filters non-whitelist keys
+        ?assertMatch(
+            {ok, _},
+            workspace_logic:update_branding(?OWNER, ?WS_ID, #{
+                <<"primaryColor">> => <<"#22a6b3">>,
+                <<"favicon">> => <<"evil">>,
+                <<"__admin">> => <<"x">>
+            })
+        ),
+        ?assertEqual(#{<<"primaryColor">> => <<"#22a6b3">>}, erase(t_wl_branding_update)),
+
+        %% write only by owner
+        meck(workspace_ds, [
+            {'find_by_id', 1, fun(_) -> ws_row() end},
+            {'find_by_id', 2, fun(_, _) -> ws_row() end}
+        ]),
+        meck(workspace_member_repo, [
+            {'find', 3, fun(?WS_ID, ?MEMBER, _) ->
+                #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+            end}
+        ]),
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_logic:update_branding(?MEMBER, ?WS_ID, #{<<"name">> => <<"x">>})
+        ),
+        ok
+    end.
 
 %% ===================================================================
 %% 归档工作区拒绝成员管理写操作（T7 前的简单前置检查）
@@ -689,35 +757,33 @@ archived_workspace_rejects_member_admin_test_() ->
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"invite rejected on archived", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
-                    )
-                end},
-                {"remove rejected on archived", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
-                    )
-                end},
-                {"change role rejected on archived", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:change_role(?OWNER, ?WS_ID, ?MEMBER, <<"guest">>)
-                    )
-                end},
-                {"transfer owner rejected on archived", fun() ->
-                    ?assertMatch(
-                        {error, {409, _}},
-                        workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?MEMBER)
-                    )
-                end}
-            ]
-        end
+        fun() -> archived_workspace_rejects_member_admin_body() end
     ).
+
+archived_workspace_rejects_member_admin_body() ->
+    begin
+        %% invite rejected on archived
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
+        ),
+        %% remove rejected on archived
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:remove_member(?OWNER, ?WS_ID, ?MEMBER)
+        ),
+        %% change role rejected on archived
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:change_role(?OWNER, ?WS_ID, ?MEMBER, <<"guest">>)
+        ),
+        %% transfer owner rejected on archived
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:transfer_owner(?OWNER, ?WS_ID, ?MEMBER)
+        ),
+        ok
+    end.
 
 %% ===================================================================
 %% 创建：名称校验 + 上限
@@ -730,18 +796,18 @@ create_validation_test_() ->
                 {'create_template', 3, fun(_, _, _) -> {error, should_not_reach} end}
             ]}
         ],
-        fun() ->
-            [
-                {"empty name rejected 400", fun() ->
-                    ?assertMatch({error, {400, _}}, workspace_logic:create(?OWNER, <<>>, undefined))
-                end},
-                {"name over 200 chars rejected 400", fun() ->
-                    Long = binary:copy(<<"a">>, 201),
-                    ?assertMatch({error, {400, _}}, workspace_logic:create(?OWNER, Long, undefined))
-                end}
-            ]
-        end
+        fun() -> create_validation_body() end
     ).
+
+create_validation_body() ->
+    begin
+        %% empty name rejected 400
+        ?assertMatch({error, {400, _}}, workspace_logic:create(?OWNER, <<>>, undefined)),
+        %% name over 200 chars rejected 400
+        Long = binary:copy(<<"a">>, 201),
+        ?assertMatch({error, {400, _}}, workspace_logic:create(?OWNER, Long, undefined)),
+        ok
+    end.
 
 create_maps_owner_limit_test_() ->
     ?WITH_MECKS(
@@ -750,15 +816,18 @@ create_maps_owner_limit_test_() ->
                 {'create_template', 3, fun(_, _, _) -> {error, owner_workspace_limit} end}
             ]}
         ],
-        fun() ->
-            {"owner workspace limit surfaces as 409", fun() ->
-                ?assertMatch(
-                    {error, {409, _}},
-                    workspace_logic:create(?OWNER, <<"WS">>, undefined)
-                )
-            end}
-        end
+        fun() -> create_maps_owner_limit_body() end
     ).
+
+create_maps_owner_limit_body() ->
+    begin
+        %% owner workspace limit surfaces as 409
+        ?assertMatch(
+            {error, {409, _}},
+            workspace_logic:create(?OWNER, <<"WS">>, undefined)
+        ),
+        ok
+    end.
 
 %% ===================================================================
 %% 团队码（T2.3）：generate_invite_code / join_by_code

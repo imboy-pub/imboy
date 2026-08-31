@@ -19,7 +19,8 @@
 %% ===================================================================
 
 group_detail_boundary_test_() ->
-    Self = self(),
+    %% ⚠️ TestFun 须单表达式直接断言：{Desc, fun} 列表会被 ?_test 吞掉
+    %% 静默空转；哨兵经进程字典传递（generator 与执行异进程，Self 收不到）
     ?WITH_MECKS(
         [
             {cowboy_req, [
@@ -27,8 +28,10 @@ group_detail_boundary_test_() ->
             ]},
             {workspace_resolver, [
                 {'guard_group_gid', 2, fun
-                    (?OUTSIDER, ?GID) -> ?FORBIDDEN;
-                    (?UID, ?GID) -> ok
+                    %% detail 动作把 QS 原始 binary gid 直传 guard（msg_page
+                    %% 才 safe_to_integer）——mock 按 handler 真实形态匹配
+                    (?OUTSIDER, <<"777001">>) -> ?FORBIDDEN;
+                    (?UID, <<"777001">>) -> ok
                 end}
             ]},
             {imboy_error, [
@@ -36,7 +39,7 @@ group_detail_boundary_test_() ->
             ]},
             {group_logic, [
                 {'find_by_id', 2, fun(Gid, _) ->
-                    Self ! {detail_allowed, Gid},
+                    put(t_detail_allowed, Gid),
                     #{<<"id">> => Gid, <<"title">> => <<"General">>}
                 end},
                 {'group_transfer', 1, fun(G) -> G end}
@@ -48,34 +51,28 @@ group_detail_boundary_test_() ->
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"outsider blocked from workspace group detail (403)", fun() ->
-                    Req = group_handler:handle_action(detail, req0, #{current_uid => ?OUTSIDER}),
-                    ?assertEqual(403, maps:get(response_status, Req)),
-                    receive
-                        {detail_allowed, _} -> ?assert(false, "must not leak group data")
-                    after 0 -> ok
-                    end
-                end},
-                {"workspace member reads group detail", fun() ->
-                    Req = group_handler:handle_action(detail, req0, #{current_uid => ?UID}),
-                    ?assertEqual(200, maps:get(response_status, Req)),
-                    receive
-                        {detail_allowed, ?GID} -> ok
-                    after 500 -> ?assert(false)
-                    end
-                end}
-            ]
-        end
+        fun() -> group_detail_boundary_body() end
     ).
+
+group_detail_boundary_body() ->
+    begin
+        %% outsider blocked from workspace group detail (403)
+        Req1 = group_handler:handle_action(detail, req0, #{current_uid => ?OUTSIDER}),
+        ?assertEqual(403, maps:get(response_status, Req1)),
+        ?assert(undefined =:= get(t_detail_allowed), "must not leak group data"),
+
+        %% workspace member reads group detail
+        Req2 = group_handler:handle_action(detail, req0, #{current_uid => ?UID}),
+        ?assertEqual(200, maps:get(response_status, Req2)),
+        ?assertEqual(?GID, erase(t_detail_allowed)),
+        ok
+    end.
 
 %% ===================================================================
 %% group msg_page 直访越权
 %% ===================================================================
 
 group_msg_page_boundary_test_() ->
-    Self = self(),
     ?WITH_MECKS(
         [
             {cowboy_req, [
@@ -93,7 +90,7 @@ group_msg_page_boundary_test_() ->
             ]},
             {group_logic, [
                 {'is_member', 2, fun(Gid, Uid) ->
-                    Self ! {membership_checked, Gid, Uid},
+                    put(t_membership_checked, {Gid, Uid}),
                     case Uid of
                         ?UID -> #{<<"id">> => 1};
                         ?OUTSIDER -> #{}
@@ -110,35 +107,31 @@ group_msg_page_boundary_test_() ->
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"outsider blocked from workspace group messages (403)", fun() ->
-                    Req = group_handler:handle_action(msg_page, req0, #{current_uid => ?OUTSIDER}),
-                    ?assertEqual(403, maps:get(response_status, Req)),
-                    receive
-                        {membership_checked, _, _} ->
-                            ?assert(false, "must not reach group membership check")
-                    after 0 -> ok
-                    end
-                end},
-                {"workspace member reaches legacy membership check", fun() ->
-                    Req = group_handler:handle_action(msg_page, req0, #{current_uid => ?UID}),
-                    ?assertEqual(200, maps:get(response_status, Req)),
-                    receive
-                        {membership_checked, ?GID, ?UID} -> ok
-                    after 500 -> ?assert(false)
-                    end
-                end}
-            ]
-        end
+        fun() -> group_msg_page_boundary_body() end
     ).
+
+group_msg_page_boundary_body() ->
+    begin
+        %% outsider blocked from workspace group messages (403)
+        Req1 = group_handler:handle_action(msg_page, req0, #{current_uid => ?OUTSIDER}),
+        ?assertEqual(403, maps:get(response_status, Req1)),
+        ?assert(
+            undefined =:= get(t_membership_checked),
+            "must not reach group membership check"
+        ),
+
+        %% workspace member reaches legacy membership check
+        Req2 = group_handler:handle_action(msg_page, req0, #{current_uid => ?UID}),
+        ?assertEqual(200, maps:get(response_status, Req2)),
+        ?assertEqual({?GID, ?UID}, erase(t_membership_checked)),
+        ok
+    end.
 
 %% ===================================================================
 %% group_notice 边界（workspace 群公告非 wm 403；personal 群放行）
 %% ===================================================================
 
 group_notice_boundary_test_() ->
-    Self = self(),
     ?WITH_MECKS(
         [
             {cowboy_req, [
@@ -164,7 +157,7 @@ group_notice_boundary_test_() ->
             ]},
             {group_notice_logic, [
                 {'insert', 2, fun(_, _) ->
-                    Self ! notice_insert_reached,
+                    put(t_notice_insert, true),
                     {ok, 1}
                 end}
             ]},
@@ -172,61 +165,51 @@ group_notice_boundary_test_() ->
                 {'error', 3, fun(_Req, _Msg, Code) -> #{response_status => Code} end}
             ]}
         ],
-        fun() ->
-            [
-                {"outsider cannot write notice to workspace group (403)", fun() ->
-                    {ok, Req, _} = group_notice_handler:init(
-                        req0, #{action => add, current_uid => ?OUTSIDER}
-                    ),
-                    ?assertEqual(403, maps:get(response_status, Req)),
-                    receive
-                        notice_insert_reached -> ?assert(false, "must not write notice")
-                    after 0 -> ok
-                    end
-                end},
-                {"member passes boundary (reaches legacy validation)", fun() ->
-                    %% gid=777002 未被 guard meck 覆盖 → guard ok；随后走既有
-                    %% status 校验（缺 status 字段默认 0 合法）→ insert 被拦截
-                    meck(elib_param, [
-                        {'post', 1, fun(_) ->
-                            #{
-                                <<"gid">> => <<"777002">>,
-                                <<"title">> => <<"t">>,
-                                <<"body">> => <<"b">>
-                            }
-                        end}
-                    ]),
-                    meck(workspace_resolver, [
-                        {'guard_group_gid', 2, fun(_, _) -> ok end}
-                    ]),
-                    meck(group_notice_logic, [
-                        {'insert', 2, fun(_, _) ->
-                            Self ! notice_insert_reached,
-                            {ok, 9}
-                        end}
-                    ]),
-                    meck(elib_response, [
-                        {'success', 2, fun(_Req, _P) -> #{response_status => 200} end}
-                    ]),
-                    {ok, Req2, _} = group_notice_handler:init(
-                        req0, #{action => add, current_uid => ?UID}
-                    ),
-                    ?assertEqual(200, maps:get(response_status, Req2)),
-                    receive
-                        notice_insert_reached -> ok
-                    after 500 -> ?assert(false)
-                    end
-                end}
-            ]
-        end
+        fun() -> group_notice_boundary_body() end
     ).
+
+group_notice_boundary_body() ->
+    begin
+        %% outsider cannot write notice to workspace group (403)
+        {ok, Req, _} = group_notice_handler:init(
+            req0, #{action => add, current_uid => ?OUTSIDER}
+        ),
+        ?assertEqual(403, maps:get(response_status, Req)),
+        ?assert(undefined =:= get(t_notice_insert), "must not write notice"),
+
+        %% member passes boundary (reaches legacy validation)
+        %% gid=777002 未被 guard meck 覆盖 → guard ok；随后走既有
+        %% status 校验（缺 status 字段默认 0 合法）→ insert 被拦截
+        meck(elib_param, [
+            {'post', 1, fun(_) ->
+                #{<<"gid">> => <<"777002">>, <<"title">> => <<"t">>, <<"body">> => <<"b">>}
+            end}
+        ]),
+        meck(workspace_resolver, [
+            {'guard_group_gid', 2, fun(_, _) -> ok end}
+        ]),
+        meck(group_notice_logic, [
+            {'insert', 2, fun(_, _) ->
+                put(t_notice_insert, true),
+                {ok, 9}
+            end}
+        ]),
+        meck(elib_response, [
+            {'success', 2, fun(_Req, _P) -> #{response_status => 200} end}
+        ]),
+        {ok, Req2, _} = group_notice_handler:init(
+            req0, #{action => add, current_uid => ?UID}
+        ),
+        ?assertEqual(200, maps:get(response_status, Req2)),
+        ?assertEqual(true, erase(t_notice_insert)),
+        ok
+    end.
 
 %% ===================================================================
 %% channel 子 handler 守卫（message/comment/webhook 管理端点）
 %% ===================================================================
 
 channel_subhandler_guard_test_() ->
-    Self = self(),
     ?WITH_MECKS(
         [
             {cowboy_req, [
@@ -235,11 +218,14 @@ channel_subhandler_guard_test_() ->
                     (_, _) -> undefined
                 end},
                 {'read_body', 2, fun(req0, _) -> {ok, <<"{}">>, req0} end},
-                {'reply', 4, fun(_, _, _, req0) -> req0 end}
+                {'reply', 4, fun(_, _, _, req0) -> req0 end},
+                %% webhook incoming 的 client_ip 依赖（空头回落 peer）
+                {'headers', 1, fun(req0) -> #{} end},
+                {'peer', 1, fun(req0) -> {{127, 0, 0, 1}, 4711} end}
             ]},
             {workspace_resolver, [
                 {'guard_channel_binding', 2, fun(req0, ?OUTSIDER) ->
-                    Self ! guard_invoked,
+                    put(t_guard_invoked, true),
                     ?FORBIDDEN
                 end}
             ]},
@@ -250,43 +236,43 @@ channel_subhandler_guard_test_() ->
                 {'incoming', 3, fun(_, _, _) -> {error, not_found} end}
             ]}
         ],
-        fun() ->
-            [
-                {"message handler blocked (403)", fun() ->
-                    {ok, Req, _} = channel_handler_message:init(
-                        req0, #{action => pin_message, current_uid => ?OUTSIDER}
-                    ),
-                    ?assertEqual(403, maps:get(response_status, Req))
-                end},
-                {"comment handler blocked (403)", fun() ->
-                    {ok, Req, _} = channel_handler_comment:init(
-                        req0, #{action => list_comments, current_uid => ?OUTSIDER}
-                    ),
-                    ?assertEqual(403, maps:get(response_status, Req))
-                end},
-                {"webhook admin endpoint blocked (403)", fun() ->
-                    {ok, Req, _} = channel_webhook_handler:init(
-                        req0, #{action => list, current_uid => ?OUTSIDER}
-                    ),
-                    ?assertEqual(403, maps:get(response_status, Req))
-                end},
-                {"webhook incoming (no JWT) is never guarded (T7 scope)", fun() ->
-                    {ok, _, _} = channel_webhook_handler:init(req0, #{action => incoming}),
-                    receive
-                        guard_invoked -> ?assert(false, "incoming must not hit member guard")
-                    after 0 -> ok
-                    end
-                end}
-            ]
-        end
+        fun() -> channel_subhandler_guard_body() end
     ).
+
+channel_subhandler_guard_body() ->
+    begin
+        %% message handler blocked (403)
+        {ok, Req1, _} = channel_handler_message:init(
+            req0, #{action => pin_message, current_uid => ?OUTSIDER}
+        ),
+        ?assertEqual(403, maps:get(response_status, Req1)),
+        erase(t_guard_invoked),
+
+        %% comment handler blocked (403)
+        {ok, Req2, _} = channel_handler_comment:init(
+            req0, #{action => list_comments, current_uid => ?OUTSIDER}
+        ),
+        ?assertEqual(403, maps:get(response_status, Req2)),
+        erase(t_guard_invoked),
+
+        %% webhook admin endpoint blocked (403)
+        {ok, Req3, _} = channel_webhook_handler:init(
+            req0, #{action => list, current_uid => ?OUTSIDER}
+        ),
+        ?assertEqual(403, maps:get(response_status, Req3)),
+        erase(t_guard_invoked),
+
+        %% webhook incoming (no JWT) is never guarded (T7 scope)
+        {ok, _, _} = channel_webhook_handler:init(req0, #{action => incoming}),
+        ?assert(undefined =:= get(t_guard_invoked), "incoming must not hit member guard"),
+        ok
+    end.
 
 %% ===================================================================
 %% workspace_handler：列表端点成员边界
 %% ===================================================================
 
 workspace_handler_endpoints_test_() ->
-    Self = self(),
     ?WITH_MECKS(
         [
             {cowboy_req, [
@@ -308,13 +294,13 @@ workspace_handler_endpoints_test_() ->
             ]},
             {channel_logic, [
                 {'list_workspace_channels', 2, fun(WsId, _) ->
-                    Self ! {channels_listed, WsId},
+                    put(t_channels_listed, WsId),
                     {ok, []}
                 end}
             ]},
             {group_logic, [
                 {'list_workspace_groups', 2, fun(WsId, _) ->
-                    Self ! {groups_listed, WsId},
+                    put(t_groups_listed, WsId),
                     {ok, []}
                 end}
             ]},
@@ -325,43 +311,30 @@ workspace_handler_endpoints_test_() ->
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"member lists workspace channels (scope partitioned)", fun() ->
-                    Req = workspace_handler:handle_action(
-                        channel_list, req0, #{current_uid => ?UID}
-                    ),
-                    ?assertEqual(200, maps:get(response_status, Req)),
-                    receive
-                        {channels_listed, ?WS_ID} -> ok
-                    after 500 -> ?assert(false)
-                    end
-                end},
-                {"outsider blocked from workspace channels (403)", fun() ->
-                    Req = workspace_handler:handle_action(
-                        channel_list, req0, #{current_uid => ?OUTSIDER}
-                    ),
-                    ?assertEqual(403, maps:get(response_status, Req))
-                end},
-                {"member lists workspace groups", fun() ->
-                    Req = workspace_handler:handle_action(
-                        group_list, req0, #{current_uid => ?UID}
-                    ),
-                    ?assertEqual(200, maps:get(response_status, Req)),
-                    receive
-                        {groups_listed, ?WS_ID} -> ok
-                    after 500 -> ?assert(false)
-                    end
-                end},
-                {"outsider blocked from workspace groups (403)", fun() ->
-                    Req = workspace_handler:handle_action(
-                        group_list, req0, #{current_uid => ?OUTSIDER}
-                    ),
-                    ?assertEqual(403, maps:get(response_status, Req))
-                end}
-            ]
-        end
+        fun() -> workspace_handler_endpoints_body() end
     ).
+
+workspace_handler_endpoints_body() ->
+    begin
+        %% member lists workspace channels (scope partitioned)
+        Req1 = workspace_handler:handle_action(channel_list, req0, #{current_uid => ?UID}),
+        ?assertEqual(200, maps:get(response_status, Req1)),
+        ?assertEqual(?WS_ID, erase(t_channels_listed)),
+
+        %% outsider blocked from workspace channels (403)
+        Req2 = workspace_handler:handle_action(channel_list, req0, #{current_uid => ?OUTSIDER}),
+        ?assertEqual(403, maps:get(response_status, Req2)),
+
+        %% member lists workspace groups
+        Req3 = workspace_handler:handle_action(group_list, req0, #{current_uid => ?UID}),
+        ?assertEqual(200, maps:get(response_status, Req3)),
+        ?assertEqual(?WS_ID, erase(t_groups_listed)),
+
+        %% outsider blocked from workspace groups (403)
+        Req4 = workspace_handler:handle_action(group_list, req0, #{current_uid => ?OUTSIDER}),
+        ?assertEqual(403, maps:get(response_status, Req4)),
+        ok
+    end.
 
 %% ===================================================================
 %% 团队码端点（T2.4）：invite_code / join handler 契约

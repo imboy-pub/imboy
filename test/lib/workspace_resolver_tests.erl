@@ -31,145 +31,131 @@ personal_group_row() ->
 %% ===================================================================
 
 resolve_workspace_test_() ->
+    %% ⚠️ TestFun 须单表达式直接断言：{Desc, fun} 列表会被 ?_test 吞掉
+    %% 静默空转（内层断言从不执行）；多断言移入下方私有辅助函数。
     ?WITH_MECKS(
         [
             {elib_pg, [
                 {'one', 2, fun(Sql, Params) -> resolve_one(Sql, Params) end}
             ]}
         ],
-        fun() ->
-            [
-                {"workspace resolves to itself", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID}, workspace_resolver:resolve_workspace({workspace, ?WS_ID})
-                    )
-                end},
-                {"workspace group resolves to ws id", fun() ->
-                    ?assertEqual({ok, ?WS_ID}, workspace_resolver:resolve_workspace({group, ?GID}))
-                end},
-                {"personal group resolves to personal", fun() ->
-                    ?assertEqual(personal, workspace_resolver:resolve_workspace({group, 777099}))
-                end},
-                {"missing group resolves to not_found", fun() ->
-                    ?assertEqual(
-                        {error, not_found}, workspace_resolver:resolve_workspace({group, 1})
-                    )
-                end},
-                {"group notice resolves via group_id", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID}, workspace_resolver:resolve_workspace({group_notice, 555001})
-                    )
-                end},
-                {"channel subscription resolves via channel scope", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID},
-                        workspace_resolver:resolve_workspace({channel_subscription, ?CID})
-                    )
-                end},
-                {"channel admin resolves via channel scope", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID}, workspace_resolver:resolve_workspace({channel_admin, ?CID})
-                    )
-                end},
-                {"channel message resolves via channel_id", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID},
-                        workspace_resolver:resolve_workspace({channel_message, 444001})
-                    )
-                end},
-                {"channel comment resolves via channel_id", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID},
-                        workspace_resolver:resolve_workspace({channel_comment, 444002})
-                    )
-                end},
-                {"channel reaction resolves via channel_id", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID},
-                        workspace_resolver:resolve_workspace({channel_reaction, 444003})
-                    )
-                end},
-                {"channel webhook resolves via channel_id", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID},
-                        workspace_resolver:resolve_workspace({channel_webhook, 444004})
-                    )
-                end},
-                {"channel invitation resolves via channel_id", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID},
-                        workspace_resolver:resolve_workspace({channel_invitation, 444005})
-                    )
-                end},
-                {"personal channel message is personal", fun() ->
-                    ?assertEqual(
-                        personal, workspace_resolver:resolve_workspace({channel_message, 444099})
-                    )
-                end},
-                {"group attachment resolves via scope_ref group", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID}, workspace_resolver:resolve_workspace({attachment, 333001})
-                    )
-                end},
-                {"channel attachment resolves via scope_ref channel", fun() ->
-                    ?assertEqual(
-                        {ok, ?WS_ID}, workspace_resolver:resolve_workspace({attachment, 333002})
-                    )
-                end},
-                {"c2c attachment stays personal (T7 closed: personal domain)", fun() ->
-                    ?assertEqual(
-                        personal, workspace_resolver:resolve_workspace({attachment, 333003})
-                    )
-                end},
-                {"moment attachment stays personal (T7 closed: personal domain)", fun() ->
-                    ?assertEqual(
-                        personal, workspace_resolver:resolve_workspace({attachment, 333004})
-                    )
-                end},
-                {"private attachment stays personal (T7 closed: personal domain)", fun() ->
-                    ?assertEqual(
-                        personal, workspace_resolver:resolve_workspace({attachment, 333005})
-                    )
-                end},
-                {"public attachment stays personal (T7 closed: personal domain)", fun() ->
-                    ?assertEqual(
-                        personal, workspace_resolver:resolve_workspace({attachment, 333006})
-                    )
-                end},
-                {"group attachment without scope_ref degrades to personal", fun() ->
-                    ?assertEqual(
-                        personal, workspace_resolver:resolve_workspace({attachment, 333007})
-                    )
-                end},
-                {"missing attachment row stays personal (legacy fallback)", fun() ->
-                    ?assertEqual(
-                        personal, workspace_resolver:resolve_workspace({attachment, 333099})
-                    )
-                end},
-                {"unknown resource type is personal", fun() ->
-                    ?assertEqual(personal, workspace_resolver:resolve_workspace({moment, 1}))
-                end}
-            ]
-        end
+        fun() -> resolve_workspace_body() end
     ).
+
+resolve_workspace_body() ->
+    begin
+        %% workspace resolves to itself
+        ?assertEqual(
+            {ok, ?WS_ID}, workspace_resolver:resolve_workspace({workspace, ?WS_ID})
+        ),
+        %% workspace group resolves to ws id
+        ?assertEqual({ok, ?WS_ID}, workspace_resolver:resolve_workspace({group, ?GID})),
+        %% personal group resolves to personal
+        ?assertEqual(personal, workspace_resolver:resolve_workspace({group, 777099})),
+        %% missing group resolves to not_found
+        ?assertEqual({error, not_found}, workspace_resolver:resolve_workspace({group, 1})),
+        %% group notice resolves via group_id
+        ?assertEqual(
+            {ok, ?WS_ID}, workspace_resolver:resolve_workspace({group_notice, 555001})
+        ),
+        %% channel subscription resolves via channel scope
+        ?assertEqual(
+            {ok, ?WS_ID},
+            workspace_resolver:resolve_workspace({channel_subscription, ?CID})
+        ),
+        %% channel admin resolves via channel scope
+        ?assertEqual(
+            {ok, ?WS_ID}, workspace_resolver:resolve_workspace({channel_admin, ?CID})
+        ),
+        %% channel message resolves via channel_id
+        ?assertEqual(
+            {ok, ?WS_ID},
+            workspace_resolver:resolve_workspace({channel_message, 444001})
+        ),
+        %% channel comment resolves via channel_id
+        ?assertEqual(
+            {ok, ?WS_ID},
+            workspace_resolver:resolve_workspace({channel_comment, 444002})
+        ),
+        %% channel reaction resolves via channel_id
+        ?assertEqual(
+            {ok, ?WS_ID},
+            workspace_resolver:resolve_workspace({channel_reaction, 444003})
+        ),
+        %% channel webhook resolves via channel_id
+        ?assertEqual(
+            {ok, ?WS_ID},
+            workspace_resolver:resolve_workspace({channel_webhook, 444004})
+        ),
+        %% channel invitation resolves via channel_id
+        ?assertEqual(
+            {ok, ?WS_ID},
+            workspace_resolver:resolve_workspace({channel_invitation, 444005})
+        ),
+        %% personal channel message is personal
+        ?assertEqual(
+            personal, workspace_resolver:resolve_workspace({channel_message, 444099})
+        ),
+        %% group attachment resolves via scope_ref group
+        ?assertEqual(
+            {ok, ?WS_ID}, workspace_resolver:resolve_workspace({attachment, 333001})
+        ),
+        %% channel attachment resolves via scope_ref channel
+        ?assertEqual(
+            {ok, ?WS_ID}, workspace_resolver:resolve_workspace({attachment, 333002})
+        ),
+        %% c2c attachment stays personal (T7 closed: personal domain)
+        ?assertEqual(
+            personal, workspace_resolver:resolve_workspace({attachment, 333003})
+        ),
+        %% moment attachment stays personal (T7 closed: personal domain)
+        ?assertEqual(
+            personal, workspace_resolver:resolve_workspace({attachment, 333004})
+        ),
+        %% private attachment stays personal (T7 closed: personal domain)
+        ?assertEqual(
+            personal, workspace_resolver:resolve_workspace({attachment, 333005})
+        ),
+        %% public attachment stays personal (T7 closed: personal domain)
+        ?assertEqual(
+            personal, workspace_resolver:resolve_workspace({attachment, 333006})
+        ),
+        %% group attachment without scope_ref degrades to personal
+        ?assertEqual(
+            personal, workspace_resolver:resolve_workspace({attachment, 333007})
+        ),
+        %% missing attachment row stays personal (legacy fallback)
+        ?assertEqual(
+            personal, workspace_resolver:resolve_workspace({attachment, 333099})
+        ),
+        %% unknown resource type is explicit error（SEC-03 收紧后 src 已不再
+        %% 默认 personal——src 注释"测试断言已同步改为显式错误"，此处对齐）
+        ?assertEqual(
+            {error, {unsupported_resource, {moment, 1}}},
+            workspace_resolver:resolve_workspace({moment, 1})
+        ),
+        ok
+    end.
 
 resolve_one(<<"SELECT id FROM workspace", _/binary>>, [?WS_ID]) ->
     {ok, #{<<"id">> => ?WS_ID}};
 resolve_one(<<"SELECT group_id FROM group_notice", _/binary>>, [555001]) ->
     {ok, #{<<"group_id">> => ?GID}};
-resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [?GID]) ->
+%% row_scope/2 真实 SQL：SELECT scope, workspace_id FROM "group" WHERE id = $1
+resolve_one(<<"SELECT scope, workspace_id FROM \"group\"", _/binary>>, [?GID]) ->
     {ok, ws_group_row()};
-resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [777099]) ->
+resolve_one(<<"SELECT scope, workspace_id FROM \"group\"", _/binary>>, [777099]) ->
     {ok, personal_group_row()};
-resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [1]) ->
+resolve_one(<<"SELECT scope, workspace_id FROM \"group\"", _/binary>>, [1]) ->
     %% 真实零行形态：elib_pg:one 对空结果返回 {ok, Default=#{}}
     {ok, #{}};
-resolve_one(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [777777]) ->
+resolve_one(<<"SELECT scope, workspace_id FROM \"group\"", _/binary>>, [777777]) ->
     %% notice 回溯 personal 群
     {ok, personal_group_row()};
-resolve_one(<<"SELECT workspace_id FROM channel", _/binary>>, [?CID]) ->
+%% row_scope/2 真实 SQL：SELECT scope, workspace_id FROM channel WHERE id = $1
+resolve_one(<<"SELECT scope, workspace_id FROM channel", _/binary>>, [?CID]) ->
     {ok, #{<<"scope">> => <<"workspace">>, <<"workspace_id">> => ?WS_ID}};
-resolve_one(<<"SELECT workspace_id FROM channel", _/binary>>, [_]) ->
+resolve_one(<<"SELECT scope, workspace_id FROM channel", _/binary>>, [_]) ->
     {ok, #{<<"scope">> => <<"personal">>, <<"workspace_id">> => null}};
 resolve_one(<<"SELECT channel_id FROM channel_message", _/binary>>, [444001]) ->
     {ok, #{<<"channel_id">> => ?CID}};
@@ -211,74 +197,94 @@ db_error_one() ->
 
 %% ===================================================================
 %% resolve_workspace/1：DB 异常矩阵（fail-closed 前置：异常必须可区分）
+%% ⚠️ 原 {Desc, fun} 列表形态是静默空转：{Desc, fun() -> ?WITH_MECKS(...)
+%% end} 中 eunit 求值外层 fun 后丢弃返回的 setup fixture，内层从不执行。
+%% 拆为独立 test_/0（?WITH_MECKS 内层单表达式直接断言，真实执行）。
 %% ===================================================================
 
-db_error_matrix_test_() ->
+db_error_propagates_all_resources_test_() ->
+    %% "returned db error propagates for every resource chain"
+    %% M-1 收口后现行契约：one_row 把 {error, _} 归一为 error({resolver_db_error,_})
+    %% 抛出（生产调用方 workspace_guard/守卫均 try/catch 转 503），
+    %% resolve_workspace 不再返回 {error, {db_error, _}}。
     OneReturned = fun(_, _) -> {error, pool_exhausted} end,
-    [
-        {"returned db error propagates for every resource chain", fun() ->
-            ?WITH_MECKS([{elib_pg, [{'one', 2, OneReturned}]}], fun() ->
-                Targets = [
-                    {workspace, ?WS_ID},
-                    {project, 123},
-                    {project_task, 456},
-                    {group, ?GID},
-                    {group_notice, 555001},
-                    {channel, ?CID},
-                    {channel_message, 444001},
-                    {channel_comment, 444002},
-                    {channel_reaction, 444003},
-                    {channel_webhook, 444004},
-                    {channel_invitation, 444005},
-                    {channel_subscription, ?CID},
-                    {channel_admin, ?CID},
-                    {attachment, 333001}
-                ],
-                lists:foreach(
-                    fun(Target) ->
-                        ?assertEqual(
-                            {error, {db_error, pool_exhausted}},
-                            workspace_resolver:resolve_workspace(Target),
-                            {target, Target}
-                        )
-                    end,
-                    Targets
-                )
-            end)
-        end},
-        {"crashing one (exit) maps to db_error, never not_found", fun() ->
-            ?WITH_MECKS(
-                [{elib_pg, [{'one', 2, fun(_, _) -> exit(pool_down) end}]}],
-                fun() ->
-                    ?assertMatch(
-                        {error, {db_error, _}}, workspace_resolver:resolve_workspace({group, ?GID})
-                    ),
-                    ?assertMatch(
-                        {error, {db_error, _}},
-                        workspace_resolver:resolve_workspace({channel, ?CID})
+    ?WITH_MECKS(
+        [{elib_pg, [{'one', 2, OneReturned}]}],
+        fun() ->
+            Targets = [
+                {workspace, ?WS_ID},
+                {project, 123},
+                {project_task, 456},
+                {group, ?GID},
+                {group_notice, 555001},
+                {channel, ?CID},
+                {channel_message, 444001},
+                {channel_comment, 444002},
+                {channel_reaction, 444003},
+                {channel_webhook, 444004},
+                {channel_invitation, 444005},
+                {channel_subscription, ?CID},
+                {channel_admin, ?CID},
+                {attachment, 333001}
+            ],
+            lists:foreach(
+                fun(Target) ->
+                    ?assertError(
+                        {resolver_db_error, {error, pool_exhausted}},
+                        workspace_resolver:resolve_workspace(Target),
+                        {target, Target}
                     )
-                end
+                end,
+                Targets
+            ),
+            ok
+        end
+    ).
+
+db_one_crash_exit_maps_to_db_error_test_() ->
+    %% "crashing one (exit) maps to db_error, never not_found"
+    ?WITH_MECKS(
+        [{elib_pg, [{'one', 2, fun(_, _) -> exit(pool_down) end}]}],
+        fun() ->
+            begin
+                ?assertError(
+                    {resolver_db_error, {'EXIT', pool_down}},
+                    workspace_resolver:resolve_workspace({group, ?GID})
+                ),
+                ?assertError(
+                    {resolver_db_error, {'EXIT', pool_down}},
+                    workspace_resolver:resolve_workspace({channel, ?CID})
+                ),
+                ok
+            end
+        end
+    ).
+
+db_one_crash_throw_maps_to_db_error_test_() ->
+    %% "crashing one (throw) maps to db_error"
+    ?WITH_MECKS(
+        [{elib_pg, [{'one', 2, fun(_, _) -> throw(driver_lost) end}]}],
+        fun() ->
+            ?assertError(
+                {resolver_db_error, driver_lost},
+                workspace_resolver:resolve_workspace({group, ?GID})
             )
-        end},
-        {"crashing one (throw) maps to db_error", fun() ->
-            ?WITH_MECKS(
-                [{elib_pg, [{'one', 2, fun(_, _) -> throw(driver_lost) end}]}],
-                fun() ->
-                    ?assertEqual(
-                        {error, {db_error, driver_lost}},
-                        workspace_resolver:resolve_workspace({group, ?GID})
-                    )
-                end
+        end
+    ).
+
+db_error_not_confused_with_not_found_test_() ->
+    %% "db error must not be confused with not_found"
+    %% DB 异常必须可区分：抛 {resolver_db_error,_}，绝不落 not_found。
+    OneReturned = fun(_, _) -> {error, pool_exhausted} end,
+    ?WITH_MECKS(
+        [{elib_pg, [{'one', 2, OneReturned}]}],
+        fun() ->
+            ?assertError(
+                {resolver_db_error, _},
+                workspace_resolver:resolve_workspace({group, ?GID})
             )
-        end},
-        {"db error must not be confused with not_found", fun() ->
-            ?WITH_MECKS([{elib_pg, [{'one', 2, OneReturned}]}], fun() ->
-                ?assertNotEqual(
-                    {error, not_found}, workspace_resolver:resolve_workspace({group, ?GID})
-                )
-            end)
-        end}
-    ].
+        end
+    ).
 
 %% ===================================================================
 %% Workspace 成员边界（T5 直访越权红线 + SEC-03 fail-closed）
@@ -301,261 +307,300 @@ boundary_guards_test_() ->
                 end}
             ]}
         ],
+        fun() -> boundary_guards_body() end
+    ).
+
+boundary_guards_body() ->
+    begin
+        %% member passes workspace group boundary
+        ?assertEqual(ok, workspace_resolver:ensure_group_member_access(?UID, ?GID)),
+        %% non member blocked on workspace group boundary (403)
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_resolver:ensure_group_member_access(?OUTSIDER, ?GID)
+        ),
+        %% member passes workspace channel boundary
+        ?assertEqual(ok, workspace_resolver:ensure_channel_member_access(?UID, ?CID)),
+        %% non member blocked on workspace channel boundary (403)
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_resolver:ensure_channel_member_access(?OUTSIDER, ?CID)
+        ),
+        %% personal group always passes (zero regression)
+        ?assertEqual(
+            ok, workspace_resolver:ensure_group_member_access(?OUTSIDER, 777099)
+        ),
+        %% personal channel always passes (zero regression)
+        ?assertEqual(
+            ok, workspace_resolver:ensure_channel_member_access(?OUTSIDER, 666099)
+        ),
+        %% non-existent group passes through to legacy 404 flow
+        ?assertEqual(ok, workspace_resolver:ensure_group_member_access(?UID, 1)),
+        %% guard_group_gid with zero/invalid gid passes
+        ?assertEqual(ok, workspace_resolver:guard_group_gid(?OUTSIDER, <<"abc">>)),
+        ?assertEqual(ok, workspace_resolver:guard_group_gid(?OUTSIDER, 0)),
+        %% guard_group_notice_id blocks workspace group notice for outsider
+        ?assertMatch(
+            {error, {403, _}},
+            workspace_resolver:guard_group_notice_id(?OUTSIDER, 555001)
+        ),
+        %% guard_group_notice_id passes for member
+        ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, 555001)),
+        %% guard_group_notice_id passes for invalid notice
+        ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, <<"x">>)),
+        ok
+    end.
+
+%% ===================================================================
+%% SEC-03 fail-closed：DB 异常 → 503，与角色无关（成员/非成员同样被拒）
+%% ⚠️ 原 {Desc, fun} 列表形态静默空转（同 db_error_matrix 注释），拆为独立 test_/0。
+%% ===================================================================
+
+fail_closed_group_gate_member_test_() ->
+    %% "db error denies workspace group gate (503, member)"
+    OneFailed = {elib_pg, [{'one', 2, fun(_, _) -> {error, pool_exhausted} end}]},
+    ?WITH_MECKS(
+        [OneFailed],
         fun() ->
-            [
-                {"member passes workspace group boundary", fun() ->
-                    ?assertEqual(ok, workspace_resolver:ensure_group_member_access(?UID, ?GID))
-                end},
-                {"non member blocked on workspace group boundary (403)", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_resolver:ensure_group_member_access(?OUTSIDER, ?GID)
-                    )
-                end},
-                {"member passes workspace channel boundary", fun() ->
-                    ?assertEqual(ok, workspace_resolver:ensure_channel_member_access(?UID, ?CID))
-                end},
-                {"non member blocked on workspace channel boundary (403)", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_resolver:ensure_channel_member_access(?OUTSIDER, ?CID)
-                    )
-                end},
-                {"personal group always passes (zero regression)", fun() ->
-                    ?assertEqual(
-                        ok, workspace_resolver:ensure_group_member_access(?OUTSIDER, 777099)
-                    )
-                end},
-                {"personal channel always passes (zero regression)", fun() ->
-                    ?assertEqual(
-                        ok, workspace_resolver:ensure_channel_member_access(?OUTSIDER, 666099)
-                    )
-                end},
-                {"non-existent group passes through to legacy 404 flow", fun() ->
-                    ?assertEqual(ok, workspace_resolver:ensure_group_member_access(?UID, 1))
-                end},
-                {"guard_group_gid with zero/invalid gid passes", fun() ->
-                    ?assertEqual(ok, workspace_resolver:guard_group_gid(?OUTSIDER, <<"abc">>)),
-                    ?assertEqual(ok, workspace_resolver:guard_group_gid(?OUTSIDER, 0))
-                end},
-                {"guard_group_notice_id blocks workspace group notice for outsider", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_resolver:guard_group_notice_id(?OUTSIDER, 555001)
-                    )
-                end},
-                {"guard_group_notice_id passes for member", fun() ->
-                    ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, 555001))
-                end},
-                {"guard_group_notice_id passes for invalid notice", fun() ->
-                    ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, <<"x">>))
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:ensure_group_member_access(?UID, ?GID)
+            )
+        end
+    ).
+
+fail_closed_group_gate_outsider_test_() ->
+    %% "db error denies workspace group gate (503, outsider)"
+    OneFailed = {elib_pg, [{'one', 2, fun(_, _) -> {error, pool_exhausted} end}]},
+    ?WITH_MECKS(
+        [OneFailed],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:ensure_group_member_access(?OUTSIDER, ?GID)
+            )
+        end
+    ).
+
+fail_closed_channel_gate_test_() ->
+    %% "db error denies workspace channel gate (503)"
+    OneFailed = {elib_pg, [{'one', 2, fun(_, _) -> {error, pool_exhausted} end}]},
+    ?WITH_MECKS(
+        [OneFailed],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:ensure_channel_member_access(?UID, ?CID)
+            )
+        end
+    ).
+
+fail_closed_notice_gate_test_() ->
+    %% "db error denies notice gate (503)"
+    OneFailed = {elib_pg, [{'one', 2, fun(_, _) -> {error, pool_exhausted} end}]},
+    ?WITH_MECKS(
+        [OneFailed],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:guard_group_notice_id(?UID, 555001)
+            )
+        end
+    ).
+
+fail_closed_guard_group_gid_test_() ->
+    %% "db error denies guard_group_gid (503)"
+    OneFailed = {elib_pg, [{'one', 2, fun(_, _) -> {error, pool_exhausted} end}]},
+    ?WITH_MECKS(
+        [OneFailed],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:guard_group_gid(?UID, ?GID)
+            )
+        end
+    ).
+
+fail_closed_guard_channel_binding_test_() ->
+    %% "db error denies guard_channel_binding when binding present (503)"
+    OneFailed = {elib_pg, [{'one', 2, fun(_, _) -> {error, pool_exhausted} end}]},
+    ?WITH_MECKS(
+        [
+            OneFailed,
+            {cowboy_req, [
+                {'binding', 2, fun(channel_id, _Req) -> <<"666001">> end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:guard_channel_binding(#{qs => []}, ?UID)
+            )
+        end
+    ).
+
+fail_closed_crashing_one_denies_gate_test_() ->
+    %% "crashing one denies gate (503)"
+    ?WITH_MECKS(
+        [{elib_pg, [{'one', 2, fun(_, _) -> exit(pool_down) end}]}],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:ensure_group_member_access(?UID, ?GID)
+            )
+        end
+    ).
+
+attachment_dirty_scope_test_() ->
+    %% "attachment dirty scope yields explicit unsupported_scope error"
+    %% 断言按 T7 结项决策（commit 84287609）对齐现实：行不存在 / 未知 scope
+    %% 值沿历史 personal 兜底（守卫放行、404 交既有流程），不再回溯。
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'one', 2, fun
+                    (<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333007]) ->
+                        {ok, #{<<"scope">> => <<"galaxy">>, <<"scope_ref">> => null}};
+                    (_, _) ->
+                        {ok, #{}}
                 end}
-            ]
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                personal,
+                workspace_resolver:resolve_workspace({attachment, 333007})
+            )
         end
     ).
 
 %% ===================================================================
-%% SEC-03 fail-closed：DB 异常 → 503，与角色无关（成员/非成员同样被拒）
-%% ===================================================================
-
-fail_closed_gates_test_() ->
-    OneFailed = {elib_pg, [{'one', 2, fun(_, _) -> {error, pool_exhausted} end}]},
-    [
-        {"db error denies workspace group gate (503, member)", fun() ->
-            ?WITH_MECKS([OneFailed], fun() ->
-                ?assertMatch(
-                    {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                    workspace_resolver:ensure_group_member_access(?UID, ?GID)
-                )
-            end)
-        end},
-        {"db error denies workspace group gate (503, outsider)", fun() ->
-            ?WITH_MECKS([OneFailed], fun() ->
-                ?assertMatch(
-                    {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                    workspace_resolver:ensure_group_member_access(?OUTSIDER, ?GID)
-                )
-            end)
-        end},
-        {"db error denies workspace channel gate (503)", fun() ->
-            ?WITH_MECKS([OneFailed], fun() ->
-                ?assertMatch(
-                    {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                    workspace_resolver:ensure_channel_member_access(?UID, ?CID)
-                )
-            end)
-        end},
-        {"db error denies notice gate (503)", fun() ->
-            ?WITH_MECKS([OneFailed], fun() ->
-                ?assertMatch(
-                    {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                    workspace_resolver:guard_group_notice_id(?UID, 555001)
-                )
-            end)
-        end},
-        {"db error denies guard_group_gid (503)", fun() ->
-            ?WITH_MECKS([OneFailed], fun() ->
-                ?assertMatch(
-                    {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                    workspace_resolver:guard_group_gid(?UID, ?GID)
-                )
-            end)
-        end},
-        {"db error denies guard_channel_binding when binding present (503)", fun() ->
-            ?WITH_MECKS(
-                [
-                    OneFailed,
-                    {cowboy_req, [
-                        {'binding', 2, fun(channel_id, _Req) -> <<"666001">> end}
-                    ]}
-                ],
-                fun() ->
-                    ?assertMatch(
-                        {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                        workspace_resolver:guard_channel_binding(#{qs => []}, ?UID)
-                    )
-                end
-            )
-        end},
-        {"crashing one denies gate (503)", fun() ->
-            ?WITH_MECKS(
-                [{elib_pg, [{'one', 2, fun(_, _) -> exit(pool_down) end}]}],
-                fun() ->
-                    ?assertMatch(
-                        {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                        workspace_resolver:ensure_group_member_access(?UID, ?GID)
-                    )
-                end
-            )
-        end},
-        {"attachment dirty scope yields explicit unsupported_scope error", fun() ->
-            ?WITH_MECKS(
-                [
-                    {elib_pg, [
-                        {'one', 2, fun
-                            (<<"SELECT scope, scope_ref FROM attachment", _/binary>>, [333007]) ->
-                                {ok, #{<<"scope">> => <<"galaxy">>, <<"scope_ref">> => null}};
-                            (_, _) ->
-                                {ok, #{}}
-                        end}
-                    ]}
-                ],
-                fun() ->
-                    ?assertEqual(
-                        {error, {unsupported_scope, <<"galaxy">>}},
-                        workspace_resolver:resolve_workspace({attachment, 333007})
-                    )
-                end
-            )
-        end}
-    ].
-
-%% ===================================================================
 %% guard_channel_custom_id：custom_id 直访门（SEC-03 fail-closed）
+%% ⚠️ 原 {Desc, fun} 列表形态静默空转（同 db_error_matrix 注释），拆为独立 test_/0。
 %% ===================================================================
 
-guard_channel_custom_id_test_() ->
-    MemberRepo =
-        {workspace_member_repo, [
-            {'find', 3, fun
-                (?WS_ID, ?UID, _) ->
-                    #{<<"role">> => <<"member">>, <<"status">> => <<"active">>};
-                (_, _, _) ->
-                    #{}
-            end}
-        ]},
-    ChannelRow =
-        {elib_pg, [
-            {'one', 2, fun
-                (<<"SELECT workspace_id FROM channel", _/binary>>, [?CID]) ->
-                    {ok, #{<<"scope">> => <<"workspace">>, <<"workspace_id">> => ?WS_ID}};
-                (_, _) ->
-                    {ok, #{}}
-            end}
-        ]},
-    [
-        {"workspace channel by custom id blocks outsider (403)", fun() ->
-            ?WITH_MECKS(
-                [
-                    {channel_ds, [
-                        {'find_by_custom_id', 1, fun(_) ->
-                            #{<<"id">> => ?CID, <<"custom_id">> => <<"ws-chan">>}
-                        end}
-                    ]},
-                    ChannelRow,
-                    MemberRepo
-                ],
-                fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        workspace_resolver:guard_channel_custom_id(?OUTSIDER, <<"ws-chan">>)
-                    )
-                end
-            )
-        end},
-        {"member passes workspace channel by custom id", fun() ->
-            ?WITH_MECKS(
-                [
-                    {channel_ds, [
-                        {'find_by_custom_id', 1, fun(_) ->
-                            #{<<"id">> => ?CID, <<"custom_id">> => <<"ws-chan">>}
-                        end}
-                    ]},
-                    ChannelRow,
-                    MemberRepo
-                ],
-                fun() ->
-                    ?assertEqual(
-                        ok, workspace_resolver:guard_channel_custom_id(?UID, <<"ws-chan">>)
-                    )
-                end
-            )
-        end},
-        {"custom id miss (empty map) passes to legacy 404 flow", fun() ->
-            ?WITH_MECKS(
-                [{channel_ds, [{'find_by_custom_id', 1, fun(_) -> #{} end}]}],
-                fun() ->
-                    ?assertEqual(
-                        ok, workspace_resolver:guard_channel_custom_id(?OUTSIDER, <<"ghost">>)
-                    )
-                end
-            )
-        end},
-        {"find_by_custom_id db error denied (503, fail-closed)", fun() ->
-            ?WITH_MECKS(
-                [
-                    {channel_ds, [
-                        {'find_by_custom_id', 1, fun(_) -> {error, no_connection} end}
-                    ]}
-                ],
-                fun() ->
-                    ?assertMatch(
-                        {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                        workspace_resolver:guard_channel_custom_id(?UID, <<"ws-chan">>)
-                    )
-                end
-            )
-        end},
-        {"find_by_custom_id crash denied (503, fail-closed)", fun() ->
-            ?WITH_MECKS(
-                [
-                    {channel_ds, [
-                        {'find_by_custom_id', 1, fun(_) -> exit(pool_down) end}
-                    ]}
-                ],
-                fun() ->
-                    ?assertMatch(
-                        {error, {?ERR_SERVICE_UNAVAILABLE, _}},
-                        workspace_resolver:guard_channel_custom_id(?UID, <<"ws-chan">>)
-                    )
-                end
-            )
-        end},
-        {"invalid custom id (empty/not binary) passes", fun() ->
-            ?assertEqual(ok, workspace_resolver:guard_channel_custom_id(?UID, <<>>)),
-            ?assertEqual(ok, workspace_resolver:guard_channel_custom_id(?UID, 123))
+%% 与 guard_channel_custom_id_test_ 共用的 mock 片段。
+%% ChannelRow SQL 前缀对齐 row_scope/2 真实形态（SELECT scope, workspace_id ...）
+member_repo_ws() ->
+    {workspace_member_repo, [
+        {'find', 3, fun
+            (?WS_ID, ?UID, _) ->
+                #{<<"role">> => <<"member">>, <<"status">> => <<"active">>};
+            (_, _, _) ->
+                #{}
         end}
-    ].
+    ]}.
+
+member_repo_outsider_removed() ->
+    {workspace_member_repo, [
+        {'find', 3, fun
+            (?WS_ID, ?UID, _) ->
+                #{<<"role">> => <<"member">>, <<"status">> => <<"active">>};
+            (?WS_ID, ?OUTSIDER, _) ->
+                #{<<"role">> => <<"guest">>, <<"status">> => <<"removed">>};
+            (_, _, _) ->
+                #{}
+        end}
+    ]}.
+
+channel_row_ws() ->
+    {elib_pg, [
+        {'one', 2, fun
+            (<<"SELECT scope, workspace_id FROM channel", _/binary>>, [?CID]) ->
+                {ok, #{<<"scope">> => <<"workspace">>, <<"workspace_id">> => ?WS_ID}};
+            (_, _) ->
+                {ok, #{}}
+        end}
+    ]}.
+
+channel_ds_custom_id_hit() ->
+    {channel_ds, [
+        {'find_by_custom_id', 1, fun(_) ->
+            #{<<"id">> => ?CID, <<"custom_id">> => <<"ws-chan">>}
+        end}
+    ]}.
+
+custom_id_blocks_outsider_test_() ->
+    %% "workspace channel by custom id blocks outsider (403)"
+    ?WITH_MECKS(
+        [
+            channel_ds_custom_id_hit(),
+            channel_row_ws(),
+            member_repo_outsider_removed()
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {403, _}},
+                workspace_resolver:guard_channel_custom_id(?OUTSIDER, <<"ws-chan">>)
+            )
+        end
+    ).
+
+custom_id_member_passes_test_() ->
+    %% "member passes workspace channel by custom id"
+    ?WITH_MECKS(
+        [
+            channel_ds_custom_id_hit(),
+            channel_row_ws(),
+            member_repo_ws()
+        ],
+        fun() ->
+            ?assertEqual(
+                ok, workspace_resolver:guard_channel_custom_id(?UID, <<"ws-chan">>)
+            )
+        end
+    ).
+
+custom_id_miss_passes_test_() ->
+    %% "custom id miss (empty map) passes to legacy 404 flow"
+    ?WITH_MECKS(
+        [{channel_ds, [{'find_by_custom_id', 1, fun(_) -> #{} end}]}],
+        fun() ->
+            ?assertEqual(
+                ok, workspace_resolver:guard_channel_custom_id(?OUTSIDER, <<"ghost">>)
+            )
+        end
+    ).
+
+custom_id_db_error_denied_test_() ->
+    %% "find_by_custom_id db error denied (503, fail-closed)"
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_custom_id', 1, fun(_) -> {error, no_connection} end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:guard_channel_custom_id(?UID, <<"ws-chan">>)
+            )
+        end
+    ).
+
+custom_id_crash_denied_test_() ->
+    %% "find_by_custom_id crash denied (503, fail-closed)"
+    ?WITH_MECKS(
+        [
+            {channel_ds, [
+                {'find_by_custom_id', 1, fun(_) -> exit(pool_down) end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {?ERR_SERVICE_UNAVAILABLE, _}},
+                workspace_resolver:guard_channel_custom_id(?UID, <<"ws-chan">>)
+            )
+        end
+    ).
+
+custom_id_invalid_passes_test() ->
+    %% "invalid custom id (empty/not binary) passes"
+    begin
+        ?assertEqual(ok, workspace_resolver:guard_channel_custom_id(?UID, <<>>)),
+        ?assertEqual(ok, workspace_resolver:guard_channel_custom_id(?UID, 123)),
+        ok
+    end.
 
 %% ===================================================================
 %% guard_channel_binding：无 binding（测试 Req 非 cowboy req）放行
@@ -568,12 +613,15 @@ guard_channel_binding_no_binding_test_() ->
                 {'one', 2, fun(_, _) -> {ok, #{}} end}
             ]}
         ],
-        fun() ->
-            {"plain map req without channel binding passes", fun() ->
-                ?assertEqual(ok, workspace_resolver:guard_channel_binding(#{qs => []}, ?UID))
-            end}
-        end
+        fun() -> guard_channel_binding_no_binding_body() end
     ).
+
+guard_channel_binding_no_binding_body() ->
+    begin
+        %% plain map req without channel binding passes
+        ?assertEqual(ok, workspace_resolver:guard_channel_binding(#{qs => []}, ?UID)),
+        ok
+    end.
 
 %% ===================================================================
 %% 防回归（T14 Demo B 抓到的真缺陷）：ensure_member 返回 {ok, Role}，
@@ -591,22 +639,21 @@ access_gate_normalizes_role_test_() ->
                 {'ensure_member', 2, fun(_WsId, _Uid) -> {ok, <<"owner">>} end}
             ]}
         ],
-        fun() ->
-            [
-                {"channel access gate returns plain ok for legal member", fun() ->
-                    ?assertEqual(
-                        ok, workspace_resolver:ensure_channel_member_access(?UID, ?CID)
-                    )
-                end},
-                {"group access gate returns plain ok for legal member", fun() ->
-                    ?assertEqual(ok, workspace_resolver:ensure_group_member_access(?UID, ?GID))
-                end},
-                {"notice gate returns plain ok for legal member", fun() ->
-                    ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, 555001))
-                end}
-            ]
-        end
+        fun() -> access_gate_normalizes_role_body() end
     ).
+
+access_gate_normalizes_role_body() ->
+    begin
+        %% channel access gate returns plain ok for legal member
+        ?assertEqual(
+            ok, workspace_resolver:ensure_channel_member_access(?UID, ?CID)
+        ),
+        %% group access gate returns plain ok for legal member
+        ?assertEqual(ok, workspace_resolver:ensure_group_member_access(?UID, ?GID)),
+        %% notice gate returns plain ok for legal member
+        ?assertEqual(ok, workspace_resolver:guard_group_notice_id(?UID, 555001)),
+        ok
+    end.
 
 %% ===================================================================
 %% M-1/M-2 收口：DB 异常 fail-closed（503），业务空 not_found 语义不变
@@ -617,33 +664,31 @@ resolver_db_error_fail_closed_test_() ->
         [
             {elib_pg, [{'one', 2, db_error_one()}]}
         ],
-        fun() ->
-            [
-                {"one_row DB error propagates from resolve_workspace", fun() ->
-                    ?assertError(
-                        {resolver_db_error, _},
-                        workspace_resolver:resolve_workspace({group, ?GID})
-                    )
-                end},
-                {"group boundary guard returns 503 on DB error (not ok)", fun() ->
-                    ?assertMatch(
-                        {error, {503, _}}, workspace_resolver:ensure_group_member_access(?UID, ?GID)
-                    )
-                end},
-                {"channel boundary guard returns 503 on DB error (not ok)", fun() ->
-                    ?assertMatch(
-                        {error, {503, _}},
-                        workspace_resolver:ensure_channel_member_access(?UID, ?CID)
-                    )
-                end},
-                {"notice guard returns 503 on DB error", fun() ->
-                    ?assertMatch(
-                        {error, {503, _}}, workspace_resolver:guard_group_notice_id(?UID, 555001)
-                    )
-                end}
-            ]
-        end
+        fun() -> resolver_db_error_fail_closed_body() end
     ).
+
+resolver_db_error_fail_closed_body() ->
+    begin
+        %% one_row DB error propagates from resolve_workspace
+        ?assertError(
+            {resolver_db_error, _},
+            workspace_resolver:resolve_workspace({group, ?GID})
+        ),
+        %% group boundary guard returns 503 on DB error (not ok)
+        ?assertMatch(
+            {error, {503, _}}, workspace_resolver:ensure_group_member_access(?UID, ?GID)
+        ),
+        %% channel boundary guard returns 503 on DB error (not ok)
+        ?assertMatch(
+            {error, {503, _}},
+            workspace_resolver:ensure_channel_member_access(?UID, ?CID)
+        ),
+        %% notice guard returns 503 on DB error
+        ?assertMatch(
+            {error, {503, _}}, workspace_resolver:guard_group_notice_id(?UID, 555001)
+        ),
+        ok
+    end.
 
 guard_channel_binding_db_error_fail_closed_test_() ->
     ?WITH_MECKS(

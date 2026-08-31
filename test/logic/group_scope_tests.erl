@@ -12,12 +12,13 @@
 -define(GID, 777001).
 
 add_scope_validation_test_() ->
-    Self = self(),
+    %% ⚠️ TestFun 须单表达式直接断言：{Desc, fun} 列表会被 ?_test 吞掉
+    %% 静默空转；哨兵经进程字典传递（generator 与执行异进程，Self 收不到）
     ?WITH_MECKS(
         [
             {workspace_logic, [
                 {'ensure_can_create_resource', 2, fun(WsId, Uid) ->
-                    Self ! {ensure_create, WsId, Uid},
+                    put(t_gs_ensure_create, {WsId, Uid}),
                     case {WsId, Uid} of
                         {?WS_ID, 900002} -> {error, {403, <<"Guest 角色不能创建工作区资源"/utf8>>}};
                         {?WS_ID, 900003} -> {error, {403, <<"非工作区成员，禁止访问该资源"/utf8>>}};
@@ -27,12 +28,12 @@ add_scope_validation_test_() ->
             ]},
             {group_ds, [
                 {'create_scoped_group', 7, fun(_Conn, Gid, Uid, _Now, _Type, Scope, WsId) ->
-                    Self ! {scoped_group_created, Gid, Uid, Scope, WsId},
+                    put(t_gs_scoped_created, {Gid, Uid, Scope, WsId}),
                     Gid
                 end},
                 {'find_by_creator_and_sum', 2, fun(_, _) -> 0 end},
                 {'create_group', 6, fun(_Conn, _Gid, Uid, _Now, _Type, _Jl) ->
-                    Self ! {legacy_group_created, Uid},
+                    put(t_gs_legacy_created, Uid),
                     ?GID
                 end}
             ]},
@@ -41,7 +42,7 @@ add_scope_validation_test_() ->
             ]},
             {group_member_ds, [
                 {'join_group', 5, fun(_Conn, _Mode, Uid, Gid, _) ->
-                    Self ! {join, Uid, Gid},
+                    put(t_gs_join, {Uid, Gid}),
                     {ok, Uid}
                 end}
             ]},
@@ -56,88 +57,90 @@ add_scope_validation_test_() ->
                         throw:{abort_tx, Reason} -> {error, Reason}
                     end
                 end},
-                {'insert', 3, fun(_Conn, _Tb, _Data, _) -> {ok, 1} end},
-                {'insert', 4, fun(_Conn, _Tb, _Data, _R, _) -> {ok, 1} end}
+                %% workspace_guard:ensure_writable_tx 依赖（原 mock 缺失会
+                %% passthrough 打真库/假连接崩溃）：
+                %% resolve_workspace({workspace, WsId}) → SELECT id FROM workspace
+                {'one', 2, fun
+                    (<<"SELECT id FROM workspace", _/binary>>, [?WS_ID]) ->
+                        {ok, #{<<"id">> => ?WS_ID}};
+                    (_, _) ->
+                        {ok, #{}}
+                end},
+                %% FOR UPDATE status 行锁查询
+                {'query', 3, fun(_Conn, <<"SELECT status FROM workspace", _/binary>>, [?WS_ID]) ->
+                    {ok, [#{<<"status">> => <<"active">>}]}
+                end}
             ]},
             {elib_tsid, [
                 {'generate', 1, fun(group_info) -> ?GID end}
             ]}
         ],
-        fun() ->
-            [
-                {"guest cannot create workspace group (403)", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        group_logic:add(0, 900002, 2, [], {<<"workspace">>, ?WS_ID})
-                    )
-                end},
-                {"non workspace member cannot create workspace group (403)", fun() ->
-                    ?assertMatch(
-                        {error, {403, _}},
-                        group_logic:add(0, 900003, 2, [], {<<"workspace">>, ?WS_ID})
-                    )
-                end},
-                {"workspace scope without workspace_id is 400", fun() ->
-                    ?assertMatch(
-                        {error, {400, _}},
-                        group_logic:add(0, ?UID, 2, [], {<<"workspace">>, 0})
-                    )
-                end},
-                {"invalid scope value is 400", fun() ->
-                    ?assertMatch(
-                        {error, {400, _}},
-                        group_logic:add(0, ?UID, 2, [], {<<"team">>, ?WS_ID})
-                    )
-                end},
-                {"owner creates workspace group with scope fields", fun() ->
-                    ?assertMatch(
-                        {ok, ?GID},
-                        group_logic:add(0, ?UID, 2, [], {<<"workspace">>, ?WS_ID})
-                    ),
-                    receive
-                        {scoped_group_created, ?GID, ?UID, <<"workspace">>, ?WS_ID} -> ok
-                    after 500 -> ?assert(false, "scoped group not created")
-                    end
-                end},
-                {"workspace group create blocked by membership subset rolls back", fun() ->
-                    meck(group_member_ds, [
-                        {'join_group', 5, fun(_, _, _, _, _) ->
-                            throw({abort_tx, workspace_membership_required})
-                        end}
-                    ]),
-                    ?assertMatch(
-                        {error, {409, _}},
-                        group_logic:add(0, ?UID, 2, [<<"900009">>], {<<"workspace">>, ?WS_ID})
-                    )
-                end},
-                {"personal scope delegates to legacy add/4 (zero change)", fun() ->
-                    ?assertMatch(
-                        {ok, ?GID},
-                        group_logic:add(0, ?UID, 2, [], {<<"personal">>, 0})
-                    ),
-                    receive
-                        {legacy_group_created, ?UID} -> ok
-                    after 500 -> ?assert(false)
-                    end,
-                    receive
-                        {ensure_create, _, _} -> ?assert(false, "personal must not check role")
-                    after 0 -> ok
-                    end,
-                    receive
-                        {scoped_group_created, _, _, _, _} ->
-                            ?assert(false, "personal must not create scoped group")
-                    after 0 -> ok
-                    end
-                end},
-                {"creation limit still enforced on workspace path", fun() ->
-                    ?assertMatch(
-                        {error, <<"每人最多创建100个群"/utf8>>},
-                        group_logic:add(101, ?UID, 2, [], {<<"workspace">>, ?WS_ID})
-                    )
-                end}
-            ]
-        end
+        fun() -> add_scope_validation_body() end
     ).
+
+add_scope_validation_body() ->
+    begin
+        %% guest cannot create workspace group (403)
+        ?assertMatch(
+            {error, {403, _}},
+            group_logic:add(0, 900002, 2, [], {<<"workspace">>, ?WS_ID})
+        ),
+        %% non workspace member cannot create workspace group (403)
+        ?assertMatch(
+            {error, {403, _}},
+            group_logic:add(0, 900003, 2, [], {<<"workspace">>, ?WS_ID})
+        ),
+        %% workspace scope without workspace_id is 400
+        ?assertMatch(
+            {error, {400, _}},
+            group_logic:add(0, ?UID, 2, [], {<<"workspace">>, 0})
+        ),
+        %% invalid scope value is 400
+        ?assertMatch(
+            {error, {400, _}},
+            group_logic:add(0, ?UID, 2, [], {<<"team">>, ?WS_ID})
+        ),
+        %% owner creates workspace group with scope fields
+        ?assertMatch(
+            {ok, ?GID},
+            group_logic:add(0, ?UID, 2, [], {<<"workspace">>, ?WS_ID})
+        ),
+        ?assertEqual(
+            {?GID, ?UID, <<"workspace">>, ?WS_ID},
+            erase(t_gs_scoped_created),
+            "scoped group not created"
+        ),
+        %% workspace group create blocked by membership subset rolls back
+        meck(group_member_ds, [
+            {'join_group', 5, fun(_, _, _, _, _) ->
+                throw({abort_tx, workspace_membership_required})
+            end}
+        ]),
+        ?assertMatch(
+            {error, {409, _}},
+            group_logic:add(0, ?UID, 2, [<<"900009">>], {<<"workspace">>, ?WS_ID})
+        ),
+        %% personal scope delegates to legacy add/4 (zero change)
+        %% 段内哨兵先清零（先前段遗留 put 会使反向断言误报）
+        erase(t_gs_ensure_create),
+        erase(t_gs_scoped_created),
+        ?assertMatch(
+            {ok, ?GID},
+            group_logic:add(0, ?UID, 2, [], {<<"personal">>, 0})
+        ),
+        ?assertEqual(?UID, erase(t_gs_legacy_created)),
+        ?assert(undefined =:= get(t_gs_ensure_create), "personal must not check role"),
+        ?assert(
+            undefined =:= get(t_gs_scoped_created),
+            "personal must not create scoped group"
+        ),
+        %% creation limit still enforced on workspace path
+        ?assertMatch(
+            {error, <<"每人最多创建100个群"/utf8>>},
+            group_logic:add(101, ?UID, 2, [], {<<"workspace">>, ?WS_ID})
+        ),
+        ok
+    end.
 
 edit_checked_rejects_scope_mutation_test_() ->
     ?WITH_MECKS(
@@ -147,69 +150,67 @@ edit_checked_rejects_scope_mutation_test_() ->
                 {'find_by_gid_and_uid', 3, fun(_, _, _) -> throw(must_not_reach) end}
             ]}
         ],
-        fun() ->
-            [
-                {"scope immutable on group edit (400)", fun() ->
-                    ?assertMatch(
-                        {error, {400, _}},
-                        group_logic:edit_checked(?UID, ?GID, #{<<"scope">> => <<"workspace">>})
-                    )
-                end},
-                {"workspace_id immutable on group edit (400)", fun() ->
-                    ?assertMatch(
-                        {error, {400, _}},
-                        group_logic:edit_checked(?UID, ?GID, #{<<"workspace_id">> => 1})
-                    )
-                end},
-                {"normal fields pass through", fun() ->
-                    meck(group_member_ds, [
-                        {'find_by_gid_and_uid', 3, fun(_, _, _) ->
-                            #{<<"id">> => 1, <<"role">> => 4}
-                        end}
-                    ]),
-                    meck(group_ds, [
-                        {'exists', 1, fun(_) -> true end},
-                        {'update_by_id', 2, fun(_, _) -> {ok, 1} end},
-                        {'member_uids', 1, fun(_) -> [] end}
-                    ]),
-                    meck(msg_s2c_ds, [
-                        {'send', 7, fun(_, _, _, _, _, _, _) -> ok end}
-                    ]),
-                    ?assertMatch(
-                        ok, group_logic:edit_checked(?UID, ?GID, #{<<"title">> => <<"new">>})
-                    )
-                end}
-            ]
-        end
+        fun() -> edit_checked_rejects_scope_mutation_body() end
     ).
 
+edit_checked_rejects_scope_mutation_body() ->
+    begin
+        %% scope immutable on group edit (400)
+        ?assertMatch(
+            {error, {400, _}},
+            group_logic:edit_checked(?UID, ?GID, #{<<"scope">> => <<"workspace">>})
+        ),
+        %% workspace_id immutable on group edit (400)
+        ?assertMatch(
+            {error, {400, _}},
+            group_logic:edit_checked(?UID, ?GID, #{<<"workspace_id">> => 1})
+        ),
+        %% normal fields pass through
+        meck(group_member_ds, [
+            {'find_by_gid_and_uid', 3, fun(_, _, _) ->
+                #{<<"id">> => 1, <<"role">> => 4}
+            end}
+        ]),
+        meck(group_ds, [
+            {'exists', 1, fun(_) -> true end},
+            {'update_by_id', 2, fun(_, _) -> {ok, 1} end},
+            {'member_uids', 1, fun(_) -> [] end}
+        ]),
+        meck(msg_s2c_ds, [
+            {'send', 7, fun(_, _, _, _, _, _, _) -> ok end}
+        ]),
+        ?assertMatch(
+            ok, group_logic:edit_checked(?UID, ?GID, #{<<"title">> => <<"new">>})
+        ),
+        ok
+    end.
+
 list_workspace_groups_partitions_by_scope_test_() ->
-    Self = self(),
     ?WITH_MECKS(
         [
             {elib_pg, [
                 {'query', 2, fun(Sql, [?WS_ID, Limit]) ->
-                    Self ! {list_sql, Sql, ?WS_ID, Limit},
+                    put(t_gs_list_sql, {Sql, Limit}),
                     {ok, [#{<<"id">> => ?GID, <<"title">> => <<"General">>}]}
                 end}
             ]},
             {group_logic, []}
         ],
-        fun() ->
-            {"workspace group list filters scope strictly", fun() ->
-                ?assertMatch(
-                    {ok, [#{<<"title">> := <<"General">>}]},
-                    group_logic:list_workspace_groups(?WS_ID, 50)
-                ),
-                receive
-                    {list_sql, Sql, ?WS_ID, 50} ->
-                        ?assert(binary:match(Sql, <<"scope = 'workspace'">>) =/= nomatch),
-                        ?assert(binary:match(Sql, <<"workspace_id = $1">>) =/= nomatch)
-                after 500 -> ?assert(false)
-                end
-            end}
-        end
+        fun() -> list_workspace_groups_partitions_by_scope_body() end
     ).
+
+list_workspace_groups_partitions_by_scope_body() ->
+    begin
+        %% workspace group list filters scope strictly
+        ?assertMatch(
+            {ok, [#{<<"title">> := <<"General">>}]},
+            group_logic:list_workspace_groups(?WS_ID, 50)
+        ),
+        {Sql, 50} = erase(t_gs_list_sql),
+        ?assert(binary:match(Sql, <<"scope = 'workspace'">>) =/= nomatch),
+        ?assert(binary:match(Sql, <<"workspace_id = $1">>) =/= nomatch),
+        ok
+    end.
 
 %%%===================================================================
 %%% Internal

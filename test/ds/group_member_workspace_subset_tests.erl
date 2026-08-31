@@ -16,7 +16,8 @@
 %% ===================================================================
 
 join_group_subset_test_() ->
-    Self = self(),
+    %% ⚠️ TestFun 须单表达式直接断言：{Desc, fun} 列表会被 ?_test 吞掉
+    %% 静默空转；哨兵经进程字典传递（generator 与执行异进程，Self 收不到）
     ?WITH_MECKS(
         [
             {elib_pg, [
@@ -27,73 +28,67 @@ join_group_subset_test_() ->
             {group_member_repo, [
                 {'find', 3, fun(_, _, _) -> #{} end},
                 {'add', 2, fun(_Conn, Data) ->
-                    Self ! {member_added, maps:get(user_id, Data)},
+                    put(t_gm_added, maps:get(user_id, Data)),
                     {ok, 1}
                 end}
             ]},
             {group_ds, [
                 {'join', 2, fun(Uid, Gid) ->
-                    Self ! {cache_join, Uid, Gid},
+                    put(t_gm_cache_join, {Uid, Gid}),
                     ok
                 end}
             ]}
         ],
-        fun() ->
-            [
-                {"active workspace member joins workspace group", fun() ->
-                    ?assertMatch(
-                        {ok, _},
-                        group_member_ds:join_group(fake_conn, <<"invite">>, ?UID, ?GID, #{})
-                    ),
-                    receive
-                        {member_added, ?UID} -> ok
-                    after 500 -> ?assert(false, "member row not written")
-                    end
-                end},
-                {"non workspace member join aborts tx (no member row)", fun() ->
-                    ?assertThrow(
-                        {abort_tx, workspace_membership_required},
-                        group_member_ds:join_group(fake_conn, <<"invite">>, 900009, ?GID, #{})
-                    ),
-                    receive
-                        {member_added, 900009} -> ?assert(false, "must not write member row")
-                    after 0 -> ok
-                    end
-                end},
-                {"removed workspace member join also aborts", fun() ->
-                    %% workspace_member 行存在但 status=removed → SELECT active 不命中
-                    ?assertThrow(
-                        {abort_tx, workspace_membership_required},
-                        group_member_ds:join_group(fake_conn, <<"invite">>, 910010, ?GID, #{})
-                    )
-                end},
-                {"personal group skips workspace check entirely", fun() ->
-                    ?assertMatch(
-                        {ok, _},
-                        group_member_ds:join_group(fake_conn, <<"invite">>, 900009, 777099, #{})
-                    ),
-                    receive
-                        {member_added, 900009} -> ok
-                    after 500 -> ?assert(false)
-                    end
-                end},
-                {"non-existent group falls through to legacy flow", fun() ->
-                    ?assertMatch(
-                        {ok, _},
-                        group_member_ds:join_group(fake_conn, <<"invite">>, ?UID, 1, #{})
-                    )
-                end}
-            ]
-        end
+        fun() -> join_group_subset_body() end
     ).
+
+join_group_subset_body() ->
+    begin
+        %% active workspace member joins workspace group
+        ?assertMatch(
+            {ok, _},
+            group_member_ds:join_group(fake_conn, <<"invite">>, ?UID, ?GID, #{})
+        ),
+        ?assertEqual(?UID, erase(t_gm_added), "member row not written"),
+
+        %% non workspace member join aborts tx (no member row)
+        ?assertThrow(
+            {abort_tx, workspace_membership_required},
+            group_member_ds:join_group(fake_conn, <<"invite">>, 900009, ?GID, #{})
+        ),
+        ?assert(undefined =:= get(t_gm_added), "must not write member row"),
+
+        %% removed workspace member join also aborts
+        %% (workspace_member 行存在但 status=removed → SELECT active 不命中)
+        ?assertThrow(
+            {abort_tx, workspace_membership_required},
+            group_member_ds:join_group(fake_conn, <<"invite">>, 910010, ?GID, #{})
+        ),
+
+        %% personal group skips workspace check entirely
+        ?assertMatch(
+            {ok, _},
+            group_member_ds:join_group(fake_conn, <<"invite">>, 900009, 777099, #{})
+        ),
+        ?assertEqual(900009, erase(t_gm_added)),
+
+        %% non-existent group falls through to legacy flow
+        ?assertMatch(
+            {ok, _},
+            group_member_ds:join_group(fake_conn, <<"invite">>, ?UID, 1, #{})
+        ),
+        ok
+    end.
 
 %% elib_pg:query/3 mock：按 SQL 前缀返回受控行
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [?GID]) ->
     %% workspace 群
     {ok, [#{<<"workspace_id">> => ?WS_ID}]};
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [777099]) ->
-    %% personal 群（scope=personal 时 workspace_id 为 null）
-    {ok, [#{<<"workspace_id">> => null}]};
+    %% personal 群：真实 SQL 带 AND scope = 'workspace'，personal 行不返回
+    %% （原 mock 返回 null 行与真实查询形态漂移，ensure_workspace_membership
+    %%  的 case 无此分支，真实执行即 case_clause）
+    {ok, []};
 subset_query(<<"SELECT workspace_id FROM \"group\"", _/binary>>, [1]) ->
     %% 群不存在
     {ok, []};
@@ -116,26 +111,39 @@ subset_query(_, _) ->
 %% ===================================================================
 
 with_tx_maps_abort_test_() ->
+    %% 真实 elib_pg:with_tx 需要连接池（WITH_MECKS 不启动 app，真池必 noproc），
+    %% 故按 elib_pg 真实契约（throw:{abort_tx, Reason} → ROLLBACK + {error, Reason}）
+    %% 使用仓内既定 faithful mock（与 handler_join_409 / group_scope 同型）。
     ?WITH_MECKS(
         [
             {elib_pg, [
-                {'query', 3, fun(_Conn, Sql, Params) -> subset_query(Sql, Params) end}
+                {'query', 3, fun(_Conn, Sql, Params) -> subset_query(Sql, Params) end},
+                {'with_tx', 1, fun(Fun) ->
+                    try
+                        Fun(fake_conn)
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
             ]},
             {group_member_repo, [
                 {'find', 3, fun(_, _, _) -> #{} end}
             ]}
         ],
-        fun() ->
-            {"abort_tx surfaces as {error, workspace_membership_required}", fun() ->
-                ?assertEqual(
-                    {error, workspace_membership_required},
-                    elib_pg:with_tx(fun(_Conn) ->
-                        group_member_ds:join_group(fake_conn, <<"invite">>, 900009, ?GID, #{})
-                    end)
-                )
-            end}
-        end
+        fun() -> with_tx_maps_abort_body() end
     ).
+
+with_tx_maps_abort_body() ->
+    begin
+        %% abort_tx surfaces as {error, workspace_membership_required}
+        ?assertEqual(
+            {error, workspace_membership_required},
+            elib_pg:with_tx(fun(_Conn) ->
+                group_member_ds:join_group(fake_conn, <<"invite">>, 900009, ?GID, #{})
+            end)
+        ),
+        ok
+    end.
 
 %% ===================================================================
 %% Handler 层：join_with_capacity 返回稳定 409
@@ -166,7 +174,7 @@ handler_join_409_test_() ->
                 end},
                 {'list_member', 2, fun(_, _) -> {ok, []} end},
                 {'join_group', 5, fun(_Conn, _Mode, Uid, Gid, _) ->
-                    self() ! {ds_join, Uid, Gid},
+                    put(t_gm_ds_join, {Uid, Gid}),
                     throw({abort_tx, workspace_membership_required})
                 end}
             ]},
@@ -183,16 +191,18 @@ handler_join_409_test_() ->
                 {'error', 3, fun(_Req, _Msg, Code) -> #{response_status => Code} end}
             ]}
         ],
-        fun() ->
-            {"workspace group join returns 409 stable code", fun() ->
-                Req = group_member_handler:handle_action(
-                    join, req0, #{current_uid => ?UID}
-                ),
-                ?assertEqual(409, maps:get(response_status, Req)),
-                receive
-                    {ds_join, 900009, ?GID} -> ok
-                after 0 -> ?assert(false, "ds join not attempted")
-                end
-            end}
-        end
+        fun() -> handler_join_409_body() end
     ).
+
+handler_join_409_body() ->
+    begin
+        %% workspace group join returns 409 stable code
+        %% （handler 真实入口是 init/2，State 携带 action——原用例假设的
+        %% handle_action/3 不存在，属空转掩盖的 API 漂移）
+        {ok, Req, _} = group_member_handler:init(
+            req0, #{action => join, current_uid => ?UID}
+        ),
+        ?assertEqual(409, maps:get(response_status, Req)),
+        ?assertMatch({900009, ?GID}, erase(t_gm_ds_join), "ds join not attempted"),
+        ok
+    end.
