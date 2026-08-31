@@ -86,23 +86,23 @@ build_messages_knowledge_off_skips_kb_lookup_test_() ->
         ],
         fun() ->
             Agent = #{
-                <<"system_prompt">> => <<"你是助理">>,
+                <<"system_prompt">> => <<"你是助理"/utf8>>,
                 <<"knowledge_policy">> => #{
                     <<"knowledge">> => #{<<"mode">> => <<"off">>}
                 }
             },
-            [Sys, _User] = ai_agent_prompt:build_messages(Agent, <<"问题">>),
-            ?assertEqual(<<"你是助理">>, maps:get(<<"content">>, Sys)),
+            [Sys, _User] = ai_agent_prompt:build_messages(Agent, <<"问题"/utf8>>),
+            ?assertEqual(<<"你是助理"/utf8>>, maps:get(<<"content">>, Sys)),
             ?assertEqual(undefined, get(kb_read))
         end
     ).
 
 build_messages_on_demand_only_injects_matching_context_test_() ->
     ?WITH_MECKS(
-        [?KB_MECK(<<"退款规则：7天内可退款">>)],
+        [?KB_MECK(<<"退款规则：7天内可退款"/utf8>>)],
         fun() ->
             Agent = #{
-                <<"system_prompt">> => <<"你是助理">>,
+                <<"system_prompt">> => <<"你是助理"/utf8>>,
                 <<"knowledge_policy">> => #{
                     <<"knowledge">> => #{
                         <<"mode">> => <<"on_demand">>,
@@ -110,10 +110,10 @@ build_messages_on_demand_only_injects_matching_context_test_() ->
                     }
                 }
             },
-            [Sys, _User] = ai_agent_prompt:build_messages(Agent, <<"退款规则">>),
+            [Sys, _User] = ai_agent_prompt:build_messages(Agent, <<"退款规则"/utf8>>),
             Content = maps:get(<<"content">>, Sys),
-            ?assertNotEqual(nomatch, binary:match(Content, <<"退款规则">>)),
-            ?assertEqual(nomatch, binary:match(Content, <<"发票规则">>))
+            ?assertNotEqual(nomatch, binary:match(Content, <<"退款规则"/utf8>>)),
+            ?assertEqual(nomatch, binary:match(Content, <<"发票规则"/utf8>>))
         end
     ).
 

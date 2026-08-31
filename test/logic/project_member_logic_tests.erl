@@ -69,7 +69,7 @@ project_row() ->
         <<"id">> => ?PROJECT_ID,
         <<"workspace_id">> => ?WS_ID,
         <<"owner_id">> => ?OWNER,
-        <<"name">> => <<"W2 成员测试项目">>
+        <<"name">> => <<"W2 成员测试项目"/utf8>>
     }.
 
 my_role(Uid) ->

@@ -38,7 +38,7 @@ collect_page_success_test_() ->
                                 source => <<"alice">>,
                                 created_at => 1,
                                 updated_at => 1,
-                                tag => <<"工作,">>,
+                                tag => <<"工作,"/utf8>>,
                                 info => <<"{\"text\":\"hello\"}">>
                             }
                         ]

@@ -916,7 +916,7 @@ complete_login_flow_test_() ->
             ]},
             {imboy_dtl, [
                 {'template', 3, fun(_, _, _) ->
-                    {ok, <<"<html>登录页面</html>">>}
+                    {ok, <<"<html>登录页面</html>"/utf8>>}
                 end}
             ]},
             % 步骤 3: 提交登录
@@ -971,7 +971,7 @@ complete_login_flow_test_() ->
             {ok, Req2, _State2} = adm_passport_handler:init(MockReq2, #{action => login}),
             {Status2, _, Body2} = cowboy_req_h:response(Req2),
             ?ASSERT_EQUAL(200, Status2),
-            ?assert(binary:match(Body2, <<"登录页面">>) =/= nomatch),
+            ?assert(binary:match(Body2, <<"登录页面"/utf8>>) =/= nomatch),
 
             % 步骤 3: 提交登录
             MockReq3 = cowboy_req_h:new(#{method => <<"POST">>}),

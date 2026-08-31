@@ -311,7 +311,7 @@ remove_member_conflict_owned_projects_test_() ->
                     #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
                 end},
                 {'owned_projects_of_user', 3, fun(_, ?WS_ID, ?MEMBER) ->
-                    {ok, [#{<<"id">> => 1, <<"name">> => <<"官网改版">>}]}
+                    {ok, [#{<<"id">> => 1, <<"name">> => <<"官网改版"/utf8>>}]}
                 end},
                 {'remove_tx', 3, fun(_, _, _) ->
                     put(t_wl_remove_tx_ran, true),

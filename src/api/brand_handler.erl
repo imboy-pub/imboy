@@ -8,7 +8,7 @@
 %%% 设置 brand_* 配置项即可换品牌。
 %%%
 %%% 品牌字段统一存 config_ds（brand_* 键），管理端通过现有 config 管理写入：
-%%%   config_ds:set(<<"brand_site_name">>, <<"某企业IM">>).
+%%%   config_ds:set(<<"brand_site_name">>, <<"某企业IM"/utf8>>).
 %%% @end
 %%%===================================================================
 -behavior(cowboy_rest).

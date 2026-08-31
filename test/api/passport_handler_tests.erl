@@ -200,7 +200,7 @@ login_password_error_test_() ->
                     <<"ios">>,
                     <<"device-1">>
                 ) ->
-                    {error, <<"密码错误">>}
+                    {error, <<"密码错误"/utf8>>}
                 end}
             ]},
             {elib_response, [

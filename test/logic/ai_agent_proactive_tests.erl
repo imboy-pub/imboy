@@ -150,7 +150,7 @@ send_welcome_disabled_agent_does_not_deliver_test_() ->
             ?MSG_STORE_MECK
         ],
         fun() ->
-            ?assertEqual(ok, ai_agent_proactive:send_welcome(42, 7, <<"小明">>, #{})),
+            ?assertEqual(ok, ai_agent_proactive:send_welcome(42, 7, <<"小明"/utf8>>, #{})),
             ?assertNot(meck:called(message_ds, send_next, '_'))
         end
     ).

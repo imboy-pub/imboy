@@ -19,25 +19,31 @@
 
 %% 测试输入参数验证（改进原假测试）
 input_validation_test_() ->
-    ?WITH_MECK(elib_pg, [
-        {'query', 2, fun(_Sql, _Params) ->
-            {ok, [{?TEST_UID, ?TEST_TAG_ID, ?TEST_SCENE, ?TEST_OBJECT_ID, 1640995200}]}
-        end}
-    ], fun() ->
-        % 测试实际的标签关系查询功能（使用 select_user_tag_relation/3）
-        Where = <<"uid = $1 AND tag_id = $2">>,
-        WhereArgs = [?TEST_UID, ?TEST_TAG_ID],
-        Column = <<"uid, tag_id, scene, object_id, created_at">>,
-        Result = user_tag_relation_repo:select_user_tag_relation(Where, WhereArgs, Column),
-        case Result of
-            {ok, _, Relations} when is_list(Relations) ->
-                ?assert(true);
-            {ok, Relations} when is_list(Relations) ->
-                ?assert(true);
-            {ok, _} -> ?assert(true);
-            _ -> ?assert(false, "Expected {ok, Relations}")
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(_Sql, _Params) ->
+                {ok, [{?TEST_UID, ?TEST_TAG_ID, ?TEST_SCENE, ?TEST_OBJECT_ID, 1640995200}]}
+            end}
+        ],
+        fun() ->
+            % 测试实际的标签关系查询功能（使用 select_user_tag_relation/3）
+            Where = <<"uid = $1 AND tag_id = $2">>,
+            WhereArgs = [?TEST_UID, ?TEST_TAG_ID],
+            Column = <<"uid, tag_id, scene, object_id, created_at">>,
+            Result = user_tag_relation_repo:select_user_tag_relation(Where, WhereArgs, Column),
+            case Result of
+                {ok, _, Relations} when is_list(Relations) ->
+                    ?assert(true);
+                {ok, Relations} when is_list(Relations) ->
+                    ?assert(true);
+                {ok, _} ->
+                    ?assert(true);
+                _ ->
+                    ?assert(false, "Expected {ok, Relations}")
+            end
         end
-    end).
+    ).
 
 %% 测试表名格式
 table_name_format_test_() ->
@@ -52,29 +58,32 @@ table_name_format_test_() ->
 sql_statement_format_test_() ->
     ?_test(fun() ->
         % 测试DELETE语句格式
-        DeleteSQL = <<"DELETE FROM public.user_tag_relation WHERE scene = $1 AND user_id = $2 AND object_id = $3">>,
+        DeleteSQL =
+            <<"DELETE FROM public.user_tag_relation WHERE scene = $1 AND user_id = $2 AND object_id = $3">>,
         ?assertMatch(<<_/binary>>, DeleteSQL),
         ?assert(string:str(binary_to_list(DeleteSQL), "DELETE FROM") > 0),
         ?assert(string:str(binary_to_list(DeleteSQL), "WHERE") > 0),
         ?assert(string:str(binary_to_list(DeleteSQL), "$1") > 0),
         ?assert(string:str(binary_to_list(DeleteSQL), "$2") > 0),
         ?assert(string:str(binary_to_list(DeleteSQL), "$3") > 0),
-        
+
         % 测试INSERT语句格式
-        InsertSQL = <<"INSERT INTO public.user_tag_relation (user_id, scene, object_id, tag_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)">>,
+        InsertSQL =
+            <<"INSERT INTO public.user_tag_relation (user_id, scene, object_id, tag_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)">>,
         ?assertMatch(<<_/binary>>, InsertSQL),
         ?assert(string:str(binary_to_list(InsertSQL), "INSERT INTO") > 0),
         ?assert(string:str(binary_to_list(InsertSQL), "VALUES") > 0),
-        
+
         % 测试UPDATE语句格式
         UpdateSQL = <<"UPDATE public.user_tag SET name = $1, updated_at = $2 WHERE id = $3">>,
         ?assertMatch(<<_/binary>>, UpdateSQL),
         ?assert(string:str(binary_to_list(UpdateSQL), "UPDATE") > 0),
         ?assert(string:str(binary_to_list(UpdateSQL), "SET") > 0),
         ?assert(string:str(binary_to_list(UpdateSQL), "WHERE") > 0),
-        
+
         % 测试SELECT语句格式
-        SelectSQL = <<"SELECT id, name, scene FROM public.user_tag WHERE creator_user_id = $1 AND scene = $2">>,
+        SelectSQL =
+            <<"SELECT id, name, scene FROM public.user_tag WHERE creator_user_id = $1 AND scene = $2">>,
         ?assertMatch(<<_/binary>>, SelectSQL),
         ?assert(string:str(binary_to_list(SelectSQL), "SELECT") > 0),
         ?assert(string:str(binary_to_list(SelectSQL), "FROM") > 0)
@@ -90,16 +99,18 @@ parameterized_query_test_() ->
         ?assertEqual(?TEST_SCENE, Scene),
         ?assertEqual(?TEST_UID, Uid),
         ?assertEqual(?TEST_OBJECT_ID, ObjectId),
-        
+
         % 测试INSERT操作参数
         Timestamp = elib_dt:timestamp(),
-        InsertParams = [?TEST_UID, ?TEST_SCENE, ?TEST_OBJECT_ID, ?TEST_TAG_ID, Timestamp, Timestamp],
+        InsertParams = [
+            ?TEST_UID, ?TEST_SCENE, ?TEST_OBJECT_ID, ?TEST_TAG_ID, Timestamp, Timestamp
+        ],
         ?assert(length(InsertParams) =:= 6),
-        
+
         % 测试UPDATE操作参数
         UpdateParams = [<<"updated_tag">>, Timestamp, 123],
         ?assert(length(UpdateParams) =:= 3),
-        
+
         % 测试SELECT操作参数
         SelectParams = [?TEST_UID, ?TEST_SCENE],
         ?assert(length(SelectParams) =:= 2)
@@ -111,19 +122,21 @@ data_type_conversion_test_() ->
         % 测试整数到二进制转换
         IntToBinary = integer_to_binary(?TEST_UID),
         ?assertMatch(<<_/binary>>, IntToBinary),
-        ?assertEqual(binary_to_list(integer_to_binary(?TEST_UID)), 
-                    integer_to_list(?TEST_UID)),
-        
+        ?assertEqual(
+            binary_to_list(integer_to_binary(?TEST_UID)),
+            integer_to_list(?TEST_UID)
+        ),
+
         % 测试二进制到整数转换
         BinaryToInt = binary_to_integer(IntToBinary),
         ?assert(is_integer(BinaryToInt)),
         ?assertEqual(?TEST_UID, BinaryToInt),
-        
+
         % 测试时间戳格式
         Timestamp = elib_dt:timestamp(),
         ?assert(is_integer(Timestamp)),
         ?assert(Timestamp > 1000000000),
-        
+
         % 测试原子到二进制转换
         AtomToBinary = atom_to_binary(test_atom),
         ?assertMatch(<<_/binary>>, AtomToBinary),
@@ -135,31 +148,37 @@ scene_type_test_() ->
     ?_test(fun() ->
         % 测试有效场景类型
         ValidScenes = [
-            {<<"1">>, <<"用户收藏">>},
-            {<<"2">>, <<"用户好友">>},
-            {<<"3">>, <<"用户群组">>},
-            {<<"4">>, <<"用户频道">>}
+            {<<"1">>, <<"用户收藏"/utf8>>},
+            {<<"2">>, <<"用户好友"/utf8>>},
+            {<<"3">>, <<"用户群组"/utf8>>},
+            {<<"4">>, <<"用户频道"/utf8>>}
         ],
-        
-        lists:foreach(fun({SceneCode, SceneDesc}) ->
-            ?assertMatch(<<_/binary>>, SceneCode),
-            ?assertMatch(<<_/binary>>, SceneDesc),
-            ?assert(byte_size(SceneCode) > 0),
-            ?assert(byte_size(SceneDesc) > 0)
-        end, ValidScenes),
-        
+
+        lists:foreach(
+            fun({SceneCode, SceneDesc}) ->
+                ?assertMatch(<<_/binary>>, SceneCode),
+                ?assertMatch(<<_/binary>>, SceneDesc),
+                ?assert(byte_size(SceneCode) > 0),
+                ?assert(byte_size(SceneDesc) > 0)
+            end,
+            ValidScenes
+        ),
+
         % 测试场景对应的表名
         SceneTables = [
             {<<"1">>, <<"public.user_collect">>},
             {<<"2">>, <<"public.user_friend">>}
         ],
-        
-        lists:foreach(fun({Scene, Table}) ->
-            ?assertMatch(<<_/binary>>, Scene),
-            ?assertMatch(<<_/binary>>, Table),
-            TableStr = binary_to_list(Table),
-            ?assert(string:str(TableStr, "public.") > 0)
-        end, SceneTables)
+
+        lists:foreach(
+            fun({Scene, Table}) ->
+                ?assertMatch(<<_/binary>>, Scene),
+                ?assertMatch(<<_/binary>>, Table),
+                TableStr = binary_to_list(Table),
+                ?assert(string:str(TableStr, "public.") > 0)
+            end,
+            SceneTables
+        )
     end).
 
 %% 测试标签数据格式
@@ -172,40 +191,47 @@ tag_data_format_test_() ->
             <<"tag-789">>,
             <<"tag_abc123">>
         ],
-        
-        lists:foreach(fun(TagId) ->
-            ?assertMatch(<<_/binary>>, TagId),
-            ?assert(byte_size(TagId) > 0),
-            TagIdStr = binary_to_list(TagId),
-            ?assert(string:str(TagIdStr, "tag") > 0)
-        end, TagIds),
-        
+
+        lists:foreach(
+            fun(TagId) ->
+                ?assertMatch(<<_/binary>>, TagId),
+                ?assert(byte_size(TagId) > 0),
+                TagIdStr = binary_to_list(TagId),
+                ?assert(string:str(TagIdStr, "tag") > 0)
+            end,
+            TagIds
+        ),
+
         % 测试标签名称格式
         TagNames = [
-            <<"工作">>,
-            <<"生活">>,
-            <<"学习">>,
-            <<"娱乐">>,
-            <<"重要">>,
-            <<"紧急">>
+            <<"工作"/utf8>>,
+            <<"生活"/utf8>>,
+            <<"学习"/utf8>>,
+            <<"娱乐"/utf8>>,
+            <<"重要"/utf8>>,
+            <<"紧急"/utf8>>
         ],
-        
-        lists:foreach(fun(TagName) ->
-            ?assertMatch(<<_/binary>>, TagName),
-            ?assert(byte_size(TagName) > 0),
-            ?assert(byte_size(TagName) =< 50) % 标签名称长度限制
-        end, TagNames),
-        
+
+        lists:foreach(
+            fun(TagName) ->
+                ?assertMatch(<<_/binary>>, TagName),
+                ?assert(byte_size(TagName) > 0),
+                % 标签名称长度限制
+                ?assert(byte_size(TagName) =< 50)
+            end,
+            TagNames
+        ),
+
         % 测试完整标签数据
         TagData = #{
             <<"id">> => 1,
-            <<"name">> => <<"工作">>,
+            <<"name">> => <<"工作"/utf8>>,
             <<"scene">> => ?TEST_SCENE,
             <<"creator_user_id">> => ?TEST_UID,
             <<"created_at">> => elib_dt:timestamp(),
             <<"updated_at">> => elib_dt:timestamp()
         },
-        
+
         ?assert(is_map(TagData)),
         ?assert(maps:is_key(<<"id">>, TagData)),
         ?assert(maps:is_key(<<"name">>, TagData)),
@@ -224,13 +250,16 @@ relation_data_format_test_() ->
             <<"created_at">> => elib_dt:timestamp(),
             <<"updated_at">> => elib_dt:timestamp()
         },
-        
+
         ?assert(is_map(RelationData)),
         RequiredFields = [<<"user_id">>, <<"scene">>, <<"object_id">>, <<"tag_id">>],
-        lists:foreach(fun(Field) ->
-            ?assert(maps:is_key(Field, RelationData))
-        end, RequiredFields),
-        
+        lists:foreach(
+            fun(Field) ->
+                ?assert(maps:is_key(Field, RelationData))
+            end,
+            RequiredFields
+        ),
+
         % 验证字段类型
         ?assert(is_integer(maps:get(<<"user_id">>, RelationData))),
         ?assertMatch(<<_/binary>>, maps:get(<<"scene">>, RelationData)),
@@ -243,25 +272,32 @@ database_result_format_test_() ->
     ?_test(fun() ->
         % 测试成功结果格式
         SuccessResults = [
-            {ok, 1},                    % 影响行数
-            {ok, [{1, <<"tag1">>}]},   % 查询结果
-            {ok, []},                   % 空结果
-            ok                          % 操作成功
+            % 影响行数
+            {ok, 1},
+            % 查询结果
+            {ok, [{1, <<"tag1">>}]},
+            % 空结果
+            {ok, []},
+            % 操作成功
+            ok
         ],
-        
-        lists:foreach(fun(Result) ->
-            case Result of
-                {ok, Rows} when is_integer(Rows) -> 
-                    ?assert(Rows >= 0);
-                {ok, Rows} when is_list(Rows) -> 
-                    ?assertMatch([_|_], Rows);
-                {ok, _} -> 
-                    ok;
-                ok -> 
-                    ok
-            end
-        end, SuccessResults),
-        
+
+        lists:foreach(
+            fun(Result) ->
+                case Result of
+                    {ok, Rows} when is_integer(Rows) ->
+                        ?assert(Rows >= 0);
+                    {ok, Rows} when is_list(Rows) ->
+                        ?assertMatch([_ | _], Rows);
+                    {ok, _} ->
+                        ok;
+                    ok ->
+                        ok
+                end
+            end,
+            SuccessResults
+        ),
+
         % 测试错误结果格式
         ErrorResults = [
             {error, connection_failed},
@@ -269,12 +305,15 @@ database_result_format_test_() ->
             {error, constraint_violation},
             {error, timeout}
         ],
-        
-        lists:foreach(fun(Result) ->
-            ?assertMatch({error, _Reason}, Result),
-            {error, Reason} = Result,
-            ?assert(is_atom(Reason))
-        end, ErrorResults)
+
+        lists:foreach(
+            fun(Result) ->
+                ?assertMatch({error, _Reason}, Result),
+                {error, Reason} = Result,
+                ?assert(is_atom(Reason))
+            end,
+            ErrorResults
+        )
     end).
 
 %% 测试SQL注入防护
@@ -287,32 +326,38 @@ sql_injection_protection_test_() ->
             <<"1'; UPDATE user_tag_relation SET tag='hacked'; --">>,
             <<"1'; INSERT INTO user_tag_relation VALUES (1, 'hacked'); --">>
         ],
-        
-        lists:foreach(fun(MaliciousInput) ->
-            ?assertMatch(<<_/binary>>, MaliciousInput),
-            ?assert(byte_size(MaliciousInput) > 0),
-            
-            % 验证参数化查询能安全处理恶意输入
-            ?assertMatch(<<_/binary>>, MaliciousInput),
-            % 在实际实现中，这些输入会作为参数传递，不会直接拼接到SQL中
-            SafeSQL = <<"SELECT * FROM table WHERE id = $1">>,
-            ?assert(string:str(binary_to_list(SafeSQL), "$1") > 0)
-        end, MaliciousInputs),
-        
+
+        lists:foreach(
+            fun(MaliciousInput) ->
+                ?assertMatch(<<_/binary>>, MaliciousInput),
+                ?assert(byte_size(MaliciousInput) > 0),
+
+                % 验证参数化查询能安全处理恶意输入
+                ?assertMatch(<<_/binary>>, MaliciousInput),
+                % 在实际实现中，这些输入会作为参数传递，不会直接拼接到SQL中
+                SafeSQL = <<"SELECT * FROM table WHERE id = $1">>,
+                ?assert(string:str(binary_to_list(SafeSQL), "$1") > 0)
+            end,
+            MaliciousInputs
+        ),
+
         % 测试参数化查询模式
         ParameterizedPatterns = [
             {<<"WHERE scene = $1 AND user_id = $2">>, [<<"1">>, 123]},
             {<<"INSERT INTO table (col1, col2) VALUES ($1, $2)">>, [<<"val1">>, <<"val2">>]},
             {<<"UPDATE table SET col = $1 WHERE id = $2">>, [<<"new_val">>, 1]}
         ],
-        
-        lists:foreach(fun({SQL, Params}) ->
-            ?assertMatch(<<_/binary>>, SQL),
-            ?assertMatch([_|_], Params),
-            % 验证SQL包含参数占位符
-            SQLStr = binary_to_list(SQL),
-            ?assert(string:str(SQLStr, "$") > 0)
-        end, ParameterizedPatterns)
+
+        lists:foreach(
+            fun({SQL, Params}) ->
+                ?assertMatch(<<_/binary>>, SQL),
+                ?assertMatch([_ | _], Params),
+                % 验证SQL包含参数占位符
+                SQLStr = binary_to_list(SQL),
+                ?assert(string:str(SQLStr, "$") > 0)
+            end,
+            ParameterizedPatterns
+        )
     end).
 
 %% 测试数据完整性约束
@@ -320,32 +365,41 @@ data_integrity_constraints_test_() ->
     ?_test(fun() ->
         % 测试外键约束
         ForeignKeyConstraints = [
-            {user_id, <<"用户必须存在">>},
-            {tag_id, <<"标签必须存在">>},
-            {scene, <<"场景必须有效">>}
+            {user_id, <<"用户必须存在"/utf8>>},
+            {tag_id, <<"标签必须存在"/utf8>>},
+            {scene, <<"场景必须有效"/utf8>>}
         ],
-        
-        lists:foreach(fun({Field, Description}) ->
-            ?assert(is_atom(Field)),
-            ?assertMatch(<<_/binary>>, Description)
-        end, ForeignKeyConstraints),
-        
+
+        lists:foreach(
+            fun({Field, Description}) ->
+                ?assert(is_atom(Field)),
+                ?assertMatch(<<_/binary>>, Description)
+            end,
+            ForeignKeyConstraints
+        ),
+
         % 测试唯一性约束
         UniqueConstraints = [
-            {<<"user_tag_relation_unique">>, <<"用户-场景-对象-标签组合必须唯一">>},
-            {<<"user_tag_name_unique">>, <<"用户-场景-标签名称必须唯一">>}
+            {<<"user_tag_relation_unique">>, <<"用户-场景-对象-标签组合必须唯一"/utf8>>},
+            {<<"user_tag_name_unique">>, <<"用户-场景-标签名称必须唯一"/utf8>>}
         ],
-        
-        lists:foreach(fun({ConstraintName, Description}) ->
-            ?assertMatch(<<_/binary>>, ConstraintName),
-            ?assertMatch(<<_/binary>>, Description)
-        end, UniqueConstraints),
-        
+
+        lists:foreach(
+            fun({ConstraintName, Description}) ->
+                ?assertMatch(<<_/binary>>, ConstraintName),
+                ?assertMatch(<<_/binary>>, Description)
+            end,
+            UniqueConstraints
+        ),
+
         % 测试非空约束
         NotNullConstraints = [user_id, scene, object_id, tag_id],
-        lists:foreach(fun(Field) ->
-            ?assert(is_atom(Field))
-        end, NotNullConstraints)
+        lists:foreach(
+            fun(Field) ->
+                ?assert(is_atom(Field))
+            end,
+            NotNullConstraints
+        )
     end).
 
 %% 测试性能参数
@@ -353,31 +407,37 @@ performance_parameters_test_() ->
     ?_test(fun() ->
         % 测试索引策略
         Indexes = [
-            {<<"idx_user_tag_relation_uid">>, [user_id], <<"用户ID索引">>},
-            {<<"idx_user_tag_relation_scene">>, [scene], <<"场景索引">>},
-            {<<"idx_user_tag_relation_tag">>, [tag_id], <<"标签ID索引">>},
-            {<<"idx_user_tag_relation_composite">>, [user_id, scene, object_id], <<"复合索引">>}
+            {<<"idx_user_tag_relation_uid">>, [user_id], <<"用户ID索引"/utf8>>},
+            {<<"idx_user_tag_relation_scene">>, [scene], <<"场景索引"/utf8>>},
+            {<<"idx_user_tag_relation_tag">>, [tag_id], <<"标签ID索引"/utf8>>},
+            {<<"idx_user_tag_relation_composite">>, [user_id, scene, object_id], <<"复合索引"/utf8>>}
         ],
-        
-        lists:foreach(fun({IndexName, Columns, Description}) ->
-            ?assertMatch(<<_/binary>>, IndexName),
-            ?assertMatch([_|_], Columns),
-            ?assertMatch(<<_/binary>>, Description),
-            ?assert(string:str(binary_to_list(IndexName), "idx_") > 0)
-        end, Indexes),
-        
+
+        lists:foreach(
+            fun({IndexName, Columns, Description}) ->
+                ?assertMatch(<<_/binary>>, IndexName),
+                ?assertMatch([_ | _], Columns),
+                ?assertMatch(<<_/binary>>, Description),
+                ?assert(string:str(binary_to_list(IndexName), "idx_") > 0)
+            end,
+            Indexes
+        ),
+
         % 测试查询优化
         QueryOptimizations = [
-            {<<"使用索引扫描">>, <<"避免全表扫描">>},
-            {<<"限制结果集">>, <<"使用LIMIT分页">>},
-            {<<"预编译语句">>, <<"提高执行效率">>},
-            {<<"连接池">>, <<"减少连接开销">>}
+            {<<"使用索引扫描"/utf8>>, <<"避免全表扫描"/utf8>>},
+            {<<"限制结果集"/utf8>>, <<"使用LIMIT分页"/utf8>>},
+            {<<"预编译语句"/utf8>>, <<"提高执行效率"/utf8>>},
+            {<<"连接池"/utf8>>, <<"减少连接开销"/utf8>>}
         ],
-        
-        lists:foreach(fun({Technique, Benefit}) ->
-            ?assertMatch(<<_/binary>>, Technique),
-            ?assertMatch(<<_/binary>>, Benefit)
-        end, QueryOptimizations)
+
+        lists:foreach(
+            fun({Technique, Benefit}) ->
+                ?assertMatch(<<_/binary>>, Technique),
+                ?assertMatch(<<_/binary>>, Benefit)
+            end,
+            QueryOptimizations
+        )
     end).
 
 %% 测试边界条件
@@ -390,41 +450,59 @@ boundary_conditions_test_() ->
             {tag_id, <<"a">>},
             {object_id, <<"0">>}
         ],
-        
-        lists:foreach(fun({Field, MinValue}) ->
-            case Field of
-                uid -> ?assert(is_integer(MinValue) andalso MinValue > 0);
-                _ -> ?assertMatch(<<_/binary>>, MinValue andalso byte_size(MinValue) > 0)
-            end
-        end, MinValues),
-        
+
+        lists:foreach(
+            fun({Field, MinValue}) ->
+                case Field of
+                    uid -> ?assert(is_integer(MinValue) andalso MinValue > 0);
+                    _ -> ?assertMatch(<<_/binary>>, MinValue andalso byte_size(MinValue) > 0)
+                end
+            end,
+            MinValues
+        ),
+
         % 测试最大值
         MaxValues = [
-            {uid, 2147483647},                    % 32位有符号整数最大值
-            {scene, list_to_binary(lists:duplicate(50, $x))},  % 50字符限制
-            {tag_id, list_to_binary(lists:duplicate(100, $y))}, % 100字符限制
-            {object_id, list_to_binary(lists:duplicate(255, $z))} % 255字符限制
+            % 32位有符号整数最大值
+            {uid, 2147483647},
+            % 50字符限制
+            {scene, list_to_binary(lists:duplicate(50, $x))},
+            % 100字符限制
+            {tag_id, list_to_binary(lists:duplicate(100, $y))},
+            % 255字符限制
+            {object_id, list_to_binary(lists:duplicate(255, $z))}
         ],
-        
-        lists:foreach(fun({Field, MaxValue}) ->
-            case Field of
-                uid -> ?assert(is_integer(MaxValue) andalso MaxValue > 0);
-                _ -> 
-                    ?assertMatch(<<_/binary>>, MaxValue),
-                    ?assert(byte_size(MaxValue) > 0)
-            end
-        end, MaxValues),
-        
+
+        lists:foreach(
+            fun({Field, MaxValue}) ->
+                case Field of
+                    uid ->
+                        ?assert(is_integer(MaxValue) andalso MaxValue > 0);
+                    _ ->
+                        ?assertMatch(<<_/binary>>, MaxValue),
+                        ?assert(byte_size(MaxValue) > 0)
+                end
+            end,
+            MaxValues
+        ),
+
         % 测试空值处理
         NullValues = [
-            {user_id, error},      % 用户ID不能为空
-            {scene, error},        % 场景不能为空
-            {object_id, error},    % 对象ID不能为空
-            {tag_id, error}         % 标签ID不能为空
+            % 用户ID不能为空
+            {user_id, error},
+            % 场景不能为空
+            {scene, error},
+            % 对象ID不能为空
+            {object_id, error},
+            % 标签ID不能为空
+            {tag_id, error}
         ],
-        
-        lists:foreach(fun({Field, ExpectedResult}) ->
-            ?assert(is_atom(Field)),
-            ?assertEqual(error, ExpectedResult)
-        end, NullValues)
+
+        lists:foreach(
+            fun({Field, ExpectedResult}) ->
+                ?assert(is_atom(Field)),
+                ?assertEqual(error, ExpectedResult)
+            end,
+            NullValues
+        )
     end).

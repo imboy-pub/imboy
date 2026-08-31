@@ -262,7 +262,7 @@ context_zero_limit_returns_empty_test_() ->
             {config_ds, [
                 {'get', 2, fun
                     (<<"ai_agent.kb.enabled">>, _) -> true;
-                    (<<"ai_agent.kb.group_rule">>, _) -> <<"禁止刷屏">>;
+                    (<<"ai_agent.kb.group_rule">>, _) -> <<"禁止刷屏"/utf8>>;
                     (<<"ai_agent.kb.faq">>, _) -> <<>>
                 end}
             ]}
@@ -279,7 +279,7 @@ context_zero_limit_returns_empty_test_() ->
                             }
                         }
                     },
-                    <<"问题">>
+                    <<"问题"/utf8>>
                 )
             )
         end
@@ -291,7 +291,7 @@ context_disabled_knowledge_capability_does_not_inject_test_() ->
             {config_ds, [
                 {'get', 2, fun
                     (<<"ai_agent.kb.enabled">>, _) -> true;
-                    (<<"ai_agent.kb.group_rule">>, _) -> <<"禁止刷屏">>;
+                    (<<"ai_agent.kb.group_rule">>, _) -> <<"禁止刷屏"/utf8>>;
                     (<<"ai_agent.kb.faq">>, _) -> <<>>
                 end}
             ]}
@@ -309,7 +309,7 @@ context_disabled_knowledge_capability_does_not_inject_test_() ->
                             }
                         }
                     },
-                    <<"问题">>
+                    <<"问题"/utf8>>
                 )
             )
         end

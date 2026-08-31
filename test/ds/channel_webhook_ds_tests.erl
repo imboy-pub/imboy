@@ -87,7 +87,7 @@ create_step2_account_type_failure_leaves_zero_orphans_test_() ->
     end).
 
 %% 第 3 步失败：channel_admin_repo:add 注入 error
-%% （路由锁定：{error, {channel_admin, _}} 分支 → 固定文案 <<"创建 webhook 失败">>）
+%% （路由锁定：{error, {channel_admin, _}} 分支 → 固定文案 <<"创建 webhook 失败"/utf8>>）
 create_step3_channel_admin_failure_leaves_zero_orphans_test_() ->
     ?TEST_WITH_DB(fun() ->
         {ChannelId, CreatorUid} = fixture_new(),
@@ -99,7 +99,7 @@ create_step3_channel_admin_failure_leaves_zero_orphans_test_() ->
 
 %% 第 4 步失败：channel_webhook_repo:add_tx 注入 error
 %% （路由锁定：{error, {webhook_insert, _}} 分支；insert_webhook_tx 已把底层
-%%  错误归一为 <<"创建 webhook 失败">> 并日志记录底层注入错误）
+%%  错误归一为 <<"创建 webhook 失败"/utf8>> 并日志记录底层注入错误）
 create_step4_webhook_insert_failure_leaves_zero_orphans_test_() ->
     ?TEST_WITH_DB(fun() ->
         {ChannelId, CreatorUid} = fixture_new(),

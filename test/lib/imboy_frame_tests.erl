@@ -103,7 +103,7 @@ decode_roundtrip_test() ->
         {?TYPE_HEARTBEAT_PING, ?FLAG_PING, <<42:16>>},
         {?TYPE_HEARTBEAT_PONG, ?FLAG_NONE, <<42:16>>},
         {?TYPE_ACK, ?FLAG_NONE, <<16#DEADBEEF:64>>},
-        {?TYPE_MSG_C2C, ?FLAG_ACK, <<"短消息">>},
+        {?TYPE_MSG_C2C, ?FLAG_ACK, <<"短消息"/utf8>>},
         {?TYPE_MSG_C2C, ?FLAG_CMP bor ?FLAG_ACK, binary:copy(<<0>>, 1000)}
     ],
     lists:foreach(

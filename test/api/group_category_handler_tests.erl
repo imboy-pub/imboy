@@ -49,7 +49,7 @@ init_list_success_test_() ->
         [
             {group_category_logic, [
                 {'list', 1, fun(12345) ->
-                    {ok, [#{<<"id">> => 1, <<"category_name">> => <<"默认">>}]}
+                    {ok, [#{<<"id">> => 1, <<"category_name">> => <<"默认"/utf8>>}]}
                 end}
             ]},
             {elib_response, [

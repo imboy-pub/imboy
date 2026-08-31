@@ -93,7 +93,7 @@ init_list_success_test_() ->
             ]},
             {friend_ds, [
                 {'page_by_uid', 1, fun(12345) ->
-                    [#{<<"uid">> => 67890, <<"remark">> => <<"好友">>}]
+                    [#{<<"uid">> => 67890, <<"remark">> => <<"好友"/utf8>>}]
                 end}
             ]},
             {elib_response, [

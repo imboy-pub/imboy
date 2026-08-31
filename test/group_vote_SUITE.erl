@@ -173,7 +173,7 @@ create_vote_missing_title_fails(_Config) ->
     {OwnerUid, _, _} = create_three_users(),
     {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
-    Options = [#{option_text => <<"选项A">>, sort_order => 1}],
+    Options = [#{option_text => <<"选项A"/utf8>>, sort_order => 1}],
     Extra = #{vote_type => 1, is_anonymous => false, end_at => undefined},
 
     Result = group_vote_logic:create_vote(Gid, OwnerUid, <<>>, Options, Extra, #{}),
@@ -228,9 +228,9 @@ cast_multi_choice_vote_succeeds(_Config) ->
 
     Title = <<"多选投票"/utf8>>,
     Options = [
-        #{option_text => <<"选项A">>, sort_order => 1},
-        #{option_text => <<"选项B">>, sort_order => 2},
-        #{option_text => <<"选项C">>, sort_order => 3}
+        #{option_text => <<"选项A"/utf8>>, sort_order => 1},
+        #{option_text => <<"选项B"/utf8>>, sort_order => 2},
+        #{option_text => <<"选项C"/utf8>>, sort_order => 3}
     ],
     Extra = #{vote_type => 2, is_anonymous => false, end_at => undefined},
     {ok, Vote} = group_vote_logic:create_vote(Gid, OwnerUid, Title, Options, Extra, #{}),
@@ -310,8 +310,8 @@ multi_choice_with_one_option_fails(_Config) ->
     {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(Uid1)]),
 
     Options = [
-        #{option_text => <<"选项X">>, sort_order => 1},
-        #{option_text => <<"选项Y">>, sort_order => 2}
+        #{option_text => <<"选项X"/utf8>>, sort_order => 1},
+        #{option_text => <<"选项Y"/utf8>>, sort_order => 2}
     ],
     Extra = #{vote_type => 2, is_anonymous => false, end_at => undefined},
     {ok, Vote} = group_vote_logic:create_vote(Gid, OwnerUid, <<"多选测试"/utf8>>, Options, Extra, #{}),
@@ -427,8 +427,8 @@ cast_vote_after_deadline_fails(_Config) ->
 
     % 创建一个已过期的投票（截止时间为过去）
     Options = [
-        #{option_text => <<"选项A">>, sort_order => 1},
-        #{option_text => <<"选项B">>, sort_order => 2}
+        #{option_text => <<"选项A"/utf8>>, sort_order => 1},
+        #{option_text => <<"选项B"/utf8>>, sort_order => 2}
     ],
     % 使用一个明确已过期的 RFC3339 时间
     PastEndAt = <<"2020-01-01T00:00:00Z">>,
@@ -455,8 +455,8 @@ close_vote_by_creator_succeeds(_Config) ->
     {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Options = [
-        #{option_text => <<"选项1">>, sort_order => 1},
-        #{option_text => <<"选项2">>, sort_order => 2}
+        #{option_text => <<"选项1"/utf8>>, sort_order => 1},
+        #{option_text => <<"选项2"/utf8>>, sort_order => 2}
     ],
     Extra = #{vote_type => 1, is_anonymous => false, end_at => undefined},
     {ok, Vote} = group_vote_logic:create_vote(Gid, OwnerUid, <<"待关闭投票"/utf8>>, Options, Extra, #{}),
@@ -481,8 +481,8 @@ close_already_closed_vote_fails(_Config) ->
     {ok, Gid} = group_logic:add(0, OwnerUid, 1, []),
 
     Options = [
-        #{option_text => <<"选项1">>, sort_order => 1},
-        #{option_text => <<"选项2">>, sort_order => 2}
+        #{option_text => <<"选项1"/utf8>>, sort_order => 1},
+        #{option_text => <<"选项2"/utf8>>, sort_order => 2}
     ],
     Extra = #{vote_type => 1, is_anonymous => false, end_at => undefined},
     {ok, Vote} = group_vote_logic:create_vote(Gid, OwnerUid, <<"测试投票"/utf8>>, Options, Extra, #{}),
@@ -527,9 +527,9 @@ setup_single_choice_vote(OwnerUid, MemberUid) ->
     {ok, Gid} = group_logic:add(0, OwnerUid, 1, [integer_to_binary(MemberUid)]),
 
     Options = [
-        #{option_text => <<"选项A">>, sort_order => 1},
-        #{option_text => <<"选项B">>, sort_order => 2},
-        #{option_text => <<"选项C">>, sort_order => 3}
+        #{option_text => <<"选项A"/utf8>>, sort_order => 1},
+        #{option_text => <<"选项B"/utf8>>, sort_order => 2},
+        #{option_text => <<"选项C"/utf8>>, sort_order => 3}
     ],
     Extra = #{vote_type => 1, is_anonymous => false, end_at => undefined},
     {ok, Vote} = group_vote_logic:create_vote(

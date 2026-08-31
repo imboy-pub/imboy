@@ -188,11 +188,11 @@ init_mocks(LegacyCbc, RsaFlag) ->
 %% 证伪后改造，同文件 init_login_pwd_rsa_flag_normalized 一并修复）。
 init_ws_url_fallback_test_() ->
     Cases = [
-        {<<"未配置→按 Host 派生 ws 同源">>, <<"192.168.2.79:9800">>, <<>>, <<>>,
+        {<<"未配置→按 Host 派生 ws 同源"/utf8>>, <<"192.168.2.79:9800">>, <<>>, <<>>,
             <<"ws://192.168.2.79:9800/api/v1/ws">>},
-        {<<"X-Forwarded-Proto https→派生 wss">>, <<"imboy.example">>, <<"https">>, <<>>,
+        {<<"X-Forwarded-Proto https→派生 wss"/utf8>>, <<"imboy.example">>, <<"https">>, <<>>,
             <<"wss://imboy.example/api/v1/ws">>},
-        {<<"显式配置优先于派生">>, <<"192.168.2.79:9800">>, <<>>, <<"wss://gateway.example/ws">>,
+        {<<"显式配置优先于派生"/utf8>>, <<"192.168.2.79:9800">>, <<>>, <<"wss://gateway.example/ws">>,
             <<"wss://gateway.example/ws">>}
     ],
     lists:map(
@@ -266,10 +266,10 @@ cleanup_mocks(Mocks) ->
 %%（断言从未执行，故意错断言亦全绿，2026-08-30 证伪后改造）。
 init_login_pwd_rsa_flag_normalized_test_() ->
     Cases = [
-        {<<"config=on 下发 1（激活两端 RSA 链路）">>, <<"on">>, <<"1">>},
-        {<<"config=1 下发 1">>, <<"1">>, <<"1">>},
-        {<<"config=off 下发 0">>, <<"off">>, <<"0">>},
-        {<<"配置缺失（env 返 false）下发 0">>, false, <<"0">>}
+        {<<"config=on 下发 1（激活两端 RSA 链路）"/utf8>>, <<"on">>, <<"1">>},
+        {<<"config=1 下发 1"/utf8>>, <<"1">>, <<"1">>},
+        {<<"config=off 下发 0"/utf8>>, <<"off">>, <<"0">>},
+        {<<"配置缺失（env 返 false）下发 0"/utf8>>, false, <<"0">>}
     ],
     lists:map(
         fun({Desc, RsaFlag, Expect}) ->

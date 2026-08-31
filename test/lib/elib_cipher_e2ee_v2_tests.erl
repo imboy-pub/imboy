@@ -100,8 +100,10 @@ encrypt_rsa_oaep_with_large_data_test_() ->
         PublicKeyPEM = derive_public_key(PrivateKeyPEM),
 
         % RSA-OAEP 可以加密较大的数据（取决于密钥大小）
-        PlainText = <<"This is a longer message that tests the RSA-OAEP encryption capabilities. "
-                       "It should handle reasonable message sizes for E2EE key exchange.">>,
+        PlainText = <<
+            "This is a longer message that tests the RSA-OAEP encryption capabilities. "
+            "It should handle reasonable message sizes for E2EE key exchange."
+        >>,
 
         {ok, Encrypted} = elib_cipher:encrypt_rsa_oaep(PlainText, PublicKeyPEM),
         {ok, Decrypted} = elib_cipher:decrypt_rsa_oaep(Encrypted, PrivateKeyPEM),
@@ -197,9 +199,17 @@ e2ee_full_flow_simulation_test_() ->
         CipherPartSize = byte_size(Rest) - 16,
         <<DecryptedCipher:CipherPartSize/binary, DecryptedTag:16/binary>> = Rest,
 
-        case crypto:crypto_one_time_aead(
-            aes_256_gcm, DecryptedAESKey, DecryptedNonce, DecryptedCipher, DecryptedNonce, DecryptedTag, false
-        ) of
+        case
+            crypto:crypto_one_time_aead(
+                aes_256_gcm,
+                DecryptedAESKey,
+                DecryptedNonce,
+                DecryptedCipher,
+                DecryptedNonce,
+                DecryptedTag,
+                false
+            )
+        of
             error ->
                 ?assert(false, "GCM authentication failed");
             DecryptedPlaintext ->
@@ -217,7 +227,7 @@ e2ee_with_unicode_content_test_() ->
         PublicKeyPEM = derive_public_key(PrivateKeyPEM),
 
         % 测试 Unicode 内容
-        UnicodeText = <<"你好世界！Hello World! 🌍🔐">>,
+        UnicodeText = <<"你好世界！Hello World! 🌍🔐"/utf8>>,
 
         {ok, Encrypted} = elib_cipher:encrypt_rsa_oaep(UnicodeText, PublicKeyPEM),
         {ok, Decrypted} = elib_cipher:decrypt_rsa_oaep(Encrypted, PrivateKeyPEM),

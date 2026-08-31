@@ -24,7 +24,7 @@
     verify_mock/2,
     verify_called/3,
     verify_called_once/3,
-    
+
     % Mock 模板
     mock_elib_param/1,
     mock_elib_response/1,
@@ -33,7 +33,7 @@
     mock_passport_logic/1,
     mock_user_repo/1,
     mock_elib_pg/1,
-    
+
     % 测试数据生成
     test_user/0,
     test_user/1,
@@ -83,9 +83,12 @@ setup_mock(Module, Options, Expectations, Retries) ->
     cleanup_mock(Module),
     try
         meck:new(Module, Options),
-        lists:foreach(fun({Func, Arity, Fun}) ->
-            meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
-        end, Expectations),
+        lists:foreach(
+            fun({Func, Arity, Fun}) ->
+                meck:expect(Module, Func, Arity, normalize_mock_fun(Fun, Arity))
+            end,
+            Expectations
+        ),
         {ok, Module}
     catch
         error:{already_started, _} ->
@@ -177,15 +180,24 @@ wrap_drop_first_arg(Fun, _) ->
 %% @param ExpectedCalls 期望调用列表，格式为 [{Function, Arity, MinCalls}]
 verify_mock(Module, ExpectedCalls) ->
     try
-        lists:foreach(fun({Func, Arity, MinCalls}) ->
-            CallCount = meck:num_calls(Module, Func, Arity),
-            case CallCount >= MinCalls of
-                true -> ok;
-                false -> ?assert(false,
-                                 io_lib:format("Expected ~p:~p/~p to be called at least ~p times, got ~p",
-                                               [Module, Func, Arity, MinCalls, CallCount]))
-            end
-        end, ExpectedCalls),
+        lists:foreach(
+            fun({Func, Arity, MinCalls}) ->
+                CallCount = meck:num_calls(Module, Func, Arity),
+                case CallCount >= MinCalls of
+                    true ->
+                        ok;
+                    false ->
+                        ?assert(
+                            false,
+                            io_lib:format(
+                                "Expected ~p:~p/~p to be called at least ~p times, got ~p",
+                                [Module, Func, Arity, MinCalls, CallCount]
+                            )
+                        )
+                end
+            end,
+            ExpectedCalls
+        ),
         {ok, verified}
     catch
         _:Error ->
@@ -199,10 +211,16 @@ verify_mock(Module, ExpectedCalls) ->
 verify_called(Module, Function, Arity) ->
     CallCount = meck:num_calls(Module, Function, Arity),
     case CallCount > 0 of
-        true -> ok;
-        false -> ?assert(false,
-                         io_lib:format("Expected ~p:~p/~p to be called, but was not called",
-                                       [Module, Function, Arity]))
+        true ->
+            ok;
+        false ->
+            ?assert(
+                false,
+                io_lib:format(
+                    "Expected ~p:~p/~p to be called, but was not called",
+                    [Module, Function, Arity]
+                )
+            )
     end.
 
 %% @doc 验证函数被恰好调用一次
@@ -212,10 +230,17 @@ verify_called(Module, Function, Arity) ->
 verify_called_once(Module, Function, Arity) ->
     CallCount = meck:num_calls(Module, Function, Arity),
     case CallCount of
-        1 -> ok;
-        _ -> ?assertEqual(1, CallCount,
-                          io_lib:format("Expected ~p:~p/~p to be called exactly once, got ~p",
-                                        [Module, Function, Arity, CallCount]))
+        1 ->
+            ok;
+        _ ->
+            ?assertEqual(
+                1,
+                CallCount,
+                io_lib:format(
+                    "Expected ~p:~p/~p to be called exactly once, got ~p",
+                    [Module, Function, Arity, CallCount]
+                )
+            )
     end.
 
 %% ===================================================================
@@ -230,9 +255,13 @@ mock_elib_param(Overrides) ->
         {<<"type">>, <<"email">>},
         {<<"rsa_encrypt">>, <<"0">>}
     ],
-    Params = maps:to_list(maps:merge(maps:from_list(DefaultParams), 
-                                    maps:from_list(Overrides))),
-    
+    Params = maps:to_list(
+        maps:merge(
+            maps:from_list(DefaultParams),
+            maps:from_list(Overrides)
+        )
+    ),
+
     Expectations = [
         {'post', 1, fun(_Req) -> Params end}
     ],
@@ -245,11 +274,11 @@ mock_elib_response(Overrides) ->
         response_body => #{status => success}
     }),
     Response = maps:merge(DefaultResponse, Overrides),
-    
+
     Expectations = [
         {'success', 3, fun(_Req, _Data, _Message) -> Response end},
-        {'error', 2, fun(_Req, _Message) -> 
-            Response#{response_status => 400, response_body => #{status => error}} 
+        {'error', 2, fun(_Req, _Message) ->
+            Response#{response_status => 400, response_body => #{status => error}}
         end}
     ],
     {ok, _} = setup_mock(elib_response, Expectations).
@@ -280,8 +309,10 @@ full_elib_response_mock(Tag) ->
         {'error', 2, fun(_Req, Msg) -> {Tag, error, Msg} end},
         {'error', 3, fun(_Req, Msg, _Code) -> {Tag, error, Msg} end},
         {'error', 4, fun(_Req, Msg, _Code, _Opts) -> {Tag, error, Msg} end},
-        {'handle_logic_result', 2, fun(_Req, {ok, Data}) -> {Tag, success, Data};
-                                     (_Req, {error, Msg}) -> {Tag, error, Msg} end}
+        {'handle_logic_result', 2, fun
+            (_Req, {ok, Data}) -> {Tag, success, Data};
+            (_Req, {error, Msg}) -> {Tag, error, Msg}
+        end}
     ].
 
 %% @doc Mock passport_logic 模块
@@ -292,12 +323,12 @@ mock_passport_logic(Overrides) ->
         <<"nickname">> => <<"Test User">>
     },
     User = maps:merge(DefaultUser, Overrides),
-    
+
     Expectations = [
         {'signup', 3, fun(_Type, _Account, _Password) -> {ok, User} end},
         {'do_login', 3, fun(_Type, _Account, _Password) -> {ok, User} end},
-        {'find_password', 2, fun(_Type, _Account) -> 
-            {ok, #{<<"message">> => <<"重置密码邮件已发送">>}} 
+        {'find_password', 2, fun(_Type, _Account) ->
+            {ok, #{<<"message">> => <<"重置密码邮件已发送"/utf8>>}}
         end}
     ],
     {ok, _} = setup_mock(passport_logic, Expectations).
@@ -324,13 +355,13 @@ mock_user_repo(Overrides) ->
 mock_elib_pg(Overrides) ->
     DefaultResult = {ok, [{1, <<"test">>}]},
     Result = maps:get(result, Overrides, DefaultResult),
-    
+
     Expectations = [
         {'query', 2, fun(_Sql, _Params) -> Result end},
         {'query', 3, fun(_Sql, _Params, _Conn) -> Result end},
         {'pluck', 4, fun(_Table, _Column, _Conditions, _Options) -> {ok, 1} end},
-        {'page', 6, fun(_Table, _Column, _Where, _OrderBy, _Size, _Offset) -> 
-            maps:get(page_result, Overrides, [{<<"id">>, 1, {<<"kind">>, <<"1">>}}]) 
+        {'page', 6, fun(_Table, _Column, _Where, _OrderBy, _Size, _Offset) ->
+            maps:get(page_result, Overrides, [{<<"id">>, 1, {<<"kind">>, <<"1">>}}])
         end},
         {'with_tx', 1, fun(_TxFun) -> ok end}
     ],
@@ -341,7 +372,7 @@ mock_elib_pg(Overrides) ->
 mock_user_collect_repo(Overrides) ->
     DefaultCount = 0,
     Count = maps:get(count, Overrides, DefaultCount),
-    
+
     Expectations = [
         {'count_by_uid_kind_id', 2, fun(_Uid, _KindId) -> Count end},
         {'delete', 2, fun(_Uid, _KindId) -> {ok, 1} end},
@@ -355,7 +386,7 @@ mock_user_collect_repo(Overrides) ->
 mock_elib_uri(Overrides) ->
     DefaultParams = {#{path => "/uploads/img.jpg"}, []},
     Params = maps:get(params, Overrides, DefaultParams),
-    
+
     Expectations = [
         {'get_params', 1, fun(_Uri) -> Params end}
     ],
@@ -366,7 +397,7 @@ mock_elib_uri(Overrides) ->
 mock_elib_dt(Overrides) ->
     DefaultTimestamp = 1640995200,
     Timestamp = maps:get(timestamp, Overrides, DefaultTimestamp),
-    
+
     Expectations = [
         {'now', 0, fun() -> Timestamp end},
         {'timestamp', 0, fun() -> Timestamp end}
@@ -379,14 +410,14 @@ mock_elib_dt(Overrides) ->
 mock_group_member_repo(Overrides) ->
     DefaultResult = {ok, 1},
     Result = maps:get(result, Overrides, DefaultResult),
-    
+
     Expectations = [
         {'transfer_ownership', 3, fun(_GroupId, _FromUid, _ToUid) -> Result end},
-        {'is_owner', 2, fun(_GroupId, _Uid) -> 
-            maps:get(is_owner, Overrides, true) 
+        {'is_owner', 2, fun(_GroupId, _Uid) ->
+            maps:get(is_owner, Overrides, true)
         end},
-        {'is_member', 2, fun(_GroupId, _Uid) -> 
-            maps:get(is_member, Overrides, true) 
+        {'is_member', 2, fun(_GroupId, _Uid) ->
+            maps:get(is_member, Overrides, true)
         end}
     ],
     {ok, _} = setup_mock(group_member_repo, Expectations).
@@ -401,7 +432,7 @@ mock_group_repo(Overrides) ->
         <<"creator_id">> => 1
     },
     Group = maps:get(group, Overrides, DefaultGroup),
-    
+
     Expectations = [
         {'find', 1, fun(_GroupId) -> {ok, Group} end},
         {'update', 2, fun(_GroupId, _Data) -> {ok, 1} end}
@@ -414,7 +445,7 @@ mock_group_repo(Overrides) ->
 mock_websocket_ds(Overrides) ->
     DefaultResult = ok,
     Result = maps:get(result, Overrides, DefaultResult),
-    
+
     Expectations = [
         {'send', 2, fun(_Uid, _Message) -> Result end},
         {'broadcast', 2, fun(_Uids, _Message) -> Result end}
@@ -497,58 +528,70 @@ test_request(Overrides) ->
 %% @doc 创建带单个 Mock 的测试
 -define(WITH_MECK(Module, Expectations, TestFun),
     {setup,
-     fun() -> 
-         case meck_helper:setup_mock(Module, Expectations) of
-             {ok, _} -> ok;
-             {error, Reason} -> ?debugFmt("Mock setup failed: ~p", [Reason])
-         end
-     end,
-     fun(_) -> 
-         meck_helper:cleanup_mock(Module) 
-     end,
-     fun(_) -> ?_test(TestFun()) end}).
+        fun() ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> ?debugFmt("Mock setup failed: ~p", [Reason])
+            end
+        end,
+        fun(_) ->
+            meck_helper:cleanup_mock(Module)
+        end,
+        fun(_) -> ?_test(TestFun()) end}
+).
 
 %% @doc 创建带多个 Mock 的测试
 -define(WITH_MECKS(MockConfigs, TestFun),
     {setup,
-     fun() -> 
-         lists:foreach(fun({Module, Expectations}) -> 
-             case meck_helper:setup_mock(Module, Expectations) of
-                 {ok, _} -> ok;
-                 {error, Reason} -> ?debugFmt("Mock setup failed for ~p: ~p", [Module, Reason])
-             end
-         end, MockConfigs)
-     end,
-     fun(_) -> 
-         Modules = [Module || {Module, _} <- MockConfigs],
-         meck_helper:cleanup_mocks(Modules)
-     end,
-     fun(_) -> ?_test(TestFun()) end}).
+        fun() ->
+            lists:foreach(
+                fun({Module, Expectations}) ->
+                    case meck_helper:setup_mock(Module, Expectations) of
+                        {ok, _} ->
+                            ok;
+                        {error, Reason} ->
+                            ?debugFmt("Mock setup failed for ~p: ~p", [Module, Reason])
+                    end
+                end,
+                MockConfigs
+            )
+        end,
+        fun(_) ->
+            Modules = [Module || {Module, _} <- MockConfigs],
+            meck_helper:cleanup_mocks(Modules)
+        end,
+        fun(_) -> ?_test(TestFun()) end}
+).
 
 %% @doc 创建带 Mock 验证的测试
 -define(WITH_MECK_VERIFY(Module, Expectations, VerifyCalls, TestFun),
     {setup,
-     fun() -> 
-         case meck_helper:setup_mock(Module, Expectations) of
-             {ok, _} -> ok;
-             {error, Reason} -> ?debugFmt("Mock setup failed: ~p", [Reason])
-         end
-     end,
-     fun(_) -> 
-         meck_helper:verify_mock(Module, VerifyCalls),
-         meck_helper:cleanup_mock(Module) 
-     end,
-     fun(_) -> ?_test(TestFun()) end}).
+        fun() ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> ?debugFmt("Mock setup failed: ~p", [Reason])
+            end
+        end,
+        fun(_) ->
+            meck_helper:verify_mock(Module, VerifyCalls),
+            meck_helper:cleanup_mock(Module)
+        end,
+        fun(_) -> ?_test(TestFun()) end}
+).
 
 %% @doc 创建强断言宏
 -define(ASSERT_EQUAL(Expected, Actual),
-    ?assertEqual(Expected, Actual)).
+    ?assertEqual(Expected, Actual)
+).
 
 -define(ASSERT_MATCH(Pattern, Value),
-    ?assertMatch(Pattern, Value)).
+    ?assertMatch(Pattern, Value)
+).
 
 -define(ASSERT_OK(Result),
-    ?assertMatch({ok, _}, Result)).
+    ?assertMatch({ok, _}, Result)
+).
 
 -define(ASSERT_ERROR(Result),
-    ?assertMatch({error, _}, Result)).
+    ?assertMatch({error, _}, Result)
+).

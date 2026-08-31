@@ -45,7 +45,7 @@ suffix_q_trailing_space_still_triggers_test() ->
     ?assert(
         agent_trigger_policy:should_trigger(
             #{<<"suffix_q">> => true},
-            #{mentioned => false, text => <<"在吗?  ">>}
+            #{mentioned => false, text => <<"在吗?  "/utf8>>}
         )
     ).
 

@@ -326,13 +326,13 @@ add_with_special_chars_tag_name_test_() ->
             ]},
             {group_tag_ds, [
                 {'add', 3, fun(_GroupId, _Uid, TagName) ->
-                    ?assertEqual(<<"技术-交流_(2024)">>, TagName),
+                    ?assertEqual(<<"技术-交流_(2024)"/utf8>>, TagName),
                     {ok, 1}
                 end}
             ]}
         ],
         fun() ->
-            Result = group_tag_logic:add(1, 100, <<"技术-交流_(2024)">>),
+            Result = group_tag_logic:add(1, 100, <<"技术-交流_(2024)"/utf8>>),
             ?assertMatch({ok, _}, Result)
         end
     ).

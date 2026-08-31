@@ -63,7 +63,7 @@ validate(AgentUid, ToUid, AmountFen, RefNo) when
     RefNo =/= <<>>,
     ToUid =/= AgentUid
 ->
-    %% 借记 RefNo 不得以贷记派生后缀结尾：否则攻击者可提交 <<"<他人未来RefNo>_CR">> 作借记键，
+    %% 借记 RefNo 不得以贷记派生后缀结尾：否则攻击者可提交 <<"<他人未来RefNo>_CR"/utf8>> 作借记键，
     %% 占用他人合法支付贷记腿的 reference_no，令其贷记 INSERT 撞唯一索引→整笔 rollback（拒付型 DoS）。
     case is_reserved_ref(RefNo) of
         true -> {error, invalid_params};

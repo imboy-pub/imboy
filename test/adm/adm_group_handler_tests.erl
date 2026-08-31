@@ -122,7 +122,7 @@ init_detail_success_with_owner_profile_test_() ->
                     ?assertNotEqual(nomatch, binary:match(Column, <<"owner_uid">>)),
                     #{
                         <<"id">> => 66,
-                        <<"title">> => <<"研发群">>,
+                        <<"title">> => <<"研发群"/utf8>>,
                         <<"owner_uid">> => 9001
                     }
                 end}
@@ -167,7 +167,7 @@ init_detail_accepts_legacy_gid_test_() ->
                 {'find_by_id', 2, fun(66, _Column) ->
                     #{
                         <<"id">> => 66,
-                        <<"title">> => <<"研发群">>,
+                        <<"title">> => <<"研发群"/utf8>>,
                         <<"owner_uid">> => 9001
                     }
                 end}
@@ -193,7 +193,7 @@ init_detail_accepts_legacy_gid_test_() ->
             }),
             ?assertEqual(200, maps:get(response_status, RespReq)),
             Payload = maps:get(payload, RespReq),
-            ?assertEqual(<<"研发群">>, maps:get(<<"title">>, Payload))
+            ?assertEqual(<<"研发群"/utf8>>, maps:get(<<"title">>, Payload))
         end
     ).
 
@@ -477,7 +477,7 @@ init_vote_close_archived_workspace_returns_code_980_test_() ->
                 <<"工作区已归档，写操作被拒绝"/utf8>>, maps:get(msg, RespReq)
             ),
             ?assertEqual(
-                0, meck:num_calls(user_log_repo, add, 1), <<"归档拒绝不得写治理审计">>
+                0, meck:num_calls(user_log_repo, add, 1), <<"归档拒绝不得写治理审计"/utf8>>
             )
         end
     ).
@@ -531,7 +531,7 @@ init_notice_list_success_test_() ->
             ]},
             {group_notice_ds, [
                 {'list_by_group_id', 3, fun(66, 1, 10) ->
-                    {ok, {1, [#{<<"id">> => 123, <<"title">> => <<"群规公告">>}]}}
+                    {ok, {1, [#{<<"id">> => 123, <<"title">> => <<"群规公告"/utf8>>}]}}
                 end},
                 {'count_by_group_id', 1, fun(66) ->
                     {ok, 1}
@@ -573,7 +573,7 @@ init_notice_detail_success_test_() ->
                     {ok, #{
                         <<"id">> => 123,
                         <<"group_id">> => 66,
-                        <<"title">> => <<"群规公告">>
+                        <<"title">> => <<"群规公告"/utf8>>
                     }}
                 end}
             ]},

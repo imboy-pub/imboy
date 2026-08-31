@@ -5,7 +5,7 @@
 %%% @doc recharge_logic:query/2 充值订单查询的安全契约测试。
 %%%
 %%% 验证 IDOR 防护：query(Uid, OrderNo) 仅当 order.user_id =:= Uid 才返回
-%%%   订单，非本人返回 {error, <<"无权查看此订单">>}；订单不存在返回
+%%%   订单，非本人返回 {error, <<"无权查看此订单"/utf8>>}；订单不存在返回
 %%%   {error, not_found}。对应路由 GET /v1/wallet/recharge/:order_no（P0 支付）。
 %%%
 %%% 手法：meck recharge_order_ds，绝不触真实 PG。
