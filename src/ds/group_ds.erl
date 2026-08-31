@@ -558,7 +558,10 @@ dissolve_group(Uid, Gid, _, G) ->
             Payload = #{<<"gid">> => Gid},
             msg_s2c_ds:send(Uid, ToUidLi, Action, <<>>, null, Payload, save),
             ok;
-        {980, _ArchivedMsg} = Archived ->
+        %% run_with_conn 契约：abort_tx throw 被收敛为 {error, Reason}，
+        %% 归档拒绝实际形态是 {error, {980, Msg}}（裸 {980, _} 永不命中，
+        %% 会退化成下方通用「解散群组失败」——空转期测试未曾暴露）
+        {error, {980, _ArchivedMsg} = Archived} ->
             %% T7 收口：归档拒绝（稳定错误码 980）原样透传，不吞成通用失败
             {error, Archived};
         Err ->

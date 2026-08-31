@@ -5,7 +5,8 @@
 %
 % 职责（计划 §七 T5 IMPLEMENT）：
 %   1. resolve_workspace/1：{ResourceType, ResourceId} → {ok, WorkspaceId} | personal
-%      | {error, not_found} | {error, {db_error, Reason}}
+%      | {error, not_found} | {error, {unsupported_resource|unsupported_scope, _}}
+%      （DB 异常以 error:{resolver_db_error,_} 抛出，见 resolve_workspace 文档）
 %      | {error, {unsupported_resource, _}} | {error, {unsupported_scope, _}}
 %      ——覆盖 R3 清单直接入口资源：
 %        group / group_notice(经 group_id) / channel / channel_message(经 channel_id)
@@ -38,9 +39,10 @@
 %   * DB 异常（连接池不可用/查询失败/驱动崩溃）与"资源不存在"严格三态区分，
 %     绝不把 {error, db_error} 归一成 not_found（elib_pg:one/2 无行时返回
 %     {ok, #{}（默认值），错误才是 {error, Reason}——one_row/2 按此归一）。
-%   * 归属解析失败（db_error / unsupported_resource / unsupported_scope）
-%     在所有 ensure_*/guard_* 门上返回 {error, {503, Msg}}（服务不可用），
-%     绝不 ok 放行——DB 故障不得成为越权窗口。
+%   * 归属解析失败（resolver_db_error 异常 / unsupported_resource /
+%     unsupported_scope 返回值）在所有 ensure_*/guard_* 门上归一为
+%     {error, {503, Msg}}（服务不可用），绝不 ok 放行——DB 故障不得成为
+%     越权窗口（workspace_guard 的对应收口臂见 ensure_writable[_tx]）。
 %   * 未知资源类型 / 附件 scope 非法：显式错误，绝不默认 personal
 %     （不发明默认归属，任务卡 Stop 条款）。
 %
@@ -87,14 +89,14 @@
 %% {ok, WsId}：资源 scope=workspace；personal：个人资源（含 c2c/moment 等
 %% 不进守卫的，均有可证归属链，见模块头）；
 %% {error, not_found}：资源不存在（行未命中 / ID 非法）；
-%% {error, {db_error, Reason}}：DB 层异常（绝不与 not_found 混淆）；
 %% {error, {unsupported_resource, _}}：未知资源类型（收紧原 `_ -> personal` 兜底）；
 %% {error, {unsupported_scope, _}}：attachment.scope 脏数据 / 引用缺失。
+%% DB 层异常（M-1 契约）：以 `error:{resolver_db_error, Reason}` 异常抛出，
+%% 不作返回值；调用方（guard/ensure_* 门）catch 后归一为 {error, {503, _}}。
 -spec resolve_workspace(term()) ->
     {ok, integer()}
     | personal
     | {error, not_found}
-    | {error, {db_error, term()}}
     | {error, {unsupported_resource, term()}}
     | {error, {unsupported_scope, term()}}.
 resolve_workspace({workspace, WsId}) ->

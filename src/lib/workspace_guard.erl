@@ -87,9 +87,28 @@ ensure_writable(Target) ->
                     _ = ?ERROR_LOG([workspace_guard_status_failed, WsId, Reason]),
                     {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
             end;
-        _ ->
-            %% personal 直通；not_found 放行走既有 404（不吞既有语义）
-            ok
+        personal ->
+            %% personal 直通
+            ok;
+        {error, not_found} ->
+            %% 资源不存在放行走既有 404（不吞既有语义）
+            ok;
+        {error, {db_error, Reason}} ->
+            %% SEC-03 fail-closed：归属解析失败绝不 ok 放行（M-1 收口补臂：
+            %% 原 `_ -> ok` 兜底把 db_error/unsupported_* 吞成放行，空转期
+            %% fail-closed 测试未真跑故未暴露）
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Reason]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}};
+        {error, {unsupported_resource, R}} ->
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, R]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}};
+        {error, {unsupported_scope, R}} ->
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, R]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}};
+        Other ->
+            %% SEC-03：未知解析结果一律拒绝，不发明默认归属
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Other]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
     catch
         error:{resolver_db_error, Reason} ->
             _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Reason]),
@@ -117,8 +136,23 @@ ensure_writable_tx(Conn, Target) ->
                     _ = ?ERROR_LOG([workspace_guard_lock_failed, WsId, Reason]),
                     {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
             end;
-        _ ->
-            ok
+        personal ->
+            ok;
+        {error, not_found} ->
+            ok;
+        {error, {db_error, Reason}} ->
+            %% 归属解析失败同样 fail-closed（M-1 收口补臂，见 ensure_writable/1）
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Reason]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}};
+        {error, {unsupported_resource, R}} ->
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, R]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}};
+        {error, {unsupported_scope, R}} ->
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, R]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}};
+        Other ->
+            _ = ?ERROR_LOG([workspace_guard_resolve_failed, Target, Other]),
+            {error, {503, <<"工作区状态检查失败，请稍后重试"/utf8>>}}
     catch
         error:{resolver_db_error, Reason} ->
             %% 归属解析 DB 异常同样 fail-closed（abort_tx 由 with_tx 归一
