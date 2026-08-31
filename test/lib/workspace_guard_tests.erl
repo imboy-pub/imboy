@@ -173,7 +173,9 @@ fail_closed_test_() ->
                 [
                     {workspace_resolver, [
                         {'resolve_workspace', 1, fun
-                            ({group, ?GID}) -> {error, {db_error, pool_exhausted}};
+                            %% resolver 真实 DB 故障形态=throw（见其模块头 M-1 契约），
+                            %% 由 guard catch 臂承接 fail-closed
+                            ({group, ?GID}) -> erlang:error({resolver_db_error, pool_exhausted});
                             (_) -> personal
                         end}
                     ]}
@@ -231,7 +233,8 @@ fail_closed_test_() ->
                 [
                     {workspace_resolver, [
                         {'resolve_workspace', 1, fun
-                            ({channel, ?CID}) -> {error, {db_error, no_connection}};
+                            %% 同上：真实形态=throw，catch 臂承接
+                            ({channel, ?CID}) -> erlang:error({resolver_db_error, no_connection});
                             (_) -> personal
                         end}
                     ]}

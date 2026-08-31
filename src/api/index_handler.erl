@@ -201,8 +201,11 @@ derive_ws_url(Req) ->
             <<"https">> ->
                 <<"wss">>;
             _ ->
+                %% cowboy 2.x scheme 是 binary（<<"https">>/<<"http">>）；
+                %% 原误比 atom https 恒不中，TLS 部署未带 x-forwarded-proto 时
+                %% 错误下发 ws://（HTTPS 混合内容场景 WS 必拒）
                 case cowboy_req:scheme(Req) of
-                    https -> <<"wss">>;
+                    <<"https">> -> <<"wss">>;
                     _ -> <<"ws">>
                 end
         end,

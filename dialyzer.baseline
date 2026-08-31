@@ -181,3 +181,8 @@ workspace_handler.erl|The pattern {'ok', WS} can never match the type {'error', 
 workspace_logic.erl|The pattern {'ok', Updated} can never match the type {'error', _}
 workspace_repo.erl|Invalid type specification for function workspace_repo:find_by_owner_and_name/3. The success typing is workspace_repo:find_by_owner_and_name (_, _, pid()) -> #{binary() => _} But the spec is workspace_repo:find_by_owner_and_name (integer(), binary(), binary()) -> map() They do not overlap in the 3rd argument
 workspace_repo.erl|Invalid type specification for function workspace_repo:find_by_request_id/3. The success typing is workspace_repo:find_by_request_id (_, _, pid()) -> #{binary() => _} But the spec is workspace_repo:find_by_request_id (integer(), binary(), binary()) -> map() They do not overlap in the 3rd argument
+# 2026-09-01 豁免（epgsql 类型边界伪影）：workspace_invite_repo insert 的团队码唯一冲突幂等匹配
+# （{error,{pgsql_error,code 23505}} → code_conflict）。该形态为 epgsql 运行时真实错误
+# 结构（全仓 e2ee_backup_logic/payment_callback_logic/billing_plan_repo 等同款匹配实证），
+# dialyzer 不可达判定源于 epgsql record 类型在 PLT 中的失真，非死代码。
+workspace_invite_repo.erl|The pattern {error, {pgsql_error, #{code := <<50,51,53,48,53>>}}} can never match the type {'error', 'closed' | 'sock_closed' | 'sock_error' | 'sync_required' | {'error', 'debug' | 'error' | 'fatal' | 'info' | 'log' | 'notice' | 'panic' | 'warning', binary(), atom(), binary(), [{_, _}]}}

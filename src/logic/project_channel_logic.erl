@@ -63,11 +63,10 @@ link(Uid, ProjectId, ChannelId) ->
             case project_channel_ds:link(Uid, ProjectId, ChannelId) of
                 {ok, Status} ->
                     {ok, Status};
+                %% DS 层错误已归一 {Code, Msg}（success typing 穷尽；
+                %% 新增形态由 dialyzer 基线门拦截）
                 {error, {Code, Msg}} when is_integer(Code) ->
-                    {error, {Code, Msg}};
-                {error, Reason} ->
-                    _ = ?ERROR_LOG([project_channel_link_failed, Uid, ProjectId, Reason]),
-                    {error, {500, <<"关联失败，请稍后重试"/utf8>>}}
+                    {error, {Code, Msg}}
             end
     end.
 
@@ -82,11 +81,9 @@ unlink(Uid, ProjectId, ChannelId) ->
             case project_channel_ds:unlink(Uid, ProjectId, ChannelId) of
                 {ok, Status} ->
                     {ok, Status};
+                %% 同 link/3：DS 错误已归一 {Code, Msg}
                 {error, {Code, Msg}} when is_integer(Code) ->
-                    {error, {Code, Msg}};
-                {error, Reason} ->
-                    _ = ?ERROR_LOG([project_channel_unlink_failed, Uid, ProjectId, Reason]),
-                    {error, {500, <<"解除关联失败，请稍后重试"/utf8>>}}
+                    {error, {Code, Msg}}
             end
     end.
 
@@ -122,11 +119,9 @@ update_links(Uid, ProjectId, Links) ->
                     case project_channel_ds:update_links(Uid, ProjectId, Norm) of
                         {ok, Saved} ->
                             {ok, Saved};
+                        %% 同 link/3：DS 错误已归一 {Code, Msg}
                         {error, {Code, Msg2}} when is_integer(Code) ->
-                            {error, {Code, Msg2}};
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG([project_links_update_failed, Uid, ProjectId, Reason]),
-                            {error, {500, <<"更新失败，请稍后重试"/utf8>>}}
+                            {error, {Code, Msg2}}
                     end
             end
     end.
@@ -372,9 +367,7 @@ sanitize_payload(Bin) when is_binary(Bin) ->
     case catch jsone:decode(Bin, [{object_format, map}]) of
         M when is_map(M) -> strip_content_keys(M);
         _ -> #{}
-    end;
-sanitize_payload(_) ->
-    #{}.
+    end.
 
 strip_content_keys(Payload) ->
     maps:without(?PAYLOAD_CONTENT_KEYS, Payload).

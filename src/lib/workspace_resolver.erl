@@ -102,8 +102,7 @@
 resolve_workspace({workspace, WsId}) ->
     case one_row(<<"SELECT id FROM workspace WHERE id = $1">>, [WsId]) of
         #{<<"id">> := _} -> {ok, elib_cnv:safe_to_integer(WsId)};
-        #{} -> {error, not_found};
-        {error, _} = E -> E
+        #{} -> {error, not_found}
     end;
 resolve_workspace({project, ProjectId}) ->
     %% project 恒属 workspace（无 scope 概念，I7/迁移 00000078）
@@ -111,9 +110,7 @@ resolve_workspace({project, ProjectId}) ->
         #{<<"workspace_id">> := WsId} when WsId =/= null ->
             {ok, elib_cnv:safe_to_integer(WsId)};
         #{} ->
-            {error, not_found};
-        {error, _} = E ->
-            E
+            {error, not_found}
     end;
 resolve_workspace({project_task, TaskId}) ->
     case
@@ -126,17 +123,14 @@ resolve_workspace({project_task, TaskId}) ->
         #{<<"workspace_id">> := WsId} when WsId =/= null ->
             {ok, elib_cnv:safe_to_integer(WsId)};
         #{} ->
-            {error, not_found};
-        {error, _} = E ->
-            E
+            {error, not_found}
     end;
 resolve_workspace({group, Gid}) ->
     group_scope(Gid);
 resolve_workspace({group_notice, NoticeId}) ->
     case one_row(<<"SELECT group_id FROM group_notice WHERE id = $1">>, [NoticeId]) of
         #{<<"group_id">> := Gid} -> group_scope(Gid);
-        #{} -> {error, not_found};
-        {error, _} = E -> E
+        #{} -> {error, not_found}
     end;
 %% ---- 群子功能域（P0 后续批：vote/schedule/album/file/task）----
 %% 均经所属 group 行解析 scope；解析读（归属不可变）走自动提交连接是安全的。
@@ -229,17 +223,23 @@ resolve_workspace({channel, ChannelId}) ->
 resolve_workspace({channel_message, MessageId}) ->
     case one_row(<<"SELECT channel_id FROM channel_message WHERE id = $1">>, [MessageId]) of
         #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        {error, _} = E -> E
+        %% 零行（one_row 返回 #{}）→ not_found；此前漏写该子句，
+        %% 行不存在时 case_clause 抛穿守卫归一成 500（dialyzer 死臂暴露）
+        #{} -> {error, not_found}
     end;
 resolve_workspace({channel_comment, CommentId}) ->
     case one_row(<<"SELECT channel_id FROM channel_comment WHERE id = $1">>, [CommentId]) of
         #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        {error, _} = E -> E
+        %% 零行（one_row 返回 #{}）→ not_found；此前漏写该子句，
+        %% 行不存在时 case_clause 抛穿守卫归一成 500（dialyzer 死臂暴露）
+        #{} -> {error, not_found}
     end;
 resolve_workspace({channel_reaction, ReactionId}) ->
     case one_row(<<"SELECT channel_id FROM channel_reaction WHERE id = $1">>, [ReactionId]) of
         #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        {error, _} = E -> E
+        %% 零行（one_row 返回 #{}）→ not_found；此前漏写该子句，
+        %% 行不存在时 case_clause 抛穿守卫归一成 500（dialyzer 死臂暴露）
+        #{} -> {error, not_found}
     end;
 resolve_workspace({channel_subscription, ChannelId}) ->
     channel_scope(ChannelId);
@@ -248,12 +248,16 @@ resolve_workspace({channel_admin, ChannelId}) ->
 resolve_workspace({channel_webhook, WebhookId}) ->
     case one_row(<<"SELECT channel_id FROM channel_webhook WHERE id = $1">>, [WebhookId]) of
         #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        {error, _} = E -> E
+        %% 零行（one_row 返回 #{}）→ not_found；此前漏写该子句，
+        %% 行不存在时 case_clause 抛穿守卫归一成 500（dialyzer 死臂暴露）
+        #{} -> {error, not_found}
     end;
 resolve_workspace({channel_invitation, InvitationId}) ->
     case one_row(<<"SELECT channel_id FROM channel_invitation WHERE id = $1">>, [InvitationId]) of
         #{<<"channel_id">> := ChannelId} -> channel_scope(ChannelId);
-        {error, _} = E -> E
+        %% 零行（one_row 返回 #{}）→ not_found；此前漏写该子句，
+        %% 行不存在时 case_clause 抛穿守卫归一成 500（dialyzer 死臂暴露）
+        #{} -> {error, not_found}
     end;
 resolve_workspace({attachment, AttachId}) ->
     %% 附件归属最小闭环：见模块头"附件归属最小闭环"证明链。
@@ -373,10 +377,6 @@ guard_channel_custom_id(Uid, CustomId) when is_binary(CustomId), CustomId =/= <<
 guard_channel_custom_id(_Uid, _CustomId) ->
     ok.
 
-custom_id_lookup_denied(Reason) ->
-    _ = ?ERROR_LOG([workspace_custom_id_lookup_denied, Reason]),
-    {error, {?ERR_SERVICE_UNAVAILABLE, <<"资源归属校验暂不可用，请稍后重试"/utf8>>}}.
-
 %% @doc handler 便捷门：群入口（gid 参数，POST body 或 query string 均可传值）
 %% 用于 group_handler:detail/msg_page 与 group_notice_handler 全部入口。
 %% gid 非法/群不存在放行：下游 detail/msg_page 必有独立群成员校验；
@@ -460,9 +460,7 @@ row_scope(Tb, Id) ->
                 %% 此前漏写该分支，行不存在时 case_clause 一路抛穿守卫的
                 %% 503 归一（合并后全量 group_file_ds ×15 实证）
                 #{} ->
-                    {error, not_found};
-                {error, _} = E ->
-                    E
+                    {error, not_found}
             end
     end.
 

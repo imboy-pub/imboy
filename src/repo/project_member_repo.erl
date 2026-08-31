@@ -83,8 +83,6 @@ find(ProjectId, Uid, Column) ->
             %% M-4：DB 故障不得与"无记录"静默同形——记错误后仍按空处理
             %% （权限判定保持 fail-closed 403 方向，但排障可见）
             _ = ?ERROR_LOG([project_member_find_failed, ProjectId, Uid, Reason]),
-            #{};
-        _ ->
             #{}
     end.
 
