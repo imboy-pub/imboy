@@ -248,8 +248,10 @@ tsid_generator_names() ->
         channel_webhook,
         channel_comment,
         channel_price,
-        %% ── 工作区（双体验 v2.5.2 WP3/T4；workspace_member 复合主键无 id 列，不注册） ──
+        %% ── 工作区（双体验 v2.5.2 WP3/T4；workspace_member 复合主键无 id 列，不注册；
+        %%    workspace_invite = 团队码 T2.2，迁移 00000082） ──
         workspace,
+        workspace_invite,
         %% ── 项目（双体验 v2.5.2 WP4/T6a/T6b；project_event 由 T6a 独占 writer 接口） ──
         project,
         project_task,
