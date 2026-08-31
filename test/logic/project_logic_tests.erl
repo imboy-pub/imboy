@@ -68,22 +68,36 @@ base_mocks() ->
         {elib_pg, [
             {'with_tx', 1, tx_fun()},
             %% resolver：workspace 存在性（自动提交连接）
-            {'one', 2, fun(<<"SELECT id FROM workspace", _/binary>>, _) ->
-                {ok, #{<<"id">> => ?WS_ID}}
+            {'one', 2, fun(Sql, _) ->
+                case norm_sql(Sql) of
+                    <<"SELECT id FROM workspace", _/binary>> ->
+                        {ok, #{<<"id">> => ?WS_ID}};
+                    Other ->
+                        erlang:error({mock_clause_miss, Other})
+                end
             end},
             %% 注意：meck 同函数二次 expect 会覆盖（非追加），多前缀须合并为
             %% 一个多子句 fun
-            {'query', 3, fun
-                %% W2 接线：create 前置 ensure_owner_member_tx 回查成员行
-                (_C, <<"SELECT workspace_id,project_id,user_id", _/binary>>, _) ->
-                    {ok, []};
-                %% guard 事务版 FOR UPDATE 状态查询
-                (_C, <<"SELECT status FROM workspace", _/binary>>, _) ->
-                    {ok, [#{<<"status">> => ws_status()}]}
+            {'query', 3, fun(_C, Sql0, _) ->
+                case norm_sql(Sql0) of
+                    %% W2 接线：create 前置 ensure_owner_member_tx 回查成员行
+                    <<"SELECT workspace_id,project_id,user_id", _/binary>> ->
+                        {ok, []};
+                    %% guard 事务版 FOR UPDATE 状态查询
+                    <<"SELECT status FROM workspace", _/binary>> ->
+                        {ok, [#{<<"status">> => ws_status()}]}
+                end
             end},
             {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}
         ]}
     ].
+
+%% 全量跑时 eunit_runner 会置 sql_driver=pgsql，repo 层 SQL 表名带 public.
+%% 前缀；匹配前归一，使 mock 与驱动无关
+norm_sql(Sql) when is_binary(Sql) ->
+    binary:replace(Sql, <<"public.">>, <<>>, [global]);
+norm_sql(Sql) ->
+    norm_sql(iolist_to_binary(Sql)).
 
 tx_fun() ->
     fun(Fun) ->
@@ -330,8 +344,13 @@ remove_member_conflict_test_() ->
                 {elib_pg, [
                     {'with_tx', 1, tx_fun()},
                     %% ensure_not_archived 自动提交读（ds find_by_id/2 → repo one/2）
-                    {'one', 2, fun(<<"SELECT status FROM workspace", _/binary>>, _) ->
-                        {ok, #{<<"status">> => <<"active">>}}
+                    {'one', 2, fun(Sql, _) ->
+                        case norm_sql(Sql) of
+                            <<"SELECT status FROM workspace", _/binary>> ->
+                                {ok, #{<<"status">> => <<"active">>}};
+                            Other ->
+                                erlang:error({mock_clause_miss, Other})
+                        end
                     end},
                     {'query', 3, fun(_C, _S, _P) -> {ok, []} end},
                     {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}

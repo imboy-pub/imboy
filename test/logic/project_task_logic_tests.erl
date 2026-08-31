@@ -88,17 +88,28 @@ task_row(Status) ->
     }.
 
 %% 事务 mock：guard FOR UPDATE / workspace_member 状态 / 幂等查询按 SQL 分派
+%% 全量跑时 sql_driver=pgsql，repo SQL 表名带 public. 前缀；匹配前归一
+norm_sql(Sql) when is_binary(Sql) ->
+    binary:replace(Sql, <<"public.">>, <<>>, [global]);
+norm_sql(Sql) ->
+    norm_sql(iolist_to_binary(Sql)).
+
 %% 注意子句顺序：workspace_member 是 workspace 的前缀扩展，
 %% 更具体的 member 前缀必须放在前面，否则会被 workspace 子句截胡
-task_tx_query(<<"SELECT status FROM workspace_member", _/binary>>) ->
+task_tx_query(Sql) when is_binary(Sql) ->
+    task_tx_query_norm(norm_sql(Sql));
+task_tx_query(Sql) ->
+    task_tx_query_norm(iolist_to_binary(Sql)).
+
+task_tx_query_norm(<<"SELECT status FROM workspace_member", _/binary>>) ->
     %% workspace_member_repo:find_tx（assignee 校验，单列 status）
     {ok, [#{<<"status">> => member_status()}]};
-task_tx_query(<<"SELECT role,status", _/binary>>) ->
+task_tx_query_norm(<<"SELECT role,status", _/binary>>) ->
     %% workspace_member_repo:find_tx（role,status 双列，upsert 路径）
     {ok, [#{<<"role">> => 1, <<"status">> => member_status()}]};
-task_tx_query(<<"SELECT status FROM workspace", _/binary>>) ->
+task_tx_query_norm(<<"SELECT status FROM workspace", _/binary>>) ->
     {ok, [#{<<"status">> => ws_status()}]};
-task_tx_query(_) ->
+task_tx_query_norm(_) ->
     {ok, []}.
 
 member_status() ->
@@ -182,12 +193,16 @@ task_mocks(CurrStatus) ->
         ]},
         {elib_pg, [
             {'with_tx', 1, tx_fun()},
-            {'one', 2, fun
-                (<<"SELECT id FROM workspace", _/binary>>, _) ->
-                    {ok, #{<<"id">> => ?WS_ID}};
-                %% task/repo find_by_id(列名版) 直查（passthrough 落到真库）
-                (<<"SELECT id,project_id,title", _/binary>>, _) ->
-                    {ok, task_row(CurrStatus)}
+            {'one', 2, fun(Sql, _) ->
+                case norm_sql(Sql) of
+                    <<"SELECT id FROM workspace", _/binary>> ->
+                        {ok, #{<<"id">> => ?WS_ID}};
+                    %% task/repo find_by_id(列名版) 直查（passthrough 落到真库）
+                    <<"SELECT id,project_id,title", _/binary>> ->
+                        {ok, task_row(CurrStatus)};
+                    Other ->
+                        erlang:error({mock_clause_miss, Other})
+                end
             end},
             {'query', 3, fun(_C, Sql, _P) -> task_tx_query(Sql) end},
             {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}

@@ -40,12 +40,23 @@ tx_mock_extra() ->
         {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
     ]}.
 
-tx_query(<<"SELECT id FROM channel">>) ->
+%% 全量跑时 sql_driver=pgsql，表名带 public. 前缀；匹配前归一
+norm_sql(Sql) when is_binary(Sql) ->
+    binary:replace(Sql, <<"public.">>, <<>>, [global]);
+norm_sql(Sql) ->
+    norm_sql(iolist_to_binary(Sql)).
+
+tx_query(Sql) when is_binary(Sql) ->
+    tx_query_norm(norm_sql(Sql));
+tx_query(Sql) ->
+    tx_query_norm(iolist_to_binary(Sql)).
+
+tx_query_norm(<<"SELECT id FROM channel">>) ->
     {ok, [#{<<"id">> => ?CID}]};
-tx_query(<<"SELECT id FROM \"group\"">>) ->
+tx_query_norm(<<"SELECT id FROM \"group\"">>) ->
     {ok, [#{<<"id">> => ?GID}]};
 %% do_create_template 末尾的同事务回读（ZC-09 M-5 引入，原 mock 写于其前）
-tx_query(
+tx_query_norm(
     <<
         "SELECT id, name, logo, owner_id, status, branding, created_at"
         " FROM workspace WHERE id = $1"
@@ -62,7 +73,7 @@ tx_query(
             <<"created_at">> => 0
         }
     ]};
-tx_query(_) ->
+tx_query_norm(_) ->
     {ok, []}.
 
 happy_path_mocks(Fault) ->

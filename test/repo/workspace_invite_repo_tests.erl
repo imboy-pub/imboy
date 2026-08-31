@@ -70,7 +70,13 @@ generate_invite_code_boundary_position_test_() ->
 
 tablename_returns_workspace_invite_table_test_() ->
     ?TEST_SIMPLE(fun() ->
-        ?assertEqual(<<"workspace_invite">>, workspace_invite_repo:tablename())
+        %% pgsql 驱动下 public_tablename 会加 public. 前缀（契约行为）
+        Expected =
+            case config_ds:env(sql_driver) of
+                pgsql -> <<"public.workspace_invite">>;
+                _ -> <<"workspace_invite">>
+            end,
+        ?assertEqual(Expected, workspace_invite_repo:tablename())
     end).
 
 %% ===================================================================
@@ -89,7 +95,9 @@ add_tx_inserts_parameterized_row_with_returning_test_() ->
             {elib_pg, [
                 {'query', 3, fun(_Conn, Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"INSERT INTO workspace_invite">>) =/= nomatch),
+                    ?assert(
+                        re:run(SqlBin, <<"INSERT INTO (public\\.)?workspace_invite">>) =/= nomatch
+                    ),
                     ?assert(re:run(SqlBin, <<"RETURNING id, workspace_id, code">>) =/= nomatch),
                     %% created_at/updated_at 用 $6（now），不复用 $5（expires_at）
                     ?assert(re:run(SqlBin, <<"\\$5, 'active', \\$6, \\$6">>) =/= nomatch),
@@ -225,7 +233,7 @@ revoke_tx_updates_active_only_test_() ->
             {elib_pg, [
                 {'execute', 3, fun(_Conn, Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
-                    ?assert(re:run(SqlBin, <<"UPDATE workspace_invite">>) =/= nomatch),
+                    ?assert(re:run(SqlBin, <<"UPDATE (public\\.)?workspace_invite">>) =/= nomatch),
                     ?assert(
                         re:run(
                             SqlBin,
@@ -286,7 +294,9 @@ revoke_active_by_ws_tx_test_() ->
                 {elib_pg, [
                     {'execute', 3, fun(_Conn, Sql, Params) ->
                         SqlBin = iolist_to_binary(Sql),
-                        ?assert(re:run(SqlBin, <<"UPDATE workspace_invite">>) =/= nomatch),
+                        ?assert(
+                            re:run(SqlBin, <<"UPDATE (public\\.)?workspace_invite">>) =/= nomatch
+                        ),
                         ?assert(
                             re:run(
                                 SqlBin,
