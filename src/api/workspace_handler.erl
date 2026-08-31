@@ -336,20 +336,33 @@ invite_code_revoke(Req0, State) ->
 
 %% @doc 团队码加入工作区（任意登录用户；幂等：已加入重复输码 → unchanged）
 %% payload：{status => joined|unchanged, workspace => 工作区 map（detail 同源字段）}；
-%% 错误码 981 码无效/已失效、982 已过期、980 已归档（envelope，HTTP 恒 200）。
+%% 错误码 981 码无效/已失效（含非字符串/空 code）、982 已过期、980 已归档
+%% （envelope，HTTP 恒 200）。节流键独立于 generate（join 是全模块最易被
+%% 刷的 DB 放大点：任意登录用户 + 每次至少一个事务）。
 -spec join(cowboy_req:req(), map()) -> cowboy_req:req().
 join(Req0, State) ->
     Uid = auth_ds:current_uid(State),
-    PostVals = elib_param:post(Req0),
-    Code0 = maps:get(<<"code">>, PostVals, <<>>),
-    Code = string:uppercase(string:trim(Code0)),
-    case workspace_logic:join_by_code(Uid, Code) of
-        {ok, joined, WS} ->
-            elib_response:success(Req0, #{status => joined, workspace => WS});
-        {ok, unchanged, WS} ->
-            elib_response:success(Req0, #{status => unchanged, workspace => WS});
-        {error, {Code2, Msg}} ->
-            elib_response:error(Req0, Msg, Code2)
+    case throttle:check(three_second_once, {workspace_join, Uid}) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
+        _ ->
+            PostVals = elib_param:post(Req0),
+            Code0 = maps:get(<<"code">>, PostVals, <<>>),
+            %% 非 binary（JSON number/array 等）或 trim 后为空统一按无效码
+            %% 981，避免 string:trim 抛 function_clause 落 500
+            Code =
+                case is_binary(Code0) of
+                    true -> string:uppercase(string:trim(Code0));
+                    false -> <<>>
+                end,
+            case workspace_logic:join_by_code(Uid, Code) of
+                {ok, joined, WS} ->
+                    elib_response:success(Req0, #{status => joined, workspace => WS});
+                {ok, unchanged, WS} ->
+                    elib_response:success(Req0, #{status => unchanged, workspace => WS});
+                {error, {Code2, Msg}} ->
+                    elib_response:error(Req0, Msg, Code2)
+            end
     end.
 
 %% @doc 移除工作区成员（仅 Owner；冲突 409 全回滚；无冲突级联禁用下属群成员）

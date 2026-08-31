@@ -43,6 +43,10 @@ COMMENT ON COLUMN workspace_invite.status       IS '状态: active 有效 | revo
 
 CREATE UNIQUE INDEX IF NOT EXISTS uk_workspace_invite_code ON workspace_invite USING btree (code);
 
+-- 一工作区至多一个 active 码（DB 兜底：多 Owner 并发 generate 的竞态窗口；
+-- 撞此索引同样 23505 → repo 归一 code_conflict → logic 重试循环收敛单 active）
+CREATE UNIQUE INDEX IF NOT EXISTS uk_workspace_invite_ws_active ON workspace_invite (workspace_id) WHERE status = 'active';
+
 CREATE INDEX IF NOT EXISTS idx_workspace_invite_workspace_id ON workspace_invite USING btree (workspace_id);
 
 ALTER TABLE workspace_invite DROP CONSTRAINT IF EXISTS fk_workspace_invite_workspace;

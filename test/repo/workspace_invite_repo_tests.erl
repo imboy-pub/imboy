@@ -83,19 +83,34 @@ add_tx_inserts_parameterized_row_with_returning_test_() ->
             {elib_tsid, [
                 {'generate', 1, fun(workspace_invite) -> 902001 end}
             ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2036-01-01T00:00:00Z">> end}
+            ]},
             {elib_pg, [
                 {'query', 3, fun(_Conn, Sql, Params) ->
                     SqlBin = iolist_to_binary(Sql),
                     ?assert(re:run(SqlBin, <<"INSERT INTO workspace_invite">>) =/= nomatch),
                     ?assert(re:run(SqlBin, <<"RETURNING id, workspace_id, code">>) =/= nomatch),
-                    ?assertEqual(5, length(Params)),
-                    ?assertEqual([902001, ?WS_ID, <<"ABCD2345">>, ?UID, <<"2036-01-01">>], Params),
+                    %% created_at/updated_at 用 $6（now），不复用 $5（expires_at）
+                    ?assert(re:run(SqlBin, <<"\\$5, 'active', \\$6, \\$6">>) =/= nomatch),
+                    ?assertEqual(6, length(Params)),
+                    ?assertEqual(
+                        [
+                            902001,
+                            ?WS_ID,
+                            <<"ABCD2345">>,
+                            ?UID,
+                            <<"2036-01-01">>,
+                            <<"2036-01-01T00:00:00Z">>
+                        ],
+                        Params
+                    ),
                     {ok, [#{<<"id">> => 902001, <<"code">> => <<"ABCD2345">>}]}
                 end}
             ]}
         ],
         fun() ->
-            %% insert returns new row (parameterized $1..$5)
+            %% insert returns new row (parameterized $1..$6, 审计列=now)
             begin
                 ?assertMatch(
                     {ok, #{<<"id">> := 902001, <<"code">> := <<"ABCD2345">>}},
@@ -113,6 +128,9 @@ add_tx_normalizes_unique_violation_test_() ->
         [
             {elib_tsid, [
                 {'generate', 1, fun(workspace_invite) -> 902002 end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2036-01-01T00:00:00Z">> end}
             ]},
             {elib_pg, [
                 {'query', 3, fun(_Conn, _Sql, _Params) ->

@@ -42,19 +42,21 @@ generate_invite_code() ->
     generate_code_chars(?INVITE_CODE_LEN, <<>>).
 
 %% @doc 事务内插入团队码行（INSERT ... RETURNING 新行）
-%% code 撞全局唯一约束（23505）时返回 {error, code_conflict}，
+%% code 撞全局唯一约束或部分唯一索引 uk_workspace_invite_ws_active
+%% （一工作区至多一个 active 码）均归一 {error, code_conflict}，
 %% 由调用方（logic 层）重新生成码后重试。
--spec add_tx(any(), integer(), binary(), integer() | nil, binary()) ->
+-spec add_tx(any(), integer(), binary(), integer() | null, binary()) ->
     {ok, map()} | {error, code_conflict | term()}.
 add_tx(Conn, WsId, Code, CreatedBy, ExpiresAt) ->
     Tb = tablename(),
     Id = elib_tsid:generate(workspace_invite),
+    Now = elib_dt:now(),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (id, workspace_id, code, created_by, expires_at, status, created_at, updated_at)",
-            " VALUES ($1, $2, $3, $4, $5, 'active', $5, $5)",
+            " VALUES ($1, $2, $3, $4, $5, 'active', $6, $6)",
             " RETURNING id, workspace_id, code, created_by, expires_at, status">>,
-    case elib_pg:query(Conn, Sql, [Id, WsId, Code, CreatedBy, ExpiresAt]) of
+    case elib_pg:query(Conn, Sql, [Id, WsId, Code, CreatedBy, ExpiresAt, Now]) of
         {ok, [Row | _]} ->
             {ok, Row};
         {ok, []} ->

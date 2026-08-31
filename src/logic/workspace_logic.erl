@@ -280,7 +280,9 @@ insert_invite_code(_WsId, _Uid, _ExpiresAt, 0) ->
 insert_invite_code(WsId, Uid, ExpiresAt, Left) ->
     Code = workspace_invite_repo:generate_invite_code(),
     Insert = fun(Conn) ->
-        _ = workspace_invite_repo:revoke_active_by_ws_tx(Conn, WsId),
+        %% 撤旧是"重新生成=旧码失效"的语义前提，失败即中止整个事务
+        %% （连接级故障下后续 INSERT 大概率同样失败，提前失败更明确）
+        {ok, _} = workspace_invite_repo:revoke_active_by_ws_tx(Conn, WsId),
         workspace_invite_repo:add_tx(Conn, WsId, Code, Uid, ExpiresAt)
     end,
     case elib_pg:with_tx(Insert) of
@@ -330,14 +332,16 @@ join_by_code(Uid, Code) ->
             join_valid_code(
                 Uid,
                 maps:get(<<"workspace_id">>, Invite, 0),
+                %% DB NULL 经 epgsql 解码为 null atom（DEFAULT_NULLS）；
+                %% nil atom 无法编码回 NULL，默认值勿用 nil
                 maps:get(
-                    <<"created_by">>, Invite, nil
+                    <<"created_by">>, Invite, null
                 )
             )
     end.
 
 %% 码有效：工作区存在性（detail 同口径 404）→ 幂等检查 → 入会写事务
--spec join_valid_code(integer(), integer(), integer() | nil) ->
+-spec join_valid_code(integer(), integer(), integer() | null) ->
     {ok, joined | unchanged, map()} | {error, {integer(), binary()}}.
 join_valid_code(Uid, WsId, CreatedBy) ->
     case load_workspace(WsId) of
@@ -353,7 +357,7 @@ join_valid_code(Uid, WsId, CreatedBy) ->
     end.
 
 %% 入会写入：workspace_guard:write_tx 归档守卫（980）+ upsert member（幂等）
--spec join_as_member(integer(), integer(), integer() | nil, map()) ->
+-spec join_as_member(integer(), integer(), integer() | null, map()) ->
     {ok, joined | unchanged, map()} | {error, {integer(), binary()}}.
 join_as_member(Uid, WsId, CreatedBy, WS) ->
     Upsert = fun(Conn) ->
