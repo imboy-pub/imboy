@@ -112,7 +112,7 @@ discover_supports_newest_sort_test_() ->
             ]}
         ],
         fun() ->
-            {ok, _} = channel_discovery_logic:discover(1, 20, undefined, <<"newest">>)
+            ?assertMatch({ok, _}, channel_discovery_logic:discover(1, 20, undefined, <<"newest">>))
         end
     ).
 
@@ -128,7 +128,7 @@ discover_supports_active_sort_test_() ->
             ]}
         ],
         fun() ->
-            {ok, _} = channel_discovery_logic:discover(1, 20, undefined, <<"active">>)
+            ?assertMatch({ok, _}, channel_discovery_logic:discover(1, 20, undefined, <<"active">>))
         end
     ).
 
@@ -208,7 +208,7 @@ trending_supports_30d_period_test_() ->
             ]}
         ],
         fun() ->
-            {ok, _} = channel_discovery_logic:trending(30, 20)
+            ?assertMatch({ok, _}, channel_discovery_logic:trending(30, 20))
         end
     ).
 

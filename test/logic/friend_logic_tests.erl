@@ -10,6 +10,35 @@
 %%% 覆盖：添加好友、确认好友、删除好友、移动分组、获取信息
 %%%===================================================================
 
+%% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
+%% ?WITH_MECK/?WITH_MECKS 包在 fun 体内 = 静默空转。此 helper 立即执行等价语义：
+%% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
+%% Self 哨兵可用，无需改进程字典）。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
+%% 单模块便利形式，等价 run_with_mocks([{Module, Expectations}], TestFun)。
+run_with_mock(Module, Expectations, TestFun) ->
+    run_with_mocks([{Module, Expectations}], TestFun).
+
 %% ===================================================================
 %% add_friend/4 测试
 %% ===================================================================
@@ -52,7 +81,7 @@ add_friend_success_test_() ->
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 msg_s2c_ds,
                 [
                     {'write_msg', 8, fun(
@@ -62,7 +91,7 @@ add_friend_success_test_() ->
                     end}
                 ],
                 fun() ->
-                    ?WITH_MECK(
+                    run_with_mock(
                         message_ds,
                         [
                             {'assemble_msg', 8, fun(
@@ -72,13 +101,13 @@ add_friend_success_test_() ->
                             end}
                         ],
                         fun() ->
-                            ?WITH_MECK(
+                            run_with_mock(
                                 message_ds,
                                 [
-                                    {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
+                                    {'send_next', 4, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
                                 ],
                                 fun() ->
-                                    ?WITH_MECK(
+                                    run_with_mock(
                                         elib_retry_config,
                                         [
                                             {'intervals', 1, fun(<<"s2c">>) ->
@@ -86,7 +115,7 @@ add_friend_success_test_() ->
                                             end}
                                         ],
                                         fun() ->
-                                            ?WITH_MECK(
+                                            run_with_mock(
                                                 friend_ds,
                                                 [
                                                     {'pending_status', 2, fun(_From, _To) ->
@@ -100,7 +129,9 @@ add_friend_success_test_() ->
                                                 ],
                                                 fun() ->
                                                     CurrentUid = 1,
-                                                    To = <<"test_to_2">>,
+                                                    %% 夹具须为数字串：do_add_friend
+                                                    %% 首步 ec_cnv:to_integer(To)
+                                                    To = <<"10002">>,
                                                     Payload = #{<<"msg">> => <<"请加我好友"/utf8>>},
                                                     CreatedAt = 1640995200,
 
@@ -129,7 +160,7 @@ add_friend_with_map_payload_test_() ->
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 msg_s2c_ds,
                 [
                     {'write_msg', 8, fun(
@@ -139,7 +170,7 @@ add_friend_with_map_payload_test_() ->
                     end}
                 ],
                 fun() ->
-                    ?WITH_MECK(
+                    run_with_mock(
                         message_ds,
                         [
                             {'assemble_msg', 8, fun(
@@ -149,19 +180,19 @@ add_friend_with_map_payload_test_() ->
                             end}
                         ],
                         fun() ->
-                            ?WITH_MECK(
+                            run_with_mock(
                                 message_ds,
                                 [
-                                    {'send_next', 3, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
+                                    {'send_next', 4, fun(_ToId, _MsgId, _Message, _MsLi) -> ok end}
                                 ],
                                 fun() ->
-                                    ?WITH_MECK(
+                                    run_with_mock(
                                         elib_retry_config,
                                         [
                                             {'intervals', 1, fun(_) -> [2000] end}
                                         ],
                                         fun() ->
-                                            ?WITH_MECK(
+                                            run_with_mock(
                                                 friend_ds,
                                                 [
                                                     {'pending_status', 2, fun(_From, _To) ->
@@ -175,7 +206,7 @@ add_friend_with_map_payload_test_() ->
                                                 ],
                                                 fun() ->
                                                     CurrentUid = 1,
-                                                    To = <<"test_to_2">>,
+                                                    To = <<"10002">>,
                                                     Payload = #{
                                                         <<"msg">> => <<"你好"/utf8>>,
                                                         <<"source">> => <<"search">>
@@ -295,19 +326,20 @@ confirm_friend_success_test_() ->
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 jsone,
                 [
                     {'decode', 2, fun(_Payload, _Opts) ->
-                        {ok, #{
+                        %% jsone:decode 直接返回解码结果，不包 {ok, _}
+                        #{
                             <<"from">> => #{<<"remark">> => <<"好友A"/utf8>>, <<"tag">> => <<>>},
                             <<"to">> => #{<<"remark">> => <<"好友B"/utf8>>, <<"tag">> => <<>>},
                             <<"source">> => <<"search">>
-                        }}
+                        }
                     end}
                 ],
                 fun() ->
-                    ?WITH_MECK(
+                    run_with_mock(
                         friend_ds,
                         [
                             {'pending_status', 2, fun(_From, _To) -> pending end},
@@ -319,7 +351,7 @@ confirm_friend_success_test_() ->
                             end}
                         ],
                         fun() ->
-                            ?WITH_MECK(
+                            run_with_mock(
                                 msg_s2c_ds,
                                 [
                                     {'write_msg', 8, fun(
@@ -336,7 +368,7 @@ confirm_friend_success_test_() ->
                                     end}
                                 ],
                                 fun() ->
-                                    ?WITH_MECK(
+                                    run_with_mock(
                                         message_ds,
                                         [
                                             {'assemble_msg', 8, fun(
@@ -353,23 +385,23 @@ confirm_friend_success_test_() ->
                                             end}
                                         ],
                                         fun() ->
-                                            ?WITH_MECK(
+                                            run_with_mock(
                                                 message_ds,
                                                 [
-                                                    {'send_next', 3, fun(
+                                                    {'send_next', 4, fun(
                                                         _ToId, _MsgId, _Message, _MsLi
                                                     ) ->
                                                         ok
                                                     end}
                                                 ],
                                                 fun() ->
-                                                    ?WITH_MECK(
+                                                    run_with_mock(
                                                         elib_retry_config,
                                                         [
                                                             {'intervals', 1, fun(_) -> [2000] end}
                                                         ],
                                                         fun() ->
-                                                            ?WITH_MECK(
+                                                            run_with_mock(
                                                                 imboy_cache,
                                                                 [
                                                                     {'flush', 1, fun(_Key) ->
@@ -378,8 +410,8 @@ confirm_friend_success_test_() ->
                                                                 ],
                                                                 fun() ->
                                                                     CurrentUid = 200,
-                                                                    From = <<"test_from_2">>,
-                                                                    To = <<"test_to_2">>,
+                                                                    From = <<"10001">>,
+                                                                    To = <<"10002">>,
                                                                     Payload = <<"{}">>,
 
                                                                     Result = friend_logic:confirm_friend(
@@ -417,21 +449,21 @@ confirm_friend_with_tags_test_() ->
             {'now', 0, fun() -> <<"2023-01-01T00:00:00Z">> end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 jsone,
                 [
                     {'decode', 2, fun(_Payload, _Opts) ->
-                        {ok, #{
+                        #{
                             <<"from">> => #{
                                 <<"remark">> => <<"朋友"/utf8>>, <<"tag">> => <<"tag1,tag2">>
                             },
                             <<"to">> => #{<<"remark">> => <<"同事"/utf8>>, <<"tag">> => <<"tag3">>},
                             <<"source">> => <<"qrcode">>
-                        }}
+                        }
                     end}
                 ],
                 fun() ->
-                    ?WITH_MECK(
+                    run_with_mock(
                         friend_ds,
                         [
                             {'pending_status', 2, fun(_From, _To) -> pending end},
@@ -443,7 +475,7 @@ confirm_friend_with_tags_test_() ->
                             end}
                         ],
                         fun() ->
-                            ?WITH_MECK(
+                            run_with_mock(
                                 msg_s2c_ds,
                                 [
                                     {'write_msg', 8, fun(
@@ -460,7 +492,7 @@ confirm_friend_with_tags_test_() ->
                                     end}
                                 ],
                                 fun() ->
-                                    ?WITH_MECK(
+                                    run_with_mock(
                                         message_ds,
                                         [
                                             {'assemble_msg', 8, fun(
@@ -477,23 +509,23 @@ confirm_friend_with_tags_test_() ->
                                             end}
                                         ],
                                         fun() ->
-                                            ?WITH_MECK(
+                                            run_with_mock(
                                                 message_ds,
                                                 [
-                                                    {'send_next', 3, fun(
+                                                    {'send_next', 4, fun(
                                                         _ToId, _MsgId, _Message, _MsLi
                                                     ) ->
                                                         ok
                                                     end}
                                                 ],
                                                 fun() ->
-                                                    ?WITH_MECK(
+                                                    run_with_mock(
                                                         elib_retry_config,
                                                         [
                                                             {'intervals', 1, fun(_) -> [2000] end}
                                                         ],
                                                         fun() ->
-                                                            ?WITH_MECK(
+                                                            run_with_mock(
                                                                 user_tag_relation_logic,
                                                                 [
                                                                     {'add', 4, fun(
@@ -506,7 +538,7 @@ confirm_friend_with_tags_test_() ->
                                                                     end}
                                                                 ],
                                                                 fun() ->
-                                                                    ?WITH_MECK(
+                                                                    run_with_mock(
                                                                         imboy_cache,
                                                                         [
                                                                             {'flush', 1, fun(_Key) ->
@@ -516,8 +548,8 @@ confirm_friend_with_tags_test_() ->
                                                                         fun() ->
                                                                             CurrentUid = 200,
                                                                             From =
-                                                                                <<"test_from_2">>,
-                                                                            To = <<"test_to_2">>,
+                                                                                <<"10001">>,
+                                                                            To = <<"10002">>,
                                                                             Payload = <<"{}">>,
 
                                                                             Result = friend_logic:confirm_friend(
@@ -573,7 +605,7 @@ confirm_friend_resp_test_() ->
             end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 user_ds,
                 [
                     %% batch_online_state 注入实时 status + 透传 last_seen_at
@@ -620,7 +652,7 @@ delete_friend_with_binary_uid_test_() ->
             {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 imboy_cache,
                 [
                     {'flush', 1, fun(_Key) -> ok end}
@@ -643,7 +675,7 @@ delete_friend_with_integer_uid_test_() ->
             {'delete', 2, fun(_CurrentUid, _TargetUid) -> ok end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 imboy_cache,
                 [
                     {'flush', 1, fun(_Key) -> ok end}
@@ -706,10 +738,11 @@ information_with_valid_friend_test_() ->
             {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {true, #{<<"id">> => 1}} end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 user_logic,
                 [
-                    {'find_by_id', 2, fun(_Uid, _Column) ->
+                    %% src 现行 find_by_id/1（2 元为历史契约）
+                    {'find_by_id', 1, fun(_Uid) ->
                         #{
                             <<"id">> => 2,
                             <<"account">> => <<"test_account">>,
@@ -751,10 +784,10 @@ information_with_nonexistent_user_test_() ->
             {'is_friend_fields', 3, fun(_CurrentUid, _Uid, _Column) -> {true, #{<<"id">> => 1}} end}
         ],
         fun() ->
-            ?WITH_MECK(
+            run_with_mock(
                 user_logic,
                 [
-                    {'find_by_id', 2, fun(_Uid, _Column) -> #{} end}
+                    {'find_by_id', 1, fun(_Uid) -> #{} end}
                 ],
                 fun() ->
                     CurrentUid = 1,

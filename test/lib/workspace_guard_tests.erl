@@ -48,6 +48,31 @@ guard_mocks(Status) ->
             ]}
         ].
 
+%% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
+%% ?WITH_MECKS 包在 {Desc, fun} 体内 = 静默空转。此 helper 立即执行等价语义：
+%% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
+%% Self 哨兵可用，无需改进程字典）。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
 %%% ===================================================================
 %%% 稳定错误码
 %%% ===================================================================
@@ -74,36 +99,36 @@ error_code_test_() ->
 ensure_writable_test_() ->
     [
         {"personal group passes (regression red line)", fun() ->
-            ?WITH_MECKS(resolver_mocks(personal, personal), fun() ->
+            run_with_mocks(resolver_mocks(personal, personal), fun() ->
                 ?assertEqual(ok, workspace_guard:ensure_writable({group, ?GID}))
             end)
         end},
         {"active workspace passes", fun() ->
-            ?WITH_MECKS(guard_mocks(<<"active">>), fun() ->
+            run_with_mocks(guard_mocks(<<"active">>), fun() ->
                 ?assertEqual(ok, workspace_guard:ensure_writable({group, ?GID}))
             end)
         end},
         {"archived workspace rejected with 980", fun() ->
-            ?WITH_MECKS(guard_mocks(<<"archived">>), fun() ->
+            run_with_mocks(guard_mocks(<<"archived">>), fun() ->
                 ?assertMatch(
                     {error, {980, _}}, workspace_guard:ensure_writable({group, ?GID})
                 )
             end)
         end},
         {"resource not found passes (existing 404 flow)", fun() ->
-            ?WITH_MECKS(resolver_mocks(workspace, workspace), fun() ->
+            run_with_mocks(resolver_mocks(workspace, workspace), fun() ->
                 ?assertEqual(ok, workspace_guard:ensure_writable({group, 999999}))
             end)
         end},
         {"workspace channel guarded too", fun() ->
-            ?WITH_MECKS(guard_mocks(<<"archived">>), fun() ->
+            run_with_mocks(guard_mocks(<<"archived">>), fun() ->
                 ?assertMatch(
                     {error, {980, _}}, workspace_guard:ensure_writable({channel, ?CID})
                 )
             end)
         end},
         {"personal channel passes even when workspace archived", fun() ->
-            ?WITH_MECKS(resolver_mocks(workspace, personal), fun() ->
+            run_with_mocks(resolver_mocks(workspace, personal), fun() ->
                 ?assertEqual(ok, workspace_guard:ensure_writable({channel, ?CID}))
             end)
         end}
@@ -118,12 +143,12 @@ ensure_writable_tx_test_() ->
         {"tx guard uses FOR UPDATE row lock", fun() ->
             %% mock 里 query/3 只接受 FOR UPDATE 语句（SQL 形态断言：
             %% 非行锁形态会 function_clause 崩掉测试）
-            ?WITH_MECKS(guard_mocks(<<"active">>), fun() ->
+            run_with_mocks(guard_mocks(<<"active">>), fun() ->
                 ?assertEqual(ok, workspace_guard:ensure_writable_tx(fake_conn, {group, ?GID}))
             end)
         end},
         {"tx guard archived rejected 980", fun() ->
-            ?WITH_MECKS(guard_mocks(<<"archived">>), fun() ->
+            run_with_mocks(guard_mocks(<<"archived">>), fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     workspace_guard:ensure_writable_tx(fake_conn, {group, ?GID})
@@ -131,7 +156,7 @@ ensure_writable_tx_test_() ->
             end)
         end},
         {"tx guard personal passes without lock query", fun() ->
-            ?WITH_MECKS(resolver_mocks(personal, personal), fun() ->
+            run_with_mocks(resolver_mocks(personal, personal), fun() ->
                 ?assertEqual(ok, workspace_guard:ensure_writable_tx(fake_conn, {group, ?GID}))
             end)
         end}
@@ -144,7 +169,7 @@ ensure_writable_tx_test_() ->
 fail_closed_test_() ->
     [
         {"resolver db error rejected with 503", fun() ->
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     {workspace_resolver, [
                         {'resolve_workspace', 1, fun
@@ -161,7 +186,7 @@ fail_closed_test_() ->
             )
         end},
         {"resolver unsupported resource rejected with 503", fun() ->
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     {workspace_resolver, [
                         {'resolve_workspace', 1, fun
@@ -179,7 +204,7 @@ fail_closed_test_() ->
         end},
         {"status read db error rejected with 503 (autocommit guard)", fun() ->
             %% guard_mocks(none)：status 查询返回 {error, db_error}
-            ?WITH_MECKS(guard_mocks(none), fun() ->
+            run_with_mocks(guard_mocks(none), fun() ->
                 ?assertMatch(
                     {error, {503, _}}, workspace_guard:ensure_writable({group, ?GID})
                 )
@@ -187,7 +212,7 @@ fail_closed_test_() ->
         end},
         {"missing workspace row keeps passthrough semantics", fun() ->
             %% workspace 行不存在（{ok, #{} 默认值）：既有语义放行（非 DB 故障）
-            ?WITH_MECKS(
+            run_with_mocks(
                 resolver_mocks(workspace, workspace) ++
                     [
                         {elib_pg, [
@@ -202,7 +227,7 @@ fail_closed_test_() ->
             )
         end},
         {"tx guard resolver db error rejected with 503", fun() ->
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     {workspace_resolver, [
                         {'resolve_workspace', 1, fun
@@ -220,7 +245,7 @@ fail_closed_test_() ->
             )
         end},
         {"tx guard lock failure stays 503 (regression)", fun() ->
-            ?WITH_MECKS(
+            run_with_mocks(
                 resolver_mocks(workspace, workspace) ++
                     [
                         {elib_pg, [

@@ -100,7 +100,7 @@ discover_supports_newest_sort_test_() ->
             ]}
         ],
         fun() ->
-            {ok, _} = group_discovery_logic:discover(1, 20, undefined, <<"newest">>)
+            ?assertMatch({ok, _}, group_discovery_logic:discover(1, 20, undefined, <<"newest">>))
         end
     ).
 

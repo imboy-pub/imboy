@@ -10,6 +10,28 @@
 -define(PROJECT_ID, 700001).
 -define(OWNER, 900001).
 
+%% {"desc", fun() -> ?WITH_MECKS(...) end} 包装式的返回 spec 不会被 eunit
+%% 解释（mock 不 setup、断言不跑，套件判绿）。本 helper 在测试体内真实
+%% setup / 执行 / cleanup，供包装式测试直接调用。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
 %%% ===================================================================
 %%% admin_page
 %%% ===================================================================
@@ -46,7 +68,7 @@ admin_page_invalid_status_normalized_to_all_test_() ->
     [
         {"admin page invalid status normalized to all", fun() ->
             Self = self(),
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     {project_ds, [
                         {'admin_page', 4, fun(_P, _S, Status, _K) ->

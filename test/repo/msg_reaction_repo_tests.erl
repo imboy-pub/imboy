@@ -137,7 +137,7 @@ find_by_msg_with_empty_result_test_() ->
             {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
         ],
         fun() ->
-            {ok, []} = msg_reaction_repo:find_by_msg(<<"non_existent">>, <<"c2c">>)
+            ?assertMatch({ok, []}, msg_reaction_repo:find_by_msg(<<"non_existent">>, <<"c2c">>))
         end
     ).
 
@@ -288,8 +288,9 @@ add_with_database_error_returns_error_test_() ->
             ]}
         ],
         fun() ->
-            {error, db_error} = msg_reaction_repo:add(
-                <<"msg_edge">>, <<"c2c">>, 999999, <<"👍"/utf8>>
+            ?assertMatch(
+                {error, db_error},
+                msg_reaction_repo:add(<<"msg_edge">>, <<"c2c">>, 999999, <<"👍"/utf8>>)
             )
         end
     ).
@@ -301,6 +302,6 @@ find_by_msg_with_database_error_returns_error_test_() ->
             {'query', 2, fun(_Sql, _Params) -> {error, db_error} end}
         ],
         fun() ->
-            {error, db_error} = msg_reaction_repo:find_by_msg(<<"msg_err">>, <<"c2c">>)
+            ?assertMatch({error, db_error}, msg_reaction_repo:find_by_msg(<<"msg_err">>, <<"c2c">>))
         end
     ).

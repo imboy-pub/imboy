@@ -10,6 +10,31 @@
 %%% 覆盖：用户公钥获取、群成员公钥获取、权限验证
 %%%===================================================================
 
+%% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
+%% ?WITH_MECKS 包在 {Desc, fun} 体内 = 静默空转。此 helper 立即执行等价语义：
+%% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
+%% Self 哨兵可用，无需改进程字典）。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
 %% ===================================================================
 %% user_keys/2 测试
 %% ===================================================================
@@ -205,28 +230,29 @@ group_member_keys_member_success_test_() ->
             {'member_uids', 1, fun(_Gid) -> [123, 456, 789] end}
         ],
         fun() ->
-            ?WITH_MECK(
-                user_device_ds,
+            run_with_mocks(
                 [
-                    {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                        {ok, [
-                            #{
-                                <<"user_id">> => 123,
-                                <<"device_id">> => <<"device_1">>,
-                                <<"public_key">> => <<"key_1">>
-                            },
-                            #{
-                                <<"user_id">> => 456,
-                                <<"device_id">> => <<"device_2">>,
-                                <<"public_key">> => <<"key_2">>
-                            },
-                            #{
-                                <<"user_id">> => 789,
-                                <<"device_id">> => <<"device_3">>,
-                                <<"public_key">> => <<"key_3">>
-                            }
-                        ]}
-                    end}
+                    {user_device_ds, [
+                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
+                            {ok, [
+                                #{
+                                    <<"user_id">> => 123,
+                                    <<"device_id">> => <<"device_1">>,
+                                    <<"public_key">> => <<"key_1">>
+                                },
+                                #{
+                                    <<"user_id">> => 456,
+                                    <<"device_id">> => <<"device_2">>,
+                                    <<"public_key">> => <<"key_2">>
+                                },
+                                #{
+                                    <<"user_id">> => 789,
+                                    <<"device_id">> => <<"device_3">>,
+                                    <<"public_key">> => <<"key_3">>
+                                }
+                            ]}
+                        end}
+                    ]}
                 ],
                 fun() ->
                     CurrentUid = 123,
@@ -271,12 +297,13 @@ group_member_keys_database_error_returns_500_test_() ->
             {'member_uids', 1, fun(_Gid) -> [123, 456] end}
         ],
         fun() ->
-            ?WITH_MECK(
-                user_device_ds,
+            run_with_mocks(
                 [
-                    {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                        {error, database_timeout}
-                    end}
+                    {user_device_ds, [
+                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
+                            {error, database_timeout}
+                        end}
+                    ]}
                 ],
                 fun() ->
                     CurrentUid = 123,
@@ -297,12 +324,13 @@ group_member_keys_empty_group_test_() ->
             {'member_uids', 1, fun(_Gid) -> [] end}
         ],
         fun() ->
-            ?WITH_MECK(
-                user_device_ds,
+            run_with_mocks(
                 [
-                    {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                        {ok, []}
-                    end}
+                    {user_device_ds, [
+                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
+                            {ok, []}
+                        end}
+                    ]}
                 ],
                 fun() ->
                     CurrentUid = 123,
@@ -438,28 +466,29 @@ group_member_keys_sorts_by_uid_test_() ->
             {'member_uids', 1, fun(_Gid) -> [789, 123, 456] end}
         ],
         fun() ->
-            ?WITH_MECK(
-                user_device_ds,
+            run_with_mocks(
                 [
-                    {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                        {ok, [
-                            #{
-                                <<"user_id">> => 789,
-                                <<"device_id">> => <<"device_3">>,
-                                <<"public_key">> => <<"key_3">>
-                            },
-                            #{
-                                <<"user_id">> => 123,
-                                <<"device_id">> => <<"device_1">>,
-                                <<"public_key">> => <<"key_1">>
-                            },
-                            #{
-                                <<"user_id">> => 456,
-                                <<"device_id">> => <<"device_2">>,
-                                <<"public_key">> => <<"key_2">>
-                            }
-                        ]}
-                    end}
+                    {user_device_ds, [
+                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
+                            {ok, [
+                                #{
+                                    <<"user_id">> => 789,
+                                    <<"device_id">> => <<"device_3">>,
+                                    <<"public_key">> => <<"key_3">>
+                                },
+                                #{
+                                    <<"user_id">> => 123,
+                                    <<"device_id">> => <<"device_1">>,
+                                    <<"public_key">> => <<"key_1">>
+                                },
+                                #{
+                                    <<"user_id">> => 456,
+                                    <<"device_id">> => <<"device_2">>,
+                                    <<"public_key">> => <<"key_2">>
+                                }
+                            ]}
+                        end}
+                    ]}
                 ],
                 fun() ->
                     CurrentUid = 123,

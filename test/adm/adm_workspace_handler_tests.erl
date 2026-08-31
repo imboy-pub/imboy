@@ -61,6 +61,28 @@
     ]}
 ).
 
+%% {"desc", fun() -> ?WITH_MECKS(...) end} 包装式的返回 spec 不会被 eunit
+%% 解释（mock 不 setup、断言不跑，套件判绿）。本 helper 在测试体内真实
+%% setup / 执行 / cleanup，供包装式测试直接调用。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
 %%% ===================================================================
 %%% 鉴权（fail-closed：显式 403）
 %%% ===================================================================
@@ -217,7 +239,7 @@ archive_success_passes_adm_uid_and_audits_test_() ->
     [
         {"archive success passes adm uid and audits", fun() ->
             Self = self(),
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     ?MOCK_METHOD(<<"POST">>),
                     ?MOCK_PERM_FIND,

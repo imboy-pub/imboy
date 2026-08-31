@@ -42,6 +42,9 @@
 -define(UID, 900001).
 -define(GID, 777001).
 -define(CID, 666001).
+%% 附件守卫透传的 scope_ref 是 binary（attach_logic 不做类型归一）
+-define(GID_BIN, <<"777001">>).
+-define(CID_BIN, <<"666001">>).
 -define(MID, 555001).
 -define(COMMENT_ID, 444001).
 -define(NOTICE_ID, 333001).
@@ -76,6 +79,10 @@ archived_mocks() ->
                 ({workspace, ?WS_ID}) -> {ok, ?WS_ID};
                 ({group, ?GID}) -> {ok, ?WS_ID};
                 ({channel, ?CID}) -> {ok, ?WS_ID};
+                %% 附件守卫透传业务侧 scope_ref（binary），现行 resolver 对
+                %% group/channel 同样可解析——补 binary 归属子句
+                ({group, ?GID_BIN}) -> {ok, ?WS_ID};
+                ({channel, ?CID_BIN}) -> {ok, ?WS_ID};
                 ({channel_message, ?MID}) -> {ok, ?WS_ID};
                 ({channel_comment, ?COMMENT_ID}) -> {ok, ?WS_ID};
                 ({group_notice, ?NOTICE_ID}) -> {ok, ?WS_ID};
@@ -125,6 +132,31 @@ personal_mocks() ->
         ]}
     ].
 
+%% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
+%% ?WITH_MECKS 包在 {Desc, fun} 体内 = 静默空转。此 helper 立即执行等价语义：
+%% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
+%% Self 哨兵可用，无需改进程字典）。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} ->
+                    ok;
+                {error, Reason} ->
+                    erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
 %%% ===================================================================
 %%% 频道域
 %%% ===================================================================
@@ -140,7 +172,7 @@ channel_closure_test_() ->
                     {'decrement_like_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     channel_comment_ds:add(#{<<"channel_id">> => ?CID})
@@ -165,7 +197,7 @@ channel_closure_test_() ->
                     {'delete_reaction_tx', 5, fun(_, _, _, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     channel_ds:insert_reaction(?CID, ?MID, ?UID, <<"like">>, 1)
@@ -184,7 +216,7 @@ channel_closure_test_() ->
                     {'revoke_tx', 4, fun(_, _, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}}, channel_message_ds:update(?MID, #{is_pinned => true})
                 ),
@@ -203,7 +235,7 @@ channel_closure_test_() ->
                     {'delete_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}}, channel_ds:update(?CID, #{name => <<"x">>})
                 ),
@@ -220,7 +252,7 @@ channel_closure_test_() ->
                     {'update_role_tx', 4, fun(_, _, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     channel_admin_ds:add(#{channel_id => ?CID, user_id => ?UID, role => 2})
@@ -242,7 +274,7 @@ channel_closure_test_() ->
                     {'flush', 1, fun(_) -> ok end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     channel_ds:create_channel(?UID, <<"ws-ch">>, #{
@@ -259,7 +291,7 @@ channel_closure_test_() ->
                     {'reject_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     channel_invitation_ds:create(#{
@@ -283,7 +315,7 @@ channel_closure_test_() ->
                     {'add_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}}, channel_webhook_ds:create(?CID, <<"hook">>, ?UID)
                 ),
@@ -296,7 +328,7 @@ channel_closure_test_() ->
                     {'set_status_tx', 4, fun(_, _, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}}, channel_webhook_ds:disable(?CID, 1)
                 )
@@ -310,7 +342,7 @@ channel_closure_test_() ->
                     end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertEqual(
                     {ok, 0}, channel_ds:insert_message_view(?CID, ?MID, ?UID, 1)
                 )
@@ -325,7 +357,7 @@ channel_closure_test_() ->
                     {'insert_reaction_tx', 6, fun(_, _, _, _, _, _) -> {ok, 1} end}
                 ]}
             ],
-            ?WITH_MECKS(personal_mocks() ++ RepoOk, fun() ->
+            run_with_mocks(personal_mocks() ++ RepoOk, fun() ->
                 ?assertMatch(
                     {ok, 1}, channel_comment_ds:add(#{<<"channel_id">> => ?CID})
                 ),
@@ -348,7 +380,7 @@ group_closure_test_() ->
                     {'update_by_id_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}}, group_ds:update_by_id(?GID, #{title => <<"x">>})
                 )
@@ -363,11 +395,13 @@ group_closure_test_() ->
                     {'add', 2, fun(_, _) -> {error, must_not_log} end}
                 ]},
                 {group_member_repo, [
+                    {'list_by_gid', 2, fun(_, _) -> {ok, []} end},
+                    %% 解散事务内成员日志批量回查走 /3（limit 1_000_000）
                     {'list_by_gid', 3, fun(_, _, _) -> {ok, []} end}
                 ]}
             ],
             G = #{<<"id">> => ?GID, <<"owner_uid">> => ?UID},
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}}, group_ds:dissolve_group(?UID, ?GID, ?UID, G)
                 )
@@ -379,7 +413,7 @@ group_closure_test_() ->
                     {'join_group', 5, fun(_, _, _, _, _) -> {error, must_not_join} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_member_logic:join_group(<<"invite">>, ?UID, ?GID, #{})
@@ -392,26 +426,35 @@ group_closure_test_() ->
                     {'leave', 4, fun(_, _, _, _) -> {error, must_not_leave} end}
                 ]},
                 {group_ds, [
-                    {"leave", 2, fun(_, _) -> {error, must_not_cache} end}
+                    {'leave', 2, fun(_, _) -> {error, must_not_cache} end}
                 ]},
                 {imboy_domain_event, [
                     {'publish', 1, fun(_) -> {error, must_not_publish} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertEqual(ok, group_member_logic:leave(?UID, ?GID, ?UID))
             end)
         end},
         {"group member role change rejected 980 in tx", fun() ->
             PermOk = [
                 {group_member_ds, [
-                    {'get_member_info', 3, fun(_, _, _) -> {ok, #{<<"role">> => 4}} end},
+                    %% 权限链：操作者=群主(4) 且目标角色须严格更低(1=普通成员)，
+                    %% 全员同角色会在 guard 之前被权限校验拒掉
+                    {'get_member_info', 3, fun
+                        (_, ?UID, <<"role">>) ->
+                            {ok, #{<<"role">> => 4}};
+                        (_, T, <<"role">>) when T =:= ?UID + 1 ->
+                            {ok, #{<<"role">> => 1}};
+                        (_, _, <<"role">>) ->
+                            #{}
+                    end},
                     {'find_by_gid_and_uid', 3, fun(_, _, _) -> #{<<"id">> => 1} end},
                     {'update_role', 4, fun(_, _, _, _) -> {error, must_not_write} end},
                     {'update_role', 5, fun(_, _, _, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ PermOk, fun() ->
+            run_with_mocks(archived_mocks() ++ PermOk, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_member_logic:update_role(?UID, ?GID, ?UID + 1, 1)
@@ -429,10 +472,11 @@ group_closure_test_() ->
                     end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertEqual(
                     {error, ?ERR_WORKSPACE_ARCHIVED},
-                    group_logic:add(0, ?UID, 2, [], {?WS_ID, <<"workspace">>})
+                    %% add/5 的 scope 参数现行形状为 {<<"workspace">>, WsId}
+                    group_logic:add(0, ?UID, 2, [], {<<"workspace">>, ?WS_ID})
                 )
             end)
         end},
@@ -442,7 +486,7 @@ group_closure_test_() ->
                     {'update_by_id_tx', 3, fun(_, _, _) -> {ok, 1} end}
                 ]}
             ],
-            ?WITH_MECKS(personal_mocks() ++ RepoOk, fun() ->
+            run_with_mocks(personal_mocks() ++ RepoOk, fun() ->
                 ?assertMatch(
                     {ok, 1}, group_ds:update_by_id(?GID, #{title => <<"x">>})
                 )
@@ -467,7 +511,7 @@ subdomain_closure_test_() ->
                     {'update_vote_status_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_vote_ds:insert_vote(#{
@@ -517,7 +561,7 @@ subdomain_closure_test_() ->
                     {'check_admin', 2, fun(_, _) -> false end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ RepoOk, fun() ->
+            run_with_mocks(archived_mocks() ++ RepoOk, fun() ->
                 ?assertEqual(
                     {error, 980}, group_vote_logic:close_vote(?VOTE_ID, ?UID)
                 )
@@ -537,7 +581,7 @@ subdomain_closure_test_() ->
                     {'insert_remind_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_schedule_ds:insert_schedule(#{
@@ -587,7 +631,7 @@ subdomain_closure_test_() ->
                     {'send', 7, fun(_, _, _, _, _, _, _) -> erlang:error(must_not_push) end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ Mocks, fun() ->
+            run_with_mocks(archived_mocks() ++ Mocks, fun() ->
                 %% freeze：已发送标记跳过不报错
                 ?assertEqual({ok, 0}, group_schedule_ds:update_remind_sent(?REMIND_ID)),
                 %% 归档后提醒推送零泄漏（通知发送在守卫之后才会执行）
@@ -620,7 +664,7 @@ subdomain_closure_test_() ->
                     {'delete_album_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+            run_with_mocks(archived_mocks() ++ MemberOk, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_album_ds:create_album(?GID, ?UID, <<"album">>, undefined)
@@ -655,7 +699,7 @@ subdomain_closure_test_() ->
                     {'upload', 3, fun(_, _, _) -> erlang:error(must_not_upload) end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+            run_with_mocks(archived_mocks() ++ MemberOk, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_album_ds:upload_photo(?GID, ?UID, <<"alb">>, <<0, 0, 0>>, <<"a.png">>)
@@ -685,7 +729,7 @@ subdomain_closure_test_() ->
                     {'upload', 3, fun(_, _, _) -> erlang:error(must_not_upload) end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+            run_with_mocks(archived_mocks() ++ MemberOk, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_file_ds:upload_file(?GID, ?UID, <<"a.txt">>, <<0>>, <<"text/plain">>)
@@ -715,7 +759,7 @@ subdomain_closure_test_() ->
                     {'increment_download_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+            run_with_mocks(archived_mocks() ++ MemberOk, fun() ->
                 %% 归档可读红线：下载读取永不 403（计数在 spawn 内 freeze 跳过）
                 ?assertEqual({ok, <<"u">>}, group_file_ds:download_file(?FILE_PK, ?UID))
             end)
@@ -733,7 +777,7 @@ subdomain_closure_test_() ->
                     {'update_tx', 3, fun(_, _, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_task_ds:insert_task(#{
@@ -778,7 +822,7 @@ subdomain_closure_test_() ->
                     {'insert_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MemberOk, fun() ->
+            run_with_mocks(archived_mocks() ++ MemberOk, fun() ->
                 ?assertMatch(
                     {error, _, 980},
                     group_task_logic:create(?GID, ?UID, <<"t">>, #{})
@@ -798,7 +842,7 @@ subdomain_closure_test_() ->
                     {'delete_by_group_id_tx', 2, fun(_, _) -> {error, must_not_write} end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 ?assertMatch(
                     {error, {980, _}}, group_tag_ds:add(?GID, ?UID, <<"tag">>)
                 ),
@@ -818,7 +862,7 @@ subdomain_closure_test_() ->
                     end}
                 ]}
             ],
-            ?WITH_MECKS(archived_mocks() ++ MustNot, fun() ->
+            run_with_mocks(archived_mocks() ++ MustNot, fun() ->
                 %% freeze：用户个人群归类静默跳过（与退群 leave 同族），
                 %% 分类 CRUD 本身为 user_id 键控个人数据不加守卫。
                 ?assertEqual(
@@ -851,7 +895,7 @@ subdomain_closure_test_() ->
                     {'create_album_tx', 5, fun(_, _, _, _, _) -> {ok, 1} end}
                 ]}
             ],
-            ?WITH_MECKS(personal_mocks() ++ RepoOk, fun() ->
+            run_with_mocks(personal_mocks() ++ RepoOk, fun() ->
                 ?assertMatch(
                     {ok, 1, _},
                     group_vote_ds:insert_vote(#{
@@ -891,12 +935,17 @@ subdomain_closure_test_() ->
 attachment_save_closure_test_() ->
     OssMock =
         {elib_oss, [
-            {'get_bucket', 1, fun(<<"group">>) -> <<"bucket">> end},
+            {'get_bucket', 1, fun
+                (<<"group">>) -> <<"bucket">>;
+                (<<"channel">>) -> <<"bucket">>
+            end},
             {'head_object', 2, fun(_, _) ->
                 {ok, #{size => 10, content_type => <<"image/png">>}}
             end},
             {'max_file_size', 0, fun() -> 1000 end},
-            {'validate_file_type', 1, fun(_) -> true end}
+            {'validate_file_type', 1, fun(_) -> true end},
+            %% 公开入口 confirm/5 会先核 key 归属（verify_and_save 已转内部函数）
+            {'owner_of_key', 1, fun(_) -> {ok, ?UID} end}
         ]},
     AttachMock =
         {attachment_ds, [
@@ -905,20 +954,28 @@ attachment_save_closure_test_() ->
     Meta = #{<<"cipher">> => null},
     [
         {"group-scope attachment confirm rejected 980", fun() ->
-            ?WITH_MECKS(archived_mocks() ++ [OssMock, AttachMock], fun() ->
+            GroupPerm =
+                {group_member_ds, [
+                    {'is_member', 2, fun(_, _) -> true end}
+                ]},
+            run_with_mocks(archived_mocks() ++ [OssMock, GroupPerm, AttachMock], fun() ->
                 ?assertMatch(
                     {error, {980, _}},
-                    attach_logic:verify_and_save(
+                    attach_logic:confirm(
                         ?UID, <<"k">>, <<"group">>, integer_to_binary(?GID), Meta
                     )
                 )
             end)
         end},
         {"channel-scope attachment confirm rejected 980", fun() ->
-            ?WITH_MECKS(archived_mocks() ++ [OssMock, AttachMock], fun() ->
+            ChannelPerm =
+                {channel_logic_common, [
+                    {'get_user_role', 2, fun(_, _) -> 1 end}
+                ]},
+            run_with_mocks(archived_mocks() ++ [OssMock, ChannelPerm, AttachMock], fun() ->
                 ?assertMatch(
                     {error, {980, _}},
-                    attach_logic:verify_and_save(
+                    attach_logic:confirm(
                         ?UID, <<"k">>, <<"channel">>, integer_to_binary(?CID), Meta
                     )
                 )
@@ -941,12 +998,13 @@ attachment_save_closure_test_() ->
                         {ok, #{size => 10, content_type => <<"image/png">>}}
                     end},
                     {'max_file_size', 0, fun() -> 1000 end},
-                    {'validate_file_type', 1, fun(_) -> true end}
+                    {'validate_file_type', 1, fun(_) -> true end},
+                    {'owner_of_key', 1, fun(_) -> {ok, ?UID} end}
                 ]},
-            ?WITH_MECKS(personal_mocks() ++ [PublicMock, ConvMock, SaveOk], fun() ->
+            run_with_mocks(personal_mocks() ++ [PublicMock, ConvMock, SaveOk], fun() ->
                 ?assertMatch(
                     {ok, _},
-                    attach_logic:verify_and_save(
+                    attach_logic:confirm(
                         ?UID, <<"k">>, <<"c2c">>, <<"ref">>, Meta
                     )
                 )
@@ -968,12 +1026,13 @@ attachment_save_closure_test_() ->
                         {ok, #{size => 10, content_type => <<"image/png">>}}
                     end},
                     {'max_file_size', 0, fun() -> 1000 end},
-                    {'validate_file_type', 1, fun(_) -> true end}
+                    {'validate_file_type', 1, fun(_) -> true end},
+                    {'owner_of_key', 1, fun(_) -> {ok, ?UID} end}
                 ]},
-            ?WITH_MECKS(archived_mocks() ++ [MomentOss, SaveOk2], fun() ->
+            run_with_mocks(archived_mocks() ++ [MomentOss, SaveOk2], fun() ->
                 ?assertMatch(
                     {ok, _},
-                    attach_logic:verify_and_save(?UID, <<"k">>, <<"moment">>, undefined, Meta)
+                    attach_logic:confirm(?UID, <<"k">>, <<"moment">>, undefined, Meta)
                 )
             end)
         end},
@@ -990,12 +1049,13 @@ attachment_save_closure_test_() ->
                         {ok, #{size => 10, content_type => <<"image/png">>}}
                     end},
                     {'max_file_size', 0, fun() -> 1000 end},
-                    {'validate_file_type', 1, fun(_) -> true end}
+                    {'validate_file_type', 1, fun(_) -> true end},
+                    {'owner_of_key', 1, fun(_) -> {ok, ?UID} end}
                 ]},
-            ?WITH_MECKS(archived_mocks() ++ [PrivateOss, SaveOk3], fun() ->
+            run_with_mocks(archived_mocks() ++ [PrivateOss, SaveOk3], fun() ->
                 ?assertMatch(
                     {ok, _},
-                    attach_logic:verify_and_save(?UID, <<"k">>, <<"private">>, undefined, Meta)
+                    attach_logic:confirm(?UID, <<"k">>, <<"private">>, undefined, Meta)
                 )
             end)
         end}
@@ -1015,7 +1075,7 @@ group_file_upload_closure_test_() ->
                     {'validate_file_type', 1, fun(_) -> true end},
                     {'upload', 3, fun(_, _, _) -> {error, must_not_upload} end}
                 ]},
-            ?WITH_MECKS(archived_mocks() ++ [MemberMock, OssMustNot], fun() ->
+            run_with_mocks(archived_mocks() ++ [MemberMock, OssMustNot], fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     group_file_ds:upload_file(
@@ -1025,28 +1085,43 @@ group_file_upload_closure_test_() ->
             end)
         end},
         {"group file attachment write aborted in-tx on archived (window race)", fun() ->
-            %% 前置检查通过后归档竞态落进检查-写窗口：write_attachment 的
+            %% 前置检查通过后归档竞态落进检查-写窗口：write_tx 的
             %% 同事务守卫兜底——attachment 行绝不落库（save 不执行），
             %% 且 fail-open 设计不变（返回 ok、只记日志，不放大成上传失败）。
+            %% 驱动公开入口 upload_file/5：预检（自动提交 one/2）读到 active，
+            %% 落库守卫（事务内 query/3）已翻为 archived——窗口竞态。
+            MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
+            OssOk =
+                {elib_oss, [
+                    {'validate_file_type', 1, fun(_) -> true end},
+                    {'upload', 3, fun(_, _, _) -> {ok, <<"http://u">>, <<"fid">>} end},
+                    {'get_file_category', 1, fun(_) -> image end}
+                ]},
             SaveMustNot =
                 {attachment_ds, [
                     {'save', 4, fun(_, _, _, _) -> must_not_save end}
                 ]},
-            ?WITH_MECKS(archived_mocks() ++ [SaveMustNot], fun() ->
-                ?assertEqual(
-                    ok,
-                    group_file_ds:write_attachment(
-                        ?GID,
-                        ?UID,
-                        <<"a.png">>,
-                        <<"bin">>,
-                        <<"image/png">>,
-                        <<"http://u">>,
-                        <<"fid">>,
-                        <<"hash">>
+            RaceMock =
+                {elib_pg, [
+                    {'with_tx', 1, tx_fun()},
+                    {'one', 2, fun(<<"SELECT status FROM workspace", _/binary>>, _) ->
+                        {ok, #{<<"status">> => <<"active">>}}
+                    end},
+                    {'query', 3, fun(fake_conn, <<"SELECT status FROM workspace", _/binary>>, _) ->
+                        {ok, [#{<<"status">> => <<"archived">>}]}
+                    end}
+                ]},
+            run_with_mocks(
+                archived_mocks() ++ [MemberMock, RaceMock, OssOk, SaveMustNot],
+                fun() ->
+                    ?assertMatch(
+                        {error, {980, _}},
+                        group_file_ds:upload_file(
+                            ?GID, ?UID, <<"a.png">>, <<"bin">>, <<"image/png">>
+                        )
                     )
-                )
-            end)
+                end
+            )
         end},
         {"personal group file upload unaffected (zero regression)", fun() ->
             MemberMock = {group_ds, [{'is_member', 2, fun(_, _) -> true end}]},
@@ -1056,9 +1131,9 @@ group_file_upload_closure_test_() ->
                     {'upload', 3, fun(_, _, _) -> {ok, <<"http://u">>, <<"fid">>} end},
                     {'get_file_category', 1, fun(_) -> image end}
                 ]},
-            InsertMock = {group_file_repo, [{'insert', 1, fun(_) -> {ok, 1} end}]},
+            InsertMock = {group_file_repo, [{'insert_tx', 2, fun(_, _) -> {ok, 1} end}]},
             SaveOk = {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]},
-            ?WITH_MECKS(
+            run_with_mocks(
                 personal_mocks() ++ [MemberMock, OssMock, InsertMock, SaveOk],
                 fun() ->
                     ?assertMatch(
@@ -1079,7 +1154,7 @@ group_file_upload_closure_test_() ->
 guard_helper_test_() ->
     [
         {"write_tx executes fun after guard passes", fun() ->
-            ?WITH_MECKS(personal_mocks(), fun() ->
+            run_with_mocks(personal_mocks(), fun() ->
                 ?assertEqual(
                     {written, 42},
                     workspace_guard:write_tx({group, ?GID}, fun(_Conn) -> {written, 42} end)
@@ -1087,7 +1162,7 @@ guard_helper_test_() ->
             end)
         end},
         {"write_tx_or_skip returns skipped when archived", fun() ->
-            ?WITH_MECKS(archived_mocks(), fun() ->
+            run_with_mocks(archived_mocks(), fun() ->
                 ?assertEqual(
                     skipped,
                     workspace_guard:write_tx_or_skip({group, ?GID}, fun(_Conn) ->
@@ -1108,7 +1183,7 @@ guard_helper_test_() ->
                 {workspace_resolver, [
                     {'resolve_workspace', 1, fun({group, ?GID}) -> {ok, ?WS_ID} end}
                 ]},
-            ?WITH_MECKS([ResolverMock, ActiveMocks], fun() ->
+            run_with_mocks([ResolverMock, ActiveMocks], fun() ->
                 ?assertEqual(
                     {written, ok},
                     workspace_guard:write_tx_or_skip({group, ?GID}, fun(_Conn) -> ok end)

@@ -50,23 +50,28 @@ ping_nodes_returns_node_status_pairs_test_() ->
 
 handle_node_info_valid_updates_cache_test_() ->
     ?TEST_WITH_APP(fun() ->
-        ?WITH_MECK(imboy_cache, [
-            {'set', 3, fun(Key, Value, TTL) ->
-                ?assertEqual({cluster_node_info, 'node1@host'}, Key),
-                ?assertEqual(300, TTL),
-                ?assertEqual('node1@host', maps:get(node, Value)),
-                ok
-            end}
-        ], fun() ->
-            NodeInfo = #{
-                node => 'node1@host',
-                timestamp => {1704, 0, 0},
-                version => "1.0.0",
-                status => online,
-                capabilities => [cache, cluster]
-            },
-            ?assertEqual(ok, imboy_cluster:handle_node_info(NodeInfo))
-        end)
+        run_with_mocks(
+            [
+                {imboy_cache, [
+                    {'set', 3, fun(Key, Value, TTL) ->
+                        ?assertEqual({cluster_node_info, 'node1@host'}, Key),
+                        ?assertEqual(300, TTL),
+                        ?assertEqual('node1@host', maps:get(node, Value)),
+                        ok
+                    end}
+                ]}
+            ],
+            fun() ->
+                NodeInfo = #{
+                    node => 'node1@host',
+                    timestamp => {1704, 0, 0},
+                    version => "1.0.0",
+                    status => online,
+                    capabilities => [cache, cluster]
+                },
+                ?assertEqual(ok, imboy_cluster:handle_node_info(NodeInfo))
+            end
+        )
     end).
 
 handle_node_info_missing_fields_returns_error_test_() ->
@@ -95,23 +100,51 @@ handle_node_info_invalid_node_name_returns_error_test_() ->
 
 handle_node_info_accepts_extra_fields_test_() ->
     ?TEST_WITH_APP(fun() ->
-        ?WITH_MECK(imboy_cache, [
-            {'set', 3, fun(_Key, _Value, _TTL) -> ok end}
-        ], fun() ->
-            ?assertEqual(
-                ok,
-                imboy_cluster:handle_node_info(#{
-                    node => test@host,
-                    timestamp => {0, 0, 0},
-                    version => "1.0",
-                    status => online,
-                    extra_field => <<"value">>
-                })
-            )
-        end)
+        run_with_mocks(
+            [
+                {imboy_cache, [
+                    {'set', 3, fun(_Key, _Value, _TTL) -> ok end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual(
+                    ok,
+                    imboy_cluster:handle_node_info(#{
+                        node => test@host,
+                        timestamp => {0, 0, 0},
+                        version => "1.0",
+                        status => online,
+                        extra_field => <<"value">>
+                    })
+                )
+            end
+        )
     end).
 
 handle_node_info_empty_map_returns_error_test_() ->
     ?TEST_SIMPLE(fun() ->
         ?assertEqual({error, missing_required_fields}, imboy_cluster:handle_node_info(#{}))
     end).
+
+%% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
+%% ?WITH_MECKS 包在 {Desc, fun} 体内或 TestFun 返回字面量 = 静默空转。
+%% 此 helper 立即执行等价语义：setup → 执行断言 → cleanup，使断言真实生效
+%% （simple fun 与 generator 同进程，Self 哨兵可用）。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.

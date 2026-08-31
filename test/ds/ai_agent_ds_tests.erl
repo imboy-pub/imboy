@@ -106,10 +106,13 @@ update_preserves_omitted_behavior_fields_test_() ->
             ]}
         ],
         fun() ->
-            {ok, _} = ai_agent_ds:update(7, #{
-                <<"provider">> => <<"qianfan">>,
-                <<"greeting">> => <<"新的欢迎语"/utf8>>
-            })
+            ?assertMatch(
+                {ok, _},
+                ai_agent_ds:update(7, #{
+                    <<"provider">> => <<"qianfan">>,
+                    <<"greeting">> => <<"新的欢迎语"/utf8>>
+                })
+            )
         end
     ).
 

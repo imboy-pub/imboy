@@ -170,13 +170,13 @@ update_partial_update_test_() ->
             ]}
         ],
         fun() ->
-            {ok, _} = bot_repo:update(1, #{name => <<"NewName">>})
+            ?assertMatch({ok, _}, bot_repo:update(1, #{name => <<"NewName">>}))
         end
     ).
 
 update_with_empty_data_returns_ok_test_() ->
     ?WITH_MECKS([], fun() ->
-        {ok, []} = bot_repo:update(1, #{})
+        ?assertMatch({ok, []}, bot_repo:update(1, #{}))
     end).
 
 %% ===================================================================
@@ -198,7 +198,7 @@ set_status_updates_status_test_() ->
             ]}
         ],
         fun() ->
-            {ok, 1} = bot_repo:set_status(1, 0)
+            ?assertMatch({ok, 1}, bot_repo:set_status(1, 0))
         end
     ).
 

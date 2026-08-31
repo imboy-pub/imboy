@@ -182,6 +182,11 @@ edit_checked_rejects_scope_mutation_body() ->
         ?assertMatch(
             ok, group_logic:edit_checked(?UID, ?GID, #{<<"title">> => <<"new">>})
         ),
+        %% 中段 re-mock 不在 WITH_MECKS 清理清单内，必须显式卸载，
+        %% 否则泄漏到后续套件（实测污染 closure 套件的 group_ds 守卫）
+        meck_helper:cleanup_mock(group_ds),
+        meck_helper:cleanup_mock(msg_s2c_ds),
+        meck_helper:cleanup_mock(group_member_ds),
         ok
     end.
 

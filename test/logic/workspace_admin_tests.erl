@@ -29,6 +29,28 @@ ws_exists_mocks() ->
         {'find_by_id', 2, fun(?WS_ID, <<"id">>) -> #{<<"id">> => ?WS_ID} end}
     ]}.
 
+%% {"desc", fun() -> ?WITH_MECKS(...) end} 包装式的返回 spec 不会被 eunit
+%% 解释（mock 不 setup、断言不跑，套件判绿）。本 helper 在测试体内真实
+%% setup / 执行 / cleanup，供包装式测试直接调用。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
 %%% ===================================================================
 %%% admin_page —— 分页 + 批量资源计数
 %%% ===================================================================
@@ -230,7 +252,7 @@ admin_archive_is_not_owner_gated_test_() ->
     [
         {"admin archive is not owner gated", fun() ->
             Self = self(),
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     ws_exists_mocks(),
                     {workspace_member_repo, [
@@ -292,7 +314,7 @@ admin_restore_clears_audit_columns_test_() ->
     [
         {"admin restore clears audit columns", fun() ->
             Self = self(),
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     ws_exists_mocks(),
                     {elib_pg, [
@@ -346,7 +368,7 @@ admin_archive_then_business_write_rejected_980_test_() ->
     [
         {"admin archive then business write rejected 980", fun() ->
             Self = self(),
-            ?WITH_MECKS(
+            run_with_mocks(
                 [
                     ws_exists_mocks(),
                     {elib_pg, [

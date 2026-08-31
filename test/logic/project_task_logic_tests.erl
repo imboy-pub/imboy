@@ -80,7 +80,7 @@ task_row(Status) ->
     #{
         <<"id">> => ?TASK_ID,
         <<"project_id">> => ?PROJECT_ID,
-        <<"title">> => <<"任务A">>,
+        <<"title">> => <<"任务A"/utf8>>,
         <<"creator_id">> => ?OWNER,
         <<"assignee_id">> => ?MEMBER2,
         <<"status">> => Status,
@@ -88,11 +88,16 @@ task_row(Status) ->
     }.
 
 %% 事务 mock：guard FOR UPDATE / workspace_member 状态 / 幂等查询按 SQL 分派
+%% 注意子句顺序：workspace_member 是 workspace 的前缀扩展，
+%% 更具体的 member 前缀必须放在前面，否则会被 workspace 子句截胡
+task_tx_query(<<"SELECT status FROM workspace_member", _/binary>>) ->
+    %% workspace_member_repo:find_tx（assignee 校验，单列 status）
+    {ok, [#{<<"status">> => member_status()}]};
+task_tx_query(<<"SELECT role,status", _/binary>>) ->
+    %% workspace_member_repo:find_tx（role,status 双列，upsert 路径）
+    {ok, [#{<<"role">> => 1, <<"status">> => member_status()}]};
 task_tx_query(<<"SELECT status FROM workspace", _/binary>>) ->
     {ok, [#{<<"status">> => ws_status()}]};
-task_tx_query(<<"SELECT role,status", _/binary>>) ->
-    %% workspace_member_repo:find_tx（assignee 校验）
-    {ok, [#{<<"status">> => member_status()}]};
 task_tx_query(_) ->
     {ok, []}.
 
@@ -106,8 +111,14 @@ task_mocks(CurrStatus) ->
     Self = self(),
     [
         {project_logic, [
-            {'detail', 2, fun(?OWNER, ?PROJECT_ID) ->
-                {ok, #{<<"id">> => ?PROJECT_ID, <<"workspace_id">> => ?WS_ID}}
+            {'detail', 2, fun
+                (?OWNER, ?PROJECT_ID) ->
+                    {ok, #{<<"id">> => ?PROJECT_ID, <<"workspace_id">> => ?WS_ID}};
+                %% Guest 只读 / 非成员：ensure_can_write 透传 403
+                (?GUEST, ?PROJECT_ID) ->
+                    {error, {403, <<"Guest 角色不能创建工作区资源"/utf8>>}};
+                (?OUTSIDER, ?PROJECT_ID) ->
+                    {error, {403, <<"非工作区成员"/utf8>>}}
             end}
         ]},
         {project_task_ds, [
@@ -171,13 +182,48 @@ task_mocks(CurrStatus) ->
         ]},
         {elib_pg, [
             {'with_tx', 1, tx_fun()},
-            {'one', 2, fun(<<"SELECT id FROM workspace", _/binary>>, _) ->
-                {ok, #{<<"id">> => ?WS_ID}}
+            {'one', 2, fun
+                (<<"SELECT id FROM workspace", _/binary>>, _) ->
+                    {ok, #{<<"id">> => ?WS_ID}};
+                %% task/repo find_by_id(列名版) 直查（passthrough 落到真库）
+                (<<"SELECT id,project_id,title", _/binary>>, _) ->
+                    {ok, task_row(CurrStatus)}
             end},
             {'query', 3, fun(_C, Sql, _P) -> task_tx_query(Sql) end},
             {'execute', 3, fun(_C, _S, _P) -> {ok, 1} end}
         ]}
     ].
+
+%% 先前用例的 mock 哨兵消息会残留在同一进程信箱（simple fun 与 generator
+%% 同进程），接收前必须排空，否则 receive 会误取旧消息
+drain_mailbox() ->
+    receive
+        _ -> drain_mailbox()
+    after 0 -> ok
+    end.
+
+%% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
+%% ?WITH_MECKS 包在 {Desc, fun} 体内 = 静默空转。此 helper 立即执行等价语义：
+%% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
+%% Self 哨兵可用，无需改进程字典）。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
 
 %%% ===================================================================
 %%% assignee 校验（W0：同 workspace active workspace_member）
@@ -186,41 +232,46 @@ task_mocks(CurrStatus) ->
 assignee_validation_test_() ->
     [
         {"create with active member assignee ok", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {ok, _, created},
-                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A">>, ?MEMBER2, 0)
+                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A"/utf8>>, ?MEMBER2, 0)
                 )
             end)
         end},
         {"create with non-member assignee rejected 400", fun() ->
             put({task_tests, member_status}, <<"removed">>),
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {400, _}},
-                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A">>, ?MEMBER2, 0)
-                )
+                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A"/utf8>>, ?MEMBER2, 0)
+                ),
+                %% 进程字典跨用例共享（simple fun 同进程），用后复原
+                put({task_tests, member_status}, <<"active">>),
+                ok
             end)
         end},
         {"create with unassigned (0) skips assignee check", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {ok, _, created},
-                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务B">>, 0, 0)
+                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务B"/utf8>>, 0, 0)
                 )
             end)
         end},
         {"update assignee change revalidates 400", fun() ->
             put({task_tests, member_status}, <<"removed">>),
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {400, _}},
                     project_task_logic:update(?OWNER, ?TASK_ID, undefined, ?MEMBER2, undefined)
-                )
+                ),
+                put({task_tests, member_status}, <<"active">>),
+                ok
             end)
         end},
         {"update assignee active ok", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {ok, _},
                     project_task_logic:update(?OWNER, ?TASK_ID, undefined, ?MEMBER2, undefined)
@@ -236,48 +287,54 @@ assignee_validation_test_() ->
 create_idempotent_test_() ->
     {"duplicate create returns existing task", fun() ->
         put({task_tests, idempotent_hit}, true),
-        ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+        run_with_mocks(task_mocks(<<"todo">>), fun() ->
             ?assertMatch(
                 {ok, #{<<"id">> := ?TASK_ID}, existing},
-                project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A">>, ?MEMBER2, 0)
-            )
+                project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A"/utf8>>, ?MEMBER2, 0)
+            ),
+            %% 幂等标记用后清除，防泄漏进后续用例
+            erase({task_tests, idempotent_hit}),
+            ok
         end)
     end}.
 
 permission_and_archive_test_() ->
     [
         {"guest cannot create task (403)", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {403, _}},
-                    project_task_logic:create(?GUEST, ?PROJECT_ID, <<"任务A">>, 0, 0)
+                    project_task_logic:create(?GUEST, ?PROJECT_ID, <<"任务A"/utf8>>, 0, 0)
                 )
             end)
         end},
         {"non member cannot create task (403)", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {403, _}},
-                    project_task_logic:create(?OUTSIDER, ?PROJECT_ID, <<"任务A">>, 0, 0)
+                    project_task_logic:create(?OUTSIDER, ?PROJECT_ID, <<"任务A"/utf8>>, 0, 0)
                 )
             end)
         end},
         {"guest can read task detail (read-only)", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch({ok, _}, project_task_logic:detail(?GUEST, ?TASK_ID))
             end)
         end},
         {"archived workspace rejects create with 980", fun() ->
             put({task_tests, ws_status}, <<"archived">>),
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {980, _}},
-                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A">>, 0, 0)
-                )
+                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A"/utf8>>, 0, 0)
+                ),
+                %% 进程字典跨用例共享，用后复原
+                put({task_tests, ws_status}, <<"active">>),
+                ok
             end)
         end},
         {"empty title rejected 400", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {400, _}},
                     project_task_logic:create(?OWNER, ?PROJECT_ID, <<>>, 0, 0)
@@ -293,7 +350,8 @@ permission_and_archive_test_() ->
 transition_with_event_test_() ->
     [
         {"legal transition todo->doing writes event in same tx", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            drain_mailbox(),
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {ok, _}, project_task_logic:change_status(?OWNER, ?TASK_ID, <<"doing">>)
                 ),
@@ -304,23 +362,25 @@ transition_with_event_test_() ->
                         ?assertEqual(?PROJECT_ID, maps:get(<<"project_id">>, Data)),
                         ?assertEqual(?TASK_ID, maps:get(<<"target_id">>, Data)),
                         ?assertEqual(<<"task_status">>, maps:get(<<"event_type">>, Data)),
-                        ?assertEqual(?OWNER, maps:get(<<"actor_id">>, Data));
-                    Other ->
-                        ?assert(false, io_lib:format("unexpected: ~p", [Other]))
+                        ?assertEqual(?OWNER, maps:get(<<"actor_id">>, Data))
+                    %% 注意：不能用万能 Other 兜底——update_fields_tx 的
+                    %% task_fields 哨兵先到会被它误捕（receive 按序匹配，
+                    %% 不跳过）；非匹配消息自动留在信箱，无需处理
                 after 500 ->
                     ?assert(false, "task_status event not written")
                 end
             end)
         end},
         {"rollback transition done->todo also writes event (backward legal)", fun() ->
-            ?WITH_MECKS(task_mocks(<<"done">>), fun() ->
+            run_with_mocks(task_mocks(<<"done">>), fun() ->
                 ?assertMatch(
                     {ok, _}, project_task_logic:change_status(?OWNER, ?TASK_ID, <<"todo">>)
                 )
             end)
         end},
         {"illegal skip transition rejected 400 without event (no orphan)", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            drain_mailbox(),
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {400, _}},
                     project_task_logic:change_status(?OWNER, ?TASK_ID, <<"done">>)
@@ -332,7 +392,7 @@ transition_with_event_test_() ->
             end)
         end},
         {"illegal same-status transition rejected 400", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {400, _}},
                     project_task_logic:change_status(?OWNER, ?TASK_ID, <<"todo">>)
@@ -340,7 +400,7 @@ transition_with_event_test_() ->
             end)
         end},
         {"invalid target status rejected 400", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {400, _}},
                     project_task_logic:change_status(?OWNER, ?TASK_ID, <<"blocked">>)
@@ -348,12 +408,14 @@ transition_with_event_test_() ->
             end)
         end},
         {"archived workspace rejects transition with 980 and no event", fun() ->
+            drain_mailbox(),
             put({task_tests, ws_status}, <<"archived">>),
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {980, _}},
                     project_task_logic:change_status(?OWNER, ?TASK_ID, <<"doing">>)
                 ),
+                put({task_tests, ws_status}, <<"active">>),
                 receive
                     {event_insert, _, _} -> ?assert(false, "orphan event when archived")
                 after 0 -> ok
@@ -361,7 +423,7 @@ transition_with_event_test_() ->
             end)
         end},
         {"guest cannot transition (403)", fun() ->
-            ?WITH_MECKS(task_mocks(<<"todo">>), fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch(
                     {error, {403, _}},
                     project_task_logic:change_status(?GUEST, ?TASK_ID, <<"doing">>)

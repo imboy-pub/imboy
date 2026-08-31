@@ -10,6 +10,29 @@
 %%% 覆盖：取消定时器、处理 ACK 取消、缓存管理
 %%%===================================================================
 
+%% ⚠️ eunit 不解释 {Desc, fun} 返回的 {setup,...} spec（探针实证），
+%% ?WITH_MECKS 包在 {Desc, fun} 体内 = 静默空转。此 helper 立即执行等价语义：
+%% setup → 执行断言 → cleanup，使断言真实生效（simple fun 与 generator 同进程，
+%% Self 哨兵可用，无需改进程字典）。
+run_with_mocks(MockConfigs, TestFun) ->
+    lists:foreach(
+        fun({Module, Expectations}) ->
+            case meck_helper:setup_mock(Module, Expectations) of
+                {ok, _} -> ok;
+                {error, Reason} -> erlang:error({mock_setup_failed, Module, Reason})
+            end
+        end,
+        MockConfigs
+    ),
+    try
+        TestFun()
+    after
+        lists:foreach(
+            fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+            MockConfigs
+        )
+    end.
+
 %% ===================================================================
 %% cancel_timer/3 测试
 %% ===================================================================
@@ -21,11 +44,12 @@ cancel_timer_broadcasts_and_handles_locally_test_() ->
             {'broadcast_ack_cancel', 3, fun(_CurrentUid, _DID, _MsgId) -> ok end}
         ],
         fun() ->
-            ?WITH_MECK(
-                ack_retry_cache,
+            run_with_mocks(
                 [
-                    {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
-                    {'get', 1, fun(_Key) -> undefined end}
+                    {ack_retry_cache, [
+                        {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+                        {'get', 1, fun(_Key) -> undefined end}
+                    ]}
                 ],
                 fun() ->
                     CurrentUid = 123,
@@ -46,28 +70,28 @@ cancel_timer_with_existing_timer_test_() ->
             {'broadcast_ack_cancel', 3, fun(_CurrentUid, _DID, _MsgId) -> ok end}
         ],
         fun() ->
-            ?WITH_MECK(
-                ack_retry_cache,
+            TimerRef = make_ref(),
+            run_with_mocks(
                 [
-                    {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
-                    {'get', 1, fun(_Key) -> {ok, make_ref()} end},
-                    {'delete_if_value', 2, fun(_Key, _Ref) -> true end}
+                    {ack_retry_cache, [
+                        {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+                        {'get', 1, fun(_Key) -> {ok, TimerRef} end},
+                        %% cancel_timer 的返回值仅进日志；delete_if_value 携带
+                        %% 原 Ref 即证明走了 cancel 分支。不 mock erlang 模块
+                        %% （meck unstick BIF 模块会楔死整个 VM，实测挂死）。
+                        {'delete_if_value', 2, fun(_Key, Ref) ->
+                            ?assertEqual(TimerRef, Ref),
+                            true
+                        end}
+                    ]}
                 ],
                 fun() ->
-                    ?WITH_MECK(
-                        erlang,
-                        [
-                            {'cancel_timer', 1, fun(_Ref) -> 1000 end}
-                        ],
-                        fun() ->
-                            CurrentUid = 123,
-                            DID = <<"device_abc">>,
-                            MsgId = <<"msg_xyz">>,
+                    CurrentUid = 123,
+                    DID = <<"device_abc">>,
+                    MsgId = <<"msg_xyz">>,
 
-                            Result = websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
-                            ?assertEqual(ok, Result)
-                        end
-                    )
+                    Result = websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
+                    ?assertEqual(ok, Result)
                 end
             )
         end
@@ -80,28 +104,27 @@ cancel_timer_with_timer_already_fired_test_() ->
             {'broadcast_ack_cancel', 3, fun(_CurrentUid, _DID, _MsgId) -> ok end}
         ],
         fun() ->
-            ?WITH_MECK(
-                ack_retry_cache,
+            TimerRef = make_ref(),
+            run_with_mocks(
                 [
-                    {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
-                    {'get', 1, fun(_Key) -> {ok, make_ref()} end},
-                    {'delete_if_value', 2, fun(_Key, _Ref) -> true end}
+                    {ack_retry_cache, [
+                        {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+                        %% timer 已触发（cancel_timer 返回 false）与未触发
+                        %% （返回剩余时间）在可观察行为上等价：均继续删除原 Ref
+                        {'get', 1, fun(_Key) -> {ok, TimerRef} end},
+                        {'delete_if_value', 2, fun(_Key, Ref) ->
+                            ?assertEqual(TimerRef, Ref),
+                            true
+                        end}
+                    ]}
                 ],
                 fun() ->
-                    ?WITH_MECK(
-                        erlang,
-                        [
-                            {'cancel_timer', 1, fun(_Ref) -> false end}
-                        ],
-                        fun() ->
-                            CurrentUid = 123,
-                            DID = <<"device_abc">>,
-                            MsgId = <<"msg_xyz">>,
+                    CurrentUid = 123,
+                    DID = <<"device_abc">>,
+                    MsgId = <<"msg_xyz">>,
 
-                            Result = websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
-                            ?assertEqual(ok, Result)
-                        end
-                    )
+                    Result = websocket_logic:cancel_timer(CurrentUid, DID, MsgId),
+                    ?assertEqual(ok, Result)
                 end
             )
         end
@@ -116,11 +139,12 @@ cancel_timer_broadcast_failure_still_handles_locally_test_() ->
             end}
         ],
         fun() ->
-            ?WITH_MECK(
-                ack_retry_cache,
+            run_with_mocks(
                 [
-                    {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
-                    {'get', 1, fun(_Key) -> undefined end}
+                    {ack_retry_cache, [
+                        {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+                        {'get', 1, fun(_Key) -> undefined end}
+                    ]}
                 ],
                 fun() ->
                     CurrentUid = 123,
@@ -169,27 +193,20 @@ handle_ack_cancel_with_valid_timer_reference_test_() ->
         [
             {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
             {'get', 1, fun(_Key) -> {ok, TestRef} end},
-            {'delete_if_value', 2, fun(_Key, _Ref) -> true end}
+            %% cancel_timer 返回值仅日志可见；delete_if_value 携带原 Ref
+            %% 即证明走了 {ok, Ref} 分支（不 mock erlang 模块，会楔死 VM）
+            {'delete_if_value', 2, fun(_Key, Ref) ->
+                ?assertEqual(TestRef, Ref),
+                true
+            end}
         ],
         fun() ->
-            ?WITH_MECK(
-                erlang,
-                [
-                    {'cancel_timer', 1, fun(Ref) ->
-                        ?assertEqual(TestRef, Ref),
-                        % 返回剩余时间
-                        500
-                    end}
-                ],
-                fun() ->
-                    ToUid = 123,
-                    DID = <<"device_abc">>,
-                    MsgId = <<"msg_xyz">>,
+            ToUid = 123,
+            DID = <<"device_abc">>,
+            MsgId = <<"msg_xyz">>,
 
-                    Result = websocket_logic:handle_ack_cancel(ToUid, DID, MsgId),
-                    ?assertEqual(ok, Result)
-                end
-            )
+            Result = websocket_logic:handle_ack_cancel(ToUid, DID, MsgId),
+            ?assertEqual(ok, Result)
         end
     ).
 
@@ -199,24 +216,20 @@ handle_ack_cancel_with_timer_already_fired_test_() ->
         ack_retry_cache,
         [
             {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+            %% timer 已触发（cancel_timer 返回 false）与未触发可观察行为等价
             {'get', 1, fun(_Key) -> {ok, TestRef} end},
-            {'delete_if_value', 2, fun(_Key, _Ref) -> true end}
+            {'delete_if_value', 2, fun(_Key, Ref) ->
+                ?assertEqual(TestRef, Ref),
+                true
+            end}
         ],
         fun() ->
-            ?WITH_MECK(
-                erlang,
-                [
-                    {'cancel_timer', 1, fun(_Ref) -> false end}
-                ],
-                fun() ->
-                    ToUid = 123,
-                    DID = <<"device_abc">>,
-                    MsgId = <<"msg_xyz">>,
+            ToUid = 123,
+            DID = <<"device_abc">>,
+            MsgId = <<"msg_xyz">>,
 
-                    Result = websocket_logic:handle_ack_cancel(ToUid, DID, MsgId),
-                    ?assertEqual(ok, Result)
-                end
-            )
+            Result = websocket_logic:handle_ack_cancel(ToUid, DID, MsgId),
+            ?assertEqual(ok, Result)
         end
     ).
 
@@ -270,30 +283,22 @@ handle_ack_cancel_duplicate_ack_is_idempotent_test_() ->
                         undefined
                 end
             end},
-            {'delete_if_value', 2, fun(_Key, _Ref) -> true end}
+            {'delete_if_value', 2, fun(_Key, Ref) ->
+                ?assertEqual(TestRef, Ref),
+                true
+            end}
         ],
         fun() ->
-            ?WITH_MECK(
-                erlang,
-                [
-                    {'cancel_timer', 1, fun(Ref) ->
-                        ?assertEqual(TestRef, Ref),
-                        1000
-                    end}
-                ],
-                fun() ->
-                    ToUid = 123,
-                    DID = <<"device_abc">>,
-                    MsgId = <<"msg_dup_ack">>,
+            ToUid = 123,
+            DID = <<"device_abc">>,
+            MsgId = <<"msg_dup_ack">>,
 
-                    erase(ack_cancel_get_seen),
-                    ?assertEqual(ok, websocket_logic:handle_ack_cancel(ToUid, DID, MsgId)),
-                    ?assertEqual(ok, websocket_logic:handle_ack_cancel(ToUid, DID, MsgId)),
-                    ?assertEqual(1, meck:num_calls(erlang, cancel_timer, 1)),
-                    ?assertEqual(1, meck:num_calls(ack_retry_cache, delete_if_value, 2)),
-                    erase(ack_cancel_get_seen)
-                end
-            )
+            erase(ack_cancel_get_seen),
+            ?assertEqual(ok, websocket_logic:handle_ack_cancel(ToUid, DID, MsgId)),
+            ?assertEqual(ok, websocket_logic:handle_ack_cancel(ToUid, DID, MsgId)),
+            %% 幂等性：第二次 ACK 看到标志后 get→undefined，不再走 cancel 分支
+            ?assertEqual(1, meck:num_calls(ack_retry_cache, delete_if_value, 2)),
+            erase(ack_cancel_get_seen)
         end
     ).
 
@@ -346,32 +351,25 @@ cancel_timer_concurrent_calls_test_() ->
             {'broadcast_ack_cancel', 3, fun(_CurrentUid, _DID, _MsgId) -> ok end}
         ],
         fun() ->
-            ?WITH_MECK(
-                ack_retry_cache,
+            run_with_mocks(
                 [
-                    {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
-                    {'get', 1, fun(_Key) -> {ok, make_ref()} end},
-                    {'delete_if_value', 2, fun(_Key, _Ref) -> true end}
+                    {ack_retry_cache, [
+                        {'set', 3, fun(_Key, _Value, _TTL) -> ok end},
+                        {'get', 1, fun(_Key) -> {ok, make_ref()} end},
+                        {'delete_if_value', 2, fun(_Key, _Ref) -> true end}
+                    ]}
                 ],
                 fun() ->
-                    ?WITH_MECK(
-                        erlang,
-                        [
-                            {'cancel_timer', 1, fun(_Ref) -> 1000 end}
-                        ],
-                        fun() ->
-                            CurrentUid = 123,
-                            DID = <<"device_abc">>,
-                            MsgId = <<"msg_xyz">>,
+                    CurrentUid = 123,
+                    DID = <<"device_abc">>,
+                    MsgId = <<"msg_xyz">>,
 
-                            % 模拟并发调用
-                            Results = [
-                                websocket_logic:cancel_timer(CurrentUid, DID, MsgId)
-                             || _ <- lists:seq(1, 10)
-                            ],
-                            ?assertEqual([ok || _ <- lists:seq(1, 10)], Results)
-                        end
-                    )
+                    % 模拟并发调用
+                    Results = [
+                        websocket_logic:cancel_timer(CurrentUid, DID, MsgId)
+                     || _ <- lists:seq(1, 10)
+                    ],
+                    ?assertEqual([ok || _ <- lists:seq(1, 10)], Results)
                 end
             )
         end
