@@ -368,13 +368,27 @@ find_by_keyword(KwdBin) ->
     IsMobile = elib_type:is_mobile(KwdBin),
     User =
         if
-            IsEmail -> user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
-            IsMobile -> user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
-            true -> user_ds:find_by_account(KwdBin, ?DEF_USER_COLUMN)
+            IsEmail ->
+                user_ds:find_by_email(KwdBin, ?DEF_USER_COLUMN);
+            IsMobile ->
+                user_ds:find_by_mobile(KwdBin, ?DEF_USER_COLUMN);
+            true ->
+                %% 全数字 = 用户 ID（TSID）：邀请向导占位符声明支持按 ID 搜索，
+                %% 原实现落到 find_by_account 永远空结果（批次W2R2 bug）
+                case all_digits(KwdBin) of
+                    true -> user_ds:find_by_id(binary_to_integer(KwdBin), ?DEF_USER_COLUMN);
+                    false -> user_ds:find_by_account(KwdBin, ?DEF_USER_COLUMN)
+                end
         end,
     Uid2 = maps:get(<<"id">>, User, 0),
     AllowSearch = fts_user_ds:allow_search(Uid2),
     {User, Uid2, AllowSearch}.
+
+%% 纯 ASCII 数字判定（空串不算；带符号/空白不算——binary_to_integer 会
+%% 接受 <<"+12">> 之类，搜关键词不允许）
+all_digits(<<C, Rest/binary>>) when C >= $0, C =< $9 -> all_digits(Rest);
+all_digits(<<>>) -> true;
+all_digits(_) -> false.
 
 %% @doc email 占用查询 + 绑定（I/O 外壳）。格式已由 user_agg 裁定为合法，
 %% 此处仅查占用：无占用则发绑定邮件，已占用返回错误。

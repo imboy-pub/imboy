@@ -745,17 +745,21 @@ admin_archive(AdmUserId, WsId) ->
             {error, {404, <<"工作区不存在"/utf8>>}}
     end.
 
-admin_archive_tx(Conn, WsId, AdmUserId) ->
+admin_archive_tx(Conn, WsId, _AdmUserId) ->
     Now = elib_dt:now(),
+    %% archived_by 列带 FK → "user"(id)（迁移 00000076），而运营操作者是
+    %% adm_user.id，写入库必 23503 回滚成 500——admin 路径固定写 NULL，
+    %% 操作者审计由 handler 层 audit_workspace_governance（admin_operation_logs）
+    %% 承担；user 侧 Owner 归档（archive/2）不受影响，仍写 Uid。
     Sql =
         <<"UPDATE workspace SET status = 'archived', archived_at = $1,",
-            " archived_by = $2, updated_at = $1", " WHERE id = $3 AND status = 'active'">>,
-    case elib_pg:execute(Conn, Sql, [Now, AdmUserId, WsId]) of
+            " archived_by = NULL, updated_at = $1", " WHERE id = $2 AND status = 'active'">>,
+    case elib_pg:execute(Conn, Sql, [Now, WsId]) of
         {ok, 1} ->
             {ok, #{
                 workspace_id => WsId,
                 status => <<"archived">>,
-                archived_by => AdmUserId,
+                archived_by => null,
                 archived_at => Now
             }};
         {ok, 0} ->

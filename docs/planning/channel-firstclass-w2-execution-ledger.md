@@ -543,3 +543,31 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **引导页复验 BLOCKED 解除（同日追记）**：按总控产出的清理清单执行（用户「继续」确认）——可逆卸载华为视频/华为音乐（`pm uninstall -k --user 0`，fastapp 本就不在；空间 698M→1.0G），装 161M release 单 ABI 包成功。真机两轮启动实证：首轮出引导→跳过→登录页；**force-stop 重启后直达登录页、不再出引导**——welcomeSeen 持久化修复真机实证 PASS，上一卡 BLOCKED 解除。另：升级弹窗「检测到新版本 1.0.1」每次启动重现（自动化测试遗留数据+dismiss 疑未持久化），登记为观察项（与 welcomeSeen 同簇的持久化问题，待排）。
 - **升级弹窗 force 语义修复（同日追记，imboyapp 提交见 git log -1）**：upgrade_page.dart `initGeneral()`（语言切换等触发）无条件置负按钮为「下次再说」，覆盖 build 初始构造已按 isForce 的隐藏——force 升级卡片在文案重建后重新出现跳过按钮。已对齐口径（isForce→空串，Visibility isNotEmpty 隐藏）；dart analyze 零问题、既有升级测试 20/20 绿。**「每次启动都弹 1.0.1」主体定性**：自动化测试遗留的服务端 app_version 数据（upgrade_type 大概率 force，必弹属设计）+「测完即删」未执行——清理属生产数据变更，列人工项（admin 后台或 SQL 删 vsn=1.0.1 记录即可）。
 - **force 负按钮契约测试（同日追记，imboyapp b866f869）**：upgrade_card_test.dart 3 用例锁定渲染契约——空串隐藏（force）/非空显示（非 force）/updateProgress 置空串后隐藏（initGeneral 回归点）。3/3 绿。imboyapp 现领先 108。
+
+### ZC-00 重基线卡 — 总控会话重入（2026-08-30，用户重发总控提示词触发）
+
+- **背景**：用户新会话重发计划 §8 总控提示词并指令「现在只执行 ZC-00」。经核，本计划 ZC-00→ZC-12 及全部收敛后追加卡已于 2026-08-29~30 执行完毕（见 §5/§6），本卡为**重基线**而非首跑：重新采集三仓 Base SHA、复核 W2 交付现状、重放 H0/H1 证据，并上报「按首跑语义重启 ZC-01 将与已落地工作重叠」的关键决策点。
+- **三仓基线（本卡实测，命令全部 exit 0）**：
+
+| 仓库 | 分支 | Base SHA | 工作树 | 领先 origin/main | tag（未推） | 版本 |
+|---|---|---|---|---|---|---|
+| imboy | main | `8d54588f9b8db8a116ce6edc86cdb1ba21d374fa` | 干净（零脏文件） | 213 | v1.0.0-alpha.70 | VERSION=1.0.0-alpha.71（ff8ed284 bump） |
+| imboyapp | main | `448abe391afe2744fc6832b969616596b55d8467` | 干净 | 111 | v1.0.0-alpha.16 | pubspec 1.0.0-alpha.16+6 |
+| imboyadmin | main | `332d4b65a1c014f1f604618a5ac72c6892a41d6b` | 干净 | 126 | v1.0.0-alpha.16 | package.json 1.0.0-alpha.16 |
+
+- 与 §1 首跑基线（imboy db41789a/156、imboyapp a18e89e/99、imboyadmin 46c7e107/13）不可按差值直接对账——期间经历 DCO 全量补签（三仓历史重写、tree 零变化）与 admin evidence 历史清除两轮重写；imboyapp 末三笔（1c72e8b8 附件栏 padding / 89eb56d9 红包行溢出 / 448abe39 壳顶栏 SafeArea）为计划外独立 UI 修复，已提交、未入台账卡、与本计划无冲突。
+- **保护文件清单（本卡实测）**：三仓 `git status --short` 全部为空——**无任何用户脏文件需要保护**（首跑时唯一的脏文件=本计划文档，现已入库跟踪）。本卡写入本台账将产生 imboy 唯一计划内脏文件，属 ZC-00 独占产物，是否提交由用户决定。
+- **W0/W2 现状复核（对照 §3/§4，本卡实测）**：
+  - 迁移：`00000081_project_w2_foundation` 成对存在（up+down）；§3.1 当时四个「W2 待建」对象（project_member / project_milestone / project_channel_rel / project.links）已全部建成；另有 00000081 后续修复（e5ff54a9 DROP ... CASCADE）。
+  - 后端四层：`project_member/milestone/channel_{ds,logic,repo,handler}` + `project_channel_agg_repo` + `project_event_{ds,repo}` 全部在库（`grep -rlE "project_member|project_milestone|project_channel_rel|project_event" src/ include/ priv/` 命中 25 文件）。
+  - 测试：test/ 下 project_member_*（含 concurrency）、project_milestone_*（含 concurrency/integration）、project_channel_*（logic/agg/rel integration）套件产物在；全量数字以 §6 ZC-10 及终态回归卡为准。
+  - Flutter：`lib/page/workspace/project/w2/`（project_w2_providers / project_milestones_page / project_w2_entry_section 等）已存在。
+  - Admin：ProjectDetailPage W2 治理只读面板已存在（07b4dba，ZC-07）。
+  - 结论：**§4 十二项已从「now（待做）」变为「已交付」**，逐项证据见 §6 各卡日志（ZC-01~ZC-11）与 ZC-12。
+- **H0/H1 现状**：H0 首跑已放行（2026-08-29，§5），本卡重放行条件依然满足（零未知脏文件）；H1 首跑已放行（2026-08-29，§5）且 W2 schema/API/UI 已全部落地——**重签 H1 的语义已从「授权落 schema」变为「确认既有 W2 交付」或「提出范围变更」**。
+- **关键上报（本卡后停止，等待用户决定）**：按计划 §2.3（需扩大范围/改变公开契约时停止等待用户决定）——若按首跑语义重启 ZC-01→ZC-12，将与三仓已落地且全绿的提交重叠冲突。三条路径：**A** 确认既有执行有效，继续剩余人工门（H2 残余：第二台真机在线接收、3 人真人测试、FCM 凭据；H3：生产等价演练授权；H4：push 远端选择）；**B** 指出交付缺口，开针对性增量修复卡（不重置既有工作）；**C** 明确指令推翻重来（涉三仓 450 笔未推提交与 3 个未推 tag 的处置，重大决策）。
+- **命令与退出码**：三仓 `git rev-parse --show-toplevel|HEAD`、`git branch --show-current`、`git status --short`、`git log -10 --oneline`、`git remote -v`、`git rev-list --count origin/main..HEAD` 全部 exit 0；`ls priv/migrations/`、后端四表关键词 grep exit 0（命中 25 文件）；imboyapp `ls lib/page/workspace/project/`、admin `grep -rln`、版本读取 exit 0（imboy `ls src/*.app.src` 无匹配 exit 1，无害——版本以 VERSION 文件为准）。
+- **修改文件**：仅本台账（追加本卡，ZC-00 独占）。无代码改动，无测试执行（本卡不涉及）。
+- **验收对照**：不存在未知脏文件 ✅；每项 W2 能力都有当前状态与证据 ✅（§4 + 本卡复核）；用户原有脏文件列为保护清单 ✅（实测为空）。
+- **残余风险**：① 三仓 450 笔未推提交（213+111+126）+3 个未推 tag 属既有状态，push 决策在 H4；② imboy 全量 eunit 的 34 失败已定性为已知环境 flake 集群（§6 终态回归卡），发布门判定以该定性+单套件绿实证为准；③ admin 远端仍持旧历史，push 须 `--force-with-lease`（§6 DCO 卡）。
+- **停止条件**：脏文件重叠未触发；按用户指令（ZC-00 后停止待确认）与 §2.3（重叠冲突待用户定路径）双重停止。

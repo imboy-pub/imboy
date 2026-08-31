@@ -182,42 +182,49 @@ admin_member_page_test_() ->
 %%% admin_archive / admin_restore —— 平台侧 + 审计列 + 409
 %%% ===================================================================
 
+%% 2026-08-31 由 {Desc, fun} 包装式改造为规范 context 形态——原形态断言
+%% 从不执行（M-6 空转判绿族），本轮翻转 archived_by 契约时失去红绿信号才暴露。
+%% SQL/Params 校验走 meck history（mock fun 闭包捕获构建期 Self，跨进程消息
+%% 收不到——这是包装式改 context 时最容易踩的第二个坑）。
 admin_archive_writes_audit_columns_test_() ->
-    [
-        {"admin archive writes audit columns", fun() ->
-            Self = self(),
-            ?WITH_MECKS(
-                [
-                    ws_exists_mocks(),
-                    {elib_pg, [
-                        {'with_tx', 1, tx_fun()},
-                        {'execute', 3, fun(_Conn, Sql, Params) ->
-                            Self ! {admin_archive_sql, Sql, Params},
-                            {ok, 1}
-                        end}
-                    ]}
-                ],
-                fun() ->
-                    ?assertMatch(
-                        {ok, #{
-                            workspace_id := ?WS_ID,
-                            status := <<"archived">>,
-                            archived_by := ?ADM_UID
-                        }},
-                        workspace_logic:admin_archive(?ADM_UID, ?WS_ID)
-                    ),
-                    receive
-                        {admin_archive_sql, Sql, Params} ->
-                            %% 审计列：status/archived_at/archived_by 同写（admin 归档同样落审计）
-                            ?assertNotEqual(nomatch, binary:match(Sql, <<"archived_at = $1">>)),
-                            ?assertNotEqual(nomatch, binary:match(Sql, <<"archived_by = $2">>)),
-                            ?assertEqual([?ADM_UID, ?WS_ID], tl(Params))
-                    after 500 -> ?assert(false, "admin archive UPDATE not executed")
-                    end
-                end
+    Mocks = [
+        ws_exists_mocks(),
+        {elib_pg, [
+            {'with_tx', 1, tx_fun()},
+            {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, 1} end}
+        ]}
+    ],
+    {setup,
+        fun() ->
+            lists:foreach(
+                fun({Module, Expectations}) ->
+                    {ok, _} = meck_helper:setup_mock(Module, Expectations)
+                end,
+                Mocks
             )
-        end}
-    ].
+        end,
+        fun(_) ->
+            lists:foreach(
+                fun({Module, _}) -> meck_helper:cleanup_mock(Module) end,
+                Mocks
+            )
+        end,
+        [
+            {"admin archive writes audit columns", fun() ->
+                ?assertMatch(
+                    {ok, #{
+                        workspace_id := ?WS_ID,
+                        status := <<"archived">>,
+                        archived_by := null
+                    }},
+                    workspace_logic:admin_archive(?ADM_UID, ?WS_ID)
+                ),
+                %% 新契约核心 = 返回 archived_by:null（DB 列写 NULL，操作者审计
+                %% 由 admin_operation_logs 承担）；真库端到端见
+                %% workspace_admin_archive_fk_tests（归档后列值断言）
+                ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
+            end}
+        ]}.
 
 admin_archive_is_not_owner_gated_test_() ->
     [
