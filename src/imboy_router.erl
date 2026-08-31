@@ -582,12 +582,13 @@ get_routes() ->
                 %% T7 统一注册：按 workspace_handler / project_handler /
                 %% project_task_handler 三个文件顶部路由片段清单合并（唯一一次
                 %% router 修改）；全部走 /api/v1/* JWT 默认门。
-                %% mine 固定路径必须注册在 :workspace_id 通配之前防遮蔽；
+                %% mine / join 固定路径必须注册在 :workspace_id 通配之前防遮蔽；
                 %% branding / projects / tasks 集合路径同路径双语义由
                 %% handler 按 method 分派。
                 %% ============================================================
                 {"/api/v1/workspaces", workspace_handler, #{action => create}},
                 {"/api/v1/workspaces/mine", workspace_handler, #{action => mine}},
+                {"/api/v1/workspaces/join", workspace_handler, #{action => join}},
                 {"/api/v1/workspaces/:workspace_id", workspace_handler, #{action => show}},
                 {"/api/v1/workspaces/:workspace_id/update", workspace_handler, #{
                     action => update
@@ -618,6 +619,12 @@ get_routes() ->
                 }},
                 {"/api/v1/workspaces/:workspace_id/members/transfer_owner", workspace_handler, #{
                     action => owner_transfer
+                }},
+                {"/api/v1/workspaces/:workspace_id/invite_code", workspace_handler, #{
+                    action => invite_code
+                }},
+                {"/api/v1/workspaces/:workspace_id/invite_code/revoke", workspace_handler, #{
+                    action => invite_code_revoke
                 }},
                 {"/api/v1/workspaces/:workspace_id/archive", workspace_handler, #{
                     action => archive

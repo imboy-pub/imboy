@@ -364,6 +364,146 @@ workspace_handler_endpoints_test_() ->
     ).
 
 %% ===================================================================
+%% 团队码端点（T2.4）：invite_code / join handler 契约
+%% ===================================================================
+
+workspace_invite_code_endpoints_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'binding', 2, fun(workspace_id, req0) -> <<"800001">> end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_) -> #{<<"code">> => <<" abcd2345 ">>} end}
+            ]},
+            {auth_ds, [
+                {'current_uid', 1, fun(#{current_uid := Uid}) -> Uid end}
+            ]},
+            {throttle, [
+                {'check', 2, fun(_, _) -> ok end}
+            ]},
+            {workspace_logic, [
+                {'generate_invite_code', 2, fun
+                    (?UID, ?WS_ID) ->
+                        put(t_generate_called, {?UID, ?WS_ID}),
+                        {ok, #{code => <<"ABCD2345">>, expires_at => <<"2099-01-01T00:00:00Z">>}};
+                    (?OUTSIDER, ?WS_ID) ->
+                        {error, {403, <<"仅工作区 Owner 可执行该操作"/utf8>>}}
+                end},
+                {'join_by_code', 2, fun
+                    (?UID, <<"ABCD2345">>) ->
+                        put(t_join_normalized, true),
+                        {ok, unchanged, ws_map()};
+                    (?OUTSIDER, <<"ABCD2345">>) ->
+                        put(t_join_reached, true),
+                        {ok, joined, ws_map()};
+                    (_, <<"ZZZZ9999">>) ->
+                        {error, {981, <<"团队码无效或已失效"/utf8>>}}
+                end},
+                {'revoke_invite_code', 2, fun
+                    (?UID, ?WS_ID) ->
+                        put(t_revoke_called, {?UID, ?WS_ID}),
+                        {ok, #{revoked => 1}};
+                    (?OUTSIDER, ?WS_ID) ->
+                        {error, {403, <<"仅工作区 Owner 可执行该操作"/utf8>>}}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, Code) -> #{response_status => Code} end},
+                {'success', 2, fun(_Req, Payload) ->
+                    #{response_status => 200, payload => Payload}
+                end}
+            ]}
+        ],
+        fun() ->
+            %% ?WITH_MECKS 的 TestFun 须单表达式：多断言移入下方本地辅助
+            %% 函数 invite_code_endpoints_body/0（begin 在此文件被宏参数
+            %% 扫描拒绝；辅助函数彻底绕开宏参数 token 限制；哨兵经进程
+            %% 字典传递——mock 与用例体同进程）。
+            invite_code_endpoints_body()
+        end
+    ).
+
+invite_code_endpoints_body() ->
+    begin
+        %% owner generates invite code via POST invite_code
+        Req1 = workspace_handler:handle_action(
+            invite_code, req0, #{current_uid => ?UID}
+        ),
+        ?assertEqual(200, maps:get(response_status, Req1)),
+        ?assertMatch(
+            #{code := <<"ABCD2345">>, expires_at := <<"2099-01-01T00:00:00Z">>},
+            maps:get(payload, Req1)
+        ),
+        ?assertEqual({?UID, ?WS_ID}, erase(t_generate_called)),
+
+        %% non owner gets 403 envelope on invite_code
+        Req2 = workspace_handler:handle_action(
+            invite_code, req0, #{current_uid => ?OUTSIDER}
+        ),
+        ?assertEqual(403, maps:get(response_status, Req2)),
+
+        %% join success returns status=joined + workspace map
+        Req3 = workspace_handler:handle_action(
+            join, req0, #{current_uid => ?OUTSIDER}
+        ),
+        ?assertEqual(200, maps:get(response_status, Req3)),
+        ?assertMatch(
+            #{status := joined, workspace := #{<<"id">> := ?WS_ID}},
+            maps:get(payload, Req3)
+        ),
+        ?assertEqual(true, erase(t_join_reached)),
+
+        %% join idempotent repeat returns status=unchanged
+        Req4 = workspace_handler:handle_action(
+            join, req0, #{current_uid => ?UID}
+        ),
+        ?assertEqual(200, maps:get(response_status, Req4)),
+        ?assertMatch(
+            #{status := unchanged, workspace := #{<<"id">> := ?WS_ID}},
+            maps:get(payload, Req4)
+        ),
+
+        %% join trims + uppercases code before logic
+        %% body 里是 <<" abcd2345 ">>（小写带空白）→ logic 收到 <<"ABCD2345">>
+        _ = workspace_handler:handle_action(join, req0, #{current_uid => ?UID}),
+        ?assertEqual(true, erase(t_join_normalized)),
+
+        %% join invalid code surfaces 981 envelope
+        meck(elib_param, [
+            {'post', 1, fun(_) -> #{<<"code">> => <<"ZZZZ9999">>} end}
+        ]),
+        Req5 = workspace_handler:handle_action(
+            join, req0, #{current_uid => ?UID}
+        ),
+        ?assertEqual(981, maps:get(response_status, Req5)),
+
+        %% owner revokes invite code via POST invite_code/revoke
+        Req6 = workspace_handler:handle_action(
+            invite_code_revoke, req0, #{current_uid => ?UID}
+        ),
+        ?assertEqual(200, maps:get(response_status, Req6)),
+        ?assertMatch(#{revoked := 1}, maps:get(payload, Req6)),
+        ?assertEqual({?UID, ?WS_ID}, erase(t_revoke_called)),
+
+        %% non owner gets 403 envelope on invite_code/revoke
+        Req7 = workspace_handler:handle_action(
+            invite_code_revoke, req0, #{current_uid => ?OUTSIDER}
+        ),
+        ?assertEqual(403, maps:get(response_status, Req7)),
+        ok
+    end.
+
+ws_map() ->
+    #{
+        <<"id">> => ?WS_ID,
+        <<"name">> => <<"Team WS">>,
+        <<"logo">> => <<>>,
+        <<"owner_id">> => ?UID,
+        <<"status">> => <<"active">>
+    }.
+
+%% ===================================================================
 %% 路由片段清单契约（T7 统一注册的输入，防漂移）
 %% ===================================================================
 
@@ -373,6 +513,9 @@ route_fragment_manifest_contract_test() ->
         <<"POST   /api/v1/workspaces">>,
         <<"GET    /api/v1/workspaces/:workspace_id">>,
         <<"GET    /api/v1/workspaces/mine">>,
+        <<"POST   /api/v1/workspaces/join">>,
+        <<"POST   /api/v1/workspaces/:workspace_id/invite_code">>,
+        <<"POST   /api/v1/workspaces/:workspace_id/invite_code/revoke">>,
         <<"POST   /api/v1/workspaces/:workspace_id/update">>,
         <<"GET    /api/v1/workspaces/:workspace_id/branding">>,
         <<"POST   /api/v1/workspaces/:workspace_id/branding">>,

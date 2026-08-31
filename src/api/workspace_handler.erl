@@ -13,6 +13,9 @@
 %%% POST   /api/v1/workspaces                                 → create
 %%% GET    /api/v1/workspaces/:workspace_id                   → show
 %%% GET    /api/v1/workspaces/mine                            → mine（须注册在 :id 之前）
+%%% POST   /api/v1/workspaces/join                            → join（团队码加入；静态路径，须注册在 :id 之前）
+%%% POST   /api/v1/workspaces/:workspace_id/invite_code       → invite_code（生成团队码，Owner only；重新生成即旧码失效）
+%%% POST   /api/v1/workspaces/:workspace_id/invite_code/revoke → invite_code_revoke（撤销团队码，Owner only）
 %%% POST   /api/v1/workspaces/:workspace_id/update            → update
 %%% GET    /api/v1/workspaces/:workspace_id/branding          → branding（method 分派：GET=读）
 %%% POST   /api/v1/workspaces/:workspace_id/branding          → branding（method 分派：POST=写）
@@ -71,6 +74,9 @@ handle_action(channel_list, Req, State) -> channel_list(Req, State);
 handle_action(group_list, Req, State) -> group_list(Req, State);
 handle_action(member_list, Req, State) -> member_list(Req, State);
 handle_action(member_invite, Req, State) -> member_invite(Req, State);
+handle_action(invite_code, Req, State) -> invite_code(Req, State);
+handle_action(invite_code_revoke, Req, State) -> invite_code_revoke(Req, State);
+handle_action(join, Req, State) -> join(Req, State);
 handle_action(member_remove, Req, State) -> member_remove(Req, State);
 handle_action(member_role, Req, State) -> member_role(Req, State);
 handle_action(owner_transfer, Req, State) -> owner_transfer(Req, State);
@@ -282,6 +288,68 @@ member_invite(Req0, State) ->
                 {error, {Code, Msg}} ->
                     elib_response:error(Req0, Msg, Code)
             end
+    end.
+
+%% @doc 生成工作区团队码（仅 Owner；归档 409；8 位 A-Z2-9、7 天有效、一码多人）
+%% 节流口径同 create（three_second_once）。
+-spec invite_code(cowboy_req:req(), map()) -> cowboy_req:req().
+invite_code(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    case throttle:check(three_second_once, {workspace_invite_code, Uid}) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
+        _ ->
+            case resolve_workspace_id(Req0) of
+                {error, Req} ->
+                    Req;
+                {ok, WsId} ->
+                    case workspace_logic:generate_invite_code(Uid, WsId) of
+                        {ok, #{code := Code, expires_at := ExpiresAt}} ->
+                            elib_response:success(Req0, #{code => Code, expires_at => ExpiresAt});
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end.
+
+%% @doc 撤销工作区团队码（仅 Owner；幂等：无 active 码 → revoked 0）。
+%% 撤销后输码即 981。节流口径与生成共用（three_second_once）。
+-spec invite_code_revoke(cowboy_req:req(), map()) -> cowboy_req:req().
+invite_code_revoke(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    case throttle:check(three_second_once, {workspace_invite_code, Uid}) of
+        {limit_exceeded, _, _} ->
+            elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
+        _ ->
+            case resolve_workspace_id(Req0) of
+                {error, Req} ->
+                    Req;
+                {ok, WsId} ->
+                    case workspace_logic:revoke_invite_code(Uid, WsId) of
+                        {ok, #{revoked := Count}} ->
+                            elib_response:success(Req0, #{revoked => Count});
+                        {error, {Code, Msg}} ->
+                            elib_response:error(Req0, Msg, Code)
+                    end
+            end
+    end.
+
+%% @doc 团队码加入工作区（任意登录用户；幂等：已加入重复输码 → unchanged）
+%% payload：{status => joined|unchanged, workspace => 工作区 map（detail 同源字段）}；
+%% 错误码 981 码无效/已失效、982 已过期、980 已归档（envelope，HTTP 恒 200）。
+-spec join(cowboy_req:req(), map()) -> cowboy_req:req().
+join(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    PostVals = elib_param:post(Req0),
+    Code0 = maps:get(<<"code">>, PostVals, <<>>),
+    Code = string:uppercase(string:trim(Code0)),
+    case workspace_logic:join_by_code(Uid, Code) of
+        {ok, joined, WS} ->
+            elib_response:success(Req0, #{status => joined, workspace => WS});
+        {ok, unchanged, WS} ->
+            elib_response:success(Req0, #{status => unchanged, workspace => WS});
+        {error, {Code2, Msg}} ->
+            elib_response:error(Req0, Msg, Code2)
     end.
 
 %% @doc 移除工作区成员（仅 Owner；冲突 409 全回滚；无冲突级联禁用下属群成员）

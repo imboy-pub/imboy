@@ -21,6 +21,9 @@
 -export([update_branding/3]).
 -export([overview/2]).
 -export([invite/4]).
+-export([generate_invite_code/2]).
+-export([revoke_invite_code/2]).
+-export([join_by_code/2]).
 -export([remove_member/3]).
 -export([change_role/4]).
 -export([transfer_owner/3]).
@@ -40,6 +43,7 @@
 -export([admin_restore/2]).
 
 -include("log.hrl").
+-include("error_code.hrl").
 
 %% ===================================================================
 %% API functions
@@ -227,6 +231,147 @@ invite_checked(Uid, WsId, TargetUid, Role) ->
                             {error, {500, <<"邀请失败，请稍后重试"/utf8>>}}
                     end
             end
+    end.
+
+%% ===================================================================
+%% 团队码（工作区可复用加入凭证 T2.3，迁移 00000082）
+%% 8 位 A-Z2-9、7 天有效、一码多人复用、Owner 可撤销；
+%% 已加入者重复输码幂等 unchanged。
+%% ===================================================================
+
+%% @doc 生成工作区团队码（仅 Owner；归档 409 与 invite 同口径；7 天有效）
+%% code 全局唯一冲突（23505→code_conflict）时重新生成，重试 ≤3 次。
+-spec generate_invite_code(integer(), integer()) ->
+    {ok, #{code := binary(), expires_at := binary()}} | {error, {integer(), binary()}}.
+generate_invite_code(Uid, WsId) ->
+    case ensure_owner(WsId, Uid) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, _WS} ->
+            case ensure_not_archived(WsId) of
+                {error, Reason2} ->
+                    {error, Reason2};
+                ok ->
+                    ExpiresAt = invite_expire_at(),
+                    case insert_invite_code(WsId, Uid, ExpiresAt, 3) of
+                        {ok, Code} ->
+                            _ = ?INFO_LOG([workspace_invite_code_created, WsId, Uid]),
+                            {ok, #{code => Code, expires_at => ExpiresAt}};
+                        {error, Reason3} ->
+                            _ = ?ERROR_LOG([workspace_invite_code_failed, WsId, Uid, Reason3]),
+                            {error, {500, <<"生成团队码失败，请稍后重试"/utf8>>}}
+                    end
+            end
+    end.
+
+%% 团队码有效期：now + 7 天（RFC3339 binary，与库内 timestamptz 编解码同格式）
+-spec invite_expire_at() -> binary().
+invite_expire_at() ->
+    SevenDaysUs = 7 * 24 * 60 * 60 * 1000000,
+    elib_dt:to_rfc3339(erlang:system_time(microsecond) + SevenDaysUs).
+
+%% 码唯一冲突重试：code_conflict → 换码重插，其余错误直接冒泡。
+%% 同事务先撤销该工作区既有 active 码（一工作区至多一个 active 码；
+%% 重新生成即旧码失效）。
+-spec insert_invite_code(integer(), integer(), binary(), non_neg_integer()) ->
+    {ok, binary()} | {error, term()}.
+insert_invite_code(_WsId, _Uid, _ExpiresAt, 0) ->
+    {error, invite_code_retry_exhausted};
+insert_invite_code(WsId, Uid, ExpiresAt, Left) ->
+    Code = workspace_invite_repo:generate_invite_code(),
+    Insert = fun(Conn) ->
+        _ = workspace_invite_repo:revoke_active_by_ws_tx(Conn, WsId),
+        workspace_invite_repo:add_tx(Conn, WsId, Code, Uid, ExpiresAt)
+    end,
+    case elib_pg:with_tx(Insert) of
+        {ok, _Row} ->
+            {ok, Code};
+        {error, code_conflict} ->
+            insert_invite_code(WsId, Uid, ExpiresAt, Left - 1);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 撤销工作区团队码（仅 Owner；幂等：无 active 码 → revoked 0）。
+%% 撤销后该码输码即 981；归档工作区允许撤销（收紧操作，不设 409 门）。
+-spec revoke_invite_code(integer(), integer()) ->
+    {ok, #{revoked := non_neg_integer()}} | {error, {integer(), binary()}}.
+revoke_invite_code(Uid, WsId) ->
+    case ensure_owner(WsId, Uid) of
+        {error, Reason} ->
+            {error, Reason};
+        {ok, _WS} ->
+            Revoke = fun(Conn) -> workspace_invite_repo:revoke_active_by_ws_tx(Conn, WsId) end,
+            case elib_pg:with_tx(Revoke) of
+                {ok, Count} ->
+                    _ = ?INFO_LOG([workspace_invite_code_revoked, WsId, Uid, Count]),
+                    {ok, #{revoked => Count}};
+                {error, Reason2} ->
+                    _ = ?ERROR_LOG([workspace_invite_code_revoke_failed, WsId, Uid, Reason2]),
+                    {error, {500, <<"撤销团队码失败，请稍后重试"/utf8>>}}
+            end
+    end.
+
+%% @doc 团队码加入工作区（任意登录用户）：码校验 981/982 → 工作区 404 →
+%% 幂等 unchanged → 否则 write_tx（归档稳定码 980）事务内 upsert member。
+-spec join_by_code(integer(), binary()) ->
+    {ok, joined | unchanged, map()} | {error, {integer(), binary()}}.
+join_by_code(Uid, Code) ->
+    Lookup = fun(Conn) -> workspace_invite_repo:find_active_by_code_tx(Conn, Code) end,
+    case elib_pg:with_tx(Lookup) of
+        not_found ->
+            {error, {?ERR_WORKSPACE_INVITE_INVALID, <<"团队码无效或已失效"/utf8>>}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([workspace_invite_lookup_failed, Uid, Reason]),
+            {error, {500, <<"加入失败，请稍后重试"/utf8>>}};
+        {ok, #{<<"expired">> := true}} ->
+            {error, {?ERR_WORKSPACE_INVITE_EXPIRED, <<"团队码已过期"/utf8>>}};
+        {ok, Invite} ->
+            join_valid_code(
+                Uid,
+                maps:get(<<"workspace_id">>, Invite, 0),
+                maps:get(
+                    <<"created_by">>, Invite, nil
+                )
+            )
+    end.
+
+%% 码有效：工作区存在性（detail 同口径 404）→ 幂等检查 → 入会写事务
+-spec join_valid_code(integer(), integer(), integer() | nil) ->
+    {ok, joined | unchanged, map()} | {error, {integer(), binary()}}.
+join_valid_code(Uid, WsId, CreatedBy) ->
+    case load_workspace(WsId) of
+        {error, NotFound} ->
+            {error, NotFound};
+        {ok, WS} ->
+            case ensure_member(WsId, Uid) of
+                {ok, _Role} ->
+                    {ok, unchanged, WS};
+                {error, _} ->
+                    join_as_member(Uid, WsId, CreatedBy, WS)
+            end
+    end.
+
+%% 入会写入：workspace_guard:write_tx 归档守卫（980）+ upsert member（幂等）
+-spec join_as_member(integer(), integer(), integer() | nil, map()) ->
+    {ok, joined | unchanged, map()} | {error, {integer(), binary()}}.
+join_as_member(Uid, WsId, CreatedBy, WS) ->
+    Upsert = fun(Conn) ->
+        workspace_member_repo:upsert_active_tx(Conn, WsId, Uid, <<"member">>, CreatedBy)
+    end,
+    case workspace_guard:write_tx({workspace, WsId}, Upsert) of
+        {ok, changed, _} ->
+            _ = ?INFO_LOG([workspace_joined_by_code, WsId, Uid]),
+            {ok, joined, WS};
+        {ok, unchanged, _} ->
+            {ok, unchanged, WS};
+        {ok, role_conflict, _} ->
+            {error, {409, <<"该用户已是工作区成员，角色不同"/utf8>>}};
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([workspace_join_failed, WsId, Uid, Reason]),
+            {error, {500, <<"加入失败，请稍后重试"/utf8>>}}
     end.
 
 %% @doc 移除工作区成员（仅 Owner；§1.4.2 规则 8）

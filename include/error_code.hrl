@@ -16,7 +16,8 @@
 %% ===================================================================
 
 -define(MSG_SUCCESS, <<"success."/utf8>>).
--define(ERR_OK, 0).                      % 成功
+% 成功
+-define(ERR_OK, 0).
 
 %% ===================================================================
 %% 通用错误 (1)
@@ -27,243 +28,431 @@
 %% 后果：错误码生成器产出的 Dart 文件缺 ERROR 常量，前端只能手工往"由脚本
 %% 自动生成、请勿手动修改"的产物里补一行，于是没人再敢跑生成器 —— 生成器
 %% 因此漂移了 7 个月。真源补全后手改即可撤销。
--define(ERR_ERROR, 1).                   % 通用错误（未细分）
+
+% 通用错误（未细分）
+-define(ERR_ERROR, 1).
 
 %% ===================================================================
 %% 4xx 客户端错误（参考 HTTP 4xx）
 %% ===================================================================
 
 %% 400 Bad Request - 请求参数错误
--define(ERR_BAD_REQUEST, 400).                   % 请求参数错误
--define(ERR_INVALID_PARAM, 400).                  % 参数错误
--define(ERR_INVALID_FORMAT, 400).                 % 参数格式错误
--define(ERR_PARAM_TOO_LONG, 400).                 % 参数过长
+
+% 请求参数错误
+-define(ERR_BAD_REQUEST, 400).
+% 参数错误
+-define(ERR_INVALID_PARAM, 400).
+% 参数格式错误
+-define(ERR_INVALID_FORMAT, 400).
+% 参数过长
+-define(ERR_PARAM_TOO_LONG, 400).
 %% 401 Unauthorized - 未认证
--define(ERR_UNAUTHORIZED, 401).                   % 未认证
--define(ERR_TOKEN_MISSING, 401).                  % Token 缺失
--define(ERR_TOKEN_INVALID, 401).                  % Token 无效
--define(ERR_TOKEN_EXPIRED, 401).                  % Token 已过期
+
+% 未认证
+-define(ERR_UNAUTHORIZED, 401).
+% Token 缺失
+-define(ERR_TOKEN_MISSING, 401).
+% Token 无效
+-define(ERR_TOKEN_INVALID, 401).
+% Token 已过期
+-define(ERR_TOKEN_EXPIRED, 401).
 %% 402 Payment Required - 保留（付费功能）
--define(ERR_PAYMENT_REQUIRED, 402).               % 需要付费
+
+% 需要付费
+-define(ERR_PAYMENT_REQUIRED, 402).
 %% 403 Forbidden - 已认证但无权限
--define(ERR_FORBIDDEN, 403).                      % 无权限访问
--define(ERR_ACCESS_DENIED, 403).                  % 拒绝访问
+
+% 无权限访问
+-define(ERR_FORBIDDEN, 403).
+% 拒绝访问
+-define(ERR_ACCESS_DENIED, 403).
 %% 404 Not Found - 资源不存在
--define(ERR_NOT_FOUND, 404).                      % 资源不存在
--define(ERR_USER_NOT_FOUND, 404).                 % 用户不存在
--define(ERR_FRIEND_NOT_FOUND, 404).               % 好友不存在
--define(ERR_GROUP_NOT_FOUND, 404).                % 群组不存在
--define(ERR_MESSAGE_NOT_FOUND, 404).              % 消息不存在
+
+% 资源不存在
+-define(ERR_NOT_FOUND, 404).
+% 用户不存在
+-define(ERR_USER_NOT_FOUND, 404).
+% 好友不存在
+-define(ERR_FRIEND_NOT_FOUND, 404).
+% 群组不存在
+-define(ERR_GROUP_NOT_FOUND, 404).
+% 消息不存在
+-define(ERR_MESSAGE_NOT_FOUND, 404).
 %% 405 Method Not Allowed - 请求方法不允许
--define(ERR_METHOD_NOT_ALLOWED, 405).             % 请求方法不允许
+
+% 请求方法不允许
+-define(ERR_METHOD_NOT_ALLOWED, 405).
 %% 406 Not Acceptable - 内容格式不支持
--define(ERR_NOT_ACCEPTABLE, 406).                 % 内容格式不支持
+
+% 内容格式不支持
+-define(ERR_NOT_ACCEPTABLE, 406).
 %% 408 Request Timeout - 请求超时
--define(ERR_REQUEST_TIMEOUT, 408).                % 请求超时
+
+% 请求超时
+-define(ERR_REQUEST_TIMEOUT, 408).
 %% 409 Conflict - 资源冲突
--define(ERR_CONFLICT, 409).                       % 资源冲突
--define(ERR_RESOURCE_EXISTS, 409).                % 资源已存在
--define(ERR_ALREADY_FRIENDS, 409).                % 已经是好友
--define(ERR_ALREADY_IN_GROUP, 409).               % 已在群组中
+
+% 资源冲突
+-define(ERR_CONFLICT, 409).
+% 资源已存在
+-define(ERR_RESOURCE_EXISTS, 409).
+% 已经是好友
+-define(ERR_ALREADY_FRIENDS, 409).
+% 已在群组中
+-define(ERR_ALREADY_IN_GROUP, 409).
 %% 410 Gone - 资源已删除
--define(ERR_GONE, 410).                           % 资源已删除
+
+% 资源已删除
+-define(ERR_GONE, 410).
 %% 412 Precondition Failed - 前置条件失败
--define(ERR_PRECONDITION_FAILED, 412).            % 前置条件失败
+
+% 前置条件失败
+-define(ERR_PRECONDITION_FAILED, 412).
 %% 413 Payload Too Large - 请求体过大
--define(ERR_PAYLOAD_TOO_LARGE, 413).              % 请求体过大
--define(ERR_FILE_SIZE_EXCEEDED, 413).             % 文件大小超出限制
+
+% 请求体过大
+-define(ERR_PAYLOAD_TOO_LARGE, 413).
+% 文件大小超出限制
+-define(ERR_FILE_SIZE_EXCEEDED, 413).
 %% 415 Unsupported Media Type - 不支持的媒体类型
--define(ERR_UNSUPPORTED_MEDIA_TYPE, 415).         % 不支持的媒体类型
--define(ERR_FILE_TYPE_INVALID, 415).              % 文件类型无效
+
+% 不支持的媒体类型
+-define(ERR_UNSUPPORTED_MEDIA_TYPE, 415).
+% 文件类型无效
+-define(ERR_FILE_TYPE_INVALID, 415).
 %% 422 Unprocessable Entity - 语义错误
--define(ERR_UNPROCESSABLE_ENTITY, 422).           % 请求语义错误
--define(ERR_MISSING_PARAM, 422).                  % 缺少必填参数
--define(ERR_PARAM_INVALID, 422).                  % 参数值无效
+
+% 请求语义错误
+-define(ERR_UNPROCESSABLE_ENTITY, 422).
+% 缺少必填参数
+-define(ERR_MISSING_PARAM, 422).
+% 参数值无效
+-define(ERR_PARAM_INVALID, 422).
 %% 423 Locked - 资源被锁定
--define(ERR_LOCKED, 423).                         % 资源被锁定
--define(ERR_ACCOUNT_LOCKED, 423).                 % 账号已锁定
--define(ERR_REVOKE_TIMEOUT, 409).                 % 消息撤回超时
+
+% 资源被锁定
+-define(ERR_LOCKED, 423).
+% 账号已锁定
+-define(ERR_ACCOUNT_LOCKED, 423).
+% 消息撤回超时
+-define(ERR_REVOKE_TIMEOUT, 409).
 %% 429 Too Many Requests - 请求过于频繁
--define(ERR_TOO_MANY_REQUESTS, 429).              % 请求过于频繁
--define(ERR_OPERATION_TOO_FREQUENT, 429).         % 操作过于频繁
+
+% 请求过于频繁
+-define(ERR_TOO_MANY_REQUESTS, 429).
+% 操作过于频繁
+-define(ERR_OPERATION_TOO_FREQUENT, 429).
 
 %% ===================================================================
 %% 5xx 服务端错误（参考 HTTP 5xx）
 %% ===================================================================
 
 %% 500 Internal Server Error - 服务器内部错误
--define(ERR_INTERNAL_SERVER_ERROR, 500).          % 服务器内部错误
--define(ERR_SERVER_ERROR, 500).                   % 服务器错误
--define(ERR_BUSINESS_FAILED, 500).                % 业务逻辑失败
--define(ERR_OPERATION_FAILED, 500).               % 操作失败
+
+% 服务器内部错误
+-define(ERR_INTERNAL_SERVER_ERROR, 500).
+% 服务器错误
+-define(ERR_SERVER_ERROR, 500).
+% 业务逻辑失败
+-define(ERR_BUSINESS_FAILED, 500).
+% 操作失败
+-define(ERR_OPERATION_FAILED, 500).
 %% 501 Not Implemented - 功能未实现
--define(ERR_NOT_IMPLEMENTED, 501).                % 功能未实现
+
+% 功能未实现
+-define(ERR_NOT_IMPLEMENTED, 501).
 %% 502 Bad Gateway - 网关错误
--define(ERR_BAD_GATEWAY, 502).                    % 网关错误
+
+% 网关错误
+-define(ERR_BAD_GATEWAY, 502).
 %% 503 Service Unavailable - 服务不可用
--define(ERR_SERVICE_UNAVAILABLE, 503).            % 服务不可用
--define(ERR_NODE_OFFLINE, 503).                   % 节点离线
--define(ERR_CLUSTER_ERROR, 503).                  % 集群错误
+
+% 服务不可用
+-define(ERR_SERVICE_UNAVAILABLE, 503).
+% 节点离线
+-define(ERR_NODE_OFFLINE, 503).
+% 集群错误
+-define(ERR_CLUSTER_ERROR, 503).
 %% 504 Gateway Timeout - 网关超时
--define(ERR_GATEWAY_TIMEOUT, 504).                % 网关超时
--define(ERR_TIMEOUT, 504).                        % 请求超时
+
+% 网关超时
+-define(ERR_GATEWAY_TIMEOUT, 504).
+% 请求超时
+-define(ERR_TIMEOUT, 504).
 %% 507 Insufficient Storage - 存储空间不足
--define(ERR_INSUFFICIENT_STORAGE, 507).           % 存储空间不足
+
+% 存储空间不足
+-define(ERR_INSUFFICIENT_STORAGE, 507).
 
 %% ===================================================================
 %% 9xx 业务特定错误（IM 业务专用）
 %% ===================================================================
 
 %% 认证相关（避开 HTTP 标准码）
--define(ERR_TOKEN_REFRESH_NOT_ALLOWED, 901).      % 不支持刷新 Token
--define(ERR_SIGNATURE_INVALID, 902).              % 签名验证失败
--define(ERR_CSRF_TOKEN_ERROR, 903).               % CSRF Token 错误
--define(ERR_VERIFICATION_CODE_ERROR, 904).        % 验证码错误
--define(ERR_VERIFICATION_CODE_EXPIRED, 905).      % 验证码过期
--define(ERR_PASSWORD_WRONG, 906).                 % 密码错误
--define(ERR_ACCOUNT_DISABLED, 907).               % 账号已禁用
--define(ERR_ACCOUNT_NOT_EXIST, 908).              % 账号不存在
--define(ERR_ACCOUNT_ALREADY_EXISTS, 909).         % 账号已存在
--define(ERR_LOGIN_ELSEWHERE, 910).                % 在其他设备登录
+
+% 不支持刷新 Token
+-define(ERR_TOKEN_REFRESH_NOT_ALLOWED, 901).
+% 签名验证失败
+-define(ERR_SIGNATURE_INVALID, 902).
+% CSRF Token 错误
+-define(ERR_CSRF_TOKEN_ERROR, 903).
+% 验证码错误
+-define(ERR_VERIFICATION_CODE_ERROR, 904).
+% 验证码过期
+-define(ERR_VERIFICATION_CODE_EXPIRED, 905).
+% 密码错误
+-define(ERR_PASSWORD_WRONG, 906).
+% 账号已禁用
+-define(ERR_ACCOUNT_DISABLED, 907).
+% 账号不存在
+-define(ERR_ACCOUNT_NOT_EXIST, 908).
+% 账号已存在
+-define(ERR_ACCOUNT_ALREADY_EXISTS, 909).
+% 在其他设备登录
+-define(ERR_LOGIN_ELSEWHERE, 910).
 %% 首启初始化相关（911-919）
--define(ERR_SETUP_ALREADY_COMPLETED, 911).         % 系统已完成首启初始化
--define(ERR_SETUP_INVALID_PARAMS, 912).            % 首启参数无效
+
+% 系统已完成首启初始化
+-define(ERR_SETUP_ALREADY_COMPLETED, 911).
+% 首启参数无效
+-define(ERR_SETUP_INVALID_PARAMS, 912).
 %% 好友相关
--define(ERR_NOT_FRIENDS, 920).                    % 不是好友
--define(ERR_FRIEND_REQUEST_PENDING, 921).         % 好友请求待确认
--define(ERR_FRIEND_REQUEST_REJECTED, 922).        % 好友请求被拒绝
--define(ERR_FRIEND_EXISTS, 923).                  % 好友关系已存在
+
+% 不是好友
+-define(ERR_NOT_FRIENDS, 920).
+% 好友请求待确认
+-define(ERR_FRIEND_REQUEST_PENDING, 921).
+% 好友请求被拒绝
+-define(ERR_FRIEND_REQUEST_REJECTED, 922).
+% 好友关系已存在
+-define(ERR_FRIEND_EXISTS, 923).
 %% 群组相关
--define(ERR_NOT_GROUP_MEMBER, 930).               % 非群组成员
--define(ERR_NOT_GROUP_ADMIN, 931).                % 非群管理员
--define(ERR_NOT_GROUP_OWNER, 932).                % 非群主
--define(ERR_GROUP_PERMISSION_DENIED, 933).        % 群组权限不足
--define(ERR_GROUP_MEMBER_FULL, 934).              % 群成员已满
--define(ERR_GROUP_CREATE_FAILED, 935).            % 创建群组失败
+
+% 非群组成员
+-define(ERR_NOT_GROUP_MEMBER, 930).
+% 非群管理员
+-define(ERR_NOT_GROUP_ADMIN, 931).
+% 非群主
+-define(ERR_NOT_GROUP_OWNER, 932).
+% 群组权限不足
+-define(ERR_GROUP_PERMISSION_DENIED, 933).
+% 群成员已满
+-define(ERR_GROUP_MEMBER_FULL, 934).
+% 创建群组失败
+-define(ERR_GROUP_CREATE_FAILED, 935).
 %% 消息相关
--define(ERR_USER_OFFLINE, 940).                   % 用户离线
--define(ERR_MSG_SEND_FAILED, 941).                % 消息发送失败
--define(ERR_MSG_NOT_FOUND, 942).                  % 消息不存在
+
+% 用户离线
+-define(ERR_USER_OFFLINE, 940).
+% 消息发送失败
+-define(ERR_MSG_SEND_FAILED, 941).
+% 消息不存在
+-define(ERR_MSG_NOT_FOUND, 942).
 %% 文件相关
--define(ERR_FILE_UPLOAD_FAILED, 950).             % 文件上传失败
--define(ERR_FILE_DOWNLOAD_FAILED, 951).           % 文件下载失败
--define(ERR_FILE_NOT_FOUND, 952).                 % 文件不存在
--define(ERR_FILE_TYPE_NOT_ALLOWED, 953).          % 不允许的文件类型
--define(ERR_FILE_DELETE_FAILED, 955).             % 文件删除失败
--define(ERR_FILE_STORAGE_FULL, 956).              % 群文件存储空间已满
+
+% 文件上传失败
+-define(ERR_FILE_UPLOAD_FAILED, 950).
+% 文件下载失败
+-define(ERR_FILE_DOWNLOAD_FAILED, 951).
+% 文件不存在
+-define(ERR_FILE_NOT_FOUND, 952).
+% 不允许的文件类型
+-define(ERR_FILE_TYPE_NOT_ALLOWED, 953).
+% 文件删除失败
+-define(ERR_FILE_DELETE_FAILED, 955).
+% 群文件存储空间已满
+-define(ERR_FILE_STORAGE_FULL, 956).
 
 %% ===================================================================
 %% 相册相关错误（960-969）
 %% ===================================================================
 
--define(ERR_ALBUM_NOT_FOUND, 960).                % 相册不存在
--define(ERR_ALBUM_NAME_INVALID, 961).             % 相册名称无效
--define(ERR_ALBUM_ALREADY_EXISTS, 962).           % 相册已存在
--define(ERR_PHOTO_NOT_FOUND, 963).                % 图片不存在
--define(ERR_PHOTO_UPLOAD_FAILED, 964).            % 图片上传失败
--define(ERR_PHOTO_TYPE_INVALID, 965).             % 图片类型无效
--define(ERR_PHOTO_SIZE_EXCEEDED, 966).            % 图片大小超出限制
--define(ERR_ALBUM_PERMISSION_DENIED, 967).        % 相册权限不足
--define(ERR_PHOTO_ALREADY_LIKED, 968).            % 已点赞该图片
+% 相册不存在
+-define(ERR_ALBUM_NOT_FOUND, 960).
+% 相册名称无效
+-define(ERR_ALBUM_NAME_INVALID, 961).
+% 相册已存在
+-define(ERR_ALBUM_ALREADY_EXISTS, 962).
+% 图片不存在
+-define(ERR_PHOTO_NOT_FOUND, 963).
+% 图片上传失败
+-define(ERR_PHOTO_UPLOAD_FAILED, 964).
+% 图片类型无效
+-define(ERR_PHOTO_TYPE_INVALID, 965).
+% 图片大小超出限制
+-define(ERR_PHOTO_SIZE_EXCEEDED, 966).
+% 相册权限不足
+-define(ERR_ALBUM_PERMISSION_DENIED, 967).
+% 已点赞该图片
+-define(ERR_PHOTO_ALREADY_LIKED, 968).
 
 %% ===================================================================
 %% 工作区相关错误（980-989；双体验 v2.5.2 WP4/T7）
 %% ===================================================================
 
--define(ERR_WORKSPACE_ARCHIVED, 980).              % 工作区已归档（归档写守卫稳定错误码）
+% 工作区已归档（归档写守卫稳定错误码）
+-define(ERR_WORKSPACE_ARCHIVED, 980).
+% 团队码无效或已失效（不存在/已撤销）
+-define(ERR_WORKSPACE_INVITE_INVALID, 981).
+% 团队码已过期
+-define(ERR_WORKSPACE_INVITE_EXPIRED, 982).
 
 %% ===================================================================
 %% E2EE 密钥恢复相关错误（5000-5099）
 %% ===================================================================
 
 %% 设备传输相关（5000-5019）
--define(ERR_E2EE_TRANSFER_INVALID_SESSION, 5000).  % 无效的传输会话
--define(ERR_E2EE_TRANSFER_SESSION_EXPIRED, 5001).  % 传输会话已过期
--define(ERR_E2EE_TRANSFER_SESSION_NOT_FOUND, 5002). % 传输会话不存在
--define(ERR_E2EE_TRANSFER_INVALID_DEVICE, 5003).  % 无效的设备
--define(ERR_E2EE_TRANSFER_ALREADY_ACCEPTED, 5004). % 传输会话已被接受
--define(ERR_E2EE_TRANSFER_CANNOT_CONFIRM, 5005).  % 无法确认传输会话
--define(ERR_E2EE_TRANSFER_FROM_UID_NOT_MATCH, 5006). % 发送方用户 ID 不匹配
--define(ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH, 5007). % 接收方用户 ID 不匹配
--define(ERR_E2EE_TRANSFER_CONCURRENT, 5008).       % 存在并发传输
--define(ERR_E2EE_TRANSFER_ALREADY_CANCELLED, 5009). % 会话已取消
--define(ERR_E2EE_TRANSFER_STATUS_INVALID, 5010).   % 无效状态转换
+
+% 无效的传输会话
+-define(ERR_E2EE_TRANSFER_INVALID_SESSION, 5000).
+% 传输会话已过期
+-define(ERR_E2EE_TRANSFER_SESSION_EXPIRED, 5001).
+% 传输会话不存在
+-define(ERR_E2EE_TRANSFER_SESSION_NOT_FOUND, 5002).
+% 无效的设备
+-define(ERR_E2EE_TRANSFER_INVALID_DEVICE, 5003).
+% 传输会话已被接受
+-define(ERR_E2EE_TRANSFER_ALREADY_ACCEPTED, 5004).
+% 无法确认传输会话
+-define(ERR_E2EE_TRANSFER_CANNOT_CONFIRM, 5005).
+% 发送方用户 ID 不匹配
+-define(ERR_E2EE_TRANSFER_FROM_UID_NOT_MATCH, 5006).
+% 接收方用户 ID 不匹配
+-define(ERR_E2EE_TRANSFER_TO_UID_NOT_MATCH, 5007).
+% 存在并发传输
+-define(ERR_E2EE_TRANSFER_CONCURRENT, 5008).
+% 会话已取消
+-define(ERR_E2EE_TRANSFER_ALREADY_CANCELLED, 5009).
+% 无效状态转换
+-define(ERR_E2EE_TRANSFER_STATUS_INVALID, 5010).
 
 %% 社交恢复相关（5020-5039）
--define(ERR_E2EE_SOCIAL_CONTACT_NOT_FOUND, 5020). % 可信联系人不存在
--define(ERR_E2EE_SOCIAL_CONTACT_ALREADY_EXISTS, 5021). % 可信联系人已存在
--define(ERR_E2EE_SOCIAL_CONTACT_IS_SELF, 5022).   % 不能添加自己为可信联系人
--define(ERR_E2EE_SOCIAL_CONTACT_NOT_TRUSTED, 5023). % 该联系人不在可信列表中
--define(ERR_E2EE_SOCIAL_NOT_ENOUGH_SHARES, 5024). % 密钥分片数量不足
--define(ERR_E2EE_SOCIAL_SHARE_ALREADY_CREATED, 5025). % 密钥分片已创建
--define(ERR_E2EE_SOCIAL_SHARE_NOT_FOUND, 5026).   % 密钥分片不存在
--define(ERR_E2EE_SOCIAL_INVALID_THRESHOLD, 5027).  % 无效的恢复阈值
--define(ERR_E2EE_SOCIAL_RECOVER_FAILED, 5028).    % 密钥恢复失败
--define(ERR_E2EE_SOCIAL_TRUSTEE_LIMIT_EXCEEDED, 5029). % 受托人数量超过限制
+
+% 可信联系人不存在
+-define(ERR_E2EE_SOCIAL_CONTACT_NOT_FOUND, 5020).
+% 可信联系人已存在
+-define(ERR_E2EE_SOCIAL_CONTACT_ALREADY_EXISTS, 5021).
+% 不能添加自己为可信联系人
+-define(ERR_E2EE_SOCIAL_CONTACT_IS_SELF, 5022).
+% 该联系人不在可信列表中
+-define(ERR_E2EE_SOCIAL_CONTACT_NOT_TRUSTED, 5023).
+% 密钥分片数量不足
+-define(ERR_E2EE_SOCIAL_NOT_ENOUGH_SHARES, 5024).
+% 密钥分片已创建
+-define(ERR_E2EE_SOCIAL_SHARE_ALREADY_CREATED, 5025).
+% 密钥分片不存在
+-define(ERR_E2EE_SOCIAL_SHARE_NOT_FOUND, 5026).
+% 无效的恢复阈值
+-define(ERR_E2EE_SOCIAL_INVALID_THRESHOLD, 5027).
+% 密钥恢复失败
+-define(ERR_E2EE_SOCIAL_RECOVER_FAILED, 5028).
+% 受托人数量超过限制
+-define(ERR_E2EE_SOCIAL_TRUSTEE_LIMIT_EXCEEDED, 5029).
 
 %% 本地备份相关（5040-5049）
--define(ERR_E2EE_BACKUP_INVALID_PASSWORD, 5040).   % 备份密码错误
--define(ERR_E2EE_BACKUP_FILE_CORRUPTED, 5041).     % 备份文件已损坏
--define(ERR_E2EE_BACKUP_VERSION_MISMATCH, 5042).   % 备份版本不匹配
--define(ERR_E2EE_BACKUP_CHECKSUM_MISMATCH, 5043). % 备份校验和不匹配
--define(ERR_E2EE_BACKUP_FILE_TOO_LARGE, 5044).     % 备份文件过大
--define(ERR_E2EE_BACKUP_INVALID_FORMAT, 5045).     % 备份文件格式无效
+
+% 备份密码错误
+-define(ERR_E2EE_BACKUP_INVALID_PASSWORD, 5040).
+% 备份文件已损坏
+-define(ERR_E2EE_BACKUP_FILE_CORRUPTED, 5041).
+% 备份版本不匹配
+-define(ERR_E2EE_BACKUP_VERSION_MISMATCH, 5042).
+% 备份校验和不匹配
+-define(ERR_E2EE_BACKUP_CHECKSUM_MISMATCH, 5043).
+% 备份文件过大
+-define(ERR_E2EE_BACKUP_FILE_TOO_LARGE, 5044).
+% 备份文件格式无效
+-define(ERR_E2EE_BACKUP_INVALID_FORMAT, 5045).
 
 %% 通用错误（5050-5099）
--define(ERR_E2EE_INVALID_KEY_FORMAT, 5050).        % 无效的密钥格式
--define(ERR_E2EE_KEY_DERIVATION_FAILED, 5051).     % 密钥派生失败
--define(ERR_E2EE_ENCRYPTION_FAILED, 5052).         % 加密失败
--define(ERR_E2EE_DECRYPTION_FAILED, 5053).         % 解密失败
--define(ERR_E2EE_KEY_NOT_FOUND, 5054).              % 密钥不存在
--define(ERR_E2EE_OPERATION_NOT_SUPPORTED, 5055).    % 不支持的操作
--define(ERR_E2EE_BACKUP_PASSWORD_TOO_WEAK, 5056).  % 备份密码强度不足
+
+% 无效的密钥格式
+-define(ERR_E2EE_INVALID_KEY_FORMAT, 5050).
+% 密钥派生失败
+-define(ERR_E2EE_KEY_DERIVATION_FAILED, 5051).
+% 加密失败
+-define(ERR_E2EE_ENCRYPTION_FAILED, 5052).
+% 解密失败
+-define(ERR_E2EE_DECRYPTION_FAILED, 5053).
+% 密钥不存在
+-define(ERR_E2EE_KEY_NOT_FOUND, 5054).
+% 不支持的操作
+-define(ERR_E2EE_OPERATION_NOT_SUPPORTED, 5055).
+% 备份密码强度不足
+-define(ERR_E2EE_BACKUP_PASSWORD_TOO_WEAK, 5056).
 
 %% 自动恢复相关（5060-5079）
--define(ERR_E2EE_RECOVERY_NO_OPTIONS, 5060).       % 无可用恢复方式
--define(ERR_E2EE_RECOVERY_IN_PROGRESS, 5061).      % 恢复进行中
--define(ERR_E2EE_RECOVERY_FAILED, 5062).           % 恢复失败
--define(ERR_E2EE_RECOVERY_TIMEOUT, 5063).          % 恢复超时
--define(ERR_E2EE_RECOVERY_KEY_MISMATCH, 5064).     % 密钥不匹配
+
+% 无可用恢复方式
+-define(ERR_E2EE_RECOVERY_NO_OPTIONS, 5060).
+% 恢复进行中
+-define(ERR_E2EE_RECOVERY_IN_PROGRESS, 5061).
+% 恢复失败
+-define(ERR_E2EE_RECOVERY_FAILED, 5062).
+% 恢复超时
+-define(ERR_E2EE_RECOVERY_TIMEOUT, 5063).
+% 密钥不匹配
+-define(ERR_E2EE_RECOVERY_KEY_MISMATCH, 5064).
 
 %% ===================================================================
 %% 设备会话管理相关错误（5100-5199）
 %% ===================================================================
 
--define(ERR_DEVICE_SESSION_INVALID, 5100).         % 设备会话无效
--define(ERR_DEVICE_SESSION_KICKED, 5101).          % 设备会话已被踢出
--define(ERR_DEVICE_TYPE_CONFLICT, 5102).           % 同类型设备已登录
--define(ERR_DEVICE_NOT_FOUND, 5103).               % 设备不存在
--define(ERR_DEVICE_SESSION_EXPIRED, 5104).         % 设备会话已过期
+% 设备会话无效
+-define(ERR_DEVICE_SESSION_INVALID, 5100).
+% 设备会话已被踢出
+-define(ERR_DEVICE_SESSION_KICKED, 5101).
+% 同类型设备已登录
+-define(ERR_DEVICE_TYPE_CONFLICT, 5102).
+% 设备不存在
+-define(ERR_DEVICE_NOT_FOUND, 5103).
+% 设备会话已过期
+-define(ERR_DEVICE_SESSION_EXPIRED, 5104).
 
 %% ===================================================================
 %% 功能开关相关错误（5190-5199）
 %% ===================================================================
 
--define(ERR_FEATURE_DISABLED, 5190).               % 功能未启用
--define(ERR_PLUGIN_PATH_INVALID, 5191).            % 插件路径不在受控插件根内（SEC-02）
+% 功能未启用
+-define(ERR_FEATURE_DISABLED, 5190).
+% 插件路径不在受控插件根内（SEC-02）
+-define(ERR_PLUGIN_PATH_INVALID, 5191).
 
 %% ===================================================================
 %% 群作业相关错误（5300-5399）
 %% ===================================================================
 
--define(ERR_TASK_NOT_FOUND, 5300).                 % 作业不存在
--define(ERR_TASK_TITLE_REQUIRED, 5301).            % 作业标题必填
--define(ERR_TASK_ALREADY_SUBMITTED, 5302).         % 作业已提交
--define(ERR_TASK_ASSIGNMENT_NOT_FOUND, 5303).      % 作业分配不存在
--define(ERR_TASK_ALREADY_REVIEWED, 5304).          % 作业已批改
--define(ERR_TASK_DEADLINE_PASSED, 5305).           % 作业已过期
--define(ERR_TASK_PERMISSION_DENIED, 5306).         % 作业权限不足
+% 作业不存在
+-define(ERR_TASK_NOT_FOUND, 5300).
+% 作业标题必填
+-define(ERR_TASK_TITLE_REQUIRED, 5301).
+% 作业已提交
+-define(ERR_TASK_ALREADY_SUBMITTED, 5302).
+% 作业分配不存在
+-define(ERR_TASK_ASSIGNMENT_NOT_FOUND, 5303).
+% 作业已批改
+-define(ERR_TASK_ALREADY_REVIEWED, 5304).
+% 作业已过期
+-define(ERR_TASK_DEADLINE_PASSED, 5305).
+% 作业权限不足
+-define(ERR_TASK_PERMISSION_DENIED, 5306).
 
 %% ===================================================================
 %% QR 码登录相关错误（5200-5219）
 %% ===================================================================
 
--define(ERR_INVALID_QR_TOKEN, 5200).               % 无效的二维码
--define(ERR_QR_LOGIN_EXPIRED, 5201).               % 二维码已过期
--define(ERR_QR_LOGIN_CANCELLED, 5202).             % 登录已取消
--define(ERR_QR_LOGIN_ALREADY_USED, 5203).          % 二维码已使用
--define(ERR_QR_LOGIN_NOT_SCANNED, 5204).           % 二维码未被扫描
--define(ERR_QR_LOGIN_DEVICE_LIMIT, 5205).          % 设备数量达到上限
+% 无效的二维码
+-define(ERR_INVALID_QR_TOKEN, 5200).
+% 二维码已过期
+-define(ERR_QR_LOGIN_EXPIRED, 5201).
+% 登录已取消
+-define(ERR_QR_LOGIN_CANCELLED, 5202).
+% 二维码已使用
+-define(ERR_QR_LOGIN_ALREADY_USED, 5203).
+% 二维码未被扫描
+-define(ERR_QR_LOGIN_NOT_SCANNED, 5204).
+% 设备数量达到上限
+-define(ERR_QR_LOGIN_DEVICE_LIMIT, 5205).
 
 %% ===================================================================
 %% 辅助函数
@@ -337,6 +526,8 @@
     967 => <<"相册权限不足"/utf8>>,
     968 => <<"已点赞该图片"/utf8>>,
     980 => <<"工作区已归档，写操作被拒绝"/utf8>>,
+    981 => <<"团队码无效或已失效"/utf8>>,
+    982 => <<"团队码已过期"/utf8>>,
     5000 => <<"无效的传输会话"/utf8>>,
     5001 => <<"传输会话已过期"/utf8>>,
     5002 => <<"传输会话不存在"/utf8>>,

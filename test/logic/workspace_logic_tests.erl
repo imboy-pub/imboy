@@ -760,6 +760,390 @@ create_maps_owner_limit_test_() ->
         end
     ).
 
+%% ===================================================================
+%% 团队码（T2.3）：generate_invite_code / join_by_code
+%% ===================================================================
+
+generate_invite_code_owner_flow_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_ds, [
+                {'find_by_id', 1, fun(_) -> ws_row() end},
+                {'find_by_id', 2, fun
+                    (_, <<"status">>) -> #{<<"status">> => <<"active">>};
+                    (_, _) -> ws_row()
+                end}
+            ]},
+            {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end}
+            ]},
+            {elib_dt, [
+                {'to_rfc3339', 1, fun(_) -> <<"2099-01-01T00:00:00.000000Z">> end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
+            {workspace_invite_repo, [
+                {'generate_invite_code', 0, fun() -> <<"ABCD2345">> end},
+                {'revoke_active_by_ws_tx', 2, fun(_Conn, WsId) ->
+                    put(t_stale_revoked_ws, WsId),
+                    {ok, 0}
+                end},
+                {'add_tx', 5, fun(_Conn, WsId, Code, CreatedBy, ExpiresAt) ->
+                    put(t_added_args, {WsId, Code, CreatedBy, ExpiresAt}),
+                    {ok, #{<<"id">> => 902001, <<"code">> => Code}}
+                end}
+            ]}
+        ],
+        fun() ->
+            %% ?WITH_MECKS 内层须单表达式：多断言包 begin（列表形态会被
+            %% ?_test 吞掉静默空转；哨兵经进程字典传递——eunit generator
+            %% 与用例执行异进程，Self 消息收不到）
+            begin
+                %% owner generates invite code (7d expiry)
+                ?assertMatch(
+                    {ok, #{code := <<"ABCD2345">>, expires_at := <<"2099-01-01T00:00:00.000000Z">>}},
+                    workspace_logic:generate_invite_code(?OWNER, ?WS_ID)
+                ),
+                ?assertEqual(
+                    {?WS_ID, <<"ABCD2345">>, ?OWNER, <<"2099-01-01T00:00:00.000000Z">>},
+                    erase(t_added_args)
+                ),
+                %% generate revokes stale active codes in same tx（若 logic 未调
+                %% revoke 则 erase 拿到 undefined 失败）
+                ?assertEqual(?WS_ID, erase(t_stale_revoked_ws)),
+                ok
+            end
+        end
+    ).
+
+generate_invite_code_governance_test_() ->
+    OwnerRole = #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>},
+    MemberRole = #{<<"role">> => <<"member">>, <<"status">> => <<"active">>},
+    Archived = (ws_row())#{<<"status">> := <<"archived">>},
+    [
+        %% 归档 409（与 invite 同口径）
+        ?WITH_MECKS(
+            [
+                {workspace_ds, [
+                    {'find_by_id', 1, fun(_) -> Archived end},
+                    {'find_by_id', 2, fun
+                        (_, <<"status">>) -> #{<<"status">> => <<"archived">>};
+                        (_, _) -> Archived
+                    end}
+                ]},
+                {workspace_member_repo, [
+                    {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                        #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                    end}
+                ]}
+            ],
+            fun() ->
+                %% archived workspace rejects generate (409)
+                begin
+                    ?assertMatch(
+                        {error, {409, _}},
+                        workspace_logic:generate_invite_code(?OWNER, ?WS_ID)
+                    ),
+                    ok
+                end
+            end
+        ),
+        %% 非 Owner 403
+        ?WITH_MECKS(
+            [
+                {workspace_ds, [
+                    {'find_by_id', 1, fun(_) -> ws_row() end},
+                    {'find_by_id', 2, fun
+                        (_, <<"status">>) -> #{<<"status">> => <<"active">>};
+                        (_, _) -> ws_row()
+                    end}
+                ]},
+                {workspace_member_repo, [
+                    {'find', 3, fun
+                        (?WS_ID, ?OWNER, _) -> OwnerRole;
+                        (?WS_ID, ?MEMBER, _) -> MemberRole
+                    end}
+                ]}
+            ],
+            fun() ->
+                %% non owner cannot generate (403)
+                begin
+                    ?assertMatch(
+                        {error, {403, _}},
+                        workspace_logic:generate_invite_code(?MEMBER, ?WS_ID)
+                    ),
+                    ok
+                end
+            end
+        )
+    ].
+
+generate_invite_code_retries_on_code_conflict_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_ds, [
+                {'find_by_id', 1, fun(_) -> ws_row() end},
+                {'find_by_id', 2, fun
+                    (_, <<"status">>) -> #{<<"status">> => <<"active">>};
+                    (_, _) -> ws_row()
+                end}
+            ]},
+            {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end}
+            ]},
+            {elib_dt, [
+                {'to_rfc3339', 1, fun(_) -> <<"2099-01-01T00:00:00.000000Z">> end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
+            {workspace_invite_repo, [
+                {'generate_invite_code', 0, fun() -> <<"ABCD2345">> end},
+                {'revoke_active_by_ws_tx', 2, fun(_Conn, _WsId) -> {ok, 0} end},
+                {'add_tx', 5, fun(_Conn, _WsId, _Code, _By, _Exp) ->
+                    %% 两次撞唯一约束后成功（计数由 meck history 断言；
+                    %% fun 体内 num_calls 不含当前这次，故 N<2 即前两次）
+                    case meck:num_calls(workspace_invite_repo, add_tx, 5) of
+                        N when N < 2 -> {error, code_conflict};
+                        _ -> {ok, #{<<"code">> => <<"ABCD2345">>}}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            %% code conflict regenerates then succeeds
+            begin
+                ?assertMatch(
+                    {ok, #{code := <<"ABCD2345">>}},
+                    workspace_logic:generate_invite_code(?OWNER, ?WS_ID)
+                ),
+                ?assert(meck:num_calls(workspace_invite_repo, add_tx, 5) >= 3),
+                ?assert(meck:num_calls(workspace_invite_repo, generate_invite_code, 0) >= 3),
+                ok
+            end
+        end
+    ).
+
+%% 撤销团队码（补链路）：Owner 撤全部 active 码 / 非 Owner 403 / repo 失败 500
+revoke_invite_code_test_() ->
+    [
+        ?WITH_MECKS(
+            [
+                {workspace_ds, [
+                    {'find_by_id', 1, fun(_) -> ws_row() end},
+                    {'find_by_id', 2, fun
+                        (_, <<"status">>) -> #{<<"status">> => <<"active">>};
+                        (_, _) -> ws_row()
+                    end}
+                ]},
+                {workspace_member_repo, [
+                    {'find', 3, fun
+                        (?WS_ID, ?OWNER, _) ->
+                            #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
+                        (?WS_ID, ?MEMBER, _) ->
+                            #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+                    end}
+                ]},
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
+                {workspace_invite_repo, [
+                    {'revoke_active_by_ws_tx', 2, fun(_Conn, WsId) ->
+                        put(t_revoke_ws, WsId),
+                        {ok, 1}
+                    end}
+                ]}
+            ],
+            fun() ->
+                %% owner revokes active codes
+                begin
+                    ?assertEqual(
+                        {ok, #{revoked => 1}},
+                        workspace_logic:revoke_invite_code(?OWNER, ?WS_ID)
+                    ),
+                    ?assertEqual(?WS_ID, erase(t_revoke_ws)),
+                    ok
+                end
+            end
+        ),
+        ?WITH_MECKS(
+            [
+                {workspace_ds, [
+                    {'find_by_id', 1, fun(_) -> ws_row() end},
+                    {'find_by_id', 2, fun
+                        (_, <<"status">>) -> #{<<"status">> => <<"active">>};
+                        (_, _) -> ws_row()
+                    end}
+                ]},
+                {workspace_member_repo, [
+                    {'find', 3, fun(?WS_ID, ?MEMBER, _) ->
+                        #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+                    end}
+                ]}
+            ],
+            fun() ->
+                %% non owner cannot revoke (403)
+                begin
+                    ?assertMatch(
+                        {error, {403, _}},
+                        workspace_logic:revoke_invite_code(?MEMBER, ?WS_ID)
+                    ),
+                    ok
+                end
+            end
+        )
+    ].
+
+join_by_code_invalid_or_expired_test_() ->
+    [
+        %% 981：码不存在/已撤销（repo status=active 过滤后均 not_found）
+        ?WITH_MECKS(
+            [
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
+                {workspace_invite_repo, [
+                    {'find_active_by_code_tx', 2, fun(_, <<"ZZZZ9999">>) -> not_found end}
+                ]}
+            ],
+            fun() ->
+                %% unknown code is 981（码不存在/已撤销：repo status=active
+                %% 过滤后均 not_found）
+                begin
+                    ?assertMatch(
+                        {error, {981, _}},
+                        workspace_logic:join_by_code(?OUTSIDER, <<"ZZZZ9999">>)
+                    ),
+                    ok
+                end
+            end
+        ),
+        %% 982：过期（repo 同行计算 expired 布尔）
+        ?WITH_MECKS(
+            [
+                {elib_pg, [
+                    {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                ]},
+                {workspace_invite_repo, [
+                    {'find_active_by_code_tx', 2, fun(_, <<"OLDCODE1">>) ->
+                        {ok, #{
+                            <<"workspace_id">> => ?WS_ID,
+                            <<"created_by">> => ?OWNER,
+                            <<"expired">> => true
+                        }}
+                    end}
+                ]}
+            ],
+            fun() ->
+                %% expired code is 982
+                begin
+                    ?assertMatch(
+                        {error, {982, _}},
+                        workspace_logic:join_by_code(?OUTSIDER, <<"OLDCODE1">>)
+                    ),
+                    ok
+                end
+            end
+        )
+    ].
+
+join_by_code_happy_and_idempotent_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
+            {workspace_invite_repo, [
+                {'find_active_by_code_tx', 2, fun(_, <<"ABCD2345">>) ->
+                    {ok, #{
+                        <<"workspace_id">> => ?WS_ID,
+                        <<"created_by">> => ?OWNER,
+                        <<"expired">> => false
+                    }}
+                end}
+            ]},
+            {workspace_ds, [
+                {'find_by_id', 1, fun(?WS_ID) -> ws_row() end}
+            ]},
+            {workspace_member_repo, [
+                {'find', 3, fun
+                    (?WS_ID, ?OUTSIDER, _) ->
+                        #{};
+                    (?WS_ID, ?MEMBER, _) ->
+                        #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+                end},
+                {'upsert_active_tx', 5, fun(_Conn, WsId, Uid, Role, InvitedBy) ->
+                    put(t_joined_upsert, {WsId, Uid, Role, InvitedBy}),
+                    {ok, changed, #{}}
+                end}
+            ]},
+            {workspace_guard, [
+                {'write_tx', 2, fun({workspace, WsId}, WriteFun) ->
+                    put(t_guard_locked, WsId),
+                    WriteFun(fake_conn)
+                end}
+            ]}
+        ],
+        fun() ->
+            begin
+                %% newcomer joins via code (member role, invited_by=code creator)
+                ?assertMatch(
+                    {ok, joined, #{<<"id">> := ?WS_ID, <<"name">> := <<"Team WS">>}},
+                    workspace_logic:join_by_code(?OUTSIDER, <<"ABCD2345">>)
+                ),
+                ?assertEqual(?WS_ID, erase(t_guard_locked)),
+                ?assertEqual(
+                    {?WS_ID, ?OUTSIDER, <<"member">>, ?OWNER},
+                    erase(t_joined_upsert)
+                ),
+                %% already-active member repeats code → unchanged idempotent
+                ?assertMatch(
+                    {ok, unchanged, #{<<"id">> := ?WS_ID}},
+                    workspace_logic:join_by_code(?MEMBER, <<"ABCD2345">>)
+                ),
+                %% 幂等路径不得再次 upsert（upsert 哨兵已在上一步 erase 清空）
+                ?assertEqual(undefined, get(t_joined_upsert)),
+                ok
+            end
+        end
+    ).
+
+join_by_code_workspace_not_found_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
+            {workspace_invite_repo, [
+                {'find_active_by_code_tx', 2, fun(_, <<"ABCD2345">>) ->
+                    {ok, #{
+                        <<"workspace_id">> => ?WS_ID,
+                        <<"created_by">> => ?OWNER,
+                        <<"expired">> => false
+                    }}
+                end}
+            ]},
+            {workspace_ds, [
+                {'find_by_id', 1, fun(?WS_ID) -> #{} end}
+            ]}
+        ],
+        fun() ->
+            %% deleted workspace is 404 (detail 口径)
+            begin
+                ?assertMatch(
+                    {error, {404, _}},
+                    workspace_logic:join_by_code(?OUTSIDER, <<"ABCD2345">>)
+                ),
+                ok
+            end
+        end
+    ).
+
 %%%===================================================================
 %%% Internal
 %%%===================================================================
