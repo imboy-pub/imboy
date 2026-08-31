@@ -13,30 +13,31 @@
 %%%-------------------------------------------------------------------
 
 setup_metric() ->
-    %% 并发套件会抢同一个命名 metric server：stop/start 竞态下
-    %% already_started 需收割重试，否则 setup 必红
-    start_metric(5).
-
-start_metric(0) ->
-    erlang:error({elib_metric_start_failed, exhausted});
-start_metric(N) ->
-    case erlang:whereis(elib_metric) of
-        undefined ->
-            ok;
-        P ->
-            catch gen_server:stop(P),
-            timer:sleep(20)
-    end,
+    %% 并发套件会抢同一个命名 metric server：让位应用实例——terminate_child
+    %% 不触发 imboy_sup 自动重启（gen_server:stop 会触发，自动重启与测试
+    %% start_link 竞态 already_started 必红），测试结束 restart_child 复原；
+    %% solo/应用未启动时为 no-op。
+    Preempted =
+        case erlang:whereis(elib_metric) of
+            undefined ->
+                false;
+            _ ->
+                ok = supervisor:terminate_child(imboy_sup, elib_metric),
+                true
+        end,
     case elib_metric:start_link() of
         {ok, Pid} ->
-            Pid;
+            {Pid, Preempted};
         {error, {already_started, _}} ->
-            timer:sleep(50),
-            start_metric(N - 1)
+            erlang:error({elib_metric_start_failed, preempt_failed})
     end.
 
-cleanup_metric(_Pid) ->
-    catch gen_server:stop(elib_metric),
+cleanup_metric({Pid, Preempted}) ->
+    catch gen_server:stop(Pid),
+    case Preempted of
+        true -> {ok, _} = supervisor:restart_child(imboy_sup, elib_metric);
+        false -> ok
+    end,
     timer:sleep(10).
 
 %% ===================================================================

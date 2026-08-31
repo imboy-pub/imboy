@@ -29,7 +29,33 @@ priv_plugins_dir() ->
 plugin_names() ->
     [channel, moment, location, group_collab].
 
+%% 让位应用实例：全量 eunit 时 imboy_sup 已把 imboy_plugin_loader 作为 permanent
+%% child 启动，local 注册名与测试自建实例冲突（start_link 必撞 already_started）。
+%% terminate_child 不触发 imboy_sup 自动重启，测试结束 restart_child 复原（loader
+%% init 重扫 priv/plugins 重建 persistent_term，自愈 erase_all_pt 的清理）；
+%% solo/应用未启动时为 no-op。
+preempt_app_loader() ->
+    case erlang:whereis(imboy_plugin_loader) of
+        undefined ->
+            _ = erase(preempted_app_loader),
+            ok;
+        _ ->
+            ok = supervisor:terminate_child(imboy_sup, imboy_plugin_loader),
+            put(preempted_app_loader, true),
+            ok
+    end.
+
+restore_app_loader() ->
+    case erase(preempted_app_loader) of
+        true ->
+            {ok, _} = supervisor:restart_child(imboy_sup, imboy_plugin_loader),
+            ok;
+        _ ->
+            ok
+    end.
+
 setup() ->
+    preempt_app_loader(),
     %% 清理可能残留的 persistent_term
     erase_all_pt(),
     {ok, Pid} = imboy_plugin_loader:start_link(priv_plugins_dir()),
@@ -40,7 +66,8 @@ cleanup(Pid) ->
         true -> gen_server:stop(Pid);
         false -> ok
     end,
-    erase_all_pt().
+    erase_all_pt(),
+    restore_app_loader().
 
 erase_all_pt() ->
     lists:foreach(
@@ -53,121 +80,133 @@ erase_all_pt() ->
 %% ===================================================================
 
 all_four_plugins_loaded_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         [
-             ?_assertEqual(
-                 lists:sort(plugin_names()),
-                 lists:sort(imboy_plugin_loader:list_plugins())
-             ),
-             ?_assertEqual([], imboy_plugin_loader:list_failed())
-         ]
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        [
+            ?_assertEqual(
+                lists:sort(plugin_names()),
+                lists:sort(imboy_plugin_loader:list_plugins())
+            ),
+            ?_assertEqual([], imboy_plugin_loader:list_failed())
+        ]
+    end}.
 
 %% ===================================================================
 %% 2. 每个 manifest name 与 atom key 一致
 %% ===================================================================
 
 each_manifest_name_matches_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         [
-             ?_assertMatch(#{name := channel},
-                           imboy_plugin_loader:get_manifest(channel)),
-             ?_assertMatch(#{name := moment},
-                           imboy_plugin_loader:get_manifest(moment)),
-             ?_assertMatch(#{name := location},
-                           imboy_plugin_loader:get_manifest(location)),
-             ?_assertMatch(#{name := group_collab},
-                           imboy_plugin_loader:get_manifest(group_collab))
-         ]
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        [
+            ?_assertMatch(
+                #{name := channel},
+                imboy_plugin_loader:get_manifest(channel)
+            ),
+            ?_assertMatch(
+                #{name := moment},
+                imboy_plugin_loader:get_manifest(moment)
+            ),
+            ?_assertMatch(
+                #{name := location},
+                imboy_plugin_loader:get_manifest(location)
+            ),
+            ?_assertMatch(
+                #{name := group_collab},
+                imboy_plugin_loader:get_manifest(group_collab)
+            )
+        ]
+    end}.
 
 %% ===================================================================
 %% 3. 等价性 — kind 字段
 %% ===================================================================
 
 equivalence_kind_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         lists:map(
-             fun(Name) ->
-                 OldKind = maps:get(kind, imboy_plugin_registry:manifest(Name)),
-                 NewKind = maps:get(kind, imboy_plugin_loader:get_manifest(Name)),
-                 ?_assertEqual(OldKind, NewKind)
-             end,
-             plugin_names()
-         )
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        lists:map(
+            fun(Name) ->
+                OldKind = maps:get(kind, imboy_plugin_registry:manifest(Name)),
+                NewKind = maps:get(kind, imboy_plugin_loader:get_manifest(Name)),
+                ?_assertEqual(OldKind, NewKind)
+            end,
+            plugin_names()
+        )
+    end}.
 
 %% ===================================================================
 %% 4. 等价性 — entries.app vs 旧 app_entries
 %% ===================================================================
 
 equivalence_entries_app_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         lists:map(
-             fun(Name) ->
-                 OldApp = maps:get(app_entries, imboy_plugin_registry:manifest(Name)),
-                 NewApp = maps:get(app,
-                                   maps:get(entries, imboy_plugin_loader:get_manifest(Name))),
-                 ?_assertEqual(lists:sort(OldApp), lists:sort(NewApp))
-             end,
-             plugin_names()
-         )
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        lists:map(
+            fun(Name) ->
+                OldApp = maps:get(app_entries, imboy_plugin_registry:manifest(Name)),
+                NewApp = maps:get(
+                    app,
+                    maps:get(entries, imboy_plugin_loader:get_manifest(Name))
+                ),
+                ?_assertEqual(lists:sort(OldApp), lists:sort(NewApp))
+            end,
+            plugin_names()
+        )
+    end}.
 
 %% ===================================================================
 %% 5. 等价性 — entries.admin vs 旧 admin_entries
 %% ===================================================================
 
 equivalence_entries_admin_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         lists:map(
-             fun(Name) ->
-                 OldAdmin = maps:get(admin_entries, imboy_plugin_registry:manifest(Name)),
-                 NewAdmin = maps:get(admin,
-                                     maps:get(entries, imboy_plugin_loader:get_manifest(Name))),
-                 ?_assertEqual(lists:sort(OldAdmin), lists:sort(NewAdmin))
-             end,
-             plugin_names()
-         )
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        lists:map(
+            fun(Name) ->
+                OldAdmin = maps:get(admin_entries, imboy_plugin_registry:manifest(Name)),
+                NewAdmin = maps:get(
+                    admin,
+                    maps:get(entries, imboy_plugin_loader:get_manifest(Name))
+                ),
+                ?_assertEqual(lists:sort(OldAdmin), lists:sort(NewAdmin))
+            end,
+            plugin_names()
+        )
+    end}.
 
 %% ===================================================================
 %% 6. 等价性 — group_collab.children
 %% ===================================================================
 
 group_collab_children_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         OldChildren = maps:get(children, imboy_plugin_registry:manifest(group_collab)),
-         NewChildren = maps:get(children,
-                                imboy_plugin_loader:get_manifest(group_collab)),
-         ?_assertEqual(lists:sort(OldChildren), lists:sort(NewChildren))
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        OldChildren = maps:get(children, imboy_plugin_registry:manifest(group_collab)),
+        NewChildren = maps:get(
+            children,
+            imboy_plugin_loader:get_manifest(group_collab)
+        ),
+        ?_assertEqual(lists:sort(OldChildren), lists:sort(NewChildren))
+    end}.
 
 %% ===================================================================
 %% 7. 等价性 — features keys 集合 vs 旧 feature_keys
 %% ===================================================================
 
 features_cover_legacy_feature_keys_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         lists:map(
-             fun(Name) ->
-                 OldKeys = maps:get(feature_keys,
-                                    imboy_plugin_registry:manifest(Name), []),
-                 NewFeatures = maps:get(features,
-                                        imboy_plugin_loader:get_manifest(Name)),
-                 NewKeys = lists:sort(maps:keys(NewFeatures)),
-                 ?_assertEqual(lists:sort(OldKeys), NewKeys)
-             end,
-             plugin_names()
-         )
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        lists:map(
+            fun(Name) ->
+                OldKeys = maps:get(
+                    feature_keys,
+                    imboy_plugin_registry:manifest(Name),
+                    []
+                ),
+                NewFeatures = maps:get(
+                    features,
+                    imboy_plugin_loader:get_manifest(Name)
+                ),
+                NewKeys = lists:sort(maps:keys(NewFeatures)),
+                ?_assertEqual(lists:sort(OldKeys), NewKeys)
+            end,
+            plugin_names()
+        )
+    end}.
 
 %% ===================================================================
 %% 8a. P0-T3.3 双轨注入：imboy_plugin_registry:manifest_v2/1 可读取
@@ -175,80 +214,84 @@ features_cover_legacy_feature_keys_test_() ->
 %% ===================================================================
 
 registry_manifest_v2_returns_loaded_manifests_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         lists:map(
-             fun(Name) ->
-                 ViaLoader = imboy_plugin_loader:get_manifest(Name),
-                 ViaRegistry = imboy_plugin_registry:manifest_v2(Name),
-                 ?_assertEqual(ViaLoader, ViaRegistry)
-             end,
-             plugin_names()
-         )
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        lists:map(
+            fun(Name) ->
+                ViaLoader = imboy_plugin_loader:get_manifest(Name),
+                ViaRegistry = imboy_plugin_registry:manifest_v2(Name),
+                ?_assertEqual(ViaLoader, ViaRegistry)
+            end,
+            plugin_names()
+        )
+    end}.
 
 registry_manifests_v2_returns_all_loaded_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         AllV2 = imboy_plugin_registry:manifests_v2(),
-         [
-             ?_assertEqual(4, map_size(AllV2)),
-             ?_assert(maps:is_key(channel, AllV2)),
-             ?_assert(maps:is_key(moment, AllV2)),
-             ?_assert(maps:is_key(location, AllV2)),
-             ?_assert(maps:is_key(group_collab, AllV2))
-         ]
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        AllV2 = imboy_plugin_registry:manifests_v2(),
+        [
+            ?_assertEqual(4, map_size(AllV2)),
+            ?_assert(maps:is_key(channel, AllV2)),
+            ?_assert(maps:is_key(moment, AllV2)),
+            ?_assert(maps:is_key(location, AllV2)),
+            ?_assert(maps:is_key(group_collab, AllV2))
+        ]
+    end}.
 
 registry_manifest_v2_returns_undefined_for_unknown_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         ?_assertEqual(undefined,
-                       imboy_plugin_registry:manifest_v2(nonexistent_plugin))
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        ?_assertEqual(
+            undefined,
+            imboy_plugin_registry:manifest_v2(nonexistent_plugin)
+        )
+    end}.
 
 %% ===================================================================
 %% 8b. 旧 manifest/1 行为不受 v2 影响（向后兼容）
 %% ===================================================================
 
 registry_legacy_manifest_unchanged_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         %% 旧 manifest/1 仍返回 hardcoded 字段（feature_keys / app_entries 等）
-         lists:flatmap(
-             fun(Name) ->
-                 OldM = imboy_plugin_registry:manifest(Name),
-                 [
-                     ?_assert(maps:is_key(feature_keys, OldM)),
-                     ?_assert(maps:is_key(app_entries, OldM))
-                 ]
-             end,
-             plugin_names()
-         )
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        %% 旧 manifest/1 仍返回 hardcoded 字段（feature_keys / app_entries 等）
+        lists:flatmap(
+            fun(Name) ->
+                OldM = imboy_plugin_registry:manifest(Name),
+                [
+                    ?_assert(maps:is_key(feature_keys, OldM)),
+                    ?_assert(maps:is_key(app_entries, OldM))
+                ]
+            end,
+            plugin_names()
+        )
+    end}.
 
 %% ===================================================================
 %% 9. 工业级扩展位字段全部存在（v1.0 契约要求）
 %% ===================================================================
 
 industrial_fields_present_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
-         RequiredKeys = [
-             contract_version, version, limits, budget, degrade,
-             circuit_breaker, audit, i18n, publishes_meta
-         ],
-         lists:flatmap(
-             fun(Name) ->
-                 M = imboy_plugin_loader:get_manifest(Name),
-                 [
-                     ?_test(begin
-                         %% 失败时打印插件名 + 字段名以便定位 / Print Name+Key on failure
-                         ?assertEqual({Name, K, true}, {Name, K, maps:is_key(K, M)})
-                     end)
-                  || K <- RequiredKeys
-                 ]
-             end,
-             plugin_names()
-         )
-     end}.
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
+        RequiredKeys = [
+            contract_version,
+            version,
+            limits,
+            budget,
+            degrade,
+            circuit_breaker,
+            audit,
+            i18n,
+            publishes_meta
+        ],
+        lists:flatmap(
+            fun(Name) ->
+                M = imboy_plugin_loader:get_manifest(Name),
+                [
+                    ?_test(begin
+                        %% 失败时打印插件名 + 字段名以便定位 / Print Name+Key on failure
+                        ?assertEqual({Name, K, true}, {Name, K, maps:is_key(K, M)})
+                    end)
+                 || K <- RequiredKeys
+                ]
+            end,
+            plugin_names()
+        )
+    end}.

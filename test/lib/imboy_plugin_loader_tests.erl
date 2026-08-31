@@ -88,6 +88,31 @@ clean_all_manifests() ->
     lists:foreach(fun(K) -> _ = persistent_term:erase(K) end, Keys),
     ok.
 
+%% 让位应用实例：全量 eunit 时 imboy_sup 已把 imboy_plugin_loader 作为 permanent
+%% child 启动，local 注册名与测试自建实例冲突（start_link 必撞 already_started）。
+%% terminate_child 不触发 imboy_sup 自动重启，测试结束 restart_child 复原（loader
+%% init 重扫 priv/plugins 重建 persistent_term，自愈 clean_all_manifests 的清理）；
+%% solo/应用未启动时为 no-op。
+preempt_app_loader() ->
+    case erlang:whereis(imboy_plugin_loader) of
+        undefined ->
+            _ = erase(preempted_app_loader),
+            ok;
+        _ ->
+            ok = supervisor:terminate_child(imboy_sup, imboy_plugin_loader),
+            put(preempted_app_loader, true),
+            ok
+    end.
+
+restore_app_loader() ->
+    case erase(preempted_app_loader) of
+        true ->
+            {ok, _} = supervisor:restart_child(imboy_sup, imboy_plugin_loader),
+            ok;
+        _ ->
+            ok
+    end.
+
 stop_and_cleanup(Pid, Dir, NamesToErase) ->
     case is_process_alive(Pid) of
         true -> gen_server:stop(Pid);
@@ -97,7 +122,8 @@ stop_and_cleanup(Pid, Dir, NamesToErase) ->
         fun(N) -> _ = persistent_term:erase({imboy_plugin_manifest, N}) end,
         NamesToErase
     ),
-    rm_rf(Dir).
+    rm_rf(Dir),
+    restore_app_loader().
 
 %% ===================================================================
 %% 1. loads_multiple_valid_plugins
@@ -106,6 +132,7 @@ stop_and_cleanup(Pid, Dir, NamesToErase) ->
 loader_loads_multiple_valid_plugins_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -142,6 +169,7 @@ loader_loads_multiple_valid_plugins_test_() ->
 loader_isolates_invalid_plugin_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -178,6 +206,7 @@ loader_isolates_invalid_plugin_test_() ->
 loader_empty_dir_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -201,6 +230,7 @@ loader_empty_dir_test_() ->
 loader_nonexistent_dir_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             %% 不创建目录
             Dir = unique_dir(),
             {ok, Pid} = imboy_plugin_loader:start_link(Dir),
@@ -210,7 +240,8 @@ loader_nonexistent_dir_test_() ->
             case is_process_alive(Pid) of
                 true -> gen_server:stop(Pid);
                 false -> ok
-            end
+            end,
+            restore_app_loader()
         end,
         fun(_) ->
             [
@@ -226,6 +257,7 @@ loader_nonexistent_dir_test_() ->
 loader_rescan_overwrites_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -262,6 +294,7 @@ loader_rescan_overwrites_test_() ->
 loader_handles_unknown_message_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -301,6 +334,7 @@ loader_handles_unknown_message_test_() ->
 loader_signature_valid_passes_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -339,6 +373,7 @@ loader_signature_valid_passes_test_() ->
 loader_signature_invalid_rejects_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -375,6 +410,7 @@ loader_signature_invalid_rejects_test_() ->
 loader_no_trusted_keys_skips_verification_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),
@@ -406,6 +442,7 @@ loader_no_trusted_keys_skips_verification_test_() ->
 loader_has_signature_no_keys_still_loads_test_() ->
     {setup,
         fun() ->
+            preempt_app_loader(),
             clean_all_manifests(),
             Dir = unique_dir(),
             mkdir_p(Dir),

@@ -71,10 +71,13 @@ EDOC_OPTS = {doclet, edown_doclet}
 # 2026-09-01 收窄：elib_metric/imboy_router 系 5 套件已恢复参与全量——
 # elib_metric_tests 改让位模式（terminate_child 停应用实例+restart_child
 # 复原），router 系实测与应用实例共存无冲突。
-# 仍排除 = plugin 族 4 套件：setup 对应用已启动的 {local, imboy_plugin_sup}
-# /imboy_plugin_loader 报 already_started badmatch；恢复需按同款让位模式
-# 改造（stop 应用 sup 前先 terminate_child，结束 restart_child 复原）。
-EUNIT_TEST_SPEC = (fun() -> Excl = ['imboy_plugin_loader', 'imboy_plugin_loader_tests', 'imboy_plugin_priv_plugins_tests', 'imboy_plugin_sup', 'imboy_plugin_sup_tests', 'imboy_plugin_sup_metrics_tests'], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+# 2026-09-01 清空：plugin 族 4 套件同款让位模式改造后恢复全量
+# （imboy_plugin_loader/imboy_plugin_sup/imboy_plugin_sup_metrics 挂
+# imboy_sup 下 permanent child，测试 setup terminate_child 让位、cleanup
+# restart_child 复原；loader/priv_plugins/sup_metrics 三个套件同理）。
+# 注意需同时过滤 src 模块条目——eunit 运行 {module, X} 会自动附带 X_tests；
+# 套件恢复后源模块条目一并移除。Excl 机制保留，未来再有独占套件时使用。
+EUNIT_TEST_SPEC = (fun() -> Excl = [], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 
 include erlang.mk
 

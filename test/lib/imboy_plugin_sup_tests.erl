@@ -26,7 +26,33 @@
 %% Test helpers
 %% ===================================================================
 
+%% 让位应用实例：全量 eunit 时 imboy_sup 已把 imboy_plugin_sup 作为 permanent
+%% child 启动，local 注册名与测试自建实例冲突（start_link 必撞 already_started）。
+%% terminate_child 不触发 imboy_sup 自动重启，测试结束 restart_child 复原
+%% （级联终止的 6 个 child 由复原的 imboy_plugin_sup init 全部重建）；
+%% solo/应用未启动时为 no-op。
+preempt_app_plugin_sup() ->
+    case erlang:whereis(imboy_plugin_sup) of
+        undefined ->
+            _ = erase(preempted_app_plugin_sup),
+            ok;
+        _ ->
+            ok = supervisor:terminate_child(imboy_sup, imboy_plugin_sup),
+            put(preempted_app_plugin_sup, true),
+            ok
+    end.
+
+restore_app_plugin_sup() ->
+    case erase(preempted_app_plugin_sup) of
+        true ->
+            {ok, _} = supervisor:restart_child(imboy_sup, imboy_plugin_sup),
+            ok;
+        _ ->
+            ok
+    end.
+
 setup() ->
+    preempt_app_plugin_sup(),
     {ok, Pid} = imboy_plugin_sup:start_link(),
     Pid.
 
@@ -40,7 +66,8 @@ cleanup(Pid) ->
             wait_for_dead(Pid, 50);
         false ->
             ok
-    end.
+    end,
+    restore_app_plugin_sup().
 
 wait_for_dead(_Pid, 0) ->
     timeout;
