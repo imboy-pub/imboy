@@ -1144,6 +1144,60 @@ join_by_code_workspace_not_found_test_() ->
         end
     ).
 
+%% workspace_guard 透传分支：归档 980 / role_conflict 409（对端实证有、
+%% 单测补齐——write_tx 的错误形态直接由 guard 决定）
+join_by_code_guard_passthrough_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]},
+            {workspace_invite_repo, [
+                {'find_active_by_code_tx', 2, fun(_, <<"ABCD2345">>) ->
+                    {ok, #{
+                        <<"workspace_id">> => ?WS_ID,
+                        <<"created_by">> => ?OWNER,
+                        <<"expired">> => false
+                    }}
+                end}
+            ]},
+            {workspace_ds, [
+                {'find_by_id', 1, fun(?WS_ID) -> ws_row() end}
+            ]},
+            {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OUTSIDER, _) -> #{} end}
+            ]},
+            {workspace_guard, [
+                {'write_tx', 2, fun({workspace, ?WS_ID}, _WriteFun) ->
+                    case get(t_guard_mode) of
+                        archived ->
+                            {error, {980, <<"工作区已归档，写操作被拒绝"/utf8>>}};
+                        role_conflict ->
+                            {ok, role_conflict, #{}}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            begin
+                %% archived workspace write rejected → 980 passthrough
+                put(t_guard_mode, archived),
+                ?assertMatch(
+                    {error, {980, _}},
+                    workspace_logic:join_by_code(?OUTSIDER, <<"ABCD2345">>)
+                ),
+                %% role conflict on upsert → 409
+                put(t_guard_mode, role_conflict),
+                ?assertMatch(
+                    {error, {409, _}},
+                    workspace_logic:join_by_code(?OUTSIDER, <<"ABCD2345">>)
+                ),
+                erase(t_guard_mode),
+                ok
+            end
+        end
+    ).
+
 %%%===================================================================
 %%% Internal
 %%%===================================================================

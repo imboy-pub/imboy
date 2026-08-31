@@ -83,7 +83,9 @@ find_active_by_code_tx(Conn, Code) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 事务内撤销团队码（Owner 撤销；幂等：非 active 码返回 not_active）
+%% @doc 事务内按码撤销单个团队码（幂等：非 active 码返回 not_active）。
+%% 当前端点走 revoke_active_by_ws_tx/2（按工作区撤全部）；本函数为将来
+%% 「多码并存/按码撤销」预留，暂无生产调用方。
 -spec revoke_tx(any(), integer(), binary()) -> ok | {error, not_active | term()}.
 revoke_tx(Conn, WsId, Code) ->
     Tb = tablename(),

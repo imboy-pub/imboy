@@ -313,11 +313,12 @@ invite_code(Req0, State) ->
     end.
 
 %% @doc 撤销工作区团队码（仅 Owner；幂等：无 active 码 → revoked 0）。
-%% 撤销后输码即 981。节流口径与生成共用（three_second_once）。
+%% 撤销后输码即 981。节流键独立于生成（撤销是止损操作，不应被刚生成过
+%% 码的 3 秒节流窗口延迟）。
 -spec invite_code_revoke(cowboy_req:req(), map()) -> cowboy_req:req().
 invite_code_revoke(Req0, State) ->
     Uid = auth_ds:current_uid(State),
-    case throttle:check(three_second_once, {workspace_invite_code, Uid}) of
+    case throttle:check(three_second_once, {workspace_invite_code_revoke, Uid}) of
         {limit_exceeded, _, _} ->
             elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
         _ ->
