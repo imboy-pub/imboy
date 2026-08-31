@@ -278,6 +278,48 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **停止条件**：未触发（BLOCKED 为资源缺失，非失败）。
 - **追加（同日）**：① **真机安装包已构建**：imboyapp `build/app/outputs/flutter-apk/app-debug.apk`（303MB，arm+arm64 debug 签名，NDK 版本警告不阻塞）——真机接入后 `adb install` 即可开测；release 包需 `android/key.properties` 签名配置（当前缺失，上架前须补）。② **外部依赖就绪度核查**：邮箱验证码✅（QQ relay）/ SMS 万能码 6666⚠️ / JPush ❌未配置（Push 验证受阻）/ LiveKit 生产密钥为占位符（音视频验证受阻）/ Garage 附件链路✅——详见手册 §〇。③ **H4 提交执行清单**已产出：`docs/planning/w2-h4-commit-execution-plan.md`（三仓 13 笔 commit 命令 + push/tag 分离批次）。④ **commit 前封板终验（版本文件变更后最终代码态）**：imboy eunit 全量 **6490/0**、imboyapp flutter 全量 **5940 passed/0 failed**（analyze No issues）、imboyadmin **1410/0** + build/lint 0——三仓全绿。⑤ **用户连续"继续"指令 + 既有"只 commit 不 push"工作模式下，H4 提交已执行**（身份=仓库既有配置 leeyi <leeyisoft@qq.com>；全部门禁通过）：
   - imboy 8 笔：`26205706` feat(db) schema → `2d3a6078` feat member → `e8e42448` feat milestone → `e4520e6a` feat channel/agg → `1cf594e9` feat integrate → `65440692` test demo → `7fab85ad` docs review → `7c56aec0` docs release（erlfmt 全量格式化后提交）
+
+### ZC-00R — 当前基线重验证（2026-08-31，仅执行 ZC-00）
+
+- **Owner**：总控 Agent；**动作边界**：只读核验后追加本条台账；未启动 ZC-01 或任何实现卡；未运行迁移、测试、构建、部署、提交、推送、tag 或外部操作。
+- **当前 Base SHA / 工作树**：
+
+| 仓库 | 分支 | 当前 HEAD | 相对 `origin/main` 领先 | `status --porcelain` | 本地 worktree |
+|---|---|---|---:|---:|---:|
+| `imboy` | `main` | `f019e2c6c36eb0789d5ad5d1c405255786993d4e` | 214 | 0 行（干净） | 1 |
+| `imboyapp` | `main` | `15a5a0e43de63af804832733846fb8595b76ab05` | 137 | 0 行（干净） | 1 |
+| `imboyadmin` | `main` | `e5fba2642929e33596cd8a18c34b487318553d49` | 135 | 0 行（干净） | 1 |
+
+- **保护清单**：三仓当前均无未暂存、暂存或未跟踪文件；不存在待保护的脏文件，也没有与 ZC-01 冲突的本地改动。此前记录的计划/台账文件已纳入当前后端 HEAD，不再是未跟踪文件。领先 `origin/main` 的提交是既有状态，仅记录，未进行 fetch/push。
+- **W0 当前能力对账（被 W2 向上兼容保留）**：
+  - Workspace / `workspace_member`、scope XOR、归档守卫、Product Experience、ChatShell/WorkspaceShell、Project、四态 Task、`project_event`：仍存在。
+  - W0 的“不建 project_member/milestone/channel-rel/links”仅是历史 Gate W0 边界；当前 HEAD 已由迁移 `00000081_project_w2_foundation` 显式升级为 W2，不能再把这些对象报告成缺失。
+  - 现有后端路由已可见 Project Member（list/invite/remove/transfer-owner）、Milestone（list/create/update/reach）、Channel（list/link/unlink）、links 更新以及 pinned/resources/activity/related_posts 聚合；App 存在 W2 Members/Milestones/Channels/Insights 页面与 Provider；Admin Project Detail 已有 Members/Milestones/Channels/Aggregations 面板。
+- **W2 Scope Contract（12/12 均为 `now`，当前代码态证据存在，尚非本卡重新验收）**：
+
+| # | 能力 | 当前代码态 | 当前证据 |
+|---:|---|---|---|
+| 1 | `project_member` 表与 DB 子集约束 | 已存在 | `00000081` Phase 2、`project_member_repo` |
+| 2 | Project Member 管理 API | 已存在 | `project_member_handler/logic/ds/repo`、router |
+| 3 | W2 授权模型 | 已存在待重验 | DB 触发器 + Member 逻辑/并发测试 |
+| 4 | `project_milestone` 表 | 已存在 | `00000081` Phase 3 |
+| 5 | Milestone API 与事件 | 已存在 | `project_milestone_handler/logic/ds/repo` |
+| 6 | `project_channel_rel` 同 Workspace 约束 | 已存在 | `00000081` Phase 4 |
+| 7 | Channel 关联 API | 已存在 | `project_channel_handler/logic/ds/repo` |
+| 8 | Pinned 聚合（不含 Group Notice） | 已存在待重验 | `project_channel_*` 与 integration tests |
+| 9 | Resources 与 `project.links` | 已存在待重验 | `00000081` Phase 5、links 更新接口 |
+| 10 | Activity / W2 event type | 已存在待重验 | `project_event` CHECK 与 activity 接口 |
+| 11 | Related Posts 聚合 | 已存在待重验 | related_posts 路由/logic/integration tests |
+| 12 | 三端 W2 闭环 | 代码存在待重验 | App W2 页面；Admin ProjectDetail；历史 ZC-10/ZC-11 证据 |
+
+- **版本观测**：后端 `VERSION=1.0.0-alpha.71`；App `1.0.0-alpha.16+6`；Admin `1.0.0-alpha.16`。这与计划标题中的 alpha.70 是版本演进差异，ZC-11/Release 卡启动前必须先由用户确认最终版本策略；本卡不修改版本。
+- **H0/H1 当前结论**：
+  - H0：**待用户确认本条 2026-08-31 Base SHA 与“工作树均干净”事实**；本条即为签认材料。
+  - H1：历史台账记为 2026-08-29 已放行，且当前用户再次下达“严格执行该计划”的指令；为避免把历史签认误用于新 HEAD，建议用户在回复中明确“以 ZC-00R 的 12 项 Contract 继续”，随后才启动 ZC-01。
+  - H2/H3/H4：保持 **BLOCKED**；本卡不改变真机、真人、生产等价或外向发布的证据状态。
+- **命令与退出码**：三仓 `git rev-parse --show-toplevel`、`branch --show-current`、`rev-parse HEAD`、`status --porcelain=v1`、`worktree list --porcelain`、`rev-list --count origin/main..HEAD` 均 exit 0；后端 router/module/migration 静态检索均 exit 0。
+- **验收**：无未知脏文件 ✅；三仓 Base SHA/分支/远端领先状态已记录 ✅；W0/W2 能力与证据已对账 ✅；未触发“脏文件重叠无法隔离”停止条件 ✅。
+- **下一张可启动任务卡**：按原计划为 **ZC-01 — W2 数据迁移与 DB 约束**；但当前 HEAD 已包含该卡的实现，实际应先由用户决定是“对当前 HEAD 重新执行 ZC-01 验证”还是“从 ZC-09/ZC-10 重新验收”。在收到该确认前，停止。
   - imboyapp 1 笔：`122652b4` feat(workspace) W2 全量（含版本与 error_code；dart-fmt 自动格式化 17 文件后通过）
   - imboyadmin 2 笔：`e26eb54` feat(admin) 治理面（含 .gitignore evidence 忽略）→ `8345107` chore(release) 版本
   - **未 push、未打 tag**——push 批次（含三仓历史 165/100/13+ 笔领先提交随行）仍待用户指定远端后单独授权。
@@ -571,3 +613,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **验收对照**：不存在未知脏文件 ✅；每项 W2 能力都有当前状态与证据 ✅（§4 + 本卡复核）；用户原有脏文件列为保护清单 ✅（实测为空）。
 - **残余风险**：① 三仓 450 笔未推提交（213+111+126）+3 个未推 tag 属既有状态，push 决策在 H4；② imboy 全量 eunit 的 34 失败已定性为已知环境 flake 集群（§6 终态回归卡），发布门判定以该定性+单套件绿实证为准；③ admin 远端仍持旧历史，push 须 `--force-with-lease`（§6 DCO 卡）。
 - **停止条件**：脏文件重叠未触发；按用户指令（ZC-00 后停止待确认）与 §2.3（重叠冲突待用户定路径）双重停止。
+
+### 解阻塞轮 — Workspace auto_test 批次W2R2FIX+W2R3（2026-08-31）
+
+- **阶段二修复（批次W2R2FIX，14 bug 全闭环）**：admin 5/5（0304979 契约对齐 4 + 后端归档 FK）；app 9/9（d01acab2 断网透传+切回重拉 4、4a60d8f7 branding 主题/昵称 4、后端 search 分支复验 1）。后端 imboy `f019e2c6`：①admin 归档 archived_by 写 NULL（FK→user 表，adm uid 必 23503；操作者审计走 admin_operation_logs）②user/search 全数字 keyword→find_by_id（allow_search 门不变）。真库套件 workspace_admin_archive_fk_tests / user_search_keyword_tests 落库；HTTP 全链实证（真实 adm uid 登录→归档/恢复 code=0；ID 搜索命中+allow_search=2 拒绝）。
+- **修复中发现的两层根因**：①branding API 契约错（嵌套 {workspace_id,branding:{...}}，前端平铺写被服务端静默丢空=假成功，台账"GET 实证"实为种子值）②mine 列表 SELECT 不含 branding 致壳主题恒空。成员昵称"不可见"=360dp 布局挤压下 ellipsis 渲染空白（语义树有文本≠有像素）。
+- **解阻塞批次W2R3（agent 执行，16 行解阻塞）**：簇 A 无工作区账号 F（at20260831f）实建「AT-己-临时」区，create_page 10 行+picker/members/overview 空态 9 行通过；簇 B 归档流转 4 行通过（WS2 归档→横幅+按钮禁用+980 透传+UI 恢复闭环→已恢复 active）；簇 C 断网页面级错误态 3 行经 WaveA 修复后重试仍不可达，如实维持；簇 D task_form 980 真机透传闭环（400/403 被 UI 只读门控前置不可达）。47→31 条阻塞（余量均为故障注入/结构性空场景/真手指手势类）。
+- **调试教训**：修复后 HTTP 行为不变排查 1 小时——make run 加载 `_rel/imboy` release 且 erlang.mk 增量编译未重编新源码，多次"重启"因节点名/端口被老 beam 占而未生效；正解=确认老 beam 死亡+看到 ERLC 行；release 后台运行用 `bin/imboy daemon`（不会被进程组回收）。
+- **终态**：app 1725 行=无待办 1468+阻塞 257（待修复 0，bug 210/204/6 恒等式 ✓）；admin 588 行=无待办 575+阻塞 13（待修复 0，bug 50/50/0）。全程未 push；用户并行提交（47461adc/ea682e31 壳导航收敛+成员页重设计）已合流无冲突。app 提交：a4171201/45b4bed5/45bc8b45~4eb4fc8c(批次1)/486e062c/e72b9c71/35b0feee/c713d198/ef82d41b(批次3)/d01acab2/61286df8/558d8c0a/15a5a0e4/3e711ca3/4a60d8f7；admin 提交：6446c2a/96dfcc8~43d1972(批次1)/0304979/e5fba26；imboy 提交：f019e2c6。
