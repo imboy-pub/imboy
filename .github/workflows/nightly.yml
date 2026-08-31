@@ -302,7 +302,7 @@ jobs:
           rebar3-version: "3.24.0"
 
       - name: Setup JDK 17 (eqWAlizer 为 Scala jar)
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
