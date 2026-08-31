@@ -67,8 +67,14 @@ EDOC_OPTS = {doclet, edown_doclet}
 # 多 fixture 抢占 {local, Name} 单实例，全量并发下互踩必 cancel（历史上
 # 从未在全量真正通过）。单跑不受影响：make eunit-local t=<模块名>。
 # 注意需同时过滤 src 模块条目——eunit 运行 {module, X} 会自动附带 X_tests。
-# 待重构为可共享/可让位模式后，从 Excl 移除即可恢复参与全量。
-EUNIT_TEST_SPEC = (fun() -> Excl = ['imboy_plugin_loader', 'imboy_plugin_loader_tests', 'imboy_plugin_priv_plugins_tests', 'imboy_plugin_sup', 'imboy_plugin_sup_tests', 'imboy_plugin_sup_metrics_tests', 'elib_metric', 'elib_metric_tests', 'imboy_router_registry', 'imboy_router_registry_tests', 'imboy_router_dispatch_reload_tests', 'imboy_router_plugin_routes_tests', 'imboy_router_registry_bench_tests'], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
+#
+# 2026-09-01 收窄：elib_metric/imboy_router 系 5 套件已恢复参与全量——
+# elib_metric_tests 改让位模式（terminate_child 停应用实例+restart_child
+# 复原），router 系实测与应用实例共存无冲突。
+# 仍排除 = plugin 族 4 套件：setup 对应用已启动的 {local, imboy_plugin_sup}
+# /imboy_plugin_loader 报 already_started badmatch；恢复需按同款让位模式
+# 改造（stop 应用 sup 前先 terminate_child，结束 restart_child 复原）。
+EUNIT_TEST_SPEC = (fun() -> Excl = ['imboy_plugin_loader', 'imboy_plugin_loader_tests', 'imboy_plugin_priv_plugins_tests', 'imboy_plugin_sup', 'imboy_plugin_sup_tests', 'imboy_plugin_sup_metrics_tests'], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 
 include erlang.mk
 

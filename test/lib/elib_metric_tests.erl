@@ -17,10 +17,19 @@
 %%%-------------------------------------------------------------------
 
 %% 启动/停止 elib_metric gen_server
+%%
+%% 让位模式：elib_metric 是 imboy_sup 的 permanent worker——应用存活时
+%% 「stop 应用实例再起自己的」会与 sup 自动重启打架（实测 exhausted）。
+%% 正解：supervisor:terminate_child 手动停（不触发 permanent 重启），
+%% 测试结束 restart_child 复原应用实例；无应用场景走原重试路径。
 setup_metric() ->
-    %% 并发套件会抢同一个命名 metric server：stop/start 竞态下
-    %% already_started 需收割重试，否则 setup 必红
-    start_metric(5).
+    case erlang:whereis(elib_metric) of
+        undefined ->
+            {start_metric(5), false};
+        _ ->
+            ok = supervisor:terminate_child(imboy_sup, elib_metric),
+            {start_metric(5), true}
+    end.
 
 start_metric(0) ->
     erlang:error({elib_metric_start_failed, exhausted});
@@ -40,8 +49,10 @@ start_metric(N) ->
             start_metric(N - 1)
     end.
 
-cleanup_metric(_Pid) ->
-    catch gen_server:stop(elib_metric),
+cleanup_metric({Pid, Preempted}) ->
+    catch gen_server:stop(Pid),
+    Preempted andalso
+        (catch supervisor:restart_child(imboy_sup, elib_metric)),
     timer:sleep(10).
 
 %% ===================================================================
