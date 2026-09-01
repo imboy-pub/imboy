@@ -114,8 +114,10 @@ handle_cast({online, Uid, _Pid, _DType, DID}, State) ->
 
     MsLi = elib_retry_config:intervals(<<"notice">>),
     Msg2 = jsone:encode(Msg, [native_utf8]),
-    % 给自己的其他设备发生消息
-    _ = message_ds:send_next(Uid, MsgId, Msg2, MsLi, [DID], true),
+    % 给自己的其他设备发送消息（黑名单排除当前设备）：IncludeDIDLi=false。
+    % 早前误用 [DID]+true（白名单仅当前设备）——登录设备自己收到
+    % "其他设备登录" 通知，而真正需要感知的其他设备永远收不到。
+    _ = message_ds:send_next(Uid, MsgId, Msg2, MsLi, [DID], false),
 
     % 4. 检查上线通知好友（原 online 逻辑）
     case user_setting_ds:chat_state_hide(Uid) of
