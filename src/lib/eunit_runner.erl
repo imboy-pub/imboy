@@ -97,6 +97,8 @@ start_applications() ->
     % 设置测试环境（必须在启动应用之前）
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
+    %% 测试环境社区版用户配额拉高（见 test/common/eunit_runner 同款注释）
+    application:set_env(imboy, community_max_users, 1000000),
 
     % 确保配置已加载（从通过 -config 参数加载的配置文件中读取）
     ensure_config_loaded(),
@@ -138,6 +140,8 @@ eunit_setup() ->
     % 设置测试环境变量
     application:set_env(imboy, sql_driver, pgsql),
     application:set_env(imboy, env, test),
+    %% 测试环境社区版用户配额拉高（见 test/common/eunit_runner 同款注释）
+    application:set_env(imboy, community_max_users, 1000000),
 
     % 确保配置已加载（从通过 -config 参数加载的配置文件中读取）
     ensure_config_loaded(),

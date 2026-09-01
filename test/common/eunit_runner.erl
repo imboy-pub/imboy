@@ -95,6 +95,9 @@ eunit_setup() ->
     application:set_env(imboy, env, test),
     application:set_env(imboy, http_port, test_http_port()),
     application:set_env(imboy, dsync_enabled, false),
+    %% 测试环境社区版用户配额拉高：注册/好友全链流程测试会真注册用户，
+    %% 本地库测试数据积累极易越过社区版默认 max_users=100 触发 402
+    application:set_env(imboy, community_max_users, 1000000),
 
     % 启动核心依赖应用
     CoreApps = [crypto, asn1, public_key, ssl, inets, jsone, lager, depcache],
