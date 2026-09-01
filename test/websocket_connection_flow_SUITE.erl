@@ -131,7 +131,7 @@ establish_connection_with_valid_token_succeeds(_Config) ->
     Uid = create_test_user(),
 
     % 生成有效 token
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
 
     % Mock WebSocket 处理器
     meck:new(websocket_handler, [unstick]),
@@ -154,7 +154,7 @@ establish_connection_with_expired_token_refreshes(_Config) ->
     Uid = create_test_user(),
 
     % 生成过期的 token
-    {ok, OldToken} = token_ds:encrypt_token(Uid),
+    OldToken = token_ds:encrypt_token(Uid),
 
     % Mock token 验证返回过期错误
     meck:new(auth_ds, [unstick]),
@@ -217,7 +217,7 @@ heartbeat_keep_connection_alive(_Config) ->
     Uid = create_test_user(),
 
     % 生成 token 并建立连接
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
     {ok, WsPid} = websocket_logic:connect(Token, <<"device_001">>),
 
     % Mock 心跳响应
@@ -242,7 +242,7 @@ heartbeat_timeout_closes_connection(_Config) ->
     Uid = create_test_user(),
 
     % 生成 token 并建立连接
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
     {ok, WsPid} = websocket_logic:connect(Token, <<"device_001">>),
 
     % Mock 超时检测
@@ -270,7 +270,7 @@ receive_real_time_messages(_Config) ->
     {Uid1, Uid2} = create_two_users(),
 
     % 建立连接
-    {ok, Token1} = token_ds:encrypt_token(Uid1),
+    Token1 = token_ds:encrypt_token(Uid1),
     {ok, WsPid1} = websocket_logic:connect(Token1, <<"device_001">>),
 
     % 发送消息到 Uid1
@@ -295,7 +295,7 @@ handle_messages_from_multiple_users(_Config) ->
     {Uid1, Uid2} = create_two_users(),
 
     % 建立连接
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
     {ok, WsPid} = websocket_logic:connect(Token, <<"device_001">>),
 
     % 从多个用户发送消息
@@ -332,7 +332,7 @@ reconnection_after_disconnect_succeeds(_Config) ->
     Uid = create_test_user(),
 
     % 生成 token 并建立连接
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
     {ok, WsPid} = websocket_logic:connect(Token, <<"device_001">>),
 
     % 模拟断线
@@ -358,7 +358,7 @@ reconnection_with_new_token_succeeds(_Config) ->
     Uid = create_test_user(),
 
     % 生成旧 token 并建立连接
-    {ok, _OldToken} = token_ds:encrypt_token(Uid),
+    _OldToken = token_ds:encrypt_token(Uid),
     {ok, WsPid} = websocket_logic:connect(<<"old_token">>, <<"device_001">>),
 
     % 断线
@@ -385,7 +385,7 @@ multiple_connections_from_same_user(_Config) ->
     Uid = create_test_user(),
 
     % 生成 token
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
 
     % 从多个设备建立连接
     {ok, WsPid1} = websocket_logic:connect(Token, <<"device_001">>),
@@ -407,7 +407,7 @@ connection_limit_enforced(_Config) ->
     Uid = create_test_user(),
 
     % 生成 token
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
 
     % Mock 连接限制
     MaxConnections = 5,
@@ -449,7 +449,7 @@ connection_cleanup_on_logout(_Config) ->
     Uid = create_test_user(),
 
     % 生成 token 并建立连接
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
     {ok, WsPid} = websocket_logic:connect(Token, <<"device_001">>),
 
     % 登出
@@ -466,7 +466,7 @@ stale_connection_cleanup(_Config) ->
     Uid = create_test_user(),
 
     % 生成 token 并建立连接
-    {ok, Token} = token_ds:encrypt_token(Uid),
+    Token = token_ds:encrypt_token(Uid),
     {ok, WsPid} = websocket_logic:connect(Token, <<"device_001">>),
 
     % Mock 过期连接检测
