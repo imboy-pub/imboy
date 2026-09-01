@@ -70,10 +70,10 @@ c2c_ack_deletes_offline_msg(_Config) ->
     MsgId = <<"test_c2c_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_c2c (from_id, to_id, msg_id, msg_type, payload, created_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())">>,
+    Sql = <<"INSERT INTO msg_c2c (id, from_id, to_id, msg_id, msg_type, payload, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
     Payload = <<"{\"content\":\"test message\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [999, Uid, MsgId, <<"text">>, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [elib_tsid:generate(), 999, Uid, MsgId, <<"text">>, Payload]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -148,10 +148,10 @@ s2c_ack_deletes_offline_msg(_Config) ->
     MsgId = <<"test_s2c_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_s2c (from_id, to_id, msg_id, action, msg_type, payload, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
+    Sql = <<"INSERT INTO msg_s2c (id, from_id, to_id, msg_id, action, msg_type, payload, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
     Payload = <<"{\"msg_type\":\"system\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [elib_tsid:generate(), 0, Uid, MsgId, <<"notify">>, <<"system">>, Payload]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
@@ -182,10 +182,10 @@ c2s_ack_uses_parameterized_query(_Config) ->
     MsgId = <<"test_c2s_msg_001">>,
 
     % 准备测试数据
-    Sql = <<"INSERT INTO msg_c2s (from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())">>,
+    Sql = <<"INSERT INTO msg_c2s (id, from_id, to_id, topic_id, msg_id, msg_type, payload, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())">>,
     Payload = <<"{\"text\":\"hello\"}">>,
-    {ok, _} = elib_pg:execute(Sql, [Uid, 123, 123, MsgId, <<"text">>, Payload]),
+    {ok, _} = elib_pg:execute(Sql, [elib_tsid:generate(), Uid, 123, 123, MsgId, <<"text">>, Payload]),
 
     % Mock msg_store_ds:unstage
     meck:new(msg_store_ds, [unstick]),
