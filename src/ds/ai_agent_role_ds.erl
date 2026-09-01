@@ -195,17 +195,6 @@ effective_config(Agent, Role) when is_map(Agent), is_map(Role) ->
             {error, Reason}
     end.
 
-default_policy() ->
-    #{
-        <<"knowledge">> => #{
-            <<"mode">> => <<"on_demand">>,
-            <<"source">> => <<"all">>,
-            <<"max_context_bytes">> => 2400
-        },
-        <<"group_reply">> => #{<<"mode">> => <<"off">>},
-        <<"proactive">> => #{<<"mode">> => <<"off">>, <<"daily_limit">> => 0}
-    }.
-
 unknown_policy_key(Policy) ->
     Allowed = [<<"knowledge">>, <<"group_reply">>, <<"proactive">>],
     case [Key || Key <- maps:keys(Policy), not lists:member(Key, Allowed)] of

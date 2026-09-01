@@ -10,9 +10,11 @@
 -export([find/2]).
 -export([list_by_channel/1]).
 -export([delete/2]).
+-export([delete_tx/3]).
 -export([is_admin/2]).
 -export([get_role/2]).
 -export([update_role/3]).
+-export([update_role_tx/4]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").

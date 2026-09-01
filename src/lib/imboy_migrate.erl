@@ -1,5 +1,4 @@
 -module(imboy_migrate).
--dialyzer({nowarn_function, [priv_is_valid/1]}).
 
 %%% @doc 数据库迁移模块
 %%% 负责执行数据库结构升级和序列重置
@@ -231,22 +230,6 @@ expand_project_dir(Path) ->
             % 没有 $PROJECT_DIR，直接返回
             Path
     end.
-
--spec priv_is_valid(list()) -> boolean().
-priv_is_valid(List) ->
-    lists:all(
-        fun(E) ->
-            case E of
-                {ok, _} -> true;
-                % Handle results with 2 elements
-                {ok, _, _} -> true;
-                % Handle results with 3 elements
-                {ok, _, _, _} -> true;
-                _ -> false
-            end
-        end,
-        List
-    ).
 
 %% @private 执行多个 SQL 文件
 %% 读取并逐个执行 SQL 文件，如果任何一个失败则回滚事务
