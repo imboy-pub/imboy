@@ -123,10 +123,10 @@ create_fixture() {
         -v owner_uid="${PAID_FIXTURE_OWNER_UID}" -v marker="${marker}" <<'SQL'
 BEGIN;
 INSERT INTO public.channel
-    (id, name, description, avatar, type, custom_id, creator_uid, status)
+    (id, name, description, avatar, access_type, visibility, join_policy, custom_id, creator_uid, status)
 VALUES
-    (:channel_id, 'IMBoy local paid fixture', '自动化测试专用付费频道', '', 2,
-     :'marker', :owner_uid, 1);
+    (:channel_id, 'IMBoy local paid fixture', '自动化测试专用付费频道', '',
+     1, 0, 3, :'marker', :owner_uid, 1);
 INSERT INTO public.channel_admin (id, channel_id, user_id, role)
 VALUES (:admin_id, :channel_id, :owner_uid, 3);
 INSERT INTO public.channel_price
@@ -154,7 +154,7 @@ inspect_fixture() {
         marker_clause=" AND c.custom_id = '${PAID_FIXTURE_MARKER}'"
     fi
     "${PSQL[@]}" -P pager=off -F '|' -At -c \
-        "SELECT c.id, c.custom_id, c.type, c.status, cp.price, cp.currency,
+        "SELECT c.id, c.custom_id, c.access_type, c.status, cp.price, cp.currency,
                 COUNT(DISTINCT cm.id) AS message_count,
                 COUNT(DISTINCT co.id) AS order_count
            FROM public.channel c
@@ -162,7 +162,7 @@ inspect_fixture() {
            LEFT JOIN public.channel_message cm ON cm.channel_id = c.id AND cm.status = 1
            LEFT JOIN public.channel_order co ON co.channel_id = c.id
           WHERE c.custom_id LIKE 'imboy-paid-fixture-%'${marker_clause}
-          GROUP BY c.id, c.custom_id, c.type, c.status, cp.price, cp.currency
+          GROUP BY c.id, c.custom_id, c.access_type, c.status, cp.price, cp.currency
           ORDER BY c.id DESC;"
 }
 
