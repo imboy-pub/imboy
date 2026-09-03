@@ -20,6 +20,7 @@
 -define(OWNER, 920001).
 -define(MEMBER2, 920002).
 -define(OUTSIDER, 920004).
+-define(WS_OWNER, 920005).
 -define(PROJECT_ID, 720001).
 -define(MS_ID, 620001).
 
@@ -178,6 +179,12 @@ list_permission_test_() ->
             put({ms_logic_tests, pm_row}, <<"active">>),
             ?assertMatch(
                 {ok, _}, project_milestone_logic:list(?MEMBER2, ?PROJECT_ID, all, 1, 10)
+            )
+        end},
+        {"list by workspace owner governance ok", fun() ->
+            reset_state(),
+            ?assertMatch(
+                {ok, _}, project_milestone_logic:list(?WS_OWNER, ?PROJECT_ID, all, 1, 10)
             )
         end},
         {"list by non project member 403", fun() ->
@@ -346,20 +353,22 @@ logic_mocks() ->
                 {ok, []}
             end}
         ]},
-        {project_logic, [
-            {'detail', 2, fun
-                (_Uid, ?PROJECT_ID) -> {ok, Project};
-                (_Uid, 42) -> {error, {404, <<"项目不存在"/utf8>>}};
-                (?OUTSIDER, _) -> {error, {403, <<"非工作区成员，禁止访问该资源"/utf8>>}}
+        {project_member_logic, [
+            {'ensure_can_read', 2, fun
+                (_Uid, 42) ->
+                    {error, {404, <<"项目不存在"/utf8>>}};
+                (?OUTSIDER, _) ->
+                    {error, {403, <<"非工作区成员，禁止访问该资源"/utf8>>}};
+                (?MEMBER2, ?PROJECT_ID) ->
+                    case get({ms_logic_tests, pm_row}) of
+                        <<"active">> -> {ok, Project};
+                        _ -> {error, {403, <<"仅项目成员可访问该项目资源"/utf8>>}}
+                    end;
+                (_Uid, ?PROJECT_ID) ->
+                    {ok, Project}
             end}
         ]},
         {project_milestone_repo, [
-            {'find_project_member', 3, fun(_Pid, Uid, <<"status">>) ->
-                case {Uid, get({ms_logic_tests, pm_row})} of
-                    {_, <<"active">>} -> #{<<"status">> => <<"active">>};
-                    _ -> #{}
-                end
-            end},
             {'list_by_project', 4, fun(_Pid, _Status, _Page, _Size) -> {ok, []} end},
             {'count_by_project', 2, fun(_Pid, _Status) -> {ok, 0} end}
         ]}

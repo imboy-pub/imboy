@@ -18,9 +18,8 @@
 %   读（list）：active Workspace Member 且（Owner 或 active Project Member）。
 %     guest 若在册可读。
 %   归档 Workspace：拒写 980（workspace_guard 同事务守卫）、允许读。
-%   校验实现：DS 层事务内 ensure_writer_tx（owner 直判 + project_member 只读
-%   直查 project_milestone_repo:find_project_member*——ZC-05 整合时统一到
-%   project_member_logic）。
+%   读权限统一复用 project_member_logic；写权限由 DS 层在事务内再次校验，
+%   防止成员状态并发变化。
 %
 % 状态机：planned→reached 单向；重复 reach 幂等（already_reached，不重复写
 % 事件）；reached→planned 无端点即拒绝。
@@ -153,29 +152,7 @@ reach(Uid, MsId) ->
 -spec ensure_can_read(integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 ensure_can_read(Uid, ProjectId) ->
-    case project_logic:detail(Uid, ProjectId) of
-        {error, Reason} ->
-            %% 404 / 非工作区成员 403 原样透传
-            {error, Reason};
-        {ok, Project} ->
-            case is_project_member(Uid, ProjectId, Project) of
-                true -> {ok, Project};
-                false -> {error, {403, <<"仅项目成员可访问里程碑"/utf8>>}}
-            end
-    end.
-
-%% Owner 直判；否则直查 project_member active（ZC-05 统一到 project_member_logic）
--spec is_project_member(integer(), integer(), map()) -> boolean().
-is_project_member(Uid, ProjectId, Project) ->
-    case maps:get(<<"owner_id">>, Project, 0) of
-        Uid ->
-            true;
-        _ ->
-            case project_milestone_repo:find_project_member(ProjectId, Uid, <<"status">>) of
-                #{<<"status">> := <<"active">>} -> true;
-                _ -> false
-            end
-    end.
+    project_member_logic:ensure_can_read(Uid, ProjectId).
 
 -spec normalize_status(binary() | all) -> binary() | all.
 normalize_status(<<"planned">>) -> <<"planned">>;
