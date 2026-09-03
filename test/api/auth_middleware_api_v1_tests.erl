@@ -156,7 +156,7 @@ rejected_401_case(Path) ->
     end).
 
 %% ===================================================================
-%% 象限 1：/api/v1/payment/callback/<gateway> 前缀放行（:gateway 变量段）
+%% 象限 1：/api/v1/payment/callback/<gateway> 仅单个非空变量段放行
 %% ===================================================================
 
 payment_callback_prefix_bypasses_sign_and_auth_test_() ->
