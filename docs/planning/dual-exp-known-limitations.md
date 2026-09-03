@@ -85,11 +85,11 @@ smoke/api）单跑 **265 用例全绿**（0 失败），与 C1 对照实验结�
 
 ## E. 产品语义与实现偏差
 
-### E1. invite 可选项语义偏差
-Workspace Member 邀请接口的角色可选 `owner/member/guest`（服务端校验角色合法性），
-但邀请时**不提供"附带入群/订阅意向"等可选项**（三条关系只能事后显式建立）——
-与早期草稿中"invite 附带选项"表述存在语义偏差；现行契约：邀请只建 workspace_member。
-（若产品期望"接受邀请时勾选加入 General/订阅 Announcements"，属后续迭代。）
+### E1. invite 可选关系编排（已覆盖）
+后端 Workspace Member invite 仍只建立 `workspace_member`，不把 Group Member 或 Channel
+Subscriber 隐式合并进同一接口。Flutter 邀请向导已提供“加入 General”和“订阅
+Announcements”两个独立选项：主邀请成功后分别执行、分别显示结果，失败项可单独重试。
+这既保持三种关系的权限边界，也避免邀请后必须再到多个页面逐项操作。
 
 ### E2. Task assignee 的 active 校验在应用层（W0）
 schema 层仅保证 user 存在外键；active Workspace Member 校验由 T6b 应用层同事务
