@@ -26,7 +26,7 @@
 | 安全抽查复跑（非成员 403 组 / 归档后写 980 组 / join 980 守卫） | ✅ 全过（§三 10 步序列 + 修正 uid 补充 3 步） |
 | §9.2 P0 W0 相关逐条 | ✅ 15 条｜⚠️ 降级达成 1 条（能部署）｜N/A(W0 裁剪) 1 条（Files 聚合）｜UI/真机层 BLOCKED 如实标注于对应条目 |
 | §9.4 Day-1 Bar | 拿得出手 ✅／能让别人真实使用 ✅(API 闭环)／首日缺陷 ✅／能部署 ⚠️ 降级达成 |
-| T15 双报告占位符/空壳检查 | ✅ 已填充、非空壳；发现 1 处"transcript 头部声明与正文快照不一致"（F-N1，正文为修复前失败轮次存档） |
+| T15 双报告占位符/空壳检查 | ✅ 已填充、非空壳；F-N1 已由 `5a33f754` 的双遍 ALL PASS transcript 闭合 |
 
 ---
 
@@ -88,7 +88,7 @@
 ### T15 双报告复核（逐占位符/空壳/数字一致性）
 
 - `dual-exp-deploy-rehearsal.md`：6 节全部实质填充（步骤命令可复制、明确降级声明、配置接口 digest 有外部复算锚点 49654a9fffa39c0d/684f363bd3176f1f、升级回滚命令具体到 erlang_migrate:force 语义）；无 TBD/TODO 占位。数字与我复验一致处：版本 78/f、五轮 init 取证、受控重启 ≥6 次（本机）无法独立重现历史次数，但其算法与切换语义已被我的 product_experience_tests 9/9 与静态链路复核替代印证。
-- `dual-exp-day1-walkthrough.md`：12 项走查清单状态列无空洞；D1-D6 缺陷表含定级与修复指向；"ALL PASS 22 步 54 断言"与**我本人两遍复跑结果完全一致**；升级提示链路给出 app_version 只读查询细节。**一处不一致=F-N1**：其"transcript 见 run1/run2 存档"指向的 `dual-exp-demo-b-transcripts-redacted.md` 头注声称"两遍均为 ALL PASS"，而存档正文 run1/run2 第 [20] 步各有一个 FAIL 且结尾为 `DEMO-B RESULT: FAILED (pass=53 fail=1)` —— 系当时归因于缓存竞态并加入重试之前的旧轮次快照未被替换（当前脚本 376-386 行已有 3 秒重试逻辑，且我复跑两次皆 ALL PASS）。属**文档治理缺口**而非当前功能缺口，定性见 F-N1。
+- `dual-exp-day1-walkthrough.md`：12 项走查清单状态列无空洞；D1-D6 缺陷表含定级与修复指向；"ALL PASS 22 步 54 断言"与**我本人两遍复跑结果完全一致**；升级提示链路给出 app_version 只读查询细节。F-N1 已由 `5a33f754` 写入的 run1/run2 双遍 ALL PASS transcript 闭合。
 - `dual-exp-t3-migration-rehearsal.md` 与 `dual-exp-known-limitations.md`：抽查关键数字（134→139 表、26/26 与 518/518 回填、down 事故 force 恢复、B1 上游缺陷定位到 erlang_migrate.erl:378-381）与我直查库内实况一致（version=78 dirty=f）；known-limitations 的重复附件边界已归并至 A2，E 节编号已恢复连续。
 
 ---
@@ -157,10 +157,10 @@
 
 | 项 | 判定 | 依据（编号溯源） |
 |---|---|---|
-| **拿得出手**（Demo 两遍无人工干预；无占位符/调试残留/控制台报错） | ✅ | 本人两遍连跑 ALL PASS 22 步 54 断言 ×2、EXIT=0/0；演示注册路径遇 license 上限时走幂等演示账号（INFO 提示非报错）；现有 transcript 存档头尾不一致（F-N1）属文档而非交付界面；本会话探针未触发任何 500/崩溃 |
+| **拿得出手**（Demo 两遍无人工干预；无占位符/调试残留/控制台报错） | ✅ | 本人两遍连跑 ALL PASS 22 步 54 断言 ×2、EXIT=0/0；演示注册路径遇 license 上限时走幂等演示账号（INFO 提示非报错）；双遍 transcript 已由 `5a33f754` 留档；本会话探针未触发任何 500/崩溃 |
 | **能部署**（未参与实现者干净环境仅按文档部署） | ⚠️ 降级达成 | rehearal §1 自认编排者执行+空库演练，"未参与实施者格"以我方独立复核+依赖实战接管部分补强；生产 Docker/Helm 无授权 BLOCKED；**完整口径留待人工**（与条目⑲一致） |
 | **能让别人真实使用**（试点环境注册/邀请/权限/附件/升级提示闭环） | ✅(API 闭环)+BLOCKED(UI) | 注册→Template→邀请→显式入群/订阅→任务指派→归档保护→恢复全 API 级闭环（Demo ×2＋探针）；升级提示服务端前置（app_version≥vsn 配置在位，day1 §3）；group/channel 附件确认已在事务内守卫，Personal 附件按 schema/ACL 不回溯 Workspace；**真机 UI 弹窗与附件上传实走 BLOCKED** |
-| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 创建者角色兜底带发布回归；known-limitations 11 节可逐条核查（其中 app_version 条目已自纠 1.0.15→1.0.9，如实修订值得肯定）；我复核期间新增 3 个治理类发现 F-N1/N2/N3（非首日旅程缺陷，亦已要求入册） |
+| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 创建者角色兜底带发布回归；known-limitations 可逐条核查；F-N1/F-N2' 文档治理项已闭合，F-N2/F-N3 仍待处理 |
 
 ---
 
@@ -176,7 +176,7 @@
 
 ## 七、本轮验收新发现（F-N 系列；均非 CRITICAL/HIGH）
 
-- **F-N1 (MEDIUM·文档治理)**：`dual-exp-demo-b-transcripts-redacted.md` 头注声称"两遍均为 ALL PASS 22 步 54 断言"，但 run1/run2 正文快照各含 1 FAIL（P7c 首帖被拒，当时归因于 E4 缓存竞态）且以 FAILED 结尾——存档未随脚本加重试后更新。当前代码确认 `get_role` 为数据库直读，创建者角色兜底已有发布回归覆盖；**要求整改**：以当前 main 的 fresh 快照替换或加头部勘误注记。
+- **F-N1 (MEDIUM·文档治理，已闭合)**：`5a33f754` 已用双遍 `ALL PASS (steps=22 assertions=54)` 的脱敏 transcript 替换旧失败快照；当前代码另由创建者角色兜底发布回归覆盖。
 - **F-N2 (MEDIUM·运维卫生)**：`_rel` 内 beam 相对 HEAD 陈旧且不一致（group_member_ds/workspace_handler 为 15:20 版、channel_repo 18:44 版），任何人直接起旧 release 会得出与 HEAD 不符的安全/功能行为（V3 环境备注早已预警）。本会话已重建修复。**要求整改**：收尾流程固化"改码后必须 `make rel` 再演示"，或在 bin 启动前做 beam 摘要比对。
 - **F-N3 (MEDIUM·测试环境设计)**：`w0_schema_contract_tests.legacy_rows_all_personal_test_`（line 142）对共享库 imboy_v1 断言"channel 全行 personal/NULL"，而 T14 历次 Demo 留下 18 个 DemoB-W0-* 工作区与其 16 条 Announcements 频道（全部产生于迁移之后）必然破坏该断言 → 当前实跑 4/5。demo 脚本无清理阶段（也无 delete 端点可清，仅 archive）。产品层面无恙：XOR 双向 0 违例、group 表 0 违例、44 条迁移前基线行完好。**要求整改**：断言改为"迁移前基线行保持 personal（created_at < 迁移时刻）或将残留判据从断言剥离至对账工具"，并为 demo 增加 teardown（至少 archive+DB 备注标签）。
 - **F-N2' (LOW·排版，已闭合)**：known-limitations 原 §E3 重复附件边界已由 A2 完整承载并删除，Owner 并发保护调整为 §E3，E1-E4 编号恢复连续。
@@ -187,7 +187,7 @@
 
 - 理由：CRITICAL/HIGH 清零（V1-F1、V1-F2、V3-F1、V3-F2 修复并有行为级复证；V1-F3 经裁决知情取舍入册 E3；V3-F3 修复并经归档 join 场景复证）；关键测试矩阵在我手中全部可绿（除 F-N3 环境敏感一条且已根因定位）；Golden Demo 以第三方身份复现双遍 ALL PASS；三类安全边界抽查零失败；Scope Contract 十二项五证/三证齐备；已知限制与 BLOCKED 披露诚实完整。
 - **边界重申（unsafe_experiment 不解除）**：本判定 ≠ 客户验收 ≠ Release ≠ 工程 DoD；生产迁移窗口（B3/R2.5）、真机 Day-1 Bar 四项、30 秒理解测试、Gate 0/Gate W 的人工签认、生产受控重启演练均在 Release 前必须由人工完成的清单内。
-- 附带整改要求（不阻塞 ACCEPTED(local)，但进入 Release 候选前须闭合）：F-N1 存档勘误、F-N2 收尾流程固化、F-N3 断言口径修正。F-N2' 已闭合。
+- 附带整改要求（不阻塞 ACCEPTED(local)，但进入 Release 候选前须闭合）：F-N2 收尾流程固化、F-N3 断言口径修正。F-N1/F-N2' 已闭合。
 
 ---
 *方法学备注：所有结论基于本人执行的命令与直查输出（git show/grep、make、erl、psql@4323、curl@9800、flutter），对前序会话（V1/V3/T13-T15/WP 会话）的结论仅在"我方复核未推翻"的前提下引用并显式标注；测试数据：新建 2 个 V2ACC 工作区已归档、2 个探针个人频道与若干消息残留已列入 F-N3 台账建议、演示账号 A/B 未触碰、用户 E2EE WIP 未触碰。*
