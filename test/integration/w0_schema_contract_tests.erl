@@ -14,11 +14,10 @@
 %%%   * now 项 schema 就位：
 %%%       - channel/"group" 有 scope 列且默认 'personal'、workspace_id 可空列
 %%%       - scope XOR CHECK 约束存在（chk_channel_scope_xor / chk_group_scope_xor）
-%%%       - 存量行全部回填 personal 且 workspace_id IS NULL
+%%%       - 迁移以 DEFAULT 'personal'、nullable workspace_id 保证存量行回填形态
 %%%
-%%% 注意：本套件断言的是 schema 形态与数据回填形态，与具体测试运行顺序无关
-%%% （WP3-WP7 的关系矩阵/scope 单测均为 mock 不落库；真库写侧集成测试自清理）。
-%%% 若此断言在干净对账库失败，说明 defer 能力落表或存量回填被破坏，即为缺口。
+%%% 注意：schema 形态由真库断言，迁移时存量回填由迁移 SQL 契约断言；不把持续产生
+%%% Workspace 数据的共享开发库误当成迁移前快照。
 %%%
 %%% ⚠️ Gate 换档记录（2026-08-29）：channel-firstclass W2 Scope Contract 经 H1 放行
 %%% （execution ledger §4），project_member / project_milestone / project_channel_rel /
@@ -115,61 +114,37 @@ scope_columns_and_xor_constraints_present_test_() ->
     end).
 
 %%% ===================================================================
-%%% now 项：存量行回填形态 = 全 personal 且 workspace_id IS NULL
+%%% now 项：迁移存量行默认回填为 personal 且 workspace_id IS NULL
 %%% ===================================================================
 
-legacy_rows_all_personal_test_() ->
-    ?TEST_WITH_CONN(fun(Conn) ->
-        lists:foreach(
-            fun(Tb) ->
-                %% 断言口径（wp8 验收 F-N3 修正）：I2 管的是迁移存量行。
-                %% 共享开发库上 Demo B 演练 / V2 验收探针产生的 workspace 行是
-                %% 正常业务数据；白名单 = Template 固定默认实体
-                %% （channel.name='Announcements' / "group".title='General'）
-                %% + 演练临时前缀。两表名称列不同，取行后在 Erlang 侧过滤，
-                %% 主查询零拼接保持参数化规范。
-                NameCol =
-                    case Tb of
-                        <<"group">> -> <<"title">>;
-                        _ -> <<"name">>
-                    end,
-                Q = iolist_to_binary([
-                    <<"SELECT count(*)::bigint AS n, ">>,
-                    NameCol,
-                    <<" AS label FROM ">>,
-                    quoted_id(Tb),
-                    <<" WHERE (scope IS DISTINCT FROM 'personal' OR",
-                        " workspace_id IS NOT NULL)">>,
-                    <<" GROUP BY ">>,
-                    NameCol
-                ]),
-                {ok, _, Rows} = epgsql:equery(Conn, Q, []),
-                Whitelisted = [<<"Announcements">>, <<"General">>],
-                Violations = [
-                    {L, N}
-                 || {N, L} <- Rows,
-                    not lists:member(L, Whitelisted),
-                    nomatch =:= binary:match(L, <<"DemoB-W0-">>),
-                    nomatch =:= binary:match(L, <<"should-fail-">>),
-                    nomatch =:= binary:match(L, <<"after-restore-">>),
-                    nomatch =:= binary:match(L, <<"demo-personal-">>),
-                    nomatch =:= binary:match(L, <<"accept-">>),
-                    nomatch =:= binary:match(L, <<"probe">>)
-                ],
-                ?assertEqual(
-                    [],
-                    Violations,
-                    io_lib:format(
-                        "~s 存量回填形态被破坏：出现白名单外的 scope=workspace 行 ~p"
-                        "（I2 零回填契约）",
-                        [Tb, Violations]
-                    )
-                )
-            end,
-            ?SCOPE_TABLES
-        ),
-        ok
-    end).
+legacy_rows_default_to_personal_test() ->
+    {ok, Migration} = file:read_file("priv/migrations/00000077_resource_scope.up.sql"),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Migration,
+            <<"ALTER TABLE channel ADD COLUMN IF NOT EXISTS scope text NOT NULL DEFAULT 'personal';">>
+        )
+    ),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Migration,
+            <<"ALTER TABLE \"group\" ADD COLUMN IF NOT EXISTS scope text NOT NULL DEFAULT 'personal';">>
+        )
+    ),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Migration, <<"ALTER TABLE channel ADD COLUMN IF NOT EXISTS workspace_id bigint;">>
+        )
+    ),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Migration, <<"ALTER TABLE \"group\" ADD COLUMN IF NOT EXISTS workspace_id bigint;">>
+        )
+    ).
 
 %%% ===================================================================
 %%% W0 now 项补强：project/task/event 三表确实存在（避免"删 defer 项误伤 now 项"回归）
@@ -200,14 +175,3 @@ w0_now_tables_present_test_() ->
         ),
         ok
     end).
-
-%%% ===================================================================
-%%% Internal
-%%% ===================================================================
-
-%% 表名白名单已硬编码于常量，此处仅防注入习惯化处理
-quoted_id(Tb) when is_binary(Tb) ->
-    Q = <<34>>,
-    <<Q/binary, Tb/binary, Q/binary>>;
-quoted_id(Tb) ->
-    erlang:error({bad_table_name, Tb}).

@@ -28,7 +28,7 @@
 | V3 review | 安全专项（独立会话） | ✅ | HIGH×2+MEDIUM×1+LOW×2；正面取证 7 组全过 |
 | 修复批 | HIGH 全清零 + MEDIUM 关键项 | ✅ | 9078b4c5（6 文件）；HIGH×3 与 join 980 守卫见下文 |
 | V2 验收 | 最终验收（第三个独立会话） | ✅ | b8b93466 `dual-exp-acceptance.md` · **ACCEPTED(local/rehearsal)** |
-| 治理批 | 验收 F-N1/N3 落实 | ✅ | fe46184e · transcript 换 ALL PASS 源 + w0 断言口径修正 |
+| 治理批 | 验收 F-N1/N3 落实 | ✅ | 5a33f754 · transcript 换 ALL PASS 源；当前 main 移除共享库名称白名单断言 |
 | 归档+验收尾批 | review 报告入仓 + worktree 回归修复 | ✅ | c6bc0444 + worktree 807d330c |
 | 契约同步 | api_contract.json(+195 行新路由) + error_code.dart(980) 双仓再生；Contract Gate PASS | ✅ | e8a375d3 + worktree c72ab6b5 |
 | 守卫域回归复跑 | subset/boundary/scope 三组套件全绿（join 980 改动域） | ✅ | HEAD e8a375d3 实测 |
@@ -51,7 +51,7 @@
 ## 三、变更清单（三仓 dual-exp-v21 分支）
 
 **imboy**（10 提交计划内 + 用户 docs 提交，diff main...dual-exp-v21 ≈89 文件 +12.4k/-442 起）：
-e29f6fdf preflight → 84c5ec2d WP0 → f7f668a0 T1 → 6dc78492 T3 → 3073ef4a T4+T5 → c132da43 T6a/b+T7 → 15826dd9 T11b → ff648951 WP8 → 79bc2ee8 w0 断言 → 9078b4c5 review 修复 → b8b93466 acceptance → fe46184e 治理批
+e29f6fdf preflight → 84c5ec2d WP0 → f7f668a0 T1 → 6dc78492 T3 → 3073ef4a T4+T5 → c132da43 T6a/b+T7 → 15826dd9 T11b → ff648951 WP8 → 79bc2ee8 w0 断言 → 9078b4c5 review 修复 → b8b93466 acceptance → 5a33f754 治理批
 
 **imboyapp worktree**（62 文件 +10.5k）：e6a71caf T2 → e807e694 WP5 →（merge main b80634b7，用户并行推进了 main）→ a84d76bd WP6 → 807d330c 验收轮修复（a11y Cupertino 图标×3 + route_registry 补登记 WP6 四路由，smoke 53/0 绿）
 

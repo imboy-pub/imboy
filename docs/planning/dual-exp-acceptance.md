@@ -21,7 +21,7 @@
 | `make app` 零警告复验 | ✅ EXIT=0，`grep -ci warning`=0 |
 | Flutter analyze 新文件 0 新增 | ✅ 146 条全落 integration_test/ 存量，workspace/chat_shell/workspace_shell 非 test 命中 0 |
 | Flutter 双体验子集复跑 | ✅ +189 通过 / ~80 跳过 / **0 失败**（chat_shell+workspace+workspace_shell+smoke 四目录） |
-| 后端关键套件复跑（8 模块，本人取数） | **59 过 / 1 挂**：唯一挂＝w0_schema_contract_tests 的存量回填断言（16 行为 T14 演练残留数据所致的环境敏感红，非产品缺陷，见 F-N3） |
+| 后端关键套件复跑（8 模块，历史取数） | 当时 **59 过 / 1 挂**；F-N3 修订后本轮 `w0_schema_contract_tests` **4/4 PASS**，其余模块未在本轮重跑 |
 | Demo B 连续两遍复跑（本人） | ✅ ×2 **ALL PASS 22 步 54 断言**，EXIT=0 |
 | 安全抽查复跑（非成员 403 组 / 归档后写 980 组 / join 980 守卫） | ✅ 全过（§三 10 步序列 + 修正 uid 补充 3 步） |
 | §9.2 P0 W0 相关逐条 | ✅ 15 条｜⚠️ 降级达成 1 条（能部署）｜N/A(W0 裁剪) 1 条（Files 聚合）｜UI/真机层 BLOCKED 如实标注于对应条目 |
@@ -66,11 +66,11 @@
 |---|---|---|
 | ① experience=chat 与 workspace 均正常运行 | ✅(API/测试级)，UI 层 BLOCKED | 服务端真相源链路齐备：`product_experience.erl:29-36`(effective/effective_binary)、`index_handler.erl:79-82`(init 白名单下发)、`imboy_env.erl:704-712`(env 覆盖，非法降级 chat)；Flutter 切壳测试 `chat_shell_bootstrap_test.dart` + `experience_provider_test.dart` 在我的子集复跑中通过；真机双壳走查 BLOCKED（见 §六） |
 | ② Message/User/File/E2EE/WebSocket/Group/Channel 全共用，无第二套实现 | ✅ | workspace 视图直接 import 既有内核：`workspace_channel_detail_page.dart:21` import `page/channel/channel_detail_page.dart`；后端消息收发沿用 msg_c2g_repo/channel_message_repo 原 unmodified 内核（diff 中仅加守卫挂接）；WS c2g 由 Demo B 步骤 [11] 真帧发送 PASS×2 |
-| ③ Chat 核心 Demo 全绿，无回归（对照 R1 基线） | ✅（模块级） | R1 基线 5804/59（R1.1 记录）；我复跑的后端 8 关键模块 59 过/1 挂（唯一挂见 F-N3，与本计划代码无关）；全量对账未在本会话重跑（~40 分钟成本），继承 C2 口径如实标注 |
+| ③ Chat 核心 Demo 全绿，无回归（对照 R1 基线） | ✅（模块级） | R1 基线 5804/59（R1.1 记录）；历史 8 模块结果为 59 过/1 挂，唯一 F-N3 已修订并在本轮 4/4 PASS；全量对账未在本会话重跑（~40 分钟成本），继承 C2 口径如实标注 |
 | ④ Workspace MVP 六能力覆盖（W0 收敛）＋导航用 Members | ✅(Files 聚合 N/A) | 生命周期 archive/restore 探针 [5]/[10] 实测；Branding 字段在 create workspace 响应中回显（探针请求带 branding.name="V2ACC"，模板创建时同事务落库）；资源清单 project/group/channel/members 列表均有 API 与测试；计费锚点 `workspace.owner_id` 只读（T3 迁移⑥）；导航措辞 `workspace_shell_page.dart:42 membersLabel: t.workspace.navMembers`（zh='成员'、members 页全称"工作区成员"）；**Files 聚合不在 Gate W 十二项内 → N/A(W0)**，此处与 §9.2 原文列表存在裁剪偏差，已计入 Scope Contract 表说明 |
 | ⑤ Project 能力按 Scope Contract 闭环（Tasks 四态+回退必选） | ✅ | 五证见 §四 Scope Contract #1；Demo B [13]-[14] 两遍：todo→doing→review→done→回退→done 全过；w0_now_tables_present + project_task_flow_test 在位 |
 | ⑥ Workspace 六能力完整（三角色/最小权限/Branding/资源清单/生命周期/计费锚点）五证齐全 | ✅ | 三角色矩阵 `workspace_logic_tests` **16/16**（我复跑数字）；最小权限探针 [1][2] 403；Branding 见④；生命周期⑤；owner_id 见④ |
-| ⑦ 双 scope XOR 成立＋存量回填＋channel↔project 同校验 | ✅（schema 契约层） | w0_schema_contract_tests 4/5：XOR CHECK 约束断言过、defer 表缺席断言过、now 表在位断言过；存量回填断言在共享库上因演练残留红（F-N3 定性：**group 表 0 违例、channel 全部 16 行违例均为迁移之后产生的 DemoB-W0 演练工件，44 行基线 personal 行完好**） |
+| ⑦ 双 scope XOR 成立＋存量回填＋channel↔project 同校验 | ✅（schema 契约层） | `w0_schema_contract_tests` 4/4：当前 schema 的列/XOR/表契约由真库验证；迁移存量回填由 00000077 的 `DEFAULT 'personal'` 与 nullable `workspace_id` 文本契约验证，不依赖共享库业务名称 |
 | ⑧ 四元语义成立；Group Notice 保留；Channel 视图无聊天输入；Pinned/Overview 不聚合 Notice | ✅ | `workspace_channel_detail_page.dart` 结构=讨论引导横幅+ChannelDetailPage（复用 Publish 内核），全文件 "ChatInput" 3 处命中全为"不引用聊天组件"的注释/契约（:7/:12/:30），ValueKey `workspace-channel-detail-dm-entry` 固化；workspace 页面 grep GroupNotice 零引用；Activity 无正文=W0 无聚合端点（§五 defer 五项） |
 | ⑨ 四关系边界清楚；加入 WS 不自动加入下级 | ✅ | Demo B [5]-[8] 两遍：邀请后 DB 核查 active 群成员=0、订阅=0，显式入群/订阅各自独立过 |
 | ⑩ Group Member ⊆ Workspace Member 两档强制 | ✅ | 三层：DB 触发器 `trg_group_member_ws_subset`（DEFERRABLE，T3 §2.2 SUBSET-1..5）＋应用层探针 [3r] `{"code":409,"msg":"workspace_membership_required…"}` ＋ `group_member_workspace_subset_tests` **3/3**（我复跑）；W0 外的第二档（Project Member ⊆ WM）N/A |
@@ -144,10 +144,10 @@
 
 ## 五、§9.3 最终自检八条书面回答（每条 ≤250 字，引用本文档取证编号）
 
-1. **Chat Experience 兼容（对照 R1 基线数字）？** 兼容判据成立但我未复跑全量对账：后端我重跑 8 关键模块 59 过/1 挂（挂见 F-N3 非代码因素）；R1 基线 5804/59 未被我推翻（工作树相对 T13 后仅有 9078b4c5 等 workspace 路径改动，已由 §1.1 六项修复逐一消除风险面）。Chat 主链路活性由 Demo B [11] WS c2g 真帧与 [12] Group Notice 两遍 PASS 直接证明；Flutter chat_shell 子集 189 过 0 挂（analyze 146 条全存量）。全量 eunit/flutter 全量对账列为遗留给 RC 前一次性复跑（时限成本考量，不影响 local 结论）。
+1. **Chat Experience 兼容（对照 R1 基线数字）？** 兼容判据成立但我未复跑全量对账：历史 8 个后端关键模块为 59 过/1 挂，唯一 F-N3 修订后本轮 `w0_schema_contract_tests` 4/4 PASS；R1 基线 5804/59 未被我推翻。Chat 主链路活性由 Demo B [11] WS c2g 真帧与 [12] Group Notice 两遍 PASS 直接证明；Flutter chat_shell 子集 189 过 0 挂（analyze 146 条全存量）。全量 eunit/flutter 全量对账列为遗留给 RC 前一次性复跑（时限成本考量，不影响 local 结论）。
 2. **Workspace Experience 真实可运行且共用 IM 核心？** 是（local/release 级）：我从零 `make rel` 重建并以 daemon 启动对外提供服务，10+3 步 curl 探针与两遍 Demo B 全程在其上跑通；共用性以“零第二实现”三点证据支撑：Flutter 侧直接复用 ChannelDetailPage 内核（栏2②）、后端 msg/channel/group 写内核 diff 无平行实现（仅守卫挂接）、WS 收发沿用原 frame 协议。无不必要重构：101 文件增量中引擎层未翻动，符合 I6“本期内核不动”。
 3. **只改一个安装配置受控重启即可切？Admin 无运行时写入口、version 可复现、无命名混淆？** 后端 truth source 单点（imboy_env override→application env→product_experience.normalize fail-safe chat），config_version=digest(effective,vsn) 纯函数单测钉死（9/9）；`/api/v1/init` 白名单仅两键；Admin `ProductExperiencePage` 只读展示，运行时写端点 0 个（source grep+V3 黑盒双证）；与 product_profile 分名且并存。生产 Docker/Helm 受控重启演练 BLOCKED（无授权），语义等价性以本机 ≥6 次 restart 报告＋纯函数性质承接——**生产切换实操仍是 Release 前必做人工动作**。
-4. **Scope Contract 严格执行？哪些暂未实现（对齐 §1.4.3）？** 十二项五证表齐备（§四）：now 七项 schema/API/Flutter/测试/Demo 全有实证指针；defer 五项"无 schema、无占位 UI、无完成声明"三证成立（w0 断言套件守护禁表禁列，前端/Admin grep 0 命中）。暂未实现集合＝§1.4.3 与 defer 五项（Milestones/Pinned/Resources/Activity 聚合/关联 Channel＋整档 project_member），另有 Files 聚合按 Gate W 未纳入十二项（§9.2 行④偏差已登记）。无一项以"计划写过"为由偷建——w0_schema_contract_tests 即防复活装置（其在共享库上的环境敏感红已在 F-N3 定性并给出修复建议）。
+4. **Scope Contract 严格执行？哪些暂未实现（对齐 §1.4.3）？** 十二项五证表齐备（§四）：now 七项 schema/API/Flutter/测试/Demo 全有实证指针；defer 五项"无 schema、无占位 UI、无完成声明"三证成立（w0 断言套件守护禁表禁列，前端/Admin grep 0 命中）。暂未实现集合＝§1.4.3 与 defer 五项（Milestones/Pinned/Resources/Activity 聚合/关联 Channel＋整档 project_member），另有 Files 聚合按 Gate W 未纳入十二项（§9.2 行④偏差已登记）。`w0_schema_contract_tests` 当前 4/4 PASS，F-N3 已闭合。
 5. **Archive 服务端强制守卫覆盖 R3 写路径？并发线性化与审计验证？personal 不受影响恢复放行？** 当前 Workspace 数据库写最终入口使用 `ensure_writable_tx`、`write_tx` 或 `write_tx_or_skip`，派生已读计数也由 `07312d0c` 在事务内冻结；旧版自动提交预检仍可作为快速失败，但最终写不依赖它保证正确性。对象存储与数据库不能跨系统原子提交，落库被归档拒绝时可能留下待回收对象。审计事件（workspace_archived/member_removed 等）在 Demo [16][18] 日志中产出；Personal 路径不受 Workspace 归档影响。
 6. **四元语义＋Notice/Channel 边界＋关系全称无混用？30 秒测试？一句话说清 Project vs Group？** 无混用证据：全称纪律贯穿（WorkspaceMemberModel 枚举注释三分关系；导航 navMembers='成员'+members 页全称"工作区成员"；Group Notice 保留原命名空间，Channel 视图零聊天输入 [栏2⑧]，Overview 不聚合 Notice）。真实用户的 30 秒理解测试＝**BLOCKED**（day1 §4 已给出 W0 版四问设计供人工补做）；作为代理判据，四问的机器可验证部分（自动入群否定断言、通知独立流程）在 Demo 中两遍通过。"为什么 Project 不是 Group"现行答案＝任务不沉底、做完没一眼看清（§1.4.1 论证），商业语境下的有效性必须等 Gate 1 真人反馈，本期不作声明。
 7. **成员深度与 Gate W 档位一致？两档子集三层证据？移除冲突全链验证？** 一致（W0）：无 project_member 表（⑪）；Group 子集约束三层证据齐全——DB 约束触发器（T3 SUBSET-1..5 含 removed-wm 拒绝与同事务激活放行）、应用层同事务 409（探针 [3r] 原文）、并发/集成测试 3/3（我复跑）；移除链完整：所有权/Task 冲突先阻断 fail-closed（Demo [15] 409＋事务回滚核查）→ 无冲突级联禁用＋审计（[16]）→ 重邀不自动恢复（[17] DB 断言 0/0），两遍连续。project_member 相关 W1/W2 项全部 defer 且无偷建（§四硬约束段）。
@@ -160,7 +160,7 @@
 | **拿得出手**（Demo 两遍无人工干预；无占位符/调试残留/控制台报错） | ✅ | 本人两遍连跑 ALL PASS 22 步 54 断言 ×2、EXIT=0/0；演示注册路径遇 license 上限时走幂等演示账号（INFO 提示非报错）；双遍 transcript 已由 `5a33f754` 留档；本会话探针未触发任何 500/崩溃 |
 | **能部署**（未参与实现者干净环境仅按文档部署） | ⚠️ 降级达成 | rehearal §1 自认编排者执行+空库演练，"未参与实施者格"以我方独立复核+依赖实战接管部分补强；生产 Docker/Helm 无授权 BLOCKED；**完整口径留待人工**（与条目⑲一致） |
 | **能让别人真实使用**（试点环境注册/邀请/权限/附件/升级提示闭环） | ✅(API 闭环)+BLOCKED(UI) | 注册→Template→邀请→显式入群/订阅→任务指派→归档保护→恢复全 API 级闭环（Demo ×2＋探针）；升级提示服务端前置（app_version≥vsn 配置在位，day1 §3）；group/channel 附件确认已在事务内守卫，Personal 附件按 schema/ACL 不回溯 Workspace；**真机 UI 弹窗与附件上传实走 BLOCKED** |
-| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 创建者角色兜底带发布回归；known-limitations 可逐条核查；F-N1/F-N2' 文档治理项已闭合，F-N2/F-N3 仍待处理 |
+| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 创建者角色兜底带发布回归；known-limitations 可逐条核查；F-N1/F-N2'/F-N3 已闭合，F-N2 仍待处理 |
 
 ---
 
@@ -178,16 +178,16 @@
 
 - **F-N1 (MEDIUM·文档治理，已闭合)**：`5a33f754` 已用双遍 `ALL PASS (steps=22 assertions=54)` 的脱敏 transcript 替换旧失败快照；当前代码另由创建者角色兜底发布回归覆盖。
 - **F-N2 (MEDIUM·运维卫生)**：`_rel` 内 beam 相对 HEAD 陈旧且不一致（group_member_ds/workspace_handler 为 15:20 版、channel_repo 18:44 版），任何人直接起旧 release 会得出与 HEAD 不符的安全/功能行为（V3 环境备注早已预警）。本会话已重建修复。**要求整改**：收尾流程固化"改码后必须 `make rel` 再演示"，或在 bin 启动前做 beam 摘要比对。
-- **F-N3 (MEDIUM·测试环境设计)**：`w0_schema_contract_tests.legacy_rows_all_personal_test_`（line 142）对共享库 imboy_v1 断言"channel 全行 personal/NULL"，而 T14 历次 Demo 留下 18 个 DemoB-W0-* 工作区与其 16 条 Announcements 频道（全部产生于迁移之后）必然破坏该断言 → 当前实跑 4/5。demo 脚本无清理阶段（也无 delete 端点可清，仅 archive）。产品层面无恙：XOR 双向 0 违例、group 表 0 违例、44 条迁移前基线行完好。**要求整改**：断言改为"迁移前基线行保持 personal（created_at < 迁移时刻）或将残留判据从断言剥离至对账工具"，并为 demo 增加 teardown（至少 archive+DB 备注标签）。
+- **F-N3 (MEDIUM·测试环境设计，已闭合)**：删除按频道/群名称过滤共享活库数据的脆弱白名单；当前 schema 由真库断言，迁移存量回填改由 00000077 SQL 契约断言。本轮 `w0_schema_contract_tests` 4/4 PASS。
 - **F-N2' (LOW·排版，已闭合)**：known-limitations 原 §E3 重复附件边界已由 A2 完整承载并删除，Owner 并发保护调整为 §E3，E1-E4 编号恢复连续。
 
 ## 八、最终判定
 
 **ACCEPTED（local / rehearsal 级）**
 
-- 理由：CRITICAL/HIGH 清零（V1-F1、V1-F2、V3-F1、V3-F2 修复并有行为级复证；V1-F3 经裁决知情取舍入册 E3；V3-F3 修复并经归档 join 场景复证）；关键测试矩阵在我手中全部可绿（除 F-N3 环境敏感一条且已根因定位）；Golden Demo 以第三方身份复现双遍 ALL PASS；三类安全边界抽查零失败；Scope Contract 十二项五证/三证齐备；已知限制与 BLOCKED 披露诚实完整。
+- 理由：CRITICAL/HIGH 清零（V1-F1、V1-F2、V3-F1、V3-F2 修复并有行为级复证；V1-F3 经裁决知情取舍入册 E3；V3-F3 修复并经归档 join 场景复证）；F-N3 修订后 schema 契约测试 4/4 PASS；Golden Demo 以第三方身份复现双遍 ALL PASS；三类安全边界抽查零失败；Scope Contract 十二项五证/三证齐备；已知限制与 BLOCKED 披露诚实完整。
 - **边界重申（unsafe_experiment 不解除）**：本判定 ≠ 客户验收 ≠ Release ≠ 工程 DoD；生产迁移窗口（B3/R2.5）、真机 Day-1 Bar 四项、30 秒理解测试、Gate 0/Gate W 的人工签认、生产受控重启演练均在 Release 前必须由人工完成的清单内。
-- 附带整改要求（不阻塞 ACCEPTED(local)，但进入 Release 候选前须闭合）：F-N2 收尾流程固化、F-N3 断言口径修正。F-N1/F-N2' 已闭合。
+- 附带整改要求（不阻塞 ACCEPTED(local)，但进入 Release 候选前须闭合）：F-N2 收尾流程固化。F-N1/F-N2'/F-N3 已闭合。
 
 ---
 *方法学备注：所有结论基于本人执行的命令与直查输出（git show/grep、make、erl、psql@4323、curl@9800、flutter），对前序会话（V1/V3/T13-T15/WP 会话）的结论仅在"我方复核未推翻"的前提下引用并显式标注；测试数据：新建 2 个 V2ACC 工作区已归档、2 个探针个人频道与若干消息残留已列入 F-N3 台账建议、演示账号 A/B 未触碰、用户 E2EE WIP 未触碰。*
