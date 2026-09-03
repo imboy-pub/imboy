@@ -284,8 +284,9 @@ docs-stop:
 # EUNIT_CONFIG 可覆盖配置文件（默认 config/sys.local）：CI 无 sys.local.config，
 # 物化 sys.config 后以 EUNIT_CONFIG=config/sys 传同口径全量（见 backend-ci.yml）。
 EUNIT_CONFIG ?= config/sys.local
+EUNIT_PROCESS_LIMIT ?= 32768
 eunit-local:
-	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-config config/sys.local -pa imboy/ebin -pa ebin -pa test"
+	@IMBOYENV=local $(MAKE) eunit EUNIT_ERL_OPTS="-P $(EUNIT_PROCESS_LIMIT) -config $(EUNIT_CONFIG) -pa imboy/ebin -pa ebin -pa test"
 
 # ==================== Gradualizer（本地快检 + CI 宽网基线） ====================
 # 职责: pre-push 变更快检 + CI 全仓宽网扫描；分层阻塞门禁由 eqWAlizer 承担
