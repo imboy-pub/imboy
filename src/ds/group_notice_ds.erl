@@ -163,9 +163,17 @@ unpin(NoticeId) ->
 %% @doc 标记公告为已读
 %% @param NoticeId 公告ID
 %% @return {ok, Notice} | {error, Reason}
--spec mark_as_read(integer()) -> {ok, map()} | {error, term()}.
+-spec mark_as_read(integer()) -> {ok, map()} | skipped | {error, term()}.
 mark_as_read(NoticeId) ->
-    group_notice_repo:increment_read_count(NoticeId).
+    case
+        workspace_guard:write_tx_or_skip({group_notice, NoticeId}, fun(Conn) ->
+            group_notice_repo:increment_read_count_tx(Conn, NoticeId)
+        end)
+    of
+        {written, Result} -> Result;
+        skipped -> skipped;
+        {error, _} = Error -> Error
+    end.
 
 %% @doc 分页查询群公告列表
 %% @param Gid 群组ID

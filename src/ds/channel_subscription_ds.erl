@@ -43,8 +43,18 @@ list_by_channel(ChannelId, Cursor, Limit) ->
 -spec delete(epgsql:connection(), integer(), integer()) -> {ok, integer()} | {error, any()}.
 delete(Conn, ChannelId, Uid) -> channel_subscription_repo:delete(Conn, ChannelId, Uid).
 
--spec clear_unread(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
-clear_unread(ChannelId, Uid) -> channel_subscription_repo:clear_unread(ChannelId, Uid).
+-spec clear_unread(integer(), integer()) ->
+    {ok, non_neg_integer()} | skipped | {error, any()}.
+clear_unread(ChannelId, Uid) ->
+    case
+        workspace_guard:write_tx_or_skip({channel, ChannelId}, fun(Conn) ->
+            channel_subscription_repo:clear_unread_tx(Conn, ChannelId, Uid)
+        end)
+    of
+        {written, Result} -> Result;
+        skipped -> skipped;
+        {error, _} = Error -> Error
+    end.
 
 -spec list_unread_counts_by_channel(integer()) -> {ok, list(map())} | {error, any()}.
 list_unread_counts_by_channel(ChannelId) ->

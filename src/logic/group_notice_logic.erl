@@ -151,10 +151,10 @@ mark_as_read(CurrentUid, NoticeId) ->
             % 验证群成员身份
             case group_member_ds:find_by_gid_and_uid(Gid, CurrentUid, <<"id">>) of
                 GM when map_size(GM) > 0 ->
-                    %% T7 派生已读写（R3 #18）：archived 时跳过计数、不 403 读取
-                    case workspace_guard:ensure_writable({group, Gid}) of
-                        ok -> group_notice_ds:mark_as_read(NoticeId);
-                        _ -> {ok, Notice}
+                    %% 派生已读写由 DS 在事务内锁 Workspace；归档时跳过计数。
+                    case group_notice_ds:mark_as_read(NoticeId) of
+                        skipped -> {ok, Notice};
+                        Result -> Result
                     end;
                 _ ->
                     {error, ?ERR_NOT_GROUP_MEMBER}

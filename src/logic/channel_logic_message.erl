@@ -379,21 +379,18 @@ mark_as_read(Uid, ChannelIdBin, _MessageIdBin) ->
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 ok ->
-                    %% T7 派生已读写（R3 #12）：archived 时跳过计数（保持冻结），
-                    %% 不 403 读取——mark_read 仍返回成功
-                    case channel_logic_common:guard_channel_writable(ChannelId) of
-                        ok ->
-                            case channel_subscription_ds:clear_unread(ChannelId, Uid) of
-                                {ok, _} ->
-                                    ok;
-                                {error, ClearReason} ->
-                                    ?ERROR_LOG([
-                                        "channel_clear_unread_failed", ChannelId, Uid, ClearReason
-                                    ])
-                            end,
+                    %% 派生已读写由 DS 在事务内锁 Workspace；归档时跳过写入，
+                    %% 读取仍返回成功。
+                    case channel_subscription_ds:clear_unread(ChannelId, Uid) of
+                        {ok, _} ->
                             channel_logic_notify:notify_channel_unread_count(ChannelId, Uid, 0),
                             ok;
-                        _Archived ->
+                        skipped ->
+                            ok;
+                        {error, ClearReason} ->
+                            ?ERROR_LOG([
+                                "channel_clear_unread_failed", ChannelId, Uid, ClearReason
+                            ]),
                             ok
                     end;
                 {error, Reason} ->

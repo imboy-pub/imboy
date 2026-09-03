@@ -16,6 +16,7 @@
 -export([increment_unread/1]).
 -export([clear_unread/1]).
 -export([clear_unread/2]).
+-export([clear_unread_tx/3]).
 -export([get_unread_count/2]).
 -export([count_unread/1]).
 -export([count_unread_channels/1]).
@@ -190,6 +191,15 @@ clear_unread(ChannelId, Uid) ->
         <<"channel_id = $1 AND user_id = $2 AND status = 1">>,
         [ChannelId, Uid]
     ).
+
+-spec clear_unread_tx(any(), integer(), integer()) ->
+    {ok, non_neg_integer()} | {error, any()}.
+clear_unread_tx(Conn, ChannelId, Uid) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET unread_count = 0, last_read_at = $1",
+            " WHERE channel_id = $2 AND user_id = $3 AND status = 1">>,
+    elib_pg:execute(Conn, Sql, [elib_dt:now(), ChannelId, Uid]).
 
 %% @doc 获取用户在所有频道的未读总数
 -spec count_unread(integer()) -> non_neg_integer().

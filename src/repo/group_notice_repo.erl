@@ -20,6 +20,7 @@
 -export([unpin/1]).
 -export([unpin_tx/2]).
 -export([increment_read_count/1]).
+-export([increment_read_count_tx/2]).
 -export([get_pinned_notices/1]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -265,6 +266,20 @@ increment_read_count(NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
             {error, Reason}
     end;
 increment_read_count(_NoticeId) ->
+    {error, invalid_notice_id}.
+
+-spec increment_read_count_tx(any(), integer()) -> {ok, map()} | {error, term()}.
+increment_read_count_tx(Conn, NoticeId) when is_integer(NoticeId), NoticeId > 0 ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET read_count = read_count + 1 ",
+            " WHERE id = $1 AND deleted_at IS NULL RETURNING *">>,
+    case elib_pg:query(Conn, Sql, [NoticeId]) of
+        {ok, []} -> {error, not_found};
+        {ok, [Notice]} -> {ok, Notice};
+        {error, Reason} -> {error, Reason}
+    end;
+increment_read_count_tx(_Conn, _NoticeId) ->
     {error, invalid_notice_id}.
 
 %% @doc 获取群组的置顶公告列表

@@ -10,28 +10,25 @@
 
 ## A. 归档写守卫（T7）覆盖边界
 
-### A1. "检查-写窗口"残留路径（R3 #9/#10/#11/#13/#17）
-`workspace_guard` 提供两档守卫：
-- `ensure_writable_tx/2`（事务版）：业务写同一事务内 `SELECT ... FOR UPDATE` 与归档线性化，
-  **无漏写窗口**——已接入 `project_ds`、`project_task_ds`、`channel_ds`、`msg_c2g_repo` 四个主写入口；
-- `ensure_writable/1`（自动提交版）：读状态与业务写不在同一事务，存在**检查-写窗口**
-  （归档可插在检查之后、写入之前）。按 WP4 决策仅用于 R3 清单中 #9-#13/#17 这类
-  无法进同事务的最小可行接入点（如部分 REST 写 handler 的 logic 层前置检查）。
-  **残留风险**：归档瞬时并发下这类路径可能漏拒一次写（下次写会被拒）。渗透测试
-  （`workspace_guard_tests`/`workspace_boundary_tests`）覆盖拒绝行为本身，不覆盖窗口竞态；
-  窗口路径的最终清零需逐条改造为事务版，列为后续工程项。
+### A1. 数据库写路径已事务化；对象存储仍有跨系统边界
+Workspace 数据库写路径现统一复用 `ensure_writable_tx/2`、`write_tx/2` 或
+`write_tx_or_skip/2`：业务写与 `SELECT ... FOR UPDATE` 在同一事务内完成，归档与数据库写
+线性化。派生已读计数也在事务内守卫，归档后读取仍成功但不再更新计数。
 
-### A2. 未接入守卫的写路径（约 10 条）
-R3 穷举表中除上述已接入点外仍有少量写路径未接 980 守卫（完整逐条清单以 WP4 会话
-报告为准，落盘版待补）。已知代表性遗漏：
-- c2c/moment/private **附件授权路径**不做 workspace 回溯，`workspace_resolver` 中标注
-  `TODO(T7)`（当前回退 personal 放行——经任务卡授权的简化；归档的 workspace 下历史
-  附件可能仍可被既有直链访问）；
-- webhook incoming 入站（token 即凭证，设计上免 JWT）不做归档守卫（wp3 边界测试
-  明确将其排除在守卫外）；
-- bot 发消息路径（api_token 认证）未接守卫。
-**缓解**：上述路径均为"归档后台资源可被既有凭证触达"，不产生新资源越权；
-完整收口计划待人工排期。
+**残留风险**：群文件/相册的对象存储上传无法与 PostgreSQL 归档事务形成跨系统原子提交。
+最终附件落库有事务守卫，不会在归档后新增 Workspace 数据库记录；但上传已完成、落库被归档
+拒绝时可能留下未被引用的对象，需由现有对象清理策略回收。
+
+### A2. Personal 路径与 Workspace 写入口的边界
+- webhook incoming 复用 `channel_logic_message:publish_message/3`，最终由
+  `channel_ds:publish_message` 的事务守卫覆盖；
+- group/channel 附件确认在事务内校验 Workspace 可写状态；
+- 通用 Bot API 当前只发送 C2C 消息，属于 Personal 域，不是 Workspace 写入口；
+- c2c/moment/private/public 附件按当前 schema 与 ACL 均属于 Personal 域，不做
+  Workspace 归属回溯。
+
+因此这些 Personal 路径不应计为“未接入 Workspace 守卫”。若未来允许 Bot 或上述附件类型
+绑定 Workspace，必须先扩展显式归属字段与 resolver，再接入同一事务守卫。
 
 ## B. 数据迁移与升级（T3）
 
@@ -99,9 +96,10 @@ schema 层仅保证 user 存在外键；active Workspace Member 校验由 T6b �
 执行（W0 无 project_member 表，DB 层触发器只管 project.owner）。指派已移除成员由
 API 400 拒绝并透出消息（有测试覆盖）。
 
-### E5. change_role 最后 Owner 保护的并发预检窗口（V1-F3 裁决入册）
-两路并发 demote 最后 Owner 均可在事务外读到 owner 计数<=1 通过预检；结构性修复需事务内
-FOR UPDATE 计数，改造收益低于锁代价，V0 登记为知情取舍。DB 无兜底触发器覆盖角色变更。
+### E5. change_role 最后 Owner 并发保护（已修复）
+`change_role` 先锁定 Workspace 行，再在同一事务内重新验证操作者角色、目标成员状态与
+active Owner 数量，避免并发降级最后 Owner，也避免等待锁期间操作者已被降级后继续执行治理
+操作。修复提交：`d4cbe404`。
 
 ### E4. 频道创建后首帖的角色读缓存竞态窗口
 频道创建（admin 行同事务落库）后立即以创建者身份发帖，偶发命中 get_role 读缓存旧值
@@ -118,4 +116,4 @@ c2c/moment/private 附件不经 workspace_resolver 解析 workspace 归属。
 
 ---
 
-*最后更新：2026-08-27（WP8 执行会话生成；验收 Agent 应对本清单逐条复核后并入 dual-exp-acceptance.md）*
+*最后更新：2026-09-03（WS-02/WS-03 修订；验收 Agent 应对本清单逐条复核后并入 dual-exp-acceptance.md）*
