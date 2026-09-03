@@ -22,7 +22,7 @@ init([]) ->
 
     % 启动 pooler 应用和连接池
     _ = application:start(pooler),
-    PgConf = config_ds:env(pg_conf),
+    PgConf = configure_pg_pool(config_ds:env(pg_conf)),
     _ = pooler:new_pool(PgConf),
 
     % https://blog.csdn.net/Dylan_2018/article/details/110150142
@@ -272,3 +272,10 @@ init([]) ->
     % 拖垮整个 app（run10）；单子进程崩溃风暴不应带崩整个 IM 服务。
     Restart = #{strategy => one_for_one, intensity => 50, period => 60},
     {ok, {Restart, Specs}}.
+
+configure_pg_pool(#{start_mfa := {epgsql, connect, Args}} = PgConf) ->
+    PgConf#{start_mfa := {imboy_pg_connection, connect, Args}};
+configure_pg_pool(#{start_mfa := {imboy_pg_connection, connect, _}} = PgConf) ->
+    PgConf;
+configure_pg_pool(PgConf) ->
+    erlang:error({unsupported_pg_start_mfa, PgConf}).

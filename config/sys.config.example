@@ -204,6 +204,8 @@
 
         %% 数据库配置（连接池/迁移路径）— 密码走 SECTION C
         , {sql_driver, pgsql}
+        %% PostgreSQL 单条语句上限（毫秒）；连接入池前设置，防慢查询长期占池。
+        , {statement_timeout_ms, 15000}
         , {pg_conf
             , #{name => pgsql,
                 max_count => 80,
