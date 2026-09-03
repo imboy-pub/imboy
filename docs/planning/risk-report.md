@@ -4,6 +4,22 @@
 > 汇总 9 份领域/主题评审的全部 P0–P3 发现。每条附 `文件:行号` 证据。分歧项由主评审读码裁决（标注"裁决"）。
 > 详细上下文见各专项文档；本表是唯一的全量优先级视图。
 
+## 2026-09-03 当前 HEAD 复核
+
+> 原表保留 2026-07-22 审计快照；本节记录后续处置状态，避免把历史发现误读为当前缺陷。
+> 复核基线：`5267510b`。
+
+| 原编号 | 当前状态 | 当前证据与边界 |
+|---|---|---|
+| P0-1 | **CLOSED（代码）** | `auth_middleware` 已按真实 `/api/v1/` 前缀委托 `auth_middleware_api_v1`，支付回调、频道 webhook 与客户端签名门不再落入错误分支。 |
+| P0-2 | **CLOSED（本地）** | `user_server` 改为 16 个固定 shard；同 UID FIFO、不同 UID 并行。父进程持有 current/queue，worker ACK 后推进，异常时重建并按策略重放；不可幂等的账号注销使用 `no_replay`。每 shard 队列上限 1000，过载记录错误并丢弃新状态任务。该闭环不等于生产重连风暴容量证明。 |
+| P0-3 | **CLOSED（代码）** | 消息投递与 ACK 已迁移至专用 `ack_retry_cache` ETS（`write_concurrency`），不再穿越全局 `depcache` 同步热点。 |
+| P0-4 | **BLOCKED（法务决策）** | AGPL 依赖仍在；开源、购买商业授权或替换绑定三选一尚未获得人工决定，发布前不得解除。 |
+
+P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
+
+整体发布判定不变：**`release-candidate / BLOCKED(H2 残余, H3, H4, P0-4 法务)`**。本地代码与测试不能替代第二台真机/Push/真人理解测试、生产等价脱敏演练或远端发布授权。
+
 ---
 
 ## 严重度定义
