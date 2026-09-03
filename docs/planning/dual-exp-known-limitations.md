@@ -96,7 +96,7 @@ schema 层仅保证 user 存在外键；active Workspace Member 校验由 T6b �
 执行（W0 无 project_member 表，DB 层触发器只管 project.owner）。指派已移除成员由
 API 400 拒绝并透出消息（有测试覆盖）。
 
-### E5. change_role 最后 Owner 并发保护（已修复）
+### E3. change_role 最后 Owner 并发保护（已修复）
 `change_role` 先锁定 Workspace 行，再在同一事务内重新验证操作者角色、目标成员状态与
 active Owner 数量，避免并发降级最后 Owner，也避免等待锁期间操作者已被降级后继续执行治理
 操作。修复提交：`d4cbe404`。
@@ -106,9 +106,6 @@ active Owner 数量，避免并发降级最后 Owner，也避免等待锁期间�
 返回 0，`channel_logic_common:get_user_role/2` 仍会按频道 `creator_uid`/`owner_id` 将创建者
 识别为 Owner。发布回归测试覆盖“角色为 0 后立即首帖成功”。Demo B 的 3 秒重试保留为
 兼容防护，历史 transcript 中的失败不能作为当前 main 仍存在缓存竞态的证据。
-
-### E3.
-c2c/moment/private 附件不经 workspace_resolver 解析 workspace 归属。
 
 ### F. 其他
 - **produce 规模迁移 BLOCKED 待人工**：发布窗口/锁预算终判需生产数据（B3/D 表重申）。
