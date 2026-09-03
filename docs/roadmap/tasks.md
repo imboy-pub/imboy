@@ -136,7 +136,7 @@
 - effort: —
 - action: 确认上列全 done + 一轮真机回归。绿则解锁 Wave 1。
 - verify: 5 个阻断项清零 + 真机回归无退化（需人工/真机）。
-- evidence:
+- evidence: 2026-09-03 已在 Android 真机 `XWE6R19916004085` 与 iPhone 16e 真机 `00008140-000E30561E32801C` 分别执行客户端 `integration_test/e2ee_megolm_device_test.dart`，两端均 `1/1 PASS`；iOS 通过仓内 `flutter drive --driver=test_driver/integration_test.dart` 路径完成。该结果只证明两平台原生 Megolm 密码学路径，不覆盖双账号消息、完整 UI 回归，也不能替代仍未完成的 `W0-SEC-02` 生产规模隔离克隆验收，故本 Gate 保持 blocked。
 
 ---
 
