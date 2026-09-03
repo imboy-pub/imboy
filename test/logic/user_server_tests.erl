@@ -21,13 +21,91 @@
 %% gen_server 回调测试（纯函数，无需 mock）
 %% ===================================================================
 
-init_returns_empty_state_test_() ->
+init_starts_fixed_worker_shards_test_() ->
     ?_test(begin
         Result = user_server:init([]),
         ?assertMatch({ok, _State}, Result),
         {ok, State} = Result,
-        ?assertEqual([], State)
+        ?assertEqual(16, length(State)),
+        ?assert(lists:all(fun(#{pid := Pid}) -> is_pid(Pid) end, State)),
+        ok = user_server:terminate(normal, State)
     end).
+
+different_users_run_concurrently_same_user_stays_ordered_test_() ->
+    FirstUid = 1,
+    FirstShard = erlang:phash2(FirstUid, 16),
+    [OtherUid | _] = [Uid || Uid <- lists:seq(2, 100), erlang:phash2(Uid, 16) =/= FirstShard],
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'list_by_uid', 1, fun(_) -> [] end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Parent = self(),
+            Calls = counters:new(1, []),
+            meck:expect(friend_ds, list_by_uid, fun
+                (Uid) when Uid =:= FirstUid ->
+                    counters:add(Calls, 1, 1),
+                    N = counters:get(Calls, 1),
+                    Parent ! {first_user_started, N, self()},
+                    case N of
+                        1 ->
+                            receive
+                                release -> []
+                            end;
+                        _ ->
+                            []
+                    end;
+                (Uid) when Uid =:= OtherUid ->
+                    Parent ! other_user_finished,
+                    []
+            end),
+            {ok, State} = user_server:init([]),
+            try
+                {noreply, State1, hibernate} =
+                    user_server:handle_cast({notice_friend, FirstUid, <<"online">>}, State),
+                receive
+                    {first_user_started, 1, FirstWorker} ->
+                        {noreply, State2, hibernate} = user_server:handle_cast(
+                            {notice_friend, FirstUid, <<"offline">>}, State1
+                        ),
+                        {noreply, State3, hibernate} = user_server:handle_cast(
+                            {notice_friend, OtherUid, <<"online">>}, State2
+                        ),
+                        receive
+                            other_user_finished -> ok
+                        after 500 -> ?assert(false)
+                        end,
+                        receive
+                            {first_user_started, 2, _} -> ?assert(false)
+                        after 0 ->
+                            ok
+                        end,
+                        FirstWorker ! release,
+                        receive
+                            {worker_done, FirstWorker, DoneRef} ->
+                                {noreply, State4} = user_server:handle_info(
+                                    {worker_done, FirstWorker, DoneRef}, State3
+                                ),
+                                receive
+                                    {first_user_started, 2, _} -> ok
+                                after 500 -> ?assert(false)
+                                end,
+                                ?assertEqual(length(State3), length(State4))
+                        after 500 -> ?assert(false)
+                        end
+                after 500 ->
+                    ?assert(false)
+                end
+            after
+                user_server:terminate(normal, State)
+            end
+        end
+    ).
 
 handle_call_stop_returns_stopped_test() ->
     State = [],
@@ -49,14 +127,108 @@ handle_info_returns_noreply_test() ->
     Result = user_server:handle_info(Info, State),
     ?assertMatch({noreply, []}, Result).
 
+worker_exit_restarts_same_shard_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'list_by_uid', 1, fun(_) -> [] end}
+            ]},
+            {msg_s2c_ds, [
+                {'send', 7, fun(_, _, _, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Parent = self(),
+            Calls = counters:new(1, []),
+            meck:expect(friend_ds, list_by_uid, fun(_) ->
+                counters:add(Calls, 1, 1),
+                N = counters:get(Calls, 1),
+                Parent ! {task_started, N, self()},
+                case N of
+                    1 ->
+                        receive
+                            never -> []
+                        end;
+                    _ ->
+                        []
+                end
+            end),
+            {ok, State} = user_server:init([]),
+            {noreply, RunningState, hibernate} =
+                user_server:handle_cast({notice_friend, 16, <<"online">>}, State),
+            receive
+                {task_started, 1, Worker} ->
+                    exit(Worker, kill),
+                    receive
+                        {'EXIT', Worker, Reason} ->
+                            {noreply, NewState} =
+                                user_server:handle_info({'EXIT', Worker, Reason}, RunningState),
+                            receive
+                                {task_started, 2, NewWorker} ->
+                                    ?assertNotEqual(Worker, NewWorker),
+                                    ?assert(is_process_alive(NewWorker))
+                            after 500 -> ?assert(false)
+                            end,
+                            user_server:terminate(normal, NewState)
+                    after 500 -> ?assert(false)
+                    end
+            after 500 -> ?assert(false)
+            end
+        end
+    ).
+
+worker_exit_drops_no_replay_current_and_runs_next_test_() ->
+    ?_test(begin
+        process_flag(trap_exit, true),
+        Worker = spawn_link(fun() ->
+            receive
+                stop -> ok
+            end
+        end),
+        Parent = self(),
+        NeverReplay = fun() -> Parent ! replayed end,
+        RunNext = fun() -> Parent ! next_ran end,
+        State = [
+            #{
+                pid => Worker,
+                current => {make_ref(), NeverReplay, no_replay},
+                queue => queue:from_list([{RunNext, replay}])
+            }
+        ],
+        exit(Worker, kill),
+        receive
+            {'EXIT', Worker, Reason} ->
+                {noreply, NewState} = user_server:handle_info({'EXIT', Worker, Reason}, State),
+                receive
+                    next_ran -> ok
+                after 500 -> ?assert(false)
+                end,
+                receive
+                    replayed -> ?assert(false)
+                after 0 -> ok
+                end,
+                ok = user_server:terminate(normal, NewState)
+        after 500 -> ?assert(false)
+        end
+    end).
+
+terminate_stops_workers_before_return_test_() ->
+    ?_test(begin
+        {ok, State} = user_server:init([]),
+        ok = user_server:terminate(normal, State),
+        ?assert(lists:all(fun(#{pid := Pid}) -> not is_process_alive(Pid) end, State))
+    end).
+
 terminate_returns_ok_test() ->
     Result = user_server:terminate(normal, []),
     ?assertEqual(ok, Result).
 
-code_change_returns_ok_test() ->
-    State = [],
-    Result = user_server:code_change(v1, State, v2),
-    ?assertMatch({ok, []}, Result).
+code_change_migrates_legacy_empty_state_test_() ->
+    ?_test(begin
+        {ok, State} = user_server:code_change(v1, [], v2),
+        ?assertEqual(16, length(State)),
+        ok = user_server:terminate(normal, State)
+    end).
 
 %% ===================================================================
 %% handle_cast 测试

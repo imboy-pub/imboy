@@ -24,6 +24,9 @@
 -export([cast_offline/3]).
 -export([cast_cancel/3]).
 
+-define(WORKER_COUNT, 16).
+-define(MAX_SHARD_QUEUE, 1000).
+
 %% ===================================================================
 %% API
 %% ===================================================================
@@ -46,10 +49,11 @@ stop() ->
 
 %% @doc 初始化用户服务器
 %% 初始化gen_server的状态数据。
-%% @returns 成功返回{ok, State}，State为空列表
+%% @returns 成功返回 {ok, Workers}
 -spec init([]) -> {ok, any()}.
 init([]) ->
-    {ok, []}.
+    process_flag(trap_exit, true),
+    {ok, start_workers()}.
 
 % gen_server:call是同步的，gen_server:cast是异步的
 handle_call(stop, _From, State) ->
@@ -67,31 +71,33 @@ handle_cast({signup_success, _Uid, _PostVals}, State) ->
     {noreply, State, hibernate};
 % 用户登录成功后的逻辑处理
 handle_cast({login_success, Uid, PostVals}, State) ->
-    % 用户登录成功之后的业务逻辑处理
     Uid2 = ec_cnv:to_integer(Uid),
+    {noreply, dispatch(Uid2, fun() -> login_success(Uid2, PostVals) end, State), hibernate};
+handle_cast({notice_friend, Uid, ToState}, State) ->
+    {noreply, dispatch(Uid, fun() -> notice_friend(Uid, ToState) end, State), hibernate};
+handle_cast({offline, Uid, _Pid, _DID}, State) ->
+    {noreply, dispatch(Uid, fun() -> notice_friend(Uid, <<"offline">>) end, State), hibernate};
+handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->
+    Fun = fun() -> cancel(Uid, CreatedAt, Opt) end,
+    {noreply, dispatch(Uid, Fun, no_replay, State), hibernate};
+handle_cast({online, Uid, _Pid, _DType, DID}, State) ->
+    {noreply, dispatch(Uid, fun() -> online(Uid, DID) end, State), hibernate};
+handle_cast(Msg, State) ->
+    ok = ?DEBUG_LOG([Msg, State]),
+    {noreply, State}.
+
+login_success(Uid, PostVals) ->
     Now = elib_dt:now(),
     % 记录设备信息
     PostMap = PostVals,
     DID = maps:get(<<"did">>, PostMap, <<"">>),
-    _ = user_device_ds:save(Now, Uid2, DID, PostMap),
-    _ = user_ds:update_friends_last_seen_at(Uid2, Now),
+    _ = user_device_ds:save(Now, Uid, DID, PostMap),
+    _ = user_ds:update_friends_last_seen_at(Uid, Now),
     % 分别计算c2c c2g s2c 相关消息类型的表里面是否有离线消息（按设备维度）
-    _ = message_ds:check_and_notify_offline_msgs(Uid2, DID),
+    _ = message_ds:check_and_notify_offline_msgs(Uid, DID),
+    ok.
 
-    % 记录设备信息 END
-    {noreply, State, hibernate};
-handle_cast({notice_friend, Uid, ToState}, State) ->
-    % ?DEBUG_LOG([notice_friend, Uid, ToState]),
-    _ = notice_friend(Uid, ToState),
-    {noreply, State, hibernate};
-handle_cast({offline, Uid, _Pid, _DID}, State) ->
-    % ?DEBUG_LOG([offline, Uid, State, DID]),
-    _ = notice_friend(Uid, <<"offline">>),
-    {noreply, State, hibernate};
-handle_cast({cancel, Uid, CreatedAt, Opt}, State) ->
-    _ = cancel(Uid, CreatedAt, Opt),
-    {noreply, State, hibernate};
-handle_cast({online, Uid, _Pid, _DType, DID}, State) ->
+online(Uid, DID) ->
     Now = elib_dt:now(),
 
     % 1. 更新设备活跃时间（合并原 ws_online 逻辑）
@@ -126,23 +132,126 @@ handle_cast({online, Uid, _Pid, _DType, DID}, State) ->
             ok;
         true ->
             ok
-    end,
-    {noreply, State, hibernate};
-handle_cast(Msg, State) ->
-    ok = ?DEBUG_LOG([Msg, State]),
-    {noreply, State}.
+    end.
 
 -spec handle_info(any(), any()) -> {noreply, any()}.
+handle_info({worker_done, Pid, Ref}, Shards) ->
+    {noreply, [complete_task(Pid, Ref, Shard) || Shard <- Shards]};
+handle_info({'EXIT', Pid, Reason}, Shards) ->
+    case lists:any(fun(#{pid := Worker}) -> Worker =:= Pid end, Shards) of
+        true ->
+            _ = ?ERROR_LOG([user_server_worker_restarted, Pid, Reason]),
+            {noreply, [restart_worker(Pid, Shard) || Shard <- Shards]};
+        false ->
+            {noreply, Shards}
+    end;
 handle_info(_Info, State) ->
     {noreply, State}.
 
 -spec terminate(_, _) -> ok.
-terminate(_Reason, _State) ->
+terminate(_Reason, State) ->
+    stop_workers(State),
     ok.
 
 -spec code_change(any(), any(), any()) -> {ok, any()}.
+code_change(_OldVsn, [], _Extra) ->
+    process_flag(trap_exit, true),
+    {ok, start_workers()};
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+start_workers() ->
+    [new_shard() || _ <- lists:seq(1, ?WORKER_COUNT)].
+
+new_shard() ->
+    #{pid => spawn_link(fun worker_loop/0), current => undefined, queue => queue:new()}.
+
+stop_workers(Workers) ->
+    Monitors =
+        [
+            begin
+                unlink(Pid),
+                Ref = erlang:monitor(process, Pid),
+                exit(Pid, shutdown),
+                {Pid, Ref}
+            end
+         || #{pid := Pid} <- Workers
+        ],
+    [
+        receive
+            {'DOWN', Ref, process, Pid, _} -> ok
+        end
+     || {Pid, Ref} <- Monitors
+    ],
+    ok.
+
+%% ponytail: fixed shards can still queue under a single hot UID; replace with a
+%% supervised per-user queue only if production telemetry proves that ceiling.
+dispatch(_Uid, Fun, []) ->
+    _ = Fun(),
+    [];
+dispatch(Uid, Fun, Shards) ->
+    dispatch(Uid, Fun, replay, Shards).
+
+dispatch(_Uid, Fun, _Policy, []) ->
+    _ = Fun(),
+    [];
+dispatch(Uid, Fun, Policy, Shards) ->
+    Index = erlang:phash2(Uid, length(Shards)) + 1,
+    {Before, [Shard | After]} = lists:split(Index - 1, Shards),
+    Before ++ [enqueue({Fun, Policy}, Shard) | After].
+
+enqueue(Task, #{current := undefined} = Shard) ->
+    run_task(Task, Shard);
+enqueue(Task, #{queue := Queue} = Shard) ->
+    case queue:len(Queue) < ?MAX_SHARD_QUEUE of
+        true ->
+            Shard#{queue := queue:in(Task, Queue)};
+        false ->
+            _ = ?ERROR_LOG([user_server_shard_overloaded, ?MAX_SHARD_QUEUE]),
+            Shard
+    end.
+
+run_task({Fun, Policy}, #{pid := Pid} = Shard) ->
+    Ref = make_ref(),
+    Pid ! {run, self(), Ref, Fun},
+    Shard#{current := {Ref, Fun, Policy}}.
+
+complete_task(Pid, Ref, #{pid := Pid, current := {Ref, _, _}} = Shard) ->
+    next_task(Shard);
+complete_task(_Pid, _Ref, Shard) ->
+    Shard.
+
+next_task(#{queue := Queue} = Shard) ->
+    case queue:out(Queue) of
+        {{value, Task}, Rest} -> run_task(Task, Shard#{current := undefined, queue := Rest});
+        {empty, _} -> Shard#{current := undefined}
+    end.
+
+restart_worker(Pid, #{pid := Pid, current := Current} = Shard) ->
+    NewShard = Shard#{pid := spawn_link(fun worker_loop/0)},
+    case Current of
+        undefined -> NewShard;
+        {_Ref, Fun, replay} -> run_task({Fun, replay}, NewShard#{current := undefined});
+        {_Ref, _Fun, no_replay} -> next_task(NewShard#{current := undefined})
+    end;
+restart_worker(_Pid, Shard) ->
+    Shard.
+
+worker_loop() ->
+    receive
+        {run, Owner, Ref, Fun} ->
+            try Fun() of
+                _ -> ok
+            catch
+                Class:Reason:Stacktrace ->
+                    _ = ?ERROR_LOG([user_server_worker_failed, Class, Reason, Stacktrace])
+            end,
+            Owner ! {worker_done, self(), Ref},
+            worker_loop();
+        stop ->
+            ok
+    end.
 
 %% @doc 异步通知好友状态变更
 %% 异步发送通知给用户的所有好友，告知用户状态变更。
