@@ -29,6 +29,7 @@
 -define(MEMBER2, 910002).
 -define(GUEST, 910003).
 -define(OUTSIDER, 910004).
+-define(WS_OWNER, 910005).
 -define(PROJECT_ID, 710001).
 -define(CH_ID, 610001).
 
@@ -94,30 +95,12 @@ perm_mocks(Over) ->
     WsRole = maps:get(ws_role, Over, <<"member">>),
     WsStatus = maps:get(ws_status, Over, <<"active">>),
     [
-        {project_repo, [
-            {'find_by_id', 2, fun
-                (?PROJECT_ID, _) -> ProjectRow;
-                (_, _) -> #{}
-            end}
-        ]},
-        {project_channel_rel_repo, [
-            {'find_project_member', 2, fun
-                (_Pid, ?OWNER) ->
-                    (pm_row(<<"active">>))#{<<"user_id">> => ?OWNER};
-                (_Pid, Uid) when Uid =:= ?MEMBER2; Uid =:= ?GUEST ->
-                    %% Over.pm_row 覆写命中对应 uid 时生效（原实现 PmRow 计算后
-                    %% 未使用——ZC-09R 真实执行暴露，removed 用例假绿）
-                    case maps:get(<<"user_id">>, PmRow, undefined) of
-                        Uid -> PmRow;
-                        _ -> (pm_row(<<"active">>))#{<<"user_id">> => Uid}
-                    end;
-                (_, _) ->
-                    #{}
-            end}
-        ]},
-        {workspace_member_repo, [
-            {'find', 3, fun(_Ws, _Uid, _Col) ->
-                #{<<"role">> => WsRole, <<"status">> => WsStatus}
+        {project_member_logic, [
+            {'ensure_can_read', 2, fun(Uid, ?PROJECT_ID) ->
+                permission_result(read, Uid, ProjectRow, PmRow, WsStatus, WsRole)
+            end},
+            {'ensure_can_write', 2, fun(Uid, ?PROJECT_ID) ->
+                permission_result(write, Uid, ProjectRow, PmRow, WsStatus, WsRole)
             end}
         ]},
         {project_channel_ds, [
@@ -131,6 +114,26 @@ perm_mocks(Over) ->
             {'resources', 1, fun(_Pid) -> {ok, []} end}
         ]}
     ].
+
+permission_result(_, _, ProjectRow, _, _, _) when map_size(ProjectRow) =:= 0 ->
+    {error, {404, <<"项目不存在"/utf8>>}};
+permission_result(_, _, _, _, WsStatus, _) when WsStatus =/= <<"active">> ->
+    {error, {403, <<"非工作区成员"/utf8>>}};
+permission_result(read, ?WS_OWNER, ProjectRow, _, _, _) ->
+    {ok, ProjectRow};
+permission_result(write, ?WS_OWNER, _, _, _, _) ->
+    {error, {403, <<"仅项目成员可修改项目资源"/utf8>>}};
+permission_result(write, ?GUEST, _, _, _, <<"guest">>) ->
+    {error, {403, <<"Guest 角色为只读"/utf8>>}};
+permission_result(_, Uid, ProjectRow, PmRow, _, _) when
+    Uid =:= ?OWNER; Uid =:= ?MEMBER2; Uid =:= ?GUEST
+->
+    case maps:get(<<"status">>, PmRow, <<"active">>) of
+        <<"active">> -> {ok, ProjectRow};
+        _ -> {error, {403, <<"仅项目成员可访问项目资源"/utf8>>}}
+    end;
+permission_result(_, _, _, _, _, _) ->
+    {error, {403, <<"仅项目成员可访问项目资源"/utf8>>}}.
 
 %%% 写权限（默认 mock：owner/member 可写、无关系 403）
 
@@ -155,6 +158,13 @@ write_permission_default_test_() ->
             ?assertMatch(
                 {error, {403, _}},
                 project_channel_logic:link(?OUTSIDER, ?PROJECT_ID, ?CH_ID)
+            )
+        end},
+        {"workspace owner outside project cannot link", fun() ->
+            drain_msgs(),
+            ?assertMatch(
+                {error, {403, _}},
+                project_channel_logic:link(?WS_OWNER, ?PROJECT_ID, ?CH_ID)
             )
         end}
     ]).
@@ -228,6 +238,12 @@ read_permission_default_test_() ->
             ?assertMatch(
                 {error, {403, _}},
                 project_channel_logic:resources(?OUTSIDER, ?PROJECT_ID)
+            )
+        end},
+        {"workspace owner can govern-read project channels", fun() ->
+            drain_msgs(),
+            ?assertMatch(
+                {ok, _}, project_channel_logic:resources(?WS_OWNER, ?PROJECT_ID)
             )
         end}
     ]).
@@ -403,6 +419,9 @@ link_tx_mocks(Extra) ->
     WsMocks = ws_guard_mocks(<<"active">>),
     WsMocks ++
         [
+            {project_member_logic, [
+                {'ensure_can_write', 2, fun(?OWNER, ?PROJECT_ID) -> {ok, project_row()} end}
+            ]},
             {project_repo, [
                 {'find_by_id', 2, fun(?PROJECT_ID, _) -> project_row() end},
                 {'find_tx', 3, fun(_Conn, ?PROJECT_ID, _) ->
@@ -642,6 +661,9 @@ metadata_only_test_() ->
 
 sql_bound_mocks() ->
     [
+        {project_member_logic, [
+            {'ensure_can_read', 2, fun(?OWNER, ?PROJECT_ID) -> {ok, project_row()} end}
+        ]},
         {project_repo, [
             {'find_by_id', 2, fun(?PROJECT_ID, _) -> project_row() end}
         ]},

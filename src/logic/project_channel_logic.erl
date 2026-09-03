@@ -8,14 +8,9 @@
 %     Project Owner 或 active Project Member，且 workspace role ≠ guest；
 %     guest 只读（403）；无 active project_member 关系 → 403；项目不存在 404；
 %     archived workspace 拒写（workspace_guard，稳定错误码 980）
-%   四聚合 / 关联列表（只读路径）：
-%     Project Owner 或 active Project Member 可读（guest 可读）；
-%     Owner 亦须 active workspace_member（M-1 fail-closed，写路径同标准）；
-%     无关系 403
-%
-% ⚠️ 权限校验不依赖 project_member_logic（ZC-02 并行产出）：
-%   经 project_channel_rel_repo:find_project_member/2 直查 project_member
-%   （只读；ZC-05 统一整合到 project_member_repo）。
+%   四聚合 / 关联列表（只读路径）：Project/Workspace Owner 或 active
+%     Project Member 可读（guest 可读）；无关系 403。
+%   权限统一复用 project_member_logic，避免子资源语义漂移。
 %
 % update-links 应用层校验（DB trg_project_links_shape 之外的入参防线）：
 %   links 必须是 [{name,url}] 对象数组：name 非空 ≤200 字符、url 非空
@@ -218,69 +213,20 @@ admin_aggregation(ProjectId, Type, Page0, Size0) ->
     end.
 
 %% ===================================================================
-%% 权限校验（不依赖 project_member_logic；ZC-05 统一整合点）
+%% 权限校验
 %% ===================================================================
 
-%% @doc 项目读权限：Owner 或 active project_member（guest 可读）；
-%% 无关系 403；项目不存在 404
+%% @doc 项目读权限统一复用 Project Member 权限模型。
 -spec ensure_can_read(integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 ensure_can_read(Uid, ProjectId) ->
-    case load_project(ProjectId) of
-        {error, NotFound} ->
-            {error, NotFound};
-        {ok, Project} ->
-            OwnerId = maps:get(<<"owner_id">>, Project, 0),
-            case OwnerId =:= Uid of
-                true ->
-                    %% M-1：Owner 读亦须 active workspace_member（fail-closed
-                    %% 403），与 ensure_can_write 及 member/milestone 逻辑一致
-                    case owner_ws_active(Project, Uid) of
-                        true ->
-                            {ok, Project};
-                        false ->
-                            {error, {403, <<"无权限访问该项目"/utf8>>}}
-                    end;
-                false ->
-                    case project_channel_rel_repo:find_project_member(ProjectId, Uid) of
-                        #{<<"status">> := <<"active">>} ->
-                            {ok, Project};
-                        _ ->
-                            {error, {403, <<"无权限访问该项目"/utf8>>}}
-                    end
-            end
-    end.
+    project_member_logic:ensure_can_read(Uid, ProjectId).
 
-%% Owner 的 workspace_member 身份是否 active（M-1 读路径 fail-closed 防线；
-%% 正常 API 流程下由 DB 三重防线保证 owner 必有 active wm，此处为人工
-%% DB 治理态的一致性兜底）
--spec owner_ws_active(map(), integer()) -> boolean().
-owner_ws_active(Project, Uid) ->
-    WsId = maps:get(<<"workspace_id">>, Project, undefined),
-    case workspace_member_repo:find(WsId, Uid, <<"status">>) of
-        #{<<"status">> := <<"active">>} -> true;
-        _ -> false
-    end.
-
-%% @doc 项目写权限：读权限基础上要求 active workspace_member 且 role ≠ guest
-%% （Owner 亦然——Owner 的 ws 身份失效时 fail-closed 403）
+%% @doc 项目写权限统一复用 Project Member 权限模型。
 -spec ensure_can_write(integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 ensure_can_write(Uid, ProjectId) ->
-    case ensure_can_read(Uid, ProjectId) of
-        {error, Reason} ->
-            {error, Reason};
-        {ok, Project} ->
-            WsId = maps:get(<<"workspace_id">>, Project),
-            case workspace_member_repo:find(WsId, Uid, <<"role,status">>) of
-                #{<<"status">> := <<"active">>, <<"role">> := <<"guest">>} ->
-                    {error, {403, <<"Guest 角色为只读，不能修改项目"/utf8>>}};
-                #{<<"status">> := <<"active">>} ->
-                    {ok, Project};
-                _ ->
-                    {error, {403, <<"无权限执行该操作"/utf8>>}}
-            end
-    end.
+    project_member_logic:ensure_can_write(Uid, ProjectId).
 
 %% ===================================================================
 %% Internal Function Definitions
@@ -300,15 +246,6 @@ read_agg(Uid, ProjectId, Fun) ->
                     _ = ?ERROR_LOG([project_channel_agg_failed, ProjectId, Reason]),
                     {error, {500, <<"查询失败，请稍后重试"/utf8>>}}
             end
-    end.
-
--spec load_project(integer()) -> {ok, map()} | {error, {404, binary()}}.
-load_project(ProjectId) ->
-    case project_repo:find_by_id(ProjectId, <<"id,workspace_id,owner_id">>) of
-        Project when is_map(Project), map_size(Project) > 0 ->
-            {ok, Project};
-        _ ->
-            {error, {404, <<"项目不存在"/utf8>>}}
     end.
 
 %% links 入参校验（DB trg_project_links_shape 之外的应用层防线）：
