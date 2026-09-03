@@ -262,6 +262,18 @@
 - verify: 封禁用户 token 立即失效；旧口令透明升级；cookie 有 exp 且登出吊销；两密钥不同值强制校验。
 - evidence:
 
+### W1-SEC-05
+- title: 自建 Apache-2.0 vodozemac FFI 替换 AGPL Dart 绑定
+- status: blocked
+- deps: GATE-W0
+- wave: 1
+- tag: security
+- effort: L
+- source: E2EE gap-matrix X15；E2EE-P0 ruling R4
+- action: 仅依据 Apache-2.0 上游 `matrix-org/vodozemac` crate 自建 Flutter FFI 插件；先冻结当前生产 API/序列化兼容契约，再实现 Account、Olm Session、Megolm 与 Ed25519 最小调用面，替换 `vodozemac`/`flutter_vodozemac` 依赖，最后更新 NOTICE 与许可证门禁。禁止复制或改写现有 AGPL Dart/Rust binding 源码。
+- verify: `lib/` 与 E2EE 测试不再 import 两个 AGPL 包；依赖锁文件和原生产物不含两包；既有 Olm/Megolm、pickle 恢复、签名验证及跨平台互操作回归通过；Android/iOS/macOS 真机构建通过；许可证清单无 AGPL 阻断并纳入 CI。未取得全部平台与许可证证据前不得标记 done 或分发。
+- evidence: 2026-09-03 盘点确认生产面覆盖 Account、Session、GroupSession、InboundGroupSession、Curve25519/Ed25519 与底层 session config bindings；仓内没有可复用 Rust/FFI 插件先例，现有先例只存在于 AGPL 依赖包，不能复制。上游 crate 0.10.0 当前声明 Apache-2.0。实施尚未开始。
+
 ### W1-RELI-01
 - title: message_retry 全量扫描 + 集群 syn Pid 语义确认
 - status: blocked
@@ -280,7 +292,7 @@
 ### GATE-W1
 - title: 1.0 GA
 - status: blocked
-- deps: W1-ARCH-01,W1-ARCH-03,W1-ARCH-04,W1-TEST-01,W1-TEST-02,W1-TEST-03,W1-TEST-05,W1-ENG-01,W1-ENG-02,W1-SEC-04,W1-RELI-01
+- deps: W1-ARCH-01,W1-ARCH-03,W1-ARCH-04,W1-TEST-01,W1-TEST-02,W1-TEST-03,W1-TEST-05,W1-ENG-01,W1-ENG-02,W1-SEC-04,W1-SEC-05,W1-RELI-01
 - wave: 1
 - tag: gate
 - effort: —
