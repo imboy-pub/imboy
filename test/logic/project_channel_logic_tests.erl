@@ -431,6 +431,7 @@ ws_guard_mocks(WsStatus) ->
 
 link_tx_mocks(Extra) ->
     InsertResult = maps:get(insert_result, Extra, {ok, 1}),
+    UpdateResult = maps:get(update_result, Extra, {ok, 1}),
     ChannelRow = maps:get(channel_row, Extra, #{
         <<"id">> => ?CH_ID,
         <<"workspace_id">> => ?WS_ID,
@@ -450,7 +451,7 @@ link_tx_mocks(Extra) ->
                 {'find_tx', 3, fun(_Conn, ?PROJECT_ID, _) ->
                     #{<<"id">> => ?PROJECT_ID, <<"workspace_id">> => ?WS_ID}
                 end},
-                {'update_fields_tx', 3, fun(_Conn, _Pid, _Data) -> {ok, 1} end}
+                {'update_fields_tx', 3, fun(_Conn, _Pid, _Data) -> UpdateResult end}
             ]},
             {project_channel_rel_repo, [
                 {'find_channel_tx', 3, fun(_Conn, _Chid, _Col) -> ChannelRow end},
@@ -552,6 +553,28 @@ link_duplicate_idempotent_test_() ->
             end
         end}
     ]).
+
+update_links_missing_project_test_() ->
+    ?WITH_MECK_TESTS(link_tx_mocks(#{update_result => {ok, 0}}), [
+        {"concurrent project deletion returns 404 without event", fun() ->
+            drain_msgs(),
+            ?assertMatch(
+                {error, {404, _}},
+                project_channel_logic:update_links(?OWNER, ?PROJECT_ID, [valid_link()])
+            ),
+            ?assertEqual(0, meck:num_calls(project_event_repo, insert_tx, 2))
+        end}
+    ]).
+
+resources_lookup_errors_test_() ->
+    ?WITH_MECK_TESTS(
+        [{project_repo, [{'find_by_id', 2, fun(_, _) -> #{} end}]}],
+        [
+            {"missing project returns 404", fun() ->
+                ?assertMatch({error, {404, _}}, project_channel_ds:resources(?PROJECT_ID))
+            end}
+        ]
+    ).
 
 link_cross_workspace_test_() ->
     CrossCh = #{

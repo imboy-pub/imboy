@@ -142,9 +142,15 @@ update_links(ActorUid, ProjectId, Links) when is_list(Links) ->
             _WsId = ensure_project_writable_tx(Conn, ProjectId),
             Json = jsone:encode(Links, [native_utf8]),
             Now = elib_dt:now(),
-            {ok, _} = project_repo:update_fields_tx(
-                Conn, ProjectId, #{<<"links">> => Json, <<"updated_at">> => Now}
-            ),
+            case
+                project_repo:update_fields_tx(
+                    Conn, ProjectId, #{<<"links">> => Json, <<"updated_at">> => Now}
+                )
+            of
+                {ok, 1} -> ok;
+                {ok, 0} -> throw({abort_tx, {404, <<"项目不存在"/utf8>>}});
+                {error, Reason} -> throw({abort_tx, {links_update_failed, Reason}})
+            end,
             {ok, _} = project_event_repo:insert_tx(
                 Conn,
                 event_data(
@@ -193,8 +199,12 @@ resources(ProjectId) ->
             end;
         #{<<"links">> := Links} when is_list(Links) ->
             {ok, Links};
-        _ ->
-            {ok, []}
+        #{} ->
+            {error, {404, <<"项目不存在"/utf8>>}};
+        {error, Reason} ->
+            {error, Reason};
+        Other ->
+            {error, {unexpected_project_result, Other}}
     end.
 
 %% ===================================================================
