@@ -104,7 +104,7 @@ P1-D4 验证：`make compile` PASS；静态迁移 EUnit PASS；真库集成 EUni
 
 | # | 问题 | 证据 |
 |---|---|---|
-| P1-C1 | `imboy_syn` 与 `message_ds` 用 `erlang:start_timer` 对 syn 可能返回的**远端 Pid** 投递；OTP 的 `erlang:start_timer/3` 要求 Dest 为本地 pid，集群模式下**假设**会 badarg（待多节点实测确认，HYPOTHESIS），与"syn 跨节点投递"宣称矛盾（单节点无影响）。严重度按证据分层：单机 P3、集群 P2/待实测（与 backend-review F-04 口径一致） | `src/lib/imboy_syn.erl:166,172`; `src/ds/message_ds.erl:121,150` |
+| P1-C1 **CLOSED（代码）** | `96d73705` 将远端投递与 ACK 重试调度通过 `erpc:cast` 移至目标 Pid 所在节点，再创建本地 BIF timer 并写当地 ACK ETS；消除了远端 Pid `badarg`、timer Ref 与节点本地缓存错配。单节点定向测试通过；真实双节点投递、节点断连可观测性仍由 W2-RELI-02 验收，不以本地测试替代。 | `src/lib/imboy_syn.erl`; `src/ds/message_ds.erl`; `test/lib/imboy_syn_tests.erl`; `test/ds/message_ds_ack_retry_tests.erl`; commit `96d73705` |
 | P1-C2 | Flutter 启动重试扫描仅取每表前 100 条，溢出的失败消息永不重试 → 积压离线发送丢失 | `imboyapp/lib/service/message_retry.dart:178` |
 | P1-C3 | Flutter 本地 DB 降级脚本止于 v17，v23 降级无脚本却返回 success，schema 静默不降 | `imboyapp/lib/service/migration_service.dart:179-185` |
 
