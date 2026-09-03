@@ -7,7 +7,7 @@
 % T6a 独占 project_event writer 事务接口；T6b 的 task 状态流转经
 % record_task_status_tx/6 写事件（与状态 UPDATE 同一 Conn = 同一事务，
 % 事件原子性：无孤儿事件——事务回滚时事件与状态变更一起消失）。
-% W0：仅 task_status 一种事件类型实际写入；Activity 查询端点 defer。
+% 本模块仅负责 task_status 事件写入；Activity 读取由聚合仓库负责。
 %%%
 
 -export([record_task_status_tx/6]).

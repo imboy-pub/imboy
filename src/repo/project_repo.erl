@@ -3,10 +3,9 @@
 % project_repo 是 project repository 缩写
 % 项目数据仓库层（迁移 00000078，双体验 v2.5.2 WP4/T6a）
 %
-% 表结构（priv/migrations/00000078_project_foundation.up.sql，W0 版）：
+% 表结构由 00000078 foundation 建立，并由 00000081 升级到 W2：
 %   project(id TSID, workspace_id 非空FK, name, description, owner_id, status
-%           active|done, timestamps)
-%   无 links 列（Resources 聚合 defer）；无物理删除（仅 status 流转）。
+%           active|done, links, timestamps)；无物理删除（仅 status 流转）。
 % W2 使用 project_member 限制非 Workspace Owner 的项目可见性；owner 的 active
 % workspace membership 由复合 FK
 % fk_project_owner_membership + 触发器 trg_project_owner_membership_active

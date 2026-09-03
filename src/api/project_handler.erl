@@ -2,9 +2,8 @@
 %%%
 % 项目 HTTP handler（双体验 v2.5.2 WP4/T6a）
 %
-% W0 硬约束（Gate W）：无 /projects/:id/members 端点（不建/不读/不写
-% project_member）；无 Pinned/Resources/Activity 聚合端点（defer）；
-% 无 Channel 关联 API（project_channel_rel 不存在，defer）。
+% W2：Project Member、Milestone、Channel 关联与聚合端点由各自 handler 提供；
+% 本模块只负责项目本身的创建、列表、详情与状态流转。
 % 跨域文案：本模块对外一律使用全称"项目"（Project），审计含 workspace 上下文。
 %
 %%% =====================================================================
@@ -93,7 +92,7 @@ list(Req0, State) ->
             end
     end.
 
-%% @doc 项目详情（active 工作区成员可读，W0）
+%% @doc 项目详情（Workspace Owner 或 active Project Member 可读，W2）
 -spec show(cowboy_req:req(), map()) -> cowboy_req:req().
 show(Req0, State) ->
     Uid = auth_ds:current_uid(State),

@@ -5,11 +5,9 @@
 %
 % 表结构：project_event(id TSID, project_id FK, actor_id, event_type, target_id,
 %   payload jsonb, created_at)
-% W0 裁剪（Gate W=W0）：event_type CHECK 仅允许
-%   project_created|project_status|task_created|task_status|task_assignee；
-% 本期只在 task 状态流转时写 task_status 事件（T6b，与状态变更同事务），
-% 不提供 Activity 查询端点（聚合 defer）。
-% T6a 独占 writer 事务接口（经 project_event_ds:record_task_status_tx/5），
+% event_type CHECK 由 W2 迁移 00000081 扩展；本仓库提供通用事务写入，
+% 当前 project_event_ds 只在 task 状态流转时写 task_status 事件。
+% T6a 独占 writer 事务接口（经 project_event_ds:record_task_status_tx/6），
 % T6b 只调用，不直接拼 SQL。
 %%%
 
