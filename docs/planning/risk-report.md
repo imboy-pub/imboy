@@ -14,7 +14,7 @@
 | P0-1 | **CLOSED（代码）** | `auth_middleware` 已按真实 `/api/v1/` 前缀委托 `auth_middleware_api_v1`；支付回调与频道 webhook 仅在动态参数为单个非空路径段时免认证，额外层级不会继承豁免；客户端签名门不再落入错误分支。完整链路与矩阵测试 10/10、34/34 PASS，提交 `26611042`。 |
 | P0-2 | **CLOSED（本地）** | `user_server` 改为 16 个固定 shard；同 UID FIFO、不同 UID 并行。父进程持有 current/queue，worker ACK 后推进，异常时重建并按策略重放；不可幂等的账号注销使用 `no_replay`。每 shard 队列上限 1000，过载记录错误并丢弃新状态任务。该闭环不等于生产重连风暴容量证明。 |
 | P0-3 | **CLOSED（代码）** | 消息投递与 ACK 已迁移至专用 `ack_retry_cache` ETS（`write_concurrency`），不再穿越全局 `depcache` 同步热点。 |
-| P0-4 | **BLOCKED（法务决策）** | AGPL 依赖仍在；开源、购买商业授权或替换绑定三选一尚未获得人工决定，发布前不得解除。 |
+| P0-4 | **CLOSED（决策）/ BLOCKED（实施与分发）** | 2026-08-02 已书面裁定选项③：基于 Apache-2.0 `vodozemac` crate 自建 FFI 绑定替换 AGPL Dart 绑定，见 `E2EE-P0-ruling-2026-08-02.md` R4。X15 尚未实施，AGPL 依赖仍在，完成替换、NOTICE 与许可证扫描前不得分发。 |
 | P1-A1 | **CLOSED（代码）** | 订阅创建的 `owner_uid` 只取认证态 UID；续费、取消、用量、配额和账单端点均先校验订阅归属，账单支付由 invoice 反查订阅归属；历史 `owner_uid=0` 在用户端 fail-closed。提交 `ec48109f`。 |
 | P1-A2 | **CLOSED（代码）** | setup status/init 两个精确路径免 admin Cookie 但仍执行 IP allowlist；首个管理员在单一 PostgreSQL 事务内通过 advisory lock 串行化，并使用同一连接 count/save。DB 计数异常 fail-closed，不再当作空库。提交 `e2d420eb`。 |
 | P1-A3 | **CLOSED（代码）** | strict 环境已改为默认严格，仅显式 `dev/local/test` 放宽；启动时强制校验独立 `adm_cookie_secret`，空值或未知环境不能带默认密钥进入生产。 |

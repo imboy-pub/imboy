@@ -114,7 +114,7 @@
 
 ### W0-SEC-00
 - title: AGPL vodozemac 法务裁决（产品决策，非工程）
-- status: ready
+- status: done
 - deps: none
 - wave: 0
 - tag: decision
@@ -122,7 +122,7 @@
 - source: risk-report P0-4；SEC-00
 - action: 三选一定案（开源本体 / 购商业授权 / 换非 AGPL 绑定），`imboyapp/pubspec.yaml:223-224`。
 - verify: 授权路径书面定案（人工，非命令）。
-- evidence:
+- evidence: 2026-08-02 已书面裁定选项③：基于 Apache-2.0 `vodozemac` crate 自建 FFI 绑定，替换 AGPL Dart 绑定；权威记录见 `docs/guides/e2ee/v2/evidence/E2EE-P0-ruling-2026-08-02.md` R4，`standard/gap-matrix.md` X5 与 `standard/known-issues-ledger.md` IMB-2026-001 交叉一致。实施任务 X15 仍 open，完成前禁止分发；本项只关闭“三选一决策”，不冒充许可证替换完成。
 
 ---
 
