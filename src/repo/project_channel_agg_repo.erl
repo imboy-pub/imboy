@@ -51,31 +51,17 @@ pinned_page(ProjectId, Page, Size) ->
             "   AND cm.status = 1 AND cm.is_pinned = true AND cm.revoked = false"
             "   AND ", (?NOTICE_MSG_TYPES_SQL)>>,
     CountSql = <<"SELECT COUNT(*) AS count ", Where/binary>>,
-    Total =
-        case elib_pg:one(CountSql, [ProjectId]) of
-            {ok, #{<<"count">> := C}} -> C;
-            _ -> 0
-        end,
-    DataSql =
-        <<"SELECT cm.id, cm.channel_id, cm.author_id, cm.author_name,",
-            " cm.msg_type, cm.created_at ", Where/binary,
-            " ORDER BY cm.created_at DESC, cm.id DESC", " LIMIT $2 OFFSET $3">>,
-    case elib_pg:query(DataSql, [ProjectId, Size, Offset]) of
-        {ok, Items} ->
-            TotalPage =
-                case Total > 0 of
-                    true -> ((Total - 1) div Size) + 1;
-                    false -> 0
-                end,
-            {ok, #{
-                list => Items,
-                page => Page,
-                size => Size,
-                total => Total,
-                total_page => TotalPage
-            }};
+    case elib_pg:one(CountSql, [ProjectId]) of
+        {ok, #{<<"count">> := Total}} ->
+            DataSql =
+                <<"SELECT cm.id, cm.channel_id, cm.author_id, cm.author_name,",
+                    " cm.msg_type, cm.created_at ", Where/binary,
+                    " ORDER BY cm.created_at DESC, cm.id DESC", " LIMIT $2 OFFSET $3">>,
+            page_query(DataSql, [ProjectId, Size, Offset], Page, Size, Total);
         {error, Reason} ->
-            {error, Reason}
+            {error, Reason};
+        Other ->
+            {error, {unexpected_count_result, Other}}
     end.
 
 %% @doc 项目 Related Posts 聚合：关联频道最近帖子的有界摘要（不含正文）
@@ -105,15 +91,21 @@ activity_page(ProjectId, Page, Size) ->
     Tb = elib_pg_sql:public_tablename(<<"project_event">>),
     Offset = (Page - 1) * Size,
     CountSql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE project_id = $1">>,
-    Total =
-        case elib_pg:one(CountSql, [ProjectId]) of
-            {ok, #{<<"count">> := C}} -> C;
-            _ -> 0
-        end,
-    DataSql =
-        <<"SELECT id, event_type, actor_id, target_id, payload, created_at FROM ", Tb/binary,
-            " WHERE project_id = $1", " ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3">>,
-    case elib_pg:query(DataSql, [ProjectId, Size, Offset]) of
+    case elib_pg:one(CountSql, [ProjectId]) of
+        {ok, #{<<"count">> := Total}} ->
+            DataSql =
+                <<"SELECT id, event_type, actor_id, target_id, payload, created_at FROM ",
+                    Tb/binary, " WHERE project_id = $1",
+                    " ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3">>,
+            page_query(DataSql, [ProjectId, Size, Offset], Page, Size, Total);
+        {error, Reason} ->
+            {error, Reason};
+        Other ->
+            {error, {unexpected_count_result, Other}}
+    end.
+
+page_query(DataSql, Params, Page, Size, Total) ->
+    case elib_pg:query(DataSql, Params) of
         {ok, Items} ->
             TotalPage =
                 case Total > 0 of

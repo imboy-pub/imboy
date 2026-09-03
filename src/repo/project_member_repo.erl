@@ -134,28 +134,34 @@ page_by_project(ProjectId, Page, Size, Column) ->
     CountSql =
         <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
             " WHERE project_id = $1 AND status = 'active'">>,
-    Total =
-        case elib_pg:one(CountSql, [ProjectId]) of
-            {ok, #{<<"count">> := C}} -> C;
-            _ -> 0
-        end,
-    DataSql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " pm", " LEFT JOIN ",
-            (user_repo:tablename())/binary, " u ON u.id = pm.user_id",
-            " WHERE pm.project_id = $1 AND pm.status = 'active'",
-            " ORDER BY pm.joined_at ASC, pm.user_id ASC LIMIT $2 OFFSET $3">>,
-    case elib_pg:query(DataSql, [ProjectId, Size, Offset]) of
-        {ok, Items} ->
-            TotalPage =
-                case Total > 0 of
-                    true -> ((Total - 1) div Size) + 1;
-                    false -> 0
-                end,
-            {ok, #{
-                list => Items, page => Page, size => Size, total => Total, total_page => TotalPage
-            }};
+    case elib_pg:one(CountSql, [ProjectId]) of
+        {ok, #{<<"count">> := Total}} ->
+            DataSql =
+                <<"SELECT ", Column/binary, " FROM ", Tb/binary, " pm", " LEFT JOIN ",
+                    (user_repo:tablename())/binary, " u ON u.id = pm.user_id",
+                    " WHERE pm.project_id = $1 AND pm.status = 'active'",
+                    " ORDER BY pm.joined_at ASC, pm.user_id ASC LIMIT $2 OFFSET $3">>,
+            case elib_pg:query(DataSql, [ProjectId, Size, Offset]) of
+                {ok, Items} ->
+                    TotalPage =
+                        case Total > 0 of
+                            true -> ((Total - 1) div Size) + 1;
+                            false -> 0
+                        end,
+                    {ok, #{
+                        list => Items,
+                        page => Page,
+                        size => Size,
+                        total => Total,
+                        total_page => TotalPage
+                    }};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
-            {error, Reason}
+            {error, Reason};
+        Other ->
+            {error, {unexpected_count_result, Other}}
     end.
 
 %% @doc 事务内查询目标用户在本项目未完成的 assignee 任务

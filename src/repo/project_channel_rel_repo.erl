@@ -83,22 +83,25 @@ page_channels_by_project(ProjectId, Page, Size) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
     CountSql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE project_id = $1">>,
-    Total =
-        case elib_pg:one(CountSql, [ProjectId]) of
-            {ok, #{<<"count">> := C}} -> C;
-            _ -> 0
-        end,
-    ChTb = elib_pg_sql:public_tablename(<<"channel">>),
-    DataSql =
-        <<"SELECT r.channel_id, r.workspace_id, r.created_at AS linked_at,",
-            " c.name, c.avatar, c.status AS channel_status", " FROM ", Tb/binary, " r JOIN ",
-            ChTb/binary, " c ON c.id = r.channel_id", " WHERE r.project_id = $1",
-            " ORDER BY r.created_at DESC, r.channel_id DESC LIMIT $2 OFFSET $3">>,
-    case elib_pg:query(DataSql, [ProjectId, Size, Offset]) of
-        {ok, Items} ->
-            {ok, page_map(Items, Page, Size, Total)};
+    case elib_pg:one(CountSql, [ProjectId]) of
+        {ok, #{<<"count">> := Total}} ->
+            ChTb = elib_pg_sql:public_tablename(<<"channel">>),
+            DataSql =
+                <<"SELECT r.channel_id, r.workspace_id, r.created_at AS linked_at,",
+                    " c.name, c.avatar, c.status AS channel_status", " FROM ", Tb/binary,
+                    " r JOIN ", ChTb/binary, " c ON c.id = r.channel_id",
+                    " WHERE r.project_id = $1",
+                    " ORDER BY r.created_at DESC, r.channel_id DESC LIMIT $2 OFFSET $3">>,
+            case elib_pg:query(DataSql, [ProjectId, Size, Offset]) of
+                {ok, Items} ->
+                    {ok, page_map(Items, Page, Size, Total)};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
-            {error, Reason}
+            {error, Reason};
+        Other ->
+            {error, {unexpected_count_result, Other}}
     end.
 
 %% ===================================================================

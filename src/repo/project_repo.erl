@@ -75,26 +75,32 @@ page_by_workspace(WsId, Page, Size, Column) ->
     Tb = tablename(),
     Offset = (Page - 1) * Size,
     CountSql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE workspace_id = $1">>,
-    Total =
-        case elib_pg:one(CountSql, [WsId]) of
-            {ok, #{<<"count">> := C}} -> C;
-            _ -> 0
-        end,
-    DataSql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE workspace_id = $1",
-            " ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3">>,
-    case elib_pg:query(DataSql, [WsId, Size, Offset]) of
-        {ok, Items} ->
-            TotalPage =
-                case Total > 0 of
-                    true -> ((Total - 1) div Size) + 1;
-                    false -> 0
-                end,
-            {ok, #{
-                list => Items, page => Page, size => Size, total => Total, total_page => TotalPage
-            }};
+    case elib_pg:one(CountSql, [WsId]) of
+        {ok, #{<<"count">> := Total}} ->
+            DataSql =
+                <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE workspace_id = $1",
+                    " ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3">>,
+            case elib_pg:query(DataSql, [WsId, Size, Offset]) of
+                {ok, Items} ->
+                    TotalPage =
+                        case Total > 0 of
+                            true -> ((Total - 1) div Size) + 1;
+                            false -> 0
+                        end,
+                    {ok, #{
+                        list => Items,
+                        page => Page,
+                        size => Size,
+                        total => Total,
+                        total_page => TotalPage
+                    }};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
         {error, Reason} ->
-            {error, Reason}
+            {error, Reason};
+        Other ->
+            {error, {unexpected_count_result, Other}}
     end.
 
 %% @doc 工作区成员已加入的 active membership 项目分页列表。
