@@ -272,7 +272,7 @@
 - source: risk-report P1-C1/P1-C2；backend-review F-04
 - action: `message_retry.dart:178` 前 100 条截断改全量/分页；`imboy_syn.erl:166,172` 远端 Pid + start_timer 语义按目标 OTP 版本实测确认（不假设 badarg）。
 - verify: 失败消息不丢（分页扫描测试）；start_timer 远端行为有实测记录。
-- evidence:
+- evidence: Flutter 稳定游标分页与 101 条跨页回归已提交 `94328fff`；后端已提交目标节点本地 timer/ACK ETS 修复 `96d73705`，单节点定向测试 17+5+14 PASS。真实双节点投递、ACK 取消、Tail 续排仍未验收，故保持 blocked。
 
 ---
 
