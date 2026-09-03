@@ -630,3 +630,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **定向验证**：Channel Logic 37/37、Milestone Repo 6/6、Milestone DS 15/15、Task Logic 27/27，`make compile` 与 `git diff --check` 均 PASS。
 - **全量验证**：当前 HEAD 执行 `make eunit-local`，**All 6720 tests passed**，exit 0。此前 34/59 失败为历史快照，不再是当前基线。
 - **门禁判定**：本地权限与自动化缺口已闭环；整体仍为 **`release-candidate / BLOCKED(H2 残余, H3, H4)`**。第二台真机实时收发/Push、FCM/APNs 外部凭据、3 人理解测试、生产等价脱敏演练及 push/发布均未执行、未获新证据。
+
+### M-4/M-5 静默失败收敛卡（2026-09-03，持续执行）
+
+- **提交**：`7c9cd4ac` 令 Owner 项目列表、项目成员、关联频道、Pinned、Activity 五条分页 COUNT 在 DB 错误时 fail-closed，且不再执行数据查询；`2842d50e` 令成员/里程碑/频道查询错误显式传播，权限入口返回 500、事务写立即回滚。
+- **原子性**：成员 upsert 与里程碑 create/update/reach 的写后回读均在同一事务连接；回读失败不再提交成功写后向客户端谎报业务失败，也不会把 DB 故障伪装成 403/404。
+- **测试**：新增 `project_count_failclosed_tests` 3 个生成器（覆盖 10 个错误断言）；Project Member Logic 28/28、Member DS 17/17、Task Logic 27/27、Milestone DS 15/15、Channel Logic 37/37；`make compile` PASS；最终 `make eunit-local` **6723/6723 PASS**。
+- **审查结论更新**：`w2-backend-review-2026-08-29.md` 的 M-4/M-5 保留为历史发现，当前 HEAD 已闭环；M-6 与 LOW 项仍按各自当前代码重新核验，不由本卡扩大范围。
+- **门禁**：H2/H3/H4 状态不变，本卡无真机、生产或外向操作。

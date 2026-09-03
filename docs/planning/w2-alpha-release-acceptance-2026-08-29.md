@@ -84,6 +84,7 @@
 - 后端 HEAD 为 `6ac390f9`，本轮 5 个提交已落库、工作树干净；“三仓均未 commit”和旧 Base SHA 不再代表当前状态。
 - Workspace Owner 的治理读取语义已统一：可读取 Workspace 内 Project/Milestone/Channel 治理资源；内容写仍要求 active Project Member。原“待用户拍板”限制已解除。
 - Project 列表、Task、Channel、Milestone 的成员权限已在共享权限层收敛；COUNT 失败按 fail-closed 处理；旧重复权限 helper 已删除。
-- 当前后端全量 `make eunit-local`：**6720 passed / 0 failed**（exit 0）；此前 C1/C2 或 34/59 失败数字仅是历史基线，不得用于描述当前 HEAD。
+- 当前后端全量 `make eunit-local`：**6723 passed / 0 failed**（exit 0）；此前 C1/C2 或 34/59 失败数字仅是历史基线，不得用于描述当前 HEAD。
+- M-4/M-5 已闭环：分页 COUNT、成员/里程碑/频道事务查询错误显式上抛，成功写后的成员与里程碑回读均在事务内完成；DB 故障不再伪装成空列表、403/404 或成功提交。
 - `imboyapp` 当前存在 22 项用户暂存改动，本轮未修改；`imboyadmin` 工作树干净。
 - Release 判定仍为 **`release-candidate / BLOCKED(H2 残余, H3, H4)`**；本地代码和测试不能替代第二台真机、Push 外部凭据、3 人理解测试、生产等价演练及对外发布授权。

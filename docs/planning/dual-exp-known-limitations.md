@@ -77,7 +77,7 @@ smoke/api）单跑 **265 用例全绿**（0 失败），与 C1 对照实验结�
 ### C4. 当前 HEAD 覆盖口径（2026-09-03）
 
 C1/C2/C3 保留为当时分支与环境的历史基线，不代表当前后端状态。imboy
-HEAD `6ac390f9` 已执行 `make eunit-local`，结果 **6720 passed / 0 failed**（exit 0）。
+HEAD `2842d50e` 已执行 `make eunit-local`，结果 **6723 passed / 0 failed**（exit 0）。
 跨仓 CI、真机、生产等价与发布状态仍须按各自门禁另行取证，不由该本地结果推导。
 
 ## D. Demo 与走查的 BLOCKED 项（Day-1 Bar 缺口）
