@@ -7,7 +7,7 @@
 ## 2026-09-03 当前 HEAD 复核
 
 > 原表保留 2026-07-22 审计快照；本节记录后续处置状态，避免把历史发现误读为当前缺陷。
-> 复核基线：`3fc5fc67`。
+> 复核基线：`917166e0`。
 
 | 原编号 | 当前状态 | 当前证据与边界 |
 |---|---|---|
@@ -21,6 +21,7 @@
 | P1-C3 | **CLOSED（代码）** | SQLite 升降级现由 migration manifest 与 planner 生成完整路径；缺失版本边抛出 `MissingMigrationPathException` / `MissingMigrationScriptException` 并返回 failure，不再以空计划静默成功。 |
 | P1-D2 | **CLOSED（代码）** | PostgreSQL 连接入池前设置会话级 `statement_timeout`，默认 **15000ms**；配置仅接受 100–300000ms 整数，初始化失败即关闭连接并拒绝入池。目标 EUnit **2/2 PASS**，真实本地 PostgreSQL `SHOW statement_timeout` 返回 `15s`，提交 `3fc5fc67`。该闭环不等于生产查询容量证明。 |
 | P1-D3 | **OPEN（降级 P2）** | 当前 `{raw, ...}` / `__raw` 调用均为仓内固定 SQL 片段，未发现请求参数直达 raw 的现行利用链；但构造器仍无法从类型上区分 identifier 与可信表达式。一次性全局校验会破坏现有 JOIN、`CASE`、`COALESCE` 查询，须先迁移到显式 trusted-fragment API，不能以不兼容补丁冒充闭环。 |
+| P1-D4 | **CLOSED（代码）** | 四张消息 hypertable 已用事务级 advisory lock 串行化同表同 `msg_id` 写入，并跨 Timescale chunks 拒绝不同 `created_at` 的重放。迁移先安装触发器、后扫描存量重复，存量不一致时 fail-closed 并整体回滚，不自动删除业务消息。提交 `917166e0`。 |
 | P1-P1 | **CLOSED（代码）** | `imboy_codec` 已对 protobuf 无法无损表达的方向或控制字段回退 JSON，`C2S_SERVER_ACK` 的 `type` / `id` / `in_reply_to` 不再蒸发；`imboy_codec_tests` **24/24 PASS**。 |
 
 P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
@@ -28,6 +29,8 @@ P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码�
 P1-D2 验证：`make compile` PASS；`imboy_pg_connection_tests` **2/2 PASS**；代码审查无 HIGH/MEDIUM。真实本地 PostgreSQL 仅验证新建连接的会话参数生效，未执行生产等价慢查询、连接池耗尽或容量压测。
 
 P1-D3 复核：试验性全局 identifier 校验虽能拒绝恶意片段，但确定性破坏用户分页与多处 JOIN 查询，已完整撤销且未提交。后续修复必须先区分严格结构参数和显式可信 SQL 表达式，并覆盖真实 repo/DS 分页路径。
+
+P1-D4 验证：`make compile` PASS；静态迁移 EUnit PASS；真库集成 EUnit PASS，覆盖存量重复拒绝、四表跨分区去重、同时间戳 `ON CONFLICT` 兼容、down 回滚与事务内 52 周 chunks；另有一次本地双连接并发验证 PASS。代码审查 **0 HIGH / 0 MEDIUM**。该证据不等于生产等价数据量与吞吐容量证明，后者仍属 H3 门禁。
 
 整体发布判定不变：**`release-candidate / BLOCKED(H2 残余, H3, H4, P0-4 法务)`**。本地代码与测试不能替代第二台真机/Push/真人理解测试、生产等价脱敏演练或远端发布授权。
 
