@@ -13,8 +13,8 @@
 %   权限统一复用 project_member_logic，避免子资源语义漂移。
 %
 % update-links 应用层校验（DB trg_project_links_shape 之外的入参防线）：
-%   links 必须是 [{name,url}] 对象数组：name 非空 ≤200 字符、url 非空
-%   ≤2048 字符、条数 ≤20；校验失败 400 且不落任何写。
+%   links 必须是 [{name,url}] 对象数组：name 非空 ≤200 字符、url 为带 host 的
+%   http/https 绝对地址且 ≤2048 字节、条数 ≤20；校验失败 400 且不落任何写。
 %
 % 输出边界：
 %   * Related Posts / Pinned 只含元数据列（DS 层列白名单）；
@@ -249,7 +249,8 @@ read_agg(Uid, ProjectId, Fun) ->
     end.
 
 %% links 入参校验（DB trg_project_links_shape 之外的应用层防线）：
-%% 对象数组、每项 name 非空 ≤200 字符、url 非空 ≤2048 字符、条数 ≤20
+%% 对象数组、每项 name 非空 ≤200 字符、url 为 http/https 绝对地址且
+%% ≤2048 字节、条数 ≤20
 -spec validate_links(term()) -> {ok, [map()]} | {error, binary()}.
 validate_links(Links) when is_list(Links) ->
     case length(Links) =< ?MAX_LINKS of
@@ -268,7 +269,7 @@ validate_link_elements([El | Rest], Acc) when is_map(El) ->
     Url = maps:get(<<"url">>, El, undefined),
     case valid_link_name(Name) andalso valid_link_url(Url) of
         false ->
-            {error, <<"links 每项必须包含非空 name（≤200 字符）与 url（≤2048 字符）"/utf8>>};
+            {error, <<"links 每项必须包含非空 name（≤200 字符）与 http/https url（≤2048 字节）"/utf8>>};
         true ->
             validate_link_elements(Rest, [#{<<"name">> => Name, <<"url">> => Url} | Acc])
     end;
@@ -282,9 +283,20 @@ valid_link_name(_) ->
     false.
 
 valid_link_url(Url) when is_binary(Url), byte_size(Url) > 0 ->
-    byte_size(Url) =< ?MAX_URL_LEN;
+    byte_size(Url) =< ?MAX_URL_LEN andalso valid_http_url(Url);
 valid_link_url(_) ->
     false.
+
+valid_http_url(Url) ->
+    case catch uri_string:parse(Url) of
+        #{scheme := Scheme, host := Host} when
+            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>) andalso
+                is_binary(Host) andalso byte_size(Host) > 0
+        ->
+            true;
+        _ ->
+            false
+    end.
 
 %% Activity payload 正文类键清洗（元数据契约双保险；解析失败归一空对象）
 sanitize_activity_rows(Rows) ->

@@ -304,6 +304,15 @@ links_validation_test_() ->
             ?assertMatch({ok, _}, project_channel_logic:update_links(?OWNER, ?PROJECT_ID, Links)),
             ?assertEqual(1, meck:num_calls(project_channel_ds, update_links, 3))
         end},
+        {"http link passes through to ds", fun() ->
+            drain_msgs(),
+            meck:reset(project_channel_ds),
+            Link = #{<<"name">> => <<"Docs">>, <<"url">> => <<"http://example.com/a">>},
+            ?assertMatch(
+                {ok, _}, project_channel_logic:update_links(?OWNER, ?PROJECT_ID, [Link])
+            ),
+            ?assertEqual(1, meck:num_calls(project_channel_ds, update_links, 3))
+        end},
         {"empty list allowed (clear links)", fun() ->
             drain_msgs(),
             meck:reset(project_channel_ds),
@@ -364,6 +373,20 @@ links_validation_test_() ->
             ?assertMatch(
                 {error, {400, _}},
                 project_channel_logic:update_links(?OWNER, ?PROJECT_ID, [long_url_link()])
+            )
+        end},
+        {"unsafe and relative urls rejected 400", fun() ->
+            lists:foreach(
+                fun(Url) ->
+                    meck:reset(project_channel_ds),
+                    Link = #{<<"name">> => <<"Docs">>, <<"url">> => Url},
+                    ?assertMatch(
+                        {error, {400, _}},
+                        project_channel_logic:update_links(?OWNER, ?PROJECT_ID, [Link])
+                    ),
+                    ?assertEqual(0, meck:num_calls(project_channel_ds, update_links, 3))
+                end,
+                [<<"javascript:alert(1)">>, <<"/relative/path">>, <<"https:///missing-host">>]
             )
         end},
         {"more than 20 links rejected 400", fun() ->
