@@ -442,19 +442,31 @@ insert_message_view(ChannelId, MessageId, UserId, ViewedAt) ->
     {ok, integer()} | {error, term()}.
 insert_reaction(ChannelId, MessageId, UserId, ReactionType, CreatedAt) ->
     %% T7 归档写守卫（R3 #10 收口）：反应插入与守卫同事务（原自动提交写）。
-    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
-        channel_repo:insert_reaction_tx(
-            Conn, ChannelId, MessageId, UserId, ReactionType, CreatedAt
-        )
+    retry_reaction_write(fun() ->
+        workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+            channel_repo:insert_reaction_tx(
+                Conn, ChannelId, MessageId, UserId, ReactionType, CreatedAt
+            )
+        end)
     end).
 
 -spec delete_reaction(integer(), integer(), integer(), binary()) ->
     {ok, non_neg_integer()} | {error, any()}.
 delete_reaction(ChannelId, MessageId, UserId, ReactionType) ->
     %% T7 归档写守卫（R3 #10 收口）：反应删除与守卫同事务（原自动提交写）。
-    workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
-        channel_repo:delete_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType)
+    retry_reaction_write(fun() ->
+        workspace_guard:write_tx({channel, ChannelId}, fun(Conn) ->
+            channel_repo:delete_reaction_tx(Conn, ChannelId, MessageId, UserId, ReactionType)
+        end)
     end).
+
+%% 反应写有唯一键/DELETE 幂等保证；断连时仅重试一次，提交结果未知也不会重复计数。
+retry_reaction_write(Write) ->
+    case Write() of
+        {error, dead_connection} -> Write();
+        {error, no_connection} -> Write();
+        Result -> Result
+    end.
 
 -spec list_user_reactions(integer(), [integer()]) -> {ok, [map()]} | {error, term()}.
 list_user_reactions(UserId, MessageIds) ->

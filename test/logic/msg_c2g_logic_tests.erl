@@ -23,7 +23,7 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_retry_config, [
@@ -66,7 +66,7 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
             ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
             ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4)),
@@ -209,7 +209,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end}
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end}
             ]}
         ],
         fun() ->
@@ -235,7 +235,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
 
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(<<"MSG_NOT_FOUND">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11))
         end
     ).
 
@@ -613,7 +613,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]}
         ],
@@ -635,7 +635,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -663,7 +663,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_retry_config, [
@@ -688,7 +688,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
             },
 
             ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -878,7 +878,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 10, fun(_, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_retry_config, [
@@ -947,7 +947,11 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
 
             %% ② 存储/入队/投递三处拿到的是同一 binary（编码一次，零改写）
             StagedMsg = meck:capture(
-                first, msg_store_ds, stage, ['_', '_', '_', '_', '_', '_', '_', '_', '_', '_'], 6
+                first,
+                msg_store_ds,
+                stage,
+                ['_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_'],
+                6
             ),
             EnqueuedMap = meck:capture(first, msg_store_ds, enqueue, ['_', '_', '_'], 3),
             SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),

@@ -4349,6 +4349,31 @@ remove_reaction_returns_error_when_delete_reaction_returns_unexpected_test_() ->
         end)
     end}.
 
+add_reaction_hides_database_connection_error_test_() ->
+    MockConfigs = [
+        {channel_logic_common, [
+            {'resolve_channel_id', 1, fun(<<"ch_hash_11">>) -> 11 end},
+            {'ensure_channel_content_access', 2, fun(1001, 11) -> ok end}
+        ]},
+        {channel_message_ds, [
+            {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
+        ]},
+        {channel_ds, [
+            {'insert_reaction', 5, fun(11, 99, 1001, <<"like">>, _) ->
+                {error, dead_connection}
+            end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:add_reaction(1001, <<"ch_hash_11">>, <<"99">>, <<"like">>),
+            ?assertEqual(
+                {error, {503, <<"服务暂时不可用，请稍后重试"/utf8>>}},
+                Result
+            )
+        end)
+    end}.
+
 %% ===================================================================
 %% revoke_message/3 测试 - P1 撤回能力
 %% ===================================================================

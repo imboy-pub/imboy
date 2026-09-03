@@ -159,9 +159,12 @@ run_with_conn(Driver, Conn, Fun, Retries, Delay) ->
                 %% 二元组匹配 —— 三元组必然 case_clause 崩溃（本文件
                 %% 109-118 行记录过 {rollback, _} 的同类事故，当时只修了
                 %% throw 分支，这一条漏了）。
-                {error, {db_exception, Class, Reason}}
+                case is_process_alive(Conn) of
+                    true -> {error, {db_exception, Class, Reason}};
+                    false -> {error, dead_connection}
+                end
         after
-            pooler:return_member(Driver, Conn)
+            return_connection(Driver, Conn)
         end,
     case Result of
         {error, {db_exception, _Class, _Reason}} when Retries > 0 ->
@@ -180,6 +183,13 @@ safe_rollback(Conn) ->
     catch
         _:_:_ ->
             ok
+    end.
+
+%% 死连接必须以 fail 归还，让 pooler 剔除并补建，避免后续请求重复命中 noproc。
+return_connection(Driver, Conn) ->
+    case is_process_alive(Conn) of
+        true -> pooler:return_member(Driver, Conn);
+        false -> pooler:return_member(Driver, Conn, fail)
     end.
 
 %%--------------------------------------------------------------------

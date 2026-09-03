@@ -1800,6 +1800,37 @@ with_conn_no_members_test_() ->
             end)
         end}.
 
+dead_transaction_connection_is_evicted_test_() ->
+    {setup,
+        fun() ->
+            FakeConn = spawn_fake_conn(),
+            meck:new(pooler, [no_link, passthrough]),
+            meck:expect(pooler, take_member, 1, fun(pgsql) -> FakeConn end),
+            meck:expect(pooler, return_member, 2, fun(_Driver, _Conn) -> ok end),
+            meck:expect(pooler, return_member, 3, fun(_Driver, _Conn, fail) -> ok end),
+            meck:new(config_ds, [no_link, passthrough]),
+            meck:expect(config_ds, env, 1, fun(sql_driver) -> pgsql end),
+            meck:new(epgsql, [no_link, passthrough]),
+            meck:expect(epgsql, with_transaction, 3, fun(Conn, _Fun, _Opts) ->
+                exit(Conn, kill),
+                exit({noproc, {gen_server, call, [Conn, rollback, infinity]}})
+            end),
+            meck:expect(epgsql, squery, 2, fun(_Conn, _Sql) -> exit(noproc) end),
+            FakeConn
+        end,
+        fun(FakeConn) ->
+            catch meck:unload(epgsql),
+            catch meck:unload(config_ds),
+            teardown_pooler_mock(FakeConn)
+        end,
+        fun(FakeConn) ->
+            ?_test(begin
+                ?assertEqual({error, dead_connection}, elib_pg:with_tx(fun(_Conn) -> ok end)),
+                ?assert(meck:called(pooler, return_member, [pgsql, FakeConn, fail])),
+                ?assertEqual(0, meck:num_calls(pooler, return_member, 2))
+            end)
+        end}.
+
 %% ===================================================================
 %% with_tx/1,2 测试
 %% ===================================================================

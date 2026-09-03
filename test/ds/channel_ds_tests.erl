@@ -372,3 +372,57 @@ update_passes_through_text_fields_when_no_tags_test_() ->
             ?assertEqual({ok, 1}, Result)
         end
     ).
+
+insert_reaction_retries_once_after_dead_connection_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_guard, [
+                {'write_tx', 2, fun(_Target, Write) ->
+                    case get(reaction_write_attempt) of
+                        undefined ->
+                            put(reaction_write_attempt, 1),
+                            {error, dead_connection};
+                        1 ->
+                            put(reaction_write_attempt, 2),
+                            Write(fake_conn)
+                    end
+                end}
+            ]},
+            {channel_repo, [
+                {'insert_reaction_tx', 6, fun(fake_conn, 1, 2, 3, <<"like">>, 4) ->
+                    {ok, 5}
+                end}
+            ]}
+        ],
+        fun() ->
+            erase(reaction_write_attempt),
+            ?assertEqual({ok, 5}, channel_ds:insert_reaction(1, 2, 3, <<"like">>, 4)),
+            ?assertEqual(2, get(reaction_write_attempt))
+        end
+    ).
+
+delete_reaction_retries_once_when_pool_is_temporarily_empty_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_guard, [
+                {'write_tx', 2, fun(_Target, Write) ->
+                    case get(reaction_delete_attempt) of
+                        undefined ->
+                            put(reaction_delete_attempt, 1),
+                            {error, no_connection};
+                        1 ->
+                            put(reaction_delete_attempt, 2),
+                            Write(fake_conn)
+                    end
+                end}
+            ]},
+            {channel_repo, [
+                {'delete_reaction_tx', 5, fun(fake_conn, 1, 2, 3, <<"like">>) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            erase(reaction_delete_attempt),
+            ?assertEqual({ok, 1}, channel_ds:delete_reaction(1, 2, 3, <<"like">>)),
+            ?assertEqual(2, get(reaction_delete_attempt))
+        end
+    ).

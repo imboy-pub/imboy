@@ -208,11 +208,15 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
             <<>> -> MsgWithType;
             _ -> MsgWithType#{<<"action">> => Action}
         end,
-    MsgFull =
+    MsgFull0 =
         case E2EE of
             null -> MsgWithAction;
             _ -> MsgWithAction#{<<"e2ee">> => E2EE}
         end,
+    % 信封重建会丢掉 handler 盖好的 sender_did/sender_dtype；必须在编码前
+    % 并回——否则 staging 行与实时投递都不带 sender_did，接收端 PFv3 双层
+    % 上下文绑定恒判 context_mismatch_sender_did（与 msg_c2c_logic 同范式）。
+    MsgFull = message_ds:with_sender_device(MsgFull0, Data),
     Msg2 = jsone:encode(MsgFull, [native_utf8]),
 
     ValidateResult =
@@ -302,6 +306,9 @@ do_stage_and_send_c2g(
 ) ->
     % 提取引用回复信息
     {ReplyToMsgId, ReplyToFromId, ReplySnippet} = extract_reply_info(Data),
+    % PFv3 context binding（ADR 15 §3.3）：离线/worker 投递路径从 staging
+    % 行读 sender_did，必须在入栈时落列（与 msg_c2c_logic 的 stage/11 同款）。
+    SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
 
     % 检查是否有引用信息
     StageResult =
@@ -318,7 +325,8 @@ do_stage_and_send_c2g(
                     CurrentUid,
                     MemberUids,
                     CreatedAtRfc,
-                    CreatedAtRfc
+                    CreatedAtRfc,
+                    SenderDid
                 );
             _ ->
                 % 有引用信息，需要先验证被引用的消息是否存在
@@ -334,7 +342,8 @@ do_stage_and_send_c2g(
                             CurrentUid,
                             MemberUids,
                             CreatedAtRfc,
-                            CreatedAtRfc
+                            CreatedAtRfc,
+                            SenderDid
                         );
                     {error, not_found} ->
                         % 被引用的消息不存在，返回错误
@@ -356,7 +365,8 @@ do_stage_and_send_c2g(
                             CurrentUid,
                             MemberUids,
                             CreatedAtRfc,
-                            CreatedAtRfc
+                            CreatedAtRfc,
+                            SenderDid
                         )
                 end
         end,
@@ -419,6 +429,8 @@ do_stage_and_send_c2g(
             end,
 
             % ③ 后投递消息（仅推送在线成员，离线成员通过 sync 拉取）
+            % sender_did 已在上方 MsgFull 编码前并入 Msg2（staging 与实时
+            % 投递共用该信封），此处无需二次盖章。
             OnlineUids = [
                 Uid
              || Uid <- MemberUids,

@@ -94,8 +94,12 @@ detail_allowed(Req0, Gid) ->
             Req;
         {ok, Gid2} ->
             % P1-7b: 显式安全列（排除 chat_aes_key）
+            % e2ee_mode 必须随详情下发：客户端（group_api.dart P0-B B4）依赖它
+            % 同步本地加密旗标，覆盖「开关广播后才入群」的成员；此前列清单
+            % 遗漏该字段属 P1-7b 收紧时引入的契约回退（2026-09-03 真机夹具
+            % flow 定案：set_e2ee_mode 落库+S2C 广播均正常，唯 detail 回读恒 0）。
             GroupCols =
-                <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,updated_at,created_at">>,
+                <<"id,type,join_limit,content_limit,owner_uid,creator_uid,member_max,member_count,introduction,avatar,title,status,scope,workspace_id,e2ee_mode,updated_at,created_at">>,
             case group_logic:find_by_id(Gid2, GroupCols) of
                 {error, _Reason} ->
                     elib_response:error(Req0, "群组不存在");

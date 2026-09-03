@@ -154,7 +154,7 @@ do_add_reaction(ChannelId, MessageId, Uid, ReactionType) ->
                 {ok, _} -> ok;
                 %% 稳定错误码（980 等）原样透传供 handler envelope 映射
                 {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                {error, Reason} -> reaction_error(Reason);
                 Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end
     end.
@@ -187,10 +187,19 @@ do_remove_reaction(ChannelId, MessageId, Uid, ReactionType) ->
                 {ok, _} -> ok;
                 %% 稳定错误码（980 等）原样透传供 handler envelope 映射
                 {error, {Code, Msg}} when is_integer(Code) -> {error, {Code, Msg}};
-                {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)};
+                {error, Reason} -> reaction_error(Reason);
                 Unexpected -> {error, elib_cnv:safe_to_binary(Unexpected)}
             end
     end.
+
+reaction_error(dead_connection) ->
+    {error, {503, <<"服务暂时不可用，请稍后重试"/utf8>>}};
+reaction_error(no_connection) ->
+    {error, {503, <<"服务暂时不可用，请稍后重试"/utf8>>}};
+reaction_error({db_exception, _Class, _Reason}) ->
+    {error, {503, <<"服务暂时不可用，请稍后重试"/utf8>>}};
+reaction_error(Reason) ->
+    {error, elib_cnv:safe_to_binary(Reason)}.
 
 %% @doc IDOR 防御：校验 MessageId 确实属于 ChannelId，防止调用者用自己有权访问
 %% 的频道 A 的 ChannelId，配合猜测/枚举到的另一频道 B 的 MessageId，对 B 里

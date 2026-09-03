@@ -53,9 +53,15 @@ set_password(Uid, Req0) ->
         not_find ->
             {error, <<"用户不存在"/utf8>>};
         <<>> ->
-            PwdPlaintext = elib_cipher:rsa_decrypt(NewPwd),
-            PwdHash = elib_password:generate(PwdPlaintext),
-            update_password_with_log(Uid, PwdHash, Req0, 110);
+            RsaEncrypt = maps:get(<<"rsa_encrypt">>, PostVals, <<"1">>),
+            PwdPlaintext = elib_cipher:safe_rsa_decrypt(NewPwd, RsaEncrypt),
+            case PwdPlaintext of
+                <<>> ->
+                    {error, <<"新密码不能为空"/utf8>>};
+                _ ->
+                    PwdHash = elib_password:generate(PwdPlaintext),
+                    update_password_with_log(Uid, PwdHash, Req0, 110)
+            end;
         _ ->
             {error, <<"已设置过密码，请使用修改密码"/utf8>>}
     end.
@@ -63,23 +69,32 @@ set_password(Uid, Req0) ->
 %% @doc 修改用户密码
 %% 验证用户当前密码后，更新为新密码。需要提供当前密码和新密码。
 %% 操作会记录用户日志，包含应用版本、设备ID和IP信息。
+%% 密码传输与 passport login 同契约：rsa_encrypt=0 明文（alpha.69 迁移后
+%% 客户端实际行为），=1 RSA 密文；此前无条件 rsa_decrypt 对明文抛
+%% {error,invalid_padding} 使改密接口恒 500（P0，2026-09-03 真机集成测试发现）。
 %% @param Uid 用户ID
-%% @param Req0 HTTP请求对象，包含当前密码和新密码
+%% @param Req0 Cowboy请求对象，包含当前密码和新密码
 %% @returns 操作结果：成功返回{ok, <<"success">>}，失败返回错误信息
 -spec change_password(pos_integer(), map()) -> {ok, binary()} | {error, binary()}.
 change_password(Uid, Req0) ->
     PostVals = elib_param:post(Req0),
-    ExistingPwd = maps:get(<<"existing_pwd">>, PostVals, undefined),
-    NewPwd = maps:get(<<"new_pwd">>, PostVals, undefined),
+    RsaEncrypt = maps:get(<<"rsa_encrypt">>, PostVals, <<"1">>),
+    ExistingPwd = maps:get(<<"existing_pwd">>, PostVals, <<>>),
+    NewPwd = maps:get(<<"new_pwd">>, PostVals, <<>>),
     User = user_ds:find_by_id(Uid, ?LOGIN_COLUMN),
-    ExistingPwd2 = elib_cipher:rsa_decrypt(ExistingPwd),
+    ExistingPwd2 = elib_cipher:safe_rsa_decrypt(ExistingPwd, RsaEncrypt),
     %% E2EE-013 将 verify_user/2 改为 /3（新增 Did 绑定 token）；改密不签发
     %% 登录 token，传空 Did 即可（verify_user 的返回 map 此处仅用于校验成败）。
     case passport_logic:verify_user(ExistingPwd2, User, <<>>) of
         {ok, _} ->
-            PwdPlaintext = elib_cipher:rsa_decrypt(NewPwd),
-            PwdHash = elib_password:generate(PwdPlaintext),
-            update_password_with_log(Uid, PwdHash, Req0, 110);
+            PwdPlaintext = elib_cipher:safe_rsa_decrypt(NewPwd, RsaEncrypt),
+            case PwdPlaintext of
+                <<>> ->
+                    {error, <<"新密码不能为空"/utf8>>};
+                _ ->
+                    PwdHash = elib_password:generate(PwdPlaintext),
+                    update_password_with_log(Uid, PwdHash, Req0, 110)
+            end;
         {error, Msg} ->
             {error, Msg}
     end.
@@ -408,14 +423,30 @@ bind_email_if_available(Uid, Email) ->
 %% @doc 更新密码并记录日志的辅助函数
 %% @private
 update_password_with_log(Uid, PwdHash, Req0, LogType) ->
-    _ = elib_pg:with_tx(fun(Conn) ->
+    %% 此前 `_ = with_tx(...)` 吞掉事务失败结果：连接池不可用时密码并未
+    %% 更新，客户端却收到 success（假成功，2026-09-03 定案）。事务失败必须
+    %% 如实返回错误，让客户端可感知并重试。
+    Result = elib_pg:with_tx(fun(Conn) ->
         %% 更新用户密码
         {ok, _} = user_ds:update_password_in_tx(Conn, {Uid, PwdHash}),
         %% 记录密码修改日志
         _ = user_log_ds:add_password_change_log(Conn, Uid, Req0, LogType),
         ok
     end),
-    {ok, "success"}.
+    case Result of
+        ok ->
+            {ok, <<"success">>};
+        {error, Reason} ->
+            _ = ?ERROR_LOG(
+                "[password_update_failed] uid=~p reason=~p", [Uid, Reason]
+            ),
+            {error, <<"服务器繁忙，请稍后重试"/utf8>>};
+        {rollback, Reason} ->
+            _ = ?ERROR_LOG(
+                "[password_update_rollback] uid=~p reason=~p", [Uid, Reason]
+            ),
+            {error, <<"服务器繁忙，请稍后重试"/utf8>>}
+    end.
 
 %% @doc 检查并设置默认头像
 %% 检查用户头像是否为空，如果为空则设置默认头像。
