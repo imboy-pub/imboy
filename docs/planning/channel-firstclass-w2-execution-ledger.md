@@ -638,3 +638,11 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **测试**：新增 `project_count_failclosed_tests` 3 个生成器（覆盖 10 个错误断言）；Project Member Logic 28/28、Member DS 17/17、Task Logic 27/27、Milestone DS 15/15、Channel Logic 37/37；`make compile` PASS；最终 `make eunit-local` **6723/6723 PASS**。
 - **审查结论更新**：`w2-backend-review-2026-08-29.md` 的 M-4/M-5 保留为历史发现，当前 HEAD 已闭环；M-6 与 LOW 项仍按各自当前代码重新核验，不由本卡扩大范围。
 - **门禁**：H2/H3/H4 状态不变，本卡无真机、生产或外向操作。
+
+### L-8 Project Resources 外链协议收敛卡（2026-09-03，持续执行）
+
+- **提交**：`ff04472d`；`project_channel_logic:update_links/3` 继续复用 OTP `uri_string`，仅接受带非空 host 的绝对 `http/https` URL，并保留 2048 字节上限。
+- **安全边界**：`javascript:`、相对路径与缺 host 的畸形 URL 均返回 400，且不会调用 DS 写入；合法 HTTP/HTTPS 保持可用。
+- **验证**：`make compile` PASS；`project_channel_logic_tests` **39/39 PASS**；`git diff --check` PASS；最终 `make eunit-local` **6725/6725 PASS**，exit 0。
+- **审查结论更新**：`w2-backend-review-2026-08-29.md` 的 L-8 为历史发现，当前 HEAD 已闭环；其余 LOW 项继续按当前代码逐项核验。
+- **门禁**：H2/H3/H4 状态不变，本卡无真机、生产或外向操作。
