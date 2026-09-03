@@ -242,6 +242,8 @@ read_agg(Uid, ProjectId, Fun) ->
             case Fun(ProjectId) of
                 {ok, _} = Ok ->
                     Ok;
+                {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+                    {error, {Code, Msg}};
                 {error, Reason} ->
                     _ = ?ERROR_LOG([project_channel_agg_failed, ProjectId, Reason]),
                     {error, {500, <<"查询失败，请稍后重试"/utf8>>}}
@@ -289,11 +291,9 @@ valid_link_url(_) ->
 
 valid_http_url(Url) ->
     case catch uri_string:parse(Url) of
-        #{scheme := Scheme, host := Host} when
-            (Scheme =:= <<"http">> orelse Scheme =:= <<"https">>) andalso
-                is_binary(Host) andalso byte_size(Host) > 0
-        ->
-            true;
+        #{scheme := Scheme, host := Host} when is_binary(Host), byte_size(Host) > 0 ->
+            LowerScheme = string:lowercase(Scheme),
+            LowerScheme =:= <<"http">> orelse LowerScheme =:= <<"https">>;
         _ ->
             false
     end.

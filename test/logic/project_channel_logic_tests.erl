@@ -259,6 +259,25 @@ read_permission_unknown_project_test_() ->
         end}
     ]).
 
+read_aggregation_semantic_error_test_() ->
+    ?WITH_MECK_TESTS(
+        [
+            {project_member_logic, [
+                {'ensure_can_read', 2, fun(_, _) -> {ok, project_row()} end}
+            ]},
+            {project_channel_ds, [
+                {'resources', 1, fun(_) -> {error, {404, <<"项目不存在"/utf8>>}} end}
+            ]}
+        ],
+        [
+            {"ds semantic error is preserved", fun() ->
+                ?assertMatch(
+                    {error, {404, _}}, project_channel_logic:resources(?OWNER, ?PROJECT_ID)
+                )
+            end}
+        ]
+    ).
+
 read_permission_owner_ws_inactive_test_() ->
     ?WITH_MECK_TESTS(perm_mocks(#{ws_status => <<"removed">>}), [
         {"owner with no active ws membership: read 403 (fail-closed, M-1)", fun() ->
@@ -308,6 +327,15 @@ links_validation_test_() ->
             drain_msgs(),
             meck:reset(project_channel_ds),
             Link = #{<<"name">> => <<"Docs">>, <<"url">> => <<"http://example.com/a">>},
+            ?assertMatch(
+                {ok, _}, project_channel_logic:update_links(?OWNER, ?PROJECT_ID, [Link])
+            ),
+            ?assertEqual(1, meck:num_calls(project_channel_ds, update_links, 3))
+        end},
+        {"uppercase https scheme passes through to ds", fun() ->
+            drain_msgs(),
+            meck:reset(project_channel_ds),
+            Link = #{<<"name">> => <<"Docs">>, <<"url">> => <<"HTTPS://example.com/a">>},
             ?assertMatch(
                 {ok, _}, project_channel_logic:update_links(?OWNER, ?PROJECT_ID, [Link])
             ),
