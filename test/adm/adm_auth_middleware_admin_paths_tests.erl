@@ -24,6 +24,51 @@ execute_allows_passport_path_without_auth_test_() ->
         end
     ).
 
+execute_allows_setup_paths_without_cookie_test_() ->
+    [
+        ?_test(
+            ?WITH_MECKS(
+                [
+                    {cowboy_req, [
+                        {'path', 1, fun(_Req) -> Path end}
+                    ]},
+                    {config_ds, [
+                        {'env', 2, fun(_Key, Default) -> Default end}
+                    ]}
+                ],
+                fun() ->
+                    Req = #{},
+                    Env = #{handler_opts => #{}},
+                    ?assertEqual({ok, Req, Env}, adm_auth_middleware:execute(Req, Env))
+                end
+            )
+        )
+     || Path <- [<<"/api/adm/setup/status">>, <<"/api/adm/setup/init/">>]
+    ].
+
+execute_setup_obeys_ip_allowlist_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> <<"/api/adm/setup/init">> end},
+                {'reply', 4, fun(Code, Headers, Body, Req) ->
+                    Req#{status => Code, headers => Headers, body => Body}
+                end}
+            ]},
+            {config_ds, [
+                {'env', 2, fun(adm_ip_allowlist, []) -> [<<"10.0.0.1">>] end}
+            ]},
+            {elib_req, [
+                {'get_client_ip', 1, fun(_Req) -> <<"203.0.113.1">> end},
+                {'ip_in_allowlist', 2, fun(_, _) -> false end}
+            ]}
+        ],
+        fun() ->
+            {stop, Resp} = adm_auth_middleware:execute(#{}, #{handler_opts => #{}}),
+            ?assertEqual(403, maps:get(status, Resp))
+        end
+    ).
+
 execute_rejects_new_admin_api_path_without_cookie_test_() ->
     ?WITH_MECKS(
         [

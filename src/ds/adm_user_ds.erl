@@ -10,11 +10,11 @@
 
 %% ==================== API ====================
 
--export([count/0]).
+-export([count/0, count/1]).
 -export([count_by_role/1]).
 -export([find_by_id/1, find_by_id/2]).
 -export([find_by_mobile/2, find_by_account/2]).
--export([save/1, update/2, delete/1]).
+-export([save/1, save/2, update/2, delete/1]).
 -export([page_with_where_sql/4]).
 
 %% ===================================================================
@@ -24,6 +24,10 @@
 -spec count() -> {ok, integer()} | {error, any()}.
 count() ->
     adm_user_repo:count().
+
+-spec count(epgsql:connection()) -> {ok, integer()} | {error, any()}.
+count(Conn) ->
+    adm_user_repo:count(Conn).
 
 %% @doc 统计仍引用指定角色的在用管理员数量（用于角色删除前的孤儿校验）
 -spec count_by_role(integer()) -> {ok, integer()} | {error, any()}.
@@ -54,6 +58,10 @@ find_by_account(Account, Column) ->
 -spec save(map()) -> {ok, 1} | {error, any()}.
 save(Data) ->
     adm_user_repo:save(Data).
+
+-spec save(epgsql:connection(), map()) -> {ok, integer()} | {error, any()}.
+save(Conn, Data) ->
+    adm_user_repo:save(Conn, Data).
 
 %% @doc 更新管理员用户
 -spec update(integer(), map()) -> {ok, 1} | {error, any()}.

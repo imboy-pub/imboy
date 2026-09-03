@@ -8,8 +8,8 @@
 -include("common.hrl").
 
 -export([tablename/0]).
--export([save/1, update/2, delete/1]).
--export([count/0]).
+-export([save/1, save/2, update/2, delete/1]).
+-export([count/0, count/1]).
 -export([count_by_role_id/1]).
 -export([count_by_role/1]).
 
@@ -39,9 +39,18 @@ tablename() ->
 %% @return {ok, Count} 用户数量 | {error, Reason} 查询失败
 -spec count() -> {ok, integer()} | {error, any()}.
 count() ->
+    count(undefined).
+
+-spec count(epgsql:connection() | undefined) -> {ok, integer()} | {error, any()}.
+count(Conn) ->
     Tb = tablename(),
     Sql = <<"SELECT COUNT(*) AS count FROM ", Tb/binary, " WHERE status >= 0">>,
-    case elib_pg:query(Sql, []) of
+    Result =
+        case Conn of
+            undefined -> elib_pg:query(Sql, []);
+            _ -> elib_pg:query(Conn, Sql, [])
+        end,
+    case Result of
         {ok, [#{<<"count">> := Count}]} -> {ok, Count};
         {error, Reason} -> {error, Reason}
     end.
@@ -219,6 +228,10 @@ list_by_ids(Uids, Column) ->
 %% @example adm_user_repo:save(#{mobile => <<"13692177080">>, password => elib_password:generate(<<"admin888">>), account => "admin", status => 1, role_id => 1, nickname => <<"管理员"/utf8>>, created_at => elib_dt:now()}).
 -spec save(map()) -> {ok, integer()} | {error, any()}.
 save(Data) ->
+    save(undefined, Data).
+
+-spec save(epgsql:connection() | undefined, map()) -> {ok, integer()} | {error, any()}.
+save(Conn, Data) ->
     Tb = tablename(),
     %% 同 user_repo:save/1：尊重调用方显式传入的正整数 id，缺省/0 则
     %% 服务端生成 TSID；仍须先统一剔除 id/<<"id">> 防 42701 重复列。
@@ -239,7 +252,12 @@ save(Data) ->
                 {IdGen, Data1#{<<"id">> => IdGen}}
         end,
     {Sql, Params} = elib_pg_sql:insert(Tb, Data2),
-    case elib_pg:query(Sql, Params) of
+    Result =
+        case Conn of
+            undefined -> elib_pg:query(Sql, Params);
+            _ -> elib_pg:query(Conn, Sql, Params)
+        end,
+    case Result of
         {ok, _Count} -> {ok, Id};
         {error, _} = Err -> Err
     end.

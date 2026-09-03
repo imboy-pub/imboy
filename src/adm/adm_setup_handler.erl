@@ -8,7 +8,7 @@
 %%%
 %%% 安全：
 %%%   - is_initialized() 双重防线：配置 flag + adm_user 表存在性
-%%%   - 成功后永久 flag，保证不可重复调用
+%%%   - 首个管理员在事务锁内创建，保证不可重复调用
 %%%%
 -behavior(cowboy_rest).
 

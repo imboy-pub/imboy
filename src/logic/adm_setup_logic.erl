@@ -8,7 +8,7 @@
 %%% 流程：
 %%%   1. 前端访问 /setup/status → is_initialized/0 判断是否已完成
 %%%   2. 未完成则引导到 /setup 页面，调用 do_init/1 创建超级管理员
-%%%   3. 成功后写入 config(adm.setup.completed_at) 作为永久标记
+%%%   3. 首个 adm_user 行作为完成事实；旧 config flag 仅兼容读取
 %%%
 %%% 幂等保护：
 %%%   - 空库 + 无 flag → 允许初始化
@@ -39,7 +39,8 @@ is_initialized() ->
         _ ->
             case adm_user_ds:count() of
                 {ok, N} when is_integer(N), N > 0 -> true;
-                _ -> false
+                {ok, 0} -> false;
+                _ -> true
             end
     end.
 
@@ -141,7 +142,7 @@ has_digit(<<_, Rest/binary>>) ->
 has_digit(<<>>) ->
     false.
 
-%% 创建超级管理员 + 写入 setup 完成标记
+%% 串行化并创建唯一的首个超级管理员
 create_super_admin(AccountType, Account, Pwd, Nickname) ->
     PwdHash = elib_password:generate(Pwd),
     Now = elib_dt:now(),
@@ -161,10 +162,27 @@ create_super_admin(AccountType, Account, Pwd, Nickname) ->
             email ->
                 Row0#{<<"account">> => Account, <<"email">> => Account}
         end,
-    case adm_user_ds:save(Row) of
-        {ok, Id} ->
-            _ = config_ds:set(?SETUP_FLAG_KEY, Now),
-            {ok, Id};
-        {error, _} = Err ->
-            Err
+    case elib_pg:with_tx(fun(Conn) -> create_first_admin_tx(Conn, Row) end) of
+        {ok, Id} -> {ok, Id};
+        {error, ?ERR_SETUP_ALREADY_COMPLETED} -> {error, ?ERR_SETUP_ALREADY_COMPLETED};
+        {error, _} = Err -> Err;
+        _ -> {error, ?ERR_SETUP_INVALID_PARAMS}
+    end.
+
+create_first_admin_tx(Conn, Row) ->
+    case elib_pg:execute(Conn, <<"SELECT pg_advisory_xact_lock(1768770433)">>, []) of
+        {ok, _} ->
+            case adm_user_ds:count(Conn) of
+                {ok, 0} ->
+                    case adm_user_ds:save(Conn, Row) of
+                        {ok, _} = Ok -> Ok;
+                        {error, Reason} -> throw({abort_tx, Reason})
+                    end;
+                {ok, _} ->
+                    throw({abort_tx, ?ERR_SETUP_ALREADY_COMPLETED});
+                {error, Reason} ->
+                    throw({abort_tx, {setup_count_failed, Reason}})
+            end;
+        {error, Reason} ->
+            throw({abort_tx, {setup_lock_failed, Reason}})
     end.

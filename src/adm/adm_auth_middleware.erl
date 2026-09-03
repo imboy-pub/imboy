@@ -29,6 +29,10 @@ execute(Req, Env) ->
             % /api 前缀的登录前 passport 接口（captcha/meta/login）同样开放，
             % 与 /adm/passport/ 行为一致；其余 /api/adm/* 仍落 _ 分支校验 admin cookie
             {ok, Req, Env};
+        <<"/api/adm/setup/status">> ->
+            allow_without_cookie(Req, Env);
+        <<"/api/adm/setup/init">> ->
+            allow_without_cookie(Req, Env);
         _ ->
             % GAP-12: 在认证前先校验 IP 白名单（配置 adm_ip_allowlist）
             case check_ip_allowlist(Req) of
@@ -42,6 +46,14 @@ execute(Req, Env) ->
                     % elib_log:info([Method, Uid]),
                     condition(Method, Uid, UidSig, Req, Env)
             end
+    end.
+
+-spec allow_without_cookie(cowboy_req:req(), map()) ->
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+allow_without_cookie(Req, Env) ->
+    case check_ip_allowlist(Req) of
+        allow -> {ok, Req, Env};
+        deny -> reply_ip_forbidden(Req)
     end.
 
 %% ===================================================================
