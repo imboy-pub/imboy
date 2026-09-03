@@ -46,9 +46,10 @@ pinned_page(ProjectId, Page, Size) ->
     RelTb = project_channel_rel_repo:tablename(),
     Offset = (Page - 1) * Size,
     Where =
-        <<"FROM channel_message cm JOIN ", RelTb/binary, " r ON r.channel_id = cm.channel_id",
-            " WHERE r.project_id = $1",
-            "   AND cm.status = 1 AND cm.is_pinned = true AND cm.revoked = false"
+        <<"FROM channel_message cm JOIN channel c ON c.id = cm.channel_id JOIN ", RelTb/binary,
+            " r ON r.channel_id = cm.channel_id", " WHERE r.project_id = $1",
+            "   AND c.status = 1 AND cm.status = 1 AND cm.is_pinned = true",
+            "   AND cm.revoked = false"
             "   AND ", (?NOTICE_MSG_TYPES_SQL)>>,
     CountSql = <<"SELECT COUNT(*) AS count ", Where/binary>>,
     case elib_pg:one(CountSql, [ProjectId]) of
@@ -74,10 +75,11 @@ related_posts(ProjectId, PerChannel, TotalCap) ->
         <<"SELECT t.id, t.channel_id, t.author_id, t.msg_type, t.created_at FROM (",
             " SELECT cm.id, cm.channel_id, cm.author_id, cm.msg_type, cm.created_at,",
             "   row_number() OVER (PARTITION BY cm.channel_id",
-            "     ORDER BY cm.created_at DESC, cm.id DESC) AS rn", " FROM channel_message cm JOIN ",
-            RelTb/binary, " r ON r.channel_id = cm.channel_id",
-            " WHERE r.project_id = $1 AND cm.status = 1 AND cm.revoked = false",
-            ") t WHERE t.rn <= $2", " ORDER BY t.created_at DESC, t.id DESC LIMIT $3">>,
+            "     ORDER BY cm.created_at DESC, cm.id DESC) AS rn",
+            " FROM channel_message cm JOIN channel c ON c.id = cm.channel_id JOIN ", RelTb/binary,
+            " r ON r.channel_id = cm.channel_id", " WHERE r.project_id = $1 AND c.status = 1",
+            " AND cm.status = 1 AND cm.revoked = false", ") t WHERE t.rn <= $2",
+            " ORDER BY t.created_at DESC, t.id DESC LIMIT $3">>,
     case elib_pg:query(Sql, [ProjectId, PerChannel, TotalCap]) of
         {ok, Items} -> {ok, Items};
         {error, Reason} -> {error, Reason}

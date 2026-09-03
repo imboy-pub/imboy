@@ -64,3 +64,23 @@ member_lookup_failure_maps_to_internal_error_test_() ->
             )
         end
     ).
+
+disabled_channels_are_filtered_from_project_aggregations_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'one', 2, fun(Sql, _) ->
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"c.status = 1">>)),
+                {ok, #{<<"count">> => 0}}
+            end},
+            {'query', 2, fun(Sql, _) ->
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"c.status = 1">>)),
+                {ok, []}
+            end}
+        ],
+        fun() ->
+            meck:reset(elib_pg),
+            {ok, _} = project_channel_agg_repo:pinned_page(1, 1, 10),
+            {ok, []} = project_channel_agg_repo:related_posts(1, 5, 50)
+        end
+    ).
