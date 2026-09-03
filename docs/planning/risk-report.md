@@ -17,6 +17,8 @@
 | P0-4 | **BLOCKED（法务决策）** | AGPL 依赖仍在；开源、购买商业授权或替换绑定三选一尚未获得人工决定，发布前不得解除。 |
 | P1-A3 | **CLOSED（代码）** | strict 环境已改为默认严格，仅显式 `dev/local/test` 放宽；启动时强制校验独立 `adm_cookie_secret`，空值或未知环境不能带默认密钥进入生产。 |
 | P1-A4 | **CLOSED（代码）** | 管理端凡声明细粒度 `permission` 的门统一 fail-closed；成功 Profile 的空权限是权威拒绝，不再回退 sidebar 模板。仅 Profile 不存在时允许由匹配角色模板明确证明权限。管理端全量 **1412/1412 PASS**，提交 `eb7ccc2`。 |
+| P1-C2 | **CLOSED（代码）** | Flutter 失败消息恢复改用 `(created_at, auto_id)` keyset 分页，SQL 仅查询本人 `sending/pendingRetry`，异常向上报告；不再止于最近 100 条，也不因 OFFSET 集合变化漏项。重试相关套件 **36/36 PASS**，提交 `94328fff`。 |
+| P1-C3 | **CLOSED（代码）** | SQLite 升降级现由 migration manifest 与 planner 生成完整路径；缺失版本边抛出 `MissingMigrationPathException` / `MissingMigrationScriptException` 并返回 failure，不再以空计划静默成功。 |
 
 P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
 
