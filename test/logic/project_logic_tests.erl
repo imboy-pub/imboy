@@ -45,6 +45,21 @@ base_mocks() ->
                 end
             end}
         ]},
+        {project_member_logic, [
+            {'ensure_can_read', 2, fun(Uid, ?PROJECT_ID) ->
+                case Uid of
+                    ?OUTSIDER -> {error, {403, <<"仅项目成员可访问该项目资源"/utf8>>}};
+                    _ -> {ok, project_row()}
+                end
+            end},
+            {'ensure_can_write', 2, fun(Uid, ?PROJECT_ID) ->
+                case Uid of
+                    ?GUEST -> {error, {403, <<"Guest 角色为只读"/utf8>>}};
+                    ?OUTSIDER -> {error, {403, <<"仅项目成员可修改该项目资源"/utf8>>}};
+                    _ -> {ok, project_row()}
+                end
+            end}
+        ]},
         {project_repo, [
             {'add_tx', 2, fun(_Conn, Data) ->
                 Self ! {project_add, maps:get(<<"owner_id">>, Data)},

@@ -207,9 +207,10 @@ ensure_task_can_write(Uid, TaskId) ->
     case load_task_with_project(TaskId) of
         {error, NotFound} ->
             {error, NotFound};
-        {ok, Task, WsId} ->
-            case workspace_logic:ensure_can_create_resource(WsId, Uid) of
-                ok -> {ok, Task};
+        {ok, Task, _WsId} ->
+            ProjectId = maps:get(<<"project_id">>, Task),
+            case project_member_logic:ensure_can_write(Uid, ProjectId) of
+                {ok, _Project} -> {ok, Task};
                 {error, Reason} -> {error, Reason}
             end
     end.

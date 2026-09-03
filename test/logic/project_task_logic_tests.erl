@@ -140,6 +140,15 @@ task_mocks(CurrStatus) ->
                     {error, {403, <<"非工作区成员"/utf8>>}}
             end}
         ]},
+        {project_member_logic, [
+            {'ensure_can_write', 2, fun(Uid, ?PROJECT_ID) ->
+                case Uid of
+                    ?GUEST -> {error, {403, <<"Guest 角色不能修改项目资源"/utf8>>}};
+                    ?OUTSIDER -> {error, {403, <<"仅项目成员可修改项目资源"/utf8>>}};
+                    _ -> {ok, #{<<"id">> => ?PROJECT_ID}}
+                end
+            end}
+        ]},
         {project_task_ds, [
             %% 只 mock 非事务辅助（find_by_id / list），事务主体走真实 DS
             {'find_by_id', 1, fun

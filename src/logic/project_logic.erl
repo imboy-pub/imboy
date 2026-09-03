@@ -75,19 +75,10 @@ create_checked(Uid, WsId, Name, Description) ->
             {error, {500, <<"项目创建失败，请稍后重试"/utf8>>}}
     end.
 
-%% @doc 项目详情（active 工作区成员可读，W0）
+%% @doc 项目详情（Project Owner / Workspace Owner / active Project Member 可读）
 -spec detail(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
 detail(Uid, ProjectId) ->
-    case load_project(ProjectId) of
-        {error, NotFound} ->
-            {error, NotFound};
-        {ok, Project} ->
-            WsId = maps:get(<<"workspace_id">>, Project),
-            case workspace_logic:ensure_member(WsId, Uid) of
-                {ok, _Role} -> {ok, Project};
-                {error, Forbidden} -> {error, Forbidden}
-            end
-    end.
+    project_member_logic:ensure_can_read(Uid, ProjectId).
 
 %% @doc 工作区项目列表（active 工作区成员可读；稳定排序+分页）
 -spec list(integer(), integer(), integer(), integer()) ->
@@ -180,16 +171,7 @@ update_status(Uid, ProjectId, Status) ->
 -spec ensure_can_write(integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 ensure_can_write(Uid, ProjectId) ->
-    case load_project(ProjectId) of
-        {error, NotFound} ->
-            {error, NotFound};
-        {ok, Project} ->
-            WsId = maps:get(<<"workspace_id">>, Project),
-            case workspace_logic:ensure_can_create_resource(WsId, Uid) of
-                ok -> {ok, Project};
-                {error, Reason} -> {error, Reason}
-            end
-    end.
+    project_member_logic:ensure_can_write(Uid, ProjectId).
 
 %% @doc 项目状态值域（W0：仅 active|done）
 -spec valid_status(binary()) -> boolean().

@@ -190,6 +190,33 @@ list_permission_test_() ->
         end}
     ]).
 
+content_write_permission_test_() ->
+    ?WITH_MECK_TESTS(logic_mocks(), [
+        {"project owner writes", fun() ->
+            ?assertMatch({ok, _}, project_member_logic:ensure_can_write(?OWNER, ?PROJECT_ID))
+        end},
+        {"active project member writes", fun() ->
+            ?assertMatch({ok, _}, project_member_logic:ensure_can_write(?MEMBER2, ?PROJECT_ID))
+        end},
+        {"guest project member is read only", fun() ->
+            ?assertMatch(
+                {error, {403, _}}, project_member_logic:ensure_can_write(?GUEST, ?PROJECT_ID)
+            )
+        end},
+        {"workspace owner outside project cannot write content", fun() ->
+            ?assertMatch(
+                {error, {403, _}},
+                project_member_logic:ensure_can_write(?WS_OWNER2, ?PROJECT_ID)
+            )
+        end},
+        {"workspace member outside project cannot write", fun() ->
+            ?assertMatch(
+                {error, {403, _}},
+                project_member_logic:ensure_can_write(?WSMEMBER, ?PROJECT_ID)
+            )
+        end}
+    ]).
+
 %%% ===================================================================
 %%% 写：邀请（仅 Project Owner；Guest 403）
 %%% ===================================================================

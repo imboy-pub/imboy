@@ -22,6 +22,8 @@
 -export([remove/3]).
 -export([transfer_owner/3]).
 -export([admin_page/3]).
+-export([ensure_can_read/2]).
+-export([ensure_can_write/2]).
 
 -include("log.hrl").
 
@@ -182,6 +184,25 @@ ensure_can_read(Uid, ProjectId) ->
                     of
                         true -> {ok, Project};
                         false -> {error, {403, <<"仅项目成员可访问该项目资源"/utf8>>}}
+                    end
+            end
+    end.
+
+%% @doc 内容写权限：Project Owner 或 active Project Member；Guest 只读。
+-spec ensure_can_write(integer(), integer()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+ensure_can_write(Uid, ProjectId) ->
+    case ensure_can_read(Uid, ProjectId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Project} ->
+            case actor_context(Uid, Project) of
+                {ok, #{ws_role := <<"guest">>}} ->
+                    {error, {403, <<"Guest 角色为只读，不能执行该操作"/utf8>>}};
+                {ok, Ctx} ->
+                    case maps:get(is_project_owner, Ctx) orelse maps:get(is_active_pm, Ctx) of
+                        true -> {ok, Project};
+                        false -> {error, {403, <<"仅项目成员可修改该项目资源"/utf8>>}}
                     end
             end
     end.
