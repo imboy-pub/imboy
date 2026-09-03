@@ -88,3 +88,13 @@
 - M-4/M-5 已闭环：分页 COUNT、成员/里程碑/频道事务查询错误显式上抛，成功写后的成员与里程碑回读均在事务内完成；DB 故障不再伪装成空列表、403/404 或成功提交。
 - `imboyapp` 当前存在 22 项用户暂存改动，本轮未修改；`imboyadmin` 工作树干净。
 - Release 判定仍为 **`release-candidate / BLOCKED(H2 残余, H3, H4)`**；本地代码和测试不能替代第二台真机、Push 外部凭据、3 人理解测试、生产等价演练及对外发布授权。
+
+## 九、当前 HEAD 最终复核（2026-09-03）
+
+- 后端当前基线 HEAD=`b59546ae`，其中审查补强代码提交为 `87569af1`。当前工作树另有未纳入本计划的 `src/logic/user_logic.erl` 修改，本报告不将其计入 W2 证据。
+- W2 后端审查历史项已收敛：M-1/M-2/M-3/M-4/M-5/M-7 已修复，M-6 按既有书面豁免保留；L-2/L-3/L-5/L-8 已修复，L-1/L-4/L-6/L-7 已记录接受理由与升级条件。
+- Project Resources 仅接受带 host 的 HTTP/HTTPS 外链；公开聚合入口保留 404 等业务错误；禁用频道的历史 Pinned/Related Posts 不再进入项目聚合。
+- 当前验证：`make compile` PASS；Project Channel Logic **43/43**；Count/SQL 回归 **4/4**；真实 DB 聚合集成 **5/5**；最终 `make eunit-local` **6730/6730 PASS**（exit 0）。一次中间全量出现 10 项共享 mock 隔离波动，立即同命令复跑全绿，不作为功能通过证据。
+- 当前三仓状态：`imboy` 有上述计划外未提交修改；`imboyapp` 有用户暂存/工作树修改，本计划未触碰；`imboyadmin` 干净。旧的“三仓均未 commit/push”和具体改动数量只代表历史快照。
+- 发布前法务仍需裁决 `imboyapp` 的 `flutter_vodozemac` / `vodozemac` AGPL-3.0 依赖处置；这是授权/许可选择，不能由本地代码验证替代。
+- 最终判定不变：**`release-candidate / BLOCKED(H2 残余, H3, H4, AGPL 法务裁决)`**。未执行 push、生产操作或任何第三方联系。
