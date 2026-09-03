@@ -7,7 +7,7 @@
 ## 2026-09-03 当前 HEAD 复核
 
 > 原表保留 2026-07-22 审计快照；本节记录后续处置状态，避免把历史发现误读为当前缺陷。
-> 复核基线：`e2d420eb`。
+> 复核基线：`12b21519`。
 
 | 原编号 | 当前状态 | 当前证据与边界 |
 |---|---|---|
@@ -20,6 +20,7 @@
 | P1-A4 | **CLOSED（代码）** | 管理端凡声明细粒度 `permission` 的门统一 fail-closed；成功 Profile 的空权限是权威拒绝，不再回退 sidebar 模板。仅 Profile 不存在时允许由匹配角色模板明确证明权限。管理端全量 **1412/1412 PASS**，提交 `eb7ccc2`。 |
 | P1-C2 | **CLOSED（代码）** | Flutter 失败消息恢复改用 `(created_at, auto_id)` keyset 分页，SQL 仅查询本人 `sending/pendingRetry`，异常向上报告；不再止于最近 100 条，也不因 OFFSET 集合变化漏项。重试相关套件 **36/36 PASS**，提交 `94328fff`。 |
 | P1-C3 | **CLOSED（代码）** | SQLite 升降级现由 migration manifest 与 planner 生成完整路径；缺失版本边抛出 `MissingMigrationPathException` / `MissingMigrationScriptException` 并返回 failure，不再以空计划静默成功。 |
+| P1-D1 | **CLOSED（代码+真库）** | `atomic_balance_change` 负数借记与 `atomic_transfer` 借记腿均要求正常钱包且 `balance - frozen` 足额；`chk_wallet_frozen_le_balance` 表级约束已验证，与 `balance>=0` / `frozen>=0` 共同保护资金不变量。代码提交 `b35b1c7f`。 |
 | P1-D2 | **CLOSED（代码）** | PostgreSQL 连接入池前设置会话级 `statement_timeout`，默认 **15000ms**；配置仅接受 100–300000ms 整数，初始化失败即关闭连接并拒绝入池。目标 EUnit **2/2 PASS**，真实本地 PostgreSQL `SHOW statement_timeout` 返回 `15s`，提交 `3fc5fc67`。该闭环不等于生产查询容量证明。 |
 | P1-D3 | **OPEN（降级 P2）** | 当前 `{raw, ...}` / `__raw` 调用均为仓内固定 SQL 片段，未发现请求参数直达 raw 的现行利用链；但构造器仍无法从类型上区分 identifier 与可信表达式。一次性全局校验会破坏现有 JOIN、`CASE`、`COALESCE` 查询，须先迁移到显式 trusted-fragment API，不能以不兼容补丁冒充闭环。 |
 | P1-D4 | **CLOSED（代码）** | 四张消息 hypertable 已用事务级 advisory lock 串行化同表同 `msg_id` 写入，并跨 Timescale chunks 拒绝不同 `created_at` 的重放。迁移先安装触发器、后扫描存量重复，存量不一致时 fail-closed 并整体回滚，不自动删除业务消息。提交 `917166e0`。 |
@@ -28,6 +29,8 @@
 P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
 
 P1-A2 验证：`make compile` PASS；`adm_setup_logic_tests` **9/9 PASS**；setup 路径/IP 边界 **6/6 PASS**；原认证中间件 **23/23 PASS**；代码审查 **0 HIGH / 0 MEDIUM**。尚缺独立空库的双连接并发自动回归，不把单元测试冒充该外部证据。
+
+P1-D1 验证：`wallet_repo_tx_tests` **10/10 PASS**；真实本地 PostgreSQL 的 `chk_wallet_balance`、`chk_wallet_frozen`、`chk_wallet_frozen_le_balance` 均存在且 `convalidated=true`。
 
 P1-D2 验证：`make compile` PASS；`imboy_pg_connection_tests` **2/2 PASS**；代码审查无 HIGH/MEDIUM。真实本地 PostgreSQL 仅验证新建连接的会话参数生效，未执行生产等价慢查询、连接池耗尽或容量压测。
 
