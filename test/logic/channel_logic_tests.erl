@@ -4291,7 +4291,10 @@ record_message_view_returns_error_when_insert_message_view_returns_unexpected_te
         ]},
         {channel_ds, [
             {'has_viewed_message', 2, fun(99, 1001) -> false end},
-            {'insert_message_view', 4, fun(11, 99, 1001, _) -> unexpected_insert_result end}
+            {'insert_message_view', 4, fun(11, 99, 1001, ViewedAt) ->
+                ?assertMatch(<<_:10/binary, "T", _/binary>>, ViewedAt),
+                unexpected_insert_result
+            end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
@@ -4315,7 +4318,10 @@ add_reaction_returns_error_when_insert_reaction_returns_unexpected_test_() ->
             {'find_by_id', 1, fun(99) -> #{<<"channel_id">> => 11} end}
         ]},
         {channel_ds, [
-            {'insert_reaction', 5, fun(11, 99, 1001, <<"like">>, _) -> unexpected_insert_result end}
+            {'insert_reaction', 5, fun(11, 99, 1001, <<"like">>, CreatedAt) ->
+                ?assertMatch(<<_:10/binary, "T", _/binary>>, CreatedAt),
+                unexpected_insert_result
+            end}
         ]}
     ],
     {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->

@@ -83,14 +83,13 @@ deactivate_by_token(Token) ->
 -spec deactivate_inactive(pos_integer()) -> {ok, integer()} | {error, term()}.
 deactivate_inactive(InactiveDays) ->
     Tb = tablename(),
-    Now = erlang:system_time(millisecond),
-    %% 计算截止时间：当前时间减去 InactiveDays 天（毫秒）
-    CutoffMs = Now - InactiveDays * 86400000,
+    Now = elib_dt:now(),
+    Cutoff = elib_dt:minus(Now, {InactiveDays * 86400000, millisecond}),
     Sql =
         <<"UPDATE ", Tb/binary,
             " SET status = 0, updated_at = $1"
             " WHERE status = 1 AND updated_at < $2">>,
-    elib_pg:execute(Sql, [Now, CutoffMs]).
+    elib_pg:execute(Sql, [Now, Cutoff]).
 
 %% @doc 查询用户所有活跃推送 token
 -spec list_by_uid(integer()) -> {ok, list()} | {error, term()}.

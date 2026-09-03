@@ -239,7 +239,7 @@ edit(<<"POST">>, Req0, State) ->
                     title => Title,
                     body => Body,
                     status => Status,
-                    expired_at => elib_dt:rfc3339_to(ExpiredAt),
+                    expired_at => ExpiredAt,
                     updated_at => Now
                 },
             case group_notice_logic:update(Uid, Id2, Data) of

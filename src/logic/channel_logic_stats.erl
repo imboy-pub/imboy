@@ -93,7 +93,7 @@ record_message_view(Uid, ChannelIdBin, MessageIdBin) ->
                                 true ->
                                     ok;
                                 false ->
-                                    Now = elib_dt:millisecond(),
+                                    Now = elib_dt:now(),
                                     case
                                         channel_ds:insert_message_view(
                                             ChannelId, MessageId, Uid, Now
@@ -145,7 +145,7 @@ do_add_reaction(ChannelId, MessageId, Uid, ReactionType) ->
         {error, Reason} ->
             {error, Reason};
         ok ->
-            Now = elib_dt:millisecond(),
+            Now = elib_dt:now(),
             case
                 channel_ds:insert_reaction(
                     ChannelId, MessageId, Uid, ReactionType, Now
