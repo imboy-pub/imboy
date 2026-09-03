@@ -163,19 +163,18 @@ payment_callback_prefix_bypasses_sign_and_auth_test_() ->
     Paths = [
         <<"/api/v1/payment/callback/alipay">>,
         <<"/api/v1/payment/callback/wechat">>,
-        <<"/api/v1/payment/callback/stripe">>,
-        %% 尾部斜杠被 remove_last_forward_slash 归一后仍命中前缀
-        <<"/api/v1/payment/callback/alipay/notify/1/">>
+        <<"/api/v1/payment/callback/stripe">>
     ],
     [open_pass_case(P) || P <- Paths].
 
-%% 反例：前缀相似但未命中（前缀匹配要求第 25 字符起是变量段）
+%% 反例：固定前缀后必须恰好一个非空 gateway 路径段。
 payment_callback_lookalike_prefixes_not_open_test_() ->
     Paths = [
-        %% 无尾斜杠：恰好 24 字符，sub_string(1,25) 不等于 25 字符前缀
+        %% 无 gateway 路径段。
         <<"/api/v1/payment/callback">>,
         <<"/api/v1/payment/callbackx/alipay">>,
-        <<"/api/v1/payment/callbac/alipay">>
+        <<"/api/v1/payment/callbac/alipay">>,
+        <<"/api/v1/payment/callback/alipay/notify">>
     ],
     [rejected_401_case(P) || P <- Paths].
 
@@ -194,7 +193,8 @@ webhook_channel_prefix_bypasses_sign_and_auth_test_() ->
 webhook_channel_lookalike_prefixes_not_open_test_() ->
     Paths = [
         <<"/api/v1/webhook/channel">>,
-        <<"/api/v1/webhook/channelx/abc">>
+        <<"/api/v1/webhook/channelx/abc">>,
+        <<"/api/v1/webhook/channel/token/extra">>
     ],
     [rejected_401_case(P) || P <- Paths].
 

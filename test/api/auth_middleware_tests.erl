@@ -103,3 +103,49 @@ lookalike_prefixes_do_not_match_api_v1_test_() ->
         %% 恰好等于 /api/v1（无尾斜杠）也不该匹配 <<"/api/v1/", _>>
         ?assertEqual(fallback, route(<<"/api/v1">>))
     end).
+
+full_chain_dynamic_auth_routes_test_() ->
+    Paths = [
+        {<<"/api/v1/payment/callback/alipay">>, open},
+        {<<"/api/v1/webhook/channel/token">>, open},
+        {<<"/api/v1/payment/callback/alipay/extra">>, protected},
+        {<<"/api/v1/user/info">>, protected}
+    ],
+    [full_chain_case(Path, Expected) || {Path, Expected} <- Paths].
+
+full_chain_case(Path, Expected) ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'path', 1, fun(_Req) -> Path end},
+                {'header', 2, fun(<<"authorization">>, _Req) -> undefined end}
+            ]},
+            {config_ds, [
+                {'env', 2, fun(api_auth_switch, _Default) -> <<"on">> end}
+            ]},
+            {imboy_router, [
+                {'open', 0, fun() -> [] end},
+                {'option', 0, fun() -> [] end}
+            ]},
+            {auth_ds, [
+                {'remove_last_forward_slash', 1, fun(Value) -> Value end},
+                {'verify_sign', 2, fun(Req, Env) ->
+                    {stop, Req#{auth_error => 902, env => Env}}
+                end},
+                {'condition', 5, fun(_Optional, true, _Auth, Req, Env) ->
+                    {ok, Req, Env}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = auth_middleware:execute(#{}, #{}),
+            case Expected of
+                open ->
+                    ?assertEqual({ok, #{}, #{}}, Result),
+                    ?assertEqual(0, meck:num_calls(auth_ds, verify_sign, 2));
+                protected ->
+                    ?assertMatch({stop, #{auth_error := 902}}, Result),
+                    ?assertEqual(1, meck:num_calls(auth_ds, verify_sign, 2))
+            end
+        end
+    ).
