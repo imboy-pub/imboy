@@ -101,10 +101,11 @@ API 400 拒绝并透出消息（有测试覆盖）。
 active Owner 数量，避免并发降级最后 Owner，也避免等待锁期间操作者已被降级后继续执行治理
 操作。修复提交：`d4cbe404`。
 
-### E4. 频道创建后首帖的角色读缓存竞态窗口
-频道创建（admin 行同事务落库）后立即以创建者身份发帖，偶发命中 get_role 读缓存旧值
-被拒"只有管理员可以发布消息"，数秒内重试成功。Demo B 已加重试自愈；底层为既有
-imboy_cache 失效策略域，非本计划引入。
+### E4. 频道创建后首帖的创建者角色兜底（已覆盖）
+当前 `channel_admin_repo:get_role/2` 直接查询数据库，不经过 `imboy_cache`；即使角色查询
+返回 0，`channel_logic_common:get_user_role/2` 仍会按频道 `creator_uid`/`owner_id` 将创建者
+识别为 Owner。发布回归测试覆盖“角色为 0 后立即首帖成功”。Demo B 的 3 秒重试保留为
+兼容防护，历史 transcript 中的失败不能作为当前 main 仍存在缓存竞态的证据。
 
 ### E3.
 c2c/moment/private 附件不经 workspace_resolver 解析 workspace 归属。

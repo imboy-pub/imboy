@@ -83,12 +83,12 @@
 | ⑰ 安装级配置：Admin 只读、config_version 可复现、与 product_profile 无混淆 | ✅ | `adm_admin_handler config_product_experience` GET-only（V3 §③ 实测无凭据/普通 JWT 均 706）；init 仅透出 effective_product_experience+config_version 白名单键（index_handler.erl:76-82 静态复核）；命名隔离：product_profile 模块 0 个新同名文件（grep src/lib 仅 product_experience.erl） |
 | ⑱ Admin 四元运营面 T11b；scope 归属显示；与写守卫联动；非管理员 403 | ✅ | `imboyadmin/src/pages/workspaces/{WorkspaceList,WorkspaceDetail,ProjectList,ProjectDetail}Page.tsx` 在库（detail/list 分页结构+审计位）；`channels/ChannelListPage.tsx`、`groups/GroupListPage.tsx` 含 scope 呈现；归档联动经 `workspace_logic.admin_archive/admin_restore`（与探针同路径族）；adm_acl fail-closed 七 action 前置（V3 §③ 实测证据，未推翻点） |
 | ⑲ 干净环境仅按文档完成部署并跑通 Demo B | ⚠️ 降级达成 | deploy-rehearsal 自报降级（编排者执行+空库演练），降级授权不在验收 Agent 权限内 → 维持 ⚠️：文档驱动重放的六个分项里"真·未参与实施者独立部署"一格由我以文档评审+依赖复跑间接补强（§七"能部署"），完整口径留待人工 |
-| ⑳ 首日旅程阻断缺陷=0；可告知缺陷 100% 入册 | ✅ | day1-walkthrough D1-D5 全部修复且带回归（D1/D2/D3 对应测试在我的套件复跑中绿）；D6 脚本侧修正后由我两遍 ALL PASS 直接证实；D7 性质缺陷 E4 缓存竞态已入册 known-limitations §E4 并提供重试自愈（我在两遍 Demo 中未见复发） |
+| ⑳ 首日旅程阻断缺陷=0；可告知缺陷 100% 入册 | ✅ | day1-walkthrough D1-D5 全部修复且带回归（D1/D2/D3 对应测试在我的套件复跑中绿）；D6 脚本侧修正后由我两遍 ALL PASS 直接证实；E4 已确认 `get_role` 为数据库直读，并由创建者角色兜底及发布回归测试覆盖；Demo 重试保留为兼容防护 |
 
 ### T15 双报告复核（逐占位符/空壳/数字一致性）
 
 - `dual-exp-deploy-rehearsal.md`：6 节全部实质填充（步骤命令可复制、明确降级声明、配置接口 digest 有外部复算锚点 49654a9fffa39c0d/684f363bd3176f1f、升级回滚命令具体到 erlang_migrate:force 语义）；无 TBD/TODO 占位。数字与我复验一致处：版本 78/f、五轮 init 取证、受控重启 ≥6 次（本机）无法独立重现历史次数，但其算法与切换语义已被我的 product_experience_tests 9/9 与静态链路复核替代印证。
-- `dual-exp-day1-walkthrough.md`：12 项走查清单状态列无空洞；D1-D6 缺陷表含定级与修复指向；"ALL PASS 22 步 54 断言"与**我本人两遍复跑结果完全一致**；升级提示链路给出 app_version 只读查询细节。**一处不一致=F-N1**：其"transcript 见 run1/run2 存档"指向的 `dual-exp-demo-b-transcripts-redacted.md` 头注声称"两遍均为 ALL PASS"，而存档正文 run1/run2 第 [20] 步各有一个 FAIL 且结尾为 `DEMO-B RESULT: FAILED (pass=53 fail=1)` —— 系"缓存竞态修复加重试"之前的旧轮次快照未被替换（当前脚本 376-386 行已有 3 秒重试逻辑，且我复跑两次皆 ALL PASS）。属**文档治理缺口**而非功能缺口，定性见 F-N1。
+- `dual-exp-day1-walkthrough.md`：12 项走查清单状态列无空洞；D1-D6 缺陷表含定级与修复指向；"ALL PASS 22 步 54 断言"与**我本人两遍复跑结果完全一致**；升级提示链路给出 app_version 只读查询细节。**一处不一致=F-N1**：其"transcript 见 run1/run2 存档"指向的 `dual-exp-demo-b-transcripts-redacted.md` 头注声称"两遍均为 ALL PASS"，而存档正文 run1/run2 第 [20] 步各有一个 FAIL 且结尾为 `DEMO-B RESULT: FAILED (pass=53 fail=1)` —— 系当时归因于缓存竞态并加入重试之前的旧轮次快照未被替换（当前脚本 376-386 行已有 3 秒重试逻辑，且我复跑两次皆 ALL PASS）。属**文档治理缺口**而非当前功能缺口，定性见 F-N1。
 - `dual-exp-t3-migration-rehearsal.md` 与 `dual-exp-known-limitations.md`：抽查关键数字（134→139 表、26/26 与 518/518 回填、down 事故 force 恢复、B1 上游缺陷定位到 erlang_migrate.erl:378-381）与我直查库内实况一致（version=78 dirty=f）；known-limitations 11 节均有可核查实体，E3 小节标题为孤立标题（正文一句），表述可用但排版瑕疵，记 F-N2'。
 
 ---
@@ -151,7 +151,7 @@
 5. **Archive 服务端强制守卫覆盖 R3 写路径？并发线性化与审计验证？personal 不受影响恢复放行？** 当前 Workspace 数据库写最终入口使用 `ensure_writable_tx`、`write_tx` 或 `write_tx_or_skip`，派生已读计数也由 `07312d0c` 在事务内冻结；旧版自动提交预检仍可作为快速失败，但最终写不依赖它保证正确性。对象存储与数据库不能跨系统原子提交，落库被归档拒绝时可能留下待回收对象。审计事件（workspace_archived/member_removed 等）在 Demo [16][18] 日志中产出；Personal 路径不受 Workspace 归档影响。
 6. **四元语义＋Notice/Channel 边界＋关系全称无混用？30 秒测试？一句话说清 Project vs Group？** 无混用证据：全称纪律贯穿（WorkspaceMemberModel 枚举注释三分关系；导航 navMembers='成员'+members 页全称"工作区成员"；Group Notice 保留原命名空间，Channel 视图零聊天输入 [栏2⑧]，Overview 不聚合 Notice）。真实用户的 30 秒理解测试＝**BLOCKED**（day1 §4 已给出 W0 版四问设计供人工补做）；作为代理判据，四问的机器可验证部分（自动入群否定断言、通知独立流程）在 Demo 中两遍通过。"为什么 Project 不是 Group"现行答案＝任务不沉底、做完没一眼看清（§1.4.1 论证），商业语境下的有效性必须等 Gate 1 真人反馈，本期不作声明。
 7. **成员深度与 Gate W 档位一致？两档子集三层证据？移除冲突全链验证？** 一致（W0）：无 project_member 表（⑪）；Group 子集约束三层证据齐全——DB 约束触发器（T3 SUBSET-1..5 含 removed-wm 拒绝与同事务激活放行）、应用层同事务 409（探针 [3r] 原文）、并发/集成测试 3/3（我复跑）；移除链完整：所有权/Task 冲突先阻断 fail-closed（Demo [15] 409＋事务回滚核查）→ 无冲突级联禁用＋审计（[16]）→ 重邀不自动恢复（[17] DB 断言 0/0），两遍连续。project_member 相关 W1/W2 项全部 defer 且无偷建（§四硬约束段）。
-8. **首日闭环全修复或入册？部署演练确由未参与实现者在干净环境完成？下一商业验证场景？** 缺口管理合规：走查期 D1-D5 全修复带回归（对应测试均在我复跑绿），D6 脚本口径修正，E4 竞态入册并可自愈；**部署演练的原始口径（未参与实现者独立完成）未达成**——rehearsal §1 自报由编排者执行，我把"文档能否自足"作为验收内容复核（六节无占位、命令可复现），并以未参与实现的身份实际重建 release/启动/演练主链路间接补强，但"干净全新物理环境从文档零答疑装到底"仍差最后一步，**如实降级**。下一最值得验证的商业场景：付费 PoC 选 1 家小团队以 "Workspace 归档→季度结算→restore 留档" 结合 "Project Tasks 周报流" 做 Demo B 子集验收（Gate 1 口径），用真实数据反推 Template 幂等与归档写守卫的价值感知，同时在合同附件中约定生产行数量级补测（解除 R2.5/B3 的生产 BLOCKED）。
+8. **首日闭环全修复或入册？部署演练确由未参与实现者在干净环境完成？下一商业验证场景？** 缺口管理合规：走查期 D1-D5 全修复带回归（对应测试均在我复跑绿），D6 脚本口径修正，E4 已由创建者角色兜底及发布回归测试覆盖；**部署演练的原始口径（未参与实现者独立完成）未达成**——rehearsal §1 自报由编排者执行，我把"文档能否自足"作为验收内容复核（六节无占位、命令可复现），并以未参与实现的身份实际重建 release/启动/演练主链路间接补强，但"干净全新物理环境从文档零答疑装到底"仍差最后一步，**如实降级**。下一最值得验证的商业场景：付费 PoC 选 1 家小团队以 "Workspace 归档→季度结算→restore 留档" 结合 "Project Tasks 周报流" 做 Demo B 子集验收（Gate 1 口径），用真实数据反推 Template 幂等与归档写守卫的价值感知，同时在合同附件中约定生产行数量级补测（解除 R2.5/B3 的生产 BLOCKED）。
 
 ## §9.4 Day-1 Bar 四项判定
 
@@ -160,7 +160,7 @@
 | **拿得出手**（Demo 两遍无人工干预；无占位符/调试残留/控制台报错） | ✅ | 本人两遍连跑 ALL PASS 22 步 54 断言 ×2、EXIT=0/0；演示注册路径遇 license 上限时走幂等演示账号（INFO 提示非报错）；现有 transcript 存档头尾不一致（F-N1）属文档而非交付界面；本会话探针未触发任何 500/崩溃 |
 | **能部署**（未参与实现者干净环境仅按文档部署） | ⚠️ 降级达成 | rehearal §1 自认编排者执行+空库演练，"未参与实施者格"以我方独立复核+依赖实战接管部分补强；生产 Docker/Helm 无授权 BLOCKED；**完整口径留待人工**（与条目⑲一致） |
 | **能让别人真实使用**（试点环境注册/邀请/权限/附件/升级提示闭环） | ✅(API 闭环)+BLOCKED(UI) | 注册→Template→邀请→显式入群/订阅→任务指派→归档保护→恢复全 API 级闭环（Demo ×2＋探针）；升级提示服务端前置（app_version≥vsn 配置在位，day1 §3）；group/channel 附件确认已在事务内守卫，Personal 附件按 schema/ACL 不回溯 Workspace；**真机 UI 弹窗与附件上传实走 BLOCKED** |
-| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 缓存竞态入册自愈；known-limitations 11 节可逐条核查（其中 app_version 条目已自纠 1.0.15→1.0.9，如实修订值得肯定）；我复核期间新增 3 个治理类发现 F-N1/N2/N3（非首日旅程缺陷，亦已要求入册） |
+| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 创建者角色兜底带发布回归；known-limitations 11 节可逐条核查（其中 app_version 条目已自纠 1.0.15→1.0.9，如实修订值得肯定）；我复核期间新增 3 个治理类发现 F-N1/N2/N3（非首日旅程缺陷，亦已要求入册） |
 
 ---
 
@@ -176,7 +176,7 @@
 
 ## 七、本轮验收新发现（F-N 系列；均非 CRITICAL/HIGH）
 
-- **F-N1 (MEDIUM·文档治理)**：`dual-exp-demo-b-transcripts-redacted.md` 头注声称"两遍均为 ALL PASS 22 步 54 断言"，但 run1/run2 正文快照各含 1 FAIL（P7c 首帖触达 E4 缓存竞态被拒）且以 FAILED 结尾——存档未随脚本加重试后更新。真实性由本会话两遍复跑 ALL PASS 替代背书；**要求整改**：以修复后 fresh 快照替换或加头部勘误注记。
+- **F-N1 (MEDIUM·文档治理)**：`dual-exp-demo-b-transcripts-redacted.md` 头注声称"两遍均为 ALL PASS 22 步 54 断言"，但 run1/run2 正文快照各含 1 FAIL（P7c 首帖被拒，当时归因于 E4 缓存竞态）且以 FAILED 结尾——存档未随脚本加重试后更新。当前代码确认 `get_role` 为数据库直读，创建者角色兜底已有发布回归覆盖；**要求整改**：以当前 main 的 fresh 快照替换或加头部勘误注记。
 - **F-N2 (MEDIUM·运维卫生)**：`_rel` 内 beam 相对 HEAD 陈旧且不一致（group_member_ds/workspace_handler 为 15:20 版、channel_repo 18:44 版），任何人直接起旧 release 会得出与 HEAD 不符的安全/功能行为（V3 环境备注早已预警）。本会话已重建修复。**要求整改**：收尾流程固化"改码后必须 `make rel` 再演示"，或在 bin 启动前做 beam 摘要比对。
 - **F-N3 (MEDIUM·测试环境设计)**：`w0_schema_contract_tests.legacy_rows_all_personal_test_`（line 142）对共享库 imboy_v1 断言"channel 全行 personal/NULL"，而 T14 历次 Demo 留下 18 个 DemoB-W0-* 工作区与其 16 条 Announcements 频道（全部产生于迁移之后）必然破坏该断言 → 当前实跑 4/5。demo 脚本无清理阶段（也无 delete 端点可清，仅 archive）。产品层面无恙：XOR 双向 0 违例、group 表 0 违例、44 条迁移前基线行完好。**要求整改**：断言改为"迁移前基线行保持 personal（created_at < 迁移时刻）或将残留判据从断言剥离至对账工具"，并为 demo 增加 teardown（至少 archive+DB 备注标签）。
 - **F-N2' (LOW·排版)**：known-limitations §E3 仅剩孤句（附件路径不做 workspace 回溯），内容并入 A2 更合理；顺带 §E5/§E4/§E3 编号乱序（9078b4c5 插入所致）。文字层修正即可。

@@ -80,6 +80,45 @@ publish_message_with_admin_role_succeeds_test_() ->
         end)
     end}.
 
+publish_message_creator_fallback_succeeds_test_() ->
+    ChannelIdBin = integer_to_binary(11),
+    MockConfigs = [
+        {channel_admin_ds, [
+            {'get_role', 2, fun(11, 1001) -> 0 end}
+        ]},
+        {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"*">>) -> #{<<"creator_uid">> => 1001} end},
+            {'publish_message', 5, fun(11, 1001, <<"first">>, <<"text">>, #{}) ->
+                {ok, 100}
+            end},
+            {'subscriber_uids', 1, fun(11) -> [] end}
+        ]},
+        {channel_message_ds, [
+            {'find_by_id', 1, fun(100) ->
+                #{
+                    <<"id">> => 100,
+                    <<"channel_id">> => 11,
+                    <<"author_id">> => 1001,
+                    <<"content">> => <<"first">>,
+                    <<"msg_type">> => <<"text">>,
+                    <<"payload">> => <<"{}">>
+                }
+            end}
+        ]},
+        {channel_subscription_ds, [
+            {'list_unread_counts_by_channel', 1, fun(11) -> {ok, []} end}
+        ]},
+        {msg_s2c_ds, [
+            {'send', 7, fun(0, [], <<"channel_message">>, <<>>, null, _, save) -> ok end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_assertMatch(
+            {ok, #{<<"id">> := 100}},
+            channel_logic:publish_message(1001, ChannelIdBin, <<"first">>, <<"text">>, #{})
+        )
+    end}.
+
 publish_message_with_admin_role_still_returns_ok_when_broadcast_crashes_test_() ->
     ChannelIdBin = integer_to_binary(11),
     MockConfigs = [

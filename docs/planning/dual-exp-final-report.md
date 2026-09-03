@@ -68,7 +68,7 @@ e29f6fdf preflight → 84c5ec2d WP0 → f7f668a0 T1 → 6dc78492 T3 → 3073ef4a
 | D5 | 归档后 join_group 无 980 守卫（V3-F3）→ 补 DS 层同事务守卫+handler 翻译 | HIGH |
 | D6 | invite 响应 atom status 键与 binary "status" 键冲突产生重复 JSON 键（V1-F1） | HIGH |
 
-根因共性：WP3/WP4 单元测试 mock 了 repo/with_tx 边界，**Demo B 端到端是这些缺陷的唯一暴露面**——验证了计划坚持 T14 Golden Demo 的价值。change_role Owner 并发窗口已于 2026-09-03 由 `d4cbe404` 结构性修复；频道首帖角色缓存竞态 E4 等剩余项仍登记于 `dual-exp-known-limitations.md`。
+根因共性：WP3/WP4 单元测试 mock 了 repo/with_tx 边界，**Demo B 端到端是这些缺陷的唯一暴露面**——验证了计划坚持 T14 Golden Demo 的价值。change_role Owner 并发窗口已于 2026-09-03 由 `d4cbe404` 结构性修复；频道首帖 E4 已确认由创建者角色兜底覆盖并补充发布回归测试。
 
 ## 五、已知限制（Top，全文见 dual-exp-known-limitations.md A-F 节）
 - Workspace 数据库写最终入口已事务化；对象存储上传与 PostgreSQL 归档事务之间仍可能留下未引用对象
