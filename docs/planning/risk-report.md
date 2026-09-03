@@ -106,7 +106,7 @@ P1-D4 验证：`make compile` PASS；静态迁移 EUnit PASS；真库集成 EUni
 |---|---|---|
 | P1-C1 **CLOSED（代码）** | `96d73705` 将远端投递与 ACK 重试调度通过 `erpc:cast` 移至目标 Pid 所在节点，再创建本地 BIF timer 并写当地 ACK ETS；消除了远端 Pid `badarg`、timer Ref 与节点本地缓存错配。单节点定向测试通过；真实双节点投递、节点断连可观测性仍由 W2-RELI-02 验收，不以本地测试替代。 | `src/lib/imboy_syn.erl`; `src/ds/message_ds.erl`; `test/lib/imboy_syn_tests.erl`; `test/ds/message_ds_ack_retry_tests.erl`; commit `96d73705` |
 | P1-C2 **CLOSED（代码）** | `94328fff` 将失败消息扫描改为按 `(created_at, auto_id)` 稳定游标分页，并以 101 条候选消息回归覆盖跨页场景；不再截断每表前 100 条。 | `imboyapp/lib/service/message_retry.dart`; `imboyapp/lib/store/repository/message_repo_sqlite.dart`; `imboyapp/test/unit_test/service/message_retry_terminal_state_test.dart`; commit `94328fff` |
-| P1-C3 | Flutter 本地 DB 降级脚本止于 v17，v23 降级无脚本却返回 success，schema 静默不降 | `imboyapp/lib/service/migration_service.dart:179-185` |
+| P1-C3 **CLOSED（代码）** | `0807bf00` 补齐 v19-v25 降级边，`06e84429` 以类型化 manifest 作为单一真源并对缺失路径 fail-closed；当前目标 schema v32。定向验证 18/18 PASS，包含 v25→v18 真执行与缺边拒绝，不再静默返回 success。 | `imboyapp/lib/service/migration_service.dart`; `imboyapp/lib/service/migration_script_planner.dart`; `imboyapp/lib/service/migrations/downgrade_edges_all.dart`; commits `0807bf00`,`06e84429` |
 
 ### 数据 / 资金完整性
 
