@@ -652,7 +652,8 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **已修复 L-2/L-5（`85baa4a7`）**：Resources 不再把项目缺失或查询故障伪装为空列表；links 更新 0 行返回 404，并在写事件前终止事务。
 - **已修复 L-3（`fae83aaa`）**：Pinned 的 COUNT/DATA 与 Related Posts 窗口源查询统一 JOIN `channel` 并限定 `status=1`，禁用频道的历史内容不再进入项目聚合。
 - **已修复 L-8（`ff04472d`）**：Resources 外链仅接受带 host 的绝对 HTTP/HTTPS URL；危险 scheme、相对路径和畸形 URL 均在写入前返回 400。
+- **审查补强（`87569af1`）**：公开聚合入口保留 DS 的 404 等语义错误，未知故障仍归一 500；URL scheme 比较大小写不敏感，兼容合法 `HTTP/HTTPS` 写法。
 - **接受 L-1/L-7**：页大小已有 50/100 上限且查询按 project_id 前缀索引有界；COUNT/DATA 非同快照是仓库既有分页惯例。仅在压测证明超大 OFFSET 成为瓶颈或产品需要强一致分页时，统一升级为 cursor/事务快照，不只为 W2 制造特例。
 - **接受 L-4/L-6**：L-4 只涉及已失效 owner 的异常存量数据，正常 active Workspace 权限链不可达，保留人工治理；L-6 仅是历史函数行数指标，当前拆分不会改善行为或风险。
-- **验证**：`make compile` PASS；`project_count_failclosed_tests` **4/4 PASS**；`project_channel_logic_tests` **41/41 PASS**；真实 DB `project_channel_agg_integration_tests` **5/5 PASS**；最终 `make eunit-local` **6728/6728 PASS**，exit 0。
+- **验证**：`make compile` PASS；`project_count_failclosed_tests` **4/4 PASS**；`project_channel_logic_tests` **43/43 PASS**；真实 DB `project_channel_agg_integration_tests` **5/5 PASS**；最终复跑 `make eunit-local` **6730/6730 PASS**，exit 0。前一轮曾出现 6720 pass / 10 failed，立即同命令复跑全绿，定性为既有共享 mock 隔离波动，不计作功能通过证据。
 - **结论**：原报告 L-1 至 L-8 已按当前 HEAD 完成修复或显式接受，M-6 沿用既有书面豁免；本地审查清单收敛。整体仍为 **`release-candidate / BLOCKED(H2 残余, H3, H4)`**。
