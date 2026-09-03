@@ -121,6 +121,12 @@ send_next_delayed_publish_replaces_old_timer_for_unacked_device_test_() ->
                         Pid1 = start_receiver(delayed_pid_1, Parent),
                         put(test_pids, [Pid1]),
                         [{Pid1, {<<"ios">>, <<"did_1">>}}]
+                    end},
+                    {'schedule_ack_retry', 5, fun(Delay, Pid, TimerKey, Message, TTL) ->
+                        ?assertEqual(100, Delay),
+                        _ = erlang:cancel_timer(OldRef),
+                        Ref = erlang:start_timer(Delay, Pid, Message),
+                        ok = ack_retry_cache:set(TimerKey, Ref, TTL)
                     end}
                 ]},
                 {ack_retry_cache, [

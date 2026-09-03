@@ -120,7 +120,10 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
                 _ ->
                     ok = ?DEBUG_LOG({immediate_publish, MsgId, length(Filtered2)}),
                     %% 仅向未 ACK 的设备发送，避免同 UID 下已 ACK 设备被重复投递
-                    [erlang:start_timer(0, Pid, Msg) || {Pid, {_Dtype, _DID}} <- Filtered2],
+                    [
+                        imboy_syn:start_delivery_timer(0, Pid, Msg)
+                     || {Pid, {_Dtype, _DID}} <- Filtered2
+                    ],
                     send_next_loop(ToUid, MsgId, Msg, Tail, DIDLi, IncludeDIDLi)
             end;
         _ when is_integer(Delay), Delay > 0 ->
@@ -142,18 +145,12 @@ send_next_loop(ToUid, MsgId, Msg, [Delay | Tail], DIDLi, IncludeDIDLi) ->
             [
                 begin
                     TimerKey = {ToUid, DID, MsgId},
-                    case ack_retry_cache:get(TimerKey) of
-                        {ok, OldRef} when is_reference(OldRef) ->
-                            _ = erlang:cancel_timer(OldRef),
-                            ok;
-                        _ ->
-                            ok
-                    end,
-                    Ref = erlang:start_timer(Delay, Pid, {Tail, TimerKey, Msg}),
                     %% 专用 ACK ETS 的 TTL 单位为毫秒：覆盖 timer 存活期并额外保留 5s，
                     %% 供已 fire/ACK 交错时的取消与精确清理使用。
-                    ack_retry_cache:set(TimerKey, Ref, Delay + 5000),
-                    ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID, Ref})
+                    imboy_syn:schedule_ack_retry(
+                        Delay, Pid, TimerKey, {Tail, TimerKey, Msg}, Delay + 5000
+                    ),
+                    ok = ?DEBUG_LOG({timer_set, MsgId, Delay, DID})
                 end
              || {Pid, {_Dtype, DID}} <- Filtered3
             ],

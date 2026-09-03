@@ -10,16 +10,24 @@
 -include("chat.hrl").
 
 % for user
--export([init/0,
-         join/4,
-         leave/2]).
--export([publish/2, publish/3]).
--export([count_user/0, count_user/1,
-         count/0]).
--export([list_by_uid/1,
-         list_by_limit/1]).
--export([is_online/2,
-         online_dids/1]).
+-export([
+    init/0,
+    join/4,
+    leave/2
+]).
+-export([publish/2, publish/3, start_delivery_timer/3, schedule_ack_retry/5]).
+-export([
+    count_user/0, count_user/1,
+    count/0
+]).
+-export([
+    list_by_uid/1,
+    list_by_limit/1
+]).
+-export([
+    is_online/2,
+    online_dids/1
+]).
 
 %% ACK 同步相关导出
 -export([broadcast_ack_cancel/3]).
@@ -33,11 +41,11 @@
 init() ->
     _ = application:ensure_all_started(syn),
     ok = syn:add_node_to_scopes([
-        ?CHAT_SCOPE
+        ?CHAT_SCOPE,
         % , ?GROUP_SCOPE
-        , ?ROOM_SCOPE
-        , ?CACHE_SCOPE
-        , ?QR_LOGIN_SCOPE
+        ?ROOM_SCOPE,
+        ?CACHE_SCOPE,
+        ?QR_LOGIN_SCOPE
     ]),
     ok.
 
@@ -87,20 +95,22 @@ count() ->
         TableByName = syn_backbone:get_table_name(syn_pg_by_name, ?CHAT_SCOPE),
         case TableByName of
             undefined -> 0;
-            _ ->
-                ets:info(TableByName, size)
+            _ -> ets:info(TableByName, size)
         end
     catch
         _:_ -> 0
     end.
 
 % [{{Uid, Pid}, {DType, DID}, Nano, Ref, Node}, ...]
--spec list_by_limit(integer() | error) -> [{{integer(), pid()}, {binary(), binary()}, integer(), reference(), node()}].
-list_by_limit(error) -> [];
+-spec list_by_limit(integer() | error) ->
+    [{{integer(), pid()}, {binary(), binary()}, integer(), reference(), node()}].
+list_by_limit(error) ->
+    [];
 list_by_limit(Limit) when is_integer(Limit), Limit > 0 ->
     try
         case syn_backbone:get_table_name(syn_pg_by_name, ?CHAT_SCOPE) of
-            undefined -> [];
+            undefined ->
+                [];
             TableByName ->
                 case ets:select(TableByName, [{'$1', [], ['$1']}], Limit) of
                     '$end_of_table' -> [];
@@ -110,7 +120,8 @@ list_by_limit(Limit) when is_integer(Limit), Limit > 0 ->
     catch
         _:_ -> []
     end;
-list_by_limit(_) -> [].
+list_by_limit(_) ->
+    [].
 
 -spec list_by_uid(integer()) -> [{pid(), {binary(), binary()}}].
 list_by_uid(Uid) ->
@@ -142,7 +153,6 @@ online_dids(Uid) ->
 publish(Uid, Msg) ->
     publish(Uid, Msg, 0).
 
-
 % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
 -spec publish(integer(), term(), non_neg_integer()) -> {ok, non_neg_integer()}.
 publish(Uid, Msg, Delay) when is_integer(Delay), Delay >= 0 ->
@@ -150,7 +160,7 @@ publish(Uid, Msg, Delay) when is_integer(Delay), Delay >= 0 ->
     Members = list_by_uid(Uid),
     % ?DEBUG_LOG(["imboy_syn:publish/3", Uid, length(Members), Delay, Msg]),
     do_publish(Members, Msg, Delay);
-publish(_Uid, _Msg, _Delay) -> 
+publish(_Uid, _Msg, _Delay) ->
     % ?DEBUG_LOG(["imboy_syn:publish/3 invalid parameters", _Uid, _Msg, _Delay]),
     {ok, 0}.
 
@@ -163,15 +173,41 @@ do_publish(Members, Message, 0) ->
     % ?DEBUG_LOG(["imboy_syn:do_publish/3 immediate", length(Members), Message]),
     % 使用 start_timer(0, ...) 确保立即投递和延迟投递的消息格式统一
     % 消息会被包装为 {timeout, Ref, Message} 格式，与延迟投递一致
-    [ erlang:start_timer(0, Pid, Message) || {Pid, _Meta} <- Members ],
+    [start_delivery_timer(0, Pid, Message) || {Pid, _Meta} <- Members],
     {ok, length(Members)};
 do_publish(Members, Message, Delay) when Delay > 0 ->
     % ?DEBUG_LOG(["imboy_syn:do_publish/3 delayed", length(Members), Delay, Message]),
     % Pid ! Message
     % Delay: 最大的值为2^32 -1 milliseconds, 大约为49.7天。
-    [ erlang:start_timer(Delay, Pid, Message) || {Pid, _Meta} <- Members ],
+    [start_delivery_timer(Delay, Pid, Message) || {Pid, _Meta} <- Members],
     {ok, length(Members)}.
 
+-spec start_delivery_timer(non_neg_integer(), pid(), term()) -> reference() | ok.
+start_delivery_timer(Delay, Pid, Message) when node(Pid) =:= node() ->
+    erlang:start_timer(Delay, Pid, Message);
+start_delivery_timer(Delay, Pid, Message) ->
+    erpc:cast(node(Pid), ?MODULE, start_delivery_timer, [Delay, Pid, Message]).
+
+-spec schedule_ack_retry(
+    non_neg_integer(), pid(), {term(), term(), term()}, term(), non_neg_integer()
+) -> ok.
+schedule_ack_retry(Delay, Pid, TimerKey, Message, TTL) when node(Pid) =:= node() ->
+    {Uid, DID, MsgId} = TimerKey,
+    case ack_retry_cache:get({ack_received, Uid, DID, MsgId}) of
+        {ok, true} ->
+            ok;
+        _ ->
+            case ack_retry_cache:get(TimerKey) of
+                {ok, OldRef} when is_reference(OldRef) ->
+                    _ = erlang:cancel_timer(OldRef);
+                _ ->
+                    ok
+            end,
+            Ref = erlang:start_timer(Delay, Pid, Message),
+            ack_retry_cache:set(TimerKey, Ref, TTL)
+    end;
+schedule_ack_retry(Delay, Pid, TimerKey, Message, TTL) ->
+    erpc:cast(node(Pid), ?MODULE, schedule_ack_retry, [Delay, Pid, TimerKey, Message, TTL]).
 
 %% ===================================================================
 %% ACK 同步功能（复用 ?CHAT_SCOPE）
@@ -205,9 +241,12 @@ broadcast_ack_cancel(Uid, DID, MsgId) ->
         _ = ?DEBUG_LOG([ack_cancel_broadcast, MsgId, Uid, DID, length(Members)]),
 
         %% 异步发送到所有相关进程（跨节点自动处理）
-        lists:foreach(fun({Pid, _Meta}) ->
-            Pid ! Message
-        end, Members),
+        lists:foreach(
+            fun({Pid, _Meta}) ->
+                Pid ! Message
+            end,
+            Members
+        ),
         _ = ?DEBUG_LOG([ack_cancel_broadcast_complete, MsgId, Uid, DID, length(Members)]),
         ok
     catch
