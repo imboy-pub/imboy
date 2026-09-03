@@ -11,7 +11,7 @@
 
 | 原编号 | 当前状态 | 当前证据与边界 |
 |---|---|---|
-| P0-1 | **CLOSED（代码）** | `auth_middleware` 已按真实 `/api/v1/` 前缀委托 `auth_middleware_api_v1`，支付回调、频道 webhook 与客户端签名门不再落入错误分支。 |
+| P0-1 | **CLOSED（代码）** | `auth_middleware` 已按真实 `/api/v1/` 前缀委托 `auth_middleware_api_v1`；支付回调与频道 webhook 仅在动态参数为单个非空路径段时免认证，额外层级不会继承豁免；客户端签名门不再落入错误分支。完整链路与矩阵测试 10/10、34/34 PASS，提交 `26611042`。 |
 | P0-2 | **CLOSED（本地）** | `user_server` 改为 16 个固定 shard；同 UID FIFO、不同 UID 并行。父进程持有 current/queue，worker ACK 后推进，异常时重建并按策略重放；不可幂等的账号注销使用 `no_replay`。每 shard 队列上限 1000，过载记录错误并丢弃新状态任务。该闭环不等于生产重连风暴容量证明。 |
 | P0-3 | **CLOSED（代码）** | 消息投递与 ACK 已迁移至专用 `ack_retry_cache` ETS（`write_concurrency`），不再穿越全局 `depcache` 同步热点。 |
 | P0-4 | **BLOCKED（法务决策）** | AGPL 依赖仍在；开源、购买商业授权或替换绑定三选一尚未获得人工决定，发布前不得解除。 |

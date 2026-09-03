@@ -42,7 +42,7 @@
 
 ### W0-ARCH-01-P0
 - title: auth_middleware /v1/ 前缀急修 + 豁免矩阵测试
-- status: ready
+- status: done
 - deps: none
 - wave: 0
 - tag: security
@@ -50,7 +50,7 @@
 - source: risk-report P0-1；backend-review F-01；security-roadmap SEC-03
 - action: 修 `src/api/auth_middleware.erl:34` 的 `<<"/v1/">>` 分支为 `/api/v1/`（或统一委派）；加集成测试覆盖支付回调/webhook 免签路径与设备签名门。
 - verify: 新增集成测试通过 + `grep -n '"/v1/"' src/api/auth_middleware.erl` 不再命中死分支；支付回调路径返回非 902。
-- evidence:
+- evidence: `/api/v1/*` 委派与原始豁免矩阵由 `0456887f`、`dab7c586`、`67f6acbd` 落地；`26611042` 进一步把 payment callback / channel webhook 动态豁免收紧为恰好一个非空路径段，并新增不 mock 下层 middleware 的完整链路测试。`auth_middleware_tests` 10/10、`auth_middleware_api_v1_tests` 34/34 PASS；`rg '<<"/v1/"' src/api/auth_middleware.erl` 零命中；合法 callback/webhook 不触发 902，额外层级与普通受保护路径触发签名门。安全复审 HIGH=0、MEDIUM=0。
 
 ### W0-ARCH-02
 - title: WS 同步回执路径与投递管道对齐（JSON 化 payload）
