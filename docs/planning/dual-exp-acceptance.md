@@ -160,7 +160,7 @@
 | **拿得出手**（Demo 两遍无人工干预；无占位符/调试残留/控制台报错） | ✅ | 本人两遍连跑 ALL PASS 22 步 54 断言 ×2、EXIT=0/0；演示注册路径遇 license 上限时走幂等演示账号（INFO 提示非报错）；双遍 transcript 已由 `5a33f754` 留档；本会话探针未触发任何 500/崩溃 |
 | **能部署**（未参与实现者干净环境仅按文档部署） | ⚠️ 降级达成 | rehearal §1 自认编排者执行+空库演练，"未参与实施者格"以我方独立复核+依赖实战接管部分补强；生产 Docker/Helm 无授权 BLOCKED；**完整口径留待人工**（与条目⑲一致） |
 | **能让别人真实使用**（试点环境注册/邀请/权限/附件/升级提示闭环） | ✅(API 闭环)+BLOCKED(UI) | 注册→Template→邀请→显式入群/订阅→任务指派→归档保护→恢复全 API 级闭环（Demo ×2＋探针）；升级提示服务端前置（app_version≥vsn 配置在位，day1 §3）；group/channel 附件确认已在事务内守卫，Personal 附件按 schema/ACL 不回溯 Workspace；**真机 UI 弹窗与附件上传实走 BLOCKED** |
-| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 创建者角色兜底带发布回归；known-limitations 可逐条核查；F-N1/F-N2'/F-N3 已闭合，F-N2 仍待处理 |
+| **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 创建者角色兜底带发布回归；known-limitations 可逐条核查；F-N1/F-N2/F-N2'/F-N3 均已闭合 |
 
 ---
 
@@ -177,7 +177,7 @@
 ## 七、本轮验收新发现（F-N 系列；均非 CRITICAL/HIGH）
 
 - **F-N1 (MEDIUM·文档治理，已闭合)**：`5a33f754` 已用双遍 `ALL PASS (steps=22 assertions=54)` 的脱敏 transcript 替换旧失败快照；当前代码另由创建者角色兜底发布回归覆盖。
-- **F-N2 (MEDIUM·运维卫生)**：`_rel` 内 beam 相对 HEAD 陈旧且不一致（group_member_ds/workspace_handler 为 15:20 版、channel_repo 18:44 版），任何人直接起旧 release 会得出与 HEAD 不符的安全/功能行为（V3 环境备注早已预警）。本会话已重建修复。**要求整改**：收尾流程固化"改码后必须 `make rel` 再演示"，或在 bin 启动前做 beam 摘要比对。
+- **F-N2 (MEDIUM·运维卫生，已闭合)**：`scripts/start_node.sh` 启动前先执行 `make compile`，再按 release 版本逐个比较 `ebin/*.beam` 与 `_rel` 中的 imboy beam；陈旧或缺失即 fail-closed 并提示 `make rel`。fixture 覆盖一致放行、内容不一致拒绝、缺失拒绝；本轮真实 release 比较 544 个 beam，差异为 0。
 - **F-N3 (MEDIUM·测试环境设计，已闭合)**：删除按频道/群名称过滤共享活库数据的脆弱白名单；当前 schema 由真库断言，迁移存量回填改由 00000077 SQL 契约断言。本轮 `w0_schema_contract_tests` 4/4 PASS。
 - **F-N2' (LOW·排版，已闭合)**：known-limitations 原 §E3 重复附件边界已由 A2 完整承载并删除，Owner 并发保护调整为 §E3，E1-E4 编号恢复连续。
 
@@ -187,7 +187,7 @@
 
 - 理由：CRITICAL/HIGH 清零（V1-F1、V1-F2、V3-F1、V3-F2 修复并有行为级复证；V1-F3 经裁决知情取舍入册 E3；V3-F3 修复并经归档 join 场景复证）；F-N3 修订后 schema 契约测试 4/4 PASS；Golden Demo 以第三方身份复现双遍 ALL PASS；三类安全边界抽查零失败；Scope Contract 十二项五证/三证齐备；已知限制与 BLOCKED 披露诚实完整。
 - **边界重申（unsafe_experiment 不解除）**：本判定 ≠ 客户验收 ≠ Release ≠ 工程 DoD；生产迁移窗口（B3/R2.5）、真机 Day-1 Bar 四项、30 秒理解测试、Gate 0/Gate W 的人工签认、生产受控重启演练均在 Release 前必须由人工完成的清单内。
-- 附带整改要求（不阻塞 ACCEPTED(local)，但进入 Release 候选前须闭合）：F-N2 收尾流程固化。F-N1/F-N2'/F-N3 已闭合。
+- 附带整改要求 F-N1/F-N2/F-N2'/F-N3 已全部闭合；生产、真机、真人理解与 Release 外部门禁仍按 BLOCKED 清单执行。
 
 ---
 *方法学备注：所有结论基于本人执行的命令与直查输出（git show/grep、make、erl、psql@4323、curl@9800、flutter），对前序会话（V1/V3/T13-T15/WP 会话）的结论仅在"我方复核未推翻"的前提下引用并显式标注；测试数据：新建 2 个 V2ACC 工作区已归档、2 个探针个人频道与若干消息残留已列入 F-N3 台账建议、演示账号 A/B 未触碰、用户 E2EE WIP 未触碰。*

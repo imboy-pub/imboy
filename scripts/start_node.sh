@@ -31,6 +31,19 @@ REL_BIN="_rel/imboy/bin/imboy"
 REL_RELEASE_DIR=$(find _rel/imboy/releases -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)
 [ -n "$REL_RELEASE_DIR" ] || { echo "未找到 release 版本目录，请先执行 make rel"; exit 2; }
 VM_ARGS_FILE="$REL_RELEASE_DIR/vm.args"
+REL_VSN="$(basename "$REL_RELEASE_DIR")"
+REL_APP_EBIN="_rel/imboy/lib/imboy-${REL_VSN}/ebin"
+[ -d "$REL_APP_EBIN" ] || { echo "release 应用目录缺失: $REL_APP_EBIN，请执行 make rel"; exit 2; }
+
+echo "编译并校验 release beam 新鲜度..."
+make compile >/dev/null
+for beam in ebin/*.beam; do
+  rel_beam="$REL_APP_EBIN/$(basename "$beam")"
+  if [ ! -f "$rel_beam" ] || ! cmp -s "$beam" "$rel_beam"; then
+    echo "release beam 陈旧或缺失: $(basename "$beam")，请执行 make rel" >&2
+    exit 2
+  fi
+done
 
 # 准备vm.args
 cat > "$VM_ARGS_FILE" <<EOF
