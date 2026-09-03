@@ -91,10 +91,10 @@ Subscriber 隐式合并进同一接口。Flutter 邀请向导已提供“加入 
 Announcements”两个独立选项：主邀请成功后分别执行、分别显示结果，失败项可单独重试。
 这既保持三种关系的权限边界，也避免邀请后必须再到多个页面逐项操作。
 
-### E2. Task assignee 的 active 校验在应用层（W0）
-schema 层仅保证 user 存在外键；active Workspace Member 校验由 T6b 应用层同事务
-执行（W0 无 project_member 表，DB 层触发器只管 project.owner）。指派已移除成员由
-API 400 拒绝并透出消息（有测试覆盖）。
+### E2. Task assignee 的 Project Member 边界（已修复）
+W2 下任务负责人必须同时是 active Workspace Member 与 active Project Member；创建任务和
+变更负责人均在同一事务内复用该校验，不再允许把仅属于 Workspace、未加入当前 Project 的
+用户指派为负责人。未指派任务仍允许，非法指派由 API 400 拒绝并透出消息。
 
 ### E3. change_role 最后 Owner 并发保护（已修复）
 `change_role` 先锁定 Workspace 行，再在同一事务内重新验证操作者角色、目标成员状态与

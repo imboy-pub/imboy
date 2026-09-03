@@ -13,7 +13,7 @@
 %   回退任意：done→review/doing/todo、review→doing/todo、doing→todo
 %   非法（400）：跳级前向（todo→review、todo→done、doing→done）与同态
 %
-% assignee 校验（W0）：必须是同 workspace 的 active workspace_member，
+% assignee 校验（W2）：必须同时是 active workspace_member 与 active project_member，
 %% 否则 400；assignee 变更走同校验（DS 层同事务）。
 %% 移除 Workspace Member 的冲突数据来源：
 %%   workspace_member_repo:unfinished_tasks_of_user/3

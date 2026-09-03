@@ -7,7 +7,7 @@
 % 核心职责（全部单事务，with_tx）：
 %   1. create：project 归属解析 → 归档写守卫（先锁 workspace 行）→
 %      create 语义幂等（同 project+creator+title → 返回既有）→
-%      assignee active workspace_member 校验（W0）→ INSERT。
+%      assignee active workspace_member + project_member 校验（W2）→ INSERT。
 %   2. update：task→project→workspace 解析 → 写守卫 → assignee 变更同校验
 %      → UPDATE。
 %   3. change_status：同上守卫 → 四态流转校验（非法流转 400，状态机见
@@ -15,7 +15,7 @@
 %      project_event 写入（同一 Conn = 同一事务，event_type='task_status'，
 %      payload 含 from/to + actor；无孤儿事件——回滚时事件与状态一起消失）。
 %
-% W0：assignee 校验直接查 active workspace_member（无 project_member）。
+% W2：assignee 必须同时是 active workspace_member 与 active project_member。
 %%%
 
 -export([create/5]).
@@ -53,7 +53,7 @@ create(CreatorUid, ProjectId, Title, AssigneeId, Sort) ->
                 #{<<"id">> := ExistingId} ->
                     {ok, ExistingId, existing};
                 _ ->
-                    ok = ensure_assignee_tx(Conn, WsId, AssigneeId),
+                    ok = ensure_assignee_tx(Conn, WsId, ProjectId, AssigneeId),
                     Now = elib_dt:now(),
                     Data = #{
                         <<"project_id">> => ProjectId,
@@ -106,6 +106,7 @@ update(TaskId, _ActorUid, Title, AssigneeId, Sort) ->
             Task = project_task_repo:find_tx(
                 Conn, TaskId, <<"id,project_id,assignee_id">>
             ),
+            ProjectId = maps:get(<<"project_id">>, Task, undefined),
             WsId = ensure_task_writable_tx(Conn, Task),
             Data0 =
                 case Title of
@@ -122,7 +123,7 @@ update(TaskId, _ActorUid, Title, AssigneeId, Sort) ->
                     A when A =:= undefined -> Data1;
                     A when A =:= null -> Data1#{<<"assignee_id">> => null};
                     A when is_integer(A), A > 0 ->
-                        ok = ensure_assignee_tx(Conn, WsId, A),
+                        ok = ensure_assignee_tx(Conn, WsId, ProjectId, A),
                         Data1#{<<"assignee_id">> => A};
                     _ ->
                         Data1
@@ -231,16 +232,25 @@ ensure_task_writable_tx(Conn, Task) ->
             throw({abort_tx, {404, <<"任务不存在"/utf8>>}})
     end.
 
-%% 事务内 assignee 校验（W0）：必须是同 workspace 的 active workspace_member
+%% 事务内 assignee 校验（W2）：必须是 active workspace_member + project_member
 %% 未指派（0/undefined/null）跳过校验。
--spec ensure_assignee_tx(any(), integer(), integer() | undefined | null) ->
+-spec ensure_assignee_tx(any(), integer(), integer(), integer() | undefined | null) ->
     ok | no_return().
-ensure_assignee_tx(_Conn, _WsId, A) when A =:= 0; A =:= undefined; A =:= null ->
+ensure_assignee_tx(_Conn, _WsId, _ProjectId, A) when A =:= 0; A =:= undefined; A =:= null ->
     ok;
-ensure_assignee_tx(Conn, WsId, AssigneeId) when is_integer(AssigneeId), AssigneeId > 0 ->
+ensure_assignee_tx(Conn, WsId, ProjectId, AssigneeId) when
+    is_integer(AssigneeId), AssigneeId > 0
+->
     case workspace_member_repo:find_tx(Conn, WsId, AssigneeId, <<"status">>) of
         #{<<"status">> := <<"active">>} ->
-            ok;
+            case project_member_repo:find_tx(Conn, ProjectId, AssigneeId, <<"status">>) of
+                #{<<"status">> := <<"active">>} ->
+                    ok;
+                _ ->
+                    throw(
+                        {abort_tx, {400, <<"任务负责人必须是该项目的 active 成员"/utf8>>}}
+                    )
+            end;
         _ ->
             throw(
                 {abort_tx, {400, <<"任务负责人必须是该工作区的 active 成员"/utf8>>}}

@@ -104,6 +104,8 @@ task_tx_query(Sql) ->
 task_tx_query_norm(<<"SELECT status FROM workspace_member", _/binary>>) ->
     %% workspace_member_repo:find_tx（assignee 校验，单列 status）
     {ok, [#{<<"status">> => member_status()}]};
+task_tx_query_norm(<<"SELECT status FROM project_member", _/binary>>) ->
+    {ok, [#{<<"status">> => project_member_status()}]};
 task_tx_query_norm(<<"SELECT role,status", _/binary>>) ->
     %% workspace_member_repo:find_tx（role,status 双列，upsert 路径）
     {ok, [#{<<"role">> => 1, <<"status">> => member_status()}]};
@@ -114,6 +116,12 @@ task_tx_query_norm(_) ->
 
 member_status() ->
     case get({task_tests, member_status}) of
+        S when is_binary(S) -> S;
+        _ -> <<"active">>
+    end.
+
+project_member_status() ->
+    case get({task_tests, project_member_status}) of
         S when is_binary(S) -> S;
         _ -> <<"active">>
     end.
@@ -241,7 +249,7 @@ run_with_mocks(MockConfigs, TestFun) ->
     end.
 
 %%% ===================================================================
-%%% assignee 校验（W0：同 workspace active workspace_member）
+%%% assignee 校验（W2：同 workspace + project active member）
 %%% ===================================================================
 
 assignee_validation_test_() ->
@@ -263,6 +271,17 @@ assignee_validation_test_() ->
                 ),
                 %% 进程字典跨用例共享（simple fun 同进程），用后复原
                 put({task_tests, member_status}, <<"active">>),
+                ok
+            end)
+        end},
+        {"create with workspace member outside project rejected 400", fun() ->
+            put({task_tests, project_member_status}, <<"removed">>),
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
+                ?assertMatch(
+                    {error, {400, _}},
+                    project_task_logic:create(?OWNER, ?PROJECT_ID, <<"任务A"/utf8>>, ?MEMBER2, 0)
+                ),
+                erase({task_tests, project_member_status}),
                 ok
             end)
         end},
