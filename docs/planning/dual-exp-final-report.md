@@ -1,5 +1,7 @@
 # IMBoy 双体验架构实施 — 最终统一汇报（unsafe_experiment）
 
+> **历史快照说明（2026-09-03）**：§一至§七记录 2026-08-26 至 27 日的 W0 实施，不代表当前 main 的 W2 能力和工作树状态；当前增量见 §八。
+>
 > 计划：`.claude/PRPs/plans/imboy-dual-experience-v21-channel-firstclass.plan.md` v2.5.2
 > 执行模式：**全自动无人值守（unsafe_experiment）**——Gate 0 / Gate W 由用户 goal 授权跳过人工确认；
 > 本报告一切结论为 **local / rehearsal 级**，≠客户验收 ≠Release ≠工程 DoD。
@@ -66,10 +68,10 @@ e29f6fdf preflight → 84c5ec2d WP0 → f7f668a0 T1 → 6dc78492 T3 → 3073ef4a
 | D5 | 归档后 join_group 无 980 守卫（V3-F3）→ 补 DS 层同事务守卫+handler 翻译 | HIGH |
 | D6 | invite 响应 atom status 键与 binary "status" 键冲突产生重复 JSON 键（V1-F1） | HIGH |
 
-根因共性：WP3/WP4 单元测试 mock 了 repo/with_tx 边界，**Demo B 端到端是这些缺陷的唯一暴露面**——验证了计划坚持 T14 Golden Demo 的价值。已知取舍/竞态类（change_role Owner 并发预检窗口 E5、频道首帖角色缓存竞态 E4 等）全部登记 `dual-exp-known-limitations.md`。
+根因共性：WP3/WP4 单元测试 mock 了 repo/with_tx 边界，**Demo B 端到端是这些缺陷的唯一暴露面**——验证了计划坚持 T14 Golden Demo 的价值。change_role Owner 并发窗口已于 2026-09-03 由 `d4cbe404` 结构性修复；频道首帖角色缓存竞态 E4 等剩余项仍登记于 `dual-exp-known-limitations.md`。
 
 ## 五、已知限制（Top，全文见 dual-exp-known-limitations.md A-F 节）
-- T7 归档守卫存在检查-写窗口路径 #9/#10/#11/#13/#17 + 约 10 条未接入路径（W0 现实裁剪，接入矩阵在 WP4 报告）
+- Workspace 数据库写最终入口已事务化；对象存储上传与 PostgreSQL 归档事务之间仍可能留下未引用对象
 - erlang_migrate 上游缺陷：部分 down 后 version tracking 清空，必须 force 校正（B1）
 - 4 个部分索引需发布窗口；生产行数量级取证 BLOCKED（B3/D）
 - Flutter 基线红灯随上游 main 演进扩大至 ~165 条（归属实验证实与本分支无关；dual-exp 命名空间 265 用例全绿）（C1）
@@ -86,3 +88,14 @@ e29f6fdf preflight → 84c5ec2d WP0 → f7f668a0 T1 → 6dc78492 T3 → 3073ef4a
 2. 三仓 `dual-exp-v21` 是否 push / 合回 main：由用户拍板（红线约束未 push）。
 3. 生产前必办：生产行数画像补 R2 判据 → 发布窗口决策；erlang_migrate 上游 issue；CI 红灯专项。
 4. Gate 1 商业验证按 §9.5：同一试点环境跑付费 PoC（建议场景见 acceptance 报告第⑧条：归档留档+周报流）。
+
+## 八、2026-09-03 当前 main 修复补记
+
+- `197ff0cb`：邀请目标成员改为发送 Announcements 频道邀请，不再误订阅操作者；
+- `d4cbe404`：最后 Owner 角色变更事务内串行化；
+- `07312d0c`：频道/群公告派生已读写入事务化；
+- `b175879e`：Personal/Workspace 改称首页布局，并支持恢复部署默认值；
+- `eb9dae04`：Workspace 全局会话统一标记为“全部消息”；
+- `8feee84d`、`49e58b76`：无工作区和加载失败均可返回 Personal，创建/加入入口闭环。
+
+以上均为本地代码与自动测试证据，不解除真机、真人理解、生产迁移或发布验收门禁。

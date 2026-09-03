@@ -1,5 +1,8 @@
 # IMBoy 双体验 v2.5.2 — 合并验收报告（V2 独立验收人）
 
+> **历史快照说明（2026-09-03）**：本报告主体记录 2026-08-27 的 W0 验收，W0 的 defer/分支/SHA/测试数字不得当作当前 main 状态。当前归档守卫与已知限制以
+> `dual-exp-known-limitations.md` 为准；后续 W2 和体验修复以 `dual-exp-final-report.md` §八为准。
+
 - **验收人**：第三个独立会话（程序性隔离，未参与实现、未参与 V1 质量 review 与 V3 安全 review），只审不改业务代码
 - **日期**：2026-08-27 | **分支**：imboy `dual-exp-v21` HEAD=`9078b4c5`；imboyapp worktree `.worktrees/imboyapp` `dual-exp-v21` HEAD=`a84d76bd`；imboyadmin `dual-exp-v21` HEAD=`68396eb`
 - **对象规模**（本人 git diff --stat main...HEAD 实测）：imboy 101 文件 +13820/−579；imboyapp 62 文件 +10474/−4；imboyadmin 15 文件（68396eb 单提交可见）
@@ -38,7 +41,7 @@
 | 3 | V3-F2(HIGH) `normalize_assignee` 返回 atom `nil` 致 int8 编码崩连接 | `src/ds/project_task_ds.erl:250-252` spec 与实现改 `null` | diff 含注释"epgsql int8 列不接受 atom nil" | ✅ Demo B P13（两次 ALL PASS）：建任务**不带 assignee_id** 默认路径成功创建（脚本 P13 请求体仅 title）；服务重启后零 error.log 崩溃迹象（本会话探针未触发任何 500） |
 | 4 | V3-F3(MEDIUM) 归档后入群未拒 | `src/api/group_member_handler.erl:203+` 新增 `{error,980}` 分支返回 980；`src/ds/group_member_ds.erl:174+` ensure_workspace_membership 内补 `SELECT status FROM workspace` 归档检查 throw {abort_tx,980} | diff 两文件 | ✅ 探针 [8r]：active 工作区成员在归档后 join General → `{"code":980,"msg":"工作区已归档，禁止加入其群组"}`
 | 5 | V1-F2(MEDIUM) ds→logic 反向依赖 | `project_task_ds.erl:157` 改调**本地** `legal_transition/2`（`:27` 新增导出、`:191-192` 本地实现）；logic 层保留单向转调 DS（project_task_logic.erl:196-197）——依赖方向恢复 Handler→Logic→DS 单向 | grep 实测两文件函数定义与调用点 | （编译期行为由 make app 零警告佐证） |
-| 6 | V1-F3(MEDIUM) 最后 Owner 并发预检窗口 | **结构性修复被裁决为知情取舍入册**：`workspace_logic.erl:350+` 注释声明窗口与兜底；known-limitations §E5 登记（9078b4c5 同时追加该节） | 注释+文档双证据 | N/A（取舍项；V1 建议修法原文即"或至少补登记 known-limitations"） |
+| 6 | V1-F3(MEDIUM) 最后 Owner 并发预检窗口 | **已于 2026-09-03 结构性修复**：`change_role` 锁 Workspace 行后在同一事务内重验操作者、目标成员和 active Owner 数量 | `d4cbe404` + `workspace_logic_tests` 28/28 | ✅ 当前 main；历史“知情取舍”结论作废 |
 
 **连带复验（ff648951 提交内，属同一修复链）**：
 - remove/archive/restore/admin_archive/admin_restore 五处 with_tx 结果匹配改直通契约（`Result when is_map(Result)` / `{ok, Result} when is_map(Result)`），diff 于 workspace_logic.erl 四个 hunk + workspace_ds：本人读 diff 确认 5/5；
@@ -110,7 +113,7 @@
 - 探针 [8r]：该 active 工作区成员 POST `/group_member/join {"gid":<General>,"member_uids":[4]}` → `{"code":980,"msg":"工作区已归档，禁止加入其群组"}` ✅ —— 守卫分支（group_member_handler `{error,980}` + group_member_ds 归档 throw）在真实 HTTP 层生效
 - 注：首轮探针 [8] 曾用错误 uid（118 非真实用户 id）得到业务码 1 提示，系无效输入所致，不计缺陷；修正后如上。
 
-**其余正面项**：Admin fail-closed（706 门）、config_version/init 白名单、SQL 注入面、越权改角色/转移 Owner 四项，采信 V3 已做的黑盒+静态双证据，本次复核未发现与其矛盾的新事实；known-limitations §A1/A2 与代码一致（guard_channel_writable 自动提交版窗口、"约 10 条未接入路径"如实披露）。known-limitations §A2 所指 WP4 会话清单仍未单独落盘（继承 V3 备注，维护为 LOW 遗留）。
+**其余正面项**：Admin fail-closed（706 门）、config_version/init 白名单、SQL 注入面、越权改角色/转移 Owner 四项，采信 V3 已做的黑盒+静态双证据，本次复核未发现与其矛盾的新事实。2026-09-03 当前 main 已将 Workspace 数据库写路径收口到事务守卫；Personal 附件与 C2C Bot 不再误列为 Workspace 缺口，详见 known-limitations §A1/A2。对象存储上传与 PostgreSQL 事务之间仍可能产生未引用对象，这是保留的跨系统边界。
 
 **过程安全备注**：验收产生的两个 V2ACC 工作区已归档自清理；探针个人频道与 Group 消息残留同步记录于 F-N3 残留台账建议人工统一清库策略（license 社区版上限使删除账号不可行，archive-only）。
 
@@ -145,7 +148,7 @@
 2. **Workspace Experience 真实可运行且共用 IM 核心？** 是（local/release 级）：我从零 `make rel` 重建并以 daemon 启动对外提供服务，10+3 步 curl 探针与两遍 Demo B 全程在其上跑通；共用性以“零第二实现”三点证据支撑：Flutter 侧直接复用 ChannelDetailPage 内核（栏2②）、后端 msg/channel/group 写内核 diff 无平行实现（仅守卫挂接）、WS 收发沿用原 frame 协议。无不必要重构：101 文件增量中引擎层未翻动，符合 I6“本期内核不动”。
 3. **只改一个安装配置受控重启即可切？Admin 无运行时写入口、version 可复现、无命名混淆？** 后端 truth source 单点（imboy_env override→application env→product_experience.normalize fail-safe chat），config_version=digest(effective,vsn) 纯函数单测钉死（9/9）；`/api/v1/init` 白名单仅两键；Admin `ProductExperiencePage` 只读展示，运行时写端点 0 个（source grep+V3 黑盒双证）；与 product_profile 分名且并存。生产 Docker/Helm 受控重启演练 BLOCKED（无授权），语义等价性以本机 ≥6 次 restart 报告＋纯函数性质承接——**生产切换实操仍是 Release 前必做人工动作**。
 4. **Scope Contract 严格执行？哪些暂未实现（对齐 §1.4.3）？** 十二项五证表齐备（§四）：now 七项 schema/API/Flutter/测试/Demo 全有实证指针；defer 五项"无 schema、无占位 UI、无完成声明"三证成立（w0 断言套件守护禁表禁列，前端/Admin grep 0 命中）。暂未实现集合＝§1.4.3 与 defer 五项（Milestones/Pinned/Resources/Activity 聚合/关联 Channel＋整档 project_member），另有 Files 聚合按 Gate W 未纳入十二项（§9.2 行④偏差已登记）。无一项以"计划写过"为由偷建——w0_schema_contract_tests 即防复活装置（其在共享库上的环境敏感红已在 F-N3 定性并给出修复建议）。
-5. **Archive 服务端强制守卫覆盖 R3 写路径？并发线性化与审计验证？personal 不受影响恢复放行？** 双档守卫如实：tx 版（ensure_writable_tx SELECT…FOR UPDATE）接四个主写入口，线性化由 workspace_archive_concurrency_tests 2/2（场景 A/B 先拿锁者胜＋980 断言）承担；自动提交版检查-写窗口按 WP4 决策用于最小接入点并在 known-limitations §A1 明示残留风险；约 10 条未接路径在 §A2 披露（V3-F3 的 join 缺口已由 9078b4c5 修复并经我探针 [8r] 行为级证实）。审计事件（workspace_archived/member_removed 等）在 Demo [16][18] 日志中产出。personal 直通与恢复放行经探针 [9][10] 实证。
+5. **Archive 服务端强制守卫覆盖 R3 写路径？并发线性化与审计验证？personal 不受影响恢复放行？** 当前 Workspace 数据库写最终入口使用 `ensure_writable_tx`、`write_tx` 或 `write_tx_or_skip`，派生已读计数也由 `07312d0c` 在事务内冻结；旧版自动提交预检仍可作为快速失败，但最终写不依赖它保证正确性。对象存储与数据库不能跨系统原子提交，落库被归档拒绝时可能留下待回收对象。审计事件（workspace_archived/member_removed 等）在 Demo [16][18] 日志中产出；Personal 路径不受 Workspace 归档影响。
 6. **四元语义＋Notice/Channel 边界＋关系全称无混用？30 秒测试？一句话说清 Project vs Group？** 无混用证据：全称纪律贯穿（WorkspaceMemberModel 枚举注释三分关系；导航 navMembers='成员'+members 页全称"工作区成员"；Group Notice 保留原命名空间，Channel 视图零聊天输入 [栏2⑧]，Overview 不聚合 Notice）。真实用户的 30 秒理解测试＝**BLOCKED**（day1 §4 已给出 W0 版四问设计供人工补做）；作为代理判据，四问的机器可验证部分（自动入群否定断言、通知独立流程）在 Demo 中两遍通过。"为什么 Project 不是 Group"现行答案＝任务不沉底、做完没一眼看清（§1.4.1 论证），商业语境下的有效性必须等 Gate 1 真人反馈，本期不作声明。
 7. **成员深度与 Gate W 档位一致？两档子集三层证据？移除冲突全链验证？** 一致（W0）：无 project_member 表（⑪）；Group 子集约束三层证据齐全——DB 约束触发器（T3 SUBSET-1..5 含 removed-wm 拒绝与同事务激活放行）、应用层同事务 409（探针 [3r] 原文）、并发/集成测试 3/3（我复跑）；移除链完整：所有权/Task 冲突先阻断 fail-closed（Demo [15] 409＋事务回滚核查）→ 无冲突级联禁用＋审计（[16]）→ 重邀不自动恢复（[17] DB 断言 0/0），两遍连续。project_member 相关 W1/W2 项全部 defer 且无偷建（§四硬约束段）。
 8. **首日闭环全修复或入册？部署演练确由未参与实现者在干净环境完成？下一商业验证场景？** 缺口管理合规：走查期 D1-D5 全修复带回归（对应测试均在我复跑绿），D6 脚本口径修正，E4 竞态入册并可自愈；**部署演练的原始口径（未参与实现者独立完成）未达成**——rehearsal §1 自报由编排者执行，我把"文档能否自足"作为验收内容复核（六节无占位、命令可复现），并以未参与实现的身份实际重建 release/启动/演练主链路间接补强，但"干净全新物理环境从文档零答疑装到底"仍差最后一步，**如实降级**。下一最值得验证的商业场景：付费 PoC 选 1 家小团队以 "Workspace 归档→季度结算→restore 留档" 结合 "Project Tasks 周报流" 做 Demo B 子集验收（Gate 1 口径），用真实数据反推 Template 幂等与归档写守卫的价值感知，同时在合同附件中约定生产行数量级补测（解除 R2.5/B3 的生产 BLOCKED）。
@@ -156,7 +159,7 @@
 |---|---|---|
 | **拿得出手**（Demo 两遍无人工干预；无占位符/调试残留/控制台报错） | ✅ | 本人两遍连跑 ALL PASS 22 步 54 断言 ×2、EXIT=0/0；演示注册路径遇 license 上限时走幂等演示账号（INFO 提示非报错）；现有 transcript 存档头尾不一致（F-N1）属文档而非交付界面；本会话探针未触发任何 500/崩溃 |
 | **能部署**（未参与实现者干净环境仅按文档部署） | ⚠️ 降级达成 | rehearal §1 自认编排者执行+空库演练，"未参与实施者格"以我方独立复核+依赖实战接管部分补强；生产 Docker/Helm 无授权 BLOCKED；**完整口径留待人工**（与条目⑲一致） |
-| **能让别人真实使用**（试点环境注册/邀请/权限/附件/升级提示闭环） | ✅(API 闭环)+BLOCKED(UI) | 注册→Template→邀请→显式入群/订阅→任务指派→归档保护→恢复全 API 级闭环（Demo ×2＋探针）；升级提示服务端前置（app_version≥vsn 配置在位，day1 §3）；附件链路沿 personal 既有通路（workspace 附件回溯 TODO=A2 披露项）；**真机 UI 弹窗与附件上传实走 BLOCKED** |
+| **能让别人真实使用**（试点环境注册/邀请/权限/附件/升级提示闭环） | ✅(API 闭环)+BLOCKED(UI) | 注册→Template→邀请→显式入群/订阅→任务指派→归档保护→恢复全 API 级闭环（Demo ×2＋探针）；升级提示服务端前置（app_version≥vsn 配置在位，day1 §3）；group/channel 附件确认已在事务内守卫，Personal 附件按 schema/ACL 不回溯 Workspace；**真机 UI 弹窗与附件上传实走 BLOCKED** |
 | **首日无显性缺陷**（走查全绿或 100% 入册） | ✅ | 走查发现即修即录：D1-D5 修复带回归（套件复跑绿）、D6 脚本侧、E4 缓存竞态入册自愈；known-limitations 11 节可逐条核查（其中 app_version 条目已自纠 1.0.15→1.0.9，如实修订值得肯定）；我复核期间新增 3 个治理类发现 F-N1/N2/N3（非首日旅程缺陷，亦已要求入册） |
 
 ---
@@ -169,7 +172,7 @@
 4. 30 秒真人理解测试 3 人样本（day1 §4 设计已就绪待人工执行）。
 5. 后端全量 eunit / Flutter 全量对账在本验收会话未整体重跑（时间预算取舍；以上限口径与模块级证据替代，RC 前建议一次性复核）。
 6. CI 远端大面积红灯既有问题（C3，未在本计划范围修复）。
-7. A2 所指"WP4 会话完整未接入路径清单"仍未独立落盘（LOW；§A2 代表性三条已核实）。
+7. 对象存储上传与 PostgreSQL 归档事务无法原子提交；落库被拒后未引用对象的清理效果仍需运维证据。
 
 ## 七、本轮验收新发现（F-N 系列；均非 CRITICAL/HIGH）
 
