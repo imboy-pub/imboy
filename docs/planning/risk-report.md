@@ -28,6 +28,7 @@
 | P1-P1 | **CLOSED（代码）** | `imboy_codec` 已对 protobuf 无法无损表达的方向或控制字段回退 JSON，`C2S_SERVER_ACK` 的 `type` / `id` / `in_reply_to` 不再蒸发；`imboy_codec_tests` **24/24 PASS**。 |
 | P1-P2 | **CLOSED（代码）** | Flutter WebSocket 入口先将 action 归一化为大写，再统一识别 `_ACK` 与显式服务端 ACK；小写 `message_revoke_ack` 不再因大小写差异漏过 ACK 分支。提交 `5b22f9b3`。 |
 | P1-P4 | **CLOSED（代码+CI）** | Flutter protobuf 产物已从后端当前真源重新生成，幻影 `C2CH` / `C2CH_SERVER_ACK` / `C2CH_DEL_EVERYONE` 枚举均不存在；跨仓 CI 会重新生成并以 `git diff --exit-code` 拒绝漂移。提交 `5d134108`、`1e2981de`。 |
+| P1-P6 | **CLOSED（代码）** | `/init` 在 `ws_url` 未配置或为空时按请求 Host 与协议同源派生，并固定使用真实路由 `/api/v1/ws`；显式配置仍优先。提交 `ed1c660c`。 |
 
 P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
 
@@ -36,6 +37,8 @@ P1-A1 验证：`billing_logic_tests` **20/20 PASS**；`billing_subscription_repo
 P1-P2 验证：`flutter test test/unit_test/service/websocket_server_ack_test.dart` **5/5 PASS**；定向 `flutter analyze` 无问题。该闭环仅证明本地 ACK 分流契约，不等于真机、跨端或生产 WebSocket 验收。
 
 P1-P4 验证：后端 `proto/imboy.proto` 与 `src/imboy.proto` 字节一致；Flutter `imboy.pbenum.dart` 的当前生成枚举与真源一致；CI `proto-regen-contract` 无 `continue-on-error`。该闭环不等于跨端消息 E2E 验收。
+
+P1-P6 验证：`index_handler_tests` **11/11 PASS**，覆盖 HTTP/HTTPS 同源派生与 `/api/v1/ws` 路径。该闭环不等于真实反向代理、TLS 或生产网络验收。
 
 P1-A2 验证：`make compile` PASS；`adm_setup_logic_tests` **9/9 PASS**；setup 路径/IP 边界 **6/6 PASS**；原认证中间件 **23/23 PASS**；代码审查 **0 HIGH / 0 MEDIUM**。尚缺独立空库的双连接并发自动回归，不把单元测试冒充该外部证据。
 
