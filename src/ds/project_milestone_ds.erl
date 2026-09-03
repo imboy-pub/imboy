@@ -117,8 +117,10 @@ list_by_project(ProjectId, Status, Page, Size) ->
 update(ActorUid, MsId, Name, DueDate) ->
     Result =
         elib_pg:with_tx(fun(Conn) ->
-            Ms = project_milestone_repo:find_tx(
-                Conn, MsId, <<"id,project_id,workspace_id,status">>
+            Ms = require_milestone_tx(
+                project_milestone_repo:find_tx(
+                    Conn, MsId, <<"id,project_id,workspace_id,status">>
+                )
             ),
             ProjectId = maps:get(<<"project_id">>, Ms, undefined),
             case is_integer(ProjectId) andalso ProjectId > 0 of
@@ -192,8 +194,10 @@ update(ActorUid, MsId, Name, DueDate) ->
 reach(ActorUid, MsId) ->
     Result =
         elib_pg:with_tx(fun(Conn) ->
-            Ms = project_milestone_repo:find_tx(
-                Conn, MsId, <<"id,project_id,workspace_id,status">>
+            Ms = require_milestone_tx(
+                project_milestone_repo:find_tx(
+                    Conn, MsId, <<"id,project_id,workspace_id,status">>
+                )
             ),
             ProjectId = maps:get(<<"project_id">>, Ms, undefined),
             case is_integer(ProjectId) andalso ProjectId > 0 of
@@ -295,8 +299,12 @@ ensure_writer_tx(Conn, WsId, ProjectId, OwnerId, Uid) ->
                             Conn, ProjectId, Uid, <<"status">>
                         )
                     of
-                        #{<<"status">> := <<"active">>} -> ok;
-                        _ -> throw({abort_tx, {403, <<"仅项目成员可写里程碑"/utf8>>}})
+                        #{<<"status">> := <<"active">>} ->
+                            ok;
+                        {error, Reason} ->
+                            throw({abort_tx, {project_member_lookup_failed, Reason}});
+                        _ ->
+                            throw({abort_tx, {403, <<"仅项目成员可写里程碑"/utf8>>}})
                     end
             end;
         _ ->
@@ -317,6 +325,11 @@ event_tx(Conn, ProjectId, TargetId, ActorId, EventType, PayloadExtra) ->
         <<"payload">> => jsone:encode(Payload, [native_utf8]),
         <<"created_at">> => elib_dt:now()
     }).
+
+require_milestone_tx({error, Reason}) ->
+    throw({abort_tx, {milestone_lookup_failed, Reason}});
+require_milestone_tx(Row) ->
+    Row.
 
 %% update 事件 payload（name/due_date 仅记录实际提交的字段；
 %% due_date tuple 转 ISO binary 以便 jsonb 编码——格式与

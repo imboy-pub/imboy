@@ -187,7 +187,7 @@ list(ProjectId, Page, Size) ->
     ).
 
 %% @doc 查询项目成员行（自动提交；空 map = 无记录；logic 层权限判定用）
--spec find(integer(), integer()) -> map().
+-spec find(integer(), integer()) -> map() | {error, term()}.
 find(ProjectId, Uid) ->
     project_member_repo:find(
         ProjectId, Uid, <<"workspace_id,project_id,user_id,invited_by,joined_at,status">>

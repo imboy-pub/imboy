@@ -264,7 +264,7 @@ ensure_can_govern(Uid, ProjectId) ->
 
 %% actor 权限上下文：ws 角色（非 active ws member → 403）+ 三项布尔
 -spec actor_context(integer(), map()) ->
-    {ok, map()} | {error, {403, binary()}}.
+    {ok, map()} | {error, {integer(), binary()}}.
 actor_context(Uid, Project) ->
     WsId = maps:get(<<"workspace_id">>, Project),
     ProjectId = maps:get(<<"id">>, Project),
@@ -274,17 +274,25 @@ actor_context(Uid, Project) ->
         {ok, Role} ->
             IsProjectOwner = maps:get(<<"owner_id">>, Project, 0) =:= Uid,
             IsWsOwner = Role =:= <<"owner">>,
-            IsActivePm =
-                case project_member_ds:find(ProjectId, Uid) of
-                    #{<<"status">> := <<"active">>} -> true;
-                    _ -> false
-                end,
-            {ok, #{
-                ws_role => Role,
-                is_project_owner => IsProjectOwner,
-                is_ws_owner => IsWsOwner,
-                is_active_pm => IsActivePm
-            }}
+            case project_member_ds:find(ProjectId, Uid) of
+                #{<<"status">> := <<"active">>} ->
+                    {ok, #{
+                        ws_role => Role,
+                        is_project_owner => IsProjectOwner,
+                        is_ws_owner => IsWsOwner,
+                        is_active_pm => true
+                    }};
+                {error, Reason} ->
+                    _ = ?ERROR_LOG([project_member_access_lookup_failed, ProjectId, Uid, Reason]),
+                    {error, {500, <<"查询失败，请稍后重试"/utf8>>}};
+                _ ->
+                    {ok, #{
+                        ws_role => Role,
+                        is_project_owner => IsProjectOwner,
+                        is_ws_owner => IsWsOwner,
+                        is_active_pm => false
+                    }}
+            end
     end.
 
 -spec load_project(integer()) -> {ok, map()} | {error, {404, binary()}}.

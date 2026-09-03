@@ -74,7 +74,7 @@ find_by_id(MilestoneId, Column) ->
     end.
 
 %% @doc 事务内查询里程碑行
--spec find_tx(any(), integer(), binary()) -> map().
+-spec find_tx(any(), integer(), binary()) -> map() | {error, term()}.
 find_tx(Conn, MilestoneId, Column) ->
     Tb = tablename(),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
@@ -83,7 +83,7 @@ find_tx(Conn, MilestoneId, Column) ->
             Row;
         {error, Reason} ->
             _ = ?ERROR_LOG([project_milestone_find_tx_failed, MilestoneId, Reason]),
-            #{};
+            {error, Reason};
         _ ->
             #{}
     end.
@@ -168,7 +168,7 @@ mark_reached_tx(Conn, MilestoneId, Data) ->
 
 %% @doc 事务内查询 project_member 行（ZC-05 收敛：转发 project_member_repo
 %% 单点实现；函数名保留以稳定既有调用点与 mock）
--spec find_project_member_tx(any(), integer(), integer(), binary()) -> map().
+-spec find_project_member_tx(any(), integer(), integer(), binary()) -> map() | {error, term()}.
 find_project_member_tx(Conn, ProjectId, Uid, Column) ->
     project_member_repo:find_tx(Conn, ProjectId, Uid, Column).
 

@@ -49,6 +49,8 @@ tablename() ->
 upsert_active_tx(Conn, WsId, ProjectId, Uid, InvitedBy) ->
     Columns = <<"workspace_id,project_id,user_id,invited_by,joined_at,status">>,
     case find_tx(Conn, ProjectId, Uid, Columns) of
+        {error, _} = Err ->
+            Err;
         #{<<"status">> := <<"active">>} = Row ->
             {ok, unchanged, Row};
         _ ->
@@ -63,14 +65,17 @@ upsert_active_tx(Conn, WsId, ProjectId, Uid, InvitedBy) ->
                     "     joined_at = EXCLUDED.joined_at, updated_at = EXCLUDED.updated_at">>,
             case elib_pg:execute(Conn, Sql, [WsId, ProjectId, Uid, InvitedBy, Now]) of
                 {ok, _Count} ->
-                    {ok, changed, find_tx(Conn, ProjectId, Uid, Columns)};
+                    case find_tx(Conn, ProjectId, Uid, Columns) of
+                        {error, _} = Err -> Err;
+                        Row -> {ok, changed, Row}
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end
     end.
 
 %% @doc 查询项目成员行（自动提交连接；空 map = 无记录）
--spec find(integer(), integer(), binary()) -> map().
+-spec find(integer(), integer(), binary()) -> map() | {error, term()}.
 find(ProjectId, Uid, Column) ->
     Tb = tablename(),
     Sql =
@@ -80,20 +85,18 @@ find(ProjectId, Uid, Column) ->
         {ok, Row} ->
             Row;
         {error, Reason} ->
-            %% M-4：DB 故障不得与"无记录"静默同形——记错误后仍按空处理
-            %% （权限判定保持 fail-closed 403 方向，但排障可见）
             _ = ?ERROR_LOG([project_member_find_failed, ProjectId, Uid, Reason]),
-            #{}
+            {error, Reason}
     end.
 
 %% @doc 查询项目成员整行（自动提交连接；空 map = 无记录；ZC-05 收敛点：
 %% 供关联/里程碑模块的权限只读查询转发，消除重复 SQL）
--spec find_row(integer(), integer()) -> map().
+-spec find_row(integer(), integer()) -> map() | {error, term()}.
 find_row(ProjectId, Uid) ->
     find(ProjectId, Uid, <<"project_id, user_id, workspace_id, status, invited_by, joined_at">>).
 
 %% @doc 事务内查询项目成员行
--spec find_tx(any(), integer(), integer(), binary()) -> map().
+-spec find_tx(any(), integer(), integer(), binary()) -> map() | {error, term()}.
 find_tx(Conn, ProjectId, Uid, Column) ->
     Tb = tablename(),
     Sql =
@@ -104,7 +107,7 @@ find_tx(Conn, ProjectId, Uid, Column) ->
             Row;
         {error, Reason} ->
             _ = ?ERROR_LOG([project_member_find_tx_failed, ProjectId, Uid, Reason]),
-            #{};
+            {error, Reason};
         _ ->
             #{}
     end.

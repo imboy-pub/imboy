@@ -246,6 +246,8 @@ ensure_assignee_tx(Conn, WsId, ProjectId, AssigneeId) when
             case project_member_repo:find_tx(Conn, ProjectId, AssigneeId, <<"status">>) of
                 #{<<"status">> := <<"active">>} ->
                     ok;
+                {error, Reason} ->
+                    throw({abort_tx, {project_member_lookup_failed, Reason}});
                 _ ->
                     throw(
                         {abort_tx, {400, <<"任务负责人必须是该项目的 active 成员"/utf8>>}}

@@ -61,7 +61,7 @@ delete_tx(Conn, ProjectId, ChannelId) ->
     end.
 
 %% @doc 事务内查询频道行（关联前置校验用；空 map = 频道不存在）
--spec find_channel_tx(any(), integer(), binary()) -> map().
+-spec find_channel_tx(any(), integer(), binary()) -> map() | {error, term()}.
 find_channel_tx(Conn, ChannelId, Column) ->
     Tb = elib_pg_sql:public_tablename(<<"channel">>),
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE id = $1">>,
@@ -70,7 +70,7 @@ find_channel_tx(Conn, ChannelId, Column) ->
             Row;
         {error, Reason} ->
             _ = ?ERROR_LOG([project_channel_find_tx_failed, ChannelId, Reason]),
-            #{};
+            {error, Reason};
         _ ->
             #{}
     end.

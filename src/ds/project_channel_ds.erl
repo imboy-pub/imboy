@@ -222,6 +222,14 @@ ensure_channel_linkable_tx(Conn, WsId, ChannelId) ->
     Channel = project_channel_rel_repo:find_channel_tx(
         Conn, ChannelId, <<"id,workspace_id,scope,status,name">>
     ),
+    case Channel of
+        {error, Reason} ->
+            throw({abort_tx, {channel_lookup_failed, Reason}});
+        _ ->
+            ensure_channel_linkable_row(Channel, WsId)
+    end.
+
+ensure_channel_linkable_row(Channel, WsId) ->
     case maps:get(<<"id">>, Channel, undefined) of
         undefined ->
             throw({abort_tx, {404, <<"频道不存在"/utf8>>}});
