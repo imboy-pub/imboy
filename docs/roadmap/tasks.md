@@ -54,7 +54,7 @@
 
 ### W0-ARCH-02
 - title: WS 同步回执路径与投递管道对齐（JSON 化 payload）
-- status: ready
+- status: done
 - deps: none
 - wave: 0
 - tag: protocol
@@ -62,7 +62,7 @@
 - source: risk-report P1-P1/P1-P5；ARCH-02
 - action: 把 `websocket_handler.erl:814-818` 的 `ws_reply(protobuf,v2)` 有损转换改为 v2 帧 + JSON payload（照 `webrtc_ws_logic.erl` 先例）。
 - verify: "非快乐路径 × v2 编码"矩阵测试全绿；C2S_SERVER_ACK / C2G_ERROR 在 v2 连接携带完整 type/字段可达客户端。
-- evidence:
+- evidence: `55b4f6b6` 为 protobuf 无法无损表达的控制帧回退 JSON，后续 `18e81c6f`、`696ea973` 将 WebSocket 回执统一接入当前 framing。当前 HEAD 定向验证：`imboy_codec_tests` 24/24、`websocket_handler_tests` 37/37、`msg_c2g_logic_tests` 22/22 PASS；矩阵明确断言 C2S_SERVER_ACK 保留 `type/id/in_reply_to`，C2G_ERROR 保留 `id/error/code`。
 
 ### W0-PERF-02
 - title: depcache ACK 定时器改并发 ETS 表（write_concurrency）

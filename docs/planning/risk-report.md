@@ -28,6 +28,7 @@
 | P1-P1 | **CLOSED（代码）** | `imboy_codec` 已对 protobuf 无法无损表达的方向或控制字段回退 JSON，`C2S_SERVER_ACK` 的 `type` / `id` / `in_reply_to` 不再蒸发；`imboy_codec_tests` **24/24 PASS**。 |
 | P1-P2 | **CLOSED（代码）** | Flutter WebSocket 入口先将 action 归一化为大写，再统一识别 `_ACK` 与显式服务端 ACK；小写 `message_revoke_ack` 不再因大小写差异漏过 ACK 分支。提交 `5b22f9b3`。 |
 | P1-P4 | **CLOSED（代码+CI）** | Flutter protobuf 产物已从后端当前真源重新生成，幻影 `C2CH` / `C2CH_SERVER_ACK` / `C2CH_DEL_EVERYONE` 枚举均不存在；跨仓 CI 会重新生成并以 `git diff --exit-code` 拒绝漂移。提交 `5d134108`、`1e2981de`。 |
+| P1-P5 | **CLOSED（代码）** | v2 framing 对 protobuf 枚举或字段无法无损表达的控制帧回退 JSON；C2G_ERROR 的 `id/error/code/type` 不再蒸发。codec、WebSocket handler 与 C2G logic 定向测试 24/24、37/37、22/22 PASS。 |
 | P1-P6 | **CLOSED（代码）** | `/init` 在 `ws_url` 未配置或为空时按请求 Host 与协议同源派生，并固定使用真实路由 `/api/v1/ws`；显式配置仍优先。提交 `ed1c660c`。 |
 | P1-F1 | **CLOSED（CI ratchet）** | Flutter 新增 AST 生命周期门，覆盖 `riverpod_annotation` 的类、顶层函数及别名前缀注解；新增隐式 autoDispose 声明或未同步收紧已解决基线均会阻断。当前 62 项存量只准减少。提交 `5f6b1310`。 |
 | P1-F2 | **CLOSED（代码）** | Admin 的大整数 JSON 解析已由正则替换为字符串感知的线性扫描，仅转换超出 JS 安全整数范围的结构区整数字面量，不再破坏正文中的长数字。提交 `b91a750`。 |
