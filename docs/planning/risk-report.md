@@ -7,7 +7,7 @@
 ## 2026-09-03 当前 HEAD 复核
 
 > 原表保留 2026-07-22 审计快照；本节记录后续处置状态，避免把历史发现误读为当前缺陷。
-> 复核基线：`12b21519`。
+> 复核基线：`a2d855db`。
 
 | 原编号 | 当前状态 | 当前证据与边界 |
 |---|---|---|
@@ -15,6 +15,7 @@
 | P0-2 | **CLOSED（本地）** | `user_server` 改为 16 个固定 shard；同 UID FIFO、不同 UID 并行。父进程持有 current/queue，worker ACK 后推进，异常时重建并按策略重放；不可幂等的账号注销使用 `no_replay`。每 shard 队列上限 1000，过载记录错误并丢弃新状态任务。该闭环不等于生产重连风暴容量证明。 |
 | P0-3 | **CLOSED（代码）** | 消息投递与 ACK 已迁移至专用 `ack_retry_cache` ETS（`write_concurrency`），不再穿越全局 `depcache` 同步热点。 |
 | P0-4 | **BLOCKED（法务决策）** | AGPL 依赖仍在；开源、购买商业授权或替换绑定三选一尚未获得人工决定，发布前不得解除。 |
+| P1-A1 | **CLOSED（代码）** | 订阅创建的 `owner_uid` 只取认证态 UID；续费、取消、用量、配额和账单端点均先校验订阅归属，账单支付由 invoice 反查订阅归属；历史 `owner_uid=0` 在用户端 fail-closed。提交 `ec48109f`。 |
 | P1-A2 | **CLOSED（代码）** | setup status/init 两个精确路径免 admin Cookie 但仍执行 IP allowlist；首个管理员在单一 PostgreSQL 事务内通过 advisory lock 串行化，并使用同一连接 count/save。DB 计数异常 fail-closed，不再当作空库。提交 `e2d420eb`。 |
 | P1-A3 | **CLOSED（代码）** | strict 环境已改为默认严格，仅显式 `dev/local/test` 放宽；启动时强制校验独立 `adm_cookie_secret`，空值或未知环境不能带默认密钥进入生产。 |
 | P1-A4 | **CLOSED（代码）** | 管理端凡声明细粒度 `permission` 的门统一 fail-closed；成功 Profile 的空权限是权威拒绝，不再回退 sidebar 模板。仅 Profile 不存在时允许由匹配角色模板明确证明权限。管理端全量 **1412/1412 PASS**，提交 `eb7ccc2`。 |
@@ -27,6 +28,8 @@
 | P1-P1 | **CLOSED（代码）** | `imboy_codec` 已对 protobuf 无法无损表达的方向或控制字段回退 JSON，`C2S_SERVER_ACK` 的 `type` / `id` / `in_reply_to` 不再蒸发；`imboy_codec_tests` **24/24 PASS**。 |
 
 P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
+
+P1-A1 验证：`billing_logic_tests` **20/20 PASS**；`billing_subscription_repo_tests` **2/2 PASS**；`billing_route_tests` **5/5 PASS**。这些是本地归属与路由契约证据，不代表真实支付或生产验收。
 
 P1-A2 验证：`make compile` PASS；`adm_setup_logic_tests` **9/9 PASS**；setup 路径/IP 边界 **6/6 PASS**；原认证中间件 **23/23 PASS**；代码审查 **0 HIGH / 0 MEDIUM**。尚缺独立空库的双连接并发自动回归，不把单元测试冒充该外部证据。
 
