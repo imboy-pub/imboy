@@ -494,43 +494,44 @@ change_role(Uid, WsId, TargetUid, Role) ->
             end
     end.
 
-change_role_checked(_Uid, WsId, TargetUid, Role) ->
-    Member = workspace_member_repo:find(WsId, TargetUid, <<"role,status">>),
+change_role_checked(Uid, WsId, TargetUid, Role) ->
+    case elib_pg:with_tx(fun(Conn) -> change_role_tx(Conn, Uid, WsId, TargetUid, Role) end) of
+        ok ->
+            _ = ?INFO_LOG([workspace_member_role_changed, WsId, TargetUid, Role]),
+            {ok, #{workspace_id => WsId, user_id => TargetUid, role => Role}};
+        {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
+            {error, {Code, Msg}};
+        {error, member_not_active} ->
+            {error, {409, <<"该用户不是工作区成员"/utf8>>}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([workspace_role_failed, WsId, TargetUid, Reason]),
+            {error, {500, <<"更新失败，请稍后重试"/utf8>>}}
+    end.
+
+change_role_tx(Conn, Uid, WsId, TargetUid, Role) ->
+    ok = workspace_guard:abort_on_error(
+        workspace_guard:ensure_writable_tx(Conn, {workspace, WsId})
+    ),
+    Actor = workspace_member_repo:find_tx(Conn, WsId, Uid, <<"role,status">>),
+    case Actor of
+        #{<<"role">> := <<"owner">>, <<"status">> := <<"active">>} -> ok;
+        _ -> throw({abort_tx, {403, <<"仅工作区 Owner 可执行此操作"/utf8>>}})
+    end,
+    Member = workspace_member_repo:find_tx(Conn, WsId, TargetUid, <<"role,status">>),
     case maps:get(<<"status">>, Member, <<>>) of
         <<"active">> ->
             CurrentRole = maps:get(<<"role">>, Member, <<>>),
-            %% 并发窗口声明（known-limitations §E5）：两路并发 demote 最后 Owner
-            %% 均可读到 count<=1 通过此预检；最终一致性由 DB 侧 workspace 状态治理
-            %% 兜底（Owner 缺失的 workspace 归档/转移接口仍可恢复）。事务内移动计数的
-            %% 改造收益低于锁代价，V0 登记为取舍。
             LastOwnerProtected =
                 CurrentRole =:= <<"owner">> andalso Role =/= <<"owner">> andalso
-                    workspace_member_repo:count_by_role(WsId, <<"owner">>) =< 1,
+                    workspace_member_repo:count_by_role_tx(Conn, WsId, <<"owner">>) =< 1,
             case LastOwnerProtected of
                 true ->
-                    {error, {409, <<"工作区至少保留一名 Owner"/utf8>>}};
+                    throw({abort_tx, {409, <<"工作区至少保留一名 Owner"/utf8>>}});
                 false ->
-                    case
-                        elib_pg:with_tx(fun(Conn) ->
-                            workspace_member_repo:update_role_tx(Conn, WsId, TargetUid, Role)
-                        end)
-                    of
-                        ok ->
-                            _ = ?INFO_LOG([workspace_member_role_changed, WsId, TargetUid, Role]),
-                            {ok, #{
-                                workspace_id => WsId,
-                                user_id => TargetUid,
-                                role => Role
-                            }};
-                        {error, member_not_active} ->
-                            {error, {409, <<"该用户不是工作区成员"/utf8>>}};
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG([workspace_role_failed, WsId, TargetUid, Reason]),
-                            {error, {500, <<"更新失败，请稍后重试"/utf8>>}}
-                    end
+                    workspace_member_repo:update_role_tx(Conn, WsId, TargetUid, Role)
             end;
         _ ->
-            {error, {409, <<"该用户不是工作区成员"/utf8>>}}
+            throw({abort_tx, member_not_active})
     end.
 
 %% @doc 主 Owner 转移（仅 Owner；目标须为非 Guest 的 active 工作区成员；至少保留一名 Owner）

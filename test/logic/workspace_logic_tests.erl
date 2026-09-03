@@ -510,10 +510,32 @@ change_role_last_owner_protection_test_() ->
                 {'find', 3, fun(?WS_ID, ?OWNER, _) ->
                     #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
                 end},
-                {'count_by_role', 2, fun(?WS_ID, <<"owner">>) -> 1 end},
+                {'find_tx', 4, fun(fake_conn, ?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end},
+                {'count_by_role_tx', 3, fun(fake_conn, ?WS_ID, <<"owner">>) ->
+                    ?assertEqual(true, get(t_wl_ws_locked)),
+                    1
+                end},
                 {'update_role_tx', 4, fun(_, _, _, _) ->
                     put(t_wl_role_tx_ran, true),
                     ok
+                end}
+            ]},
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(fake_conn, {workspace, ?WS_ID}) ->
+                    put(t_wl_ws_locked, true),
+                    ok
+                end},
+                {'abort_on_error', 1, fun(ok) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try Fun(fake_conn) of
+                        Result -> Result
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
                 end}
             ]}
         ],
@@ -532,6 +554,7 @@ change_role_last_owner_protection_body() ->
             undefined =:= get(t_wl_role_tx_ran),
             "update_role_tx must not run on last-owner protection"
         ),
+        ?assertEqual(true, erase(t_wl_ws_locked)),
         ok
     end.
 
@@ -550,11 +573,21 @@ change_role_succeeds_with_second_owner_test_() ->
                     (?WS_ID, ?MEMBER, _) ->
                         #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
                 end},
-                {'count_by_role', 2, fun(?WS_ID, <<"owner">>) -> 2 end},
+                {'find_tx', 4, fun
+                    (fake_conn, ?WS_ID, ?OWNER, _) ->
+                        #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>};
+                    (fake_conn, ?WS_ID, ?MEMBER, _) ->
+                        #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+                end},
+                {'count_by_role_tx', 3, fun(fake_conn, ?WS_ID, <<"owner">>) -> 2 end},
                 {'update_role_tx', 4, fun(_Conn, WsId, Uid, <<"guest">>) ->
                     put(t_wl_role_changed, {WsId, Uid}),
                     ok
                 end}
+            ]},
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(fake_conn, {workspace, ?WS_ID}) -> ok end},
+                {'abort_on_error', 1, fun(ok) -> ok end}
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
@@ -573,6 +606,48 @@ change_role_succeeds_with_second_owner_body() ->
         ?assertEqual({?WS_ID, ?MEMBER}, erase(t_wl_role_changed)),
         ok
     end.
+
+change_role_rechecks_actor_after_lock_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_ds, [
+                {'find_by_id', 1, fun(_) -> ws_row() end},
+                {'find_by_id', 2, fun(_, _) -> ws_row() end}
+            ]},
+            {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end},
+                {'find_tx', 4, fun(fake_conn, ?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}
+                end},
+                {'update_role_tx', 4, fun(_, _, _, _) ->
+                    put(t_wl_role_tx_ran, true),
+                    ok
+                end}
+            ]},
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(fake_conn, {workspace, ?WS_ID}) -> ok end},
+                {'abort_on_error', 1, fun(ok) -> ok end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) ->
+                    try Fun(fake_conn) of
+                        Result -> Result
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {403, _}},
+                workspace_logic:change_role(?OWNER, ?WS_ID, ?MEMBER, <<"guest">>)
+            ),
+            ?assertEqual(undefined, erase(t_wl_role_tx_ran))
+        end
+    ).
 
 %% ===================================================================
 %% 主 Owner 转移：Guest 目标拒绝 / 非 active 拒绝 / 成功路径

@@ -17,6 +17,7 @@
 -export([list_by_workspace/2]).
 -export([page_by_workspace/4]).
 -export([count_by_role/2]).
+-export([count_by_role_tx/3]).
 -export([update_role_tx/4]).
 -export([remove_tx/3]).
 -export([list_active_workspace_groups_of_user/3]).
@@ -158,7 +159,19 @@ count_by_role(WsId, Role) ->
         _ -> 0
     end.
 
-%% @doc 事务内改角色（最后 Owner 保护由 logic 层前置）
+%% @doc 事务内统计 active 角色数；调用方须先锁定 workspace 行。
+-spec count_by_role_tx(any(), integer(), binary()) -> non_neg_integer().
+count_by_role_tx(Conn, WsId, Role) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT COUNT(*) AS count FROM ", Tb/binary,
+            " WHERE workspace_id = $1 AND role = $2 AND status = 'active'">>,
+    case elib_pg:one(Conn, Sql, [WsId, Role]) of
+        {ok, #{<<"count">> := Count}} -> Count;
+        _ -> 0
+    end.
+
+%% @doc 事务内改角色（最后 Owner 保护由 logic 层锁内判定）
 -spec update_role_tx(any(), integer(), integer(), binary()) -> ok | {error, term()}.
 update_role_tx(Conn, WsId, Uid, Role) ->
     Tb = tablename(),
