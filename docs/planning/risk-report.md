@@ -29,6 +29,7 @@
 | P1-P2 | **CLOSED（代码）** | Flutter WebSocket 入口先将 action 归一化为大写，再统一识别 `_ACK` 与显式服务端 ACK；小写 `message_revoke_ack` 不再因大小写差异漏过 ACK 分支。提交 `5b22f9b3`。 |
 | P1-P4 | **CLOSED（代码+CI）** | Flutter protobuf 产物已从后端当前真源重新生成，幻影 `C2CH` / `C2CH_SERVER_ACK` / `C2CH_DEL_EVERYONE` 枚举均不存在；跨仓 CI 会重新生成并以 `git diff --exit-code` 拒绝漂移。提交 `5d134108`、`1e2981de`。 |
 | P1-P6 | **CLOSED（代码）** | `/init` 在 `ws_url` 未配置或为空时按请求 Host 与协议同源派生，并固定使用真实路由 `/api/v1/ws`；显式配置仍优先。提交 `ed1c660c`。 |
+| P1-F1 | **CLOSED（CI ratchet）** | Flutter 新增 AST 生命周期门，覆盖 `riverpod_annotation` 的类、顶层函数及别名前缀注解；新增隐式 autoDispose 声明或未同步收紧已解决基线均会阻断。当前 62 项存量只准减少。提交 `5f6b1310`。 |
 | P1-F2 | **CLOSED（代码）** | Admin 的大整数 JSON 解析已由正则替换为字符串感知的线性扫描，仅转换超出 JS 安全整数范围的结构区整数字面量，不再破坏正文中的长数字。提交 `b91a750`。 |
 | P1-T2 | **CLOSED（最小 CI）** | Admin 已增加 Playwright CI，真实执行无需后端凭据的 `setup-flow.spec.ts`；需后端账号的其余 spec 与生产健康检查未冒充 GitHub-hosted runner 证据。提交 `23ca565`、`bea0db5`。 |
 | P1-T4 | **CLOSED（代码）** | Flutter integration workflow 已改用独立仓真实路径、兼容 SDK 版本，并在 macOS job 执行 `integration_test/all_tests.dart`；测试步骤的临时软失败由后续显式失败检查重新收紧。提交 `707fb476`、`75d193ed`。 |
@@ -43,6 +44,8 @@ P1-P2 验证：`flutter test test/unit_test/service/websocket_server_ack_test.da
 P1-P4 验证：后端 `proto/imboy.proto` 与 `src/imboy.proto` 字节一致；Flutter `imboy.pbenum.dart` 的当前生成枚举与真源一致；CI `proto-regen-contract` 无 `continue-on-error`。该闭环不等于跨端消息 E2E 验收。
 
 P1-P6 验证：`index_handler_tests` **11/11 PASS**，覆盖 HTTP/HTTPS 同源派生与 `/api/v1/ws` 路径。该闭环不等于真实反向代理、TLS 或生产网络验收。
+
+P1-F1 验证：`dart run tool/check_riverpod_lifecycle.dart` PASS（62 项存量基线）；`dart analyze tool/check_riverpod_lifecycle.dart` 无问题；普通顶层函数、`as` 别名前缀函数和陈旧基线三类故障注入均以退出码 1 阻断。该闭环证明本地静态门有效，不代表远端 CI 或真机验收。
 
 P1-F2 验证：`bun test src/lib/safeParseBigIntJson.test.ts` **16/16 PASS**，覆盖字符串内长数字、转义引号、安全整数边界、小数及科学计数法。
 
