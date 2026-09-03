@@ -13,6 +13,7 @@
 -define(MEMBER2, 900002).
 -define(GUEST, 900003).
 -define(OUTSIDER, 900004).
+-define(WS_ONLY, 900005).
 -define(PROJECT_ID, 700001).
 -define(TASK_ID, 600001).
 
@@ -129,21 +130,18 @@ project_member_status() ->
 task_mocks(CurrStatus) ->
     Self = self(),
     [
-        {project_logic, [
-            {'detail', 2, fun
-                (?OWNER, ?PROJECT_ID) ->
-                    {ok, #{<<"id">> => ?PROJECT_ID, <<"workspace_id">> => ?WS_ID}};
-                %% Guest 只读 / 非成员：ensure_can_write 透传 403
-                (?GUEST, ?PROJECT_ID) ->
-                    {error, {403, <<"Guest 角色不能创建工作区资源"/utf8>>}};
-                (?OUTSIDER, ?PROJECT_ID) ->
-                    {error, {403, <<"非工作区成员"/utf8>>}}
-            end}
-        ]},
         {project_member_logic, [
+            {'ensure_can_read', 2, fun(Uid, ?PROJECT_ID) ->
+                case Uid of
+                    ?WS_ONLY -> {error, {403, <<"仅项目成员可访问项目资源"/utf8>>}};
+                    ?OUTSIDER -> {error, {403, <<"仅项目成员可访问项目资源"/utf8>>}};
+                    _ -> {ok, #{<<"id">> => ?PROJECT_ID}}
+                end
+            end},
             {'ensure_can_write', 2, fun(Uid, ?PROJECT_ID) ->
                 case Uid of
                     ?GUEST -> {error, {403, <<"Guest 角色不能修改项目资源"/utf8>>}};
+                    ?WS_ONLY -> {error, {403, <<"仅项目成员可修改项目资源"/utf8>>}};
                     ?OUTSIDER -> {error, {403, <<"仅项目成员可修改项目资源"/utf8>>}};
                     _ -> {ok, #{<<"id">> => ?PROJECT_ID}}
                 end
@@ -191,21 +189,6 @@ task_mocks(CurrStatus) ->
             {'insert_tx', 2, fun(Conn, Data) ->
                 Self ! {event_insert, Conn, Data},
                 {ok, 500001}
-            end}
-        ]},
-        {workspace_logic, [
-            {'ensure_can_create_resource', 2, fun(?WS_ID, U) ->
-                case U of
-                    ?GUEST -> {error, {403, <<"Guest 角色不能创建工作区资源"/utf8>>}};
-                    ?OUTSIDER -> {error, {403, <<"非工作区成员"/utf8>>}};
-                    _ -> ok
-                end
-            end},
-            {'ensure_member', 2, fun(?WS_ID, U) ->
-                case U of
-                    ?OUTSIDER -> {error, {403, <<"非工作区成员"/utf8>>}};
-                    _ -> {ok, <<"member">>}
-                end
             end}
         ]},
         {elib_pg, [
@@ -359,9 +342,22 @@ permission_and_archive_test_() ->
                 )
             end)
         end},
+        {"workspace member outside project cannot create task", fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
+                ?assertMatch(
+                    {error, {403, _}},
+                    project_task_logic:create(?WS_ONLY, ?PROJECT_ID, <<"任务A"/utf8>>, 0, 0)
+                )
+            end)
+        end},
         {"guest can read task detail (read-only)", fun() ->
             run_with_mocks(task_mocks(<<"todo">>), fun() ->
                 ?assertMatch({ok, _}, project_task_logic:detail(?GUEST, ?TASK_ID))
+            end)
+        end},
+        {"workspace member outside project cannot read task detail", fun() ->
+            run_with_mocks(task_mocks(<<"todo">>), fun() ->
+                ?assertMatch({error, {403, _}}, project_task_logic:detail(?WS_ONLY, ?TASK_ID))
             end)
         end},
         {"archived workspace rejects create with 980", fun() ->

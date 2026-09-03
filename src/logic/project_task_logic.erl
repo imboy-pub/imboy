@@ -3,9 +3,9 @@
 %%%
 % project_task_logic 项目任务业务逻辑（双体验 v2.5.2 WP4/T6b）
 %
-% W0 权限模型：
-%   创建/更新/流转：Workspace Owner/Member ✅；Guest 只读 403；非成员 403
-%   详情/列表：active Workspace Member 可读
+% W2 权限模型：
+%   创建/更新/流转：Project Owner/Member 可写；Guest 只读；非项目成员 403
+%   详情/列表：Workspace Owner 或 active Project Member 可读
 %   archived workspace 拒写（workspace_guard，稳定错误码 980）
 %
 % 四态状态机（§三 边界：Task 只有 title/assignee/status/排序）：
@@ -41,7 +41,7 @@
 -spec create(integer(), integer(), binary(), integer() | undefined, integer()) ->
     {ok, map(), created | existing} | {error, {integer(), binary()}}.
 create(Uid, ProjectId, Title, AssigneeId, Sort) ->
-    case ensure_can_write(Uid, ProjectId) of
+    case project_member_logic:ensure_can_write(Uid, ProjectId) of
         {error, Reason} ->
             {error, Reason};
         {ok, _Project} ->
@@ -67,20 +67,21 @@ create(Uid, ProjectId, Title, AssigneeId, Sort) ->
             end
     end.
 
-%% @doc 任务详情（active 工作区成员可读）
+%% @doc 任务详情（Workspace Owner 或 active Project Member 可读）
 -spec detail(integer(), integer()) -> {ok, map()} | {error, {integer(), binary()}}.
 detail(Uid, TaskId) ->
-    case load_task_with_project(TaskId) of
+    case load_task(TaskId) of
         {error, NotFound} ->
             {error, NotFound};
-        {ok, Task, WsId} ->
-            case workspace_logic:ensure_member(WsId, Uid) of
-                {ok, _Role} -> {ok, Task};
+        {ok, Task} ->
+            ProjectId = maps:get(<<"project_id">>, Task),
+            case project_member_logic:ensure_can_read(Uid, ProjectId) of
+                {ok, _Project} -> {ok, Task};
                 {error, Forbidden} -> {error, Forbidden}
             end
     end.
 
-%% @doc 项目任务列表（active 工作区成员可读；status 过滤 all|todo|doing|review|done）
+%% @doc 项目任务列表（Workspace Owner/Project Member 可读；status 过滤）
 -spec list(integer(), integer(), binary() | all, integer(), integer()) ->
     {ok, [map()]} | {error, {integer(), binary()}}.
 list(Uid, ProjectId, Status, Page, Size) ->
@@ -204,10 +205,10 @@ legal_transition(From, To) ->
 -spec ensure_task_can_write(integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 ensure_task_can_write(Uid, TaskId) ->
-    case load_task_with_project(TaskId) of
+    case load_task(TaskId) of
         {error, NotFound} ->
             {error, NotFound};
-        {ok, Task, _WsId} ->
+        {ok, Task} ->
             ProjectId = maps:get(<<"project_id">>, Task),
             case project_member_logic:ensure_can_write(Uid, ProjectId) of
                 {ok, _Project} -> {ok, Task};
@@ -215,45 +216,18 @@ ensure_task_can_write(Uid, TaskId) ->
             end
     end.
 
--spec ensure_can_write(integer(), integer()) ->
-    {ok, map()} | {error, {integer(), binary()}}.
-ensure_can_write(Uid, ProjectId) ->
-    case project_logic:detail(Uid, ProjectId) of
-        {error, _} = Err ->
-            %% 非成员 403 / 项目不存在 404 原样透传
-            Err;
-        {ok, Project} ->
-            WsId = maps:get(<<"workspace_id">>, Project),
-            case workspace_logic:ensure_can_create_resource(WsId, Uid) of
-                ok -> {ok, Project};
-                {error, Reason} -> {error, Reason}
-            end
-    end.
-
 -spec ensure_can_read(integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 ensure_can_read(Uid, ProjectId) ->
-    project_logic:detail(Uid, ProjectId).
+    project_member_logic:ensure_can_read(Uid, ProjectId).
 
--spec load_task_with_project(integer()) ->
-    {ok, map(), integer()} | {error, {404, binary()}}.
-load_task_with_project(TaskId) ->
+-spec load_task(integer()) -> {ok, map()} | {error, {404, binary()}}.
+load_task(TaskId) ->
     case project_task_ds:find_by_id(TaskId) of
         Task when is_map(Task), map_size(Task) > 0 ->
-            WsId = task_workspace_id(Task),
-            {ok, Task, WsId};
+            {ok, Task};
         _ ->
             {error, {404, <<"任务不存在"/utf8>>}}
-    end.
-
-%% task 行 → workspace_id（project 表非直挂；经 project_id 二跳，
-%% 数量级恒小走 pkey，无 N+1——单任务加载固定 2 次索引点查）
--spec task_workspace_id(map()) -> integer().
-task_workspace_id(Task) ->
-    ProjectId = maps:get(<<"project_id">>, Task, 0),
-    case project_repo:find_by_id(ProjectId, <<"workspace_id">>) of
-        #{<<"workspace_id">> := WsId} -> WsId;
-        _ -> 0
     end.
 
 -spec valid_title(term()) -> boolean().
