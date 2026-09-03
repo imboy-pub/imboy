@@ -4,7 +4,7 @@
 
 %%% 双体验 v2.5.2 WP4/T6a — project_logic 单元测试
 %%% 覆盖：创建矩阵（Owner/Member 可建、Guest/非成员 403）、creator=owner、
-%%% 列表/详情可见性（active 成员可读）、Guest 只读（写 403）、
+%%% 列表/详情可见性（Workspace Owner 全量、其他成员仅已加入项目）、Guest 只读，
 %%% 状态值域、archived 拒写（稳定错误码 980）、移除成员时 task 冲突清单
 %%% （workspace_logic 复用 workspace_member_repo:unfinished_tasks_of_user）。
 
@@ -41,6 +41,8 @@ base_mocks() ->
             {'ensure_member', 2, fun(?WS_ID, U) ->
                 case U of
                     ?OUTSIDER -> {error, {403, <<"非工作区成员"/utf8>>}};
+                    ?OWNER -> {ok, <<"owner">>};
+                    ?GUEST -> {ok, <<"guest">>};
                     _ -> {ok, <<"member">>}
                 end
             end}
@@ -73,6 +75,11 @@ base_mocks() ->
                 {ok, 1}
             end},
             {'page_by_workspace', 4, fun(_, _, _, _) ->
+                Self ! project_page_all,
+                {ok, #{list => [], page => 1, size => 10, total => 0, total_page => 0}}
+            end},
+            {'page_by_workspace_member', 5, fun(_, Uid, _, _, _) ->
+                Self ! {project_page_member, Uid},
                 {ok, #{list => [], page => 1, size => 10, total => 0, total_page => 0}}
             end},
             {'find_by_id', 2, fun
@@ -229,7 +236,7 @@ create_matrix_test_() ->
     ].
 
 %%% ===================================================================
-%%% 可见性（W0：Project 对 active Workspace Member 可见）
+%%% 可见性（W2：Workspace Owner 全量；其他 active 成员仅见已加入 Project）
 %%% ===================================================================
 
 visibility_test_() ->
@@ -251,9 +258,31 @@ visibility_test_() ->
                 ?assertMatch({error, {403, _}}, project_logic:detail(?OUTSIDER, ?PROJECT_ID))
             end)
         end},
-        {"active member can list", fun() ->
+        {"workspace owner lists all projects", fun() ->
             run_with_mocks(base_mocks(), fun() ->
-                ?assertMatch({ok, #{list := []}}, project_logic:list(?MEMBER2, ?WS_ID, 1, 10))
+                ?assertMatch({ok, #{list := []}}, project_logic:list(?OWNER, ?WS_ID, 1, 10)),
+                receive
+                    project_page_all -> ok
+                after 500 -> ?assert(false)
+                end
+            end)
+        end},
+        {"active member lists only joined projects", fun() ->
+            run_with_mocks(base_mocks(), fun() ->
+                ?assertMatch({ok, #{list := []}}, project_logic:list(?MEMBER2, ?WS_ID, 1, 10)),
+                receive
+                    {project_page_member, ?MEMBER2} -> ok
+                after 500 -> ?assert(false)
+                end
+            end)
+        end},
+        {"guest lists only joined projects", fun() ->
+            run_with_mocks(base_mocks(), fun() ->
+                ?assertMatch({ok, #{list := []}}, project_logic:list(?GUEST, ?WS_ID, 1, 10)),
+                receive
+                    {project_page_member, ?GUEST} -> ok
+                after 500 -> ?assert(false)
+                end
             end)
         end},
         {"non member cannot list (403)", fun() ->

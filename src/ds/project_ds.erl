@@ -10,17 +10,16 @@
 %      触发器兜底 owner active membership）。
 %   2. 更新（单事务）：改名/描述/状态（active|done）——事务内先读
 %      workspace_id → 写守卫锁行 → UPDATE；无物理删除。
-%   3. 查询：find_by_id / 工作区分页列表（稳定排序 created_at DESC, id DESC，
-%      limit 钳制 ≤100）。
+%   3. 查询：find_by_id / 工作区及成员项目分页列表（稳定排序
+%      created_at DESC, id DESC，limit 钳制 ≤100）。
 %
-% W0 硬约束（Gate W）：不建/不读/不写 project_member；无 Pinned/Resources/
-% Activity 聚合查询（defer）；无 project_channel_rel（defer）；
-% project_event 仅在 task 状态流转写入（T6b，经 project_event_ds）。
+% W2 使用 project_member 做项目级授权；project_event 在 task 状态流转写入。
 %%%
 
 -export([create/4]).
 -export([find_by_id/1]).
 -export([page_by_workspace/3]).
+-export([page_by_workspace_member/4]).
 -export([update_fields/2]).
 -export([update_status/2]).
 %% Admin 运营管理查询（双体验 v2.5.2 WP7/T11b）
@@ -91,6 +90,23 @@ page_by_workspace(WsId, Page0, Size0) ->
         Page,
         Size,
         <<"id,workspace_id,name,description,owner_id,status,created_at,updated_at">>
+    ).
+
+%% @doc 当前用户在工作区内已加入的项目列表。
+-spec page_by_workspace_member(integer(), integer(), integer(), integer()) ->
+    {ok, map()} | {error, term()}.
+page_by_workspace_member(WsId, Uid, Page0, Size0) ->
+    Size = max(1, min(Size0, ?MAX_PAGE_SIZE)),
+    Page = max(Page0, 1),
+    project_repo:page_by_workspace_member(
+        WsId,
+        Uid,
+        Page,
+        Size,
+        <<
+            "p.id,p.workspace_id,p.name,p.description,p.owner_id,p.status,"
+            "p.created_at,p.updated_at"
+        >>
     ).
 
 %% @doc 更新项目字段（单事务：先读 workspace_id → 写守卫 → UPDATE）

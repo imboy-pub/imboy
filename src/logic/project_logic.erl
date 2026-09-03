@@ -5,9 +5,8 @@
 %
 % W0 权限模型（计划 §1.4.2 三角色矩阵 + Gate W=W0）：
 %   创建：Workspace Owner/Member ✅；Guest 403（只读）；非工作区成员 403
-%   详情/列表：active Workspace Member 可见（W0：Project 对全部 active 成员开放，
-%             无 project_member、无 /projects/:id/members 端点）
-%   改名/描述/状态：Owner/Member 可写；Guest 403
+%   详情/列表：Workspace Owner 可见全部；其他成员仅见已加入 Project
+%   改名/描述/状态：Project Owner/Member 可写；Guest 只读
 %   删除：无物理删除（仅 status active|done 流转）
 %
 % 创建时 creator 同事务成为 Project Owner（owner_id 列 + DB 复合 FK +
@@ -80,15 +79,20 @@ create_checked(Uid, WsId, Name, Description) ->
 detail(Uid, ProjectId) ->
     project_member_logic:ensure_can_read(Uid, ProjectId).
 
-%% @doc 工作区项目列表（active 工作区成员可读；稳定排序+分页）
+%% @doc 工作区项目列表（Workspace Owner 全量；其他成员仅列 active Project membership）
 -spec list(integer(), integer(), integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 list(Uid, WsId, Page, Size) ->
     case workspace_logic:ensure_member(WsId, Uid) of
         {error, Reason} ->
             {error, Reason};
-        {ok, _Role} ->
-            case project_ds:page_by_workspace(WsId, Page, Size) of
+        {ok, Role} ->
+            PageResult =
+                case Role of
+                    <<"owner">> -> project_ds:page_by_workspace(WsId, Page, Size);
+                    _ -> project_ds:page_by_workspace_member(WsId, Uid, Page, Size)
+                end,
+            case PageResult of
                 {ok, Result} ->
                     {ok, Result};
                 {error, Reason2} ->

@@ -7,8 +7,8 @@
 %   project(id TSID, workspace_id 非空FK, name, description, owner_id, status
 %           active|done, timestamps)
 %   无 links 列（Resources 聚合 defer）；无物理删除（仅 status 流转）。
-% W0 硬约束：不建/不读/不写 project_member；Project 对 active
-% workspace_member 可见；owner 的 active membership 由复合 FK
+% W2 使用 project_member 限制非 Workspace Owner 的项目可见性；owner 的 active
+% workspace membership 由复合 FK
 % fk_project_owner_membership + 触发器 trg_project_owner_membership_active
 % 双兜底（均 DEFERRABLE，允许同事务先建 project 再补 membership）。
 %%%
@@ -18,6 +18,7 @@
 -export([find_by_id/2]).
 -export([find_tx/3]).
 -export([page_by_workspace/4]).
+-export([page_by_workspace_member/5]).
 -export([update_by_id/2]).
 -export([update_fields_tx/3]).
 
@@ -95,6 +96,44 @@ page_by_workspace(WsId, Page, Size, Column) ->
             }};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% @doc 工作区成员已加入的 active membership 项目分页列表。
+-spec page_by_workspace_member(integer(), integer(), integer(), integer(), binary()) ->
+    {ok, map()} | {error, term()}.
+page_by_workspace_member(WsId, Uid, Page, Size, Column) ->
+    Tb = tablename(),
+    Offset = (Page - 1) * Size,
+    From =
+        <<" FROM ", Tb/binary, " p JOIN project_member pm",
+            " ON pm.project_id = p.id AND pm.workspace_id = p.workspace_id",
+            " AND pm.user_id = $2 AND pm.status = 'active'", " WHERE p.workspace_id = $1">>,
+    case elib_pg:one(<<"SELECT COUNT(*) AS count", From/binary>>, [WsId, Uid]) of
+        {ok, #{<<"count">> := Total}} ->
+            DataSql =
+                <<"SELECT ", Column/binary, From/binary,
+                    " ORDER BY p.created_at DESC, p.id DESC LIMIT $3 OFFSET $4">>,
+            case elib_pg:query(DataSql, [WsId, Uid, Size, Offset]) of
+                {ok, Items} ->
+                    TotalPage =
+                        case Total > 0 of
+                            true -> ((Total - 1) div Size) + 1;
+                            false -> 0
+                        end,
+                    {ok, #{
+                        list => Items,
+                        page => Page,
+                        size => Size,
+                        total => Total,
+                        total_page => TotalPage
+                    }};
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            {error, Reason};
+        Other ->
+            {error, {unexpected_count_result, Other}}
     end.
 
 %% @doc 更新项目（自动提交；白名单字段由 logic 层构造）
