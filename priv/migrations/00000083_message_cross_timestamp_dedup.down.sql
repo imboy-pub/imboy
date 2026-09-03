@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS trg_msg_c2c_cross_timestamp_dedup ON public.msg_c2c;
+--;
+DROP TRIGGER IF EXISTS trg_msg_c2g_cross_timestamp_dedup ON public.msg_c2g;
+--;
+DROP TRIGGER IF EXISTS trg_msg_c2s_cross_timestamp_dedup ON public.msg_c2s;
+--;
+DROP TRIGGER IF EXISTS trg_msg_s2c_cross_timestamp_dedup ON public.msg_s2c;
+--;
+DROP FUNCTION IF EXISTS public.fn_message_cross_timestamp_dedup();
+--;
