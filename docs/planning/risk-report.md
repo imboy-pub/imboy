@@ -32,6 +32,7 @@
 | P1-F2 | **CLOSED（代码）** | Admin 的大整数 JSON 解析已由正则替换为字符串感知的线性扫描，仅转换超出 JS 安全整数范围的结构区整数字面量，不再破坏正文中的长数字。提交 `b91a750`。 |
 | P1-T2 | **CLOSED（最小 CI）** | Admin 已增加 Playwright CI，真实执行无需后端凭据的 `setup-flow.spec.ts`；需后端账号的其余 spec 与生产健康检查未冒充 GitHub-hosted runner 证据。提交 `23ca565`、`bea0db5`。 |
 | P1-T4 | **CLOSED（代码）** | Flutter integration workflow 已改用独立仓真实路径、兼容 SDK 版本，并在 macOS job 执行 `integration_test/all_tests.dart`；测试步骤的临时软失败由后续显式失败检查重新收紧。提交 `707fb476`、`75d193ed`。 |
+| P1-Q1 | **CLOSED（安全主链）** | 阅后即焚的本地 DB 销毁失败不再静默放弃，而是记录并进行最多 3 次有界重试；仅 DB 行已不存在或已删除后的 UI 摘除失败允许记录后降级。提交 `4907b280`。其余非安全语义的空 catch 仍按普通代码质量债治理。 |
 
 P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
 
@@ -46,6 +47,8 @@ P1-P6 验证：`index_handler_tests` **11/11 PASS**，覆盖 HTTP/HTTPS 同源�
 P1-F2 验证：`bun test src/lib/safeParseBigIntJson.test.ts` **16/16 PASS**，覆盖字符串内长数字、转义引号、安全整数边界、小数及科学计数法。
 
 P1-T2/T4 验证：当前 workflow 均使用仓库根路径；Admin Playwright 步骤无 `continue-on-error`；Flutter integration 失败会由后续 `Check integration result` 以非零退出。这里是静态工作流闭环，不代表本轮已取得远端 GitHub Actions PASS 或真机 PASS。
+
+P1-Q1 验证：`burn_delete_retry_test.dart` 与 `burn_sender_countdown_test.dart` 合计 **14/14 PASS**，覆盖失败重试、耗尽停止、发送方/接收方倒计时边界。该闭环针对原报告中的阅后即焚安全主链，不代表全仓所有空 catch 已清零。
 
 P1-A2 验证：`make compile` PASS；`adm_setup_logic_tests` **9/9 PASS**；setup 路径/IP 边界 **6/6 PASS**；原认证中间件 **23/23 PASS**；代码审查 **0 HIGH / 0 MEDIUM**。尚缺独立空库的双连接并发自动回归，不把单元测试冒充该外部证据。
 
