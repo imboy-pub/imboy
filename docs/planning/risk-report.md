@@ -20,10 +20,14 @@
 | P1-C2 | **CLOSED（代码）** | Flutter 失败消息恢复改用 `(created_at, auto_id)` keyset 分页，SQL 仅查询本人 `sending/pendingRetry`，异常向上报告；不再止于最近 100 条，也不因 OFFSET 集合变化漏项。重试相关套件 **36/36 PASS**，提交 `94328fff`。 |
 | P1-C3 | **CLOSED（代码）** | SQLite 升降级现由 migration manifest 与 planner 生成完整路径；缺失版本边抛出 `MissingMigrationPathException` / `MissingMigrationScriptException` 并返回 failure，不再以空计划静默成功。 |
 | P1-D2 | **CLOSED（代码）** | PostgreSQL 连接入池前设置会话级 `statement_timeout`，默认 **15000ms**；配置仅接受 100–300000ms 整数，初始化失败即关闭连接并拒绝入池。目标 EUnit **2/2 PASS**，真实本地 PostgreSQL `SHOW statement_timeout` 返回 `15s`，提交 `3fc5fc67`。该闭环不等于生产查询容量证明。 |
+| P1-D3 | **OPEN（降级 P2）** | 当前 `{raw, ...}` / `__raw` 调用均为仓内固定 SQL 片段，未发现请求参数直达 raw 的现行利用链；但构造器仍无法从类型上区分 identifier 与可信表达式。一次性全局校验会破坏现有 JOIN、`CASE`、`COALESCE` 查询，须先迁移到显式 trusted-fragment API，不能以不兼容补丁冒充闭环。 |
+| P1-P1 | **CLOSED（代码）** | `imboy_codec` 已对 protobuf 无法无损表达的方向或控制字段回退 JSON，`C2S_SERVER_ACK` 的 `type` / `id` / `in_reply_to` 不再蒸发；`imboy_codec_tests` **24/24 PASS**。 |
 
 P0-2 验证：`make compile` PASS；`user_server_tests` **28/28 PASS**；代码审查无 HIGH/MEDIUM。全量复跑为 **6733 pass / 1 failed**，唯一失败 `workspace_archive_tests` 与本变更无调用链，随后该模块单独复跑 **11/11 PASS**，按共享 mock 隔离波动记录，不把本轮全量记为全绿。
 
 P1-D2 验证：`make compile` PASS；`imboy_pg_connection_tests` **2/2 PASS**；代码审查无 HIGH/MEDIUM。真实本地 PostgreSQL 仅验证新建连接的会话参数生效，未执行生产等价慢查询、连接池耗尽或容量压测。
+
+P1-D3 复核：试验性全局 identifier 校验虽能拒绝恶意片段，但确定性破坏用户分页与多处 JOIN 查询，已完整撤销且未提交。后续修复必须先区分严格结构参数和显式可信 SQL 表达式，并覆盖真实 repo/DS 分页路径。
 
 整体发布判定不变：**`release-candidate / BLOCKED(H2 残余, H3, H4, P0-4 法务)`**。本地代码与测试不能替代第二台真机/Push/真人理解测试、生产等价脱敏演练或远端发布授权。
 
