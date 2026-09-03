@@ -8,7 +8,7 @@
 %%% rfc3339 codec 仅覆盖 timestamptz，date 列传 binary 会崩）、
 %%% find_by_id / find_tx 回读（due_date 读路径归一为 ISO YYYY-MM-DD
 %%% binary——ZC-08 缺陷立项修复契约）、list_by_project 分页与 status 过滤、
-%%% update_fields_tx 更新、find_project_member(_tx) 只读查询。
+%%% update_fields_tx 更新、find_project_member_tx 事务内只读查询。
 
 repo_roundtrip_test_() ->
     ?TEST_WITH_CONN(fun(Conn) ->

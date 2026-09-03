@@ -76,7 +76,7 @@ drain_msgs() ->
 project_row() ->
     #{<<"id">> => ?PROJECT_ID, <<"workspace_id">> => ?WS_ID, <<"owner_id">> => ?OWNER}.
 
-%% project_member 行（find_project_member 返回）
+%% project_member 行（DS 事务权限 mock）
 pm_row(Status) ->
     #{
         <<"project_id">> => ?PROJECT_ID,
@@ -430,7 +430,6 @@ link_tx_mocks(Extra) ->
                 {'update_fields_tx', 3, fun(_Conn, _Pid, _Data) -> {ok, 1} end}
             ]},
             {project_channel_rel_repo, [
-                {'find_project_member', 2, fun(_Pid, _Uid) -> pm_row(<<"active">>) end},
                 {'find_channel_tx', 3, fun(_Conn, _Chid, _Col) -> ChannelRow end},
                 {'insert_on_conflict_tx', 5, fun(_Conn, _Ws, _Pid, _Chid, _By) ->
                     %% self() 在 mock 调用时求值 = 测试用例进程（勿在构建期闭包捕获）
@@ -666,9 +665,6 @@ sql_bound_mocks() ->
         ]},
         {project_repo, [
             {'find_by_id', 2, fun(?PROJECT_ID, _) -> project_row() end}
-        ]},
-        {project_channel_rel_repo, [
-            {'find_project_member', 2, fun(_Pid, _Uid) -> pm_row(<<"active">>) end}
         ]},
         {workspace_member_repo, [
             {'find', 3, fun(_Ws, _Uid, _Col) ->

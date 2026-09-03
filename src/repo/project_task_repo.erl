@@ -5,8 +5,8 @@
 %
 % 表结构：project_task(id TSID, project_id FK, title, creator_id, assignee_id
 %   可空, status todo|doing|review|done, sort, timestamps)
-% W0：assignee 必须是同 workspace 的 active workspace_member（应用层同事务
-% 校验；schema 仅保留 user 存在性外键）。轻量执行实体：仅
+% W2：assignee 必须同时是 active workspace_member 与 active project_member
+%（DS 层同事务校验；schema 仅保留 user 存在性外键）。轻量执行实体：仅
 % title/assignee/status/排序，禁甘特图/依赖/估点/子任务（§三 边界）。
 %%%
 

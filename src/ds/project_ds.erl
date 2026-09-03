@@ -236,7 +236,7 @@ admin_task_status_stats(ProjectId) ->
     end.
 
 %% @doc 项目 assignee 概览（详情页只读：每人任务总数/已完成数，前 Limit 名）
-%% W0 无 project member——只展示 assignee 聚合，不提供成员写操作。
+%% 这里只聚合 assignee；成员治理由 Project Member 模块负责。
 -spec admin_assignee_overview(integer(), integer()) -> {ok, [map()]} | {error, term()}.
 admin_assignee_overview(ProjectId, Limit) ->
     UTb = user_repo:tablename(),

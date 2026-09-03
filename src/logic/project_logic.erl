@@ -3,15 +3,14 @@
 %%%
 % project_logic 项目业务逻辑（双体验 v2.5.2 WP4/T6a）
 %
-% W0 权限模型（计划 §1.4.2 三角色矩阵 + Gate W=W0）：
+% W2 权限模型：
 %   创建：Workspace Owner/Member ✅；Guest 403（只读）；非工作区成员 403
 %   详情/列表：Workspace Owner 可见全部；其他成员仅见已加入 Project
 %   改名/描述/状态：Project Owner/Member 可写；Guest 只读
 %   删除：无物理删除（仅 status active|done 流转）
 %
-% 创建时 creator 同事务成为 Project Owner（owner_id 列 + DB 复合 FK +
-% 可延迟触发器兜底 active membership；无 project_member 表行——W0 的
-% "Owner"语义只体现在 project.owner_id 列 + workspace_member 角色上下文）。
+% 创建时 creator 同事务成为 Project Owner，并写入 active project_member；
+% owner_id、复合 FK 与可延迟触发器共同兜底 Owner membership。
 %
 % 归档写守卫：archived workspace 拒写（workspace_guard，稳定错误码 980）。
 %
@@ -170,8 +169,7 @@ update_status(Uid, ProjectId, Status) ->
 %% 权限/校验辅助
 %% ===================================================================
 
-%% @doc 项目写权限（编辑/状态流转）：Owner/Member ✅；Guest/非成员 403
-%% （§1.4.2 矩阵"创建 Project；编辑有权 Project"行——W0 全部 active 成员有权）
+%% @doc 项目写权限（编辑/状态流转）：Project Owner/Member；Guest/非成员 403
 -spec ensure_can_write(integer(), integer()) ->
     {ok, map()} | {error, {integer(), binary()}}.
 ensure_can_write(Uid, ProjectId) ->
@@ -237,7 +235,7 @@ admin_page(Page, Size, Status, Keyword) ->
     end.
 
 %% @doc Admin 项目详情（只读：基本信息 + workspace 概要 + task 状态分布 + assignee 概览）
-%% W0 无 project member——不展示成员表，仅 assignee 聚合（Admin 不提供成员增删）。
+%% Admin 详情保留 assignee 聚合；成员治理由独立 Project Member API 提供。
 -spec admin_detail(integer()) -> {ok, map()} | {error, {404, binary()}}.
 admin_detail(ProjectId) ->
     case load_project(ProjectId) of

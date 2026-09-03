@@ -10,17 +10,12 @@
 %
 % 幂等 UPSERT 语义由应用层实现：INSERT ... ON CONFLICT DO NOTHING，
 % 返回实际插入行数（1=新建 / 0=已存在）。
-%
-% ⚠️ 整合点（ZC-05）：find_project_member/2 是 project_member 的最小只读
-% 查询（project_member_repo 由 ZC-02 产出，本卡不得依赖其模块）；
-% ZC-05 统一注册路由时应将本函数迁至 project_member_repo 并改调用方。
 %%%
 
 -export([tablename/0]).
 -export([insert_on_conflict_tx/5]).
 -export([delete_tx/3]).
 -export([find_channel_tx/3]).
--export([find_project_member/2]).
 -export([page_channels_by_project/3]).
 
 -ifdef(EUNIT).
@@ -79,13 +74,6 @@ find_channel_tx(Conn, ChannelId, Column) ->
         _ ->
             #{}
     end.
-
-%% @doc 查询用户在项目下的成员关系行（空 map = 无关系）
-%% ZC-05 收敛：转发 project_member_repo:find_row/2 单点实现；
-%% 函数名保留以稳定既有调用点与 mock。
--spec find_project_member(integer(), integer()) -> map().
-find_project_member(ProjectId, Uid) ->
-    project_member_repo:find_row(ProjectId, Uid).
 
 %% @doc 项目关联频道列表（JOIN channel 元数据；稳定排序 created_at DESC,
 %% channel_id DESC；固定 2 条 SQL：count + data，无 N+1）

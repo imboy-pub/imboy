@@ -4,7 +4,7 @@
 
 %%% 双体验 v2.5.2 WP4/T6b — project_task_logic 单元测试
 %%% 覆盖：四态状态机（前向一步/回退任意/跳级与同态非法）、
-%%% assignee 非 active workspace member 400（W0）、assignee 变更同校验、
+%%% assignee 非 active workspace/project member 400、assignee 变更同校验、
 %%% create 语义幂等、状态事件同事务（同一 Conn 写 task_status 事件）、
 %%% 非法流转无孤儿事件、Guest 只读 403、archived 拒写 980。
 

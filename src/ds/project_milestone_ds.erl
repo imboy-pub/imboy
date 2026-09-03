@@ -279,7 +279,7 @@ ensure_project_ctx_tx(Conn, ProjectId) ->
 %% 事务内写权限（ZC-03 语义）：
 %%   1. 必须是同 workspace 的 active workspace_member；role=guest 只读 403；
 %%   2. 且必须是 Project Owner 或 active Project Member，否则 403。
-%% project_member 查询为只读直查（ZC-05 统一到 project_member_logic）。
+%% project_member 查询复用 project_member_repo，并保持在当前事务连接内。
 -spec ensure_writer_tx(any(), integer(), integer(), integer(), integer()) -> ok | no_return().
 ensure_writer_tx(Conn, WsId, ProjectId, OwnerId, Uid) ->
     case workspace_member_repo:find_tx(Conn, WsId, Uid, <<"role,status">>) of

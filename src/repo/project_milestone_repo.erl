@@ -18,9 +18,8 @@
 % YYYY-MM-DD binary（normalize_row/1）——tuple 直出会被响应层格式化成
 % "{2026,9,30}" 串（ZC-08 缺陷立项修复）；find_tx 不归一（内部窄列）。
 %
-% W2 过渡：find_project_member_tx/4、find_project_member/3 是 project_member
-% 的只读查询（权限校验用，暂寄本模块）——project_member_repo 由 ZC-02 并行
-% 产出，ZC-05 整合时迁往该模块并统一到 project_member_logic。
+% 事务写权限通过 find_project_member_tx/4 转发 project_member_repo，确保
+% 与里程碑写入使用同一连接。
 %%%
 
 -export([tablename/0]).
@@ -34,7 +33,6 @@
 -export([update_fields_tx/3]).
 -export([mark_reached_tx/3]).
 -export([find_project_member_tx/4]).
--export([find_project_member/3]).
 -export([due_date_to_iso/1]).
 
 -ifdef(EUNIT).
@@ -173,11 +171,6 @@ mark_reached_tx(Conn, MilestoneId, Data) ->
 -spec find_project_member_tx(any(), integer(), integer(), binary()) -> map().
 find_project_member_tx(Conn, ProjectId, Uid, Column) ->
     project_member_repo:find_tx(Conn, ProjectId, Uid, Column).
-
-%% @doc 自动提交查询 project_member 行（ZC-05 收敛：转发 project_member_repo）
--spec find_project_member(integer(), integer(), binary()) -> map().
-find_project_member(ProjectId, Uid, Column) ->
-    project_member_repo:find(ProjectId, Uid, Column).
 
 %% @doc 读路径归一：date 列 due_date 经 epgsql 原生 codec 回读为 {Y,M,D}
 %% tuple，直出会被响应层格式化成 "{2026,9,30}" 串（ZC-08 缺陷立项），
