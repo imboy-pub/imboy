@@ -621,3 +621,12 @@ pathspec: src/imboy_router.erl src/ds/project_ds.erl src/repo/project_member_rep
 - **解阻塞批次W2R3（agent 执行，16 行解阻塞）**：簇 A 无工作区账号 F（at20260831f）实建「AT-己-临时」区，create_page 10 行+picker/members/overview 空态 9 行通过；簇 B 归档流转 4 行通过（WS2 归档→横幅+按钮禁用+980 透传+UI 恢复闭环→已恢复 active）；簇 C 断网页面级错误态 3 行经 WaveA 修复后重试仍不可达，如实维持；簇 D task_form 980 真机透传闭环（400/403 被 UI 只读门控前置不可达）。47→31 条阻塞（余量均为故障注入/结构性空场景/真手指手势类）。
 - **调试教训**：修复后 HTTP 行为不变排查 1 小时——make run 加载 `_rel/imboy` release 且 erlang.mk 增量编译未重编新源码，多次"重启"因节点名/端口被老 beam 占而未生效；正解=确认老 beam 死亡+看到 ERLC 行；release 后台运行用 `bin/imboy daemon`（不会被进程组回收）。
 - **终态**：app 1725 行=无待办 1468+阻塞 257（待修复 0，bug 210/204/6 恒等式 ✓）；admin 588 行=无待办 575+阻塞 13（待修复 0，bug 50/50/0）。全程未 push；用户并行提交（47461adc/ea682e31 壳导航收敛+成员页重设计）已合流无冲突。app 提交：a4171201/45b4bed5/45bc8b45~4eb4fc8c(批次1)/486e062c/e72b9c71/35b0feee/c713d198/ef82d41b(批次3)/d01acab2/61286df8/558d8c0a/15a5a0e4/3e711ca3/4a60d8f7；admin 提交：6446c2a/96dfcc8~43d1972(批次1)/0304979/e5fba26；imboy 提交：f019e2c6。
+
+### 当前 HEAD 权限收敛与全量回归卡（2026-09-03，「继续」驱动）
+
+- **基线/保护**：imboy HEAD=`6ac390f9`，领先 `origin/main` 253，工作树在写本卡前干净；imboyadmin 干净；imboyapp 有 22 项用户暂存改动，完整保留且本卡未触碰。
+- **已提交修复**：`4a3815e8` Workspace Project 列表按 Owner/active Project Member 过滤且 COUNT fail-closed；`672e9828` Task 全路径统一成员权限；`cb4faa80` Channel 复用共享权限；`a204e723` Milestone 复用共享权限并保留事务写守卫；`6ac390f9` 删除旧重复 helper/mocks 并更新 W2 注释。
+- **权限终态**：Workspace Owner 可治理读取 Workspace 内项目资源，但非 active Project Member 不可内容写；普通成员只能列出和访问其 active `project_member` 对应项目。原 §6 ZC-05 的“Owner 治理读待拍板”已由本卡实现覆盖。
+- **定向验证**：Channel Logic 37/37、Milestone Repo 6/6、Milestone DS 15/15、Task Logic 27/27，`make compile` 与 `git diff --check` 均 PASS。
+- **全量验证**：当前 HEAD 执行 `make eunit-local`，**All 6720 tests passed**，exit 0。此前 34/59 失败为历史快照，不再是当前基线。
+- **门禁判定**：本地权限与自动化缺口已闭环；整体仍为 **`release-candidate / BLOCKED(H2 残余, H3, H4)`**。第二台真机实时收发/Push、FCM/APNs 外部凭据、3 人理解测试、生产等价脱敏演练及 push/发布均未执行、未获新证据。

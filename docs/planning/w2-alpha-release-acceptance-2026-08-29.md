@@ -76,3 +76,14 @@
 
 **当前 = `release-candidate / BLOCKED(H2,H3,H4)`。**
 自动化门全绿、独立审查 PASS、迁移演练两轮独立通过、Demo 双遍全绿；真机双人 Demo、真人 30 秒理解测试、生产等价迁移演练、干净部署、push/tag 授权全部待人工（ZC-12）。在这些证据产生之前，任何人不得声称 Alpha Release 正式发布。
+
+## 八、当前 HEAD 勘误（2026-09-03）
+
+本报告第一至七节保留 2026-08-29 的历史验收快照；当前事实以本节与执行台账最新追加卡为准。
+
+- 后端 HEAD 为 `6ac390f9`，本轮 5 个提交已落库、工作树干净；“三仓均未 commit”和旧 Base SHA 不再代表当前状态。
+- Workspace Owner 的治理读取语义已统一：可读取 Workspace 内 Project/Milestone/Channel 治理资源；内容写仍要求 active Project Member。原“待用户拍板”限制已解除。
+- Project 列表、Task、Channel、Milestone 的成员权限已在共享权限层收敛；COUNT 失败按 fail-closed 处理；旧重复权限 helper 已删除。
+- 当前后端全量 `make eunit-local`：**6720 passed / 0 failed**（exit 0）；此前 C1/C2 或 34/59 失败数字仅是历史基线，不得用于描述当前 HEAD。
+- `imboyapp` 当前存在 22 项用户暂存改动，本轮未修改；`imboyadmin` 工作树干净。
+- Release 判定仍为 **`release-candidate / BLOCKED(H2 残余, H3, H4)`**；本地代码和测试不能替代第二台真机、Push 外部凭据、3 人理解测试、生产等价演练及对外发布授权。
