@@ -129,14 +129,7 @@ multi_domain_e2e_test_() ->
             %% 注销申请（过期）
             ok = seed_expired_request(Uid),
             ok = ensure_sweeper(),
-            R = user_deletion_logic:cleanup_now(),
-            io:format(user, "~nDBG_CLEANUP=~p~n", [R]),
-            io:format(
-                user,
-                "DBG_USER_ROWS=~p~n",
-                [elib_pg:query(<<"SELECT id, status FROM public.\"user\" WHERE id = $1">>, [Uid])]
-            ),
-            {ok, 1} = R,
+            {ok, 1} = user_deletion_logic:cleanup_now(),
 
             %% 用户主行/消息/E2EE 密钥已删；群已转移
             {ok, []} = elib_pg:query(
@@ -159,11 +152,6 @@ multi_domain_e2e_test_() ->
             {ok, #{<<"status">> := <<"completed">>}} =
                 user_deletion_job_repo:find_by_user(Uid)
         after
-            io:format(
-                user,
-                "~nDBG_JOB=~p~n",
-                [user_deletion_job_repo:find_by_user(Uid)]
-            ),
             cleanup_user(Uid),
             cleanup_user(Member),
             _ = elib_pg:query(<<"DELETE FROM public.\"group\" WHERE id = $1">>, [GroupId])

@@ -173,14 +173,19 @@ deletion_status(Uid) ->
     GraceDays = application:get_env(imboy, user_deletion_retention_days, 60),
     case user_deletion_request_repo:find_latest(Uid) of
         {ok, undefined} ->
-            {ok, #{status => not_requested, grace_days => GraceDays}};
+            {ok, #{
+                status => not_requested,
+                grace_days => GraceDays,
+                retained_categories => retained_categories()
+            }};
         {ok, Row} ->
             Status = maps:get(<<"status">>, Row),
             ReqAt = maps:get(<<"requested_at">>, Row),
             Base = #{
                 status => Status,
                 requested_at => ReqAt,
-                grace_days => GraceDays
+                grace_days => GraceDays,
+                retained_categories => retained_categories()
             },
             case Status of
                 <<"requested">> ->
@@ -191,6 +196,12 @@ deletion_status(Uid) ->
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
+
+%% @doc 删除时保留的数据类别（D-02 data-disposition 决策的对外呈现），
+%% 供 D-04 端上"保留类别公示"与 Web 说明页共用同一事实源。
+-spec retained_categories() -> [binary()].
+retained_categories() ->
+    [<<"audit_logs">>, <<"financial_records">>].
 
 %% @doc 计算预期注销时间 = requested_at + 宽限期天数
 %% pg_conf 的 rfc3339_bin codec 下时间戳为二进制串，走 elib_dt 平移

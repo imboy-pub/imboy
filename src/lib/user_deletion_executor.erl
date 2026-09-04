@@ -191,12 +191,6 @@ execute_main_tx(Conn, Uid) ->
         [Uid]
     ),
     ok = user_ds:delete_all_related_data(Conn, Uid),
-    {ok, ULeft} = elib_pg:query(
-        Conn,
-        <<"SELECT id FROM public.\"user\" WHERE id = $1">>,
-        [Uid]
-    ),
-    io:format(user, "~nDBG_MAIN_USER_LEFT=~p TB=~p~n", [ULeft, user_repo:tablename()]),
     lists:foreach(
         fun({Table, Cols}) ->
             delete_any_of(Conn, Table, Cols, Uid)
@@ -212,7 +206,6 @@ execute_main_tx(Conn, Uid) ->
 %% 通用所有权转移：对每个 owned 对象找继任 → 转移；无继任 → Close
 transfer_generic(Conn, Uid, SuccessorSql, OwnedSql, Transfer, Close) ->
     {ok, Owned} = elib_pg:query(Conn, OwnedSql, [Uid]),
-    io:format(user, "~nDBG_TRANSFER owned=~p~n", [Owned]),
     lists:foreach(
         fun(#{<<"id">> := ObjectId}) ->
             case elib_pg:query(Conn, SuccessorSql, [Uid]) of

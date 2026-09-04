@@ -178,7 +178,6 @@ do_cleanup_internal(State) ->
 %% @doc 一轮编排：补建任务 → 认领 → 执行，返回完成数
 -spec run_cycle(pos_integer(), pos_integer()) -> {ok, non_neg_integer()} | {error, term()}.
 run_cycle(RetentionDays, BatchSize) ->
-    io:format(user, "~nDBG_CYCLE ret=~p batch=~p~n", [RetentionDays, BatchSize]),
     ok = ensure_jobs(RetentionDays, BatchSize),
     ClaimedBy = unicode:characters_to_binary(
         "node|" ++ atom_to_list(node())
@@ -189,7 +188,6 @@ run_cycle(RetentionDays, BatchSize) ->
 ensure_jobs(RetentionDays, BatchSize) ->
     case user_ds:find_expired_logout_users(RetentionDays, BatchSize) of
         {ok, Rows} ->
-            io:format(user, "~nDBG_ENSURE rows=~p~n", [Rows]),
             lists:foreach(
                 fun(#{<<"id">> := Uid}) ->
                     ensure_job(Uid)
