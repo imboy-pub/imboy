@@ -2,18 +2,18 @@
   "artifacts": {
     "admin": {
       "javascript_files": 71,
-      "path": "/Users/leeyi/project/imboy.pub/imboyadmin/dist",
+      "path": "/private/tmp/ws-matrix/imboyadmin/dist",
       "sha256": "de4ed30d5205c4b5f9b73f2a1f48173fcb6f0d4d203b2679d22fdc0ded1fecb4"
     },
     "backend": {
-      "path": "/Users/leeyi/project/imboy.pub/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.71/ebin/imboy_feature.beam",
-      "sha256": "598742fc8a7122adb0fe5dc8c6e2d5d988f51c85b583f2417876a1de7149d3f8",
-      "size": 9400
+      "path": "/private/tmp/ws-matrix/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.71/ebin/imboy_feature.beam",
+      "sha256": "c5b4ab8f843fcf15b0c1430f0b07f7601a9da26c42dde10c2a3c07b7a9191137",
+      "size": 9380
     },
     "flutter": {
-      "path": "/Users/leeyi/project/imboy.pub/imboyapp/build/app/outputs/flutter-apk/app-release.apk",
-      "sha256": "825d6ab1f4aeee8c675c623443e0744e38fbea9906a80a75273ceac2f9cdb9a4",
-      "size": 169632028
+      "path": "/private/tmp/ws-matrix/imboyapp/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "9d767ad4a7756cd30078bff385c184e70e0afc530cf58a916e961b8b6cce0af5",
+      "size": 168254865
     }
   },
   "compiled_features": [
@@ -34,18 +34,18 @@
   "repositories": {
     "imboy": {
       "dirty": true,
-      "head": "275fe257f58df41c98975c9345e09de8e288c91e",
-      "worktree_sha256": "deac44ae980ee1f32be0f0bbe3e8d73bb5cd3f35861f388874f09ae5b99f60df"
+      "head": "781146dcbbaca67a96b9a71e8b515c6cf3ed2b93",
+      "worktree_sha256": "68944d2909182c68346504a515a31b14a05b3c76c74afb7b79cfa279a89f83d4"
     },
     "imboyadmin": {
-      "dirty": true,
-      "head": "10dedd0d851e3a147c807455b32fb1502fcd2233",
-      "worktree_sha256": "ec088965726a5c54e48aa11f3afca66f924223b27ee763962cc27e5295c5d8e5"
+      "dirty": false,
+      "head": "7b201fc0ff5f3f55348b8e1b254a67939a663d85",
+      "worktree_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     "imboyapp": {
       "dirty": true,
-      "head": "ffbe74bbc7db326c877c40b6edff0215edbf74b2",
-      "worktree_sha256": "51bdfb9c703497ee45e48b72a97371543bdce5c1456c9d5a1a554ff62cc6a02d"
+      "head": "c0ef0983426fe4874ae2eaeb6a769e8923b5c68c",
+      "worktree_sha256": "7504ff7f3328c7ac2e7e56b6ff8cbcf2cc75f4ac096aa1c6a7eedf4bb13f4a31"
     }
   },
   "schema_version": 1

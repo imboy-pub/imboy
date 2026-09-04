@@ -2,18 +2,18 @@
   "artifacts": {
     "admin": {
       "javascript_files": 53,
-      "path": "/Users/leeyi/project/imboy.pub/imboyadmin/dist",
+      "path": "/private/tmp/ws-matrix/imboyadmin/dist",
       "sha256": "c713dfd1664ecaf05546cf11f1a81143ca9eb571b83d5188bdbfd04ac7ff64da"
     },
     "backend": {
-      "path": "/Users/leeyi/project/imboy.pub/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.71/ebin/imboy_feature.beam",
-      "sha256": "8996ca558e1481b92cff7a82627d33662ff1448b23f343151205b241cb8ab08b",
-      "size": 9056
+      "path": "/private/tmp/ws-matrix/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.71/ebin/imboy_feature.beam",
+      "sha256": "d156d7ea18546bbd1abc92f3982b7eecaa385a75192c34bb3c63a97d10702976",
+      "size": 9032
     },
     "flutter": {
-      "path": "/Users/leeyi/project/imboy.pub/imboyapp/build/app/outputs/flutter-apk/app-release.apk",
-      "sha256": "26669ae877690d5a7ff074b8250c7f0129bc1e5543ca9008827676e73ff768f6",
-      "size": 131461074
+      "path": "/private/tmp/ws-matrix/imboyapp/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "0028fef921304cf83a093284cf2543842fa0157ac44bd5a64196554b716434df",
+      "size": 167204634
     }
   },
   "compiled_features": [
@@ -24,18 +24,18 @@
   "repositories": {
     "imboy": {
       "dirty": true,
-      "head": "275fe257f58df41c98975c9345e09de8e288c91e",
-      "worktree_sha256": "2b8ed8c0136b8307f7c1306b1c3622dcaf8cb632285e77924ed37dd45a314c4e"
+      "head": "781146dcbbaca67a96b9a71e8b515c6cf3ed2b93",
+      "worktree_sha256": "b1584d974759b14fcdba1389d60cd5f61b6b10f9e8e06096914961069ff2994d"
     },
     "imboyadmin": {
       "dirty": true,
-      "head": "10dedd0d851e3a147c807455b32fb1502fcd2233",
-      "worktree_sha256": "b8a900c08b50195e3476b4acb5063d32a0dd9d718be8b5a167147af69e2e7bbe"
+      "head": "7b201fc0ff5f3f55348b8e1b254a67939a663d85",
+      "worktree_sha256": "7c4845089873259ed440a02a6a6f6342fe6ca00c00751025561c44b7c9027f4f"
     },
     "imboyapp": {
       "dirty": true,
-      "head": "ffbe74bbc7db326c877c40b6edff0215edbf74b2",
-      "worktree_sha256": "295ced5a50a2f9fda1af63e4e0383570f43d44ff2091886989a4fed5ad0e758e"
+      "head": "c0ef0983426fe4874ae2eaeb6a769e8923b5c68c",
+      "worktree_sha256": "0c1bb4295d1ae8bbfa68d79ebf4dd6aa7af2b1d9e49cd3589e3a2bc0522e38e7"
     }
   },
   "schema_version": 1
