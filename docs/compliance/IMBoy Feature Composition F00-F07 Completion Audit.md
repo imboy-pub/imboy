@@ -11,7 +11,7 @@ Overall status: **PARTIAL**. The implementation and local release matrix are mat
 |---|---|---|---|
 | F-00 | PASS | Inventory covers Base, ten catalog features and published/shared areas with owners, dependencies and code references | None for the inventory baseline |
 | F-01 | PASS | One versioned canonical manifest; Base-only/full-selected and invalid fixtures | None |
-| F-02 | PASS | Deterministic generator, dependency validation, stale check and shared three-client hash/schema contract; 22 current Python checks with F-07 verifier | None |
+| F-02 | PASS | Deterministic generator, dependency validation, stale check and shared three-client hash/schema contract; 23 current Python checks with F-07 verifier | None |
 | F-03 | PARTIAL | Base/Full releases assemble; route/worker registration and effective-feature tests pass; temporary Cowboy proves manifest HTTP 200 and Base optional-route HTTP 404 | Release boot/core-flow evidence and authenticated REST/WS acceptance against a Base release process are absent; optional Beam modules remain in the shared OTP application under the documented stop rule |
 | F-04 | PARTIAL | Base/selected import-root evidence, route tests, Base/Full arm64 release APKs and complete manifest-contract fail-closed validation | Authenticated navigation/API flow on a physical device is absent; E2EE remains a documented shared packaging ceiling |
 | F-05 | PARTIAL | Base/selected production chunks, route/menu gates and complete manifest-contract failure, tests/typecheck/lint | Logged-in Backend-integrated menu/direct-URL/API behavior under real RBAC is absent |

@@ -15,7 +15,7 @@ Flutter debug APKs store Dart code in `kernel_blob.bin`; AOT APKs store it in `l
 
 | Check | Result |
 |---|---|
-| Generator and artifact verifier unit tests | PASS, 22/22 |
+| Generator and artifact verifier unit tests | PASS, 23/23 |
 | Backend app manifest tests | PASS, 3/3 |
 | Cross-client manifest compatibility | PASS; both app and Admin require hash, schema and `compiled_features`; missing, malformed or server-superset contracts fail closed |
 | Base-only matrix | PASS; only `core`, manifest `sha256:e943ee9541241206e6f0b91502ddb173f06c086e83195c7a7cc95de2f4623712` |
