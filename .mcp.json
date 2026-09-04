@@ -2,13 +2,13 @@
   "mcpServers": {
     "local_imboy": {
       "command": "npx",
-      "args": ["-y", "@neverinfamous/postgres-mcp", "--tool-filter", "codemode"],
+      "args": ["-y", "@neverinfamous/postgres-mcp@3.1.0", "--tool-filter", "codemode"],
       "env": {
-        "POSTGRES_HOST": "127.0.0.1",
-        "POSTGRES_PORT": "4323",
-        "POSTGRES_USER": "imboy_user",
-        "POSTGRES_PASSWORD": "abc54321",
-        "POSTGRES_DATABASE": "imboy_v1"
+        "POSTGRES_HOST": "${POSTGRES_HOST:-127.0.0.1}",
+        "POSTGRES_PORT": "${POSTGRES_PORT:-4323}",
+        "POSTGRES_USER": "${POSTGRES_USER:-imboy_user}",
+        "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD}",
+        "POSTGRES_DATABASE": "${POSTGRES_DATABASE:-imboy_v1}"
       }
     }
   }
