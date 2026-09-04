@@ -1,0 +1,84 @@
+service:
+  env: hosted
+  secret: ${UPTRACE_SERVICE_SECRET}
+
+site:
+  url: https://${UPTRACE_DOMAIN}
+  ingest_url: https://${UPTRACE_DOMAIN}
+
+listen:
+  http:
+    addr: :80
+  grpc:
+    addr: :4317
+
+seed_data:
+  update: true
+  delete: false
+  users:
+    - key: imboy_admin
+      name: IMBoy Admin
+      email: ${UPTRACE_ADMIN_EMAIL}
+      password: ${UPTRACE_ADMIN_PASSWORD}
+      email_confirmed: true
+  orgs:
+    - key: imboy
+      name: IMBoy
+  org_users:
+    - key: imboy_admin_membership
+      org_key: imboy
+      user_key: imboy_admin
+      role: owner
+  projects:
+    - key: imboy
+      name: IMBoy
+      org_key: imboy
+  project_tokens:
+    - key: imboy_token
+      project_key: imboy
+      token: ${UPTRACE_PROJECT_TOKEN}
+  project_users:
+    - key: imboy_admin_access
+      project_key: imboy
+      org_user_key: imboy_admin_membership
+      perm_level: admin
+
+ch_cluster:
+  cluster: uptrace1
+  replicated: false
+  distributed: false
+  shards:
+    - replicas:
+        - addr: uptrace_clickhouse:9000
+          database: uptrace
+          user: uptrace
+          password: ${UPTRACE_CLICKHOUSE_PASSWORD}
+          dial_timeout: 3s
+          write_timeout: 5s
+          max_retries: 3
+          max_execution_time: 15s
+
+pg:
+  addr: imboy_pg18:5432
+  user: uptrace
+  password: ${UPTRACE_PG_PASSWORD}
+  database: uptrace
+
+ch_schema:
+  compression: ZSTD(1)
+
+redis_cache:
+  addrs:
+    1: uptrace_redis:6379
+  password: ${UPTRACE_REDIS_PASSWORD}
+  db: 0
+
+mailer:
+  smtp:
+    enabled: false
+
+self_monitoring:
+  dsn: http://${UPTRACE_PROJECT_TOKEN}@uptrace:80?grpc=4317
+
+logging:
+  level: INFO

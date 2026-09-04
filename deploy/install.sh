@@ -16,9 +16,9 @@
 #   bash install.sh --edition community --admin-phone 13800138000 \
 #          --admin-password 'S3curePass2026' --yes
 #
-# 设计：机器能自动的全自动（密钥、RSA、证书、Garage 凭据），只让人填机器不可能
-#      知道的（两个域名 + 证书通知邮箱）。首次运行会在生成 .env 后停下来等人填这三项。
-# 幂等：.env 已存在则不动；密钥已生成（非占位符）不覆盖；证书已签发则跳过；
+# 设计：客户先从 .env.example 准备 .env；本脚本补齐内部密钥、RSA、回调 URL，
+#      再完成 preflight、服务启动、TLS、健康检查和初始化。
+# 幂等：密钥已生成（非占位符）不覆盖；证书已签发则跳过；
 #      重复运行只会确保服务在跑。
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -60,7 +60,8 @@ IMBoy 一键部署 / Usage: bash install.sh [选项]
   bash install.sh --edition community --admin-phone 13800138000 \
          --admin-password 'S3curePass2026' --yes           # 全参数一行（自动化/CI）
 
-人工仅需填写 3 个 .env 变量：API_DOMAIN / ADMIN_DOMAIN / CERTBOT_EMAIL。
+客户先复制 .env.example 为 .env 并填写域名与所启用的第三方服务配置。
+内部随机密钥、RSA 密钥对和支付回调 URL 由安装器自动补齐。
 EOF
 }
 
@@ -109,12 +110,6 @@ case "$EDITION" in
     die "--edition 仅支持 community|business（当前: ${EDITION}）" ;;
 esac
 
-if [ -n "$POLICY_FILE" ]; then
-  COMPOSE="docker compose -f $COMPOSE_FILE -f $POLICY_FILE"
-else
-  COMPOSE="docker compose -f $COMPOSE_FILE"
-fi
-
 # 超管参数成对 + 本地前置校验（规则与 imboy_ctl adm create 一致，尽早失败
 # 而不是等整个栈起来之后才发现密码不合规）
 if { [ -n "$ADMIN_PHONE" ] && [ -z "$ADMIN_PASSWORD" ]; } \
@@ -137,6 +132,7 @@ fi
 SECRET_VARS_32="POSTGRES_PASSWORD JWT_KEY POSTGRE_AES_KEY ADM_COOKIE_SECRET GRAFANA_ADMIN_PASSWORD IMBOY_SOLIDIFIED_KEY IMBOY_PASSWORD_SALT LIVEKIT_API_KEY"
 SECRET_VARS_16="IMBOY_SOLIDIFIED_KEY_IV"
 SECRET_VARS_48="LIVEKIT_API_SECRET"
+UPTRACE_SECRET_VARS="UPTRACE_SERVICE_SECRET UPTRACE_PG_PASSWORD UPTRACE_CLICKHOUSE_PASSWORD UPTRACE_REDIS_PASSWORD UPTRACE_ADMIN_PASSWORD UPTRACE_PROJECT_TOKEN"
 
 # 必须人工填写的字段（机器无从知晓）
 MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CERTBOT_EMAIL"
@@ -145,7 +141,7 @@ MANUAL_VARS="API_DOMAIN ADMIN_DOMAIN CERTBOT_EMAIL"
 set_var() {
   local key="$1" val="$2" tmp
   tmp="$(mktemp)"
-  awk -v k="$key" -v v="$val" 'BEGIN{FS=OFS="="} $1==k{print k"="v; next} {print}' .env >"$tmp"
+  awk -v k="$key" -v v="$val" 'BEGIN{FS=OFS="="} $1==k{print k"="v; found=1; next} {print} END{if(!found) print k"="v}' .env >"$tmp"
   mv "$tmp" .env
 }
 get_var() { grep -E "^$1=" .env | head -1 | cut -d= -f2-; }
@@ -157,6 +153,36 @@ ensure_secret() {
   case "$cur" in
     ""|*CHANGE_ME*) set_var "$key" "$val" ;;
   esac
+}
+
+ensure_value() {
+  local key="$1" val="$2" cur
+  cur="$(get_var "$key" || true)"
+  [ -n "$cur" ] || set_var "$key" "$val"
+}
+
+is_true() {
+  case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
+    true|1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+ensure_rsa_keys() {
+  local data_dir keys_dir private_generated=0
+  data_dir="$(get_var DATA_DIR)"; data_dir="${data_dir:-./data}"
+  keys_dir="$data_dir/backend_priv/keys"
+  mkdir -p "$keys_dir"
+  if [ ! -s "$keys_dir/login_rsa_priv.pem" ]; then
+    openssl genrsa -out "$keys_dir/login_rsa_priv.pem" 2048 2>/dev/null \
+      || die "生成 RSA 私钥失败"
+    private_generated=1
+  fi
+  if [ "$private_generated" = 1 ] || [ ! -s "$keys_dir/login_rsa_pub.pem" ]; then
+    openssl rsa -in "$keys_dir/login_rsa_priv.pem" -pubout \
+      -out "$keys_dir/login_rsa_pub.pem" 2>/dev/null || die "导出 RSA 公钥失败"
+  fi
+  chmod 600 "$keys_dir/login_rsa_priv.pem"
 }
 
 # Garage 对象存储凭据（社区版 compose 内置 garage 核心服务）：.env 是唯一真源，
@@ -237,6 +263,7 @@ if [ "$EDITION" = "business" ]; then
   #   · IMBOY_PASSWORD_SALT 透传    —— 缺了后端 {missing_required_config} 起不来
   #   · IMBOY_PAYMENT_GATEWAY_ENABLED 透传 —— 缺了支付总开关失效，回落到旧死锁
   #   · 127.0.0.1 端口绑定默认值    —— 缺了 PG/后端/Grafana 直接暴露公网
+  #   · Garage、SMTP、SMS 透传       —— 缺了附件或客户第三方配置不会生效
   # 与其让买家在容器日志里刨根，不如在这里一次性列全。
   missing=""
   grep -q 'IMBOY_PASSWORD_SALT' "$COMPOSE_FILE" \
@@ -245,6 +272,14 @@ if [ "$EDITION" = "business" ]; then
     || missing="$missing\n    · IMBOY_PAYMENT_GATEWAY_ENABLED 未透传（支付总开关失效，无商户凭据将无法启动）"
   grep -q '127\.0\.0\.1' "$COMPOSE_FILE" \
     || missing="$missing\n    · 缺少 127.0.0.1 端口绑定默认值（PostgreSQL / 后端 / Grafana 会直接暴露到公网）"
+  grep -qE '^[[:space:]]+garage:' "$COMPOSE_FILE" \
+    || missing="$missing\n    · 缺少内置 Garage 服务（附件上传不可用）"
+  grep -q 'IMBOY_SMTP_FROM' "$COMPOSE_FILE" \
+    || missing="$missing\n    · SMTP 配置未完整透传"
+  grep -q 'IMBOY_SMS_PLATFORM' "$COMPOSE_FILE" \
+    || missing="$missing\n    · 短信平台配置未透传"
+  grep -q 'S3_UPSTREAM' "$COMPOSE_FILE" \
+    || missing="$missing\n    · Nginx 未配置 Garage S3 upstream"
 
   if [ -n "$missing" ]; then
     # shellcheck disable=SC2059
@@ -253,39 +288,48 @@ if [ "$EDITION" = "business" ]; then
 fi
 
 # ── 1) 配置 .env（必须在 preflight 之前）──────────────────────────────────────
-# preflight.sh 在 .env 不存在时会直接 exit 1。此前本脚本把 preflight 放在
-# .env 生成之前，导致首次运行必然 die 在 preflight，下面整段生成逻辑是死代码。
 if [ ! -f .env ]; then
-  say "首次部署：生成 .env、随机密钥与 RSA 登录密钥对"
+  say "生成客户配置模板"
   [ -f .env.example ] || die "缺少 .env.example，仓库不完整"
   cp .env.example .env
-  command -v openssl >/dev/null || die "需要 openssl 生成密钥，请先安装"
-
-  for v in $SECRET_VARS_32; do set_var "$v" "$(openssl rand -hex 16)"; done
-  for v in $SECRET_VARS_16; do set_var "$v" "$(openssl rand -hex 8)"; done
-  for v in $SECRET_VARS_48; do set_var "$v" "$(openssl rand -hex 24)"; done
-  gen_garage_secrets
-
-  # RSA 登录密钥对。.env 里配的是**容器内**路径 /opt/imboy/priv_runtime/keys/，
-  # compose 把宿主机 ${DATA_DIR}/backend_priv 挂到 /opt/imboy/priv_runtime，
-  # 所以宿主机上要写到 ${DATA_DIR}/backend_priv/keys/。
-  data_dir="$(get_var DATA_DIR)"; data_dir="${data_dir:-./data}"
-  keys_dir="$data_dir/backend_priv/keys"
-  mkdir -p "$keys_dir"
-  openssl genrsa -out "$keys_dir/login_rsa_priv.pem" 2048 2>/dev/null \
-    || die "生成 RSA 私钥失败"
-  openssl rsa -in "$keys_dir/login_rsa_priv.pem" -pubout \
-    -out "$keys_dir/login_rsa_pub.pem" 2>/dev/null || die "导出 RSA 公钥失败"
-  chmod 600 "$keys_dir/login_rsa_priv.pem"
-  printf '  RSA 密钥对已生成：%s/\n' "$keys_dir"
-
-  printf '\n\033[1;33m⚠️  密钥已全部自动生成。还需人工填写 3 项后重跑本脚本：\033[0m\n'
+  chmod 600 .env
+  printf '\n\033[1;33m⚠️  已生成 .env 模板。请先填写客户配置，再执行一次安装命令：\033[0m\n'
   printf '    编辑 %s/.env\n' "$(pwd)"
   printf '      API_DOMAIN     后端 API 域名（需已 DNS 解析到本机）\n'
   printf '      ADMIN_DOMAIN   管理后台域名（需已 DNS 解析到本机）\n'
   printf '      CERTBOT_EMAIL  证书到期通知邮箱\n'
-  printf '\n    填好后再次执行：bash install.sh\n\n'
+  printf '      第三方服务     仅填写实际启用的支付、短信、SMTP、Uptrace 配置\n'
+  printf '\n    填好后执行：bash install.sh --edition %s\n\n' "$EDITION"
   exit 0
+fi
+
+command -v openssl >/dev/null || die "需要 openssl 生成密钥，请先安装"
+chmod 600 .env
+
+# 自动补齐全部内部密钥。客户预先 cp/edit .env 后，只需执行本脚本一次。
+for v in $SECRET_VARS_32; do ensure_secret "$v" "$(openssl rand -hex 16)"; done
+for v in $SECRET_VARS_16; do ensure_secret "$v" "$(openssl rand -hex 8)"; done
+for v in $SECRET_VARS_48; do ensure_secret "$v" "$(openssl rand -hex 24)"; done
+gen_garage_secrets
+ensure_rsa_keys
+
+UPTRACE_ENABLED_VALUE="$(get_var UPTRACE_ENABLED || true)"
+if is_true "$UPTRACE_ENABLED_VALUE"; then
+  [ -f docker-compose.uptrace.yml ] || die "UPTRACE_ENABLED=true 但缺少 docker-compose.uptrace.yml"
+  MANUAL_VARS="$MANUAL_VARS UPTRACE_DOMAIN UPTRACE_ADMIN_EMAIL"
+  for v in $UPTRACE_SECRET_VARS; do ensure_secret "$v" "$(openssl rand -hex 24)"; done
+fi
+
+# 支付开启时，回调地址跟随 API_DOMAIN；已有客户自定义值不覆盖。
+if is_true "$(get_var IMBOY_PAYMENT_GATEWAY_ENABLED || true)"; then
+  api_domain_for_callback="$(get_var API_DOMAIN || true)"
+  case "$api_domain_for_callback" in
+    ""|*example.com|*CHANGE_ME*) ;;
+    *)
+      ensure_value IMBOY_WECHAT_NOTIFY_URL "https://${api_domain_for_callback}/api/v1/payment/callback/wechat"
+      ensure_value IMBOY_ALIPAY_NOTIFY_URL "https://${api_domain_for_callback}/api/v1/payment/callback/alipay"
+      ;;
+  esac
 fi
 
 # 必填项校验（占位符也算没填）
@@ -298,32 +342,45 @@ for v in $MANUAL_VARS; do
   esac
 done
 
-# Garage 凭据幂等兜底：首次部署已在上方生成块完成；这里覆盖"已有 .env 但三项
-# 仍是 .env.example 占位符"的场景（如从旧版本升级、或手工 cp 后只填了域名）。
-# 真实值不覆盖 —— 社区版 compose 对凭据做 :? 强校验，缺值会直接起不了栈。
-gen_garage_secrets
+# Compose 组合是单一真源，后续启动、TLS 与 sanity 使用完全相同的文件集合。
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+COMPOSE_FILES="$COMPOSE_FILE"
+if [ -n "$POLICY_FILE" ]; then
+  COMPOSE_ARGS+=(-f "$POLICY_FILE")
+  COMPOSE_FILES="$COMPOSE_FILES $POLICY_FILE"
+fi
+if is_true "$UPTRACE_ENABLED_VALUE"; then
+  COMPOSE_ARGS+=(-f docker-compose.uptrace.yml)
+  COMPOSE_FILES="$COMPOSE_FILES docker-compose.uptrace.yml"
+fi
+compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
+COMPOSE_DISPLAY="docker compose"
+for compose_file in $COMPOSE_FILES; do COMPOSE_DISPLAY="$COMPOSE_DISPLAY -f $compose_file"; done
 
 # ── 2) 前置检查 ──────────────────────────────────────────────────────────────
 say "前置检查 (preflight, edition=$EDITION)"
 bash preflight.sh --docker --edition "$EDITION" || die "preflight 未通过，修复 ERROR 后重跑"
 
-# ── 3) 网络 + 启动 ───────────────────────────────────────────────────────────
+# ── 3) 镜像 + 网络 + 启动 ────────────────────────────────────────────────────
+# 先拉齐全部缺失镜像再启动，避免私有/缺失镜像导致机器进入半安装状态。
+say "检查并拉取缺失镜像"
+compose pull --policy missing || die "镜像拉取失败，尚未启动任何服务。
+
+  请确认：
+    · IMBoy 发布镜像标签存在且客户具备拉取权限
+    · 私有 GHCR 已由客户在部署机完成 docker login ghcr.io
+    · Docker Hub 网络与登录状态正常"
+
 say "创建网络并启动服务"
 docker network create imboy-network 2>/dev/null || true
-$COMPOSE up -d
+compose up -d
 
 # ── 4) 首次 TLS 证书签发 ─────────────────────────────────────────────────────
 # 此前从不调用 init-letsencrypt.sh，证书永不签发，最后却照常打印
 # "部署完成" 和 https:// 地址 —— 用户点进去是连不上的。
 api="$(get_var API_DOMAIN)"
-data_dir="$(get_var DATA_DIR)"; data_dir="${data_dir:-./data}"
-if [ -f "$data_dir/certbot/conf/live/$api/fullchain.pem" ]; then
-  say "TLS 证书已存在，跳过签发"
-else
-  say "签发 TLS 证书 (Let's Encrypt)"
-  # init-letsencrypt.sh 默认用 prod.yml；经 COMPOSE_FILE 环境变量覆盖为本次
-  # 部署实际使用的 compose 文件（社区版 = docker-compose.community.yml）。
-  COMPOSE_FILE="$COMPOSE_FILE" bash nginx/init-letsencrypt.sh || die "TLS 证书签发失败。
+say "校验并签发 TLS 证书 (Let's Encrypt)"
+COMPOSE_FILES="$COMPOSE_FILES" bash nginx/init-letsencrypt.sh || die "TLS 证书签发失败。
 
   常见原因：
     · 域名 A 记录未指向本机（Let's Encrypt 的 HTTP-01 校验会失败）
@@ -331,7 +388,6 @@ else
     · 同一域名短时间内申请次数触发 Let's Encrypt 速率限制
 
   修复后重跑本脚本。服务已启动但 HTTPS 不可用，请勿对外提供访问。"
-fi
 
 # ── 5) 等待后端健康（最多 120s）──────────────────────────────────────────────
 # 不能以日志文案判定就绪：后端不承诺输出固定的 "started on port" 文本，
@@ -344,12 +400,15 @@ for _ in $(seq 1 60); do
       | grep -q '"status":"ok"'; then ok=1; break; fi
   sleep 2
 done
-[ "$ok" = 1 ] || die "后端 120s 内未通过 /healthz，查日志：$COMPOSE logs imboy_backend"
+[ "$ok" = 1 ] || die "后端 120s 内未通过 /healthz，查日志：$COMPOSE_DISPLAY logs imboy_backend"
 
 # ── 6) 部署后自检（存在才跑）─────────────────────────────────────────────────
 if [ -f ../scripts/sanity_check.sh ]; then
   say "部署后自检 (sanity_check)"
-  bash ../scripts/sanity_check.sh || warn "sanity_check 有警告，请人工确认"
+  SANITY_ARGS=()
+  for compose_file in $COMPOSE_FILES; do SANITY_ARGS+=(--compose-file "$compose_file"); done
+  bash ../scripts/sanity_check.sh "${SANITY_ARGS[@]}" \
+    || die "sanity_check 未通过；部署未达到可交付状态，请按上方 ERROR 排查"
 fi
 
 # ── 7) 超管创建（可选：--admin-phone/--admin-password 传入时）───────────────
@@ -366,7 +425,7 @@ if [ -n "$ADMIN_PHONE" ]; then
       IMBOY_CTL_COOKIE='imboycookie' \
       IMBOY_CTL_PHONE="$ADMIN_PHONE" \
       IMBOY_CTL_PASSWORD="$ADMIN_PASSWORD" \
-      $COMPOSE exec -T \
+      compose exec -T \
       -e IMBOY_CTL_NODE -e IMBOY_CTL_COOKIE -e IMBOY_CTL_PHONE -e IMBOY_CTL_PASSWORD \
       imboy_backend \
       sh -c 'exec /opt/imboy/erts-*/bin/escript /opt/imboy/bin/imboy_ctl adm create --phone "$IMBOY_CTL_PHONE" --password "$IMBOY_CTL_PASSWORD"' 2>&1)" \
@@ -392,7 +451,7 @@ fi
 # 镜像 digest：backend 运行镜像的 RepoDigest。只有从 registry 拉取的镜像才有
 # RepoDigests —— 本地 docker build 的镜像没有，此时输出 unknown 并注明。
 image_digest="unknown"; digest_note=""
-backend_image_id="$($COMPOSE images -q imboy_backend 2>/dev/null | head -1 || true)"
+backend_image_id="$(compose images -q imboy_backend 2>/dev/null | head -1 || true)"
 if [ -n "$backend_image_id" ]; then
   repo_digest="$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' \
                    "$backend_image_id" 2>/dev/null | head -1 || true)"
@@ -426,7 +485,19 @@ cat <<EOF
 
    管理后台 / Admin : https://${adm}   ${admin_hint}
    API / WebSocket  : https://${api}
+   LiveKit 信令     : wss://${api}/livekit  (媒体端口 TCP 7881 / UDP 50000-50200)
+   Garage S3        : https://${api}/s3  (3900 不暴露公网)
 EOF
+if is_true "$UPTRACE_ENABLED_VALUE"; then
+  cat <<EOF
+   Uptrace          : https://$(get_var UPTRACE_DOMAIN)  (管理员口令见 .env)
+                      仅采集 imboy_backend /metrics，不采集业务日志
+EOF
+else
+  cat <<EOF
+   Uptrace          : 未启用（在 .env 设置 UPTRACE_ENABLED=true 后重跑）
+EOF
+fi
 if [ "$EDITION" = "business" ]; then
   cat <<EOF
    Grafana          : http://127.0.0.1:3000  (admin / 口令见 .env 的 GRAFANA_ADMIN_PASSWORD)
@@ -435,7 +506,7 @@ EOF
 else
   cat <<EOF
    Grafana/监控栈   : 默认未启用（monitoring profile）。需要时：
-                      $COMPOSE --profile monitoring up -d
+                      $COMPOSE_DISPLAY --profile monitoring up -d
 EOF
 fi
 cat <<EOF
@@ -443,6 +514,6 @@ cat <<EOF
    升级 / Upgrade   : 版本历史与每版升级说明见仓库 RELEASES.md；
                       蓝绿升级用 scripts/deploy.sh（零停机切换）
 
-   服务状态 : $COMPOSE ps
-   后端日志 : $COMPOSE logs -f imboy_backend
+   服务状态 : $COMPOSE_DISPLAY ps
+   后端日志 : $COMPOSE_DISPLAY logs -f imboy_backend
 EOF

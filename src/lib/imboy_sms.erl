@@ -73,6 +73,8 @@ send(Mobile, Content, <<"yjsms">>) ->
 send(Mobile, Code, <<"jsms">>) ->
     Username = config_ds:env(jpush_app_key, <<>>),
     Password = config_ds:env(jpush_master_secret, <<>>),
+    TempId = config_ds:env(jsms_temp_id, <<>>),
+    SignId = config_ds:env(jsms_sign_id, <<>>),
     Base64Credentials = base64:encode(<<Username/binary, ":", Password/binary>>),
     URL = <<"https://api.sms.jpush.cn/v1/messages">>,
     Headers = [
@@ -81,13 +83,13 @@ send(Mobile, Code, <<"jsms">>) ->
     ],
     % 您的手机验证码：{{code}}，有效期5分钟，请勿泄露。如非本人操作，请忽略此短信。谢谢！
     Data = #{
-        <<"temp_id">> => <<"1">>,
+        <<"temp_id">> => TempId,
         <<"temp_para">> => #{
             <<"code">> => Code
         },
         <<"mobile">> => Mobile,
         % IMBoy
-        <<"sign_id">> => <<"28010">>
+        <<"sign_id">> => SignId
     },
     % ?DEBUG_LOG([Data]),
     % {ok, RespMap} = elib_req:post(URL, Data, Headers),

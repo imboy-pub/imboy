@@ -687,9 +687,17 @@ send_sms_code(Mobile) ->
                     _ = verification_code_ds:save(Mobile, CodeBinary, ValidityAt, Now),
                     Content =
                         <<"【IMBoy】您的验证码： "/utf8, CodeBinary/binary, " ，10分钟内有效。如非本人操作，请忽略！"/utf8>>,
-                    case imboy_sms:send(Mobile, Content, <<"yjsms">>) of
+                    SmsPlatform = config_ds:env([sms, platform], <<"yjsms">>),
+                    SmsPayload =
+                        case SmsPlatform of
+                            <<"jsms">> -> CodeBinary;
+                            _ -> Content
+                        end,
+                    case imboy_sms:send(Mobile, SmsPayload, SmsPlatform) of
                         ok -> ok;
-                        {error, SmsErr2} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2})
+                        {ok, _} -> ok;
+                        {error, SmsErr2} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2});
+                        SmsErr2 -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2})
                     end,
                     {ok, <<"验证码已发送"/utf8>>};
                 _ ->

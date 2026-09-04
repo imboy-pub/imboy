@@ -1,0 +1,29 @@
+receivers:
+  prometheus/imboy:
+    config:
+      scrape_configs:
+        - job_name: imboy_backend
+          scrape_interval: 15s
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["imboy_backend:9800"]
+
+processors:
+  batch:
+    send_batch_size: 1000
+    timeout: 10s
+
+exporters:
+  otlp/uptrace:
+    endpoint: uptrace:4317
+    tls:
+      insecure: true
+    headers:
+      uptrace-dsn: "${env:UPTRACE_DSN}"
+
+service:
+  pipelines:
+    metrics:
+      receivers: [prometheus/imboy]
+      processors: [batch]
+      exporters: [otlp/uptrace]

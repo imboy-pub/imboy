@@ -30,14 +30,22 @@ owner explicitly authorizes it.
 | C6 | Completion/failure status without exposing PII | status banner (pending) / account unusable after completion | ⬜ pending |
 | C7 | Android/iOS real-device flow recorded (offline/retry, reauthentication) | device run on MRD-AL00 + second device | ⬜ adb touch-injection dead on EMUI 9 (tap/swipe/motionevent all swallowed, onboarding page never advances) — do the 2-minute manual walk (below), or use a device with working injection |
 
-## Manual device walk (2 minutes, MRD-AL00)
+## Manual device walk (2 minutes, MRD-AL00 — CURRENT STATE 2026-09-05)
 
-1. Install latest debug APK (APP_ENV=local_home + 9804 override), open IMBoy.
-2. Skip onboarding → sign in (smoke_alice / admin888).
-3. 我的 → 设置 → 注销账号：勾选已阅读 → 点击注销 → 确认弹窗。
-4. Expected: banner shows 注销申请已提交 + 预期完成时间 + 数据留存说明 + 撤销入口 (C3/C5/C6).
-5. 撤销注销申请 → status returns to normal, account usable (C4).
-6. Re-apply if desired for the store recording. Never touch the store console.
+最新 APK（APP_ENV=local + localhost:9804 reverse + D-04 状态区块）已装上
+MRD-AL00，应用当前停在登录页且表单已预填（smoke_alice）。EMUI 触控注入
+在息屏循环后失效，请直接用手指：
+
+1. 点亮屏幕（电源键）→ 登录页表单已预填 → 点「登录」。
+2. 主页 → 我的 → 设置 → 注销账号：看「数据留存说明」区块（C5）。
+3. 勾选已阅读 → 点注销 → 确认弹窗：应出现状态横幅「注销申请已提交，
+   预计 xx 完成」+ 撤销入口（C3/C6）。
+4. 点「撤销注销申请」→ 横幅消失、账号可用（C4）。录屏即商店证据。
+5. 生产环境前置：user_deletion_enabled=true + 迁移 ≥ 00000086。
+
+Never touch the store console. 自动化路径：integration_test/
+d04_account_deletion_flow_test.dart（模拟器 d04 + config 表 sign_key
+种子已就绪，运行命令见文件头）。
 
 ## Store console
 

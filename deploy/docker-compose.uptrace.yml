@@ -1,0 +1,110 @@
+# Optional Uptrace overlay. Loaded only when UPTRACE_ENABLED=true via install.sh.
+# IMBoy itself does not depend on these services.
+services:
+  uptrace_pg_init:
+    image: postgres:18-alpine
+    restart: "no"
+    depends_on:
+      imboy_pg18:
+        condition: service_healthy
+    environment:
+      PGHOST: imboy_pg18
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      UPTRACE_PG_PASSWORD: ${UPTRACE_PG_PASSWORD:?UPTRACE_PG_PASSWORD is required}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        psql --set=ON_ERROR_STOP=1 --set=uptrace_password="$$UPTRACE_PG_PASSWORD" <<'SQL'
+        SELECT 'CREATE ROLE uptrace LOGIN' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'uptrace') \gexec
+        ALTER ROLE uptrace WITH LOGIN PASSWORD :'uptrace_password';
+        SELECT 'CREATE DATABASE uptrace OWNER uptrace' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'uptrace') \gexec
+        ALTER DATABASE uptrace OWNER TO uptrace;
+        SQL
+
+  uptrace_clickhouse:
+    image: ${UPTRACE_CLICKHOUSE_IMAGE:-clickhouse/clickhouse-server:26.3}
+    container_name: imboy_uptrace_clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: uptrace
+      CLICKHOUSE_PASSWORD: ${UPTRACE_CLICKHOUSE_PASSWORD:?UPTRACE_CLICKHOUSE_PASSWORD is required}
+      CLICKHOUSE_DB: uptrace
+    volumes:
+      - ${DATA_DIR:-./data}/uptrace/clickhouse:/var/lib/clickhouse
+    expose:
+      - "8123"
+      - "9000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: ${UPTRACE_CLICKHOUSE_MEM_LIMIT:-4096M}
+
+  uptrace_redis:
+    image: ${UPTRACE_REDIS_IMAGE:-redis:7.4.2-alpine}
+    container_name: imboy_uptrace_redis
+    restart: unless-stopped
+    environment:
+      UPTRACE_REDIS_PASSWORD: ${UPTRACE_REDIS_PASSWORD:?UPTRACE_REDIS_PASSWORD is required}
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "${UPTRACE_REDIS_PASSWORD}"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$UPTRACE_REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  uptrace:
+    image: ${UPTRACE_IMAGE:-uptrace/uptrace:2.0.3}
+    container_name: imboy_uptrace
+    restart: unless-stopped
+    depends_on:
+      uptrace_pg_init:
+        condition: service_completed_successfully
+      uptrace_clickhouse:
+        condition: service_healthy
+      uptrace_redis:
+        condition: service_healthy
+    environment:
+      UPTRACE_DOMAIN: ${UPTRACE_DOMAIN:?UPTRACE_DOMAIN is required}
+      UPTRACE_SERVICE_SECRET: ${UPTRACE_SERVICE_SECRET:?UPTRACE_SERVICE_SECRET is required}
+      UPTRACE_PG_PASSWORD: ${UPTRACE_PG_PASSWORD:?UPTRACE_PG_PASSWORD is required}
+      UPTRACE_CLICKHOUSE_PASSWORD: ${UPTRACE_CLICKHOUSE_PASSWORD:?UPTRACE_CLICKHOUSE_PASSWORD is required}
+      UPTRACE_REDIS_PASSWORD: ${UPTRACE_REDIS_PASSWORD:?UPTRACE_REDIS_PASSWORD is required}
+      UPTRACE_ADMIN_EMAIL: ${UPTRACE_ADMIN_EMAIL:?UPTRACE_ADMIN_EMAIL is required}
+      UPTRACE_ADMIN_PASSWORD: ${UPTRACE_ADMIN_PASSWORD:?UPTRACE_ADMIN_PASSWORD is required}
+      UPTRACE_PROJECT_TOKEN: ${UPTRACE_PROJECT_TOKEN:?UPTRACE_PROJECT_TOKEN is required}
+    volumes:
+      - ./uptrace/uptrace.yml:/etc/uptrace/config.yml:ro
+    expose:
+      - "80"
+      - "4317"
+    deploy:
+      resources:
+        limits:
+          memory: ${UPTRACE_MEM_LIMIT:-2048M}
+
+  uptrace_otelcol:
+    image: ${UPTRACE_OTELCOL_IMAGE:-otel/opentelemetry-collector-contrib:0.145.0}
+    container_name: imboy_uptrace_otelcol
+    restart: unless-stopped
+    depends_on:
+      - uptrace
+    environment:
+      UPTRACE_DSN: http://${UPTRACE_PROJECT_TOKEN:?UPTRACE_PROJECT_TOKEN is required}@uptrace:80?grpc=4317
+    volumes:
+      - ./uptrace/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+
+  imboy_nginx:
+    environment:
+      UPTRACE_DOMAIN: ${UPTRACE_DOMAIN:?UPTRACE_DOMAIN is required}
+      NGINX_ENVSUBST_FILTER: "^(API_DOMAIN|ADMIN_DOMAIN|S3_UPSTREAM|UPTRACE_DOMAIN)$$"
+    volumes:
+      - ./uptrace/nginx.conf.template:/etc/nginx/templates/uptrace.conf.template:ro

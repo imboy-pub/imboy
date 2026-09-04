@@ -122,6 +122,78 @@ check_var "GRAFANA_ADMIN_PASSWORD"
 check_var "LIVEKIT_API_KEY"
 check_var "LIVEKIT_API_SECRET"
 
+is_domain() {
+    [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])$ ]] \
+        && [[ "$1" == *.* ]] && [[ "$1" != *..* ]]
+}
+is_email() { [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]; }
+
+if ! is_domain "${API_DOMAIN:-}"; then err "API_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
+if ! is_domain "${ADMIN_DOMAIN:-}"; then err "ADMIN_DOMAIN 不是有效的纯域名（不要带 https:// 或路径）"; fi
+if [[ "${API_DOMAIN:-}" == "${ADMIN_DOMAIN:-}" ]]; then err "API_DOMAIN 与 ADMIN_DOMAIN 不能相同"; fi
+if ! is_email "${CERTBOT_EMAIL:-}"; then err "CERTBOT_EMAIL 格式无效"; fi
+
+UPTRACE_ENABLED_VALUE="$(echo "${UPTRACE_ENABLED:-false}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$UPTRACE_ENABLED_VALUE" in
+    true|1)
+        for var_name in UPTRACE_DOMAIN UPTRACE_ADMIN_EMAIL UPTRACE_SERVICE_SECRET \
+                        UPTRACE_PG_PASSWORD UPTRACE_CLICKHOUSE_PASSWORD UPTRACE_REDIS_PASSWORD \
+                        UPTRACE_ADMIN_PASSWORD UPTRACE_PROJECT_TOKEN; do
+            check_var "$var_name"
+        done
+        if ! is_domain "${UPTRACE_DOMAIN:-}"; then err "UPTRACE_DOMAIN 不是有效的纯域名"; fi
+        if [[ "${UPTRACE_DOMAIN:-}" == "${API_DOMAIN:-}" || "${UPTRACE_DOMAIN:-}" == "${ADMIN_DOMAIN:-}" ]]; then
+            err "UPTRACE_DOMAIN 必须与 API_DOMAIN / ADMIN_DOMAIN 不同"
+        fi
+        if ! is_email "${UPTRACE_ADMIN_EMAIL:-}"; then err "UPTRACE_ADMIN_EMAIL 格式无效"; fi
+        ok "Uptrace 可选栈已启用并配置"
+        ;;
+    false|0|"") info "Uptrace 未启用" ;;
+    *) err "UPTRACE_ENABLED 仅支持 true/1/false/0" ;;
+esac
+
+# SMTP 不设单独假开关：客户填写任一核心项即视为启用，并要求整组完整。
+if [[ -n "${IMBOY_SMTP_RELAY:-}${IMBOY_SMTP_USERNAME:-}${IMBOY_SMTP_PASSWORD:-}${IMBOY_SMTP_FROM:-}" ]]; then
+    check_var "IMBOY_SMTP_RELAY"
+    check_var "IMBOY_SMTP_USERNAME"
+    check_var "IMBOY_SMTP_PASSWORD"
+    SMTP_FROM_VALUE="${IMBOY_SMTP_FROM:-${IMBOY_SMTP_USERNAME:-}}"
+    if ! is_email "$SMTP_FROM_VALUE"; then err "IMBOY_SMTP_FROM（或回退的 USERNAME）必须是有效邮箱"; fi
+    if ! [[ "${IMBOY_SMTP_PORT:-}" =~ ^[0-9]+$ ]] || (( IMBOY_SMTP_PORT < 1 || IMBOY_SMTP_PORT > 65535 )); then
+        err "IMBOY_SMTP_PORT 必须是 1-65535"
+    fi
+    case "$(echo "${IMBOY_SMTP_SSL:-}" | tr '[:upper:]' '[:lower:]')" in
+        true|1|false|0) ok "SMTP TLS 开关有效" ;;
+        *) err "IMBOY_SMTP_SSL 仅支持 true/1/false/0" ;;
+    esac
+else
+    info "SMTP 未配置，邮件验证码/通知不可用"
+fi
+
+SMS_SWITCH="$(echo "${IMBOY_SMS_SWITCH:-off}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$SMS_SWITCH" in
+    off) info "短信发送未启用" ;;
+    on)
+        case "${IMBOY_SMS_PLATFORM:-}" in
+            yjsms)
+                check_var "IMBOY_YJSMS_ACCOUNT"
+                check_var "IMBOY_YJSMS_SECRET"
+                check_var "IMBOY_YJSMS_URL"
+                [[ "${IMBOY_YJSMS_URL:-}" == https://* ]] || err "IMBOY_YJSMS_URL 必须使用 https://"
+                ;;
+            jsms)
+                check_var "IMBOY_JPUSH_APP_KEY"
+                check_var "IMBOY_JPUSH_MASTER_SECRET"
+                check_var "IMBOY_JSMS_TEMP_ID"
+                check_var "IMBOY_JSMS_SIGN_ID"
+                ;;
+            aliyun) err "IMBOY_SMS_PLATFORM=aliyun 尚无发送实现；当前仅支持 yjsms 或 jsms" ;;
+            *) err "IMBOY_SMS_PLATFORM 必须为 yjsms 或 jsms" ;;
+        esac
+        ;;
+    *) err "IMBOY_SMS_SWITCH 仅支持 on 或 off" ;;
+esac
+
 # RSA 密钥文件（检查路径已设置且文件存在）
 #
 # ⚠️ .env 里配的是**容器内**路径（/opt/imboy/priv_runtime/...），而本脚本跑在
@@ -191,26 +263,13 @@ for FEATURE_ENV in IMBOY_FEATURE_E2EE IMBOY_FEATURE_CHANNEL IMBOY_FEATURE_CHANNE
     fi
 done
 
-# Garage S3（附件存储）
-# community：garage 是社区版 compose 的内置核心服务（默认启用，非 profile），
-#   凭据缺失会导致 compose 变量插值失败或附件上传必坏 —— 硬校验。
-#   install.sh 会自动生成全部凭据；此处拦截的是"绕过 install.sh 手工部署"
-#   或密钥被误删的场景。
-# business：维持 WARN（Garage / 外部 S3 为自选配置项，行为同旧版）。
-if [[ "$EDITION" == "community" ]]; then
-    if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
-        err "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY）——社区版 garage 为必需核心服务，缺失将导致附件上传失败（正常经 install.sh 自动生成）"
-    elif [[ -z "${GARAGE_RPC_SECRET:-}" ]]; then
-        err "GARAGE_RPC_SECRET 未设置——社区版 compose 内置 garage 的集群 RPC 密钥（正常经 install.sh 自动生成）"
-    else
-        ok "Garage S3 已配置（社区版内置核心服务）"
-    fi
+# Garage 是 community/business 单机包的核心服务，凭据全部由 install.sh 生成。
+if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
+    err "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY）"
+elif [[ -z "${GARAGE_RPC_SECRET:-}" ]]; then
+    err "GARAGE_RPC_SECRET 未设置"
 else
-    if [[ -z "${IMBOY_GARAGE_ENDPOINT:-}" || -z "${IMBOY_GARAGE_ACCESS_KEY:-}" || -z "${IMBOY_GARAGE_SECRET_KEY:-}" ]]; then
-        warn "Garage S3 未配置（IMBOY_GARAGE_ENDPOINT / ACCESS_KEY / SECRET_KEY），文件上传将失败"
-    else
-        ok "Garage S3 已配置"
-    fi
+    ok "Garage S3 已配置（单机内置服务）"
 fi
 
 # SENTRY_DSN 是可选的，但警告
@@ -293,21 +352,49 @@ if [[ "$GATEWAY_ENABLED" != "true" && "$GATEWAY_ENABLED" != "1" ]]; then
     fi
 elif [[ "$PAYMENT_MODE" == "live" ]]; then
     ok "IMBOY_PAYMENT_MODE=live（真实扣款模式）"
-    # 检查至少一个网关凭据完整
+    all_set() {
+        local var_name
+        for var_name in "$@"; do [[ -n "${!var_name:-}" ]] || return 1; done
+    }
+    any_set() {
+        local var_name
+        for var_name in "$@"; do [[ -z "${!var_name:-}" ]] || return 0; done
+        return 1
+    }
+    WECHAT_CREDENTIAL_VARS=(IMBOY_WECHAT_MCH_ID IMBOY_WECHAT_APP_ID IMBOY_WECHAT_API_V3_KEY
+                           IMBOY_WECHAT_CERT_SERIAL IMBOY_WECHAT_PRIVATE_KEY
+                           IMBOY_WECHAT_PLATFORM_PUBLIC_KEY)
+    WECHAT_VARS=("${WECHAT_CREDENTIAL_VARS[@]}" IMBOY_WECHAT_NOTIFY_URL)
+    ALIPAY_CREDENTIAL_VARS=(IMBOY_ALIPAY_APP_ID IMBOY_ALIPAY_PRIVATE_KEY
+                           IMBOY_ALIPAY_PUBLIC_KEY)
+    ALIPAY_VARS=("${ALIPAY_CREDENTIAL_VARS[@]}" IMBOY_ALIPAY_NOTIFY_URL)
+    STRIPE_VARS=(IMBOY_STRIPE_SECRET_KEY IMBOY_STRIPE_WEBHOOK_SECRET)
     WECHAT_OK=false
     ALIPAY_OK=false
     STRIPE_OK=false
-    [[ -n "${IMBOY_WECHAT_MCH_ID:-}" && -n "${IMBOY_WECHAT_API_V3_KEY:-}" && -n "${IMBOY_WECHAT_PLATFORM_PUBLIC_KEY:-}" ]] && WECHAT_OK=true
-    [[ -n "${IMBOY_ALIPAY_APP_ID:-}" && -n "${IMBOY_ALIPAY_PRIVATE_KEY:-}" && -n "${IMBOY_ALIPAY_PUBLIC_KEY:-}" ]] && ALIPAY_OK=true
-    [[ -n "${IMBOY_STRIPE_SECRET_KEY:-}" && -n "${IMBOY_STRIPE_WEBHOOK_SECRET:-}" ]] && STRIPE_OK=true
+    if all_set "${WECHAT_VARS[@]}" && [[ "${IMBOY_WECHAT_NOTIFY_URL}" == https://* ]]; then
+        WECHAT_OK=true
+    elif any_set "${WECHAT_CREDENTIAL_VARS[@]}"; then
+        err "微信支付配置不完整，需填写 ${WECHAT_VARS[*]}，且回调必须为 HTTPS"
+    fi
+    if all_set "${ALIPAY_VARS[@]}" && [[ "${IMBOY_ALIPAY_NOTIFY_URL}" == https://* ]]; then
+        ALIPAY_OK=true
+    elif any_set "${ALIPAY_CREDENTIAL_VARS[@]}"; then
+        err "支付宝配置不完整，需填写 ${ALIPAY_VARS[*]}，且回调必须为 HTTPS"
+    fi
+    if all_set "${STRIPE_VARS[@]}"; then
+        STRIPE_OK=true
+    elif any_set "${STRIPE_VARS[@]}"; then
+        err "Stripe 配置不完整，需填写 ${STRIPE_VARS[*]}"
+    fi
     if $WECHAT_OK; then ok "微信支付凭据完整"; fi
     if $ALIPAY_OK; then ok "支付宝凭据完整"; fi
     if $STRIPE_OK; then ok "Stripe 凭据完整"; fi
     if ! $WECHAT_OK && ! $ALIPAY_OK && ! $STRIPE_OK; then
         err "IMBOY_PAYMENT_MODE=live 但没有任何网关填写完整凭据 — 启动将 fail-fast"
         info "至少配置以下其一："
-        info "  微信：IMBOY_WECHAT_MCH_ID + IMBOY_WECHAT_API_V3_KEY + IMBOY_WECHAT_PLATFORM_PUBLIC_KEY（+其余5项）"
-        info "  支付宝：IMBOY_ALIPAY_APP_ID + IMBOY_ALIPAY_PRIVATE_KEY + IMBOY_ALIPAY_PUBLIC_KEY"
+        info "  微信：${WECHAT_VARS[*]}"
+        info "  支付宝：${ALIPAY_VARS[*]}"
         info "  Stripe：IMBOY_STRIPE_SECRET_KEY + IMBOY_STRIPE_WEBHOOK_SECRET"
     fi
 else
@@ -342,7 +429,7 @@ fi
 echo ""
 echo "▶ 3. 检查系统资源 / Checking system resources"
 
-# 内存 >= 8GB
+# 核心栈至少 4GB；启用 Uptrace（ClickHouse + Redis）至少 8GB，建议 16GB。
 TOTAL_MEM_KB=0
 if [[ -f /proc/meminfo ]]; then
     TOTAL_MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
@@ -350,24 +437,32 @@ elif command -v sysctl &>/dev/null; then
     TOTAL_MEM_KB=$(sysctl -n hw.memsize 2>/dev/null | awk '{print int($1/1024)}' || echo 0)
 fi
 TOTAL_MEM_GB=$(( TOTAL_MEM_KB / 1024 / 1024 ))
-if (( TOTAL_MEM_GB >= 8 )); then
-    ok "内存 ${TOTAL_MEM_GB}GB >= 8GB"
-elif (( TOTAL_MEM_GB >= 4 )); then
-    warn "内存 ${TOTAL_MEM_GB}GB（建议 >= 8GB，当前可运行但性能受限）"
+MIN_MEM_GB=4; RECOMMENDED_MEM_GB=8
+if [[ "$UPTRACE_ENABLED_VALUE" == "true" || "$UPTRACE_ENABLED_VALUE" == "1" ]]; then
+    MIN_MEM_GB=8; RECOMMENDED_MEM_GB=16
+fi
+if (( TOTAL_MEM_GB >= RECOMMENDED_MEM_GB )); then
+    ok "内存 ${TOTAL_MEM_GB}GB >= ${RECOMMENDED_MEM_GB}GB"
+elif (( TOTAL_MEM_GB >= MIN_MEM_GB )); then
+    warn "内存 ${TOTAL_MEM_GB}GB（建议 >= ${RECOMMENDED_MEM_GB}GB）"
 else
-    err "内存 ${TOTAL_MEM_GB}GB < 4GB，无法可靠运行"
+    err "内存 ${TOTAL_MEM_GB}GB < ${MIN_MEM_GB}GB，无法可靠运行"
 fi
 
-# 磁盘 >= 20GB
+# 核心栈至少 10GB；Uptrace 的 ClickHouse 开启后至少 20GB。
 if command -v df &>/dev/null; then
     AVAIL_KB=$(df -k . 2>/dev/null | tail -1 | awk '{print $4}')
     AVAIL_GB=$(( AVAIL_KB / 1024 / 1024 ))
-    if (( AVAIL_GB >= 20 )); then
-        ok "可用磁盘空间 ${AVAIL_GB}GB >= 20GB"
-    elif (( AVAIL_GB >= 10 )); then
-        warn "可用磁盘 ${AVAIL_GB}GB（建议 >= 20GB）"
+    MIN_DISK_GB=10; RECOMMENDED_DISK_GB=20
+    if [[ "$UPTRACE_ENABLED_VALUE" == "true" || "$UPTRACE_ENABLED_VALUE" == "1" ]]; then
+        MIN_DISK_GB=20; RECOMMENDED_DISK_GB=40
+    fi
+    if (( AVAIL_GB >= RECOMMENDED_DISK_GB )); then
+        ok "可用磁盘空间 ${AVAIL_GB}GB >= ${RECOMMENDED_DISK_GB}GB"
+    elif (( AVAIL_GB >= MIN_DISK_GB )); then
+        warn "可用磁盘 ${AVAIL_GB}GB（建议 >= ${RECOMMENDED_DISK_GB}GB）"
     else
-        err "可用磁盘 ${AVAIL_GB}GB < 10GB，存储不足"
+        err "可用磁盘 ${AVAIL_GB}GB < ${MIN_DISK_GB}GB，存储不足"
     fi
 fi
 

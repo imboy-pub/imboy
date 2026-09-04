@@ -192,7 +192,7 @@
         , {sms, [
             {switch, <<"off">>}
             , {default_code, <<"6666">>}
-            , {platform, <<"aliyun">>}
+            , {platform, <<"yjsms">>}
             , {<<"aliyun">>, [
                 {sign_name, <<"xxx"/utf8>>}
                 , {template_code, <<>>}
@@ -344,6 +344,8 @@
         , {yjsms_account, <<>>}
         , {yjsms_secret, <<>>}
         , {yjsms_url, <<>>}
+        , {jsms_temp_id, <<>>}
+        , {jsms_sign_id, <<>>}
 
         %% ====================================================================
         %% 支付网关 / Payment gateways

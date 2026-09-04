@@ -360,8 +360,15 @@ send_code_with_sms_type_calls_throttle_test_() ->
             {ec_cnv, [
                 {'to_binary', 1, fun(X) -> integer_to_binary(X) end}
             ]},
+            {config_ds, [
+                {'env', 2, fun([sms, platform], _Default) -> <<"jsms">> end}
+            ]},
             {imboy_sms, [
-                {'send', 3, fun(_Mobile, _Content, _Type) -> ok end}
+                {'send', 3, fun(_Mobile, Content, Type) ->
+                    ?assertEqual(<<"jsms">>, Type),
+                    ?assertEqual(<<"123456">>, Content),
+                    {ok, #{<<"msg_id">> => <<"message-1">>}}
+                end}
             ]}
         ],
         fun() ->

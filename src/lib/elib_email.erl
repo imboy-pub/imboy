@@ -8,7 +8,6 @@
 -export([send/2]).
 -export([send/3]).
 
-
 %% @doc 发送邮件，只有主题
 %% @param ToEmail 收件人邮箱地址
 %% @param Subject 邮件主题
@@ -28,44 +27,61 @@ send(ToEmail, Subject) ->
 -spec send(binary(), binary(), binary()) -> {ok, success} | {error, binary()}.
 send(ToEmail, Subject, Body) ->
     Option = config_ds:env(smtp_option),
-    Username = case Option of
-        L when is_list(L) ->
-            case lists:keyfind(username, 1, L) of
-                {_, U} -> U;
-                false -> undefined
-            end;
-        _ ->
-            undefined
-    end,
+    Username =
+        case Option of
+            L when is_list(L) ->
+                case lists:keyfind(username, 1, L) of
+                    {_, U} -> U;
+                    false -> undefined
+                end;
+            _ ->
+                undefined
+        end,
     Username2 = ec_cnv:to_binary(Username),
+    From =
+        case Option of
+            L2 when is_list(L2) ->
+                case lists:keyfind(from, 1, L2) of
+                    {_, FromValue} -> ec_cnv:to_binary(FromValue);
+                    false -> Username2
+                end;
+            _ ->
+                Username2
+        end,
 
     %% RFC5322 校验：From 地址必须是合法 email 格式
-    case is_valid_email(Username2) of
+    case is_valid_email(From) of
         false ->
-            ?ERROR_LOG({smtp_config_error, invalid_from_address, Username2}),
+            ?ERROR_LOG({smtp_config_error, invalid_from_address, From}),
             {error, <<"SMTP From 地址未配置或格式无效"/utf8>>};
         true ->
+            ClientOption = proplists:delete(from, Option),
             Email = {
                 <<"text">>,
                 <<"html">>,
                 [
-                    {<<"From">>, Username2},
+                    {<<"From">>, From},
                     {<<"To">>, ToEmail},
                     {<<"Subject">>, Subject}
                 ],
-                #{content_type_params => [
-                    {<<"charset">>, <<"utf-8">>}],
+                #{
+                    content_type_params => [
+                        {<<"charset">>, <<"utf-8">>}
+                    ],
                     disposition => <<"inline">>
-                } ,
+                },
                 Body
             },
             try mimemail:encode(Email) of
                 Encoded ->
-                    _ = gen_smtp_client:send({
-                        Username2,
-                        [ToEmail],
-                        Encoded
-                    }, Option),
+                    _ = gen_smtp_client:send(
+                        {
+                            Username2,
+                            [ToEmail],
+                            Encoded
+                        },
+                        ClientOption
+                    ),
                     {ok, success}
             catch
                 Class:Reason:Stacktrace ->
@@ -82,7 +98,8 @@ is_valid_email(Addr) when is_binary(Addr), byte_size(Addr) > 3 ->
         {Pos, 1} when Pos > 0, Pos < byte_size(Addr) - 1 -> true;
         _ -> false
     end;
-is_valid_email(_) -> false.
+is_valid_email(_) ->
+    false.
 
 % gen_smtp_client:send({Username,
 %                       [binary_to_list(ToEmail)],

@@ -23,6 +23,8 @@ deploy/
 ├── docker-compose.community.yml # 社区版编排，随仓分发 / Community stack, shipped in-repo
 │                                # 7 核心服务：pg18 + garage + backend + admin + nginx
 │                                # + certbot + livekit；监控 5 服务走 --profile monitoring
+├── docker-compose.uptrace.yml   # 可选 Uptrace overlay（默认关闭）
+├── uptrace/                     # Uptrace / OTel Collector / nginx 配置
 ├── docker-compose.demo.yml      # 最小两服务演示栈（零配置评估）/ Minimal 2-service demo stack
 ├── docker-compose.prod.yml      # ⚠️ 商务版走单独交付渠道，不在开源仓内 / Business edition, NOT in the open-source repo
 │                                # 7 服务编排：pg18 + backend + admin + nginx + certbot + prometheus + grafana
@@ -47,27 +49,63 @@ deploy/
 ## 前置条件
 
 - Linux x86_64，文档基准环境 **Debian 13 (Trixie)**（其他发行版同样适用）
-- 内存 ≥ 8 GB，磁盘 ≥ 20 GB（生产建议 ≥ 32 GB 内存 / ≥ 100 GB 盘）
+- 核心栈内存 ≥ 4 GB、磁盘 ≥ 10 GB（建议 8 GB / 20 GB）；启用 Uptrace 后
+  至少 8 GB / 20 GB，建议 16 GB / 40 GB
 - Docker 24+ 与 `docker compose` v2 插件（社区版 compose 使用 configs 内联定义，
   需要 **Compose v2.23.1+**；Debian 13 经 get.docker.com 安装的 Docker 均满足。
   未安装 Docker 时 `install.sh` 会确认后引导安装）
-- 已解析到本机的两个域名：`api.example.com`、`admin.example.com`
+- 已解析到本机的两个域名：`api.example.com`、`admin.example.com`；启用 Uptrace
+  时再准备独立的 `uptrace.example.com`
 - 80 / 443 端口可公网访问（certbot 通过 Let's Encrypt HTTP-01 签发）
 
 ## 推荐：一键部署
 
 ```bash
 cd /path/to/imboy/deploy
+cp .env.example .env
+$EDITOR .env
 bash install.sh --edition community
 ```
 
-第一次运行会生成 `.env`、全部随机密钥（数据库口令、JWT、AES、LiveKit、Garage
-对象存储凭据等）与 RSA 登录密钥对，然后停下来，只需人工填 3 项
-（`API_DOMAIN` / `ADMIN_DOMAIN` / `CERTBOT_EMAIL`）。填好后再跑一次同一条命令，
-它会依次完成：前置检查 → 起服务 → 签发 TLS → 等待健康 → 部署后自检 →
+客户先填写域名及实际启用的支付宝/微信、短信、SMTP 等第三方配置。随后只运行一次
+`install.sh`：脚本会幂等补齐数据库口令、JWT、AES、LiveKit、Garage、Uptrace 等内部
+随机密钥和 RSA 登录密钥，并自动派生支付宝/微信回调 URL。之后依次完成：前置检查
+→ 拉齐缺失镜像 → 起服务 → 签发 TLS → 等待健康 → 部署后自检 →
 打印 Release Identity 三元组（`IMBOY_VERSION` / `IMBOY_GIT_SHA` /
 `IMBOY_IMAGE_DIGEST`）与访问地址。证书签发失败会直接中止并列出常见原因，
 **不会在 TLS 没起来的情况下谎报"部署完成"**。
+
+社区单机包提供核心 IM、Garage 和 LiveKit，外部支付网关固定关闭；需要支付宝、微信
+或 Stripe 实际收款时使用商务单机包 `--edition business`，并在同一份 `.env` 中填写
+所启用网关的凭据。短信、SMTP 和可选 Uptrace 两个版本都支持。
+
+交付前必须确保 `IMBOY_VERSION` 对应的 backend/admin/pg18 镜像已发布且客户可拉取。
+安装器会在启动任何容器前统一检查；私有 GHCR 交付由客户先在部署机执行其获授权的
+`docker login ghcr.io`，安装器不会猜测、保存或输出客户的仓库账号。
+
+若尚未创建 `.env`，直接运行安装器只会生成权限为 `600` 的模板并退出，不会猜测或
+对外使用客户的域名、邮箱和第三方账号。
+
+### 服务关系与域名
+
+```text
+客户端 ──HTTPS/WSS──> nginx :80/:443
+                         ├── API_DOMAIN/             -> Erlang/OTP 29 backend :9800
+                         ├── API_DOMAIN/livekit/     -> LiveKit :7880
+                         ├── API_DOMAIN/s3/          -> Garage S3 :3900
+                         ├── ADMIN_DOMAIN/           -> React admin :80
+                         └── UPTRACE_DOMAIN/ (可选)  -> Uptrace :80
+
+backend -> PostgreSQL 18（业务数据）
+backend -> Garage（附件）；backend 签发 LiveKit token，媒体直连 TCP 7881/UDP 50000-50200
+backend -> 支付/短信/SMTP 第三方 HTTPS/TLS 服务（仅配置并启用后）
+OTel Collector -> 抓取 backend /metrics -> Uptrace
+Uptrace -> PostgreSQL 18 的独立 uptrace 库 + 独立 ClickHouse + 独立 Redis
+```
+
+Uptrace 默认关闭。启用时在 `.env` 设置 `UPTRACE_ENABLED=true`，填写
+`UPTRACE_DOMAIN` 和 `UPTRACE_ADMIN_EMAIL`；其余 Uptrace 密钥由安装器生成。该 overlay
+只采集 Prometheus 指标，不采集业务日志，且故障不会成为 IMBoy 核心服务的依赖。
 
 可选参数（`bash install.sh --help` 查看全部）：
 
@@ -99,7 +137,7 @@ $EDITOR .env
 
 **必须修改的字段 / Required fields to change:**
 
-> 用 `install.sh` 的话，下表中除三个人工项外全部自动生成（含 Garage 凭据
+> 用 `install.sh` 的话，下表中的内部密钥全部自动生成（含 Garage 凭据
 > `IMBOY_GARAGE_ACCESS_KEY` / `IMBOY_GARAGE_SECRET_KEY` / `GARAGE_RPC_SECRET`），无需手填。
 
 | 变量 / Variable | 说明 / Description |
@@ -118,6 +156,12 @@ $EDITOR .env
 | `LIVEKIT_API_KEY` | 32 字节随机 / 32-byte random |
 | `LIVEKIT_API_SECRET` | ≥32 字符随机：`openssl rand -hex 24` |
 | `SENTRY_DSN` | 可选，生产错误监控 / Optional, production error monitoring |
+
+第三方配置是条件必填：SMTP 填任一项后必须补齐 relay/port/SSL/username/password；
+短信设置 `IMBOY_SMS_SWITCH=on` 后只支持 `yjsms` 或 `jsms` 并要求对应凭据完整；支付
+设置 `IMBOY_PAYMENT_GATEWAY_ENABLED=true` 后必须使用 `live` 并至少配置一个完整网关。
+支付宝与微信回调固定为
+`https://API_DOMAIN/api/v1/payment/callback/{alipay|wechat}`，留空时安装器自动写入。
 
 **还须生成 RSA 登录密钥对**（`.env` 里配的是容器内路径，宿主机要写到挂载点）：
 

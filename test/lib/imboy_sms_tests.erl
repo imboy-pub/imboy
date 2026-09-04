@@ -150,7 +150,9 @@ send_jsms_test_() ->
         % Mock配置获取
         meck:expect(config_ds, env, fun
             (jpush_app_key, _) -> <<"test_app_key">>;
-            (jpush_master_secret, _) -> <<"test_master_secret">>
+            (jpush_master_secret, _) -> <<"test_master_secret">>;
+            (jsms_temp_id, _) -> <<"template-1">>;
+            (jsms_sign_id, _) -> <<"sign-1">>
         end),
 
         % Mock elib_log 防止 lager 未启动导致 badmatch
@@ -158,7 +160,9 @@ send_jsms_test_() ->
         meck:expect(elib_log, internal_log, 5, fun(_, _, _, _, _) -> ok end),
 
         % Mock HTTP请求
-        meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
+        meck:expect(elib_req, post, 3, fun(_URL, Data, _Headers) ->
+            ?assertEqual(<<"template-1">>, maps:get(<<"temp_id">>, Data)),
+            ?assertEqual(<<"sign-1">>, maps:get(<<"sign_id">>, Data)),
             {ok, #{<<"msg_id">> => <<"123456789">>, <<"send_id">> => <<"987654321">>}}
         end),
 
@@ -204,9 +208,8 @@ jverification_test_() ->
 
         try
             % 测试极光验证（非 8000 code 走 error 分支）
-            % RespMap has no <<"content">> key, so default <<"unknown">> is used
             Result = imboy_sms:jverification(?TEST_TOKEN),
-            ?assertEqual({error, <<"unknown">>}, Result),
+            ?assertEqual({error, <<"一键登录认证失败（服务端错误码 8001）"/utf8>>}, Result),
 
             % 验证HTTP请求被调用
             ?assert(meck:called(elib_req, post, 3))
@@ -408,7 +411,9 @@ http_headers_test_() ->
         % Mock配置
         meck:expect(config_ds, env, fun
             (jpush_app_key, _) -> <<"test_app_key">>;
-            (jpush_master_secret, _) -> <<"test_master_secret">>
+            (jpush_master_secret, _) -> <<"test_master_secret">>;
+            (jsms_temp_id, _) -> <<"template-1">>;
+            (jsms_sign_id, _) -> <<"sign-1">>
         end),
 
         % Mock elib_log 防止 lager 未启动导致 badmatch
@@ -455,7 +460,9 @@ error_handling_test_() ->
         % Mock配置
         meck:expect(config_ds, env, fun
             (jpush_app_key, _) -> <<"test_app_key">>;
-            (jpush_master_secret, _) -> <<"test_master_secret">>
+            (jpush_master_secret, _) -> <<"test_master_secret">>;
+            (jsms_temp_id, _) -> <<"template-1">>;
+            (jsms_sign_id, _) -> <<"sign-1">>
         end),
 
         % Mock elib_log 防止 lager 未启动导致 badmatch

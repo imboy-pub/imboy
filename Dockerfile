@@ -1,6 +1,6 @@
 # IMBoy 后端 Docker 镜像 / Backend Docker Image
-# 多阶段：Erlang/OTP 28 编译 + relx 发布 + Debian slim 运行
-# Multi-stage: OTP 28 build + relx release + debian-slim runtime
+# 多阶段：Erlang/OTP 29 编译 + relx 发布 + Debian slim 运行
+# Multi-stage: OTP 29 build + relx release + debian-slim runtime
 #
 # 构建 / Build（在 imboy 仓根执行）:
 #   docker build -t imboy/imboy-backend:$(cat VERSION) .

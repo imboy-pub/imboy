@@ -19,6 +19,7 @@
 %   IMBOY_PG_USERNAME / IMBOY_PG_USER -> pg_conf 中的 username（两者均接受）
 %   IMBOY_SMTP_USERNAME    -> smtp_option 中的 username
 %   IMBOY_SMTP_PASSWORD    -> smtp_option 中的 password
+%   IMBOY_SMTP_RELAY / PORT / SSL / FROM -> smtp_option 对应字段
 %   IMBOY_REDIS_PASSWORD   -> redis_options 中的 password
 %   IMBOY_REDIS_HOST       -> redis_options 中的 host
 %   IMBOY_REDIS_PORT       -> redis_options 中的 port
@@ -29,6 +30,8 @@
 %   IMBOY_JPUSH_MASTER_SECRET -> {imboy, jpush_master_secret}
 %   IMBOY_YJSMS_ACCOUNT    -> {imboy, yjsms_account}
 %   IMBOY_YJSMS_SECRET     -> {imboy, yjsms_secret}
+%   IMBOY_SMS_SWITCH / IMBOY_SMS_PLATFORM -> {imboy, sms} 中的 switch/platform
+%   IMBOY_YJSMS_URL / IMBOY_JSMS_TEMP_ID / IMBOY_JSMS_SIGN_ID -> 对应短信配置
 %   IMBOY_SOLIDIFIED_KEY   -> {imboy, solidified_key}      (32 字节)
 %   IMBOY_SOLIDIFIED_KEY_IV -> {imboy, solidified_key_iv}  (16 字节)
 %   IMBOY_LOGIN_RSA_PUB_KEY_FILE  -> {imboy, login_rsa_pub_key_file}
@@ -148,6 +151,10 @@ override_from_env() ->
     ok = override_binary_key("IMBOY_JPUSH_MASTER_SECRET", jpush_master_secret),
     ok = override_binary_key("IMBOY_YJSMS_ACCOUNT", yjsms_account),
     ok = override_binary_key("IMBOY_YJSMS_SECRET", yjsms_secret),
+    ok = override_binary_key("IMBOY_YJSMS_URL", yjsms_url),
+    ok = override_binary_key("IMBOY_JSMS_TEMP_ID", jsms_temp_id),
+    ok = override_binary_key("IMBOY_JSMS_SIGN_ID", jsms_sign_id),
+    ok = override_sms(),
 
     %% solidified_key / iv 必须是固定长度二进制（32 / 16）；用 binary 接收
     ok = override_binary_key("IMBOY_SOLIDIFIED_KEY", solidified_key),
@@ -383,7 +390,23 @@ override_smtp() ->
             NewOpts1 = maybe_override_proplist(SmtpOpts, username, "IMBOY_SMTP_USERNAME"),
             NewOpts2 = maybe_override_proplist(NewOpts1, password, "IMBOY_SMTP_PASSWORD"),
             NewOpts3 = maybe_override_proplist(NewOpts2, relay, "IMBOY_SMTP_RELAY"),
-            application:set_env(imboy, smtp_option, NewOpts3),
+            NewOpts4 = maybe_override_proplist_int(NewOpts3, port, "IMBOY_SMTP_PORT"),
+            NewOpts5 = maybe_override_proplist_bool(NewOpts4, ssl, "IMBOY_SMTP_SSL"),
+            NewOpts6 = maybe_override_proplist(NewOpts5, from, "IMBOY_SMTP_FROM"),
+            application:set_env(imboy, smtp_option, NewOpts6),
+            ok;
+        _ ->
+            ok
+    end.
+
+%% @doc 覆盖短信总开关与服务商；具体凭据使用顶层 IMBOY_* 配置。
+-spec override_sms() -> ok.
+override_sms() ->
+    case application:get_env(imboy, sms) of
+        {ok, SmsOpts} when is_list(SmsOpts) ->
+            NewOpts1 = maybe_override_proplist_binary(SmsOpts, switch, "IMBOY_SMS_SWITCH"),
+            NewOpts2 = maybe_override_proplist_binary(NewOpts1, platform, "IMBOY_SMS_PLATFORM"),
+            application:set_env(imboy, sms, NewOpts2),
             ok;
         _ ->
             ok
@@ -693,6 +716,24 @@ maybe_override_proplist_int(PropList, Key, EnvVar) ->
             PropList;
         Value when is_list(Value), length(Value) > 0 ->
             lists:keystore(Key, 1, PropList, {Key, list_to_integer(Value)});
+        _ ->
+            PropList
+    end.
+
+-spec maybe_override_proplist_binary(list(), atom(), string()) -> list().
+maybe_override_proplist_binary(PropList, Key, EnvVar) ->
+    case os:getenv(EnvVar) of
+        Value when is_list(Value), length(Value) > 0 ->
+            lists:keystore(Key, 1, PropList, {Key, unicode:characters_to_binary(Value)});
+        _ ->
+            PropList
+    end.
+
+-spec maybe_override_proplist_bool(list(), atom(), string()) -> list().
+maybe_override_proplist_bool(PropList, Key, EnvVar) ->
+    case os:getenv(EnvVar) of
+        Value when is_list(Value), length(Value) > 0 ->
+            lists:keystore(Key, 1, PropList, {Key, parse_feature_boolean(EnvVar, Value)});
         _ ->
             PropList
     end.

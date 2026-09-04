@@ -170,7 +170,8 @@ send_with_valid_smtp_option_test_() ->
             {config_ds, [
                 {'env', 1, fun(smtp_option) ->
                     [
-                        {username, "user@test.com"},
+                        {username, "smtp-user"},
+                        {from, "noreply@test.com"},
                         {relay, "smtp.test.com"},
                         {port, 587}
                     ]
@@ -178,12 +179,17 @@ send_with_valid_smtp_option_test_() ->
             ]},
             {gen_smtp_client, [
                 {'send', 2, fun(_Email, Option) ->
-                    ?assertMatch([{_, _}, {_, _}, {_, _}], Option),
+                    ?assertEqual(undefined, proplists:get_value(from, Option)),
                     ok
                 end}
             ]},
             {mimemail, [
-                {'encode', 1, fun(_Email) -> <<"encoded">> end}
+                {'encode', 1, fun({_, _, Headers, _, _}) ->
+                    ?assertEqual(
+                        {<<"From">>, <<"noreply@test.com">>}, lists:keyfind(<<"From">>, 1, Headers)
+                    ),
+                    <<"encoded">>
+                end}
             ]}
         ],
         fun() ->

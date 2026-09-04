@@ -9,15 +9,16 @@
 #
 # 选项 / Options:
 #   --skip-tls              跳过 nginx 443 / Grafana 严格校验（本地无 TLS/域名时）
-#   -f, --compose-file FILE 指定 compose 文件（相对 deploy/ 目录；默认 docker-compose.prod.yml）
-#                           亦可用环境变量 COMPOSE_FILE 覆盖，命令行参数优先
+#   -f, --compose-file FILE 指定 compose 文件；可重复传入 overlay
+#                           亦可用空格分隔的 COMPOSE_FILES 环境变量覆盖
 #   -h, --help              显示本帮助
 #
 # 退出码 / Exit code: 任一 [ERROR] -> 1；全部通过 -> 0
 set -uo pipefail
 
 SKIP_TLS=0
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+COMPOSE_FILES_VALUE="${COMPOSE_FILES:-${COMPOSE_FILE:-docker-compose.prod.yml}}"
+COMPOSE_FILES_LIST=()
 
 usage() {
     sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
@@ -33,12 +34,13 @@ while [ $# -gt 0 ]; do
                 echo "[ERROR] $1 需要一个参数（compose 文件名）" >&2
                 exit 2
             fi
-            COMPOSE_FILE="$2"
+            COMPOSE_FILES_LIST+=("$2")
             shift
             ;;
         --compose-file=*)
-            COMPOSE_FILE="${1#*=}"
-            [ -n "$COMPOSE_FILE" ] || { echo "[ERROR] --compose-file 不能为空" >&2; exit 2; }
+            compose_file="${1#*=}"
+            [ -n "$compose_file" ] || { echo "[ERROR] --compose-file 不能为空" >&2; exit 2; }
+            COMPOSE_FILES_LIST+=("$compose_file")
             ;;
         -h|--help)
             usage
@@ -53,17 +55,24 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+if [ "${#COMPOSE_FILES_LIST[@]}" -eq 0 ]; then
+    for compose_file in $COMPOSE_FILES_VALUE; do COMPOSE_FILES_LIST+=("$compose_file"); done
+fi
+
 # 定位到 deploy/ 目录（compose 与 .env 所在）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_DIR="$SCRIPT_DIR/../deploy"
 cd "$DEPLOY_DIR" 2>/dev/null || { echo "[ERROR] 找不到 deploy/ 目录"; exit 1; }
 
 # compose 文件存在性检查（避免静默检错栈）
-if [ ! -f "$COMPOSE_FILE" ]; then
-    echo "[ERROR] compose 文件不存在: deploy/$COMPOSE_FILE"
-    echo "        社区版部署请用: bash scripts/sanity_check.sh -f docker-compose.community.yml"
-    exit 1
-fi
+COMPOSE_ARGS=()
+for compose_file in "${COMPOSE_FILES_LIST[@]}"; do
+    if [ ! -f "$compose_file" ]; then
+        echo "[ERROR] compose 文件不存在: deploy/$compose_file"
+        exit 1
+    fi
+    COMPOSE_ARGS+=(-f "$compose_file")
+done
 
 # 加载 .env（取 PG 连接、端口、域名）
 if [ -f .env ]; then
@@ -73,7 +82,8 @@ POSTGRES_USER="${POSTGRES_USER:-imboy_user}"
 POSTGRES_DB="${POSTGRES_DB:-imboy_pro}"
 BACKEND_PORT="${BACKEND_PORT:-9800}"
 GRAFANA_PORT="${GRAFANA_PORT:-3000}"
-COMPOSE="docker compose -f ${COMPOSE_FILE}"
+compose() { docker compose "${COMPOSE_ARGS[@]}" "$@"; }
+COMPOSE_LABEL="${COMPOSE_FILES_LIST[*]}"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; NC='\033[0m'
 FAIL=0; WARN=0
@@ -81,32 +91,41 @@ ok()   { echo -e "${GREEN}[OK]${NC}   $1"; }
 err()  { echo -e "${RED}[ERROR]${NC} $1"; FAIL=$((FAIL+1)); }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; WARN=$((WARN+1)); }
 
-echo "==== IMBoy 部署后自检（compose=${COMPOSE_FILE} skip_tls=${SKIP_TLS}）===="
+echo "==== IMBoy 部署后自检（compose=${COMPOSE_LABEL} skip_tls=${SKIP_TLS}）===="
 
-# 1. 容器全部 running
-if $COMPOSE ps --status running 2>/dev/null | grep -q imboy_backend; then
-    ok "核心容器在运行"
-else
-    err "核心容器未全部 running（$COMPOSE ps 查看）"
-fi
+# 1. 编排内核心容器全部 running（init job 除外）
+RUNNING_SERVICES="$(compose ps --status running --services 2>/dev/null)"
+EXPECTED_SERVICES="imboy_pg18 garage imboy_backend imboy_admin imboy_nginx imboy_certbot imboy_livekit"
+case "$COMPOSE_LABEL" in
+    *docker-compose.uptrace.yml*)
+        EXPECTED_SERVICES="$EXPECTED_SERVICES uptrace_clickhouse uptrace_redis uptrace uptrace_otelcol"
+        ;;
+esac
+for service in $EXPECTED_SERVICES; do
+    if printf '%s\n' "$RUNNING_SERVICES" | grep -qx "$service"; then
+        ok "$service 容器在运行"
+    else
+        err "$service 容器未运行"
+    fi
+done
 
 # 2. PostgreSQL 就绪
-if $COMPOSE exec -T imboy_pg18 pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+if compose exec -T imboy_pg18 pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
     ok "PostgreSQL pg_isready 通过"
 else
     err "PostgreSQL 未就绪"
 fi
 
-# 3. 后端 HTTP 响应（连接成功即视为存活，根路径可能 200/404 均算 up）
-CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${BACKEND_PORT}/" 2>/dev/null || echo "000")
-if [ "$CODE" != "000" ]; then
-    ok "后端 HTTP 响应（:${BACKEND_PORT} -> ${CODE}）"
+# 3. 后端健康端点
+HEALTH="$(curl -fsS --max-time 5 "http://localhost:${BACKEND_PORT}/healthz" 2>/dev/null || true)"
+if printf '%s' "$HEALTH" | grep -q '"status":"ok"'; then
+    ok "后端 /healthz 响应 ok"
 else
-    err "后端 :${BACKEND_PORT} 无 HTTP 响应"
+    err "后端 :${BACKEND_PORT}/healthz 未返回 status=ok"
 fi
 
 # 4. 后端日志含启动成功标记且无近期 crash
-LOGS=$($COMPOSE logs --tail=300 imboy_backend 2>/dev/null)
+LOGS=$(compose logs --tail=300 imboy_backend 2>/dev/null)
 if echo "$LOGS" | grep -qE "started on port|imboy started"; then
     ok "后端日志含启动成功标记"
 else
@@ -119,7 +138,7 @@ else
 fi
 
 # 5. 数据库迁移已执行（schema_migrations 有记录）
-ROWS=$($COMPOSE exec -T imboy_pg18 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+ROWS=$(compose exec -T imboy_pg18 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
     "SELECT count(*) FROM schema_migrations" 2>/dev/null | tr -d '[:space:]')
 if [ -n "$ROWS" ] && [ "$ROWS" -gt 0 ] 2>/dev/null; then
     ok "数据库迁移已执行（schema_migrations=${ROWS}）"
@@ -128,7 +147,7 @@ else
 fi
 
 # 6. 管理后台静态页响应
-ACODE=$($COMPOSE exec -T imboy_admin wget -qO- http://localhost/health 2>/dev/null)
+ACODE=$(compose exec -T imboy_admin wget -qO- http://localhost/health 2>/dev/null)
 if [ "$ACODE" = "ok" ]; then
     ok "管理后台 /health 响应 ok"
 else
@@ -139,24 +158,39 @@ fi
 if [ "$SKIP_TLS" = "1" ]; then
     warn "已跳过 nginx 443 / Grafana 严格校验（--skip-tls）"
 else
-    if $COMPOSE exec -T imboy_nginx sh -c 'wget -qO- --no-check-certificate https://localhost/ >/dev/null 2>&1'; then
+    if compose exec -T imboy_nginx sh -c 'wget -qO- --no-check-certificate https://localhost/ >/dev/null 2>&1'; then
         ok "nginx 443 响应"
     else
         err "nginx 443 无响应（DNS/证书/端口）"
     fi
     # certbot 容器存在性（自动续期 TLS 证书）
-    if $COMPOSE ps --status running 2>/dev/null | grep -q imboy_certbot; then
+    if printf '%s\n' "$RUNNING_SERVICES" | grep -qx imboy_certbot; then
         ok "certbot 容器在运行（TLS 自动续期）"
     else
         warn "certbot 容器未运行（证书将无法自动续期）"
     fi
-    GCODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${GRAFANA_PORT}/" 2>/dev/null || echo "000")
-    if [ "$GCODE" != "000" ]; then
-        ok "Grafana :${GRAFANA_PORT} 响应（${GCODE}）"
+    if printf '%s\n' "$RUNNING_SERVICES" | grep -qx imboy_grafana; then
+        GCODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:${GRAFANA_PORT}/" 2>/dev/null || echo "000")
+        if [ "$GCODE" != "000" ]; then
+            ok "Grafana :${GRAFANA_PORT} 响应（${GCODE}）"
+        else
+            err "Grafana :${GRAFANA_PORT} 无响应"
+        fi
     else
-        err "Grafana :${GRAFANA_PORT} 无响应"
+        ok "Grafana 未启用，跳过"
     fi
 fi
+
+# 9. Uptrace overlay 启用时验证内部健康端点
+case "$COMPOSE_LABEL" in
+*docker-compose.uptrace.yml*)
+    if compose exec -T imboy_nginx wget -qO- http://uptrace/api/health >/dev/null 2>&1; then
+        ok "Uptrace /api/health 响应"
+    else
+        err "Uptrace /api/health 无响应"
+    fi
+    ;;
+esac
 
 echo "==== 结果：失败 ${FAIL} 项 / 告警 ${WARN} 项 ===="
 [ "$FAIL" -gt 0 ] && exit 1
