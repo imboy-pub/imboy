@@ -26,6 +26,7 @@
 -export([set_password/2]).
 -export([apply_logout/2]).
 -export([cancel_logout/2]).
+-export([deletion_status/1]).
 -export([webrtc_credential/1]).
 -export([get_status/1]).
 -export([change_chat_state/2]).
@@ -99,37 +100,107 @@ change_password(Uid, Req0) ->
             {error, Msg}
     end.
 
-%% @doc 申请注销账号
-%% 将用户状态设置为申请注销中（状态=2），记录注销申请日志。
-%% 注销申请后，用户将处于待注销状态，需要进一步处理。
+%% @doc 申请注销账号（D-01）
+%% 事务内：幂等 upsert 注销请求窄记录（requested 态保留首次 requested_at，
+%% 重复请求不重置宽限期时钟）+ 守卫式流转用户旗标（仅 1/2 → 2，
+%% -1 已注销账号不可"复活"）+ 记录注销申请日志。
+%% 任何一步失败（含 FK/DB 错误）整体回滚并传播 {error, _}，
+%% 绝不回滚后仍报成功（旧实现 `_ =` 吞掉 {rollback,_} 的缺陷已修）。
 %% @param Uid 用户ID
 %% @param Req0 HTTP请求对象
-%% @returns 操作结果：成功返回{ok, <<"success">>}
--spec apply_logout(integer(), map()) -> {ok, binary() | string()}.
+%% @returns {ok, "success"} | {error, binary()}
+-spec apply_logout(integer(), map()) -> {ok, binary() | string()} | {error, binary()}.
 apply_logout(Uid, Req0) ->
-    _ = elib_pg:with_tx(fun(Conn) ->
-        %% 更新用户状态为申请注销中
-        {ok, _} = user_ds:update_status_in_tx(Conn, {Uid, 2}),
-        %% 记录注销申请日志
-        _ = user_log_ds:add_logout_apply_log(Conn, Uid, Req0),
-        ok
+    %% elib_pg:with_tx 约定：{error,_} 返回值会穿透并 COMMIT，
+    %% 业务失败必须 throw({rollback, Reason}) 触发回滚（钱路径同款）
+    Ret = elib_pg:with_tx(fun(Conn) ->
+        case user_deletion_request_repo:upsert_request_tx(Conn, Uid) of
+            {ok, _} ->
+                case user_ds:mark_logout_apply_in_tx(Conn, Uid) of
+                    {ok, _} ->
+                        _ = user_log_ds:add_logout_apply_log(Conn, Uid, Req0),
+                        ok;
+                    {error, Reason} ->
+                        throw({rollback, Reason})
+                end;
+            {error, Reason} ->
+                throw({rollback, Reason})
+        end
     end),
-    {ok, "success"}.
+    case Ret of
+        ok ->
+            {ok, "success"};
+        {rollback, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
 
-%% @doc 撤销注销申请
-%% 将用户状态从申请注销中恢复为正常启用状态（状态=1）。
-%% 用户可以撤销注销申请，恢复正常使用。
+%% @doc 撤销注销申请（D-01）
+%% 事务内：请求记录 requested → cancelled（仅对 requested 态生效）+
+%% 用户旗标守卫式恢复（仅 2 → 1，-1 已注销账号绝不复活）。
+%% 无活跃请求时为幂等 no-op（返回成功，语义=目标态已达成）。
 %% @param Uid 用户ID
 %% @param _Req0 HTTP请求对象（当前未使用）
-%% @returns 操作结果：成功返回{ok, <<"success">>}
+%% @returns {ok, <<"success">>} | {error, binary()}
 -spec cancel_logout(integer(), any()) -> {ok, binary()} | {error, binary()}.
 cancel_logout(Uid, _Req0) ->
-    case user_ds:update_status(Uid, 1) of
-        {ok, _} ->
+    Ret = elib_pg:with_tx(fun(Conn) ->
+        case user_deletion_request_repo:cancel_request_tx(Conn, Uid) of
+            {ok, _} ->
+                case user_ds:unmark_logout_apply_in_tx(Conn, Uid) of
+                    {ok, _} ->
+                        ok;
+                    {error, Reason} ->
+                        throw({rollback, Reason})
+                end;
+            {error, Reason} ->
+                throw({rollback, Reason})
+        end
+    end),
+    case Ret of
+        ok ->
             {ok, <<"success">>};
+        {rollback, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+%% @doc 查询注销请求状态（D-01 认证状态端点）
+%% 返回请求态（not_requested/requested/cancelled/approved）、请求时间戳
+%% 与预期注销时间（requested_at + 可配置宽限期 user_deletion_retention_days）。
+%% @param Uid 用户ID
+%% @returns {ok, map()} | {error, binary()}
+-spec deletion_status(integer()) -> {ok, map()} | {error, binary()}.
+deletion_status(Uid) ->
+    GraceDays = application:get_env(imboy, user_deletion_retention_days, 60),
+    case user_deletion_request_repo:find_latest(Uid) of
+        {ok, undefined} ->
+            {ok, #{status => not_requested, grace_days => GraceDays}};
+        {ok, Row} ->
+            Status = maps:get(<<"status">>, Row),
+            ReqAt = maps:get(<<"requested_at">>, Row),
+            Base = #{
+                status => Status,
+                requested_at => ReqAt,
+                grace_days => GraceDays
+            },
+            case Status of
+                <<"requested">> ->
+                    {ok, Base#{expected_deletion_at => expected_deletion_at(ReqAt, GraceDays)}};
+                _ ->
+                    {ok, Base}
+            end;
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
+
+%% @doc 计算预期注销时间 = requested_at + 宽限期天数
+%% pg_conf 的 rfc3339_bin codec 下时间戳为二进制串，走 elib_dt 平移
+-spec expected_deletion_at(binary() | calendar:datetime(), pos_integer()) ->
+    binary() | calendar:datetime().
+expected_deletion_at(ReqAt, GraceDays) when is_binary(ReqAt) ->
+    elib_dt:add(ReqAt, {GraceDays * 86400, second});
+expected_deletion_at(ReqAt, GraceDays) when is_tuple(ReqAt), tuple_size(ReqAt) =:= 2 ->
+    Seconds = calendar:datetime_to_gregorian_seconds(ReqAt),
+    calendar:gregorian_seconds_to_datetime(Seconds + GraceDays * 86400).
 
 %% @doc 用户上线
 %% 将用户标记为在线状态，并加入到在线用户管理中。

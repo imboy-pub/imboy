@@ -10,6 +10,7 @@
     {nowarn_function, set_password/2},
     {nowarn_function, apply_logout/2},
     {nowarn_function, cancel_logout/2},
+    {nowarn_function, deletion_status/2},
     {nowarn_function, qrcode/2},
     {nowarn_function, change_state/2},
     {nowarn_function, show/2},
@@ -54,6 +55,7 @@ handle_action(change_password, Req, State) -> change_password(Req, State);
 handle_action(set_password, Req, State) -> set_password(Req, State);
 handle_action(apply_logout, Req, State) -> apply_logout(Req, State);
 handle_action(cancel_logout, Req, State) -> cancel_logout(Req, State);
+handle_action(deletion_status, Req, State) -> deletion_status(Req, State);
 handle_action(search, Req, State) -> search(Req, State);
 handle_action(export_data, Req, State) -> export_data(Req, State);
 handle_action(false, Req, _State) -> Req.
@@ -146,8 +148,13 @@ set_password(Req0, State) ->
 -spec apply_logout(cowboy_req:req(), map()) -> cowboy_req:req().
 apply_logout(Req0, State) ->
     CurrentUid = auth_ds:current_uid(State),
-    _ = user_logic:apply_logout(CurrentUid, Req0),
-    elib_response:success(Req0).
+    %% D-01：失败（含事务回滚）必须传播为错误响应，绝不报成功
+    case user_logic:apply_logout(CurrentUid, Req0) of
+        {ok, _Msg} ->
+            elib_response:success(Req0);
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
 
 %% @doc 撤销注销申请
 %% 取消账号注销申请
@@ -162,6 +169,19 @@ cancel_logout(Req0, State) ->
     case user_logic:cancel_logout(CurrentUid, Req0) of
         {ok, _Msg} ->
             elib_response:success(Req0);
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
+
+%% @doc 查询注销请求状态（D-01 认证状态端点）
+%% 返回 not_requested/requested/cancelled/approved、requested_at
+%% 与预期注销时间（requested_at + 宽限期）。
+-spec deletion_status(cowboy_req:req(), map()) -> cowboy_req:req().
+deletion_status(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    case user_logic:deletion_status(CurrentUid) of
+        {ok, Status} ->
+            elib_response:success(Req0, Status);
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.

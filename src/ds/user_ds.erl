@@ -35,6 +35,8 @@
 -export([may_exist/1]).
 -export([reject_logout_apply/1]).
 -export([approve_logout_apply/1]).
+-export([mark_logout_apply_in_tx/2]).
+-export([unmark_logout_apply_in_tx/2]).
 -export([batch_online_state/1]).
 -export([page/4]).
 -export([export_data/1]).
@@ -403,6 +405,40 @@ update_status_in_tx(Conn, {Uid, Status}) when Status >= -1, Status =< 2 ->
     Tb = user_repo:tablename(),
     elib_pg:update(Conn, Tb, #{<<"status">> => Status}, <<"id = $1">>, [Uid]).
 
+%% @doc 事务内标记"申请注销中"（守卫：仅 1=正常 / 2=已申请 可流转）
+%% 2026-09-05（D-01）：带来源守卫的状态流转，防止 -1（已注销）/0 账号
+%% 被重新申请注销而"复活"。RETURNING 行数 0 = 当前状态不允许申请。
+-spec mark_logout_apply_in_tx(pid(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+mark_logout_apply_in_tx(Conn, Uid) ->
+    Tb = user_repo:tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET status = 2"
+            " WHERE id = $1 AND status IN (1, 2)"
+            " RETURNING id">>,
+    %% execute/3 对 RETURNING 稳定返回计数（dialyzer 规格内）
+    case elib_pg:execute(Conn, Sql, [Uid]) of
+        {ok, Count} -> {ok, Count};
+        {ok, Count, _Tuples} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 事务内撤销"申请注销中"（守卫：仅 2 → 1，-1 已注销绝不复活）
+-spec unmark_logout_apply_in_tx(pid(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
+unmark_logout_apply_in_tx(Conn, Uid) ->
+    Tb = user_repo:tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET status = 1"
+            " WHERE id = $1 AND status = 2"
+            " RETURNING id">>,
+    %% execute/3 对 RETURNING 稳定返回计数（dialyzer 规格内）
+    case elib_pg:execute(Conn, Sql, [Uid]) of
+        {ok, Count} -> {ok, Count};
+        {ok, Count, _Tuples} -> {ok, Count};
+        {error, Reason} -> {error, Reason}
+    end.
+
 %% @doc 更新用户密码（事务版本）
 %% @param Conn 数据库连接
 %% @param Params {Uid, PasswordHash}
@@ -480,13 +516,21 @@ export_data(Uid) ->
 %% G3: user_deletion_logic 不应直调 user_repo:tablename()
 -spec find_expired_logout_users(pos_integer(), pos_integer()) ->
     {ok, list(map())} | {error, term()}.
+%% 2026-09-05（D-01）：改 JOIN user_deletion_request 读 requested_at。
+%% 旧 SQL 引用不存在的 user.updated_at 列（user 表只有 created_at），
+%% 扫描恒报错返 0，宽限期后的自动注销删除从未生效。
 find_expired_logout_users(RetentionDays, BatchSize) ->
     UserTb = user_repo:tablename(),
+    ReqTb = user_deletion_request_repo:tablename(),
     Sql =
-        <<"SELECT id FROM ", UserTb/binary,
-            " WHERE status = 2"
-            " AND updated_at <= NOW() - ($1 || ' days')::INTERVAL"
-            " ORDER BY updated_at ASC LIMIT $2">>,
+        <<"SELECT u.id FROM ", UserTb/binary,
+            " u"
+            " JOIN ", ReqTb/binary,
+            " r ON r.user_id = u.id"
+            " WHERE u.status = 2"
+            " AND r.status = 'requested'"
+            " AND r.requested_at <= NOW() - ($1 || ' days')::INTERVAL"
+            " ORDER BY r.requested_at ASC LIMIT $2">>,
     elib_pg:query(Sql, [RetentionDays, BatchSize]).
 
 %% ===================================================================
@@ -496,18 +540,33 @@ find_expired_logout_users(RetentionDays, BatchSize) ->
 %
 
 %% @doc 驳回注销申请：仅当 status=2 时将用户状态恢复为 1
+%% 2026-09-05（D-01）：升级为事务，同步注销请求记录（cancelled）；
+%% 记录侧 0 行视为存量旗标用户（迁移前 status=2 无记录行），不阻断。
 -spec reject_logout_apply(integer()) -> {ok, [map()]} | {ok, []} | {error, any()}.
 reject_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
+    %% user 表无 updated_at 列（只有 created_at），不能写该字段
     Sql =
         <<"UPDATE ", Tb/binary,
-            %% user 表无 updated_at 列（只有 created_at），不能写该字段
             " SET status = 1"
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
-    elib_pg:query(Sql, [Uid]).
+    elib_pg:with_tx(fun(Conn) ->
+        case elib_pg:query(Conn, Sql, [Uid]) of
+            {ok, []} ->
+                %% 并发守卫命中：已不在申请中，原样返回空
+                {ok, []};
+            {ok, Rows} ->
+                _ = user_deletion_request_repo:cancel_request_tx(Conn, Uid),
+                {ok, Rows};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end).
 
 %% @doc 审批通过注销申请：仅当 status=2 时将用户状态设为 -1（已注销）
+%% 2026-09-05（D-01）：升级为事务，同步注销请求记录（approved）；
+%% 记录侧 0 行视为存量旗标用户，不阻断。
 -spec approve_logout_apply(integer()) -> {ok, [map()]} | {ok, []} | {error, any()}.
 approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
     Tb = user_repo:tablename(),
@@ -516,7 +575,17 @@ approve_logout_apply(Uid) when is_integer(Uid), Uid > 0 ->
             " SET status = -1"
             " WHERE id = $1 AND status = 2"
             " RETURNING id">>,
-    elib_pg:query(Sql, [Uid]).
+    elib_pg:with_tx(fun(Conn) ->
+        case elib_pg:query(Conn, Sql, [Uid]) of
+            {ok, []} ->
+                {ok, []};
+            {ok, Rows} ->
+                _ = user_deletion_request_repo:approve_request_tx(Conn, Uid),
+                {ok, Rows};
+            {error, Reason} ->
+                {error, Reason}
+        end
+    end).
 
 %% @doc 批量获取用户在线状态，避免 N+1 查询
 %%

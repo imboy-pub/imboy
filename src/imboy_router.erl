@@ -127,6 +127,7 @@ get_routes() ->
                 {"/api/v1/user/set_password", user_handler, #{action => set_password}},
                 {"/api/v1/user/apply_logout", user_handler, #{action => apply_logout}},
                 {"/api/v1/user/cancel_logout", user_handler, #{action => cancel_logout}},
+                {"/api/v1/user/deletion_status", user_handler, #{action => deletion_status}},
                 {"/api/v1/user/export_data", user_handler, #{action => export_data}},
                 {"/api/v1/user/search", user_handler, #{action => search}},
 

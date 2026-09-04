@@ -193,6 +193,7 @@ tsid_generator_names() ->
         user_denylist,
         user_tag,
         user_tag_relation,
+        user_deletion_request,
         %% ── 好友相关 ──
         friend,
         friend_category,
