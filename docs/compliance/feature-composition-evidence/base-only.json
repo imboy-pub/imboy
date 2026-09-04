@@ -1,0 +1,42 @@
+{
+  "artifacts": {
+    "admin": {
+      "javascript_files": 53,
+      "path": "/Users/leeyi/project/imboy.pub/imboyadmin/dist",
+      "sha256": "c713dfd1664ecaf05546cf11f1a81143ca9eb571b83d5188bdbfd04ac7ff64da"
+    },
+    "backend": {
+      "path": "/Users/leeyi/project/imboy.pub/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.71/ebin/imboy_feature.beam",
+      "sha256": "8996ca558e1481b92cff7a82627d33662ff1448b23f343151205b241cb8ab08b",
+      "size": 9056
+    },
+    "flutter": {
+      "path": "/Users/leeyi/project/imboy.pub/imboyapp/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "26669ae877690d5a7ff074b8250c7f0129bc1e5543ca9008827676e73ff768f6",
+      "size": 131461074
+    }
+  },
+  "compiled_features": [
+    "core"
+  ],
+  "manifest_hash": "sha256:e943ee9541241206e6f0b91502ddb173f06c086e83195c7a7cc95de2f4623712",
+  "profile": "base-only",
+  "repositories": {
+    "imboy": {
+      "dirty": true,
+      "head": "275fe257f58df41c98975c9345e09de8e288c91e",
+      "worktree_sha256": "2b8ed8c0136b8307f7c1306b1c3622dcaf8cb632285e77924ed37dd45a314c4e"
+    },
+    "imboyadmin": {
+      "dirty": true,
+      "head": "10dedd0d851e3a147c807455b32fb1502fcd2233",
+      "worktree_sha256": "b8a900c08b50195e3476b4acb5063d32a0dd9d718be8b5a167147af69e2e7bbe"
+    },
+    "imboyapp": {
+      "dirty": true,
+      "head": "ffbe74bbc7db326c877c40b6edff0215edbf74b2",
+      "worktree_sha256": "295ced5a50a2f9fda1af63e4e0383570f43d44ff2091886989a4fed5ad0e758e"
+    }
+  },
+  "schema_version": 1
+}

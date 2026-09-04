@@ -48,6 +48,12 @@ build_manifest() ->
     AdminEntries = imboy_plugin_registry:enabled_admin_entries(Features),
     PluginList = build_plugin_list(Features),
     #{
+        <<"manifest_hash">> => imboy_feature:manifest_hash(),
+        <<"manifest_schema_version">> => imboy_feature:manifest_schema_version(),
+        <<"compiled_features">> => [
+            atom_to_binary(Feature, utf8)
+         || Feature <- imboy_feature:compiled_features()
+        ],
         <<"features">> => Features,
         <<"policy">> => Policy,
         <<"app_entries">> => [atom_to_binary(E, utf8) || E <- AppEntries],

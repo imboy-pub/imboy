@@ -1042,10 +1042,13 @@ get_routes() ->
         {"/static/admin/[...]", cowboy_static,
             {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
     ],
-    CoreRoutes = MainRoutes ++ ApiV1Routes ++ AdmRoutes,
+    CompiledApiRoutes = imboy_feature:compiled_routes(api, ApiV1Routes),
+    CompiledAdmRoutes = imboy_feature:compiled_routes(admin, AdmRoutes),
+    CompiledPluginRoutes = imboy_feature:compiled_routes(api, plugin_routes()),
+    CoreRoutes = MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes,
     %% 源路由已统一在 /api 命名空间下（双路过渡已撤，无存量老客户端）。
     %% 网站白名单（/、/help、/brand、/privacy-policy、/account-deletion、/metrics、/static/*）保留根路径。
-    [{Host, CoreRoutes ++ plugin_routes()}].
+    [{Host, CoreRoutes ++ CompiledPluginRoutes}].
 
 %% @doc Phase 2 切片 2：从 imboy_router_registry ETS 读取所有插件路由并转 cowboy 格式。
 %% Phase 2 slice 2: read all plugin routes from imboy_router_registry ETS and convert.

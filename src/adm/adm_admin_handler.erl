@@ -64,7 +64,16 @@ init(Req0, State0) ->
 config_features_action(<<"GET">>, Req0, State) ->
     case ensure_permission(State, <<"settings:view">>, Req0) of
         ok ->
-            elib_response:success(Req0, imboy_feature:all());
+            Features = imboy_feature:all(),
+            Payload = Features#{
+                <<"manifest_hash">> => imboy_feature:manifest_hash(),
+                <<"manifest_schema_version">> => imboy_feature:manifest_schema_version(),
+                <<"compiled_features">> => [
+                    atom_to_binary(Feature, utf8)
+                 || Feature <- imboy_feature:compiled_features()
+                ]
+            },
+            elib_response:success(Req0, Payload);
         {error, Req1} ->
             Req1
     end;
@@ -961,6 +970,13 @@ default_sidebar_config() ->
                         <<"path">> => <<"/settings">>,
                         <<"icon">> => <<"Settings">>,
                         <<"label">> => <<"系统设置"/utf8>>,
+                        <<"roles">> => [1],
+                        <<"permission">> => <<"settings:view">>
+                    },
+                    #{
+                        <<"path">> => <<"/settings/product-experience">>,
+                        <<"icon">> => <<"MonitorSmartphone">>,
+                        <<"label">> => <<"产品体验"/utf8>>,
                         <<"roles">> => [1],
                         <<"permission">> => <<"settings:view">>
                     },

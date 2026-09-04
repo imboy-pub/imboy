@@ -24,6 +24,11 @@ set -u
 
 BASE="${BASE:-http://127.0.0.1:9800}"
 IMBOY_DIR="${IMBOY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+python3 "$IMBOY_DIR/scripts/generate_product_features.py" \
+  --check --require-profile full-selected || {
+  echo "演示版本必须使用 full-selected 全 features 生成物" >&2
+  exit 2
+}
 WS_PY="${WS_PY:-$IMBOY_DIR/scripts/smoke/ws_c2g_send.py}"
 
 PGHOST="${PGHOST:-127.0.0.1}"; PGPORT="${PGPORT:-4323}"

@@ -33,6 +33,7 @@
 | US | Unknown | general-audience code signals only | state scope/COPPA/TIDA applicability unknown | Legal | Legal review | market/audience/threshold memo; no universal age-13 hardcode |
 | Australia | Unknown/high attention | IM fits likely RES definition | 2026 codes, privacy coverage, age duties/classification unknown | Legal | Legal review | eSafety classification assessment + APP/cross-border review |
 | Tests | Partial | focused EUnit/Flutter/Admin tests | no cross-domain DB, dual-user, device, store acceptance | P1 | Yes | release suite and evidence ledger from plan |
+| Feature composition / build slicing | Partial | Backend policy/profile, Flutter registry/route guard, Admin feature route/sidebar | 现有机制主要是运行时隐藏/拒绝；关闭模块仍可能进入 binary/bundle，三仓配置可能漂移 | P1 delivery architecture / P2 compliance | Yes for the requested distributable editions; not a legal requirement by itself | 单一 canonical manifest + dependency validation + generated registries + three-artifact hash；运行时只能在编译集合内继续关闭 |
 
 ## Launch Scope Shortcut
 
@@ -46,4 +47,4 @@ OFF until separately accepted: nearby people, public discovery/trending,
     live room, paid channel/wallet, AI Agent marketplace, third-party bots
 ```
 
-This is a proposed launch profile, not a product deletion. Existing feature/profile mechanisms should enforce it; every OFF item needs UI + API + deep-link verification.
+This is a proposed launch build preset, not a product deletion and not a legal mandate. A canonical product-feature manifest should define the compiled feature ceiling for Backend, Flutter and Admin. Existing feature/profile mechanisms remain runtime enforcement and may only further disable compiled features. Every OFF item needs artifact/import or chunk evidence plus UI, API, WebSocket and deep-link verification. Shared infrastructure and a compatible database-schema superset may remain when physical removal would require rewriting core domains.

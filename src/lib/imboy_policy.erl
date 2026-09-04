@@ -16,6 +16,8 @@
 
 -module(imboy_policy).
 
+-include("generated/imboy_product_features.hrl").
+
 -export([
     current_profile/0,
     effective/0,
@@ -547,7 +549,7 @@ effective_features_for_profile(Profile, FeatureConfig) ->
 -spec effective_features_from_switches(map()) -> map().
 effective_features_from_switches(Features) ->
     maps:from_list([
-        {Name, feature_enabled(Name, Features)}
+        {Name, lists:member(Name, ?IMBOY_COMPILED_FEATURES) andalso feature_enabled(Name, Features)}
      || Name <- feature_names()
     ]).
 

@@ -89,6 +89,8 @@ start(_Type, _Args) ->
                         security_headers_middleware,
                         % 认证中间件
                         auth_middleware,
+                        % 构建上限内的运行时功能只允许继续关闭
+                        feature_gate_middleware,
                         % 限流中间件
                         throttle_middleware,
                         cowboy_handler

@@ -37,15 +37,26 @@ init([]) ->
         intensity => 5,
         period => 10
     },
-    Children = [
+    BaseChildren = [
         router_registry_spec(),
-        ws_action_registry_spec(),
-        plugin_sup_spec(channel_sup),
-        plugin_sup_spec(moment_sup),
-        plugin_sup_spec(location_sup),
-        plugin_sup_spec(group_collab_sup)
+        ws_action_registry_spec()
     ],
+    PluginChildren = [
+        plugin_sup_spec(SupName)
+     || {Plugin, SupName} <- [
+            {channel, channel_sup},
+            {moment, moment_sup},
+            {location, location_sup},
+            {group_collab, group_collab_sup}
+        ],
+        plugin_compiled(Plugin)
+    ],
+    Children = BaseChildren ++ PluginChildren,
     {ok, {SupFlags, Children}}.
+
+plugin_compiled(Plugin) ->
+    Manifest = imboy_plugin_registry:manifest(Plugin),
+    lists:any(fun imboy_feature:compiled/1, maps:get(feature_keys, Manifest, [])).
 
 %% @doc 路由注册表 child spec：必须在插件 sup 之前启动，确保 register/unregister 可用。
 router_registry_spec() ->

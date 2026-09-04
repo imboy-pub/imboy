@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "product_id": "imboy",
+  "profile": "full-selected",
+  "base_ref": "imboy-feature-inventory-v1",
+  "selected_features": [
+    "e2ee",
+    "channel",
+    "location",
+    "moment",
+    "channel_discover",
+    "channel_invitation",
+    "channel_order",
+    "group_vote",
+    "group_schedule",
+    "group_task"
+  ]
+}

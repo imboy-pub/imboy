@@ -15,12 +15,20 @@ cleanup(_) ->
     ok.
 
 manifest_builds_correct_structure_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             Manifest = app_manifest_handler:build_manifest(),
             ?assert(is_map(Manifest)),
             ?assert(maps:is_key(<<"features">>, Manifest)),
+            ?assertEqual(imboy_feature:manifest_hash(), maps:get(<<"manifest_hash">>, Manifest)),
+            ?assertEqual(
+                imboy_feature:manifest_schema_version(),
+                maps:get(<<"manifest_schema_version">>, Manifest)
+            ),
+            ?assertEqual(
+                [atom_to_binary(Feature, utf8) || Feature <- imboy_feature:compiled_features()],
+                maps:get(<<"compiled_features">>, Manifest)
+            ),
             ?assert(maps:is_key(<<"policy">>, Manifest)),
             ?assert(maps:is_key(<<"app_entries">>, Manifest)),
             ?assert(maps:is_key(<<"admin_entries">>, Manifest)),
@@ -32,11 +40,10 @@ manifest_builds_correct_structure_test_() ->
             ?assert(is_list(maps:get(<<"admin_entries">>, Manifest))),
             ?assert(is_list(maps:get(<<"plugins">>, Manifest)))
         end
-     end}.
+    end}.
 
 etag_is_consistent_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             M1 = app_manifest_handler:build_manifest(),
             Etag1 = app_manifest_handler:compute_etag(M1),
@@ -46,14 +53,13 @@ etag_is_consistent_test_() ->
             ?assertMatch(<<"\"", _/binary>>, Etag1),
             ?assert(byte_size(Etag1) > 2)
         end
-     end}.
+    end}.
 
 etag_changes_with_content_test_() ->
-    {setup, fun setup/0, fun cleanup/1,
-     fun(_) ->
+    {setup, fun setup/0, fun cleanup/1, fun(_) ->
         fun() ->
             Etag1 = app_manifest_handler:compute_etag(#{<<"v">> => 1}),
             Etag2 = app_manifest_handler:compute_etag(#{<<"v">> => 2}),
             ?assertNotEqual(Etag1, Etag2)
         end
-     end}.
+    end}.

@@ -272,7 +272,7 @@
 - source: E2EE gap-matrix X15；E2EE-P0 ruling R4
 - action: 仅依据 Apache-2.0 上游 `matrix-org/vodozemac` crate 自建 Flutter FFI 插件；先冻结当前生产 API/序列化兼容契约，再实现 Account、Olm Session、Megolm 与 Ed25519 最小调用面，替换 `vodozemac`/`flutter_vodozemac` 依赖，最后更新 NOTICE 与许可证门禁。禁止复制或改写现有 AGPL Dart/Rust binding 源码。
 - verify: `lib/` 与 E2EE 测试不再 import 两个 AGPL 包；依赖锁文件和原生产物不含两包；既有 Olm/Megolm、pickle 恢复、签名验证及跨平台互操作回归通过；Android/iOS/macOS 真机构建通过；许可证清单无 AGPL 阻断并纳入 CI。未取得全部平台与许可证证据前不得标记 done 或分发。
-- evidence: 2026-09-03 盘点确认生产面覆盖 Account、Session、GroupSession、InboundGroupSession、Curve25519/Ed25519 与底层 session config bindings；仓内没有可复用 Rust/FFI 插件先例，现有先例只存在于 AGPL 依赖包，不能复制。上游 crate 0.10.0 当前声明 Apache-2.0。实施尚未开始。
+- evidence: 2026-09-04 Phase 1 调用面冻结已完成：`imboyapp/tool/vodozemac_api_inventory.json` 锁定 23 个唯一文件中的 29 条 import 引用与 37 个实际成员。产品当前暂不闭源，继续使用 `flutter_vodozemac ^0.8.1` 与 `vodozemac ^0.8.0`，并接受其开源发布义务；自建 Apache-2.0 FFI 的生产接线暂停，纯 Rust 研究成果保留。任务继续 blocked：任何闭源商业交付前，必须重新完成 X15 的四端互操作与许可证门，或取得可用的商业授权。
 
 ### W1-RELI-01
 - title: message_retry 全量扫描 + 集群 syn Pid 语义确认

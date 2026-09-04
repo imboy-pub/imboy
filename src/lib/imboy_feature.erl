@@ -1,8 +1,21 @@
 -module(imboy_feature).
 
--export([enabled/1, ensure_enabled/2, all/0, feature_names/0]).
+-export([
+    enabled/1,
+    ensure_enabled/2,
+    all/0,
+    feature_names/0,
+    compiled/1,
+    compiled_features/0,
+    manifest_hash/0,
+    manifest_schema_version/0,
+    compiled_routes/2,
+    compiled_routes/3,
+    route_feature/3
+]).
 
 -include("error_code.hrl").
+-include("generated/imboy_product_features.hrl").
 
 -type feature() :: atom() | binary() | string().
 
@@ -12,8 +25,116 @@ enabled(Feature) ->
         undefined ->
             true;
         FeatureKey ->
-            maps:get(FeatureKey, imboy_policy:effective_features(), true)
+            compiled(FeatureKey) andalso
+                maps:get(FeatureKey, imboy_policy:effective_features(), true)
     end.
+
+-spec compiled(feature()) -> boolean().
+compiled(Feature) when is_atom(Feature) ->
+    lists:member(Feature, ?IMBOY_COMPILED_FEATURES);
+compiled(Feature) when is_binary(Feature) ->
+    lists:member(Feature, [atom_to_binary(Name, utf8) || Name <- ?IMBOY_COMPILED_FEATURES]);
+compiled(Feature) when is_list(Feature) ->
+    compiled(unicode:characters_to_binary(Feature)).
+
+-spec compiled_features() -> [atom()].
+compiled_features() ->
+    ?IMBOY_COMPILED_FEATURES.
+
+-spec manifest_hash() -> binary().
+manifest_hash() ->
+    ?IMBOY_PRODUCT_FEATURE_MANIFEST_HASH.
+
+-spec manifest_schema_version() -> pos_integer().
+manifest_schema_version() ->
+    ?IMBOY_PRODUCT_FEATURE_SCHEMA_VERSION.
+
+-spec compiled_routes(api | admin, list()) -> list().
+compiled_routes(Surface, Routes) ->
+    compiled_routes(Surface, Routes, compiled_features()).
+
+-spec compiled_routes(api | admin, list(), [atom()]) -> list().
+compiled_routes(Surface, Routes, CompiledFeatures) ->
+    [
+        annotate_route(Surface, Route)
+     || Route <- Routes, route_is_compiled(Surface, Route, CompiledFeatures)
+    ].
+
+route_is_compiled(Surface, {_Path, Handler, Opts}, CompiledFeatures) when is_map(Opts) ->
+    Action = maps:get(action, Opts, false),
+    case maps:get(required_feature, Opts, route_feature(Surface, Handler, Action)) of
+        undefined -> true;
+        Feature -> lists:member(Feature, CompiledFeatures)
+    end;
+route_is_compiled(_Surface, _Route, _CompiledFeatures) ->
+    true.
+
+annotate_route(Surface, {Path, Handler, Opts}) when is_map(Opts) ->
+    Action = maps:get(action, Opts, false),
+    case maps:get(required_feature, Opts, route_feature(Surface, Handler, Action)) of
+        undefined -> {Path, Handler, Opts};
+        Feature -> {Path, Handler, Opts#{required_feature => Feature}}
+    end;
+annotate_route(_Surface, Route) ->
+    Route.
+
+-spec route_feature(api | admin, atom(), atom() | false) -> atom() | undefined.
+route_feature(api, Handler, _Action) when
+    Handler =:= e2ee_handler;
+    Handler =:= e2ee_backup_handler;
+    Handler =:= e2ee_trust_handler;
+    Handler =:= olm_handler
+->
+    e2ee;
+route_feature(api, group_handler, set_e2ee_mode) ->
+    e2ee;
+route_feature(admin, adm_admin_handler, Action) when
+    Action =:= compliance_key_list;
+    Action =:= compliance_key_create;
+    Action =:= compliance_key_revoke
+->
+    e2ee;
+route_feature(api, channel_discovery_handler, _Action) ->
+    channel_discover;
+route_feature(api, channel_handler_order, _Action) ->
+    channel_order;
+route_feature(api, channel_handler_admin, Action) when
+    Action =:= create_invitation;
+    Action =:= accept_invitation;
+    Action =:= reject_invitation;
+    Action =:= my_invitations;
+    Action =:= sent_invitations
+->
+    channel_invitation;
+route_feature(api, Handler, _Action) when
+    Handler =:= channel_handler_admin;
+    Handler =:= channel_handler_comment;
+    Handler =:= channel_handler_message;
+    Handler =:= channel_webhook_handler
+->
+    channel;
+route_feature(api, report_handler, moment_create) ->
+    moment;
+route_feature(admin, adm_group_vote_handler, _Action) ->
+    group_vote;
+route_feature(admin, adm_group_schedule_handler, Action) when Action =/= governance_log_list ->
+    group_schedule;
+route_feature(admin, adm_group_task_handler, _Action) ->
+    group_task;
+route_feature(admin, adm_channel_handler, Action) when
+    Action =:= orders;
+    Action =:= refund_order;
+    Action =:= set_price
+->
+    channel_order;
+route_feature(admin, adm_report_handler, Action) when
+    Action =:= channel_list;
+    Action =:= channel_resolve;
+    Action =:= channel_batch_resolve
+->
+    channel;
+route_feature(Surface, Handler, Action) ->
+    imboy_plugin_registry:required_feature(Surface, Handler, Action).
 
 -spec all() -> map().
 all() ->

@@ -2,7 +2,7 @@
 
 > Input: [Self-Audit](./IMBoy%20Overseas%20Compliance%20Self-Audit.md) and [Gap Matrix](./IMBoy%20Compliance%20Gap%20Matrix.md)
 > Goal: overseas release baseline, not comprehensive legal compliance.
-> Rule: reuse Handler -> Logic -> DS -> Repo, `imboy_policy`, `adm_acl`, report/denylist/audit tables and existing feature gates. Do not rewrite Message/Group/Channel/Workspace/E2EE.
+> Rule: reuse Handler -> Logic -> DS -> Repo, `imboy_policy`, `adm_acl`, report/denylist/audit tables and existing feature gates. Use one canonical product-feature manifest to define the build-time ceiling for Backend, Flutter and Admin. Do not rewrite Message/Group/Channel/Workspace/E2EE.
 
 ## Execution Rules
 
@@ -13,7 +13,15 @@ Do not start tasks marked `LEGAL` until the named decision is supplied. Do not a
 ## Dependency and Merge Order
 
 ```text
-L-01 -> S-01
+F-00 -> F-01 -> F-02
+F-02 -> F-03
+F-02 -> F-04
+F-02 -> F-05
+F-03 + F-04 + F-05 -> F-06 -> F-07
+F-07 -> F-08
+F-07 -> F-09
+F-07 -> L-01
+F-07 -> D-01 + R-01 + B-01 + A-01 + T-01 + E-01
 D-01 -> D-02 -> D-03 -> D-04
 R-01 -> R-02 -> R-03 -> R-04
 B-01 -> B-02
@@ -21,25 +29,168 @@ A-01 -> A-02
 T-01 -> T-02 -> P-01
 E-01 -> E-02
 
-Merge order: policy decisions/docs -> DB contracts -> backend logic/API -> Admin
-             -> Flutter -> integration/release evidence.
+Merge order: feature inventory/manifest/generator -> Backend/Flutter/Admin slicing
+             -> artifact consistency -> policy decisions/docs -> DB contracts
+             -> backend logic/API -> Admin -> Flutter -> integration/release evidence.
 ```
+
+## Feature Composition Architecture
+
+The packaging requirement is a product/delivery architecture requirement, not a legal requirement. A canonical manifest defines `compiled_features`, the maximum capability set present in an artifact. Runtime configuration may only disable members of that set:
+
+```text
+effective_features = compiled_features intersect runtime_enabled_features
+```
+
+Disabled business modules, routes, screens, optional SDKs and assets should not enter the relevant release artifact. Shared infrastructure and a compatible database-schema superset may remain. Client or Admin manifests are never authorization sources; Backend authentication, authorization and safety enforcement remain mandatory.
+
+Base is non-optional where required to operate any enabled interactive/UGC surface: account/auth/session/device, authorization, health/config/upgrade, security audit/logging, privacy notice and account deletion, plus report/block/moderation foundations whenever UGC or user interaction is compiled. The exact list must be proved by F-00 and validated by F-02, not duplicated by hand across repositories.
+
+### Task F-00 - Feature Boundary Inventory
+
+**Goal:** Map every product feature to its Backend routes/workers/modules, Flutter routes/screens/import roots, Admin routes/menu/modules, optional SDKs/assets/permissions, data tables and dependencies.
+
+**Ownership / Files:** documentation-only owner; inspect all three repositories and `imboy-sdk-js`; write one inventory under `imboy/docs/compliance`. Do not edit application code.
+
+**Tests / Evidence:** current-HEAD file/function references and negative evidence for ambiguous boundaries; classify each item as Base, optional, shared infrastructure or unknown.
+
+**Acceptance:** every currently advertised/registered feature has one owner and dependency closure; Base decisions include reasons; unknown boundaries block slicing that feature.
+
+**Stop:** if a feature cannot be separated without rewriting a core domain, record Architecture Gap and keep it in Base for the first implementation.
+
+### Task F-01 - Canonical Product Feature Manifest
+
+**Goal:** Define one human-edited manifest as the source for all three builds.
+
+**Ownership / Files:** Backend/product-config owner exclusively owns the manifest and schema in the existing `imboy/config` or nearest established config location selected after inspection. Other repositories consume generated outputs only.
+
+**Implementation:** minimal versioned schema containing product/profile identity, Base declaration/reference and selected optional features. Reuse `imboy_policy_catalog`, `imboy_profile_preset`, `imboy_feature:feature_names/0` and existing dependency knowledge; do not create a second policy catalog. Define canonical ordering and a manifest hash.
+
+**Tests:** valid Base-only and selected-feature fixtures; unknown/duplicate feature, missing dependency, attempted Base disable and malformed version fail closed.
+
+**Acceptance:** one file determines the build-time feature ceiling; schema explains what is and is not physically removed; no country-specific branches or runtime secrets are stored in it.
+
+**Stop:** schema changes requiring a generic plugin framework are out of scope.
+
+### Task F-02 - Generator and Dependency Validation
+
+**Goal:** Generate deterministic, reviewable inputs for Backend, Flutter and Admin from F-01.
+
+**Ownership / Files:** build-tooling owner exclusively owns one generator and generated-contract format; repository owners only own their generated adapters. Prefer an existing project scripting language/dependency.
+
+**Implementation:** validate dependency closure and Base invariants; emit sorted registries plus manifest version/hash; `--check` detects stale outputs. Runtime-enabled values outside `compiled_features` are rejected or ignored fail closed with an explicit error.
+
+**Tests:** golden/determinism test; cyclic/missing dependency; stale generated file; hash mismatch; Base-only/full-selected fixtures.
+
+**Acceptance:** identical input is byte-stable; one command generates all contracts; one check command fails CI on drift before any product build.
+
+**Stop:** do not add a template engine or build framework unless existing tools cannot emit the small static registries.
+
+### Task F-03 - Backend Build, Route and Release Slicing
+
+**Goal:** A disabled Backend feature is not registered or operational and, where OTP boundaries allow, its application modules/dependencies are absent from the release.
+
+**Ownership / Files:** Backend owner; generated route/module allowlist, `imboy_router`, supervisors/workers and release configuration only. Preserve Handler -> Logic -> DS -> Repo.
+
+**Implementation:** register REST/WS routes and workers from the compiled registry; enforce effective features server-side; exclude optional OTP applications/dependencies when separable. Do not rely on a Flutter/Admin flag.
+
+**Tests:** raw REST/WS calls for disabled features return 404 or a stable feature-unavailable response; workers do not start; release inventory proves optional modules/dependencies absent where promised.
+
+**Acceptance:** Base-only and selected-feature releases boot; enabled core flows pass; disabled routes/actions are unreachable; auth/RBAC/report/block gates remain enforced.
+
+**Stop:** keep inseparable shared modules in Base and document the packaging ceiling instead of rewriting message/group/channel cores.
+
+### Task F-04 - Flutter Compile-Graph Slicing
+
+**Goal:** Build only Base screens plus selected feature screens and dependencies.
+
+**Ownership / Files:** Flutter owner; generated `enabled_features.g.dart` or equivalent, route/page registry, feature entry imports and build script. Do not edit reserved `ios/*`, `macos/*` or `plugin/r_upgrade`.
+
+**Implementation:** generated feature entrypoints must control imports and routes so disabled pages are absent from the Dart compilation graph. Keep route guards as defense in depth; do not claim runtime `if` statements are build slicing.
+
+**Tests:** Base-only and selected builds; disabled deep links fail predictably; binary/symbol/import evidence demonstrates excluded feature roots; enabled navigation/API flows still work.
+
+**Acceptance:** no static import from a Base entrypoint pulls a disabled feature into the build; optional permissions/assets/plugins are handled by F-06.
+
+**Stop:** shared widgets remain shared; do not fork the application shell per feature combination.
+
+### Task F-05 - Admin Module, Route and Menu Slicing
+
+**Goal:** Admin contains Base operations plus management modules for compiled and runtime-enabled features only.
+
+**Ownership / Files:** Admin owner; generated module registry, `App.tsx`, `Sidebar.tsx`, feature route wrappers and Vite build checks.
+
+**Implementation:** generate route/menu entries and use generated or dynamic imports so disabled modules do not enter the Vite graph/chunks. Existing server capability checks remain authoritative at runtime. Admin cannot enable a feature absent from `compiled_features`.
+
+**Tests:** Base-only and selected builds; menu/direct URL/API behavior; chunk/module manifest asserts disabled roots absent; hash mismatch fails visibly.
+
+**Acceptance:** disabled feature has no menu, route or emitted chunk; enabled management remains protected by RBAC and Backend policy.
+
+**Stop:** do not create a new Admin plugin runtime.
+
+### Task F-06 - Optional SDK, Asset and Permission Slicing
+
+**Goal:** Remove optional provider SDKs, assets and platform permissions when no compiled feature needs them.
+
+**Ownership / Files:** each repository owner controls its dependency/build metadata; one coordinator owns the dependency-to-feature mapping. Exclusive edits per repository.
+
+**Implementation:** derive only proven optional dependencies from F-00; preserve shared dependencies. Cover Flutter plugins/permissions/assets, Admin packages/chunks and Backend OTP applications/config providers.
+
+**Tests:** dependency lock/build manifests, Android/iOS permission manifests, web chunks and Backend release application list for Base-only and selected builds.
+
+**Acceptance:** optional SDK/permission/asset is absent when its last requiring feature is disabled; required security/network/storage foundations remain.
+
+**Stop:** if package managers cannot conditionally resolve a dependency without multiple lockfiles or fragile rewrites, document it as retained shared build dependency and do not overpromise physical removal.
+
+### Task F-07 - Three-Artifact Consistency and Build Matrix
+
+**Goal:** Prevent Backend, Flutter and Admin feature drift.
+
+**Ownership / Files:** release/CI owner; cross-repository check scripts and evidence ledger only after F-03..F-06 land.
+
+**Implementation:** embed manifest schema version/hash and compiled feature list in each artifact; compare at build/deploy/startup. Test at least Base-only and full-selected presets. The matrix must accept an `overseas_baseline` preset when L-01 adds it later.
+
+**Tests:** matching artifacts pass; stale hash, unsupported feature and Admin/App superset fail closed before release.
+
+**Acceptance:** immutable evidence identifies manifest, three repository SHAs and artifact hashes; no matrix cell is PASS on skipped/pre-body failure.
+
+### Task F-08 - Migration and Stored-Data Compatibility
+
+**Goal:** Keep feature composition compatible with upgrades and existing installations without per-combination migration forks.
+
+**Ownership / Files:** database/release owner; compatibility tests and runbook. Migrations change only when a proven data-lifecycle requirement exists.
+
+**Implementation:** retain a schema superset by default; disabled features expose no route/worker. Define behavior for disabling a feature with existing data, re-enabling it, downgrade and retention/deletion jobs.
+
+**Tests:** full -> reduced -> full profile against PostgreSQL; no data corruption, orphan worker or unauthorized access; retention/deletion remains active where policy requires.
+
+**Acceptance:** disabling code does not silently delete data; privacy/retention duties are not disabled with the UI.
+
+### Task F-09 - Packaging Contract and Operator Documentation
+
+**Goal:** State exactly what a composed build includes and excludes.
+
+**Ownership / Files:** product/release documentation owner under `imboy/docs`; no application files.
+
+**Implementation:** supported features, immutable Base, manifest schema, build commands, output evidence, upgrade limits and known retained shared code/schema.
+
+**Acceptance:** an operator can reproduce Base-only and selected builds from one manifest; claims distinguish absent business modules from retained shared infrastructure.
 
 ## Phase A: Launch Blockers
 
-### Task L-01 — Freeze Launch Product Profile
+### Task L-01 - Build the Overseas Baseline Preset
 
-**Goal:** Keep overseas v1 within ordinary IM/Workspace classification.
+**Goal:** Keep overseas v1 within ordinary IM/Workspace classification using the F-01 manifest contract.
 
 **Inspect:** `src/lib/imboy_policy*.erl`, `src/lib/imboy_profile_preset.erl`, Flutter feature registry/route guards, Admin capability config.
 
-**Modify:** existing policy catalog/presets and route guards only. Define one `overseas_baseline` profile or an equivalent saved configuration. Default OFF: nearby people, public trending/discovery, live room, paid channel/wallet, AI marketplace/Bot external webhook unless separately accepted.
+**Modify:** add one `overseas_baseline` manifest preset after F-07. Default OFF: nearby people, public trending/discovery, live room, paid channel/wallet, AI marketplace/Bot external webhook unless separately accepted. Runtime policy may further disable compiled features but cannot add absent ones.
 
-**Tests:** backend policy effective-view tests; Flutter route/API visibility tests; Admin preview/save tests.
+**Tests:** F-07 three-artifact build matrix plus Backend effective-policy, Flutter route/API visibility and Admin route/menu/chunk tests.
 
-**Acceptance:** every disabled feature is absent from UI, direct route/deep link, REST and WebSocket action; core friend C2C/group/workspace/project/channel continues to work.
+**Acceptance:** every disabled feature is absent from applicable artifacts, UI, direct route/deep link, REST and WebSocket action; manifest hashes match; core friend C2C/group/workspace/project/channel continues to work.
 
-**Stop:** if adding a profile requires changing core domain behavior, record Architecture Gap and use existing feature overrides.
+**Stop:** if a core domain is not safely separable, classify it as Base for this preset and record Architecture Gap; do not rewrite the core merely to shrink the artifact.
 
 ### Task D-01 — Account Deletion Request State
 
@@ -331,6 +482,15 @@ Run against a clean release candidate and attach immutable evidence:
 P0 = 0
 P1 = 0
 Critical security findings = 0
+
+Feature manifest schema:                 PASS
+Feature dependency closure:              PASS
+Disabled Backend route/worker/module:     PASS
+Disabled Flutter route/import root:       PASS
+Disabled Admin route/menu/chunk:           PASS
+Optional SDK/asset/permission inventory:  PASS
+Three-artifact manifest hash match:       PASS
+Base-only + full-selected build matrix:   PASS
 
 Account:       PASS
 Age:           PASS / N/A (with product + legal decision)
