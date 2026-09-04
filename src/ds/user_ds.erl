@@ -22,7 +22,7 @@
 -export([update_field/3]).
 -export([update_status/2]).
 -export([update_friends_last_seen_at/2]).
--export([delete_all_related_data/1]).
+-export([delete_all_related_data/1, delete_all_related_data/2]).
 -export([insert_and_get_id/1]).
 -export([bind_email/2]).
 -export([get_status/1]).
@@ -251,7 +251,9 @@ delete_all_related_data(Conn, Uid) ->
     ok = delete_from_table_if_exists(Conn, user_denylist_repo:tablename(), <<"user_id = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_device_repo:tablename(), <<"user_id = $1">>, [Uid]),
     ok = delete_from_table_if_exists(Conn, user_setting_repo:tablename(), <<"user_id = $1">>, [Uid]),
-    ok = delete_from_table_if_exists(Conn, user_tag_repo:tablename(), <<"user_id = $1">>, [Uid]),
+    ok = delete_from_table_if_exists(Conn, user_tag_repo:tablename(), <<"creator_user_id = $1">>, [
+        Uid
+    ]),
     ok = delete_from_table_if_exists(
         Conn, user_tag_relation_repo:tablename(), <<"user_id = $1">>, [Uid]
     ),
@@ -317,9 +319,12 @@ delete_from_table_if_exists(Conn, Table0, WhereSql, Params) ->
 
 -spec table_exists(pid(), binary()) -> boolean().
 table_exists(Conn, Table) ->
+    %% 2026-09-05（D-03）：改 query/3 的 map 行匹配。旧实现对 SELECT 用
+    %% execute/3 的 {ok, _Cols, [{true}]} 元组形态匹配，与该封装实际
+    %% 返回的行形态不符 → 恒 false → 核心删除被静默跳过。
     Sql = <<"SELECT to_regclass($1) IS NOT NULL AS present">>,
-    case elib_pg:execute(Conn, Sql, [Table]) of
-        {ok, _Cols, [{true}]} -> true;
+    case elib_pg:query(Conn, Sql, [Table]) of
+        {ok, [#{<<"present">> := true}]} -> true;
         _ -> false
     end.
 

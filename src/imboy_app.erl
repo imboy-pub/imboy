@@ -194,6 +194,7 @@ tsid_generator_names() ->
         user_tag,
         user_tag_relation,
         user_deletion_request,
+        user_deletion_job,
         %% ── 好友相关 ──
         friend,
         friend_category,
@@ -479,16 +480,13 @@ ensure_sms_if_enabled() ->
 
 ensure_sms_platform_credentials(<<"yjsms">>) ->
     ok = ensure_required_secret(yjsms_account),
-    ok = ensure_required_secret(yjsms_secret);
-ensure_sms_platform_credentials(<<"aliyun">>) ->
-    AliyunCfg = config_ds:env([sms, <<"aliyun">>], []),
-    KeyId = proplists:get_value(key_id, AliyunCfg, <<>>),
-    KeySec = proplists:get_value(key_secret, AliyunCfg, <<>>),
-    case {normalize_secret(KeyId), normalize_secret(KeySec)} of
-        {<<>>, _} -> erlang:error({missing_required_config, {sms, aliyun, key_id}});
-        {_, <<>>} -> erlang:error({missing_required_config, {sms, aliyun, key_secret}});
-        _ -> ok
-    end;
+    ok = ensure_required_secret(yjsms_secret),
+    ok = ensure_required_secret(yjsms_url);
+ensure_sms_platform_credentials(<<"jsms">>) ->
+    ok = ensure_required_secret(jpush_app_key),
+    ok = ensure_required_secret(jpush_master_secret),
+    ok = ensure_required_secret(jsms_temp_id),
+    ok = ensure_required_secret(jsms_sign_id);
 ensure_sms_platform_credentials(_) ->
     %% 未知平台或留空：sms.switch=on 的前提下视为配置错误
     erlang:error({missing_required_config, {sms, platform}}).

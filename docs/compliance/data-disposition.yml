@@ -99,13 +99,6 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
-  channel_category:
-    action: delete
-    owner: channels
-    reason: 频道分类
-    mechanism: delete rows by user ownership column
-    review: self-evident
-    retention: n/a
   channel_comment:
     action: delete
     owner: channels
@@ -638,6 +631,13 @@ tables:
     mechanism: delete rows by user ownership column
     review: self-evident
     retention: n/a
+  user_deletion_job:
+    action: retain
+    owner: security
+    reason: 删除任务墓碑（账号已删，行内 account 快照留证并防同 id 重复注销）
+    mechanism: n/a
+    review: self-evident
+    retention: indefinite
   user_deletion_request:
     action: delete
     owner: account
@@ -932,3 +932,9 @@ exclusions:
     reason: ID 发号器号段
   system_id_segment_stats:
     reason: ID 发号器统计
+
+exclusions:
+  group_category:
+    reason: 系统分类字典（无用户归属列），不属于删除范围
+  channel_category:
+    reason: 系统分类字典（无用户归属列），不属于删除范围

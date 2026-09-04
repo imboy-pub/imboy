@@ -32,8 +32,11 @@
 %% @doc 获取用户表的表名
 %% @return 返回用户表的完整表名
 -spec tablename() -> binary().
+%% "user" 是 PostgreSQL 保留字：必须带引号。不带引号的 public.user 在
+%% to_regclass/DELETE 解析为 current_user 特殊标识符——曾致注销清理
+%% 静默跳过用户主行删除（2026-09-05 D-03 编排器联调实证）。
 tablename() ->
-    elib_pg_sql:public_tablename(<<"user">>).
+    <<"public.\"user\"">>.
 
 %% @doc 统计用户总数（License 规模 gate 用）。查询失败返回 0（由上层 fail-open）。
 -spec count() -> integer().
