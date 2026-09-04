@@ -151,7 +151,9 @@ def render(contract: dict) -> dict[Path, str]:
         + "-define(IMBOY_PRODUCT_FEATURE_CONTRACT, " + _erl_term(contract) + ").\n"
     )
     dart_items = ",\n  ".join(json.dumps(item) for item in features)
-    dart = f"// {header}\nconst productFeatureSchemaVersion = {SCHEMA_VERSION};\nconst productFeatureManifestHash = {json.dumps(contract['manifest_hash'])};\nconst compiledProductFeatures = <String>[\n  {dart_items},\n];\n"
+    # manifest hash 行按 dart format 的 80 列规则换行（与 TS 发射器同一处理），
+    # 否则 lefthook dart-fmt 门会改写生成物、与 generate_product_features --check 冲突
+    dart = f"// {header}\nconst productFeatureSchemaVersion = {SCHEMA_VERSION};\nconst productFeatureManifestHash =\n    {json.dumps(contract['manifest_hash'])};\nconst compiledProductFeatures = <String>[\n  {dart_items},\n];\n"
     route_imports = [
         "import 'package:flutter/cupertino.dart';",
         "import 'package:flutter_riverpod/flutter_riverpod.dart';",
