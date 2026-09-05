@@ -1130,6 +1130,12 @@
         "static": false
       },
       {
+        "action": "detail",
+        "handler": "adm_report_handler",
+        "path": "/api/adm/report/detail",
+        "static": false
+      },
+      {
         "action": "list",
         "handler": "adm_report_handler",
         "path": "/api/adm/report/list",
@@ -3406,6 +3412,12 @@
         "static": false
       },
       {
+        "action": "deletion_status",
+        "handler": "user_handler",
+        "path": "/api/v1/user/deletion_status",
+        "static": false
+      },
+      {
         "action": "export_data",
         "handler": "user_handler",
         "path": "/api/v1/user/export_data",
@@ -3688,6 +3700,18 @@
         "static": false
       },
       {
+        "action": "invite_code",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/invite_code",
+        "static": false
+      },
+      {
+        "action": "invite_code_revoke",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/:workspace_id/invite_code/revoke",
+        "static": false
+      },
+      {
         "action": "member_list",
         "handler": "workspace_handler",
         "path": "/api/v1/workspaces/:workspace_id/members",
@@ -3739,6 +3763,12 @@
         "action": "update",
         "handler": "workspace_handler",
         "path": "/api/v1/workspaces/:workspace_id/update",
+        "static": false
+      },
+      {
+        "action": "join",
+        "handler": "workspace_handler",
+        "path": "/api/v1/workspaces/join",
         "static": false
       },
       {
@@ -3932,7 +3962,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 151,
+    "defines": 153,
     "distinct_codes": [
       0,
       1,
@@ -3999,6 +4029,8 @@
       967,
       968,
       980,
+      981,
+      982,
       5000,
       5001,
       5002,
@@ -4068,7 +4100,7 @@
       "5100": 7,
       "5200": 6,
       "5300": 7,
-      "900": 41
+      "900": 43
     },
     "source": "include/error_code.hrl"
   },
