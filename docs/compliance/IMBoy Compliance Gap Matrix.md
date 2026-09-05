@@ -6,12 +6,12 @@
 |---|---|---|---|---|---|---|
 | Account | Partial | `user` status; password/code/OIDC/Alipay; device APIs | 无统一 risk state；恢复/多账号政策未定义 | P2 | Depends | 保持现有身份模型，只补 risk/account policy 与审计 |
 | Age | Missing | birthday 字符串可修改 | 无可信年龄带/区域策略 | P1 | Depends on rating/region | 先做产品/法律决定；仅实现 age band + assurance + policy profile |
-| Report | Partial | `report_handler`, `report_ticket` | 对象仅 user/group/channel/moment；消息证据是自由文本 | P1 | Yes | 增加 message/attachment/profile 等实际首发对象与不可变 evidence ref |
+| Report | Mostly done | `report_handler`, `report_ticket`; R-01（迁移 00000087）增加 message 对象 + target_author_id/scope_id + 不可变 evidence jsonb + admin 工单证据端点 | attachment/profile 对象仍未覆盖 | P1 | Yes | attachment/profile 对象待后续补齐 |
 | Block | Partial | C2C/friend/call/moment denylist checks | mention/invite/channel/profile/search 旁路 | P1 | Yes | 复用 denylist，增加共享 server-side direct-contact decision |
 | Moderation | Scaffold | sensitive words/review queue Admin CRUD | 生产内容不入队，reject 不处置 | P1 | Yes for UGC | 仅非 E2EE/公开内容接入 policy；决定触发与 action |
-| Enforcement | Fragmented | rate mute, group mute/kick, user status | report 与处罚未连接；无期限/scope/reversal | P1 | Yes | 最小 action 表和 executor，复用现有 mute/remove/status |
+| Enforcement | Mostly done | R-02（迁移 00000088）moderation_action 审计行 + executor + /api/adm/report_action + admin 动作面板；动作集 warning/mute/kick/restrict/reject/content_removal，含期限 end_at、reversal、prev_status 恢复、到期 sweep | content_removal 的 channel 已支持、用户消息撤回通知联动待打磨；action 与 rate-limit 的联动未做 | P1 | Yes | 通知策略打磨与 rate-limit 联动 |
 | Appeal | Missing | 无业务链 | 用户不可申诉或收到理由 | P1/P2 | Legal classification dependent; operational baseline recommended | 最小 appeal request/review/final decision；先法律确认 DSA 适用性 |
-| Delete | Broken | apply/cancel/API/UI/job | nonexistent timestamp column；默认 off；范围不全 | P0 | Yes | explicit request record + idempotent orchestrator + object/vendor propagation |
+| Delete | Mostly done | D-01（00000085+幂等 apply/cancel+状态端点）D-02（data-disposition 145 表）D-03（00000086 job/orchestrator/到期 sweep）D-04（macOS e2e 全绿 + 真机走查截图） | 生产启用需 `user_deletion_enabled=true`；第三方传播（vendor propagation）未接 | P0 | Yes | vendor propagation 与生产开关由 owner 决策 |
 | Export | Partial | self-only endpoint + sanitizer/audit | 仅资料/好友/群/设置 | P1/P2 | Yes for declared rights; scope by legal review | 异步 manifest 导出，逐类 allowlist |
 | Retention | Fragmented | archive flag, Loki 180d, backup 7/30d | 无统一 policy，注释/配置冲突，账号删除无备份证明 | P1 | Yes | data-class register + jobs + deploy gate + deletion tombstone |
 | Privacy notice | Partial/template | static privacy page, app markdown | 与真实 SDK/data flows/retention 不可核验一致 | P1 | Yes | 基于 inventory 生成/审核 notice 与 store declarations |
