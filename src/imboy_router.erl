@@ -980,6 +980,7 @@ get_routes() ->
         }},
         {"/api/adm/report/create", adm_report_handler, #{action => create}},
         {"/api/adm/report/list", adm_report_handler, #{action => list}},
+        {"/api/adm/report/detail", adm_report_handler, #{action => detail}},
         {"/api/adm/report/resolve", adm_report_handler, #{action => resolve}},
         {"/api/adm/report/batch_resolve", adm_report_handler, #{action => batch_resolve}},
         {"/api/adm/group/report/list", adm_report_handler, #{action => group_list}},
