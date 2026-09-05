@@ -43,7 +43,26 @@ create(Req0, State, Mode) ->
         true ->
             case ensure_target_feature(Req0, TargetType) of
                 ok ->
-                    case report_logic:create(Uid, TargetType, TargetId, Reason, Desc) of
+                    Result =
+                        case TargetType of
+                            <<"message">> ->
+                                ChatType = maps:get(<<"chat_type">>, PostVals, <<>>),
+                                ScopeId = pick_first_nonempty([
+                                    maps:get(<<"scope_id">>, PostVals, <<>>),
+                                    maps:get(<<"group_id">>, PostVals, <<>>),
+                                    maps:get(<<"channel_id">>, PostVals, <<>>),
+                                    maps:get(<<"peer_id">>, PostVals, <<>>),
+                                    maps:get(<<"user_id">>, PostVals, <<>>),
+                                    maps:get(<<"uid">>, PostVals, <<>>)
+                                ]),
+                                Evidence = maps:get(<<"evidence">>, PostVals, #{}),
+                                report_logic:create_message(
+                                    Uid, ChatType, TargetId, ScopeId, Reason, Evidence
+                                );
+                            _ ->
+                                report_logic:create(Uid, TargetType, TargetId, Reason, Desc)
+                        end,
+                    case Result of
                         {ok, Payload} ->
                             elib_response:success(Req0, Payload);
                         {error, Msg} ->
@@ -54,7 +73,8 @@ create(Req0, State, Mode) ->
             end
     end.
 
--spec resolve_target(cowboy_req:req(), map(), auto | {binary(), atom(), [binary()]}) -> {binary(), binary()}.
+-spec resolve_target(cowboy_req:req(), map(), auto | {binary(), atom(), [binary()]}) ->
+    {binary(), binary()}.
 resolve_target(_Req0, PostVals, auto) ->
     TargetType = target_type_from_body(PostVals),
     TargetId = pick_first_nonempty([
@@ -116,6 +136,8 @@ normalize_target_type_binary(Value) ->
         "channels" -> <<"channel">>;
         "user" -> <<"user">>;
         "users" -> <<"user">>;
+        "message" -> <<"message">>;
+        "messages" -> <<"message">>;
         _ -> <<>>
     end.
 

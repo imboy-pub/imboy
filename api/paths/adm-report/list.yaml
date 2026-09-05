@@ -35,11 +35,23 @@ get:
                               description: 举报工单 TSID / Report ticket TSID
                             target_type:
                               type: string
-                              description: 举报目标类型 moment/group/channel/user / Target type
+                              description: 举报目标类型 moment/group/channel/user/message / Target type
                             target_id:
                               type: integer
                               format: int64
-                              description: 被举报目标 TSID / Target TSID
+                              description: 被举报目标 TSID（message 时为服务端消息行 ID）/ Target TSID
+                            target_sub_type:
+                              type: string
+                              enum: ['', c2c, c2g, channel]
+                              description: message 举报的消息表面 / Message surface (R-01)
+                            target_scope_id:
+                              type: integer
+                              format: int64
+                              description: c2c=对话对端 uid；c2g=群 ID；channel=频道 ID / Scope TSID (R-01)
+                            target_author_id:
+                              type: integer
+                              format: int64
+                              description: 被举报消息发送者 / Reported message author (R-01)
                             reporter_uid:
                               type: integer
                               format: int64
@@ -50,6 +62,9 @@ get:
                             description:
                               type: string
                               description: 详情描述 / Description
+                            evidence:
+                              type: object
+                              description: 结构化证据（R-01，白名单字段；详情见 detail 端点）/ Structured evidence (R-01)
                             status:
                               type: integer
                               description: 状态 0=待处理 1=无违规 2=违规 / Status

@@ -1,10 +1,25 @@
 # POST /api/v1/report/create
 post:
   tags: [user]
-  summary: 通用举报
+  summary: 通用举报（含消息一等举报）
   description: |
     ## 中文 / English
-    通用举报
+    通用举报：target_type 支持 moment/group/channel/user（兼容存量）与
+    message（R-01 一等消息举报）。message 举报必须携带 chat_type + scope_id，
+    服务端核验消息存在性、举报人可见性（收发双方/群成员/频道订阅者或公开
+    频道访客）与 scope 一致性；E2EE 消息仅在举报人明确同意（evidence.e2ee_
+    consent=true）时接受最小明文摘录，服务端不解密、不索取会话密钥。reason
+    白名单：spam/harassment/inappropriate/pornography/fraud/violence/
+    illegal/other。消息 ID 不得写入 description 自由文本。
+    General report. target_type: moment/group/channel/user (legacy) or
+    message (R-01 first-class). message requires chat_type + scope_id;
+    server verifies existence, reporter visibility (conversation parties /
+    group member / channel subscriber or public-channel visitor) and scope
+    consistency. E2EE messages accept a minimum plaintext excerpt only with
+    explicit consent (evidence.e2ee_consent=true); the server never
+    decrypts or requests session keys. Reason enum: spam/harassment/
+    inappropriate/pornography/fraud/violence/illegal/other. Message IDs
+    must not be embedded in the free-text description.
   operationId: reportCreate
   requestBody:
     required: true
@@ -12,11 +27,56 @@ post:
       application/json:
         schema:
           type: object
+          required: [target_type, target_id, reason]
           properties:
-            target_type: { type: string }
-            target_id: { type: string }
-            reason: { type: string }
-            description: { type: string }
+            target_type:
+              type: string
+              enum: [moment, group, channel, user, message]
+            target_id:
+              type: string
+              description: 目标 ID；message 时为服务端消息 bigint ID / Target ID (server message row ID for message)
+            reason:
+              type: string
+              description: 举报原因白名单 / Reason enum
+            description:
+              type: string
+              description: 补充描述（可选；message 举报不得用于携带消息 ID） / Optional text (must not carry message IDs)
+            chat_type:
+              type: string
+              enum: [c2c, c2g, channel]
+              description: message 举报必填：消息表面 / Required for message reports
+            scope_id:
+              type: string
+              description: message 举报必填：c2c=对话对端 uid；c2g=群 ID；channel=频道 ID / Required for message reports
+            evidence:
+              type: object
+              description: |
+                message 举报结构化证据（字段白名单，多余字段丢弃）/
+                Structured evidence for message reports (allow-listed fields).
+                E2EE 消息携带 content_excerpt 必须同时携带 e2ee_consent=true。
+              properties:
+                content_excerpt:
+                  type: string
+                  maxLength: 500
+                  description: 举报人选择提交的最小明文摘录 / Minimum plaintext excerpt chosen by reporter
+                content_hash:
+                  type: string
+                  maxLength: 64
+                  description: 客户端计算的内容 sha256 hex / Client-side content sha256 hex
+                client_msg_id:
+                  type: string
+                  maxLength: 50
+                  description: 客户端消息 ID / Client message ID
+                msg_type:
+                  type: string
+                  maxLength: 50
+                sent_at:
+                  type: integer
+                  format: int64
+                  description: 消息发送时间（epoch ms）/ Message sent at (epoch ms)
+                e2ee_consent:
+                  type: boolean
+                  description: 举报人明确同意提交 E2EE 明文证据 / Explicit consent to disclose E2EE plaintext evidence
   responses:
     '200':
       description: 成功
@@ -31,7 +91,9 @@ post:
                     type: object
                     properties:
                       report_id: { type: integer, format: int64, description: 举报记录 TSID }
+                      target_type: { type: string, description: 归一化后的举报目标类型 }
+                      target_sub_type: { type: string, enum: [c2c, c2g, channel], description: message 举报的消息表面 }
     '4XX':
-      description: 参数非法 / 无权限
+      description: 参数非法 / 无权限 / 目标不存在 / 重复举报 / 限流 / E2EE 未同意
       content:
         application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

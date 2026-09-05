@@ -898,6 +898,8 @@ paths:
     $ref: './paths/adm-report/create.yaml'
   /api/adm/report/list:
     $ref: './paths/adm-report/list.yaml'
+  /api/adm/report/detail:
+    $ref: './paths/adm-report/detail.yaml'
   /api/adm/report/resolve:
     $ref: './paths/adm-report/resolve.yaml'
   /api/adm/report/batch_resolve:

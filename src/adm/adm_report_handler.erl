@@ -15,6 +15,7 @@ init(Req0, State0) ->
         case Action of
             create -> create_action(Method, Req0, State, auto);
             list -> list_action(Method, Req0, State, auto);
+            detail -> detail_action(Method, Req0, State);
             resolve -> resolve_action(Method, Req0, State, auto);
             batch_resolve -> batch_resolve_action(Method, Req0, State, auto);
             group_list -> list_action(Method, Req0, State, <<"group">>);
@@ -94,6 +95,29 @@ list_action(<<"GET">>, Req0, State, TargetOverride) ->
             Req1
     end;
 list_action(_, Req0, _State, _TargetOverride) ->
+    Req0.
+
+%% R-01: 工单详情（含结构化证据）。仅返回该举报自身绑定的证据，
+%% 不提供按消息 ID 的任意浏览入口。
+-spec detail_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+detail_action(<<"GET">>, Req0, State) ->
+    Qs = cowboy_req:parse_qs(Req0),
+    case
+        adm_acl:ensure_any_permission(State, [<<"reports:read">>, <<"moments:report:read">>], Req0)
+    of
+        ok ->
+            AdmUid = maps:get(adm_user_id, State, 0),
+            ReportId = proplists:get_value(<<"report_id">>, Qs, <<>>),
+            case report_logic:admin_detail(AdmUid, ReportId) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                {error, Msg} ->
+                    elib_response:error(Req0, Msg, ?ERR_BAD_REQUEST)
+            end;
+        {error, Req1} ->
+            Req1
+    end;
+detail_action(_, Req0, _State) ->
     Req0.
 
 -spec resolve_action(binary(), cowboy_req:req(), map(), auto | binary()) -> cowboy_req:req().
@@ -208,6 +232,8 @@ normalize_target_type_binary(Value, Default) ->
         "channels" -> <<"channel">>;
         "user" -> <<"user">>;
         "users" -> <<"user">>;
+        "message" -> <<"message">>;
+        "messages" -> <<"message">>;
         _ -> Default
     end.
 

@@ -1,0 +1,89 @@
+# GET /api/adm/report/detail — admin
+get:
+  tags: [admin]
+  summary: admin adm-report - detail
+  description: |
+    ## 中文 / English
+    管理后台举报工单详情（R-01）。仅返回该举报工单自身绑定的结构化证据
+    （含消息举报的 scope/author/evidence），不提供按消息 ID 的任意浏览
+    入口。权限：reports:read。
+    Admin report ticket detail (R-01). Returns only the structured evidence
+    bound to this ticket (including message report scope/author/evidence);
+    no arbitrary message browsing entry. Permission: reports:read.
+  operationId: adm_report_detail
+  parameters:
+    - name: report_id
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: 举报工单 TSID / Report ticket TSID
+  responses:
+    '200':
+      description: 成功
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        format: int64
+                        description: 举报工单 TSID / Report ticket TSID
+                      target_type:
+                        type: string
+                        description: moment/group/channel/user/message
+                      target_id:
+                        type: integer
+                        format: int64
+                        description: 被举报目标 TSID（message 时为服务端消息行 ID）/ Target TSID
+                      target_sub_type:
+                        type: string
+                        enum: ['', c2c, c2g, channel]
+                        description: message 举报的消息表面 / Message surface
+                      target_scope_id:
+                        type: integer
+                        format: int64
+                        description: c2c=对话对端 uid；c2g=群 ID；channel=频道 ID / Scope TSID
+                      target_author_id:
+                        type: integer
+                        format: int64
+                        description: 被举报消息发送者 / Reported message author
+                      reporter_uid:
+                        type: integer
+                        format: int64
+                        description: 举报人 TSID / Reporter TSID
+                      reason:
+                        type: string
+                      description:
+                        type: string
+                      evidence:
+                        type: object
+                        description: |
+                          结构化证据（白名单字段）：e2ee(bool)、content_state
+                          (present/edited)、server_msg_id、server_content_hash
+                          （仅非 E2EE）、content_excerpt（举报人提交，E2EE 时
+                          需 e2ee_consent）、content_hash、client_msg_id、
+                          msg_type、sent_at、e2ee_consent。
+                      status:
+                        type: integer
+                        description: 状态 0=待处理 1=无违规 2=违规
+                      handled_by:
+                        type: integer
+                        format: int64
+                      handled_at:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+    '4XX':
+      description: 无权限 / 参数非法 / 工单不存在
+      content:
+        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }

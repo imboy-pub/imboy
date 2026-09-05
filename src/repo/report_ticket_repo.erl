@@ -1,6 +1,7 @@
 -module(report_ticket_repo).
 
 -export([create/5]).
+-export([create/9]).
 -export([find_by_id/1]).
 -export([page_admin/3]).
 -export([resolve/4]).
@@ -12,15 +13,39 @@ tablename() ->
 -spec create(binary(), integer(), integer(), binary(), binary()) ->
     {ok, integer()} | {error, already_reported | any()}.
 create(TargetType, TargetId, ReporterUid, Reason, Desc) ->
+    create(TargetType, TargetId, <<>>, 0, 0, ReporterUid, Reason, Desc, #{}).
+
+%% R-01: 消息举报带子类型/scope/作者/结构化证据；重复举报仍由
+%% (target_type, target_id, reporter_uid) 唯一约束兜底。
+-spec create(
+    binary(), integer(), binary(), integer(), integer(), integer(), binary(), binary(), map()
+) ->
+    {ok, integer()} | {error, already_reported | any()}.
+create(TargetType, TargetId, SubType, ScopeId, AuthorId, ReporterUid, Reason, Desc, Evidence) ->
     Tb = tablename(),
     Id = elib_tsid:generate(report_ticket),
+    EvidenceJson = jsx:encode(Evidence),
     Sql =
         <<"INSERT INTO ", Tb/binary,
-            " (id, target_type, target_id, reporter_uid, reason, description, status, created_at, updated_at)"
-            " VALUES ($1, $2, $3, $4, $5, $6, 0, NOW(), NOW())"
+            " (id, target_type, target_id, target_sub_type, target_scope_id, target_author_id,"
+            " reporter_uid, reason, description, evidence, status, created_at, updated_at)"
+            " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, 0, NOW(), NOW())"
             " ON CONFLICT (target_type, target_id, reporter_uid) DO NOTHING"
             " RETURNING id">>,
-    case elib_pg:query(Sql, [Id, TargetType, TargetId, ReporterUid, Reason, Desc]) of
+    case
+        elib_pg:query(Sql, [
+            Id,
+            TargetType,
+            TargetId,
+            SubType,
+            ScopeId,
+            AuthorId,
+            ReporterUid,
+            Reason,
+            Desc,
+            EvidenceJson
+        ])
+    of
         {ok, [#{<<"id">> := RetId}]} ->
             {ok, RetId};
         {ok, []} ->
@@ -50,7 +75,8 @@ page_admin(Filter, Page, Size) ->
     LimitArgN = length(Params) + 1,
     OffsetArgN = length(Params) + 2,
     Column = <<
-        "id, target_type, target_id, reporter_uid, reason, description,"
+        "id, target_type, target_id, target_sub_type, target_scope_id, target_author_id,"
+        " reporter_uid, reason, description, evidence,"
         " status, handled_by, handled_at, created_at, updated_at"
     >>,
     ListSql =
