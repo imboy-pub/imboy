@@ -996,6 +996,10 @@ get_routes() ->
         {"/api/adm/user/report/list", adm_report_handler, #{action => user_list}},
         {"/api/adm/user/report/resolve", adm_report_handler, #{action => user_resolve}},
         {"/api/adm/user/report/batch_resolve", adm_report_handler, #{action => user_batch_resolve}},
+        %% R-02：处置动作（case = report_ticket 行；audit = moderation_action 表）
+        {"/api/adm/report_action/execute", adm_report_action_handler, #{action => execute}},
+        {"/api/adm/report_action/reverse", adm_report_action_handler, #{action => reverse}},
+        {"/api/adm/report_action/list", adm_report_action_handler, #{action => list}},
         % 统计 API
         {"/api/adm/announcement/index", adm_announcement_handler, #{action => index}},
         {"/api/adm/announcement/create", adm_announcement_handler, #{action => create}},

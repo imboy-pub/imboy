@@ -764,6 +764,13 @@ tables:
     mechanism: scrub identity columns
     review: pending-owner
     retention: n/a
+  moderation_action:
+    action: anonymize
+    owner: moderation
+    reason: 处置动作审计行保留以维持处置链可审计性，被处置人身份匿名化
+    mechanism: scrub identity columns
+    review: pending-owner
+    retention: n/a
   admin_operation_logs:
     action: retain
     owner: security
