@@ -12,6 +12,7 @@
 -export([execute/5]).
 -export([reverse/3]).
 -export([list_by_case/1]).
+-export([expire_due/0]).
 
 -include("error_code.hrl").
 
@@ -263,3 +264,10 @@ send_warning_notice(TargetUid, Reason) ->
     MsLi = elib_retry_config:intervals(<<"notice">>),
     _ = message_ds:send_next(TargetUid, MsgId, Msg2, MsLi, [], true),
     ok.
+
+%% @doc 到期 sweep（供 moderation_sweep_logic 周期调用与运维手动触发）。
+%% 把 end_at 已过期的 executed 禁言/限制动作翻转为 expired——业务失效
+%% 由原语 until 时间戳保证，本函数只闭环审计状态。
+-spec expire_due() -> {ok, non_neg_integer()} | {error, binary()}.
+expire_due() ->
+    moderation_action_repo:expire_due().

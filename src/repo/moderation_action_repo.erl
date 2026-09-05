@@ -10,6 +10,7 @@
 -export([has_executed_same_action/3]).
 -export([mark_reversed/3]).
 -export([mark_failed_tx/3]).
+-export([expire_due/0]).
 
 -ifdef(EUNIT).
 -include_lib("eunit/include/eunit.hrl").
@@ -164,6 +165,26 @@ mark_reversed(Id, AdmUid, Reason) ->
             {ok, Count};
         {ok, Count, _} when is_integer(Count) ->
             {ok, Count};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end.
+
+%% @doc 到期 sweep：把 end_at 已过期的 executed 动作翻转为 expired。
+%% 业务失效由原语自带的 until 时间戳保证，这里只做审计状态闭环。
+%% 返回翻转行数。
+-spec expire_due() -> {ok, non_neg_integer()} | {error, binary()}.
+expire_due() ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET status = 'expired', updated_at = NOW()"
+            " WHERE action IN ('group_mute', 'account_restrict')"
+            " AND status = 'executed'"
+            " AND end_at IS NOT NULL AND end_at <= NOW()"
+            " RETURNING id">>,
+    case elib_pg:query(Sql, []) of
+        {ok, Rows} ->
+            {ok, length(Rows)};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.

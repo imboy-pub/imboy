@@ -102,6 +102,16 @@ init([]) ->
         modules => [msg_burn_logic]
     },
 
+    % R-02：处置动作到期 sweep（审计状态闭环，默认启用 5 分钟一轮）
+    ModerationSweepWorker = #{
+        id => moderation_sweep_logic,
+        start => {moderation_sweep_logic, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [moderation_sweep_logic]
+    },
+
     % 账号注销自动清理工作进程
     UserDeletionWorker = #{
         id => user_deletion_logic,
@@ -255,6 +265,7 @@ init([]) ->
             UserServer,
             MsgWriteQueueSup,
             MsgBurnWorker,
+            ModerationSweepWorker,
             UserDeletionWorker,
             LicenseNoticeWorker,
             BillingInvoiceWorker,

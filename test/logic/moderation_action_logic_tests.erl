@@ -249,6 +249,15 @@ reverse_happy_test_() ->
         teardown_mocks(ok)
     end}.
 
+expire_due_passthrough_test_() ->
+    {"expire_due：透传 repo 计数（审计状态闭环入口）", fun() ->
+        setup_mocks([]),
+        meck:expect(moderation_action_repo, expire_due, fun() -> {ok, 3} end),
+        R = moderation_action_logic:expire_due(),
+        ?assertEqual({ok, 3}, R),
+        teardown_mocks(ok)
+    end}.
+
 reverse_rejects_non_executed_test_() ->
     {"reverse：failed/reversed 行拒绝撤销", fun() ->
         setup_mocks([case_row]),
