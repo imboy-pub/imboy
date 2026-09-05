@@ -11,6 +11,12 @@
 
 ## [Unreleased]
 
+### Added
+
+**imboy（后端 / Backend）**
+- 举报升级为一等消息举报目标（R-01）：`POST /api/v1/report` 支持 `target_type=message`（c2c/c2g/channel 三表面），工单落库稳定服务端行 ID + 子类型 + 会话范围 + 作者 + 结构化 evidence（迁移 00000087）；reason 8 值白名单、限流复用 `agent_rate_limiter`、目标存在性与举报人可见权校验（跨会话/跨群/跨频道 IDOR fail-closed）、已撤回/已编辑目标语义明确、同对象重复举报幂等；E2EE 消息仅在举报人明确同意（`e2ee_consent`）后接受最小摘录证据，服务端不解密、不产服务端内容哈希
+- 管理端新增 `GET /api/adm/report/detail`（`reports:read` 权限门）：仅按工单返回授权范围内证据，不提供任意消息浏览入口
+
 ## [1.0.0-alpha.71] - 2026-08-30
 
 ### Documentation
