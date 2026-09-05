@@ -54,7 +54,7 @@
 -define(FEATURES_CONFIG_KEY, <<"features">>).
 -define(DELETE_VALUE, '$delete').
 
--spec current_profile() -> community | enterprise.
+-spec current_profile() -> community | enterprise | overseas_baseline.
 current_profile() ->
     case normalize_profile_input(load_profile_config()) of
         {ok, Profile} ->
@@ -499,7 +499,8 @@ saved_view_from_values(Profile0, CapabilityOverrides, FeatureOverrides0) ->
     Sections2 = maybe_put_saved_section(Sections1, plugins, SavedPlugins),
     imboy_policy_codec:public_term(maybe_put_saved_section(Sections2, features, SavedFeatures)).
 
--spec normalize_saved_profile_value(term()) -> community | enterprise | undefined.
+-spec normalize_saved_profile_value(term()) ->
+    community | enterprise | overseas_baseline | undefined.
 normalize_saved_profile_value(undefined) ->
     undefined;
 normalize_saved_profile_value(Value) ->
@@ -510,7 +511,7 @@ normalize_saved_profile_value(Value) ->
             undefined
     end.
 
--spec resolve_profile(term()) -> community | enterprise.
+-spec resolve_profile(term()) -> community | enterprise | overseas_baseline.
 resolve_profile(ProfileConfig) ->
     case normalize_profile_input(ProfileConfig) of
         {ok, Profile} ->
@@ -519,7 +520,10 @@ resolve_profile(ProfileConfig) ->
             imboy_profile_preset:current()
     end.
 
--spec effective_capabilities_for_profile(community | enterprise, term()) -> map().
+-spec effective_capabilities_for_profile(
+    community | enterprise | overseas_baseline, term()
+) ->
+    map().
 effective_capabilities_for_profile(Profile, CapabilityConfig) ->
     Defaults = normalize_capability_map(
         maps:get(capabilities, imboy_profile_preset:defaults(Profile), #{})
@@ -527,7 +531,10 @@ effective_capabilities_for_profile(Profile, CapabilityConfig) ->
     Overrides = normalize_capability_map(CapabilityConfig),
     normalize_capabilities(maps:merge(Defaults, Overrides), Defaults).
 
--spec effective_policy_components(community | enterprise, term(), term()) -> {map(), map(), map()}.
+-spec effective_policy_components(
+    community | enterprise | overseas_baseline, term(), term()
+) ->
+    {map(), map(), map()}.
 effective_policy_components(Profile, CapabilityConfig, FeatureConfig) ->
     Capabilities = effective_capabilities_for_profile(Profile, CapabilityConfig),
     BaseFeatures = effective_features_for_profile(Profile, FeatureConfig),
@@ -538,7 +545,10 @@ effective_policy_components(Profile, CapabilityConfig, FeatureConfig) ->
 effective_features_from_config(FeatureConfig) ->
     effective_features_from_switches(normalize_feature_switches(FeatureConfig)).
 
--spec effective_features_for_profile(community | enterprise, term()) -> map().
+-spec effective_features_for_profile(
+    community | enterprise | overseas_baseline, term()
+) ->
+    map().
 effective_features_for_profile(Profile, FeatureConfig) ->
     Defaults = normalize_feature_switches(
         maps:get(features, imboy_profile_preset:defaults(Profile), #{})

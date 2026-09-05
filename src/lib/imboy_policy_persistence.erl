@@ -130,7 +130,8 @@ load_config_value(Key, Default) ->
 load_saved_config_value(Key) ->
     load_config_value(Key, #{}).
 
--spec saved_profile_override() -> community | enterprise | undefined.
+-spec saved_profile_override() ->
+    community | enterprise | overseas_baseline | undefined.
 saved_profile_override() ->
     case normalize_profile_input(load_config_value(?PRODUCT_PROFILE_CONFIG_KEY, undefined)) of
         {ok, Profile} ->

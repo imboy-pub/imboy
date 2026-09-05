@@ -144,7 +144,8 @@ payload_value(Payload, [Key | Rest]) ->
 %% 枚举/类型解析
 %% ===================================================================
 
--spec normalize_profile_input(term()) -> {ok, community | enterprise} | error.
+-spec normalize_profile_input(term()) ->
+    {ok, community | enterprise | overseas_baseline} | error.
 normalize_profile_input(community) ->
     {ok, community};
 normalize_profile_input(enterprise) ->
@@ -153,6 +154,12 @@ normalize_profile_input(<<"community">>) ->
     {ok, community};
 normalize_profile_input(<<"enterprise">>) ->
     {ok, enterprise};
+normalize_profile_input(overseas_baseline) ->
+    {ok, overseas_baseline};
+normalize_profile_input(<<"overseas_baseline">>) ->
+    {ok, overseas_baseline};
+normalize_profile_input("overseas_baseline") ->
+    {ok, overseas_baseline};
 normalize_profile_input("community") ->
     {ok, community};
 normalize_profile_input("enterprise") ->

@@ -486,7 +486,7 @@ admin_config_view_returns_meta_saved_effective_and_adjustments_sections_test_() 
             ?assert(maps:is_key(<<"adjustments">>, View)),
             ?assert(maps:is_key(<<"origins">>, View)),
             ?assertEqual(
-                [<<"community">>, <<"enterprise">>],
+                [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>],
                 maps:get(<<"supported">>, maps:get(<<"profiles">>, maps:get(<<"meta">>, View)))
             ),
             ?assertEqual(
@@ -586,7 +586,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
         RequestShape = maps:get(<<"request_shape">>, WriteContract),
 
         ?assertEqual(
-            [<<"community">>, <<"enterprise">>],
+            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>],
             maps:get(<<"supported">>, Profiles)
         ),
         ?assertEqual(<<"canonical_saved_snapshot">>, maps:get(<<"semantics">>, Origins)),
@@ -671,7 +671,7 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
             maps:get(<<"sections">>, EditorOrder)
         ),
         ?assertEqual(
-            [<<"community">>, <<"enterprise">>],
+            [<<"community">>, <<"enterprise">>, <<"overseas_baseline">>],
             maps:get(<<"profiles">>, EditorOrder)
         ),
         ?assertEqual(
