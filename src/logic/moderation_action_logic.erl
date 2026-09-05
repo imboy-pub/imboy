@@ -3,7 +3,7 @@
 %% R-02：把已确认的举报变成小而可审计的动作。
 %% * 动作集（MVP）：warning / group_mute / group_kick / reject；
 %%   account_restrict 复用后台禁用语义（status=0，scope 记 prev_status）
-%%   并踢全部设备；content_removal 因消息删除链路未接入，
+%%   并踢全部设备；content_removal 对 c2c/c2g 抹除 payload、对 channel 走
 %%   显式 unsupported（fail-closed），不落 executed 行。
 %% * 幂等：同 case 同 action 已有 executed 行 → 拒绝重复执行。
 %% * truthful：primitive 失败也落 failed 审计行，case 不被误推进。
@@ -18,7 +18,12 @@
 -include("error_code.hrl").
 
 -define(SUPPORTED_ACTIONS, [
-    <<"warning">>, <<"group_mute">>, <<"group_kick">>, <<"reject">>, <<"account_restrict">>
+    <<"warning">>,
+    <<"group_mute">>,
+    <<"group_kick">>,
+    <<"reject">>,
+    <<"account_restrict">>,
+    <<"content_removal">>
 ]).
 
 -opaque opts() :: #{
@@ -243,6 +248,29 @@ insert_action(AdmUid, CaseId, Action, TargetUid, Opts, Status, Result, FailReaso
 run_primitive(<<"reject">>, _TargetUid, _Opts, _CaseRow) ->
     %% explicit no-action decision：本身就是验收认可的结论之一
     ok;
+run_primitive(<<"content_removal">>, _TargetUid, Opts, CaseRow) ->
+    SubType = maps:get(<<"target_sub_type">>, CaseRow, <<>>),
+    Evidence = normalize_scope(maps:get(<<"evidence">>, CaseRow, #{})),
+    ServerMsgId = maps:get(<<"server_msg_id">>, Evidence, <<>>),
+    RowId = ec_cnv:to_integer(maps:get(<<"target_id">>, CaseRow, 0)),
+    Actor = maps:get(actor, Opts, 0),
+    RevokedAt = elib_dt:now(),
+    case SubType of
+        <<"c2c">> ->
+            wipe_user_msg(msg_c2c_repo, ServerMsgId);
+        <<"c2g">> ->
+            wipe_user_msg(msg_c2g_repo, ServerMsgId);
+        <<"channel">> when RowId > 0 ->
+            case channel_message_repo:revoke(RowId, Actor, RevokedAt) of
+                {ok, N} when is_integer(N), N > 0 -> ok;
+                {ok, _} -> {error, <<"内容不存在或已删除"/utf8>>};
+                {error, R} -> {error, elib_cnv:safe_to_binary(R)}
+            end;
+        <<"channel">> ->
+            {error, <<"channel 内容缺少有效行 ID"/utf8>>};
+        _ ->
+            {error, <<"content_removal 仅支持 c2c/c2g/channel 内容"/utf8>>}
+    end;
 run_primitive(<<"account_restrict">>, TargetUid, _Opts, _CaseRow) ->
     %% 复用后台禁用语义：status=0（登录签发门已拒绝 0）。
     %% prev_status 已由 do_execute 采集进 Opts，到期/撤销时按它恢复。
@@ -370,3 +398,15 @@ normalize_scope(Bin) when is_binary(Bin) ->
     end;
 normalize_scope(_) ->
     #{}.
+
+%% @doc content_removal 的用户消息抹除：payload 置合规占位（行保留，
+%% 工单 evidence 已有内容快照供审计）；0 行 = 内容不存在或已删除。
+-spec wipe_user_msg(atom(), binary()) -> ok | {error, binary()}.
+wipe_user_msg(Repo, ServerMsgId) when is_binary(ServerMsgId), ServerMsgId =/= <<>> ->
+    case Repo:update_payload_by_msg_id(ServerMsgId, <<"{\"admin_removed\":true}">>) of
+        {ok, N} when is_integer(N), N > 0 -> ok;
+        {ok, _} -> {error, <<"内容不存在或已删除"/utf8>>};
+        {error, R} -> {error, elib_cnv:safe_to_binary(R)}
+    end;
+wipe_user_msg(_Repo, _) ->
+    {error, <<"缺少 server_msg_id"/utf8>>}.

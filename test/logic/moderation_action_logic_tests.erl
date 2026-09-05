@@ -24,6 +24,9 @@ setup_mocks(Opts) ->
     meck:new(elib_pg, [no_link]),
     meck:new(user_ds, [no_link]),
     meck:new(user_device_logic, [no_link]),
+    meck:new(msg_c2c_repo, [no_link]),
+    meck:new(msg_c2g_repo, [no_link]),
+    meck:new(channel_message_repo, [no_link]),
     meck:expect(elib_pg, with_tx, fun(F) -> F(mock_conn) end),
     meck:expect(elib_id, gen, fun(_Prefix) -> 1799000123456789 end),
     meck:expect(elib_retry_config, intervals, fun(<<"notice">>) -> [60] end),
@@ -53,6 +56,9 @@ teardown_mocks(_) ->
     meck:unload(elib_pg),
     meck:unload(user_ds),
     meck:unload(user_device_logic),
+    meck:unload(msg_c2c_repo),
+    meck:unload(msg_c2g_repo),
+    meck:unload(channel_message_repo),
     ok.
 
 insert_expect(Status) ->
@@ -76,13 +82,13 @@ case_not_found_test_() ->
     end}.
 
 unsupported_action_test_() ->
-    {"content_removal 当前 primitives 不支持 → 显式 unsupported 且不落审计行", fun() ->
+    {"未实现的动作名（shadow_ban）→ 显式 unsupported 且不落审计行", fun() ->
         setup_mocks([case_row]),
         insert_expect(<<"executed">>),
         R = moderation_action_logic:execute(
             ?ADM,
             ?CASE,
-            <<"content_removal">>,
+            <<"shadow_ban">>,
             77,
             #{reason => <<"r">>}
         ),
@@ -285,6 +291,121 @@ account_restrict_missing_target_rejected_test_() ->
         ),
         ?assertMatch({error, _}, R),
         ?assertNot(meck:called(moderation_action_repo, insert_tx, ['_', '_'])),
+        teardown_mocks(ok)
+    end}.
+
+content_removal_c2c_wipe_test_() ->
+    {"content_removal c2c：payload 抹除为合规占位（行保留）", fun() ->
+        setup_mocks([case_row]),
+        meck:expect(
+            moderation_action_repo,
+            has_executed_same_action,
+            fun(_C, _A, _U) -> {ok, false} end
+        ),
+        meck:expect(
+            msg_c2c_repo,
+            update_payload_by_msg_id,
+            fun(<<"srv-msg-1">>, Payload) ->
+                ?assertEqual(<<"{\"admin_removed\":true}">>, Payload),
+                {ok, 1}
+            end
+        ),
+        insert_expect(<<"executed">>),
+        %% case_row 的 evidence 需含 server_msg_id：覆写 find_by_id
+        meck:expect(report_ticket_ds, find_by_id, fun(_Id) ->
+            #{
+                <<"id">> => ?CASE,
+                <<"status">> => 2,
+                <<"target_type">> => <<"message">>,
+                <<"target_sub_type">> => <<"c2c">>,
+                <<"target_id">> => 3001,
+                <<"target_author_id">> => 77,
+                <<"evidence">> => #{<<"server_msg_id">> => <<"srv-msg-1">>}
+            }
+        end),
+        R = moderation_action_logic:execute(
+            ?ADM,
+            ?CASE,
+            <<"content_removal">>,
+            77,
+            #{reason => <<"r">>}
+        ),
+        ?assertMatch({ok, _}, R),
+        teardown_mocks(ok)
+    end}.
+
+content_removal_channel_revoke_test_() ->
+    {"content_removal channel：走 revoked 标记撤回", fun() ->
+        setup_mocks([case_row]),
+        meck:expect(
+            moderation_action_repo,
+            has_executed_same_action,
+            fun(_C, _A, _U) -> {ok, false} end
+        ),
+        meck:expect(
+            channel_message_repo,
+            revoke,
+            fun(3001, ?ADM, _At) -> {ok, 1} end
+        ),
+        insert_expect(<<"executed">>),
+        meck:expect(report_ticket_ds, find_by_id, fun(_Id) ->
+            #{
+                <<"id">> => ?CASE,
+                <<"status">> => 2,
+                <<"target_type">> => <<"channel">>,
+                <<"target_sub_type">> => <<"channel">>,
+                <<"target_id">> => 3001,
+                <<"target_author_id">> => 77,
+                <<"evidence">> => #{}
+            }
+        end),
+        R = moderation_action_logic:execute(
+            ?ADM,
+            ?CASE,
+            <<"content_removal">>,
+            77,
+            #{reason => <<"r">>}
+        ),
+        ?assertMatch({ok, _}, R),
+        teardown_mocks(ok)
+    end}.
+
+content_removal_missing_msg_id_rejected_test_() ->
+    {"content_removal c2c 缺 server_msg_id → 显式拒绝且不落 executed", fun() ->
+        setup_mocks([case_row]),
+        meck:expect(
+            moderation_action_repo,
+            has_executed_same_action,
+            fun(_C, _A, _U) -> {ok, false} end
+        ),
+        meck:expect(
+            msg_c2c_repo,
+            update_payload_by_msg_id,
+            fun(_Id, _P) -> {ok, 1} end
+        ),
+        meck:expect(moderation_action_repo, insert_tx, fun(_C, A) ->
+            ?assertEqual(<<"failed">>, maps:get(status, A)),
+            {ok, maps:put(<<"id">>, 690006, A)}
+        end),
+        meck:expect(report_ticket_ds, find_by_id, fun(_Id) ->
+            #{
+                <<"id">> => ?CASE,
+                <<"status">> => 2,
+                <<"target_type">> => <<"message">>,
+                <<"target_sub_type">> => <<"c2c">>,
+                <<"target_id">> => 3001,
+                <<"target_author_id">> => 77,
+                <<"evidence">> => #{}
+            }
+        end),
+        R = moderation_action_logic:execute(
+            ?ADM,
+            ?CASE,
+            <<"content_removal">>,
+            77,
+            #{reason => <<"r">>}
+        ),
+        ?assertMatch({error, _}, R),
         teardown_mocks(ok)
     end}.
 
