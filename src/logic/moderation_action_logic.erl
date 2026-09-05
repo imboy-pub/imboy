@@ -2,7 +2,8 @@
 
 %% R-02：把已确认的举报变成小而可审计的动作。
 %% * 动作集（MVP）：warning / group_mute / group_kick / reject；
-%%   content_removal / account_restrict 因现有 primitives 不支持，
+%%   account_restrict 复用后台禁用语义（status=0，scope 记 prev_status）
+%%   并踢全部设备；content_removal 因消息删除链路未接入，
 %%   显式 unsupported（fail-closed），不落 executed 行。
 %% * 幂等：同 case 同 action 已有 executed 行 → 拒绝重复执行。
 %% * truthful：primitive 失败也落 failed 审计行，case 不被误推进。
@@ -16,7 +17,9 @@
 
 -include("error_code.hrl").
 
--define(SUPPORTED_ACTIONS, [<<"warning">>, <<"group_mute">>, <<"group_kick">>, <<"reject">>]).
+-define(SUPPORTED_ACTIONS, [
+    <<"warning">>, <<"group_mute">>, <<"group_kick">>, <<"reject">>, <<"account_restrict">>
+]).
 
 -opaque opts() :: #{
     reason := binary(),
@@ -42,7 +45,7 @@ execute(AdmUid, CaseId, Action, TargetUid, Opts) when
 ->
     case lists:member(Action, ?SUPPORTED_ACTIONS) of
         true ->
-            case validate_opts(Action, Opts) of
+            case validate_opts(Action, TargetUid, Opts) of
                 ok ->
                     case report_ticket_ds:find_by_id(CaseId) of
                         Row when is_map(Row), map_size(Row) > 0 ->
@@ -120,20 +123,24 @@ list_by_case(_) ->
 %% Internal
 %% ===================================================================
 
--spec validate_opts(binary(), opts()) -> ok | {error, binary()}.
-validate_opts(<<"group_mute">>, Opts) ->
+-spec validate_opts(binary(), integer(), opts()) -> ok | {error, binary()}.
+validate_opts(<<"group_mute">>, _TargetUid, Opts) ->
     Gid = maps:get(gid, Opts, 0),
     Duration = maps:get(duration_minutes, Opts, 0),
     case Gid > 0 andalso Duration > 0 of
         true -> ok;
         false -> {error, <<"群禁言需要 gid 与 duration_minutes"/utf8>>}
     end;
-validate_opts(<<"group_kick">>, Opts) ->
+validate_opts(<<"group_kick">>, _TargetUid, Opts) ->
     case maps:get(gid, Opts, 0) > 0 of
         true -> ok;
         false -> {error, <<"踢出群需要 gid"/utf8>>}
     end;
-validate_opts(_, _) ->
+validate_opts(<<"account_restrict">>, TargetUid, _Opts) when is_integer(TargetUid), TargetUid > 0 ->
+    ok;
+validate_opts(<<"account_restrict">>, _TargetUid, _Opts) ->
+    {error, <<"account restrict requires target_uid"/utf8>>};
+validate_opts(_, _, _) ->
     ok.
 
 %% @doc 先执行 primitive 再落审计行：primitive 失败同样落 failed 行
@@ -141,7 +148,19 @@ validate_opts(_, _) ->
 -spec do_execute(integer(), integer(), binary(), integer(), opts(), map()) ->
     {ok, map()} | {error, binary()}.
 do_execute(AdmUid, CaseId, Action, TargetUid, Opts0, CaseRow) ->
-    Opts = maps:put(actor, AdmUid, Opts0),
+    Opts1 = maps:put(actor, AdmUid, Opts0),
+    Opts =
+        case Action of
+            <<"account_restrict">> ->
+                case user_ds:find_by_id(TargetUid, <<"status">>) of
+                    Prev when is_map(Prev) ->
+                        maps:put(prev_status, maps:get(<<"status">>, Prev, 1), Opts1);
+                    _ ->
+                        Opts1
+                end;
+            _ ->
+                Opts1
+        end,
     case run_primitive(Action, TargetUid, Opts, CaseRow) of
         ok ->
             insert_action(
@@ -188,7 +207,10 @@ do_execute(AdmUid, CaseId, Action, TargetUid, Opts0, CaseRow) ->
 insert_action(AdmUid, CaseId, Action, TargetUid, Opts, Status, Result, FailReason) ->
     DurationMinutes = maps:get(duration_minutes, Opts, 0),
     EndAt =
-        case Action =:= <<"group_mute">> andalso DurationMinutes > 0 of
+        case
+            (Action =:= <<"group_mute">> orelse Action =:= <<"account_restrict">>) andalso
+                DurationMinutes > 0
+        of
             true ->
                 elib_dt:add(elib_dt:now(), {DurationMinutes, minute});
             false ->
@@ -202,7 +224,8 @@ insert_action(AdmUid, CaseId, Action, TargetUid, Opts, Status, Result, FailReaso
         target_uid => TargetUid,
         scope => #{
             <<"gid">> => maps:get(gid, Opts, 0),
-            <<"duration_minutes">> => DurationMinutes
+            <<"duration_minutes">> => DurationMinutes,
+            <<"prev_status">> => maps:get(prev_status, Opts, 1)
         },
         reason => maps:get(reason, Opts, <<>>),
         actor_id => AdmUid,
@@ -220,6 +243,18 @@ insert_action(AdmUid, CaseId, Action, TargetUid, Opts, Status, Result, FailReaso
 run_primitive(<<"reject">>, _TargetUid, _Opts, _CaseRow) ->
     %% explicit no-action decision：本身就是验收认可的结论之一
     ok;
+run_primitive(<<"account_restrict">>, TargetUid, _Opts, _CaseRow) ->
+    %% 复用后台禁用语义：status=0（登录签发门已拒绝 0）。
+    %% prev_status 已由 do_execute 采集进 Opts，到期/撤销时按它恢复。
+    case user_ds:update(TargetUid, #{status => 0}) of
+        {ok, _} ->
+            _ = user_device_logic:kick_all_other_devices(
+                TargetUid, {<<"all">>, <<"admin_action">>}
+            ),
+            ok;
+        {error, R} ->
+            {error, elib_cnv:safe_to_binary(R)}
+    end;
 run_primitive(<<"warning">>, TargetUid, Opts, _CaseRow) ->
     Reason = maps:get(reason, Opts, <<>>),
     send_warning_notice(TargetUid, Reason);
@@ -239,6 +274,25 @@ run_primitive(_, _, _, _) ->
 
 %% @doc group_mute 撤销的提前解除。
 -spec pre_undo(map(), integer()) -> ok | {error, binary()}.
+pre_undo(
+    #{
+        <<"action">> := <<"account_restrict">>,
+        <<"target_uid">> := TargetUid,
+        <<"scope">> := Scope
+    },
+    _AdmUid
+) ->
+    %% 撤销限制：恢复禁用前的账号状态（仅当前仍为禁用态时）
+    PrevStatus = ec_cnv:to_integer(maps:get(<<"prev_status">>, Scope, 1)),
+    case user_ds:find_by_id(TargetUid, <<"status">>) of
+        #{<<"status">> := 0} when PrevStatus > 0 ->
+            case user_ds:update(TargetUid, #{status => PrevStatus}) of
+                {ok, _} -> ok;
+                {error, R} -> {error, elib_cnv:safe_to_binary(R)}
+            end;
+        _ ->
+            ok
+    end;
 pre_undo(
     #{<<"action">> := <<"group_mute">>, <<"target_uid">> := TargetUid} = Row,
     AdmUid
@@ -267,7 +321,52 @@ send_warning_notice(TargetUid, Reason) ->
 
 %% @doc 到期 sweep（供 moderation_sweep_logic 周期调用与运维手动触发）。
 %% 把 end_at 已过期的 executed 禁言/限制动作翻转为 expired——业务失效
-%% 由原语 until 时间戳保证，本函数只闭环审计状态。
--spec expire_due() -> {ok, non_neg_integer()} | {error, binary()}.
+%% 由原语 until 时间戳保证，本函数闭环审计状态，并对 account_restrict
+%% 按 scope.prev_status 恢复账号状态（仅当前仍为禁用态时）。
+-spec expire_due() -> {ok, map()} | {error, binary()}.
 expire_due() ->
-    moderation_action_repo:expire_due().
+    case moderation_action_repo:expire_due() of
+        {ok, Rows} ->
+            Restored = lists:sum(
+                [
+                    restore_restriction_status(Row)
+                 || Row <- Rows,
+                    maps:get(<<"action">>, Row, <<>>) =:= <<"account_restrict">>
+                ]
+            ),
+            {ok, #{expired => length(Rows), restored => Restored}};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc account_restrict 到期恢复：仅当当前仍为禁用态(0)时按 prev_status
+%% 恢复，避免覆盖管理员后续的人工处置。
+-spec restore_restriction_status(map()) -> integer().
+restore_restriction_status(Row) ->
+    TargetUid = maps:get(<<"target_uid">>, Row, 0),
+    %% elib_pg 连接未配 json codec：jsonb 读回是文本，需兜底解码
+    Scope = normalize_scope(maps:get(<<"scope">>, Row, #{})),
+    PrevStatus = ec_cnv:to_integer(maps:get(<<"prev_status">>, Scope, 1)),
+    case user_ds:find_by_id(TargetUid, <<"status">>) of
+        #{<<"status">> := 0} when PrevStatus > 0 ->
+            case user_ds:update(TargetUid, #{status => PrevStatus}) of
+                {ok, _} -> 1;
+                _ -> 0
+            end;
+        _ ->
+            0
+    end.
+
+%% @doc scope 列 jsonb 在未配 json codec 的连接上读回为文本，此处兜底解码。
+-spec normalize_scope(term()) -> map().
+normalize_scope(Scope) when is_map(Scope) ->
+    Scope;
+normalize_scope(Bin) when is_binary(Bin) ->
+    try jsone:decode(Bin, [{object_format, map}]) of
+        M when is_map(M) -> M;
+        _ -> #{}
+    catch
+        _:_ -> #{}
+    end;
+normalize_scope(_) ->
+    #{}.

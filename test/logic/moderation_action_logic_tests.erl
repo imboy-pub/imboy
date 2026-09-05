@@ -22,6 +22,8 @@ setup_mocks(Opts) ->
     meck:new(elib_id, [no_link]),
     meck:new(elib_retry_config, [no_link]),
     meck:new(elib_pg, [no_link]),
+    meck:new(user_ds, [no_link]),
+    meck:new(user_device_logic, [no_link]),
     meck:expect(elib_pg, with_tx, fun(F) -> F(mock_conn) end),
     meck:expect(elib_id, gen, fun(_Prefix) -> 1799000123456789 end),
     meck:expect(elib_retry_config, intervals, fun(<<"notice">>) -> [60] end),
@@ -49,6 +51,8 @@ teardown_mocks(_) ->
     meck:unload(elib_id),
     meck:unload(elib_retry_config),
     meck:unload(elib_pg),
+    meck:unload(user_ds),
+    meck:unload(user_device_logic),
     ok.
 
 insert_expect(Status) ->
@@ -228,6 +232,62 @@ reject_is_explicit_no_action_test_() ->
         teardown_mocks(ok)
     end}.
 
+account_restrict_executed_test_() ->
+    {"account_restrict：置 status=0 + 踢全部设备 + executed 行（end_at 按时长）", fun() ->
+        setup_mocks([case_row]),
+        meck:expect(
+            moderation_action_repo,
+            has_executed_same_action,
+            fun(_C, _A, _U) -> {ok, false} end
+        ),
+        meck:expect(
+            user_ds,
+            find_by_id,
+            fun(_Uid, _Cols) -> #{<<"status">> => 1} end
+        ),
+        meck:expect(user_ds, update, fun(_Uid, #{status := 0}) -> {ok, 1} end),
+        meck:expect(
+            user_device_logic,
+            kick_all_other_devices,
+            fun(_Uid, _Reason) -> ok end
+        ),
+        meck:expect(moderation_action_repo, insert_tx, fun(_C, A) ->
+            Scope = maps:get(scope, A),
+            ?assertEqual(1, maps:get(<<"prev_status">>, Scope)),
+            ?assertEqual(<<"executed">>, maps:get(status, A)),
+            ?assert(maps:get(end_at, A) =/= null),
+            {ok, maps:put(<<"id">>, 690005, A)}
+        end),
+        R = moderation_action_logic:execute(
+            ?ADM,
+            ?CASE,
+            <<"account_restrict">>,
+            77,
+            #{
+                reason => <<"r">>,
+                duration_minutes => 120
+            }
+        ),
+        ?assertMatch({ok, _}, R),
+        teardown_mocks(ok)
+    end}.
+
+account_restrict_missing_target_rejected_test_() ->
+    {"account_restrict 缺 target_uid → 参数拒绝且不落行", fun() ->
+        setup_mocks([case_row]),
+        meck:expect(moderation_action_repo, insert_tx, fun(_C, _A) -> {ok, #{}} end),
+        R = moderation_action_logic:execute(
+            ?ADM,
+            ?CASE,
+            <<"account_restrict">>,
+            0,
+            #{reason => <<"r">>}
+        ),
+        ?assertMatch({error, _}, R),
+        ?assertNot(meck:called(moderation_action_repo, insert_tx, ['_', '_'])),
+        teardown_mocks(ok)
+    end}.
+
 reverse_happy_test_() ->
     {"reverse：executed → mark_reversed 返回 1 → 状态翻转", fun() ->
         setup_mocks([case_row]),
@@ -249,12 +309,38 @@ reverse_happy_test_() ->
         teardown_mocks(ok)
     end}.
 
-expire_due_passthrough_test_() ->
-    {"expire_due：透传 repo 计数（审计状态闭环入口）", fun() ->
+expire_due_counts_and_restores_test_() ->
+    {"expire_due：统计翻转数并按 prev_status 恢复 account_restrict 账号", fun() ->
         setup_mocks([]),
-        meck:expect(moderation_action_repo, expire_due, fun() -> {ok, 3} end),
+        meck:expect(moderation_action_repo, expire_due, fun() ->
+            {ok, [
+                #{
+                    <<"id">> => 1,
+                    <<"action">> => <<"group_mute">>,
+                    <<"target_uid">> => 77,
+                    <<"scope">> => #{}
+                },
+                #{
+                    <<"id">> => 2,
+                    <<"action">> => <<"account_restrict">>,
+                    <<"target_uid">> => 1000000056,
+                    <<"scope">> => #{<<"prev_status">> => 1}
+                }
+            ]}
+        end),
+        meck:expect(
+            user_ds,
+            find_by_id,
+            fun(1000000056, <<"status">>) -> #{<<"status">> => 0} end
+        ),
+        meck:expect(
+            user_ds,
+            update,
+            fun(1000000056, #{status := 1}) -> {ok, 1} end
+        ),
         R = moderation_action_logic:expire_due(),
-        ?assertEqual({ok, 3}, R),
+        ?assertEqual({ok, #{expired => 2, restored => 1}}, R),
+        ?assert(meck:called(user_ds, update, [1000000056, #{status => 1}])),
         teardown_mocks(ok)
     end}.
 

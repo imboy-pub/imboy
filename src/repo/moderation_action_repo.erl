@@ -171,8 +171,8 @@ mark_reversed(Id, AdmUid, Reason) ->
 
 %% @doc 到期 sweep：把 end_at 已过期的 executed 动作翻转为 expired。
 %% 业务失效由原语自带的 until 时间戳保证，这里只做审计状态闭环。
-%% 返回翻转行数。
--spec expire_due() -> {ok, non_neg_integer()} | {error, binary()}.
+%% 返回翻转的行（含 target_uid/scope，供 account_restrict 恢复 prev_status）。
+-spec expire_due() -> {ok, [map()]} | {error, binary()}.
 expire_due() ->
     Tb = tablename(),
     Sql =
@@ -181,10 +181,10 @@ expire_due() ->
             " WHERE action IN ('group_mute', 'account_restrict')"
             " AND status = 'executed'"
             " AND end_at IS NOT NULL AND end_at <= NOW()"
-            " RETURNING id">>,
+            " RETURNING id, action, target_uid, scope">>,
     case elib_pg:query(Sql, []) of
         {ok, Rows} ->
-            {ok, length(Rows)};
+            {ok, Rows};
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
