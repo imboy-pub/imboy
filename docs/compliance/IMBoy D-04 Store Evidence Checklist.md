@@ -24,11 +24,33 @@ owner explicitly authorizes it.
 |---|---|---|---|
 | C1 | Deletion entry point discoverable in app | Mine → Account security → Delete account | ✅ existing page |
 | C2 | Confirmation + read-and-agree checkbox before submit | logout_account_page | ✅ |
-| C3 | Grace period + expected completion date displayed from server | page fetches `deletion_status` and renders banner | ⬜ pending |
-| C4 | Cancel flow in app during grace period | cancel button → request cancelled → account usable | ⬜ pending wiring check |
-| C5 | Retained categories note shown before submit | page copy | ⬜ pending |
-| C6 | Completion/failure status without exposing PII | status banner (pending) / account unusable after completion | ⬜ pending |
-| C7 | Android/iOS real-device flow recorded (offline/retry, reauthentication) | device run on MRD-AL00 + second device | ⬜ adb touch-injection dead on EMUI 9 (tap/swipe/motionevent all swallowed, onboarding page never advances) — do the 2-minute manual walk (below), or use a device with working injection |
+| C3 | Grace period + expected completion date displayed from server | page fetches `deletion_status` and renders banner | ✅ macOS e2e (integration_test/d04, banner text asserted against `requested` payload) |
+| C4 | Cancel flow in app during grace period | cancel button → request cancelled → account usable | ✅ macOS e2e (`cancel_logout` 200 → status flips out of `requested`; DB: request=`cancelled`, user.status back to 1) |
+| C5 | Retained categories note shown before submit | page copy | ✅ macOS e2e (`审计日志` retained-note asserted on page) |
+| C6 | Completion/failure status without exposing PII | status banner (pending) / account unusable after completion | ✅ banner path verified; completed path covered by D-03 sweeper tests |
+| C7 | Android/iOS real-device flow recorded (offline/retry, reauthentication) | device run on MRD-AL00 + second device | ⬜ adb touch-injection dies after screen-off cycles on EMUI 9 — do the 2-minute manual walk (below), or use a device with working injection |
+
+## Automated e2e (2026-09-05, macOS + real backend — ALL GREEN)
+
+`integration_test/d04_account_deletion_flow_test.dart` on macOS against the
+hot-patched 9801 node (main code): **All tests passed**. Proven end-to-end:
+
+- login → deletion page renders retained-categories note (C5) and grace
+  banner from `requested` payload (C3)
+- apply → 200, `user.status=2`, idempotent re-apply keeps first
+  `requested_at` (S3)
+- product cascade after apply: local logout (token/E2EE/SQLite purge) +
+  `/welcome`
+- **grace-period re-login allowed** (status=2 passes the sign-in gate) and
+  re-issued token works
+- cancel → request `cancelled`, `user.status` restored to 1 (S2/C4)
+
+Backend bring-up notes learned here (for any fresh node):
+`config` table needs `pub.imboy.app_<os>_<sk>` rows (sk header is constant
+"1"); write them via `config_ds:set` (values are AES-encrypted at rest —
+plain-SQL inserts read back empty on new code); register TSID generators
+`user_deletion_request` / `user_deletion_job`; hot-swapped router needs
+`cowboy:set_env(imboy_listener, dispatch, ...)`.
 
 ## Manual device walk (2 minutes, MRD-AL00 — CURRENT STATE 2026-09-05)
 
@@ -43,9 +65,12 @@ MRD-AL00，应用当前停在登录页且表单已预填（smoke_alice）。EMUI
 4. 点「撤销注销申请」→ 横幅消失、账号可用（C4）。录屏即商店证据。
 5. 生产环境前置：user_deletion_enabled=true + 迁移 ≥ 00000086。
 
+设备 reverse 已改为 `tcp:9804 → 宿主 9801`（9801 已热更为 main 代码，
+含 D-01 全部接口；9804 节点是 D-01 之前的旧构建，勿再用于验收）。
+
 Never touch the store console. 自动化路径：integration_test/
-d04_account_deletion_flow_test.dart（模拟器 d04 + config 表 sign_key
-种子已就绪，运行命令见文件头）。
+d04_account_deletion_flow_test.dart（macOS 全绿，运行命令见文件头；
+模拟器 d04 路线备用，AVD 需重建）。
 
 ## Store console
 
