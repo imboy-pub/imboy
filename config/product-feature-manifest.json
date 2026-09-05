@@ -13,6 +13,7 @@
     "channel_order",
     "group_vote",
     "group_schedule",
-    "group_task"
+    "group_task",
+    "bot_webhook"
   ]
 }

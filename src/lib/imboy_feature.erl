@@ -180,7 +180,10 @@ feature_names() ->
         lists:member(K, PluginKeys)
     ],
     Extra = [K || K <- PluginKeys, not lists:member(K, Ordered)],
-    CoreFixed ++ Ordered ++ Extra.
+    %% 平台内建（非插件）特性：Bot webhook 外呼（L-01 overseas_baseline
+    %% 预设默认关闭；community/enterprise 无显式覆盖时保持开放）。
+    Builtin = [bot_webhook],
+    CoreFixed ++ Ordered ++ Extra ++ Builtin.
 
 -spec normalize_feature_key(feature()) -> atom() | undefined.
 normalize_feature_key(Feature) when is_atom(Feature) ->

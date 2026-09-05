@@ -22,14 +22,29 @@
 %% 必须经 elib_async 异步执行，HTTP 超时 5s，不阻塞主路径
 -spec push(integer(), map()) -> ok.
 push(BotId, Event) ->
-    _ = elib_async:async(fun() ->
-        do_push(BotId, Event)
-    end),
-    ok.
+    %% L-01：overseas_baseline 预设默认关闭 Bot webhook 外呼
+    case imboy_feature:enabled(bot_webhook) of
+        true ->
+            _ = elib_async:async(fun() ->
+                do_push(BotId, Event)
+            end),
+            ok;
+        false ->
+            ok
+    end.
 
 %% @doc 封装消息为 webhook 推送格式并推送
 -spec push_message(integer(), map(), map()) -> ok.
 push_message(BotId, FromUser, Msg) ->
+    %% L-01：overseas_baseline 预设默认关闭 Bot webhook 外呼
+    case imboy_feature:enabled(bot_webhook) of
+        false ->
+            ok;
+        true ->
+            push_message_payload(BotId, FromUser, Msg)
+    end.
+
+push_message_payload(BotId, FromUser, Msg) ->
     Payload = #{
         <<"event">> => <<"message">>,
         <<"from">> => #{

@@ -63,7 +63,7 @@ def source_catalog(repo: Path) -> dict:
     registry_source = (repo / "src/lib/imboy_plugin_registry.erl").read_text()
     dependency_source = (repo / "src/lib/imboy_policy_catalog.erl").read_text()
     plugin_features = re.findall(r"feature_keys\s*=>\s*\[([^]]*)\]", registry_source)
-    features = {"core", "e2ee"}
+    features = {"core", "e2ee", "bot_webhook"}
     for values in plugin_features:
         features.update(re.findall(r"\b[a-z][a-z0-9_]*\b", values))
     order_match = re.search(r"Ordered\s*=\s*\[(.*?)\],\s*Extra", feature_source, re.S)
