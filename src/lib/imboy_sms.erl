@@ -95,7 +95,12 @@ send(Mobile, Code, <<"jsms">>) ->
     % {ok, RespMap} = elib_req:post(URL, Data, Headers),
     RespMap = elib_req:post(URL, Data, Headers),
     ok = ?DEBUG_LOG([RespMap]),
-    RespMap.
+    RespMap;
+%% 兜底子句：平台配置错误（如 config 写了 aliyun 但无对应实现）时返回
+%% 可控错误而非 function_clause 炸穿调用方 handler（getcode 曾因此 500）。
+send(Mobile, _Content, Platform) ->
+    _ = ?ERROR_LOG({sms_send_unknown_platform, Platform, Mobile}),
+    {error, <<"短信平台未配置"/utf8>>}.
 
 %% @doc 极光验证登录 Token
 %% 提交 loginToken，验证后返回加密的手机号码

@@ -1,6 +1,7 @@
 -module(passport_logic).
 %% Stable identity passport domain boundary.
 %% API adapters should call this module instead of reaching auth/user internals directly.
+-compile([nowarn_deprecated_catch]).
 -dialyzer({nowarn_function, [{send_email_code, 1}, {send_sms_code, 1}, {do_login_verify, 4}]}).
 %%%
 % passport_logic 是 passport application logic 缩写
@@ -693,11 +694,20 @@ send_sms_code(Mobile) ->
                             <<"jsms">> -> CodeBinary;
                             _ -> Content
                         end,
-                    case imboy_sms:send(Mobile, SmsPayload, SmsPlatform) of
-                        ok -> ok;
-                        {ok, _} -> ok;
-                        {error, SmsErr2} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2});
-                        SmsErr2 -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2})
+                    %% sms.switch=off（local/dev/test）：验证码照常落库供
+                    %% 万能码/查库验证，但不外发——此前该开关无人消费，
+                    %% 平台子句缺失（如 aliyun）时 function_clause 炸穿
+                    %% handler，getcode 返回 500 空响应，注册/找回密码不可用。
+                    case config_ds:env([sms, switch], <<"on">>) of
+                        <<"off">> ->
+                            ok;
+                        _ ->
+                            case catch imboy_sms:send(Mobile, SmsPayload, SmsPlatform) of
+                                ok -> ok;
+                                {ok, _} -> ok;
+                                {error, SmsErr2} -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr2});
+                                SmsErr3 -> ?WARN_LOG({sms_send_failed, Mobile, SmsErr3})
+                            end
                     end,
                     {ok, <<"验证码已发送"/utf8>>};
                 _ ->
