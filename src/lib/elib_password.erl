@@ -135,13 +135,18 @@ verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
 %%    缺此分支则 generate/verify 往返必假（2026-08-28 发布审查 C-1）
 %% ② SHA-256 预哈希：为前端 sha256 切换预留
 %% ③ MD5 预哈希：兼容旧协议 hmac 行
+%% ④ SHA-256(MD5-hex)：兼容注册/设密链（前端先 md5-hex 再传输，服务端
+%%    以 md5-hex 值为输入存储）与改密链（existing_pwd 传明文）的组合——
+%%    批次120 实证：缺此候选时，md5-输入存储的账号改密旧密码验证必败
 -spec verify_hmac_sha512(iodata(), binary(), binary()) -> {ok, []} | {error, binary()}.
 verify_hmac_sha512(Plaintext, Salt, Ciphertext) ->
     PlainBin = iolist_to_binary(Plaintext),
+    Md5Hex = elib_hasher:md5(binary_to_list(PlainBin)),
     Candidates = [
         PlainBin,
         crypto:hash(sha256, PlainBin),
-        elib_hasher:md5(binary_to_list(PlainBin))
+        Md5Hex,
+        crypto:hash(sha256, Md5Hex)
     ],
     verify_candidates(Candidates, Salt, Ciphertext).
 
