@@ -121,8 +121,12 @@ search_c2c_msg(Keyword, Limit, Offset, Uid) ->
         {ok, [#{<<"keyword">> := Keyword2}]} ->
             % 搜索私聊消息，只返回当前用户参与的消息
             % m.e2ee IS NULL: E2EE 密文不可搜索（与部分索引谓词一致）
+            % 文档侧必须显式 to_tsvector('jiebacfg', payload)：text 直连
+            % `payload @@ tsquery` 的文档侧不按 jieba 分词，中文关键词
+            % 恒不命中（此前仅完整 latin token 可搜）；显式形式也与
+            % idx_msg_c2c_payload_fts 的索引表达式一致，可走 GIN 索引。
             Sql =
-                <<"select m.*, f.nickname as from_nickname, t.nickname as to_nickname from msg_c2c m left join public.user f on m.from_id = f.id left join public.user t on m.to_id = t.id where m.payload @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and (m.from_id = $2 or m.to_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
+                <<"select m.*, f.nickname as from_nickname, t.nickname as to_nickname from msg_c2c m left join public.user f on m.from_id = f.id left join public.user t on m.to_id = t.id where to_tsvector('jiebacfg', m.payload) @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and (m.from_id = $2 or m.to_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
             elib_pg:query(Sql, [Keyword2, Uid, Limit, Offset]);
         _ ->
             {ok, []}
@@ -147,8 +151,12 @@ search_c2g_msg(Keyword, Limit, Offset, Uid) ->
         {ok, [#{<<"keyword">> := Keyword2}]} ->
             % 搜索群聊消息，只返回当前用户所在的群的消息
             % m.e2ee IS NULL: E2EE 密文不可搜索（与部分索引谓词一致）
+            % msg_c2g.payload 是 jsonb：没有 jsonb @@ tsquery 操作符，必须先
+            % 取 payload->>'text' 再 to_tsvector；群 id 列是 to_id（表里没有
+            % group_id 列），群名列是 title（没有 group_name 列）——修正前
+            % 这三处列名/类型错使 SQL 恒报错，被上层吞成恒空结果。
             Sql =
-                <<"select m.*, f.nickname as from_nickname, g.group_name from msg_c2g m left join public.user f on m.from_id = f.id left join public.group g on m.group_id = g.id where m.payload @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and exists (select 1 from public.group_member gm where gm.group_id = m.group_id and gm.user_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
+                <<"select m.*, f.nickname as from_nickname, g.title as group_name, m.to_id as group_id from msg_c2g m left join public.user f on m.from_id = f.id left join public.group g on m.to_id = g.id where to_tsvector('jiebacfg', m.payload->>'text') @@ to_tsquery('jiebacfg', $1) and m.e2ee is null and exists (select 1 from public.group_member gm where gm.group_id = m.to_id and gm.user_id = $2) order by m.created_at desc LIMIT $3 OFFSET $4">>,
             elib_pg:query(Sql, [Keyword2, Uid, Limit, Offset]);
         _ ->
             {ok, []}
@@ -165,9 +173,9 @@ search_c2c_msg_count(Keyword) ->
         <<"select replace(to_tsquery('jiebacfg', $1)::text, ' <-> ', ' | ') as keyword from (select 1) as temp">>,
     case elib_pg:one(Sql1, [Keyword]) of
         {ok, #{<<"keyword">> := Keyword2}} ->
-            % 统计私聊消息数量
+            % 统计私聊消息数量（文档侧显式 jieba 分词，理由同 search_c2c_msg/4）
             Sql =
-                <<"SELECT count(*) as count FROM msg_c2c WHERE payload @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
+                <<"SELECT count(*) as count FROM msg_c2c WHERE to_tsvector('jiebacfg', payload) @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
             case elib_pg:one(Sql, [Keyword2]) of
                 {ok, #{<<"count">> := Count}} ->
                     Count;
@@ -190,8 +198,9 @@ search_c2g_msg_count(Keyword) ->
     case elib_pg:one(Sql1, [Keyword]) of
         {ok, #{<<"keyword">> := Keyword2}} ->
             % 统计群聊消息数量
+            % payload 是 jsonb：无 jsonb @@ tsquery 操作符，须先取 text 再 to_tsvector
             Sql =
-                <<"SELECT count(*) as count FROM msg_c2g WHERE payload @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
+                <<"SELECT count(*) as count FROM msg_c2g WHERE to_tsvector('jiebacfg', payload->>'text') @@ to_tsquery('jiebacfg', $1) AND e2ee IS NULL">>,
             case elib_pg:one(Sql, [Keyword2]) of
                 {ok, #{<<"count">> := Count}} ->
                     Count;
@@ -234,9 +243,9 @@ search_c2c_msg_with_options(Keyword, Limit, Offset, Options) ->
                     "ts_headline('jiebacfg', m.payload, websearch_to_tsquery('jiebacfg', $1)) as highlight ",
                     "from msg_c2c m ", "left join public.user f on m.from_id = f.id ",
                     "left join public.user t on m.to_id = t.id ", "where ", WhereSql/binary, " ",
-                    SelectSql/binary, " LIMIT $", (build_param_index(length(Params) + 2))/binary,
-                    " OFFSET $", (build_param_index(length(Params) + 3))/binary>>,
-            elib_pg:query(FinalSql, lists:flatten([Keyword2 | Params]) ++ [Limit, Offset]);
+                    SelectSql/binary, " LIMIT $", (build_param_index(length(Params) + 1))/binary,
+                    " OFFSET $", (build_param_index(length(Params) + 2))/binary>>,
+            elib_pg:query(FinalSql, lists:flatten(Params) ++ [Limit, Offset]);
         _ ->
             {ok, []}
     end.
@@ -258,15 +267,16 @@ search_c2g_msg_with_options(Keyword, Limit, Offset, Options) ->
         {ok, [#{<<"keyword">> := Keyword2}]} ->
             % 构建查询
             {SelectSql, WhereSql, Params} = build_advanced_query(Options, Keyword2, <<"c2g">>),
+            % msg_c2g.payload 为 jsonb：ts_headline/匹配均须取 ->>'text'；
+            % 群 id 列是 to_id（无 group_id 列），群名列是 title。
             FinalSql =
-                <<"select m.*, f.nickname as from_nickname, g.group_name, ",
-                    "ts_headline('jiebacfg', m.payload, websearch_to_tsquery('jiebacfg', $1)) as highlight ",
+                <<"select m.*, f.nickname as from_nickname, g.title as group_name, m.to_id as group_id, ",
+                    "ts_headline('jiebacfg', m.payload->>'text', websearch_to_tsquery('jiebacfg', $1)) as highlight ",
                     "from msg_c2g m ", "left join public.user f on m.from_id = f.id ",
-                    "left join public.group g on m.group_id = g.id ", "where ", WhereSql/binary,
-                    " ", SelectSql/binary, " LIMIT $",
-                    (build_param_index(length(Params) + 2))/binary, " OFFSET $",
-                    (build_param_index(length(Params) + 3))/binary>>,
-            elib_pg:query(FinalSql, lists:flatten([Keyword2 | Params]) ++ [Limit, Offset]);
+                    "left join public.group g on m.to_id = g.id ", "where ", WhereSql/binary, " ",
+                    SelectSql/binary, " LIMIT $", (build_param_index(length(Params) + 1))/binary,
+                    " OFFSET $", (build_param_index(length(Params) + 2))/binary>>,
+            elib_pg:query(FinalSql, lists:flatten(Params) ++ [Limit, Offset]);
         _ ->
             {ok, []}
     end.
@@ -284,7 +294,7 @@ search_c2c_msg_count_with_options(Keyword, Options) ->
             {_SelectSql, WhereSql, Params} = build_advanced_query(Options, Keyword2, <<"c2c">>),
             % 别名 m 必须存在：WhereSql 内条件均以 m. 前缀引用
             Sql = <<"SELECT count(*) as count FROM msg_c2c m WHERE ", WhereSql/binary>>,
-            case elib_pg:one(Sql, [Keyword2 | Params]) of
+            case elib_pg:one(Sql, lists:flatten(Params)) of
                 {ok, #{<<"count">> := Count}} ->
                     Count;
                 _ ->
@@ -307,7 +317,7 @@ search_c2g_msg_count_with_options(Keyword, Options) ->
             {_SelectSql, WhereSql, Params} = build_advanced_query(Options, Keyword2, <<"c2g">>),
             % 别名 m 必须存在：WhereSql 内条件均以 m. 前缀引用
             Sql = <<"SELECT count(*) as count FROM msg_c2g m WHERE ", WhereSql/binary>>,
-            case elib_pg:one(Sql, [Keyword2 | Params]) of
+            case elib_pg:one(Sql, lists:flatten(Params)) of
                 {ok, #{<<"count">> := Count}} ->
                     Count;
                 _ ->
@@ -322,26 +332,40 @@ search_c2g_msg_count_with_options(Keyword, Options) ->
 %% ===================================================================
 
 %% @doc 构建高级搜索查询
-%% 返回 {SelectClause, WhereClause, Params}
+%% 返回 {SelectClause, WhereClause, Params}。
+%% Params 的首元素是关键词（$1），与 SQL 内 $N 逐位对应——
+%% 调用方不得再前置 Keyword，否则参数个数与占位不符（epgsql 拒绝，
+%% 此前的双重记账使全部 with_options 查询恒失败并被吞成 0 结果）。
 -spec build_advanced_query(map(), binary(), binary()) -> {binary(), binary(), list()}.
-build_advanced_query(Options, _Keyword2, MsgType) ->
+build_advanced_query(Options, Keyword2, MsgType) ->
     % 构建WHERE子句和参数列表
-    Conditions = build_conditions(Options, MsgType),
+    Conditions = build_conditions(Options, Keyword2, MsgType),
     {WhereParts, Params} = lists:unzip(Conditions),
     % m.e2ee IS NULL: E2EE 密文不可搜索（无参数条件，直接拼接不影响参数索引）
     WhereClause = iolist_to_binary([lists:join(<<" AND ">>, WhereParts), <<" AND m.e2ee IS NULL">>]),
 
     % 构建排序子句
-    SelectClause = build_select_clause(Options),
+    SelectClause = build_select_clause(Options, MsgType),
 
     {SelectClause, WhereClause, Params}.
 
+%% @doc 消息正文的全文本表达式。
+%% msg_c2c.payload 是 text；msg_c2g.payload 是 jsonb（无 jsonb @@ tsquery
+%% 操作符），统一取 ->>'text' 再 to_tsvector。
+-spec payload_text_expr(binary()) -> binary().
+payload_text_expr(<<"c2g">>) ->
+    <<"to_tsvector('jiebacfg', m.payload->>'text')">>;
+payload_text_expr(_) ->
+    <<"to_tsvector('jiebacfg', m.payload)">>.
+
 %% @doc 构建排序子句
--spec build_select_clause(map()) -> binary().
-build_select_clause(Options) ->
+-spec build_select_clause(map(), binary()) -> binary().
+build_select_clause(Options, MsgType) ->
+    PayloadExpr = payload_text_expr(MsgType),
     case maps:get(<<"sort_by">>, Options, <<"relevance">>) of
         <<"relevance">> ->
-            <<"order by ts_rank(to_tsvector('jiebacfg', m.payload), to_tsquery('jiebacfg', $1)) DESC, m.created_at DESC">>;
+            <<"order by ts_rank(", PayloadExpr/binary,
+                ", to_tsquery('jiebacfg', $1)) DESC, m.created_at DESC">>;
         <<"time">> ->
             <<"order by m.created_at DESC">>;
         _ ->
@@ -349,11 +373,14 @@ build_select_clause(Options) ->
     end.
 
 %% @doc 构建条件列表
-%% 返回 [{WherePart, Param}] 列表
--spec build_conditions(map(), binary()) -> list({binary(), any()}).
-build_conditions(Options, MsgType) ->
-    % 基础条件：全文搜索
-    BaseConditions = [{<<"m.payload @@ to_tsquery('jiebacfg', $1)">>, undefined}],
+%% 返回 [{WherePart, Param}] 列表；Param 顺序即 $N 顺序（首条=$1 关键词）
+-spec build_conditions(map(), binary(), binary()) -> list({binary(), any()}).
+build_conditions(Options, Keyword2, MsgType) ->
+    % 基础条件：全文搜索（C2G 的 jsonb payload 须先取 text，见 payload_text_expr/1）
+    PayloadExpr = payload_text_expr(MsgType),
+    BaseConditions = [
+        {<<PayloadExpr/binary, " @@ to_tsquery('jiebacfg', $1)">>, Keyword2}
+    ],
 
     % 添加日期范围条件
     StartDateCond =
@@ -414,7 +441,7 @@ build_conditions(Options, MsgType) ->
                     }
                 ];
             {<<"c2g">>, ConversationId} when is_integer(ConversationId) ->
-                [{<<"m.group_id = $", ParamBin4/binary>>, ConversationId}];
+                [{<<"m.to_id = $", ParamBin4/binary>>, ConversationId}];
             _ ->
                 []
         end,
