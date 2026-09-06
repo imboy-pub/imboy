@@ -319,25 +319,25 @@ page(Req0, State) ->
             elib_response:error(Req0, <<"你不是群成员"/utf8>>);
         _ ->
             {Page, Size} = elib_param:page(Req0),
-            Payload =
-                case group_member_logic:page_with_user_info(Gid2, Page, Size) of
-                    {ok, #{total := Total, list := Rows}} ->
-                        Rows2 = group_member_transfer:member_list(Rows),
-                        #{
-                            total => Total,
-                            page => Page,
-                            size => Size,
-                            list => Rows2
-                        };
-                    _ ->
-                        #{
-                            total => 0,
-                            page => Page,
-                            size => Size,
-                            list => []
-                        }
-                end,
-            elib_response:success(Req0, page_transfer(Payload))
+            case group_member_logic:page_with_user_info(Gid2, Page, Size) of
+                {ok, #{total := Total, list := Rows}} ->
+                    Rows2 = group_member_transfer:member_list(Rows),
+                    Payload = #{
+                        total => Total,
+                        page => Page,
+                        size => Size,
+                        list => Rows2
+                    },
+                    elib_response:success(Req0, page_transfer(Payload));
+                {error, Reason} ->
+                    %% 不吞错：把数据层故障伪装成「空群」会让客户端停在
+                    %% 不完整的第一页且 _hasMore=false，第二页成员永久丢失
+                    ?ERROR_LOG(
+                        "group_member page error: ~p, gid=~p",
+                        [Reason, Gid2]
+                    ),
+                    elib_response:error(Req0, <<"获取群成员列表失败"/utf8>>)
+            end
     end.
 
 %% @doc 群成员禁言
