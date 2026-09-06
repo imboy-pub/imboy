@@ -288,11 +288,14 @@ get_pinned_messages(Uid, ChannelIdBin) ->
 
 -spec get_message_reactions(integer(), binary(), binary()) ->
     {ok, list(map())} | {error, binary()}.
-get_message_reactions(Uid, ChannelIdBin, MessageId) ->
+get_message_reactions(Uid, ChannelIdBin, MessageIdBin) ->
     ChannelId = channel_logic_common:resolve_channel_id(ChannelIdBin),
+    MessageId = channel_logic_common:decode_positive_id(MessageIdBin),
     case ChannelId of
         0 ->
             {error, <<"频道不存在"/utf8>>};
+        _ when MessageId =:= 0 ->
+            {error, <<"消息不存在"/utf8>>};
         _ ->
             case channel_logic_common:ensure_channel_content_access(Uid, ChannelId) of
                 {error, Reason} ->
@@ -300,7 +303,7 @@ get_message_reactions(Uid, ChannelIdBin, MessageId) ->
                 ok ->
                     case channel_message_ds:find_by_id(MessageId) of
                         #{<<"channel_id">> := MsgChannelId} when MsgChannelId =:= ChannelId ->
-                            msg_reaction_ds:get_reactions(MessageId, <<"channel">>);
+                            channel_logic_stats:list_message_reactions(MessageId);
                         _ ->
                             {error, <<"消息不属于该频道"/utf8>>}
                     end

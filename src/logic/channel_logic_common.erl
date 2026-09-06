@@ -4,6 +4,7 @@
 
 -export([channel_transfer/1]).
 -export([resolve_channel_id/1]).
+-export([decode_positive_id/1]).
 -export([get_user_role/2]).
 -export([ensure_channel_content_access/2]).
 -export([channel_revoke_window_seconds/0]).

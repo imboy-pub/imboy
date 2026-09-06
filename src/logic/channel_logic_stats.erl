@@ -6,6 +6,7 @@
 -export([record_message_view/3]).
 -export([add_reaction/4]).
 -export([remove_reaction/4]).
+-export([list_message_reactions/1]).
 -export([get_daily_stats/3]).
 
 -spec get_channel_stats(integer(), binary()) -> {ok, map()} | {error, binary()}.
@@ -200,6 +201,19 @@ reaction_error({db_exception, _Class, _Reason}) ->
     {error, {503, <<"服务暂时不可用，请稍后重试"/utf8>>}};
 reaction_error(Reason) ->
     {error, elib_cnv:safe_to_binary(Reason)}.
+
+%% @doc 消息反应列表：数据源与写入侧同表（channel_reaction），按类型聚合。
+%% 此前误走 msg_reaction_ds（msg_reaction 表，msg_type='channel' 恒空）。
+-spec list_message_reactions(integer()) -> {ok, list(map())} | {error, binary()}.
+list_message_reactions(MessageId) ->
+    Sql = <<
+        "SELECT reaction_type, COUNT(*) AS cnt FROM channel_reaction "
+        "WHERE message_id = $1 GROUP BY reaction_type ORDER BY cnt DESC, reaction_type"
+    >>,
+    case elib_pg:query(Sql, [MessageId]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, elib_cnv:safe_to_binary(Reason)}
+    end.
 
 %% @doc IDOR 防御：校验 MessageId 确实属于 ChannelId，防止调用者用自己有权访问
 %% 的频道 A 的 ChannelId，配合猜测/枚举到的另一频道 B 的 MessageId，对 B 里

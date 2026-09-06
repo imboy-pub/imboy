@@ -20,8 +20,9 @@
 -include("error_code.hrl").
 
 init(Req0, State0) ->
-    Action = maps:get(action, State0),
+    Action0 = maps:get(action, State0),
     State = maps:remove(action, State0),
+    Action = resolve_action(Action0, Req0),
     %% T5（双体验 v2.5.2）：workspace 频道的消息/反应/订阅者入口前置边界——
     %% 非工作区成员稳定 403；personal 频道/无频道上下文零行为变化。
     Req1 =
@@ -35,6 +36,18 @@ init(Req0, State0) ->
                 elib_response:error(Req0, Msg, 503)
         end,
     {ok, Req1, State}.
+
+%% /reaction 同路径双语义：POST=点赞写 / GET=反应列表读（镜像
+%% workspace_handler branding 的 method 分派模式）。此前 GET 无独立路由，
+%% 会被 add_reaction 吞掉，产生"读一次=点赞一次"的写副作用。
+-spec resolve_action(atom(), cowboy_req:req()) -> atom().
+resolve_action(add_reaction, Req) ->
+    case cowboy_req:method(Req) of
+        <<"GET">> -> message_reactions;
+        _ -> add_reaction
+    end;
+resolve_action(Action, _Req) ->
+    Action.
 
 handle_action(pin_message, Req, State) -> pin_message(Req, State);
 handle_action(unpin_message, Req, State) -> unpin_message(Req, State);
