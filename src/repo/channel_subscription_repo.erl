@@ -103,10 +103,14 @@ list_by_channel(ChannelId) ->
 
 %% @doc 分页查询频道的订阅者列表
 %% @param ChannelId 频道ID
-%% @param Cursor 游标（上一页最后一条记录的ID），0 表示从头开始
+%% @param Cursor 偏移量（客户端传「已加载条数」，见
+%%   channel_subscriber_page.dart _pageSize 注释），0 表示从头开始
 %% @param Limit 每页数量
+%% 分页契约：cursor = offset 型。曾按 `cs.id < cursor` 游标实现——id 为
+%% TSID 大整数，与「条数」永不可比，第二页恒空，尾部订阅者在 UI 上
+%% 永久不可见。排序补 cs.id DESC 保证翻页稳定。
 -spec list_by_channel(integer(), integer(), integer()) -> {ok, list(map())} | {error, any()}.
-list_by_channel(ChannelId, 0, Limit) ->
+list_by_channel(ChannelId, Cursor, Limit) when Cursor >= 0 ->
     Tb = tablename(),
     UTb = user_repo:tablename(),
     Sql = <<
@@ -118,24 +122,10 @@ list_by_channel(ChannelId, 0, Limit) ->
         UTb/binary,
         " u ON u.id = cs.user_id "
         "WHERE cs.channel_id = $1 AND cs.status = 1 "
-        "ORDER BY cs.is_pinned DESC, cs.subscribed_at DESC LIMIT $2"
+        "ORDER BY cs.is_pinned DESC, cs.subscribed_at DESC, cs.id DESC "
+        "LIMIT $2 OFFSET $3"
     >>,
-    elib_pg:query(Sql, [ChannelId, Limit]);
-list_by_channel(ChannelId, Cursor, Limit) ->
-    Tb = tablename(),
-    UTb = user_repo:tablename(),
-    Sql = <<
-        "SELECT cs.id, cs.user_id, cs.is_pinned, cs.subscribed_at, cs.last_read_at, "
-        "cs.unread_count, cs.is_muted, u.nickname, u.avatar "
-        "FROM ",
-        Tb/binary,
-        " cs LEFT JOIN ",
-        UTb/binary,
-        " u ON u.id = cs.user_id "
-        "WHERE cs.channel_id = $1 AND cs.status = 1 AND cs.id < $2 "
-        "ORDER BY cs.is_pinned DESC, cs.subscribed_at DESC LIMIT $3"
-    >>,
-    elib_pg:query(Sql, [ChannelId, Cursor, Limit]).
+    elib_pg:query(Sql, [ChannelId, Limit, Cursor]).
 
 %% @doc 删除订阅关系（软删除）
 -spec delete(integer(), integer()) -> {ok, non_neg_integer()} | {error, any()}.
