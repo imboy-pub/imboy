@@ -361,7 +361,12 @@ send_code_with_sms_type_calls_throttle_test_() ->
                 {'to_binary', 1, fun(X) -> integer_to_binary(X) end}
             ]},
             {config_ds, [
-                {'env', 2, fun([sms, platform], _Default) -> <<"jsms">> end}
+                %% send_sms_code 先查总开关（off 跳过外发）再查平台；
+                %% 此处 on 走外发路径，才能断言 imboy_sms:send 被调
+                {'env', 2, fun
+                    ([sms, switch], _Default) -> <<"on">>;
+                    ([sms, platform], _Default) -> <<"jsms">>
+                end}
             ]},
             {imboy_sms, [
                 {'send', 3, fun(_Mobile, Content, Type) ->

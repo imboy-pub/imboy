@@ -931,6 +931,8 @@ login_resp(User, Did, Resp) ->
             <<"token">> => token_ds:encrypt_token(Id, Did),
             <<"refreshtoken">> => token_ds:encrypt_refreshtoken(Id, Did),
             <<"email">> => maps:get(<<"email">>, User),
+            %% 兼容窄列 User map（测试桩/旧调用方）：无 mobile 键时回退空串
+            <<"mobile">> => maps:get(<<"mobile">>, User, <<>>),
             <<"nickname">> => maps:get(<<"nickname">>, User),
             <<"avatar">> => maps:get(<<"avatar">>, User),
             <<"account">> => maps:get(<<"account">>, User),
