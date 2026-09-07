@@ -35,6 +35,7 @@
 | Finding 014 定向回归 | 日志边界守卫 1/1、关联 WS/ACK/离线解密 27/27 PASS；脱敏后守卫+WS 复跑 21/21 PASS；定向 analyze 通过 | C；消息链路已禁止记录原始帧、完整异常、明文 payload/preview、会话对象与标题；真机与后端日志 Canary 扫描仍 BLOCKED |
 | Finding 009 定向回归 | SQLCipher 边界 13/13、数据库迁移/快照/schema/uid 隔离关联回归 59/59 PASS；定向 analyze 与 diff check 通过 | C；加密平台不再无密码探测/回退，不再创建或自动清理明文迁移备份，错钥/明文/损坏统一保留原库并停止初始化 |
 | Finding 009 Android 限定范围复测 | 物理 Android 9 真机 7/7 PASS；`imboyapp@7fb62b69`；测试文件 SHA-256 `42d3908bcda641182e9d7053f12665cc129fa409a77470cfe132e9bd8ddf963c` | B（真机集成，非完整 A 级链路）；`Random.secure()` 每轮生成 Canary，正确密钥建库/重开、错钥拒绝、原文件字节不变、无新 `.plain.bak`/`.pre_encrypt.bak`，随机临时目录已清理；Secure Storage 为 mock，旧明文库、WAL/SHM 与历史 artifact 未覆盖 |
+| Findings 005/006/007 定向回归 | `imboyapp@eb4e3a9f`；PFv3/Olm/SQLCipher staging、ACK 顺序、离线归一化及 replay 组合 85 PASS / 4 SKIP；room-key 导入定向 1/1 PASS；定向 analyze 与 diff check 通过；Debug APK SHA-256 `6fa953c5221df4f19e67f8b8fd588f91a26d2587ec807148900015e6392e0ff5` | C；实时与离线 C2C/C2G 仅在认证、ratchet/digest 与最终消息提交后 ACK；合法完成态可幂等确认，同 ID 改密文或同密文换 ID 被拒绝；真实重启、重传、存储故障和攻击复测仍 BLOCKED |
 
 ## 2. 真实消息路径
 
@@ -78,9 +79,9 @@
 | E2EE-2026-002 | P0 | 工作区移除只停用下属群记录，未逐群发 leave、清缓存或触发 session stale | REGRESSION_PASS；事务提交后已逐群清缓存并发布持久 leave 通知；工作区移除与旧 session 攻击复测待授权 |
 | E2EE-2026-003 | P0 | 群设备密钥强刷失败/为空时复用最长 30 分钟旧缓存 | REGRESSION_PASS；强刷空结果覆盖旧缓存，最终异常清空整组缓存并抛出；旧设备/旧 session 攻击复测待授权 |
 | E2EE-2026-004 | P1 | C2G history 仅构造 `c2g:<gid>`，不校验当前活跃成员 | REGRESSION_PASS；共享 history 入口已要求当前 active 成员并在归档查询前拒绝；前成员 API 攻击复测待授权 |
-| E2EE-2026-005 | P1 | 客户端在 PFv3 认证、解密、持久化前 ACK；实时与离线两条路径同源 | ROOT_CAUSE_CONFIRMED；必须与 006/007 共同建立入站原子提交后再 ACK，不能只删 WS ACK→离线/畸形帧复测 |
-| E2EE-2026-006 | P1 | PFv3 解密失败未形成有界、可重启恢复的密文状态；Olm ratchet 已提交而消息明文尚未提交时存在崩溃丢信窗口 | ROOT_CAUSE_CONFIRMED；原始密文、ratchet/dedupe 与最终消息形成可恢复提交协议→重启恢复回归 |
-| E2EE-2026-007 | P1 | C2G 无持久 replay 状态；C2C `dedupeAndPersistSession` 捕获全部异常并返回 duplicate，把存储事故与重放混同 | ROOT_CAUSE_CONFIRMED；分离错误并统一持久防重，且与 005/006 的提交顺序一起修复→replay/存储故障复测 |
+| E2EE-2026-005 | P1 | 客户端在 PFv3 认证、解密、持久化前 ACK；实时与离线两条路径同源 | REGRESSION_PASS；WS 不再提前 ACK，内容/action/room key 均在处理成功后确认；离线业务 `msg_id` 归一化且 HTTP ACK 拒绝/异常 fail-closed；真实离线、畸形帧和重投攻击复测待授权 |
+| E2EE-2026-006 | P1 | PFv3 解密失败未形成有界、可重启恢复的密文状态；Olm ratchet 已提交而消息明文尚未提交时存在崩溃丢信窗口 | REGRESSION_PASS；SQLCipher 先暂存最多 512 条/单帧 256 KiB，ratchet/dedupe/digest 与可恢复解密结果原子提交，最终消息成功后清理；未完成的 decrypted 行不会按 7 天 pending 规则清除；真实 App kill/restart 与磁盘故障复测待授权 |
+| E2EE-2026-007 | P1 | C2G 无持久 replay 状态；C2C `dedupeAndPersistSession` 捕获全部异常并返回 duplicate，把存储事故与重放混同 | REGRESSION_PASS；C2C/C2G 共用持久 message-id 与受保护信封 digest，存储异常单独抛出；合法完成态与同 ID/换 ID replay 已有 C 级回归，真实重放与乱序攻击复测待授权 |
 | E2EE-2026-008 | P1 | Safety Number 入口把 legacy RSA key/kid 当 Olm identity/device ID，本端 device ID 为空，且本地“已验证”未绑定当前号码 | REGRESSION_PASS；双方均取活跃 Olm device ID，identity 走本地权威或签名+TOFU 路径，验证值绑定当前聚合码；双真机换钥/增删设备攻击复测待授权 |
 | E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS；加密平台已有库只用当前 key 验证，失败保留原库并终止；已移除无密码探测/二次打开、备份生成和自动清理；Android 真机错钥与新备份生成限定复测通过，旧明文库、WAL/SHM、历史 artifact 和真实 Keystore 仍待授权取证，故不得升级为完整 `ATTACK_RETEST_PASS` |
 | E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS；不再吞策略异常，策略未知会在调用上传 API 前中止；对象存储 Canary 攻击复测待授权 |
@@ -102,7 +103,7 @@
 | 附件上传前 AES-256-GCM | B/C 级内核与策略异常 fail-closed 回归通过；对象存储、缩略图和临时文件 A 级证据缺失，PARTIAL |
 | Push 固定占位 | B 级正文占位；昵称/群名 metadata 和真实 provider payload 待查，PARTIAL |
 | 服务端零知识 | B 级源码/schema 支持；实际 DB/日志/备份/历史窗口未查，UNKNOWN |
-| 私钥保护、Replay、MITM、多设备 | SQLCipher 无密码降级与新明文备份路径已修复并通过 C 级回归，但历史 artifact 和 Android/iOS 真机提取抗性未复测；C2G replay 仍有明确缺口；Safety Number 入口本地回归通过，但双真机换钥/设备增删及“聚合号码验证只上报首个设备”边界未完成 A 级验证；多设备整体仍为 PARTIAL |
+| 私钥保护、Replay、MITM、多设备 | SQLCipher 无密码降级与新明文备份路径已修复并通过 C 级回归，但历史 artifact 和 Android/iOS 真机提取抗性未复测；C2C/C2G 已加入持久 message-id 与受保护信封 digest 防重，但真实 replay/乱序仍缺 A 级证据；Safety Number 入口本地回归通过，但双真机换钥/设备增删及“聚合号码验证只上报首个设备”边界未完成 A 级验证；多设备整体仍为 PARTIAL |
 
 漂移：旧红队 GO 早于当前 PFv3 群协议；旧审计声称 P0=0/P1=0 和全部降级 fail-closed；Safety Number 文档声称全设备聚合；部分规范仍描述旧 RSA/vodozemac；销售默认值不能证明运行配置。当前架构声明不使用 Redis，除非授权目标额外引入，否则 Redis 项为 N/A。
 

@@ -37,9 +37,9 @@ printf '%s' "$CANARY" | shasum -a 256
 |---|---|---|---|---|
 | C2C-01 | Canary 全表面搜索 | HTTP/WS、staging、消息/归档、队列、日志、备份、对象存储、Push 均无明文 | A | BLOCKED |
 | C2C-02 | 服务端 root 恢复 | 无设备秘密时不能恢复历史或新消息 | A | BLOCKED |
-| C2C-03 | PFv3/header/ciphertext/tag/nonce/metadata 篡改 | 全部认证失败，且不作为已交付 ACK | A | BLOCKED |
-| C2C-04 | replay/duplicate/乱序/丢包/重传 | 不重复推进 ratchet/UI；合法乱序在协议界限内恢复；不降级明文 | A | BLOCKED |
-| C2C-05 | 离线/重连/App 与后端重启 | 密文可恢复，认证并持久化后才 ACK | A | BLOCKED |
+| C2C-03 | PFv3/header/ciphertext/tag/nonce/metadata 篡改 | 全部认证失败，且不作为已交付 ACK | A | BLOCKED；005/007 已 REGRESSION_PASS，同 ID 改密文与同密文换 ID 有 C 级拒绝回归，真实 Transport 篡改待授权 |
+| C2C-04 | replay/duplicate/乱序/丢包/重传 | 不重复推进 ratchet/UI；合法乱序在协议界限内恢复；不降级明文 | A | BLOCKED；006/007 已 REGRESSION_PASS，ratchet/dedupe/digest 原子提交和完成态幂等有 C 级回归，真实乱序/丢包/重连待授权 |
+| C2C-05 | 离线/重连/App 与后端重启 | 密文可恢复，认证并持久化后才 ACK | A | BLOCKED；005/006 已 REGRESSION_PASS，REST `msg_id` 归一化、可恢复解密结果及 ACK fail-closed 有 C 级回归，真实 App/backend 重启待授权 |
 | C2C-06 | identity/prekey/fallback 替换 | 签名错误拒绝；pin 变化阻断并给出有效告警 | A | BLOCKED；008 已 REGRESSION_PASS，Safety Number 双端聚合与换钥失效有 C 级回归，真实替换/告警复测待授权 |
 | C2C-07 | identity/session state 泄露 | 精确证明 FS/PCS 恢复界限，不用协议单测替代真机结论 | C+A | C PARTIAL；A BLOCKED |
 | C2C-08 | 新设备/重装/清数据/多设备/撤销 | 每设备合法 fan-out；撤销设备不再收到信封；历史行为符合产品策略 | A | BLOCKED；008 已证明设备集合变化会使本地 Safety Number 验证失效（C），真实设备生命周期仍待授权 |
@@ -55,7 +55,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | C2G-04 | 工作区级移除 | 所有下属群撤销、缓存失效，并在下一消息前 rotate | A | BLOCKED；002 已 REGRESSION_PASS，攻击复测待授权 |
 | C2G-05 | 设备增加/撤销/离线恢复 | key 集合只覆盖当前授权设备，不恢复被撤销访问 | A | BLOCKED；003 已 REGRESSION_PASS，强刷空结果/异常本地 fail-closed，真实设备复测待授权 |
 | C2G-06 | 旧 session 攻击 | 旧 inbound 不能解 required rotation 后的密文 | A | BLOCKED |
-| C2G-07 | 恶意成员注入 | replay、伪造 sender、旧 sid、跨群 room key 和 metadata 篡改全部拒绝 | A | BLOCKED |
+| C2G-07 | 恶意成员注入 | replay、伪造 sender、旧 sid、跨群 room key 和 metadata 篡改全部拒绝 | A | BLOCKED；005/006/007 已 REGRESSION_PASS，C2G 持久 digest、跨群绑定、room-key 安全存储后 ACK 有 C 级回归，真实恶意成员攻击待授权 |
 | C2G-08 | rotation 阈值 | 成员/设备集合、100 条、7 天和重启触发符合实现 | A | BLOCKED |
 | C2G-09 | FS/PCS 上限 | 报告 sender-chain/rotation 实际保证，不把 Megolm rotation 称为 Double Ratchet PCS | A | BLOCKED |
 
