@@ -5,9 +5,11 @@
 % user_denylist business logic module
 %%%
 
--export([add/2,
-         add/3,
-         remove/2]).
+-export([
+    add/2,
+    add/3,
+    remove/2
+]).
 -export([page/3]).
 -export([in_denylist/2]).
 
@@ -18,7 +20,6 @@
 %% ===================================================================
 %% API
 %% ===================================================================
-
 
 %% @doc 黑名单分页列表
 %% 获取用户黑名单的分页数据
@@ -34,22 +35,26 @@ page(Uid, Page, Size) when Page > 0 ->
         {ok, []} ->
             #{total => Total, page => Page, size => Size, list => []};
         {ok, Items0} ->
-            Items2 = [#{<<"denied_user_id">> => maps:get(<<"denied_user_id">>, Row),
-                        <<"created_at">> => maps:get(<<"created_at">>, Row, <<>>),
-                        <<"nickname">> => maps:get(<<"nickname">>, Row, <<>>),
-                        <<"avatar">> => maps:get(<<"avatar">>, Row, <<>>),
-                        <<"account">> => maps:get(<<"account">>, Row, <<>>),
-                        <<"sign">> => maps:get(<<"sign">>, Row, <<>>),
-                        <<"remark">> => maps:get(<<"remark">>, Row, <<>>),
-                        <<"tag">> => maps:get(<<"tag">>, Row, <<>>),
-                        <<"gender">> => maps:get(<<"gender">>, Row, 0),
-                        <<"region">> => maps:get(<<"region">>, Row, <<>>),
-                        <<"source">> => maps:get(<<"source">>, Row, <<>>)} || Row <- Items0],
+            Items2 = [
+                #{
+                    <<"denied_user_id">> => maps:get(<<"denied_user_id">>, Row),
+                    <<"created_at">> => maps:get(<<"created_at">>, Row, <<>>),
+                    <<"nickname">> => maps:get(<<"nickname">>, Row, <<>>),
+                    <<"avatar">> => maps:get(<<"avatar">>, Row, <<>>),
+                    <<"account">> => maps:get(<<"account">>, Row, <<>>),
+                    <<"sign">> => maps:get(<<"sign">>, Row, <<>>),
+                    <<"remark">> => maps:get(<<"remark">>, Row, <<>>),
+                    <<"tag">> => maps:get(<<"tag">>, Row, <<>>),
+                    <<"gender">> => maps:get(<<"gender">>, Row, 0),
+                    <<"region">> => maps:get(<<"region">>, Row, <<>>),
+                    <<"source">> => maps:get(<<"source">>, Row, <<>>)
+                }
+             || Row <- Items0
+            ],
             #{total => Total, page => Page, size => Size, list => Items2};
         _ ->
             #{total => Total, page => Page, size => Size, list => []}
     end.
-
 
 %% @doc 添加黑名单
 %% 将用户添加到黑名单
@@ -62,6 +67,9 @@ add(Uid, DeniedUserId) ->
     _ = user_denylist_ds:add(Uid, DeniedUserId, Now),
     Key = {in_denylist, Uid, DeniedUserId},
     imboy_cache:flush(Key),
+    %% B-01：check_relationship3 旁路缓存（TTL 300s）含 in_denylist 结果，
+    %% 拉黑后必须立即失效，否则转发等旁路场景最长 5 分钟漏拦。
+    friend_ds:invalidate_cache(Uid, DeniedUserId),
     Now.
 
 %% @doc 兼容旧入口：保留 remark 参数并返回 ok
@@ -69,7 +77,6 @@ add(Uid, DeniedUserId) ->
 add(Uid, DeniedUserId, _Remark) ->
     _ = add(Uid, DeniedUserId),
     ok.
-
 
 %% @doc 移除黑名单
 %% 将用户从黑名单中移除
@@ -81,8 +88,9 @@ remove(Uid, DeniedUserId) ->
     _ = user_denylist_ds:remove(Uid, DeniedUserId),
     Key = {in_denylist, Uid, DeniedUserId},
     imboy_cache:flush(Key),
+    %% B-01：解除拉黑同样立即使关系旁路缓存失效（对称）
+    friend_ds:invalidate_cache(Uid, DeniedUserId),
     ok.
-
 
 %% @doc 检查用户是否在黑名单中
 %% 检查指定用户是否在当前用户的黑名单中
@@ -95,7 +103,6 @@ in_denylist(Uid, DeniedUserId) ->
     Fun = fun() -> user_denylist_ds:in_denylist(Uid, DeniedUserId) end,
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
-
 
 %% ===================================================================
 %% Internal Function Definitions
