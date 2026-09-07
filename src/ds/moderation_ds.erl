@@ -9,6 +9,7 @@
 -export([sensitive_word_create/3]).
 -export([sensitive_word_delete/1]).
 -export([review_page/3]).
+-export([review_find/1]).
 -export([review_moderate/4]).
 
 -include("common.hrl").
@@ -44,6 +45,10 @@ review_page(Page, Size, Filters) ->
         Err ->
             Err
     end.
+
+-spec review_find(integer()) -> {ok, map()} | {error, term()}.
+review_find(Id) ->
+    review_queue_repo:find_by_id(Id).
 
 -spec review_moderate(integer(), binary(), binary() | undefined, integer()) ->
     {ok, non_neg_integer()} | {error, term()}.

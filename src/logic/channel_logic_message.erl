@@ -304,29 +304,46 @@ do_publish_message(Uid, ChannelIdBin, Content, MsgType, Payload, StoreMode) ->
                 true ->
                     {error, <<"只有管理员可以发布消息"/utf8>>};
                 false ->
-                    case
-                        store_channel_message(
-                            StoreMode, ChannelId, Uid, Content, MsgType, Payload
-                        )
-                    of
-                        {ok, MessageId, Status} ->
-                            case channel_message_ds:find_by_id(MessageId) of
+                    %% R-03 审核门：high 命中词在落库前直接拦截；
+                    %% medium/low 命中先发后审（入队复核），入队失败 fail-open。
+                    case moderation_policy:inspect(channel_message, Content) of
+                        {blocked, _Hits} ->
+                            {error, <<"内容包含违规词汇，发布失败"/utf8>>};
+                        Verdict ->
+                            case
+                                store_channel_message(
+                                    StoreMode, ChannelId, Uid, Content, MsgType, Payload
+                                )
+                            of
+                                {ok, MessageId, Status} ->
+                                    maybe_enqueue_review(
+                                        Verdict, MessageId, ChannelId, Uid, Content
+                                    ),
+                                    case channel_message_ds:find_by_id(MessageId) of
+                                        {error, Reason} ->
+                                            {error, elib_cnv:safe_to_binary(Reason)};
+                                        Message when is_map(Message) ->
+                                            Message2 = message_transfer(Message),
+                                            maybe_notify_new_message(ChannelId, Message2, Status),
+                                            {ok, Message2}
+                                    end;
+                                %% T7 归档写守卫稳定错误码（980）：元组形态透传给
+                                %% handler 映射 envelope code，不做 binary 折叠
+                                {error, {Code, Msg}} when is_integer(Code) ->
+                                    {error, {Code, Msg}};
                                 {error, Reason} ->
-                                    {error, elib_cnv:safe_to_binary(Reason)};
-                                Message when is_map(Message) ->
-                                    Message2 = message_transfer(Message),
-                                    maybe_notify_new_message(ChannelId, Message2, Status),
-                                    {ok, Message2}
-                            end;
-                        %% T7 归档写守卫稳定错误码（980）：元组形态透传给
-                        %% handler 映射 envelope code，不做 binary 折叠
-                        {error, {Code, Msg}} when is_integer(Code) ->
-                            {error, {Code, Msg}};
-                        {error, Reason} ->
-                            {error, elib_cnv:safe_to_binary(Reason)}
+                                    {error, elib_cnv:safe_to_binary(Reason)}
+                            end
                     end
             end
     end.
+
+%% R-03：queued 命中写人工复核队列；入队失败仅记日志不阻断发布（fail-open）。
+maybe_enqueue_review({queued, Hits}, MessageId, ChannelId, Uid, Content) ->
+    _ = moderation_policy:enqueue(channel_message, MessageId, ChannelId, Uid, <<>>, Content, Hits),
+    ok;
+maybe_enqueue_review(_Other, _MessageId, _ChannelId, _Uid, _Content) ->
+    ok.
 
 store_channel_message(legacy, ChannelId, Uid, Content, MsgType, Payload) ->
     case channel_ds:publish_message(ChannelId, Uid, Content, MsgType, Payload) of

@@ -55,26 +55,47 @@ create_post(Uid, PostVals) ->
                 at_uids => AtUids,
                 location => Location
             },
-            case moment_ds:create_post(Uid, Data) of
-                {ok, PostId} ->
-                    %% 两阶段绑定：媒体在发帖前上传时 scope_ref 未知（momentId
-                    %% 尚未生成），发帖成功后按 object_key 回填 scope_ref=PostId，
-                    %% 使读鉴权 authorize_moment 能按帖子 ACL 放行。非致命：
-                    %% 回填失败仅影响非作者读取（退回旧行为），不阻断发帖。
-                    _ = attachment_ds:bind_moment_scope_ref(
-                        media_object_keys(Media), PostId
-                    ),
-                    Post = moment_ds:get_post(PostId),
-                    Payload = post_transfer(Post),
-                    _ = moment_logic_notify:notify_post_created(Uid, PostId),
-                    %% @提醒：best-effort，失败不阻断发帖（见 notify_at_mentions）
-                    _ = notify_at_mentions(Uid, PostId, AtUids, Post),
-                    {ok, Payload};
-                {error, Reason} ->
-                    {error, normalize_error(Reason, <<"发布动态失败"/utf8>>)}
+            %% R-03 审核门：high 命中词落库前拦截；medium/low 命中先发后审
+            %% （入队复核），入队失败 fail-open 不阻断发帖。
+            case moderation_policy:inspect(moment_post, Content) of
+                {blocked, _Hits} ->
+                    {error, <<"内容包含违规词汇，发布失败"/utf8>>};
+                Verdict ->
+                    create_post_with_verdict(
+                        Uid, Data, Content, Media, AtUids, Verdict
+                    )
             end;
         {error, Msg} ->
             {error, Msg}
+    end.
+
+create_post_with_verdict(Uid, Data, Content, Media, AtUids, Verdict) ->
+    case moment_ds:create_post(Uid, Data) of
+        {ok, PostId} ->
+            case Verdict of
+                {queued, Hits} ->
+                    _ = moderation_policy:enqueue(
+                        moment_post, PostId, 0, Uid, <<>>, Content, Hits
+                    ),
+                    ok;
+                _ ->
+                    ok
+            end,
+            %% 两阶段绑定：媒体在发帖前上传时 scope_ref 未知（momentId
+            %% 尚未生成），发帖成功后按 object_key 回填 scope_ref=PostId，
+            %% 使读鉴权 authorize_moment 能按帖子 ACL 放行。非致命：
+            %% 回填失败仅影响非作者读取（退回旧行为），不阻断发帖。
+            _ = attachment_ds:bind_moment_scope_ref(
+                media_object_keys(Media), PostId
+            ),
+            Post = moment_ds:get_post(PostId),
+            Payload = post_transfer(Post),
+            _ = moment_logic_notify:notify_post_created(Uid, PostId),
+            %% @提醒：best-effort，失败不阻断发帖（见 notify_at_mentions）
+            _ = notify_at_mentions(Uid, PostId, AtUids, Post),
+            {ok, Payload};
+        {error, Reason} ->
+            {error, normalize_error(Reason, <<"发布动态失败"/utf8>>)}
     end.
 
 -spec get_post(integer(), term()) -> {ok, map()} | {error, binary()}.

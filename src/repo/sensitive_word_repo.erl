@@ -7,6 +7,7 @@
 
 -export([tablename/0]).
 -export([page/3]).
+-export([all/0]).
 -export([insert/3]).
 -export([delete_by_id/1]).
 
@@ -41,6 +42,13 @@ page(Page, Size, Filters) ->
         end,
     Column = <<"id, word, category, severity, created_at">>,
     elib_pg:page_with_total(Tb, Column, Where2, <<"id desc">>, Page, Size).
+
+%% @doc 全量词表（R-03 policy 入口消费；量级=人工维护的黑名单，几十到几千行）
+-spec all() -> {ok, [map()]} | {error, term()}.
+all() ->
+    Tb = tablename(),
+    Sql = <<"SELECT word, category, severity FROM ", Tb/binary>>,
+    elib_pg:query(Sql, []).
 
 %% @doc 插入敏感词；word 唯一冲突则跳过（用于批量导入去重）
 -spec insert(binary(), binary(), binary()) ->
