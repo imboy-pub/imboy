@@ -360,18 +360,20 @@ convert_user_id(User) ->
             User
     end.
 
-%% @doc 个人数据全量导出（GDPR 第 20 条 - Right to data portability）
+%% @doc 个人数据导出（GDPR 第 20 条 - Right to data portability）
 %% POST /v1/user/export_data
 %%
-%% 实现状态：受限范围同步导出（C0-GOV-01）。
+%% 实现状态：受限范围同步导出（C0-GOV-01，P-01 强化）。
 %% 只导出当前登录用户自己的 user_info/friends/groups/settings；Uid 取自 auth
 %% 中间件注入的 current_uid，不接受任何请求参数指定 uid（否则可导出他人数据）。
-%% 敏感字段由 user_export_logic:sanitize/1 兜底剥离；导出行为写 user_log 审计。
+%% 数据源为有界导出（friends/groups LIMIT + truncated 标记、settings 显式列），
+%% 敏感字段由 user_export_logic:sanitize/1 黑名单兜底（jsonb 自由键）；
+%% 冷却窗口内重复导出返回 429；导出行为写 user_log(type=130) 审计；
+%% 响应带 scope（分类/上限/排除项声明，范围由 legal review 决定）与
+%% legal_hold（显式 supported=false，不静默省略）。
 %%
-%% 尚未覆盖（不在 P0 范围，需要时另立任务）：
-%% - msg_archive / moment 等大表的异步打包与加密 zip 落对象存储
-%% - 单用户冷却期与并发配额
-%% - Legal Hold：响应体内显式声明 supported=false，不静默省略
+%% 尚未覆盖（异步归档，需要时另立任务）：
+%% - msg_archive / moment 等大表的异步打包与加密 zip 落对象存储（含过期链接）
 %%
 %% @param Req0 Cowboy请求对象
 %% @param State 状态映射，包含 current_uid
@@ -383,6 +385,10 @@ export_data(Req0, State) ->
             case user_logic:export(Uid, Req0) of
                 {ok, Data} ->
                     elib_response:success(Req0, Data);
+                {error, {cool_down, _RemainingMs}} ->
+                    %% P-01：冷却窗口内重复导出（防刷库）。文案给窗口上限即可，
+                    %% 剩余毫秒不透出（会向用户暴露上次导出时刻，价值有限）。
+                    elib_response:error(Req0, <<"导出过于频繁，请 24 小时后再试"/utf8>>, 429);
                 {error, _Reason} ->
                     elib_response:error(Req0, <<"数据导出失败，请稍后重试"/utf8>>, 500)
             end;

@@ -10,6 +10,7 @@
 %% ==================== API ====================
 
 -export([add/1]).
+-export([last_export_at/1]).
 -export([add_password_change_log/4]).
 -export([add_logout_apply_log/3]).
 -export([add_internal/5]).
@@ -27,18 +28,22 @@
 %% @param Req0 HTTP 请求对象
 %% @param Type 日志类型 (110: 修改密码)
 %% @return {ok, Result} | {error, Reason}
--spec add_password_change_log(pid() | undefined, integer(), map(), integer()) -> {ok, any()} | {error, any()}.
+-spec add_password_change_log(pid() | undefined, integer(), map(), integer()) ->
+    {ok, any()} | {error, any()}.
 add_password_change_log(Conn, Uid, Req0, Type) ->
     AppVsn = cowboy_req:header(<<"vsn">>, Req0, undefined),
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
     DType = cowboy_req:header(<<"cos">>, Req0, undefined),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, undefined),
-    {ok, Body} = jsone_encode:encode(#{
-        <<"app_vsn">> => AppVsn,
-        <<"did">> => DID,
-        <<"dtype">> => DType,
-        <<"ip">> => Ip
-    }, [native_utf8]),
+    {ok, Body} = jsone_encode:encode(
+        #{
+            <<"app_vsn">> => AppVsn,
+            <<"did">> => DID,
+            <<"dtype">> => DType,
+            <<"ip">> => Ip
+        },
+        [native_utf8]
+    ),
     add_internal(Conn, Type, Uid, Body, elib_dt:now()).
 
 %% @doc 添加注销申请日志
@@ -52,12 +57,15 @@ add_logout_apply_log(Conn, Uid, Req0) ->
     DID = cowboy_req:header(<<"did">>, Req0, undefined),
     DType = cowboy_req:header(<<"cos">>, Req0, undefined),
     Ip = cowboy_req:header(<<"x-forwarded-for">>, Req0, undefined),
-    {ok, Body} = jsone_encode:encode(#{
-        <<"app_vsn">> => AppVsn,
-        <<"did">> => DID,
-        <<"dtype">> => DType,
-        <<"ip">> => Ip
-    }, [native_utf8]),
+    {ok, Body} = jsone_encode:encode(
+        #{
+            <<"app_vsn">> => AppVsn,
+            <<"did">> => DID,
+            <<"dtype">> => DType,
+            <<"ip">> => Ip
+        },
+        [native_utf8]
+    ),
     add_internal(Conn, 102, Uid, Body, elib_dt:now()).
 
 %% ===================================================================
@@ -65,7 +73,8 @@ add_logout_apply_log(Conn, Uid, Req0) ->
 %% ===================================================================
 
 %% @doc 内部函数：添加用户日志
--spec add_internal(pid() | undefined, integer(), integer(), binary(), binary()) -> {ok, any()} | {error, any()}.
+-spec add_internal(pid() | undefined, integer(), integer(), binary(), binary()) ->
+    {ok, any()} | {error, any()}.
 add_internal(undefined, Type, Uid, Body, CreatedAt) ->
     user_log_repo:add(#{
         type => Type,
@@ -86,6 +95,27 @@ add_internal(Conn, Type, Uid, Body, CreatedAt) ->
 add(Data) ->
     user_log_repo:add(Data).
 
+%% @doc 查询用户最近一次个人数据导出（type=130）的时间。
+%% P-01 导出冷却门的真源：审计行同时充当频控依据，不另建表。
+%% 前提：迁移 00000051 已把 130 纳入 chk_user_log_type 允许值，
+%% 否则审计行插入被 CHECK 拦下、本查询恒空、冷却门形同虚设。
+%% @param Uid 用户ID
+%% @return {ok, CreatedAt} 最近一次导出的 created_at；从未导出返回 {ok, undefined}
+-spec last_export_at(integer()) -> {ok, binary() | undefined} | {error, term()}.
+last_export_at(Uid) when is_integer(Uid), Uid > 0 ->
+    Tb = user_log_repo:tablename(),
+    Sql =
+        <<"SELECT created_at FROM ", Tb/binary,
+            " WHERE type = 130 AND uid = $1"
+            " ORDER BY created_at DESC LIMIT 1">>,
+    case elib_pg:one(Sql, [Uid]) of
+        {ok, #{<<"created_at">> := CreatedAt}} -> {ok, CreatedAt};
+        {ok, _} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
+    end;
+last_export_at(_) ->
+    {error, invalid_uid}.
+
 %% @doc 分页查询群治理审计日志（JOIN adm_user）
 %% @param WhereSql 额外 WHERE 条件（二进制，以 AND 开头或空）
 %% @param Params WHERE 绑定参数列表
@@ -97,17 +127,22 @@ page_group_governance_log(WhereSql, Params, Page, Size) ->
     TbLog = user_log_repo:tablename(),
     TbAdmUser = adm_user_repo:tablename(),
     BaseFrom = iolist_to_binary([
-        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbAdmUser, <<" u ON u.id = l.uid ">>,
+        <<" FROM ">>,
+        TbLog,
+        <<" l LEFT JOIN ">>,
+        TbAdmUser,
+        <<" u ON u.id = l.uid ">>,
         <<"WHERE l.type = 902 AND l.remark = 'adm_group_governance'">>,
         WhereSql
     ]),
     CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, BaseFrom]),
     case elib_pg:one(CountSql, Params) of
         {ok, CountRow} ->
-            Total = case maps:get(<<"count">>, CountRow, 0) of
-                V when is_integer(V) -> V;
-                _ -> 0
-            end,
+            Total =
+                case maps:get(<<"count">>, CountRow, 0) of
+                    V when is_integer(V) -> V;
+                    _ -> 0
+                end,
             Offset = (Page - 1) * Size,
             LimitPos = integer_to_binary(length(Params) + 1),
             OffsetPos = integer_to_binary(length(Params) + 2),
@@ -115,7 +150,10 @@ page_group_governance_log(WhereSql, Params, Page, Size) ->
                 <<"SELECT l.uid, u.account, u.nickname, l.body, l.created_at ">>,
                 BaseFrom,
                 <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
-                <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+                <<"LIMIT $">>,
+                LimitPos,
+                <<" OFFSET $">>,
+                OffsetPos
             ]),
             case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
                 {ok, Rows} ->
@@ -134,16 +172,22 @@ page_logout_apply_log(WhereSql, Params, Page, Size) ->
     TbLog = user_log_repo:tablename(),
     TbUser = user_repo:tablename(),
     BaseFrom = iolist_to_binary([
-        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbUser, <<" u ON u.id = l.uid ">>,
-        <<"WHERE l.type = 102">>, WhereSql
+        <<" FROM ">>,
+        TbLog,
+        <<" l LEFT JOIN ">>,
+        TbUser,
+        <<" u ON u.id = l.uid ">>,
+        <<"WHERE l.type = 102">>,
+        WhereSql
     ]),
     CountSql = iolist_to_binary([<<"SELECT COUNT(*) AS count">>, BaseFrom]),
     case elib_pg:one(CountSql, Params) of
         {ok, CountRow} ->
-            Total = case maps:get(<<"count">>, CountRow, 0) of
-                V when is_integer(V) -> V;
-                _ -> 0
-            end,
+            Total =
+                case maps:get(<<"count">>, CountRow, 0) of
+                    V when is_integer(V) -> V;
+                    _ -> 0
+                end,
             Offset = (Page - 1) * Size,
             LimitPos = integer_to_binary(length(Params) + 1),
             OffsetPos = integer_to_binary(length(Params) + 2),
@@ -151,7 +195,10 @@ page_logout_apply_log(WhereSql, Params, Page, Size) ->
                 <<"SELECT l.uid, u.account, u.nickname, u.status AS user_status, l.body, l.created_at ">>,
                 BaseFrom,
                 <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
-                <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+                <<"LIMIT $">>,
+                LimitPos,
+                <<" OFFSET $">>,
+                OffsetPos
             ]),
             case elib_pg:query(DataSql, Params ++ [Size, Offset]) of
                 {ok, Rows} ->
@@ -170,8 +217,13 @@ list_logout_apply_log_chunk(WhereSql, Params, Limit, Offset) ->
     TbLog = user_log_repo:tablename(),
     TbUser = user_repo:tablename(),
     BaseFrom = iolist_to_binary([
-        <<" FROM ">>, TbLog, <<" l LEFT JOIN ">>, TbUser, <<" u ON u.id = l.uid ">>,
-        <<"WHERE l.type = 102">>, WhereSql
+        <<" FROM ">>,
+        TbLog,
+        <<" l LEFT JOIN ">>,
+        TbUser,
+        <<" u ON u.id = l.uid ">>,
+        <<"WHERE l.type = 102">>,
+        WhereSql
     ]),
     LimitPos = integer_to_binary(length(Params) + 1),
     OffsetPos = integer_to_binary(length(Params) + 2),
@@ -179,6 +231,9 @@ list_logout_apply_log_chunk(WhereSql, Params, Limit, Offset) ->
         <<"SELECT l.uid, u.account, u.nickname, l.body, l.created_at ">>,
         BaseFrom,
         <<" ORDER BY l.created_at DESC, l.uid DESC ">>,
-        <<"LIMIT $">>, LimitPos, <<" OFFSET $">>, OffsetPos
+        <<"LIMIT $">>,
+        LimitPos,
+        <<" OFFSET $">>,
+        OffsetPos
     ]),
     elib_pg:query(DataSql, Params ++ [Limit, Offset]).

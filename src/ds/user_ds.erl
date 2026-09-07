@@ -40,6 +40,7 @@
 -export([batch_online_state/1]).
 -export([page/4]).
 -export([export_data/1]).
+-export([export_data_bounded/1]).
 -export([find_expired_logout_users/2]).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -511,6 +512,64 @@ export_data(Uid) ->
             <<"user_info">> => UserInfo,
             <<"friends">> => Friends,
             <<"groups">> => Groups,
+            <<"settings">> => Settings,
+            <<"exported_at">> => elib_dt:now()
+        }}
+    catch
+        _:Error -> {error, Error}
+    end.
+
+%% G3: user_export_logic 不应直调 *_repo:tablename()
+%% P-01：导出链专用有界导出，与 export_data/1（注销快照，须全量）语义分离：
+%% - settings 只取显式列（export_data/1 的 SELECT * 会让将来新增列静默流进导出，
+%%   jsonb 内部键仍由 user_export_logic:sanitize/1 黑名单兜底，双层防线）
+%% - friends/groups 加 LIMIT 上限，命中上限时 truncated=true（诚实截断，
+%%   静默截断会让用户误以为拿到了全部数据）
+-spec export_data_bounded(integer()) -> {ok, map()} | {error, term()}.
+export_data_bounded(Uid) ->
+    FriendLimit = application:get_env(imboy, export_friends_limit, 5000),
+    GroupLimit = application:get_env(imboy, export_groups_limit, 1000),
+    try
+        UserTb = user_repo:tablename(),
+        UserSql = <<
+            "SELECT id, account, nickname, avatar, sign, region, gender, created_at "
+            "FROM ",
+            UserTb/binary,
+            " WHERE id = $1"
+        >>,
+        UserInfo =
+            case elib_pg:query(UserSql, [Uid]) of
+                {ok, [Row]} -> Row;
+                _ -> #{}
+            end,
+        FriendTb = friend_repo:tablename(),
+        FriendSql =
+            <<"SELECT to_user_id, remark, created_at FROM ", FriendTb/binary,
+                " WHERE from_user_id = $1 AND status = 1 LIMIT $2">>,
+        {ok, Friends} = elib_pg:query(FriendSql, [Uid, FriendLimit]),
+        MemberTb = group_member_repo:tablename(),
+        GroupTb = group_repo:tablename(),
+        GroupSql =
+            <<"SELECT g.id, g.title, gm.created_at FROM ", MemberTb/binary,
+                " gm "
+                "JOIN ", GroupTb/binary,
+                " g ON g.id = gm.group_id "
+                "WHERE gm.user_id = $1 LIMIT $2">>,
+        {ok, Groups} = elib_pg:query(GroupSql, [Uid, GroupLimit]),
+        SettingTb = user_setting_repo:tablename(),
+        SettingSql =
+            <<"SELECT setting, updated_at FROM ", SettingTb/binary, " WHERE user_id = $1">>,
+        Settings =
+            case elib_pg:query(SettingSql, [Uid]) of
+                {ok, [S]} -> S;
+                _ -> #{}
+            end,
+        {ok, #{
+            <<"user_info">> => UserInfo,
+            <<"friends">> => Friends,
+            <<"friends_truncated">> => length(Friends) >= FriendLimit,
+            <<"groups">> => Groups,
+            <<"groups_truncated">> => length(Groups) >= GroupLimit,
             <<"settings">> => Settings,
             <<"exported_at">> => elib_dt:now()
         }}
