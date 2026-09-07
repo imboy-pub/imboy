@@ -34,8 +34,9 @@
 | Finding 008 定向回归 | Safety Number 入口 3/3、关联威胁模型 24/24 PASS；定向 analyze 与 diff check 通过 | C；双方真实 device ID/Olm identity 聚合且验证状态绑定当前号码，双真机换钥与设备增删复测仍 BLOCKED |
 | Finding 014 定向回归 | 日志边界守卫 1/1、关联 WS/ACK/离线解密 27/27 PASS；脱敏后守卫+WS 复跑 21/21 PASS；定向 analyze 通过 | C；消息链路已禁止记录原始帧、完整异常、明文 payload/preview、会话对象与标题；真机与后端日志 Canary 扫描仍 BLOCKED |
 | Finding 009 定向回归 | SQLCipher 边界 13/13、数据库迁移/快照/schema/uid 隔离关联回归 59/59 PASS；定向 analyze 与 diff check 通过 | C；加密平台不再无密码探测/回退，不再创建或自动清理明文迁移备份，错钥/明文/损坏统一保留原库并停止初始化 |
-| Finding 009 Android 限定范围复测 | 物理 Android 9 真机 7/7 PASS；`imboyapp@7fb62b69`；测试文件 SHA-256 `42d3908bcda641182e9d7053f12665cc129fa409a77470cfe132e9bd8ddf963c` | B（真机集成，非完整 A 级链路）；`Random.secure()` 每轮生成 Canary，正确密钥建库/重开、错钥拒绝、原文件字节不变、无新 `.plain.bak`/`.pre_encrypt.bak`，随机临时目录已清理；Secure Storage 为 mock，旧明文库、WAL/SHM 与历史 artifact 未覆盖 |
+| Finding 009 Android 限定范围复测 | 物理 Android 9 真机 8/8 PASS；`imboyapp@4baf79a8`；测试文件 SHA-256 `c6804f3f34dab7efdb955f39e626ba1a00fdc7d999c50744d87737a6ce9b7662`；测试 APK SHA-256 `b866a05c53ea4ef49f7937b2669fc0938e57f7b075d4ffbba3e8d4f0370c9dc1` | B（真机集成，非完整 A 级链路）；`Random.secure()` 每轮生成 Canary，正确密钥建库/重开、错钥拒绝、原文件字节不变、无新 `.plain.bak`/`.pre_encrypt.bak`，随机临时目录已清理且测试包已卸载；Secure Storage 为 mock，旧明文库、WAL/SHM 与历史 artifact 未覆盖 |
 | Findings 005/006/007 定向回归 | `imboyapp@eb4e3a9f`；PFv3/Olm/SQLCipher staging、ACK 顺序、离线归一化及 replay 组合 85 PASS / 4 SKIP；room-key 导入定向 1/1 PASS；定向 analyze 与 diff check 通过；Debug APK SHA-256 `6fa953c5221df4f19e67f8b8fd588f91a26d2587ec807148900015e6392e0ff5` | C；实时与离线 C2C/C2G 仅在认证、ratchet/digest 与最终消息提交后 ACK；合法完成态可幂等确认，同 ID 改密文或同密文换 ID 被拒绝；真实重启、重传、存储故障和攻击复测仍 BLOCKED |
+| Findings 006/007 Android 限定范围复测 | 与 Finding 009 同一物理 Android 9 轮次 8/8 PASS；SQLCipher inbox 用例完成 stage→原子保存解密结果→关闭/重开句柄→恢复→complete，并验证同 ID/同 digest 为 processed、同 ID/改 digest 为 replay，数据库文件字节不含随机 Canary | B（真机 SQLCipher 插件与文件系统，非完整 A 级链路）；未执行真实 App 进程 kill、服务端重投、Olm/Megolm 解密或最终消息库故障，故 006/007 仍仅 REGRESSION_PASS |
 
 ## 2. 真实消息路径
 
