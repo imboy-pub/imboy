@@ -37,7 +37,7 @@
 | Finding 009 Android 限定范围复测 | 物理 Android 9 真机 8/8 PASS；`imboyapp@4baf79a8`；测试文件 SHA-256 `c6804f3f34dab7efdb955f39e626ba1a00fdc7d999c50744d87737a6ce9b7662`；测试 APK SHA-256 `b866a05c53ea4ef49f7937b2669fc0938e57f7b075d4ffbba3e8d4f0370c9dc1` | B（真机集成，非完整 A 级链路）；`Random.secure()` 每轮生成 Canary，正确密钥建库/重开、错钥拒绝、原文件字节不变、无新 `.plain.bak`/`.pre_encrypt.bak`，随机临时目录已清理且测试包已卸载；Secure Storage 为 mock，旧明文库、WAL/SHM 与历史 artifact 未覆盖 |
 | Findings 005/006/007 定向回归 | `imboyapp@eb4e3a9f`；PFv3/Olm/SQLCipher staging、ACK 顺序、离线归一化及 replay 组合 85 PASS / 4 SKIP；room-key 导入定向 1/1 PASS；定向 analyze 与 diff check 通过；Debug APK SHA-256 `6fa953c5221df4f19e67f8b8fd588f91a26d2587ec807148900015e6392e0ff5` | C；实时与离线 C2C/C2G 仅在认证、ratchet/digest 与最终消息提交后 ACK；合法完成态可幂等确认，同 ID 改密文或同密文换 ID 被拒绝；真实重启、重传、存储故障和攻击复测仍 BLOCKED |
 | Findings 006/007 Android 限定范围复测 | 与 Finding 009 同一物理 Android 9 轮次 8/8 PASS；SQLCipher inbox 用例完成 stage→原子保存解密结果→关闭/重开句柄→恢复→complete，并验证同 ID/同 digest 为 processed、同 ID/改 digest 为 replay，数据库文件字节不含随机 Canary | B（真机 SQLCipher 插件与文件系统，非完整 A 级链路）；未执行真实 App 进程 kill、服务端重投、Olm/Megolm 解密或最终消息库故障，故 006/007 仍仅 REGRESSION_PASS |
-| Finding 011 备份边界回归 | `imboyapp@f7fe8dc4`；备份/恢复、Megolm 段、服务端密文包与 parser 边界 49/49 PASS；定向 analyze 与 diff check 通过 | C；备份只纳入 legacy RSA 当前私钥和 Megolm inbound，明确排除 Olm account/session 与 TOFU pin；Secure Storage 秘密清单不可读时现在 fail-closed，不再生成被误报成功的 RSA-only 不完整备份；真实换机/重装恢复仍 BLOCKED |
+| Finding 011 备份边界回归 | `imboyapp@f7fe8dc4`、`imboyapp@2da2ea5e`；备份/恢复、Megolm 段、服务端密文包、parser 与恢复写失败边界 57/57 PASS；新增恢复核心定向复跑 11/11 PASS；定向 analyze 与 diff check 通过 | C；备份只纳入 legacy RSA 当前私钥和 Megolm inbound，明确排除 Olm account/session 与 TOFU pin；Secure Storage 秘密清单不可读时导出 fail-closed，任一 Megolm session 写入失败时导入不再显示完整成功，成功文案只承诺备份内已成功写入的 session；widget 夹具虽由测试宿主拦截网络，但仍打印生产 URL，不能作为网络隔离或 A 级证据；真实换机/重装恢复仍 BLOCKED |
 | Finding 013 Signed Capabilities 取证 | `DeviceManifest`/协商/HWM 纯函数 40/40 PASS；全生产调用者扫描完成 | C+B；模型和单测可用，但客户端没有生成/上传/拉取 manifest，发送路径不调用协商器/HWM，服务端仅有未接线列；故生产 Signed Capabilities 声明不成立 |
 
 ## 2. 真实消息路径
@@ -57,7 +57,7 @@
 - C2C：设备生成 Olm Account → 上报 identity/OTK/签名 fallback → claim OTK（耗尽时用签名 fallback）→ 验签与 TOFU → 建立/恢复 per-device session → PFv3+Olm 加密；ratchet 与 outbox、dedupe 与接收 ratchet 分别在 SQLCipher 事务中提交。设计上不降级到 RSA/明文。
 - C2G：发送端内存维护 outbound Megolm → 导出 room key → Olm 逐设备包裹 → 接收端保存 inbound pickle → 按成员/设备变化、100 条、7 天或进程重启轮换。当前源码已补齐成员撤销传播并使强刷失败/空结果 fail-closed，本地回归通过；真实设备撤销链仍待 A 级复测。
 - Megolm rotation 不等于 Double Ratchet PCS。离群后保密依赖“成员撤销传播→新设备快照→下一条消息前轮换”完整成立；当前仅有 B/C 级实现与回归证据。
-- 新成员/重新加入是否可读历史尚无明确产品策略，记安全设计缺口。
+- 新成员/重新加入是否可读历史尚无明确产品策略，记安全设计缺口。当前 `/msg/history` 与批量 `sync` 均只检查当前 active membership 后查询整个 `c2g:<gid>`；`group_member` 无 join epoch/history boundary，重入 upsert 保留旧 `created_at`，而 `updated_at` 会被角色、备注、禁言等普通操作改写，现有列不能安全充当历史边界。
 
 ## 4. 密钥所有权
 
@@ -88,8 +88,8 @@
 | E2EE-2026-008 | P1 | Safety Number 入口把 legacy RSA key/kid 当 Olm identity/device ID，本端 device ID 为空，且本地“已验证”未绑定当前号码 | REGRESSION_PASS；双方均取活跃 Olm device ID，identity 走本地权威或签名+TOFU 路径，验证值绑定当前聚合码；双真机换钥/增删设备攻击复测待授权 |
 | E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS；加密平台已有库只用当前 key 验证，失败保留原库并终止；已移除无密码探测/二次打开、备份生成和自动清理；Android 真机错钥与新备份生成限定复测通过，旧明文库、WAL/SHM、历史 artifact 和真实 Keystore 仍待授权取证，故不得升级为完整 `ATTACK_RETEST_PASS` |
 | E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS；不再吞策略异常，策略未知会在调用上传 API 前中止；对象存储 Canary 攻击复测待授权 |
-| E2EE-2026-011 | P1 | 备份刻意不含 Olm account/session/TOFU pin，故不恢复 Olm 身份连续性或 C2C ratchet 历史；且旧导出路径在 Secure Storage 枚举失败时会静默生成 RSA-only 不完整备份 | REGRESSION_PASS；已保持“不克隆 ratchet”边界，备份仅含 legacy RSA 与 Megolm inbound，排除 Olm/TOFU；秘密清单不可读时导出 fail-closed；真实新设备身份变更告警、C2C 不可恢复和 C2G 已备份 session 恢复待攻击复测 |
-| E2EE-2026-012 | P1 | 新成员/重入群历史访问策略未定义 | OPEN；产品拍板→实现/文档→生命周期复测 |
+| E2EE-2026-011 | P1 | 备份刻意不含 Olm account/session/TOFU pin，故不恢复 Olm 身份连续性或 C2C ratchet 历史；旧导出路径在 Secure Storage 枚举失败时会静默生成 RSA-only 不完整备份；旧导入路径吞掉单条 Megolm 写失败后仍报告整体成功 | REGRESSION_PASS；已保持“不克隆 ratchet”边界，备份仅含 legacy RSA 与 Megolm inbound，排除 Olm/TOFU；秘密清单不可读时导出 fail-closed，Megolm 写入失败时导入 fail-closed 且日志仅保留异常类型，成功文案限定为备份内成功写入的会话；Secure Storage 无跨条目事务，失败前已完成的幂等写入可能保留并由重试覆盖；真实新设备身份变更告警、C2C 不可恢复和 C2G 已备份 session 恢复待攻击复测 |
+| E2EE-2026-012 | P1 | 新成员/重入群历史访问策略未定义；`/msg/history` 与批量 `sync` 都仅校验当前 active membership 后读取整个群归档，成员记录没有稳定的本次入群边界 | ROOT_CAUSE_CONFIRMED；需产品拍板首次加入、退出/移除后重入、同账号新设备三类历史策略，再为两个归档入口实现同一 join boundary 并完成生命周期复测；已离群前取得的明文、密文和密钥无法远程追回 |
 | E2EE-2026-013 | P2 | 规范声明 Signed Capabilities；客户端只有 `DeviceManifest`/协商/HWM 模型与单测，未进入身份上传、设备查询或发送链，服务端仅有未接线 schema 列 | ROOT_CAUSE_CONFIRMED；当前固定 C2C Olm 发送不依赖该机制，但 Signed Capabilities 必须降级为未实现声明，或补齐 manifest 生成/账户签名/上传/拉取/协商/HWM 真实链路后再复测 |
 | E2EE-2026-014 | P2 | debug 路径可记录完整 WS/解密后 Conversation payload，解析异常文本也可携带输入片段 | REGRESSION_PASS；已移除完整 WS 开关并将消息/会话/离线/S2C/解密日志收窄为非敏感元数据和异常类型；真实 Canary 日志扫描待授权 |
 
@@ -107,7 +107,7 @@
 | Push 固定占位 | B 级正文占位；昵称/群名 metadata 和真实 provider payload 待查，PARTIAL |
 | 服务端零知识 | B 级源码/schema 支持；实际 DB/日志/备份/历史窗口未查，UNKNOWN |
 | 私钥保护、Replay、MITM、多设备 | SQLCipher 无密码降级与新明文备份路径已修复并通过 C 级回归，但历史 artifact 和 Android/iOS 真机提取抗性未复测；C2C/C2G 已加入持久 message-id 与受保护信封 digest 防重，但真实 replay/乱序仍缺 A 级证据；Safety Number 入口本地回归通过，但双真机换钥/设备增删及“聚合号码验证只上报首个设备”边界未完成 A 级验证；多设备整体仍为 PARTIAL |
-| 备份/恢复 | 当前加密包可恢复 legacy RSA 当前私钥与已纳入的 Megolm inbound；不恢复 Olm account/session/TOFU pin，不应被宣传为 C2C 身份或棘轮恢复。秘密清单枚举失败已 fail-closed；真实换机恢复、部分 session 缺失、恢复中断与 Safety Number 变化告警尚无 A 级证据 |
+| 备份/恢复 | 当前加密包可恢复 legacy RSA 当前私钥与已纳入的 Megolm inbound；不恢复 Olm account/session/TOFU pin，不应被宣传为 C2C 身份或棘轮恢复。秘密清单枚举失败和任一 Megolm 写入失败均已 fail-closed，成功文案不再承诺完整群历史；Secure Storage 无跨条目事务，失败前已写 session 依赖幂等重试收敛；真实换机恢复、恢复中断与 Safety Number 变化告警尚无 A 级证据 |
 | Signed Capabilities | 仅模型与单测存在；当前客户端/服务端/发送链未形成签名能力声明协议，不得作为 MITM 或降级防护证据 |
 
 漂移：旧红队 GO 早于当前 PFv3 群协议；旧审计声称 P0=0/P1=0 和全部降级 fail-closed；Safety Number 文档声称全设备聚合；Signed Capabilities 规范声明超前于真实产品链；本地备份注释曾声称“服务器不存储”而同一客户端已有云端密文备份；部分规范仍描述旧 RSA/vodozemac；销售默认值不能证明运行配置。当前架构声明不使用 Redis，除非授权目标额外引入，否则 Redis 项为 N/A。
