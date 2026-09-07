@@ -29,6 +29,24 @@
 | live room | **无现成 key**（live room 若未实现则为 Architecture Gap，记录即可） | 待确认 |
 | AI marketplace / Bot external webhook | **无现成 key**（Bot/Agent 是 core 内建——需新增 feature key 并在 Bot webhook 外呼边界 ensure_enabled） | 需新增 |
 
+## 进度（2026-09-05）
+
+- [x] 第一段：三档 profile 后端落地（imboy `e7c0b078`，preset/normalize/policy
+      四模块 + policy_tests 三档化 51/51 + preset_tests 6/6）
+- [x] 真库冒烟：9801 切 overseas_baseline → preset 生效；**features 的 admin
+      override（config 表 features 键）优先于 preset 默认——既有面板语义**；
+      去除对应 override 后 location/channel_discover=false 透出、channel=true
+      基线保持
+- [x] Bot webhook 守卫：feature_names 追加 Builtin bot_webhook → 生成器/
+      manifest/hrl 自动纳入 → push/push_message 入口拒发（imboy `9e5979ef`，
+      EUnit 3/3）
+- [x] REST/WS 守卫勘察：location_handler/channel_handler 既有 ensure_enabled
+      （registry 派生 feature）→ preset 生效即 REST 自动缺席；WS 不承载这些
+      功能，无需守卫
+- [ ] Flutter 路由/API 可见性测试
+- [ ] Admin route/menu/chunk 缺席测试
+- [ ] F-07 构建矩阵加 overseas_baseline 列
+
 ## 任务拆解（建议两段）
 
 ### 第一段（后端）
