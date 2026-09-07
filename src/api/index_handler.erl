@@ -74,6 +74,15 @@ api_init(Req0) ->
                     _ -> <<"0">>
                 end,
             <<"login_rsa_pub_key">> => config_ds:env(login_rsa_pub_key),
+            %% L-01：三端可见性数据源——effective features（键转 binary，
+            %% 布尔值）。overseas_baseline 等预设关闭的功能据此在客户端
+            %% 隐藏入口/拦截 deep link；未列出的键客户端按自身默认处理。
+            <<"features">> => maps:from_list(
+                [
+                    {atom_to_binary(K, utf8), V}
+                 || {K, V} <- maps:to_list(imboy_policy:effective_features())
+                ]
+            ),
             %% T1 双体验（§4.1）：产品体验服务端唯一真相源。仅此两个白名单
             %% 字段，不暴露其他 application env；客户端 AppInitializer 缓存并
             %% 按 config_version 比对失效（experience 或后端版本变化必变化）。

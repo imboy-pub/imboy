@@ -31,7 +31,12 @@ init_success_test_() ->
             ?assertEqual(
                 <<"/api/v1/attachment/presign">>,
                 maps:get(<<"attach_presign_endpoint">>, InitData)
-            )
+            ),
+            %% L-01：effective features 下发（键 binary、值布尔）——客户端
+            %% 据此隐藏入口/拦截 deep link。
+            Features = maps:get(<<"features">>, InitData),
+            ?assert(maps:is_key(<<"core">>, Features)),
+            ?assert(is_boolean(maps:get(<<"location">>, Features)))
         end
     ).
 
@@ -67,13 +72,16 @@ init_legacy_off_tolerates_missing_iv_test_() ->
                 (solidified_key_iv) -> <<>>;
                 (login_rsa_pub_key) -> <<"rsa_pub">>
             end},
+            {'get', 2, fun(_K, D) -> D end},
             {'env', 2, fun
                 (ws_url, _D) -> <<"wss://example.test/ws">>;
                 (upload_url, _D) -> <<"https://example.test/upload">>;
                 (upload_key, _D) -> <<"upload_key">>;
                 (upload_scene, _D) -> <<"upload_scene">>;
                 (login_pwd_rsa_encrypt, _D) -> false;
-                (init_config_legacy_cbc, _D) -> <<"off">>
+                (product_profile, D) -> D;
+                (init_config_legacy_cbc, _D) -> <<"off">>;
+                (_K, D) -> D
             end}
         ]}
     ),
@@ -110,6 +118,7 @@ init_mocks(LegacyCbc, RsaFlag) ->
                 (solidified_key_iv) -> <<"0123456789abcdef">>;
                 (login_rsa_pub_key) -> <<"rsa_pub">>
             end},
+            {'get', 2, fun(_K, D) -> D end},
             %% env/2 — 带 default，用于客户端 init 配置项
             {'env', 2, fun
                 (ws_url, _D) ->
@@ -127,7 +136,9 @@ init_mocks(LegacyCbc, RsaFlag) ->
                     case LegacyCbc of
                         default -> D;
                         V -> V
-                    end
+                    end;
+                (_K, D) ->
+                    D
             end}
         ]},
         {app_version_ds, [
@@ -241,13 +252,17 @@ ws_url_mocks(Host, Proto, WsConfig) ->
                 (solidified_key_iv) -> <<"0123456789abcdef">>;
                 (login_rsa_pub_key) -> <<"rsa_pub">>
             end},
+            {'get', 2, fun(_K, D) -> D end},
             {'env', 2, fun
                 (ws_url, _D) -> WsConfig;
                 (upload_url, _D) -> <<"https://example.test/upload">>;
                 (upload_key, _D) -> <<"upload_key">>;
                 (upload_scene, _D) -> <<"upload_scene">>;
                 (login_pwd_rsa_encrypt, _D) -> false;
-                (init_config_legacy_cbc, _D) -> <<"off">>
+                (product_profile, D) -> D;
+                (capabilities, D) -> D;
+                (init_config_legacy_cbc, _D) -> <<"off">>;
+                (_K, D) -> D
             end}
         ]}
     ).
