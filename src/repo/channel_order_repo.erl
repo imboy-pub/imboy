@@ -108,13 +108,16 @@ create_order(Data) ->
     end.
 
 %% @doc 根据订单号查找订单
+%% JOIN channel 带出 channel_name：详情页与列表页（list_by_user）
+%% 行为保持一致，客户端频道字段不再回退显示 #<channelId>。
 -spec find_by_order_no(binary()) -> {ok, map()} | {error, not_found}.
 find_by_order_no(OrderNo) ->
     Sql =
-        <<"SELECT id, channel_id, user_id, order_no, amount, currency, status, ",
-            "payment_method, payment_no, payment_at, subscription_start_at, subscription_end_at, ",
-            "expires_at, refund_reason, refund_at, extra_data, created_at, updated_at ",
-            "FROM channel_order WHERE order_no = $1">>,
+        <<"SELECT o.id, o.channel_id, o.user_id, o.order_no, o.amount, o.currency, o.status, ",
+            "o.payment_method, o.payment_no, o.payment_at, o.subscription_start_at, o.subscription_end_at, ",
+            "o.expires_at, o.refund_reason, o.refund_at, o.extra_data, o.created_at, o.updated_at, ",
+            "c.name as channel_name ", "FROM channel_order o ",
+            "JOIN channel c ON o.channel_id = c.id ", "WHERE o.order_no = $1">>,
     case elib_pg:query(Sql, [OrderNo]) of
         {ok, []} -> {error, not_found};
         {ok, [Row | _]} -> {ok, Row};
