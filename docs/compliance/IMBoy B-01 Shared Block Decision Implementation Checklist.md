@@ -15,19 +15,15 @@
 - **未覆盖边界（Gap Matrix 所指旁路）**：mention（群内 @）、invite（群/频道/
   workspace 邀请）、profile 查看、search 搜索、频道评论/动态互动。
 
-## P0 缺口（不依赖矩阵决策，可先行修复）
+## P0 缺口（✅ 已修复，imboy `ad14434e`）
 
-**拉黑/解除拉黑后缓存 10 天不失效**——add/remove 时未 flush `in_denylist`
-缓存键，拉黑后最长 10 天内 B 仍可发消息给 A（验收明确要求
-"cache invalidates immediately"）。修法：
+~~拉黑/解除拉黑后缓存 10 天不失效~~ **定性修正**：主路径 in_denylist
+本就即时 flush（验收满足）；真缺口为 check_relationship3 旁路缓存
+（TTL 300s）不被拉黑操作失效——转发等旁路场景最长 5 分钟漏拦。
 
-```erlang
-%% user_denylist_logic:add/2 与 remove/2 成功后：
-imboy_cache:flush({in_denylist, Uid, DeniedUserId}),
-imboy_cache:flush({in_denylist, DeniedUserId, Uid})   %% 若矩阵为对称阻断
-```
-EUnit：拉黑后立即 in_denylist 翻转、解除后立即翻转（mock imboy_cache 或
-用真 memo 的 flush 验证）。
+**已修**：user_denylist_logic add/remove 成功后调
+`friend_ds:invalidate_cache/2`（覆盖 is_friend2/check_relationship3
+双向与依赖标签）。denylist 套件 3/3。
 
 ## 待矩阵拍板后的工程项
 
