@@ -42,7 +42,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | C2C-05 | 离线/重连/App 与后端重启 | 密文可恢复，认证并持久化后才 ACK | A | BLOCKED；005/006 已 REGRESSION_PASS，REST `msg_id` 归一化、可恢复解密结果及 ACK fail-closed 有 C 级回归；Android 真机 SQLCipher stage→关闭/重开句柄→恢复为限定 B PASS，但真实 App 进程/backend 重启仍待授权 |
 | C2C-06 | identity/prekey/fallback 替换 | 签名错误拒绝；pin 变化阻断并给出有效告警 | A | BLOCKED；008 已 REGRESSION_PASS，Safety Number 双端聚合与换钥失效有 C 级回归，真实替换/告警复测待授权 |
 | C2C-07 | identity/session state 泄露 | 精确证明 FS/PCS 恢复界限，不用协议单测替代真机结论 | C+A | C PARTIAL；A BLOCKED |
-| C2C-08 | 新设备/重装/清数据/多设备/撤销 | 每设备合法 fan-out；撤销设备不再收到信封；历史行为符合产品策略 | A | BLOCKED；008 已证明设备集合变化会使本地 Safety Number 验证失效（C），真实设备生命周期仍待授权 |
+| C2C-08 | 新设备/重装/清数据/多设备/撤销 | 每设备合法 fan-out；撤销设备不再收到信封；历史行为符合产品策略 | A | BLOCKED；008 已证明设备集合变化会使本地 Safety Number 验证失效（C）；011 已证明备份不克隆 Olm account/session/TOFU pin 且秘密收集失败时拒绝导出（C）；真实换机恢复与设备生命周期仍待授权 |
 | C2C-09 | RSA/Megolm/未知套件降级 | 新消息不能被迫降到旧协议或明文 | C+A | C PARTIAL；A BLOCKED |
 
 ## 3. C2G
@@ -68,7 +68,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | X-03 | Push | Provider/Gateway 无消息明文；记录昵称/群名/类型 metadata | BLOCKED |
 | X-04 | Android/iOS 密钥保护 | Keystore/Keychain accessibility、备份迁移与提取抗性符合声明 | B PARTIAL；A BLOCKED |
 | X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | C PASS / Android 限定范围 B PASS；物理 Android 9 真机使用每轮 `Random.secure()` Canary，8/8 PASS：错钥拒绝、原文件字节不变、正确密钥及 inbox 解密结果可重开恢复、数据库文件字节无 Canary、完成态/replay 分类正确、未生成新 `.plain.bak`/`.pre_encrypt.bak`，临时目录已清理且测试包已卸载。Secure Storage 为 mock；旧明文库、WAL/SHM、历史备份 artifact 与真实 Keystore 未覆盖，009 保持 REGRESSION_PASS |
-| X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS，消息链路日志脱敏有 C 级回归，真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
+| X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS，消息链路日志脱敏有 C 级回归；011 备份包的密码学边界与收集失败 fail-closed 有 49/49 C 级回归；真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
 | X-07 | Compliance | 明确私钥保管方、授权解密边界、轮换确认和 zero-knowledge 例外 | BLOCKED |
 | X-08 | Redis | 仅目标部署实际使用 Redis 时检查 | 当前声明架构 N/A |
 
