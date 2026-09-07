@@ -24,6 +24,7 @@
 - B-01：拉黑/解除拉黑立即使关系旁路缓存失效，消除 300s 旁路窗口
 - E2EE：群成员资格边界强制 active 校验（非 active 成员不可收发）
 - passport：account 登录查无时回退 mobile 查询
+- moderation：sweep 周期任务按 `expire_due/0` 的计数 map 契约消费（修 badarith 崩溃循环）
 
 ## [1.0.0-alpha.71] - 2026-08-30
 

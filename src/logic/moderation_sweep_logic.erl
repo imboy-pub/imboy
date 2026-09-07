@@ -74,13 +74,19 @@ code_change(_OldVsn, State, _Extra) ->
 -spec do_sweep(#state{}) -> {integer(), #state{}}.
 do_sweep(State0) ->
     case moderation_action_logic:expire_due() of
-        {ok, Count} ->
-            NewState = State0#state{total_expired = State0#state.total_expired + Count},
-            case Count > 0 of
-                true -> ok = ?INFO_LOG([moderation_sweep, expired, #{count => Count}]);
-                false -> ok
+        %% expire_due/0 的 -spec 契约是计数 map：expired=翻转行数，
+        %% restored=account_restrict 到期后恢复的状态数（alpha.72 修 badarith）。
+        {ok, #{expired := Expired, restored := Restored}} ->
+            NewState = State0#state{total_expired = State0#state.total_expired + Expired},
+            case Expired > 0 of
+                true ->
+                    ok = ?INFO_LOG([
+                        moderation_sweep, expired, #{count => Expired, restored => Restored}
+                    ]);
+                false ->
+                    ok
             end,
-            {Count, NewState};
+            {Expired, NewState};
         {error, Reason} ->
             ok = ?ERROR_LOG([moderation_sweep, expire_due_failed, Reason]),
             {0, State0}
