@@ -250,6 +250,10 @@ role_acl(1) ->
         <<"feedback:workflow:read">>,
         <<"feedback:workflow:write">>,
         <<"messages:read">>,
+        %% A-01 特权消息访问三分：元数据/内容（工单制）/导出，仅 super_admin 全量
+        <<"messages:metadata:read">>,
+        <<"messages:content:read">>,
+        <<"messages:export">>,
         <<"logout_applications:read">>,
         <<"logout_applications:approve">>,
         <<"mcp_clients:read">>,
