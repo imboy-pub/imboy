@@ -398,7 +398,20 @@ do_login(Type, Account, Pwd, DType, Did) when Type == <<"account">> ->
             true ->
                 user_ds:find_by_email(Account, ?LOGIN_COLUMN);
             false ->
-                user_ds:find_by_account(Account, ?LOGIN_COLUMN)
+                %% 批次123（2026-09-07）：account 查无时回退 mobile 查询。
+                %% UI 登录恒发 type=account（login_page 按 @ 判定邮箱，其余
+                %% 全走 account），而手机号注册用户的 account 字段是系统
+                %% 分配号（≠手机号）——不回退则手机号+密码登录恒报
+                %% 「账号不存在」，新注册用户无法用密码登录（GF9 实证）。
+                case user_ds:find_by_account(Account, ?LOGIN_COLUMN) of
+                    #{} = U when map_size(U) > 0 ->
+                        U;
+                    _ ->
+                        case user_ds:find_by_mobile(Account, ?LOGIN_COLUMN) of
+                            #{} = U2 when map_size(U2) > 0 -> U2;
+                            _ -> #{}
+                        end
+                end
         end,
     do_login_verify(Pwd, User, DType, Did).
 
