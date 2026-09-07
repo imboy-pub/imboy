@@ -1,7 +1,7 @@
 # IMBoy E2EE 攻击矩阵
 
 日期：2026-09-07  
-状态：静态/协议检查可本地执行；账号、真机、消息、群、数据查询、抓包、篡改、密钥和外部服务操作在用户确认前均为 BLOCKED。Findings 与发布结论见 [`E2EE_AUDIT_REPORT.md`](./E2EE_AUDIT_REPORT.md)。
+状态：静态/协议检查可本地执行；本轮仅授权一台物理 Android 9 真机上的 SQLCipher 随机临时库测试且已通过；账号、消息、群、真实 App 数据、数据查询、抓包、篡改、密钥和外部服务操作仍为 BLOCKED。Findings 与发布结论见 [`E2EE_AUDIT_REPORT.md`](./E2EE_AUDIT_REPORT.md)。
 
 本文件不得保存账号口令、token、私钥、session secret、真实消息、PII、完整敏感 payload、真实设备 ID 或可复用 Canary。
 
@@ -21,6 +21,8 @@
 | 时间与留存 | `<AUTHORIZED_TIME_WINDOW_AND_RETENTION>` |
 
 不得复用历史账号、口令、token、设备、端口或地址；连接中的设备和监听进程不代表授权；不得操作生产、共享或第三方环境；模拟器不构成 Flutter 安全验收。
+
+本轮已授权记录（脱敏）：物理 Android 9 真机；仅安装并运行测试包，只在应用随机临时目录创建、读取、错钥打开并删除本轮 SQLCipher 测试库；不登录账号、不连接后端、不读取或修改现有 IMBoy App 数据。设备序列号和 Canary 明文不入库。
 
 获授权后，每次运行临时生成唯一 Canary，仅在证据中保留 SHA-256 和脱敏前缀：
 
@@ -65,7 +67,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | X-02 | 附件 metadata/本地文件 | 披露文件名、MIME、URL、size；temp 清理；长期明文缓存有明确策略 | BLOCKED |
 | X-03 | Push | Provider/Gateway 无消息明文；记录昵称/群名/类型 metadata | BLOCKED |
 | X-04 | Android/iOS 密钥保护 | Keystore/Keychain accessibility、备份迁移与提取抗性符合声明 | B PARTIAL；A BLOCKED |
-| X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | C PASS / Android 复测待确认；009 已 REGRESSION_PASS，源码守卫与关联数据库回归通过；错钥、旧明文库、WAL/SHM 及历史备份 artifact 仍须在明确授权设备与数据范围内取证 |
+| X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | C PASS / Android 限定范围 B PASS；物理 Android 9 真机使用每轮 `Random.secure()` Canary，7/7 PASS：错钥拒绝、原文件字节不变、正确密钥可重开、未生成新 `.plain.bak`/`.pre_encrypt.bak`，临时目录已清理。Secure Storage 为 mock；旧明文库、WAL/SHM、历史备份 artifact 与真实 Keystore 未覆盖，009 保持 REGRESSION_PASS |
 | X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS，消息链路日志脱敏有 C 级回归，真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
 | X-07 | Compliance | 明确私钥保管方、授权解密边界、轮换确认和 zero-knowledge 例外 | BLOCKED |
 | X-08 | Redis | 仅目标部署实际使用 Redis 时检查 | 当前声明架构 N/A |

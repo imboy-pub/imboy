@@ -1,7 +1,7 @@
 # IMBoy E2EE 安全审计报告（唯一事实源）
 
 日期：2026-09-07
-状态：阶段 A 已完成；P0 与部分 P1/P2 本地修复已完成，授权后的攻击复测及其余 P1/P2 修复待执行。
+状态：阶段 A 已完成；P0 与部分 P1/P2 本地修复已完成；Android SQLCipher 限定范围真机复测已通过，其余授权攻击复测及 P1/P2 修复待执行。
 配套执行清单：[`E2EE_ATTACK_MATRIX.md`](./E2EE_ATTACK_MATRIX.md)
 
 本文件统一承载基线、消息路径、密钥所有权、Findings、修复状态和发布结论。旧报告、注释、测试名称及历史 PASS/GO 均不自动继承。
@@ -33,7 +33,8 @@
 | Finding 010 定向回归 | 上传接线 18/18、策略/封装 20/20 PASS；定向 analyze 通过 | C；策略未知在上传前抛错，真实对象存储 Canary 复测仍 BLOCKED |
 | Finding 008 定向回归 | Safety Number 入口 3/3、关联威胁模型 24/24 PASS；定向 analyze 与 diff check 通过 | C；双方真实 device ID/Olm identity 聚合且验证状态绑定当前号码，双真机换钥与设备增删复测仍 BLOCKED |
 | Finding 014 定向回归 | 日志边界守卫 1/1、关联 WS/ACK/离线解密 27/27 PASS；脱敏后守卫+WS 复跑 21/21 PASS；定向 analyze 通过 | C；消息链路已禁止记录原始帧、完整异常、明文 payload/preview、会话对象与标题；真机与后端日志 Canary 扫描仍 BLOCKED |
-| Finding 009 定向回归 | SQLCipher 边界 13/13、数据库迁移/快照/schema/uid 隔离关联回归 59/59 PASS；定向 analyze 与 diff check 通过 | C；加密平台不再无密码探测/回退，不再创建或自动清理明文迁移备份，错钥/明文/损坏统一保留原库并停止初始化；Android 真机错钥、文件字节与 sidecar 复测待目标设备确认 |
+| Finding 009 定向回归 | SQLCipher 边界 13/13、数据库迁移/快照/schema/uid 隔离关联回归 59/59 PASS；定向 analyze 与 diff check 通过 | C；加密平台不再无密码探测/回退，不再创建或自动清理明文迁移备份，错钥/明文/损坏统一保留原库并停止初始化 |
+| Finding 009 Android 限定范围复测 | 物理 Android 9 真机 7/7 PASS；`imboyapp@7fb62b69`；测试文件 SHA-256 `42d3908bcda641182e9d7053f12665cc129fa409a77470cfe132e9bd8ddf963c` | B（真机集成，非完整 A 级链路）；`Random.secure()` 每轮生成 Canary，正确密钥建库/重开、错钥拒绝、原文件字节不变、无新 `.plain.bak`/`.pre_encrypt.bak`，随机临时目录已清理；Secure Storage 为 mock，旧明文库、WAL/SHM 与历史 artifact 未覆盖 |
 
 ## 2. 真实消息路径
 
@@ -81,7 +82,7 @@
 | E2EE-2026-006 | P1 | PFv3 解密失败未形成有界、可重启恢复的密文状态；Olm ratchet 已提交而消息明文尚未提交时存在崩溃丢信窗口 | ROOT_CAUSE_CONFIRMED；原始密文、ratchet/dedupe 与最终消息形成可恢复提交协议→重启恢复回归 |
 | E2EE-2026-007 | P1 | C2G 无持久 replay 状态；C2C `dedupeAndPersistSession` 捕获全部异常并返回 duplicate，把存储事故与重放混同 | ROOT_CAUSE_CONFIRMED；分离错误并统一持久防重，且与 005/006 的提交顺序一起修复→replay/存储故障复测 |
 | E2EE-2026-008 | P1 | Safety Number 入口把 legacy RSA key/kid 当 Olm identity/device ID，本端 device ID 为空，且本地“已验证”未绑定当前号码 | REGRESSION_PASS；双方均取活跃 Olm device ID，identity 走本地权威或签名+TOFU 路径，验证值绑定当前聚合码；双真机换钥/增删设备攻击复测待授权 |
-| E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS；加密平台已有库只用当前 key 验证，失败保留原库并终止；已移除无密码探测/二次打开、备份生成和自动清理；Android 真机错钥/明文库/sidecar/历史 artifact 取证复测待明确设备与数据范围 |
+| E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS；加密平台已有库只用当前 key 验证，失败保留原库并终止；已移除无密码探测/二次打开、备份生成和自动清理；Android 真机错钥与新备份生成限定复测通过，旧明文库、WAL/SHM、历史 artifact 和真实 Keystore 仍待授权取证，故不得升级为完整 `ATTACK_RETEST_PASS` |
 | E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS；不再吞策略异常，策略未知会在调用上传 API 前中止；对象存储 Canary 攻击复测待授权 |
 | E2EE-2026-011 | P1 | 备份不含 Olm account/session/TOFU pin，清数据后身份连续性与 C2C 历史丢失 | ROOT_CAUSE_CONFIRMED；明确产品边界，禁止克隆 ratchet |
 | E2EE-2026-012 | P1 | 新成员/重入群历史访问策略未定义 | OPEN；产品拍板→实现/文档→生命周期复测 |
@@ -107,6 +108,6 @@
 
 ## 7. 运行缺口与发布门
 
-未获授权前，下列项保持 UNKNOWN/BLOCKED：两用户 C2C、四用户 C2G 真机；Canary 搜索 Transport/PG/队列/日志/备份/对象存储/Push；篡改、MITM、replay、乱序、重连、重启；identity/prekey/session/设备撤销；群加入/退出/移除/重入；Android Keystore、iOS Keychain、附件临时文件和缓存。现有账号、设备、端口、进程或生产地址均不构成默认授权。
+本轮授权仅覆盖一台物理 Android 9 真机上的 SQLCipher 随机临时库测试，不含账号、后端、现有 App 数据、真实 Secure Storage/Keystore 提取、旧库或历史 artifact。除此之外，下列项仍为 UNKNOWN/BLOCKED：两用户 C2C、四用户 C2G 真机；Canary 搜索 Transport/PG/队列/日志/备份/对象存储/Push；篡改、MITM、replay、乱序、重连、重启；identity/prekey/session/设备撤销；群加入/退出/移除/重入；Android Keystore、iOS Keychain、附件临时文件和缓存。现有账号、设备、端口、进程或生产地址均不构成默认授权。
 
 当前发布姿态：**NO-GO**。原因是三个 P0 均未完成攻击复测、P1/P2 未解决、当前后端门禁非全绿、A 级证据缺失。最终固定 verdict 仅在修复、回归和授权后的攻击复测完成后写入；此前本文件不提供任何最终发布 PASS。
