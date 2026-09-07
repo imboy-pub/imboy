@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "product_id": "imboy",
+  "profile": "overseas_baseline",
+  "base_ref": "imboy-feature-inventory-v1",
+  "selected_features": [
+    "bot_webhook",
+    "channel",
+    "channel_discover",
+    "channel_invitation",
+    "channel_order",
+    "e2ee",
+    "group_schedule",
+    "group_task",
+    "group_vote",
+    "location",
+    "moment"
+  ]
+}
