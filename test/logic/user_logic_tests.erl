@@ -15,110 +15,158 @@
 %% ===================================================================
 
 is_online_returns_true_when_user_online_test_() ->
-    ?WITH_MECK(imboy_syn, [
-        {'count_user', 1, fun(_Uid) -> 1 end}
-    ], fun() ->
-        Uid = 1,
-        Result = user_logic:is_online(Uid),
-        ?assertEqual(true, Result)
-    end).
+    ?WITH_MECK(
+        imboy_syn,
+        [
+            {'count_user', 1, fun(_Uid) -> 1 end}
+        ],
+        fun() ->
+            Uid = 1,
+            Result = user_logic:is_online(Uid),
+            ?assertEqual(true, Result)
+        end
+    ).
 
 is_online_returns_false_when_user_offline_test_() ->
-    ?WITH_MECK(imboy_syn, [
-        {'count_user', 1, fun(_Uid) -> 0 end}
-    ], fun() ->
-        Uid = 999,
-        Result = user_logic:is_online(Uid),
-        ?assertEqual(false, Result)
-    end).
+    ?WITH_MECK(
+        imboy_syn,
+        [
+            {'count_user', 1, fun(_Uid) -> 0 end}
+        ],
+        fun() ->
+            Uid = 999,
+            Result = user_logic:is_online(Uid),
+            ?assertEqual(false, Result)
+        end
+    ).
 
 %% ===================================================================
 %% is_online/2 测试
 %% ===================================================================
 
 is_online_with_dtype_returns_true_when_online_test_() ->
-    ?WITH_MECK(user_device_logic, [
-        {'is_online', 2, fun(_Uid, _Condition) -> true end}
-    ], fun() ->
-        Uid = 1,
-        DType = <<"ios">>,
-        Result = user_logic:is_online(Uid, DType),
-        ?assertEqual(true, Result)
-    end).
+    ?WITH_MECK(
+        user_device_logic,
+        [
+            {'is_online', 2, fun(_Uid, _Condition) -> true end}
+        ],
+        fun() ->
+            Uid = 1,
+            DType = <<"ios">>,
+            Result = user_logic:is_online(Uid, DType),
+            ?assertEqual(true, Result)
+        end
+    ).
 
 is_online_with_dtype_returns_false_when_offline_test_() ->
-    ?WITH_MECK(user_device_logic, [
-        {'is_online', 2, fun(_Uid, _Condition) -> false end}
-    ], fun() ->
-        Uid = 999,
-        DType = <<"android">>,
-        Result = user_logic:is_online(Uid, DType),
-        ?assertEqual(false, Result)
-    end).
+    ?WITH_MECK(
+        user_device_logic,
+        [
+            {'is_online', 2, fun(_Uid, _Condition) -> false end}
+        ],
+        fun() ->
+            Uid = 999,
+            DType = <<"android">>,
+            Result = user_logic:is_online(Uid, DType),
+            ?assertEqual(false, Result)
+        end
+    ).
 
 %% ===================================================================
 %% online_state/1 测试
 %% ===================================================================
 
 online_state_returns_online_when_user_online_test_() ->
-    ?WITH_MECKS([
-        {imboy_syn, [
-            {'count_user', 1, fun(_Uid) -> 1 end}
-        ]},
-        {user_setting_ds, [
-            {'chat_state_hide', 1, fun(_Uid) -> false end}
-        ]}
-    ], fun() ->
-        User = #{<<"id">> => 1, <<"nickname">> => <<"测试用户"/utf8>>, <<"last_seen_at">> => <<"2023-01-01T00:00:00Z">>},
-        Result = user_logic:online_state(User),
-        ?assertMatch(#{<<"status">> := online}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {imboy_syn, [
+                {'count_user', 1, fun(_Uid) -> 1 end}
+            ]},
+            {user_setting_ds, [
+                {'chat_state_hide', 1, fun(_Uid) -> false end}
+            ]}
+        ],
+        fun() ->
+            User = #{
+                <<"id">> => 1,
+                <<"nickname">> => <<"测试用户"/utf8>>,
+                <<"last_seen_at">> => <<"2023-01-01T00:00:00Z">>
+            },
+            Result = user_logic:online_state(User),
+            ?assertMatch(#{<<"status">> := online}, Result)
+        end
+    ).
 
 online_state_returns_offline_when_user_offline_test_() ->
-    ?WITH_MECK(imboy_syn, [
-        {'count_user', 1, fun(_Uid) -> 0 end}
-    ], fun() ->
-        User = #{<<"id">> => 999, <<"nickname">> => <<"离线用户"/utf8>>, <<"last_seen_at">> => <<"2023-01-01T00:00:00Z">>},
-        Result = user_logic:online_state(User),
-        ?assertMatch(#{<<"status">> := offline}, Result)
-    end).
+    ?WITH_MECK(
+        imboy_syn,
+        [
+            {'count_user', 1, fun(_Uid) -> 0 end}
+        ],
+        fun() ->
+            User = #{
+                <<"id">> => 999,
+                <<"nickname">> => <<"离线用户"/utf8>>,
+                <<"last_seen_at">> => <<"2023-01-01T00:00:00Z">>
+            },
+            Result = user_logic:online_state(User),
+            ?assertMatch(#{<<"status">> := offline}, Result)
+        end
+    ).
 
 online_state_returns_offline_when_hide_status_test_() ->
-    ?WITH_MECKS([
-        {imboy_syn, [
-            {'count_user', 1, fun(_Uid) -> 1 end}
-        ]},
-        {user_setting_ds, [
-            {'chat_state_hide', 1, fun(_Uid) -> true end}
-        ]}
-    ], fun() ->
-        User = #{<<"id">> => 1, <<"nickname">> => <<"隐身用户"/utf8>>, <<"last_seen_at">> => <<"2023-01-01T00:00:00Z">>},
-        Result = user_logic:online_state(User),
-        ?assertMatch(#{<<"status">> := offline}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {imboy_syn, [
+                {'count_user', 1, fun(_Uid) -> 1 end}
+            ]},
+            {user_setting_ds, [
+                {'chat_state_hide', 1, fun(_Uid) -> true end}
+            ]}
+        ],
+        fun() ->
+            User = #{
+                <<"id">> => 1,
+                <<"nickname">> => <<"隐身用户"/utf8>>,
+                <<"last_seen_at">> => <<"2023-01-01T00:00:00Z">>
+            },
+            Result = user_logic:online_state(User),
+            ?assertMatch(#{<<"status">> := offline}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% batch_online_state/1 测试
 %% ===================================================================
 
 batch_online_state_processes_multiple_users_test_() ->
-    ?WITH_MECKS([
-        {imboy_syn, [
-            {'count_user', 1, fun(1) -> 1; (2) -> 0; (3) -> 1 end}
-        ]},
-        {user_setting_ds, [
-            {'chat_state_hide', 1, fun(_Uid) -> false end}
-        ]}
-    ], fun() ->
-        Users = [
-            #{<<"id">> => 1, <<"nickname">> => <<"用户1"/utf8>>},
-            #{<<"id">> => 2, <<"nickname">> => <<"用户2"/utf8>>},
-            #{<<"id">> => 3, <<"nickname">> => <<"用户3"/utf8>>}
+    ?WITH_MECKS(
+        [
+            {imboy_syn, [
+                {'count_user', 1, fun
+                    (1) -> 1;
+                    (2) -> 0;
+                    (3) -> 1
+                end}
+            ]},
+            {user_setting_ds, [
+                {'chat_state_hide', 1, fun(_Uid) -> false end}
+            ]}
         ],
-        Result = user_logic:batch_online_state(Users),
-        ?assertEqual(3, length(Result)),
-        ?assertMatch([#{<<"status">> := online}, #{<<"status">> := offline}, #{<<"status">> := online}], Result)
-    end).
+        fun() ->
+            Users = [
+                #{<<"id">> => 1, <<"nickname">> => <<"用户1"/utf8>>},
+                #{<<"id">> => 2, <<"nickname">> => <<"用户2"/utf8>>},
+                #{<<"id">> => 3, <<"nickname">> => <<"用户3"/utf8>>}
+            ],
+            Result = user_logic:batch_online_state(Users),
+            ?assertEqual(3, length(Result)),
+            ?assertMatch(
+                [#{<<"status">> := online}, #{<<"status">> := offline}, #{<<"status">> := online}],
+                Result
+            )
+        end
+    ).
 
 batch_online_state_with_empty_list_test_() ->
     ?_test(begin
@@ -131,93 +179,125 @@ batch_online_state_with_empty_list_test_() ->
 %% ===================================================================
 
 mine_state_returns_hide_when_hidden_test_() ->
-    ?WITH_MECK(user_setting_ds, [
-        {'chat_state_hide', 1, fun(_Uid) -> true end}
-    ], fun() ->
-        Uid = 1,
-        Result = user_logic:mine_state(Uid),
-        ?assertEqual({<<"status">>, hide}, Result)
-    end).
+    ?WITH_MECK(
+        user_setting_ds,
+        [
+            {'chat_state_hide', 1, fun(_Uid) -> true end}
+        ],
+        fun() ->
+            Uid = 1,
+            Result = user_logic:mine_state(Uid),
+            ?assertEqual({<<"status">>, hide}, Result)
+        end
+    ).
 
 mine_state_returns_online_when_not_hidden_test_() ->
-    ?WITH_MECK(user_setting_ds, [
-        {'chat_state_hide', 1, fun(_Uid) -> false end}
-    ], fun() ->
-        Uid = 1,
-        Result = user_logic:mine_state(Uid),
-        ?assertEqual({<<"status">>, online}, Result)
-    end).
+    ?WITH_MECK(
+        user_setting_ds,
+        [
+            {'chat_state_hide', 1, fun(_Uid) -> false end}
+        ],
+        fun() ->
+            Uid = 1,
+            Result = user_logic:mine_state(Uid),
+            ?assertEqual({<<"status">>, online}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% find_by_id/1 测试
 %% ===================================================================
 
 find_by_id_with_integer_returns_user_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'find_by_id', 2, fun(_Uid, _Column) ->
-            #{<<"id">> => 1, <<"nickname">> => <<"测试用户"/utf8>>, <<"avatar">> => <<"avatar.jpg">>}
-        end}
-    ], fun() ->
-        Uid = 1,
-        Result = user_logic:find_by_id(Uid),
-        ?assertMatch(#{<<"id">> := 1, <<"nickname">> := <<"测试用户"/utf8>>}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'find_by_id', 2, fun(_Uid, _Column) ->
+                #{
+                    <<"id">> => 1,
+                    <<"nickname">> => <<"测试用户"/utf8>>,
+                    <<"avatar">> => <<"avatar.jpg">>
+                }
+            end}
+        ],
+        fun() ->
+            Uid = 1,
+            Result = user_logic:find_by_id(Uid),
+            ?assertMatch(#{<<"id">> := 1, <<"nickname">> := <<"测试用户"/utf8>>}, Result)
+        end
+    ).
 
 find_by_id_with_integer_id_returns_user_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'find_by_id', 2, fun(123, _Column) ->
-            #{<<"id">> => 123, <<"nickname">> => <<"测试用户"/utf8>>}
-        end}
-    ], fun() ->
-        Uid = 123,
-        Result = user_logic:find_by_id(Uid),
-        ?assertMatch(#{<<"id">> := 123}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'find_by_id', 2, fun(123, _Column) ->
+                #{<<"id">> => 123, <<"nickname">> => <<"测试用户"/utf8>>}
+            end}
+        ],
+        fun() ->
+            Uid = 123,
+            Result = user_logic:find_by_id(Uid),
+            ?assertMatch(#{<<"id">> := 123}, Result)
+        end
+    ).
 
 find_by_id_sets_default_avatar_when_empty_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'find_by_id', 2, fun(_Uid, _Column) ->
-            #{<<"id">> => 1, <<"nickname">> => <<"测试用户"/utf8>>, <<"avatar">> => <<>>}
-        end}
-    ], fun() ->
-        Uid = 1,
-        Result = user_logic:find_by_id(Uid),
-        ?assertEqual(<<"assets/images/def_avatar.png">>, maps:get(<<"avatar">>, Result))
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'find_by_id', 2, fun(_Uid, _Column) ->
+                #{<<"id">> => 1, <<"nickname">> => <<"测试用户"/utf8>>, <<"avatar">> => <<>>}
+            end}
+        ],
+        fun() ->
+            Uid = 1,
+            Result = user_logic:find_by_id(Uid),
+            ?assertEqual(<<"assets/images/def_avatar.png">>, maps:get(<<"avatar">>, Result))
+        end
+    ).
 
 %% ===================================================================
 %% find_by_id/2 测试
 %% ===================================================================
 
 find_by_id_with_custom_column_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'find_by_id', 2, fun(_Uid, _Column) ->
-            #{<<"id">> => 1, <<"account">> => <<"test_account">>}
-        end}
-    ], fun() ->
-        Uid = 1,
-        Column = <<"account">>,
-        Result = user_logic:find_by_id(Uid, Column),
-        ?assertMatch(#{<<"account">> := <<"test_account">>}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'find_by_id', 2, fun(_Uid, _Column) ->
+                #{<<"id">> => 1, <<"account">> => <<"test_account">>}
+            end}
+        ],
+        fun() ->
+            Uid = 1,
+            Column = <<"account">>,
+            Result = user_logic:find_by_id(Uid, Column),
+            ?assertMatch(#{<<"account">> := <<"test_account">>}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% find_by_ids/1 测试
 %% ===================================================================
 
 find_by_ids_returns_users_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'list_by_ids', 2, fun(_Ids, _Column) ->
-            {ok, [
-                #{<<"id">> => 1, <<"nickname">> => <<"用户1"/utf8>>},
-                #{<<"id">> => 2, <<"nickname">> => <<"用户2"/utf8>>}
-            ]}
-        end}
-    ], fun() ->
-        Ids = [1, 2],
-        Result = user_logic:find_by_ids(Ids),
-        ?assertEqual(2, length(Result))
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'list_by_ids', 2, fun(_Ids, _Column) ->
+                {ok, [
+                    #{<<"id">> => 1, <<"nickname">> => <<"用户1"/utf8>>},
+                    #{<<"id">> => 2, <<"nickname">> => <<"用户2"/utf8>>}
+                ]}
+            end}
+        ],
+        fun() ->
+            Ids = [1, 2],
+            Result = user_logic:find_by_ids(Ids),
+            ?assertEqual(2, length(Result))
+        end
+    ).
 
 find_by_ids_with_empty_list_returns_empty_test_() ->
     ?_test(begin
@@ -226,72 +306,96 @@ find_by_ids_with_empty_list_returns_empty_test_() ->
     end).
 
 find_by_ids_when_not_found_returns_empty_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'list_by_ids', 2, fun(_Ids, _Column) -> {ok, []} end}
-    ], fun() ->
-        Ids = [999, 888],
-        Result = user_logic:find_by_ids(Ids),
-        ?assertEqual([], Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'list_by_ids', 2, fun(_Ids, _Column) -> {ok, []} end}
+        ],
+        fun() ->
+            Ids = [999, 888],
+            Result = user_logic:find_by_ids(Ids),
+            ?assertEqual([], Result)
+        end
+    ).
 
 %% ===================================================================
 %% update/3 测试
 %% ===================================================================
 
 update_nickname_success_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"nickname">>,
-        Val = <<"新昵称"/utf8>>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"nickname">>,
+            Val = <<"新昵称"/utf8>>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 update_avatar_success_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"avatar">>,
-        Val = <<"new_avatar.jpg">>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"avatar">>,
+            Val = <<"new_avatar.jpg">>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 update_sign_success_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"sign">>,
-        Val = <<"个性签名"/utf8>>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"sign">>,
+            Val = <<"个性签名"/utf8>>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 update_region_success_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"region">>,
-        Val = <<"北京"/utf8>>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"region">>,
+            Val = <<"北京"/utf8>>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 update_gender_with_valid_value_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"gender">>,
-        Val = <<"1">>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"gender">>,
+            Val = <<"1">>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 update_gender_with_invalid_value_fails_test_() ->
     ?_test(begin
@@ -300,15 +404,19 @@ update_gender_with_invalid_value_fails_test_() ->
     end).
 
 update_allow_search_with_valid_value_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_allow_search', 2, fun(_Uid, _Val) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"allow_search">>,
-        Val = <<"1">>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_allow_search', 2, fun(_Uid, _Val) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"allow_search">>,
+            Val = <<"1">>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 update_allow_search_with_invalid_value_fails_test_() ->
     ?_test(begin
@@ -317,67 +425,81 @@ update_allow_search_with_invalid_value_fails_test_() ->
     end).
 
 update_email_with_valid_format_test_() ->
-    ?WITH_MECKS([
-        {user_ds, [
-            {'find_by_email', 2, fun(_Email, _Column) -> #{} end},
-            {'title', 2, fun(_Uid, _N) -> {<<"Test">>, <<"Test">>} end}
-        ]},
-        {elib_type, [
-            {'is_email', 1, fun(_Email) -> true end}
-        ]},
-        {config_ds, [
-            {'env', 1, fun(solidified_key) -> <<"test_key">>; (base_url) -> <<"http://localhost">>; (smtp_option) -> [] end}
-        ]},
-        {elib_dt, [
-            {'second', 0, fun() -> 1000000 end},
-            {'to_rfc3339', 2, fun(_Ts, _Fmt) -> <<"2026-01-01T00:00:00Z">> end}
-        ]},
-        {elib_hasher, [
-            {'hmac_sha512', 2, fun(_Data, _Key) -> <<"mock_hmac">> end}
-        ]},
-        {elib_cnv, [
-            {'map_to_query', 1, fun(_Map) -> <<"mock_query">> end}
-        ]},
-        {elib_uri, [
-            {'build_query', 3, fun(_Base, _Path, _Args) -> <<"http://localhost/mock">> end}
-        ]},
-        {elib_email, [
-            {'send', 3, fun(_To, _Subject, _Body) -> {ok, success} end}
-        ]}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"email">>,
-        Val = <<"test@example.com">>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {'find_by_email', 2, fun(_Email, _Column) -> #{} end},
+                {'title', 2, fun(_Uid, _N) -> {<<"Test">>, <<"Test">>} end}
+            ]},
+            {elib_type, [
+                {'is_email', 1, fun(_Email) -> true end}
+            ]},
+            {config_ds, [
+                {'env', 1, fun
+                    (solidified_key) -> <<"test_key">>;
+                    (base_url) -> <<"http://localhost">>;
+                    (smtp_option) -> []
+                end}
+            ]},
+            {elib_dt, [
+                {'second', 0, fun() -> 1000000 end},
+                {'to_rfc3339', 2, fun(_Ts, _Fmt) -> <<"2026-01-01T00:00:00Z">> end}
+            ]},
+            {elib_hasher, [
+                {'hmac_sha512', 2, fun(_Data, _Key) -> <<"mock_hmac">> end}
+            ]},
+            {elib_cnv, [
+                {'map_to_query', 1, fun(_Map) -> <<"mock_query">> end}
+            ]},
+            {elib_uri, [
+                {'build_query', 3, fun(_Base, _Path, _Args) -> <<"http://localhost/mock">> end}
+            ]},
+            {elib_email, [
+                {'send', 3, fun(_To, _Subject, _Body) -> {ok, success} end}
+            ]}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"email">>,
+            Val = <<"test@example.com">>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
 
 update_email_with_invalid_format_fails_test_() ->
-    ?WITH_MECK(elib_type, [
-        {'is_email', 1, fun(_Email) -> false end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"email">>,
-        Val = <<"invalid_email">>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({error, _}, Result)
-    end).
+    ?WITH_MECK(
+        elib_type,
+        [
+            {'is_email', 1, fun(_Email) -> false end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"email">>,
+            Val = <<"invalid_email">>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({error, _}, Result)
+        end
+    ).
 
 update_email_already_in_use_fails_test_() ->
-    ?WITH_MECKS([
-        {elib_type, [
-            {'is_email', 1, fun(_Email) -> true end}
-        ]},
-        {user_ds, [
-            {'find_by_email', 2, fun(_Email, _Column) -> #{<<"id">> => 999} end}
-        ]}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"email">>,
-        Val = <<"existing@example.com">>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({error, _}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_type, [
+                {'is_email', 1, fun(_Email) -> true end}
+            ]},
+            {user_ds, [
+                {'find_by_email', 2, fun(_Email, _Column) -> #{<<"id">> => 999} end}
+            ]}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"email">>,
+            Val = <<"existing@example.com">>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({error, _}, Result)
+        end
+    ).
 
 update_unsupported_field_fails_test_() ->
     ?_test(begin
@@ -390,108 +512,247 @@ update_unsupported_field_fails_test_() ->
 %% ===================================================================
 
 online_joins_syn_and_casts_online_test_() ->
-    ?WITH_MECKS([
-        {imboy_syn, [
-            {'join', 4, fun(_Uid, _DType, _Pid, _DID) -> ok end}
-        ]},
-        {user_server, [
-            {'cast_online', 4, fun(_Uid, _Pid, _DID, _DType) -> ok end}
-        ]}
-    ], fun() ->
-        Uid = 1,
-        DType = <<"ios">>,
-        Pid = self(),
-        DID = <<"device_123">>,
-        Result = user_logic:online(Uid, DType, Pid, DID),
-        ?assertEqual(ok, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {imboy_syn, [
+                {'join', 4, fun(_Uid, _DType, _Pid, _DID) -> ok end}
+            ]},
+            {user_server, [
+                {'cast_online', 4, fun(_Uid, _Pid, _DID, _DType) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Uid = 1,
+            DType = <<"ios">>,
+            Pid = self(),
+            DID = <<"device_123">>,
+            Result = user_logic:online(Uid, DType, Pid, DID),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% offline/3 测试
 %% ===================================================================
 
 offline_leaves_syn_and_casts_offline_test_() ->
-    ?WITH_MECKS([
-        {imboy_syn, [
-            {'leave', 2, fun(_Uid, _Pid) -> ok end}
-        ]},
-        {user_server, [
-            {'cast_offline', 3, fun(_Uid, _Pid, _DID) -> ok end}
-        ]}
-    ], fun() ->
-        Uid = 1,
-        Pid = self(),
-        DID = <<"device_123">>,
-        Result = user_logic:offline(Uid, Pid, DID),
-        ?assertEqual(ok, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {imboy_syn, [
+                {'leave', 2, fun(_Uid, _Pid) -> ok end}
+            ]},
+            {user_server, [
+                {'cast_offline', 3, fun(_Uid, _Pid, _DID) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Uid = 1,
+            Pid = self(),
+            DID = <<"device_123">>,
+            Result = user_logic:offline(Uid, Pid, DID),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% apply_logout/2 测试
 %% ===================================================================
 
 apply_logout_sets_status_to_pending_test_() ->
-    ?WITH_MECKS([
-        {elib_pg, [
-            {'with_tx', 1, fun(Fun) -> Fun(self()) end}
-        ]},
-        {user_ds, [
-            {'update_status_in_tx', 2, fun(_Conn, _UidStatus) -> {ok, 1} end}
-        ]},
-        {user_log_ds, [
-            {'add_logout_apply_log', 3, fun(_Conn, _Uid, _Req0) -> ok end}
-        ]}
-    ], fun() ->
-        Uid = 123,
-        Req0 = #{},
-        Result = user_logic:apply_logout(Uid, Req0),
-        ?assertEqual({ok, "success"}, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(self()) end}
+            ]},
+            {user_ds, [
+                {'update_status_in_tx', 2, fun(_Conn, _UidStatus) -> {ok, 1} end}
+            ]},
+            {user_log_ds, [
+                {'add_logout_apply_log', 3, fun(_Conn, _Uid, _Req0) -> ok end}
+            ]}
+        ],
+        fun() ->
+            Uid = 123,
+            Req0 = #{},
+            Result = user_logic:apply_logout(Uid, Req0),
+            ?assertEqual({ok, "success"}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% cancel_logout/2 测试
 %% ===================================================================
 
 cancel_logout_restores_status_to_active_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_status', 2, fun(_Uid, _Status) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 123,
-        Req0 = #{},
-        Result = user_logic:cancel_logout(Uid, Req0),
-        ?assertEqual({ok, <<"success">>}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_status', 2, fun(_Uid, _Status) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 123,
+            Req0 = #{},
+            Result = user_logic:cancel_logout(Uid, Req0),
+            ?assertEqual({ok, <<"success">>}, Result)
+        end
+    ).
 
 cancel_logout_with_error_returns_error_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_status', 2, fun(_Uid, _Status) -> {error, database_error} end}
-    ], fun() ->
-        Uid = 123,
-        Req0 = #{},
-        Result = user_logic:cancel_logout(Uid, Req0),
-        ?assertMatch({error, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_status', 2, fun(_Uid, _Status) -> {error, database_error} end}
+        ],
+        fun() ->
+            Uid = 123,
+            Req0 = #{},
+            Result = user_logic:cancel_logout(Uid, Req0),
+            ?assertMatch({error, _}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 边界条件测试
 %% ===================================================================
 
 find_by_id_with_zero_uid_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'find_by_id', 2, fun(_Uid, _Column) -> #{} end}
-    ], fun() ->
-        Uid = 0,
-        Result = user_logic:find_by_id(Uid),
-        ?assertEqual(#{}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'find_by_id', 2, fun(_Uid, _Column) -> #{} end}
+        ],
+        fun() ->
+            Uid = 0,
+            Result = user_logic:find_by_id(Uid),
+            ?assertEqual(#{}, Result)
+        end
+    ).
 
 update_with_empty_value_test_() ->
-    ?WITH_MECK(user_ds, [
-        {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
-    ], fun() ->
-        Uid = 1,
-        Key = <<"sign">>,
-        Val = <<>>,
-        Result = user_logic:update(Uid, Key, Val),
-        ?assertMatch({ok, _}, Result)
-    end).
+    ?WITH_MECK(
+        user_ds,
+        [
+            {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+        ],
+        fun() ->
+            Uid = 1,
+            Key = <<"sign">>,
+            Val = <<>>,
+            Result = user_logic:update(Uid, Key, Val),
+            ?assertMatch({ok, _}, Result)
+        end
+    ).
+
+%% ===================================================================
+%% R-03.1：profile 文本公开面审核门
+%% ===================================================================
+
+%% high 命中词：拒绝保存，字段零落库
+profile_nickname_blocked_by_high_hit_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+            ]},
+            {moderation_policy, [
+                {'inspect', 2, fun(_Surface, _Text) ->
+                    {blocked, [#{word => <<"badword">>, severity => <<"high">>}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = user_logic:update(1, <<"nickname">>, <<"违规昵称"/utf8>>),
+            ?assertMatch({error, _}, Result),
+            {error, {_, _, Msg}} = Result,
+            ?assertNotEqual(nomatch, binary:match(Msg, <<"违规词汇"/utf8>>)),
+            ?assertEqual(0, meck:num_calls(user_ds, update_field, 3))
+        end
+    ).
+
+%% medium/low 命中：先保存后入复核队列（enqueue 带 {profile_field, Field}）
+profile_sign_queued_saves_and_enqueues_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+            ]},
+            {moderation_policy, [
+                {'inspect', 2, fun(_Surface, _Text) ->
+                    {queued, [#{word => <<"mild">>, severity => <<"medium">>}]}
+                end},
+                {'enqueue', 7, fun(Surface, MsgId, _ToId, Uid, _Acc, _Content, _Hits) ->
+                    ?assertEqual({profile_field, <<"sign">>}, Surface),
+                    ?assertEqual(7, MsgId),
+                    ?assertEqual(7, Uid),
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = user_logic:update(7, <<"sign">>, <<"签名内容"/utf8>>),
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(user_ds, update_field, 3)),
+            ?assertEqual(1, meck:num_calls(moderation_policy, enqueue, 7))
+        end
+    ).
+
+%% 无命中：正常保存，零入队
+profile_allow_saves_without_enqueue_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+            ]},
+            {moderation_policy, [
+                {'inspect', 2, fun(_Surface, _Text) -> allow end}
+            ]}
+        ],
+        fun() ->
+            Result = user_logic:update(1, <<"profession">>, <<"工程师"/utf8>>),
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(0, meck:num_calls(moderation_policy, enqueue, 7))
+        end
+    ).
+
+%% 非文本公开字段（avatar）：不进审核门直接落库
+profile_non_text_field_skips_review_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+            ]},
+            {moderation_policy, [
+                {'inspect', 2, fun(_Surface, _Text) ->
+                    erlang:error(should_not_inspect_non_text_field)
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = user_logic:update(1, <<"avatar">>, <<"new_avatar.jpg">>),
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(user_ds, update_field, 3))
+        end
+    ).
+
+%% 入队失败 fail-open：资料照常保存，不阻断
+profile_enqueue_failure_fail_open_test_() ->
+    ?WITH_MECKS(
+        [
+            {user_ds, [
+                {'update_field', 3, fun(_Uid, _Key, _Val) -> {ok, 1} end}
+            ]},
+            {moderation_policy, [
+                {'inspect', 2, fun(_Surface, _Text) ->
+                    {queued, [#{word => <<"mild">>, severity => <<"low">>}]}
+                end},
+                {'enqueue', 7, fun(_S, _M, _T, _U, _A, _C, _H) ->
+                    {error, db_down}
+                end}
+            ]}
+        ],
+        fun() ->
+            Result = user_logic:update(1, <<"school">>, <<"某大学"/utf8>>),
+            ?assertMatch({ok, _}, Result),
+            ?assertEqual(1, meck:num_calls(user_ds, update_field, 3))
+        end
+    ).

@@ -268,3 +268,57 @@ moderate_reject_moment_removes_post_test_() ->
             ?assertEqual(1, meck:num_calls(moment_ds, delete_post_by_admin, 1))
         end
     ).
+
+%% ===================================================================
+%% R-03.1：reject 联动清空违规资料字段
+%% ===================================================================
+
+moderate_reject_profile_clears_field_test_() ->
+    ?WITH_MECKS(
+        [
+            {moderation_ds, [
+                {'review_moderate', 4, fun(10, <<"rejected">>, <<"违规确认"/utf8>>, 1001) ->
+                    {ok, 1}
+                end},
+                {'review_find', 1, fun(10) ->
+                    {ok, #{
+                        <<"msg_type">> => <<"profile_field:sign">>,
+                        <<"msg_id">> => 77,
+                        <<"to_id">> => 0
+                    }}
+                end}
+            ]},
+            {user_ds, [
+                {'update_field', 3, fun(77, <<"sign">>, <<>>) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            ok = adm_moderation_logic:moderate(10, <<"reject">>, <<"违规确认"/utf8>>, 1001),
+            ?assertEqual(1, meck:num_calls(user_ds, update_field, 3))
+        end
+    ).
+
+moderate_reject_profile_clear_failure_still_ok_test_() ->
+    ?WITH_MECKS(
+        [
+            {moderation_ds, [
+                {'review_moderate', 4, fun(11, <<"rejected">>, <<"违规确认"/utf8>>, 1001) ->
+                    {ok, 1}
+                end},
+                {'review_find', 1, fun(11) ->
+                    {ok, #{
+                        <<"msg_type">> => <<"profile_field:nickname">>,
+                        <<"msg_id">> => 88,
+                        <<"to_id">> => 0
+                    }}
+                end}
+            ]},
+            {user_ds, [
+                {'update_field', 3, fun(_Uid, _Field, _Val) -> {error, db_down} end}
+            ]}
+        ],
+        fun() ->
+            %% 清空失败不影响审核判定落库（fail-open 撤下口径）
+            ok = adm_moderation_logic:moderate(11, <<"reject">>, <<"违规确认"/utf8>>, 1001)
+        end
+    ).

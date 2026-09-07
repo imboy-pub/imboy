@@ -184,3 +184,46 @@ enqueue_failure_returned_fail_open_by_caller_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% R-03.1：profile 文本面入队——字段名编码进 msg_type
+%% ===================================================================
+
+enqueue_profile_field_encodes_field_in_msg_type_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_tsid, [
+                {'generate', 0, fun() -> 9003 end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"review_queue">>) -> <<"public.review_queue">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, Params) ->
+                    SqlBin = iolist_to_binary(Sql),
+                    ?assertNotEqual(nomatch, binary:match(SqlBin, <<"'pending'">>)),
+                    ?assertEqual(
+                        [
+                            9003,
+                            77,
+                            <<"profile_field:sign">>,
+                            <<"签名内容"/utf8>>,
+                            77,
+                            <<>>,
+                            0,
+                            <<"profile">>,
+                            <<"mild">>
+                        ],
+                        Params
+                    ),
+                    {ok, [#{<<"id">> => 9003}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            Hits = [#{word => <<"mild">>, severity => <<"medium">>}],
+            ok = moderation_policy:enqueue(
+                {profile_field, <<"sign">>}, 77, 0, 77, <<>>, <<"签名内容"/utf8>>, Hits
+            )
+        end
+    ).

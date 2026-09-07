@@ -59,7 +59,29 @@
 
 ## 已知边界与后续
 
-- **profile 面（昵称/简介）本轮未接入**——资料编辑有独立风控考虑（改名频率/回滚语义），避免一次性扩面；列为 R-03.1 后续小批。
+- ~~**profile 面（昵称/简介）本轮未接入**~~ → **R-03.1 已接入（2026-09-08，见下节）**。
 - 队列 Admin 页的 overdue 列展示与「按 overdue 排序」属 imboyadmin UI 打磨，接口字段已就绪。
 - 词表命中为朴素包含匹配（人工维护词表量级几十~几千），超大规模词表再考虑 AC 自动机——当前不过度设计。
 - 踩坑记录（第 4 次）：heredoc/Python 写入的测试中文 binary 字面量再次缺 /utf8（fun 头 pattern 里的中文同样要 /utf8）；`elib_dt:now/0` 返回 rfc3339 binary 不是整数，毫秒基准用 `elib_dt:millisecond/0`；跨模块复用返回结构前核对 key 形态（review_page 是 atom key `list`，不是 `<<"list">>`）。
+
+## R-03.1：profile 文本公开面接入（2026-09-08）
+
+计划 R-03 Files 要求 "one policy entry point called by enabled profile/channel/moment writes"，首轮接入 channel/moment 两面，本批补齐 profile 面。
+
+**实施**（零新表、零迁移，复用 review_queue）：
+
+1. `moderation_policy.erl`：新增 surface `profile_field`；入队形态 `{profile_field, FieldBin}` 把字段名编码进 `review_queue.msg_type`（`profile_field:sign`），`to_type=profile`。
+2. `user_logic.erl`：`update/3` 的 `set_field` 分支接 `profile_review_gate/3`——文本公开字段白名单 `nickname/sign/profession/school/interests`（透传白名单的非文本字段 avatar/background/region/birthday 不审）；high 命中拒绝保存（`{error, {1, <<"">>, Msg}}`，handler 透出）；medium/low 先保存后入队；入队失败 fail-open。
+3. `adm_moderation_logic.erl`：`remove_surface_content/1` 加 profile 分支——reject 时按 msg_type 后缀定位字段、清空该字段（msg_id 复用 uid）。清空而非恢复原值：reject 时原值语义已不可信，交由用户重新设置；清空失败仅记日志不回滚审核判定（与 channel/moment 容错同口径）。
+
+**测试**：
+
+| 套件 | 结果 |
+|---|---|
+| user_logic_tests | +5（high 拒绝零落库 / queued 保存+入队参数 / allow 零入队 / 非文本字段跳过 / 入队失败 fail-open）；39 passed，3 failed 为注销链既有环境红（elib_tsid 注册+PG 池，HEAD 对照同红，与本批无关） |
+| moderation_policy_tests | +1（profile 入队 msg_type 编码断言）→ 8/8 |
+| adm_moderation_logic_tests | +2（reject 清字段 / 清空失败不回滚）→ 14/14 |
+| 回归 moment_logic_tests | 15/15 |
+| 回归 channel_logic_message_tests | 12/12 |
+
+**边界**：改名频率风控（per-field rate limit）不在本批范围；blocked 文案与 moment/channel 同串（"内容包含违规词汇"族）。

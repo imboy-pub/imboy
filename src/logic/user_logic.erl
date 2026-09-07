@@ -388,7 +388,12 @@ update(Uid, Field, Val) ->
             %% allow_search 字段在 fts_user 表中，需要特殊处理
             user_ds:update_allow_search(Uid, N);
         {ok, {set_field, F, V}} ->
-            user_ds:update_field(Uid, F, V);
+            case profile_review_gate(Uid, F, V) of
+                ok ->
+                    user_ds:update_field(Uid, F, V);
+                {error, Msg} ->
+                    {error, {1, <<"">>, Msg}}
+            end;
         %% 隐私布尔开关（QA #19）：落 user_setting.setting JSONB
         {ok, {set_setting, Key, Bool}} ->
             ok = user_setting_ds:save(Uid, Key, Bool),
@@ -432,6 +437,46 @@ update(Uid, Field, Val) ->
 -spec webrtc_credential(pos_integer()) -> map().
 webrtc_credential(Uid) ->
     user_ds:webrtc_credential(Uid).
+
+%% ===================================================================
+%% R-03.1：profile 文本公开面审核门
+%% ===================================================================
+
+%% 进审核的资料字段：对外可见的自由文本（透传白名单的非文本字段
+%% avatar/background/region/birthday 不审）。命中 high 拒绝保存；
+%% medium/low 先保存后入复核队列，Admin reject 由 adm_moderation_logic
+%% 联动清空该字段。词表故障时 moderation_policy:inspect 内部 fail-open。
+-define(PROFILE_REVIEW_FIELDS, [
+    <<"nickname">>,
+    <<"sign">>,
+    <<"profession">>,
+    <<"school">>,
+    <<"interests">>
+]).
+
+-spec profile_review_gate(integer(), binary(), term()) -> ok | {error, binary()}.
+profile_review_gate(Uid, Field, Val) when is_binary(Val) ->
+    case lists:member(Field, ?PROFILE_REVIEW_FIELDS) of
+        false ->
+            ok;
+        true ->
+            case moderation_policy:inspect(profile_field, Val) of
+                {blocked, _Hits} ->
+                    {error, <<"内容包含违规词汇，保存失败"/utf8>>};
+                {queued, Hits} ->
+                    %% msg_id 复用 uid（profile 无独立内容 ID），字段名经
+                    %% {profile_field, Field} 编码进 review_queue.msg_type；
+                    %% 入队失败 fail-open，不阻断资料保存。
+                    _ = moderation_policy:enqueue(
+                        {profile_field, Field}, Uid, 0, Uid, <<>>, Val, Hits
+                    ),
+                    ok;
+                allow ->
+                    ok
+            end
+    end;
+profile_review_gate(_Uid, _Field, _Val) ->
+    ok.
 
 %% @doc 获取用户状态
 %% @param Uid 用户ID

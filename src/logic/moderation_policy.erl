@@ -1,7 +1,7 @@
 -module(moderation_policy).
 -compile([nowarn_deprecated_catch]).
 %%%
-%%% R-03：非 E2EE 公开内容（频道帖子/动态）的唯一审核 policy 入口。
+%%% R-03：非 E2EE 公开内容（频道帖子/动态/资料文本面）的唯一审核 policy 入口。
 %%% * 决定性关键词规则，无 AI provider；
 %%% * severity=high 命中 → blocked（发布前直接拒绝，quarantine 语义）；
 %%% * severity=medium/low 命中 → queued（先发后审：照常发布并写人工复核队列，
@@ -21,8 +21,10 @@
 -define(WORDS_CACHE_TTL, 60).
 -define(SURFACE_CHANNEL, <<"channel_message">>).
 -define(SURFACE_MOMENT, <<"moment_post">>).
+-define(SURFACE_PROFILE, <<"profile_field">>).
 
--type surface() :: channel_message | moment_post.
+-type surface() ::
+    channel_message | moment_post | profile_field | {profile_field, binary()}.
 -type hit() :: #{word := binary(), severity := binary()}.
 
 -export_type([surface/0, hit/0]).
@@ -137,7 +139,14 @@ hit_word(H) ->
 surface_types(channel_message) ->
     {?SURFACE_CHANNEL, <<"channel">>};
 surface_types(moment_post) ->
-    {?SURFACE_MOMENT, <<"moment">>}.
+    {?SURFACE_MOMENT, <<"moment">>};
+%% R-03.1：profile 面以 {profile_field, FieldBin} 形态入队，字段名编码进
+%% msg_type（如 <<"profile_field:sign">>），供 Admin reject 联动定位要清空的
+%% 资料字段；to_type 统一 <<"profile">>。
+surface_types({profile_field, FieldBin}) when is_binary(FieldBin), FieldBin =/= <<>> ->
+    {<<?SURFACE_PROFILE/binary, ":", FieldBin/binary>>, <<"profile">>};
+surface_types(profile_field) ->
+    {?SURFACE_PROFILE, <<"profile">>}.
 
 review_table() ->
     elib_pg_sql:public_tablename(<<"review_queue">>).

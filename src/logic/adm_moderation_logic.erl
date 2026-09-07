@@ -140,8 +140,11 @@ maybe_remove_rejected_content(<<"reject">>, Id) ->
 maybe_remove_rejected_content(_Action, _Id) ->
     ok.
 
-%% 按内容面撤下：频道帖删消息并广播；动态走 admin 删除；旧消息型行无公开
-%% 内容可撤。撤下失败仅记日志（审核判定已落库，不因撤下失败回滚）。
+%% 按内容面撤下：频道帖删消息并广播；动态走 admin 删除；profile 面清空
+%% 违规资料字段（R-03.1，msg_type 为 <<"profile_field:字段名">>、msg_id 复用
+%% uid）；旧消息型行无公开内容可撤。撤下失败仅记日志（审核判定已落库，
+%% 不因撤下失败回滚）。profile 清空而非恢复原值：reject 时原值语义已不可信，
+%% 交由用户重新设置。
 remove_surface_content(Row) ->
     MsgType = get_bin(Row, <<"msg_type">>),
     MsgId = row_positive_int(Row, <<"msg_id">>),
@@ -169,6 +172,27 @@ remove_surface_content(Row) ->
                 Other ->
                     ?ERROR_LOG(["moderation reject moment remove failed: ", MsgId, Other]),
                     ok
+            end;
+        _ ->
+            case remove_profile_field(MsgType, MsgId) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    ?ERROR_LOG(["moderation reject profile remove failed: ", MsgId, Reason]),
+                    ok
+            end
+    end.
+
+%% R-03.1：拆 msg_type 后缀定位资料字段，清空该字段（msg_id=uid）。
+-spec remove_profile_field(binary(), integer()) -> ok | {error, term()}.
+remove_profile_field(MsgType, Uid) ->
+    case binary:split(MsgType, <<":">>) of
+        [<<"profile_field">>, Field] when Field =/= <<>>, Uid > 0 ->
+            case catch user_ds:update_field(Uid, Field, <<>>) of
+                {ok, _} ->
+                    ok;
+                Other ->
+                    Other
             end;
         _ ->
             ok

@@ -42,7 +42,7 @@
 | **推送** | Title=发送者昵称（元数据）；Body=**静态类型占位**（text→"发来一条消息"、e2ee→"发来一条加密消息"、image→"[图片]" 等）。`maybe_push_for_c2c/4` 的 payload 参数显式忽略（`_Payload`），**永不携带消息内容或密文** | 推送零知识不变量 | `push_notification_logic:get_push_body/1`、`maybe_push_for_c2c/4` | `push_notification_logic_tests:e2ee_push_body_never_leaks_ciphertext` / `e2ee_v2_push_body_generic` / `e2ee_c2g_push_body_never_leaks` |
 | **举报（report）** | 仅举报人**显式同意**（`e2ee_consent=true`）时接受 `content_excerpt`（≤500 字符最小摘录）+ 哈希/上下文元数据；服务端不解密、不索取会话密钥、不读无关消息；无同意带摘录 → 拒绝 | R-01 显式披露 | `report_logic:create_message_visible/7`（`e2ee_consent` 门）、`finalize_evidence/4` | `report_logic_message_tests` |
 | **AI / 平台 agent** | agent 作为群成员读到的 payload 与普通成员客户端相同——required 下是**密文**，无法理解，不产生有效回复；agent 主动回复是明文 text，但**同样要过 C2G 加密门**——required 下被拒发（fail-closed，拒绝而非降级） | 计划红线"AI/moderation cannot receive E2EE plaintext by default" | `ai_agent_group_reply.erl`、`ai_agent_proactive:send_text` 自带同款门 | `ai_agent_reply_tests`（required 拒发而非降级）、`ai_agent_proactive_tests` |
-| **自动审核（moderation）** | 只接入**公开面**：`channel_message` / `moment_post` 两个 surface；决定性关键词规则、无 AI provider；**C2C/C2G 私信路径绝不接入本模块** | surface 白名单 | `moderation_policy`（模块头契约注释） | R-03 审核 queue 测试 |
+| **自动审核（moderation）** | 只接入**公开面**：`channel_message` / `moment_post` / `profile_field`（昵称/简介/职业/学校/兴趣等文本资料，R-03.1）三个 surface；决定性关键词规则、无 AI provider；**C2C/C2G 私信路径绝不接入本模块** | surface 白名单 | `moderation_policy`（模块头契约注释）、`user_logic:profile_review_gate/3` | R-03 审核 queue 测试、`user_logic_tests`（R-03.1 组） |
 | **导出（P-01）** | 用户导出 categories 明确**排除** messages/attachments——E2EE 消息不进入服务端导出载荷 | scope 声明 | `user_export_logic:scope/0` | `user_export_logic_tests` |
 
 ---
