@@ -65,7 +65,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | X-02 | 附件 metadata/本地文件 | 披露文件名、MIME、URL、size；temp 清理；长期明文缓存有明确策略 | BLOCKED |
 | X-03 | Push | Provider/Gateway 无消息明文；记录昵称/群名/类型 metadata | BLOCKED |
 | X-04 | Android/iOS 密钥保护 | Keystore/Keychain accessibility、备份迁移与提取抗性符合声明 | B PARTIAL；A BLOCKED |
-| X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | FAIL 009 |
+| X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | C PASS / Android 复测待确认；009 已 REGRESSION_PASS，源码守卫与关联数据库回归通过；错钥、旧明文库、WAL/SHM 及历史备份 artifact 仍须在明确授权设备与数据范围内取证 |
 | X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS，消息链路日志脱敏有 C 级回归，真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
 | X-07 | Compliance | 明确私钥保管方、授权解密边界、轮换确认和 zero-knowledge 例外 | BLOCKED |
 | X-08 | Redis | 仅目标部署实际使用 Redis 时检查 | 当前声明架构 N/A |

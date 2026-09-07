@@ -33,6 +33,7 @@
 | Finding 010 定向回归 | 上传接线 18/18、策略/封装 20/20 PASS；定向 analyze 通过 | C；策略未知在上传前抛错，真实对象存储 Canary 复测仍 BLOCKED |
 | Finding 008 定向回归 | Safety Number 入口 3/3、关联威胁模型 24/24 PASS；定向 analyze 与 diff check 通过 | C；双方真实 device ID/Olm identity 聚合且验证状态绑定当前号码，双真机换钥与设备增删复测仍 BLOCKED |
 | Finding 014 定向回归 | 日志边界守卫 1/1、关联 WS/ACK/离线解密 27/27 PASS；脱敏后守卫+WS 复跑 21/21 PASS；定向 analyze 通过 | C；消息链路已禁止记录原始帧、完整异常、明文 payload/preview、会话对象与标题；真机与后端日志 Canary 扫描仍 BLOCKED |
+| Finding 009 定向回归 | SQLCipher 边界 13/13、数据库迁移/快照/schema/uid 隔离关联回归 59/59 PASS；定向 analyze 与 diff check 通过 | C；加密平台不再无密码探测/回退，不再创建或自动清理明文迁移备份，错钥/明文/损坏统一保留原库并停止初始化；Android 真机错钥、文件字节与 sidecar 复测待目标设备确认 |
 
 ## 2. 真实消息路径
 
@@ -66,7 +67,7 @@
 | 备份 key | 用户口令 KDF 派生 | 密文、salt、KDF 参数 | 派生 key 不保存；备份不含 Olm account/session/TOFU pin |
 | legacy RSA 私钥 | Secure Storage + 加密备份 | 公钥；历史迁移窗口可能可解 | 仅历史解密意图 |
 | compliance key | 客户端拉取并 TOFU pin 公钥 | 公钥 | 私钥实际保管方和运行保护 UNKNOWN |
-| SQLCipher key | Secure Storage | 预期不可见 | 当前无密码回退与明文迁移备份构成风险 |
+| SQLCipher key | Secure Storage | 预期不可见 | 当前源码已移除无密码探测/回退及明文备份生成；历史备份 artifact 的盘点/清理由设备与数据范围授权后执行 |
 
 ## 5. Findings 与修复状态
 
@@ -80,7 +81,7 @@
 | E2EE-2026-006 | P1 | PFv3 解密失败未形成有界、可重启恢复的密文状态；Olm ratchet 已提交而消息明文尚未提交时存在崩溃丢信窗口 | ROOT_CAUSE_CONFIRMED；原始密文、ratchet/dedupe 与最终消息形成可恢复提交协议→重启恢复回归 |
 | E2EE-2026-007 | P1 | C2G 无持久 replay 状态；C2C `dedupeAndPersistSession` 捕获全部异常并返回 duplicate，把存储事故与重放混同 | ROOT_CAUSE_CONFIRMED；分离错误并统一持久防重，且与 005/006 的提交顺序一起修复→replay/存储故障复测 |
 | E2EE-2026-008 | P1 | Safety Number 入口把 legacy RSA key/kid 当 Olm identity/device ID，本端 device ID 为空，且本地“已验证”未绑定当前号码 | REGRESSION_PASS；双方均取活跃 Olm device ID，identity 走本地权威或签名+TOFU 路径，验证值绑定当前聚合码；双真机换钥/增删设备攻击复测待授权 |
-| E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文迁移备份保留 7 天 | ROOT_CAUSE_CONFIRMED；移除回退并定义安全迁移→设备取证复测 |
+| E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS；加密平台已有库只用当前 key 验证，失败保留原库并终止；已移除无密码探测/二次打开、备份生成和自动清理；Android 真机错钥/明文库/sidecar/历史 artifact 取证复测待明确设备与数据范围 |
 | E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS；不再吞策略异常，策略未知会在调用上传 API 前中止；对象存储 Canary 攻击复测待授权 |
 | E2EE-2026-011 | P1 | 备份不含 Olm account/session/TOFU pin，清数据后身份连续性与 C2C 历史丢失 | ROOT_CAUSE_CONFIRMED；明确产品边界，禁止克隆 ratchet |
 | E2EE-2026-012 | P1 | 新成员/重入群历史访问策略未定义 | OPEN；产品拍板→实现/文档→生命周期复测 |
@@ -100,7 +101,7 @@
 | 附件上传前 AES-256-GCM | B/C 级内核与策略异常 fail-closed 回归通过；对象存储、缩略图和临时文件 A 级证据缺失，PARTIAL |
 | Push 固定占位 | B 级正文占位；昵称/群名 metadata 和真实 provider payload 待查，PARTIAL |
 | 服务端零知识 | B 级源码/schema 支持；实际 DB/日志/备份/历史窗口未查，UNKNOWN |
-| 私钥保护、Replay、MITM、多设备 | SQLCipher 与 C2G replay 仍有明确缺口；Safety Number 入口本地回归通过，但双真机换钥/设备增删及“聚合号码验证只上报首个设备”边界未完成 A 级验证；多设备整体仍为 PARTIAL |
+| 私钥保护、Replay、MITM、多设备 | SQLCipher 无密码降级与新明文备份路径已修复并通过 C 级回归，但历史 artifact 和 Android/iOS 真机提取抗性未复测；C2G replay 仍有明确缺口；Safety Number 入口本地回归通过，但双真机换钥/设备增删及“聚合号码验证只上报首个设备”边界未完成 A 级验证；多设备整体仍为 PARTIAL |
 
 漂移：旧红队 GO 早于当前 PFv3 群协议；旧审计声称 P0=0/P1=0 和全部降级 fail-closed；Safety Number 文档声称全设备聚合；部分规范仍描述旧 RSA/vodozemac；销售默认值不能证明运行配置。当前架构声明不使用 Redis，除非授权目标额外引入，否则 Redis 项为 N/A。
 
