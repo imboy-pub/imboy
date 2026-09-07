@@ -214,6 +214,9 @@ history_reconnect_idempotent_test_() ->
                 {'history', 3, fun(_ConvKey, _AfterSeq, _Limit) ->
                     {ok, [#{<<"conv_seq">> => 3, <<"from_id">> => 1, <<"group_id">> => 9}]}
                 end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(1, 9) -> true end}
             ]}
         ],
         fun() ->
@@ -223,6 +226,26 @@ history_reconnect_idempotent_test_() ->
             ?assertEqual(3, maps:get(<<"next_seq">>, R1)),
             % 未满页 has_more=false
             ?assertEqual(false, maps:get(<<"has_more">>, R1))
+        end
+    ).
+
+%% 非活跃成员必须在归档查询前被拒绝，防止退群/被移除用户继续拉取群历史。
+history_c2g_rejects_non_member_before_archive_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_ds, [
+                {'is_member', 2, fun(1, 9) -> false end}
+            ]},
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(_) -> error(conv_key_must_not_be_built) end},
+                {'history', 3, fun(_, _, _) -> error(history_must_not_be_queried) end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, _, ?ERR_ACCESS_DENIED},
+                messaging_logic:history(1, <<"c2g">>, <<"9">>, 0, 10)
+            )
         end
     ).
 

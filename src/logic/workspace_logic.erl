@@ -410,11 +410,20 @@ remove_member(Uid, WsId, TargetUid) ->
 remove_member_checked(WsId, TargetUid) ->
     case elib_pg:with_tx(fun(Conn) -> remove_member_tx(Conn, WsId, TargetUid) end) of
         Result when is_map(Result) ->
+            AffectedGroups = maps:get(affected_groups, Result, []),
+            lists:foreach(
+                fun(#{group_id := Gid}) -> group_ds:leave(TargetUid, Gid) end,
+                AffectedGroups
+            ),
+            imboy_domain_event:publish([
+                {member_removed, Gid, TargetUid}
+             || #{group_id := Gid} <- AffectedGroups
+            ]),
             _ = ?INFO_LOG([
                 workspace_member_removed,
                 WsId,
                 TargetUid,
-                {affected_groups, length(maps:get(affected_groups, Result, []))}
+                {affected_groups, length(AffectedGroups)}
             ]),
             {ok, Result};
         {error, {membership_conflict, Conflicts}} ->

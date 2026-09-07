@@ -15,14 +15,17 @@
 %% ===================================================================
 
 tablename_returns_correct_table_test_() ->
-    ?WITH_MECKS([
-        {config_ds, [
-            {'env', 1, fun(sql_driver) -> pgsql end}
-        ]}
-    ], fun() ->
-        Result = group_member_repo:tablename(),
-        ?assertEqual(<<"public.group_member">>, Result)
-    end).
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> pgsql end}
+            ]}
+        ],
+        fun() ->
+            Result = group_member_repo:tablename(),
+            ?assertEqual(<<"public.group_member">>, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 成员查询测试
@@ -48,24 +51,28 @@ list_by_gid_test_() ->
 %% ===================================================================
 
 add_member_to_group_test_() ->
-    ?WITH_MECK(group_member_repo, [
-        {'add', 1, fun(_Data) -> {ok, 1} end}
-    ], fun() ->
-        Data = #{
-            group_id => 1,
-            user_id => 1,
-            role => 1,
-            join_mode => <<"invite">>,
-            inviter_uid => 2
-        },
+    ?WITH_MECK(
+        group_member_repo,
+        [
+            {'add', 1, fun(_Data) -> {ok, 1} end}
+        ],
+        fun() ->
+            Data = #{
+                group_id => 1,
+                user_id => 1,
+                role => 1,
+                join_mode => <<"invite">>,
+                inviter_uid => 2
+            },
 
-        Result = group_member_repo:add(Data),
-        case Result of
-            {ok, MemberId} when is_integer(MemberId) -> ?assert(MemberId > 0);
-            {ok, _} -> ?assert(true);
-            _ -> ?assert(false, "Expected {ok, MemberId}")
+            Result = group_member_repo:add(Data),
+            case Result of
+                {ok, MemberId} when is_integer(MemberId) -> ?assert(MemberId > 0);
+                {ok, _} -> ?assert(true);
+                _ -> ?assert(false, "Expected {ok, MemberId}")
+            end
         end
-    end).
+    ).
 
 %% ===================================================================
 %% add/2 测试
@@ -96,6 +103,55 @@ add_member_with_connection_test_() ->
 %% find/3 测试
 %% ===================================================================
 
+find_filters_inactive_members_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"group_member">>) ->
+                    <<"public.group_member">>
+                end}
+            ]},
+            {elib_pg, [
+                {'one', 2, fun(Sql, [1, 2]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"AND status = 1">>)),
+                    {ok, #{<<"id">> => 3}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(#{<<"id">> => 3}, group_member_repo:find(1, 2, <<"id">>))
+        end
+    ).
+
+upsert_active_restores_only_inactive_member_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"group_member">>) ->
+                    <<"public.group_member">>
+                end}
+            ]},
+            {elib_tsid, [{'generate', 1, fun(group_member) -> 10 end}]},
+            {elib_dt, [{'now', 0, fun() -> <<"2026-09-07T00:00:00Z">> end}]},
+            {elib_pg, [
+                {'query', 3, fun(fake_conn, Sql, [10, 1, 2, 1, <<"invite">>, _Now]) ->
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(Sql, <<"ON CONFLICT (group_id, user_id) DO UPDATE">>)
+                    ),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"status <> 1">>)),
+                    {ok, [#{<<"changed">> => 1}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, true},
+                group_member_repo:upsert_active(fake_conn, 1, 2, 1, <<"invite">>)
+            )
+        end
+    ).
+
 find_existing_member_test_() ->
     ?TEST_WITH_DB(fun() ->
         Gid = 1,
@@ -105,7 +161,7 @@ find_existing_member_test_() ->
         ?assert(is_map(Result)),
         case Result of
             #{<<"id">> := Id} when is_integer(Id) -> ?assert(Id > 0);
-            #{ } -> ok;
+            #{} -> ok;
             _ -> ?assert(false, "Expected map with id or empty map")
         end
     end).
@@ -128,7 +184,7 @@ find_with_all_columns_test_() ->
         ?assert(is_map(Result)),
         case Result of
             #{<<"group_id">> := _, <<"user_id">> := _} -> ok;
-            #{ } -> ok;
+            #{} -> ok;
             _ -> ?assert(false, "Expected map with required fields or empty map")
         end
     end).

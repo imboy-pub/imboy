@@ -26,10 +26,9 @@ join_group_subset_test_() ->
                 {'update', 5, fun(_Conn, _Tb, _Data, _Where, _Params) -> {ok, 1} end}
             ]},
             {group_member_repo, [
-                {'find', 3, fun(_, _, _) -> #{} end},
-                {'add', 2, fun(_Conn, Data) ->
-                    put(t_gm_added, maps:get(user_id, Data)),
-                    {ok, 1}
+                {'upsert_active', 5, fun(_Conn, _Gid, Uid, _Role, _JoinMode) ->
+                    put(t_gm_added, Uid),
+                    {ok, true}
                 end}
             ]},
             {group_ds, [

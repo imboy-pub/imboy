@@ -421,6 +421,23 @@ remove_member_cascades_group_members_test_() ->
                     put(t_wl_parent_removed, {WsId, Uid}),
                     ok
                 end}
+            ]},
+            {group_ds, [
+                {'leave', 2, fun(Uid, Gid) ->
+                    Calls =
+                        case get(t_wl_cache_leave_calls) of
+                            undefined -> [];
+                            Existing -> Existing
+                        end,
+                    put(t_wl_cache_leave_calls, Calls ++ [{Uid, Gid}]),
+                    ok
+                end}
+            ]},
+            {imboy_domain_event, [
+                {'publish', 1, fun(Events) ->
+                    put(t_wl_member_removed_events, Events),
+                    ok
+                end}
             ]}
         ],
         fun() -> remove_member_cascades_group_members_body() end
@@ -450,6 +467,16 @@ remove_member_cascades_group_members_body() ->
         %% parent membership removed
         ?assertEqual(
             {?WS_ID, ?MEMBER}, erase(t_wl_parent_removed), "parent membership not removed"
+        ),
+        ?assertEqual(
+            [{?MEMBER, 777001}, {?MEMBER, 777002}],
+            erase(t_wl_cache_leave_calls),
+            "affected group caches not invalidated"
+        ),
+        ?assertEqual(
+            [{member_removed, 777001, ?MEMBER}, {member_removed, 777002, ?MEMBER}],
+            erase(t_wl_member_removed_events),
+            "affected groups did not publish member removal events"
         ),
         ok
     end.

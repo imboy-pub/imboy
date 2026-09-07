@@ -6,6 +6,7 @@
 -export([tablename/0]).
 -export([add/1]).
 -export([add/2]).
+-export([upsert_active/5]).
 -export([find/3]).
 -export([list_same_group/2]).
 % -export ([list_same_group/2]).
@@ -59,6 +60,27 @@ add(Conn, Data) ->
         {error, _} = Err -> Err
     end.
 
+%% @doc 幂等激活群成员关系；已被工作区级移除的成员仅在显式入群时恢复
+-spec upsert_active(any(), integer(), integer(), integer(), binary()) ->
+    {ok, boolean()} | {error, term()}.
+upsert_active(Conn, Gid, Uid, Role, JoinMode) ->
+    Tb = tablename(),
+    Id = elib_tsid:generate(group_member),
+    Now = elib_dt:now(),
+    Sql =
+        <<"INSERT INTO ", Tb/binary,
+            " (id, group_id, user_id, role, is_join, join_mode, status, created_at, updated_at) ",
+            "VALUES ($1, $2, $3, $4, true, $5, 1, $6, $6) ",
+            "ON CONFLICT (group_id, user_id) DO UPDATE ",
+            "SET role = EXCLUDED.role, is_join = true, join_mode = EXCLUDED.join_mode, ",
+            "status = 1, updated_at = EXCLUDED.updated_at ", "WHERE ", Tb/binary,
+            ".status <> 1 RETURNING 1 AS changed">>,
+    case elib_pg:query(Conn, Sql, [Id, Gid, Uid, Role, JoinMode, Now]) of
+        {ok, []} -> {ok, false};
+        {ok, [_ | _]} -> {ok, true};
+        {error, Reason} -> {error, Reason}
+    end.
+
 %% @doc 查找群组成员
 %% @param Gid 群组ID
 %% @param Uid 用户ID
@@ -71,7 +93,8 @@ find(Gid, Uid, Column) ->
     % use index uk_Gid_Uid
     % 使用安全的参数化查询，避免SQL注入
     Sql =
-        <<"SELECT ", Column/binary, " FROM ", Tb/binary, " WHERE group_id = $1 AND user_id = $2">>,
+        <<"SELECT ", Column/binary, " FROM ", Tb/binary,
+            " WHERE group_id = $1 AND user_id = $2 AND status = 1">>,
     % ?DEBUG_LOG([Sql]),
     case elib_pg:one(Sql, [Gid, Uid]) of
         {ok, Row} -> Row;

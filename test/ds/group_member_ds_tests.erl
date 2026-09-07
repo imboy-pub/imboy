@@ -16,7 +16,8 @@ list_member_all_success_test_() ->
                 end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, [1, 50000]) ->
+                {'query', 2, fun(Sql, [1, 50000]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"gm.status = 1">>)),
                     {ok, [#{<<"nickname">> => <<"user-1">>, <<"user_id">> => 100}]}
                 end}
             ]}
@@ -45,9 +46,14 @@ list_member_filtered_uses_offset_placeholders_test_() ->
             {elib_pg, [
                 {'query', 2, fun(Sql, [1, 100, 200]) ->
                     SqlBin = iolist_to_binary(Sql),
-                    case binary:match(SqlBin, <<"gm.group_id = $1 AND gm.user_id IN ($2,$3)">>) of
-                        {_, _} -> ok;
-                        nomatch -> erlang:error({unexpected_sql, SqlBin})
+                    case
+                        binary:match(
+                            SqlBin,
+                            <<"gm.group_id = $1 AND gm.status = 1 AND gm.user_id IN ($2,$3)">>
+                        )
+                    of
+                        nomatch -> erlang:error({unexpected_sql, SqlBin});
+                        {_, _} -> ok
                     end,
                     {ok, []}
                 end}
@@ -65,13 +71,8 @@ join_group_success_test_() ->
                 {'tablename', 0, fun() ->
                     <<"group_member">>
                 end},
-                {'find', 3, fun(1, 100, <<"id">>) ->
-                    #{}
-                end},
-                {'add', 2, fun(_Conn, Data) ->
-                    ?assertEqual(1, maps:get(group_id, Data)),
-                    ?assertEqual(100, maps:get(user_id, Data)),
-                    {ok, 1}
+                {'upsert_active', 5, fun(_Conn, 1, 100, 1, <<"invite">>) ->
+                    {ok, true}
                 end}
             ]},
             {elib_dt, [
@@ -126,8 +127,8 @@ join_group_already_member_returns_zero_test_() ->
                 {'tablename', 0, fun() ->
                     <<"group_member">>
                 end},
-                {'find', 3, fun(1, 100, <<"id">>) ->
-                    #{<<"id">> => 1}
+                {'upsert_active', 5, fun(_Conn, 1, 100, 1, <<"invite">>) ->
+                    {ok, false}
                 end}
             ]},
             %% T5：前置 workspace 子集校验的 scope 查询（个人群 → 空行放行）

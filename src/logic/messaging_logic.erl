@@ -109,6 +109,8 @@ read_stats(MsgId, CurrentUid) ->
     {ok, map()} | {error, binary(), integer()}.
 history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
     case validate_history_params(ChatType, PeerIdEnc, CurrentUid) of
+        {error, permission_denied} ->
+            {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
         {error, Reason} ->
             {error, Reason, ?ERR_BAD_REQUEST};
         {ok, ConvKey} ->
@@ -136,9 +138,12 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
 validate_history_params(<<"c2c">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
     PeerId = ec_cnv:to_integer(PeerIdEnc),
     {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId)};
-validate_history_params(<<"c2g">>, PeerIdEnc, _CurrentUid) when PeerIdEnc =/= <<>> ->
+validate_history_params(<<"c2g">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
     Gid = ec_cnv:to_integer(PeerIdEnc),
-    {ok, msg_archive_ds:conv_key_c2g(Gid)};
+    case group_ds:is_member(CurrentUid, Gid) of
+        true -> {ok, msg_archive_ds:conv_key_c2g(Gid)};
+        false -> {error, permission_denied}
+    end;
 validate_history_params(<<>>, _, _) ->
     {error, <<"缺少 chat_type 参数"/utf8>>};
 validate_history_params(_, <<>>, _) ->

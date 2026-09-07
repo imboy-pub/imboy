@@ -77,7 +77,8 @@ list_member(Gid, []) ->
         <<"u.nickname,u.account,u.avatar,u.sign, gm.id,gm.group_id,gm.user_id,gm.invite_code,gm.alias,gm.description,gm.role,gm.is_join,gm.join_mode,gm.status,gm.updated_at,gm.created_at,gm.remark,gm.mute_until,gm.category_id">>,
     Sql =
         <<"SELECT ", Column/binary, " FROM ", GMTb/binary, " gm LEFT JOIN ", UserTb/binary,
-            " u ON u.id = gm.user_id WHERE gm.group_id = $1 ORDER BY id DESC LIMIT $2">>,
+            " u ON u.id = gm.user_id WHERE gm.group_id = $1 AND gm.status = 1",
+            " ORDER BY id DESC LIMIT $2">>,
     elib_pg:query(Sql, [Gid, 50000]);
 list_member(Gid, MemberUids) when length(MemberUids) > 0 ->
     GMTb = group_member_repo:tablename(),
@@ -99,8 +100,8 @@ list_member(Gid, MemberUids) when length(MemberUids) > 0 ->
     ),
     Sql =
         <<"SELECT ", Column/binary, " FROM ", GMTb/binary, " gm LEFT JOIN ", UserTb/binary,
-            " u ON u.id = gm.user_id WHERE gm.group_id = $1 AND gm.user_id IN (",
-            Placeholders/binary, ")">>,
+            " u ON u.id = gm.user_id WHERE gm.group_id = $1 AND gm.status = 1",
+            " AND gm.user_id IN (", Placeholders/binary, ")">>,
     elib_pg:query(Sql, [Gid | MemberUids]);
 list_member(_Gid, _) ->
     {ok, []}.
@@ -116,8 +117,6 @@ list_member(_Gid, _) ->
     {ok, integer()} | {error, binary()}.
 join_group(Conn, JoinMode, Uid, Gid, OptData) ->
     Role = maps:get(role, OptData, 1),
-    _GMTb = group_member_repo:tablename(),
-
     % T5（双体验 v2.5.2）：Group Member ⊆ Workspace Member 应用层同事务校验。
     % scope=workspace 的群，加入者必须是同 workspace 的 active workspace_member，
     % 否则 throw({abort_tx, workspace_membership_required}) 整体回滚
@@ -126,37 +125,20 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
     % scope=personal / 群不存在 → 跳过校验，既有行为零变化。
     ok = ensure_workspace_membership(Conn, Gid, Uid),
 
-    % 检查是否已是成员
-    case group_member_repo:find(Gid, Uid, <<"id">>) of
-        #{<<"id">> := _Id} ->
-            % 已是成员，幂等返回
+    JoinMode2 = elib_str:trunc(JoinMode, 100),
+    case group_member_repo:upsert_active(Conn, Gid, Uid, Role, JoinMode2) of
+        {ok, false} ->
             {ok, 0};
-        _ ->
-            Now = elib_dt:now(),
-            % 插入群成员
-            case
-                group_member_repo:add(Conn, #{
-                    group_id => Gid,
-                    user_id => Uid,
-                    role => Role,
-                    is_join => true,
-                    join_mode => elib_str:trunc(JoinMode, 100),
-                    created_at => Now
-                })
-            of
-                {ok, _} ->
-                    % 更新群组统计
-                    case update_statistics(Conn, Gid) of
-                        {ok, UidSum} ->
-                            % 更新内存缓存
-                            group_ds:join(Uid, Gid),
-                            {ok, UidSum};
-                        {error, Reason} ->
-                            {error, Reason}
-                    end;
+        {ok, true} ->
+            case update_statistics(Conn, Gid) of
+                {ok, UidSum} ->
+                    group_ds:join(Uid, Gid),
+                    {ok, UidSum};
                 {error, Reason} ->
                     {error, Reason}
-            end
+            end;
+        {error, Reason} ->
+            {error, Reason}
     end.
 
 %% @doc T5：workspace 群成员子集校验（同事务）
