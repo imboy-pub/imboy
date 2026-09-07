@@ -121,12 +121,14 @@ safe_log(Level, Msg, Module, Line) ->
             ok;
         true ->
             Pid = self(),
+            %% V-02 sink 脱敏：term 轮（键+值）先于字符串化，字符串化后
+            %% 值模式兜底；任一环节失败落 [REDACT_ERROR]，绝不回退原文
             Message =
                 try
-                    ensure_string(Msg)
+                    log_redact:text(ensure_string(log_redact:term(Msg)))
                 catch
                     _:_ ->
-                        "INVALID_MESSAGE"
+                        <<"[REDACT_ERROR]">>
                 end,
             _ =
                 try
@@ -147,12 +149,15 @@ safe_log(Level, Fmt, Args, Module, Line) ->
             ok;
         true ->
             Pid = self(),
+            %% V-02 sink 脱敏：args 先过 term 轮，格式化后值模式兜底。
+            %% 格式化失败不再回显 Fmt/Args 原文（旧实现把未脱敏参数
+            %% 全量打进日志，本身就是泄漏面）
             Message =
                 try
-                    io_lib:format(Fmt, sanitize_args(Args))
+                    log_redact:text(io_lib:format(Fmt, sanitize_args(log_redact:term(Args))))
                 catch
                     _:_ ->
-                        io_lib:format("INVALID_FORMAT: ~ts ARGS: ~p", [Fmt, Args])
+                        <<"[INVALID_FORMAT_REDACTED]">>
                 end,
             _ =
                 try
