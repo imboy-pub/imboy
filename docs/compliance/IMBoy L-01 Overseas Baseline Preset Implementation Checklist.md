@@ -25,9 +25,9 @@
 |---|---|---|
 | 附近的人 | `location` | 已有 key ✓ |
 | 公共 trending/discovery | `channel_discover` | 已有 key ✓ |
-| 付费 channel/wallet | `channel_order`（wallet 若有独立 key 待查） | 待确认 wallet 是否独立 |
-| live room | **无现成 key**（live room 若未实现则为 Architecture Gap，记录即可） | 待确认 |
-| AI marketplace / Bot external webhook | **无现成 key**（Bot/Agent 是 core 内建——需新增 feature key 并在 Bot webhook 外呼边界 ensure_enabled） | 需新增 |
+| 付费 channel/wallet | `channel_order`（wallet 无独立 key，订单/支付随 channel_order 关闭） | 已确认 |
+| live room | 无现成 key——预设先于实现：defaults 显式枚举压制（`e7c0b078`），未来 plugin 注册同名 key 即被置 false | 已闭环 |
+| AI marketplace / Bot external webhook | bot_webhook 已新增（`9e5979ef`）；ai_marketplace 同 live_room 预设先于实现 | 已闭环 |
 
 ## 进度（2026-09-05）
 
@@ -43,9 +43,42 @@
 - [x] REST/WS 守卫勘察：location_handler/channel_handler 既有 ensure_enabled
       （registry 派生 feature）→ preset 生效即 REST 自动缺席；WS 不承载这些
       功能，无需守卫
-- [ ] Flutter 路由/API 可见性测试
-- [ ] Admin route/menu/chunk 缺席测试
-- [ ] F-07 构建矩阵加 overseas_baseline 列
+
+## 进度（2026-09-07 第二段：三端可见性 + 构建矩阵）
+
+- [x] 语义定案（imboy `15f5fd73`）：overseas_baseline 是 **runtime preset**——
+      构建矩阵 preset manifest 与 full-selected 同编译全集（runtime can
+      disable but cannot add absent），矩阵脚本的 overseas_baseline 列即可用
+- [x] 三端运行时数据源（imboy `4cfdc097`）：/api/v1/init 下发 effective
+      features（imboy_policy:effective_features）；/api/v1/app/features 与
+      /api/adm/admin/config/features 亦走同一 imboy_feature:all() 链——三个
+      端点全部 preset 感知，三端无需改数据源消费代码
+- [x] Flutter 路由/API 可见性（imboyapp `c45f1eb9`）：
+      **真缺口修复**——RouteFeatureGuard.featureForPath 此前把 /channel/orders
+      与 /channel/order/:orderNo fallback 到父级 channel，overseas_baseline
+      （channel_order=false, channel=true）下 deep link 仍可达订单页；补
+      channel_order 映射。新增 overseas_baseline_visibility_test 6 例
+      （敏感关/基线留/deep link 重定向/基线放行/live_room 双保险/映射断言），
+      连同既有 registry 回归 11/11 绿
+- [x] Admin route/menu 缺席（imboyadmin `cf78cc7`）：
+      **真缺口修复**——featureKeyForAdminPath 此前把 /channels/paid（付费频道
+      运营菜单）fallback 到 channel，overseas_baseline 下侧边栏仍可见；补
+      channel_order 映射（路由挂载层 FeatureRoute 本就挂 channel_order，直连
+      URL 无缺口）。新增 overseas_baseline_visibility.test.tsx 8 例（effective
+      判定+manifest 契约+侧边栏过滤+直连 URL 兜底页），连同 features/sidebar
+      既有回归 89/89 绿
+- [x] F-07 构建矩阵 overseas_baseline 列：三仓纯净 worktree
+      （imboy `a9ac6153` / imboyapp `c45f1eb9` / imboyadmin `cf78cc7`）跑
+      run_product_feature_matrix.sh overseas_baseline，evidence 见
+      feature-composition-evidence/overseas_baseline.json
+- 已知边界（记录，不阻塞）：bot_webhook 在 Admin 尚无 route/menu 挂点（Bot
+  webhook 是后端外呼边界，imboy `9e5979ef` 已守 push/push_message）；location/
+  channel_discover 在 Admin 本无路由/菜单（仅设置页开关）；Flutter 侧
+  /map_location_picker 为通用选点工具，不随 location 单独缺席
+
+## 第二段之前的进度快照（2026-09-05 原始记录）
+
+- [x] 第一段后端四项（见上，已于 09-07 分批转正）
 
 ## 任务拆解（建议两段）
 

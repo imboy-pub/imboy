@@ -1,0 +1,53 @@
+{
+  "artifacts": {
+    "admin": {
+      "javascript_files": 71,
+      "path": "/private/tmp/ws-matrix-l01/imboyadmin/dist",
+      "sha256": "d18a40b1abd1ced81f7f560615302dd6d291309a2191da282802ca85ec1cd9a2"
+    },
+    "backend": {
+      "path": "/private/tmp/ws-matrix-l01/imboy/_rel/imboy/lib/imboy-1.0.0-alpha.72/ebin/imboy_feature.beam",
+      "sha256": "e93d3c424cfd4fe9df26aa8b5e2aa82dbeba7e6c2f727d798494f3b7713e9e70",
+      "size": 9500
+    },
+    "flutter": {
+      "path": "/private/tmp/ws-matrix-l01/imboyapp/build/app/outputs/flutter-apk/app-release.apk",
+      "sha256": "75224084c842ff5e2f9da17b282e10f95477c162650bc9b117dfdccbb2d5e41a",
+      "size": 168386153
+    }
+  },
+  "compiled_features": [
+    "bot_webhook",
+    "channel",
+    "channel_discover",
+    "channel_invitation",
+    "channel_order",
+    "core",
+    "e2ee",
+    "group_schedule",
+    "group_task",
+    "group_vote",
+    "location",
+    "moment"
+  ],
+  "manifest_hash": "sha256:07a5403f17de6912bc9f2b1e6761b95f673f9352d1465cb7e077bd13605c4a74",
+  "profile": "overseas_baseline",
+  "repositories": {
+    "imboy": {
+      "dirty": true,
+      "head": "a9ac61535c94031c1ab81eec47e40938b2213df1",
+      "worktree_sha256": "24c73ad6b70d3c0f0b19f176a49e0006c10c217f497357156a8a098a0f5325f5"
+    },
+    "imboyadmin": {
+      "dirty": true,
+      "head": "cf78cc7d8d4dee71d4f56937a9d8ea06831c0110",
+      "worktree_sha256": "8c8c948406facadb574c8ccdb982078d13dea0636d9796ca8c8d7bece8f97358"
+    },
+    "imboyapp": {
+      "dirty": true,
+      "head": "c45f1eb989574615da6c914ba20939fb3169c53e",
+      "worktree_sha256": "edab39e2496396bc9a3c7ece23f0dee63d879e8a41bad7c22b5c99208b549d48"
+    }
+  },
+  "schema_version": 1
+}
