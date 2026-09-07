@@ -131,5 +131,68 @@ archive_timeout = 300
 1. 创建测试备份
 2. 在隔离环境恢复
 3. 验证数据完整性
-4. 记录恢复时间
-5. 更新 RTO/RPO 指标
+4. **执行恢复后删除重放（见下节）并验证已删账号仍处于已删除状态**
+5. 记录恢复时间
+6. 更新 RTO/RPO 指标
+
+---
+
+## 恢复后删除重放（Deletion Replay）— 合规必做
+
+> T-02 要求：恢复演练必须证明**已被删除的数据不会因备份恢复而重新引入**。
+> Apple/Google 删除合规（D-04）与各隐私法口径下，账号删除不可因灾备恢复而复活。
+
+### 背景与原理
+
+- 备份是时间点快照（T0）。T0 之后完成的账号删除（D-01..D-03 链）只存在于生产库；
+- 用 T0 备份恢复会把 T0 时仍存在的用户数据**带回来**，除非显式重放删除；
+- 墓碑表 `user_deletion_job`（一人一行，UNIQUE user_id，用户主行删除后幸存）
+  既是审计证据也是重放的驱动源：`status='completed' AND finished_at > 恢复时间点`
+  的行即"备份点之后完成的删除"。
+
+### 操作步骤（恢复完成后、对外开放服务前）
+
+1. **确定恢复时间点** `:restore_point`（备份完成时刻的 timestamptz；PITR 即
+   `recovery_target_time`）。
+
+2. **对账：找出被复活的目标**（只读，先看规模）：
+
+   ```sql
+   -- 墓碑显示已删除，但 user 行因恢复而存在
+   SELECT j.user_id, j.account, j.finished_at
+   FROM public.user_deletion_job j
+   JOIN public."user" u ON u.id = j.user_id
+   WHERE j.status = 'completed'
+     AND j.finished_at > :'restore_point';
+   ```
+
+3. **重置删除任务为 pending**（D-03 编排器会自动重新认领执行，幂等）：
+
+   ```sql
+   UPDATE public.user_deletion_job
+   SET status = 'pending', attempts = 0, finished_at = NULL, updated_at = NOW()
+   WHERE status = 'completed'
+     AND finished_at > :'restore_point'
+     AND EXISTS (SELECT 1 FROM public."user" u WHERE u.id = user_deletion_job.user_id);
+   ```
+
+4. **触发/等待重放**：删除 worker（`user_deletion_logic` 周期清扫）会按
+   SKIP LOCKED 逐个认领重放全部删除步骤（含 Garage 附件删除入队、会话吊销、
+   墓碑更新）。也可手动触发一轮：
+
+   ```bash
+   _rel/imboy/bin/imboy eval 'user_deletion_logic:cleanup_now().'
+   ```
+
+5. **验证重放完成**：第 2 步对账查询应返回 **0 行**；抽查若干 user_id 确认
+   `public."user"` 无该行、`user_deletion_job.status='completed'` 且
+   `finished_at` 已更新为重放时间。
+
+### 注意事项
+
+- 若生产库连同备份**一起丢失**（job 墓碑也丢），删除历史无法从库内重建——
+  必须以应用商店/客服的删除请求外部记录为准，人工补建删除任务。
+  这是备份策略保留 `user_deletion_job` 全量行（data-disposition: retain）
+  的原因，勿对该表做时间清理。
+- 恢复演练报告须附：对账查询结果（前后对比）+ 重放完成时间，作为
+  「删除不被恢复重新引入」的证据存档（T-02 验收）。

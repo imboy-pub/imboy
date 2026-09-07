@@ -11,6 +11,8 @@
 -export([save/4]).
 -export([verify_code/2]).
 -export([consume/2]).
+-export([purge_expired/2]).
+-export([count_expired/1]).
 
 %% ===================================================================
 %% API functions
@@ -105,3 +107,18 @@ is_master_code(Code) ->
                     false
             end
     end.
+
+%% ===================================================================
+%% T-02 保留清理：过期验证码行（含 PII）分批删除，credential_retention_worker 消费
+%% ===================================================================
+
+%% @doc 分批删除过期验证码行；Cutoff 为 rfc3339 binary，Limit 为单批上限。
+-spec purge_expired(binary(), pos_integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+purge_expired(Cutoff, Limit) ->
+    verification_code_repo:purge_expired(Cutoff, Limit).
+
+%% @doc 过期行计数（dry-run 用）
+-spec count_expired(binary()) -> {ok, non_neg_integer()} | {error, term()}.
+count_expired(Cutoff) ->
+    verification_code_repo:count_expired(Cutoff).

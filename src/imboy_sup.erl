@@ -152,6 +152,16 @@ init([]) ->
         modules => [olm_otk_cleanup_worker]
     },
 
+    % 过期凭证（验证码，含 PII）保留清理 worker（T-02；默认禁用，需 sys.config 显式启用）
+    CredentialRetentionWorker = #{
+        id => credential_retention_worker,
+        start => {credential_retention_worker, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [credential_retention_worker]
+    },
+
     % Agent 支付预留补偿 worker：持久化 outbox 崩溃恢复，默认必须启用
     AgentPaymentCompensationWorker = #{
         id => agent_payment_compensation_worker,
@@ -270,6 +280,7 @@ init([]) ->
             LicenseNoticeWorker,
             BillingInvoiceWorker,
             OlmOtkCleanupWorker,
+            CredentialRetentionWorker,
             AgentPaymentCompensationWorker,
             AiAgentRuntime,
             McpRegistry,
