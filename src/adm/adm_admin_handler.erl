@@ -304,18 +304,46 @@ assign_role_handle(Req0, State) ->
             RoleId = normalize_positive_int(maps:get(<<"role_id">>, PostVals, 0)),
             case {AdminId > 0, RoleId > 0} of
                 {true, true} ->
-                    case adm_user_logic:assign_roles(AdminId, [RoleId]) of
+                    case guard_assign_escalation(State, AdminId, RoleId) of
                         ok ->
-                            flush_admin_permission_cache(AdminId),
-                            elib_response:success(Req0, #{});
-                        {error, Reason} ->
-                            elib_response:error(Req0, to_error_binary(Reason), ?ERR_BAD_REQUEST)
+                            case adm_user_logic:assign_roles(AdminId, [RoleId]) of
+                                ok ->
+                                    flush_admin_permission_cache(AdminId),
+                                    elib_response:success(Req0, #{});
+                                {error, Reason} ->
+                                    elib_response:error(
+                                        Req0, to_error_binary(Reason), ?ERR_BAD_REQUEST
+                                    )
+                            end;
+                        {error, Msg} ->
+                            elib_response:error(Req0, Msg, ?ERR_FORBIDDEN)
                     end;
                 _ ->
                     elib_response:error(Req0, <<"参数错误"/utf8>>, ?ERR_BAD_REQUEST)
             end;
         {error, Req1} ->
             Req1
+    end.
+
+%% @doc A-02 防自我提权（角色分配）：
+%% 1) 不能给自己分配角色（self-grant 通道）；
+%% 2) 目标角色权限集必须 ⊆ 操作者自身权限集——super_admin 全集无影响；
+%% 自定义角色持 admins:assign_role 时也无法 assign 出超自己权限的角色（含 role 1）。
+-spec guard_assign_escalation(map(), integer(), integer()) -> ok | {error, binary()}.
+guard_assign_escalation(State, AdminId, RoleId) ->
+    SelfId = maps:get(adm_user_id, State, 0),
+    case AdminId =:= SelfId of
+        true ->
+            {error, <<"不能给自己分配角色"/utf8>>};
+        false ->
+            {_, RolePerms, _} = adm_index_handler:role_acl(RoleId),
+            OwnPerms = resolve_permissions_by_adm_user_id(SelfId),
+            case lists:subtract(RolePerms, OwnPerms) of
+                [] ->
+                    ok;
+                _ ->
+                    {error, <<"不能授予超出自身权限集的角色"/utf8>>}
+            end
     end.
 
 -spec extract_list_filters(cowboy_req:req()) -> map().
@@ -770,16 +798,25 @@ disable_action(<<"POST">>, Req0, State) ->
             AdminId = parse_id(
                 maps:get(<<"admin_id">>, PostVals, maps:get(<<"uid">>, PostVals, 0))
             ),
+            SelfId = maps:get(adm_user_id, State, 0),
             case AdminId > 0 of
                 true ->
-                    case adm_user_ds:update(AdminId, #{<<"status">> => 0}) of
-                        {ok, _} ->
-                            flush_admin_permission_cache(AdminId),
-                            elib_response:success(Req0, #{});
-                        {error, Reason} ->
-                            elib_response:error(
-                                Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR
-                            )
+                    case AdminId =:= SelfId of
+                        true ->
+                            %% A-02：不能停用自己的管理员账号（自锁通道）
+                            elib_response:error(Req0, <<"不能停用自己的账号"/utf8>>, ?ERR_FORBIDDEN);
+                        false ->
+                            %% A-02：改走 logic 层，恢复「不能禁用超级管理员」防护
+                            %%（旧实现直接调 adm_user_ds:update 绕过了该守卫）
+                            case adm_user_logic:update_status(AdminId, 0) of
+                                ok ->
+                                    flush_admin_permission_cache(AdminId),
+                                    elib_response:success(Req0, #{});
+                                {error, Reason} ->
+                                    elib_response:error(
+                                        Req0, to_error_binary(Reason), ?ERR_BAD_REQUEST
+                                    )
+                            end
                     end;
                 false ->
                     elib_response:error(Req0, <<"admin_id 无效"/utf8>>, ?ERR_BAD_REQUEST)
@@ -872,7 +909,7 @@ default_sidebar_config() ->
                 <<"path">> => <<"/dashboard">>,
                 <<"icon">> => <<"LayoutDashboard">>,
                 <<"label">> => <<"仪表盘"/utf8>>,
-                <<"roles">> => [1, 2, 3],
+                <<"roles">> => [1, 2, 3, 4, 5, 6],
                 <<"permission">> => <<"dashboard:view">>
             },
             #{
@@ -883,7 +920,7 @@ default_sidebar_config() ->
                         <<"path">> => <<"/users">>,
                         <<"icon">> => <<"Users">>,
                         <<"label">> => <<"用户管理"/utf8>>,
-                        <<"roles">> => [1, 2],
+                        <<"roles">> => [1, 2, 5, 6],
                         <<"permission">> => <<"users:read">>
                     },
                     #{
@@ -904,7 +941,7 @@ default_sidebar_config() ->
                         <<"path">> => <<"/moments">>,
                         <<"icon">> => <<"Camera">>,
                         <<"label">> => <<"朋友圈管理"/utf8>>,
-                        <<"roles">> => [1, 2],
+                        <<"roles">> => [1, 2, 4, 5],
                         <<"permission">> => <<"moments:read">>
                     }
                 ]
@@ -917,14 +954,14 @@ default_sidebar_config() ->
                         <<"path">> => <<"/reports">>,
                         <<"icon">> => <<"FileText">>,
                         <<"label">> => <<"举报中心"/utf8>>,
-                        <<"roles">> => [1, 2],
+                        <<"roles">> => [1, 2, 4, 5],
                         <<"permission">> => <<"reports:read">>
                     },
                     #{
                         <<"path">> => <<"/feedback">>,
                         <<"icon">> => <<"MessageCircle">>,
                         <<"label">> => <<"反馈处理"/utf8>>,
-                        <<"roles">> => [1, 2],
+                        <<"roles">> => [1, 2, 4, 6],
                         <<"permission">> => <<"feedback:read">>
                     }
                 ]
@@ -937,27 +974,27 @@ default_sidebar_config() ->
                         <<"path">> => <<"/groups/context">>,
                         <<"icon">> => <<"UsersRound">>,
                         <<"label">> => <<"群上下文入口"/utf8>>,
-                        <<"roles">> => [1, 2, 3]
+                        <<"roles">> => [1, 2, 3, 4, 5]
                     },
                     #{
                         <<"path">> => <<"/messages">>,
                         <<"icon">> => <<"MessageSquare">>,
                         <<"label">> => <<"消息管理"/utf8>>,
-                        <<"roles">> => [1, 2, 3],
+                        <<"roles">> => [1, 2, 3, 4, 5, 6],
                         <<"permission">> => <<"messages:read">>
                     },
                     #{
                         <<"path">> => <<"/logout-applications">>,
                         <<"icon">> => <<"UserMinus">>,
                         <<"label">> => <<"注销申请"/utf8>>,
-                        <<"roles">> => [1, 2, 3],
+                        <<"roles">> => [1, 2, 3, 5],
                         <<"permission">> => <<"logout_applications:read">>
                     },
                     #{
                         <<"path">> => <<"/logs">>,
                         <<"icon">> => <<"FileText">>,
                         <<"label">> => <<"日志审计"/utf8>>,
-                        <<"roles">> => [1, 3],
+                        <<"roles">> => [1, 3, 5],
                         <<"permission">> => <<"logs:view">>
                     }
                 ]
@@ -991,7 +1028,7 @@ default_sidebar_config() ->
                         <<"path">> => <<"/roles">>,
                         <<"icon">> => <<"KeyRound">>,
                         <<"label">> => <<"角色权限"/utf8>>,
-                        <<"roles">> => [1, 3],
+                        <<"roles">> => [1, 3, 5],
                         <<"permission">> => <<"roles:view">>
                     },
                     #{

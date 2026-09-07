@@ -127,9 +127,14 @@ save_permissions_handle(Req0, State) ->
                                 Req0, <<"超级管理员角色权限不可修改"/utf8>>, ?ERR_BAD_REQUEST
                             );
                         _ ->
-                            _ = save_role_permissions(RoleId, Permissions),
-                            _ = maybe_save_role_description(RoleId, Description),
-                            elib_response:success(Req0, #{})
+                            case guard_permission_escalation(State, RoleId, Permissions) of
+                                ok ->
+                                    _ = save_role_permissions(RoleId, Permissions),
+                                    _ = maybe_save_role_description(RoleId, Description),
+                                    elib_response:success(Req0, #{});
+                                {error, Msg} ->
+                                    elib_response:error(Req0, Msg, ?ERR_FORBIDDEN)
+                            end
                     end;
                 false ->
                     elib_response:error(Req0, <<"角色不存在"/utf8>>, ?ERR_BAD_REQUEST)
@@ -137,6 +142,49 @@ save_permissions_handle(Req0, State) ->
         {error, Req1} ->
             Req1
     end.
+
+%% @doc A-02 防自我提权（写侧）：
+%% 1) 不能修改自己所属角色的权限（给自己所在角色加权限 = 提权通道）；
+%% 2) 不能授予超出操作者自身权限集的权限（防持 roles:update 的低权角色造出超集角色）。
+%% super_admin 持全集中任意子集，两条规则对其无影响。
+-spec guard_permission_escalation(map(), integer(), [binary()]) -> ok | {error, binary()}.
+guard_permission_escalation(State, RoleId, Permissions) ->
+    AdmUserId = maps:get(adm_user_id, State, 0),
+    case own_role_ids(AdmUserId) of
+        {ok, RoleIds} ->
+            case lists:member(RoleId, RoleIds) of
+                true ->
+                    {error, <<"不能修改自己所属角色的权限"/utf8>>};
+                false ->
+                    OwnPerms = resolve_permissions_by_adm_user_id(AdmUserId),
+                    case lists:subtract(Permissions, OwnPerms) of
+                        [] ->
+                            ok;
+                        Excess ->
+                            Msg = unicode:characters_to_binary(
+                                io_lib:format(
+                                    "不能授予超出自身权限集的权限: ~ts",
+                                    [string:join([binary_to_list(P) || P <- Excess], ", ")]
+                                )
+                            ),
+                            {error, Msg}
+                    end
+            end;
+        {error, _} ->
+            {error, <<"无法确认操作者角色，已拒绝"/utf8>>}
+    end.
+
+-spec own_role_ids(integer()) -> {ok, [integer()]} | {error, term()}.
+own_role_ids(AdmUserId) when is_integer(AdmUserId), AdmUserId > 0 ->
+    Key = {adm_user_role_ids, AdmUserId},
+    case catch adm_user_logic:find(AdmUserId, <<"id,role_id">>, Key) of
+        AdmUser when is_map(AdmUser) ->
+            {ok, normalize_role_ids(maps:get(<<"role_id">>, AdmUser, 0))};
+        _ ->
+            {error, not_found}
+    end;
+own_role_ids(_) ->
+    {error, invalid_admin}.
 
 %% @doc 软停用角色（status => 0），内置角色（1/2/3）不可停用
 -spec disable_action(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
@@ -207,18 +255,21 @@ delete_role_after_guard(Req0, RoleId) ->
             elib_response:error(Req0, to_error_binary(Reason), ?ERR_INTERNAL_SERVER_ERROR)
     end.
 
-%% @doc 校验角色可停用/删除：内置角色(1/2/3)与不存在角色拒绝
+%% @doc 校验角色可停用/删除：内置角色(1..6)与不存在角色拒绝
 -spec validate_mutable_role(integer()) -> ok | {error, binary()}.
 validate_mutable_role(RoleId) when RoleId =< 0 ->
     {error, <<"role_id 无效"/utf8>>};
-validate_mutable_role(RoleId) when RoleId =:= 1; RoleId =:= 2; RoleId =:= 3 ->
-    {error, <<"内置角色不可停用或删除"/utf8>>};
 validate_mutable_role(RoleId) ->
-    case role_exists(RoleId) of
+    case lists:member(RoleId, builtin_role_ids()) of
         true ->
-            ok;
+            {error, <<"内置角色不可停用或删除"/utf8>>};
         false ->
-            {error, <<"角色不存在"/utf8>>}
+            case role_exists(RoleId) of
+                true ->
+                    ok;
+                false ->
+                    {error, <<"角色不存在"/utf8>>}
+            end
     end.
 
 -spec update_role_status(integer(), integer()) -> {ok, term()} | {error, term()}.
@@ -273,7 +324,13 @@ fetch_role_rows_from_db() ->
 
 -spec builtin_role_rows() -> [map()].
 builtin_role_rows() ->
-    [builtin_role_row(1), builtin_role_row(2), builtin_role_row(3)].
+    [builtin_role_row(RoleId) || RoleId <- builtin_role_ids()].
+
+%% A-02 内置角色全集：1=super_admin 2=ops_admin 3=audit_admin
+%% 4=moderator 5=security_admin 6=support
+-spec builtin_role_ids() -> [integer()].
+builtin_role_ids() ->
+    [1, 2, 3, 4, 5, 6].
 
 -spec builtin_role_row(integer()) -> map().
 builtin_role_row(RoleId) ->
@@ -487,20 +544,23 @@ next_role_sort() ->
 -spec role_exists(integer()) -> boolean().
 role_exists(RoleId) when RoleId =< 0 ->
     false;
-role_exists(RoleId) when RoleId =:= 1; RoleId =:= 2; RoleId =:= 3 ->
-    true;
 role_exists(RoleId) ->
-    Tb = role_table(),
-    Sql = iolist_to_binary([
-        <<"SELECT id FROM ">>,
-        Tb,
-        <<" WHERE id = $1 AND status >= 0 LIMIT 1">>
-    ]),
-    case elib_pg:query(Sql, [RoleId]) of
-        {ok, [_ | _]} ->
+    case lists:member(RoleId, builtin_role_ids()) of
+        true ->
             true;
-        _ ->
-            false
+        false ->
+            Tb = role_table(),
+            Sql = iolist_to_binary([
+                <<"SELECT id FROM ">>,
+                Tb,
+                <<" WHERE id = $1 AND status >= 0 LIMIT 1">>
+            ]),
+            case elib_pg:query(Sql, [RoleId]) of
+                {ok, [_ | _]} ->
+                    true;
+                _ ->
+                    false
+            end
     end.
 
 -spec save_role_permissions(integer(), [binary()]) -> ok.

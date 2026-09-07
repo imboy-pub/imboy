@@ -354,3 +354,120 @@ init_delete_success_when_no_admins_test_() ->
             ?assertEqual(200, maps:get(response_status, RespReq))
         end
     ).
+
+%% ===================================================================
+%% A-02 防自我提权（权限保存写侧）
+%% ===================================================================
+
+%% 操作者所属角色的权限不可由自己修改（给自己所在角色加权限 = 提权通道）
+init_permissions_save_own_role_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"PUT">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [7]}
+                end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"role_id">> => 7,
+                        <<"permissions">> => [<<"dashboard:view">>, <<"roles:update">>]
+                    }
+                end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"adm_role">>) -> <<"public.adm_role">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, [7]) -> {ok, [#{<<"id">> => 7}]} end}
+            ]},
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"adm_role_permissions">>, _D) ->
+                        #{
+                            <<"7">> => [
+                                <<"dashboard:view">>, <<"roles:update">>, <<"reports:read">>
+                            ]
+                        };
+                    (_K, D) ->
+                        D
+                end},
+                {'set', 2, fun(_Key, _Value) -> erlang:error(should_not_write) end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, Msg, Code) ->
+                    Req#{response_status => 403, error_msg => Msg, error_code => Code}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_role_handler:init(#{}, #{
+                action => permissions_save, adm_user_id => 1001
+            }),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(<<"不能修改自己所属角色的权限"/utf8>>, maps:get(error_msg, RespReq)),
+            ?assertEqual(0, meck:num_calls(config_ds, set, 2))
+        end
+    ).
+
+%% 不能授予超出操作者自身权限集的权限（防持 roles:update 的低权角色造出超集角色）
+init_permissions_save_superset_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"PUT">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [7]}
+                end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) ->
+                    #{
+                        <<"role_id">> => 9,
+                        <<"permissions">> => [<<"dashboard:view">>, <<"users:delete">>]
+                    }
+                end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"adm_role">>) -> <<"public.adm_role">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, [9]) -> {ok, [#{<<"id">> => 9}]} end}
+            ]},
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"adm_role_permissions">>, _D) ->
+                        #{
+                            <<"7">> => [
+                                <<"dashboard:view">>, <<"roles:update">>, <<"reports:read">>
+                            ]
+                        };
+                    (_K, D) ->
+                        D
+                end},
+                {'set', 2, fun(_Key, _Value) -> erlang:error(should_not_write) end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, Msg, Code) ->
+                    Req#{response_status => 403, error_msg => Msg, error_code => Code}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_role_handler:init(#{}, #{
+                action => permissions_save, adm_user_id => 1001
+            }),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(
+                <<"不能授予超出自身权限集的权限: users:delete"/utf8>>,
+                maps:get(error_msg, RespReq)
+            ),
+            ?assertEqual(0, meck:num_calls(config_ds, set, 2))
+        end
+    ).

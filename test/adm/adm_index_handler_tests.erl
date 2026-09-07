@@ -19,6 +19,9 @@ adm_index_handler_test_() ->
         welcome_handler_method_not_allowed_case(),
         rbac_handler_supports_multi_role_payload_case(),
         role_acl_contains_group_enhancement_permissions_case(),
+        role_acl_moderator_baseline_case(),
+        role_acl_security_admin_baseline_case(),
+        role_acl_support_baseline_case(),
         invalid_action_case()
     ]}.
 
@@ -109,47 +112,50 @@ welcome_handler_method_not_allowed_case() ->
 
 %% @doc rbac GET 在 role_id 为列表时应返回聚合权限
 rbac_handler_supports_multi_role_payload_case() ->
-    ?WITH_MECKS([
-        {adm_user_logic, [
-            {'find', 3, fun(7, <<"id,role_id">>, _Key) ->
-                #{<<"id">> => 7, <<"role_id">> => [2, 1]}
-            end}
-        ]}
-    ], fun() ->
-        flush_mailbox(),
-        {StreamId, Req0} = make_req(<<"GET">>),
-        {ok, _Req, _State} = adm_index_handler:init(Req0, #{action => rbac, adm_user_id => 7}),
+    ?WITH_MECKS(
+        [
+            {adm_user_logic, [
+                {'find', 3, fun(7, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 7, <<"role_id">> => [2, 1]}
+                end}
+            ]}
+        ],
+        fun() ->
+            flush_mailbox(),
+            {StreamId, Req0} = make_req(<<"GET">>),
+            {ok, _Req, _State} = adm_index_handler:init(Req0, #{action => rbac, adm_user_id => 7}),
 
-        Resp = recv_response(StreamId),
-        ?assertNotEqual(timeout, Resp),
-        {StatusCode, _Headers, Body} = Resp,
-        ?ASSERT_EQUAL(200, StatusCode),
-        Decoded = jsone:decode(Body, [{object_format, map}]),
-        Payload = maps:get(<<"payload">>, Decoded),
+            Resp = recv_response(StreamId),
+            ?assertNotEqual(timeout, Resp),
+            {StatusCode, _Headers, Body} = Resp,
+            ?ASSERT_EQUAL(200, StatusCode),
+            Decoded = jsone:decode(Body, [{object_format, map}]),
+            Payload = maps:get(<<"payload">>, Decoded),
 
-        RoleIds = maps:get(<<"role_ids">>, Payload, []),
-        ?assert(lists:member(1, RoleIds)),
-        ?assert(lists:member(2, RoleIds)),
+            RoleIds = maps:get(<<"role_ids">>, Payload, []),
+            ?assert(lists:member(1, RoleIds)),
+            ?assert(lists:member(2, RoleIds)),
 
-        Permissions = maps:get(<<"permissions">>, Payload, []),
-        ?assert(lists:member(<<"groups:notice:read">>, Permissions)),
-        ?assert(lists:member(<<"groups:notice:delete">>, Permissions)),
-        ?assert(lists:member(<<"groups:category:read">>, Permissions)),
-        ?assert(lists:member(<<"groups:category:delete">>, Permissions)),
-        ?assert(lists:member(<<"groups:tag:read">>, Permissions)),
-        ?assert(lists:member(<<"groups:tag:delete">>, Permissions)),
-        ?assert(lists:member(<<"groups:file:read">>, Permissions)),
-        ?assert(lists:member(<<"groups:file:delete">>, Permissions)),
-        ?assert(lists:member(<<"groups:album:read">>, Permissions)),
-        ?assert(lists:member(<<"groups:album:delete">>, Permissions)),
-        ?assert(lists:member(<<"groups:schedule:restore">>, Permissions)),
-        ?assert(lists:member(<<"groups:task:restore">>, Permissions)),
-        ?assert(lists:member(<<"groups:task:review">>, Permissions)),
-        ?assert(lists:member(<<"groups:task:close">>, Permissions)),
-        ?assert(lists:member(<<"groups:task:delete">>, Permissions)),
-        ?assert(lists:member(<<"settings:update">>, Permissions)),
-        ?assert(lists:member(<<"settings:ddl:delete">>, Permissions))
-    end).
+            Permissions = maps:get(<<"permissions">>, Payload, []),
+            ?assert(lists:member(<<"groups:notice:read">>, Permissions)),
+            ?assert(lists:member(<<"groups:notice:delete">>, Permissions)),
+            ?assert(lists:member(<<"groups:category:read">>, Permissions)),
+            ?assert(lists:member(<<"groups:category:delete">>, Permissions)),
+            ?assert(lists:member(<<"groups:tag:read">>, Permissions)),
+            ?assert(lists:member(<<"groups:tag:delete">>, Permissions)),
+            ?assert(lists:member(<<"groups:file:read">>, Permissions)),
+            ?assert(lists:member(<<"groups:file:delete">>, Permissions)),
+            ?assert(lists:member(<<"groups:album:read">>, Permissions)),
+            ?assert(lists:member(<<"groups:album:delete">>, Permissions)),
+            ?assert(lists:member(<<"groups:schedule:restore">>, Permissions)),
+            ?assert(lists:member(<<"groups:task:restore">>, Permissions)),
+            ?assert(lists:member(<<"groups:task:review">>, Permissions)),
+            ?assert(lists:member(<<"groups:task:close">>, Permissions)),
+            ?assert(lists:member(<<"groups:task:delete">>, Permissions)),
+            ?assert(lists:member(<<"settings:update">>, Permissions)),
+            ?assert(lists:member(<<"settings:ddl:delete">>, Permissions))
+        end
+    ).
 
 %% @doc role ACL 包含群增强治理权限键（role 1/2）
 role_acl_contains_group_enhancement_permissions_case() ->
@@ -178,10 +184,13 @@ role_acl_contains_group_enhancement_permissions_case() ->
             <<"groups:task:close">>,
             <<"groups:task:delete">>
         ],
-        lists:foreach(fun(Permission) ->
-            ?assert(lists:member(Permission, Perms1)),
-            ?assert(lists:member(Permission, Perms2))
-        end, Required)
+        lists:foreach(
+            fun(Permission) ->
+                ?assert(lists:member(Permission, Perms1)),
+                ?assert(lists:member(Permission, Perms2))
+            end,
+            Required
+        )
     end).
 
 %% @doc 无效 action 保持现有行为：抛出 case_clause
@@ -189,4 +198,71 @@ invalid_action_case() ->
     ?TEST_SIMPLE(fun() ->
         {_StreamId, Req0} = make_req(<<"GET">>),
         ?assertError({case_clause, invalid}, adm_index_handler:init(Req0, #{action => invalid}))
+    end).
+
+%% ===================================================================
+%% A-02 角色基线：moderator(4) / security_admin(5) / support(6) 权限矩阵
+%% 正向=处置所需权限在位；负向=最小权限边界（无内容读/导出/角色管理/用户处置越界）
+%% ===================================================================
+
+role_acl_moderator_baseline_case() ->
+    ?TEST_SIMPLE(fun() ->
+        {Name, Perms, _Paths} = adm_index_handler:role_acl(4),
+        ?assertEqual(<<"moderator">>, Name),
+        Required = [
+            <<"dashboard:view">>,
+            <<"reports:read">>,
+            <<"reports:handle">>,
+            <<"moments:report:handle">>,
+            <<"moments:delete">>,
+            <<"messages:metadata:read">>,
+            <<"feedback:read">>
+        ],
+        lists:foreach(fun(P) -> ?assert(lists:member(P, Perms)) end, Required),
+        %% 负向：审核员不得读消息内容/导出/处置用户/管理角色
+        ?assertNot(lists:member(<<"messages:content:read">>, Perms)),
+        ?assertNot(lists:member(<<"messages:export">>, Perms)),
+        ?assertNot(lists:member(<<"users:update">>, Perms)),
+        ?assertNot(lists:member(<<"users:delete">>, Perms)),
+        ?assertNot(lists:member(<<"roles:update">>, Perms)),
+        ?assertNot(lists:member(<<"admins:assign_role">>, Perms))
+    end).
+
+role_acl_security_admin_baseline_case() ->
+    ?TEST_SIMPLE(fun() ->
+        {Name, Perms, _Paths} = adm_index_handler:role_acl(5),
+        ?assertEqual(<<"security_admin">>, Name),
+        Required = [
+            <<"users:read">>,
+            <<"users:update">>,
+            <<"messages:content:read">>,
+            <<"logout_applications:read">>,
+            <<"roles:view">>,
+            <<"logs:view">>
+        ],
+        lists:foreach(fun(P) -> ?assert(lists:member(P, Perms)) end, Required),
+        %% 负向：安全管理员可工单制读内容，但不得导出/回复反馈/处置动态
+        ?assertNot(lists:member(<<"messages:export">>, Perms)),
+        ?assertNot(lists:member(<<"feedback:reply">>, Perms)),
+        ?assertNot(lists:member(<<"moments:delete">>, Perms)),
+        ?assertNot(lists:member(<<"admins:assign_role">>, Perms)),
+        ?assertNot(lists:member(<<"roles:update">>, Perms))
+    end).
+
+role_acl_support_baseline_case() ->
+    ?TEST_SIMPLE(fun() ->
+        {Name, Perms, _Paths} = adm_index_handler:role_acl(6),
+        ?assertEqual(<<"support">>, Name),
+        Required = [
+            <<"users:read">>,
+            <<"feedback:read">>,
+            <<"feedback:reply">>,
+            <<"messages:metadata:read">>
+        ],
+        lists:foreach(fun(P) -> ?assert(lists:member(P, Perms)) end, Required),
+        %% 负向：客服只读元数据，无任何处置/内容/导出能力
+        ?assertNot(lists:member(<<"messages:content:read">>, Perms)),
+        ?assertNot(lists:member(<<"messages:export">>, Perms)),
+        ?assertNot(lists:member(<<"reports:handle">>, Perms)),
+        ?assertNot(lists:member(<<"users:update">>, Perms))
     end).

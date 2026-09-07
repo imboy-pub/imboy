@@ -441,6 +441,77 @@ role_acl(3) ->
         <<"/logs">>
     ],
     apply_role_acl_override(3, {RoleName, Permissions, MenuPaths});
+%% A-02 角色基线：Moderator（内容审核）/Security Admin（安全治理）/Support（客服），
+%% 最小权限种子——只授予处置所需读侧+处置键；内容读受 A-01 工单制约束，导出权限不授。
+role_acl(4) ->
+    RoleName = <<"moderator">>,
+    Permissions = [
+        <<"dashboard:view">>,
+        <<"groups:read">>,
+        <<"channels:read">>,
+        <<"moments:read">>,
+        <<"moments:delete">>,
+        <<"moments:report:read">>,
+        <<"moments:report:handle">>,
+        <<"reports:read">>,
+        <<"reports:handle">>,
+        <<"messages:read">>,
+        <<"messages:metadata:read">>,
+        <<"feedback:read">>
+    ],
+    MenuPaths = [
+        <<"/dashboard">>,
+        <<"/groups/context">>,
+        <<"/moments">>,
+        <<"/messages">>,
+        <<"/reports">>,
+        <<"/feedback">>
+    ],
+    apply_role_acl_override(4, {RoleName, Permissions, MenuPaths});
+role_acl(5) ->
+    RoleName = <<"security_admin">>,
+    Permissions = [
+        <<"dashboard:view">>,
+        <<"users:read">>,
+        <<"users:update">>,
+        <<"groups:read">>,
+        <<"channels:read">>,
+        <<"moments:read">>,
+        <<"reports:read">>,
+        <<"messages:read">>,
+        <<"messages:metadata:read">>,
+        <<"messages:content:read">>,
+        <<"logout_applications:read">>,
+        <<"roles:view">>,
+        <<"logs:view">>
+    ],
+    MenuPaths = [
+        <<"/dashboard">>,
+        <<"/users">>,
+        <<"/groups/context">>,
+        <<"/messages">>,
+        <<"/reports">>,
+        <<"/logout-applications">>,
+        <<"/roles">>,
+        <<"/logs">>
+    ],
+    apply_role_acl_override(5, {RoleName, Permissions, MenuPaths});
+role_acl(6) ->
+    RoleName = <<"support">>,
+    Permissions = [
+        <<"dashboard:view">>,
+        <<"users:read">>,
+        <<"feedback:read">>,
+        <<"feedback:reply">>,
+        <<"messages:read">>,
+        <<"messages:metadata:read">>
+    ],
+    MenuPaths = [
+        <<"/dashboard">>,
+        <<"/messages">>,
+        <<"/feedback">>
+    ],
+    apply_role_acl_override(6, {RoleName, Permissions, MenuPaths});
 role_acl(RoleId) when is_integer(RoleId), RoleId > 0 ->
     FallbackName = resolve_role_name(RoleId, <<"readonly">>),
     apply_role_acl_override(RoleId, {FallbackName, [<<"dashboard:view">>], [<<"/dashboard">>]});

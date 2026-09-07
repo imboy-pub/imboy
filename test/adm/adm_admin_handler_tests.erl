@@ -289,3 +289,152 @@ config_product_experience_failsafe_visible_test_() ->
             ?assertEqual(<<"chat">>, maps:get(<<"configured_value">>, Payload))
         end
     ).
+
+%% ===================================================================
+%% A-02 防自我提权（角色分配 / 停用）
+%% ===================================================================
+
+%% 不能给自己分配角色（self-grant 通道）
+init_assign_role_self_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"PUT">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [1]}
+                end},
+                {'assign_roles', 2, fun(_, _) -> erlang:error(should_not_assign) end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{<<"admin_id">> => 1001, <<"role_id">> => 4} end}
+            ]},
+            {imboy_cache, [
+                {'flush', 1, fun(_Key) -> ok end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, Msg, Code) ->
+                    Req#{response_status => 403, error_msg => Msg, error_code => Code}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{
+                action => assign_role, adm_user_id => 1001
+            }),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(<<"不能给自己分配角色"/utf8>>, maps:get(error_msg, RespReq)),
+            ?assertEqual(0, meck:num_calls(adm_user_logic, assign_roles, 2))
+        end
+    ).
+
+%% 不能授予超出自身权限集的角色：持 admins:assign_role 的自定义角色无法 assign role 1
+init_assign_role_superset_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"PUT">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [7]}
+                end},
+                {'assign_roles', 2, fun(_, _) -> erlang:error(should_not_assign) end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{<<"admin_id">> => 2002, <<"role_id">> => 1} end}
+            ]},
+            {config_ds, [
+                {'get', 2, fun
+                    (<<"adm_role_permissions">>, _D) ->
+                        #{<<"7">> => [<<"dashboard:view">>, <<"admins:assign_role">>]};
+                    (_K, D) ->
+                        D
+                end}
+            ]},
+            {imboy_cache, [
+                {'flush', 1, fun(_Key) -> ok end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, Msg, Code) ->
+                    Req#{response_status => 403, error_msg => Msg, error_code => Code}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{
+                action => assign_role, adm_user_id => 1001
+            }),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(<<"不能授予超出自身权限集的角色"/utf8>>, maps:get(error_msg, RespReq)),
+            ?assertEqual(0, meck:num_calls(adm_user_logic, assign_roles, 2))
+        end
+    ).
+
+%% 不能停用自己的管理员账号（自锁通道）
+init_disable_self_rejected_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [1]}
+                end},
+                {'update_status', 2, fun(_, _) -> erlang:error(should_not_disable) end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{<<"admin_id">> => 1001} end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(Req, Msg, Code) ->
+                    Req#{response_status => 403, error_msg => Msg, error_code => Code}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{
+                action => disable, adm_user_id => 1001
+            }),
+            ?assertEqual(403, maps:get(response_status, RespReq)),
+            ?assertEqual(<<"不能停用自己的账号"/utf8>>, maps:get(error_msg, RespReq))
+        end
+    ).
+
+%% 停用改走 logic 层：恢复「不能禁用超级管理员」防护（旧实现直连 adm_user_ds:update 绕过）
+init_disable_routes_through_logic_guard_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'method', 1, fun(_Req) -> <<"POST">> end}
+            ]},
+            {adm_user_logic, [
+                {'find', 3, fun(1001, <<"id,role_id">>, _Key) ->
+                    #{<<"id">> => 1001, <<"role_id">> => [1]}
+                end},
+                {'update_status', 2, fun(9, 0) -> ok end}
+            ]},
+            {adm_user_ds, [
+                {'update', 2, fun(_, _) -> erlang:error(should_not_bypass_logic) end}
+            ]},
+            {elib_param, [
+                {'post', 1, fun(_Req) -> #{<<"admin_id">> => 9} end}
+            ]},
+            {imboy_cache, [
+                {'flush', 1, fun(_Key) -> ok end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(Req, _Payload) -> Req#{response_status => 200} end}
+            ]}
+        ],
+        fun() ->
+            {ok, RespReq, _State} = adm_admin_handler:init(#{}, #{
+                action => disable, adm_user_id => 1001
+            }),
+            ?assertEqual(200, maps:get(response_status, RespReq)),
+            ?assertEqual(1, meck:num_calls(adm_user_logic, update_status, 2)),
+            ?assertEqual(0, meck:num_calls(adm_user_ds, update, 2))
+        end
+    ).
