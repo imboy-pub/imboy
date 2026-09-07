@@ -47,7 +47,9 @@ storage_config:
 ruler:
   alertmanager_url: http://localhost:9093
 
-# 保留 30 天日志（与 Prometheus 保留期一致）
+# 日志保留 180 天（retention_period: 4320h），与 Prometheus
+# --storage.tsdb.retention.time=180d 对齐（等保2.0三级：审计日志 ≥ 6 个月）。
+# 权威数据类保留口径见 docs/compliance/retention-policy.yml（T-01 注册表）。
 limits_config:
   retention_period: 4320h     # 180d（等保2.0三级要求）
   ingestion_rate_mb: 16

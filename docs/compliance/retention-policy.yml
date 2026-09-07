@@ -1,0 +1,153 @@
+# IMBoy 数据类保留策略注册表 / Data-Class Retention Policy Registry (T-01)
+#
+# 单一可核验的数据保留口径来源。规则：
+# - duration 一律以 profile 表达，禁止 per-country 分支；
+# - status: evidence-backed  = 实际 deploy/脚本配置实证，与注册表一致（校验脚本核对）
+#           pending-owner    = 有建议值但未经 owner 批准，翻转需 owner 显式确认
+#           legal-review     = 数值受司法/财税口径约束，需 counsel 意见
+# - action 枚举: delete | anonymize | archive | retain
+# - trigger: 计时起点事件（created_at | account_deletion_completed | review_completed ...）
+# - legal_hold 在 counsel 设计落地前全仓不支持（见顶层声明）
+#
+# 校验: python3 scripts/validate_retention_policy.py
+#       python3 -m unittest test.scripts.test_validate_retention_policy
+
+schema_version: 1
+legal_hold: unsupported
+review_cycle: owner-review-quarterly
+
+classes:
+  # ─── 用户内容（公开/半公开 UGC） ─────────────────────────────
+  - id: messages_e2ee
+    description: C2C/C2G 消息（strict E2EE 密文信封；服务端不可读）
+    storage: pg msg_c2c/msg_c2g/msg_archive
+    duration: indefinite
+    trigger: created_at
+    action: archive
+    evidence: 用户侧归档标记（archive flag）为现状；无到期清理
+    status: pending-owner
+    owner: product
+    notes: 建议补用户可配置的自动清理窗口；删除走 D-03 编排器
+
+  - id: messages_channel
+    description: 频道帖子（公开 UGC；R-03 审核面）
+    storage: pg channel_message
+    duration: indefinite
+    trigger: created_at
+    action: retain
+    status: pending-owner
+    owner: product
+    notes: 违规内容经审核 reject 撤下；保留期建议 owner 定（如 180d）
+
+  - id: moments
+    description: 动态（半公开 UGC；R-03 审核面）
+    storage: pg moment posts
+    duration: indefinite
+    trigger: created_at
+    action: retain
+    status: pending-owner
+    owner: product
+
+  - id: attachments
+    description: 附件对象（Garage S3）与元数据；含待确认 pending 区
+    storage: garage + pg attachment
+    duration: indefinite
+    trigger: created_at
+    action: retain
+    status: pending-owner
+    owner: product
+    notes: attach_pending 未确认区已有独立清理；正文对象建议跟随所属消息生命周期（T-02）
+
+  # ─── 可观测性日志/指标（有实证配置） ─────────────────────────
+  - id: logs_observability
+    description: 服务日志（Loki）
+    storage: loki
+    duration: 180d
+    trigger: ingested_at
+    action: delete
+    evidence: deploy/loki/loki.yml retention_period=4320h；等保2.0三级审计日志≥6个月
+    status: evidence-backed
+    owner: ops
+
+  - id: metrics_prometheus
+    description: 指标（Prometheus TSDB）
+    storage: prometheus
+    duration: 180d
+    trigger: sample_time
+    action: delete
+    evidence: deploy/docker-compose.community.yml --storage.tsdb.retention.time=180d
+    status: evidence-backed
+    owner: ops
+
+  # ─── 审计/安全/审核记录 ─────────────────────────────────────
+  - id: audit_security_moderation
+    description: 管理员操作审计/举报工单/审核动作/复审队列/信任审计（不可变追加）
+    storage: pg admin_operation_logs, report_ticket, moderation_action, review_queue, trust_audit
+    duration: indefinite
+    trigger: created_at
+    action: retain
+    status: pending-owner
+    owner: security
+    notes: 等保2.0建议审计记录≥180d；删除账号的审计留存例外见 D-02（anonymize）
+
+  # ─── 会话/凭证 ──────────────────────────────────────────────
+  - id: sessions_tokens
+    description: 登录 token、设备绑定、验证码
+    storage: pg token/user_device/verification_code
+    duration: event-driven
+    trigger: token_expiry_or_consumption
+    action: delete
+    evidence: token 自带过期、验证码一次性消费为现状
+    status: evidence-backed
+    owner: security
+    notes: 过期行的物理清理 job 缺失 → T-02
+
+  # ─── 支付/账务 ──────────────────────────────────────────────
+  - id: payments_billing
+    description: 充值/钱包流水/账单（财税留存口径）
+    storage: pg recharge_order, wallet, billing_*
+    duration: indefinite
+    trigger: transaction_time
+    action: retain
+    status: legal-review
+    owner: finance
+    notes: 账务留存普遍受 5-10 年法定口径约束；账号删除时按 D-02 anonymize 而非 delete
+
+  # ─── 备份 ───────────────────────────────────────────────────
+  - id: backups_pg
+    description: PostgreSQL 全量加密备份（本地轮换）
+    storage: backup host disk
+    duration: 7d
+    trigger: backup_created
+    action: delete
+    evidence: scripts/backup_pg.sh RETENTION_DAYS=7（默认）
+    status: evidence-backed
+    owner: ops
+
+  - id: backups_imboy_db
+    description: 全库逻辑备份（pg_dump 排除敏感表，轮换）
+    storage: backup host disk
+    duration: 10-copies
+    trigger: backup_created
+    action: delete
+    evidence: scripts/backup_imboy_db.sh 保留最新 10 个
+    status: evidence-backed
+    owner: ops
+    notes: 账号删除后的备份内残留 → 备份重建窗口（D-02 已登记）；恢复演练须含删除重放（T-02）
+
+  # ─── 第三方 ─────────────────────────────────────────────────
+  - id: vendors
+    description: 第三方处理器留存（FCM/Sentry/AMap/SMS/LiveKit/支付/LLM...）
+    storage: external
+    duration: per-vendor
+    trigger: vendor_contract
+    action: delete
+    evidence: 引用 docs/compliance/data-disposition.yml vendors 段（D-02 单一真源）
+    status: pending-owner
+    owner: ops
+    notes: 每个 vendor 的留存/删除 API 核实属 V-01
+
+profiles:
+  overseas_baseline:
+    notes: 海外部署时 logs/metrics 可按运营方口径下调；类与字段结构不变
+    overrides: {}
