@@ -12,6 +12,7 @@
 ]).
 -export([page/3]).
 -export([in_denylist/2]).
+-export([blocked_between/2]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("kernel/include/logger.hrl").
@@ -103,6 +104,21 @@ in_denylist(Uid, DeniedUserId) ->
     Fun = fun() -> user_denylist_ds:in_denylist(Uid, DeniedUserId) end,
     % 缓存10天
     imboy_cache:memo(Fun, Key, 864000).
+
+%% @doc B-01：双向拉黑判定——任一方向存在拉黑即 true。
+%% 用于邀请类点对点接触的撮合门（频道邀请/工作区邀请，与好友申请同级）：
+%% 无论拉黑方向性矩阵最终取哪个选项，「存在拉黑关系就不撮合直接邀请」
+%% 在三个选项下语义一致，故先行接线、不依赖矩阵拍板。
+%% 与 check_relationship3 旁路（DB 错误吞成 false，fail-open）不同：邀请
+%% 非高频关键路径，DB 异常按 fail-closed 拒绝（对齐 B-01 测试矩阵口径）。
+%% 矩阵拍板后此处并入 user_block_decision 单点判定。
+-spec blocked_between(integer(), integer()) -> boolean().
+blocked_between(UidA, UidB) ->
+    try
+        in_denylist(UidA, UidB) > 0 orelse in_denylist(UidB, UidA) > 0
+    catch
+        _:_ -> true
+    end.
 
 %% ===================================================================
 %% Internal Function Definitions

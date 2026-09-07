@@ -1357,6 +1357,20 @@ create_invitation_success_notifies_invitee_test_() ->
         {channel_subscription_ds, [
             {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
+        %% B-01 邀请撮合门：默认无拉黑关系，放行到下游错误映射断言
+        {user_denylist_ds, [
+            {'in_denylist', 2, fun(_, _) -> 0 end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+        ]},
+        %% B-01 邀请撮合门：默认无拉黑关系，放行走原链
+        {user_denylist_ds, [
+            {'in_denylist', 2, fun(_, _) -> 0 end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+        ]},
         {channel_invitation_ds, [
             {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
                 {ok, 501}
@@ -1386,6 +1400,41 @@ create_invitation_success_notifies_invitee_test_() ->
             ?assertEqual(11, maps:get(<<"channel_id">>, Invitation)),
             ?assertEqual(1, meck:num_calls(channel_invitation_ds, create, 1)),
             ?assertEqual(1, meck:num_calls(msg_s2c_ds, send, 7))
+        end)
+    end}.
+
+%% B-01：任一方向拉黑存在即拒绝邀请撮合（fail-closed，不触库写路径）
+create_invitation_rejects_when_denylist_between_test_() ->
+    ChannelIdBin = integer_to_binary(11),
+    MockConfigs = [
+        {channel_ds, [
+            {'find_by_id', 2, fun(11, <<"id,join_policy,status">>) ->
+                #{<<"id">> => 11, <<"join_policy">> => 1, <<"status">> => 1}
+            end}
+        ]},
+        {channel_invitation_ds, [
+            {'create', 1, fun(_) -> erlang:error(should_not_create_when_blocked) end}
+        ]},
+        {user_denylist_ds, [
+            %% 被邀请方拉黑了邀请方（方向反转同样生效）
+            {'in_denylist', 2, fun
+                (2002, 1001) -> 1;
+                (_, _) -> 0
+            end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+        ]}
+    ],
+    {setup, fun() -> setup_mocks(MockConfigs) end, fun(_) -> cleanup_mocks(MockConfigs) end, fun(_) ->
+        ?_test(begin
+            Result = channel_logic:create_invitation(1001, ChannelIdBin, 2002),
+
+            ?assertEqual(
+                {error, {403, <<"存在拉黑关系，无法发送频道邀请"/utf8>>}},
+                Result
+            ),
+            ?assertEqual(0, meck:num_calls(channel_invitation_ds, create, 1))
         end)
     end}.
 
@@ -1510,6 +1559,13 @@ create_invitation_ds_binary_error_passthrough_test_() ->
         {channel_subscription_ds, [
             {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
+        %% B-01 邀请撮合门：默认无拉黑关系，放行到下游错误映射断言
+        {user_denylist_ds, [
+            {'in_denylist', 2, fun(_, _) -> 0 end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+        ]},
         {channel_invitation_ds, [
             {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
                 {error, <<"邀请创建失败"/utf8>>}
@@ -1544,6 +1600,13 @@ create_invitation_ds_atom_error_converted_to_binary_test_() ->
         ]},
         {channel_subscription_ds, [
             {'is_subscribed', 2, fun(11, 1001) -> true end}
+        ]},
+        %% B-01 邀请撮合门：默认无拉黑关系，放行到下游错误映射断言
+        {user_denylist_ds, [
+            {'in_denylist', 2, fun(_, _) -> 0 end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
         ]},
         {channel_invitation_ds, [
             {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
@@ -1580,6 +1643,13 @@ create_invitation_ds_unexpected_result_converted_to_binary_test_() ->
         {channel_subscription_ds, [
             {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
+        %% B-01 邀请撮合门：默认无拉黑关系，放行到下游错误映射断言
+        {user_denylist_ds, [
+            {'in_denylist', 2, fun(_, _) -> 0 end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+        ]},
         {channel_invitation_ds, [
             {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
                 unexpected_result
@@ -1614,6 +1684,13 @@ create_invitation_returns_error_when_loading_created_invitation_fails_test_() ->
         {channel_subscription_ds, [
             {'is_subscribed', 2, fun(11, 1001) -> true end}
         ]},
+        %% B-01 邀请撮合门：默认无拉黑关系，放行到下游错误映射断言
+        {user_denylist_ds, [
+            {'in_denylist', 2, fun(_, _) -> 0 end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+        ]},
         {channel_invitation_ds, [
             {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->
                 {ok, 501}
@@ -1647,6 +1724,13 @@ create_invitation_returns_error_when_loading_created_invitation_payload_not_map_
         ]},
         {channel_subscription_ds, [
             {'is_subscribed', 2, fun(11, 1001) -> true end}
+        ]},
+        %% B-01 邀请撮合门：默认无拉黑关系，放行到下游错误映射断言
+        {user_denylist_ds, [
+            {'in_denylist', 2, fun(_, _) -> 0 end}
+        ]},
+        {imboy_cache, [
+            {'memo', 3, fun(F, _Key, _TTL) -> F() end}
         ]},
         {channel_invitation_ds, [
             {'create', 1, fun(#{channel_id := 11, inviter_uid := 1001, invitee_uid := 2002}) ->

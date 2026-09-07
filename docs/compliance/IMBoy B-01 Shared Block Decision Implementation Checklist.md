@@ -29,14 +29,37 @@
 
 1. **决策模块**：`user_block_decision.erl`（单点判定：can_dm/can_call/
    can_friend/can_mention/can_invite——读矩阵常量，边界全部改调此模块，
-   不再各自散查 in_denylist）。
+   不再各自散查 in_denylist）。**雏形已先行**：`user_denylist_logic:blocked_between/2`
+   （2026-09-07，双向任一拉黑即 true + DB 异常 fail-closed），矩阵拍板后并入。
 2. **边界接线**：mention（群消息 @ 解析处）、invite（group/channel/workspace
    邀请 handler）、profile/search（按矩阵决定是否仅隐藏入口）。
-3. **WS 消息路径**：WS 直发消息（若与 msg_c2c_logic 不同链）需同款拦截。
+   **invite 中不依赖矩阵的部分已接线**（见下节）。
+3. **WS 消息路径**：~~需勘察~~ **已勘察（2026-09-07）：同链无需接线**——
+   WS 消息经 `message_router_logic` 路由到 `msg_c2c_logic:c2c/3`，与 HTTP
+   共用 check_relationship 拦截；websocket_handler 仅引用 c2c_client_ack。
 4. **测试矩阵**：A↔B 双向 × DM/call/friend/mention/invite × 拉黑/解除；
-   DB 失败 fail-closed（直连场景判定异常时默认拒绝）。
+   DB 失败 fail-closed（直连场景判定异常时默认拒绝）。**已完成 invite 维度**
+   （channel/workspace 双向 + fail-closed 用例）；其余维度随矩阵接线补。
 5. **B-02 UX**：被拦截方的可预期错误文案（复用 in_denylist S2C 既有提示）、
    拉黑/解除入口状态展示。
+
+## 2026-09-07 补充勘察与接线（不依赖矩阵的部分）
+
+- **AI 主动消息（ai_agent_proactive）无缺口**：仅 E2EE 门无拉黑门，但其三个
+  调用场景均不构成拉黑绕行——注册欢迎（新用户不可能预拉黑 agent）、运营报告
+  （运营者自配通道）、agent 回复（用户先主动发起；若拉黑则发起本身已被
+  msg_c2c_logic 拦截，回复无从触发）。
+- **invite 接线（已完成）**：频道邀请 `channel_logic_invitation:create_invitation`
+  与工作区邀请 `workspace_logic:invite` 是点对点直接接触（与好友申请同级），
+  「存在拉黑关系就不撮合」在矩阵三个选项下语义一致，先行接线：
+  - 新增 `user_denylist_logic:blocked_between/2`（双向判定；与 check_relationship3
+    旁路的 fail-open 不同，邀请非关键路径按 B-01 口径 **fail-closed**）；
+  - 命中返回 `{error, {403, <<"存在拉黑关系，无法(发送频道)邀请…"/utf8>>}}`；
+  - EUnit：blocked_between 3 用例（双向+fail-closed）+ channel_logic_tests
+    补门放行 mock 与 blocked 用例（201/201）+ workspace_logic_tests 同（29/29）。
+- **仍卡矩阵的旁路（勿先接线）**：mention（群内 @ 属「共同群可见性」范畴）、
+  群拉人/自主加入群（拉黑后被拉入新群 vs 既有共同群保留，三选项未回答）、
+  profile 查看、search（checklist 原判：按矩阵决定是否仅隐藏入口）。
 
 ## 拉黑矩阵选项（pending-owner，建议默认「对称阻断直连」）
 

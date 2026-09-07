@@ -38,6 +38,15 @@ create_invitation(Uid, ChannelIdBin, InviteeUid) ->
 -spec do_create_invitation(integer(), integer(), integer()) ->
     {ok, map()} | {error, binary() | {integer(), binary()}}.
 do_create_invitation(ChannelId, InviterUid, InviteeUid) ->
+    %% B-01：邀请是点对点直接接触（与好友申请同级），任一方向拉黑即拒绝撮合
+    case user_denylist_logic:blocked_between(InviterUid, InviteeUid) of
+        true ->
+            {error, {403, <<"存在拉黑关系，无法发送频道邀请"/utf8>>}};
+        false ->
+            do_create_invitation_checked(ChannelId, InviterUid, InviteeUid)
+    end.
+
+do_create_invitation_checked(ChannelId, InviterUid, InviteeUid) ->
     case channel_subscription_ds:is_subscribed(ChannelId, InviterUid) of
         true ->
             Data = #{

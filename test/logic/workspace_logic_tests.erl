@@ -160,6 +160,13 @@ invite_idempotent_and_no_auto_join_test_() ->
             {user_repo, [
                 {'find_by_id', 2, fun(?OUTSIDER, _) -> #{<<"id">> => ?OUTSIDER} end}
             ]},
+            %% B-01 邀请撮合门：默认无拉黑关系，放行走原链
+            {user_denylist_ds, [
+                {'in_denylist', 2, fun(_, _) -> 0 end}
+            ]},
+            {imboy_cache, [
+                {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+            ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
             ]},
@@ -231,6 +238,45 @@ invite_idempotent_and_no_auto_join_body() ->
         ),
         ok
     end.
+
+%% B-01：任一方向拉黑存在即拒绝邀请撮合（fail-closed，不触库写路径）
+invite_rejects_when_denylist_between_test_() ->
+    ?WITH_MECKS(
+        [
+            {workspace_ds, [
+                {'find_by_id', 1, fun(_) -> ws_row() end},
+                {'find_by_id', 2, fun(_, _) -> ws_row() end}
+            ]},
+            {workspace_member_repo, [
+                {'find', 3, fun(?WS_ID, ?OWNER, _) ->
+                    #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}
+                end},
+                {'upsert_active_tx', 5, fun(_, _, _, _, _) ->
+                    erlang:error(should_not_upsert_when_blocked)
+                end}
+            ]},
+            {user_repo, [
+                {'find_by_id', 2, fun(?OUTSIDER, _) -> #{<<"id">> => ?OUTSIDER} end}
+            ]},
+            {user_denylist_ds, [
+                %% 被邀请方拉黑了邀请方（方向反转同样生效）
+                {'in_denylist', 2, fun
+                    (?OUTSIDER, ?OWNER) -> 1;
+                    (_, _) -> 0
+                end}
+            ]},
+            {imboy_cache, [
+                {'memo', 3, fun(F, _Key, _TTL) -> F() end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {403, _}},
+                workspace_logic:invite(?OWNER, ?WS_ID, ?OUTSIDER, <<"member">>)
+            ),
+            ok
+        end
+    ).
 
 invite_requires_existing_user_test_() ->
     ?WITH_MECKS(

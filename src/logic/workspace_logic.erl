@@ -202,35 +202,44 @@ invite_checked(Uid, WsId, TargetUid, Role) ->
                 #{} = U when map_size(U) =:= 0 ->
                     {error, {404, <<"用户不存在（仅支持邀请已注册用户）"/utf8>>}};
                 _ ->
-                    case
-                        elib_pg:with_tx(fun(Conn) ->
-                            workspace_member_repo:upsert_active_tx(Conn, WsId, TargetUid, Role, Uid)
-                        end)
-                    of
-                        {ok, changed, _} ->
-                            _ = ?INFO_LOG([
-                                workspace_member_invited, WsId, Uid, TargetUid, Role
-                            ]),
-                            Member = workspace_member_repo:find(
-                                WsId,
-                                TargetUid,
-                                <<"workspace_id,user_id,role,joined_at,status">>
-                            ),
-                            {ok, changed, Member};
-                        {ok, unchanged, _} ->
-                            {ok, unchanged,
-                                workspace_member_repo:find(
-                                    WsId,
-                                    TargetUid,
-                                    <<"workspace_id,user_id,role,joined_at,status">>
-                                )};
-                        {ok, role_conflict, _} ->
-                            {error, {409, <<"该用户已是工作区成员，角色不同；请先改角色或移除后重新邀请"/utf8>>}};
-                        {error, Reason} ->
-                            _ = ?ERROR_LOG([workspace_invite_failed, WsId, TargetUid, Reason]),
-                            {error, {500, <<"邀请失败，请稍后重试"/utf8>>}}
+                    %% B-01：邀请是点对点直接接触（与好友申请同级），任一方向拉黑即拒绝撮合
+                    case user_denylist_logic:blocked_between(Uid, TargetUid) of
+                        true ->
+                            {error, {403, <<"存在拉黑关系，无法邀请该用户"/utf8>>}};
+                        false ->
+                            invite_member_tx(Uid, WsId, TargetUid, Role)
                     end
             end
+    end.
+
+invite_member_tx(Uid, WsId, TargetUid, Role) ->
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            workspace_member_repo:upsert_active_tx(Conn, WsId, TargetUid, Role, Uid)
+        end)
+    of
+        {ok, changed, _} ->
+            _ = ?INFO_LOG([
+                workspace_member_invited, WsId, Uid, TargetUid, Role
+            ]),
+            Member = workspace_member_repo:find(
+                WsId,
+                TargetUid,
+                <<"workspace_id,user_id,role,joined_at,status">>
+            ),
+            {ok, changed, Member};
+        {ok, unchanged, _} ->
+            {ok, unchanged,
+                workspace_member_repo:find(
+                    WsId,
+                    TargetUid,
+                    <<"workspace_id,user_id,role,joined_at,status">>
+                )};
+        {ok, role_conflict, _} ->
+            {error, {409, <<"该用户已是工作区成员，角色不同；请先改角色或移除后重新邀请"/utf8>>}};
+        {error, Reason} ->
+            _ = ?ERROR_LOG([workspace_invite_failed, WsId, TargetUid, Reason]),
+            {error, {500, <<"邀请失败，请稍后重试"/utf8>>}}
     end.
 
 %% ===================================================================
