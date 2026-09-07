@@ -636,6 +636,19 @@ find_password(Type, Email, Pwd, Code, PostVals) when Type == <<"email">> ->
         false ->
             {error, <<"Email格式有误..."/utf8>>}
     end;
+%% 批次124（2026-09-07）：UI 忘记密码页手机号链恒发 type=mobile，此前的
+%% 兜底子句把它当「不支持的注册类型」整链拒绝——手机号用户无法通过验证码
+%% 找回密码（getcode 照常发码落库，走到 findpassword 才爆，两头不一致）。
+%% 号码格式不做 is_mobile 严格校验：UI 传的是带国家码前缀的完整号码
+%% （如 <<"+86199...">>），is_mobile 的 ^1[0-9]{10}$ 不匹配，加了反而挡住
+%% 合法链路；查无此号由 find_password_by_mobile 的 Id=0 分支兜底。
+find_password(Type, Mobile, Pwd, Code, PostVals) when Type == <<"mobile">>; Type == <<"sms">> ->
+    case consume_code(Mobile, Code) of
+        {ok, _} ->
+            find_password_by_mobile(Mobile, Pwd, PostVals);
+        {error, Msg} ->
+            {error, Msg}
+    end;
 find_password(_Type, _Account, _Pwd, _Code, _PostVals) ->
     {error, <<"不支持的注册类型"/utf8>>}.
 
@@ -897,6 +910,21 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             % 密码已经在 handler 层面处理了解密，这里直接使用
             Pwd2 = elib_password:generate(Pwd),
             case user_ds:update_password(Id, Pwd2) of
+                {ok, _} ->
+                    {ok, #{}};
+                {error, Reason} ->
+                    {error, Reason}
+            end
+    end.
+
+find_password_by_mobile(Mobile, Pwd, _PostVals) ->
+    Id = user_ds:find_id_by_mobile(Mobile),
+    case Id of
+        0 ->
+            {error, <<"手机号不存在或已被删除"/utf8>>};
+        Id2 when is_integer(Id2), Id2 > 0 ->
+            Pwd2 = elib_password:generate(Pwd),
+            case user_ds:update_password(Id2, Pwd2) of
                 {ok, _} ->
                     {ok, #{}};
                 {error, Reason} ->
