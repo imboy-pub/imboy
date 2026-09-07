@@ -325,3 +325,21 @@ jobs:
             echo "FAIL: 违规增加 $COUNT > 131"
             exit 1
           fi
+
+  # ----------------------------------------------------------------
+  # 6) Third-party data inventory — 第三方与数据流清单（V-01）
+  #    清单必须与实际构建/运行时互证：新增出站特征不入册、清单行漂移、
+  #    类别缺行都会当场失败。海外发布门（--overseas-gate，DPA 未签署即阻断）
+  #    为人工触发步骤，暂不自动挂 release 流程——是否自动化待 owner 拍板。
+  # ----------------------------------------------------------------
+  third-party-inventory:
+    name: Third-party data inventory (V-01)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate third-party data inventory
+        run: |
+          set -euo pipefail
+          python3 scripts/validate_third_party_inventory.py
+          python3 -m unittest test.scripts.test_validate_third_party_inventory

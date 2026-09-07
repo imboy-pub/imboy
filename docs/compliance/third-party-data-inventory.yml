@@ -1,0 +1,331 @@
+# third-party-data-inventory.yml —— 第三方与数据流清单（Implementation Plan Task V-01）
+#
+# 作用：把实际构建/运行时的第三方提供商绑定到对外披露。校验脚本
+# scripts/validate_third_party_inventory.py 断言四道门：
+#   1. schema —— active 行字段齐备、枚举值合法
+#   2. 覆盖 —— REQUIRED_CATEGORIES 每类至少一行（active/no_data/self-hosted 均算）
+#   3. 实证双向 —— 脚本内建 EVIDENCE 特征表与源码/配置互证：
+#      特征在源中存在 -> 必须映射到清单行；active 行 endpoint -> 必须在源中命中
+#   4. 海外发布门（--overseas-gate）—— 任何真实出站行（非 dev-only、非
+#      self-hosted）若 DPA/SCC 未签署（dpa_status != executed）或 region=unknown
+#      则阻断。即 unknown DPA/region blocks operated overseas release。
+#
+# 受限 YAML 子集（自解析器约定，超集语法会校验报错）：
+#   * 顶层两段：meta / providers
+#   * providers 下每提供商一块：两空格缩进块名，四空格缩进字段行
+#   * 字段值禁含「冒号+空格」
+#   * no_data 行（类别相关但无出站数据流）用 no_data 字段给理由，
+#     可省略其余 active 字段——「显式 no-data 理由」本身就是披露
+#
+# 字段语义（Implementation Plan V-01）：
+#   provider/provider 名，category 类别，version 版本（实证到的写实证值），
+#   purpose 用途，data_fields 数据字段（逗号分隔），endpoints 出站端点
+#   （逗号分隔），region 数据去向（cn|global|self-hosted|unknown），
+#   necessity necessary|optional|dev-only，consent 同意机制，privacy_url
+#   隐私政策，dpa_status executed|pending-owner|unknown|not-applicable，
+#   retention 保留（provider 侧，未知如实 unknown），deletion_api 删除接口，
+#   build_flavors 生效端，evidence 证据（源文件与说明）
+#
+# 状态约定（2026-09-08 初版）：
+#   * dpa_status 目前全部 unknown —— 独立开发者未与任何 provider 签署 DPA，
+#     如实标注。海外发布门因此为红：这正是本清单的设计意图，未搞定
+#     数据出境合规前不得声明海外运营。
+#   * self-hosted 组件（Garage/LiveKit/eturnal）dpa_status=not-applicable，
+#     数据不出第三方，但 region 标 self-hosted 以便披露。
+
+meta:
+  schema_version: 1
+  note: 初版基于 2026-09-08 三端源码与 sys.pro.config 实证勘察生成
+
+providers:
+  jpush_sms:
+    provider: 极光 JPush SMS
+    category: sms
+    version: rest-v1
+    purpose: 短信验证码发送（注册/登录/换绑）
+    data_fields: 手机号, 验证码, 短信签名与模板ID
+    endpoints: https://api.sms.jpush.cn
+    region: cn
+    necessity: necessary
+    consent: 注册/登录流程中的必要处理（服务端触发发送）
+    privacy_url: https://www.jiguang.cn/privacy
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: backend
+    evidence: imboy src/lib/imboy_sms.erl send_sms 出站 URL
+  jverification:
+    provider: 极光 JVerification 一键登录（内嵌运营商号码认证）
+    category: auth
+    version: 3.2.8（cn.jiguang.sdk:jverification）
+    purpose: 本机号码一键登录（免密登录）
+    data_fields: 手机号(经运营商网关换token), 设备标识, 网络与SIM信息, IP
+    endpoints: https://api.verification.jpush.cn
+    region: cn
+    necessity: optional
+    consent: 用户主动选择一键登录方式（密码登录仍可用）；预取号发生在登录页
+    privacy_url: https://www.jiguang.cn/privacy
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: imboyapp-android, imboyapp-ios, backend
+    evidence: app android/app/build.gradle.kts cn.jiguang.sdk:jverification:3.2.8 + imboy src/lib/imboy_sms.erl loginTokenVerify
+  amap_web:
+    provider: 高德开放平台 Web 服务（POI 搜索/静态地图）
+    category: map
+    version: v5(place) 与 v3(staticmap)
+    purpose: 位置消息的地点搜索与地图快照渲染
+    data_fields: 搜索关键词, 经纬度, API key
+    endpoints: https://restapi.amap.com
+    region: cn
+    necessity: optional
+    consent: 用户在聊天中使用位置功能时触发
+    privacy_url: https://lbs.amap.com/pages/privacy/
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: imboyapp-android, imboyapp-ios, imboyapp-web
+    evidence: imboyapp lib/component/location/amap_helper.dart restapi.amap.com
+  amap_location_sdk:
+    provider: 高德定位 SDK（Android 原生）
+    category: location
+    version: com.amap.api:location 6.5.0
+    purpose: 位置消息取点时的设备定位
+    data_fields: 设备位置, 传感器信息, 网络信息, 设备标识
+    endpoints: restapi.amap.com 与高德定位私有通道
+    region: cn
+    necessity: optional
+    consent: 位置功能使用时触发；OS 定位权限门控
+    privacy_url: https://lbs.amap.com/pages/privacy/
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: imboyapp-android
+    evidence: app android/app/build.gradle.kts com.amap.api:location 6.5.0 + AndroidManifest APSService
+  amap_3dmap_sdk:
+    provider: 高德 3D 地图运行时（Android 原生）
+    category: map
+    version: com.amap.api:3dmap 10.0.600
+    purpose: 作为 amap_flutter_location 插件注册依赖嵌入（未启用地图 UI）；SDK 运行时自采数据范围未审计
+    data_fields: 设备标识(SDK 自采范围未审计)
+    endpoints: 高德 SDK 私有通道
+    region: cn
+    necessity: optional
+    consent: 随定位插件嵌入，无法独立关闭
+    privacy_url: https://lbs.amap.com/pages/privacy/
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: imboyapp-android
+    evidence: app android/app/build.gradle.kts com.amap.api:3dmap 10.0.600（注释声明仅注册依赖）
+  sentry_flutter:
+    provider: Sentry（SaaS 崩溃上报）
+    category: crash
+    version: sentry_flutter 9.29.0
+    purpose: 崩溃与异常聚合（诊断）
+    data_fields: 崩溃堆栈, 设备与OS信息, 面包屑, 用户标识标签
+    endpoints: https://o436562.ingest.sentry.io
+    region: global
+    necessity: optional
+    consent: 编译期 SENTRY_DSN 为空即整体禁用；隐私声明需披露
+    privacy_url: https://sentry.io/privacy/
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: imboyapp-android, imboyapp-ios
+    evidence: imboyapp pubspec.yaml sentry_flutter 9.29.0 + lib/service/sentry_service.dart + .env SENTRY_DSN（gitignored）
+  alipay:
+    provider: 支付宝开放平台
+    category: payment
+    version: openapi 网关（erlang_pay 封装）
+    purpose: App 支付下单与异步回调验签
+    data_fields: 订单号, 金额, 买家支付宝账号标识, 回调通知
+    endpoints: https://openapi.alipay.com
+    region: cn
+    necessity: optional
+    consent: 用户主动发起支付
+    privacy_url: https://www.alipay.com/
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: backend
+    evidence: erlang_pay src 支付宝网关 openapi.alipay.com/gateway.do；app 端仅包可见性检测唤起（AndroidManifest queries）无 SDK 嵌入
+  wechat_pay:
+    provider: 微信支付
+    category: payment
+    version: v3（erlang_pay 封装）
+    purpose: App 支付下单与回调
+    data_fields: 订单号, 金额, openid, 回调通知
+    endpoints: https://api.mch.weixin.qq.com
+    region: cn
+    necessity: optional
+    consent: 用户主动发起支付
+    privacy_url: https://pay.weixin.qq.com/index.php/public/protocol
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: backend
+    evidence: erlang_pay src 微信支付 api.mch.weixin.qq.com
+  stripe:
+    provider: Stripe
+    category: payment
+    version: api（erlang_pay 封装）
+    purpose: 海外卡支付
+    data_fields: 订单号, 金额, customer 标识
+    endpoints: https://api.stripe.com
+    region: global
+    necessity: optional
+    consent: 用户主动发起支付
+    privacy_url: https://stripe.com/privacy
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: backend
+    evidence: erlang_pay src api.stripe.com
+  smtp_qq:
+    provider: 腾讯企业邮 SMTP（smtp.qq.com）
+    category: email
+    version: smtp
+    purpose: 邮件验证码发送
+    data_fields: 收件邮箱, 验证码
+    endpoints: https://smtp.qq.com
+    region: cn
+    necessity: necessary
+    consent: 邮箱注册/换绑流程中的必要处理
+    privacy_url: https://privacy.qq.com/
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: backend
+    evidence: imboy config/sys.pro.config smtp_option relay smtp.qq.com
+  llm_volces:
+    provider: 火山引擎方舟 LLM（OpenAI 兼容）
+    category: llm
+    version: ark api
+    purpose: AI 功能（智能回复/AI Agent）推理
+    data_fields: 用户对话输入与上下文
+    endpoints: https://ark.cn-beijing.volces.com
+    region: cn
+    necessity: optional
+    consent: 用户主动使用 AI 功能时触发；overseas_baseline 预设下 AI 能力默认关闭
+    privacy_url: https://www.volcengine.com/
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: backend
+    evidence: imboy config/sys.pro.config llm_providers ark.cn-beijing.volces.com
+  llm_aliyun_maas:
+    provider: 阿里云百炼 LLM（OpenAI 兼容）
+    category: llm
+    version: compatible-mode v1
+    purpose: AI 功能推理（备用通道）
+    data_fields: 用户对话输入与上下文
+    endpoints: https://llm-zyz63lgdmo1wvx8k.cn-beijing.maas.aliyuncs.com
+    region: cn
+    necessity: optional
+    consent: 同 llm_volces
+    privacy_url: https://www.aliyun.com/privacy-policy
+    dpa_status: unknown
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: backend
+    evidence: imboy config/sys.pro.config llm_providers cn-beijing.maas.aliyuncs.com
+  garage_s3:
+    provider: Garage S3 对象存储（自托管）
+    category: storage
+    version: 自托管（部署于自有服务器）
+    purpose: 附件/头像/媒体直传与分发
+    data_fields: 附件密文或明文, 头像, 对象元数据
+    endpoints: https://s3.imboy.pub
+    region: self-hosted
+    necessity: necessary
+    consent: 服务必要处理；数据不出第三方
+    privacy_url: unknown
+    dpa_status: not-applicable
+    retention: 跟随部署生命周期（D-03 编排器删除对象）
+    deletion_api: 账号删除时由 D-03 编排器入队删除
+    build_flavors: backend
+    evidence: imboy config/sys.pro.config garage endpoint s3.imboy.pub
+  livekit:
+    provider: LiveKit SFU（自托管，自域名反代）
+    category: rtc
+    version: livekit_client 2.11.0（客户端）
+    purpose: 群语音/视频通话媒体转发
+    data_fields: 音视频流, 参会者身份与房间元数据, IP
+    endpoints: wss://pro.imboy.pub/livekit
+    region: self-hosted
+    necessity: optional
+    consent: 用户主动发起/加入通话
+    privacy_url: unknown
+    dpa_status: not-applicable
+    retention: 不落盘（实时转发）
+    deletion_api: not-applicable
+    build_flavors: backend, imboyapp-android, imboyapp-ios
+    evidence: imboy config/sys.pro.config livekit ws_url pro.imboy.pub/livekit
+  eturnal_turn:
+    provider: eturnal TURN/STUN（自托管）
+    category: turn
+    version: 自托管
+    purpose: RTC NAT 穿透与会话中继
+    data_fields: 会话中继元数据, IP 地址
+    endpoints: turn.imboy.pub
+    region: self-hosted
+    necessity: optional
+    consent: 通话建立时使用
+    privacy_url: unknown
+    dpa_status: not-applicable
+    retention: 不落盘
+    deletion_api: not-applicable
+    build_flavors: backend, imboyapp-android, imboyapp-ios
+    evidence: imboy config/sys.pro.config eturnal_turn_urls turn.imboy.pub
+  alipay_sandbox:
+    provider: 支付宝沙箱网关
+    category: payment
+    version: sandbox
+    purpose: 仅本地/联调环境支付验证
+    data_fields: 测试订单数据（无真实用户）
+    endpoints: https://openapi-sandbox.dl.alipaydev.com
+    region: cn
+    necessity: dev-only
+    consent: 不适用（无真实用户数据）
+    privacy_url: https://www.alipay.com/
+    dpa_status: not-applicable
+    retention: unknown
+    deletion_api: unknown
+    build_flavors: dev-local
+    evidence: imboy config/sys.local.config alipay 网关地址
+  fcm:
+    provider: Firebase Cloud Messaging
+    category: push
+    no_data: 服务端推送配置为占位符（sys.pro.config fcm_project_id 为 your-firebase-project-id 且无发送实现），远程推送未接入
+    build_flavors: backend
+  apns:
+    provider: Apple APNs
+    category: push
+    no_data: apns_key_id/apns_team_id 为空占位，未接入
+    build_flavors: backend
+  jpush_push:
+    provider: 极光推送（JPush Push REST）
+    category: push
+    no_data: jpush_app_key 仅服务于 SMS 与号码认证（同 AppKey 体系）；服务端无 api.jpush.cn 推送调用，客户端仅本地通知（flutter_local_notifications）
+    build_flavors: backend
+  aliyun_sms:
+    provider: 阿里云短信
+    category: sms
+    no_data: sys.pro.config sms.platform 写 aliyun 但无实现（imboy_sms 兜底子句返回平台配置错误），生产短信实际走极光 SMS——配置与实现不一致需 owner 修正
+    build_flavors: backend
+  third_party_cdn:
+    provider: 第三方 CDN
+    category: cdn
+    no_data: 官网静态资源/附件/头像全部走自有域名（imboy.pub 与 s3.imboy.pub），未使用第三方 CDN
+    build_flavors: backend, imboy.pub-site
+  outbound_webhooks:
+    provider: 出站 Webhook
+    category: webhooks
+    no_data: 频道 webhook bot 为入站方向（外部系统向 imboy 推送消息），平台不向第三方出站订阅事件
+    build_flavors: backend
+  analytics_sdk:
+    provider: 统计/广告 SDK（友盟/Firebase Analytics 等）
+    category: analytics
+    no_data: 三端均无统计/广告/追踪 SDK（pubspec/package.json 与后端依赖实证），overseas_baseline 预设亦未引入
+    build_flavors: imboyapp-android, imboyapp-ios, backend, imboyadmin
