@@ -29,6 +29,17 @@ handle_action(_, Req, _State) -> Req.
 
 -spec demo(cowboy_req:req(), map()) -> cowboy_req:req().
 demo(Req0, State) ->
+    %% DATA-01：demo driver 仅 dev/test 口径可用；prod（含未设置=fail-safe 生产）
+    %% 一律 404，不触发任何持久化副作用（任务卡第 5 条）。
+    case imboy_env:current() of
+        <<"local">> -> demo_enabled(Req0, State);
+        <<"dev">> -> demo_enabled(Req0, State);
+        <<"test">> -> demo_enabled(Req0, State);
+        _ -> elib_response:error(Req0, <<"not found"/utf8>>, ?ERR_NOT_FOUND)
+    end.
+
+-spec demo_enabled(cowboy_req:req(), map()) -> cowboy_req:req().
+demo_enabled(Req0, State) ->
     AgentUid = maps:get(current_uid, State),
     PostVals = safe_post(Req0),
     case group_id(PostVals) of
