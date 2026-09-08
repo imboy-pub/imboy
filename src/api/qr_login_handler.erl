@@ -139,9 +139,13 @@ handle_status(Req) ->
                             %% ponytail: 只删会话本体；qr_token 映射 60s 自然过期，
                             %% 且会话已消失时它单独存在无意义（scan/confirm 会判"已过期"）。
                             delete_session(SessionToken),
+                            %% 带上 uid：客户端 QR 登录落地需要写 currentUid
+                            %% 建立登录态（路由守卫 isLoggedIn 依据），
+                            %% token 是加密串客户端自己解不出 uid（批次126）。
                             Payload = #{
                                 <<"status">> => <<"confirmed">>,
-                                <<"token">> => LoginToken
+                                <<"token">> => LoginToken,
+                                <<"uid">> => maps:get(<<"scanned_by">>, Session, 0)
                             },
                             elib_response:success(Req, Payload);
                         _ ->

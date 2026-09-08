@@ -60,7 +60,8 @@ status_returns_confirmed_with_login_token_test_() ->
                         ->
                             {ok, #{
                                 <<"status">> => <<"confirmed">>,
-                                <<"login_token">> => <<"jwt-token-1">>
+                                <<"login_token">> => <<"jwt-token-1">>,
+                                <<"scanned_by">> => 111174215241304064
                             }}
                         end)},
                     {'delete', 1, fun({qr_login, KeyToken}) when KeyToken =:= SessionToken -> ok
@@ -71,7 +72,11 @@ status_returns_confirmed_with_login_token_test_() ->
             Req0 = req(<<"GET">>, <<>>, [{<<"session_token">>, SessionToken}]),
             {stop, Req1, _State} = qr_login_handler:handle_request(Req0, #{action => status}),
             ?assertEqual(
-                {success, #{<<"status">> => <<"confirmed">>, <<"token">> => <<"jwt-token-1">>}},
+                {success, #{
+                    <<"status">> => <<"confirmed">>,
+                    <<"token">> => <<"jwt-token-1">>,
+                    <<"uid">> => 111174215241304064
+                }},
                 response_result(Req1)
             ),
             %% 反转断言（Rule 7）：旧实现取走 token 后仍保留会话，会话剩余 TTL 内
