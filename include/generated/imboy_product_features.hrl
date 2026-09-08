@@ -7,11 +7,6 @@
 -define(IMBOY_FEATURE_CHANNEL_ORDER, true).
 -define(IMBOY_FEATURE_CORE, true).
 -define(IMBOY_FEATURE_E2EE, true).
--define(IMBOY_FEATURE_GROUP_SCHEDULE, true).
--define(IMBOY_FEATURE_GROUP_TASK, true).
--define(IMBOY_FEATURE_GROUP_VOTE, true).
--define(IMBOY_FEATURE_LOCATION, true).
--define(IMBOY_FEATURE_MOMENT, true).
--define(IMBOY_PRODUCT_FEATURE_MANIFEST_HASH, <<"sha256:b6f00f4cd9f203a82c8cb63e4d0f95b1dd843e647e0c4cafe3b5af49bb4e39d9">>).
--define(IMBOY_COMPILED_FEATURES, [bot_webhook, channel, channel_discover, channel_invitation, channel_order, core, e2ee, group_schedule, group_task, group_vote, location, moment]).
--define(IMBOY_PRODUCT_FEATURE_CONTRACT, #{<<"base_ref">> => <<"imboy-feature-inventory-v1">>, <<"compiled_features">> => [<<"bot_webhook">>, <<"channel">>, <<"channel_discover">>, <<"channel_invitation">>, <<"channel_order">>, <<"core">>, <<"e2ee">>, <<"group_schedule">>, <<"group_task">>, <<"group_vote">>, <<"location">>, <<"moment">>], <<"manifest_hash">> => <<"sha256:b6f00f4cd9f203a82c8cb63e4d0f95b1dd843e647e0c4cafe3b5af49bb4e39d9">>, <<"product_id">> => <<"imboy">>, <<"profile">> => <<"full-selected">>, <<"schema_version">> => 1, <<"selected_features">> => [<<"bot_webhook">>, <<"channel">>, <<"channel_discover">>, <<"channel_invitation">>, <<"channel_order">>, <<"e2ee">>, <<"group_schedule">>, <<"group_task">>, <<"group_vote">>, <<"location">>, <<"moment">>]}).
+-define(IMBOY_PRODUCT_FEATURE_MANIFEST_HASH, <<"sha256:742ac6339a119cadb6d191166f2fdea5dfcc9f3714034b152a80f6f23d820668">>).
+-define(IMBOY_COMPILED_FEATURES, [bot_webhook, channel, channel_discover, channel_invitation, channel_order, core, e2ee]).
+-define(IMBOY_PRODUCT_FEATURE_CONTRACT, #{<<"base_ref">> => <<"imboy-feature-inventory-v1">>, <<"compiled_features">> => [<<"bot_webhook">>, <<"channel">>, <<"channel_discover">>, <<"channel_invitation">>, <<"channel_order">>, <<"core">>, <<"e2ee">>], <<"manifest_hash">> => <<"sha256:742ac6339a119cadb6d191166f2fdea5dfcc9f3714034b152a80f6f23d820668">>, <<"product_id">> => <<"imboy">>, <<"profile">> => <<"agent_hub">>, <<"schema_version">> => 1, <<"selected_features">> => [<<"bot_webhook">>, <<"channel">>, <<"channel_discover">>, <<"channel_invitation">>, <<"channel_order">>, <<"e2ee">>]}).
