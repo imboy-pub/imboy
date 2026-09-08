@@ -1,14 +1,8 @@
 # API 层文档 - HTTP REST API 处理器
 
-[根目录](../../CLAUDE.md) > **src/api** | 54 个模块 | 职责：处理 HTTP REST API 请求、参数验证、调用 Logic 层
+[根目录](../../CLAUDE.md) > **src/api** | 54 个模块 | 职责：HTTP REST 请求入口、参数验证与权限控制、调用 Logic 层、WebSocket 连接管理、返回标准 JSON 响应
 
 > **最后更新**: 2026-06-10 | **计数**: 以 `find src/api -maxdepth 1 -name '*.erl' | wc -l` 为准（截至 2026-06）
-
----
-
-## 模块职责
-
-API 层负责：HTTP REST 请求入口、请求参数验证与权限控制、调用 Logic 层、WebSocket 连接管理、返回标准 JSON 响应。
 
 ---
 
@@ -34,12 +28,12 @@ get_routes() ->
 
 ## API 接口清单
 
-### 用户与认证
+> 2026-07-08：v0 裸 `/api/*` 业务路由（不带 v1 段）已下架，全部收口到 `/api/v1/*`；
+> `/api/adm/*` 保持原样（无 v1 版本，设计如此）。除根路径 `/` 与网站白名单
+> （`/help`、`/brand`、`/privacy-policy`、`/account-deletion`、`/metrics`）外，
+> 其余路由均为 `/api/v1/*` 或 `/api/adm/*`。
 
-> 2026-07-08：v0 裸 `/api/*` 业务路由（不带 v1 段）已下架，全部收口到
-> `/api/v1/*`；`/api/adm/*` 保持原样（无 v1 版本，设计如此）。除根路径
-> `/` 与网站白名单（`/help`、`/brand`、`/privacy-policy`、
-> `/account-deletion`、`/metrics`）外，其余路由均为 `/api/v1/*` 或 `/api/adm/*`。
+### 用户与认证
 
 | Handler | 路由前缀 | 说明 |
 |---------|---------|------|
@@ -179,74 +173,9 @@ elib_response:error(Req, error_msg(?ERR_BAD_REQUEST), ?ERR_BAD_REQUEST)
 
 ---
 
-## 文件清单（53 个）
+## 测试
 
-| # | Handler 模块 | 说明 |
-|---|---|---|
-| 1 | `app_feature_handler` | 应用功能特性配置（ICE、功能开关等） |
-| 2 | `app_manifest_handler` | 应用清单和元数据管理 |
-| 3 | `app_upgrade_log_handler` | 应用升级日志记录 |
-| 4 | `app_version_handler` | 应用版本检查与更新通知 |
-| 5 | `attach_handler` | 附件/文件上传 Presigned URL 生成 |
-| 6 | `auth_handler` | 认证授权处理（与 auth_logic 配合） |
-| 7 | `auth_middleware` | 通用认证中间件 |
-| 8 | `auth_middleware_api_v1` | /v1 路由认证中间件 |
-| 9 | `channel_handler` | 频道内容 HTTP 适配器 |
-| 10 | `channel_handler_admin` | 频道管理员操作（邀请、同步等） |
-| 11 | `channel_handler_message` | 频道消息、置顶、反应处理 |
-| 12 | `channel_handler_order` | 频道付费订单与交易处理 |
-| 13 | `conversation_handler` | 会话管理接口 |
-| 14 | `cors_middleware` | CORS 跨域资源共享中间件 |
-| 15 | `e2ee_handler` | 端到端加密(E2EE)用户密钥管理 |
-| 18 | `feedback_handler` | 用户反馈与问题报告 |
-| 19 | `friend_category_handler` | 好友分组管理 |
-| 20 | `friend_handler` | 好友关系与好友列表管理 |
-| 21 | `fts_handler` | 全文搜索接口 |
-| 22 | `group_album_handler` | 群相册管理 |
-| 23 | `group_category_handler` | 群分类管理 |
-| 24 | `group_file_handler` | 群文件管理 |
-| 25 | `group_handler` | 群组核心操作（创建、查询、退群等） |
-| 26 | `group_member_handler` | 群成员管理与身份操作 |
-| 28 | `group_notice_handler` | 群公告发布与查看 |
-| 29 | `group_schedule_handler` | 群日程与时间管理 |
-| 30 | `group_tag_handler` | 群内标签管理 |
-| 31 | `group_task_handler` | 群任务与待办事项管理 |
-| 32 | `group_vote_handler` | 群投票与民主决策（插件控制） |
-| 33 | `index_handler` | 首页/根路由信息展示 |
-| 34 | `live_room_handler` | 直播间创建、开始/停止、查询 |
-| 35 | `location_handler` | 位置分享与地理位置服务 |
-| 36 | `mention_handler` | 消息@提及用户处理 |
-| 37 | `metrics_handler` | Prometheus 可观测性指标导出 |
-| 38 | `moment_handler` | 动态/朋友圈相关接口 |
-| 39 | `msg_handler` | 消息发送、撤回、转发等核心消息处理 |
-| 40 | `passport_handler` | 登录、注册、口令认证 |
-| 41 | `qr_login_handler` | QR 码扫码登录处理器（WhatsApp Web 风格） |
-| 42 | `qr_login_sse_handler` | QR 登录 SSE 长连接（Server-Sent Events） |
-| 43 | `report_handler` | 用户举报与内容审核 |
-| 44 | `security_headers_middleware` | 安全响应头中间件（XSS、点击劫持防护） |
-| 45 | `test_handler` | 测试与调试端点 |
-| 46 | `throttle_middleware` | 基于 UID/IP 的限流中间件 |
-| 47 | `user_collect_handler` | 用户收藏与收集功能 |
-| 48 | `user_denylist_handler` | 黑名单管理 |
-| 49 | `user_device_handler` | 设备登录与管理 |
-| 50 | `user_handler` | 用户信息查询、修改、资料卡等 |
-| 51 | `user_tag_handler` | 用户标签管理 |
-| 52 | `user_tag_relation_handler` | 用户标签关系处理 |
-| 53 | `wallet_handler` | 钱包与余额管理 |
-| 55 | `billing_handler` | SaaS 计费：套餐 CRUD + 订阅/续费/取消 + 用量上报/配额查询 + 账单生成/支付 |
-| 54 | `websocket_handler` | WebSocket 长连接与实时消息投递 |
-
----
-
-## 测试文件（50+ 个）
-
-`test/api/` 目录包含所有 handler 对应的 `_tests.erl` 文件，覆盖：
-`passport`, `user`, `friend`, `group`, `msg`, `conversation`, `websocket_logic`, `e2ee`, `fts`, `location`, `feedback` 等。
-
----
-
-## 测试配置
-
+- `test/api/` 目录（50+ 个 `_tests.erl`）覆盖：`passport`, `user`, `friend`, `group`, `msg`, `conversation`, `websocket_logic`, `e2ee`, `fts`, `location`, `feedback` 等
 - 框架：EUnit；超时：30s；环境：`application:set_env(imboy, env, test)`
 
 ## 操作指南

@@ -2,10 +2,8 @@
 
 [根目录](../../CLAUDE.md) > **src/repo**
 
-> **最后更新**: 2026-06-10 | **模块数量**: 72 个
+> **最后更新**: 2026-06-10 | **模块数量**: 72 个（以 `find src/repo -maxdepth 1 -name '*.erl' | wc -l` 为准，截至 2026-06）
 > **职责**: 封装数据库操作，使用 elib_pg 访问 PostgreSQL，提供 CRUD 接口
-
-以 `find src/repo -maxdepth 1 -name '*.erl' | wc -l` 为准（截至 2026-06）。
 
 ---
 
@@ -86,7 +84,7 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 | `group_task_assignment_repo` | 群任务分配 |
 | `group_vote_repo` | 群投票 |
 
-### 消息处理（11 个）
+### 消息处理（10 个）
 
 | Repo | 说明 |
 |------|------|
@@ -103,13 +101,13 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 
 `msg_archive_repo` 关键接口：`conv_key/3`、`next_conv_seq/1`（原子递增）、`archive/1`（幂等写入）、`get_history/3,4`（基于 conv_seq 游标）
 
-### E2EE（4 个）
+### E2EE（1 个）
 
 | Repo | 说明 |
 |------|------|
 | `e2ee_local_backup_repo` | E2EE 本地备份 |
 
-### 频道系统（5 个）
+### 频道系统（6 个）
 
 | Repo | 说明 |
 |------|------|
@@ -120,7 +118,7 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 | `channel_order_repo` | 付费频道订单 |
 | `channel_invitation_repo` | 频道邀请 |
 
-### 朋友圈（7 个）
+### 朋友圈（6 个）
 
 | Repo | 说明 |
 |------|------|
@@ -158,7 +156,7 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 | `report_ticket_repo` | 举报工单 |
 | `report_action_log_repo` | 举报处理日志 |
 
-### 其他功能（3 个）
+### 其他功能（9 个）
 
 | Repo | 说明 |
 |------|------|
@@ -176,9 +174,7 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 
 ## 依赖的基础库
 
-- `elib_pg`：所有 SQL 操作的唯一入口
-- `imboy_cache`：缓存操作
-- `elib_tsid`：insert 时调用 `elib_tsid:generate(table_name)` 生成 TSID
+- `imboy_cache`：缓存操作；`elib_tsid`：insert 时 `elib_tsid:generate(table_name)` 生成 TSID
 
 ## 数据库配置（config/sys.config）
 
@@ -189,15 +185,9 @@ Repo 层负责：封装所有 PostgreSQL 操作、参数化 SQL 查询（防注�
 
 ---
 
-## 测试文件
+## 测试
 
-`test/repo/` 目录包含主要 repo 的 `_tests.erl` 文件，覆盖约 40+ 个模块的单元测试。
-
----
-
-## 测试配置
-
-- 框架：EUnit；超时：30s；环境：`application:set_env(imboy, env, test)`；覆盖率目标：80%
+`test/repo/` 覆盖约 40+ 模块的 `_tests.erl`。框架 EUnit；超时 30s；环境 `application:set_env(imboy, env, test)`；覆盖率目标 80%。
 
 ## 操作指南
 

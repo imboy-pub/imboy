@@ -4,24 +4,15 @@
 
 > **最后更新 / Last updated**: 2026-08-21 CST | **版本**: 1.0.0-alpha.26
 > **架构**: 单应用 4 层架构 Handler -> Logic -> DS -> Repo | **语言**: Erlang/OTP 28+ + PostgreSQL 18+
-
----
-
-## 双语文档规则 / Bilingual Documentation Rule
-
-> 见根级 [CLAUDE.md](../CLAUDE.md#双语文档规则--bilingual-documentation-rule-mandatory)
+> 双语文档规则见根级 [CLAUDE.md](../CLAUDE.md#双语文档规则--bilingual-documentation-rule-mandatory)
 
 ---
 
 ## 产品定位 / Product Positioning
 
-IMBoy 的核心定位：**用户真正拥有数据、用户关系和运营权的 IM + 社群平台**。
+IMBoy 的核心定位：**用户真正拥有数据、用户关系和运营权的 IM + 社群平台**——开放、可私有化部署，不做单纯聊天工具，也不一开始做超级 App。
 
-### 一句话定位
-
-> IMBoy = 开放、可私有化部署的现代 IM + 社群平台。不做单纯聊天工具，也不一开始做超级 App。
-
-### 核心对象层级
+核心对象层级 / 路线图方向（而非 IM → Feed → 算法推荐 → 广告平台）：
 
 ```
 User → Conversation → Group → Channel → Bot/Service → 可选公域
@@ -38,33 +29,11 @@ User → Conversation → Group → Channel → Bot/Service → 可选公域
 
 ### 核心设计原则
 
-1. **私域优先**：第一优先级是 Contact/Friend/Conversation 的私域关系，第二优先级是 Group Member，最后才是 Channel 的 Follow/Subscribe。
-2. **订阅制，不做算法推荐**：Channel 服务于"用户主动订阅"，不做信息流推荐，不做 X/抖音式公域推荐作为核心能力。
+1. **私域优先**：第一优先级是 Contact/Friend/Conversation 的私域关系，其次 Group Member，最后 Channel 的 Follow/Subscribe。
+2. **订阅制，不做算法推荐**：Channel 服务于"用户主动订阅"，不做公域信息流/算法推荐引擎、广告平台、超级 App 式功能堆砌。
 3. **用户拥有数据**：所有数据存储在用户自己的 PostgreSQL 中，不依赖中心化服务。
 4. **E2EE 是基础设施**：Olm 协议全套，服务端不解密，仅路由存储。
 5. **Bot 是开放生态**：Bot 通过 GitOps 插件市场分发，用户自托管，走 Webhook 推送。
-
-### 路线图
-
-```
-IM → Group → Channel → Bot/Service → 可选公域
-```
-
-而不是：
-
-```
-IM → Feed → 算法推荐 → 广告平台
-```
-
-### 不做的事
-
-- ❌ 公域信息流推荐引擎
-- ❌ 基于算法的内容发现
-- ❌ 广告平台
-- ❌ 超级 App 式功能堆砌
-- ❌ Redis（全栈不引入，见下方约束）
-
----
 
 ### 账号类型语义（权威）
 
@@ -75,14 +44,13 @@ IM → Feed → 算法推荐 → 广告平台
 | `2` | `system_bot` | 频道 incoming webhook bot（`channel_webhook_ds` 创建，非开发者 Bot） |
 | `3` | `bot` | 开发者服务 Bot（`bot` 表，Webhook 驱动的第三方服务） |
 
-**Agent 与 Bot 分离**：Agent（`account_type=1`）是平台自带的 AI 助手，走 LLM 调用链路；Bot（`account_type=3`）是开发者注册的第三方服务，走 Webhook 推送。两类判定互不误伤——判定 Bot 须同时检查 `account_type=3` 且 `bot` 表存在该 user_id 行。
+**Agent 与 Bot 分离**：Agent（`account_type=1`）是平台自带的 AI 助手，走 LLM 调用链路；Bot（`account_type=3`）是开发者注册的第三方服务，走 Webhook 推送。判定 Bot 须同时检查 `account_type=3` 且 `bot` 表存在该 user_id 行。
 
 ---
 
 ## 构建系统规则 / Build System Rules
 
-- **禁止修改 `erlang.mk`**（vendored 第三方工具）。自定义逻辑只能在 `Makefile` 中实现。
-- **Do NOT modify `erlang.mk`**. All custom build logic goes in `Makefile` only.
+- **禁止修改 `erlang.mk`**（vendored / Do NOT modify）。自定义逻辑只能在 `Makefile` 中实现。
 - `IMBOYENV=local make run` 自动加载 `config/sys.local.config` → 复制为 `config/sys.runtime.config`
 - 非 local 环境使用 `config/sys.config`；`IMBOY_*` 环境变量运行时优先级最高。
 
@@ -95,24 +63,17 @@ IM → Feed → 算法推荐 → 广告平台
 | 语言 | Erlang/OTP 28+ |
 | Web 框架 | Cowboy 2.10 (HTTP/WS) |
 | 数据库 | PostgreSQL 18+ (pg_jieba, postgis, timescaledb, pgcrypto) |
-| 缓存 | depcache (Erlang 内存缓存) — **禁止引入 Redis**（见下方约束） |
+| 缓存 | depcache (Erlang 内存缓存) — **禁止引入 Redis** |
 | 连接池 | epgsql + pooler |
 | 日志 | lager |
 
 ### ⛔ 项目级约束：全栈不引入 Redis
 
-**任何模块、任何部署形态都不得依赖 Redis。** 缓存用进程内 depcache，跨节点共享状态用
-PostgreSQL（`DELETE ... RETURNING` 天然原子），进程发现用 `syn`。
-
-已按此清除（2026-08-02）：`imboy_redis` / `imboy_rtc_redis` 容器、LiveKit 的 `redis:`
-配置段、`imboy_egress` 录制服务、`redis_options` 配置键与 `imboy_env:override_redis/0`。
+**任何模块、任何部署形态都不得依赖 Redis。** 缓存用进程内 depcache，跨节点共享状态用 PostgreSQL（`DELETE ... RETURNING` 天然原子），进程发现用 `syn`。已按此清除（2026-08-02）：`imboy_redis` / `imboy_rtc_redis` 容器、LiveKit 的 `redis:` 配置段、`imboy_egress` 录制服务、`redis_options` 配置键与 `imboy_env:override_redis/0`。
 
 引申影响，提新方案前先看：
-- **LiveKit 只能单节点**（`redis:` 段仅多节点分布式路由需要）。要横向扩展用**应用层
-  按房间分片**：imboy 在 `/api/v1/rtc/room/join` 里按 `consistent_hash(room_name)`
-  决定返回哪个独立 LiveKit 节点的 `ws_url`，同房间参与者必落同一节点 → 节点间无需通信。
-- **LiveKit Egress 房间录制不可用**：egress 与 livekit-server 之间只有 Redis 一条总线，
-  无替代传输。该功能三端本就从未接线，删除零损失；要恢复须先解除本约束。
+- **LiveKit 只能单节点**（`redis:` 段仅多节点分布式路由需要）。横向扩展须**应用层按房间分片**：`/api/v1/rtc/room/join` 按 `consistent_hash(room_name)` 返回独立 LiveKit 节点的 `ws_url`，同房间参与者必落同一节点 → 节点间无需通信。
+- **LiveKit Egress 房间录制不可用**：egress 与 livekit-server 之间只有 Redis 一条总线，无替代传输。该功能三端本就从未接线，删除零损失；要恢复须先解除本约束。
 
 ---
 
@@ -174,9 +135,8 @@ config_ds:local_reload()              # 重新加载配置
 observer_cli:start()                  # 节点监控
 ```
 
-CLI 环境变量：`IMBOY_CTL_NODE`, `IMBOY_CTL_COOKIE`, `IMBOY_CTL_TIMEOUT`
+CLI 环境变量：`IMBOY_CTL_NODE`, `IMBOY_CTL_COOKIE`, `IMBOY_CTL_TIMEOUT`；代码生成模板：
 
-代码生成模板：
 ```bash
 make new t=imboy.rest_handler n=demo_handler
 make new t=imboy.logic n=demo_logic
@@ -215,7 +175,7 @@ make new t=imboy.ds n=demo_ds
 
 **Token 刷新**：WS 连接时 token 过期仍响应成功 → 发 S2C 要求 8s 内刷新 → 失败则强制下线。
 
-**E2EE**：RSA-OAEP-256 + AES-256-GCM；服务端不解密 `ciphertext`，仅路由存储。API：`/api/v1/e2ee/user_keys`、`/api/v1/e2ee/group_member_keys`。
+**E2EE**：C2C=Olm（X3DH+Double Ratchet，per-device fan-out）、C2G=Megolm（room key 经 Olm 包裹分发），密文走 PFv3 认证信封（vodozemac 0.8.x）；legacy RSA-OAEP+AES-GCM 仅保留历史密文解密（decrypt-only），不再产生新密文。服务端不解密 `ciphertext`，仅路由存储（`scripts/check_server_zero_crypto.sh` CI 守护）。API：`/api/v1/e2ee/*`、`/api/v1/e2ee/olm/*`（详见 `docs/reference/e2ee-protocol-specification.md`）。
 
 **分布式**：基于 Erlang/OTP 分布式，`syn` 库进程注册发现，跨节点消息投递。
 
@@ -226,9 +186,7 @@ make new t=imboy.ds n=demo_ds
 ## FAQ（精选）
 
 - **调试 WS**：`http://coolaf.com/tool/chattest`；Token：`token_ds:encrypt_token(Uid)`
-- **DB 连接池**：`pooler:status()`
-- **热加载**：`lm()`（shell 中）
-- **重新加载配置**：`config_ds:local_reload()`
+- **DB 连接池**：`pooler:status()`（热加载 `lm()`、重载配置 `config_ds:local_reload()` 见上方命令块）
 - **添加新端点**：`src/api/` 建 handler → `imboy_router.erl` 加路由 → `src/logic/` 建 logic → 写测试
 
 ---
