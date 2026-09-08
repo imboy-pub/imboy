@@ -56,7 +56,7 @@ jobs:
         # v21 不存在（该 action 最新大版本为 v9），幻影 ref 使本 step 恒失败，
         # 被 continue-on-error 吞掉后 diff 永远退化为"首次生成"模式。改用真实 v9，
         # 所用 inputs（workflow/branch/run_id/name/path/search_artifacts/if_no_artifact_found）v9 全支持。
-        uses: dawidd6/action-download-artifact@v9
+        uses: dawidd6/action-download-artifact@v24
         with:
           name: sbom-cyclonedx
           path: /tmp/sbom-prev/
