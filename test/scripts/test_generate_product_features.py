@@ -71,12 +71,54 @@ class ProductFeatureManifestTest(unittest.TestCase):
 
     def test_generated_contracts_share_schema_hash_and_features(self):
         contract = MODULE.validate(self.manifest(["channel", "e2ee"]), self.catalog)
-        outputs = MODULE.render(contract).values()
+        # erlc.mk 是 make 片段（供 ERLC_EXCLUDE 消费），不承载产品契约字段
+        outputs = [
+            output for path, output in MODULE.render(contract).items()
+            if path.suffix != ".mk"
+        ]
         for output in outputs:
             self.assertIn(str(contract["schema_version"]), output)
             self.assertIn(contract["manifest_hash"], output)
             for feature in contract["compiled_features"]:
                 self.assertIn(f'"{feature}"', output)
+
+    def test_backend_erlc_exclude_follows_compiled_features(self):
+        base = MODULE.render(MODULE.validate(self.manifest(), self.catalog))
+        mk_path = next(
+            path for path in base
+            if path.name == "imboy_product_features_erlc.mk"
+        )
+        base_mk = base[mk_path]
+        for module in MODULE.FEATURE_BACKEND_MODULES["moment"]:
+            self.assertIn(module, base_mk)
+        self.assertIn("moment_ds moment_handler", base_mk)
+
+        moment_catalog = {
+            "features": [*self.catalog["features"], "moment"],
+            "dependencies": self.catalog["dependencies"],
+        }
+        selected = MODULE.render(
+            MODULE.validate(self.manifest(["moment"]), moment_catalog)
+        )[mk_path]
+        self.assertNotIn("moment_ds", selected)
+        self.assertRegex(selected, r"IMBOY_FEATURE_ERLC_EXCLUDE :=\s*$")
+
+    def test_backend_per_feature_defines_follow_compiled_features(self):
+        hrl_path = next(
+            path for path in MODULE.render(MODULE.validate(self.manifest(), self.catalog))
+            if path.name == "imboy_product_features.hrl"
+        )
+        base_hrl = MODULE.render(MODULE.validate(self.manifest(), self.catalog))[hrl_path]
+        self.assertNotIn("IMBOY_FEATURE_MOMENT", base_hrl)
+
+        moment_catalog = {
+            "features": [*self.catalog["features"], "moment"],
+            "dependencies": self.catalog["dependencies"],
+        }
+        selected_hrl = MODULE.render(
+            MODULE.validate(self.manifest(["moment"]), moment_catalog)
+        )[hrl_path]
+        self.assertIn("-define(IMBOY_FEATURE_MOMENT, true).", selected_hrl)
 
     def test_flutter_moment_route_import_is_sliced(self):
         base = MODULE.render(MODULE.validate(self.manifest(), self.catalog))

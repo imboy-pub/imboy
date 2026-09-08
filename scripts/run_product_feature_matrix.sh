@@ -13,7 +13,11 @@ case "$PRESET" in
     MANIFEST="$ROOT/config/product-feature-manifests/overseas_baseline.json"
     [ -f "$MANIFEST" ] || { echo "overseas_baseline preset is not available yet" >&2; exit 2; }
     ;;
-  *) echo "usage: $0 {base-only|full-selected|overseas_baseline}" >&2; exit 2 ;;
+  agent_hub)
+    MANIFEST="$ROOT/config/product-feature-manifests/agent_hub.json"
+    [ -f "$MANIFEST" ] || { echo "agent_hub preset is not available yet" >&2; exit 2; }
+    ;;
+  *) echo "usage: $0 {base-only|full-selected|overseas_baseline|agent_hub}" >&2; exit 2 ;;
 esac
 
 restore_canonical() {
@@ -28,6 +32,10 @@ make -C "$ROOT" rel
 (cd "$WORKSPACE/imboyapp" && \
   rm -f android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java && \
   flutter --suppress-analytics pub get && \
+  R=android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java && \
+  if [ -f "$R" ]; then \
+    sed -i '' -E '/integration_test|PatrolPlugin/d' "$R"; \
+  fi && \
   flutter --suppress-analytics build apk --release --target-platform android-arm64)
 (cd "$WORKSPACE/imboyadmin" && bun run build)
 

@@ -22,6 +22,8 @@
 -endif.
 
 -include("log.hrl").
+%% BUILD-00R：moment 未编译时 moment 附件 scope 走 catch-all fail-closed（false）
+-include("generated/imboy_product_features.hrl").
 
 %% 上传 URL 有效期：1 小时（足够单文件上传）
 -define(PUT_EXPIRES, 3600).
@@ -381,12 +383,18 @@ authorize(<<"channel">>, Uid, Rec) ->
         error -> false
     end;
 authorize(<<"moment">>, Uid, Rec) ->
+    authorize_moment_scope(Uid, Rec);
+authorize(_Scope, _Uid, _Rec) ->
+    false.
+
+%% BUILD-00R：moment 未编译时 scope 走 fail-closed（false），不引用 moment_ds
+-ifdef(IMBOY_FEATURE_MOMENT).
+-spec authorize_moment_scope(integer(), map() | list()) -> boolean().
+authorize_moment_scope(Uid, Rec) ->
     case to_int(scope_ref(Rec)) of
         {ok, MomentId} -> authorize_moment(Uid, MomentId);
         error -> false
-    end;
-authorize(_Scope, _Uid, _Rec) ->
-    false.
+    end.
 
 %% @doc 朋友圈动态：先取 Post 再按可见性规则判定（复用 moment_ds 现成 ACL）
 -spec authorize_moment(integer(), integer()) -> boolean().
@@ -397,6 +405,11 @@ authorize_moment(Uid, MomentId) ->
         _ ->
             false
     end.
+-else.
+-spec authorize_moment_scope(integer(), map() | list()) -> boolean().
+authorize_moment_scope(_Uid, _Rec) ->
+    false.
+-endif.
 
 %% 频道附件必须跟频道正文使用同一权益模型：免费/私有频道保持原有的
 %% 「订阅者可访问」语义；付费频道只接受有效购买或频道管理角色，不能因为

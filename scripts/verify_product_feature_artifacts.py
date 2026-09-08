@@ -21,6 +21,21 @@ class ArtifactError(ValueError):
     pass
 
 
+# BUILD-00 探针：feature 物理资产断言（与 compiled_features 契约 marker 不同级）。
+# - admin_dist_chunks: Admin dist 下动态 chunk 文件 glob；feature 被裁剪时 chunk
+#   文件必须不存在（文件级物理资产，非菜单/路由守卫）。
+# - flutter_payload_markers: release APK AOT payload（libapp.so）字符串 marker；
+#   marker 选自 generated_product_feature_routes.dart 中 probe 专属 GoRoute name，
+#   裁剪时路由代码不进编译单元、字符串不得残留。注意避开 '/moment/feed' 这类
+#   被核心页面硬编码引用的路径（contact_page.dart 残留跳转，会假阴）。
+PROBE_FEATURE_ASSETS = {
+    "moment": {
+        "admin_dist_chunks": ["moments-*.js"],
+        "flutter_payload_markers": [b"moment_create", b"moment_detail", b"moment_feed"],
+    },
+}
+
+
 def sha256_bytes(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -85,6 +100,40 @@ def verify_markers(payloads, contract):
             raise ArtifactError(f"{artifact} artifact missing contract markers: {', '.join(missing)}")
 
 
+def verify_probe_assets(admin_dist, payloads, contract):
+    """BUILD-00：probe feature 的物理资产正/负向断言。
+
+    compiled_features 包含 probe 时资产必须存在（证明断言能发现资产）；
+    不包含时资产必须不存在（证明裁剪是物理级，而非 marker/菜单/运行时开关）。
+    Backend 的模块级裁剪由独立探针命令验证，不在本函数范围。
+    """
+    compiled = set(contract["compiled_features"])
+    for feature, spec in PROBE_FEATURE_ASSETS.items():
+        included = feature in compiled
+        for pattern in spec.get("admin_dist_chunks", []):
+            found = sorted(path.name for path in admin_dist.rglob(pattern))
+            if included and not found:
+                raise ArtifactError(
+                    f"admin artifact missing probe asset {pattern} for feature {feature}"
+                )
+            if not included and found:
+                raise ArtifactError(
+                    f"admin artifact contains probe asset {pattern} for feature {feature}: "
+                    + ", ".join(found)
+                )
+        flutter_payload = payloads["flutter"]
+        for marker in spec.get("flutter_payload_markers", []):
+            present = marker in flutter_payload
+            if included and not present:
+                raise ArtifactError(
+                    f"flutter payload missing probe marker {marker!r} for feature {feature}"
+                )
+            if not included and present:
+                raise ArtifactError(
+                    f"flutter payload contains probe marker {marker!r} for feature {feature}"
+                )
+
+
 def verify_generated_outputs(contract):
     stale = [
         str(path)
@@ -109,6 +158,7 @@ def verify(manifest_path, backend_beam, flutter_apk, admin_dist):
     verify_generated_outputs(contract)
     payloads = artifact_payloads(backend_beam, flutter_apk, admin_dist)
     verify_markers(payloads, contract)
+    verify_probe_assets(admin_dist, payloads, contract)
     return {
         "schema_version": contract["schema_version"],
         "manifest_hash": contract["manifest_hash"],

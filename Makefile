@@ -79,7 +79,49 @@ EDOC_OPTS = {doclet, edown_doclet}
 # 套件恢复后源模块条目一并移除。Excl 机制保留，未来再有独占套件时使用。
 EUNIT_TEST_SPEC = (fun() -> Excl = [], Mods = lists:append([$1]), [M || M <- Mods, not lists:member(M, Excl)] end)()
 
+# BUILD-00R 后端物理裁剪接线：生成器按 manifest 产出未被选中 feature 的专属
+# 模块清单（include/generated/imboy_product_features_erlc.mk），erlang.mk 原生
+# ERLC_EXCLUDE 使其不参与编译；.app 的 {modules, []} 由 erlang.mk 以实际编译
+# 产物回填，被排除模块自动退出 .app 与 release 包。
+# 本赋值必须在 include erlang.mk 之前——erlang.mk 的 ERLC_EXCLUDE ?= 先行
+# 定义空值后，后置 ?= 不再生效。
+-include include/generated/imboy_product_features_erlc.mk
+ERLC_EXCLUDE ?= $(IMBOY_FEATURE_ERLC_EXCLUDE)
+
 include erlang.mk
+
+# 本仓源码位于 src/<子目录>/*.erl（erlang.mk 递归 find），erlang.mk 默认的
+# ERLC_EXCLUDE_PATHS 只生成平铺 src/<mod>.erl，filter-out 永不命中——按本仓
+# 实际布局覆写为递归解析（BUILD-00R）。递归定义：ERLC_EXCLUDE 由 .mk 注入。
+# glob 模式必须内嵌 $(m)：裸 src/*/*.erl 会把整个两级子目录树滤出编译清单。
+ERLC_EXCLUDE_PATHS = $(foreach m,$(ERLC_EXCLUDE),$(wildcard src/$(m).erl src/*/$(m).erl src/*/*/$(m).erl))
+
+# BUILD-00R 物理裁剪装配钩子：erlang.mk 的 ERLC_EXCLUDE 只保证被排除模块
+# 不进 .app modules（relx 按整目录拷贝 ebin，不读 modules），因此必须在
+# relx 组装前清掉 ebin 中的陈旧 beam，并删除同版本号的既有 release 目录
+# （同一 VERSION 下 preset 切换会互相残留文件）。挂在 relx-rel 的前置条件
+# 上获得确定性顺序：rel-deps → app → prune → relx 组装。
+# 注意：base-only 装配会删除 ebin 中被排除模块的 beam；切回 full 口径后
+# 如需完整 beam 集，touch 对应源文件再 make app 即可重编译恢复。
+relx-rel: imboy-prune-excluded-beams
+
+imboy-prune-excluded-beams:
+	@rm -f $(addprefix ebin/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
+	@rm -f $(addprefix $(PROJECT_BEAM_CACHE_DIR)/ebin-app/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
+	@rm -f $(addprefix $(PROJECT_BEAM_CACHE_DIR)/ebin-test/,$(addsuffix .beam,$(ERLC_EXCLUDE)))
+	@if [ -n "$(strip $(ERLC_EXCLUDE))" ]; then rm -rf "_rel/$(PROJECT)/lib/$(PROJECT)-$(PROJECT_VERSION)"; fi
+	@echo " PRUNE  excluded=$$(echo $(ERLC_EXCLUDE) | wc -w | tr -d ' ') ebin_moment_left=$$(ls ebin/*moment*.beam 2>/dev/null | wc -l | tr -d ' ')"
+
+.PHONY: imboy-prune-excluded-beams
+
+# WH-01：禁用 erlang.mk 的 beam-cache 槽位交换（beam-cache-restore-app/test 以
+# mv 在 app/test 双槽间搬 ebin，保留陈旧 mtime，跨 preset/跨套件反复以旧 beam
+# 污染编译与 release——BUILD-00R 矩阵与 WH-01 测试均实证）。覆写为空操作：
+# ebin 单一真源，代价是 app/test 切换时全量重编译（确定性优先）。
+beam-cache-restore-app:
+	@:
+beam-cache-restore-test:
+	@:
 
 define compile_proto.erl
 	[begin

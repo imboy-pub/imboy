@@ -67,6 +67,82 @@ class ProductFeatureArtifactTest(unittest.TestCase):
 
             self.assertEqual(payloads["flutter"], b"flutter-debug")
 
+    def _probe_payloads(self, with_moment):
+        markers = b"moment_create moment_detail moment_feed"
+        return {
+            "backend": b"sha256:test channel core",
+            "flutter": b"sha256:test channel core " + (markers if with_moment else b""),
+            "admin": b"sha256:test channel core",
+        }
+
+    def _probe_dist(self, with_chunk):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        dist = Path(directory.name)
+        (dist / "index.js").write_bytes(b"admin")
+        if with_chunk:
+            (dist / "assets").mkdir()
+            (dist / "assets" / "moments-ABC123.js").write_bytes(b"moment pages")
+        return dist
+
+    def test_probe_assets_present_when_feature_compiled(self):
+        contract = {
+            "manifest_hash": "sha256:test",
+            "compiled_features": ["channel", "core", "moment"],
+        }
+        MODULE.verify_probe_assets(
+            self._probe_dist(True), self._probe_payloads(True), contract
+        )
+
+    def test_probe_assets_missing_chunk_fails_when_feature_compiled(self):
+        contract = {
+            "manifest_hash": "sha256:test",
+            "compiled_features": ["channel", "core", "moment"],
+        }
+        with self.assertRaisesRegex(MODULE.ArtifactError, "admin.*missing.*moments"):
+            MODULE.verify_probe_assets(
+                self._probe_dist(False), self._probe_payloads(True), contract
+            )
+
+    def test_probe_assets_missing_marker_fails_when_feature_compiled(self):
+        contract = {
+            "manifest_hash": "sha256:test",
+            "compiled_features": ["channel", "core", "moment"],
+        }
+        with self.assertRaisesRegex(MODULE.ArtifactError, "flutter.*moment_"):
+            MODULE.verify_probe_assets(
+                self._probe_dist(True), self._probe_payloads(False), contract
+            )
+
+    def test_probe_assets_absent_when_feature_excluded(self):
+        contract = {
+            "manifest_hash": "sha256:test",
+            "compiled_features": ["channel", "core"],
+        }
+        MODULE.verify_probe_assets(
+            self._probe_dist(False), self._probe_payloads(False), contract
+        )
+
+    def test_probe_assets_chunk_present_fails_when_feature_excluded(self):
+        contract = {
+            "manifest_hash": "sha256:test",
+            "compiled_features": ["channel", "core"],
+        }
+        with self.assertRaisesRegex(MODULE.ArtifactError, "admin.*contains.*moments"):
+            MODULE.verify_probe_assets(
+                self._probe_dist(True), self._probe_payloads(False), contract
+            )
+
+    def test_probe_assets_marker_present_fails_when_feature_excluded(self):
+        contract = {
+            "manifest_hash": "sha256:test",
+            "compiled_features": ["channel", "core"],
+        }
+        with self.assertRaisesRegex(MODULE.ArtifactError, "flutter.*moment_"):
+            MODULE.verify_probe_assets(
+                self._probe_dist(False), self._probe_payloads(True), contract
+            )
+
     def test_evidence_does_not_hash_itself(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)

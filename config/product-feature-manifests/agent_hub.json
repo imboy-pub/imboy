@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "product_id": "imboy",
+  "profile": "agent_hub",
+  "base_ref": "imboy-feature-inventory-v1",
+  "selected_features": [
+    "e2ee",
+    "channel",
+    "channel_discover",
+    "channel_invitation",
+    "channel_order",
+    "bot_webhook"
+  ]
+}

@@ -11,6 +11,8 @@
 
 -include("error_code.hrl").
 -include("log.hrl").
+%% BUILD-00R：moment 未编译时举报 moment 目标 fail-closed（类型无效）
+-include("generated/imboy_product_features.hrl").
 
 %% R-01: 消息举报 reason 白名单（客户端 complaintReason 枚举 + 常见扩展）。
 -define(REPORT_MESSAGE_REASONS, [
@@ -40,7 +42,7 @@ create(ReporterUid, TargetTypeRaw, TargetIdRaw, ReasonRaw, DescRaw) when
         {_, _, false} ->
             {error, <<"举报原因不能为空"/utf8>>};
         {<<"moment">>, true, true} ->
-            moment_logic:report_post(ReporterUid, TargetId, Reason, Desc);
+            report_moment_post(ReporterUid, TargetId, Reason, Desc);
         {Type, true, true} ->
             case report_ticket_ds:create(Type, TargetId, ReporterUid, Reason, Desc) of
                 {ok, ReportId} ->
@@ -216,12 +218,7 @@ admin_list(TargetTypeRaw, Status, Page, Size, Filter) ->
         undefined ->
             {error, <<"举报类型无效"/utf8>>};
         <<"moment">> ->
-            case moment_logic:admin_list_reports(Status, Page2, Size2) of
-                {ok, Payload0} ->
-                    {ok, normalize_moment_payload(Payload0)};
-                {error, Msg} ->
-                    {error, Msg}
-            end;
+            admin_list_moment_reports(Status, Page2, Size2);
         Type ->
             TargetId = decode_positive_id(maps:get(target_id, Filter, <<>>)),
             ReporterUid = decode_positive_id(maps:get(reporter_uid, Filter, <<>>)),
@@ -260,7 +257,7 @@ admin_resolve(AdmUid, TargetTypeRaw, ReportIdRaw, Result, NoteRaw) when
         true ->
             case TargetType of
                 <<"moment">> ->
-                    moment_logic:admin_resolve_report(AdmUid, ReportIdRaw, Result, Note);
+                    admin_resolve_moment_report(AdmUid, ReportIdRaw, Result, Note);
                 _ ->
                     resolve_non_moment(AdmUid, TargetType, ReportIdRaw, Result, Note)
             end
@@ -712,3 +709,45 @@ clamp(Value, _Min, Max) when Value > Max ->
     Max;
 clamp(Value, _Min, _Max) ->
     Value.
+
+%% ===================================================================
+%% BUILD-00R：moment 编译期物理裁剪 helper
+%% 未选中 moment 时 helper 走 fail-closed 分支，文件内不出现对 moment_*
+%% 模块的引用；选中时保持原语义不变。
+%% ===================================================================
+-ifdef(IMBOY_FEATURE_MOMENT).
+-spec report_moment_post(integer(), integer(), binary(), binary()) ->
+    {ok, map()} | {error, binary()}.
+report_moment_post(ReporterUid, TargetId, Reason, Desc) ->
+    moment_logic:report_post(ReporterUid, TargetId, Reason, Desc).
+
+-spec admin_list_moment_reports(term(), integer(), integer()) ->
+    {ok, map()} | {error, binary()}.
+admin_list_moment_reports(Status, Page2, Size2) ->
+    case moment_logic:admin_list_reports(Status, Page2, Size2) of
+        {ok, Payload0} ->
+            {ok, normalize_moment_payload(Payload0)};
+        {error, Msg} ->
+            {error, Msg}
+    end.
+
+-spec admin_resolve_moment_report(integer(), term(), integer(), binary()) ->
+    ok | {error, binary()}.
+admin_resolve_moment_report(AdmUid, ReportIdRaw, Result, Note) ->
+    moment_logic:admin_resolve_report(AdmUid, ReportIdRaw, Result, Note).
+-else.
+-spec report_moment_post(integer(), term(), binary(), binary()) ->
+    {ok, map()} | {error, binary()}.
+report_moment_post(_ReporterUid, _TargetId, _Reason, _Desc) ->
+    {error, <<"举报类型无效"/utf8>>}.
+
+-spec admin_list_moment_reports(term(), integer(), integer()) ->
+    {ok, map()} | {error, binary()}.
+admin_list_moment_reports(_Status, _Page2, _Size2) ->
+    {error, <<"举报类型无效"/utf8>>}.
+
+-spec admin_resolve_moment_report(integer(), term(), integer(), binary()) ->
+    ok | {error, binary()}.
+admin_resolve_moment_report(_AdmUid, _ReportIdRaw, _Result, _Note) ->
+    {error, <<"举报参数无效"/utf8>>}.
+-endif.
