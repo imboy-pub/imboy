@@ -68,17 +68,20 @@ notify_offline_users(Uids, Title, Body) ->
         _ -> push_notification_ds:send_to_users(OfflineUids, Title, Body)
     end.
 
+%% 隐私不变量（fail-closed）：推送 title/body 恒为固定常量。
+%% 不查询发送者昵称、群名，不携带消息类型、正文、密文片段——
+%% 推送通道（FCM/APNs）视为不可信第三方，任何动态内容都构成元数据泄露。
+-define(PUSH_TITLE, <<"新消息"/utf8>>).
+-define(PUSH_BODY, <<"发来一条消息"/utf8>>).
+
 %% @doc C2C 消息离线推送入口
 %% 在消息发送后异步调用，检查接收方是否离线
 -spec maybe_push_for_c2c(integer(), integer(), binary(), binary()) -> ok.
-maybe_push_for_c2c(FromUid, ToUid, MsgType, _Payload) ->
+maybe_push_for_c2c(_FromUid, ToUid, _MsgType, _Payload) ->
     elib_async:async(fun() ->
         case imboy_syn:count_user(ToUid) of
             0 ->
-                %% 构建推送内容
-                Title = get_push_title(FromUid),
-                Body = get_push_body(MsgType),
-                push_notification_ds:send_to_user(ToUid, Title, Body);
+                push_notification_ds:send_to_user(ToUid, ?PUSH_TITLE, ?PUSH_BODY);
             _ ->
                 ok
         end
@@ -88,7 +91,7 @@ maybe_push_for_c2c(FromUid, ToUid, MsgType, _Payload) ->
 %% @doc C2G 消息离线推送入口
 %% 向群组中的离线成员发送推送
 -spec maybe_push_for_c2g(integer(), integer(), binary(), [integer()]) -> ok.
-maybe_push_for_c2g(FromUid, GroupId, MsgType, MemberUids) ->
+maybe_push_for_c2g(FromUid, _GroupId, _MsgType, MemberUids) ->
     elib_async:async(fun() ->
         %% 排除发送者自己
         OtherUids = [Uid || Uid <- MemberUids, Uid =/= FromUid],
@@ -97,42 +100,7 @@ maybe_push_for_c2g(FromUid, GroupId, MsgType, MemberUids) ->
             [] ->
                 ok;
             _ ->
-                Title = get_group_push_title(FromUid, GroupId),
-                Body = get_push_body(MsgType),
-                push_notification_ds:send_to_users(OfflineUids, Title, Body)
+                push_notification_ds:send_to_users(OfflineUids, ?PUSH_TITLE, ?PUSH_BODY)
         end
     end),
     ok.
-
-%% ===================================================================
-%% Internal Functions
-%% ===================================================================
-
-%% @doc 获取推送标题（发送者昵称）
-get_push_title(FromUid) ->
-    case user_ds:find_by_id(FromUid, <<"nickname">>) of
-        #{<<"nickname">> := Nickname} when is_binary(Nickname), byte_size(Nickname) > 0 ->
-            Nickname;
-        _ ->
-            <<"新消息"/utf8>>
-    end.
-
-%% @doc 获取群组推送标题
-get_group_push_title(FromUid, GroupId) ->
-    SenderName = get_push_title(FromUid),
-    GroupName =
-        case group_ds:find_by_id(GroupId, <<"title">>) of
-            #{<<"title">> := Name} when is_binary(Name), byte_size(Name) > 0 -> Name;
-            _ -> <<"群聊"/utf8>>
-        end,
-    <<SenderName/binary, " [", GroupName/binary, "]">>.
-
-%% @doc 根据消息类型生成推送正文
-get_push_body(<<"text">>) -> <<"发来一条消息"/utf8>>;
-get_push_body(<<"image">>) -> <<"[图片]"/utf8>>;
-get_push_body(<<"voice">>) -> <<"[语音]"/utf8>>;
-get_push_body(<<"video">>) -> <<"[视频]"/utf8>>;
-get_push_body(<<"file">>) -> <<"[文件]"/utf8>>;
-get_push_body(<<"location">>) -> <<"[位置]"/utf8>>;
-get_push_body(<<"e2ee">>) -> <<"发来一条加密消息"/utf8>>;
-get_push_body(_) -> <<"发来一条消息"/utf8>>.

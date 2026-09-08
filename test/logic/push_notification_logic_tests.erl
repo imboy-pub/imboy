@@ -110,11 +110,14 @@ maybe_push_for_c2c_offline_test() ->
         meck:expect(user_repo, find_by_id, fun(1, <<"nickname">>) ->
             #{<<"nickname">> => <<"Alice">>}
         end),
-        meck:expect(push_notification_ds, send_to_user, fun(2, <<"Alice">>, <<"发来一条消息"/utf8>>) ->
+        meck:expect(push_notification_ds, send_to_user, fun(
+            2, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
+        ) ->
             ok
         end),
         ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"text">>, <<"hello">>)),
-        ?assert(meck:called(push_notification_ds, send_to_user, '_'))
+        ?assert(meck:called(push_notification_ds, send_to_user, '_')),
+        ?assertEqual(0, meck:num_calls(user_repo, find_by_id, 2))
     end).
 
 maybe_push_for_c2g_test() ->
@@ -137,14 +140,20 @@ maybe_push_for_c2g_test() ->
         meck:expect(group_repo, find_by_id, fun(100, <<"title">>) ->
             #{<<"title">> => <<"测试群"/utf8>>}
         end),
-        meck:expect(push_notification_ds, send_to_users, fun([2], _, _) -> ok end),
-        ?assertEqual(ok, push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2, 3]))
+        meck:expect(push_notification_ds, send_to_users, fun(
+            [2], <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
+        ) ->
+            ok
+        end),
+        ?assertEqual(ok, push_notification_logic:maybe_push_for_c2g(1, 100, <<"text">>, [1, 2, 3])),
+        ?assertEqual(0, meck:num_calls(user_repo, find_by_id, 2)),
+        ?assertEqual(0, meck:num_calls(group_repo, find_by_id, 2))
     end).
 
 notify_offline_users_empty_test() ->
     ?assertEqual(ok, push_notification_logic:notify_offline_users([], <<"title">>, <<"body">>)).
 
-push_body_types_test() ->
+push_payload_is_constant_across_message_types_test() ->
     ?WITH_MECKS([imboy_syn, elib_async, user_repo, push_notification_ds], fun() ->
         meck:expect(elib_async, async, fun(Fun) ->
             Fun(),
@@ -154,17 +163,16 @@ push_body_types_test() ->
         meck:expect(user_repo, find_by_id, fun(1, <<"nickname">>) ->
             #{<<"nickname">> => <<"Bob">>}
         end),
-        meck:expect(push_notification_ds, send_to_user, fun(2, <<"Bob">>, Body) ->
-            %% 验证不同消息类型的推送正文
-            ?assert(is_binary(Body)),
+        meck:expect(push_notification_ds, send_to_user, fun(
+            2, <<"新消息"/utf8>>, <<"发来一条消息"/utf8>>
+        ) ->
             ok
         end),
-        %% 测试图片消息
         ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"image">>, <<>>)),
-        %% 测试语音消息
         ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"voice">>, <<>>)),
-        %% 测试 e2ee 消息
-        ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"e2ee">>, <<>>))
+        ?assertEqual(ok, push_notification_logic:maybe_push_for_c2c(1, 2, <<"e2ee">>, <<>>)),
+        ?assertEqual(3, meck:num_calls(push_notification_ds, send_to_user, 3)),
+        ?assertEqual(0, meck:num_calls(user_repo, find_by_id, 2))
     end).
 
 %% ===================================================================
@@ -187,9 +195,11 @@ e2ee_push_body_never_leaks_ciphertext_test() ->
         meck:expect(user_repo, find_by_id, fun(1, <<"nickname">>) ->
             #{<<"nickname">> => <<"Alice">>}
         end),
-        meck:expect(push_notification_ds, send_to_user, fun(2, <<"Alice">>, Body) ->
+        meck:expect(push_notification_ds, send_to_user, fun(
+            2, <<"新消息"/utf8>>, Body
+        ) ->
             %% 核心隐私断言：body 是静态字符串，不含任何密文片段
-            ?assertEqual(<<"发来一条加密消息"/utf8>>, Body),
+            ?assertEqual(<<"发来一条消息"/utf8>>, Body),
             ?assertNot(binary:match(Body, ?FAKE_CIPHERTEXT) =/= nomatch),
             ?assertNot(binary:match(Body, <<"AwgAEk">>) =/= nomatch),
             ok
@@ -213,7 +223,9 @@ e2ee_v2_push_body_generic_test() ->
         meck:expect(user_repo, find_by_id, fun(1, <<"nickname">>) ->
             #{<<"nickname">> => <<"Alice">>}
         end),
-        meck:expect(push_notification_ds, send_to_user, fun(2, <<"Alice">>, Body) ->
+        meck:expect(push_notification_ds, send_to_user, fun(
+            2, <<"新消息"/utf8>>, Body
+        ) ->
             %% v2.0 e2ee 消息保留原 msg_type=text，push body 为通用串
             ?assertEqual(<<"发来一条消息"/utf8>>, Body),
             ?assertNot(binary:match(Body, ?FAKE_CIPHERTEXT) =/= nomatch),
@@ -245,8 +257,10 @@ e2ee_c2g_push_body_never_leaks_test() ->
         meck:expect(group_repo, find_by_id, fun(100, <<"title">>) ->
             #{<<"title">> => <<"Secret Group">>}
         end),
-        meck:expect(push_notification_ds, send_to_users, fun([2], _Title, Body) ->
-            ?assertEqual(<<"发来一条加密消息"/utf8>>, Body),
+        meck:expect(push_notification_ds, send_to_users, fun(
+            [2], <<"新消息"/utf8>>, Body
+        ) ->
+            ?assertEqual(<<"发来一条消息"/utf8>>, Body),
             ?assertNot(binary:match(Body, ?FAKE_CIPHERTEXT) =/= nomatch),
             ok
         end),
