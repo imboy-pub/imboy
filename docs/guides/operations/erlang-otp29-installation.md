@@ -58,8 +58,10 @@ sudo make install
 ### 2.3 接入 PATH
 
 ```bash
-sudo ln -sfn /usr/local/erlang-${OTP_VSN} /usr/local/erlang
-echo 'export PATH=/usr/local/erlang/bin:$PATH' | sudo tee /etc/profile.d/erlang.sh
+# 直用版本化路径，不建 /usr/local/erlang 统一入口：
+# 该名字若已被旧的真目录占用（历史手工安装），ln -sfn 不会替换目录，
+# 只会把链接塞进旧目录，PATH 命中的仍是老版本（2026-09-08 生产机实踩）。
+echo 'export PATH=/usr/local/erlang-'"${OTP_VSN}"'/bin:$PATH' | sudo tee /etc/profile.d/erlang.sh
 source /etc/profile.d/erlang.sh
 ```
 
