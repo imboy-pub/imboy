@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "imboy:agent-hub/task-evidence/1",
+  "title": "IMBoy Agent Hub task evidence",
+  "description": "主计划 §4.3 最低语义的机器契约。Python 标准库无 jsonschema，scripts/verify_agent_hub_task_evidence.py 以显式代码实现本 Schema 全部关键约束并追加 JSON Schema 无法表达的交叉一致性规则；两者不一致时以本文件与主计划 §4.3 为准并修 verifier。",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "status",
+    "verification_status",
+    "base_sha",
+    "final_diff",
+    "commands",
+    "tests",
+    "acceptance",
+    "artifacts",
+    "residual_risks",
+    "commit"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "task_id": {"type": "string", "pattern": "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*$"},
+    "status": {"type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "PARTIAL"]},
+    "verification_status": {
+      "type": "string",
+      "enum": ["draft", "verified", "superseded"],
+      "description": "draft=证据已产出待 verifier 回验；verified=verifier 机器判定通过；superseded=Base SHA 变化作废待重跑。"
+    },
+    "base_sha": {
+      "type": "object",
+      "required": ["imboy", "imboyapp", "imboyadmin"],
+      "additionalProperties": false,
+      "properties": {
+        "imboy": {"$ref": "#/definitions/sha_or_na"},
+        "imboyapp": {"$ref": "#/definitions/sha_or_na"},
+        "imboyadmin": {"$ref": "#/definitions/sha_or_na"}
+      }
+    },
+    "final_diff": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^[a-z0-9_.-]+:.+$"}
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "command", "exit_code"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {"type": "string", "pattern": "^cmd-[0-9]{2,}$"},
+          "command": {"type": "string", "minLength": 1},
+          "exit_code": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "required": ["passed", "failed", "skipped"],
+      "additionalProperties": false,
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0}
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["acceptance_id", "status", "command_ids", "artifact_ids"],
+        "additionalProperties": true,
+        "properties": {
+          "acceptance_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-A[0-9]{2}$"
+          },
+          "status": {"type": "string", "enum": ["PASS", "FAIL", "SKIP"]},
+          "command_ids": {"type": "array", "items": {"type": "string"}},
+          "artifact_ids": {"type": "array", "items": {"type": "string"}},
+          "assertions": {"type": "array", "items": {"type": "string"}},
+          "counts": {"type": "object", "additionalProperties": {"type": "integer"}}
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^artifact-[a-z0-9][a-z0-9-]*$"},
+          "path": {"type": "string", "pattern": "^/"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "residual_risks": {"type": "array", "items": {"type": "string"}},
+    "superseded_by": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*$",
+      "description": "仅 verification_status=superseded 时允许：取代本证据的任务 ID（如 BUILD-00 被 BUILD-00R 取代）。"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^(not-created-no-identity-approval|[0-9a-f]{7,40})$"
+    }
+  },
+  "definitions": {
+    "sha_or_na": {"type": "string", "pattern": "^(na|[0-9a-f]{40})$"}
+  }
+}

@@ -1,0 +1,252 @@
+{
+  "contract_id": "imboy:agent-hub/task-state-machine/1",
+  "schema_version": 1,
+  "title": "IMBoy Agent Hub 任务状态机机器契约（FSM-00 冻结）",
+  "description": "Agent Task 状态迁移的机器可读矩阵。本文件是唯一真源（single source of truth）；配套 agent_hub_task_state_machine.md 只作人读解释，不得另建第二真源。scripts/verify_agent_hub_task_state_machine.py 以冻结常量锁定本矩阵：状态全集、终态全集、初始态、合法边全集、动作全集，任何增删改都会 fail-closed。",
+  "initial_state": "submitted",
+  "actors": [
+    {
+      "name": "system",
+      "description": "平台定时器与执行调度器。仅 system 可触发 expire（超时）与 resume（批准后调度执行）。"
+    },
+    {
+      "name": "agent_worker",
+      "description": "任务执行体：内建 Agent 受控 tool 执行器或经 MCP 创建任务的外部 Agent。不得自任审批人。"
+    },
+    {
+      "name": "human_approver",
+      "description": "群内有权限的人类成员，且不得是任务所属 agent 本人（防自我审批架空人工闸门）。审批身份必须由服务端已认证会话（如 JWT current_uid）派生，禁止从请求体透传。"
+    },
+    {
+      "name": "task_owner",
+      "description": "任务发起人，可在任务到达终态前取消任务。"
+    },
+    {
+      "name": "admin",
+      "description": "平台管理员，运维与治理视角的取消权。"
+    }
+  ],
+  "states": [
+    {
+      "name": "submitted",
+      "terminal": false,
+      "convergence_path": "start→working 后按 working 路径收敛；亦可直接 fail→failed、cancel→cancelled、expire→expired 到达终态。"
+    },
+    {
+      "name": "working",
+      "terminal": false,
+      "convergence_path": "complete→completed、fail→failed、cancel→cancelled 直达终态；need_approval→awaiting_approval 后经审批分支收敛。"
+    },
+    {
+      "name": "awaiting_approval",
+      "terminal": false,
+      "convergence_path": "reject→rejected、expire→expired、cancel→cancelled 直达终态；approve→approved 后经 resume→working 收敛。"
+    },
+    {
+      "name": "approved",
+      "terminal": false,
+      "convergence_path": "resume→working 后按 working 路径收敛；调度确定性失败时 fail→failed。approved 是『已批准、待调度』的短暂过渡态，不是终态。"
+    },
+    {
+      "name": "rejected",
+      "terminal": true,
+      "convergence_path": "自身即终态：审批被拒，无出边，不可逆。"
+    },
+    {
+      "name": "expired",
+      "terminal": true,
+      "convergence_path": "自身即终态：等待人工动作（拾取或审批）超时，无出边，不可逆。"
+    },
+    {
+      "name": "completed",
+      "terminal": true,
+      "convergence_path": "自身即终态：执行成功，无出边，不可逆。"
+    },
+    {
+      "name": "failed",
+      "terminal": true,
+      "convergence_path": "自身即终态：执行失败或调度确定性失败，无出边，不可逆。"
+    },
+    {
+      "name": "cancelled",
+      "terminal": true,
+      "convergence_path": "自身即终态：任务被取消，无出边，不可逆。"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "submitted",
+      "action": "start",
+      "to": "working",
+      "allowed_actors": ["agent_worker"],
+      "idempotency": "重复 start：若已处于 working，按已到位处理（状态不变、无新副作用）；不产生第二个执行实例。",
+      "side_effect": "无外部副作用；仅记录拾取事实并推动内部调度。"
+    },
+    {
+      "from": "submitted",
+      "action": "cancel",
+      "to": "cancelled",
+      "allowed_actors": ["task_owner", "admin"],
+      "idempotency": "到达终态后重复 cancel 被默认拒绝（invalid_transition），状态不变；因目标态与当前态一致，调用方可按幂等已到位处理。",
+      "side_effect": "投递终态可靠群消息（completed/failed/cancelled 类终态走可靠通路，含 staging 落库与离线补拉）。"
+    },
+    {
+      "from": "submitted",
+      "action": "fail",
+      "to": "failed",
+      "allowed_actors": ["agent_worker", "system"],
+      "idempotency": "终态迁移只生效一次；此后重复 fail 被默认拒绝（invalid_transition），状态不变。",
+      "side_effect": "记录失败原因并投递终态可靠群消息。"
+    },
+    {
+      "from": "submitted",
+      "action": "expire",
+      "to": "expired",
+      "allowed_actors": ["system"],
+      "idempotency": "由 system 定时器驱动，仅触发一次生效；expired 为终态，其后一切动作被默认拒绝。",
+      "side_effect": "记录超时事实并投递终态可靠群消息。"
+    },
+    {
+      "from": "working",
+      "action": "progress",
+      "to": "working",
+      "allowed_actors": ["agent_worker"],
+      "idempotency": "自环：进度上报不改变状态；事件按 task_id 追加，天然幂等（重复上报同一进度无破坏）。",
+      "side_effect": "仅投递过渡态实时观察事件（ephemeral 扇出给在线成员，不落库）；无外部副作用。"
+    },
+    {
+      "from": "working",
+      "action": "need_approval",
+      "to": "awaiting_approval",
+      "allowed_actors": ["agent_worker"],
+      "idempotency": "同一 task_id 的待审登记只落一次（原子占位，first-writer-wins）；重复请求不重复投递审批卡片。",
+      "side_effect": "投递可靠审批卡片（durable 群消息）并登记待审记录；同时启动审批超时定时器。"
+    },
+    {
+      "from": "working",
+      "action": "complete",
+      "to": "completed",
+      "allowed_actors": ["agent_worker"],
+      "idempotency": "终态迁移只生效一次；此后重复 complete 被默认拒绝（invalid_transition），状态不变、结果不覆写。",
+      "side_effect": "记录结果并投递终态可靠群消息。"
+    },
+    {
+      "from": "working",
+      "action": "fail",
+      "to": "failed",
+      "allowed_actors": ["agent_worker", "system"],
+      "idempotency": "终态迁移只生效一次；此后重复 fail 被默认拒绝（invalid_transition），状态不变、错误原因不覆写。",
+      "side_effect": "记录失败原因并投递终态可靠群消息。执行中超时（如 worker 心跳丢失）按 fail(timeout) 归并本边，不走 expired。"
+    },
+    {
+      "from": "working",
+      "action": "cancel",
+      "to": "cancelled",
+      "allowed_actors": ["task_owner", "admin"],
+      "idempotency": "终态迁移只生效一次；此后重复 cancel 被默认拒绝（invalid_transition），状态不变。",
+      "side_effect": "向 worker 发协作取消信号（尽力而为）并投递终态可靠群消息；若存在待审登记则同步回收，防止『审批中被取消』永久残留。"
+    },
+    {
+      "from": "awaiting_approval",
+      "action": "approve",
+      "to": "approved",
+      "allowed_actors": ["human_approver"],
+      "idempotency": "first-writer-wins：并发下第一个成功落盘的决定获胜；其后任何重复或反向决定一律返回 already_decided，状态不再迁移，不产生新副作用。审批只走一次：approved 之后不存在第二次生效的 approve。",
+      "side_effect": "记录决定（含决定人）并投递决定通知消息；不在此步执行工具，副作用统一由 approved→working 的调度执行产生。"
+    },
+    {
+      "from": "awaiting_approval",
+      "action": "reject",
+      "to": "rejected",
+      "allowed_actors": ["human_approver"],
+      "idempotency": "first-writer-wins：同 approve 语义；并发/重复/reject 后再 approve 均返回 already_decided，首个决定不可推翻。拒绝后绝不执行。",
+      "side_effect": "记录决定（含决定人）并投递决定通知消息；无任何工具执行。"
+    },
+    {
+      "from": "awaiting_approval",
+      "action": "expire",
+      "to": "expired",
+      "allowed_actors": ["system"],
+      "idempotency": "审批超时定时器仅触发一次生效；与并发 approve/reject 竞争时同样 first-writer-wins，先落盘者获胜，后者被默认拒绝。",
+      "side_effect": "记录超时事实并投递终态可靠群消息；回收待审登记。过期后批准/拒绝一律 invalid_transition，绝不补执行。"
+    },
+    {
+      "from": "awaiting_approval",
+      "action": "cancel",
+      "to": "cancelled",
+      "allowed_actors": ["task_owner", "admin"],
+      "idempotency": "终态迁移只生效一次；与并发 approve/reject/expire 竞争时 first-writer-wins。",
+      "side_effect": "投递终态可靠群消息并回收待审登记；已到达 cancelled 后补到的审批决定被默认拒绝。"
+    },
+    {
+      "from": "approved",
+      "action": "resume",
+      "to": "working",
+      "allowed_actors": ["system"],
+      "idempotency": "调度按 execution 幂等键去重：同一幂等键只调度一次；重启恢复时的重试必须满足 execution_semantics 的可证明幂等条件。",
+      "side_effect": "触发受控工具执行：平台将幂等键下传给工具/外部系统；副作用是否可重试取决于工具能否按该键去重（见 execution_semantics）。"
+    },
+    {
+      "from": "approved",
+      "action": "fail",
+      "to": "failed",
+      "allowed_actors": ["system"],
+      "idempotency": "调度确定性失败（非瞬态）只落一次终态；此后重复请求被默认拒绝（invalid_transition）。",
+      "side_effect": "记录调度失败原因并投递终态可靠群消息；瞬态调度失败不落终态，留在 approved 等待按幂等语义重试。"
+    }
+  ],
+  "approval_rules": {
+    "decision_actions": ["approve", "reject"],
+    "arbitration": "first-writer-wins",
+    "approver_constraints": [
+      "审批人必须是群内有权限成员（成员关系以服务端权威数据为准，不信事件携带的成员列表）",
+      "审批人不得是任务所属 agent 本人（防自我审批架空人工闸门）",
+      "审批身份必须由服务端已认证会话（如 JWT current_uid）派生，禁止从客户端请求体透传"
+    ],
+    "duplicate_decision": {
+      "outcome": "already_decided",
+      "state_change": false,
+      "new_side_effects": false,
+      "detail": "并发或重复的 approve/reject（同向或反向）在决定已落盘后一律返回 already_decided：状态不二次迁移、决定通知不重复投递、绝不触发工具执行。"
+    },
+    "single_execution_after_approval": "批准后至多执行一次：执行调度器按 execution 幂等键去重；拒绝、过期、重复批准、取消后批准补发均不得执行。"
+  },
+  "expiry_rules": {
+    "action": "expire",
+    "trigger_actor": "system",
+    "source_states": ["submitted", "awaiting_approval"],
+    "expired_is_terminal": true,
+    "semantics": "expired 仅表示『等待人工动作超时』：submitted 超时未拾取、awaiting_approval 超时未决。执行中的超时归并 working+fail(timeout)，不产生新语义分支。过期即终态：其后 approve/reject/任何动作均被默认拒绝（invalid_transition），绝不补执行。",
+    "current_implementation_gap": "现有 PoC（agent_task_observer）无审批 TTL 与 expire 迁移；该差距由 DATA-01 持久化任务层兑现，本矩阵先冻结目标契约。"
+  },
+  "terminal_rules": {
+    "terminal_states": ["rejected", "expired", "completed", "failed", "cancelled"],
+    "no_outgoing_transitions": true,
+    "irreversible": true,
+    "reentry_and_duplicates": "terminal 状态上的一切动作都属于非法迁移补集，默认拒绝（invalid_transition）：状态不变、无新副作用。实现层可把『重复同一终态请求』映射为幂等 already-in-state 响应，但等价于拒绝迁移，不得改变状态或产生副作用。",
+    "cleanup": "到达终态时必须回收该任务残留的待审登记，防止永久挂起。"
+  },
+  "restart_recovery": {
+    "replay_from": "persisted_state",
+    "auto_new_side_effects": false,
+    "rule": "服务重启后从持久化状态存储重放任务状态；恢复过程本身不自动产生新的外部副作用。仅当挂起执行的工具可证明按幂等键去重（可证明幂等）时，才允许恢复重试；无法证明幂等的执行采用 at-most-once，结果不确定时进入人工复核，绝不自动重复副作用。",
+    "current_implementation_gap": "现有 PoC 状态与审批保存在 ETS，服务重启即丢失；restart_recovery 由 DATA-01 引入持久化后兑现，本矩阵冻结其目标语义。"
+  },
+  "execution_semantics": {
+    "side_effect_key": "每个会产生外部副作用的执行必须携带平台生成的幂等键（idempotency key），并将该键下传（下沉）给工具/外部系统；任务状态、审批与投递的幂等键需有数据库唯一约束支撑，不能只依赖进程内 ETS。",
+    "scheduling": "IMBoy 对同一 execution 幂等键只调度一次；执行以 approved→working 的 resume 迁移为唯一入口。",
+    "default_guarantee": "无法证明工具幂等时，默认交付保证为 at-most-once；结果不确定（发出后未知是否生效）时进入人工复核通道，绝不自动重复副作用。",
+    "recoverable_retry_requires_provable_idempotency": true,
+    "uncertain_outcome_handling": "manual_review",
+    "forbidden_claims": "禁止对外承诺无条件的『恰好一次』投递语义：本契约只承诺『按幂等键只调度一次 + 可证明幂等时可恢复重试；否则 at-most-once + 人工复核』，任何文档与实现不得使用无法兑现的恰好一次表述。"
+  },
+  "illegal_transition_policy": {
+    "definition": "illegal_complement = (states × actions_universe) − legal_edges；合法边即本文件 transitions 数组逐行声明的 (from, action, to) 三元组。",
+    "actions_universe": ["start", "cancel", "fail", "expire", "progress", "need_approval", "complete", "approve", "reject", "resume"],
+    "default_outcome": "rejected",
+    "error_code": "invalid_transition",
+    "state_change": false,
+    "side_effect": false,
+    "verifier_guarantee": "scripts/verify_agent_hub_task_state_machine.py 以冻结常量锁定合法边全集并枚举补集：矩阵任何未声明的 (state, action) 组合（含 terminal 上的一切动作、expired 后补批准、approved 上直接 approve 等）均默认拒绝；补集全部被拒是机器可验证断言。"
+  }
+}

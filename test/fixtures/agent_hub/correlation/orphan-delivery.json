@@ -1,0 +1,58 @@
+[
+  {
+    "correlation_id": "corr-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "entity_type": "request",
+    "entity_id": "req-20260907-000001",
+    "parent_entity_id": null,
+    "timestamp": "2026-09-07T08:00:00.000000Z",
+    "status": "accepted"
+  },
+  {
+    "correlation_id": "corr-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "entity_type": "task",
+    "entity_id": "task-20260907-000001",
+    "parent_entity_id": "req-20260907-000001",
+    "timestamp": "2026-09-07T08:00:01.000000Z",
+    "status": "created"
+  },
+  {
+    "correlation_id": "corr-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "entity_type": "event",
+    "entity_id": "evt-20260907-000001",
+    "parent_entity_id": "task-20260907-000001",
+    "timestamp": "2026-09-07T08:00:02.000000Z",
+    "status": "awaiting_approval"
+  },
+  {
+    "correlation_id": "corr-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "entity_type": "approval",
+    "entity_id": "apr-20260907-000001",
+    "parent_entity_id": "task-20260907-000001",
+    "timestamp": "2026-09-07T08:05:00.000000Z",
+    "status": "approved"
+  },
+  {
+    "correlation_id": "corr-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "entity_type": "execution",
+    "entity_id": "exe-20260907-000001",
+    "parent_entity_id": "apr-20260907-000001",
+    "timestamp": "2026-09-07T08:05:01.000000Z",
+    "status": "succeeded"
+  },
+  {
+    "correlation_id": "corr-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "entity_type": "delivery",
+    "entity_id": "dlv-20260907-000001",
+    "parent_entity_id": "exe-20260907-999999",
+    "timestamp": "2026-09-07T08:05:02.000000Z",
+    "status": "delivered"
+  },
+  {
+    "correlation_id": "corr-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+    "entity_type": "outcome",
+    "entity_id": "out-20260907-000001",
+    "parent_entity_id": "dlv-20260907-000001",
+    "timestamp": "2026-09-07T08:05:03.000000Z",
+    "status": "succeeded"
+  }
+]
