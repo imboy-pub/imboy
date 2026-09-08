@@ -73,12 +73,12 @@
 | ID | 问题 | 状态 | 说明 |
 |---|---|---|---|
 | IMB-2026-015 | **`trust_audit` 在账号注销时未清**（含 actor_uid / target_uid） | `Blocked` | 审计留存 vs 被遗忘权是**政策判断，不是代码判断**，需显式拍板，不在代码里默默删。olm 三表与两张备份表的注销级联已补 |
-| IMB-2026-016 | **fallback key 签名非必填** | `Acknowledged` | 今天若强制必填，无客户端发签名 → 所有设备发布不了 fallback key → 每次耗尽变 `no_prekey_available`，是**可用性事故**。用指标 `olm_fallback_unsigned_total` 判断第二阶段启动时机。攻击者可「干脆不带签名」绕过——这是接受的窗口 |
+| IMB-2026-016 | **fallback key 签名非必填** | `Resolved`（2026-08-27 红队 v2.0 RT-P1-01 关闭，`7e8253d3` 落盘） | 第二阶段已实施：服务端对已注册 identity 的设备强制验签，空签名返回 400 `fallback_signature_required`（`olm_identity_logic.erl:161`），计数 `olm_fallback_unsigned_total` 保留。盗 token 植入预密钥的重攻击被拒（`fallback_reattack_*.txt`）。历史说明：第一阶段接受窗口的两难（强制必填 → 旧客户端 `no_prekey_available`）随客户端签名全覆盖而消失 |
 | IMB-2026-017 | **SQLCipher 分组密码 / HMAC / KDF 全用库默认值**，我方未显式选定，也未做安全评估 | `Open` | `cipher_page_size` / `kdf_iter` / `cipher_hmac_algorithm` 三个 PRAGMA 在 `lib/` 零命中。**2026-08-02 密码学清单新发现** |
 | IMB-2026-018 | 客户端 e2ee API **fail-open 残留**（查询侧） | `Open` | 第一批写操作已改抛（`8b4330fb`）；查询侧经下游 fail-closed 属有意保留，待第二批复核。追踪 **X8 / P3-2** |
 | IMB-2026-019 | **XFF 限流根基被推翻**：取最左 forwarded IP = 攻击者可控 | `Blocked` | OTK claim 限流与备份端点限流的有效性**依赖该修复**，而修复在别线（sellable #5）。追踪 **X14** |
 | IMB-2026-020 | 身份键就地覆盖**无痕迹** | `Open` | 无 append-only 历史则旧身份被替换不可追溯。追踪 **B3** |
-| IMB-2026-028 | **`CryptoStore` 不可用时 TOFU 整体跳过，且无任何时间/次数上限** | `Open` | `olm_session_service.dart` `_enforceTofu` 首行 `if (store == null) return;`。本地存储故障期间 identity 变化检测完全失效、通信照常、用户无感。与 IMB-2026-014 同为 fail-open，但**014 有 60s 缓存 TTL 封顶，本条没有上限**——故障持续多久就裸奔多久。此前只存在于一行代码注释，无文档无台账。处置选项与推荐见 [`device-verification-policy.md`](./device-verification-policy.md) §4 |
+| IMB-2026-028 | **`CryptoStore` 不可用时 TOFU 整体跳过，且无任何时间/次数上限** | `Resolved`（2026-08-27 红队 v2.0 RT-P2-02 关闭） | `_enforceTofu`（`olm_session_service.dart:749-762`）store==null 已改 fail-closed：抛 `OlmStateCommitException` 拒绝建会话——无持久化即无法锚定对端身份，带未知对端身份加密等于裸奔。与 `_requireStore` 同一语义。原「首行 if (store == null) return」形态已不存在 |
 | IMB-2026-029 | **未验证设备的能力边界无显式策略**（TT-B5 ❌） | `Blocked` | 今天**不存在「已验证设备」这个层级**——Safety Number 生产零调用，用户没有任何途径标记设备为已验证，故"所有设备都是未验证设备且能做全部事情"。这不是策略，是策略缺位。决策空间已整理但**在 IMB-2026-006 关闭前不可实施**（没有验证入口，任何区别对待都只会惩罚全部用户） |
 
 ---

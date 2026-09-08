@@ -19,7 +19,7 @@
 
 | TT | 现状 | 证据 | 关闭任务 |
 |---|---|---|---|
-| B1 | ❌ 算法在零 UI；交叉签名地基零接线 | `safety_number.dart` 生产零调用；`identity_verifier.dart:63-125` 仅 test 引用 | P3-4、P3-5 |
+| B1 | ✅（2026-08-25 已接线，ledger IMB-2026-006 Resolved）安全码三入口：单聊设置/联系人资料/群成员详情；比对一致后 `TrustRecordService.recordVerified` 上报 `POST /e2ee/trust/record`（method=manual_number）成功才本地标记。残留=多设备聚合 Safety Number（Signal v2 语义）未做；交叉签名地基仍零接线 | ledger IMB-2026-006；真机黑盒 CLEAN_VERIFY_2026（08-25） | 聚合 SN=后续增强 |
 | B2 | ✅待证 | TOFU fail-closed `olm_session_service.dart:692-725`；S2C 告警 `e2ee_peer_key_warning_rule.dart`+`chat_page.dart:632` | P1/P2 闭环 |
 | B3 | 🟡 Merkle 库完成未接线；profile 未签字；身份键就地覆盖无痕 | `e2ee_kt_merkle.erl`（golden 钉死）；`olm_identity_repo.erl:46` ON CONFLICT DO UPDATE；bigserial 失效已实证 | P3-8（依赖 P0-1） |
 | B4 | 🟡→**群聊已可恢复**（2026-08-02，imboyapp `9426e7e4`）：备份含 `megolm_inbound` 段（收集/回填/往返实证 9/9，v1 旧包兼容）；**1:1 Olm 历史仍不可恢复=有意设计**（跨设备还原双棘轮会 key reuse/ratchet 分叉，同 Signal/Matrix）；**UI 明示与恢复文档已补**（2026-08-02）：导入成功对话框文案由含糊的「旧消息可能无法访问」改为分类明示「群聊已恢复/单聊不可恢复」，10 语言对齐；`docs/guides/e2ee/history-recoverability.md` 给出用户与支持口径。**残留=换设备"前"的备份提醒未加**（用户可能没备份就换机） | `megolm_backup_section.dart`；`e2ee_local_backup_service` pack/unpack；导入页 `_applyRestoredKeys`；`e2eeBackupImportSuccessNote`×10 语言；`history-recoverability.md` | 换机前提醒（P5-4） |
