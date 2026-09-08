@@ -45,7 +45,11 @@
     list_group_members/2,
     list_conversations/2,
     create_group/2,
-    send_message/2
+    send_message/2,
+    create_agent_task/2,
+    update_agent_task/2,
+    request_task_approval/2,
+    get_agent_task/2
 ]).
 
 %% registry 就绪等待超时；重试间隔
@@ -112,6 +116,30 @@ reg_all() ->
         send_message,
         <<"以调用者身份给某好友发一条明文文本消息（C2C）"/utf8>>,
         send_message_schema()
+    ),
+    ok = reg(
+        <<"create_agent_task">>,
+        create_agent_task,
+        <<"创建 Agent 任务（幂等：同 idempotency_key 返回原任务）"/utf8>>,
+        create_agent_task_schema()
+    ),
+    ok = reg(
+        <<"update_agent_task">>,
+        update_agent_task,
+        <<"上报任务进度/完成/失败/取消（action: start|progress|complete|fail|cancel)"/utf8>>,
+        update_agent_task_schema()
+    ),
+    ok = reg(
+        <<"request_task_approval">>,
+        request_task_approval,
+        <<"请求人工审批（working → awaiting_approval，群内卡片）"/utf8>>,
+        request_approval_schema()
+    ),
+    ok = reg(
+        <<"get_agent_task">>,
+        get_agent_task,
+        <<"读取任务状态与审批结果（轮询权威兜底）"/utf8>>,
+        get_agent_task_schema()
     ),
     %% Phase 4 T4.1：桥接生产插件 manifest 声明的 mcp_tools
     ok = reg_plugin_tools(),
@@ -441,3 +469,192 @@ do_register(State) ->
             erlang:send_after(?RETRY_MS, self(), retry_register),
             State#{mon => undefined}
     end.
+
+%%====================================================================
+%% WH/MCP-02：Agent Task tools（身份取 Ctx Principal；Args 仅业务目标）
+%%====================================================================
+
+%% @doc 创建任务：幂等键 = client 维度（mcp:<client_key>:<Args key>）。
+%% 重复 create 返回原任务 + 原 correlation_id（A03）。
+create_agent_task(Args, Ctx) ->
+    with_principal(Ctx, fun(#{client_key := ClientKey, owner_uid := OwnerUid} = _P) ->
+        Idem = idem_of(ClientKey, Args),
+        TaskId = task_id_for(Idem),
+        Event = #{
+            task_id => TaskId,
+            %% 任务归属 = 凭证 owner（服务端派生，不从 Args 取）
+            agent_uid => OwnerUid,
+            group_id => to_int(maps:get(<<"group_id">>, Args, 0)),
+            tool => elib_cnv:safe_to_binary(maps:get(<<"tool">>, Args, <<>>)),
+            params_digest => elib_cnv:safe_to_binary(
+                maps:get(<<"params_digest">>, Args, <<>>)
+            ),
+            idempotency_key => Idem
+        },
+        case agent_task_logic:ensure_task(Event) of
+            {ok, Row, _Created} ->
+                {structured, #{
+                    <<"task_id">> => maps:get(<<"id">>, Row),
+                    <<"status">> => maps:get(<<"status">>, Row),
+                    <<"correlation_id">> => maps:get(<<"correlation_id">>, Row),
+                    <<"created">> => _Created
+                }};
+            {error, invalid_task_id} ->
+                tool_error(<<"group_id/参数无效"/utf8>>);
+            {error, _Reason} ->
+                tool_error(<<"创建任务失败"/utf8>>)
+        end
+    end).
+
+%% @doc 上报状态动作（working/complete/fail/cancel/progress）。
+update_agent_task(Args, Ctx) ->
+    with_principal(Ctx, fun(_P) ->
+        TaskId = elib_cnv:safe_to_binary(maps:get(<<"task_id">>, Args, <<>>)),
+        Action = action_bin(maps:get(<<"action">>, Args, <<>>)),
+        %% agent_uid/group_id 以任务行权威值为准（Args 不提供）
+        case
+            agent_task_logic:record_event(#{
+                task_id => TaskId,
+                status => Action,
+                e2ee => false
+            })
+        of
+            skip ->
+                tool_error(<<"非法迁移或未知状态"/utf8>>);
+            {deliver, Status} ->
+                {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}};
+            {deliver_with_meta, Status, _Meta} ->
+                {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}}
+        end
+    end).
+
+%% @doc 请求人工审批（working → awaiting_approval，卡片投递到任务群）。
+request_task_approval(Args, Ctx) ->
+    with_principal(Ctx, fun(_P) ->
+        TaskId = elib_cnv:safe_to_binary(maps:get(<<"task_id">>, Args, <<>>)),
+        case
+            agent_task_logic:record_event(#{
+                task_id => TaskId,
+                status => awaiting_approval,
+                text => elib_cnv:safe_to_binary(
+                    maps:get(<<"reason">>, Args, <<>>)
+                ),
+                e2ee => false
+            })
+        of
+            {deliver_with_meta, <<"awaiting_approval">>, _Meta} ->
+                {structured, #{
+                    <<"task_id">> => TaskId,
+                    <<"status">> => <<"awaiting_approval">>,
+                    <<"poll">> => <<"get_agent_task">>
+                }};
+            _ ->
+                tool_error(<<"当前状态不可请求审批"/utf8>>)
+        end
+    end).
+
+%% @doc 轮询任务状态与审批结果（权威兜底，A01 poll 路径）。
+get_agent_task(Args, Ctx) ->
+    with_principal(Ctx, fun(_P) ->
+        TaskId = elib_cnv:safe_to_binary(maps:get(<<"task_id">>, Args, <<>>)),
+        case agent_task_logic:lookup(TaskId) of
+            undefined ->
+                tool_error(<<"任务不存在"/utf8>>);
+            {pending, Gid, Agent} ->
+                {structured, #{
+                    <<"task_id">> => TaskId,
+                    <<"status">> => <<"awaiting_approval">>,
+                    <<"group_id">> => Gid,
+                    <<"agent_uid">> => Agent
+                }};
+            {live_status, Status} ->
+                %% submitted/working 等活跃态回读（A01 progress 路径）
+                {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}};
+            {Decision, Approver} ->
+                {structured, #{
+                    <<"task_id">> => TaskId,
+                    <<"status">> => atom_to_binary(Decision, utf8),
+                    <<"decided_by">> => Approver
+                }}
+        end
+    end).
+
+%% Principal 提取（MCP-01 认证产物；Args 不允许自报身份）
+with_principal(Ctx, Fun) ->
+    case maps:get(auth_info, Ctx, undefined) of
+        #{owner_uid := _Uid, client_id := _Cid, client_key := Key} = P when Key =/= <<>> ->
+            Fun(P#{client_key => Key});
+        _ ->
+            tool_error(<<"未认证或身份无效"/utf8>>)
+    end.
+
+idem_of(ClientKey, Args) ->
+    Raw = elib_cnv:safe_to_binary(maps:get(<<"idempotency_key">>, Args, <<>>)),
+    <<"mcp:", ClientKey/binary, ":", Raw/binary>>.
+
+%% task_id 由幂等键确定性派生：同 key 重放必得同任务（A03）
+task_id_for(Idem) ->
+    %% sha256 前 16 字节 hex（32 字符）：总长 37，落在契约 16..64 区间
+    Hex = binary:encode_hex(crypto:hash(sha256, Idem), lowercase),
+    <<"task-", (binary:part(Hex, 0, 32))/binary>>.
+
+action_bin(<<"start">>) -> <<"working">>;
+action_bin(start) -> <<"working">>;
+action_bin(<<"progress">>) -> <<"working">>;
+action_bin(progress) -> <<"working">>;
+action_bin(<<"complete">>) -> <<"completed">>;
+action_bin(complete) -> <<"completed">>;
+action_bin(<<"fail">>) -> <<"failed">>;
+action_bin(fail) -> <<"failed">>;
+action_bin(<<"cancel">>) -> <<"cancelled">>;
+action_bin(cancel) -> <<"cancelled">>;
+action_bin(Other) when is_binary(Other) -> Other;
+action_bin(Other) when is_atom(Other) -> atom_to_binary(Other, utf8);
+action_bin(_) -> <<>>.
+
+create_agent_task_schema() ->
+    #{
+        type => object,
+        required => [group_id, idempotency_key],
+        properties => #{
+            group_id => #{type => integer},
+            tool => #{type => string},
+            params_digest => #{type => string},
+            idempotency_key => #{type => string},
+            agent_uid => #{type => integer}
+        }
+    }.
+
+update_agent_task_schema() ->
+    #{
+        type => object,
+        required => [task_id, action],
+        properties => #{
+            task_id => #{type => string},
+            action => #{
+                type => string,
+                enum => [
+                    <<"start">>,
+                    <<"progress">>,
+                    <<"complete">>,
+                    <<"fail">>,
+                    <<"cancel">>
+                ]
+            },
+            result_digest => #{type => string}
+        }
+    }.
+
+request_approval_schema() ->
+    #{
+        type => object,
+        required => [task_id],
+        properties => #{task_id => #{type => string}, reason => #{type => string}}
+    }.
+
+get_agent_task_schema() ->
+    #{
+        type => object,
+        required => [task_id],
+        properties => #{task_id => #{type => string}}
+    }.

@@ -15,6 +15,9 @@
 -export([enforce/0]).
 -export([ensure_client/1, ensure_client/2]).
 -export([authorize/2]).
+-export([authenticate_secret/1]).
+-export([authorize_client/3]).
+-export([check_rate/1]).
 -export([list_clients/4]).
 -export([approve/3, reject/4, revoke/4]).
 -export([set_grant/3]).
@@ -23,10 +26,26 @@
 
 -include("log.hrl").
 
-%% @doc enforce 开关（默认关闭，opt-in 强制）
+%% @doc enforce 开关。默认按产品 profile（PDT-01/MCP-01）：
+%%   agent_hub / enterprise profile 默认强制；community 默认放行（兼容行为，
+%%   须以 app env mcp_governance_enforce=true 显式开启，不静默）。
 -spec enforce() -> boolean().
 enforce() ->
-    application:get_env(imboy, mcp_governance_enforce, false) =:= true.
+    case application:get_env(imboy, mcp_governance_enforce, undefined) of
+        undefined -> default_enforce();
+        V -> V =:= true
+    end.
+
+default_enforce() ->
+    case application:get_env(imboy, product_profile, community) of
+        {ok, Profile} -> default_enforce(Profile);
+        Profile when is_atom(Profile) -> default_enforce(Profile);
+        _ -> false
+    end.
+
+default_enforce(agent_hub) -> true;
+default_enforce(enterprise) -> true;
+default_enforce(_) -> false.
 
 %% @doc 惰性登记客户端（owner_uid 无记录则插 pending），返回 client_id
 -spec ensure_client(integer()) -> {ok, integer()} | {error, term()}.
@@ -67,6 +86,89 @@ authorize(_OwnerUid, _ToolName) ->
         false -> allow
     end.
 
+%% ===================================================================
+%% MCP-01：独立凭证认证与 per-client 治理
+%% ===================================================================
+
+%% @doc 凭证认证（fail-closed）：Bearer token（64 hex）→ SHA-256 摘要 → 索引
+%% 精确查找 → 校验 禁用/撤销/到期 → 更新 last_used_at（best-effort）。
+%% 成功返回 Principal（owner_uid + client_id + client_key），注入请求上下文；
+%% tools 不接受参数自报身份。
+-spec authenticate_secret(binary()) ->
+    {ok, map()}
+    | {error,
+        credential_invalid
+        | credential_revoked
+        | credential_disabled
+        | credential_expired
+        | term()}.
+authenticate_secret(Secret) when is_binary(Secret), byte_size(Secret) >= 32 ->
+    Digest = mcp_client_repo:digest_hex(Secret),
+    case mcp_client_repo:find_by_digest(Digest) of
+        {ok, Client} ->
+            Now = os:system_time(second),
+            Disabled = maps:get(<<"disabled">>, Client, false),
+            Status = maps:get(<<"status">>, Client, <<>>),
+            ExpiresAt = maps:get(<<"expires_at">>, Client, null),
+            Expired = is_expired(ExpiresAt, Now),
+            if
+                Disabled =:= true ->
+                    {error, credential_disabled};
+                Status =:= <<"revoked">> ->
+                    {error, credential_revoked};
+                Expired ->
+                    {error, credential_expired};
+                true ->
+                    ClientId = maps:get(<<"client_id">>, Client),
+                    _ = mcp_client_repo:touch_last_used(ClientId),
+                    {ok, #{
+                        owner_uid => maps:get(<<"owner_uid">>, Client),
+                        client_id => ClientId,
+                        client_key => maps:get(<<"client_key">>, Client)
+                    }}
+            end;
+        {error, notfound} ->
+            {error, credential_invalid};
+        {error, _} = E ->
+            E
+    end;
+authenticate_secret(_Secret) ->
+    {error, credential_invalid}.
+
+%% expires_at 形态：null/undefined=永不过期；timestamptz 文本由 epgsql 转
+%% calendar 元组——统一按可比较秒数判定。
+is_expired(null, _Now) ->
+    false;
+is_expired(undefined, _Now) ->
+    false;
+is_expired(ExpiresAt, Now) when is_tuple(ExpiresAt) ->
+    ExpiresSec = calendar:datetime_to_gregorian_seconds(ExpiresAt),
+    Unix = ExpiresSec - 62167219200,
+    Unix =< Now;
+is_expired(_, _Now) ->
+    false.
+
+%% @doc 按 client 的授权判定（credential 认证成功后的 tools/call 闸门）。
+%% 审计记 client/correlation，不记参数正文。
+-spec authorize_client(integer(), integer(), binary()) -> allow | {deny, binary()}.
+authorize_client(ClientId, OwnerUid, ToolName) ->
+    audit_tool_call(ClientId, OwnerUid, ToolName),
+    case enforce() of
+        false -> allow;
+        true -> authorize_enforced(ClientId, ToolName)
+    end.
+
+%% @doc per-client tools/call 速率闸门（复用 agent_rate_limiter 桶窗口；
+%% Scope 维度=client_key，单 client 洪泛不影响其他 client）。
+-spec check_rate(binary()) -> allow | {deny, rate_limited}.
+check_rate(ClientKey) when is_binary(ClientKey) ->
+    case agent_rate_limiter:allow({mcp_client, ClientKey}, 0) of
+        allow -> allow;
+        {deny, _Why} -> {deny, rate_limited}
+    end;
+check_rate(_) ->
+    {deny, rate_limited}.
+
 authorize_enforced(ClientId, ToolName) ->
     case client_status(ClientId) of
         <<"approved">> ->
@@ -86,12 +188,25 @@ authorize_enforced(ClientId, ToolName) ->
 list_clients(Page, Size, Status, Keyword) ->
     mcp_client_repo:page(Page, Size, Status, Keyword).
 
-%% @doc 审批通过：改 approved + 授予当前全部已注册 tool + 双写审计
+%% @doc 审批通过：改 approved + 授予默认 read tools + 双写审计。
+%% 不再自动授予全部已注册 tool：新增 tool 默认无授权（MCP-01-A04），
+%% 管理员可在治理详情按 tool 显式开启。
+%% V1 无已分类的 read tool（DEFAULT_READ_TOOLS 空集），approve 后仍需显式授权。
 -spec approve(integer(), integer(), binary()) -> {ok, map()} | {error, binary()}.
 approve(ClientId, AdmUid, Ip) ->
     transition(ClientId, <<"approved">>, <<>>, <<"approve">>, AdmUid, Ip, fun(Cid) ->
-        grant_all_tools(Cid)
+        grant_default_tools(Cid)
     end).
+
+%% 默认授予的 read tools（契约冻结：V1 空集；新增分类需契约升版）
+-define(DEFAULT_READ_TOOLS, []).
+
+grant_default_tools(ClientId) ->
+    lists:foreach(
+        fun({Name, _Handler}) -> mcp_client_grant_repo:upsert(ClientId, Name, true) end,
+        ?DEFAULT_READ_TOOLS
+    ),
+    ok.
 
 %% @doc 拒绝：改 revoked + 记 reason
 -spec reject(integer(), binary(), integer(), binary()) -> {ok, map()} | {error, binary()}.
@@ -165,15 +280,6 @@ client_status(ClientId) ->
         {ok, #{<<"status">> := Status}} -> Status;
         _ -> <<"unknown">>
     end.
-
-%% approve 时授予当前注册的全部 tool（管理员可在详情里逐个关闭）
-grant_all_tools(ClientId) ->
-    Tools = barrel_mcp_registry:all(tool),
-    lists:foreach(
-        fun({Name, _Handler}) -> mcp_client_grant_repo:upsert(ClientId, Name, true) end,
-        Tools
-    ),
-    ok.
 
 %% tool_call 审计：best-effort，失败不阻断放行
 audit_tool_call(ClientId, OwnerUid, ToolName) ->

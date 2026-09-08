@@ -37,23 +37,68 @@
 init(Req0, State) ->
     case cowboy_req:method(Req0) of
         <<"POST">> ->
-            {ok, Body, Req1} = read_body(Req0, <<>>),
-            %% T3.3：auth_middleware 已把 current_uid 注入 handler opts；
-            %% 取调用者 uid 作 AuthInfo 线程进 tool Ctx（未认证=0）。
-            AuthInfo = auth_ds:current_uid(State),
-            %% T3.6：接 Mcp-Session-Id（无则 initialize 时惰性创建）。
-            SessionId0 = cowboy_req:header(<<"mcp-session-id">>, Req1),
-            {Code, Resp, SessionId} = process(Body, AuthInfo, SessionId0),
-            Headers = maybe_session_header(
-                #{<<"content-type">> => <<"application/json">>}, SessionId
-            ),
-            Req = cowboy_req:reply(Code, Headers, Resp, Req1),
-            {ok, Req, State};
+            %% MCP-01：本路由只接受 MCP client credential（fail-closed）。
+            %% Bearer <secret> → SHA-256 摘要索引查找 → 禁用/撤销/到期全拒。
+            %% 认证成功注入 Principal（owner_uid/client_id/client_key）到
+            %% AuthInfo；tools 不接受参数自报身份。
+            case authenticate(Req0) of
+                {error, _Reason} ->
+                    Req = cowboy_req:reply(
+                        401,
+                        #{<<"content-type">> => <<"application/json">>},
+                        <<"{\"error\":\"credential_invalid\"}">>,
+                        Req0
+                    ),
+                    {ok, Req, State};
+                {ok, Principal} ->
+                    {ok, Body, Req1} = read_body(Req0, <<>>),
+                    AuthInfo = Principal,
+                    %% T3.6：接 Mcp-Session-Id（无则 initialize 时惰性创建）。
+                    SessionId0 = cowboy_req:header(<<"mcp-session-id">>, Req1),
+                    {Code, Resp, SessionId} = process(Body, AuthInfo, SessionId0),
+                    Headers = maybe_session_header(
+                        #{<<"content-type">> => <<"application/json">>}, SessionId
+                    ),
+                    Req = cowboy_req:reply(Code, Headers, Resp, Req1),
+                    {ok, Req, State}
+            end;
         <<"GET">> ->
-            init_sse(Req0);
+            %% SSE 长连接同样要求凭证认证
+            case authenticate(Req0) of
+                {error, _Reason} ->
+                    Req = cowboy_req:reply(
+                        401,
+                        #{<<"content-type">> => <<"application/json">>},
+                        <<"{\"error\":\"credential_invalid\"}">>,
+                        Req0
+                    ),
+                    {ok, Req, State};
+                {ok, _Principal} ->
+                    init_sse(Req0)
+            end;
         _ ->
             {ok, cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0), State}
     end.
+
+%% @doc MCP client credential 认证（PDT-01 mcp_client 契约 §2/§3）。
+%% Authorization: Bearer <secret>；摘要索引精确查找，fail-closed。
+-spec authenticate(cowboy_req:req()) -> {ok, map()} | {error, term()}.
+authenticate(Req) ->
+    case cowboy_req:header(<<"authorization">>, Req) of
+        undefined ->
+            {error, credential_invalid};
+        Authorization ->
+            case strip_bearer(Authorization) of
+                <<>> -> {error, credential_invalid};
+                Secret -> mcp_governance_logic:authenticate_secret(Secret)
+            end
+    end.
+
+strip_bearer(<<"Bearer ", Rest/binary>>) -> trim(Rest);
+strip_bearer(<<"bearer ", Rest/binary>>) -> trim(Rest);
+strip_bearer(Other) -> trim(Other).
+
+trim(Bin) -> string:trim(Bin, both).
 
 %% @doc 升级为 SSE 长连接（GET /api/v1/mcp）。
 %% 读 mcp-session-id（无则新建）；读 last-event-id（有则重放增量）；

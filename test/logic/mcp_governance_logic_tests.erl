@@ -34,8 +34,9 @@ t_approve_ok(_) ->
         meck:expect(mcp_client_repo, set_status, fun(900, <<"approved">>, _, _) -> {ok, 1} end),
         R = mcp_governance_logic:approve(900, 7, <<"1.2.3.4">>),
         ?assertMatch({ok, #{<<"status">> := <<"approved">>}}, R),
-        %% approve 授予当前全部 tool
-        ?assert(meck:called(mcp_client_grant_repo, upsert, [900, <<"get_contacts">>, true]))
+        %% MCP-01（A04）：approve 不再自动授予全部 tool——新增 tool 默认无授权；
+        %% V1 默认授权为空集，未显式授权的 get_contacts 不落 grant
+        ?assertNot(meck:called(mcp_client_grant_repo, upsert, [900, <<"get_contacts">>, true]))
     end.
 
 t_reject_revoked(_) ->
@@ -62,3 +63,64 @@ t_grants_shape(_) ->
         {ok, G} = mcp_governance_logic:grants(900),
         ?assertMatch(#{<<"tools">> := [#{<<"name">> := <<"get_contacts">>}], <<"scopes">> := []}, G)
     end.
+
+%% ===================================================================
+%% MCP-01：enforce 按 profile 默认（纯 app env，无 DB）
+%% ===================================================================
+
+enforce_profile_default_test_() ->
+    {foreach,
+        fun() ->
+            Old = application:get_env(imboy, mcp_governance_enforce),
+            OldProfile = application:get_env(imboy, product_profile),
+            application:unset_env(imboy, mcp_governance_enforce),
+            {Old, OldProfile}
+        end,
+        fun({Old, OldProfile}) ->
+            restore_enforce(Old),
+            restore_profile(OldProfile)
+        end,
+        [
+            fun t_enforce_community_default/1,
+            fun t_enforce_agent_hub_default/1,
+            fun t_enforce_enterprise_default/1,
+            fun t_enforce_explicit_override/1
+        ]}.
+
+t_enforce_community_default(_) ->
+    fun() ->
+        application:set_env(imboy, product_profile, community),
+        ?assertEqual(false, mcp_governance_logic:enforce())
+    end.
+
+t_enforce_agent_hub_default(_) ->
+    fun() ->
+        application:set_env(imboy, product_profile, agent_hub),
+        ?assertEqual(true, mcp_governance_logic:enforce())
+    end.
+
+t_enforce_enterprise_default(_) ->
+    fun() ->
+        application:set_env(imboy, product_profile, enterprise),
+        ?assertEqual(true, mcp_governance_logic:enforce())
+    end.
+
+t_enforce_explicit_override(_) ->
+    fun() ->
+        application:set_env(imboy, product_profile, community),
+        application:set_env(imboy, mcp_governance_enforce, true),
+        ?assertEqual(true, mcp_governance_logic:enforce()),
+        application:set_env(imboy, product_profile, agent_hub),
+        application:set_env(imboy, mcp_governance_enforce, false),
+        ?assertEqual(false, mcp_governance_logic:enforce())
+    end.
+
+restore_enforce(undefined) -> application:unset_env(imboy, mcp_governance_enforce);
+restore_enforce({ok, V}) -> application:set_env(imboy, mcp_governance_enforce, V).
+
+restore_profile(undefined) -> application:unset_env(imboy, product_profile);
+restore_profile({ok, V}) -> application:set_env(imboy, product_profile, V).
+
+restore(Enforce, Profile) ->
+    restore_enforce(Enforce),
+    restore_profile(Profile).

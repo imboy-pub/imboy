@@ -15,14 +15,33 @@
 
 -spec check(binary(), map()) -> ok | {deny, [map()]}.
 check(ToolName, Ctx) ->
-    OwnerUid =
-        case maps:get(auth_info, Ctx, 0) of
-            U when is_integer(U) -> U;
-            _ -> 0
-        end,
-    case mcp_governance_logic:authorize(OwnerUid, ToolName) of
-        allow ->
-            ok;
-        {deny, Reason} ->
-            {deny, [#{<<"type">> => <<"text">>, <<"text">> => Reason}]}
+    %% MCP-01：auth_info 为 mcp_handler 注入的 Principal map
+    %% （mcp_governance_logic:authenticate_secret/1 产物，含 owner_uid/client_id/
+    %% client_key）；tools 不接受参数自报身份。
+    case maps:get(auth_info, Ctx, undefined) of
+        #{owner_uid := OwnerUid, client_id := ClientId, client_key := ClientKey} ->
+            case mcp_governance_logic:check_rate(ClientKey) of
+                allow ->
+                    case
+                        mcp_governance_logic:authorize_client(
+                            ClientId,
+                            OwnerUid,
+                            ToolName
+                        )
+                    of
+                        allow ->
+                            ok;
+                        {deny, Reason} ->
+                            {deny, [#{<<"type">> => <<"text">>, <<"text">> => Reason}]}
+                    end;
+                {deny, rate_limited} ->
+                    {deny, [
+                        #{
+                            <<"type">> => <<"text">>,
+                            <<"text">> => <<"请求过于频繁，请稍后再试"/utf8>>
+                        }
+                    ]}
+            end;
+        _ ->
+            {deny, [#{<<"type">> => <<"text">>, <<"text">> => <<"未认证"/utf8>>}]}
     end.

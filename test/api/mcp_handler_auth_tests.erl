@@ -11,9 +11,13 @@
 -export([whoami/2]).
 
 whoami(_Args, Ctx) ->
+    %% MCP-01：auth_info = Principal map（owner_uid/client_id/client_key）
     case maps:get(auth_info, Ctx, undefined) of
-        Uid when is_integer(Uid) -> <<"uid:", (integer_to_binary(Uid))/binary>>;
-        _ -> <<"uid:none">>
+        #{owner_uid := Uid, client_id := Cid} ->
+            <<"uid:", (integer_to_binary(Uid))/binary, ":client:",
+                (integer_to_binary(Cid))/binary>>;
+        _ ->
+            <<"uid:none">>
     end.
 
 auth_test_() ->
@@ -51,7 +55,11 @@ stop_owned(_) ->
     ok.
 
 cleanup(Ctx) ->
-    catch barrel_mcp_registry:unreg(tool, <<"whoami">>),
+    try
+        barrel_mcp_registry:unreg(tool, <<"whoami">>)
+    catch
+        _:_ -> ok
+    end,
     stop_owned(maps:get(reg, Ctx, undefined)),
     stop_owned(maps:get(sess, Ctx, undefined)),
     ok.
@@ -70,7 +78,9 @@ call_whoami(AuthInfo) ->
     Text.
 
 test_auth_flows_to_tool() ->
-    ?assertEqual(<<"uid:42">>, call_whoami(42)).
+    Principal = #{owner_uid => 42, client_id => 7, client_key => <<"mck-test">>},
+    ?assertEqual(<<"uid:42:client:7">>, call_whoami(Principal)).
 
 test_unauth_uid_zero() ->
-    ?assertEqual(<<"uid:0">>, call_whoami(0)).
+    %% 未认证：AuthInfo=0（legacy 整数形态）→ 工具拿到 none
+    ?assertEqual(<<"uid:none">>, call_whoami(0)).

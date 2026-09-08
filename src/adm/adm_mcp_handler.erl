@@ -5,13 +5,15 @@
 %
 % 路由（前端 baseURL=/api/adm）：
 %   GET  /adm/mcp/clients          -> 分页列出 MCP 客户端（status/keyword 过滤）
-%   POST /adm/mcp/clients/approve  -> 审批通过（授予当前全部 tool）
+%   POST /adm/mcp/clients/create   -> 创建 MCP client（secret 仅本次响应返回）
+%   POST /adm/mcp/clients/approve  -> 审批通过（V1 默认空授权，工具需显式 set_grant）
 %   POST /adm/mcp/clients/reject   -> 拒绝（revoked + reason）
 %   POST /adm/mcp/clients/revoke   -> 撤销（revoked + reason）
 %   GET  /adm/mcp/clients/grants   -> ?client_id 查授权 tool/scope
+%   POST /adm/mcp/clients/grants/set -> upsert 单条 tool 授权（enabled 开/关）
 %   GET  /adm/mcp/audit            -> 分页审计
 %
-% 权限：mcp_clients:read 读，mcp_clients:approve 审批/拒绝/撤销。
+% 权限：mcp_clients:read 读，mcp_clients:approve 审批/拒绝/撤销/创建/授权。
 %%%
 
 -behavior(cowboy_rest).
@@ -32,10 +34,12 @@ init(Req0, State0) ->
     Req1 =
         case Action of
             list -> list(Method, Req0, State);
+            create -> create(Method, Req0, State);
             approve -> approve(Method, Req0, State);
             reject -> reject(Method, Req0, State);
             revoke -> revoke(Method, Req0, State);
             grants -> grants(Method, Req0, State);
+            set_grant -> set_grant(Method, Req0, State);
             audit -> audit(Method, Req0, State);
             _ -> Req0
         end,
@@ -44,6 +48,22 @@ init(Req0, State0) ->
 %% ===================================================================
 %% Internal
 %% ===================================================================
+
+%% MCP-01：创建 MCP client——明文 secret 仅本次响应返回
+-spec create(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+create(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_APPROVE, State, Req0, fun() ->
+        Post = elib_param:post(Req0),
+        OwnerUid = elib_cnv:safe_to_integer(maps:get(<<"owner_uid">>, Post, 0)),
+        Name = maps:get(<<"name">>, Post, <<>>),
+        Description = maps:get(<<"description">>, Post, <<>>),
+        case mcp_client_repo:create_client(OwnerUid, Name, Description) of
+            {ok, Result} -> elib_response:success(Req0, Result);
+            {error, _} -> elib_response:error(Req0, <<"创建失败"/utf8>>, ?ERR_BAD_REQUEST)
+        end
+    end);
+create(_, Req0, _State) ->
+    method_not_allowed(Req0).
 
 -spec list(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 list(<<"GET">>, Req0, State) ->
@@ -121,6 +141,21 @@ audit(<<"GET">>, Req0, State) ->
 audit(_, Req0, _State) ->
     method_not_allowed(Req0).
 
+%% A02 链路必需：approve 为 V1 空授权，工具启用必须显式 upsert（EXT-01）。
+-spec set_grant(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+set_grant(<<"POST">>, Req0, State) ->
+    with_perm(?PERM_APPROVE, State, Req0, fun() ->
+        Post = elib_param:post(Req0),
+        transition_reply(
+            mcp_governance_logic:set_grant(
+                client_id(Post), tool(Post), enabled(Post)
+            ),
+            Req0
+        )
+    end);
+set_grant(_, Req0, _State) ->
+    method_not_allowed(Req0).
+
 %% ---- helpers ----
 
 transition_reply({ok, R}, Req0) ->
@@ -133,6 +168,12 @@ client_id(Post) ->
 
 reason(Post) ->
     maps:get(<<"reason">>, Post, <<>>).
+
+tool(Post) ->
+    maps:get(<<"tool">>, Post, <<>>).
+
+enabled(Post) ->
+    maps:get(<<"enabled">>, Post, false) =:= true.
 
 adm_uid(State) ->
     maps:get(adm_user_id, State, 0).
