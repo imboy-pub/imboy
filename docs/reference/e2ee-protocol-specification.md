@@ -225,6 +225,13 @@ securityRank = ['olm', 'megolm', 'rsa-oaep']
 
 ### 8.2 High-Water Mark (HWM)
 
+> **Status: model + unit tests only, not wired into production paths**
+> (verified 2026-09-08: `capability_guard` / `capability_negotiator` /
+> `device_manifest` have no production callers; the send chain does not consult
+> the HWM gate). This section describes the designed mechanism, not an enforced
+> control. Production downgrade protection today comes from the fixed protocol
+> suite selection (C2C=Olm, C2G=Megolm) without runtime downgrade.
+
 For each `(peer_uid, peer_device_id)`, the client persists the highest-security protocol ever negotiated (`crypto_capability_hwm` table).
 
 On each new negotiation:
@@ -233,6 +240,10 @@ On each new negotiation:
 - New rank > HWM rank (downgrade) → raise `CapabilityDowngradeException`. Communication blocked until user explicitly confirms via `confirmDowngrade()`.
 
 ### 8.3 Signed Capabilities (Server-Side)
+
+> **Status: planned, not implemented** (verified 2026-09-07: no signing on server, no
+> signature verification on client). The actually-enforced mitigation is the client-local
+> HWM gate (§8.2, fail-closed). Signed capabilities remain defense-in-depth backlog.
 
 The server signs capability payloads with an Ed25519 key. Clients verify the signature before trusting advertised capabilities, preventing a compromised server from silently downgrading clients.
 
@@ -348,12 +359,12 @@ The server infrastructure adheres to a strict zero-knowledge policy regarding cr
 
 | Component | Library | Version | Language |
 |-----------|---------|---------|----------|
-| Olm / Megolm / vodozemac | vodozemac (via flutter_rust_bridge FFI) | 0.5.0 | Rust → Dart |
+| Olm / Megolm / vodozemac | vodozemac (via flutter_rust_bridge FFI, `flutter_vodozemac`) | 0.8.x（演进链 0.5→0.7→0.8；Olm session 恒用 legacy v1 wire config） | Rust → Dart |
 | AES-256-GCM | `encrypt` package (pointy_castle) | — | Dart |
 | SHA-256 / SHA-512 | `crypto` package | — | Dart |
 | PBKDF2-HMAC-SHA256 | `pointy_castle` | — | Dart |
-| Ed25519 sign/verify | vodozemac | 0.5.0 | Rust → Dart |
-| Curve25519 DH | vodozemac | 0.5.0 | Rust → Dart |
+| Ed25519 sign/verify | vodozemac | 0.8.x | Rust → Dart |
+| Curve25519 DH | vodozemac | 0.8.x | Rust → Dart |
 | SQLCipher | `sqflite_sqlcipher` | 3.4.0 | C (native) |
 | Secure storage | `flutter_secure_storage` | — | Platform (Keychain/Keystore) |
 
@@ -363,7 +374,8 @@ No custom cryptographic primitives are implemented. All cryptography delegates t
 
 ## 14. Test Coverage Summary
 
-As of 2026-07-27, the E2EE verification suite comprises **244 client-side tests** and **265 backend tests** (25 modules), all passing with zero skips.
+As of 2026-07-27, the E2EE verification suite comprised 244 client-side tests and 265 backend tests.
+**2026-09-07 re-baseline (imboy `15f5fd73` / imboyapp `924347d0`)**: backend `make e2ee-verify` = **409/409 ALL PASSED**; client `scripts/run_e2ee_suite.sh` = **623 E2EE + 12 protocol tests, all passed**, analyze zero warnings.
 
 ### 14.1 Client-Side (imboyapp)
 
