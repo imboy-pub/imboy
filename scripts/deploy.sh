@@ -78,10 +78,25 @@ SERVER_HOST="$1"
 VSN="$2"
 NODE_NAME="$3"
 
+# 版本一致性门禁：VERSION 文件（app 级 vsn，PROJECT_VERSION=$(cat VERSION)）
+# 必须与目标版本一致，否则远端构建重建 ebin/imboy.app 时会写回旧版，
+# /healthz 自报版本失配导致 wait_for_health 永远失败。
+if [ -f "$(dirname "$0")/../VERSION" ]; then
+  FILE_VSN="$(head -n1 "$(dirname "$0")/../VERSION" | tr -d '[:space:]')"
+  if [ -n "$FILE_VSN" ] && [ "$FILE_VSN" != "$VSN" ]; then
+    echo "✗ VERSION 文件 ($FILE_VSN) 与目标版本 ($VSN) 不一致 / VERSION file and target VSN mismatch" >&2
+    echo "  先同步两处：VERSION + relx.config（版本双源）" >&2
+    exit 1
+  fi
+fi
+
 SERVER_USER="${IMBOY_DEPLOY_USER:-root}"
 SERVER_PORT="${IMBOY_DEPLOY_PORT:-32}"
 PROJECT_DIR="${IMBOY_DEPLOY_PROJECT_DIR:-/www/wwwroot/imboy-api}"
 NGINX_CONF="${IMBOY_DEPLOY_NGINX_CONF:-/www/server/panel/vhost/nginx/pro.imboy.pub.conf}"
+# 管理后台 vhost 直接 proxy_pass 到应用端口（不走 upstream），切流时必须跟切，
+# 否则 admin API 打到已停止的旧槽位（alpha.72/alpha.73 两次实战踩坑）。
+PRODADM_CONF="${IMBOY_DEPLOY_PRODADM_CONF:-/www/server/panel/vhost/nginx/prodadm.imboy.pub.conf}"
 BLUE_PORT="${IMBOY_DEPLOY_BLUE_PORT:-9800}"
 GREEN_PORT="${IMBOY_DEPLOY_GREEN_PORT:-9801}"
 NODE_HOST="${IMBOY_DEPLOY_NODE_HOST:-127.0.0.1}"
@@ -440,6 +455,7 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
     --exclude='config/sys.pro.config' \
     --exclude='config/sys.runtime.config' \
     --exclude='scripts/.env.deploy' \
+    --exclude='docker/' \
     -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL -o StrictHostKeyChecking=accept-new" \
     "$LOCAL_SRC_DIR/" \
     "$SERVER_USER@$SERVER_HOST:$PROJECT_DIR/"
@@ -571,6 +587,12 @@ if [ -n "$OLD_PORT" ]; then
     sed -i 's|server 127.0.0.1:$OLD_PORT;|server 127.0.0.1:$APP_PORT;|g' '$NGINX_CONF'
     grep -q 'server 127.0.0.1:$APP_PORT;' '$NGINX_CONF' \
       || { cp '$NGINX_CONF'.bak '$NGINX_CONF'; echo 'Nginx upstream 替换失败，已回滚 / replacement failed, rolled back' >&2; exit 1; }
+    if [ -f '$PRODADM_CONF' ]; then
+      cp '$PRODADM_CONF' '$PRODADM_CONF'.bak
+      sed -i 's|http://127.0.0.1:$OLD_PORT;|http://127.0.0.1:$APP_PORT;|g' '$PRODADM_CONF'
+      grep -q 'http://127.0.0.1:$APP_PORT;' '$PRODADM_CONF' \
+        || { cp '$PRODADM_CONF'.bak '$PRODADM_CONF'; echo 'prodadm proxy_pass 替换失败，已回滚 / prodadm replacement failed, rolled back' >&2; exit 1; }
+    fi
     nginx -t && nginx -s reload
   "
   ok "Nginx 已切换至 $TARGET_COLOR / Nginx switched to $TARGET_COLOR"

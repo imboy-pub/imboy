@@ -41,7 +41,7 @@ DEPS += epgsql pooler erlang_migrate depcache syn ecron uid
 DEPS += telemetry lager observer_cli recon redbug
 # Template / Captcha
 DEPS += simple_captcha erlydtl
-# Payment（同工作区本地纯 Erlang 第三方支付库，ln 本地路径 dep）
+# Payment（同工作区本地纯 Erlang 第三方支付库）
 DEPS += erlang_pay
 
 # 开发期热重载：sync 会扫描源码目录自动重编译并热加载改动的模块。
