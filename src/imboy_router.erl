@@ -6,6 +6,11 @@
 %% Phase 2 切片 2：供测试与 admin introspection
 -export([plugin_routes/0]).
 
+%% BUILD-00R：编译期 feature 门。未选中的 feature 其专属路由子句被预处理
+%% 剔除，路由路径字符串不进 beam（物理裁剪），与 imboy_feature:compiled_routes
+%% 运行时过滤双保险。
+-include("generated/imboy_product_features.hrl").
+
 %% @doc 获取所有路由定义
 -spec get_routes() -> list().
 get_routes() ->
@@ -461,6 +466,8 @@ get_routes() ->
                 }},
                 {"/api/v1/channel/:channel_id/webhook/:webhook_id/disable", channel_webhook_handler,
                     #{action => disable}},
+                {"/api/v1/channel/:channel_id/webhook/:webhook_id/rotate", channel_webhook_handler,
+                    #{action => rotate}},
                 % 频道 incoming webhook 入站（token 即凭证，免 JWT/免 902 签名，
                 % 放行见 auth_middleware_api_v1 的 IsChannelWebhook 前缀）
                 {"/api/v1/webhook/channel/:token", channel_webhook_handler, #{
@@ -501,21 +508,14 @@ get_routes() ->
                 {"/api/v1/group/task/pending", group_task_handler, #{action => pending_review}},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
-                {"/api/v1/moment/report/create", report_handler, #{action => moment_create}},
-                {"/api/v1/moment/create", moment_handler, #{action => create}},
-                {"/api/v1/moment/:moment_id", moment_handler, #{action => show}},
-                {"/api/v1/moment/:moment_id/delete", moment_handler, #{action => delete}},
-                {"/api/v1/moments/feed", moment_handler, #{action => feed}},
-                {"/api/v1/moments/user/:uid", moment_handler, #{action => user_posts}},
-                {"/api/v1/moment/:moment_id/like", moment_handler, #{action => like}},
-                {"/api/v1/moment/:moment_id/unlike", moment_handler, #{action => unlike}},
-                {"/api/v1/moment/:moment_id/comment", moment_handler, #{action => add_comment}},
-                {"/api/v1/moment/:moment_id/comments", moment_handler, #{action => comments}},
-                {"/api/v1/moment/:moment_id/comment/:comment_id/delete", moment_handler, #{
-                    action => delete_comment
-                }},
-                {"/api/v1/moment/:moment_id/report", moment_handler, #{action => report}},
 
+                % R-04 处置申诉（可用性门：imboy_feature:enabled(appeal)）
+                {"/api/v1/appeal/create", appeal_handler, #{action => create}},
+                {"/api/v1/appeal/my", appeal_handler, #{action => my}}
+            ] ++
+            %% BUILD-00R：moment 路由按编译期宏物理裁剪（helper 见文件底部）
+            moment_api_routes() ++
+            [
                 % 直播间 API
                 {"/api/v1/live_room/list", live_room_handler, #{action => list}},
                 {"/api/v1/live_room/my_list", live_room_handler, #{action => my_list}},
@@ -704,350 +704,388 @@ get_routes() ->
             ],
 
     % Admin routes (原 imadm)
-    AdmRoutes = [
-        {"/api/adm", adm_index_handler, #{action => index}},
-        {"/api/adm/index", adm_index_handler, #{action => index}},
-        % 首启初始化向导（P0-5）— 免鉴权，见 open/0
-        {"/api/adm/setup/status", adm_setup_handler, #{action => status}},
-        {"/api/adm/setup/init", adm_setup_handler, #{action => init_setup}},
-        {"/api/adm/current", adm_index_handler, #{action => current}},
-        {"/api/adm/rbac/me", adm_index_handler, #{action => rbac}},
-        {"/api/adm/welcome", adm_index_handler, #{action => welcome}},
-        {"/api/adm/feedback/index", adm_feedback_handler, #{action => index}},
-        {"/api/adm/admin/config/features", adm_admin_handler, #{action => config_features}},
-        % Product Experience 安装级配置只读（双体验 v2.5.2 WP7/T11；无运行时写接口）
-        {"/api/adm/admin/config/product-experience", adm_admin_handler, #{
-            action => config_product_experience
-        }},
-        {"/api/adm/admin/config/policy/bootstrap", adm_admin_handler, #{
-            action => config_policy_bootstrap
-        }},
-        {"/api/adm/admin/config/policy/meta", adm_admin_handler, #{action => config_policy_meta}},
-        {"/api/adm/admin/config/policy/preview", adm_admin_handler, #{
-            action => config_policy_preview
-        }},
-        {"/api/adm/admin/config/policy/saved", adm_admin_handler, #{action => config_policy_saved}},
-        {"/api/adm/admin/config/policy", adm_admin_handler, #{action => config_policy}},
-        {"/api/adm/admin/config/sidebar", adm_admin_handler, #{action => config_sidebar}},
-        {"/api/adm/admin/config/feedback-workflow", adm_admin_handler, #{
-            action => config_feedback_workflow
-        }},
-        % UX 埋点上报（前端 uxTelemetryReporter 按 5s 批量 POST 到此端点）
-        {"/api/adm/admin/ux/events", adm_stats_handler, #{
-            action => ux_events
-        }},
-        % 禁言用户管理 API
-        {"/api/adm/admin/muted_users/list", adm_admin_handler, #{action => muted_users_list}},
-        {"/api/adm/admin/muted_users/unmute", adm_admin_handler, #{action => muted_users_unmute}},
-        {"/api/adm/admin/muted_users/unmute_batch", adm_admin_handler, #{
-            action => muted_users_unmute_batch
-        }},
-        % 推送 Token 管理 API
-        {"/api/adm/admin/push_token/list", adm_admin_handler, #{action => push_token_list}},
-        % 合规密钥管理 API
-        {"/api/adm/admin/compliance_key/list", adm_admin_handler, #{action => compliance_key_list}},
-        {"/api/adm/admin/compliance_key/create", adm_admin_handler, #{
-            action => compliance_key_create
-        }},
-        {"/api/adm/admin/compliance_key/revoke", adm_admin_handler, #{
-            action => compliance_key_revoke
-        }},
-        {"/api/adm/admin/list", adm_admin_handler, #{action => list}},
-        {"/api/adm/admin/create", adm_admin_handler, #{action => create}},
-        {"/api/adm/admin/assign_role", adm_admin_handler, #{action => assign_role}},
-        {"/api/adm/admin/disable", adm_admin_handler, #{action => disable}},
-        {"/api/adm/feedback/reply", adm_feedback_handler, #{action => reply}},
-        {"/api/adm/feedback/status", adm_feedback_handler, #{action => status}},
-        {"/api/adm/feedback/delete", adm_feedback_handler, #{action => delete}},
-        {"/api/adm/role/list", adm_role_handler, #{action => list}},
-        {"/api/adm/roles/list", adm_role_handler, #{action => list}},
-        {"/api/adm/role/create", adm_role_handler, #{action => create}},
-        {"/api/adm/roles/create", adm_role_handler, #{action => create}},
-        {"/api/adm/role/permissions/save", adm_role_handler, #{action => permissions_save}},
-        {"/api/adm/role/permission/update", adm_role_handler, #{action => permissions_save}},
-        {"/api/adm/roles/permissions/save", adm_role_handler, #{action => permissions_save}},
-        {"/api/adm/role/disable", adm_role_handler, #{action => disable}},
-        {"/api/adm/roles/disable", adm_role_handler, #{action => disable}},
-        {"/api/adm/role/delete", adm_role_handler, #{action => delete}},
-        {"/api/adm/roles/delete", adm_role_handler, #{action => delete}},
-        {"/api/adm/ai_agent/list", adm_ai_agent_handler, #{action => list}},
-        {"/api/adm/ai_agent/detail", adm_ai_agent_handler, #{action => detail}},
-        {"/api/adm/ai_agent/create", adm_ai_agent_handler, #{action => create}},
-        {"/api/adm/ai_agent/update", adm_ai_agent_handler, #{action => update}},
-        {"/api/adm/ai_agent/set_status", adm_ai_agent_handler, #{action => set_status}},
-        % ai_roles 人格 KV 管理：GET 读 / POST 保存删除（users:read|update）
-        {"/api/adm/ai_agent/roles", adm_ai_agent_handler, #{action => roles}},
-        % 头像上传（multipart → Garage）：POST（users:update）
-        {"/api/adm/ai_agent/upload_avatar", adm_ai_agent_handler, #{action => upload_avatar}},
-        % 新手引导配置（AI 冷启动）：GET 读 / POST 半量保存（users:read|update）
-        {"/api/adm/ai_agent/onboarding_config", adm_ai_agent_handler, #{
-            action => onboarding_config
-        }},
-        % 知识库配置（A3-1）：群规/FAQ，供 @管家 答疑注入（users:read|update）
-        {"/api/adm/ai_agent/knowledge_config", adm_ai_agent_handler, #{
-            action => knowledge_config
-        }},
-        % 版本化 AI 角色模板：分页、详情、创建、草稿、发布、状态
-        {"/api/adm/ai_agent/role/list", adm_ai_agent_handler, #{action => role_list}},
-        {"/api/adm/ai_agent/role/detail", adm_ai_agent_handler, #{action => role_detail}},
-        {"/api/adm/ai_agent/role/create", adm_ai_agent_handler, #{action => role_create}},
-        {"/api/adm/ai_agent/role/draft", adm_ai_agent_handler, #{action => role_draft}},
-        {"/api/adm/ai_agent/role/publish", adm_ai_agent_handler, #{action => role_publish}},
-        {"/api/adm/ai_agent/role/set_status", adm_ai_agent_handler, #{
-            action => role_set_status
-        }},
-        % admin 应急入口(c)：代运营为 agent 创建受控支付授权（finance:write RBAC）
-        {"/api/adm/ai_agent/mandate_create", adm_ai_agent_handler, #{action => mandate_create}},
-        {"/api/adm/mcp/clients", adm_mcp_handler, #{action => list}},
-        {"/api/adm/mcp/clients/approve", adm_mcp_handler, #{action => approve}},
-        {"/api/adm/mcp/clients/reject", adm_mcp_handler, #{action => reject}},
-        {"/api/adm/mcp/clients/revoke", adm_mcp_handler, #{action => revoke}},
-        {"/api/adm/mcp/clients/grants", adm_mcp_handler, #{action => grants}},
-        {"/api/adm/mcp/audit", adm_mcp_handler, #{action => audit}},
-        {"/api/adm/app_ddl/index", adm_app_ddl_handler, #{action => index}},
-        {"/api/adm/app_ddl/save", adm_app_ddl_handler, #{action => save}},
-        {"/api/adm/app_ddl/delete", adm_app_ddl_handler, #{action => delete}},
-        {"/api/adm/app_version/index", adm_app_version_handler, #{action => index}},
-        {"/api/adm/app_version/save", adm_app_version_handler, #{action => save}},
-        {"/api/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
-        {"/api/adm/app_version/version_stats", adm_app_version_handler, #{action => version_stats}},
-        % 存储管理 API
-        {"/api/adm/storage/stats", adm_attach_handler, #{action => stats}},
-        {"/api/adm/storage/index", adm_attach_handler, #{action => index}},
-        {"/api/adm/storage/disable", adm_attach_handler, #{action => disable}},
-        {"/api/adm/storage/enable", adm_attach_handler, #{action => enable}},
-        {"/api/adm/storage/delete", adm_attach_handler, #{action => delete}},
-        {"/api/adm/storage/download", adm_attach_handler, #{action => download}},
-        {"/api/adm/storage/orphan", adm_attach_handler, #{action => orphan}},
-        {"/api/adm/storage/orphan/cleanup", adm_attach_handler, #{action => orphan_cleanup}},
-        {"/api/adm/passport/meta", adm_passport_handler, #{action => meta}},
-        {"/api/adm/passport/login", adm_passport_handler, #{action => login}},
-        {"/api/adm/passport/captcha", adm_passport_handler, #{action => captcha}},
-        {"/api/adm/passport/do_login", adm_passport_handler, #{action => do_login}},
-        {"/api/adm/passport/logout", adm_passport_handler, #{action => logout}},
-        % 用户管理 API
-        {"/api/adm/user/list", adm_user_handler, #{action => list}},
-        {"/api/adm/user/detail", adm_user_handler, #{action => detail}},
-        {"/api/adm/user/ban", adm_user_handler, #{action => ban}},
-        {"/api/adm/user/unban", adm_user_handler, #{action => unban}},
-        {"/api/adm/user/force_logout", adm_user_handler, #{action => force_logout}},
-        {"/api/adm/user/devices", adm_user_handler, #{action => devices}},
-        {"/api/adm/user/device/kick", adm_user_handler, #{action => device_kick}},
-        {"/api/adm/operation_logs", adm_operation_log_handler, #{action => list}},
-        {"/api/adm/user/search", adm_user_handler, #{action => search}},
-        {"/api/adm/user/tag/list", adm_user_handler, #{action => tag_list}},
-        {"/api/adm/user/tag/delete", adm_user_handler, #{action => tag_delete}},
-        {"/api/adm/user/collect/list", adm_user_handler, #{action => collect_list}},
-        {"/api/adm/user/collect/remove", adm_user_handler, #{action => collect_remove}},
-        {"/api/adm/user/logout_apply/list", adm_logout_apply_handler, #{action => list}},
-        {"/api/adm/user/logout_apply/export", adm_logout_apply_handler, #{action => export}},
-        {"/api/adm/user/logout_apply/reject", adm_logout_apply_handler, #{action => reject}},
-        {"/api/adm/user/logout_apply/approve", adm_logout_apply_handler, #{action => approve}},
-        % Workspace/Project 运营管理 API（双体验 v2.5.2 WP7/T11b）
-        % 鉴权：adm_acl workspaces:read / workspaces:update（fail-closed 403）
-        {"/api/adm/workspace/list", adm_workspace_handler, #{action => list}},
-        {"/api/adm/workspace/detail", adm_workspace_handler, #{action => detail}},
-        {"/api/adm/workspace/members", adm_workspace_handler, #{action => members}},
-        {"/api/adm/workspace/archive", adm_workspace_handler, #{action => archive}},
-        {"/api/adm/workspace/restore", adm_workspace_handler, #{action => restore}},
-        {"/api/adm/project/list", adm_workspace_handler, #{action => project_list}},
-        {"/api/adm/project/detail", adm_workspace_handler, #{action => project_detail}},
-        %% Channel-first-class W2 治理只读面（ZC-05）
-        {"/api/adm/project/members", adm_workspace_handler, #{action => project_members}},
-        {"/api/adm/project/milestones", adm_workspace_handler, #{action => project_milestones}},
-        {"/api/adm/project/channels", adm_workspace_handler, #{action => project_channels}},
-        {"/api/adm/project/aggregations", adm_workspace_handler, #{action => project_aggregations}},
-        % 群组管理 API
-        {"/api/adm/group/list", adm_group_handler, #{action => list}},
-        {"/api/adm/group/detail", adm_group_handler, #{action => detail}},
-        {"/api/adm/group/dissolve", adm_group_handler, #{action => dissolve}},
-        {"/api/adm/group/update", adm_group_handler, #{action => update}},
-        {"/api/adm/group/search", adm_group_handler, #{action => search}},
-        {"/api/adm/group/member/kick", adm_group_handler, #{action => kick_member}},
-        {"/api/adm/group/members", adm_group_handler, #{action => members}},
-        % 群组子功能 API
-        {"/api/adm/group/vote/list", adm_group_vote_handler, #{action => vote_list}},
-        {"/api/adm/group/vote/detail", adm_group_vote_handler, #{action => vote_detail}},
-        {"/api/adm/group/vote/close", adm_group_vote_handler, #{action => vote_close}},
-        {"/api/adm/group/notice/list", adm_group_notice_handler, #{action => notice_list}},
-        {"/api/adm/group/notice/detail", adm_group_notice_handler, #{action => notice_detail}},
-        {"/api/adm/group/notice/delete", adm_group_notice_handler, #{action => notice_delete}},
-        {"/api/adm/group/tag/list", adm_group_content_handler, #{action => tag_list}},
-        {"/api/adm/group/tag/delete", adm_group_content_handler, #{action => tag_delete}},
-        {"/api/adm/group/category/list", adm_group_content_handler, #{action => category_list}},
-        {"/api/adm/group/category/delete", adm_group_content_handler, #{action => category_delete}},
-        {"/api/adm/group/file/list", adm_group_content_handler, #{action => file_list}},
-        {"/api/adm/group/file/detail", adm_group_content_handler, #{action => file_detail}},
-        {"/api/adm/group/file/delete", adm_group_content_handler, #{action => file_delete}},
-        {"/api/adm/group/album/list", adm_group_content_handler, #{action => album_list}},
-        {"/api/adm/group/album/detail", adm_group_content_handler, #{action => album_detail}},
-        {"/api/adm/group/album/delete", adm_group_content_handler, #{action => album_delete}},
-        {"/api/adm/group/schedule/list", adm_group_schedule_handler, #{action => schedule_list}},
-        {"/api/adm/group/schedule/detail", adm_group_schedule_handler, #{action => schedule_detail}},
-        {"/api/adm/group/schedule/cancel", adm_group_schedule_handler, #{action => schedule_cancel}},
-        {"/api/adm/group/schedule/restore", adm_group_schedule_handler, #{
-            action => schedule_restore
-        }},
-        {"/api/adm/group/governance_log/list", adm_group_schedule_handler, #{
-            action => governance_log_list
-        }},
-        {"/api/adm/group/task/list", adm_group_task_handler, #{action => task_list}},
-        {"/api/adm/group/task/detail", adm_group_task_handler, #{action => task_detail}},
-        {"/api/adm/group/task/pending_review", adm_group_task_handler, #{
-            action => task_pending_review
-        }},
-        {"/api/adm/group/task/review", adm_group_task_handler, #{action => task_review}},
-        {"/api/adm/group/task/restore", adm_group_task_handler, #{action => task_restore}},
-        {"/api/adm/group/task/close", adm_group_task_handler, #{action => task_close}},
-        {"/api/adm/group/task/delete", adm_group_task_handler, #{action => task_delete}},
-        % 消息管理 API
-        {"/api/adm/message/list", adm_message_handler, #{action => list}},
-        {"/api/adm/message/detail", adm_message_handler, #{action => detail}},
-        {"/api/adm/message/export", adm_message_handler, #{action => export}},
-        % 频道管理 API
-        {"/api/adm/channel/list", adm_channel_handler, #{action => list}},
-        % Bot 管理处置 API（平台侧，无属主校验）
-        {"/api/adm/bot/list", adm_bot_handler, #{action => list}},
-        {"/api/adm/bot/detail", adm_bot_handler, #{action => detail}},
-        {"/api/adm/bot/disable", adm_bot_handler, #{action => disable}},
-        {"/api/adm/bot/enable", adm_bot_handler, #{action => enable}},
-        %% 固定段路由置于 :channel_id 通配之前，避免 order 被当作 channel_id
-        {"/api/adm/channel/order/refund", adm_channel_handler, #{action => refund_order}},
-        {"/api/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
-        {"/api/adm/channel/:channel_id/messages", adm_channel_handler, #{action => messages}},
-        {"/api/adm/channel/:channel_id/subscribers", adm_channel_handler, #{action => subscribers}},
-        {"/api/adm/channel/:channel_id/subscriber/:user_id", adm_channel_handler, #{
-            action => remove_subscriber
-        }},
-        {"/api/adm/channel/:channel_id/admins", adm_channel_handler, #{action => admins}},
-        {"/api/adm/channel/:channel_id/admin/:user_id/role", adm_channel_handler, #{
-            action => update_admin_role
-        }},
-        {"/api/adm/channel/:channel_id/admin/:user_id", adm_channel_handler, #{
-            action => remove_admin
-        }},
-        {"/api/adm/channel/:channel_id/invitations", adm_channel_handler, #{action => invitations}},
-        {"/api/adm/channel/:channel_id/orders", adm_channel_handler, #{action => orders}},
-        {"/api/adm/channel/:channel_id/stats", adm_channel_handler, #{action => stats}},
-        {"/api/adm/channel/:channel_id/message/:message_id/pin", adm_channel_handler, #{
-            action => pin_message
-        }},
-        {"/api/adm/channel/:channel_id/message/:message_id/delete", adm_channel_handler, #{
-            action => delete_message
-        }},
-        {"/api/adm/channel/:channel_id/price", adm_channel_handler, #{action => set_price}},
-        {"/api/adm/channel/search", adm_channel_handler, #{action => search}},
-        {"/api/adm/channel/delete", adm_channel_handler, #{action => delete}},
-        % 运营财务 API（跨用户钱包/充值/支付/SaaS 计费查询）
-        {"/api/adm/finance/wallets", adm_finance_handler, #{action => wallets}},
-        {"/api/adm/finance/wallet/:user_id/transactions", adm_finance_handler, #{
-            action => wallet_transactions
-        }},
-        {"/api/adm/finance/recharge-orders", adm_finance_handler, #{action => recharge_orders}},
-        {"/api/adm/finance/recharge-orders/refund", adm_finance_handler, #{
-            action => recharge_order_refund
-        }},
-        {"/api/adm/finance/payment-transactions", adm_finance_handler, #{
-            action => payment_transactions
-        }},
-        {"/api/adm/finance/payment-transactions/refund", adm_finance_handler, #{
-            action => payment_transaction_refund
-        }},
-        {"/api/adm/finance/wallets/freeze", adm_finance_handler, #{action => wallet_freeze}},
-        {"/api/adm/finance/wallets/unfreeze", adm_finance_handler, #{action => wallet_unfreeze}},
-        {"/api/adm/finance/billing/plans", adm_finance_handler, #{action => billing_plans}},
-        {"/api/adm/finance/billing/plan", adm_finance_handler, #{action => billing_plan_create}},
-        {"/api/adm/finance/billing/plan/update", adm_finance_handler, #{
-            action => billing_plan_update
-        }},
-        {"/api/adm/finance/billing/subscriptions", adm_finance_handler, #{
-            action => billing_subscriptions
-        }},
-        {"/api/adm/finance/billing/invoices", adm_finance_handler, #{action => billing_invoices}},
-        {"/api/adm/finance/withdrawals", adm_finance_handler, #{action => withdrawals}},
-        {"/api/adm/finance/withdrawals/complete", adm_finance_handler, #{
-            action => withdrawal_complete
-        }},
-        {"/api/adm/finance/withdrawals/reject", adm_finance_handler, #{action => withdrawal_reject}},
-        % Moment 与举报治理 API
-        {"/api/adm/moment/list", adm_moment_handler, #{action => list}},
-        {"/api/adm/moment/detail/:moment_id", adm_moment_handler, #{action => detail}},
-        {"/api/adm/moment/delete", adm_moment_handler, #{action => delete}},
-        {"/api/adm/moment/report/list", adm_moment_handler, #{action => report_list}},
-        {"/api/adm/moment/report/resolve", adm_moment_handler, #{action => report_resolve}},
-        {"/api/adm/moment/report/batch_resolve", adm_moment_handler, #{
-            action => report_batch_resolve
-        }},
-        {"/api/adm/report/create", adm_report_handler, #{action => create}},
-        {"/api/adm/report/list", adm_report_handler, #{action => list}},
-        {"/api/adm/report/detail", adm_report_handler, #{action => detail}},
-        {"/api/adm/report/resolve", adm_report_handler, #{action => resolve}},
-        {"/api/adm/report/batch_resolve", adm_report_handler, #{action => batch_resolve}},
-        {"/api/adm/group/report/list", adm_report_handler, #{action => group_list}},
-        {"/api/adm/group/report/resolve", adm_report_handler, #{action => group_resolve}},
-        {"/api/adm/group/report/batch_resolve", adm_report_handler, #{
-            action => group_batch_resolve
-        }},
-        {"/api/adm/channel/report/list", adm_report_handler, #{action => channel_list}},
-        {"/api/adm/channel/report/resolve", adm_report_handler, #{action => channel_resolve}},
-        {"/api/adm/channel/report/batch_resolve", adm_report_handler, #{
-            action => channel_batch_resolve
-        }},
-        {"/api/adm/user/report/list", adm_report_handler, #{action => user_list}},
-        {"/api/adm/user/report/resolve", adm_report_handler, #{action => user_resolve}},
-        {"/api/adm/user/report/batch_resolve", adm_report_handler, #{action => user_batch_resolve}},
-        %% R-02：处置动作（case = report_ticket 行；audit = moderation_action 表）
-        {"/api/adm/report_action/execute", adm_report_action_handler, #{action => execute}},
-        {"/api/adm/report_action/reverse", adm_report_action_handler, #{action => reverse}},
-        {"/api/adm/report_action/list", adm_report_action_handler, #{action => list}},
-        % 统计 API
-        {"/api/adm/announcement/index", adm_announcement_handler, #{action => index}},
-        {"/api/adm/announcement/create", adm_announcement_handler, #{action => create}},
-        {"/api/adm/announcement/update", adm_announcement_handler, #{action => update}},
-        {"/api/adm/announcement/delete", adm_announcement_handler, #{action => delete}},
-        {"/api/adm/announcement/publish", adm_announcement_handler, #{action => publish}},
-        {"/api/adm/announcement/unpublish", adm_announcement_handler, #{action => unpublish}},
-        % 内容审核：敏感词黑名单 + 消息人工复审队列（import/:id 须置于通配路由之前）
-        {"/api/adm/moderation/sensitive-words/import", adm_moderation_handler, #{
-            action => sensitive_words_import
-        }},
-        {"/api/adm/moderation/sensitive-words/:id", adm_moderation_handler, #{
-            action => sensitive_word_delete
-        }},
-        {"/api/adm/moderation/sensitive-words", adm_moderation_handler, #{
-            action => sensitive_words
-        }},
-        {"/api/adm/moderation/review-queue/:id/moderate", adm_moderation_handler, #{
-            action => review_moderate
-        }},
-        {"/api/adm/moderation/review-queue", adm_moderation_handler, #{action => review_queue}},
-        % SSO 外部认证配置（GET/POST 同路径按 method 分派）
-        {"/api/adm/sso/config", adm_sso_handler, #{action => config}},
-        {"/api/adm/sso/test", adm_sso_handler, #{action => test}},
-        % 插件生命周期管理 API (lifecycle.md §10)
-        {"/api/adm/plugin/list", adm_plugin_handler, #{action => list}},
-        {"/api/adm/plugin/detail", adm_plugin_handler, #{action => detail}},
-        {"/api/adm/plugin/state", adm_plugin_handler, #{action => state_query}},
-        {"/api/adm/plugin/health", adm_plugin_handler, #{action => health}},
-        {"/api/adm/plugin/install", adm_plugin_handler, #{action => install}},
-        {"/api/adm/plugin/enable", adm_plugin_handler, #{action => enable}},
-        {"/api/adm/plugin/disable", adm_plugin_handler, #{action => disable}},
-        {"/api/adm/plugin/upgrade", adm_plugin_handler, #{action => upgrade}},
-        {"/api/adm/plugin/uninstall", adm_plugin_handler, #{action => uninstall}},
-        {"/api/adm/plugin/reset", adm_plugin_handler, #{action => reset}},
-        {"/api/adm/plugin/force_uninstall", adm_plugin_handler, #{action => force_uninstall}},
-        {"/api/adm/plugin/logs", adm_plugin_handler, #{action => logs}},
-        {"/api/adm/stats/overview", adm_stats_handler, #{action => overview}},
-        {"/api/adm/stats/user", adm_stats_handler, #{action => user}},
-        {"/api/adm/stats/message", adm_stats_handler, #{action => message}},
-        {"/api/adm/stats/group", adm_stats_handler, #{action => group}},
-        {"/api/adm/stats/ranking", adm_stats_handler, #{action => ranking}},
-        {"/api/adm/stats/license", adm_stats_handler, #{action => license}},
-        {"/api/adm/stats/finance", adm_stats_handler, #{action => finance_summary}},
-        {"/api/adm/stats/finance/report", adm_stats_handler, #{action => finance_report}},
-        {"/static/admin/[...]", cowboy_static,
-            {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
-    ],
+    AdmRoutes =
+        [
+            {"/api/adm", adm_index_handler, #{action => index}},
+            {"/api/adm/index", adm_index_handler, #{action => index}},
+            % 首启初始化向导（P0-5）— 免鉴权，见 open/0
+            {"/api/adm/setup/status", adm_setup_handler, #{action => status}},
+            {"/api/adm/setup/init", adm_setup_handler, #{action => init_setup}},
+            {"/api/adm/current", adm_index_handler, #{action => current}},
+            {"/api/adm/rbac/me", adm_index_handler, #{action => rbac}},
+            {"/api/adm/welcome", adm_index_handler, #{action => welcome}},
+            {"/api/adm/feedback/index", adm_feedback_handler, #{action => index}},
+            {"/api/adm/admin/config/features", adm_admin_handler, #{action => config_features}},
+            % Product Experience 安装级配置只读（双体验 v2.5.2 WP7/T11；无运行时写接口）
+            {"/api/adm/admin/config/product-experience", adm_admin_handler, #{
+                action => config_product_experience
+            }},
+            {"/api/adm/admin/config/policy/bootstrap", adm_admin_handler, #{
+                action => config_policy_bootstrap
+            }},
+            {"/api/adm/admin/config/policy/meta", adm_admin_handler, #{
+                action => config_policy_meta
+            }},
+            {"/api/adm/admin/config/policy/preview", adm_admin_handler, #{
+                action => config_policy_preview
+            }},
+            {"/api/adm/admin/config/policy/saved", adm_admin_handler, #{
+                action => config_policy_saved
+            }},
+            {"/api/adm/admin/config/policy", adm_admin_handler, #{action => config_policy}},
+            {"/api/adm/admin/config/sidebar", adm_admin_handler, #{action => config_sidebar}},
+            {"/api/adm/admin/config/feedback-workflow", adm_admin_handler, #{
+                action => config_feedback_workflow
+            }},
+            % UX 埋点上报（前端 uxTelemetryReporter 按 5s 批量 POST 到此端点）
+            {"/api/adm/admin/ux/events", adm_stats_handler, #{
+                action => ux_events
+            }},
+            % 禁言用户管理 API
+            {"/api/adm/admin/muted_users/list", adm_admin_handler, #{action => muted_users_list}},
+            {"/api/adm/admin/muted_users/unmute", adm_admin_handler, #{
+                action => muted_users_unmute
+            }},
+            {"/api/adm/admin/muted_users/unmute_batch", adm_admin_handler, #{
+                action => muted_users_unmute_batch
+            }},
+            % 推送 Token 管理 API
+            {"/api/adm/admin/push_token/list", adm_admin_handler, #{action => push_token_list}},
+            % 合规密钥管理 API
+            {"/api/adm/admin/compliance_key/list", adm_admin_handler, #{
+                action => compliance_key_list
+            }},
+            {"/api/adm/admin/compliance_key/create", adm_admin_handler, #{
+                action => compliance_key_create
+            }},
+            {"/api/adm/admin/compliance_key/revoke", adm_admin_handler, #{
+                action => compliance_key_revoke
+            }},
+            {"/api/adm/admin/list", adm_admin_handler, #{action => list}},
+            {"/api/adm/admin/create", adm_admin_handler, #{action => create}},
+            {"/api/adm/admin/assign_role", adm_admin_handler, #{action => assign_role}},
+            {"/api/adm/admin/disable", adm_admin_handler, #{action => disable}},
+            {"/api/adm/feedback/reply", adm_feedback_handler, #{action => reply}},
+            {"/api/adm/feedback/status", adm_feedback_handler, #{action => status}},
+            {"/api/adm/feedback/delete", adm_feedback_handler, #{action => delete}},
+            {"/api/adm/role/list", adm_role_handler, #{action => list}},
+            {"/api/adm/roles/list", adm_role_handler, #{action => list}},
+            {"/api/adm/role/create", adm_role_handler, #{action => create}},
+            {"/api/adm/roles/create", adm_role_handler, #{action => create}},
+            {"/api/adm/role/permissions/save", adm_role_handler, #{action => permissions_save}},
+            {"/api/adm/role/permission/update", adm_role_handler, #{action => permissions_save}},
+            {"/api/adm/roles/permissions/save", adm_role_handler, #{action => permissions_save}},
+            {"/api/adm/role/disable", adm_role_handler, #{action => disable}},
+            {"/api/adm/roles/disable", adm_role_handler, #{action => disable}},
+            {"/api/adm/role/delete", adm_role_handler, #{action => delete}},
+            {"/api/adm/roles/delete", adm_role_handler, #{action => delete}},
+            {"/api/adm/ai_agent/list", adm_ai_agent_handler, #{action => list}},
+            {"/api/adm/ai_agent/detail", adm_ai_agent_handler, #{action => detail}},
+            {"/api/adm/ai_agent/create", adm_ai_agent_handler, #{action => create}},
+            {"/api/adm/ai_agent/update", adm_ai_agent_handler, #{action => update}},
+            {"/api/adm/ai_agent/set_status", adm_ai_agent_handler, #{action => set_status}},
+            % ai_roles 人格 KV 管理：GET 读 / POST 保存删除（users:read|update）
+            {"/api/adm/ai_agent/roles", adm_ai_agent_handler, #{action => roles}},
+            % 头像上传（multipart → Garage）：POST（users:update）
+            {"/api/adm/ai_agent/upload_avatar", adm_ai_agent_handler, #{action => upload_avatar}},
+            % 新手引导配置（AI 冷启动）：GET 读 / POST 半量保存（users:read|update）
+            {"/api/adm/ai_agent/onboarding_config", adm_ai_agent_handler, #{
+                action => onboarding_config
+            }},
+            % 知识库配置（A3-1）：群规/FAQ，供 @管家 答疑注入（users:read|update）
+            {"/api/adm/ai_agent/knowledge_config", adm_ai_agent_handler, #{
+                action => knowledge_config
+            }},
+            % 版本化 AI 角色模板：分页、详情、创建、草稿、发布、状态
+            {"/api/adm/ai_agent/role/list", adm_ai_agent_handler, #{action => role_list}},
+            {"/api/adm/ai_agent/role/detail", adm_ai_agent_handler, #{action => role_detail}},
+            {"/api/adm/ai_agent/role/create", adm_ai_agent_handler, #{action => role_create}},
+            {"/api/adm/ai_agent/role/draft", adm_ai_agent_handler, #{action => role_draft}},
+            {"/api/adm/ai_agent/role/publish", adm_ai_agent_handler, #{action => role_publish}},
+            {"/api/adm/ai_agent/role/set_status", adm_ai_agent_handler, #{
+                action => role_set_status
+            }},
+            % admin 应急入口(c)：代运营为 agent 创建受控支付授权（finance:write RBAC）
+            {"/api/adm/ai_agent/mandate_create", adm_ai_agent_handler, #{action => mandate_create}},
+            {"/api/adm/mcp/clients", adm_mcp_handler, #{action => list}},
+            {"/api/adm/mcp/clients/create", adm_mcp_handler, #{action => create}},
+            {"/api/adm/mcp/clients/approve", adm_mcp_handler, #{action => approve}},
+            {"/api/adm/mcp/clients/reject", adm_mcp_handler, #{action => reject}},
+            {"/api/adm/mcp/clients/revoke", adm_mcp_handler, #{action => revoke}},
+            {"/api/adm/mcp/clients/grants", adm_mcp_handler, #{action => grants}},
+            {"/api/adm/mcp/clients/grants/set", adm_mcp_handler, #{action => set_grant}},
+            {"/api/adm/mcp/audit", adm_mcp_handler, #{action => audit}},
+            {"/api/adm/bot/deliveries/replay", adm_bot_delivery_handler, #{action => replay}},
+            {"/api/adm/bot/deliveries", adm_bot_delivery_handler, #{action => list}},
+            {"/api/adm/app_ddl/index", adm_app_ddl_handler, #{action => index}},
+            {"/api/adm/app_ddl/save", adm_app_ddl_handler, #{action => save}},
+            {"/api/adm/app_ddl/delete", adm_app_ddl_handler, #{action => delete}},
+            {"/api/adm/app_version/index", adm_app_version_handler, #{action => index}},
+            {"/api/adm/app_version/save", adm_app_version_handler, #{action => save}},
+            {"/api/adm/app_version/delete", adm_app_version_handler, #{action => delete}},
+            {"/api/adm/app_version/version_stats", adm_app_version_handler, #{
+                action => version_stats
+            }},
+            % 存储管理 API
+            {"/api/adm/storage/stats", adm_attach_handler, #{action => stats}},
+            {"/api/adm/storage/index", adm_attach_handler, #{action => index}},
+            {"/api/adm/storage/disable", adm_attach_handler, #{action => disable}},
+            {"/api/adm/storage/enable", adm_attach_handler, #{action => enable}},
+            {"/api/adm/storage/delete", adm_attach_handler, #{action => delete}},
+            {"/api/adm/storage/download", adm_attach_handler, #{action => download}},
+            {"/api/adm/storage/orphan", adm_attach_handler, #{action => orphan}},
+            {"/api/adm/storage/orphan/cleanup", adm_attach_handler, #{action => orphan_cleanup}},
+            {"/api/adm/passport/meta", adm_passport_handler, #{action => meta}},
+            {"/api/adm/passport/login", adm_passport_handler, #{action => login}},
+            {"/api/adm/passport/captcha", adm_passport_handler, #{action => captcha}},
+            {"/api/adm/passport/do_login", adm_passport_handler, #{action => do_login}},
+            {"/api/adm/passport/logout", adm_passport_handler, #{action => logout}},
+            % 用户管理 API
+            {"/api/adm/user/list", adm_user_handler, #{action => list}},
+            {"/api/adm/user/detail", adm_user_handler, #{action => detail}},
+            {"/api/adm/user/ban", adm_user_handler, #{action => ban}},
+            {"/api/adm/user/unban", adm_user_handler, #{action => unban}},
+            {"/api/adm/user/force_logout", adm_user_handler, #{action => force_logout}},
+            {"/api/adm/user/devices", adm_user_handler, #{action => devices}},
+            {"/api/adm/user/device/kick", adm_user_handler, #{action => device_kick}},
+            {"/api/adm/operation_logs", adm_operation_log_handler, #{action => list}},
+            {"/api/adm/user/search", adm_user_handler, #{action => search}},
+            {"/api/adm/user/tag/list", adm_user_handler, #{action => tag_list}},
+            {"/api/adm/user/tag/delete", adm_user_handler, #{action => tag_delete}},
+            {"/api/adm/user/collect/list", adm_user_handler, #{action => collect_list}},
+            {"/api/adm/user/collect/remove", adm_user_handler, #{action => collect_remove}},
+            {"/api/adm/user/logout_apply/list", adm_logout_apply_handler, #{action => list}},
+            {"/api/adm/user/logout_apply/export", adm_logout_apply_handler, #{action => export}},
+            {"/api/adm/user/logout_apply/reject", adm_logout_apply_handler, #{action => reject}},
+            {"/api/adm/user/logout_apply/approve", adm_logout_apply_handler, #{action => approve}},
+            % Workspace/Project 运营管理 API（双体验 v2.5.2 WP7/T11b）
+            % 鉴权：adm_acl workspaces:read / workspaces:update（fail-closed 403）
+            {"/api/adm/workspace/list", adm_workspace_handler, #{action => list}},
+            {"/api/adm/workspace/detail", adm_workspace_handler, #{action => detail}},
+            {"/api/adm/workspace/members", adm_workspace_handler, #{action => members}},
+            {"/api/adm/workspace/archive", adm_workspace_handler, #{action => archive}},
+            {"/api/adm/workspace/restore", adm_workspace_handler, #{action => restore}},
+            {"/api/adm/project/list", adm_workspace_handler, #{action => project_list}},
+            {"/api/adm/project/detail", adm_workspace_handler, #{action => project_detail}},
+            %% Channel-first-class W2 治理只读面（ZC-05）
+            {"/api/adm/project/members", adm_workspace_handler, #{action => project_members}},
+            {"/api/adm/project/milestones", adm_workspace_handler, #{action => project_milestones}},
+            {"/api/adm/project/channels", adm_workspace_handler, #{action => project_channels}},
+            {"/api/adm/project/aggregations", adm_workspace_handler, #{
+                action => project_aggregations
+            }},
+            % 群组管理 API
+            {"/api/adm/group/list", adm_group_handler, #{action => list}},
+            {"/api/adm/group/detail", adm_group_handler, #{action => detail}},
+            {"/api/adm/group/dissolve", adm_group_handler, #{action => dissolve}},
+            {"/api/adm/group/update", adm_group_handler, #{action => update}},
+            {"/api/adm/group/search", adm_group_handler, #{action => search}},
+            {"/api/adm/group/member/kick", adm_group_handler, #{action => kick_member}},
+            {"/api/adm/group/members", adm_group_handler, #{action => members}},
+            % 群组子功能 API
+            {"/api/adm/group/vote/list", adm_group_vote_handler, #{action => vote_list}},
+            {"/api/adm/group/vote/detail", adm_group_vote_handler, #{action => vote_detail}},
+            {"/api/adm/group/vote/close", adm_group_vote_handler, #{action => vote_close}},
+            {"/api/adm/group/notice/list", adm_group_notice_handler, #{action => notice_list}},
+            {"/api/adm/group/notice/detail", adm_group_notice_handler, #{action => notice_detail}},
+            {"/api/adm/group/notice/delete", adm_group_notice_handler, #{action => notice_delete}},
+            {"/api/adm/group/tag/list", adm_group_content_handler, #{action => tag_list}},
+            {"/api/adm/group/tag/delete", adm_group_content_handler, #{action => tag_delete}},
+            {"/api/adm/group/category/list", adm_group_content_handler, #{action => category_list}},
+            {"/api/adm/group/category/delete", adm_group_content_handler, #{
+                action => category_delete
+            }},
+            {"/api/adm/group/file/list", adm_group_content_handler, #{action => file_list}},
+            {"/api/adm/group/file/detail", adm_group_content_handler, #{action => file_detail}},
+            {"/api/adm/group/file/delete", adm_group_content_handler, #{action => file_delete}},
+            {"/api/adm/group/album/list", adm_group_content_handler, #{action => album_list}},
+            {"/api/adm/group/album/detail", adm_group_content_handler, #{action => album_detail}},
+            {"/api/adm/group/album/delete", adm_group_content_handler, #{action => album_delete}},
+            {"/api/adm/group/schedule/list", adm_group_schedule_handler, #{action => schedule_list}},
+            {"/api/adm/group/schedule/detail", adm_group_schedule_handler, #{
+                action => schedule_detail
+            }},
+            {"/api/adm/group/schedule/cancel", adm_group_schedule_handler, #{
+                action => schedule_cancel
+            }},
+            {"/api/adm/group/schedule/restore", adm_group_schedule_handler, #{
+                action => schedule_restore
+            }},
+            {"/api/adm/group/governance_log/list", adm_group_schedule_handler, #{
+                action => governance_log_list
+            }},
+            {"/api/adm/group/task/list", adm_group_task_handler, #{action => task_list}},
+            {"/api/adm/group/task/detail", adm_group_task_handler, #{action => task_detail}},
+            {"/api/adm/group/task/pending_review", adm_group_task_handler, #{
+                action => task_pending_review
+            }},
+            {"/api/adm/group/task/review", adm_group_task_handler, #{action => task_review}},
+            {"/api/adm/group/task/restore", adm_group_task_handler, #{action => task_restore}},
+            {"/api/adm/group/task/close", adm_group_task_handler, #{action => task_close}},
+            {"/api/adm/group/task/delete", adm_group_task_handler, #{action => task_delete}},
+            % 消息管理 API
+            {"/api/adm/message/list", adm_message_handler, #{action => list}},
+            {"/api/adm/message/detail", adm_message_handler, #{action => detail}},
+            {"/api/adm/message/export", adm_message_handler, #{action => export}},
+            % 频道管理 API
+            {"/api/adm/channel/list", adm_channel_handler, #{action => list}},
+            % Bot 管理处置 API（平台侧，无属主校验）
+            {"/api/adm/bot/list", adm_bot_handler, #{action => list}},
+            {"/api/adm/bot/detail", adm_bot_handler, #{action => detail}},
+            {"/api/adm/bot/disable", adm_bot_handler, #{action => disable}},
+            {"/api/adm/bot/enable", adm_bot_handler, #{action => enable}},
+            %% 固定段路由置于 :channel_id 通配之前，避免 order 被当作 channel_id
+            {"/api/adm/channel/order/refund", adm_channel_handler, #{action => refund_order}},
+            {"/api/adm/channel/detail/:channel_id", adm_channel_handler, #{action => detail}},
+            {"/api/adm/channel/:channel_id/messages", adm_channel_handler, #{action => messages}},
+            {"/api/adm/channel/:channel_id/subscribers", adm_channel_handler, #{
+                action => subscribers
+            }},
+            {"/api/adm/channel/:channel_id/subscriber/:user_id", adm_channel_handler, #{
+                action => remove_subscriber
+            }},
+            {"/api/adm/channel/:channel_id/admins", adm_channel_handler, #{action => admins}},
+            {"/api/adm/channel/:channel_id/admin/:user_id/role", adm_channel_handler, #{
+                action => update_admin_role
+            }},
+            {"/api/adm/channel/:channel_id/admin/:user_id", adm_channel_handler, #{
+                action => remove_admin
+            }},
+            {"/api/adm/channel/:channel_id/invitations", adm_channel_handler, #{
+                action => invitations
+            }},
+            {"/api/adm/channel/:channel_id/orders", adm_channel_handler, #{action => orders}},
+            {"/api/adm/channel/:channel_id/stats", adm_channel_handler, #{action => stats}},
+            {"/api/adm/channel/:channel_id/message/:message_id/pin", adm_channel_handler, #{
+                action => pin_message
+            }},
+            {"/api/adm/channel/:channel_id/message/:message_id/delete", adm_channel_handler, #{
+                action => delete_message
+            }},
+            {"/api/adm/channel/:channel_id/price", adm_channel_handler, #{action => set_price}},
+            {"/api/adm/channel/search", adm_channel_handler, #{action => search}},
+            {"/api/adm/channel/delete", adm_channel_handler, #{action => delete}},
+            % 运营财务 API（跨用户钱包/充值/支付/SaaS 计费查询）
+            {"/api/adm/finance/wallets", adm_finance_handler, #{action => wallets}},
+            {"/api/adm/finance/wallet/:user_id/transactions", adm_finance_handler, #{
+                action => wallet_transactions
+            }},
+            {"/api/adm/finance/recharge-orders", adm_finance_handler, #{action => recharge_orders}},
+            {"/api/adm/finance/recharge-orders/refund", adm_finance_handler, #{
+                action => recharge_order_refund
+            }},
+            {"/api/adm/finance/payment-transactions", adm_finance_handler, #{
+                action => payment_transactions
+            }},
+            {"/api/adm/finance/payment-transactions/refund", adm_finance_handler, #{
+                action => payment_transaction_refund
+            }},
+            {"/api/adm/finance/wallets/freeze", adm_finance_handler, #{action => wallet_freeze}},
+            {"/api/adm/finance/wallets/unfreeze", adm_finance_handler, #{action => wallet_unfreeze}},
+            {"/api/adm/finance/billing/plans", adm_finance_handler, #{action => billing_plans}},
+            {"/api/adm/finance/billing/plan", adm_finance_handler, #{action => billing_plan_create}},
+            {"/api/adm/finance/billing/plan/update", adm_finance_handler, #{
+                action => billing_plan_update
+            }},
+            {"/api/adm/finance/billing/subscriptions", adm_finance_handler, #{
+                action => billing_subscriptions
+            }},
+            {"/api/adm/finance/billing/invoices", adm_finance_handler, #{
+                action => billing_invoices
+            }},
+            {"/api/adm/finance/withdrawals", adm_finance_handler, #{action => withdrawals}},
+            {"/api/adm/finance/withdrawals/complete", adm_finance_handler, #{
+                action => withdrawal_complete
+            }},
+            {"/api/adm/finance/withdrawals/reject", adm_finance_handler, #{
+                action => withdrawal_reject
+            }}
+            % Moment 与举报治理 API（BUILD-00R：编译期物理裁剪，helper 见文件底部）
+        ] ++ moment_admin_routes() ++
+            [
+                {"/api/adm/report/create", adm_report_handler, #{action => create}},
+                {"/api/adm/report/list", adm_report_handler, #{action => list}},
+                {"/api/adm/report/detail", adm_report_handler, #{action => detail}},
+                {"/api/adm/report/resolve", adm_report_handler, #{action => resolve}},
+                {"/api/adm/report/batch_resolve", adm_report_handler, #{action => batch_resolve}},
+                {"/api/adm/group/report/list", adm_report_handler, #{action => group_list}},
+                {"/api/adm/group/report/resolve", adm_report_handler, #{action => group_resolve}},
+                {"/api/adm/group/report/batch_resolve", adm_report_handler, #{
+                    action => group_batch_resolve
+                }},
+                {"/api/adm/channel/report/list", adm_report_handler, #{action => channel_list}},
+                {"/api/adm/channel/report/resolve", adm_report_handler, #{
+                    action => channel_resolve
+                }},
+                {"/api/adm/channel/report/batch_resolve", adm_report_handler, #{
+                    action => channel_batch_resolve
+                }},
+                {"/api/adm/user/report/list", adm_report_handler, #{action => user_list}},
+                {"/api/adm/user/report/resolve", adm_report_handler, #{action => user_resolve}},
+                {"/api/adm/user/report/batch_resolve", adm_report_handler, #{
+                    action => user_batch_resolve
+                }},
+                %% R-02：处置动作（case = report_ticket 行；audit = moderation_action 表）
+                {"/api/adm/report_action/execute", adm_report_action_handler, #{action => execute}},
+                {"/api/adm/report_action/reverse", adm_report_action_handler, #{action => reverse}},
+                {"/api/adm/report_action/list", adm_report_action_handler, #{action => list}},
+                % 统计 API
+                {"/api/adm/announcement/index", adm_announcement_handler, #{action => index}},
+                {"/api/adm/announcement/create", adm_announcement_handler, #{action => create}},
+                {"/api/adm/announcement/update", adm_announcement_handler, #{action => update}},
+                {"/api/adm/announcement/delete", adm_announcement_handler, #{action => delete}},
+                {"/api/adm/announcement/publish", adm_announcement_handler, #{action => publish}},
+                {"/api/adm/announcement/unpublish", adm_announcement_handler, #{
+                    action => unpublish
+                }},
+                % 内容审核：敏感词黑名单 + 消息人工复审队列（import/:id 须置于通配路由之前）
+                {"/api/adm/moderation/sensitive-words/import", adm_moderation_handler, #{
+                    action => sensitive_words_import
+                }},
+                {"/api/adm/moderation/sensitive-words/:id", adm_moderation_handler, #{
+                    action => sensitive_word_delete
+                }},
+                {"/api/adm/moderation/sensitive-words", adm_moderation_handler, #{
+                    action => sensitive_words
+                }},
+                {"/api/adm/moderation/review-queue/:id/moderate", adm_moderation_handler, #{
+                    action => review_moderate
+                }},
+                {"/api/adm/moderation/review-queue", adm_moderation_handler, #{
+                    action => review_queue
+                }},
+                % R-04 处置申诉复审（独立复审约束在 logic 层：reviewer≠原执行者）
+                {"/api/adm/appeal/list", adm_appeal_handler, #{action => list}},
+                {"/api/adm/appeal/review", adm_appeal_handler, #{action => review}},
+                % SSO 外部认证配置（GET/POST 同路径按 method 分派）
+                {"/api/adm/sso/config", adm_sso_handler, #{action => config}},
+                {"/api/adm/sso/test", adm_sso_handler, #{action => test}},
+                % 插件生命周期管理 API (lifecycle.md §10)
+                {"/api/adm/plugin/list", adm_plugin_handler, #{action => list}},
+                {"/api/adm/plugin/detail", adm_plugin_handler, #{action => detail}},
+                {"/api/adm/plugin/state", adm_plugin_handler, #{action => state_query}},
+                {"/api/adm/plugin/health", adm_plugin_handler, #{action => health}},
+                {"/api/adm/plugin/install", adm_plugin_handler, #{action => install}},
+                {"/api/adm/plugin/enable", adm_plugin_handler, #{action => enable}},
+                {"/api/adm/plugin/disable", adm_plugin_handler, #{action => disable}},
+                {"/api/adm/plugin/upgrade", adm_plugin_handler, #{action => upgrade}},
+                {"/api/adm/plugin/uninstall", adm_plugin_handler, #{action => uninstall}},
+                {"/api/adm/plugin/reset", adm_plugin_handler, #{action => reset}},
+                {"/api/adm/plugin/force_uninstall", adm_plugin_handler, #{
+                    action => force_uninstall
+                }},
+                {"/api/adm/plugin/logs", adm_plugin_handler, #{action => logs}},
+                {"/api/adm/stats/overview", adm_stats_handler, #{action => overview}},
+                {"/api/adm/stats/user", adm_stats_handler, #{action => user}},
+                {"/api/adm/stats/message", adm_stats_handler, #{action => message}},
+                {"/api/adm/stats/group", adm_stats_handler, #{action => group}},
+                {"/api/adm/stats/ranking", adm_stats_handler, #{action => ranking}},
+                {"/api/adm/stats/license", adm_stats_handler, #{action => license}},
+                {"/api/adm/stats/finance", adm_stats_handler, #{action => finance_summary}},
+                {"/api/adm/stats/finance/report", adm_stats_handler, #{action => finance_report}},
+                {"/static/admin/[...]", cowboy_static,
+                    {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
+            ],
     CompiledApiRoutes = imboy_feature:compiled_routes(api, ApiV1Routes),
     CompiledAdmRoutes = imboy_feature:compiled_routes(admin, AdmRoutes),
     CompiledPluginRoutes = imboy_feature:compiled_routes(api, plugin_routes()),
@@ -1208,3 +1246,50 @@ test_open_routes() ->
         false ->
             []
     end.
+
+%% ===================================================================
+%% BUILD-00R：moment 编译期物理裁剪 helper
+%% 未选中 moment 时预处理剔除整个函数体，路由路径字符串不进 beam；
+%% 与 imboy_feature:compiled_routes 的运行时过滤构成双保险。
+%% ===================================================================
+-ifdef(IMBOY_FEATURE_MOMENT).
+-spec moment_api_routes() -> list().
+moment_api_routes() ->
+    [
+        {"/api/v1/moment/report/create", report_handler, #{action => moment_create}},
+        {"/api/v1/moment/create", moment_handler, #{action => create}},
+        {"/api/v1/moment/:moment_id", moment_handler, #{action => show}},
+        {"/api/v1/moment/:moment_id/delete", moment_handler, #{action => delete}},
+        {"/api/v1/moments/feed", moment_handler, #{action => feed}},
+        {"/api/v1/moments/user/:uid", moment_handler, #{action => user_posts}},
+        {"/api/v1/moment/:moment_id/like", moment_handler, #{action => like}},
+        {"/api/v1/moment/:moment_id/unlike", moment_handler, #{action => unlike}},
+        {"/api/v1/moment/:moment_id/comment", moment_handler, #{action => add_comment}},
+        {"/api/v1/moment/:moment_id/comments", moment_handler, #{action => comments}},
+        {"/api/v1/moment/:moment_id/comment/:comment_id/delete", moment_handler, #{
+            action => delete_comment
+        }},
+        {"/api/v1/moment/:moment_id/report", moment_handler, #{action => report}}
+    ].
+
+-spec moment_admin_routes() -> list().
+moment_admin_routes() ->
+    [
+        {"/api/adm/moment/list", adm_moment_handler, #{action => list}},
+        {"/api/adm/moment/detail/:moment_id", adm_moment_handler, #{action => detail}},
+        {"/api/adm/moment/delete", adm_moment_handler, #{action => delete}},
+        {"/api/adm/moment/report/list", adm_moment_handler, #{action => report_list}},
+        {"/api/adm/moment/report/resolve", adm_moment_handler, #{action => report_resolve}},
+        {"/api/adm/moment/report/batch_resolve", adm_moment_handler, #{
+            action => report_batch_resolve
+        }}
+    ].
+-else.
+-spec moment_api_routes() -> list().
+moment_api_routes() ->
+    [].
+
+-spec moment_admin_routes() -> list().
+moment_admin_routes() ->
+    [].
+-endif.

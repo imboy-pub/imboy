@@ -86,7 +86,10 @@ all_returns_binary_key_view_for_known_features_test_() ->
         channel_order => false,
         group_vote => true,
         group_schedule => false,
-        group_task => true
+        group_task => true,
+        %% 平台内建键（Builtin）：L-01 bot_webhook / R-04 appeal
+        bot_webhook => true,
+        appeal => false
     },
     ?WITH_MECKS(
         [
@@ -119,7 +122,10 @@ feature_names_contract_test() ->
             channel_order,
             group_vote,
             group_schedule,
-            group_task
+            group_task,
+            %% 平台内建（Builtin）键排在插件键之后
+            bot_webhook,
+            appeal
         ],
         imboy_feature:feature_names()
     ).

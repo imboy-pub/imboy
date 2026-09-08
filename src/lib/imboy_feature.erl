@@ -180,9 +180,12 @@ feature_names() ->
         lists:member(K, PluginKeys)
     ],
     Extra = [K || K <- PluginKeys, not lists:member(K, Ordered)],
-    %% 平台内建（非插件）特性：Bot webhook 外呼（L-01 overseas_baseline
-    %% 预设默认关闭；community/enterprise 无显式覆盖时保持开放）。
-    Builtin = [bot_webhook],
+    %% 平台内建（非插件）特性：
+    %% - bot_webhook：Bot webhook 外呼（L-01 overseas_baseline 预设默认
+    %%   关闭；community/enterprise 无显式覆盖时保持开放）。
+    %% - appeal：处置申诉链（R-04 operational baseline，默认开放；
+    %%   是否对用户开放由 profile/runtime 配置决定，法务结论后可关闭）。
+    Builtin = [bot_webhook, appeal],
     CoreFixed ++ Ordered ++ Extra ++ Builtin.
 
 -spec normalize_feature_key(feature()) -> atom() | undefined.

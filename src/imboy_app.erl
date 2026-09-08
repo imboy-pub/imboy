@@ -197,6 +197,8 @@ tsid_generator_names() ->
         user_deletion_job,
         %% R-02：处置动作审计行
         moderation_action,
+        %% R-04：处置申诉行
+        moderation_appeal,
         %% ── 好友相关 ──
         friend,
         friend_category,
