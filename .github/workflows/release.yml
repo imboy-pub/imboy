@@ -126,7 +126,7 @@ jobs:
 
       - name: Build and push candidate image
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -210,7 +210,7 @@ jobs:
 
       - name: Build and push admin candidate image
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: imboyadmin
           file: imboyadmin/Dockerfile
@@ -281,7 +281,7 @@ jobs:
 
       - name: Build and push PostgreSQL 18 candidate image
         id: push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./docker/pg18_Dockerfile
