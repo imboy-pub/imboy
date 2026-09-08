@@ -70,3 +70,30 @@
 ## 提交
 
 - imboy：`feat(R-04): 处置申诉链——一次申诉/独立复审/翻案联动/profile 门控`（只 commit 不 push）
+
+## R-04.1：前端两页（2026-09-08）
+
+### Admin 复核页（imboyadmin `2f7e550`）
+
+- `src/services/api/appeals.ts`：对接 `/api/adm/appeal/list|review`；
+- `src/pages/content-moderation/AppealReviewPage.tsx`：申诉列表（状态筛选/分页/DataTable）+ 独立复审动作（翻案/维持，二次确认防误触；已终审行无操作）；
+- App.tsx 路由 `/moderation/appeals`（PermissionRoute reports:read，roles 1/2）+ 侧边栏菜单「处置申诉复审」；
+- 测试 `AppealReviewPage.test.tsx` 3/3（渲染/复审提交/终审行无操作）；全仓 1448 测试、lint、build 全绿。
+
+### Flutter 用户页（imboyapp）
+
+- `lib/page/mine/appeal/appeal_page.dart`：处置与申诉页——针对我的处置（appealed 标记+申诉入口）+ 我的申诉（终审状态/理由）；申诉弹窗（CupertinoAlertDialog，理由必填≤1000）；IosPageTemplate 风格；
+- `lib/store/api/appeal_api.dart`：myActions/myAppeals/create；
+- mine 页「处置与申诉」入口 + `/mine/appeal` 路由；
+- i18n：`appeal` namespace 10 语言 + slang 重新生成；
+- flutter analyze 新增文件 0 issue。
+
+### 后端配套（同批）
+
+- 新增 `GET /api/v1/appeal/actions`（moderation_action_repo:list_by_target 走 R-02 的 target_uid 部分索引；logic my_actions 附 appealed 标记；用户面视图无 actor_id/case_id/result）——用户发起申诉前需发现针对自己的处置。
+
+### 已知边界
+
+- 申诉发起后暂无主动推送通知（结果经页面自助查看，推送对接 R-02 通知打磨项）；
+- Flutter 页真机走查未做（并入 E-02 设备批）；
+- lefthook（imboyapp）本批直接 pathspec 提交：全仓 flutter analyze 有 2 个既有 error（file_picker 测试桩签名漂移，filepicker12 记忆项），与本批无关。
