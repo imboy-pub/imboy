@@ -68,7 +68,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | X-03 | Push | Provider/Gateway 无消息明文；记录昵称/群名/类型 metadata | BLOCKED |
 | X-04 | Android/iOS 密钥保护 | Keystore/Keychain accessibility、备份迁移与提取抗性符合声明 | B PARTIAL；A BLOCKED |
 | X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | C PASS / Android 限定范围 B PASS；物理 Android 9 真机使用每轮 `Random.secure()` Canary，8/8 PASS：错钥拒绝、原文件字节不变、正确密钥及 inbox 解密结果可重开恢复、数据库文件字节无 Canary、完成态/replay 分类正确、未生成新 `.plain.bak`/`.pre_encrypt.bak`，临时目录已清理且测试包已卸载。Secure Storage 为 mock；旧明文库、WAL/SHM、历史备份 artifact 与真实 Keystore 未覆盖，009 保持 REGRESSION_PASS |
-| X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS，消息链路日志脱敏有 C 级回归；011 备份包、收集失败和恢复写失败边界有 57/57 C 级回归；真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
+| X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS，消息链路日志脱敏有 C 级回归；011 备份包、收集失败和恢复写失败边界有 57/57 C 级回归，备份导入 widget 的 cloud probe 已改为本地注入并 6/6 PASS；需要账号、云备份写删或宿主 Keychain 清理的集成测试未获授权且未执行；真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
 | X-07 | Compliance | 明确私钥保管方、授权解密边界、轮换确认和 zero-knowledge 例外 | BLOCKED |
 | X-08 | Redis | 仅目标部署实际使用 Redis 时检查 | 当前声明架构 N/A |
 
