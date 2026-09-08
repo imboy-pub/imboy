@@ -454,6 +454,8 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
     --exclude='*.d' \
     --exclude='config/sys.pro.config' \
     --exclude='config/sys.runtime.config' \
+    --exclude='config/sys.dev.config' \
+    --exclude='config/sys.local.config' \
     --exclude='scripts/.env.deploy' \
     --exclude='docker/' \
     -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL -o StrictHostKeyChecking=accept-new" \
