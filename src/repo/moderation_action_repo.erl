@@ -7,6 +7,7 @@
 -export([insert_tx/2]).
 -export([find_by_id/1]).
 -export([find_by_case/1]).
+-export([list_by_target/1]).
 -export([has_executed_same_action/3]).
 -export([mark_reversed/3]).
 -export([mark_failed_tx/3]).
@@ -129,6 +130,29 @@ find_by_case(CaseId) ->
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
+
+%% R-04.1：被处置用户视角——查针对自己的处置动作（appeal/actions 端点）。
+%% 走 idx_moderation_action_target_uid 部分索引（R-02 已建）。
+-spec list_by_target(integer()) -> {ok, [map()]} | {error, binary()}.
+list_by_target(TargetUid) when is_integer(TargetUid), TargetUid > 0 ->
+    Tb = tablename(),
+    Sql =
+        <<
+            "SELECT id, case_id, action, target_type, target_id, target_uid,"
+            " reason, status, start_at, end_at, reversed_at,"
+            " created_at"
+            " FROM ",
+            Tb/binary,
+            " WHERE target_uid = $1 ORDER BY created_at DESC LIMIT 50"
+        >>,
+    case elib_pg:query(Sql, [TargetUid]) of
+        {ok, Rows} ->
+            {ok, Rows};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end;
+list_by_target(_) ->
+    {error, <<"参数错误"/utf8>>}.
 
 %% @doc 幂等守卫：同 case 同 action 已有 executed（未撤销/未过期）行 → true。
 %% 重复执行同一处置应显式拒绝而非双发通知/二次禁言。

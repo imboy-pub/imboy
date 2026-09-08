@@ -17,6 +17,7 @@
 -export([submit/3]).
 -export([review/4]).
 -export([my_list/1]).
+-export([my_actions/1]).
 -export([admin_list/3]).
 -export([appeal_window_ms/0]).
 
@@ -114,6 +115,38 @@ my_list(AppellantUid) ->
         {error, _} ->
             {error, <<"查询失败"/utf8>>}
     end.
+
+%% @doc R-04.1：针对我的处置动作列表（appeal/actions 端点）——
+%% 用户据此发现可申诉的处置并看到申诉状态（appealed 标记）。
+-spec my_actions(integer()) -> {ok, [map()]} | {error, binary()}.
+my_actions(AppellantUid) ->
+    case moderation_action_repo:list_by_target(AppellantUid) of
+        {ok, Rows} ->
+            Appealed =
+                case moderation_appeal_repo:list_by_appellant(AppellantUid) of
+                    {ok, AppealRows} ->
+                        lists:usort([row_int(maps:get(<<"action_id">>, R, 0)) || R <- AppealRows]);
+                    _ ->
+                        []
+                end,
+            {ok, [action_user_view(Row, Appealed) || Row <- Rows]};
+        {error, _} ->
+            {error, <<"查询失败"/utf8>>}
+    end.
+
+%% 处置动作的用户面视图：无 actor_id/case_id/result（执行细节与举报
+%% 关联不外露），带 appealed 标记供前端区分「可申诉/已申诉」。
+action_user_view(Row, AppealedActionIds) ->
+    ActionId = row_int(maps:get(<<"id">>, Row, 0)),
+    #{
+        <<"id">> => ActionId,
+        <<"action">> => maps:get(<<"action">>, Row, <<>>),
+        <<"reason">> => maps:get(<<"reason">>, Row, <<>>),
+        <<"status">> => maps:get(<<"status">>, Row, <<>>),
+        <<"reversed_at">> => maps:get(<<"reversed_at">>, Row, null),
+        <<"created_at">> => maps:get(<<"created_at">>, Row, null),
+        <<"appealed">> => lists:member(ActionId, AppealedActionIds)
+    }.
 
 %% ===================================================================
 %% Admin 侧

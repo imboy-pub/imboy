@@ -511,7 +511,8 @@ get_routes() ->
 
                 % R-04 处置申诉（可用性门：imboy_feature:enabled(appeal)）
                 {"/api/v1/appeal/create", appeal_handler, #{action => create}},
-                {"/api/v1/appeal/my", appeal_handler, #{action => my}}
+                {"/api/v1/appeal/my", appeal_handler, #{action => my}},
+                {"/api/v1/appeal/actions", appeal_handler, #{action => my_actions}}
             ] ++
             %% BUILD-00R：moment 路由按编译期宏物理裁剪（helper 见文件底部）
             moment_api_routes() ++
