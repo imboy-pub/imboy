@@ -32,13 +32,17 @@ handle_action(false, Req, _State) -> Req.
 
 %% @doc 查询直播中的房间列表（status=1），分页
 -spec list(cowboy_req:req(), map()) -> cowboy_req:req().
+%% page_with_total 返回的键是 atom（list/total/page/size）；用 binary 键读取
+%% 会恒取默认值 []，且 #{<<"list">> => ...} 会在 map 里并存两个键，
+%% JSON 编码出重复 "list"（真实数据 + 空数组），客户端 jsonDecode 保留后者
+%% ——房间列表永远解析为空。
 list(Req0, _State) ->
     {Page, Size} = elib_param:page(Req0),
     case live_room_logic:page_active(Page, Size) of
         {ok, Data} ->
-            Rows = maps:get(<<"list">>, Data, []),
+            Rows = maps:get(list, Data, []),
             Rows2 = [encode_room(R) || R <- Rows],
-            elib_response:success(Req0, Data#{<<"list">> => Rows2}, "success.");
+            elib_response:success(Req0, Data#{list => Rows2}, "success.");
         {error, _Reason} ->
             elib_response:error(Req0, <<"查询失败"/utf8>>)
     end.
@@ -50,9 +54,9 @@ my_list(Req0, State) ->
     {Page, Size} = elib_param:page(Req0),
     case live_room_logic:page_by_uid(CurrentUid, Page, Size) of
         {ok, Data} ->
-            Rows = maps:get(<<"list">>, Data, []),
+            Rows = maps:get(list, Data, []),
             Rows2 = [encode_room(R) || R <- Rows],
-            elib_response:success(Req0, Data#{<<"list">> => Rows2}, "success.");
+            elib_response:success(Req0, Data#{list => Rows2}, "success.");
         {error, _Reason} ->
             elib_response:error(Req0, <<"查询失败"/utf8>>)
     end.
