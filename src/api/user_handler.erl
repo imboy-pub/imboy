@@ -342,9 +342,15 @@ show(Req0, _State) ->
                     %% 任何人无需 token 遍历 ?id=<TSID> 即可批量导出全站手机号，
                     %% 再喂给同样免鉴权的登录接口撞库。
                     %% 端点保持公开（扫码看资料等场景依赖它），只收窄返回字段。
-                    Column = <<"id, nickname, avatar, background, sign">>,
+                    %% 透明 AI 标记：仅当账号是 AI 助手（account_type=1）时回吐
+                    %% account_type，供客户端渲染 AI 徽章并按产品设计对 agent
+                    %% C2C 会话走明文（AI 不进 E2EE，见
+                    %% docs/explanation/ai-companion-flutter-ui.md 红线）。
+                    %% 真人账号不下发——该端点在免鉴权白名单，真人字段保持
+                    %% 最小化（见上方 PII 收窄说明）。
+                    Column = <<"id, nickname, avatar, background, sign, account_type">>,
                     User = user_logic:find_by_id(DecodedUid, Column),
-                    User2 = convert_user_id(User),
+                    User2 = convert_user_id(keep_agent_account_type(User)),
                     elib_response:success(Req0, User2)
             end
     end.
@@ -359,6 +365,19 @@ convert_user_id(User) ->
         _ ->
             User
     end.
+
+%% @doc 仅保留 AI 助手（account_type=1）的 account_type 字段，真人一律剥除。
+%% 透明 AI 是产品声明的公开身份（广场即公开展示），泄露面为零；
+%% 真人的账号类型不属公开资料，维持该端点的最小化字段集。
+-spec keep_agent_account_type(term()) -> map().
+keep_agent_account_type(User) when is_map(User) ->
+    case maps:get(<<"account_type">>, User, 0) of
+        1 -> User;
+        _ -> maps:remove(<<"account_type">>, User)
+    end;
+%% find_by_id 落空（undefined 等）回空对象，避免 unknown id 打崩免鉴权端点
+keep_agent_account_type(_) ->
+    #{}.
 
 %% @doc 个人数据导出（GDPR 第 20 条 - Right to data portability）
 %% POST /v1/user/export_data

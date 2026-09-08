@@ -388,9 +388,12 @@ reply_is_persisted_before_push_test_() ->
         end
     ).
 
-%% E2EE required 部署下必须**拒发而非降级**：agent 无设备私钥，没有"加密后再发"
-%% 这条路。不挡则 agent 明文从这条旁路灌进 msg_c2c。
-reply_blocked_by_policy_gate_test_() ->
+%% 透明 AI 豁免（2026-09-09）：E2EE required 部署下 agent 回复照常投递——
+%% agent 无设备私钥，没有「加密后再发」的路，回复按产品设计为明文
+%% （docs/explanation/ai-companion-flutter-ui.md「E2EE 红线」：AI 不进 E2EE）。
+%% 豁免前原 fail-closed 门把全部回复吞掉（[AGENT_REPLY_BLOCKED]），
+%% AI 广场对话静默无响应——正是真机走查到的「AI 广场聊天有问题」根因之一。
+reply_delivered_when_encryption_required_test_() ->
     ?WITH_MECKS(
         [
             ?SYNC_ASYNC,
@@ -412,7 +415,9 @@ reply_blocked_by_policy_gate_test_() ->
             {message_ds, [{'send_next', 4, fun(_, _, _, _) -> ok end}]},
             ?STAGE_STUB,
             {imboy_policy, [
-                {'validate_message_write', 5, fun(_, _, _, _, _) -> {error, e2ee_required} end}
+                {'validate_message_write', 5, fun(_, _, _, _, _) ->
+                    {error, <<"encrypted_message_required">>}
+                end}
             ]}
         ],
         fun() ->
@@ -421,9 +426,9 @@ reply_blocked_by_policy_gate_test_() ->
                 <<"msg_type">> => <<"text">>
             },
             ?assertEqual(ok, ai_agent_reply:maybe_dispatch(7, 42, Data)),
-            %% 一个都不许发生：不落库、不推送
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, '_')),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, '_')),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, '_'))
+            %% 豁免生效：照常 stage/enqueue 落库 + 推送在线设备
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, '_')),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, '_')),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, '_'))
         end
     ).

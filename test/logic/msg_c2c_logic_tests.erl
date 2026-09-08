@@ -414,6 +414,74 @@ c2c_plaintext_blocked_when_encryption_required_test_() ->
         end
     ).
 
+%% 透明 AI 豁免（2026-09-09）：对端是启用中的 agent 时，required 部署的明文门
+%% 放行——AI 助手会话是产品声明的明文通道（AI 不进 E2EE，见
+%% docs/explanation/ai-companion-flutter-ui.md「E2EE 红线」）。豁免前这条链被
+%% policy_violation 拒收，AI 广场「发消息」在任何 strict 部署下都无法触发回复。
+c2c_plaintext_allowed_for_agent_peer_when_encryption_required_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(456, 123) -> {false, false} end}
+            ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> {true, #{<<"role_status">> => 1}} end}
+            ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+                {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+            ]},
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(_, _, _, _, _) ->
+                    {error, <<"encrypted_message_required">>}
+                end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'enqueue', 3, fun(_, _, _) -> ok end}
+            ]},
+            {elib_async, [
+                {'async_retry', 3, fun(Fun, 3, 1000) ->
+                    Fun(),
+                    ok
+                end},
+                {'async', 1, fun(Fun) ->
+                    Fun(),
+                    self()
+                end}
+            ]},
+            {push_notification_logic, [
+                {'maybe_push_for_c2c', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {message_ds, [
+                {'assemble_msg', 8, fun(_, _, _, _, MsgId, _, _, _) -> #{<<"id">> => MsgId} end}
+            ]},
+            {imboy_message_helper, [
+                {'encode_and_send', 4, fun(_, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2c_agent_plaintext_001">>,
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"payload">> => #{<<"content">> => <<"你好"/utf8>>},
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => null
+            },
+
+            %% agent 豁免好友校验（is_agent→SendIsFriend=true），明文门放行走完整条投递链
+            ok = msg_c2c_logic:c2c(MsgId, 123, Data),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
+        end
+    ).
+
 c2c_e2ee_message_allowed_when_encryption_required_test_() ->
     ?WITH_MECKS(
         [
@@ -482,6 +550,10 @@ c2c_edit_plaintext_blocked_when_encryption_required_test_() ->
             {elib_log, [
                 {'internal_log', 4, fun(_, _, _, _) -> ok end},
                 {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            %% 透明 AI 豁免分支：对端是真人（非 agent），明文编辑维持拒收
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
             ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) ->

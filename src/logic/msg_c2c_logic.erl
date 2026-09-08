@@ -160,6 +160,27 @@ policy_violation_reply(MsgId, Reason) ->
         <<"server_ts">> => elib_dt:millisecond()
     }}.
 
+%% 透明 AI 豁免（2026-09-09）：AI 助手按产品设计绝不进入端到端加密会话
+%% （docs/explanation/ai-companion-flutter-ui.md「E2EE 红线」），与 agent 的
+%% C2C 会话是产品在广场透明卡明示的明文通道。required/compliance 部署的
+%% 明文门仅在「先拒了明文 且 对端确实是启用中的 agent」时放行——明文部署
+%% 与密文消息零额外开销，真人会话 fail-closed 语义不变。
+%% 覆盖发送（stage_and_send_c2c）与明文编辑（do_c2c_edit）两条用户链。
+-spec validate_agent_peer_c2c_write(integer(), binary(), binary(), term(), term()) ->
+    ok | {error, binary()}.
+validate_agent_peer_c2c_write(ToId, MsgType, Action, E2EE, PayloadJson) ->
+    case imboy_policy:validate_message_write(<<"C2C">>, MsgType, Action, E2EE, PayloadJson) of
+        ok ->
+            ok;
+        {error, <<"encrypted_message_required">>} = Deny ->
+            case ai_agent_ds:is_agent(ToId) of
+                {true, _} -> ok;
+                false -> Deny
+            end;
+        Deny ->
+            Deny
+    end.
+
 %% @doc 准备单聊消息数据
 %% @private
 -spec prepare_c2c_data(integer(), map()) -> {integer(), binary(), binary(), binary(), map(), map()}.
@@ -224,10 +245,10 @@ stage_and_send_c2c(
     %% 原样重发报文、不过客户端策略门，明文重发只有服务端能拦。
     %% 非内容动作（撤回/已读/各类 ack）由 content_bearing_action/1 判 false 直接放行；
     %% 部署未要求加密时 message_encryption_required/0 为 false，整门短路，明文照常放行。
-    %% ponytail: 只覆盖 c2c/3(→c2c/4) 这一条用户发送链与 do_c2c_edit；agent 主动消息
-    %%   在 ai_agent_proactive:send_text 自带同款门。新增任何直写 msg_store_ds:stage
-    %%   的 C2C 路径必须同步补门，否则又是一个绕过口。
-    case imboy_policy:validate_message_write(<<"C2C">>, MsgType, Action, E2EE, PayloadJson) of
+    %% 透明 AI 豁免：对端是启用中的 agent 时按产品设计放行明文（见下方
+    %% validate_agent_peer_c2c_write/5）。新增任何直写 msg_store_ds:stage
+    %% 的 C2C 路径必须同步补门（含 agent 豁免语义），否则又是一个绕过口。
+    case validate_agent_peer_c2c_write(ToId, MsgType, Action, E2EE, PayloadJson) of
         ok ->
             % 提取引用回复信息
             {ReplyToMsgId, ReplyToFromId, ReplySnippet} = extract_reply_info(Data),
@@ -666,15 +687,8 @@ do_c2c_edit_plain(MsgId, CurrentUid, Data) ->
     },
 
     EditPayloadJson = imboy_message_helper:encode_json(EditPayload),
-    case
-        imboy_policy:validate_message_write(
-            <<"C2C">>,
-            MsgType,
-            <<"message_edit">>,
-            E2EE,
-            EditPayloadJson
-        )
-    of
+    %% 透明 AI 豁免与发送链同源：对端是 agent 时放行明文编辑。
+    case validate_agent_peer_c2c_write(ToId, MsgType, <<"message_edit">>, E2EE, EditPayloadJson) of
         ok ->
             % 判断对方是否在线
             case user_logic:is_online(ToId) of

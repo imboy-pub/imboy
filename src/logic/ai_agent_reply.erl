@@ -149,18 +149,14 @@ deliver_reply(FromUid, ToId, MsgId, Result) ->
     %% text/content 双键：兼容不同渲染消费者
     PayloadMap = #{<<"text">> => Content, <<"content">> => Content},
     PayloadJson = jsone:encode(PayloadMap, [native_utf8]),
-    %% 部署级 E2EE fail-closed 门：本模块直写 msg_store_ds:stage/enqueue，
-    %% 不经 msg_c2c_logic:stage_and_send_c2c，必须自带同款门（照
-    %% ai_agent_proactive:send_text/3），否则 required 部署下 agent 明文会从
-    %% 这条旁路灌进 msg_c2c。
-    case imboy_policy:validate_message_write(<<"C2C">>, <<"text">>, <<>>, null, PayloadJson) of
-        ok ->
-            do_deliver_reply(FromUid, ToId, MsgId, PayloadMap, PayloadJson);
-        {error, Reason} ->
-            %% 拒发而非降级：agent 无设备私钥，没有"加密后再发"这条路。
-            ok = ?WARN_LOG("[AGENT_REPLY_BLOCKED] to=~p reason=~p~n", [FromUid, Reason]),
-            ok
-    end.
+    %% 透明 AI 豁免（2026-09-09）：agent 产生的回复按产品设计为明文——AI 助手
+    %% 绝不进入端到端加密会话（docs/explanation/ai-companion-flutter-ui.md
+    %% 「E2EE 红线」，广场透明卡向用户明示）。agent 无设备私钥，不存在
+    %% 「加密后再发」的路；原 fail-closed 门在 required/compliance 部署下
+    %% 会吞掉全部回复（[AGENT_REPLY_BLOCKED]），导致 AI 广场对话静默无响应，
+    %% 故 agent 来源的 C2C 写恒放行。发送链的人→agent 方向豁免收口在
+    %% msg_c2c_logic:validate_agent_peer_c2c_write/5（仅对端是 agent 时放行）。
+    do_deliver_reply(FromUid, ToId, MsgId, PayloadMap, PayloadJson).
 
 %% @private 过门后的实际投递。
 %%

@@ -285,28 +285,29 @@ send_text_gate_mecks(Caps) ->
         ?MSG_STORE_MECK
     ].
 
-%% agent 无设备私钥、只能发明文；required 部署下必须拒发，
-%% 不得把明文写进 staging/msg_c2c，也不得实时推送。
-send_text_blocked_when_e2ee_required_test_() ->
+%% 透明 AI 豁免（2026-09-09）：agent 产生的 C2C 文本按产品设计为明文——
+%% AI 不进 E2EE、agent 无设备私钥，不存在「加密后再发」的路。required 部署下
+%% 照常投递；豁免前这里断言拒发，实测把欢迎/主动消息整条吞掉
+%% （[AGENT_PROACTIVE_BLOCKED]）。
+send_text_delivered_when_e2ee_required_test_() ->
     ?WITH_MECKS(
         send_text_gate_mecks(#{e2ee_mode => required}),
         fun() ->
-            %% 对调用方仍是恒 ok（fire-and-forget 语义不变）
             ?assertEqual(ok, ai_agent_proactive:send_text(42, 7, <<"你好"/utf8>>)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 4))
         end
     ).
 
-%% storage_mode=secure_e2ee 同样拒发
-send_text_blocked_when_storage_mode_secure_e2ee_test_() ->
+%% storage_mode=secure_e2ee 同样豁免放行
+send_text_delivered_when_storage_mode_secure_e2ee_test_() ->
     ?WITH_MECKS(
         send_text_gate_mecks(#{storage_mode => secure_e2ee}),
         fun() ->
             ?assertEqual(ok, ai_agent_proactive:send_text(42, 7, <<"你好"/utf8>>)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 4))
         end
     ).
 
@@ -332,13 +333,14 @@ send_text_allowed_when_e2ee_disabled_test_() ->
         end
     ).
 
-%% send_welcome 走 send_text，required 部署下整条欢迎链一并拒发（不留旁路）
-send_welcome_blocked_when_e2ee_required_test_() ->
+%% send_welcome 走 send_text，透明 AI 豁免同样覆盖：required 部署下欢迎链照常
+%% 可达（豁免前整条欢迎链被吞，新用户永远等不到 agent 打招呼）。
+send_welcome_delivered_when_e2ee_required_test_() ->
     ?WITH_MECKS(
         send_text_gate_mecks(#{e2ee_mode => required}),
         fun() ->
             ?assertEqual(ok, ai_agent_proactive:send_welcome(42, 7, <<"小明"/utf8>>, #{})),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 10)),
-            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 10)),
+            ?assertEqual(1, meck:num_calls(message_ds, send_next, 4))
         end
     ).
