@@ -465,6 +465,10 @@ do_stage_and_send_c2g(
             %% 放在 {ok,new} 分支内，避免 {ok,duplicate}(QoS 正常重发) / error(引用不存在未投递)
             %% 场景下误触发 agent（重复 LLM 调用/刷屏）。fire-and-forget。
             _ = ai_agent_group_reply:maybe_dispatch(CurrentUid, ToGID, Data, MemberUids),
+            %% BOT-01：群内 @Bot mention 分派（防自环/E2EE fail-closed 在模块内）
+            bot_webhook_logic:dispatch_group_mention(
+                CurrentUid, ToGID, Data, Payload, MemberUids
+            ),
 
             ok;
         error ->

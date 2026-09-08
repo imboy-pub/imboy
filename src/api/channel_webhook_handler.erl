@@ -48,6 +48,7 @@ init(Req0, State0) ->
                         case Action of
                             create -> create(Req0, State);
                             disable -> disable(Req0, State);
+                            rotate -> rotate(Req0, State);
                             list -> list(Req0, State)
                         end;
                     {error, {403, Msg}} ->
@@ -84,6 +85,23 @@ disable(Req0, State) ->
     case channel_webhook_logic:disable(Uid, ChannelIdBin, WebhookIdBin) of
         ok ->
             elib_response:success(Req0, #{});
+        {error, Msg} ->
+            elib_response:error(Req0, Msg)
+    end.
+
+%% WH-02：轮换 token（新 token 一次返回；旧 token 宽限窗内仍可用）
+rotate(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    ChannelIdBin = binding_or_empty(channel_id, Req0),
+    WebhookIdBin = binding_or_empty(webhook_id, Req0),
+    case channel_webhook_logic:rotate(Uid, ChannelIdBin, WebhookIdBin) of
+        {ok, Webhook} ->
+            Token = maps:get(<<"token">>, Webhook, <<>>),
+            elib_response:success(Req0, #{
+                <<"webhook_id">> => maps:get(<<"id">>, Webhook, <<>>),
+                <<"token">> => Token,
+                <<"grace_secs">> => maps:get(<<"grace_secs">>, Webhook, 600)
+            });
         {error, Msg} ->
             elib_response:error(Req0, Msg)
     end.

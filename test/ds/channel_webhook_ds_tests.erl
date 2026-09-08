@@ -50,12 +50,17 @@ create_persists_user_admin_and_webhook_rows_test_() ->
         {ok, [Wh]} =
             elib_pg:query(
                 <<
-                    "SELECT id, token, bot_uid, status, channel_id FROM channel_webhook"
-                    " WHERE id = $1"
+                    "SELECT id, token, token_digest, bot_uid, status, channel_id"
+                    " FROM channel_webhook WHERE id = $1"
                 >>,
                 [WhId]
             ),
-        ?assertEqual(Token, maps:get(<<"token">>, Wh)),
+        %% WH-02（A01）：明文 token 零落库（token 列空）；摘要可验证
+        ?assertEqual(<<>>, maps:get(<<"token">>, Wh)),
+        ?assertEqual(
+            binary:encode_hex(crypto:hash(sha256, Token), lowercase),
+            maps:get(<<"token_digest">>, Wh)
+        ),
         ?assertEqual(BotUid, maps:get(<<"bot_uid">>, Wh)),
         ?assertEqual(1, maps:get(<<"status">>, Wh)),
         ?assertEqual(ChannelId, maps:get(<<"channel_id">>, Wh)),

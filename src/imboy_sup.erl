@@ -153,6 +153,17 @@ init([]) ->
     },
 
     % 过期凭证（验证码，含 PII）保留清理 worker（T-02；默认禁用，需 sys.config 显式启用）
+    % WH-01：Bot 出站 webhook 交付 worker（outbox 拉取+有界重试+死信）
+    BotDeliveryWorker = #{
+        id => bot_webhook_delivery_worker,
+        start => {bot_webhook_delivery_worker, start_link, []},
+        type => worker,
+        shutdown => 5000,
+        restart => permanent,
+        significant => false
+    },
+
+    % 过期凭证（验证码，含 PII）保留清理 worker（T-02；默认禁用，需 sys.config 显式启用）
     CredentialRetentionWorker = #{
         id => credential_retention_worker,
         start => {credential_retention_worker, start_link, []},
@@ -280,6 +291,7 @@ init([]) ->
             LicenseNoticeWorker,
             BillingInvoiceWorker,
             OlmOtkCleanupWorker,
+            BotDeliveryWorker,
             CredentialRetentionWorker,
             AgentPaymentCompensationWorker,
             AiAgentRuntime,

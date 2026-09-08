@@ -28,7 +28,13 @@ execute(Req, Env) ->
     %% 频道 incoming webhook 同款范式：token 即凭证（:token 变量段无法在 open/0
     %% 精确枚举），限流/token 校验在 channel_webhook_logic:incoming/2 完成。
     IsChannelWebhook = is_single_segment_route(Path, <<"/api/v1/webhook/channel/">>),
-    InOpenLi = IsPaymentCallback orelse IsChannelWebhook orelse lists:member(Path, OpenLi),
+    %% MCP Server（MCP-01）：该路由只接受 MCP client credential（Bearer mck 场景
+    %% 的 secret 无 JWT 语义），认证收敛于 mcp_handler（digest 查找+fail-closed），
+    %% 中间件直通。
+    IsMcpPath = Path =:= <<"/api/v1/mcp">>,
+    InOpenLi =
+        IsPaymentCallback orelse IsChannelWebhook orelse IsMcpPath orelse
+            lists:member(Path, OpenLi),
     InOptionLi = lists:member(Path, OptionLi),
     Switch = ec_cnv:to_binary(config_ds:env(api_auth_switch, <<"on">>)),
     %% ws/init/refreshtoken/passport 是 JWT-open 但仍需设备签名校验的端点

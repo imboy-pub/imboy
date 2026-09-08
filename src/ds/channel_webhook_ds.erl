@@ -16,6 +16,7 @@
 -export([create/3]).
 -export([find_by_token/1]).
 -export([disable/2]).
+-export([rotate/4]).
 -export([list_by_channel/1]).
 
 -include("log.hrl").
@@ -102,12 +103,86 @@ create(ChannelId, Name, CreatorUid) ->
             end
     end.
 
-%% @doc 按 token 查找 webhook（含停用行，状态判断在 Logic 层）
+%% @doc 认证查找（WH-02 三级链，fail-closed）：
+%%   1) token_digest 精确查找（新 token / 已回填存量）；
+%%   2) grace_digest 查找（rotate 宽限窗内旧 token，grace_until 过滤在 SQL）；
+%%   3) 旧明文双读（迁移期：存量行 token 列匹配且未回填 digest）→ 命中惰性回填。
+%% 命中即 touch last_used_at（best-effort）；含停用行，状态判断在 Logic 层。
 -spec find_by_token(binary()) -> {ok, map()} | {error, not_found}.
-find_by_token(Token) ->
-    case channel_webhook_repo:find_by_token(Token) of
+find_by_token(Token) when is_binary(Token), Token =/= <<>> ->
+    Digest = digest_hex(Token),
+    Row =
+        case row_by_digest(Digest) of
+            {ok, R} ->
+                R;
+            error ->
+                case row_by_grace(Digest) of
+                    {ok, R2} -> R2;
+                    error -> row_by_legacy_and_backfill(Token)
+                end
+        end,
+    case is_map(Row) andalso map_size(Row) > 0 of
+        true ->
+            _ = channel_webhook_repo:touch_last_used(
+                maps:get(<<"id">>, Row, 0)
+            ),
+            {ok, Row};
+        false ->
+            {error, not_found}
+    end;
+find_by_token(_) ->
+    {error, not_found}.
+
+row_by_digest(Digest) ->
+    case channel_webhook_repo:find_by_digest(Digest) of
         Row when is_map(Row), map_size(Row) > 0 -> {ok, Row};
-        _ -> {error, not_found}
+        _ -> error
+    end.
+
+row_by_grace(Digest) ->
+    case channel_webhook_repo:find_by_grace_digest(Digest) of
+        Row when is_map(Row), map_size(Row) > 0 -> {ok, Row};
+        _ -> error
+    end.
+
+%% 迁移期双读：存量行明文列匹配 → 惰性回填 digest/prefix（回填失败不阻断认证）
+row_by_legacy_and_backfill(Token) ->
+    case channel_webhook_repo:find_by_token(Token) of
+        Row when is_map(Row), map_size(Row) > 0 ->
+            WebhookId = maps:get(<<"id">>, Row, 0),
+            _ = elib_pg:execute(
+                <<"UPDATE ", (channel_webhook_repo:tablename())/binary,
+                    " SET token_digest = $2, token_prefix = $3"
+                    " WHERE id = $1 AND token_digest = ''">>,
+                [
+                    WebhookId,
+                    digest_hex(Token),
+                    binary:part(Token, 0, 8)
+                ]
+            ),
+            Row;
+        _ ->
+            error
+    end.
+
+digest_hex(Token) when is_binary(Token) ->
+    binary:encode_hex(crypto:hash(sha256, Token), lowercase).
+
+%% @doc 轮换 token：生成新 token（一次返回），旧 token 进宽限窗
+%% （GraceSecs 秒内仍可用，过期后稳定 404；PDT-01 webhook 契约 §3）。
+%% 频道管理员校验由调用方（Logic with_manage_role）完成。
+-spec rotate(integer(), integer(), binary(), non_neg_integer()) ->
+    {ok, map()} | {error, binary()}.
+rotate(_ChannelId, WebhookId, _Name, GraceSecs) ->
+    NewToken = gen_token(),
+    NewDigest = digest_hex(NewToken),
+    NewPrefix = binary:part(NewToken, 0, 8),
+    GraceUntil = elib_dt:to_rfc3339(os:system_time(second) + GraceSecs),
+    case channel_webhook_repo:rotate(WebhookId, NewDigest, NewPrefix, <<>>, GraceUntil) of
+        {ok, _} ->
+            {ok, #{<<"token">> => NewToken, <<"grace_secs">> => GraceSecs}};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
     end.
 
 %% @doc 停用 webhook（停用后 incoming 统一 404）
@@ -161,10 +236,14 @@ create_bot_user_tx(_, _, _) ->
 -spec insert_webhook_tx(any(), integer(), binary(), binary(), integer(), integer()) ->
     {ok, map()} | {error, binary()}.
 insert_webhook_tx(Conn, ChannelId, Name, Token, BotUid, CreatorUid) ->
+    %% WH-02（A01）：明文 token 不落库——token 列写空，仅存 SHA-256 摘要+前缀；
+    %% 明文经返回值交给调用方一次性展示。
     Data = #{
         channel_id => ChannelId,
         name => Name,
-        token => Token,
+        token => <<>>,
+        token_digest => digest_hex(Token),
+        token_prefix => binary:part(Token, 0, 8),
         bot_uid => BotUid,
         creator_uid => CreatorUid,
         status => 1

@@ -18,6 +18,9 @@
 -export([page_by_owner/3]).
 -export([search/3]).
 -export([has_exchange/2]).
+%% WH-01：凭证安全
+-export([find_by_api_token/1, set_api_token_credential/2]).
+-export([set_verify_token_enc/2, get_verify_token/1]).
 
 -include("log.hrl").
 
@@ -348,4 +351,96 @@ has_exchange(BotId, UserId) ->
             ?ERROR_LOG("bot_repo:has_exchange ~p:~p error ~p~n", [BotId, UserId, Reason]),
             %% 查询失败按无历史处理（fail closed，阻止 Bot 主动私信）
             false
+    end.
+
+%% ===================================================================
+%% WH-01：凭证安全（api_token 摘要认证 + verify_token AEAD 可认证加密）
+%% ===================================================================
+
+-spec digest_hex(binary()) -> binary().
+digest_hex(Token) when is_binary(Token) ->
+    binary:encode_hex(crypto:hash(sha256, Token), lowercase).
+
+%% @doc 按 api_token 摘要精确查找 Bot（认证路径；明文不再入库/比对）。
+%% 兼容期：旧明文 token 行由迁移 00000092 回填摘要，认证只走摘要索引。
+-spec find_by_api_token(binary()) -> {ok, map()} | {error, notfound | term()}.
+find_by_api_token(ApiToken) when is_binary(ApiToken), ApiToken =/= <<>> ->
+    Tb = tablename(),
+    Digest = digest_hex(ApiToken),
+    Q = <<
+        "SELECT user_id AS bot_id, user_id, name, username, owner_uid, webhook_url,"
+        " verify_token_enc, commands, permissions, events, is_public, status"
+        " FROM ",
+        Tb/binary,
+        " WHERE api_token_digest = $1 LIMIT 1"
+    >>,
+    case elib_pg:query(Q, [Digest]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, notfound};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 写入 api_token 凭证（digest + prefix），明文不落库。
+-spec set_api_token_credential(integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+set_api_token_credential(BotUserId, ApiToken) when is_binary(ApiToken), ApiToken =/= <<>> ->
+    Tb = tablename(),
+    elib_pg:execute(
+        <<"UPDATE ", Tb/binary,
+            " SET api_token_digest = $2, api_token_prefix = $3,"
+            " api_token = '', updated_at = NOW() WHERE user_id = $1">>,
+        [BotUserId, digest_hex(ApiToken), binary:part(ApiToken, 0, 8)]
+    ).
+
+%% @doc AEAD 加密密钥：postgre_aes_key 派生（sha256 → 32 字节）。
+-spec aead_key() -> {ok, binary()} | {error, no_key}.
+aead_key() ->
+    case config_ds:env(postgre_aes_key, <<>>) of
+        <<>> -> {error, no_key};
+        Key when is_binary(Key) -> {ok, crypto:hash(sha256, Key)};
+        Key when is_list(Key) -> {ok, crypto:hash(sha256, list_to_binary(Key))};
+        _ -> {error, no_key}
+    end.
+
+%% @doc verify_token 可认证加密存储（AEAD）。主密钥缺失 → fail-closed。
+-spec set_verify_token_enc(integer(), binary()) ->
+    {ok, non_neg_integer()} | {error, no_key | term()}.
+set_verify_token_enc(BotUserId, VerifyToken) when is_binary(VerifyToken) ->
+    case aead_key() of
+        {error, no_key} = E ->
+            E;
+        {ok, Key} ->
+            {ok, Enc} = elib_cipher:aes_gcm_encrypt(VerifyToken, Key),
+            Tb = tablename(),
+            elib_pg:execute(
+                <<"UPDATE ", Tb/binary,
+                    " SET verify_token_enc = $2, updated_at = NOW() WHERE user_id = $1">>,
+                [BotUserId, Enc]
+            )
+    end.
+
+%% @doc 取回 verify_token 明文（发送签名必需）。
+%% fail-closed：密钥缺失/解密失败一律 {error, Reason}，绝不降级读明文列。
+-spec get_verify_token(integer()) -> {ok, binary()} | {error, no_key | term()}.
+get_verify_token(BotUserId) ->
+    case aead_key() of
+        {error, no_key} = E ->
+            E;
+        {ok, Key} ->
+            Tb = tablename(),
+            case
+                elib_pg:query(
+                    <<"SELECT verify_token_enc FROM ", Tb/binary, " WHERE user_id = $1">>,
+                    [BotUserId]
+                )
+            of
+                {ok, [#{<<"verify_token_enc">> := <<>>}]} ->
+                    {error, not_encrypted};
+                {ok, [#{<<"verify_token_enc">> := Enc}]} ->
+                    elib_cipher:aes_gcm_decrypt(Enc, Key);
+                {ok, []} ->
+                    {error, notfound};
+                {error, Reason} ->
+                    {error, Reason}
+            end
     end.

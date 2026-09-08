@@ -18,6 +18,7 @@
 -export([disable/3]).
 -export([list/2]).
 -export([incoming/3]).
+-export([rotate/3, rotate/4]).
 
 %% webhook 管理要求的最低角色（2=管理员，3=创建者）
 -define(MIN_MANAGE_ROLE, 2).
@@ -43,6 +44,25 @@ create(Uid, ChannelIdBin, Name) ->
                 Err
         end
     end).
+
+%% @doc 轮换 token（WH-02）：新 token 一次返回；旧 token 宽限窗
+%% （默认 600s，config channel_webhook_rotate_grace_secs 可调）内仍可用，
+%% 过期后稳定 404。须频道管理员（role>=2）且 channel locked（webhook 绑定频道）。
+rotate(Uid, ChannelIdBin, WebhookIdBin) ->
+    rotate(Uid, ChannelIdBin, WebhookIdBin, rotate_grace_secs()).
+
+-spec rotate(integer(), binary(), binary(), non_neg_integer()) ->
+    {ok, map()} | {error, binary()}.
+rotate(Uid, ChannelIdBin, WebhookIdBin, GraceSecs) ->
+    with_manage_role(Uid, ChannelIdBin, fun(ChannelId) ->
+        case decode_positive_id(WebhookIdBin) of
+            0 -> {error, <<"webhook 不存在"/utf8>>};
+            WebhookId -> channel_webhook_ds:rotate(ChannelId, WebhookId, <<>>, GraceSecs)
+        end
+    end).
+
+rotate_grace_secs() ->
+    application:get_env(imboy, channel_webhook_rotate_grace_secs, 600).
 
 %% @doc 停用 webhook（停用后 incoming 统一 404）
 -spec disable(integer(), binary(), binary()) -> ok | {error, binary()}.

@@ -28,7 +28,16 @@
 %%          webhook_url, commands, permissions, events, is_public
 %% 自动生成 api_token 和 verify_token
 -spec register(map()) -> {ok, map()} | {error, binary()}.
-register(#{name := _Name, username := _Username, owner_uid := OwnerUid} = Data) ->
+register(#{name := _Name, username := _Username} = Data) ->
+    %% BOT-01：events 白名单——未知事件类型拒绝注册（向前兼容靠白名单升版）
+    case valid_events(maps:get(events, Data, <<"[]">>)) of
+        false ->
+            {error, <<"events contains unknown subscription type">>};
+        true ->
+            do_register(Data)
+    end.
+
+do_register(#{name := _Name, username := _Username, owner_uid := OwnerUid} = Data) ->
     %% 验证所有者用户存在
     case user_repo:find_by_id(OwnerUid, <<"id, status">>) of
         #{<<"id">> := _} when OwnerUid > 0 ->
@@ -224,3 +233,23 @@ ensure_owner(_, _) ->
 -spec gen_token() -> binary().
 gen_token() ->
     string:lowercase(binary:encode_hex(crypto:strong_rand_bytes(24))).
+
+%% ===================================================================
+%% BOT-01：事件订阅白名单
+%% ===================================================================
+
+-define(ALLOWED_EVENTS, [<<"message.c2c">>, <<"message.c2g_mention">>]).
+
+%% @doc events（JSON 数组文本）全量必须在白名单内；空数组合法。
+-spec valid_events(binary()) -> boolean().
+valid_events(EventsBin) when is_binary(EventsBin), EventsBin =/= <<>> ->
+    try jsone:decode(EventsBin) of
+        List when is_list(List) ->
+            lists:all(fun(E) -> lists:member(E, ?ALLOWED_EVENTS) end, List);
+        _ ->
+            false
+    catch
+        _:_ -> false
+    end;
+valid_events(_) ->
+    false.

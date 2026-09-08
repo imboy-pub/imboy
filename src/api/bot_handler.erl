@@ -182,36 +182,90 @@ send_message(Req0, _State) ->
     end.
 
 -spec do_send_message(cowboy_req:req(), integer(), map()) -> cowboy_req:req().
-do_send_message(Req0, BotId, _Bot) ->
+do_send_message(Req0, BotId, Bot) ->
     case elib_req:body(Req0, []) of
         {ok, Body, Req1} ->
-            ToUid = maps:get(<<"to_uid">>, Body, 0),
-            case elib_cnv:safe_to_integer(ToUid) of
-                ToId when ToId > 0 ->
-                    BotIdPos = positive_integer(BotId),
-                    ToIdPos = positive_integer(ToId),
-                    case bot_logic:has_exchange(BotIdPos, ToIdPos) of
-                        true ->
-                            MsgData = #{
-                                <<"msg_type">> => maps:get(<<"msg_type">>, Body, <<"text">>),
-                                <<"payload">> => maps:get(<<"payload">>, Body, #{})
-                            },
-                            case bot_logic:send_message(BotIdPos, ToIdPos, MsgData) of
-                                {ok, Result} ->
-                                    elib_response:success(Req1, Result);
-                                {error, Reason} ->
-                                    elib_response:error(Req1, Reason)
-                            end;
-                        false ->
-                            elib_response:error(
-                                Req1, <<"用户未与 Bot 建立会话，不可主动发送"/utf8>>
-                            )
-                    end;
-                _ ->
-                    elib_response:error(Req1, <<"to_uid 不能为空"/utf8>>)
+            %% BOT-01：携带 reply_context → 回复原 C2G 群（校验签名/归属/到期/一次性）
+            case maps:get(<<"reply_context">>, Body, undefined) of
+                undefined ->
+                    do_send_c2c(Req1, BotId, Body);
+                ReplyCtx ->
+                    do_send_group_reply(Req1, BotId, Bot, ReplyCtx, Body)
             end;
         {error, _} = Err ->
             elib_response:error(Req0, Err)
+    end.
+
+%% @doc 回复原 C2G 群：reply_context 签名/归属/到期/一次性全验 +
+%% bot 群成员关系（服务端权威），通过后以 bot 身份发布到原群。
+do_send_group_reply(Req1, BotId, _Bot, ReplyCtx, Body) ->
+    case bot_repo:get_verify_token(BotId) of
+        {error, _} ->
+            elib_response:error(Req1, <<"reply_context 无效"/utf8>>);
+        {ok, Secret} ->
+            case bot_webhook_logic:verify_reply_context(ReplyCtx, Secret) of
+                {error, expired} ->
+                    elib_response:error(Req1, <<"reply_context 已过期"/utf8>>);
+                {error, reused} ->
+                    elib_response:error(Req1, <<"reply_context 已使用"/utf8>>);
+                {error, _} ->
+                    elib_response:error(Req1, <<"reply_context 无效"/utf8>>);
+                {ok, Ctx} ->
+                    %% 归属校验：context 的 bot_id 必须等于认证 Bot
+                    case bot_id_of_ctx(Ctx) =:= BotId of
+                        false ->
+                            elib_response:error(Req1, <<"reply_context 归属不符"/utf8>>);
+                        true ->
+                            GroupId = maps:get(<<"group_id">>, Ctx),
+                            case group_ds:is_member(BotId, GroupId) of
+                                false ->
+                                    elib_response:error(Req1, <<"Bot 已不在该群"/utf8>>);
+                                true ->
+                                    Text = maps:get(<<"text">>, Body, <<>>),
+                                    case
+                                        bot_logic:send_group_message(
+                                            BotId, GroupId, Text
+                                        )
+                                    of
+                                        {ok, Result} ->
+                                            elib_response:success(Req1, Result);
+                                        {error, Reason} ->
+                                            elib_response:error(Req1, Reason)
+                                    end
+                            end
+                    end
+            end
+    end.
+
+bot_id_of_ctx(Ctx) ->
+    maps:get(<<"bot_id">>, Ctx, 0).
+
+%% 原 C2C 发送路径（保持不变）
+do_send_c2c(Req1, BotId, Body) ->
+    ToUid = maps:get(<<"to_uid">>, Body, 0),
+    case elib_cnv:safe_to_integer(ToUid) of
+        ToId when ToId > 0 ->
+            BotIdPos = positive_integer(BotId),
+            ToIdPos = positive_integer(ToId),
+            case bot_logic:has_exchange(BotIdPos, ToIdPos) of
+                true ->
+                    MsgData = #{
+                        <<"msg_type">> => maps:get(<<"msg_type">>, Body, <<"text">>),
+                        <<"payload">> => maps:get(<<"payload">>, Body, #{})
+                    },
+                    case bot_logic:send_message(BotIdPos, ToIdPos, MsgData) of
+                        {ok, Result} ->
+                            elib_response:success(Req1, Result);
+                        {error, Reason} ->
+                            elib_response:error(Req1, Reason)
+                    end;
+                false ->
+                    elib_response:error(
+                        Req1, <<"用户未与 Bot 建立会话，不可主动发送"/utf8>>
+                    )
+            end;
+        _ ->
+            elib_response:error(Req1, <<"to_uid 不能为空"/utf8>>)
     end.
 
 %% @doc 从 Authorization: Bearer <api_token> 认证 Bot
