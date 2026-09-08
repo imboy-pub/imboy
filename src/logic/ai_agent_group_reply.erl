@@ -105,12 +105,32 @@ dispatch(ToGID, AgentUid, Agent, Text, MemberUids) ->
 %% @doc 调 LLM 并把结果作为 C2G 从 agent 回投群。流式则逐 delta fan-out 给群成员，
 %% 结束用同 id 定稿回群；否则一次性回复。（async 闭包体，独立导出便于测试）
 -spec run_and_reply(module(), map(), integer(), {integer(), map()}, {[map()], [integer()]}) -> ok.
-run_and_reply(Mod, Opts, ToGID, {AgentUid, _Agent}, {Messages, MemberUids}) ->
-    case llm_stream:stream_capable(Mod) of
+run_and_reply(Mod, Opts, ToGID, {AgentUid, Agent}, {Messages, MemberUids}) ->
+    %% AGT-02：Agent 配置了 tools 且 provider 支持 tools → 走受控 tool-loop；
+    %% 否则保持既有单轮/流式路径。
+    case ai_agent_tool_loop:applicable(Agent, Mod) of
         true ->
-            run_stream(Mod, Opts, ToGID, AgentUid, Messages, MemberUids);
+            run_tool_loop(Mod, Opts, ToGID, AgentUid, Messages);
         false ->
-            run_sync(Mod, Opts, ToGID, AgentUid, Messages)
+            case llm_stream:stream_capable(Mod) of
+                true ->
+                    run_stream(Mod, Opts, ToGID, AgentUid, Messages, MemberUids);
+                false ->
+                    run_sync(Mod, Opts, ToGID, AgentUid, Messages)
+            end
+    end.
+
+%% @doc 受控 tool-loop：每轮经 authz gate/grant 白名单，定稿后回投群。
+run_tool_loop(Mod, Opts, ToGID, AgentUid, Messages) ->
+    ToolCtx = #{auth_info => #{owner_uid => AgentUid}},
+    case ai_agent_tool_loop:run(AgentUid, Messages, Opts, Mod, ToolCtx) of
+        {ok, #{<<"content">> := Content}} when Content =/= <<>> ->
+            deliver_group_reply(ToGID, AgentUid, Content);
+        {error, Reason} ->
+            ok = ?ERROR_LOG("[AGENT_TOOL_LOOP] gid=~p reason=~p~n", [ToGID, Reason]),
+            ok;
+        _ ->
+            ok
     end.
 
 run_sync(Mod, Opts, ToGID, AgentUid, Messages) ->
