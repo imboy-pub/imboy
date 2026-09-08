@@ -28,5 +28,6 @@
 |------|------|
 | [sentry-dsn-integration-guide.md](./sentry-dsn-integration-guide.md) | Sentry DSN 接入配置 |
 | [libraries-async.md](./libraries-async.md) | `elib_async` 使用指南 |
+| [operations/erlang-otp29-installation.md](./operations/erlang-otp29-installation.md) | Ubuntu/Debian 安装 Erlang/OTP 29（源码/apt/kerl 三路径） |
 
 模板：见 [documentation-system/templates/howto-template.md](../documentation-system/templates/howto-template.md)
