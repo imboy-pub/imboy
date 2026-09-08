@@ -31,8 +31,10 @@
 | 群会话回归 | 25/25 PASS | C；既有合规测试夹具意外访问默认生产只读端点，故不作为隔离环境或 A 级证据 |
 | Finding 004 定向回归 | logic 12/12、handler 11/11 PASS；编译与格式检查通过 | C；非活跃成员在归档查询前被拒绝，真实前成员 API 复测仍 BLOCKED |
 | Finding 010 定向回归 | 上传接线 18/18、策略/封装 20/20 PASS；定向 analyze 通过 | C；策略未知在上传前抛错，真实对象存储 Canary 复测仍 BLOCKED |
+| Finding 010 fail-closed 重开回归 | `imboyapp@2aa76a09`；required E2EE 下绑定缺失（登出半态 senderUid 空、messageId 空）上传前抛 `attachment_binding_missing`，视频主文件/缩略图 partial seal 抛 `attachment_partial_seal`（先于一切 IO）；wiring 25/25、缩略图同生同灭 7/7、附件域回归 660 过（3 红为 replay_counter_epoch_test 存量失败，与改动零 import 关系）；定向 analyze 通过 | C；明文部署与开关关闭两合法路径不抛；真实对象存储 Canary 攻击复测仍 BLOCKED |
 | Finding 008 定向回归 | Safety Number 入口 3/3、关联威胁模型 24/24 PASS；定向 analyze 与 diff check 通过 | C；双方真实 device ID/Olm identity 聚合且验证状态绑定当前号码，双真机换钥与设备增删复测仍 BLOCKED |
 | Finding 014 定向回归 | 日志边界守卫 1/1、关联 WS/ACK/离线解密 27/27 PASS；脱敏后守卫+WS 复跑 21/21 PASS；定向 analyze 通过 | C；消息链路已禁止记录原始帧、完整异常、明文 payload/preview、会话对象与标题；真机与后端日志 Canary 扫描仍 BLOCKED |
+| Finding 014 重开回归 | `imboyapp@8d655ca7`；group_session/olm_session/chat_network 三 service 残留的完整异常对象、stackTrace、库错误原文（含 Rust/vodozemac pickle 片段、sqflite SQL 回显）收窄为 `errType=<runtimeType>` + 稳定上下文标识；OlmAuthenticationException 构造不再拼接库错误原文；toast 兜底改纯稳定文案 `e2eeErrDefault`，可诊断性由 `olm_wrap_failed` 稳定错误码路由承担；守卫+路由回归 10/10 PASS；定向 analyze 通过 | C；Sentry/后端日志 Canary 扫描待授权；e2ee_service 等其余文件仍有 `${e.runtimeType}: $e` 形态残留（下一轮范围） |
 | Finding 009 定向回归 | SQLCipher 边界 13/13、数据库迁移/快照/schema/uid 隔离关联回归 59/59 PASS；定向 analyze 与 diff check 通过 | C；加密平台不再无密码探测/回退，不再创建或自动清理明文迁移备份，错钥/明文/损坏统一保留原库并停止初始化 |
 | Finding 009 Android 限定范围复测 | 物理 Android 9 真机 8/8 PASS；`imboyapp@4baf79a8`；测试文件 SHA-256 `c6804f3f34dab7efdb955f39e626ba1a00fdc7d999c50744d87737a6ce9b7662`；测试 APK SHA-256 `b866a05c53ea4ef49f7937b2669fc0938e57f7b075d4ffbba3e8d4f0370c9dc1` | B（真机集成，非完整 A 级链路）；`Random.secure()` 每轮生成 Canary，正确密钥建库/重开、错钥拒绝、原文件字节不变、无新 `.plain.bak`/`.pre_encrypt.bak`，随机临时目录已清理且测试包已卸载；Secure Storage 为 mock，旧明文库、WAL/SHM 与历史 artifact 未覆盖 |
 | Findings 005/006/007 定向回归 | `imboyapp@eb4e3a9f`；PFv3/Olm/SQLCipher staging、ACK 顺序、离线归一化及 replay 组合 85 PASS / 4 SKIP；room-key 导入定向 1/1 PASS；定向 analyze 与 diff check 通过；Debug APK SHA-256 `6fa953c5221df4f19e67f8b8fd588f91a26d2587ec807148900015e6392e0ff5` | C；实时与离线 C2C/C2G 仅在认证、ratchet/digest 与最终消息提交后 ACK；合法完成态可幂等确认，同 ID 改密文或同密文换 ID 被拒绝；真实重启、重传、存储故障和攻击复测仍 BLOCKED |
@@ -88,11 +90,11 @@
 | E2EE-2026-007 | P1 | C2G 无持久 replay 状态；C2C `dedupeAndPersistSession` 捕获全部异常并返回 duplicate，把存储事故与重放混同 | REGRESSION_PASS；C2C/C2G 共用持久 message-id 与受保护信封 digest，存储异常单独抛出；合法完成态与同 ID/换 ID replay 已有 C 级回归，真实重放与乱序攻击复测待授权 |
 | E2EE-2026-008 | P1 | Safety Number 入口把 legacy RSA key/kid 当 Olm identity/device ID，本端 device ID 为空，且本地“已验证”未绑定当前号码 | REGRESSION_PASS；双方均取活跃 Olm device ID，identity 走本地权威或签名+TOFU 路径，验证值绑定当前聚合码；双真机换钥/增删设备攻击复测待授权 |
 | E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS；加密平台已有库只用当前 key 验证，失败保留原库并终止；已移除无密码探测/二次打开、备份生成和自动清理；Android 真机错钥与新备份生成限定复测通过，旧明文库、WAL/SHM、历史 artifact 和真实 Keystore 仍待授权取证，故不得升级为完整 `ATTACK_RETEST_PASS` |
-| E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS；不再吞策略异常，策略未知会在调用上传 API 前中止；对象存储 Canary 攻击复测待授权 |
+| E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS；不再吞策略异常，策略未知在上传前中止；required 下绑定缺失（`attachment_binding_missing`）与视频主/缩略图 partial seal（`attachment_partial_seal`）也已上传前失败（`imboyapp@2aa76a09`）；对象存储 Canary 攻击复测待授权 |
 | E2EE-2026-011 | P1 | 备份刻意不含 Olm account/session/TOFU pin，故不恢复 Olm 身份连续性或 C2C ratchet 历史；旧导出路径在 Secure Storage 枚举失败时会静默生成 RSA-only 不完整备份；旧导入路径吞掉单条 Megolm 写失败后仍报告整体成功 | REGRESSION_PASS；已保持“不克隆 ratchet”边界，备份仅含 legacy RSA 与 Megolm inbound，排除 Olm/TOFU；秘密清单不可读时导出 fail-closed，Megolm 写入失败时导入 fail-closed 且日志仅保留异常类型，成功文案限定为备份内成功写入的会话；Secure Storage 无跨条目事务，失败前已完成的幂等写入可能保留并由重试覆盖；真实新设备身份变更告警、C2C 不可恢复和 C2G 已备份 session 恢复待攻击复测 |
 | E2EE-2026-012 | P1 | 新成员/重入群历史访问策略未定义；`/msg/history` 与批量 `sync` 都仅校验当前 active membership 后读取整个群归档，成员记录没有稳定的本次入群边界 | ROOT_CAUSE_CONFIRMED；需产品拍板首次加入、退出/移除后重入、同账号新设备三类历史策略，再为两个归档入口实现同一 join boundary 并完成生命周期复测；已离群前取得的明文、密文和密钥无法远程追回 |
 | E2EE-2026-013 | P2 | 规范声明 Signed Capabilities；客户端只有 `DeviceManifest`/协商/HWM 模型与单测，未进入身份上传、设备查询或发送链，服务端仅有未接线 schema 列 | ROOT_CAUSE_CONFIRMED；当前固定 C2C Olm 发送不依赖该机制，但 Signed Capabilities 必须降级为未实现声明，或补齐 manifest 生成/账户签名/上传/拉取/协商/HWM 真实链路后再复测 |
-| E2EE-2026-014 | P2 | debug 路径可记录完整 WS/解密后 Conversation payload，解析异常文本也可携带输入片段 | REGRESSION_PASS；已移除完整 WS 开关并将消息/会话/离线/S2C/解密日志收窄为非敏感元数据和异常类型；真实 Canary 日志扫描待授权 |
+| E2EE-2026-014 | P2 | debug 路径可记录完整 WS/解密后 Conversation payload，解析异常文本也可携带输入片段 | REGRESSION_PASS；已移除完整 WS 开关并将消息/会话/离线/S2C/解密日志收窄为非敏感元数据和异常类型；group_session/olm_session/chat_network 残留的完整异常/stackTrace/库错误原文也已收窄为 runtimeType + 稳定错误码，toast 兜底改稳定文案（`imboyapp@8d655ca7`，e2ee_service 等残留形态下一轮）；真实 Canary 日志扫描待授权 |
 
 安全边界 finding 未完成对应攻击复测不得 CLOSED。
 
