@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imboy.pub/schemas/moya/step4/ai-review-draft-teacher-view.json",
+  "title": "AiReviewDraftTeacherView",
+  "description": "墨芽 Step 4 冻结：calligraphy_review_draft 老师视角表示。硬约束（D-10 / AI-02）：本 schema 仅出现在老师/授权 staff 的响应 payload；家长 API 永不返回（家长只允许三态 ai_status_hint）。result_json 不含模型思维链。",
+  "type": "object",
+  "required": ["draft_id", "submission_id", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "draft_id": { "$ref": "#/$defs/tsidString" },
+    "submission_id": { "$ref": "#/$defs/tsidString" },
+    "ai_task_id": {
+      "anyOf": [{ "$ref": "#/$defs/tsidString" }, { "type": "null" }],
+      "description": "内部任务标识（可空）。"
+    },
+    "status": { "enum": ["queued", "running", "succeeded", "failed"] },
+    "model_profile": { "type": "string" },
+    "prompt_version": { "type": "string" },
+    "rubric_version": { "type": "string" },
+    "input_digest": {
+      "type": "string",
+      "description": "输入摘要（内容寻址），用于结果可追溯；不含任何儿童可识别信息。"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "enum": [
+            "timeout",
+            "provider_error",
+            "bad_schema",
+            "attachment_missing",
+            "unsupported_media",
+            "internal"
+          ]
+        },
+        { "type": "null" }
+      ],
+      "description": "failed 时的机器可读原因；AI 失败不阻断人工回评（D-10）。"
+    },
+    "result": {
+      "anyOf": [{ "$ref": "#/$defs/aiDraftResult" }, { "type": "null" }],
+      "description": "仅 status=succeeded 非空。"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "completed_at": {
+      "anyOf": [{ "type": "string", "format": "date-time" }, { "type": "null" }]
+    }
+  },
+  "$defs": {
+    "tsidString": {
+      "type": "string",
+      "pattern": "^[0-9]{1,19}$",
+      "description": "TSID/64-bit ID 的 JSON 表达（API-01）。"
+    },
+    "aiDraftResult": {
+      "type": "object",
+      "description": "计划 §7.3 最小字段集。confidence 仅供老师参考，不得向家长宣传为准确率。",
+      "required": [
+        "positive_point",
+        "focus_problem",
+        "evidence_moments",
+        "practice_action",
+        "script_outline",
+        "needs_human_check"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "positive_point": { "type": "string", "maxLength": 300 },
+        "focus_problem": { "type": "string", "maxLength": 300 },
+        "evidence_moments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": { "type": "number", "minimum": 0 }
+        },
+        "practice_action": { "type": "string", "maxLength": 300 },
+        "script_outline": { "type": "array", "maxItems": 3, "items": { "type": "string", "maxLength": 200 } },
+        "needs_human_check": { "type": "boolean" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  },
+  "examples": [
+    {
+      "draft_id": "6214747600000001",
+      "submission_id": "6214747500760300",
+      "status": "succeeded",
+      "model_profile": "moya-video-review-v1",
+      "prompt_version": "p-2026-09-09.1",
+      "rubric_version": "r-hardpen-1",
+      "input_digest": "sha256:9f2c…",
+      "error_code": null,
+      "result": {
+        "positive_point": "横画起笔位置稳定",
+        "focus_problem": "竖画整体右倾",
+        "evidence_moments": [8.5, 22.0],
+        "practice_action": "每天慢写三行悬针竖",
+        "script_outline": ["先夸横画", "指出竖画右倾", "布置竖画练习"],
+        "needs_human_check": false,
+        "confidence": 0.72
+      },
+      "created_at": "2026-09-09T09:20:00Z",
+      "completed_at": "2026-09-09T09:23:30Z"
+    }
+  ]
+}

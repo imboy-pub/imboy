@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imboy.pub/schemas/moya/step4/error-envelope.json",
+  "title": "ErrorEnvelope",
+  "description": "墨芽 Step 4 冻结：教学域错误响应结构，复用 imboy elib_response envelope（{code, msg, sv_ts, payload}）。业务错误 = HTTP 200 + code != 0；认证边界 = 真实 HTTP 401 + code=401。错误码语义见 STEP-04/error-codes.md。TSID 一律字符串（本 envelope 本身无 ID 字段）。",
+  "type": "object",
+  "required": ["code", "msg", "sv_ts"],
+  "properties": {
+    "code": {
+      "type": "integer",
+      "description": "错误码：0 之外。通用 4xx 参考 HTTP 语义；教学域码 5400-5519（见 error-codes.md）。",
+      "not": { "const": 0 }
+    },
+    "msg": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "人类可读消息（中文）。不泄漏内部堆栈、SQL、openid、对象存储细节。"
+    },
+    "sv_ts": {
+      "type": "integer",
+      "description": "服务器毫秒时间戳。"
+    },
+    "payload": {
+      "type": "object",
+      "description": "可选结构化补充（如 {field: 'learner_id'}），默认空对象；不得包含跨租户资源信息。"
+    }
+  },
+  "examples": [
+    { "code": 403, "msg": "无权访问该学员资源", "sv_ts": 1757400000123, "payload": {} },
+    { "code": 5402, "msg": "微信登录凭证无效或已使用", "sv_ts": 1757400000123, "payload": {} },
+    { "code": 5460, "msg": "幂等键冲突：该键已绑定其他请求内容", "sv_ts": 1757400000123, "payload": {} }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://imboy.pub/schemas/moya/step4/submission-create-request.json",
+  "title": "SubmissionCreateRequest",
+  "description": "墨芽 Step 4 冻结：创建 homework_submission 请求体。幂等键经 Idempotency-Key 请求头（客户端 UUID），服务端按 (uid, assignment_id, idempotency_key) 去重，重试返回同一 submission。TSID 硬约束：所有 ID 一律纯数字字符串，严禁 number。",
+  "type": "object",
+  "required": ["learner_id", "assets"],
+  "additionalProperties": false,
+  "properties": {
+    "learner_id": {
+      "$ref": "#/$defs/tsidString",
+      "description": "期望学员。服务端校验：等于 assignment.learner_id 且 JWT uid 为该学员 can_submit=true 的有效监护人。不一致 → 5423。"
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "description": "恰好 1 个 kind=practice_video，0..3 个 kind=final_photo。每个 attachment_id 必须已通过 /api/v1/attachment/confirm 落库且 created_by=JWT uid。",
+      "items": {
+        "type": "object",
+        "required": ["attachment_id", "kind"],
+        "additionalProperties": false,
+        "properties": {
+          "attachment_id": { "$ref": "#/$defs/tsidString" },
+          "kind": { "enum": ["practice_video", "final_photo"] },
+          "sort_order": { "type": "integer", "minimum": 0, "maximum": 9, "default": 0 }
+        }
+      }
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "家长备注（可选）。进入任何 AI 输入前必须做注入过滤/转义（威胁模型 T9）。"
+    }
+  },
+  "$defs": {
+    "tsidString": {
+      "type": "string",
+      "pattern": "^[0-9]{1,19}$",
+      "description": "TSID/64-bit ID 的 JSON 表达（API-01 防 JS 精度丢失）。"
+    }
+  },
+  "examples": [
+    {
+      "learner_id": "562949953421312",
+      "assets": [
+        { "attachment_id": "7036874417766401", "kind": "practice_video", "sort_order": 0 },
+        { "attachment_id": "7036874417766402", "kind": "final_photo", "sort_order": 0 }
+      ],
+      "note": "这周每天练了三行"
+    }
+  ]
+}
