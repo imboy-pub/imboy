@@ -19,11 +19,21 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-DB="${MARKER_DB_PREFIX}$(date +%s)"
+DB="${MARKER_DB_PREFIX}$(date +%s)_$$"
 PGHOST="${PGHOST:-127.0.0.1}"
 PGPORT="${PGPORT:-4323}"
 PGUSER="${PGUSER:-imboy_user}"
 export PGPASSWORD="${PGPASSWORD:-abc54321}"
+
+case "$PGHOST" in
+  127.0.0.1|::1) ;;
+  *) echo "[golden] refusing non-loopback PostgreSQL host" >&2; exit 2 ;;
+esac
+if [[ -n "${PGHOSTADDR:-}" || -n "${PGSERVICE:-}" || -n "${PGSERVICEFILE:-}" ]]; then
+  echo "[golden] refusing libpq connection target override" >&2
+  exit 2
+fi
+unset PGHOSTADDR PGSERVICE PGSERVICEFILE
 
 PSQL="psql -h $PGHOST -p $PGPORT -U $PGUSER -v ON_ERROR_STOP=1 -q"
 
@@ -45,27 +55,30 @@ for E in pg_jieba postgis postgis_raster timescaledb pgcrypto uuid-ossp pg_trgm 
   $PSQL -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS $E" > /dev/null 2>&1 || true
 done
 
-# 2) 全链迁移 up（1→93+）
-FAIL=0
-for f in "$ROOT"/priv/migrations/*.up.sql; do
-  $PSQL -d "$DB" -f "$f" > /dev/null 2>&1 || { echo "[golden] UP_FAIL $f"; FAIL=1; }
-done
-[ "$FAIL" = "0" ] || { echo "[golden] migration up FAILED"; exit 1; }
+# 2) 全链迁移 up（1→93+），由生产同口径 strict 迁移器维护 tracking。
+make -C "$ROOT" app > "$EVIDENCE_DIR/make-app.log" 2>&1
+PGHOST="$PGHOST" PGPORT="$PGPORT" PGUSER="$PGUSER" \
+  PGDATABASE="$DB" IMBOY_DIR="$ROOT" "$ROOT/scripts/drill_migrate.escript" up \
+  > "$EVIDENCE_DIR/migration-up.log" 2>&1
 echo "[golden] migrations up OK"
 
 # 3) 核心套件（golden flow 的可自动化子集；测试内含正负例）
 export IMBOYENV=local
+export IMBOY_PG_HOST="$PGHOST"
+export IMBOY_PG_PORT="$PGPORT"
+export IMBOY_PG_USERNAME="$PGUSER"
+export IMBOY_PG_PASSWORD="$PGPASSWORD"
+export IMBOY_PG_DATABASE="$DB"
 SUITES=(agent_task_repo_tests agent_task_logic_tests bot_webhook_delivery_repo_tests
         bot_group_mention_tests mcp_client_repo_tests)
 for S in "${SUITES[@]}"; do
   echo "[golden] eunit $S"
-  make -C "$ROOT" eunit-local "t=$S" > "/tmp/gf-$S.log" 2>&1 || {
-    echo "[golden] SUITE_FAIL $S"; cp "/tmp/gf-$S.log" "$EVIDENCE_DIR/" 2>/dev/null || true; exit 1; }
-  cp "/tmp/gf-$S.log" "$EVIDENCE_DIR/eunit-$S.log"
+  make -C "$ROOT" eunit-local "t=$S" > "$EVIDENCE_DIR/eunit-$S.log" 2>&1 || {
+    echo "[golden] SUITE_FAIL $S"; exit 1; }
 done
 
 # 3.5) 日志扫描：无 secret/主密钥字样（A04）
-if grep -qiE 'postgre_aes_key|wh-verify-secret|topsecret' /tmp/gf-*.log 2>/dev/null; then
+if grep -qiE 'postgre_aes_key|wh-verify-secret|topsecret' "$EVIDENCE_DIR"/eunit-*.log 2>/dev/null; then
   echo "[golden] SECRET LEAK in logs"; exit 1
 fi
 

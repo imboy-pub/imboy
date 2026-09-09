@@ -113,7 +113,7 @@ enqueue(BotId, WebhookUrl, Event) ->
         <<"event">> => EventType,
         <<"delivery_id">> => DeliveryId,
         <<"correlation_id">> => Corr,
-        <<"bot_id">> => BotId,
+        <<"bot_id">> => integer_to_binary(BotId),
         <<"occurred_at">> => occurred_at(Event)
     },
     Body = jsone:encode(Envelope, [native_utf8]),
@@ -289,12 +289,14 @@ ensure_jti_tab() ->
 %% @doc 群 mention 分派（msg_c2g_logic 成功发送后旁路调用，恒容错）。
 %% 防自环：发送者是 bot（bot 表 user_id 命中）→ 跳过（断 Bot-to-Bot 环）。
 %% E2EE fail-closed：Data.e2ee 非 null → 跳过。
+%% MemberUids 为群权威 active membership（group_ds:member_uids_strict/1），
+%% 只有命中成员表的被 mention Bot 才允许外呼。
 -spec dispatch_group_mention(integer(), integer(), binary(), map(), [integer()]) -> ok.
-dispatch_group_mention(FromUid, ToGID, Data, Payload, _MemberUids) ->
+dispatch_group_mention(FromUid, ToGID, Data, Payload, MemberUids) ->
     try
         case is_bot_sender(FromUid) of
             true -> ok;
-            false -> do_dispatch(FromUid, ToGID, Data, Payload)
+            false -> do_dispatch(FromUid, ToGID, Data, Payload, MemberUids)
         end
     catch
         C:R:ST ->
@@ -302,7 +304,7 @@ dispatch_group_mention(FromUid, ToGID, Data, Payload, _MemberUids) ->
             ok
     end.
 
-do_dispatch(FromUid, ToGID, Data, Payload) ->
+do_dispatch(FromUid, ToGID, Data, Payload, MemberUids) ->
     %% E2EE fail-closed：e2ee 消息不触发任何 bot 外呼
     case maps:get(<<"e2ee">>, Data, null) of
         null ->
@@ -311,7 +313,10 @@ do_dispatch(FromUid, ToGID, Data, Payload) ->
             lists:foreach(
                 fun(M) ->
                     Uid = to_int(M),
-                    maybe_dispatch_one(Uid, ToGID, FromUid, MsgId)
+                    case lists:member(Uid, MemberUids) of
+                        true -> maybe_dispatch_one(Uid, ToGID, FromUid, MsgId);
+                        false -> ok
+                    end
                 end,
                 Mentions
             ),
@@ -365,12 +370,12 @@ enqueue_mention(BotUid, Bot, ToGID, FromUid, MsgId) ->
                 <<"event">> => <<"message.c2g_mention">>,
                 <<"delivery_id">> => DeliveryId,
                 <<"correlation_id">> => Corr,
-                <<"bot_id">> => BotUid,
+                <<"bot_id">> => integer_to_binary(BotUid),
                 <<"occurred_at">> => elib_dt:to_rfc3339(os:system_time(second)),
                 <<"data">> => #{
-                    <<"group_id">> => ToGID,
+                    <<"group_id">> => integer_to_binary(ToGID),
                     <<"trigger_msg_id">> => MsgId,
-                    <<"from_uid">> => FromUid,
+                    <<"from_uid">> => integer_to_binary(FromUid),
                     <<"reply_context">> => ReplyCtx
                 }
             },
@@ -383,7 +388,9 @@ enqueue_mention(BotUid, Bot, ToGID, FromUid, MsgId) ->
                     payload => Body,
                     correlation_id => Corr,
                     idempotency_key =>
-                        iolist_to_binary(["bwd-mention:", BotUid, ":", MsgId]),
+                        iolist_to_binary([
+                            "bwd-mention:", integer_to_binary(BotUid), ":", MsgId
+                        ]),
                     webhook_host => host_of_url(maps:get(<<"webhook_url">>, Bot, <<>>))
                 })
             of

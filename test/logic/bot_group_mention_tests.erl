@@ -31,12 +31,24 @@ mention_dispatch_once_test_() ->
             MsgId = iolist_to_binary(["m-", integer_to_binary(uid())]),
             Data = #{<<"id">> => MsgId, <<"e2ee">> => null},
             Payload = #{<<"mentions">> => [integer_to_binary(BotUid)]},
-            ok = bot_webhook_logic:dispatch_group_mention(FromUid, 9001, Data, Payload, []),
-            ok = bot_webhook_logic:dispatch_group_mention(FromUid, 9001, Data, Payload, []),
-            Idem = iolist_to_binary(["bwd-mention:", BotUid, ":", MsgId]),
+            ok = bot_webhook_logic:dispatch_group_mention(
+                FromUid, 9001, Data, Payload, [BotUid]
+            ),
+            ok = bot_webhook_logic:dispatch_group_mention(
+                FromUid, 9001, Data, Payload, [BotUid]
+            ),
+            Idem = iolist_to_binary([
+                "bwd-mention:", integer_to_binary(BotUid), ":", MsgId
+            ]),
             {ok, Row} = delivery_by_idem(Idem),
             ?assertEqual(<<"message.c2g_mention">>, maps:get(<<"event_type">>, Row)),
             ?assertEqual(BotUid, to_int(maps:get(<<"bot_id">>, Row))),
+            %% TSID 十进制字符串边界：outbound JSON 标识符不得被 JSON number 截断
+            Body = jsone:decode(maps:get(<<"payload">>, Row)),
+            ?assertEqual(integer_to_binary(BotUid), maps:get(<<"bot_id">>, Body)),
+            BodyData = maps:get(<<"data">>, Body),
+            ?assertEqual(<<"9001">>, maps:get(<<"group_id">>, BodyData)),
+            ?assertEqual(integer_to_binary(FromUid), maps:get(<<"from_uid">>, BodyData)),
             ok = cleanup_fixture(Tab)
         end)}.
 
@@ -58,6 +70,31 @@ no_mention_no_delivery_test_() ->
                 []
             ),
             ?assertEqual(Before, delivery_count())
+        end)}.
+
+%% A03：群外 Bot 即使被 mention 也不得接收 delivery（权威 active membership）
+non_member_bot_skipped_test_() ->
+    {timeout, 30,
+        ?TEST_WITH_DB(fun() ->
+            {Port, Tab, _C} = start_fixture(200),
+            {BotUid, _} = setup_bot(
+                iolist_to_binary([
+                    "http://127.0.0.1:",
+                    integer_to_binary(Port),
+                    "/hook"
+                ])
+            ),
+            FromUid = seed_from_user(),
+            Before = delivery_count(),
+            Data = #{
+                <<"id">> => iolist_to_binary(["m-", integer_to_binary(uid())]),
+                <<"e2ee">> => null
+            },
+            Payload = #{<<"mentions">> => [integer_to_binary(BotUid)]},
+            %% 成员表为空：BotUid 不在权威 active membership 内 → 零分派
+            ok = bot_webhook_logic:dispatch_group_mention(FromUid, 9001, Data, Payload, []),
+            ?assertEqual(Before, delivery_count()),
+            cleanup_fixture(Tab)
         end)}.
 
 %% A03：bot 自身发送 → 零分派（防 Bot-to-Bot 环）
@@ -137,7 +174,8 @@ delivery_by_idem(Idem) ->
     case
         elib_pg:query(
             <<
-                "SELECT delivery_id, bot_id, event_type, status FROM public.bot_delivery"
+                "SELECT delivery_id, bot_id, event_type, status, payload::text AS payload"
+                " FROM public.bot_delivery"
                 " WHERE idempotency_key = $1"
             >>,
             [Idem]
