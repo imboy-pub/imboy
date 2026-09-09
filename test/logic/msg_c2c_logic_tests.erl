@@ -1305,3 +1305,67 @@ c2c_allowed_message_still_triggers_agent_and_billing_test_() ->
             ?assertEqual(1, meck:num_calls(billing_meter, meter, 2))
         end
     ).
+
+%% LT02-SEC-01（AI-ID=B）后端二次门锁定：客户端徽章/本地 DB 声称对端是 AI
+%% 助手，但服务端权威表 ai_agent_ds:is_agent 为 false 时，required 部署的
+%% 明文门必须拒收，且**全副作用为零**：不落库（stage/enqueue=0）、不触发
+%% agent 明文回投、不计费、不推送。本测试把 L372 拒收路径与 L1286 零副作用
+%% 断言合成计划负例矩阵的精确形态；服务端门是权威二道门，不能替代客户端
+%% pre-send 共享身份门（AiPlaintextGate），但对「客户端被污染误判」兜底。
+c2c_agent_gate_rejection_zero_side_effects_test_() ->
+    ?WITH_MECKS(
+        [
+            {friend_ds, [
+                {'check_relationship', 2, fun(456, 123) -> {true, false} end}
+            ]},
+            {ai_agent_ds, [
+                {'is_agent', 1, fun(456) -> false end}
+            ]},
+            {bot_ds, [
+                {'is_bot', 1, fun(_) -> false end}
+            ]},
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(_, _, _, _, _) ->
+                    {error, <<"encrypted_message_required">>}
+                end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'enqueue', 3, fun(_, _, _) -> ok end}
+            ]},
+            {push_notification_logic, [
+                {'maybe_push_for_c2c', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {ai_agent_reply, [
+                {'maybe_dispatch', 3, fun(_, _, _) -> ok end}
+            ]},
+            {billing_meter, [
+                {'meter', 2, fun(_, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2c_agent_gate_zero_001">>,
+            Data = #{
+                <<"to">> => <<"456">>,
+                <<"payload">> => #{<<"content">> => <<"hello">>},
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => null
+            },
+
+            {reply, Reply} = msg_c2c_logic:c2c(MsgId, 123, Data),
+            ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
+            ?assertEqual(
+                <<"encrypted_message_required">>,
+                maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
+            ),
+            %% 零落库
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
+            %% 零 agent 触发 / 零计费 / 零推送
+            ?assertEqual(0, meck:num_calls(ai_agent_reply, maybe_dispatch, 3)),
+            ?assertEqual(0, meck:num_calls(billing_meter, meter, 2)),
+            ?assertEqual(0, meck:num_calls(push_notification_logic, maybe_push_for_c2c, 4))
+        end
+    ).
