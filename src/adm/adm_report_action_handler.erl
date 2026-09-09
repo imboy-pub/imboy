@@ -30,15 +30,15 @@ execute_action(Req0, State) ->
             AdmUid = maps:get(adm_user_id, State, 0),
             PostVals = elib_param:post(Req0),
             CaseId = ec_cnv:to_integer(maps:get(<<"case_id">>, PostVals, 0)),
-            Action = ec_cnv:safe_to_binary(maps:get(<<"action">>, PostVals, <<>>)),
+            Action = elib_cnv:safe_to_binary(maps:get(<<"action">>, PostVals, <<>>)),
             TargetUid = ec_cnv:to_integer(maps:get(<<"target_uid">>, PostVals, 0)),
             Opts = #{
-                reason => ec_cnv:safe_to_binary(maps:get(<<"reason">>, PostVals, <<>>)),
+                reason => elib_cnv:safe_to_binary(maps:get(<<"reason">>, PostVals, <<>>)),
                 gid => ec_cnv:to_integer(maps:get(<<"gid">>, PostVals, 0)),
                 duration_minutes => ec_cnv:to_integer(
                     maps:get(<<"duration_minutes">>, PostVals, 0)
                 ),
-                target_type => ec_cnv:safe_to_binary(
+                target_type => elib_cnv:safe_to_binary(
                     maps:get(<<"target_type">>, PostVals, <<>>)
                 ),
                 target_id => ec_cnv:to_integer(maps:get(<<"target_id">>, PostVals, 0))
@@ -60,7 +60,7 @@ reverse_action(Req0, State) ->
             AdmUid = maps:get(adm_user_id, State, 0),
             PostVals = elib_param:post(Req0),
             ActionId = ec_cnv:to_integer(maps:get(<<"action_id">>, PostVals, 0)),
-            Reason = ec_cnv:safe_to_binary(maps:get(<<"reason">>, PostVals, <<>>)),
+            Reason = elib_cnv:safe_to_binary(maps:get(<<"reason">>, PostVals, <<>>)),
             case moderation_action_logic:reverse(AdmUid, ActionId, Reason) of
                 {ok, Row} ->
                     elib_response:success(Req0, Row);
