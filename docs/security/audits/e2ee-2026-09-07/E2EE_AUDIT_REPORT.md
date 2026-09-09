@@ -1,8 +1,12 @@
 # IMBoy E2EE 安全审计报告（唯一事实源）
 
-日期：2026-09-07
-状态：阶段 A 已完成；P0 与部分 P1/P2 本地修复已完成；Android SQLCipher 限定范围真机复测已通过，其余授权攻击复测、群历史策略决策及未闭环 P1/P2 待执行。
-配套执行清单：[`E2EE_ATTACK_MATRIX.md`](./E2EE_ATTACK_MATRIX.md)
+原审计日期：2026-09-07
+
+当前 Base C 级重验：2026-09-09（LT-02-C 回填轮，REV-1 于同日按 R1-C1 补跑 011 组遗漏文件；本节以下标「本轮」的证据均为该重验实测）
+
+状态：阶段 A 已完成；P0 与部分 P1/P2 本地修复已完成；Android SQLCipher 限定范围真机复测已通过；当前 Base 后端 9 模块与 Flutter finding 组 C 级回归全绿（计数见 §1.1），其余授权攻击复测、群历史策略决策（E2EE-2026-012）及未闭环 P1/P2 待执行；未解决 HIGH blocker `LT02-SEC-01` 见 §5.5。
+
+配套执行清单：[`E2EE_ATTACK_MATRIX.md`](./E2EE_ATTACK_MATRIX.md)；群历史决策包：[`docs/planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md`](../../../planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md)
 
 本文件统一承载基线、消息路径、密钥所有权、Findings、修复状态和发布结论。旧报告、注释、测试名称及历史 PASS/GO 均不自动继承。
 
@@ -10,7 +14,32 @@
 
 证据等级：A=本轮隔离环境真实客户端→真实后端→真实存储→真实接收端；B=当前源码/配置/schema/可复现集成证据；C=单元或协议测试；D=文档/注释/历史报告。明确可达的安全边界违反直接判 FAIL；缺少必要运行证据判 UNKNOWN/PARTIAL/BLOCKED。
 
-状态机：`OPEN → ROOT_CAUSE_CONFIRMED → FIXED → REGRESSION_PASS → ATTACK_RETEST_PASS → CLOSED`。
+状态机：`OPEN → ROOT_CAUSE_CONFIRMED → FIXED → REGRESSION_PASS → ATTACK_RETEST_PASS → CLOSED`。跨 SHA 后旧计数只作 D 级线索；当前 Base 的 C 级重签最高只能回到 `REGRESSION_PASS`，任何 finding 未完成 A 级攻击复测不得 `CLOSED`。
+
+### 1.1 当前 Base C 级重验实测（2026-09-09，LT-02-C）
+
+冻结基线（三仓 detached worktree，全部 tracked clean）：
+
+```text
+imboy      63747f8d7a0f9bc27bce4c540549a032141fbc3a
+imboyapp   0152560aa741b69411e484cc84c1c220f565b2af
+imboyadmin 8c2b8615c292d82257886ad51445db87c366d719
+```
+
+| 本轮实测（LT-02-C） | 结果 | 等级与边界 |
+|---|---|---|
+| 后端 9 EUnit 模块（串行，任务专属 scratch PostgreSQL，strict tracked migrations） | **124 PASS / 0 FAIL / 0 cancelled**；模块明细：group_member_repo 21、group_member_ds 8、group_member_workspace_subset 3、workspace_logic 29、group_member_logic_event 2、group_event_handler 3、messaging_logic 12、msg_handler 11、msg_c2s_logic 35；scratch DB 与连接 residual=0（repo 模块首跑曾因裸 marker DB 缺 timescaledb 扩展 17 例 cancelled，runner 修复扩展预装后单模块重放 21/21，全程 0 断言失败） | C；上会话参考值 124 PASS（D/superseded）与本轮一致；不构成 A 级 |
+| Flutter finding 003/005..014 测试组（ENV-01-A3 cleanroom 重放后逐文件串行，离线无设备） | **45 唯一存在文件全绿：410 PASS / 0 FAIL / 1 declared SKIP**；组明细：003=11、005=32、006=23、007=6（含 room-key 导入 1/1）、008=37、009=89、010=63、011=52(+1 SKIP)+1 缺失 DRIFT、013=40（16+13+11）、014=68（e2ee_service_test 同属 003/014，总计数只算一次）；REV-1：011 组 `e2ee_server_backup_service_test.dart`（6 tests）Wave-2 批次曾遗漏未跑，2026-09-09 按审查意见 R1-C1 以同口径补跑 6/6 PASS 计入（45 文件 = Wave-2 44 + 补跑 1） | C；上会话参考值「31 文件 323 PASS / 4 SKIP / 0 FAIL」（D/superseded）与本轮批次定义不同（本轮按报告声明组重建为 45+2+1 项），数量差异如实记录、不折算 |
+| Flutter 2 个 integration_test 文件 | **ENV_BLOCKED_ATTEMPTED**（非静默跳过）：`sqlcipher_migration_test.dart`、`sqlite_migration_kill_replay_test.dart` 在 `flutter test` 下进入设备集成模式（Gradle assembleDebug + 需连接设备），离线无设备不可执行；文件头自声明需真实 SQLCipher 设备/外部 kill 编排；两文件各有独立尝试日志（REV-1 补 kill_replay 尝试日志：直接运行立即要求选择设备、exit=1 未执行任何测试，见 evidence `flutter-tests/env-blocked-02-*`） | 环境受限；不得计为 PASS 或 FAIL |
+| Flutter 1 个缺失文件（DRIFT） | `integration_test/settings/e2ee_backup_recovery_acceptance_test.dart`（011 破坏性恢复 harness）在冻结 Base 不存在——共享工作区 untracked、从未提交；报告 §1 原文「当前工作区」与此吻合；其声明行为为默认运行 1 SKIP，不构成 PASS 来源 | BLOCKED_DRIFT，如实记录 |
+| scoped `flutter analyze`（lib/service/e2ee、e2ee 相关 service/test 14 项目标） | **No issues found**（exit 0） | C |
+| Signed Capabilities 生产 wiring 静态扫描 | `CapabilityGuard` 0 生产调用方；`CapabilityNegotiator` lib 内仅 1 处注释引用 + 1 处静态表引用（guard 自身 0 调用方）；`verifyDeviceManifest` 无任何 lib 调用方，`DeviceManifest` 类型仅出现于 capability 三件套（device_manifest/identity_verifier/capability_negotiator）内部、未接线；`olm_session_service.dart:15` 的 identity_verifier import 只使用 `verifyIdentitySignature`（该 import 非未使用）→ **生产调用=0** | B；如实报告，不构成 MITM/降级防护的任何方向证据（见 finding 013） |
+| 012 架构缺口当前 Base 重验 | `messaging_logic:history` 与 `msg_c2s_logic:handle_sync` 仍为 `group_ds:is_member` boolean + 整个 `c2g:<gid>` 读取；`group_member` 列仍为 id/group_id/user_id/role/is_join/join_mode/status/created_at/updated_at（无 join boundary/generation）；staging（msg_store_ds 无 conv_seq）→ worker 异步 `msg_archive_repo:archive` → archive 阶段 `next_conv_seq/1` | B；见 §5 finding 012 与决策包 |
+| LT02-SEC-01 当前 Base 重验 | `imboyapp/lib/service/e2ee_service.dart:176` 仍为 `if (chatType == 'C2C' && peerAccountType == 1) return false;`——未签名/可污染标记直接触发发送前明文豁免 | B；**保持 HIGH/OPEN**（见 §5.5，关闭属 Task 4/AI-ID 决策） |
+
+本轮重验未运行：A 级攻击复测、真机、账号、群操作、抓包、Keychain/Keystore、生产与第三方（全部维持 BLOCKED，见 §7）。
+
+### 1.2 阶段 A 历史基线（2026-09-07，D/superseded——不在当前 Base 重验范围）
 
 | 仓库 | 分支与 HEAD | 阶段 A worktree |
 |---|---|---|
@@ -18,6 +47,8 @@
 | `imboyapp` | `main` / `924347d011e84716a1b89a03cff10ac391010e69` | dirty 79 项，均按既有工作保留 |
 
 依赖：Flutter 3.47.2、Dart 3.13.2、OTP 29、ERTS 17.0.2、GNU Make 3.81、`flutter_vodozemac 0.8.1`、`vodozemac 0.8.0`、`sqflite_sqlcipher 3.4.1`。销售 Compose/Helm 默认 `required`，策略无权威值时回落 `disabled`；运行节点实际模式未查，记 UNKNOWN。被忽略的 `config/sys.pro.config` 含敏感赋值特征但不在 HEAD，本轮未读取其值。
+
+下表为阶段 A 原始证据（**全部 D/superseded**：计数产生于上表旧 SHA，仅作线索保留；当前 Base 替代值见 §1.1）：
 
 | 本轮证据 | 结果 | 等级与边界 |
 |---|---|---|
@@ -82,22 +113,29 @@
 
 | ID | 级别 | 根因/影响 | 状态与关闭条件 |
 |---|---|---|---|
-| E2EE-2026-001 | P0 | `group_member_repo:find/3` 与成员列表未过滤 `status=1`；停用行被群消息、群密钥、附件和多类群 ACL 当成活跃成员 | REGRESSION_PASS；共享查询和列表已限定 active，显式重入改为原子恢复；移除成员攻击复测待授权 |
-| E2EE-2026-002 | P0 | 工作区移除只停用下属群记录，未逐群发 leave、清缓存或触发 session stale | REGRESSION_PASS；事务提交后已逐群清缓存并发布持久 leave 通知；工作区移除与旧 session 攻击复测待授权 |
-| E2EE-2026-003 | P0 | 群设备密钥强刷失败/为空时复用最长 30 分钟旧缓存 | REGRESSION_PASS；强刷空结果覆盖旧缓存，最终异常清空整组缓存并抛出；旧设备/旧 session 攻击复测待授权 |
-| E2EE-2026-004 | P1 | C2G history 仅构造 `c2g:<gid>`，不校验当前活跃成员 | REGRESSION_PASS；共享 history 入口已要求当前 active 成员并在归档查询前拒绝；前成员 API 攻击复测待授权 |
-| E2EE-2026-005 | P1 | 客户端在 PFv3 认证、解密、持久化前 ACK；实时与离线两条路径同源 | REGRESSION_PASS；WS 不再提前 ACK，内容/action/room key 均在处理成功后确认；离线业务 `msg_id` 归一化且 HTTP ACK 拒绝/异常 fail-closed；真实离线、畸形帧和重投攻击复测待授权 |
-| E2EE-2026-006 | P1 | PFv3 解密失败未形成有界、可重启恢复的密文状态；Olm ratchet 已提交而消息明文尚未提交时存在崩溃丢信窗口 | REGRESSION_PASS；SQLCipher 先暂存最多 512 条/单帧 256 KiB，ratchet/dedupe/digest 与可恢复解密结果原子提交，最终消息成功后清理；未完成的 decrypted 行不会按 7 天 pending 规则清除；真实 App kill/restart 与磁盘故障复测待授权 |
-| E2EE-2026-007 | P1 | C2G 无持久 replay 状态；C2C `dedupeAndPersistSession` 捕获全部异常并返回 duplicate，把存储事故与重放混同 | REGRESSION_PASS；C2C/C2G 共用持久 message-id 与受保护信封 digest，存储异常单独抛出；合法完成态与同 ID/换 ID replay 已有 C 级回归，真实重放与乱序攻击复测待授权 |
-| E2EE-2026-008 | P1 | Safety Number 入口把 legacy RSA key/kid 当 Olm identity/device ID，本端 device ID 为空，且本地“已验证”未绑定当前号码 | REGRESSION_PASS；双方均取活跃 Olm device ID，identity 走本地权威或签名+TOFU 路径，验证值绑定当前聚合码；双真机换钥/增删设备攻击复测待授权 |
-| E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS；加密平台已有库只用当前 key 验证，失败保留原库并终止；已移除无密码探测/二次打开、备份生成和自动清理；Android 真机错钥与新备份生成限定复测通过，旧明文库、WAL/SHM、历史 artifact 和真实 Keystore 仍待授权取证，故不得升级为完整 `ATTACK_RETEST_PASS` |
-| E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS；不再吞策略异常，策略未知在上传前中止；required 下绑定缺失（`attachment_binding_missing`）与视频主/缩略图 partial seal（`attachment_partial_seal`）也已上传前失败（`imboyapp@2aa76a09`）；对象存储 Canary 攻击复测待授权 |
-| E2EE-2026-011 | P1 | 备份刻意不含 Olm account/session/TOFU pin，故不恢复 Olm 身份连续性或 C2C ratchet 历史；旧导出路径在 Secure Storage 枚举失败时会静默生成 RSA-only 不完整备份；旧导入路径吞掉单条 Megolm 写失败后仍报告整体成功 | REGRESSION_PASS；已保持“不克隆 ratchet”边界，备份仅含 legacy RSA 与 Megolm inbound，排除 Olm/TOFU；秘密清单不可读时导出 fail-closed，Megolm 写入失败时导入 fail-closed 且日志仅保留异常类型，成功文案限定为备份内成功写入的会话；Secure Storage 无跨条目事务，失败前已完成的幂等写入可能保留并由重试覆盖；真实新设备身份变更告警、C2C 不可恢复和 C2G 已备份 session 恢复待攻击复测 |
-| E2EE-2026-012 | P1 | 新成员/重入群历史访问策略未定义；`/msg/history` 与批量 `sync` 都仅校验当前 active membership 后读取整个群归档，成员记录没有稳定的本次入群边界 | ROOT_CAUSE_CONFIRMED；需产品拍板首次加入、退出/移除后重入、同账号新设备三类历史策略，再为两个归档入口实现同一 join boundary 并完成生命周期复测；已离群前取得的明文、密文和密钥无法远程追回 |
-| E2EE-2026-013 | P2 | 规范声明 Signed Capabilities；客户端只有 `DeviceManifest`/协商/HWM 模型与单测，未进入身份上传、设备查询或发送链，服务端仅有未接线 schema 列 | REGRESSION_PASS；采取降级声明路径：规范 §8.3（Signed Capabilities）与 §8.2（HWM gate）均标注「未实现/未接线」，注明生产降级防护实态为固定套件选择（C2C=Olm/C2G=Megolm，运行时不协商降级）；业务安全简报两处 HWM 活跃声明同步更正；grep 复核全仓无其他活跃声明（`guides/e2ee/v2/00-freeze-gate.md` 为设计期治理文档，描述未启动编码的 v2 设计意图，保留原状）；`capability_guard`/`capability_negotiator`/`device_manifest` 零生产调用方已核实；签名链路补齐复测在本年度产品定位（不做 E2EE 深水区）下不排期，机制保留为 backlog |
-| E2EE-2026-014 | P2 | debug 路径可记录完整 WS/解密后 Conversation payload，解析异常文本也可携带输入片段 | REGRESSION_PASS；已移除完整 WS 开关并将消息/会话/离线/S2C/解密日志收窄为非敏感元数据和异常类型；group_session/olm_session/chat_network 残留的完整异常/stackTrace/库错误原文也已收窄为 runtimeType + 稳定错误码，toast 兜底改稳定文案（`imboyapp@8d655ca7`）；e2ee_service 最后四处 `${e.runtimeType}: $e` 已同口径收窄（`imboyapp@0532d1bc`），客户端日志边界完全闭环；真实 Canary 日志扫描待授权 |
+| E2EE-2026-001 | P0 | `group_member_repo:find/3` 与成员列表未过滤 `status=1`；停用行被群消息、群密钥、附件和多类群 ACL 当成活跃成员 | REGRESSION_PASS（当前 Base 重验 2026-09-09：后端组 32 PASS/0 FAIL——group_member_repo 21 + group_member_ds 8 + workspace_subset 3，scratch DB）；共享查询和列表已限定 active，显式重入改为原子恢复；移除成员攻击复测待授权 |
+| E2EE-2026-002 | P0 | 工作区移除只停用下属群记录，未逐群发 leave、清缓存或触发 session stale | REGRESSION_PASS（当前 Base 重验 2026-09-09：后端组 34 PASS/0 FAIL——workspace_logic 29 + group_member_logic_event 2 + group_event_handler 3）；事务提交后已逐群清缓存并发布持久 leave 通知；工作区移除与旧 session 攻击复测待授权 |
+| E2EE-2026-003 | P0 | 群设备密钥强刷失败/为空时复用最长 30 分钟旧缓存 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter `e2ee_service_test` 11/11 PASS/0 FAIL）；强刷空结果覆盖旧缓存，最终异常清空整组缓存并抛出；旧设备/旧 session 攻击复测待授权 |
+| E2EE-2026-004 | P1 | C2G history 仅构造 `c2g:<gid>`，不校验当前活跃成员 | REGRESSION_PASS（当前 Base 重验 2026-09-09：后端组 23 PASS/0 FAIL——messaging_logic 12 + msg_handler 11）；共享 history 入口已要求当前 active 成员并在归档查询前拒绝；前成员 API 攻击复测待授权；012 join boundary 未决前 history ACL 仅到 boolean 成员级 |
+| E2EE-2026-005 | P1 | 客户端在 PFv3 认证、解密、持久化前 ACK；实时与离线两条路径同源 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 32 PASS/0 FAIL——inbound_ack_ordering 2 + message_ack_flow_integration 24 + websocket_server_ack 6）；WS 不再提前 ACK，内容/action/room key 均在处理成功后确认；离线业务 `msg_id` 归一化且 HTTP ACK 拒绝/异常 fail-closed；真实离线、畸形帧和重投攻击复测待授权 |
+| E2EE-2026-006 | P1 | PFv3 解密失败未形成有界、可重启恢复的密文状态；Olm ratchet 已提交而消息明文尚未提交时存在崩溃丢信窗口 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 23 PASS/0 FAIL——outbox_crash_recovery 11 + outbox_fail_closed 4 + decrypt_on_read_v3_gap 5 + outbox_read_side_wiring 3）；SQLCipher 先暂存最多 512 条/单帧 256 KiB，ratchet/dedupe/digest 与可恢复解密结果原子提交；真实 App kill/restart 与磁盘故障复测待授权 |
+| E2EE-2026-007 | P1 | C2G 无持久 replay 状态；C2C `dedupeAndPersistSession` 捕获全部异常并返回 duplicate，把存储事故与重放混同 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 6 PASS/0 FAIL——replay_counter_epoch 4 + room_key_olm_roundtrip 1/1 + mutation_matrix 1）；C2C/C2G 共用持久 message-id 与受保护信封 digest，存储异常单独抛出；真实重放与乱序攻击复测待授权 |
+| E2EE-2026-008 | P1 | Safety Number 入口把 legacy RSA key/kid 当 Olm identity/device ID，本端 device ID 为空，且本地“已验证”未绑定当前号码 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 37 PASS/0 FAIL——safety_number_service 3 + threat_model_guard 24 + safety_number 9 + safety_number_page_widget 1）；双方均取活跃 Olm device ID，identity 走本地权威或签名+TOFU 路径；双真机换钥/增删设备攻击复测待授权 |
+| E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 89 PASS/0 FAIL——db_migration_encryption 13 + 迁移/降级/快照矩阵 76；另有 2 个 integration_test 设备文件 ENV_BLOCKED_ATTEMPTED，见 §1.1）；加密平台已有库只用当前 key 验证，失败保留原库并终止；旧明文库、WAL/SHM、历史 artifact 和真实 Keystore 仍待授权取证，不得升级为完整 `ATTACK_RETEST_PASS` |
+| E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 63 PASS/0 FAIL——attachment_seal_wiring 25 + thumb_seal 7 + upload_sealed 11 + seal_policy 8 + attachment_binding 12）；策略未知在上传前中止；required 下绑定缺失与 partial seal 上传前失败；对象存储 Canary 攻击复测待授权；AI C2C 明文附件是设计内例外（见 §5.5） |
+| E2EE-2026-011 | P1 | 备份刻意不含 Olm account/session/TOFU pin，故不恢复 Olm 身份连续性或 C2C ratchet 历史；旧导出路径在 Secure Storage 枚举失败时会静默生成 RSA-only 不完整备份；旧导入路径吞掉单条 Megolm 写失败后仍报告整体成功 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 52 PASS/0 FAIL/1 declared SKIP——backup_restore 14 + local_backup_boundary 14 + server_backup_service 6（REV-1 2026-09-09 补跑实测 6/6：Wave-2 批次曾漏跑该文件，按 R1-C1 以同口径单文件串行补跑计入，日志见 evidence `flutter-tests/45-e2ee_server_backup_service_test.log`）+ megolm_backup_section 11 + import_widget 7 + backup_api 0 PASS/1 SKIP（TEST_PHONE 未配置，测试自带门限）；枚举合计 14+14+6+11+7+0=52 PASS + 1 SKIP；破坏性恢复 harness 文件在冻结 Base 缺失记 BLOCKED_DRIFT，其声明行为仅 1 SKIP，不影响 PASS 面）；备份仅含 legacy RSA 与 Megolm inbound，排除 Olm/TOFU；真实换机/重装恢复待攻击复测 |
+| E2EE-2026-012 | P1 | 新成员/重入群历史访问策略未定义；`/msg/history` 与批量 `sync` 都仅校验当前 active membership 后读取整个群归档，成员记录没有稳定的本次入群边界 | `ROOT_CAUSE_CONFIRMED / BLOCKED_DECISION`（当前 Base 重验 2026-09-09 成立：`group_ds:is_member` boolean + 整个 `c2g:<gid>` 读取；`group_member` 无 join boundary/generation；staging 无 conv_seq、archive 阶段才 `next_conv_seq/1`——锚点 `messaging_logic.erl`/`msg_c2s_logic.erl`/`msg_archive_repo.erl`/`msg_store_worker.erl`）；需用户拍板 F/R/D/M 四项策略（选项与原子 cutover 契约见决策包）；已离群前取得的明文、密文和密钥无法远程追回 |
+| E2EE-2026-013 | P2 | 规范声明 Signed Capabilities；客户端只有 `DeviceManifest`/协商/HWM 模型与单测，未进入身份上传、设备查询或发送链，服务端仅有未接线 schema 列 | REGRESSION_PASS（仅声明级；当前 Base 重验 2026-09-09：Flutter 三件套 40/40 PASS——device_manifest 16 + capability_negotiator 13 + capability_guard 11，其中 negotiator/manifest 前两组依赖 vodozemac 原生测试库，环境补齐后全绿；**生产 wiring 静态扫描重验=0 调用方**：CapabilityGuard 无生产 caller，CapabilityNegotiator 仅注释+静态表引用，verifyDeviceManifest 无任何 lib 调用方、DeviceManifest 类型仅存在于 capability 三件套内部）；规范 §8.2/§8.3 维持「未实现/未接线」降级声明，生产降级防护实态为固定套件选择；capability 模型/单测存在不暗示生产接线，本 finding 不构成 MITM/降级防护证据 |
+| E2EE-2026-014 | P2 | debug 路径可记录完整 WS/解密后 Conversation payload，解析异常文本也可携带输入片段 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 68 PASS/0 FAIL——plain_text_log 1 + logging_privacy_guard 2 + olm_wrap_failed_message 8 + e2ee_health_check 21 + e2ee_service 11（同属 003）+ crypto_audit_log 12 + log_redactor 13）；消息链路日志已收窄为非敏感元数据和异常类型；真实 Canary 日志扫描待授权 |
 
-安全边界 finding 未完成对应攻击复测不得 CLOSED。
+安全边界 finding 未完成对应攻击复测不得 CLOSED。上表所有 REGRESSION_PASS 均为当前 Base C 级重签；升级 `ATTACK_RETEST_PASS` 需另行授权的 A 级复测。
+
+### 5.5 AI 明文域与未解决 HIGH blocker LT02-SEC-01
+
+真人 E2EE（C2C Olm/PFv3、C2G Megolm）与 AI 助手 C2C 明文处理是两个不同的可见性域，不得互相覆盖：
+
+- **AI 助手 C2C 是产品设计的非 E2EE 通道**：客户端看到 `peerAccountType=1` 时在消息/附件离开设备前跳过封装；服务端 staging/archive 可见正文，对象存储可见未封装附件，LLM provider 可见送入 prompt 的正文与所选上下文（留存取决于 provider/部署配置，未验证）。该域必须在 UI/隐私/合规文档中显式披露，禁止用「所有消息」「全链」「唯一明文路径」等绝对措辞。
+- **LT02-SEC-01（HIGH/OPEN，release NO-GO 独立原因）**：`peerAccountType=1` 当前只是来自 `user/show` 并持久化到本地 contact 的普通标记（当前 Base 锚点 `imboyapp/lib/service/e2ee_service.dart:176`），没有密码学签名、设备身份绑定或发送前用户确认。恶意服务端响应、本地 DB 污染或错误同步可把真人标成 agent，使真人消息和附件在离开设备前跳过 E2EE；后端 `ai_agent_ds:is_agent(ToId)` 即使拒绝落库也无法撤回 transport/server 已见明文。关闭条件：发送前不可伪造的 agent 身份绑定、用户显式确认，或用户正式批准缩小威胁模型（且只产生 RISK_ACCEPTED，不关闭 HIGH）。`account_type` 缺失/为 0 时客户端默认走真人加密路径并可能 fail-closed 拒发，不得改成静默明文降级。
 
 ## 6. 声明仲裁与文档漂移
 
@@ -112,12 +150,20 @@
 | 服务端零知识 | B 级源码/schema 支持；实际 DB/日志/备份/历史窗口未查，UNKNOWN |
 | 私钥保护、Replay、MITM、多设备 | SQLCipher 无密码降级与新明文备份路径已修复并通过 C 级回归，但历史 artifact 和 Android/iOS 真机提取抗性未复测；C2C/C2G 已加入持久 message-id 与受保护信封 digest 防重，但真实 replay/乱序仍缺 A 级证据；Safety Number 入口本地回归通过，但双真机换钥/设备增删及“聚合号码验证只上报首个设备”边界未完成 A 级验证；多设备整体仍为 PARTIAL |
 | 备份/恢复 | 当前加密包可恢复 legacy RSA 当前私钥与已纳入的 Megolm inbound；不恢复 Olm account/session/TOFU pin，不应被宣传为 C2C 身份或棘轮恢复。秘密清单枚举失败和任一 Megolm 写入失败均已 fail-closed，成功文案不再承诺完整群历史；Secure Storage 无跨条目事务，失败前已写 session 依赖幂等重试收敛；真实换机恢复、恢复中断与 Safety Number 变化告警尚无 A 级证据 |
-| Signed Capabilities | 仅模型与单测存在；当前客户端/服务端/发送链未形成签名能力声明协议，不得作为 MITM 或降级防护证据 |
+| Signed Capabilities | 仅模型与单测存在（当前 Base 重验 40/40 PASS 但生产调用方=0）；当前客户端/服务端/发送链未形成签名能力声明协议，不得作为 MITM 或降级防护证据 |
+| AI 助手明文通道 | 产品设计的非 E2EE 域（§5.5）；真人 E2EE 声明不得覆盖该域，「服务端零知识」只对真人 C2C/C2G 的 required/compliance 路径成立；`peerAccountType=1` 授权缺信任锚是 LT02-SEC-01 HIGH/OPEN |
 
 漂移：旧红队 GO 早于当前 PFv3 群协议；旧审计声称 P0=0/P1=0 和全部降级 fail-closed；Safety Number 文档声称全设备聚合；Signed Capabilities 规范声明超前于真实产品链；本地备份注释曾声称“服务器不存储”而同一客户端已有云端密文备份；部分规范仍描述旧 RSA/vodozemac；销售默认值不能证明运行配置。当前架构声明不使用 Redis，除非授权目标额外引入，否则 Redis 项为 N/A。
 
 ## 7. 运行缺口与发布门
 
-本轮授权仅覆盖一台物理 Android 9 真机上的 SQLCipher 随机临时库测试，不含账号、后端、现有 App 数据、真实 Secure Storage/Keystore 提取、旧库或历史 artifact。除此之外，下列项仍为 UNKNOWN/BLOCKED：两用户 C2C、四用户 C2G 真机；Canary 搜索 Transport/PG/队列/日志/备份/对象存储/Push；篡改、MITM、replay、乱序、重连、重启；identity/prekey/session/设备撤销；群加入/退出/移除/重入；Android Keystore、iOS Keychain、附件临时文件和缓存。现有账号、设备、端口、进程或生产地址均不构成默认授权。
+历史授权仅覆盖一台物理 Android 9 真机上的 SQLCipher 随机临时库测试（阶段 A，D/superseded），不含账号、后端、现有 App 数据、真实 Secure Storage/Keystore 提取、旧库或历史 artifact。当前 Base（2026-09-09 重验）授权范围为：隔离 worktree 内 C 级单元/协议测试 + 静态源码对账，专属 scratch PostgreSQL，离线无设备。除此之外，下列项仍为 UNKNOWN/BLOCKED：两用户 C2C、四用户 C2G 真机；Canary 搜索 Transport/PG/队列/日志/备份/对象存储/Push；篡改、MITM、replay、乱序、重连、重启；identity/prekey/session/设备撤销；群加入/退出/移除/重入；Android Keystore、iOS Keychain、附件临时文件和缓存。现有账号、设备、端口、进程或生产地址均不构成默认授权。
 
-当前发布姿态：**NO-GO**。原因是三个 P0 均未完成攻击复测、P1/P2 未解决、当前后端门禁非全绿、A 级证据缺失。最终固定 verdict 仅在修复、回归和授权后的攻击复测完成后写入；此前本文件不提供任何最终发布 PASS。
+当前发布姿态：**NO-GO**。独立原因（各自成立即维持 NO-GO）：
+
+1. `LT02-SEC-01` HIGH/OPEN 未解决（§5.5，等待 AI-ID 决策与 Task 4）。
+2. `E2EE-2026-012` 群历史策略 BLOCKED_DECISION（等待 F/R/D/M 四项选择，见决策包）。
+3. 全部 P0/P1 finding 仅有 C 级 REGRESSION_PASS，A 级攻击复测为 0。
+4. 阶段 A 真机与历史 B 级证据产生于旧 SHA，当前 Base 未重签。
+
+最终固定 verdict 仅在修复、回归和授权后的攻击复测完成后写入；此前本文件不提供任何最终发布 PASS。当前 Base C 级重验（后端 124/0、Flutter 410/0/1、analyze 零问题）只是回归底座，不得单独解读为发布放行。

@@ -1,17 +1,19 @@
 # imboy E2EE 可见性矩阵（E2EE Visibility Matrix）
 
-> 版本：v1.0 | 最后更新：2026-09-07
+> 版本：v1.1（2026-09-09 当前事实对账修订）| 原版：v1.0 / 2026-09-07
 > 任务：海外合规计划 E-01 — E2EE Safety Contract（"Document and test what server, admin, push, logs and report flows can see"）
-> 关联文档：[e2ee-policy.md](./e2ee-policy.md)（e2ee_mode 四态与 compliance 托管披露）、[IMBoy A-01 Privileged Message Access Hardening Checklist.md](./IMBoy%20A-01%20Privileged%20Message%20Access%20Hardening%20Checklist.md)（管理端内容访问工单制）、`docs/security/audits/e2ee-2026-09-07/`（红队审计 v2.0）
+> 关联文档：[e2ee-policy.md](./e2ee-policy.md)（e2ee_mode 四态与 compliance 托管披露）、[IMBoy A-01 Privileged Message Access Hardening Checklist.md](./IMBoy%20A-01%20Privileged%20Message%20Access%20Hardening%20Checklist.md)（管理端内容访问工单制）、`docs/security/audits/e2ee-2026-09-07/`（红队审计与当前 Base C 级重验）
 > 适用：imboy 后端 + imboyadmin + imboyapp
+> 当前发布姿态：**NO-GO**（LT02-SEC-01 HIGH/OPEN + E2EE-2026-012 待决策 + A 级证据为 0；当前 Base C 级重验：后端 9 模块 124 PASS/0 FAIL、Flutter 45 文件 410 PASS/0 FAIL/1 SKIP）
 
 ---
 
 ## 0. 结论（TL;DR）
 
-- **`e2ee_mode=required`/`compliance`（或 `storage_mode=*_e2ee`）部署下，服务器任何组件（持久化、管理端、日志、推送、AI、审核、全文检索）能接触到的消息内容只有密文。** 服务端没有用户私钥、没有 compliance 私钥（compliance 私钥只在审计方本地，见 e2ee-policy.md §3.3），因此**不存在**任何"服务端解密后转发"的通道。
-- 明文进入服务端唯一合法路径是**举报面**（R-01）：举报人**显式勾选同意**（`e2ee_consent=true`）后提交的**最小明文摘录**（≤500 字符）+ 哈希/上下文元数据。无同意时服务端拒绝摘录（fail-closed）。
-- AI（平台 agent）与自动审核（moderation）**默认不接收 E2EE 明文**：agent 读到的群消息 payload 是密文（无法理解，不产生有效回复）；审核面只接入公开内容（频道帖子/动态），C2C/C2G 绝不进入审核管道。
+- **`e2ee_mode=required`/`compliance`（或 `storage_mode=*_e2ee`）部署下，真人 C2C/C2G 消息对服务器任何组件（持久化、管理端、日志、推送、审核、全文检索）只呈现密文。** 服务端没有用户私钥、没有 compliance 私钥（compliance 私钥只在审计方本地，见 e2ee-policy.md §3.3），因此**不存在**"服务端解密后转发"的通道。（AI 通道例外见第 3 条；当前 Base 有 C 级契约回归支撑，真实 DB/日志/备份 Canary 扫描仍待授权。）
+- 明文进入服务端的举报面（R-01）：举报人**显式勾选同意**（`e2ee_consent=true`）后提交的**最小明文摘录**（≤500 字符）+ 哈希/上下文元数据。无同意时服务端拒绝摘录（fail-closed）。
+- **AI 助手分两个面**：① 平台 agent 作为**群成员**读到的 C2G payload 与普通成员客户端相同——required 下是**密文**，无法理解，不产生有效回复；agent 的群内明文回复同样要过 C2G 加密门（required 下拒发而非降级）。② **人 ↔ AI 助手的 C2C 会话是设计内明文处理通道**：server/staging/archive 可见正文，对象存储可见未封装附件，LLM provider 可见送入 prompt 的正文与所选上下文——该域不属于 E2EE 声明，部署方必须向最终用户披露。自动审核（moderation）只接入公开内容（频道帖子/动态），C2C/C2G 私信路径绝不进入审核管道。
+- **未解决 HIGH 风险 LT02-SEC-01**：AI C2C 明文豁免的触发标记 `peerAccountType=1` 当前来自普通 `user/show` 响应并持久化到本地 contact，无签名、无设备身份绑定、无发送前用户确认；恶意响应/本地污染可把真人标成 AI 导致发送前明文暴露（当前 Base 锚点 `imboyapp/lib/service/e2ee_service.dart:176`）。标记缺失/为 0 时默认走真人加密路径并可能 fail-closed 拒发，不允许静默明文降级。
 
 ---
 
@@ -41,13 +43,13 @@
 | **日志（lager）** | 消息链路日志只有 ID/状态元数据；release 与 eunit 构建均未定义 `debug` 宏，`?DEBUG_LOG` 打点恒零输出；任何经 `elib_log` 的内容先过 `log_redact`（键+值双层脱敏，fail-closed 落 `[REDACT_ERROR]`） | V-02 sink 收敛 | `include/log.hrl`、`elib_log:safe_log/*`、`log_redact` | `e2ee_safety_contract_tests`（日志哨兵两例）、`log_redact_tests` |
 | **推送** | Title=发送者昵称（元数据）；Body=**静态类型占位**（text→"发来一条消息"、e2ee→"发来一条加密消息"、image→"[图片]" 等）。`maybe_push_for_c2c/4` 的 payload 参数显式忽略（`_Payload`），**永不携带消息内容或密文** | 推送零知识不变量 | `push_notification_logic:get_push_body/1`、`maybe_push_for_c2c/4` | `push_notification_logic_tests:e2ee_push_body_never_leaks_ciphertext` / `e2ee_v2_push_body_generic` / `e2ee_c2g_push_body_never_leaks` |
 | **举报（report）** | 仅举报人**显式同意**（`e2ee_consent=true`）时接受 `content_excerpt`（≤500 字符最小摘录）+ 哈希/上下文元数据；服务端不解密、不索取会话密钥、不读无关消息；无同意带摘录 → 拒绝 | R-01 显式披露 | `report_logic:create_message_visible/7`（`e2ee_consent` 门）、`finalize_evidence/4` | `report_logic_message_tests` |
-| **AI / 平台 agent** | agent 作为群成员读到的 payload 与普通成员客户端相同——required 下是**密文**，无法理解，不产生有效回复；agent 主动回复是明文 text，但**同样要过 C2G 加密门**——required 下被拒发（fail-closed，拒绝而非降级） | 计划红线"AI/moderation cannot receive E2EE plaintext by default" | `ai_agent_group_reply.erl`、`ai_agent_proactive:send_text` 自带同款门 | `ai_agent_reply_tests`（required 拒发而非降级）、`ai_agent_proactive_tests` |
+| **AI / 平台 agent** | 两个面：①群成员面——agent 读到的 C2G payload 与普通成员客户端相同，required 下是**密文**，无法理解；agent 主动回复是明文 text，但**同样要过 C2G 加密门**，required 下被拒发（fail-closed，拒绝而非降级）。②人↔AI 助手 C2C 会话——**设计内明文通道**：server/staging/archive 可见正文与元数据，对象存储可见未封装附件，LLM provider 可见送入 prompt 的正文/系统提示/所选上下文（留存取决于 provider 配置，未验证） | 计划红线"AI/moderation cannot receive E2EE plaintext by default"适用于群成员面；C2C AI 面为披露例外 | `ai_agent_group_reply.erl`、`ai_agent_proactive:send_text` 自带同款门（群面）；客户端 `e2ee_service.dart` `peerAccountType=1` 豁免（C2C AI 面，LT02-SEC-01 信任缺口待解） | `ai_agent_reply_tests`（required 拒发而非降级）、`ai_agent_proactive_tests` |
 | **自动审核（moderation）** | 只接入**公开面**：`channel_message` / `moment_post` / `profile_field`（昵称/简介/职业/学校/兴趣等文本资料，R-03.1）三个 surface；决定性关键词规则、无 AI provider；**C2C/C2G 私信路径绝不接入本模块** | surface 白名单 | `moderation_policy`（模块头契约注释）、`user_logic:profile_review_gate/3` | R-03 审核 queue 测试、`user_logic_tests`（R-03.1 组） |
 | **导出（P-01）** | 用户导出 categories 明确**排除** messages/attachments——E2EE 消息不进入服务端导出载荷 | scope 声明 | `user_export_logic:scope/0` | `user_export_logic_tests` |
 
 ---
 
-## 2. 明文进入服务端的唯一合法路径（举报面）
+## 2. 真人 E2EE 域内用户主动披露的明文路径（举报面）
 
 ```
 客户端（举报人设备，持有会话私钥，本地解密）
@@ -88,10 +90,13 @@ POST /api/v1/report/message
 ## 4. 边界与已知局限（如实声明）
 
 1. **optional/disabled 部署**：消息明文过服务端是**设计内行为**（部署方选择），本矩阵只对 required/compliance/`storage_mode=*_e2ee` 声明零明文。
-2. **TOFU 首钥局限**：compliance 公钥 TOFU 锚定只防"已固定后的服务端偷换"，首次接触的恶意服务端仍可注入首钥（e2ee-policy.md §3.3，根治依赖 Key Transparency，台账 IMB-2026-007）。
-3. **客户端侧行为**不在服务端契约内：客户端本地日志/iPrint 已由 V-02 口径约束（`kDebugMode` only），Sentry 事件经 LogRedactor 清洗、面包屑整体禁用。
-4. **debug 构建日志**：定义 `debug` 宏的开发构建中 `?DEBUG_LOG` 会输出消息 Data（含当时 payload——required 下即密文）；release/eunit 构建零输出。开发机构建不面向生产数据。
-5. **e2ee_mode 四态语义**、**compliance 托管披露**（依法留存通道破坏纯端到端语义）见 [e2ee-policy.md](./e2ee-policy.md)，本矩阵不重复。
+2. **人↔AI 助手 C2C 会话**：设计内明文通道（§0 第 3 条②），不受本矩阵的真人 E2EE 契约覆盖；其触发标记 `peerAccountType=1` 的信任缺口是未解决 HIGH 风险 LT02-SEC-01（§0 第 4 条），修复属 Task 4 / AI-ID 决策。
+3. **TOFU 首钥局限**：compliance 公钥 TOFU 锚定只防"已固定后的服务端偷换"，首次接触的恶意服务端仍可注入首钥（e2ee-policy.md §3.3，根治依赖 Key Transparency，台账 IMB-2026-007）。
+4. **客户端侧行为**不在服务端契约内：客户端本地日志/iPrint 已由 V-02 口径约束（`kDebugMode` only），Sentry 事件经 LogRedactor 清洗、面包屑整体禁用。
+5. **debug 构建日志**：定义 `debug` 宏的开发构建中 `?DEBUG_LOG` 会输出消息 Data（含当时 payload——required 下即密文）；release/eunit 构建零输出。开发机构建不面向生产数据。
+6. **C2G 群历史边界（E2EE-2026-012）**：`/msg/history` 与批量 sync 目前只按当前 active membership 开放整个群归档，缺不可变 join boundary；新成员/重入/新设备历史策略待 F/R/D/M 产品决策（决策包 `docs/planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md`），决策与实现完成前该面为已知安全设计缺口。
+7. **证据等级**：本矩阵契约行的当前支撑为当前 Base C 级回归（后端 124 PASS/0 FAIL、Flutter 410 PASS/0 FAIL/1 SKIP、2026-09-09）；真实 DB/日志/备份/Push/对象存储的 Canary 扫描（A 级）为 0，全部待授权。
+8. **e2ee_mode 四态语义**、**compliance 托管披露**（依法留存通道破坏纯端到端语义）见 [e2ee-policy.md](./e2ee-policy.md)，本矩阵不重复。
 
 ## 5. 参考
 

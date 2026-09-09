@@ -1,7 +1,15 @@
 # IMBoy E2EE 攻击矩阵
 
-日期：2026-09-07  
-状态：静态/协议检查可本地执行；本轮仅授权一台物理 Android 9 真机上的 SQLCipher 随机临时库测试且已通过；账号、消息、群、真实 App 数据、数据查询、抓包、篡改、密钥和外部服务操作仍为 BLOCKED。Findings 与发布结论见 [`E2EE_AUDIT_REPORT.md`](./E2EE_AUDIT_REPORT.md)。
+原矩阵日期：2026-09-07
+状态：静态/协议检查可本地执行；阶段 A 仅授权一台物理 Android 9 真机上的 SQLCipher 随机临时库测试且已通过（该轮与全部旧计数为 D/superseded）；**当前 Base C 级重验（2026-09-09，LT-02-C，REV-1 同日按 R1-C1 补跑 011 组遗漏文件）已完成**：后端 9 EUnit 模块 124 PASS/0 FAIL（专属 scratch PG）、Flutter finding 组 45 文件 410 PASS/0 FAIL/1 declared SKIP、scoped analyze 零问题——重验只支撑 C 级 REGRESSION_PASS，不改变任何 A 级行的 BLOCKED 状态。账号、消息、群、真实 App 数据、数据查询、抓包、篡改、密钥和外部服务操作仍为 BLOCKED。Findings 与发布结论见 [`E2EE_AUDIT_REPORT.md`](./E2EE_AUDIT_REPORT.md)，群历史决策见 [`E2EE-2026-012 决策包`](../../../planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md)。
+
+当前 Base 冻结基线（2026-09-09 重验绑定，跨 SHA 后本矩阵 C 级重签结果失效）：
+
+```text
+imboy      63747f8d7a0f9bc27bce4c540549a032141fbc3a
+imboyapp   0152560aa741b69411e484cc84c1c220f565b2af
+imboyadmin 8c2b8615c292d82257886ad51445db87c366d719
+```
 
 本文件不得保存账号口令、token、私钥、session secret、真实消息、PII、完整敏感 payload、真实设备 ID 或可复用 Canary。
 
@@ -22,7 +30,9 @@
 
 不得复用历史账号、口令、token、设备、端口或地址；连接中的设备和监听进程不代表授权；不得操作生产、共享或第三方环境；模拟器不构成 Flutter 安全验收。
 
-本轮已授权记录（脱敏）：物理 Android 9 真机；仅安装并运行测试包，只在应用随机临时目录创建、读取、错钥打开并删除本轮 SQLCipher 测试库；不登录账号、不连接后端、不读取或修改现有 IMBoy App 数据。设备序列号和 Canary 明文不入库。
+本轮已授权记录（脱敏）：物理 Android 9 真机；仅安装并运行测试包，只在应用随机临时目录创建、读取、错钥打开并删除本轮 SQLCipher 测试库；不登录账号、不连接后端、不读取或修改现有 IMBoy App 数据。设备序列号和 Canary 明文不入库。（该轮为阶段 A 历史授权，产生于旧 SHA；当前 Base 未重签。）
+
+当前 Base 重验已授权记录（2026-09-09，LT-02-C）：三仓冻结 SHA 的隔离 detached worktree；C 级 EUnit/Flutter 单测、scoped analyze 与静态源码对账；任务专属 scratch PostgreSQL（marker DB 用后即删，residual=0）；Flutter 侧离线依赖、无真机、无模拟器、无账号、无真实网络出访。2 个 integration_test 设备文件尝试后记 ENV_BLOCKED_ATTEMPTED，未执行设备分支。
 
 获授权后，每次运行临时生成唯一 Canary，仅在证据中保留 SHA-256 和脱敏前缀：
 
@@ -50,7 +60,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | ID | 攻击/流程 | PASS 条件 | 目标等级 | 当前状态 |
 |---|---|---|---|---|
 | C2G-01 | A/B/C/D 四用户真机收发 | 每个授权设备获得自己的合法 room key 并解出一致消息 | A | BLOCKED |
-| C2G-02 | 新成员/重入群 | rotation 和历史访问符合已批准策略 | A | BLOCKED / SECURITY DESIGN GAP；012 已 ROOT_CAUSE_CONFIRMED：history 与批量 sync 只按当前 active membership 开放整个群归档，现有成员行无稳定的本次入群边界；首次加入、退出/移除后重入、同账号新设备策略待人工拍板 |
+| C2G-02 | 新成员/重入群 | rotation 和历史访问符合已批准策略 | A | BLOCKED / SECURITY DESIGN GAP；012 已 ROOT_CAUSE_CONFIRMED（当前 Base 重验 2026-09-09 成立）：history 与批量 sync 只按当前 active membership 开放整个群归档，现有成员行无稳定的本次入群边界；首次加入、退出/移除后重入、同账号新设备策略待人工拍板（F/R/D/M，见决策包） |
 | C2G-03 | 主动退出/管理员移除 | 旧成员不能取新 key、发消息、读 history/附件或解新密文 | A | BLOCKED；001/003/004 已 REGRESSION_PASS，真实前成员 API、附件与旧 session 攻击复测待授权 |
 | C2G-04 | 工作区级移除 | 所有下属群撤销、缓存失效，并在下一消息前 rotate | A | BLOCKED；002 已 REGRESSION_PASS，攻击复测待授权 |
 | C2G-05 | 设备增加/撤销/离线恢复 | key 集合只覆盖当前授权设备，不恢复被撤销访问 | A | BLOCKED；003 已 REGRESSION_PASS，强刷空结果/异常本地 fail-closed，真实设备复测待授权 |
@@ -67,8 +77,8 @@ printf '%s' "$CANARY" | shasum -a 256
 | X-02 | 附件 metadata/本地文件 | 披露文件名、MIME、URL、size；temp 清理；长期明文缓存有明确策略 | BLOCKED |
 | X-03 | Push | Provider/Gateway 无消息明文；记录昵称/群名/类型 metadata | BLOCKED |
 | X-04 | Android/iOS 密钥保护 | Keystore/Keychain accessibility、备份迁移与提取抗性符合声明 | B PARTIAL；A BLOCKED |
-| X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | C PASS / Android 限定范围 B PASS；物理 Android 9 真机使用每轮 `Random.secure()` Canary，8/8 PASS：错钥拒绝、原文件字节不变、正确密钥及 inbox 解密结果可重开恢复、数据库文件字节无 Canary、完成态/replay 分类正确、未生成新 `.plain.bak`/`.pre_encrypt.bak`，临时目录已清理且测试包已卸载。Secure Storage 为 mock；旧明文库、WAL/SHM、历史备份 artifact 与真实 Keystore 未覆盖，009 保持 REGRESSION_PASS |
-| X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS，消息链路日志脱敏有 C 级回归；011 备份包、收集失败和恢复写失败边界有 57/57 C 级回归，备份导入 widget 的 cloud probe 已改为本地注入并 7/7 PASS；破坏性恢复 harness 默认门只得到 SKIP，仍缺专用 App 容器、受控账号/后端和不会误删其他版本的清理所有权，未执行 destructive 分支；真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
+| X-05 | SQLCipher/文件系统 | 不存在无密码回退、明文备份或泄漏 side file | C PASS（当前 Base 重验 2026-09-09：主机侧 89 PASS/0 FAIL）/ 阶段 A Android 限定范围 B PASS（旧 SHA，D/superseded）；物理 Android 9 真机使用每轮 `Random.secure()` Canary，8/8 PASS：错钥拒绝、原文件字节不变、正确密钥及 inbox 解密结果可重开恢复、数据库文件字节无 Canary、完成态/replay 分类正确、未生成新 `.plain.bak`/`.pre_encrypt.bak`，临时目录已清理且测试包已卸载（历史轮次描述保留）。Secure Storage 为 mock；旧明文库、WAL/SHM、历史备份 artifact 与真实 Keystore 未覆盖，009 保持 REGRESSION_PASS |
+| X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS（当前 Base 重验 2026-09-09：日志边界组 68 PASS/0 FAIL）；011 备份边界当前 Base 重验 52 PASS/1 declared SKIP（REV-1 补跑 server_backup_service 6/6 后计入），破坏性恢复 harness（文件缺失记 BLOCKED_DRIFT）在专用测试包、隔离后端/数据库、受控账号/设备和资源级清理所有权闭环前不得执行或作为发布证据；真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
 | X-07 | Compliance | 明确私钥保管方、授权解密边界、轮换确认和 zero-knowledge 例外 | BLOCKED |
 | X-08 | Redis | 仅目标部署实际使用 Redis 时检查 | 当前声明架构 N/A |
 
