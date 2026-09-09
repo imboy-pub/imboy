@@ -171,3 +171,11 @@
 | wiki | `4491696` docs | Configuration ecron 键名约束与验活 |
 
 全程 pathspec 提交（不触碰暂存区其他内容）、`-s` DCO、lefthook 三门（gitleaks/erlfmt/conventional）全绿；**未 push**。imboy 剩余 staged/untracked 恰为用户自有文件（planning×2/iot/idle-closure/temp_probe2 + 2 调研文档）。
+
+### R14 联调就绪 Runbook 登记（Coordinator；收官审计+联调剧本固化）
+
+| 事件 | 结果 |
+|---|---|
+| R13 提交后完整性审计 | **全绿**：六笔 imboy 提交逐一 `git show --stat` 与提交信息相符、DCO 全签；用户 5 暂存文件仍在 index、2 调研文档仍 untracked、moya 提交 grep 实证不含 moyalogo 资产（2 logo 仍工作区未跟踪）、wiki 干净；final-report/registry 的 SHA 引用与 git log 实际吻合 |
+| 联调就绪 Runbook | 新增 `STEP-17-PREP/integration-runbook.md`：把外部门禁清零后的操作固化为三场景剧本——A 开发版联调（隐私指引先行+Garage+调试覆盖 api_base；闭合矩阵 #1 真登录腿/#17 confirm 真传腿/wx.uploadFile 兼容项）、B 接真实 vision 模型（选型引成本对比、抽帧引 frame-sampling 规格、AI-03 降级回归验收）、C 真实试点（只列合规 §3 阶段二 8 门不执行）；每个外呼点（微信外呼/付费模型/真实数据/试点启动）标注为独立授权点，沿用任务红线 |
+

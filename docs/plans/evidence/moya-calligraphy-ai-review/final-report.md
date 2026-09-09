@@ -41,7 +41,7 @@
 | 14 家长端 | PASS | PARENT-01/02；PARENT-03 BLOCKED_EXTERNAL | STEP-14/ | 真机录制/后台恢复/真实上传 |
 | 15 老师端 | PASS | TEACHER-01/02；TEACHER-03 BLOCKED_EXTERNAL | STEP-15/ | 真机录制/预览/发布 |
 | 16 历史与绑定预留 | PASS | HISTORY/BIND-01/02 | STEP-16/（R6 追加「B 接线完成」节） | 无——HTTP 路由+handler+history_access 第三分支+审计落库接线 R6 全部完成；顺带修复 tx_run 真 bug（epgsql 透传误解致业务原子折叠 db_error） |
-| 17 集成/E2E | **PARTIAL**（本地部分**全闭环**〔R7 boot+R8 契约+R9 附件三门〕） | 契约矩阵 **17 行全部有结论：15 MATCH（含 3 修复后 MATCH）+ 2 NOT_TESTABLE 均为外部条件（wechat 登录/confirm 真传腿需活 Garage）** | STEP-17-PREP/（boot-smoke + **contract-deviations.md** + **smoke-scripts/ 9 文件固化，脱敏自查 0 泄漏**） | 剩余全部外部门禁：微信登录真联调、真机、活 Garage 直传、跨仓联调；**smoke-scripts 纳入联调固定前置** |
+| 17 集成/E2E | **PARTIAL**（本地部分**全闭环**〔R7 boot+R8 契约+R9 附件三门〕） | 契约矩阵 **17 行全部有结论：15 MATCH（含 3 修复后 MATCH）+ 2 NOT_TESTABLE 均为外部条件（wechat 登录/confirm 真传腿需活 Garage）** | STEP-17-PREP/（boot-smoke + **contract-deviations.md** + **smoke-scripts/ 9 文件固化，脱敏自查 0 泄漏** + **integration-runbook.md〔R14〕联调三场景剧本**） | 剩余全部外部门禁：微信登录真联调、真机、活 Garage 直传、跨仓联调；**smoke-scripts+runbook 纳入联调固定前置** |
 | 18 试点包 | PASS | PILOT-PACK/GO-NOGO/METRIC-01 | STEP-18/（7 份材料，当前判定 **NO-GO** 等外部门禁） | 材料需律师复核+用户确认；不得自行启动试点 |
 
 **18 步统计（R6 后）：17 PASS / 1 PARTIAL（17，集成/E2E 依赖外部环境）/ 0 FAIL / 0 BLOCKED（编号未用）**；真机/真实模型/真实试点统一 BLOCKED_EXTERNAL。
@@ -110,6 +110,8 @@
 > ②失败机制定根（抽样）：`-ifdef(TEST)` 守卫的导出（如 msg_store_repo:msg_store_e2ee_to_jsonb/1，源码 13-17 行）在标准 eunit-local 构建的应用 beam 中不存在 → 测试恒 undef——**用户域构建/测试架构问题（存量）**，非教学改动所致；
 > ③**dialyze（PLT 9/5 + 新鲜 ebin）：全仓 320 项发现（PLT 窗口后漂移），教学模块仅 11 项且全部为"子句永不可达"防御性风格类，零类型错误**；
 > ④教学域最终判定：全量 eunit 两轮零回归 + xref 零新增 + dialyzer 零类型错误——**静态/动态门全部支持教学改动无回归**。剩余 80 eunit 失败、xref 两处硬失败、dialyzer 漂移清理均属用户主线域（webhook/adm/plugin/billing 等线），已登记待用户处置。
+>
+> **R14（收官后）联调就绪固化**：R13 提交后完整性审计全绿（六笔逐一对照 stat/DCO、用户文件零混入实证、SHA 登记与 git log 吻合）；新增 `STEP-17-PREP/integration-runbook.md`——外部门禁清零后的三场景联调剧本（A 开发版：隐私指引先行+Garage+`moya.debug.api_base` 调试覆盖，闭合矩阵 #1/#17 与 wx.uploadFile 兼容项；B 真实模型：选型/接线/抽帧/标尺/验收五步，选型依据用户成本对比调研、抽帧依据 frame-sampling 规格；C 真实试点：只列合规 §3 阶段二 8 门不执行）。微信外呼/付费模型/真实数据/试点启动四点标注为独立授权点。
 
 ## 声明
 
