@@ -6,6 +6,16 @@
 %%%   A01 mention → 恰一次 delivery；普通消息零 delivery；
 %%%   A03 防自环（bot 发的消息不触发）/ E2EE fail-closed / 非订阅 bot 跳过；
 %%%   reply context：签名命中 / 篡改 invalid / 过期 expired / 重放 reused。
+%%%
+%%% fail-closed 口径：verify_token 的 AEAD 密钥（postgre_aes_key）只来自 tracked
+%%% 配置（config/sys.config.example 中为空）。套件按官方测试钩子自注入合成 key
+%%% （对照 test/ds/sso_config_ds_tests.erl 的 set_aes_key/0），不读任何本机
+%%% gitignored 配置（sys.local.config），保证 scratch/CI 干净环境下可复现。
+
+-define(TEST_AES_KEY, <<"0123456789abcdef0123456789abcdef">>).
+
+set_aes_key() ->
+    application:set_env(imboy, postgre_aes_key, ?TEST_AES_KEY).
 
 uid() ->
     erlang:unique_integer([positive]) +
@@ -203,6 +213,7 @@ to_int(_) ->
 
 %% bot 行 + AEAD verify token（user_id 锚定共享库种子用户）
 setup_bot(Url) ->
+    ok = set_aes_key(),
     {ok, _} = application:ensure_all_started(crypto),
     {ok, [#{<<"id">> := SeedUid}]} = elib_pg:query(
         <<"SELECT id FROM public.\"user\" ORDER BY id LIMIT 1">>, []
