@@ -179,3 +179,10 @@
 | R13 提交后完整性审计 | **全绿**：六笔 imboy 提交逐一 `git show --stat` 与提交信息相符、DCO 全签；用户 5 暂存文件仍在 index、2 调研文档仍 untracked、moya 提交 grep 实证不含 moyalogo 资产（2 logo 仍工作区未跟踪）、wiki 干净；final-report/registry 的 SHA 引用与 git log 实际吻合 |
 | 联调就绪 Runbook | 新增 `STEP-17-PREP/integration-runbook.md`：把外部门禁清零后的操作固化为三场景剧本——A 开发版联调（隐私指引先行+Garage+调试覆盖 api_base；闭合矩阵 #1 真登录腿/#17 confirm 真传腿/wx.uploadFile 兼容项）、B 接真实 vision 模型（选型引成本对比、抽帧引 frame-sampling 规格、AI-03 降级回归验收）、C 真实试点（只列合规 §3 阶段二 8 门不执行）；每个外呼点（微信外呼/付费模型/真实数据/试点启动）标注为独立授权点，沿用任务红线 |
 
+### R15 三端错误码一致性审计登记（Coordinator；`35ca70bb` 后追加）
+
+| 事件 | 结果 |
+|---|---|
+| 错误码三方交叉审计 | **一致，零用户可见缺口**：后端 27 码（5401-5404/5420-5429/5440-5444/5460-5461/5480-5485）与契约逐一对应；客户端 core+parent+teacher 三层覆盖全部当前可达码；请求层透传后端中文 msg 构成兜底安全网。登记项：5427-5429 客户端未映射=绑定 UI 未建的正确现态（未来建 UI 须补映射并入验收）；5426 后端预留未发射（实测跨 Org 走 403/5423）；5501 未实现=契约「预留」语义。审计文档：`STEP-04/error-code-coverage-audit.md` |
+
+

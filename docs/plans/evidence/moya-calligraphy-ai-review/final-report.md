@@ -112,6 +112,8 @@
 > ④教学域最终判定：全量 eunit 两轮零回归 + xref 零新增 + dialyzer 零类型错误——**静态/动态门全部支持教学改动无回归**。剩余 80 eunit 失败、xref 两处硬失败、dialyzer 漂移清理均属用户主线域（webhook/adm/plugin/billing 等线），已登记待用户处置。
 >
 > **R14（收官后）联调就绪固化**：R13 提交后完整性审计全绿（六笔逐一对照 stat/DCO、用户文件零混入实证、SHA 登记与 git log 吻合）；新增 `STEP-17-PREP/integration-runbook.md`——外部门禁清零后的三场景联调剧本（A 开发版：隐私指引先行+Garage+`moya.debug.api_base` 调试覆盖，闭合矩阵 #1/#17 与 wx.uploadFile 兼容项；B 真实模型：选型/接线/抽帧/标尺/验收五步，选型依据用户成本对比调研、抽帧依据 frame-sampling 规格；C 真实试点：只列合规 §3 阶段二 8 门不执行）。微信外呼/付费模型/真实数据/试点启动四点标注为独立授权点。
+>
+> **R15 三端错误码一致性审计**：契约（STEP-04/error-codes.md）↔ 后端（error_code.hrl 27 码+发射点）↔ 客户端（moya 三层码表）交叉比对**一致，零用户可见缺口**——客户端未映射的 5427-5429 绑定三码对应「绑定 UI 未建」的正确现态（建 UI 时须补映射并入验收）；5501 预留语义、5426 预留未发射均符合契约；请求层透传后端中文 msg 构成兜底。详见 `STEP-04/error-code-coverage-audit.md`。
 
 ## 声明
 
