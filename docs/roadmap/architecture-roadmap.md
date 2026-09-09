@@ -74,7 +74,8 @@
 - **工作量**：M（相对 effort，非工期）。**PR 数**：3（后端 proto diff / app regen diff / OpenAPI 覆盖门）。
 - **验收**：`regen_protobuf.sh && git diff --exit-code` 进 app CI；proto 双拷贝 diff 进后端 CI；ws_url 指向真实路由由 preflight 校验。
 
-### ARCH-04 · SDK 契约对齐 + 端到端冒烟（对外集成面复活）
+### ARCH-04 · SDK 契约对齐 + 端到端冒烟（对外集成面复活）【已冻结 2026-09-09】
+> **冻结原因**：`imboy-sdk-js` 仓已删除，短期内不做 JS SDK。重启本项前须先重建仓库。
 - **目标**：修 imboy-sdk-js 全部契约漂移，加最小 E2E 冒烟作发版门禁。
 - **原因**：评审证 SDK 从未跑通端到端——握手/登录/确认/端点四处全断（P1-P3、协议 #3–6）；SDK 是对外售卖面。
 - **收益**：SDK 可用于第三方集成,售卖面成立。

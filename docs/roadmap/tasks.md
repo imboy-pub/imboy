@@ -166,18 +166,6 @@
 - verify: 故意改 proto 不 regen → CI 失败；ws_url 指向真实路由由 preflight 校验。
 - evidence:
 
-### W1-ARCH-04
-- title: SDK 契约对齐 + 端到端冒烟
-- status: blocked
-- deps: W1-ARCH-03
-- wave: 1
-- tag: protocol
-- effort: M
-- source: ARCH-04；risk-report P1-P3
-- action: 修 imboy-sdk-js 5 项漂移（login pwd/quickLogin/已删 e2ee 端点/token 事件名/子协议）；加登录→握手→收发→确认 E2E。
-- verify: SDK E2E 全链路绿，进发版门禁。
-- evidence:
-
 ### W1-TEST-01
 - title: 后端 full-eunit + dialyzer 收紧为 ratchet 硬门
 - status: blocked

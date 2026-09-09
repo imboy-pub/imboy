@@ -33,13 +33,13 @@
 - **验收**：E2E 在 CI 跑;flaky 隔离机制就位。
 
 ## TEST-04 · 协议契约测试（真边界,反 mock 反模式）【P1】
-- **目标**：为"非快乐路径 × v2 编码"矩阵补真 PG/真帧测试;SDK 端到端冒烟（并入 ARCH-04）。
+- **目标**：为"非快乐路径 × v2 编码"矩阵补真 PG/真帧测试。
 - **原因**：评审 P1-T3——mock 协议/存储边界使 5 个真生产 bug（离线撤回必崩等）404 单测无一发现,仅真 PG 的 CT 抓出;协议漂移全在错误路径。
 - **收益**：契约错误在 CI 拦;错误路径不再裸奔。
 - **风险**：低。
-- **影响范围**：`imboy/test`（CT）、`imboy-sdk-js` E2E。
+- **影响范围**：`imboy/test`（CT）。
 - **工作量**：M–L。**PR 数**：3–4。
-- **验收**：C2S ACK/C2G 错误/撤回离线等错误路径有真边界测试;SDK 登录→握手→收发→确认 E2E 绿。
+- **验收**：C2S ACK/C2G 错误/撤回离线等错误路径有真边界测试。
 
 ## TEST-05 · 修复坏死工作流 + Flutter integration 【P1，含 CRITICAL 排查】
 > **2026-07-22 升级**：`integration_test.yml` 配 `paths: imboyapp/** + imboy/**` 且 `working-directory: imboyapp`（:6-7,35,63）——在 umbrella（非 git）工作区下要么永不触发、要么路径多嵌一层，**该测试基础设施根本未运行**。故从"S 工作量小修"升级为 **CRITICAL 排查项**：需先确认此 workflow 是否曾运行过一次。注意 `ci.yml` 另有在跑的 integration job（见 testing-strategy 更正），故 `integration_test.yml` 可能是冗余的坏死副本。
