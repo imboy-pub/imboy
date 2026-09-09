@@ -173,7 +173,11 @@ idem_key(BotId, Event) ->
     CaseIdBin =
         case CaseId of
             B when is_binary(B) -> B;
-            _ -> iolist_to_binary(io_lib:format("~p", [CaseId]))
+            _ ->
+                case unicode:characters_to_binary(io_lib:format("~p", [CaseId])) of
+                    B2 when is_binary(B2) -> B2;
+                    _ -> <<>>
+                end
         end,
     iolist_to_binary(["bwd:", integer_to_binary(BotId), ":", CaseIdBin]).
 
@@ -348,7 +352,10 @@ maybe_dispatch_one(BotUid, ToGID, FromUid, MsgId) ->
 subscribed(Bot, Event) ->
     EventsBin = maps:get(<<"events">>, Bot, <<"[]">>),
     try
-        lists:member(Event, jsone:decode(EventsBin))
+        case jsone:decode(EventsBin) of
+            Events when is_list(Events) -> lists:member(Event, Events);
+            _ -> false
+        end
     catch
         _:_ -> false
     end.
