@@ -157,3 +157,17 @@
 | Coordinator | ec_cnv 硬失败定根 + 机械修复 | **定根反转**：`ec_cnv` 是 erlware_commons 依赖（全仓 ~170 文件使用，`to_integer/1` 存在）——adm_report_action_handler 的 7 处 `to_integer` 调用本来就对，**真 bug 仅是 4 处 `safe_to_binary` 调错模块**（该函数在 elib_cnv 不在 ec_cnv）。且调用点在 execute_action/reverse_action 主流程=**管理端举报动作每次调用必 undef 崩溃的潜伏故障**。修复：4 处改 `elib_cnv:safe_to_binary`（语义核验：ec_cnv:to_binary 安全包装+兜底，正适合请求参数转 binary）；`to_integer` 零改动。验证：make compile 零错 + xref 该项消除（仅剩 bot_logic 一处=用户进行中的 bot 线，未代写）。git 变化恰为该文件 1 M |
 
 **R12 后剩余（全部用户域）**：bot_logic:send_group_message/3 缺失（bot 线设计决策，非机械修复）、80 eunit 失败、dialyzer 漂移、staged 处置、提交推送、重启窗口、外部门禁。
+
+### R13 提交登记（01:0x；用户明确指令「提交你的修改后继续」授权）
+
+| 仓 | 提交 | 内容 |
+|---|---|---|
+| imboy | `342d0e49` feat(db) | 迁移 00000095-100 + moya_teaching_migration_tests（13 文件 +1460） |
+| imboy | `53bfc2ed` feat(teaching) | 教学后端全链 34 文件（api 6/logic 11/repo 4/router/error_code/attach_logic/elib_oss/sys.config.example/测试 9），含契约实测 7 项缺陷修复 |
+| imboy | `fe10d83d` fix(adm) | 举报处置 safe_to_binary 调错模块崩溃修复（4 行） |
+| imboy | `b14a36ec` docs(moya) | 执行计划/规格 + R0-R12 证据链全量 |
+| imboy | `368fd772` test(attach) | moment preset 守卫（beam 级判据） |
+| moya | `099e9c7` feat | 小程序完整工程（README+core/组件/页面/测试；**logo 用户资产保留未跟踪**） |
+| wiki | `4491696` docs | Configuration ecron 键名约束与验活 |
+
+全程 pathspec 提交（不触碰暂存区其他内容）、`-s` DCO、lefthook 三门（gitleaks/erlfmt/conventional）全绿；**未 push**。imboy 剩余 staged/untracked 恰为用户自有文件（planning×2/iot/idle-closure/temp_probe2 + 2 调研文档）。
