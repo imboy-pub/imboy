@@ -12,6 +12,14 @@ JSON Schema 无法表达的交叉一致性规则。fail-closed：任何缺失、
 用法：
     verify_agent_hub_task_evidence.py --task <path/to/evidence.json>
     verify_agent_hub_task_evidence.py --gate <dir-with-TASK_ID-subdirs>
+    verify_agent_hub_task_evidence.py --gate <dir> --required-set <tsv>
+
+--required-set（GATE-01 严格模式）：以冻结 TSV 为权威 required 集合，
+fail-closed 校验集合相等（缺卡/未知卡 → INVALID）与 supersession 闭合
+（target 在集合内、目录存在、verified-PASS、同 Base、无环、与证据
+verification_status/superseded_by 指针一致）。不带 --required-set 的
+--gate 保持既有目录枚举语义（向后兼容），但不做集合校验——Gate 聚合
+（如 GATE-01）必须带 --required-set 调用。
 """
 
 import hashlib
@@ -232,14 +240,130 @@ def verify_task_file(evidence_path):
     return result
 
 
-def verify_gate(root):
+def parse_required_set(tsv_path):
+    """解析 required-set TSV（GATE-01 权威集合）。
+
+    格式：task_id<TAB>superseded_by<TAB>notes，首行 header，"-" 表示无
+    supersession。返回 (mapping, errors)：mapping 为 task_id ->
+    superseded_by（None=活跃）；解析失败返回 (None, errors)。"""
+    try:
+        with open(tsv_path, "r", encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError as exc:
+        return None, ["required_set.tsv_unreadable:%s" % type(exc).__name__]
+    if not lines or not lines[0].startswith("task_id\t"):
+        return None, ["required_set.tsv_bad_header"]
+    mapping = {}
+    errors = []
+    for lineno, line in enumerate(lines[1:], start=2):
+        if not line.strip() or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if len(fields) < 2:
+            errors.append("required_set.tsv_bad_row:%d" % lineno)
+            continue
+        task_id = fields[0].strip()
+        target = fields[1].strip()
+        if (not RE_TASK_ID.match(task_id)
+                or (target != "-" and not RE_TASK_ID.match(target))):
+            errors.append("required_set.tsv_bad_row:%d" % lineno)
+            continue
+        if task_id in mapping:
+            errors.append("required_set.tsv_duplicate_task:%s" % task_id)
+            continue
+        mapping[task_id] = None if target == "-" else target
+    if not mapping:
+        errors.append("required_set.tsv_empty")
+    return mapping, errors
+
+
+def _load_evidence_json(evidence_path):
+    """读原始 evidence dict；不可读/非对象 → None（结构问题由单卡校验上报）。"""
+    try:
+        with open(evidence_path, "r", encoding="utf-8") as handle:
+            ev = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    return ev if isinstance(ev, dict) else None
+
+
+def _supersession_checks(required, present, tasks, root):
+    """supersession 闭合校验（以 TSV 为权威）。
+
+    每条 task_id -> target 边要求：target 在 required 集合内、目录存在、
+    verified-PASS、与被取代卡同 Base、无环；被取代卡的证据自身必须是
+    SUPERSEDED 且 superseded_by 指针与 TSV 一致；TSV 活跃卡不得自称
+    superseded。返回 error code 列表。"""
+    errors = []
+    # target 必须在 required 集合内。
+    for task_id, target in sorted(required.items()):
+        if target is not None and target not in required:
+            errors.append("supersession.target_not_in_required_set:%s->%s"
+                          % (task_id, target))
+    # 环检测：沿 superseded_by 链走，重访即环。
+    for start in sorted(required):
+        chain = [start]
+        current = required[start]
+        while current is not None and current in required:
+            if current in chain:
+                cycle = chain[chain.index(current):] + [current]
+                errors.append("supersession.cycle:%s" % "->".join(cycle))
+                break
+            chain.append(current)
+            current = required[current]
+    # 逐边：target 存在、PASS、同 Base；source 证据与 TSV 一致。
+    for task_id, target in sorted(required.items()):
+        if target is None:
+            if (task_id in present
+                    and tasks[task_id]["decision"] == "SUPERSEDED"):
+                errors.append(
+                    "supersession.evidence_superseded_but_tsv_active:%s"
+                    % task_id)
+            continue
+        if target not in required or target not in present:
+            if target in required:
+                errors.append("supersession.target_missing:%s->%s"
+                              % (task_id, target))
+            continue
+        decision = tasks[target]["decision"]
+        if decision != "PASS":
+            errors.append("supersession.target_not_pass:%s:%s"
+                          % (target, decision))
+        if task_id in present:
+            source = _load_evidence_json(
+                os.path.join(root, task_id, "evidence.json"))
+            target_ev = _load_evidence_json(
+                os.path.join(root, target, "evidence.json"))
+            if tasks[task_id]["decision"] != "SUPERSEDED":
+                errors.append("supersession.evidence_not_superseded:%s:%s"
+                              % (task_id, tasks[task_id]["decision"]))
+            elif source is not None:
+                pointer = source.get("superseded_by")
+                if isinstance(pointer, str) and pointer != target:
+                    errors.append(
+                        "supersession.pointer_mismatch:%s:%s->%s"
+                        % (task_id, pointer, target))
+            if (isinstance(source, dict) and isinstance(target_ev, dict)
+                    and source.get("base_sha") != target_ev.get("base_sha")):
+                errors.append("supersession.cross_base:%s->%s"
+                              % (task_id, target))
+    return errors
+
+
+def verify_gate(root, required_tsv=None):
     """扫描 root/<TASK_ID>/evidence.json 汇总。
 
     SUPERSEDED 任务不参与聚合（其证据已被后续任务取代，如 BUILD-00 →
     BUILD-00R），在 superseded_skipped 中如实上报；其余任一非 PASS
     （BLOCKED/PARTIAL/DRAFT/FAIL）→ NOT_PASS；INVALID（含已 superseded
     但结构损坏的）→ INVALID；全部被 superseded（无活跃任务）→ NOT_PASS
-    而非 PASS（fail-closed：空 gate 不得放行）。"""
+    而非 PASS（fail-closed：空 gate 不得放行）。
+
+    required_tsv（严格模式）：以冻结 TSV 为权威 required 集合。集合不等
+    （缺卡/未知卡）或 supersession 闭合失败 → INVALID（fail-closed：目录
+    枚举无法发现"整卡目录被删除"，聚合 Gate 必须提供 TSV）。聚合改为按
+    TSV 活跃集：全部 verified-PASS → PASS，任一 INVALID → INVALID，其余
+    → NOT_PASS。"""
     result = {"mode": "gate", "tasks": {}, "superseded_skipped": [],
               "decision": "INVALID", "errors": []}
     try:
@@ -264,7 +388,43 @@ def verify_gate(root):
             result["superseded_skipped"].append(task_id)
         else:
             decisions.append(single["decision"])
-    if "INVALID" in decisions:
+    if required_tsv is not None:
+        required, tsv_errors = parse_required_set(required_tsv)
+        strict_errors = list(tsv_errors)
+        if required is not None:
+            present = set(task_dirs)
+            missing = [t for t in sorted(required) if t not in present]
+            unknown = [d for d in task_dirs if d not in required]
+            strict_errors.extend("required_set.missing_task:%s" % t
+                                 for t in missing)
+            strict_errors.extend("required_set.unknown_task:%s" % d
+                                 for d in unknown)
+            strict_errors.extend(
+                _supersession_checks(required, present, result["tasks"], root))
+            result["required_set"] = {
+                "tsv": os.path.abspath(required_tsv),
+                "required": sorted(required),
+                "missing": missing,
+                "unknown": unknown,
+                "superseded": {t: y for t, y in sorted(required.items())
+                               if y is not None},
+            }
+        if strict_errors:
+            result["errors"].extend(strict_errors)
+            result["decision"] = "INVALID"
+        else:
+            active_decisions = [result["tasks"][t]["decision"] for t, y
+                                in sorted(required.items()) if y is None]
+            if "INVALID" in active_decisions:
+                result["decision"] = "INVALID"
+            elif active_decisions and all(d == "PASS"
+                                          for d in active_decisions):
+                result["decision"] = "PASS"
+            else:
+                if not active_decisions:
+                    result["errors"].append("gate.no_active_tasks")
+                result["decision"] = "NOT_PASS"
+    elif "INVALID" in decisions:
         result["decision"] = "INVALID"
     elif not decisions:
         result["errors"].append("gate.no_active_tasks")
@@ -279,14 +439,31 @@ def verify_gate(root):
 
 
 def main(argv):
-    usage = "usage: verify_agent_hub_task_evidence.py --task FILE | --gate DIR"
-    if len(argv) != 2 or argv[0] not in ("--task", "--gate"):
+    usage = ("usage: verify_agent_hub_task_evidence.py"
+             " --task FILE | --gate DIR [--required-set TSV]")
+    if not argv or argv[0] not in ("--task", "--gate"):
         print(usage, file=sys.stderr)
         return 2
-    if argv[0] == "--task":
-        result = verify_task_file(argv[1])
+    mode, rest = argv[0], argv[1:]
+    required_tsv = None
+    if mode == "--task":
+        if len(rest) != 1:
+            print(usage, file=sys.stderr)
+            return 2
+    elif len(rest) == 1:
+        # 既有裸 --gate 用法保持兼容，但显式提示未做集合校验。
+        print("warning: --gate without --required-set only enumerates the"
+              " directory; required-set equality and supersession closure"
+              " are NOT verified", file=sys.stderr)
+    elif len(rest) == 3 and rest[1] == "--required-set":
+        required_tsv = rest[2]
     else:
-        result = verify_gate(argv[1])
+        print(usage, file=sys.stderr)
+        return 2
+    if mode == "--task":
+        result = verify_task_file(rest[0])
+    else:
+        result = verify_gate(rest[0], required_tsv=required_tsv)
     print(json.dumps(result, sort_keys=True))
     decision = result["decision"]
     if decision == "INVALID":

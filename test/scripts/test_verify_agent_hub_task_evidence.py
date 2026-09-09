@@ -32,20 +32,27 @@ def digest(path):
 
 
 def make_evidence(tmp, task_id="TST-01", status="PASS",
-                  verification="verified", task_dir=None):
-    """构造一份结构完整的 evidence 并落盘 artifact 文件。"""
+                  verification="verified", task_dir=None,
+                  superseded_by=None, base_override=None):
+    """构造一份结构完整的 evidence 并落盘 artifact 文件。
+
+    superseded_by：verification="superseded" 时写入指针。
+    base_override：可选 {repo: sha} 覆盖项，用于跨 Base 负例。"""
     task_dir = task_dir or task_id
     tdir = Path(tmp) / task_dir
     tdir.mkdir(parents=True, exist_ok=True)
     art_file = tdir / "baseline.md"
     art_file.write_text("baseline", encoding="utf-8")
     art_hash = digest(art_file)
+    base = dict(BASE)
+    if base_override:
+        base.update(base_override)
     ev = {
         "schema_version": 1,
         "task_id": task_id,
         "status": status,
         "verification_status": verification,
-        "base_sha": dict(BASE),
+        "base_sha": base,
         "final_diff": [],
         "commands": [
             {"id": "cmd-01", "command": "make eunit-local t=x_tests", "exit_code": 0},
@@ -67,9 +74,23 @@ def make_evidence(tmp, task_id="TST-01", status="PASS",
         "residual_risks": [],
         "commit": "not-created-no-identity-approval",
     }
+    if superseded_by is not None:
+        ev["superseded_by"] = superseded_by
     path = tdir / "evidence.json"
     path.write_text(json.dumps(ev, indent=2), encoding="utf-8")
     return ev, path
+
+
+def write_required_tsv(tmp, rows, header="task_id\tsuperseded_by\tnotes"):
+    """写一份 required-set TSV。rows: [(task_id, superseded_by 或 None, notes)]。
+
+    None → "-"（无 supersession）。返回 TSV 路径。"""
+    lines = [header]
+    for task_id, target, note in rows:
+        lines.append("%s\t%s\t%s" % (task_id, target or "-", note))
+    path = Path(tmp) / "required-agent-hub-tasks.tsv"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
 class ShapePositiveTest(unittest.TestCase):
@@ -395,6 +416,316 @@ class SchemaContractTest(unittest.TestCase):
         self.assertEqual(
             schema["properties"]["acceptance"]["items"]["properties"]["status"]["enum"],
             list(MODULE.ACCEPTANCE_ENUM))
+
+
+class RequiredSetGateTest(unittest.TestCase):
+    """GATE-01-A01B：--required-set 严格模式。
+
+    计划五负例（缺 required card 目录 / 集合外未知 card / replacement
+    target 缺失、失败、跨 Base / replacement 环 / target 不在 required
+    集合）都必须返回非 PASS（这里断言最强 fail-closed 语义：INVALID）。"""
+
+    def strict_gate(self, rows, build, header="task_id\tsuperseded_by\tnotes"):
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = write_required_tsv(tmp, rows, header=header)
+            build(tmp)
+            return MODULE.verify_gate(tmp, required_tsv=str(tsv))
+
+    # --- 负例 1：required card 目录缺失（删除整卡目录不得让 Gate 绿） ---
+    def test_missing_required_card_directory(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01")
+        result = self.strict_gate(
+            [("AAA-01", None, "a"), ("BBB-02", None, "b")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("required_set.missing_task:BBB-02", result["errors"])
+        self.assertEqual(result["required_set"]["missing"], ["BBB-02"])
+        self.assertEqual(result["required_set"]["unknown"], [])
+
+    # --- 负例 2：集合外多出未知 card ---
+    def test_unknown_extra_card(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01")
+            make_evidence(tmp, task_id="BBB-02")
+            make_evidence(tmp, task_id="ZZZ-99")
+        result = self.strict_gate(
+            [("AAA-01", None, "a"), ("BBB-02", None, "b")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("required_set.unknown_task:ZZZ-99", result["errors"])
+        self.assertEqual(result["required_set"]["unknown"], ["ZZZ-99"])
+        self.assertEqual(result["required_set"]["missing"], [])
+
+    # --- 负例 3a：replacement target 目录缺失 ---
+    def test_replacement_target_missing(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="NEW-01")
+        result = self.strict_gate(
+            [("OLD-01", "NEW-01", ""), ("NEW-01", None, "")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("supersession.target_missing:OLD-01->NEW-01",
+                      result["errors"])
+
+    # --- 负例 3b：replacement target 未 PASS（失败/未结算） ---
+    def test_replacement_target_not_pass(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="NEW-01")
+            make_evidence(tmp, task_id="NEW-01", status="FAIL")
+        result = self.strict_gate(
+            [("OLD-01", "NEW-01", ""), ("NEW-01", None, "")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("supersession.target_not_pass:NEW-01:FAIL",
+                      result["errors"])
+
+    def test_replacement_target_draft_is_not_pass(self):
+        # draft = 替换证据未结算，同样不得放行。
+        def build(tmp):
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="NEW-01")
+            make_evidence(tmp, task_id="NEW-01", verification="draft")
+        result = self.strict_gate(
+            [("OLD-01", "NEW-01", ""), ("NEW-01", None, "")], build)
+        self.assertIn("supersession.target_not_pass:NEW-01:DRAFT",
+                      result["errors"])
+        self.assertNotEqual(result["decision"], "PASS")
+
+    # --- 负例 3c：replacement target 跨 Base ---
+    def test_replacement_target_cross_base(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="NEW-01")
+            make_evidence(tmp, task_id="NEW-01",
+                          base_override={"imboy": "d" * 40})
+        result = self.strict_gate(
+            [("OLD-01", "NEW-01", ""), ("NEW-01", None, "")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("supersession.cross_base:OLD-01->NEW-01",
+                      result["errors"])
+
+    # --- 负例 4：replacement 环 ---
+    def test_replacement_cycle(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01",
+                          verification="superseded", superseded_by="BBB-02")
+            make_evidence(tmp, task_id="BBB-02",
+                          verification="superseded", superseded_by="AAA-01")
+        result = self.strict_gate(
+            [("AAA-01", "BBB-02", ""), ("BBB-02", "AAA-01", "")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertTrue(
+            any(e.startswith("supersession.cycle:") for e in result["errors"]),
+            result["errors"])
+
+    def test_replacement_self_reference_cycle(self):
+        # 自指 = 长度 1 的环。
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01",
+                          verification="superseded", superseded_by="AAA-01")
+        result = self.strict_gate([("AAA-01", "AAA-01", "")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertTrue(
+            any(e.startswith("supersession.cycle:") for e in result["errors"]),
+            result["errors"])
+
+    # --- 负例 5：replacement target 不在 required 集合 ---
+    def test_replacement_target_not_in_required_set(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01")
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="OUT-01")
+        result = self.strict_gate(
+            [("AAA-01", None, "a"), ("OLD-01", "OUT-01", "")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("supersession.target_not_in_required_set:OLD-01->OUT-01",
+                      result["errors"])
+
+    # --- 正例：required-set 相等、supersession 闭合、全部活跃卡 PASS ---
+    def test_required_set_match_all_pass(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01")
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="NEW-01")
+            make_evidence(tmp, task_id="NEW-01")
+        result = self.strict_gate(
+            [("AAA-01", None, "a"),
+             ("OLD-01", "NEW-01", "superseded via NEW-01"),
+             ("NEW-01", None, "n")], build)
+        self.assertEqual(result["decision"], "PASS")
+        self.assertEqual(result["superseded_skipped"], ["OLD-01"])
+        self.assertEqual(result["required_set"]["missing"], [])
+        self.assertEqual(result["required_set"]["unknown"], [])
+
+    # --- TSV 与证据的一致性（闭合语义的一部分） ---
+    def test_tsv_superseded_but_evidence_active(self):
+        # TSV 声明 OLD-01 已被取代，但其证据仍是活跃态 → 不一致，INVALID。
+        def build(tmp):
+            make_evidence(tmp, task_id="OLD-01")
+            make_evidence(tmp, task_id="NEW-01")
+        result = self.strict_gate(
+            [("OLD-01", "NEW-01", ""), ("NEW-01", None, "")], build)
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertTrue(
+            any(e.startswith("supersession.evidence_not_superseded:OLD-01")
+                for e in result["errors"]), result["errors"])
+
+    def test_tsv_active_but_evidence_superseded(self):
+        # TSV 声明活跃、证据却自称 superseded → 不一致，INVALID。
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01",
+                          verification="superseded", superseded_by="ZZZ-01")
+            make_evidence(tmp, task_id="BBB-02")
+        result = self.strict_gate(
+            [("AAA-01", None, "a"), ("BBB-02", None, "b")], build)
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("supersession.evidence_superseded_but_tsv_active:AAA-01",
+                      result["errors"])
+
+    def test_superseded_by_pointer_mismatch(self):
+        # 证据指针与 TSV 目标不一致 → INVALID。
+        def build(tmp):
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="WRONG-01")
+            make_evidence(tmp, task_id="NEW-01")
+        result = self.strict_gate(
+            [("OLD-01", "NEW-01", ""), ("NEW-01", None, "")], build)
+        self.assertEqual(result["decision"], "INVALID")
+        self.assertIn("supersession.pointer_mismatch:OLD-01:WRONG-01->NEW-01",
+                      result["errors"])
+
+    # --- 活跃卡未过：合法证据但 NOT_PASS（不是 INVALID） ---
+    def test_active_card_blocked_is_not_pass(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01", status="BLOCKED")
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="NEW-01")
+            make_evidence(tmp, task_id="NEW-01")
+        result = self.strict_gate(
+            [("AAA-01", None, "a"), ("OLD-01", "NEW-01", ""),
+             ("NEW-01", None, "n")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+        self.assertEqual(result["decision"], "NOT_PASS")
+
+    # --- 全部被取代：fail-closed，不得聚合为 PASS ---
+    def test_all_superseded_strict_is_not_pass(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="OLD-01",
+                          verification="superseded", superseded_by="NEW-01")
+            make_evidence(tmp, task_id="OLD-02",
+                          verification="superseded", superseded_by="NEW-01")
+            make_evidence(tmp, task_id="NEW-01",
+                          verification="superseded", superseded_by="OLD-01")
+        result = self.strict_gate(
+            [("OLD-01", "NEW-01", ""), ("OLD-02", "NEW-01", ""),
+             ("NEW-01", "OLD-01", "")], build)
+        self.assertNotEqual(result["decision"], "PASS")
+
+
+class RequiredSetTsvRobustnessTest(unittest.TestCase):
+    """required-set TSV 解析 fail-closed：坏 header/重复行/不可读 → INVALID。"""
+
+    def test_bad_header(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / "bad.tsv"
+            bad.write_text("id\tsub\tnote\nAAA-01\t-\tx\n", encoding="utf-8")
+            make_evidence(tmp, task_id="AAA-01")
+            result = MODULE.verify_gate(tmp, required_tsv=str(bad))
+            self.assertEqual(result["decision"], "INVALID")
+            self.assertIn("required_set.tsv_bad_header", result["errors"])
+
+    def test_duplicate_task_row(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = Path(tmp) / "dup.tsv"
+            tsv.write_text(
+                "task_id\tsuperseded_by\tnotes\nAAA-01\t-\ta\nAAA-01\t-\tb\n",
+                encoding="utf-8")
+            make_evidence(tmp, task_id="AAA-01")
+            result = MODULE.verify_gate(tmp, required_tsv=str(tsv))
+            self.assertEqual(result["decision"], "INVALID")
+            self.assertIn("required_set.tsv_duplicate_task:AAA-01",
+                          result["errors"])
+
+    def test_unreadable_tsv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make_evidence(tmp, task_id="AAA-01")
+            result = MODULE.verify_gate(
+                tmp, required_tsv=str(Path(tmp) / "nope.tsv"))
+            self.assertEqual(result["decision"], "INVALID")
+            self.assertTrue(
+                any(e.startswith("required_set.tsv_unreadable:")
+                    for e in result["errors"]), result["errors"])
+
+    def test_bad_row_pattern(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = Path(tmp) / "bad-row.tsv"
+            tsv.write_text(
+                "task_id\tsuperseded_by\tnotes\nnot a task\t-\tx\n",
+                encoding="utf-8")
+            make_evidence(tmp, task_id="AAA-01")
+            result = MODULE.verify_gate(tmp, required_tsv=str(tsv))
+            self.assertEqual(result["decision"], "INVALID")
+            self.assertIn("required_set.tsv_bad_row:2", result["errors"])
+
+
+class RequiredSetCliTest(unittest.TestCase):
+    """CLI：--gate DIR --required-set TSV 的退出码与用法错误。"""
+
+    def run_main(self, argv):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = MODULE.main(argv)
+        return code, json.loads(buf.getvalue())
+
+    def test_strict_gate_pass_exit_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = write_required_tsv(tmp, [("AAA-01", None, "a")])
+            make_evidence(tmp, task_id="AAA-01")
+            code, out = self.run_main(
+                ["--gate", tmp, "--required-set", str(tsv)])
+            self.assertEqual((code, out["decision"]), (0, "PASS"))
+
+    def test_strict_gate_missing_card_exit_two(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = write_required_tsv(
+                tmp, [("AAA-01", None, "a"), ("BBB-02", None, "b")])
+            make_evidence(tmp, task_id="AAA-01")
+            code, out = self.run_main(
+                ["--gate", tmp, "--required-set", str(tsv)])
+            self.assertEqual((code, out["decision"]), (2, "INVALID"))
+
+    def test_strict_gate_blocked_card_exit_one(self):
+        # 集合相等但活跃卡 BLOCKED：合法证据未过 → 1（不是 2）。
+        with tempfile.TemporaryDirectory() as tmp:
+            tsv = write_required_tsv(tmp, [("AAA-01", None, "a")])
+            make_evidence(tmp, task_id="AAA-01", status="BLOCKED")
+            code, out = self.run_main(
+                ["--gate", tmp, "--required-set", str(tsv)])
+            self.assertEqual((code, out["decision"]), (1, "NOT_PASS"))
+
+    def test_bare_gate_still_works_legacy(self):
+        # 无 --required-set 的既有用法保持兼容（目录枚举语义不变）。
+        with tempfile.TemporaryDirectory() as tmp:
+            make_evidence(tmp, task_id="AAA-01")
+            code, out = self.run_main(["--gate", tmp])
+            self.assertEqual((code, out["decision"]), (0, "PASS"))
+            self.assertNotIn("required_set", out)
+
+    def test_usage_errors_exit_two(self):
+        for argv in (
+            ["--gate", "/x", "--required-set"],          # 缺 TSV 值
+            ["--task", "/x", "--required-set", "/y"],    # --task 不接受该参数
+            ["--gate", "/x", "--required", "/y"],        # 拼错 flag
+            ["--required-set", "/y"],                    # 缺模式
+        ):
+            self.assertEqual(MODULE.main(list(argv)), 2, argv)
 
 
 if __name__ == "__main__":
