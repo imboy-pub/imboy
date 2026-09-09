@@ -586,57 +586,100 @@ authorize_channel_uploader_subscribed_grants_test_() ->
         end
     ).
 
+%% moment 用例守卫：moment 族被 preset 物理裁剪（如 agent_hub：ERLC_EXCLUDE
+%% 排除 moment 模块且无 IMBOY_FEATURE_MOMENT 宏）时 attach_logic 的
+%% authorize_moment_scope 编译为 fail-closed 版，mock 到不了真实 moment 分支
+%% ——skip 防假绿（denies 两例在裁剪构建下"碰巧过"即假覆盖）。证据：
+%% docs/plans/evidence/moya-calligraphy-ai-review/STEP-08-DB/attach-momentds-review.md
+moment_ready_() ->
+    %% 权威判据 = attach_logic 的 beam 是否含 moment 分支（can_view_post 仅真分支调用）。
+    %% 只查 code:which(moment_ds) 不够：make compile 波动可能只补编 moment_ds.beam
+    %% 而 attach_logic.beam 仍是 fail-closed 旧态（R8 实测的混合态误放行）。
+    case {code:which(moment_ds), code:which(attach_logic)} of
+        {M, A} when M =/= non_existing, A =/= non_existing ->
+            try beam_lib:chunks(A, [abstract_code]) of
+                {ok, {_M2, Ch}} ->
+                    {abstract_code, {_V, Forms}} = lists:keyfind(abstract_code, 1, Ch),
+                    S = lists:flatten(io_lib:format("~p", [Forms])),
+                    string:find(S, "can_view_post") =/= nomatch
+            catch
+                _:_ -> false
+            end;
+        _ ->
+            false
+    end.
+
+moment_guarded_(TestRep) ->
+    case moment_ready_() of
+        true ->
+            TestRep;
+        false ->
+            [
+                {"moment feature trimmed", fun() ->
+                    {skip,
+                        "attach_logic compiled fail-closed (agent_hub preset): "
+                        "moment branch absent from beam"}
+                end}
+            ]
+    end.
+
 %% moment：可见放行 / 不可见拒绝 / post 不存在拒绝
 authorize_moment_visible_grants_test_() ->
-    ?WITH_MECKS(
-        [
-            {attachment_ds, [
-                {'find_by_path', 1, fun(_K) ->
-                    {ok, #{<<"scope">> => <<"moment">>, <<"scope_ref">> => <<"555">>}}
-                end}
-            ]},
-            {moment_ds, [
-                {'get_post', 1, fun(555) -> #{<<"author_uid">> => 1, <<"status">> => 1} end},
-                {'can_view_post', 2, fun(7, _Post) -> true end}
-            ]},
-            {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
-        ],
-        fun() ->
-            ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u1/m555/a.png">>))
-        end
+    moment_guarded_(
+        ?WITH_MECKS(
+            [
+                {attachment_ds, [
+                    {'find_by_path', 1, fun(_K) ->
+                        {ok, #{<<"scope">> => <<"moment">>, <<"scope_ref">> => <<"555">>}}
+                    end}
+                ]},
+                {moment_ds, [
+                    {'get_post', 1, fun(555) -> #{<<"author_uid">> => 1, <<"status">> => 1} end},
+                    {'can_view_post', 2, fun(7, _Post) -> true end}
+                ]},
+                {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
+            ],
+            fun() ->
+                ?assertEqual({ok, <<"https://sig">>}, attach_logic:view_url(7, <<"u1/m555/a.png">>))
+            end
+        )
     ).
 
 authorize_moment_invisible_denies_test_() ->
-    ?WITH_MECKS(
-        [
-            {attachment_ds, [
-                {'find_by_path', 1, fun(_K) ->
-                    {ok, #{<<"scope">> => <<"moment">>, <<"scope_ref">> => <<"555">>}}
-                end}
-            ]},
-            {moment_ds, [
-                {'get_post', 1, fun(555) -> #{<<"author_uid">> => 1, <<"status">> => 1} end},
-                {'can_view_post', 2, fun(_, _) -> false end}
-            ]}
-        ],
-        fun() ->
-            ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u1/m555/a.png">>))
-        end
+    moment_guarded_(
+        ?WITH_MECKS(
+            [
+                {attachment_ds, [
+                    {'find_by_path', 1, fun(_K) ->
+                        {ok, #{<<"scope">> => <<"moment">>, <<"scope_ref">> => <<"555">>}}
+                    end}
+                ]},
+                {moment_ds, [
+                    {'get_post', 1, fun(555) -> #{<<"author_uid">> => 1, <<"status">> => 1} end},
+                    {'can_view_post', 2, fun(_, _) -> false end}
+                ]}
+            ],
+            fun() ->
+                ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u1/m555/a.png">>))
+            end
+        )
     ).
 
 authorize_moment_missing_post_denies_test_() ->
-    ?WITH_MECKS(
-        [
-            {attachment_ds, [
-                {'find_by_path', 1, fun(_K) ->
-                    {ok, #{<<"scope">> => <<"moment">>, <<"scope_ref">> => <<"555">>}}
-                end}
-            ]},
-            {moment_ds, [{'get_post', 1, fun(555) -> {error, not_found} end}]}
-        ],
-        fun() ->
-            ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u1/m555/a.png">>))
-        end
+    moment_guarded_(
+        ?WITH_MECKS(
+            [
+                {attachment_ds, [
+                    {'find_by_path', 1, fun(_K) ->
+                        {ok, #{<<"scope">> => <<"moment">>, <<"scope_ref">> => <<"555">>}}
+                    end}
+                ]},
+                {moment_ds, [{'get_post', 1, fun(555) -> {error, not_found} end}]}
+            ],
+            fun() ->
+                ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u1/m555/a.png">>))
+            end
+        )
     ).
 
 %% ===================================================================
