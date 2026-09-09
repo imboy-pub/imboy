@@ -176,6 +176,11 @@ scope_segment(<<"c2c">>, _) -> <<"c2c">>;
 %% function_clause → presign 生成 object_key 崩溃 → HTTP 500，朋友圈/频道上传全断。
 scope_segment(<<"channel">>, _) -> <<"channel">>;
 scope_segment(<<"moment">>, _) -> <<"moment">>;
+%% teaching（Step 10 教学附件）：段名用固定 scope 名（读鉴权走
+%% teaching_attach_logic:authorize 的 submission 绑定关系，与段名无关）。
+%% 此前缺此子句 → scope_segment(<<"teaching">>,_) function_clause →
+%% presign HTTP 500，教学上传全断（R8 契约实测发现；channel/moment 同款先例）。
+scope_segment(<<"teaching">>, _) -> <<"teaching">>;
 scope_segment(<<"group">>, ScopeRef) -> <<"g", (to_bin(ScopeRef))/binary>>.
 
 %% @doc 当日 UTC 日期目录 <Ymd>（YYYYMMDD）。

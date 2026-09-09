@@ -41,50 +41,68 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
         false ->
             {error, invalid_file_type};
         true ->
-            case can_upload(Uid, Scope, ScopeRef) of
+            %% Step 10 教学附件：声明 MIME 预检（confirm 阶段以 HEAD 真实值复核）
+            case teaching_presign_guard(Scope, MimeType) of
                 ok ->
-                    ObjectKey = elib_oss:build_object_key(Uid, Scope, ScopeRef, FileName),
-                    Bucket = elib_oss:get_bucket(Scope),
-                    PutUrl = elib_oss:presign_put_for_key(
-                        Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
-                    ),
-                    %% #20：登记待确认。不登记的话，"PUT 上去但从不 confirm"
-                    %% 的对象在库里没有任何行，attachment_repo 的孤儿清理
-                    %% （只扫 attachment 表）永远看不见它，空间收不回来。
-                    %% 登记失败不阻断签发 —— 拿不到 URL 是功能故障，
-                    %% 漏登记只是这一个对象暂时收不回，代价不对等。
-                    %% 必须 try/catch 而不只是判返回值：DB 不可用时
-                    %% elib_pg:execute 是**抛异常**不是返回 {error,_}，
-                    %% 只写 case 会让 presign 整个失败——签不出 URL 是功能中断，
-                    %% 漏登记只是这一个对象暂时收不回，代价不对等。
-                    _ =
-                        try attachment_ds:pending_add(ObjectKey, Bucket, Scope, Uid) of
-                            ok ->
-                                ok;
-                            {error, PendReason} ->
-                                ?ERROR_LOG([
-                                    "attach_logic presign pending_add failed: ",
-                                    ObjectKey,
-                                    PendReason
-                                ])
-                        catch
-                            PClass:PReason ->
-                                ?ERROR_LOG([
-                                    "attach_logic presign pending_add crashed: ",
-                                    ObjectKey,
-                                    PClass,
-                                    PReason
-                                ])
-                        end,
-                    Base = #{
-                        <<"put_url">> => PutUrl,
-                        <<"object_key">> => ObjectKey,
-                        <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
-                    },
-                    {ok, maybe_public_url(Scope, ObjectKey, Base)};
+                    presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef);
                 {error, _} = E ->
                     E
             end
+    end.
+
+%% 教学白名单预检；非教学 scope 直通（保持既有行为零变化）
+-spec teaching_presign_guard(binary(), binary()) -> ok | {error, invalid_file_type}.
+teaching_presign_guard(<<"teaching">>, MimeType) ->
+    teaching_attach_logic:check_mime(MimeType);
+teaching_presign_guard(_Scope, _MimeType) ->
+    ok.
+
+-spec presign_authorized(integer(), binary(), binary(), binary(), binary() | undefined) ->
+    {ok, map()} | {error, invalid_file_type | forbidden | upload_not_supported}.
+presign_authorized(Uid, FileName, MimeType, Scope, ScopeRef) ->
+    case can_upload(Uid, Scope, ScopeRef) of
+        ok ->
+            ObjectKey = elib_oss:build_object_key(Uid, Scope, ScopeRef, FileName),
+            Bucket = elib_oss:get_bucket(Scope),
+            PutUrl = elib_oss:presign_put_for_key(
+                Bucket, ObjectKey, MimeType, ?PUT_EXPIRES
+            ),
+            %% #20：登记待确认。不登记的话，"PUT 上去但从不 confirm"
+            %% 的对象在库里没有任何行，attachment_repo 的孤儿清理
+            %% （只扫 attachment 表）永远看不见它，空间收不回来。
+            %% 登记失败不阻断签发 —— 拿不到 URL 是功能故障，
+            %% 漏登记只是这一个对象暂时收不回，代价不对等。
+            %% 必须 try/catch 而不只是判返回值：DB 不可用时
+            %% elib_pg:execute 是**抛异常**不是返回 {error,_}，
+            %% 只写 case 会让 presign 整个失败——签不出 URL 是功能中断，
+            %% 漏登记只是这一个对象暂时收不回，代价不对等。
+            _ =
+                try attachment_ds:pending_add(ObjectKey, Bucket, Scope, Uid) of
+                    ok ->
+                        ok;
+                    {error, PendReason} ->
+                        ?ERROR_LOG([
+                            "attach_logic presign pending_add failed: ",
+                            ObjectKey,
+                            PendReason
+                        ])
+                catch
+                    PClass:PReason ->
+                        ?ERROR_LOG([
+                            "attach_logic presign pending_add crashed: ",
+                            ObjectKey,
+                            PClass,
+                            PReason
+                        ])
+                end,
+            Base = #{
+                <<"put_url">> => PutUrl,
+                <<"object_key">> => ObjectKey,
+                <<"expires_at">> => erlang:system_time(second) + ?PUT_EXPIRES
+            },
+            {ok, maybe_public_url(Scope, ObjectKey, Base)};
+        {error, _} = E ->
+            E
     end.
 
 %% ===================================================================
@@ -138,10 +156,28 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
                             _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
                             {error, invalid_file_type};
                         true ->
-                            do_save(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType)
+                            %% Step 10 教学附件：教学白名单/大小上限/时长复核
+                            %% （video mp4|mov ≤100MB+duration≤60s；photo jpeg|png ≤20MB）
+                            case teaching_verify_guard(Scope, RealType, RealSize, Meta) of
+                                ok ->
+                                    do_save(
+                                        Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType
+                                    );
+                                {error, Reason} ->
+                                    _ = (catch elib_oss:delete_object(Bucket, ObjectKey)),
+                                    {error, Reason}
+                            end
                     end
             end
     end.
+
+%% 教学复核；非教学 scope 直通（既有行为零变化）
+-spec teaching_verify_guard(binary(), binary(), non_neg_integer(), map()) ->
+    ok | {error, file_too_large | invalid_file_type}.
+teaching_verify_guard(<<"teaching">>, RealType, RealSize, Meta) ->
+    teaching_attach_logic:verify_upload(RealType, RealSize, Meta);
+teaching_verify_guard(_Scope, _RealType, _RealSize, _Meta) ->
+    ok.
 
 -spec do_save(
     integer(), binary(), binary(), binary() | undefined, map(), non_neg_integer(), binary()
@@ -240,7 +276,9 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
                                 PReason
                             ])
                     end,
-                {ok, maybe_public_url(Scope, ObjectKey, #{<<"object_key">> => ObjectKey})}
+                %% Step 10：confirm 响应补 attachment_id（字符串，教学契约 TSID；
+                %% 保留 object_key 向后兼容；查询失败不阻断——旧字段仍可用）
+                {ok, maybe_public_url(Scope, ObjectKey, confirm_payload(ObjectKey))}
         end
     catch
         Class:Reason ->
@@ -253,6 +291,21 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
 %% attachment.scope 落库后不可变、读 ACL 恒绑定原 scope、进群/频道的唯一
 %% 途径是上传时即带 group/channel scope——个人域附件不存在落入 workspace
 %% 范围的路径，守卫 N/A 是设计决定而非遗漏）。
+%% Step 10：confirm 成功 payload = {object_key（兼容保留）, attachment_id（TSID 字符串）}
+%% 落库为 upsert（uk path），保存成功后按 path 回读 id；回读失败仅返回旧字段
+-spec confirm_payload(binary()) -> map().
+confirm_payload(ObjectKey) ->
+    Base = #{<<"object_key">> => ObjectKey},
+    try attachment_ds:find_by_path(ObjectKey) of
+        {ok, #{<<"id">> := AttId}} when is_integer(AttId) ->
+            Base#{<<"attachment_id">> => integer_to_binary(AttId)};
+        _ ->
+            Base
+    catch
+        _:_ ->
+            Base
+    end.
+
 -spec attach_scope_target(binary(), binary() | undefined) ->
     {ok, {group | channel, integer() | binary()}} | passthrough.
 attach_scope_target(<<"group">>, Ref) when Ref =/= undefined, Ref =/= <<>>, Ref =/= null ->
@@ -306,6 +359,13 @@ can_upload(Uid, <<"channel">>, ScopeRef) ->
 %% 发帖后 moment_logic:create_post 会把这些附件 scope_ref 回填成 momentId。
 can_upload(_Uid, <<"moment">>, _ScopeRef) ->
     ok;
+%% Step 10 教学附件：上传人须持有至少一个有效教学身份（active guardian/staff）；
+%% 强归属（附件只能进本人提交）在 create_submission 的 validate_assets 把关
+can_upload(Uid, <<"teaching">>, _ScopeRef) ->
+    case teaching_attach_logic:can_upload(Uid) of
+        ok -> ok;
+        false -> {error, forbidden}
+    end;
 can_upload(_Uid, _Scope, _ScopeRef) ->
     {error, forbidden}.
 
@@ -367,6 +427,10 @@ authorize(<<"public">>, _Uid, _Rec) ->
     true;
 authorize(<<"private">>, Uid, Rec) ->
     Uid =:= maps:get(<<"creator_user_id">>, Rec, 0);
+%% Step 10 教学附件：必须已绑定 submission（未绑定→拒绝）；submission 未撤回；
+%% teaching_acl:submission_access 复用（guardian can_view_review / 本班 staff，MEDIA-01）
+authorize(<<"teaching">>, Uid, Rec) ->
+    teaching_attach_logic:authorize(Uid, Rec);
 authorize(<<"c2c">>, Uid, Rec) ->
     case conv_key_vo:c2c_members(scope_ref(Rec)) of
         {ok, {A, B}} -> Uid =:= A orelse Uid =:= B;

@@ -74,6 +74,11 @@ get_routes() ->
             {"/api/v1/passport/findpassword", passport_handler, #{action => find_password}},
             {"/api/v1/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
+            % 墨芽习字：微信小程序登录（免 Bearer，见 open/0；code 一次性换 IMBoy token）
+            {"/api/v1/auth/wechat-mini/login", teaching_auth_handler, #{
+                action => wechat_mini_login
+            }},
+
             % QR 码登录（WhatsApp Web 风格）
             {"/api/v1/passport/qr_login/create", qr_login_handler, #{action => create}},
             {"/api/v1/passport/qr_login/status", qr_login_handler, #{action => status}},
@@ -506,6 +511,46 @@ get_routes() ->
                 {"/api/v1/agent_task/approve", agent_task_handler, #{action => approve}},
                 {"/api/v1/agent_task/reject", agent_task_handler, #{action => reject}},
                 {"/api/v1/group/task/pending", group_task_handler, #{action => pending_review}},
+
+                % 墨芽习字教学域 API（Step 8：登录/上下文/ACL；Step 9：作业/提交/回评；
+                % 契约见 docs/plans/evidence/moya-calligraphy-ai-review/STEP-04/）
+                % wechat-mini login 免 Bearer（open/0 白名单）；其余教学端点全部走 JWT
+                {"/api/v1/teaching/contexts", teaching_context_handler, #{action => contexts}},
+                {"/api/v1/teaching/context/switch", teaching_context_handler, #{action => switch}},
+                {"/api/v1/teaching/assignments", teaching_assignment_handler, #{action => list}},
+                {"/api/v1/teaching/assignments/:id", teaching_assignment_handler, #{
+                    action => detail
+                }},
+                {"/api/v1/teaching/assignments/:id/submissions", teaching_assignment_handler, #{
+                    action => create_submission
+                }},
+                {"/api/v1/teaching/submissions/:id", teaching_assignment_handler, #{
+                    action => submission_detail
+                }},
+                {"/api/v1/teaching/submissions/:id/withdraw", teaching_assignment_handler, #{
+                    action => withdraw
+                }},
+                {"/api/v1/teaching/submissions/:id/review-workbench", teaching_review_handler, #{
+                    action => workbench
+                }},
+                {"/api/v1/teaching/submissions/:id/review-draft", teaching_review_handler, #{
+                    action => save_draft
+                }},
+                {"/api/v1/teaching/submissions/:id/reviews/publish", teaching_review_handler, #{
+                    action => publish
+                }},
+                {"/api/v1/teaching/review-queue", teaching_review_handler, #{action => queue}},
+                {"/api/v1/teaching/learners/:id/history", teaching_assignment_handler, #{
+                    action => history
+                }},
+                %% 教学学员账号绑定（Step 16：管理侧最小动作；JWT；logic/repo 由 D 泳道
+                %% 就绪，错误映射与码段决定见 STEP-16/notes.md「B 接线完成」）
+                {"/api/v1/teaching/learners/:id/bind", teaching_learner_bind_handler, #{
+                    action => bind
+                }},
+                {"/api/v1/teaching/learners/:id/unbind", teaching_learner_bind_handler, #{
+                    action => unbind
+                }},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
 
@@ -1191,6 +1236,9 @@ open() ->
         <<"/api/v1/auth/oidc/authorize">>,
         <<"/api/v1/auth/oidc/callback">>,
         <<"/api/v1/auth/oidc/exchange">>,
+        %% 墨芽习字：微信小程序登录——wx.login 一次性 code 换 token，握手前无
+        %% sign/did 头；code 本身即凭证（AUTH-01：code 消费后重放必失败）
+        <<"/api/v1/auth/wechat-mini/login">>,
 
         %% Bot 发消息：Bot 服务器无用户 JWT，凭证是 api_token
         %% （Authorization: Bearer <api_token>，校验在 bot_handler:authenticate/1，
