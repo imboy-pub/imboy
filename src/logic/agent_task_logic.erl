@@ -268,10 +268,10 @@ lookup(TaskId) ->
                     decision_or(TaskId, undefined);
                 <<"rejected">> ->
                     decision_or(TaskId, undefined);
-                %% submitted/working 等活跃态是建任务后的常态（EXT-01 实测）：
-                %% 无决定行 ≠ 任务不存在，必须回读真实状态，不得与 undefined 混同。
+                %% 其余活跃态和终态必须返回任务真状态；旧审批结果不能遮蔽
+                %% completed/failed/cancelled/expired 等后续状态。
                 StatusBin when is_binary(StatusBin) ->
-                    decision_or(TaskId, {live_status, StatusBin})
+                    {live_status, StatusBin}
             end;
         {error, _} ->
             undefined

@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/agent_hub_golden_flow.sh"
+EVIDENCE_WRITER="$ROOT/scripts/write_agent_hub_e2e_evidence.py"
 TEST_TMPDIR="${TEST_TMPDIR:?TEST_TMPDIR is required}"
 STUB_BIN="$TEST_TMPDIR/bin"
 mkdir -p "$STUB_BIN"
@@ -53,6 +54,7 @@ REQUIRED_SUITES=(
   bot_webhook_logic_tests
   bot_webhook_delivery_repo_tests
   bot_webhook_delivery_worker_tests
+  agent_hub_runtime_trace_tests
 )
 for suite in "${REQUIRED_SUITES[@]}"; do
   grep -Fq "$suite" "$SCRIPT" || {
@@ -67,6 +69,27 @@ grep -Fq 'bearer[[:space:]]+' "$SCRIPT" || {
 }
 grep -Fq '1[3-9][0-9]{9}' "$SCRIPT" || {
   echo "golden flow does not scan mobile-shaped log content" >&2
+  exit 1
+}
+
+grep -Fq 'write_evidence PARTIAL' "$SCRIPT" || {
+  echo "golden flow does not settle honest PARTIAL evidence" >&2
+  exit 1
+}
+grep -Fq 'verify_agent_hub_correlation_trace.py' "$SCRIPT" || {
+  echo "golden flow does not verify a runtime correlation export" >&2
+  exit 1
+}
+grep -Fq 'export_agent_hub_correlation_trace.sql' "$SCRIPT" || {
+  echo "golden flow does not export persisted runtime correlation records" >&2
+  exit 1
+}
+if grep -Fq 'echo "[golden] PASS"' "$SCRIPT"; then
+  echo "golden flow still claims PASS without the required HTTP runtime chain" >&2
+  exit 1
+fi
+test -f "$EVIDENCE_WRITER" || {
+  echo "golden flow evidence writer is missing" >&2
   exit 1
 }
 
@@ -121,6 +144,43 @@ set -e
 }
 [ ! -e "$workspace_evidence" ] || {
   echo "workspace evidence path was created before rejection" >&2
+  exit 1
+}
+
+# Once a valid local run starts, PostgreSQL failure must produce valid FAIL
+# evidence and must not claim cleanup succeeded when the residual query failed.
+failure_marker="$TEST_TMPDIR/failure.psql-called"
+failure_evidence="$TEST_TMPDIR/failure/E2E-01"
+set +e
+env -u PGHOSTADDR -u PGSERVICE -u PGSERVICEFILE \
+  PATH="$STUB_BIN:$PATH" PSQL_CALLED_MARKER="$failure_marker" \
+  PGHOST=127.0.0.1 bash "$SCRIPT" --evidence-dir "$failure_evidence" \
+  > "$TEST_TMPDIR/failure.log" 2>&1
+code=$?
+set -e
+[ "$code" -eq 99 ] || {
+  echo "PostgreSQL failure exit code was not preserved (got $code)" >&2
+  exit 1
+}
+[ -e "$failure_marker" ] || {
+  echo "PostgreSQL failure fixture did not reach psql" >&2
+  exit 1
+}
+set +e
+python3 "$ROOT/scripts/verify_agent_hub_task_evidence.py" \
+  --task "$failure_evidence/evidence.json" > "$TEST_TMPDIR/failure-verdict.json"
+verifier_code=$?
+set -e
+[ "$verifier_code" -eq 1 ] || {
+  echo "FAIL evidence was not structurally valid (got $verifier_code)" >&2
+  exit 1
+}
+grep -Fq '"decision": "FAIL"' "$TEST_TMPDIR/failure-verdict.json" || {
+  echo "PostgreSQL failure evidence was not classified FAIL" >&2
+  exit 1
+}
+grep -Fq 'cleanup_passed=0' "$failure_evidence/run-summary.txt" || {
+  echo "failed cleanup query was treated as successful" >&2
   exit 1
 }
 
