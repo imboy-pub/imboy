@@ -252,6 +252,12 @@ security-gate:
 	@bash scripts/check_module_boundaries.sh
 	@echo "=== 安全门禁全部通过 ==="
 
+# 迁移文件门禁（ADR-0002）：命名格式 / up-down 成对 / 版本号唯一 / up 非空 /
+# 注释头版本自洽；编号断档仅告警不阻断。
+.PHONY: migrations-check
+migrations-check: ## 校验 priv/migrations/ 命名与 up-down 配对（ADR-0002）
+	@bash scripts/check_migrations.sh
+
 # P3-C2 API 契约门禁（Golden Gates §2.3 C2 / §2.2 契约变更流程）
 # 真源：src/imboy_router.erl + priv/migrations CHECK 约束 + include/error_code.hrl
 # 合法变更：改后端真源后，同一 PR 内 make contract-export 并提交 .contract/api_contract.json

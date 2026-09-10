@@ -343,3 +343,18 @@ jobs:
           set -euo pipefail
           python3 scripts/validate_third_party_inventory.py
           python3 -m unittest test.scripts.test_validate_third_party_inventory
+
+  # ----------------------------------------------------------------
+  # 7) Migration files gate — ADR-0002：命名格式 / up-down 成对 / 版本号唯一
+  #    缺 down 会让 erlang_migrate:apply_down/6 返回 {error,{no_down_migration,V}}，
+  #    卡死的不是该版本本身，而是它之后的整条回滚链（74/75 曾静默缺 down 三周）。
+  #    纯 bash 零外部依赖（find/grep/awk/sed），故不 Setup Erlang，秒级完成。
+  # ----------------------------------------------------------------
+  migrations:
+    name: Migration files gate (ADR-0002)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check naming format / up-down pairs / unique versions
+        run: bash scripts/check_migrations.sh

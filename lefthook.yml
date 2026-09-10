@@ -11,6 +11,12 @@ pre-commit:
       stage_fixed: false
     gitleaks:
       run: gitleaks protect --staged --no-banner --redact
+    # 迁移文件门禁（ADR-0002）：命名格式 / up-down 成对 / 版本号唯一。
+    # 缺 down 会让 erlang_migrate:apply_down/6 返回 {error,{no_down_migration,V}}，
+    # 卡死该版本之后的整条回滚链，故在提交前拦住。
+    migrations:
+      glob: "priv/migrations/*.sql"
+      run: bash scripts/check_migrations.sh
 
 commit-msg:
   commands:
