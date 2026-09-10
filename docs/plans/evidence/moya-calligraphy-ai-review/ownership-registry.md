@@ -193,5 +193,16 @@
 | 修复（`2b517f20`） | 12 文件 +67/-33 全部类型级修复：handler 绑定 is_binary 窄化×3、spec 域外防御子句删除×4、acl wrapper spec 对齐、provider map 模式匹配、auth `trim_binary` 收敛+**spec 漏列 code_invalid 真契约缺口补齐**、wechat_client body 收敛包装、attach_logic c2c undefined 显式拒绝（原潜在 crash）、count_queue 头部解构、digest 改 encode_hex(lowercase)（字节不变） |
 | 验证 | gradualizer 教学域 **19→0**；make compile 零告警；**eunit 教学域 11 套件 184/184 全绿**（EUNIT_CONFIG=/tmp/smoke_sys.config 隔离通道）；全量 7047/80 失败集=已知用户域 -ifdef(TEST) 基线零教学（通过数较 R11 -19 为并行会话当时活跃改测试文件的漂移，非本批次回归） |
 
+### R17 批次触达非教学文件清债登记（Coordinator；`48e9db2b`）
+
+| 文件 | 结果 |
+|---|---|
+| `src/lib/elib_oss.erl` | **7 项存量→0**：to_bin 扩 chardata 域（guard-case 收敛 error/incomplete 联合，坏输入显式 bad_chardata 同原 badarg 语义）；scope_segment group/undefined 显式 error（原 function_clause 隐式崩）；head_int/head_bin/Ext/ymd 走 to_bin/binary_to_integer；validate_file_id 补 {match,_} 穷尽性占位（运行时不可达） |
+| `src/logic/moderation_action_logic.erl` | **2 项中 1 修 1 登记**：①with_tx {rollback,_} 显式折叠 {error,_}——原泄漏给只认二态调用方必 case_clause 崩 500（真潜在故障，fail-closed 不变）；②opts() opaque→type（无构造器的 opaque 使外部构造必然违规）；③send_warning_notice uid 正性守卫（非法 uid 跳过 best-effort 通知腿）。**残留登记**：assemble_msg To 参 pos_integer 契约（用户域，核心消息域不宜旁路放宽，需 uid 校验链刻意重构） |
+| `src/lib/elib_response.erl` / `src/imboy_router.erl` | success/2 spec 放宽 map()\|list()（R-01 列表响应既有形态不变，convert_at_timestamps 本就 any() 域）；router 零发现零改动 |
+| `src/adm/adm_report_action_handler.erl` | opts 构造改「=> 建图 + := 更新精化」满足 opts() 必需键（运行时同值） |
+| 验证 | gradualizer 批次触达五文件 **0 发现**；moderation/attach/elib_oss/adm 相关 **7 套件 147/147 全绿**；compile 零告警。**至此墨芽批次触达的全部 .erl 文件 gradualizer 干净**（moderation 残留 1 项为用户域预存、非批次引入） |
+
+
 
 

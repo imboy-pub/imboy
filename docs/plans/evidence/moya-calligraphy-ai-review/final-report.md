@@ -116,6 +116,8 @@
 > **R15 三端错误码一致性审计**：契约（STEP-04/error-codes.md）↔ 后端（error_code.hrl 27 码+发射点）↔ 客户端（moya 三层码表）交叉比对**一致，零用户可见缺口**——客户端未映射的 5427-5429 绑定三码对应「绑定 UI 未建」的正确现态（建 UI 时须补映射并入验收）；5501 预留语义、5426 预留未发射均符合契约；请求层透传后端中文 msg 构成兜底。详见 `STEP-04/error-code-coverage-audit.md`。
 >
 > **R16 gradualizer 棘轮债清偿**：由并行会话 push 门「墨芽批次 13 模块复红」线索触发——本任务教学模块在 gradualizer 宽网门下 19 项发现（12 模块）全部类型级修复清零（`2b517f20`，12 文件 +67/-33）。顺带修出一个真契约缺口：wechat_mini_login spec 漏列 `code_invalid` 原子（do_login 产生→5402 映射依赖它）；attach_logic c2c scope undefined 由潜在 crash 改显式拒绝。验证：gradualizer 19→0 + compile 零告警 + 教学域 11 套件 **184/184 全绿**（隔离配置零接触 imboy_v1）；全量 80 失败集=用户域已知基线零教学。elib_oss 存量 2 项非本批次遗留，仍登记用户域。
+>
+> **R17 批次触达非教学文件清债**：push 门为变更文件口径，批次还触达 elib_oss/adm_handler/moderation_logic/elib_response/router——elib_oss 7 项存量清零（to_bin 扩 chardata 域、group/undefined 显式化、validate_file_id 穷尽性）、moderation 修 2 登记 1（**with_tx rollback 泄漏真潜在故障已修**：{rollback,_} 折叠 {error,_} 防 case_clause 500；opts() opaque→type；残留=assemble_msg To 参 pos_integer 契约属用户域）、elib_response success/2 spec 放宽 map()|list()、adm handler opts 改 := 精化构造（`48e9db2b`，4 文件 +62/-23）。验证：五文件 gradualizer 0 发现 + 相关 7 套件 **147/147 全绿**。**墨芽批次触达的全部 .erl 文件至此 gradualizer 干净**。
 
 ## 声明
 
