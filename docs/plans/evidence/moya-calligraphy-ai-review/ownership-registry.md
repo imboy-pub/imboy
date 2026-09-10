@@ -203,6 +203,18 @@
 | `src/adm/adm_report_action_handler.erl` | opts 构造改「=> 建图 + := 更新精化」满足 opts() 必需键（运行时同值） |
 | 验证 | gradualizer 批次触达五文件 **0 发现**；moderation/attach/elib_oss/adm 相关 **7 套件 147/147 全绿**；compile 零告警。**至此墨芽批次触达的全部 .erl 文件 gradualizer 干净**（moderation 残留 1 项为用户域预存、非批次引入） |
 
+### R18 四门终验矩阵登记（Coordinator；`6e0d1533`）
+
+| 门 | 批次模块结果 | 备注 |
+|---|---|---|
+| eunit | 教学域 11 套件 **184/184** + 批次触达相关 7 套件 **147/147** + moderation/adm **22/22**（exec_opts 修复后复跑） | 全部经 /tmp/smoke_sys.config 隔离通道，零接触 imboy_v1 |
+| gradualizer | 批次触达 26 个 .erl **0 发现** | R16（教学 19→0）+ R17（非教学 9→0） |
+| dialyzer | 全仓 312→**305**；批次模块余 8 项**全部为防御子句不可达风格类，零类型错误**（教学域较 R11 基线 11→7） | R18 修 1 个级联根因：do_execute 富化 opts（actor/prev_status）超 opts() 契约→dialyzer 误判 do_execute 无正常返回→adm handler {ok,Row} 被判不可达，共 7 项连锁。新增内部 exec_opts() 类型消除（`6e0d1533`，纯 spec 层） |
+| xref | undefined_function_calls（完整分析宇宙 ebin+deps+OTP）批次模块 **0 命中** | make xref 摘要的 9 条为裁剪预设噪音（与 R11 判定一致）；注：tools-4.2.1 的 xref API 是 start/1 非 new/1，set_default 不收 xref_mode |
+
+**批次四门终态：全部干净。** dialyzer 残留 8 项风格类与 1 项 moderation 用户域（assemble_msg pos_integer）已登记，非批次引入。
+
+
 
 
 

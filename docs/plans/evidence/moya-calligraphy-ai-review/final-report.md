@@ -118,6 +118,8 @@
 > **R16 gradualizer 棘轮债清偿**：由并行会话 push 门「墨芽批次 13 模块复红」线索触发——本任务教学模块在 gradualizer 宽网门下 19 项发现（12 模块）全部类型级修复清零（`2b517f20`，12 文件 +67/-33）。顺带修出一个真契约缺口：wechat_mini_login spec 漏列 `code_invalid` 原子（do_login 产生→5402 映射依赖它）；attach_logic c2c scope undefined 由潜在 crash 改显式拒绝。验证：gradualizer 19→0 + compile 零告警 + 教学域 11 套件 **184/184 全绿**（隔离配置零接触 imboy_v1）；全量 80 失败集=用户域已知基线零教学。elib_oss 存量 2 项非本批次遗留，仍登记用户域。
 >
 > **R17 批次触达非教学文件清债**：push 门为变更文件口径，批次还触达 elib_oss/adm_handler/moderation_logic/elib_response/router——elib_oss 7 项存量清零（to_bin 扩 chardata 域、group/undefined 显式化、validate_file_id 穷尽性）、moderation 修 2 登记 1（**with_tx rollback 泄漏真潜在故障已修**：{rollback,_} 折叠 {error,_} 防 case_clause 500；opts() opaque→type；残留=assemble_msg To 参 pos_integer 契约属用户域）、elib_response success/2 spec 放宽 map()|list()、adm handler opts 改 := 精化构造（`48e9db2b`，4 文件 +62/-23）。验证：五文件 gradualizer 0 发现 + 相关 7 套件 **147/147 全绿**。**墨芽批次触达的全部 .erl 文件至此 gradualizer 干净**。
+>
+> **R18 四门终验矩阵（批次收官）**：eunit **353/353**（教学 184+触达相关 147+moderation/adm 22）· gradualizer 批次 26 文件 **0 发现** · dialyzer 全仓 312→305（**修 exec_opts 级联根因 `6e0d1533`**：do_execute 富化 opts 超契约导致 7 项连锁误判；批次模块余 8 项全为防御子句风格类、零类型错误，教学域较 R11 基线 11→7）· xref undefined_function_calls 完整宇宙 **0 命中**（make 摘要 9 条=裁剪预设噪音）。**墨芽批次四门全干净。**
 
 ## 声明
 
