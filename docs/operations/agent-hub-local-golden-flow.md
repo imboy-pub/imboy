@@ -7,10 +7,12 @@
 >
 > 当前自动化状态：脚本使用 marker scratch DB 跑迁移和 14 套模块/真库测试；
 > 最后一套通过真实 MCP task logic、审批逻辑和 Bot outbox 写出同一 correlation
-> 的持久记录，再由参数化 SQL 投影为链形状并交给冻结 verifier。该投影中的
-> request/execution/outcome 并非运行时审计记录，所以不满足 A01。脚本尚未启动后端、
-> fake HTTP 服务并驱动下述完整协议链，也未执行真实 stop/start 恢复。因此仍必须
-> 输出经 verifier 校验的 `PARTIAL`（退出码 1），不得扩大为 E2E `PASS`。
+> 的持久记录，再由参数化 SQL 投影为链形状并交给冻结 verifier。随后脚本启动真实
+> loopback 后端，以独立标准库 HTTP 客户端完成 MCP create/approve/grant/task/revoke
+> 11 项检查，并真实 stop/start 后端，比较 task/approval/delivery/correlation 快照
+> 并从重启进程回读终态。该投影中的 request/execution/outcome 仍非运行时审计记录，
+> incoming webhook、内建 Agent 和 Bot mention/reply 也尚未组成完整 HTTP 正负链，
+> 所以 A01/A02 继续失败，整体必须输出 verifier 接受的 `PARTIAL`（退出码 1）。
 
 ## 1. 环境准备（从空 scratch 开始）
 
@@ -20,6 +22,8 @@
 3. 后端配置：`IMBOYENV=local`、`sys.local.config` 指向 scratch 库；
    `postgre_aes_key` 必须配置（WH-01 AEAD 主密钥，缺失时投递 fail-closed）。
 4. 前端（可选）：管理台 `bun run dev`（8082）。
+5. harness 默认占用 loopback `19862`；如被占用，用
+   `IMBOY_AGENT_HUB_HTTP_PORT=<未占用私有端口>` 覆盖。非 loopback 地址会拒绝。
 
 ## 2. 启动与种子
 
@@ -64,14 +68,15 @@ python3 scripts/verify_agent_hub_task_evidence.py --task "$IMBOY_EVIDENCE_ROOT/E
 shasum -a 256 "$IMBOY_EVIDENCE_ROOT"/E2E-01/*
 ```
 
-在完整 HTTP 编排、真实后端重启恢复和最终 Base 重跑全部补齐前，上述前两条命令
-预期退出码均为 `1`，证据结论为 `PARTIAL`。trace verifier 的 `OK` 只证明本地
-fixture 投影满足链的结构约束，不证明受信入口已经产生真实审计链；通过项只证明
-对应模块测试、日志扫描、scratch 资源清理或 runbook，不扩大为完整 Golden Flow
-结论。
+在受信入口审计、完整 HTTP 编排和最终 Base 重跑全部补齐前，上述前两条命令预期
+退出码均为 `1`，证据结论为 `PARTIAL`。A03 的 stop/start 可以独立为 `PASS`；A02
+即使 MCP HTTP 子链 11/11 通过，也仍因其他必选正例和负例缺失保持 `FAIL`。trace
+verifier 的 `OK` 只证明本地 fixture 投影满足链的结构约束，不证明受信入口已经产生
+真实审计链。
 
 清理只删除本 harness 创建且带 marker 的临时资源（scratch 库 drop、fixture
-端口关闭、临时 secret 文件删除）。
+端口关闭、临时 secret 文件删除）。同一路径已有证据会先移动到带
+`.superseded.<timestamp>.<pid>` 后缀的同级目录，避免旧文件混入新 manifest。
 
 ## 6. WH-01 AEAD 主密钥生命周期演练
 

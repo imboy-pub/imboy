@@ -42,10 +42,23 @@ class EvidenceWriterTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def run_writer(self, status, trace_exit=2, failed_step=""):
+    def run_writer(self, status, trace_exit=2, failed_step="",
+                   http_smoke=1, restart=1):
         if status == "PARTIAL":
             (self.evidence / "trace-verifier.json").write_text(
                 '{"decision":"VIOLATION"}\n', encoding="utf-8")
+        if http_smoke:
+            (self.evidence / "ext01-a02-runtime.json").write_text(
+                '{"passed":11,"failed":0}\n', encoding="utf-8")
+        if restart:
+            for name in [
+                "restart-before.json",
+                "restart-after.json",
+                "restart-logic-read.txt",
+                "runtime-backend-before-restart.log",
+                "runtime-backend-after-restart.log",
+            ]:
+                (self.evidence / name).write_text("runtime evidence\n", encoding="utf-8")
         code = WRITER.main([
             "--evidence-dir", str(self.evidence),
             "--repo-root", str(self.repo),
@@ -53,8 +66,10 @@ class EvidenceWriterTest(unittest.TestCase):
             "--imboy-sha", "a" * 40,
             "--imboyapp-sha", "b" * 40,
             "--imboyadmin-sha", "c" * 40,
-            "--suites-passed", "13" if status == "PARTIAL" else "2",
+            "--suites-passed", "14" if status == "PARTIAL" else "2",
             "--trace-exit", str(trace_exit),
+            "--http-smoke-passed", str(http_smoke),
+            "--restart-passed", str(restart),
             "--cleanup-passed", "1",
             "--sensitive-scan-passed", "1",
             "--failed-step", failed_step,
@@ -70,7 +85,16 @@ class EvidenceWriterTest(unittest.TestCase):
         evidence = VERIFIER._load_evidence_json(self.evidence / "evidence.json")
         by_id = {row["acceptance_id"]: row for row in evidence["acceptance"]}
         self.assertEqual(by_id["E2E-01-A01"]["status"], "FAIL")
+        self.assertEqual(by_id["E2E-01-A02"]["status"], "FAIL")
+        self.assertEqual(by_id["E2E-01-A03"]["status"], "PASS")
         self.assertEqual(by_id["E2E-01-A06"]["status"], "PASS")
+
+    def test_restart_flag_without_artifacts_cannot_pass(self):
+        result = self.run_writer("PARTIAL", http_smoke=0, restart=0)
+        self.assertEqual(result["decision"], "PARTIAL")
+        evidence = VERIFIER._load_evidence_json(self.evidence / "evidence.json")
+        by_id = {row["acceptance_id"]: row for row in evidence["acceptance"]}
+        self.assertEqual(by_id["E2E-01-A03"]["status"], "FAIL")
 
     def test_failure_is_valid_but_cannot_pass(self):
         result = self.run_writer("FAIL", failed_step="make app")

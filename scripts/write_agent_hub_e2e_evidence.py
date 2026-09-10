@@ -45,6 +45,8 @@ def build_evidence(args):
             "status=%s" % args.status,
             "suites_passed=%d" % args.suites_passed,
             "trace_exit=%d" % args.trace_exit,
+            "http_smoke_passed=%d" % args.http_smoke_passed,
+            "restart_passed=%d" % args.restart_passed,
             "cleanup_passed=%d" % args.cleanup_passed,
             "sensitive_scan_passed=%d" % args.sensitive_scan_passed,
             "failed_step=%s" % (args.failed_step or "none"),
@@ -71,6 +73,32 @@ def build_evidence(args):
     aead_runbook_path = repo_root / "docs/runbooks/bot-webhook-aead-key.md"
     if aead_runbook_path.is_file():
         artifacts.append(artifact("artifact-aead-runbook", aead_runbook_path))
+
+    runtime_artifact_paths = {
+        "artifact-http-mcp-smoke": evidence_dir / "ext01-a02-runtime.json",
+        "artifact-restart-before": evidence_dir / "restart-before.json",
+        "artifact-restart-after": evidence_dir / "restart-after.json",
+        "artifact-restart-logic-read": evidence_dir / "restart-logic-read.txt",
+        "artifact-backend-before-restart": evidence_dir / "runtime-backend-before-restart.log",
+        "artifact-backend-after-restart": evidence_dir / "runtime-backend-after-restart.log",
+    }
+    for artifact_id, path in runtime_artifact_paths.items():
+        if path.is_file():
+            artifacts.append(artifact(artifact_id, path))
+
+    artifact_ids = {item["id"] for item in artifacts}
+    http_artifacts = [
+        artifact_id for artifact_id in ["artifact-http-mcp-smoke"]
+        if artifact_id in artifact_ids
+    ]
+    restart_artifacts = [
+        artifact_id for artifact_id in runtime_artifact_paths
+        if artifact_id.startswith("artifact-restart-")
+        or artifact_id.startswith("artifact-backend-")
+        if artifact_id in artifact_ids
+    ]
+    http_smoke_ok = bool(args.http_smoke_passed and http_artifacts)
+    restart_ok = bool(args.restart_passed and len(restart_artifacts) == 5)
 
     common_artifacts = ["artifact-run-summary", "artifact-harness"]
     if args.status == "FAIL":
@@ -114,6 +142,16 @@ def build_evidence(args):
                 "command": "verify marker scratch DB and temporary EUnit config are absent",
                 "exit_code": 0 if args.cleanup_passed else 1,
             },
+            {
+                "id": "cmd-06",
+                "command": "run real loopback HTTP MCP credential lifecycle",
+                "exit_code": 0 if http_smoke_ok else 1,
+            },
+            {
+                "id": "cmd-07",
+                "command": "stop and restart the real backend, then compare persisted state",
+                "exit_code": 0 if restart_ok else 1,
+            },
         ]
         trace_artifacts = common_artifacts + ["artifact-trace-verifier"]
         if trace_path.is_file():
@@ -129,18 +167,24 @@ def build_evidence(args):
                 "The persisted-row projection passes shape checks, but trusted request, execution, and outcome audit records are not emitted at runtime yet.",
             ),
             acceptance(
-                "E2E-01-A02", "FAIL", ["cmd-03"], common_artifacts,
-                "Module suites pass, but the required HTTP Golden Flow and all protocol negatives are not automated yet.",
+                "E2E-01-A02", "FAIL", ["cmd-03", "cmd-06"],
+                common_artifacts + http_artifacts,
+                "The real HTTP MCP lifecycle passes 11 checks, but incoming webhook, built-in Agent, Bot mention/reply, and all required protocol negatives are not automated yet."
+                if http_smoke_ok else
+                "The required HTTP Golden Flow and all protocol negatives are not complete.",
             ),
             acceptance(
-                "E2E-01-A03", "FAIL", ["cmd-03"], common_artifacts,
-                "Persistence tests pass, but a real backend stop/start recovery flow is not automated yet.",
+                "E2E-01-A03", "PASS" if restart_ok else "FAIL", ["cmd-07"],
+                common_artifacts + restart_artifacts,
+                "A real backend process stop/start preserves the completed task, approval, delivery, and correlation, and the restarted logic reads the terminal state."
+                if restart_ok else
+                "A complete real backend stop/start recovery check is missing or failed.",
             ),
             acceptance(
                 "E2E-01-A04",
                 "PASS" if args.sensitive_scan_passed else "FAIL",
                 ["cmd-03"], common_artifacts,
-                "Generated EUnit logs were scanned without echoing matched values.",
+                "Generated EUnit, HTTP client, and backend runtime logs were scanned without echoing matched values.",
             ),
             acceptance(
                 "E2E-01-A05",
@@ -163,7 +207,7 @@ def build_evidence(args):
             ),
         ]
         failed_tests = 0
-        skipped_tests = 4
+        skipped_tests = 3 if restart_ok else 4
 
     return {
         "schema_version": 1,
@@ -195,7 +239,8 @@ def build_evidence(args):
         "artifacts": artifacts,
         "residual_risks": [
             "The trace export derives request, execution, and outcome instead of reading runtime audit records.",
-            "HTTP orchestration, backend restart recovery, and final Base rerun remain open.",
+            "The real HTTP MCP lifecycle passes, but the complete incoming webhook, built-in Agent, and Bot protocol flow remains open.",
+            "Final integrated Base rerun remains open.",
             "Local fixtures do not replace real device, external MCP, or production acceptance.",
         ],
         "commit": args.imboy_sha,
@@ -212,6 +257,8 @@ def parse_args(argv=None):
     parser.add_argument("--imboyadmin-sha", required=True)
     parser.add_argument("--suites-passed", type=int, default=0)
     parser.add_argument("--trace-exit", type=int, default=2)
+    parser.add_argument("--http-smoke-passed", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--restart-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--cleanup-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--sensitive-scan-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--failed-step", default="")

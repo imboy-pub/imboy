@@ -46,6 +46,7 @@ REQUIRED_SUITES=(
   ai_agent_reply_tests
   ai_agent_tool_loop_tests
   mcp_authz_gate_tests
+  mcp_client_repo_tests
   imboy_mcp_task_tools_tests
   agent_task_repo_tests
   agent_task_logic_tests
@@ -71,9 +72,29 @@ grep -Fq '1[3-9][0-9]{9}' "$SCRIPT" || {
   echo "golden flow does not scan mobile-shaped log content" >&2
   exit 1
 }
+grep -Fq '(^|[^0-9])1[3-9][0-9]{9}([^0-9]|$)' "$SCRIPT" || {
+  echo "mobile scan can false-positive on longer TSID/timestamp values" >&2
+  exit 1
+}
 
 grep -Fq 'write_evidence PARTIAL' "$SCRIPT" || {
   echo "golden flow does not settle honest PARTIAL evidence" >&2
+  exit 1
+}
+grep -Fq 'agent_hub_ext01_mcp_client_smoke.py' "$SCRIPT" || {
+  echo "golden flow does not run the real HTTP MCP client" >&2
+  exit 1
+}
+grep -Fq 'stop_backend' "$SCRIPT" || {
+  echo "golden flow does not stop and restart the real backend" >&2
+  exit 1
+}
+grep -Fq 'restart-before.json' "$SCRIPT" || {
+  echo "golden flow does not compare restart persistence snapshots" >&2
+  exit 1
+}
+grep -Fq -- '--restart-passed' "$SCRIPT" || {
+  echo "golden flow does not bind restart evidence into evidence.json" >&2
   exit 1
 }
 grep -Fq 'verify_agent_hub_correlation_trace.py' "$SCRIPT" || {
