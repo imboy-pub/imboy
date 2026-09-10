@@ -1,5 +1,5 @@
 -- ============================================================
--- 合并迁移 000099: constraints_views_triggers
+-- 合并迁移 00000009: constraints_views_triggers（原 000099_constraints_views_triggers）
 -- 由 70 个历史迁移基线压缩而成 (fresh-install 等价)。
 -- 本文件由 erlang_migrate 整体包裹在单事务中执行。
 -- ============================================================
