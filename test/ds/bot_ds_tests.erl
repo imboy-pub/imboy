@@ -23,6 +23,7 @@
 
 create_persists_user_bot_and_account_type_test_() ->
     ?TEST_WITH_DB(fun() ->
+        ok = set_aes_key(),
         Username = unique_username(<<"ok">>),
         cleanup_username(Username),
         Data = #{
@@ -30,7 +31,8 @@ create_persists_user_bot_and_account_type_test_() ->
             username => Username,
             owner_uid => 1,
             description => <<"TX-01 正常路径"/utf8>>,
-            api_token => <<"tok_", Username/binary>>
+            api_token => <<"tok_", Username/binary>>,
+            verify_token => <<"verify_", Username/binary>>
         },
         {ok, #{<<"user_id">> := Uid}} = bot_ds:create(Data),
         %% user 行存在且 account_type=3、account=bot_<uid>
@@ -47,15 +49,30 @@ create_persists_user_bot_and_account_type_test_() ->
         %% bot 行存在且内容正确
         {ok, [Bot]} =
             elib_pg:query(
-                <<"SELECT user_id, name, username, owner_uid, status, api_token FROM ",
-                    (bot_repo:tablename())/binary, " WHERE user_id = $1">>,
+                <<
+                    "SELECT user_id, name, username, owner_uid, status, api_token, verify_token,"
+                    " api_token_digest, api_token_prefix, verify_token_enc, token_migrated FROM ",
+                    (bot_repo:tablename())/binary,
+                    " WHERE user_id = $1"
+                >>,
                 [Uid]
             ),
         ?assertEqual(<<"回归 Bot"/utf8>>, maps:get(<<"name">>, Bot)),
         ?assertEqual(Username, maps:get(<<"username">>, Bot)),
         ?assertEqual(1, maps:get(<<"owner_uid">>, Bot)),
         ?assertEqual(1, maps:get(<<"status">>, Bot)),
-        ?assertEqual(<<"tok_", Username/binary>>, maps:get(<<"api_token">>, Bot)),
+        ApiToken = <<"tok_", Username/binary>>,
+        ?assertEqual(<<>>, maps:get(<<"api_token">>, Bot)),
+        ?assertEqual(<<>>, maps:get(<<"verify_token">>, Bot)),
+        ?assertEqual(
+            binary:encode_hex(crypto:hash(sha256, ApiToken), lowercase),
+            maps:get(<<"api_token_digest">>, Bot)
+        ),
+        ?assertEqual(binary:part(ApiToken, 0, 8), maps:get(<<"api_token_prefix">>, Bot)),
+        ?assertNotEqual(<<>>, maps:get(<<"verify_token_enc">>, Bot)),
+        ?assertEqual(true, maps:get(<<"token_migrated">>, Bot)),
+        {ok, Found} = bot_ds:find_by_token(ApiToken),
+        ?assertEqual(Uid, maps:get(<<"user_id">>, Found)),
         cleanup_username(Username)
     end).
 
@@ -174,6 +191,7 @@ create_duplicate_username_concurrent_exactly_one_entity_test_() ->
 %% ===================================================================
 
 bot_data(Username) ->
+    ok = set_aes_key(),
     #{
         name => <<"TX-01 Bot"/utf8>>,
         username => Username,
@@ -181,8 +199,16 @@ bot_data(Username) ->
         %% bot.api_token 有 UNIQUE 约束且 bot_repo 默认空串 <<>>（非 NULL），
         %% 任一行 '' 残留都会让后续不传 api_token 的创建整体 23505——
         %% 测试逐用例给唯一 token（与生产 bot_logic:register 生成 token 对齐）
-        api_token => <<"tok_", Username/binary>>
+        api_token => <<"tok_", Username/binary>>,
+        verify_token => <<"verify_", Username/binary>>
     }.
+
+set_aes_key() ->
+    application:set_env(
+        imboy,
+        postgre_aes_key,
+        <<"0123456789abcdef0123456789abcdef">>
+    ).
 
 unique_username(Prefix) ->
     <<

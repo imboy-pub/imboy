@@ -19,7 +19,7 @@
 -export([search/3]).
 -export([has_exchange/2]).
 %% WH-01：凭证安全
--export([find_by_api_token/1, set_api_token_credential/2]).
+-export([find_by_api_token/1, set_api_token_credential/2, prepare_credentials/2]).
 -export([set_verify_token_enc/2, get_verify_token/1]).
 
 -include("log.hrl").
@@ -29,7 +29,8 @@ tablename() ->
     elib_pg_sql:public_tablename(<<"bot">>).
 
 %% @doc 创建 Bot 行
-%% Data 键：user_id(必填), name, username, owner_uid, webhook_url, api_token, verify_token,
+%% Data 键：user_id(必填), name, username, owner_uid, webhook_url,
+%%          api_token_digest/api_token_prefix/verify_token_enc,
 %%          commands, permissions, events, is_public, status
 -spec create(map()) -> {ok, [map()]} | {error, term()}.
 create(#{user_id := _UserId, name := _Name, owner_uid := _OwnerUid} = Data) ->
@@ -64,8 +65,9 @@ create_sql(#{user_id := UserId, name := Name, owner_uid := OwnerUid} = Data) ->
     Description = maps:get(description, Data, <<>>),
     Avatar = maps:get(avatar, Data, <<>>),
     WebhookUrl = maps:get(webhook_url, Data, <<>>),
-    ApiToken = maps:get(api_token, Data, <<>>),
-    VerifyToken = maps:get(verify_token, Data, <<>>),
+    ApiTokenDigest = maps:get(api_token_digest, Data, <<>>),
+    ApiTokenPrefix = maps:get(api_token_prefix, Data, <<>>),
+    VerifyTokenEnc = maps:get(verify_token_enc, Data, <<>>),
     Commands = maps:get(commands, Data, <<"[]">>),
     Permissions = maps:get(permissions, Data, <<"[]">>),
     Events = maps:get(events, Data, <<"[]">>),
@@ -74,10 +76,11 @@ create_sql(#{user_id := UserId, name := Name, owner_uid := OwnerUid} = Data) ->
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (user_id, name, username, description, avatar, owner_uid,"
-            "  webhook_url, api_token, verify_token, commands, permissions, events,"
+            "  webhook_url, api_token, verify_token, api_token_digest, api_token_prefix,"
+            "  verify_token_enc, token_migrated, commands, permissions, events,"
             "  is_public, status, created_at, updated_at)"
-            " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12::jsonb,"
-            "  $13,$14,NOW(),NOW())"
+            " VALUES ($1,$2,$3,$4,$5,$6,$7,'','',$8,$9,$10,true,"
+            "  $11::jsonb,$12::jsonb,$13::jsonb,$14,$15,NOW(),NOW())"
             " RETURNING user_id">>,
     {Sql, [
         UserId,
@@ -87,8 +90,9 @@ create_sql(#{user_id := UserId, name := Name, owner_uid := OwnerUid} = Data) ->
         Avatar,
         OwnerUid,
         WebhookUrl,
-        ApiToken,
-        VerifyToken,
+        ApiTokenDigest,
+        ApiTokenPrefix,
+        VerifyTokenEnc,
         Commands,
         Permissions,
         Events,
@@ -103,7 +107,7 @@ find(UserId) ->
     Sql =
         <<
             "SELECT user_id, name, username, description, avatar, owner_uid,"
-            " webhook_url, api_token, verify_token, commands, permissions, events,"
+            " webhook_url, commands, permissions, events,"
             " is_public, status, created_at, updated_at FROM ",
             Tb/binary,
             " WHERE user_id = $1"
@@ -130,21 +134,10 @@ find_by_username(Username) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 按 api_token 查找 Bot（API 认证时使用）
+%% @doc 兼容入口：认证已经统一走摘要索引，不再读取明文列。
 -spec find_by_token(binary()) -> {ok, map()} | {error, notfound | term()}.
 find_by_token(Token) ->
-    Tb = tablename(),
-    Sql = <<
-        "SELECT user_id, name, username, owner_uid, webhook_url, verify_token,"
-        " permissions, events, status FROM ",
-        Tb/binary,
-        " WHERE api_token = $1"
-    >>,
-    case elib_pg:query(Sql, [Token]) of
-        {ok, [Row | _]} -> {ok, Row};
-        {ok, []} -> {error, notfound};
-        {error, Reason} -> {error, Reason}
-    end.
+    find_by_api_token(Token).
 
 %% @doc 更新 Bot 字段（部分更新）
 -spec update(integer(), map()) -> {ok, [map()]} | {error, term()}.
@@ -191,7 +184,6 @@ update_fields(Data) ->
             {description, <<"description">>, <<>>},
             {avatar, <<"avatar">>, <<>>},
             {webhook_url, <<"webhook_url">>, <<>>},
-            {verify_token, <<"verify_token">>, <<>>},
             {commands, <<"commands">>, <<"::jsonb">>},
             {permissions, <<"permissions">>, <<"::jsonb">>},
             {events, <<"events">>, <<"::jsonb">>},
@@ -361,6 +353,27 @@ has_exchange(BotId, UserId) ->
 digest_hex(Token) when is_binary(Token) ->
     binary:encode_hex(crypto:hash(sha256, Token), lowercase).
 
+%% @doc 生成可直接进入 Bot 创建事务的凭证字段；失败时不产生任何 DB 写入。
+-spec prepare_credentials(binary(), binary()) -> {ok, map()} | {error, no_key | term()}.
+prepare_credentials(ApiToken, VerifyToken) when
+    is_binary(ApiToken),
+    byte_size(ApiToken) >= 8,
+    is_binary(VerifyToken),
+    VerifyToken =/= <<>>
+->
+    case encrypt_verify_token(VerifyToken) of
+        {ok, VerifyTokenEnc} ->
+            {ok, #{
+                api_token_digest => digest_hex(ApiToken),
+                api_token_prefix => binary:part(ApiToken, 0, 8),
+                verify_token_enc => VerifyTokenEnc
+            }};
+        {error, _} = Error ->
+            Error
+    end;
+prepare_credentials(_, _) ->
+    {error, invalid_credentials}.
+
 %% @doc 按 api_token 摘要精确查找 Bot（认证路径；明文不再入库/比对）。
 %% 兼容期：旧明文 token 行由迁移 00000092 回填摘要，认证只走摘要索引。
 -spec find_by_api_token(binary()) -> {ok, map()} | {error, notfound | term()}.
@@ -406,17 +419,25 @@ aead_key() ->
 -spec set_verify_token_enc(integer(), binary()) ->
     {ok, non_neg_integer()} | {error, no_key | term()}.
 set_verify_token_enc(BotUserId, VerifyToken) when is_binary(VerifyToken) ->
+    case encrypt_verify_token(VerifyToken) of
+        {error, _} = E ->
+            E;
+        {ok, Enc} ->
+            Tb = tablename(),
+            elib_pg:execute(
+                <<"UPDATE ", Tb/binary,
+                    " SET verify_token_enc = $2, verify_token = '', token_migrated = true,"
+                    " updated_at = NOW() WHERE user_id = $1">>,
+                [BotUserId, Enc]
+            )
+    end.
+
+encrypt_verify_token(VerifyToken) ->
     case aead_key() of
         {error, no_key} = E ->
             E;
         {ok, Key} ->
-            {ok, Enc} = elib_cipher:aes_gcm_encrypt(VerifyToken, Key),
-            Tb = tablename(),
-            elib_pg:execute(
-                <<"UPDATE ", Tb/binary,
-                    " SET verify_token_enc = $2, updated_at = NOW() WHERE user_id = $1">>,
-                [BotUserId, Enc]
-            )
+            elib_cipher:aes_gcm_encrypt(VerifyToken, Key)
     end.
 
 %% @doc 取回 verify_token 明文（发送签名必需）。

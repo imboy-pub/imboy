@@ -98,7 +98,11 @@ update_rejects_non_owner_test_() ->
                 end}
             ]},
             {bot_logic, [
-                {'update', 3, fun(1, _Data, 999) ->
+                {'update', 3, fun(1, Data, 999) ->
+                    ?assertEqual(
+                        #{webhook_url => <<"https://attacker.example.com/hook">>},
+                        Data
+                    ),
                     {error, <<"无权操作此 Bot"/utf8>>}
                 end}
             ]},

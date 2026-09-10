@@ -11,7 +11,7 @@
 % 不存响应正文与 secret）。
 %%%
 
--export([start_link/0, poll_now/0]).
+-export([start_link/0, poll_now/0, execute/1]).
 -export([
     init/1,
     handle_call/3,
@@ -96,7 +96,7 @@ run_batch() ->
             ok
     end.
 
-%% @doc 执行单条交付：guard → 凭证解密 → 签名发送 → 分类落账。
+%% @doc 执行单条交付：校验不可变 URL/IP 快照 → 凭证解密 → 签名发送 → 分类落账。
 execute(Delivery) ->
     #{<<"delivery_id">> := Did} = Delivery,
     AttemptNo = maps:get(<<"attempt_count">>, Delivery, 0) + 1,
@@ -105,28 +105,14 @@ execute(Delivery) ->
     catch
         C:R:ST ->
             ?ERROR_LOG("[WH01] delivery ~ts crash ~p:~p~n~p~n", [Did, C, R, ST]),
-            ok = audit(Did, AttemptNo, <<"internal_error">>, null, 0, R),
-            finish_attempt(Did, AttemptNo, {error, internal_error})
+            retry(Delivery, AttemptNo, <<"internal_error">>, null, 0, R)
     end.
 
 do_execute(Delivery, AttemptNo) ->
     BotId = to_int(maps:get(<<"bot_id">>, Delivery)),
-    Url =
-        case bot_repo:find(to_int_or_bin(BotId)) of
-            {ok, Bot} -> maps:get(<<"webhook_url">>, Bot, <<>>);
-            {error, _} -> <<>>
-        end,
-    case bot_webhook_guard:validate_and_pin(Url) of
-        {error, invalid_scheme} ->
-            dead(Delivery, AttemptNo, <<"invalid_scheme">>, null),
-            ok;
-        {error, forbidden_host} ->
-            dead(Delivery, AttemptNo, <<"forbidden_host">>, null),
-            ok;
-        {error, dns_failure} ->
-            %% DNS 瞬时故障 → 有界重试
-            retry(Delivery, AttemptNo, <<"dns_failure">>, null),
-            ok;
+    Url = maps:get(<<"webhook_url">>, Delivery, <<>>),
+    PinnedIP = maps:get(<<"pinned_ip">>, Delivery, <<>>),
+    case bot_webhook_guard:validate_pinned(Url, PinnedIP) of
         {ok, Pin} ->
             Host = maps:get(host, Pin),
             Port = maps:get(port, Pin),
@@ -149,43 +135,45 @@ do_execute(Delivery, AttemptNo) ->
                     T0 = erlang:monotonic_time(millisecond),
                     Res = (sender_mod()):post(IP, Port, IsTls, PathQS, Host, Headers, Body),
                     Lat = erlang:monotonic_time(millisecond) - T0,
-                    settle(Delivery, AttemptNo, Res, Lat)
+                    settle(Delivery, AttemptNo, Res, Lat);
+                {error, Reason} ->
+                    retry(Delivery, AttemptNo, <<"credential_error">>, null, 0, Reason)
             end;
         {error, Reason} ->
-            Did2 = maps:get(<<"delivery_id">>, Delivery),
-            dead(Delivery, AttemptNo, <<"guard_error">>, null),
-            ok = audit(Did2, AttemptNo, <<"guard_error">>, null, 0, Reason),
+            dead(Delivery, AttemptNo, guard_class(Reason), null, 0, Reason),
             ok
     end.
+
+guard_class(Reason) when is_atom(Reason) -> atom_to_binary(Reason);
+guard_class(_) -> <<"guard_error">>.
 
 settle(Delivery, AttemptNo, {ok, Code} = Res, Lat) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
     Class = class_of(Code),
-    io:format(user, "~nDBG settle code=~p class=~p~n", [Code, Class]),
-    ok = audit(Did, AttemptNo, Class, Code, Lat, <<>>),
     case Class of
         <<"2xx">> ->
-            _ = bot_webhook_delivery_repo:mark_success(Did);
+            ok = audit(Did, AttemptNo, Class, Code, Lat, <<>>),
+            _ = bot_webhook_delivery_repo:mark_success(Did, AttemptNo);
         <<"4xx">> when Code =:= 410 ->
-            _ = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo);
+            dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
         <<"4xx">> ->
             %% 4xx 配置类错误：不重试，直接死信
-            _ = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo);
+            dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
         _ ->
             %% 5xx/3xx/1xx：有界重试
-            retry(Delivery, AttemptNo, Class, Code)
+            retry(Delivery, AttemptNo, Class, Code, Lat, <<>>)
     end,
     Res;
 settle(Delivery, AttemptNo, {error, Reason}, Lat) ->
-    io:format(user, "~nDBG settle error=~p~n", [Reason]),
-    Did = maps:get(<<"delivery_id">>, Delivery),
-    ok = audit(Did, AttemptNo, <<"error">>, null, Lat, Reason),
-    retry(Delivery, AttemptNo, <<"error">>, null),
+    retry(Delivery, AttemptNo, <<"error">>, null, Lat, Reason),
     {error, Reason}.
 
 retry(Delivery, AttemptNo, Class, Code) ->
+    retry(Delivery, AttemptNo, Class, Code, 0, <<>>).
+
+retry(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
-    ok = audit(Did, AttemptNo, Class, Code, 0, <<>>),
+    ok = audit(Did, AttemptNo, Class, Code, Lat, Reason),
     case retries_left(AttemptNo) of
         [] ->
             _ = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo),
@@ -208,8 +196,11 @@ retries_left(AttemptNo) ->
     end.
 
 dead(Delivery, AttemptNo, Class, Code) ->
+    dead(Delivery, AttemptNo, Class, Code, 0, <<>>).
+
+dead(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
-    ok = audit(Did, AttemptNo, Class, Code, 0, <<>>),
+    ok = audit(Did, AttemptNo, Class, Code, Lat, Reason),
     _ = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo).
 
 audit(Did, AttemptNo, Class, Code, Lat, Reason) ->
@@ -236,9 +227,6 @@ err_trunc(Reason) when is_binary(Reason) ->
     end;
 err_trunc(Reason) ->
     iolist_to_binary(io_lib:format("~p", [Reason])).
-
-finish_attempt(_Did, _AttemptNo, _Res) ->
-    ok.
 
 class_of(Code) when Code >= 200, Code < 300 -> <<"2xx">>;
 class_of(Code) when Code >= 300, Code < 400 -> <<"3xx">>;

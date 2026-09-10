@@ -19,7 +19,9 @@ base(D) ->
         payload => <<"{}">>,
         correlation_id => corr(),
         idempotency_key => <<"bwd:", D/binary>>,
-        webhook_host => <<"example.com">>
+        webhook_url => <<"https://example.com/hook">>,
+        webhook_host => <<"example.com">>,
+        pinned_ip => <<"93.184.216.34">>
     }.
 
 corr() ->
@@ -30,10 +32,18 @@ insert_idempotent_test_() ->
     ?TEST_WITH_DB(fun() ->
         D = did(),
         {ok, inserted} = bot_webhook_delivery_repo:insert(base(D)),
-        {ok, duplicate} = bot_webhook_delivery_repo:insert(base(D)),
+        ChangedTarget = (base(D))#{
+            webhook_url => <<"https://changed.example/hook">>,
+            webhook_host => <<"changed.example">>,
+            pinned_ip => <<"203.0.113.10">>
+        },
+        {ok, duplicate} = bot_webhook_delivery_repo:insert(ChangedTarget),
         {ok, Row} = bot_webhook_delivery_repo:get_delivery(D),
         ?assertEqual(<<"pending">>, maps:get(<<"status">>, Row)),
-        ?assertMatch(<<"corr-", _/binary>>, maps:get(<<"correlation_id">>, Row))
+        ?assertMatch(<<"corr-", _/binary>>, maps:get(<<"correlation_id">>, Row)),
+        ?assertEqual(<<"https://example.com/hook">>, maps:get(<<"webhook_url">>, Row)),
+        ?assertEqual(<<"example.com">>, maps:get(<<"webhook_host">>, Row)),
+        ?assertEqual(<<"93.184.216.34">>, maps:get(<<"pinned_ip">>, Row))
     end).
 
 claim_due_only_due_test_() ->

@@ -99,6 +99,15 @@ do_push(BotId, Event) ->
 
 %% 入队：构造契约 payload（delivery_id/correlation_id 一次定死）→ outbox 幂等写。
 enqueue(BotId, WebhookUrl, Event) ->
+    case delivery_target(WebhookUrl) of
+        {ok, Target} ->
+            enqueue_to_target(BotId, Event, Target);
+        {error, Reason} ->
+            ?WARN_LOG("bot_webhook_logic: reject bot_id=~p webhook target: ~p~n", [BotId, Reason]),
+            ok
+    end.
+
+enqueue_to_target(BotId, Event, Target) ->
     DeliveryId = iolist_to_binary(
         [
             "dlv-",
@@ -117,15 +126,16 @@ enqueue(BotId, WebhookUrl, Event) ->
         <<"occurred_at">> => occurred_at(Event)
     },
     Body = jsone:encode(Envelope, [native_utf8]),
-    Res = bot_webhook_delivery_repo:insert(#{
-        delivery_id => DeliveryId,
-        bot_id => BotId,
-        event_type => EventType,
-        payload => Body,
-        correlation_id => Corr,
-        idempotency_key => idem_key(BotId, Event),
-        webhook_host => host_of(WebhookUrl)
-    }),
+    Res = bot_webhook_delivery_repo:insert(
+        Target#{
+            delivery_id => DeliveryId,
+            bot_id => BotId,
+            event_type => EventType,
+            payload => Body,
+            correlation_id => Corr,
+            idempotency_key => idem_key(BotId, Event)
+        }
+    ),
     case Res of
         {ok, inserted} ->
             bot_webhook_delivery_worker:poll_now(),
@@ -362,6 +372,15 @@ subscribed(Bot, Event) ->
 
 %% 入队（幂等：bot+msg_id 唯一），payload 携带签名 reply_context
 enqueue_mention(BotUid, Bot, ToGID, FromUid, MsgId) ->
+    WebhookUrl = maps:get(<<"webhook_url">>, Bot, <<>>),
+    case delivery_target(WebhookUrl) of
+        {ok, Target} ->
+            enqueue_mention_to_target(BotUid, ToGID, FromUid, MsgId, Target);
+        {error, _} ->
+            ok
+    end.
+
+enqueue_mention_to_target(BotUid, ToGID, FromUid, MsgId, Target) ->
     DeliveryId = iolist_to_binary(
         [
             "dlv-",
@@ -388,18 +407,19 @@ enqueue_mention(BotUid, Bot, ToGID, FromUid, MsgId) ->
             },
             Body = jsone:encode(Envelope, [native_utf8]),
             case
-                bot_webhook_delivery_repo:insert(#{
-                    delivery_id => DeliveryId,
-                    bot_id => BotUid,
-                    event_type => <<"message.c2g_mention">>,
-                    payload => Body,
-                    correlation_id => Corr,
-                    idempotency_key =>
-                        iolist_to_binary([
-                            "bwd-mention:", integer_to_binary(BotUid), ":", MsgId
-                        ]),
-                    webhook_host => host_of_url(maps:get(<<"webhook_url">>, Bot, <<>>))
-                })
+                bot_webhook_delivery_repo:insert(
+                    Target#{
+                        delivery_id => DeliveryId,
+                        bot_id => BotUid,
+                        event_type => <<"message.c2g_mention">>,
+                        payload => Body,
+                        correlation_id => Corr,
+                        idempotency_key =>
+                            iolist_to_binary([
+                                "bwd-mention:", integer_to_binary(BotUid), ":", MsgId
+                            ])
+                    }
+                )
             of
                 {ok, inserted} ->
                     bot_webhook_delivery_worker:poll_now(),
@@ -412,6 +432,18 @@ enqueue_mention(BotUid, Bot, ToGID, FromUid, MsgId) ->
         {error, _} ->
             %% verify secret 解密失败 = fail-closed，不投递（无 reply 能力）
             ok
+    end.
+
+delivery_target(WebhookUrl) ->
+    case bot_webhook_guard:validate_and_pin(WebhookUrl) of
+        {ok, #{ip := IP, host := Host}} ->
+            {ok, #{
+                webhook_url => WebhookUrl,
+                webhook_host => Host,
+                pinned_ip => list_to_binary(inet:ntoa(IP))
+            }};
+        {error, _} = Error ->
+            Error
     end.
 
 %% 防自环：发送者本身是 bot（bot 表命中）→ 跳过全部分派

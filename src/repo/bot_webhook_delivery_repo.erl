@@ -7,7 +7,7 @@
 
 -export([tablename/0, attempt_tablename/0]).
 -export([insert/1, get_delivery/1, claim_due/1]).
--export([mark_success/1, mark_retry/4, mark_dead/2]).
+-export([mark_success/1, mark_success/2, mark_retry/4, mark_dead/2]).
 -export([insert_attempt/2]).
 -export([list_dead/2, replay/1]).
 -export([count_by_status/1]).
@@ -25,18 +25,19 @@ insert(D) ->
         delivery_id := Did,
         bot_id := BotId,
         correlation_id := Corr,
-        idempotency_key := Idem
+        idempotency_key := Idem,
+        webhook_url := WebhookUrl,
+        webhook_host := Host,
+        pinned_ip := PinnedIP
     } = D,
     EventType = maps:get(event_type, D, <<"message">>),
     Payload = maps:get(payload, D, <<"{}">>),
     ReplyCtx = maps:get(reply_context, D, <<>>),
-    Host = maps:get(webhook_host, D, <<>>),
-    PinnedIP = maps:get(pinned_ip, D, <<>>),
     Sql =
         <<"INSERT INTO ", Tb/binary,
             " (delivery_id, bot_id, event_type, payload, reply_context,"
-            " correlation_id, idempotency_key, webhook_host, pinned_ip)"
-            " VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9)"
+            " correlation_id, idempotency_key, webhook_url, webhook_host, pinned_ip)"
+            " VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)"
             " ON CONFLICT (idempotency_key) DO NOTHING">>,
     case
         elib_pg:query(Sql, [
@@ -47,6 +48,7 @@ insert(D) ->
             ReplyCtx,
             Corr,
             Idem,
+            WebhookUrl,
             Host,
             PinnedIP
         ])
@@ -74,7 +76,7 @@ get_delivery(DeliveryId) ->
             <<
                 "SELECT delivery_id, bot_id, event_type, payload::text AS payload,"
                 " reply_context, correlation_id, idempotency_key, status,"
-                " attempt_count, next_retry_at, webhook_host, pinned_ip,"
+                " attempt_count, next_retry_at, webhook_url, webhook_host, pinned_ip,"
                 " created_at, updated_at FROM ",
                 Tb/binary,
                 " WHERE delivery_id = $1"
@@ -99,7 +101,8 @@ claim_due(Limit) ->
             "   WHERE status IN ('pending','retry') AND next_retry_at <= NOW()"
             "   ORDER BY next_retry_at LIMIT $1"
             " ) RETURNING delivery_id, bot_id, event_type, payload::text AS payload,"
-            " reply_context, correlation_id, attempt_count, webhook_host, pinned_ip">>,
+            " reply_context, correlation_id, attempt_count, webhook_url,"
+            " webhook_host, pinned_ip">>,
     case elib_pg:query(Sql, [Limit]) of
         {ok, Rows} when is_list(Rows) -> {ok, Rows};
         {ok, _N} when is_integer(_N) -> {ok, []};
@@ -109,6 +112,16 @@ claim_due(Limit) ->
 
 mark_success(DeliveryId) ->
     set_status_and_bump(DeliveryId, <<"success">>, <<>>).
+
+%% @doc worker 成功落账时同步记录实际 attempt 序号。
+mark_success(DeliveryId, AttemptNo) ->
+    Tb = tablename(),
+    elib_pg:execute(
+        <<"UPDATE ", Tb/binary,
+            " SET status = 'success', attempt_count = $2, updated_at = NOW()"
+            " WHERE delivery_id = $1">>,
+        [DeliveryId, AttemptNo]
+    ).
 
 %% @doc 失败转重试：RetryAfterSecs 秒后再次到期。
 mark_retry(DeliveryId, RetryAfterSecs, AttemptNo, _Note) ->

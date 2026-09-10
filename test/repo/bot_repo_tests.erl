@@ -116,36 +116,51 @@ find_by_username_returns_notfound_test_() ->
 %% ===================================================================
 
 find_by_token_returns_bot_test_() ->
+    Token = <<"tok123">>,
+    ExpectedDigest = binary:encode_hex(crypto:hash(sha256, Token), lowercase),
     ?WITH_MECKS(
         [
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(<<"bot">>) -> <<"public.bot">> end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(Sql, [<<"tok123">>]) ->
-                    ?assertNotEqual(nomatch, binary:match(Sql, <<"WHERE api_token = $1">>)),
+                {'query', 2, fun(Sql, [ActualDigest]) ->
+                    ?assertEqual(ExpectedDigest, ActualDigest),
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(Sql, <<"WHERE api_token_digest = $1">>)
+                    ),
                     {ok, [#{<<"user_id">> => 1, <<"status">> => 1}]}
                 end}
             ]}
         ],
         fun() ->
-            {ok, Bot} = bot_repo:find_by_token(<<"tok123">>),
+            {ok, Bot} = bot_repo:find_by_token(Token),
             ?assertEqual(1, maps:get(<<"user_id">>, Bot))
         end
     ).
 
 find_by_token_returns_notfound_test_() ->
+    Token = <<"bad">>,
+    ExpectedDigest = binary:encode_hex(crypto:hash(sha256, Token), lowercase),
     ?WITH_MECKS(
         [
             {elib_pg_sql, [
                 {'public_tablename', 1, fun(<<"bot">>) -> <<"public.bot">> end}
             ]},
             {elib_pg, [
-                {'query', 2, fun(_Sql, [<<"bad">>]) -> {ok, []} end}
+                {'query', 2, fun(Sql, [ActualDigest]) ->
+                    ?assertEqual(ExpectedDigest, ActualDigest),
+                    ?assertNotEqual(
+                        nomatch,
+                        binary:match(Sql, <<"WHERE api_token_digest = $1">>)
+                    ),
+                    {ok, []}
+                end}
             ]}
         ],
         fun() ->
-            ?assertEqual({error, notfound}, bot_repo:find_by_token(<<"bad">>))
+            ?assertEqual({error, notfound}, bot_repo:find_by_token(Token))
         end
     ).
 

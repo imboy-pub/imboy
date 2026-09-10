@@ -95,20 +95,7 @@ update(Req0, State) ->
             BotId = maps:get(<<"bot_id">>, Body, 0),
             case BotId > 0 of
                 true ->
-                    Data = maps:with(
-                        [
-                            <<"name">>,
-                            <<"username">>,
-                            <<"description">>,
-                            <<"avatar">>,
-                            <<"webhook_url">>,
-                            <<"commands">>,
-                            <<"permissions">>,
-                            <<"events">>,
-                            <<"is_public">>
-                        ],
-                        Body
-                    ),
+                    Data = update_data(Body),
                     case bot_logic:update(BotId, Data, CurrentUid) of
                         {ok, Result} ->
                             elib_response:success(Req1, Result);
@@ -160,7 +147,7 @@ search(Req0, _State) ->
 
 %% @doc Bot 发送消息（Bot 服务器调用，api_token 认证，无用户 JWT）
 %%
-%% 认证：Authorization: Bearer <api_token>（bot.api_token 查表比对）
+%% 认证：Authorization: Bearer <api_token>（仅以摘要索引查表比对）
 %% 防护：① agent_rate_limiter 以 bot_id 为 scope 限流（open 端点必须设闸）；
 %%       ② 仅允许回复已有往来消息的用户（has_exchange，Telegram started-chat
 %%          范式），阻止 Bot 主动骚扰任意用户。
@@ -269,7 +256,7 @@ do_send_c2c(Req1, BotId, Body) ->
     end.
 
 %% @doc 从 Authorization: Bearer <api_token> 认证 Bot
-%% 仅信任 bot.api_token（48 位强随机 hex），查表命中且状态正常即通过。
+%% 仅信任 48 位强随机 api_token 的摘要索引，查表命中且状态正常即通过。
 -spec authenticate(cowboy_req:req()) -> {ok, map()} | {error, binary()}.
 authenticate(Req0) ->
     Authorization = cowboy_req:header(<<"authorization">>, Req0, <<>>),
@@ -314,6 +301,23 @@ safe_int_qs(Key, Qs) ->
         undefined -> undefined;
         Val -> elib_cnv:safe_to_integer(Val)
     end.
+
+update_data(Body) ->
+    maps:from_list([
+        {AtomKey, Value}
+     || {JsonKey, AtomKey} <- [
+            {<<"name">>, name},
+            {<<"username">>, username},
+            {<<"description">>, description},
+            {<<"avatar">>, avatar},
+            {<<"webhook_url">>, webhook_url},
+            {<<"commands">>, commands},
+            {<<"permissions">>, permissions},
+            {<<"events">>, events},
+            {<<"is_public">>, is_public}
+        ],
+        {ok, Value} <- [maps:find(JsonKey, Body)]
+    ]).
 
 -spec positive_integer(integer()) -> pos_integer().
 positive_integer(Value) when Value > 0 -> Value;

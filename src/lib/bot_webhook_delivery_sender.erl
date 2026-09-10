@@ -10,6 +10,10 @@
 
 -export([post/7]).
 
+-ifdef(TEST).
+-export([ssl_opts/1]).
+-endif.
+
 -define(CONNECT_TIMEOUT_MS, 8000).
 -define(RESP_TIMEOUT_MS, 8000).
 
@@ -139,5 +143,8 @@ ssl_opts(Host) ->
         {server_name_indication, Hostname},
         {verify, verify_peer},
         {cacerts, Cacerts},
+        {customize_hostname_check, [
+            {match_fun, public_key:pkix_verify_hostname_match_fun(https)}
+        ]},
         {depth, 4}
     ].

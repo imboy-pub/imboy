@@ -36,12 +36,22 @@
 create(#{name := Name, username := Username, owner_uid := OwnerUid} = Data) ->
     case validate(Data) of
         ok ->
+            create_with_credentials(Name, Username, OwnerUid, Data);
+        {error, _} = Err ->
+            Err
+    end.
+
+create_with_credentials(Name, Username, OwnerUid, Data) ->
+    ApiToken = maps:get(api_token, Data, <<>>),
+    VerifyToken = maps:get(verify_token, Data, <<>>),
+    case bot_repo:prepare_credentials(ApiToken, VerifyToken) of
+        {ok, Credentials} ->
             %% user 表主键必须用 user 命名空间生成器（与 channel_webhook_ds 同款）：
             %% 独立生成器在同节点同毫秒可与 user 生成器产出相同值 → user.id 主键冲突；
             %% 且未注册的生成器名会直接 crash（elib_tsid_generator_not_registered）。
             Uid = elib_tsid:generate(user),
             Account = <<"bot_", (ec_cnv:to_binary(Uid))/binary>>,
-            BotData = #{
+            BotData0 = #{
                 user_id => Uid,
                 name => Name,
                 username => Username,
@@ -49,14 +59,13 @@ create(#{name := Name, username := Username, owner_uid := OwnerUid} = Data) ->
                 description => maps:get(description, Data, <<>>),
                 avatar => maps:get(avatar, Data, <<>>),
                 webhook_url => maps:get(webhook_url, Data, <<>>),
-                api_token => maps:get(api_token, Data, <<>>),
-                verify_token => maps:get(verify_token, Data, <<>>),
                 commands => maps:get(commands, Data, <<"[]">>),
                 permissions => maps:get(permissions, Data, <<"[]">>),
                 events => maps:get(events, Data, <<"[]">>),
                 is_public => maps:get(is_public, Data, false),
                 status => 1
             },
+            BotData = maps:merge(BotData0, Credentials),
             case
                 elib_pg:with_tx(fun(Conn) ->
                     ok = workspace_guard:abort_on_error(
@@ -84,8 +93,9 @@ create(#{name := Name, username := Username, owner_uid := OwnerUid} = Data) ->
                     ?ERROR_LOG("bot_ds:create error ~p~n", [Reason]),
                     {error, <<"创建 Bot 失败"/utf8>>}
             end;
-        {error, _} = Err ->
-            Err
+        {error, Reason} ->
+            ?ERROR_LOG("bot_ds:create credential preparation error ~p~n", [Reason]),
+            {error, <<"Bot 凭证加密配置不可用"/utf8>>}
     end.
 
 %% @doc 检查 user_id 是否为 Bot（account_type=3）
@@ -101,7 +111,7 @@ is_bot(_) ->
 %% @doc 按 api_token 查找 Bot（Bot 调用 API 时认证）
 -spec find_by_token(binary()) -> {ok, map()} | {error, not_found | term()}.
 find_by_token(Token) ->
-    case bot_repo:find_by_token(Token) of
+    case bot_repo:find_by_api_token(Token) of
         {ok, Row} -> {ok, Row};
         {error, notfound} -> {error, not_found};
         {error, Reason} -> {error, Reason}
