@@ -81,6 +81,20 @@ create_channel(Uid, Name, Opts) ->
             % 创建频道
             case channel_repo:add(Conn, Data2) of
                 {ok, ChannelId} ->
+                    %% BUG#149：创建者随频道创建即成为订阅者（订阅行+计数同一事务）。
+                    %% 邀请制私有频道的邀请链路查真实订阅表
+                    %%（channel_logic_invitation:create_invitation → is_subscribed），
+                    %% 缺行会让创建者无法邀请任何人（频道创建上限内的所有新频道受影响）。
+                    ok =
+                        case channel_subscription_repo:upsert_active(Conn, ChannelId, Uid) of
+                            {ok, _Changed} -> ok;
+                            {error, SubReason} -> throw({abort_tx, SubReason})
+                        end,
+                    ok =
+                        case channel_repo:increment_subscribers(Conn, ChannelId, 1) of
+                            {ok, _} -> ok;
+                            {error, CntReason} -> throw({abort_tx, CntReason})
+                        end,
                     % 添加创建者为管理员（角色3）
                     AdminData = #{
                         channel_id => ChannelId,
