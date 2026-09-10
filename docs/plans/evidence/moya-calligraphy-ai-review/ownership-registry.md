@@ -185,4 +185,13 @@
 |---|---|
 | 错误码三方交叉审计 | **一致，零用户可见缺口**：后端 27 码（5401-5404/5420-5429/5440-5444/5460-5461/5480-5485）与契约逐一对应；客户端 core+parent+teacher 三层覆盖全部当前可达码；请求层透传后端中文 msg 构成兜底安全网。登记项：5427-5429 客户端未映射=绑定 UI 未建的正确现态（未来建 UI 须补映射并入验收）；5426 后端预留未发射（实测跨 Org 走 403/5423）；5501 未实现=契约「预留」语义。审计文档：`STEP-04/error-code-coverage-audit.md` |
 
+### R16 gradualizer 棘轮债清偿登记（Coordinator；由并行会话 push 门「墨芽批次 13 模块复红」线索触发）
+
+| 事件 | 结果 |
+|---|---|
+| 棘轮债定位 | 并行会话 push-readiness 提到「9/10 晨墨芽批次 13 模块复红」——实为**本任务新增教学模块在 gradualizer 宽网门下 19 项发现（12 模块）**+elib_oss 存量 2 项（非本批次）；`.gradualizer/metrics.txt` 基线 293 |
+| 修复（`2b517f20`） | 12 文件 +67/-33 全部类型级修复：handler 绑定 is_binary 窄化×3、spec 域外防御子句删除×4、acl wrapper spec 对齐、provider map 模式匹配、auth `trim_binary` 收敛+**spec 漏列 code_invalid 真契约缺口补齐**、wechat_client body 收敛包装、attach_logic c2c undefined 显式拒绝（原潜在 crash）、count_queue 头部解构、digest 改 encode_hex(lowercase)（字节不变） |
+| 验证 | gradualizer 教学域 **19→0**；make compile 零告警；**eunit 教学域 11 套件 184/184 全绿**（EUNIT_CONFIG=/tmp/smoke_sys.config 隔离通道）；全量 7047/80 失败集=已知用户域 -ifdef(TEST) 基线零教学（通过数较 R11 -19 为并行会话当时活跃改测试文件的漂移，非本批次回归） |
+
+
 

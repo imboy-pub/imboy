@@ -114,6 +114,8 @@
 > **R14（收官后）联调就绪固化**：R13 提交后完整性审计全绿（六笔逐一对照 stat/DCO、用户文件零混入实证、SHA 登记与 git log 吻合）；新增 `STEP-17-PREP/integration-runbook.md`——外部门禁清零后的三场景联调剧本（A 开发版：隐私指引先行+Garage+`moya.debug.api_base` 调试覆盖，闭合矩阵 #1/#17 与 wx.uploadFile 兼容项；B 真实模型：选型/接线/抽帧/标尺/验收五步，选型依据用户成本对比调研、抽帧依据 frame-sampling 规格；C 真实试点：只列合规 §3 阶段二 8 门不执行）。微信外呼/付费模型/真实数据/试点启动四点标注为独立授权点。
 >
 > **R15 三端错误码一致性审计**：契约（STEP-04/error-codes.md）↔ 后端（error_code.hrl 27 码+发射点）↔ 客户端（moya 三层码表）交叉比对**一致，零用户可见缺口**——客户端未映射的 5427-5429 绑定三码对应「绑定 UI 未建」的正确现态（建 UI 时须补映射并入验收）；5501 预留语义、5426 预留未发射均符合契约；请求层透传后端中文 msg 构成兜底。详见 `STEP-04/error-code-coverage-audit.md`。
+>
+> **R16 gradualizer 棘轮债清偿**：由并行会话 push 门「墨芽批次 13 模块复红」线索触发——本任务教学模块在 gradualizer 宽网门下 19 项发现（12 模块）全部类型级修复清零（`2b517f20`，12 文件 +67/-33）。顺带修出一个真契约缺口：wechat_mini_login spec 漏列 `code_invalid` 原子（do_login 产生→5402 映射依赖它）；attach_logic c2c scope undefined 由潜在 crash 改显式拒绝。验证：gradualizer 19→0 + compile 零告警 + 教学域 11 套件 **184/184 全绿**（隔离配置零接触 imboy_v1）；全量 80 失败集=用户域已知基线零教学。elib_oss 存量 2 项非本批次遗留，仍登记用户域。
 
 ## 声明
 
