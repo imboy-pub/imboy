@@ -1,0 +1,21 @@
+task_id	superseded_by	notes
+G0-01	-	baseline and ownership
+EVID-00	-	evidence schema and verifier
+FSM-00	-	task state machine
+TRACE-00	-	correlation contract
+BUILD-00	BUILD-00R	original build spike
+BUILD-00R	-	build architecture remediation
+PDT-01	-	product contracts
+DATA-01	-	durable agent tasks
+MCP-01	-	mcp client identity and grants
+WH-01	-	bot webhook outbox security
+WH-02	-	channel webhook credential rotation
+AGT-01	-	tool-loop decision
+MCP-02	-	mcp task tools
+BOT-01	-	bot group mention and reply
+AGT-02	-	controlled built-in agent tools
+ADM-01	-	admin control plane
+APP-01	-	client task path
+BUILD-01	-	agent hub product slice
+E2E-01	-	local golden flow
+REV-01	-	security and quality review

@@ -21,5 +21,6 @@
   4. HIGH/MEDIUM 阻断清零，secret/PII 扫描清零。
   5. 运维文档能在全新 scratch 环境复现，不依赖个人机器残留状态。
 - 输出：`$IMBOY_EVIDENCE_ROOT/GATE-01/evidence.json` 和人读 `gate-report.md`，结论只能是 `PASS`、`PARTIAL`、`FAIL`、`BLOCKED`。
+- 严格聚合命令：`python3 scripts/verify_agent_hub_task_evidence.py --gate "$IMBOY_EVIDENCE_ROOT" --required-set docs/testing/agent-hub-required-set.tsv`；`GATE-01` 自身输出不参与输入集合，其他未知任务仍判 `INVALID`。
 - Acceptance IDs：`GATE-01-A01` 全部必选 task evidence 经统一 verifier 为 PASS；`GATE-01-A02` 最终 Base 的构建/E2E/审计证据 hash 完整；`GATE-01-A03` HIGH/MEDIUM 与 secret/PII 阻断清零；`GATE-01-A04` 空 scratch 环境按 runbook 可复现。
 - 禁止替代：unit tests 不能替代真实协议 harness；Admin mock 不能替代后端契约；本地浏览器不能替代真机；静态 manifest 不能替代裁剪产物检查。

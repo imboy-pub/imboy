@@ -376,6 +376,14 @@ def verify_gate(root, required_tsv=None):
     if not task_dirs:
         result["errors"].append("gate.no_task_evidence_found")
         return result
+    required = None
+    tsv_errors = []
+    ignored_gate_outputs = []
+    if required_tsv is not None:
+        required, tsv_errors = parse_required_set(required_tsv)
+        if required is not None and "GATE-01" not in required:
+            ignored_gate_outputs = [e for e in task_dirs if e == "GATE-01"]
+            task_dirs = [e for e in task_dirs if e != "GATE-01"]
     decisions = []
     for task_id in task_dirs:
         single = verify_task_file(os.path.join(root, task_id, "evidence.json"))
@@ -389,7 +397,6 @@ def verify_gate(root, required_tsv=None):
         else:
             decisions.append(single["decision"])
     if required_tsv is not None:
-        required, tsv_errors = parse_required_set(required_tsv)
         strict_errors = list(tsv_errors)
         if required is not None:
             present = set(task_dirs)
@@ -408,6 +415,7 @@ def verify_gate(root, required_tsv=None):
                 "unknown": unknown,
                 "superseded": {t: y for t, y in sorted(required.items())
                                if y is not None},
+                "ignored_gate_outputs": ignored_gate_outputs,
             }
         if strict_errors:
             result["errors"].extend(strict_errors)

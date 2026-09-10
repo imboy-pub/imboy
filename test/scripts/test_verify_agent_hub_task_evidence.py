@@ -457,6 +457,17 @@ class RequiredSetGateTest(unittest.TestCase):
         self.assertEqual(result["required_set"]["unknown"], ["ZZZ-99"])
         self.assertEqual(result["required_set"]["missing"], [])
 
+    def test_gate_output_is_ignored_during_strict_revalidation(self):
+        def build(tmp):
+            make_evidence(tmp, task_id="AAA-01")
+            make_evidence(tmp, task_id="GATE-01")
+        result = self.strict_gate([("AAA-01", None, "a")], build)
+        self.assertEqual(result["decision"], "PASS")
+        self.assertEqual(result["required_set"]["unknown"], [])
+        self.assertEqual(
+            result["required_set"]["ignored_gate_outputs"], ["GATE-01"])
+        self.assertNotIn("GATE-01", result["tasks"])
+
     # --- 负例 3a：replacement target 目录缺失 ---
     def test_replacement_target_missing(self):
         def build(tmp):
