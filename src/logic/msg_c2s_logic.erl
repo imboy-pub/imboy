@@ -220,14 +220,13 @@ send_service_response(To, MsgId, CurrentUid, From, Payload0, RespMap, TopicId, C
 handle_sync(CurrentUid, Cursors, Limit) when is_list(Cursors) ->
     ClampedLimit = erlang:min(erlang:max(Limit, 1), 100),
     %% 1. 先鉴权过滤，得到授权会话的 {ConvKey, Seq}
+    %% E2EE-2026-012（Task 8/LT-03）：c2g 游标钳制到当前 open 世代 start_seq-1，
+    %% seq=0/越界游标不能拉到入群前归档；与 /msg/history 同源谓词。
     Authed = lists:filtermap(
         fun(Cursor) ->
             ConvKey = maps:get(<<"conv_key">>, Cursor, <<>>),
             Seq = maps:get(<<"seq">>, Cursor, 0),
-            case authorize_conv(CurrentUid, ConvKey) of
-                true -> {true, {ConvKey, Seq}};
-                false -> false
-            end
+            authorize_conv_cursor(CurrentUid, ConvKey, Seq)
         end,
         Cursors
     ),
@@ -276,18 +275,31 @@ handle_sync(_CurrentUid, _Cursors, _Limit) ->
 
 %% @doc 验证用户是否有权访问该会话
 %% conv_key 格式: "c2c:{min_uid}:{max_uid}" 或 "c2g:{group_id}"
--spec authorize_conv(integer(), binary()) -> boolean().
-authorize_conv(CurrentUid, <<"c2c:", Rest/binary>>) ->
+%% @doc E2EE-2026-012（Task 8/LT-03）：鉴权 + 游标钳制二合一。
+%% c2c：会话两端之一即可，游标不钳制。c2g：共享授权谓词（open 世代 start_seq），
+%% 返回 {true, {ConvKey, max(Seq, StartSeq-1)}}——下游 `seq > cursor` 查询因此
+%% 不会越过 join boundary；deny / 缺边界 fail-closed 丢弃该会话。
+-spec authorize_conv_cursor(integer(), binary(), integer()) ->
+    {true, {binary(), integer()}} | false.
+authorize_conv_cursor(CurrentUid, <<"c2c:", Rest/binary>> = ConvKey, Seq) ->
     case binary:split(Rest, <<":">>) of
         [UidA, UidB] ->
             A = ec_cnv:to_integer(UidA),
             B = ec_cnv:to_integer(UidB),
-            CurrentUid =:= A orelse CurrentUid =:= B;
+            case CurrentUid =:= A orelse CurrentUid =:= B of
+                true -> {true, {ConvKey, Seq}};
+                false -> false
+            end;
         _ ->
             false
     end;
-authorize_conv(CurrentUid, <<"c2g:", GidBin/binary>>) ->
+authorize_conv_cursor(CurrentUid, <<"c2g:", GidBin/binary>> = ConvKey, Seq) ->
     Gid = ec_cnv:to_integer(GidBin),
-    group_ds:is_member(CurrentUid, Gid);
-authorize_conv(_CurrentUid, _ConvKey) ->
+    case group_ds:authorize_group_history(CurrentUid, Gid) of
+        {ok, #{start_seq := StartSeq}} ->
+            {true, {ConvKey, erlang:max(Seq, StartSeq - 1)}};
+        {error, denied} ->
+            false
+    end;
+authorize_conv_cursor(_CurrentUid, _ConvKey, _Seq) ->
     false.

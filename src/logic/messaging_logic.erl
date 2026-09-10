@@ -113,10 +113,13 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
             {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
         {error, Reason} ->
             {error, Reason, ?ERR_BAD_REQUEST};
-        {ok, ConvKey} ->
+        {ok, ConvKey, MinSeq} ->
+            %% E2EE-2026-012（Task 8/LT-03）：游标钳制到授权下界——
+            %% seq=0 / 负数 / 越界游标都不能读穿 join boundary。
+            AfterSeq2 = erlang:max(AfterSeq, MinSeq - 1),
             %% 多取 1 条判定 has_more：末页恰好满额（== Limit）时不再虚报
             %% true（旧判定 >= Limit 会让客户端多拉一次空页）
-            case msg_archive_ds:history(ConvKey, AfterSeq, Limit + 1) of
+            case msg_archive_ds:history(ConvKey, AfterSeq2, Limit + 1) of
                 {ok, Rows0} ->
                     HasMore = length(Rows0) > Limit,
                     Rows = lists:sublist(Rows0, Limit),
@@ -137,12 +140,16 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
 %% @private 验证参数并生成 conv_key
 validate_history_params(<<"c2c">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
     PeerId = ec_cnv:to_integer(PeerIdEnc),
-    {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId)};
+    {ok, msg_archive_ds:conv_key_c2c(CurrentUid, PeerId), 0};
 validate_history_params(<<"c2g">>, PeerIdEnc, CurrentUid) when PeerIdEnc =/= <<>> ->
     Gid = ec_cnv:to_integer(PeerIdEnc),
-    case group_ds:is_member(CurrentUid, Gid) of
-        true -> {ok, msg_archive_ds:conv_key_c2g(Gid)};
-        false -> {error, permission_denied}
+    %% E2EE-2026-012（Task 8/LT-03）：F2/R2 共享授权谓词——仅当前 open 世代
+    %% start_seq 之后的历史可见；MinSeq 由 history/5 钳制游标（fail-closed deny）。
+    case group_ds:authorize_group_history(CurrentUid, Gid) of
+        {ok, #{start_seq := MinSeq}} ->
+            {ok, msg_archive_ds:conv_key_c2g(Gid), MinSeq};
+        {error, denied} ->
+            {error, permission_denied}
     end;
 validate_history_params(<<>>, _, _) ->
     {error, <<"缺少 chat_type 参数"/utf8>>};

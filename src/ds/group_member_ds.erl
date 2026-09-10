@@ -14,6 +14,8 @@
 -export([add_member/2]).
 -export([join_group/5]).
 -export([leave/4]).
+%% E2EE-2026-012：workspace_logic.remove_member_tx 级联关闭世代（跨模块消费）
+-export([close_history_generation/4]).
 -export([alias/4]).
 -export([update_role/4]).
 -export([update_role/5]).
@@ -130,6 +132,10 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
         {ok, false} ->
             {ok, 0};
         {ok, true} ->
+            %% E2EE-2026-012 §7.4（Task 8/LT-03）：新激活/重入 → 开启新世代，
+            %% start_seq=锁内计数器下一值；与 staging 接受对同一 msg_store_seq 行加锁。
+            %% ON CONFLICT DO NOTHING：已在 open 世代时幂等（重复 join 不新建世代）。
+            ok = open_history_generation(Conn, Gid, Uid),
             case update_statistics(Conn, Gid) of
                 {ok, UidSum} ->
                     group_ds:join(Uid, Gid),
@@ -139,6 +145,52 @@ join_group(Conn, JoinMode, Uid, Gid, OptData) ->
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% ===================================================================
+%% E2EE-2026-012 群历史世代开关（Task 8 / LT-03）
+%% ===================================================================
+
+%% @doc 开启新世代：start_seq = 锁内计数器下一值（join/rejoin，§7.4）。
+%% 与 staging 接受对同一 msg_store_seq 行加锁（无自增 upsert），
+%% 重复 join（已有 open 世代）幂等：ON CONFLICT DO NOTHING。
+%% gen_no 取该成员历史最大值+1；首代为 1。
+-spec open_history_generation(pid(), integer(), integer()) -> ok.
+open_history_generation(Conn, Gid, Uid) ->
+    ConvKey = msg_archive_ds:conv_key_c2g(Gid),
+    Sql =
+        <<"WITH lock_row AS (",
+            "  INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, 0) ",
+            "  ON CONFLICT (conv_key) DO UPDATE SET seq = public.msg_store_seq.seq ",
+            "  RETURNING seq", "), gen AS (",
+            "  SELECT COALESCE(MAX(generation_no), 0) + 1 AS next_no ",
+            "  FROM public.group_member_generation WHERE group_id = $2 AND user_id = $3", ") ",
+            "INSERT INTO public.group_member_generation ",
+            "  (group_id, user_id, generation_no, start_seq) ",
+            "SELECT $2, $3, gen.next_no, lock_row.seq + 1 FROM lock_row, gen ",
+            "ON CONFLICT DO NOTHING">>,
+    case elib_pg:execute(Conn, Sql, [ConvKey, Gid, Uid]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({abort_tx, {generation_open_failed, Reason}})
+    end.
+
+%% @doc 关闭当前 open 世代：end_seq = 锁内计数器当前值 = 成员实际可见的最后 seq
+%% （leave/admin_remove/workspace_remove）。入群后零消息即离开时计数器仍为
+%% start_seq-1，世代为空区间（end_seq=start_seq-1，CHECK 允许）。
+%% 无 open 世代（异常态）时静默 ok——授权读取侧已 fail-closed，不阻塞离开流程。
+-spec close_history_generation(pid(), integer(), integer(), binary()) -> ok.
+close_history_generation(Conn, Gid, Uid, Reason) ->
+    ConvKey = msg_archive_ds:conv_key_c2g(Gid),
+    Sql =
+        <<"WITH lock_row AS (",
+            "  INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, 0) ",
+            "  ON CONFLICT (conv_key) DO UPDATE SET seq = public.msg_store_seq.seq ",
+            "  RETURNING seq", ") ", "UPDATE public.group_member_generation g ",
+            "SET end_seq = lock_row.seq, close_reason = $2, updated_at = now() ", "FROM lock_row ",
+            "WHERE g.group_id = $3 AND g.user_id = $4 AND g.end_seq IS NULL">>,
+    case elib_pg:execute(Conn, Sql, [ConvKey, Reason, Gid, Uid]) of
+        {ok, _} -> ok;
+        {error, Reason2} -> throw({abort_tx, {generation_close_failed, Reason2}})
     end.
 
 %% @doc T5：workspace 群成员子集校验（同事务）
@@ -208,6 +260,15 @@ leave(Conn, Uid, Gid, CurrentUid) ->
             % 删除成员
             Sql = <<"DELETE FROM ", GMTb/binary, " WHERE id = $1">>,
             {ok, _} = elib_pg:execute(Conn, Sql, [Id]),
+
+            %% E2EE-2026-012 §7.4（Task 8/LT-03）：主动退群/管理员移除都关闭
+            %% 当前 open 世代（end_seq=锁内计数器当前值）；与 staging 接受同锁序。
+            CloseReason =
+                case CurrentUid == Uid of
+                    true -> <<"leave">>;
+                    false -> <<"admin_remove">>
+                end,
+            ok = close_history_generation(Conn, Gid, Uid, CloseReason),
 
             % 写日志
             {ok, Body} = jsone_encode:encode(GM, [native_utf8]),

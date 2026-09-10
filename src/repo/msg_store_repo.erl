@@ -53,6 +53,14 @@ find_by_msg_id(MsgId) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% @doc c2g staging 预分配的 seq 计数器原子 upsert（E2EE-2026-012 §7.2）。
+%% 与 membership 转换对同一行加锁；与 staging INSERT 同事务执行。
+-spec stage_conv_seq_sql() -> binary().
+stage_conv_seq_sql() ->
+    <<"INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, 1) ",
+        "ON CONFLICT (conv_key) DO UPDATE SET seq = public.msg_store_seq.seq + 1 ",
+        "RETURNING seq">>.
+
 %% @doc 获取备份表名
 -spec tablename() -> binary().
 tablename() ->
@@ -111,6 +119,60 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     binary()
 ) ->
     {ok, term()} | {ok, term(), term()} | {error, term()}.
+stage(
+    Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, SenderDid
+) when
+    is_integer(ToId), Type =:= <<"c2g">>
+->
+    %% E2EE-2026-012 §7.2（Task 8/LT-03）：c2g 消息在持久接受（staging 写入）
+    %% **同一事务**内预分配 conv_seq；membership 转换对同一 msg_store_seq 行加锁，
+    %% 边界在锁内确定，异步 archive 只搬运既定 seq。重复 msg_id 重试不会给
+    %% 同一行分配第二个序列（原行保持原 conv_seq，多余自增为允许的 gap）。
+    ConvKey = msg_archive_ds:conv_key_c2g(ToId),
+    Tb = tablename(),
+    Data0 = #{
+        type => Type,
+        msg_id => MsgId,
+        msg_type => MsgType,
+        action => Action,
+        e2ee => msg_store_e2ee_to_jsonb(E2EE),
+        payload => msg_store_payload_to_jsonb(Payload),
+        from_id => FromId,
+        to_id => ToId,
+        created_at => CreatedAt,
+        server_ts => ServerTs,
+        retry_count => 0
+    },
+    Data = put_sender_did(Data0, SenderDid),
+    GenId = elib_tsid:generate(msg_store),
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            {ok, _, _, [{Seq}]} =
+                epgsql:equery(Conn, stage_conv_seq_sql(), [ConvKey]),
+            {Sql, Params} = elib_pg_sql:insert(Tb, Data#{id => GenId, conv_seq => Seq}),
+            %% 失败必须显式回滚：普通返回值会随 with_transaction 提交路径穿出，
+            %% 计数器递增将无法撤销（重复 msg_id 场景 = 空推 gap）
+            case elib_pg:query(Conn, Sql, Params) of
+                {ok, _} = Ok ->
+                    Ok;
+                {error, {error, error, <<"23505">>, unique_violation, _, _}} ->
+                    throw({rollback, {unique_violation, MsgId}});
+                {error, R} ->
+                    throw({rollback, R})
+            end
+        end)
+    of
+        {ok, _} ->
+            {ok, GenId};
+        {rollback, {unique_violation, MsgId}} ->
+            {error, {unique_violation, MsgId}};
+        {rollback, Reason} ->
+            {error, Reason};
+        {error, Reason} ->
+            {error, Reason};
+        Other ->
+            Other
+    end;
 stage(
     Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, SenderDid
 ) when
@@ -330,6 +392,10 @@ ensure_table_exists() ->
                 %% 全新安装；存量部署由 priv/migrations/00000048 的 ALTER 补列——
                 %% 两处必须同步，漏一处即新老部署 schema 分叉。
                 "            sender_did VARCHAR(128),\n"
+                %% Task 8 / E2EE-2026-012：staging 预分配列（持久接受顺序）。
+                %% 本 DDL 只覆盖全新安装；存量部署由 priv/migrations/00000101
+                %% 的 ALTER 补列——两处必须同步（同 sender_did 的 00000048 惯例）。
+                "            conv_seq BIGINT,\n"
                 "            payload JSONB NOT NULL,\n"
                 "            from_id BIGINT NOT NULL,\n"
                 "            to_id BIGINT,\n"

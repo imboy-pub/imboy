@@ -476,6 +476,15 @@ remove_member_tx(Conn, WsId, TargetUid) ->
         end,
         Affected
     ),
+    %% E2EE-2026-012 §7.4（Task 8/LT-03）：workspace removal 关闭各群的
+    %% open 历史世代（与 status=0 同事务；成员行保留但授权谓词只认 open 世代，
+    %% 关闭后其历史访问即失效）。
+    lists:foreach(
+        fun(#{<<"group_id">> := Gid}) ->
+            group_member_ds:close_history_generation(Conn, Gid, TargetUid, <<"workspace_remove">>)
+        end,
+        Affected
+    ),
     %% 再 removed 父关系（触发器在 COMMIT 校验无残留 active 下级）
     ok = workspace_member_repo:remove_tx(Conn, WsId, TargetUid),
     AffectedOut = [#{group_id => G} || #{<<"group_id">> := G} <- Affected],

@@ -437,14 +437,19 @@ remove_member_cascades_group_members_test_() ->
             ]},
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
-                {'execute', 3, fun(_Conn, Sql, [_, GmId]) ->
-                    Prev =
-                        case get(t_wl_disable_calls) of
-                            undefined -> [];
-                            Calls -> Calls
-                        end,
-                    put(t_wl_disable_calls, Prev ++ [{Sql, GmId}]),
-                    {ok, 1}
+                %% E2EE-2026-012：workspace 移除级联关闭世代（首子句，不入清单）；
+                %% 原成员禁用记录为第二子句
+                {'execute', 3, fun
+                    (_Conn, <<"WITH lock_row AS ", _/binary>>, _) ->
+                        {ok, 1};
+                    (_Conn, Sql, [_, GmId]) ->
+                        Prev =
+                            case get(t_wl_disable_calls) of
+                                undefined -> [];
+                                Calls -> Calls
+                            end,
+                        put(t_wl_disable_calls, Prev ++ [{Sql, GmId}]),
+                        {ok, 1}
                 end}
             ]},
             {workspace_member_repo, [

@@ -216,7 +216,11 @@ history_reconnect_idempotent_test_() ->
                 end}
             ]},
             {group_ds, [
-                {'is_member', 2, fun(1, 9) -> true end}
+                {'is_member', 2, fun(1, 9) -> true end},
+                %% E2EE-2026-012：c2g 授权改走共享谓词（start_seq=1 = 无钳制）
+                {'authorize_group_history', 2, fun(_Uid, _Gid) ->
+                    {ok, #{generation_no => 1, start_seq => 1}}
+                end}
             ]}
         ],
         fun() ->
@@ -234,7 +238,9 @@ history_c2g_rejects_non_member_before_archive_test_() ->
     ?WITH_MECKS(
         [
             {group_ds, [
-                {'is_member', 2, fun(1, 9) -> false end}
+                {'is_member', 2, fun(1, 9) -> false end},
+                %% E2EE-2026-012：无 open 世代（非成员）fail-closed deny
+                {'authorize_group_history', 2, fun(_Uid, _Gid) -> {error, denied} end}
             ]},
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(_) -> error(conv_key_must_not_be_built) end},

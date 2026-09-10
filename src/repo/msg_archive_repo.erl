@@ -70,6 +70,18 @@ conv_key(<<"c2g">>, _FromId, Gid) ->
 %% @return {ok, SeqInteger} | {error, Reason}
 %% @end
 %%-------------------------------------------------------------------
+%% @doc E2EE-2026-012 §7.2（Task 8/LT-03）：c2g 行在 staging 接受事务已预分配
+%% conv_seq，archive 只搬运既定 seq（绝不再分配）；legacy/c2c 行回退归档期分配。
+-spec staged_or_next_seq(binary(), map()) -> {ok, integer()} | {error, term()}.
+staged_or_next_seq(ConvKey, Row) ->
+    case maps:get(<<"conv_seq">>, Row, undefined) of
+        S when is_integer(S), S > 0 ->
+            {ok, S};
+        _ ->
+            next_conv_seq(ConvKey)
+    end.
+
+%%-------------------------------------------------------------------
 -spec next_conv_seq(binary()) -> {ok, integer()} | {error, term()}.
 next_conv_seq(ConvKey) ->
     Sql =
@@ -108,7 +120,7 @@ archive(Row) ->
         {error, Reason} ->
             {error, Reason};
         {ok, ConvKey, Data} ->
-            case next_conv_seq(ConvKey) of
+            case staged_or_next_seq(ConvKey, Row) of
                 {ok, Seq} ->
                     GenId = elib_tsid:generate(msg_store),
                     FinalData = Data#{id => GenId, conv_seq => Seq},

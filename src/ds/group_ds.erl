@@ -16,6 +16,7 @@
 -export([member_uids/1]).
 -export([member_uids_strict/1]).
 -export([is_member/2]).
+-export([authorize_group_history/2]).
 -export([e2ee_mode/1]).
 -export([flush_e2ee_mode/1]).
 -export([join/2]).
@@ -58,6 +59,39 @@ is_member(Uid, Gid) ->
             false;
         _ ->
             true
+    end.
+
+%% ===================================================================
+%% E2EE-2026-012 共享群历史授权（Task 8 / LT-03）
+%% ===================================================================
+
+%% @doc 群历史统一授权谓词（history / batch sync 同源消费）。
+%% 注意：附件授权（attach_logic authorize/can_upload）刻意仍用 is_member——
+%% 比 interval 语义更严（退群即失去附件访问，fail-closed）；若未来 key-grant
+%% 需要 anchor 语义，应显式消费本谓词而非自行实现。
+%%
+%% 已批准语义：F2（仅本次入群后）+ R2（每次重入新世代）。
+%% 授权结果 = 当前 open 世代的 {generation_no, start_seq, open}；
+%% 已关闭世代（离群区间）不在授权集合内；M1 祖传成员 start_seq=1。
+%%
+%% fail-closed：无 open 世代（非成员 / 缺边界 / 数据异常）一律 deny，
+%% 绝不回退到 boolean membership。
+%%
+%% @returns {ok, #{generation_no => integer(), start_seq => integer()}} | {error, denied}
+-spec authorize_group_history(integer(), integer()) ->
+    {ok, map()} | {error, denied}.
+authorize_group_history(Uid, Gid) ->
+    Sql =
+        <<"SELECT generation_no, start_seq FROM public.group_member_generation ",
+            "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL">>,
+    case elib_pg:query(Sql, [Gid, Uid]) of
+        {ok, [#{<<"generation_no">> := GenNo, <<"start_seq">> := StartSeq}]} ->
+            {ok, #{generation_no => GenNo, start_seq => StartSeq}};
+        {ok, _} ->
+            %% 0 行或多行（多行被部分唯一索引排除，防御性 deny）→ fail-closed
+            {error, denied};
+        {error, _Reason} ->
+            {error, denied}
     end.
 
 %% @doc 获取群组成员用户ID列表

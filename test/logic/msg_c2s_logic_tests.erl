@@ -177,7 +177,11 @@ handle_sync_authorizes_c2g_member_test_() ->
     ?WITH_MECKS(
         [
             {group_ds, [
-                {'is_member', 2, fun(100, 500) -> true end}
+                {'is_member', 2, fun(100, 500) -> true end},
+                %% E2EE-2026-012：sync 游标授权改走共享谓词（start_seq=1 = 无钳制）
+                {'authorize_group_history', 2, fun(100, 500) ->
+                    {ok, #{generation_no => 1, start_seq => 1}}
+                end}
             ]},
             {msg_archive_ds, [
                 {'history_batch', 2, fun(_Authed, _Limit) ->
@@ -212,7 +216,9 @@ handle_sync_rejects_c2g_non_member_test_() ->
     ?WITH_MECKS(
         [
             {group_ds, [
-                {'is_member', 2, fun(_Uid, _Gid) -> false end}
+                {'is_member', 2, fun(_Uid, _Gid) -> false end},
+                %% E2EE-2026-012：无 open 世代（非成员）fail-closed deny
+                {'authorize_group_history', 2, fun(_Uid, _Gid) -> {error, denied} end}
             ]}
         ],
         fun() ->

@@ -100,6 +100,10 @@ join_group_success_test_() ->
                 {'update', 5, fun(_Conn, <<"group">>, Data, <<"id = $1">>, [1]) ->
                     ?assertEqual(100, maps:get(member_count, Data)),
                     {ok, 1}
+                end},
+                %% E2EE-2026-012：join 事务内 open 世代（msg_store_seq 无自增锁）
+                {'execute', 3, fun(_Conn, <<"WITH lock_row AS ", _/binary>>, _) ->
+                    {ok, 1}
                 end}
             ]},
             {group_repo, [
@@ -160,8 +164,13 @@ leave_success_test_() ->
                 end}
             ]},
             {elib_pg, [
-                {'execute', 3, fun(_Conn, _Sql, [1]) ->
-                    {ok, 1}
+                %% E2EE-2026-012：leave 事务内 close 世代（首子句）；
+                %% 原成员 DELETE 为第二子句
+                {'execute', 3, fun
+                    (_Conn, <<"WITH lock_row AS ", _/binary>>, _) ->
+                        {ok, 1};
+                    (_Conn, _Sql, [1]) ->
+                        {ok, 1}
                 end},
                 {'query', 3, fun(_Conn, _Sql, [1]) ->
                     {ok, [#{<<"member_count">> => 200}]}
