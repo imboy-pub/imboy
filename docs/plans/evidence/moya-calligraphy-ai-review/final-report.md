@@ -122,6 +122,8 @@
 > **R18 四门终验矩阵（批次收官）**：eunit **353/353**（教学 184+触达相关 147+moderation/adm 22）· gradualizer 批次 26 文件 **0 发现** · dialyzer 全仓 312→305（**修 exec_opts 级联根因 `6e0d1533`**：do_execute 富化 opts 超契约导致 7 项连锁误判；批次模块余 8 项全为防御子句风格类、零类型错误，教学域较 R11 基线 11→7）· xref undefined_function_calls 完整宇宙 **0 命中**（make 摘要 9 条=裁剪预设噪音）。**墨芽批次四门全干净。**
 >
 > **R19 dialyzer 基线棘轮分诊（给 push 决策的关键信息）**：`make dialyze-check` 当前 RED——新增 124 条基线外指纹，**经逐条归属，零条出自墨芽批次模块**；全部落在用户主线（bot_webhook 系 26/agent 系 13/channel 与 adm 系若干）+65 条 GONE，成因=并行会话 bot/agent 线新代码与 PLT 重建（9/5→9/10）漂移。基线收紧须由相应线的作者 review 后执行（`bash scripts/check_dialyzer_baseline.sh --update dialyze-last.log`），墨芽批次不阻塞也不代做。另：冒烟配置 /tmp/smoke_sys.config 已补齐 `teaching_ai_stuck_reclaim` 条目，与仓内 sys.config.example 及 runbook 的 statistic() 8/8 预期对齐。
+>
+> **R20 冒烟配置与真源对齐**：核查确认仓内 local_jobs 真源共 8 条活跃作业（存量 5+教学 3），runbook「8/8」表述正确；/tmp/smoke_sys.config 原仅有教学条目（实际只会 3/3）——已按仓内条目逐字补全存量 5 条，consult 验证 8/8，8 个 MFA 经 ensure_loaded 后 function_exported 全部实证存在；存量作业幂等/守卫设计，空业务库 no-op。**场景 A 配置侧就绪。**
 
 ## 声明
 

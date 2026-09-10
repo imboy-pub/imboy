@@ -221,6 +221,15 @@
 | `make dialyze-check` 基线棘轮实测 | **RED（新增 124 条基线外指纹）但零条属墨芽批次**：NEW 全部落在用户主线模块——bot_webhook 系 26 条（并行会话活跃开发的 bot 线）、agent 系 13 条、channel/adm 系若干；批次模块（teaching×14/elib_oss/elib_response/imboy_router/adm_report/moderation）**零指纹**。另有 65 条 GONE（可收紧）。成因=并行会话新代码+PLT 重建（9/5→9/10）漂移；基线 `--update` 需各线作者 review 后自行收紧（脚本头注明的流程），Coordinator 不代做 |
 | 冒烟配置 ecron 补齐 | `/tmp/smoke_sys.config` 的 local_jobs 原只有教学×2（R7 时代手写），补齐 `teaching_ai_stuck_reclaim "*/10 * * * *"` 使与仓内 sys.config.example 一致；file:consult 验证通过，runbook 场景 A 的 `ecron:statistic()` 8/8 预期自洽（存量 5 + 教学 3） |
 
+### R20 冒烟配置与仓内真源对齐（Coordinator）
+
+| 事件 | 结果 |
+|---|---|
+| 配置一致性核查 | 仓内 sys.config.example 的 local_jobs 共 **8 条活跃作业**（存量 5：attachment_orphan/pending_cleanup、payment_reconcile、red_packet_expire_refund、ops_weekly_report + 教学 3）——runbook「8/8＝教学 3+存量 5」表述与真源一致 |
+| `/tmp/smoke_sys.config` 补全 | 原只有教学条目（联调时 statistic() 只会 3/3，与 runbook 8/8 预期不符）；已按仓内条目**逐字抄录**存量 5 条，consult=8 条；8 个 MFA 经 code:ensure_loaded + function_exported **全部实证存在**（function_exported 对未加载模块恒 false 是假象，须先 ensure_loaded） |
+| 运行期安全性 | 存量作业全部幂等/守卫设计（R7 已论证双节点安全）；smoke 库 moya_boot_smoke 隔离，支付对账/红包退款等在空业务库为 no-op |
+
+
 
 
 
