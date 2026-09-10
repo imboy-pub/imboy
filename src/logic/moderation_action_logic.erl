@@ -26,7 +26,8 @@
     <<"content_removal">>
 ]).
 
--opaque opts() :: #{
+%% 原为 opaque：模块无构造器，外部字面量构造必然违反 opaque——改透明类型
+-type opts() :: #{
     reason := binary(),
     gid => integer(),
     duration_minutes => integer(),
@@ -239,9 +240,18 @@ insert_action(AdmUid, CaseId, Action, TargetUid, Opts, Status, Result, FailReaso
         fail_reason => FailReason,
         end_at => EndAt
     },
-    elib_pg:with_tx(fun(Conn) ->
-        moderation_action_repo:insert_tx(Conn, ActionRow)
-    end).
+    %% with_tx 的 {rollback, _} 显式折叠为 {error, _}：调用方（HTTP 层）只认
+    %% ok|error 二态，泄漏 rollback 元组会 case_clause 崩 500（fail-closed 不变：
+    %% 事务已回滚，动作行未落库，响应为错误而非假装成功）
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            moderation_action_repo:insert_tx(Conn, ActionRow)
+        end)
+    of
+        {rollback, _Reason} -> {error, <<"moderation_action_persist_failed">>};
+        {ok, Row} -> {ok, Row};
+        {error, Msg} -> {error, Msg}
+    end.
 
 %% @doc 动作原语分发。返回 ok | {error, Reason}。
 -spec run_primitive(binary(), integer(), opts(), map()) -> ok | {error, binary()}.
@@ -337,7 +347,7 @@ pre_undo(_Row, _AdmUid) ->
 %% @doc warning 通知：S2C 系统消息送达目标用户全部设备。
 %% 举报人身份不进 payload（R-04 隐私红线）。
 -spec send_warning_notice(integer(), binary()) -> ok | {error, binary()}.
-send_warning_notice(TargetUid, Reason) ->
+send_warning_notice(TargetUid, Reason) when is_integer(TargetUid), TargetUid > 0 ->
     MsgId = elib_id:gen("moderation_warning"),
     Action = <<"moderation_warning">>,
     Payload = #{<<"reason">> => Reason},
@@ -345,6 +355,10 @@ send_warning_notice(TargetUid, Reason) ->
     Msg2 = jsone:encode(Msg, [native_utf8]),
     MsLi = elib_retry_config:intervals(<<"notice">>),
     _ = message_ds:send_next(TargetUid, MsgId, Msg2, MsLi, [], true),
+    ok;
+%% 非法 uid（≤0）：通知腿为 best-effort，跳过（动作行本身已落库）——
+%% 不将垃圾 uid 送进消息组装
+send_warning_notice(_TargetUid, _Reason) ->
     ok.
 
 %% @doc 到期 sweep（供 moderation_sweep_logic 周期调用与运维手动触发）。

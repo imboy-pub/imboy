@@ -24,9 +24,9 @@ success(Req) ->
 
 %% @doc 返回成功响应，带自定义负载
 %% @param Req cowboy请求对象
-%% @param Payload0 响应数据
+%% @param Payload0 响应数据（map 或 list 均可，jsone 可编码即合法）
 %% @returns cowboy_req:req() 更新后的请求对象
--spec success(cowboy_req:req(), map()) -> cowboy_req:req().
+-spec success(cowboy_req:req(), map() | list()) -> cowboy_req:req().
 success(Req, Payload0) ->
     Payload = elib_cnv:convert_at_timestamps(Payload0),
     reply_json(0, "success", Payload, Req).

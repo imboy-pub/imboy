@@ -32,8 +32,11 @@ execute_action(Req0, State) ->
             CaseId = ec_cnv:to_integer(maps:get(<<"case_id">>, PostVals, 0)),
             Action = elib_cnv:safe_to_binary(maps:get(<<"action">>, PostVals, <<>>)),
             TargetUid = ec_cnv:to_integer(maps:get(<<"target_uid">>, PostVals, 0)),
-            Opts = #{
-                reason => elib_cnv:safe_to_binary(maps:get(<<"reason">>, PostVals, <<>>)),
+            %% moderation_action_logic:opts() 要求 reason 为必需键（:=）：
+            %% => 字面量类型不满足，先建图再以 := 更新精化（运行时同值）
+            Reason = elib_cnv:safe_to_binary(maps:get(<<"reason">>, PostVals, <<>>)),
+            Opts0 = #{
+                reason => Reason,
                 gid => ec_cnv:to_integer(maps:get(<<"gid">>, PostVals, 0)),
                 duration_minutes => ec_cnv:to_integer(
                     maps:get(<<"duration_minutes">>, PostVals, 0)
@@ -43,6 +46,7 @@ execute_action(Req0, State) ->
                 ),
                 target_id => ec_cnv:to_integer(maps:get(<<"target_id">>, PostVals, 0))
             },
+            Opts = Opts0#{reason := Reason},
             case moderation_action_logic:execute(AdmUid, CaseId, Action, TargetUid, Opts) of
                 {ok, Row} ->
                     elib_response:success(Req0, Row);

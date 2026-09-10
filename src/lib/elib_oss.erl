@@ -153,7 +153,7 @@ build_object_key(Uid, Scope, ScopeRef, FileName) ->
     case Scope of
         <<"public">> ->
             %% 头像等公开资源：随机名 + 原扩展名，无内层 FileId 目录
-            Ext = filename:extension(filename:basename(FileName)),
+            Ext = to_bin(filename:extension(filename:basename(FileName))),
             Hex = binary:encode_hex(crypto:strong_rand_bytes(8)),
             <<"u", UidBin/binary, "/", Seg/binary, "/", Ymd/binary, "/", Hex/binary, Ext/binary>>;
         _ ->
@@ -167,31 +167,49 @@ build_object_key(Uid, Scope, ScopeRef, FileName) ->
 
 %% @doc scope → object_key 第二段。group 用 g<Gid> 实体段（Gid 取自 ScopeRef）。
 -spec scope_segment(binary(), binary() | undefined) -> binary().
-scope_segment(<<"public">>, _) -> <<"avatar">>;
-scope_segment(<<"private">>, _) -> <<"file">>;
-scope_segment(<<"c2c">>, _) -> <<"c2c">>;
+scope_segment(<<"public">>, _) ->
+    <<"avatar">>;
+scope_segment(<<"private">>, _) ->
+    <<"file">>;
+scope_segment(<<"c2c">>, _) ->
+    <<"c2c">>;
 %% channel/moment：段名用固定 scope 名（读鉴权走 attachment.scope_ref 字段而非
 %% object_key 段名，见 attach_logic:authorize/3）。moment 发帖前 momentId 未知故
 %% ScopeRef 可空。此前缺这两子句 → scope_segment(<<"moment"|"channel">>,_)
 %% function_clause → presign 生成 object_key 崩溃 → HTTP 500，朋友圈/频道上传全断。
-scope_segment(<<"channel">>, _) -> <<"channel">>;
-scope_segment(<<"moment">>, _) -> <<"moment">>;
+scope_segment(<<"channel">>, _) ->
+    <<"channel">>;
+scope_segment(<<"moment">>, _) ->
+    <<"moment">>;
 %% teaching（Step 10 教学附件）：段名用固定 scope 名（读鉴权走
 %% teaching_attach_logic:authorize 的 submission 绑定关系，与段名无关）。
 %% 此前缺此子句 → scope_segment(<<"teaching">>,_) function_clause →
 %% presign HTTP 500，教学上传全断（R8 契约实测发现；channel/moment 同款先例）。
-scope_segment(<<"teaching">>, _) -> <<"teaching">>;
-scope_segment(<<"group">>, ScopeRef) -> <<"g", (to_bin(ScopeRef))/binary>>.
+scope_segment(<<"teaching">>, _) ->
+    <<"teaching">>;
+scope_segment(<<"group">>, undefined) ->
+    %% 原 to_bin(undefined) function_clause 隐式崩；显式化后语义不变（fail-closed）
+    erlang:error(bad_scope_ref);
+scope_segment(<<"group">>, ScopeRef) when is_binary(ScopeRef) ->
+    <<"g", (to_bin(ScopeRef))/binary>>.
 
 %% @doc 当日 UTC 日期目录 <Ymd>（YYYYMMDD）。
 -spec ymd() -> binary().
 ymd() ->
     {{Y, M, D}, _} = calendar:universal_time(),
-    iolist_to_binary(io_lib:format("~4..0w~2..0w~2..0w", [Y, M, D])).
+    iolist_to_binary(to_bin(io_lib:format("~4..0w~2..0w~2..0w", [Y, M, D]))).
 
--spec to_bin(integer() | binary()) -> binary().
+-spec to_bin(integer() | binary() | unicode:chardata()) -> binary().
 to_bin(V) when is_integer(V) -> integer_to_binary(V);
-to_bin(V) when is_binary(V) -> V.
+to_bin(V) when is_binary(V) -> V;
+%% chars/chardata 列表（filename:extension 的 list 分支、io_lib:format 输出等）。
+%% characters_to_binary 的 error/incomplete 分支按坏输入显式崩（与原对非法
+%% 输入的 badarg 同语义）
+to_bin(V) when is_list(V) ->
+    case unicode:characters_to_binary(V) of
+        B when is_binary(B) -> B;
+        _ -> erlang:error(bad_chardata)
+    end.
 
 %% @doc 从 ObjectKey 反解归属 uid（u<Uid>/... → Uid），用于 confirm 防越权
 -spec owner_of_key(binary()) -> {ok, integer()} | {error, invalid_key}.
@@ -275,7 +293,7 @@ head_int(Headers, Key, Default) ->
             Default;
         V ->
             try
-                list_to_integer(string:trim(V))
+                binary_to_integer(to_bin(string:trim(V)))
             catch
                 _:_ -> Default
             end
@@ -294,7 +312,7 @@ head_object_size(Headers) ->
             case string:split(Range, "/") of
                 [_, Total] ->
                     try
-                        list_to_integer(string:trim(Total))
+                        binary_to_integer(to_bin(string:trim(Total)))
                     catch
                         _:_ -> Fallback
                     end;
@@ -307,7 +325,7 @@ head_object_size(Headers) ->
 head_bin(Headers, Key, Default) ->
     case head_lookup(Headers, Key) of
         undefined -> Default;
-        V -> iolist_to_binary(V)
+        V -> to_bin(V)
     end.
 
 %% @doc 物理删除存储桶中的对象
@@ -352,6 +370,9 @@ generate_file_id() ->
 validate_file_id(FileId) ->
     case re:run(FileId, <<"^file_[0-9]+_[0-9]+$">>, [{capture, none}]) of
         match -> ok;
+        %% capture=none 下 re:run 实际只返 match/nomatch；此分支为 spec 联合
+        %% 类型的穷尽性占位（运行时不可达）
+        {match, _} -> ok;
         nomatch -> {error, <<"invalid_file_id">>};
         {error, _} -> {error, <<"regex_error">>}
     end.
