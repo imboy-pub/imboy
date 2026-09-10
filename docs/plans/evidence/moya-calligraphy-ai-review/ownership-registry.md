@@ -214,6 +214,14 @@
 
 **批次四门终态：全部干净。** dialyzer 残留 8 项风格类与 1 项 moderation 用户域（assemble_msg pos_integer）已登记，非批次引入。
 
+### R19 dialyzer 基线棘轮分诊 + 冒烟配置补齐（Coordinator；文档 `R19` 提交）
+
+| 事件 | 结果 |
+|---|---|
+| `make dialyze-check` 基线棘轮实测 | **RED（新增 124 条基线外指纹）但零条属墨芽批次**：NEW 全部落在用户主线模块——bot_webhook 系 26 条（并行会话活跃开发的 bot 线）、agent 系 13 条、channel/adm 系若干；批次模块（teaching×14/elib_oss/elib_response/imboy_router/adm_report/moderation）**零指纹**。另有 65 条 GONE（可收紧）。成因=并行会话新代码+PLT 重建（9/5→9/10）漂移；基线 `--update` 需各线作者 review 后自行收紧（脚本头注明的流程），Coordinator 不代做 |
+| 冒烟配置 ecron 补齐 | `/tmp/smoke_sys.config` 的 local_jobs 原只有教学×2（R7 时代手写），补齐 `teaching_ai_stuck_reclaim "*/10 * * * *"` 使与仓内 sys.config.example 一致；file:consult 验证通过，runbook 场景 A 的 `ecron:statistic()` 8/8 预期自洽（存量 5 + 教学 3） |
+
+
 
 
 
