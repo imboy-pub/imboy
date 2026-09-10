@@ -318,24 +318,31 @@ refreshtoken(Req0) ->
             );
         _ ->
             case token_ds:decrypt_token(Refreshtoken) of
-                {ok, Id, _ExpireDAt, <<"rtk">>, Did} ->
+                {ok, Id, _ExpireDAt, <<"rtk">>, Did, Ep} ->
                     % 状态: -1 删除  0 禁用  1 启用
                     Status = user_logic:get_status(Id),
                     % 设备被移除 → 拒绝刷新。这是真正切断 refresh token 356 天窗口
                     % 的地方；did 为空的 legacy refresh token 原样放行（零全端登出）。
                     DeviceActive = Did =:= <<>> orelse user_device_logic:is_active(Id, Did),
-                    case {Status > -1, DeviceActive} of
-                        {true, true} ->
+                    % Task 10 / LT-04：rtk 同受会话 epoch 门——改密/禁用/全端登出
+                    % 后旧 rtk 不得再换新 tk（否则 356 天窗口从后门重开）。
+                    EpochOk = passport_logic:refresh_session_epoch_valid(Id, Did, Ep),
+                    case {Status > -1, DeviceActive, EpochOk} of
+                        {true, true, true} ->
                             % E2EE-013：刷新保留原 refresh token 绑定的设备 DID。
                             elib_response:success(
                                 Req0,
                                 #{<<"token">> => token_ds:encrypt_token(Id, Did)}
                             );
-                        {false, _} ->
+                        {false, _, _} ->
                             elib_response:error(Req0, "用户被禁用或已删除");
-                        {_, false} ->
+                        {_, false, _} ->
                             elib_response:error(
                                 Req0, <<"设备已被移除，请重新登录"/utf8>>, ?ERR_TOKEN_INVALID
+                            );
+                        {_, _, false} ->
+                            elib_response:error(
+                                Req0, <<"会话已吊销，请重新登录"/utf8>>, ?ERR_TOKEN_INVALID
                             )
                     end;
                 {error, ErrCode, Msg, _Map} ->

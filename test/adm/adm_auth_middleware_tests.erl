@@ -16,12 +16,20 @@ config_ds_mock() ->
         {'env', 2, fun
             (jwt_key, <<>>) -> <<"test-jwt-secret-key-32-bytes!">>;
             (start_mode, http) -> http;
-            (adm_cookie_secret, <<"imboy-adm-cookie">>) -> <<"test-cookie-secret">>;
+            %% LT-06：signing_key 改以空串缺省读取（空=派生兜底），mock 按任意缺省命中
+            (adm_cookie_secret, _Default) -> <<"test-cookie-secret">>;
             (adm_auth_legacy_cookie_enabled, false) -> false;
             %% 其余键回退到调用方给定的默认值（贴近真实 config_ds:env/2 语义）；
             %% GAP-12 的 check_ip_allowlist 依赖 adm_ip_allowlist 默认 [] 才返回 allow
             (_, Default) -> Default
         end}
+    ]}.
+
+%% LT-06：epoch 查询 mock —— eunit VM 不起完整 app（无 PG 连接池）。
+%% 返回 {ok, []} = 缺行 = epoch 1，sign/verify 对称成立。
+elib_pg_mock() ->
+    {elib_pg, [
+        {'query', 2, fun(_Sql, _Params) -> {ok, []} end}
     ]}.
 
 %% 创建 Cowboy 2.x 模拟请求对象
@@ -89,6 +97,7 @@ execute_with_valid_uid_cookie_get_test_() ->
     ?WITH_MECKS(
         [
             config_ds_mock(),
+            elib_pg_mock(),
             {cowboy_req, [
                 {'path', 1, fun(_Req) -> <<"/api/adm/dashboard">> end},
                 {'method', 1, fun(_Req) -> <<"GET">> end}
@@ -113,6 +122,7 @@ execute_with_valid_uid_cookie_post_test_() ->
     ?WITH_MECKS(
         [
             config_ds_mock(),
+            elib_pg_mock(),
             {cowboy_req, [
                 {'path', 1, fun(_Req) -> <<"/api/adm/api/action">> end},
                 {'method', 1, fun(_Req) -> <<"POST">> end}
@@ -137,6 +147,7 @@ execute_without_uid_cookie_get_test_() ->
     ?WITH_MECKS(
         [
             config_ds_mock(),
+            elib_pg_mock(),
             {cowboy_req, [
                 %% 页面路径才 302 跳转登录；API 路径统一 401（见 should_redirect_to_login/1）
                 {'path', 1, fun(_Req) -> <<"/adm/index">> end},
@@ -165,6 +176,7 @@ execute_without_uid_cookie_post_test_() ->
     ?WITH_MECKS(
         [
             config_ds_mock(),
+            elib_pg_mock(),
             {cowboy_req, [
                 {'path', 1, fun(_Req) -> <<"/api/adm/api/data">> end},
                 {'method', 1, fun(_Req) -> <<"POST">> end},
@@ -194,7 +206,8 @@ execute_without_uid_cookie_post_test_() ->
 condition_with_binary_uid_test_() ->
     ?WITH_MECKS(
         [
-            config_ds_mock()
+            config_ds_mock(),
+            elib_pg_mock()
         ],
         fun() ->
             Req = mock_request(),
@@ -209,7 +222,8 @@ condition_with_binary_uid_test_() ->
 condition_without_has_sent_resp_in_env_test_() ->
     ?WITH_MECKS(
         [
-            config_ds_mock()
+            config_ds_mock(),
+            elib_pg_mock()
         ],
         fun() ->
             Req = mock_request(),
@@ -225,6 +239,7 @@ condition_get_without_uid_redirects_test_() ->
     ?WITH_MECKS(
         [
             config_ds_mock(),
+            elib_pg_mock(),
             {cowboy_req, [
                 %% 页面路径才 302 跳转；API 路径返 401（should_redirect_to_login/1）
                 {'path', 1, fun(_Req) -> <<"/adm/index">> end},
@@ -249,6 +264,7 @@ condition_post_without_uid_returns_error_test_() ->
     ?WITH_MECKS(
         [
             config_ds_mock(),
+            elib_pg_mock(),
             {cowboy_req, [
                 {'set_resp_cookie', 4, fun(_Name, _Value, Req, _Opts) -> Req end},
                 {'reply', 4, fun(Code, Headers, Body, Req) ->
@@ -316,9 +332,10 @@ remove_last_forward_slash_with_complex_path_test_() ->
 %% signing_key 空串防护测试
 %% ===================================================================
 
-%% sys.runtime.config 占位为空串 "" 时 config_ds:env 返回 <<>>，
-%% 非生产环境跳过 validate_runtime_config 的 fail-fast，signing_key
-%% 必须回落到默认值而非用空串签名（空串签名 = 任何人可伪造 admin cookie）。
+%% sys.runtime.config 占位为空串 "" 时 config_ds:env 返回 <<>>。
+%% LT-06：空串不再回落公开常量 <<"imboy-adm-cookie">>（公开已知 HMAC 密钥
+%% = 任何人可伪造 admin cookie），改为派生 node-local 稳定值：
+%% 非空、非公开常量、同进程内可复现（签名验证的前提）。
 signing_key_empty_string_falls_back_test_() ->
     ?WITH_MECKS(
         [
@@ -332,7 +349,8 @@ signing_key_empty_string_falls_back_test_() ->
         fun() ->
             Key = adm_auth_middleware:signing_key(),
             ?assertNotEqual(<<>>, Key),
-            ?assertEqual(<<"imboy-adm-cookie">>, Key)
+            ?assertNotEqual(<<"imboy-adm-cookie">>, Key),
+            ?assertEqual(Key, adm_auth_middleware:signing_key())
         end
     ).
 
@@ -385,7 +403,8 @@ execute_with_passport_do_login_path_test_() ->
 condition_preserves_existing_handler_opts_test_() ->
     ?WITH_MECKS(
         [
-            config_ds_mock()
+            config_ds_mock(),
+            elib_pg_mock()
         ],
         fun() ->
             Req = mock_request(),

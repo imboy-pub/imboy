@@ -558,10 +558,15 @@ update_password_with_log(Uid, PwdHash, Req0, LogType) ->
         {ok, _} = user_ds:update_password_in_tx(Conn, {Uid, PwdHash}),
         %% 记录密码修改日志
         _ = user_log_ds:add_password_change_log(Conn, Uid, Req0, LogType),
+        %% Task 10 / LT-04：改密 = 全端会话吊销（与密码更新同事务原子 bump；
+        %% 失败抛 abort_tx 回滚整个事务，不会出现"密码改了但旧会话仍有效"）
+        ok = auth_session_ds:bump_in_tx(Conn, Uid),
         ok
     end),
     case Result of
         ok ->
+            %% 踢掉全部在线连接（含本端）；epoch 已 bump，旧 tk/rtk 均失效
+            ok = auth_session_ds:kick_all_sessions(Uid),
             {ok, <<"success">>};
         {error, Reason} ->
             _ = ?ERROR_LOG(

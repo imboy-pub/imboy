@@ -8,6 +8,8 @@
 -export([select_subprotocol/1]).
 -export([auth/4]).
 -export([idle_timeout/1]).
+%% Task 10 / LT-04：websocket_handler 心跳点跨模块消费
+-export([session_still_valid/1]).
 
 -include("log.hrl").
 
@@ -77,13 +79,18 @@ auth(Token, Req, State, Opt) when is_binary(Token) ->
     % ?DEBUG_LOG(["token", Token, token_ds:decrypt_token(Token)]),
     case token_ds:decrypt_token(Token) of
         % Token 有效且未过期（token_ds 已检查过期）
-        {ok, Uid, ExpireDAt, <<"tk">>, Did} ->
-            % 将过期时间传递给后续处理，便于提前刷新 Token
-            State1 = State#{token_expire_at => ExpireDAt, token_type => <<"tk">>},
+        {ok, Uid, ExpireDAt, <<"tk">>, Did, Ep} ->
+            % 将过期时间传递给后续处理，便于提前刷新 Token；
+            % Task 10 / LT-04：ep 透传给 auth_device 做 epoch 校验与 State 注入
+            State1 = State#{
+                token_expire_at => ExpireDAt,
+                token_type => <<"tk">>,
+                session_epoch => Ep
+            },
             auth_device(Uid, Did, Req, State1, Opt);
         %% refresh token（356 天有效期）不是 WS 门票：只接受 <<"tk">>，
         %% 与 HTTP 侧 auth_ds:verify_token/1 的既有行为对齐。
-        {ok, _Uid, _ExpireDAt, _OtherType, _Did} ->
+        {ok, _Uid, _ExpireDAt, _OtherType, _Did, _Ep} ->
             ok = ?WARN_LOG([ws_refresh_token_rejected]),
             Req2 = cowboy_req:reply(
                 401,
@@ -164,7 +171,26 @@ auth_device(Uid, <<>>, Req, State, Opt) ->
 auth_device(Uid, Did, Req, State, Opt) when is_binary(Did) ->
     case user_device_ds:is_active(Uid, Did) of
         true ->
-            auth_after(Uid, Req, State#{did => Did}, Opt);
+            %% Task 10 / LT-04：会话 epoch 共享校验（与 auth_ds:verify_token
+            %% 同一谓词；unknown fail-closed）。
+            Ep = maps:get(session_epoch, State, undefined),
+            case auth_session_ds:revoked(Uid, Ep) of
+                true ->
+                    ok = ?WARN_LOG([ws_session_revoked, Uid, Did]),
+                    Req2 = cowboy_req:reply(
+                        401,
+                        #{
+                            <<"content-type">> => <<"application/json">>,
+                            <<"x-token-error">> => <<"session_revoked">>
+                        },
+                        <<"{\"code\":401,\"msg\":\"session_revoked\"}">>,
+                        Req
+                    ),
+                    {ok, Req2, State#{error => 401, msg => <<"session_revoked">>}};
+                false ->
+                    %% token 权威 did + ep 注入 State：既有 WS 心跳重校验据此进行
+                    auth_after(Uid, Req, State#{did => Did, session_epoch => Ep}, Opt)
+            end;
         false ->
             ok = ?WARN_LOG([ws_device_revoked, Uid, Did]),
             Req2 = cowboy_req:reply(
@@ -199,6 +225,26 @@ auth_device(Uid, Did, Req, State, Opt) when is_binary(Did) ->
 auth_after(Uid, Req, State, Opt) ->
     Timeout = idle_timeout(Uid),
     {cowboy_websocket, Req, State#{current_uid => Uid}, Opt#{idle_timeout := Timeout}}.
+
+%% @doc 既有 WS 连接的会话重校验（Task 10 / LT-04）。
+%%
+%% 在心跳点调用：did 绑定会话重新比对该 token 的设备与 epoch 现势，
+%% 改密/禁用/全端登出后于下一个心跳失效（冻结时限 = 心跳间隔 + epoch 缓存
+%% 60s 上界）；legacy 会话（无 token did / 无 ep）豁免，与握手侧同口径。
+%% 该函数只读不踢；关闭由调用方执行。
+-spec session_still_valid(map()) -> boolean().
+session_still_valid(State) when is_map(State) ->
+    Did = maps:get(auth_did, State, maps:get(did, State, <<>>)),
+    Ep = maps:get(session_epoch, State, undefined),
+    case Did =:= <<>> orelse Ep =:= undefined of
+        true ->
+            true;
+        false ->
+            Uid = maps:get(current_uid, State, 0),
+            user_device_ds:is_active(Uid, Did) andalso not auth_session_ds:revoked(Uid, Ep)
+    end;
+session_still_valid(_) ->
+    true.
 
 %% @doc 设置用户WebSocket超时时间
 %%

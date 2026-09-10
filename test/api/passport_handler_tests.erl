@@ -232,9 +232,9 @@ refresh_token_test_() ->
                 {'check', 2, fun(_Type, _Token) -> ok end}
             ]},
             {token_ds, [
-                %% E2EE-013：decrypt_token 返回 5 元组（含绑定 DID）；刷新以原 DID 重签。
+                %% E2EE-013：decrypt_token 返回 6 元组（含绑定 DID + ep）；刷新以原 DID 重签。
                 {'decrypt_token', 1, fun(<<"valid_refresh_token">>) ->
-                    {ok, 12345, <<"2025-12-31">>, <<"rtk">>, <<"dev-1">>}
+                    {ok, 12345, <<"2025-12-31">>, <<"rtk">>, <<"dev-1">>, 1}
                 end},
                 {'encrypt_token', 2, fun(12345, <<"dev-1">>) ->
                     <<"new_encrypted_token">>
@@ -248,6 +248,10 @@ refresh_token_test_() ->
             %% 刷新须校验 token 绑定的设备仍在（设备被移除 = token 吊销）
             {user_device_logic, [
                 {'is_active', 2, fun(12345, <<"dev-1">>) -> true end}
+            ]},
+            %% Task 10 / LT-04：rtk epoch 门（未 bump = 未吊销）
+            {passport_logic, [
+                {'refresh_session_epoch_valid', 3, fun(12345, <<"dev-1">>, 1) -> true end}
             ]},
             {elib_response, [
                 {'success', 2, fun(_Req, Data) ->

@@ -26,6 +26,9 @@ start(_Type, _Args) ->
     ok = ensure_jwt_key(),
     ok = ensure_password_salt(),
     ok = ensure_postgre_aes_key(),
+    %% LT-06：为仍缺失的三类核心 secret 派生 node-local dev 值
+    %% （strict profile 已在上面 fail-fast，不会走到这里；实际仅补 adm_cookie_secret）
+    ok = imboy_secret_policy:ensure_dev_defaults(),
     ok = ensure_rsa_keys(),
     ok = ensure_alipay_keys(),
     %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
@@ -413,9 +416,12 @@ validate_runtime_config() ->
     case is_strict_env(runtime_env()) of
         true ->
             %% 生产环境必须配置的敏感项
-            ok = ensure_required_secret(jwt_key),
-            ok = ensure_required_secret(postgre_aes_key),
-            ok = ensure_required_secret(adm_cookie_secret),
+            %% LT-06：jwt_key / postgre_aes_key / adm_cookie_secret 三类核心
+            %% secret 由 imboy_secret_policy 统一校验（存在 + 最小长度 + 两两互异）
+            case imboy_secret_policy:validate_strict() of
+                ok -> ok;
+                {error, Reason} -> erlang:error(Reason)
+            end,
             ok = ensure_required_secret(solidified_key),
             ok = ensure_required_secret(solidified_key_iv),
             ok = ensure_required_secret(password_salt),

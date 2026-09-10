@@ -128,18 +128,8 @@ clear_auth_cookies(Req) ->
 
 -spec clear_cookie(binary(), cowboy_req:req()) -> cowboy_req:req().
 clear_cookie(Name, Req) ->
-    cowboy_req:set_resp_cookie(
-        Name,
-        <<>>,
-        Req,
-        #{
-            path => <<"/">>,
-            max_age => 0,
-            http_only => true,
-            same_site => lax,
-            secure => cookie_secure()
-        }
-    ).
+    %% LT-06：清除属性与签发同源（max_age=0 立即过期）
+    cowboy_req:set_resp_cookie(Name, <<>>, Req, adm_session_ds:cookie_opts(0)).
 
 %% @doc 管理后台 Cookie 授权校验
 -spec authorize_admin_cookie(binary() | false | undefined, binary() | false | undefined) ->
@@ -190,16 +180,26 @@ decode_uid(Uid) ->
             error
     end.
 
-%% @doc 生成管理后台 Cookie 签名（HMAC-SHA256）
+%% @doc 生成管理后台 Cookie 签名（LT-06：epoch+exp claims 整体 HMAC，见 adm_session_ds）
 -spec sign_admin_cookie(binary()) -> binary().
 sign_admin_cookie(Uid) when is_binary(Uid) ->
-    elib_hasher:hmac_sha256(Uid, signing_key()).
+    case adm_session_ds:issue(Uid) of
+        {ok, Sig} ->
+            Sig;
+        {error, _} ->
+            %% 会话现势不可确认：产出无效签名形态，verify 必拒（fail-closed，不崩请求）
+            <<>>
+    end.
 
-%% @doc 验证管理后台 Cookie 签名
+%% @doc 验证管理后台 Cookie 签名（LT-06：签名一致 + 未过期 + 未被 bump 吊销）
 -spec verify_admin_cookie(binary() | false | undefined, binary() | false | undefined) -> boolean().
 verify_admin_cookie(Uid, UidSig) when is_binary(Uid), is_binary(UidSig) ->
-    Expected = sign_admin_cookie(Uid),
-    UidSig =/= <<>> andalso Expected =:= UidSig;
+    case adm_session_ds:verify(Uid, UidSig) of
+        {ok, _} ->
+            true;
+        _ ->
+            false
+    end;
 verify_admin_cookie(_, _) ->
     false.
 
@@ -226,29 +226,11 @@ cookie_secure() ->
     StartMode = config_ds:env(start_mode, http),
     StartMode =:= tls orelse StartMode =:= http_tls.
 
-%% @doc 管理后台 Cookie 签名密钥
-%% 始终使用独立的 adm_cookie_secret，不复用 jwt_key，确保密钥隔离。
-%% 空串视为未配置（sys.runtime.config 占位为 ""）——非生产环境会跳过
-%% validate_runtime_config 的 fail-fast，若不在此兜底会用空串签名 cookie，
-%% 导致所有 admin 会话可被伪造。回落到内置默认值确保非生产环境也有有效密钥。
+%% @doc 管理后台 Cookie 签名密钥（LT-06：唯一真源在 adm_session_ds:signing_key/0；
+%% 空值 fail-loud，严禁回落公开常量——旧实现回落 <<"imboy-adm-cookie">> 可被任意伪造）
 -spec signing_key() -> binary().
 signing_key() ->
-    case normalize_binary(config_ds:env(adm_cookie_secret, <<"imboy-adm-cookie">>)) of
-        <<>> -> <<"imboy-adm-cookie">>;
-        Key -> Key
-    end.
-
--spec normalize_binary(term()) -> binary().
-normalize_binary(undefined) ->
-    <<>>;
-normalize_binary(false) ->
-    <<>>;
-normalize_binary(Value) when is_binary(Value) ->
-    Value;
-normalize_binary(Value) when is_list(Value) ->
-    unicode:characters_to_binary(Value);
-normalize_binary(Value) ->
-    ec_cnv:to_binary(Value).
+    adm_session_ds:signing_key().
 
 %% @doc GAP-12: 检查请求 IP 是否在管理后台访问白名单中
 %% 从 config_ds 读取 adm_ip_allowlist（字符串 CIDR 列表），空列表表示不启用 IP 限制。

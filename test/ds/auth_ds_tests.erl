@@ -145,14 +145,19 @@ verify_token_with_valid_token_test_() ->
     ?WITH_MECKS(
         [
             {token_ds, [
-                %% E2EE-013：decrypt_token 返回 5 元组（含绑定 DID）。
+                %% E2EE-013：decrypt_token 返回 6 元组（含绑定 DID）。
+                %% Task 10 / LT-04：第 6 位为会话 epoch claim（ep）。
                 {'decrypt_token', 1, fun(_Token) ->
-                    {ok, 123, <<"2026-03-16">>, <<"tk">>, <<"dev-9">>}
+                    {ok, 123, <<"2026-03-16">>, <<"tk">>, <<"dev-9">>, 2}
                 end}
             ]},
             %% did 绑定的 token 需设备仍在（设备被移除 = token 吊销）
             {user_device_ds, [
                 {'is_active', 2, fun(123, <<"dev-9">>) -> true end}
+            ]},
+            %% Task 10 / LT-04：epoch=2 未被 bump（现势=2）→ 未吊销
+            {auth_session_ds, [
+                {'revoked', 2, fun(123, 2) -> false end}
             ]}
         ],
         fun() ->
@@ -167,7 +172,7 @@ verify_token_with_refresh_token_test_() ->
         token_ds,
         [
             {'decrypt_token', 1, fun(_Token) ->
-                {ok, 123, <<"2026-03-16">>, <<"rtk">>, <<"dev-9">>}
+                {ok, 123, <<"2026-03-16">>, <<"rtk">>, <<"dev-9">>, 1}
             end}
         ],
         fun() ->

@@ -40,7 +40,7 @@ http_revoked_device_token_rejected_test_() ->
         [
             {token_ds, [
                 {'decrypt_token', 1, fun(<<"tk-bound">>) ->
-                    {ok, ?UID, ?EXP, <<"tk">>, ?DID}
+                    {ok, ?UID, ?EXP, <<"tk">>, ?DID, 1}
                 end}
             ]},
             {user_device_ds, [
@@ -60,11 +60,14 @@ http_active_device_token_accepted_test_() ->
         [
             {token_ds, [
                 {'decrypt_token', 1, fun(<<"tk-bound">>) ->
-                    {ok, ?UID, ?EXP, <<"tk">>, ?DID}
+                    {ok, ?UID, ?EXP, <<"tk">>, ?DID, 1}
                 end}
             ]},
             {user_device_ds, [
                 {'is_active', 2, fun(?UID, ?DID) -> true end}
+            ]},
+            {auth_session_ds, [
+                {'revoked', 2, fun(_Uid, _Ep) -> false end}
             ]}
         ],
         fun() ->
@@ -78,7 +81,7 @@ http_legacy_didless_token_unaffected_test_() ->
         [
             {token_ds, [
                 {'decrypt_token', 1, fun(<<"tk-legacy">>) ->
-                    {ok, ?UID, ?EXP, <<"tk">>, <<>>}
+                    {ok, ?UID, ?EXP, <<"tk">>, <<>>, undefined}
                 end}
             ]},
             never_called_is_active()
@@ -94,7 +97,7 @@ http_refresh_token_still_rejected_test_() ->
         token_ds,
         [
             {'decrypt_token', 1, fun(<<"rtk">>) ->
-                {ok, ?UID, ?EXP, <<"rtk">>, ?DID}
+                {ok, ?UID, ?EXP, <<"rtk">>, ?DID, 1}
             end}
         ],
         fun() ->
@@ -116,10 +119,13 @@ refresh_mocks(Did, DeviceMocks) ->
         ]},
         {throttle, [{'check', 2, fun(_Type, _Token) -> ok end}]},
         {token_ds, [
-            {'decrypt_token', 1, fun(<<"rtk">>) -> {ok, ?UID, ?EXP, <<"rtk">>, Did} end},
+            {'decrypt_token', 1, fun(<<"rtk">>) -> {ok, ?UID, ?EXP, <<"rtk">>, Did, 1} end},
             {'encrypt_token', 2, fun(?UID, D) when D =:= Did -> <<"new-token">> end}
         ]},
         {user_logic, [{'get_status', 1, fun(?UID) -> 1 end}]},
+        {auth_session_ds, [
+            {'revoked', 2, fun(_Uid, _Ep) -> false end}
+        ]},
         {elib_response, [
             {'success', 2, fun(_Req, Data) ->
                 cowboy_req_h:new(#{response_status => 200, response_body => Data})
@@ -191,7 +197,7 @@ ws_refresh_token_rejected_test_() ->
     ?WITH_MECKS(
         [
             {token_ds, [
-                {'decrypt_token', 1, fun(<<"rtk">>) -> {ok, ?UID, ?EXP, <<"rtk">>, ?DID} end}
+                {'decrypt_token', 1, fun(<<"rtk">>) -> {ok, ?UID, ?EXP, <<"rtk">>, ?DID, 1} end}
             ]},
             ws_cowboy_mock()
         ],
@@ -209,7 +215,10 @@ ws_access_token_accepted_test_() ->
     ?WITH_MECKS(
         [
             {token_ds, [
-                {'decrypt_token', 1, fun(<<"tk">>) -> {ok, ?UID, ?EXP, <<"tk">>, ?DID} end}
+                {'decrypt_token', 1, fun(<<"tk">>) -> {ok, ?UID, ?EXP, <<"tk">>, ?DID, 1} end}
+            ]},
+            {auth_session_ds, [
+                {'revoked', 2, fun(_Uid, _Ep) -> false end}
             ]},
             {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> true end}]}
         ],
@@ -226,7 +235,7 @@ ws_revoked_device_rejected_test_() ->
     ?WITH_MECKS(
         [
             {token_ds, [
-                {'decrypt_token', 1, fun(<<"tk">>) -> {ok, ?UID, ?EXP, <<"tk">>, ?DID} end}
+                {'decrypt_token', 1, fun(<<"tk">>) -> {ok, ?UID, ?EXP, <<"tk">>, ?DID, 1} end}
             ]},
             {user_device_ds, [{'is_active', 2, fun(?UID, ?DID) -> false end}]},
             ws_cowboy_mock()
@@ -245,7 +254,9 @@ ws_legacy_didless_token_unaffected_test_() ->
     ?WITH_MECKS(
         [
             {token_ds, [
-                {'decrypt_token', 1, fun(<<"tk-legacy">>) -> {ok, ?UID, ?EXP, <<"tk">>, <<>>} end}
+                {'decrypt_token', 1, fun(<<"tk-legacy">>) ->
+                    {ok, ?UID, ?EXP, <<"tk">>, <<>>, undefined}
+                end}
             ]},
             never_called_is_active()
         ],

@@ -243,9 +243,15 @@ login_post_success_with_valid_credentials_test_() ->
                     }}
                 end}
             ]},
-            {adm_auth_middleware, [
-                {'sign_admin_cookie', 1, fun(_AdmUserId) ->
-                    <<"signed_sig">>
+            {adm_session_ds, [
+                {'issue', 1, fun(_AdmUserId) ->
+                    {ok, <<"signed_sig">>}
+                end},
+                {'session_ttl_sec', 0, fun() ->
+                    28800
+                end},
+                {'cookie_opts', 1, fun(_Ttl) ->
+                    #{path => <<"/">>, http_only => true, same_site => lax, max_age => 28800}
                 end}
             ]},
             {cowboy_req, [
@@ -345,9 +351,20 @@ login_post_accepts_fixed_test_captcha_in_local_env_test_() ->
                             }}
                         end}
                     ]},
-                    {adm_auth_middleware, [
-                        {'sign_admin_cookie', 1, fun(_AdmUserId) ->
-                            <<"signed_sig">>
+                    {adm_session_ds, [
+                        {'issue', 1, fun(_AdmUserId) ->
+                            {ok, <<"signed_sig">>}
+                        end},
+                        {'session_ttl_sec', 0, fun() ->
+                            28800
+                        end},
+                        {'cookie_opts', 1, fun(_Ttl) ->
+                            #{
+                                path => <<"/">>,
+                                http_only => true,
+                                same_site => lax,
+                                max_age => 28800
+                            }
                         end}
                     ]},
                     {cowboy_req, [
@@ -421,9 +438,15 @@ login_post_success_default_redirect_test_() ->
                     {ok, #{<<"id">> => <<"admin_id">>, <<"account">> => <<"admin">>}}
                 end}
             ]},
-            {adm_auth_middleware, [
-                {'sign_admin_cookie', 1, fun(_AdmUserId) ->
-                    <<"signed_sig">>
+            {adm_session_ds, [
+                {'issue', 1, fun(_AdmUserId) ->
+                    {ok, <<"signed_sig">>}
+                end},
+                {'session_ttl_sec', 0, fun() ->
+                    28800
+                end},
+                {'cookie_opts', 1, fun(_Ttl) ->
+                    #{path => <<"/">>, http_only => true, same_site => lax, max_age => 28800}
                 end}
             ]},
             {cowboy_req, [
@@ -948,9 +971,15 @@ complete_login_flow_test_() ->
                     }}
                 end}
             ]},
-            {adm_auth_middleware, [
-                {'sign_admin_cookie', 1, fun(_AdmUserId) ->
-                    <<"signed_sig">>
+            {adm_session_ds, [
+                {'issue', 1, fun(_AdmUserId) ->
+                    {ok, <<"signed_sig">>}
+                end},
+                {'session_ttl_sec', 0, fun() ->
+                    28800
+                end},
+                {'cookie_opts', 1, fun(_Ttl) ->
+                    #{path => <<"/">>, http_only => true, same_site => lax, max_age => 28800}
                 end}
             ]},
             {elib_response, [

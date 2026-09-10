@@ -8,6 +8,7 @@
 #                                                              # 为硬校验（内置核心服务），
 #                                                              # 跳过销售发布支付强校验
 #   bash deploy/preflight.sh --edition business [--docker]    # 商务版口径（默认，同旧版行为）
+#   bash deploy/preflight.sh --self-test                      # LT-06 secret 规则自测（不读 .env）
 #
 # Exit codes:
 #   0 = all checks passed
@@ -24,10 +25,12 @@ WARNINGS=0
 # EDITION 默认 business：preflight 单独运行时维持既有检查口径不变（garage WARN、
 # 销售发布支付强校验）。install.sh 会按部署版本显式传入 --edition。
 DOCKER_CHECK=0
+SELF_TEST=0
 EDITION="business"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --docker) DOCKER_CHECK=1 ;;
+        --self-test) SELF_TEST=1 ;;
         --edition)
             [[ $# -ge 2 ]] || { echo "错误：--edition 需要值 community|business" >&2; exit 1; }
             shift
@@ -59,6 +62,69 @@ ok()   { echo -e "  ${GREEN}[OK]${NC}    $*"; }
 warn() { echo -e "  ${YELLOW}[WARN]${NC}  $*"; WARNINGS=$((WARNINGS+1)); }
 err()  { echo -e "  ${RED}[ERROR]${NC} $*"; ERRORS=$((ERRORS+1)); }
 info() { echo -e "  ${BLUE}[INFO]${NC}  $*"; }
+
+# ── LT-06：三类核心 secret 的强度与互异规则 ─────────────────────────────────
+# 规则常量与后端唯一校验源 src/lib/imboy_secret_policy.erl（min_length()=32、
+# 两两互异）对齐；两端不得各自漂移。缺失/占位符仍由 check_var 报告，不重复计。
+
+SECRET_MIN_LEN=32
+
+# 校验单个 secret 强度：check_secret_strength <VAR_NAME> <值>
+check_secret_strength() {
+    local var_name="$1" val="$2"
+    if [[ -z "$val" || "$val" == *CHANGE_ME* || "$val" == *example* ]]; then
+        return 0
+    fi
+    if (( ${#val} < SECRET_MIN_LEN )); then
+        err "$var_name 长度 ${#val} < ${SECRET_MIN_LEN}，过弱（LT-06 密钥拆分门）"
+    else
+        ok "$var_name 强度检查通过（长度 ${#val}）"
+    fi
+}
+
+# 校验两个 secret 互异：check_secrets_distinct <N1> <V1> <N2> <V2>
+check_secrets_distinct() {
+    local n1="$1" v1="$2" n2="$3" v2="$4"
+    if [[ -n "$v1" && -n "$v2" && "$v1" == "$v2" ]]; then
+        err "$n1 与 $n2 相同：一类泄露将波及另一类（LT-06 密钥拆分门）"
+    fi
+}
+
+# --self-test：以负向 fixtures 自检上述规则函数（每个用例必须被抓到才算过）
+run_secret_rules_self_test() {
+    echo "▶ LT-06 secret 校验规则自测（负向 fixtures 必须全部被抓到）"
+    local passed=0 failed=0
+
+    ERRORS=0; check_secret_strength "T_KEY" "short" >/dev/null
+    if (( ERRORS == 1 )); then ok "自测1 过短(<32)被拒"; passed=$((passed+1)); else err "自测1 失败：过短未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_secret_strength "T_KEY" "$(printf 'a%.0s' {1..32})" >/dev/null
+    if (( ERRORS == 0 )); then ok "自测2 达长(=32)放行"; passed=$((passed+1)); else err "自测2 失败：达长被误拒"; failed=$((failed+1)); fi
+
+    ERRORS=0; check_secret_strength "T_KEY" "" >/dev/null
+    if (( ERRORS == 0 )); then ok "自测3 缺失交由 check_var（不重复计）"; passed=$((passed+1)); else err "自测3 失败：缺失被重复计错"; failed=$((failed+1)); fi
+
+    ERRORS=0
+    check_secrets_distinct "A" "same-value-same-value-same-32" "B" "same-value-same-value-same-32" >/dev/null
+    if (( ERRORS == 1 )); then ok "自测4 相同被拒"; passed=$((passed+1)); else err "自测4 失败：相同未被拒"; failed=$((failed+1)); fi
+
+    ERRORS=0
+    check_secrets_distinct "A" "value-aaaaaaaaaaaaaaaaaaaaaaaa-32" "B" "value-bbbbbbbbbbbbbbbbbbbbbbbbbbbb" >/dev/null
+    if (( ERRORS == 0 )); then ok "自测5 互异放行"; passed=$((passed+1)); else err "自测5 失败：互异被误拒"; failed=$((failed+1)); fi
+
+    echo ""
+    if (( failed > 0 )); then
+        err "secret 规则自测未通过：${passed} 过 / ${failed} 败"
+        return 1
+    fi
+    ok "secret 规则自测全部通过（${passed}/${passed}）"
+    return 0
+}
+
+if [[ "$SELF_TEST" -eq 1 ]]; then
+    run_secret_rules_self_test
+    exit $?
+fi
 
 echo ""
 echo "=========================================="
@@ -121,6 +187,14 @@ check_var "GRAFANA_ADMIN_PASSWORD"
 # 忘配即以公开已知密钥上线 —— 任何人可签发 token 加入或录制任意通话。
 check_var "LIVEKIT_API_KEY"
 check_var "LIVEKIT_API_SECRET"
+
+# LT-06：三类核心 secret 强度（>=32）与两两互异（规则与 imboy_secret_policy 对齐）
+check_secret_strength "JWT_KEY" "${JWT_KEY:-}"
+check_secret_strength "POSTGRE_AES_KEY" "${POSTGRE_AES_KEY:-}"
+check_secret_strength "ADM_COOKIE_SECRET" "${ADM_COOKIE_SECRET:-}"
+check_secrets_distinct "JWT_KEY" "${JWT_KEY:-}" "POSTGRE_AES_KEY" "${POSTGRE_AES_KEY:-}"
+check_secrets_distinct "JWT_KEY" "${JWT_KEY:-}" "ADM_COOKIE_SECRET" "${ADM_COOKIE_SECRET:-}"
+check_secrets_distinct "POSTGRE_AES_KEY" "${POSTGRE_AES_KEY:-}" "ADM_COOKIE_SECRET" "${ADM_COOKIE_SECRET:-}"
 
 is_domain() {
     [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])$ ]] \

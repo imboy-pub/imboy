@@ -618,6 +618,11 @@ find_password_with_email_succeeds_test_() ->
             {user_ds, [
                 {'find_id_by_email', 1, fun(_) -> 123 end},
                 {'update_password', 2, fun(_, _) -> {ok, 1} end}
+            ]},
+            %% Task 10 / LT-04：忘记密码成功后全端会话吊销（bump + 踢会话）
+            {auth_session_ds, [
+                {'bump', 1, fun(_Uid) -> ok end},
+                {'kick_all_sessions', 1, fun(_Uid) -> ok end}
             ]}
         ],
         fun() ->

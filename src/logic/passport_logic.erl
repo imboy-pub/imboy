@@ -24,6 +24,7 @@
 -export([bind_email/2]).
 -export([mobile_registered/1]).
 -export([consume_code/2]).
+-export([refresh_session_epoch_valid/3]).
 %% P0-C: OIDC 登录流复用（auth_oidc_logic）——签发收口 + License 配额闸门 + 建号数据组装
 -export([login_resp/2]).
 -export([quota_guard/0]).
@@ -32,6 +33,12 @@
 -include("log.hrl").
 -include("common.hrl").
 -include("error_code.hrl").
+
+-spec refresh_session_epoch_valid(integer(), binary(), term()) -> boolean().
+refresh_session_epoch_valid(_Uid, <<>>, _Epoch) ->
+    true;
+refresh_session_epoch_valid(Uid, _Did, Epoch) ->
+    not auth_session_ds:revoked(Uid, Epoch).
 
 %% @doc 快速登录（支持第三方服务）
 %% @param Service 登录服务类型（如 jverify）
@@ -911,6 +918,9 @@ find_password_by_email(Email, Pwd, _PostVals) ->
             Pwd2 = elib_password:generate(Pwd),
             case user_ds:update_password(Id, Pwd2) of
                 {ok, _} ->
+                    %% Task 10 / LT-04：忘记密码 = 全端会话吊销（旧 tk/rtk 全失效）
+                    ok = auth_session_ds:bump(Id),
+                    ok = auth_session_ds:kick_all_sessions(Id),
                     {ok, #{}};
                 {error, Reason} ->
                     {error, Reason}
@@ -926,6 +936,9 @@ find_password_by_mobile(Mobile, Pwd, _PostVals) ->
             Pwd2 = elib_password:generate(Pwd),
             case user_ds:update_password(Id2, Pwd2) of
                 {ok, _} ->
+                    %% Task 10 / LT-04：同 email 路径，全端会话吊销
+                    ok = auth_session_ds:bump(Id2),
+                    ok = auth_session_ds:kick_all_sessions(Id2),
                     {ok, #{}};
                 {error, Reason} ->
                     {error, Reason}
@@ -949,10 +962,40 @@ verify_user(Pwd, User, Did) ->
         {ok, _} when Status == 0 ->
             {error, <<"账号被禁用"/utf8>>};
         {ok, _} when Status == 1; Status == 2 ->
+            % Task 11 / LT-05：登录成功后按计划升级 legacy 口令到 v2 KDF
+            % （激活配置存在才生效；失败不阻断登录、不锁死账号）
+            maybe_upgrade_password_kdf(User, Pwd),
             % E2EE-013：绑定登录设备 DID 进 token。
             {ok, login_resp(User, Did, #{})};
         {error, Msg} ->
             {error, Msg}
+    end.
+
+%% @doc Task 11 / LT-05：rehash-on-login。
+%% legacy 验证成功 ⇒ 按命中变体的候选值计算 v2（需 v2 已激活），CAS 原子写
+%% （升级一次，并发双登录竞态仅一方生效）。任何失败仅记日志不阻断登录。
+maybe_upgrade_password_kdf(User, Pwd) ->
+    Uid = maps:get(<<"id">>, User, 0),
+    Stored = maps:get(<<"password">>, User, <<>>),
+    case elib_password:verify_and_plan(Pwd, Stored) of
+        {ok, #{version := legacy, variant := V, candidate := Cand}} ->
+            case elib_kdf:hash_v2_prehashed(Cand, V) of
+                {ok, V2} ->
+                    case user_ds:upgrade_password_kdf_cas(Uid, V2) of
+                        {ok, 1} ->
+                            ?INFO_LOG([kdf_upgraded, Uid]);
+                        {ok, 0} ->
+                            ok;
+                        {error, Reason} ->
+                            _ = ?ERROR_LOG([kdf_upgrade_write_failed, Uid, Reason]),
+                            ok
+                    end;
+                _ ->
+                    %% v2 未激活（无用户预算决策）或参数异常：保持 legacy，不阻断
+                    ok
+            end;
+        _ ->
+            ok
     end.
 
 login_resp(User, Resp) ->

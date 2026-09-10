@@ -300,7 +300,8 @@
         % jwt_key binary 32 — IMBOY_JWT_KEY
         {jwt_key, <<>>},
 
-        %% 管理后台 Cookie 签名密钥（jwt_key 为空时的 fallback）
+        %% 管理后台 Cookie 签名密钥（独立于 jwt_key；缺失时 dev 派生，交付 profile fail-closed）
+%% 可选：管理后台 cookie 会话 TTL（秒），默认 28800=8h —— adm_session_ttl_sec
         %% 生产环境通过 IMBOY_ADM_COOKIE_SECRET 环境变量设置
         {adm_cookie_secret, ""},
 

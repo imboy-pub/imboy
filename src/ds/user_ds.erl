@@ -29,6 +29,7 @@
 -export([find_id_by_email/1]).
 -export([find_id_by_mobile/1]).
 -export([update_password/2]).
+-export([upgrade_password_kdf_cas/2]).
 -export([update_status_in_tx/2]).
 -export([update_password_in_tx/2]).
 -export([update_allow_search/2]).
@@ -400,6 +401,20 @@ count() ->
 update_password(Uid, PasswordHash) ->
     Tb = user_repo:tablename(),
     elib_pg:update(Tb, #{<<"password">> => PasswordHash}, <<"id = $1">>, [Uid]).
+
+%% @doc KDF 升级一次的原子 CAS（Task 11 / LT-05）：
+%% 仅当现存储仍为 legacy（不以 $v2$ 开头）时写入 v2 哈希。
+%% 并发双登录竞态下恰有一方生效（Count=1），另一方 Count=0 静默跳过；
+%% 两方登录均成功，升级失败不锁死账号（调用方吞错仅记日志）。
+-spec upgrade_password_kdf_cas(integer(), binary()) -> {ok, non_neg_integer()} | {error, any()}.
+upgrade_password_kdf_cas(Uid, V2Hash) ->
+    Tb = user_repo:tablename(),
+    elib_pg:update(
+        Tb,
+        #{<<"password">> => V2Hash},
+        <<"id = $1 AND password NOT LIKE '$v2$%'">>,
+        [Uid]
+    ).
 
 %% @doc 更新用户状态（事务版本）
 %% @param Conn 数据库连接

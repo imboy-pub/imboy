@@ -50,7 +50,7 @@ encrypt_token(ID, Did) ->
 % token_ds:decrypt_token(token_ds:encrypt_token(1)).
 %% @returns 解析结果：成功时返回用户ID、过期时间和主题；失败时返回错误信息
 -spec decrypt_token(binary()) ->
-    {ok, integer(), integer(), binary(), binary()}
+    {ok, integer(), integer(), binary(), binary(), integer() | malformed | undefined}
     | {error, integer(), binary() | string(), map()}.
 decrypt_token(Token) ->
     % 容忍 5 分钟时钟偏差
@@ -64,10 +64,13 @@ decrypt_token(Token) ->
             Sub = maps:get(sub, Payload, <<"tk">>),
             % E2EE-013：绑定的设备 DID；legacy token 无此 claim → <<>>。
             Did = to_did(maps:get(did, Payload, <<>>)),
+            % Task 10 / LT-04：会话 epoch claim；无 = undefined（legacy 豁免），
+            % 存在但非整数 = malformed（消费侧 fail-closed）。
+            Ep = to_epoch_claim(maps:get(ep, Payload, undefined)),
             Now = elib_dt:utc(second),
             if
                 ExpireDAt > Now ->
-                    {ok, ID, ExpireDAt, Sub, Did};
+                    {ok, ID, ExpireDAt, Sub, Did, Ep};
                 true ->
                     {error, 705, "Please refresh token", #{uid => ID, expired_at => ExpireDAt}}
             end;
@@ -109,6 +112,9 @@ decrypt_token(Token) ->
 %% @returns 编码后的JWT token
 %% @doc 内部签发：uid + 绑定设备 DID（E2EE-013）。
 %% Did=<<>> 时不写 did claim（保持与旧 token payload 一致，减少体积）。
+%% Task 10 / LT-04：did 绑定 token 同时携带 ep（会话 epoch，签发时现势值；
+%% 读取失败回落 1——verify 侧 fail-closed，回落值只会造成"事后被拒"，
+%% 不会造成"该拒而放行"）。空 did（legacy 形态）不写 ep，沿 did 豁免先例。
 -spec do_encrypt_token(integer() | binary(), binary(), integer(), binary()) -> binary().
 do_encrypt_token(ID, Did, Second, Sub) ->
     ExpireDAt = erlang:system_time(second) + Second,
@@ -123,13 +129,28 @@ do_encrypt_token(ID, Did, Second, Sub) ->
     Data =
         case to_did(Did) of
             <<>> -> Base;
-            D -> Base#{did => D}
+            D -> Base#{did => D, ep => epoch_at_issue(ID)}
         end,
     JwtKey = config_ds:env(jwt_key, <<>>),
     jwerl:sign(Data, hs256, JwtKey).
+
+%% @doc 签发时的会话 epoch 现势值；不可确认时回落 1（安全方向见 do_encrypt_token）。
+-spec epoch_at_issue(integer() | binary()) -> non_neg_integer().
+epoch_at_issue(ID) ->
+    case auth_session_ds:current_epoch(ec_cnv:to_integer(ID)) of
+        {ok, E} when is_integer(E), E >= 1 -> E;
+        _ -> 1
+    end.
 
 %% @doc 归一化 did（容错 string / undefined / 非 binary）。
 -spec to_did(term()) -> binary().
 to_did(D) when is_binary(D) -> D;
 to_did(D) when is_list(D) -> list_to_binary(D);
 to_did(_) -> <<>>.
+
+%% @doc 归一化 ep claim：缺省 undefined（legacy 豁免）；整数透传；
+%% 其余形态归为 malformed 原子（消费侧 auth_session_ds:revoked/2 fail-closed）。
+-spec to_epoch_claim(term()) -> non_neg_integer() | malformed | undefined.
+to_epoch_claim(E) when is_integer(E), E >= 1 -> E;
+to_epoch_claim(undefined) -> undefined;
+to_epoch_claim(_) -> malformed.

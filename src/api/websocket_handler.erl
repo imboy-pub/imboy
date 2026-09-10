@@ -147,8 +147,16 @@ websocket_handle({ping, Payload}, State) ->
     {ok, State, hibernate};
 %% 应用层心跳消息（文本格式，用于业务层面的心跳检测）
 %% 支持大小写，但不建议混用，建议统一使用小写
+%% Task 10 / LT-04：心跳点重校验会话（设备+epoch 现势），
+%% 改密/禁用/全端登出后于下一心跳关闭（冻结时限 = 心跳间隔 + epoch 缓存 60s 上界）
 websocket_handle({text, <<"ping">>}, State) ->
-    {reply, {text, <<"pong">>}, State, hibernate};
+    case websocket_ds:session_still_valid(State) of
+        true ->
+            {reply, {text, <<"pong">>}, State, hibernate};
+        false ->
+            ok = ?WARN_LOG({ws_session_revoked_close, auth_ds:current_uid(State)}),
+            {reply, {close, 4001, <<"session_revoked">>}, State}
+    end;
 websocket_handle({text, <<"PING">>}, State) ->
     {reply, {text, <<"PONG">>}, State, hibernate};
 % 客户端确认消息
@@ -280,8 +288,15 @@ handle_v2_binary(Msg, State) ->
 %% @doc 根据 v2 帧 Type 分派处理（Flags 仅 ACK 帧用于解析消息方向）
 dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, _Flags, <<Seq:16/big-unsigned>>, State) ->
     ok = ?DEBUG_LOG({v2_heartbeat_ping, Seq}),
-    Pong = imboy_frame:heartbeat_pong(Seq),
-    {reply, {binary, Pong}, State, hibernate};
+    %% Task 10 / LT-04：v2 心跳同样重校验会话（与 v1 文本心跳同口径）
+    case websocket_ds:session_still_valid(State) of
+        true ->
+            Pong = imboy_frame:heartbeat_pong(Seq),
+            {reply, {binary, Pong}, State, hibernate};
+        false ->
+            ok = ?WARN_LOG({ws_session_revoked_close, auth_ds:current_uid(State)}),
+            {reply, {close, 4001, <<"session_revoked">>}, State}
+    end;
 dispatch_v2_frame(?FRAME_TYPE_HEARTBEAT_PING, _Flags, _Bad, State) ->
     ok = ?WARN_LOG({v2_heartbeat_ping_bad_payload}),
     {ok, State, hibernate};

@@ -142,41 +142,41 @@ login(<<"POST">>, Req0, _State) ->
                                     imboy_cache:flush(Csrf),
                                     #{<<"id">> := AdmUserId} = AdmUser,
                                     AdmUserIdBin = ec_cnv:to_binary(AdmUserId),
-                                    Req1 = cowboy_req:set_resp_cookie(
-                                        <<"adm_user_id">>,
-                                        AdmUserIdBin,
-                                        Req0,
-                                        #{
-                                            path => <<"/">>,
-                                            http_only => true,
-                                            same_site => lax,
-                                            secure => cookie_secure()
-                                        }
-                                    ),
-                                    AdmUserSig = adm_auth_middleware:sign_admin_cookie(
-                                        AdmUserIdBin
-                                    ),
-                                    Req2 = cowboy_req:set_resp_cookie(
-                                        <<"adm_user_sig">>,
-                                        AdmUserSig,
-                                        Req1,
-                                        #{
-                                            path => <<"/">>,
-                                            http_only => true,
-                                            same_site => lax,
-                                            secure => cookie_secure()
-                                        }
-                                    ),
-                                    Next =
-                                        case elib_req:cookie(<<"back_uri">>, Req0) of
-                                            BackUri when is_binary(BackUri) ->
-                                                BackUri;
-                                            _ ->
-                                                <<"/adm/">>
-                                        end,
-                                    Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/">>),
-                                    RespData = maps:put(<<"next">>, Next, AdmUser),
-                                    elib_response:success(Req3, RespData, "操作成功.");
+                                    case adm_session_ds:issue(AdmUserIdBin) of
+                                        {ok, AdmUserSig} ->
+                                            %% LT-06：认证 cookie 属性唯一真源
+                                            %% （HttpOnly/SameSite/Secure/Max-Age=TTL）
+                                            Opts = adm_session_ds:cookie_opts(
+                                                adm_session_ds:session_ttl_sec()
+                                            ),
+                                            Req1 = cowboy_req:set_resp_cookie(
+                                                <<"adm_user_id">>,
+                                                AdmUserIdBin,
+                                                Req0,
+                                                Opts
+                                            ),
+                                            Req2 = cowboy_req:set_resp_cookie(
+                                                <<"adm_user_sig">>,
+                                                AdmUserSig,
+                                                Req1,
+                                                Opts
+                                            ),
+                                            Next =
+                                                case elib_req:cookie(<<"back_uri">>, Req0) of
+                                                    BackUri when is_binary(BackUri) ->
+                                                        BackUri;
+                                                    _ ->
+                                                        <<"/adm/">>
+                                                end,
+                                            Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/">>),
+                                            RespData = maps:put(<<"next">>, Next, AdmUser),
+                                            elib_response:success(Req3, RespData, "操作成功.");
+                                        {error, _} ->
+                                            %% 会话现势不可确认：拒绝签发（fail-closed）
+                                            elib_response:error(
+                                                Req0, <<"登录态服务暂不可用，请稍后重试"/utf8>>
+                                            )
+                                    end;
                                 {error, Msg} ->
                                     elib_response:error(Req0, Msg)
                             end
@@ -231,9 +231,11 @@ meta(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
 %% @doc 处理退出登录
-%% 清理管理后台认证相关 Cookie，并返回成功响应
+%% 清理管理后台认证相关 Cookie，并 bump 服务端 epoch——
+%% 已签发 cookie 立即整体失效（LT-06：登出后 server rejects）。
 -spec logout(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
 logout(<<"POST">>, Req0, _State) ->
+    revoke_server_session(Req0),
     Req1 = clear_cookie(<<"adm_user_id">>, Req0, <<"/">>),
     Req2 = clear_cookie(<<"adm_user_sig">>, Req1, <<"/">>),
     Req3 = clear_cookie(<<"back_uri">>, Req2, <<"/">>),
@@ -241,20 +243,39 @@ logout(<<"POST">>, Req0, _State) ->
 logout(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
 
+%% @doc 登出时 bump 该管理员的 session epoch；cookie 缺失/畸形/服务不可用
+%% 均不阻断登出（客户端 cookie 照常清除；bump 失败仅记日志）。
+-spec revoke_server_session(cowboy_req:req()) -> ok.
+revoke_server_session(Req) ->
+    case safe_adm_id(elib_req:cookie(<<"adm_user_id">>, Req)) of
+        0 ->
+            ok;
+        AdmId ->
+            case adm_session_ds:bump(AdmId) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    ok = ?WARN_LOG({adm_logout_bump_failed, AdmId, Reason}),
+                    ok
+            end
+    end.
+
+-spec safe_adm_id(term()) -> 0 | pos_integer().
+safe_adm_id(Uid) when is_binary(Uid) ->
+    try binary_to_integer(Uid) of
+        N when N > 0 -> N;
+        _ -> 0
+    catch
+        _:_ ->
+            0
+    end;
+safe_adm_id(_) ->
+    0.
+
 -spec clear_cookie(binary(), cowboy_req:req(), binary()) -> cowboy_req:req().
-clear_cookie(Name, Req, Path) ->
-    cowboy_req:set_resp_cookie(
-        Name,
-        <<>>,
-        Req,
-        #{
-            path => Path,
-            max_age => 0,
-            http_only => true,
-            same_site => lax,
-            secure => cookie_secure()
-        }
-    ).
+clear_cookie(Name, Req, _Path) ->
+    %% LT-06：清除属性与签发同源（max_age=0 立即过期）
+    cowboy_req:set_resp_cookie(Name, <<>>, Req, adm_session_ds:cookie_opts(0)).
 
 %% @doc 判断是否需要为 Cookie 设置 secure 属性
 -spec cookie_secure() -> boolean().

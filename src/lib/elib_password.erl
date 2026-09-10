@@ -18,13 +18,22 @@
 
 -export([generate/1, generate/2]).
 -export([verify/2]).
+%% Task 11 / LT-05：versioned KDF 双读与升级编排
+-export([verify_and_plan/2]).
+-export([candidate_variant/2]).
+-export([eq/2]).
 
 %% @doc 生成密码哈希（使用默认 HMAC-SHA512 算法）
 %% @param Plaintext 明文密码
 %% @returns Base64 编码的密码哈希
 -spec generate(iodata()) -> binary().
 generate(Plaintext) ->
-    generate(Plaintext, hmac_sha512).
+    %% Task 11 / LT-05：v2 激活时写 versioned KDF（变体 2 = sha256 预哈希，
+    %% 与本函数既有存储语义一致）；未激活/失败回退既有格式，零行为变化。
+    case elib_kdf:hash_v2(Plaintext, 2) of
+        {ok, V2} -> V2;
+        _ -> generate(Plaintext, hmac_sha512)
+    end.
 
 %% @doc 生成密码哈希（指定算法）
 %% @param Plaintext 明文密码
@@ -47,11 +56,67 @@ generate(Plaintext, hmac_sha512) ->
 %% @example
 %% Pwd = elib_password:generate(<<"admin888">>),
 %% elib_password:verify(<<"admin888">>, Pwd).
+%% Task 11 / LT-05：验证并给出升级计划（v2 通过无升级；legacy 通过返回命中变体）
+-spec verify_and_plan(iodata(), iodata()) ->
+    {ok, map()} | {error, binary()}.
+verify_and_plan(Plaintext, Ciphertext) ->
+    PlainBin = iolist_to_binary(Plaintext),
+    case elib_kdf:parse_v2(Ciphertext) of
+        {ok, _} ->
+            case verify_v2(PlainBin, Ciphertext) of
+                {ok, _} -> {ok, #{version => v2}};
+                Err -> Err
+            end;
+        error ->
+            case verify_legacy_plan(PlainBin, Ciphertext) of
+                {ok, Variant, Candidate} ->
+                    {ok, #{version => legacy, variant => Variant, candidate => Candidate}};
+                Err ->
+                    Err
+            end
+    end.
+
+%% @private legacy 链验证并返回命中变体（供升级计算 v2）
+verify_legacy_plan(PlainBin, Ciphertext) ->
+    Decoded = try_decode_hmac_sha512(Ciphertext),
+    Candidates = candidate_list(PlainBin),
+    case Decoded of
+        {ok, Salt, Ciphertext3} ->
+            case plan_candidates(Candidates, Salt, Ciphertext3, 1) of
+                {ok, Variant, Candidate} ->
+                    {ok, Variant, Candidate};
+                _ ->
+                    case
+                        verify(
+                            PlainBin, default_md5, config_ds:env(password_salt, <<>>), Ciphertext
+                        )
+                    of
+                        {ok, _} -> {ok, 1, PlainBin};
+                        Err -> Err
+                    end
+            end;
+        _ ->
+            case verify(PlainBin, default_md5, config_ds:env(password_salt, <<>>), Ciphertext) of
+                {ok, _} -> {ok, 1, PlainBin};
+                Err -> Err
+            end
+    end.
+
 -spec verify(iodata(), iodata()) -> {ok, []} | {error, binary()}.
 verify(Plaintext, Ciphertext) ->
     % 统一收敛为 binary：verify_hmac_sha512 的 md5 回退路径用 binary_to_list，
     % 列表输入会 badarg；spec 声明 iodata，两态皆须可用
     PlainBin = iolist_to_binary(Plaintext),
+    % Task 11 / LT-05：v2 形态先走 versioned KDF 验证
+    case elib_kdf:parse_v2(Ciphertext) of
+        {ok, _} ->
+            verify_v2(PlainBin, Ciphertext);
+        error ->
+            verify_legacy(PlainBin, Ciphertext)
+    end.
+
+%% @private 既有 legacy 链（原 verify/2 主体）
+verify_legacy(PlainBin, Ciphertext) ->
     % 首先尝试解码为 hmac_sha512 格式
     Decoded = try_decode_hmac_sha512(Ciphertext),
     case Decoded of
@@ -141,14 +206,34 @@ verify(Plaintext, hmac_sha512, Salt, Ciphertext) ->
 -spec verify_hmac_sha512(iodata(), binary(), binary()) -> {ok, []} | {error, binary()}.
 verify_hmac_sha512(Plaintext, Salt, Ciphertext) ->
     PlainBin = iolist_to_binary(Plaintext),
-    Md5Hex = elib_hasher:md5(binary_to_list(PlainBin)),
-    Candidates = [
-        PlainBin,
-        crypto:hash(sha256, PlainBin),
-        Md5Hex,
-        crypto:hash(sha256, Md5Hex)
-    ],
+    Candidates = [candidate_variant(PlainBin, V) || V <- lists:seq(1, 4)],
     verify_candidates(Candidates, Salt, Ciphertext).
+
+%% @doc 输入候选变体（Task 11 / LT-05 抽取供 elib_kdf 复用）：
+%% 1 直值 / 2 sha256(直值) / 3 md5hex / 4 sha256(md5hex)
+-spec candidate_variant(binary(), 1..4) -> binary().
+candidate_variant(PlainBin, 1) -> PlainBin;
+candidate_variant(PlainBin, 2) -> crypto:hash(sha256, PlainBin);
+candidate_variant(PlainBin, 3) -> elib_hasher:md5(binary_to_list(PlainBin));
+candidate_variant(PlainBin, 4) -> crypto:hash(sha256, elib_hasher:md5(binary_to_list(PlainBin))).
+
+%% @private 候选列表（顺序即变体序号）
+candidate_list(PlainBin) ->
+    [candidate_variant(PlainBin, V) || V <- lists:seq(1, 4)].
+
+%% @private legacy 链验证并返回命中变体
+plan_candidates([C | Rest], Salt, Ciphertext3, Idx) ->
+    case eq(Ciphertext3, elib_hasher:hmac_sha512(C, Salt)) of
+        {ok, _} -> {ok, Idx, C};
+        _ -> plan_candidates(Rest, Salt, Ciphertext3, Idx + 1)
+    end;
+plan_candidates([], _, _, _) ->
+    {error, <<"errorPassword">>}.
+
+%% Task 11 / LT-05：v2 验证桥接
+-spec verify_v2(iodata(), binary()) -> {ok, []} | {error, binary()}.
+verify_v2(Plain, Stored) ->
+    elib_kdf:verify_v2(Plain, Stored).
 
 -spec verify_candidates([binary()], binary(), binary()) -> {ok, []} | {error, binary()}.
 verify_candidates([], _Salt, _Ciphertext) ->
