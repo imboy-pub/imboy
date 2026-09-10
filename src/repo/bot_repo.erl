@@ -20,7 +20,7 @@
 -export([has_exchange/2]).
 %% WH-01：凭证安全
 -export([find_by_api_token/1, set_api_token_credential/2, prepare_credentials/2]).
--export([set_verify_token_enc/2, get_verify_token/1]).
+-export([set_verify_token_enc/2, get_verify_token/1, list_encrypted_bot_ids/0]).
 
 -include("log.hrl").
 
@@ -408,12 +408,15 @@ set_api_token_credential(BotUserId, ApiToken) when is_binary(ApiToken), ApiToken
 %% @doc AEAD 加密密钥：postgre_aes_key 派生（sha256 → 32 字节）。
 -spec aead_key() -> {ok, binary()} | {error, no_key}.
 aead_key() ->
-    case config_ds:env(postgre_aes_key, <<>>) of
-        <<>> -> {error, no_key};
-        Key when is_binary(Key) -> {ok, crypto:hash(sha256, Key)};
-        Key when is_list(Key) -> {ok, crypto:hash(sha256, list_to_binary(Key))};
-        _ -> {error, no_key}
-    end.
+    derive_aead_key(config_ds:env(postgre_aes_key, <<>>)).
+
+previous_aead_key() ->
+    derive_aead_key(config_ds:env(postgre_aes_key_old, <<>>)).
+
+derive_aead_key(<<>>) -> {error, no_key};
+derive_aead_key(Key) when is_binary(Key) -> {ok, crypto:hash(sha256, Key)};
+derive_aead_key(Key) when is_list(Key) -> derive_aead_key(list_to_binary(Key));
+derive_aead_key(_) -> {error, no_key}.
 
 %% @doc verify_token 可认证加密存储（AEAD）。主密钥缺失 → fail-closed。
 -spec set_verify_token_enc(integer(), binary()) ->
@@ -423,14 +426,17 @@ set_verify_token_enc(BotUserId, VerifyToken) when is_binary(VerifyToken) ->
         {error, _} = E ->
             E;
         {ok, Enc} ->
-            Tb = tablename(),
-            elib_pg:execute(
-                <<"UPDATE ", Tb/binary,
-                    " SET verify_token_enc = $2, verify_token = '', token_migrated = true,"
-                    " updated_at = NOW() WHERE user_id = $1">>,
-                [BotUserId, Enc]
-            )
+            persist_verify_token_enc(BotUserId, Enc)
     end.
+
+persist_verify_token_enc(BotUserId, Enc) ->
+    Tb = tablename(),
+    elib_pg:execute(
+        <<"UPDATE ", Tb/binary,
+            " SET verify_token_enc = $2, verify_token = '', token_migrated = true,"
+            " updated_at = NOW() WHERE user_id = $1">>,
+        [BotUserId, Enc]
+    ).
 
 encrypt_verify_token(VerifyToken) ->
     case aead_key() of
@@ -458,10 +464,61 @@ get_verify_token(BotUserId) ->
                 {ok, [#{<<"verify_token_enc">> := <<>>}]} ->
                     {error, not_encrypted};
                 {ok, [#{<<"verify_token_enc">> := Enc}]} ->
-                    elib_cipher:aes_gcm_decrypt(Enc, Key);
+                    decrypt_verify_token(BotUserId, Enc, Key);
                 {ok, []} ->
                     {error, notfound};
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+decrypt_verify_token(BotUserId, Enc, CurrentKey) ->
+    case elib_cipher:aes_gcm_decrypt(Enc, CurrentKey) of
+        {ok, _} = Ok ->
+            Ok;
+        {error, authentication_failed} = CurrentError ->
+            decrypt_with_previous_key(BotUserId, Enc, CurrentKey, CurrentError);
+        {error, _} = Error ->
+            Error
+    end.
+
+decrypt_with_previous_key(BotUserId, Enc, CurrentKey, CurrentError) ->
+    case previous_aead_key() of
+        {ok, CurrentKey} ->
+            CurrentError;
+        {ok, PreviousKey} ->
+            case elib_cipher:aes_gcm_decrypt(Enc, PreviousKey) of
+                {ok, Plain} -> reencrypt_with_current_key(BotUserId, Plain, CurrentKey);
+                {error, _} -> CurrentError
+            end;
+        {error, no_key} ->
+            CurrentError
+    end.
+
+reencrypt_with_current_key(BotUserId, Plain, CurrentKey) ->
+    case elib_cipher:aes_gcm_encrypt(Plain, CurrentKey) of
+        {ok, Enc} ->
+            case persist_verify_token_enc(BotUserId, Enc) of
+                {ok, 1} -> {ok, Plain};
+                {ok, Rows} -> {error, {reencrypt_failed, {updated_rows, Rows}}};
+                {error, Reason} -> {error, {reencrypt_failed, Reason}}
+            end;
+        {error, Reason} ->
+            {error, {reencrypt_failed, Reason}}
+    end.
+
+%% @doc 列出需要验证/重加密的 Bot；仅返回标识，不读取或暴露明文。
+-spec list_encrypted_bot_ids() -> {ok, [integer()]} | {error, term()}.
+list_encrypted_bot_ids() ->
+    Tb = tablename(),
+    case
+        elib_pg:query(
+            <<"SELECT user_id FROM ", Tb/binary,
+                " WHERE verify_token_enc IS NOT NULL AND verify_token_enc <> ''"
+                " ORDER BY user_id">>,
+            []
+        )
+    of
+        {ok, Rows} -> {ok, [BotId || #{<<"user_id">> := BotId} <- Rows]};
+        {error, Reason} -> {error, Reason}
     end.

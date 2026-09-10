@@ -358,3 +358,104 @@ search_returns_empty_on_no_matches_test_() ->
             ?assertEqual(0, maps:get(total, Result))
         end
     ).
+
+%% ===================================================================
+%% verify_token AEAD key rotation
+%% ===================================================================
+
+old_key_decrypt_reencrypts_with_current_key_test_() ->
+    Plain = <<"verify-secret">>,
+    Current = <<"current-postgre-aes-key">>,
+    Previous = <<"previous-postgre-aes-key">>,
+    CurrentDerived = crypto:hash(sha256, Current),
+    PreviousDerived = crypto:hash(sha256, Previous),
+    {ok, OldCipher} = elib_cipher:aes_gcm_encrypt(Plain, PreviousDerived),
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 2, fun
+                    (postgre_aes_key, _) -> Current;
+                    (postgre_aes_key_old, _) -> Previous;
+                    (_, Default) -> Default
+                end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"bot">>) -> <<"public.bot">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, [7]) ->
+                    {ok, [#{<<"verify_token_enc">> => OldCipher}]}
+                end},
+                {'execute', 2, fun(Sql, [7, NewCipher]) ->
+                    ?assertEqual(nomatch, binary:match(Sql, Previous)),
+                    {ok, Decrypted} = elib_cipher:aes_gcm_decrypt(NewCipher, CurrentDerived),
+                    ?assertEqual(Plain, Decrypted),
+                    {ok, 1}
+                end}
+            ]}
+        ],
+        fun() -> ?assertEqual({ok, Plain}, bot_repo:get_verify_token(7)) end
+    ).
+
+old_key_fallback_fails_closed_when_reencrypt_write_fails_test_() ->
+    Plain = <<"verify-secret">>,
+    Current = <<"current-postgre-aes-key">>,
+    Previous = <<"previous-postgre-aes-key">>,
+    {ok, OldCipher} =
+        elib_cipher:aes_gcm_encrypt(Plain, crypto:hash(sha256, Previous)),
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 2, fun
+                    (postgre_aes_key, _) -> Current;
+                    (postgre_aes_key_old, _) -> Previous;
+                    (_, Default) -> Default
+                end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"bot">>) -> <<"public.bot">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, [8]) ->
+                    {ok, [#{<<"verify_token_enc">> => OldCipher}]}
+                end},
+                {'execute', 2, fun(_Sql, [8, _NewCipher]) -> {error, no_connection} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, {reencrypt_failed, no_connection}},
+                bot_repo:get_verify_token(8)
+            )
+        end
+    ).
+
+missing_old_key_fails_closed_without_reencrypt_write_test_() ->
+    Current = <<"current-postgre-aes-key">>,
+    Previous = <<"previous-postgre-aes-key">>,
+    {ok, OldCipher} =
+        elib_cipher:aes_gcm_encrypt(<<"verify-secret">>, crypto:hash(sha256, Previous)),
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 2, fun
+                    (postgre_aes_key, _) -> Current;
+                    (postgre_aes_key_old, _) -> <<>>;
+                    (_, Default) -> Default
+                end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"bot">>) -> <<"public.bot">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(_Sql, [9]) ->
+                    {ok, [#{<<"verify_token_enc">> => OldCipher}]}
+                end},
+                {'execute', 2, fun(_Sql, _Params) -> {error, unexpected_write} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({error, authentication_failed}, bot_repo:get_verify_token(9)),
+            ?assertEqual(0, meck:num_calls(elib_pg, execute, 2))
+        end
+    ).

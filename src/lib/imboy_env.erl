@@ -9,6 +9,7 @@
 % 环境变量命名规范: IMBOY_<KEY>
 %   IMBOY_JWT_KEY          -> {imboy, jwt_key}
 %   IMBOY_POSTGRE_AES_KEY  -> {imboy, postgre_aes_key}
+%   IMBOY_POSTGRE_AES_KEY_OLD -> {imboy, postgre_aes_key_old} (Bot 轮换只读窗)
 %   IMBOY_ADM_COOKIE_SECRET -> {imboy, adm_cookie_secret}
 %   IMBOY_BASE_URL         -> {imboy, base_url}  (e.g. https://api.example.com)
 %   IMBOY_WS_URL           -> {imboy, ws_url}    (e.g. wss://api.example.com/ws)
@@ -102,6 +103,7 @@ override_from_env() ->
     %% 简单键值覆盖（binary 类型）
     ok = override_binary_key("IMBOY_JWT_KEY", jwt_key),
     ok = override_binary_key("IMBOY_POSTGRE_AES_KEY", postgre_aes_key),
+    ok = override_binary_key("IMBOY_POSTGRE_AES_KEY_OLD", postgre_aes_key_old),
     ok = override_string_key("IMBOY_ADM_COOKIE_SECRET", adm_cookie_secret),
 
     %% URL 配置覆盖（生产环境必须通过这两个变量消除 sys.config 中的 dev URL）

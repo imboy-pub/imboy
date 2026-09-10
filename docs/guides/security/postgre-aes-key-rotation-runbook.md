@@ -56,8 +56,10 @@ encode(encrypt('<base64(明文)>', '<主密钥>', 'aes-cbc/pad:pkcs'), 'base64')
 | T0 → T+1 个发布周期 | 只读，不用于任何新写入 | 正常 | 观察是否有遗漏的旧密文读取路径报错 |
 | T+1 个发布周期后 | **从所有 config / env / 密钥管理器中彻底移除** | 正常 | 完成轮换 |
 
-> ⚠️ 当前代码**没有**读取 `IMBOY_POSTGRE_AES_KEY_OLD` 的分支 —— 因为 `user_collect`
-> 不需要它。若 `config` 表也要轮换，需另立任务并补双密钥读取逻辑；本 runbook 不含该步。
+> `bot_repo` 为 WH-01 的 verify secret 轮换提供了唯一的旧 key 读取分支：旧密文
+> 解密成功后立即用当前 key 重加密，写失败则 fail-closed。`user_collect`、`config`
+> 表、SSO、附件等其他消费者仍不读取该变量；它们的轮换需另立任务，本 runbook
+> 不把 Bot 的局部能力描述成全局 `postgre_aes_key` 已可在线轮换。
 
 ---
 
