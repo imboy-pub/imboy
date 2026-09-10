@@ -36,6 +36,19 @@
 }.
 -export_type([opts/0]).
 
+%% do_execute 在外部 opts() 基础上富化 actor/prev_status 后的内部传递形态
+%% （run_primitive/insert_action 实际消费的是本类型；用 opts() 会因多余
+%% 必需键破坏契约，dialyzer 级联误判 do_execute「无正常返回」）
+-type exec_opts() :: #{
+    actor := pos_integer(),
+    reason := binary(),
+    duration_minutes => integer(),
+    gid => integer(),
+    prev_status => term(),
+    target_id => integer(),
+    target_type => binary()
+}.
+
 %% @doc 执行处置动作。
 %% 返回 {ok, ActionRow} | {error, binary()}（失败分支同样落 failed 行）。
 -spec execute(integer(), integer(), binary(), integer(), opts()) ->
@@ -205,7 +218,7 @@ do_execute(AdmUid, CaseId, Action, TargetUid, Opts0, CaseRow) ->
     integer(),
     binary(),
     integer(),
-    opts(),
+    exec_opts(),
     binary(),
     map(),
     binary()
@@ -254,7 +267,7 @@ insert_action(AdmUid, CaseId, Action, TargetUid, Opts, Status, Result, FailReaso
     end.
 
 %% @doc 动作原语分发。返回 ok | {error, Reason}。
--spec run_primitive(binary(), integer(), opts(), map()) -> ok | {error, binary()}.
+-spec run_primitive(binary(), integer(), exec_opts(), map()) -> ok | {error, binary()}.
 run_primitive(<<"reject">>, _TargetUid, _Opts, _CaseRow) ->
     %% explicit no-action decision：本身就是验收认可的结论之一
     ok;
