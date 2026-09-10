@@ -262,7 +262,7 @@ error_code_of(provider_error) ->
 error_code_of(bad_output) ->
     <<"bad_schema">>;
 error_code_of(R) when is_atom(R) ->
-    list_to_binary(atom_to_list(R)).
+    atom_to_binary(R, utf8).
 
 -spec media_error_code(term()) -> binary().
 media_error_code(file_too_large) -> <<"media_too_large">>;

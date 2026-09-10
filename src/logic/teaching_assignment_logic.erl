@@ -216,7 +216,7 @@ run_create_tx(Uid, AssignmentId, IdemKey, Digest, LearnerId, Assets, _Scope) ->
     end.
 
 -spec create_in_tx(any(), integer(), integer(), binary(), binary(), integer(), list()) ->
-    {ok, map()} | {rollback, atom()}.
+    {ok, map()} | {rollback, atom() | {db, any()}}.
 create_in_tx(Conn, Uid, AssignmentId, IdemKey, Digest, LearnerId, Assets) ->
     {ok, NextAttempt} = teaching_submission_repo:next_attempt_tx(Conn, AssignmentId),
     case
@@ -309,7 +309,7 @@ request_digest(LearnerId, Assets, Note) ->
     Canonical = iolist_to_binary([
         integer_to_binary(LearnerId), <<"|">>, AttParts, <<"|">>, Note
     ]),
-    string:lowercase(binary:encode_hex(crypto:hash(sha256, Canonical))).
+    binary:encode_hex(crypto:hash(sha256, Canonical), lowercase).
 
 -spec tsid(integer() | null | undefined) -> binary().
 tsid(Id) when is_integer(Id) -> integer_to_binary(Id);

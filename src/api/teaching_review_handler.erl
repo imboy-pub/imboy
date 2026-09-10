@@ -116,7 +116,7 @@ path_id(Req) ->
     case cowboy_req:binding(id, Req) of
         undefined ->
             error;
-        Bin ->
+        Bin when is_binary(Bin) ->
             try binary_to_integer(Bin) of
                 Int when Int > 0 -> {ok, Int};
                 _ -> error
@@ -134,8 +134,7 @@ page_param(Qs) ->
 -spec int_param(list(), binary(), integer()) -> integer().
 int_param(Qs, Key, Default) ->
     try binary_to_integer(proplists:get_value(Key, Qs, <<>>)) of
-        Int when is_integer(Int) -> Int;
-        _ -> Default
+        Int when is_integer(Int) -> Int
     catch
         _:_ -> Default
     end.

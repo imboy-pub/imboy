@@ -41,7 +41,7 @@ jscode2session(AppId, Secret, Code) ->
     HttpOpts = [{timeout, ?HTTP_TIMEOUT_MS}, {autoredirect, true}],
     try httpc:request(get, {binary_to_list(Full), []}, HttpOpts, [{body_format, binary}]) of
         {ok, {{_Line, 200, _}, _Headers, Body}} ->
-            parse_body(Body);
+            parse_body(body_to_binary(Body));
         {ok, {{_Line, Status, _}, _Headers, _Body}} ->
             ?LOG_WARNING("teaching_wechat_client http ~p from jscode2session", [Status]),
             {error, invalid_code};
@@ -56,6 +56,18 @@ jscode2session(AppId, Secret, Code) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% body_format=binary 下 httpc 实际恒返回 binary；此包装把 httpc spec 的
+%% string()|binary() 联合类型收敛为 binary（异常输入归空串 → parse_body 判
+%% invalid_code，语义不变）
+-spec body_to_binary(term()) -> binary().
+body_to_binary(B) when is_binary(B) ->
+    B;
+body_to_binary(CD) ->
+    case unicode:characters_to_binary(CD) of
+        T when is_binary(T) -> T;
+        _ -> <<>>
+    end.
 
 -spec parse_body(binary()) -> {ok, binary()} | {error, invalid_code | network}.
 parse_body(Body) ->

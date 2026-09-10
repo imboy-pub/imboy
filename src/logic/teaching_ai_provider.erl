@@ -88,7 +88,10 @@ resolve_provider(Name) when is_binary(Name) ->
                     _:_ -> undefined
                 end,
             VisionOK =
-                is_map(Capabilities) andalso maps:get(vision, Capabilities, false) =:= true,
+                case Capabilities of
+                    #{vision := true} -> true;
+                    _ -> false
+                end,
             HasKey = is_binary(ApiKey) andalso ApiKey =/= <<>>,
             case {VisionOK, HasKey} of
                 {true, true} ->
@@ -100,9 +103,7 @@ resolve_provider(Name) when is_binary(Name) ->
             end;
         undefined ->
             {error, provider_unavailable}
-    end;
-resolve_provider(_) ->
-    {error, provider_unavailable}.
+    end.
 
 -spec call_provider(module(), map(), map(), map()) -> {ok, map()} | {error, atom()}.
 call_provider(Mod, Opts, DraftMeta, Attachment) ->

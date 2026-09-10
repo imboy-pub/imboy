@@ -602,8 +602,7 @@ draft_ref(D) ->
 
 -spec ai_status(null | binary()) -> binary().
 ai_status(null) -> <<"none">>;
-ai_status(St) when is_binary(St) -> St;
-ai_status(_) -> <<"none">>.
+ai_status(St) when is_binary(St) -> St.
 
 -spec ai_hint(map() | undefined) -> binary().
 ai_hint(#{<<"status">> := <<"queued">>}) -> <<"processing">>;
@@ -633,9 +632,7 @@ task_title(TaskId) ->
 
 -spec reserved_keys(map()) -> boolean().
 reserved_keys(Body) when is_map(Body) ->
-    lists:any(fun(K) -> maps:is_key(K, Body) end, ?RESERVED_BODY_KEYS);
-reserved_keys(_) ->
-    false.
+    lists:any(fun(K) -> maps:is_key(K, Body) end, ?RESERVED_BODY_KEYS).
 
 -spec confirm_mismatch(map(), integer()) -> boolean().
 confirm_mismatch(Body, SubmissionId) ->

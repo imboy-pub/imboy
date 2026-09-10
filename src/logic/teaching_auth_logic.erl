@@ -35,9 +35,15 @@
 %%               login_failed | identity_none}
 -spec wechat_mini_login(map()) ->
     {ok, map()}
-    | {error, missing_code | invalid_code | provider_unconfigured | login_failed | identity_none}.
+    | {error,
+        missing_code
+        | invalid_code
+        | code_invalid
+        | provider_unconfigured
+        | login_failed
+        | identity_none}.
 wechat_mini_login(#{code := Code0} = Params) when is_binary(Code0) ->
-    Code = string:trim(Code0),
+    Code = trim_binary(Code0),
     DeviceId = maps:get(device_id, Params, <<>>),
     case valid_code(Code) of
         false ->
@@ -56,6 +62,16 @@ wechat_mini_login(_) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% string:trim 返回 chardata、characters_to_binary 带 error/incomplete 分支；
+%% 输入恒为 binary 时实际恒成功——包装把类型收敛回 binary（异常输入归空串，
+%% 后续 valid_code 判 false → invalid_code，语义不变）
+-spec trim_binary(binary()) -> binary().
+trim_binary(B) ->
+    case unicode:characters_to_binary(string:trim(B)) of
+        T when is_binary(T) -> T;
+        _ -> <<>>
+    end.
 
 -spec valid_code(binary()) -> boolean().
 valid_code(Code) ->

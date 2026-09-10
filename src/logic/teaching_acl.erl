@@ -37,7 +37,7 @@
 
 %% @doc 监护人关系解析（active 才有效）
 -spec resolve_guardian(integer(), integer()) ->
-    {ok, map()} | {error, not_guardian | inactive | db_error}.
+    {ok, map()} | {error, not_guardian | inactive | cannot_submit | cannot_view | db_error}.
 resolve_guardian(Uid, LearnerId) ->
     resolve_guardian(Uid, LearnerId, undefined).
 
@@ -61,7 +61,7 @@ resolve_guardian(Uid, LearnerId, Need) ->
 
 %% @doc 任课老师关系解析（active 才有效；role 原样返回供细分）
 -spec resolve_staff(integer(), integer()) ->
-    {ok, map()} | {error, not_staff | inactive | db_error}.
+    {ok, map()} | {error, not_staff | inactive | role_denied | db_error}.
 resolve_staff(Uid, GroupId) ->
     resolve_staff(Uid, GroupId, undefined).
 

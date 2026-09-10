@@ -325,7 +325,9 @@ can_upload(_Uid, <<"public">>, _ScopeRef) ->
     ok;
 can_upload(_Uid, <<"private">>, _ScopeRef) ->
     ok;
-can_upload(Uid, <<"c2c">>, ScopeRef) ->
+can_upload(_Uid, <<"c2c">>, undefined) ->
+    {error, forbidden};
+can_upload(Uid, <<"c2c">>, ScopeRef) when is_binary(ScopeRef) ->
     case conv_key_vo:c2c_members(ScopeRef) of
         {ok, {A, B}} when Uid =:= A; Uid =:= B -> ok;
         _ -> {error, forbidden}
@@ -432,9 +434,14 @@ authorize(<<"private">>, Uid, Rec) ->
 authorize(<<"teaching">>, Uid, Rec) ->
     teaching_attach_logic:authorize(Uid, Rec);
 authorize(<<"c2c">>, Uid, Rec) ->
-    case conv_key_vo:c2c_members(scope_ref(Rec)) of
-        {ok, {A, B}} -> Uid =:= A orelse Uid =:= B;
-        _ -> false
+    case scope_ref(Rec) of
+        ScopeRef when is_binary(ScopeRef) ->
+            case conv_key_vo:c2c_members(ScopeRef) of
+                {ok, {A, B}} -> Uid =:= A orelse Uid =:= B;
+                _ -> false
+            end;
+        _ ->
+            false
     end;
 authorize(<<"group">>, Uid, Rec) ->
     case to_int(scope_ref(Rec)) of

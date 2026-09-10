@@ -105,7 +105,7 @@ path_learner_id(Req) ->
     case cowboy_req:binding(id, Req) of
         undefined ->
             error;
-        Bin ->
+        Bin when is_binary(Bin) ->
             try binary_to_integer(Bin) of
                 Int when Int > 0 -> {ok, Int};
                 _ -> error
@@ -148,9 +148,7 @@ tsid_strings(Row) when is_map(Row) ->
         end,
         Row,
         [<<"id">>, <<"organization_id">>, <<"user_id">>, <<"account_bound_by">>]
-    );
-tsid_strings(Row) ->
-    Row.
+    ).
 
 -spec error_response(cowboy_req:req(), atom()) -> cowboy_req:req().
 error_response(Req, not_authorized) ->

@@ -490,7 +490,7 @@ count_assignments(LearnerId) ->
     end.
 
 -spec count_queue([integer()], binary(), [term()]) -> integer().
-count_queue(_GroupIds, AiCond, Params) ->
+count_queue(_GroupIds, AiCond, [GroupIds | Rest]) ->
     Base =
         <<"SELECT count(*) AS c FROM ", (tb(homework_submission))/binary,
             " hs "
@@ -505,7 +505,12 @@ count_queue(_GroupIds, AiCond, Params) ->
             "  ORDER BY created_at DESC LIMIT 1) crd ON true "
             "WHERE hs.status = 'submitted' AND g.id = ANY($1)", AiCond/binary>>,
     %% 计数参数 = [GroupIds] + 附加筛选（去掉第 2/3 位 LIMIT/OFFSET）
-    CountParams = [hd(Params)] ++ lists:sublist(Params, 4, length(Params) - 3),
+    CountParams =
+        [GroupIds] ++
+            case Rest of
+                [_Limit, _Offset | Extra] -> Extra;
+                _ -> []
+            end,
     case elib_pg:query(Base, CountParams) of
         {ok, [#{<<"c">> := C} | _]} -> C;
         _ -> 0
