@@ -90,7 +90,9 @@ resolve_provider(Name) when is_binary(Name) ->
             VisionOK =
                 case Capabilities of
                     #{vision := true} -> true;
-                    _ -> false
+                    %% provider 条目可显式声明 vision（如 OpenAI 兼容多模态端点
+                    %% glm-4.6v-flash；模块级 capabilities 无法区分同模块 provider）
+                    _ -> maps:get(vision, Opts, false) =:= true
                 end,
             HasKey = is_binary(ApiKey) andalso ApiKey =/= <<>>,
             case {VisionOK, HasKey} of
@@ -173,13 +175,33 @@ build_messages(DraftMeta, Attachment) ->
             "practice_action/script_outline/needs_human_check/confidence"/utf8
         >>
     }),
-    [
-        #{
-            <<"role">> => <<"system">>,
-            <<"content">> => <<"你是书法老师的教学助手。只输出 JSON，不输出推理过程。"/utf8>>
-        },
-        #{<<"role">> => <<"user">>, <<"content">> => Task}
-    ].
+    System = #{
+        <<"role">> => <<"system">>,
+        <<"content">> => <<"你是书法老师的教学助手。只输出 JSON，不输出推理过程。"/utf8>>
+    },
+    %% 视频可达 URL（presign/公网直链）：多模态段 + 任务文本（GLM-4.6V 等
+    %% video_url 通道）。仅 object_key 引用（骨架路径）维持纯文本，行为不变。
+    User =
+        case maps:get(<<"url">>, Attachment, <<>>) of
+            Url when is_binary(Url), byte_size(Url) > 0 ->
+                Instruction = <<
+                    "请观看视频中的书写过程，依据上述 output_schema 输出 JSON 点评；"
+                    "evidence_moments 为视频内秒级时间点（0-5 个）。"/utf8
+                >>,
+                #{
+                    <<"role">> => <<"user">>,
+                    <<"content">> => [
+                        #{<<"type">> => <<"video_url">>, <<"video_url">> => #{<<"url">> => Url}},
+                        #{
+                            <<"type">> => <<"text">>,
+                            <<"text">> => <<Task/binary, "\n"/utf8, Instruction/binary>>
+                        }
+                    ]
+                };
+            _ ->
+                #{<<"role">> => <<"user">>, <<"content">> => Task}
+        end,
+    [System, User].
 
 %% ---- Schema 校验小工具 ----
 

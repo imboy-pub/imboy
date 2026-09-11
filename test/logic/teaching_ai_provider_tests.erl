@@ -80,7 +80,8 @@ provider_mocks() ->
         ]},
         {?FAKE_MOD, [
             {'capabilities', 0, fun() -> #{vision => true} end},
-            {'chat', 3, fun(_Uid, _Messages, _Opts) ->
+            {'chat', 3, fun(_Uid, Messages, _Opts) ->
+                put(captured_messages, Messages),
                 case get(fake_chat) of
                     undefined ->
                         {ok, #{<<"content">> => jsone:encode(valid_result())}};
@@ -429,3 +430,66 @@ attachment() ->
         <<"mime_type">> => <<"video/mp4">>,
         <<"size">> => 1024
     }.
+
+%%%===================================================================
+%%% Vision provider 接入（GLM-4.6V-Flash 等 OpenAI 兼容多模态端点）
+%%%===================================================================
+
+%% provider 条目显式 vision=true 可越过模块级 capabilities=false
+%% （imboy_llm_openai 同模块多 provider，模块级能力声明无法区分端点）
+opts_vision_override_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 2, fun
+                    (teaching_ai_llm_provider, _) -> ?PROVIDER;
+                    (_, Default) -> Default
+                end}
+            ]},
+            {imboy_llm_registry, [
+                {'lookup', 1, fun(_) ->
+                    {ok, #{
+                        module => ?FAKE_MOD,
+                        opts => #{api_key => <<"k">>, vision => true}
+                    }}
+                end}
+            ]},
+            {?FAKE_MOD, [
+                {'capabilities', 0, fun() -> #{vision => false} end},
+                {'chat', 3, fun(_Uid, _Messages, _Opts) ->
+                    {ok, #{<<"content">> => jsone:encode(valid_result())}}
+                end}
+            ]}
+        ],
+        fun() ->
+            {ok, Result} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            ?assertEqual(whitelist_keys(), lists:sort(maps:keys(Result)))
+        end
+    ).
+
+%% 附件带可达 url → user content 升级为视频段数组（video_url + text）
+video_url_messages_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Url = <<"https://cdn.bigmodel.cn/agent-demos/lark/113123.mov">>,
+        Attachment = attachment(),
+        {ok, _} = teaching_ai_provider:analyze_video(meta(), Attachment#{<<"url">> => Url}),
+        Messages = get(captured_messages),
+        [#{<<"role">> := <<"system">>}, #{<<"role">> := <<"user">>, <<"content">> := Segments}] =
+            Messages,
+        ?assert(is_list(Segments)),
+        ?assertMatch(
+            [#{<<"type">> := <<"video_url">>}, #{<<"type">> := <<"text">>}],
+            Segments
+        ),
+        [VideoSeg, _] = Segments,
+        #{<<"video_url">> := #{<<"url">> := GotUrl}} = VideoSeg,
+        ?assertEqual(Url, GotUrl)
+    end).
+
+%% 附件无 url（骨架路径）→ user content 维持纯文本，行为不变
+no_url_keeps_text_messages_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        {ok, _} = teaching_ai_provider:analyze_video(meta(), attachment()),
+        [_, #{<<"role">> := <<"user">>, <<"content">> := Content}] = get(captured_messages),
+        ?assert(is_binary(Content))
+    end).

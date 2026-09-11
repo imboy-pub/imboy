@@ -240,3 +240,43 @@ stream_loop_total_timeout_test() ->
         {error, stream_total_timeout},
         imboy_llm_openai:stream_loop(ReqId, <<>>, <<>>, fun(_) -> ok end, Deadline)
     ).
+
+%% extra_body：provider 级额外请求参数（如智谱 thinking 开关）顶层合并进 body
+chat_merges_extra_body_test_() ->
+    {setup, fun setup_req_mock/0, fun cleanup_req_mock/1, fun(_) ->
+        ?_test(begin
+            Messages = user_msg(<<"看视频"/utf8>>),
+            Opts = ?OPTS#{extra_body => #{<<"thinking">> => #{<<"type">> => <<"disabled">>}}},
+            ?assertEqual(
+                {ok, #{<<"result">> => <<"回复"/utf8>>}},
+                imboy_llm_openai:chat(1, Messages, Opts)
+            ),
+            ?assert(
+                meck:called(elib_req, post, [
+                    <<"https://api.deepseek.com/v1/chat/completions">>,
+                    #{
+                        <<"model">> => <<"deepseek-chat">>,
+                        <<"messages">> => Messages,
+                        <<"thinking">> => #{<<"type">> => <<"disabled">>}
+                    },
+                    '_'
+                ])
+            )
+        end)
+    end}.
+
+%% 未配 extra_body：body 不含多余键（向后兼容）
+chat_without_extra_body_unchanged_test_() ->
+    {setup, fun setup_req_mock/0, fun cleanup_req_mock/1, fun(_) ->
+        ?_test(begin
+            Messages = user_msg(<<"hi">>),
+            _ = imboy_llm_openai:chat(1, Messages, ?OPTS),
+            ?assert(
+                meck:called(elib_req, post, [
+                    <<"https://api.deepseek.com/v1/chat/completions">>,
+                    #{<<"model">> => <<"deepseek-chat">>, <<"messages">> => Messages},
+                    '_'
+                ])
+            )
+        end)
+    end}.

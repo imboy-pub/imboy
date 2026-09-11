@@ -73,7 +73,13 @@ do_chat(_Uid, Messages, Opts) ->
         {"Content-Type", "application/json"},
         {"Authorization", "Bearer " ++ ec_cnv:to_list(ApiKey)}
     ],
-    Data = #{<<"model">> => Model, <<"messages">> => Messages},
+    Data0 = #{<<"model">> => Model, <<"messages">> => Messages},
+    %% extra_body：provider 级额外请求参数（如智谱 thinking 开关），顶层合并。
+    Data =
+        case maps:get(extra_body, Opts, undefined) of
+            EB when is_map(EB) -> maps:merge(Data0, EB);
+            _ -> Data0
+        end,
     case elib_req:post(url(BaseUrl), Data, Headers) of
         {ok, #{<<"choices">> := [#{<<"message">> := #{<<"content">> := Content}} | _]}} ->
             {ok, #{<<"result">> => Content}};
