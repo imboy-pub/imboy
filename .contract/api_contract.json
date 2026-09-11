@@ -1643,6 +1643,12 @@
         "static": false
       },
       {
+        "action": "upload",
+        "handler": "attach_handler",
+        "path": "/api/v1/attachment/upload",
+        "static": false
+      },
+      {
         "action": "view_url",
         "handler": "attach_handler",
         "path": "/api/v1/attachment/view_url",

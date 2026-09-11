@@ -1,32 +1,99 @@
 #!/usr/bin/env bash
-# Garage 本地测试环境一键启动脚本
+# Garage 本地 dev 环境一键脚本（配置文件挂载配方）
 # 用法：bash scripts/garage-local-setup.sh
+#
+# 背景（2026-09-12 重建实录）：dxflrs/garage:v2.0.0 的容器入口不再支持
+# GARAGE_METADATA_DIR / GARAGE_DATA_DIR / GARAGE_S3_API_BIND_ADDR 等
+# env-only 启动配方（创建即退出）。必须挂载配置文件：
+#   /tmp/garage/garage.toml  → /etc/garage.toml (ro)
+#   /tmp/garage/meta         → /tmp/garage/meta   (bind)
+#   /tmp/garage/data         → /tmp/garage/data   (bind)
+# 端口：S3 API 3900 / RPC 3901 / 公共 Web 3902（+admin 3909 仅本地回环）。
+#
+# 幂等：容器已在跑且默认桶存在 → 直接复用（不删数据不重建），
+# 打印接入配置后退出。密钥 secret 只在创建时可见：重建前可导出
+# GARAGE_ACCESS_KEY / GARAGE_SECRET_KEY / GARAGE_RPC_SECRET 复用旧值。
 set -euo pipefail
 
 CONTAINER=garage-local
 IMAGE=dxflrs/garage:v2.0.0
+GARAGE_DIR=/tmp/garage
+CONF=$GARAGE_DIR/garage.toml
 BUCKET=imboy
+PUBLIC_BUCKET=imboy-public
 S3_PORT=3900
 RPC_PORT=3901
-# 复用已有数据卷时须传入原 GARAGE_RPC_SECRET，否则自动生成
-# Pass original GARAGE_RPC_SECRET when reusing an existing data volume; otherwise auto-generated
-RPC_SECRET="${GARAGE_RPC_SECRET:-$(openssl rand -hex 32)}"
+WEB_PORT=3902
 
-echo "==> 停止并清理旧容器..."
-docker rm -f "$CONTAINER" 2>/dev/null || true
+garage() { docker exec "$CONTAINER" /garage "$@"; }
 
-echo "==> 启动 Garage..."
-docker run -d --name "$CONTAINER" \
-  -p ${S3_PORT}:3900 -p ${RPC_PORT}:3901 \
-  -e GARAGE_METADATA_DIR=/tmp/garage/meta \
-  -e GARAGE_DATA_DIR=/tmp/garage/data \
-  -e GARAGE_RPC_BIND_ADDR=0.0.0.0:3901 \
-  -e GARAGE_S3_API_BIND_ADDR=0.0.0.0:3900 \
-  -e GARAGE_RPC_SECRET=$RPC_SECRET \
-  "$IMAGE"
+echo "==> 检查容器 $CONTAINER ..."
+if docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+  if garage bucket list 2>/dev/null | grep -qw "$BUCKET"; then
+    echo "    容器与桶 $BUCKET 已就绪 → 复用（不删数据不重建）"
+    KEY_ID=$(garage key list 2>/dev/null | awk '/imboy-key/{print $1}' | head -1)
+    echo ""
+    echo "==> S3:        http://127.0.0.1:${S3_PORT}"
+    echo "==> Public web: http://127.0.0.1:${WEB_PORT}"
+    echo "==> access_key=${KEY_ID:-<见 config/sys.local.config>}"
+    echo "==> secret_key 未回显（Garage 只在创建时展示；复用 sys.local.config 或"
+    echo "    重建前导出 GARAGE_SECRET_KEY）"
+    curl -s -o /dev/null -w "==> S3 连通性: HTTP %{http_code}\n" "http://127.0.0.1:${S3_PORT}/" || true
+    exit 0
+  fi
+  echo "    容器在跑但桶缺失 → 继续初始化布局/桶/密钥"
+else
+  echo "==> 清理旧容器（数据在 ${GARAGE_DIR}，不受影响）..."
+  docker rm -f "$CONTAINER" 2>/dev/null || true
+
+  echo "==> 准备配置与数据目录..."
+  mkdir -p "$GARAGE_DIR/meta" "$GARAGE_DIR/data"
+
+  # rpc_secret 优先级：环境变量 > 既有配置文件 > 新生成
+  if [ -z "${GARAGE_RPC_SECRET:-}" ] && [ -f "$CONF" ]; then
+    GARAGE_RPC_SECRET=$(sed -n 's/^rpc_secret *= *"\(.*\)"/\1/p' "$CONF" | head -1)
+  fi
+  RPC_SECRET="${GARAGE_RPC_SECRET:-$(openssl rand -hex 32)}"
+
+  if [ -f "$CONF" ] && grep -q "rpc_secret *= *\"${RPC_SECRET}\"" "$CONF"; then
+    echo "    复用既有 ${CONF}"
+  else
+    cat > "$CONF" <<EOF
+# Garage 本地 dev 容器配置（scripts/garage-local-setup.sh 生成）
+# S3 API 0.0.0.0:3900（真机经 LAN IP 直传）、RPC 3901、公共 Web 3902
+metadata_dir       = "${GARAGE_DIR}/meta"
+data_dir           = "${GARAGE_DIR}/data"
+db_engine          = "lmdb"
+replication_factor = 1
+rpc_bind_addr      = "0.0.0.0:${RPC_PORT}"
+rpc_secret         = "${RPC_SECRET}"
+
+[s3_api]
+s3_region     = "garage"
+api_bind_addr = "0.0.0.0:${S3_PORT}"
+
+[s3_web]
+bind_addr   = "0.0.0.0:${WEB_PORT}"
+root_domain = ".garage.localhost"
+index       = "index.html"
+
+[admin]
+api_bind_addr = "127.0.0.1:3909"
+EOF
+    echo "    已写入 ${CONF}"
+  fi
+
+  echo "==> 启动 Garage（配置文件挂载配方）..."
+  docker run -d --name "$CONTAINER" \
+    -p ${S3_PORT}:3900 -p ${RPC_PORT}:3901 -p ${WEB_PORT}:3902 \
+    -v "$CONF:/etc/garage.toml:ro" \
+    -v "$GARAGE_DIR/meta:/tmp/garage/meta" \
+    -v "$GARAGE_DIR/data:/tmp/garage/data" \
+    "$IMAGE"
+fi
 
 echo "==> 等待 Garage 就绪（最多 30s）..."
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   if curl -sf http://127.0.0.1:${S3_PORT}/ >/dev/null 2>&1; then
     echo "    就绪！"
     break
@@ -34,48 +101,67 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-echo "==> 获取节点 ID..."
-NODE_ID=$(docker exec "$CONTAINER" /garage node id 2>/dev/null | awk '{print $1}' | head -1)
+echo "==> 获取节点 ID 并配置布局..."
+NODE_ID=$(garage node id 2>/dev/null | awk '{print $1}' | head -1)
 echo "    Node ID: ${NODE_ID:0:16}..."
+garage layout assign -z dc1 -c 1G "$NODE_ID" 2>/dev/null \
+  || echo "    (布局已分配，跳过)"
+CUR_VER=$(garage layout show 2>/dev/null | awk '/[Cc]urrent cluster layout version/{print $NF}' | head -1)
+if garage layout apply --version $((CUR_VER + 1)) 2>/dev/null; then
+  echo "    布局已生效 (version $((CUR_VER + 1)))"
+else
+  echo "    (布局无需更新，跳过)"
+fi
 
-echo "==> 配置节点布局..."
-docker exec "$CONTAINER" /garage layout assign -z dc1 -c 1G "$NODE_ID"
-docker exec "$CONTAINER" /garage layout apply --version 1
+echo "==> 创建桶: ${BUCKET} / ${PUBLIC_BUCKET}..."
+garage bucket create "$BUCKET" 2>/dev/null || echo "    (${BUCKET} 已存在)"
+garage bucket create "$PUBLIC_BUCKET" 2>/dev/null || echo "    (${PUBLIC_BUCKET} 已存在)"
 
-echo "==> 创建 bucket: $BUCKET..."
-docker exec "$CONTAINER" /garage bucket create "$BUCKET" 2>/dev/null || echo "    (已存在)"
+echo "==> 创建/获取访问密钥 imboy-key..."
+garage key create imboy-key 2>/dev/null || echo "    (imboy-key 已存在)"
 
-echo "==> 创建访问密钥 imboy-key..."
-KEY_OUTPUT=$(docker exec "$CONTAINER" /garage key create imboy-key 2>/dev/null \
-  || docker exec "$CONTAINER" /garage key info imboy-key 2>/dev/null)
-
-echo "==> 授权密钥访问 bucket..."
-ACCESS_KEY=$(echo "$KEY_OUTPUT" | grep -i "key id" | awk '{print $NF}')
+echo "==> 授权密钥访问桶..."
+if [ -n "${GARAGE_ACCESS_KEY:-}" ]; then
+  ACCESS_KEY="$GARAGE_ACCESS_KEY"
+else
+  ACCESS_KEY=$(garage key info imboy-key 2>/dev/null | awk '/Key ID|key id/{print $NF}' | head -1)
+  [ -n "$ACCESS_KEY" ] || ACCESS_KEY=$(garage key list 2>/dev/null | awk '/imboy-key/{print $1}' | head -1)
+fi
 if [ -z "$ACCESS_KEY" ]; then
-  echo "    ✗ 解析 ACCESS_KEY 失败，请检查 garage key create/info 输出格式" >&2
+  echo "    ✗ 解析 ACCESS_KEY 失败" >&2
   exit 1
 fi
-# 标准语法：bucket 名作为位置参数置于最前；不再 || true 静默吞错，授权失败即退出
-docker exec "$CONTAINER" /garage bucket allow "$BUCKET" \
-  --read --write --owner --key "$ACCESS_KEY"
+garage bucket allow "$BUCKET" --read --write --owner --key "$ACCESS_KEY" 2>/dev/null \
+  || echo "    (${BUCKET} 授权已存在)"
+garage bucket allow "$PUBLIC_BUCKET" --read --write --owner --key "$ACCESS_KEY" 2>/dev/null \
+  || echo "    (${PUBLIC_BUCKET} 授权已存在)"
 
 # 注意：不设置 bucket 公开读（--read --public）。
 # 私有附件经后端 /v1/attachment/view_url 按需签发短时 presigned GET，避免整桶匿名可读。
 
-SECRET_KEY=$(echo "$KEY_OUTPUT" | grep -i "secret" | awk '{print $NF}')
-
 echo ""
-echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  Garage 已就绪！将以下配置写入 config/sys.local.config  ║"
-echo "╚══════════════════════════════════════════════════════════╝"
+echo "╔════════════════════════════════════════════════════════════╗"
+echo "║  Garage 已就绪！将以下配置写入 config/sys.local.config     ║"
+echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 echo ", {garage, #{"
 echo "    endpoint   => <<\"http://127.0.0.1:${S3_PORT}\">>"
 echo "    region     => <<\"garage\">>"
 echo "    bucket     => <<\"${BUCKET}\">>"
-echo "    access_key => <<\"${ACCESS_KEY}\">>"
-echo "    secret_key => <<\"${SECRET_KEY}\">>"
+if [ -n "${GARAGE_ACCESS_KEY:-}" ] || [ -n "${GARAGE_SECRET_KEY:-}" ]; then
+  echo "    access_key => <<\"${GARAGE_ACCESS_KEY:-}\">>"
+  echo "    secret_key => <<\"${GARAGE_SECRET_KEY:-}\">>"
+else
+  echo "    access_key => <<\"${ACCESS_KEY}\">>"
+  echo "    secret_key => <<\"见下方提示\">>"
+fi
 echo "}}"
+echo ""
+if [ -z "${GARAGE_SECRET_KEY:-}" ]; then
+  echo "ℹ  secret_key 仅在密钥**首次创建**时展示。若本次是复用旧数据卷："
+  echo "   从 config/sys.local.config 沿用旧值，或重建前导出 GARAGE_SECRET_KEY。"
+  echo "   （新建密钥场景可用: garage key info imboy-key --show-secret）"
+fi
 echo ""
 echo "==> 测试 S3 端口连通性:"
 curl -si http://127.0.0.1:${S3_PORT}/ | head -2
@@ -83,5 +169,5 @@ echo ""
 echo "==> 测试上传（需要 aws CLI 或 curl + SigV4）:"
 echo "    curl -X PUT http://127.0.0.1:${S3_PORT}/${BUCKET}/test.txt \\"
 echo "         --aws-sigv4 \"aws:amz:garage:s3\" \\"
-echo "         --user \"${ACCESS_KEY}:${SECRET_KEY}\" \\"
+echo "         --user \"${ACCESS_KEY}:${GARAGE_SECRET_KEY:-<secret>}\" \\"
 echo "         -d 'hello garage'"

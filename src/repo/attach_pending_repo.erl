@@ -15,6 +15,7 @@
 -export([remove/1]).
 -export([list_expired/1]).
 -export([delete_by_keys/1]).
+-export([get_by_key/1]).
 
 -include("log.hrl").
 
@@ -43,6 +44,23 @@ add(ObjectKey, Bucket, Scope, Uid) ->
         >>
     ],
     normalize(elib_pg:execute(Sql, [ObjectKey, Bucket, Scope, Uid])).
+
+%% @doc 按 object_key 查登记行（multipart 直传端点的归属/范围校验用）。
+%% 返回 bucket/scope/creator_user_id：upload 端点据此把对象写入正确桶、
+%% 复核教学 scope mime 白名单，并拒绝非本人 pending 记录的 key。
+-spec get_by_key(binary()) -> {ok, map()} | {error, not_found | term()}.
+get_by_key(ObjectKey) ->
+    Tb = tablename(),
+    Sql = [
+        <<"SELECT object_key, bucket, scope, creator_user_id, created_at FROM ">>,
+        Tb,
+        <<" WHERE object_key = $1 LIMIT 1">>
+    ],
+    case elib_pg:query(Sql, [ObjectKey]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {error, not_found};
+        {error, R} -> {error, R}
+    end.
 
 %% @doc confirm 成功后销账。对象已登记进 attachment 表，不再是待确认状态。
 -spec remove(binary()) -> ok | {error, term()}.

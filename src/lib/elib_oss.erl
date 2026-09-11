@@ -21,7 +21,7 @@
 -export([upload/2, upload/3]).
 -export([get_url/1]).
 -export([presign_put/3, presign_put_for_key/3, presign_put_for_key/4]).
--export([put_object/4]).
+-export([put_object/4, put_object_from_file/4]).
 -export([presign_get_for_key/2, presign_get_for_key/3]).
 -export([build_object_key/2, build_object_key/4, owner_of_key/1]).
 -export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
@@ -106,6 +106,22 @@ put_object(Bucket, ObjectKey, Bin, MimeType) ->
             ok;
         {ok, {{_, S, _}, _, Body}} ->
             {error, {http_status, S, Body}};
+        {error, R} ->
+            {error, R}
+    end.
+
+%% @doc 服务端从磁盘文件 PUT 到指定桶（multipart 直传端点用）。
+%% 与 put_object/4 同款 presigned query URL。OTP29 httpc 已移除
+%% {file, Path}，而 {ProcessBody, Acc} 生成器实测对 Garage 只发出 0 字节
+%% （对象落盘为空、confirm 的 HEAD 探测 416）；故退回整文件读入后
+%% binary body 发送（与已验证的客户端 PUT 直传通道同路径）。大文件是
+%% refc binary（数据驻留堆外），100MB 上限内内存可控。
+-spec put_object_from_file(binary(), binary(), string(), binary()) -> ok | {error, term()}.
+put_object_from_file(Bucket, ObjectKey, FilePath, MimeType) ->
+    ok = assert_garage_configured(),
+    case file:read_file(FilePath) of
+        {ok, Bin} ->
+            put_object(Bucket, ObjectKey, Bin, MimeType);
         {error, R} ->
             {error, R}
     end.
