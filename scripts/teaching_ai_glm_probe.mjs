@@ -10,6 +10,11 @@
  *   export BIGMODEL_API_KEY=<id.secret>
  *   node imboy/scripts/teaching_ai_glm_probe.mjs [视频URL]
  * 视频缺省用智谱官方示例（链路验证）；书法实测请传练习视频公网 URL。
+ *
+ * 模型切换（对比效果用）：export BIGMODEL_MODEL=<模型名>，缺省 glm-4.6v-flash，
+ * 与后端 sys.local.config bigmodel 条目 {env, <<"BIGMODEL_MODEL">>, ...} 同源，
+ * 免费视觉理解模型如 glm-4.1v-thinking-flash。注意 CogVideoX-Flash 是
+ * 视频生成模型（异步生成接口，非 chat/completions），不能用于本脚本/回课理解。
  */
 import process from "node:process";
 
