@@ -1,5 +1,5 @@
 %% @doc E2EE C2G（群聊）消息全链路（staging → msg_store_worker 异步落库 →
-%% 正式表）密文保真集成测试。
+%% 正式表和 archive）密文保真与 conv_seq 一致性集成测试。
 %%
 %% 与 C2C 的关键差异（真库审查确认）：msg_c2c.payload 是 text 列、staging
 %% 时裸密文会被包装成 JSON 字符串再在 worker 落库前 unwrap 还原；而
@@ -7,7 +7,8 @@
 %% 前就把整条消息（含 to/e2ee 等）jsone:encode 成完整 JSON 信封，staging 阶段
 %% 天然是合法 JSON，不会触发 payload 包装/unwrap 路径。E2EE 密文实际保真的
 %% 关键点在于 e2ee 字段（map envelope）本身能否在 staging→worker→
-%% msg_c2g_repo:write_msg 全链路中不被结构破坏地存回 msg_c2g.e2ee（jsonb）列。
+%% msg_c2g_repo:write_accepted_msg 全链路中不被结构破坏地存回
+%% msg_c2g.e2ee（jsonb）列，且 archive 必须复用 staging 固化的 conv_seq。
 -module(e2ee_c2g_message_pipeline_integration_tests).
 
 -include_lib("eunit/include/eunit.hrl").
@@ -69,6 +70,7 @@ test_via_c2g_logic_survives_pipeline() ->
     {ok, Row} = wait_for_final_row(MsgId),
     E2EEDecoded = jsone:decode(maps:get(<<"e2ee">>, Row), [{object_format, map}]),
     ?assertEqual(E2EE, E2EEDecoded),
+    assert_archive_matches_timeline_seq(MsgId),
 
     %% payload 列是 jsonb 完整消息信封，其中内嵌 payload.body 必须保真
     PayloadEnvelope = jsone:decode(maps:get(<<"payload">>, Row), [{object_format, map}]),
@@ -96,19 +98,16 @@ test_raw_stage_multi_recipient_survives_pipeline() ->
     Msg2 = jsone:encode(Envelope, [native_utf8]),
     Now = elib_dt:now(),
 
-    %% ef548a8b 起 c2g 的 stage 契约改为「传群标识（整数），收件人在事务内由
-    %% authorized_c2g_recipients 快照算出」（传列表 → {error, c2g_group_id_required}），
-    %% 且成功返回三元组 {ok, new, Recipients}。多接收者口径不变：夹具已把 Member
-    %% 加进群，收件人快照与 timeline 都应含两人。
-    {ok, new, Recipients} =
-        msg_store_ds:stage(
-            <<"c2g">>, MsgId, <<"text">>, <<"send">>, E2EE, Msg2, Owner, Gid, Now, Now
-        ),
-    ?assertEqual(lists:sort([Owner, Member]), lists:sort(Recipients)),
+    {ok, new, RecipientUids} = msg_store_ds:stage(
+        <<"c2g">>, MsgId, <<"text">>, <<"send">>, E2EE, Msg2, Owner, Gid, Now, Now
+    ),
+    ?assertEqual(lists:sort([Owner, Member]), lists:sort(RecipientUids)),
+    ok = msg_store_ds:enqueue(<<"c2g">>, MsgId, Envelope),
 
     {ok, Row} = wait_for_final_row(MsgId),
     E2EEDecoded = jsone:decode(maps:get(<<"e2ee">>, Row), [{object_format, map}]),
     ?assertEqual(E2EE, E2EEDecoded),
+    assert_archive_matches_timeline_seq(MsgId),
 
     %% 时间线表必须给两个接收者都建行（多接收者投递）
     {ok, TimelineRows} = elib_pg:query(
@@ -139,6 +138,29 @@ wait_for_final_row(MsgId, AttemptsLeft) ->
             wait_for_final_row(MsgId, AttemptsLeft - 1);
         {error, Reason} ->
             {error, Reason}
+    end.
+
+assert_archive_matches_timeline_seq(MsgId) ->
+    {ok, [#{<<"conv_seq">> := TimelineSeq}]} = elib_pg:query(
+        <<"SELECT DISTINCT conv_seq FROM public.msg_c2g_timeline WHERE msg_id = $1">>, [MsgId]
+    ),
+    ?assertEqual(TimelineSeq, wait_for_archive_seq(MsgId, 100)).
+
+wait_for_archive_seq(_MsgId, 0) ->
+    error(archive_row_not_ready);
+wait_for_archive_seq(MsgId, AttemptsLeft) ->
+    case
+        elib_pg:query(
+            <<"SELECT conv_seq FROM public.msg_store WHERE msg_id = $1 LIMIT 1">>, [MsgId]
+        )
+    of
+        {ok, [#{<<"conv_seq">> := ConvSeq}]} ->
+            ConvSeq;
+        {ok, []} ->
+            timer:sleep(50),
+            wait_for_archive_seq(MsgId, AttemptsLeft - 1);
+        {error, Reason} ->
+            error({archive_query_failed, Reason})
     end.
 
 create_test_user(Nickname) ->

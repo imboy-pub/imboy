@@ -5,8 +5,6 @@
 -export([write_msg/6]).
 -export([write_msg/8]).
 -export([write_msg_with_reply/11]).
--export([revoke_offline_msg/10]).
--export([edit_offline_msg/6]).
 -export([read_msg/1]).
 -export([read_msg/3]).
 -export([find_msg_by_id/1]).
@@ -127,99 +125,6 @@ write_msg(CreatedAtRaw, Id, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
 %% @param Payload 撤回消息的新内容（不包含 msg_type/action）
 %% @param NowTs 当前时间戳
 %% @param MsgId 撤回通知消息ID（新插入的通知行）
-%% @param OriginalMsgId 被撤回的原消息ID（payload 覆盖与 ACK 重置的目标）
-%% @param FromId 发送方用户ID
-%% @param MemberUids 群组成员用户ID列表
-%% @param Gid 群组ID
-%% @param MsgType 消息类型（custom, text 等）
-%% @param Action 操作类型（message_revoke_ack 等）
-%% @param E2EE 端到端加密信息（可选）
-%% @returns ok 表示操作成功
--spec revoke_offline_msg(
-    binary(),
-    binary() | integer(),
-    binary(),
-    binary(),
-    integer(),
-    list(),
-    integer(),
-    binary(),
-    binary(),
-    binary()
-) -> ok.
-revoke_offline_msg(
-    Payload, NowTs, MsgId, OriginalMsgId, FromId, MemberUids, Gid, MsgType, _Action, E2EE
-) ->
-    % 存储撤回通知消息（v2.0: 使用 write_msg/8 显式传递参数）
-    write_msg(NowTs, MsgId, Payload, FromId, MemberUids, Gid, MsgType, E2EE),
-    % 覆盖原消息 payload，避免离线成员上线仍收到完整原文
-    % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    % 纵深防御：加 from_id 限定，与 edit_offline_msg/6 保持一致，
-    % 防止未来新增调用方跳过 Logic 层归属校验时可改写任意群消息
-    case
-        elib_pg:update(
-            msg_c2g_repo:tablename(),
-            #{payload => Payload},
-            <<"msg_id = $1 AND from_id = $2">>,
-            [OriginalMsgId, FromId]
-        )
-    of
-        {ok, _} -> ok;
-        {error, Reason1} -> ?ERROR_LOG([msg_c2g_payload_update_failed, OriginalMsgId, Reason1])
-    end,
-    % 已确认的原消息需要重新确认
-    % 使用安全的参数化查询，避免SQL注入
-    case
-        elib_pg:update(
-            msg_c2g_timeline_repo:tablename(),
-            #{client_ack => false},
-            <<"msg_id = $1">>,
-            [OriginalMsgId]
-        )
-    of
-        {ok, _} -> ok;
-        {error, Reason2} -> ?ERROR_LOG([msg_c2g_ack_update_failed, OriginalMsgId, Reason2])
-    end,
-    ok.
-
-%% @doc 编辑离线消息
-%% @param Payload 消息内容
-%% @param NowTs 时间戳
-%% @param MsgId 消息ID
-%% @param FromId 发送者ID
-%% @param MemberUids 成员ID列表
-%% @param Gid 群组ID
-%% @returns ok 表示操作成功
--spec edit_offline_msg(binary(), binary() | integer(), binary(), integer(), list(), integer()) ->
-    ok.
-edit_offline_msg(Payload, _NowTs, MsgId, FromId, _MemberUids, _Gid) ->
-    % 使用 elib_pg:update/4 + {raw, ...} 安全地更新 payload
-    case
-        elib_pg:update(
-            msg_c2g_repo:tablename(),
-            #{payload => Payload},
-            <<"msg_id = $1 AND from_id = $2">>,
-            [MsgId, FromId]
-        )
-    of
-        {ok, _} -> ok;
-        {error, Reason1} -> ?ERROR_LOG([msg_c2g_edit_payload_update_failed, MsgId, FromId, Reason1])
-    end,
-    % 已确认的消息需要重新确认
-    % 使用安全的参数化查询，避免SQL注入
-    case
-        elib_pg:update(
-            msg_c2g_timeline_repo:tablename(),
-            #{client_ack => false},
-            <<"msg_id = $1">>,
-            [MsgId]
-        )
-    of
-        {ok, _} -> ok;
-        {error, Reason2} -> ?ERROR_LOG([msg_c2g_edit_ack_update_failed, MsgId, Reason2])
-    end,
-    ok.
-
 %% @doc 读取群消息
 %%
 %% 兼容两种历史入口：
@@ -263,7 +168,8 @@ read_msg(ToUid, Limit, undefined) ->
     {ok, Rows} = msg_c2g_timeline_repo:list_by_uid(ToUid, Column, Limit),
     MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
     % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
-    Column2 = <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee">>,
+    Column2 =
+        <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
     case msg_c2g_repo:list_by_ids(MsgIds, Column2) of
         {ok, []} ->
             [];
@@ -289,7 +195,7 @@ read_msg(ToUid, Limit, LastMsgAt) ->
             MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
             % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
             Column2 =
-                <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee">>,
+                <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
             case msg_c2g_repo:list_by_ids(MsgIds, Column2) of
                 {ok, []} ->
                     [];

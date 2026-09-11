@@ -247,3 +247,31 @@ s2c_without_e2ee_passes_test_() ->
         Result = message_ds:validate_message(Msg),
         ?assertMatch({ok, _}, Result)
     end).
+
+c2g_msg_id_over_database_limit_is_rejected_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Msg = #{
+            <<"id">> => binary:copy(<<"a">>, 41),
+            <<"type">> => <<"C2G">>,
+            <<"from">> => <<"1">>,
+            <<"to">> => <<"2">>,
+            <<"msg_type">> => <<"text">>,
+            <<"e2ee">> => null,
+            <<"payload">> => #{}
+        },
+        ?assertEqual({error, <<"invalid_msgid">>}, message_ds:validate_message(Msg))
+    end).
+
+c2g_msg_id_at_database_limit_passes_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Msg = #{
+            <<"id">> => binary:copy(<<"a">>, 40),
+            <<"type">> => <<"C2G">>,
+            <<"from">> => <<"1">>,
+            <<"to">> => <<"2">>,
+            <<"msg_type">> => <<"text">>,
+            <<"e2ee">> => null,
+            <<"payload">> => #{}
+        },
+        ?assertMatch({ok, _}, message_ds:validate_message(Msg))
+    end).

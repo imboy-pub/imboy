@@ -9,7 +9,7 @@
 # ============================================================
 set -uo pipefail
 
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 SCRIPT="scripts/restore_pg.sh"
 PASS=0; FAIL=0
 RED='\033[0;31m'; GREEN='\033[0;32m'; NC='\033[0m'
@@ -148,17 +148,18 @@ echo
 echo "== C-51/C-52 部署脚本 =="
 
 DEPLOY="scripts/deploy.sh"
+TEST_VSN="$(tr -d '[:space:]' < VERSION)"
 
 # 所有用例必须在建立 SSH 前被参数 allowlist 拒绝，不触达第三方。
 assert_rejects "E2EE mode 单引号注入被拒绝" "IMBOY_DEPLOY_E2EE_MODE 非法" \
   env "IMBOY_DEPLOY_E2EE_MODE=disabled';touch /tmp/pwn" \
-  bash "$DEPLOY" example.invalid 1.0.0 testnode
+  bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
 assert_rejects "蓝端口命令注入被拒绝" "无效 BLUE_PORT" \
   env "IMBOY_DEPLOY_BLUE_PORT=9800;touch /tmp/pwn" \
-  bash "$DEPLOY" example.invalid 1.0.0 testnode
+  bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
 assert_rejects "远端项目路径命令注入被拒绝" "unsafe PROJECT_DIR" \
   env "IMBOY_DEPLOY_PROJECT_DIR=/tmp/x';touch /tmp/pwn;'" \
-  bash "$DEPLOY" example.invalid 1.0.0 testnode
+  bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
 
 # C-51：就绪判断必须探 /healthz 并校验版本，不能只看端口
 if grep -q 'wait_for_health "\$APP_PORT" "\$VSN"' "$DEPLOY"; then
@@ -175,7 +176,7 @@ fi
 
 # C-52：用真实执行行证明 reload → stop/drain → migrate，不能拿章节标题充数。
 SW_LINE="$(grep -nE '^[[:space:]]*nginx -t && nginx -s reload' "$DEPLOY" | tail -1 | cut -d: -f1)"
-STOP_LINE="$(grep -nE '^[[:space:]]+stop_old_node$' "$DEPLOY" | head -1 | cut -d: -f1)"
+STOP_LINE="$(grep -nE '^[[:space:]]+stop_old_node$' "$DEPLOY" | tail -1 | cut -d: -f1)"
 MG_LINE="$(grep -nE "^[[:space:]]*ssh_exec .*make ctl ARGS='db migrate'" "$DEPLOY" | head -1 | cut -d: -f1)"
 if [ -n "$SW_LINE" ] && [ -n "$STOP_LINE" ] && [ -n "$MG_LINE" ] \
    && [ "$SW_LINE" -lt "$STOP_LINE" ] && [ "$STOP_LINE" -lt "$MG_LINE" ]; then

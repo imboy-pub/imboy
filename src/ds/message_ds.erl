@@ -719,9 +719,31 @@ validate_message_by_type(<<"S2C">>, Msg) ->
                 _ -> {error, <<"s2c_message_not_support_e2ee">>}
             end
     end;
+validate_message_by_type(<<"C2G">> = Type, Msg) ->
+    case byte_size(maps:get(<<"id">>, Msg)) =< 40 of
+        true -> validate_content_message(Type, Msg);
+        false -> {error, <<"invalid_msgid">>}
+    end;
 validate_message_by_type(Type, Msg) when
-    Type =:= <<"C2C">>; Type =:= <<"C2G">>; Type =:= <<"C2S">>
+    Type =:= <<"C2C">>; Type =:= <<"C2S">>
 ->
+    validate_content_message(Type, Msg);
+validate_message_by_type(Type, Msg) when is_binary(Type) ->
+    case is_webrtc_type(Type) of
+        true ->
+            case validate_peer_fields(Msg) of
+                ok -> {ok, Msg};
+                {error, _} = Err -> Err
+            end;
+        false ->
+            % 未知消息类型
+            {error, <<"unknown_message_type">>}
+    end;
+validate_message_by_type(_Type, _Msg) ->
+    {error, <<"invalid_message_format">>}.
+
+-spec validate_content_message(binary(), map()) -> {ok, map()} | {error, binary()}.
+validate_content_message(_Type, Msg) ->
     case validate_peer_fields(Msg) of
         {error, _} = Err ->
             Err;
@@ -737,20 +759,7 @@ validate_message_by_type(Type, Msg) when
                         {error, _} = Err2 -> Err2
                     end
             end
-    end;
-validate_message_by_type(Type, Msg) when is_binary(Type) ->
-    case is_webrtc_type(Type) of
-        true ->
-            case validate_peer_fields(Msg) of
-                ok -> {ok, Msg};
-                {error, _} = Err -> Err
-            end;
-        false ->
-            % 未知消息类型
-            {error, <<"unknown_message_type">>}
-    end;
-validate_message_by_type(_Type, _Msg) ->
-    {error, <<"invalid_message_format">>}.
+    end.
 
 %% @private
 %% @doc 外层 E2EE 信封校验（E2EE-060 / ADR 15 §10）

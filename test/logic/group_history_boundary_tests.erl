@@ -297,7 +297,7 @@ migration_101_guards_absent_staging_test() ->
 migration_109_keeps_legacy_timeline_fail_closed_test() ->
     {ok, Migration} =
         file:read_file("priv/migrations/00000109_c2g_timeline_generation_boundary.up.sql"),
-    ?assert(binary:match(Migration, <<"ADD COLUMN conv_seq bigint">>) =/= nomatch),
+    ?assert(binary:match(Migration, <<"ADD COLUMN IF NOT EXISTS conv_seq bigint">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"conv_seq IS NULL OR conv_seq >= 1">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"client_ack = false AND conv_seq IS NOT NULL">>) =/= nomatch),
     ?assertEqual(nomatch, binary:match(Migration, <<"UPDATE public.msg_c2g_timeline">>)).

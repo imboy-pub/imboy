@@ -440,71 +440,53 @@ c2g_client_ack_delegates_to_ack_logic_test_() ->
         end
     ).
 
-c2g_revoke_ack_persists_action_payload_test_() ->
+c2g_revoke_ack_only_acks_own_action_timeline_test_() ->
     ?WITH_MECKS(
         [
-            {elib_log, [
-                {'internal_log', 4, fun(_, _, _, _) -> ok end},
-                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-            ]},
-            {elib_dt, [
-                {'millisecond', 0, fun() -> 1700000090000 end}
-            ]},
-            {imboy_message_helper, [
-                {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_revoke_ack\"}">> end}
-            ]},
-            {msg_c2g_repo, [
-                {'update_payload_by_msg_id', 2, fun(<<"orig_c2g_revoke_003">>, PayloadJson) ->
-                    ?assert(is_binary(PayloadJson)),
-                    {ok, 1}
+            {msg_ack_logic, [
+                {'client_ack', 4, fun(
+                    <<"c2g">>, <<"c2g_revoke_ack_003">>, 1001, <<"did-1001">>
+                ) ->
+                    ok
                 end}
             ]}
         ],
         fun() ->
             Data = #{
-                <<"payload">> => #{
-                    <<"original_msg_id">> => <<"orig_c2g_revoke_003">>
-                }
+                <<"payload">> => #{<<"original_msg_id">> => <<"forged-cross-group-id">>},
+                <<"sender_did">> => <<"did-1001">>
             },
 
             Result = msg_c2g_logic:c2g_revoke_ack(<<"c2g_revoke_ack_003">>, 1001, Data),
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(msg_c2g_repo, update_payload_by_msg_id, 2))
+            ?assertEqual(1, meck:num_calls(msg_ack_logic, client_ack, 4))
         end
     ).
 
-c2g_edit_ack_persists_action_payload_test_() ->
+c2g_edit_ack_only_acks_own_action_timeline_test_() ->
     ?WITH_MECKS(
         [
-            {elib_log, [
-                {'internal_log', 4, fun(_, _, _, _) -> ok end},
-                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
-            ]},
-            {elib_dt, [
-                {'millisecond', 0, fun() -> 1700000095000 end}
-            ]},
-            {imboy_message_helper, [
-                {'encode_json', 1, fun(_Map) -> <<"{\"action\":\"message_edit_ack\"}">> end}
-            ]},
-            {msg_c2g_repo, [
-                {'update_payload_by_msg_id', 2, fun(<<"orig_c2g_edit_003">>, PayloadJson) ->
-                    ?assert(is_binary(PayloadJson)),
-                    {ok, 1}
+            {msg_ack_logic, [
+                {'client_ack', 4, fun(
+                    <<"c2g">>, <<"c2g_edit_ack_003">>, 1001, <<"did-1001">>
+                ) ->
+                    ok
                 end}
             ]}
         ],
         fun() ->
             Data = #{
                 <<"payload">> => #{
-                    <<"original_msg_id">> => <<"orig_c2g_edit_003">>,
+                    <<"original_msg_id">> => <<"forged-cross-group-id">>,
                     <<"content">> => <<"edited-content">>,
                     <<"edited_at">> => 1700000095000
-                }
+                },
+                <<"sender_did">> => <<"did-1001">>
             },
 
             Result = msg_c2g_logic:c2g_edit_ack(<<"c2g_edit_ack_003">>, 1001, Data),
             ?assertEqual(ok, Result),
-            ?assertEqual(1, meck:num_calls(msg_c2g_repo, update_payload_by_msg_id, 2))
+            ?assertEqual(1, meck:num_calls(msg_ack_logic, client_ack, 4))
         end
     ).
 
@@ -579,7 +561,7 @@ extract_reply_info_with_json_payload_extracts_content_test_() ->
         end
     ).
 
-c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
+c2g_revoke_stages_with_committed_snapshot_test_() ->
     ?WITH_MECKS(
         [
             {elib_log, [
@@ -598,13 +580,30 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_revoke_001">>) ->
                     {ok, #{
                         <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
                         <<"created_at">> => 1700000000000
                     }}
-                end},
-                %% 第 4 参必须是被撤回的原消息 ID（传错则 function_clause 直接挂测试）
-                {'revoke_offline_msg', 10, fun(
-                    _, _, _, <<"orig_c2g_revoke_001">>, _, _, _, _, _, _
+                end}
+            ]},
+            {msg_store_ds, [
+                {'stage_action', 13, fun(
+                    <<"c2g">>,
+                    <<"c2g_revoke_001">>,
+                    <<"custom">>,
+                    <<"message_revoke_ack">>,
+                    _,
+                    _,
+                    1001,
+                    88,
+                    _,
+                    _,
+                    _,
+                    1,
+                    <<"orig_c2g_revoke_001">>
                 ) ->
+                    {ok, new, [1001, 1002, 1003]}
+                end},
+                {'enqueue', 3, fun(<<"c2g">>, <<"c2g_revoke_001">>, _) ->
                     ok
                 end}
             ]},
@@ -618,6 +617,9 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
             ]},
             {message_ds, [
                 {'send_next', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {user_device_logic, [
+                {'online_dids', 1, fun(_) -> [] end}
             ]}
         ],
         fun() ->
@@ -633,7 +635,62 @@ c2g_revoke_success_broadcasts_and_persists_offline_test_() ->
             ?assertEqual(<<"custom">>, maps:get(<<"msg_type">>, Reply)),
             ?assert(maps:is_key(<<"revoked_at">>, ReplyPayload)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
-            ?assertEqual(1, meck:num_calls(msg_c2g_ds, revoke_offline_msg, 10))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1))
+        end
+    ).
+
+c2g_revoke_duplicate_returns_payload_free_ack_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(1001, 88) -> true end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(_) ->
+                    {ok, #{
+                        <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
+                        <<"created_at">> => 1700000000000
+                    }}
+                end}
+            ]},
+            {msg_store_ds, [
+                {'stage_action', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                    {ok, duplicate}
+                end},
+                {'enqueue', 3, fun(_, _, _) -> erlang:error(enqueue_must_not_run) end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000060000 end},
+                {'now', 0, fun() -> <<"2026-09-11T02:00:00Z">> end},
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(_, _, _, _) -> erlang:error(send_must_not_run) end}
+            ]},
+            {user_device_logic, [
+                {'online_dids', 1, fun(_) -> erlang:error(cancel_must_not_run) end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"different-target">>}
+            },
+            {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"replayed-action">>, 1001, Data),
+            ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
+            ?assertEqual(<<"replayed-action">>, maps:get(<<"in_reply_to">>, Reply)),
+            ?assertNot(maps:is_key(<<"payload">>, Reply)),
+            ?assertNot(maps:is_key(<<"action">>, Reply)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
         end
     ).
 
@@ -651,7 +708,11 @@ c2g_revoke_permission_denied_when_operator_not_sender_test_() ->
             ]},
             {msg_c2g_repo, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_revoke_002">>) ->
-                    {ok, #{<<"from_id">> => 9999, <<"created_at">> => 1700000000000}}
+                    {ok, #{
+                        <<"from_id">> => 9999,
+                        <<"to_id">> => 88,
+                        <<"created_at">> => 1700000000000
+                    }}
                 end}
             ]},
             {message_ds, [
@@ -677,7 +738,102 @@ c2g_revoke_permission_denied_when_operator_not_sender_test_() ->
         end
     ).
 
-c2g_edit_success_broadcasts_and_persists_offline_test_() ->
+c2g_revoke_rejects_original_from_another_group_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(1001, 88) -> true end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(<<"cross-group-original">>) ->
+                    {ok, #{
+                        <<"from_id">> => 1001,
+                        <<"to_id">> => 99,
+                        <<"created_at">> => 1700000000000
+                    }}
+                end}
+            ]},
+            {msg_store_ds, [
+                {'stage_action', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                    erlang:error(stage_must_not_run)
+                end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_, <<"permission_denied">>, <<"88">>) ->
+                    #{<<"error">> => <<"permission_denied">>}
+                end},
+                {'send_next', 4, fun(_, _, _, _) -> erlang:error(send_must_not_run) end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"cross-group-original">>}
+            },
+            {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"cross-group-action">>, 1001, Data),
+            ?assertEqual(<<"permission_denied">>, maps:get(<<"error">>, Reply)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage_action, 13)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+        end
+    ).
+
+c2g_revoke_stage_forbidden_has_no_downstream_effects_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_log, [
+                {'internal_log', 4, fun(_, _, _, _) -> ok end},
+                {'internal_log', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {group_ds, [
+                {'is_member', 2, fun(1001, 88) -> true end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(<<"old-generation-original">>) ->
+                    {ok, #{
+                        <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
+                        <<"created_at">> => 1700000000000
+                    }}
+                end}
+            ]},
+            {msg_store_ds, [
+                {'stage_action', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                    {error, action_target_forbidden}
+                end},
+                {'enqueue', 3, fun(_, _, _) -> erlang:error(enqueue_must_not_run) end}
+            ]},
+            {elib_dt, [
+                {'millisecond', 0, fun() -> 1700000060000 end},
+                {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end},
+                {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end}
+            ]},
+            {message_ds, [
+                {'assemble_s2c', 3, fun(_, <<"permission_denied">>, <<"88">>) ->
+                    #{<<"error">> => <<"permission_denied">>}
+                end},
+                {'send_next', 4, fun(_, _, _, _) -> erlang:error(send_must_not_run) end}
+            ]}
+        ],
+        fun() ->
+            Data = #{
+                <<"to">> => <<"88">>,
+                <<"from">> => <<"1001">>,
+                <<"payload">> => #{<<"original_msg_id">> => <<"old-generation-original">>}
+            },
+            {reply, Reply} = msg_c2g_logic:c2g_revoke(<<"forbidden-action">>, 1001, Data),
+            ?assertEqual(<<"permission_denied">>, maps:get(<<"error">>, Reply)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4))
+        end
+    ).
+
+c2g_edit_stages_with_committed_snapshot_test_() ->
     ?WITH_MECKS(
         [
             {elib_log, [
@@ -696,10 +852,30 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_001">>) ->
                     {ok, #{
                         <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
                         <<"created_at">> => 1700000000000
                     }}
+                end}
+            ]},
+            {msg_store_ds, [
+                {'stage_action', 13, fun(
+                    <<"c2g">>,
+                    <<"c2g_edit_001">>,
+                    <<"text">>,
+                    <<"message_edit_ack">>,
+                    _,
+                    _,
+                    1001,
+                    88,
+                    _,
+                    _,
+                    _,
+                    1,
+                    <<"orig_c2g_edit_001">>
+                ) ->
+                    {ok, new, [1001, 1002, 1003]}
                 end},
-                {'edit_offline_msg', 6, fun(_, _, _, _, _, _) -> ok end}
+                {'enqueue', 3, fun(<<"c2g">>, <<"c2g_edit_001">>, _) -> ok end}
             ]},
             {elib_dt, [
                 {'millisecond', 0, fun() -> 1700000065000 end},
@@ -729,7 +905,9 @@ c2g_edit_success_broadcasts_and_persists_offline_test_() ->
             ?assertEqual(<<"text">>, maps:get(<<"msg_type">>, Reply)),
             ?assertEqual(<<"new content">>, maps:get(<<"content">>, ReplyPayload)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
-            ?assertEqual(1, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1))
         end
     ).
 
@@ -749,11 +927,9 @@ c2g_edit_rejected_when_window_expired_test_() ->
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_expired_001">>) ->
                     {ok, #{
                         <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
                         <<"created_at">> => 1700000000000
                     }}
-                end},
-                {'edit_offline_msg', 6, fun(_, _, _, _, _, _) ->
-                    erlang:error(should_not_persist_edit_when_expired)
                 end}
             ]},
             {elib_dt, [
@@ -776,8 +952,7 @@ c2g_edit_rejected_when_window_expired_test_() ->
             {reply, Reply} = msg_c2g_logic:c2g_edit(<<"c2g_edit_expired_001">>, 1001, Data),
             ?assertEqual(<<"message_edit_error">>, maps:get(<<"action">>, Reply)),
             ReplyPayload = maps:get(<<"payload">>, Reply),
-            ?assertEqual(409, maps:get(<<"code">>, ReplyPayload)),
-            ?assertEqual(0, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
+            ?assertEqual(409, maps:get(<<"code">>, ReplyPayload))
         end
     ).
 
@@ -901,10 +1076,10 @@ c2g_edit_plaintext_blocked_when_encryption_required_test_() ->
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_blocked_001">>) ->
                     {ok, #{
                         <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
                         <<"created_at">> => 1700000000000
                     }}
-                end},
-                {'edit_offline_msg', 6, fun(_, _, _, _, _, _) -> ok end}
+                end}
             ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) ->
@@ -931,8 +1106,7 @@ c2g_edit_plaintext_blocked_when_encryption_required_test_() ->
             ?assertEqual(
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
-            ),
-            ?assertEqual(0, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
+            )
         end
     ).
 
@@ -954,10 +1128,10 @@ c2g_edit_plaintext_blocked_when_group_e2ee_required_test_() ->
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_group_gate_001">>) ->
                     {ok, #{
                         <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
                         <<"created_at">> => 1700000000000
                     }}
-                end},
-                {'edit_offline_msg', 6, fun(_, _, _, _, _, _) -> ok end}
+                end}
             ]},
             {imboy_policy, [
                 %% 全局策略放行，隔离出群级门的独立作用
@@ -986,8 +1160,7 @@ c2g_edit_plaintext_blocked_when_group_e2ee_required_test_() ->
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
             %% 门确实查了群级配置，且明文编辑未落库
-            ?assertEqual(1, meck:num_calls(group_ds, e2ee_mode, 1)),
-            ?assertEqual(0, meck:num_calls(msg_c2g_ds, edit_offline_msg, 6))
+            ?assertEqual(1, meck:num_calls(group_ds, e2ee_mode, 1))
         end
     ).
 
@@ -1002,6 +1175,7 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_e2ee_001">>) ->
                     {ok, #{
                         <<"from_id">> => 1001,
+                        <<"to_id">> => 88,
                         <<"created_at">> => 1700000000000
                     }}
                 end}
@@ -1012,7 +1186,7 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                 {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 12, fun(
+                {'stage_action', 13, fun(
                     <<"c2g">>,
                     <<"c2g_edit_e2ee_001">>,
                     <<"text">>,
@@ -1024,7 +1198,8 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                     _,
                     _,
                     _,
-                    1
+                    1,
+                    <<"orig_c2g_edit_e2ee_001">>
                 ) ->
                     {ok, new, [1001, 1002]}
                 end},
@@ -1051,26 +1226,22 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                     <<"meta_version">> => 3,
                     <<"edit_of">> => <<"orig_c2g_edit_e2ee_001">>,
                     <<"relay_action">> => <<"message_edit">>
-                }
+                },
+                <<"sender_did">> => <<"did-1001">>
             },
 
             {reply, Reply} = msg_c2g_logic:c2g_edit(<<"c2g_edit_e2ee_001">>, 1001, Data),
             ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
             ?assertEqual(OpaquePayload, maps:get(<<"payload">>, Reply)),
+            ?assertEqual(<<"did-1001">>, maps:get(<<"sender_did">>, Reply)),
             ?assertEqual(1, meck:num_calls(message_ds, send_next, 4)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
 
 %% P0-B B4 零信任守护线：e2ee_room_key 群密钥分发消息
 %% ① 具名 action 不触群级门（零查库）②密钥密文 payload 存储/入队/投递逐字节透传
-%%
-%% ⚠️ 本用例**直调 c2g/3 并 meck stage**，验的是"进入 c2g/3 之后"，**验不到"能不能进入"**
-%% ——2026-09-12 的缺陷正落在漏掉的那一层：帧带顶层 action 但注册表未收录
-%% e2ee_room_key → route_action/5 判 unknown_action 丢弃，room key 从未送达，
-%% 而本用例一直是绿的。路由级回归见
-%% message_router_logic_tests:room_key_c2g_frame_dispatches_to_c2g_logic_test_。
 c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
     ?WITH_MECKS(
         [

@@ -2,9 +2,10 @@
 # 蓝绿部署控制流测试：用本地 ssh 桩记录事件，不连接任何服务器。
 set -uo pipefail
 
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 
 DEPLOY="scripts/deploy.sh"
+TEST_VSN="$(tr -d '[:space:]' < VERSION)"
 TMP_ROOT="$(mktemp -d /tmp/imboy_deploy_sequence.XXXXXX)"
 MOCK_BIN="$TMP_ROOT/bin"
 MOCK_LOG="$TMP_ROOT/events.log"
@@ -38,6 +39,30 @@ case "$cmd" in
     ;;
   *"OLD_PID="*)
     printf '%s\n' "/usr/local/imboy-0.9.0-oldnode"
+    exit 0
+    ;;
+  *"version = 109 AND dirty = true"*)
+    printf '%s\n' "${MOCK_BOUNDARY_DIRTY:-0}"
+    exit 0
+    ;;
+  *"to_regclass('public.msg_c2g_recipient_snapshot')"*)
+    if [ "${MOCK_BOUNDARY_READY:-1}" = 0 ] && grep -q -x AUTO_TRUE "$MOCK_LOG"; then
+      printf '%s\n' 1
+    else
+      printf '%s\n' "${MOCK_BOUNDARY_READY:-1}"
+    fi
+    exit 0
+    ;;
+  *"test -f '/srv/imboy/.deploy-c2g-boundary-v109-ready'"*)
+    [ "${MOCK_MARKER_READY:-1}" = 1 ]
+    exit
+    ;;
+  *"test -f '/srv/imboy/priv/migrations/"*)
+    [ "${MOCK_FAIL_AT:-}" != "required_probe" ] || exit 255
+    exit 0
+    ;;
+  *": > '/srv/imboy/.deploy-c2g-boundary-v109-ready'"*)
+    printf '%s\n' CUTOVER_MARKER >>"$MOCK_LOG"
     exit 0
     ;;
   *"docker exec -i"*"00000064_msg_store_sender_did.up.sql"*)
@@ -120,13 +145,23 @@ bad() {
 
 run_deploy() {
   local fail_at="$1" current_color="$2"
+  local -a expand_env=(
+    "IMBOY_DEPLOY_EXPAND_MIGRATIONS=${TEST_EXPAND_MIGRATIONS-00000064_msg_store_sender_did.up.sql 00000108_group_attachment_anchor.up.sql 00000109_c2g_timeline_generation_boundary.up.sql}"
+  )
   shift 2
   : >"$MOCK_LOG"
+  if [ "${TEST_UNSET_EXPAND_MIGRATIONS:-0}" -eq 1 ]; then
+    expand_env=(-u IMBOY_DEPLOY_EXPAND_MIGRATIONS)
+  fi
   env \
+    "${expand_env[@]}" \
     PATH="$MOCK_BIN:$PATH" \
     MOCK_LOG="$MOCK_LOG" \
     MOCK_FAIL_AT="$fail_at" \
     MOCK_CURRENT_COLOR="$current_color" \
+    MOCK_BOUNDARY_READY="${MOCK_BOUNDARY_READY:-1}" \
+    MOCK_BOUNDARY_DIRTY="${MOCK_BOUNDARY_DIRTY:-0}" \
+    MOCK_MARKER_READY="${MOCK_MARKER_READY:-1}" \
     IMBOY_DEPLOY_USER=tester \
     IMBOY_DEPLOY_PORT=2222 \
     IMBOY_DEPLOY_PROJECT_DIR=/srv/imboy \
@@ -140,10 +175,9 @@ run_deploy() {
     IMBOY_DEPLOY_DB_CONTAINER=postgres \
     IMBOY_DEPLOY_DB_NAME=imboy_test \
     IMBOY_DEPLOY_DB_USER=postgres \
-    IMBOY_DEPLOY_EXPAND_MIGRATIONS=00000064_msg_store_sender_did.up.sql \
     IMBOY_DEPLOY_SALES_RELEASE=true \
     IMBOY_DEPLOY_E2EE_MODE=disabled \
-    bash "$DEPLOY" "$@" example.invalid 1.0.0 testnode \
+    bash "$DEPLOY" "$@" example.invalid "$TEST_VSN" testnode \
     >"$TMP_ROOT/output.log" 2>&1
 }
 
@@ -162,7 +196,7 @@ run_rollback() {
     IMBOY_DEPLOY_BLUE_PORT=9800 \
     IMBOY_DEPLOY_GREEN_PORT=9801 \
     IMBOY_DEPLOY_COOKIE=testcookie \
-    bash "$DEPLOY" --rollback example.invalid 1.0.0 testnode \
+    bash "$DEPLOY" --rollback example.invalid "$TEST_VSN" testnode \
     >"$TMP_ROOT/output.log" 2>&1
 }
 
@@ -203,6 +237,86 @@ if run_deploy "" blue; then
   assert_success_order
 else
   bad "成功路径应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_BOUNDARY_READY=0 run_deploy "" blue; then
+  stop="$(event_line STOP)"
+  daemon="$(event_line DAEMON)"
+  marker="$(event_line CUTOVER_MARKER)"
+  if [ -n "$stop" ] && [ -n "$daemon" ] && [ -n "$marker" ] \
+     && [ "$stop" -lt "$daemon" ] && [ "$daemon" -lt "$marker" ] \
+     && grep -q -x AUTO_TRUE "$MOCK_LOG" \
+     && ! grep -q -x EXPAND "$MOCK_LOG" \
+     && ! grep -q -x MIGRATE "$MOCK_LOG"; then
+    ok "首次启用 C2G boundary 先停旧节点，由 boot migration 登记后才写 cutover marker"
+  else
+    bad "首次 C2G boundary 未消除旧节点混写窗口" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "首次 C2G boundary 维护式发布应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_BOUNDARY_READY=1 MOCK_MARKER_READY=0 run_deploy "" blue; then
+  stop="$(event_line STOP)"
+  daemon="$(event_line DAEMON)"
+  migrate="$(event_line MIGRATE)"
+  marker="$(event_line CUTOVER_MARKER)"
+  if [ -n "$stop" ] && [ -n "$daemon" ] && [ -n "$migrate" ] && [ -n "$marker" ] \
+     && [ "$stop" -lt "$daemon" ] && [ "$daemon" -lt "$migrate" ] \
+     && [ "$migrate" -lt "$marker" ]; then
+    ok "迁移已登记但 cutover 未完成时仍走维护恢复，并在完整迁移后写 marker"
+  else
+    bad "C2G boundary 失败重试过早恢复滚动发布" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "C2G boundary 失败重试维护路径应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_BOUNDARY_DIRTY=1 run_deploy "" blue; then
+  bad "migration 109 dirty 时应在维护切换前退出非零" ""
+else
+  assert_absent "migration 109 dirty 时不停旧节点" STOP
+  assert_absent "migration 109 dirty 时不启动新节点" DAEMON
+  assert_absent "migration 109 dirty 时不执行迁移" MIGRATE
+  grep -q "dirty=true" "$TMP_ROOT/output.log" \
+    && ok "migration 109 dirty 提示明确要求人工受控恢复" \
+    || bad "migration 109 dirty 缺少明确恢复提示" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if TEST_UNSET_EXPAND_MIGRATIONS=1 run_deploy "" blue; then
+  bad "release 含必需迁移时未设置 expand 清单应退出非零" ""
+else
+  assert_absent "expand 清单未设置时不停旧节点" STOP
+  assert_absent "expand 清单未设置时不启动新节点" DAEMON
+  assert_absent "expand 清单未设置时不切流" SWITCH
+  assert_absent "expand 清单未设置时不执行迁移" MIGRATE
+  grep -q "release 包含必需的 expand 迁移但清单未配置" "$TMP_ROOT/output.log" \
+    && ok "expand 清单未设置时返回明确配置错误" \
+    || bad "expand 清单未设置时错误文案异常" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if TEST_EXPAND_MIGRATIONS='' run_deploy "" blue; then
+  bad "release 含必需迁移时 expand 清单为空应退出非零" ""
+else
+  assert_absent "expand 清单为空时不停旧节点" STOP
+  assert_absent "expand 清单为空时不启动新节点" DAEMON
+  assert_absent "expand 清单为空时不切流" SWITCH
+  assert_absent "expand 清单为空时不执行迁移" MIGRATE
+  grep -q "release 包含必需的 expand 迁移但清单未配置" "$TMP_ROOT/output.log" \
+    && ok "expand 清单为空时返回明确配置错误" \
+    || bad "expand 清单为空时错误文案异常" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if run_deploy required_probe blue; then
+  bad "必需 migration 文件探测失败时应退出非零" ""
+else
+  assert_absent "必需 migration 探测失败时不停旧节点" STOP
+  assert_absent "必需 migration 探测失败时不启动新节点" DAEMON
+  assert_absent "必需 migration 探测失败时不切流" SWITCH
+  assert_absent "必需 migration 探测失败时不执行迁移" MIGRATE
+  grep -q "无法探测必需的 expand 迁移文件" "$TMP_ROOT/output.log" \
+    && ok "必需 migration 探测失败时返回明确错误" \
+    || bad "必需 migration 探测失败时错误文案异常" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if run_deploy expand blue; then

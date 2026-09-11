@@ -11,6 +11,7 @@
 -export([write_msg/8]).
 -export([write_msg/9]).
 -export([write_msg/10]).
+-export([write_accepted_msg/11]).
 -export([write_msg_with_reply/11]).
 -export([write_msg_with_reply/12]).
 -export([list_by_ids/2]).
@@ -32,7 +33,7 @@
 tablename() ->
     elib_pg_sql:public_tablename(<<"msg_c2g">>).
 
-%% @doc 幂等写入主表 msg_c2g：INSERT 追加 ON CONFLICT (msg_id, created_at) DO NOTHING
+%% @doc 幂等写入主表 msg_c2g；已存在行仅允许补齐服务端认证的 sender_did。
 %%
 %% 与 msg_c2c 主表对齐，防止 msg_store_worker 写入成功后、标记 processed_at
 %% 前崩溃，重启重新处理 staging 行导致主表重复入库。
@@ -40,7 +41,13 @@ tablename() ->
 -spec insert_msg_idempotent(term(), binary(), map()) -> {ok, term()} | {error, term()}.
 insert_msg_idempotent(Conn, TbMsg, MsgData) ->
     {Sql0, Params} = elib_pg_sql:insert(TbMsg, MsgData),
-    Sql = iolist_to_binary([Sql0, <<" ON CONFLICT (msg_id, created_at) DO NOTHING">>]),
+    Sql = iolist_to_binary([
+        Sql0,
+        <<" ON CONFLICT (msg_id, created_at) DO UPDATE SET ",
+            "sender_did = EXCLUDED.sender_did WHERE ">>,
+        TbMsg,
+        <<".sender_did IS NULL AND EXCLUDED.sender_did IS NOT NULL">>
+    ]),
     {ok, _} =
         elib_pg:execute(Conn, Sql, Params),
     ok.
@@ -138,7 +145,52 @@ write_msg(
         E2EE,
         ExpireAt,
         ConvSeq,
-        undefined
+        undefined,
+        null,
+        current_state
+    ).
+
+%% @doc 异步完成一个已经由 staging 事务线性化接受的 C2G 消息。
+-spec write_accepted_msg(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | binary() | null,
+    binary() | null,
+    pos_integer(),
+    binary() | null
+) -> ok | {error, term()}.
+write_accepted_msg(
+    CreatedAtRaw,
+    MsgId,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ExpireAt,
+    ConvSeq,
+    SenderDid
+) ->
+    write_msg_impl(
+        CreatedAtRaw,
+        MsgId,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ExpireAt,
+        ConvSeq,
+        undefined,
+        SenderDid,
+        accepted
     ).
 
 %% @private RT-P3-03：统一写入主体。ReplyMeta = undefined | {ReplyToMsgId,
@@ -156,7 +208,9 @@ write_msg_impl(
     E2EE,
     ExpireAt,
     ConvSeq,
-    ReplyMeta
+    ReplyMeta,
+    SenderDid,
+    AcceptanceMode
 ) ->
     %% ---------- 统一转换 CreatedAt ----------
     CreatedAt = elib_dt:to_rfc3339(CreatedAtRaw),
@@ -167,14 +221,11 @@ write_msg_impl(
     TbTimeline = msg_c2g_timeline_repo:tablename(),
 
     elib_pg:with_tx(fun(Conn) ->
-        %% T7 归档写守卫（R3 #1）：group→workspace→status 同事务检查。
-        %% 事务首语句锁 workspace 行（FOR UPDATE）——与归档事务线性化：
-        %% 先拿锁者胜；personal 群由 resolver 直通，零行为变化。
-        ok = workspace_guard:abort_on_error(
-            workspace_guard:ensure_writable_tx(Conn, {group, Gid})
+        ok = authorize_c2g_write_tx(
+            Conn, AcceptanceMode, MsgId, FromId, Gid, ConvSeq, ToUids
         ),
         %% ---------- 插入群离线消息 ----------
-        MsgData = #{
+        MsgData0 = #{
             payload => Payload,
             to_id => Gid,
             from_id => FromId,
@@ -192,6 +243,7 @@ write_msg_impl(
                     _ -> null
                 end
         },
+        MsgData = put_sender_did(MsgData0, SenderDid),
         %% 仅当 ExpireAt 非 null 时添加字段
         MsgData2 =
             case ExpireAt of
@@ -247,6 +299,29 @@ write_msg_impl(
         {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
         ok
     end).
+
+-spec authorize_c2g_write_tx(
+    term(), current_state | accepted, binary(), integer(), integer(), term(), [integer()]
+) -> ok.
+authorize_c2g_write_tx(Conn, current_state, _MsgId, _FromId, Gid, _ConvSeq, _ToUids) ->
+    workspace_guard:abort_on_error(workspace_guard:ensure_writable_tx(Conn, {group, Gid}));
+authorize_c2g_write_tx(Conn, accepted, MsgId, FromId, Gid, ConvSeq, ToUids) ->
+    Sql =
+        <<"SELECT 1 FROM public.msg_c2g_recipient_snapshot ",
+            "WHERE msg_id = $1 AND from_id = $2 AND to_gid = $3 AND conv_seq = $4 ",
+            "AND recipient_uids = $5::bigint[]">>,
+    case elib_pg:query(Conn, Sql, [MsgId, FromId, Gid, ConvSeq, ToUids]) of
+        {ok, [_]} -> ok;
+        {ok, []} -> throw({abort_tx, accepted_snapshot_mismatch});
+        {error, Reason} -> throw({abort_tx, {accepted_snapshot_check_failed, Reason}});
+        Other -> throw({abort_tx, {accepted_snapshot_check_unexpected, Other}})
+    end.
+
+-spec put_sender_did(map(), term()) -> map().
+put_sender_did(Data, Did) when is_binary(Did), Did =/= <<>> ->
+    Data#{sender_did => Did};
+put_sender_did(Data, _Did) ->
+    Data.
 
 %% @doc 根据消息ID列表查询群离线消息
 %% @param Ids 消息ID列表
@@ -455,7 +530,9 @@ write_msg_with_reply(
         E2EE,
         null,
         ConvSeq,
-        {ReplyToMsgId, ReplyToFromId, ReplySnippet}
+        {ReplyToMsgId, ReplyToFromId, ReplySnippet},
+        null,
+        current_state
     ).
 
 %% @doc 根据被引用消息ID查找所有回复消息

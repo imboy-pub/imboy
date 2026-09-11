@@ -107,12 +107,16 @@ DB_CONTAINER="${IMBOY_DEPLOY_DB_CONTAINER:-}"
 DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
 DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
 EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
+BOUNDARY_CUTOVER_MARKER="$PROJECT_DIR/.deploy-c2g-boundary-v109-ready"
 SALES_RELEASE="${IMBOY_DEPLOY_SALES_RELEASE:-true}"
 E2EE_MODE="${IMBOY_DEPLOY_E2EE_MODE:-disabled}"
 # --local 模式：从本地 rsync 源码到远端，跳过 git pull
 # --local mode: rsync local source to remote, skip git pull
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_SRC_DIR="${IMBOY_LOCAL_SRC_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+OLD_NODE_STOPPED=0
+BOUNDARY_BOOTSTRAP=0
+BOUNDARY_CUTOVER_PENDING=0
 
 RELEASE_DIR="/usr/local/imboy-${VSN}-${NODE_NAME}"
 RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
@@ -263,6 +267,7 @@ wait_for_port_closed() {
 }
 
 stop_old_node() {
+  [ "$OLD_NODE_STOPPED" -eq 0 ] || return 0
   [ -n "$OLD_PORT" ] || return 0
   log "停止旧节点并关闭既有长连接 (port=$OLD_PORT)... / Draining old node..."
   OLD_DIR="$(ssh_capture \
@@ -276,6 +281,7 @@ stop_old_node() {
     || fail "旧节点停止失败或 20s 超时，拒绝执行完整迁移"
   wait_for_port_closed "$OLD_PORT" \
     || fail "旧节点端口在 20s 后仍开放，拒绝执行完整迁移"
+  OLD_NODE_STOPPED=1
   ok "旧节点已停止，既有 WebSocket 已断开并将重连到新节点"
 }
 
@@ -289,34 +295,109 @@ stop_old_node() {
 # 这里只执行显式列出的、经过发布评审确认的 expand SQL；完整迁移仍在切流后
 # 由 db migrate 执行并登记版本。这样不会把未知的 contract 迁移整体提前。
 # =============================================================================
+probe_boundary_schema() {
+  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version >= 109 AND dirty = false) AND to_regclass('public.msg_c2g_recipient_snapshot') IS NOT NULL AND to_regclass('public.msg_c2g_request_ledger') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_timeline' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g' AND column_name='sender_did') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_request_ledger' AND column_name='request_hash' AND is_nullable='NO') AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_recipient_snapshot'::regclass AND conname IN ('chk_msg_c2g_recipient_snapshot_msg_id','chk_msg_c2g_recipient_snapshot_size','chk_msg_c2g_recipient_snapshot_shape','chk_msg_c2g_recipient_snapshot_positive')) = 4 AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_request_ledger'::regclass AND conname IN ('chk_msg_c2g_request_ledger_msg_id','chk_msg_c2g_request_ledger_hash')) = 2 AND NOT EXISTS (SELECT 1 FROM public.msg_store_staging s WHERE s.type='c2g' AND (s.to_id IS NULL OR s.conv_seq IS NULL OR s.conv_seq < 1 OR jsonb_typeof(s.payload) IS DISTINCT FROM 'object' OR pg_input_is_valid(s.payload ->> 'to', 'bigint') IS NOT TRUE OR (s.payload ->> 'to')::bigint IS DISTINCT FROM s.to_id)) THEN 1 ELSE 0 END\""
+}
+
+probe_boundary_dirty() {
+  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = 109 AND dirty = true) THEN 1 ELSE 0 END\""
+}
+
 run_expand_migrations() {
   local migration
+  local required
   local remote_file
+  local boundary_ready
+  local boundary_dirty
+  local required_status
   local -a migrations=()
+  local -a filtered_migrations=()
 
-  # 源码同步/编译已完成，若本次 release 带有 00000064，就强制要求配置
-  # expand 清单，避免调用方无意间绕过 schema 兼容门。
-  if ssh_exec "test -f '$PROJECT_DIR/priv/migrations/00000064_msg_store_sender_did.up.sql'"; then
-    [ -n "$EXPAND_MIGRATIONS" ] || fail "检测到 00000064，但未配置 IMBOY_DEPLOY_EXPAND_MIGRATIONS，拒绝切流"
+  if [ -n "$EXPAND_MIGRATIONS" ]; then
+    read -r -a migrations <<< "$EXPAND_MIGRATIONS"
   fi
+  for required in \
+    00000064_msg_store_sender_did.up.sql \
+    00000108_group_attachment_anchor.up.sql \
+    00000109_c2g_timeline_generation_boundary.up.sql; do
+    if ssh_exec "test -f '$PROJECT_DIR/priv/migrations/$required'"; then
+      required_status=0
+    else
+      required_status=$?
+    fi
+    case "$required_status" in
+      0)
+        if [ "${#migrations[@]}" -eq 0 ] \
+           || ! printf '%s\n' "${migrations[@]}" | grep -qx "$required"; then
+          fail "release 包含必需的 expand 迁移但清单未配置: $required"
+        fi
+        ;;
+      1) ;;
+      *) fail "无法探测必需的 expand 迁移文件: $required (status=$required_status)" ;;
+    esac
+  done
   [ -n "$EXPAND_MIGRATIONS" ] || {
-    log "无显式 expand 迁移，跳过切流前 schema 扩展"
+    log "release 不含必需的 expand 迁移，跳过切流前 schema 扩展"
     return 0
   }
+  [ "${#migrations[@]}" -gt 0 ] || fail "IMBOY_DEPLOY_EXPAND_MIGRATIONS 为空"
   [ -n "$DB_CONTAINER" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_CONTAINER"
   [ -n "$DB_NAME" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_NAME"
   [ -n "$DB_USER" ] || fail "执行 expand 迁移需要 IMBOY_DEPLOY_DB_USER"
 
-  read -r -a migrations <<< "$EXPAND_MIGRATIONS"
-  [ "${#migrations[@]}" -gt 0 ] || fail "IMBOY_DEPLOY_EXPAND_MIGRATIONS 为空"
   for migration in "${migrations[@]}"; do
     [[ "$migration" =~ ^[a-zA-Z0-9._-]+\.up\.sql$ ]] \
       || fail "expand 迁移文件名非法: $migration"
     remote_file="$PROJECT_DIR/priv/migrations/$migration"
     ssh_exec "test -s '$remote_file'" \
       || fail "远端缺少 expand 迁移文件: $remote_file"
+  done
+
+  # 109 首次启用时，新代码与旧 C2G staging 形状不兼容。只有迁移已正式登记、
+  # schema/backlog 完整且成功切流 marker 存在，才允许继续滚动发布。
+  if printf '%s\n' "${migrations[@]}" \
+      | grep -qx '00000109_c2g_timeline_generation_boundary.up.sql'; then
+    boundary_dirty="$(probe_boundary_dirty)" \
+      || fail "无法探测 migration 109 dirty 状态，拒绝继续"
+    case "$boundary_dirty" in 0|1) ;; *) fail "migration 109 dirty 探测返回异常，拒绝继续" ;; esac
+    [ "$boundary_dirty" = 0 ] \
+      || fail "schema_migrations version 109 dirty=true；旧节点保持运行。请人工核查失败 SQL 与事务状态，完成受控恢复后重试；禁止直接 force/清 dirty"
+    boundary_ready="$(probe_boundary_schema)" \
+      || fail "无法探测 C2G boundary schema，拒绝继续"
+    case "$boundary_ready" in 0|1) ;; *) fail "C2G boundary schema 探测返回异常，拒绝继续" ;; esac
+    if [ "$boundary_ready" = 1 ] && ssh_exec "test -f '$BOUNDARY_CUTOVER_MARKER'"; then
+      for migration in "${migrations[@]}"; do
+        case "$migration" in
+          00000108_group_attachment_anchor.up.sql|00000109_c2g_timeline_generation_boundary.up.sql) ;;
+          *) filtered_migrations+=("$migration") ;;
+        esac
+      done
+      migrations=("${filtered_migrations[@]}")
+    else
+      BOUNDARY_CUTOVER_PENDING=1
+      case "$SKIP_MIGRATE" in
+        0) ;;
+        *) fail "首次启用或恢复 C2G boundary 不允许 --no-migrate" ;;
+      esac
+      log "C2G boundary 尚未完成切流：先停止旧节点，消除 legacy staging 混写窗口"
+      stop_old_node
+      if [ "$boundary_ready" = 1 ]; then
+        log "重新校验并修复 cutover 前产生的 legacy C2G backlog"
+        ssh_exec "docker exec -i '$DB_CONTAINER' psql -1 -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -f - < '$PROJECT_DIR/priv/migrations/00000109_c2g_timeline_generation_boundary.up.sql'" \
+          || fail "C2G boundary 恢复校验失败"
+      else
+        BOUNDARY_BOOTSTRAP=1
+        START_AUTO_MIGRATE=true
+        log "由新节点 boot migration 在接流量前原子应用并登记 108/109"
+      fi
+      return 0
+    fi
+  fi
+
+  for migration in "${migrations[@]}"; do
+    remote_file="$PROJECT_DIR/priv/migrations/$migration"
     log "执行切流前 expand 迁移: $migration"
-    ssh_exec "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -f - < '$remote_file'" \
+    ssh_exec "docker exec -i '$DB_CONTAINER' psql -1 -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -f - < '$remote_file'" \
       || fail "expand 迁移失败: $migration"
   done
 
@@ -325,6 +406,16 @@ run_expand_migrations() {
     ssh_exec "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_store' AND column_name='sender_did'\" | grep -qx 1" \
       || fail "schema 验证失败：public.msg_store.sender_did 不存在"
     ok "schema 已确认：public.msg_store.sender_did"
+  fi
+  if printf '%s\n' "${migrations[@]}" | grep -qx '00000108_group_attachment_anchor.up.sql'; then
+    ssh_exec "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='attachment' AND column_name IN ('anchor_msg_id','anchor_conv_seq','group_file_id')\" | grep -qx 3" \
+      || fail "schema 验证失败：attachment group anchor 列不完整"
+    ok "schema 已确认：attachment group anchor"
+  fi
+  if printf '%s\n' "${migrations[@]}" | grep -qx '00000109_c2g_timeline_generation_boundary.up.sql'; then
+    ssh_exec "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.msg_c2g_recipient_snapshot') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_timeline' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g' AND column_name='sender_did') THEN 1 ELSE 0 END\" | grep -qx 1" \
+      || fail "schema 验证失败：C2G boundary schema 不完整"
+    ok "schema 已确认：C2G request ledger + recipient snapshot + timeline conv_seq + sender_did"
   fi
 }
 
@@ -623,13 +714,16 @@ fi
 #   不是免除迁移评审。
 #
 # 迁移失败时**不自动重启旧节点**：此刻 schema 可能已部分应用，旧版本兼容性未知。
-# 新节点启动命令固定传 IMBOY_AUTO_MIGRATE=false；否则 imboy_app:start/2 会在
-# 健康检查前先跑完整迁移，使本节的切流后时序沦为重复执行而非真实门禁。
+# 除首次安装和 C2G boundary bootstrap 外，新节点固定传
+# IMBOY_AUTO_MIGRATE=false；否则 imboy_app:start/2 会在健康检查前先跑完整迁移，
+# 使本节的切流后时序沦为重复执行而非真实门禁。
 # =============================================================================
 if [ "$SKIP_MIGRATE" -eq 1 ]; then
   log "跳过数据库迁移（--no-migrate）/ Skipping DB migrations"
 elif [ "$CURRENT_COLOR" = "none" ]; then
   ok "首次安装已在健康检查前完成 bootstrap 迁移 / Bootstrap migrations completed during startup"
+elif [ "$BOUNDARY_BOOTSTRAP" -eq 1 ]; then
+  ok "C2G boundary 已在新节点接流量前完成并登记 / Boundary migrations completed before traffic"
 else
   log "执行数据库迁移... / Running DB migrations..."
   # CTL_NODE 必须显式指定为本次刚启动的节点名，Makefile 默认值 imboy@127.0.0.1
@@ -641,6 +735,14 @@ else
     || fail "数据库迁移失败 / DB migration failed。流量已切到新节点且 schema 可能部分应用。
   旧节点已停止；请先核对 schema_migrations_history 与兼容性，再决定是否人工恢复旧节点。"
   ok "数据库迁移完成 / DB migrations applied"
+fi
+
+if [ "$BOUNDARY_CUTOVER_PENDING" -eq 1 ]; then
+  [ "$(probe_boundary_schema)" = 1 ] \
+    || fail "C2G boundary 最终 schema/backlog 校验失败，不写 cutover marker"
+  ssh_exec "umask 077 && : > '$BOUNDARY_CUTOVER_MARKER'" \
+    || fail "C2G boundary cutover marker 写入失败"
+  ok "C2G boundary cutover 已完成并持久标记"
 fi
 
 # =============================================================================

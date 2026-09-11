@@ -4,9 +4,9 @@
 
 历史 Base C 级重验：2026-09-09（LT-02-C；已被下述 2026-09-11 CURRENT-HEAD OVERRIDE 覆盖，仅作历史证据）
 
-状态：2026-09-11 AI 明文身份门、C2G staging 权威快照、群聊附件 generation ACL 和 `/msg/offline` 旧世代时间线过滤均已完成本地修复；更新后的 migration 108/109 与群历史真库套件因本地 PostgreSQL `econnrefused` 未完成重放。F/R/D/M 与 AI-ID 的用户决策工件仍缺失，旧客户端 rollout、historical room-key grant、备份 epoch metadata 和 A 级攻击复测仍未闭环。当前结论为 `LOCAL_SECURITY_GATE_FAIL / DECISION_EVIDENCE_MISSING / A_LEVEL_ATTACK_RETEST=BLOCKED / E2EE_RELEASE=NO-GO`。
+状态：2026-09-11 AI 明文身份门、C2G staging 权威快照、群聊附件 generation ACL 和 `/msg/offline` 旧世代时间线过滤均已完成本地修复；migration 1→109、108/109 up/down/重复执行/失败回滚与附件/action ACL 已在唯一 loopback scratch PostgreSQL 真库通过。用户已书面选择 `F2/R2/D3/M1/AI-ID=B`，明确接受 AI-ID=B 的恶意/被攻陷运行时服务端伪造 Agent 剩余风险，并于 2026-09-12 确认 D3 采用 archive ciphertext 与 historical room-key grant 分开授权。生产规模 DDL/cutover、旧客户端 rollout、限范围 historical room-key grant、备份 epoch metadata、真实设备和 A 级攻击复测仍未闭环。当前结论为 `LOCAL_SECURITY_GATE_FAIL / DECISION_RECORDED / RISK_ACCEPTED / D3_DETAIL_RECORDED / A_LEVEL_ATTACK_RETEST=BLOCKED / E2EE_RELEASE=NO-GO`。
 
-配套执行清单：[`E2EE_ATTACK_MATRIX.md`](./E2EE_ATTACK_MATRIX.md)；群历史决策包：[`docs/planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md`](../../../planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md)
+配套执行清单：[`E2EE_ATTACK_MATRIX.md`](./E2EE_ATTACK_MATRIX.md)；群历史决策包：[`docs/planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md`](../../../planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md)；AI 明文身份决策包：[`docs/planning/ai-id-plaintext-channel-decision-brief-2026-09-11.md`](../../../planning/ai-id-plaintext-channel-decision-brief-2026-09-11.md)
 
 本文件统一承载基线、消息路径、密钥所有权、Findings、修复状态和发布结论。旧报告、注释、测试名称及历史 PASS/GO 均不自动继承。
 
@@ -17,37 +17,38 @@
 ```text
 imboy      HEAD a7d76cc23b17600b246921e36e634bc091cad1f2
            branch work/e2ee-security-20260911
-           non-doc patch sha256 34c36731b70f9c653e9ab544cde96c2c38da7026811cce8a521ff3cc751964da
+           non-doc patch sha256 879edd30515de0fb6791b23b3b9cad470469e76e5b5f67a92d2475771e71207b
 imboyapp   HEAD 8ebe49e355ee66b79386f40739432d0bf34c13df
            detached worktree
-           non-doc patch sha256 d2d157e670226bd795aaedb8174ceb73906c2e6c888160cb3631230f758e6447
+           non-doc patch sha256 b413b7334a3f7f92ea0639f5781c555e8cd0e49cc20146522eb1faf80e2262cf
 ```
 
 当前结论：
 
 | 门 | 结论 | 当前证据与边界 |
 |---|---|---|
-| 本地实现与回归 | `LOCAL_SECURITY_GATE_FAIL` | C2G staging/DS/Logic/Agent 定向 **91/91 PASS**（35+15+25+16）：生产调用传整数 GID 与最低角色，事务内固化 `conv_seq` 和 active recipient snapshot，worker claim 搬运该 seq，旧列表调用 fail-closed；本轮 15 个纯本地后端模块合计 **324/324 PASS**，App 附件 wiring **28/28 PASS**、上传 API + room-key **36/36 PASS**、10 个改动项 scoped analyze 零问题。migration 108 已为聊天附件建立 `anchor_msg_id -> anchor_conv_seq`，独立 `group_file` 保持当前成员共享语义；migration 109 已为离线 timeline 固化 `conv_seq`，list/count 共用当前 open generation 下界并拒绝 NULL legacy 行。更新后的真库套件因 PostgreSQL `econnrefused` 中止，旧客户端 rollout 与 room-key epoch/backup metadata 仍未完成，因此不能把本地单测升级为安全门 PASS |
-| 决策治理 | `DECISION_EVIDENCE_MISSING` | 历史迁移 101、源码和测试注释曾声称 F2/R2/D3/M1“已批准”，App 注释曾引用 `RR/decisions/AI-ID-2026-09-09.md` 及摘要哈希；2026-09-11 已将这些注释校正为“当前实现、批准证据缺失”，但当前仓库、分支与工作区仍未找到对应用户书面决策工件。实现存在不等于用户已经批准，不得据此标记 `RISK_ACCEPTED` 或 `CLOSED` |
+| 本地实现与回归 | `LOCAL_SECURITY_GATE_FAIL` | 当前后端 7 个定向 EUnit suite **171/171 PASS**（message_ds 17、msg_c2g_logic 28、msg_c2g_repo 17、msg_store_ds 20、msg_c2g_timeline_repo 6、msg_store_repo 48、msg_store_worker 35）；scratch PostgreSQL 上全量 migration 1→109、108/109 真库矩阵及生产异步 `stage→enqueue→worker→timeline/archive` 管道 2/2 PASS，marker residual=0；部署控制流 44/44、migrate gate 6/6、恢复/部署守卫 33/33，108 组 migration 清单、bash、shellcheck、scoped erlfmt 和 diff check 均通过。此处只证明本地 B/C 级实现与可复现真库行为，生产规模 DDL/cutover、生产负载、旧客户端 rollout 与 room-key epoch/backup metadata 未完成，故不能升级为安全门 PASS |
+| 决策治理 | `DECISION_RECORDED / RISK_ACCEPTED / D3_DETAIL_RECORDED` | 用户于 2026-09-11 书面确认 `F=F2，R=R2，D=D3，M=M1，AI-ID=B`，随后在收到明确风险说明后回复 `确认接受`；AI-ID=B 的恶意/被攻陷运行时服务端伪造 Agent 剩余风险据此记为 `RISK_ACCEPTED`。用户于 2026-09-12 又确认 D3 采用分开授权：账号按获权 generation 下载 archive ciphertext，historical room key 仅经显式、限范围、可审计的恢复授权；决策记录不等于实现完成或 finding `CLOSED` |
 | A 级攻击复测 | `A_LEVEL_ATTACK_RETEST=BLOCKED` | 未执行真实账号、真机、建群/退群/踢人、旧 session、附件对象、room-key grant、抓包/MITM/replay、真实 DB/日志/备份/Object Storage/Push、Keychain/Keystore。现有 B/C 级证据不能替代这些路径 |
-| 发布 | `E2EE_RELEASE=NO-GO` | 012 尚缺决策证据、migration 108/109 真库证据、旧客户端强制升级 rollout、room-key epoch/backup metadata 与 A 级生命周期闭环；AI 明文门尚无独立签名身份锚和 A 级恶意服务端复测。完成本节不授权进入 GA |
+| 发布 | `E2EE_RELEASE=NO-GO` | 012 尚缺 D3 授权细节、生产规模 migration 108/109 DDL/cutover 证据、旧客户端强制升级 rollout、room-key epoch/backup metadata 与 A 级生命周期闭环；AI-ID=B 风险已接受，但 A 级恶意服务端复测仍未完成。完成本节不授权进入 GA |
 
 ### 0.1 E2EE-2026-012 当前实现和迁移证据
 
 - 已存在迁移 101 与共享群历史授权实现：首次加入/重入建立 append-only generation；leave/remove/workspace remove 关闭世代；history 与 batch sync 复用 `start_seq` 下界。
 - 生产 C2G 的三个发送分支现统一调用 `msg_store_ds:stage/12`，传整数 GID 和最低发送者角色（普通消息 1，`@all` 为 3）。Repo 先取得 `msg_store_seq` 顺序锁，再用同一事务的新 READ COMMITTED statement 重新要求 active group、active sender、角色下界和 active recipients；已提交的撤销必被看见，重叠中的成员变更可线性化为 snapshot 之后发生。集合以 `5000+1` 探针 fail-closed。同一事务同时保存 `to_id=GID`、`to_id_list=committed snapshot` 与 `conv_seq`，成功才把快照返回发送逻辑。查询不再额外锁 caller 行，避免与现有 membership 的 `member→seq` 更新顺序形成死锁。旧 `stage/10,11` 的 C2G UID 列表形状现明确返回 `c2g_group_id_required`，不能绕过该不变量。
-- worker 的 `claim_pending/2` 与恢复查询均已选择 `conv_seq`；归档因此搬运 staging 固化值，不再因漏列回退到 `next_conv_seq/1`。`staging_prealloc_test_` 也已从 `SELECT *` 改为经真实 claim 查询取行，防止生产 SELECT 漏列而测试假绿；该更新后的真库用例本轮因 PostgreSQL `econnrefused` 未完成，状态为 `BLOCKED_ENV`，不是 PASS。
-- 在线投递、队列、引用持久化、Push、mention、Agent 与 Bot 现都消费同一 committed recipient snapshot。`@all` 展开和普通 mention 会按该快照过滤；非快照 Agent 不再进入身份查询/LLM，支付收款人也必须属于快照；Bot 原有 membership 过滤保持不变。staging 的一般数据库错误统一折为可重试 503，不再静默无 ACK/错误帧。相关四套 EUnit 为 **91/91 PASS**（35+15+25+16），`make compile`、scoped `erlfmt --check` 与 diff check 已通过；最终独立复审结论见后续证据更新。
-- room-key 公钥枚举已独立收口：`group_member_keys/2` 不再先物化整群 UID 后在 Logic 判断调用者，而由单条 PostgreSQL statement 同时要求 active group/caller/recipient/device，并直接返回设备公钥。成员和设备条目均以客户端既有上限 `4096` 的 `4097` 探针 fail-closed，超限明确返回 409；授权成功但全群无有效公钥与未授权零行可区分。定向 SQL/DS/Logic/Handler/安全合同为 **60/60 PASS**（1+13+20+20+6），编译、erlfmt 与 diff check 通过。
-- 同一补丁经三轮独立复审后为 `APPROVE`（0 CRITICAL / 0 HIGH / 1 MEDIUM）。PostgreSQL 18.4 只读 `EXPLAIN` 证明：未授权时 recipient/device 分支均 `never executed`；授权时先由指定群成员索引生成最多 4097 行的 materialized snapshot，再以 `recipient.user_id` 参数化查询设备，无旧版全站设备外侧扫描和 limit 前全量排序。剩余 MEDIUM 是 CI 尚无真实 PostgreSQL fixture 覆盖 sentinel/inactive/4096/4097；当前 mock SQL 合同不能替代该集成证据。
+- worker 的 `claim_pending/2` 与恢复查询均已选择 `conv_seq`；归档因此搬运 staging 固化值，不再因漏列回退到 `next_conv_seq/1`。`staging_prealloc_test_` 已从 `SELECT *` 改为经真实 claim 查询取行，防止生产 SELECT 漏列而测试假绿。2026-09-12 marker scratch-PG harness 已实际调用生产 `stage/12`、`msg_store_ds:enqueue/3` 和 `msg_store_worker`，2/2 PASS；formal `msg_c2g` 与 archive 均保留 E2EE envelope，`msg_c2g_timeline.conv_seq` 与 `msg_store.conv_seq` 相等。独立增量复审为 `APPROVE`（0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW），确认 staging、timeline 与 archive 的同一 seq 来源及事务内 recipient snapshot 未被绕过。该结果是本地 B 级生产形状重放，不是生产负载或 A 级证据。
+- `msg_c2g_request_ledger` 独立保存 durable MsgId 与请求身份；`msg_c2g_recipient_snapshot` 只保存不可变收件人集合和 action 授权。稳定请求指纹覆盖 `msg_type/e2ee/payload/sender_did`，`action` 单独比较，并剔除顶层和嵌套 payload 的服务端 `server_ts/revoked_at/edited_at`；相同客户端请求仅服务端时间不同仍幂等，action、业务 payload、E2EE 或 sender device 不同均 fail-closed 为冲突。首次在真实 PostgreSQL 重放 duplicate 路径时发现验证 SELECT 传入 9 个参数却只引用 `$1/$4...$8`，extended query 因未使用参数无法推断类型并报 `42P18 indeterminate_datatype`；`verify_c2g_duplicate_identity/2` 已改为连续 6 参数，同时继续从 ledger 返回并精确匹配冻结的 `from_id/to_gid`。修复后 `msg_store_repo_tests` 48/48、`msg_store_worker_tests` 35/35 和完整 scratch harness 均 PASS。历史正式 `msg_c2g` 可回填 identity；因缺 action 而写 `NULL` 的历史 ledger 不会错误 ACK 后续重试。
+- 在线投递、队列、引用持久化、Push、mention、Agent 与 Bot 现都消费同一 committed recipient snapshot。`@all` 展开和普通 mention 会按该快照过滤；非快照 Agent 不再进入身份查询/LLM，支付收款人也必须属于快照；Bot 原有 membership 过滤保持不变。staging 的一般数据库错误统一折为可重试 503，不再静默无 ACK/错误帧。当前 7 个定向 EUnit suite 为 **171/171 PASS**；此前不同代码形状下的旧汇总计数不再作为当前补丁证据。
+- room-key 公钥枚举已独立收口：`group_member_keys/2` 不再先物化整群 UID 后在 Logic 判断调用者，而由单条 PostgreSQL statement 同时要求 active group/caller/recipient/device，并直接返回设备公钥。成员和设备条目均以客户端既有上限 `4096` 的 `4097` 探针 fail-closed，超限明确返回 409；授权成功但全群无有效公钥与未授权零行可区分。定向 SQL/DS/Logic/Handler/安全合同为 **60/60 PASS**（1+13+20+20+6）；2026-09-12 追加的 marker scratch-PG fixture 直接执行同一生产 SQL，覆盖未授权、预置 inactive recipient、active recipient 动态撤销、inactive caller/group/device、无有效 key、4096/4097 active member 和 4096/4097 active device key，真库矩阵 PASS、残留数据库为 0。编译、erlfmt 与 diff check 通过。
+- PostgreSQL 18.4 只读 `EXPLAIN` 证明：未授权时 recipient/device 分支均 `never executed`；授权时先由指定群成员索引生成最多 4097 行的 materialized snapshot，再以 `recipient.user_id` 参数化查询设备，无旧版全站设备外侧扫描和 limit 前全量排序。复审曾指出 fixture 没有动态停用原 active recipient；补充 `KEY_OTHER` active→inactive→active 场景并重跑真库矩阵后，最新独立复审为 `APPROVE`（0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW），此前唯一 MEDIUM 与该用例缺口均已关闭。这不覆盖查询后客户端包裹/C2G 中继的 membership generation 竞态、historical room-key grant、backup epoch metadata 或 A 级攻击复测。
 - 本轮补齐两个生产旁路：新建群创建者改走 `group_member_ds:join_group/5`，原子建立首个 open generation；解散群在同一 `conv_seq` 锁下关闭全部 open generation。`authorize_group_history/2` 还同时要求 open generation、active member 和 active group。
 - scratch PostgreSQL 使用实际 `erlang_migrate` 完成 `107/f -> goto(100) -> 100/f -> up(all) -> 107/f`。down 后确认 `group_member_generation` 与 `msg_store_staging.conv_seq` 均不存在；legacy fixture 升级后，两个群的 C2G backlog 按 staging id 顺序分别取得 `11,12,13` 与 `1,2`，C2C backlog 保持 `NULL`，`msg_store_seq` 分别为 `13` 与 `2`。
 - M1 只回填 legacy active member，inactive member 不回填；“单成员仅一个 open generation”和 interval check 的违规 INSERT 均被 PostgreSQL 拒绝。重复 `up(all)` 后仍为 `{ok,107,false}`，前后状态 SHA-256 均为 `fb62722b46d61982dc890383183af6fbb380acb98c00c926682c9bef3d69bf83`。
-- 原始历史证据位于仓库外 `/private/tmp/imboy-e2ee-security-20260911-141840/`。此前 145/145 对当时所运行测试有效，但未覆盖真实 staging 调用形状；当前补丁已修正调用形状与测试入口，更新后的真库重放又因 PostgreSQL `econnrefused` 中止。因此历史结果不能替代当前真库 PASS，本轮记 `BLOCKED_ENV`。
+- 当前 `scripts/test/run_group_attachment_acl_pg.sh` 只接受 loopback PostgreSQL，创建唯一 `imboy_ga_acl_<timestamp>_<pid>` 数据库并由 trap 精确删除。应用连接池也绑定同一 marker DB，设置 `IMBOY_AUTO_MIGRATE=false` 与 `HTTP_PORT=0`。实际 `erlang_migrate` 已完成全量 1→109；真库矩阵覆盖 legacy staging GID/`conv_seq` 回填、request ledger/recipient snapshot、重复 109、服务端时间 hash 稳定、action/payload/E2EE/device 冲突、malformed payload、payload/GID 不一致、formal/staging 身份冲突和 up/down/up 账本保留；群附件、action generation ACL、room-key member/device snapshot、group history claim/archive 10/10 与异步 C2G worker pipeline 2/2 同轮 PASS，退出后 marker residual=0。该结果是当前 B 级 scratch 证据，不代表生产规模 DDL、生产负载或 A 级攻击复测。
 - migration 108 为群聊附件增加客户端声明的 `anchor_msg_id`，C2G staging 在同一顺序锁事务内只把发送者、GID、未绑定状态均匹配的记录升级为权威 `anchor_conv_seq`；下载要求 active group/member/open generation 且 `start_seq <= anchor_conv_seq`。独立群文件不是聊天历史：由 `group_file_id` 明确关联，继续使用当前成员共享 ACL，不能伪装成某条群消息。legacy 聊天附件只给 M1 `start_seq=1` 世代兼容；未知类型或未绑定记录 fail-closed。
 - 附件 ACL 在每次签发 GET URL 前重验，能阻止退出/移除后的再次签发，但无法即时撤销此前已签发的 URL；受限资源 URL 当前最长仍有效 600 秒。该 TOCTOU 窗口必须作为产品与威胁模型上限保留，不能对外宣称退出后对象访问“立即撤销”。
 - App 的文件、相机图片、相机视频及缩略图、文件选择图片、相册图片、相册视频及缩略图、语音和位置缩略图八个生产上传入口均先生成最终 `messageId`，再以同值发送 `anchor_msg_id`；视频本体与缩略图共用该 ID。API 透传和生产源码接线有 C 级守护。后端强制 anchor 不能先于客户端覆盖率：必须先发布新客户端，再配置现有 `app_version` 的最低版本/强制升级策略并实际证明旧客户端无法进入群附件上传；若现有链只提示升级而不能阻断请求，必须先补最小服务端版本门。证据成立后才部署强制 anchor 后端。该顺序未在真实发布环境执行，记 `BLOCKED_EXTERNAL`；禁止以允许新群附件缺省 anchor 的方式换取兼容。
-- migration 109 给 `msg_c2g_timeline` 增加权威 `conv_seq`；worker 缺失 seq 时返回 `c2g_conv_seq_missing`，离线 list/count 共用 active group/member/current open generation 与 `conv_seq >= start_seq` 条件，NULL legacy timeline 不返回。这本地修复关闭了“旧世代 room-key 未 ACK，leave 后 rejoin 又从 `/msg/offline` 取回并自动导入”的已确认代码路径；migration 109 up/down、真实 list/count 和 leave/rejoin 场景仍因 PostgreSQL 不可达而是 `BLOCKED_ENV`，不是攻击复测 PASS。
+- migration 109 给 `msg_c2g_timeline` 增加权威 `conv_seq`；worker 缺失 seq 时返回 `c2g_conv_seq_missing`，离线 list/count 共用 active group/member/current open generation 与 `conv_seq >= start_seq` 条件，NULL legacy timeline 不返回。首次部署必须停止旧节点后由新节点 boot migration 原子登记 108/109，最终 probe 通过才写 `.deploy-c2g-boundary-v109-ready`；release 含 64/108/109 时 expand 清单未设置、为空或缺项均在启动/切流前 fail-closed，marker 丢失走维护恢复，`dirty=true` 在停旧节点前 fail-closed 并要求人工受控恢复，禁止自动 force。ledger 默认 370 天后且正式消息与 staging 均不存在时才删，单轮最多 10×1000 条并逐批事务化。scratch up/down/重入 ACL 已通过；真实客户端 room-key 自动导入、生产规模 DDL/cutover 和 A 级 leave/rejoin 攻击复测仍未完成。
 - 当前 App 备份只保存 `scope:sessionId -> exported key`，没有 generation、首末 `conv_seq`、来源或授权范围；恢复会把解析出的 `megolm_inbound_*` 全部写回安全存储。后端不解析 PFv3 `protected_header`，也没有 `session_ref -> conv_seq interval` 索引。恢复口令只证明用户主动操作，不能证明 session 完整位于获权 epoch。上述公钥枚举和 offline timeline 修复都不能替代 room-key epoch token、historical grant 与 backup metadata，完整 room-key grant 仍未闭环。
 
 ### 0.2 LT02-SEC-01 当前实现和剩余上限
@@ -55,7 +56,7 @@ imboyapp   HEAD 8ebe49e355ee66b79386f40739432d0bf34c13df
 - 消息、附件和重试路径现在汇流到 `AiPlaintextGate`；裸 `account_type=1` 只渲染 agent 徽章，不能直接授权明文。授权绑定 deployment、本机 owner UID、目标 UID、identity fingerprint/version 和用户显式确认，异常与缺失状态 fail-closed。
 - 本轮修复授权检查的 TOCTOU：已有确认、确认弹窗和落库三个异步边界都复用同一当前绑定复核；owner UID/badge/deployment/identity 任一变化均拒绝。保存后显式重读刚写入的记录，复核失败即按已冻结的 owner UID 删除确认。新增回归覆盖已有记录读取、弹窗与保存期间的账号切换，badge 撤销，deployment/identity 变化，以及 SQLite 撤销持久化。
 - 当前 `DeploymentScopedPeerIdentitySource` 的身份值仍只是 `SHA-256(deploymentId + targetUid), version=0`，不是服务端之外独立签名的 agent 身份公钥。因此现状只是一条用户确认型产品边界，不是密码学信任锚，也不覆盖恶意服务端威胁模型。
-- `LT02-SEC-01` 的旧“裸 account_type 直接放行”代码根因已本地缓解，但因 AI-ID 决策工件缺失、独立身份锚缺失和 A 级复测阻塞，finding 不得进入 `ATTACK_RETEST_PASS/CLOSED`，仍是发布 `NO-GO` 原因。
+- `LT02-SEC-01` 的旧“裸 account_type 直接放行”代码根因已本地缓解，用户已选择 AI-ID=B，当前代码与选择一致，并已明确接受恶意/被攻陷运行时服务端可伪造 Agent 的剩余风险。B 仍缺独立身份锚，且 A 级复测阻塞；`RISK_ACCEPTED` 不会让 finding 进入 `ATTACK_RETEST_PASS/CLOSED`，仍是发布 `NO-GO` 原因。
 
 ## 1. 证据与基线
 
@@ -171,7 +172,7 @@ imboyadmin 8c2b8615c292d82257886ad51445db87c366d719
 | E2EE-2026-009 | P1 | SQLCipher 密码打开失败后尝试 `password:null`；明文探测成功后复制 `.plain.bak` 并删除原库，备份最长保留 7 天 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 89 PASS/0 FAIL——db_migration_encryption 13 + 迁移/降级/快照矩阵 76；另有 2 个 integration_test 设备文件 ENV_BLOCKED_ATTEMPTED，见 §1.1）；加密平台已有库只用当前 key 验证，失败保留原库并终止；旧明文库、WAL/SHM、历史 artifact 和真实 Keystore 仍待授权取证，不得升级为完整 `ATTACK_RETEST_PASS` |
 | E2EE-2026-010 | P1 | 附件策略查询异常返回“不封装”，先明文上传、后由消息门拒发 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 63 PASS/0 FAIL——attachment_seal_wiring 25 + thumb_seal 7 + upload_sealed 11 + seal_policy 8 + attachment_binding 12）；策略未知在上传前中止；required 下绑定缺失与 partial seal 上传前失败；对象存储 Canary 攻击复测待授权；AI C2C 明文附件是设计内例外（见 §5.5） |
 | E2EE-2026-011 | P1 | 备份刻意不含 Olm account/session/TOFU pin，故不恢复 Olm 身份连续性或 C2C ratchet 历史；旧导出路径在 Secure Storage 枚举失败时会静默生成 RSA-only 不完整备份；旧导入路径吞掉单条 Megolm 写失败后仍报告整体成功 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 52 PASS/0 FAIL/1 declared SKIP——backup_restore 14 + local_backup_boundary 14 + server_backup_service 6（REV-1 2026-09-09 补跑实测 6/6：Wave-2 批次曾漏跑该文件，按 R1-C1 以同口径单文件串行补跑计入，日志见 evidence `flutter-tests/45-e2ee_server_backup_service_test.log`）+ megolm_backup_section 11 + import_widget 7 + backup_api 0 PASS/1 SKIP（TEST_PHONE 未配置，测试自带门限）；枚举合计 14+14+6+11+7+0=52 PASS + 1 SKIP；破坏性恢复 harness 文件在冻结 Base 缺失记 BLOCKED_DRIFT，其声明行为仅 1 SKIP，不影响 PASS 面）；备份仅含 legacy RSA 与 Megolm inbound，排除 Olm/TOFU；真实换机/重装恢复待攻击复测 |
-| E2EE-2026-012 | P1 | 新成员/重入群历史访问需要原子 generation/`conv_seq` 边界，并与附件 ACL、room-key grant 共用批准后的语义 | `LOCAL_SECURITY_GATE_FAIL / DECISION_EVIDENCE_MISSING / A_LEVEL_ATTACK_RETEST=BLOCKED`（2026-09-11 override）：生产 C2G staging 已改为顺序锁事务内固化 `conv_seq`、active sender/role/recipient snapshot，并由全部下游与 worker claim 复用；聊天附件 anchor ACL 与 offline timeline generation 过滤已本地接线，核心定向 91/91 PASS。migration 108/109 与更新后的真库套件因 PostgreSQL `econnrefused` 为 `BLOCKED_ENV`；F2/R2/D3/M1 用户书面批准、旧客户端 rollout、room-key epoch/backup metadata、historical grant 和真实生命周期仍未闭环；不得 `CLOSED` |
+| E2EE-2026-012 | P1 | 新成员/重入群历史访问需要原子 generation/`conv_seq` 边界，并与附件 ACL、room-key grant 共用批准后的语义 | `LOCAL_SECURITY_GATE_FAIL / DECISION_RECORDED / D3_DETAIL_RECORDED / A_LEVEL_ATTACK_RETEST=BLOCKED`（2026-09-12 override）：生产 C2G staging 已改为顺序锁事务内固化 `conv_seq`、active sender/role/recipient snapshot，并由全部下游与 worker claim 复用；聊天附件 anchor ACL 与 offline timeline generation 过滤已本地接线。当前 7 个定向 EUnit suite 171/171，migration 1→109、108/109 scratch 真库矩阵与生产异步 worker pipeline 2/2 PASS；用户已选择 F2/R2/D3/M1 并确认 D3 分开授权，但限范围 historical grant、生产规模 DDL/cutover、生产负载、旧客户端 rollout、room-key epoch/backup metadata 和真实生命周期仍未闭环；不得 `CLOSED` |
 | E2EE-2026-013 | P2 | 规范声明 Signed Capabilities；客户端只有 `DeviceManifest`/协商/HWM 模型与单测，未进入身份上传、设备查询或发送链，服务端仅有未接线 schema 列 | REGRESSION_PASS（仅声明级；当前 Base 重验 2026-09-09：Flutter 三件套 40/40 PASS——device_manifest 16 + capability_negotiator 13 + capability_guard 11，其中 negotiator/manifest 前两组依赖 vodozemac 原生测试库，环境补齐后全绿；**生产 wiring 静态扫描重验=0 调用方**：CapabilityGuard 无生产 caller，CapabilityNegotiator 仅注释+静态表引用，verifyDeviceManifest 无任何 lib 调用方、DeviceManifest 类型仅存在于 capability 三件套内部）；规范 §8.2/§8.3 维持「未实现/未接线」降级声明，生产降级防护实态为固定套件选择；capability 模型/单测存在不暗示生产接线，本 finding 不构成 MITM/降级防护证据 |
 | E2EE-2026-014 | P2 | debug 路径可记录完整 WS/解密后 Conversation payload，解析异常文本也可携带输入片段 | REGRESSION_PASS（当前 Base 重验 2026-09-09：Flutter 组 68 PASS/0 FAIL——plain_text_log 1 + logging_privacy_guard 2 + olm_wrap_failed_message 8 + e2ee_health_check 21 + e2ee_service 11（同属 003）+ crypto_audit_log 12 + log_redactor 13）；消息链路日志已收窄为非敏感元数据和异常类型；真实 Canary 日志扫描待授权 |
 
@@ -182,7 +183,7 @@ imboyadmin 8c2b8615c292d82257886ad51445db87c366d719
 真人 E2EE（C2C Olm/PFv3、C2G Megolm）与 AI 助手 C2C 明文处理是两个不同的可见性域，不得互相覆盖：
 
 - **AI 助手 C2C 是产品设计的非 E2EE 通道**：客户端看到 `peerAccountType=1` 时在消息/附件离开设备前跳过封装；服务端 staging/archive 可见正文，对象存储可见未封装附件，LLM provider 可见送入 prompt 的正文与所选上下文（留存取决于 provider/部署配置，未验证）。该域必须在 UI/隐私/合规文档中显式披露，禁止用「所有消息」「全链」「唯一明文路径」等绝对措辞。
-- **LT02-SEC-01（2026-09-11：本地缓解，仍是 release NO-GO 独立原因）**：裸 `peerAccountType/account_type=1` 已不能直接授权明文；消息、附件和重试统一要求当前 agent badge、deployment/owner/target/identity/version 五元组和用户显式确认，并在异步确认/落库边界二次复核，缺失、异常或变化均 fail-closed。剩余边界是 identity 仍由 deployment ID 与目标 UID 派生而非独立签名信任锚，且所引用 AI-ID=B 用户决策工件不存在；恶意服务端、真实传输/存储和身份变化尚无 A 级复测。因此只能记本地 `REGRESSION_PASS_WITH_LIMITS`，不得 `ATTACK_RETEST_PASS/CLOSED`。
+- **LT02-SEC-01（2026-09-11：本地缓解，仍是 release NO-GO 独立原因）**：裸 `peerAccountType/account_type=1` 已不能直接授权明文；消息、附件和重试统一要求当前 agent badge、deployment/owner/target/identity/version 五元组和用户显式确认，并在异步确认/落库边界二次复核，缺失、异常或变化均 fail-closed。用户已选择 AI-ID=B，并明确接受恶意/被攻陷运行时服务端可伪造 Agent 的剩余风险；identity 仍由 deployment ID 与目标 UID 派生而非独立签名信任锚，真实传输/存储和身份变化也尚无 A 级复测。因此只能记本地 `REGRESSION_PASS_WITH_LIMITS / RISK_ACCEPTED`，不得 `ATTACK_RETEST_PASS/CLOSED`。
 
 ## 6. 声明仲裁与文档漂移
 
@@ -208,8 +209,8 @@ imboyadmin 8c2b8615c292d82257886ad51445db87c366d719
 
 当前发布姿态：**NO-GO**。独立原因（各自成立即维持 NO-GO）：
 
-1. `LT02-SEC-01` 已本地缓解但仍缺 AI-ID 决策证据、独立签名身份锚和 A 级攻击复测（§0.2、§5.5）。
-2. `E2EE-2026-012` 的 C2G staging、聊天附件 anchor ACL 和 offline timeline generation 过滤已本地修复并通过定向回归，但 migration 108/109 与更新后的真库套件为 `BLOCKED_ENV`，旧客户端 rollout 为 `BLOCKED_EXTERNAL`；F/R/D/M 决策证据、room-key epoch/backup metadata、historical grant 和 A 级生命周期仍未闭环（§0.1 与决策包）。
+1. `LT02-SEC-01` 已本地缓解，用户已选择 AI-ID=B 并明确接受恶意/被攻陷运行时服务端伪造 Agent 的剩余风险；但独立签名身份锚不存在，A 级攻击复测也未完成（§0.2、§5.5）。
+2. `E2EE-2026-012` 的 C2G staging、聊天附件 anchor ACL、offline timeline generation 过滤和 migration 108/109 scratch 真库矩阵已通过本地回归，用户已选择 F2/R2/D3/M1；但 D3 授权拆分仍待确认，生产规模 DDL/cutover 与旧客户端 rollout 为 `BLOCKED_EXTERNAL`，room-key epoch/backup metadata、historical grant 和 A 级生命周期仍未闭环（§0.1 与决策包）。
 3. 全部 P0/P1 finding 仅有 C 级 REGRESSION_PASS，A 级攻击复测为 0。
 4. 阶段 A 真机与历史 B 级证据产生于旧 SHA，当前 Base 未重签。
 

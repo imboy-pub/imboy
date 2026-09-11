@@ -13,6 +13,15 @@
 %%% 5. 发现源码逻辑错误
 %%%===================================================================
 
+workspace_guard_meck() ->
+    {workspace_guard, [
+        {'ensure_writable_tx', 2, fun(_Conn, {group, 100}) ->
+            put({?MODULE, workspace_locked}, true),
+            ok
+        end},
+        {'abort_on_error', 1, fun(ok) -> ok end}
+    ]}.
+
 %% ===================================================================
 %% tablename/0 测试
 %% ===================================================================
@@ -30,6 +39,29 @@ tablename_returns_qualified_table_name_test_() ->
             ?assertEqual(<<"public.msg_store_staging">>, Result),
             ?assert(is_binary(Result)),
             ?assert(Result =/= <<>>)
+        end
+    ).
+
+find_staged_is_scoped_to_type_and_pending_state_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+            ]},
+            {elib_pg, [
+                {'query', 2, fun(Sql, [<<"c2g">>, <<"shared-id">>]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"type = $1">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"msg_id = $2">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"processed_at IS NULL">>)),
+                    {ok, [#{<<"msg_id">> => <<"shared-id">>}]}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, #{<<"msg_id">> := <<"shared-id">>}},
+                msg_store_repo:find_by_msg_id(<<"c2g">>, <<"shared-id">>)
+            )
         end
     ).
 
@@ -379,11 +411,13 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
             ]},
+            workspace_guard_meck(),
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
             {epgsql, [
                 {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
+                    ?assertEqual(true, get({?MODULE, workspace_locked})),
                     ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
                     {ok, [], [], [{7}]}
                 end}
@@ -406,8 +440,29 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"recipient.status = 1">>)),
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"grp.status = 1">>)),
                         {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                    (
+                        _,
+                        Sql,
+                        [
+                            <<"msg-c2g-role">>,
+                            50,
+                            100,
+                            <<>>,
+                            <<"text">>,
+                            null,
+                            <<"{}">>,
+                            <<"did-50">>,
+                            _
+                        ]
+                    ) ->
+                        request_ledger_new(Sql, <<"msg-c2g-role">>);
                     (_, <<"INSERT staged">>, []) ->
                         {ok, 1};
+                    (_, Sql, [<<"msg-c2g-role">>, 50, 100, 7, [50, 60], _]) ->
+                        ?assertNotEqual(
+                            nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
+                        ),
+                        {ok, [#{<<"msg_id">> => <<"msg-c2g-role">>}]};
                     (_, Sql, [<<"msg-c2g-role">>, 50, 100, 7]) ->
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE public.attachment">>)),
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"anchor_conv_seq = $4">>)),
@@ -438,12 +493,113 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
         end
     ).
 
+c2g_stage_archived_workspace_does_not_allocate_sequence_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+            ]},
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_, {group, 100}) ->
+                    {error, {980, <<"archived">>}}
+                end},
+                {'abort_on_error', 1, fun({error, Reason}) -> throw({abort_tx, Reason}) end}
+            ]},
+            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+            ]},
+            {epgsql, [
+                {'equery', 3, fun(_, _, _) -> erlang:error(sequence_must_not_be_allocated) end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Tx) ->
+                    try Tx(fake_conn) of
+                        Result -> Result
+                    catch
+                        throw:{abort_tx, Reason} -> {error, Reason}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({error, {980, <<"archived">>}}, stage_c2g_test_msg(<<"archived">>)),
+            ?assertEqual(0, meck:num_calls(epgsql, equery, 3))
+        end
+    ).
+
+c2g_stage_sequence_failures_are_rolled_back_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+            ]},
+            workspace_guard_meck(),
+            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+            ]},
+            {epgsql, [
+                {'equery', 3, fun(_, _, _) -> get({?MODULE, sequence_result}) end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Tx) ->
+                    try Tx(fake_conn) of
+                        Result -> Result
+                    catch
+                        throw:{rollback, Reason} -> {rollback, Reason}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            put({?MODULE, sequence_result}, {error, connection_lost}),
+            ?assertEqual(
+                {error, {conv_seq_allocate_failed, connection_lost}},
+                stage_c2g_test_msg(<<"seq-error">>)
+            ),
+            put({?MODULE, sequence_result}, {ok, [], [], []}),
+            ?assertMatch(
+                {error, {conv_seq_allocate_failed, {unexpected_result, _}}},
+                stage_c2g_test_msg(<<"seq-empty">>)
+            ),
+            put({?MODULE, sequence_result}, {ok, [], [], [{0}]}),
+            ?assertMatch(
+                {error, {conv_seq_allocate_failed, {unexpected_result, _}}},
+                stage_c2g_test_msg(<<"seq-invalid">>)
+            )
+        end
+    ).
+
+stage_c2g_test_msg(MsgId) ->
+    msg_store_repo:stage(
+        <<"c2g">>,
+        MsgId,
+        <<"text">>,
+        <<>>,
+        null,
+        <<"{}">>,
+        50,
+        100,
+        <<"2026-09-11T00:00:00Z">>,
+        <<"2026-09-11T00:00:00Z">>,
+        <<>>,
+        1
+    ).
+
+request_ledger_new(Sql, MsgId) ->
+    ?assertNotEqual(nomatch, binary:match(Sql, <<"msg_c2g_request_ledger">>)),
+    ?assertNotEqual(nomatch, binary:match(Sql, <<"digest(convert_to">>)),
+    ?assertNotEqual(nomatch, binary:match(Sql, <<"{payload,revoked_at}">>)),
+    {ok, [#{<<"msg_id">> => MsgId}]}.
+
 c2g_stage_attachment_bind_error_rolls_back_test_() ->
     ?WITH_MECKS(
         [
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
             ]},
+            workspace_guard_meck(),
             {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
             {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
             {elib_pg_sql, [
@@ -461,8 +617,26 @@ c2g_stage_attachment_bind_error_rolls_back_test_() ->
                 {'query', 3, fun
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                    (
+                        _,
+                        Sql,
+                        [
+                            <<"msg-c2g-bind-error">>,
+                            50,
+                            100,
+                            <<>>,
+                            <<"text">>,
+                            null,
+                            <<"{}">>,
+                            null,
+                            _
+                        ]
+                    ) ->
+                        request_ledger_new(Sql, <<"msg-c2g-bind-error">>);
                     (_, <<"INSERT staged">>, []) ->
                         {ok, 1};
+                    (_, _, [<<"msg-c2g-bind-error">>, 50, 100, 7, [50, 60], _]) ->
+                        {ok, [#{<<"msg_id">> => <<"msg-c2g-bind-error">>}]};
                     (_, _, [<<"msg-c2g-bind-error">>, 50, 100, 7]) ->
                         {error, connection_lost}
                 end}
@@ -495,6 +669,7 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
             ]},
+            workspace_guard_meck(),
             {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
             {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
             {elib_pg_sql, [
@@ -512,8 +687,48 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                 {'query', 3, fun
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => 50}]};
-                    (_, <<"INSERT duplicate">>, []) ->
-                        {error, {error, error, <<"23505">>, unique_violation, duplicate, []}}
+                    (
+                        _,
+                        _,
+                        [
+                            <<"msg-c2g-duplicate">>,
+                            50,
+                            100,
+                            <<>>,
+                            <<"text">>,
+                            null,
+                            <<"{}">>,
+                            null,
+                            _
+                        ]
+                    ) ->
+                        {ok, []};
+                    (
+                        _,
+                        Sql,
+                        [
+                            <<"msg-c2g-duplicate">>,
+                            <<>>,
+                            <<"text">>,
+                            null,
+                            <<"{}">>,
+                            null
+                        ]
+                    ) ->
+                        case binary:match(Sql, <<"INSERT INTO">>) of
+                            nomatch ->
+                                ?assertEqual(nomatch, binary:match(Sql, <<"$7">>)),
+                                {ok, [
+                                    #{
+                                        <<"from_id">> => 50,
+                                        <<"to_gid">> => 100,
+                                        <<"same_action">> => true,
+                                        <<"same_request">> => true
+                                    }
+                                ]};
+                            _ ->
+                                {ok, []}
+                        end
                 end}
             ]}
         ],
@@ -535,7 +750,63 @@ c2g_stage_duplicate_does_not_bind_attachment_test_() ->
                     1
                 )
             ),
-            ?assertEqual(2, meck:num_calls(elib_pg, query, 3))
+            ?assertEqual(3, meck:num_calls(elib_pg, query, 3))
+        end
+    ).
+
+c2g_stage_rejects_msg_id_owned_by_another_sender_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+            ]},
+            workspace_guard_meck(),
+            {elib_tsid, [{'generate', 1, fun(msg_store) -> 12345 end}]},
+            {epgsql, [{'equery', 3, fun(_, _, _) -> {ok, [], [], [{7}]} end}]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Tx) ->
+                    try Tx(fake_conn) of
+                        Result -> Result
+                    catch
+                        throw:{rollback, Reason} -> {rollback, Reason}
+                    end
+                end},
+                {'query', 3, fun
+                    (_, _, [100, 50, 1, 5001]) ->
+                        {ok, [#{<<"user_id">> => 50}]};
+                    (
+                        _,
+                        _,
+                        [<<"foreign-msg-id">>, 50, 100, <<>>, <<"text">>, null, <<"{}">>, null, _]
+                    ) ->
+                        {ok, []};
+                    (
+                        _,
+                        Sql,
+                        [<<"foreign-msg-id">>, <<>>, <<"text">>, null, <<"{}">>, null]
+                    ) ->
+                        case binary:match(Sql, <<"INSERT INTO">>) of
+                            nomatch ->
+                                {ok, [
+                                    #{
+                                        <<"from_id">> => 999,
+                                        <<"to_gid">> => 100,
+                                        <<"same_action">> => true,
+                                        <<"same_request">> => true
+                                    }
+                                ]};
+                            _ ->
+                                {ok, []}
+                        end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual({error, msg_id_conflict}, stage_c2g_test_msg(<<"foreign-msg-id">>))
         end
     ).
 
@@ -546,6 +817,7 @@ c2g_stage_5000_recipients_commits_test_() ->
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
             ]},
+            workspace_guard_meck(),
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
@@ -564,8 +836,17 @@ c2g_stage_5000_recipients_commits_test_() ->
                 {'query', 3, fun
                     (_, _, [100, 50, 1, 5001]) ->
                         {ok, [#{<<"user_id">> => Uid} || Uid <- RecipientUids]};
+                    (
+                        _,
+                        Sql,
+                        [<<"msg-c2g-limit-ok">>, 50, 100, <<>>, <<"text">>, null, <<"{}">>, null, _]
+                    ) ->
+                        request_ledger_new(Sql, <<"msg-c2g-limit-ok">>);
                     (_, <<"INSERT staged">>, []) ->
                         {ok, 1};
+                    (_, _, [<<"msg-c2g-limit-ok">>, 50, 100, 7, SnapshotUids, _]) ->
+                        ?assertEqual(RecipientUids, SnapshotUids),
+                        {ok, [#{<<"msg_id">> => <<"msg-c2g-limit-ok">>}]};
                     (_, Sql, [<<"msg-c2g-limit-ok">>, 50, 100, 7]) ->
                         ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE public.attachment">>)),
                         {ok, 5000}
@@ -599,6 +880,7 @@ c2g_stage_5001_recipients_rolls_back_test_() ->
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
             ]},
+            workspace_guard_meck(),
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
@@ -648,6 +930,7 @@ c2g_stage_snapshot_error_rolls_back_test_() ->
             {msg_archive_ds, [
                 {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
             ]},
+            workspace_guard_meck(),
             {elib_tsid, [
                 {'generate', 1, fun(msg_store) -> 12345 end}
             ]},
@@ -684,6 +967,234 @@ c2g_stage_snapshot_error_rolls_back_test_() ->
                     <<"2026-09-11T00:00:00Z">>,
                     <<>>,
                     1
+                )
+            )
+        end
+    ).
+
+c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
+            ]},
+            workspace_guard_meck(),
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12346 end}
+            ]},
+            {epgsql, [
+                {'equery', 3, fun(_, Sql, [<<"c2g:100">>]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"RETURNING seq">>)),
+                    {ok, [], [], [{8}]}
+                end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                {'insert', 2, fun(_, Data) ->
+                    ?assertEqual([50, 60], maps:get(to_id_list, Data)),
+                    ?assertEqual(8, maps:get(conv_seq, Data)),
+                    {<<"INSERT action">>, []}
+                end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
+                {'query', 3, fun
+                    (_, Sql, [100, 50, 1, <<"original-msg">>, 5001]) ->
+                        ?assertNotEqual(
+                            nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)
+                        ),
+                        ?assertEqual(nomatch, binary:match(Sql, <<"msg_c2g_timeline">>)),
+                        ?assertEqual(nomatch, binary:match(Sql, <<"msg_store_staging">>)),
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"caller_gen.start_seq">>)),
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"recipient_gen.start_seq">>)),
+                        ?assertNotEqual(nomatch, binary:match(Sql, <<"unnest">>)),
+                        {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                    (
+                        _,
+                        Sql,
+                        [
+                            <<"action-msg">>,
+                            50,
+                            100,
+                            <<"message_revoke_ack">>,
+                            <<"custom">>,
+                            null,
+                            <<"{}">>,
+                            <<"did-50">>,
+                            _
+                        ]
+                    ) ->
+                        request_ledger_new(Sql, <<"action-msg">>);
+                    (_, _, [<<"action-msg">>, 50, 100, 8, [50, 60], _]) ->
+                        {ok, [#{<<"msg_id">> => <<"action-msg">>}]};
+                    (_, <<"INSERT action">>, []) ->
+                        {ok, 1}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, 12346, [50, 60]},
+                msg_store_repo:stage_action(
+                    <<"c2g">>,
+                    <<"action-msg">>,
+                    <<"custom">>,
+                    <<"message_revoke_ack">>,
+                    null,
+                    <<"{}">>,
+                    50,
+                    100,
+                    <<"2026-09-11T00:00:00Z">>,
+                    <<"2026-09-11T00:00:00Z">>,
+                    <<"did-50">>,
+                    1,
+                    <<"original-msg">>
+                )
+            ),
+            ?assertEqual(4, meck:num_calls(elib_pg, query, 3))
+        end
+    ).
+
+c2g_action_stage_snapshot_primary_key_is_durable_idempotency_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(100) -> <<"c2g:100">> end}
+            ]},
+            workspace_guard_meck(),
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12346 end}
+            ]},
+            {epgsql, [
+                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{9}]} end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end},
+                {'insert', 2, fun(_, _) -> erlang:error(staging_insert_must_not_run) end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Tx) ->
+                    try Tx(fake_conn) of
+                        Result -> Result
+                    catch
+                        throw:{rollback, Reason} -> {rollback, Reason}
+                    end
+                end},
+                {'query', 3, fun
+                    (_, _, [100, 50, 1, <<"original-msg">>, 5001]) ->
+                        {ok, [#{<<"user_id">> => 50}, #{<<"user_id">> => 60}]};
+                    (
+                        _,
+                        _,
+                        [
+                            <<"replayed-action">>,
+                            50,
+                            100,
+                            <<"message_edit_ack">>,
+                            <<"text">>,
+                            null,
+                            <<"{}">>,
+                            null,
+                            _
+                        ]
+                    ) ->
+                        {ok, []};
+                    (
+                        _,
+                        Sql,
+                        [
+                            <<"replayed-action">>,
+                            <<"message_edit_ack">>,
+                            <<"text">>,
+                            null,
+                            <<"{}">>,
+                            null
+                        ]
+                    ) ->
+                        case binary:match(Sql, <<"INSERT INTO">>) of
+                            nomatch ->
+                                {ok, [
+                                    #{
+                                        <<"from_id">> => 50,
+                                        <<"to_gid">> => 100,
+                                        <<"same_action">> => true,
+                                        <<"same_request">> => true
+                                    }
+                                ]};
+                            _ ->
+                                {ok, []}
+                        end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, {unique_violation, <<"replayed-action">>}},
+                msg_store_repo:stage_action(
+                    <<"c2g">>,
+                    <<"replayed-action">>,
+                    <<"text">>,
+                    <<"message_edit_ack">>,
+                    null,
+                    <<"{}">>,
+                    50,
+                    100,
+                    <<"2026-09-11T02:00:00Z">>,
+                    <<"2026-09-11T02:00:00Z">>,
+                    <<>>,
+                    1,
+                    <<"original-msg">>
+                )
+            )
+        end
+    ).
+
+c2g_action_stage_rejects_invisible_original_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_archive_ds, [
+                {'conv_key_c2g', 1, fun(_) -> <<"c2g:100">> end}
+            ]},
+            workspace_guard_meck(),
+            {elib_tsid, [
+                {'generate', 1, fun(msg_store) -> 12346 end}
+            ]},
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.msg_store_staging">> end}
+            ]},
+            {epgsql, [
+                {'equery', 3, fun(_, _, _) -> {ok, [], [], [{8}]} end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Tx) ->
+                    try Tx(fake_conn) of
+                        Result -> Result
+                    catch
+                        throw:{rollback, Reason} -> {rollback, Reason}
+                    end
+                end},
+                {'query', 3, fun(_, _, [100, 50, 1, <<"old-generation-msg">>, 5001]) ->
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, action_target_forbidden},
+                msg_store_repo:stage_action(
+                    <<"c2g">>,
+                    <<"action-msg">>,
+                    <<"text">>,
+                    <<"message_edit_ack">>,
+                    null,
+                    <<"{}">>,
+                    50,
+                    100,
+                    <<"2026-09-11T00:00:00Z">>,
+                    <<"2026-09-11T00:00:00Z">>,
+                    <<>>,
+                    1,
+                    <<"old-generation-msg">>
                 )
             )
         end
@@ -1085,6 +1596,86 @@ delete_processed_validates_sql_correctness_test_() ->
         fun() ->
             Result = msg_store_repo:delete_processed(3600),
             ?assertEqual({ok, 100}, Result)
+        end
+    ).
+
+delete_expired_c2g_ledgers_filters_live_rows_and_deletes_snapshot_first_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'with_tx', 1, fun(Tx) ->
+                try Tx(fake_conn) of
+                    Result -> Result
+                catch
+                    throw:{rollback, Reason} -> {rollback, Reason}
+                end
+            end},
+            {'query', 3, fun(fake_conn, Sql, [AgeSeconds, Limit]) ->
+                ?assertEqual(370 * 86400, AgeSeconds),
+                ?assertEqual(1000, Limit),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"msg_c2g_request_ledger">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"NOT EXISTS">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"public.msg_c2g msg">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"public.msg_store_staging">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"FOR UPDATE OF ledger SKIP LOCKED">>)),
+                {ok, [#{<<"msg_id">> => <<"old-1">>}, #{<<"msg_id">> => <<"old-2">>}]}
+            end},
+            {'execute', 3, fun(fake_conn, Sql, [[<<"old-1">>, <<"old-2">>]]) ->
+                case binary:match(Sql, <<"msg_c2g_recipient_snapshot">>) of
+                    nomatch ->
+                        ?assertEqual(snapshot_deleted, get(c2g_cleanup_order)),
+                        {ok, 2};
+                    _ ->
+                        put(c2g_cleanup_order, snapshot_deleted),
+                        {ok, 2}
+                end
+            end}
+        ],
+        fun() ->
+            erase(c2g_cleanup_order),
+            ?assertEqual({ok, 2}, msg_store_repo:delete_expired_c2g_ledgers(370 * 86400, 1000)),
+            ?assertEqual(2, meck:num_calls(elib_pg, execute, 3)),
+            erase(c2g_cleanup_order)
+        end
+    ).
+
+delete_expired_c2g_ledgers_empty_batch_skips_deletes_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'with_tx', 1, fun(Tx) -> Tx(fake_conn) end},
+            {'query', 3, fun(_, _, _) -> {ok, []} end},
+            {'execute', 3, fun(_, _, _) -> erlang:error(delete_must_not_run) end}
+        ],
+        fun() ->
+            ?assertEqual({ok, 0}, msg_store_repo:delete_expired_c2g_ledgers(1, 1)),
+            ?assertEqual(0, meck:num_calls(elib_pg, execute, 3))
+        end
+    ).
+
+delete_expired_c2g_ledgers_rolls_back_when_snapshot_delete_fails_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'with_tx', 1, fun(Tx) ->
+                try Tx(fake_conn) of
+                    Result -> Result
+                catch
+                    throw:{rollback, Reason} -> {rollback, Reason}
+                end
+            end},
+            {'query', 3, fun(_, _, _) -> {ok, [#{<<"msg_id">> => <<"old-1">>}]} end},
+            {'execute', 3, fun(_, Sql, _) ->
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"msg_c2g_recipient_snapshot">>)),
+                {error, connection_lost}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, {recipient_snapshot_cleanup_failed, connection_lost}},
+                msg_store_repo:delete_expired_c2g_ledgers(1, 1)
+            ),
+            ?assertEqual(1, meck:num_calls(elib_pg, execute, 3))
         end
     ).
 

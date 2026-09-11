@@ -70,7 +70,7 @@
 -export([start_link/0]).
 
 %% 备份与入队
--export([stage/10, stage/11, stage/12, enqueue/3, unstage/1, find_staged/1]).
+-export([stage/10, stage/11, stage/12, stage_action/13, enqueue/3, unstage/1, find_staged/2]).
 
 %% 状态查询
 -export([len/0, status/0]).
@@ -80,6 +80,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
 
+-ifdef(TEST).
+-export([cleanup_expired_c2g_ledgers/0]).
+-endif.
+
 -include("log.hrl").
 
 %% ==================== Macros & Records ====================
@@ -87,6 +91,9 @@
 -define(SERVER, ?MODULE).
 % 清理间隔：1 小时
 -define(CLEANUP_INTERVAL, 3600000).
+-define(C2G_LEDGER_AGE_SECONDS, 370 * 86400).
+-define(C2G_LEDGER_CLEANUP_BATCH_SIZE, 1000).
+-define(C2G_LEDGER_CLEANUP_MAX_BATCHES, 10).
 
 -record(state, {
     last_flush_time
@@ -247,6 +254,57 @@ stage(
         )
     ).
 
+%% @doc C2G 编辑/撤回专用 staging；原消息授权和历史收件人快照由 repo 事务内重验。
+-spec stage_action(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    1 | 3,
+    binary()
+) -> {ok, new, [integer()]} | {ok, duplicate} | {error, term()}.
+stage_action(
+    <<"c2g">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    RequiredRole,
+    OriginalMsgId
+) ->
+    handle_stage_result(
+        Type,
+        MsgId,
+        msg_store_repo:stage_action(
+            Type,
+            MsgId,
+            MsgType,
+            Action,
+            E2EE,
+            Payload,
+            FromId,
+            ToId,
+            CreatedAt,
+            ServerTs,
+            SenderDid,
+            RequiredRole,
+            OriginalMsgId
+        )
+    ).
+
 %% @private stage/10 与 stage/11 共用的落库结果归一化
 -spec handle_stage_result(binary(), binary(), term()) ->
     {ok, new} | {ok, new, [integer()]} | {ok, duplicate} | {error, term()} | error.
@@ -265,8 +323,12 @@ handle_stage_result(Type, MsgId, Result) ->
             {ok, duplicate};
         {error, forbidden} ->
             {error, forbidden};
+        {error, action_target_forbidden} ->
+            {error, action_target_forbidden};
         {error, recipient_limit_exceeded} ->
             {error, recipient_limit_exceeded};
+        {error, msg_id_conflict} ->
+            {error, msg_id_conflict};
         {error, c2g_group_id_required} ->
             {error, c2g_group_id_required};
         {error, Reason} when Type =:= <<"c2g">> ->
@@ -278,10 +340,10 @@ handle_stage_result(Type, MsgId, Result) ->
     end.
 
 %%-------------------------------------------------------------------
-%% @doc 按消息 ID 查 staging 行（秒撤兜底）
--spec find_staged(binary()) -> {ok, map()} | {error, term()}.
-find_staged(MsgId) ->
-    msg_store_repo:find_by_msg_id(MsgId).
+%% @doc 按消息类型和 ID 查仍待处理的 staging 行（秒撤兜底）。
+-spec find_staged(binary(), binary()) -> {ok, map()} | {error, term()}.
+find_staged(Type, MsgId) ->
+    msg_store_repo:find_by_msg_id(Type, MsgId).
 
 %%-------------------------------------------------------------------
 %% @doc  入队并触发 Worker 处理（异步操作）
@@ -459,11 +521,43 @@ handle_info(cleanup_staging, State) ->
         {error, Reason} ->
             _ = ?ERROR_LOG("msg_store_ds cleanup failed: ~p", [Reason])
     end,
+    case cleanup_expired_c2g_ledgers() of
+        {ok, Count2} when Count2 > 0 ->
+            _ = ?INFO_LOG("msg_store_ds cleanup: deleted ~p expired C2G ledgers", [Count2]);
+        {ok, 0} ->
+            ok;
+        {error, Reason2} ->
+            _ = ?ERROR_LOG("msg_store_ds C2G ledger cleanup failed: ~p", [Reason2])
+    end,
     % 重新启动定时器
     erlang:send_after(?CLEANUP_INTERVAL, self(), cleanup_staging),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
+
+-spec cleanup_expired_c2g_ledgers() -> {ok, non_neg_integer()} | {error, term()}.
+cleanup_expired_c2g_ledgers() ->
+    cleanup_expired_c2g_ledgers(?C2G_LEDGER_CLEANUP_MAX_BATCHES, 0).
+
+-spec cleanup_expired_c2g_ledgers(non_neg_integer(), non_neg_integer()) ->
+    {ok, non_neg_integer()} | {error, term()}.
+cleanup_expired_c2g_ledgers(0, Total) ->
+    {ok, Total};
+cleanup_expired_c2g_ledgers(BatchesLeft, Total) ->
+    case
+        msg_store_repo:delete_expired_c2g_ledgers(
+            ?C2G_LEDGER_AGE_SECONDS, ?C2G_LEDGER_CLEANUP_BATCH_SIZE
+        )
+    of
+        {ok, ?C2G_LEDGER_CLEANUP_BATCH_SIZE} ->
+            cleanup_expired_c2g_ledgers(
+                BatchesLeft - 1, Total + ?C2G_LEDGER_CLEANUP_BATCH_SIZE
+            );
+        {ok, Count} when is_integer(Count), Count >= 0 ->
+            {ok, Total + Count};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% @private
 terminate(_Reason, _State) ->

@@ -30,14 +30,19 @@ escript scripts/imboy_ctl db migrate
 
 `imboy-deploy.sh all/api` 会在新节点启动前执行 `.env.deploy` 中
 `DEPLOY_EXPAND_MIGRATIONS` 列出的可加性迁移；本版本必须包含
-`00000064_msg_store_sender_did.up.sql`，并验证 `public.msg_store.sender_did`
-已存在。随后以 `IMBOY_AUTO_MIGRATE=false` 启动新节点，避免 application boot
+`00000064_msg_store_sender_did.up.sql`、`00000108_group_attachment_anchor.up.sql`
+和 `00000109_c2g_timeline_generation_boundary.up.sql`，并机器验证对应 schema。
+随后以 `IMBOY_AUTO_MIGRATE=false` 启动新节点，避免 application boot
 抢先执行完整迁移；该值也会写入 release 的 `sys.config`，普通重启不会恢复
 自动迁移。新节点通过 `/healthz`、切换 Nginx 后，脚本停止旧节点并确认端口
 关闭（Nginx reload 不会断开既有 WebSocket），最后才显式执行完整 `db migrate`。
 
 `DEPLOY_EXPAND_MIGRATIONS` 只允许放入已经完成兼容性评审的 expand SQL，不能
 把删除列/表等 contract 迁移提前。
+
+首次启用 109 时，部署脚本会在新节点启动前停止旧节点，再迁移 legacy C2G
+staging backlog，避免旧节点继续写入缺少 GID/`conv_seq`/snapshot 的行；109 已
+存在的后续发布仍走正常蓝绿顺序。首次启用不允许搭配 `--no-migrate`。
 
 非蓝绿的首次安装或本地启动仍默认自动迁移；如需自行编排迁移时序，可显式设置
 `IMBOY_AUTO_MIGRATE=false`，并负责在节点启动后调用 `imboy_ctl db migrate`。

@@ -469,6 +469,15 @@ do_stage_and_send_c2g(
                     <<"code">> => 409
                 }},
             ok;
+        {error, msg_id_conflict} ->
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_ERROR">>,
+                    <<"error">> => <<"Message id conflicts with another message">>,
+                    <<"code">> => 409
+                }},
+            ok;
         {error, unavailable} ->
             self() !
                 {reply, #{
@@ -536,17 +545,8 @@ c2g_revoke(MsgId, CurrentUid, Data) ->
 %% 客户端撤回消息确认 for c2g
 -spec c2g_revoke_ack(binary(), integer(), Data :: map()) -> ok.
 c2g_revoke_ack(MsgId, CurrentUid, Data) ->
-    Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
-    ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId]),
-    AckPayload = Payload#{
-        <<"action">> => <<"message_revoke_ack">>,
-        <<"ack_msg_id">> => MsgId,
-        <<"ack_uid">> => CurrentUid,
-        <<"ack_at">> => elib_dt:millisecond()
-    },
-    persist_action_payload(OriginalMsgId, AckPayload),
-    ok.
+    SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
+    msg_ack_logic:client_ack(<<"c2g">>, MsgId, CurrentUid, SenderDid).
 
 %% 客户端编辑消息 for c2g
 -spec c2g_edit(binary(), integer(), map()) -> ok | {reply, map()}.
@@ -574,19 +574,8 @@ c2g_edit(MsgId, CurrentUid, Data) ->
 %% 客户端编辑消息确认 for c2g
 -spec c2g_edit_ack(binary(), integer(), Data :: map()) -> ok.
 c2g_edit_ack(MsgId, CurrentUid, Data) ->
-    Payload = maps:get(<<"payload">>, Data),
-    OriginalMsgId = maps:get(<<"original_msg_id">>, Payload),
-    NewContent = maps:get(<<"content">>, Payload),
-    EditedAt = maps:get(<<"edited_at">>, Payload),
-    ok = ?DEBUG_LOG([MsgId, CurrentUid, OriginalMsgId, NewContent, EditedAt]),
-    AckPayload = Payload#{
-        <<"action">> => <<"message_edit_ack">>,
-        <<"ack_msg_id">> => MsgId,
-        <<"ack_uid">> => CurrentUid,
-        <<"ack_at">> => elib_dt:millisecond()
-    },
-    persist_action_payload(OriginalMsgId, AckPayload),
-    ok.
+    SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
+    msg_ack_logic:client_ack(<<"c2g">>, MsgId, CurrentUid, SenderDid).
 
 %% @private E2EE 编辑：服务端只读取 edit_of 做权限/时间窗校验，正文密文原样转发。
 -spec handle_encrypted_group_edit(binary(), integer(), map(), binary()) -> {reply, map()}.
@@ -604,10 +593,10 @@ handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
             FindResult =
                 case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
                     {ok, Found} -> {ok, Found};
-                    _ -> msg_store_ds:find_staged(OriginalMsgId)
+                    _ -> msg_store_ds:find_staged(<<"c2g">>, OriginalMsgId)
                 end,
             case FindResult of
-                {ok, #{<<"from_id">> := FromId} = MsgData} ->
+                {ok, #{<<"from_id">> := FromId, <<"to_id">> := ToGID} = MsgData} ->
                     CreatedAt = maps:get(<<"created_at">>, MsgData),
                     CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
                     NowMS = elib_dt:millisecond(),
@@ -646,59 +635,18 @@ handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                                         <<"payload">> => Payload,
                                         <<"server_ts">> => NowMS
                                     },
-                                    ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
-                                    ActionCreatedAt = elib_dt:now(),
-                                    SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
-                                    case
-                                        msg_store_ds:stage(
-                                            <<"c2g">>,
-                                            MsgId,
-                                            MsgType,
-                                            <<"message_edit">>,
-                                            E2EE,
-                                            ActionMsgJson,
-                                            CurrentUid,
-                                            ToGID,
-                                            ActionCreatedAt,
-                                            ActionCreatedAt,
-                                            SenderDid,
-                                            1
-                                        )
-                                    of
-                                        {ok, new, MemberUids} ->
-                                            msg_store_ds:enqueue(<<"c2g">>, MsgId, #{
-                                                payload => ActionMsgJson,
-                                                from_id => CurrentUid,
-                                                to_id => ToGID,
-                                                to_id_list => MemberUids,
-                                                created_at => ActionCreatedAt,
-                                                server_ts => NowMS
-                                            }),
-                                            RecipientUids = [
-                                                Uid
-                                             || Uid <- MemberUids, Uid =/= CurrentUid
-                                            ],
-                                            MsLi = elib_retry_config:intervals(<<"c2g">>),
-                                            [
-                                                message_ds:send_next(
-                                                    Uid, MsgId, ActionMsgJson, MsLi
-                                                )
-                                             || Uid <- RecipientUids
-                                            ],
-                                            {reply, ActionMsg};
-                                        {ok, duplicate} ->
-                                            {reply, ActionMsg};
-                                        {error, _} ->
-                                            {reply,
-                                                message_ds:assemble_s2c(
-                                                    MsgId, <<"service_unavailable">>, To
-                                                )};
-                                        error ->
-                                            {reply,
-                                                message_ds:assemble_s2c(
-                                                    MsgId, <<"service_unavailable">>, To
-                                                )}
-                                    end;
+                                    stage_and_deliver_group_action(
+                                        MsgId,
+                                        CurrentUid,
+                                        Data,
+                                        To,
+                                        ToGID,
+                                        OriginalMsgId,
+                                        MsgType,
+                                        <<"message_edit">>,
+                                        E2EE,
+                                        ActionMsg
+                                    );
                                 {error, Reason} ->
                                     policy_violation_reply(MsgId, Reason)
                             end
@@ -772,13 +720,13 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
             FindResult =
                 case msg_c2g_ds:find_msg_by_id(OriginalMsgId) of
                     {ok, Found} -> {ok, Found};
-                    _ -> msg_store_ds:find_staged(OriginalMsgId)
+                    _ -> msg_store_ds:find_staged(<<"c2g">>, OriginalMsgId)
                 end,
             case FindResult of
                 {ok, MsgData} ->
                     %% 检查消息的发送者是否为当前用户
                     case MsgData of
-                        #{<<"from_id">> := FromId} ->
+                        #{<<"from_id">> := FromId, <<"to_id">> := ToGID} ->
                             CreatedAt = maps:get(<<"created_at">>, MsgData),
                             CreatedAtMs = elib_dt:rfc3339_to(CreatedAt, millisecond),
                             NowMS = elib_dt:millisecond(),
@@ -826,138 +774,46 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
                                     },
                                     {reply, ErrorMsg};
                                 false ->
-                                    % 未超过时间限制，继续原有逻辑
-                                    NowTs = elib_dt:now(),
-                                    % v2.0: 存储离线消息时分离 payload、msg_type 和 action
                                     MsgType = maps:get(
                                         <<"msg_type">>, ActionMsgExtra, <<"custom">>
                                     ),
                                     Action = maps:get(<<"action">>, ActionMsgExtra, <<>>),
-                                    % map() | null
                                     E2EE = maps:get(<<"e2ee">>, ActionMsgExtra, null),
                                     ActionPayloadJson = jsone:encode(ActionPayload, [native_utf8]),
-
-                                    case ActionType of
-                                        revoke ->
-                                            MemberUids = group_ds:member_uids(ToGID),
-                                            % 构建操作消息（v2.0 格式）
-                                            %% msg_type 和 action 从 ActionMsgExtra 提取到顶层
-                                            ActionMsg = maps:merge(
-                                                #{
-                                                    <<"id">> => MsgId,
-                                                    <<"type">> => <<"C2G">>,
-                                                    <<"from">> => From,
-                                                    <<"to">> => To,
-                                                    <<"payload">> => ActionPayload#{
-                                                        <<"revoked_at">> => NowMS,
-                                                        <<"edited_at">> => NowMS
-                                                    },
-                                                    <<"server_ts">> => NowMS
-                                                },
-                                                ActionMsgExtra
-                                            ),
-                                            ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
-                                            MsLi = elib_retry_config:intervals(<<"c2g">>),
-
-                                            % 取消原消息在各成员在线设备上的投递重试定时器
-                                            _ = [
-                                                websocket_logic:cancel_timer(
-                                                    Uid, DID, OriginalMsgId
-                                                )
-                                             || Uid <- MemberUids,
-                                                CurrentUid /= Uid,
-                                                DID <- user_device_logic:online_dids(Uid)
-                                            ],
-
-                                            % 发送给群组其他成员
-                                            [
-                                                message_ds:send_next(
-                                                    Uid, MsgId, ActionMsgJson, MsLi
-                                                )
-                                             || Uid <- MemberUids, CurrentUid /= Uid
-                                            ],
-
-                                            % 根据操作类型调用相应的 v2.0 函数
-                                            msg_c2g_ds:revoke_offline_msg(
-                                                ActionPayloadJson,
-                                                NowTs,
+                                    ActionMsg = maps:merge(
+                                        #{
+                                            <<"id">> => MsgId,
+                                            <<"type">> => <<"C2G">>,
+                                            <<"from">> => From,
+                                            <<"to">> => To,
+                                            <<"payload">> => ActionPayload#{
+                                                <<"revoked_at">> => NowMS,
+                                                <<"edited_at">> => NowMS
+                                            },
+                                            <<"server_ts">> => NowMS
+                                        },
+                                        ActionMsgExtra
+                                    ),
+                                    case
+                                        validate_plain_group_action(
+                                            ActionType, ToGID, MsgType, Data, ActionPayloadJson
+                                        )
+                                    of
+                                        ok ->
+                                            stage_and_deliver_group_action(
                                                 MsgId,
-                                                OriginalMsgId,
                                                 CurrentUid,
-                                                MemberUids,
+                                                Data,
+                                                To,
                                                 ToGID,
+                                                OriginalMsgId,
                                                 MsgType,
                                                 Action,
-                                                E2EE
-                                            ),
-                                            {reply, ActionMsg};
-                                        edit ->
-                                            %% 编辑与新发同为内容写入：全局策略过后必须再过
-                                            %% 群级 fail-closed 门，否则开启 E2EE 的群可用
-                                            %% "编辑"注入明文（security-reviewer C1）
-                                            EditValidate =
-                                                case
-                                                    imboy_policy:validate_message_write(
-                                                        <<"C2G">>,
-                                                        MsgType,
-                                                        <<"message_edit">>,
-                                                        maps:get(<<"e2ee">>, Data, null),
-                                                        ActionPayloadJson
-                                                    )
-                                                of
-                                                    ok ->
-                                                        group_e2ee_gate(
-                                                            ToGID,
-                                                            MsgType,
-                                                            <<"message_edit">>,
-                                                            maps:get(<<"e2ee">>, Data, null),
-                                                            ActionPayloadJson
-                                                        );
-                                                    {error, _} = EditPolicyErr ->
-                                                        EditPolicyErr
-                                                end,
-                                            case EditValidate of
-                                                ok ->
-                                                    MemberUids = group_ds:member_uids(ToGID),
-                                                    ActionMsg = maps:merge(
-                                                        #{
-                                                            <<"id">> => MsgId,
-                                                            <<"type">> => <<"C2G">>,
-                                                            <<"from">> => From,
-                                                            <<"to">> => To,
-                                                            <<"payload">> => ActionPayload#{
-                                                                <<"revoked_at">> => NowMS,
-                                                                <<"edited_at">> => NowMS
-                                                            },
-                                                            <<"server_ts">> => NowMS
-                                                        },
-                                                        ActionMsgExtra
-                                                    ),
-                                                    ActionMsgJson = jsone:encode(ActionMsg, [
-                                                        native_utf8
-                                                    ]),
-                                                    MsLi = elib_retry_config:intervals(<<"c2g">>),
-
-                                                    % 发送给群组其他成员
-                                                    [
-                                                        message_ds:send_next(
-                                                            Uid, MsgId, ActionMsgJson, MsLi
-                                                        )
-                                                     || Uid <- MemberUids, CurrentUid /= Uid
-                                                    ],
-
-                                                    msg_c2g_ds:edit_offline_msg(
-                                                        ActionPayloadJson,
-                                                        NowTs,
-                                                        MsgId,
-                                                        CurrentUid,
-                                                        MemberUids,
-                                                        ToGID
-                                                    ),
-                                                    {reply, ActionMsg};
-                                                {error, Reason} ->
-                                                    policy_violation_reply(MsgId, Reason)
-                                            end
+                                                E2EE,
+                                                ActionMsg
+                                            );
+                                        {error, Reason} ->
+                                            policy_violation_reply(MsgId, Reason)
                                     end
                             end;
                         #{<<"from_id">> := _OtherId} ->
@@ -977,6 +833,91 @@ handle_group_action(MsgId, CurrentUid, Data, ActionPayload, ActionMsgExtra, Acti
             ErrorMsg = message_ds:assemble_s2c(MsgId, <<"not_group_member">>, To),
             {reply, ErrorMsg}
     end.
+
+-spec validate_plain_group_action(atom(), integer(), binary(), map(), binary()) ->
+    ok | {error, binary()}.
+validate_plain_group_action(revoke, _Gid, _MsgType, _Data, _Payload) ->
+    ok;
+validate_plain_group_action(edit, Gid, MsgType, Data, Payload) ->
+    E2EE = maps:get(<<"e2ee">>, Data, null),
+    case
+        imboy_policy:validate_message_write(<<"C2G">>, MsgType, <<"message_edit">>, E2EE, Payload)
+    of
+        ok -> group_e2ee_gate(Gid, MsgType, <<"message_edit">>, E2EE, Payload);
+        {error, _} = Error -> Error
+    end.
+
+-spec stage_and_deliver_group_action(
+    binary(), integer(), map(), binary(), integer(), binary(), binary(), binary(), term(), map()
+) -> {reply, map()}.
+stage_and_deliver_group_action(
+    MsgId, CurrentUid, Data, To, ToGID, OriginalMsgId, MsgType, Action, E2EE, ActionMsg
+) ->
+    TrustedActionMsg = message_ds:with_sender_device(ActionMsg, Data),
+    ActionMsgJson = jsone:encode(TrustedActionMsg, [native_utf8]),
+    ActionCreatedAt = elib_dt:now(),
+    SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
+    case
+        msg_store_ds:stage_action(
+            <<"c2g">>,
+            MsgId,
+            MsgType,
+            Action,
+            E2EE,
+            ActionMsgJson,
+            CurrentUid,
+            ToGID,
+            ActionCreatedAt,
+            ActionCreatedAt,
+            SenderDid,
+            1,
+            OriginalMsgId
+        )
+    of
+        {ok, new, MemberUids} ->
+            msg_store_ds:enqueue(<<"c2g">>, MsgId, #{
+                payload => ActionMsgJson,
+                from_id => CurrentUid,
+                to_id => ToGID,
+                to_id_list => MemberUids,
+                created_at => ActionCreatedAt,
+                server_ts => maps:get(<<"server_ts">>, TrustedActionMsg)
+            }),
+            maybe_cancel_revoke_timers(Action, OriginalMsgId, CurrentUid, MemberUids),
+            MsLi = elib_retry_config:intervals(<<"c2g">>),
+            [
+                message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi)
+             || Uid <- MemberUids, Uid =/= CurrentUid
+            ],
+            {reply, TrustedActionMsg};
+        {ok, duplicate} ->
+            {reply, #{
+                <<"id">> => MsgId,
+                <<"type">> => <<"C2G_SERVER_ACK">>,
+                <<"in_reply_to">> => MsgId,
+                <<"server_ts">> => maps:get(<<"server_ts">>, TrustedActionMsg)
+            }};
+        {error, msg_id_conflict} ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"invalid_msgid">>, To)};
+        {error, action_target_forbidden} ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
+        {error, _} ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"service_unavailable">>, To)};
+        error ->
+            {reply, message_ds:assemble_s2c(MsgId, <<"service_unavailable">>, To)}
+    end.
+
+-spec maybe_cancel_revoke_timers(binary(), binary(), integer(), [integer()]) -> ok.
+maybe_cancel_revoke_timers(<<"message_revoke_ack">>, OriginalMsgId, CurrentUid, MemberUids) ->
+    _ = [
+        websocket_logic:cancel_timer(Uid, DID, OriginalMsgId)
+     || Uid <- MemberUids,
+        Uid =/= CurrentUid,
+        DID <- user_device_logic:online_dids(Uid)
+    ],
+    ok;
+maybe_cancel_revoke_timers(_, _, _, _) ->
+    ok.
 
 %% @doc 获取群消息已读统计
 %% 检查用户是否有权限访问该群消息，并返回已读和总人数
@@ -1091,18 +1032,3 @@ extract_snippet_plain(OriginalMsg) ->
 -spec set_c2g_expire_at(binary(), binary()) -> ok.
 set_c2g_expire_at(MsgId, ExpireAt) ->
     msg_c2g_ds:set_expire_at(MsgId, ExpireAt).
-
-%% @doc 持久化 action ack payload 到原消息记录
-%% 原消息若已被客户端 ACK 清理，更新影响行数为 0，不视为错误。
--spec persist_action_payload(binary(), map()) -> ok.
-persist_action_payload(<<>>, _Payload) ->
-    ok;
-persist_action_payload(OriginalMsgId, Payload) when is_binary(OriginalMsgId), is_map(Payload) ->
-    PayloadJson = imboy_message_helper:encode_json(Payload),
-    case msg_c2g_ds:update_payload_by_msg_id(OriginalMsgId, PayloadJson) of
-        {ok, _} ->
-            ok;
-        {error, Reason} ->
-            _ = ?WARN_LOG({persist_action_payload_failed, OriginalMsgId, Reason}),
-            ok
-    end.

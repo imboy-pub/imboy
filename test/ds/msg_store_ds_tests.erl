@@ -143,6 +143,64 @@ c2g_stage_forwards_required_role_and_snapshot_test_() ->
         end
     ).
 
+c2g_action_stage_forwards_original_message_id_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'stage_action', 13, fun(
+                _, _, _, _, _, _, 50, 100, _, _, _, 1, <<"original-msg">>
+            ) ->
+                {ok, 12346, [50, 60]}
+            end}
+        ],
+        fun() ->
+            Result = msg_store_ds:stage_action(
+                <<"c2g">>,
+                <<"action-msg">>,
+                <<"custom">>,
+                <<"message_revoke_ack">>,
+                null,
+                <<"{}">>,
+                50,
+                100,
+                <<"2026-09-11T00:00:00Z">>,
+                <<"2026-09-11T00:00:00Z">>,
+                <<"did-50">>,
+                1,
+                <<"original-msg">>
+            ),
+            ?assertEqual({ok, new, [50, 60]}, Result)
+        end
+    ).
+
+c2g_action_stage_preserves_forbidden_result_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'stage_action', 13, fun(_, _, _, _, _, _, _, _, _, _, _, _, _) ->
+                {error, action_target_forbidden}
+            end}
+        ],
+        fun() ->
+            Result = msg_store_ds:stage_action(
+                <<"c2g">>,
+                <<"action-msg">>,
+                <<"text">>,
+                <<"message_edit_ack">>,
+                null,
+                <<"{}">>,
+                50,
+                100,
+                <<"2026-09-11T00:00:00Z">>,
+                <<"2026-09-11T00:00:00Z">>,
+                <<>>,
+                1,
+                <<"original-msg">>
+            ),
+            ?assertEqual({error, action_target_forbidden}, Result)
+        end
+    ).
+
 c2g_stage_database_error_is_retryable_test_() ->
     ?WITH_MECK(
         msg_store_repo,
@@ -167,6 +225,57 @@ c2g_stage_database_error_is_retryable_test_() ->
                 1
             ),
             ?assertEqual({error, unavailable}, Result)
+        end
+    ).
+
+c2g_ledger_cleanup_drains_full_batches_then_stops_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'delete_expired_c2g_ledgers', 2, fun(Days370, 1000) ->
+                ?assertEqual(370 * 86400, Days370),
+                Counts = get(c2g_cleanup_counts),
+                [Count | Rest] = Counts,
+                put(c2g_cleanup_counts, Rest),
+                {ok, Count}
+            end}
+        ],
+        fun() ->
+            put(c2g_cleanup_counts, [1000, 1000, 250]),
+            ?assertEqual({ok, 2250}, msg_store_ds:cleanup_expired_c2g_ledgers()),
+            ?assertEqual(3, meck:num_calls(msg_store_repo, delete_expired_c2g_ledgers, 2)),
+            erase(c2g_cleanup_counts)
+        end
+    ).
+
+c2g_ledger_cleanup_honors_batch_cap_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'delete_expired_c2g_ledgers', 2, fun(_, 1000) -> {ok, 1000} end}
+        ],
+        fun() ->
+            ?assertEqual({ok, 10000}, msg_store_ds:cleanup_expired_c2g_ledgers()),
+            ?assertEqual(10, meck:num_calls(msg_store_repo, delete_expired_c2g_ledgers, 2))
+        end
+    ).
+
+c2g_ledger_cleanup_stops_on_error_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'delete_expired_c2g_ledgers', 2, fun(_, 1000) ->
+                case meck:num_calls(msg_store_repo, delete_expired_c2g_ledgers, 2) of
+                    0 -> {ok, 1000};
+                    _ -> {error, connection_lost}
+                end
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, connection_lost}, msg_store_ds:cleanup_expired_c2g_ledgers()
+            ),
+            ?assertEqual(2, meck:num_calls(msg_store_repo, delete_expired_c2g_ledgers, 2))
         end
     ).
 

@@ -186,11 +186,15 @@ write_msg_main_insert_is_idempotent_test_() ->
                 <<>>
             ),
             Sqls = get(c2g_captured_sqls),
-            %% 主表 msg_c2g 的 INSERT 必须带 msg_id 幂等子句；
+            %% 主表冲突只允许补齐服务端认证的 sender_did；
             %% timeline 用的是 (to_uid, msg_id, created_at)，不会误匹配此断言
             HasMainIdempotent = lists:any(
                 fun(S) ->
-                    binary:match(S, <<"ON CONFLICT (msg_id, created_at) DO NOTHING">>) =/= nomatch
+                    binary:match(
+                        S,
+                        <<"ON CONFLICT (msg_id, created_at) DO UPDATE SET sender_did">>
+                    ) =/= nomatch andalso
+                        binary:match(S, <<"EXCLUDED.sender_did IS NOT NULL">>) =/= nomatch
                 end,
                 Sqls
             ),
@@ -243,6 +247,56 @@ write_msg_timeline_carries_authoritative_conv_seq_test_() ->
                     77
                 )
             )
+        end
+    ).
+
+write_accepted_msg_uses_committed_snapshot_and_persists_sender_did_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(_, _) ->
+                    erlang:error(accepted_write_must_not_recheck_archive_state)
+                end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'query', 3, fun(_Conn, Sql, [<<"accepted-c2g">>, 1, 9, 77, [1, 2]]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"recipient_uids = $5">>)),
+                    {ok, [#{<<"?column?">> => 1}]}
+                end},
+                {'execute', 3, fun(_Conn, Sql0, Params) ->
+                    Sql = iolist_to_binary(Sql0),
+                    case binary:match(Sql, <<"INSERT INTO public.msg_c2g ">>) of
+                        nomatch ->
+                            ok;
+                        _ ->
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"sender_did">>)),
+                            ?assert(lists:member(<<"did-1">>, Params))
+                    end,
+                    {ok, []}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                msg_c2g_repo:write_accepted_msg(
+                    <<"2026-09-11T00:00:00Z">>,
+                    <<"accepted-c2g">>,
+                    <<"{}">>,
+                    1,
+                    [1, 2],
+                    9,
+                    <<"text">>,
+                    null,
+                    null,
+                    77,
+                    <<"did-1">>
+                )
+            ),
+            ?assertEqual(0, meck:num_calls(workspace_guard, ensure_writable_tx, 2))
         end
     ).
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run migration 108 and group-attachment ACL tests against a marker scratch DB.
+# Run C2G boundary, attachment/action/member-key ACL, and claim/archive tests against a marker scratch DB.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -44,8 +44,8 @@ for extension in pg_jieba postgis postgis_raster timescaledb pgcrypto uuid-ossp 
       >/dev/null 2>&1 || true
 done
 
-make -C "$ROOT" app >/dev/null
-PGDATABASE="$DB" IMBOY_DIR="$ROOT" "$ROOT/scripts/drill_migrate.escript" up >/dev/null
+make -C "$ROOT" app
+PGDATABASE="$DB" IMBOY_DIR="$ROOT" "$ROOT/scripts/drill_migrate.escript" up
 
 IMBOY_GA_TEST_DB="$DB" \
 IMBOY_GA_TEST_HOST="$PGHOST" \
@@ -54,4 +54,16 @@ IMBOY_GA_TEST_USER="$PGUSER" \
 IMBOY_GA_TEST_PASSWORD="$PGPASSWORD" \
 make -C "$ROOT" eunit t=group_attachment_acl_integration_tests
 
-echo "group attachment migration/ACL PostgreSQL test: PASS"
+RUNTIME_SECRET="$(printf 'e2ee-claim:%s' "$DB" | shasum -a 256 | awk '{print $1}')"
+for suite in group_history_boundary_tests e2ee_c2g_message_pipeline_integration_tests; do
+  IMBOYENV=local HTTP_PORT=0 \
+  IMBOY_PG_HOST="$PGHOST" IMBOY_PG_PORT="$PGPORT" \
+  IMBOY_PG_USERNAME="$PGUSER" IMBOY_PG_PASSWORD="$PGPASSWORD" \
+  IMBOY_PG_DATABASE="$DB" IMBOY_AUTO_MIGRATE=false \
+  IMBOY_ADM_COOKIE_SECRET="adm:$RUNTIME_SECRET" \
+  IMBOY_POSTGRE_AES_KEY="aes:$RUNTIME_SECRET" \
+  IMBOY_JWT_KEY="jwt:$RUNTIME_SECRET" \
+  make -C "$ROOT" eunit-local "t=$suite" EUNIT_CONFIG=config/sys.runtime
+done
+
+echo "group boundary/attachment/action/member-key/worker-archive PostgreSQL test: PASS"

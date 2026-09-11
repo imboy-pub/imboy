@@ -21,7 +21,7 @@
 %%%     非属主返回 permission_denied。撤回时限常量 REVOKE_TIMEOUT_MS=120000。
 %%%   - msg_ack_logic:ack/3（已删）-> client_ack/4(Type, MsgId, CurrentUid, DID)。
 %%%   - msg_c2c_repo:find_by_msg_id/1（已删）-> find_msg_by_id/1（主表）；
-%%%     msg_store_ds:find_staged/1 查同步落库的 staging 行。
+%%%     msg_store_ds:find_staged/2 查同步落库的 staging 行。
 %%%   - msg_c2c 表无 is_recall 列；撤回是插入一条 message_revoke_ack 通知行。
 %%%   - 用固定高位测试 UID（88880001..88880009）+ 直接 SQL 建关系，避开 signup
 %%%     的 License 配额门与密码哈希开销；测试隔离靠范围幂等前置 DELETE。
@@ -179,7 +179,7 @@ c2c_message_saved_to_db(_Config) ->
     ),
 
     %% c2c 同步写入 msg_store_staging（异步再移入 msg_c2c），故用 find_staged 确定性校验
-    Staged = msg_store_ds:find_staged(MsgId),
+    Staged = msg_store_ds:find_staged(<<"c2c">>, MsgId),
     ?assertMatch({ok, #{<<"msg_id">> := MsgId}}, Staged),
     {comment, "单聊消息保存到 staging 成功"}.
 
@@ -195,7 +195,7 @@ c2c_message_delivered_to_recipient(_Config) ->
         MsgId, ?U_FROM, integer_to_binary(?U_TO), jsone:encode(Payload)
     ),
 
-    {ok, Msg} = msg_store_ds:find_staged(MsgId),
+    {ok, Msg} = msg_store_ds:find_staged(<<"c2c">>, MsgId),
     ?assertEqual(?U_FROM, maps:get(<<"from_id">>, Msg)),
     ?assertEqual(?U_TO, maps:get(<<"to_id">>, Msg)),
     {comment, "单聊消息进入投递管道成功"}.
@@ -217,7 +217,7 @@ c2c_message_with_attachment_succeeds(_Config) ->
     ),
 
     ?assertEqual(ok, Result),
-    ?assertMatch({ok, _}, msg_store_ds:find_staged(MsgId)),
+    ?assertMatch({ok, _}, msg_store_ds:find_staged(<<"c2c">>, MsgId)),
     {comment, "发送带附件的单聊消息成功"}.
 
 %% ===================================================================
@@ -235,7 +235,7 @@ send_c2g_message_successfully(_Config) ->
 
     %% 群成员发送成功返回 ok
     ?assertEqual(ok, Result),
-    ?assertMatch({ok, #{<<"msg_id">> := MsgId}}, msg_store_ds:find_staged(MsgId)),
+    ?assertMatch({ok, #{<<"msg_id">> := MsgId}}, msg_store_ds:find_staged(<<"c2g">>, MsgId)),
     {comment, "发送群聊消息成功"}.
 
 c2g_message_delivered_to_all_members(_Config) ->
@@ -251,7 +251,7 @@ c2g_message_delivered_to_all_members(_Config) ->
     ok = msg_c2g_logic:c2g(MsgId, ?U_FROM, c2g_data(Gid, <<"大家好"/utf8>>)),
 
     %% 群聊消息同步落 staging（type=c2g），异步扇出到各成员
-    ?assertMatch({ok, #{<<"msg_id">> := MsgId}}, msg_store_ds:find_staged(MsgId)),
+    ?assertMatch({ok, #{<<"msg_id">> := MsgId}}, msg_store_ds:find_staged(<<"c2g">>, MsgId)),
     {comment, "群聊消息投递给所有成员成功"}.
 
 non_member_cannot_send_c2g_message_fails(_Config) ->

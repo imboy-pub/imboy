@@ -465,7 +465,7 @@ c2c_revoke(MsgId, CurrentUid, Data) ->
             FindResult =
                 case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
                     {ok, Found} -> {ok, Found};
-                    _ -> msg_store_ds:find_staged(OriginalMsgId)
+                    _ -> msg_store_ds:find_staged(<<"c2c">>, OriginalMsgId)
                 end,
             case FindResult of
                 {ok, MsgData} ->
@@ -791,7 +791,7 @@ c2c_edit_window_check(OriginalMsgId, CurrentUid) ->
     FindResult =
         case msg_c2c_ds:find_msg_by_id(OriginalMsgId) of
             {ok, Found} -> {ok, Found};
-            _ -> msg_store_ds:find_staged(OriginalMsgId)
+            _ -> msg_store_ds:find_staged(<<"c2c">>, OriginalMsgId)
         end,
     case FindResult of
         {ok, #{<<"from_id">> := CurrentUid} = MsgData} ->

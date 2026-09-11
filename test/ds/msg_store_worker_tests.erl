@@ -275,7 +275,7 @@ c2g_write_requires_authoritative_conv_seq_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2g_repo, [
-                {'write_msg', 10, fun(_, _, _, _, _, _, _, _, _, _) ->
+                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
                     erlang:error(should_not_write_without_conv_seq)
                 end}
             ]}
@@ -285,7 +285,7 @@ c2g_write_requires_authoritative_conv_seq_test_() ->
                 {error, c2g_conv_seq_missing},
                 msg_store_worker:do_write(c2g, c2g_row(null))
             ),
-            ?assertEqual(0, meck:num_calls(msg_c2g_repo, write_msg, 10))
+            ?assertEqual(0, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11))
         end
     ).
 
@@ -293,12 +293,16 @@ c2g_write_propagates_authoritative_conv_seq_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2g_repo, [
-                {'write_msg', 10, fun(_, _, _, _, _, 9, _, _, null, 77) -> ok end}
+                {'write_accepted_msg', 11, fun(
+                    _, _, _, _, _, 9, _, _, null, 77, <<"did-1">>
+                ) ->
+                    ok
+                end}
             ]}
         ],
         fun() ->
             ?assertEqual(ok, msg_store_worker:do_write(c2g, c2g_row(77))),
-            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_msg, 10))
+            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_accepted_msg, 11))
         end
     ).
 
@@ -311,6 +315,7 @@ c2g_row(ConvSeq) ->
         <<"msg_id">> => <<"timeline-seq-test">>,
         <<"msg_type">> => <<"text">>,
         <<"e2ee">> => null,
+        <<"sender_did">> => <<"did-1">>,
         <<"conv_seq">> => ConvSeq
     }.
 
@@ -370,16 +375,7 @@ c2s_message_structure_test_() ->
         ?assert(is_integer(maps:get(status, element(3, Item))))
     end).
 
-%% ===================================================================
-%% C2G 写入守卫 + 结构性失败终态（2026-09-12）
-%%
-%% 背景：staging 的 to_id_list 列可空（epgsql 对 NULL 返回原子 null），旧代码
-%% `maps:get(<<"to_id_list">>, Row, [])` 只兜「键缺失」→ 列表推导抛
-%% {bad_generator,null}；而 process_row 对所有错误一律退避重试 → 僵尸行以
-%% 60s 间隔重试 1657 次仍不收敛（真库实证）。本组用例锁住两条线：
-%% ① 结构性缺失必须落终态、② DB 抖动必须继续重试（不许因一次故障丢消息）。
-%% ===================================================================
-
+%% C2G staging 结构性失败必须停止永久重试，短暂 DB 错误仍需重试。
 c2g_guard_row(Overrides) ->
     maps:merge(
         #{
@@ -389,6 +385,7 @@ c2g_guard_row(Overrides) ->
             <<"from_id">> => 7,
             <<"to_id_list">> => [9, 10],
             <<"msg_type">> => <<"text">>,
+            <<"sender_did">> => <<"did-guard">>,
             <<"conv_seq">> => 1,
             <<"retry_count">> => 0
         },
@@ -412,8 +409,6 @@ do_write_c2g_empty_recipients_is_no_recipients_test_() ->
     end).
 
 do_write_c2g_missing_gid_is_gid_missing_test_() ->
-    %% 旧代码此处 maps:get/2 直接 badkey 抛异常（worker 崩→重启→再崩），
-    %% 归一成带类型的终态理由
     ?TEST_SIMPLE(fun() ->
         ?assertEqual(
             {error, c2g_gid_missing},
@@ -429,7 +424,6 @@ do_write_c2g_missing_conv_seq_is_conv_seq_missing_test_() ->
         )
     end).
 
-%% 分类线：只有「结构性缺失」才终态；DB 抖动/锁冲突一律继续重试
 terminal_write_reason_classification_test() ->
     Terminal = [
         no_recipients,
@@ -439,7 +433,6 @@ terminal_write_reason_classification_test() ->
     ],
     [?assert(msg_store_worker:terminal_write_reason(R)) || R <- Terminal],
     Retryable = [
-        {db_exception, error, {badmatch, x}},
         {db_exception, error, timeout},
         closed,
         {rollback, forbidden},
@@ -466,7 +459,7 @@ process_row_db_failure_retries_not_terminal_test_() ->
     ?WITH_MECKS(
         [
             {msg_c2g_repo, [
-                {'write_msg', 10, fun(_, _, _, _, _, _, _, _, _, _) ->
+                {'write_accepted_msg', 11, fun(_, _, _, _, _, _, _, _, _, _, _) ->
                     {error, {db_exception, error, timeout}}
                 end}
             ]},

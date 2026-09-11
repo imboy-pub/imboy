@@ -2,7 +2,7 @@
 # 独立 migrate 入口离线测试：验证 Gate 发现的真实节点名会传给迁移 RPC。
 set -uo pipefail
 
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 
 TMP_ROOT="$(mktemp -d /tmp/imboy_migrate_gate.XXXXXX)"
 MOCK_BIN="$TMP_ROOT/bin"
@@ -34,7 +34,7 @@ write_env() {
   'DB_CONTAINER=postgres' \
   'DB_NAME=imboy' \
   'DB_USER=postgres' \
-  'DEPLOY_EXPAND_MIGRATIONS=00000064_msg_store_sender_did.up.sql' \
+  'DEPLOY_EXPAND_MIGRATIONS="00000064_msg_store_sender_did.up.sql 00000108_group_attachment_anchor.up.sql 00000109_c2g_timeline_generation_boundary.up.sql"' \
   >"$TMP_ROOT/.env.deploy"
   printf 'SERVER_USER=%q\nNGINX_CONF=%q\nADMIN_REMOTE_DIR=%q\n' \
     "$server_user" "$nginx_conf" "$admin_remote" >>"$TMP_ROOT/.env.deploy"
