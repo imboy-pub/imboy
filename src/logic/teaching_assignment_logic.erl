@@ -271,6 +271,9 @@ assignment_summary(R) ->
         <<"assignment_id">> => tsid(maps:get(<<"assignment_id">>, R)),
         %% v3 P0-1 修复：task_id 对外 = group_task.id（task_gid）十进制字符串
         <<"task_id">> => tsid(maps:get(<<"task_gid">>, R, 0)),
+        %% Step 17 联调补齐：行内自含归属学员与截止时间（家长端 DTO 依赖）
+        <<"learner_id">> => nullable_tsid(maps:get(<<"learner_id">>, R, null)),
+        <<"deadline">> => nullable_bin(maps:get(<<"deadline">>, R, null)),
         <<"group_id">> => tsid(maps:get(<<"group_id">>, R)),
         <<"group_name">> => maps:get(<<"group_title">>, R, <<>>),
         <<"title">> => maps:get(<<"title">>, R, <<>>),
@@ -320,6 +323,11 @@ tsid(_) -> <<"">>.
 -spec nullable_tsid(integer() | null | undefined) -> binary() | null.
 nullable_tsid(Id) when is_integer(Id) -> integer_to_binary(Id);
 nullable_tsid(_) -> null.
+
+%% 截止时间：elib_pg 返回 ISO8601 binary 时透传；其余（null/未设）归 null。
+-spec nullable_bin(term()) -> binary() | null.
+nullable_bin(V) when is_binary(V) -> V;
+nullable_bin(_) -> null.
 
 -spec tsid_to_int(binary()) -> {ok, integer()} | {error, badarg}.
 tsid_to_int(Bin) when is_binary(Bin) ->

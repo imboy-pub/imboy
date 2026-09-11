@@ -312,7 +312,8 @@ assignments_for_learner(LearnerId, Page, Size) ->
     Offset = (Page - 1) * Size,
     Sql =
         <<
-            "SELECT a.id AS assignment_id, a.task_id, a.status AS assignment_status, "
+            "SELECT a.id AS assignment_id, a.task_id, a.learner_id AS learner_id, "
+            "a.status AS assignment_status, "
             "gt.id AS task_gid, gt.title, gt.deadline, gt.status AS task_status, "
             "g.id AS group_id, g.title AS group_title, "
             "s.id AS latest_submission_id, s.attempt_no AS latest_attempt_no, "
