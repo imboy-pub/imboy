@@ -8,11 +8,7 @@
 % 不解析/不保存响应正文。
 %%%
 
--export([post/7]).
-
--ifdef(TEST).
--export([ssl_opts/1]).
--endif.
+-export([post/7, ssl_opts/1]).
 
 -define(CONNECT_TIMEOUT_MS, 8000).
 -define(RESP_TIMEOUT_MS, 8000).

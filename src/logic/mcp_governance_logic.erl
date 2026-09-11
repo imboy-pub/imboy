@@ -135,18 +135,26 @@ authenticate_secret(Secret) when is_binary(Secret), byte_size(Secret) >= 32 ->
 authenticate_secret(_Secret) ->
     {error, credential_invalid}.
 
-%% expires_at 形态：null/undefined=永不过期；timestamptz 文本由 epgsql 转
-%% calendar 元组——统一按可比较秒数判定。
+%% expires_at 形态：null/undefined=永不过期；本仓 timestamptz codec 返回
+%% RFC3339 binary。保留 calendar 元组兼容；非法非空值按过期处理，避免放行。
 is_expired(null, _Now) ->
     false;
 is_expired(undefined, _Now) ->
     false;
+is_expired(ExpiresAt, Now) when is_binary(ExpiresAt) ->
+    case elib_dt:rfc3339_to(ExpiresAt, second) of
+        ExpiresSec when is_integer(ExpiresSec) -> ExpiresSec =< Now;
+        _ -> true
+    end;
 is_expired(ExpiresAt, Now) when is_tuple(ExpiresAt) ->
-    ExpiresSec = calendar:datetime_to_gregorian_seconds(ExpiresAt),
-    Unix = ExpiresSec - 62167219200,
-    Unix =< Now;
+    try
+        ExpiresSec = calendar:datetime_to_gregorian_seconds(ExpiresAt),
+        ExpiresSec - 62167219200 =< Now
+    catch
+        _:_ -> true
+    end;
 is_expired(_, _Now) ->
-    false.
+    true.
 
 %% @doc 按 client 的授权判定（credential 认证成功后的 tools/call 闸门）。
 %% 审计记 client/correlation，不记参数正文。

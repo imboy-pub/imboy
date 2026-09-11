@@ -15,7 +15,7 @@
 
 -export([tablename/0, event_tablename/0, decision_tablename/0]).
 -export([with_tx/1]).
--export([ensure_task/1, ensure_task_tx/2, get_task/1, get_task_tx/2]).
+-export([ensure_task/1, ensure_task_with_audit/1, ensure_task_tx/2, get_task/1, get_task_tx/2]).
 -export([cas_status/2, cas_status_tx/3]).
 -export([insert_event_tx/2, get_decision/1, insert_decision_tx/2]).
 -export([set_result_tx/3]).
@@ -41,10 +41,29 @@ with_tx(Fun) ->
 -spec ensure_task(map()) -> {ok, map(), boolean()} | {error, term()}.
 %% 注意：elib_pg:with_tx 直接返回 fun 的值（R），回滚时返回 {rollback, Reason}。
 ensure_task(Data) ->
-    case elib_pg:with_tx(fun(Conn) -> ensure_task_tx(Conn, Data) end) of
+    ensure_task_with_audit(Data).
+
+%% @doc Create a task at a trusted entrypoint and persist request/task audit atomically.
+-spec ensure_task_with_audit(map()) -> {ok, map(), boolean()} | {error, term()}.
+ensure_task_with_audit(Data) ->
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case ensure_task_tx(Conn, Data) of
+                {ok, Row, true} ->
+                    ok = agent_hub_audit_repo:record_task_start_tx(
+                        Conn,
+                        maps:get(<<"correlation_id">>, Row),
+                        maps:get(<<"id">>, Row)
+                    ),
+                    {ok, Row, true};
+                Other ->
+                    Other
+            end
+        end)
+    of
         {rollback, Reason} -> {error, Reason};
         {ok, _Row, _Created} = Ok -> Ok;
-        {error, _} = E -> E
+        {error, _} = Error -> Error
     end.
 
 -spec ensure_task_tx(any(), map()) -> {ok, map(), boolean()} | {error, term()}.

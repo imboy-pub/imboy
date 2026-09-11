@@ -301,8 +301,8 @@ run_tool_worker(Name, Args, Ctx, Handler, ReplyTo, RequestId) ->
         %% Optional input validation against the registered input_schema.
         case validate_tool_input(Args, Handler) of
             ok ->
-                %% imboy 集成：可选授权闸门（enforce 默认关闭）。经 function_exported
-                %% 守卫保持 vendored barrel_mcp 可独立运行（无 gate 模块时直接放行）。
+                %% imboy 集成：可选授权闸门（enforce 默认关闭）。模块确实不存在时
+                %% 保持 vendored barrel_mcp 可独立运行；存在时首个请求也必须加载闸门。
                 case maybe_authz(Name, Ctx) of
                     ok ->
                         invoke_tool_handler(Args, Ctx, Handler, ReplyTo, RequestId);
@@ -322,11 +322,11 @@ run_tool_worker(Name, Args, Ctx, Handler, ReplyTo, RequestId) ->
             ReplyTo ! {tool_failed, RequestId, internal_error}
     end.
 
-%% imboy integration hook: optional MCP authz gate. Optional via
-%% function_exported so vendored barrel_mcp still runs standalone.
+%% imboy integration hook: optional MCP authz gate. A missing module keeps
+%% vendored barrel_mcp standalone; a present but unloaded module must not bypass authz.
 maybe_authz(Name, Ctx) ->
-    case erlang:function_exported(mcp_authz_gate, check, 2) of
-        true ->
+    case code:ensure_loaded(mcp_authz_gate) of
+        {module, mcp_authz_gate} ->
             try mcp_authz_gate:check(Name, Ctx) of
                 Result -> Result
             catch
@@ -338,24 +338,37 @@ maybe_authz(Name, Ctx) ->
                         "MCP authz gate crashed: ~p:~p (tool=~ts, stack=~p)",
                         [Class, Reason, Name, Stack]
                     ),
-                    case
-                        erlang:function_exported(mcp_governance_logic, enforce, 0) andalso
-                            mcp_governance_logic:enforce()
-                    of
-                        true ->
-                            {deny, [
-                                #{
-                                    <<"type">> => <<"text">>,
-                                    <<"text">> => <<"治理服务不可用"/utf8>>
-                                }
-                            ]};
-                        _ ->
-                            ok
-                    end
+                    authz_failure()
             end;
-        false ->
-            ok
+        {error, nofile} ->
+            ok;
+        {error, Reason} ->
+            logger:error("MCP authz gate failed to load: ~p (tool=~ts)", [Reason, Name]),
+            authz_failure()
     end.
+
+authz_failure() ->
+    case code:ensure_loaded(mcp_governance_logic) of
+        {module, mcp_governance_logic} ->
+            try mcp_governance_logic:enforce() of
+                true -> deny_governance_unavailable();
+                false -> ok
+            catch
+                _:_ -> deny_governance_unavailable()
+            end;
+        {error, nofile} ->
+            ok;
+        {error, _} ->
+            deny_governance_unavailable()
+    end.
+
+deny_governance_unavailable() ->
+    {deny, [
+        #{
+            <<"type">> => <<"text">>,
+            <<"text">> => <<"治理服务不可用"/utf8>>
+        }
+    ]}.
 
 validate_tool_input(Args, Handler) ->
     case maps:get(validate_input, Handler, false) of

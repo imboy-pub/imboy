@@ -96,6 +96,11 @@ def rpc_result(status, body, mid):
     return body.get("result")
 
 
+def tool_error_result(status, body):
+    result = body.get("result") if status == 200 and isinstance(body, dict) else None
+    return isinstance(result, dict) and result.get("isError") is True
+
+
 def guard(base_url):
     """非 loopback 目标必须 EXT01_AUTHORIZED=yes（外部动作显式授权门）。"""
     host = urllib.parse.urlparse(base_url).hostname or ""
@@ -207,8 +212,16 @@ def self_test():
     print(f"[ext01-a02] SELF-TEST against loopback stub :{port}")
     try:
         import argparse as _ap
-        flow(_ap.Namespace(out=""), os.environ["IMBOY_BASE_URL"], "1", "stub-signature",
-             1, STUB_TOOL, 0)
+        flow(
+            _ap.Namespace(out=""),
+            os.environ["IMBOY_BASE_URL"],
+            "1",
+            "stub-signature",
+            1,
+            STUB_TOOL,
+            0,
+            0,
+        )
     finally:
         srv.shutdown()
 
@@ -228,6 +241,7 @@ def main():
     else:
         adm_sig = os.environ.get("ADM_SIG", "")
     owner_uid = int(os.environ.get("EXT01_OWNER_UID", "1"))
+    other_owner_uid = int(os.environ.get("EXT01_OTHER_OWNER_UID", "0"))
     tool = os.environ.get("EXT01_TOOL", "create_agent_task")
     group_id = int(os.environ.get("EXT01_GROUP_ID", "0"))
 
@@ -238,13 +252,14 @@ def main():
     guard(base)
     if not adm_uid or not adm_sig:
         die("缺 ADM_UID / ADM_SIG（admin 签名 cookie 对），获取方式见 EXT-01 runbook §0")
-    flow(args, base, adm_uid, adm_sig, owner_uid, tool, group_id)
+    flow(args, base, adm_uid, adm_sig, owner_uid, tool, group_id, other_owner_uid)
 
 
-def flow(args, base, adm_uid, adm_sig, owner_uid, tool, group_id):
+def flow(args, base, adm_uid, adm_sig, owner_uid, tool, group_id, other_owner_uid):
     api = Api(base, adm_uid, adm_sig)
     results = []
     run_tag = f"ext01-a02-{int(time.time())}"
+    strict = os.environ.get("EXT01_STRICT_NEGATIVES", "") == "yes"
 
     # ---- admin 治理链：create → approve → grant → grants 复核 ----
     st, _, body = api.adm("POST", "/api/adm/mcp/clients/create", {
@@ -262,15 +277,6 @@ def flow(args, base, adm_uid, adm_sig, owner_uid, tool, group_id):
     st, _, _ = api.adm("POST", "/api/adm/mcp/clients/approve", {"client_id": client_id})
     expect(st == 200, "approve", results)
 
-    st, _, _ = api.adm("POST", "/api/adm/mcp/clients/grants/set",
-                       {"client_id": client_id, "tool": tool, "enabled": True})
-    expect(st == 200, f"grant {tool}=enabled", results)
-
-    st, _, body = api.adm("GET", f"/api/adm/mcp/clients/grants?client_id={client_id}")
-    grants = ((body or {}).get("payload") or {}).get("tools") or []
-    enabled = [g.get("name") for g in grants if g.get("enabled")]
-    expect(tool in enabled, f"grants 复核 enabled={enabled}", results)
-
     # ---- MCP 连接与调用 ----
     st, hdr, body = api.mcp(jsonrpc(1, "initialize", {
         "protocolVersion": "2024-11-05",
@@ -285,28 +291,138 @@ def flow(args, base, adm_uid, adm_sig, owner_uid, tool, group_id):
     expect(tool in names, f"tools/list 含 {tool}", results)
 
     idem = run_tag
-    st, _, body = api.mcp(jsonrpc(3, "tools/call", {
+    create_call = jsonrpc(3, "tools/call", {
         "name": "create_agent_task",
         "arguments": {"group_id": group_id, "idempotency_key": idem,
                       "tool": "ext01_smoke",
                       "params_digest": hashlib.sha256(idem.encode()).hexdigest()},
-    }), secret, session)
+    })
+    if strict:
+        st, _, body = api.mcp(create_call, secret, session)
+        expect(tool_error_result(st, body), "负例：未授权 create_agent_task 被拒绝", results)
+
+    st, _, _ = api.adm("POST", "/api/adm/mcp/clients/grants/set",
+                       {"client_id": client_id, "tool": tool, "enabled": True})
+    expect(st == 200, f"grant {tool}=enabled", results)
+
+    st, _, body = api.adm("GET", f"/api/adm/mcp/clients/grants?client_id={client_id}")
+    grants = ((body or {}).get("payload") or {}).get("tools") or []
+    enabled = [g.get("name") for g in grants if g.get("enabled")]
+    expect(tool in enabled, f"grants 复核 enabled={enabled}", results)
+
+    st, _, body = api.mcp(create_call, secret, session)
     r3 = rpc_result(st, body, 3) or {}
     content = r3.get("structuredContent") or r3.get("structured_content") or {}
     task_id = content.get("task_id")
+    correlation_id = content.get("correlation_id")
     expect(bool(task_id), f"tools/call create_agent_task（task_id={task_id}）", results)
 
+    if strict and task_id:
+        replay_call = dict(create_call)
+        replay_call["id"] = 4
+        st, _, body = api.mcp(replay_call, secret, session)
+        replay = rpc_result(st, body, 4) or {}
+        replay_content = replay.get("structuredContent") or replay.get("structured_content") or {}
+        expect(
+            replay_content.get("task_id") == task_id
+            and replay_content.get("correlation_id") == correlation_id
+            and replay_content.get("created") is False,
+            "重复幂等键复用 task_id/correlation_id",
+            results,
+        )
+
     if task_id:
-        st, _, body = api.mcp(jsonrpc(4, "tools/call", {
+        get_call = jsonrpc(5, "tools/call", {
             "name": "get_agent_task", "arguments": {"task_id": str(task_id)},
-        }), secret, session)
-        r4 = rpc_result(st, body, 4) or {}
-        sc = r4.get("structuredContent") or r4.get("structured_content") or {}
+        })
+        if strict:
+            st, _, body = api.mcp(get_call, secret, session)
+            expect(tool_error_result(st, body), "负例：未授权 get_agent_task 被拒绝", results)
+            st, _, _ = api.adm("POST", "/api/adm/mcp/clients/grants/set", {
+                "client_id": client_id, "tool": "get_agent_task", "enabled": True})
+            expect(st == 200, "grant get_agent_task=enabled", results)
+        st, _, body = api.mcp(get_call, secret, session)
+        r5 = rpc_result(st, body, 5) or {}
+        sc = r5.get("structuredContent") or r5.get("structured_content") or {}
         expect(sc.get("status") in ("submitted", "working", "awaiting_approval"),
                f"get_agent_task status={sc.get('status')}", results)
 
+    if strict and task_id:
+        if other_owner_uid <= 0 or other_owner_uid == owner_uid:
+            die("strict resource authorization requires a distinct EXT01_OTHER_OWNER_UID")
+        st, _, body = api.adm("POST", "/api/adm/mcp/clients/create", {
+            "owner_uid": other_owner_uid,
+            "name": f"{run_tag}-other",
+            "description": "EXT-01 resource authorization negative",
+        })
+        other_payload = (body or {}).get("payload") or (body or {}).get("data") or {}
+        other_client_id = other_payload.get("client_id") or other_payload.get("id")
+        other_secret = other_payload.get("secret") or ""
+        expect(
+            st == 200 and other_client_id and other_secret,
+            "跨 owner 负例：创建第二个独立 client",
+            results,
+        )
+        st, _, _ = api.adm(
+            "POST", "/api/adm/mcp/clients/approve", {"client_id": other_client_id}
+        )
+        expect(st == 200, "跨 owner 负例：批准第二个 client", results)
+        for granted_tool in ("get_agent_task", "update_agent_task"):
+            st, _, _ = api.adm(
+                "POST",
+                "/api/adm/mcp/clients/grants/set",
+                {"client_id": other_client_id, "tool": granted_tool, "enabled": True},
+            )
+            expect(st == 200, f"跨 owner 负例：grant {granted_tool}", results)
+        st, other_headers, body = api.mcp(
+            jsonrpc(9, "initialize", {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "ext01-other", "version": "1.0"},
+            }),
+            other_secret,
+        )
+        other_session = (
+            other_headers.get("mcp-session-id") or other_headers.get("Mcp-Session-Id")
+        )
+        rpc_result(st, body, 9)
+        expect(bool(other_session), "跨 owner 负例：第二个 client initialize", results)
+        st, _, body = api.mcp(get_call, other_secret, other_session)
+        expect(tool_error_result(st, body), "跨 owner 负例：读取任务被拒绝", results)
+        cross_update = jsonrpc(10, "tools/call", {
+            "name": "update_agent_task",
+            "arguments": {"task_id": str(task_id), "action": "start"},
+        })
+        st, _, body = api.mcp(cross_update, other_secret, other_session)
+        expect(tool_error_result(st, body), "跨 owner 负例：推进任务被拒绝", results)
+        st, _, body = api.mcp(get_call, secret, session)
+        owner_view = rpc_result(st, body, 5) or {}
+        owner_content = (
+            owner_view.get("structuredContent")
+            or owner_view.get("structured_content")
+            or {}
+        )
+        expect(
+            owner_content.get("status") == "submitted",
+            "跨 owner 负例：原任务状态无副作用",
+            results,
+        )
+        st, _, _ = api.adm(
+            "POST",
+            "/api/adm/mcp/clients/revoke",
+            {"client_id": other_client_id, "reason": "ext01 negative done"},
+        )
+        expect(st == 200, "跨 owner 负例：撤销第二个 client", results)
+
+    if strict:
+        expired_secret = os.environ.get("EXPIRED_MCP_SECRET", "")
+        if not expired_secret:
+            die("EXT01_STRICT_NEGATIVES=yes requires EXPIRED_MCP_SECRET")
+        st, _, _ = api.mcp(jsonrpc(6, "tools/list"), expired_secret)
+        expect(st == 401, f"负例：过期凭证 401 fail-closed（HTTP {st}）", results)
+
     # ---- 负例：错误凭证 fail-closed（handler 401 + {"error":"credential_invalid"}）----
-    st, _, body = api.mcp(jsonrpc(5, "tools/list"), "wrong-secret-000")
+    st, _, body = api.mcp(jsonrpc(7, "tools/list"), "wrong-secret-000")
     expect(st == 401, f"负例：错误凭证 401 fail-closed（HTTP {st}）", results)
 
     # ---- revoke 后凭证立即失效 ----
@@ -314,7 +430,7 @@ def flow(args, base, adm_uid, adm_sig, owner_uid, tool, group_id):
                        {"client_id": client_id, "reason": "ext01 smoke done"})
     expect(st == 200, "revoke", results)
 
-    st, _, body = api.mcp(jsonrpc(6, "tools/list"), secret, session)
+    st, _, body = api.mcp(jsonrpc(8, "tools/list"), secret, session)
     expect(st in (401, 403), f"负例：撤销后凭证失效（HTTP {st}）", results)
 
     failed = [label for label, ok in results if not ok]

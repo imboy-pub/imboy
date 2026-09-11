@@ -43,12 +43,14 @@ def build_evidence(args):
         "\n".join([
             "task=E2E-01",
             "status=%s" % args.status,
+            "final_integrated_base=%d" % args.final_integrated_base,
             "suites_passed=%d" % args.suites_passed,
             "trace_exit=%d" % args.trace_exit,
             "http_smoke_passed=%d" % args.http_smoke_passed,
             "channel_webhook_passed=%d" % args.channel_webhook_passed,
             "agent_dialog_passed=%d" % args.agent_dialog_passed,
             "bot_dialog_passed=%d" % args.bot_dialog_passed,
+            "protocol_negatives_passed=%d" % args.protocol_negatives_passed,
             "restart_passed=%d" % args.restart_passed,
             "cleanup_passed=%d" % args.cleanup_passed,
             "sensitive_scan_passed=%d" % args.sensitive_scan_passed,
@@ -87,6 +89,14 @@ def build_evidence(args):
         "artifact-agent-dialog-db": evidence_dir / "agent-dialog-a02-db.json",
         "artifact-bot-dialog-runtime": evidence_dir / "bot-dialog-a02-runtime.json",
         "artifact-bot-dialog-db": evidence_dir / "bot-dialog-a02-db.json",
+        "artifact-webhook-5xx-runtime": evidence_dir / "webhook-5xx-a02-runtime.json",
+        "artifact-webhook-5xx-db": evidence_dir / "webhook-5xx-a02-db.json",
+        "artifact-webhook-4xx-runtime": evidence_dir / "webhook-4xx-a02-runtime.json",
+        "artifact-webhook-4xx-db": evidence_dir / "webhook-4xx-a02-db.json",
+        "artifact-delivery-replay-runtime": evidence_dir / "delivery-replay-a02-runtime.json",
+        "artifact-delivery-replay-db": evidence_dir / "delivery-replay-a02-db.json",
+        "artifact-agent-task-e2ee-runtime": evidence_dir / "agent-task-e2ee-a02-runtime.txt",
+        "artifact-agent-task-e2ee-db": evidence_dir / "agent-task-e2ee-a02-db.json",
         "artifact-restart-before": evidence_dir / "restart-before.json",
         "artifact-restart-after": evidence_dir / "restart-after.json",
         "artifact-restart-logic-read": evidence_dir / "restart-logic-read.txt",
@@ -138,7 +148,29 @@ def build_evidence(args):
         if artifact_id in artifact_ids
     ]
     bot_dialog_ok = bool(args.bot_dialog_passed and len(bot_dialog_artifacts) == 2)
+    protocol_negative_artifacts = [
+        artifact_id
+        for artifact_id in [
+            "artifact-webhook-5xx-runtime",
+            "artifact-webhook-5xx-db",
+            "artifact-webhook-4xx-runtime",
+            "artifact-webhook-4xx-db",
+            "artifact-delivery-replay-runtime",
+            "artifact-delivery-replay-db",
+            "artifact-agent-task-e2ee-runtime",
+            "artifact-agent-task-e2ee-db",
+        ]
+        if artifact_id in artifact_ids
+    ]
+    protocol_negatives_ok = bool(
+        args.protocol_negatives_passed and len(protocol_negative_artifacts) == 8
+    )
     restart_ok = bool(args.restart_passed and len(restart_artifacts) == 5)
+    trace_ok = bool(
+        args.trace_exit == 0
+        and trace_path.is_file()
+        and trace_result_path.is_file()
+    )
 
     common_artifacts = ["artifact-run-summary", "artifact-harness"]
     if args.status == "FAIL":
@@ -207,8 +239,21 @@ def build_evidence(args):
                 "command": "run real WebSocket Bot mention, signed loopback delivery, HTTP reply, and protocol negatives",
                 "exit_code": 0 if bot_dialog_ok else 1,
             },
+            {
+                "id": "cmd-11",
+                "command": "run real webhook 5xx exhaustion, 4xx dead-letter, admin replay, and E2EE task negatives",
+                "exit_code": 0 if protocol_negatives_ok else 1,
+            },
         ]
-        trace_artifacts = common_artifacts + ["artifact-trace-verifier"]
+        if args.final_integrated_base and args.status == "PASS":
+            commands.append({
+                "id": "cmd-12",
+                "command": "verify main branch and candidate paths match HEAD",
+                "exit_code": 0,
+            })
+        trace_artifacts = list(common_artifacts)
+        if trace_result_path.is_file():
+            trace_artifacts.append("artifact-trace-verifier")
         if trace_path.is_file():
             trace_artifacts.append("artifact-runtime-trace")
         if trace_exporter_path.is_file():
@@ -216,18 +261,28 @@ def build_evidence(args):
         acceptances = [
             acceptance(
                 "E2E-01-A01",
-                "FAIL",
+                "PASS" if trace_ok else "FAIL",
                 ["cmd-04"],
                 trace_artifacts,
-                "The persisted-row projection passes shape checks, but trusted request, execution, and outcome audit records are not emitted at runtime yet.",
+                "The runtime audit source reconstructs request, task, event, approval, execution, delivery, and outcome under one correlation ID."
+                if trace_ok else
+                "The required runtime correlation chain or verifier result is missing or failed.",
             ),
             acceptance(
-                "E2E-01-A02", "FAIL",
-                ["cmd-03", "cmd-06", "cmd-08", "cmd-09", "cmd-10"],
+                "E2E-01-A02",
+                "PASS" if (
+                    http_smoke_ok and channel_webhook_ok and agent_dialog_ok
+                    and bot_dialog_ok and protocol_negatives_ok
+                ) else "FAIL",
+                ["cmd-03", "cmd-06", "cmd-08", "cmd-09", "cmd-10", "cmd-11"],
                 common_artifacts + http_artifacts + channel_webhook_artifacts
-                + agent_dialog_artifacts + bot_dialog_artifacts,
-                "The real HTTP MCP and channel webhook lifecycles pass, and real WebSocket mentions receive persisted built-in Agent and developer Bot replies. The Bot receiver verifies signed delivery and rejects shared-secret forgery, malformed context, replay, disabled, non-member, and E2EE paths; remaining full-protocol negatives and trusted runtime audit are still open."
-                if http_smoke_ok and channel_webhook_ok and agent_dialog_ok and bot_dialog_ok else
+                + agent_dialog_artifacts + bot_dialog_artifacts
+                + protocol_negative_artifacts,
+                "The loopback runtime passes MCP authorization and credential lifecycle, incoming webhook, Agent/Bot dialogs, webhook retry/dead/replay, and E2EE fail-closed checks."
+                if (
+                    http_smoke_ok and channel_webhook_ok and agent_dialog_ok
+                    and bot_dialog_ok and protocol_negatives_ok
+                ) else
                 "The required HTTP Golden Flow and all protocol negatives are not complete.",
             ),
             acceptance(
@@ -259,12 +314,23 @@ def build_evidence(args):
                 "The runbook documents current automation limits and the AEAD lifecycle drill.",
             ),
             acceptance(
-                "E2E-01-A07", "SKIP", [], common_artifacts,
+                "E2E-01-A07",
+                "PASS" if args.final_integrated_base and args.status == "PASS" else "SKIP",
+                ["cmd-12"] if args.final_integrated_base and args.status == "PASS" else [],
+                common_artifacts,
+                "The Golden Flow passed on main with all candidate paths matching HEAD."
+                if args.final_integrated_base and args.status == "PASS" else
                 "Final integrated Base rerun is pending.",
             ),
         ]
         failed_tests = 0
-        skipped_tests = 3 if restart_ok else 4
+        skipped_tests = (2 if args.final_integrated_base else 3) if restart_ok else 4
+
+    residual_risks = [
+        "Local fixtures do not replace real device, external MCP, or production acceptance.",
+    ]
+    if not (args.final_integrated_base and args.status == "PASS"):
+        residual_risks.insert(0, "Final integrated Base rerun remains open.")
 
     return {
         "schema_version": 1,
@@ -277,27 +343,36 @@ def build_evidence(args):
             "imboyadmin": args.imboyadmin_sha,
         },
         "final_diff": [
+            "imboy:docs/operations/agent-hub-local-golden-flow.md",
+            "imboy:priv/migrations/00000107_agent_hub_runtime_audit.down.sql",
+            "imboy:priv/migrations/00000107_agent_hub_runtime_audit.up.sql",
+            "imboy:scripts/agent_hub_delivery_replay_smoke.py",
+            "imboy:scripts/agent_hub_ext01_mcp_client_smoke.py",
             "imboy:scripts/agent_hub_golden_flow.sh",
-            "imboy:scripts/agent_hub_channel_webhook_smoke.py",
-            "imboy:scripts/agent_hub_bot_webhook_fixture.py",
-            "imboy:scripts/smoke/ws_c2g_send.py",
-            "imboy:scripts/golden_upgrade.sh",
-            "imboy:scripts/demo/dual_exp_demo_b.sh",
+            "imboy:scripts/agent_hub_http_status_fixture.py",
             "imboy:scripts/export_agent_hub_correlation_trace.sql",
             "imboy:scripts/write_agent_hub_e2e_evidence.py",
+            "imboy:src/lib/bot_webhook_delivery_sender.erl",
+            "imboy:src/logic/bot_webhook_delivery_worker.erl",
             "imboy:src/logic/agent_task_logic.erl",
-            "imboy:src/logic/bot_logic.erl",
-            "imboy:src/logic/bot_webhook_logic.erl",
+            "imboy:src/logic/mcp_governance_logic.erl",
+            "imboy:src/mcp/barrel_mcp_registry.erl",
+            "imboy:src/mcp/imboy_mcp_tools.erl",
+            "imboy:src/mcp/mcp_authz_gate.erl",
+            "imboy:src/repo/agent_hub_audit_repo.erl",
+            "imboy:src/repo/agent_task_repo.erl",
             "imboy:src/repo/bot_webhook_delivery_repo.erl",
-            "imboy:src/api/bot_handler.erl",
+            "imboy:test/api/mcp_handler_auth_tests.erl",
             "imboy:test/integration/agent_hub_runtime_trace_tests.erl",
+            "imboy:test/logic/agent_task_logic_tests.erl",
+            "imboy:test/logic/mcp_governance_logic_tests.erl",
+            "imboy:test/mcp/barrel_mcp_protocol_tests.erl",
+            "imboy:test/mcp/imboy_mcp_task_tools_tests.erl",
+            "imboy:test/mcp/mcp_authz_gate_tests.erl",
+            "imboy:test/repo/bot_webhook_delivery_repo_tests.erl",
             "imboy:test/scripts/test_agent_hub_golden_flow_db_isolation.sh",
-            "imboy:test/scripts/test_agent_hub_channel_webhook_smoke.py",
-            "imboy:test/scripts/test_agent_hub_bot_webhook_fixture.py",
-            "imboy:test/scripts/test_ws_c2g_send.py",
+            "imboy:test/scripts/test_agent_hub_http_status_fixture.py",
             "imboy:test/scripts/test_write_agent_hub_e2e_evidence.py",
-            "imboy:test/fixtures/agent_hub/agent_hub_fake_llm.erl",
-            "imboy:docs/operations/agent-hub-local-golden-flow.md",
         ],
         "commands": commands,
         "tests": {
@@ -307,12 +382,7 @@ def build_evidence(args):
         },
         "acceptance": acceptances,
         "artifacts": artifacts,
-        "residual_risks": [
-            "The trace export derives request, execution, and outcome instead of reading runtime audit records.",
-            "The real HTTP MCP, channel incoming webhook, and Agent/Bot group dialogs pass locally, but trusted runtime audit and remaining full-protocol negatives remain open.",
-            "Final integrated Base rerun remains open.",
-            "Local fixtures do not replace real device, external MCP, or production acceptance.",
-        ],
+        "residual_risks": residual_risks,
         "commit": args.imboy_sha,
     }
 
@@ -321,7 +391,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--evidence-dir", required=True)
     parser.add_argument("--repo-root", required=True)
-    parser.add_argument("--status", choices=("FAIL", "PARTIAL"), required=True)
+    parser.add_argument("--status", choices=("FAIL", "PARTIAL", "PASS"), required=True)
     parser.add_argument("--imboy-sha", required=True)
     parser.add_argument("--imboyapp-sha", required=True)
     parser.add_argument("--imboyadmin-sha", required=True)
@@ -331,7 +401,9 @@ def parse_args(argv=None):
     parser.add_argument("--channel-webhook-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--agent-dialog-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--bot-dialog-passed", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--protocol-negatives-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--restart-passed", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--final-integrated-base", type=int, choices=(0, 1), default=0)
     parser.add_argument("--cleanup-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--sensitive-scan-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--failed-step", default="")
@@ -341,6 +413,8 @@ def parse_args(argv=None):
 
 def main(argv=None):
     args = parse_args(argv)
+    if args.status == "PASS" and not args.final_integrated_base:
+        raise ValueError("PASS requires --final-integrated-base 1")
     evidence_dir = Path(args.evidence_dir).resolve()
     evidence_dir.mkdir(parents=True, exist_ok=True)
     output = evidence_dir / "evidence.json"

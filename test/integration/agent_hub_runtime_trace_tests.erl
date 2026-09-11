@@ -5,7 +5,7 @@
 %% Persists one complete local-fixture chain for the SQL trace exporter.
 runtime_trace_seed_test_() ->
     ?TEST_WITH_DB(fun() ->
-        setup_group_ds([10, 11]),
+        setup_group_ds([10, 11, 42]),
         try
             Principal = #{
                 owner_uid => 42,
@@ -53,10 +53,59 @@ runtime_trace_seed_test_() ->
             {ok, _} = bot_webhook_delivery_repo:mark_success(DeliveryId, 1),
             {ok, Delivery} = bot_webhook_delivery_repo:get_delivery(DeliveryId),
             ?assertEqual(Corr, maps:get(<<"correlation_id">>, Delivery)),
-            ?assertEqual(<<"success">>, maps:get(<<"status">>, Delivery))
+            ?assertEqual(<<"success">>, maps:get(<<"status">>, Delivery)),
+            {ok, Audit} = agent_hub_audit_repo:list_by_correlation(Corr),
+            Types = [maps:get(<<"entity_type">>, Row) || Row <- Audit],
+            ?assertEqual(
+                [
+                    <<"approval">>,
+                    <<"delivery">>,
+                    <<"event">>,
+                    <<"execution">>,
+                    <<"outcome">>,
+                    <<"request">>,
+                    <<"task">>
+                ],
+                lists:usort(Types)
+            ),
+            ?assertEqual(1, length([ok || <<"request">> <- Types])),
+            ?assertEqual(1, length([ok || <<"outcome">> <- Types]))
         after
             cleanup_group_ds()
         end
+    end).
+
+public_task_create_persists_audit_root_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        TaskId = unique(<<"task-public-">>),
+        Corr = unique(<<"corr-">>),
+        {ok, _Task, true} = agent_task_repo:ensure_task(#{
+            id => TaskId,
+            group_id => 5,
+            agent_uid => 42,
+            correlation_id => Corr,
+            idempotency_key => unique(<<"idem-">>)
+        }),
+        {ok, Audit} = agent_hub_audit_repo:list_by_correlation(Corr),
+        ?assertEqual(
+            [<<"request">>, <<"task">>],
+            lists:sort([maps:get(<<"entity_type">>, Row) || Row <- Audit])
+        )
+    end).
+
+transition_without_audit_root_rolls_back_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        Result = elib_pg:with_tx(fun(Conn) ->
+            agent_hub_audit_repo:record_transition_tx(
+                Conn,
+                unique(<<"corr-">>),
+                unique(<<"task-missing-">>),
+                unique(<<"event-">>),
+                <<"working">>,
+                <<"submitted">>
+            )
+        end),
+        ?assertMatch({error, {audit_parent_missing, task}}, Result)
     end).
 
 unique(Prefix) ->

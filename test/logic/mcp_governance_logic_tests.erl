@@ -11,7 +11,10 @@ logic_test_() ->
         fun t_approve_ok/1,
         fun t_reject_revoked/1,
         fun t_approve_notfound/1,
-        fun t_grants_shape/1
+        fun t_grants_shape/1,
+        fun t_expired_rfc3339_secret_rejected/1,
+        fun t_future_rfc3339_secret_accepted/1,
+        fun t_invalid_rfc3339_secret_rejected/1
     ]}.
 
 setup() ->
@@ -63,6 +66,46 @@ t_grants_shape(_) ->
         {ok, G} = mcp_governance_logic:grants(900),
         ?assertMatch(#{<<"tools">> := [#{<<"name">> := <<"get_contacts">>}], <<"scopes">> := []}, G)
     end.
+
+t_expired_rfc3339_secret_rejected(_) ->
+    fun() ->
+        expect_credential(<<"2020-01-01T00:00:00Z">>),
+        ?assertEqual(
+            {error, credential_expired},
+            mcp_governance_logic:authenticate_secret(<<"0123456789abcdef0123456789abcdef">>)
+        )
+    end.
+
+t_future_rfc3339_secret_accepted(_) ->
+    fun() ->
+        expect_credential(<<"2099-01-01T00:00:00Z">>),
+        meck:expect(mcp_client_repo, touch_last_used, fun(901) -> ok end),
+        ?assertMatch(
+            {ok, #{owner_uid := 42, client_id := 901, client_key := <<"mck-test">>}},
+            mcp_governance_logic:authenticate_secret(<<"0123456789abcdef0123456789abcdef">>)
+        )
+    end.
+
+t_invalid_rfc3339_secret_rejected(_) ->
+    fun() ->
+        expect_credential(<<"not-a-timestamp">>),
+        ?assertEqual(
+            {error, credential_expired},
+            mcp_governance_logic:authenticate_secret(<<"0123456789abcdef0123456789abcdef">>)
+        )
+    end.
+
+expect_credential(ExpiresAt) ->
+    meck:expect(mcp_client_repo, find_by_digest, fun(_) ->
+        {ok, #{
+            <<"client_id">> => 901,
+            <<"owner_uid">> => 42,
+            <<"client_key">> => <<"mck-test">>,
+            <<"status">> => <<"approved">>,
+            <<"disabled">> => false,
+            <<"expires_at">> => ExpiresAt
+        }}
+    end).
 
 %% ===================================================================
 %% MCP-01：enforce 按 profile 默认（纯 app env，无 DB）

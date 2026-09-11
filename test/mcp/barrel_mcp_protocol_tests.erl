@@ -153,6 +153,7 @@ test_handle_tools_call() ->
     Ctx = #{
         request_id => 1,
         reply_to => Self,
+        auth_info => #{owner_uid => 42, client_id => 7, client_key => <<"mck-test">>},
         session_id => undefined,
         progress_token => undefined,
         emit_progress => fun(_, _, _) -> ok end

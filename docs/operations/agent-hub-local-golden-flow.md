@@ -5,20 +5,21 @@
 > 前置阅读：PDT-01 三契约、ADR 信任边界、EVID-00 证据协议、
 > [bot-webhook-aead-key](../runbooks/bot-webhook-aead-key.md)（AEAD 主密钥生命周期）。
 >
-> 当前自动化状态：脚本使用 marker scratch DB 跑迁移和 15 套模块/真库测试；
-> 最后一套通过真实 MCP task logic、审批逻辑和 Bot outbox 写出同一 correlation
-> 的持久记录，再由参数化 SQL 投影为链形状并交给冻结 verifier。随后脚本启动真实
-> loopback 后端，以独立标准库 HTTP 客户端完成 MCP create/approve/grant/task/revoke
-> 11 项检查；频道 incoming webhook 同时完成有效 token 发布、无效/停用 token 同形
-> 404 共 4 项检查，并核对仅有效请求落一条 system-bot 消息。内建 Agent
+> 当前自动化状态：脚本使用 marker scratch DB 跑全链迁移和 20 套模块/真库测试；
+> runtime audit 持久记录可按同一 correlation 重建 request/task/event/approval/
+> execution/delivery/outcome，并由冻结 verifier 校验。随后脚本启动真实 loopback
+> 后端，以独立标准库 HTTP 客户端完成 MCP create/approve/grant/task/revoke、
+> 未授权 tool、过期/错误/撤销凭证，以及第二个合法 client 跨 owner 读写拒绝和
+> 零副作用，共 25 项检查；频道 incoming webhook 同时完成
+> 有效 token 发布、无效/停用 token 同形 404 共 4 项检查，并核对仅有效请求落一条
+> system-bot 消息。内建 Agent
 > 子链在运行节点用 `ai_agent_ds:create/1` 建号，经真实 WebSocket C2G `mentions`
 > 帧触发本地 `chat/3` fake provider，并同时核对人类消息和 Agent 定稿已写入
 > `msg_c2g` 与 `msg_store`。fake provider 仅从临时 ebin 加载，不发起任何网络请求。
-> 脚本还会真实 stop/start 后端，比较 task/approval/delivery/correlation
-> 快照并从重启进程回读终态。
-> 该投影中的 request/execution/outcome 仍非运行时审计记录，Bot mention/reply
-> 也尚未组成完整 HTTP 正负链，
-> 所以 A01/A02 继续失败，整体必须输出 verifier 接受的 `PARTIAL`（退出码 1）。
+> 脚本还验证 Bot 503 四次耗尽、400 一次死信、管理员同 delivery_id 重放、E2EE
+> task 零业务副作用，并真实 stop/start 后端，比较 task/approval/delivery/correlation
+> 快照及从重启进程回读终态。预合并运行通过时 A01-A06 为 PASS、A07 为 SKIP，
+> 整体输出 verifier 接受的 `PARTIAL`（退出码 1）。
 
 ## 1. 环境准备（从空 scratch 开始）
 
@@ -43,7 +44,7 @@ IMBOYENV=local make run            # 启动即自动迁移 1→93+（imboy_migra
 种子（管理台或 API）：两个用户、一个非 E2EE 群、一个 AI Agent、一个 Bot
 （webhook_url 指向 fixture receiver）、一个 MCP Client（记录一次性 secret）。
 
-## 3. Golden Flow（目标正例，尚未全部自动化）
+## 3. Golden Flow
 
 | # | 步骤 | 验证点 |
 |---|---|---|
@@ -59,8 +60,10 @@ IMBOYENV=local make run            # 启动即自动迁移 1→93+（imboy_migra
 ## 4. 负例（全部预期拒绝）
 
 - MCP：revoked / expired / disabled credential → 401；未授权 tool → deny；
+- 独立 credential 跨 owner 读取/推进任务 → 同形拒绝，原任务状态不变；
 - 重复 idempotency key → 返回原结果，不产生第二任务；
-- Webhook：fixture 5xx → retry（5/30/300s）→ dead；404 → 直接 dead；重放 → delivery_id 不变；
+- Webhook：fixture 503 → 四次耗尽后 dead；400 → 一次 dead；管理员重放后
+  delivery_id 不变且状态回到 pending；
 - 跨群 Bot reply（context 归属不符）→ 拒绝；过期/已用 context → 拒绝；
 - E2EE 群的 agent task → 服务端不产生卡片帧；
 - 服务重启（kill 后端再起）：pending/approval/correlation 全部从 DB 恢复。
@@ -71,19 +74,25 @@ IMBOYENV=local make run            # 启动即自动迁移 1→93+（imboy_migra
 bash scripts/agent_hub_golden_flow.sh --profile local-fixture \
   --evidence-dir "$IMBOY_EVIDENCE_ROOT/E2E-01"
 python3 scripts/verify_agent_hub_task_evidence.py --task "$IMBOY_EVIDENCE_ROOT/E2E-01/evidence.json"
-shasum -a 256 "$IMBOY_EVIDENCE_ROOT"/E2E-01/*
+(cd "$IMBOY_EVIDENCE_ROOT/E2E-01" && shasum -a 256 -c manifest.sha256)
 ```
 
-在受信入口审计、完整 HTTP 编排和最终 Base 重跑全部补齐前，上述前两条命令预期
-退出码均为 `1`，证据结论为 `PARTIAL`。A03 的 stop/start 可以独立为 `PASS`；A02
-即使 MCP HTTP 11/11、频道 incoming webhook 4/4、内建 Agent 群对话通过，也仍因
-Bot 正负链和负例缺失保持 `FAIL`。trace
-verifier 的 `OK` 只证明本地 fixture 投影满足链的结构约束，不证明受信入口已经产生
-真实审计链。
+预合并运行通过时，脚本和 verifier 都以退出码 `1` 明确返回 `PARTIAL`：A01-A06
+已通过，A07 等最终合并 Base。合并后只在 `main` 执行：
+
+```bash
+bash scripts/agent_hub_golden_flow.sh --final-integrated-base \
+  --profile local-fixture \
+  --evidence-dir "$IMBOY_EVIDENCE_ROOT/E2E-01"
+```
+
+最终模式会先确认分支为 `main`，并确认 Agent Hub 候选路径与 HEAD 完全一致；任一
+条件不满足都会在访问 PostgreSQL 前以退出码 `2` 拒绝。全链通过后 A01-A07 和
+verifier 均为 `PASS`（退出码 0）。同一路径旧证据会先移动到带
+`.superseded.<timestamp>.<pid>` 后缀的同级目录。
 
 清理只删除本 harness 创建且带 marker 的临时资源（scratch 库 drop、fixture
-端口关闭、临时 secret 文件删除）。同一路径已有证据会先移动到带
-`.superseded.<timestamp>.<pid>` 后缀的同级目录，避免旧文件混入新 manifest。
+端口关闭、临时 secret 文件删除），避免旧文件混入新 manifest。
 
 ## 6. WH-01 AEAD 主密钥生命周期演练
 

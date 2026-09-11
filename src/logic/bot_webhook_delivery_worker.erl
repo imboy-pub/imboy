@@ -153,7 +153,7 @@ settle(Delivery, AttemptNo, {ok, Code} = Res, Lat) ->
     case Class of
         <<"2xx">> ->
             ok = audit(Did, AttemptNo, Class, Code, Lat, <<>>),
-            _ = bot_webhook_delivery_repo:mark_success(Did, AttemptNo);
+            {ok, _} = bot_webhook_delivery_repo:mark_success(Did, AttemptNo);
         <<"4xx">> when Code =:= 410 ->
             dead(Delivery, AttemptNo, Class, Code, Lat, <<>>);
         <<"4xx">> ->
@@ -176,14 +176,14 @@ retry(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     ok = audit(Did, AttemptNo, Class, Code, Lat, Reason),
     case retries_left(AttemptNo) of
         [] ->
-            _ = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo),
+            {ok, _} = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo),
             ?WARN_LOG(
                 "[WH01] delivery ~ts -> dead after ~p attempts~n",
                 [Did, AttemptNo]
             ),
             ok;
         [After | _Rest] ->
-            _ = bot_webhook_delivery_repo:mark_retry(Did, After, AttemptNo, <<>>),
+            {ok, _} = bot_webhook_delivery_repo:mark_retry(Did, After, AttemptNo, <<>>),
             ok
     end.
 
@@ -201,7 +201,7 @@ dead(Delivery, AttemptNo, Class, Code) ->
 dead(Delivery, AttemptNo, Class, Code, Lat, Reason) ->
     Did = maps:get(<<"delivery_id">>, Delivery),
     ok = audit(Did, AttemptNo, Class, Code, Lat, Reason),
-    _ = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo).
+    {ok, _} = bot_webhook_delivery_repo:mark_dead(Did, AttemptNo).
 
 audit(Did, AttemptNo, Class, Code, Lat, Reason) ->
     Id = iolist_to_binary([
@@ -217,8 +217,7 @@ audit(Did, AttemptNo, Class, Code, Lat, Reason) ->
         http_status => Code,
         latency_ms => Lat,
         error_trunc => err_trunc(Reason)
-    }),
-    ok.
+    }).
 
 err_trunc(Reason) when is_binary(Reason) ->
     case byte_size(Reason) > 200 of

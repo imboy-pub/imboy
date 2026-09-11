@@ -4,7 +4,7 @@
 %%%===================================================================
 %%% @doc mcp_handler JWT/AuthInfo 注入测试（Phase 3 T3.3）
 %%% 验收：调用者 uid 经 drive_async_plan/3 注入 tool Ctx.auth_info，
-%%%       tool 内拿得到 uid（越权校验的地基）；未认证=0。
+%%%       tool 内拿得到 uid（越权校验的地基）；未认证上下文 fail-closed。
 %%%===================================================================
 
 %% 测试用 tool：回显 Ctx.auth_info（arity 2 → run_tool 传 Ctx）
@@ -23,7 +23,7 @@ whoami(_Args, Ctx) ->
 auth_test_() ->
     {setup, fun setup/0, fun cleanup/1, [
         {"tool Ctx.auth_info = 调用者 uid", fun test_auth_flows_to_tool/0},
-        {"未认证 uid=0 仍可区分", fun test_unauth_uid_zero/0}
+        {"未认证 uid=0 被授权闸门拒绝", fun test_unauth_uid_zero_denied/0}
     ]}.
 
 setup() ->
@@ -81,6 +81,6 @@ test_auth_flows_to_tool() ->
     Principal = #{owner_uid => 42, client_id => 7, client_key => <<"mck-test">>},
     ?assertEqual(<<"uid:42:client:7">>, call_whoami(Principal)).
 
-test_unauth_uid_zero() ->
-    %% 未认证：AuthInfo=0（legacy 整数形态）→ 工具拿到 none
-    ?assertEqual(<<"uid:none">>, call_whoami(0)).
+test_unauth_uid_zero_denied() ->
+    %% 未认证：AuthInfo=0（legacy 整数形态）必须在 handler 执行前拒绝。
+    ?assertEqual(<<"未认证"/utf8>>, call_whoami(0)).

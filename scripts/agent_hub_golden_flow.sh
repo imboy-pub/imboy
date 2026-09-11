@@ -7,6 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$ROOT/.." && pwd -P)"
 PROFILE="local-fixture"
+FINAL_INTEGRATED_BASE=0
 EVIDENCE_DIR="${IMBOY_EVIDENCE_ROOT:-${TMPDIR:-/tmp}/imboy-agent-hub}/E2E-01"
 MARKER_DB_PREFIX="imboy_ah_e2e_"
 CONFIG_TMP_DIR=""
@@ -21,9 +22,11 @@ HTTP_SMOKE_PASSED=0
 CHANNEL_WEBHOOK_PASSED=0
 AGENT_DIALOG_PASSED=0
 BOT_DIALOG_PASSED=0
+PROTOCOL_NEGATIVES_PASSED=0
 RESTART_PASSED=0
 BACKEND_PID=""
 BOT_FIXTURE_PID=""
+STATUS_FIXTURE_PID=""
 BACKEND_NODE="imboy_ah_e2e_$$_runtime"
 BACKEND_COOKIE=""
 BACKEND_DIST_PORT=""
@@ -35,6 +38,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) PROFILE="$2"; shift 2 ;;
     --profile=*) PROFILE="${1#*=}"; shift ;;
+    --final-integrated-base) FINAL_INTEGRATED_BASE=1; shift ;;
     --evidence-dir) EVIDENCE_DIR="$2"; shift 2 ;;
     --evidence-dir=*) EVIDENCE_DIR="${1#*=}"; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -53,10 +57,55 @@ case "$EVIDENCE_DIR/" in
     ;;
 esac
 
+FINAL_INTEGRATED_PATHS=(
+  priv/migrations/00000107_agent_hub_runtime_audit.down.sql
+  priv/migrations/00000107_agent_hub_runtime_audit.up.sql
+  docs/operations/agent-hub-local-golden-flow.md
+  scripts/agent_hub_delivery_replay_smoke.py
+  scripts/agent_hub_ext01_mcp_client_smoke.py
+  scripts/agent_hub_golden_flow.sh
+  scripts/agent_hub_http_status_fixture.py
+  scripts/export_agent_hub_correlation_trace.sql
+  scripts/write_agent_hub_e2e_evidence.py
+  src/lib/bot_webhook_delivery_sender.erl
+  src/logic/bot_webhook_delivery_worker.erl
+  src/logic/agent_task_logic.erl
+  src/logic/mcp_governance_logic.erl
+  src/mcp/barrel_mcp_registry.erl
+  src/mcp/imboy_mcp_tools.erl
+  src/mcp/mcp_authz_gate.erl
+  src/repo/agent_hub_audit_repo.erl
+  src/repo/agent_task_repo.erl
+  src/repo/bot_webhook_delivery_repo.erl
+  test/api/mcp_handler_auth_tests.erl
+  test/integration/agent_hub_runtime_trace_tests.erl
+  test/logic/agent_task_logic_tests.erl
+  test/logic/mcp_governance_logic_tests.erl
+  test/mcp/barrel_mcp_protocol_tests.erl
+  test/mcp/imboy_mcp_task_tools_tests.erl
+  test/mcp/mcp_authz_gate_tests.erl
+  test/repo/bot_webhook_delivery_repo_tests.erl
+  test/scripts/test_agent_hub_golden_flow_db_isolation.sh
+  test/scripts/test_agent_hub_http_status_fixture.py
+  test/scripts/test_write_agent_hub_e2e_evidence.py
+)
+if [[ "$FINAL_INTEGRATED_BASE" -eq 1 ]]; then
+  CURRENT_BRANCH="$(git -C "$ROOT" symbolic-ref --quiet --short HEAD || true)"
+  [[ "$CURRENT_BRANCH" == "main" ]] || {
+    echo "[golden] final integrated Base must run on main" >&2
+    exit 2
+  }
+  [[ -z "$(git -C "$ROOT" status --porcelain -- "${FINAL_INTEGRATED_PATHS[@]}")" ]] || {
+    echo "[golden] final integrated Base candidate paths differ from HEAD" >&2
+    exit 2
+  }
+fi
+
 DB="${MARKER_DB_PREFIX}$(date +%s)_$$"
 CHANNEL_FIXTURE_ID=$((91100000000000000 + $$))
 CHANNEL_WEBHOOK_TEXT="agent-hub-channel-webhook-$DB"
 AGENT_HUMAN_UID=$((91200000000000000 + $$))
+MCP_OTHER_UID=$((91250000000000000 + $$))
 AGENT_GROUP_ID=$((91300000000000000 + $$))
 AGENT_PROMPT="agent-hub-local-prompt-$$_$(date +%s)"
 AGENT_REPLY="agent-hub-local-reply-$$_$(date +%s)"
@@ -66,6 +115,13 @@ BOT_PLAIN_MSG_ID="ah-bot-plain-$$_$(date +%s)"
 BOT_DISABLED_MSG_ID="ah-bot-disabled-$$_$(date +%s)"
 BOT_NONMEMBER_MSG_ID="ah-bot-nonmember-$$_$(date +%s)"
 BOT_E2EE_MSG_ID="ah-bot-e2ee-$$_$(date +%s)"
+NEGATIVE_TAG="$$_$(date +%s)"
+NEGATIVE_CORR="corr-negative-$NEGATIVE_TAG"
+NEGATIVE_TASK_ID="task-negative-$NEGATIVE_TAG"
+NEGATIVE_EVENT_ID="event-negative-$NEGATIVE_TAG"
+WEBHOOK_5XX_DELIVERY_ID="dlv-5xx-$NEGATIVE_TAG"
+WEBHOOK_4XX_DELIVERY_ID="dlv-4xx-$NEGATIVE_TAG"
+E2EE_TASK_ID="task-e2ee-$NEGATIVE_TAG"
 BOT_NONMEMBER_GROUP_ID=$((91400000000000000 + $$))
 BOT_PROMPT="agent-hub-local-bot-prompt-$$_$(date +%s)"
 BOT_REPLY="agent-hub-local-bot-reply-$$_$(date +%s)"
@@ -133,6 +189,17 @@ stop_bot_fixture() {
   BOT_FIXTURE_PID=""
 }
 
+stop_status_fixture() {
+  if [[ -z "$STATUS_FIXTURE_PID" ]]; then
+    return 0
+  fi
+  if kill -0 "$STATUS_FIXTURE_PID" 2>/dev/null; then
+    kill "$STATUS_FIXTURE_PID" 2>/dev/null || true
+  fi
+  wait "$STATUS_FIXTURE_PID" 2>/dev/null || true
+  STATUS_FIXTURE_PID=""
+}
+
 start_backend() {
   local log_path="$1"
   local runtime_secret
@@ -152,6 +219,7 @@ start_backend() {
     IMBOY_PG_HOST="$PGHOST" IMBOY_PG_PORT="$PGPORT" \
     IMBOY_PG_USERNAME="$PGUSER" IMBOY_PG_PASSWORD="$PGPASSWORD" \
     IMBOY_PG_DATABASE="$DB" IMBOY_AUTO_MIGRATE=false \
+    IMBOY_PRODUCT_PROFILE=enterprise \
     IMBOY_ADM_COOKIE_SECRET="adm:$runtime_secret" \
     IMBOY_POSTGRE_AES_KEY="aes:$runtime_secret" \
     IMBOY_JWT_KEY="jwt:$runtime_secret" \
@@ -214,6 +282,25 @@ create_bot() {
         -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
 }
 
+insert_runtime_delivery() {
+  local delivery_id="$1"
+  local correlation_id="$2"
+  local webhook_url="$3"
+  printf 'io:format("~p", [bot_webhook_delivery_repo:insert(#{delivery_id => <<"%s">>, bot_id => %s, event_type => <<"agent_task.completed">>, payload => <<"{}">>, correlation_id => <<"%s">>, idempotency_key => <<"negative:%s">>, webhook_url => <<"%s">>, webhook_host => <<"127.0.0.1">>, pinned_ip => <<"127.0.0.1">>})]).\n' \
+    "$delivery_id" "$BOT_UID" "$correlation_id" "$delivery_id" "$webhook_url" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+}
+
+execute_runtime_delivery() {
+  local delivery_id="$1"
+  local count="$2"
+  printf 'lists:foreach(fun(_) -> {ok, Delivery} = bot_webhook_delivery_repo:get_delivery(<<"%s">>), _ = bot_webhook_delivery_worker:execute(Delivery) end, lists:seq(1, %s)), io:format("ok").\n' \
+    "$delivery_id" "$count" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 20
+}
+
 snapshot_restart_state() {
   $PSQL -d "$DB" -At -v correlation_id="$TRACE_CORR" <<'SQL'
 SELECT jsonb_pretty(jsonb_build_object(
@@ -240,6 +327,7 @@ cleanup() {
     return
   fi
   stop_bot_fixture
+  stop_status_fixture
   stop_backend || failed=1
   echo "[golden] cleanup: drop $DB"
   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres \
@@ -282,7 +370,9 @@ write_evidence() {
     --channel-webhook-passed "$CHANNEL_WEBHOOK_PASSED" \
     --agent-dialog-passed "$AGENT_DIALOG_PASSED" \
     --bot-dialog-passed "$BOT_DIALOG_PASSED" \
+    --protocol-negatives-passed "$PROTOCOL_NEGATIVES_PASSED" \
     --restart-passed "$RESTART_PASSED" \
+    --final-integrated-base "$FINAL_INTEGRATED_BASE" \
     --failed-step "$CURRENT_STEP" --failed-code "$failed_code"
 }
 
@@ -342,6 +432,7 @@ SUITES=(
   ai_agent_group_reply_tests
   ai_agent_tool_loop_tests
   mcp_authz_gate_tests
+  mcp_governance_logic_tests
   mcp_client_repo_tests
   imboy_mcp_task_tools_tests
   agent_task_repo_tests
@@ -423,12 +514,15 @@ $PSQL -d "$DB" -c "
     (700001, 'agent-hub-local-admin', 'Agent Hub local admin',
      'not-used-for-login', ARRAY[1]::bigint[], 1)
   ON CONFLICT (id) DO NOTHING" >/dev/null
-$PSQL -d "$DB" -v human_uid="$AGENT_HUMAN_UID" -v group_id="$AGENT_GROUP_ID" <<'SQL' >/dev/null
+$PSQL -d "$DB" -v human_uid="$AGENT_HUMAN_UID" -v other_uid="$MCP_OTHER_UID" \
+  -v group_id="$AGENT_GROUP_ID" <<'SQL' >/dev/null
 INSERT INTO public."user"
   (id, nickname, password, account, reg_ip, reg_cosv, account_type)
 VALUES
   (:human_uid, 'Agent Hub local human', 'not-used-for-login',
-   'agent-hub-local-human-' || :human_uid, '127.0.0.1', 'local-fixture', 0);
+   'agent-hub-local-human-' || :human_uid, '127.0.0.1', 'local-fixture', 0),
+  (:other_uid, 'Agent Hub local other owner', 'not-used-for-login',
+   'agent-hub-local-other-' || :other_uid, '127.0.0.1', 'local-fixture', 0);
 INSERT INTO public."group"
   (id, owner_uid, creator_uid, title, member_count, e2ee_mode, scope)
 VALUES
@@ -439,14 +533,36 @@ CURRENT_STEP="start local backend for HTTP smoke"
 start_backend "$EVIDENCE_DIR/runtime-backend-before-restart.log"
 ADM_SIG="$(issue_admin_cookie)"
 [[ -n "$ADM_SIG" ]] || { echo "[golden] admin cookie issue failed" >&2; exit 1; }
+MCP_MEMBER_RESULT="$(
+  printf 'io:format("~p", [{group_member_ds:add_member(%s, %s), group_member_ds:add_member(%s, %s)}]).\n' \
+    "$AGENT_GROUP_ID" "$AGENT_HUMAN_UID" "$AGENT_GROUP_ID" "$MCP_OTHER_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$MCP_MEMBER_RESULT" == "{ok,ok}" ]]
 CURRENT_STEP="run real HTTP MCP credential lifecycle"
+MCP_ENFORCE_RESULT="$(
+  printf 'io:format("~p", [mcp_governance_logic:enforce()]).\n' \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$MCP_ENFORCE_RESULT" == "true" ]]
+EXPIRED_MCP_SECRET="$(
+  printf 'case mcp_client_repo:create_client(900001, #{name => <<"expired-local">>, expires_at => <<"2020-01-01T00:00:00Z">>}) of {ok, #{<<"secret">> := Secret}} -> io:format("~s", [Secret]); Error -> io:format("ERROR ~p", [Error]) end.\n' \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$EXPIRED_MCP_SECRET" =~ ^[0-9a-f]{64}$ ]]
 IMBOY_BASE_URL="http://127.0.0.1:$RUNTIME_HTTP_PORT" \
-  ADM_UID=700001 ADM_SIG="$ADM_SIG" EXT01_OWNER_UID=900001 EXT01_GROUP_ID=0 \
+  ADM_UID=700001 ADM_SIG="$ADM_SIG" EXT01_OWNER_UID="$AGENT_HUMAN_UID" \
+  EXT01_OTHER_OWNER_UID="$MCP_OTHER_UID" EXT01_GROUP_ID="$AGENT_GROUP_ID" \
+  EXT01_STRICT_NEGATIVES=yes EXPIRED_MCP_SECRET="$EXPIRED_MCP_SECRET" \
   python3 "$ROOT/scripts/agent_hub_ext01_mcp_client_smoke.py" \
     --out "$EVIDENCE_DIR/ext01-a02-runtime.json" \
     > "$EVIDENCE_DIR/ext01-a02-runtime.log" 2>&1
+unset EXPIRED_MCP_SECRET
 python3 -c \
-  'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); assert d.get("passed") == 11 and d.get("failed") == 0' \
+  'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); assert d.get("passed") == 25 and d.get("failed") == 0' \
   "$EVIDENCE_DIR/ext01-a02-runtime.json"
 HTTP_SMOKE_PASSED=1
 
@@ -547,12 +663,12 @@ AGENT_UID="$(create_fake_agent)"
 [[ "$AGENT_UID" =~ ^[0-9]+$ ]] || {
   echo "[golden] fake Agent creation failed" >&2; exit 1; }
 MEMBER_RESULT="$(
-  printf 'io:format("~p", [{group_member_ds:add_member(%s, %s), group_member_ds:add_member(%s, %s)}]).\n' \
-    "$AGENT_GROUP_ID" "$AGENT_HUMAN_UID" "$AGENT_GROUP_ID" "$AGENT_UID" \
+  printf 'io:format("~p", [group_member_ds:add_member(%s, %s)]).\n' \
+    "$AGENT_GROUP_ID" "$AGENT_UID" \
     | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
         -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
 )"
-[[ "$MEMBER_RESULT" == "{ok,ok}" ]]
+[[ "$MEMBER_RESULT" == "ok" ]]
 AGENT_HUMAN_TOKEN="$(issue_user_token "$AGENT_HUMAN_UID")"
 [[ -n "$AGENT_HUMAN_TOKEN" ]]
 WS_URL="ws://127.0.0.1:$RUNTIME_HTTP_PORT/api/v1/ws" \
@@ -619,17 +735,18 @@ SELECT jsonb_pretty(jsonb_build_object(
 ));
 SQL
 python3 - "$EVIDENCE_DIR/agent-dialog-a02-db.json" \
-  "$AGENT_HUMAN_UID" "$AGENT_UID" "$AGENT_GROUP_ID" \
+  "$AGENT_HUMAN_UID" "$MCP_OTHER_UID" "$AGENT_UID" "$AGENT_GROUP_ID" \
   "$AGENT_MSG_ID" "$AGENT_PROMPT" "$AGENT_REPLY" <<'PY'
 import json
 import sys
 
 database = json.load(open(sys.argv[1], encoding="utf-8"))
-human_uid, agent_uid, group_id = map(int, sys.argv[2:5])
-human_msg_id, prompt, reply = sys.argv[5:8]
+human_uid, other_uid, agent_uid, group_id = map(int, sys.argv[2:6])
+human_msg_id, prompt, reply = sys.argv[6:9]
 assert database["group"] == {"id": group_id, "e2ee_mode": 0, "scope": "personal"}
 expected_members = sorted([
     {"user_id": human_uid, "account_type": 0},
+    {"user_id": other_uid, "account_type": 0},
     {"user_id": agent_uid, "account_type": 1},
 ], key=lambda row: row["user_id"])
 assert database["members"] == expected_members
@@ -829,6 +946,192 @@ assert database["negative_delivery_count"] == 0
 PY
 BOT_DIALOG_PASSED=1
 
+CURRENT_STEP="run webhook retry, dead-letter, replay, and E2EE task negatives"
+WORKER_SUSPEND_RESULT="$(
+  printf 'io:format("~p", [sys:suspend(bot_webhook_delivery_worker)]).\n' \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$WORKER_SUSPEND_RESULT" == "ok" ]]
+NEGATIVE_CHAIN_RESULT="$(
+  printf 'io:format("~p", [elib_pg:with_tx(fun(Conn) -> ok = agent_hub_audit_repo:record_task_start_tx(Conn, <<"%s">>, <<"%s">>), ok = agent_hub_audit_repo:record_transition_tx(Conn, <<"%s">>, <<"%s">>, <<"%s">>, <<"working">>, <<"submitted">>), ok end)]).\n' \
+    "$NEGATIVE_CORR" "$NEGATIVE_TASK_ID" "$NEGATIVE_CORR" \
+    "$NEGATIVE_TASK_ID" "$NEGATIVE_EVENT_ID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$NEGATIVE_CHAIN_RESULT" == "ok" ]]
+
+WEBHOOK_5XX_PORT="$(python3 -c \
+  'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+WEBHOOK_5XX_URL="http://127.0.0.1:$WEBHOOK_5XX_PORT/hook"
+WEBHOOK_5XX_READY="$CONFIG_TMP_DIR/webhook-5xx-ready.json"
+python3 "$ROOT/scripts/agent_hub_http_status_fixture.py" \
+  --port "$WEBHOOK_5XX_PORT" --status 503 --requests 4 \
+  --ready "$WEBHOOK_5XX_READY" \
+  --out "$EVIDENCE_DIR/webhook-5xx-a02-runtime.json" \
+  > "$EVIDENCE_DIR/webhook-5xx-a02-runtime.log" 2>&1 &
+STATUS_FIXTURE_PID=$!
+for _ in $(seq 1 40); do
+  [[ -f "$WEBHOOK_5XX_READY" ]] && break
+  kill -0 "$STATUS_FIXTURE_PID" 2>/dev/null || break
+  sleep 0.25
+done
+[[ -f "$WEBHOOK_5XX_READY" ]] && kill -0 "$STATUS_FIXTURE_PID" 2>/dev/null
+[[ "$(insert_runtime_delivery "$WEBHOOK_5XX_DELIVERY_ID" "$NEGATIVE_CORR" "$WEBHOOK_5XX_URL")" == "{ok,inserted}" ]]
+[[ "$(execute_runtime_delivery "$WEBHOOK_5XX_DELIVERY_ID" 4)" == "ok" ]]
+wait "$STATUS_FIXTURE_PID"
+STATUS_FIXTURE_PID=""
+$PSQL -d "$DB" -At -v delivery_id="$WEBHOOK_5XX_DELIVERY_ID" <<'SQL' \
+  > "$EVIDENCE_DIR/webhook-5xx-a02-db.json"
+SELECT jsonb_pretty(jsonb_build_object(
+  'delivery_id', d.delivery_id,
+  'status', d.status,
+  'attempt_count', d.attempt_count,
+  'row_count', (SELECT count(*) FROM public.bot_delivery WHERE delivery_id = :'delivery_id'),
+  'attempt_rows', (SELECT count(*) FROM public.bot_delivery_attempt WHERE delivery_id = :'delivery_id'),
+  'audit_status', (SELECT status FROM public.agent_hub_audit
+                   WHERE entity_type = 'delivery' AND entity_id = :'delivery_id')
+)) FROM public.bot_delivery d WHERE d.delivery_id = :'delivery_id';
+SQL
+python3 - "$EVIDENCE_DIR/webhook-5xx-a02-runtime.json" \
+  "$EVIDENCE_DIR/webhook-5xx-a02-db.json" "$WEBHOOK_5XX_DELIVERY_ID" <<'PY'
+import json
+import sys
+
+runtime = json.load(open(sys.argv[1], encoding="utf-8"))
+database = json.load(open(sys.argv[2], encoding="utf-8"))
+assert runtime == {"status": 503, "expected_requests": 4, "requests": 4, "passed": True}
+assert database == {
+    "delivery_id": sys.argv[3], "status": "dead", "attempt_count": 4,
+    "row_count": 1, "attempt_rows": 4, "audit_status": "failed",
+}
+PY
+
+WEBHOOK_4XX_PORT="$(python3 -c \
+  'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+WEBHOOK_4XX_URL="http://127.0.0.1:$WEBHOOK_4XX_PORT/hook"
+WEBHOOK_4XX_READY="$CONFIG_TMP_DIR/webhook-4xx-ready.json"
+python3 "$ROOT/scripts/agent_hub_http_status_fixture.py" \
+  --port "$WEBHOOK_4XX_PORT" --status 400 --requests 1 \
+  --ready "$WEBHOOK_4XX_READY" \
+  --out "$EVIDENCE_DIR/webhook-4xx-a02-runtime.json" \
+  > "$EVIDENCE_DIR/webhook-4xx-a02-runtime.log" 2>&1 &
+STATUS_FIXTURE_PID=$!
+for _ in $(seq 1 40); do
+  [[ -f "$WEBHOOK_4XX_READY" ]] && break
+  kill -0 "$STATUS_FIXTURE_PID" 2>/dev/null || break
+  sleep 0.25
+done
+[[ -f "$WEBHOOK_4XX_READY" ]] && kill -0 "$STATUS_FIXTURE_PID" 2>/dev/null
+[[ "$(insert_runtime_delivery "$WEBHOOK_4XX_DELIVERY_ID" "$NEGATIVE_CORR" "$WEBHOOK_4XX_URL")" == "{ok,inserted}" ]]
+[[ "$(execute_runtime_delivery "$WEBHOOK_4XX_DELIVERY_ID" 1)" == "ok" ]]
+wait "$STATUS_FIXTURE_PID"
+STATUS_FIXTURE_PID=""
+$PSQL -d "$DB" -At -v delivery_id="$WEBHOOK_4XX_DELIVERY_ID" <<'SQL' \
+  > "$EVIDENCE_DIR/webhook-4xx-a02-db.json"
+SELECT jsonb_pretty(jsonb_build_object(
+  'delivery_id', d.delivery_id,
+  'status', d.status,
+  'attempt_count', d.attempt_count,
+  'row_count', (SELECT count(*) FROM public.bot_delivery WHERE delivery_id = :'delivery_id'),
+  'attempt_rows', (SELECT count(*) FROM public.bot_delivery_attempt WHERE delivery_id = :'delivery_id'),
+  'audit_status', (SELECT status FROM public.agent_hub_audit
+                   WHERE entity_type = 'delivery' AND entity_id = :'delivery_id')
+)) FROM public.bot_delivery d WHERE d.delivery_id = :'delivery_id';
+SQL
+python3 - "$EVIDENCE_DIR/webhook-4xx-a02-runtime.json" \
+  "$EVIDENCE_DIR/webhook-4xx-a02-db.json" "$WEBHOOK_4XX_DELIVERY_ID" <<'PY'
+import json
+import sys
+
+runtime = json.load(open(sys.argv[1], encoding="utf-8"))
+database = json.load(open(sys.argv[2], encoding="utf-8"))
+assert runtime == {"status": 400, "expected_requests": 1, "requests": 1, "passed": True}
+assert database == {
+    "delivery_id": sys.argv[3], "status": "dead", "attempt_count": 1,
+    "row_count": 1, "attempt_rows": 1, "audit_status": "failed",
+}
+PY
+
+IMBOY_BASE_URL="http://127.0.0.1:$RUNTIME_HTTP_PORT" \
+  ADM_UID=700001 ADM_SIG="$ADM_SIG" \
+  python3 "$ROOT/scripts/agent_hub_delivery_replay_smoke.py" \
+    --delivery-id "$WEBHOOK_4XX_DELIVERY_ID" \
+    --out "$EVIDENCE_DIR/delivery-replay-a02-runtime.json" \
+    > "$EVIDENCE_DIR/delivery-replay-a02-runtime.log" 2>&1
+$PSQL -d "$DB" -At -v delivery_id="$WEBHOOK_4XX_DELIVERY_ID" <<'SQL' \
+  > "$EVIDENCE_DIR/delivery-replay-a02-db.json"
+SELECT jsonb_pretty(jsonb_build_object(
+  'delivery_id', d.delivery_id,
+  'status', d.status,
+  'attempt_count', d.attempt_count,
+  'row_count', (SELECT count(*) FROM public.bot_delivery WHERE delivery_id = :'delivery_id'),
+  'audit_status', (SELECT status FROM public.agent_hub_audit
+                   WHERE entity_type = 'delivery' AND entity_id = :'delivery_id')
+)) FROM public.bot_delivery d WHERE d.delivery_id = :'delivery_id';
+SQL
+python3 - "$EVIDENCE_DIR/delivery-replay-a02-runtime.json" \
+  "$EVIDENCE_DIR/delivery-replay-a02-db.json" "$WEBHOOK_4XX_DELIVERY_ID" <<'PY'
+import json
+import sys
+
+runtime = json.load(open(sys.argv[1], encoding="utf-8"))
+database = json.load(open(sys.argv[2], encoding="utf-8"))
+assert runtime == {
+    "delivery_id": sys.argv[3], "http_status": 200, "code": 0,
+    "status": "pending", "passed": True,
+}
+assert database == {
+    "delivery_id": sys.argv[3], "status": "pending", "attempt_count": 1,
+    "row_count": 1, "audit_status": "pending",
+}
+PY
+
+printf 'io:format("~p", [agent_task_observer:emit(#{task_id => <<"%s">>, agent_uid => %s, group_id => %s, status => working, member_uids => [%s], text => <<"ignored encrypted task">>, e2ee => true})]).\n' \
+  "$E2EE_TASK_ID" "$BOT_UID" "$AGENT_GROUP_ID" "$AGENT_HUMAN_UID" \
+  | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+      -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10 \
+      > "$EVIDENCE_DIR/agent-task-e2ee-a02-runtime.txt"
+grep -Fxq 'ok' "$EVIDENCE_DIR/agent-task-e2ee-a02-runtime.txt"
+$PSQL -d "$DB" -At -v task_id="$E2EE_TASK_ID" <<'SQL' \
+  > "$EVIDENCE_DIR/agent-task-e2ee-a02-db.json"
+SELECT jsonb_pretty(jsonb_build_object(
+  'task_count', (SELECT count(*) FROM public.agent_task WHERE id = :'task_id'),
+  'audit_count', (SELECT count(*) FROM public.agent_hub_audit WHERE entity_id = :'task_id'),
+  'msg_c2g_count', (SELECT count(*) FROM public.msg_c2g
+                    WHERE payload #>> '{payload,agent_task,task_id}' = :'task_id'),
+  'msg_store_count', (SELECT count(*) FROM public.msg_store
+                      WHERE payload::jsonb #>> '{payload,agent_task,task_id}' = :'task_id')
+));
+SQL
+python3 - "$EVIDENCE_DIR/agent-task-e2ee-a02-db.json" <<'PY'
+import json
+import sys
+
+database = json.load(open(sys.argv[1], encoding="utf-8"))
+assert database == {
+    "task_count": 0, "audit_count": 0, "msg_c2g_count": 0, "msg_store_count": 0,
+}
+PY
+
+$PSQL -d "$DB" -v correlation_id="$NEGATIVE_CORR" \
+  -v delivery_5xx="$WEBHOOK_5XX_DELIVERY_ID" \
+  -v delivery_4xx="$WEBHOOK_4XX_DELIVERY_ID" <<'SQL' >/dev/null
+DELETE FROM public.bot_delivery_attempt
+WHERE delivery_id IN (:'delivery_5xx', :'delivery_4xx');
+DELETE FROM public.bot_delivery
+WHERE delivery_id IN (:'delivery_5xx', :'delivery_4xx');
+DELETE FROM public.agent_hub_audit WHERE correlation_id = :'correlation_id';
+SQL
+WORKER_RESUME_RESULT="$(
+  printf 'io:format("~p", [sys:resume(bot_webhook_delivery_worker)]).\n' \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$WORKER_RESUME_RESULT" == "ok" ]]
+PROTOCOL_NEGATIVES_PASSED=1
+
 TRACE_TASK_ID="$($PSQL -d "$DB" -tAc \
   "SELECT id FROM public.agent_task WHERE correlation_id='$TRACE_CORR'")"
 [[ "$TRACE_TASK_ID" =~ ^task-[A-Za-z0-9_-]{11,59}$ ]] || {
@@ -870,21 +1173,31 @@ if grep -qiE "$SENSITIVE_PATTERN" "$EVIDENCE_DIR"/*.log 2>/dev/null; then
 fi
 SENSITIVE_SCAN_PASSED=1
 
-# 7) 先清理并核验，再结算证据。A01/A02/A07 尚未完成，固定 PARTIAL。
+# 7) 先清理并核验，再结算证据；仅最终 main Base 可闭合 A07。
 CURRENT_STEP="cleanup marker scratch resources"
 cleanup
-write_evidence PARTIAL
+FINAL_STATUS="PARTIAL"
+EXPECTED_EVIDENCE_EXIT=1
+if [[ "$FINAL_INTEGRATED_BASE" -eq 1 ]]; then
+  FINAL_STATUS="PASS"
+  EXPECTED_EVIDENCE_EXIT=0
+fi
+write_evidence "$FINAL_STATUS"
 set +e
 python3 "$ROOT/scripts/verify_agent_hub_task_evidence.py" \
   --task "$EVIDENCE_DIR/evidence.json" > "$EVIDENCE_DIR/evidence-self-verifier.json"
 EVIDENCE_EXIT=$?
 set -e
-if [[ "$EVIDENCE_EXIT" -ne 1 ]]; then
-  echo "[golden] evidence verifier expected PARTIAL (exit 1), got $EVIDENCE_EXIT" >&2
+if [[ "$EVIDENCE_EXIT" -ne "$EXPECTED_EVIDENCE_EXIT" ]]; then
+  echo "[golden] evidence verifier expected $FINAL_STATUS (exit $EXPECTED_EVIDENCE_EXIT), got $EVIDENCE_EXIT" >&2
   exit 2
 fi
 write_manifest
 RUN_FINISHED=1
 echo "[golden] evidence written to $EVIDENCE_DIR"
-echo "[golden] PARTIAL: HTTP MCP, channel webhook, Agent/Bot dialogs, and restart PASS; trusted runtime trace and remaining protocol negatives stay open"
+if [[ "$FINAL_INTEGRATED_BASE" -eq 1 ]]; then
+  echo "[golden] PASS: A01-A07 passed on the final integrated main Base"
+  exit 0
+fi
+echo "[golden] PARTIAL: A01-A06 PASS; A07 waits for the final integrated Base rerun"
 exit 1

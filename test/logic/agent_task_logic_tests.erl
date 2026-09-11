@@ -119,6 +119,31 @@ record_event_legal_transition_test_() ->
         ?assertMatch(<<"corr-", _/binary>>, maps:get(<<"correlation_id">>, Row))
     end).
 
+%% 审批只走一次：首次批准后的执行恢复不能再次创建待审轮次；即使状态被
+%% 外部故障写回 awaiting_approval，重复决定也必须回滚 CAS，不改变任务状态。
+approval_cannot_reopen_or_rewrite_state_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        setup_group_ds([10]),
+        T = uid(),
+        Event = #{task_id => T, agent_uid => 100, group_id => 5, e2ee => false},
+        {deliver, <<"working">>} = agent_task_logic:record_event(Event#{status => working}),
+        {deliver_with_meta, <<"awaiting_approval">>, _} =
+            agent_task_logic:record_event(Event#{status => awaiting_approval}),
+        {ok, approved, _} = agent_task_logic:decide(T, 10, approved),
+        {deliver, <<"working">>} = agent_task_logic:record_event(Event#{status => working}),
+        skip = agent_task_logic:record_event(Event#{status => awaiting_approval}),
+        {ok, Working} = agent_task_repo:get_task(T),
+        ?assertEqual(<<"working">>, maps:get(<<"status">>, Working)),
+
+        {ok, updated} = agent_task_repo:cas_status(
+            T, {[<<"working">>], <<"awaiting_approval">>}
+        ),
+        ?assertEqual({error, already_decided}, agent_task_logic:decide(T, 10, rejected)),
+        {ok, StillAwaiting} = agent_task_repo:get_task(T),
+        ?assertEqual(<<"awaiting_approval">>, maps:get(<<"status">>, StillAwaiting)),
+        cleanup_group_ds()
+    end).
+
 %% ===================================================================
 %% Helpers
 %% ===================================================================
@@ -208,8 +233,8 @@ expire_stale_tasks_test_() ->
     {timeout, 30,
         ?TEST_WITH_DB(fun() ->
             setup_group_ds([10, 11]),
-            Old = <<"exp-old-", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
-            Fresh = <<"exp-fresh-", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+            Old = uid(),
+            Fresh = uid(),
             %% 老任务：awaiting_approval 且 updated_at 拨回 1 小时前（超时）
             {ok, _, true} = agent_task_repo:ensure_task(base_data(Old)),
             {ok, _} = elib_pg:execute(

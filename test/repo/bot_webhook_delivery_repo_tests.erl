@@ -28,6 +28,10 @@ corr() ->
     Bin = binary:encode_hex(crypto:strong_rand_bytes(16), lowercase),
     <<"corr-", Bin/binary>>.
 
+audit_id(Prefix) ->
+    Bin = binary:encode_hex(crypto:strong_rand_bytes(12), lowercase),
+    <<Prefix/binary, Bin/binary>>.
+
 insert_idempotent_test_() ->
     ?TEST_WITH_DB(fun() ->
         D = did(),
@@ -58,6 +62,40 @@ claim_due_only_due_test_() ->
         ?assertNot(lists:any(fun(R) -> maps:get(<<"delivery_id">>, R) =:= D end, Rows2))
     end).
 
+claim_due_is_exclusive_across_workers_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        D = did(),
+        {ok, inserted} = bot_webhook_delivery_repo:insert(base(D)),
+        {ok, _} = elib_pg:execute(
+            <<
+                "UPDATE public.bot_delivery SET next_retry_at = NOW() - INTERVAL '1 day'"
+                " WHERE delivery_id = $1"
+            >>,
+            [D]
+        ),
+        Parent = self(),
+        Workers = [
+            spawn(fun() -> Parent ! {claimed, bot_webhook_delivery_repo:claim_due(1)} end)
+         || _ <- lists:seq(1, 16)
+        ],
+        Results = [
+            receive
+                {claimed, Result} -> Result
+            after 10000 ->
+                timeout
+            end
+         || _ <- Workers
+        ],
+        Claimed = [
+            Row
+         || {ok, Rows} <- Results,
+            Row <- Rows,
+            maps:get(<<"delivery_id">>, Row) =:= D
+        ],
+        ?assertEqual(1, length(Claimed)),
+        ?assertNot(lists:member(timeout, Results))
+    end).
+
 mark_retry_and_dead_test_() ->
     ?TEST_WITH_DB(fun() ->
         D = did(),
@@ -74,8 +112,19 @@ mark_retry_and_dead_test_() ->
 
 replay_dead_only_test_() ->
     ?TEST_WITH_DB(fun() ->
-        D = did(),
-        {ok, inserted} = bot_webhook_delivery_repo:insert(base(D)),
+        D = audit_id(<<"dlv-">>),
+        Corr = corr(),
+        TaskId = audit_id(<<"task-">>),
+        EventId = audit_id(<<"event-">>),
+        ok = elib_pg:with_tx(fun(Conn) ->
+            ok = agent_hub_audit_repo:record_task_start_tx(Conn, Corr, TaskId),
+            ok = agent_hub_audit_repo:record_transition_tx(
+                Conn, Corr, TaskId, EventId, <<"working">>, <<"submitted">>
+            )
+        end),
+        {ok, inserted} = bot_webhook_delivery_repo:insert(
+            (base(D))#{correlation_id => Corr}
+        ),
         %% 非 dead 不可重放
         {error, not_dead} = bot_webhook_delivery_repo:replay(D),
         {ok, _} = bot_webhook_delivery_repo:mark_dead(D, 4),
@@ -84,6 +133,13 @@ replay_dead_only_test_() ->
         ?assertEqual(<<"pending">>, maps:get(<<"status">>, Row)),
         %% delivery_id 不变（重放不换 ID）
         ?assertEqual(D, maps:get(<<"delivery_id">>, Row)),
+        {ok, Audit} = agent_hub_audit_repo:list_by_correlation(Corr),
+        [AuditDelivery] = [
+            A
+         || A = #{<<"entity_type">> := <<"delivery">>, <<"entity_id">> := AuditId} <- Audit,
+            AuditId =:= D
+        ],
+        ?assertEqual(<<"pending">>, maps:get(<<"status">>, AuditDelivery)),
         %% 不存在
         {error, notfound} = bot_webhook_delivery_repo:replay(did())
     end).

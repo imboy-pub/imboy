@@ -15,7 +15,7 @@
 %    源态集合"，动作语义与审批规则的解释权在 FSM-00 契约。
 %%%
 
--export([ensure_task/1, record_event/1, decide/3, lookup/1]).
+-export([ensure_task/1, authorize_owner/2, record_event/1, decide/3, lookup/1]).
 -export([expire_stale_tasks/1]).
 %% 供单测/审计核对：目标态 → 合法源态集合
 -export([legal_sources/1]).
@@ -64,8 +64,26 @@ ensure_task(Event) ->
                 correlation_id => new_correlation_id(),
                 idempotency_key => <<"task:", TaskId/binary>>
             },
-            agent_task_repo:ensure_task(Data)
+            agent_task_repo:ensure_task_with_audit(Data)
     end.
+
+%% @doc MCP/HTTP task owner authorization from persisted server-side fields.
+%% Both ownership and current group membership are required; lookup failures deny.
+-spec authorize_owner(binary(), integer()) -> ok | {error, not_authorized}.
+authorize_owner(TaskId, OwnerUid) when is_integer(OwnerUid), OwnerUid > 0 ->
+    case agent_task_repo:get_task(TaskId) of
+        {ok, TaskRow} ->
+            AgentUid = to_int(maps:get(<<"agent_uid">>, TaskRow, 0)),
+            GroupId = to_int(maps:get(<<"group_id">>, TaskRow, 0)),
+            case AgentUid =:= OwnerUid andalso agent_task_ds:is_group_member(OwnerUid, GroupId) of
+                true -> ok;
+                false -> {error, not_authorized}
+            end;
+        _ ->
+            {error, not_authorized}
+    end;
+authorize_owner(_TaskId, _OwnerUid) ->
+    {error, not_authorized}.
 
 %% @doc 事件记录 + CAS 迁移。返回投递指令：
 %%   {deliver, StatusBin}                     可投递（ephemeral 或首次 durable）
@@ -90,7 +108,7 @@ do_record_event(Event) ->
     StatusBin = status_bin(maps:get(status, Event, <<>>)),
     case legal_sources(StatusBin) of
         {ok, FromStates} ->
-            case agent_task_repo:ensure_task(ensure_data(Event)) of
+            case agent_task_repo:ensure_task_with_audit(ensure_data(Event)) of
                 {ok, TaskRow, _Created} ->
                     apply_event(TaskId, TaskRow, StatusBin, FromStates, Event);
                 {error, Reason} ->
@@ -110,52 +128,65 @@ apply_event(TaskId, TaskRow, StatusBin, FromStates, Event) ->
         IsRepeat ->
             skip;
         true ->
-            R = agent_task_repo:cas_status(TaskId, {FromStates, StatusBin}),
-            case R of
-                {ok, updated} ->
-                    after_transition(TaskId, TaskRow, StatusBin, Corr, Event);
-                {ok, not_matched} ->
-                    not_matched(Cur, StatusBin);
-                {ok, _Other} ->
-                    not_matched(Cur, StatusBin);
-                {error, _Reason} ->
-                    skip
-            end
+            transition(TaskId, TaskRow, StatusBin, FromStates, Corr, Cur, Event)
     end.
+
+transition(TaskId, TaskRow, StatusBin, FromStates, Corr, Cur, Event) ->
+    EventData = event_data(TaskId, StatusBin, Corr),
+    Result = agent_task_repo:with_tx(fun(Conn) ->
+        case agent_task_repo:cas_status_tx(Conn, TaskId, {FromStates, StatusBin}) of
+            {ok, updated} ->
+                persist_transition_tx(Conn, TaskRow, EventData, StatusBin, Cur);
+            {ok, not_matched} ->
+                {ok, not_matched};
+            {error, Reason} ->
+                throw({abort_tx, Reason})
+        end
+    end),
+    transition_result(Result, TaskRow, StatusBin, Event).
+
+persist_transition_tx(Conn, TaskRow, EventData, StatusBin, Cur) ->
+    case agent_task_repo:insert_event_tx(Conn, EventData) of
+        {ok, inserted} ->
+            ok = agent_hub_audit_repo:record_transition_tx(
+                Conn,
+                maps:get(<<"correlation_id">>, TaskRow),
+                maps:get(<<"id">>, TaskRow),
+                maps:get(id, EventData),
+                StatusBin,
+                Cur
+            ),
+            {ok, inserted};
+        {ok, duplicate} ->
+            throw({abort_tx, duplicate_event});
+        {error, Reason} ->
+            throw({abort_tx, Reason})
+    end.
+
+transition_result({ok, inserted}, TaskRow, StatusBin, Event) ->
+    case lists:member(StatusBin, ?DURABLE_STATUSES) of
+        true -> {deliver_with_meta, StatusBin, enrich(TaskRow, Event)};
+        false -> {deliver, StatusBin}
+    end;
+transition_result({ok, not_matched}, TaskRow, StatusBin, _Event) ->
+    not_matched(cur_status(TaskRow), StatusBin);
+transition_result(_Error, _TaskRow, _StatusBin, _Event) ->
+    skip.
 
 %% working 自环（progress/working 重发）：状态不变但仍属合法，ephemeral 可重复。
 not_matched(_Cur, <<"working">>) -> {deliver, <<"working">>};
 not_matched(_Cur, _Target) -> skip.
 
-after_transition(TaskId, TaskRow, StatusBin, Corr, Event) ->
+event_data(TaskId, StatusBin, Corr) ->
     Durable = lists:member(StatusBin, ?DURABLE_STATUSES),
-    EventData = #{
+    #{
         id => new_id(<<"agent_task_event">>, TaskId, StatusBin),
         task_id => TaskId,
         status => StatusBin,
         correlation_id => Corr,
         idempotency_key => event_idem(TaskId, StatusBin, Durable),
         seq => 0
-    },
-    %% with_tx 直接返回 fun 值；回滚归一 skip（事件落库失败不投递 durable）
-    Ret = agent_task_repo:with_tx(fun(Conn) ->
-        agent_task_repo:insert_event_tx(Conn, EventData)
-    end),
-    case Ret of
-        {ok, inserted} when Durable ->
-            {deliver_with_meta, StatusBin, enrich(TaskRow, Event)};
-        {ok, inserted} ->
-            {deliver, StatusBin};
-        {ok, duplicate} ->
-            %% 重复 durable 事件：事件已记过、消息已投过 → 不重复投递（A03）
-            skip;
-        {rollback, Reason} ->
-            ok = ?ERROR_LOG("[AGENT_TASK_LOGIC] event rollback ~p~n", [Reason]),
-            skip;
-        {error, Reason} ->
-            ok = ?ERROR_LOG("[AGENT_TASK_LOGIC] event ~p~n", [Reason]),
-            skip
-    end.
+    }.
 
 %% @doc 审批（approve/reject）。ApproverUid 必须由调用方从已认证会话派生。
 %% 返回 {ok, Decision} | {error, not_authorized | already_decided | not_found | internal_error}。
@@ -212,15 +243,18 @@ arbitrate(TaskId, TaskRow, ApproverUid, Decision, Corr, AgentUid) ->
                 },
                 case agent_task_repo:insert_decision_tx(Conn, Data) of
                     {ok, inserted} ->
+                        ok = agent_hub_audit_repo:record_approval_tx(
+                            Conn, Corr, TaskId, maps:get(id, Data), DecisionBin
+                        ),
                         Meta = #{
                             group_id => to_int(maps:get(<<"group_id">>, TaskRow)),
                             agent_uid => AgentUid
                         },
                         {ok, Decision, Meta};
                     {ok, duplicate} ->
-                        {error, already_decided};
+                        throw({abort_tx, already_decided});
                     {error, Reason} ->
-                        {error, Reason}
+                        throw({abort_tx, Reason})
                 end;
             {ok, not_matched} ->
                 %% 快照可能过期：重读最新状态判定（败者=已决定 or 任务不在待审）

@@ -44,10 +44,13 @@ class EvidenceWriterTest(unittest.TestCase):
 
     def run_writer(self, status, trace_exit=2, failed_step="",
                    http_smoke=1, channel_webhook=1, agent_dialog=1,
-                   bot_dialog=1, restart=1):
-        if status == "PARTIAL":
+                   bot_dialog=1, protocol_negatives=1, restart=1,
+                   final_integrated=0):
+        if status != "FAIL":
+            (self.evidence / "runtime-correlation-trace.json").write_text(
+                '{"schema_version":1,"records":[]}\n', encoding="utf-8")
             (self.evidence / "trace-verifier.json").write_text(
-                '{"decision":"VIOLATION"}\n', encoding="utf-8")
+                '{"decision":"OK"}\n', encoding="utf-8")
         if http_smoke:
             (self.evidence / "ext01-a02-runtime.json").write_text(
                 '{"passed":11,"failed":0}\n', encoding="utf-8")
@@ -66,6 +69,18 @@ class EvidenceWriterTest(unittest.TestCase):
                 '{"passed":12,"failed":0}\n', encoding="utf-8")
             (self.evidence / "bot-dialog-a02-db.json").write_text(
                 '{"bot_reply_count":1}\n', encoding="utf-8")
+        if protocol_negatives:
+            for name in [
+                "webhook-5xx-a02-runtime.json",
+                "webhook-5xx-a02-db.json",
+                "webhook-4xx-a02-runtime.json",
+                "webhook-4xx-a02-db.json",
+                "delivery-replay-a02-runtime.json",
+                "delivery-replay-a02-db.json",
+                "agent-task-e2ee-a02-runtime.txt",
+                "agent-task-e2ee-a02-db.json",
+            ]:
+                (self.evidence / name).write_text("runtime evidence\n", encoding="utf-8")
         if restart:
             for name in [
                 "restart-before.json",
@@ -88,7 +103,9 @@ class EvidenceWriterTest(unittest.TestCase):
             "--channel-webhook-passed", str(channel_webhook),
             "--agent-dialog-passed", str(agent_dialog),
             "--bot-dialog-passed", str(bot_dialog),
+            "--protocol-negatives-passed", str(protocol_negatives),
             "--restart-passed", str(restart),
+            "--final-integrated-base", str(final_integrated),
             "--cleanup-passed", "1",
             "--sensitive-scan-passed", "1",
             "--failed-step", failed_step,
@@ -98,15 +115,15 @@ class EvidenceWriterTest(unittest.TestCase):
         self.assertFalse((self.evidence / "evidence.json.tmp").exists())
         return VERIFIER.verify_task_file(str(self.evidence / "evidence.json"))
 
-    def test_partial_is_valid_but_cannot_pass(self):
-        result = self.run_writer("PARTIAL")
+    def test_partial_has_a01_a02_pass_but_a07_still_open(self):
+        result = self.run_writer("PARTIAL", trace_exit=0)
         self.assertEqual(result["decision"], "PARTIAL")
         evidence = VERIFIER._load_evidence_json(self.evidence / "evidence.json")
         self.assertIn(
             "failed_step=none", (self.evidence / "run-summary.txt").read_text())
         by_id = {row["acceptance_id"]: row for row in evidence["acceptance"]}
-        self.assertEqual(by_id["E2E-01-A01"]["status"], "FAIL")
-        self.assertEqual(by_id["E2E-01-A02"]["status"], "FAIL")
+        self.assertEqual(by_id["E2E-01-A01"]["status"], "PASS")
+        self.assertEqual(by_id["E2E-01-A02"]["status"], "PASS")
         self.assertIn("cmd-08", by_id["E2E-01-A02"]["command_ids"])
         self.assertIn(
             "artifact-channel-webhook-db", by_id["E2E-01-A02"]["artifact_ids"])
@@ -118,6 +135,29 @@ class EvidenceWriterTest(unittest.TestCase):
             "artifact-bot-dialog-db", by_id["E2E-01-A02"]["artifact_ids"])
         self.assertEqual(by_id["E2E-01-A03"]["status"], "PASS")
         self.assertEqual(by_id["E2E-01-A06"]["status"], "PASS")
+        self.assertEqual(by_id["E2E-01-A07"]["status"], "SKIP")
+
+    def test_final_integrated_marks_a07_pass(self):
+        result = self.run_writer(
+            "PASS", trace_exit=0, final_integrated=1)
+        self.assertEqual(result["decision"], "PASS")
+        evidence = VERIFIER._load_evidence_json(self.evidence / "evidence.json")
+        by_id = {row["acceptance_id"]: row for row in evidence["acceptance"]}
+        self.assertEqual(by_id["E2E-01-A07"]["status"], "PASS")
+        self.assertEqual(by_id["E2E-01-A07"]["command_ids"], ["cmd-12"])
+        self.assertNotIn(
+            "Final integrated Base rerun remains open.", evidence["residual_risks"])
+
+    def test_pass_without_final_integrated_flag_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.run_writer("PASS", trace_exit=0)
+
+    def test_protocol_negative_flag_without_artifacts_cannot_pass(self):
+        result = self.run_writer("PARTIAL", trace_exit=0, protocol_negatives=0)
+        self.assertEqual(result["decision"], "PARTIAL")
+        evidence = VERIFIER._load_evidence_json(self.evidence / "evidence.json")
+        by_id = {row["acceptance_id"]: row for row in evidence["acceptance"]}
+        self.assertEqual(by_id["E2E-01-A02"]["status"], "FAIL")
 
     def test_restart_flag_without_artifacts_cannot_pass(self):
         result = self.run_writer("PARTIAL", http_smoke=0, restart=0)

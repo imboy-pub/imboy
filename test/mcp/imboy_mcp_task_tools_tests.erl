@@ -5,8 +5,11 @@
 %%% MCP-02：Agent Task tools（真库；身份取 Ctx Principal；幂等/审批闭环）。
 
 principal() ->
+    principal(42).
+
+principal(OwnerUid) ->
     Hex = binary:encode_hex(crypto:strong_rand_bytes(6), lowercase),
-    #{owner_uid => 42, client_id => 7, client_key => <<"mck-", Hex/binary>>}.
+    #{owner_uid => OwnerUid, client_id => 7, client_key => <<"mck-", Hex/binary>>}.
 
 gid() -> erlang:unique_integer([positive]) + 900000.
 
@@ -14,7 +17,7 @@ gid() -> erlang:unique_integer([positive]) + 900000.
 %% 重放相同 idempotency_key → 同一 task/correlation，不产生第二任务。
 create_approve_poll_replay_test_() ->
     ?TEST_WITH_DB(fun() ->
-        setup_group_ds([10, 11]),
+        setup_group_ds([10, 11, 42]),
         P = principal(),
         Ctx = #{auth_info => P},
         Args = #{
@@ -55,12 +58,48 @@ create_approve_poll_replay_test_() ->
 %% 此处验证 create 幂等键跨 client 隔离（同 key 不同 client = 两个任务）
 idem_scoped_per_client_test_() ->
     ?TEST_WITH_DB(fun() ->
+        setup_group_ds([42]),
         P1 = principal(),
         P2 = principal(),
         Args1 = #{<<"group_id">> => gid(), <<"idempotency_key">> => <<"kA">>},
         {structured, C1} = imboy_mcp_tools:create_agent_task(Args1, #{auth_info => P1}),
         {structured, C2} = imboy_mcp_tools:create_agent_task(Args1, #{auth_info => P2}),
-        ?assertNotEqual(maps:get(<<"task_id">>, C1), maps:get(<<"task_id">>, C2))
+        ?assertNotEqual(maps:get(<<"task_id">>, C1), maps:get(<<"task_id">>, C2)),
+        cleanup_group_ds()
+    end).
+
+%% DATA-01-A04：其他 owner 即使持有已批准 MCP credential，也不能读取或推进任务。
+cross_owner_task_access_rejected_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        setup_group_ds([42, 84]),
+        OwnerCtx = #{auth_info => principal(42)},
+        OtherCtx = #{auth_info => principal(84)},
+        Args = #{<<"group_id">> => gid(), <<"idempotency_key">> => <<"owner-scope">>},
+        {structured, Created} = imboy_mcp_tools:create_agent_task(Args, OwnerCtx),
+        TaskId = maps:get(<<"task_id">>, Created),
+        {tool_error, _} = imboy_mcp_tools:get_agent_task(
+            #{<<"task_id">> => TaskId}, OtherCtx
+        ),
+        {tool_error, _} = imboy_mcp_tools:update_agent_task(
+            #{<<"task_id">> => TaskId, <<"action">> => <<"start">>}, OtherCtx
+        ),
+        {tool_error, _} = imboy_mcp_tools:request_task_approval(
+            #{<<"task_id">> => TaskId}, OtherCtx
+        ),
+        {ok, Row} = agent_task_repo:get_task(TaskId),
+        ?assertEqual(<<"submitted">>, maps:get(<<"status">>, Row)),
+        cleanup_group_ds()
+    end).
+
+%% 非群成员不能借合法 group_id 创建任务；授权数据缺失时同样 fail-closed。
+non_member_create_rejected_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        setup_group_ds([42]),
+        {tool_error, _} = imboy_mcp_tools:create_agent_task(
+            #{<<"group_id">> => gid(), <<"idempotency_key">> => <<"outsider">>},
+            #{auth_info => principal(84)}
+        ),
+        cleanup_group_ds()
     end).
 
 %% 身份不可自报：无 auth_info / Args 伪造 → 拒绝

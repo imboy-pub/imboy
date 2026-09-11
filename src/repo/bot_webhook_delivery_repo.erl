@@ -21,6 +21,12 @@ attempt_tablename() -> elib_pg_sql:public_tablename(<<"bot_delivery_attempt">>).
 %% @doc 幂等入队：idempotency_key 唯一约束，重复事件返回 duplicate（不重复投递）。
 -spec insert(map()) -> {ok, inserted | duplicate} | {error, term()}.
 insert(D) ->
+    case elib_pg:with_tx(fun(Conn) -> insert_tx(Conn, D) end) of
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
+    end.
+
+insert_tx(Conn, D) ->
     Tb = tablename(),
     #{
         delivery_id := Did,
@@ -41,7 +47,7 @@ insert(D) ->
             " VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10)"
             " ON CONFLICT (idempotency_key) DO NOTHING">>,
     case
-        elib_pg:query(Sql, [
+        elib_pg:query(Conn, Sql, [
             Did,
             BotId,
             EventType,
@@ -55,19 +61,25 @@ insert(D) ->
         ])
     of
         {ok, [_]} ->
-            {ok, inserted};
+            inserted_with_audit(Conn, Corr, Did);
         {ok, []} ->
             {ok, duplicate};
-        {ok, N} when is_integer(N), N > 0 -> {ok, inserted};
+        {ok, N} when is_integer(N), N > 0 -> inserted_with_audit(Conn, Corr, Did);
         {ok, 0} ->
             {ok, duplicate};
-        {ok, N, _} when is_integer(N), N > 0 -> {ok, inserted};
+        {ok, N, _} when is_integer(N), N > 0 -> inserted_with_audit(Conn, Corr, Did);
         {ok, 0, []} ->
             {ok, duplicate};
         {error, Reason} ->
             ?ERROR_LOG("bot_delivery_repo:insert error ~p~n", [Reason]),
             {error, Reason}
     end.
+
+inserted_with_audit(Conn, Corr, DeliveryId) ->
+    _ = agent_hub_audit_repo:record_delivery_tx(
+        Conn, Corr, DeliveryId, <<"pending">>
+    ),
+    {ok, inserted}.
 
 -spec get_delivery(binary()) -> {ok, map()} | {error, notfound | term()}.
 get_delivery(DeliveryId) ->
@@ -95,15 +107,23 @@ get_delivery(DeliveryId) ->
 claim_due(Limit) ->
     Tb = tablename(),
     Sql =
-        <<"UPDATE ", Tb/binary,
-            " SET status = 'pending', updated_at = NOW()"
-            " WHERE delivery_id IN ("
-            "   SELECT delivery_id FROM ", Tb/binary,
-            "   WHERE status IN ('pending','retry') AND next_retry_at <= NOW()"
-            "   ORDER BY next_retry_at LIMIT $1"
-            " ) RETURNING delivery_id, bot_id, event_type, payload::text AS payload,"
-            " reply_context, correlation_id, attempt_count, webhook_url,"
-            " webhook_host, pinned_ip">>,
+        <<
+            "WITH due AS ("
+            " SELECT delivery_id FROM ",
+            Tb/binary,
+            " WHERE status IN ('pending','retry') AND next_retry_at <= NOW()"
+            " ORDER BY next_retry_at LIMIT $1 FOR UPDATE SKIP LOCKED"
+            ") UPDATE ",
+            Tb/binary,
+            " AS delivery"
+            " SET status = 'pending', next_retry_at = NOW() + INTERVAL '60 seconds',"
+            " updated_at = NOW()"
+            " FROM due WHERE delivery.delivery_id = due.delivery_id"
+            " RETURNING delivery.delivery_id, delivery.bot_id, delivery.event_type,"
+            " delivery.payload::text AS payload, delivery.reply_context,"
+            " delivery.correlation_id, delivery.attempt_count, delivery.webhook_url,"
+            " delivery.webhook_host, delivery.pinned_ip"
+        >>,
     case elib_pg:query(Sql, [Limit]) of
         {ok, Rows} when is_list(Rows) -> {ok, Rows};
         {ok, _N} when is_integer(_N) -> {ok, []};
@@ -112,46 +132,57 @@ claim_due(Limit) ->
     end.
 
 mark_success(DeliveryId) ->
-    set_status_and_bump(DeliveryId, <<"success">>, <<>>).
+    update_status(DeliveryId, <<"success">>, undefined, undefined).
 
 %% @doc worker 成功落账时同步记录实际 attempt 序号。
 mark_success(DeliveryId, AttemptNo) ->
-    Tb = tablename(),
-    elib_pg:execute(
-        <<"UPDATE ", Tb/binary,
-            " SET status = 'success', attempt_count = $2, updated_at = NOW()"
-            " WHERE delivery_id = $1">>,
-        [DeliveryId, AttemptNo]
-    ).
+    update_status(DeliveryId, <<"success">>, AttemptNo, undefined).
 
 %% @doc 失败转重试：RetryAfterSecs 秒后再次到期。
 mark_retry(DeliveryId, RetryAfterSecs, AttemptNo, _Note) ->
+    update_status(DeliveryId, <<"retry">>, AttemptNo, RetryAfterSecs).
+
+%% @doc 进入死信（不再重试）。
+mark_dead(DeliveryId, AttemptNo) ->
+    update_status(DeliveryId, <<"dead">>, AttemptNo, undefined).
+
+update_status(DeliveryId, Status, AttemptNo, RetryAfterSecs) ->
     Tb = tablename(),
-    elib_pg:execute(
+    {Sql, Params} = status_sql(Tb, DeliveryId, Status, AttemptNo, RetryAfterSecs),
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            case elib_pg:execute(Conn, Sql, Params) of
+                {ok, _} = Ok ->
+                    _ = agent_hub_audit_repo:set_delivery_status_tx(Conn, DeliveryId, Status),
+                    Ok;
+                {error, Reason} ->
+                    throw({abort_tx, Reason})
+            end
+        end)
+    of
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
+    end.
+
+status_sql(Tb, DeliveryId, <<"retry">>, AttemptNo, RetryAfterSecs) ->
+    {
         <<"UPDATE ", Tb/binary,
             " SET status = 'retry', attempt_count = $2,"
             " next_retry_at = NOW() + ($3 || ' seconds')::interval, updated_at = NOW()"
             " WHERE delivery_id = $1">>,
         [DeliveryId, AttemptNo, integer_to_binary(RetryAfterSecs)]
-    ).
-
-%% @doc 进入死信（不再重试）。
-mark_dead(DeliveryId, AttemptNo) ->
-    set_status_and_bump(DeliveryId, <<"dead">>, <<>>),
-    Tb = tablename(),
-    elib_pg:execute(
+    };
+status_sql(Tb, DeliveryId, Status, undefined, _RetryAfterSecs) ->
+    {<<"UPDATE ", Tb/binary, " SET status = $2, updated_at = NOW() WHERE delivery_id = $1">>, [
+        DeliveryId, Status
+    ]};
+status_sql(Tb, DeliveryId, Status, AttemptNo, _RetryAfterSecs) ->
+    {
         <<"UPDATE ", Tb/binary,
-            " SET attempt_count = $2, updated_at = NOW()"
+            " SET status = $2, attempt_count = $3, updated_at = NOW()"
             " WHERE delivery_id = $1">>,
-        [DeliveryId, AttemptNo]
-    ).
-
-set_status_and_bump(DeliveryId, Status, _Extra) ->
-    Tb = tablename(),
-    elib_pg:execute(
-        <<"UPDATE ", Tb/binary, " SET status = $2, updated_at = NOW() WHERE delivery_id = $1">>,
-        [DeliveryId, Status]
-    ).
+        [DeliveryId, Status, AttemptNo]
+    }.
 
 %% @doc 尝试审计（attempt、class、http status、latency、截断错误）。
 insert_attempt(DeliveryId, A) ->
@@ -190,26 +221,44 @@ list_dead(Page, Size) ->
 %% @doc 管理员手工重放：仅 dead 可重放；生成新 attempt，delivery_id 不变。
 -spec replay(binary()) -> {ok, reused_delivery} | {error, not_dead | notfound | term()}.
 replay(DeliveryId) ->
-    case get_delivery(DeliveryId) of
-        {ok, #{<<"status">> := <<"dead">>}} ->
-            Tb = tablename(),
-            case
-                elib_pg:execute(
-                    <<"UPDATE ", Tb/binary,
-                        " SET status = 'pending', next_retry_at = NOW(), updated_at = NOW()"
-                        " WHERE delivery_id = $1">>,
-                    [DeliveryId]
-                )
-            of
-                {ok, _} -> {ok, reused_delivery};
-                {error, Reason} -> {error, Reason}
-            end;
-        {ok, #{<<"status">> := _}} ->
-            {error, not_dead};
-        {error, notfound} ->
-            {error, notfound};
-        {error, Reason} ->
-            {error, Reason}
+    case elib_pg:with_tx(fun(Conn) -> replay_tx(Conn, DeliveryId) end) of
+        {rollback, Reason} -> {error, Reason};
+        Result -> Result
+    end.
+
+replay_tx(Conn, DeliveryId) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET status = 'pending', next_retry_at = NOW(), updated_at = NOW()"
+            " WHERE delivery_id = $1 AND status = 'dead' RETURNING delivery_id">>,
+    case elib_pg:query(Conn, Sql, [DeliveryId]) of
+        {ok, [_]} -> replayed_with_audit(Conn, DeliveryId);
+        {ok, _N, [_]} -> replayed_with_audit(Conn, DeliveryId);
+        {ok, []} -> replay_not_updated(Conn, DeliveryId);
+        {ok, 0} -> replay_not_updated(Conn, DeliveryId);
+        {ok, 0, []} -> replay_not_updated(Conn, DeliveryId);
+        {error, Reason} -> throw({abort_tx, Reason});
+        Other -> throw({abort_tx, {unexpected_replay_result, Other}})
+    end.
+
+replayed_with_audit(Conn, DeliveryId) ->
+    _ = agent_hub_audit_repo:set_delivery_status_tx(Conn, DeliveryId, <<"pending">>),
+    {ok, reused_delivery}.
+
+replay_not_updated(Conn, DeliveryId) ->
+    Tb = tablename(),
+    case
+        elib_pg:query(Conn, <<"SELECT 1 FROM ", Tb/binary, " WHERE delivery_id = $1">>, [
+            DeliveryId
+        ])
+    of
+        {ok, []} -> {error, notfound};
+        {ok, 0} -> {error, notfound};
+        {ok, [_]} -> {error, not_dead};
+        {ok, _N, [_]} -> {error, not_dead};
+        {error, Reason} -> throw({abort_tx, Reason});
+        Other -> throw({abort_tx, {unexpected_replay_lookup_result, Other}})
     end.
 
 count_by_status(Status) ->

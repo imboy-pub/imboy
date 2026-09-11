@@ -1,6 +1,8 @@
 -module(mcp_authz_gate_tests).
 -include_lib("eunit/include/eunit.hrl").
 
+-export([sample_tool/1]).
+
 %%%===================================================================
 %%% @doc MCP 授权闸门测试（Phase 3 T3.5 + MCP-01 Principal 改造）
 %%% 覆盖安全核心：principal map 注入、enforce on/off、approved+grant/
@@ -26,6 +28,7 @@ setup_gate_mocks(Extra) ->
 
 gate_test_() ->
     {foreach, fun setup/0, fun cleanup/1, [
+        fun t_registry_cold_load_denies_unauthenticated/1,
         fun t_enforce_off_allows_pending/1,
         fun t_enforce_on_approved_granted_allows/1,
         fun t_enforce_on_approved_not_granted_denies/1,
@@ -46,6 +49,50 @@ cleanup(_) ->
     catch
         _:_ -> ok
     end,
+    ok.
+
+sample_tool(_Args) ->
+    should_not_run.
+
+t_registry_cold_load_denies_unauthenticated(_) ->
+    fun() ->
+        Name = <<"cold_authz_gate_test">>,
+        Registry = ensure_registry(),
+        _ = code:purge(mcp_authz_gate),
+        _ = code:delete(mcp_authz_gate),
+        ?assertEqual(false, code:is_loaded(mcp_authz_gate)),
+        ok = barrel_mcp_registry:reg(tool, Name, ?MODULE, sample_tool, #{}),
+        try
+            {ok, _Pid} = barrel_mcp_registry:run_tool(
+                Name,
+                #{},
+                #{reply_to => self(), request_id => cold_authz}
+            ),
+            receive
+                {tool_error, cold_authz, _} -> ok;
+                {tool_result, cold_authz, should_not_run} -> ?assert(false)
+            after 2000 ->
+                ?assert(false)
+            end,
+            ?assertMatch({file, _}, code:is_loaded(mcp_authz_gate))
+        after
+            barrel_mcp_registry:unreg(tool, Name),
+            stop_owned_registry(Registry)
+        end
+    end.
+
+ensure_registry() ->
+    case barrel_mcp_registry:start_link() of
+        {ok, Pid} ->
+            ok = barrel_mcp_registry:wait_for_ready(),
+            {owned, Pid};
+        {error, {already_started, Pid}} ->
+            {borrowed, Pid}
+    end.
+
+stop_owned_registry({owned, Pid}) ->
+    gen:stop(Pid);
+stop_owned_registry({borrowed, _Pid}) ->
     ok.
 
 t_enforce_off_allows_pending(_) ->

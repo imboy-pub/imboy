@@ -480,103 +480,115 @@ create_agent_task(Args, Ctx) ->
     with_principal(Ctx, fun(#{client_key := ClientKey, owner_uid := OwnerUid} = _P) ->
         Idem = idem_of(ClientKey, Args),
         TaskId = task_id_for(Idem),
+        GroupId = to_int(maps:get(<<"group_id">>, Args, 0)),
         Event = #{
             task_id => TaskId,
             %% 任务归属 = 凭证 owner（服务端派生，不从 Args 取）
             agent_uid => OwnerUid,
-            group_id => to_int(maps:get(<<"group_id">>, Args, 0)),
+            group_id => GroupId,
             tool => elib_cnv:safe_to_binary(maps:get(<<"tool">>, Args, <<>>)),
             params_digest => elib_cnv:safe_to_binary(
                 maps:get(<<"params_digest">>, Args, <<>>)
             ),
             idempotency_key => Idem
         },
-        case agent_task_logic:ensure_task(Event) of
-            {ok, Row, _Created} ->
-                {structured, #{
-                    <<"task_id">> => maps:get(<<"id">>, Row),
-                    <<"status">> => maps:get(<<"status">>, Row),
-                    <<"correlation_id">> => maps:get(<<"correlation_id">>, Row),
-                    <<"created">> => _Created
-                }};
-            {error, invalid_task_id} ->
-                tool_error(<<"group_id/参数无效"/utf8>>);
-            {error, _Reason} ->
-                tool_error(<<"创建任务失败"/utf8>>)
+        case agent_task_ds:is_group_member(OwnerUid, GroupId) of
+            false ->
+                tool_error(<<"群不存在或无权创建任务"/utf8>>);
+            true ->
+                case agent_task_logic:ensure_task(Event) of
+                    {ok, Row, _Created} ->
+                        {structured, #{
+                            <<"task_id">> => maps:get(<<"id">>, Row),
+                            <<"status">> => maps:get(<<"status">>, Row),
+                            <<"correlation_id">> => maps:get(<<"correlation_id">>, Row),
+                            <<"created">> => _Created
+                        }};
+                    {error, invalid_task_id} ->
+                        tool_error(<<"group_id/参数无效"/utf8>>);
+                    {error, _Reason} ->
+                        tool_error(<<"创建任务失败"/utf8>>)
+                end
         end
     end).
 
 %% @doc 上报状态动作（working/complete/fail/cancel/progress）。
 update_agent_task(Args, Ctx) ->
-    with_principal(Ctx, fun(_P) ->
+    with_principal(Ctx, fun(#{owner_uid := OwnerUid}) ->
         TaskId = elib_cnv:safe_to_binary(maps:get(<<"task_id">>, Args, <<>>)),
         Action = action_bin(maps:get(<<"action">>, Args, <<>>)),
-        %% agent_uid/group_id 以任务行权威值为准（Args 不提供）
-        case
-            agent_task_logic:record_event(#{
-                task_id => TaskId,
-                status => Action,
-                e2ee => false
-            })
-        of
-            skip ->
-                tool_error(<<"非法迁移或未知状态"/utf8>>);
-            {deliver, Status} ->
-                {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}};
-            {deliver_with_meta, Status, _Meta} ->
-                {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}}
-        end
+        with_owned_task(TaskId, OwnerUid, fun() ->
+            %% agent_uid/group_id 以任务行权威值为准（Args 不提供）
+            case
+                agent_task_logic:record_event(#{
+                    task_id => TaskId,
+                    status => Action,
+                    e2ee => false
+                })
+            of
+                skip ->
+                    tool_error(<<"非法迁移或未知状态"/utf8>>);
+                {deliver, Status} ->
+                    {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}};
+                {deliver_with_meta, Status, _Meta} ->
+                    {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}}
+            end
+        end)
     end).
 
 %% @doc 请求人工审批（working → awaiting_approval，卡片投递到任务群）。
 request_task_approval(Args, Ctx) ->
-    with_principal(Ctx, fun(_P) ->
+    with_principal(Ctx, fun(#{owner_uid := OwnerUid}) ->
         TaskId = elib_cnv:safe_to_binary(maps:get(<<"task_id">>, Args, <<>>)),
-        case
-            agent_task_logic:record_event(#{
-                task_id => TaskId,
-                status => awaiting_approval,
-                text => elib_cnv:safe_to_binary(
-                    maps:get(<<"reason">>, Args, <<>>)
-                ),
-                e2ee => false
-            })
-        of
-            {deliver_with_meta, <<"awaiting_approval">>, _Meta} ->
-                {structured, #{
-                    <<"task_id">> => TaskId,
-                    <<"status">> => <<"awaiting_approval">>,
-                    <<"poll">> => <<"get_agent_task">>
-                }};
-            _ ->
-                tool_error(<<"当前状态不可请求审批"/utf8>>)
-        end
+        with_owned_task(TaskId, OwnerUid, fun() ->
+            case
+                agent_task_logic:record_event(#{
+                    task_id => TaskId,
+                    status => awaiting_approval,
+                    text => elib_cnv:safe_to_binary(
+                        maps:get(<<"reason">>, Args, <<>>)
+                    ),
+                    e2ee => false
+                })
+            of
+                {deliver_with_meta, <<"awaiting_approval">>, _Meta} ->
+                    {structured, #{
+                        <<"task_id">> => TaskId,
+                        <<"status">> => <<"awaiting_approval">>,
+                        <<"poll">> => <<"get_agent_task">>
+                    }};
+                _ ->
+                    tool_error(<<"当前状态不可请求审批"/utf8>>)
+            end
+        end)
     end).
 
 %% @doc 轮询任务状态与审批结果（权威兜底，A01 poll 路径）。
 get_agent_task(Args, Ctx) ->
-    with_principal(Ctx, fun(_P) ->
+    with_principal(Ctx, fun(#{owner_uid := OwnerUid}) ->
         TaskId = elib_cnv:safe_to_binary(maps:get(<<"task_id">>, Args, <<>>)),
-        case agent_task_logic:lookup(TaskId) of
-            undefined ->
-                tool_error(<<"任务不存在"/utf8>>);
-            {pending, Gid, Agent} ->
-                {structured, #{
-                    <<"task_id">> => TaskId,
-                    <<"status">> => <<"awaiting_approval">>,
-                    <<"group_id">> => Gid,
-                    <<"agent_uid">> => Agent
-                }};
-            {live_status, Status} ->
-                %% submitted/working 等活跃态回读（A01 progress 路径）
-                {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}};
-            {Decision, Approver} ->
-                {structured, #{
-                    <<"task_id">> => TaskId,
-                    <<"status">> => atom_to_binary(Decision, utf8),
-                    <<"decided_by">> => Approver
-                }}
-        end
+        with_owned_task(TaskId, OwnerUid, fun() ->
+            case agent_task_logic:lookup(TaskId) of
+                undefined ->
+                    tool_error(<<"任务不存在或无权访问"/utf8>>);
+                {pending, Gid, Agent} ->
+                    {structured, #{
+                        <<"task_id">> => TaskId,
+                        <<"status">> => <<"awaiting_approval">>,
+                        <<"group_id">> => Gid,
+                        <<"agent_uid">> => Agent
+                    }};
+                {live_status, Status} ->
+                    %% submitted/working 等活跃态回读（A01 progress 路径）
+                    {structured, #{<<"task_id">> => TaskId, <<"status">> => Status}};
+                {Decision, Approver} ->
+                    {structured, #{
+                        <<"task_id">> => TaskId,
+                        <<"status">> => atom_to_binary(Decision, utf8),
+                        <<"decided_by">> => Approver
+                    }}
+            end
+        end)
     end).
 
 %% Principal 提取（MCP-01 认证产物；Args 不允许自报身份）
@@ -586,6 +598,12 @@ with_principal(Ctx, Fun) ->
             Fun(P#{client_key => Key});
         _ ->
             tool_error(<<"未认证或身份无效"/utf8>>)
+    end.
+
+with_owned_task(TaskId, OwnerUid, Fun) ->
+    case agent_task_logic:authorize_owner(TaskId, OwnerUid) of
+        ok -> Fun();
+        {error, not_authorized} -> tool_error(<<"任务不存在或无权访问"/utf8>>)
     end.
 
 idem_of(ClientKey, Args) ->

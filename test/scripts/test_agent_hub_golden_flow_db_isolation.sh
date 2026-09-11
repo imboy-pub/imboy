@@ -51,6 +51,7 @@ REQUIRED_SUITES=(
   ai_agent_group_reply_tests
   ai_agent_tool_loop_tests
   mcp_authz_gate_tests
+  mcp_governance_logic_tests
   mcp_client_repo_tests
   imboy_mcp_task_tools_tests
   agent_task_repo_tests
@@ -86,12 +87,32 @@ grep -Fq '(^|[^0-9])1[3-9][0-9]{9}([^0-9]|$)' "$SCRIPT" || {
   exit 1
 }
 
-grep -Fq 'write_evidence PARTIAL' "$SCRIPT" || {
+grep -Fq 'FINAL_STATUS="PARTIAL"' "$SCRIPT" || {
   echo "golden flow does not settle honest PARTIAL evidence" >&2
+  exit 1
+}
+grep -Fq -- '--final-integrated-base' "$SCRIPT" || {
+  echo "golden flow has no explicit final integrated Base mode" >&2
+  exit 1
+}
+grep -Fq 'CURRENT_BRANCH" == "main"' "$SCRIPT" || {
+  echo "final integrated Base mode is not pinned to main" >&2
   exit 1
 }
 grep -Fq 'agent_hub_ext01_mcp_client_smoke.py' "$SCRIPT" || {
   echo "golden flow does not run the real HTTP MCP client" >&2
+  exit 1
+}
+grep -Fq 'agent_hub_http_status_fixture.py' "$SCRIPT" || {
+  echo "golden flow does not run real webhook status fixtures" >&2
+  exit 1
+}
+grep -Fq 'agent_hub_delivery_replay_smoke.py' "$SCRIPT" || {
+  echo "golden flow does not run the admin replay endpoint" >&2
+  exit 1
+}
+grep -Fq -- '--protocol-negatives-passed' "$SCRIPT" || {
+  echo "golden flow does not bind protocol negative evidence" >&2
   exit 1
 }
 grep -Fq 'agent_hub_channel_webhook_smoke.py' "$SCRIPT" || {
@@ -154,10 +175,10 @@ grep -Fq 'export_agent_hub_correlation_trace.sql' "$SCRIPT" || {
   echo "golden flow does not export persisted runtime correlation records" >&2
   exit 1
 }
-if grep -Fq 'echo "[golden] PASS"' "$SCRIPT"; then
-  echo "golden flow still claims PASS without the required HTTP runtime chain" >&2
+grep -Fq 'A01-A07 passed on the final integrated main Base' "$SCRIPT" || {
+  echo "golden flow cannot report final integrated PASS" >&2
   exit 1
-fi
+}
 test -f "$EVIDENCE_WRITER" || {
   echo "golden flow evidence writer is missing" >&2
   exit 1
