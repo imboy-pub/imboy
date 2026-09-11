@@ -154,30 +154,60 @@ e2ee_message_skipped_test_() ->
         cleanup_fixture(Tab)
     end).
 
-%% reply context：签名命中 / 过期 / 重放 / 篡改
+%% reply context：服务端签名命中 / Bot secret 伪造拒绝 / 过期 / 畸形
 reply_context_lifecycle_test_() ->
     ?TEST_WITH_DB(fun() ->
         {ok, _} = application:ensure_all_started(crypto),
         {BotUid, _Seed} = setup_bot(<<"http://127.0.0.1:19301/hook">>),
-        Secret = <<"wh-verify-secret">>,
+        DeliveryId = iolist_to_binary(["dlv-ctx-", integer_to_binary(uid())]),
+        Corr = corr(),
         {ok, Token, _Jti} = bot_webhook_logic:make_reply_context(
-            BotUid, 9001, <<"msg-1">>, corr()
+            BotUid, 9001, <<"msg-1">>, Corr, DeliveryId
         ),
-        %% 篡改 payload → invalid（jti 未消耗）
+        {ok, Ctx} = bot_webhook_logic:verify_reply_context(Token),
+        ?assertEqual(9001, maps:get(<<"group_id">>, Ctx)),
+        ?assertEqual(DeliveryId, maps:get(<<"delivery_id">>, Ctx)),
+        %% Bot 持有 webhook verify secret，但不能用它伪造 reply context。
+        Forged = sign_context(
+            BotUid,
+            9002,
+            <<"dlv-forged">>,
+            Corr,
+            os:system_time(second) + 60,
+            <<"wh-verify-secret">>
+        ),
+        {error, invalid} = bot_webhook_logic:verify_reply_context(Forged),
         Tampered = iolist_to_binary(
             [binary:part(Token, 0, byte_size(Token) - 4), <<"AAAA">>]
         ),
-        {error, invalid} = bot_webhook_logic:verify_reply_context(Tampered, Secret),
-        %% 错误密钥 → invalid
-        {error, invalid} = bot_webhook_logic:verify_reply_context(
-            Token, <<"wrong-secret">>
+        {error, invalid} = bot_webhook_logic:verify_reply_context(Tampered),
+        {error, invalid} = bot_webhook_logic:verify_reply_context(<<"%%%.not-base64">>),
+        Expired = sign_context(
+            BotUid,
+            9001,
+            <<"dlv-expired">>,
+            Corr,
+            os:system_time(second) - 1,
+            server_reply_key()
         ),
-        %% 首次合法验证 → ok（消耗 jti）
-        {ok, Ctx} = bot_webhook_logic:verify_reply_context(Token, Secret),
-        ?assertEqual(9001, maps:get(<<"group_id">>, Ctx)),
-        %% 重放 → reused（jti 一次性）
-        {error, reused} = bot_webhook_logic:verify_reply_context(Token, Secret)
+        {error, expired} = bot_webhook_logic:verify_reply_context(Expired)
     end).
+
+sign_context(BotUid, GroupId, DeliveryId, Corr, Exp, Key) ->
+    Payload = jsone:encode(#{
+        <<"bot_id">> => BotUid,
+        <<"group_id">> => GroupId,
+        <<"trigger_msg_id">> => <<"msg-test">>,
+        <<"delivery_id">> => DeliveryId,
+        <<"jti">> => DeliveryId,
+        <<"correlation_id">> => Corr,
+        <<"exp">> => Exp
+    }),
+    Sig = crypto:mac(hmac, sha256, Key, Payload),
+    iolist_to_binary([base64:encode(Payload), $., base64:encode(Sig)]).
+
+server_reply_key() ->
+    crypto:mac(hmac, sha256, ?TEST_AES_KEY, <<"imboy.bot.reply-context.v1">>).
 
 %% ===================================================================
 delivery_by_idem(Idem) ->

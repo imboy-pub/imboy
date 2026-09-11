@@ -43,7 +43,8 @@ class EvidenceWriterTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_writer(self, status, trace_exit=2, failed_step="",
-                   http_smoke=1, channel_webhook=1, agent_dialog=1, restart=1):
+                   http_smoke=1, channel_webhook=1, agent_dialog=1,
+                   bot_dialog=1, restart=1):
         if status == "PARTIAL":
             (self.evidence / "trace-verifier.json").write_text(
                 '{"decision":"VIOLATION"}\n', encoding="utf-8")
@@ -60,6 +61,11 @@ class EvidenceWriterTest(unittest.TestCase):
                 "runtime evidence\n", encoding="utf-8")
             (self.evidence / "agent-dialog-a02-db.json").write_text(
                 '{"human_match":1,"agent_match":1}\n', encoding="utf-8")
+        if bot_dialog:
+            (self.evidence / "bot-dialog-a02-runtime.json").write_text(
+                '{"passed":12,"failed":0}\n', encoding="utf-8")
+            (self.evidence / "bot-dialog-a02-db.json").write_text(
+                '{"bot_reply_count":1}\n', encoding="utf-8")
         if restart:
             for name in [
                 "restart-before.json",
@@ -81,6 +87,7 @@ class EvidenceWriterTest(unittest.TestCase):
             "--http-smoke-passed", str(http_smoke),
             "--channel-webhook-passed", str(channel_webhook),
             "--agent-dialog-passed", str(agent_dialog),
+            "--bot-dialog-passed", str(bot_dialog),
             "--restart-passed", str(restart),
             "--cleanup-passed", "1",
             "--sensitive-scan-passed", "1",
@@ -104,8 +111,11 @@ class EvidenceWriterTest(unittest.TestCase):
         self.assertIn(
             "artifact-channel-webhook-db", by_id["E2E-01-A02"]["artifact_ids"])
         self.assertIn("cmd-09", by_id["E2E-01-A02"]["command_ids"])
+        self.assertIn("cmd-10", by_id["E2E-01-A02"]["command_ids"])
         self.assertIn(
             "artifact-agent-dialog-db", by_id["E2E-01-A02"]["artifact_ids"])
+        self.assertIn(
+            "artifact-bot-dialog-db", by_id["E2E-01-A02"]["artifact_ids"])
         self.assertEqual(by_id["E2E-01-A03"]["status"], "PASS")
         self.assertEqual(by_id["E2E-01-A06"]["status"], "PASS")
 

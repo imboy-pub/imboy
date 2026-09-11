@@ -48,6 +48,7 @@ def build_evidence(args):
             "http_smoke_passed=%d" % args.http_smoke_passed,
             "channel_webhook_passed=%d" % args.channel_webhook_passed,
             "agent_dialog_passed=%d" % args.agent_dialog_passed,
+            "bot_dialog_passed=%d" % args.bot_dialog_passed,
             "restart_passed=%d" % args.restart_passed,
             "cleanup_passed=%d" % args.cleanup_passed,
             "sensitive_scan_passed=%d" % args.sensitive_scan_passed,
@@ -84,6 +85,8 @@ def build_evidence(args):
         "artifact-channel-webhook-db": evidence_dir / "channel-webhook-a02-db.json",
         "artifact-agent-dialog-runtime": evidence_dir / "agent-dialog-a02-runtime.log",
         "artifact-agent-dialog-db": evidence_dir / "agent-dialog-a02-db.json",
+        "artifact-bot-dialog-runtime": evidence_dir / "bot-dialog-a02-runtime.json",
+        "artifact-bot-dialog-db": evidence_dir / "bot-dialog-a02-db.json",
         "artifact-restart-before": evidence_dir / "restart-before.json",
         "artifact-restart-after": evidence_dir / "restart-after.json",
         "artifact-restart-logic-read": evidence_dir / "restart-logic-read.txt",
@@ -126,6 +129,15 @@ def build_evidence(args):
         if artifact_id in artifact_ids
     ]
     agent_dialog_ok = bool(args.agent_dialog_passed and len(agent_dialog_artifacts) == 2)
+    bot_dialog_artifacts = [
+        artifact_id
+        for artifact_id in [
+            "artifact-bot-dialog-runtime",
+            "artifact-bot-dialog-db",
+        ]
+        if artifact_id in artifact_ids
+    ]
+    bot_dialog_ok = bool(args.bot_dialog_passed and len(bot_dialog_artifacts) == 2)
     restart_ok = bool(args.restart_passed and len(restart_artifacts) == 5)
 
     common_artifacts = ["artifact-run-summary", "artifact-harness"]
@@ -190,6 +202,11 @@ def build_evidence(args):
                 "command": "run real WebSocket group mention through the built-in Agent and local fake LLM",
                 "exit_code": 0 if agent_dialog_ok else 1,
             },
+            {
+                "id": "cmd-10",
+                "command": "run real WebSocket Bot mention, signed loopback delivery, HTTP reply, and protocol negatives",
+                "exit_code": 0 if bot_dialog_ok else 1,
+            },
         ]
         trace_artifacts = common_artifacts + ["artifact-trace-verifier"]
         if trace_path.is_file():
@@ -205,10 +222,12 @@ def build_evidence(args):
                 "The persisted-row projection passes shape checks, but trusted request, execution, and outcome audit records are not emitted at runtime yet.",
             ),
             acceptance(
-                "E2E-01-A02", "FAIL", ["cmd-03", "cmd-06", "cmd-08", "cmd-09"],
-                common_artifacts + http_artifacts + channel_webhook_artifacts + agent_dialog_artifacts,
-                "The real HTTP MCP lifecycle passes 11 checks, channel incoming webhook passes active/invalid/disabled checks, and a real WebSocket mention receives a persisted built-in Agent reply from the local fake LLM; Bot mention/reply and the remaining protocol negatives are not automated yet."
-                if http_smoke_ok and channel_webhook_ok and agent_dialog_ok else
+                "E2E-01-A02", "FAIL",
+                ["cmd-03", "cmd-06", "cmd-08", "cmd-09", "cmd-10"],
+                common_artifacts + http_artifacts + channel_webhook_artifacts
+                + agent_dialog_artifacts + bot_dialog_artifacts,
+                "The real HTTP MCP and channel webhook lifecycles pass, and real WebSocket mentions receive persisted built-in Agent and developer Bot replies. The Bot receiver verifies signed delivery and rejects shared-secret forgery, malformed context, replay, disabled, non-member, and E2EE paths; remaining full-protocol negatives and trusted runtime audit are still open."
+                if http_smoke_ok and channel_webhook_ok and agent_dialog_ok and bot_dialog_ok else
                 "The required HTTP Golden Flow and all protocol negatives are not complete.",
             ),
             acceptance(
@@ -260,15 +279,21 @@ def build_evidence(args):
         "final_diff": [
             "imboy:scripts/agent_hub_golden_flow.sh",
             "imboy:scripts/agent_hub_channel_webhook_smoke.py",
+            "imboy:scripts/agent_hub_bot_webhook_fixture.py",
             "imboy:scripts/smoke/ws_c2g_send.py",
             "imboy:scripts/golden_upgrade.sh",
             "imboy:scripts/demo/dual_exp_demo_b.sh",
             "imboy:scripts/export_agent_hub_correlation_trace.sql",
             "imboy:scripts/write_agent_hub_e2e_evidence.py",
             "imboy:src/logic/agent_task_logic.erl",
+            "imboy:src/logic/bot_logic.erl",
+            "imboy:src/logic/bot_webhook_logic.erl",
+            "imboy:src/repo/bot_webhook_delivery_repo.erl",
+            "imboy:src/api/bot_handler.erl",
             "imboy:test/integration/agent_hub_runtime_trace_tests.erl",
             "imboy:test/scripts/test_agent_hub_golden_flow_db_isolation.sh",
             "imboy:test/scripts/test_agent_hub_channel_webhook_smoke.py",
+            "imboy:test/scripts/test_agent_hub_bot_webhook_fixture.py",
             "imboy:test/scripts/test_ws_c2g_send.py",
             "imboy:test/scripts/test_write_agent_hub_e2e_evidence.py",
             "imboy:test/fixtures/agent_hub/agent_hub_fake_llm.erl",
@@ -284,7 +309,7 @@ def build_evidence(args):
         "artifacts": artifacts,
         "residual_risks": [
             "The trace export derives request, execution, and outcome instead of reading runtime audit records.",
-            "The real HTTP MCP lifecycle, channel incoming webhook, and built-in Agent group dialog pass locally, but the Bot protocol flow remains open.",
+            "The real HTTP MCP, channel incoming webhook, and Agent/Bot group dialogs pass locally, but trusted runtime audit and remaining full-protocol negatives remain open.",
             "Final integrated Base rerun remains open.",
             "Local fixtures do not replace real device, external MCP, or production acceptance.",
         ],
@@ -305,6 +330,7 @@ def parse_args(argv=None):
     parser.add_argument("--http-smoke-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--channel-webhook-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--agent-dialog-passed", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--bot-dialog-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--restart-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--cleanup-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--sensitive-scan-passed", type=int, choices=(0, 1), default=0)

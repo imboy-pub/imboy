@@ -11,7 +11,7 @@
 -export([push/2]).
 -export([push_message/3]).
 -export([sign_payload/2]).
--export([make_reply_context/4, verify_reply_context/2]).
+-export([make_reply_context/5, verify_reply_context/1, consume_reply_context/2]).
 -export([dispatch_group_mention/5]).
 
 -include("log.hrl").
@@ -71,7 +71,7 @@ push_message_payload(BotId, FromUser, Msg) ->
 -spec sign_payload(binary(), binary()) -> binary().
 sign_payload(Secret, Payload) ->
     Mac = crypto:mac(hmac, sha256, Secret, Payload),
-    <<"sha256=", (binary:encode_hex(Mac))/binary>>.
+    <<"sha256=", (binary:encode_hex(Mac, lowercase))/binary>>.
 
 %% ===================================================================
 %% Internal
@@ -202,102 +202,158 @@ host_of(Url) ->
 %% ===================================================================
 
 -define(REPLY_CTX_TTL_SECS, 900).
--define(REPLY_JTI_TAB, bot_reply_ctx_jti).
+-define(REPLY_CTX_KEY_DOMAIN, <<"imboy.bot.reply-context.v1">>).
 
 %% @doc 生成签名 reply context 令牌（不可伪造）：
 %%   base64(json{group_id,trigger_msg_id,bot_id,correlation_id,jti,exp}) "." base64(HMAC)
-%% Secret 取 Bot verify_token（AEAD 解密，fail-closed）。exp = now + 900s。
--spec make_reply_context(integer(), integer(), binary(), binary()) ->
+%% 使用服务端主密钥的域隔离派生键签名；Bot 持有的 webhook verify_token
+%% 不能用于伪造 reply context。exp = now + 900s。
+-spec make_reply_context(integer(), integer(), binary(), binary(), binary()) ->
     {ok, binary(), binary()} | {error, term()}.
-make_reply_context(BotId, GroupId, TriggerMsgId, Corr) ->
-    case bot_repo:get_verify_token(BotId) of
+make_reply_context(BotId, GroupId, TriggerMsgId, Corr, DeliveryId) ->
+    case current_reply_context_key() of
         {ok, Secret} ->
-            Jti = iolist_to_binary(
-                [
-                    integer_to_binary(BotId),
-                    "-",
-                    integer_to_binary(erlang:unique_integer([positive]))
-                ]
-            ),
             Exp = os:system_time(second) + ?REPLY_CTX_TTL_SECS,
             PayloadBin = jsone:encode(#{
                 <<"group_id">> => GroupId,
                 <<"trigger_msg_id">> => TriggerMsgId,
                 <<"bot_id">> => BotId,
                 <<"correlation_id">> => Corr,
-                <<"jti">> => Jti,
+                <<"delivery_id">> => DeliveryId,
+                <<"jti">> => DeliveryId,
                 <<"exp">> => Exp
             }),
             Sig = crypto:mac(hmac, sha256, Secret, PayloadBin),
             Token = iolist_to_binary(
                 [base64:encode(PayloadBin), $., base64:encode(Sig)]
             ),
-            {ok, Token, Jti};
+            {ok, Token, DeliveryId};
         {error, Reason} ->
             {error, Reason}
     end.
 
-%% @doc 校验 reply context：签名（常量时间）+ 到期 + jti 一次性。
-%% Secret 为认证后的 Bot verify secret 明文。
--spec verify_reply_context(binary(), binary()) ->
-    {ok, map()} | {error, invalid | expired | reused}.
-verify_reply_context(Token, Secret) when is_binary(Token), is_binary(Secret) ->
-    case binary:split(Token, <<".">>) of
+%% @doc 只做服务端签名与到期校验。一次性消费由 consume_reply_context/2
+%% 通过 bot_delivery 主键原子落库，进程重启后仍不可重放。
+-spec verify_reply_context(binary()) -> {ok, map()} | {error, invalid | expired}.
+verify_reply_context(Token) when is_binary(Token), Token =/= <<>> ->
+    try
+        verify_reply_context_token(Token)
+    catch
+        _:_ -> {error, invalid}
+    end;
+verify_reply_context(_) ->
+    {error, invalid}.
+
+verify_reply_context_token(Token) ->
+    case binary:split(Token, <<".">>, [global]) of
         [PayloadB64, SigB64] ->
-            %% 签名基准 = payload 原文字节（非 base64 文本），与 make 一致
             PayloadBin = base64:decode(PayloadB64),
-            Expect = crypto:mac(hmac, sha256, Secret, PayloadBin),
             Given = base64:decode(SigB64),
-            %% 长度不等（篡改/截断）时 hash_equals 会 badarg，先守卫
-            SigOk =
-                byte_size(Given) =:= byte_size(Expect) andalso
-                    crypto:hash_equals(Expect, Given),
-            case SigOk of
-                true ->
-                    case jsone:decode(base64:decode(PayloadB64)) of
-                        #{<<"exp">> := Exp} = Ctx when is_integer(Exp) ->
-                            Now = os:system_time(second),
-                            case Now =< Exp of
-                                false ->
-                                    {error, expired};
-                                true ->
-                                    case claim_jti(maps:get(<<"jti">>, Ctx, <<>>)) of
-                                        true -> {ok, Ctx};
-                                        false -> {error, reused}
-                                    end
-                            end;
-                        _ ->
-                            {error, invalid}
-                    end;
-                false ->
-                    {error, invalid}
+            case valid_reply_context_signature(PayloadBin, Given) of
+                true -> validate_reply_context_payload(jsone:decode(PayloadBin));
+                false -> {error, invalid}
             end;
         _ ->
             {error, invalid}
+    end.
+
+validate_reply_context_payload(
+    #{
+        <<"bot_id">> := BotId,
+        <<"group_id">> := GroupId,
+        <<"delivery_id">> := DeliveryId,
+        <<"correlation_id">> := Corr,
+        <<"exp">> := Exp
+    } = Ctx
+) when
+    is_integer(BotId),
+    BotId > 0,
+    is_integer(GroupId),
+    GroupId > 0,
+    is_binary(DeliveryId),
+    DeliveryId =/= <<>>,
+    is_binary(Corr),
+    Corr =/= <<>>,
+    is_integer(Exp)
+->
+    case os:system_time(second) =< Exp of
+        true -> {ok, Ctx};
+        false -> {error, expired}
     end;
-verify_reply_context(_, _) ->
+validate_reply_context_payload(_) ->
     {error, invalid}.
 
-%% jti 一次性占位（ETS insert_new 原子；进程重启清空——窗口受 exp≤15min 约束）
-claim_jti(Jti) when Jti =/= <<>> ->
-    ok = ensure_jti_tab(),
-    case ets:insert_new(?REPLY_JTI_TAB, {Jti, os:system_time(second)}) of
-        true -> true;
-        false -> false
-    end;
-claim_jti(_) ->
-    false.
+valid_reply_context_signature(PayloadBin, Given) ->
+    lists:any(
+        fun(Key) ->
+            Expect = crypto:mac(hmac, sha256, Key, PayloadBin),
+            byte_size(Given) =:= byte_size(Expect) andalso
+                crypto:hash_equals(Expect, Given)
+        end,
+        reply_context_keys()
+    ).
 
-ensure_jti_tab() ->
-    case ets:whereis(?REPLY_JTI_TAB) of
-        undefined ->
-            try ets:new(?REPLY_JTI_TAB, [set, public, named_table]) of
-                _ -> ok
-            catch
-                error:badarg -> ok
-            end;
-        _ ->
-            ok
+current_reply_context_key() ->
+    derive_reply_context_key(config_ds:env(postgre_aes_key, <<>>)).
+
+reply_context_keys() ->
+    Current =
+        case current_reply_context_key() of
+            {ok, Key} -> [Key];
+            {error, _} -> []
+        end,
+    Previous =
+        case derive_reply_context_key(config_ds:env(postgre_aes_key_old, <<>>)) of
+            {ok, Key2} -> [Key2];
+            {error, _} -> []
+        end,
+    Current ++ Previous.
+
+derive_reply_context_key(<<>>) ->
+    {error, no_key};
+derive_reply_context_key(Key) when is_list(Key) ->
+    derive_reply_context_key(list_to_binary(Key));
+derive_reply_context_key(Key) when is_binary(Key) ->
+    {ok, crypto:mac(hmac, sha256, Key, ?REPLY_CTX_KEY_DOMAIN)};
+derive_reply_context_key(_) ->
+    {error, no_key}.
+
+%% @doc 校验来源、Bot 归属与当前群成员关系后，原子消费持久化 context。
+-spec consume_reply_context(binary(), integer()) ->
+    {ok, map()} | {error, invalid | expired | reused}.
+consume_reply_context(Token, BotId) ->
+    case verify_reply_context(Token) of
+        {ok, Ctx} -> consume_verified_reply_context(Token, BotId, Ctx);
+        {error, expired} -> {error, expired};
+        {error, _} -> {error, invalid}
+    end.
+
+consume_verified_reply_context(Token, BotId, Ctx) ->
+    case maps:get(<<"bot_id">>, Ctx) =:= BotId of
+        false ->
+            {error, invalid};
+        true ->
+            GroupId = maps:get(<<"group_id">>, Ctx),
+            case group_ds:is_member(BotId, GroupId) of
+                false ->
+                    {error, invalid};
+                true ->
+                    DeliveryId = maps:get(<<"delivery_id">>, Ctx),
+                    Corr = maps:get(<<"correlation_id">>, Ctx),
+                    case
+                        bot_webhook_delivery_repo:consume_reply_context(
+                            DeliveryId, Token, BotId, Corr
+                        )
+                    of
+                        {ok, consumed} ->
+                            {ok, Ctx};
+                        {error, notfound} ->
+                            {error, reused};
+                        {error, Reason} ->
+                            ?ERROR_LOG("[BOT01] reply context consume failed: ~p~n", [Reason]),
+                            {error, invalid}
+                    end
+            end
     end.
 
 %% @doc 群 mention 分派（msg_c2g_logic 成功发送后旁路调用，恒容错）。
@@ -390,7 +446,7 @@ enqueue_mention_to_target(BotUid, ToGID, FromUid, MsgId, Target) ->
         ]
     ),
     Corr = new_corr(),
-    case bot_webhook_logic:make_reply_context(BotUid, ToGID, MsgId, Corr) of
+    case bot_webhook_logic:make_reply_context(BotUid, ToGID, MsgId, Corr, DeliveryId) of
         {ok, ReplyCtx, _Jti} ->
             Envelope = #{
                 <<"event">> => <<"message.c2g_mention">>,
@@ -413,6 +469,7 @@ enqueue_mention_to_target(BotUid, ToGID, FromUid, MsgId, Target) ->
                         bot_id => BotUid,
                         event_type => <<"message.c2g_mention">>,
                         payload => Body,
+                        reply_context => ReplyCtx,
                         correlation_id => Corr,
                         idempotency_key =>
                             iolist_to_binary([
@@ -430,7 +487,7 @@ enqueue_mention_to_target(BotUid, ToGID, FromUid, MsgId, Target) ->
                     ok
             end;
         {error, _} ->
-            %% verify secret 解密失败 = fail-closed，不投递（无 reply 能力）
+            %% 服务端签名密钥缺失 = fail-closed，不投递（无 reply 能力）
             ok
     end.
 

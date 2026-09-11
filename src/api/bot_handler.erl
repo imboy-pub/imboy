@@ -186,46 +186,20 @@ do_send_message(Req0, BotId, Bot) ->
 %% @doc 回复原 C2G 群：reply_context 签名/归属/到期/一次性全验 +
 %% bot 群成员关系（服务端权威），通过后以 bot 身份发布到原群。
 do_send_group_reply(Req1, BotId, _Bot, ReplyCtx, Body) ->
-    case bot_repo:get_verify_token(BotId) of
+    case bot_webhook_logic:consume_reply_context(ReplyCtx, BotId) of
         {error, _} ->
+            %% 签名、归属、到期、成员和重放错误对外同形，避免泄露 context 结构。
             elib_response:error(Req1, <<"reply_context 无效"/utf8>>);
-        {ok, Secret} ->
-            case bot_webhook_logic:verify_reply_context(ReplyCtx, Secret) of
-                {error, expired} ->
-                    elib_response:error(Req1, <<"reply_context 已过期"/utf8>>);
-                {error, reused} ->
-                    elib_response:error(Req1, <<"reply_context 已使用"/utf8>>);
-                {error, _} ->
-                    elib_response:error(Req1, <<"reply_context 无效"/utf8>>);
-                {ok, Ctx} ->
-                    %% 归属校验：context 的 bot_id 必须等于认证 Bot
-                    case bot_id_of_ctx(Ctx) =:= BotId of
-                        false ->
-                            elib_response:error(Req1, <<"reply_context 归属不符"/utf8>>);
-                        true ->
-                            GroupId = maps:get(<<"group_id">>, Ctx),
-                            case group_ds:is_member(BotId, GroupId) of
-                                false ->
-                                    elib_response:error(Req1, <<"Bot 已不在该群"/utf8>>);
-                                true ->
-                                    Text = maps:get(<<"text">>, Body, <<>>),
-                                    case
-                                        bot_logic:send_group_message(
-                                            BotId, GroupId, Text
-                                        )
-                                    of
-                                        {ok, Result} ->
-                                            elib_response:success(Req1, Result);
-                                        {error, Reason} ->
-                                            elib_response:error(Req1, Reason)
-                                    end
-                            end
-                    end
+        {ok, Ctx} ->
+            GroupId = maps:get(<<"group_id">>, Ctx),
+            Text = maps:get(<<"text">>, Body, <<>>),
+            case bot_logic:send_group_message(BotId, GroupId, Text) of
+                {ok, Result} ->
+                    elib_response:success(Req1, Result);
+                {error, Reason} ->
+                    elib_response:error(Req1, Reason)
             end
     end.
-
-bot_id_of_ctx(Ctx) ->
-    maps:get(<<"bot_id">>, Ctx, 0).
 
 %% 原 C2C 发送路径（保持不变）
 do_send_c2c(Req1, BotId, Body) ->

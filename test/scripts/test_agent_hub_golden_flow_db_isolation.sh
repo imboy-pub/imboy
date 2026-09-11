@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/agent_hub_golden_flow.sh"
 EVIDENCE_WRITER="$ROOT/scripts/write_agent_hub_e2e_evidence.py"
 CHANNEL_CLIENT="$ROOT/scripts/agent_hub_channel_webhook_smoke.py"
+BOT_FIXTURE="$ROOT/scripts/agent_hub_bot_webhook_fixture.py"
 WS_CLIENT="$ROOT/scripts/smoke/ws_c2g_send.py"
 FAKE_LLM="$ROOT/test/fixtures/agent_hub/agent_hub_fake_llm.erl"
 TEST_TMPDIR="${TEST_TMPDIR:?TEST_TMPDIR is required}"
@@ -59,6 +60,10 @@ REQUIRED_SUITES=(
   bot_webhook_logic_tests
   bot_webhook_delivery_repo_tests
   bot_webhook_delivery_worker_tests
+  bot_webhook_delivery_sender_tests
+  bot_webhook_guard_tests
+  bot_handler_tests
+  bot_e2e_tests
   agent_hub_runtime_trace_tests
 )
 for suite in "${REQUIRED_SUITES[@]}"; do
@@ -113,6 +118,18 @@ grep -Fq -- '--agent-dialog-passed' "$SCRIPT" || {
   echo "golden flow does not bind Agent dialog evidence" >&2
   exit 1
 }
+grep -Fq 'agent_hub_bot_webhook_fixture.py' "$SCRIPT" || {
+  echo "golden flow does not run the real Bot webhook fixture" >&2
+  exit 1
+}
+grep -Fq 'bot-dialog-a02-db.json' "$SCRIPT" || {
+  echo "golden flow does not verify Bot delivery and reply persistence" >&2
+  exit 1
+}
+grep -Fq -- '--bot-dialog-passed' "$SCRIPT" || {
+  echo "golden flow does not bind Bot dialog evidence" >&2
+  exit 1
+}
 grep -Fq 'stop_backend' "$SCRIPT" || {
   echo "golden flow does not stop and restart the real backend" >&2
   exit 1
@@ -147,6 +164,10 @@ test -f "$EVIDENCE_WRITER" || {
 }
 test -f "$CHANNEL_CLIENT" || {
   echo "channel webhook HTTP client is missing" >&2
+  exit 1
+}
+test -f "$BOT_FIXTURE" || {
+  echo "Bot webhook fixture is missing" >&2
   exit 1
 }
 test -f "$WS_CLIENT" || {

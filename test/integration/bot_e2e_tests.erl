@@ -65,13 +65,16 @@ bot_logic_exports_contract_test() ->
     ?assert(erlang:function_exported(bot_logic, admin_set_status, 2)),
     ?assert(erlang:function_exported(bot_logic, list_mine, 2)),
     ?assert(erlang:function_exported(bot_logic, search, 3)),
-    ?assert(erlang:function_exported(bot_logic, send_message, 3)).
+    ?assert(erlang:function_exported(bot_logic, send_message, 3)),
+    ?assert(erlang:function_exported(bot_logic, send_group_message, 3)).
 
 bot_webhook_logic_exports_contract_test() ->
     ensure_module_loaded(bot_webhook_logic),
     ?assert(erlang:function_exported(bot_webhook_logic, push, 2)),
     ?assert(erlang:function_exported(bot_webhook_logic, push_message, 3)),
-    ?assert(erlang:function_exported(bot_webhook_logic, sign_payload, 2)).
+    ?assert(erlang:function_exported(bot_webhook_logic, sign_payload, 2)),
+    ?assert(erlang:function_exported(bot_webhook_logic, make_reply_context, 5)),
+    ?assert(erlang:function_exported(bot_webhook_logic, consume_reply_context, 2)).
 
 %% ===================================================================
 %% Agent 发现契约

@@ -55,3 +55,12 @@ explicit_true_opens_test_() ->
         ?assert(meck:called(elib_async, async, ['_'])),
         teardown(ok)
     end}.
+
+signature_uses_contract_lowercase_hex_test() ->
+    Secret = <<"fixture-secret">>,
+    Payload = <<"1700000000\n{\"event\":\"message\"}">>,
+    Mac = crypto:mac(hmac, sha256, Secret, Payload),
+    ?assertEqual(
+        <<"sha256=", (binary:encode_hex(Mac, lowercase))/binary>>,
+        bot_webhook_logic:sign_payload(Secret, Payload)
+    ).

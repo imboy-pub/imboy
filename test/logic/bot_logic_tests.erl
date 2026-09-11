@@ -340,3 +340,67 @@ send_message_returns_error_when_bot_not_found_test_() ->
             )
         end
     ).
+
+send_group_message_requires_real_c2g_ack_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_tsid, [
+                {'generate', 0, fun() -> 67890 end}
+            ]},
+            {bot_repo, [
+                {'find', 1, fun(1) ->
+                    {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
+                end}
+            ]},
+            {msg_c2g_logic, [
+                {'c2g', 3, fun(<<"67890">> = MsgId, 1, Data) ->
+                    ?assertEqual(<<"2">>, maps:get(<<"to">>, Data)),
+                    ?assertEqual(
+                        <<"hello">>, maps:get(<<"text">>, maps:get(<<"payload">>, Data))
+                    ),
+                    self() !
+                        {reply, #{
+                            <<"id">> => MsgId,
+                            <<"type">> => <<"C2G_SERVER_ACK">>
+                        }},
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{<<"msg_id">> => <<"67890">>}},
+                bot_logic:send_group_message(1, 2, <<"hello">>)
+            )
+        end
+    ).
+
+send_group_message_rejects_c2g_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_tsid, [
+                {'generate', 0, fun() -> 67891 end}
+            ]},
+            {bot_repo, [
+                {'find', 1, fun(1) ->
+                    {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
+                end}
+            ]},
+            {msg_c2g_logic, [
+                {'c2g', 3, fun(<<"67891">> = MsgId, 1, _Data) ->
+                    self() !
+                        {reply, #{
+                            <<"id">> => MsgId,
+                            <<"type">> => <<"C2G_ERROR">>
+                        }},
+                    ok
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"消息发送失败"/utf8>>},
+                bot_logic:send_group_message(1, 2, <<"hello">>)
+            )
+        end
+    ).

@@ -15,6 +15,7 @@
 -export([has_exchange/2]).
 -export([send_message/3]).
 -export([send_message/4]).
+-export([send_group_message/3]).
 
 -include("log.hrl").
 -include("imboy_const.hrl").
@@ -217,6 +218,46 @@ send_message(MsgId, BotId, ToUid, MsgData) ->
         {error, Reason} ->
             {error, elib_cnv:safe_to_binary(Reason)}
     end.
+
+%% @doc Bot 以自身身份向 reply context 锁定的群发送纯文本消息。
+-spec send_group_message(integer(), integer(), binary()) -> {ok, map()} | {error, binary()}.
+send_group_message(BotId, GroupId, Text) when
+    is_integer(BotId), is_integer(GroupId), is_binary(Text), Text =/= <<>>
+->
+    case bot_repo:find(BotId) of
+        {ok, #{<<"status">> := 1}} ->
+            MsgId = integer_to_binary(elib_tsid:generate()),
+            Content = elib_str:replace_single_quote(Text),
+            Data = #{
+                <<"to">> => integer_to_binary(GroupId),
+                <<"msg_type">> => <<"text">>,
+                <<"payload">> => #{<<"content">> => Content, <<"text">> => Content},
+                <<"created_at">> => elib_dt:millisecond()
+            },
+            group_send_result(MsgId, msg_c2g_logic:c2g(MsgId, BotId, Data));
+        {ok, _} ->
+            {error, <<"Bot 已停用"/utf8>>};
+        {error, notfound} ->
+            {error, <<"Bot 不存在"/utf8>>};
+        {error, Reason} ->
+            {error, elib_cnv:safe_to_binary(Reason)}
+    end;
+send_group_message(_, _, _) ->
+    {error, <<"消息内容不能为空"/utf8>>}.
+
+group_send_result(_MsgId, {reply, _}) ->
+    {error, <<"消息发送失败"/utf8>>};
+group_send_result(MsgId, ok) ->
+    receive
+        {reply, #{<<"id">> := MsgId, <<"type">> := <<"C2G_SERVER_ACK">>}} ->
+            {ok, #{<<"msg_id">> => MsgId}};
+        {reply, #{<<"id">> := MsgId}} ->
+            {error, <<"消息发送失败"/utf8>>}
+    after 0 ->
+        {error, <<"消息发送失败"/utf8>>}
+    end;
+group_send_result(_, _) ->
+    {error, <<"消息发送失败"/utf8>>}.
 
 %% ===================================================================
 %% Internal

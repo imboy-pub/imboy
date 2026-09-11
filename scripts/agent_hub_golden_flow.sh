@@ -20,8 +20,10 @@ SENSITIVE_SCAN_PASSED=0
 HTTP_SMOKE_PASSED=0
 CHANNEL_WEBHOOK_PASSED=0
 AGENT_DIALOG_PASSED=0
+BOT_DIALOG_PASSED=0
 RESTART_PASSED=0
 BACKEND_PID=""
+BOT_FIXTURE_PID=""
 BACKEND_NODE="imboy_ah_e2e_$$_runtime"
 BACKEND_COOKIE=""
 BACKEND_DIST_PORT=""
@@ -59,6 +61,14 @@ AGENT_GROUP_ID=$((91300000000000000 + $$))
 AGENT_PROMPT="agent-hub-local-prompt-$$_$(date +%s)"
 AGENT_REPLY="agent-hub-local-reply-$$_$(date +%s)"
 AGENT_MSG_ID="ah-agent-$$_$(date +%s)"
+BOT_MSG_ID="ah-bot-$$_$(date +%s)"
+BOT_PLAIN_MSG_ID="ah-bot-plain-$$_$(date +%s)"
+BOT_DISABLED_MSG_ID="ah-bot-disabled-$$_$(date +%s)"
+BOT_NONMEMBER_MSG_ID="ah-bot-nonmember-$$_$(date +%s)"
+BOT_E2EE_MSG_ID="ah-bot-e2ee-$$_$(date +%s)"
+BOT_NONMEMBER_GROUP_ID=$((91400000000000000 + $$))
+BOT_PROMPT="agent-hub-local-bot-prompt-$$_$(date +%s)"
+BOT_REPLY="agent-hub-local-bot-reply-$$_$(date +%s)"
 PGHOST="${PGHOST:-127.0.0.1}"
 PGPORT="${PGPORT:-4323}"
 PGUSER="${PGUSER:-imboy_user}"
@@ -110,6 +120,17 @@ stop_backend() {
   BACKEND_PID=""
   BACKEND_DIST_PORT=""
   [[ "$failed" -eq 0 ]]
+}
+
+stop_bot_fixture() {
+  if [[ -z "$BOT_FIXTURE_PID" ]]; then
+    return 0
+  fi
+  if kill -0 "$BOT_FIXTURE_PID" 2>/dev/null; then
+    kill "$BOT_FIXTURE_PID" 2>/dev/null || true
+  fi
+  wait "$BOT_FIXTURE_PID" 2>/dev/null || true
+  BOT_FIXTURE_PID=""
 }
 
 start_backend() {
@@ -185,6 +206,14 @@ create_fake_agent() {
         -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
 }
 
+create_bot() {
+  local webhook_url="$1"
+  printf 'case bot_logic:register(#{name => <<"Agent Hub Local Bot">>, username => <<"agent-hub-local-%s">>, owner_uid => %s, webhook_url => <<"%s">>, events => jsone:encode([<<"message.c2g_mention">>])}) of {ok, #{<<"user_id">> := Uid, <<"api_token">> := Api, <<"verify_token">> := Verify}} -> io:format("~B ~s ~s", [Uid, Api, Verify]); Error -> io:format("ERROR ~p", [Error]) end.\n' \
+    "$DB" "$AGENT_HUMAN_UID" "$webhook_url" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+}
+
 snapshot_restart_state() {
   $PSQL -d "$DB" -At -v correlation_id="$TRACE_CORR" <<'SQL'
 SELECT jsonb_pretty(jsonb_build_object(
@@ -210,6 +239,7 @@ cleanup() {
   if [[ "$CLEANUP_DONE" -eq 1 && "$CLEANUP_PASSED" -eq 1 ]]; then
     return
   fi
+  stop_bot_fixture
   stop_backend || failed=1
   echo "[golden] cleanup: drop $DB"
   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres \
@@ -251,6 +281,7 @@ write_evidence() {
     --http-smoke-passed "$HTTP_SMOKE_PASSED" \
     --channel-webhook-passed "$CHANNEL_WEBHOOK_PASSED" \
     --agent-dialog-passed "$AGENT_DIALOG_PASSED" \
+    --bot-dialog-passed "$BOT_DIALOG_PASSED" \
     --restart-passed "$RESTART_PASSED" \
     --failed-step "$CURRENT_STEP" --failed-code "$failed_code"
 }
@@ -320,6 +351,10 @@ SUITES=(
   bot_webhook_logic_tests
   bot_webhook_delivery_repo_tests
   bot_webhook_delivery_worker_tests
+  bot_webhook_delivery_sender_tests
+  bot_webhook_guard_tests
+  bot_handler_tests
+  bot_e2e_tests
   agent_hub_runtime_trace_tests
 )
 for S in "${SUITES[@]}"; do
@@ -610,6 +645,190 @@ assert agent["text"] == reply and agent["mentions"] is None
 PY
 AGENT_DIALOG_PASSED=1
 
+CURRENT_STEP="run developer Bot group dialog with signed loopback webhook"
+BOT_FIXTURE_PORT="$(python3 -c \
+  'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
+BOT_WEBHOOK_URL="http://127.0.0.1:$BOT_FIXTURE_PORT/hook"
+read -r BOT_UID BOT_API_TOKEN BOT_VERIFY_TOKEN <<< "$(create_bot "$BOT_WEBHOOK_URL")"
+[[ "$BOT_UID" =~ ^[0-9]+$ && "$BOT_API_TOKEN" =~ ^[0-9a-f]{48}$ \
+  && "$BOT_VERIFY_TOKEN" =~ ^[0-9a-f]{48}$ ]]
+BOT_MEMBER_RESULT="$(
+  printf 'io:format("~p", [group_member_ds:add_member(%s, %s)]).\n' \
+    "$AGENT_GROUP_ID" "$BOT_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$BOT_MEMBER_RESULT" == "ok" ]]
+BOT_FIXTURE_READY="$CONFIG_TMP_DIR/bot-fixture-ready.json"
+BOT_API_TOKEN="$BOT_API_TOKEN" BOT_VERIFY_TOKEN="$BOT_VERIFY_TOKEN" \
+  IMBOY_BASE_URL="http://127.0.0.1:$RUNTIME_HTTP_PORT" \
+  python3 "$ROOT/scripts/agent_hub_bot_webhook_fixture.py" \
+    --port "$BOT_FIXTURE_PORT" --ready "$BOT_FIXTURE_READY" \
+    --out "$EVIDENCE_DIR/bot-dialog-a02-runtime.json" \
+    --expected-group-id "$AGENT_GROUP_ID" \
+    --expected-trigger-msg-id "$BOT_MSG_ID" \
+    --expected-from-uid "$AGENT_HUMAN_UID" --reply-text "$BOT_REPLY" \
+    > "$EVIDENCE_DIR/bot-dialog-a02-runtime.log" 2>&1 &
+BOT_FIXTURE_PID=$!
+for _ in $(seq 1 40); do
+  [[ -f "$BOT_FIXTURE_READY" ]] && break
+  kill -0 "$BOT_FIXTURE_PID" 2>/dev/null || break
+  sleep 0.25
+done
+[[ -f "$BOT_FIXTURE_READY" ]] && kill -0 "$BOT_FIXTURE_PID" 2>/dev/null
+WS_URL="ws://127.0.0.1:$RUNTIME_HTTP_PORT/api/v1/ws" \
+  WS_TOKEN="$AGENT_HUMAN_TOKEN" WS_GID="$AGENT_GROUP_ID" \
+  WS_FROM_UID="$AGENT_HUMAN_UID" WS_MSG_ID="$BOT_MSG_ID" \
+  WS_TEXT="$BOT_PROMPT" WS_MENTIONS="[\"$BOT_UID\"]" WS_WAIT_SEC=5 \
+  python3 "$ROOT/scripts/smoke/ws_c2g_send.py" \
+    > "$EVIDENCE_DIR/bot-dialog-a02-ws.log" 2>&1
+for _ in $(seq 1 80); do
+  kill -0 "$BOT_FIXTURE_PID" 2>/dev/null || break
+  sleep 0.25
+done
+if kill -0 "$BOT_FIXTURE_PID" 2>/dev/null; then
+  echo "[golden] Bot webhook fixture timed out" >&2
+  exit 1
+fi
+wait "$BOT_FIXTURE_PID"
+BOT_FIXTURE_PID=""
+unset BOT_API_TOKEN BOT_VERIFY_TOKEN
+python3 -c \
+  'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); assert d.get("passed") == 12 and d.get("failed") == 0' \
+  "$EVIDENCE_DIR/bot-dialog-a02-runtime.json"
+
+for _ in $(seq 1 80); do
+  BOT_ARCHIVE_COUNT="$($PSQL -d "$DB" -tAc \
+    "SELECT count(*) FROM public.msg_store WHERE group_id=$AGENT_GROUP_ID AND
+       from_id=$BOT_UID AND payload::jsonb #>> '{payload,text}'='$BOT_REPLY'")"
+  [[ "$BOT_ARCHIVE_COUNT" == "1" ]] && break
+  sleep 0.25
+done
+
+CURRENT_STEP="run developer Bot group mention negative checks"
+WS_URL="ws://127.0.0.1:$RUNTIME_HTTP_PORT/api/v1/ws" \
+  WS_TOKEN="$AGENT_HUMAN_TOKEN" WS_GID="$AGENT_GROUP_ID" \
+  WS_FROM_UID="$AGENT_HUMAN_UID" WS_MSG_ID="$BOT_PLAIN_MSG_ID" \
+  WS_TEXT="plain message without bot mention" WS_WAIT_SEC=2 \
+  python3 "$ROOT/scripts/smoke/ws_c2g_send.py" \
+    > "$EVIDENCE_DIR/bot-dialog-a02-plain.log" 2>&1
+BOT_DISABLE_RESULT="$(
+  printf 'io:format("~p", [bot_repo:set_status(%s, 0)]).\n' "$BOT_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$BOT_DISABLE_RESULT" == "{ok,1}" ]]
+WS_URL="ws://127.0.0.1:$RUNTIME_HTTP_PORT/api/v1/ws" \
+  WS_TOKEN="$AGENT_HUMAN_TOKEN" WS_GID="$AGENT_GROUP_ID" \
+  WS_FROM_UID="$AGENT_HUMAN_UID" WS_MSG_ID="$BOT_DISABLED_MSG_ID" \
+  WS_TEXT="disabled bot mention" WS_MENTIONS="[\"$BOT_UID\"]" WS_WAIT_SEC=2 \
+  python3 "$ROOT/scripts/smoke/ws_c2g_send.py" \
+    > "$EVIDENCE_DIR/bot-dialog-a02-disabled.log" 2>&1
+BOT_ENABLE_RESULT="$(
+  printf 'io:format("~p", [bot_repo:set_status(%s, 1)]).\n' "$BOT_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$BOT_ENABLE_RESULT" == "{ok,1}" ]]
+$PSQL -d "$DB" -v group_id="$BOT_NONMEMBER_GROUP_ID" \
+  -v human_uid="$AGENT_HUMAN_UID" <<'SQL' >/dev/null
+INSERT INTO public."group"
+  (id, owner_uid, creator_uid, title, member_count, e2ee_mode, scope)
+VALUES
+  (:group_id, :human_uid, :human_uid, 'Agent Hub Bot nonmember group', 0, 0, 'personal');
+SQL
+NONMEMBER_HUMAN_RESULT="$(
+  printf 'io:format("~p", [group_member_ds:add_member(%s, %s)]).\n' \
+    "$BOT_NONMEMBER_GROUP_ID" "$AGENT_HUMAN_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$NONMEMBER_HUMAN_RESULT" == "ok" ]]
+WS_URL="ws://127.0.0.1:$RUNTIME_HTTP_PORT/api/v1/ws" \
+  WS_TOKEN="$AGENT_HUMAN_TOKEN" WS_GID="$BOT_NONMEMBER_GROUP_ID" \
+  WS_FROM_UID="$AGENT_HUMAN_UID" WS_MSG_ID="$BOT_NONMEMBER_MSG_ID" \
+  WS_TEXT="nonmember bot mention" WS_MENTIONS="[\"$BOT_UID\"]" WS_WAIT_SEC=2 \
+  python3 "$ROOT/scripts/smoke/ws_c2g_send.py" \
+    > "$EVIDENCE_DIR/bot-dialog-a02-nonmember.log" 2>&1
+E2EE_DISPATCH_RESULT="$(
+  printf 'io:format("~p", [bot_webhook_logic:dispatch_group_mention(%s, %s, #{<<"id">> => <<"%s">>, <<"e2ee">> => 1}, #{<<"mentions">> => [<<"%s">>]}, [%s])]).\n' \
+    "$AGENT_HUMAN_UID" "$AGENT_GROUP_ID" "$BOT_E2EE_MSG_ID" "$BOT_UID" "$BOT_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$E2EE_DISPATCH_RESULT" == "ok" ]]
+
+$PSQL -d "$DB" -At \
+  -v group_id="$AGENT_GROUP_ID" -v human_uid="$AGENT_HUMAN_UID" \
+  -v bot_uid="$BOT_UID" -v trigger_msg_id="$BOT_MSG_ID" \
+  -v prompt="$BOT_PROMPT" -v reply="$BOT_REPLY" \
+  -v plain_msg_id="$BOT_PLAIN_MSG_ID" -v disabled_msg_id="$BOT_DISABLED_MSG_ID" \
+  -v nonmember_msg_id="$BOT_NONMEMBER_MSG_ID" -v e2ee_msg_id="$BOT_E2EE_MSG_ID" <<'SQL' \
+  > "$EVIDENCE_DIR/bot-dialog-a02-db.json"
+SELECT jsonb_pretty(jsonb_build_object(
+  'bot', (
+    SELECT jsonb_build_object('user_id', b.user_id, 'status', b.status,
+      'account_type', u.account_type, 'plaintext_api_token_empty', b.api_token = '',
+      'plaintext_verify_token_empty', b.verify_token = '')
+    FROM public.bot b JOIN public."user" u ON u.id = b.user_id
+    WHERE b.user_id = :bot_uid
+  ),
+  'delivery', (
+    SELECT jsonb_build_object(
+      'delivery_id', delivery_id, 'event_type', event_type, 'status', status,
+      'attempt_count', attempt_count, 'reply_context_empty', reply_context = '',
+      'correlation_matches_payload', correlation_id = payload->>'correlation_id')
+    FROM public.bot_delivery
+    WHERE idempotency_key = 'bwd-mention:' || :bot_uid || ':' || :'trigger_msg_id'
+  ),
+  'human_message_count', (
+    SELECT count(*) FROM public.msg_store WHERE group_id = :group_id
+      AND msg_id = :'trigger_msg_id' AND from_id = :human_uid
+      AND payload::jsonb #>> '{payload,text}' = :'prompt'
+  ),
+  'bot_reply_count', (
+    SELECT count(*) FROM public.msg_store WHERE group_id = :group_id
+      AND from_id = :bot_uid AND payload::jsonb #>> '{payload,text}' = :'reply'
+  ),
+  'negative_delivery_count', (
+    SELECT count(*) FROM public.bot_delivery
+    WHERE idempotency_key IN (
+      'bwd-mention:' || :bot_uid || ':' || :'plain_msg_id',
+      'bwd-mention:' || :bot_uid || ':' || :'disabled_msg_id',
+      'bwd-mention:' || :bot_uid || ':' || :'nonmember_msg_id',
+      'bwd-mention:' || :bot_uid || ':' || :'e2ee_msg_id')
+  )
+));
+SQL
+python3 - "$EVIDENCE_DIR/bot-dialog-a02-runtime.json" \
+  "$EVIDENCE_DIR/bot-dialog-a02-db.json" "$BOT_UID" <<'PY'
+import json
+import sys
+
+runtime = json.load(open(sys.argv[1], encoding="utf-8"))
+database = json.load(open(sys.argv[2], encoding="utf-8"))
+bot_uid = int(sys.argv[3])
+assert runtime["passed"] == 12 and runtime["failed"] == 0
+assert runtime["bot_id"] == str(bot_uid)
+assert database["bot"] == {
+    "user_id": bot_uid,
+    "status": 1,
+    "account_type": 3,
+    "plaintext_api_token_empty": True,
+    "plaintext_verify_token_empty": True,
+}
+assert database["delivery"]["delivery_id"] == runtime["delivery_id"]
+assert database["delivery"]["event_type"] == "message.c2g_mention"
+assert database["delivery"]["status"] == "success"
+assert database["delivery"]["attempt_count"] == 1
+assert database["delivery"]["reply_context_empty"] is True
+assert database["delivery"]["correlation_matches_payload"] is True
+assert database["human_message_count"] == 1
+assert database["bot_reply_count"] == 1
+assert database["negative_delivery_count"] == 0
+PY
+BOT_DIALOG_PASSED=1
+
 TRACE_TASK_ID="$($PSQL -d "$DB" -tAc \
   "SELECT id FROM public.agent_task WHERE correlation_id='$TRACE_CORR'")"
 [[ "$TRACE_TASK_ID" =~ ^task-[A-Za-z0-9_-]{11,59}$ ]] || {
@@ -667,5 +886,5 @@ fi
 write_manifest
 RUN_FINISHED=1
 echo "[golden] evidence written to $EVIDENCE_DIR"
-echo "[golden] PARTIAL: HTTP MCP, channel webhook, built-in Agent dialog, and restart PASS; trusted runtime trace and the remaining Bot protocol flow stay open"
+echo "[golden] PARTIAL: HTTP MCP, channel webhook, Agent/Bot dialogs, and restart PASS; trusted runtime trace and remaining protocol negatives stay open"
 exit 1

@@ -7,6 +7,7 @@
 
 -export([tablename/0, attempt_tablename/0]).
 -export([insert/1, get_delivery/1, claim_due/1]).
+-export([consume_reply_context/4]).
 -export([mark_success/1, mark_success/2, mark_retry/4, mark_dead/2]).
 -export([insert_attempt/2]).
 -export([list_dead/2, replay/1]).
@@ -221,4 +222,26 @@ count_by_status(Status) ->
     of
         {ok, [#{<<"n">> := N}]} -> {ok, N};
         Other -> Other
+    end.
+
+%% @doc 按 delivery 主键、Bot、correlation 与 token 原子消费 reply context。
+%% 成功后清空独立列；payload 保留原始投递审计。第二次消费及伪造输入同形 notfound。
+-spec consume_reply_context(binary(), binary(), integer(), binary()) ->
+    {ok, consumed} | {error, notfound | term()}.
+consume_reply_context(DeliveryId, Token, BotId, Corr) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary,
+            " SET reply_context = '', updated_at = NOW()"
+            " WHERE delivery_id = $1 AND reply_context = $2"
+            " AND bot_id = $3 AND correlation_id = $4"
+            " RETURNING delivery_id">>,
+    case elib_pg:query(Sql, [DeliveryId, Token, integer_to_binary(BotId), Corr]) of
+        {ok, [_]} -> {ok, consumed};
+        {ok, []} -> {error, notfound};
+        {ok, N} when is_integer(N), N > 0 -> {ok, consumed};
+        {ok, 0} -> {error, notfound};
+        {ok, N, _} when is_integer(N), N > 0 -> {ok, consumed};
+        {ok, 0, []} -> {error, notfound};
+        {error, Reason} -> {error, Reason}
     end.

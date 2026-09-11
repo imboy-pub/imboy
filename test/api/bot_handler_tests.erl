@@ -273,3 +273,99 @@ send_message_rejects_user_without_prior_exchange_test_() ->
             ?ASSERT_EQUAL(1, maps:get(errcode, Body))
         end
     ).
+
+send_group_reply_uses_consumed_server_context_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'header', 3, fun(<<"authorization">>, _Req, _Default) ->
+                    <<"Bearer valid_bot_token">>
+                end}
+            ]},
+            {bot_ds, [
+                {'find_by_token', 1, fun(<<"valid_bot_token">>) ->
+                    {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
+                end}
+            ]},
+            {agent_rate_limiter, [
+                {'allow', 2, fun(1, 1) -> allow end}
+            ]},
+            {elib_req, [
+                {'body', 2, fun(_Req, _Opts) ->
+                    {ok,
+                        #{
+                            <<"reply_context">> => <<"opaque-context">>,
+                            <<"text">> => <<"bot reply">>,
+                            <<"group_id">> => 999
+                        },
+                        fake_req}
+                end}
+            ]},
+            {bot_webhook_logic, [
+                {'consume_reply_context', 2, fun(<<"opaque-context">>, 1) ->
+                    {ok, #{<<"group_id">> => 77}}
+                end}
+            ]},
+            {bot_logic, [
+                {'send_group_message', 3, fun(1, 77, <<"bot reply">>) ->
+                    {ok, #{<<"msg_id">> => <<"group-msg">>}}
+                end}
+            ]},
+            {elib_response, [
+                {'success', 2, fun(_Req, Data) ->
+                    cowboy_req_h:new(#{response_status => 200, response_body => Data})
+                end}
+            ]}
+        ],
+        fun() ->
+            MockReq = cowboy_req_h:new(#{method => <<"POST">>}),
+            {ok, Req, _} = bot_handler:init(MockReq, #{action => send_message}),
+            {200, _, Body} = cowboy_req_h:response(Req),
+            ?assertEqual(<<"group-msg">>, maps:get(<<"msg_id">>, Body))
+        end
+    ).
+
+send_group_reply_rejects_invalid_context_without_sending_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [
+                {'header', 3, fun(<<"authorization">>, _Req, _Default) ->
+                    <<"Bearer valid_bot_token">>
+                end}
+            ]},
+            {bot_ds, [
+                {'find_by_token', 1, fun(<<"valid_bot_token">>) ->
+                    {ok, #{<<"user_id">> => 1, <<"status">> => 1}}
+                end}
+            ]},
+            {agent_rate_limiter, [
+                {'allow', 2, fun(1, 1) -> allow end}
+            ]},
+            {elib_req, [
+                {'body', 2, fun(_Req, _Opts) ->
+                    {ok, #{<<"reply_context">> => <<"bad-context">>, <<"text">> => <<"x">>},
+                        fake_req}
+                end}
+            ]},
+            {bot_webhook_logic, [
+                {'consume_reply_context', 2, fun(<<"bad-context">>, 1) ->
+                    {error, invalid}
+                end}
+            ]},
+            {bot_logic, [
+                {'send_group_message', 3, fun(_, _, _) -> exit(send_should_not_be_called) end}
+            ]},
+            {elib_response, [
+                {'error', 2, fun(_Req, Reason) ->
+                    ?assertEqual(<<"reply_context 无效"/utf8>>, Reason),
+                    cowboy_req_h:new(#{response_status => 200, response_body => #{errcode => 1}})
+                end}
+            ]}
+        ],
+        fun() ->
+            MockReq = cowboy_req_h:new(#{method => <<"POST">>}),
+            {ok, Req, _} = bot_handler:init(MockReq, #{action => send_message}),
+            {200, _, Body} = cowboy_req_h:response(Req),
+            ?assertEqual(1, maps:get(errcode, Body))
+        end
+    ).

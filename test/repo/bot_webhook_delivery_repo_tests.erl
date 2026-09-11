@@ -102,3 +102,17 @@ attempt_audit_test_() ->
         }),
         ok
     end).
+
+reply_context_is_consumed_once_in_db_test_() ->
+    ?TEST_WITH_DB(fun() ->
+        D = did(),
+        Corr = corr(),
+        Token = <<"opaque-server-signed-reply-context">>,
+        {ok, inserted} = bot_webhook_delivery_repo:insert(
+            (base(D))#{reply_context => Token, correlation_id => Corr}
+        ),
+        {ok, consumed} = bot_webhook_delivery_repo:consume_reply_context(D, Token, 100, Corr),
+        {error, notfound} = bot_webhook_delivery_repo:consume_reply_context(D, Token, 100, Corr),
+        {ok, Row} = bot_webhook_delivery_repo:get_delivery(D),
+        ?assertEqual(<<>>, maps:get(<<"reply_context">>, Row))
+    end).
