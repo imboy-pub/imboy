@@ -11,7 +11,8 @@
     eunit_cleanup_db/1,
     eunit_try_db/0,
     eunit_setup_with_db/0,
-    eunit_setup_db_or_skip/0
+    eunit_setup_db_or_skip/0,
+    ensure_named_server/1
 ]).
 
 %%%===================================================================
@@ -185,6 +186,18 @@ eunit_setup() ->
             % 即使主应用启动失败，也可以继续测试
             % 很多单元测试不需要完整的应用
             {app_not_started, test_continues}
+    end.
+
+%% @doc 确保 imboy app 可用并确认命名 gen_server 已注册（imboy_router_registry、
+%% imboy_ws_action_registry 等）。测试进程绝不能对这些 app 级命名服务自行
+%% start_link：僵尸持名后 imboy 每次启动都在 sup 失败（根治见 2c947235，
+%% 与 test/common/eunit_runner 同名实现保持一致）。
+-spec ensure_named_server(atom()) -> {ok, pid()} | {error, {not_started, atom()}}.
+ensure_named_server(Mod) when is_atom(Mod) ->
+    _ = eunit_setup(),
+    case erlang:whereis(Mod) of
+        Pid when is_pid(Pid) -> {ok, Pid};
+        undefined -> {error, {not_started, Mod}}
     end.
 
 %% @doc 清理资源
