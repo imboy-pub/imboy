@@ -11,6 +11,7 @@
     "/api/v1/auth/oidc/authorize",
     "/api/v1/auth/oidc/callback",
     "/api/v1/auth/oidc/exchange",
+    "/api/v1/auth/wechat-mini/login",
     "/api/v1/bot/send_message",
     "/api/v1/init",
     "/api/v1/metrics",
@@ -341,6 +342,30 @@
         "action": "version_stats",
         "handler": "adm_app_version_handler",
         "path": "/api/adm/app_version/version_stats",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_appeal_handler",
+        "path": "/api/adm/appeal/list",
+        "static": false
+      },
+      {
+        "action": "review",
+        "handler": "adm_appeal_handler",
+        "path": "/api/adm/appeal/review",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_bot_delivery_handler",
+        "path": "/api/adm/bot/deliveries",
+        "static": false
+      },
+      {
+        "action": "replay",
+        "handler": "adm_bot_delivery_handler",
+        "path": "/api/adm/bot/deliveries/replay",
         "static": false
       },
       {
@@ -866,9 +891,21 @@
         "static": false
       },
       {
+        "action": "create",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/clients/create",
+        "static": false
+      },
+      {
         "action": "grants",
         "handler": "adm_mcp_handler",
         "path": "/api/adm/mcp/clients/grants",
+        "static": false
+      },
+      {
+        "action": "set_grant",
+        "handler": "adm_mcp_handler",
+        "path": "/api/adm/mcp/clients/grants/set",
         "static": false
       },
       {
@@ -929,42 +966,6 @@
         "action": "sensitive_words_import",
         "handler": "adm_moderation_handler",
         "path": "/api/adm/moderation/sensitive-words/import",
-        "static": false
-      },
-      {
-        "action": "delete",
-        "handler": "adm_moment_handler",
-        "path": "/api/adm/moment/delete",
-        "static": false
-      },
-      {
-        "action": "detail",
-        "handler": "adm_moment_handler",
-        "path": "/api/adm/moment/detail/:moment_id",
-        "static": false
-      },
-      {
-        "action": "list",
-        "handler": "adm_moment_handler",
-        "path": "/api/adm/moment/list",
-        "static": false
-      },
-      {
-        "action": "report_batch_resolve",
-        "handler": "adm_moment_handler",
-        "path": "/api/adm/moment/report/batch_resolve",
-        "static": false
-      },
-      {
-        "action": "report_list",
-        "handler": "adm_moment_handler",
-        "path": "/api/adm/moment/report/list",
-        "static": false
-      },
-      {
-        "action": "report_resolve",
-        "handler": "adm_moment_handler",
-        "path": "/api/adm/moment/report/resolve",
         "static": false
       },
       {
@@ -1145,6 +1146,24 @@
         "action": "resolve",
         "handler": "adm_report_handler",
         "path": "/api/adm/report/resolve",
+        "static": false
+      },
+      {
+        "action": "execute",
+        "handler": "adm_report_action_handler",
+        "path": "/api/adm/report_action/execute",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "adm_report_action_handler",
+        "path": "/api/adm/report_action/list",
+        "static": false
+      },
+      {
+        "action": "reverse",
+        "handler": "adm_report_action_handler",
+        "path": "/api/adm/report_action/reverse",
         "static": false
       },
       {
@@ -1594,6 +1613,24 @@
         "static": false
       },
       {
+        "action": "my_actions",
+        "handler": "appeal_handler",
+        "path": "/api/v1/appeal/actions",
+        "static": false
+      },
+      {
+        "action": "create",
+        "handler": "appeal_handler",
+        "path": "/api/v1/appeal/create",
+        "static": false
+      },
+      {
+        "action": "my",
+        "handler": "appeal_handler",
+        "path": "/api/v1/appeal/my",
+        "static": false
+      },
+      {
         "action": "confirm",
         "handler": "attach_handler",
         "path": "/api/v1/attachment/confirm",
@@ -1627,6 +1664,12 @@
         "action": "exchange",
         "handler": "auth_oidc_handler",
         "path": "/api/v1/auth/oidc/exchange",
+        "static": false
+      },
+      {
+        "action": "wechat_mini_login",
+        "handler": "teaching_auth_handler",
+        "path": "/api/v1/auth/wechat-mini/login",
         "static": false
       },
       {
@@ -1921,6 +1964,12 @@
         "action": "disable",
         "handler": "channel_webhook_handler",
         "path": "/api/v1/channel/:channel_id/webhook/:webhook_id/disable",
+        "static": false
+      },
+      {
+        "action": "rotate",
+        "handler": "channel_webhook_handler",
+        "path": "/api/v1/channel/:channel_id/webhook/:webhook_id/rotate",
         "static": false
       },
       {
@@ -3022,78 +3071,6 @@
         "static": false
       },
       {
-        "action": "show",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id",
-        "static": false
-      },
-      {
-        "action": "add_comment",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id/comment",
-        "static": false
-      },
-      {
-        "action": "delete_comment",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id/comment/:comment_id/delete",
-        "static": false
-      },
-      {
-        "action": "comments",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id/comments",
-        "static": false
-      },
-      {
-        "action": "delete",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id/delete",
-        "static": false
-      },
-      {
-        "action": "like",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id/like",
-        "static": false
-      },
-      {
-        "action": "report",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id/report",
-        "static": false
-      },
-      {
-        "action": "unlike",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/:moment_id/unlike",
-        "static": false
-      },
-      {
-        "action": "create",
-        "handler": "moment_handler",
-        "path": "/api/v1/moment/create",
-        "static": false
-      },
-      {
-        "action": "moment_create",
-        "handler": "report_handler",
-        "path": "/api/v1/moment/report/create",
-        "static": false
-      },
-      {
-        "action": "feed",
-        "handler": "moment_handler",
-        "path": "/api/v1/moments/feed",
-        "static": false
-      },
-      {
-        "action": "user_posts",
-        "handler": "moment_handler",
-        "path": "/api/v1/moments/user/:uid",
-        "static": false
-      },
-      {
         "action": "forward",
         "handler": "msg_handler",
         "path": "/api/v1/msg/forward",
@@ -3379,6 +3356,102 @@
         "action": "update",
         "handler": "project_task_handler",
         "path": "/api/v1/tasks/:task_id/update",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "teaching_assignment_handler",
+        "path": "/api/v1/teaching/assignments",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "teaching_assignment_handler",
+        "path": "/api/v1/teaching/assignments/:id",
+        "static": false
+      },
+      {
+        "action": "create_submission",
+        "handler": "teaching_assignment_handler",
+        "path": "/api/v1/teaching/assignments/:id/submissions",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "teaching_roster_handler",
+        "path": "/api/v1/teaching/classes/:id/learners",
+        "static": false
+      },
+      {
+        "action": "switch",
+        "handler": "teaching_context_handler",
+        "path": "/api/v1/teaching/context/switch",
+        "static": false
+      },
+      {
+        "action": "contexts",
+        "handler": "teaching_context_handler",
+        "path": "/api/v1/teaching/contexts",
+        "static": false
+      },
+      {
+        "action": "bind",
+        "handler": "teaching_learner_bind_handler",
+        "path": "/api/v1/teaching/learners/:id/bind",
+        "static": false
+      },
+      {
+        "action": "history",
+        "handler": "teaching_assignment_handler",
+        "path": "/api/v1/teaching/learners/:id/history",
+        "static": false
+      },
+      {
+        "action": "unbind",
+        "handler": "teaching_learner_bind_handler",
+        "path": "/api/v1/teaching/learners/:id/unbind",
+        "static": false
+      },
+      {
+        "action": "queue",
+        "handler": "teaching_review_handler",
+        "path": "/api/v1/teaching/review-queue",
+        "static": false
+      },
+      {
+        "action": "submission_detail",
+        "handler": "teaching_assignment_handler",
+        "path": "/api/v1/teaching/submissions/:id",
+        "static": false
+      },
+      {
+        "action": "save_draft",
+        "handler": "teaching_review_handler",
+        "path": "/api/v1/teaching/submissions/:id/review-draft",
+        "static": false
+      },
+      {
+        "action": "workbench",
+        "handler": "teaching_review_handler",
+        "path": "/api/v1/teaching/submissions/:id/review-workbench",
+        "static": false
+      },
+      {
+        "action": "publish",
+        "handler": "teaching_review_handler",
+        "path": "/api/v1/teaching/submissions/:id/reviews/publish",
+        "static": false
+      },
+      {
+        "action": "withdraw",
+        "handler": "teaching_assignment_handler",
+        "path": "/api/v1/teaching/submissions/:id/withdraw",
+        "static": false
+      },
+      {
+        "action": "tasks",
+        "handler": "imboy_router",
+        "path": "/api/v1/teaching/tasks",
         "static": false
       },
       {
@@ -3962,7 +4035,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 153,
+    "defines": 184,
     "distinct_codes": [
       0,
       1,
@@ -4089,7 +4162,38 @@
       5303,
       5304,
       5305,
-      5306
+      5306,
+      5401,
+      5402,
+      5403,
+      5404,
+      5420,
+      5421,
+      5422,
+      5423,
+      5424,
+      5425,
+      5426,
+      5427,
+      5428,
+      5429,
+      5430,
+      5431,
+      5432,
+      5440,
+      5441,
+      5442,
+      5443,
+      5444,
+      5460,
+      5461,
+      5480,
+      5481,
+      5482,
+      5483,
+      5484,
+      5485,
+      5486
     ],
     "note": "flutter 全量契约由 C1 imboyapp/scripts/generate_error_code.dart --check 承担",
     "segments": {
@@ -4100,6 +4204,7 @@
       "5100": 7,
       "5200": 6,
       "5300": 7,
+      "5400": 31,
       "900": 43
     },
     "source": "include/error_code.hrl"
