@@ -1,0 +1,12 @@
+{
+  "consent_scope": "blind_eval_only",
+  "consent_status": "authorized",
+  "copybook_version": "cb-hardpen-adv-v2",
+  "deidentification": "done",
+  "media_duration_seconds": 95,
+  "media_type": "video",
+  "process_frames_selected": 4,
+  "sample_id": "S17",
+  "submission_month": "2026-09",
+  "task_version": "t-speed-2026w6"
+}

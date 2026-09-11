@@ -269,7 +269,8 @@ submission_created(Sid, AssignmentId, Attempt, Created) ->
 assignment_summary(R) ->
     #{
         <<"assignment_id">> => tsid(maps:get(<<"assignment_id">>, R)),
-        <<"task_id">> => maps:get(<<"task_id">>, R, <<>>),
+        %% v3 P0-1 修复：task_id 对外 = group_task.id（task_gid）十进制字符串
+        <<"task_id">> => tsid(maps:get(<<"task_gid">>, R, 0)),
         <<"group_id">> => tsid(maps:get(<<"group_id">>, R)),
         <<"group_name">> => maps:get(<<"group_title">>, R, <<>>),
         <<"title">> => maps:get(<<"title">>, R, <<>>),
@@ -284,7 +285,8 @@ assignment_summary(R) ->
 assignment_detail(Scope) ->
     #{
         <<"assignment_id">> => tsid(maps:get(<<"assignment_id">>, Scope)),
-        <<"task_id">> => maps:get(<<"task_id">>, Scope, <<>>),
+        %% v3 P0-1 修复：task_id 对外 = group_task.id（task_gid）十进制字符串
+        <<"task_id">> => tsid(maps:get(<<"task_gid">>, Scope, 0)),
         <<"group_id">> => tsid(maps:get(<<"group_id">>, Scope)),
         <<"learner_id">> => nullable_tsid(maps:get(<<"learner_id">>, Scope, null)),
         <<"status">> => <<"pending">>

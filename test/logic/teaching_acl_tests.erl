@@ -290,13 +290,15 @@ repo_mocks() ->
     ].
 
 g_row(CanSubmit, CanView) ->
+    %% v3 H2：guardian_relation SQL 现带 learner_status（LEFT JOIN learner）
     #{
         <<"guardian_uid">> => 0,
         <<"learner_id">> => 0,
         <<"relation">> => <<"guardian">>,
         <<"can_submit">> => CanSubmit,
         <<"can_view_review">> => CanView,
-        <<"status">> => <<"active">>
+        <<"status">> => <<"active">>,
+        <<"learner_status">> => <<"active">>
     }.
 
 s_row(Role) ->

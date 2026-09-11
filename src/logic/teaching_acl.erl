@@ -51,7 +51,7 @@ resolve_guardian(Uid, LearnerId, Need) ->
         {ok, undefined} ->
             {error, not_guardian};
         {ok, #{<<"status">> := <<"active">>} = Row} ->
-            check_guardian_scope(Need, Row);
+            check_guardian_learner_active(Need, Row);
         {ok, _InactiveRow} ->
             {error, inactive};
         {error, Reason} ->
@@ -124,7 +124,14 @@ submission_access(Uid, SubmissionId) ->
                 Scope} when
             is_integer(OrgId), is_integer(LearnerId), is_integer(GroupId)
         ->
-            submission_access_dispatch(Uid, OrgId, GroupId, LearnerId, Scope);
+            %% H1（v3 硬化）：submission.learner_id 与 assignment.learner_id 不一致
+            %% = 脏数据，按资源不存在拒绝（不确认存在性，T14 同哲学）
+            case maps:get(<<"assignment_learner_id">>, Scope, undefined) of
+                LearnerId ->
+                    submission_access_dispatch(Uid, OrgId, GroupId, LearnerId, Scope);
+                _ ->
+                    {error, not_found}
+            end;
         {ok, _NoOrgScope} ->
             {error, not_found};
         {error, Reason} ->
@@ -135,6 +142,14 @@ submission_access(Uid, SubmissionId) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% H2（v3 硬化）：learner 档案缺失/停用时关系即使 active 也不可用（fail closed）
+-spec check_guardian_learner_active(submit | view_review | undefined, map()) ->
+    {ok, map()} | {error, inactive}.
+check_guardian_learner_active(Need, #{<<"learner_status">> := <<"active">>} = Row) ->
+    check_guardian_scope(Need, Row);
+check_guardian_learner_active(_Need, _Row) ->
+    {error, inactive}.
 
 -spec check_guardian_scope(submit | view_review | undefined, map()) ->
     {ok, map()} | {error, cannot_submit | cannot_view}.

@@ -487,6 +487,12 @@
 -define(ERR_TEACHING_BIND_INVALID_TARGET, 5428).
 % 学员账号绑定：操作人非 Org Owner / 班级 manager（管理动作守卫）
 -define(ERR_TEACHING_BIND_NOT_AUTHORIZED, 5429).
+% 班级不存在或不可见（非本班 active staff；不泄漏班级存在性）
+-define(ERR_TEACHING_CLASS_NOT_VISIBLE, 5430).
+% 学员不在本班或已移出（enrollment 无行/removed/机构不一致）
+-define(ERR_TEACHING_LEARNER_NOT_IN_CLASS, 5431).
+% 监护关系需完善（0 个或多个 active can_submit 监护人）
+-define(ERR_TEACHING_GUARDIAN_SETUP_REQUIRED, 5432).
 % 作业不存在或对请求者不可见
 -define(ERR_ASSIGNMENT_NOT_FOUND, 5440).
 % 提交附件不合规（缺视频/超量/非本人/MIME 不符）
@@ -654,6 +660,9 @@
     5427 => <<"该账号在同机构已绑定其他学员"/utf8>>,
     5428 => <<"目标账号不存在或不可用"/utf8>>,
     5429 => <<"无学员绑定操作权限"/utf8>>,
+    5430 => <<"班级不存在或不可见"/utf8>>,
+    5431 => <<"学员不在本班或已移出"/utf8>>,
+    5432 => <<"监护关系需完善"/utf8>>,
     5440 => <<"作业不存在"/utf8>>,
     5441 => <<"提交附件不合规"/utf8>>,
     5442 => <<"作业已截止或关闭"/utf8>>,

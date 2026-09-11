@@ -105,10 +105,14 @@ owner_contexts(Uid) ->
 guardian_relation(Uid, LearnerId) ->
     Sql =
         <<
-            "SELECT guardian_uid, learner_id, relation, can_submit, can_view_review, status "
+            "SELECT gl.guardian_uid, gl.learner_id, gl.relation, gl.can_submit, "
+            "gl.can_view_review, gl.status, l.status AS learner_status "
             "FROM ",
             (tb(guardian_learner))/binary,
-            " WHERE guardian_uid = $1 AND learner_id = $2 LIMIT 1"
+            " gl LEFT JOIN ",
+            (tb(learner))/binary,
+            " l ON l.id = gl.learner_id "
+            "WHERE gl.guardian_uid = $1 AND gl.learner_id = $2 LIMIT 1"
         >>,
     case elib_pg:query(Sql, [Uid, LearnerId]) of
         {ok, [Row | _]} -> {ok, Row};
@@ -216,7 +220,7 @@ assignment_scope(AssignmentId) ->
     Sql =
         <<
             "SELECT a.id AS assignment_id, a.task_id, a.learner_id, a.user_id AS assignee_uid, "
-            "a.status AS assignment_status, "
+            "a.status AS assignment_status, gt.id AS task_gid, "
             "gt.group_id, gt.status AS task_status, gt.title AS task_title, "
             "gt.deadline AS task_deadline, g.title AS group_title, "
             "w.organization_id AS org_id "

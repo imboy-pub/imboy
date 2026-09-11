@@ -14,7 +14,9 @@
     publish/3,
     withdraw/2,
     submission_detail/2,
-    history/3
+    history/3,
+    %% 纯函数导出供 eunit 直测（v3 N5/P1-3 补测）
+    review_has_content/2
 ]).
 
 -include_lib("kernel/include/logger.hrl").
@@ -60,36 +62,99 @@ workbench(Uid, SubmissionId) ->
 %% @doc 保存/更新回评草稿（upsert per reviewer；忽略并拒绝保留字段）
 %% 事务内先 lock submission 行（与 publish/withdraw 同串行化点）：防并发
 %% 双请求同时判定"无草稿"而双 INSERT（每 (submission,reviewer) 至多一份有效草稿）
+%% P0-4（MN-MEDIA-02/03）：Body 可携带 assets[{attachment_id,kind,sort_order}]
+%% （0-1 feedback_video + 0-3 feedback_image，TSID string；空数组合法）。
+%% 同一事务内校验（存在/active/scope=teaching/creator=reviewer/MIME↔kind）
+%% → 原子替换 review_asset 集合；任一非法整单 rollback 零部分写入。
+%% 旧字段 video_attachment_id 兼容：assets 缺席时按单视频解析；两者同时
+%% 提供且不一致 → assets_invalid（双写歧义拒绝）。
+%% teacher_review.video_attachment_id 旧列从 assets 第一条 video 派生冗余写
+%% （兼容读窗口），不再作为写入真源。
 -spec save_draft(integer(), integer(), map()) -> {ok, map()} | {error, atom()}.
 save_draft(Uid, SubmissionId, Body) ->
     case reserved_keys(Body) of
         true ->
             {error, reserved_field};
         false ->
-            case draft_guard(Uid, SubmissionId) of
-                {ok, _GroupId} ->
-                    Fields = draft_fields(Uid, Body),
-                    Tx = fun(Conn) ->
-                        case teaching_submission_repo:lock_submission_tx(Conn, SubmissionId) of
-                            {ok, Row} when is_map(Row) ->
-                                teaching_review_repo:upsert_draft_tx(Conn, SubmissionId, Fields);
-                            {ok, undefined} ->
-                                {rollback, not_found};
-                            {error, Reason} ->
-                                {rollback, {db, Reason}}
-                        end
-                    end,
-                    case elib_pg:with_tx(Tx, [{reraise, false}]) of
-                        {ok, Row} when is_map(Row) ->
-                            {ok, review_payload(Row)};
-                        {rollback, not_found} ->
-                            {error, not_found};
-                        _ ->
-                            {error, db_error}
-                    end;
+            case parse_review_assets(Body) of
+                {ok, Assets} ->
+                    save_draft_with_assets(Uid, SubmissionId, Body, Assets);
                 {error, Reason} ->
                     {error, Reason}
             end
+    end.
+
+-spec save_draft_with_assets(integer(), integer(), map(), [{integer(), binary(), integer()}]) ->
+    {ok, map()} | {error, atom()}.
+save_draft_with_assets(Uid, SubmissionId, Body, Assets) ->
+    case draft_guard(Uid, SubmissionId) of
+        {ok, _GroupId} ->
+            Fields = draft_fields(Uid, Body, Assets),
+            Tx = fun(Conn) ->
+                case teaching_submission_repo:lock_submission_tx(Conn, SubmissionId) of
+                    {ok, Row} when is_map(Row) ->
+                        draft_assets_tx(Conn, SubmissionId, Uid, Fields, Assets);
+                    {ok, undefined} ->
+                        {rollback, not_found};
+                    {error, Reason} ->
+                        {rollback, {db, Reason}}
+                end
+            end,
+            case elib_pg:with_tx(Tx, [{reraise, false}]) of
+                {ok, {Row, AssetRows}} when is_map(Row) ->
+                    {ok, review_payload(Row, AssetRows)};
+                {rollback, not_found} ->
+                    {error, not_found};
+                {rollback, assets_invalid} ->
+                    {error, assets_invalid};
+                {rollback, not_found_asset} ->
+                    {error, not_found};
+                {rollback, _} ->
+                    {error, db_error}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% 草稿 + 媒体同事务：upsert（旧列冗余写派生视频）→ 校验（写入前）→ 原子替换 → 回读
+-spec draft_assets_tx(
+    any(), integer(), integer(), map(), [{integer(), binary(), integer()}]
+) ->
+    {ok, {map(), [map()]}} | {rollback, term()}.
+draft_assets_tx(Conn, SubmissionId, Uid, Fields, Assets) ->
+    case teaching_review_repo:upsert_draft_tx(Conn, SubmissionId, Fields) of
+        {ok, #{<<"id">> := ReviewId} = Row} ->
+            case teaching_review_repo:validate_assets_tx(Conn, Uid, Assets) of
+                {ok, _} ->
+                    replace_review_assets_tx(Conn, ReviewId, Uid, Assets, Row);
+                {error, not_found} ->
+                    {rollback, not_found_asset};
+                {error, _Reason} ->
+                    {rollback, assets_invalid}
+            end;
+        {ok, _} ->
+            {rollback, {db, no_returned_row}};
+        {error, Reason} ->
+            {rollback, {db, Reason}}
+    end.
+
+-spec replace_review_assets_tx(
+    any(), integer(), integer(), [{integer(), binary(), integer()}], map()
+) ->
+    {ok, {map(), [map()]}} | {rollback, term()}.
+replace_review_assets_tx(Conn, ReviewId, Uid, Assets, Row) ->
+    case teaching_review_repo:replace_assets_tx(Conn, ReviewId, Uid, Assets) of
+        ok ->
+            case teaching_review_repo:assets_tx(Conn, ReviewId) of
+                {ok, AssetRows} ->
+                    {ok, {Row, AssetRows}};
+                {error, Reason} ->
+                    {rollback, {db, Reason}}
+            end;
+        {error, Reason} ->
+            %% DB 兜底约束（全表唯一/单视频/3 图触发器）语义化为 assets_invalid
+            _ = Reason,
+            {rollback, assets_invalid}
     end.
 
 %% @doc 发布回评（draft→published 一次性；重复请求返回已发布结果）
@@ -215,7 +280,8 @@ build_workbench(Uid, SubmissionId) ->
         {ok, Bundle} ->
             {ok, #{
                 <<"submission">> => teacher_view(Uid, Bundle),
-                <<"my_review_draft">> => draft_ref(maps:get(draft, Bundle, undefined)),
+                <<"my_review_draft">> =>
+                    draft_ref(maps:get(draft, Bundle, undefined), []),
                 <<"learner_display_name">> => maps:get(<<"display_name">>, Bundle, <<>>),
                 <<"assignment_title">> => maps:get(<<"title">>, Bundle, <<>>)
             }};
@@ -237,6 +303,7 @@ build_detail(_Uid, SubmissionId, Perspective, _Scope) ->
     end.
 
 %% bundle: submission row + assets + learner/task names + ai draft + published review
+%% （P0-4：+ published review 的 review_asset 集合，家长侧 DTO 数据源）
 -spec load_submission_bundle(integer()) -> {ok, map()} | {error, atom()}.
 load_submission_bundle(SubmissionId) ->
     case teaching_context_repo:submission_scope(SubmissionId) of
@@ -248,12 +315,23 @@ load_submission_bundle(SubmissionId) ->
                     {ok, Assets} = teaching_submission_repo:assets(SubmissionId),
                     {ok, AiDraft} = teaching_review_repo:ai_draft(SubmissionId),
                     {ok, Published} = teaching_review_repo:find_published(SubmissionId),
+                    ReviewAssets =
+                        case Published of
+                            #{<<"id">> := PubId} ->
+                                case teaching_review_repo:assets(PubId) of
+                                    {ok, Rows} -> Rows;
+                                    _ -> []
+                                end;
+                            _ ->
+                                []
+                        end,
                     #{<<"learner_id">> := LearnerId} = Scope,
                     Bundle = #{
                         submission => Sub,
                         assets => Assets,
                         ai_draft => AiDraft,
                         published => Published,
+                        review_assets => ReviewAssets,
                         scope => Scope,
                         display_name => learner_name(LearnerId),
                         title => task_title(maps:get(<<"task_id">>, Scope, <<>>))
@@ -280,9 +358,19 @@ teacher_view(Uid, Bundle) ->
             {ok, D} when is_map(D) -> D;
             _ -> undefined
         end,
+    DraftAssets =
+        case MyDraft of
+            #{<<"id">> := DraftId} ->
+                case teaching_review_repo:assets(DraftId) of
+                    {ok, Rows} -> Rows;
+                    _ -> []
+                end;
+            _ ->
+                []
+        end,
     Base#{
         <<"ai_draft">> => ai_draft_payload(maps:get(ai_draft, Bundle)),
-        <<"my_review_draft">> => draft_ref(MyDraft),
+        <<"my_review_draft">> => draft_ref(MyDraft, DraftAssets),
         <<"learner_display_name">> => maps:get(display_name, Bundle, <<>>)
     }.
 
@@ -300,22 +388,31 @@ parent_view(Bundle) ->
         <<"assets">> => [asset_payload(A) || A <- maps:get(assets, Bundle, [])],
         %% 三态提示（processing/done/none）；家长 payload 永无 AI 草稿字段（D-10）
         <<"ai_status_hint">> => ai_hint(maps:get(ai_draft, Bundle)),
-        %% FLOW-01 终点：家长只看已发布回评（published only；无则 null）
-        <<"published_review">> => published_review_payload(maps:get(published, Bundle))
+        %% FLOW-01 终点：家长只看已发布回评（published only；无则 null）。
+        %% P0-4：published_review.assets 为回评媒体（家长侧仅 published 可见）
+        <<"published_review">> =>
+            published_review_payload(
+                maps:get(published, Bundle),
+                maps:get(review_assets, Bundle, [])
+            )
     }.
 
-%% 家长可见的已发布回评子集（PublishedReview；不含 reviewer 内部字段）
--spec published_review_payload(map() | undefined) -> map() | null.
-published_review_payload(undefined) ->
+%% 家长可见的已发布回评子集（PublishedReview；不含 reviewer 内部字段与
+%% 任何 AI 内部字段——map 字面量白名单构造，防御性剥离下游异常字段）
+-spec published_review_payload(map() | undefined, [map()]) -> map() | null.
+published_review_payload(undefined, _Assets) ->
     null;
-published_review_payload(Pub) ->
+published_review_payload(Pub, Assets) ->
     #{
         <<"review_id">> => integer_to_binary(maps:get(<<"id">>, Pub, 0)),
         <<"positive_point">> => maps:get(<<"positive_point">>, Pub, <<>>),
         <<"focus_problem">> => maps:get(<<"focus_problem">>, Pub, <<>>),
         <<"practice_action">> => maps:get(<<"practice_action">>, Pub, <<>>),
         <<"comment">> => maps:get(<<"comment">>, Pub, <<>>),
-        <<"video_attachment_id">> => nullable_tsid(maps:get(<<"video_attachment_id">>, Pub, null)),
+        %% P0-4：回评媒体集合（TSID 一律 string）
+        <<"assets">> => [review_asset_payload(A) || A <- Assets],
+        %% 兼容字段只读派生：从 assets 第一条 feedback_video 派生，非写入真源
+        <<"video_attachment_id">> => nullable_tsid(derive_video_id_rows(Assets)),
         <<"rework_required">> => maps:get(<<"rework_required">>, Pub, false) =:= true,
         <<"published_at">> => maps:get(<<"published_at">>, Pub, null)
     }.
@@ -336,17 +433,119 @@ draft_guard(Uid, SubmissionId) ->
             {error, not_staff}
     end.
 
--spec draft_fields(integer(), map()) -> map().
-draft_fields(Uid, Body) ->
+-spec draft_fields(integer(), map(), [{integer(), binary(), integer()}]) -> map().
+draft_fields(Uid, Body, Assets) ->
     #{
         uid => Uid,
         positive_point => text(maps:get(<<"positive_point">>, Body, <<>>)),
         focus_problem => text(maps:get(<<"focus_problem">>, Body, <<>>)),
         practice_action => text(maps:get(<<"practice_action">>, Body, <<>>)),
         comment => text(maps:get(<<"comment">>, Body, <<>>)),
-        video_attachment_id => tsid_opt(maps:get(<<"video_attachment_id">>, Body, undefined)),
+        %% P0-4：旧列从 assets 第一条 feedback_video 派生冗余写（兼容读窗口），
+        %% 不再从 Body 直读（写入真源 = review_asset 集合）
+        video_attachment_id =>
+            case derive_video_id(Assets) of
+                undefined -> null;
+                AttId -> AttId
+            end,
         rework_required => maps:get(<<"rework_required">>, Body, false) =:= true
     }.
+
+%% ---- P0-4：请求 assets 解析（结构/数量/重复/新旧字段一致性，快失败不落库） ----
+
+%% 返回 [{AttId, Kind, SortOrder}]（Kind 为 binary 原文）
+-spec parse_review_assets(map()) ->
+    {ok, [{integer(), binary(), integer()}]} | {error, assets_invalid}.
+parse_review_assets(Body) when is_map(Body) ->
+    case maps:get(<<"assets">>, Body, undefined) of
+        undefined ->
+            %% 兼容：旧字段 video_attachment_id（无 assets 键时按单视频解析）
+            case tsid_opt(maps:get(<<"video_attachment_id">>, Body, undefined)) of
+                {ok, AttId} -> {ok, [{AttId, <<"feedback_video">>, 0}]};
+                undefined -> {ok, []}
+            end;
+        Assets when is_list(Assets) ->
+            parse_asset_items(Assets, Body, []);
+        _ ->
+            {error, assets_invalid}
+    end;
+parse_review_assets(_) ->
+    {error, assets_invalid}.
+
+-spec parse_asset_items(list(), map(), [{integer(), binary(), integer()}]) ->
+    {ok, [{integer(), binary(), integer()}]} | {error, assets_invalid}.
+parse_asset_items([], Body, Acc) ->
+    Assets = lists:reverse(Acc),
+    case assets_shape_ok(Assets) andalso legacy_video_consistent(Body, Assets) of
+        true -> {ok, Assets};
+        false -> {error, assets_invalid}
+    end;
+parse_asset_items([Item | Rest], Body, Acc) when is_map(Item) ->
+    AttRaw = maps:get(<<"attachment_id">>, Item, undefined),
+    Kind = maps:get(<<"kind">>, Item, undefined),
+    case {tsid_opt(AttRaw), valid_kind(Kind), sort_order(Item)} of
+        {{ok, AttId}, true, {ok, Order}} ->
+            parse_asset_items(Rest, Body, [{AttId, Kind, Order} | Acc]);
+        _ ->
+            {error, assets_invalid}
+    end;
+parse_asset_items(_, _Body, _Acc) ->
+    {error, assets_invalid}.
+
+-spec valid_kind(term()) -> boolean().
+valid_kind(<<"feedback_video">>) -> true;
+valid_kind(<<"feedback_image">>) -> true;
+valid_kind(_) -> false.
+
+-spec sort_order(map()) -> {ok, integer()} | error.
+sort_order(Item) ->
+    case maps:get(<<"sort_order">>, Item, 0) of
+        N when is_integer(N), N >= 0, N =< 999 -> {ok, N};
+        _ -> error
+    end.
+
+%% 数量与重复：0-1 video + 0-3 image + attachment_id 不得重复
+-spec assets_shape_ok([{integer(), binary(), integer()}]) -> boolean().
+assets_shape_ok(Assets) ->
+    Ids = [AttId || {AttId, _, _} <- Assets],
+    Videos = [A || {_, <<"feedback_video">>, _} = A <- Assets],
+    Images = [A || {_, <<"feedback_image">>, _} = A <- Assets],
+    length(Ids) =:= length(lists:usort(Ids)) andalso
+        length(Videos) =< 1 andalso
+        length(Images) =< 3.
+
+%% 新旧字段双写一致性：Body 同时携带 video_attachment_id 与 assets 时，
+%% 旧字段必须与 assets 派生视频一致（含"均无视频"），否则拒绝（防双写歧义）
+-spec legacy_video_consistent(map(), [{integer(), binary(), integer()}]) -> boolean().
+legacy_video_consistent(Body, Assets) ->
+    case maps:get(<<"video_attachment_id">>, Body, undefined) of
+        undefined ->
+            true;
+        Legacy ->
+            tsid_opt(Legacy) =:=
+                case derive_video_id(Assets) of
+                    undefined -> undefined;
+                    AttId -> {ok, AttId}
+                end
+    end.
+
+%% 第一条 feedback_video 的 attachment_id（无则 undefined）
+-spec derive_video_id([{integer(), binary(), integer()}]) -> integer() | undefined.
+derive_video_id(Assets) ->
+    case [AttId || {AttId, <<"feedback_video">>, _} <- Assets] of
+        [First | _] -> First;
+        [] -> undefined
+    end.
+
+%% DB 行版本（assets_tx 返回行；video_attachment_id 兼容字段派生源）
+-spec derive_video_id_rows([map()]) -> integer() | undefined.
+derive_video_id_rows(AssetRows) ->
+    case
+        [AttId || #{<<"kind">> := <<"feedback_video">>, <<"attachment_id">> := AttId} <- AssetRows]
+    of
+        [First | _] -> First;
+        [] -> undefined
+    end.
 
 -spec do_publish(integer(), integer()) -> {ok, map(), boolean()} | {error, atom()}.
 do_publish(Uid, SubmissionId) ->
@@ -372,7 +571,14 @@ publish_precheck(Uid, SubmissionId) ->
         _ ->
             case teaching_review_repo:find_draft(SubmissionId, Uid) of
                 {ok, Draft} when is_map(Draft) ->
-                    case review_has_content(Draft) of
+                    %% v3 P1-3 修复：feedback_image 也计有效内容（与前端
+                    %% canPublish assets>0 口径对齐；纯图片回评可发布）
+                    Assets =
+                        case teaching_review_repo:assets(maps:get(<<"id">>, Draft, 0)) of
+                            {ok, Rows} -> Rows;
+                            _ -> []
+                        end,
+                    case review_has_content(Draft, Assets) of
                         true -> ok;
                         false -> {error, empty_content}
                     end;
@@ -381,8 +587,10 @@ publish_precheck(Uid, SubmissionId) ->
             end
     end.
 
--spec review_has_content(map()) -> boolean().
-review_has_content(Draft) ->
+%% v3 P1-3 修复：签名加 Assets（review_asset 行集）；
+%% 有效内容 = 文本 ∨ 视频（旧列兼容）∨ ≥1 张反馈图片
+-spec review_has_content(map(), [map()]) -> boolean().
+review_has_content(Draft, Assets) ->
     Fields =
         [
             maps:get(<<"positive_point">>, Draft, <<>>),
@@ -392,15 +600,32 @@ review_has_content(Draft) ->
         ],
     HasText = lists:any(fun(F) -> is_binary(F) andalso F =/= <<>> end, Fields),
     HasVideo = maps:get(<<"video_attachment_id">>, Draft, null) =/= null,
-    HasText orelse HasVideo.
+    HasImage =
+        lists:any(
+            fun(A) -> maps:get(<<"kind">>, A, <<>>) =:= <<"feedback_image">> end,
+            Assets
+        ),
+    HasText orelse HasVideo orelse HasImage.
 
-%% 配方③：lock-first 发布事务
+%% 配方③：lock-first 发布事务（P0-4：发布/幂等重放均回读 assets 进 DTO）
 -spec run_publish_tx(integer(), integer()) -> {ok, map(), boolean()} | {error, atom()}.
 run_publish_tx(Uid, SubmissionId) ->
     Tx = fun(Conn) ->
         case teaching_submission_repo:lock_submission_tx(Conn, SubmissionId) of
             {ok, Row} when is_map(Row) ->
-                teaching_review_repo:publish_tx(Conn, SubmissionId, Uid);
+                case teaching_review_repo:publish_tx(Conn, SubmissionId, Uid) of
+                    {ok, Tag, Review} ->
+                        ReviewId = maps:get(<<"id">>, Review, 0),
+                        case teaching_review_repo:assets_tx(Conn, ReviewId) of
+                            {ok, AssetRows} ->
+                                {ok, {Tag, Review, AssetRows}};
+                            {error, Reason} ->
+                                {rollback, {db, Reason}}
+                        end;
+                    {error, Reason} ->
+                        %% repo 侧 _tx 守卫失败返回裸 {error, Atom}（不触发 rollback）
+                        {error, Reason}
+                end;
             {ok, undefined} ->
                 {rollback, not_found};
             {error, Reason} ->
@@ -408,10 +633,10 @@ run_publish_tx(Uid, SubmissionId) ->
         end
     end,
     case elib_pg:with_tx(Tx, [{reraise, false}]) of
-        {ok, published, Review} ->
-            {ok, review_payload(Review), false};
-        {ok, already_published, Review} ->
-            {ok, review_payload(Review), true};
+        {ok, {published, Review, AssetRows}} ->
+            {ok, review_payload(Review, AssetRows), false};
+        {ok, {already_published, Review, AssetRows}} ->
+            {ok, review_payload(Review, AssetRows), true};
         {rollback, not_found} ->
             {error, not_found};
         {rollback, withdrawn} ->
@@ -552,8 +777,10 @@ history_item(R) ->
             nullable_tsid(maps:get(<<"published_review_id">>, R, null))
     }.
 
--spec review_payload(map()) -> map().
-review_payload(R) ->
+%% P0-4：review_payload 带 assets 集合（save_draft/publish/draft_ref 调用）。
+%% video_attachment_id 从 assets 派生（只读兼容字段）；map 字面量白名单构造。
+-spec review_payload(map(), [map()]) -> map().
+review_payload(R, Assets) ->
     #{
         <<"review_id">> => integer_to_binary(maps:get(<<"id">>, R, 0)),
         <<"submission_id">> => integer_to_binary(maps:get(<<"submission_id">>, R, 0)),
@@ -562,10 +789,23 @@ review_payload(R) ->
         <<"focus_problem">> => maps:get(<<"focus_problem">>, R, <<>>),
         <<"practice_action">> => maps:get(<<"practice_action">>, R, <<>>),
         <<"comment">> => maps:get(<<"comment">>, R, <<>>),
-        <<"video_attachment_id">> => nullable_tsid(maps:get(<<"video_attachment_id">>, R, null)),
+        <<"assets">> => [review_asset_payload(A) || A <- Assets],
+        <<"video_attachment_id">> => nullable_tsid(derive_video_id_rows(Assets)),
         <<"rework_required">> => maps:get(<<"rework_required">>, R, false) =:= true,
         <<"status">> => maps:get(<<"status">>, R, <<"draft">>),
         <<"published_at">> => maps:get(<<"published_at">>, R, null)
+    }.
+
+%% P0-4：回评媒体 DTO（attachment_id TSID 一律 string）；
+%% v3 P1-1 修复：补 object_key（经 view_url 授权展示的唯一句柄，与
+%% asset_payload 同口径——缺失即家长侧回评媒体无法展示）
+-spec review_asset_payload(map()) -> map().
+review_asset_payload(A) ->
+    #{
+        <<"attachment_id">> => integer_to_binary(maps:get(<<"attachment_id">>, A, 0)),
+        <<"object_key">> => maps:get(<<"object_key">>, A, <<>>),
+        <<"kind">> => maps:get(<<"kind">>, A, <<>>),
+        <<"sort_order">> => maps:get(<<"sort_order">>, A, 0)
     }.
 
 -spec asset_payload(map()) -> map().
@@ -594,11 +834,11 @@ ai_draft_payload(D) ->
         <<"completed_at">> => maps:get(<<"completed_at">>, D, null)
     }.
 
--spec draft_ref(map() | undefined) -> map() | null.
-draft_ref(undefined) ->
+-spec draft_ref(map() | undefined, [map()]) -> map() | null.
+draft_ref(undefined, _Assets) ->
     null;
-draft_ref(D) ->
-    review_payload(D).
+draft_ref(D, Assets) ->
+    review_payload(D, Assets).
 
 -spec ai_status(null | binary()) -> binary().
 ai_status(null) -> <<"none">>;
