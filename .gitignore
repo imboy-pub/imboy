@@ -115,3 +115,5 @@ elvis-output.txt
 # eunit-local 的 -pa imboy/ebin 让 code:priv_dir(imboy) 可解析（worktree
 # 根目录名是 rg-*，不带 imboy/ebin 结构）；主树无此文件，零副作用。
 /imboy
+docs/plans
+docs/planning
