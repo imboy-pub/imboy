@@ -305,10 +305,10 @@ reject_reason(M) ->
 %% tool 内部辅助
 %%====================================================================
 
-%% 未认证（uid=0）统一拒绝；否则把调用者 uid 交给 Fun。
+%% 调用者身份只取认证后 principal；旧整数 uid 与 Args 自报身份均拒绝。
 with_caller(Ctx, Fun) ->
     case maps:get(auth_info, Ctx, 0) of
-        Caller when is_integer(Caller), Caller > 0 -> Fun(Caller);
+        #{owner_uid := Caller} when is_integer(Caller), Caller > 0 -> Fun(Caller);
         _ -> tool_error(<<"未认证或身份无效"/utf8>>)
     end.
 

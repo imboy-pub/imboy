@@ -59,6 +59,37 @@ mention_agent_triggers_and_delivers_test_() ->
         end
     ).
 
+%% AGT-01 No-Go：即使配置声称支持 tools，V1 群回复也只走对话路径，
+%% 不把内建 Agent 冒充外部 MCP Client。
+tool_capability_does_not_enter_internal_mcp_test_() ->
+    ?WITH_MECKS(
+        [
+            {llm_stream, [{'stream_capable', 1, fun(_) -> false end}]},
+            {imboy_llm_openai, [
+                {'capabilities', 0, fun() -> #{stream => false, vision => false, tools => true} end},
+                {'chat', 3, fun(42, _Msgs, _Opts) -> {ok, #{<<"result">> => <<"plain">>}} end}
+            ]},
+            {msg_c2g_logic, [{'c2g', 3, fun(_, _, _) -> ok end}]},
+            {elib_tsid, [{'generate', 0, fun() -> 7788 end}]}
+        ],
+        fun() ->
+            Agent = #{<<"tools">> => [<<"get_contacts">>]},
+            ?assertEqual(
+                ok,
+                ai_agent_group_reply:run_and_reply(
+                    imboy_llm_openai,
+                    #{tools => [<<"get_contacts">>]},
+                    100,
+                    {42, Agent},
+                    {[#{<<"role">> => <<"user">>, <<"content">> => <<"hi">>}], [7, 42]}
+                )
+            ),
+            ?assertEqual(0, meck:num_calls(imboy_llm_openai, capabilities, '_')),
+            ?assertEqual(1, meck:num_calls(imboy_llm_openai, chat, '_')),
+            ?assertEqual(1, meck:num_calls(msg_c2g_logic, c2g, '_'))
+        end
+    ).
+
 %% E2EE 群消息 → 绝不触发
 e2ee_group_never_triggers_test_() ->
     ?WITH_MECKS(

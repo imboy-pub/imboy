@@ -13,7 +13,7 @@ WH-02	-	channel webhook credential rotation
 AGT-01	-	tool-loop decision
 MCP-02	-	mcp task tools
 BOT-01	-	bot group mention and reply
-AGT-02	-	controlled built-in agent tools
+AGT-02	AGT-01	V1 No-Go; AGT-01 decision supersedes optional implementation
 ADM-01	-	admin control plane
 APP-01	-	client task path
 BUILD-01	-	agent hub product slice

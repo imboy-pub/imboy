@@ -18,6 +18,7 @@ tools_test_() ->
         {"get_user_profile: 查好友成功", fun t_profile_friend/0},
         {"get_user_profile: 查陌生人被拒", fun t_profile_stranger/0},
         {"get_user_profile: 未认证被拒", fun t_profile_unauth/0},
+        {"get_user_profile: 旧整数身份被拒", fun t_profile_legacy_integer_rejected/0},
         {"get_contacts: 强制用调用者uid(忽略Args自报)", fun t_contacts_forces_caller/0},
         {"search_messages: 强制调用者uid做权限过滤", fun t_search_forces_caller/0},
         {"search_messages: 空keyword被拒", fun t_search_empty_kw/0},
@@ -51,9 +52,12 @@ setup() ->
     meck:new(msg_c2c_logic, [no_link, passthrough]),
     meck:new(elib_tsid, [no_link, passthrough]),
     meck:new(throttle, [no_link, passthrough]),
+    meck:new(mcp_governance_logic, [no_link, passthrough]),
     %% 默认放行限流 + 固定 MsgId，个别用例覆盖
     meck:expect(throttle, check, fun(_, _) -> ok end),
     meck:expect(elib_tsid, generate, fun() -> 123456789 end),
+    meck:expect(mcp_governance_logic, check_rate, fun(_) -> allow end),
+    meck:expect(mcp_governance_logic, authorize_client, fun(_, _, _) -> allow end),
     #{reg => Reg, sess => Sess}.
 
 cleanup(Ctx) ->
@@ -83,6 +87,9 @@ stop_owned(_) ->
 %%% helper：经 process/2 端到端调用一个 tool，返回 result map
 %%%===================================================================
 call(Name, Args, AuthInfo) ->
+    call_with_auth(Name, Args, principal(AuthInfo)).
+
+call_with_auth(Name, Args, AuthInfo) ->
     Req = iolist_to_binary(
         json:encode(#{
             <<"jsonrpc">> => <<"2.0">>,
@@ -94,6 +101,11 @@ call(Name, Args, AuthInfo) ->
     {200, Body} = mcp_handler:process(Req, AuthInfo),
     Resp = json:decode(Body),
     maps:get(<<"result">>, Resp).
+
+principal(Caller) when is_integer(Caller), Caller > 0 ->
+    #{owner_uid => Caller, client_id => 900, client_key => <<"mck-tools-test">>};
+principal(Unauthenticated) ->
+    Unauthenticated.
 
 is_error(Result) -> maps:get(<<"isError">>, Result, false).
 
@@ -121,6 +133,12 @@ t_profile_stranger() ->
 t_profile_unauth() ->
     R = call(<<"get_user_profile">>, #{<<"uid">> => 7}, 0),
     ?assertEqual(true, is_error(R)).
+
+t_profile_legacy_integer_rejected() ->
+    ?assertMatch(
+        {tool_error, _},
+        imboy_mcp_tools:get_user_profile(#{<<"uid">> => 42}, #{auth_info => 42})
+    ).
 
 %%%===================================================================
 %%% get_contacts：不信 Args 自报 uid，一律查调用者好友
