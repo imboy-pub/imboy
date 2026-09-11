@@ -176,3 +176,78 @@ result_size_reflects_written_bytes_test() ->
     {done, FinalSt} = feed(Body, 997, St0),
     {ok, #{size := 3210}} = elib_multipart:result(FinalSt),
     ok.
+
+%% ===================================================================
+%% 边界用例（安全审查补齐）：epilogue 注入、多 file part、空 multipart、
+%% 无 name 参数 part、非 file 字段超限
+%% ===================================================================
+
+%% closing boundary 之后的 epilogue 里嵌套完整新 boundary+headers+文件数据：
+%% 注入内容绝不能被当作新 part 追加进输出（P2-2 安全判定用例）。
+epilogue_injection_after_closing_test() ->
+    InjectedPart =
+        [
+            <<"\r\n--", ?BOUNDARY/binary, "\r\n">>,
+            <<"Content-Disposition: form-data; name=\"file\"; filename=\"evil.jpg\"\r\n\r\n">>,
+            <<"INJECTED-PAYLOAD">>,
+            <<"\r\n--", ?BOUNDARY/binary, "--\r\n">>
+        ],
+    Body =
+        iolist_to_binary(
+            make_body(<<"file">>, <<"a.jpg">>, <<"image/jpeg">>, <<"FIRST">>) ++ InjectedPart
+        ),
+    {done, Got, _} = collect(Body, 3, 1024 * 1024),
+    ?assertEqual(<<"FIRST">>, Got).
+
+%% 两个 name="file" part：当前契约=顺序追加（handler 层语义），锁定行为。
+multiple_file_parts_accumulate_test() ->
+    Part = fun(Fn, Bytes) ->
+        [
+            <<"--", ?BOUNDARY/binary, "\r\n">>,
+            <<"Content-Disposition: form-data; name=\"file\"; filename=\"", Fn/binary,
+                "\"\r\n\r\n">>,
+            Bytes,
+            <<"\r\n">>
+        ]
+    end,
+    Closing = <<"--", ?BOUNDARY/binary, "--\r\n">>,
+    Body = iolist_to_binary(
+        Part(<<"a.jpg">>, <<"AAA">>) ++ Part(<<"b.jpg">>, <<"BBB">>) ++ Closing
+    ),
+    {done, Got, _} = collect(Body, 2, 1024 * 1024),
+    ?assertEqual(<<"AAABBB">>, Got).
+
+%% 立即 closing 的空 multipart：正常 done，无 file part。
+empty_multipart_immediate_closing_test() ->
+    Body = <<"--", ?BOUNDARY/binary, "--\r\n">>,
+    Write = fun(_) -> ok end,
+    St0 = elib_multipart:new(?BOUNDARY, Write, 1024 * 1024),
+    {done, FinalSt} = feed(Body, 3, St0),
+    ?assertEqual({error, no_file_part}, elib_multipart:result(FinalSt)).
+
+%% part 头只有 filename 没有 name 参数：跳过不崩，最终 no_file_part。
+noname_part_test() ->
+    Body =
+        iolist_to_binary(
+            [
+                <<"--", ?BOUNDARY/binary, "\r\n">>,
+                <<"Content-Disposition: form-data; filename=\"x.jpg\"\r\n\r\n">>,
+                <<"orphan">>,
+                <<"\r\n--", ?BOUNDARY/binary, "--\r\n">>
+            ]
+        ),
+    Write = fun(_) -> ok end,
+    St0 = elib_multipart:new(?BOUNDARY, Write, 1024 * 1024),
+    {done, FinalSt} = feed(Body, 4, St0),
+    ?assertEqual({error, no_file_part}, elib_multipart:result(FinalSt)).
+
+%% 非 file 字段的超大 body 也必须触发总量上限（P1-1：原始字节一并计数）。
+oversize_nonfile_field_aborts_test() ->
+    FieldPart =
+        [
+            <<"--", ?BOUNDARY/binary, "\r\n">>,
+            <<"Content-Disposition: form-data; name=\"comment\"\r\n\r\n">>,
+            crypto:strong_rand_bytes(2048),
+            <<"\r\n--", ?BOUNDARY/binary, "--\r\n">>
+        ],
+    {error, file_too_large, _} = collect(FieldPart, 64, 100).
