@@ -401,6 +401,7 @@ paths:
         保留字段（reviewer_uid/status/published_at）→ 5484。
         事务内校验附件归属（存在/active/scope=teaching/creator=reviewer/MIME↔kind），
         任一非法整单回滚零部分写入。
+        该 reviewer 回评已发布 → 5486（DC-2：存草稿与撤回语境拆分，5481 保留给撤回）。
       operationId: saveReviewDraft
       tags: [review]
       parameters:
@@ -481,6 +482,9 @@ paths:
                 not_found_404ish:
                   summary: 提交不存在（防存在性探测与非本人附件同响应）
                   value: { code: 5443, msg: "提交不存在", payload: null }
+                review_published_5486:
+                  summary: 该 reviewer 回评已发布，不能再保存草稿（DC-2 拆分）
+                  value: { code: 5486, msg: "回评已发布，不能再保存草稿", payload: null }
 
   /api/v1/teaching/submissions/{id}/reviews/publish:
     post:
@@ -770,6 +774,7 @@ components:
             5460 幂等键冲突 / 5461 缺少幂等键 /
             5480 无可发布草稿 / 5481 已有发布回评不可撤回 / 5482 提交已撤回无法发布 /
             5483 发布确认学员不一致 / 5484 服务端保留字段 / 5485 回评内容为空 /
+            5486 回评已发布不能再保存草稿（存草稿语境，DC-2 拆分） /
             422 参数错误 / 500 通用错误
         msg: { type: string }
         payload: { nullable: true, example: null }

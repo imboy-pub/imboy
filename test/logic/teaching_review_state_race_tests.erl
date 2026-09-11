@@ -8,7 +8,8 @@
 %% R22-PUBLISHED-DRAFT-01：该 reviewer 的草稿已发布（teacher_review.status
 %%   ='published'）后再 save_draft —— upsert_draft_tx 的 find_draft_tx 只认
 %%   'draft' 行会让其走 INSERT 建第二条草稿；必须在事务内 lock 后、upsert 前
-%%   查 find_published_tx 拒绝（{error, already_reviewed} → 5481），零写入。
+%%   查 find_published_tx 拒绝（DC-2：{error, review_published} → 5486，
+%%   5481 保留给撤回场景），零写入。
 %%
 %% 纯 meck 单元测试（无 DB 依赖）：elib_pg:with_tx mock 为直接执行 Tx 闭包
 %% （fake_conn 透传）；repo 的 _tx 函数全部 mock——「零调用」断言即证明
@@ -174,7 +175,7 @@ published_rejects_new_draft_test_() ->
                 ?SUB_SUBMITTED,
                 #{<<"comment">> => <<"发布后想再补一句"/utf8>>}
             ),
-            ?assertEqual({error, already_reviewed}, Result),
+            ?assertEqual({error, review_published}, Result),
             %% 已发布：upsert（含 INSERT 第二条 draft 的分支）零调用
             ?assertEqual(0, meck:num_calls(teaching_review_repo, upsert_draft_tx, 3)),
             ?assertEqual(0, meck:num_calls(teaching_review_repo, replace_assets_tx, 4))

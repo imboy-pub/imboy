@@ -623,8 +623,8 @@ r22_withdraw_race_save_draft_test_() ->
     end).
 
 %% R22-PUBLISHED-DRAFT-01：该 reviewer 草稿已发布后再 save_draft
-%% → 事务内 lock 后 upsert 前必须拒绝（{error, already_reviewed}），
-%%   保持一条 published、零新增 draft、review_asset 零行。
+%% → 事务内 lock 后 upsert 前必须拒绝（DC-2：{error, review_published} → 5486，
+%%   5481 保留给撤回场景），保持一条 published、零新增 draft、review_asset 零行。
 r22_published_rejects_save_draft_test_() ->
     with_tx(fun(C) ->
         rv_seed(C),
@@ -642,7 +642,7 @@ r22_published_rejects_save_draft_test_() ->
         meck:expect(elib_pg, with_tx, 2, fun(Tx, _Opts) -> Tx(C) end),
         try
             ?assertEqual(
-                {error, already_reviewed},
+                {error, review_published},
                 teaching_review_logic:save_draft(?RV_TEACHER, ?RV_SUB1, #{
                     <<"comment">> => <<"发布后想补写一句"/utf8>>
                 })

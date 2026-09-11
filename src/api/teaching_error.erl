@@ -54,6 +54,8 @@ map_reason(idempotency_key_required) -> {<<"缺少幂等键"/utf8>>, ?ERR_IDEMPO
 %% 回评域（5480 段）
 map_reason(no_draft) -> {<<"无可发布的回评草稿"/utf8>>, ?ERR_REVIEW_DRAFT_NOT_FOUND};
 map_reason(already_reviewed) -> {<<"该提交已有发布回评，不可撤回"/utf8>>, ?ERR_SUBMISSION_REVIEWED};
+%% DC-2：存草稿遇已发布回评与撤回语境拆分（5486），5481 保留给撤回场景
+map_reason(review_published) -> {<<"回评已发布，不能再保存草稿"/utf8>>, ?ERR_REVIEW_PUBLISHED_DRAFT};
 map_reason(withdrawn) -> {<<"提交已撤回，无法发布回评"/utf8>>, ?ERR_REVIEW_SUBMISSION_WITHDRAWN};
 map_reason(confirm_mismatch) -> {<<"发布确认学员不一致"/utf8>>, ?ERR_REVIEW_CONFIRM_MISMATCH};
 map_reason(reserved_field) -> {<<"请求包含服务端保留字段"/utf8>>, ?ERR_REVIEW_FIELD_NOT_ACCEPTED};

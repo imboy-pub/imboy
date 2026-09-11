@@ -114,8 +114,8 @@ save_draft_with_assets(Uid, SubmissionId, Body, Assets) ->
                     {error, not_found};
                 {rollback, withdrawn} ->
                     {error, withdrawn};
-                {rollback, already_reviewed} ->
-                    {error, already_reviewed};
+                {rollback, review_published} ->
+                    {error, review_published};
                 {rollback, assets_invalid} ->
                     {error, assets_invalid};
                 {rollback, not_found_asset} ->
@@ -131,7 +131,8 @@ save_draft_with_assets(Uid, SubmissionId, Body, Assets) ->
 %% R22-PUBLISHED-DRAFT-01：lock 之后、upsert 之前查已发布回评——
 %% upsert_draft_tx 内 find_draft_tx 只认 status='draft'，该 reviewer 草稿
 %% 已 publish 后无 draft 行会让 upsert 走 INSERT 建第二条草稿；命中已发布
-%% 行必须拒绝（{error, already_reviewed} → 5481，复用既有 5481 契约）
+%% 行必须拒绝。DC-2：存草稿场景用独立 reason review_published（→ 5486），
+%% already_reviewed（5481）保留给撤回场景，避免「不可撤回」文案语境错位
 -spec draft_assets_tx(
     any(), integer(), integer(), map(), [{integer(), binary(), integer()}]
 ) ->
@@ -141,7 +142,7 @@ draft_assets_tx(Conn, SubmissionId, Uid, Fields, Assets) ->
         {ok, undefined} ->
             upsert_draft_flow_tx(Conn, SubmissionId, Uid, Fields, Assets);
         {ok, _Published} ->
-            {rollback, already_reviewed};
+            {rollback, review_published};
         {error, Reason} ->
             {rollback, {db, Reason}}
     end.
