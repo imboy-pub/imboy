@@ -5,6 +5,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="$(cd "$ROOT/.." && pwd)"
 PRESET="${1:-}"
 EVIDENCE_DIR="${FEATURE_EVIDENCE_DIR:-$ROOT/docs/compliance/feature-composition-evidence}"
+FLUTTER_PLUGIN_METADATA="$WORKSPACE/imboyapp/.flutter-plugins-dependencies"
+FLUTTER_PLUGIN_METADATA_EXISTED=0
+SNAPSHOT_READY=0
+LOCK_DIR="${TMPDIR:-/tmp}/imboy-product-feature-matrix.$(id -u).lock"
 
 GENERATED_FILES=(
   "$ROOT/include/generated/imboy_product_features.hrl"
@@ -22,19 +26,39 @@ GENERATED_FILES=(
 
 SNAPSHOT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/imboy-feature-matrix.XXXXXX")"
 
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  echo "product feature matrix already running or stale lock exists: $LOCK_DIR" >&2
+  rmdir "$SNAPSHOT_DIR"
+  exit 75
+fi
+
 restore_generated() {
   local status=$?
   local file rel restore_failed=0
   trap - EXIT
+  if [[ "$SNAPSHOT_READY" -ne 1 ]]; then
+    rm -rf "$SNAPSHOT_DIR"
+    rmdir "$LOCK_DIR" || status=74
+    exit "$status"
+  fi
   set +e
   for file in "${GENERATED_FILES[@]}"; do
     rel="${file#/}"
     cp -p "$SNAPSHOT_DIR/$rel" "$file" || restore_failed=1
   done
-  rm -rf "$SNAPSHOT_DIR"
-  if [[ "$status" -eq 0 && "$restore_failed" -ne 0 ]]; then
-    status=74
+  rel="${FLUTTER_PLUGIN_METADATA#/}"
+  if [[ "$FLUTTER_PLUGIN_METADATA_EXISTED" -eq 1 ]]; then
+    cp -p "$SNAPSHOT_DIR/$rel" "$FLUTTER_PLUGIN_METADATA" || restore_failed=1
+  else
+    rm -f "$FLUTTER_PLUGIN_METADATA" || restore_failed=1
   fi
+  if [[ "$restore_failed" -ne 0 ]]; then
+    echo "generated-file restore failed; snapshot retained: $SNAPSHOT_DIR" >&2
+    status=74
+  else
+    rm -rf "$SNAPSHOT_DIR"
+  fi
+  rmdir "$LOCK_DIR" || status=74
   exit "$status"
 }
 
@@ -45,6 +69,13 @@ for file in "${GENERATED_FILES[@]}"; do
   mkdir -p "$SNAPSHOT_DIR/$(dirname "$rel")"
   cp -p "$file" "$SNAPSHOT_DIR/$rel"
 done
+if [[ -f "$FLUTTER_PLUGIN_METADATA" ]]; then
+  rel="${FLUTTER_PLUGIN_METADATA#/}"
+  mkdir -p "$SNAPSHOT_DIR/$(dirname "$rel")"
+  cp -p "$FLUTTER_PLUGIN_METADATA" "$SNAPSHOT_DIR/$rel"
+  FLUTTER_PLUGIN_METADATA_EXISTED=1
+fi
+SNAPSHOT_READY=1
 
 case "$PRESET" in
   base-only) MANIFEST="$ROOT/test/fixtures/product_features/base-only.json" ;;
@@ -67,10 +98,19 @@ make -C "$ROOT" rel
 (cd "$WORKSPACE/imboyapp" && \
   rm -f android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java && \
   flutter --suppress-analytics pub get --offline && \
-  R=android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java && \
-  if [ -f "$R" ]; then \
-    sed -i '' -E '/integration_test|PatrolPlugin/d' "$R"; \
-  fi && \
+  python3 - .flutter-plugins-dependencies <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+metadata = json.loads(path.read_text(encoding="utf-8"))
+android_plugins = metadata["plugins"]["android"]
+metadata["plugins"]["android"] = [
+    plugin for plugin in android_plugins if not plugin.get("dev_dependency", False)
+]
+path.write_text(json.dumps(metadata, separators=(",", ":")) + "\n", encoding="utf-8")
+PY
   flutter --suppress-analytics build apk --release --target-platform android-arm64 --no-pub)
 (cd "$WORKSPACE/imboyadmin" && bun run build)
 
