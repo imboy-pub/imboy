@@ -107,8 +107,16 @@ flutter test integration_test/settings/e2ee_backup_setup_wizard_test.dart -d mac
 # 路径1 集成验收（同 define 配方）
 flutter test integration_test/settings/e2ee_boundary_no_device_envelope_test.dart -d macos …
 
-# 后端（imboy/，裸 erl 直跑勿用 make eunit-local 免扰运行节点）
-erl -pa ebin -pa test -eval 'eunit:test(messaging_envelope_filter_tests, [verbose]), halt(0).'
+# 后端（imboy/）：单模块跑。勿用裸 `erl -pa ebin -pa test`——test beam 未编译、
+# deps 不在路径上，jsone/ec_cnv 会 undef 报「5 failed」假红。
+mkdir -p /tmp/imboy_test_beam   # erlc 不建输出目录，缺了会报 writing file 失败
+erlc -I include -o /tmp/imboy_test_beam test/lib/messaging_envelope_filter_tests.erl
+erl -noshell -pa ebin -pa /tmp/imboy_test_beam -eval \
+  'code:add_paths(filelib:wildcard("deps/*/ebin")), case eunit:test(messaging_envelope_filter_tests, []) of ok -> halt(0); _ -> halt(1) end.'
+# 实测结果：15/15 passed。
+# 仓内标准门为 `make eunit-local t=messaging_envelope_filter_tests`，但该目标会
+# 重编 ebin（影响从 ./ebin 取码的本地 dev 节点，如并行会话的 9800），本轮为避免
+# 扰动运行节点未执行，改用上面这条不改动 ebin 的等价跑法。
 ```
 
 ---
