@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SCRIPT="$ROOT/scripts/run_product_feature_matrix.sh"
 
 rg -Fq 'flutter --suppress-analytics pub get --offline' "$SCRIPT"
-rg -Fq 'plugin for plugin in android_plugins if not plugin.get("dev_dependency", False)' "$SCRIPT"
+rg -Fq 'flutter --suppress-analytics build apk --release --target-platform android-arm64 --config-only' "$SCRIPT"
 rg -Fq 'flutter --suppress-analytics build apk --release --target-platform android-arm64 --no-pub' "$SCRIPT"
 
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/imboy-feature-matrix-test.XXXXXX")"
@@ -17,6 +17,7 @@ admin="$workspace/imboyadmin"
 fake_bin="$tmp_dir/bin"
 test_tmp="$tmp_dir/tmp"
 metadata="$app/.flutter-plugins-dependencies"
+registrant="$app/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
 lock_dir="$test_tmp/imboy-product-feature-matrix.$(id -u).lock"
 
 generated_files=(
@@ -73,6 +74,7 @@ exit "${FAKE_MAKE_STATUS:-0}"
 SH
 cat >"$fake_bin/bun" <<'SH'
 #!/usr/bin/env bash
+[[ "${FAKE_BUN_STATUS:-0}" -eq 0 ]] || exit "$FAKE_BUN_STATUS"
 mkdir -p dist
 printf 'admin-dist\n' >dist/index.html
 SH
@@ -83,16 +85,30 @@ case " $* " in
     cat >.flutter-plugins-dependencies <<'JSON'
 {"plugins":{"android":[{"name":"prod_plugin","dev_dependency":false},{"name":"integration_test","dev_dependency":true},{"name":"patrol","dev_dependency":true}]}}
 JSON
+    mkdir -p android/app/src/main/java/io/flutter/plugins
+    printf 'IntegrationTestPlugin PatrolPlugin\n' \
+      >android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
     ;;
-  *" build apk --release "*)
+  *" build apk --release "*" --config-only "*)
+    [[ " $* " != *" --no-pub "* ]]
     python3 - .flutter-plugins-dependencies <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     plugins = json.load(handle)["plugins"]["android"]
-assert [plugin["name"] for plugin in plugins] == ["prod_plugin"]
+assert [plugin["name"] for plugin in plugins] == ["prod_plugin", "integration_test", "patrol"]
 PY
+    printf 'ProductionPlugin\n' \
+      >android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+    printf 'configured\n' >"$FAKE_CONFIG_MARKER"
+    ;;
+  *" build apk --release "*)
+    [[ " $* " == *" --no-pub "* ]]
+    rg -Fq 'ProductionPlugin' \
+      android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+    ! rg -q 'IntegrationTestPlugin|PatrolPlugin' \
+      android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
     mkdir -p build/app/outputs/flutter-apk
     printf 'apk\n' >build/app/outputs/flutter-apk/app-release.apk
     printf 'called\n' >"$FAKE_BUILD_MARKER"
@@ -147,38 +163,52 @@ run_matrix() {
     TMPDIR="$test_tmp" \
     FEATURE_EVIDENCE_DIR="$tmp_dir/evidence" \
     FAKE_BUILD_MARKER="$tmp_dir/build-called" \
+    FAKE_CONFIG_MARKER="$tmp_dir/config-called" \
     FAKE_MAKE_STATUS="${FAKE_MAKE_STATUS:-0}" \
+    FAKE_BUN_STATUS="${FAKE_BUN_STATUS:-0}" \
     bash "$backend/scripts/run_product_feature_matrix.sh" base-only >/dev/null
 }
 
-# Existing metadata is filtered for the release build and restored byte-for-byte.
+# Existing Flutter-generated files are restored byte-for-byte after the release build.
 printf 'original metadata\n' >"$metadata"
 chmod 600 "$metadata"
+mkdir -p "$(dirname "$registrant")"
+printf 'original registrant\n' >"$registrant"
+chmod 640 "$registrant"
 before_generated="$(fingerprint_generated)"
 before_metadata="$(file_sha256 "$metadata")"
+before_registrant="$(file_sha256 "$registrant")"
 run_matrix
+[[ -f "$tmp_dir/config-called" ]]
 [[ -f "$tmp_dir/build-called" ]]
 [[ "$before_generated" == "$(fingerprint_generated)" ]]
 [[ "$before_metadata" == "$(file_sha256 "$metadata")" ]]
+[[ "$before_registrant" == "$(file_sha256 "$registrant")" ]]
 [[ "$(file_mode "$metadata")" == "600" ]]
+[[ "$(file_mode "$registrant")" == "640" ]]
 [[ ! -d "$lock_dir" ]]
 
-# Metadata generated from an initially clean workspace is removed on exit.
-rm -f "$metadata" "$tmp_dir/build-called"
+# Flutter-generated files absent at entry are removed on exit.
+rm -f "$metadata" "$registrant" "$tmp_dir/config-called" "$tmp_dir/build-called"
 run_matrix
+[[ -f "$tmp_dir/config-called" ]]
 [[ -f "$tmp_dir/build-called" ]]
 [[ ! -e "$metadata" ]]
+[[ ! -e "$registrant" ]]
 [[ "$before_generated" == "$(fingerprint_generated)" ]]
 
-# A downstream failure still restores both generated files and metadata.
+# A failure after the Flutter build still restores all generated files.
 printf 'failure metadata\n' >"$metadata"
+printf 'failure registrant\n' >"$registrant"
 before_metadata="$(file_sha256 "$metadata")"
+before_registrant="$(file_sha256 "$registrant")"
 set +e
-FAKE_MAKE_STATUS=73 run_matrix
+FAKE_BUN_STATUS=73 run_matrix
 status=$?
 set -e
 [[ "$status" -eq 73 ]]
 [[ "$before_metadata" == "$(file_sha256 "$metadata")" ]]
+[[ "$before_registrant" == "$(file_sha256 "$registrant")" ]]
 [[ "$before_generated" == "$(fingerprint_generated)" ]]
 
 # Snapshot setup failures release the lock for the next run.
@@ -201,5 +231,6 @@ status=$?
 set -e
 [[ "$status" -eq 75 ]]
 [[ "$before_metadata" == "$(file_sha256 "$metadata")" ]]
+[[ "$before_registrant" == "$(file_sha256 "$registrant")" ]]
 [[ "$before_generated" == "$(fingerprint_generated)" ]]
 rmdir "$lock_dir"

@@ -7,6 +7,8 @@ PRESET="${1:-}"
 EVIDENCE_DIR="${FEATURE_EVIDENCE_DIR:-$ROOT/docs/compliance/feature-composition-evidence}"
 FLUTTER_PLUGIN_METADATA="$WORKSPACE/imboyapp/.flutter-plugins-dependencies"
 FLUTTER_PLUGIN_METADATA_EXISTED=0
+FLUTTER_PLUGIN_REGISTRANT="$WORKSPACE/imboyapp/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java"
+FLUTTER_PLUGIN_REGISTRANT_EXISTED=0
 SNAPSHOT_READY=0
 LOCK_DIR="${TMPDIR:-/tmp}/imboy-product-feature-matrix.$(id -u).lock"
 
@@ -52,6 +54,12 @@ restore_generated() {
   else
     rm -f "$FLUTTER_PLUGIN_METADATA" || restore_failed=1
   fi
+  rel="${FLUTTER_PLUGIN_REGISTRANT#/}"
+  if [[ "$FLUTTER_PLUGIN_REGISTRANT_EXISTED" -eq 1 ]]; then
+    cp -p "$SNAPSHOT_DIR/$rel" "$FLUTTER_PLUGIN_REGISTRANT" || restore_failed=1
+  else
+    rm -f "$FLUTTER_PLUGIN_REGISTRANT" || restore_failed=1
+  fi
   if [[ "$restore_failed" -ne 0 ]]; then
     echo "generated-file restore failed; snapshot retained: $SNAPSHOT_DIR" >&2
     status=74
@@ -74,6 +82,12 @@ if [[ -f "$FLUTTER_PLUGIN_METADATA" ]]; then
   mkdir -p "$SNAPSHOT_DIR/$(dirname "$rel")"
   cp -p "$FLUTTER_PLUGIN_METADATA" "$SNAPSHOT_DIR/$rel"
   FLUTTER_PLUGIN_METADATA_EXISTED=1
+fi
+if [[ -f "$FLUTTER_PLUGIN_REGISTRANT" ]]; then
+  rel="${FLUTTER_PLUGIN_REGISTRANT#/}"
+  mkdir -p "$SNAPSHOT_DIR/$(dirname "$rel")"
+  cp -p "$FLUTTER_PLUGIN_REGISTRANT" "$SNAPSHOT_DIR/$rel"
+  FLUTTER_PLUGIN_REGISTRANT_EXISTED=1
 fi
 SNAPSHOT_READY=1
 
@@ -98,19 +112,7 @@ make -C "$ROOT" rel
 (cd "$WORKSPACE/imboyapp" && \
   rm -f android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java && \
   flutter --suppress-analytics pub get --offline && \
-  python3 - .flutter-plugins-dependencies <<'PY'
-import json
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-metadata = json.loads(path.read_text(encoding="utf-8"))
-android_plugins = metadata["plugins"]["android"]
-metadata["plugins"]["android"] = [
-    plugin for plugin in android_plugins if not plugin.get("dev_dependency", False)
-]
-path.write_text(json.dumps(metadata, separators=(",", ":")) + "\n", encoding="utf-8")
-PY
+  flutter --suppress-analytics build apk --release --target-platform android-arm64 --config-only && \
   flutter --suppress-analytics build apk --release --target-platform android-arm64 --no-pub)
 (cd "$WORKSPACE/imboyadmin" && bun run build)
 
