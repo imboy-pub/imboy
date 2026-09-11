@@ -2,7 +2,9 @@
 
 > 最后更新 / Last updated: 2026-09-11
 > 关联 / Related: [history-recoverability.md](./history-recoverability.md)、[key-lifecycle.md](./key-lifecycle.md)
-> 状态：**四路径 + 度量全部实施完毕**（2026-09-10/11），改动未提交
+> 状态：**四路径 + 度量全部实施完毕并已提交 main**（2026-09-11，未 push）。
+> `imboyapp` 26f032f6 / 3d7991d8；`imboy` 15f9326e（路径2）/ 8de50baa（本文档）；
+> `imboy.wiki` b0de333。路径2 尚需重启后端节点生效。
 
 ---
 
@@ -29,7 +31,12 @@
 | 2. 服务端信封过滤（治本） | 下发前按 `e2ee.fan_out.devices` 过滤不含请求设备 DID 的 C2C 收件消息；offline 滤行同时按 (uid,did) 标记 acked；history 纯过滤、`next_seq` 按全量行推进；did 缺省 fail-open（旧客户端零破坏） | `imboy/src/logic/messaging_logic.erl`（`c2c_deliverable_to_device/3` 等）、`src/api/msg_handler.erl`；客户端 `msg_api.dart` / `chat_archive_service.dart` 带 `did` |
 | 3. 备份默认化 | 首次启用强制备份向导（不可跳过）+ 密钥变化自动重传 | `imboyapp/lib/page/settings/e2ee_backup_setup_page.dart`、`lib/service/e2ee_backup_setup_service.dart`、`conversation_page.dart` 触发链、`e2ee_key_service.dart` 钩子 |
 
-注意：**路径2 后端过滤需重启后端节点后生效**。
+注意：**路径2 后端过滤需重启后端节点后生效**。9801 现役为 release 节点
+（`_rel/imboy/bin/imboy`，进程仍加载 09-07 启动的 1.0.0-alpha.71），但磁盘上的
+**1.0.0-alpha.73 release（09-11 构建）已含路径2 全部函数**（含 `delivery_msg_id/1`
+等私有辅助，已用 `beam_lib` 抽象码核对）——因此**重启即生效，无需重新构建 release**。
+生效判据：带 `did` 请求 `/api/v1/msg/history` 后，日志出现
+`e2ee_envelope_filtered` 或响应中不再出现本机无信封的收件行。
 
 ### 路径3 口令方案决策记录（2026-09-11 拍板）
 
