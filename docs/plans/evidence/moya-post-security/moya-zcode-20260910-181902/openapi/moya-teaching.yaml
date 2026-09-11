@@ -1,0 +1,779 @@
+# moya-teaching.yaml — 墨芽教学域 OpenAPI 3.0 冻结契约（MN-CONTRACT-01）
+# RUN_ID: moya-zcode-20260910-181902
+#
+# 覆盖范围（本轮全部新增/变更端点）：
+#   * GET  /api/v1/teaching/classes/{id}/learners   — MN-ROSTER-01 班级学员名单（新增）
+#   * GET  /api/v1/teaching/tasks                   — MN-TASK-01 老师作业列表（新增）
+#   * POST /api/v1/teaching/tasks                   — MN-TASK-01/02 发布教学作业（新增；持久幂等）
+#   * GET  /api/v1/teaching/submissions/{id}        — 家长提交详情（既有；published_review.assets 变更）
+#   * GET  /api/v1/teaching/submissions/{id}/review-workbench — 回评工作台（既有；my_review_draft.assets 变更）
+#   * PUT  /api/v1/teaching/submissions/{id}/review-draft     — 保存草稿（既有；请求增 assets，兼容 video_attachment_id deprecated）
+#   * POST /api/v1/teaching/submissions/{id}/reviews/publish   — 发布回评（既有；响应增 assets）
+#
+# 约定：
+#   * 墨芽域全部 TSID 字段以 JSON **string** 传输（64-bit 精度保护；客户端禁止转 number）。
+#   * 全部端点位于 JWT 认证段（imboy_router ApiV1Routes；deny-by-default）。
+#   * 示例值全部为显式合成值；不含任何真实 AppID/token/openid/URL/联系方式。
+#   * 错误 envelope：HTTP 200 + {code != 0, msg, payload: null}（422 仅参数级错误同形状）。
+#
+# 裁定记录（A5 Wave2，2026-09-10）：
+#   R1 review-draft 以 assets 为唯一写入真源；video_attachment_id 为兼容派生字段
+#      （deprecated）。两者同传且不一致 → assets_invalid（5441 语义段，同码复用见 5441）。
+#      —— 依据 teaching_review_logic:parse_review_assets/legacy_video_consistent。
+#   R2 家长/老师 DTO 的回评媒体行含 object_key（attachment.path），客户端凭它走既有
+#      GET /api/v1/attachment/view_url 换短时 URL（与 submission_asset 授权链同模式，
+#      fail-closed：draft 仅 reviewer、published 复用 submission_access）。
+#   R3 GET 网络层重试口径：HTTP >= 5xx 自动重试一次；wx.request fail（网络断/超时）
+#      不重试 —— 记为已知偏差（“最多一次”上限内），不扩权。
+#   R4 GET /teaching/tasks 分页：size 服务端恒定 10（请求 size 可选 1..100，客户端不传）；
+#      客户端 hasMore = 已加载条数 < total；空列表返回 {list: [], total: 0}（HTTP 200）。
+openapi: 3.0.3
+info:
+  title: Moya Teaching API（墨芽教学域）
+  version: 1.1.0-moya-zcode-20260910-181902
+  description: |
+    墨芽教学域冻结契约。Envelope 统一为 {code, msg, payload}；code=0 成功。
+    错误码段：5420-5429 上下文/ACL，5430-5432 花名册/教学作业，5440-5444 作业/提交，
+    5460-5461 幂等，5480-5485 回评。
+servers: []
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/teaching/classes/{id}/learners:
+    get:
+      summary: 班级学员名单（只读）
+      description: |
+        MN-ROSTER-01。manager/teacher/assistant 三角色可读（读路径不带写白名单）。
+        非 staff / removed staff / 班级不可见统一返回 5430（不泄漏班级存在性）。
+        仅返回 active enrollment 且学员机构 == 班机构的学员；响应永不携带监护人
+        UID/openid/联系方式/出生年份/关系详情。
+      operationId: listClassLearners
+      tags: [roster]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 班级 TSID（string）
+          schema: { type: string, minLength: 1 }
+          example: "963201"
+      responses:
+        "200":
+          description: 名单（可能为空班）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RosterEnvelope"
+              examples:
+                ok:
+                  summary: 正常名单（三分支示例）
+                  value:
+                    code: 0
+                    msg: "success."
+                    payload:
+                      group_id: "963201"
+                      learners:
+                        - learner_id: "964001"
+                          display_name: "示例学员一"
+                          assignment_ready: true
+                          setup_reason: null
+                        - learner_id: "964003"
+                          display_name: "示例学员二"
+                          assignment_ready: false
+                          setup_reason: "no_submit_guardian"
+                        - learner_id: "964002"
+                          display_name: "示例学员三"
+                          assignment_ready: false
+                          setup_reason: "multiple_submit_guardians"
+                empty:
+                  summary: 空班
+                  value:
+                    code: 0
+                    msg: "success."
+                    payload:
+                      group_id: "963201"
+                      learners: []
+        "default":
+          description: 业务错误（envelope code != 0）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                class_not_visible_5430:
+                  summary: 班级不存在或不可见（非本班 active staff；不泄漏存在性）
+                  value: { code: 5430, msg: "班级不存在或不可见", payload: null }
+                cross_org_5426:
+                  summary: 跨机构访问被拒绝（班机构解析失败 fail closed）
+                  value: { code: 5426, msg: "跨机构访问被拒绝", payload: null }
+                param_invalid_422:
+                  summary: 班级参数错误（非法/缺失 TSID，不触达 DB）
+                  value: { code: 422, msg: "班级参数错误", payload: null }
+
+  /api/v1/teaching/tasks:
+    get:
+      summary: 老师教学作业列表（真源）
+      description: |
+        MN-TASK-01。仅返回本人 active staff 班级的教学作业（含 0 提交新作业；
+        不从回评队列反派生）。指定 group_id 必须是本人班级，否则 5430。
+        分页裁定 R4：size 服务端恒定 10；客户端 hasMore = 已加载条数 < total。
+      operationId: listTeachingTasks
+      tags: [task]
+      parameters:
+        - name: group_id
+          in: query
+          required: false
+          description: 班级 TSID（string）；缺省聚合全部任教班级
+          schema: { type: string }
+          example: "973201"
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+          example: 1
+        - name: size
+          in: query
+          required: false
+          description: 服务端恒定 10（客户端不传；裁定 R4）
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        "200":
+          description: 分页列表
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskPageEnvelope"
+              example:
+                code: 0
+                msg: "success."
+                payload:
+                  list:
+                    - task_id: "975001000000000019"
+                      group_id: "973201"
+                      group_name: "示例班级"
+                      title: "示例作业：横画练习"
+                      description: "每天三行"
+                      deadline: "2099-01-01T20:00:00Z"
+                      learner_count: 2
+                      submitted_count: 1
+                      pending_review_count: 1
+                      created_at: "2026-09-10T10:00:00Z"
+                  page: 1
+                  size: 10
+                  total: 1
+        "default":
+          description: 业务错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                class_not_visible_5430:
+                  summary: 指定班非本人 active staff / 无任何任教班
+                  value: { code: 5430, msg: "班级不存在或不可见", payload: null }
+                param_invalid_422:
+                  value: { code: 422, msg: "班级参数错误", payload: null }
+    post:
+      summary: 发布教学作业（持久幂等）
+      description: |
+        MN-TASK-01/02。Header Idempotency-Key 必填（8..128 字节）。
+        幂等真源 = group_task.(idempotency_key, request_digest) 持久列 +
+        部分唯一索引：同 key 同 body 重放返回原 task+assignments 且 replayed=true；
+        同 key 异 body 返回 5460；缺 key/越界返回 5461。
+        学员校验：active enrollment + 同机构（5431）、恰一 active can_submit 监护人（5432）。
+      operationId: createTeachingTask
+      tags: [task]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 8, maxLength: 128 }
+          example: "moya-idem-973201-20260910"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+            example:
+              group_id: "973201"
+              title: "示例作业：横画练习"
+              description: "每天三行"
+              deadline: "2099-01-01T20:00:00Z"
+              learner_ids: ["974001", "974002"]
+      responses:
+        "200":
+          description: 创建或幂等重放成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTaskEnvelope"
+              examples:
+                created:
+                  summary: 首次创建（replayed=false）
+                  value:
+                    code: 0
+                    msg: "发布成功"
+                    payload:
+                      task_id: "975001000000000019"
+                      assignments:
+                        - { assignment_id: "976001", learner_id: "974001" }
+                        - { assignment_id: "976002", learner_id: "974002" }
+                      replayed: false
+                replayed:
+                  summary: 幂等重放（同 key 同 body；原集合原样返回）
+                  value:
+                    code: 0
+                    msg: "发布成功"
+                    payload:
+                      task_id: "975001000000000019"
+                      assignments:
+                        - { assignment_id: "976001", learner_id: "974001" }
+                        - { assignment_id: "976002", learner_id: "974002" }
+                      replayed: true
+        "default":
+          description: 业务错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_staff_5424:
+                  value: { code: 5424, msg: "非本班任课老师", payload: null }
+                role_denied_5425:
+                  value: { code: 5425, msg: "当前教学角色无操作权限", payload: null }
+                cross_org_5426:
+                  value: { code: 5426, msg: "跨机构访问被拒绝", payload: null }
+                learner_not_in_class_5431:
+                  summary: 学员不在本班或已移出（enrollment 无行/removed/机构不一致）
+                  value: { code: 5431, msg: "学员不在本班或已移出", payload: null }
+                guardian_setup_required_5432:
+                  summary: 监护关系需完善（0 或多个 active can_submit 监护人）
+                  value: { code: 5432, msg: "监护关系需完善", payload: null }
+                assignment_closed_5442:
+                  summary: deadline 已过
+                  value: { code: 5442, msg: "作业已截止或关闭", payload: null }
+                idempotency_conflict_5460:
+                  summary: 同 key 不同 body（不覆盖原结果）
+                  value: { code: 5460, msg: "请求与幂等键已绑定内容冲突", payload: null }
+                idempotency_key_required_5461:
+                  summary: 缺 Idempotency-Key / 越界
+                  value: { code: 5461, msg: "缺少幂等键", payload: null }
+                param_invalid_422:
+                  summary: title 空/超长、learner_ids 空/重复/非法 TSID、deadline 非法
+                  value: { code: 422, msg: "参数错误", payload: null }
+
+  /api/v1/teaching/submissions/{id}:
+    get:
+      summary: 提交详情（家长视角）
+      description: |
+        家长只读。published_review 仅已发布形态（draft/AI 字段在本层即不存在）。
+        published_review.assets 为已发布回评媒体（0-1 视频 + 0-3 图片），行含
+        object_key（裁定 R2）；video_attachment_id 为兼容派生字段（deprecated）。
+      operationId: getSubmissionParentView
+      tags: [submission]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          example: "7036874417766401"
+      responses:
+        "200":
+          description: 详情
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParentViewEnvelope"
+              example:
+                code: 0
+                msg: "success."
+                payload:
+                  submission_id: "7036874417766401"
+                  assignment_id: "9223372036854775807"
+                  learner_id: "562949953421312"
+                  attempt_no: 1
+                  status: "submitted"
+                  submitted_at: "2026-09-09T18:00:00Z"
+                  assets:
+                    - attachment_id: "800100000000000001"
+                      object_key: "u8001/t1/practice.mp4"
+                      kind: "practice_video"
+                      sort_order: 0
+                  ai_status_hint: "none"
+                  published_review:
+                    review_id: "900100000000000007"
+                    positive_point: "起笔藏锋稳定"
+                    focus_problem: "收笔略飘"
+                    practice_action: "每天慢写三行"
+                    comment: "继续保持"
+                    assets:
+                      - attachment_id: "810000000000000002"
+                        object_key: "u8001/r1/fb0.jpg"
+                        kind: "feedback_image"
+                        sort_order: 0
+                      - attachment_id: "810200000000000004"
+                        object_key: "u8001/r1/fb1.mp4"
+                        kind: "feedback_video"
+                        sort_order: 1
+                    video_attachment_id: "810200000000000004"
+                    video_attachment_id_deprecated: true
+                    rework_required: false
+                    published_at: "2026-09-10T09:00:00Z"
+        "default":
+          description: 业务错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_guardian_5423:
+                  value: { code: 5423, msg: "无监护提交权限", payload: null }
+                submission_not_found_5443:
+                  value: { code: 5443, msg: "提交不存在", payload: null }
+                submission_withdrawn_5444:
+                  value: { code: 5444, msg: "该提交已撤回", payload: null }
+
+  /api/v1/teaching/submissions/{id}/review-workbench:
+    get:
+      summary: 回评工作台（老师视角）
+      description: |
+        my_review_draft 含 assets（0-1 视频 + 0-3 图片；行含 object_key，裁定 R2）
+        与兼容派生字段 video_attachment_id（deprecated）。assets 出现脏数据时
+        服务端 fail-closed（kind 白名单校验于写入时，读取仅返回已校验集合）。
+      operationId: getReviewWorkbench
+      tags: [review]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          example: "7036874417766401"
+      responses:
+        "200":
+          description: 工作台视图（节选回评媒体相关字段）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkbenchEnvelope"
+              example:
+                code: 0
+                msg: "success."
+                payload:
+                  submission: {}
+                  my_review_draft:
+                    review_id: "900100000000000007"
+                    submission_id: "7036874417766401"
+                    positive_point: "草稿文字"
+                    focus_problem: ""
+                    practice_action: ""
+                    comment: ""
+                    assets:
+                      - attachment_id: "810100000000000003"
+                        object_key: "u8001/r1/fb1.mp4"
+                        kind: "feedback_video"
+                        sort_order: 0
+                    video_attachment_id: "810100000000000003"
+                    video_attachment_id_deprecated: true
+                    rework_required: false
+                    status: "draft"
+                    published_at: null
+                  learner_display_name: "示例学员"
+                  assignment_title: "示例作业：横画练习"
+        "default":
+          description: 业务错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                not_staff_5424:
+                  value: { code: 5424, msg: "非本班任课老师", payload: null }
+
+  /api/v1/teaching/submissions/{id}/review-draft:
+    put:
+      summary: 保存/更新回评草稿（upsert）
+      description: |
+        裁定 R1：**assets 为唯一写入真源**；teacher_review.video_attachment_id 旧列
+        由 assets 首条 feedback_video 派生冗余写（兼容读窗口）。
+        兼容规则：assets 缺席时按单视频 video_attachment_id 解析（旧客户端）；
+        两者同时提供且不一致 → assets_invalid（5441）。
+        保留字段（reviewer_uid/status/published_at）→ 5484。
+        事务内校验附件归属（存在/active/scope=teaching/creator=reviewer/MIME↔kind），
+        任一非法整单回滚零部分写入。
+      operationId: saveReviewDraft
+      tags: [review]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          example: "7036874417766401"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewDraftBody"
+            examples:
+              assets_form:
+                summary: 新形态（assets 真源；推荐）
+                value:
+                  positive_point: "起笔藏锋稳定"
+                  focus_problem: "收笔略飘"
+                  practice_action: "每天慢写三行"
+                  comment: "继续保持"
+                  rework_required: false
+                  assets:
+                    - attachment_id: "810100000000000003"
+                      kind: "feedback_video"
+                      sort_order: 0
+                    - attachment_id: "810000000000000002"
+                      kind: "feedback_image"
+                      sort_order: 0
+              legacy_form:
+                summary: 旧形态兼容（仅 video_attachment_id，deprecated）
+                value:
+                  positive_point: "草稿文字"
+                  video_attachment_id: "810100000000000003"
+                  rework_required: false
+      responses:
+        "200":
+          description: 保存后草稿（含 assets 与派生兼容字段）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewEnvelope"
+              example:
+                code: 0
+                msg: "草稿已保存"
+                payload:
+                  review_id: "900100000000000007"
+                  submission_id: "7036874417766401"
+                  positive_point: "起笔藏锋稳定"
+                  assets:
+                    - attachment_id: "810100000000000003"
+                      object_key: "u8001/r1/fb1.mp4"
+                      kind: "feedback_video"
+                      sort_order: 0
+                    - attachment_id: "810000000000000002"
+                      object_key: "u8001/r1/fb0.jpg"
+                      kind: "feedback_image"
+                      sort_order: 0
+                  video_attachment_id: "810100000000000003"
+                  video_attachment_id_deprecated: true
+                  rework_required: false
+                  status: "draft"
+                  published_at: null
+        "default":
+          description: 业务错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                assets_invalid_5441:
+                  summary: assets 结构/数量/归属/MIME↔kind 非法，或新旧双写不一致
+                  value: { code: 5441, msg: "提交附件不合规", payload: null }
+                reserved_field_5484:
+                  summary: 携带 reviewer_uid/status/published_at 保留字段
+                  value: { code: 5484, msg: "请求包含服务端保留字段", payload: null }
+                not_found_404ish:
+                  summary: 提交不存在（防存在性探测与非本人附件同响应）
+                  value: { code: 5443, msg: "提交不存在", payload: null }
+
+  /api/v1/teaching/submissions/{id}/reviews/publish:
+    post:
+      summary: 发布回评（draft → published 一次性）
+      description: |
+        lock-first 发布事务；重复请求幂等返回已发布结果（already_published=true）。
+        发布与幂等重放均回读 assets 进 DTO（0-1 视频 + 0-3 图片 + object_key）。
+        发布前提交被撤回 → 5482；已有发布回评（撤回场景）→ 5481 语义段。
+      operationId: publishReview
+      tags: [review]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          example: "7036874417766401"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm_learner_id]
+              properties:
+                confirm_learner_id:
+                  type: string
+                  description: 二次确认的学员 TSID（与服务端一致才可发布）
+            example:
+              confirm_learner_id: "562949953421312"
+      responses:
+        "200":
+          description: 发布成功（含 already_published 幂等重放）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewEnvelope"
+              example:
+                code: 0
+                msg: "发布成功"
+                payload:
+                  review_id: "900100000000000007"
+                  submission_id: "7036874417766401"
+                  positive_point: "起笔藏锋稳定"
+                  assets:
+                    - attachment_id: "810200000000000004"
+                      object_key: "u8001/r1/fb1.mp4"
+                      kind: "feedback_video"
+                      sort_order: 1
+                    - attachment_id: "810000000000000002"
+                      object_key: "u8001/r1/fb0.jpg"
+                      kind: "feedback_image"
+                      sort_order: 0
+                  video_attachment_id: "810200000000000004"
+                  video_attachment_id_deprecated: true
+                  rework_required: false
+                  status: "published"
+                  published_at: "2026-09-10T09:00:00Z"
+        "default":
+          description: 业务错误
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                no_draft_5480:
+                  value: { code: 5480, msg: "无可发布的回评草稿", payload: null }
+                already_reviewed_5481:
+                  value: { code: 5481, msg: "该提交已有发布回评，不可撤回", payload: null }
+                withdrawn_5482:
+                  value: { code: 5482, msg: "提交已撤回，无法发布回评", payload: null }
+                confirm_mismatch_5483:
+                  value: { code: 5483, msg: "发布确认学员不一致", payload: null }
+                empty_content_5485:
+                  value: { code: 5485, msg: "回评内容为空", payload: null }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "imboy JWT（Authorization 头携带 JWT 凭证；示例值一律为占位，不含真实凭证）"
+  schemas:
+    TsidString:
+      type: string
+      description: 64-bit TSID 的 JSON string 形态（墨芽域全域约定；禁止 number）
+      pattern: "^[0-9]+$"
+      example: "7036874417766401"
+    Rfc3339:
+      type: string
+      format: date-time
+      description: RFC3339 UTC/带偏移时间
+      example: "2026-09-10T10:00:00Z"
+    RosterLearner:
+      type: object
+      required: [learner_id, display_name, assignment_ready, setup_reason]
+      properties:
+        learner_id: { $ref: "#/components/schemas/TsidString" }
+        display_name: { type: string, example: "示例学员一" }
+        assignment_ready: { type: boolean }
+        setup_reason:
+          type: [string, "null"]
+          enum: ["no_submit_guardian", "multiple_submit_guardians", null]
+    RosterEnvelope:
+      type: object
+      properties:
+        code: { type: integer, example: 0 }
+        msg: { type: string, example: "success." }
+        payload:
+          type: object
+          properties:
+            group_id: { $ref: "#/components/schemas/TsidString" }
+            learners:
+              type: array
+              items: { $ref: "#/components/schemas/RosterLearner" }
+    TaskPageEnvelope:
+      type: object
+      properties:
+        code: { type: integer, example: 0 }
+        msg: { type: string, example: "success." }
+        payload:
+          type: object
+          properties:
+            list:
+              type: array
+              items:
+                type: object
+                properties:
+                  task_id: { type: string, example: "975001000000000019" }
+                  group_id: { $ref: "#/components/schemas/TsidString" }
+                  group_name: { type: string, example: "示例班级" }
+                  title: { type: string, example: "示例作业：横画练习" }
+                  description: { type: string, example: "每天三行" }
+                  deadline: { $ref: "#/components/schemas/Rfc3339" }
+                  learner_count: { type: integer, example: 2 }
+                  submitted_count: { type: integer, example: 1 }
+                  pending_review_count: { type: integer, example: 1 }
+                  created_at: { $ref: "#/components/schemas/Rfc3339" }
+            page: { type: integer, example: 1 }
+            size: { type: integer, example: 10 }
+            total: { type: integer, example: 1 }
+    CreateTaskBody:
+      type: object
+      required: [group_id, title, learner_ids]
+      properties:
+        group_id: { $ref: "#/components/schemas/TsidString" }
+        title: { type: string, maxLength: 200, example: "示例作业：横画练习" }
+        description: { type: string, example: "每天三行" }
+        deadline: { $ref: "#/components/schemas/Rfc3339" }
+        learner_ids:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/TsidString" }
+          description: 非空、去重（重复 → 422）
+    CreateTaskEnvelope:
+      type: object
+      properties:
+        code: { type: integer, example: 0 }
+        msg: { type: string, example: "发布成功" }
+        payload:
+          type: object
+          properties:
+            task_id: { type: string, example: "975001000000000019" }
+            assignments:
+              type: array
+              items:
+                type: object
+                properties:
+                  assignment_id: { $ref: "#/components/schemas/TsidString" }
+                  learner_id: { $ref: "#/components/schemas/TsidString" }
+            replayed: { type: boolean }
+    FeedbackAsset:
+      type: object
+      required: [attachment_id, kind, sort_order]
+      description: |
+        回评媒体行。kind 白名单：feedback_image / feedback_video
+        （草稿/AI 内部 kind 永不出现在本 DTO）。
+        object_key：客户端凭它走 GET /api/v1/attachment/view_url 换短时 URL
+        （裁定 R2；授权 fail-closed）。
+      properties:
+        attachment_id: { $ref: "#/components/schemas/TsidString" }
+        object_key: { type: string, example: "u8001/r1/fb1.mp4" }
+        kind: { type: string, enum: [feedback_image, feedback_video] }
+        sort_order: { type: integer, minimum: 0, maximum: 999, example: 0 }
+    ReviewAssetItemInput:
+      type: object
+      required: [attachment_id, kind]
+      properties:
+        attachment_id: { $ref: "#/components/schemas/TsidString" }
+        kind: { type: string, enum: [feedback_image, feedback_video] }
+        sort_order: { type: integer, minimum: 0, maximum: 999 }
+    ReviewDraftBody:
+      type: object
+      description: |
+        裁定 R1：assets 为写入真源；video_attachment_id 兼容派生（deprecated）。
+        双写不一致 → 5441。
+      properties:
+        positive_point: { type: string, example: "起笔藏锋稳定" }
+        focus_problem: { type: string, example: "收笔略飘" }
+        practice_action: { type: string, example: "每天慢写三行" }
+        comment: { type: string, example: "继续保持" }
+        rework_required: { type: boolean, example: false }
+        assets:
+          type: array
+          maxItems: 4
+          description: 0-1 feedback_video + 0-3 feedback_image；空数组合法
+          items: { $ref: "#/components/schemas/ReviewAssetItemInput" }
+        video_attachment_id:
+          allOf: [{ $ref: "#/components/schemas/TsidString" }]
+          deprecated: true
+          description: 兼容字段（deprecated）；仅 assets 缺席时按单视频解析
+    ReviewEnvelope:
+      type: object
+      properties:
+        code: { type: integer, example: 0 }
+        msg: { type: string }
+        payload:
+          type: object
+          properties:
+            review_id: { type: string, example: "900100000000000007" }
+            submission_id: { $ref: "#/components/schemas/TsidString" }
+            positive_point: { type: string }
+            focus_problem: { type: string }
+            practice_action: { type: string }
+            comment: { type: string }
+            assets:
+              type: array
+              items: { $ref: "#/components/schemas/FeedbackAsset" }
+            video_attachment_id:
+              allOf: [{ $ref: "#/components/schemas/TsidString" }]
+              deprecated: true
+              description: 兼容派生字段（assets 首条 feedback_video），未来移除
+            rework_required: { type: boolean }
+            status: { type: string, enum: [draft, published, discarded] }
+            published_at: { $ref: "#/components/schemas/Rfc3339" }
+    ParentViewEnvelope:
+      type: object
+      properties:
+        code: { type: integer, example: 0 }
+        msg: { type: string, example: "success." }
+        payload:
+          type: object
+          properties:
+            submission_id: { $ref: "#/components/schemas/TsidString" }
+            assignment_id: { $ref: "#/components/schemas/TsidString" }
+            learner_id: { $ref: "#/components/schemas/TsidString" }
+            attempt_no: { type: integer, example: 1 }
+            status: { type: string, enum: [submitted, withdrawn] }
+            submitted_at: { $ref: "#/components/schemas/Rfc3339" }
+            assets:
+              type: array
+              description: 学员提交附件（practice_video/final_photo；授权同 R2 链）
+              items: { type: object }
+            ai_status_hint: { type: string, enum: [processing, done, none] }
+            published_review:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/ReviewEnvelope/properties/payload"
+    WorkbenchEnvelope:
+      type: object
+      properties:
+        code: { type: integer, example: 0 }
+        msg: { type: string, example: "success." }
+        payload:
+          type: object
+          properties:
+            submission: { type: object }
+            my_review_draft:
+              nullable: true
+              allOf:
+                - $ref: "#/components/schemas/ReviewEnvelope/properties/payload"
+            learner_display_name: { type: string, example: "示例学员" }
+            assignment_title: { type: string, example: "示例作业：横画练习" }
+    ErrorEnvelope:
+      type: object
+      description: 业务错误 envelope（HTTP 200；code != 0）
+      properties:
+        code:
+          type: integer
+          description: |
+            墨芽教学域错误码：
+            5420 上下文无效 / 5421 上下文失效 / 5422 未监护该学员 / 5423 无监护提交权限 /
+            5424 非本班任课老师 / 5425 教学角色无写权限 / 5426 跨机构访问被拒绝 /
+            5430 班级不存在或不可见 / 5431 学员不在本班或已移出 / 5432 监护关系需完善 /
+            5440 作业不存在 / 5441 提交附件不合规 / 5442 作业已截止或关闭 /
+            5443 提交不存在 / 5444 该提交已撤回 /
+            5460 幂等键冲突 / 5461 缺少幂等键 /
+            5480 无可发布草稿 / 5481 已有发布回评不可撤回 / 5482 提交已撤回无法发布 /
+            5483 发布确认学员不一致 / 5484 服务端保留字段 / 5485 回评内容为空 /
+            422 参数错误 / 500 通用错误
+        msg: { type: string }
+        payload: { nullable: true, example: null }
+      example:
+        code: 5430
+        msg: "班级不存在或不可见"
+        payload: null

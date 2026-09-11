@@ -37,6 +37,11 @@ map_reason(cannot_submit) -> {<<"无监护提交权限"/utf8>>, ?ERR_TEACHING_NO
 map_reason(cannot_view) -> {<<"无权查看该学员回评"/utf8>>, ?ERR_FORBIDDEN};
 map_reason(not_staff) -> {<<"非本班任课老师"/utf8>>, ?ERR_TEACHING_NOT_STAFF};
 map_reason(role_denied) -> {<<"当前教学角色无操作权限"/utf8>>, ?ERR_TEACHING_STAFF_WRITE_DENIED};
+map_reason(cross_org) -> {<<"跨机构访问被拒绝"/utf8>>, ?ERR_TEACHING_CROSS_ORG};
+%% 花名册/教学作业域（5430 段，MN-ROSTER/MN-TASK）
+map_reason(class_not_visible) -> {<<"班级不存在或不可见"/utf8>>, ?ERR_TEACHING_CLASS_NOT_VISIBLE};
+map_reason(learner_not_in_class) -> {<<"学员不在本班或已移出"/utf8>>, ?ERR_TEACHING_LEARNER_NOT_IN_CLASS};
+map_reason(guardian_setup_required) -> {<<"监护关系需完善"/utf8>>, ?ERR_TEACHING_GUARDIAN_SETUP_REQUIRED};
 %% 作业/提交域（5440 段）
 map_reason(not_found) -> {<<"资源不存在"/utf8>>, ?ERR_NOT_FOUND};
 map_reason(assignment_not_found) -> {<<"作业不存在"/utf8>>, ?ERR_ASSIGNMENT_NOT_FOUND};

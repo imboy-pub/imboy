@@ -106,6 +106,11 @@ verify_upload(MimeType, Size, Meta) ->
 %%   2. submission 已撤回 → 拒绝（T17：撤回证据仅审计路径可及，不在日常 API 面）
 %%   3. teaching_acl:submission_access（guardian 需 can_view_review / 本班 staff；
 %%      Owner 不因身份获得——MEDIA-01 矩阵）
+%%   P0-4（MN-MEDIA-02）分流：submission_asset 未绑定时再查 review_asset 绑定——
+%%   * draft：仅创建该草稿的 reviewer 本人可读（其他老师/家长/Owner 全拒绝）
+%%   * published：复用 submission_access（本班 active staff / 对该 learner
+%%     can_view_review=true 且 active 的 guardian；跨班/跨机构 fail closed）
+%%   * withdrawn submission / discarded review / 未绑定 / 任一查询失败 → fail closed
 -spec authorize(integer(), map()) -> boolean().
 authorize(Uid, #{<<"path">> := Path}) when is_binary(Path), Path =/= <<>> ->
     case teaching_submission_repo:submission_for_asset_path(Path) of
@@ -114,14 +119,47 @@ authorize(Uid, #{<<"path">> := Path}) when is_binary(Path), Path =/= <<>> ->
                 {ok, _, _} -> true;
                 _ -> false
             end;
-        _ ->
+        {ok, undefined} ->
+            authorize_review_asset(Uid, Path);
+        {ok, _} ->
+            %% 已绑 submission 但 withdrawn：撤回证据仅审计路径可及（T17）
+            false;
+        {error, _} ->
+            %% submission 维度查询异常：fail closed
             false
     end;
 authorize(_Uid, _Rec) ->
     false.
 
-%% @doc 列出超龄未绑定的教学附件（NOT EXISTS submission_asset 守卫——
-%% 已绑定附件（含撤回 submission 的证据附件）一律不列出，MEDIA-02 不误删）
+%% review_asset 维度读授权（P0-4）：
+%% draft 仅创建该草稿的 reviewer；published 复用 submission_access；
+%% withdrawn / discarded / 未绑定 / 查询失败一律 false
+-spec authorize_review_asset(integer(), binary()) -> boolean().
+authorize_review_asset(Uid, Path) ->
+    case teaching_review_repo:review_for_asset_path(Path) of
+        {ok, #{
+            <<"review_status">> := <<"draft">>,
+            <<"reviewer_uid">> := Uid,
+            <<"submission_status">> := <<"submitted">>
+        }} ->
+            true;
+        {ok, #{
+            <<"review_status">> := <<"published">>,
+            <<"submission_id">> := Sid,
+            <<"submission_status">> := <<"submitted">>
+        }} ->
+            case teaching_acl:submission_access(Uid, Sid) of
+                {ok, _, _} -> true;
+                _ -> false
+            end;
+        _ ->
+            %% withdrawn submission / discarded / 未绑定 / 查询失败：fail closed
+            false
+    end.
+
+%% @doc 列出超龄未绑定的教学附件（double NOT EXISTS：submission_asset ∪
+%% review_asset 任一引用即豁免——含草稿引用与撤回 submission 的证据附件，
+%% MEDIA-02 不误删；SQL 见 teaching_submission_repo:unbound_run）
 -spec list_unbound(integer()) -> {ok, [map()]} | {error, term()}.
 list_unbound(AgeHours) ->
     teaching_submission_repo:unbound_teaching_attachments(max(?MIN_UNBOUND_AGE_HOURS, AgeHours)).

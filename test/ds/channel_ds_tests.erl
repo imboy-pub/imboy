@@ -127,6 +127,70 @@ unsubscribe_is_idempotent_when_already_inactive_test_() ->
         end
     ).
 
+%% BUG#149 回归：创建频道时创建者必须同时成为订阅者（订阅行+计数同事务），
+%% 否则邀请制私有频道的创建者永远过不了 create_invitation 的 is_subscribed 校验。
+create_channel_subscribes_creator_in_tx_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> 1700000000000 end}
+            ]},
+            {channel_repo, [
+                {'add', 2, fun(_Conn, _Data) -> {ok, 77} end},
+                {'increment_subscribers', 3, fun(fake_conn, 77, 1) -> {ok, 1} end}
+            ]},
+            {channel_subscription_repo, [
+                {'upsert_active', 3, fun(fake_conn, 77, 100) -> {ok, true} end}
+            ]},
+            {channel_admin_repo, [
+                {'add', 2, fun(_Conn, _AdminData) -> {ok, 1} end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, 77},
+                channel_ds:create_channel(100, <<"t">>, #{})
+            ),
+            ?assertEqual(1, meck:num_calls(channel_subscription_repo, upsert_active, 3)),
+            ?assertEqual(1, meck:num_calls(channel_repo, increment_subscribers, 3)),
+            ?assertEqual(1, meck:num_calls(channel_admin_repo, add, 2))
+        end
+    ).
+
+create_channel_aborts_when_creator_subscription_fails_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_dt, [
+                {'now', 0, fun() -> 1700000000000 end}
+            ]},
+            {channel_repo, [
+                {'add', 2, fun(_Conn, _Data) -> {ok, 77} end},
+                {'increment_subscribers', 3, fun(_, _, _) ->
+                    erlang:error(should_not_increment)
+                end}
+            ]},
+            {channel_subscription_repo, [
+                {'upsert_active', 3, fun(_Conn, _Ch, _Uid) -> {error, db_error} end}
+            ]},
+            {channel_admin_repo, [
+                {'add', 2, fun(_, _) -> erlang:error(should_not_add_admin) end}
+            ]},
+            {elib_pg, [
+                {'with_tx', 1, fun(_Fun) -> {error, db_error} end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"db_error">>},
+                channel_ds:create_channel(100, <<"t">>, #{})
+            ),
+            ?assertEqual(0, meck:num_calls(channel_admin_repo, add, 2))
+        end
+    ).
+
 subscribe_returns_error_when_tx_aborts_test_() ->
     ?WITH_MECKS(
         [
@@ -298,12 +362,10 @@ is_subscribed_returns_false_when_subscription_missing_test_() ->
 update_encodes_tags_as_jsonb_before_update_test_() ->
     ?WITH_MECKS(
         [
+            %% meck 不拦截 passthrough 原实现的同模块内部调用，
+            %% mock write_tx/2 整体（而非其内部 ensure_writable_tx/abort_on_error）
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'write_tx', 2, fun({channel, 11}, Write) -> Write(fake_conn) end}
             ]},
             {channel_repo, [
                 {'update_tx', 3, fun(fake_conn, 11, Data) ->
@@ -328,11 +390,7 @@ update_encodes_empty_tags_list_as_empty_json_array_test_() ->
     ?WITH_MECKS(
         [
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'write_tx', 2, fun({channel, 11}, Write) -> Write(fake_conn) end}
             ]},
             {channel_repo, [
                 {'update_tx', 3, fun(fake_conn, 11, Data) ->
@@ -354,11 +412,7 @@ update_passes_through_text_fields_when_no_tags_test_() ->
     ?WITH_MECKS(
         [
             {workspace_guard, [
-                {'ensure_writable_tx', 2, fun(fake_conn, {channel, 11}) -> ok end},
-                {'abort_on_error', 1, fun(ok) -> ok end}
-            ]},
-            {elib_pg, [
-                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end}
+                {'write_tx', 2, fun({channel, 11}, Write) -> Write(fake_conn) end}
             ]},
             {channel_repo, [
                 {'update_tx', 3, fun(fake_conn, 11, Data) ->

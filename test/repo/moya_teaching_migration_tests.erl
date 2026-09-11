@@ -20,6 +20,8 @@
 -define(STEP99_DOWN, ?MIG_DIR "00000099_teaching_admin_audit.down.sql").
 -define(STEP100_UP, ?MIG_DIR "00000100_teaching_sentinel_unify.up.sql").
 -define(STEP100_DOWN, ?MIG_DIR "00000100_teaching_sentinel_unify.down.sql").
+-define(STEP105_UP, ?MIG_DIR "00000105_teaching_review_asset.up.sql").
+-define(STEP105_DOWN, ?MIG_DIR "00000105_teaching_review_asset.down.sql").
 
 read(Path) ->
     {ok, Bin} = file:read_file(Path),
@@ -484,3 +486,105 @@ step100_no_touch_history_test() ->
     ?assertEqual(nomatch, binary:match(Up, <<"DROP COLUMN">>)),
     ?assertEqual(nomatch, binary:match(Up, <<"ALTER COLUMN">>)),
     ?assertEqual(nomatch, binary:match(Up, <<"UPDATE ">>)).
+
+%% ===================================================================
+%% P0-4 回评媒体 00000105: review_asset（MN-MEDIA-01）
+%% ===================================================================
+
+step105_review_asset_table_test() ->
+    Up = read(?STEP105_UP),
+    ?assertNotEqual(
+        nomatch, binary:match(Up, <<"CREATE TABLE IF NOT EXISTS review_asset">>)
+    ),
+    % 最小字段集（计划 §P0-4：id/review_id/attachment_id/kind/sort_order/created_by/created_at）
+    lists:foreach(
+        fun(Frag) -> ?assertNotEqual(nomatch, binary:match(Up, Frag)) end,
+        [
+            <<"review_id     bigint                       NOT NULL">>,
+            <<"attachment_id bigint                       NOT NULL">>,
+            <<"sort_order    integer                      DEFAULT 0 NOT NULL">>,
+            <<"created_by    bigint                       NOT NULL">>,
+            <<"created_at    timestamp with time zone     DEFAULT CURRENT_TIMESTAMP NOT NULL">>
+        ]
+    ),
+    % kind 枚举 CHECK（仅 feedback_image|feedback_video）
+    ?assertNotEqual(nomatch, binary:match(Up, <<"ck_review_asset_kind">>)),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Up,
+            <<"CHECK (kind = ANY (ARRAY['feedback_image'::text, 'feedback_video'::text]))">>
+        )
+    ),
+    % FK：review CASCADE（连带解除）；attachment RESTRICT（fail-closed 不静默删附件）
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Up, <<"FOREIGN KEY (review_id) REFERENCES teacher_review(id) ON DELETE CASCADE">>
+        )
+    ),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(
+            Up, <<"FOREIGN KEY (attachment_id) REFERENCES attachment(id) ON DELETE RESTRICT">>
+        )
+    ),
+    % created_by sentinel 语义（100 同款：裸列 + CHECK >= 0，禁 FK 抹审计）
+    ?assertNotEqual(nomatch, binary:match(Up, <<"ck_review_asset_created_by_sentinel">>)),
+    ?assertNotEqual(nomatch, binary:match(Up, <<"CHECK (created_by >= 0)">>)).
+
+step105_attachment_uniqueness_test() ->
+    Up = read(?STEP105_UP),
+    % attachment_id 全表 UNIQUE（一对一：防同一附件绑多个 review）
+    ?assertNotEqual(
+        nomatch, binary:match(Up, <<"uk_review_asset_attachment UNIQUE (attachment_id)">>)
+    ),
+    % 单 review 至多 1 视频：部分唯一索引
+    ?assertNotEqual(nomatch, binary:match(Up, <<"uk_review_asset_one_video_per_review">>)),
+    ?assertNotEqual(nomatch, binary:match(Up, <<"WHERE kind = 'feedback_video'">>)).
+
+step105_image_cap_trigger_test() ->
+    Up = read(?STEP105_UP),
+    % 3 图上限：CONSTRAINT TRIGGER 语句末新鲜快照计数（98 withdraw_guard 风格）
+    ?assertNotEqual(nomatch, binary:match(Up, <<"fn_review_asset_image_cap">>)),
+    ?assertNotEqual(nomatch, binary:match(Up, <<"trg_review_asset_image_cap">>)),
+    ?assertNotEqual(nomatch, binary:match(Up, <<"IF v_count > 3 THEN">>)),
+    ?assertNotEqual(nomatch, binary:match(Up, <<"DEFERRABLE INITIALLY IMMEDIATE">>)).
+
+step105_backfill_idempotent_test() ->
+    Up = read(?STEP105_UP),
+    % 回填：video_attachment_id → feedback_video（sort_order=0，created_by=COALESCE(reviewer_uid,0)）
+    ?assertNotEqual(nomatch, binary:match(Up, <<"'feedback_video'">>)),
+    ?assertNotEqual(nomatch, binary:match(Up, <<"COALESCE(tr.reviewer_uid, 0)">>)),
+    ?assertNotEqual(nomatch, binary:match(Up, <<"ON CONFLICT (attachment_id) DO NOTHING">>)),
+    ?assertNotEqual(
+        nomatch,
+        binary:match(Up, <<"att.id = tr.video_attachment_id AND att.status >= 0">>)
+    ),
+    % up 幂等：全 IF NOT EXISTS / IF EXISTS；无 BEGIN;/COMMIT; 事务语句
+    % （头注释含"禁止 BEGIN/COMMIT"说明文字，故断言带分号的语句形态）
+    ?assertEqual(nomatch, binary:match(Up, <<"BEGIN;">>)),
+    ?assertEqual(nomatch, binary:match(Up, <<"COMMIT;">>)).
+
+step105_down_fail_closed_test() ->
+    Down = read(?STEP105_DOWN),
+    % fail-closed 预检：feedback_image 或单 review 多视频 → RAISE 拒绝（不可静默丢数据）
+    ?assertNotEqual(nomatch, binary:match(Down, <<"RAISE EXCEPTION">>)),
+    ?assertNotEqual(
+        nomatch, binary:match(Down, <<"WHERE kind = 'feedback_image'">>)
+    ),
+    ?assertNotEqual(nomatch, binary:match(Down, <<"HAVING count(*) > 1">>)),
+    ?assertNotEqual(nomatch, binary:match(Down, <<"旧单视频列无法表示"/utf8>>)),
+    % 清理顺序：触发器 → 函数 → 表；旧列 video_attachment_id 不动（兼容读窗口保留）
+    ?assertNotEqual(
+        nomatch, binary:match(Down, <<"DROP TRIGGER IF EXISTS trg_review_asset_image_cap">>)
+    ),
+    ?assertNotEqual(
+        nomatch, binary:match(Down, <<"DROP FUNCTION IF EXISTS fn_review_asset_image_cap()">>)
+    ),
+    ?assertNotEqual(nomatch, binary:match(Down, <<"DROP TABLE IF EXISTS review_asset">>)),
+    ?assertEqual(nomatch, binary:match(Down, <<"DROP COLUMN">>)),
+    % 旧列 video_attachment_id（00000097 资产）保留：down 不删该列
+    ?assertEqual(
+        nomatch, binary:match(Down, <<"DROP COLUMN IF EXISTS video_attachment_id">>)
+    ).

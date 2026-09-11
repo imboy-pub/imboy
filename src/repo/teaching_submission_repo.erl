@@ -313,7 +313,7 @@ assignments_for_learner(LearnerId, Page, Size) ->
     Sql =
         <<
             "SELECT a.id AS assignment_id, a.task_id, a.status AS assignment_status, "
-            "gt.title, gt.deadline, gt.status AS task_status, "
+            "gt.id AS task_gid, gt.title, gt.deadline, gt.status AS task_status, "
             "g.id AS group_id, g.title AS group_title, "
             "s.id AS latest_submission_id, s.attempt_no AS latest_attempt_no, "
             "s.status AS latest_submission_status, "
@@ -561,8 +561,9 @@ asset_path_run(Exec, Path) ->
     end.
 
 %% @doc 超龄未绑定的教学附件（Step 10 孤儿清理用）：
-%% scope='teaching' 且 created_at 超龄 且 NOT EXISTS submission_asset
-%% （已绑定附件——含撤回 submission 的证据附件——一律不列出，MEDIA-02 不误删）
+%% scope='teaching' 且 created_at 超龄 且 NOT EXISTS submission_asset 且
+%% NOT EXISTS review_asset（P0-4 双排除：被任一业务关联引用——含草稿引用——
+%% 的附件一律不列出，MEDIA-02 不误删；撤回 submission 的证据附件同保护）
 -spec unbound_teaching_attachments(integer()) -> {ok, [map()]} | {error, term()}.
 unbound_teaching_attachments(AgeHours) ->
     unbound_run(fun elib_pg:query/2, AgeHours).
@@ -581,6 +582,9 @@ unbound_run(Exec, AgeHours) ->
             "  AND created_at < now() - ($1 || ' hours')::interval "
             "  AND NOT EXISTS (SELECT 1 FROM ", (tb(submission_asset))/binary,
             "   sa WHERE sa.attachment_id = ", (tb(attachment))/binary,
+            ".id) "
+            "  AND NOT EXISTS (SELECT 1 FROM ", (tb(review_asset))/binary,
+            "   ra WHERE ra.attachment_id = ", (tb(attachment))/binary,
             ".id) "
             "LIMIT 100">>,
     case Exec(Sql, [AgeHours]) of

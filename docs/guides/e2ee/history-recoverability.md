@@ -1,7 +1,7 @@
 # 换设备后聊天历史可恢复性 / Chat History Recoverability After Device Change
 
-> 最后更新 / Last updated: 2026-08-02
-> 关联 / Related: [gap-matrix.md](./standard/gap-matrix.md) B4、[e2ee-key-rotation-policy.md](./e2ee-key-rotation-policy.md)
+> 最后更新 / Last updated: 2026-09-11
+> 关联 / Related: [gap-matrix.md](./standard/gap-matrix.md) B4、[e2ee-key-rotation-policy.md](./e2ee-key-rotation-policy.md)、[placeholder-occurrence-reduction.md](./placeholder-occurrence-reduction.md)
 
 面向用户与支持人员的口径文档。**换设备后「群聊历史回来了、单聊没回来」不是 bug，
 是端到端加密的必然结果。** 本文说明边界在哪、为什么、以及能做什么。
@@ -91,7 +91,10 @@
 
 ## 残留与路线 / Residual
 
-- 当前 UI 明示落在**导入成功对话框**（`e2ee_backup_import_page` 的
-  `e2eeBackupImportSuccessNote`，10 语言已对齐）。**换设备前**的提示尚未加，
-  用户可能在没做备份的情况下换机 —— 属后续项。
+- ~~换设备前的提示尚未加~~ → **已兑现（2026-09-11）**：首次启用 E2EE 时强制
+  密钥备份向导（不可跳过），把「换机前没备份」拦在换机之前；密钥变化自动重传。
+  详见 [placeholder-occurrence-reduction.md](./placeholder-occurrence-reduction.md)。
+- 占位气泡的用户口径已细化：换设备前发送的单聊历史（密文构造时不含新设备信封）
+  显示**边界说明**文案（"此消息发送于本设备加入之前"），不再引导用户去做
+  无用的密钥恢复。
 - 单聊历史的可恢复性**不在路线图上**，理由见上方 FAQ。

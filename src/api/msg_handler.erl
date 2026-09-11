@@ -169,7 +169,10 @@ history(Req0, State) ->
             {ok, Limit0} = elib_param:int(limit, Req0, 50),
             %% 最大 100 条
             Limit = erlang:min(Limit0, 100),
-            case messaging_logic:history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) of
+            %% 可选 did（发生率压降路径2）：携带时 per_device fan-out 信封
+            %% 不含本机的收件消息不再下发；缺省保持旧语义 fail-open
+            DID = proplists:get_value(<<"did">>, Qs, <<>>),
+            case messaging_logic:history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) of
                 {ok, Payload} ->
                     elib_response:success(Req0, Payload);
                 {error, Reason, Code} ->

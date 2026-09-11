@@ -5,6 +5,9 @@
 -export([option/0]).
 %% Phase 2 切片 2：供测试与 admin introspection
 -export([plugin_routes/0]).
+%% MN-TASK-01/02 接线：/api/v1/teaching/tasks 集合路径 GET/POST 同路径双语义的
+%% method 分派 shim（cowboy 路由条目无法按 method 区分，见 init/2 处注释）
+-export([init/2]).
 
 %% BUILD-00R：编译期 feature 门。未选中的 feature 其专属路由子句被预处理
 %% 剔除，路由路径字符串不进 beam（物理裁剪），与 imboy_feature:compiled_routes
@@ -551,6 +554,21 @@ get_routes() ->
                 {"/api/v1/teaching/learners/:id/unbind", teaching_learner_bind_handler, #{
                     action => unbind
                 }},
+                %% 教学班级学员名单（MN-ROSTER-01）：只读；binding 名 `id` 以
+                %% teaching_roster_handler 实际（cowboy_req:binding(id, _)）为准
+                {"/api/v1/teaching/classes/:id/learners", teaching_roster_handler, #{
+                    action => list
+                }},
+                %% 教学作业列表/发布（MN-TASK-01/02）：集合路径同路径双语义
+                %% GET=list / POST=create。cowboy 路由匹配只看 path（cowboy_router
+                %% match_path 首个 path 命中即返回，与 HTTP method 无关），同路径
+                %% 双条目的第二条恒被遮蔽，无法承载 POST；仓内既有惯例是 handler
+                %% 侧 resolve_action 分派 + 路由单条目（project_task_handler 的
+                %% /tasks 即此模式）。teaching_task_handler 属 A1/A2 patch（本轮
+                %% 只读，未内置 resolve_action），method 分派由本模块 init/2 shim
+                %% 承载，转发到该 handler 导出的 handle_action/3（与其 init/2 的
+                %% 转发语义等价）；handler 侧补 resolve_action 后可删 shim 收敛。
+                {"/api/v1/teaching/tasks", imboy_router, #{action => tasks}},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
 
@@ -1342,3 +1360,30 @@ moment_api_routes() ->
 moment_admin_routes() ->
     [].
 -endif.
+
+%%%===================================================================
+%% MN-TASK-01/02 接线：/api/v1/teaching/tasks 的 method 分派 shim
+%%%===================================================================
+
+%% cowboy 路由匹配仅按 path（cowboy_router:match_path 首个命中即返回，与
+%% HTTP method 无关），同路径双条目的第二条恒被遮蔽；仓内同路径双语义的
+%% 既有惯例是 handler 侧 resolve_action + 路由单条目（project_task_handler
+%% 的 /tasks、workspace_handler 的 branding）。teaching_task_handler 属
+%% A1/A2 patch（Wave-2 接线时源码只读，其 init/2 按 opts action 分派且未
+%% 内置 resolve_action），故分派由本模块承载：GET=list / POST=create，
+%% 转发到该 handler 导出的 handle_action/3（与 teaching_task_handler:init/2
+%% 对 handle_action 的转发语义等价；current_uid/current_did 由 auth_middleware
+%% 统一注入 handler_opts，经 State 原样透传，action 键移除方式亦一致）。
+%% handler 集成并在其 init/2 补 resolve_action(tasks, Req) 后，可删除本 shim
+%% 并把路由条目收敛为 {"/api/v1/teaching/tasks", teaching_task_handler,
+%% #{action => tasks}}。
+-spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
+init(Req0, #{action := tasks} = State0) ->
+    Action =
+        case cowboy_req:method(Req0) of
+            <<"POST">> -> create;
+            _ -> list
+        end,
+    State = maps:remove(action, State0),
+    Req1 = teaching_task_handler:handle_action(Action, Req0, State),
+    {ok, Req1, State}.

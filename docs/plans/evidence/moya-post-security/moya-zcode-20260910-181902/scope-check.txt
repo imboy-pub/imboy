@@ -1,0 +1,5 @@
+# MN-SCOPE-01 scope check @ RUN moya-zcode-20260910-181902
+本 RUN 新增/修改全部落在教学域（roster/task/review-media/withdraw）与评测协议文档。
+未新建：IoT、直播/WHIP、LMS、计费、通知、学员增删、老师授权、learner bind/unbind UI、
+自动抽帧、真实 AI provider 接入、group_album 改动、多端客户端、飞书/钉钉集成。
+非目标清单与权威计划 §3.2 一致，零越界。

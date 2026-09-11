@@ -1,12 +1,16 @@
 %% teaching_flow_integration_tests
 %% FLOW-01 / IDEMP-01 / STATE-01 — moya 教学回课闭环真库集成测试。
 %%
-%% 直连 moya_mig_test@127.0.0.1:4323（scratch，00000001→00000098 全量态），
-%% 每用例 BEGIN ... ROLLBACK，不留数据。测试直接驱动 Repo 的 _tx 函数
-%% （与生产 elib_pg:with_tx 同一代码路径），验证 STEP-08-DB 配方①②③：
+%% 直连 scratch@127.0.0.1:4323（RUN 专属库 moya_zcode_181902，00000001→103
+%% 全量态 + 00000105 review_asset），每用例 BEGIN ... ROLLBACK，不留数据。
+%% 测试直接驱动 Repo 的 _tx 函数（与生产 elib_pg:with_tx 同一代码路径），
+%% 验证 STEP-08-DB 配方①②③：
 %%   ① 幂等 CTE（ON CONFLICT 带部分索引谓词）+ digest 判 5460
 %%   ② attempt FOR UPDATE 取号
 %%   ③ 撤回/发布 lock-first 互斥
+%% P0-4（MN-MEDIA）追加（995xxx 独立 ID 段）：
+%%   ④ 回评媒体：validate_assets_tx 归属/MIME/scope/数量全拒绝、
+%%      replace_assets_tx 原子替换（只解除关联不删对象）、零部分写入
 %% DB 不可达时自动 skip（本地无 scratch 库的 CI 环境）。
 
 -module(teaching_flow_integration_tests).
@@ -18,7 +22,7 @@
 -define(PG_PORT, 4323).
 -define(PG_USER, <<"imboy_user">>).
 -define(PG_PASS, <<"abc54321">>).
--define(PG_DB, <<"moya_mig_test">>).
+-define(PG_DB, <<"moya_zcode_181902">>).
 
 -define(TEACHER, 980001).
 -define(PARENT, 980002).
@@ -31,6 +35,11 @@
 -define(ASSIGN_ID, 986001).
 -define(ATT_VIDEO, 988001).
 -define(ATT_PHOTO, 988002).
+%% P0-4 独立 ID 段（995xxx，与 attach 集成测试共用同一套组织夹具）
+-define(RV_TEACHER, 995001).
+-define(RV_PARENT, 995002).
+-define(RV_SUB1, 995701).
+-define(RV_DRAFT, 995801).
 
 %%%===================================================================
 %%% Fixture
@@ -306,6 +315,227 @@ state01_ai_failed_not_blocking_test_() ->
         {ok, _} = teaching_review_repo:upsert_draft_tx(C, Sid, Draft),
         lock_sub(C, Sid),
         {ok, published, _} = teaching_review_repo:publish_tx(C, Sid, ?TEACHER)
+    end).
+
+%%%===================================================================
+%%% P0-4（MN-MEDIA-02）：回评媒体校验/原子替换（995xxx 独立段）
+%%% validate_assets_tx：attachment 存在+active+scope=teaching+creator=reviewer+MIME↔kind
+%%% replace_assets_tx：原子替换（delete+insert 同事务，只解除关联不删对象）
+%%%===================================================================
+
+rv_seed(C) ->
+    exec(C, <<
+        "INSERT INTO \"user\" (id, password, account, reg_ip, reg_cosv) VALUES "
+        "(995001, 'x', 't105f_teacher', '127.0.0.1', 'x'), "
+        "(995002, 'x', 't105f_parent', '127.0.0.1', 'x')"
+    >>),
+    exec(
+        C,
+        <<"INSERT INTO organization (id, name, owner_id) VALUES (995100, 'P04F机构', 995001)"/utf8>>
+    ),
+    exec(C, <<
+        "INSERT INTO workspace (id, name, owner_id, organization_id) VALUES "
+        "(995110, 'P04F校区', 995001, 995100)"/utf8
+    >>),
+    exec(C, <<
+        "INSERT INTO workspace_member (workspace_id, user_id, role, invited_by, status) "
+        "VALUES (995110, 995001, 'owner', 995001, 'active')"
+    >>),
+    exec(C, <<
+        "INSERT INTO \"group\" (id, owner_uid, creator_uid, scope, workspace_id, title) "
+        "VALUES (995201, 995001, 995001, 'workspace', 995110, 'P04F硬笔班')"/utf8
+    >>),
+    exec(C, <<
+        "INSERT INTO learner (id, organization_id, display_name) VALUES "
+        "(995301, 995100, 'P04F大宝')"/utf8
+    >>),
+    exec(C, <<"INSERT INTO class_enrollment (group_id, learner_id) VALUES (995201, 995301)">>),
+    exec(
+        C,
+        <<"INSERT INTO class_staff (group_id, user_id, role) VALUES (995201, 995001, 'teacher')">>
+    ),
+    exec(C, <<
+        "INSERT INTO guardian_learner (guardian_uid, learner_id, can_submit, can_view_review) "
+        "VALUES (995002, 995301, true, true)"
+    >>),
+    exec(C, <<
+        "INSERT INTO group_task (id, group_id, task_id, title, creator_id, status) VALUES "
+        "(995401, 995201, 'task105f_hash_01', 'P04F练习', 995001, 1)"/utf8
+    >>),
+    exec(C, <<
+        "INSERT INTO group_task_assignment (id, task_id, user_id, learner_id) VALUES "
+        "(995501, 'task105f_hash_01', 995002, 995301)"
+    >>),
+    exec(C, <<"SET CONSTRAINTS ALL IMMEDIATE">>),
+    exec(C, <<
+        "INSERT INTO homework_submission (id, assignment_id, learner_id, submitted_by, "
+        "attempt_no, idempotency_key, request_digest) VALUES "
+        "(995701, 995501, 995301, 995002, 1, 't105f-k1', 'd1')"
+    >>),
+    exec(C, <<
+        "INSERT INTO teacher_review (id, submission_id, reviewer_uid, comment, status) VALUES "
+        "(995801, 995701, 995001, 'P04F草稿', 'draft')"/utf8
+    >>),
+    exec(C, <<"SET CONSTRAINTS ALL IMMEDIATE">>).
+
+%% 附件矩阵（默认 creator=995001 teacher、scope=teaching、status=1）：
+%%   995601 video/mp4 合法视频 | 995602-995604 image/* 合法图 | 995605 第 4 图
+%%   995606 video/mp4 creator=995002（owner 不符）
+%%   995607 image/jpeg scope=private
+%%   995608 video/mp4（配 feedback_image 时 MIME 不匹配）
+%%   995609 video/mp4 status=-1（已软删）
+rv_seed_attachments(C) ->
+    exec(C, <<
+        "INSERT INTO attachment (id, file_hash256, path, url, mime_type, creator_user_id, scope, status) VALUES "
+        "(995601, 'h105f01', 'u995001/t105f/a01.mp4', 'u995001/t105f/a01.mp4', 'video/mp4', 995001, 'teaching', 1), "
+        "(995602, 'h105f02', 'u995001/t105f/a02.jpg', 'u995001/t105f/a02.jpg', 'image/jpeg', 995001, 'teaching', 1), "
+        "(995603, 'h105f03', 'u995001/t105f/a03.png', 'u995001/t105f/a03.png', 'image/png', 995001, 'teaching', 1), "
+        "(995604, 'h105f04', 'u995001/t105f/a04.jpg', 'u995001/t105f/a04.jpg', 'image/jpeg', 995001, 'teaching', 1), "
+        "(995605, 'h105f05', 'u995001/t105f/a05.jpg', 'u995001/t105f/a05.jpg', 'image/jpeg', 995001, 'teaching', 1), "
+        "(995606, 'h105f06', 'u995002/t105f/a06.mp4', 'u995002/t105f/a06.mp4', 'video/mp4', 995002, 'teaching', 1), "
+        "(995607, 'h105f07', 'u995001/t105f/a07.jpg', 'u995001/t105f/a07.jpg', 'image/jpeg', 995001, 'private', 1), "
+        "(995608, 'h105f08', 'u995001/t105f/a08.mp4', 'u995001/t105f/a08.mp4', 'video/mp4', 995001, 'teaching', 1), "
+        "(995609, 'h105f09', 'u995001/t105f/a09.mp4', 'u995001/t105f/a09.mp4', 'video/mp4', 995001, 'teaching', -1)"
+    >>).
+
+media_validate_ok_test_() ->
+    with_tx(fun(C) ->
+        rv_seed(C),
+        rv_seed_attachments(C),
+        %% 1 video + 3 image 全合法（创建者是当前 reviewer）
+        {ok, _} = teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [
+            {995601, <<"feedback_video">>, 0},
+            {995602, <<"feedback_image">>, 1},
+            {995603, <<"feedback_image">>, 2},
+            {995604, <<"feedback_image">>, 3}
+        ]),
+        %% 空集合合法（纯文字回评）
+        {ok, []} = teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [])
+    end).
+
+media_validate_rejections_test_() ->
+    with_tx(fun(C) ->
+        rv_seed(C),
+        rv_seed_attachments(C),
+        %% MIME↔kind 不匹配（video/mp4 配 feedback_image）
+        ?assertEqual(
+            {error, assets_invalid},
+            teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [
+                {995608, <<"feedback_image">>, 0}
+            ])
+        ),
+        %% MIME↔kind 不匹配（image 配 feedback_video）
+        ?assertEqual(
+            {error, assets_invalid},
+            teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [
+                {995602, <<"feedback_video">>, 0}
+            ])
+        ),
+        %% owner 不符（家长创建的附件）→ not_found（与不存在同响应，防存在性探测）
+        ?assertEqual(
+            {error, not_found},
+            teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [
+                {995606, <<"feedback_video">>, 0}
+            ])
+        ),
+        %% scope 不符（private）
+        ?assertEqual(
+            {error, assets_invalid},
+            teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [
+                {995607, <<"feedback_image">>, 0}
+            ])
+        ),
+        %% 已软删（status=-1）
+        ?assertEqual(
+            {error, assets_invalid},
+            teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [
+                {995609, <<"feedback_video">>, 0}
+            ])
+        ),
+        %% 不存在
+        ?assertEqual(
+            {error, not_found},
+            teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, [
+                {999999, <<"feedback_video">>, 0}
+            ])
+        )
+    end).
+
+%% 原子替换：第二次 replace 完全替换第一组；被替换 attachment 不物理删（只解除关联）
+media_replace_atomic_test_() ->
+    with_tx(fun(C) ->
+        rv_seed(C),
+        rv_seed_attachments(C),
+        %% 第一次：1 video + 1 image
+        ok = teaching_review_repo:replace_assets_tx(C, ?RV_DRAFT, ?RV_TEACHER, [
+            {995601, <<"feedback_video">>, 0},
+            {995602, <<"feedback_image">>, 1}
+        ]),
+        [#{<<"c">> := 2}] = q(C, <<"SELECT count(*) AS c FROM review_asset">>),
+        %% 第二次：3 图（完全替换，995601/995602 关联解除）
+        ok = teaching_review_repo:replace_assets_tx(C, ?RV_DRAFT, ?RV_TEACHER, [
+            {995603, <<"feedback_image">>, 0},
+            {995604, <<"feedback_image">>, 1},
+            {995605, <<"feedback_image">>, 2}
+        ]),
+        Rows = q(C, <<"SELECT attachment_id FROM review_asset ORDER BY attachment_id">>),
+        ?assertEqual([995603, 995604, 995605], [maps:get(<<"attachment_id">>, R) || R <- Rows]),
+        %% 被替换附件未物理删/未软删（对象保留，只解除 review_asset 关联）
+        [#{<<"status">> := 1}] = q(C, <<"SELECT status FROM attachment WHERE id = 995601">>),
+        %% 解除后 995601 可再绑定其他 review（全表唯一按"现存关联"生效）
+        ok = exec(C, <<
+            "INSERT INTO teacher_review (id, submission_id, reviewer_uid, comment, status) "
+            "VALUES (995802, 995701, 995001, 'P04F二稿', 'draft')"/utf8
+        >>),
+        ok = teaching_review_repo:replace_assets_tx(C, 995802, ?RV_TEACHER, [
+            {995601, <<"feedback_video">>, 0}
+        ])
+    end).
+
+%% 校验先行配方（save_draft 同序）：混合集合任一非法 → error → 不执行写入（零部分写入）
+media_validate_before_write_zero_partial_test_() ->
+    with_tx(fun(C) ->
+        rv_seed(C),
+        rv_seed_attachments(C),
+        Mixed = [
+            {995601, <<"feedback_video">>, 0},
+            {995602, <<"feedback_image">>, 1},
+            {995606, <<"feedback_video">>, 2}
+        ],
+        %% 第三个附件 owner 不符：整集合校验失败（save_draft 按此序在 replace 前调用）
+        ?assertEqual(
+            {error, not_found}, teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, Mixed)
+        ),
+        %% 未执行任何写入：review_asset 零行
+        [#{<<"c">> := 0}] = q(C, <<"SELECT count(*) AS c FROM review_asset">>)
+    end).
+
+%% 旧列冗余写（兼容读窗口）：logic 的 draft_fields 从 assets 派生
+%% video_attachment_id（第一条 feedback_video）传入 upsert —— repo 层断言列值落库
+media_draft_legacy_column_derived_test_() ->
+    with_tx(fun(C) ->
+        rv_seed(C),
+        rv_seed_attachments(C),
+        Assets = [
+            {995602, <<"feedback_image">>, 0},
+            {995601, <<"feedback_video">>, 1}
+        ],
+        %% 模拟 logic 侧：video_attachment_id = derive_video_id(Assets) = 995601
+        Fields = #{
+            uid => ?RV_TEACHER,
+            comment => <<"媒体回评"/utf8>>,
+            video_attachment_id => 995601,
+            rework_required => false
+        },
+        {ok, #{<<"id">> := Rid}} = teaching_review_repo:upsert_draft_tx(C, ?RV_SUB1, Fields),
+        {ok, Assets} = teaching_review_repo:validate_assets_tx(C, ?RV_TEACHER, Assets),
+        ok = teaching_review_repo:replace_assets_tx(C, Rid, ?RV_TEACHER, Assets),
+        %% 旧列 = 派生视频；review_asset 集合完整（旧列与新表一致，两读窗口同源）
+        [#{<<"video_attachment_id">> := 995601}] =
+            q(C, <<"SELECT video_attachment_id FROM teacher_review WHERE id = 995801">>),
+        [#{<<"c">> := 2}] = q(
+            C, <<"SELECT count(*) AS c FROM review_asset WHERE review_id = 995801">>
+        )
     end).
 
 %%%===================================================================

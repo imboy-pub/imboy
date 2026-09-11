@@ -10,6 +10,8 @@
 
 -export([tablename/1]).
 -export([upsert_draft_tx/3, find_draft/2, find_published/1, find_published_tx/2, publish_tx/3]).
+-export([validate_assets_tx/3, replace_assets_tx/4, assets/1, assets_tx/2]).
+-export([review_for_asset_path/1, review_for_asset_path_tx/2]).
 -export([ai_draft/1]).
 -export([
     claim_next_queued_tx/1,
@@ -47,7 +49,8 @@ upsert_draft_tx(Conn, SubmissionId, #{uid := Uid} = Fields) ->
                     " SET positive_point = $4, focus_problem = $5, practice_action = $6, "
                     "comment = $7, video_attachment_id = $8, rework_required = $9, "
                     "updated_at = now() "
-                    " WHERE id = $1 AND submission_id = $2 AND status = 'draft' RETURNING *">>,
+                    " WHERE id = $1 AND submission_id = $2 AND reviewer_uid = $3 "
+                    "   AND status = 'draft' RETURNING *">>,
             unwrap_row(
                 elib_pg:query(Conn, Sql, [DraftId, SubmissionId, Uid | field_values(Fields)])
             );
@@ -140,6 +143,82 @@ unwrap_row({ok, []}) ->
     {error, no_returned_row};
 unwrap_row({error, Reason}) ->
     {error, Reason}.
+
+%% ------------------------------------------------------------------
+%% P0-4 回评媒体（review_asset，MN-MEDIA-01/02）：校验 / 原子替换 / 读取 / 读授权数据面
+%% ------------------------------------------------------------------
+
+%% @doc 回评附件归属校验（save_draft 事务内、写入前调用）：
+%%   * attachment 行必须存在——不存在与非本人创建同响应 not_found（防存在性探测，
+%%     与 teaching_acl T14 同哲学）
+%%   * status >= 0（active，-1 软删拒绝）
+%%   * scope = 'teaching'
+%%   * creator_user_id = 当前 reviewer（强归属）
+%%   * MIME 前缀与 kind 匹配（video/* ↔ feedback_video，image/* ↔ feedback_image）
+%% 数量上限（0-1 video + 0-3 image）由 Logic 解析层先行；DB 触发器/部分唯一索引兜底。
+%% Assets = [{AttId, Kind, SortOrder}]，校验通过原样返回（保持请求顺序）。
+-spec validate_assets_tx(any(), integer(), [{integer(), binary(), integer()}]) ->
+    {ok, [{integer(), binary(), integer()}]} | {error, not_found | assets_invalid | term()}.
+validate_assets_tx(_Conn, _Uid, []) ->
+    {ok, []};
+validate_assets_tx(Conn, Uid, Assets) when is_list(Assets) ->
+    Ids = [AttId || {AttId, _, _} <- Assets],
+    Sql =
+        <<"SELECT id, mime_type, status, creator_user_id, scope FROM ", (tb(attachment))/binary,
+            " WHERE id = ANY($1)">>,
+    case elib_pg:query(Conn, Sql, [Ids]) of
+        {ok, Rows} ->
+            case length(Rows) =:= length(lists:usort(Ids)) of
+                false ->
+                    {error, not_found};
+                true ->
+                    ById = maps:from_list([{maps:get(<<"id">>, R), R} || R <- Rows]),
+                    case check_each_asset(ById, Assets, Uid) of
+                        ok -> {ok, Assets};
+                        {error, Reason} -> {error, Reason}
+                    end
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 原子替换 review 的媒体集合（delete+insert 同事务，save_draft 调用）：
+%% 只解除 review_asset 关联，绝不物理删 attachment 对象（对象生命周期独立）。
+%% 任一 INSERT 撞约束（attachment 全表唯一/单视频/3 图触发器）由调用方回滚整单。
+-spec replace_assets_tx(any(), integer(), integer(), [{integer(), binary(), integer()}]) ->
+    ok | {error, term()}.
+replace_assets_tx(Conn, ReviewId, Uid, Assets) ->
+    Del =
+        <<"DELETE FROM ", (tb(review_asset))/binary, " WHERE review_id = $1">>,
+    case elib_pg:execute(Conn, Del, [ReviewId]) of
+        {ok, _} ->
+            insert_review_assets(Conn, ReviewId, Uid, Assets);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc review 的媒体集合（池连接；DTO 组装用）
+-spec assets(integer()) -> {ok, [map()]} | {error, term()}.
+assets(ReviewId) ->
+    assets_run(fun elib_pg:query/2, ReviewId).
+
+%% @doc 事务内版本（与 save_draft/publish 同连接）
+-spec assets_tx(any(), integer()) -> {ok, [map()]} | {error, term()}.
+assets_tx(Conn, ReviewId) ->
+    assets_run(fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, ReviewId).
+
+%% @doc 按附件 object_key（attachment.path）查 review_asset 绑定（P0-4 读授权数据面）：
+%% review_asset → teacher_review → homework_submission；任一跳缺失 → {ok, undefined}。
+%% 返回行含 review_status/reviewer_uid/submission_id/submission_status，
+%% 供 Logic 层分流（draft 仅 reviewer / published 复用 submission_access / withdrawn fail closed）。
+-spec review_for_asset_path(binary()) -> {ok, map() | undefined} | {error, term()}.
+review_for_asset_path(Path) ->
+    review_asset_path_run(fun elib_pg:query/2, Path).
+
+%% @doc 事务内版本（集成测试直连）
+-spec review_for_asset_path_tx(any(), binary()) -> {ok, map() | undefined} | {error, term()}.
+review_for_asset_path_tx(Conn, Path) ->
+    review_asset_path_run(fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, Path).
 
 %% @doc AI 草稿（老师视角）：有效草稿行 + result_json
 -spec ai_draft(integer()) -> {ok, map() | undefined} | {error, term()}.
@@ -270,6 +349,108 @@ field_values(F) ->
         maps:get(video_attachment_id, F, null),
         maps:get(rework_required, F, false)
     ].
+
+%% ---- P0-4 review_asset internals ----
+
+-spec check_each_asset(map(), [{integer(), binary(), integer()}], integer()) ->
+    ok | {error, not_found | assets_invalid}.
+check_each_asset(_ById, [], _Uid) ->
+    ok;
+check_each_asset(ById, [{AttId, Kind, _Order} | Rest], Uid) ->
+    case maps:get(AttId, ById, undefined) of
+        %% 不存在 / 非本人创建：同 not_found（防存在性探测）
+        undefined ->
+            {error, not_found};
+        #{<<"creator_user_id">> := Uid} = Row ->
+            case asset_active_scoped(Row) andalso mime_kind_match(Row, Kind) of
+                true -> check_each_asset(ById, Rest, Uid);
+                false -> {error, assets_invalid}
+            end;
+        _ ->
+            {error, not_found}
+    end.
+
+-spec asset_active_scoped(map()) -> boolean().
+asset_active_scoped(#{<<"status">> := S, <<"scope">> := <<"teaching">>}) when S >= 0 ->
+    true;
+asset_active_scoped(_) ->
+    false.
+
+-spec mime_kind_match(map(), binary()) -> boolean().
+mime_kind_match(#{<<"mime_type">> := <<"video/", _/binary>>}, <<"feedback_video">>) ->
+    true;
+mime_kind_match(#{<<"mime_type">> := <<"image/", _/binary>>}, <<"feedback_image">>) ->
+    true;
+mime_kind_match(_, _) ->
+    false.
+
+-spec insert_review_assets(any(), integer(), integer(), [{integer(), binary(), integer()}]) ->
+    ok | {error, term()}.
+insert_review_assets(_Conn, _ReviewId, _Uid, []) ->
+    ok;
+insert_review_assets(Conn, ReviewId, Uid, Assets) ->
+    Sql =
+        <<"INSERT INTO ", (tb(review_asset))/binary,
+            " (id, review_id, attachment_id, kind, sort_order, created_by) "
+            "VALUES ($1, $2, $3, $4, $5, $6)">>,
+    Results =
+        [
+            elib_pg:execute(Conn, Sql, [
+                elib_tsid:generate(), ReviewId, AttId, Kind, Order, Uid
+            ])
+         || {AttId, Kind, Order} <- Assets
+        ],
+    case [E || {error, E} <- Results] of
+        [] -> ok;
+        [First | _] -> {error, First}
+    end.
+
+-spec assets_run(fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}), integer()) ->
+    {ok, [map()]} | {error, term()}.
+assets_run(Exec, ReviewId) ->
+    Sql =
+        <<
+            "SELECT ra.review_id, ra.attachment_id, ra.kind, ra.sort_order, "
+            "att.path AS object_key FROM ",
+            (tb(review_asset))/binary,
+            " ra JOIN ",
+            (tb(attachment))/binary,
+            " att ON att.id = ra.attachment_id "
+            "WHERE ra.review_id = $1 ORDER BY kind, sort_order"
+        >>,
+    case Exec(Sql, [ReviewId]) of
+        {ok, Rows} -> {ok, Rows};
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec review_asset_path_run(
+    fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}), binary()
+) ->
+    {ok, map() | undefined} | {error, term()}.
+review_asset_path_run(Exec, Path) ->
+    Sql =
+        <<
+            "SELECT ra.review_id, tr.status AS review_status, tr.reviewer_uid, ",
+            "tr.submission_id, hs.status AS submission_status ",
+            "FROM ",
+            (tb(review_asset))/binary,
+            " ra ",
+            "JOIN ",
+            (tb(attachment))/binary,
+            " att ON att.id = ra.attachment_id ",
+            "JOIN ",
+            (tb(teacher_review))/binary,
+            " tr ON tr.id = ra.review_id ",
+            "JOIN ",
+            (tb(homework_submission))/binary,
+            " hs ON hs.id = tr.submission_id ",
+            "WHERE att.path = $1 AND att.status >= 0 LIMIT 1"
+        >>,
+    case Exec(Sql, [Path]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
+    end.
 
 -spec tb(atom()) -> binary().
 tb(Tb) ->
