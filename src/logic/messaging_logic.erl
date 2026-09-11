@@ -6,6 +6,7 @@
     offline_ack/4,
     read_stats/2,
     history/5,
+    history/6,
     reaction_add/4,
     reaction_remove/4,
     reaction_list/2,
@@ -14,6 +15,9 @@
 
 %% 供 msg_c2s_logic:handle_sync 等模块复用的工具函数
 -export([encode_history_msg/2, next_seq_from_rows/2]).
+
+%% E2EE per-device fan-out 信封过滤（发生率压降路径2）；纯判定函数导出供 eunit
+-export([c2c_deliverable_to_device/3]).
 
 -include("error_code.hrl").
 -include("log.hrl").
@@ -38,7 +42,11 @@ offline(CurrentUid, Limit, C2CLastMsgAtInt, C2GLastMsgAtInt, S2CLastMsgAtInt, DI
     CountC2GMsg = get_c2g_msg_count(CurrentUid, C2GLastMsgAt),
     CountS2CMsg = msg_s2c_ds:count_since(CurrentUid, S2CLastMsgAt, DID),
 
-    C2CMsgs = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2CLastMsgAt),
+    C2CMsgs0 = msg_c2c_ds:read_msg_for_device(CurrentUid, DID, Limit, C2CLastMsgAt),
+    %% 路径2：per_device fan-out 信封里没有本机 DID 的收件消息不下发
+    %% （密文构造时就不含该设备，客户端恢复密钥也永远解不开）；滤掉的同时
+    %% 按 (uid, did) 标记已确认，pending_filter/count 随即排除，不会每轮重取
+    C2CMsgs = filter_c2c_for_device(C2CMsgs0, DID, CurrentUid),
     C2GMsgs = msg_c2g_ds:read_msg(CurrentUid, Limit, C2GLastMsgAt),
     S2CMsgs = msg_s2c_ds:read_msg_for_device(CurrentUid, DID, Limit, S2CLastMsgAt),
 
@@ -105,9 +113,13 @@ read_stats(MsgId, CurrentUid) ->
 %%   {ok, #{messages, next_seq, has_more, conv_key}} | {error, Reason, Code}
 %% @end
 %%-------------------------------------------------------------------
--spec history(integer(), binary(), binary(), non_neg_integer(), pos_integer()) ->
+-spec history(integer(), binary(), binary(), non_neg_integer(), pos_integer(), binary()) ->
     {ok, map()} | {error, binary(), integer()}.
+%% 兼容包装：不带 did 的旧语义（did=<<>> 时信封过滤 fail-open 原样下发）
 history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
+    history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, <<>>).
+
+history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit, DID) ->
     case validate_history_params(ChatType, PeerIdEnc, CurrentUid) of
         {error, permission_denied} ->
             {error, <<"无权限访问该群消息历史"/utf8>>, ?ERR_ACCESS_DENIED};
@@ -123,7 +135,12 @@ history(CurrentUid, ChatType, PeerIdEnc, AfterSeq, Limit) ->
                 {ok, Rows0} ->
                     HasMore = length(Rows0) > Limit,
                     Rows = lists:sublist(Rows0, Limit),
-                    Messages = [encode_history_msg(CurrentUid, Row) || Row <- Rows],
+                    %% 路径2：per_device 信封无本机 DID 的收件行不下发。
+                    %% next_seq 仍按**全量行**（含被滤行）推进——滤行位于游标
+                    %% 之后，后续拉取天然不会再取到；C2G 行 e2ee 非 fan-out
+                    %% 形状，判定函数对其恒 keep，无需按 chat_type 分流。
+                    RowsDeliver = filter_c2c_history_for_device(Rows, DID, CurrentUid),
+                    Messages = [encode_history_msg(CurrentUid, Row) || Row <- RowsDeliver],
                     NextSeq = next_seq_from_rows(Rows, AfterSeq),
                     {ok, #{
                         <<"messages">> => Messages,
@@ -365,4 +382,130 @@ process_offline_ack(Uid, Type, MsgIds, _DID) ->
             {ok, Count};
         _ ->
             {error, <<"unsupported_message_type">>}
+    end.
+
+%% ===================================================================
+%% E2EE per-device fan-out 信封过滤（发生率压降路径2）
+%% ===================================================================
+
+%% @doc 下发前过滤：C2C per_device fan-out 信封里没有请求设备 DID 的
+%% **收件**消息不下发——密文构造时就不含该设备的信封，客户端恢复密钥也
+%% 永远解不开（典型：换设备后从服务端同步回来的单聊历史）。滤掉的行同时
+%% 按 (uid, did) 标记已确认（msg_delivery），pending_filter 与按设备 count
+%% 随即排除，不会每轮离线拉取重复取回。
+%%
+%% DID 缺省（旧客户端未带 did）时原样返回，行为与旧版一致（fail-open：
+%% 客户端路径1会以边界文案兜底，不引导用户做无用恢复）。
+%%
+%% 方向语义：C2C fan-out 的 devices 只装**收件人**设备——from_id=当前用户
+%% 的消息（自己发出的）信封里没有本机 DID 属预期，不得据此过滤。
+-spec filter_c2c_for_device([map()], binary(), integer()) -> [map()].
+filter_c2c_for_device(Msgs, DID, Uid) when is_binary(DID), DID =/= <<>> ->
+    {KeepRev, DropIds} =
+        lists:foldl(
+            fun(Msg, {K, D}) ->
+                case c2c_deliverable_to_device(Msg, DID, Uid) of
+                    true ->
+                        {[Msg | K], D};
+                    false ->
+                        case delivery_msg_id(Msg) of
+                            %% 无法定位 msg_id：宁多勿漏，仍下发由客户端兜底
+                            undefined -> {[Msg | K], D};
+                            Mid -> {K, [Mid | D]}
+                        end
+                end
+            end,
+            {[], []},
+            Msgs
+        ),
+    case DropIds of
+        [] ->
+            lists:reverse(KeepRev);
+        _ ->
+            _ = msg_delivery_repo:mark_acked_batch(<<"c2c">>, DropIds, Uid, DID),
+            ok =
+                ?INFO_LOG([e2ee_envelope_filtered, Uid, DID, length(DropIds)]),
+            lists:reverse(KeepRev)
+    end;
+filter_c2c_for_device(Msgs, _DID, _Uid) ->
+    Msgs.
+
+%% @doc history 游标行的纯过滤（不标记 delivery：游标按全量行推进，
+%% 滤行位于 next_seq 之后天然不会重取；history 走 msg_archive 只读层）
+-spec filter_c2c_history_for_device([map()], binary(), integer()) -> [map()].
+filter_c2c_history_for_device(Rows, DID, Uid) when is_binary(DID), DID =/= <<>> ->
+    [Row || Row <- Rows, c2c_deliverable_to_device(Row, DID, Uid)];
+filter_c2c_history_for_device(Rows, _DID, _Uid) ->
+    Rows.
+
+%% @doc 判定一条 C2C 消息对设备 DID 是否可交付（纯函数，供过滤与 eunit）。
+%%
+%% keep 条件（任一）：非加密消息；非 per_device fan-out（v1/v2 RSA、
+%% Megolm 群聊等）；自己发出的（信封装的是对端设备）；per_device 且
+%% devices 携带本机 DID。
+%% drop 条件：per_device 且（devices 缺失 或 无本机 DID）且非本人发出。
+-spec c2c_deliverable_to_device(map(), binary(), integer()) -> boolean().
+c2c_deliverable_to_device(Msg, DID, Uid) when is_binary(DID), DID =/= <<>> ->
+    case decode_e2ee_meta(maps:get(<<"e2ee">>, Msg, null)) of
+        null ->
+            true;
+        E2ee when is_map(E2ee) ->
+            case maps:get(<<"fan_out">>, E2ee, null) of
+                <<"per_device">> ->
+                    case is_sent_by_uid(Msg, Uid) of
+                        true ->
+                            true;
+                        false ->
+                            case maps:get(<<"devices">>, E2ee, null) of
+                                Devices when is_map(Devices) ->
+                                    maps:is_key(DID, Devices);
+                                _ ->
+                                    %% fan_out=per_device 却无 devices：
+                                    %% 客户端同样判 unrecoverable
+                                    %% （fan_out_missing_devices），不下发
+                                    false
+                            end
+                    end;
+                _ ->
+                    true
+            end;
+        _ ->
+            true
+    end;
+c2c_deliverable_to_device(_Msg, _DID, _Uid) ->
+    true.
+
+%% @private e2ee 元数据归一化：offline 行已解码为 map；msg_store.e2ee 为
+%% JSON binary（history 游标行）；null/undefined 视为无元数据；坏 JSON /
+%% 非对象（数组等）一律归 null（宁多勿漏 keep，客户端兜底）。
+-spec decode_e2ee_meta(term()) -> map() | null.
+decode_e2ee_meta(null) ->
+    null;
+decode_e2ee_meta(undefined) ->
+    null;
+decode_e2ee_meta(Meta) when is_map(Meta) ->
+    Meta;
+decode_e2ee_meta(Meta) when is_binary(Meta), Meta =/= <<>> ->
+    try jsone:decode(Meta) of
+        M when is_map(M) -> M;
+        _ -> null
+    catch
+        _:_ -> null
+    end;
+decode_e2ee_meta(_) ->
+    null.
+
+%% @private from_id 与 Uid 比较：行形状在 offline（integer）与 msg_store
+%% （可能 binary）间不一致，统一转整数再比。
+-spec is_sent_by_uid(map(), integer()) -> boolean().
+is_sent_by_uid(Msg, Uid) ->
+    ec_cnv:to_integer(maps:get(<<"from_id">>, Msg, 0)) =:= Uid.
+
+%% @private 交付标记定位 msg_id：优先 msg_id，回退 id；都没有返回
+%% undefined（调用方按「宁多勿漏」仍下发）。
+-spec delivery_msg_id(map()) -> binary() | undefined.
+delivery_msg_id(Msg) ->
+    case maps:get(<<"msg_id">>, Msg, undefined) of
+        undefined -> maps:get(<<"id">>, Msg, undefined);
+        Mid -> Mid
     end.
