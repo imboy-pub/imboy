@@ -44,7 +44,7 @@ wechat_mini_login(Req0) ->
     },
     case teaching_auth_logic:wechat_mini_login(Params) of
         {ok, Payload} ->
-            elib_response:success(Req0, Payload, <<"登录成功"/utf8>>);
+            elib_response:success_rfc3339(Req0, Payload, <<"登录成功"/utf8>>);
         {error, Reason} ->
             login_error(Req0, Reason)
     end.

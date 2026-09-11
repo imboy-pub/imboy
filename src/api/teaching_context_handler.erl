@@ -42,7 +42,7 @@ contexts(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
     case teaching_context_logic:contexts(CurrentUid) of
         {ok, Payload} ->
-            elib_response:success(Req0, Payload);
+            elib_response:success_rfc3339(Req0, Payload);
         {error, db_error} ->
             elib_response:error(Req0, <<"上下文解析失败"/utf8>>, ?ERR_ERROR)
     end.
@@ -54,7 +54,7 @@ switch(Req0, State) ->
     PostVals = elib_param:post(Req0),
     case teaching_context_logic:switch(CurrentUid, PostVals) of
         {ok, Ctx} ->
-            elib_response:success(Req0, Ctx, <<"切换成功"/utf8>>);
+            elib_response:success_rfc3339(Req0, Ctx, <<"切换成功"/utf8>>);
         {error, Reason} ->
             switch_error(Req0, Reason)
     end.

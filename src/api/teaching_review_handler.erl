@@ -48,7 +48,7 @@ queue(Req0, State) ->
     {Page, Size} = page_param(Qs),
     case teaching_review_logic:queue(Uid, Filters, {Page, Size}) of
         {ok, Payload} ->
-            elib_response:success(Req0, Payload);
+            elib_response:success_rfc3339(Req0, Payload);
         {error, Reason} ->
             teaching_error:to_response(Req0, Reason)
     end.
@@ -60,7 +60,7 @@ workbench(Req0, State) ->
         {ok, SubmissionId} ->
             case teaching_review_logic:workbench(Uid, SubmissionId) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;
@@ -76,7 +76,7 @@ save_draft(Req0, State) ->
             Body = elib_param:post(Req0),
             case teaching_review_logic:save_draft(Uid, SubmissionId, Body) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload, <<"草稿已保存"/utf8>>);
+                    elib_response:success_rfc3339(Req0, Payload, <<"草稿已保存"/utf8>>);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;
@@ -92,7 +92,7 @@ publish(Req0, State) ->
             Body = elib_param:post(Req0),
             case teaching_review_logic:publish(Uid, SubmissionId, Body) of
                 {ok, Review, Already} ->
-                    elib_response:success(
+                    elib_response:success_rfc3339(
                         Req0,
                         #{
                             <<"review">> => Review,

@@ -94,11 +94,18 @@ create_idempotent_tx(Conn, #{
             "ON CONFLICT (submitted_by, assignment_id, idempotency_key) "
             "  WHERE idempotency_key IS NOT NULL "
             "DO NOTHING "
-            "RETURNING id, attempt_no, request_digest "
+            %% submitted_at 以 Rfc3339（UTC）字符串返回：create 响应契约字段
+            %% （moya SubmissionCreated DTO），幂等重放与新建同源同值
+            "RETURNING id, attempt_no, request_digest, "
+            "  to_char(submitted_at AT TIME ZONE 'UTC', "
+            "    'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS submitted_at "
             ") "
-            "SELECT id, attempt_no, request_digest FROM ins "
+            "SELECT id, attempt_no, request_digest, submitted_at FROM ins "
             "UNION ALL "
-            "SELECT id, attempt_no, request_digest FROM ",
+            "SELECT id, attempt_no, request_digest, "
+            "  to_char(submitted_at AT TIME ZONE 'UTC', "
+            "    'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS submitted_at "
+            "FROM ",
             (tb(homework_submission))/binary,
             " WHERE submitted_by = $4 AND assignment_id = $2 AND idempotency_key = $6 "
             "   AND NOT EXISTS (SELECT 1 FROM ins) "

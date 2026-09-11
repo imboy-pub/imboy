@@ -55,7 +55,7 @@ bind(Req0, State) ->
                 {ok, TargetUid} ->
                     case teaching_learner_bind_logic:bind_learner(Uid, LearnerId, TargetUid) of
                         {ok, Row} ->
-                            elib_response:success(Req0, tsid_strings(Row), <<"绑定成功"/utf8>>);
+                            elib_response:success_rfc3339(Req0, tsid_strings(Row), <<"绑定成功"/utf8>>);
                         {error, Reason} ->
                             error_response(Req0, Reason)
                     end;
@@ -83,7 +83,7 @@ unbind(Req0, State) ->
         {ok, LearnerId} ->
             case teaching_learner_bind_logic:unbind_learner(Uid, LearnerId) of
                 {ok, Row} ->
-                    elib_response:success(Req0, tsid_strings(Row), <<"解绑成功"/utf8>>);
+                    elib_response:success_rfc3339(Req0, tsid_strings(Row), <<"解绑成功"/utf8>>);
                 {error, Reason} ->
                     error_response(Req0, Reason)
             end;

@@ -12,6 +12,11 @@
 -export([list/3, detail/2, create_submission/4]).
 
 -include_lib("kernel/include/logger.hrl").
+-ifdef(TEST).
+%% 响应 payload 组装为纯函数，导出供 eunit 直接验收契约字段
+-export([submission_created/6]).
+-endif.
+
 -include("log.hrl").
 
 %%%===================================================================
@@ -246,27 +251,41 @@ finish_create(Conn, Uid, AssignmentId, LearnerId, Assets, Row, Sid, Attempt) ->
             ok = teaching_submission_repo:insert_assets_tx(Conn, Sid, Uid, Assets),
             ok = teaching_submission_repo:mark_submitted_by_tx(Conn, AssignmentId, Uid),
             ok = teaching_submission_repo:enqueue_ai_draft_tx(Conn, Sid),
-            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, true)};
+            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, true, Row)};
         false ->
             %% 幂等重放：返回既有 submission，不重复入队/挂附件（IDEMP-01）
-            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, false)}
+            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, false, Row)}
     end.
 
 %% ---- payload 组装（TSID 一律字符串） ----
 
 %% Step 17 联调补齐：响应补 learner_id（moya SubmissionCreated required，
 %% 与 create_idempotent_tx 入参行对齐，家长端 DTO 校验依赖）
--spec submission_created(integer(), integer(), integer(), integer(), boolean()) -> map().
-submission_created(Sid, AssignmentId, LearnerId, Attempt, Created) ->
+%% 2026-09-11：响应补 submitted_at（Rfc3339，create_idempotent_tx 行内返回；
+%% moya 此前兜底空串）。幂等重放与新建同源同值。
+-spec submission_created(integer(), integer(), integer(), integer(), boolean(), map()) -> map().
+submission_created(Sid, AssignmentId, LearnerId, Attempt, Created, Row) ->
     #{
         <<"submission_id">> => integer_to_binary(Sid),
         <<"assignment_id">> => integer_to_binary(AssignmentId),
         <<"learner_id">> => integer_to_binary(LearnerId),
         <<"attempt_no">> => Attempt,
+        <<"submitted_at">> => dt_ms(maps:get(<<"submitted_at">>, Row, null)),
         <<"status">> => <<"submitted">>,
         <<"ai_status">> => <<"queued">>,
         <<"idempotent_replayed">> => not Created
     }.
+
+%% 时间契约（与 teaching_review_logic:dt_ms/1 同风格）：整型毫秒 → Rfc3339；
+%% create_idempotent_tx 已在 SQL 层 to_char 出 Rfc3339 字符串 → 原样透传；
+%% 缺失/异常输入 → null（不编造时间）。
+-spec dt_ms(integer() | binary() | null | undefined) -> binary() | null.
+dt_ms(Ts) when is_integer(Ts) ->
+    elib_dt:to_rfc3339(Ts);
+dt_ms(Ts) when is_binary(Ts), Ts =/= <<>> ->
+    Ts;
+dt_ms(_) ->
+    null.
 
 -spec assignment_summary(map()) -> map().
 assignment_summary(R) ->

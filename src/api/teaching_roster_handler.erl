@@ -42,7 +42,7 @@ list_learners(Req0, State) ->
         {ok, GroupId} ->
             case teaching_roster_logic:list(Uid, GroupId) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     to_response(Req0, Reason)
             end;

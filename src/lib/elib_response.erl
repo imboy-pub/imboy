@@ -2,7 +2,7 @@
 %%%
 % API响应JSON数据构造模块
 %%%
--export([success/4, success/1, success/2, success/3]).
+-export([success/4, success/1, success/2, success/3, success_rfc3339/2, success_rfc3339/3]).
 -export([error/4, error/1, error/2, error/3]).
 -export([error_with_status/4]).
 -export([error_with_code/2, error_with_code/3]).
@@ -52,6 +52,27 @@ success(Req, Payload0, Msg, Options) ->
     %% 转换时间字段
     Payload = elib_cnv:convert_at_timestamps(Payload0),
     reply_json(0, Msg, Payload, Req, Options).
+
+%% @doc 返回成功响应，payload 时间字段保持 logic 层原样输出（不转 epoch ms）。
+%% 供按 Rfc3339 string 时间契约（format: date-time）输出 JSON 的模块使用
+%% （如 teaching 域 handler）：logic 层已把时间统一为 RFC3339 binary，
+%% success/2,3 的 elib_cnv:convert_at_timestamps 会把 *_at/*_ts 键再转回
+%% epoch ms integer，违反该类契约；本入口跳过该转换。
+%% @param Req cowboy请求对象
+%% @param Payload 响应数据（jsone 可编码即合法）
+%% @returns cowboy_req:req() 更新后的请求对象
+-spec success_rfc3339(cowboy_req:req(), map() | list()) -> cowboy_req:req().
+success_rfc3339(Req, Payload) ->
+    reply_json(0, "success", Payload, Req).
+
+%% @doc 同 success_rfc3339/2，带自定义消息
+%% @param Req cowboy请求对象
+%% @param Payload 响应数据（jsone 可编码即合法）
+%% @param Msg 响应消息
+%% @returns cowboy_req:req() 更新后的请求对象
+-spec success_rfc3339(cowboy_req:req(), map() | list(), binary() | list()) -> cowboy_req:req().
+success_rfc3339(Req, Payload, Msg) ->
+    reply_json(0, Msg, Payload, Req).
 
 %% Error系列函数
 

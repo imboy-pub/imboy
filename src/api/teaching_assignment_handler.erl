@@ -50,7 +50,7 @@ list_assignments(Req0, State) ->
             Page = page_param(Qs),
             case teaching_assignment_logic:list(Uid, LearnerId, Page) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;
@@ -65,7 +65,7 @@ assignment_detail(Req0, State) ->
         {ok, AssignmentId} ->
             case teaching_assignment_logic:detail(Uid, AssignmentId) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;
@@ -82,7 +82,7 @@ create_submission(Req0, State) ->
             Body = elib_param:post(Req0),
             case teaching_assignment_logic:create_submission(Uid, AssignmentId, Key, Body) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload, <<"提交成功"/utf8>>);
+                    elib_response:success_rfc3339(Req0, Payload, <<"提交成功"/utf8>>);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;
@@ -99,7 +99,7 @@ submission_detail(Req0, State) ->
         {ok, SubmissionId} ->
             case teaching_review_logic:submission_detail(Uid, SubmissionId) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;
@@ -114,7 +114,7 @@ withdraw(Req0, State) ->
         {ok, SubmissionId} ->
             case teaching_review_logic:withdraw(Uid, SubmissionId) of
                 {ok, withdrawn} ->
-                    elib_response:success(
+                    elib_response:success_rfc3339(
                         Req0,
                         #{<<"status">> => <<"withdrawn">>},
                         <<"已撤回"/utf8>>
@@ -134,7 +134,7 @@ history(Req0, State) ->
             Page = page_param(cowboy_req:parse_qs(Req0)),
             case teaching_review_logic:history(Uid, LearnerId, Page) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;

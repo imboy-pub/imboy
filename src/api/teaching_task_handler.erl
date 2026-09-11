@@ -44,7 +44,7 @@ list_tasks(Req0, State) ->
             Page = page_param(Qs),
             case teaching_task_logic:list(Uid, GroupIdOpt, Page) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload);
+                    elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     to_response(Req0, Reason)
             end;
@@ -61,7 +61,7 @@ create_task(Req0, State) ->
             Body = elib_param:post(Req0),
             case teaching_task_logic:create(Uid, Key, Body) of
                 {ok, Payload} ->
-                    elib_response:success(Req0, Payload, <<"发布成功"/utf8>>);
+                    elib_response:success_rfc3339(Req0, Payload, <<"发布成功"/utf8>>);
                 {error, Reason} ->
                     to_response(Req0, Reason)
             end;

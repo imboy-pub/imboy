@@ -37,6 +37,12 @@ handler_mocks(BindingId, Body) ->
             {'success', 3, fun(_Req, Payload, _Msg) ->
                 #{resp => success, payload => Payload}
             end},
+            {'success_rfc3339', 2, fun(_Req, Payload) ->
+                #{resp => success, payload => Payload}
+            end},
+            {'success_rfc3339', 3, fun(_Req, Payload, _Msg) ->
+                #{resp => success, payload => Payload}
+            end},
             {'error_with_status', 4, fun(_Req, Status, _Msg, Code) ->
                 #{resp => error, http => Status, code => Code}
             end}
