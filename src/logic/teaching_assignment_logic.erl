@@ -231,34 +231,37 @@ create_in_tx(Conn, Uid, AssignmentId, IdemKey, Digest, LearnerId, Assets) ->
         })
     of
         {ok, #{<<"id">> := Sid, <<"attempt_no">> := Attempt} = Row} ->
-            finish_create(Conn, Uid, AssignmentId, Assets, Row, Sid, Attempt);
+            finish_create(Conn, Uid, AssignmentId, LearnerId, Assets, Row, Sid, Attempt);
         {error, idempotency_conflict} ->
             {rollback, idempotency_conflict};
         {error, Reason} ->
             {rollback, {db, Reason}}
     end.
 
--spec finish_create(any(), integer(), integer(), list(), map(), integer(), integer()) ->
+-spec finish_create(any(), integer(), integer(), integer(), list(), map(), integer(), integer()) ->
     {ok, map()} | {rollback, atom()}.
-finish_create(Conn, Uid, AssignmentId, Assets, Row, Sid, Attempt) ->
+finish_create(Conn, Uid, AssignmentId, LearnerId, Assets, Row, Sid, Attempt) ->
     case maps:get(created, Row, false) of
         true ->
             ok = teaching_submission_repo:insert_assets_tx(Conn, Sid, Uid, Assets),
             ok = teaching_submission_repo:mark_submitted_by_tx(Conn, AssignmentId, Uid),
             ok = teaching_submission_repo:enqueue_ai_draft_tx(Conn, Sid),
-            {ok, submission_created(Sid, AssignmentId, Attempt, true)};
+            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, true)};
         false ->
             %% 幂等重放：返回既有 submission，不重复入队/挂附件（IDEMP-01）
-            {ok, submission_created(Sid, AssignmentId, Attempt, false)}
+            {ok, submission_created(Sid, AssignmentId, LearnerId, Attempt, false)}
     end.
 
 %% ---- payload 组装（TSID 一律字符串） ----
 
--spec submission_created(integer(), integer(), integer(), boolean()) -> map().
-submission_created(Sid, AssignmentId, Attempt, Created) ->
+%% Step 17 联调补齐：响应补 learner_id（moya SubmissionCreated required，
+%% 与 create_idempotent_tx 入参行对齐，家长端 DTO 校验依赖）
+-spec submission_created(integer(), integer(), integer(), integer(), boolean()) -> map().
+submission_created(Sid, AssignmentId, LearnerId, Attempt, Created) ->
     #{
         <<"submission_id">> => integer_to_binary(Sid),
         <<"assignment_id">> => integer_to_binary(AssignmentId),
+        <<"learner_id">> => integer_to_binary(LearnerId),
         <<"attempt_no">> => Attempt,
         <<"status">> => <<"submitted">>,
         <<"ai_status">> => <<"queued">>,

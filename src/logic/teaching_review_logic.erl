@@ -417,8 +417,8 @@ parent_view(Bundle) ->
         <<"learner_id">> => integer_to_binary(maps:get(<<"learner_id">>, Sub, 0)),
         <<"attempt_no">> => maps:get(<<"attempt_no">>, Sub, 0),
         <<"status">> => maps:get(<<"status">>, Sub, <<"submitted">>),
-        <<"submitted_at">> => maps:get(<<"submitted_at">>, Sub, null),
-        <<"withdrawn_at">> => maps:get(<<"withdrawn_at">>, Sub, null),
+        <<"submitted_at">> => dt_ms(maps:get(<<"submitted_at">>, Sub, null)),
+        <<"withdrawn_at">> => dt_ms(maps:get(<<"withdrawn_at">>, Sub, null)),
         <<"assets">> => [asset_payload(A) || A <- maps:get(assets, Bundle, [])],
         %% 三态提示（processing/done/none）；家长 payload 永无 AI 草稿字段（D-10）
         <<"ai_status_hint">> => ai_hint(maps:get(ai_draft, Bundle)),
@@ -448,7 +448,7 @@ published_review_payload(Pub, Assets) ->
         %% 兼容字段只读派生：从 assets 第一条 feedback_video 派生，非写入真源
         <<"video_attachment_id">> => nullable_tsid(derive_video_id_rows(Assets)),
         <<"rework_required">> => maps:get(<<"rework_required">>, Pub, false) =:= true,
-        <<"published_at">> => maps:get(<<"published_at">>, Pub, null)
+        <<"published_at">> => dt_ms(maps:get(<<"published_at">>, Pub, null))
     }.
 
 %% ---- 草稿/发布 ----
@@ -789,7 +789,7 @@ queue_item(R) ->
         <<"group_name">> => maps:get(<<"group_title">>, R, <<>>),
         <<"learner_id">> => integer_to_binary(maps:get(<<"learner_id">>, R, 0)),
         <<"learner_display_name">> => maps:get(<<"display_name">>, R, <<>>),
-        <<"submitted_at">> => maps:get(<<"submitted_at">>, R, null),
+        <<"submitted_at">> => dt_ms(maps:get(<<"submitted_at">>, R, null)),
         <<"attempt_no">> => maps:get(<<"attempt_no">>, R, 0),
         <<"ai_status">> => ai_status(maps:get(<<"ai_status">>, R, null)),
         <<"has_published_review">> => maps:get(<<"has_published">>, R, false) =:= true
@@ -805,11 +805,37 @@ history_item(R) ->
         <<"group_name">> => maps:get(<<"group_title">>, R, <<>>),
         <<"workspace_id">> => integer_to_binary(maps:get(<<"workspace_id">>, R, 0)),
         <<"attempt_no">> => maps:get(<<"attempt_no">>, R, 0),
-        <<"submitted_at">> => maps:get(<<"submitted_at">>, R, null),
+        <<"submitted_at">> => dt_ms(maps:get(<<"submitted_at">>, R, null)),
         <<"status">> => maps:get(<<"status">>, R, <<"submitted">>),
         <<"published_review_id">> =>
-            nullable_tsid(maps:get(<<"published_review_id">>, R, null))
+            nullable_tsid(maps:get(<<"published_review_id">>, R, null)),
+        %% 契约 LearnerHistoryPage.list[].published_review（nullable，
+        %% /components/schemas/PublishedReview）：history SQL 已 LEFT JOIN
+        %% teacher_review 取回各回评字段，直接行内构造（无 assets 集合）
+        <<"published_review">> => history_published_review(R)
     }.
+
+%% history 行的已发布回评子集（无 published_review_id = 无已发布回评 → null）
+-spec history_published_review(map()) -> map() | null.
+history_published_review(R) ->
+    case maps:get(<<"published_review_id">>, R, null) of
+        null ->
+            null;
+        Id when is_integer(Id) ->
+            #{
+                <<"review_id">> => integer_to_binary(Id),
+                <<"positive_point">> => maps:get(<<"positive_point">>, R, <<>>),
+                <<"focus_problem">> => maps:get(<<"focus_problem">>, R, <<>>),
+                <<"practice_action">> => maps:get(<<"practice_action">>, R, <<>>),
+                <<"comment">> => maps:get(<<"comment">>, R, <<>>),
+                <<"video_attachment_id">> =>
+                    nullable_tsid(maps:get(<<"video_attachment_id">>, R, null)),
+                <<"rework_required">> => maps:get(<<"rework_required">>, R, false) =:= true,
+                <<"published_at">> => dt_ms(maps:get(<<"published_at">>, R, null))
+            };
+        _ ->
+            null
+    end.
 
 %% P0-4：review_payload 带 assets 集合（save_draft/publish/draft_ref 调用）。
 %% video_attachment_id 从 assets 派生（只读兼容字段）；map 字面量白名单构造。
@@ -827,7 +853,7 @@ review_payload(R, Assets) ->
         <<"video_attachment_id">> => nullable_tsid(derive_video_id_rows(Assets)),
         <<"rework_required">> => maps:get(<<"rework_required">>, R, false) =:= true,
         <<"status">> => maps:get(<<"status">>, R, <<"draft">>),
-        <<"published_at">> => maps:get(<<"published_at">>, R, null)
+        <<"published_at">> => dt_ms(maps:get(<<"published_at">>, R, null))
     }.
 
 %% P0-4：回评媒体 DTO（attachment_id TSID 一律 string）；
@@ -864,8 +890,8 @@ ai_draft_payload(D) ->
         <<"prompt_version">> => maps:get(<<"prompt_version">>, D, <<>>),
         <<"rubric_version">> => maps:get(<<"rubric_version">>, D, <<>>),
         <<"result">> => maps:get(<<"result_json">>, D, null),
-        <<"created_at">> => maps:get(<<"created_at">>, D, null),
-        <<"completed_at">> => maps:get(<<"completed_at">>, D, null)
+        <<"created_at">> => dt_ms(maps:get(<<"created_at">>, D, null)),
+        <<"completed_at">> => dt_ms(maps:get(<<"completed_at">>, D, null))
     }.
 
 -spec draft_ref(map() | undefined, [map()]) -> map() | null.
@@ -938,6 +964,14 @@ tsid_opt(Bin) when is_binary(Bin) ->
     end;
 tsid_opt(_) ->
     undefined.
+
+%% 时间列双形态归一为 RFC3339 string（契约 Rfc3339；Step 17 联调对齐）：
+%% timestamptz 列经 elib_pg 已是 RFC3339 binary → 透传；bigint epoch ms 列
+%% （ai_draft.created_at 等）→ 转 RFC3339；null/未设 → null。
+-spec dt_ms(integer() | binary() | null | undefined) -> binary() | null.
+dt_ms(Ts) when is_integer(Ts) -> elib_dt:to_rfc3339(Ts);
+dt_ms(Ts) when is_binary(Ts), Ts =/= <<>> -> Ts;
+dt_ms(_) -> null.
 
 -spec nullable_tsid(integer() | null | undefined) -> binary() | null.
 nullable_tsid(Id) when is_integer(Id) -> integer_to_binary(Id);

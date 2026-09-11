@@ -32,8 +32,10 @@
 %% 教学媒体白名单（首版；iPhone 原录 .mov=video/quicktime 必须放行）
 -define(TEACHING_VIDEO_MIMES, [<<"video/mp4">>, <<"video/quicktime">>]).
 -define(TEACHING_VIDEO_EXTS, [<<"mp4">>, <<"mov">>]).
--define(TEACHING_PHOTO_MIMES, [<<"image/jpeg">>, <<"image/png">>]).
--define(TEACHING_PHOTO_EXTS, [<<"jpg">>, <<"jpeg">>, <<"png">>]).
+%% webp：2026-09-12 moya 报障收口——部分安卓机型 chooseMedia 压缩产物为 image/webp，
+%% presign 阶段即拒会导致提交作业直接失败（elib_oss 全局层早已放行 webp，此层收紧过度）
+-define(TEACHING_PHOTO_MIMES, [<<"image/jpeg">>, <<"image/png">>, <<"image/webp">>]).
+-define(TEACHING_PHOTO_EXTS, [<<"jpg">>, <<"jpeg">>, <<"png">>, <<"webp">>]).
 %% 60s 视频 ≈ 100MB 上限；照片 20MB；时长 ≤60s（客户端上报，服务端抽帧复核留 Step 11）
 -define(DEFAULT_VIDEO_MAX_MB, 100).
 -define(DEFAULT_PHOTO_MAX_MB, 20).

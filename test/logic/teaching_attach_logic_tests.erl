@@ -57,7 +57,15 @@ mime_whitelist_test_() ->
     ?WITH_MECKS([env_mocks()], fun() ->
         lists:foreach(
             fun(M) -> ?assertEqual(ok, teaching_attach_logic:check_mime(M)) end,
-            [<<"video/mp4">>, <<"video/quicktime">>, <<"image/jpeg">>, <<"image/png">>]
+            [
+                <<"video/mp4">>,
+                %% iPhone 原录 .mov
+                <<"video/quicktime">>,
+                <<"image/jpeg">>,
+                <<"image/png">>,
+                %% 部分安卓机型 chooseMedia 压缩产物（2026-09-12 扩充）
+                <<"image/webp">>
+            ]
         ),
         lists:foreach(
             fun(M) ->
@@ -65,7 +73,6 @@ mime_whitelist_test_() ->
             end,
             [
                 <<"video/x-msvideo">>,
-                <<"image/webp">>,
                 <<"image/gif">>,
                 <<"application/octet-stream">>
             ]
