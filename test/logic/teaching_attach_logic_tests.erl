@@ -632,6 +632,9 @@ dto_mocks(DraftRow, AssetRows) ->
             end}
         ]},
         {teaching_review_repo, [
+            %% R22-PUBLISHED-DRAFT-01 后 save_draft 事务内在 upsert 前新增
+            %% find_published_tx 守卫：正常草稿场景无已发布回评
+            {'find_published_tx', 2, fun(_Conn, _Sid) -> {ok, undefined} end},
             {'upsert_draft_tx', 3, fun(_, _, _Fields) -> {ok, DraftRow} end},
             {'validate_assets_tx', 3, fun(_Conn, _Uid, Assets) -> {ok, Assets} end},
             {'replace_assets_tx', 4, fun(_Conn, _Rid, _Uid, _Assets) -> ok end},

@@ -1371,7 +1371,9 @@ moment_admin_routes() ->
 %% 的 /tasks、workspace_handler 的 branding）。teaching_task_handler 属
 %% A1/A2 patch（Wave-2 接线时源码只读，其 init/2 按 opts action 分派且未
 %% 内置 resolve_action），故分派由本模块承载：GET=list / POST=create，
-%% 转发到该 handler 导出的 handle_action/3（与 teaching_task_handler:init/2
+%% 其余 method 一律 405、不进入 list/create Logic（R22-METHOD-01；与
+%% moya-teaching.yaml 一致——同路径仅声明 get+post）。转发到该 handler
+%% 导出的 handle_action/3（与 teaching_task_handler:init/2
 %% 对 handle_action 的转发语义等价；current_uid/current_did 由 auth_middleware
 %% 统一注入 handler_opts，经 State 原样透传，action 键移除方式亦一致）。
 %% handler 集成并在其 init/2 补 resolve_action(tasks, Req) 后，可删除本 shim
@@ -1379,11 +1381,14 @@ moment_admin_routes() ->
 %% #{action => tasks}}。
 -spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
 init(Req0, #{action := tasks} = State0) ->
-    Action =
-        case cowboy_req:method(Req0) of
-            <<"POST">> -> create;
-            _ -> list
-        end,
     State = maps:remove(action, State0),
-    Req1 = teaching_task_handler:handle_action(Action, Req0, State),
-    {ok, Req1, State}.
+    case cowboy_req:method(Req0) of
+        <<"GET">> ->
+            {ok, teaching_task_handler:handle_action(list, Req0, State), State};
+        <<"POST">> ->
+            {ok, teaching_task_handler:handle_action(create, Req0, State), State};
+        _OtherMethod ->
+            %% 405 形态按仓内惯例（agent_card_handler:53 及 adm_* 30+ 处）：
+            %% 空头 + "Method Not Allowed"；仓内无携带 allow 头先例。
+            {ok, cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0), State}
+    end.

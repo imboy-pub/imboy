@@ -579,3 +579,84 @@ create_submission(C, Uid, IdemKey, Digest) ->
         {error, Reason} ->
             {error, Reason}
     end.
+
+%%%===================================================================
+%%% R22（A1 REVIEW-STATE）：状态竞态真库回归（995xxx 段）
+%%% logic 全链嫁接测试连接：meck elib_pg:with_tx → Tx(C)（repo 层真 SQL、
+%%% 真约束、真行数断言）；teaching_acl 放行——ACL 查询走池连接，看不到
+%%% 本事务（C 连接 BEGIN 后未提交）的 seed 数据，故事务外守卫须 mock。
+%%%===================================================================
+
+%% R22-WITHDRAW-RACE-01：ACL 通过后 submission 已被监护人撤回
+%% → save_draft 事务内锁行复查 status 必须拒绝（{error, withdrawn}），
+%%   teacher_review 零新增零修改、review_asset 零行。
+r22_withdraw_race_save_draft_test_() ->
+    with_tx(fun(C) ->
+        rv_seed(C),
+        %% 家长撤回（真实 withdraw_tx，同连接同事务）
+        {ok, withdrawn} = teaching_submission_repo:withdraw_tx(C, ?RV_SUB1, ?RV_PARENT),
+        ok = meck:new(teaching_acl, [no_link, passthrough]),
+        meck:expect(teaching_acl, submission_access, 2, fun(_Uid, _Sid) ->
+            {ok, staff, #{<<"group_id">> => 995201}}
+        end),
+        meck:expect(teaching_acl, resolve_staff, 3, fun(_Uid, _Gid, _Perm) ->
+            {ok, teacher}
+        end),
+        ok = meck:new(elib_pg, [no_link, passthrough]),
+        meck:expect(elib_pg, with_tx, 2, fun(Tx, _Opts) -> Tx(C) end),
+        try
+            ?assertEqual(
+                {error, withdrawn},
+                teaching_review_logic:save_draft(?RV_TEACHER, ?RV_SUB1, #{
+                    <<"comment">> => <<"撤回后不该写入"/utf8>>
+                })
+            ),
+            %% teacher_review 仍只有 rv_seed 的 1 条 draft（未新增、原 comment 未被改写）
+            [#{<<"c">> := 1}] = q(C, <<"SELECT count(*) AS c FROM teacher_review">>),
+            [#{<<"comment">> := <<"P04F草稿"/utf8>>}] =
+                q(C, <<"SELECT comment FROM teacher_review WHERE id = 995801">>),
+            [#{<<"c">> := 0}] = q(C, <<"SELECT count(*) AS c FROM review_asset">>)
+        after
+            meck:unload(teaching_acl),
+            meck:unload(elib_pg)
+        end
+    end).
+
+%% R22-PUBLISHED-DRAFT-01：该 reviewer 草稿已发布后再 save_draft
+%% → 事务内 lock 后 upsert 前必须拒绝（{error, already_reviewed}），
+%%   保持一条 published、零新增 draft、review_asset 零行。
+r22_published_rejects_save_draft_test_() ->
+    with_tx(fun(C) ->
+        rv_seed(C),
+        %% 真实链路：rv_seed 的 draft 995801 → lock-first → publish
+        lock_sub(C, ?RV_SUB1),
+        {ok, published, _} = teaching_review_repo:publish_tx(C, ?RV_SUB1, ?RV_TEACHER),
+        ok = meck:new(teaching_acl, [no_link, passthrough]),
+        meck:expect(teaching_acl, submission_access, 2, fun(_Uid, _Sid) ->
+            {ok, staff, #{<<"group_id">> => 995201}}
+        end),
+        meck:expect(teaching_acl, resolve_staff, 3, fun(_Uid, _Gid, _Perm) ->
+            {ok, teacher}
+        end),
+        ok = meck:new(elib_pg, [no_link, passthrough]),
+        meck:expect(elib_pg, with_tx, 2, fun(Tx, _Opts) -> Tx(C) end),
+        try
+            ?assertEqual(
+                {error, already_reviewed},
+                teaching_review_logic:save_draft(?RV_TEACHER, ?RV_SUB1, #{
+                    <<"comment">> => <<"发布后想补写一句"/utf8>>
+                })
+            ),
+            %% 一条 published（uk_tr_published_per_submission）、零新增 draft
+            [#{<<"c">> := 1}] = q(
+                C, <<"SELECT count(*) AS c FROM teacher_review WHERE status = 'published'">>
+            ),
+            [#{<<"c">> := 0}] = q(
+                C, <<"SELECT count(*) AS c FROM teacher_review WHERE status = 'draft'">>
+            ),
+            [#{<<"c">> := 0}] = q(C, <<"SELECT count(*) AS c FROM review_asset">>)
+        after
+            meck:unload(teaching_acl),
+            meck:unload(elib_pg)
+        end
+    end).

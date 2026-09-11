@@ -93,7 +93,14 @@ save_draft_with_assets(Uid, SubmissionId, Body, Assets) ->
             Tx = fun(Conn) ->
                 case teaching_submission_repo:lock_submission_tx(Conn, SubmissionId) of
                     {ok, Row} when is_map(Row) ->
-                        draft_assets_tx(Conn, SubmissionId, Uid, Fields, Assets);
+                        %% R22-WITHDRAW-RACE-01：draft_guard 的 ACL 在事务外，
+                        %% 监护人可在 ACL 通过后撤回；锁行（与 publish/withdraw
+                        %% 同串行化点）后必须复查 status——withdrawn 提交
+                        %% 不得写入草稿，映射 {error, withdrawn} → 5482
+                        case maps:get(<<"status">>, Row, <<>>) of
+                            <<"withdrawn">> -> {rollback, withdrawn};
+                            _ -> draft_assets_tx(Conn, SubmissionId, Uid, Fields, Assets)
+                        end;
                     {ok, undefined} ->
                         {rollback, not_found};
                     {error, Reason} ->
@@ -105,6 +112,10 @@ save_draft_with_assets(Uid, SubmissionId, Body, Assets) ->
                     {ok, review_payload(Row, AssetRows)};
                 {rollback, not_found} ->
                     {error, not_found};
+                {rollback, withdrawn} ->
+                    {error, withdrawn};
+                {rollback, already_reviewed} ->
+                    {error, already_reviewed};
                 {rollback, assets_invalid} ->
                     {error, assets_invalid};
                 {rollback, not_found_asset} ->
@@ -117,11 +128,29 @@ save_draft_with_assets(Uid, SubmissionId, Body, Assets) ->
     end.
 
 %% 草稿 + 媒体同事务：upsert（旧列冗余写派生视频）→ 校验（写入前）→ 原子替换 → 回读
+%% R22-PUBLISHED-DRAFT-01：lock 之后、upsert 之前查已发布回评——
+%% upsert_draft_tx 内 find_draft_tx 只认 status='draft'，该 reviewer 草稿
+%% 已 publish 后无 draft 行会让 upsert 走 INSERT 建第二条草稿；命中已发布
+%% 行必须拒绝（{error, already_reviewed} → 5481，复用既有 5481 契约）
 -spec draft_assets_tx(
     any(), integer(), integer(), map(), [{integer(), binary(), integer()}]
 ) ->
     {ok, {map(), [map()]}} | {rollback, term()}.
 draft_assets_tx(Conn, SubmissionId, Uid, Fields, Assets) ->
+    case teaching_review_repo:find_published_tx(Conn, SubmissionId) of
+        {ok, undefined} ->
+            upsert_draft_flow_tx(Conn, SubmissionId, Uid, Fields, Assets);
+        {ok, _Published} ->
+            {rollback, already_reviewed};
+        {error, Reason} ->
+            {rollback, {db, Reason}}
+    end.
+
+-spec upsert_draft_flow_tx(
+    any(), integer(), integer(), map(), [{integer(), binary(), integer()}]
+) ->
+    {ok, {map(), [map()]}} | {rollback, term()}.
+upsert_draft_flow_tx(Conn, SubmissionId, Uid, Fields, Assets) ->
     case teaching_review_repo:upsert_draft_tx(Conn, SubmissionId, Fields) of
         {ok, #{<<"id">> := ReviewId} = Row} ->
             case teaching_review_repo:validate_assets_tx(Conn, Uid, Assets) of
@@ -278,10 +307,14 @@ run_queue(GroupIds, Filters, Page, Size) ->
 build_workbench(Uid, SubmissionId) ->
     case load_submission_bundle(SubmissionId) of
         {ok, Bundle} ->
+            %% DC-1：顶层 my_review_draft 复用 teacher_view 已算好的草稿
+            %% （find_draft(Sid,Uid) + assets，不二次查库）——load_submission_bundle
+            %% 构造的 Bundle 无 draft 键，直读恒 null（v1 引入缺陷，挡死老师
+            %% 重开工作台的草稿恢复）。submission 内嵌值保持不动（兼容窗口）。
+            TView = teacher_view(Uid, Bundle),
             {ok, #{
-                <<"submission">> => teacher_view(Uid, Bundle),
-                <<"my_review_draft">> =>
-                    draft_ref(maps:get(draft, Bundle, undefined), []),
+                <<"submission">> => TView,
+                <<"my_review_draft">> => maps:get(<<"my_review_draft">>, TView, null),
                 <<"learner_display_name">> => maps:get(<<"display_name">>, Bundle, <<>>),
                 <<"assignment_title">> => maps:get(<<"title">>, Bundle, <<>>)
             }};
