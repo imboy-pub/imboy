@@ -237,6 +237,7 @@ assert_eq "评论成功" "$(api_ok && echo OK || echo NO)" "OK"
 step "P4 General 群聊发消息（WebSocket c2g 帧，发送方=B）"
 sleep 1
 export WS_URL="${WS_URL:-ws://127.0.0.1:9800/api/v1/ws}" WS_TOKEN="$TOKEN_B" WS_GID="$GID_GENERAL"
+export WS_FROM_UID="$UID_B"
 export WS_MSG_ID="demo-b-c2g-$STAMP" WS_TEXT="[Group chat] hello from B @ $STAMP"
 if python3 -c 'import websockets' 2>/dev/null; then
   WS_OUT="$(python3 "$WS_PY" 2>&1)"; WS_RC=$?

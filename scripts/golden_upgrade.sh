@@ -374,9 +374,10 @@ gu_group_create() { # <tokenA> <uidB>：成功后 UP_GID
   ok "群创建成功并拉 B 入群（gid=${gid}）"
 }
 
-gu_send_group_msg() { # <token> <gid> <msg_id> <text>（WS C2G，帧契约见 ws_c2g_send.py）
+gu_send_group_msg() { # <token> <uid> <gid> <msg_id> <text>（WS C2G，帧契约见 ws_c2g_send.py）
   local out rc=0
-  out="$(WS_URL="$WS_URL" WS_TOKEN="$1" WS_GID="$2" WS_MSG_ID="$3" WS_TEXT="$4" \
+  out="$(WS_URL="$WS_URL" WS_TOKEN="$1" WS_FROM_UID="$2" WS_GID="$3" \
+        WS_MSG_ID="$4" WS_TEXT="$5" \
         python3 "$WS_TOOL" 2>&1)" || rc=$?
   { [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q 'C2G_ERROR'; } \
     || { STAGE_HINT="WS C2G 发送失败 rc=$rc: $(printf '%s' "$out" | tail -3 | tr '\n' ' ')（403=非群成员/禁言；429=限流）"; return 1; }
@@ -434,7 +435,7 @@ gu_datagen() { # <tokenA> <uidA> <tokenB> <uidB>：编排数据生成（结果�
   gu_group_create "$tokenA" "$uidB" || die "建群失败（vN 基线）"
   gmsgid="golden-up-c2g-${runts}"
   gtext="golden-up-group-${runts}"
-  gu_send_group_msg "$tokenA" "$UP_GID" "$gmsgid" "$gtext" || die "群消息 WS 发送失败（vN 基线）"
+  gu_send_group_msg "$tokenA" "$uidA" "$UP_GID" "$gmsgid" "$gtext" || die "群消息 WS 发送失败（vN 基线）"
   gu_wait_msg "$tokenA" c2g "$UP_GID" "$gmsgid" 20 \
     || die "群消息（msg_id=${gmsgid}）20s 内未归档可见（vN 数据未落库，断言基线不成立）"
   state_set_json group "$(jq -nc --arg g "$UP_GID" --arg id "$gmsgid" --arg t "$gtext" '{gid:$g,msg_id:$id,text:$t}')"

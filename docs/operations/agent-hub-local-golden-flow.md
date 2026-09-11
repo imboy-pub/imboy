@@ -5,13 +5,19 @@
 > 前置阅读：PDT-01 三契约、ADR 信任边界、EVID-00 证据协议、
 > [bot-webhook-aead-key](../runbooks/bot-webhook-aead-key.md)（AEAD 主密钥生命周期）。
 >
-> 当前自动化状态：脚本使用 marker scratch DB 跑迁移和 14 套模块/真库测试；
+> 当前自动化状态：脚本使用 marker scratch DB 跑迁移和 15 套模块/真库测试；
 > 最后一套通过真实 MCP task logic、审批逻辑和 Bot outbox 写出同一 correlation
 > 的持久记录，再由参数化 SQL 投影为链形状并交给冻结 verifier。随后脚本启动真实
 > loopback 后端，以独立标准库 HTTP 客户端完成 MCP create/approve/grant/task/revoke
-> 11 项检查，并真实 stop/start 后端，比较 task/approval/delivery/correlation 快照
-> 并从重启进程回读终态。该投影中的 request/execution/outcome 仍非运行时审计记录，
-> incoming webhook、内建 Agent 和 Bot mention/reply 也尚未组成完整 HTTP 正负链，
+> 11 项检查；频道 incoming webhook 同时完成有效 token 发布、无效/停用 token 同形
+> 404 共 4 项检查，并核对仅有效请求落一条 system-bot 消息。内建 Agent
+> 子链在运行节点用 `ai_agent_ds:create/1` 建号，经真实 WebSocket C2G `mentions`
+> 帧触发本地 `chat/3` fake provider，并同时核对人类消息和 Agent 定稿已写入
+> `msg_c2g` 与 `msg_store`。fake provider 仅从临时 ebin 加载，不发起任何网络请求。
+> 脚本还会真实 stop/start 后端，比较 task/approval/delivery/correlation
+> 快照并从重启进程回读终态。
+> 该投影中的 request/execution/outcome 仍非运行时审计记录，Bot mention/reply
+> 也尚未组成完整 HTTP 正负链，
 > 所以 A01/A02 继续失败，整体必须输出 verifier 接受的 `PARTIAL`（退出码 1）。
 
 ## 1. 环境准备（从空 scratch 开始）
@@ -29,7 +35,7 @@
 
 ```bash
 IMBOYENV=local make run            # 启动即自动迁移 1→93+（imboy_migrate strict）
-# fake LLM provider：ai_agent_runtime 以 fake 模式启动（无真实外呼）
+# fake LLM provider：harness 编译 test fixture 到临时 ebin（无真实外呼）
 # fake Bot webhook receiver：tests 提供 gen_tcp fixture（或 nc -l 本地端口）
 # 最小 MCP client：tests 提供 JSON-RPC 脚本（initialize → tools/list → tools/call）
 ```
@@ -42,7 +48,7 @@ IMBOYENV=local make run            # 启动即自动迁移 1→93+（imboy_migra
 | # | 步骤 | 验证点 |
 |---|---|---|
 | 1 | 频道 incoming webhook 发消息（token） | 200；消息落频道；correlation_id 生成 |
-| 2 | 内建 Agent 纯对话 | 回复消息；无 tool 执行 |
+| 2 | 内建 Agent 纯对话 | 已自动化；真 WS `mentions` 输入，fake LLM 回复，两条消息皆进正式表与归档表 |
 | 3 | MCP client：create_agent_task | task=submitted；同 client+idem 重放返回原任务 |
 | 4 | update(start/progress) | working；attempt 事件累计 |
 | 5 | request_task_approval | 群卡片 awaiting_approval；MCP poll 可读 |
@@ -70,7 +76,8 @@ shasum -a 256 "$IMBOY_EVIDENCE_ROOT"/E2E-01/*
 
 在受信入口审计、完整 HTTP 编排和最终 Base 重跑全部补齐前，上述前两条命令预期
 退出码均为 `1`，证据结论为 `PARTIAL`。A03 的 stop/start 可以独立为 `PASS`；A02
-即使 MCP HTTP 子链 11/11 通过，也仍因其他必选正例和负例缺失保持 `FAIL`。trace
+即使 MCP HTTP 11/11、频道 incoming webhook 4/4、内建 Agent 群对话通过，也仍因
+Bot 正负链和负例缺失保持 `FAIL`。trace
 verifier 的 `OK` 只证明本地 fixture 投影满足链的结构约束，不证明受信入口已经产生
 真实审计链。
 

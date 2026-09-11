@@ -46,10 +46,14 @@ def build_evidence(args):
             "suites_passed=%d" % args.suites_passed,
             "trace_exit=%d" % args.trace_exit,
             "http_smoke_passed=%d" % args.http_smoke_passed,
+            "channel_webhook_passed=%d" % args.channel_webhook_passed,
+            "agent_dialog_passed=%d" % args.agent_dialog_passed,
             "restart_passed=%d" % args.restart_passed,
             "cleanup_passed=%d" % args.cleanup_passed,
             "sensitive_scan_passed=%d" % args.sensitive_scan_passed,
-            "failed_step=%s" % (args.failed_step or "none"),
+            "failed_step=%s" % (
+                args.failed_step if args.status == "FAIL" and args.failed_step else "none"
+            ),
         ]) + "\n",
         encoding="utf-8",
     )
@@ -76,6 +80,10 @@ def build_evidence(args):
 
     runtime_artifact_paths = {
         "artifact-http-mcp-smoke": evidence_dir / "ext01-a02-runtime.json",
+        "artifact-http-channel-webhook-smoke": evidence_dir / "channel-webhook-a02-runtime.json",
+        "artifact-channel-webhook-db": evidence_dir / "channel-webhook-a02-db.json",
+        "artifact-agent-dialog-runtime": evidence_dir / "agent-dialog-a02-runtime.log",
+        "artifact-agent-dialog-db": evidence_dir / "agent-dialog-a02-db.json",
         "artifact-restart-before": evidence_dir / "restart-before.json",
         "artifact-restart-after": evidence_dir / "restart-after.json",
         "artifact-restart-logic-read": evidence_dir / "restart-logic-read.txt",
@@ -91,6 +99,14 @@ def build_evidence(args):
         artifact_id for artifact_id in ["artifact-http-mcp-smoke"]
         if artifact_id in artifact_ids
     ]
+    channel_webhook_artifacts = [
+        artifact_id
+        for artifact_id in [
+            "artifact-http-channel-webhook-smoke",
+            "artifact-channel-webhook-db",
+        ]
+        if artifact_id in artifact_ids
+    ]
     restart_artifacts = [
         artifact_id for artifact_id in runtime_artifact_paths
         if artifact_id.startswith("artifact-restart-")
@@ -98,6 +114,18 @@ def build_evidence(args):
         if artifact_id in artifact_ids
     ]
     http_smoke_ok = bool(args.http_smoke_passed and http_artifacts)
+    channel_webhook_ok = bool(
+        args.channel_webhook_passed and len(channel_webhook_artifacts) == 2
+    )
+    agent_dialog_artifacts = [
+        artifact_id
+        for artifact_id in [
+            "artifact-agent-dialog-runtime",
+            "artifact-agent-dialog-db",
+        ]
+        if artifact_id in artifact_ids
+    ]
+    agent_dialog_ok = bool(args.agent_dialog_passed and len(agent_dialog_artifacts) == 2)
     restart_ok = bool(args.restart_passed and len(restart_artifacts) == 5)
 
     common_artifacts = ["artifact-run-summary", "artifact-harness"]
@@ -152,6 +180,16 @@ def build_evidence(args):
                 "command": "stop and restart the real backend, then compare persisted state",
                 "exit_code": 0 if restart_ok else 1,
             },
+            {
+                "id": "cmd-08",
+                "command": "run real loopback channel incoming-webhook positive and negative checks",
+                "exit_code": 0 if channel_webhook_ok else 1,
+            },
+            {
+                "id": "cmd-09",
+                "command": "run real WebSocket group mention through the built-in Agent and local fake LLM",
+                "exit_code": 0 if agent_dialog_ok else 1,
+            },
         ]
         trace_artifacts = common_artifacts + ["artifact-trace-verifier"]
         if trace_path.is_file():
@@ -167,10 +205,10 @@ def build_evidence(args):
                 "The persisted-row projection passes shape checks, but trusted request, execution, and outcome audit records are not emitted at runtime yet.",
             ),
             acceptance(
-                "E2E-01-A02", "FAIL", ["cmd-03", "cmd-06"],
-                common_artifacts + http_artifacts,
-                "The real HTTP MCP lifecycle passes 11 checks, but incoming webhook, built-in Agent, Bot mention/reply, and all required protocol negatives are not automated yet."
-                if http_smoke_ok else
+                "E2E-01-A02", "FAIL", ["cmd-03", "cmd-06", "cmd-08", "cmd-09"],
+                common_artifacts + http_artifacts + channel_webhook_artifacts + agent_dialog_artifacts,
+                "The real HTTP MCP lifecycle passes 11 checks, channel incoming webhook passes active/invalid/disabled checks, and a real WebSocket mention receives a persisted built-in Agent reply from the local fake LLM; Bot mention/reply and the remaining protocol negatives are not automated yet."
+                if http_smoke_ok and channel_webhook_ok and agent_dialog_ok else
                 "The required HTTP Golden Flow and all protocol negatives are not complete.",
             ),
             acceptance(
@@ -221,12 +259,19 @@ def build_evidence(args):
         },
         "final_diff": [
             "imboy:scripts/agent_hub_golden_flow.sh",
+            "imboy:scripts/agent_hub_channel_webhook_smoke.py",
+            "imboy:scripts/smoke/ws_c2g_send.py",
+            "imboy:scripts/golden_upgrade.sh",
+            "imboy:scripts/demo/dual_exp_demo_b.sh",
             "imboy:scripts/export_agent_hub_correlation_trace.sql",
             "imboy:scripts/write_agent_hub_e2e_evidence.py",
             "imboy:src/logic/agent_task_logic.erl",
             "imboy:test/integration/agent_hub_runtime_trace_tests.erl",
             "imboy:test/scripts/test_agent_hub_golden_flow_db_isolation.sh",
+            "imboy:test/scripts/test_agent_hub_channel_webhook_smoke.py",
+            "imboy:test/scripts/test_ws_c2g_send.py",
             "imboy:test/scripts/test_write_agent_hub_e2e_evidence.py",
+            "imboy:test/fixtures/agent_hub/agent_hub_fake_llm.erl",
             "imboy:docs/operations/agent-hub-local-golden-flow.md",
         ],
         "commands": commands,
@@ -239,7 +284,7 @@ def build_evidence(args):
         "artifacts": artifacts,
         "residual_risks": [
             "The trace export derives request, execution, and outcome instead of reading runtime audit records.",
-            "The real HTTP MCP lifecycle passes, but the complete incoming webhook, built-in Agent, and Bot protocol flow remains open.",
+            "The real HTTP MCP lifecycle, channel incoming webhook, and built-in Agent group dialog pass locally, but the Bot protocol flow remains open.",
             "Final integrated Base rerun remains open.",
             "Local fixtures do not replace real device, external MCP, or production acceptance.",
         ],
@@ -258,6 +303,8 @@ def parse_args(argv=None):
     parser.add_argument("--suites-passed", type=int, default=0)
     parser.add_argument("--trace-exit", type=int, default=2)
     parser.add_argument("--http-smoke-passed", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--channel-webhook-passed", type=int, choices=(0, 1), default=0)
+    parser.add_argument("--agent-dialog-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--restart-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--cleanup-passed", type=int, choices=(0, 1), default=0)
     parser.add_argument("--sensitive-scan-passed", type=int, choices=(0, 1), default=0)

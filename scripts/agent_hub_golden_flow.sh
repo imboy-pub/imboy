@@ -18,6 +18,8 @@ CLEANUP_PASSED=0
 CLEANUP_DONE=0
 SENSITIVE_SCAN_PASSED=0
 HTTP_SMOKE_PASSED=0
+CHANNEL_WEBHOOK_PASSED=0
+AGENT_DIALOG_PASSED=0
 RESTART_PASSED=0
 BACKEND_PID=""
 BACKEND_NODE="imboy_ah_e2e_$$_runtime"
@@ -25,6 +27,7 @@ BACKEND_COOKIE=""
 BACKEND_DIST_PORT=""
 RUNTIME_HTTP_PORT="${IMBOY_AGENT_HUB_HTTP_PORT:-19862}"
 ERL_CALL=""
+FIXTURE_EBIN=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +40,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 EVIDENCE_DIR="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$EVIDENCE_DIR")"
+if [[ "${EVIDENCE_DIR##*/}" != "E2E-01" ]]; then
+  echo "[golden] evidence directory basename must be E2E-01" >&2
+  exit 2
+fi
 case "$EVIDENCE_DIR/" in
   "$WORKSPACE_ROOT/"*)
     echo "[golden] refusing evidence directory inside workspace" >&2
@@ -45,6 +52,13 @@ case "$EVIDENCE_DIR/" in
 esac
 
 DB="${MARKER_DB_PREFIX}$(date +%s)_$$"
+CHANNEL_FIXTURE_ID=$((91100000000000000 + $$))
+CHANNEL_WEBHOOK_TEXT="agent-hub-channel-webhook-$DB"
+AGENT_HUMAN_UID=$((91200000000000000 + $$))
+AGENT_GROUP_ID=$((91300000000000000 + $$))
+AGENT_PROMPT="agent-hub-local-prompt-$$_$(date +%s)"
+AGENT_REPLY="agent-hub-local-reply-$$_$(date +%s)"
+AGENT_MSG_ID="ah-agent-$$_$(date +%s)"
 PGHOST="${PGHOST:-127.0.0.1}"
 PGPORT="${PGPORT:-4323}"
 PGUSER="${PGUSER:-imboy_user}"
@@ -102,11 +116,14 @@ start_backend() {
   local log_path="$1"
   local runtime_secret
   local pa_args=(-pa "$ROOT/ebin")
+  if [[ -n "$FIXTURE_EBIN" ]]; then
+    pa_args+=(-pa "$FIXTURE_EBIN")
+  fi
   for ebin_dir in "$ROOT"/deps/*/ebin; do
     pa_args+=(-pa "$ebin_dir")
   done
   python3 -c \
-    'import socket,sys; s=socket.socket(); s.bind(("127.0.0.1", int(sys.argv[1]))); s.close()' \
+    'import socket,sys; s=socket.socket(); rc=s.connect_ex(("127.0.0.1", int(sys.argv[1]))); s.close(); raise SystemExit(rc == 0)' \
     "$RUNTIME_HTTP_PORT"
   runtime_secret="$(printf 'agent-hub-local:%s' "$DB" | shasum -a 256 | awk '{print $1}')"
   BACKEND_COOKIE="ah_${runtime_secret:0:30}"
@@ -144,6 +161,28 @@ issue_admin_cookie() {
     'io:format("~s", [adm_auth_middleware:sign_admin_cookie(<<"700001">>)]).' \
     | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
         -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 5
+}
+
+create_channel_webhook() {
+  local name="$1"
+  printf 'case channel_webhook_ds:create(%s, <<"%s">>, 1) of {ok, #{<<"id">> := Id, <<"token">> := Token, <<"bot_uid">> := BotUid}} -> io:format("~s ~B ~B", [Token, Id, BotUid]); Error -> io:format("ERROR ~p", [Error]) end.\n' \
+    "$CHANNEL_FIXTURE_ID" "$name" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+}
+
+issue_user_token() {
+  local uid="$1"
+  printf 'io:format("~s", [token_ds:encrypt_token(%s)]).\n' "$uid" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 5
+}
+
+create_fake_agent() {
+  printf 'application:set_env(imboy, llm_providers, [#{name => <<"agent_hub_fake">>, module => agent_hub_fake_llm, expected_prompt => <<"%s">>, reply => <<"%s">>}]), case ai_agent_ds:create(#{<<"nickname">> => <<"Agent Hub Fake Agent">>, <<"account">> => <<"agent-hub-fake-%s">>, <<"provider">> => <<"agent_hub_fake">>, <<"owner_uid">> => %s, <<"trigger_policy">> => #{<<"mention">> => true}, <<"capabilities">> => #{<<"group_reply">> => true}}) of {ok, #{<<"user_id">> := Uid}} -> io:format("~B", [Uid]); Error -> io:format("ERROR ~p", [Error]) end.\n' \
+    "$AGENT_PROMPT" "$AGENT_REPLY" "$DB" "$AGENT_HUMAN_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
 }
 
 snapshot_restart_state() {
@@ -210,6 +249,8 @@ write_evidence() {
     --trace-exit "$TRACE_EXIT" --cleanup-passed "$CLEANUP_PASSED" \
     --sensitive-scan-passed "$SENSITIVE_SCAN_PASSED" \
     --http-smoke-passed "$HTTP_SMOKE_PASSED" \
+    --channel-webhook-passed "$CHANNEL_WEBHOOK_PASSED" \
+    --agent-dialog-passed "$AGENT_DIALOG_PASSED" \
     --restart-passed "$RESTART_PASSED" \
     --failed-step "$CURRENT_STEP" --failed-code "$failed_code"
 }
@@ -267,6 +308,7 @@ export IMBOY_PG_DATABASE="$DB"
 SUITES=(
   channel_webhook_logic_tests
   ai_agent_reply_tests
+  ai_agent_group_reply_tests
   ai_agent_tool_loop_tests
   mcp_authz_gate_tests
   mcp_client_repo_tests
@@ -329,6 +371,11 @@ set -e
 # 6) 启动真实后端，运行独立 HTTP MCP 客户端，再做一次完整进程 stop/start。
 CURRENT_STEP="compile runtime beams after EUnit"
 make -C "$ROOT" app > "$EVIDENCE_DIR/runtime-make-app.log" 2>&1
+FIXTURE_EBIN="$CONFIG_TMP_DIR/fixture-ebin"
+mkdir -p "$FIXTURE_EBIN"
+erlc -o "$FIXTURE_EBIN" \
+  "$ROOT/test/fixtures/agent_hub/agent_hub_fake_llm.erl" \
+  > "$EVIDENCE_DIR/fake-llm-compile.log" 2>&1
 ERL_ROOT="$(erl -noshell -eval 'io:format("~s", [code:root_dir()]), halt().')"
 ERL_CALL="$ERL_ROOT/bin/erl_call"
 [[ -x "$ERL_CALL" ]] || { echo "[golden] erl_call missing" >&2; exit 1; }
@@ -341,6 +388,17 @@ $PSQL -d "$DB" -c "
     (700001, 'agent-hub-local-admin', 'Agent Hub local admin',
      'not-used-for-login', ARRAY[1]::bigint[], 1)
   ON CONFLICT (id) DO NOTHING" >/dev/null
+$PSQL -d "$DB" -v human_uid="$AGENT_HUMAN_UID" -v group_id="$AGENT_GROUP_ID" <<'SQL' >/dev/null
+INSERT INTO public."user"
+  (id, nickname, password, account, reg_ip, reg_cosv, account_type)
+VALUES
+  (:human_uid, 'Agent Hub local human', 'not-used-for-login',
+   'agent-hub-local-human-' || :human_uid, '127.0.0.1', 'local-fixture', 0);
+INSERT INTO public."group"
+  (id, owner_uid, creator_uid, title, member_count, e2ee_mode, scope)
+VALUES
+  (:group_id, :human_uid, :human_uid, 'Agent Hub local group', 0, 0, 'personal');
+SQL
 
 CURRENT_STEP="start local backend for HTTP smoke"
 start_backend "$EVIDENCE_DIR/runtime-backend-before-restart.log"
@@ -356,6 +414,201 @@ python3 -c \
   'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); assert d.get("passed") == 11 and d.get("failed") == 0' \
   "$EVIDENCE_DIR/ext01-a02-runtime.json"
 HTTP_SMOKE_PASSED=1
+
+CURRENT_STEP="seed real channel incoming webhook fixtures"
+$PSQL -d "$DB" -v channel_id="$CHANNEL_FIXTURE_ID" <<'SQL' >/dev/null
+INSERT INTO public.channel (id, name, creator_uid, status)
+VALUES (:channel_id, 'Agent Hub local incoming fixture', 1, 1);
+SQL
+read -r CHANNEL_WEBHOOK_TOKEN CHANNEL_WEBHOOK_ID CHANNEL_WEBHOOK_BOT_UID <<< \
+  "$(create_channel_webhook active-local-hook)"
+read -r CHANNEL_WEBHOOK_DISABLED_TOKEN CHANNEL_WEBHOOK_DISABLED_ID _ <<< \
+  "$(create_channel_webhook disabled-local-hook)"
+[[ "$CHANNEL_WEBHOOK_TOKEN" =~ ^[0-9a-f]{64}$ ]]
+[[ "$CHANNEL_WEBHOOK_DISABLED_TOKEN" =~ ^[0-9a-f]{64}$ ]]
+[[ "$CHANNEL_WEBHOOK_ID" =~ ^[0-9]+$ && "$CHANNEL_WEBHOOK_BOT_UID" =~ ^[0-9]+$ ]]
+[[ "$CHANNEL_WEBHOOK_DISABLED_ID" =~ ^[0-9]+$ ]]
+DISABLE_RESULT="$(
+  printf 'io:format("~p", [channel_webhook_ds:disable(%s, %s)]).\n' \
+    "$CHANNEL_FIXTURE_ID" "$CHANNEL_WEBHOOK_DISABLED_ID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$DISABLE_RESULT" == "ok" ]]
+
+CURRENT_STEP="run real channel incoming webhook HTTP checks"
+IMBOY_BASE_URL="http://127.0.0.1:$RUNTIME_HTTP_PORT" \
+  CHANNEL_WEBHOOK_TOKEN="$CHANNEL_WEBHOOK_TOKEN" \
+  CHANNEL_WEBHOOK_DISABLED_TOKEN="$CHANNEL_WEBHOOK_DISABLED_TOKEN" \
+  CHANNEL_WEBHOOK_TEXT="$CHANNEL_WEBHOOK_TEXT" \
+  python3 "$ROOT/scripts/agent_hub_channel_webhook_smoke.py" \
+    --out "$EVIDENCE_DIR/channel-webhook-a02-runtime.json" \
+    > "$EVIDENCE_DIR/channel-webhook-a02-runtime.log" 2>&1
+$PSQL -d "$DB" -At \
+  -v channel_id="$CHANNEL_FIXTURE_ID" \
+  -v message_text="$CHANNEL_WEBHOOK_TEXT" \
+  -v active_webhook_id="$CHANNEL_WEBHOOK_ID" \
+  -v disabled_webhook_id="$CHANNEL_WEBHOOK_DISABLED_ID" \
+  -v active_bot_uid="$CHANNEL_WEBHOOK_BOT_UID" <<'SQL' \
+  > "$EVIDENCE_DIR/channel-webhook-a02-db.json"
+SELECT jsonb_pretty(jsonb_build_object(
+  'message_count', (
+    SELECT count(*) FROM public.channel_message
+    WHERE channel_id = :channel_id AND content = :'message_text'
+  ),
+  'message', (
+    SELECT jsonb_build_object(
+      'author_id', author_id, 'content', content, 'payload', payload
+    ) FROM public.channel_message
+    WHERE channel_id = :channel_id AND content = :'message_text'
+    ORDER BY created_at DESC LIMIT 1
+  ),
+  'active_webhook', (
+    SELECT jsonb_build_object(
+      'status', status, 'bot_uid', bot_uid, 'plaintext_token_empty', token = '',
+      'last_used', last_used_at IS NOT NULL
+    ) FROM public.channel_webhook WHERE id = :active_webhook_id
+  ),
+  'disabled_webhook', (
+    SELECT jsonb_build_object(
+      'status', status, 'plaintext_token_empty', token = '',
+      'last_used', last_used_at IS NOT NULL
+    ) FROM public.channel_webhook WHERE id = :disabled_webhook_id
+  ),
+  'active_bot_account_type', (
+    SELECT account_type FROM public."user" WHERE id = :active_bot_uid
+  )
+));
+SQL
+python3 - "$EVIDENCE_DIR/channel-webhook-a02-runtime.json" \
+  "$EVIDENCE_DIR/channel-webhook-a02-db.json" "$CHANNEL_WEBHOOK_BOT_UID" <<'PY'
+import json
+import sys
+
+runtime = json.load(open(sys.argv[1], encoding="utf-8"))
+database = json.load(open(sys.argv[2], encoding="utf-8"))
+bot_uid = int(sys.argv[3])
+assert runtime["passed"] == 4 and runtime["failed"] == 0
+assert database["message_count"] == 1
+assert database["message"]["author_id"] == bot_uid
+assert database["message"]["payload"]["is_bot"] is True
+assert database["active_webhook"] == {
+    "status": 1,
+    "bot_uid": bot_uid,
+    "plaintext_token_empty": True,
+    "last_used": True,
+}
+assert database["disabled_webhook"] == {
+    "status": 2,
+    "plaintext_token_empty": True,
+    "last_used": True,
+}
+assert database["active_bot_account_type"] == 2
+PY
+CHANNEL_WEBHOOK_PASSED=1
+
+CURRENT_STEP="run built-in Agent group dialog with local fake LLM"
+AGENT_UID="$(create_fake_agent)"
+[[ "$AGENT_UID" =~ ^[0-9]+$ ]] || {
+  echo "[golden] fake Agent creation failed" >&2; exit 1; }
+MEMBER_RESULT="$(
+  printf 'io:format("~p", [{group_member_ds:add_member(%s, %s), group_member_ds:add_member(%s, %s)}]).\n' \
+    "$AGENT_GROUP_ID" "$AGENT_HUMAN_UID" "$AGENT_GROUP_ID" "$AGENT_UID" \
+    | "$ERL_CALL" -address "127.0.0.1:$BACKEND_DIST_PORT" \
+        -c "$BACKEND_COOKIE" -e -fetch_stdout -no_result_term -timeout 10
+)"
+[[ "$MEMBER_RESULT" == "{ok,ok}" ]]
+AGENT_HUMAN_TOKEN="$(issue_user_token "$AGENT_HUMAN_UID")"
+[[ -n "$AGENT_HUMAN_TOKEN" ]]
+WS_URL="ws://127.0.0.1:$RUNTIME_HTTP_PORT/api/v1/ws" \
+  WS_TOKEN="$AGENT_HUMAN_TOKEN" WS_GID="$AGENT_GROUP_ID" \
+  WS_FROM_UID="$AGENT_HUMAN_UID" \
+  WS_MSG_ID="$AGENT_MSG_ID" WS_TEXT="$AGENT_PROMPT" \
+  WS_MENTIONS="[\"$AGENT_UID\"]" WS_WAIT_SEC=5 \
+  python3 "$ROOT/scripts/smoke/ws_c2g_send.py" \
+    > "$EVIDENCE_DIR/agent-dialog-a02-runtime.log" 2>&1
+for _ in $(seq 1 80); do
+  AGENT_ARCHIVE_COUNT="$($PSQL -d "$DB" -tAc \
+    "SELECT count(*) FROM public.msg_store WHERE group_id=$AGENT_GROUP_ID AND
+       ((msg_id='$AGENT_MSG_ID' AND from_id=$AGENT_HUMAN_UID AND
+         payload::jsonb #>> '{payload,text}'='$AGENT_PROMPT') OR
+        (from_id=$AGENT_UID AND payload::jsonb #>> '{payload,text}'='$AGENT_REPLY'))")"
+  [[ "$AGENT_ARCHIVE_COUNT" == "2" ]] && break
+  sleep 0.25
+done
+$PSQL -d "$DB" -At \
+  -v group_id="$AGENT_GROUP_ID" -v human_uid="$AGENT_HUMAN_UID" \
+  -v agent_uid="$AGENT_UID" -v human_msg_id="$AGENT_MSG_ID" \
+  -v prompt="$AGENT_PROMPT" -v reply="$AGENT_REPLY" <<'SQL' \
+  > "$EVIDENCE_DIR/agent-dialog-a02-db.json"
+SELECT jsonb_pretty(jsonb_build_object(
+  'group', (
+    SELECT jsonb_build_object('id', id, 'e2ee_mode', e2ee_mode, 'scope', scope)
+    FROM public."group" WHERE id = :group_id
+  ),
+  'members', (
+    SELECT jsonb_agg(jsonb_build_object(
+      'user_id', gm.user_id, 'account_type', u.account_type
+    ) ORDER BY gm.user_id)
+    FROM public.group_member gm
+    JOIN public."user" u ON u.id = gm.user_id
+    WHERE gm.group_id = :group_id AND gm.status = 1
+  ),
+  'formal_messages', (
+    SELECT jsonb_agg(jsonb_build_object(
+      'msg_id', msg_id, 'from_id', from_id,
+      'text', payload #>> '{payload,text}',
+      'mentions', payload #> '{payload,mentions}'
+    ) ORDER BY created_at)
+    FROM public.msg_c2g
+    WHERE to_id = :group_id
+  ),
+  'archived_messages', (
+    SELECT jsonb_agg(jsonb_build_object(
+      'msg_id', msg_id, 'from_id', from_id, 'group_id', group_id,
+      'text', payload::jsonb #>> '{payload,text}'
+    ) ORDER BY conv_seq)
+    FROM public.msg_store
+    WHERE group_id = :group_id
+  ),
+  'human_match', (
+    SELECT count(*) FROM public.msg_store
+    WHERE group_id = :group_id AND msg_id = :'human_msg_id'
+      AND from_id = :human_uid AND payload::jsonb #>> '{payload,text}' = :'prompt'
+  ),
+  'agent_match', (
+    SELECT count(*) FROM public.msg_store
+    WHERE group_id = :group_id AND from_id = :agent_uid
+      AND payload::jsonb #>> '{payload,text}' = :'reply'
+  )
+));
+SQL
+python3 - "$EVIDENCE_DIR/agent-dialog-a02-db.json" \
+  "$AGENT_HUMAN_UID" "$AGENT_UID" "$AGENT_GROUP_ID" \
+  "$AGENT_MSG_ID" "$AGENT_PROMPT" "$AGENT_REPLY" <<'PY'
+import json
+import sys
+
+database = json.load(open(sys.argv[1], encoding="utf-8"))
+human_uid, agent_uid, group_id = map(int, sys.argv[2:5])
+human_msg_id, prompt, reply = sys.argv[5:8]
+assert database["group"] == {"id": group_id, "e2ee_mode": 0, "scope": "personal"}
+expected_members = sorted([
+    {"user_id": human_uid, "account_type": 0},
+    {"user_id": agent_uid, "account_type": 1},
+], key=lambda row: row["user_id"])
+assert database["members"] == expected_members
+assert database["human_match"] == 1
+assert database["agent_match"] == 1
+assert len(database["formal_messages"]) == 2
+assert len(database["archived_messages"]) == 2
+human = next(row for row in database["formal_messages"] if row["msg_id"] == human_msg_id)
+agent = next(row for row in database["formal_messages"] if row["from_id"] == agent_uid)
+assert human["from_id"] == human_uid and human["text"] == prompt
+assert human["mentions"] == [str(agent_uid)]
+assert agent["text"] == reply and agent["mentions"] is None
+PY
+AGENT_DIALOG_PASSED=1
 
 TRACE_TASK_ID="$($PSQL -d "$DB" -tAc \
   "SELECT id FROM public.agent_task WHERE correlation_id='$TRACE_CORR'")"
@@ -414,5 +667,5 @@ fi
 write_manifest
 RUN_FINISHED=1
 echo "[golden] evidence written to $EVIDENCE_DIR"
-echo "[golden] PARTIAL: HTTP MCP and restart PASS; trusted runtime trace, full protocol flow, and final Base rerun remain open"
+echo "[golden] PARTIAL: HTTP MCP, channel webhook, built-in Agent dialog, and restart PASS; trusted runtime trace and the remaining Bot protocol flow stay open"
 exit 1
