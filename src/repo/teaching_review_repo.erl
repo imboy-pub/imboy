@@ -25,7 +25,7 @@
 
 -define(REVIEW_FIELDS, <<
     "positive_point, focus_problem, practice_action, comment, "
-    "video_attachment_id, rework_required"
+    "video_attachment_id, rework_required, char_reviews"
 >>).
 
 %%%===================================================================
@@ -48,6 +48,7 @@ upsert_draft_tx(Conn, SubmissionId, #{uid := Uid} = Fields) ->
                 <<"UPDATE ", (tb(teacher_review))/binary,
                     " SET positive_point = $4, focus_problem = $5, practice_action = $6, "
                     "comment = $7, video_attachment_id = $8, rework_required = $9, "
+                    "char_reviews = $10, "
                     "updated_at = now() "
                     " WHERE id = $1 AND submission_id = $2 AND reviewer_uid = $3 "
                     "   AND status = 'draft' RETURNING *">>,
@@ -59,7 +60,7 @@ upsert_draft_tx(Conn, SubmissionId, #{uid := Uid} = Fields) ->
                 <<"INSERT INTO ", (tb(teacher_review))/binary,
                     " (id, submission_id, reviewer_uid, ", (?REVIEW_FIELDS)/binary,
                     ") "
-                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *">>,
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *">>,
             unwrap_row(
                 elib_pg:query(
                     Conn,
@@ -338,7 +339,7 @@ publish_zero_rows(Conn, SubmissionId, Uid) ->
     end.
 
 %% 字段值顺序 = ?REVIEW_FIELDS：positive_point, focus_problem, practice_action,
-%% comment, video_attachment_id, rework_required（$4..$9）
+%% comment, video_attachment_id, rework_required, char_reviews（$4..$10）
 -spec field_values(map()) -> [term()].
 field_values(F) ->
     [
@@ -347,8 +348,16 @@ field_values(F) ->
         maps:get(practice_action, F, <<>>),
         maps:get(comment, F, <<>>),
         maps:get(video_attachment_id, F, null),
-        maps:get(rework_required, F, false)
+        maps:get(rework_required, F, false),
+        char_reviews_param(maps:get(char_reviews, F, null))
     ].
+
+%% jsonb 参数：null 直传（无逐字数据）；Erlang 项列表 jsone:encode 后以 text
+%% 传参、由 PG 转型 jsonb（ai_finish_success_tx result_json 同款先例）。
+%% 写入前已经过 logic 层 parse_char_reviews 白名单，此处只负责编码。
+-spec char_reviews_param(null | [map()]) -> null | binary().
+char_reviews_param(null) -> null;
+char_reviews_param(List) when is_list(List) -> jsone:encode(List).
 
 %% ---- P0-4 review_asset internals ----
 

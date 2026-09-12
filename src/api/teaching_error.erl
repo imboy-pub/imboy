@@ -60,6 +60,7 @@ map_reason(withdrawn) -> {<<"提交已撤回，无法发布回评"/utf8>>, ?ERR_
 map_reason(confirm_mismatch) -> {<<"发布确认学员不一致"/utf8>>, ?ERR_REVIEW_CONFIRM_MISMATCH};
 map_reason(reserved_field) -> {<<"请求包含服务端保留字段"/utf8>>, ?ERR_REVIEW_FIELD_NOT_ACCEPTED};
 map_reason(empty_content) -> {<<"回评内容为空"/utf8>>, ?ERR_REVIEW_EMPTY_CONTENT};
+map_reason(char_reviews_invalid) -> {<<"逐字点评字卡数据不合规"/utf8>>, ?ERR_REVIEW_CHAR_REVIEWS_INVALID};
 %% 参数/通用
 map_reason(bad_param) -> {<<"参数错误"/utf8>>, ?ERR_PARAM_INVALID};
 map_reason(missing_param) -> {<<"缺少必填参数"/utf8>>, ?ERR_MISSING_PARAM};

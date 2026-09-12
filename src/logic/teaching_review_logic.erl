@@ -19,7 +19,10 @@
     %% 纯函数导出供 eunit 直测（v3 N5/P1-3 补测）
     review_has_content/2,
     %% 纯函数导出供 eunit 直测：PublishedReview DTO（老师署名字段）
-    published_review_payload/3
+    published_review_payload/3,
+    %% 纯函数导出供 eunit 直测：逐字点评字卡（char_reviews Phase A）解析与读侧解码
+    parse_char_reviews/1,
+    char_reviews_payload/1
 ]).
 
 -include_lib("kernel/include/logger.hrl").
@@ -27,6 +30,10 @@
 
 %% 契约保留字段（T7：伪造 reviewer_uid/status/published_at → 5484）
 -define(RESERVED_BODY_KEYS, [<<"reviewer_uid">>, <<"status">>, <<"published_at">>]).
+
+%% 逐字点评字卡（char_reviews 契约：docs/plans/2026-09-12-char-review-dto-proposal.md）
+-define(CHAR_REVIEWS_MAX, 50).
+-define(CHAR_GRADES, [<<"good">>, <<"fair">>, <<"poor">>]).
 
 %%%===================================================================
 %%% API
@@ -81,18 +88,25 @@ save_draft(Uid, SubmissionId, Body) ->
         false ->
             case parse_review_assets(Body) of
                 {ok, Assets} ->
-                    save_draft_with_assets(Uid, SubmissionId, Body, Assets);
+                    case parse_char_reviews(Body) of
+                        {ok, CharReviews} ->
+                            save_draft_with_assets(Uid, SubmissionId, Body, Assets, CharReviews);
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
                 {error, Reason} ->
                     {error, Reason}
             end
     end.
 
--spec save_draft_with_assets(integer(), integer(), map(), [{integer(), binary(), integer()}]) ->
+-spec save_draft_with_assets(
+    integer(), integer(), map(), [{integer(), binary(), integer()}], [map()] | null
+) ->
     {ok, map()} | {error, atom()}.
-save_draft_with_assets(Uid, SubmissionId, Body, Assets) ->
+save_draft_with_assets(Uid, SubmissionId, Body, Assets, CharReviews) ->
     case draft_guard(Uid, SubmissionId) of
         {ok, _GroupId} ->
-            Fields = draft_fields(Uid, Body, Assets),
+            Fields = draft_fields(Uid, Body, Assets, CharReviews),
             Tx = fun(Conn) ->
                 case teaching_submission_repo:lock_submission_tx(Conn, SubmissionId) of
                     {ok, Row} when is_map(Row) ->
@@ -468,6 +482,8 @@ published_review_payload(Pub, Assets, ReviewerName) ->
         <<"focus_problem">> => maps:get(<<"focus_problem">>, Pub, <<>>),
         <<"practice_action">> => maps:get(<<"practice_action">>, Pub, <<>>),
         <<"comment">> => maps:get(<<"comment">>, Pub, <<>>),
+        %% 逐字点评字卡（char_reviews 契约）：jsonb 读侧解码透传，null=不渲染字卡区
+        <<"char_reviews">> => char_reviews_payload(maps:get(<<"char_reviews">>, Pub, null)),
         %% P0-4：回评媒体集合（TSID 一律 string）
         <<"assets">> => [review_asset_payload(A) || A <- Assets],
         %% 兼容字段只读派生：从 assets 第一条 feedback_video 派生，非写入真源
@@ -492,8 +508,10 @@ draft_guard(Uid, SubmissionId) ->
             {error, not_staff}
     end.
 
--spec draft_fields(integer(), map(), [{integer(), binary(), integer()}]) -> map().
-draft_fields(Uid, Body, Assets) ->
+-spec draft_fields(
+    integer(), map(), [{integer(), binary(), integer()}], [map()] | null
+) -> map().
+draft_fields(Uid, Body, Assets, CharReviews) ->
     #{
         uid => Uid,
         positive_point => text(maps:get(<<"positive_point">>, Body, <<>>)),
@@ -507,7 +525,9 @@ draft_fields(Uid, Body, Assets) ->
                 undefined -> null;
                 AttId -> AttId
             end,
-        rework_required => maps:get(<<"rework_required">>, Body, false) =:= true
+        rework_required => maps:get(<<"rework_required">>, Body, false) =:= true,
+        %% 逐字点评字卡（Phase A）：已过 parse_char_reviews 白名单；null=无逐字数据
+        char_reviews => CharReviews
     }.
 
 %% ---- P0-4：请求 assets 解析（结构/数量/重复/新旧字段一致性，快失败不落库） ----
@@ -853,6 +873,8 @@ history_published_review(R) ->
                 <<"focus_problem">> => maps:get(<<"focus_problem">>, R, <<>>),
                 <<"practice_action">> => maps:get(<<"practice_action">>, R, <<>>),
                 <<"comment">> => maps:get(<<"comment">>, R, <<>>),
+                <<"char_reviews">> =>
+                    char_reviews_payload(maps:get(<<"char_reviews">>, R, null)),
                 <<"video_attachment_id">> =>
                     nullable_tsid(maps:get(<<"video_attachment_id">>, R, null)),
                 <<"rework_required">> => maps:get(<<"rework_required">>, R, false) =:= true,
@@ -874,6 +896,7 @@ review_payload(R, Assets) ->
         <<"focus_problem">> => maps:get(<<"focus_problem">>, R, <<>>),
         <<"practice_action">> => maps:get(<<"practice_action">>, R, <<>>),
         <<"comment">> => maps:get(<<"comment">>, R, <<>>),
+        <<"char_reviews">> => char_reviews_payload(maps:get(<<"char_reviews">>, R, null)),
         <<"assets">> => [review_asset_payload(A) || A <- Assets],
         <<"video_attachment_id">> => nullable_tsid(derive_video_id_rows(Assets)),
         <<"rework_required">> => maps:get(<<"rework_required">>, R, false) =:= true,
@@ -944,6 +967,80 @@ learner_name(LearnerId) ->
         {ok, [#{<<"display_name">> := Name} | _]} -> Name;
         _ -> <<>>
     end.
+
+%% ---- 逐字点评字卡（char_reviews，Phase A：docs/plans/2026-09-12-char-review-dto-proposal.md）----
+
+%% 请求体解析：无键 → null（覆盖式 upsert 与其他字段同语义：PUT 不带即清空）；
+%% 非 list → {error, char_reviews_invalid}（整体结构错误=调用方 bug，整体拒绝）；
+%% list → 单项白名单校验（index≥0 整数、char 非空≤8字节、grade 枚举、comment≤300
+%% 字节；必填缺失或越界 → 该项丢弃不整体拒绝，AI 输出容错）；
+%% 空数组/全部丢弃 → 归一化 null；超过 50 项按输入顺序截取前 50。
+-spec parse_char_reviews(map()) -> {ok, [map()] | null} | {error, char_reviews_invalid}.
+parse_char_reviews(Body) when is_map(Body) ->
+    case maps:get(<<"char_reviews">>, Body, null) of
+        null ->
+            {ok, null};
+        Items when is_list(Items) ->
+            {ok, normalize_char_reviews(Items)};
+        _ ->
+            {error, char_reviews_invalid}
+    end;
+parse_char_reviews(_) ->
+    {error, char_reviews_invalid}.
+
+-spec normalize_char_reviews([term()]) -> [map()] | null.
+normalize_char_reviews(Items) ->
+    Kept = lists:sublist(lists:filtermap(fun char_review_item/1, Items), ?CHAR_REVIEWS_MAX),
+    case Kept of
+        [] -> null;
+        _ -> Kept
+    end.
+
+%% 单项白名单（fail-per-item）+ 防御性剥离：只保留契约四字段
+-spec char_review_item(term()) -> {true, map()} | false.
+char_review_item(Item) when is_map(Item) ->
+    Index = maps:get(<<"index">>, Item, undefined),
+    Char = maps:get(<<"char">>, Item, undefined),
+    Grade = maps:get(<<"grade">>, Item, undefined),
+    Comment = maps:get(<<"comment">>, Item, <<>>),
+    IsValid =
+        is_integer(Index) andalso Index >= 0 andalso
+            is_binary(Char) andalso Char =/= <<>> andalso byte_size(Char) =< 8 andalso
+            is_binary(Grade) andalso lists:member(Grade, ?CHAR_GRADES) andalso
+            is_binary(Comment) andalso byte_size(Comment) =< 300,
+    case IsValid of
+        true ->
+            {true, #{
+                <<"index">> => Index,
+                <<"char">> => Char,
+                <<"grade">> => Grade,
+                <<"comment">> => Comment
+            }};
+        false ->
+            false
+    end;
+char_review_item(_) ->
+    false.
+
+%% char_reviews jsonb 读侧：elib_pg 连接未配 json codec，jsonb 读回为 JSON
+%% 文本（moderation_action_logic 同款兜底解码）；写入侧已白名单，解码后透传。
+%% 连接若未来配上 json codec（读回 Erlang 项）list 分支直通。
+-spec char_reviews_payload(term()) -> [map()] | null.
+char_reviews_payload(null) ->
+    null;
+char_reviews_payload(undefined) ->
+    null;
+char_reviews_payload(Bin) when is_binary(Bin) ->
+    try jsone:decode(Bin, [{object_format, map}]) of
+        List when is_list(List) -> List;
+        _ -> null
+    catch
+        _:_ -> null
+    end;
+char_reviews_payload(List) when is_list(List) ->
+    List;
+char_reviews_payload(_) ->
+    null.
 
 %% @doc 回评老师展示名（家长点评卡署名位）：reviewer_uid → user.nickname。
 %% 查无（账号注销等）返回 null，前端隐藏署名位而非显示空文本。

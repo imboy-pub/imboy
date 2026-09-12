@@ -4047,7 +4047,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 184,
+    "defines": 185,
     "distinct_codes": [
       0,
       1,
@@ -4205,7 +4205,8 @@
       5483,
       5484,
       5485,
-      5486
+      5486,
+      5487
     ],
     "note": "flutter 全量契约由 C1 imboyapp/scripts/generate_error_code.dart --check 承担",
     "segments": {
@@ -4216,7 +4217,7 @@
       "5100": 7,
       "5200": 6,
       "5300": 7,
-      "5400": 31,
+      "5400": 32,
       "900": 43
     },
     "source": "include/error_code.hrl"

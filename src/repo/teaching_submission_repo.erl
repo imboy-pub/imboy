@@ -439,7 +439,7 @@ history(LearnerId, Page, Size) ->
             "a.task_id, gt.title AS task_title, g.id AS group_id, g.title AS group_title, "
             "w.id AS workspace_id, "
             "tr.id AS published_review_id, tr.positive_point, tr.focus_problem, "
-            "tr.practice_action, tr.comment, tr.video_attachment_id, "
+            "tr.practice_action, tr.comment, tr.char_reviews, tr.video_attachment_id, "
             "tr.rework_required, tr.published_at "
             "FROM ",
             (tb(homework_submission))/binary,
