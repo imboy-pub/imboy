@@ -29,7 +29,6 @@
         invalid_key
         | forbidden_key
         | object_not_found
-        | forbidden
         | invalid_file_type
         | file_too_large
         %% 服务端故障标签：handler 映射 5xx，与 4xx 业务拒绝区分
