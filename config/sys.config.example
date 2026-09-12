@@ -280,6 +280,13 @@
         %% presign 有效期是分钟级，24 小时足够覆盖"上传成功但 confirm 丢了、
         %% 客户端稍后重试"的场景。与上面的 age_days 语义不同，勿混用。
         {attachment_pending_cleanup_age_hours, 24},
+        %% 墨芽 AI 回课：是否给 AI provider 签发附件视频的可达 URL。**默认 false**。
+        %% false → worker 只把 object_key 交给模型：回课看不到画面（内容盲，但链路
+        %% 完整、不报错）。true → 每条回课把一段短时（600s）有效的视频 URL 交给
+        %% 第三方多模态模型，属涉及未成年人媒体内容的对外数据流，须先确认合规。
+        %% 详见 teaching_ai_worker:maybe_attach_view_url/1 与
+        %% docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md。
+        {teaching_ai_attach_video_url, false},
         % 启用分布式缓存同步功能
         {dsync_enabled, true},
 
@@ -611,6 +618,11 @@
             %% 全部快速降级 failed=provider_unavailable，老师人工队列不受影响）。
             %% （R6/C 修复：原行首 /// 非法注释符致 file:consult 整体解析失败，
             %%   会使 sys.config 加载崩溃、全部 ecron 作业失效。）
+            %%
+            %% ⚠️ 启用前须知：该 Worker 默认**看不到视频**——附件 URL 由
+            %% {teaching_ai_attach_video_url, true} 决定是否签发，默认 false 时
+            %% provider 只拿到 object_key（回课内容盲）。开启即产生「未成年人
+            %% 媒体内容外发给第三方多模态模型」的数据流，须显式打开并确认合规。
             {teaching_ai_worker, "*/1 * * * *", {teaching_ai_worker, run_once, []}},
             %% Step 11/R7：AI 回课卡死行回收（worker 在 claim 后崩溃遗留 running
             %% 行，永不自愈）。每 10 分钟扫一次 running 超龄行回 queued；

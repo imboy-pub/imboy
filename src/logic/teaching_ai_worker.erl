@@ -3,10 +3,16 @@
 % 墨芽书法 AI 视频回课 Worker（Step 11 骨架 + AI-03 降级闭环优先）
 % AI video review worker
 %
-% 现实约束（BLOCKED_EXTERNAL）：imboy_llm 现有 provider vision 全 false，
-% 真实多模态调用被阻塞——provider_unavailable 是当前**主路径**：
-% status=failed + error_code=provider_unavailable → 老师人工队列照常工作
-% （Step 9 队列不过滤 ai_status，failed 仍显示）。
+% 降级口径（AI-03）：provider_unavailable 仍是一条正常路径（provider 名未配置 /
+% registry 未命中 / vision 声明缺失 / api_key 为空），落 status=failed +
+% error_code=provider_unavailable → 老师人工队列照常工作（Step 9 队列不过滤
+% ai_status，failed 仍显示）。
+% （原文写「imboy_llm 现有 provider vision 全 false，真实多模态调用被
+% BLOCKED_EXTERNAL 阻塞，provider_unavailable 是当前主路径」——已于 2026-09-11
+% 接入视觉 provider 后失效。）
+%
+% ⚠️ 视频可见性：附件 URL 由 maybe_attach_view_url/1 按开关补，**默认关闭**；
+% 关闭时模型只拿到 object_key（回课内容盲）。见该函数注释。
 %
 % 执行路径（计划 §7.3）：
 %   claim（原子）→ submission/附件绑定校验 → 媒体复核 → provider →
@@ -18,6 +24,11 @@
 
 -export([run_once/0, run_once_tx/1, process_tx/2]).
 -export([reclaim_stuck/0, reclaim_stuck_tx/2]).
+
+-ifdef(TEST).
+%% 纯函数，导出供单测直接验收「开关关闭时附件原样不变」这一 fail-closed 语义
+-export([maybe_attach_view_url/1]).
+-endif.
 
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
@@ -31,6 +42,9 @@
 %% 为秒级，下限 300s 内绝不回收，防误伤正在处理的行。
 -define(MIN_STUCK_AGE_SECONDS, 300).
 -define(DEFAULT_STUCK_AGE_SECONDS, 900).
+
+%% 视频取用 URL 有效期：与 attach_logic 的 ?GET_EXPIRES 同值（受限资源统一 600s）
+-define(VIEW_URL_EXPIRES, 600).
 
 %%%===================================================================
 %%% API
@@ -159,7 +173,7 @@ load_attachment(SubmissionId, Scope) ->
     AttTb = elib_pg_sql:public_tablename(<<"attachment">>),
     Sql =
         <<
-            "SELECT att.id, att.path, att.mime_type, att.size "
+            "SELECT att.id, att.path, att.mime_type, att.size, att.scope "
             "FROM ",
             SaTb/binary,
             " sa "
@@ -171,10 +185,48 @@ load_attachment(SubmissionId, Scope) ->
         >>,
     case elib_pg:query(Sql, [SubmissionId]) of
         {ok, [Attachment | _]} ->
-            {ok, #{scope => Scope, attachment => Attachment}};
+            {ok, #{scope => Scope, attachment => maybe_attach_view_url(Attachment)}};
         _ ->
             %% 附件已删除/未绑定（authorize 语义在系统侧等价物：绑定存在性）
             {error, <<"attachment_missing">>}
+    end.
+
+%% @doc 给附件补「模型侧可抓取」的可达 URL —— **默认关闭**。
+%% 关闭时附件原样返回：provider 的 build_messages 走纯文本分支，模型只拿到
+%% object_key（回课内容盲，但链路完整、不报错）。
+%% 开启后每条回课会把一段短时有效的视频 URL 交给第三方多模态模型——这是涉及
+%% 未成年人媒体内容的对外数据流，故必须显式打开：
+%%     {teaching_ai_attach_video_url, true}   %% 或 IMBOY_ 前缀环境变量
+%% 签名原语与 attach_logic:view_url/2 同源，签名主机取 elib_oss:public_endpoint()
+%% （生产 https://s3.imboy.pub 公网可抓；本地为内网端点时模型抓不到，会以
+%% provider_error 降级到老师人工队列，不会静默出错）。
+%% 不落库、不写日志（MEDIA-03：不得持久化 presigned URL）。
+-spec maybe_attach_view_url(map()) -> map().
+maybe_attach_view_url(Attachment) ->
+    case config_ds:env(teaching_ai_attach_video_url, false) of
+        true -> presign_view_url(Attachment);
+        _ -> Attachment
+    end.
+
+-spec presign_view_url(map()) -> map().
+presign_view_url(Attachment) ->
+    Path = maps:get(<<"path">>, Attachment, <<>>),
+    Scope = maps:get(<<"scope">>, Attachment, <<"teaching">>),
+    case is_binary(Path) andalso Path =/= <<>> of
+        true ->
+            try elib_oss:presign_get_for_key(elib_oss:get_bucket(Scope), Path, ?VIEW_URL_EXPIRES) of
+                Url when is_binary(Url), Url =/= <<>> ->
+                    Attachment#{<<"url">> => Url};
+                _ ->
+                    Attachment
+            catch
+                %% 签名失败（garage 未配置/端点异常）不阻断回课：退回不带 url，
+                %% 与开关关闭时的行为一致（内容盲但链路完整）。
+                _:_ ->
+                    Attachment
+            end;
+        false ->
+            Attachment
     end.
 
 %% ---- provider 调用与结果分派 ----
