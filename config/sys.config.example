@@ -287,6 +287,14 @@
         %% 详见 teaching_ai_worker:maybe_attach_view_url/1 与
         %% docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md。
         {teaching_ai_attach_video_url, false},
+        %% 墨芽 AI 回课：指定用哪个 llm_providers 条目（如 <<"bigmodel">>）。
+        %% ⚠️ 本键此前在全部配置模板与文档中缺失 —— 未设置时
+        %% teaching_ai_draft_logic:analyze_video/2 恒返回 provider_unavailable，
+        %% 草稿一律落 failed 交老师人工队列（任何环境都不会产出 AI 点评）。
+        %% 这是**诚实的失败**，优于产出「看不到视频」的内容盲点评；因此在打开
+        %% {teaching_ai_attach_video_url, true} 之前，不建议把本键设为真实 provider。
+        %% 两者应成对启用：provider 名 + 视频开关，缺一则回课无意义。
+        {teaching_ai_llm_provider, undefined},
         % 启用分布式缓存同步功能
         {dsync_enabled, true},
 
