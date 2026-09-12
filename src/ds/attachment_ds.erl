@@ -21,6 +21,7 @@
 -export([bind_moment_scope_ref/2]).
 
 -export([find_path_by_id/1]).
+-export([authorize_group_access/2]).
 
 %% ===================================================================
 %% API Functions
@@ -156,6 +157,11 @@ find_by_path_and_uid(ObjectKey, Uid) ->
 -spec find_by_path(binary()) -> {ok, map()} | {error, not_found | term()}.
 find_by_path(ObjectKey) ->
     attachment_repo:find_by_path(ObjectKey).
+
+%% @doc 群附件按消息 anchor 与当前 membership generation 授权。
+-spec authorize_group_access(binary(), integer()) -> boolean().
+authorize_group_access(ObjectKey, Uid) ->
+    attachment_repo:authorize_group_access(ObjectKey, Uid).
 
 %% @doc 发帖后把 scope='moment' 待绑定的媒体附件回填 scope_ref=MomentId
 -spec bind_moment_scope_ref([binary()], integer() | binary()) -> ok | {error, term()}.

@@ -144,6 +144,9 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
         {error, not_found} ->
             {error, object_not_found};
         {error, R} ->
+            %% not_found 之外的 HEAD 异常（如 416 空对象/5xx）必须留痕，
+            %% 否则上层只看到笼统的"附件落库失败"400，无法定位。
+            ?ERROR_LOG(["attach_logic confirm head_object failed: ", Bucket, ObjectKey, R]),
             {error, R};
         {ok, #{size := RealSize, content_type := RealType}} ->
             case RealSize > elib_oss:max_file_size() of
@@ -184,14 +187,38 @@ teaching_verify_guard(_Scope, _RealType, _RealSize, _Meta) ->
 ) ->
     {ok, map()} | {error, term()}.
 do_save(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType) ->
-    case normalize_cipher(maps:get(<<"cipher">>, Meta, undefined)) of
-        {error, unsupported_cipher} ->
-            %% fail-closed：不做套件协商。落库成 null 会把密文对象**标成明文**，
-            %% 那才是真正危险的降级——日后回迁盘点会漏掉它，读取侧也会当明文直读。
-            {error, unsupported_cipher};
-        Cipher ->
-            do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher)
+    case group_anchor_msg_id(Scope, Meta) of
+        {error, attachment_anchor_required} = E ->
+            E;
+        AnchorMsgId ->
+            case normalize_cipher(maps:get(<<"cipher">>, Meta, undefined)) of
+                {error, unsupported_cipher} ->
+                    %% fail-closed：不做套件协商。落库成 null 会把密文对象**标成明文**，
+                    %% 那才是真正危险的降级——日后回迁盘点会漏掉它，读取侧也会当明文直读。
+                    {error, unsupported_cipher};
+                Cipher ->
+                    do_save_1(
+                        Uid,
+                        ObjectKey,
+                        Scope,
+                        ScopeRef,
+                        Meta,
+                        RealSize,
+                        RealType,
+                        Cipher,
+                        AnchorMsgId
+                    )
+            end
     end.
+
+%% 群附件必须在上传前生成消息 ID；其它 scope 不参与群历史边界。
+group_anchor_msg_id(<<"group">>, Meta) ->
+    case maps:get(<<"anchor_msg_id">>, Meta, undefined) of
+        MsgId when is_binary(MsgId), byte_size(MsgId) > 0, byte_size(MsgId) =< 128 -> MsgId;
+        _ -> {error, attachment_anchor_required}
+    end;
+group_anchor_msg_id(_Scope, _Meta) ->
+    null.
 
 %% 只接受 null（明文，含全部旧客户端）与冻结的唯一套件名。
 %% 与客户端 AttachmentDescriptor.supportedCipher 保持同一个值。
@@ -201,7 +228,7 @@ normalize_cipher(<<>>) -> null;
 normalize_cipher(<<"AES-256-GCM">>) -> <<"AES-256-GCM">>;
 normalize_cipher(_) -> {error, unsupported_cipher}.
 
-do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
+do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher, AnchorMsgId) ->
     Attach = #{
         %% file_hash256（SHA-256）仅作完整性参考，不作安全边界。
         %% 双读兼容：新客户端传 file_hash256，旧客户端过渡期仍传 md5。
@@ -220,7 +247,8 @@ do_save_1(Uid, ObjectKey, Scope, ScopeRef, Meta, RealSize, RealType, Cipher) ->
         <<"url">> => ObjectKey,
         <<"size">> => RealSize,
         <<"scope">> => Scope,
-        <<"scope_ref">> => normalize_ref(ScopeRef)
+        <<"scope_ref">> => normalize_ref(ScopeRef),
+        <<"anchor_msg_id">> => AnchorMsgId
     },
     Now = elib_dt:now(),
     try
@@ -444,9 +472,11 @@ authorize(<<"c2c">>, Uid, Rec) ->
             false
     end;
 authorize(<<"group">>, Uid, Rec) ->
-    case to_int(scope_ref(Rec)) of
-        {ok, Gid} -> group_member_ds:is_member(Gid, Uid);
-        error -> false
+    case maps:get(<<"path">>, Rec, undefined) of
+        ObjectKey when is_binary(ObjectKey), ObjectKey =/= <<>> ->
+            attachment_ds:authorize_group_access(ObjectKey, Uid);
+        _ ->
+            false
     end;
 authorize(<<"channel">>, Uid, Rec) ->
     case to_int(scope_ref(Rec)) of

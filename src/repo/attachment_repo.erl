@@ -51,9 +51,20 @@
 
 -export([find_path_by_id/1]).
 
+%% @doc 单 statement 校验群附件的当前世代边界。
+-export([authorize_group_access/2]).
+%% 真库回归直接执行生产 SQL，避免用 mock/字符串包含断言替代 PostgreSQL 语义。
+-export([group_access_sql/1]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("log.hrl").
 -include_lib("kernel/include/logger.hrl").
+
+%% image mime 归一为标准子类型（eunit 验收；修复前 image/jpeg 被扩展名
+%% 重写成 image/jpg），定义见文件尾 normalize_image_mime/1
+-ifdef(TEST).
+-export([normalize_image_mime/1]).
+-endif.
 -include("common.hrl").
 
 %% ===================================================================
@@ -82,6 +93,8 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     %% E2EE-061 密文判别位（迁移 000050）：null = 明文对象。
     %% 缺省 null 保证历史调用方（收藏、转发等不经 confirm 的写入）语义不变。
     Cipher = maps:get(<<"cipher">>, Attach, null),
+    AnchorMsgId = maps:get(<<"anchor_msg_id">>, Attach, null),
+    GroupFileId = maps:get(<<"group_file_id">>, Attach, null),
     Ext = filename:extension(Path),
 
     Ext2 = ec_cnv:to_binary(Ext),
@@ -90,14 +103,12 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
     % Path2 = ec_cnv:to_binary(Path),
     Attach2 = jsone:encode(Attach),
 
-    MimeType2 =
-        case binary:split(MimeType, <<"/">>) of
-            [<<"image">>, _] ->
-                <<".", Ext3/binary>> = Ext2,
-                <<"image/", Ext3/binary>>;
-            _ ->
-                MimeType
-        end,
+    %% image/* mime 归一化（2026-09-11 moya 报障根因修复）：历史逻辑用 object_key
+    %% 扩展名重写 image 子类型（image/jpeg + .jpg → image/jpg），产生非法 MIME
+    %% 子类型——confirm HEAD 核实值本为 image/jpeg，落库却成 image/jpg，客户端
+    %% 按 image/jpeg 白名单判不过。改为仅归一化已知别名，标准值原样落库
+    %% （历史数据不动，只修新写入）。
+    MimeType2 = normalize_image_mime(MimeType),
 
     % 拼接 ON CONFLICT 子句。
     % 去重键用 path(object_key)，非 md5：object_key 由 build_object_key 构造，
@@ -131,6 +142,8 @@ save(Conn, CreatedAt, Uid, [Attach | Tail]) ->
         <<"scope">> => Scope,
         <<"scope_ref">> => ScopeRef,
         <<"cipher">> => Cipher,
+        <<"anchor_msg_id">> => AnchorMsgId,
+        <<"group_file_id">> => GroupFileId,
         <<"updated_at">> => CreatedAt,
         <<"created_at">> => CreatedAt,
         <<"status">> => 1
@@ -392,6 +405,33 @@ find_by_path(ObjectKey) ->
         {error, R} -> {error, R}
     end.
 
+%% @doc 群附件下载授权。聊天附件按 anchor_conv_seq 检查当前 generation；独立
+%% 群文件按 group_file_id 保持当前成员共享语义。两类都在同一个 READ COMMITTED
+%% statement 内重验 active group/member/open generation；未知或未绑定记录 false。
+-spec authorize_group_access(binary(), integer()) -> boolean().
+authorize_group_access(ObjectKey, Uid) ->
+    Tb = tablename(),
+    Sql = group_access_sql(Tb),
+    case elib_pg:one(Sql, [ObjectKey, Uid]) of
+        {ok, #{<<"allowed">> := true}} -> true;
+        _ -> false
+    end.
+
+-spec group_access_sql(binary()) -> binary().
+group_access_sql(Tb) ->
+    <<"SELECT EXISTS (SELECT 1 FROM ", Tb/binary, " a ", "JOIN public.group_member_generation gmg ",
+        " ON a.scope_ref = gmg.group_id::text AND gmg.user_id = $2 ", " AND gmg.end_seq IS NULL ",
+        "JOIN public.group_member gm ON gm.group_id = gmg.group_id ",
+        " AND gm.user_id = gmg.user_id AND gm.status = 1 ",
+        "JOIN public.\"group\" grp ON grp.id = gmg.group_id AND grp.status = 1 ",
+        "WHERE a.path = $1 AND a.scope = 'group' AND a.status >= 0 ",
+        "AND ((a.group_file_id IS NULL AND a.anchor_conv_seq IS NOT NULL ",
+        "      AND gmg.start_seq <= a.anchor_conv_seq) ",
+        " OR (a.group_file_id IS NOT NULL AND EXISTS (",
+        "      SELECT 1 FROM public.group_file gf ",
+        "      WHERE gf.id = a.group_file_id AND gf.group_id = gmg.group_id ",
+        "        AND gf.status = 1)))) AS allowed">>.
+
 %% @doc 按 id 查询附件 path（ObjectKey），供 admin 下载端点签发 presign GET
 %% 仅返回未软删除（status >= 0）的记录
 -spec find_path_by_id(integer() | binary()) -> {ok, binary()} | {error, not_found | term()}.
@@ -407,6 +447,16 @@ find_path_by_id(Id) ->
 %% ===================================================================
 %% Internal Function Definitions
 %% ===================================================================
+
+%% image mime 已知别名归一：jpg→jpeg、tif→tiff。其余（含全部标准子类型）
+%% 原样返回——不再用 object_key 扩展名重写子类型。
+-spec normalize_image_mime(binary()) -> binary().
+normalize_image_mime(<<"image/jpg">>) ->
+    <<"image/jpeg">>;
+normalize_image_mime(<<"image/tif">>) ->
+    <<"image/tiff">>;
+normalize_image_mime(MimeType) ->
+    MimeType.
 
 %
 

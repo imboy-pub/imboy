@@ -21,6 +21,7 @@ upload_file_success_test_() ->
         FileType = <<"application/pdf">>,
         FileUrl = <<"https://oss.example.com/group/test.pdf">>,
         FileId = <<"file_123">>,
+        GroupFileId = 123456789,
         NowTs = 1700000000,
 
         meck:new(group_ds, [passthrough]),
@@ -71,7 +72,7 @@ upload_file_success_test_() ->
             % 真实契约：group_file_repo:insert_tx/2 返回 {ok, FileId} 二元组
             % （曾 mock 成三元组 {ok, 1, #{}} 与实现一起漂移，掩盖了
             % group_file_ds:upload_file/5 的 no case clause 生产 500）
-            {ok, FileId}
+            {ok, GroupFileId}
         end),
 
         % BUG#137：上传成功须补写 scope=group 附件记录（Garage 私桶裸 URL
@@ -96,6 +97,7 @@ upload_file_success_test_() ->
             ?assertEqual(byte_size(FileBinary), maps:get(<<"size">>, Attach)),
             ?assertEqual(<<"group">>, maps:get(<<"scope">>, Attach)),
             ?assertEqual(integer_to_binary(Gid), maps:get(<<"scope_ref">>, Attach)),
+            ?assertEqual(GroupFileId, maps:get(<<"group_file_id">>, Attach)),
             ok
         end),
 

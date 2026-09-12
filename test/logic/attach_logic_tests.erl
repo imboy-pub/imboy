@@ -224,6 +224,65 @@ confirm_group_non_member_forbidden_test_() ->
         end
     ).
 
+confirm_group_requires_anchor_message_id_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_ds, [{'is_member', 2, fun(66, 1) -> true end}]},
+            {elib_oss, [
+                {'head_object', 2, fun(_B, _K) ->
+                    {ok, #{size => 1, content_type => <<"image/png">>}}
+                end}
+            ]},
+            {attachment_ds, [{'save', 4, fun(_, _, _, _) -> ok end}]}
+        ],
+        fun() ->
+            Key = <<"u1/g66/20260911/file_x/a.png">>,
+            Meta = #{<<"file_hash256">> => <<"abc">>},
+            ?assertEqual(
+                {error, attachment_anchor_required},
+                attach_logic:confirm(1, Key, <<"group">>, <<"66">>, Meta)
+            ),
+            ?assertEqual(0, meck:num_calls(attachment_ds, save, 4))
+        end
+    ).
+
+confirm_group_persists_anchor_message_id_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_ds, [{'is_member', 2, fun(66, 1) -> true end}]},
+            {elib_oss, [
+                {'head_object', 2, fun(_B, _K) ->
+                    {ok, #{size => 1, content_type => <<"image/png">>}}
+                end}
+            ]},
+            {workspace_guard, [
+                {'ensure_writable_tx', 2, fun(fake_conn, {group, <<"66">>}) -> ok end},
+                {'abort_on_error', 1, fun(ok) -> ok end}
+            ]},
+            {elib_pg, [{'with_tx', 1, fun(F) -> F(fake_conn) end}]},
+            {attachment_ds, [
+                {'save', 4, fun(_, _, _, _) -> ok end},
+                {'pending_remove', 1, fun(_) -> ok end},
+                {'find_by_path', 1, fun(_) -> {error, not_found} end}
+            ]}
+        ],
+        fun() ->
+            Key = <<"u1/g66/20260911/file_x/a.png">>,
+            Meta = #{
+                <<"file_hash256">> => <<"abc">>,
+                <<"anchor_msg_id">> => <<"msg-group-attachment-001">>
+            },
+            ?assertMatch(
+                {ok, _},
+                attach_logic:confirm(1, Key, <<"group">>, <<"66">>, Meta)
+            ),
+            [Attach] = meck:capture(first, attachment_ds, save, ['_', '_', '_', '_'], 4),
+            ?assertEqual(
+                <<"msg-group-attachment-001">>, maps:get(<<"anchor_msg_id">>, Attach)
+            )
+        end
+    ).
+
 %% ===================================================================
 %% confirm：服务端真实性校验（HEAD 核实存在性/真实大小/真实类型）
 %% ===================================================================
@@ -431,16 +490,20 @@ authorize_c2c_third_party_denies_test_() ->
         end
     ).
 
-%% group：成员放行 / 非成员拒绝（is_member(Gid, Uid) Gid 在前）
+%% group：同一 statement 校验 active 当前世代与 attachment anchor
 authorize_group_member_grants_test_() ->
     ?WITH_MECKS(
         [
             {attachment_ds, [
                 {'find_by_path', 1, fun(_K) ->
-                    {ok, #{<<"scope">> => <<"group">>, <<"scope_ref">> => <<"66">>}}
-                end}
+                    {ok, #{
+                        <<"scope">> => <<"group">>,
+                        <<"scope_ref">> => <<"66">>,
+                        <<"path">> => <<"u1/g66/a.png">>
+                    }}
+                end},
+                {'authorize_group_access', 2, fun(<<"u1/g66/a.png">>, 7) -> true end}
             ]},
-            {group_member_ds, [{'is_member', 2, fun(66, 7) -> true end}]},
             {elib_oss, [{'presign_get_for_key', 3, fun(_B, _K, _E) -> <<"https://sig">> end}]}
         ],
         fun() ->
@@ -453,10 +516,14 @@ authorize_group_non_member_denies_test_() ->
         [
             {attachment_ds, [
                 {'find_by_path', 1, fun(_K) ->
-                    {ok, #{<<"scope">> => <<"group">>, <<"scope_ref">> => <<"66">>}}
-                end}
-            ]},
-            {group_member_ds, [{'is_member', 2, fun(_, _) -> false end}]}
+                    {ok, #{
+                        <<"scope">> => <<"group">>,
+                        <<"scope_ref">> => <<"66">>,
+                        <<"path">> => <<"u1/g66/a.png">>
+                    }}
+                end},
+                {'authorize_group_access', 2, fun(_, _) -> false end}
+            ]}
         ],
         fun() ->
             ?assertEqual({error, forbidden}, attach_logic:view_url(7, <<"u1/g66/a.png">>))

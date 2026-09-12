@@ -114,7 +114,7 @@ do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
             of
                 % repo 返回二元组 {ok, FileId}（曾误匹配三元组
                 % {ok, _InsertId, _Details} → no case clause 生产 500）
-                {ok, _FileId} ->
+                {ok, GroupFileId} ->
                     % BUG#137：elib_oss:upload 落库的是 Garage 私桶
                     % 裸 URL（无签名），且群文件从不写 attachment 表 →
                     % 客户端任何下载路径（viewUrl HMAC / view_url
@@ -128,6 +128,7 @@ do_upload_file(Gid, UploaderId, FileName, FileBinary, FileType) ->
                         FileType,
                         FileUrl,
                         FileId,
+                        GroupFileId,
                         FileHashHex
                     ),
                     {ok, FileId};
@@ -264,9 +265,19 @@ get_file_categories(Gid) ->
 %% 缺记录导致的只是下载端 404（BUG#136 曾因假失败导致数据落库但客户端
 %% 报错，这里绝不能再把写库失败放大成上传 500）。
 -spec write_attachment(
-    integer(), integer(), binary(), binary(), binary(), binary(), binary(), binary()
+    integer(), integer(), binary(), binary(), binary(), binary(), binary(), integer(), binary()
 ) -> ok.
-write_attachment(Gid, UploaderId, FileName, FileBinary, FileType, FileUrl, FileId, FileHashHex) ->
+write_attachment(
+    Gid,
+    UploaderId,
+    FileName,
+    FileBinary,
+    FileType,
+    FileUrl,
+    FileId,
+    GroupFileId,
+    FileHashHex
+) ->
     SafeName = filename:basename(FileName),
     ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
     Attach = #{
@@ -277,7 +288,8 @@ write_attachment(Gid, UploaderId, FileName, FileBinary, FileType, FileUrl, FileI
         <<"url">> => FileUrl,
         <<"size">> => byte_size(FileBinary),
         <<"scope">> => <<"group">>,
-        <<"scope_ref">> => integer_to_binary(Gid)
+        <<"scope_ref">> => integer_to_binary(Gid),
+        <<"group_file_id">> => GroupFileId
     },
     try
         _ = elib_pg:with_tx(fun(Conn) ->

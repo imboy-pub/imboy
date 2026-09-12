@@ -284,3 +284,67 @@ hard_delete_by_ids_success_test_() ->
             ?assertEqual(ok, attachment_repo:hard_delete_by_ids([1, 2]))
         end
     ).
+
+%% ===================================================================
+%% authorize_group_access/2
+%% ===================================================================
+
+authorize_group_access_uses_anchor_generation_statement_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(<<"attachment">>) -> <<"public.attachment">> end}
+            ]},
+            {elib_pg, [
+                {'one', 2, fun(Sql, [<<"u1/g66/a.png">>, 7]) ->
+                    ?assertNotEqual(
+                        nomatch, binary:match(Sql, <<"gmg.start_seq <= a.anchor_conv_seq">>)
+                    ),
+                    ?assertNotEqual(
+                        nomatch, binary:match(Sql, <<"a.anchor_conv_seq IS NOT NULL">>)
+                    ),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"gmg.end_seq IS NULL">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"gm.status = 1">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"grp.status = 1">>)),
+                    {ok, #{<<"allowed">> => true}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assert(attachment_repo:authorize_group_access(<<"u1/g66/a.png">>, 7))
+        end
+    ).
+
+authorize_group_file_uses_explicit_active_resource_link_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.attachment">> end}
+            ]},
+            {elib_pg, [
+                {'one', 2, fun(Sql, [<<"file_abc/a.png">>, 7]) ->
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"a.group_file_id IS NOT NULL">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"gf.id = a.group_file_id">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"gf.group_id = gmg.group_id">>)),
+                    ?assertNotEqual(nomatch, binary:match(Sql, <<"gf.status = 1">>)),
+                    {ok, #{<<"allowed">> => true}}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assert(attachment_repo:authorize_group_access(<<"file_abc/a.png">>, 7))
+        end
+    ).
+
+authorize_group_access_fails_closed_test_() ->
+    ?WITH_MECKS(
+        [
+            {elib_pg_sql, [
+                {'public_tablename', 1, fun(_) -> <<"public.attachment">> end}
+            ]},
+            {elib_pg, [{'one', 2, fun(_, _) -> {error, connection_lost} end}]}
+        ],
+        fun() ->
+            ?assertNot(attachment_repo:authorize_group_access(<<"u1/g66/a.png">>, 7))
+        end
+    ).
