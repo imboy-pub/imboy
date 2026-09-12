@@ -135,3 +135,9 @@ make eunit EUNIT_MODS='msg_send_performance_tests db_query_performance_tests web
 - 如果删除某个测试脚本或入口，必须同步更新本文档；
 - 如果新增长期保留的 suite 或目录结构，优先补本文档，不单独新建“临时测试说明”；
 - 如果某类测试只服务当前阶段，优先记录在阶段性文档或 issue，不长期挂在测试主说明里。
+
+## 体验账号
+
+账号1:15001@imboy.pub   密码 admin888
+账号2:15002@imboy.pub   密码 admin888
+
