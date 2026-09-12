@@ -50,3 +50,23 @@ has_content_image_only_test_() ->
 
 has_content_empty_test_() ->
     [?_assertEqual(false, teaching_review_logic:review_has_content(empty_draft(), []))].
+
+%% PublishedReview 老师署名（reviewer_display_name）：白名单构造直通，未知为 null 不转空串
+payload_reviewer_name_present_test_() ->
+    Pub = #{
+        <<"id">> => 42,
+        <<"positive_point">> => <<"横画起笔稳"/utf8>>,
+        <<"reviewer_uid">> => 7
+    },
+    R = teaching_review_logic:published_review_payload(Pub, [], <<"李老师"/utf8>>),
+    [
+        ?_assertEqual(<<"李老师"/utf8>>, maps:get(<<"reviewer_display_name">>, R)),
+        ?_assertEqual(null, maps:get(<<"video_attachment_id">>, R))
+    ].
+
+payload_reviewer_name_unknown_test_() ->
+    R = teaching_review_logic:published_review_payload(#{<<"id">> => 42}, [], null),
+    [?_assertEqual(null, maps:get(<<"reviewer_display_name">>, R))].
+
+payload_undefined_review_test_() ->
+    [?_assertEqual(null, teaching_review_logic:published_review_payload(undefined, [], null))].

@@ -16,7 +16,9 @@
     submission_detail/2,
     history/3,
     %% 纯函数导出供 eunit 直测（v3 N5/P1-3 补测）
-    review_has_content/2
+    review_has_content/2,
+    %% 纯函数导出供 eunit 直测：PublishedReview DTO（老师署名字段）
+    published_review_payload/3
 ]).
 
 -include_lib("kernel/include/logger.hrl").
@@ -368,6 +370,7 @@ load_submission_bundle(SubmissionId) ->
                         review_assets => ReviewAssets,
                         scope => Scope,
                         display_name => learner_name(LearnerId),
+                        reviewer_name => reviewer_display_name(Published),
                         title => task_title(maps:get(<<"task_id">>, Scope, <<>>))
                     },
                     {ok, Bundle};
@@ -427,18 +430,20 @@ parent_view(Bundle) ->
         <<"published_review">> =>
             published_review_payload(
                 maps:get(published, Bundle),
-                maps:get(review_assets, Bundle, [])
+                maps:get(review_assets, Bundle, []),
+                maps:get(reviewer_name, Bundle, null)
             )
     }.
 
 %% 家长可见的已发布回评子集（PublishedReview；不含 reviewer 内部字段与
 %% 任何 AI 内部字段——map 字面量白名单构造，防御性剥离下游异常字段）
--spec published_review_payload(map() | undefined, [map()]) -> map() | null.
-published_review_payload(undefined, _Assets) ->
+-spec published_review_payload(map() | undefined, [map()], binary() | null) -> map() | null.
+published_review_payload(undefined, _Assets, _ReviewerName) ->
     null;
-published_review_payload(Pub, Assets) ->
+published_review_payload(Pub, Assets, ReviewerName) ->
     #{
         <<"review_id">> => integer_to_binary(maps:get(<<"id">>, Pub, 0)),
+        <<"reviewer_display_name">> => ReviewerName,
         <<"positive_point">> => maps:get(<<"positive_point">>, Pub, <<>>),
         <<"focus_problem">> => maps:get(<<"focus_problem">>, Pub, <<>>),
         <<"practice_action">> => maps:get(<<"practice_action">>, Pub, <<>>),
@@ -919,6 +924,17 @@ learner_name(LearnerId) ->
         {ok, [#{<<"display_name">> := Name} | _]} -> Name;
         _ -> <<>>
     end.
+
+%% @doc 回评老师展示名（家长点评卡署名位）：reviewer_uid → user.nickname。
+%% 查无（账号注销等）返回 null，前端隐藏署名位而非显示空文本。
+-spec reviewer_display_name(map() | undefined) -> binary() | null.
+reviewer_display_name(#{<<"reviewer_uid">> := Uid}) when is_integer(Uid), Uid > 0 ->
+    case user_repo:find_by_uid(Uid) of
+        {ok, #{<<"nickname">> := Name}} when is_binary(Name), Name =/= <<>> -> Name;
+        _ -> null
+    end;
+reviewer_display_name(_) ->
+    null.
 
 -spec task_title(binary()) -> binary().
 task_title(TaskId) ->
