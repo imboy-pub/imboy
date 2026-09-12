@@ -3,16 +3,20 @@
 % 墨芽书法 AI 回课 provider 包装（Step 11）
 % Wraps imboy_llm registry for teaching video review
 %
-% 现实约束（AI-03 / BLOCKED_EXTERNAL）：
-%   imboy_llm 现有 provider capabilities().vision 全部 = false —— 真实多模态
-%   调用被外部条件阻塞。本模块把「无 provider / 无 key / vision=false」统一折叠为
+% 降级口径（AI-03）：
+%   本模块把「无 provider / 无 key / vision=false」统一折叠为
 %   {error, provider_unavailable}：Worker 收到即 status=failed + 明确降级老师人工
-%   队列（闭环不破）。真实 vision provider 接入后无需改动 Worker。
+%   队列（闭环不破）。换 provider / 换模型无需改动 Worker。
+%   （原文写「vision 全 false 致多模态被 BLOCKED_EXTERNAL 阻塞」——已于 2026-09-11
+%   接入视觉 provider 后失效；2026-09-12 模型换 glm-5.3-flash。）
 %
 % 输出契约（STEP-04 AiDraftResult，无思维链）：
 %   仅白名单键落库：positive_point / focus_problem / evidence_moments /
-%   practice_action / script_outline / needs_human_check [/ confidence]
+%   practice_action / script_outline / needs_human_check / char_reviews
+%   [/ confidence]
 %   —— 模型返回的任何其他键（含思维链片段）在 validate 时被结构性丢弃。
+%   char_reviews = Phase B 识别制逐字点评；与三段文本不同，整体畸形时降级 null
+%   而非判整个点评失败（字卡是增量补充）。
 %%%
 
 -export([analyze_video/2, validate_result/1]).
@@ -132,8 +136,8 @@ call_provider(Mod, Opts, DraftMeta, Attachment) ->
             {error, provider_error}
     end.
 
-%% 提取 content 并解析 JSON（模型以文本返回 JSON；多模态帧引用 BLOCKED_EXTERNAL 留待
-%% vision provider 接入，骨架阶段 prompt 只携带业务元数据与附件 object_key 引用）
+%% 提取 content 并解析 JSON。模型输出先经 json_body/1 脱壳（思维链块 / 结果框标记 /
+%% Markdown 围栏 / 前置说明文字），再交 validate_result 白名单重建。
 -spec decode_response(map()) -> {ok, map()} | {error, atom()}.
 decode_response(Resp) ->
     Content =
@@ -264,8 +268,12 @@ build_messages(DraftMeta, Attachment) ->
         <<"role">> => <<"system">>,
         <<"content">> => <<"你是书法老师的教学助手。只输出 JSON，不输出推理过程。"/utf8>>
     },
-    %% 视频可达 URL（presign/公网直链）：多模态段 + 任务文本（GLM-4.6V 等
-    %% video_url 通道）。仅 object_key 引用（骨架路径）维持纯文本，行为不变。
+    %% 视频段走 video_url 通道（智谱等 OpenAI 兼容多模态端点）：要求 Attachment
+    %% 带「模型侧可抓取」的 url（presign/公网直链）。
+    %% ⚠️ 现状（2026-09-12 实查）：调用方 teaching_ai_worker:load_attachment/2 返回的
+    %% map 只有 id/path/mime_type/size，**没有 url** → 生产路径恒走下面的纯文本分支，
+    %% 模型拿不到视频（内容盲）。provider 侧已就绪，缺的是调用方接线；
+    %% 详见记忆 teaching-ai-review-inert-two-gaps-2026-09-12。
     User =
         case maps:get(<<"url">>, Attachment, <<>>) of
             Url when is_binary(Url), byte_size(Url) > 0 ->
