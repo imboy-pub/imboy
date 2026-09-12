@@ -240,7 +240,26 @@ strip_quotes(Part0) ->
 ) -> cowboy_req:req().
 upload_stream(Uid, ObjectKey, MimeType, Boundary, Req0) ->
     TmpPath = tmp_path(),
-    {ok, Fd} = file:open(TmpPath, [write, binary, raw, exclusive, {mode, 8#0600}]),
+    case file:open(TmpPath, [write, binary, raw, exclusive, {mode, 8#0600}]) of
+        {ok, Fd} ->
+            upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0);
+        {error, OpenReason} ->
+            %% 临时文件创建失败（磁盘满/tmp 不可写）= 服务端故障，映射 5xx
+            ?ERROR_LOG([
+                "attach_handler tmp file open failed: ",
+                TmpPath,
+                OpenReason
+            ]),
+            elib_response:error(
+                Req0, <<"附件写入服务端临时存储失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+            )
+    end.
+
+%% @doc 持有 Fd 的收包主体：无论成功失败，退出时关闭并删除临时文件。
+-spec upload_stream_fd(
+    file:io_device(), string(), integer(), binary(), binary(), binary(), cowboy_req:req()
+) -> cowboy_req:req().
+upload_stream_fd(Fd, TmpPath, Uid, ObjectKey, MimeType, Boundary, Req0) ->
     St0 = elib_multipart:new(
         Boundary,
         fun(Data) -> ok = file:write(Fd, Data) end,
@@ -320,8 +339,6 @@ upload_error(Req0, forbidden_key) ->
     elib_response:error(Req0, <<"非法对象归属"/utf8>>, ?ERR_BAD_REQUEST);
 upload_error(Req0, object_not_found) ->
     elib_response:error(Req0, <<"对象未登记或已完成上传"/utf8>>, ?ERR_BAD_REQUEST);
-upload_error(Req0, forbidden) ->
-    elib_response:error(Req0, <<"无权向该范围上传"/utf8>>, ?ERR_FORBIDDEN);
 upload_error(Req0, invalid_file_type) ->
     elib_response:error(Req0, <<"不支持的文件类型"/utf8>>, ?ERR_BAD_REQUEST);
 upload_error(Req0, file_too_large) ->
