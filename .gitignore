@@ -93,6 +93,8 @@ temp_exports.txt
 
 # Environment secrets (never commit)
 .env
+# 本地开发变量（scripts/start_node.sh 启动前加载；放 BIGMODEL_API_KEY 等密钥，绝不入库）
+.env.local
 scripts/.env.deploy
 
 # T3.2 split: redocly bundle 产物（CI 临时输出，给 oasdiff / codegen 消费）

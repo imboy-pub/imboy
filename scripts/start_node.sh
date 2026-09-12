@@ -18,10 +18,28 @@ DIST_INTERFACE="${IMBOY_DIST_INTERFACE:-{127,0,0,1}}"
   echo "Environment:"
   echo "  IMBOY_NODE_HOST       节点 host，默认 127.0.0.1"
   echo "  IMBOY_DIST_INTERFACE  分布式监听地址，默认 {127,0,0,1}"
+  echo "  .env.local            仓根本地变量文件（gitignored，可选）：启动前自动加载，"
+  echo "                        用于注入 BIGMODEL_API_KEY 等以 {env, Var} 解析的密钥"
   exit 1
 }
 
 cd "$(dirname "$0")/.." || exit 1
+
+# 本地变量注入（可选）：仓根 .env.local 不入仓（.gitignore），放本地开发所需密钥，
+# 例如 BIGMODEL_API_KEY —— config/sys.local.config 以 {env, <<"BIGMODEL_API_KEY">>}
+# 在**启动时**从 OS 环境变量解析，故密钥必须在本进程环境里（不写进 config 文件）。
+# IMBOYENV / HTTP_PORT 由脚本参数与调用方环境决定，.env.local 不得覆盖：
+# 先留存现场值，加载后原样恢复。
+_SavedIMBOYENV="${IMBOYENV-}"
+_SavedHTTPPORT="${HTTP_PORT-}"
+if [ -f .env.local ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env.local
+  set +a
+fi
+export IMBOYENV="$_SavedIMBOYENV"
+export HTTP_PORT="$_SavedHTTPPORT"
 
 export IMBOYENV="${IMBOYENV:-local}"
 export HTTP_PORT="$PORT"
