@@ -16,6 +16,7 @@
 -export([leave/4]).
 %% E2EE-2026-012：workspace_logic.remove_member_tx 级联关闭世代（跨模块消费）
 -export([close_history_generation/4]).
+-export([close_group_history_generations/3]).
 -export([alias/4]).
 -export([update_role/4]).
 -export([update_role/5]).
@@ -189,6 +190,22 @@ close_history_generation(Conn, Gid, Uid, Reason) ->
             "SET end_seq = lock_row.seq, close_reason = $2, updated_at = now() ", "FROM lock_row ",
             "WHERE g.group_id = $3 AND g.user_id = $4 AND g.end_seq IS NULL">>,
     case elib_pg:execute(Conn, Sql, [ConvKey, Reason, Gid, Uid]) of
+        {ok, _} -> ok;
+        {error, Reason2} -> throw({abort_tx, {generation_close_failed, Reason2}})
+    end.
+
+%% @doc 群解散时在同一序列锁下关闭该群全部 open 世代。
+-spec close_group_history_generations(pid(), integer(), binary()) -> ok.
+close_group_history_generations(Conn, Gid, Reason) ->
+    ConvKey = msg_archive_ds:conv_key_c2g(Gid),
+    Sql =
+        <<"WITH lock_row AS (",
+            "  INSERT INTO public.msg_store_seq (conv_key, seq) VALUES ($1, 0) ",
+            "  ON CONFLICT (conv_key) DO UPDATE SET seq = public.msg_store_seq.seq ",
+            "  RETURNING seq", ") ", "UPDATE public.group_member_generation g ",
+            "SET end_seq = lock_row.seq, close_reason = $2, updated_at = now() ", "FROM lock_row ",
+            "WHERE g.group_id = $3 AND g.end_seq IS NULL">>,
+    case elib_pg:execute(Conn, Sql, [ConvKey, Reason, Gid]) of
         {ok, _} -> ok;
         {error, Reason2} -> throw({abort_tx, {generation_close_failed, Reason2}})
     end.

@@ -39,6 +39,11 @@ member_uids_strict_test_() ->
         fun empty_group_is_not_cached/0,
         fun normal_group_returns_uids_and_caches/0,
         fun cache_hit_short_circuits_repo/0,
+        fun authoritative_key_snapshot_bypasses_cache/0,
+        fun authoritative_key_snapshot_distinguishes_forbidden_and_empty/0,
+        fun authoritative_key_snapshot_rejects_member_overflow/0,
+        fun authoritative_key_snapshot_rejects_invalid_row/0,
+        fun authoritative_key_snapshot_propagates_repo_error/0,
         fun unexpected_repo_shape_is_treated_as_error/0,
         fun lenient_version_degrades_but_reports/0
     ]}.
@@ -93,6 +98,91 @@ cache_hit_short_circuits_repo() ->
         erlang:error(repo_should_not_be_called)
     end),
     ?assertEqual({ok, [5, 6]}, group_ds:member_uids_strict(?GID)).
+
+%% 安全关键公钥快照不得读取或写入最长一小时的成员缓存。
+authoritative_key_snapshot_bypasses_cache() ->
+    meck:expect(imboy_cache, get, fun(_Key) -> {ok, [999]} end),
+    meck:expect(group_member_repo, list_authorized_public_keys, fun(?GID, 11, 4097) ->
+        {ok, [
+            #{
+                <<"authorized_group_id">> => ?GID,
+                <<"member_overflow">> => false,
+                <<"user_id">> => 11
+            }
+        ]}
+    end),
+    ?assertEqual(
+        {ok, [#{<<"user_id">> => 11}]},
+        group_ds:member_public_keys_authoritative(?GID, 11, 4097)
+    ),
+    ?assertEqual([], meck_calls(imboy_cache, get)),
+    ?assertEqual([], meck_calls(imboy_cache, set)).
+
+authoritative_key_snapshot_distinguishes_forbidden_and_empty() ->
+    meck:expect(group_member_repo, list_authorized_public_keys, fun(?GID, 11, 4097) ->
+        {ok, []}
+    end),
+    ?assertEqual(
+        {error, forbidden},
+        group_ds:member_public_keys_authoritative(?GID, 11, 4097)
+    ),
+    meck:expect(group_member_repo, list_authorized_public_keys, fun(?GID, 11, 4097) ->
+        {ok, [
+            #{
+                <<"authorized_group_id">> => ?GID,
+                <<"member_overflow">> => false,
+                <<"user_id">> => null
+            }
+        ]}
+    end),
+    ?assertEqual(
+        {ok, []},
+        group_ds:member_public_keys_authoritative(?GID, 11, 4097)
+    ).
+
+authoritative_key_snapshot_rejects_member_overflow() ->
+    meck:expect(group_member_repo, list_authorized_public_keys, fun(?GID, 11, 4097) ->
+        {ok, [
+            #{
+                <<"authorized_group_id">> => ?GID,
+                <<"member_overflow">> => true,
+                <<"user_id">> => null
+            }
+        ]}
+    end),
+    ?assertEqual(
+        {error, fanout_limit_exceeded},
+        group_ds:member_public_keys_authoritative(?GID, 11, 4097)
+    ).
+
+authoritative_key_snapshot_rejects_invalid_row() ->
+    meck:expect(group_member_repo, list_authorized_public_keys, fun(?GID, 11, 4097) ->
+        {ok, [
+            #{
+                <<"authorized_group_id">> => ?GID,
+                <<"member_overflow">> => false,
+                <<"user_id">> => null
+            },
+            #{
+                <<"authorized_group_id">> => ?GID,
+                <<"member_overflow">> => false,
+                <<"user_id">> => 11
+            }
+        ]}
+    end),
+    ?assertEqual(
+        {error, invalid_member_key_row},
+        group_ds:member_public_keys_authoritative(?GID, 11, 4097)
+    ).
+
+authoritative_key_snapshot_propagates_repo_error() ->
+    meck:expect(group_member_repo, list_authorized_public_keys, fun(?GID, 11, 4097) ->
+        {error, connection_closed}
+    end),
+    ?assertEqual(
+        {error, connection_closed},
+        group_ds:member_public_keys_authoritative(?GID, 11, 4097)
+    ).
 
 %% 非 {ok,_}/{error,_} 的第三种形态当作失败，而不是当作空群
 unexpected_repo_shape_is_treated_as_error() ->

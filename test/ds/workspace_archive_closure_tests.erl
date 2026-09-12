@@ -952,6 +952,7 @@ attachment_save_closure_test_() ->
             {'save', 4, fun(_, _, _, _) -> {error, must_not_save} end}
         ]},
     Meta = #{<<"cipher">> => null},
+    GroupMeta = Meta#{<<"anchor_msg_id">> => <<"msg-workspace-archive-test">>},
     [
         {"group-scope attachment confirm rejected 980", fun() ->
             GroupPerm =
@@ -962,7 +963,7 @@ attachment_save_closure_test_() ->
                 ?assertMatch(
                     {error, {980, _}},
                     attach_logic:confirm(
-                        ?UID, <<"k">>, <<"group">>, integer_to_binary(?GID), Meta
+                        ?UID, <<"k">>, <<"group">>, integer_to_binary(?GID), GroupMeta
                     )
                 )
             end)

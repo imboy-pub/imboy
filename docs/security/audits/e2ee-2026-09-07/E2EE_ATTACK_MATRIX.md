@@ -1,9 +1,9 @@
 # IMBoy E2EE 攻击矩阵
 
 原矩阵日期：2026-09-07
-状态：静态/协议检查可本地执行；阶段 A 仅授权一台物理 Android 9 真机上的 SQLCipher 随机临时库测试且已通过（该轮与全部旧计数为 D/superseded）；**当前 Base C 级重验（2026-09-09，LT-02-C，REV-1 同日按 R1-C1 补跑 011 组遗漏文件）已完成**：后端 9 EUnit 模块 124 PASS/0 FAIL（专属 scratch PG）、Flutter finding 组 45 文件 410 PASS/0 FAIL/1 declared SKIP、scoped analyze 零问题——重验只支撑 C 级 REGRESSION_PASS，不改变任何 A 级行的 BLOCKED 状态。账号、消息、群、真实 App 数据、数据查询、抓包、篡改、密钥和外部服务操作仍为 BLOCKED。Findings 与发布结论见 [`E2EE_AUDIT_REPORT.md`](./E2EE_AUDIT_REPORT.md)，群历史决策见 [`E2EE-2026-012 决策包`](../../../planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md)。
+状态：`2026-09-11 CURRENT-HEAD OVERRIDE` 的 AI 明文身份门、C2G staging 权威快照、群聊附件 generation ACL 与 `/msg/offline` 旧世代过滤已完成本地修复；migration 108/109 和更新后的群历史真库套件因 PostgreSQL `econnrefused` 未完成。当前四态仍为 `LOCAL_SECURITY_GATE_FAIL / DECISION_EVIDENCE_MISSING / A_LEVEL_ATTACK_RETEST=BLOCKED / E2EE_RELEASE=NO-GO`。账号、消息、群、真实 App 数据、抓包、篡改、密钥和外部服务操作仍为 BLOCKED。Findings 与发布结论见 [`E2EE_AUDIT_REPORT.md`](./E2EE_AUDIT_REPORT.md)，群历史决策见 [`E2EE-2026-012 决策包`](../../../planning/e2ee-2026-012-group-history-decision-brief-2026-09-09.md)。
 
-当前 Base 冻结基线（2026-09-09 重验绑定，跨 SHA 后本矩阵 C 级重签结果失效）：
+历史 Base 冻结基线（2026-09-09 LT-02-C，已被下述 override 覆盖）：
 
 ```text
 imboy      63747f8d7a0f9bc27bce4c540549a032141fbc3a
@@ -12,6 +12,22 @@ imboyadmin 8c2b8615c292d82257886ad51445db87c366d719
 ```
 
 本文件不得保存账号口令、token、私钥、session secret、真实消息、PII、完整敏感 payload、真实设备 ID 或可复用 Canary。
+
+## 0. 2026-09-11 CURRENT-HEAD OVERRIDE
+
+```text
+imboy      a7d76cc23b17600b246921e36e634bc091cad1f2 + scoped patch
+imboyapp   8ebe49e355ee66b79386f40739432d0bf34c13df + scoped patch
+evidence   /private/tmp/imboy-e2ee-security-20260911-141840/
+```
+
+| 范围 | 当前本地证据 | 不得提升的边界 |
+|---|---|---|
+| E2EE-2026-012 | 迁移 101、legacy backlog/M1/约束/幂等、创建者首世代与解散关闭世代已有历史证据；生产 C2G 现以整数 GID + required role 进入顺序锁事务，固化 `conv_seq` 与 active recipient snapshot，worker/投递/Push/mention/Agent/Bot 复用，旧列表入口拒绝；migration 108 把聊天附件 anchor 绑定到权威 seq，migration 109 把 offline timeline 绑定到 seq 并由 list/count 同源过滤当前世代 | `LOCAL_SECURITY_GATE_FAIL`：migration 108/109 与更新后的真库 claim→archive 用例因 PostgreSQL `econnrefused` 未完成；旧客户端必须先配置 `app_version` 最低版本/强制升级并实测被挡在群附件上传之外，若当前链只提示则先补服务端版本门。F2/R2/D3/M1 批准证据、room-key epoch/backup metadata、historical grant 与 A 级生命周期仍缺失 |
+| LT02-SEC-01 | 裸 agent badge 不再授权明文；消息/附件/重试经共享门；五元组显式绑定 owner UID，已有记录读取、确认或保存期间账号/badge/deployment/identity 变化均 fail-closed，保存后二次复核失败会撤销确认；五文件 **88/88 PASS**、scoped analyze 零问题 | AI-ID=B 决策工件缺失；deployment-scoped 派生 identity 不是独立签名信任锚；恶意服务端与真实传输/存储未做 A 级复测 |
+| 环境 | 历史 scratch PG 证据已落盘 | 当前补丁已修正 staging 调用形状与 claim 测试入口，但更新后的真库套件因 PostgreSQL `econnrefused` 中止，记 `BLOCKED_ENV`；先前 145/145 不能替代当前真库 PASS |
+
+本节覆盖下文所有把 2026-09-09 Base 称作“当前”的描述，但不把旧 B/C 证据升级成 A 级证据。矩阵中的 A 级行继续保持 `BLOCKED`，012 与 LT02-SEC-01 均不得标 `ATTACK_RETEST_PASS/CLOSED`。
 
 ## 1. 每轮授权单
 
@@ -32,7 +48,9 @@ imboyadmin 8c2b8615c292d82257886ad51445db87c366d719
 
 本轮已授权记录（脱敏）：物理 Android 9 真机；仅安装并运行测试包，只在应用随机临时目录创建、读取、错钥打开并删除本轮 SQLCipher 测试库；不登录账号、不连接后端、不读取或修改现有 IMBoy App 数据。设备序列号和 Canary 明文不入库。（该轮为阶段 A 历史授权，产生于旧 SHA；当前 Base 未重签。）
 
-当前 Base 重验已授权记录（2026-09-09，LT-02-C）：三仓冻结 SHA 的隔离 detached worktree；C 级 EUnit/Flutter 单测、scoped analyze 与静态源码对账；任务专属 scratch PostgreSQL（marker DB 用后即删，residual=0）；Flutter 侧离线依赖、无真机、无模拟器、无账号、无真实网络出访。2 个 integration_test 设备文件尝试后记 ENV_BLOCKED_ATTEMPTED，未执行设备分支。
+历史 Base 重验已授权记录（2026-09-09，LT-02-C）：三仓冻结 SHA 的隔离 detached worktree；C 级 EUnit/Flutter 单测、scoped analyze 与静态源码对账；任务专属 scratch PostgreSQL（marker DB 用后即删，residual=0）；Flutter 侧离线依赖、无真机、无模拟器、无账号、无真实网络出访。2 个 integration_test 设备文件尝试后记 ENV_BLOCKED_ATTEMPTED，未执行设备分支。
+
+当前本地授权记录（2026-09-11）：仅上述两个任务专属 worktree、仓库外 scratch PostgreSQL、静态检查、迁移往返和本地单元/协议测试；无真机、账号、真实群操作、抓包、外部服务或生产数据。Docker Engine EOF 后未重启 Docker Desktop，避免影响其他会话容器。
 
 获授权后，每次运行临时生成唯一 Canary，仅在证据中保留 SHA-256 和脱敏前缀：
 
@@ -60,10 +78,10 @@ printf '%s' "$CANARY" | shasum -a 256
 | ID | 攻击/流程 | PASS 条件 | 目标等级 | 当前状态 |
 |---|---|---|---|---|
 | C2G-01 | A/B/C/D 四用户真机收发 | 每个授权设备获得自己的合法 room key 并解出一致消息 | A | BLOCKED |
-| C2G-02 | 新成员/重入群 | rotation 和历史访问符合已批准策略 | A | BLOCKED / SECURITY DESIGN GAP；012 已 ROOT_CAUSE_CONFIRMED（当前 Base 重验 2026-09-09 成立）：history 与批量 sync 只按当前 active membership 开放整个群归档，现有成员行无稳定的本次入群边界；首次加入、退出/移除后重入、同账号新设备策略待人工拍板（F/R/D/M，见决策包） |
-| C2G-03 | 主动退出/管理员移除 | 旧成员不能取新 key、发消息、读 history/附件或解新密文 | A | BLOCKED；001/003/004 已 REGRESSION_PASS，真实前成员 API、附件与旧 session 攻击复测待授权 |
+| C2G-02 | 新成员/重入群 | rotation 和历史访问符合已批准策略 | A | BLOCKED；生产 staging 已在 sequence 锁事务内固化 `conv_seq` 和 recipient snapshot，worker 不再二次分配；群聊附件与 offline timeline 也已本地绑定该 seq/current generation，核心四模块 91/91 PASS。migration 108/109 真库重放为 `BLOCKED_ENV`，旧客户端 rollout 为 `BLOCKED_EXTERNAL`；批准证据、D3 历史 key 显式恢复、historical room-key grant 和真实首次加入/重入攻击复测仍未闭环 |
+| C2G-03 | 主动退出/管理员移除/解散 | 旧成员不能取新 key、发消息、读 history/附件或解新密文 | A | BLOCKED；staging 事务已权威重验 active sender/`@all` role并把同一 recipient snapshot 贯穿全部下游；附件下载按 anchor seq，offline list/count 按当前 open generation 过滤，NULL legacy timeline fail-closed。真实前成员 API、附件、旧 session、解散生命周期及锁竞争攻击复测仍待授权，不能升级为 A 级 PASS |
 | C2G-04 | 工作区级移除 | 所有下属群撤销、缓存失效，并在下一消息前 rotate | A | BLOCKED；002 已 REGRESSION_PASS，攻击复测待授权 |
-| C2G-05 | 设备增加/撤销/离线恢复 | key 集合只覆盖当前授权设备，不恢复被撤销访问 | A | BLOCKED；003 已 REGRESSION_PASS，强刷空结果/异常本地 fail-closed，真实设备复测待授权 |
+| C2G-05 | 设备增加/撤销/离线恢复 | key 集合只覆盖当前授权设备，不恢复被撤销访问 | A | BLOCKED；003 已 REGRESSION_PASS；2026-09-11 room-key 公钥查询改为 active group/caller/recipient/device 单 statement snapshot，成员/设备 4096 上限用 4097 探针 fail-closed，定向 60/60 PASS，PG 18.4 只读 EXPLAIN 与三轮复审为 APPROVE。旧世代未 ACK room-key 经 `/msg/offline` 回流的路径已本地按 timeline seq 修复，但真实 leave/rejoin/自动导入复测未做；查询后包裹/中继、historical grant 和备份仍无 epoch 绑定 |
 | C2G-06 | 旧 session 攻击 | 旧 inbound 不能解 required rotation 后的密文 | A | BLOCKED |
 | C2G-07 | 恶意成员注入 | replay、伪造 sender、旧 sid、跨群 room key 和 metadata 篡改全部拒绝 | A | BLOCKED；005/006/007 已 REGRESSION_PASS，C2G 持久 digest、跨群绑定、room-key 安全存储后 ACK 有 C 级回归，真实恶意成员攻击待授权 |
 | C2G-08 | rotation 阈值 | 成员/设备集合、100 条、7 天和重启触发符合实现 | A | BLOCKED |
@@ -73,7 +91,7 @@ printf '%s' "$CANARY" | shasum -a 256
 
 | ID | 范围 | PASS 条件 | 当前状态 |
 |---|---|---|---|
-| X-01 | 附件原文件/缩略图 | 上传对象均为认证密文；独立 key/nonce；content key 只在认证 E2EE 内容内 | BLOCKED；010 已 REGRESSION_PASS，真实对象存储与缩略图 Canary 复测待授权 |
+| X-01 | 附件原文件/缩略图 | 上传对象均为认证密文；独立 key/nonce；content key 只在认证 E2EE 内容内；聊天附件下载遵守 anchor generation | BLOCKED；010 已 REGRESSION_PASS；八个生产上传入口复用最终 message ID 作为 `anchor_msg_id`，视频本体/缩略图同锚，后端本地绑定权威 seq 并按当前 generation 授权。migration 108 真库矩阵、旧客户端先升级后启用强制 anchor 的 rollout、真实对象存储与缩略图 Canary 复测仍待完成；独立 `group_file` 继续按当前成员共享，不冒充聊天历史。退出/移除只能阻止再次签发，既有 GET URL 最长 600 秒内仍有效，不能宣称即时撤销 |
 | X-02 | 附件 metadata/本地文件 | 披露文件名、MIME、URL、size；temp 清理；长期明文缓存有明确策略 | BLOCKED |
 | X-03 | Push | Provider/Gateway 无消息明文；记录昵称/群名/类型 metadata | BLOCKED |
 | X-04 | Android/iOS 密钥保护 | Keystore/Keychain accessibility、备份迁移与提取抗性符合声明 | B PARTIAL；A BLOCKED |
@@ -81,6 +99,7 @@ printf '%s' "$CANARY" | shasum -a 256
 | X-06 | Database/日志/备份/WAL | required 模式仅有允许的密文/metadata，无 Canary 或设备/session secret | BLOCKED；014 已 REGRESSION_PASS（当前 Base 重验 2026-09-09：日志边界组 68 PASS/0 FAIL）；011 备份边界当前 Base 重验 52 PASS/1 declared SKIP（REV-1 补跑 server_backup_service 6/6 后计入），破坏性恢复 harness（文件缺失记 BLOCKED_DRIFT）在专用测试包、隔离后端/数据库、受控账号/设备和资源级清理所有权闭环前不得执行或作为发布证据；真实客户端/后端日志、DB、备份与 WAL Canary 扫描待授权 |
 | X-07 | Compliance | 明确私钥保管方、授权解密边界、轮换确认和 zero-knowledge 例外 | BLOCKED |
 | X-08 | Redis | 仅目标部署实际使用 Redis 时检查 | 当前声明架构 N/A |
+| X-09 | AI 明文身份授权 | 真人不能因可污染 badge 误入明文域；agent 身份、用户确认和 deployment 变化均不可绕过 | C `LOCAL_REGRESSION_PASS`；决策工件与独立签名身份锚缺失，恶意服务端/真实传输 A 级复测 BLOCKED；LT02-SEC-01 不得 CLOSED |
 
 ## 5. 证据格式与停止条件
 

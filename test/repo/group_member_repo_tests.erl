@@ -253,6 +253,39 @@ list_by_gid_non_existing_group_test_() ->
         end
     end).
 
+list_authorized_public_keys_uses_one_fail_closed_snapshot_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(Sql, [7001, 11, 4097]) ->
+                Required = [
+                    <<"WITH authorized_group AS MATERIALIZED">>,
+                    <<"caller.user_id = $2 AND caller.status = 1">>,
+                    <<"grp.id = $1 AND grp.status = 1">>,
+                    <<"recipient_snapshot AS MATERIALIZED">>,
+                    <<"gm.group_id = authorized_group.id AND gm.status = 1">>,
+                    <<"recipient_guard.member_count >= $3 AS member_overflow">>,
+                    <<"FROM recipient_snapshot recipient">>,
+                    <<"ud.user_id = recipient.user_id AND ud.status = 1">>,
+                    <<"WHERE recipient_guard.member_count < $3">>,
+                    <<"LIMIT $3">>
+                ],
+                lists:foreach(
+                    fun(Needle) -> ?assertNotEqual(nomatch, binary:match(Sql, Needle)) end,
+                    Required
+                ),
+                ?assertEqual(nomatch, binary:match(Sql, <<"ORDER BY">>)),
+                {ok, []}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, []},
+                group_member_repo:list_authorized_public_keys(7001, 11, 4097)
+            )
+        end
+    ).
+
 %% ===================================================================
 %% list_by_uid/2,3 测试
 %% ===================================================================

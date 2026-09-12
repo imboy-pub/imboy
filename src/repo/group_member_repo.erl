@@ -11,6 +11,7 @@
 -export([list_same_group/2]).
 % -export ([list_same_group/2]).
 -export([list_by_gid/2, list_by_gid/3]).
+-export([list_authorized_public_keys/3]).
 -export([page_by_gid/4]).
 -export([count_by_uid/1]).
 -export([list_by_uid/2, list_by_uid/3]).
@@ -120,6 +121,37 @@ list_by_gid(Gid, Column, Limit) ->
     Where = <<" WHERE group_id = $1 AND status = 1 LIMIT $2">>,
     Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
     elib_pg:query(Sql, [Gid, Limit]).
+
+%% @doc 在一个数据库快照内校验 active 群和 active 调用者，并读取 active
+%% 成员的设备公钥。LATERAL 子查询依赖授权行，未授权时不会物化整群成员。
+%% Limit 由调用方传入“业务上限 + 1”，用于可靠检测结果截断。
+-spec list_authorized_public_keys(integer(), integer(), pos_integer()) ->
+    {ok, list(map())} | {error, any()}.
+list_authorized_public_keys(Gid, CurrentUid, Limit) ->
+    Sql =
+        <<"WITH authorized_group AS MATERIALIZED ( ", "SELECT grp.id FROM public.\"group\" grp ",
+            "JOIN public.group_member caller ON caller.group_id = grp.id ",
+            "AND caller.user_id = $2 AND caller.status = 1 ",
+            "WHERE grp.id = $1 AND grp.status = 1 ", "), recipient_snapshot AS MATERIALIZED ( ",
+            "SELECT recipient.user_id FROM authorized_group ", "CROSS JOIN LATERAL ( ",
+            "SELECT gm.user_id FROM public.group_member gm ",
+            "WHERE gm.group_id = authorized_group.id AND gm.status = 1 ", "LIMIT $3 ",
+            ") recipient ", "), recipient_guard AS MATERIALIZED ( ",
+            "SELECT count(*) AS member_count FROM recipient_snapshot ", ") ",
+            "SELECT authorized_group.id AS authorized_group_id, ",
+            "recipient_guard.member_count >= $3 AS member_overflow, ",
+            "key_rows.user_id, key_rows.device_id, key_rows.device_type, ",
+            "key_rows.public_key, key_rows.key_id, key_rows.last_active_at ",
+            "FROM authorized_group CROSS JOIN recipient_guard ", "LEFT JOIN LATERAL ( ",
+            "SELECT recipient.user_id, device.device_id, device.device_type, ",
+            "device.public_key, device.key_id, device.last_active_at ",
+            "FROM recipient_snapshot recipient ", "CROSS JOIN LATERAL ( ",
+            "SELECT ud.device_id, ud.device_type, ud.public_key, ud.key_id, ",
+            "ud.last_active_at FROM public.user_device ud ",
+            "WHERE ud.user_id = recipient.user_id AND ud.status = 1 ",
+            "AND ud.public_key IS NOT NULL AND ud.public_key <> '' ", "LIMIT $3 ", ") device ",
+            "WHERE recipient_guard.member_count < $3 ", "LIMIT $3 ", ") key_rows ON TRUE">>,
+    elib_pg:query(Sql, [Gid, CurrentUid, Limit]).
 
 %% @doc 分页查询群组成员列表
 %% @param Gid 群组ID

@@ -15,6 +15,7 @@
 
 -export([member_uids/1]).
 -export([member_uids_strict/1]).
+-export([member_public_keys_authoritative/3]).
 -export([is_member/2]).
 -export([authorize_group_history/2]).
 -export([e2ee_mode/1]).
@@ -66,11 +67,12 @@ is_member(Uid, Gid) ->
 %% ===================================================================
 
 %% @doc 群历史统一授权谓词（history / batch sync 同源消费）。
-%% 注意：附件授权（attach_logic authorize/can_upload）刻意仍用 is_member——
-%% 比 interval 语义更严（退群即失去附件访问，fail-closed）；若未来 key-grant
-%% 需要 anchor 语义，应显式消费本谓词而非自行实现。
+%% 注意：附件授权（attach_logic authorize/can_upload）仍用 is_member。它会在
+%% 离群期间拒绝访问，但新成员/重入成员只要拿到旧 object_key，仍可能越过本次
+%% generation 下界，因此不等价于 interval ACL，不能作为 012 附件闭环证据。
+%% 附件 anchor 与历史 key grant 都应显式消费本谓词，禁止各自重写边界。
 %%
-%% 已批准语义：F2（仅本次入群后）+ R2（每次重入新世代）。
+%% 当前实现语义：F2（仅本次入群后）+ R2（每次重入新世代）；用户批准证据缺失。
 %% 授权结果 = 当前 open 世代的 {generation_no, start_seq, open}；
 %% 已关闭世代（离群区间）不在授权集合内；M1 祖传成员 start_seq=1。
 %%
@@ -82,8 +84,11 @@ is_member(Uid, Gid) ->
     {ok, map()} | {error, denied}.
 authorize_group_history(Uid, Gid) ->
     Sql =
-        <<"SELECT generation_no, start_seq FROM public.group_member_generation ",
-            "WHERE group_id = $1 AND user_id = $2 AND end_seq IS NULL">>,
+        <<"SELECT gmg.generation_no, gmg.start_seq ", "FROM public.group_member_generation gmg ",
+            "JOIN public.group_member gm ON gm.group_id = gmg.group_id ",
+            " AND gm.user_id = gmg.user_id AND gm.status = 1 ",
+            "JOIN public.\"group\" grp ON grp.id = gmg.group_id AND grp.status = 1 ",
+            "WHERE gmg.group_id = $1 AND gmg.user_id = $2 AND gmg.end_seq IS NULL">>,
     case elib_pg:query(Sql, [Gid, Uid]) of
         {ok, [#{<<"generation_no">> := GenNo, <<"start_seq">> := StartSeq}]} ->
             {ok, #{generation_no => GenNo, start_seq => StartSeq}};
@@ -153,6 +158,52 @@ member_uids_strict(Gid) ->
                     {error, {unexpected_repo_result, Other}}
             end
     end.
+
+%% @doc room-key fan-out 的权威设备公钥快照。
+%% 单条 SQL 同时验证群、调用者和接收成员均为 active；不使用成员缓存，
+%% 也不在两次查询之间留下成员撤销竞态。授权成功但无人上报公钥时返回空列表。
+-spec member_public_keys_authoritative(integer(), integer(), pos_integer()) ->
+    {ok, [map()]} | {error, forbidden | term()}.
+member_public_keys_authoritative(Gid, CurrentUid, Limit) ->
+    case group_member_repo:list_authorized_public_keys(Gid, CurrentUid, Limit) of
+        {ok, []} ->
+            {error, forbidden};
+        {ok, [#{<<"authorized_group_id">> := Gid, <<"member_overflow">> := true}]} ->
+            {error, fanout_limit_exceeded};
+        {ok, [
+            #{
+                <<"authorized_group_id">> := Gid,
+                <<"member_overflow">> := false,
+                <<"user_id">> := null
+            }
+        ]} ->
+            {ok, []};
+        {ok, Rows} when is_list(Rows) ->
+            normalize_authorized_key_rows(Gid, Rows, []);
+        {error, Reason} ->
+            {error, Reason};
+        Other ->
+            {error, {unexpected_repo_result, Other}}
+    end.
+
+normalize_authorized_key_rows(_Gid, [], Acc) ->
+    {ok, lists:reverse(Acc)};
+normalize_authorized_key_rows(
+    Gid,
+    [
+        #{
+            <<"authorized_group_id">> := Gid,
+            <<"member_overflow">> := false,
+            <<"user_id">> := Uid
+        } = Row
+        | Rest
+    ],
+    Acc
+) when is_integer(Uid) ->
+    CleanRow = maps:without([<<"authorized_group_id">>, <<"member_overflow">>], Row),
+    normalize_authorized_key_rows(Gid, Rest, [CleanRow | Acc]);
+normalize_authorized_key_rows(_Gid, _Rows, _Acc) ->
+    {error, invalid_member_key_row}.
 
 %% 安全关键缓存短 TTL：生产 dsync_enabled=false 时 flush 不跨节点广播，
 %% 多节点部署下开关翻转的失效窗口以此 TTL 为上界（security-reviewer H1）。
@@ -317,7 +368,7 @@ create_scoped_group(Conn, Gid, Uid, Now, Type, Scope, WorkspaceId) ->
 %% @doc 建群公共实现：INSERT 群行 + 创建者群主成员行（同事务）
 %% （create_group/6 与 create_scoped_group/7 共用，行为一致）
 -spec do_create_group(pid(), map(), integer(), binary()) -> integer().
-do_create_group(Conn, GMap, Uid, Now) ->
+do_create_group(Conn, GMap, Uid, _Now) ->
     Gid_for_insert = maps:get(id, GMap),
     %% 【一致性修复】INSERT 失败时 throw，让外层 with_tx 回滚事务，
     %% 避免事务进入 aborted 状态导致后续 SQL 全部 25P02。
@@ -339,34 +390,14 @@ do_create_group(Conn, GMap, Uid, Now) ->
                 ?ERROR_LOG([group_create_insert_unexpected, Gid_for_insert, Uid, Other]),
                 throw({error, group_create_failed, Other})
         end,
-    %% 检查群成员是否已存在，不存在则插入
-    %% 【TSID 修复】group_member.id 同样 NOT NULL 无 default，需预生成。
-    case group_member_repo:find(Gid2, Uid, <<"id">>) of
-        GM when map_size(GM) == 0 ->
-            GmId = elib_tsid:generate(group_member),
-            case
-                elib_pg:insert(
-                    Conn,
-                    group_member_repo:tablename(),
-                    #{
-                        id => GmId,
-                        group_id => Gid2,
-                        user_id => Uid,
-                        % 群主
-                        role => 4,
-                        created_at => Now
-                    },
-                    <<>>
-                )
-            of
-                {ok, _} ->
-                    ok;
-                {error, Reason2} ->
-                    ?ERROR_LOG([group_member_insert_failed, Gid2, Uid, Reason2]),
-                    throw({error, group_member_create_failed, Reason2})
-            end;
-        _ ->
-            ok
+    %% 创建者与其他入群路径复用同一事务入口，确保成员行、统计和首个
+    %% history generation 原子建立；禁止再旁路手写 group_member INSERT。
+    case group_member_ds:join_group(Conn, <<"group_create">>, Uid, Gid2, #{role => 4}) of
+        {ok, _} ->
+            ok;
+        {error, Reason2} ->
+            ?ERROR_LOG([group_member_insert_failed, Gid2, Uid, Reason2]),
+            throw({error, group_member_create_failed, Reason2})
     end,
     Gid2.
 
@@ -517,6 +548,9 @@ dissolve_group(Uid, Gid, _, G) ->
             ok = workspace_guard:abort_on_error(
                 workspace_guard:ensure_writable_tx(Conn, {group, Gid})
             ),
+            %% 解散会删除全部成员；先在同一 conv_seq 锁下关闭所有 open 世代，
+            %% 防止 generation 残留继续授权历史或破坏 append-only 审计语义。
+            ok = group_member_ds:close_group_history_generations(Conn, Gid, <<"dissolve">>),
             % 添加群日志
             case
                 group_log_repo:add(

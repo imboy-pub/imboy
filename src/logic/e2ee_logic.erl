@@ -12,6 +12,8 @@
 
 -include("log.hrl").
 
+-define(MAX_GROUP_KEY_ENTRIES, 4096).
+
 -spec user_keys(integer(), integer()) -> {ok, map()} | {error, binary(), integer()}.
 user_keys(CurrentUid, TargetUid) when is_integer(CurrentUid), is_integer(TargetUid) ->
     % 任何登录用户都可以获取其他用户的公钥（用于端到端加密）
@@ -20,22 +22,29 @@ user_keys(CurrentUid, TargetUid) when is_integer(CurrentUid), is_integer(TargetU
 
 -spec group_member_keys(integer(), integer()) -> {ok, map()} | {error, binary(), integer()}.
 group_member_keys(CurrentUid, Gid) when is_integer(CurrentUid), is_integer(Gid) ->
-    case group_ds:is_member(CurrentUid, Gid) of
-        true ->
-            MemberUids = group_ds:member_uids(Gid),
-            case user_device_ds:list_public_keys_by_uids(MemberUids) of
-                {ok, Rows} ->
-                    {ok, #{
-                        <<"gid">> => Gid,
-                        <<"members">> => group_by_uid(Rows)
-                    }};
-                {error, Reason} ->
-                    _ = ?ERROR_LOG({e2ee_group_member_keys_db_error, Reason}),
-                    {error, <<"internal_error">>, 500}
-            end;
-        false ->
-            {error, <<"forbidden">>, 403}
+    ProbeLimit = ?MAX_GROUP_KEY_ENTRIES + 1,
+    case group_ds:member_public_keys_authoritative(Gid, CurrentUid, ProbeLimit) of
+        {ok, Rows} when length(Rows) =< ?MAX_GROUP_KEY_ENTRIES ->
+            group_member_keys_payload(Gid, Rows);
+        {ok, _Rows} ->
+            _ = ?WARN_LOG({e2ee_group_member_keys_limit_exceeded, Gid, CurrentUid}),
+            {error, <<"group_key_fanout_limit_exceeded">>, 409};
+        {error, fanout_limit_exceeded} ->
+            _ = ?WARN_LOG({e2ee_group_member_count_limit_exceeded, Gid, CurrentUid}),
+            {error, <<"group_key_fanout_limit_exceeded">>, 409};
+        {error, forbidden} ->
+            {error, <<"forbidden">>, 403};
+        {error, Reason} ->
+            _ = ?ERROR_LOG({e2ee_group_member_snapshot_db_error, Reason}),
+            {error, <<"internal_error">>, 500}
     end.
+
+-spec group_member_keys_payload(integer(), [map()]) -> {ok, map()}.
+group_member_keys_payload(Gid, Rows) ->
+    {ok, #{
+        <<"gid">> => Gid,
+        <<"members">> => group_by_uid(Rows)
+    }}.
 
 %% @doc 上报设备的 E2EE 公钥并通知好友
 %%

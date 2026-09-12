@@ -1,5 +1,5 @@
 -- E2EE-2026-012 / Task 8 (LT-03)：统一群历史 join boundary
--- 已批准语义：F2（仅入群后）+ R2（每次重入新世代）+ D3（archive ACL 账号级，key 显式恢复）+ M1（存量 active 祖传 start_seq=1）
+-- 当前实现语义：F2（仅入群后）+ R2（每次重入新世代）+ D3（archive ACL 账号级，key 显式恢复）+ M1（存量 active 祖传 start_seq=1）；用户批准证据缺失。
 -- 边界一律以 conv_seq（消息持久接受顺序）表达，禁止 wall-clock 推断。
 -- 迁移必须可逆、可审计并记录所选 M 策略（见文件尾 COMMENT）。
 

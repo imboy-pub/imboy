@@ -3,7 +3,7 @@
 -include("eunit_setup.hrl").
 
 %%% E2EE-2026-012 / Task 8 (LT-03)：统一群历史 join boundary。
-%%% 已批准语义：F2（仅入群后）+ R2（重入新世代）+ D3（账号级 ACL）+ M1（祖传 start_seq=1）。
+%%% 当前实现语义：F2（仅入群后）+ R2（重入新世代）+ D3（账号级 ACL）+ M1（祖传 start_seq=1）；用户批准证据缺失。
 %%% 行为矩阵（真库 scratch，逐套件串行）：
 %%%   F2 边界：join 后 history(seq=0) 不得返回 start_seq 之前归档；
 %%%   R2 重入：leave 关世代 → 旧授权失效；rejoin 新世代 → 只见重入后；
@@ -162,7 +162,7 @@ staging_prealloc_test_() ->
         %% 生产 c2g payload 契约：group_id 在 <<"to">> 字段（字符串格式），
         %% msg_archive_repo 归档期据此解码（safe_decode_group_id）
         Payload = iolist_to_binary(["{\"to\":\"", integer_to_binary(Gid), "\"}"]),
-        {ok, new} = msg_store_ds:stage(
+        {ok, new, MemberUids} = msg_store_ds:stage(
             <<"c2g">>,
             MsgId,
             <<"text">>,
@@ -175,6 +175,7 @@ staging_prealloc_test_() ->
             ts(),
             <<>>
         ),
+        ?assert(lists:member(A, MemberUids)),
         {ok, Rows} = elib_pg:query(
             <<"SELECT conv_seq FROM public.msg_store_staging WHERE msg_id = $1">>,
             [MsgId]
@@ -206,12 +207,11 @@ staging_prealloc_test_() ->
             [MsgId]
         ),
         [#{<<"n">> := 1, <<"s">> := ConvSeq1}] = Rows2,
-        %% archive 搬运既定 seq：msg_store 行 conv_seq == staging 的值
-        {ok, [StRow]} = elib_pg:query(
-            <<"SELECT * FROM public.msg_store_staging WHERE msg_id = $1">>, [MsgId]
-        ),
-        %% archive 搬运既定 seq：msg_archive_repo 从 staging 行读固化 conv_seq
-        %% （msg_store_worker:maybe_archive/1 为私有开关壳，其下即此调用）
+        %% 走生产 worker 的 claim 查询合同，防 SELECT 漏列后被 SELECT * 测试掩盖。
+        {ok, ClaimedRows} = msg_store_repo:claim_pending(1000, 30),
+        [StRow] = [Row || #{<<"msg_id">> := Id} = Row <- ClaimedRows, Id =:= MsgId],
+        ?assertEqual(ConvSeq1, maps:get(<<"conv_seq">>, StRow)),
+        %% archive 必须搬运 claim 行里的既定 seq，绝不二次分配。
         ok = msg_archive_repo:archive(StRow),
         {ok, ArchRows} = elib_pg:query(
             <<"SELECT conv_seq FROM public.msg_store WHERE msg_id = $1">>, [MsgId]
@@ -228,6 +228,33 @@ fail_closed_test_() ->
         mk_group(Gid, A),
         legacy_member(Gid, A),
         ?assertEqual(denied, history_seq_rows(A, Gid, 0))
+    end).
+
+%% 新建群的创建者也必须经统一入群入口建立首个 open generation。
+new_group_owner_generation_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        Gid = 535000 + (uid() rem 100000),
+        Owner = 7351,
+        Gid = elib_pg:with_tx(fun(Conn) ->
+            group_ds:create_group(Conn, Gid, Owner, ts(), 2, 1)
+        end),
+        ?assertEqual([{1, 1, null}], gen_rows(Owner, Gid)),
+        ?assertEqual([], history_seq_rows(Owner, Gid, 0))
+    end).
+
+%% 解散群必须关闭全部 open generation；残留世代不得继续授权历史。
+dissolved_group_closes_generation_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        Gid = 537000 + (uid() rem 100000),
+        Owner = 7371,
+        mk_group(Gid, Owner),
+        ok = group_member_logic:join_group(<<"invite">>, Owner, Gid, #{role => 4}),
+        [{1, 1, null}] = gen_rows(Owner, Gid),
+        Group = group_ds:find_by_id(Gid, <<"*">>),
+        ok = group_ds:dissolve_group(Owner, Gid, Owner, Group),
+        [{1, 1, EndSeq}] = gen_rows(Owner, Gid),
+        ?assert(is_integer(EndSeq)),
+        ?assertEqual(denied, history_seq_rows(Owner, Gid, 0))
     end).
 
 %% M1 backfill 规则：legacy active 成员经 backfill 得 start_seq=1
@@ -265,6 +292,15 @@ migration_101_guards_absent_staging_test() ->
     ),
     ?assert(binary:match(Migration, <<"ADD COLUMN IF NOT EXISTS conv_seq">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"to_regclass('public.msg_store_staging')">>) =/= nomatch).
+
+%% 旧 timeline 没有可信接受序号，禁止按 created_at/ACK 猜测或回填世代。
+migration_109_keeps_legacy_timeline_fail_closed_test() ->
+    {ok, Migration} =
+        file:read_file("priv/migrations/00000109_c2g_timeline_generation_boundary.up.sql"),
+    ?assert(binary:match(Migration, <<"ADD COLUMN conv_seq bigint">>) =/= nomatch),
+    ?assert(binary:match(Migration, <<"conv_seq IS NULL OR conv_seq >= 1">>) =/= nomatch),
+    ?assert(binary:match(Migration, <<"client_ack = false AND conv_seq IS NOT NULL">>) =/= nomatch),
+    ?assertEqual(nomatch, binary:match(Migration, <<"UPDATE public.msg_c2g_timeline">>)).
 
 %% 全新安装与存量部署 schema 不得分叉：运行时 DDL 必须包含 conv_seq 列。
 ensure_table_ddl_has_conv_seq_test() ->

@@ -226,50 +226,33 @@ group_member_keys_member_success_test_() ->
     ?WITH_MECK(
         group_ds,
         [
-            {'is_member', 2, fun(_CurrentUid, _Gid) -> true end},
-            {'member_uids', 1, fun(_Gid) -> [123, 456, 789] end}
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {ok, [
+                    #{
+                        <<"user_id">> => 123,
+                        <<"device_id">> => <<"device_1">>,
+                        <<"public_key">> => <<"key_1">>
+                    },
+                    #{
+                        <<"user_id">> => 456,
+                        <<"device_id">> => <<"device_2">>,
+                        <<"public_key">> => <<"key_2">>
+                    },
+                    #{
+                        <<"user_id">> => 789,
+                        <<"device_id">> => <<"device_3">>,
+                        <<"public_key">> => <<"key_3">>
+                    }
+                ]}
+            end}
         ],
         fun() ->
-            run_with_mocks(
-                [
-                    {user_device_ds, [
-                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                            {ok, [
-                                #{
-                                    <<"user_id">> => 123,
-                                    <<"device_id">> => <<"device_1">>,
-                                    <<"public_key">> => <<"key_1">>
-                                },
-                                #{
-                                    <<"user_id">> => 456,
-                                    <<"device_id">> => <<"device_2">>,
-                                    <<"public_key">> => <<"key_2">>
-                                },
-                                #{
-                                    <<"user_id">> => 789,
-                                    <<"device_id">> => <<"device_3">>,
-                                    <<"public_key">> => <<"key_3">>
-                                }
-                            ]}
-                        end}
-                    ]}
-                ],
-                fun() ->
-                    CurrentUid = 123,
-                    Gid = 1,
-
-                    Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
-                    ?assertMatch(
-                        {ok, #{
-                            <<"gid">> := 1,
-                            <<"members">> := _
-                        }},
-                        Result
-                    ),
-                    {ok, #{<<"members">> := Members}} = Result,
-                    ?assertEqual(3, length(Members))
-                end
-            )
+            CurrentUid = 123,
+            Gid = 1,
+            Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
+            ?assertMatch({ok, #{<<"gid">> := 1, <<"members">> := _}}, Result),
+            {ok, #{<<"members">> := Members}} = Result,
+            ?assertEqual(3, length(Members))
         end
     ).
 
@@ -277,7 +260,9 @@ group_member_keys_non_member_forbidden_test_() ->
     ?WITH_MECK(
         group_ds,
         [
-            {'is_member', 2, fun(_CurrentUid, _Gid) -> false end}
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {error, forbidden}
+            end}
         ],
         fun() ->
             CurrentUid = 123,
@@ -293,58 +278,76 @@ group_member_keys_database_error_returns_500_test_() ->
     ?WITH_MECK(
         group_ds,
         [
-            {'is_member', 2, fun(_CurrentUid, _Gid) -> true end},
-            {'member_uids', 1, fun(_Gid) -> [123, 456] end}
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {error, database_timeout}
+            end}
         ],
         fun() ->
-            run_with_mocks(
-                [
-                    {user_device_ds, [
-                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                            {error, database_timeout}
-                        end}
-                    ]}
-                ],
-                fun() ->
-                    CurrentUid = 123,
-                    Gid = 1,
+            Result = e2ee_logic:group_member_keys(123, 1),
+            ?assertEqual({error, <<"internal_error">>, 500}, Result)
+        end
+    ).
 
-                    Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
-                    ?assertEqual({error, <<"internal_error">>, 500}, Result)
-                end
+group_member_keys_authorized_without_keys_returns_empty_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {ok, []}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{<<"gid">> => 1, <<"members">> => []}},
+                e2ee_logic:group_member_keys(123, 1)
             )
         end
     ).
 
-group_member_keys_empty_group_test_() ->
+group_member_keys_limit_boundary_test_() ->
     ?WITH_MECK(
         group_ds,
         [
-            {'is_member', 2, fun(_CurrentUid, _Gid) -> true end},
-            {'member_uids', 1, fun(_Gid) -> [] end}
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {ok, [
+                    #{<<"user_id">> => 123, <<"device_id">> => integer_to_binary(N)}
+                 || N <- lists:seq(1, 4096)
+                ]}
+            end}
         ],
         fun() ->
-            run_with_mocks(
-                [
-                    {user_device_ds, [
-                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                            {ok, []}
-                        end}
-                    ]}
-                ],
-                fun() ->
-                    CurrentUid = 123,
-                    Gid = 1,
+            ?assertMatch({ok, _}, e2ee_logic:group_member_keys(123, 1))
+        end
+    ).
 
-                    Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
-                    ?assertMatch(
-                        {ok, #{
-                            <<"gid">> := 1,
-                            <<"members">> := []
-                        }},
-                        Result
-                    )
-                end
+group_member_keys_limit_plus_one_fails_closed_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {ok, [#{<<"user_id">> => 123} || _ <- lists:seq(1, 4097)]}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"group_key_fanout_limit_exceeded">>, 409},
+                e2ee_logic:group_member_keys(123, 1)
+            )
+        end
+    ).
+
+group_member_keys_member_limit_fails_closed_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {error, fanout_limit_exceeded}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"group_key_fanout_limit_exceeded">>, 409},
+                e2ee_logic:group_member_keys(123, 1)
             )
         end
     ).
@@ -462,45 +465,31 @@ group_member_keys_sorts_by_uid_test_() ->
     ?WITH_MECK(
         group_ds,
         [
-            {'is_member', 2, fun(_CurrentUid, _Gid) -> true end},
-            {'member_uids', 1, fun(_Gid) -> [789, 123, 456] end}
+            {'member_public_keys_authoritative', 3, fun(_Gid, _CurrentUid, 4097) ->
+                {ok, [
+                    #{
+                        <<"user_id">> => 789,
+                        <<"device_id">> => <<"device_3">>,
+                        <<"public_key">> => <<"key_3">>
+                    },
+                    #{
+                        <<"user_id">> => 123,
+                        <<"device_id">> => <<"device_1">>,
+                        <<"public_key">> => <<"key_1">>
+                    },
+                    #{
+                        <<"user_id">> => 456,
+                        <<"device_id">> => <<"device_2">>,
+                        <<"public_key">> => <<"key_2">>
+                    }
+                ]}
+            end}
         ],
         fun() ->
-            run_with_mocks(
-                [
-                    {user_device_ds, [
-                        {'list_public_keys_by_uids', 1, fun(_Uids) ->
-                            {ok, [
-                                #{
-                                    <<"user_id">> => 789,
-                                    <<"device_id">> => <<"device_3">>,
-                                    <<"public_key">> => <<"key_3">>
-                                },
-                                #{
-                                    <<"user_id">> => 123,
-                                    <<"device_id">> => <<"device_1">>,
-                                    <<"public_key">> => <<"key_1">>
-                                },
-                                #{
-                                    <<"user_id">> => 456,
-                                    <<"device_id">> => <<"device_2">>,
-                                    <<"public_key">> => <<"key_2">>
-                                }
-                            ]}
-                        end}
-                    ]}
-                ],
-                fun() ->
-                    CurrentUid = 123,
-                    Gid = 1,
-
-                    Result = e2ee_logic:group_member_keys(CurrentUid, Gid),
-                    {ok, #{<<"members">> := Members}} = Result,
-                    % 验证成员按 UID 排序
-                    Uids = [maps:get(<<"uid">>, M) || M <- Members],
-                    ?assert(Uids =:= lists:sort(Uids))
-                end
-            )
+            Result = e2ee_logic:group_member_keys(123, 1),
+            {ok, #{<<"members">> := Members}} = Result,
+            Uids = [maps:get(<<"uid">>, M) || M <- Members],
+            ?assert(Uids =:= lists:sort(Uids))
         end
     ).
 

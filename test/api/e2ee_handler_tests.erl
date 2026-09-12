@@ -335,6 +335,29 @@ group_member_keys_with_database_error_returns_500_test_() ->
         end
     ).
 
+group_member_keys_with_fanout_limit_returns_409_test_() ->
+    ?WITH_MECKS(
+        [
+            {auth_ds, [
+                {'current_uid', 1, fun(_State) -> 123 end}
+            ]},
+            {elib_param, [
+                {'get', 3, fun(<<"gid">>, _Req, _Default) -> <<"1">> end}
+            ]},
+            {e2ee_logic, [
+                {'group_member_keys', 2, fun(_CurrentUid, _Gid) ->
+                    {error, <<"group_key_fanout_limit_exceeded">>, 409}
+                end}
+            ]},
+            {elib_response, [
+                {'error', 3, fun(_Req, _Msg, 409) -> cowboy_req_409 end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(cowboy_req_409, invoke_group_member_keys(cowboy_req_ok, #{}))
+        end
+    ).
+
 %% ===================================================================
 %% 边界条件测试
 %% ===================================================================
