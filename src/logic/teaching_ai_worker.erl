@@ -262,7 +262,7 @@ run_provider(Conn, DraftId, TaskId, Draft, Scope, Attachment) ->
 -spec dispatch_provider_result(any(), integer(), binary() | null | undefined, map(), map()) ->
     {ok, map()} | {error, term()}.
 dispatch_provider_result(Conn, DraftId, TaskId, DraftMeta, Attachment) ->
-    case teaching_ai_provider:analyze_video(DraftMeta, Attachment) of
+    case teaching_ai_draft_logic:analyze_video(DraftMeta, Attachment) of
         {ok, Result} ->
             ModelProfile = config_ds:env(teaching_ai_llm_provider, <<"">>),
             ok = teaching_review_repo:ai_finish_success_tx(Conn, DraftId, ModelProfile, Result),

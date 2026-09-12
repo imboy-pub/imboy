@@ -1,12 +1,22 @@
--module(teaching_ai_provider).
+-module(teaching_ai_draft_logic).
 %%%
-% 墨芽书法 AI 回课 provider 包装（Step 11）
-% Wraps imboy_llm registry for teaching video review
+% 墨芽 AI 回课「点评草稿」产出（Step 11）
+% Produces the AI review draft for a calligraphy submission
+%
+% 职责（本模块 = 领域契约 + 用例编排；外部厂商调用在 imboy_llm_* 那一层）：
+%   1) 领域契约：output_schema 白名单重建、思维链/包装脱壳、char_reviews 校验
+%   2) 用例编排：取 provider → 组装消息 → 调用 → 校验 → 降级
+%   3) 防腐：按名字查 registry、能力/密钥判定，把外部失败折叠成稳定错误
+% 命名说明（2026-09-13）：原名 teaching_ai_provider 与本仓「provider = 厂商端点
+%   抽象」（llm_providers 配置 / imboy_llm_registry / imboy_llm_openai 等实现体）
+%   撞词——本模块是**消费** provider 的一方，且配置键 teaching_ai_llm_provider
+%   已占用「用哪个 provider」之语义。改为领域名词「草稿」（对应表
+%   calligraphy_review_draft）+ 层后缀，与 teaching_X_logic 家族一致。
 %
 % 降级口径（AI-03）：
-%   本模块把「无 provider / 无 key / vision=false」统一折叠为
-%   {error, provider_unavailable}：Worker 收到即 status=failed + 明确降级老师人工
-%   队列（闭环不破）。换 provider / 换模型无需改动 Worker。
+%   本模块把「provider 名未配置 / registry 未命中 / vision 声明缺失 / api_key
+%   为空」统一折叠为 {error, provider_unavailable}：Worker 收到即 status=failed
+%   + 明确降级老师人工队列（闭环不破）。换 provider / 换模型无需改动 Worker。
 %   （原文写「vision 全 false 致多模态被 BLOCKED_EXTERNAL 阻塞」——已于 2026-09-11
 %   接入视觉 provider 后失效；2026-09-12 模型换 glm-5.3-flash。）
 %
@@ -105,7 +115,7 @@ resolve_provider(Name) when is_binary(Name) ->
                     {ok, Mod, Opts};
                 _ ->
                     %% vision=false / 无 key：统一明确降级（不重试——AI-03）
-                    ?INFO_LOG(["teaching_ai_provider unavailable: vision/key missing"]),
+                    ?INFO_LOG(["teaching_ai_draft_logic unavailable: vision/key missing"]),
                     {error, provider_unavailable}
             end;
         undefined ->
@@ -128,7 +138,7 @@ call_provider(Mod, Opts, DraftMeta, Attachment) ->
         {error, timeout} ->
             {error, timeout};
         {error, Reason} ->
-            ?LOG_WARNING("teaching_ai_provider chat error ~p", [Reason]),
+            ?LOG_WARNING("teaching_ai_draft_logic chat error ~p", [Reason]),
             {error, provider_error};
         {'EXIT', _} ->
             {error, provider_error};

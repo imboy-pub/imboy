@@ -1,4 +1,4 @@
-%% teaching_ai_provider_tests
+%% teaching_ai_draft_logic_tests
 %% AI-01 / AI-03（provider 侧）— 墨芽书法 AI 回课 provider 包装测试（Step 11）。
 %%
 %% 纯 logic 用例：全部外呼（registry/provider chat）与配置均 meck，零真实网络、
@@ -12,7 +12,7 @@
 %% repo 落库路径（requeue/failed/重试上限/附件删除）在
 %% test/repo/teaching_ai_worker_tests.erl（真库 4323 scratch）。
 
--module(teaching_ai_provider_tests).
+-module(teaching_ai_draft_logic_tests).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("eunit_setup.hrl").
@@ -116,7 +116,7 @@ ai03_provider_name_unconfigured_test_() ->
         fun() ->
             ?assertEqual(
                 {error, provider_unavailable},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             ),
             %% 未配置名：连 registry 查询都不应发生
             ?assertEqual(0, meck:num_calls(imboy_llm_registry, lookup, 1))
@@ -144,7 +144,7 @@ ai03_registry_miss_test_() ->
         fun() ->
             ?assertEqual(
                 {error, provider_unavailable},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             ),
             ?assertEqual(0, meck:num_calls(?FAKE_MOD, chat, 3))
         end
@@ -173,7 +173,7 @@ ai03_vision_false_test_() ->
         fun() ->
             ?assertEqual(
                 {error, provider_unavailable},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             ),
             ?assertEqual(0, meck:num_calls(?FAKE_MOD, chat, 3))
         end
@@ -202,7 +202,7 @@ ai03_empty_api_key_test_() ->
         fun() ->
             ?assertEqual(
                 {error, provider_unavailable},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             ),
             ?assertEqual(0, meck:num_calls(?FAKE_MOD, chat, 3))
         end
@@ -215,7 +215,7 @@ ai03_empty_api_key_test_() ->
 %% 成功：白名单重建（思维链丢弃、confidence 保留）
 ai01_success_whitelist_test_() ->
     ?WITH_MECKS(provider_mocks(), fun() ->
-        {ok, Result} = teaching_ai_provider:analyze_video(meta(), attachment()),
+        {ok, Result} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
         ?assertEqual(whitelist_keys(), lists:sort(maps:keys(Result))),
         ?assertEqual(0.87, maps:get(<<"confidence">>, Result)),
         ?assertEqual(false, maps:get(<<"needs_human_check">>, Result)),
@@ -232,7 +232,7 @@ ai01_timeout_test_() ->
         try
             ?assertEqual(
                 {error, timeout},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             )
         after
             erase(fake_chat)
@@ -246,7 +246,7 @@ ai01_provider_error_test_() ->
         try
             ?assertEqual(
                 {error, provider_error},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             )
         after
             erase(fake_chat)
@@ -277,7 +277,7 @@ ai01_provider_crash_test_() ->
         fun() ->
             ?assertEqual(
                 {error, provider_error},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             )
         end
     ).
@@ -289,7 +289,7 @@ ai01_bad_json_test_() ->
         try
             ?assertEqual(
                 {error, bad_output},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             )
         after
             erase(fake_chat)
@@ -303,7 +303,7 @@ ai01_valid_json_bad_schema_test_() ->
         try
             ?assertEqual(
                 {error, bad_output},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             )
         after
             erase(fake_chat)
@@ -314,9 +314,9 @@ ai01_valid_json_bad_schema_test_() ->
 ai01_empty_content_test_() ->
     ?WITH_MECKS(provider_mocks(), fun() ->
         _ = put(fake_chat, {ok, #{<<"content">> => <<>>}}),
-        R1 = teaching_ai_provider:analyze_video(meta(), attachment()),
+        R1 = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
         _ = put(fake_chat, {ok, #{}}),
-        R2 = teaching_ai_provider:analyze_video(meta(), attachment()),
+        R2 = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
         try
             ?assertEqual({error, bad_output}, R1),
             ?assertEqual({error, bad_output}, R2)
@@ -335,7 +335,7 @@ ai01_think_block_wrapped_test_() ->
         Content = <<"<think>先看整体，再看逐帧笔锋</think>\n"/utf8, (jsone:encode(valid_result()))/binary>>,
         _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
         try
-            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            {ok, W} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
             ?assertEqual(whitelist_keys(), lists:sort(maps:keys(W)))
         after
             erase(fake_chat)
@@ -348,7 +348,7 @@ ai01_box_marker_wrapped_test_() ->
         Content = <<"<|begin_of_box|>", (jsone:encode(valid_result()))/binary, "<|end_of_box|>">>,
         _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
         try
-            ?assertMatch({ok, _}, teaching_ai_provider:analyze_video(meta(), attachment()))
+            ?assertMatch({ok, _}, teaching_ai_draft_logic:analyze_video(meta(), attachment()))
         after
             erase(fake_chat)
         end
@@ -360,7 +360,7 @@ ai01_fenced_json_test_() ->
         Content = <<"```json\n", (jsone:encode(valid_result()))/binary, "\n```">>,
         _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
         try
-            ?assertMatch({ok, _}, teaching_ai_provider:analyze_video(meta(), attachment()))
+            ?assertMatch({ok, _}, teaching_ai_draft_logic:analyze_video(meta(), attachment()))
         after
             erase(fake_chat)
         end
@@ -372,7 +372,7 @@ ai01_prose_prefixed_json_test_() ->
         Content = <<"分析如下：\n"/utf8, (jsone:encode(valid_result()))/binary>>,
         _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
         try
-            ?assertMatch({ok, _}, teaching_ai_provider:analyze_video(meta(), attachment()))
+            ?assertMatch({ok, _}, teaching_ai_draft_logic:analyze_video(meta(), attachment()))
         after
             erase(fake_chat)
         end
@@ -385,7 +385,7 @@ ai01_think_truncated_no_json_test_() ->
         try
             ?assertEqual(
                 {error, bad_output},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             )
         after
             erase(fake_chat)
@@ -400,7 +400,7 @@ ai01_wrapped_bad_schema_test_() ->
         try
             ?assertEqual(
                 {error, bad_output},
-                teaching_ai_provider:analyze_video(meta(), attachment())
+                teaching_ai_draft_logic:analyze_video(meta(), attachment())
             )
         after
             erase(fake_chat)
@@ -435,7 +435,7 @@ ai01_char_reviews_passthrough_test_() ->
             }}
         ),
         try
-            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            {ok, W} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
             Items = maps:get(<<"char_reviews">>, W),
             ?assertEqual(2, length(Items)),
             ?assertEqual(
@@ -490,7 +490,7 @@ ai01_char_reviews_drop_invalid_items_test_() ->
             }}
         ),
         try
-            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            {ok, W} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
             Items = maps:get(<<"char_reviews">>, W),
             ?assertEqual(1, length(Items)),
             ?assertEqual(3, maps:get(<<"index">>, hd(Items))),
@@ -514,7 +514,7 @@ ai01_char_reviews_cap_test_() ->
         ],
         _ = put(fake_chat, {json, (valid_result())#{<<"char_reviews">> => Items}}),
         try
-            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            {ok, W} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
             ?assertEqual(50, length(maps:get(<<"char_reviews">>, W)))
         after
             erase(fake_chat)
@@ -526,7 +526,7 @@ ai01_char_reviews_malformed_degrades_test_() ->
     ?WITH_MECKS(provider_mocks(), fun() ->
         _ = put(fake_chat, {json, (valid_result())#{<<"char_reviews">> => <<"人 good"/utf8>>}}),
         try
-            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            {ok, W} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
             ?assertEqual(null, maps:get(<<"char_reviews">>, W)),
             %% 降级只作用于字卡：三段文本仍完整
             ?assertNotEqual(<<>>, maps:get(<<"positive_point">>, W))
@@ -539,9 +539,9 @@ ai01_char_reviews_malformed_degrades_test_() ->
 ai01_char_reviews_absent_or_empty_is_null_test_() ->
     ?WITH_MECKS(provider_mocks(), fun() ->
         _ = put(fake_chat, {json, valid_result()}),
-        R1 = teaching_ai_provider:analyze_video(meta(), attachment()),
+        R1 = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
         _ = put(fake_chat, {json, (valid_result())#{<<"char_reviews">> => []}}),
-        R2 = teaching_ai_provider:analyze_video(meta(), attachment()),
+        R2 = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
         try
             {ok, W1} = R1,
             ?assert(maps:is_key(<<"char_reviews">>, W1)),
@@ -560,9 +560,9 @@ version_blank_falls_back_test_() ->
         Blank = (meta())#{prompt_version => <<>>, rubric_version => <<>>},
         _ = put(fake_chat, {json, valid_result()}),
         try
-            {ok, _} = teaching_ai_provider:analyze_video(Blank, attachment()),
+            {ok, _} = teaching_ai_draft_logic:analyze_video(Blank, attachment()),
             [_, #{<<"content">> := Content}] = get(captured_messages),
-            {ok, _} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            {ok, _} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
             [_, #{<<"content">> := Content2}] = get(captured_messages),
             ?assertNotEqual(nomatch, binary:match(Content, <<"p-2026-09-12.1">>)),
             ?assertNotEqual(nomatch, binary:match(Content, <<"r-hardpen-1">>)),
@@ -577,13 +577,13 @@ version_blank_falls_back_test_() ->
 %%%===================================================================
 
 validate_ok_whitelist_test() ->
-    {ok, W} = teaching_ai_provider:validate_result(valid_result()),
+    {ok, W} = teaching_ai_draft_logic:validate_result(valid_result()),
     ?assertEqual(whitelist_keys(), lists:sort(maps:keys(W))).
 
 validate_confidence_out_of_range_test() ->
     Base = valid_result(),
     Input = Base#{<<"confidence">> => 1.5},
-    {ok, W} = teaching_ai_provider:validate_result(Input),
+    {ok, W} = teaching_ai_draft_logic:validate_result(Input),
     %% 越界 confidence 丢弃，其余白名单保留（含 Phase B 的 char_reviews）
     ?assertEqual(false, maps:is_key(<<"confidence">>, W)),
     ?assertEqual(7, maps:size(W)).
@@ -596,16 +596,16 @@ validate_moments_bounds_test() ->
             BadInput = Base#{<<"evidence_moments">> => Bad},
             ?assertEqual(
                 {error, bad_output},
-                teaching_ai_provider:validate_result(BadInput)
+                teaching_ai_draft_logic:validate_result(BadInput)
             )
         end
      || Bad <- [[], [1, 2, 3, 4, 5, 6], [-0.1, 2], [<<"1.5">>]]
     ],
     %% 恰 1 项 / 恰 5 项合法
     One = Base#{<<"evidence_moments">> => [0]},
-    {ok, _} = teaching_ai_provider:validate_result(One),
+    {ok, _} = teaching_ai_draft_logic:validate_result(One),
     Five = Base#{<<"evidence_moments">> => [1, 2, 3, 4, 5]},
-    {ok, _} = teaching_ai_provider:validate_result(Five).
+    {ok, _} = teaching_ai_draft_logic:validate_result(Five).
 
 validate_outline_bounds_test() ->
     Base = valid_result(),
@@ -616,7 +616,7 @@ validate_outline_bounds_test() ->
             BadInput = Base#{<<"script_outline">> => Bad},
             ?assertEqual(
                 {error, bad_output},
-                teaching_ai_provider:validate_result(BadInput)
+                teaching_ai_draft_logic:validate_result(BadInput)
             )
         end
      || Bad <- [[<<"a">>, <<"b">>, <<"c">>, <<"d">>], [Long], [1, 2]]
@@ -631,7 +631,7 @@ validate_text_fields_test() ->
             BadInput = Base#{<<"positive_point">> => Bad},
             ?assertEqual(
                 {error, bad_output},
-                teaching_ai_provider:validate_result(BadInput)
+                teaching_ai_draft_logic:validate_result(BadInput)
             )
         end
      || Bad <- [undefined, <<>>, 123, Long]
@@ -642,12 +642,12 @@ validate_needs_human_check_test() ->
     BadInput = Base#{<<"needs_human_check">> => <<"yes">>},
     ?assertEqual(
         {error, bad_output},
-        teaching_ai_provider:validate_result(BadInput)
+        teaching_ai_draft_logic:validate_result(BadInput)
     ).
 
 validate_non_map_test() ->
-    ?assertEqual({error, bad_output}, teaching_ai_provider:validate_result([valid_result()])),
-    ?assertEqual({error, bad_output}, teaching_ai_provider:validate_result(<<"json string">>)).
+    ?assertEqual({error, bad_output}, teaching_ai_draft_logic:validate_result([valid_result()])),
+    ?assertEqual({error, bad_output}, teaching_ai_draft_logic:validate_result(<<"json string">>)).
 
 validate_test_() ->
     [
@@ -710,7 +710,7 @@ opts_vision_override_test_() ->
             ]}
         ],
         fun() ->
-            {ok, Result} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            {ok, Result} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
             ?assertEqual(whitelist_keys(), lists:sort(maps:keys(Result)))
         end
     ).
@@ -720,7 +720,7 @@ video_url_messages_test_() ->
     ?WITH_MECKS(provider_mocks(), fun() ->
         Url = <<"https://cdn.bigmodel.cn/agent-demos/lark/113123.mov">>,
         Attachment = attachment(),
-        {ok, _} = teaching_ai_provider:analyze_video(meta(), Attachment#{<<"url">> => Url}),
+        {ok, _} = teaching_ai_draft_logic:analyze_video(meta(), Attachment#{<<"url">> => Url}),
         Messages = get(captured_messages),
         [#{<<"role">> := <<"system">>}, #{<<"role">> := <<"user">>, <<"content">> := Segments}] =
             Messages,
@@ -737,7 +737,7 @@ video_url_messages_test_() ->
 %% 附件无 url（骨架路径）→ user content 维持纯文本，行为不变
 no_url_keeps_text_messages_test_() ->
     ?WITH_MECKS(provider_mocks(), fun() ->
-        {ok, _} = teaching_ai_provider:analyze_video(meta(), attachment()),
+        {ok, _} = teaching_ai_draft_logic:analyze_video(meta(), attachment()),
         [_, #{<<"role">> := <<"user">>, <<"content">> := Content}] = get(captured_messages),
         ?assert(is_binary(Content))
     end).
