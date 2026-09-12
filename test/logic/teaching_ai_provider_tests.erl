@@ -42,6 +42,7 @@ valid_result() ->
 
 whitelist_keys() ->
     [
+        <<"char_reviews">>,
         <<"confidence">>,
         <<"evidence_moments">>,
         <<"focus_problem">>,
@@ -407,6 +408,171 @@ ai01_wrapped_bad_schema_test_() ->
     end).
 
 %%%===================================================================
+%%% Phase B：AI 逐字点评字卡（char_reviews 识别制）
+%%%===================================================================
+
+%% 合法字卡透传：只保留契约四字段（额外键被剥离）
+ai01_char_reviews_passthrough_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        _ = put(
+            fake_chat,
+            {json, (valid_result())#{
+                <<"char_reviews">> => [
+                    #{
+                        <<"index">> => 0,
+                        <<"char">> => <<"人"/utf8>>,
+                        <<"grade">> => <<"good">>,
+                        <<"comment">> => <<"起笔藏锋到位"/utf8>>,
+                        <<"bbox">> => [1, 2, 3, 4]
+                    },
+                    #{
+                        <<"index">> => 1,
+                        <<"char">> => <<"大"/utf8>>,
+                        <<"grade">> => <<"fair">>,
+                        <<"comment">> => <<"撇画略短"/utf8>>
+                    }
+                ]
+            }}
+        ),
+        try
+            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            Items = maps:get(<<"char_reviews">>, W),
+            ?assertEqual(2, length(Items)),
+            ?assertEqual(
+                [<<"char">>, <<"comment">>, <<"grade">>, <<"index">>],
+                lists:sort(maps:keys(hd(Items)))
+            )
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 越界项逐项丢弃（index 负 / grade 非枚举 / char 超 8 字节 / comment 超 300 /
+%% 非 map 项），合法项照常保留
+ai01_char_reviews_drop_invalid_items_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        _ = put(
+            fake_chat,
+            {json, (valid_result())#{
+                <<"char_reviews">> => [
+                    #{
+                        <<"index">> => -1,
+                        <<"char">> => <<"甲"/utf8>>,
+                        <<"grade">> => <<"good">>,
+                        <<"comment">> => <<>>
+                    },
+                    #{
+                        <<"index">> => 0,
+                        <<"char">> => <<"乙"/utf8>>,
+                        <<"grade">> => <<"great">>,
+                        <<"comment">> => <<>>
+                    },
+                    #{
+                        <<"index">> => 1,
+                        <<"char">> => binary:copy(<<"字"/utf8>>, 3),
+                        <<"grade">> => <<"good">>,
+                        <<"comment">> => <<>>
+                    },
+                    #{
+                        <<"index">> => 2,
+                        <<"char">> => <<"丙"/utf8>>,
+                        <<"grade">> => <<"good">>,
+                        <<"comment">> => binary:copy(<<"长"/utf8>>, 101)
+                    },
+                    #{
+                        <<"index">> => 3,
+                        <<"char">> => <<"丁"/utf8>>,
+                        <<"grade">> => <<"poor">>,
+                        <<"comment">> => <<"结构松散"/utf8>>
+                    },
+                    <<"not a map">>
+                ]
+            }}
+        ),
+        try
+            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            Items = maps:get(<<"char_reviews">>, W),
+            ?assertEqual(1, length(Items)),
+            ?assertEqual(3, maps:get(<<"index">>, hd(Items))),
+            ?assertEqual(<<"poor">>, maps:get(<<"grade">>, hd(Items)))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 上限 50 项：超出截断（与 Phase A 的 ?CHAR_REVIEWS_MAX 同源）
+ai01_char_reviews_cap_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Items = [
+            #{
+                <<"index">> => I,
+                <<"char">> => <<"字"/utf8>>,
+                <<"grade">> => <<"good">>,
+                <<"comment">> => <<>>
+            }
+         || I <- lists:seq(0, 59)
+        ],
+        _ = put(fake_chat, {json, (valid_result())#{<<"char_reviews">> => Items}}),
+        try
+            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            ?assertEqual(50, length(maps:get(<<"char_reviews">>, W)))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 非数组（模型把数组写成字符串）→ 字卡降级 null，不判整个点评失败
+ai01_char_reviews_malformed_degrades_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        _ = put(fake_chat, {json, (valid_result())#{<<"char_reviews">> => <<"人 good"/utf8>>}}),
+        try
+            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            ?assertEqual(null, maps:get(<<"char_reviews">>, W)),
+            %% 降级只作用于字卡：三段文本仍完整
+            ?assertNotEqual(<<>>, maps:get(<<"positive_point">>, W))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 缺失 / 空数组 → 显式 null（键恒存在，形状稳定）
+ai01_char_reviews_absent_or_empty_is_null_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        _ = put(fake_chat, {json, valid_result()}),
+        R1 = teaching_ai_provider:analyze_video(meta(), attachment()),
+        _ = put(fake_chat, {json, (valid_result())#{<<"char_reviews">> => []}}),
+        R2 = teaching_ai_provider:analyze_video(meta(), attachment()),
+        try
+            {ok, W1} = R1,
+            ?assert(maps:is_key(<<"char_reviews">>, W1)),
+            ?assertEqual(null, maps:get(<<"char_reviews">>, W1)),
+            {ok, W2} = R2,
+            ?assertEqual(null, maps:get(<<"char_reviews">>, W2))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% prompt/rubric 版本兜底：draft 行的版本列是空串且键恒存在，必须回落到当前版本
+%% （否则模型收到的版本恒为空、prompt 演进无从回溯）；显式给定版本时不得被覆盖
+version_blank_falls_back_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Blank = (meta())#{prompt_version => <<>>, rubric_version => <<>>},
+        _ = put(fake_chat, {json, valid_result()}),
+        try
+            {ok, _} = teaching_ai_provider:analyze_video(Blank, attachment()),
+            [_, #{<<"content">> := Content}] = get(captured_messages),
+            {ok, _} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            [_, #{<<"content">> := Content2}] = get(captured_messages),
+            ?assertNotEqual(nomatch, binary:match(Content, <<"p-2026-09-12.1">>)),
+            ?assertNotEqual(nomatch, binary:match(Content, <<"r-hardpen-1">>)),
+            ?assertNotEqual(nomatch, binary:match(Content2, <<"p-2026-09-09.1">>))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%%%===================================================================
 %%% validate_result 直测（Schema 边界，无 meck）
 %%%===================================================================
 
@@ -418,9 +584,9 @@ validate_confidence_out_of_range_test() ->
     Base = valid_result(),
     Input = Base#{<<"confidence">> => 1.5},
     {ok, W} = teaching_ai_provider:validate_result(Input),
-    %% 越界 confidence 丢弃，其余白名单保留
+    %% 越界 confidence 丢弃，其余白名单保留（含 Phase B 的 char_reviews）
     ?assertEqual(false, maps:is_key(<<"confidence">>, W)),
-    ?assertEqual(6, maps:size(W)).
+    ?assertEqual(7, maps:size(W)).
 
 validate_moments_bounds_test() ->
     Base = valid_result(),

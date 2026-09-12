@@ -60,7 +60,8 @@ validate_result(Result) when is_map(Result) ->
             <<"practice_action">> => Practice,
             <<"evidence_moments">> => Moments,
             <<"script_outline">> => Outline,
-            <<"needs_human_check">> => NeedsCheck
+            <<"needs_human_check">> => NeedsCheck,
+            <<"char_reviews">> => char_reviews(Result)
         },
         {ok, maybe_confidence(Result, Whitelist)}
     catch
@@ -238,8 +239,13 @@ outermost_object(Bin) ->
 
 -spec build_messages(map(), map()) -> [map()].
 build_messages(DraftMeta, Attachment) ->
-    Rubric = maps:get(rubric_version, DraftMeta, <<"r-hardpen-1">>),
-    Prompt = maps:get(prompt_version, DraftMeta, <<"p-2026-09-09.1">>),
+    %% 版本兜底：draft 行入队时这两列写的是空串
+    %% （teaching_submission_repo:enqueue_ai_draft_tx），键恒存在 → maps:get/3 的
+    %% 默认值取不到。显式把空串回落到当前版本，否则模型收到的版本恒为空、
+    %% prompt 演进无从回溯。
+    %% p-2026-09-12.1：output_schema 增 char_reviews（Phase B 识别制逐字点评）。
+    Rubric = version_or(maps:get(rubric_version, DraftMeta, <<>>), <<"r-hardpen-1">>),
+    Prompt = version_or(maps:get(prompt_version, DraftMeta, <<>>), <<"p-2026-09-12.1">>),
     Task = jsone:encode(#{
         <<"task">> => <<"calligraphy_video_review"/utf8>>,
         <<"rubric_version">> => Rubric,
@@ -250,7 +256,8 @@ build_messages(DraftMeta, Attachment) ->
         },
         <<"output_schema">> => <<
             "positive_point/focus_problem/evidence_moments/"
-            "practice_action/script_outline/needs_human_check/confidence"/utf8
+            "practice_action/script_outline/needs_human_check/confidence/"
+            "char_reviews"/utf8
         >>
     }),
     System = #{
@@ -264,7 +271,10 @@ build_messages(DraftMeta, Attachment) ->
             Url when is_binary(Url), byte_size(Url) > 0 ->
                 Instruction = <<
                     "请观看视频中的书写过程，依据上述 output_schema 输出 JSON 点评；"
-                    "evidence_moments 为视频内秒级时间点（0-5 个）。"/utf8
+                    "evidence_moments 为视频内秒级时间点（0-5 个）。"
+                    "char_reviews 为逐字点评数组（识别制）：从画面识别出所写的每个字，"
+                    "每项 {\"index\":序号(从0起),\"char\":\"单字\",\"grade\":\"good|fair|poor\","
+                    "\"comment\":\"逐字点评\"}，最多 50 项；识别不出逐字内容时给 []。"/utf8
                 >>,
                 #{
                     <<"role">> => <<"user">>,
@@ -334,3 +344,26 @@ maybe_confidence(Result, Acc) ->
         _ ->
             Acc
     end.
+
+%% 逐字点评字卡（Phase B 识别制）：AI 从画面识别所写字并逐字点评。
+%% 校验规则与老师保存草稿同源（teaching_review_logic:parse_char_reviews/1），
+%% 避免两套白名单漂移（单项越界丢弃、空数组归一 null、上限 50 项）。
+%% 字卡是增量补充，故与三段文本处置不同：整体畸形时降级为 null，而不是判整个
+%% 点评失败——模型偶尔把数组写成字符串，不该让一次回课白跑（三段文本缺失才是
+%% 真的没法用，那条仍走 req_text throw）。键恒存在，无逐字数据时显式为 null。
+-spec char_reviews(map()) -> [map()] | null.
+char_reviews(Result) ->
+    try teaching_review_logic:parse_char_reviews(Result) of
+        {ok, CharReviews} -> CharReviews;
+        {error, _} -> null
+    catch
+        _:_ -> null
+    end.
+
+-spec version_or(term(), binary()) -> binary().
+version_or(<<>>, Default) ->
+    Default;
+version_or(V, _Default) when is_binary(V) ->
+    V;
+version_or(_, Default) ->
+    Default.
