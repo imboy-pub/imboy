@@ -131,10 +131,11 @@ if [ -z "$ACCESS_KEY" ]; then
   echo "    ✗ 解析 ACCESS_KEY 失败" >&2
   exit 1
 fi
-garage bucket allow "$BUCKET" --read --write --owner --key "$ACCESS_KEY" 2>/dev/null \
-  || echo "    (${BUCKET} 授权已存在)"
-garage bucket allow "$PUBLIC_BUCKET" --read --write --owner --key "$ACCESS_KEY" 2>/dev/null \
-  || echo "    (${PUBLIC_BUCKET} 授权已存在)"
+# bucket allow 是幂等授权（重复授权返回成功），失败必为真故障，不静默吞错
+garage bucket allow "$BUCKET" --read --write --owner --key "$ACCESS_KEY" \
+  || { echo "    ✗ ${BUCKET} 授权失败" >&2; exit 1; }
+garage bucket allow "$PUBLIC_BUCKET" --read --write --owner --key "$ACCESS_KEY" \
+  || { echo "    ✗ ${PUBLIC_BUCKET} 授权失败" >&2; exit 1; }
 
 # 注意：不设置 bucket 公开读（--read --public）。
 # 私有附件经后端 /v1/attachment/view_url 按需签发短时 presigned GET，避免整桶匿名可读。
