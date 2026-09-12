@@ -47,6 +47,43 @@ done
 make -C "$ROOT" app
 PGDATABASE="$DB" IMBOY_DIR="$ROOT" "$ROOT/scripts/drill_migrate.escript" up
 
+ATTESTATION_PREDICATE="$(
+  sed -n 's/^E2EE_ATTESTATION_SCHEMA_PREDICATE="\(.*\)"$/\1/p' "$ROOT/scripts/deploy.sh"
+)"
+[ -n "$ATTESTATION_PREDICATE" ]
+
+schema_predicate() {
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB" -Atq \
+    -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN $ATTESTATION_PREDICATE THEN 1 ELSE 0 END"
+}
+
+assert_schema_mutation_rejected() {
+  local mutation="$1"
+  local result
+  result="$(
+    psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$DB" -Atq \
+      -v ON_ERROR_STOP=1 <<SQL
+BEGIN;
+$mutation
+SELECT CASE WHEN $ATTESTATION_PREDICATE THEN 1 ELSE 0 END;
+ROLLBACK;
+SQL
+  )"
+  [ "$result" = 0 ]
+}
+
+[ "$(schema_predicate)" = 1 ]
+assert_schema_mutation_rejected \
+  "ALTER TABLE public.e2ee_group_session_attestation ALTER COLUMN sender_did TYPE varchar(127);"
+assert_schema_mutation_rejected \
+  "ALTER TABLE public.e2ee_group_session_member DROP CONSTRAINT e2ee_group_session_member_pkey; ALTER TABLE public.e2ee_group_session_member ADD CONSTRAINT e2ee_group_session_member_pkey PRIMARY KEY (group_id, user_id, session_id);"
+assert_schema_mutation_rejected \
+  "ALTER TABLE public.e2ee_group_session_attestation DROP CONSTRAINT e2ee_group_session_attestation_session_id_key; ALTER TABLE public.e2ee_group_session_attestation ADD CONSTRAINT e2ee_group_session_attestation_session_id_key UNIQUE (room_key_msg_id);"
+assert_schema_mutation_rejected \
+  "ALTER TABLE public.e2ee_group_session_member DROP CONSTRAINT fk_e2ee_group_session_member_session; ALTER TABLE public.e2ee_group_session_member ADD CONSTRAINT fk_e2ee_group_session_member_session FOREIGN KEY (session_id) REFERENCES public.e2ee_group_session_attestation (session_id);"
+assert_schema_mutation_rejected \
+  "ALTER TABLE public.e2ee_group_session_member DROP CONSTRAINT chk_e2ee_group_session_member_values; ALTER TABLE public.e2ee_group_session_member ADD CONSTRAINT chk_e2ee_group_session_member_values CHECK (generation_no >= 0);"
+
 IMBOY_GA_TEST_DB="$DB" \
 IMBOY_GA_TEST_HOST="$PGHOST" \
 IMBOY_GA_TEST_PORT="$PGPORT" \

@@ -108,6 +108,7 @@ DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
 DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
 EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
 BOUNDARY_CUTOVER_MARKER="$PROJECT_DIR/.deploy-c2g-boundary-v109-ready"
+E2EE_ATTESTATION_SCHEMA_PREDICATE="to_regclass('public.e2ee_group_session_attestation') IS NOT NULL AND to_regclass('public.e2ee_group_session_member') IS NOT NULL AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:sender_uid:int8','4:sender_did:varchar','5:room_key_msg_id:varchar','6:recipient_uids:_int8','7:start_seq:int8','8:end_seq:int8','9:created_at:timestamptz','10:updated_at:timestamptz')) = 10 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND (column_name, character_maximum_length) IN (('session_id',256),('sender_did',128),('room_key_msg_id',40))) = 3 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:user_id:int8','4:generation_no:int4','5:generation_start_seq:int8')) = 5 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND column_name='session_id' AND character_maximum_length=256) AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_attestation') AND convalidated AND ((conname='e2ee_group_session_attestation_pkey' AND contype='p' AND conkey=ARRAY[1,2]::smallint[]) OR (conname='e2ee_group_session_attestation_session_id_key' AND contype='u' AND conkey=ARRAY[2]::smallint[]) OR (conname='e2ee_group_session_attestation_room_key_msg_id_key' AND contype='u' AND conkey=ARRAY[5]::smallint[]) OR (conname='chk_e2ee_group_session_ids' AND contype='c' AND conkey=ARRAY[1,3,2,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND sender_uid > 0 AND octet_length(session_id::text) >= 1 AND octet_length(session_id::text) <= 256 AND octet_length(sender_did::text) >= 1 AND octet_length(sender_did::text) <= 128 AND octet_length(room_key_msg_id::text) >= 1 AND octet_length(room_key_msg_id::text) <= 40)') OR (conname='chk_e2ee_group_session_range' AND contype='c' AND conkey=ARRAY[7,8]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (start_seq >= 1 AND end_seq >= start_seq)') OR (conname='chk_e2ee_group_session_recipients' AND contype='c' AND conkey=ARRAY[6]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (array_ndims(recipient_uids) = 1 AND cardinality(recipient_uids) >= 1 AND cardinality(recipient_uids) <= 5000 AND array_position(recipient_uids, NULL::bigint) IS NULL AND (0 < ALL (recipient_uids)))'))) = 6 AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_member') AND convalidated AND ((conname='e2ee_group_session_member_pkey' AND contype='p' AND conkey=ARRAY[1,2,3]::smallint[]) OR (conname='fk_e2ee_group_session_member_session' AND contype='f' AND conkey=ARRAY[1,2]::smallint[] AND confrelid=to_regclass('public.e2ee_group_session_attestation') AND confkey=ARRAY[1,2]::smallint[] AND confupdtype='a' AND confdeltype='a' AND confmatchtype='s') OR (conname='chk_e2ee_group_session_member_values' AND contype='c' AND conkey=ARRAY[1,3,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND user_id > 0 AND generation_no > 0 AND generation_start_seq >= 1)'))) = 3 AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='e2ee_group_session_member' AND indexname='idx_e2ee_group_session_member_grant' AND indexdef LIKE '%(group_id, user_id, generation_no, session_id)%')"
 SALES_RELEASE="${IMBOY_DEPLOY_SALES_RELEASE:-true}"
 E2EE_MODE="${IMBOY_DEPLOY_E2EE_MODE:-disabled}"
 # --local 模式：从本地 rsync 源码到远端，跳过 git pull
@@ -117,6 +118,7 @@ LOCAL_SRC_DIR="${IMBOY_LOCAL_SRC_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 OLD_NODE_STOPPED=0
 BOUNDARY_BOOTSTRAP=0
 BOUNDARY_CUTOVER_PENDING=0
+BOUNDARY_SCHEMA_REQUIRED=0
 
 RELEASE_DIR="/usr/local/imboy-${VSN}-${NODE_NAME}"
 RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
@@ -296,11 +298,11 @@ stop_old_node() {
 # 由 db migrate 执行并登记版本。这样不会把未知的 contract 迁移整体提前。
 # =============================================================================
 probe_boundary_schema() {
-  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version >= 109 AND dirty = false) AND to_regclass('public.msg_c2g_recipient_snapshot') IS NOT NULL AND to_regclass('public.msg_c2g_request_ledger') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_timeline' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g' AND column_name='sender_did') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_request_ledger' AND column_name='request_hash' AND is_nullable='NO') AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_recipient_snapshot'::regclass AND conname IN ('chk_msg_c2g_recipient_snapshot_msg_id','chk_msg_c2g_recipient_snapshot_size','chk_msg_c2g_recipient_snapshot_shape','chk_msg_c2g_recipient_snapshot_positive')) = 4 AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_request_ledger'::regclass AND conname IN ('chk_msg_c2g_request_ledger_msg_id','chk_msg_c2g_request_ledger_hash')) = 2 AND NOT EXISTS (SELECT 1 FROM public.msg_store_staging s WHERE s.type='c2g' AND (s.to_id IS NULL OR s.conv_seq IS NULL OR s.conv_seq < 1 OR jsonb_typeof(s.payload) IS DISTINCT FROM 'object' OR pg_input_is_valid(s.payload ->> 'to', 'bigint') IS NOT TRUE OR (s.payload ->> 'to')::bigint IS DISTINCT FROM s.to_id)) THEN 1 ELSE 0 END\""
+  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version >= 112 AND dirty = false) AND to_regclass('public.msg_c2g_recipient_snapshot') IS NOT NULL AND to_regclass('public.msg_c2g_request_ledger') IS NOT NULL AND $E2EE_ATTESTATION_SCHEMA_PREDICATE AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_timeline' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g' AND column_name='sender_did') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_request_ledger' AND column_name='request_hash' AND is_nullable='NO') AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_recipient_snapshot'::regclass AND conname IN ('chk_msg_c2g_recipient_snapshot_msg_id','chk_msg_c2g_recipient_snapshot_size','chk_msg_c2g_recipient_snapshot_shape','chk_msg_c2g_recipient_snapshot_positive')) = 4 AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_request_ledger'::regclass AND conname IN ('chk_msg_c2g_request_ledger_msg_id','chk_msg_c2g_request_ledger_hash')) = 2 AND NOT EXISTS (SELECT 1 FROM public.msg_store_staging s WHERE s.type='c2g' AND (s.to_id IS NULL OR s.conv_seq IS NULL OR s.conv_seq < 1 OR jsonb_typeof(s.payload) IS DISTINCT FROM 'object' OR pg_input_is_valid(s.payload ->> 'to', 'bigint') IS NOT TRUE OR (s.payload ->> 'to')::bigint IS DISTINCT FROM s.to_id)) THEN 1 ELSE 0 END\""
 }
 
 probe_boundary_dirty() {
-  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version = 109 AND dirty = true) THEN 1 ELSE 0 END\""
+  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version IN (108,109,110,111,112) AND dirty = true) THEN 1 ELSE 0 END\""
 }
 
 run_expand_migrations() {
@@ -319,7 +321,9 @@ run_expand_migrations() {
   for required in \
     00000064_msg_store_sender_did.up.sql \
     00000108_group_attachment_anchor.up.sql \
-    00000109_c2g_timeline_generation_boundary.up.sql; do
+    00000109_c2g_timeline_generation_boundary.up.sql \
+    00000111_c2g_request_recipient_boundary.up.sql \
+    00000112_e2ee_group_session_attestation.up.sql; do
     if ssh_exec "test -f '$PROJECT_DIR/priv/migrations/$required'"; then
       required_status=0
     else
@@ -327,6 +331,9 @@ run_expand_migrations() {
     fi
     case "$required_status" in
       0)
+        if [ "$required" = 00000112_e2ee_group_session_attestation.up.sql ]; then
+          BOUNDARY_SCHEMA_REQUIRED=1
+        fi
         if [ "${#migrations[@]}" -eq 0 ] \
            || ! printf '%s\n' "${migrations[@]}" | grep -qx "$required"; then
           fail "release 包含必需的 expand 迁移但清单未配置: $required"
@@ -358,17 +365,17 @@ run_expand_migrations() {
   if printf '%s\n' "${migrations[@]}" \
       | grep -qx '00000109_c2g_timeline_generation_boundary.up.sql'; then
     boundary_dirty="$(probe_boundary_dirty)" \
-      || fail "无法探测 migration 109 dirty 状态，拒绝继续"
-    case "$boundary_dirty" in 0|1) ;; *) fail "migration 109 dirty 探测返回异常，拒绝继续" ;; esac
+      || fail "无法探测 C2G boundary migration dirty 状态，拒绝继续"
+    case "$boundary_dirty" in 0|1) ;; *) fail "C2G boundary migration dirty 探测返回异常，拒绝继续" ;; esac
     [ "$boundary_dirty" = 0 ] \
-      || fail "schema_migrations version 109 dirty=true；旧节点保持运行。请人工核查失败 SQL 与事务状态，完成受控恢复后重试；禁止直接 force/清 dirty"
+      || fail "C2G boundary schema_migrations version 108-112 存在 dirty=true；旧节点保持运行。请人工核查失败 SQL 与事务状态，完成受控恢复后重试；禁止直接 force/清 dirty"
     boundary_ready="$(probe_boundary_schema)" \
       || fail "无法探测 C2G boundary schema，拒绝继续"
     case "$boundary_ready" in 0|1) ;; *) fail "C2G boundary schema 探测返回异常，拒绝继续" ;; esac
     if [ "$boundary_ready" = 1 ] && ssh_exec "test -f '$BOUNDARY_CUTOVER_MARKER'"; then
       for migration in "${migrations[@]}"; do
         case "$migration" in
-          00000108_group_attachment_anchor.up.sql|00000109_c2g_timeline_generation_boundary.up.sql) ;;
+          00000108_group_attachment_anchor.up.sql|00000109_c2g_timeline_generation_boundary.up.sql|00000111_c2g_request_recipient_boundary.up.sql|00000112_e2ee_group_session_attestation.up.sql) ;;
           *) filtered_migrations+=("$migration") ;;
         esac
       done
@@ -383,12 +390,12 @@ run_expand_migrations() {
       stop_old_node
       if [ "$boundary_ready" = 1 ]; then
         log "重新校验并修复 cutover 前产生的 legacy C2G backlog"
-        ssh_exec "docker exec -i '$DB_CONTAINER' psql -1 -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -f - < '$PROJECT_DIR/priv/migrations/00000109_c2g_timeline_generation_boundary.up.sql'" \
+        ssh_exec "docker exec -i '$DB_CONTAINER' psql -1 -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -f - < '$PROJECT_DIR/priv/migrations/00000111_c2g_request_recipient_boundary.up.sql'" \
           || fail "C2G boundary 恢复校验失败"
       else
         BOUNDARY_BOOTSTRAP=1
         START_AUTO_MIGRATE=true
-        log "由新节点 boot migration 在接流量前原子应用并登记 108/109"
+        log "由新节点 boot migration 在接流量前原子应用并登记 108/109/110/111/112"
       fi
       return 0
     fi
@@ -416,6 +423,11 @@ run_expand_migrations() {
     ssh_exec "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.msg_c2g_recipient_snapshot') IS NOT NULL AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_timeline' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g' AND column_name='sender_did') THEN 1 ELSE 0 END\" | grep -qx 1" \
       || fail "schema 验证失败：C2G boundary schema 不完整"
     ok "schema 已确认：C2G request ledger + recipient snapshot + timeline conv_seq + sender_did"
+  fi
+  if printf '%s\n' "${migrations[@]}" | grep -qx '00000112_e2ee_group_session_attestation.up.sql'; then
+    ssh_exec "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN $E2EE_ATTESTATION_SCHEMA_PREDICATE THEN 1 ELSE 0 END\" | grep -qx 1" \
+      || fail "schema 验证失败：E2EE group session attestation schema 不完整"
+    ok "schema 已确认：E2EE group session attestation + member generation"
   fi
 }
 
@@ -667,6 +679,11 @@ wait_for_health "$APP_PORT" "$VSN" \
   常见原因：目标色端口上有上一次部署的残留进程。
   排查：ssh $SERVER_HOST \"ss -tlnp 'sport = :$APP_PORT'\" 并确认进程的 -root 目录"
 ok "新节点已就绪且版本匹配 (port=$APP_PORT, vsn=$VSN) / New node ready, version verified"
+
+if [ "$BOUNDARY_SCHEMA_REQUIRED" -eq 1 ] && [ -n "$OLD_PORT" ]; then
+  [ "$(probe_boundary_schema)" = 1 ] \
+    || fail "C2G boundary 最终 schema/backlog 校验失败，拒绝切流"
+fi
 
 # =============================================================================
 # 6️⃣ 切换 Nginx upstream / Switch Nginx upstream

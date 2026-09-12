@@ -3,7 +3,7 @@
 -include("eunit_setup.hrl").
 
 %%% E2EE-2026-012 / Task 8 (LT-03)：统一群历史 join boundary。
-%%% 当前实现语义：F2（仅入群后）+ R2（重入新世代）+ D3（账号级 ACL）+ M1（祖传 start_seq=1）；用户批准证据缺失。
+%%% 当前实现语义：F2（仅入群后）+ R2（重入新世代）+ D3（账号级 ACL）+ M1（祖传 start_seq=1）；用户选择已记录。
 %%% 行为矩阵（真库 scratch，逐套件串行）：
 %%%   F2 边界：join 后 history(seq=0) 不得返回 start_seq 之前归档；
 %%%   R2 重入：leave 关世代 → 旧授权失效；rejoin 新世代 → 只见重入后；
@@ -92,6 +92,95 @@ history_seq_rows(Uid, Gid, AfterSeq) ->
             denied
     end.
 
+stage_room_key(Gid, FromUid, SenderDid, SessionId, MsgId) ->
+    Payload = jsone:encode(#{
+        <<"to">> => integer_to_binary(Gid),
+        <<"payload">> => #{
+            <<"msg_type">> => <<"e2ee_room_key">>,
+            <<"gid">> => Gid,
+            <<"session_id">> => SessionId,
+            <<"keys">> => []
+        }
+    }),
+    msg_store_ds:stage(
+        <<"c2g">>,
+        MsgId,
+        <<"e2ee_room_key">>,
+        <<"e2ee_room_key">>,
+        null,
+        Payload,
+        FromUid,
+        Gid,
+        ts(),
+        ts(),
+        SenderDid,
+        1
+    ).
+
+stage_megolm(Gid, FromUid, SenderDid, SessionId, MsgId) ->
+    E2EE = #{
+        <<"meta_version">> => 3,
+        <<"protocol_metadata">> => #{
+            <<"protocol">> => <<"megolm">>,
+            <<"gid">> => Gid,
+            <<"session_id">> => SessionId
+        }
+    },
+    Payload = jsone:encode(#{
+        <<"to">> => integer_to_binary(Gid),
+        <<"payload">> => <<"ciphertext">>
+    }),
+    msg_store_ds:stage(
+        <<"c2g">>,
+        MsgId,
+        <<"text">>,
+        <<>>,
+        E2EE,
+        Payload,
+        FromUid,
+        Gid,
+        ts(),
+        ts(),
+        SenderDid,
+        1
+    ).
+
+session_range(Gid, SessionId) ->
+    {ok, [#{<<"start_seq">> := StartSeq, <<"end_seq">> := EndSeq}]} = elib_pg:query(
+        <<"SELECT start_seq, end_seq FROM public.e2ee_group_session_attestation ",
+            "WHERE group_id = $1 AND session_id = $2">>,
+        [Gid, SessionId]
+    ),
+    {StartSeq, EndSeq}.
+
+assert_failed_stage_rolled_back(Gid, MsgId, ExpectedSeq) ->
+    {ok, [Row]} = elib_pg:query(
+        <<"SELECT ",
+            "(SELECT count(*) FROM public.msg_store_staging WHERE msg_id = $1) AS staged, ",
+            "(SELECT count(*) FROM public.msg_c2g_request_ledger WHERE msg_id = $1) AS ledger, ",
+            "(SELECT count(*) FROM public.e2ee_group_session_attestation ",
+            " WHERE room_key_msg_id = $1) AS attested, ",
+            "(SELECT seq FROM public.msg_store_seq WHERE conv_key = $2) AS seq">>,
+        [MsgId, iolist_to_binary(["c2g:", integer_to_binary(Gid)])]
+    ),
+    ?assertEqual(
+        #{<<"staged">> => 0, <<"ledger">> => 0, <<"attested">> => 0, <<"seq">> => ExpectedSeq},
+        Row
+    ).
+
+assert_duplicate_stage_stable(Gid, MsgId, ExpectedSeq) ->
+    {ok, [Row]} = elib_pg:query(
+        <<"SELECT ",
+            "(SELECT count(*) FROM public.msg_store_staging WHERE msg_id = $1) AS staged, ",
+            "(SELECT count(*) FROM public.msg_c2g_request_ledger WHERE msg_id = $1) AS ledger, ",
+            "(SELECT seq FROM public.msg_store_seq WHERE conv_key = $2) AS seq">>,
+        [MsgId, iolist_to_binary(["c2g:", integer_to_binary(Gid)])]
+    ),
+    ?assertEqual(
+        #{<<"staged">> => 1, <<"ledger">> => 1, <<"seq">> => ExpectedSeq},
+        Row
+    ).
+
 %% ===================================================================
 
 %% F2：join 后 history(seq=0) 只返回 start_seq 及之后的归档
@@ -109,6 +198,7 @@ f2_history_clamped_test_() ->
         [{1, StartSeq, null}] = gen_rows(A, Gid),
         ?assertEqual(2, StartSeq),
         %% 入群后归档 seq=2
+        bump_counter(Gid, 2),
         archive_row(Gid, 2, A),
         %% F2 断言：游标 0/1 都只见 seq=2；游标=2 已含 → 无增量
         ?assertEqual([2], history_seq_rows(A, Gid, 0)),
@@ -162,7 +252,7 @@ staging_prealloc_test_() ->
         %% 生产 c2g payload 契约：group_id 在 <<"to">> 字段（字符串格式），
         %% msg_archive_repo 归档期据此解码（safe_decode_group_id）
         Payload = iolist_to_binary(["{\"to\":\"", integer_to_binary(Gid), "\"}"]),
-        {ok, new, MemberUids} = msg_store_ds:stage(
+        {ok, new, ConvSeq1, MemberUids} = msg_store_ds:stage(
             <<"c2g">>,
             MsgId,
             <<"text">>,
@@ -180,7 +270,8 @@ staging_prealloc_test_() ->
             <<"SELECT conv_seq FROM public.msg_store_staging WHERE msg_id = $1">>,
             [MsgId]
         ),
-        [#{<<"conv_seq">> := ConvSeq1}] = Rows,
+        [#{<<"conv_seq">> := StoredConvSeq}] = Rows,
+        ?assertEqual(ConvSeq1, StoredConvSeq),
         ?assert(is_integer(ConvSeq1)),
         %% 重复投递（同 msg_id）：DS 契约归一化为 {ok, duplicate}（调用方据此
         %% 跳过投递管道）；事务回滚，计数器不空推，单行保持原 seq
@@ -278,6 +369,120 @@ m1_backfill_rule_test_() ->
         [{1, 1, null}] = gen_rows(A, Gid)
     end).
 
+%% D3 server attestation：room-key 建立、PFv3 使用、成员集合变化与重入世代
+%% 必须在同一 staging 顺序锁边界内闭合。
+group_session_attestation_lifecycle_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        Gid = 545000 + (uid() rem 100000),
+        A = 7451,
+        B = 7452,
+        C = 7453,
+        SessionId = iolist_to_binary(["session-", integer_to_binary(uid())]),
+        SenderDid = <<"did-a">>,
+        mk_group(Gid, A),
+        ok = group_member_logic:join_group(<<"invite">>, A, Gid, #{}),
+        ok = group_member_logic:join_group(<<"invite">>, B, Gid, #{}),
+
+        RoomKeyMsgId = iolist_to_binary(["rk-", integer_to_binary(uid())]),
+        {ok, new, RoomKeySeq, _} = stage_room_key(Gid, A, SenderDid, SessionId, RoomKeyMsgId),
+        ?assertEqual(
+            {ok, #{generation_no => 1, start_seq => RoomKeySeq, end_seq => RoomKeySeq}},
+            group_ds:authorize_group_history(B, Gid, SessionId)
+        ),
+
+        ContentMsgId = iolist_to_binary(["m-", integer_to_binary(uid())]),
+        {ok, new, ContentSeq, _} = stage_megolm(Gid, A, SenderDid, SessionId, ContentMsgId),
+        ?assertEqual(
+            {ok, #{generation_no => 1, start_seq => RoomKeySeq, end_seq => ContentSeq}},
+            group_ds:authorize_group_history(B, Gid, SessionId)
+        ),
+
+        ok = group_member_logic:join_group(<<"invite">>, C, Gid, #{}),
+        ?assertEqual(
+            {error, e2ee_session_conflict},
+            stage_megolm(
+                Gid,
+                A,
+                SenderDid,
+                SessionId,
+                iolist_to_binary(["m-", integer_to_binary(uid())])
+            )
+        ),
+        ?assertEqual({error, denied}, group_ds:authorize_group_history(C, Gid, SessionId)),
+
+        ok = group_member_logic:leave(B, Gid, B),
+        ok = group_member_logic:join_group(<<"invite">>, B, Gid, #{}),
+        ?assertEqual({error, denied}, group_ds:authorize_group_history(B, Gid, SessionId))
+    end).
+
+%% D3 attestation 攻击矩阵：身份/session 冲突、重复与非单调 extend 都必须
+%% 回滚 sequence、staging、request ledger 和 attestation 变更。
+group_session_attestation_conflict_matrix_test_() ->
+    ?TEST_WITH_DB_TIMEOUT(30, fun() ->
+        Gid = 547000 + (uid() rem 100000),
+        A = 7471,
+        B = 7472,
+        SessionId = iolist_to_binary(["session-", integer_to_binary(uid())]),
+        UnknownSessionId = iolist_to_binary(["unknown-", integer_to_binary(uid())]),
+        SenderDid = <<"did-a">>,
+        mk_group(Gid, A),
+        ok = group_member_logic:join_group(<<"invite">>, A, Gid, #{}),
+        ok = group_member_logic:join_group(<<"invite">>, B, Gid, #{}),
+
+        RoomKeyMsgId = iolist_to_binary(["rk-", integer_to_binary(uid())]),
+        {ok, new, RoomKeySeq, _} = stage_room_key(Gid, A, SenderDid, SessionId, RoomKeyMsgId),
+        ?assertEqual({RoomKeySeq, RoomKeySeq}, session_range(Gid, SessionId)),
+
+        ConflictingRoomKeyMsgId = iolist_to_binary(["rk-conflict-", integer_to_binary(uid())]),
+        ?assertEqual(
+            {error, e2ee_session_conflict},
+            stage_room_key(Gid, A, SenderDid, SessionId, ConflictingRoomKeyMsgId)
+        ),
+        assert_failed_stage_rolled_back(Gid, ConflictingRoomKeyMsgId, RoomKeySeq),
+
+        UnknownMsgId = iolist_to_binary(["unknown-", integer_to_binary(uid())]),
+        ?assertEqual(
+            {error, e2ee_session_unattested},
+            stage_megolm(Gid, A, SenderDid, UnknownSessionId, UnknownMsgId)
+        ),
+        assert_failed_stage_rolled_back(Gid, UnknownMsgId, RoomKeySeq),
+
+        ContentMsgId = iolist_to_binary(["m-", integer_to_binary(uid())]),
+        {ok, new, ContentSeq, _} = stage_megolm(Gid, A, SenderDid, SessionId, ContentMsgId),
+        ?assertEqual({RoomKeySeq, ContentSeq}, session_range(Gid, SessionId)),
+
+        SenderUidMsgId = iolist_to_binary(["sender-uid-", integer_to_binary(uid())]),
+        ?assertEqual(
+            {error, e2ee_session_conflict},
+            stage_megolm(Gid, B, SenderDid, SessionId, SenderUidMsgId)
+        ),
+        assert_failed_stage_rolled_back(Gid, SenderUidMsgId, ContentSeq),
+
+        SenderDidMsgId = iolist_to_binary(["sender-did-", integer_to_binary(uid())]),
+        ?assertEqual(
+            {error, e2ee_session_conflict},
+            stage_megolm(Gid, A, <<"did-changed">>, SessionId, SenderDidMsgId)
+        ),
+        assert_failed_stage_rolled_back(Gid, SenderDidMsgId, ContentSeq),
+
+        ?assertEqual(
+            {ok, duplicate},
+            stage_megolm(Gid, A, SenderDid, SessionId, ContentMsgId)
+        ),
+        ?assertEqual(ContentSeq, element(2, session_range(Gid, SessionId))),
+        assert_duplicate_stage_stable(Gid, ContentMsgId, ContentSeq),
+
+        bump_counter(Gid, ContentSeq - 1),
+        NonMonotonicMsgId = iolist_to_binary(["non-monotonic-", integer_to_binary(uid())]),
+        ?assertEqual(
+            {error, e2ee_session_stale},
+            stage_megolm(Gid, A, SenderDid, SessionId, NonMonotonicMsgId)
+        ),
+        assert_failed_stage_rolled_back(Gid, NonMonotonicMsgId, ContentSeq - 1),
+        ?assertEqual({RoomKeySeq, ContentSeq}, session_range(Gid, SessionId)),
+        bump_counter(Gid, ContentSeq)
+    end).
+
 %% ===================================================================
 %% schema 自持守护（同 00000048 的 e2ee_offline_sender_did_tests 惯例）
 %% ===================================================================
@@ -297,10 +502,27 @@ migration_101_guards_absent_staging_test() ->
 migration_109_keeps_legacy_timeline_fail_closed_test() ->
     {ok, Migration} =
         file:read_file("priv/migrations/00000109_c2g_timeline_generation_boundary.up.sql"),
-    ?assert(binary:match(Migration, <<"ADD COLUMN IF NOT EXISTS conv_seq bigint">>) =/= nomatch),
+    ?assert(binary:match(Migration, <<"ADD COLUMN conv_seq bigint">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"conv_seq IS NULL OR conv_seq >= 1">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"client_ack = false AND conv_seq IS NOT NULL">>) =/= nomatch),
     ?assertEqual(nomatch, binary:match(Migration, <<"UPDATE public.msg_c2g_timeline">>)).
+
+migration_111_repairs_c2g_boundary_idempotently_test() ->
+    {ok, Migration} =
+        file:read_file("priv/migrations/00000111_c2g_request_recipient_boundary.up.sql"),
+    ?assert(binary:match(Migration, <<"ADD COLUMN IF NOT EXISTS conv_seq bigint">>) =/= nomatch),
+    ?assert(binary:match(Migration, <<"msg_c2g_request_ledger">>) =/= nomatch),
+    ?assert(binary:match(Migration, <<"msg_c2g_recipient_snapshot">>) =/= nomatch).
+
+migration_112_preserves_server_session_attestation_test() ->
+    {ok, Up} =
+        file:read_file("priv/migrations/00000112_e2ee_group_session_attestation.up.sql"),
+    {ok, Down} =
+        file:read_file("priv/migrations/00000112_e2ee_group_session_attestation.down.sql"),
+    ?assert(binary:match(Up, <<"e2ee_group_session_attestation">>) =/= nomatch),
+    ?assert(binary:match(Up, <<"e2ee_group_session_member">>) =/= nomatch),
+    ?assert(binary:match(Up, <<"generation_no">>) =/= nomatch),
+    ?assertEqual(nomatch, binary:match(Down, <<"DROP TABLE">>)).
 
 %% 全新安装与存量部署 schema 不得分叉：运行时 DDL 必须包含 conv_seq 列。
 ensure_table_ddl_has_conv_seq_test() ->

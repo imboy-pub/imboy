@@ -98,7 +98,7 @@ test_raw_stage_multi_recipient_survives_pipeline() ->
     Msg2 = jsone:encode(Envelope, [native_utf8]),
     Now = elib_dt:now(),
 
-    {ok, new, RecipientUids} = msg_store_ds:stage(
+    {ok, new, ConvSeq, RecipientUids} = msg_store_ds:stage(
         <<"c2g">>, MsgId, <<"text">>, <<"send">>, E2EE, Msg2, Owner, Gid, Now, Now
     ),
     ?assertEqual(lists:sort([Owner, Member]), lists:sort(RecipientUids)),
@@ -107,7 +107,7 @@ test_raw_stage_multi_recipient_survives_pipeline() ->
     {ok, Row} = wait_for_final_row(MsgId),
     E2EEDecoded = jsone:decode(maps:get(<<"e2ee">>, Row), [{object_format, map}]),
     ?assertEqual(E2EE, E2EEDecoded),
-    assert_archive_matches_timeline_seq(MsgId),
+    assert_archive_matches_timeline_seq(MsgId, ConvSeq),
 
     %% 时间线表必须给两个接收者都建行（多接收者投递）
     {ok, TimelineRows} = elib_pg:query(
@@ -144,7 +144,11 @@ assert_archive_matches_timeline_seq(MsgId) ->
     {ok, [#{<<"conv_seq">> := TimelineSeq}]} = elib_pg:query(
         <<"SELECT DISTINCT conv_seq FROM public.msg_c2g_timeline WHERE msg_id = $1">>, [MsgId]
     ),
-    ?assertEqual(TimelineSeq, wait_for_archive_seq(MsgId, 100)).
+    ?assertEqual(TimelineSeq, wait_for_archive_seq(MsgId, 100)),
+    TimelineSeq.
+
+assert_archive_matches_timeline_seq(MsgId, ExpectedSeq) ->
+    ?assertEqual(ExpectedSeq, assert_archive_matches_timeline_seq(MsgId)).
 
 wait_for_archive_seq(_MsgId, 0) ->
     error(archive_row_not_ready);

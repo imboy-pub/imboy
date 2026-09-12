@@ -41,16 +41,26 @@ case "$cmd" in
     printf '%s\n' "/usr/local/imboy-0.9.0-oldnode"
     exit 0
     ;;
-  *"version = 109 AND dirty = true"*)
+  *"version IN (108,109,110,111,112) AND dirty = true"*)
     printf '%s\n' "${MOCK_BOUNDARY_DIRTY:-0}"
     exit 0
     ;;
   *"to_regclass('public.msg_c2g_recipient_snapshot')"*)
-    if [ "${MOCK_BOUNDARY_READY:-1}" = 0 ] && grep -q -x AUTO_TRUE "$MOCK_LOG"; then
+    probe_count="$(grep -c -x BOUNDARY_PROBE "$MOCK_LOG" 2>/dev/null || true)"
+    printf '%s\n' BOUNDARY_PROBE >>"$MOCK_LOG"
+    if [ "$probe_count" -gt 0 ] && [ -n "${MOCK_BOUNDARY_FINAL_READY:-}" ]; then
+      printf '%s\n' "$MOCK_BOUNDARY_FINAL_READY"
+    elif [ "${MOCK_ATTESTATION_SCHEMA_READY:-1}" != 1 ]; then
+      printf '%s\n' 0
+    elif [ "${MOCK_BOUNDARY_READY:-1}" = 0 ] && grep -q -x AUTO_TRUE "$MOCK_LOG"; then
       printf '%s\n' 1
     else
       printf '%s\n' "${MOCK_BOUNDARY_READY:-1}"
     fi
+    exit 0
+    ;;
+  *"e2ee_group_session_attestation_pkey"*)
+    printf '%s\n' "${MOCK_ATTESTATION_SCHEMA_READY:-1}"
     exit 0
     ;;
   *"test -f '/srv/imboy/.deploy-c2g-boundary-v109-ready'"*)
@@ -146,7 +156,7 @@ bad() {
 run_deploy() {
   local fail_at="$1" current_color="$2"
   local -a expand_env=(
-    "IMBOY_DEPLOY_EXPAND_MIGRATIONS=${TEST_EXPAND_MIGRATIONS-00000064_msg_store_sender_did.up.sql 00000108_group_attachment_anchor.up.sql 00000109_c2g_timeline_generation_boundary.up.sql}"
+    "IMBOY_DEPLOY_EXPAND_MIGRATIONS=${TEST_EXPAND_MIGRATIONS-00000064_msg_store_sender_did.up.sql 00000108_group_attachment_anchor.up.sql 00000109_c2g_timeline_generation_boundary.up.sql 00000111_c2g_request_recipient_boundary.up.sql 00000112_e2ee_group_session_attestation.up.sql}"
   )
   shift 2
   : >"$MOCK_LOG"
@@ -160,7 +170,9 @@ run_deploy() {
     MOCK_FAIL_AT="$fail_at" \
     MOCK_CURRENT_COLOR="$current_color" \
     MOCK_BOUNDARY_READY="${MOCK_BOUNDARY_READY:-1}" \
+    MOCK_BOUNDARY_FINAL_READY="${MOCK_BOUNDARY_FINAL_READY:-}" \
     MOCK_BOUNDARY_DIRTY="${MOCK_BOUNDARY_DIRTY:-0}" \
+    MOCK_ATTESTATION_SCHEMA_READY="${MOCK_ATTESTATION_SCHEMA_READY:-1}" \
     MOCK_MARKER_READY="${MOCK_MARKER_READY:-1}" \
     IMBOY_DEPLOY_USER=tester \
     IMBOY_DEPLOY_PORT=2222 \
@@ -273,14 +285,16 @@ else
 fi
 
 if MOCK_BOUNDARY_DIRTY=1 run_deploy "" blue; then
-  bad "migration 109 dirty 时应在维护切换前退出非零" ""
+  bad "migration 108 dirty 时应在维护切换前退出非零" ""
 else
-  assert_absent "migration 109 dirty 时不停旧节点" STOP
-  assert_absent "migration 109 dirty 时不启动新节点" DAEMON
-  assert_absent "migration 109 dirty 时不执行迁移" MIGRATE
+  assert_absent "migration 108 dirty 时不停旧节点" STOP
+  assert_absent "migration 108 dirty 时不启动新节点" DAEMON
+  assert_absent "migration 108 dirty 时不执行迁移" MIGRATE
+  assert_absent "migration 108 dirty 时不切流" SWITCH
+  assert_absent "migration 108 dirty 时不写 cutover marker" CUTOVER_MARKER
   grep -q "dirty=true" "$TMP_ROOT/output.log" \
-    && ok "migration 109 dirty 提示明确要求人工受控恢复" \
-    || bad "migration 109 dirty 缺少明确恢复提示" "$(<"$TMP_ROOT/output.log")"
+    && ok "migration 108 dirty 提示明确要求人工受控恢复" \
+    || bad "migration 108 dirty 缺少明确恢复提示" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if TEST_UNSET_EXPAND_MIGRATIONS=1 run_deploy "" blue; then
@@ -324,6 +338,25 @@ if run_deploy expand blue; then
 else
   assert_absent "expand 失败后不启动新节点" DAEMON
   assert_absent "expand 失败后不切流" SWITCH
+fi
+
+if MOCK_ATTESTATION_SCHEMA_READY=0 run_deploy "" blue; then
+  bad "migration 112 表存在但 schema 残缺时应退出非零" ""
+else
+  assert_absent "migration 112 schema 残缺时不切流" SWITCH
+  assert_absent "migration 112 schema 残缺时不写 cutover marker" CUTOVER_MARKER
+  grep -q "最终 schema/backlog 校验失败，拒绝切流" "$TMP_ROOT/output.log" \
+    && ok "migration 112 schema 残缺时在切流前返回明确错误" \
+    || bad "migration 112 schema 残缺时错误文案异常" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_BOUNDARY_FINAL_READY=0 run_deploy "" blue; then
+  bad "已有 marker 的常规发布最终 schema 漂移时应退出非零" ""
+else
+  assert_absent "已有 marker 的常规发布最终 schema 漂移时不切流" SWITCH
+  [ "$(grep -c -x BOUNDARY_PROBE "$MOCK_LOG")" -eq 2 ] \
+    && ok "已有 marker 的常规发布在健康检查后再次探测 schema/backlog" \
+    || bad "已有 marker 的常规发布未执行两次 schema/backlog 探测" "$(tr '\n' ',' <"$MOCK_LOG")"
 fi
 
 if run_deploy health blue; then

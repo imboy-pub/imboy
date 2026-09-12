@@ -352,6 +352,73 @@ group_member_keys_member_limit_fails_closed_test_() ->
         end
     ).
 
+group_history_grant_returns_authoritative_range_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [
+            {'authorize_group_history', 3, fun(123, 42, <<"session-a">>) ->
+                {ok, #{generation_no => 2, start_seq => 481, end_seq => 900}}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{
+                    <<"gid">> => 42,
+                    <<"session_id">> => <<"session-a">>,
+                    <<"epoch_id">> => <<"session-a">>,
+                    <<"generation_no">> => 2,
+                    <<"start_seq">> => 481,
+                    <<"end_seq">> => 900
+                }},
+                e2ee_logic:group_history_grant(123, 42, <<"session-a">>)
+            )
+        end
+    ).
+
+group_history_grant_denied_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [{'authorize_group_history', 3, fun(123, 42, <<"session-a">>) -> {error, denied} end}],
+        fun() ->
+            ?assertEqual(
+                {error, <<"forbidden">>, 403},
+                e2ee_logic:group_history_grant(123, 42, <<"session-a">>)
+            )
+        end
+    ).
+
+group_history_grant_invalid_boundary_fails_closed_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [
+            {'authorize_group_history', 3, fun(123, 42, <<"session-a">>) ->
+                {ok, #{generation_no => 2, start_seq => 0, end_seq => 900}}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"internal_error">>, 500},
+                e2ee_logic:group_history_grant(123, 42, <<"session-a">>)
+            )
+        end
+    ).
+
+group_history_grant_open_end_fails_closed_test_() ->
+    ?WITH_MECK(
+        group_ds,
+        [
+            {'authorize_group_history', 3, fun(123, 42, <<"session-a">>) ->
+                {ok, #{generation_no => 2, start_seq => 481, end_seq => null}}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, <<"internal_error">>, 500},
+                e2ee_logic:group_history_grant(123, 42, <<"session-a">>)
+            )
+        end
+    ).
+
 %% ===================================================================
 %% group_by_uid/1 测试
 %% ===================================================================

@@ -66,6 +66,7 @@ run(Conn) ->
     [
         ?_test(begin
             c2g_boundary_migration_matrix(Conn),
+            group_session_attestation_migration_matrix(Conn),
             migration_roundtrip_and_backfill(Conn),
             authorization_matrix(Conn),
             action_recipient_matrix(Conn),
@@ -73,12 +74,23 @@ run(Conn) ->
         end)
     ].
 
+group_session_attestation_migration_matrix(Conn) ->
+    Up = read_migration("priv/migrations/00000112_e2ee_group_session_attestation.up.sql"),
+    Down = read_migration("priv/migrations/00000112_e2ee_group_session_attestation.down.sql"),
+    ok = squery(Conn, Down),
+    ?assert(table_exists(Conn, <<"e2ee_group_session_attestation">>)),
+    ?assert(table_exists(Conn, <<"e2ee_group_session_member">>)),
+    ok = squery(Conn, Up),
+    ok = squery(Conn, Up),
+    ?assert(table_exists(Conn, <<"e2ee_group_session_attestation">>)),
+    ?assert(table_exists(Conn, <<"e2ee_group_session_member">>)).
+
 c2g_boundary_migration_matrix(Conn) ->
-    Up = read_migration("priv/migrations/00000109_c2g_timeline_generation_boundary.up.sql"),
-    Down = read_migration("priv/migrations/00000109_c2g_timeline_generation_boundary.down.sql"),
+    Up = read_migration("priv/migrations/00000111_c2g_request_recipient_boundary.up.sql"),
+    Down = read_migration("priv/migrations/00000111_c2g_request_recipient_boundary.down.sql"),
 
     ok = squery(Conn, Down),
-    ?assertNot(table_column_exists(Conn, <<"msg_c2g_timeline">>, <<"conv_seq">>)),
+    ?assert(table_column_exists(Conn, <<"msg_c2g_timeline">>, <<"conv_seq">>)),
     ?assert(table_exists(Conn, <<"msg_c2g_request_ledger">>)),
     ?assert(table_exists(Conn, <<"msg_c2g_recipient_snapshot">>)),
     seed_legacy_c2g_staging(Conn),
@@ -158,7 +170,7 @@ c2g_boundary_migration_matrix(Conn) ->
     ok = squery(Conn, Up),
 
     ok = squery(Conn, Down),
-    ?assertNot(table_column_exists(Conn, <<"msg_c2g_timeline">>, <<"conv_seq">>)),
+    ?assert(table_column_exists(Conn, <<"msg_c2g_timeline">>, <<"conv_seq">>)),
     ?assertEqual(Hash, ledger_hash(Conn)),
     ?assert(table_exists(Conn, <<"msg_c2g_recipient_snapshot">>)),
     ok = squery(Conn, Up),

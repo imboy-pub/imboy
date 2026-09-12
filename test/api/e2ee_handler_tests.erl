@@ -20,6 +20,9 @@ invoke_user_keys(Req0, State0) ->
 invoke_group_member_keys(Req0, State0) ->
     invoke_action(group_member_keys, Req0, State0).
 
+invoke_group_history_grant(Req0, State0) ->
+    invoke_action(group_history_grant, Req0, State0).
+
 %% ===================================================================
 %% init/2 测试
 %% ===================================================================
@@ -355,6 +358,118 @@ group_member_keys_with_fanout_limit_returns_409_test_() ->
         ],
         fun() ->
             ?assertEqual(cowboy_req_409, invoke_group_member_keys(cowboy_req_ok, #{}))
+        end
+    ).
+
+group_history_grant_returns_authoritative_range_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [{'method', 1, fun(_Req) -> <<"GET">> end}]},
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
+            {auth_ds, [{'current_uid', 1, fun(_State) -> 123 end}]},
+            {elib_param, [
+                {'get', 3, fun
+                    (<<"gid">>, _Req, _Default) -> <<"42">>;
+                    (<<"session_id">>, _Req, _Default) -> <<"session-a">>
+                end}
+            ]},
+            {e2ee_logic, [
+                {'group_history_grant', 3, fun(123, 42, <<"session-a">>) ->
+                    {ok, #{
+                        <<"gid">> => 42,
+                        <<"session_id">> => <<"session-a">>,
+                        <<"epoch_id">> => <<"session-a">>,
+                        <<"generation_no">> => 2,
+                        <<"start_seq">> => 481,
+                        <<"end_seq">> => 900
+                    }}
+                end}
+            ]},
+            {elib_response, [{'success', 2, fun(_Req, Payload) -> Payload end}]}
+        ],
+        fun() ->
+            Payload = invoke_group_history_grant(cowboy_req_ok, #{}),
+            ?assertEqual(42, maps:get(<<"gid">>, Payload)),
+            ?assertEqual(<<"session-a">>, maps:get(<<"session_id">>, Payload)),
+            ?assertEqual(<<"session-a">>, maps:get(<<"epoch_id">>, Payload)),
+            ?assertEqual(2, maps:get(<<"generation_no">>, Payload)),
+            ?assertEqual(481, maps:get(<<"start_seq">>, Payload)),
+            ?assertEqual(900, maps:get(<<"end_seq">>, Payload))
+        end
+    ).
+
+group_history_grant_with_invalid_gid_returns_400_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [{'method', 1, fun(_Req) -> <<"GET">> end}]},
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
+            {auth_ds, [{'current_uid', 1, fun(_State) -> 123 end}]},
+            {elib_param, [
+                {'get', 3, fun
+                    (<<"gid">>, _Req, _Default) -> <<"bad">>;
+                    (<<"session_id">>, _Req, _Default) -> <<"session-a">>
+                end}
+            ]},
+            {elib_response, [{'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}]}
+        ],
+        fun() ->
+            ?assertEqual(cowboy_req_400, invoke_group_history_grant(cowboy_req_ok, #{}))
+        end
+    ).
+
+group_history_grant_without_session_id_returns_400_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [{'method', 1, fun(_Req) -> <<"GET">> end}]},
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
+            {auth_ds, [{'current_uid', 1, fun(_State) -> 123 end}]},
+            {elib_param, [
+                {'get', 3, fun
+                    (<<"gid">>, _Req, _Default) -> <<"42">>;
+                    (<<"session_id">>, _Req, Default) -> Default
+                end}
+            ]},
+            {elib_response, [{'error', 3, fun(_Req, _Msg, 400) -> cowboy_req_400 end}]}
+        ],
+        fun() ->
+            ?assertEqual(cowboy_req_400, invoke_group_history_grant(cowboy_req_ok, #{}))
+        end
+    ).
+
+group_history_grant_denied_returns_403_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [{'method', 1, fun(_Req) -> <<"GET">> end}]},
+            {imboy_policy, [{'e2ee_enabled', 0, fun() -> true end}]},
+            {auth_ds, [{'current_uid', 1, fun(_State) -> 123 end}]},
+            {elib_param, [
+                {'get', 3, fun
+                    (<<"gid">>, _Req, _Default) -> <<"42">>;
+                    (<<"session_id">>, _Req, _Default) -> <<"session-a">>
+                end}
+            ]},
+            {e2ee_logic, [
+                {'group_history_grant', 3, fun(123, 42, <<"session-a">>) ->
+                    {error, <<"forbidden">>, 403}
+                end}
+            ]},
+            {elib_response, [{'error', 3, fun(_Req, _Msg, 403) -> cowboy_req_403 end}]}
+        ],
+        fun() ->
+            ?assertEqual(cowboy_req_403, invoke_group_history_grant(cowboy_req_ok, #{}))
+        end
+    ).
+
+group_history_grant_rejects_non_get_methods_test_() ->
+    ?WITH_MECKS(
+        [
+            {cowboy_req, [{'method', 1, fun(_Req) -> <<"POST">> end}]},
+            {elib_response, [
+                {'error', 3, fun(_Req, <<"Method Not Allowed">>, 405) -> cowboy_req_405 end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(cowboy_req_405, invoke_group_history_grant(cowboy_req_ok, #{}))
         end
     ).
 

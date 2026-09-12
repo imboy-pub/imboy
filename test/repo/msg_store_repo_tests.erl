@@ -474,7 +474,7 @@ c2g_stage_commits_authorized_snapshot_and_role_test_() ->
         ],
         fun() ->
             ?assertEqual(
-                {ok, 12345, [50, 60]},
+                {ok, 12345, 7, [50, 60]},
                 msg_store_repo:stage(
                     <<"c2g">>,
                     <<"msg-c2g-role">>,
@@ -585,6 +585,84 @@ stage_c2g_test_msg(MsgId) ->
         <<"2026-09-11T00:00:00Z">>,
         <<>>,
         1
+    ).
+
+group_session_operation_registers_room_key_test() ->
+    Payload = jsone:encode(#{
+        <<"type">> => <<"C2G">>,
+        <<"payload">> => #{
+            <<"msg_type">> => <<"e2ee_room_key">>,
+            <<"gid">> => <<"100">>,
+            <<"session_id">> => <<"session-a">>
+        }
+    }),
+    ?assertEqual(
+        {register, <<"session-a">>, 100},
+        msg_store_repo:group_session_operation(
+            <<"e2ee_room_key">>, <<"e2ee_room_key">>, null, Payload
+        )
+    ).
+
+group_session_operation_extends_pf_v3_megolm_test() ->
+    E2EE = #{
+        <<"meta_version">> => 3,
+        <<"protocol_metadata">> => #{
+            <<"protocol">> => <<"megolm">>,
+            <<"gid">> => 100,
+            <<"session_id">> => <<"session-a">>
+        }
+    },
+    ?assertEqual(
+        {extend, <<"session-a">>, 100},
+        msg_store_repo:group_session_operation(<<"text">>, <<>>, E2EE, <<>>)
+    ).
+
+group_session_operation_rejects_malformed_pf_v3_test() ->
+    ?assertEqual(
+        {error, e2ee_group_session_invalid},
+        msg_store_repo:group_session_operation(
+            <<"text">>, <<>>, #{<<"meta_version">> => 3}, <<>>
+        )
+    ).
+
+authorize_group_session_history_requires_current_generation_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(Sql, [42, <<"session-a">>, 123]) ->
+                ?assertNotEqual(
+                    nomatch, binary:match(Sql, <<"e2ee_group_session_attestation">>)
+                ),
+                ?assertNotEqual(
+                    nomatch, binary:match(Sql, <<"gmg.generation_no = sm.generation_no">>)
+                ),
+                {ok, [
+                    #{
+                        <<"generation_no">> => 2,
+                        <<"start_seq">> => 500,
+                        <<"end_seq">> => 550
+                    }
+                ]}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{generation_no => 2, start_seq => 500, end_seq => 550}},
+                msg_store_repo:authorize_group_session_history(123, 42, <<"session-a">>)
+            )
+        end
+    ).
+
+authorize_group_session_history_unknown_session_denied_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [{'query', 2, fun(_Sql, [42, <<"missing">>, 123]) -> {ok, []} end}],
+        fun() ->
+            ?assertEqual(
+                {error, denied},
+                msg_store_repo:authorize_group_session_history(123, 42, <<"missing">>)
+            )
+        end
     ).
 
 request_ledger_new(Sql, MsgId) ->
@@ -855,7 +933,7 @@ c2g_stage_5000_recipients_commits_test_() ->
         ],
         fun() ->
             ?assertEqual(
-                {ok, 12345, RecipientUids},
+                {ok, 12345, 7, RecipientUids},
                 msg_store_repo:stage(
                     <<"c2g">>,
                     <<"msg-c2g-limit-ok">>,
@@ -1034,7 +1112,7 @@ c2g_action_stage_uses_original_snapshot_and_generation_test_() ->
         ],
         fun() ->
             ?assertEqual(
-                {ok, 12346, [50, 60]},
+                {ok, 12346, 8, [50, 60]},
                 msg_store_repo:stage_action(
                     <<"c2g">>,
                     <<"action-msg">>,

@@ -160,6 +160,9 @@ get_routes() ->
 
                 {"/api/v1/e2ee/user_keys", e2ee_handler, #{action => user_keys}},
                 {"/api/v1/e2ee/group_member_keys", e2ee_handler, #{action => group_member_keys}},
+                {"/api/v1/e2ee/group_history_grant", e2ee_handler, #{
+                    action => group_history_grant
+                }},
                 {"/api/v1/e2ee/report_device_key", e2ee_handler, #{action => report_device_key}},
                 {"/api/v1/e2ee/key/status", e2ee_handler, #{action => key_status}},
                 {"/api/v1/e2ee/notifications/pull", e2ee_handler, #{action => pull_notifications}},

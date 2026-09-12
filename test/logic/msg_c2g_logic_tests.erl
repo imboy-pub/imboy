@@ -27,7 +27,7 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             ]},
             {msg_store_ds, [
                 {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 3) ->
-                    {ok, new, [FromId, 1002, 1003]}
+                    {ok, new, 7, [FromId, 1002, 1003]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
@@ -86,7 +86,8 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             %% S0-1: C2G 独立信封路径带当前版本 ver（解码投递出的 JSON 断言）
             SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
             Decoded = jsone:decode(SentMsg),
-            ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded))
+            ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded)),
+            ?assertEqual(7, maps:get(<<"conv_seq">>, Decoded))
         end
     ).
 
@@ -367,6 +368,54 @@ c2g_staging_failure_returns_retryable_error_test_() ->
         end
     ).
 
+c2g_session_conflict_reply_identifies_group_for_rotation_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_logic, [
+                {'check_mute', 2, fun(100, 1001) -> false end}
+            ]},
+            {group_ds, [
+                {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
+                {'is_member', 2, fun(1001, 100) -> true end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+                {'millisecond', 0, fun() -> 1708768800000 end},
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+            ]},
+            {imboy_policy, [
+                {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1) ->
+                    {error, e2ee_session_conflict}
+                end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2g_session_conflict_001">>,
+            Data = #{
+                <<"to">> => <<"100">>,
+                <<"payload">> => <<"ciphertext">>,
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => #{<<"meta_version">> => 3}
+            },
+
+            ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+            receive
+                {reply, Reply} ->
+                    ?assertEqual(<<"policy_violation">>, maps:get(<<"action">>, Reply)),
+                    Payload = maps:get(<<"payload">>, Reply),
+                    ?assertEqual(<<"e2ee_session_conflict">>, maps:get(<<"reason">>, Payload)),
+                    ?assertEqual(100, maps:get(<<"gid">>, Payload))
+            after 1000 ->
+                ?assert(false)
+            end
+        end
+    ).
+
 c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ?WITH_MECKS(
         [
@@ -396,7 +445,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
             ]},
             {msg_store_ds, [
                 {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
-                    {ok, new, [FromId, 1002, 1003]}
+                    {ok, new, 8, [FromId, 1002, 1003]}
                 end}
             ]}
         ],
@@ -601,7 +650,7 @@ c2g_revoke_stages_with_committed_snapshot_test_() ->
                     1,
                     <<"orig_c2g_revoke_001">>
                 ) ->
-                    {ok, new, [1001, 1002, 1003]}
+                    {ok, new, 9, [1001, 1002, 1003]}
                 end},
                 {'enqueue', 3, fun(<<"c2g">>, <<"c2g_revoke_001">>, _) ->
                     ok
@@ -633,6 +682,7 @@ c2g_revoke_stages_with_committed_snapshot_test_() ->
             ReplyPayload = maps:get(<<"payload">>, Reply),
             ?assertEqual(<<"message_revoke_ack">>, maps:get(<<"action">>, Reply)),
             ?assertEqual(<<"custom">>, maps:get(<<"msg_type">>, Reply)),
+            ?assertEqual(9, maps:get(<<"conv_seq">>, Reply)),
             ?assert(maps:is_key(<<"revoked_at">>, ReplyPayload)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
@@ -873,7 +923,7 @@ c2g_edit_stages_with_committed_snapshot_test_() ->
                     1,
                     <<"orig_c2g_edit_001">>
                 ) ->
-                    {ok, new, [1001, 1002, 1003]}
+                    {ok, new, 10, [1001, 1002, 1003]}
                 end},
                 {'enqueue', 3, fun(<<"c2g">>, <<"c2g_edit_001">>, _) -> ok end}
             ]},
@@ -977,7 +1027,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
             ]},
             {msg_store_ds, [
                 {'stage', 12, fun(_, _, _, _, _, _, FromId, _, _, _, _, 1) ->
-                    {ok, new, [FromId]}
+                    {ok, new, 11, [FromId]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]}
@@ -1029,7 +1079,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
             ]},
             {msg_store_ds, [
                 {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
-                    {ok, new, [FromId]}
+                    {ok, new, 12, [FromId]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
@@ -1201,7 +1251,7 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                     1,
                     <<"orig_c2g_edit_e2ee_001">>
                 ) ->
-                    {ok, new, [1001, 1002]}
+                    {ok, new, 13, [1001, 1002]}
                 end},
                 {'enqueue', 3, fun(<<"c2g">>, <<"c2g_edit_e2ee_001">>, _) -> ok end}
             ]},
@@ -1234,6 +1284,7 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
             ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
             ?assertEqual(OpaquePayload, maps:get(<<"payload">>, Reply)),
             ?assertEqual(<<"did-1001">>, maps:get(<<"sender_did">>, Reply)),
+            ?assertEqual(13, maps:get(<<"conv_seq">>, Reply)),
             ?assertEqual(1, meck:num_calls(message_ds, send_next, 4)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, stage_action, 13)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
@@ -1262,7 +1313,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
             ]},
             {msg_store_ds, [
                 {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
-                    {ok, new, [FromId, 1002, 1003]}
+                    {ok, new, 14, [FromId, 1002, 1003]}
                 end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
@@ -1330,7 +1381,8 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
             %%    即便 e2ee_mode=1（本 mock 特意返回 {ok,1}）也不拦密钥分发
             ?assertEqual(0, meck:num_calls(group_ds, e2ee_mode, 1)),
 
-            %% ② 存储/入队/投递三处拿到的是同一 binary（编码一次，零改写）
+            %% ② staging 保持客户端信封；入队/实时投递只增加事务提交后返回的
+            %%    服务端权威 conv_seq，密钥 payload 不变。
             StagedMsg = meck:capture(
                 first,
                 msg_store_ds,
@@ -1340,14 +1392,16 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
             ),
             EnqueuedMap = meck:capture(first, msg_store_ds, enqueue, ['_', '_', '_'], 3),
             SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
-            ?assertEqual(StagedMsg, maps:get(payload, EnqueuedMap)),
-            ?assertEqual(StagedMsg, SentMsg),
+            ?assertEqual(SentMsg, maps:get(payload, EnqueuedMap)),
 
             %% ③ 密钥材料逐字段透传：解码后 payload 与入参完全一致
-            Decoded = jsone:decode(StagedMsg),
-            ?assertEqual(Payload, maps:get(<<"payload">>, Decoded)),
-            ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"action">>, Decoded)),
-            ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"msg_type">>, Decoded)),
-            ?assertNot(maps:is_key(<<"e2ee">>, Decoded))
+            Staged = jsone:decode(StagedMsg),
+            Delivered = jsone:decode(SentMsg),
+            ?assertNot(maps:is_key(<<"conv_seq">>, Staged)),
+            ?assertEqual(14, maps:get(<<"conv_seq">>, Delivered)),
+            ?assertEqual(Payload, maps:get(<<"payload">>, Delivered)),
+            ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"action">>, Delivered)),
+            ?assertEqual(<<"e2ee_room_key">>, maps:get(<<"msg_type">>, Delivered)),
+            ?assertNot(maps:is_key(<<"e2ee">>, Delivered))
         end
     ).

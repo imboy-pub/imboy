@@ -29,7 +29,9 @@ offline_returns_expected_shape_test_() ->
                 {'count_unread_since', 3, fun(_Uid, _LastMsgAt, _DID) -> 0 end}
             ]},
             {msg_c2g_ds, [
-                {'read_msg', 3, fun(_Uid, _Limit, _LastMsgAt) -> [] end}
+                {'read_msg', 3, fun(_Uid, _Limit, _LastMsgAt) ->
+                    [#{<<"msg_id">> => <<"m1">>, <<"conv_seq">> => 481}]
+                end}
             ]},
             {msg_s2c_ds, [
                 {'read_msg_for_device', 4, fun(_Uid, _DID, _Limit, _LastMsgAt) -> [] end},
@@ -45,10 +47,29 @@ offline_returns_expected_shape_test_() ->
                     ?assertEqual(0, maps:get(<<"total">>, TypeMap)),
                     ?assertEqual([], maps:get(<<"list">>, TypeMap))
                 end,
-                [<<"c2c">>, <<"c2g">>, <<"s2c">>]
-            )
+                [<<"c2c">>, <<"s2c">>]
+            ),
+            C2gMap = maps:get(<<"c2g">>, Payload),
+            [C2gMsg] = maps:get(<<"list">>, C2gMap),
+            ?assertEqual(481, maps:get(<<"conv_seq">>, C2gMsg))
         end
     ).
+
+encode_history_msg_decodes_jsonb_columns_test() ->
+    E2EEJson = <<"{\"protocol\":\"olm\",\"version\":3}">>,
+    Row = #{
+        <<"msg_id">> => <<"m-history-e2ee">>,
+        <<"from_id">> => 1001,
+        <<"to_id">> => 1002,
+        <<"group_id">> => null,
+        <<"e2ee">> => E2EEJson,
+        <<"payload">> => <<"\"\"">>
+    },
+    Msg = messaging_logic:encode_history_msg(1002, Row),
+    ?assertEqual(#{<<"protocol">> => <<"olm">>, <<"version">> => 3}, maps:get(<<"e2ee">>, Msg)),
+    ?assertEqual(<<>>, maps:get(<<"payload">>, Msg)),
+    ?assertEqual(1001, maps:get(<<"from">>, Msg)),
+    ?assertEqual(1002, maps:get(<<"to">>, Msg)).
 
 route_ws_delegates_c2c_to_existing_logic_modules_test_() ->
     ?WITH_MECK(

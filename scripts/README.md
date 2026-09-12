@@ -31,7 +31,9 @@ escript scripts/imboy_ctl db migrate
 `imboy-deploy.sh all/api` 会在新节点启动前执行 `.env.deploy` 中
 `DEPLOY_EXPAND_MIGRATIONS` 列出的可加性迁移；本版本必须包含
 `00000064_msg_store_sender_did.up.sql`、`00000108_group_attachment_anchor.up.sql`
-和 `00000109_c2g_timeline_generation_boundary.up.sql`，并机器验证对应 schema。
+、`00000109_c2g_timeline_generation_boundary.up.sql`、
+`00000111_c2g_request_recipient_boundary.up.sql` 和
+`00000112_e2ee_group_session_attestation.up.sql`，并机器验证对应 schema。
 随后以 `IMBOY_AUTO_MIGRATE=false` 启动新节点，避免 application boot
 抢先执行完整迁移；该值也会写入 release 的 `sys.config`，普通重启不会恢复
 自动迁移。新节点通过 `/healthz`、切换 Nginx 后，脚本停止旧节点并确认端口

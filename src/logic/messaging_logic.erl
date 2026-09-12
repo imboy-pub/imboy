@@ -180,7 +180,11 @@ encode_history_msg(_CurrentUid, Row) ->
     FromId = maps:get(<<"from_id">>, Row, undefined),
     ToId = maps:get(<<"to_id">>, Row, undefined),
     GroupId = maps:get(<<"group_id">>, Row, undefined),
-    Row2 = maps:remove(<<"from_id">>, Row),
+    Row1 = Row#{
+        <<"e2ee">> => decode_history_jsonb(maps:get(<<"e2ee">>, Row, null)),
+        <<"payload">> => decode_history_jsonb(maps:get(<<"payload">>, Row, null))
+    },
+    Row2 = maps:remove(<<"from_id">>, Row1),
     Row3 = maps:remove(<<"to_id">>, Row2),
     Row4 = maps:remove(<<"group_id">>, Row3),
     Row5 =
@@ -199,6 +203,17 @@ encode_history_msg(_CurrentUid, Row) ->
         undefined -> Row6;
         _ -> Row6#{<<"group_id">> => GroupId}
     end.
+
+%% epgsql returns jsonb columns as their JSON text representation. Decode them
+%% before the HTTP response so history rows match live/offline message shapes.
+decode_history_jsonb(Bin) when is_binary(Bin) ->
+    try jsone:decode(Bin, [{object_format, map}]) of
+        Value -> Value
+    catch
+        _:_ -> Bin
+    end;
+decode_history_jsonb(Value) ->
+    Value.
 
 %% @private 从返回行中提取最大 conv_seq 作为 next_seq
 next_seq_from_rows([], AfterSeq) ->

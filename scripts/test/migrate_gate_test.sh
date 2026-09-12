@@ -34,7 +34,7 @@ write_env() {
   'DB_CONTAINER=postgres' \
   'DB_NAME=imboy' \
   'DB_USER=postgres' \
-  'DEPLOY_EXPAND_MIGRATIONS="00000064_msg_store_sender_did.up.sql 00000108_group_attachment_anchor.up.sql 00000109_c2g_timeline_generation_boundary.up.sql"' \
+  'DEPLOY_EXPAND_MIGRATIONS="00000064_msg_store_sender_did.up.sql 00000108_group_attachment_anchor.up.sql 00000109_c2g_timeline_generation_boundary.up.sql 00000111_c2g_request_recipient_boundary.up.sql 00000112_e2ee_group_session_attestation.up.sql"' \
   >"$TMP_ROOT/.env.deploy"
   printf 'SERVER_USER=%q\nNGINX_CONF=%q\nADMIN_REMOTE_DIR=%q\n' \
     "$server_user" "$nginx_conf" "$admin_remote" >>"$TMP_ROOT/.env.deploy"

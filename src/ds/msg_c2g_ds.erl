@@ -164,9 +164,10 @@ read_msg(GroupId, Columns, Limit) when
 % msg_c2g_ds:read_msg(3, 1000, 1707686743435).
 read_msg(ToUid, Limit, undefined) ->
     % 获取用户未确认的消息
-    Column = <<"tl.msg_id, tl.created_at">>,
+    Column = <<"tl.msg_id, tl.created_at, tl.conv_seq">>,
     {ok, Rows} = msg_c2g_timeline_repo:list_by_uid(ToUid, Column, Limit),
     MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
+    SeqByMsgId = timeline_seq_by_msg_id(Rows),
     % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
     Column2 =
         <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
@@ -177,8 +178,11 @@ read_msg(ToUid, Limit, undefined) ->
             % 与 msg_c2c_ds:read_msg 保持一致，返回包含 from_id 和 to_id 的数据
             % 同时反序列化 payload 与 e2ee 列（二者写入时均为 JSON 字符串）
             [
-                elib_response:json_decode_field(
-                    elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+                attach_timeline_conv_seq(
+                    elib_response:json_decode_field(
+                        elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+                    ),
+                    SeqByMsgId
                 )
              || Row <- Rows2
             ]
@@ -187,12 +191,13 @@ read_msg(ToUid, Limit, LastMsgAt) ->
     % 使用 elib_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
     FixedLastMsgAt = elib_dt:to_rfc3339(LastMsgAt),
     % 获取指定时间之后的用户未确认消息
-    Column = <<"tl.msg_id, tl.created_at">>,
+    Column = <<"tl.msg_id, tl.created_at, tl.conv_seq">>,
     case msg_c2g_timeline_repo:list_by_uid_since(ToUid, Column, Limit, FixedLastMsgAt) of
         {ok, []} ->
             [];
         {ok, Rows} ->
             MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
+            SeqByMsgId = timeline_seq_by_msg_id(Rows),
             % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
             Column2 =
                 <<"id, payload, from_id, to_id, created_at, server_ts, msg_id, msg_type, e2ee, sender_did">>,
@@ -203,12 +208,33 @@ read_msg(ToUid, Limit, LastMsgAt) ->
                     % 与 msg_c2c_ds:read_msg 保持一致，返回包含 from_id 和 to_id 的数据
                     % 同时反序列化 payload 与 e2ee 列（二者写入时均为 JSON 字符串）
                     [
-                        elib_response:json_decode_field(
-                            elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+                        attach_timeline_conv_seq(
+                            elib_response:json_decode_field(
+                                elib_response:json_decode_field(Row, <<"payload">>), <<"e2ee">>
+                            ),
+                            SeqByMsgId
                         )
                      || Row <- Rows2
                     ]
             end
+    end.
+
+-spec timeline_seq_by_msg_id([map()]) -> map().
+timeline_seq_by_msg_id(Rows) ->
+    maps:from_list([
+        {MsgId, Seq}
+     || #{<<"msg_id">> := MsgId, <<"conv_seq">> := Seq} <- Rows,
+        is_integer(Seq),
+        Seq > 0
+    ]).
+
+%% conv_seq 的权威来源是按收件人冻结的 timeline 行，不接受消息正文自报值。
+-spec attach_timeline_conv_seq(map(), map()) -> map().
+attach_timeline_conv_seq(Msg, SeqByMsgId) ->
+    MsgId = maps:get(<<"msg_id">>, Msg, undefined),
+    case maps:find(MsgId, SeqByMsgId) of
+        {ok, ConvSeq} -> Msg#{<<"conv_seq">> => ConvSeq};
+        error -> Msg
     end.
 
 %% @doc 根据消息ID查找群聊消息（用于撤回权限验证和时间限制检查）

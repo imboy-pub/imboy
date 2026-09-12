@@ -18,6 +18,7 @@
 -export([member_public_keys_authoritative/3]).
 -export([is_member/2]).
 -export([authorize_group_history/2]).
+-export([authorize_group_history/3]).
 -export([e2ee_mode/1]).
 -export([flush_e2ee_mode/1]).
 -export([join/2]).
@@ -72,32 +73,49 @@ is_member(Uid, Gid) ->
 %% generation 下界，因此不等价于 interval ACL，不能作为 012 附件闭环证据。
 %% 附件 anchor 与历史 key grant 都应显式消费本谓词，禁止各自重写边界。
 %%
-%% 当前实现语义：F2（仅本次入群后）+ R2（每次重入新世代）；用户批准证据缺失。
-%% 授权结果 = 当前 open 世代的 {generation_no, start_seq, open}；
+%% 当前实现语义：F2（仅本次入群后）+ R2（每次重入新世代）；用户选择已记录。
+%% 授权结果 = 当前 open 世代在本次查询时的有限序列快照；
 %% 已关闭世代（离群区间）不在授权集合内；M1 祖传成员 start_seq=1。
 %%
 %% fail-closed：无 open 世代（非成员 / 缺边界 / 数据异常）一律 deny，
 %% 绝不回退到 boolean membership。
 %%
-%% @returns {ok, #{generation_no => integer(), start_seq => integer()}} | {error, denied}
+%% @returns {ok, #{generation_no => integer(), start_seq => integer(), end_seq => integer()}} | {error, denied}
 -spec authorize_group_history(integer(), integer()) ->
     {ok, map()} | {error, denied}.
 authorize_group_history(Uid, Gid) ->
     Sql =
-        <<"SELECT gmg.generation_no, gmg.start_seq ", "FROM public.group_member_generation gmg ",
+        <<"SELECT gmg.generation_no, gmg.start_seq, ",
+            "COALESCE(mss.seq, gmg.start_seq - 1) AS end_seq ",
+            "FROM public.group_member_generation gmg ",
             "JOIN public.group_member gm ON gm.group_id = gmg.group_id ",
             " AND gm.user_id = gmg.user_id AND gm.status = 1 ",
             "JOIN public.\"group\" grp ON grp.id = gmg.group_id AND grp.status = 1 ",
+            "LEFT JOIN public.msg_store_seq mss ON mss.conv_key = 'c2g:' || gmg.group_id::text ",
+            " AND mss.seq >= gmg.start_seq ",
             "WHERE gmg.group_id = $1 AND gmg.user_id = $2 AND gmg.end_seq IS NULL">>,
     case elib_pg:query(Sql, [Gid, Uid]) of
-        {ok, [#{<<"generation_no">> := GenNo, <<"start_seq">> := StartSeq}]} ->
-            {ok, #{generation_no => GenNo, start_seq => StartSeq}};
+        {ok, [
+            #{
+                <<"generation_no">> := GenNo,
+                <<"start_seq">> := StartSeq,
+                <<"end_seq">> := EndSeq
+            }
+        ]} ->
+            {ok, #{generation_no => GenNo, start_seq => StartSeq, end_seq => EndSeq}};
         {ok, _} ->
             %% 0 行或多行（多行被部分唯一索引排除，防御性 deny）→ fail-closed
             {error, denied};
         {error, _Reason} ->
             {error, denied}
     end.
+
+%% @doc D3 historical room-key grant. Unlike /2 archive authorization, this
+%% requires a server-attested Megolm session bound to the caller's current generation.
+-spec authorize_group_history(integer(), integer(), binary()) ->
+    {ok, map()} | {error, denied}.
+authorize_group_history(Uid, Gid, SessionId) ->
+    msg_store_repo:authorize_group_session_history(Uid, Gid, SessionId).
 
 %% @doc 获取群组成员用户ID列表
 %%

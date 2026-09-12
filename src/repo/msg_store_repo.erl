@@ -12,11 +12,10 @@
 
 -export([tablename/0]).
 
--ifdef(TEST).
-%% 仅测试导出：payload/e2ee 的 JSONB 规范化（数字开头密文误判回归）
+%% 纯 wire/JSONB 规范化函数；导出用于安全合同测试，数据库写入仍仅能经 stage/12。
 -export([msg_store_payload_to_jsonb/1]).
 -export([msg_store_e2ee_to_jsonb/1]).
--endif.
+-export([group_session_operation/4]).
 
 %% 表管理
 -export([ensure_table_exists/0]).
@@ -45,6 +44,7 @@
 -export([get_unstaged/1]).
 -export([get_staging_stats/0]).
 -export([find_by_msg_id/2]).
+-export([authorize_group_session_history/3]).
 
 %% ==================== API Functions ====================
 
@@ -256,7 +256,7 @@ stage(
     binary(),
     binary(),
     1 | 3
-) -> {ok, term(), [integer()]} | {error, term()}.
+) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
 stage(
     <<"c2g">> = Type,
     MsgId,
@@ -308,7 +308,7 @@ stage(
     binary(),
     1 | 3,
     binary()
-) -> {ok, term(), [integer()]} | {error, term()}.
+) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
 stage_action(
     <<"c2g">> = Type,
     MsgId,
@@ -370,7 +370,7 @@ valid_c2g_msg_id(_) ->
     binary(),
     1 | 3,
     undefined | binary()
-) -> {ok, term(), [integer()]} | {error, term()}.
+) -> {ok, term(), pos_integer(), [integer()]} | {error, term()}.
 stage_c2g(
     Type,
     MsgId,
@@ -421,6 +421,22 @@ stage_c2g(
                             Conn, ToId, FromId, RequiredRole, OriginalMsgId
                         )
                 end,
+            ok = apply_group_session_attestation(
+                Conn,
+                MsgId,
+                MsgType,
+                Action,
+                E2EE,
+                Payload,
+                FromId,
+                ToId,
+                SenderDid,
+                Seq,
+                MemberUids,
+                RequiredRole,
+                OriginalMsgId,
+                CreatedAt
+            ),
             ok = persist_c2g_request_identity(
                 Conn,
                 MsgId,
@@ -447,7 +463,7 @@ stage_c2g(
                         _ ->
                             ok
                     end,
-                    {ok, MemberUids};
+                    {ok, Seq, MemberUids};
                 {error, {error, error, <<"23505">>, unique_violation, _, _}} ->
                     throw({rollback, {unique_violation, MsgId}});
                 {error, Reason} ->
@@ -455,8 +471,8 @@ stage_c2g(
             end
         end)
     of
-        {ok, MemberUids} when is_list(MemberUids) ->
-            {ok, GenId, MemberUids};
+        {ok, Seq, MemberUids} when is_integer(Seq), Seq > 0, is_list(MemberUids) ->
+            {ok, GenId, Seq, MemberUids};
         {rollback, {unique_violation, MsgId}} ->
             {error, {unique_violation, MsgId}};
         {rollback, Reason} ->
@@ -465,6 +481,324 @@ stage_c2g(
             {error, Reason};
         Other ->
             Other
+    end.
+
+%% @private Room-key registration and PFv3 Megolm use share the same sequence-lock
+%% transaction as membership authorization and staging persistence.
+-spec apply_group_session_attestation(
+    pid(),
+    binary(),
+    binary(),
+    binary(),
+    term(),
+    term(),
+    integer(),
+    integer(),
+    binary(),
+    pos_integer(),
+    [integer()],
+    1 | 3,
+    undefined | binary(),
+    binary()
+) -> ok.
+apply_group_session_attestation(
+    Conn,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    Gid,
+    SenderDid,
+    Seq,
+    DeliveryUids,
+    RequiredRole,
+    OriginalMsgId,
+    CreatedAt
+) ->
+    case group_session_operation(MsgType, Action, E2EE, Payload) of
+        none ->
+            ok;
+        {error, Reason} ->
+            throw({rollback, Reason});
+        {register, SessionId, ClaimedGid} when ClaimedGid =:= Gid ->
+            register_group_session(
+                Conn,
+                Gid,
+                SessionId,
+                MsgId,
+                FromId,
+                SenderDid,
+                Seq,
+                DeliveryUids,
+                CreatedAt
+            );
+        {register, _SessionId, _ClaimedGid} ->
+            throw({rollback, e2ee_session_scope_mismatch});
+        {extend, SessionId, ClaimedGid} when ClaimedGid =:= Gid ->
+            CurrentUids =
+                case OriginalMsgId of
+                    undefined -> DeliveryUids;
+                    _ -> authorized_c2g_recipients(Conn, Gid, FromId, RequiredRole)
+                end,
+            extend_group_session(
+                Conn, Gid, SessionId, FromId, SenderDid, Seq, CurrentUids, CreatedAt
+            );
+        {extend, _SessionId, _ClaimedGid} ->
+            throw({rollback, e2ee_session_scope_mismatch})
+    end.
+
+%% @private Classify only the two security-relevant wire shapes. Legacy E2EE remains
+%% readable/sendable during rollout but cannot receive a D3 historical-key grant.
+-spec group_session_operation(binary(), binary(), term(), term()) ->
+    none | {register | extend, binary(), integer()} | {error, atom()}.
+group_session_operation(<<"e2ee_room_key">>, <<"e2ee_room_key">>, _E2EE, Payload) ->
+    case decode_json_map(Payload) of
+        #{<<"payload">> := RoomKey} when is_map(RoomKey) ->
+            session_scope(RoomKey, register);
+        _ ->
+            {error, e2ee_room_key_invalid}
+    end;
+group_session_operation(_MsgType, Action, E2EE, _Payload) when
+    Action =:= <<>> orelse Action =:= <<"message_edit">>
+->
+    case E2EE of
+        #{<<"meta_version">> := 3, <<"protocol_metadata">> := Meta} when is_map(Meta) ->
+            case maps:get(<<"protocol">>, Meta, undefined) of
+                <<"megolm">> -> session_scope(Meta, extend);
+                _ -> {error, e2ee_group_session_invalid}
+            end;
+        #{<<"meta_version">> := 3} ->
+            {error, e2ee_group_session_invalid};
+        _ ->
+            none
+    end;
+group_session_operation(_MsgType, _Action, _E2EE, _Payload) ->
+    none.
+
+-spec decode_json_map(term()) -> map() | undefined.
+decode_json_map(Map) when is_map(Map) ->
+    Map;
+decode_json_map(Bin) when is_binary(Bin) ->
+    try jsone:decode(Bin, [{object_format, map}]) of
+        Map when is_map(Map) -> Map;
+        _ -> undefined
+    catch
+        _:_ -> undefined
+    end;
+decode_json_map(_) ->
+    undefined.
+
+-spec session_scope(map(), register | extend) ->
+    {register | extend, binary(), integer()} | {error, atom()}.
+session_scope(Map, Kind) ->
+    SessionId = maps:get(<<"session_id">>, Map, <<>>),
+    Gid = parse_positive_integer(maps:get(<<"gid">>, Map, undefined)),
+    case
+        is_binary(SessionId) andalso byte_size(SessionId) >= 1 andalso
+            byte_size(SessionId) =< 256 andalso is_integer(Gid)
+    of
+        true -> {Kind, SessionId, Gid};
+        false -> {error, e2ee_group_session_invalid}
+    end.
+
+-spec parse_positive_integer(term()) -> pos_integer() | undefined.
+parse_positive_integer(Value) when is_integer(Value), Value > 0 ->
+    Value;
+parse_positive_integer(Value) when is_binary(Value) ->
+    try binary_to_integer(Value) of
+        Parsed when Parsed > 0 -> Parsed;
+        _ -> undefined
+    catch
+        _:_ -> undefined
+    end;
+parse_positive_integer(_) ->
+    undefined.
+
+-spec register_group_session(
+    pid(), integer(), binary(), binary(), integer(), binary(), pos_integer(), [integer()], binary()
+) -> ok.
+register_group_session(
+    Conn, Gid, SessionId, MsgId, FromId, SenderDid, Seq, RecipientUids0, CreatedAt
+) ->
+    RecipientUids = lists:usort(RecipientUids0),
+    require_sender_device(SenderDid),
+    Generations = current_group_generations(Conn, Gid, RecipientUids),
+    Sql =
+        <<"INSERT INTO public.e2ee_group_session_attestation ",
+            "(group_id, session_id, sender_uid, sender_did, room_key_msg_id, ",
+            "recipient_uids, start_seq, end_seq, created_at, updated_at) ",
+            "VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8) ",
+            "ON CONFLICT (group_id, session_id) DO NOTHING RETURNING session_id">>,
+    Params = [Gid, SessionId, FromId, SenderDid, MsgId, RecipientUids, Seq, CreatedAt],
+    case elib_pg:query(Conn, Sql, Params) of
+        {ok, [_]} ->
+            persist_group_session_members(Conn, Gid, SessionId, Generations);
+        {ok, []} ->
+            verify_existing_group_session(
+                Conn, Gid, SessionId, MsgId, FromId, SenderDid, RecipientUids, Generations
+            );
+        {error, Reason} ->
+            throw({rollback, {e2ee_session_register_failed, Reason}});
+        Other ->
+            throw({rollback, {unexpected_e2ee_session_register, Other}})
+    end.
+
+-spec extend_group_session(
+    pid(), integer(), binary(), integer(), binary(), pos_integer(), [integer()], binary()
+) -> ok.
+extend_group_session(Conn, Gid, SessionId, FromId, SenderDid, Seq, RecipientUids0, CreatedAt) ->
+    RecipientUids = lists:usort(RecipientUids0),
+    require_sender_device(SenderDid),
+    Generations = current_group_generations(Conn, Gid, RecipientUids),
+    verify_existing_group_session(
+        Conn, Gid, SessionId, undefined, FromId, SenderDid, RecipientUids, Generations
+    ),
+    Sql =
+        <<"UPDATE public.e2ee_group_session_attestation ", "SET end_seq = $5, updated_at = $6 ",
+            "WHERE group_id = $1 AND session_id = $2 AND sender_uid = $3 ",
+            "AND sender_did = $4 AND end_seq < $5 RETURNING session_id">>,
+    case elib_pg:query(Conn, Sql, [Gid, SessionId, FromId, SenderDid, Seq, CreatedAt]) of
+        {ok, [_]} -> ok;
+        {ok, []} -> throw({rollback, e2ee_session_stale});
+        {error, Reason} -> throw({rollback, {e2ee_session_extend_failed, Reason}});
+        Other -> throw({rollback, {unexpected_e2ee_session_extend, Other}})
+    end.
+
+-spec require_sender_device(term()) -> ok | no_return().
+require_sender_device(SenderDid) when
+    is_binary(SenderDid),
+    byte_size(SenderDid) >= 1,
+    byte_size(SenderDid) =< 128
+->
+    ok;
+require_sender_device(_) ->
+    throw({rollback, e2ee_sender_device_missing}).
+
+-spec current_group_generations(pid(), integer(), [integer()]) -> [map()].
+current_group_generations(Conn, Gid, RecipientUids) ->
+    Sql =
+        <<"SELECT gmg.user_id, gmg.generation_no, gmg.start_seq ",
+            "FROM public.group_member_generation gmg ",
+            "JOIN public.group_member gm ON gm.group_id = gmg.group_id ",
+            "AND gm.user_id = gmg.user_id AND gm.status = 1 ",
+            "WHERE gmg.group_id = $1 AND gmg.end_seq IS NULL ",
+            "AND gmg.user_id = ANY($2::bigint[]) ORDER BY gmg.user_id">>,
+    case elib_pg:query(Conn, Sql, [Gid, RecipientUids]) of
+        {ok, Rows} when length(Rows) =:= length(RecipientUids) ->
+            case [maps:get(<<"user_id">>, Row, undefined) || Row <- Rows] of
+                RecipientUids -> Rows;
+                _ -> throw({rollback, e2ee_session_generation_mismatch})
+            end;
+        {ok, _} ->
+            throw({rollback, e2ee_session_generation_mismatch});
+        {error, Reason} ->
+            throw({rollback, {e2ee_session_generation_read_failed, Reason}});
+        Other ->
+            throw({rollback, {unexpected_e2ee_session_generation_read, Other}})
+    end.
+
+-spec persist_group_session_members(pid(), integer(), binary(), [map()]) -> ok.
+persist_group_session_members(Conn, Gid, SessionId, Generations) ->
+    Uids = [maps:get(<<"user_id">>, Row) || Row <- Generations],
+    GenNos = [maps:get(<<"generation_no">>, Row) || Row <- Generations],
+    StartSeqs = [maps:get(<<"start_seq">>, Row) || Row <- Generations],
+    Sql =
+        <<"INSERT INTO public.e2ee_group_session_member ",
+            "(group_id, session_id, user_id, generation_no, generation_start_seq) ",
+            "SELECT $1, $2, x.user_id, x.generation_no, x.start_seq ",
+            "FROM unnest($3::bigint[], $4::integer[], $5::bigint[]) ",
+            "AS x(user_id, generation_no, start_seq) RETURNING user_id">>,
+    case elib_pg:query(Conn, Sql, [Gid, SessionId, Uids, GenNos, StartSeqs]) of
+        {ok, Rows} when length(Rows) =:= length(Uids) -> ok;
+        {ok, _} -> throw({rollback, e2ee_session_member_persist_mismatch});
+        {error, Reason} -> throw({rollback, {e2ee_session_member_persist_failed, Reason}});
+        Other -> throw({rollback, {unexpected_e2ee_session_member_persist, Other}})
+    end.
+
+-spec verify_existing_group_session(
+    pid(), integer(), binary(), undefined | binary(), integer(), binary(), [integer()], [map()]
+) -> ok.
+verify_existing_group_session(
+    Conn, Gid, SessionId, ExpectedMsgId, FromId, SenderDid, RecipientUids, Generations
+) ->
+    Sql =
+        <<"SELECT sender_uid, sender_did, room_key_msg_id, recipient_uids ",
+            "FROM public.e2ee_group_session_attestation ",
+            "WHERE group_id = $1 AND session_id = $2">>,
+    case elib_pg:query(Conn, Sql, [Gid, SessionId]) of
+        {ok, [
+            #{
+                <<"sender_uid">> := FromId,
+                <<"sender_did">> := SenderDid,
+                <<"room_key_msg_id">> := RoomKeyMsgId,
+                <<"recipient_uids">> := RecipientUids
+            }
+        ]} when ExpectedMsgId =:= undefined orelse ExpectedMsgId =:= RoomKeyMsgId ->
+            verify_group_session_members(Conn, Gid, SessionId, Generations);
+        {ok, [_]} ->
+            throw({rollback, e2ee_session_conflict});
+        {ok, []} ->
+            throw({rollback, e2ee_session_unattested});
+        {error, Reason} ->
+            throw({rollback, {e2ee_session_read_failed, Reason}});
+        Other ->
+            throw({rollback, {unexpected_e2ee_session_read, Other}})
+    end.
+
+-spec verify_group_session_members(pid(), integer(), binary(), [map()]) -> ok.
+verify_group_session_members(Conn, Gid, SessionId, Generations) ->
+    Sql =
+        <<"SELECT user_id, generation_no, generation_start_seq AS start_seq ",
+            "FROM public.e2ee_group_session_member ",
+            "WHERE group_id = $1 AND session_id = $2 ORDER BY user_id">>,
+    case elib_pg:query(Conn, Sql, [Gid, SessionId]) of
+        {ok, Generations} -> ok;
+        {ok, _} -> throw({rollback, e2ee_session_generation_mismatch});
+        {error, Reason} -> throw({rollback, {e2ee_session_member_read_failed, Reason}});
+        Other -> throw({rollback, {unexpected_e2ee_session_member_read, Other}})
+    end.
+
+%% @doc D3 grant source: current active membership must match the immutable generation
+%% captured when this room-key session was accepted. The returned interval is the
+%% server-maintained monotonic session range, not a caller-supplied value.
+-spec authorize_group_session_history(integer(), integer(), binary()) ->
+    {ok, map()} | {error, denied}.
+authorize_group_session_history(Uid, Gid, SessionId) ->
+    Sql =
+        <<"SELECT sm.generation_no, sa.start_seq, sa.end_seq ",
+            "FROM public.e2ee_group_session_attestation sa ",
+            "JOIN public.e2ee_group_session_member sm ",
+            "ON sm.group_id = sa.group_id AND sm.session_id = sa.session_id ",
+            "JOIN public.group_member gm ON gm.group_id = sm.group_id ",
+            "AND gm.user_id = sm.user_id AND gm.status = 1 ",
+            "JOIN public.group_member_generation gmg ON gmg.group_id = sm.group_id ",
+            "AND gmg.user_id = sm.user_id AND gmg.end_seq IS NULL ",
+            "AND gmg.generation_no = sm.generation_no ",
+            "JOIN public.\"group\" grp ON grp.id = sm.group_id AND grp.status = 1 ",
+            "WHERE sa.group_id = $1 AND sa.session_id = $2 AND sm.user_id = $3 ",
+            "AND sa.start_seq >= sm.generation_start_seq ", "AND sa.end_seq >= sa.start_seq">>,
+    case elib_pg:query(Sql, [Gid, SessionId, Uid]) of
+        {ok, [
+            #{
+                <<"generation_no">> := GenNo,
+                <<"start_seq">> := StartSeq,
+                <<"end_seq">> := EndSeq
+            }
+        ]} when
+            is_integer(GenNo),
+            GenNo > 0,
+            is_integer(StartSeq),
+            StartSeq > 0,
+            is_integer(EndSeq),
+            EndSeq >= StartSeq
+        ->
+            {ok, #{generation_no => GenNo, start_seq => StartSeq, end_seq => EndSeq}};
+        {ok, _} ->
+            {error, denied};
+        {error, _} ->
+            {error, denied}
     end.
 
 %% @private 请求账本覆盖正式消息生命周期；相同 msg_id 只有完整请求身份一致才是重试。

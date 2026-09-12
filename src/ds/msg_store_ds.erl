@@ -75,14 +75,13 @@
 %% 状态查询
 -export([len/0, status/0]).
 
+%% 清理合同测试必须在普通编译 beam 上也可调用，避免 compile -> eunit 顺序产生 undef。
+-export([cleanup_expired_c2g_ledgers/0]).
+
 %% ==================== Callbacks ====================
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 -export([terminate/2, code_change/3]).
-
--ifdef(TEST).
--export([cleanup_expired_c2g_ledgers/0]).
--endif.
 
 -include("log.hrl").
 
@@ -149,7 +148,13 @@ start_link() ->
     integer() | [integer()],
     binary(),
     binary()
-) -> {ok, new} | {ok, new, [integer()]} | {ok, duplicate} | {error, term()} | error.
+) ->
+    {ok, new}
+    | {ok, new, [integer()]}
+    | {ok, new, pos_integer(), [integer()]}
+    | {ok, duplicate}
+    | {error, term()}
+    | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
     %% 保持对 msg_store_repo:stage/10 的原调用形状——不要改写成
     %% stage/11 + <<>>：既有调用方的测试按 arity 挂 meck 期望，
@@ -186,7 +191,13 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     binary(),
     binary(),
     binary()
-) -> {ok, new} | {ok, new, [integer()]} | {ok, duplicate} | {error, term()} | error.
+) ->
+    {ok, new}
+    | {ok, new, [integer()]}
+    | {ok, new, pos_integer(), [integer()]}
+    | {ok, duplicate}
+    | {error, term()}
+    | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, SenderDid) ->
     handle_stage_result(
         Type,
@@ -220,7 +231,11 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     binary(),
     binary(),
     1 | 3
-) -> {ok, new, [integer()]} | {ok, duplicate} | {error, term()}.
+) ->
+    {ok, new, [integer()]}
+    | {ok, new, pos_integer(), [integer()]}
+    | {ok, duplicate}
+    | {error, term()}.
 stage(
     <<"c2g">> = Type,
     MsgId,
@@ -269,7 +284,11 @@ stage(
     binary(),
     1 | 3,
     binary()
-) -> {ok, new, [integer()]} | {ok, duplicate} | {error, term()}.
+) ->
+    {ok, new, [integer()]}
+    | {ok, new, pos_integer(), [integer()]}
+    | {ok, duplicate}
+    | {error, term()}.
 stage_action(
     <<"c2g">> = Type,
     MsgId,
@@ -307,9 +326,19 @@ stage_action(
 
 %% @private stage/10 与 stage/11 共用的落库结果归一化
 -spec handle_stage_result(binary(), binary(), term()) ->
-    {ok, new} | {ok, new, [integer()]} | {ok, duplicate} | {error, term()} | error.
+    {ok, new}
+    | {ok, new, [integer()]}
+    | {ok, new, pos_integer(), [integer()]}
+    | {ok, duplicate}
+    | {error, term()}
+    | error.
 handle_stage_result(Type, MsgId, Result) ->
     case Result of
+        {ok, _, ConvSeq, MemberUids} when
+            is_integer(ConvSeq), ConvSeq > 0, is_list(MemberUids)
+        ->
+            _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
+            {ok, new, ConvSeq, MemberUids};
         {ok, _, MemberUids} when is_list(MemberUids) ->
             _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
             {ok, new, MemberUids};
@@ -331,6 +360,22 @@ handle_stage_result(Type, MsgId, Result) ->
             {error, msg_id_conflict};
         {error, c2g_group_id_required} ->
             {error, c2g_group_id_required};
+        {error, e2ee_session_unattested} ->
+            {error, e2ee_session_unattested};
+        {error, e2ee_session_stale} ->
+            {error, e2ee_session_stale};
+        {error, e2ee_session_conflict} ->
+            {error, e2ee_session_conflict};
+        {error, e2ee_session_scope_mismatch} ->
+            {error, e2ee_session_scope_mismatch};
+        {error, e2ee_group_session_invalid} ->
+            {error, e2ee_group_session_invalid};
+        {error, e2ee_room_key_invalid} ->
+            {error, e2ee_room_key_invalid};
+        {error, e2ee_sender_device_missing} ->
+            {error, e2ee_sender_device_missing};
+        {error, e2ee_session_generation_mismatch} ->
+            {error, e2ee_session_generation_mismatch};
         {error, Reason} when Type =:= <<"c2g">> ->
             _ = ?ERROR_LOG([msg_store_ds, stage_error, Type, MsgId, Reason]),
             {error, unavailable};

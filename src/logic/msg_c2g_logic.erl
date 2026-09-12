@@ -36,6 +36,12 @@ policy_violation_reply(MsgId, Reason) ->
         <<"server_ts">> => elib_dt:millisecond()
     }}.
 
+-spec policy_violation_reply(binary(), binary(), integer()) -> {reply, map()}.
+policy_violation_reply(MsgId, Reason, Gid) ->
+    {reply, Reply} = policy_violation_reply(MsgId, Reason),
+    Payload = maps:get(<<"payload">>, Reply),
+    {reply, Reply#{<<"payload">> => Payload#{<<"gid">> => Gid}}}.
+
 %% @private 编辑时间窗（毫秒），env msg_edit_window_seconds，默认 86400 秒；<=0 不限
 -spec msg_edit_window_ms() -> integer().
 msg_edit_window_ms() ->
@@ -212,6 +218,7 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, RequiredRole) ->
                 MsgType,
                 Action,
                 E2EE,
+                MsgFull,
                 Msg2,
                 NowTs,
                 NowMS,
@@ -256,6 +263,7 @@ group_e2ee_gate(Gid, MsgType, Action, E2EE, Payload) ->
     binary(),
     binary(),
     term(),
+    map(),
     binary(),
     binary(),
     integer(),
@@ -271,6 +279,7 @@ do_stage_and_send_c2g(
     MsgType,
     Action,
     E2EE,
+    MsgFull,
     Msg2,
     _NowTs,
     NowMS,
@@ -359,9 +368,12 @@ do_stage_and_send_c2g(
                     <<"server_ts">> => NowMS
                 }},
             ok;
-        {ok, new, MemberUids} ->
+        {ok, new, ConvSeq, MemberUids} ->
             % 备份成功，继续处理
             MsLi = elib_retry_config:intervals(<<"c2g">>),
+            RealtimeMsg = jsone:encode(
+                MsgFull#{<<"conv_seq">> => ConvSeq}, [native_utf8]
+            ),
             % 立即响应
             self() !
                 {reply, #{
@@ -373,7 +385,7 @@ do_stage_and_send_c2g(
 
             % ① 先入队（异步，非阻塞）
             msg_store_ds:enqueue(<<"c2g">>, MsgId, #{
-                payload => Msg2,
+                payload => RealtimeMsg,
                 from_id => CurrentUid,
                 to_id => ToGID,
                 to_id_list => MemberUids,
@@ -391,7 +403,7 @@ do_stage_and_send_c2g(
                     msg_c2g_ds:write_msg_with_reply(
                         CreatedAtRfc,
                         MsgId,
-                        Msg2,
+                        RealtimeMsg,
                         CurrentUid,
                         MemberUids,
                         ToGID,
@@ -404,15 +416,15 @@ do_stage_and_send_c2g(
             end,
 
             % ③ 后投递消息（仅推送在线成员，离线成员通过 sync 拉取）
-            % sender_did 已在上方 MsgFull 编码前并入 Msg2（staging 与实时
-            % 投递共用该信封），此处无需二次盖章。
+            % sender_did 与权威 conv_seq 均在实时信封内；后者来自已提交的
+            % staging 事务，客户端不得从密文 payload 自报历史范围。
             OnlineUids = [
                 Uid
              || Uid <- MemberUids,
                 CurrentUid /= Uid,
                 user_logic:is_online(Uid)
             ],
-            [message_ds:send_next(Uid, MsgId, Msg2, MsLi) || Uid <- OnlineUids],
+            [message_ds:send_next(Uid, MsgId, RealtimeMsg, MsLi) || Uid <- OnlineUids],
 
             % ③.5 离线推送（异步，不阻塞消息投递）
             push_notification_logic:maybe_push_for_c2g(CurrentUid, ToGID, MsgType, MemberUids),
@@ -477,6 +489,20 @@ do_stage_and_send_c2g(
                     <<"error">> => <<"Message id conflicts with another message">>,
                     <<"code">> => 409
                 }},
+            ok;
+        {error, E2EEReason} when
+            E2EEReason =:= e2ee_session_unattested;
+            E2EEReason =:= e2ee_session_stale;
+            E2EEReason =:= e2ee_session_conflict;
+            E2EEReason =:= e2ee_session_scope_mismatch;
+            E2EEReason =:= e2ee_group_session_invalid;
+            E2EEReason =:= e2ee_room_key_invalid;
+            E2EEReason =:= e2ee_sender_device_missing;
+            E2EEReason =:= e2ee_session_generation_mismatch
+        ->
+            {reply, ErrorReply} =
+                policy_violation_reply(MsgId, atom_to_binary(E2EEReason), ToGID),
+            self() ! {reply, ErrorReply},
             ok;
         {error, unavailable} ->
             self() !
@@ -874,9 +900,11 @@ stage_and_deliver_group_action(
             OriginalMsgId
         )
     of
-        {ok, new, MemberUids} ->
+        {ok, new, ConvSeq, MemberUids} ->
+            RealtimeAction = TrustedActionMsg#{<<"conv_seq">> => ConvSeq},
+            RealtimeActionJson = jsone:encode(RealtimeAction, [native_utf8]),
             msg_store_ds:enqueue(<<"c2g">>, MsgId, #{
-                payload => ActionMsgJson,
+                payload => RealtimeActionJson,
                 from_id => CurrentUid,
                 to_id => ToGID,
                 to_id_list => MemberUids,
@@ -886,10 +914,10 @@ stage_and_deliver_group_action(
             maybe_cancel_revoke_timers(Action, OriginalMsgId, CurrentUid, MemberUids),
             MsLi = elib_retry_config:intervals(<<"c2g">>),
             [
-                message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi)
+                message_ds:send_next(Uid, MsgId, RealtimeActionJson, MsLi)
              || Uid <- MemberUids, Uid =/= CurrentUid
             ],
-            {reply, TrustedActionMsg};
+            {reply, RealtimeAction};
         {ok, duplicate} ->
             {reply, #{
                 <<"id">> => MsgId,
@@ -901,6 +929,17 @@ stage_and_deliver_group_action(
             {reply, message_ds:assemble_s2c(MsgId, <<"invalid_msgid">>, To)};
         {error, action_target_forbidden} ->
             {reply, message_ds:assemble_s2c(MsgId, <<"permission_denied">>, To)};
+        {error, E2EEReason} when
+            E2EEReason =:= e2ee_session_unattested;
+            E2EEReason =:= e2ee_session_stale;
+            E2EEReason =:= e2ee_session_conflict;
+            E2EEReason =:= e2ee_session_scope_mismatch;
+            E2EEReason =:= e2ee_group_session_invalid;
+            E2EEReason =:= e2ee_room_key_invalid;
+            E2EEReason =:= e2ee_sender_device_missing;
+            E2EEReason =:= e2ee_session_generation_mismatch
+        ->
+            policy_violation_reply(MsgId, atom_to_binary(E2EEReason), ToGID);
         {error, _} ->
             {reply, message_ds:assemble_s2c(MsgId, <<"service_unavailable">>, To)};
         error ->

@@ -23,6 +23,8 @@ init(Req0, State0) ->
                 user_keys(Req0, State);
             group_member_keys ->
                 group_member_keys(Req0, State);
+            group_history_grant ->
+                group_history_grant(cowboy_req:method(Req0), Req0, State);
             report_device_key ->
                 report_device_key(Req0, State);
             key_status ->
@@ -95,6 +97,41 @@ group_member_keys(Req0, State) ->
             do_group_member_keys(Req0, State);
         {error, Req1} ->
             Req1
+    end.
+
+-spec group_history_grant(binary(), cowboy_req:req(), map()) -> cowboy_req:req().
+group_history_grant(<<"GET">>, Req0, State) ->
+    case ensure_e2ee_enabled(Req0) of
+        ok ->
+            do_group_history_grant(Req0, State);
+        {error, Req1} ->
+            Req1
+    end;
+group_history_grant(_, Req0, _State) ->
+    elib_response:error(Req0, <<"Method Not Allowed">>, 405).
+
+-spec do_group_history_grant(cowboy_req:req(), map()) -> cowboy_req:req().
+do_group_history_grant(Req0, State) ->
+    CurrentUid = auth_ds:current_uid(State),
+    Gid = elib_cnv:safe_to_integer(elib_param:get(<<"gid">>, Req0, <<>>)),
+    SessionId = elib_param:get(<<"session_id">>, Req0, <<>>),
+    ValidSessionId =
+        is_binary(SessionId) andalso byte_size(SessionId) > 0 andalso
+            byte_size(SessionId) =< 256,
+    case is_integer(Gid) andalso Gid > 0 andalso ValidSessionId of
+        false ->
+            elib_response:error(
+                Req0,
+                <<"参数不合法：gid 必须为正整数且 session_id 必须有效"/utf8>>,
+                400
+            );
+        true ->
+            case e2ee_logic:group_history_grant(CurrentUid, Gid, SessionId) of
+                {ok, Payload} ->
+                    elib_response:success(Req0, Payload);
+                {error, Msg, Code} ->
+                    elib_response:error(Req0, e2ee_msg(Msg), Code)
+            end
     end.
 
 -spec do_group_member_keys(cowboy_req:req(), map()) -> cowboy_req:req().

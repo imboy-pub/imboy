@@ -1,20 +1,20 @@
 # E2EE-2026-012 群历史语义决策包
 
-原决策包日期：2026-09-09；当前源码覆盖核验：2026-09-11
+原决策包日期：2026-09-09；当前源码覆盖核验：2026-09-12
 
-状态：`CURRENT_IMPLEMENTATION_PARTIAL / DECISION_RECORDED / D3_DETAIL_RECORDED / A_LEVEL_ATTACK_RETEST=BLOCKED`
+状态：`LOCAL_SECURITY_GATE_FAIL / DECISION_RECORDED / D3_DETAIL_RECORDED / A_LEVEL_ATTACK_RETEST=BLOCKED`
 
 发布姿态：`NO-GO`
 
-本文是 F/R/D/M 产品与安全决策的唯一工件。用户于 2026-09-11 书面确认 `F=F2，R=R2，D=D3，M=M1，AI-ID=B`，其中本文件记录 `F2/R2/D3/M1`；又于 2026-09-12 书面确认 D3 采用分开授权：archive ciphertext download 继承账号获权 generation 范围，historical room-key grant 默认不随新设备自动授予，只能经显式恢复并绑定群、generation、epoch、`conv_seq` 范围和审计记录。当前源码已有对应方向的部分实现；生产 C2G staging 的原子 `conv_seq`/权限/recipient snapshot、群聊附件 generation ACL 和 offline timeline generation 过滤均已本地修复。D3 细节已记录，但 room-key grant 与 backup epoch metadata 尚未实现，不得据此标记 `ATTACK_RETEST_PASS/CLOSED`。
+本文是 F/R/D/M 产品与安全决策的唯一工件。用户于 2026-09-11 书面确认 `F=F2，R=R2，D=D3，M=M1，AI-ID=B`，其中本文件记录 `F2/R2/D3/M1`；又于 2026-09-12 书面确认 D3 采用分开授权：archive ciphertext download 继承账号获权 generation 范围，historical room-key grant 默认不随新设备自动授予，只能经显式恢复并绑定群、generation、epoch、`conv_seq` 范围和审计记录。当前隔离补丁已实现 D3 本地候选：migration 112 新增 server-authoritative Megolm session attestation，room-key 在 C2G staging 顺序锁事务内固化 sender UID/device、recipient UID 集合与每位收件人的 membership generation，PFv3 内容只能延展同一已登记 session 的单调 `start_seq/end_seq`；sender、device、recipient 或 generation 不一致以及未知 session 均 fail-closed。historical room-key grant 只从该账本签发有限范围，不再回显调用方提供的 opaque session 范围。App 导出前逐 session 刷新，任一刷新失败即中止备份，恢复 key 只在可信 `conv_seq` 范围内使用；服务端 policy error 携带 `gid`，可恢复错误会让下一次发送先 rotate。原 session attestation `HIGH / OPEN` 已在本地候选和 scratch PostgreSQL 生命周期回归中关闭，但生产 cutover、旧客户端 rollout、真实生命周期和 A 级攻击复测仍未完成，不得据此标记 `ATTACK_RETEST_PASS/CLOSED`。
 
 ## 0A. 2026-09-11 CURRENT-HEAD OVERRIDE
 
 本节覆盖下述 2026-09-09 Base 的代码现状描述；选项定义、原子 cutover 契约和外部门保持有效。
 
 ```text
-imboy      a7d76cc23b17600b246921e36e634bc091cad1f2 + scoped patch
-imboyapp   8ebe49e355ee66b79386f40739432d0bf34c13df + scoped patch
+imboy      e9ff7ed48d5e12efac477b1948e26768af806590 + scoped patch
+imboyapp   bc33e4b2e297b9aa2fab15840d478ab209d99585 + scoped patch
 verdict    LOCAL_SECURITY_GATE_FAIL
 governance DECISION_RECORDED / D3_DETAIL_RECORDED
 A-level    BLOCKED
@@ -31,7 +31,11 @@ release    NO-GO
 6. `msg_c2g_request_ledger` 负责 durable MsgId 与稳定请求身份，`msg_c2g_recipient_snapshot` 负责 immutable recipient set 与 action 授权，两者不再混用。稳定 hash 覆盖 msg_type/E2EE/业务 payload/sender device，剔除顶层和嵌套 payload 的服务端时间字段；action 单独比较。在线投递、Push、mention、Agent 与 Bot 继续复用 committed recipient snapshot。当前 7 个定向 EUnit suite **171/171 PASS**；此前不同代码形状下的旧汇总计数不再作为当前补丁证据。
 7. room-key 公钥枚举已单独修复为 active group/caller/recipient/device 的单 statement snapshot，成员和设备条目都以 `4096 + 1` 探针拒绝截断集合；定向 60/60 PASS，PG 18.4 只读 `EXPLAIN` 确认未授权分支不执行成员/设备扫描，授权分支不再全站设备外侧扫描或 limit 前全量排序。2026-09-12 已让现有 marker scratch-PG harness 直接执行生产 SQL，覆盖未授权、预置 inactive recipient、active recipient 动态撤销、inactive caller/group/device、无有效 key，以及 4096/4097 active member/device sentinel；真库矩阵 PASS、残留数据库为 0，最新独立复审为 `APPROVE`（0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW），关闭此前唯一 MEDIUM 及随后指出的 recipient 动态撤销用例缺口。查询完成后到客户端包裹、再到 C2G 中继之间仍没有 membership generation 绑定，因此不能据此关闭历史 room-key grant 或 C2G 撤销竞态。
 8. migration 108 已区分两类群媒体：聊天附件用客户端最终 `messageId` 声明 `anchor_msg_id`，C2G staging 在同一顺序锁事务内绑定权威 `anchor_conv_seq`，下载按 active group/member/current open generation 的 `start_seq` 授权；独立 `group_file` 用 `group_file_id` 明确关联并保持当前成员共享语义。legacy 聊天附件只给 M1 `start_seq=1` 世代兼容，未知或未绑定记录 fail-closed。App 八个生产上传入口均传同一最终 ID，视频本体与缩略图共锚。108 up/down/backfill/ACL 已在 scratch PostgreSQL 通过；旧客户端发布、最低版本/强制升级和真实阻断仍为 `BLOCKED_EXTERNAL`。退出/移除只能阻止再次签发，已签发 GET URL 最长 600 秒内仍有效。
-9. migration 109 已给 `msg_c2g_timeline` 增加权威 `conv_seq`；worker 拒绝无 seq 的 C2G staging，`/msg/offline` 的 list/count 共用 current open generation 下界，NULL legacy 行 fail-closed。scratch PostgreSQL 已覆盖全量 1→109、legacy 回填、重复执行、稳定 hash、身份冲突、malformed/GID mismatch 和 up/down/up。首次上线使用停止旧节点后的 boot migration 与 cutover marker；109 dirty 在停旧节点前阻断并要求人工恢复。ledger 370 天后且正式消息/staging 均消失才以每轮最多 10×1000 条清理。App 备份仍无 generation/seq 范围 metadata；生产规模 DDL/cutover、room-key epoch token、historical grant 和 A 级 leave/rejoin 仍未完成。
+9. migration 109 已给 `msg_c2g_timeline` 增加权威 `conv_seq`；migration 111 以新编号补齐可重复的 request ledger、recipient snapshot 与 legacy backlog 修复；worker 拒绝无 seq 的 C2G staging，`/msg/offline` 的 list/count 共用 current open generation 下界，NULL legacy 行 fail-closed。`msg_c2g_ds:read_msg/3` 现从 timeline 顶层携带权威 `conv_seq`，Logic 契约测试证明 `/msg/offline` 不丢该字段；App 可信 archive 遇到旧 `_e2ee_failed` 占位时，只有 ID、群、发送者、类型、session 与 ciphertext 全部一致才原子补入密文和可信 seq。scratch PostgreSQL 已覆盖全量 1→112、legacy 回填、重复执行、稳定 hash、身份冲突、malformed/GID mismatch 和 up/down/up。首次上线使用停止旧节点后的 boot migration 与 cutover marker；109/110/111/112 dirty 在停旧节点前阻断并要求人工恢复。ledger 370 天后且正式消息/staging 均消失才以每轮最多 10×1000 条清理。
+10. D3 端点为 `GET /api/v1/e2ee/group_history_grant?gid=<gid>&session_id=<sid>`，只允许 GET。archive 授权 `/2` 联查 current open generation 与 `msg_store_seq`；合法零消息世代返回有限空区间 `end_seq=start_seq-1`，避免新群创建者被误拒绝。historical key grant `/3` 则必须命中 migration 112 的 attested session 和当前同一 generation，并只返回非空的服务端维护 `start_seq/end_seq`。App 在收到 room key 与每次导出前取得该授权，备份 v2 保存 generation/start/end/session/epoch/source；缺失、开放上限、倒置范围或损坏的 `sessions` 结构均 fail-closed。任一导出刷新失败现在会中止整个备份，避免 UI/云上传把 RSA-only 或缺群历史的包报告为成功。恢复先要求独立确认和审计，再依次写 restored marker、普通 grant、inbound key；审计失败时 key 零写入。超过有限 `end_seq` 时只接受同 generation、同 start 且覆盖目标 seq 的在线延展。Megolm 内容还要求外层 `type=C2G` 且 `to/group_id == e2ee.gid`，archive seq 通过专用参数进入解密，不再信任任意 payload 字段名。
+11. C2G staging 事务现在将已提交的 `conv_seq` 与 recipient snapshot 一并返回；DS 不再丢弃该值，普通消息和编辑/撤回 action 的 enqueue 与实时投递信封均注入同一个服务端权威 `conv_seq`。这使 restored grant 的在线延展路径可实际触发，而不必等离线/归档回补。
+12. migration 112 新增 `e2ee_group_session_attestation` 与 `e2ee_group_session_member`。room-key 注册和 PFv3 Megolm 内容接受都在原 C2G sequence-lock staging 事务内执行；session 首条记录 sender UID/device、room-key MsgId、recipient UID snapshot、每位收件人的 generation/start boundary 以及 `start_seq=end_seq=room-key conv_seq`，后续内容只能由同 sender/device、同 recipient/generation 集合单调推进 `end_seq`。未知、跨群、换 sender/device、成员集合或 generation 漂移均拒绝；账本不保存 room-key 明文。grant `/3` 从该账本返回当前 active member 同 generation 的有限区间。服务端 policy violation 回包包含 `gid`；App 对 unattested/stale/conflict/generation mismatch 标记 session stale，下一次发送自动 rotate，不会把 sender-device 缺失、scope/shape/room-key 无效等不可由 rotate 修复的错误误判为 stale。真库生产 `stage/12` 冲突矩阵进一步覆盖同 session 更换 room-key MsgId、未知 session、sender UID/DID 变化、重复消息与非单调 extend，并验证失败事务不会推进 sequence、staging、request ledger 或 attestation。原 session attestation `HIGH / OPEN` 已在当前本地候选关闭。
+13. 2026-09-12 本次 resumed audit 在当前 HEAD 重跑：后端编译 PASS，8 个核心 suite **194/194 PASS**（group_ds 22、e2ee_logic 24、msg_store_repo 53、msg_store_ds 20、msg_c2g_logic 29、e2ee_handler 25、e2ee_handler_capability 8、messaging_logic 13）；`msg_c2g_ds_tests` 为 4 PASS / 3 `BLOCKED_ENV`（缺 `pg_conf`），不计入 194。Flutter scoped analyze 零问题，合并相关回归 **72 PASS / 1 SKIP**，唯一 SKIP 为本机缺 vodozemac 原生测试库。scratch PostgreSQL 同轮完成 migration 1→112、群附件 ACL、群历史边界、D3 session attestation 生命周期、上述生产冲突矩阵和 C2G pipeline，最终 marker residual=0；deploy sequence **51/51 PASS**、migrate gate **6/6 PASS**。migration 112 部署 predicate 已在真实 migration schema 上返回 1，错误 varchar 长度及同名错误 PK/UNIQUE/FK/CHECK 均返回 0；完整列顺序/类型/长度/非空、约束列与表达式及 grant index 会在 expand 后校验，既有环境还会在健康检查后、Nginx 切流前无条件复查。当前固定快照的独立 follow-up 复审为 **APPROVE（0 CRITICAL / 0 HIGH / 0 MEDIUM / 0 LOW）**。这些仍只是本地 B/C 级证据。
 
 当前实现与决策选项的对应关系：
 
@@ -39,10 +43,10 @@ release    NO-GO
 |---|---|---|
 | F2 | 首次加入以新 generation 下界限制 archive | 用户选择已记录；generation/history 与生产 staging 原子 cutover 已实现，定向回归和 scratch 真库矩阵通过；生产规模 cutover 尚未完成 |
 | R2 | 重入新建 generation，离开时关闭旧 generation | 用户选择已记录；generation 生命周期与 staging 顺序锁边界已实现并有定向回归；真实锁竞争/A 级生命周期未测 |
-| D3 | archive ACL 按账号继承 generation；历史 key 应显式恢复 | 分开授权已记录；archive ACL 部分存在，恢复 UI 有显式口令操作，但备份 session 无 generation/epoch/seq 范围，历史 room-key grant 与审计未闭环 |
+| D3 | archive ACL 按账号继承 generation；历史 key 应显式恢复 | 分开授权已记录；有限范围 grant、导出失败中止、独立确认、恢复前审计、restored range gate、实时权威 `conv_seq` 与 migration 112 session attestation 已形成本地实现候选；原 attestation HIGH 已本地关闭，生产 cutover、真实设备生命周期与 A 级攻击复测未完成 |
 | M1 | legacy active member 回填 `start_seq=1`，inactive 不回填 | 用户选择已记录；迁移和 scratch 真库证据存在；grandfathered 全量历史例外是既定迁移代价，不代表发布验收完成 |
 
-仍不能关闭 012：migration 108/109 的 scratch 真库矩阵虽已通过，但生产规模 DDL/cutover 尚未完成；旧客户端群附件 rollout 尚未执行；room-key epoch token、historical grant 和 backup metadata 尚未证明只覆盖获权 epoch；真实成员/设备生命周期和攻击复测均未执行。当前 012 必须写 `LOCAL_SECURITY_GATE_FAIL`，不允许写 `ATTACK_RETEST_PASS` 或发布 `GO`。
+仍不能关闭 012：migration 108/109/111/112 的 scratch 真库矩阵虽已通过，原 session attestation HIGH 也已在本地候选关闭，但生产规模 DDL/cutover 尚未完成；旧客户端群附件/E2EE rollout 尚未执行；真实成员/设备生命周期、离群/重入竞态、旧客户端与旧 session 攻击复测均未执行。当前 012 必须写 `LOCAL_SECURITY_GATE_FAIL`，不允许写 `ATTACK_RETEST_PASS` 或发布 `GO`。
 
 ## 0B. 2026-09-09 历史 Base 重验声明（LT-02-C）
 
@@ -165,7 +169,7 @@ F1/F2/R2 通常只返回一个 interval；R3 必须返回多个不连续 epoch�
 - 并发 leave/admin remove/workspace remove 与 send：若撤销事务先取得顺序，发送必须拒绝且 staging/在线投递/Push/旁路均为 0；若发送先取得顺序，持久化 `conv_seq` 与 recipient snapshot 必须一致，后续撤销关闭在该 seq 之后。测试必须经 `msg_c2g_logic:c2g/3` 真实调用形状进入 staging，不得直接传整数 GID 代替生产参数。
 - history 与 batch sync：`seq=0`、负数、溢出、伪造 `conv_key`、边界前后、空页、多页、重复 cursor 均同源过滤；R3 覆盖多个 epoch、跨 gap cursor 与 `has_more`。
 - 生命周期：首次加入、主动退出、管理员移除、workspace removal、重入；附件 ACL、offline list/count 和 room-key grant 与批准的 F/R/D 一致。必须覆盖旧世代未 ACK room-key → leave → rejoin → offline 不返回、新世代正常返回、NULL legacy 不返回、list/count 一致。
-- 迁移：M 策略、migration 108/109 的 up/down、回填、幂等、并发与失败回滚；不得读取共享或生产数据。附件矩阵必须分别验证聊天附件 anchor generation、legacy M1、未绑定 fail-closed 与独立 `group_file` 当前成员共享。
+- 迁移：M 策略、migration 108/109/111/112 的 up/down、回填、幂等、并发与失败回滚；不得读取共享或生产数据。附件矩阵必须分别验证聊天附件 anchor generation、legacy M1、未绑定 fail-closed 与独立 `group_file` 当前成员共享；session 矩阵必须覆盖 room-key 注册、PFv3 范围推进、成员加入、退出和重入后的旧 session/grant 拒绝。
 
 证据记录：Run ID、三仓 SHA、diff hash、scratch 资源名、禁网状态、迁移版本、命令/退出码、断言数、期望/实际、证据等级、清理结果。上述最多形成 B/C 级证据。
 
@@ -183,6 +187,6 @@ F1/F2/R2 通常只返回一个 interval；R3 必须返回多个不连续 epoch�
 D3 合同：账号按获权 generation 下载 archive ciphertext；historical room key 仅经显式、限范围、可审计的恢复授权
 ```
 
-`F2 / R2 / D3 / M1` 与 D3 分开授权均已有用户书面选择；这关闭产品决策，不关闭实现或验收。当前 D3 仅有账号级 archive ACL，历史 room-key 显式恢复、限范围 grant、审计和 backup epoch metadata 尚未闭环。
+`F2 / R2 / D3 / M1` 与 D3 分开授权均已有用户书面选择；这关闭产品决策，不关闭验收。当前 D3 已有本地显式恢复、有限范围 grant、备份 generation/session/epoch/seq metadata、恢复前审计和范围门，并由 migration 112 的服务端权威 session attestation 约束 room-key 来源、sender device、recipient generation 集合和单调 seq 范围。原 attestation HIGH 已本地关闭；生产 cutover、旧客户端行为和 A 级生命周期仍未闭环。
 
-在 D3 historical grant 实现、migration 108/109 生产规模 DDL/cutover 与 A 级复测、旧客户端 rollout、room-key epoch/backup metadata 等剩余验收完成前：`E2EE-2026-012=LOCAL_SECURITY_GATE_FAIL/DECISION_RECORDED/D3_DETAIL_RECORDED/A_LEVEL_ATTACK_RETEST=BLOCKED`，`RELEASE_POSTURE=NO-GO`。
+在 migration 108/109/111/112 生产规模 DDL/cutover、旧客户端 rollout、真实 D3 换机/离群/重入生命周期与攻击复测等剩余验收完成前：`E2EE-2026-012=LOCAL_SECURITY_GATE_FAIL/DECISION_RECORDED/D3_DETAIL_RECORDED/A_LEVEL_ATTACK_RETEST=BLOCKED`，`RELEASE_POSTURE=NO-GO`。

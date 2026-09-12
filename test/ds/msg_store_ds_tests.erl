@@ -121,7 +121,7 @@ c2g_stage_forwards_required_role_and_snapshot_test_() ->
         msg_store_repo,
         [
             {'stage', 12, fun(_, _, _, _, _, _, 50, 100, _, _, _, 3) ->
-                {ok, 12345, [50, 60]}
+                {ok, 12345, 7, [50, 60]}
             end}
         ],
         fun() ->
@@ -139,7 +139,7 @@ c2g_stage_forwards_required_role_and_snapshot_test_() ->
                 <<"did-50">>,
                 3
             ),
-            ?assertEqual({ok, new, [50, 60]}, Result)
+            ?assertEqual({ok, new, 7, [50, 60]}, Result)
         end
     ).
 
@@ -150,7 +150,7 @@ c2g_action_stage_forwards_original_message_id_test_() ->
             {'stage_action', 13, fun(
                 _, _, _, _, _, _, 50, 100, _, _, _, 1, <<"original-msg">>
             ) ->
-                {ok, 12346, [50, 60]}
+                {ok, 12346, 8, [50, 60]}
             end}
         ],
         fun() ->
@@ -169,7 +169,7 @@ c2g_action_stage_forwards_original_message_id_test_() ->
                 1,
                 <<"original-msg">>
             ),
-            ?assertEqual({ok, new, [50, 60]}, Result)
+            ?assertEqual({ok, new, 8, [50, 60]}, Result)
         end
     ).
 

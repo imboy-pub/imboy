@@ -27,30 +27,30 @@ module_loaded_test_() ->
 
 write_msg_test_() ->
     {setup,
-     fun() ->
-         meck:new(elib_pg, [no_link, passthrough]),
-         meck:new(msg_c2g_repo, [no_link, passthrough]),
-         meck:expect(elib_pg, pluck_value, 5, 0),
-         meck:expect(msg_c2g_repo, write_msg, 8, ok),
-         meck:expect(msg_c2g_repo, write_msg, 9, ok),
-         ok
-     end,
-     fun(_) ->
-         meck:unload(msg_c2g_repo),
-         meck:unload(elib_pg)
-     end,
-     fun(_) ->
-         ?_test(fun() ->
-             NowTs = elib_dt:now(millisecond),
-             MsgId = <<"msg_c2g_123">>,
-             FromUid = 1,
-             GroupId = 100,
-             Payload = #{<<"type">> => <<"text">>, <<"content">> => <<"Hello group">>},
-             PayloadMd5 = elib_hasher:md5(maps:get(<<"content">>, Payload)),
-             Result = msg_c2g_ds:write_msg(NowTs, MsgId, FromUid, GroupId, Payload, PayloadMd5),
-             ?assertEqual(ok, Result)
-         end)
-     end}.
+        fun() ->
+            meck:new(elib_pg, [no_link, passthrough]),
+            meck:new(msg_c2g_repo, [no_link, passthrough]),
+            meck:expect(elib_pg, pluck_value, 5, 0),
+            meck:expect(msg_c2g_repo, write_msg, 8, ok),
+            meck:expect(msg_c2g_repo, write_msg, 9, ok),
+            ok
+        end,
+        fun(_) ->
+            meck:unload(msg_c2g_repo),
+            meck:unload(elib_pg)
+        end,
+        fun(_) ->
+            ?_test(fun() ->
+                NowTs = elib_dt:now(millisecond),
+                MsgId = <<"msg_c2g_123">>,
+                FromUid = 1,
+                GroupId = 100,
+                Payload = #{<<"type">> => <<"text">>, <<"content">> => <<"Hello group">>},
+                PayloadMd5 = elib_hasher:md5(maps:get(<<"content">>, Payload)),
+                Result = msg_c2g_ds:write_msg(NowTs, MsgId, FromUid, GroupId, Payload, PayloadMd5),
+                ?assertEqual(ok, Result)
+            end)
+        end}.
 
 read_msg_test_() ->
     ?TEST_WITH_DB(fun() ->
@@ -75,6 +75,64 @@ read_msg_by_group_test_() ->
             _ -> ?assert(false, "Expected {ok, Messages}")
         end
     end).
+
+read_offline_msg_includes_authoritative_conv_seq_test_() ->
+    TimelineRows = [
+        #{<<"msg_id">> => <<"m1">>, <<"created_at">> => 1, <<"conv_seq">> => 481}
+    ],
+    MsgRows = [
+        #{
+            <<"msg_id">> => <<"m1">>,
+            <<"payload">> => <<"{}">>,
+            <<"e2ee">> => <<"{}">>
+        }
+    ],
+    ?WITH_MECKS(
+        [
+            {msg_c2g_timeline_repo, [
+                {'list_by_uid', 3, fun(7, Columns, 20) ->
+                    ?assertEqual(<<"tl.msg_id, tl.created_at, tl.conv_seq">>, Columns),
+                    {ok, TimelineRows}
+                end}
+            ]},
+            {msg_c2g_repo, [
+                {'list_by_ids', 2, fun([<<"m1">>], _Columns) -> {ok, MsgRows} end}
+            ]}
+        ],
+        fun() ->
+            [Msg] = msg_c2g_ds:read_msg(7, 20, undefined),
+            ?assertEqual(481, maps:get(<<"conv_seq">>, Msg))
+        end
+    ).
+
+read_incremental_offline_msg_includes_authoritative_conv_seq_test_() ->
+    TimelineRows = [
+        #{<<"msg_id">> => <<"m2">>, <<"created_at">> => 2, <<"conv_seq">> => 900}
+    ],
+    MsgRows = [
+        #{
+            <<"msg_id">> => <<"m2">>,
+            <<"payload">> => <<"{}">>,
+            <<"e2ee">> => <<"{}">>
+        }
+    ],
+    ?WITH_MECKS(
+        [
+            {msg_c2g_timeline_repo, [
+                {'list_by_uid_since', 4, fun(7, Columns, 20, _Since) ->
+                    ?assertEqual(<<"tl.msg_id, tl.created_at, tl.conv_seq">>, Columns),
+                    {ok, TimelineRows}
+                end}
+            ]},
+            {msg_c2g_repo, [
+                {'list_by_ids', 2, fun([<<"m2">>], _Columns) -> {ok, MsgRows} end}
+            ]}
+        ],
+        fun() ->
+            [Msg] = msg_c2g_ds:read_msg(7, 20, <<"2026-09-12T00:00:00Z">>),
+            ?assertEqual(900, maps:get(<<"conv_seq">>, Msg))
+        end
+    ).
 
 delete_msg_test_() ->
     ?TEST_WITH_DB(fun() ->

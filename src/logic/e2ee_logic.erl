@@ -5,6 +5,7 @@
 
 -export([user_keys/2]).
 -export([group_member_keys/2]).
+-export([group_history_grant/3]).
 -export([report_device_key/6]).
 -export([pull_key_notifications/3]).
 -export([group_by_uid/1]).
@@ -45,6 +46,35 @@ group_member_keys_payload(Gid, Rows) ->
         <<"gid">> => Gid,
         <<"members">> => group_by_uid(Rows)
     }}.
+
+-spec group_history_grant(integer(), integer(), binary()) ->
+    {ok, map()} | {error, binary(), integer()}.
+group_history_grant(CurrentUid, Gid, SessionId) when
+    is_integer(CurrentUid), is_integer(Gid), is_binary(SessionId)
+->
+    case group_ds:authorize_group_history(CurrentUid, Gid, SessionId) of
+        {ok, #{generation_no := GenerationNo, start_seq := StartSeq, end_seq := EndSeq}} when
+            is_integer(GenerationNo),
+            GenerationNo > 0,
+            is_integer(StartSeq),
+            StartSeq > 0,
+            is_integer(EndSeq),
+            EndSeq >= StartSeq
+        ->
+            {ok, #{
+                <<"gid">> => Gid,
+                <<"session_id">> => SessionId,
+                <<"epoch_id">> => SessionId,
+                <<"generation_no">> => GenerationNo,
+                <<"start_seq">> => StartSeq,
+                <<"end_seq">> => EndSeq
+            }};
+        {error, denied} ->
+            {error, <<"forbidden">>, 403};
+        Other ->
+            _ = ?ERROR_LOG({e2ee_group_history_grant_invalid_result, Gid, CurrentUid, Other}),
+            {error, <<"internal_error">>, 500}
+    end.
 
 %% @doc 上报设备的 E2EE 公钥并通知好友
 %%

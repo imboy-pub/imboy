@@ -39,6 +39,79 @@ is_member_returns_false_when_repo_is_empty_test_() ->
         end
     ).
 
+authorize_group_history_returns_finite_sequence_snapshot_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(Sql, [42, 123]) ->
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"public.msg_store_seq">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"LEFT JOIN">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"COALESCE">>)),
+                ?assertNotEqual(nomatch, binary:match(Sql, <<"mss.seq >= gmg.start_seq">>)),
+                {ok, [
+                    #{
+                        <<"generation_no">> => 2,
+                        <<"start_seq">> => 481,
+                        <<"end_seq">> => 900
+                    }
+                ]}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{generation_no => 2, start_seq => 481, end_seq => 900}},
+                group_ds:authorize_group_history(123, 42)
+            )
+        end
+    ).
+
+authorize_group_history_allows_empty_current_generation_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [
+            {'query', 2, fun(_Sql, [42, 123]) ->
+                {ok, [
+                    #{
+                        <<"generation_no">> => 1,
+                        <<"start_seq">> => 1,
+                        <<"end_seq">> => 0
+                    }
+                ]}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{generation_no => 1, start_seq => 1, end_seq => 0}},
+                group_ds:authorize_group_history(123, 42)
+            )
+        end
+    ).
+
+authorize_group_history_without_finite_snapshot_denies_test_() ->
+    ?WITH_MECK(
+        elib_pg,
+        [{'query', 2, fun(_Sql, [42, 123]) -> {ok, []} end}],
+        fun() ->
+            ?assertEqual({error, denied}, group_ds:authorize_group_history(123, 42))
+        end
+    ).
+
+authorize_group_history_session_delegates_attested_session_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'authorize_group_session_history', 3, fun(123, 42, <<"session-a">>) ->
+                {ok, #{generation_no => 2, start_seq => 500, end_seq => 550}}
+            end}
+        ],
+        fun() ->
+            ?assertEqual(
+                {ok, #{generation_no => 2, start_seq => 500, end_seq => 550}},
+                group_ds:authorize_group_history(123, 42, <<"session-a">>)
+            )
+        end
+    ).
+
 member_uids_reads_repo_and_populates_cache_on_miss_test_() ->
     ?WITH_MECKS(
         [
