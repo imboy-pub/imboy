@@ -1,8 +1,10 @@
 # 墨芽习字：AI 视频回课产品执行与验收计划
 
-> 状态：待用户校对
+> 状态：本地实现已收口，外部验收待完成（2026-09-10 复核：14 PASS / 4 PARTIAL）
 >
 > 日期：2026-09-09
+>
+> 当前基线复核：2026-09-10
 >
 > 产品名称：墨芽习字，简称“墨芽”
 >
@@ -64,12 +66,46 @@
 
 ### 3.2 当前事实
 
-- `imboy` 当前最新迁移文件为 `00000094_moderation_appeal`；执行时必须重新取最新编号，不能预占固定编号。
+- `imboy` 复核时 HEAD 为 `f0a3f4af`（`main`），墨芽迁移已演进到 `00000100_teaching_sentinel_unify`；后续执行仍必须重新取最新编号，不能预占固定编号。
 - 历史迁移 `00000076_workspace_foundation` 明确写过“不引入 Organization 层”，不得修改历史文件；新设计通过新增迁移演进。
-- 当前已有 `workspace`、`workspace_member`、`group.workspace_id`、`group_task`、`group_task_assignment`、`attachment`、`sso_identity` 和 `imboy_llm` provider 注册模式。
-- 当前没有 `organization`、教学档案、监护关系、多次作业提交、AI 回课草稿和老师视频回评表。
-- `moya` 为 `main` 分支的独立 Git 仓库，无 remote；已有 1 个提交 `9644a2e`（仅含 README.md，14 行），另有未跟踪的 `moyalogo_144X144.png`、`moyalogo_256X256.png` 两个头像 PNG；无业务代码。
+- 当前已有 `organization`、`class_profile`、`class_staff`、`learner`、`class_enrollment`、`guardian_learner`、多次提交、AI 草稿、老师回评、教学 ACL、私密附件和账号绑定实现；实现提交与证据见 `342d0e49`、`53bfc2ed`、`b14a36ec` 及后续 R6-R20 收口提交。
+- `moya` 为 `main` 分支的独立 Git 仓库，无 remote；复核时 HEAD 为 `099e9c7`，已有原生 TypeScript 小程序、公共壳、家长/老师页面、真实附件请求链和 108 个单元测试。两个 logo PNG 仍为用户未跟踪资产，不得擅自处理。
+- 2026-09-10 当前 HEAD 复验：`make compile`、11 个墨芽专项 EUnit 套件、OpenAPI/Schema 37 项检查、`npm run check` 和 `npm run build` 均退出 0；`moya` lint 有 2 条 warning，未构成失败。
 - 两个仓库均不得由 Agent 擅自设置 Git author、创建远端、提交、推送或发布。
+
+### 3.3 `.worktrees` 归属与隔离
+
+`/Users/leeyi/project/imboy.pub/.worktrees` 下共有 20 个 Git 工作树（`imboy` 9 个、`imboyapp` 7 个、`imboyadmin` 4 个），但没有任何一个属于 `moya`：
+
+| 容器 | 子仓数量 | Git 归属 | 当前用途/状态 |
+|---|---:|---|---|
+| `A1` | 2 | `imboyapp`、`imboyadmin` | 旧 detached、clean |
+| `A2` | 1 | `imboy` | Agent Hub 证据/脚本 dirty |
+| `A3` | 2 | `imboy`、`imboyapp` | E2EE 文档 dirty；App clean |
+| `A4` | 2 | `imboy`、`imboyapp` | C2C/E2EE 测试与 AI 明文门禁 dirty |
+| `A6` | 1 | `imboy` | 认证会话撤销 dirty，拟用迁移 `00000101` |
+| `a5` | 1 | `imboy` | 群历史边界 dirty，拟用迁移 `00000101` |
+| `integration` | 3 | `imboy`、`imboyapp`、`imboyadmin` | 非墨芽集成候选；后端拟用迁移 `00000101/102` |
+| `lt01` | 3 | `imboy`、`imboyapp`、`imboyadmin` | 旧长程任务快照；后端 Agent Hub golden-flow dirty，App/Admin clean |
+| `lt01-refresh` | 3 | `imboy`、`imboyapp`、`imboyadmin` | 刷新后的长程任务快照；后端 Agent Hub golden-flow dirty，App/Admin clean |
+| `lt02` | 2 | `imboy`、`imboyapp` | E2EE 审计文档 dirty；App clean |
+
+这些工作树是其他 IMBoy 长程任务资产，不是本计划输入、实现或验收证据。墨芽续跑不得进入、修改、合并、提交、清理或删除这些目录，也不得占用其迁移号；主仓需要新迁移时，先由 Coordinator 重新盘点全部 worktree 后分配。当前 Git worktree 注册路径已指向 `.worktrees`，但路径迁移成功不代表内容已合并、可删除或可作为当前基线；相关集成/清理须另立任务并取得用户授权。
+
+### 3.4 2026-09-10 完成度判定
+
+| Step | 当前状态 | 判定 |
+|---|---|---|
+| 1-11 | `PASS` | 本地产物、契约、迁移、ACL、私密附件、AI 人工降级与专项测试已存在并复验 |
+| 12 | `PARTIAL` | 命令行质量门和构建通过；微信开发者工具导入尚无证据 |
+| 13 | `PASS` | 登录/请求/上下文/身份切换与 TSID 本地测试通过 |
+| 14 | `PARTIAL` | 家长端和附件链本地测试通过；`PARENT-03` 真机未验 |
+| 15 | `PARTIAL` | 老师端和无 AI 人工回评本地测试通过；`TEACHER-03` 真机未验 |
+| 16 | `PASS` | 历史、绑定/解绑和审计本地测试通过 |
+| 17 | `PARTIAL` | 当前本地编译、专项 EUnit、契约和 Moya 四门通过；微信登录、活 Garage 真传、跨仓真实联调和 `DEVICE-01` 未完成 |
+| 18 | `PASS` | 试点材料已准备，但当前 Go/No-Go 结论仍为 `NO-GO`，不得自行启动试点 |
+
+当前最高证据等级仍是 `LOCAL PASS`。`DEVICE PASS`、`PILOT PASS` 和 `RELEASE PASS` 均未达到。
 
 ## 4. MVP 范围
 
@@ -451,6 +487,8 @@ Step 2 + Step 17 -> Step 18  试点包与 Go/No-Go
 | DOC-EVIDENCE | `imboy/docs/plans/` 下本计划的证据目录或后续验收报告 | 不改业务代码 |
 
 每个 Agent 开工前必须记录两个仓库的 HEAD 和 dirty 状态，只改任务声明的 owned paths；发现其他 Agent 新改动时与其兼容，不 reset、clean、stash 或覆盖。
+
+`.worktrees/**` 不属于本计划所有权；即使其中代码与教学模块发生文本重叠，也必须视为外部并行工作，不得由墨芽 Agent 合并或清理。
 
 ## Step 1 — 冻结基线、决策台账与证据目录
 
@@ -891,20 +929,22 @@ Step 2 + Step 17 -> Step 18  试点包与 Go/No-Go
 
 ## 14. 最终交付清单
 
-- [ ] 当前决策台账与已废弃决策均已标记。
-- [ ] 微信现行规则核验、主体方案和儿童隐私门禁已完成。
-- [ ] 家长/老师同小程序 UX、状态和品牌资产已完成。
-- [ ] Organization→Workspace→Group 与 learner 机构归属已实现并有迁移证据。
-- [ ] 多次 submission、私密附件、AI 草稿和老师 published review 已实现。
-- [ ] IMBoy 微信登录、教学 ACL、API 和 AI Worker 已通过本地测试。
-- [ ] 独立 `moya` 仓完成家长/老师核心流程和真机验证。
-- [ ] 学员未来账号绑定不迁移、不复制历史数据。
-- [ ] 跨租户、跨 learner、URL 泄漏和角色混淆测试全部 fail closed。
-- [ ] 单班试点包、基线指标、删除演练和 Go/No-Go 报告已准备。
-- [ ] 未经人工确认，没有执行任何外部、生产、发布、联系或真实儿童数据动作。
+- [x] 当前决策台账与已废弃决策均已标记。
+- [x] 微信规则核验、主体方案和儿童隐私门禁材料已完成；正式采用仍需人工/专业复核。
+- [x] 家长/老师同小程序 UX、状态和品牌资产候选已完成。
+- [x] Organization→Workspace→Group 与 learner 机构归属已实现并有迁移证据。
+- [x] 多次 submission、私密附件、AI 草稿和老师 published review 已实现。
+- [x] IMBoy 微信登录映射、教学 ACL、API 和 AI Worker 已通过本地测试。
+- [ ] 独立 `moya` 仓已完成家长/老师本地产物；微信开发者工具和真机验证未完成。
+- [x] 学员未来账号绑定不迁移、不复制历史数据。
+- [x] 跨租户、跨 learner、URL 泄漏和角色混淆已有本地 fail-closed 证据；真实环境仍归 Step 17。
+- [x] 单班试点包、基线指标、删除演练和 Go/No-Go 报告已准备，当前结论为 `NO-GO`。
+- [x] 未经人工确认，没有执行任何外部、生产、发布、联系或真实儿童数据动作。
 
 ## 15. 当前推荐启动顺序
 
-先执行 Step 1。随后并行启动 Step 2、Step 3、Step 4、Step 5 和 Step 12；其中 Step 5-7 由同一个数据库 owner 串行。API 契约和公共壳冻结后，家长端 Step 14 与老师端 Step 15 可由两个 Agent 分文件并行。所有自动化通过后再进入真机和人工试点门禁。
+不得再从 Step 1-18 整批重跑。续跑先在当前 HEAD 上复核 Acceptance 台账，然后只处理可复现的本地缺口：Step 17 的跨仓契约/HTTP/合成附件闭环、状态口径和回归证据。Step 12、14、15、17 的真机或微信平台子项在没有用户明确授权和真实环境时保持 `PARTIAL/BLOCKED_EXTERNAL`。
+
+续跑并发上限为 6 个活跃 Agent（含 Coordinator）；`.worktrees/**` 全部排除。数据库 Agent 不得创建新迁移，除非当前主仓存在可复现的数据库缺陷、Coordinator 完成全 worktree 迁移号盘点并授予唯一编号。
 
 不建议现在同时做飞书/钉钉，不建议先建完整 SaaS 计费系统，也不建议把老师工作流放回 IMBoy App。当前最小而不堵死未来的组合是：一个墨芽小程序、一个 IMBoy 后端、Organization 多 Workspace 数据边界、一个真实班级试点。

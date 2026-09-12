@@ -1,5 +1,9 @@
 # Plan-Orchestrate Result
 
+> **历史初始编排，禁止整批重跑。** 2026-09-10 当前实现已进入验收收口；续跑应读取权威计划 §3.3、§3.4 和 §15，先复核当前 HEAD，再只处理未闭合 Acceptance。
+>
+> `/Users/leeyi/project/imboy.pub/.worktrees` 中 20 个工作树均属于 `imboy`、`imboyapp` 或 `imboyadmin`，没有 `moya` 工作树；它们不属于墨芽计划所有权，禁止修改、合并、清理或作为墨芽完成证据。
+
 **Plan**: `docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md`
 **Lang**: `unknown`
 **ECC mode**: `plugin`
@@ -212,6 +216,8 @@
 ```
 
 ## Batch execution
+
+> **不要执行以下整批命令。** 本节保留为 2026-09-09 初始编排历史，不能代表当前待办。新的 ZCode 任务必须使用当前源码续跑合同，并把 Step 12、14、15、17 的外部验收缺口保持为 `PARTIAL/BLOCKED_EXTERNAL`。
 
 ```bash
 /ecc:orchestrate custom "ecc:doc-updater,ecc:code-reviewer" "[Plan: docs/plans/2026-09-09-moya-calligraphy-ai-review-execution-plan.md#step-1] 在 /Users/leeyi/project/imboy.pub/imboy 与独立仓 /Users/leeyi/project/imboy.pub/moya 做只读基线审计，记录 Git root、HEAD、branch、remote、dirty state、最新迁移和空仓状态；把 D-01 至 D-14、Organization→Workspace→Group、learner.organization_id 及旧草案冲突写入当前决策台账，建立 STEP-XX 证据命名并确保无 PII；Acceptance: BASE-01 两个 Git root 有可复核证据；BASE-02 当前真源层级正确；BASE-03 无提交、推送、远端、author 或生产修改；Out of scope: 任何数据库、API、小程序业务代码和外部平台修改。"
