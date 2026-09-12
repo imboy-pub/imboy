@@ -103,6 +103,18 @@
                 api_key => {env, <<"BAILIAN_API_KEY">>},
                 %% qwen3.7-flash 已在该网关 models 列表确认（2026-08-08）
                 model => {env, <<"BAILIAN_MODEL">>, <<"qwen3.7-flash">>}
+            },
+            %% 智谱原生多模态（输入模态：图片/视频/文件/文本）——墨芽 AI 回课视频理解通路。
+            %% 密钥 export BIGMODEL_API_KEY=<id.secret>；模型 export BIGMODEL_MODEL 覆盖。
+            %% ⚠️ glm-5.3-flash 始终思考，勿配 thinking 开关：disabled/low/high/max
+            %% 一律被 400 拒绝（「该模型始终思考，不支持关闭思考」）；思考 token 计入输出计费。
+            #{
+                name => <<"bigmodel">>,
+                module => imboy_llm_openai,
+                base_url => <<"https://open.bigmodel.cn/api/paas/v4">>,
+                api_key => {env, <<"BIGMODEL_API_KEY">>},
+                model => {env, <<"BIGMODEL_MODEL">>, <<"glm-5.3-flash">>},
+                vision => true
             }
         ]},
 

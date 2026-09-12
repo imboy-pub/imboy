@@ -11,10 +11,12 @@
  *   node imboy/scripts/teaching_ai_glm_probe.mjs [视频URL]
  * 视频缺省用智谱官方示例（链路验证）；书法实测请传练习视频公网 URL。
  *
- * 模型切换（对比效果用）：export BIGMODEL_MODEL=<模型名>，缺省 glm-4.6v-flash，
- * 与后端 sys.local.config bigmodel 条目 {env, <<"BIGMODEL_MODEL">>, ...} 同源，
- * 免费视觉理解模型如 glm-4.1v-thinking-flash。注意 CogVideoX-Flash 是
- * 视频生成模型（异步生成接口，非 chat/completions），不能用于本脚本/回课理解。
+ * 模型切换（对比效果用）：export BIGMODEL_MODEL=<模型名>，缺省 glm-5.3-flash，
+ * 与后端 sys.local.config bigmodel 条目 {env, <<"BIGMODEL_MODEL">>, ...} 同源。
+ * glm-4.6v-flash 免费但实测 100% 返回 1305「访问量过大」，已弃用；
+ * 免费备选 glm-4.1v-thinking-flash（思维链内联在 content 里，需脱壳）。
+ * 注意 CogVideoX-Flash/-3 是视频生成模型（异步生成接口，非 chat/completions），
+ * glm-5.3-flash 也【不能】生成视频，二者均不能用于本脚本/回课理解。
  */
 import process from "node:process";
 
@@ -26,7 +28,7 @@ if (!KEY) {
 
 const VIDEO_URL =
   process.argv[2] ?? "https://cdn.bigmodel.cn/agent-demos/lark/113123.mov";
-const MODEL = process.env.BIGMODEL_MODEL ?? "glm-4.6v-flash";
+const MODEL = process.env.BIGMODEL_MODEL ?? "glm-5.3-flash";
 const ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
 const task = {

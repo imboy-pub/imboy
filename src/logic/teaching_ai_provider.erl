@@ -144,7 +144,7 @@ decode_response(Resp) ->
         Bin when is_binary(Bin), Bin =/= <<>> ->
             case
                 try
-                    jsone:decode(Bin, [{object_format, map}])
+                    jsone:decode(json_body(Bin), [{object_format, map}])
                 catch
                     _:_ -> bad_json
                 end
@@ -156,6 +156,84 @@ decode_response(Resp) ->
             end;
         _ ->
             {error, bad_output}
+    end.
+
+%% ---- 模型输出规范化 ----
+%% 各模型用自己的包装把 JSON 裹起来，解析前先脱壳：思维链块（推理型模型内联输出）、
+%% 智谱结果框标记、Markdown 代码围栏。脱壳后仍非裸对象时，再退一步取最外层 {...}
+%%（前置一句「分析如下：」之类）。只脱壳、不修补内容——内容本身畸形仍交解码器判失败。
+
+-spec json_body(binary()) -> binary().
+json_body(Bin) ->
+    Trimmed = string:trim(unwrap(Bin)),
+    case is_object(Trimmed) of
+        true -> Trimmed;
+        false -> outermost_object(Trimmed)
+    end.
+
+-spec unwrap(binary()) -> binary().
+unwrap(Bin) ->
+    Unfenced = strip_fence(strip_think(Bin)),
+    binary:replace(
+        binary:replace(Unfenced, <<"<|begin_of_box|>">>, <<>>, [global]),
+        <<"<|end_of_box|>">>,
+        <<>>,
+        [global]
+    ).
+
+%% 思维链：有闭合标签时只保留最后一个 </think> 之后（可能多段）；无闭合说明被
+%% max_tokens 截断，此时 think 之后的内容一并丢弃。
+-spec strip_think(binary()) -> binary().
+strip_think(Bin) ->
+    case binary:split(Bin, <<"</think>">>, [global]) of
+        [_] ->
+            case binary:split(Bin, <<"<think>">>) of
+                [Before, _Rest] -> Before;
+                [_] -> Bin
+            end;
+        Parts ->
+            lists:last(Parts)
+    end.
+
+-spec strip_fence(binary()) -> binary().
+strip_fence(Bin) ->
+    Trimmed = string:trim(Bin),
+    case Trimmed of
+        <<"```", Rest/binary>> ->
+            case binary:split(Rest, <<"\n">>) of
+                [_Lang, Body] -> strip_fence(Body);
+                _ -> Trimmed
+            end;
+        _ ->
+            case binary:matches(Trimmed, <<"```">>) of
+                [] ->
+                    Trimmed;
+                Matches ->
+                    {Pos, _} = lists:last(Matches),
+                    binary:part(Trimmed, 0, Pos)
+            end
+    end.
+
+-spec is_object(binary()) -> boolean().
+is_object(<<"{", Rest/binary>>) ->
+    case binary:last(Rest) of
+        $} -> true;
+        _ -> false
+    end;
+is_object(_) ->
+    false.
+
+-spec outermost_object(binary()) -> binary().
+outermost_object(Bin) ->
+    case {binary:match(Bin, <<"{">>), binary:matches(Bin, <<"}">>)} of
+        {{Start, _}, [_ | _] = Matches} ->
+            {End, _} = lists:last(Matches),
+            case End > Start of
+                true -> binary:part(Bin, Start, End - Start + 1);
+                false -> Bin
+            end;
+        _ ->
+            Bin
     end.
 
 -spec build_messages(map(), map()) -> [map()].

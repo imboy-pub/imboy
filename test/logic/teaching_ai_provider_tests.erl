@@ -325,6 +325,88 @@ ai01_empty_content_test_() ->
     end).
 
 %%%===================================================================
+%%% 模型输出规范化：各模型用不同包装裹 JSON，脱壳后必须可用
+%%%===================================================================
+
+%% 思维链块 + 裸 JSON（glm-4.1v-thinking-flash 内联 <think>）
+ai01_think_block_wrapped_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Content = <<"<think>先看整体，再看逐帧笔锋</think>\n"/utf8, (jsone:encode(valid_result()))/binary>>,
+        _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
+        try
+            {ok, W} = teaching_ai_provider:analyze_video(meta(), attachment()),
+            ?assertEqual(whitelist_keys(), lists:sort(maps:keys(W)))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 结果框标记包裹（智谱 <|begin_of_box|>…<|end_of_box|>）
+ai01_box_marker_wrapped_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Content = <<"<|begin_of_box|>", (jsone:encode(valid_result()))/binary, "<|end_of_box|>">>,
+        _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
+        try
+            ?assertMatch({ok, _}, teaching_ai_provider:analyze_video(meta(), attachment()))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% Markdown 代码围栏（glm-4.6v-flashx 输出 ```json … ```）
+ai01_fenced_json_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Content = <<"```json\n", (jsone:encode(valid_result()))/binary, "\n```">>,
+        _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
+        try
+            ?assertMatch({ok, _}, teaching_ai_provider:analyze_video(meta(), attachment()))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 前置解释文字 + JSON：取最外层 {...}
+ai01_prose_prefixed_json_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Content = <<"分析如下：\n"/utf8, (jsone:encode(valid_result()))/binary>>,
+        _ = put(fake_chat, {ok, #{<<"content">> => Content}}),
+        try
+            ?assertMatch({ok, _}, teaching_ai_provider:analyze_video(meta(), attachment()))
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 脱壳只去包装、不修补内容：think 被 max_tokens 截断（无 JSON）→ 仍 bad_output
+ai01_think_truncated_no_json_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        _ = put(fake_chat, {ok, #{<<"content">> => <<"<think>用户现在需要分析这段视频，先看"/utf8>>}}),
+        try
+            ?assertEqual(
+                {error, bad_output},
+                teaching_ai_provider:analyze_video(meta(), attachment())
+            )
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%% 脱壳不救 Schema：包装里是合法 JSON 但缺必填键 → 仍 bad_output
+ai01_wrapped_bad_schema_test_() ->
+    ?WITH_MECKS(provider_mocks(), fun() ->
+        Inner = jsone:encode(#{<<"positive_point">> => <<"只有一项"/utf8>>}),
+        _ = put(fake_chat, {ok, #{<<"content">> => <<"<think>想完了</think>", Inner/binary>>}}),
+        try
+            ?assertEqual(
+                {error, bad_output},
+                teaching_ai_provider:analyze_video(meta(), attachment())
+            )
+        after
+            erase(fake_chat)
+        end
+    end).
+
+%%%===================================================================
 %%% validate_result 直测（Schema 边界，无 meck）
 %%%===================================================================
 
