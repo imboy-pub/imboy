@@ -3413,6 +3413,12 @@
         "static": false
       },
       {
+        "action": "history_unread_count",
+        "handler": "teaching_assignment_handler",
+        "path": "/api/v1/teaching/learners/:id/history/unread-count",
+        "static": false
+      },
+      {
         "action": "unbind",
         "handler": "teaching_learner_bind_handler",
         "path": "/api/v1/teaching/learners/:id/unbind",
