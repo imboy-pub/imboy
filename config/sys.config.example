@@ -272,8 +272,19 @@
         %% 注意：code:priv_dir(imboy) 已包含 /priv，所以只需 $PROJECT_DIR/migrations
         {scripts_path, "$PROJECT_DIR/migrations"},
 
-        %% 是否在启动时自动加载额外配置文件
-        {auto_load_configs, true},
+        %% OPS-04：此处原有 {auto_load_configs, true} —— 已被删除（死键）。
+        %% 它属于「启动时合并额外配置文件」那套加载器（配合 {config_files,
+        %% [{cron_config,"config/cron.config"}]}），该加载器已在 T13
+        %% (fc687c44) 作为死代码移除：`git log -S auto_load_configs -- src/`
+        %% 为空，即 imboy 代码**从未**读过它，config/cron.config 里的
+        %% crontab_jobs 至今无任何模块读取。
+        %% 危险之处在于它会被误读成「配置合并生效中」——周期作业的真源因此
+        %% 长期被误认。现在周期作业只有唯一真源：本文件顶层的
+        %% {ecron,[{local_jobs,[...]}]} 段（见下方注释）。逐机运行配置
+        %% （config/sys.local.config / sys.pro.config / sys.dev.config，均被
+        %% .gitignore 忽略）不会从本模板同步，故用
+        %% `bash scripts/check_cron_config.sh` 校验它们与模板一致。
+        %%
         %% 附件孤儿清理保留天数（ecron attachment_orphan_cleanup 用，下限 7，IMBOY_* 可覆盖）
         {attachment_orphan_cleanup_age_days, 30},
         %% #20：presign 签发后从未 confirm 的对象保留时长（小时，下限 2）。

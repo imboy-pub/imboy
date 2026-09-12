@@ -259,6 +259,14 @@ security-gate:
 migrations-check: ## 校验 priv/migrations/ 命名与 up-down 配对（ADR-0002）
 	@bash scripts/check_migrations.sh
 
+# 定时作业门禁（ecron）：模板真源非空 + 无 {jobs,...} 回归 + crontab 规格合法
+# + MFA 目标模块/入口真实存在（改名或删模块的连带检查）；逐机运行配置
+# （sys.local/pro/dev，均被 .gitignore）与模板的漂移默认只告警——
+# 发布前自查用 `bash scripts/check_cron_config.sh --strict`。
+.PHONY: cron-check
+cron-check: ## 校验 ecron 定时作业配置（模板真源硬门 + 逐机漂移告警）
+	@bash scripts/check_cron_config.sh
+
 # P3-C2 API 契约门禁（Golden Gates §2.3 C2 / §2.2 契约变更流程）
 # 真源：src/imboy_router.erl + priv/migrations CHECK 约束 + include/error_code.hrl
 # 合法变更：改后端真源后，同一 PR 内 make contract-export 并提交 .contract/api_contract.json
