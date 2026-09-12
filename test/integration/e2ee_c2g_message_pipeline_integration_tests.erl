@@ -96,12 +96,15 @@ test_raw_stage_multi_recipient_survives_pipeline() ->
     Msg2 = jsone:encode(Envelope, [native_utf8]),
     Now = elib_dt:now(),
 
-    ?assertMatch(
-        {ok, _},
+    %% ef548a8b 起 c2g 的 stage 契约改为「传群标识（整数），收件人在事务内由
+    %% authorized_c2g_recipients 快照算出」（传列表 → {error, c2g_group_id_required}），
+    %% 且成功返回三元组 {ok, new, Recipients}。多接收者口径不变：夹具已把 Member
+    %% 加进群，收件人快照与 timeline 都应含两人。
+    {ok, new, Recipients} =
         msg_store_ds:stage(
-            <<"c2g">>, MsgId, <<"text">>, <<"send">>, E2EE, Msg2, Owner, [Owner, Member], Now, Now
-        )
-    ),
+            <<"c2g">>, MsgId, <<"text">>, <<"send">>, E2EE, Msg2, Owner, Gid, Now, Now
+        ),
+    ?assertEqual(lists:sort([Owner, Member]), lists:sort(Recipients)),
 
     {ok, Row} = wait_for_final_row(MsgId),
     E2EEDecoded = jsone:decode(maps:get(<<"e2ee">>, Row), [{object_format, map}]),
