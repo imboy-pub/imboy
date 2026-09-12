@@ -25,6 +25,7 @@ ifneq ($(IMBOYENV),)
   endif
 endif
 RELX_CONFIG = $(CURDIR)/$(_RELX_SRC)
+
 $(shell mkdir -p config && cp $(_SYS_RUNTIME_SRC) config/sys.runtime.config)
 
 include include/deps.mk
