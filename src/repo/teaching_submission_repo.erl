@@ -19,7 +19,8 @@
 -export([lock_assignment_tx/2, next_attempt_tx/2, create_idempotent_tx/2]).
 -export([insert_assets_tx/4, mark_submitted_by_tx/3, enqueue_ai_draft_tx/2]).
 -export([withdraw_tx/3, lock_submission_tx/2, find_tx/2, assets_tx/2, find/1, assets/1]).
--export([assignments_for_learner/3, queue/4, history/3, history_unread_count/2]).
+-export([assignments_for_learner/3, assignments_for_learner_tx/4, queue/4, history/3]).
+-export([history_unread_count/2]).
 -export([
     submission_for_asset_path/1,
     submission_for_asset_path_tx/2,
@@ -312,10 +313,35 @@ assets_run(Exec, SubmissionId) ->
 %%% 列表查询（家长作业列表 / 老师队列 / 学员历史）
 %%%===================================================================
 
-%% @doc 家长视角作业列表：教学 assignment + 最新 submission 概要 + 推导状态
+%% @doc 家长视角作业列表：教学 assignment + 最新 submission 概要 + 推导状态 + 作品预览句柄
+%%
+%% latest_asset（作品预览，moya 家长首页缩略图）：取**最新 submission** 的首张
+%% final_photo，ORDER BY (sort_order, id) 与 assets_run/2 同口径。只给 object_key
+%% 句柄——签名 URL 由客户端按需调 /api/v1/attachment/view_url 换取（MEDIA-03：
+%% 本层不持久化也不预签 URL，列表 size 份签名会签出未渲染的浪费）。
+%% 不回退 practice_video：视频非图片（首帧 vs 静图），取不到即 NULL，由客户端
+%% 渲染「无作品图」态。att.status >= 0 与读授权路径 asset_path_run/2 同口径——
+%% 凡 view_url 会放行的对象才出现在预览里。
 -spec assignments_for_learner(integer(), integer(), integer()) ->
     {ok, [map()], integer()} | {error, term()}.
 assignments_for_learner(LearnerId, Page, Size) ->
+    assignments_for_learner_run(fun elib_pg:query/2, LearnerId, Page, Size).
+
+%% @doc 事务内版本（集成测试直连）
+-spec assignments_for_learner_tx(any(), integer(), integer(), integer()) ->
+    {ok, [map()], integer()} | {error, term()}.
+assignments_for_learner_tx(Conn, LearnerId, Page, Size) ->
+    assignments_for_learner_run(
+        fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, LearnerId, Page, Size
+    ).
+
+-spec assignments_for_learner_run(
+    fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}),
+    integer(),
+    integer(),
+    integer()
+) -> {ok, [map()], integer()} | {error, term()}.
+assignments_for_learner_run(Exec, LearnerId, Page, Size) ->
     Offset = (Page - 1) * Size,
     Sql =
         <<
@@ -325,6 +351,7 @@ assignments_for_learner(LearnerId, Page, Size) ->
             "g.id AS group_id, g.title AS group_title, "
             "s.id AS latest_submission_id, s.attempt_no AS latest_attempt_no, "
             "s.status AS latest_submission_status, "
+            "la.object_key AS latest_asset_key, la.kind AS latest_asset_kind, "
             "(SELECT count(*) FROM ",
             (tb(homework_submission))/binary,
             "  hs2 WHERE hs2.assignment_id = a.id) AS submission_count, "
@@ -348,12 +375,21 @@ assignments_for_learner(LearnerId, Page, Size) ->
             "  SELECT id, attempt_no, status FROM ",
             (tb(homework_submission))/binary,
             "  WHERE assignment_id = a.id ORDER BY attempt_no DESC LIMIT 1) s ON true "
+            "LEFT JOIN LATERAL ( "
+            "  SELECT att.path AS object_key, sa.kind AS kind FROM ",
+            (tb(submission_asset))/binary,
+            " sa JOIN ",
+            (tb(attachment))/binary,
+            " att ON att.id = sa.attachment_id "
+            "  WHERE sa.submission_id = s.id AND sa.kind = 'final_photo' "
+            "    AND att.status >= 0 "
+            "  ORDER BY sa.sort_order, sa.id LIMIT 1) la ON true "
             "WHERE a.learner_id = $1 "
             "ORDER BY gt.created_at DESC, a.id DESC LIMIT $2 OFFSET $3"
         >>,
-    case elib_pg:query(Sql, [LearnerId, Size, Offset]) of
+    case Exec(Sql, [LearnerId, Size, Offset]) of
         {ok, Rows} ->
-            Total = count_assignments(LearnerId),
+            Total = count_assignments_run(Exec, LearnerId),
             {ok, Rows, Total};
         {error, Reason} ->
             {error, Reason}
@@ -514,10 +550,16 @@ digest_check(Row, _Digest, AttemptNo) ->
 
 -spec count_assignments(integer()) -> integer().
 count_assignments(LearnerId) ->
+    count_assignments_run(fun elib_pg:query/2, LearnerId).
+
+-spec count_assignments_run(
+    fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}), integer()
+) -> integer().
+count_assignments_run(Exec, LearnerId) ->
     Sql =
         <<"SELECT count(*) AS c FROM ", (tb(group_task_assignment))/binary,
             " WHERE learner_id = $1">>,
-    case elib_pg:query(Sql, [LearnerId]) of
+    case Exec(Sql, [LearnerId]) of
         {ok, [#{<<"c">> := C} | _]} -> C;
         _ -> 0
     end.

@@ -14,7 +14,7 @@
 -include_lib("kernel/include/logger.hrl").
 -ifdef(TEST).
 %% 响应 payload 组装为纯函数，导出供 eunit 直接验收契约字段
--export([submission_created/6]).
+-export([submission_created/6, assignment_summary/1]).
 -endif.
 
 -include("log.hrl").
@@ -302,9 +302,26 @@ assignment_summary(R) ->
         <<"status">> => derived_status(R),
         <<"latest_submission">> => nullable_tsid(maps:get(<<"latest_submission_id">>, R, null)),
         <<"latest_attempt_no">> => maps:get(<<"latest_attempt_no">>, R, null),
+        <<"latest_asset">> => latest_asset(R),
         <<"has_published_review">> => maps:get(<<"has_published">>, R, false) =:= true,
         <<"rework_required">> => false
     }.
+
+%% @doc 作品预览句柄（moya 家长首页缩略图）：最新提交的首张 final_photo。
+%% 只给 object_key——客户端持句柄按需调 /api/v1/attachment/view_url 换签名 URL
+%% （MEDIA-03：后端既不持久化也不预签 URL）。无提交 / 最新提交无 final_photo
+%% → null（不回退 practice_video：视频非图片，渲染语义不同）。
+-spec latest_asset(map()) -> map() | null.
+latest_asset(R) ->
+    case maps:get(<<"latest_asset_key">>, R, null) of
+        Key when is_binary(Key), Key =/= <<>> ->
+            #{
+                <<"object_key">> => Key,
+                <<"kind">> => maps:get(<<"latest_asset_kind">>, R, <<"final_photo">>)
+            };
+        _ ->
+            null
+    end.
 
 -spec assignment_detail(map()) -> map().
 assignment_detail(Scope) ->
