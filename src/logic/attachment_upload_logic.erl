@@ -32,6 +32,9 @@
         | forbidden
         | invalid_file_type
         | file_too_large
+        %% 服务端故障标签：handler 映射 5xx，与 4xx 业务拒绝区分
+        | {db_error, term()}
+        | {storage_error, term()}
         | term()}.
 upload_multipart(Uid, ObjectKey, MimeType, FilePath, Size) ->
     case elib_oss:owner_of_key(ObjectKey) of
@@ -45,7 +48,9 @@ upload_multipart(Uid, ObjectKey, MimeType, FilePath, Size) ->
                     %% 未 presign 登记过：object_key 不是本服务签发的，拒绝
                     {error, object_not_found};
                 {error, R} ->
-                    {error, R}
+                    %% 非 not_found 的 pending 查询失败 = DB 故障，打标签供
+                    %% handler 区分 5xx（避免与业务拒绝混为 400）
+                    {error, {db_error, R}}
             end;
         {ok, _OtherUid} ->
             {error, forbidden_key};
@@ -71,13 +76,14 @@ guard_and_put(_Uid, ObjectKey, MimeType, FilePath, Size, Bucket, Scope) ->
                                 <<"mime_type">> => MimeType,
                                 <<"size">> => Size
                             }};
-                        {error, Reason} = E ->
+                        {error, Reason} ->
                             ?ERROR_LOG([
                                 "attachment_upload_logic put_object_from_file failed: ",
                                 ObjectKey,
                                 Reason
                             ]),
-                            E
+                            %% Garage 写失败 = 服务端存储故障，打标签映射 5xx
+                            {error, {storage_error, Reason}}
                     end
             end;
         {error, _} = E ->

@@ -225,8 +225,9 @@ upload_rejects_oversize_test_() ->
         end
     ).
 
-%% Garage 写失败原样透传（客户端可重传，对象幂等覆盖）
-upload_garage_error_passthrough_test_() ->
+%% Garage 写失败 → {storage_error,_} 标签（handler 映射 5xx；客户端可重传，
+%% 对象幂等覆盖）
+upload_garage_error_tagged_storage_error_test_() ->
     ?WITH_MECKS(
         [
             {attach_pending_repo, [{'get_by_key', 1, pending_ok()}]},
@@ -239,10 +240,33 @@ upload_garage_error_passthrough_test_() ->
         ],
         fun() ->
             ?assertEqual(
-                {error, {http_status, 500, <<"boom">>}},
+                {error, {storage_error, {http_status, 500, <<"boom">>}}},
                 attachment_upload_logic:upload_multipart(
                     7, ?KEY, <<"image/jpeg">>, "/tmp/fake.part", 10
                 )
             )
+        end
+    ).
+
+%% pending 查询 DB 故障（非 not_found）→ {db_error,_} 标签，不落 4xx
+upload_db_fault_tagged_test_() ->
+    ?WITH_MECKS(
+        [
+            {attach_pending_repo, [
+                {'get_by_key', 1, fun(_K) -> {error, pool_down} end}
+            ]},
+            {elib_oss, [
+                {'max_file_size', 0, fun() -> 100 end},
+                {'put_object_from_file', 4, fun(_B, _K, _P, _M) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, {db_error, pool_down}},
+                attachment_upload_logic:upload_multipart(
+                    7, ?KEY, <<"image/jpeg">>, "/tmp/fake.part", 10
+                )
+            ),
+            ?assertEqual(0, meck:num_calls(elib_oss, put_object_from_file, 4))
         end
     ).
