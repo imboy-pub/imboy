@@ -7,6 +7,7 @@
 % GET  /api/v1/teaching/submissions/:id            提交详情（视角感知）
 % POST /api/v1/teaching/submissions/:id/withdraw    撤回
 % GET  /api/v1/teaching/learners/:id/history        学员历史
+% GET  /api/v1/teaching/learners/:id/history/unread-count  未读点评数（家长角标）
 %%%
 
 -behavior(cowboy_rest).
@@ -35,6 +36,7 @@ handle_action(create_submission, Req, State) -> create_submission(Req, State);
 handle_action(submission_detail, Req, State) -> submission_detail(Req, State);
 handle_action(withdraw, Req, State) -> withdraw(Req, State);
 handle_action(history, Req, State) -> history(Req, State);
+handle_action(history_unread_count, Req, State) -> history_unread_count(Req, State);
 handle_action(false, Req, _State) -> Req.
 
 %%%===================================================================
@@ -142,6 +144,22 @@ history(Req0, State) ->
             elib_response:error(Req0, <<"学员ID必填"/utf8>>, ?ERR_MISSING_PARAM)
     end.
 
+-spec history_unread_count(cowboy_req:req(), map()) -> cowboy_req:req().
+history_unread_count(Req0, State) ->
+    Uid = maps:get(current_uid, State),
+    case path_id(Req0) of
+        {ok, LearnerId} ->
+            Since = since_param(cowboy_req:parse_qs(Req0)),
+            case teaching_review_logic:history_unread_count(Uid, LearnerId, Since) of
+                {ok, Payload} ->
+                    elib_response:success_rfc3339(Req0, Payload);
+                {error, Reason} ->
+                    teaching_error:to_response(Req0, Reason)
+            end;
+        _ ->
+            elib_response:error(Req0, <<"学员ID必填"/utf8>>, ?ERR_MISSING_PARAM)
+    end.
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
@@ -151,6 +169,14 @@ path_id(Req) ->
     case cowboy_req:binding(id, Req) of
         undefined -> error;
         Bin when is_binary(Bin) -> tsid(Bin)
+    end.
+
+%% since：上次看到的 published_at（RFC3339，客户端原样回传）；缺省计全部
+-spec since_param(list()) -> binary() | undefined.
+since_param(Qs) ->
+    case proplists:get_value(<<"since">>, Qs) of
+        V when is_binary(V), byte_size(V) > 0 -> V;
+        _ -> undefined
     end.
 
 -spec tsid(binary()) -> {ok, integer()} | error.

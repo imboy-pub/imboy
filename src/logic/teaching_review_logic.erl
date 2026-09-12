@@ -15,6 +15,7 @@
     withdraw/2,
     submission_detail/2,
     history/3,
+    history_unread_count/3,
     %% 纯函数导出供 eunit 直测（v3 N5/P1-3 补测）
     review_has_content/2,
     %% 纯函数导出供 eunit 直测：PublishedReview DTO（老师署名字段）
@@ -253,6 +254,25 @@ history(Uid, LearnerId, {Page, Size}) ->
                     }};
                 {error, Reason} ->
                     ?LOG_ERROR("history db error ~p", [Reason]),
+                    {error, db_error}
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 家长未读点评数（moya 首页角标）：与 history/2 同权限同口径。
+%% Since = 客户端自持水位（上次看到的 published_at，RFC3339）；缺省计全部。
+%% 已读水位存客户端本地，服务端无状态（不建 seen 表）。
+-spec history_unread_count(integer(), integer(), binary() | undefined) ->
+    {ok, map()} | {error, atom()}.
+history_unread_count(Uid, LearnerId, Since) ->
+    case history_access(Uid, LearnerId) of
+        ok ->
+            case teaching_submission_repo:history_unread_count(LearnerId, Since) of
+                {ok, Count} ->
+                    {ok, #{<<"count">> => Count}};
+                {error, Reason} ->
+                    ?LOG_ERROR("history unread count db error ~p", [Reason]),
                     {error, db_error}
             end;
         {error, Reason} ->

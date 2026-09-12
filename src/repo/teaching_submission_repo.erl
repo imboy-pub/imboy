@@ -19,7 +19,7 @@
 -export([lock_assignment_tx/2, next_attempt_tx/2, create_idempotent_tx/2]).
 -export([insert_assets_tx/4, mark_submitted_by_tx/3, enqueue_ai_draft_tx/2]).
 -export([withdraw_tx/3, lock_submission_tx/2, find_tx/2, assets_tx/2, find/1, assets/1]).
--export([assignments_for_learner/3, queue/4, history/3]).
+-export([assignments_for_learner/3, queue/4, history/3, history_unread_count/2]).
 -export([
     submission_for_asset_path/1,
     submission_for_asset_path_tx/2,
@@ -466,6 +466,31 @@ history(LearnerId, Page, Size) ->
     case elib_pg:query(Sql, [LearnerId, Size, Offset]) of
         {ok, Rows} ->
             {ok, Rows, count_history(LearnerId)};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+%% @doc 家长未读点评数：learner 的 published 回评中 published_at > Since 的条数。
+%% Since 为 RFC3339 binary（客户端原样回传上一响应的 published_at 值域）；
+%% undefined/<<>> 计全部已发布。join/状态口径与 history/3 一致。
+-spec history_unread_count(integer(), binary() | undefined) ->
+    {ok, non_neg_integer()} | {error, term()}.
+history_unread_count(LearnerId, Since) ->
+    {SinceClause, Args} =
+        case Since of
+            B when is_binary(B), B =/= <<>> ->
+                {<<" AND tr.published_at > $2::timestamptz">>, [LearnerId, B]};
+            _ ->
+                {<<>>, [LearnerId]}
+        end,
+    Sql =
+        <<"SELECT COUNT(*)::bigint AS cnt FROM ", (tb(homework_submission))/binary, " hs JOIN ",
+            (tb(teacher_review))/binary,
+            " tr ON tr.submission_id = hs.id AND tr.status = 'published' "
+            "WHERE hs.learner_id = $1", SinceClause/binary>>,
+    case elib_pg:query(Sql, Args) of
+        {ok, [#{<<"cnt">> := Cnt}]} ->
+            {ok, ec_cnv:to_integer(Cnt)};
         {error, Reason} ->
             {error, Reason}
     end.

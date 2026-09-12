@@ -546,6 +546,9 @@ get_routes() ->
                 {"/api/v1/teaching/learners/:id/history", teaching_assignment_handler, #{
                     action => history
                 }},
+                {"/api/v1/teaching/learners/:id/history/unread-count", teaching_assignment_handler, #{
+                    action => history_unread_count
+                }},
                 %% 教学学员账号绑定（Step 16：管理侧最小动作；JWT；logic/repo 由 D 泳道
                 %% 就绪，错误映射与码段决定见 STEP-16/notes.md「B 接线完成」）
                 {"/api/v1/teaching/learners/:id/bind", teaching_learner_bind_handler, #{
