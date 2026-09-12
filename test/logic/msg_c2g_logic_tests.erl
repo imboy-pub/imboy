@@ -1065,6 +1065,12 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
 
 %% P0-B B4 零信任守护线：e2ee_room_key 群密钥分发消息
 %% ① 具名 action 不触群级门（零查库）②密钥密文 payload 存储/入队/投递逐字节透传
+%%
+%% ⚠️ 本用例**直调 c2g/3 并 meck stage**，验的是"进入 c2g/3 之后"，**验不到"能不能进入"**
+%% ——2026-09-12 的缺陷正落在漏掉的那一层：帧带顶层 action 但注册表未收录
+%% e2ee_room_key → route_action/5 判 unknown_action 丢弃，room key 从未送达，
+%% 而本用例一直是绿的。路由级回归见
+%% message_router_logic_tests:room_key_c2g_frame_dispatches_to_c2g_logic_test_。
 c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
     ?WITH_MECKS(
         [

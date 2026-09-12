@@ -56,7 +56,18 @@
     {<<"c2g">>, <<"message_revoke">>, msg_c2g_logic, c2g_revoke},
     {<<"c2g">>, <<"message_revoke_ack">>, msg_c2g_logic, c2g_revoke_ack},
     {<<"c2g">>, <<"message_edit">>, msg_c2g_logic, c2g_edit},
-    {<<"c2g">>, <<"message_edit_ack">>, msg_c2g_logic, c2g_edit_ack}
+    {<<"c2g">>, <<"message_edit_ack">>, msg_c2g_logic, c2g_edit_ack},
+    %% E2EE 密钥分发帧（2026-09-12 补注册）：客户端把 room key（Megolm 会话密钥，
+    %% 逐设备 Olm 包裹后）作为 payload 经 C2G/C2C 通道分发，帧带顶层
+    %% action = <<"e2ee_room_key">>（imboyapp group_session_service.dart:
+    %% _sendRoomKeyMessage）。**未注册时 route_action/5 判 unknown_action 直接丢弃**
+    %% —— 2026-09-12 活节点实证：room key 从未进入 c2g/3，群端到端加密因此拿不到
+    %% 密钥（在线离线都收不到，客户端对 unknown_action 回执无处理）。
+    %% 服务端对 payload 只做不透明中转：content_bearing_action/1 判 false → 跳过
+    %% E2EE 门；成员校验仍走 c2g/c2c 既有的 is_member 快照。故这两个 action 属
+    %% "转发面"而非"内容面"。注册它们不引入服务端可解密的密钥存储。
+    {<<"c2g">>, <<"e2ee_room_key">>, msg_c2g_logic, c2g},
+    {<<"c2c">>, <<"e2ee_room_key">>, msg_c2c_logic, c2c}
 ]).
 
 %% ===================================================================

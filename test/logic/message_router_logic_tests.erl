@@ -15,74 +15,94 @@
 %% ===================================================================
 
 route_c2c_message_success_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_123">>,
-        CurrentUid = 1,
-        Data = #{<<"payload">> => #{<<"content">> => <<"hello"/utf8>>}},
-        Type = <<"C2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_123">>,
+            CurrentUid = 1,
+            Data = #{<<"payload">> => #{<<"content">> => <<"hello"/utf8>>}},
+            Type = <<"C2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_c2g_message_success_test_() ->
-    ?WITH_MECK(msg_c2g_logic, [
-        {'c2g', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_456">>,
-        CurrentUid = 1,
-        Data = #{<<"payload">> => #{<<"content">> => <<"hello group"/utf8>>}},
-        Type = <<"C2G">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2g_logic,
+        [
+            {'c2g', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_456">>,
+            CurrentUid = 1,
+            Data = #{<<"payload">> => #{<<"content">> => <<"hello group"/utf8>>}},
+            Type = <<"C2G">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_c2s_message_success_test_() ->
-    ?WITH_MECK(msg_c2s_logic, [
-        {'c2s', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_789">>,
-        CurrentUid = 1,
-        Data = #{<<"payload">> => #{<<"status">> => <<"typing">>}},
-        Type = <<"C2S">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2s_logic,
+        [
+            {'c2s', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_789">>,
+            CurrentUid = 1,
+            Data = #{<<"payload">> => #{<<"status">> => <<"typing">>}},
+            Type = <<"C2S">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_s2c_message_success_test_() ->
-    ?WITH_MECK(msg_s2c_logic, [
-        {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_101">>,
-        CurrentUid = 1,
-        Data = #{<<"action">> => <<"pull_offline_msg">>, <<"payload">> => #{<<"count">> => 10}},
-        Type = <<"S2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_s2c_logic,
+        [
+            {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_101">>,
+            CurrentUid = 1,
+            Data = #{<<"action">> => <<"pull_offline_msg">>, <<"payload">> => #{<<"count">> => 10}},
+            Type = <<"S2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_webrtc_message_success_test_() ->
-    ?WITH_MECK(webrtc_ws_logic, [
-        {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_webrtc">>,
-        CurrentUid = 1,
-        Data = #{<<"to">> => <<"2">>},
-        Type = <<"webrtc_offer">>,
-        OriginalMsg = <<"{\"sdp\":\"...\"}">>,
+    ?WITH_MECK(
+        webrtc_ws_logic,
+        [
+            {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_webrtc">>,
+            CurrentUid = 1,
+            Data = #{<<"to">> => <<"2">>},
+            Type = <<"webrtc_offer">>,
+            OriginalMsg = <<"{\"sdp\":\"...\"}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_unknown_message_type_returns_ok_test_() ->
     ?TEST_SIMPLE(fun() ->
@@ -101,462 +121,681 @@ route_unknown_message_type_returns_ok_test_() ->
 %% ===================================================================
 
 route_c2c_revoke_action_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c_revoke', 3, fun(_MsgId, _CurrentUid, _Data) -> {reply, #{<<"type">> => <<"S2C">>}} end}
-    ], fun() ->
-        MsgId = <<"msg_revoke">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_revoke">>,
-            <<"to">> => <<"2">>
-        }, #{<<"payload">> => #{<<"old_msg_id">> => <<"old_123">>}}),
-        Type = <<"C2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c_revoke', 3, fun(_MsgId, _CurrentUid, _Data) ->
+                {reply, #{<<"type">> => <<"S2C">>}}
+            end}
+        ],
+        fun() ->
+            MsgId = <<"msg_revoke">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_revoke">>,
+                    <<"to">> => <<"2">>
+                },
+                #{<<"payload">> => #{<<"old_msg_id">> => <<"old_123">>}}
+            ),
+            Type = <<"C2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
+        end
+    ).
 
 route_c2c_revoke_ack_action_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c_revoke_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_revoke_ack">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_revoke_ack">>
-        }, #{<<"payload">> => #{<<"msg_id">> => <<"old_123">>}}),
-        Type = <<"C2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c_revoke_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_revoke_ack">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_revoke_ack">>
+                },
+                #{<<"payload">> => #{<<"msg_id">> => <<"old_123">>}}
+            ),
+            Type = <<"C2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_c2c_edit_action_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c_edit', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_edit">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_edit">>,
-            <<"to">> => <<"2">>
-        }, #{<<"payload">> => #{<<"content">> => <<"updated"/utf8>>}}),
-        Type = <<"C2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c_edit', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_edit">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_edit">>,
+                    <<"to">> => <<"2">>
+                },
+                #{<<"payload">> => #{<<"content">> => <<"updated"/utf8>>}}
+            ),
+            Type = <<"C2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_c2c_edit_ack_action_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c_edit_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_edit_ack">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_edit_ack">>
-        }, #{<<"payload">> => #{<<"msg_id">> => <<"old_123">>}}),
-        Type = <<"C2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c_edit_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_edit_ack">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_edit_ack">>
+                },
+                #{<<"payload">> => #{<<"msg_id">> => <<"old_123">>}}
+            ),
+            Type = <<"C2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_c2g_revoke_action_test_() ->
-    ?WITH_MECK(msg_c2g_logic, [
-        {'c2g_revoke', 3, fun(_MsgId, _CurrentUid, _Data) -> {reply, #{<<"type">> => <<"S2C">>}} end}
-    ], fun() ->
-        MsgId = <<"msg_revoke">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_revoke">>,
-            <<"to">> => <<"100">>
-        }, #{<<"payload">> => #{<<"old_msg_id">> => <<"old_456">>}}),
-        Type = <<"C2G">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2g_logic,
+        [
+            {'c2g_revoke', 3, fun(_MsgId, _CurrentUid, _Data) ->
+                {reply, #{<<"type">> => <<"S2C">>}}
+            end}
+        ],
+        fun() ->
+            MsgId = <<"msg_revoke">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_revoke">>,
+                    <<"to">> => <<"100">>
+                },
+                #{<<"payload">> => #{<<"old_msg_id">> => <<"old_456">>}}
+            ),
+            Type = <<"C2G">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertMatch({reply, #{<<"type">> := <<"S2C">>}}, Result)
+        end
+    ).
 
 route_c2g_edit_action_test_() ->
-    ?WITH_MECK(msg_c2g_logic, [
-        {'c2g_edit', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_edit">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_edit">>,
-            <<"to">> => <<"100">>
-        }, #{<<"payload">> => #{<<"content">> => <<"updated group msg"/utf8>>}}),
-        Type = <<"C2G">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2g_logic,
+        [
+            {'c2g_edit', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_edit">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_edit">>,
+                    <<"to">> => <<"100">>
+                },
+                #{<<"payload">> => #{<<"content">> => <<"updated group msg"/utf8>>}}
+            ),
+            Type = <<"C2G">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 错误处理测试
 %% ===================================================================
 
 route_c2c_unknown_action_returns_error_test_() ->
-    ?WITH_MECK(message_ds, [
-        {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-            #{<<"type">> => <<"S2C">>, <<"code">> => <<"unknown_action">>}
-        end}
-    ], fun() ->
-        MsgId = <<"msg_unknown">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"unknown_action">>
-        }, #{<<"payload">> => #{<<"data">> => <<"test">>}}),
-        Type = <<"C2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        message_ds,
+        [
+            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
+                #{<<"type">> => <<"S2C">>, <<"code">> => <<"unknown_action">>}
+            end}
+        ],
+        fun() ->
+            MsgId = <<"msg_unknown">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"unknown_action">>
+                },
+                #{<<"payload">> => #{<<"data">> => <<"test">>}}
+            ),
+            Type = <<"C2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertMatch({reply, #{<<"code">> := <<"unknown_action">>}}, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertMatch({reply, #{<<"code">> := <<"unknown_action">>}}, Result)
+        end
+    ).
 
 route_c2g_unknown_action_returns_error_test_() ->
-    ?WITH_MECK(message_ds, [
-        {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-            #{<<"type">> => <<"S2C">>, <<"code">> => <<"unknown_action">>}
-        end}
-    ], fun() ->
-        MsgId = <<"msg_unknown">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"unknown_action">>
-        }, #{<<"payload">> => #{<<"data">> => <<"test">>}}),
-        Type = <<"C2G">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        message_ds,
+        [
+            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
+                #{<<"type">> => <<"S2C">>, <<"code">> => <<"unknown_action">>}
+            end}
+        ],
+        fun() ->
+            MsgId = <<"msg_unknown">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"unknown_action">>
+                },
+                #{<<"payload">> => #{<<"data">> => <<"test">>}}
+            ),
+            Type = <<"C2G">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertMatch({reply, #{<<"code">> := <<"unknown_action">>}}, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertMatch({reply, #{<<"code">> := <<"unknown_action">>}}, Result)
+        end
+    ).
 
 route_unsupported_action_type_returns_error_test_() ->
-    ?WITH_MECK(message_ds, [
-        {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-            #{<<"type">> => <<"S2C">>, <<"code">> => <<"invalid_message_type">>}
-        end}
-    ], fun() ->
-        MsgId = <<"msg_unsupported">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_revoke">>
-        }, #{<<"payload">> => #{<<"data">> => <<"test">>}}),
-        Type = <<"C2S">>,  % C2S 不支持 action
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        message_ds,
+        [
+            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
+                #{<<"type">> => <<"S2C">>, <<"code">> => <<"invalid_message_type">>}
+            end}
+        ],
+        fun() ->
+            MsgId = <<"msg_unsupported">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_revoke">>
+                },
+                #{<<"payload">> => #{<<"data">> => <<"test">>}}
+            ),
+            % C2S 不支持 action
+            Type = <<"C2S">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertMatch({reply, #{<<"code">> := <<"invalid_message_type">>}}, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertMatch({reply, #{<<"code">> := <<"invalid_message_type">>}}, Result)
+        end
+    ).
+
+%% ===================================================================
+%% E2EE 密钥分发帧（e2ee_room_key）路由级回归
+%%
+%% 2026-09-12 缺陷：客户端发的 room key 帧带顶层 action，而注册表未收录该
+%% action → route_action/5 判 unknown_action 丢弃，密钥从未进入 c2g/3。
+%% 旧单测（msg_c2g_logic_tests 的 c2g_e2ee_room_key_relayed_*）直调 c2g/3 并
+%% meck stage，覆盖不到"能不能进路由"，所以给的是假绿。本组用例补的就是这一层。
+%% ===================================================================
+
+room_key_action_registered_in_builtin_test() ->
+    %% 纯函数表（不依赖 gen_server / ETS），是 lookup 未启动时的兜底真源
+    ?assertEqual(
+        {ok, {msg_c2g_logic, c2g}},
+        imboy_ws_action_registry:builtin_lookup(<<"c2g">>, <<"e2ee_room_key">>)
+    ),
+    ?assertEqual(
+        {ok, {msg_c2c_logic, c2c}},
+        imboy_ws_action_registry:builtin_lookup(<<"c2c">>, <<"e2ee_room_key">>)
+    ).
+
+room_key_c2g_frame_dispatches_to_c2g_logic_test_() ->
+    ?WITH_MECK(
+        msg_c2g_logic,
+        [
+            {'c2g', 3, fun(MsgId, Uid, Data) ->
+                {dispatched, MsgId, Uid, maps:get(<<"action">>, Data)}
+            end}
+        ],
+        fun() ->
+            Data = #{
+                <<"action">> => <<"e2ee_room_key">>,
+                <<"msg_type">> => <<"e2ee_room_key">>,
+                <<"from">> => 7,
+                <<"to">> => <<"538339">>,
+                <<"payload">> => #{<<"scope">> => <<"538339">>}
+            },
+
+            Result = message_router_logic:route(<<"rk_1">>, 7, Data, <<"C2G">>, <<"{}">>),
+
+            %% 帧必须派发到 c2g/3（action 原样带入，服务端不解 payload）
+            ?assertEqual({dispatched, <<"rk_1">>, 7, <<"e2ee_room_key">>}, Result),
+            %% 反向断言：绝不能再落 unknown_action（P0 回归线）
+            ?assertNotMatch({reply, _}, Result)
+        end
+    ).
+
+room_key_c2c_frame_dispatches_to_c2c_logic_test_() ->
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c', 3, fun(MsgId, Uid, Data) ->
+                {dispatched, MsgId, Uid, maps:get(<<"action">>, Data)}
+            end}
+        ],
+        fun() ->
+            Data = #{
+                <<"action">> => <<"e2ee_room_key">>,
+                <<"msg_type">> => <<"e2ee_room_key">>,
+                <<"from">> => 7,
+                <<"to">> => <<"8">>,
+                <<"payload">> => #{<<"scope">> => <<"c2c">>}
+            },
+
+            Result = message_router_logic:route(<<"rk_2">>, 7, Data, <<"C2C">>, <<"{}">>),
+
+            ?assertEqual({dispatched, <<"rk_2">>, 7, <<"e2ee_room_key">>}, Result),
+            ?assertNotMatch({reply, _}, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 大小写测试
 %% ===================================================================
 
 route_with_uppercase_type_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_upper">>,
-        CurrentUid = 1,
-        Data = #{<<"payload">> => <<"{}">>},
-        Type = <<"C2C">>,  % 大写
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_upper">>,
+            CurrentUid = 1,
+            Data = #{<<"payload">> => <<"{}">>},
+            % 大写
+            Type = <<"C2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_with_uppercase_action_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c_revoke', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_action_upper">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"MESSAGE_REVOKE">>,
-            <<"to">> => <<"2">>
-        }, #{<<"payload">> => #{<<"old_msg_id">> => <<"old_123">>}}),
-        Type = <<"c2c">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c_revoke', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_action_upper">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"MESSAGE_REVOKE">>,
+                    <<"to">> => <<"2">>
+                },
+                #{<<"payload">> => #{<<"old_msg_id">> => <<"old_123">>}}
+            ),
+            Type = <<"c2c">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 边界条件测试
 %% ===================================================================
 
 route_with_missing_action_field_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        % 没有 action 字段的消息应作为普通消息处理
-        MsgId = <<"msg_no_action">>,
-        CurrentUid = 1,
-        Data = #{<<"payload">> => <<"{}">>},
-        Type = <<"c2c">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            % 没有 action 字段的消息应作为普通消息处理
+            MsgId = <<"msg_no_action">>,
+            CurrentUid = 1,
+            Data = #{<<"payload">> => <<"{}">>},
+            Type = <<"c2c">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_with_null_action_field_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        % action 为 null 的消息应作为普通消息处理
-        MsgId = <<"msg_null_action">>,
-        CurrentUid = 1,
-        Data = #{<<"action">> => null, <<"payload">> => <<"{}">>},
-        Type = <<"c2c">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            % action 为 null 的消息应作为普通消息处理
+            MsgId = <<"msg_null_action">>,
+            CurrentUid = 1,
+            Data = #{<<"action">> => null, <<"payload">> => <<"{}">>},
+            Type = <<"c2c">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_with_empty_action_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        % action 为空字符串的消息应作为普通消息处理
-        MsgId = <<"msg_empty_action">>,
-        CurrentUid = 1,
-        Data = #{<<"action">> => <<>>, <<"payload">> => <<"{}">>},
-        Type = <<"c2c">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            % action 为空字符串的消息应作为普通消息处理
+            MsgId = <<"msg_empty_action">>,
+            CurrentUid = 1,
+            Data = #{<<"action">> => <<>>, <<"payload">> => <<"{}">>},
+            Type = <<"c2c">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% C2G 其他 Action 测试
 %% ===================================================================
 
 route_c2g_revoke_ack_action_test_() ->
-    ?WITH_MECK(msg_c2g_logic, [
-        {'c2g_revoke_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_revoke_ack">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_revoke_ack">>
-        }, #{<<"payload">> => #{<<"msg_id">> => <<"old_456">>}}),
-        Type = <<"C2G">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2g_logic,
+        [
+            {'c2g_revoke_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_revoke_ack">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_revoke_ack">>
+                },
+                #{<<"payload">> => #{<<"msg_id">> => <<"old_456">>}}
+            ),
+            Type = <<"C2G">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_c2g_edit_ack_action_test_() ->
-    ?WITH_MECK(msg_c2g_logic, [
-        {'c2g_edit_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_edit_ack">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"message_edit_ack">>
-        }, #{<<"payload">> => #{<<"msg_id">> => <<"old_789">>}}),
-        Type = <<"C2G">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2g_logic,
+        [
+            {'c2g_edit_ack', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_edit_ack">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    <<"action">> => <<"message_edit_ack">>
+                },
+                #{<<"payload">> => #{<<"msg_id">> => <<"old_789">>}}
+            ),
+            Type = <<"C2G">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% WebRTC 各种事件类型测试
 %% ===================================================================
 
 route_webrtc_answer_event_test_() ->
-    ?WITH_MECKS([
-        {webrtc_ws_logic, [
-            {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_webrtc_answer">>,
-        CurrentUid = 1,
-        Data = #{<<"to">> => <<"2">>},
-        Type = <<"webrtc_answer">>,
-        OriginalMsg = <<"{\"sdp\":\"answer_sdp\"}">>,
+    ?WITH_MECKS(
+        [
+            {webrtc_ws_logic, [
+                {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_webrtc_answer">>,
+            CurrentUid = 1,
+            Data = #{<<"to">> => <<"2">>},
+            Type = <<"webrtc_answer">>,
+            OriginalMsg = <<"{\"sdp\":\"answer_sdp\"}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_webrtc_ice_candidate_event_test_() ->
-    ?WITH_MECKS([
-        {webrtc_ws_logic, [
-            {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_webrtc_ice">>,
-        CurrentUid = 1,
-        Data = #{<<"to">> => <<"2">>},
-        Type = <<"webrtc_ice_candidate">>,
-        OriginalMsg = <<"{\"candidate\":\"...\"}">>,
+    ?WITH_MECKS(
+        [
+            {webrtc_ws_logic, [
+                {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_webrtc_ice">>,
+            CurrentUid = 1,
+            Data = #{<<"to">> => <<"2">>},
+            Type = <<"webrtc_ice_candidate">>,
+            OriginalMsg = <<"{\"candidate\":\"...\"}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_webrtc_hangup_event_test_() ->
-    ?WITH_MECKS([
-        {webrtc_ws_logic, [
-            {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_webrtc_hangup">>,
-        CurrentUid = 1,
-        Data = #{<<"to">> => <<"2">>},
-        Type = <<"webrtc_hangup">>,
-        OriginalMsg = <<"{\"reason\":\"user_hangup\"}">>,
+    ?WITH_MECKS(
+        [
+            {webrtc_ws_logic, [
+                {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_webrtc_hangup">>,
+            CurrentUid = 1,
+            Data = #{<<"to">> => <<"2">>},
+            Type = <<"webrtc_hangup">>,
+            OriginalMsg = <<"{\"reason\":\"user_hangup\"}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% S2C 不同 action 测试
 %% ===================================================================
 
 route_s2c_with_pull_offline_msg_action_test_() ->
-    ?WITH_MECK(msg_s2c_logic, [
-        {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_pull_offline">>,
-        CurrentUid = 1,
-        Data = #{
-            <<"action">> => <<"pull_offline_msg">>,
-            <<"payload">> => #{<<"count">> => 50}
-        },
-        Type = <<"S2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_s2c_logic,
+        [
+            {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_pull_offline">>,
+            CurrentUid = 1,
+            Data = #{
+                <<"action">> => <<"pull_offline_msg">>,
+                <<"payload">> => #{<<"count">> => 50}
+            },
+            Type = <<"S2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_s2c_with_delete_msg_action_test_() ->
-    ?WITH_MECK(msg_s2c_logic, [
-        {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_delete">>,
-        CurrentUid = 1,
-        Data = #{
-            <<"action">> => <<"delete_msg">>,
-            <<"payload">> => #{<<"msg_ids">> => [<<"msg1">>, <<"msg2">>]}
-        },
-        Type = <<"S2C">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_s2c_logic,
+        [
+            {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_delete">>,
+            CurrentUid = 1,
+            Data = #{
+                <<"action">> => <<"delete_msg">>,
+                <<"payload">> => #{<<"msg_ids">> => [<<"msg1">>, <<"msg2">>]}
+            },
+            Type = <<"S2C">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 大小写混合测试
 %% ===================================================================
 
 route_with_mixed_case_type_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_mixed">>,
-        CurrentUid = 1,
-        Data = #{<<"payload">> => <<"{}">>},
-        Type = <<"C2c">>,  % 混合大小写
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_mixed">>,
+            CurrentUid = 1,
+            Data = #{<<"payload">> => <<"{}">>},
+            % 混合大小写
+            Type = <<"C2c">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_with_mixed_case_action_test_() ->
-    ?WITH_MECK(msg_c2c_logic, [
-        {'c2c_edit', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        MsgId = <<"msg_edit_mixed">>,
-        CurrentUid = 1,
-        Data = maps:merge(#{
-            <<"action">> => <<"Message_Edit">>,  % 混合大小写
-            <<"to">> => <<"2">>
-        }, #{<<"payload">> => #{<<"content">> => <<"updated"/utf8>>}}),
-        Type = <<"c2c">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_c2c_logic,
+        [
+            {'c2c_edit', 3, fun(_MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            MsgId = <<"msg_edit_mixed">>,
+            CurrentUid = 1,
+            Data = maps:merge(
+                #{
+                    % 混合大小写
+                    <<"action">> => <<"Message_Edit">>,
+                    <<"to">> => <<"2">>
+                },
+                #{<<"payload">> => #{<<"content">> => <<"updated"/utf8>>}}
+            ),
+            Type = <<"c2c">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 其他边界条件测试
 %% ===================================================================
 
 route_with_lowercase_webrtc_type_test_() ->
-    ?WITH_MECKS([
-        {webrtc_ws_logic, [
-            {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
-        ]}
-    ], fun() ->
-        MsgId = <<"msg_webrtc_lower">>,
-        CurrentUid = 1,
-        Data = #{<<"to">> => <<"2">>},
-        Type = <<"webrtc_offer">>,  % 小写
-        OriginalMsg = <<"{\"sdp\":\"...\"}">>,
+    ?WITH_MECKS(
+        [
+            {webrtc_ws_logic, [
+                {'event', 4, fun(_FromUid, _ToUid, _MsgId, _OriginalMsg) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_webrtc_lower">>,
+            CurrentUid = 1,
+            Data = #{<<"to">> => <<"2">>},
+            % 小写
+            Type = <<"webrtc_offer">>,
+            OriginalMsg = <<"{\"sdp\":\"...\"}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 route_s2c_without_action_field_test_() ->
-    ?WITH_MECK(msg_s2c_logic, [
-        {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
-    ], fun() ->
-        % S2C 消息没有 action 字段
-        MsgId = <<"msg_s2c_no_action">>,
-        CurrentUid = 1,
-        Data = #{<<"payload">> => #{<<"data">> => <<"test"/utf8>>}},
-        Type = <<"s2c">>,
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        msg_s2c_logic,
+        [
+            {'s2c', 4, fun(_Action, _MsgId, _CurrentUid, _Data) -> ok end}
+        ],
+        fun() ->
+            % S2C 消息没有 action 字段
+            MsgId = <<"msg_s2c_no_action">>,
+            CurrentUid = 1,
+            Data = #{<<"payload">> => #{<<"data">> => <<"test"/utf8>>}},
+            Type = <<"s2c">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertEqual(ok, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertEqual(ok, Result)
+        end
+    ).
 
 %% ===================================================================
 %% 不支持的类型带 Action 测试
 %% ===================================================================
 
 route_s2s_with_action_returns_error_test_() ->
-    ?WITH_MECK(message_ds, [
-        {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
-            #{<<"type">> => <<"S2C">>, <<"code">> => <<"invalid_message_type">>}
-        end}
-    ], fun() ->
-        MsgId = <<"msg_s2s_unsupported">>,
-        CurrentUid = 1,
-        Data = #{
-            <<"action">> => <<"message_revoke">>,
-            <<"payload">> => #{<<"data">> => <<"test">>}
-        },
-        Type = <<"S2S">>,  % S2S 不支持 action
-        OriginalMsg = <<"{}">>,
+    ?WITH_MECK(
+        message_ds,
+        [
+            {'assemble_s2c', 3, fun(_MsgId, _Code, _Msg) ->
+                #{<<"type">> => <<"S2C">>, <<"code">> => <<"invalid_message_type">>}
+            end}
+        ],
+        fun() ->
+            MsgId = <<"msg_s2s_unsupported">>,
+            CurrentUid = 1,
+            Data = #{
+                <<"action">> => <<"message_revoke">>,
+                <<"payload">> => #{<<"data">> => <<"test">>}
+            },
+            % S2S 不支持 action
+            Type = <<"S2S">>,
+            OriginalMsg = <<"{}">>,
 
-        Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
-        ?assertMatch({reply, #{<<"code">> := <<"invalid_message_type">>}}, Result)
-    end).
+            Result = message_router_logic:route(MsgId, CurrentUid, Data, Type, OriginalMsg),
+            ?assertMatch({reply, #{<<"code">> := <<"invalid_message_type">>}}, Result)
+        end
+    ).
