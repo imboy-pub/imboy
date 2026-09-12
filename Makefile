@@ -267,6 +267,14 @@ migrations-check: ## 校验 priv/migrations/ 命名与 up-down 配对（ADR-0002
 cron-check: ## 校验 ecron 定时作业配置（模板真源硬门 + 逐机漂移告警）
 	@bash scripts/check_cron_config.sh
 
+# 墨芽 AI 回课启用前置：指定的 teaching_ai_llm_provider 在本环境 llm_providers
+# 里是否存在、是否满足 vision、key 是否可用（四类可证明「开了也一定不工作」
+# 的配置为硬门）；视频开关配对与 ecron worker 为告警。
+# 不带参数扫全部存在的 config；也可 `bash scripts/check_teaching_ai_config.sh <config>`。
+.PHONY: teaching-ai-check
+teaching-ai-check: ## 校验 AI 回课启用前置（provider 名/vision/key 硬门 + 配对告警）
+	@bash scripts/check_teaching_ai_config.sh
+
 # P3-C2 API 契约门禁（Golden Gates §2.3 C2 / §2.2 契约变更流程）
 # 真源：src/imboy_router.erl + priv/migrations CHECK 约束 + include/error_code.hrl
 # 合法变更：改后端真源后，同一 PR 内 make contract-export 并提交 .contract/api_contract.json

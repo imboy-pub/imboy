@@ -76,7 +76,7 @@ escript scripts/imboy_ctl db migrate
 
 ## 校验与诊断
 
-`check_module_boundaries.sh`（四层边界门禁）、`check_dco.sh`、`check_duplicate_modules.sh`、`check_server_zero_crypto.sh`、`check_release_consistency.sh`（商业化发布一致性门禁）、`check_migrations.sh`（迁移命名/up-down 配对门禁，ADR-0002）、`check_cron_config.sh`（ecron 定时作业门禁：模板真源硬门 + 逐机运行配置漂移告警，`--strict` 供发布前自查）、`check_tls_expiry.sh`（TLS 证书到期检查）、`validate_p5_manifest.sh`、`sanity_check.sh`、`erl_crashdump_analyzer.sh`（崩溃转储分析）、`websocket_diagnose.sh`（WS 连接逐层诊断：端口→HTTP→握手→在线数）。
+`check_module_boundaries.sh`（四层边界门禁）、`check_dco.sh`、`check_duplicate_modules.sh`、`check_server_zero_crypto.sh`、`check_release_consistency.sh`（商业化发布一致性门禁）、`check_migrations.sh`（迁移命名/up-down 配对门禁，ADR-0002）、`check_cron_config.sh`（ecron 定时作业门禁：模板真源硬门 + 逐机运行配置漂移告警，`--strict` 供发布前自查）、`check_teaching_ai_config.sh`（墨芽 AI 回课启用前置：provider 名/vision/key 四类硬门 + 视频开关配对与 ecron worker 告警；`make teaching-ai-check`）、`check_tls_expiry.sh`（TLS 证书到期检查）、`validate_p5_manifest.sh`、`sanity_check.sh`、`erl_crashdump_analyzer.sh`（崩溃转储分析）、`websocket_diagnose.sh`（WS 连接逐层诊断：端口→HTTP→握手→在线数）。
 
 钱包约束有两级数据库门禁：`verify_wallet_constraint_sql.sh` 在一次性 PostgreSQL 18
 合成实例验证 SQL 语义；`verify_wallet_constraint_clone.sh` 默认只读预检，只有在显式
