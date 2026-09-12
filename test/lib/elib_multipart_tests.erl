@@ -251,3 +251,14 @@ oversize_nonfile_field_aborts_test() ->
             <<"\r\n--", ?BOUNDARY/binary, "--\r\n">>
         ],
     {error, file_too_large, _} = collect(FieldPart, 64, 100).
+
+%% WriteFun（临时文件写入）抛错必须分流为 {write_failed, _}，
+%% 不得与协议解析错误混为 {bad_part, _}（后者映射 400，前者映射 5xx）。
+write_fun_failure_isolated_test() ->
+    Body = iolist_to_binary(
+        make_body(<<"file">>, <<"a.jpg">>, <<"image/jpeg">>, <<"DATA">>)
+    ),
+    Write = fun(_) -> erlang:error(disk_full) end,
+    St0 = elib_multipart:new(?BOUNDARY, Write, 1024 * 1024),
+    {error, {write_failed, _}} = feed(Body, 5, St0),
+    ok.

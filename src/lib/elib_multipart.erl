@@ -27,7 +27,7 @@
 
 -type write_fun() :: fun((binary()) -> ok).
 
--type reason() :: file_too_large | {bad_part, term()}.
+-type reason() :: file_too_large | {bad_part, term()} | {write_failed, term()}.
 
 -opaque state() :: #{
     boundary := binary(),
@@ -71,6 +71,9 @@ stream(Data, St0) when is_binary(Data) ->
     try
         drive(St)
     catch
+        %% WriteFun 故障（磁盘满/IO 错误）单独分流，调用方映射 5xx
+        throw:{write_failed, _} = WErr ->
+            {error, WErr};
         %% cow_multipart 对非法结构可能抛 function_clause/badarg
         Class:R when Class =:= error; Class =:= exit ->
             {error, {bad_part, R}}
@@ -161,8 +164,18 @@ write_selected(Data, #{part_name := <<"file">>, write := Write} = St) ->
         true ->
             {error, file_too_large};
         false ->
-            ok = Write(Data),
-            {next, St#{file_size := Size, file_seen := true}}
+            %% WriteFun 故障（磁盘满/IO 错误）与协议解析错误分流：
+            %% 前者是服务端故障应映射 5xx，不能被笼统归为 bad_part 400。
+            try Write(Data) of
+                ok ->
+                    {next, St#{file_size := Size, file_seen := true}};
+                Unexpected ->
+                    %% WriteFun 返回非 ok（契约违例）同样按写失败处理
+                    erlang:throw({write_failed, {bad_return, Unexpected}})
+            catch
+                C:R ->
+                    erlang:throw({write_failed, {'EXIT', {C, R}}})
+            end
     end;
 write_selected(_Data, St) ->
     {next, St}.

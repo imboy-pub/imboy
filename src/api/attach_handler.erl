@@ -175,13 +175,22 @@ upload(<<"POST">>, Req0, State) ->
     Qs = cowboy_req:parse_qs(Req0),
     ObjectKey = proplists:get_value(<<"object_key">>, Qs, <<>>),
     MimeType = proplists:get_value(<<"mime_type">>, Qs, <<>>),
-    case multipart_boundary(Req0) of
-        {ok, Boundary} ->
-            upload_stream(Uid, ObjectKey, MimeType, Boundary, Req0);
-        {error, invalid_content_type} ->
-            elib_response:error(
-                Req0, <<"Content-Type 必须为 multipart/form-data"/utf8>>, ?ERR_BAD_REQUEST
-            )
+    %% 先鉴权后收流：object_key 前缀快检不合法直接拒绝，不吃满请求体流量。
+    %% 归属（pending 行 creator）/范围/mime 白名单的完整校验仍在收流后执行。
+    case elib_oss:owner_of_key(ObjectKey) of
+        {ok, Uid} ->
+            case multipart_boundary(Req0) of
+                {ok, Boundary} ->
+                    upload_stream(Uid, ObjectKey, MimeType, Boundary, Req0);
+                {error, invalid_content_type} ->
+                    elib_response:error(
+                        Req0, <<"Content-Type 必须为 multipart/form-data"/utf8>>, ?ERR_BAD_REQUEST
+                    )
+            end;
+        {ok, _OtherUid} ->
+            elib_response:error(Req0, <<"非法对象归属"/utf8>>, ?ERR_BAD_REQUEST);
+        {error, invalid_key} ->
+            elib_response:error(Req0, <<"非法对象键"/utf8>>, ?ERR_BAD_REQUEST)
     end;
 upload(_, Req0, _State) ->
     cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0).
@@ -263,6 +272,11 @@ upload_stream(Uid, ObjectKey, MimeType, Boundary, Req0) ->
                     elib_response:error(Req0, <<"文件超过大小限制"/utf8>>, ?ERR_PAYLOAD_TOO_LARGE);
                 {error, {bad_part, _Reason}} ->
                     elib_response:error(Req0, <<"multipart 请求体不合法"/utf8>>, ?ERR_BAD_REQUEST);
+                {error, {write_failed, _WErr}} ->
+                    %% WriteFun 故障（磁盘满/IO 错误）是服务端故障，映射 5xx
+                    elib_response:error(
+                        Req0, <<"附件写入服务端临时存储失败"/utf8>>, ?ERR_INTERNAL_SERVER_ERROR
+                    );
                 {error, {read_body, _ReadReason}} ->
                     elib_response:error(Req0, <<"请求体读取失败"/utf8>>, ?ERR_BAD_REQUEST)
             end
