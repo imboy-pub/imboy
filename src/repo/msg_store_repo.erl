@@ -32,6 +32,7 @@
 -export([claim_pending/2]).
 -export([mark_processed/1]).
 -export([mark_failed/4]).
+-export([mark_terminal/3]).
 -export([delete_processed/1]).
 -export([truncate_processed/0]).
 -export([vacuum_table/0]).
@@ -430,6 +431,19 @@ mark_failed(Type, MsgId, ErrorMsg, DelaySeconds) ->
             " available_at = NOW() + INTERVAL '1 second' * $4 ",
             " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>,
     elib_pg:execute(Sql, [Type, MsgId, ErrorMsg, DelaySeconds]).
+
+%% @doc 标记**终态失败**：结构性不可能成功的 staging 行（收件人缺失/序号缺失/
+%% 群标识缺失/未知类型）直接置 processed_at 停下重试，error_msg 保留供审计，
+%% 之后由 delete_processed/1 按保留期清理。
+%% 与 mark_failed/4 的区别：不做退避、不再重试——这些理由不会因时间推移变可满足。
+%% 2026-09-12 实证：一条 to_id_list IS NULL 的行以 60s 间隔重试 1657 次仍不收敛。
+-spec mark_terminal(binary(), binary(), binary()) -> {ok, integer()} | {error, any()}.
+mark_terminal(Type, MsgId, ErrorMsg) ->
+    Tb = tablename(),
+    Sql =
+        <<"UPDATE ", Tb/binary, " SET processed_at = NOW(), error_msg = $3 ",
+            " WHERE type = $1 AND msg_id = $2 AND processed_at IS NULL">>,
+    elib_pg:execute(Sql, [Type, MsgId, ErrorMsg]).
 
 %% @doc 获取未处理的备份消息（用于启动时恢复）
 -spec get_unstaged(integer()) -> {ok, list(map())} | {error, any()}.

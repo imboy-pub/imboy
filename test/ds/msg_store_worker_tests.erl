@@ -369,3 +369,115 @@ c2s_message_structure_test_() ->
         ?assertEqual(c2s, element(1, Item)),
         ?assert(is_integer(maps:get(status, element(3, Item))))
     end).
+
+%% ===================================================================
+%% C2G 写入守卫 + 结构性失败终态（2026-09-12）
+%%
+%% 背景：staging 的 to_id_list 列可空（epgsql 对 NULL 返回原子 null），旧代码
+%% `maps:get(<<"to_id_list">>, Row, [])` 只兜「键缺失」→ 列表推导抛
+%% {bad_generator,null}；而 process_row 对所有错误一律退避重试 → 僵尸行以
+%% 60s 间隔重试 1657 次仍不收敛（真库实证）。本组用例锁住两条线：
+%% ① 结构性缺失必须落终态、② DB 抖动必须继续重试（不许因一次故障丢消息）。
+%% ===================================================================
+
+c2g_guard_row(Overrides) ->
+    maps:merge(
+        #{
+            <<"type">> => <<"c2g">>,
+            <<"msg_id">> => <<"m-guard-1">>,
+            <<"payload">> => <<"{\"to\": \"538339\"}">>,
+            <<"from_id">> => 7,
+            <<"to_id_list">> => [9, 10],
+            <<"msg_type">> => <<"text">>,
+            <<"conv_seq">> => 1,
+            <<"retry_count">> => 0
+        },
+        Overrides
+    ).
+
+do_write_c2g_null_recipients_is_no_recipients_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error, no_recipients},
+            msg_store_worker:do_write(c2g, c2g_guard_row(#{<<"to_id_list">> => null}))
+        )
+    end).
+
+do_write_c2g_empty_recipients_is_no_recipients_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error, no_recipients},
+            msg_store_worker:do_write(c2g, c2g_guard_row(#{<<"to_id_list">> => []}))
+        )
+    end).
+
+do_write_c2g_missing_gid_is_gid_missing_test_() ->
+    %% 旧代码此处 maps:get/2 直接 badkey 抛异常（worker 崩→重启→再崩），
+    %% 归一成带类型的终态理由
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error, c2g_gid_missing},
+            msg_store_worker:do_write(c2g, c2g_guard_row(#{<<"payload">> => <<"{}">>}))
+        )
+    end).
+
+do_write_c2g_missing_conv_seq_is_conv_seq_missing_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        ?assertEqual(
+            {error, c2g_conv_seq_missing},
+            msg_store_worker:do_write(c2g, c2g_guard_row(#{<<"conv_seq">> => null}))
+        )
+    end).
+
+%% 分类线：只有「结构性缺失」才终态；DB 抖动/锁冲突一律继续重试
+terminal_write_reason_classification_test() ->
+    Terminal = [
+        no_recipients,
+        c2g_conv_seq_missing,
+        c2g_gid_missing,
+        {unknown_msg_type, c2c, <<"m-x">>}
+    ],
+    [?assert(msg_store_worker:terminal_write_reason(R)) || R <- Terminal],
+    Retryable = [
+        {db_exception, error, {badmatch, x}},
+        {db_exception, error, timeout},
+        closed,
+        {rollback, forbidden},
+        {msg_c2g_insert_failed, unique_violation}
+    ],
+    [?assertNot(msg_store_worker:terminal_write_reason(R)) || R <- Retryable].
+
+process_row_structural_failure_marks_terminal_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_store_repo, [
+                {'mark_terminal', 3, fun(_T, _M, _E) -> {ok, 1} end},
+                {'mark_failed', 4, fun(_T, _M, _E, _D) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            msg_store_worker:process_row(c2g_guard_row(#{<<"to_id_list">> => null})),
+            ?assertEqual(1, meck:num_calls(msg_store_repo, mark_terminal, 3)),
+            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_failed, 4))
+        end
+    ).
+
+process_row_db_failure_retries_not_terminal_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2g_repo, [
+                {'write_msg', 10, fun(_, _, _, _, _, _, _, _, _, _) ->
+                    {error, {db_exception, error, timeout}}
+                end}
+            ]},
+            {msg_store_repo, [
+                {'mark_terminal', 3, fun(_T, _M, _E) -> {ok, 1} end},
+                {'mark_failed', 4, fun(_T, _M, _E, _D) -> {ok, 1} end}
+            ]}
+        ],
+        fun() ->
+            msg_store_worker:process_row(c2g_guard_row(#{})),
+            ?assertEqual(0, meck:num_calls(msg_store_repo, mark_terminal, 3)),
+            ?assertEqual(1, meck:num_calls(msg_store_repo, mark_failed, 4))
+        end
+    ).

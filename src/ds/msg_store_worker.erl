@@ -37,7 +37,7 @@
 -export([idle/3, draining/3]).
 
 -ifdef(TEST).
--export([do_write/2]).
+-export([do_write/2, process_row/1, terminal_write_reason/1]).
 -endif.
 
 -include("log.hrl").
@@ -178,16 +178,63 @@ process_row(Row) ->
             msg_store_ds:unstage(MsgId),
             _ = ?WARN_LOG([msg_store_worker, write_conflict_no_insert, TypeAtom, MsgId]);
         {error, Reason} ->
-            BackoffSeconds = backoff_seconds(RetryCount),
             ErrorMsg = list_to_binary(io_lib:format("~p", [Reason])),
-            case msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds) of
-                {ok, _} ->
-                    ok;
-                {error, MarkReason} ->
-                    ?ERROR_LOG([msg_mark_failed_error, TypeBin, MsgId, MarkReason])
-            end,
-            _ = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
+            case terminal_write_reason(Reason) of
+                true ->
+                    %% 结构性失败：重试不可能变可满足 → 终态落库（processed_at 置位），
+                    %% 不再进重试队列。2026-09-12 实证：一条 to_id_list IS NULL 的
+                    %% 僵尸行以 60s 间隔重试 1657 次、每天约 1440 条 ERROR 日志，永不收敛。
+                    case msg_store_repo:mark_terminal(TypeBin, MsgId, ErrorMsg) of
+                        {ok, _} ->
+                            ok;
+                        {error, MarkReason} ->
+                            ?ERROR_LOG([msg_mark_terminal_error, TypeBin, MsgId, MarkReason])
+                    end,
+                    _ = ?ERROR_LOG([
+                        msg_store_worker, write_terminal_failure, TypeAtom, MsgId, Reason
+                    ]);
+                false ->
+                    BackoffSeconds = backoff_seconds(RetryCount),
+                    case msg_store_repo:mark_failed(TypeBin, MsgId, ErrorMsg, BackoffSeconds) of
+                        {ok, _} ->
+                            ok;
+                        {error, MarkReason} ->
+                            ?ERROR_LOG([msg_mark_failed_error, TypeBin, MsgId, MarkReason])
+                    end,
+                    _ = ?ERROR_LOG([msg_store_worker, write_error, TypeAtom, MsgId, Reason])
+            end
     end.
+
+%% @private 结构性失败判定：这些理由不可能因时间推移变可满足，故一律终态。
+%% **只列结构性缺失**（无收件人 / 无会话序号 / 无群标识 / 未知消息类型）——
+%% DB 抖动、锁冲突、连接断开等必须继续退避重试，否则一次数据库故障就会静默丢消息。
+-spec terminal_write_reason(term()) -> boolean().
+terminal_write_reason(no_recipients) ->
+    true;
+terminal_write_reason(c2g_conv_seq_missing) ->
+    true;
+terminal_write_reason(c2g_gid_missing) ->
+    true;
+terminal_write_reason({unknown_msg_type, _, _}) ->
+    true;
+terminal_write_reason(_) ->
+    false.
+
+%% @private 宽松取整数：payload 里的群标识可能是 json 字符串（"538339"）也可能是
+%% 数字；缺失/形态非法（null、对象、空串）一律归 null，由调用方判终态——
+%% 不能让 ec_cnv:to_integer/1 直接 function_clause 抛穿（旧行为会让 worker 崩溃重启）。
+-spec to_int_or_null(term()) -> integer() | null.
+to_int_or_null(V) when is_integer(V) ->
+    V;
+to_int_or_null(V) when is_binary(V) ->
+    try binary_to_integer(V) of
+        I when is_integer(I) -> I;
+        _ -> null
+    catch
+        _:_ -> null
+    end;
+to_int_or_null(_) ->
+    null.
 
 %%-------------------------------------------------------------------
 %% @private 按配置开关决定是否归档到永久存储
@@ -234,23 +281,34 @@ do_write(c2c, Row) ->
 do_write(c2g, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),
-    ToIdList = maps:get(<<"to_id_list">>, Row, []),
+    %% to_id_list 列可空：epgsql 对 NULL 返回原子 null，而 maps:get/3 的默认值
+    %% 只在**键缺失**时生效 → 必须显式归一，否则下面的列表推导会以
+    %% {bad_generator,null} 抛异常（2026-09-12 实测，见 process_row/1 终态判定）。
+    ToIdList =
+        case maps:get(<<"to_id_list">>, Row, []) of
+            null -> [];
+            L when is_list(L) -> L;
+            _ -> []
+        end,
     CreatedAt = maps:get(<<"created_at">>, Row, 0),
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
     ConvSeq = maps:get(<<"conv_seq">>, Row, null),
-    %% C2G 需要 Gid，从 payload 解析
+    %% C2G 需要 Gid，从 payload 解析（缺失/非法 → 终态而非崩溃）
     PayloadMap = jsone:decode(PayloadBin, [{object_format, map}]),
-    GidEnc = maps:get(<<"to">>, PayloadMap),
-    Gid = ec_cnv:to_integer(GidEnc),
-    case ConvSeq of
-        Seq when is_integer(Seq), Seq >= 1 ->
+    Gid = to_int_or_null(maps:get(<<"to">>, PayloadMap, null)),
+    case {ConvSeq, Gid, ToIdList} of
+        {Seq, G, [_ | _]} when is_integer(Seq), Seq >= 1, is_integer(G), G > 0 ->
             msg_c2g_repo:write_msg(
-                CreatedAt, MsgId, PayloadBin, FromId, ToIdList, Gid, MsgType, E2EE, null, Seq
+                CreatedAt, MsgId, PayloadBin, FromId, ToIdList, G, MsgType, E2EE, null, Seq
             );
+        {Seq, G, []} when is_integer(Seq), Seq >= 1, is_integer(G), G > 0 ->
+            {error, no_recipients};
+        {Seq, _, _} when not (is_integer(Seq) andalso Seq >= 1) ->
+            {error, c2g_conv_seq_missing};
         _ ->
-            {error, c2g_conv_seq_missing}
+            {error, c2g_gid_missing}
     end;
 do_write(s2c, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
