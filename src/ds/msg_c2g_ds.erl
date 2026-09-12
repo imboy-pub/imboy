@@ -259,7 +259,7 @@ read_msg(GroupId, Columns, Limit) when
 % msg_c2g_ds:read_msg(3, 1000, 1707686743435).
 read_msg(ToUid, Limit, undefined) ->
     % 获取用户未确认的消息
-    Column = <<"msg_id, created_at">>,
+    Column = <<"tl.msg_id, tl.created_at">>,
     {ok, Rows} = msg_c2g_timeline_repo:list_by_uid(ToUid, Column, Limit),
     MsgIds = [MsgId || #{<<"msg_id">> := MsgId} <- Rows],
     % 按创建时间排序获取消息内容（包含 from_id 和 to_id）
@@ -281,12 +281,8 @@ read_msg(ToUid, Limit, LastMsgAt) ->
     % 使用 elib_dt:to_rfc3339/1 统一转换时间戳为 RFC3339 格式
     FixedLastMsgAt = elib_dt:to_rfc3339(LastMsgAt),
     % 获取指定时间之后的用户未确认消息
-    Tb = msg_c2g_timeline_repo:tablename(),
-    Column = <<"msg_id, created_at">>,
-    Where =
-        <<" WHERE to_uid = $1 AND client_ack = false AND created_at >= $2 ORDER BY created_at ASC LIMIT $3">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
-    case elib_pg:query(Sql, [ToUid, FixedLastMsgAt, Limit]) of
+    Column = <<"tl.msg_id, tl.created_at">>,
+    case msg_c2g_timeline_repo:list_by_uid_since(ToUid, Column, Limit, FixedLastMsgAt) of
         {ok, []} ->
             [];
         {ok, Rows} ->
@@ -438,22 +434,9 @@ timeline_delete_by_msg_ids_and_to_id(MsgIds, Uid) ->
 %% G3: messaging_logic 不应直调 msg_c2g_timeline_repo:tablename()
 -spec count_unread_timeline_since(integer(), binary() | undefined) -> non_neg_integer().
 count_unread_timeline_since(ToId, undefined) ->
-    Tb = msg_c2g_timeline_repo:tablename(),
-    Sql =
-        <<"SELECT count(*) as count FROM ", Tb/binary, " WHERE to_id = $1 AND client_ack = false">>,
-    case elib_pg:query(Sql, [ToId]) of
-        {ok, [#{<<"count">> := Count}]} -> Count;
-        _ -> 0
-    end;
+    msg_c2g_timeline_repo:count_pending_by_uid(ToId, undefined);
 count_unread_timeline_since(ToId, Since) ->
-    Tb = msg_c2g_timeline_repo:tablename(),
-    Sql =
-        <<"SELECT count(*) as count FROM ", Tb/binary,
-            " WHERE to_id = $1 AND client_ack = false AND created_at >= $2">>,
-    case elib_pg:query(Sql, [ToId, Since]) of
-        {ok, [#{<<"count">> := Count}]} -> Count;
-        _ -> 0
-    end.
+    msg_c2g_timeline_repo:count_pending_by_uid(ToId, Since).
 
 %% G3: msg_c2g_logic 不应直调 msg_c2g_repo:tablename()
 -spec set_expire_at(binary(), binary()) -> ok.

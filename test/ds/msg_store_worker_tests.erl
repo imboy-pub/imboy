@@ -271,6 +271,49 @@ flush_queue_returns_ok_test_() ->
         ?assert(is_function(fun msg_store_worker:flush_queue/0, 0))
     end).
 
+c2g_write_requires_authoritative_conv_seq_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2g_repo, [
+                {'write_msg', 10, fun(_, _, _, _, _, _, _, _, _, _) ->
+                    erlang:error(should_not_write_without_conv_seq)
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                {error, c2g_conv_seq_missing},
+                msg_store_worker:do_write(c2g, c2g_row(null))
+            ),
+            ?assertEqual(0, meck:num_calls(msg_c2g_repo, write_msg, 10))
+        end
+    ).
+
+c2g_write_propagates_authoritative_conv_seq_test_() ->
+    ?WITH_MECKS(
+        [
+            {msg_c2g_repo, [
+                {'write_msg', 10, fun(_, _, _, _, _, 9, _, _, null, 77) -> ok end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(ok, msg_store_worker:do_write(c2g, c2g_row(77))),
+            ?assertEqual(1, meck:num_calls(msg_c2g_repo, write_msg, 10))
+        end
+    ).
+
+c2g_row(ConvSeq) ->
+    #{
+        <<"payload">> => <<"{\"to\":\"9\"}">>,
+        <<"from_id">> => 1,
+        <<"to_id_list">> => [1, 2],
+        <<"created_at">> => <<"2026-09-11T00:00:00Z">>,
+        <<"msg_id">> => <<"timeline-seq-test">>,
+        <<"msg_type">> => <<"text">>,
+        <<"e2ee">> => null,
+        <<"conv_seq">> => ConvSeq
+    }.
+
 %% ===================================================================
 %% 数据结构测试
 %% ===================================================================

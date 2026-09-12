@@ -9,6 +9,8 @@
 -export([client_ack/2]).
 -export([delete_timeline/2]).
 -export([list_by_uid/2, list_by_uid/3]).
+-export([list_by_uid_since/4]).
+-export([count_pending_by_uid/2]).
 -export([check_msg/1]).
 -export([count_by_to_id/1]).
 -export([delete_by_msg_id/1]).
@@ -31,13 +33,55 @@ list_by_uid(Uid, Column) ->
 
 -spec list_by_uid(integer(), binary(), integer()) -> {ok, list(map())} | {error, term()}.
 list_by_uid(Uid, Column, Limit) ->
+    list_authorized(Uid, Column, Limit, undefined).
+
+-spec list_by_uid_since(integer(), binary(), integer(), binary()) ->
+    {ok, list(map())} | {error, term()}.
+list_by_uid_since(Uid, Column, Limit, Since) ->
+    list_authorized(Uid, Column, Limit, Since).
+
+-spec list_authorized(integer(), binary(), integer(), undefined | binary()) ->
+    {ok, list(map())} | {error, term()}.
+list_authorized(Uid, Column, Limit, Since) ->
     Tb = tablename(),
-    % use index idx_c2g_timeline_to_uid_pending
-    % 必须先排序再截断：待确认消息堆积超过 Limit 时，
-    % 无 ORDER BY 会选中不确定子集且成员间顺序可能相反
-    Where = <<" WHERE to_uid = $1 AND client_ack = false ORDER BY created_at ASC LIMIT $2">>,
-    Sql = <<"SELECT ", Column/binary, " FROM ", Tb/binary, Where/binary>>,
-    elib_pg:query(Sql, [Uid, Limit]).
+    {SinceSql, Params} =
+        case Since of
+            undefined -> {<<>>, [Uid, Limit]};
+            _ -> {<<" AND tl.created_at >= $2">>, [Uid, Since, Limit]}
+        end,
+    LimitParam = integer_to_binary(length(Params)),
+    Sql = authorized_pending_sql(Tb, Column, SinceSql, LimitParam),
+    elib_pg:query(Sql, Params).
+
+-spec count_pending_by_uid(integer(), undefined | binary()) -> non_neg_integer().
+count_pending_by_uid(Uid, Since) ->
+    Tb = tablename(),
+    {SinceSql, Params} =
+        case Since of
+            undefined -> {<<>>, [Uid]};
+            _ -> {<<" AND tl.created_at >= $2">>, [Uid, Since]}
+        end,
+    Sql = authorized_pending_sql(Tb, <<"count(*) AS count">>, SinceSql, undefined),
+    case elib_pg:query(Sql, Params) of
+        {ok, [#{<<"count">> := Count}]} -> Count;
+        _ -> 0
+    end.
+
+authorized_pending_sql(Tb, Column, SinceSql, LimitParam) ->
+    LimitSql =
+        case LimitParam of
+            undefined -> <<>>;
+            _ -> <<" ORDER BY tl.created_at ASC LIMIT $", LimitParam/binary>>
+        end,
+    <<"SELECT ", Column/binary, " FROM ", Tb/binary, " tl ",
+        "JOIN public.\"group\" grp ON grp.id = tl.to_gid AND grp.status = 1 ",
+        "JOIN public.group_member gm ON gm.group_id = tl.to_gid ",
+        "AND gm.user_id = tl.to_uid AND gm.status = 1 ",
+        "JOIN public.group_member_generation gmg ON gmg.group_id = tl.to_gid ",
+        "AND gmg.user_id = tl.to_uid AND gmg.end_seq IS NULL ",
+        "WHERE tl.to_uid = $1 AND tl.client_ack = false ",
+        "AND tl.conv_seq IS NOT NULL AND tl.conv_seq >= gmg.start_seq", SinceSql/binary,
+        LimitSql/binary>>.
 
 % msg_c2g_timeline_repo:client_ack(109, <<"cor1aup1a20rgjtl5t8g">>).
 -spec client_ack(integer(), binary()) -> {ok, non_neg_integer()} | {error, term()}.

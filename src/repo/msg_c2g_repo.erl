@@ -10,7 +10,9 @@
 -export([tablename/0]).
 -export([write_msg/8]).
 -export([write_msg/9]).
+-export([write_msg/10]).
 -export([write_msg_with_reply/11]).
+-export([write_msg_with_reply/12]).
 -export([list_by_ids/2]).
 -export([find_msg_by_id/1]).
 -export([find_by_reply_to_msg_id/1]).
@@ -105,6 +107,26 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE) ->
     binary() | null
 ) -> ok.
 write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, ExpireAt) ->
+    write_msg(
+        CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, ExpireAt, null
+    ).
+
+%% @doc 写入带权威 C2G 持久接受序号的离线消息。
+-spec write_msg(
+    binary() | integer(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | null,
+    binary() | null,
+    pos_integer() | null
+) -> ok.
+write_msg(
+    CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, ExpireAt, ConvSeq
+) ->
     write_msg_impl(
         CreatedAtRaw,
         MsgId,
@@ -115,6 +137,7 @@ write_msg(CreatedAtRaw, MsgId, Payload, FromId, ToUids, Gid, MsgType, E2EE, Expi
         MsgType,
         E2EE,
         ExpireAt,
+        ConvSeq,
         undefined
     ).
 
@@ -132,6 +155,7 @@ write_msg_impl(
     MsgType,
     E2EE,
     ExpireAt,
+    ConvSeq,
     ReplyMeta
 ) ->
     %% ---------- 统一转换 CreatedAt ----------
@@ -204,16 +228,21 @@ write_msg_impl(
         end,
 
         %% ---------- 批量插入时间线表 ----------
-        Vals = [[MsgId, ToId, Gid, CreatedAt] || ToId <- ToUids],
+        Vals = [[MsgId, ToId, Gid, CreatedAt, ConvSeq] || ToId <- ToUids],
         {SqlTimeline0, ParamsTimeline} =
-            elib_pg_sql:insert_batch(TbTimeline, [msg_id, to_uid, to_gid, created_at], Vals),
+            elib_pg_sql:insert_batch(
+                TbTimeline, [msg_id, to_uid, to_gid, created_at, conv_seq], Vals
+            ),
         %% 【ON CONFLICT 修复】表上唯一约束是 uk_c2g_timeline_touid_msgid_createdat
         %% (to_uid, msg_id, created_at)，原 SQL 只列 (to_uid, msg_id) → PG 42P10
         %% invalid_column_reference，导致 msg_store_worker 在群消息批写时反复 crash，
         %% msg_c2g 写不进库、群消息无法投递。列必须与索引完全一致。
         SqlTimeline = iolist_to_binary([
             SqlTimeline0,
-            <<" ON CONFLICT (to_uid, msg_id, created_at) DO NOTHING">>
+            <<" ON CONFLICT (to_uid, msg_id, created_at) DO UPDATE SET ",
+                "conv_seq = EXCLUDED.conv_seq WHERE ">>,
+            TbTimeline,
+            <<".conv_seq IS NULL AND EXCLUDED.conv_seq IS NOT NULL">>
         ]),
         {ok, _} = elib_pg:execute(Conn, SqlTimeline, ParamsTimeline),
         ok
@@ -370,6 +399,49 @@ write_msg_with_reply(
     ReplyToFromId,
     ReplySnippet
 ) ->
+    write_msg_with_reply(
+        CreatedAt,
+        Id,
+        Payload,
+        FromId,
+        ToUids,
+        Gid,
+        MsgType,
+        E2EE,
+        ReplyToMsgId,
+        ReplyToFromId,
+        ReplySnippet,
+        null
+    ).
+
+-spec write_msg_with_reply(
+    binary(),
+    binary(),
+    binary(),
+    integer(),
+    [integer()],
+    integer(),
+    binary(),
+    map() | null,
+    binary(),
+    integer(),
+    binary(),
+    pos_integer() | null
+) -> ok | {error, term()}.
+write_msg_with_reply(
+    CreatedAt,
+    Id,
+    Payload,
+    FromId,
+    ToUids,
+    Gid,
+    MsgType,
+    E2EE,
+    ReplyToMsgId,
+    ReplyToFromId,
+    ReplySnippet,
+    ConvSeq
+) ->
     %% RT-P3-03（2026-08-27）：表自建库迁移 00000006 起即有 reply 三列，
     %% 原"不支持"注释系误记导致引用元数据被静默丢弃；改走真实现。
     write_msg_impl(
@@ -382,6 +454,7 @@ write_msg_with_reply(
         MsgType,
         E2EE,
         null,
+        ConvSeq,
         {ReplyToMsgId, ReplyToFromId, ReplySnippet}
     ).
 

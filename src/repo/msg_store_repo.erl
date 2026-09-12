@@ -6,6 +6,8 @@
 
 -include("log.hrl").
 
+-define(MAX_C2G_RECIPIENTS, 5000).
+
 %% ==================== API ====================
 
 -export([tablename/0]).
@@ -23,6 +25,7 @@
 %% 写入操作
 -export([stage/10]).
 -export([stage/11]).
+-export([stage/12]).
 
 %% 删除操作
 -export([unstage/2]).
@@ -124,55 +127,20 @@ stage(
 ) when
     is_integer(ToId), Type =:= <<"c2g">>
 ->
-    %% E2EE-2026-012 §7.2（Task 8/LT-03）：c2g 消息在持久接受（staging 写入）
-    %% **同一事务**内预分配 conv_seq；membership 转换对同一 msg_store_seq 行加锁，
-    %% 边界在锁内确定，异步 archive 只搬运既定 seq。重复 msg_id 重试不会给
-    %% 同一行分配第二个序列（原行保持原 conv_seq，多余自增为允许的 gap）。
-    ConvKey = msg_archive_ds:conv_key_c2g(ToId),
-    Tb = tablename(),
-    Data0 = #{
-        type => Type,
-        msg_id => MsgId,
-        msg_type => MsgType,
-        action => Action,
-        e2ee => msg_store_e2ee_to_jsonb(E2EE),
-        payload => msg_store_payload_to_jsonb(Payload),
-        from_id => FromId,
-        to_id => ToId,
-        created_at => CreatedAt,
-        server_ts => ServerTs,
-        retry_count => 0
-    },
-    Data = put_sender_did(Data0, SenderDid),
-    GenId = elib_tsid:generate(msg_store),
-    case
-        elib_pg:with_tx(fun(Conn) ->
-            {ok, _, _, [{Seq}]} =
-                epgsql:equery(Conn, stage_conv_seq_sql(), [ConvKey]),
-            {Sql, Params} = elib_pg_sql:insert(Tb, Data#{id => GenId, conv_seq => Seq}),
-            %% 失败必须显式回滚：普通返回值会随 with_transaction 提交路径穿出，
-            %% 计数器递增将无法撤销（重复 msg_id 场景 = 空推 gap）
-            case elib_pg:query(Conn, Sql, Params) of
-                {ok, _} = Ok ->
-                    Ok;
-                {error, {error, error, <<"23505">>, unique_violation, _, _}} ->
-                    throw({rollback, {unique_violation, MsgId}});
-                {error, R} ->
-                    throw({rollback, R})
-            end
-        end)
-    of
-        {ok, _} ->
-            {ok, GenId};
-        {rollback, {unique_violation, MsgId}} ->
-            {error, {unique_violation, MsgId}};
-        {rollback, Reason} ->
-            {error, Reason};
-        {error, Reason} ->
-            {error, Reason};
-        Other ->
-            Other
-    end;
+    stage(
+        Type,
+        MsgId,
+        MsgType,
+        Action,
+        E2EE,
+        Payload,
+        FromId,
+        ToId,
+        CreatedAt,
+        ServerTs,
+        SenderDid,
+        1
+    );
 stage(
     Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, SenderDid
 ) when
@@ -214,6 +182,21 @@ stage(
             {error, Reason}
     end;
 stage(
+    <<"c2g">>,
+    _MsgId,
+    _MsgType,
+    _Action,
+    _E2EE,
+    _Payload,
+    _FromId,
+    ToIdList,
+    _CreatedAt,
+    _ServerTs,
+    _SenderDid
+) when is_list(ToIdList) ->
+    %% C2G 必须携带 GID，才能在同一事务内重验群/发送者并固化收件人快照。
+    {error, c2g_group_id_required};
+stage(
     Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToIdList, CreatedAt, ServerTs, SenderDid
 ) when
     is_list(ToIdList)
@@ -254,6 +237,127 @@ stage(
             {error, Reason}
     end.
 
+%% @doc C2G 持久接受：在序列锁内重验 active sender、最低角色和收件人快照。
+-spec stage(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    1 | 3
+) -> {ok, term(), [integer()]} | {error, term()}.
+stage(
+    <<"c2g">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    RequiredRole
+) when is_integer(ToId), (RequiredRole =:= 1 orelse RequiredRole =:= 3) ->
+    %% Sequence、发送权限、recipient snapshot 与 staging INSERT 位于同一事务。
+    %% 重复 msg_id 会整体回滚，不改变原行 conv_seq，也不制造序号 gap。
+    ConvKey = msg_archive_ds:conv_key_c2g(ToId),
+    Tb = tablename(),
+    Data0 = #{
+        type => Type,
+        msg_id => MsgId,
+        msg_type => MsgType,
+        action => Action,
+        e2ee => msg_store_e2ee_to_jsonb(E2EE),
+        payload => msg_store_payload_to_jsonb(Payload),
+        from_id => FromId,
+        to_id => ToId,
+        created_at => CreatedAt,
+        server_ts => ServerTs,
+        retry_count => 0
+    },
+    Data = put_sender_did(Data0, SenderDid),
+    GenId = elib_tsid:generate(msg_store),
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            {ok, _, _, [{Seq}]} =
+                epgsql:equery(Conn, stage_conv_seq_sql(), [ConvKey]),
+            MemberUids = authorized_c2g_recipients(Conn, ToId, FromId, RequiredRole),
+            StagedData = Data#{id => GenId, conv_seq => Seq, to_id_list => MemberUids},
+            {Sql, Params} = elib_pg_sql:insert(Tb, StagedData),
+            %% 普通返回值会提交，所有失败都必须显式抛 rollback。
+            case elib_pg:query(Conn, Sql, Params) of
+                {ok, _} ->
+                    ok = bind_group_attachment_anchors(Conn, MsgId, FromId, ToId, Seq),
+                    {ok, MemberUids};
+                {error, {error, error, <<"23505">>, unique_violation, _, _}} ->
+                    throw({rollback, {unique_violation, MsgId}});
+                {error, Reason} ->
+                    throw({rollback, Reason})
+            end
+        end)
+    of
+        {ok, MemberUids} when is_list(MemberUids) ->
+            {ok, GenId, MemberUids};
+        {rollback, {unique_violation, MsgId}} ->
+            {error, {unique_violation, MsgId}};
+        {rollback, Reason} ->
+            {error, Reason};
+        {error, Reason} ->
+            {error, Reason};
+        Other ->
+            Other
+    end.
+
+%% @private C2G staging INSERT 成功后、事务提交前，把同一发送者预先确认的群附件
+%% 绑定到权威 conv_seq。普通消息无匹配行时是合法 no-op；未绑定附件下载侧仍拒绝。
+-spec bind_group_attachment_anchors(pid(), binary(), integer(), integer(), integer()) -> ok.
+bind_group_attachment_anchors(Conn, MsgId, FromId, Gid, Seq) ->
+    Sql =
+        <<"UPDATE public.attachment SET anchor_conv_seq = $4, updated_at = now() ",
+            "WHERE anchor_msg_id = $1 AND creator_user_id = $2 ",
+            "AND scope = 'group' AND scope_ref = $3::text ",
+            "AND group_file_id IS NULL AND anchor_conv_seq IS NULL AND status >= 0">>,
+    case elib_pg:query(Conn, Sql, [MsgId, FromId, Gid, Seq]) of
+        {ok, _} -> ok;
+        {error, Reason} -> throw({rollback, {attachment_anchor_bind_failed, Reason}});
+        Other -> throw({rollback, {unexpected_attachment_anchor_bind, Other}})
+    end.
+
+%% @private sequence 行锁已由调用方持有；本查询在同一事务的新 READ COMMITTED
+%% snapshot 中重新验证发送者，并固化所有下游必须复用的 active recipient 集合。
+-spec authorized_c2g_recipients(pid(), integer(), integer(), 1 | 3) -> [integer()].
+authorized_c2g_recipients(Conn, Gid, FromId, RequiredRole) ->
+    ProbeLimit = ?MAX_C2G_RECIPIENTS + 1,
+    Sql =
+        <<"SELECT recipient.user_id FROM public.\"group\" grp ",
+            "JOIN public.group_member caller ON caller.group_id = grp.id ",
+            "AND caller.user_id = $2 AND caller.status = 1 AND caller.role >= $3 ",
+            "JOIN public.group_member recipient ON recipient.group_id = grp.id ",
+            "AND recipient.status = 1 ", "WHERE grp.id = $1 AND grp.status = 1 LIMIT $4">>,
+    case elib_pg:query(Conn, Sql, [Gid, FromId, RequiredRole, ProbeLimit]) of
+        {ok, []} ->
+            throw({rollback, forbidden});
+        {ok, Rows} when length(Rows) > ?MAX_C2G_RECIPIENTS ->
+            throw({rollback, recipient_limit_exceeded});
+        {ok, Rows} ->
+            case [Uid || #{<<"user_id">> := Uid} <- Rows, is_integer(Uid)] of
+                Uids when length(Uids) =:= length(Rows) -> Uids;
+                _ -> throw({rollback, invalid_recipient_row})
+            end;
+        {error, Reason} ->
+            throw({rollback, {recipient_snapshot_failed, Reason}});
+        Other ->
+            throw({rollback, {unexpected_recipient_snapshot, Other}})
+    end.
+
 %% @private
 %% @doc 仅在设备标识非空时写该列；空值一律保持 NULL。
 %% 与 message_ds:with_sender_device/2 的「缺字段时不补空值」同一语义。
@@ -277,7 +381,7 @@ claim_pending(Limit, LeaseSeconds) ->
     elib_pg:with_tx(fun(Conn) ->
         Sql = <<
             "SELECT id, type, msg_id, payload, from_id, to_id, to_id_list, created_at, server_ts, retry_count, "
-            "msg_type, action, e2ee, sender_did "
+            "msg_type, action, e2ee, sender_did, conv_seq "
             "FROM ",
             Tb/binary,
             " WHERE processed_at IS NULL ",
@@ -332,7 +436,8 @@ mark_failed(Type, MsgId, ErrorMsg, DelaySeconds) ->
 get_unstaged(Limit) ->
     Tb = tablename(),
     Sql = <<
-        "SELECT msg_type, msg_id, payload, from_id, to_id, to_id_list, created_at, server_ts "
+        "SELECT type, msg_type, msg_id, payload, from_id, to_id, to_id_list, created_at, "
+        "server_ts, retry_count, action, e2ee, sender_did, conv_seq "
         "FROM ",
         Tb/binary,
         " WHERE processed_at IS NULL ",

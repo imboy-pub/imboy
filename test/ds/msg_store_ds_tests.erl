@@ -90,13 +90,13 @@ stage_error_returns_error_test_() ->
         end
     ).
 
-stage_preserves_group_recipient_list_test_() ->
+c2g_stage_recipient_list_bypass_is_rejected_test_() ->
     ?WITH_MECK(
         msg_store_repo,
         [
             {'stage', 10, fun(_, _, _, _, _, _, _, ToIdList, _, _) ->
                 ?assertEqual([2, 3, 4], ToIdList),
-                {ok, 1}
+                {error, c2g_group_id_required}
             end}
         ],
         fun() ->
@@ -112,7 +112,61 @@ stage_preserves_group_recipient_list_test_() ->
                 <<"2023-01-01T00:00:00Z">>,
                 <<"2023-01-01T00:00:00Z">>
             ),
-            ?assertEqual({ok, new}, Result)
+            ?assertEqual({error, c2g_group_id_required}, Result)
+        end
+    ).
+
+c2g_stage_forwards_required_role_and_snapshot_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'stage', 12, fun(_, _, _, _, _, _, 50, 100, _, _, _, 3) ->
+                {ok, 12345, [50, 60]}
+            end}
+        ],
+        fun() ->
+            Result = msg_store_ds:stage(
+                <<"c2g">>,
+                <<"msg_group_role">>,
+                <<"text">>,
+                <<>>,
+                #{},
+                <<"{}">>,
+                50,
+                100,
+                <<"2026-09-11T00:00:00Z">>,
+                <<"2026-09-11T00:00:00Z">>,
+                <<"did-50">>,
+                3
+            ),
+            ?assertEqual({ok, new, [50, 60]}, Result)
+        end
+    ).
+
+c2g_stage_database_error_is_retryable_test_() ->
+    ?WITH_MECK(
+        msg_store_repo,
+        [
+            {'stage', 12, fun(_, _, _, _, _, _, _, _, _, _, _, _) ->
+                {error, connection_lost}
+            end}
+        ],
+        fun() ->
+            Result = msg_store_ds:stage(
+                <<"c2g">>,
+                <<"msg_group_error">>,
+                <<"text">>,
+                <<>>,
+                #{},
+                <<"{}">>,
+                50,
+                100,
+                <<"2026-09-11T00:00:00Z">>,
+                <<"2026-09-11T00:00:00Z">>,
+                <<>>,
+                1
+            ),
+            ?assertEqual({error, unavailable}, Result)
         end
     ).
 

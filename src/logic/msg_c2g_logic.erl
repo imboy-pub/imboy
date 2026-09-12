@@ -106,7 +106,7 @@ c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
                             case group_member_ds:check_admin(CurrentUid, ToGID) of
                                 true ->
                                     send_c2g_fail_closed(
-                                        MsgId, CurrentUid, Data, Gid, ToGID
+                                        MsgId, CurrentUid, Data, Gid, ToGID, 3
                                     );
                                 false ->
                                     _ = ?WARN_LOG("用户 ~p 尝试使用 @所有人功能但没有管理员权限", [CurrentUid]),
@@ -121,7 +121,7 @@ c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
                                     ok
                             end;
                         false ->
-                            send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID)
+                            send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID, 1)
                     end;
                 false ->
                     _ = ?WARN_LOG("用户 ~p 尝试向非成员群组 ~p 发送消息", [CurrentUid, ToGID]),
@@ -137,44 +137,16 @@ c2g_send(MsgId, CurrentUid, Gid, ToGID, Data) ->
     end.
 
 %% @private
-%% @doc 取群成员并投递；成员查询失败时拒绝发送（fail-closed）。
-%%
-%% 此前两个调用点都用 group_ds:member_uids/1，它把 {error,_} 折成 []，
-%% 于是 DB 抖动的瞬间发出的群消息会以**空收件人列表**写进 staging：
-%% 消息落库、发送方看到成功、但没有任何人是收件人，DB 恢复后也永远
-%% 投递不出去。宁可让发送方看到一个明确的失败并重发，也不要产生一条
-%% 永久不可投递却看起来成功的消息。
-%%
-%% 错误帧格式与本函数上方的 @所有人/非成员分支保持一致（C2G_ERROR）。
--spec send_c2g_fail_closed(binary(), integer(), map(), binary(), integer()) -> ok.
-send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID) ->
-    case group_ds:member_uids_strict(ToGID) of
-        {ok, MemberUids} ->
-            do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids);
-        {error, Reason} ->
-            ok = ?ERROR_LOG(
-                "C2G 拒绝发送：群 ~p 成员查询失败 ~p（fail-closed，避免空收件人落库）~n",
-                [ToGID, Reason]
-            ),
-            _ = elib_metric:increment(msg_c2g_rejected_total, 1, #{
-                reason => <<"member_lookup_failed">>
-            }),
-            self() !
-                {reply, #{
-                    <<"id">> => MsgId,
-                    <<"type">> => <<"C2G_ERROR">>,
-                    <<"error">> =>
-                        <<"Group member lookup failed, please retry"/utf8>>,
-                    <<"code">> => 503
-                }},
-            ok
-    end.
+%% @doc staging 事务内固化收件人，并按消息语义重验发送者最低角色。
+-spec send_c2g_fail_closed(binary(), integer(), map(), binary(), integer(), 1 | 3) -> ok.
+send_c2g_fail_closed(MsgId, CurrentUid, Data, Gid, ToGID, RequiredRole) ->
+    do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, RequiredRole).
 
 %% @private
-%% @doc 执行群聊消息发送（已通过权限检查）
--spec do_send_c2g(binary(), integer(), map(), binary(), integer(), [integer()]) ->
+%% @doc 执行群聊消息发送（事务外预检已通过，事务内仍会权威重验）
+-spec do_send_c2g(binary(), integer(), map(), binary(), integer(), 1 | 3) ->
     ok | {reply, map()}.
-do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
+do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, RequiredRole) ->
     NowTs = elib_dt:now(),
     NowMS = elib_dt:millisecond(),
     CreatedAt = maps:get(<<"created_at">>, Data),
@@ -236,7 +208,7 @@ do_send_c2g(MsgId, CurrentUid, Data, Gid, ToGID, MemberUids) ->
                 Data,
                 Gid,
                 ToGID,
-                MemberUids,
+                RequiredRole,
                 MsgType,
                 Action,
                 E2EE,
@@ -280,7 +252,7 @@ group_e2ee_gate(Gid, MsgType, Action, E2EE, Payload) ->
     map(),
     binary(),
     integer(),
-    [integer()],
+    1 | 3,
     binary(),
     binary(),
     term(),
@@ -295,12 +267,12 @@ do_stage_and_send_c2g(
     Data,
     Gid,
     ToGID,
-    MemberUids,
+    RequiredRole,
     MsgType,
     Action,
     E2EE,
     Msg2,
-    NowTs,
+    _NowTs,
     NowMS,
     CreatedAtRfc
 ) ->
@@ -323,10 +295,11 @@ do_stage_and_send_c2g(
                     E2EE,
                     Msg2,
                     CurrentUid,
-                    MemberUids,
+                    ToGID,
                     CreatedAtRfc,
                     CreatedAtRfc,
-                    SenderDid
+                    SenderDid,
+                    RequiredRole
                 );
             _ ->
                 % 有引用信息，需要先验证被引用的消息是否存在
@@ -340,10 +313,11 @@ do_stage_and_send_c2g(
                             E2EE,
                             Msg2,
                             CurrentUid,
-                            MemberUids,
+                            ToGID,
                             CreatedAtRfc,
                             CreatedAtRfc,
-                            SenderDid
+                            SenderDid,
+                            RequiredRole
                         );
                     {error, not_found} ->
                         % 被引用的消息不存在，返回错误
@@ -363,10 +337,11 @@ do_stage_and_send_c2g(
                             E2EE,
                             Msg2,
                             CurrentUid,
-                            MemberUids,
+                            ToGID,
                             CreatedAtRfc,
                             CreatedAtRfc,
-                            SenderDid
+                            SenderDid,
+                            RequiredRole
                         )
                 end
         end,
@@ -384,7 +359,7 @@ do_stage_and_send_c2g(
                     <<"server_ts">> => NowMS
                 }},
             ok;
-        {ok, new} ->
+        {ok, new, MemberUids} ->
             % 备份成功，继续处理
             MsLi = elib_retry_config:intervals(<<"c2g">>),
             % 立即响应
@@ -414,7 +389,7 @@ do_stage_and_send_c2g(
                 _ ->
                     % 有引用信息，存储到数据库
                     msg_c2g_ds:write_msg_with_reply(
-                        NowTs,
+                        CreatedAtRfc,
                         MsgId,
                         Msg2,
                         CurrentUid,
@@ -457,8 +432,13 @@ do_stage_and_send_c2g(
             Mentions = mentions_from_payload(Payload),
             _ =
                 case Mentions of
-                    [] -> ok;
-                    _ -> _ = mention_logic:create_mentions(MsgId, ToGID, Mentions, CurrentUid)
+                    [] ->
+                        ok;
+                    _ ->
+                        CommittedMentions = committed_mentions(Mentions, MemberUids),
+                        _ = mention_logic:create_mentions(
+                            MsgId, ToGID, CommittedMentions, CurrentUid
+                        )
                 end,
 
             %% Phase 4 T4.2 群触发：仅对**真正新入投递管道**的消息旁路触发 @agent 回复。
@@ -471,10 +451,66 @@ do_stage_and_send_c2g(
             ),
 
             ok;
+        {error, forbidden} ->
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_ERROR">>,
+                    <<"error">> => <<"Not an active group member"/utf8>>,
+                    <<"code">> => 403
+                }},
+            ok;
+        {error, recipient_limit_exceeded} ->
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_ERROR">>,
+                    <<"error">> => <<"Group recipient limit exceeded"/utf8>>,
+                    <<"code">> => 409
+                }},
+            ok;
+        {error, unavailable} ->
+            self() !
+                {reply, #{
+                    <<"id">> => MsgId,
+                    <<"type">> => <<"C2G_ERROR">>,
+                    <<"error">> => <<"Group message staging failed, please retry"/utf8>>,
+                    <<"code">> => 503
+                }},
+            ok;
         error ->
             % 已经在上面处理了错误响应
             ok
     end.
+
+%% @private 把 @all 展开为 staging 已提交快照，并过滤普通 mention，禁止后加入者
+%% 收到旧消息提醒，也禁止已退出/非群成员被旁路触达。
+-spec committed_mentions(list(), [integer()]) -> [binary()].
+committed_mentions(Mentions, MemberUids) ->
+    case lists:member(<<"all">>, Mentions) of
+        true ->
+            [integer_to_binary(Uid) || Uid <- MemberUids];
+        false ->
+            lists:usort([
+                integer_to_binary(Uid)
+             || Mention <- Mentions,
+                Uid <- [mention_uid(Mention)],
+                lists:member(Uid, MemberUids)
+            ])
+    end.
+
+-spec mention_uid(term()) -> integer().
+mention_uid(Uid) when is_integer(Uid), Uid > 0 ->
+    Uid;
+mention_uid(Uid) when is_binary(Uid) ->
+    try binary_to_integer(Uid) of
+        Value when Value > 0 -> Value;
+        _ -> 0
+    catch
+        _:_ -> 0
+    end;
+mention_uid(_) ->
+    0.
 
 %% 客户端确认C2G投递消息
 -spec c2g_client_ack(binary(), integer(), binary()) -> ok.
@@ -598,8 +634,6 @@ handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                         false ->
                             case encrypted_edit_policy(MsgType, E2EE, PayloadBin, ToGID) of
                                 ok ->
-                                    MemberUids = group_ds:member_uids(ToGID),
-                                    RecipientUids = [Uid || Uid <- MemberUids, Uid =/= CurrentUid],
                                     ActionMsg = #{
                                         <<"id">> => MsgId,
                                         <<"type">> => <<"C2G">>,
@@ -613,22 +647,58 @@ handle_encrypted_group_edit(MsgId, CurrentUid, Data, OriginalMsgId) ->
                                         <<"server_ts">> => NowMS
                                     },
                                     ActionMsgJson = jsone:encode(ActionMsg, [native_utf8]),
-                                    MsLi = elib_retry_config:intervals(<<"c2g">>),
-                                    [
-                                        message_ds:send_next(Uid, MsgId, ActionMsgJson, MsLi)
-                                     || Uid <- RecipientUids
-                                    ],
-                                    _ = msg_c2g_ds:write_msg(
-                                        elib_dt:now(),
-                                        MsgId,
-                                        PayloadBin,
-                                        FromId,
-                                        RecipientUids,
-                                        ToGID,
-                                        MsgType,
-                                        E2EE
-                                    ),
-                                    {reply, ActionMsg};
+                                    ActionCreatedAt = elib_dt:now(),
+                                    SenderDid = maps:get(<<"sender_did">>, Data, <<>>),
+                                    case
+                                        msg_store_ds:stage(
+                                            <<"c2g">>,
+                                            MsgId,
+                                            MsgType,
+                                            <<"message_edit">>,
+                                            E2EE,
+                                            ActionMsgJson,
+                                            CurrentUid,
+                                            ToGID,
+                                            ActionCreatedAt,
+                                            ActionCreatedAt,
+                                            SenderDid,
+                                            1
+                                        )
+                                    of
+                                        {ok, new, MemberUids} ->
+                                            msg_store_ds:enqueue(<<"c2g">>, MsgId, #{
+                                                payload => ActionMsgJson,
+                                                from_id => CurrentUid,
+                                                to_id => ToGID,
+                                                to_id_list => MemberUids,
+                                                created_at => ActionCreatedAt,
+                                                server_ts => NowMS
+                                            }),
+                                            RecipientUids = [
+                                                Uid
+                                             || Uid <- MemberUids, Uid =/= CurrentUid
+                                            ],
+                                            MsLi = elib_retry_config:intervals(<<"c2g">>),
+                                            [
+                                                message_ds:send_next(
+                                                    Uid, MsgId, ActionMsgJson, MsLi
+                                                )
+                                             || Uid <- RecipientUids
+                                            ],
+                                            {reply, ActionMsg};
+                                        {ok, duplicate} ->
+                                            {reply, ActionMsg};
+                                        {error, _} ->
+                                            {reply,
+                                                message_ds:assemble_s2c(
+                                                    MsgId, <<"service_unavailable">>, To
+                                                )};
+                                        error ->
+                                            {reply,
+                                                message_ds:assemble_s2c(
+                                                    MsgId, <<"service_unavailable">>, To
+                                                )}
+                                    end;
                                 {error, Reason} ->
                                     policy_violation_reply(MsgId, Reason)
                             end

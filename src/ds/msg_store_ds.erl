@@ -70,7 +70,7 @@
 -export([start_link/0]).
 
 %% 备份与入队
--export([stage/10, stage/11, enqueue/3, unstage/1, find_staged/1]).
+-export([stage/10, stage/11, stage/12, enqueue/3, unstage/1, find_staged/1]).
 
 %% 状态查询
 -export([len/0, status/0]).
@@ -142,7 +142,7 @@ start_link() ->
     integer() | [integer()],
     binary(),
     binary()
-) -> {ok, new} | {ok, duplicate} | error.
+) -> {ok, new} | {ok, new, [integer()]} | {ok, duplicate} | {error, term()} | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs) ->
     %% 保持对 msg_store_repo:stage/10 的原调用形状——不要改写成
     %% stage/11 + <<>>：既有调用方的测试按 arity 挂 meck 期望，
@@ -179,7 +179,7 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
     binary(),
     binary(),
     binary()
-) -> {ok, new} | {ok, duplicate} | error.
+) -> {ok, new} | {ok, new, [integer()]} | {ok, duplicate} | {error, term()} | error.
 stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, ServerTs, SenderDid) ->
     handle_stage_result(
         Type,
@@ -199,10 +199,62 @@ stage(Type, MsgId, MsgType, Action, E2EE, Payload, FromId, ToId, CreatedAt, Serv
         )
     ).
 
+%% @doc C2G 专用持久接受；RequiredRole=3 用于在事务快照内重验 @all 权限。
+-spec stage(
+    binary(),
+    binary(),
+    binary(),
+    binary(),
+    map(),
+    binary(),
+    integer(),
+    integer(),
+    binary(),
+    binary(),
+    binary(),
+    1 | 3
+) -> {ok, new, [integer()]} | {ok, duplicate} | {error, term()}.
+stage(
+    <<"c2g">> = Type,
+    MsgId,
+    MsgType,
+    Action,
+    E2EE,
+    Payload,
+    FromId,
+    ToId,
+    CreatedAt,
+    ServerTs,
+    SenderDid,
+    RequiredRole
+) ->
+    handle_stage_result(
+        Type,
+        MsgId,
+        msg_store_repo:stage(
+            Type,
+            MsgId,
+            MsgType,
+            Action,
+            E2EE,
+            Payload,
+            FromId,
+            ToId,
+            CreatedAt,
+            ServerTs,
+            SenderDid,
+            RequiredRole
+        )
+    ).
+
 %% @private stage/10 与 stage/11 共用的落库结果归一化
--spec handle_stage_result(binary(), binary(), term()) -> {ok, new} | {ok, duplicate} | error.
+-spec handle_stage_result(binary(), binary(), term()) ->
+    {ok, new} | {ok, new, [integer()]} | {ok, duplicate} | {error, term()} | error.
 handle_stage_result(Type, MsgId, Result) ->
     case Result of
+        {ok, _, MemberUids} when is_list(MemberUids) ->
+            _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
+            {ok, new, MemberUids};
         {ok, _} ->
             _ = ?DEBUG_LOG([msg_store_ds, stage, Type, MsgId, ok]),
             {ok, new};
@@ -211,6 +263,15 @@ handle_stage_result(Type, MsgId, Result) ->
             %% 调用方据此跳过投递管道，避免接收端重复推送
             _ = ?INFO_LOG([msg_store_ds, stage_duplicate, Type, MsgId]),
             {ok, duplicate};
+        {error, forbidden} ->
+            {error, forbidden};
+        {error, recipient_limit_exceeded} ->
+            {error, recipient_limit_exceeded};
+        {error, c2g_group_id_required} ->
+            {error, c2g_group_id_required};
+        {error, Reason} when Type =:= <<"c2g">> ->
+            _ = ?ERROR_LOG([msg_store_ds, stage_error, Type, MsgId, Reason]),
+            {error, unavailable};
         {error, Reason} ->
             _ = ?ERROR_LOG([msg_store_ds, stage_error, Type, MsgId, Reason]),
             error

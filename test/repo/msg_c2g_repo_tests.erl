@@ -21,6 +21,11 @@
     ]}
 ).
 -define(MOCK_TSID, {elib_tsid, [{'generate', 1, fun(_Table) -> 123456789 end}]}).
+-define(MOCK_WORKSPACE_GUARD,
+    {workspace_guard, [
+        {'ensure_writable_tx', 2, fun(_Conn, {group, _Gid}) -> ok end}
+    ]}
+).
 
 %% ===================================================================
 %% tablename/0 测试
@@ -41,6 +46,7 @@ write_msg_with_valid_data_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
+            ?MOCK_WORKSPACE_GUARD,
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
@@ -67,6 +73,7 @@ write_msg_with_e2ee_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
+            ?MOCK_WORKSPACE_GUARD,
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
@@ -93,6 +100,7 @@ write_msg_with_integer_timestamp_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
+            ?MOCK_WORKSPACE_GUARD,
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
@@ -120,6 +128,7 @@ write_msg_with_single_touid_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
+            ?MOCK_WORKSPACE_GUARD,
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}
@@ -150,6 +159,7 @@ write_msg_main_insert_is_idempotent_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
+            ?MOCK_WORKSPACE_GUARD,
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 {'execute', 3, fun(_Conn, Sql, _Params) ->
@@ -185,6 +195,54 @@ write_msg_main_insert_is_idempotent_test_() ->
                 Sqls
             ),
             ?assert(HasMainIdempotent)
+        end
+    ).
+
+write_msg_timeline_carries_authoritative_conv_seq_test_() ->
+    ?WITH_MECKS(
+        [
+            ?MOCK_ENV,
+            ?MOCK_TSID,
+            ?MOCK_WORKSPACE_GUARD,
+            {elib_pg, [
+                {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
+                {'execute', 3, fun(_Conn, Sql0, Params) ->
+                    Sql = iolist_to_binary(Sql0),
+                    case binary:match(Sql, <<"msg_c2g_timeline">>) of
+                        nomatch ->
+                            {ok, []};
+                        _ ->
+                            ?assertNotEqual(nomatch, binary:match(Sql, <<"conv_seq">>)),
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(Sql, <<"conv_seq = EXCLUDED.conv_seq">>)
+                            ),
+                            ?assertNotEqual(
+                                nomatch,
+                                binary:match(Sql, <<"conv_seq IS NULL">>)
+                            ),
+                            ?assert(lists:member(77, Params)),
+                            {ok, []}
+                    end
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertEqual(
+                ok,
+                msg_c2g_repo:write_msg(
+                    <<"2026-09-11T00:00:00Z">>,
+                    <<"sequenced-c2g">>,
+                    <<"{}">>,
+                    1,
+                    [1, 2],
+                    9,
+                    <<"text">>,
+                    null,
+                    null,
+                    77
+                )
+            )
         end
     ).
 
@@ -305,6 +363,7 @@ write_msg_with_reply_info_test_() ->
         [
             ?MOCK_ENV,
             ?MOCK_TSID,
+            ?MOCK_WORKSPACE_GUARD,
             {elib_pg, [
                 {'with_tx', 1, fun(Fun) -> Fun(fake_conn) end},
                 {'execute', 3, fun(_Conn, _Sql, _Params) -> {ok, []} end}

@@ -36,6 +36,10 @@
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
 -export([idle/3, draining/3]).
 
+-ifdef(TEST).
+-export([do_write/2]).
+-endif.
+
 -include("log.hrl").
 
 %% ==================== Macros & Records ====================
@@ -235,11 +239,19 @@ do_write(c2g, Row) ->
     MsgId = maps:get(<<"msg_id">>, Row),
     MsgType = maps:get(<<"msg_type">>, Row, <<>>),
     E2EE = maps:get(<<"e2ee">>, Row, null),
+    ConvSeq = maps:get(<<"conv_seq">>, Row, null),
     %% C2G 需要 Gid，从 payload 解析
     PayloadMap = jsone:decode(PayloadBin, [{object_format, map}]),
     GidEnc = maps:get(<<"to">>, PayloadMap),
     Gid = ec_cnv:to_integer(GidEnc),
-    msg_c2g_repo:write_msg(CreatedAt, MsgId, PayloadBin, FromId, ToIdList, Gid, MsgType, E2EE);
+    case ConvSeq of
+        Seq when is_integer(Seq), Seq >= 1 ->
+            msg_c2g_repo:write_msg(
+                CreatedAt, MsgId, PayloadBin, FromId, ToIdList, Gid, MsgType, E2EE, null, Seq
+            );
+        _ ->
+            {error, c2g_conv_seq_missing}
+    end;
 do_write(s2c, Row) ->
     PayloadBin = unwrap_staging_payload(maps:get(<<"payload">>, Row)),
     FromId = maps:get(<<"from_id">>, Row),

@@ -17,13 +17,18 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 %% 投递路径已改用 fail-closed 版本，返回 {ok, _}
                 {'member_uids_strict', 1, fun(100) -> {ok, [1001, 1002, 1003]} end}
             ]},
+            {group_member_ds, [
+                {'check_admin', 2, fun(1001, 100) -> true end}
+            ]},
             {elib_dt, [
                 {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
                 {'rfc3339_to', 2, fun(<<"2026-02-24T10:00:00Z">>, millisecond) -> 1708768800000 end},
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 3) ->
+                    {ok, new, [FromId, 1002, 1003]}
+                end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_retry_config, [
@@ -33,7 +38,10 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
                 {'send_next', 4, fun(_, _, _, _) -> ok end}
             ]},
             {mention_logic, [
-                {'create_mentions', 4, fun(_, _, _, _) -> ok end}
+                {'create_mentions', 4, fun(_, 100, Mentions, 1001) ->
+                    ?assertEqual([<<"1001">>, <<"1002">>, <<"1003">>], Mentions),
+                    ok
+                end}
             ]},
             {user_logic, [
                 {'is_online', 1, fun(_Uid) -> true end}
@@ -47,7 +55,9 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             CurrentUid = 1001,
             Data = #{
                 <<"to">> => <<"100">>,
-                <<"payload">> => #{<<"content">> => <<"hello group">>, <<"mentions">> => []},
+                <<"payload">> => #{
+                    <<"content">> => <<"hello group">>, <<"mentions">> => [<<"all">>]
+                },
                 <<"created_at">> => 1708768700000,
                 <<"msg_type">> => <<"text">>,
                 <<"action">> => <<>>,
@@ -66,15 +76,101 @@ c2g_success_sends_server_ack_and_dispatch_test_() ->
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
             ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3)),
             ?assertEqual(2, meck:num_calls(message_ds, send_next, 4)),
-            ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4)),
+            ?assertEqual(1, meck:num_calls(mention_logic, create_mentions, 4)),
+            ?assertEqual(0, meck:num_calls(group_ds, member_uids, 1)),
+            ?assertEqual(0, meck:num_calls(group_ds, member_uids_strict, 1)),
 
             %% S0-1: C2G 独立信封路径带当前版本 ver（解码投递出的 JSON 断言）
             SentMsg = meck:capture(first, message_ds, send_next, ['_', '_', '_', '_'], 3),
             Decoded = jsone:decode(SentMsg),
             ?assertEqual(?CUR_MSG_VER, maps:get(<<"ver">>, Decoded))
+        end
+    ).
+
+c2g_duplicate_only_acks_without_downstream_side_effects_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_logic, [
+                {'check_mute', 2, fun(100, 1001) -> false end}
+            ]},
+            {group_ds, [
+                {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
+                {'is_member', 2, fun(1001, 100) -> true end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-09-11T10:00:00Z">> end},
+                {'millisecond', 0, fun() -> 1789092000000 end},
+                {'to_rfc3339', 1, fun(1789091900000) -> <<"2026-09-11T09:58:20Z">> end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1) ->
+                    {ok, duplicate}
+                end},
+                {'enqueue', 3, fun(_, _, _) -> ok end}
+            ]},
+            {msg_c2g_ds, [
+                {'find_msg_by_id', 1, fun(<<"original_msg_001">>) ->
+                    {ok, #{<<"payload">> => <<"{\"content\":\"original\"}">>}}
+                end},
+                {'write_msg_with_reply', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> ok end},
+                {'set_expire_at', 2, fun(_, _) -> ok end}
+            ]},
+            {message_ds, [
+                {'send_next', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {push_notification_logic, [
+                {'maybe_push_for_c2g', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {mention_logic, [
+                {'create_mentions', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {ai_agent_group_reply, [
+                {'maybe_dispatch', 4, fun(_, _, _, _) -> ok end}
+            ]},
+            {bot_webhook_logic, [
+                {'dispatch_group_mention', 5, fun(_, _, _, _, _) -> ok end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2g_duplicate_001">>,
+            Data = #{
+                <<"to">> => <<"100">>,
+                <<"payload">> => #{
+                    <<"content">> => <<"duplicate">>,
+                    <<"mentions">> => [1002]
+                },
+                <<"created_at">> => 1789091900000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => null,
+                <<"reply_to">> => #{
+                    <<"msg_id">> => <<"original_msg_001">>, <<"from_id">> => <<"1002">>
+                },
+                <<"expire_secs">> => 60
+            },
+
+            ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+
+            receive
+                {reply, Reply} ->
+                    ?assertEqual(MsgId, maps:get(<<"id">>, Reply)),
+                    ?assertEqual(MsgId, maps:get(<<"in_reply_to">>, Reply)),
+                    ?assertEqual(<<"C2G_SERVER_ACK">>, maps:get(<<"type">>, Reply))
+            after 1000 ->
+                ?assert(false)
+            end,
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3)),
+            ?assertEqual(0, meck:num_calls(msg_c2g_ds, write_msg_with_reply, 11)),
+            ?assertEqual(0, meck:num_calls(msg_c2g_ds, set_expire_at, 2)),
+            ?assertEqual(0, meck:num_calls(message_ds, send_next, 4)),
+            ?assertEqual(0, meck:num_calls(push_notification_logic, maybe_push_for_c2g, 4)),
+            ?assertEqual(0, meck:num_calls(mention_logic, create_mentions, 4)),
+            ?assertEqual(0, meck:num_calls(ai_agent_group_reply, maybe_dispatch, 4)),
+            ?assertEqual(0, meck:num_calls(bot_webhook_logic, dispatch_group_mention, 5))
         end
     ).
 
@@ -181,6 +277,96 @@ c2g_mention_all_requires_admin_role_test_() ->
         end
     ).
 
+c2g_mention_all_rechecks_admin_in_staging_transaction_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_logic, [
+                {'check_mute', 2, fun(100, 1001) -> false end}
+            ]},
+            {group_ds, [
+                {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
+                {'is_member', 2, fun(1001, 100) -> true end}
+            ]},
+            {group_member_ds, [
+                {'check_admin', 2, fun(1001, 100) -> true end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+                {'millisecond', 0, fun() -> 1708768800000 end},
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 3) ->
+                    {error, forbidden}
+                end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2g_all_role_race_001">>,
+            Data = #{
+                <<"to">> => <<"100">>,
+                <<"payload">> => #{<<"content">> => <<"hello">>, <<"mentions">> => [<<"all">>]},
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => null
+            },
+
+            ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+            receive
+                {reply, Reply} ->
+                    ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, Reply)),
+                    ?assertEqual(403, maps:get(<<"code">>, Reply))
+            after 1000 ->
+                ?assert(false)
+            end,
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12))
+        end
+    ).
+
+c2g_staging_failure_returns_retryable_error_test_() ->
+    ?WITH_MECKS(
+        [
+            {group_member_logic, [
+                {'check_mute', 2, fun(100, 1001) -> false end}
+            ]},
+            {group_ds, [
+                {'e2ee_mode', 1, fun(100) -> {ok, 0} end},
+                {'is_member', 2, fun(1001, 100) -> true end}
+            ]},
+            {elib_dt, [
+                {'now', 0, fun() -> <<"2026-02-24T10:00:00Z">> end},
+                {'millisecond', 0, fun() -> 1708768800000 end},
+                {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 12, fun(_, _, _, _, _, _, 1001, 100, _, _, _, 1) ->
+                    {error, unavailable}
+                end}
+            ]}
+        ],
+        fun() ->
+            MsgId = <<"msg_c2g_stage_unavailable_001">>,
+            Data = #{
+                <<"to">> => <<"100">>,
+                <<"payload">> => #{<<"content">> => <<"hello">>, <<"mentions">> => []},
+                <<"created_at">> => 1708768700000,
+                <<"msg_type">> => <<"text">>,
+                <<"action">> => <<>>,
+                <<"e2ee">> => null
+            },
+
+            ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
+            receive
+                {reply, Reply} ->
+                    ?assertEqual(<<"C2G_ERROR">>, maps:get(<<"type">>, Reply)),
+                    ?assertEqual(503, maps:get(<<"code">>, Reply))
+            after 1000 ->
+                ?assert(false)
+            end
+        end
+    ).
+
 c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
     ?WITH_MECKS(
         [
@@ -209,7 +395,9 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end}
+                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
+                    {ok, new, [FromId, 1002, 1003]}
+                end}
             ]}
         ],
         fun() ->
@@ -235,7 +423,7 @@ c2g_reply_to_missing_message_emits_msg_not_found_reply_test_() ->
 
             ?assertNotEqual(timeout, Reply),
             ?assertEqual(<<"MSG_NOT_FOUND">>, maps:get(<<"type">>, Reply)),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11))
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 12))
         end
     ).
 
@@ -613,7 +801,9 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 end}
             ]},
             {msg_store_ds, [
-                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 12, fun(_, _, _, _, _, _, FromId, _, _, _, _, 1) ->
+                    {ok, new, [FromId]}
+                end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]}
         ],
@@ -635,7 +825,7 @@ c2g_plaintext_blocked_when_encryption_required_test_() ->
                 <<"encrypted_message_required">>,
                 maps:get(<<"reason">>, maps:get(<<"payload">>, Reply))
             ),
-            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 11)),
+            ?assertEqual(0, meck:num_calls(msg_store_ds, stage, 12)),
             ?assertEqual(0, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -663,7 +853,9 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
             ]},
             {msg_store_ds, [
-                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
+                    {ok, new, [FromId]}
+                end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_retry_config, [
@@ -688,7 +880,7 @@ c2g_e2ee_message_allowed_when_encryption_required_test_() ->
             },
 
             ok = msg_c2g_logic:c2g(MsgId, 1001, Data),
-            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 11)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
             ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
@@ -804,8 +996,7 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
         [
             {group_ds, [
                 {'is_member', 2, fun(1001, 88) -> true end},
-                {'e2ee_mode', 1, fun(88) -> {ok, 0} end},
-                {'member_uids', 1, fun(88) -> [1001, 1002] end}
+                {'e2ee_mode', 1, fun(88) -> {ok, 0} end}
             ]},
             {msg_c2g_ds, [
                 {'find_msg_by_id', 1, fun(<<"orig_c2g_edit_e2ee_001">>) ->
@@ -813,17 +1004,31 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
                         <<"from_id">> => 1001,
                         <<"created_at">> => 1700000000000
                     }}
-                end},
-                {'write_msg', 8, fun(
-                    _, <<"c2g_edit_e2ee_001">>, _, 1001, [1002], 88, <<"text">>, _
-                ) ->
-                    ok
                 end}
             ]},
             {elib_dt, [
                 {'rfc3339_to', 2, fun(_, millisecond) -> 1700000000000 end},
                 {'millisecond', 0, fun() -> 1700000065000 end},
                 {'now', 0, fun() -> <<"2026-02-28T12:00:00Z">> end}
+            ]},
+            {msg_store_ds, [
+                {'stage', 12, fun(
+                    <<"c2g">>,
+                    <<"c2g_edit_e2ee_001">>,
+                    <<"text">>,
+                    <<"message_edit">>,
+                    _,
+                    _,
+                    1001,
+                    88,
+                    _,
+                    _,
+                    _,
+                    1
+                ) ->
+                    {ok, new, [1001, 1002]}
+                end},
+                {'enqueue', 3, fun(<<"c2g">>, <<"c2g_edit_e2ee_001">>, _) -> ok end}
             ]},
             {imboy_policy, [
                 {'validate_message_write', 5, fun(_, _, _, _, _) -> ok end}
@@ -853,7 +1058,8 @@ c2g_edit_e2ee_payload_is_opaque_and_relayed_test_() ->
             ?assertEqual(<<"message_edit">>, maps:get(<<"action">>, Reply)),
             ?assertEqual(OpaquePayload, maps:get(<<"payload">>, Reply)),
             ?assertEqual(1, meck:num_calls(message_ds, send_next, 4)),
-            ?assertEqual(1, meck:num_calls(msg_c2g_ds, write_msg, 8))
+            ?assertEqual(1, meck:num_calls(msg_store_ds, stage, 12)),
+            ?assertEqual(1, meck:num_calls(msg_store_ds, enqueue, 3))
         end
     ).
 
@@ -878,7 +1084,9 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 {'to_rfc3339', 1, fun(1708768700000) -> <<"2026-02-24T09:58:20Z">> end}
             ]},
             {msg_store_ds, [
-                {'stage', 11, fun(_, _, _, _, _, _, _, _, _, _, _) -> {ok, new} end},
+                {'stage', 12, fun(_, _, _, _, _, _, FromId, 100, _, _, _, 1) ->
+                    {ok, new, [FromId, 1002, 1003]}
+                end},
                 {'enqueue', 3, fun(_, _, _) -> ok end}
             ]},
             {elib_retry_config, [
@@ -950,7 +1158,7 @@ c2g_e2ee_room_key_relayed_opaque_and_skips_gate_test_() ->
                 first,
                 msg_store_ds,
                 stage,
-                ['_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_'],
+                ['_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_', '_'],
                 6
             ),
             EnqueuedMap = meck:capture(first, msg_store_ds, enqueue, ['_', '_', '_'], 3),
