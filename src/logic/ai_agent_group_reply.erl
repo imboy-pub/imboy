@@ -20,7 +20,7 @@
 -export([maybe_dispatch/4]).
 -export([run_and_reply/5]).
 %% 导出供单测：支付指令路由 + 收款人解析（T4.3 ②）
--export([try_pay_command/5, payee_mention/2]).
+-export([try_pay_command/6, payee_mention/3]).
 
 -include("log.hrl").
 
@@ -43,9 +43,9 @@ do_maybe_dispatch(FromUid, ToGID, Data, MemberUids) ->
             ok;
         false ->
             Text = ai_agent_prompt:extract_text(Data),
-            MentionedAgents = mentioned_agents(Data),
+            MentionedAgents = mentioned_agents(Data, MemberUids),
             %% T4.3 ②：先看是否是确定性支付指令（LLM 不进资金路径）；不是才走 LLM 回复。
-            case try_pay_command(FromUid, ToGID, Data, Text, MentionedAgents) of
+            case try_pay_command(FromUid, ToGID, Data, Text, MentionedAgents, MemberUids) of
                 handled ->
                     ok;
                 ignore ->
@@ -152,12 +152,12 @@ run_stream(Mod, Opts, ToGID, AgentUid, Messages, MemberUids) ->
 
 %% 仅当：文本是支付指令 + 恰好 1 个被@ agent + 恰好 1 个非 agent 收款人 → 执行支付。
 %% 否则 ignore（交回 LLM 路径，向后兼容）。
--spec try_pay_command(integer(), integer(), map(), binary(), [{integer(), map()}]) ->
+-spec try_pay_command(integer(), integer(), map(), binary(), [{integer(), map()}], [integer()]) ->
     handled | ignore.
-try_pay_command(FromUid, ToGID, Data, Text, [{AgentUid, _Agent}]) ->
+try_pay_command(FromUid, ToGID, Data, Text, [{AgentUid, _Agent}], MemberUids) ->
     case agent_payment_command:parse_amount(Text) of
         {ok, AmountFen} ->
-            case payee_mention(Data, AgentUid) of
+            case payee_mention(Data, AgentUid, MemberUids) of
                 {ok, PayeeUid} ->
                     %% 确是结构化支付指令 → 先过金钱DoS限流闸门（与 LLM 路径同一闸门，
                     %% 防非 owner 高频刷 find_active/授权查询），放行再授权扣款。
@@ -177,23 +177,29 @@ try_pay_command(FromUid, ToGID, Data, Text, [{AgentUid, _Agent}]) ->
         nomatch ->
             ignore
     end;
-try_pay_command(_FromUid, _ToGID, _Data, _Text, _Agents) ->
+try_pay_command(_FromUid, _ToGID, _Data, _Text, _Agents, _MemberUids) ->
     %% 0 或 >1 个 agent 被@：收款/执行者有歧义，不做支付，交回 LLM 路径
     ignore.
 
 %% 收款人 = mentions 中唯一的「非 agent」uid（排除被@的 agent 自己）。
 %% 恰好 1 个才认，0 个或多个视为歧义 → error。
--spec payee_mention(map(), integer()) -> {ok, integer()} | error.
-payee_mention(Data, AgentUid) ->
+-spec payee_mention(map(), integer(), [integer()]) -> {ok, integer()} | error.
+payee_mention(Data, AgentUid, MemberUids) ->
     Payload = maps:get(<<"payload">>, Data, #{}),
     Mentions = maps:get(<<"mentions">>, Payload, []),
     Uids = lists:usort(
         lists:filtermap(
             fun(M) ->
                 case to_uid(M) of
-                    undefined -> false;
-                    AgentUid -> false;
-                    U -> {true, U}
+                    undefined ->
+                        false;
+                    AgentUid ->
+                        false;
+                    U ->
+                        case lists:member(U, MemberUids) of
+                            true -> {true, U};
+                            false -> false
+                        end
                 end
             end,
             Mentions
@@ -270,8 +276,8 @@ deliver_group_reply(ToGID, AgentUid, MsgId, Result) ->
     ok.
 
 %% 从 payload.mentions 里筛出「是启用中 agent」的被 @ 成员，返回 [{Uid, AgentMap}]
--spec mentioned_agents(map()) -> [{integer(), map()}].
-mentioned_agents(Data) ->
+-spec mentioned_agents(map(), [integer()]) -> [{integer(), map()}].
+mentioned_agents(Data, MemberUids) ->
     Payload = maps:get(<<"payload">>, Data, #{}),
     Mentions = maps:get(<<"mentions">>, Payload, []),
     Agents = lists:filtermap(
@@ -280,9 +286,14 @@ mentioned_agents(Data) ->
                 undefined ->
                     false;
                 Uid ->
-                    case ai_agent_ds:is_agent(Uid) of
-                        {true, Agent} -> {true, {Uid, Agent}};
-                        false -> false
+                    case lists:member(Uid, MemberUids) of
+                        false ->
+                            false;
+                        true ->
+                            case ai_agent_ds:is_agent(Uid) of
+                                {true, Agent} -> {true, {Uid, Agent}};
+                                false -> false
+                            end
                     end
             end
         end,

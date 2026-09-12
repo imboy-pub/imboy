@@ -198,6 +198,26 @@ non_agent_mention_no_trigger_test_() ->
         end
     ).
 
+%% staging 已提交快照之外的 Agent 不得读取明文或触发 LLM。
+nonmember_agent_mention_no_trigger_test_() ->
+    ?WITH_MECKS(
+        [
+            {ai_agent_ds, [
+                {'is_agent', 1, fun
+                    (7) -> false;
+                    (_) -> erlang:error(nonmember_agent_was_looked_up)
+                end}
+            ]},
+            {imboy_llm_registry, [{'lookup', 1, fun(_) -> erlang:error(llm_was_triggered) end}]}
+        ],
+        fun() ->
+            Data = group_data([42], <<"private group text">>),
+            ?assertEqual(ok, ai_agent_group_reply:maybe_dispatch(7, 100, Data, [7, 8])),
+            ?assertEqual(1, meck:num_calls(ai_agent_ds, is_agent, 1)),
+            ?assertEqual(0, meck:num_calls(imboy_llm_registry, lookup, 1))
+        end
+    ).
+
 %% ===================================================================
 %% T4.3 ② 支付指令触发（确定性命令 + 授权 + 限流）
 %% ===================================================================
@@ -206,21 +226,27 @@ non_agent_mention_no_trigger_test_() ->
 payee_single_nonagent_test_() ->
     ?TEST_SIMPLE(fun() ->
         D = #{<<"payload">> => #{<<"mentions">> => [100, 200]}},
-        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100))
+        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100, [100, 200]))
     end).
 
 %% binary uid 归一
 payee_binary_uid_test_() ->
     ?TEST_SIMPLE(fun() ->
         D = #{<<"payload">> => #{<<"mentions">> => [100, <<"200">>]}},
-        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100))
+        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100, [100, 200]))
     end).
 
 %% 排除 0/负数（to_uid >0 守卫），仍取到唯一合法收款人
 payee_excludes_nonpositive_test_() ->
     ?TEST_SIMPLE(fun() ->
         D = #{<<"payload">> => #{<<"mentions">> => [100, 0, -5, 200]}},
-        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100))
+        ?assertEqual({ok, 200}, ai_agent_group_reply:payee_mention(D, 100, [100, 200]))
+    end).
+
+payee_outside_committed_snapshot_is_rejected_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        D = #{<<"payload">> => #{<<"mentions">> => [100, 200]}},
+        ?assertEqual(error, ai_agent_group_reply:payee_mention(D, 100, [100]))
     end).
 
 %% 0 个或 >1 个非 agent 收款人 → 歧义 error
@@ -229,13 +255,15 @@ payee_ambiguous_or_missing_test_() ->
         ?assertEqual(
             error,
             ai_agent_group_reply:payee_mention(
-                #{<<"payload">> => #{<<"mentions">> => [100]}}, 100
+                #{<<"payload">> => #{<<"mentions">> => [100]}}, 100, [100]
             )
         ),
         ?assertEqual(
             error,
             ai_agent_group_reply:payee_mention(
-                #{<<"payload">> => #{<<"mentions">> => [100, 200, 300]}}, 100
+                #{<<"payload">> => #{<<"mentions">> => [100, 200, 300]}},
+                100,
+                [100, 200, 300]
             )
         )
     end).
@@ -256,7 +284,9 @@ pay_command_rate_limited_test_() ->
         fun() ->
             erase(paid),
             D = #{<<"payload">> => #{<<"mentions">> => [100, 200]}, <<"id">> => 7777},
-            R = ai_agent_group_reply:try_pay_command(999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}]),
+            R = ai_agent_group_reply:try_pay_command(
+                999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}], [100, 200, 999]
+            ),
             ?assertEqual(handled, R),
             ?assertEqual(undefined, get(paid))
         end
@@ -280,7 +310,9 @@ pay_command_authorizes_test_() ->
         fun() ->
             erase(paid),
             D = #{<<"payload">> => #{<<"mentions">> => [100, 200]}, <<"id">> => 7777},
-            R = ai_agent_group_reply:try_pay_command(999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}]),
+            R = ai_agent_group_reply:try_pay_command(
+                999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}], [100, 200, 999]
+            ),
             ?assertEqual(handled, R),
             ?assertEqual({999, 100, 200, 500}, get(paid))
         end
@@ -293,7 +325,12 @@ pay_command_multi_agent_ignore_test_() ->
         ?assertEqual(
             ignore,
             ai_agent_group_reply:try_pay_command(
-                999, 10, D, <<"付款 5"/utf8>>, [{100, #{}}, {101, #{}}]
+                999,
+                10,
+                D,
+                <<"付款 5"/utf8>>,
+                [{100, #{}}, {101, #{}}],
+                [100, 101, 200, 999]
             )
         )
     end).
