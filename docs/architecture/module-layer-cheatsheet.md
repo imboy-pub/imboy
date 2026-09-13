@@ -4,6 +4,11 @@
 > Purpose: 用最少概念快速判断一个能力应该放在 `kernel`、`capability`、`plugin` 还是 `profile preset`
 > Related docs: `overview.md`, `../guides/module-feature-flag-config.md`
 
+> **状态：Legacy。** 自 2026-09-14 起，代码归属与新增模块命名以 ADR 0007 及
+> `feature-slice-rules.md` 为准。本文把 channel/moment 等可开关业务功能称为
+> Plugin 的旧用法，在新规范中映射为 Feature；新规范中的 Plugin 专指扩展点的
+> 可插拔实现。本文其余内容仅用于理解历史 product profile 配置。
+
 ## 1. 一句话记忆
 
 - `Kernel`：系统骨架，没它系统不成立。
