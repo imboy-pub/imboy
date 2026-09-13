@@ -65,6 +65,24 @@ public_tablename_nested_prefix_test_() ->
         end
     ).
 
+public_tablename_quoted_driver_test_() ->
+    ?WITH_MECKS(
+        [
+            {config_ds, [
+                {'env', 1, fun(sql_driver) -> get(test_sql_driver) end}
+            ]}
+        ],
+        fun() ->
+            put(test_sql_driver, pgsql),
+            ?assertEqual(
+                <<"public.\"group\"">>, elib_pg_sql:public_tablename_quoted(<<"group">>)
+            ),
+            put(test_sql_driver, sqlite),
+            ?assertEqual(<<"\"group\"">>, elib_pg_sql:public_tablename_quoted(<<"group">>)),
+            erase(test_sql_driver)
+        end
+    ).
+
 %% ===================================================================
 %% insert/2 测试
 %% ===================================================================

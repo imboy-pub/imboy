@@ -6,7 +6,7 @@
 organization_admin_context_and_switch_test_() ->
     ?WITH_MECKS(
         [
-            {teaching_context_repo, [
+            {moya_context_repo, [
                 {'guardian_contexts', 1, fun(_) -> {ok, []} end},
                 {'staff_contexts', 1, fun(_) -> {ok, []} end},
                 {'organization_contexts', 1, fun(_) ->
@@ -26,12 +26,12 @@ organization_admin_context_and_switch_test_() ->
             ]}
         ],
         fun() ->
-            {ok, #{contexts := [Ctx]}} = teaching_context_logic:contexts(202, organization),
+            {ok, #{contexts := [Ctx]}} = moya_context_logic:contexts(202, organization),
             ?assertEqual(<<"organization">>, maps:get(<<"context_type">>, Ctx)),
             ?assertEqual(<<"admin">>, maps:get(<<"role">>, Ctx)),
             ?assertEqual(
                 {ok, Ctx},
-                teaching_context_logic:switch(202, #{
+                moya_context_logic:switch(202, #{
                     <<"context_type">> => <<"organization">>,
                     <<"organization_id">> => <<"101">>
                 })
@@ -42,7 +42,7 @@ organization_admin_context_and_switch_test_() ->
 legacy_org_owner_switch_is_accepted_test_() ->
     ?WITH_MECKS(
         [
-            {teaching_context_repo, [
+            {moya_context_repo, [
                 {'guardian_contexts', 1, fun(_) -> {ok, []} end},
                 {'staff_contexts', 1, fun(_) -> {ok, []} end},
                 {'owner_contexts', 1, fun(_) ->
@@ -59,7 +59,7 @@ legacy_org_owner_switch_is_accepted_test_() ->
         fun() ->
             ?assertMatch(
                 {ok, #{<<"context_type">> := <<"org_owner">>}},
-                teaching_context_logic:switch(202, #{
+                moya_context_logic:switch(202, #{
                     <<"context_type">> => <<"org_owner">>,
                     <<"organization_id">> => <<"101">>
                 })
@@ -70,7 +70,7 @@ legacy_org_owner_switch_is_accepted_test_() ->
 legacy_contexts_keep_owner_only_wire_shape_test_() ->
     ?WITH_MECKS(
         [
-            {teaching_context_repo, [
+            {moya_context_repo, [
                 {'guardian_contexts', 1, fun(_) -> {ok, []} end},
                 {'staff_contexts', 1, fun(_) -> {ok, []} end},
                 {'owner_contexts', 1, fun(_) ->
@@ -79,7 +79,7 @@ legacy_contexts_keep_owner_only_wire_shape_test_() ->
             ]}
         ],
         fun() ->
-            {ok, #{contexts := [Ctx]}} = teaching_context_logic:contexts(202),
+            {ok, #{contexts := [Ctx]}} = moya_context_logic:contexts(202),
             ?assertEqual(<<"org_owner">>, maps:get(<<"context_type">>, Ctx)),
             ?assertEqual(false, maps:is_key(<<"role">>, Ctx))
         end

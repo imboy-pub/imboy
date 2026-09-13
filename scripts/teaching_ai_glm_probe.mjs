@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * teaching_ai_glm_probe.mjs — 墨芽 AI 回课视频理解对接验证（GLM-4.6V-Flash）。
+ * teaching_ai_glm_probe.mjs — 墨芽 AI 回课视频理解对接验证（glm-5.3-flash）。
  *
- * 复刻 teaching_ai_provider:build_messages/2 的视频路径 prompt（system +
+ * 复刻 moya_ai_draft_logic 的视频路径 prompt（system +
  * video_url + task JSON），直打智谱 OpenAI 兼容端点，展示结构化点评效果。
- * 与后端 registry 条目 bigmodel（config/sys.local.config）同参：model/thinking。
+ * 与后端 registry 条目 bigmodel 使用同一模型配置；密钥只从环境变量读取。
  *
  * 用法：
  *   export BIGMODEL_API_KEY=<id.secret>
@@ -59,7 +59,6 @@ const body = {
       ],
     },
   ],
-  thinking: { type: "disabled" },
 };
 
 const t0 = Date.now();

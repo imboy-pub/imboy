@@ -11,6 +11,30 @@ fi
 
 violations=0
 
+legacy_moya_modules="$(
+  find src test -type f -name 'teaching_*.erl' -print
+  rg -n --glob '*.erl' '^-module\(teaching_[a-z0-9_]+\)\.' src test || true
+  for compiled_dir in ebin test _build _rel; do
+    [[ -d "$compiled_dir" ]] || continue
+    find "$compiled_dir" -type f -name 'teaching_*.beam' -print
+  done
+)"
+if [[ -n "$legacy_moya_modules" ]]; then
+  echo "module naming violation: Moya Erlang modules must use the moya_ prefix" >&2
+  echo "$legacy_moya_modules" >&2
+  violations=1
+fi
+
+legacy_moya_routes="$(
+  rg -n --glob '!docs/plans/evidence/**' \
+    '/api/v1/teaching' src test .contract docs/reference docs/plans || true
+)"
+if [[ -n "$legacy_moya_routes" ]]; then
+  echo "route naming violation: Moya HTTP routes must use the /api/v1/moya prefix" >&2
+  echo "$legacy_moya_routes" >&2
+  violations=1
+fi
+
 BOUNDARY_HANDLERS="
 passport_handler.erl
 user_handler.erl

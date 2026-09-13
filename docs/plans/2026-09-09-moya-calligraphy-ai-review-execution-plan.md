@@ -330,20 +330,20 @@ teacher_review
 
 ```text
 POST /api/v1/auth/wechat-mini/login
-GET  /api/v1/teaching/contexts
-POST /api/v1/teaching/context/switch
+GET  /api/v1/moya/contexts
+POST /api/v1/moya/context/switch
 
-GET  /api/v1/teaching/assignments
-GET  /api/v1/teaching/assignments/:id
-POST /api/v1/teaching/assignments/:id/submissions
-GET  /api/v1/teaching/submissions/:id
+GET  /api/v1/moya/assignments
+GET  /api/v1/moya/assignments/:id
+POST /api/v1/moya/assignments/:id/submissions
+GET  /api/v1/moya/submissions/:id
 
-GET  /api/v1/teaching/review-queue
-GET  /api/v1/teaching/submissions/:id/review-workbench
-PUT  /api/v1/teaching/submissions/:id/review-draft
-POST /api/v1/teaching/submissions/:id/reviews/publish
+GET  /api/v1/moya/review-queue
+GET  /api/v1/moya/submissions/:id/review-workbench
+PUT  /api/v1/moya/submissions/:id/review-draft
+POST /api/v1/moya/submissions/:id/reviews/publish
 
-GET  /api/v1/teaching/learners/:id/history
+GET  /api/v1/moya/learners/:id/history
 ```
 
 附件继续复用 IMBoy presign/confirm/view URL 能力，但要增加教学资源 scope 或可信的教学资源授权解析。微信 `openid`、`unionid` 只进入身份映射层，不进入 learner、作业或回评核心表。

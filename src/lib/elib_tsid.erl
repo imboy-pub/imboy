@@ -38,7 +38,7 @@
 
 -export([init/1, register/1]).
 -export([generate/0, generate/1, generate_n/1, generate_n/2]).
--export([parse/1, timestamp/1, node_id/1]).
+-export([parse/1, timestamp/1, node_id/1, from_binary/1]).
 -export([to_base62/1, from_base62/1]).
 -export([registered/0]).
 
@@ -50,24 +50,34 @@
 -define(EPOCH_MS, 1735689600000).
 
 %% 位宽分配
--define(TIMESTAMP_BITS, 42).   %% 139.5 年
--define(NODE_BITS,      10).   %% 1024 节点
--define(SEQUENCE_BITS,  11).   %% 2048/ms/node
+
+%% 139.5 年
+-define(TIMESTAMP_BITS, 42).
+%% 1024 节点
+-define(NODE_BITS, 10).
+%% 2048/ms/node
+-define(SEQUENCE_BITS, 11).
 
 %% 移位量
--define(TIMESTAMP_SHIFT, (?NODE_BITS + ?SEQUENCE_BITS)).  %% 21
--define(NODE_SHIFT,      ?SEQUENCE_BITS).                 %% 11
+
+%% 21
+-define(TIMESTAMP_SHIFT, (?NODE_BITS + ?SEQUENCE_BITS)).
+%% 11
+-define(NODE_SHIFT, ?SEQUENCE_BITS).
 
 %% 掩码
--define(SEQUENCE_MASK,  ((1 bsl ?SEQUENCE_BITS)  - 1)).   %% 2047
--define(NODE_MASK,      ((1 bsl ?NODE_BITS)      - 1)).   %% 1023
+
+%% 2047
+-define(SEQUENCE_MASK, ((1 bsl ?SEQUENCE_BITS) - 1)).
+%% 1023
+-define(NODE_MASK, ((1 bsl ?NODE_BITS) - 1)).
 -define(TIMESTAMP_MASK, ((1 bsl ?TIMESTAMP_BITS) - 1)).
 
 %% persistent_term 键
--define(PT_STATE(Name),   {elib_tsid_state, Name}).
--define(PT_NODE_ID,       elib_tsid_node_id).
--define(PT_DC_BITS,       elib_tsid_dc_bits).
--define(PT_NAMES,         elib_tsid_names).
+-define(PT_STATE(Name), {elib_tsid_state, Name}).
+-define(PT_NODE_ID, elib_tsid_node_id).
+-define(PT_DC_BITS, elib_tsid_dc_bits).
+-define(PT_NAMES, elib_tsid_names).
 
 %% ===================================================================
 %% 初始化
@@ -90,9 +100,9 @@
 -spec init(map()) -> ok.
 init(Opts) ->
     DcBits = maps:get(dc_bits, Opts, 3),
-    DcId   = maps:get(dc_id,   Opts),
+    DcId = maps:get(dc_id, Opts),
     NodeId = maps:get(node_id, Opts),
-    Names  = maps:get(names,   Opts, []),
+    Names = maps:get(names, Opts, []),
 
     %% 校验位宽
     NodeBits = ?NODE_BITS - DcBits,
@@ -100,7 +110,7 @@ init(Opts) ->
     true = (NodeBits >= 0),
 
     %% 校验 ID 范围
-    MaxDcId   = (1 bsl DcBits) - 1,
+    MaxDcId = (1 bsl DcBits) - 1,
     MaxNodeId = (1 bsl NodeBits) - 1,
     true = (DcId >= 0 andalso DcId =< MaxDcId),
     true = (NodeId >= 0 andalso NodeId =< MaxNodeId),
@@ -137,7 +147,7 @@ register(Name) when is_atom(Name) ->
     init_generator(Name),
     ExistingNames = persistent_term:get(?PT_NAMES, []),
     case lists:member(Name, ExistingNames) of
-        true  -> ok;
+        true -> ok;
         false -> persistent_term:put(?PT_NAMES, lists:sort([Name | ExistingNames]))
     end,
     ok.
@@ -182,15 +192,13 @@ generate(Name) when is_atom(Name) ->
     NowRel = erlang:system_time(millisecond) - ?EPOCH_MS,
     try
         StateRef = persistent_term:get(?PT_STATE(Name)),
-        NodeId   = persistent_term:get(?PT_NODE_ID),
+        NodeId = persistent_term:get(?PT_NODE_ID),
         cas_loop(StateRef, NodeId, NowRel)
     catch
         error:badarg when Name =:= default ->
-            error({elib_tsid_not_initialized,
-                   'call elib_tsid:init/1 first'});
+            error({elib_tsid_not_initialized, 'call elib_tsid:init/1 first'});
         error:badarg ->
-            error({elib_tsid_generator_not_registered,
-                   {Name, 'call elib_tsid:register/1 first'}})
+            error({elib_tsid_generator_not_registered, {Name, 'call elib_tsid:register/1 first'}})
     end.
 
 %% @doc 使用 default 生成器批量生成 N 个 TSID (有序)
@@ -206,8 +214,8 @@ generate_n(Name, N) when is_atom(Name), N > 0 ->
 %% @private CAS 循环 — 核心算法
 cas_loop(StateRef, NodeId, NowRel) ->
     OldState = atomics:get(StateRef, 1),
-    OldTs    = OldState bsr ?SEQUENCE_BITS,
-    OldSeq   = OldState band ?SEQUENCE_MASK,
+    OldTs = OldState bsr ?SEQUENCE_BITS,
+    OldSeq = OldState band ?SEQUENCE_MASK,
 
     %% 有效时间戳: 取 max(当前时间, 上次时间) — 绝不倒退
     %% 这是时钟回拨保护的核心：NTP 校时导致系统时间倒退时，
@@ -234,9 +242,9 @@ cas_loop(StateRef, NodeId, NowRel) ->
     case atomics:compare_exchange(StateRef, 1, OldState, NewState) of
         ok ->
             %% 成功 → 组装 64-bit ID
-            (NewTs bsl ?TIMESTAMP_SHIFT)
-            bor (NodeId bsl ?NODE_SHIFT)
-            bor NewSeq;
+            (NewTs bsl ?TIMESTAMP_SHIFT) bor
+                (NodeId bsl ?NODE_SHIFT) bor
+                NewSeq;
         _ ->
             %% 另一个进程抢先更新 → 重试 (无锁自旋)
             cas_loop(StateRef, NodeId, NowRel)
@@ -249,20 +257,20 @@ cas_loop(StateRef, NodeId, NowRel) ->
 %% @doc 解析 TSID 为各组成部分
 -spec parse(pos_integer()) -> map().
 parse(Id) when is_integer(Id), Id > 0 ->
-    RelTs  = (Id bsr ?TIMESTAMP_SHIFT) band ?TIMESTAMP_MASK,
-    Node   = (Id bsr ?NODE_SHIFT) band ?NODE_MASK,
-    Seq    = Id band ?SEQUENCE_MASK,
+    RelTs = (Id bsr ?TIMESTAMP_SHIFT) band ?TIMESTAMP_MASK,
+    Node = (Id bsr ?NODE_SHIFT) band ?NODE_MASK,
+    Seq = Id band ?SEQUENCE_MASK,
 
-    AbsMs  = RelTs + ?EPOCH_MS,
+    AbsMs = RelTs + ?EPOCH_MS,
     DcBits = persistent_term:get(?PT_DC_BITS, 3),
     NodeBits = ?NODE_BITS - DcBits,
 
     #{
-        id         => Id,
-        timestamp  => AbsMs,
-        dc_id      => Node bsr NodeBits,
-        node_id    => Node band ((1 bsl NodeBits) - 1),
-        sequence   => Seq,
+        id => Id,
+        timestamp => AbsMs,
+        dc_id => Node bsr NodeBits,
+        node_id => Node band ((1 bsl NodeBits) - 1),
+        sequence => Seq,
         created_at => calendar:system_time_to_universal_time(AbsMs * 1000, microsecond)
     }.
 
@@ -276,6 +284,18 @@ timestamp(Id) ->
 node_id(Id) ->
     (Id bsr ?NODE_SHIFT) band ?NODE_MASK.
 
+%% @doc 解析十进制字符串形式的 TSID（客户端以 decimal string 传输 64-bit ID）
+-spec from_binary(binary()) -> {ok, pos_integer()} | error.
+from_binary(Bin) when is_binary(Bin) ->
+    try binary_to_integer(Bin) of
+        Int when Int > 0 -> {ok, Int};
+        _ -> error
+    catch
+        _:_ -> error
+    end;
+from_binary(_) ->
+    error.
+
 %% ===================================================================
 %% Base62 编码 (可选, 用于 URL/日志场景)
 %% ===================================================================
@@ -284,11 +304,13 @@ node_id(Id) ->
 
 %% @doc 将 TSID 编码为 Base62 字符串 (最长 11 字符)
 -spec to_base62(pos_integer()) -> binary().
-to_base62(0) -> <<"0">>;
+to_base62(0) ->
+    <<"0">>;
 to_base62(Id) when is_integer(Id), Id > 0 ->
     list_to_binary(to_base62_chars(Id, [])).
 
-to_base62_chars(0, Acc) -> Acc;
+to_base62_chars(0, Acc) ->
+    Acc;
 to_base62_chars(N, Acc) ->
     Rem = N rem 62,
     Char = lists:nth(Rem + 1, ?BASE62_CHARS),
@@ -299,7 +321,8 @@ to_base62_chars(N, Acc) ->
 from_base62(Bin) when is_binary(Bin) ->
     from_base62_chars(binary_to_list(Bin), 0).
 
-from_base62_chars([], Acc) -> Acc;
+from_base62_chars([], Acc) ->
+    Acc;
 from_base62_chars([C | Rest], Acc) ->
     Idx = base62_index(C),
     from_base62_chars(Rest, Acc * 62 + Idx).

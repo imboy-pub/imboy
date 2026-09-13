@@ -1674,7 +1674,7 @@
       },
       {
         "action": "wechat_mini_login",
-        "handler": "teaching_auth_handler",
+        "handler": "moya_auth_handler",
         "path": "/api/v1/auth/wechat-mini/login",
         "static": false
       },
@@ -3083,6 +3083,108 @@
         "static": false
       },
       {
+        "action": "list",
+        "handler": "moya_assignment_handler",
+        "path": "/api/v1/moya/assignments",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "moya_assignment_handler",
+        "path": "/api/v1/moya/assignments/:id",
+        "static": false
+      },
+      {
+        "action": "create_submission",
+        "handler": "moya_assignment_handler",
+        "path": "/api/v1/moya/assignments/:id/submissions",
+        "static": false
+      },
+      {
+        "action": "list",
+        "handler": "moya_roster_handler",
+        "path": "/api/v1/moya/classes/:id/learners",
+        "static": false
+      },
+      {
+        "action": "switch",
+        "handler": "moya_context_handler",
+        "path": "/api/v1/moya/context/switch",
+        "static": false
+      },
+      {
+        "action": "contexts",
+        "handler": "moya_context_handler",
+        "path": "/api/v1/moya/contexts",
+        "static": false
+      },
+      {
+        "action": "bind",
+        "handler": "moya_learner_bind_handler",
+        "path": "/api/v1/moya/learners/:id/bind",
+        "static": false
+      },
+      {
+        "action": "history",
+        "handler": "moya_assignment_handler",
+        "path": "/api/v1/moya/learners/:id/history",
+        "static": false
+      },
+      {
+        "action": "history_unread_count",
+        "handler": "moya_assignment_handler",
+        "path": "/api/v1/moya/learners/:id/history/unread-count",
+        "static": false
+      },
+      {
+        "action": "unbind",
+        "handler": "moya_learner_bind_handler",
+        "path": "/api/v1/moya/learners/:id/unbind",
+        "static": false
+      },
+      {
+        "action": "queue",
+        "handler": "moya_review_handler",
+        "path": "/api/v1/moya/review-queue",
+        "static": false
+      },
+      {
+        "action": "submission_detail",
+        "handler": "moya_assignment_handler",
+        "path": "/api/v1/moya/submissions/:id",
+        "static": false
+      },
+      {
+        "action": "save_draft",
+        "handler": "moya_review_handler",
+        "path": "/api/v1/moya/submissions/:id/review-draft",
+        "static": false
+      },
+      {
+        "action": "workbench",
+        "handler": "moya_review_handler",
+        "path": "/api/v1/moya/submissions/:id/review-workbench",
+        "static": false
+      },
+      {
+        "action": "publish",
+        "handler": "moya_review_handler",
+        "path": "/api/v1/moya/submissions/:id/reviews/publish",
+        "static": false
+      },
+      {
+        "action": "withdraw",
+        "handler": "moya_assignment_handler",
+        "path": "/api/v1/moya/submissions/:id/withdraw",
+        "static": false
+      },
+      {
+        "action": "tasks",
+        "handler": "moya_task_handler",
+        "path": "/api/v1/moya/tasks",
+        "static": false
+      },
+      {
         "action": "forward",
         "handler": "msg_handler",
         "path": "/api/v1/msg/forward",
@@ -3410,108 +3512,6 @@
         "action": "update",
         "handler": "project_task_handler",
         "path": "/api/v1/tasks/:task_id/update",
-        "static": false
-      },
-      {
-        "action": "list",
-        "handler": "teaching_assignment_handler",
-        "path": "/api/v1/teaching/assignments",
-        "static": false
-      },
-      {
-        "action": "detail",
-        "handler": "teaching_assignment_handler",
-        "path": "/api/v1/teaching/assignments/:id",
-        "static": false
-      },
-      {
-        "action": "create_submission",
-        "handler": "teaching_assignment_handler",
-        "path": "/api/v1/teaching/assignments/:id/submissions",
-        "static": false
-      },
-      {
-        "action": "list",
-        "handler": "teaching_roster_handler",
-        "path": "/api/v1/teaching/classes/:id/learners",
-        "static": false
-      },
-      {
-        "action": "switch",
-        "handler": "teaching_context_handler",
-        "path": "/api/v1/teaching/context/switch",
-        "static": false
-      },
-      {
-        "action": "contexts",
-        "handler": "teaching_context_handler",
-        "path": "/api/v1/teaching/contexts",
-        "static": false
-      },
-      {
-        "action": "bind",
-        "handler": "teaching_learner_bind_handler",
-        "path": "/api/v1/teaching/learners/:id/bind",
-        "static": false
-      },
-      {
-        "action": "history",
-        "handler": "teaching_assignment_handler",
-        "path": "/api/v1/teaching/learners/:id/history",
-        "static": false
-      },
-      {
-        "action": "history_unread_count",
-        "handler": "teaching_assignment_handler",
-        "path": "/api/v1/teaching/learners/:id/history/unread-count",
-        "static": false
-      },
-      {
-        "action": "unbind",
-        "handler": "teaching_learner_bind_handler",
-        "path": "/api/v1/teaching/learners/:id/unbind",
-        "static": false
-      },
-      {
-        "action": "queue",
-        "handler": "teaching_review_handler",
-        "path": "/api/v1/teaching/review-queue",
-        "static": false
-      },
-      {
-        "action": "submission_detail",
-        "handler": "teaching_assignment_handler",
-        "path": "/api/v1/teaching/submissions/:id",
-        "static": false
-      },
-      {
-        "action": "save_draft",
-        "handler": "teaching_review_handler",
-        "path": "/api/v1/teaching/submissions/:id/review-draft",
-        "static": false
-      },
-      {
-        "action": "workbench",
-        "handler": "teaching_review_handler",
-        "path": "/api/v1/teaching/submissions/:id/review-workbench",
-        "static": false
-      },
-      {
-        "action": "publish",
-        "handler": "teaching_review_handler",
-        "path": "/api/v1/teaching/submissions/:id/reviews/publish",
-        "static": false
-      },
-      {
-        "action": "withdraw",
-        "handler": "teaching_assignment_handler",
-        "path": "/api/v1/teaching/submissions/:id/withdraw",
-        "static": false
-      },
-      {
-        "action": "tasks",
-        "handler": "imboy_router",
-        "path": "/api/v1/teaching/tasks",
         "static": false
       },
       {

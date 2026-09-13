@@ -400,9 +400,9 @@
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload | 主要错误码 Errors |
 |---|---|---|---|---|---|---|---|
-| GET | /api/v1/teaching/classes/:id/learners | JWT | teaching_roster_handler#list | 班级学员名单（只读；manager/teacher/assistant 均可读；非本班 active staff 统一 5430 不泄漏班级存在性）/ Class roster (read-only) | path `id`(TSID string)* | `{group_id(TSID string), learners:[{learner_id(TSID string), display_name, assignment_ready, setup_reason(null\|"no_submit_guardian"\|"multiple_submit_guardians")}]}` | 422, 5430, 5426, 500 |
-| GET | /api/v1/teaching/tasks | JWT | teaching_task_handler#list | 老师教学作业列表（真源：含 0 提交新作业；仅本人 active staff 班级）/ Teaching task list | `group_id`(TSID string,可选),`page`(默认1),`size`(默认10,≤100) | `{list:[{task_id,group_id,group_name,title,description,deadline,learner_count,submitted_count,pending_review_count,created_at}],page,size,total}`（TSID string；时间 RFC3339） | 422, 5430, 500 |
-| POST | /api/v1/teaching/tasks | JWT | teaching_task_handler#create | 发布教学作业（Idempotency-Key 必填 8..128 字节；持久幂等：同 key 同 body 重放 replayed=true，同 key 异 body 5460）/ Publish teaching task (idempotent) | Header: `Idempotency-Key`*；body `group_id`*,`title`(trim≤200)*,`description`,`deadline`(未来 RFC3339),`learner_ids`(TSID string 非空去重)* | `{task_id, assignments:[{assignment_id,learner_id}], replayed}` | 422, 5424, 5425, 5426, 5431, 5432, 5442, 5460, 5461, 500 |
+| GET | /api/v1/moya/classes/:id/learners | JWT | moya_roster_handler#list | 班级学员名单（只读；manager/teacher/assistant 均可读；非本班 active staff 统一 5430 不泄漏班级存在性）/ Class roster (read-only) | path `id`(TSID string)* | `{group_id(TSID string), learners:[{learner_id(TSID string), display_name, assignment_ready, setup_reason(null\|"no_submit_guardian"\|"multiple_submit_guardians")}]}` | 422, 5430, 5426, 500 |
+| GET | /api/v1/moya/tasks | JWT | moya_task_handler#list | 老师教学作业列表（真源：含 0 提交新作业；仅本人 active staff 班级）/ Teaching task list | `group_id`(TSID string,可选),`page`(默认1),`size`(默认10,≤100) | `{list:[{task_id,group_id,group_name,title,description,deadline,learner_count,submitted_count,pending_review_count,created_at}],page,size,total}`（TSID string；时间 RFC3339） | 422, 5430, 500 |
+| POST | /api/v1/moya/tasks | JWT | moya_task_handler#create | 发布教学作业（Idempotency-Key 必填 8..128 字节；持久幂等：同 key 同 body 重放 replayed=true，同 key 异 body 5460）/ Publish teaching task (idempotent) | Header: `Idempotency-Key`*；body `group_id`*,`title`(trim≤200)*,`description`,`deadline`(未来 RFC3339),`learner_ids`(TSID string 非空去重)* | `{task_id, assignments:[{assignment_id,learner_id}], replayed}` | 422, 5424, 5425, 5426, 5431, 5432, 5442, 5460, 5461, 500 |
 
 ---
 
@@ -695,7 +695,7 @@
 
 | 日期 Date | 内容 Content |
 |---|---|
-| 2026-09-10 | 增补「墨芽教学（花名册/教学作业）/ Moya Teaching」域 3 端点（teaching_roster_handler、teaching_task_handler GET/POST；TSID string 约定 + 5430/5431/5432 错误码段）；OpenAPI 冻结见 moya-post-security evidence |
+| 2026-09-10 | 增补「墨芽教学（花名册/教学作业）/ Moya Teaching」域 3 端点（moya_roster_handler、moya_task_handler GET/POST；TSID string 约定 + 5430/5431/5432 错误码段）；OpenAPI 冻结见 moya-post-security evidence |
 | 2026-08-30 | 增补「项目协作 / Project Workspace（W0/W1/W2）」域 22 端点（projects/tasks/members/milestones/channels/aggregations）；Admin 治理面 `/api/adm/project/*` 在 OpenAPI 层覆盖 |
 | 2026-07-08 | 同步 43224c1f/4cc20e81 硬切换：全文档 `/api/v1/*` → `/api/v1/*`，与 `src/imboy_router.erl` 当前真实路由对齐 |
 | 2026-06-02 | 初版：并行审计 30 个 handler 真实源码，建立完整 `/api/v1/*` 端点总目录（约 130+ 端点，按 7 大类分域），交叉引用 channel/moment/e2ee/ws 详细契约 |

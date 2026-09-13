@@ -138,6 +138,20 @@ page_with_invalid_values_test_() ->
         end
     end).
 
+page_qs_parses_defaults_and_bounds_test() ->
+    ?assertEqual({1, 20}, elib_param:page_qs([], 20)),
+    ?assertEqual(
+        {3, 50}, elib_param:page_qs([{<<"page">>, <<"3">>}, {<<"size">>, <<"50">>}], 20)
+    ),
+    ?assertEqual(
+        {1, 100},
+        elib_param:page_qs([{<<"page">>, <<"-2">>}, {<<"size">>, <<"2000">>}], 20)
+    ),
+    ?assertEqual(
+        {1, 20},
+        elib_param:page_qs([{<<"page">>, <<"bad">>}, {<<"size">>, <<"bad">>}], 20)
+    ).
+
 %% ===================================================================
 %% int/3 测试
 %% ===================================================================

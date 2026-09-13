@@ -14,7 +14,7 @@
 
 ## 1. 信息架构（映射计划 §8.1）
 
-同一 AppID，登录后由后端 `GET /api/v1/teaching/contexts` 返回可用身份；单身份直达，多身份保留上次选择；"我的"顶部常驻身份切换。
+同一 AppID，登录后由后端 `GET /api/v1/moya/contexts` 返回可用身份；单身份直达，多身份保留上次选择；"我的"顶部常驻身份切换。
 
 ```mermaid
 graph TD

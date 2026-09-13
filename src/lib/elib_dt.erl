@@ -16,7 +16,7 @@
 -export([add/2, minus/2]).
 -export([compare_rfc3339/3]).
 -export([now/0, now/1]).
--export([to_rfc3339/1, to_rfc3339/2, to_rfc3339/3]).
+-export([to_rfc3339/1, to_rfc3339/2, to_rfc3339/3, rfc3339_or_null/1]).
 -export([rfc3339_to/1, rfc3339_to/2]).
 %% datetime_to/2 是内部函数，不导出
 
@@ -162,6 +162,16 @@ to_rfc3339(Bin) when is_binary(Bin) ->
                     Bin
             end
     end.
+
+%% @doc 时间戳转 RFC3339；已是 RFC3339 字符串则原样透传；空值 → null
+%% 注意与 to_rfc3339/1 的差异：<<>> 不取当前时间，null 不抛 function_clause。
+-spec rfc3339_or_null(integer() | binary() | null | undefined) -> binary() | null.
+rfc3339_or_null(Ts) when is_integer(Ts) ->
+    to_rfc3339(Ts);
+rfc3339_or_null(Ts) when is_binary(Ts), Ts =/= <<>> ->
+    Ts;
+rfc3339_or_null(_) ->
+    null.
 
 %% link https://www.erlang.org/docs/man/calendar.html#system_time_to_rfc3339-2
 %

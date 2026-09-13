@@ -12,7 +12,7 @@
 %   2. object_key 必须存在 presign 登记的 pending 行且 creator_user_id = Uid
 %      （attach_pending_repo:get_by_key；mime/scope/bucket 以登记为准）
 %   3. mime 守卫与 presign 同口径：teaching scope 走
-%      teaching_attach_logic:check_mime 白名单，全局走 elib_oss:validate_file_type
+%      moya_attach_logic:check_mime 白名单，全局走 elib_oss:validate_file_type
 %   4. size 上限对齐 elib_oss:max_file_size()（100MB）
 % confirm 阶段仍会 HEAD 核实真实 size/mime，此处守卫是快速失败的前置闸。
 %%%
@@ -94,7 +94,7 @@ guard_and_put(_Uid, ObjectKey, MimeType, FilePath, Size, Bucket, Scope) ->
 %% 不信任 multipart part 自带的 Content-Type（客户端可能给错）。
 -spec mime_guard(binary(), binary()) -> ok | {error, invalid_file_type}.
 mime_guard(<<"teaching">>, MimeType) ->
-    teaching_attach_logic:check_mime(MimeType);
+    moya_attach_logic:check_mime(MimeType);
 mime_guard(_Scope, MimeType) ->
     case elib_oss:validate_file_type(MimeType) of
         true -> ok;

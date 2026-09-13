@@ -9,7 +9,7 @@
 --     calligraphy_review_draft.result_json jsonb 先例一致。
 --   * NULL = 无逐字数据（旧点评/老师未逐字点评），客户端不渲染字卡区；
 --     存量行不回填（保持 NULL 兼容，PublishedReview.char_reviews=null 向后兼容）。
---   * 结构白名单校验在应用层（teaching_review_logic:parse_char_reviews/1：
+--   * 结构白名单校验在应用层（moya_review_logic:parse_char_reviews/1：
 --     index≥0 整数、char 非空≤8字节、grade∈good|fair|poor、comment≤300 字节、
 --     数组≤50 项，单项越界丢弃不整体拒绝=AI 输出容错）；DB 层不做 jsonb 结构
 --     CHECK——"越界项丢弃"容错语义无法用静态约束表达，写侧是唯一入口。

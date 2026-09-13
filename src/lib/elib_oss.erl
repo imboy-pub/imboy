@@ -198,7 +198,7 @@ scope_segment(<<"channel">>, _) ->
 scope_segment(<<"moment">>, _) ->
     <<"moment">>;
 %% teaching（Step 10 教学附件）：段名用固定 scope 名（读鉴权走
-%% teaching_attach_logic:authorize 的 submission 绑定关系，与段名无关）。
+%% moya_attach_logic:authorize 的 submission 绑定关系，与段名无关）。
 %% 此前缺此子句 → scope_segment(<<"teaching">>,_) function_clause →
 %% presign HTTP 500，教学上传全断（R8 契约实测发现；channel/moment 同款先例）。
 scope_segment(<<"teaching">>, _) ->

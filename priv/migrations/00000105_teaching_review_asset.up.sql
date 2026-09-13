@@ -8,7 +8,7 @@
 --   * 单视频列 → 多媒体集合：既有 teacher_review.video_attachment_id（00000097）
 --     保留为兼容读窗口（旧客户端读路径），但不再是新写入真源——新写入真源
 --     是本表 review_asset（0-1 feedback_video + 0-3 feedback_image）。
---     写路径由 teaching_review_logic 在 DTO 层从 assets 派生冗余写旧列，
+--     写路径由 moya_review_logic 在 DTO 层从 assets 派生冗余写旧列，
 --     保持两读路径一致；down 以旧列可完整表示为回滚前提。
 --   * attachment_id 全表 UNIQUE：一个附件至多绑一个 review（一对一，防止
 --     同一附件被绑到多个 review 形成跨 review 的读授权歧义）。

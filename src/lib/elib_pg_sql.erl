@@ -13,6 +13,7 @@
 
 -export([
     public_tablename/1,
+    public_tablename_quoted/1,
     insert/2,
     insert/3,
     insert_with_params/4,
@@ -40,6 +41,14 @@ public_tablename(Tb) ->
             <<"public.", (ec_cnv:to_binary(Tb))/binary>>;
         _ ->
             Tb
+    end.
+
+%% @doc 表名含 PG 保留字（如 group）时给末段加引号 → public."group"
+-spec public_tablename_quoted(binary()) -> binary().
+public_tablename_quoted(Tb) ->
+    case public_tablename(Tb) of
+        <<"public.", Name/binary>> -> <<"public.\"", Name/binary, "\"">>;
+        Name -> <<"\"", Name/binary, "\"">>
     end.
 
 %%--------------------------------------------------------------------

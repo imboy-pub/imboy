@@ -18,7 +18,8 @@ second_returns_integer_test_() ->
     ?TEST_SIMPLE(fun() ->
         Result = elib_dt:second(),
         ?assert(is_integer(Result)),
-        ?assert(Result > 1700000000)  % 2023年之后的时间戳
+        % 2023年之后的时间戳
+        ?assert(Result > 1700000000)
     end).
 
 millisecond_returns_integer_test_() ->
@@ -106,11 +107,21 @@ to_rfc3339_with_microsecond_returns_binary_test_() ->
 to_rfc3339_auto_detect_returns_binary_test_() ->
     ?TEST_SIMPLE(fun() ->
         % 测试 to_rfc3339/1 的自动检测功能
-        SecTimestamp = 1704067200,  % 2024-01-01 00:00:00
+
+        % 2024-01-01 00:00:00
+        SecTimestamp = 1704067200,
         Result = elib_dt:to_rfc3339(SecTimestamp),
         ?assertMatch(<<_/binary>>, Result),
         ?assert(byte_size(Result) > 0)
     end).
+
+rfc3339_or_null_test() ->
+    Rfc3339 = <<"2024-01-01T00:00:00Z">>,
+    ?assertEqual(Rfc3339, elib_dt:rfc3339_or_null(Rfc3339)),
+    ?assertMatch(<<_/binary>>, elib_dt:rfc3339_or_null(1704067200000)),
+    ?assertEqual(null, elib_dt:rfc3339_or_null(<<>>)),
+    ?assertEqual(null, elib_dt:rfc3339_or_null(null)),
+    ?assertEqual(null, elib_dt:rfc3339_or_null(undefined)).
 
 %% ===================================================================
 %% rfc3339_to/2 测试
@@ -121,8 +132,10 @@ rfc3339_to_with_valid_string_test_() ->
         Rfc3339String = "2024-01-01 12:00:00Z",
         Result = elib_dt:rfc3339_to(Rfc3339String, second),
         ?assert(is_integer(Result)),
-        ?assert(Result > 1700000000),  % 2023年之后的时间戳
-        ?assert(Result < 2000000000)   % 2033年之前的时间戳
+        % 2023年之后的时间戳
+        ?assert(Result > 1700000000),
+        % 2033年之前的时间戳
+        ?assert(Result < 2000000000)
     end).
 
 rfc3339_to_with_empty_string_returns_error_test_() ->
@@ -208,7 +221,9 @@ to_rfc3339_with_invalid_negative_timestamp_test_() ->
 to_rfc3339_with_large_timestamp_test_() ->
     ?TEST_SIMPLE(fun() ->
         % 测试大时间戳（2100年之前）
-        MaxValidTimestamp = 4102444800,  % 2100-01-01 00:00:00 UTC
+
+        % 2100-01-01 00:00:00 UTC
+        MaxValidTimestamp = 4102444800,
         Result = elib_dt:to_rfc3339(MaxValidTimestamp, second),
         ?assertMatch(<<_/binary>>, Result),
         ?assert(byte_size(Result) > 0)

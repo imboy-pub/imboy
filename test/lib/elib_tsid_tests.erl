@@ -3,8 +3,12 @@
 
 -define(SETUP, fun() -> elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3}) end).
 -define(SETUP_NAMED, fun() ->
-    elib_tsid:init(#{dc_id => 1, node_id => 1, dc_bits => 3,
-                     names => [user, group_info, attachment]})
+    elib_tsid:init(#{
+        dc_id => 1,
+        node_id => 1,
+        dc_bits => 3,
+        names => [user, group_info, attachment]
+    })
 end).
 
 %% ===================================================================
@@ -24,7 +28,8 @@ generate_positive_test() ->
 generate_within_bigint_test() ->
     ?SETUP(),
     Id = elib_tsid:generate(),
-    MaxBigint = 9223372036854775807,  %% 2^63 - 1
+    %% 2^63 - 1
+    MaxBigint = 9223372036854775807,
     ?assert(Id > 0),
     ?assert(Id =< MaxBigint).
 
@@ -50,10 +55,13 @@ uniqueness_concurrent_test() ->
     N = 1000,
     Workers = 10,
     %% 启动 10 个并发进程, 每个生成 1000 个 ID
-    Pids = [spawn(fun() ->
-        Ids = elib_tsid:generate_n(N),
-        Self ! {ids, Ids}
-    end) || _ <- lists:seq(1, Workers)],
+    Pids = [
+        spawn(fun() ->
+            Ids = elib_tsid:generate_n(N),
+            Self ! {ids, Ids}
+        end)
+     || _ <- lists:seq(1, Workers)
+    ],
     AllIds = collect_ids(Workers, []),
     UniqueIds = lists:usort(AllIds),
     ?assertEqual(Workers * N, length(AllIds)),
@@ -61,7 +69,8 @@ uniqueness_concurrent_test() ->
     _ = Pids,
     ok.
 
-collect_ids(0, Acc) -> Acc;
+collect_ids(0, Acc) ->
+    Acc;
 collect_ids(N, Acc) ->
     receive
         {ids, Ids} -> collect_ids(N - 1, Ids ++ Acc)
@@ -231,10 +240,13 @@ named_concurrent_unique_test() ->
     Self = self(),
     N = 500,
     Workers = 10,
-    Pids = [spawn(fun() ->
-        Ids = elib_tsid:generate_n(user, N),
-        Self ! {ids, Ids}
-    end) || _ <- lists:seq(1, Workers)],
+    Pids = [
+        spawn(fun() ->
+            Ids = elib_tsid:generate_n(user, N),
+            Self ! {ids, Ids}
+        end)
+     || _ <- lists:seq(1, Workers)
+    ],
     AllIds = collect_ids(Workers, []),
     UniqueIds = lists:usort(AllIds),
     ?assertEqual(Workers * N, length(AllIds)),
@@ -245,8 +257,10 @@ named_concurrent_unique_test() ->
 unregistered_generator_error_test() ->
     ?SETUP(),
     %% 使用未注册的生成器应该报错
-    ?assertError({elib_tsid_generator_not_registered, _},
-                 elib_tsid:generate(nonexistent_table)).
+    ?assertError(
+        {elib_tsid_generator_not_registered, _},
+        elib_tsid:generate(nonexistent_table)
+    ).
 
 default_generator_always_available_test() ->
     ?SETUP(),
@@ -261,3 +275,10 @@ registered_includes_default_test() ->
     ?SETUP(),
     Names = elib_tsid:registered(),
     ?assert(lists:member(default, Names)).
+
+from_binary_test() ->
+    ?assertEqual({ok, 123}, elib_tsid:from_binary(<<"123">>)),
+    ?assertEqual(error, elib_tsid:from_binary(<<"0">>)),
+    ?assertEqual(error, elib_tsid:from_binary(<<"-1">>)),
+    ?assertEqual(error, elib_tsid:from_binary(<<"bad">>)),
+    ?assertEqual(error, elib_tsid:from_binary(123)).

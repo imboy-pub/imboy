@@ -53,7 +53,7 @@ presign(Uid, FileName, MimeType, Scope, ScopeRef) ->
 %% 教学白名单预检；非教学 scope 直通（保持既有行为零变化）
 -spec teaching_presign_guard(binary(), binary()) -> ok | {error, invalid_file_type}.
 teaching_presign_guard(<<"teaching">>, MimeType) ->
-    teaching_attach_logic:check_mime(MimeType);
+    moya_attach_logic:check_mime(MimeType);
 teaching_presign_guard(_Scope, _MimeType) ->
     ok.
 
@@ -178,7 +178,7 @@ verify_and_save(Uid, ObjectKey, Scope, ScopeRef, Meta) ->
 -spec teaching_verify_guard(binary(), binary(), non_neg_integer(), map()) ->
     ok | {error, file_too_large | invalid_file_type}.
 teaching_verify_guard(<<"teaching">>, RealType, RealSize, Meta) ->
-    teaching_attach_logic:verify_upload(RealType, RealSize, Meta);
+    moya_attach_logic:verify_upload(RealType, RealSize, Meta);
 teaching_verify_guard(_Scope, _RealType, _RealSize, _Meta) ->
     ok.
 
@@ -392,7 +392,7 @@ can_upload(_Uid, <<"moment">>, _ScopeRef) ->
 %% Step 10 教学附件：上传人须持有至少一个有效教学身份（active guardian/staff）；
 %% 强归属（附件只能进本人提交）在 create_submission 的 validate_assets 把关
 can_upload(Uid, <<"teaching">>, _ScopeRef) ->
-    case teaching_attach_logic:can_upload(Uid) of
+    case moya_attach_logic:can_upload(Uid) of
         ok -> ok;
         false -> {error, forbidden}
     end;
@@ -458,9 +458,9 @@ authorize(<<"public">>, _Uid, _Rec) ->
 authorize(<<"private">>, Uid, Rec) ->
     Uid =:= maps:get(<<"creator_user_id">>, Rec, 0);
 %% Step 10 教学附件：必须已绑定 submission（未绑定→拒绝）；submission 未撤回；
-%% teaching_acl:submission_access 复用（guardian can_view_review / 本班 staff，MEDIA-01）
+%% moya_acl:submission_access 复用（guardian can_view_review / 本班 staff，MEDIA-01）
 authorize(<<"teaching">>, Uid, Rec) ->
-    teaching_attach_logic:authorize(Uid, Rec);
+    moya_attach_logic:authorize(Uid, Rec);
 authorize(<<"c2c">>, Uid, Rec) ->
     case scope_ref(Rec) of
         ScopeRef when is_binary(ScopeRef) ->

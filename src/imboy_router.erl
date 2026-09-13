@@ -5,9 +5,6 @@
 -export([option/0]).
 %% Phase 2 切片 2：供测试与 admin introspection
 -export([plugin_routes/0]).
-%% MN-TASK-01/02 接线：/api/v1/teaching/tasks 集合路径 GET/POST 同路径双语义的
-%% method 分派 shim（cowboy 路由条目无法按 method 区分，见 init/2 处注释）
--export([init/2]).
 
 %% BUILD-00R：编译期 feature 门。未选中的 feature 其专属路由子句被预处理
 %% 剔除，路由路径字符串不进 beam（物理裁剪），与 imboy_feature:compiled_routes
@@ -78,7 +75,7 @@ get_routes() ->
             {"/api/v1/passport/bind_mail", passport_handler, #{action => bind_mail}},
 
             % 墨芽习字：微信小程序登录（免 Bearer，见 open/0；code 一次性换 IMBoy token）
-            {"/api/v1/auth/wechat-mini/login", teaching_auth_handler, #{
+            {"/api/v1/auth/wechat-mini/login", moya_auth_handler, #{
                 action => wechat_mini_login
             }},
 
@@ -521,61 +518,56 @@ get_routes() ->
                 % 墨芽习字教学域 API（Step 8：登录/上下文/ACL；Step 9：作业/提交/回评；
                 % 契约见 docs/plans/evidence/moya-calligraphy-ai-review/STEP-04/）
                 % wechat-mini login 免 Bearer（open/0 白名单）；其余教学端点全部走 JWT
-                {"/api/v1/teaching/contexts", teaching_context_handler, #{action => contexts}},
-                {"/api/v1/teaching/context/switch", teaching_context_handler, #{action => switch}},
-                {"/api/v1/teaching/assignments", teaching_assignment_handler, #{action => list}},
-                {"/api/v1/teaching/assignments/:id", teaching_assignment_handler, #{
+                {"/api/v1/moya/contexts", moya_context_handler, #{action => contexts}},
+                {"/api/v1/moya/context/switch", moya_context_handler, #{action => switch}},
+                {"/api/v1/moya/assignments", moya_assignment_handler, #{action => list}},
+                {"/api/v1/moya/assignments/:id", moya_assignment_handler, #{
                     action => detail
                 }},
-                {"/api/v1/teaching/assignments/:id/submissions", teaching_assignment_handler, #{
+                {"/api/v1/moya/assignments/:id/submissions", moya_assignment_handler, #{
                     action => create_submission
                 }},
-                {"/api/v1/teaching/submissions/:id", teaching_assignment_handler, #{
+                {"/api/v1/moya/submissions/:id", moya_assignment_handler, #{
                     action => submission_detail
                 }},
-                {"/api/v1/teaching/submissions/:id/withdraw", teaching_assignment_handler, #{
+                {"/api/v1/moya/submissions/:id/withdraw", moya_assignment_handler, #{
                     action => withdraw
                 }},
-                {"/api/v1/teaching/submissions/:id/review-workbench", teaching_review_handler, #{
+                {"/api/v1/moya/submissions/:id/review-workbench", moya_review_handler, #{
                     action => workbench
                 }},
-                {"/api/v1/teaching/submissions/:id/review-draft", teaching_review_handler, #{
+                {"/api/v1/moya/submissions/:id/review-draft", moya_review_handler, #{
                     action => save_draft
                 }},
-                {"/api/v1/teaching/submissions/:id/reviews/publish", teaching_review_handler, #{
+                {"/api/v1/moya/submissions/:id/reviews/publish", moya_review_handler, #{
                     action => publish
                 }},
-                {"/api/v1/teaching/review-queue", teaching_review_handler, #{action => queue}},
-                {"/api/v1/teaching/learners/:id/history", teaching_assignment_handler, #{
+                {"/api/v1/moya/review-queue", moya_review_handler, #{action => queue}},
+                {"/api/v1/moya/learners/:id/history", moya_assignment_handler, #{
                     action => history
                 }},
-                {"/api/v1/teaching/learners/:id/history/unread-count", teaching_assignment_handler,
+                {"/api/v1/moya/learners/:id/history/unread-count", moya_assignment_handler,
                     #{
                         action => history_unread_count
                     }},
                 %% 教学学员账号绑定（Step 16：管理侧最小动作；JWT；logic/repo 由 D 泳道
                 %% 就绪，错误映射与码段决定见 STEP-16/notes.md「B 接线完成」）
-                {"/api/v1/teaching/learners/:id/bind", teaching_learner_bind_handler, #{
+                {"/api/v1/moya/learners/:id/bind", moya_learner_bind_handler, #{
                     action => bind
                 }},
-                {"/api/v1/teaching/learners/:id/unbind", teaching_learner_bind_handler, #{
+                {"/api/v1/moya/learners/:id/unbind", moya_learner_bind_handler, #{
                     action => unbind
                 }},
                 %% 教学班级学员名单（MN-ROSTER-01）：只读；binding 名 `id` 以
-                %% teaching_roster_handler 实际（cowboy_req:binding(id, _)）为准
-                {"/api/v1/teaching/classes/:id/learners", teaching_roster_handler, #{
+                %% moya_roster_handler 实际（cowboy_req:binding(id, _)）为准
+                {"/api/v1/moya/classes/:id/learners", moya_roster_handler, #{
                     action => list
                 }},
                 %% 教学作业列表/发布（MN-TASK-01/02）：集合路径同路径双语义
-                %% GET=list / POST=create。cowboy 路由匹配只看 path（cowboy_router
-                %% match_path 首个 path 命中即返回，与 HTTP method 无关），同路径
-                %% 双条目的第二条恒被遮蔽，无法承载 POST；仓内既有惯例是 handler
-                %% 侧 resolve_action 分派 + 路由单条目（project_task_handler 的
-                %% /tasks 即此模式）。teaching_task_handler 属 A1/A2 patch（本轮
-                %% 只读，未内置 resolve_action），method 分派由本模块 init/2 shim
-                %% 承载，转发到该 handler 导出的 handle_action/3（与其 init/2 的
-                %% 转发语义等价）；handler 侧补 resolve_action 后可删 shim 收敛。
-                {"/api/v1/teaching/tasks", imboy_router, #{action => tasks}},
+                %% GET=list / POST=create，其余 method 405。cowboy 路由匹配只看
+                %% path（同路径双条目的第二条恒被遮蔽），故 method 分派在 handler
+                %% 侧（moya_task_handler:resolve_action/2，同 project_task_handler）。
+                {"/api/v1/moya/tasks", moya_task_handler, #{action => tasks}},
 
                 {"/api/v1/report/create", report_handler, #{action => create}},
 
@@ -1384,35 +1376,3 @@ moment_api_routes() ->
 moment_admin_routes() ->
     [].
 -endif.
-
-%%%===================================================================
-%% MN-TASK-01/02 接线：/api/v1/teaching/tasks 的 method 分派 shim
-%%%===================================================================
-
-%% cowboy 路由匹配仅按 path（cowboy_router:match_path 首个命中即返回，与
-%% HTTP method 无关），同路径双条目的第二条恒被遮蔽；仓内同路径双语义的
-%% 既有惯例是 handler 侧 resolve_action + 路由单条目（project_task_handler
-%% 的 /tasks、workspace_handler 的 branding）。teaching_task_handler 属
-%% A1/A2 patch（Wave-2 接线时源码只读，其 init/2 按 opts action 分派且未
-%% 内置 resolve_action），故分派由本模块承载：GET=list / POST=create，
-%% 其余 method 一律 405、不进入 list/create Logic（R22-METHOD-01；与
-%% moya-teaching.yaml 一致——同路径仅声明 get+post）。转发到该 handler
-%% 导出的 handle_action/3（与 teaching_task_handler:init/2
-%% 对 handle_action 的转发语义等价；current_uid/current_did 由 auth_middleware
-%% 统一注入 handler_opts，经 State 原样透传，action 键移除方式亦一致）。
-%% handler 集成并在其 init/2 补 resolve_action(tasks, Req) 后，可删除本 shim
-%% 并把路由条目收敛为 {"/api/v1/teaching/tasks", teaching_task_handler,
-%% #{action => tasks}}。
--spec init(cowboy_req:req(), map()) -> {ok, cowboy_req:req(), map()}.
-init(Req0, #{action := tasks} = State0) ->
-    State = maps:remove(action, State0),
-    case cowboy_req:method(Req0) of
-        <<"GET">> ->
-            {ok, teaching_task_handler:handle_action(list, Req0, State), State};
-        <<"POST">> ->
-            {ok, teaching_task_handler:handle_action(create, Req0, State), State};
-        _OtherMethod ->
-            %% 405 形态按仓内惯例（agent_card_handler:53 及 adm_* 30+ 处）：
-            %% 空头 + "Method Not Allowed"；仓内无携带 allow 头先例。
-            {ok, cowboy_req:reply(405, #{}, <<"Method Not Allowed">>, Req0), State}
-    end.

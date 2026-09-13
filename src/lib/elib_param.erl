@@ -2,6 +2,8 @@
 
 -export([page/1]).
 
+-export([page_qs/2]).
+
 -export([int/3]).
 
 -export([binary/3]).
@@ -33,6 +35,23 @@ page(Req) ->
     {ok, Page} = int(page, Req, 1),
     {ok, Size} = int(size, Req, 20),
     pase_page_size(Page, Size).
+
+%% @doc 从 query string 提取分页参数，size 上限 ?PAGE_SIZE_MAX
+%% @param Qs cowboy_req:parse_qs/1 的结果
+%% @param DefaultSize 缺省每页大小
+%% 示例: {Page, Size} = elib_param:page_qs(cowboy_req:parse_qs(Req), 20)
+-spec page_qs(list(), pos_integer()) -> {pos_integer(), pos_integer()}.
+page_qs(Qs, DefaultSize) ->
+    Page = qs_int(Qs, <<"page">>, 1),
+    Size = qs_int(Qs, <<"size">>, DefaultSize),
+    {max(1, Page), min(?PAGE_SIZE_MAX, max(1, Size))}.
+
+qs_int(Qs, Key, Default) ->
+    try binary_to_integer(proplists:get_value(Key, Qs, <<>>)) of
+        Int when is_integer(Int) -> Int
+    catch
+        _:_ -> Default
+    end.
 
 %% @doc 从请求中获取整数参数
 %% 优先从POST参数获取，如果没有则从GET参数获取
