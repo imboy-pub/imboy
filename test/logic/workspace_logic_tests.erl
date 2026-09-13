@@ -8,6 +8,7 @@
 %%% 归档拒绝成员管理、非成员 403、加入 workspace 不自动入群。
 
 -define(WS_ID, 800001).
+-define(ORG_ID, 700001).
 -define(OWNER, 900001).
 -define(MEMBER, 900002).
 -define(GUEST, 900003).
@@ -945,8 +946,11 @@ archived_workspace_rejects_member_admin_body() ->
 create_validation_test_() ->
     ?WITH_MECKS(
         [
+            {product_experience, [
+                {'effective', 0, fun() -> workspace end}
+            ]},
             {workspace_ds, [
-                {'create_template', 3, fun(_, _, _) -> {error, should_not_reach} end}
+                {'create_template', 4, fun(_, _, _, _) -> {error, should_not_reach} end}
             ]}
         ],
         fun() -> create_validation_body() end
@@ -955,21 +959,73 @@ create_validation_test_() ->
 create_validation_body() ->
     begin
         %% empty name rejected 400
-        ?assertMatch({error, {400, _}}, workspace_logic:create(?OWNER, <<>>, undefined)),
+        ?assertMatch(
+            {error, {400, _}}, workspace_logic:create(?OWNER, ?ORG_ID, <<>>, undefined)
+        ),
         %% name over 200 chars rejected 400
         Long = binary:copy(<<"a">>, 201),
-        ?assertMatch({error, {400, _}}, workspace_logic:create(?OWNER, Long, undefined)),
+        ?assertMatch(
+            {error, {400, _}}, workspace_logic:create(?OWNER, ?ORG_ID, Long, undefined)
+        ),
+        ?assertMatch(
+            {error, {400, _}}, workspace_logic:create(?OWNER, 0, <<"WS">>, undefined)
+        ),
         ok
     end.
 
 create_maps_owner_limit_test_() ->
     ?WITH_MECKS(
         [
+            {product_experience, [
+                {'effective', 0, fun() -> workspace end}
+            ]},
             {workspace_ds, [
-                {'create_template', 3, fun(_, _, _) -> {error, owner_workspace_limit} end}
+                {'create_template', 4, fun(_, _, _, _) -> {error, owner_workspace_limit} end}
             ]}
         ],
         fun() -> create_maps_owner_limit_body() end
+    ).
+
+user_scope_creates_only_personal_workspace_test_() ->
+    ?WITH_MECKS(
+        [
+            {product_experience, [
+                {'effective', 0, fun() -> chat end}
+            ]},
+            {workspace_ds, [
+                {'create_template', 4, fun(?OWNER, undefined, <<"Personal">>, undefined) ->
+                    {ok, #{workspace_id => ?WS_ID}, created}
+                end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {ok, _, created},
+                workspace_logic:create(?OWNER, undefined, <<"Personal">>, undefined)
+            ),
+            ?assertMatch(
+                {error, {400, _}},
+                workspace_logic:create(?OWNER, ?ORG_ID, <<"Forbidden">>, undefined)
+            )
+        end
+    ).
+
+workspace_scope_requires_organization_test_() ->
+    ?WITH_MECKS(
+        [
+            {product_experience, [
+                {'effective', 0, fun() -> workspace end}
+            ]},
+            {workspace_ds, [
+                {'create_template', 4, fun(_, _, _, _) -> {error, should_not_reach} end}
+            ]}
+        ],
+        fun() ->
+            ?assertMatch(
+                {error, {400, _}},
+                workspace_logic:create(?OWNER, undefined, <<"Forbidden">>, undefined)
+            )
+        end
     ).
 
 create_maps_owner_limit_body() ->
@@ -977,7 +1033,7 @@ create_maps_owner_limit_body() ->
         %% owner workspace limit surfaces as 409
         ?assertMatch(
             {error, {409, _}},
-            workspace_logic:create(?OWNER, <<"WS">>, undefined)
+            workspace_logic:create(?OWNER, ?ORG_ID, <<"WS">>, undefined)
         ),
         ok
     end.

@@ -57,13 +57,16 @@ latest_asset_null_when_key_empty_test() ->
     Summary = teaching_assignment_logic:assignment_summary(Row),
     ?assertEqual(null, maps:get(<<"latest_asset">>, Summary)).
 
-%% 契约冻结：字段集合增删必须显式改本断言（防后续误删既有字段）
+%% 契约冻结：字段集合增删必须显式改本断言（防后续误删既有字段）。
+%% W2-A2-F24（CM-F2）显式新增 description（moya parseAssignment 列表侧
+%% 读取 r.description；AssignmentSummary.description 为可选字段）。
 assignment_summary_field_set_frozen_test() ->
     Summary = teaching_assignment_logic:assignment_summary(base_row()),
     ?assertEqual(
         lists:sort([
             <<"assignment_id">>,
             <<"deadline">>,
+            <<"description">>,
             <<"group_id">>,
             <<"group_name">>,
             <<"has_published_review">>,

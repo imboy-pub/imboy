@@ -20,11 +20,44 @@ get:
     admin frontend's first-run wizard.
   operationId: serviceInit
   security: []
+  parameters:
+    - name: terminology-profile
+      in: header
+      required: false
+      description: |
+        客户端展示术语配置。默认 `generic`，当前内置 `generic`、`moya`；未知、
+        非法或超过 32 字节的值回退为 `generic`。该配置只控制前端展示词，不参与
+        权限、路由或业务状态机。
+      schema:
+        type: string
+        default: generic
   responses:
     '200':
-      description: 探针 OK（无 payload，仅返回 Envelope ok）
+      description: |
+        初始化成功。`payload.res_v2` 是 AES-256-GCM 加密的启动配置；兼容期开启
+        legacy CBC 时还会返回 `payload.res`。解密后的配置包含
+        `terminology.profile`、`terminology.hash` 和 `terminology.terms`：实际 profile
+        可能因请求值无效而回退为 `generic`，客户端应以响应 profile 为准。
       content:
-        application/json: { schema: { $ref: '../../components/schemas/Envelope.yaml' } }
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    type: object
+                    required: [res_v2, test]
+                    properties:
+                      res:
+                        type: string
+                        description: 可选 legacy AES-256-CBC 加密启动配置
+                      res_v2:
+                        type: string
+                        description: AES-256-GCM 加密启动配置，Base64 编码
+                      test:
+                        type: object
+                        additionalProperties: true
     '4XX':
       description: 参数错误（一般不触发，占位用）
       content:

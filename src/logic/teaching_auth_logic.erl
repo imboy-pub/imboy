@@ -127,7 +127,7 @@ issue_token(Uid) ->
 
 -spec has_teaching_identity(integer()) -> boolean().
 has_teaching_identity(Uid) ->
-    try teaching_context_logic:contexts(Uid) of
+    try teaching_context_logic:contexts(Uid, organization) of
         {ok, #{contexts := [_ | _]}} -> true;
         _ -> false
     catch

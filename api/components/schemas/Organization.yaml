@@ -1,0 +1,18 @@
+type: object
+required: [id, name, owner_id, status, branding, settings, member_role, created_at]
+properties:
+  id: { type: integer, format: int64 }
+  name: { type: string, maxLength: 200 }
+  owner_id: { type: integer, format: int64 }
+  status: { type: string, enum: [active, archived] }
+  branding: { type: object, additionalProperties: true }
+  settings: { type: object, additionalProperties: true }
+  member_role: { type: string, enum: [owner, admin, member] }
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 时间戳，毫秒
+  updated_at:
+    type: [integer, 'null']
+    format: int64
+    description: Unix 时间戳，毫秒

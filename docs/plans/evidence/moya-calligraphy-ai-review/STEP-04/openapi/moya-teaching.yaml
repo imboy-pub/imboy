@@ -30,7 +30,8 @@ info:
     assignment → submission → AI draft → teacher review）REST 契约。
 
     角色定义（计划 §5）：
-    - Organization Owner：organization.owner_id 匹配 JWT uid。
+    - Organization 治理成员：organization_member 中 active owner/admin 匹配
+      JWT uid。该关系独立于 workspace_member，不自动授予 Workspace 访问权。
     - 授权老师：class_staff 行（manager|teacher|assistant，status=active）匹配
       (group_id, JWT uid)；"任课老师" = teacher/manager。
     - 监护人：guardian_learner 行（status=active）匹配 (guardian_uid, learner_id)；
@@ -136,10 +137,21 @@ paths:
         - guardian 身份：每个 active guardian_learner 关系一条，含 learner 概要、
           can_submit/can_view_review、所属 organization/workspace/class。
         - teacher 身份：每个 active class_staff 关系一条，含 role 与班级概要。
-        - organization owner 身份：每个拥有的 organization 一条（owner 不因身份
-          自动获得儿童资源，仅用于机构管理入口，见 §5.2 矩阵）。
+        - organization 治理身份：每个 active owner/admin 关系一条（不因
+          该身份自动获得 Workspace 成员权限或儿童资源，仅用于机构
+          治理入口，见 §5.2 矩阵）。
 
         客户端不传任何过滤器；服务端全量解析（deny-by-default）。
+        新客户端传 schema_version=2 获得 organization 上下文；省略时为
+        旧客户端保留 org_owner 表示，且不暴露新增 admin 上下文。
+      parameters:
+        - in: query
+          name: schema_version
+          required: false
+          schema:
+            type: integer
+            enum: [2]
+          description: 上下文表示版本；新客户端固定传 2。省略时为兼容版本 1。
       responses:
         '200':
           description: 成功返回身份列表（可能为空 = 该用户无教学身份）
@@ -175,6 +187,10 @@ paths:
                           group_id: '4718000001'
                           group_name: 书法一班
                           role: teacher
+                        - context_type: organization
+                          organization_id: '4718592023'
+                          organization_name: 墨芽书院
+                          role: admin
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -184,11 +200,11 @@ paths:
       tags: [context]
       summary: 显式切换当前教学上下文（多身份用户）
       description: |
-        校验所请求的上下文确实属于 JWT uid（guardian_learner 或 class_staff
-        关系存在且 active），成功后记录为该用户当前选择（供多端同步/UX），
-        并返回该上下文完整快照。
+        校验所请求的上下文确实属于 JWT uid（guardian_learner、class_staff
+        或 organization_member 关系存在且 active），成功后仅返回该上下文
+        完整快照。客户端可在本地记住选择；服务端不保存选中状态。
 
-        重要语义（ACL-02）：switch 只是"选择记录"。后续业务 API 的服务端
+        重要语义（ACL-02）：switch 只做归属校验与快照回显。后续业务 API 的服务端
         鉴权永远从 JWT uid + 请求内资源 ID 独立解析，绝不继承上一次资源
         上下文 —— 本端点不签发任何凭证、不产生 context token（D-04：不
         增加第二套鉴权）。
@@ -202,7 +218,8 @@ paths:
               properties:
                 context_type:
                   type: string
-                  enum: [guardian, teacher, org_owner]
+                  enum: [guardian, teacher, organization, org_owner]
+                  description: org_owner 仅供旧客户端滚动升级兼容，新客户端必须使用 organization。
                 organization_id:
                   allOf: [{ $ref: '#/components/schemas/TsidString' }]
                   description: 期望机构（服务端校验一致性）
@@ -280,7 +297,7 @@ paths:
       description: |
         可见性：该 assignment 的 learner 的有效监护人（can_submit 或
         can_view_review），或该班级 active class_staff（manager/teacher/
-        assistant）。Organization Owner 不因 Owner 身份获得（§5.2）。
+        assistant）。Organization 治理成员不因 owner/admin 身份获得（§5.2）。
       parameters:
         - $ref: '#/components/parameters/AssignmentIdPath'
       responses:
@@ -403,7 +420,7 @@ paths:
         无发布权，由 Step 9 配置）可访问；按提交时间升序，支持按 group/
         assignment/AI 状态筛选。withdrawn 的 submission 立即从队列消失
         （服务端过滤 status='submitted'）。
-        Organization Owner 不因 Owner 身份获得队列（§5.2）。
+        Organization 治理成员不因 owner/admin 身份获得队列（§5.2）。
       parameters:
         - in: query
           name: group_id
@@ -769,7 +786,8 @@ components:
       properties:
         context_type:
           type: string
-          enum: [guardian, teacher, org_owner]
+          enum: [guardian, teacher, organization, org_owner]
+          description: schema_version=2 返回 organization；兼容版本可返回 org_owner。
         organization_id:
           allOf: [{ $ref: '#/components/schemas/TsidString' }]
         organization_name:
@@ -782,8 +800,8 @@ components:
           type: string
         role:
           type: string
-          enum: [manager, teacher, assistant]
-          description: teacher 上下文的教学角色
+          enum: [owner, admin, manager, teacher, assistant]
+          description: organization 上下文为 owner/admin；teacher 上下文为 manager/teacher/assistant。
         learner_id:
           allOf: [{ $ref: '#/components/schemas/TsidString' }]
         learner_display_name:

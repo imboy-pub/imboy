@@ -1,0 +1,11 @@
+type: object
+required: [list, page, size, total, total_page]
+properties:
+  list:
+    type: array
+    items:
+      $ref: './OrganizationMember.yaml'
+  page: { type: integer }
+  size: { type: integer }
+  total: { type: integer }
+  total_page: { type: integer }

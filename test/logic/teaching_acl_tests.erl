@@ -286,6 +286,7 @@ repo_mocks() ->
             (_) ->
                 {ok, []}
         end},
+        {'organization_contexts', 1, fun(_) -> {ok, []} end},
         {'owner_contexts', 1, fun(_) -> {ok, []} end}
     ].
 

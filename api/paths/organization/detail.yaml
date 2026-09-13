@@ -1,0 +1,65 @@
+get:
+  tags: [organization]
+  summary: Organization 详情
+  description: |
+    active Organization Member 可读 active 或 archived Organization。
+    非成员返回业务 403，不存在返回业务 404；权限不从 Workspace 或 Group 推导。
+  operationId: organizationDetail
+  parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+  responses:
+    '200':
+      description: Organization 详情或业务错误信封
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    $ref: '../../components/schemas/Organization.yaml'
+    '405':
+      description: Method Not Allowed
+
+patch:
+  tags: [organization]
+  summary: 更新 Organization 通用资料
+  description: |
+    active Organization Owner/Admin 可更新。name 替换；branding/settings 对象
+    以顶层键浅合并，便于不同业务客户端使用独立命名空间。归档状态拒绝更新，
+    且该操作不改变 Workspace、Group 或垂直业务权限。
+  operationId: organizationUpdate
+  parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          minProperties: 1
+          properties:
+            name: { type: string, minLength: 1, maxLength: 200 }
+            branding: { type: object, additionalProperties: true }
+            settings: { type: object, additionalProperties: true }
+  responses:
+    '200':
+      description: 更新后的 Organization 或业务错误信封
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    $ref: '../../components/schemas/Organization.yaml'
+    '405':
+      description: Method Not Allowed

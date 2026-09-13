@@ -465,6 +465,8 @@ dto_parent_view_published_only_test_() ->
         ),
         %% 兼容字段从 assets 第一条 video 派生
         ?assertEqual(<<"995601">>, maps:get(<<"video_attachment_id">>, Pub)),
+        %% 老师署名（c8c086d3）：来自 user_repo nickname 解析（DEF-B 夹具）
+        ?assertEqual(<<"李老师"/utf8>>, maps:get(<<"reviewer_display_name">>, Pub)),
         %% AI 内部字段不透出（model_profile/prompt_version/result_json/error_code）
         lists:foreach(
             fun(K) -> ?assertEqual(false, maps:is_key(K, Pub)) end,
@@ -669,6 +671,16 @@ parent_view_mocks() ->
             {'find_published', 1, fun(?RV_SUBMISSION) -> {ok, pub_row()} end},
             {'find_draft', 2, fun(_, _) -> {ok, undefined} end},
             {'assets', 1, fun(?RV_REVIEW_PUB) -> {ok, review_asset_rows()} end}
+        ]},
+        %% DEF-B（CM）：pub_row() 带 reviewer_uid，bundle 装配会经
+        %% reviewer_display_name → user_repo:find_by_uid → elib_pg:one 解析
+        %% 署名（c8c086d3 起）——夹具此前只 meck elib_pg:query/2，漏 one/2
+        %% 与 user_repo，真连池 → {noproc, pgsql take_member}。补 user_repo
+        %% 语义化 meck（nickname 命中路径）。
+        {user_repo, [
+            {'find_by_uid', 1, fun(?RV_TEACHER) ->
+                {ok, #{<<"nickname">> => <<"李老师"/utf8>>}}
+            end}
         ]},
         {elib_pg, [
             {'query', 2, fun(_, _) -> {ok, []} end}

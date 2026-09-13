@@ -47,15 +47,18 @@ handle_action(false, Req, _State) -> Req.
 list_assignments(Req0, State) ->
     Uid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
-    case tsid(proplists:get_value(<<"learner_id">>, Qs)) of
-        {ok, LearnerId} ->
+    case {tsid(proplists:get_value(<<"learner_id">>, Qs)), status_param(Qs)} of
+        {{ok, LearnerId}, {ok, Status}} ->
             Page = page_param(Qs),
-            case teaching_assignment_logic:list(Uid, LearnerId, Page) of
+            case teaching_assignment_logic:list(Uid, LearnerId, Page, Status) of
                 {ok, Payload} ->
                     elib_response:success_rfc3339(Req0, Payload);
                 {error, Reason} ->
                     teaching_error:to_response(Req0, Reason)
             end;
+        {_, {error, _}} ->
+            %% CM-F4：非法 status 一律 422 拒绝（deny-by-default，不下发查询）
+            elib_response:error(Req0, <<"状态过滤参数非法"/utf8>>, ?ERR_PARAM_INVALID);
         _ ->
             elib_response:error(Req0, <<"缺少学员ID"/utf8>>, ?ERR_MISSING_PARAM)
     end.
@@ -116,9 +119,14 @@ withdraw(Req0, State) ->
         {ok, SubmissionId} ->
             case teaching_review_logic:withdraw(Uid, SubmissionId) of
                 {ok, withdrawn} ->
+                    %% CM-F1：契约必填 submission_id（TSID string；MN-WITHDRAW-01
+                    %% 冻结契约 WithdrawnSubmission——moya tsidOrThrow 缺字段必抛错）
                     elib_response:success_rfc3339(
                         Req0,
-                        #{<<"status">> => <<"withdrawn">>},
+                        #{
+                            <<"submission_id">> => integer_to_binary(SubmissionId),
+                            <<"status">> => <<"withdrawn">>
+                        },
                         <<"已撤回"/utf8>>
                     );
                 {error, Reason} ->
@@ -177,6 +185,28 @@ since_param(Qs) ->
     case proplists:get_value(<<"since">>, Qs) of
         V when is_binary(V), byte_size(V) > 0 -> V;
         _ -> undefined
+    end.
+
+%% CM-F4：status 过滤四态白名单（与 moya parent-api.ts AssignmentStatus 对齐）。
+%% 缺省 → undefined（不过滤）；非法值 → error（handler 422 拒绝）。
+-define(ASSIGNMENT_STATUS_FILTERS, [
+    <<"pending">>, <<"submitted">>, <<"reviewing">>, <<"reviewed">>
+]).
+
+-spec status_param(list()) -> {ok, binary() | undefined} | error.
+status_param(Qs) ->
+    case proplists:get_value(<<"status">>, Qs, undefined) of
+        undefined ->
+            {ok, undefined};
+        <<>> ->
+            {ok, undefined};
+        Status when is_binary(Status) ->
+            case lists:member(Status, ?ASSIGNMENT_STATUS_FILTERS) of
+                true -> {ok, Status};
+                false -> error
+            end;
+        _ ->
+            error
     end.
 
 -spec tsid(binary()) -> {ok, integer()} | error.

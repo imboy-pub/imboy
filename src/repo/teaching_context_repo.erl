@@ -4,7 +4,7 @@
 % Teaching context & ACL repository
 %
 % 职责（Step 8）：
-%   - 教学 SQL 唯一入口：guardian/staff/owner 上下文解析、ACL 关系查询、
+%   - 教学 SQL 唯一入口：guardian/staff/organization 上下文解析、ACL 关系查询、
 %     submission 资源链解析（learner→assignment→task→group→workspace→organization）
 %   - 只读；不做任何权限判断（判断集中在 teaching_acl logic）
 %
@@ -14,7 +14,7 @@
 %%%
 
 -export([tablename/1]).
--export([guardian_contexts/1, staff_contexts/1, owner_contexts/1]).
+-export([guardian_contexts/1, staff_contexts/1, organization_contexts/1, owner_contexts/1]).
 -export([guardian_relation/2, staff_relation/2, org_owner_uid/1]).
 -export([learner_org/1, group_org/1]).
 -export([submission_scope/1, assignment_scope/1]).
@@ -92,7 +92,24 @@ staff_contexts(Uid) ->
         >>,
     elib_pg:query(Sql, [Uid]).
 
-%% @doc 机构 Owner 上下文列表（Owner 不因身份获得儿童资源，仅机构管理入口，§5.2）
+%% @doc 机构治理上下文列表。owner/admin 只获得机构管理入口，不获得儿童资源权限。
+-spec organization_contexts(integer()) -> {ok, [map()]} | {error, term()}.
+organization_contexts(Uid) ->
+    Sql =
+        <<
+            "SELECT o.id AS org_id, o.name AS org_name, om.role "
+            "FROM ",
+            (tb(organization_member))/binary,
+            " om "
+            "JOIN ",
+            (tb(organization))/binary,
+            " o ON o.id = om.organization_id "
+            "WHERE om.user_id = $1 AND om.status = 'active' "
+            "AND om.role IN ('owner', 'admin') AND o.status = 'active' ORDER BY o.id"
+        >>,
+    elib_pg:query(Sql, [Uid]).
+
+%% 兼容旧客户端/BEAM：保留原 owner_id 查询语义，不返回 admin。
 -spec owner_contexts(integer()) -> {ok, [map()]} | {error, term()}.
 owner_contexts(Uid) ->
     Sql =

@@ -25,12 +25,11 @@
 -export([run_once/0, run_once_tx/1, process_tx/2]).
 -export([reclaim_stuck/0, reclaim_stuck_tx/2]).
 
--ifdef(TEST).
-%% 纯函数，导出供单测直接验收「开关关闭时附件原样不变」这一 fail-closed 语义
--export([maybe_attach_view_url/1]).
--endif.
-
 -include_lib("kernel/include/logger.hrl").
+%% 纯函数；导出供 eunit 直接验收「开关关闭时附件原样不变」这一 fail-closed
+%% 语义（无 -ifdef(TEST)——干净 make compile 的 ebin 同样携带导出，避免测试
+%% 口径与生产 beam 分叉，改法同 09484ffd 之于 msg_store_repo）
+-export([maybe_attach_view_url/1]).
 -include("log.hrl").
 
 %% 瞬时错误可重试；provider_unavailable/bad_output/attachment/媒体类不重试

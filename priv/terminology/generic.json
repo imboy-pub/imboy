@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "profile": "generic",
+  "terms": {
+    "participant": "参与者",
+    "delegate": "关联人",
+    "operator": "负责人",
+    "group": "群组",
+    "task_assignment": "任务指派",
+    "task_submission": "任务提交",
+    "submission_review": "提交审核",
+    "review_assist": "审核辅助"
+  }
+}

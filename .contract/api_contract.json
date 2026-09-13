@@ -2201,6 +2201,12 @@
         "static": false
       },
       {
+        "action": "group_history_grant",
+        "handler": "e2ee_handler",
+        "path": "/api/v1/e2ee/group_history_grant",
+        "static": false
+      },
+      {
         "action": "group_member_keys",
         "handler": "e2ee_handler",
         "path": "/api/v1/e2ee/group_member_keys",
@@ -3131,6 +3137,48 @@
         "static": false
       },
       {
+        "action": "collection",
+        "handler": "organization_handler",
+        "path": "/api/v1/organizations",
+        "static": false
+      },
+      {
+        "action": "detail",
+        "handler": "organization_handler",
+        "path": "/api/v1/organizations/:organization_id",
+        "static": false
+      },
+      {
+        "action": "collection",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members",
+        "static": false
+      },
+      {
+        "action": "member",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members/:user_id",
+        "static": false
+      },
+      {
+        "action": "role",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members/:user_id/role",
+        "static": false
+      },
+      {
+        "action": "owner_transfer",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members/transfer_owner",
+        "static": false
+      },
+      {
+        "action": "mine",
+        "handler": "organization_handler",
+        "path": "/api/v1/organizations/mine",
+        "static": false
+      },
+      {
         "action": "alipay_authinfo",
         "handler": "passport_handler",
         "path": "/api/v1/passport/alipay_authinfo",
@@ -4047,7 +4095,7 @@
     }
   },
   "error_code_summary": {
-    "defines": 185,
+    "defines": 186,
     "distinct_codes": [
       0,
       1,
@@ -4192,6 +4240,7 @@
       5430,
       5431,
       5432,
+      5433,
       5440,
       5441,
       5442,
@@ -4217,7 +4266,7 @@
       "5100": 7,
       "5200": 6,
       "5300": 7,
-      "5400": 32,
+      "5400": 33,
       "900": 43
     },
     "source": "include/error_code.hrl"

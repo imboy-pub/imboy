@@ -3,7 +3,7 @@
 % 墨芽教学上下文 HTTP 适配层（contexts / context switch）
 % Thin HTTP adapter for teaching contexts
 %
-% GET  /api/v1/teaching/contexts        家长/老师/Owner 身份上下文
+% GET  /api/v1/teaching/contexts        用户可用身份上下文
 % POST /api/v1/teaching/context/switch  显式切换（无凭证语义，仅校验+回显）
 %
 % 错误码映射（STEP-04 error-codes.md 5420 段）。
@@ -40,7 +40,13 @@ handle_action(false, Req, _State) ->
 -spec contexts(cowboy_req:req(), map()) -> cowboy_req:req().
 contexts(Req0, State) ->
     CurrentUid = maps:get(current_uid, State),
-    case teaching_context_logic:contexts(CurrentUid) of
+    Qs = cowboy_req:parse_qs(Req0),
+    Schema =
+        case proplists:get_value(<<"schema_version">>, Qs, <<"1">>) of
+            <<"2">> -> organization;
+            _ -> legacy
+        end,
+    case teaching_context_logic:contexts(CurrentUid, Schema) of
         {ok, Payload} ->
             elib_response:success_rfc3339(Req0, Payload);
         {error, db_error} ->

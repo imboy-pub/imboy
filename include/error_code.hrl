@@ -493,6 +493,8 @@
 -define(ERR_TEACHING_LEARNER_NOT_IN_CLASS, 5431).
 % 监护关系需完善（0 个或多个 active can_submit 监护人）
 -define(ERR_TEACHING_GUARDIAN_SETUP_REQUIRED, 5432).
+% 机构设置仅机构 owner 可操作（AI 辅助开关等机构级策略）
+-define(ERR_TEACHING_ORG_OWNER_REQUIRED, 5433).
 % 作业不存在或对请求者不可见
 -define(ERR_ASSIGNMENT_NOT_FOUND, 5440).
 % 提交附件不合规（缺视频/超量/非本人/MIME 不符）
@@ -667,6 +669,7 @@
     5430 => <<"班级不存在或不可见"/utf8>>,
     5431 => <<"学员不在本班或已移出"/utf8>>,
     5432 => <<"监护关系需完善"/utf8>>,
+    5433 => <<"仅机构管理员可操作机构设置"/utf8>>,
     5440 => <<"作业不存在"/utf8>>,
     5441 => <<"提交附件不合规"/utf8>>,
     5442 => <<"作业已截止或关闭"/utf8>>,

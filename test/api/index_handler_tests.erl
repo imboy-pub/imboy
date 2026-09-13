@@ -36,7 +36,13 @@ init_success_test_() ->
             %% 据此隐藏入口/拦截 deep link。
             Features = maps:get(<<"features">>, InitData),
             ?assert(maps:is_key(<<"core">>, Features)),
-            ?assert(is_boolean(maps:get(<<"location">>, Features)))
+            ?assert(is_boolean(maps:get(<<"location">>, Features))),
+            Terminology = maps:get(<<"terminology">>, InitData),
+            ?assertEqual(<<"moya">>, maps:get(<<"profile">>, Terminology)),
+            ?assertEqual(
+                <<"operator-label">>,
+                maps:get(<<"operator">>, maps:get(<<"terms">>, Terminology))
+            )
         end
     ).
 
@@ -108,6 +114,7 @@ init_mocks(LegacyCbc, RsaFlag) ->
                 (<<"cos">>, _Req, _Default) -> <<"ios">>;
                 (<<"pkg">>, _Req, _Default) -> <<"com.imboy.test">>;
                 (<<"sk">>, _Req, Default) -> Default;
+                (<<"terminology-profile">>, _Req, _Default) -> <<"moya">>;
                 (_Name, _Req, Default) -> Default
             end}
         ]},
@@ -139,6 +146,15 @@ init_mocks(LegacyCbc, RsaFlag) ->
                     end;
                 (_K, D) ->
                     D
+            end}
+        ]},
+        {product_terminology, [
+            {'public', 1, fun(Profile) when is_binary(Profile) ->
+                #{
+                    <<"profile">> => Profile,
+                    <<"hash">> => <<"sha256:test">>,
+                    <<"terms">> => #{<<"operator">> => <<"operator-label">>}
+                }
             end}
         ]},
         {app_version_ds, [

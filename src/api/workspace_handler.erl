@@ -93,9 +93,14 @@ create(Req0, State) ->
             elib_response:error(Req0, <<"在处理中，请稍后重试"/utf8>>);
         _ ->
             PostVals = elib_param:post(Req0),
+            OrganizationId =
+                case maps:find(<<"organization_id">>, PostVals) of
+                    {ok, Value} -> elib_cnv:safe_to_integer(Value);
+                    error -> undefined
+                end,
             Name = maps:get(<<"name">>, PostVals, <<>>),
             RequestId = maps:get(<<"request_id">>, PostVals, undefined),
-            case workspace_logic:create(Uid, Name, RequestId) of
+            case workspace_logic:create(Uid, OrganizationId, Name, RequestId) of
                 {ok, Result, created} ->
                     elib_response:success(Req0, Result#{status => created});
                 {ok, Result, existing} ->

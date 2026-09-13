@@ -22,6 +22,9 @@ start(_Type, _Args) ->
     %% prime IMBOYENV 缓存：所有运行时模块统一走 imboy_env:current/0
     _ = imboy_env:current(),
     ok = validate_runtime_config(),
+    %% OTP 28 原生 json 在启动期一次性校验术语映射；请求期从
+    %% persistent_term 只读，业务权限、路由和状态机不依赖这些展示词。
+    ok = product_terminology:init(),
     ok = ensure_solidified_keys(),
     ok = ensure_jwt_key(),
     ok = ensure_password_salt(),
@@ -259,8 +262,10 @@ tsid_generator_names() ->
         channel_webhook,
         channel_comment,
         channel_price,
-        %% ── 工作区（双体验 v2.5.2 WP3/T4；workspace_member 复合主键无 id 列，不注册；
+        %% ── Organization / 工作区（成员关系均为复合主键，不注册；
+        %%    workspace 双体验 v2.5.2 WP3/T4；
         %%    workspace_invite = 团队码 T2.2，迁移 00000082） ──
+        organization,
         workspace,
         workspace_invite,
         %% ── 项目（双体验 v2.5.2 WP4/T6a/T6b；project_event 由 T6a 独占 writer 接口） ──

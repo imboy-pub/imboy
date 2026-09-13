@@ -549,9 +549,10 @@ get_routes() ->
                 {"/api/v1/teaching/learners/:id/history", teaching_assignment_handler, #{
                     action => history
                 }},
-                {"/api/v1/teaching/learners/:id/history/unread-count", teaching_assignment_handler, #{
-                    action => history_unread_count
-                }},
+                {"/api/v1/teaching/learners/:id/history/unread-count", teaching_assignment_handler,
+                    #{
+                        action => history_unread_count
+                    }},
                 %% 教学学员账号绑定（Step 16：管理侧最小动作；JWT；logic/repo 由 D 泳道
                 %% 就绪，错误映射与码段决定见 STEP-16/notes.md「B 接线完成」）
                 {"/api/v1/teaching/learners/:id/bind", teaching_learner_bind_handler, #{
@@ -660,6 +661,20 @@ get_routes() ->
                 %% branding / projects / tasks 集合路径同路径双语义由
                 %% handler 按 method 分派。
                 %% ============================================================
+                {"/api/v1/organizations", organization_handler, #{action => collection}},
+                {"/api/v1/organizations/mine", organization_handler, #{action => mine}},
+                {"/api/v1/organizations/:organization_id", organization_handler, #{
+                    action => detail
+                }},
+                {"/api/v1/organizations/:organization_id/members", organization_member_handler, #{
+                    action => collection
+                }},
+                {"/api/v1/organizations/:organization_id/members/transfer_owner",
+                    organization_member_handler, #{action => owner_transfer}},
+                {"/api/v1/organizations/:organization_id/members/:user_id/role",
+                    organization_member_handler, #{action => role}},
+                {"/api/v1/organizations/:organization_id/members/:user_id",
+                    organization_member_handler, #{action => member}},
                 {"/api/v1/workspaces", workspace_handler, #{action => create}},
                 {"/api/v1/workspaces/mine", workspace_handler, #{action => mine}},
                 {"/api/v1/workspaces/join", workspace_handler, #{action => join}},

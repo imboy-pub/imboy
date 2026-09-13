@@ -90,7 +90,7 @@ code_replay_test_() ->
                     {'encrypt_refreshtoken', 2, fun(_, _) -> <<"rt_x">> end}
                 ]},
                 {teaching_context_logic, [
-                    {'contexts', 1, fun(_) -> {ok, #{contexts => []}} end}
+                    {'contexts', 2, fun(_, organization) -> {ok, #{contexts => []}} end}
                 ]}
             ]
         ],
@@ -170,7 +170,9 @@ login_success_no_openid_leak_test_() ->
                     {'encrypt_refreshtoken', 2, fun(?UID, <<>>) -> <<"rt_98001">> end}
                 ]},
                 {teaching_context_logic, [
-                    {'contexts', 1, fun(?UID) -> {ok, #{contexts => [ctx_stub()]}} end}
+                    {'contexts', 2, fun(?UID, organization) ->
+                        {ok, #{contexts => [ctx_stub()]}}
+                    end}
                 ]}
             ]
         ],
@@ -221,4 +223,8 @@ base_mocks() ->
     ]}.
 
 ctx_stub() ->
-    #{<<"context_type">> => <<"guardian">>, <<"learner_id">> => <<"3001">>}.
+    #{
+        <<"context_type">> => <<"organization">>,
+        <<"organization_id">> => <<"3001">>,
+        <<"role">> => <<"admin">>
+    }.

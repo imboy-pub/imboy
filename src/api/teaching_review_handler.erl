@@ -41,16 +41,28 @@ handle_action(false, Req, _State) -> Req.
 queue(Req0, State) ->
     Uid = maps:get(current_uid, State),
     Qs = cowboy_req:parse_qs(Req0),
-    Filters = #{
-        <<"group_id">> => proplists:get_value(<<"group_id">>, Qs, undefined),
-        <<"ai_status">> => proplists:get_value(<<"ai_status">>, Qs, undefined)
-    },
-    {Page, Size} = page_param(Qs),
-    case teaching_review_logic:queue(Uid, Filters, {Page, Size}) of
-        {ok, Payload} ->
-            elib_response:success_rfc3339(Req0, Payload);
-        {error, Reason} ->
-            teaching_error:to_response(Req0, Reason)
+    case ai_status_param(Qs) of
+        {ok, AiStatus} ->
+            Filters = #{
+                <<"group_id">> => proplists:get_value(<<"group_id">>, Qs, undefined),
+                %% ai_status 白名单化（deny-by-default）：缺省 undefined
+                %% 不过滤；键名保持 binary（handler 输出线格式键，与
+                %% group_id/assignment_id 一致），atom 归一是 logic 层的事。
+                <<"ai_status">> => AiStatus,
+                %% CM-F3：assignment_id 过滤此前被 handler 丢弃（logic
+                %% queue_with_groups 早已解析该键）——一行接线补透传
+                <<"assignment_id">> => proplists:get_value(<<"assignment_id">>, Qs, undefined)
+            },
+            {Page, Size} = page_param(Qs),
+            case teaching_review_logic:queue(Uid, Filters, {Page, Size}) of
+                {ok, Payload} ->
+                    elib_response:success_rfc3339(Req0, Payload);
+                {error, Reason} ->
+                    teaching_error:to_response(Req0, Reason)
+            end;
+        error ->
+            %% 非法 ai_status 一律 422 拒绝（deny-by-default，绝不下发 logic）
+            elib_response:error(Req0, <<"AI状态过滤参数非法"/utf8>>, ?ERR_PARAM_INVALID)
     end.
 
 -spec workbench(cowboy_req:req(), map()) -> cowboy_req:req().
@@ -110,6 +122,30 @@ publish(Req0, State) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% ai_status 过滤五态白名单（与 repo queue/4 LATERAL join 的
+%% ('queued','running','succeeded','failed') 字面量集合一致，
+%% 另补 none 表示「无有效 AI 草稿」）。
+%% 缺省 → undefined（不过滤）；非法值 → error（handler 422 拒绝）。
+-define(AI_STATUS_FILTERS, [
+    <<"none">>, <<"queued">>, <<"running">>, <<"succeeded">>, <<"failed">>
+]).
+
+-spec ai_status_param(list()) -> {ok, binary() | undefined} | error.
+ai_status_param(Qs) ->
+    case proplists:get_value(<<"ai_status">>, Qs, undefined) of
+        undefined ->
+            {ok, undefined};
+        <<>> ->
+            {ok, undefined};
+        Status when is_binary(Status) ->
+            case lists:member(Status, ?AI_STATUS_FILTERS) of
+                true -> {ok, Status};
+                false -> error
+            end;
+        _ ->
+            error
+    end.
 
 -spec path_id(cowboy_req:req()) -> {ok, integer()} | error.
 path_id(Req) ->

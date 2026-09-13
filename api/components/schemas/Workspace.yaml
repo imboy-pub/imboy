@@ -1,0 +1,24 @@
+type: object
+required: [id, name, owner_id, organization_id, status, branding, created_at]
+properties:
+  id: { type: integer, format: int64 }
+  name: { type: string, maxLength: 200 }
+  logo: { type: string }
+  owner_id:
+    type: integer
+    format: int64
+    description: Workspace 主 Owner 用户 ID，与 Organization Owner 相互独立
+  organization_id:
+    type: [integer, 'null']
+    format: int64
+    description: user_scope 时为 null；workspace_scope 时为所属 Organization ID
+  status: { type: string, enum: [active, archived] }
+  branding: { type: object, additionalProperties: true }
+  created_at:
+    type: integer
+    format: int64
+    description: Unix 时间戳，毫秒
+  updated_at:
+    type: [integer, 'null']
+    format: int64
+    description: Unix 时间戳，毫秒

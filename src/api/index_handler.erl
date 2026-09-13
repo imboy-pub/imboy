@@ -40,6 +40,7 @@ api_init(Req0) ->
     DType = cowboy_req:header(<<"cos">>, Req0, <<>>),
     Pkg = cowboy_req:header(<<"pkg">>, Req0, <<>>),
     SignKeyVsn = cowboy_req:header(<<"sk">>, Req0, Vsn),
+    TerminologyProfile = cowboy_req:header(<<"terminology-profile">>, Req0, <<"generic">>),
 
     SolKey = config_ds:env(solidified_key),
     SignKey =
@@ -88,7 +89,9 @@ api_init(Req0) ->
             %% 按 config_version 比对失效（experience 或后端版本变化必变化）。
             <<"effective_product_experience">> =>
                 product_experience:effective_binary(),
-            <<"config_version">> => product_experience:config_version()
+            <<"config_version">> => product_experience:config_version(),
+            %% 仅下发展示词；权限、路由和状态机不读取该配置。
+            <<"terminology">> => product_terminology:public(TerminologyProfile)
         },
     % ?DEBUG_LOG([DType, Vsn, Pkg, SignKey, Data]),
     % elib_response:success(Req0, Data, "success.").

@@ -20,6 +20,7 @@
     resolve_guardian/3,
     resolve_staff/2,
     resolve_staff/3,
+    resolve_org_manager/2,
     resolve_org_owner/2,
     assert_same_org/2,
     submission_access/2
@@ -94,6 +95,22 @@ resolve_org_owner(Uid, OrgId) ->
             {error, not_owner};
         {error, Reason} ->
             ?LOG_ERROR("teaching_acl resolve_org_owner db error ~p", [Reason]),
+            {error, db_error}
+    end.
+
+%% @doc Organization 治理入口权限。owner/admin 均可；普通组织成员和仅有
+%% Workspace Membership 的外部协作者均拒绝。
+-spec resolve_org_manager(integer(), integer()) -> ok | {error, not_manager | db_error}.
+resolve_org_manager(Uid, OrgId) ->
+    case organization_member_repo:find_active(OrgId, Uid, <<"role">>) of
+        {ok, #{<<"role">> := Role}} when Role =:= <<"owner">>; Role =:= <<"admin">> ->
+            ok;
+        {ok, _} ->
+            {error, not_manager};
+        {error, not_found} ->
+            {error, not_manager};
+        {error, Reason} ->
+            ?LOG_ERROR("teaching_acl resolve_org_manager db error ~p", [Reason]),
             {error, db_error}
     end.
 

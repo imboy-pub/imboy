@@ -80,7 +80,9 @@ jobs:
           bash scripts/check_teaching_ai_config.sh --self-test
 
       - name: Compile
-        run: IMBOYENV=local make test-build
+        run: |
+          IMBOYENV=local make test-build
+          IMBOYENV=local make terminology-check
 
   moment-eunit:
     name: Moment EUnit Gate

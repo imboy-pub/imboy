@@ -64,6 +64,10 @@ tags:
     description: 开发者服务 Bot（Webhook 推送 + api_token 认证）
   - name: project
     description: 项目协作（W2）：成员 / 里程碑 / 频道关联 / 四聚合
+  - name: organization
+    description: Organization 治理与成员管理
+  - name: workspace
+    description: Workspace 协作空间与成员管理
   - name: admin-setup
     description: 首启初始化向导（免鉴权，仅允许执行一次）
   - name: admin
@@ -105,6 +109,22 @@ paths:
     $ref: './paths/auth/qr-subscribe.yaml'
   /api/v1/user/export_data:
     $ref: './paths/user/export-data.yaml'
+  /api/v1/organizations:
+    $ref: './paths/organization/organizations.yaml'
+  /api/v1/organizations/mine:
+    $ref: './paths/organization/mine.yaml'
+  /api/v1/organizations/{organization_id}:
+    $ref: './paths/organization/detail.yaml'
+  /api/v1/organizations/{organization_id}/members:
+    $ref: './paths/organization/members.yaml'
+  /api/v1/organizations/{organization_id}/members/transfer_owner:
+    $ref: './paths/organization/owner-transfer.yaml'
+  /api/v1/organizations/{organization_id}/members/{user_id}/role:
+    $ref: './paths/organization/member-role.yaml'
+  /api/v1/organizations/{organization_id}/members/{user_id}:
+    $ref: './paths/organization/member.yaml'
+  /api/v1/workspaces:
+    $ref: './paths/workspace/workspaces.yaml'
   /brand:
     $ref: './paths/system/brand.yaml'
 

@@ -1,0 +1,74 @@
+get:
+  tags: [organization]
+  summary: Organization 成员列表
+  description: |
+    仅 active Organization Owner/Admin 可读。Organization 成员关系独立于
+    Workspace 与 Group，不代表用户已加入旗下任何 Workspace 或 Group。
+  operationId: organizationMembersList
+  parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    - name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    - name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+  responses:
+    '200':
+      description: 成员分页或业务错误信封
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    $ref: '../../components/schemas/OrganizationMemberPage.yaml'
+    '405':
+      description: Method Not Allowed
+
+post:
+  tags: [organization]
+  summary: 邀请或恢复 Organization 成员
+  description: |
+    Owner/Admin 可邀请普通 member；只有主 Owner 可邀请 admin。重复邀请相同
+    active 角色返回 unchanged；active 但角色不同须改用角色调整接口。该操作
+    不创建或恢复任何 Workspace/Group 成员关系。
+  operationId: organizationMembersInvite
+  parameters:
+    - name: organization_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [user_id]
+          properties:
+            user_id: { type: integer, format: int64, minimum: 1 }
+            role: { type: string, enum: [admin, member], default: member }
+  responses:
+    '200':
+      description: 成功或业务错误信封（400/403/404/409/500）
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '../../components/schemas/Envelope.yaml'
+              - type: object
+                properties:
+                  payload:
+                    allOf:
+                      - $ref: '../../components/schemas/OrganizationMember.yaml'
+                      - type: object
+                        properties:
+                          status_flag: { type: string, enum: [changed, unchanged] }
+    '405':
+      description: Method Not Allowed

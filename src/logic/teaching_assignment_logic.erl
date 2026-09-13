@@ -9,13 +9,16 @@
 %         + 附件归属 + task 开放（status=1 进行中）
 %%%
 
--export([list/3, detail/2, create_submission/4]).
+%% list/4 = CM-F4 status 过滤（真 HTTP undef 根因：函数在而导出漏加）
+-export([list/3, list/4, detail/2, create_submission/4]).
 
 -include_lib("kernel/include/logger.hrl").
--ifdef(TEST).
-%% 响应 payload 组装为纯函数，导出供 eunit 直接验收契约字段
+%% 纯 payload 组装函数；导出用于 eunit 直接验收契约字段（无 -ifdef(TEST)——
+%% 干净 make compile 的 ebin 同样携带导出，避免测试口径与生产 beam 分叉，
+%% 改法同 09484ffd 之于 msg_store_repo）
 -export([submission_created/6, assignment_summary/1]).
--endif.
+%% 附件请求形状解析（纯函数）；导出用于 eunit 直测去重/数量规则
+-export([normalize_assets/1]).
 
 -include("log.hrl").
 
@@ -23,15 +26,26 @@
 %%% API
 %%%===================================================================
 
-%% @doc 家长作业列表（按 learner）
+%% @doc 家长作业列表（按 learner；CM-F4 四态 status 过滤透传）
 %% {ok, PagePayload} | {error, Reason}
 %% Reason：missing_learner_id(422) not_guardian(5422) db_error
 -spec list(integer(), integer(), {integer(), integer()}) ->
     {ok, map()} | {error, atom()}.
 list(Uid, LearnerId, {Page, Size}) ->
+    list(Uid, LearnerId, {Page, Size}, undefined).
+
+%% @doc StatusOpt = undefined | pending | submitted | reviewing | reviewed
+%% （白名单在 handler 校验；repo status_condition 与 derived_status 同口径）
+-spec list(integer(), integer(), {integer(), integer()}, binary() | undefined) ->
+    {ok, map()} | {error, atom()}.
+list(Uid, LearnerId, {Page, Size}, StatusOpt) ->
     case teaching_acl:resolve_guardian(Uid, LearnerId) of
         {ok, _} ->
-            case teaching_submission_repo:assignments_for_learner(LearnerId, Page, Size) of
+            case
+                teaching_submission_repo:assignments_for_learner(
+                    LearnerId, Page, Size, StatusOpt
+                )
+            of
                 {ok, Rows, Total} ->
                     {ok, #{
                         <<"list">> => [assignment_summary(R) || R <- Rows],
@@ -48,19 +62,22 @@ list(Uid, LearnerId, {Page, Size}) ->
             {error, not_guardian_list}
     end.
 
-%% @doc 作业详情（监护人或本班 staff）
+%% @doc 作业详情（监护人或本班 staff；CM-F2 富 payload：title/description/
+%% deadline/真实推导状态——与列表 DTO 同形，moya AssignmentDetail extends
+%% AssignmentSummary）。ACL 门仍走 assignment_scope（learner_id/group_id 真源），
+%% 富行从 submission_repo 单行查询取。
 %% Reason：not_found(5440) forbidden(403) db_error
 -spec detail(integer(), integer()) -> {ok, map()} | {error, atom()}.
 detail(Uid, AssignmentId) ->
     case teaching_context_repo:assignment_scope(AssignmentId) of
-        {ok, #{<<"learner_id">> := LearnerId, <<"group_id">> := GroupId} = Scope} when
+        {ok, #{<<"learner_id">> := LearnerId, <<"group_id">> := GroupId}} when
             is_integer(LearnerId), is_integer(GroupId)
         ->
             case check_assignment_access(Uid, LearnerId, GroupId) of
                 ok ->
-                    {ok, assignment_detail(Scope)};
+                    detail_payload(AssignmentId);
                 staff ->
-                    {ok, assignment_detail(Scope)};
+                    detail_payload(AssignmentId);
                 {error, Reason} ->
                     {error, Reason}
             end;
@@ -135,9 +152,7 @@ check_create_guards(Uid, LearnerId, TaskStatus, Scope, Body) ->
         false ->
             case normalize_assets(maps:get(<<"assets">>, Body, [])) of
                 {ok, Assets} ->
-                    case
-                        teaching_submission_repo:validate_assets(Uid, [A || {A, _, _} <- Assets])
-                    of
+                    case teaching_submission_repo:validate_assets(Uid, Assets) of
                         {ok, _} ->
                             {ok, #{scope => Scope, assets => Assets, learner_id => LearnerId}};
                         _ ->
@@ -155,7 +170,10 @@ guard_can_submit(Uid, LearnerId) ->
         _ -> false
     end.
 
-%% 附件规则：恰好 1 个 practice_video，0..3 个 final_photo（契约 minItems/maxItems）
+%% 附件规则：恰好 1 个 practice_video，0..3 个 final_photo（契约 minItems/maxItems）。
+%% W2-A2-HARDEN 补去重（对齐 review 侧口径）：attachment_id 不得重复；
+%% 同 kind + 同 sort_order 不得重复（review_asset 触发器同语义；moya
+%% submit-flow 实际发送 video=0 / photos 按序 0..n-1，真实客户端不受影响）。
 -spec normalize_assets(term()) -> {ok, [{integer(), binary(), integer()}]} | {error, invalid}.
 normalize_assets(Assets) when is_list(Assets), length(Assets) >= 1, length(Assets) =< 4 ->
     Parsed = [parse_asset(A) || A <- Assets],
@@ -165,8 +183,17 @@ normalize_assets(Assets) when is_list(Assets), length(Assets) >= 1, length(Asset
         false ->
             Videos = [P || {_, <<"practice_video">>, _} = P <- Parsed],
             Photos = [P || {_, <<"final_photo">>, _} = P <- Parsed],
-            case {length(Videos), length(Photos)} of
-                {1, N} when N =< 3 ->
+            Ids = [AttId || {AttId, _, _} <- Parsed],
+            KindOrders = [{K, O} || {_, K, O} <- Parsed],
+            case
+                {
+                    length(Videos),
+                    length(Photos),
+                    length(Ids) =:= length(lists:usort(Ids)),
+                    length(KindOrders) =:= length(lists:usort(KindOrders))
+                }
+            of
+                {1, N, true, true} when N =< 3 ->
                     {ok, lists:sort(Parsed)};
                 _ ->
                     {error, invalid}
@@ -296,6 +323,8 @@ assignment_summary(R) ->
         %% Step 17 联调补齐：行内自含归属学员与截止时间（家长端 DTO 依赖）
         <<"learner_id">> => nullable_tsid(maps:get(<<"learner_id">>, R, null)),
         <<"deadline">> => nullable_bin(maps:get(<<"deadline">>, R, null)),
+        %% CM-F2：说明字段（moya AssignmentSummary.description 可选；缺行→null）
+        <<"description">> => nullable_bin(maps:get(<<"description">>, R, null)),
         <<"group_id">> => tsid(maps:get(<<"group_id">>, R)),
         <<"group_name">> => maps:get(<<"group_title">>, R, <<>>),
         <<"title">> => maps:get(<<"title">>, R, <<>>),
@@ -323,23 +352,33 @@ latest_asset(R) ->
             null
     end.
 
--spec assignment_detail(map()) -> map().
-assignment_detail(Scope) ->
-    #{
-        <<"assignment_id">> => tsid(maps:get(<<"assignment_id">>, Scope)),
-        %% v3 P0-1 修复：task_id 对外 = group_task.id（task_gid）十进制字符串
-        <<"task_id">> => tsid(maps:get(<<"task_gid">>, Scope, 0)),
-        <<"group_id">> => tsid(maps:get(<<"group_id">>, Scope)),
-        <<"learner_id">> => nullable_tsid(maps:get(<<"learner_id">>, Scope, null)),
-        <<"status">> => <<"pending">>
-    }.
+%% CM-F2：详情富行（repo 单行查询与列表同形状）；ACL 已过，此处只组装。
+%% scope 兜底：富行缺失（链路残缺）按 not_found 拒绝，不回退薄 payload。
+-spec detail_payload(integer()) -> {ok, map()} | {error, atom()}.
+detail_payload(AssignmentId) ->
+    case teaching_submission_repo:assignment_detail(AssignmentId) of
+        {ok, Row} when is_map(Row) ->
+            {ok, assignment_summary(Row)};
+        {ok, undefined} ->
+            {error, not_found};
+        {error, Reason} ->
+            ?LOG_ERROR("assignment detail db error ~p", [Reason]),
+            {error, db_error}
+    end.
 
-%% 推导态：pending 无提交 / submitted 有提交无已发布 / reviewed 有已发布
+%% 推导态（CM-F4 四态，与 repo status_condition 同口径）：
+%% pending 无提交 / reviewing 有最新提交+老师草稿+无 published /
+%% submitted 有最新提交无草稿无 published / reviewed 有 published；
+%% published 优先级最高（重练场景：已回评又有新草稿仍是 reviewed）。
+%% 注：最新提交 withdrawn 时仍按有提交处理（与既有口径一致，
+%% moya 无 withdrawn 作业态）。
 -spec derived_status(map()) -> binary().
 derived_status(#{<<"latest_submission_id">> := null}) ->
     <<"pending">>;
 derived_status(#{<<"has_published">> := true}) ->
     <<"reviewed">>;
+derived_status(#{<<"has_draft">> := true}) ->
+    <<"reviewing">>;
 derived_status(#{<<"latest_submission_id">> := _}) ->
     <<"submitted">>;
 derived_status(_) ->

@@ -4,14 +4,14 @@
 % Teaching identity contexts logic
 %
 % 语义（STEP-04 冻结契约 / ACL-02）：
-%   - contexts/1：从 class_staff + guardian_learner + organization.owner_id
+%   - contexts/1：从 class_staff + guardian_learner + organization_member
 %     解析 JWT uid 的全部可用教学身份（服务端全量解析，客户端不传过滤器）
 %   - switch/2：仅校验"所选上下文确实属于该 uid"并回显快照；
 %     **不签发任何凭证**——业务 API 每次独立鉴权（D-04：不引入第二套鉴权）
 %   - TSID JSON 表达硬约束：所有 64-bit ID 在 payload 中一律 binary 字符串
 %%%
 
--export([contexts/1, switch/2]).
+-export([contexts/1, contexts/2, switch/2]).
 
 -include_lib("kernel/include/logger.hrl").
 -include("log.hrl").
@@ -23,18 +23,28 @@
 %% @doc 当前用户全部教学身份上下文（可能为空列表）
 -spec contexts(integer()) -> {ok, map()} | {error, db_error}.
 contexts(Uid) ->
+    contexts(Uid, legacy).
+
+%% HTTP 客户端显式选 organization 表示方式；旧调用者保持 org_owner 语义。
+-spec contexts(integer(), legacy | organization) -> {ok, map()} | {error, db_error}.
+contexts(Uid, Schema) ->
+    OrganizationRows =
+        case Schema of
+            organization -> teaching_context_repo:organization_contexts(Uid);
+            legacy -> teaching_context_repo:owner_contexts(Uid)
+        end,
     case
         {
             teaching_context_repo:guardian_contexts(Uid),
             teaching_context_repo:staff_contexts(Uid),
-            teaching_context_repo:owner_contexts(Uid)
+            OrganizationRows
         }
     of
-        {{ok, Guardians}, {ok, Staffs}, {ok, Owners}} ->
+        {{ok, Guardians}, {ok, Staffs}, {ok, Organizations}} ->
             GuardianCtxs = [guardian_context(R) || R <- Guardians],
             StaffCtxs = [staff_context(R) || R <- Staffs],
-            OwnerCtxs = [owner_context(R) || R <- Owners],
-            {ok, #{contexts => GuardianCtxs ++ StaffCtxs ++ OwnerCtxs}};
+            OrganizationCtxs = [organization_context(R, Schema) || R <- Organizations],
+            {ok, #{contexts => GuardianCtxs ++ StaffCtxs ++ OrganizationCtxs}};
         _Error ->
             ?LOG_ERROR("teaching_context_logic contexts db error uid=~p", [Uid]),
             {error, db_error}
@@ -49,8 +59,11 @@ switch(Uid, #{<<"context_type">> := <<"guardian">>} = Params) ->
     switch_guardian(Uid, Params);
 switch(Uid, #{<<"context_type">> := <<"teacher">>} = Params) ->
     switch_teacher(Uid, Params);
+switch(Uid, #{<<"context_type">> := <<"organization">>} = Params) ->
+    switch_organization(Uid, Params);
+%% 滚动升级兼容：旧 Moya 仍可能回传 org_owner。
 switch(Uid, #{<<"context_type">> := <<"org_owner">>} = Params) ->
-    switch_owner(Uid, Params);
+    switch_legacy_owner(Uid, Params);
 switch(_Uid, #{<<"context_type">> := _}) ->
     {error, invalid_type};
 switch(_Uid, _) ->
@@ -106,20 +119,34 @@ switch_teacher(Uid, Params) ->
             end
     end.
 
--spec switch_owner(integer(), map()) -> {ok, map()} | {error, atom()}.
-switch_owner(Uid, Params) ->
+-spec switch_organization(integer(), map()) -> {ok, map()} | {error, atom()}.
+switch_organization(Uid, Params) ->
+    case tsid_param(Params, <<"organization_id">>) of
+        {error, missing} ->
+            {error, missing_org_id};
+        {ok, OrgId} ->
+            case teaching_acl:resolve_org_manager(Uid, OrgId) of
+                ok ->
+                    case find_organization_context(Uid, OrgId) of
+                        {ok, Ctx} ->
+                            claims_mismatch(Params, Ctx);
+                        {error, Reason} ->
+                            {error, Reason}
+                    end;
+                _ ->
+                    {error, context_mismatch}
+            end
+    end.
+
+-spec switch_legacy_owner(integer(), map()) -> {ok, map()} | {error, atom()}.
+switch_legacy_owner(Uid, Params) ->
     case tsid_param(Params, <<"organization_id">>) of
         {error, missing} ->
             {error, missing_org_id};
         {ok, OrgId} ->
             case teaching_acl:resolve_org_owner(Uid, OrgId) of
                 ok ->
-                    case find_owner_context(Uid, OrgId) of
-                        {ok, Ctx} ->
-                            claims_mismatch(Params, Ctx);
-                        {error, Reason} ->
-                            {error, Reason}
-                    end;
+                    find_legacy_owner_context(Uid, OrgId);
                 _ ->
                     {error, context_mismatch}
             end
@@ -185,9 +212,24 @@ find_staff_context(Uid, GroupId) ->
         [] -> {error, context_mismatch}
     end.
 
--spec find_owner_context(integer(), integer()) -> {ok, map()} | {error, atom()}.
-find_owner_context(Uid, OrgId) ->
-    {ok, #{contexts := Ctxs}} = contexts(Uid),
+-spec find_organization_context(integer(), integer()) -> {ok, map()} | {error, atom()}.
+find_organization_context(Uid, OrgId) ->
+    {ok, #{contexts := Ctxs}} = contexts(Uid, organization),
+    case
+        [
+            C
+         || C <- Ctxs,
+            maps:get(<<"context_type">>, C) =:= <<"organization">>,
+            maps:get(<<"organization_id">>, C, <<>>) =:= tsid(OrgId)
+        ]
+    of
+        [Ctx | _] -> {ok, Ctx};
+        [] -> {error, context_mismatch}
+    end.
+
+-spec find_legacy_owner_context(integer(), integer()) -> {ok, map()} | {error, atom()}.
+find_legacy_owner_context(Uid, OrgId) ->
+    {ok, #{contexts := Ctxs}} = contexts(Uid, legacy),
     case
         [
             C
@@ -239,12 +281,19 @@ staff_context(R) ->
         <<"role">> => elib_cnv:safe_to_binary(maps:get(<<"role">>, R, <<>>))
     }.
 
--spec owner_context(map()) -> map().
-owner_context(R) ->
+-spec organization_context(map(), legacy | organization) -> map().
+organization_context(R, legacy) ->
     #{
         <<"context_type">> => <<"org_owner">>,
         <<"organization_id">> => tsid(maps:get(<<"org_id">>, R)),
         <<"organization_name">> => elib_cnv:safe_to_binary(maps:get(<<"org_name">>, R, <<>>))
+    };
+organization_context(R, organization) ->
+    #{
+        <<"context_type">> => <<"organization">>,
+        <<"organization_id">> => tsid(maps:get(<<"org_id">>, R)),
+        <<"organization_name">> => elib_cnv:safe_to_binary(maps:get(<<"org_name">>, R, <<>>)),
+        <<"role">> => elib_cnv:safe_to_binary(maps:get(<<"role">>, R, <<>>))
     }.
 
 %% ---- 小工具 ----

@@ -224,17 +224,21 @@ publish(Uid, SubmissionId, Body) ->
 -spec withdraw(integer(), integer()) -> {ok, withdrawn} | {error, atom()}.
 withdraw(Uid, SubmissionId) ->
     case teaching_acl:submission_access(Uid, SubmissionId) of
-        {ok, guardian, #{<<"learner_id">> := LearnerId}} ->
+        {ok, Perspective, #{<<"learner_id">> := LearnerId, <<"org_id">> := OrgId}} when
+            Perspective =:= guardian; Perspective =:= staff
+        ->
             case teaching_acl:resolve_guardian(Uid, LearnerId, submit) of
                 {ok, _} ->
-                    run_withdraw_tx(Uid, SubmissionId);
+                    %% submission_access/2 读取时优先返回 staff；双身份用户仍需按
+                    %% guardian 的 submit 权限撤回，并再次钉死 learner 与资源同机构。
+                    case teaching_context_repo:learner_org(LearnerId) of
+                        {ok, OrgId} -> run_withdraw_tx(Uid, SubmissionId);
+                        _ -> {error, not_guardian}
+                    end;
                 _ ->
                     %% 监护人无提交权 = 亦无撤回权（状态机 §1）
                     {error, not_guardian}
             end;
-        {ok, staff, _} ->
-            %% 老师与 Owner 不能替家长撤回（7.2 硬约束）
-            {error, not_guardian};
         {error, not_found} ->
             {error, not_found};
         {error, _} ->
@@ -299,13 +303,31 @@ history_unread_count(Uid, LearnerId, Since) ->
 
 %% ---- 队列 ----
 
+%% repo 契约（teaching_submission_repo:queue/4）：none(atom) → crd.id IS NULL；
+%% binary → crd.status = $N；undefined → 不过滤。值白名单在 handler 层把关。
+-spec ai_status_filter(term()) -> none | binary() | undefined.
+ai_status_filter(<<"none">>) -> none;
+ai_status_filter(undefined) -> undefined;
+ai_status_filter(St) when is_binary(St) -> St;
+ai_status_filter(_) -> undefined.
+
 -spec queue_with_groups(integer(), [integer()], map(), integer(), integer()) ->
     {ok, map()} | {error, atom()}.
 queue_with_groups(_Uid, GroupIds, Filters0, Page, Size) ->
+    %% 线格式键（binary）在 logic 边界统一归一为 atom 键，repo 只读 atom 键；
+    %% maps:without 显式丢弃 binary 原件——此前两套键空间并存，
+    %% ai_status 因未归一面被 repo 静默忽略（老师队列过滤恒失效）。
     Filters = maps:filter(
         fun(_K, V) -> V =/= undefined end,
-        Filters0#{
-            assignment_id => tsid_opt(maps:get(<<"assignment_id">>, Filters0, undefined))
+        (maps:without([<<"assignment_id">>, <<"ai_status">>], Filters0))#{
+            %% CM-F3 修复补丁：tsid_opt 返回 {ok,Int}，此前整元组入 SQL 触发
+            %% epgsql int8 integer_overflow 崩连接（真 HTTP code=1 根因）
+            assignment_id =>
+                case tsid_opt(maps:get(<<"assignment_id">>, Filters0, undefined)) of
+                    {ok, Aid} -> Aid;
+                    _ -> undefined
+                end,
+            ai_status => ai_status_filter(maps:get(<<"ai_status">>, Filters0, undefined))
         }
     ),
     case maps:get(<<"group_id">>, Filters0, undefined) of
@@ -869,6 +891,11 @@ history_published_review(R) ->
         Id when is_integer(Id) ->
             #{
                 <<"review_id">> => integer_to_binary(Id),
+                %% CM-F2：老师署名（history SQL 行内 LEFT JOIN user 解析；与
+                %% submission_detail 的 PublishedReview 同字段，DTO 一致）。
+                %% 查无/空昵称 → null，前端隐藏署名位
+                <<"reviewer_display_name">> =>
+                    nullable_bin(maps:get(<<"reviewer_display_name">>, R, null)),
                 <<"positive_point">> => maps:get(<<"positive_point">>, R, <<>>),
                 <<"focus_problem">> => maps:get(<<"focus_problem">>, R, <<>>),
                 <<"practice_action">> => maps:get(<<"practice_action">>, R, <<>>),
@@ -1109,6 +1136,11 @@ dt_ms(_) -> null.
 -spec nullable_tsid(integer() | null | undefined) -> binary() | null.
 nullable_tsid(Id) when is_integer(Id) -> integer_to_binary(Id);
 nullable_tsid(_) -> null.
+
+%% 二进制字段归一：非空 binary 透传；null/undefined/其他 → null（不编造）
+-spec nullable_bin(binary() | null | undefined) -> binary() | null.
+nullable_bin(V) when is_binary(V), V =/= <<>> -> V;
+nullable_bin(_) -> null.
 
 -spec empty_page(integer(), integer()) -> map().
 empty_page(Page, Size) ->

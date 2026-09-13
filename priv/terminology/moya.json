@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "profile": "moya",
+  "terms": {
+    "participant": "学员",
+    "delegate": "家长",
+    "operator": "老师",
+    "group": "班级",
+    "task_assignment": "作业布置",
+    "task_submission": "作业提交",
+    "submission_review": "作业点评",
+    "review_assist": "AI 点评草稿"
+  }
+}

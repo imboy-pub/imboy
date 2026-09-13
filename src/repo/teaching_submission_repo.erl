@@ -19,7 +19,10 @@
 -export([lock_assignment_tx/2, next_attempt_tx/2, create_idempotent_tx/2]).
 -export([insert_assets_tx/4, mark_submitted_by_tx/3, enqueue_ai_draft_tx/2]).
 -export([withdraw_tx/3, lock_submission_tx/2, find_tx/2, assets_tx/2, find/1, assets/1]).
--export([assignments_for_learner/3, assignments_for_learner_tx/4, queue/4, history/3]).
+-export([assignments_for_learner/3, assignments_for_learner_tx/4]).
+-export([assignments_for_learner/4, assignments_for_learner_tx/5]).
+-export([assignment_detail/1, assignment_detail_tx/2]).
+-export([queue/4, history/3]).
 -export([history_unread_count/2]).
 -export([
     submission_for_asset_path/1,
@@ -149,23 +152,32 @@ insert_assets_tx(Conn, SubmissionId, Uid, Assets) ->
 
 %% @doc 附件归属校验：attachment 行存在且 creator_user_id = 提交人
 %% 返回行含 mime_type/status，供 Logic 层做 kind↔MIME 与 confirm 状态校验（5441）
--spec validate_assets(integer(), [integer()]) -> {ok, [map()]} | {error, not_owned | not_found}.
-validate_assets(Uid, AttachmentIds) when is_list(AttachmentIds), AttachmentIds =/= [] ->
+%% ------------------------------------------------------------------
+%% W2-A2-HARDEN：家长提交附件守卫（对齐 review 侧 validate_assets_tx 口径）：
+%%   1. 全部存在（缺失 → not_found）
+%%   2. creator_user_id == 提交人（非本人 → not_found，防存在性探测——
+%%      与 review 侧 check_each_asset 同折叠口径）
+%%   3. status >= 0（软删拒绝）+ scope = 'teaching'（私聊等跨 scope 拒绝）
+%%   4. MIME ↔ kind 匹配（practice_video=video/*，final_photo=image/*）
+%% 任一不过 → {error, assets_invalid}（调用方统一映射 5441）。
+%% 入参为 [{AttId, Kind, SortOrder}] 三元组（Kind 参与 MIME 校验）。
+%% ------------------------------------------------------------------
+-spec validate_assets(integer(), [{integer(), binary(), integer()}]) ->
+    {ok, [map()]} | {error, not_found | assets_invalid}.
+validate_assets(Uid, Assets) when is_list(Assets), Assets =/= [] ->
+    Ids = [AttId || {AttId, _, _} <- Assets],
     Sql =
-        <<"SELECT id, mime_type, status, creator_user_id FROM ", (tb(attachment))/binary,
+        <<"SELECT id, mime_type, status, creator_user_id, scope FROM ", (tb(attachment))/binary,
             " WHERE id = ANY($1)">>,
-    case elib_pg:query(Sql, [AttachmentIds]) of
+    case elib_pg:query(Sql, [Ids]) of
         {ok, Rows} ->
-            FoundIds = [maps:get(<<"id">>, R) || R <- Rows],
-            case length(FoundIds) =:= length(lists:usort(AttachmentIds)) of
+            %% 防御性守卫：Assets 非空但无任何 {AttId,_,_} 三元组元素时 Ids = []，
+            %% 0 =:= 0 会短路放行（fail-open）；显式要求 Ids 非空，防未来调用方绕过 normalize_assets。
+            case Ids =/= [] andalso length(Rows) =:= length(lists:usort(Ids)) of
                 false ->
                     {error, not_found};
                 true ->
-                    NotOwned = [R || R <- Rows, maps:get(<<"creator_user_id">>, R, null) =/= Uid],
-                    case NotOwned of
-                        [] -> {ok, Rows};
-                        _ -> {error, not_owned}
-                    end
+                    check_submission_assets(Rows, Assets, Uid)
             end;
         {error, Reason} ->
             ?LOG_ERROR("teaching_submission_repo validate_assets db error ~p", [Reason]),
@@ -173,6 +185,51 @@ validate_assets(Uid, AttachmentIds) when is_list(AttachmentIds), AttachmentIds =
     end;
 validate_assets(_Uid, []) ->
     {error, not_found}.
+
+%% 逐项：归属 → active+scope → MIME↔kind（review 侧 check_each_asset 同款折叠）
+-spec check_submission_assets([map()], [{integer(), binary(), integer()}], integer()) ->
+    {ok, [map()]} | {error, not_found | assets_invalid}.
+check_submission_assets(Rows, Assets, Uid) ->
+    ById = maps:from_list([{maps:get(<<"id">>, R), R} || R <- Rows]),
+    case check_submission_asset(Assets, ById, Uid) of
+        ok -> {ok, Rows};
+        {error, _} = E -> E
+    end.
+
+-spec check_submission_asset(
+    [{integer(), binary(), integer()}], #{integer() => map()}, integer()
+) -> ok | {error, not_found | assets_invalid}.
+check_submission_asset([], _ById, _Uid) ->
+    ok;
+check_submission_asset([{AttId, Kind, _Order} | Rest], ById, Uid) ->
+    case maps:get(AttId, ById, undefined) of
+        %% 不存在 / 非本人创建：同 not_found（防存在性探测）
+        undefined ->
+            {error, not_found};
+        #{<<"creator_user_id">> := Uid} = Row ->
+            case
+                submission_asset_active_scoped(Row) andalso submission_mime_kind_match(Row, Kind)
+            of
+                true -> check_submission_asset(Rest, ById, Uid);
+                false -> {error, assets_invalid}
+            end;
+        _ ->
+            {error, not_found}
+    end.
+
+-spec submission_asset_active_scoped(map()) -> boolean().
+submission_asset_active_scoped(#{<<"status">> := S, <<"scope">> := <<"teaching">>}) when S >= 0 ->
+    true;
+submission_asset_active_scoped(_) ->
+    false.
+
+-spec submission_mime_kind_match(map(), binary()) -> boolean().
+submission_mime_kind_match(#{<<"mime_type">> := <<"video/", _/binary>>}, <<"practice_video">>) ->
+    true;
+submission_mime_kind_match(#{<<"mime_type">> := <<"image/", _/binary>>}, <<"final_photo">>) ->
+    true;
+submission_mime_kind_match(_, _) ->
+    false.
 
 %% ------------------------------------------------------------------
 %% assignment 快捷字段（真源在 submission）
@@ -322,46 +379,115 @@ assets_run(Exec, SubmissionId) ->
 %% 不回退 practice_video：视频非图片（首帧 vs 静图），取不到即 NULL，由客户端
 %% 渲染「无作品图」态。att.status >= 0 与读授权路径 asset_path_run/2 同口径——
 %% 凡 view_url 会放行的对象才出现在预览里。
+%%
+%% CM-F4（Wave 2）：StatusOpt 四态过滤（pending/submitted/reviewing/reviewed）。
+%% 推导口径与 teaching_assignment_logic:derived_status/1 严格一致：
+%%   pending   = 无最新提交（s.id IS NULL）
+%%   reviewing = 有最新提交 ∧ 无 published ∧ 最新提交已有老师草稿（has_draft）
+%%   submitted = 有最新提交 ∧ 无 published ∧ 无草稿
+%%   reviewed  = 存在 published（任一 submission，与既有 has_published 同源）
+%% has_draft 只锚定「老师是否已开始批改」这一粗粒度状态位——草稿内容本身
+%% 仍按 D-10 全量剥离，不随本查询外泄。
 -spec assignments_for_learner(integer(), integer(), integer()) ->
     {ok, [map()], integer()} | {error, term()}.
 assignments_for_learner(LearnerId, Page, Size) ->
-    assignments_for_learner_run(fun elib_pg:query/2, LearnerId, Page, Size).
+    assignments_for_learner_run(fun elib_pg:query/2, LearnerId, Page, Size, undefined).
+
+%% @doc CM-F4：带四态 status 过滤的列表（StatusOpt = undefined | binary）
+-spec assignments_for_learner(integer(), integer(), integer(), binary() | undefined) ->
+    {ok, [map()], integer()} | {error, term()}.
+assignments_for_learner(LearnerId, Page, Size, StatusOpt) ->
+    assignments_for_learner_run(fun elib_pg:query/2, LearnerId, Page, Size, StatusOpt).
 
 %% @doc 事务内版本（集成测试直连）
 -spec assignments_for_learner_tx(any(), integer(), integer(), integer()) ->
     {ok, [map()], integer()} | {error, term()}.
 assignments_for_learner_tx(Conn, LearnerId, Page, Size) ->
     assignments_for_learner_run(
-        fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, LearnerId, Page, Size
+        fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, LearnerId, Page, Size, undefined
     ).
+
+%% @doc 事务内版本 + status 过滤（CM-F4）
+-spec assignments_for_learner_tx(
+    any(), integer(), integer(), integer(), binary() | undefined
+) -> {ok, [map()], integer()} | {error, term()}.
+assignments_for_learner_tx(Conn, LearnerId, Page, Size, StatusOpt) ->
+    assignments_for_learner_run(
+        fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, LearnerId, Page, Size, StatusOpt
+    ).
+
+%% @doc 作业详情富行（CM-F2）：与列表同 SELECT 形状（含 description/has_draft），
+%% 按 assignment id 单行取。不存在 → {ok, undefined}。
+-spec assignment_detail(integer()) -> {ok, map() | undefined} | {error, term()}.
+assignment_detail(AssignmentId) ->
+    assignment_detail_run(fun elib_pg:query/2, AssignmentId).
+
+-spec assignment_detail_tx(any(), integer()) -> {ok, map() | undefined} | {error, term()}.
+assignment_detail_tx(Conn, AssignmentId) ->
+    assignment_detail_run(
+        fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end, AssignmentId
+    ).
+
+%% published 存在性（assignment 级，任一 submission；与 has_published 列同源）
+-define(HAS_PUB_EXPR,
+    <<"(EXISTS (SELECT 1 FROM ", (tb(teacher_review))/binary,
+        " trp "
+        " JOIN ", (tb(homework_submission))/binary,
+        " hsp ON hsp.id = trp.submission_id "
+        " WHERE hsp.assignment_id = a.id AND trp.status = 'published'))">>
+).
+
+%% 最新 submission 是否已有老师草稿（reviewing 状态位；草稿内容不外泄）
+-define(HAS_DRAFT_EXPR,
+    <<"(EXISTS (SELECT 1 FROM ", (tb(teacher_review))/binary,
+        " trd WHERE trd.submission_id = s.id AND trd.status = 'draft'))">>
+).
+
+%% 四态过滤片段（与 derived_status/1 推导口径一致）。纯字面 SQL、不含 $N
+%% 占位符：调用方拼在 "WHERE a.learner_id = $1" 之后，参数位仍由调用方独占
+%% （$1=learner_id，$2=size，$3=offset），本片段不引入也不偏移参数。
+-spec status_condition(binary() | undefined) -> binary().
+status_condition(undefined) ->
+    <<>>;
+status_condition(<<"pending">>) ->
+    <<" AND s.id IS NULL">>;
+status_condition(<<"submitted">>) ->
+    <<" AND s.id IS NOT NULL AND NOT ", (?HAS_PUB_EXPR)/binary, " AND NOT ",
+        (?HAS_DRAFT_EXPR)/binary>>;
+status_condition(<<"reviewing">>) ->
+    <<" AND s.id IS NOT NULL AND NOT ", (?HAS_PUB_EXPR)/binary, " AND ", (?HAS_DRAFT_EXPR)/binary>>;
+status_condition(<<"reviewed">>) ->
+    <<" AND ", (?HAS_PUB_EXPR)/binary>>;
+status_condition(_) ->
+    %% 调用方（handler）已白名单；仓内防御：非法值按无过滤处理由 logic 拒绝
+    <<>>.
 
 -spec assignments_for_learner_run(
     fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}),
     integer(),
     integer(),
-    integer()
+    integer(),
+    binary() | undefined
 ) -> {ok, [map()], integer()} | {error, term()}.
-assignments_for_learner_run(Exec, LearnerId, Page, Size) ->
+assignments_for_learner_run(Exec, LearnerId, Page, Size, StatusOpt) ->
     Offset = (Page - 1) * Size,
+    StatusCond = status_condition(StatusOpt),
     Sql =
         <<
             "SELECT a.id AS assignment_id, a.task_id, a.learner_id AS learner_id, "
             "a.status AS assignment_status, "
-            "gt.id AS task_gid, gt.title, gt.deadline, gt.status AS task_status, "
+            "gt.id AS task_gid, gt.title, gt.description, gt.deadline, gt.status AS task_status, "
             "g.id AS group_id, g.title AS group_title, "
             "s.id AS latest_submission_id, s.attempt_no AS latest_attempt_no, "
             "s.status AS latest_submission_status, "
             "la.object_key AS latest_asset_key, la.kind AS latest_asset_kind, "
             "(SELECT count(*) FROM ",
             (tb(homework_submission))/binary,
-            "  hs2 WHERE hs2.assignment_id = a.id) AS submission_count, "
-            "(EXISTS (SELECT 1 FROM ",
-            (tb(teacher_review))/binary,
-            " tr "
-            "  JOIN ",
-            (tb(homework_submission))/binary,
-            " hs3 ON hs3.id = tr.submission_id "
-            "  WHERE hs3.assignment_id = a.id AND tr.status = 'published')) AS has_published "
+            "  hs2 WHERE hs2.assignment_id = a.id) AS submission_count, ",
+            (?HAS_PUB_EXPR)/binary,
+            " AS has_published, ",
+            (?HAS_DRAFT_EXPR)/binary,
+            " AS has_draft "
             "FROM ",
             (tb(group_task_assignment))/binary,
             " a "
@@ -384,15 +510,67 @@ assignments_for_learner_run(Exec, LearnerId, Page, Size) ->
             "  WHERE sa.submission_id = s.id AND sa.kind = 'final_photo' "
             "    AND att.status >= 0 "
             "  ORDER BY sa.sort_order, sa.id LIMIT 1) la ON true "
-            "WHERE a.learner_id = $1 "
-            "ORDER BY gt.created_at DESC, a.id DESC LIMIT $2 OFFSET $3"
+            "WHERE a.learner_id = $1",
+            StatusCond/binary,
+            " ORDER BY gt.created_at DESC, a.id DESC LIMIT $2 OFFSET $3"
         >>,
     case Exec(Sql, [LearnerId, Size, Offset]) of
         {ok, Rows} ->
-            Total = count_assignments_run(Exec, LearnerId),
+            Total = count_assignments_run(Exec, LearnerId, StatusOpt),
             {ok, Rows, Total};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+-spec assignment_detail_run(
+    fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}),
+    integer()
+) -> {ok, map() | undefined} | {error, term()}.
+assignment_detail_run(Exec, AssignmentId) ->
+    Sql =
+        <<
+            "SELECT a.id AS assignment_id, a.task_id, a.learner_id AS learner_id, "
+            "a.status AS assignment_status, "
+            "gt.id AS task_gid, gt.title, gt.description, gt.deadline, gt.status AS task_status, "
+            "g.id AS group_id, g.title AS group_title, "
+            "s.id AS latest_submission_id, s.attempt_no AS latest_attempt_no, "
+            "s.status AS latest_submission_status, "
+            "la.object_key AS latest_asset_key, la.kind AS latest_asset_kind, "
+            "(SELECT count(*) FROM ",
+            (tb(homework_submission))/binary,
+            "  hs2 WHERE hs2.assignment_id = a.id) AS submission_count, ",
+            (?HAS_PUB_EXPR)/binary,
+            " AS has_published, ",
+            (?HAS_DRAFT_EXPR)/binary,
+            " AS has_draft "
+            "FROM ",
+            (tb(group_task_assignment))/binary,
+            " a "
+            "JOIN ",
+            (tb(group_task))/binary,
+            " gt ON gt.task_id = a.task_id "
+            "JOIN ",
+            (tb(group))/binary,
+            " g ON g.id = gt.group_id "
+            "LEFT JOIN LATERAL ( "
+            "  SELECT id, attempt_no, status FROM ",
+            (tb(homework_submission))/binary,
+            "  WHERE assignment_id = a.id ORDER BY attempt_no DESC LIMIT 1) s ON true "
+            "LEFT JOIN LATERAL ( "
+            "  SELECT att.path AS object_key, sa.kind AS kind FROM ",
+            (tb(submission_asset))/binary,
+            " sa JOIN ",
+            (tb(attachment))/binary,
+            " att ON att.id = sa.attachment_id "
+            "  WHERE sa.submission_id = s.id AND sa.kind = 'final_photo' "
+            "    AND att.status >= 0 "
+            "  ORDER BY sa.sort_order, sa.id LIMIT 1) la ON true "
+            "WHERE a.id = $1 LIMIT 1"
+        >>,
+    case Exec(Sql, [AssignmentId]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
     end.
 
 %% @doc 老师待评队列：submitted 状态即时可见，withdrawn 恒过滤；
@@ -476,7 +654,11 @@ history(LearnerId, Page, Size) ->
             "w.id AS workspace_id, "
             "tr.id AS published_review_id, tr.positive_point, tr.focus_problem, "
             "tr.practice_action, tr.comment, tr.char_reviews, tr.video_attachment_id, "
-            "tr.rework_required, tr.published_at "
+            "tr.rework_required, tr.published_at, "
+            %% CM-F2：老师署名行内解析（与 load_submission_bundle 的
+            %% reviewer_display_name 同语义——查无/空昵称 → null，前端隐藏署名位）。
+            %% 行内 JOIN 单查询取回，不新增 Erlang 层真连库路径。
+            "NULLIF(uu.nickname, '') AS reviewer_display_name "
             "FROM ",
             (tb(homework_submission))/binary,
             " hs "
@@ -496,6 +678,7 @@ history(LearnerId, Page, Size) ->
             (tb(teacher_review))/binary,
             " tr "
             " ON tr.submission_id = hs.id AND tr.status = 'published' "
+            "LEFT JOIN \"user\" uu ON uu.id = tr.reviewer_uid "
             "WHERE hs.learner_id = $1 "
             "ORDER BY hs.submitted_at DESC LIMIT $2 OFFSET $3"
         >>,
@@ -550,15 +733,36 @@ digest_check(Row, _Digest, AttemptNo) ->
 
 -spec count_assignments(integer()) -> integer().
 count_assignments(LearnerId) ->
-    count_assignments_run(fun elib_pg:query/2, LearnerId).
+    count_assignments_run(fun elib_pg:query/2, LearnerId, undefined).
 
 -spec count_assignments_run(
-    fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}), integer()
+    fun((binary(), [term()]) -> {ok, [map()]} | {error, term()}),
+    integer(),
+    binary() | undefined
 ) -> integer().
-count_assignments_run(Exec, LearnerId) ->
+%% 无过滤：维持既有简单计数（零 JOIN，与历史 total 口径一致）。
+count_assignments_run(Exec, LearnerId, undefined) ->
     Sql =
         <<"SELECT count(*) AS c FROM ", (tb(group_task_assignment))/binary,
             " WHERE learner_id = $1">>,
+    case Exec(Sql, [LearnerId]) of
+        {ok, [#{<<"c">> := C} | _]} -> C;
+        _ -> 0
+    end;
+%% CM-F4：status 过滤态计数必须与列表行同一 FROM/JOIN/推导谓词，
+%% 否则 total 与 list 脱钩（分页 UI 会算错 hasNext）。
+count_assignments_run(Exec, LearnerId, StatusOpt) ->
+    Sql =
+        <<"SELECT count(*) AS c FROM ", (tb(group_task_assignment))/binary,
+            " a "
+            "JOIN ", (tb(group_task))/binary,
+            " gt ON gt.task_id = a.task_id "
+            "JOIN ", (tb(group))/binary,
+            " g ON g.id = gt.group_id "
+            "LEFT JOIN LATERAL ( "
+            "  SELECT id, attempt_no, status FROM ", (tb(homework_submission))/binary,
+            "  WHERE assignment_id = a.id ORDER BY attempt_no DESC LIMIT 1) s ON true "
+            "WHERE a.learner_id = $1", (status_condition(StatusOpt))/binary>>,
     case Exec(Sql, [LearnerId]) of
         {ok, [#{<<"c">> := C} | _]} -> C;
         _ -> 0

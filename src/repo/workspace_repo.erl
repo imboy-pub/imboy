@@ -12,8 +12,8 @@
 -export([tablename/0]).
 -export([add/2]).
 -export([find_by_id/2]).
--export([find_by_owner_and_name/3]).
--export([find_by_request_id/3]).
+-export([find_by_owner_and_name/4]).
+-export([find_by_request_id/4]).
 -export([update_by_id/2]).
 -export([update_owner_tx/3]).
 -export([page_by_member/4]).
@@ -28,7 +28,7 @@
 %% 输出白名单列：branding 内部键（如 _request_id 幂等标记）由 DS 层过滤，
 %% repo 层恒返回原始行。
 -define(WS_SAFE_COLUMNS,
-    <<"id,name,logo,owner_id,status,archived_at,archived_by,type,branding,created_at,updated_at">>
+    <<"id,name,logo,owner_id,organization_id,status,archived_at,archived_by,type,branding,created_at,updated_at">>
 ).
 
 %% ===================================================================
@@ -65,30 +65,51 @@ find_by_id(WsId, Column) ->
         {error, Reason} -> {error, Reason}
     end.
 
-%% @doc 幂等语义键查询：同一 Owner + 同名 active 工作区
+%% @doc 幂等语义键查询：同一 Organization + Owner + 同名 active 工作区
 %% "先查后插于同事务"幂等模式（workspace 表无 request_id 列，
-%% 见 workspace_ds:create_template/3 注释）。
--spec find_by_owner_and_name(integer(), binary(), binary()) -> map().
-find_by_owner_and_name(OwnerUid, Name, Conn) ->
+%% 见 workspace_ds:create_template/4 注释）。
+-spec find_by_owner_and_name(integer() | undefined, integer(), binary(), any()) -> map().
+find_by_owner_and_name(undefined, OwnerUid, Name, Conn) ->
     Tb = tablename(),
     Sql =
         <<"SELECT ", ?WS_SAFE_COLUMNS/binary, " FROM ", Tb/binary,
-            " WHERE owner_id = $1 AND name = $2 AND status = 'active' LIMIT 1">>,
+            " WHERE organization_id IS NULL AND owner_id = $1",
+            " AND name = $2 AND status = 'active' LIMIT 1">>,
     case elib_pg:query(Conn, Sql, [OwnerUid, Name]) of
+        {ok, [Row | _]} -> Row;
+        _ -> #{}
+    end;
+find_by_owner_and_name(OrgId, OwnerUid, Name, Conn) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT ", ?WS_SAFE_COLUMNS/binary, " FROM ", Tb/binary,
+            " WHERE organization_id = $1 AND owner_id = $2",
+            " AND name = $3 AND status = 'active' LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [OrgId, OwnerUid, Name]) of
         {ok, [Row | _]} -> Row;
         _ -> #{}
     end.
 
 %% @doc request_id 幂等查询：branding->>'_request_id' 内部标记
-%% 仅匹配同 Owner + active 的工作区；空 map 表示未命中。
--spec find_by_request_id(integer(), binary(), binary()) -> map().
-find_by_request_id(OwnerUid, RequestId, Conn) ->
+%% 仅匹配同 Organization + Owner + active 的工作区；空 map 表示未命中。
+-spec find_by_request_id(integer() | undefined, integer(), binary(), any()) -> map().
+find_by_request_id(undefined, OwnerUid, RequestId, Conn) ->
     Tb = tablename(),
     Sql =
         <<"SELECT ", ?WS_SAFE_COLUMNS/binary, " FROM ", Tb/binary,
-            " WHERE owner_id = $1 AND status = 'active'",
+            " WHERE organization_id IS NULL AND owner_id = $1 AND status = 'active'",
             " AND branding->>'_request_id' = $2 LIMIT 1">>,
     case elib_pg:query(Conn, Sql, [OwnerUid, RequestId]) of
+        {ok, [Row | _]} -> Row;
+        _ -> #{}
+    end;
+find_by_request_id(OrgId, OwnerUid, RequestId, Conn) ->
+    Tb = tablename(),
+    Sql =
+        <<"SELECT ", ?WS_SAFE_COLUMNS/binary, " FROM ", Tb/binary,
+            " WHERE organization_id = $1 AND owner_id = $2 AND status = 'active'",
+            " AND branding->>'_request_id' = $3 LIMIT 1">>,
+    case elib_pg:query(Conn, Sql, [OrgId, OwnerUid, RequestId]) of
         {ok, [Row | _]} -> Row;
         _ -> #{}
     end.

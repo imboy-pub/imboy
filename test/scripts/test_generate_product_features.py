@@ -101,7 +101,7 @@ class ProductFeatureManifestTest(unittest.TestCase):
             MODULE.validate(self.manifest(["moment"]), moment_catalog)
         )[mk_path]
         self.assertNotIn("moment_ds", selected)
-        self.assertRegex(selected, r"IMBOY_FEATURE_ERLC_EXCLUDE :=\s*$")
+        self.assertEqual("IMBOY_FEATURE_ERLC_EXCLUDE :=", selected.splitlines()[-1])
 
     def test_backend_per_feature_defines_follow_compiled_features(self):
         hrl_path = next(

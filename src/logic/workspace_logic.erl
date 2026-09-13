@@ -13,7 +13,7 @@
 % handler 层直接映射 envelope code。
 %%%
 
--export([create/3]).
+-export([create/4]).
 -export([detail/2]).
 -export([mine/3]).
 -export([update_profile/4]).
@@ -50,14 +50,20 @@
 %% ===================================================================
 
 %% @doc 创建工作区（Template 原子初始化，I13）
--spec create(integer(), binary(), binary() | undefined) ->
-    {ok, map(), created | existing} | {error, {400 | 409, binary()}}.
-create(Uid, Name, RequestId) ->
+-spec create(integer(), integer() | undefined, binary(), binary() | undefined) ->
+    {ok, map(), created | existing} | {error, {400 | 403 | 404 | 409 | 500, binary()}}.
+create(Uid, OrgId, Name, RequestId) ->
+    case validate_organization_scope(OrgId) of
+        ok -> create_in_scope(Uid, OrgId, Name, RequestId);
+        {error, _} = Error -> Error
+    end.
+
+create_in_scope(Uid, OrgId, Name, RequestId) ->
     case valid_name(Name) of
         false ->
             {error, {400, <<"工作区名称不能为空且不超过 200 字符"/utf8>>}};
         true ->
-            case workspace_ds:create_template(Uid, Name, RequestId) of
+            case workspace_ds:create_template(Uid, OrgId, Name, RequestId) of
                 {ok, Result, Status} ->
                     _ = ?INFO_LOG([
                         workspace_created,
@@ -68,11 +74,32 @@ create(Uid, Name, RequestId) ->
                     {ok, Result, Status};
                 {error, owner_workspace_limit} ->
                     {error, {409, <<"已达工作区创建上限"/utf8>>}};
+                {error, organization_not_found} ->
+                    {error, {404, <<"Organization 不存在"/utf8>>}};
+                {error, organization_archived} ->
+                    {error, {409, <<"Organization 已归档，不能创建 Workspace"/utf8>>}};
+                {error, organization_create_forbidden} ->
+                    {error, {403, <<"仅 Organization Owner 或 Admin 可创建 Workspace"/utf8>>}};
                 {error, Reason} ->
                     _ = ?ERROR_LOG([workspace_create_failed, Uid, Reason]),
                     {error, {500, <<"工作区创建失败，请稍后重试"/utf8>>}}
             end
     end.
+
+validate_organization_scope(undefined) ->
+    case product_experience:effective() of
+        chat -> ok;
+        workspace -> {error, {400, <<"workspace_scope 模式必须提供 organization_id"/utf8>>}}
+    end;
+validate_organization_scope(OrgId) when is_integer(OrgId), OrgId > 0 ->
+    case product_experience:effective() of
+        chat ->
+            {error, {400, <<"user_scope 模式的 Workspace 不能归属 Organization"/utf8>>}};
+        workspace ->
+            ok
+    end;
+validate_organization_scope(_) ->
+    {error, {400, <<"organization_id 必须是正整数"/utf8>>}}.
 
 %% @doc 工作区详情（active 工作区成员可读；Owner/Member/Guest 同权读）
 -spec detail(integer(), integer()) -> {ok, map()} | {error, {403 | 404, binary()}}.

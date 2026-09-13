@@ -253,6 +253,101 @@ deleted_attachment_excluded_test_() ->
     end).
 
 %%%===================================================================
+%%% W2-A2-F24（CM-F2/CM-F4）：四态过滤 + 详情富行 + history 署名（真库）
+%%%===================================================================
+
+%% 状态布局：A=草稿（reviewing）、B=已提交无草稿（submitted）、C=无提交
+%% （pending）、D=已发布（reviewed）。发布动作只对 A 的最新提交落 published。
+status_filter_and_detail_test_() ->
+    with_tx(fun(C) ->
+        seed(C),
+        SubA = submit(C, ?ASSIGN_A, 987131, [{?ATT_A1, <<"final_photo">>, 0}]),
+        _SubB = submit(C, ?ASSIGN_B, 987132, [{?ATT_B_VIDEO, <<"practice_video">>, 0}]),
+        _SubD = submit(C, ?ASSIGN_D, 987133, [{?ATT_D1, <<"final_photo">>, 0}]),
+        %% A 落 draft（reviewing 位）、D 落 published（reviewed 位；published 行
+        %% 需满足 ck_teacher_review_published：reviewer/published_at/内容齐备）
+        exec(C, <<
+            "INSERT INTO teacher_review (id, submission_id, reviewer_uid, positive_point, "
+            "status, published_at) VALUES "
+            "(995901, ",
+            (integer_to_binary(SubA))/binary,
+            ", 980001, 'd', 'draft', NULL), "
+            "(995902, 987133, 980001, '结构稳定', 'published', now())"/utf8
+        >>),
+
+        %% 四态过滤（行集合口径）：A=reviewing（有草稿）、B=submitted、
+        %% C=pending、D=reviewed——A 不再落入 submitted（二态折叠已拆分）
+        Pending = ids_of(C, <<"pending">>),
+        Submitted = ids_of(C, <<"submitted">>),
+        Reviewing = ids_of(C, <<"reviewing">>),
+        Reviewed = ids_of(C, <<"reviewed">>),
+        ?assertEqual([?ASSIGN_C], Pending),
+        ?assertEqual([?ASSIGN_B], Submitted),
+        ?assertEqual([?ASSIGN_A], Reviewing),
+        ?assertEqual([?ASSIGN_D], Reviewed),
+
+        %% 过滤态 total 与行集一致（分页 hasNext 口径）
+        {ok, _, TotalReviewing} =
+            teaching_submission_repo:assignments_for_learner_tx(
+                C, ?LEARNER, 1, 10, <<"reviewing">>
+            ),
+        ?assertEqual(1, TotalReviewing),
+
+        %% 详情富行：description/deadline/has_draft/has_published 齐备
+        {ok, Detail} = teaching_submission_repo:assignment_detail_tx(C, ?ASSIGN_A),
+        ?assertEqual(true, maps:get(<<"has_draft">>, Detail)),
+        ?assertEqual(false, maps:get(<<"has_published">>, Detail)),
+        ?assert(maps:is_key(<<"description">>, Detail)),
+        ?assert(maps:is_key(<<"deadline">>, Detail)),
+        {ok, undefined} = teaching_submission_repo:assignment_detail_tx(C, 989999),
+
+        %% DTO：A 组装后 reviewing 态 + description null 透出（seed 无说明列值）
+        DtoA = teaching_assignment_logic:assignment_summary(Detail),
+        ?assertEqual(<<"reviewing">>, maps:get(<<"status">>, DtoA)),
+        ?assertEqual(null, maps:get(<<"description">>, DtoA)),
+
+        %% history 署名：published 行 reviewer=980001；补昵称后行内 JOIN 透出。
+        %% 走生产 logic 全路径（meck elib_pg:query/2 路由到测试连接 C + ACL 放行）
+        exec(C, <<"UPDATE \"user\" SET nickname = 'L老师' WHERE id = 980001"/utf8>>),
+        {ok, HistPayload} = run_history_via_logic(C),
+        Items = maps:get(<<"list">>, HistPayload),
+        DPub = maps:get(
+            <<"published_review">>,
+            hd([I || I <- Items, maps:get(<<"submission_id">>, I) =:= <<"987133">>])
+        ),
+        ?assertEqual(<<"L老师"/utf8>>, maps:get(<<"reviewer_display_name">>, DPub)),
+        SubBStr = integer_to_binary(_SubB),
+        ?assertEqual(
+            null,
+            maps:get(
+                <<"published_review">>,
+                hd([I || I <- Items, maps:get(<<"submission_id">>, I) =:= SubBStr])
+            )
+        )
+    end).
+
+ids_of(C, Status) ->
+    {ok, Rows, _} =
+        teaching_submission_repo:assignments_for_learner_tx(C, ?LEARNER, 1, 10, Status),
+    lists:sort([maps:get(<<"assignment_id">>, R) || R <- Rows]).
+
+%% 生产 logic 路径跑 history/3：池版 query/2 meck 转发到测试连接 C（未提交
+%% 种子可见；行解码仍走 elib_pg 原生 query/3），ACL 放行 guardian(view_review)。
+run_history_via_logic(C) ->
+    ok = meck:new(elib_pg, [no_link, passthrough]),
+    ok = meck:expect(elib_pg, query, 2, fun(Sql, Params) ->
+        elib_pg:query(C, Sql, Params)
+    end),
+    ok = meck:new(teaching_acl, [no_link]),
+    ok = meck:expect(teaching_acl, resolve_guardian, fun(_U, _L, view_review) -> {ok, #{}} end),
+    try
+        teaching_review_logic:history(980002, ?LEARNER, {1, 20})
+    after
+        catch meck:unload(teaching_acl),
+        catch meck:unload(elib_pg)
+    end.
+
+%%%===================================================================
 %%% Helpers：走生产同款配方（FOR UPDATE → 取号 → CTE 幂等插入 → 附件绑定）
 %%%===================================================================
 

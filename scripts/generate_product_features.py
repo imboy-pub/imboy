@@ -185,7 +185,9 @@ def render(contract: dict) -> dict[Path, str]:
         "# " + header + "\n"
         + "# Unselected-feature backend modules consumed by erlang.mk ERLC_EXCLUDE\n"
         + "# (see imboy/Makefile). Empty value = no physical trim for this preset.\n"
-        + "IMBOY_FEATURE_ERLC_EXCLUDE := " + " ".join(excluded_modules) + "\n"
+        + "IMBOY_FEATURE_ERLC_EXCLUDE :="
+        + (" " + " ".join(excluded_modules) if excluded_modules else "")
+        + "\n"
     )
     dart_items = ",\n  ".join(json.dumps(item) for item in features)
     # manifest hash 行按 dart format 的 80 列规则换行（与 TS 发射器同一处理），

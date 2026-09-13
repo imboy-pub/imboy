@@ -48,7 +48,7 @@ execute(Req0, Env) ->
         <<"access-control-allow-headers">>,
         <<
             "Content-Type, Authorization, Accept, Origin, X-Requested-With, "
-            "cos, vsn, pkg, did, tz_offset, method, sk, sign, token, x-refresh-token, "
+            "cos, vsn, pkg, terminology-profile, did, tz_offset, method, sk, sign, token, x-refresh-token, "
             "imboy-refreshtoken, "
             "device-type, device-type-vsn, device-id, device-name, device-name-vsn, "
             "platform, user-agent, content-length, X-Auth-Token, referer, Referrer-Policy"

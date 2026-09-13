@@ -55,7 +55,7 @@
 
 | 方法 Method | 路径 Path | 鉴权 Auth | Handler#action | 用途 Purpose（中 / EN） | 请求参数 Request | 响应载荷 Response payload |
 |---|---|---|---|---|---|---|
-| GET | /api/v1/init | 公开 Open | index_handler#init | 客户端初始化配置（加密下发）/ Encrypted client init config | Header: `vsn`,`cos`,`pkg`,`sk` | `test`、`res`（AES 加密 JSON：`ws_url`/`upload_url`/`attach_presign_endpoint`/`login_rsa_pub_key` 等） |
+| GET | /api/v1/init | 公开 Open | index_handler#init | 客户端初始化配置（加密下发）/ Encrypted client init config | Header: `vsn`,`cos`,`pkg`,`sk`,`terminology-profile`（可选；默认/非法值回退 `generic`） | `test`、`res_v2`（AES-GCM 加密 JSON；含 `ws_url`/`attach_presign_endpoint`/`effective_product_experience`/`terminology.profile/hash/terms` 等）；legacy 开启时另含 `res` |
 | GET | /api/v1/app/features | 公开 Open | app_feature_handler#features | 功能特性开关表 / Feature flags | 无 | feature map（键→bool） |
 | GET | /api/v1/app/manifest | 公开 Open | app_manifest_handler#manifest | 应用清单（带 ETag/304）/ App manifest | Header: `if-none-match`（可选） | `features`、`policy`、`app_entries`、`admin_entries`、`plugins`、`generated_at`（裸 JSON） |
 | GET | /api/v1/app/policy | 公开 Open | app_feature_handler#policy | 生效策略视图 / Effective policy | 无 | policy map |

@@ -20,7 +20,7 @@
 %   3. branding 白名单键治理：仅 name/logo/primaryColor 可读写。
 %%%
 
--export([create_template/3]).
+-export([create_template/4]).
 -export([find_by_id/1]).
 -export([find_by_id/2]).
 -export([page_by_member/3]).
@@ -54,10 +54,14 @@
 %% 幂等命中时返回 {ok, Result, existing}；新建返回 {ok, Result, created}。
 %% Result = #{workspace_id => Id, workspace => Row(public view),
 %%            channel_id => CId, group_id => GId}
--spec create_template(integer(), binary(), binary() | undefined) ->
+-spec create_template(integer(), integer() | undefined, binary(), binary() | undefined) ->
     {ok, map(), created | existing} | {error, term()}.
-create_template(OwnerUid, Name, RequestId) ->
-    case elib_pg:with_tx(fun(Conn) -> create_template_tx(Conn, OwnerUid, Name, RequestId) end) of
+create_template(OwnerUid, OrgId, Name, RequestId) ->
+    case
+        elib_pg:with_tx(fun(Conn) ->
+            create_template_tx(Conn, OwnerUid, OrgId, Name, RequestId)
+        end)
+    of
         %% with_tx 成功契约返回裸值 R（非 {ok, R}）；{error, Reason} 仅来自
         %% throw({abort_tx, Reason}) 的回滚转换——成功分支必须匹配裸 map。
         Result when is_map(Result) -> {ok, Result, created};
@@ -65,36 +69,57 @@ create_template(OwnerUid, Name, RequestId) ->
         {error, Reason} -> {error, Reason}
     end.
 
-create_template_tx(Conn, OwnerUid, Name, RequestId) ->
+create_template_tx(Conn, OwnerUid, OrgId, Name, RequestId) ->
+    ok = ensure_organization_creator_tx(Conn, OrgId, OwnerUid),
     %% 幂等前置（同事务先查后插）：
     %% 1) request_id 精确命中（同 Owner）→ 返回既有
     case normalize_request_id(RequestId) of
         <<>> ->
-            check_semantic_idempotent(Conn, OwnerUid, Name);
+            check_semantic_idempotent(Conn, OwnerUid, OrgId, Name);
         RequestId2 ->
-            case workspace_repo:find_by_request_id(OwnerUid, RequestId2, Conn) of
+            case workspace_repo:find_by_request_id(OrgId, OwnerUid, RequestId2, Conn) of
                 WS when map_size(WS) > 0 ->
                     existing_workspace_result(Conn, WS);
                 _ ->
-                    check_semantic_idempotent(Conn, OwnerUid, Name, RequestId2)
+                    check_semantic_idempotent(Conn, OwnerUid, OrgId, Name, RequestId2)
             end
     end.
 
 %% 无 request_id：仅语义键幂等
-check_semantic_idempotent(Conn, OwnerUid, Name) ->
-    check_semantic_idempotent(Conn, OwnerUid, Name, <<>>).
+check_semantic_idempotent(Conn, OwnerUid, OrgId, Name) ->
+    check_semantic_idempotent(Conn, OwnerUid, OrgId, Name, <<>>).
 
-check_semantic_idempotent(Conn, OwnerUid, Name, RequestId) ->
+check_semantic_idempotent(Conn, OwnerUid, OrgId, Name, RequestId) ->
     case workspace_repo:count_by_owner(OwnerUid) >= ?MAX_WORKSPACES_PER_OWNER of
         true ->
             throw({abort_tx, owner_workspace_limit});
         false ->
-            case workspace_repo:find_by_owner_and_name(OwnerUid, Name, Conn) of
+            case workspace_repo:find_by_owner_and_name(OrgId, OwnerUid, Name, Conn) of
                 WS when map_size(WS) > 0 ->
                     existing_workspace_result(Conn, WS);
                 _ ->
-                    do_create_template(Conn, OwnerUid, Name, RequestId)
+                    do_create_template(Conn, OwnerUid, OrgId, Name, RequestId)
             end
+    end.
+
+ensure_organization_creator_tx(_Conn, undefined, _OwnerUid) ->
+    ok;
+ensure_organization_creator_tx(Conn, OrgId, OwnerUid) ->
+    case
+        organization_member_repo:find_organization_for_share_tx(
+            Conn, OrgId, <<"id,status">>
+        )
+    of
+        {ok, #{<<"status">> := <<"active">>}} -> ok;
+        {ok, _} -> throw({abort_tx, organization_archived});
+        {error, not_found} -> throw({abort_tx, organization_not_found});
+        {error, Reason} -> throw({abort_tx, {organization_lookup_failed, Reason}})
+    end,
+    case organization_member_repo:find_active_for_share_tx(Conn, OrgId, OwnerUid, <<"role">>) of
+        {ok, #{<<"role">> := Role}} when Role =:= <<"owner">>; Role =:= <<"admin">> -> ok;
+        {ok, _} -> throw({abort_tx, organization_create_forbidden});
+        {error, not_found} -> throw({abort_tx, organization_create_forbidden});
+        {error, Reason2} -> throw({abort_tx, {organization_member_lookup_failed, Reason2}})
     end.
 
 %% @doc 幂等命中：回读 Template 资源（默认 Channel/Group 缺失属历史数据异常，
@@ -114,7 +139,7 @@ existing_workspace_result(Conn, WS) ->
     ).
 
 %% @doc 真正的 Template 单事务创建
-do_create_template(Conn, OwnerUid, Name, RequestId) ->
+do_create_template(Conn, OwnerUid, OrgId, Name, RequestId) ->
     Now = elib_dt:now(),
     %% 1. workspace 行（branding 内嵌 _request_id 内部幂等标记 + name 品牌键）
     Branding0 = #{<<"name">> => Name},
@@ -127,6 +152,7 @@ do_create_template(Conn, OwnerUid, Name, RequestId) ->
     {ok, WsId} = workspace_repo:add(Conn, #{
         <<"name">> => Name,
         <<"owner_id">> => OwnerUid,
+        <<"organization_id">> => organization_db_id(OrgId),
         <<"status">> => <<"active">>,
         <<"branding">> => BrandingJson,
         <<"created_at">> => Now,
@@ -202,7 +228,7 @@ do_create_template(Conn, OwnerUid, Name, RequestId) ->
     %% 同事务回读：必须走本事务 Conn，否则读不到本事务未提交的行（拿回空 map）。
     {ok, [WS]} = elib_pg:query(
         Conn,
-        <<"SELECT id, name, logo, owner_id, status, branding, created_at",
+        <<"SELECT id, name, logo, owner_id, organization_id, status, branding, created_at",
             " FROM workspace WHERE id = $1">>,
         [WsId]
     ),
@@ -212,6 +238,9 @@ do_create_template(Conn, OwnerUid, Name, RequestId) ->
         channel_id => CId,
         group_id => Gid
     }.
+
+organization_db_id(undefined) -> null;
+organization_db_id(OrgId) -> OrgId.
 
 %% @doc 默认 Channel 查找（幂等命中路径回读）
 default_channel_of(Conn, WsId) ->
@@ -237,7 +266,7 @@ default_group_of(Conn, WsId) ->
 -spec find_by_id(integer() | binary()) -> map() | {error, term()}.
 find_by_id(WsId) ->
     workspace_repo:find_by_id(
-        WsId, <<"id,name,logo,owner_id,status,branding,created_at,updated_at">>
+        WsId, <<"id,name,logo,owner_id,organization_id,status,branding,created_at,updated_at">>
     ).
 
 -spec find_by_id(integer() | binary(), binary()) -> map() | {error, term()}.
@@ -254,7 +283,7 @@ page_by_member(Uid, Page, Size0) ->
             Uid,
             Page2,
             Size,
-            <<"w.id,w.name,w.logo,w.owner_id,w.status,w.created_at">>
+            <<"w.id,w.name,w.logo,w.owner_id,w.organization_id,w.status,w.created_at">>
         )
     of
         {ok, Result} -> {ok, Result};
@@ -380,7 +409,7 @@ admin_page(Page0, Size0, Status, Keyword) ->
         end,
     Offset = (Page - 1) * Size,
     DataSql = [
-        <<"SELECT w.id, w.name, w.logo, w.owner_id, w.status, w.branding,",
+        <<"SELECT w.id, w.name, w.logo, w.owner_id, w.organization_id, w.status, w.branding,",
             " w.archived_at, w.archived_by, w.created_at, w.updated_at,",
             " u.nickname AS owner_nickname, u.account AS owner_account", " FROM ", WsTb/binary,
             " w LEFT JOIN ", UTb/binary, " u ON u.id = w.owner_id">>,
