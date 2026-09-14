@@ -48,7 +48,7 @@ make -C "$ROOT" app
 PGDATABASE="$DB" IMBOY_DIR="$ROOT" "$ROOT/scripts/drill_migrate.escript" up
 
 ATTESTATION_PREDICATE="$(
-  sed -n 's/^E2EE_ATTESTATION_SCHEMA_PREDICATE="\(.*\)"$/\1/p' "$ROOT/scripts/deploy.sh"
+  sed -n 's/^E2EE_ATTESTATION_SCHEMA_PREDICATE="\(.*\)"$/\1/p' "$ROOT/scripts/lib/blue_green_deploy.sh"
 )"
 [ -n "$ATTESTATION_PREDICATE" ]
 

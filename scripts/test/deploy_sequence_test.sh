@@ -4,7 +4,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/../.." || exit 1
 
-DEPLOY="scripts/deploy.sh"
+DEPLOY="scripts/lib/blue_green_deploy.sh"
 TEST_VSN="$(tr -d '[:space:]' < VERSION)"
 TMP_ROOT="$(mktemp -d /tmp/imboy_deploy_sequence.XXXXXX)"
 MOCK_BIN="$TMP_ROOT/bin"
@@ -34,6 +34,10 @@ case "$cmd" in
     printf '%s\n' "${MOCK_CURRENT_COLOR:-blue}"
     exit 0
     ;;
+  *"for DIR in "*"/usr/local/imboy-"*)
+    printf '%s\n' "/usr/local/imboy-0.9.0-oldnode"
+    exit 0
+    ;;
   *"[ -d '/usr/local/imboy-"*)
     exit 1
     ;;
@@ -45,9 +49,14 @@ case "$cmd" in
     printf '%s\n' "${MOCK_BOUNDARY_DIRTY:-0}"
     exit 0
     ;;
+  *"FROM public.msg_store_staging s"*)
+    printf '%s\n' BOUNDARY_BACKLOG >>"$MOCK_LOG"
+    printf '%s\n' "${MOCK_BOUNDARY_BACKLOG_READY:-1}"
+    exit 0
+    ;;
   *"to_regclass('public.msg_c2g_recipient_snapshot')"*)
-    probe_count="$(grep -c -x BOUNDARY_PROBE "$MOCK_LOG" 2>/dev/null || true)"
-    printf '%s\n' BOUNDARY_PROBE >>"$MOCK_LOG"
+    probe_count="$(grep -c -x BOUNDARY_STRUCTURE "$MOCK_LOG" 2>/dev/null || true)"
+    printf '%s\n' BOUNDARY_STRUCTURE >>"$MOCK_LOG"
     if [ "$probe_count" -gt 0 ] && [ -n "${MOCK_BOUNDARY_FINAL_READY:-}" ]; then
       printf '%s\n' "$MOCK_BOUNDARY_FINAL_READY"
     elif [ "${MOCK_ATTESTATION_SCHEMA_READY:-1}" != 1 ]; then
@@ -80,15 +89,28 @@ case "$cmd" in
     [ "${MOCK_FAIL_AT:-}" != "expand" ]
     exit
     ;;
+  *"cd '/usr/local/imboy-0.9.0-oldnode'"*"bin/imboy daemon"*)
+    printf '%s\n' RECOVER_OLD >>"$MOCK_LOG"
+    exit 0
+    ;;
   *"IMBOY_AUTO_MIGRATE="*"bin/imboy daemon"*)
     printf '%s\n' DAEMON >>"$MOCK_LOG"
     case "$cmd" in
       *"IMBOY_AUTO_MIGRATE='true'"*) printf '%s\n' AUTO_TRUE >>"$MOCK_LOG" ;;
       *) printf '%s\n' AUTO_FALSE >>"$MOCK_LOG" ;;
     esac
+    case "$cmd" in
+      *"IMBOY_E2EE_MODE='required'"*) printf '%s\n' E2EE_REQUIRED >>"$MOCK_LOG" ;;
+      *"IMBOY_E2EE_MODE='disabled'"*) printf '%s\n' E2EE_DISABLED >>"$MOCK_LOG" ;;
+    esac
     exit 0
     ;;
   *"curl -fsS"*"/healthz"*)
+    if [[ "$cmd" == *"RECOVERY_HEALTH=1"* ]]; then
+      printf '%s\n' RECOVERY_HEALTH >>"$MOCK_LOG"
+      [ "${MOCK_RECOVERY_FAIL:-0}" != 1 ]
+      exit
+    fi
     [ "${MOCK_FAIL_AT:-}" != "health" ] \
       && [ "${MOCK_FAIL_AT:-}" != "rollback_health" ]
     exit
@@ -187,8 +209,9 @@ run_deploy() {
     IMBOY_DEPLOY_DB_CONTAINER=postgres \
     IMBOY_DEPLOY_DB_NAME=imboy_test \
     IMBOY_DEPLOY_DB_USER=postgres \
-    IMBOY_DEPLOY_SALES_RELEASE=true \
-    IMBOY_DEPLOY_E2EE_MODE=disabled \
+    IMBOY_DEPLOY_SALES_RELEASE="${TEST_SALES_RELEASE:-true}" \
+    IMBOY_DEPLOY_E2EE_MODE="${TEST_E2EE_MODE:-}" \
+    IMBOY_DEPLOY_INTERNAL=1 \
     bash "$DEPLOY" "$@" example.invalid "$TEST_VSN" testnode \
     >"$TMP_ROOT/output.log" 2>&1
 }
@@ -208,6 +231,7 @@ run_rollback() {
     IMBOY_DEPLOY_BLUE_PORT=9800 \
     IMBOY_DEPLOY_GREEN_PORT=9801 \
     IMBOY_DEPLOY_COOKIE=testcookie \
+    IMBOY_DEPLOY_INTERNAL=1 \
     bash "$DEPLOY" --rollback example.invalid "$TEST_VSN" testnode \
     >"$TMP_ROOT/output.log" 2>&1
 }
@@ -247,16 +271,41 @@ echo "== 蓝绿部署控制流（全离线 mock） =="
 
 if run_deploy "" blue; then
   assert_success_order
+  if grep -q -x E2EE_REQUIRED "$MOCK_LOG"; then
+    ok "销售版默认以 required E2EE 启动"
+  else
+    bad "销售版门禁通过后未以 required E2EE 启动" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
 else
   bad "成功路径应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if TEST_SALES_RELEASE=false run_deploy "" blue; then
+  if grep -q -x E2EE_DISABLED "$MOCK_LOG"; then
+    ok "非销售版仍默认以 disabled E2EE 启动"
+  else
+    bad "非销售版 E2EE 默认值异常" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "非销售版默认 E2EE 控制流应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if TEST_E2EE_MODE=disabled run_deploy "" blue; then
+  bad "销售版不得显式降级到 disabled E2EE" ""
+elif grep -q "销售版 IMBOY_DEPLOY_E2EE_MODE 必须为 required/compliance" "$TMP_ROOT/output.log"; then
+  ok "销售版显式降级 E2EE 会在连接服务器前失败"
+else
+  bad "销售版 E2EE 降级错误文案异常" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if MOCK_BOUNDARY_READY=0 run_deploy "" blue; then
   stop="$(event_line STOP)"
   daemon="$(event_line DAEMON)"
+  backlog="$(event_line BOUNDARY_BACKLOG)"
   marker="$(event_line CUTOVER_MARKER)"
-  if [ -n "$stop" ] && [ -n "$daemon" ] && [ -n "$marker" ] \
+  if [ -n "$stop" ] && [ -n "$daemon" ] && [ -n "$backlog" ] && [ -n "$marker" ] \
      && [ "$stop" -lt "$daemon" ] && [ "$daemon" -lt "$marker" ] \
+     && [ "$daemon" -lt "$backlog" ] \
      && grep -q -x AUTO_TRUE "$MOCK_LOG" \
      && ! grep -q -x EXPAND "$MOCK_LOG" \
      && ! grep -q -x MIGRATE "$MOCK_LOG"; then
@@ -354,9 +403,12 @@ if MOCK_BOUNDARY_FINAL_READY=0 run_deploy "" blue; then
   bad "已有 marker 的常规发布最终 schema 漂移时应退出非零" ""
 else
   assert_absent "已有 marker 的常规发布最终 schema 漂移时不切流" SWITCH
-  [ "$(grep -c -x BOUNDARY_PROBE "$MOCK_LOG")" -eq 2 ] \
-    && ok "已有 marker 的常规发布在健康检查后再次探测 schema/backlog" \
-    || bad "已有 marker 的常规发布未执行两次 schema/backlog 探测" "$(tr '\n' ',' <"$MOCK_LOG")"
+  if [ "$(grep -c -x BOUNDARY_STRUCTURE "$MOCK_LOG")" -eq 2 ] \
+     && [ "$(grep -c -x BOUNDARY_BACKLOG "$MOCK_LOG")" -eq 1 ]; then
+    ok "最终结构漂移时短路 backlog，并在切流前拒绝发布"
+  else
+    bad "boundary 结构/backlog 探测未按结构就绪状态短路" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
 fi
 
 if run_deploy health blue; then
@@ -364,6 +416,14 @@ if run_deploy health blue; then
 else
   assert_absent "health 失败后不切流" SWITCH
   assert_absent "health 失败后不迁移" MIGRATE
+fi
+
+if MOCK_BOUNDARY_READY=0 run_deploy health blue; then
+  bad "boundary bootstrap 新节点失败时部署应退出非零" ""
+elif [ -n "$(event_line RECOVER_OLD)" ] && [ -n "$(event_line RECOVERY_HEALTH)" ]; then
+  ok "boundary bootstrap 切流前失败会自动恢复旧节点并检查健康"
+else
+  bad "boundary bootstrap 切流前失败未恢复旧节点" "$(tr '\n' ',' <"$MOCK_LOG")"
 fi
 
 if run_deploy stop blue; then
@@ -412,7 +472,7 @@ else
   bad "--no-migrate 外层编排路径应成功返回" "$(<"$TMP_ROOT/output.log")"
 fi
 
-if run_deploy "" none; then
+if MOCK_NGINX_COLOR=none run_deploy "" none; then
   assert_absent "首次空库安装不预跑单条 expand" EXPAND
   [ -n "$(event_line AUTO_TRUE)" ] \
     && ok "首次空库安装通过 boot 执行完整迁移" \
@@ -421,11 +481,40 @@ else
   bad "首次空库安装控制流应成功" "$(<"$TMP_ROOT/output.log")"
 fi
 
-if run_deploy "" none --no-migrate; then
+if MOCK_NGINX_COLOR=none run_deploy "" none --no-migrate; then
   bad "首次安装不得接受 --no-migrate" ""
 else
   assert_absent "首次安装拒绝 --no-migrate 后不启动节点" DAEMON
   assert_absent "首次安装拒绝 --no-migrate 后不迁移" MIGRATE
+fi
+
+if MOCK_NGINX_COLOR=green run_deploy "" none; then
+  recover="$(event_line RECOVER_OLD)"
+  daemon="$(event_line DAEMON)"
+  if [ -n "$recover" ] && [ -n "$daemon" ] && [ "$recover" -lt "$daemon" ]; then
+    ok "双端口停机但 Nginx 指向 green 时先恢复原节点再继续蓝绿发布"
+  else
+    bad "已有部署停机时未优先恢复 Nginx 当前节点" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "已有部署停机恢复后的蓝绿发布应成功" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_NGINX_COLOR=green MOCK_RECOVERY_FAIL=1 run_deploy "" none; then
+  bad "Nginx 当前节点恢复不健康时应退出非零" ""
+else
+  assert_absent "原节点恢复不健康时不启动目标节点" DAEMON
+  assert_absent "原节点恢复不健康时不执行迁移" MIGRATE
+  assert_absent "原节点恢复不健康时不切流" SWITCH
+fi
+
+if MOCK_NGINX_COLOR=green MOCK_BOUNDARY_READY=0 run_deploy health none; then
+  bad "停机恢复后再次发生切流前失败应退出非零" ""
+elif [ "$(grep -c -x RECOVER_OLD "$MOCK_LOG")" -eq 2 ] \
+     && [ "$(grep -c -x RECOVERY_HEALTH "$MOCK_LOG")" -eq 2 ]; then
+  ok "停机预恢复不会耗尽后续切流前失败的自动恢复机会"
+else
+  bad "停机预恢复后再次失败未二次恢复原节点" "$(tr '\n' ',' <"$MOCK_LOG")"
 fi
 
 if run_rollback "" green && grep -q -x ROLLBACK "$MOCK_LOG"; then

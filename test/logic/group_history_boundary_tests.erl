@@ -510,7 +510,12 @@ migration_109_keeps_legacy_timeline_fail_closed_test() ->
 migration_111_repairs_c2g_boundary_idempotently_test() ->
     {ok, Migration} =
         file:read_file("priv/migrations/00000111_c2g_request_recipient_boundary.up.sql"),
-    ?assert(binary:match(Migration, <<"ADD COLUMN IF NOT EXISTS conv_seq bigint">>) =/= nomatch),
+    ?assert(
+        binary:match(
+            Migration,
+            <<"ALTER TABLE IF EXISTS public.msg_store_staging\n    ADD COLUMN IF NOT EXISTS conv_seq bigint">>
+        ) =/= nomatch
+    ),
     ?assert(binary:match(Migration, <<"msg_c2g_request_ledger">>) =/= nomatch),
     ?assert(binary:match(Migration, <<"msg_c2g_recipient_snapshot">>) =/= nomatch).
 

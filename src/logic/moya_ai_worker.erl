@@ -23,6 +23,7 @@
 %%%
 
 -export([run_once/0, run_once_tx/1]).
+-export([run_draft/1]).
 -export([reclaim_stuck/0, reclaim_stuck_tx/2]).
 
 -include_lib("kernel/include/logger.hrl").
@@ -69,6 +70,32 @@ run_once() ->
             end;
         Other ->
             ?LOG_WARNING("moya_ai_worker claim error ~p", [Other]),
+            {error, claim_error}
+    end.
+
+%% @doc 定点执行单个草稿（老师手动触发「让 AI 先看看 / 重新整理」）。
+%% 与 run_once/0 的区别：claim 指定草稿行（claim_queued_by_id_tx/2），
+%% 不去抢全局最老的 queued —— 手动请求只处理它自己那一条。
+%% 返回 {ok, done}（未抢到：已被 ecron worker 处理或状态已变）|
+%% {ok, {processed, Outcome}} | {error, term()}。调用方为异步进程，返回值仅作日志。
+-spec run_draft(integer()) -> {ok, done | {processed, term()}} | {error, term()}.
+run_draft(DraftId) ->
+    ClaimTx = fun(Conn) -> moya_review_repo:claim_queued_by_id_tx(Conn, DraftId) end,
+    case elib_pg:with_tx(ClaimTx, [{reraise, false}]) of
+        {ok, undefined} ->
+            %% 已被 ecron worker 抢先 claim（或已非 queued）：不重复处理
+            {ok, done};
+        {ok, Draft} ->
+            FinishTx = fun(Conn) -> process_tx(Conn, Draft) end,
+            case elib_pg:with_tx(FinishTx, [{reraise, false}]) of
+                {ok, Outcome} ->
+                    {ok, {processed, Outcome}};
+                Other ->
+                    ?LOG_WARNING("moya_ai_worker run_draft error ~p", [Other]),
+                    {error, worker_error}
+            end;
+        Other ->
+            ?LOG_WARNING("moya_ai_worker run_draft claim error ~p", [Other]),
             {error, claim_error}
     end.
 

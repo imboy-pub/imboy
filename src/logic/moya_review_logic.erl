@@ -10,6 +10,7 @@
 -export([
     queue/3,
     workbench/2,
+    request_ai_draft/2,
     save_draft/3,
     publish/3,
     withdraw/2,
@@ -68,6 +69,112 @@ workbench(Uid, SubmissionId) ->
         {error, _} ->
             {error, not_staff}
     end.
+
+%% @doc 手动触发 AI 整理（老师主动请求：「让 AI 先看看 / 重新整理」）。
+%% 此前 AI 草稿只在家长提交的同一事务里入队（moya_assignment_logic），老师端
+%% 没有任何主动入口——老师看到「暂无参考建议」后只能纯手工写。
+%%
+%% 四态收敛（事务内先 lock submission，与 draft/publish 同串行化点）：
+%%   * 无草稿        → 入队新行
+%%   * queued/running → 幂等返回现状（不重复排队，避免点两次跑两遍）
+%%   * succeeded      → 原地重置重跑（见 moya_review_repo:requeue_succeeded_tx/2）
+%%   * failed         → 入队新行（部分唯一索引不含 failed，可重试且留痕）
+%%
+%% 入队后**异步定点执行**（elib_async → moya_ai_worker:run_draft/1）：HTTP 立即
+%% 返回，客户端轮询工作台看进度。绝不在请求内同步跑模型——视频分析可能数十秒，
+%% 会把小程序请求顶到超时，老师只看到「网络错误」而任务其实跑成功了。
+%% 已撤回提交拒绝（withdrawn → 5482）；未发布/已发布都可触发（结果只进草稿）。
+-spec request_ai_draft(integer(), integer()) -> {ok, map()} | {error, atom()}.
+request_ai_draft(Uid, SubmissionId) ->
+    case draft_guard(Uid, SubmissionId) of
+        {ok, _GroupId} ->
+            Tx = fun(Conn) ->
+                case moya_submission_repo:lock_submission_tx(Conn, SubmissionId) of
+                    {ok, Row} when is_map(Row) ->
+                        case maps:get(<<"status">>, Row, <<>>) of
+                            <<"withdrawn">> ->
+                                {rollback, withdrawn};
+                            _ ->
+                                request_ai_draft_tx(Conn, SubmissionId)
+                        end;
+                    {ok, undefined} ->
+                        {rollback, not_found};
+                    {error, Reason} ->
+                        {rollback, {db, Reason}}
+                end
+            end,
+            finish_ai_request(elib_pg:with_tx(Tx, [{reraise, false}]));
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+-spec finish_ai_request(term()) -> {ok, map()} | {error, atom()}.
+finish_ai_request({ok, {requested, DraftId, Status}}) ->
+    _ = maybe_run_ai_draft(Status, DraftId),
+    {ok, #{
+        <<"draft_id">> => integer_to_binary(DraftId),
+        <<"status">> => Status
+    }};
+finish_ai_request({rollback, withdrawn}) ->
+    {error, withdrawn};
+finish_ai_request({rollback, not_found}) ->
+    {error, not_found};
+finish_ai_request({rollback, Reason}) ->
+    ?LOG_ERROR("request ai draft tx failed ~p", [Reason]),
+    {error, db_error};
+finish_ai_request(Other) ->
+    ?LOG_ERROR("request ai draft unexpected ~p", [Other]),
+    {error, db_error}.
+
+%% 事务内决策：返回 {requested, DraftId, Status} | {rollback, atom()}
+-spec request_ai_draft_tx(any(), integer()) ->
+    {requested, integer(), binary()} | {rollback, atom()}.
+request_ai_draft_tx(Conn, SubmissionId) ->
+    case moya_review_repo:ai_draft_tx(Conn, SubmissionId) of
+        {ok, Existing} ->
+            request_ai_draft_existing_tx(Conn, SubmissionId, Existing);
+        {error, Reason} ->
+            ?LOG_ERROR("request ai draft read error ~p", [Reason]),
+            {rollback, db_error}
+    end.
+
+-spec request_ai_draft_existing_tx(any(), integer(), map() | undefined) ->
+    {requested, integer(), binary()} | {rollback, atom()}.
+request_ai_draft_existing_tx(_Conn, _Sid, #{<<"status">> := <<"queued">>, <<"id">> := Id}) ->
+    {requested, Id, <<"queued">>};
+request_ai_draft_existing_tx(_Conn, _Sid, #{<<"status">> := <<"running">>, <<"id">> := Id}) ->
+    {requested, Id, <<"running">>};
+request_ai_draft_existing_tx(Conn, _Sid, #{<<"status">> := <<"succeeded">>, <<"id">> := Id}) ->
+    case moya_review_repo:requeue_succeeded_tx(Conn, Id) of
+        ok ->
+            {requested, Id, <<"queued">>};
+        {error, Reason} ->
+            ?LOG_ERROR("request ai draft requeue error ~p", [Reason]),
+            {rollback, db_error}
+    end;
+request_ai_draft_existing_tx(Conn, Sid, _NoneOrFailed) ->
+    %% 无草稿 / 最新为 failed：新入队一行（失败重试留痕，不复用旧行）
+    case moya_submission_repo:enqueue_ai_draft_tx(Conn, Sid) of
+        ok ->
+            case moya_review_repo:ai_draft_tx(Conn, Sid) of
+                {ok, #{<<"id">> := NewId, <<"status">> := St}} ->
+                    {requested, NewId, St};
+                Other ->
+                    ?LOG_ERROR("request ai draft reread ~p", [Other]),
+                    {rollback, db_error}
+            end;
+        {error, Reason} ->
+            ?LOG_ERROR("request ai draft enqueue error ~p", [Reason]),
+            {rollback, db_error}
+    end.
+
+%% 仅「本轮真的排上了队」才定点执行；已是 running 的不重复起进程
+-spec maybe_run_ai_draft(binary(), integer()) -> ok.
+maybe_run_ai_draft(<<"queued">>, DraftId) ->
+    _ = elib_async:async(fun() -> moya_ai_worker:run_draft(DraftId) end),
+    ok;
+maybe_run_ai_draft(_Status, _DraftId) ->
+    ok.
 
 %% @doc 保存/更新回评草稿（upsert per reviewer；忽略并拒绝保留字段）
 %% 事务内先 lock submission 行（与 publish/withdraw 同串行化点）：防并发
@@ -317,16 +424,29 @@ queue_with_groups(_Uid, GroupIds, Filters0, Page, Size) ->
     %% 线格式键（binary）在 logic 边界统一归一为 atom 键，repo 只读 atom 键；
     %% maps:without 显式丢弃 binary 原件——此前两套键空间并存，
     %% ai_status 因未归一面被 repo 静默忽略（老师队列过滤恒失效）。
+    %% 新增检索键（task_id/learner_id/时间范围）走同一归一通道，避免重演。
     Filters = maps:filter(
         fun(_K, V) -> V =/= undefined end,
-        (maps:without([<<"assignment_id">>, <<"ai_status">>], Filters0))#{
+        (maps:without(
+            [
+                <<"assignment_id">>,
+                <<"task_id">>,
+                <<"learner_id">>,
+                <<"submitted_from">>,
+                <<"submitted_to">>,
+                <<"ai_status">>
+            ],
+            Filters0
+        ))#{
             %% CM-F3 修复补丁：tsid_opt 返回 {ok,Int}，此前整元组入 SQL 触发
             %% epgsql int8 integer_overflow 崩连接（真 HTTP code=1 根因）
-            assignment_id =>
-                case tsid_opt(maps:get(<<"assignment_id">>, Filters0, undefined)) of
-                    {ok, Aid} -> Aid;
-                    _ -> undefined
-                end,
+            assignment_id => tsid_value(maps:get(<<"assignment_id">>, Filters0, undefined)),
+            %% 作业（group_task.id，见 repo queue_cond_sql/2 注释）与提交人（learner.id）
+            task_id => tsid_value(maps:get(<<"task_id">>, Filters0, undefined)),
+            learner_id => tsid_value(maps:get(<<"learner_id">>, Filters0, undefined)),
+            %% 提交时间范围（闭开区间 [from, to)）；非法格式 → undefined（不过滤）
+            submitted_from => time_filter(maps:get(<<"submitted_from">>, Filters0, undefined)),
+            submitted_to => time_filter(maps:get(<<"submitted_to">>, Filters0, undefined)),
             ai_status => ai_status_filter(maps:get(<<"ai_status">>, Filters0, undefined))
         }
     ),
@@ -344,6 +464,29 @@ queue_with_groups(_Uid, GroupIds, Filters0, Page, Size) ->
                     {error, bad_param}
             end
     end.
+
+-spec tsid_value(term()) -> integer() | undefined.
+tsid_value(V) ->
+    case tsid_opt(V) of
+        {ok, Id} -> Id;
+        _ -> undefined
+    end.
+
+%% 提交时间边界白名单：只放行 `YYYY-MM-DD` 或带时间的 RFC3339（可选小数秒/时区）。
+%% 非白名单一律 undefined（= 该边界不生效），绝不把未校验串塞进 SQL 的
+%% ::timestamptz 转换（避免 22007 直接 500，老师只看到「操作失败」）。
+-define(TIME_PARAM_RE,
+    <<"^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?(Z|[+-]\\d{2}:\\d{2})?)?$">>
+).
+
+-spec time_filter(term()) -> binary() | undefined.
+time_filter(Bin) when is_binary(Bin), Bin =/= <<>> ->
+    case re:run(Bin, ?TIME_PARAM_RE, [{capture, none}]) of
+        match -> Bin;
+        nomatch -> undefined
+    end;
+time_filter(_) ->
+    undefined.
 
 -spec run_queue([integer()], map(), integer(), integer()) -> {ok, map()} | {error, atom()}.
 run_queue(GroupIds, Filters, Page, Size) ->

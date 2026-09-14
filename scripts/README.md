@@ -16,8 +16,8 @@
 
 | 脚本 | 用途 |
 |------|------|
-| `deploy.sh` | 生产部署入口（配合 `deploy/` 目录使用） |
-| `imboy-deploy.sh` | 蓝绿部署：`all` / `api` / `admin` / `migrate` / `rollback` |
+| `imboy-deploy.sh` | 唯一部署入口：`all` / `api` / `admin` / `migrate` / `rollback` |
+| `lib/blue_green_deploy.sh` | 蓝绿内部实现，不接受人工直接调用 |
 | `imboy_ctl` | 节点 CLI（迁移、冒烟、状态），环境变量 `IMBOY_CTL_NODE` / `IMBOY_CTL_COOKIE` |
 
 ```bash
@@ -48,11 +48,11 @@ staging backlog，避免旧节点继续写入缺少 GID/`conv_seq`/snapshot 的�
 
 非蓝绿的首次安装或本地启动仍默认自动迁移；如需自行编排迁移时序，可显式设置
 `IMBOY_AUTO_MIGRATE=false`，并负责在节点启动后调用 `imboy_ctl db migrate`。
-统一入口的 `all`/`api` 模式均由底层 `deploy.sh` 在同一流程完成切流、停止旧节点
+统一入口的 `all`/`api` 模式均由私有蓝绿实现在同一流程完成切流、停止旧节点
 和显式迁移；`migrate` 模式仅用于独立补跑，不参与 `all` 的正常时序。独立补跑前
 会校验 Nginx 正指向目标版本、另一蓝绿端口已关闭；无法可靠证明时拒绝迁移。
 
-`deploy.sh --no-migrate` 只用于发布对当前 schema 完全兼容的代码：它会强制保留旧节点，
+私有实现的 `--no-migrate` 只用于发布对当前 schema 完全兼容的代码：它会强制保留旧节点，
 不会授权紧接着执行完整迁移。若之后使用独立 `migrate` 补跑，必须先停止另一色旧节点，
 入口会重新核对监听状态。反之，正常完整迁移必须停止旧节点及既有长连接，因此不接受
 `IMBOY_DEPLOY_STOP_OLD=false`；迁移开始后若失败，须先核对已应用 schema，再决定是否
@@ -83,7 +83,7 @@ staging backlog，避免旧节点继续写入缺少 GID/`conv_seq`/snapshot 的�
 
 ## 校验与诊断
 
-`check_module_boundaries.sh`（四层边界门禁）、`check_dco.sh`、`check_duplicate_modules.sh`、`check_server_zero_crypto.sh`、`check_release_consistency.sh`（商业化发布一致性门禁）、`check_migrations.sh`（迁移命名/up-down 配对门禁，ADR-0002）、`check_cron_config.sh`（ecron 定时作业门禁：模板真源硬门 + 逐机运行配置漂移告警，`--strict` 供发布前自查）、`check_teaching_ai_config.sh`（墨芽 AI 回课启用前置：provider 名/vision/key 四类硬门 + 视频开关配对与 ecron worker 告警；`make teaching-ai-check`）、`check_tls_expiry.sh`（TLS 证书到期检查）、`validate_p5_manifest.sh`、`sanity_check.sh`、`erl_crashdump_analyzer.sh`（崩溃转储分析）、`websocket_diagnose.sh`（WS 连接逐层诊断：端口→HTTP→握手→在线数）。
+`check_module_boundaries.sh`（四层边界门禁）、`check_dco.sh`、`check_duplicate_modules.sh`、`check_server_zero_crypto.sh`、`check_release_consistency.sh`（商业化发布一致性门禁）、`check_migrations.sh`（迁移命名/up-down 配对门禁，ADR-0002）、`check_cron_config.sh`（ecron 定时作业门禁：模板真源硬门 + 逐机运行配置漂移告警，`--strict` 供发布前自查）、`check_moya_ai_config.sh`（墨芽 AI 回课启用前置：provider 名/vision/key 四类硬门 + 视频开关配对与 ecron worker 告警；`make moya-ai-check`）、`check_tls_expiry.sh`（TLS 证书到期检查）、`validate_p5_manifest.sh`、`sanity_check.sh`、`erl_crashdump_analyzer.sh`（崩溃转储分析）、`websocket_diagnose.sh`（WS 连接逐层诊断：端口→HTTP→握手→在线数）。
 
 钱包约束有两级数据库门禁：`verify_wallet_constraint_sql.sh` 在一次性 PostgreSQL 18
 合成实例验证 SQL 语义；`verify_wallet_constraint_clone.sh` 默认只读预检，只有在显式

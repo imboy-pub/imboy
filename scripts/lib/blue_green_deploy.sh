@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+if [ "${IMBOY_DEPLOY_INTERNAL:-}" != "1" ]; then
+  echo "该脚本是内部实现；请使用: bash ./scripts/imboy-deploy.sh api" >&2
+  exit 2
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # =============================================================================
 # 脚本做的事 / What this script does
 #
-# 蓝绿部署 Imboy 后端：HTTP 持续可用，旧 WebSocket 在迁移前短暂重连。
-# Blue-green deployment: HTTP stays available; old WebSockets reconnect before migration.
+# 蓝绿部署 Imboy 后端；首次边界迁移会先停旧节点并进入维护窗口。
+# Blue-green deployment; the first boundary migration stops the old node for maintenance.
 #
 # 执行流程 / Steps:
 #   1. 检测当前运行色（蓝/绿）  Detect active color (blue/green)
@@ -20,18 +27,10 @@ set -Eeuo pipefail
 #   8. 显式执行完整数据库迁移   Explicitly run remaining DB migrations
 #   9. 输出部署结果              Print deployment result
 #
-# 用法 / Usage:
-#   bash ./scripts/deploy.sh [-v|--verbose] [-l|--local] [-M|--no-migrate] <SERVER_HOST> <VSN> <NODE_NAME>
+# 内部实现，仅由 scripts/imboy-deploy.sh 调用。
+# Operator entry point: bash ./scripts/imboy-deploy.sh <api|all|migrate|rollback>
 #
-# 示例 / Examples:
-#   bash ./scripts/deploy.sh 10.0.0.10 1.0.0-rc.1 001              # git pull + 编译
-#   bash ./scripts/deploy.sh -v 10.0.0.10 1.0.0-rc.1 002           # 详细输出
-#   bash ./scripts/deploy.sh -l 10.0.0.10 1.0.0-rc.1 dbg           # 本地源码 rsync（无需推 tag）
-#   bash ./scripts/deploy.sh -v -l 10.0.0.10 1.0.0-rc.1 dbg        # 本地 rsync + 详细输出
-#   bash ./scripts/deploy.sh -M 10.0.0.10 1.0.0-rc.1 001           # 仅发布兼容代码，保留旧节点且不迁移
-#   bash ./scripts/deploy.sh --rollback 10.0.0.10 1.0.0-rc.1 001   # 切回另一色（不回滚迁移）
-#
-# 环境变量（均可选）/ Environment variables (all optional):
+# 内部环境变量 / Internal environment variables:
 #   IMBOY_DEPLOY_USER        SSH 用户       SSH user            (default: root)
 #   IMBOY_DEPLOY_PORT        SSH 端口       SSH port            (default: 32)
 #   IMBOY_DEPLOY_PROJECT_DIR 远端项目目录   Remote project dir  (default: /www/wwwroot/imboy-api)
@@ -46,6 +45,8 @@ set -Eeuo pipefail
 #   IMBOY_DEPLOY_DB_NAME      PostgreSQL 数据库名 Database name
 #   IMBOY_DEPLOY_DB_USER      PostgreSQL 用户名  Database user
 #   IMBOY_DEPLOY_EXPAND_MIGRATIONS 切流前执行的可加性迁移文件（空格分隔）
+#   IMBOY_DEPLOY_SALES_RELEASE 销售版门禁（default: true）
+#   IMBOY_DEPLOY_E2EE_MODE     节点 E2EE 模式（销售版 default: required；其他: disabled）
 # =============================================================================
 
 # ---------- 静默控制 / Verbosity control ----------
@@ -81,8 +82,8 @@ NODE_NAME="$3"
 # 版本一致性门禁：VERSION 文件（app 级 vsn，PROJECT_VERSION=$(cat VERSION)）
 # 必须与目标版本一致，否则远端构建重建 ebin/imboy.app 时会写回旧版，
 # /healthz 自报版本失配导致 wait_for_health 永远失败。
-if [ -f "$(dirname "$0")/../VERSION" ]; then
-  FILE_VSN="$(head -n1 "$(dirname "$0")/../VERSION" | tr -d '[:space:]')"
+if [ -f "$SCRIPT_DIR/../VERSION" ]; then
+  FILE_VSN="$(head -n1 "$SCRIPT_DIR/../VERSION" | tr -d '[:space:]')"
   if [ -n "$FILE_VSN" ] && [ "$FILE_VSN" != "$VSN" ]; then
     echo "✗ VERSION 文件 ($FILE_VSN) 与目标版本 ($VSN) 不一致 / VERSION file and target VSN mismatch" >&2
     echo "  先同步两处：VERSION + relx.config（版本双源）" >&2
@@ -110,12 +111,18 @@ EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
 BOUNDARY_CUTOVER_MARKER="$PROJECT_DIR/.deploy-c2g-boundary-v109-ready"
 E2EE_ATTESTATION_SCHEMA_PREDICATE="to_regclass('public.e2ee_group_session_attestation') IS NOT NULL AND to_regclass('public.e2ee_group_session_member') IS NOT NULL AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:sender_uid:int8','4:sender_did:varchar','5:room_key_msg_id:varchar','6:recipient_uids:_int8','7:start_seq:int8','8:end_seq:int8','9:created_at:timestamptz','10:updated_at:timestamptz')) = 10 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND (column_name, character_maximum_length) IN (('session_id',256),('sender_did',128),('room_key_msg_id',40))) = 3 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:user_id:int8','4:generation_no:int4','5:generation_start_seq:int8')) = 5 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND column_name='session_id' AND character_maximum_length=256) AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_attestation') AND convalidated AND ((conname='e2ee_group_session_attestation_pkey' AND contype='p' AND conkey=ARRAY[1,2]::smallint[]) OR (conname='e2ee_group_session_attestation_session_id_key' AND contype='u' AND conkey=ARRAY[2]::smallint[]) OR (conname='e2ee_group_session_attestation_room_key_msg_id_key' AND contype='u' AND conkey=ARRAY[5]::smallint[]) OR (conname='chk_e2ee_group_session_ids' AND contype='c' AND conkey=ARRAY[1,3,2,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND sender_uid > 0 AND octet_length(session_id::text) >= 1 AND octet_length(session_id::text) <= 256 AND octet_length(sender_did::text) >= 1 AND octet_length(sender_did::text) <= 128 AND octet_length(room_key_msg_id::text) >= 1 AND octet_length(room_key_msg_id::text) <= 40)') OR (conname='chk_e2ee_group_session_range' AND contype='c' AND conkey=ARRAY[7,8]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (start_seq >= 1 AND end_seq >= start_seq)') OR (conname='chk_e2ee_group_session_recipients' AND contype='c' AND conkey=ARRAY[6]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (array_ndims(recipient_uids) = 1 AND cardinality(recipient_uids) >= 1 AND cardinality(recipient_uids) <= 5000 AND array_position(recipient_uids, NULL::bigint) IS NULL AND (0 < ALL (recipient_uids)))'))) = 6 AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_member') AND convalidated AND ((conname='e2ee_group_session_member_pkey' AND contype='p' AND conkey=ARRAY[1,2,3]::smallint[]) OR (conname='fk_e2ee_group_session_member_session' AND contype='f' AND conkey=ARRAY[1,2]::smallint[] AND confrelid=to_regclass('public.e2ee_group_session_attestation') AND confkey=ARRAY[1,2]::smallint[] AND confupdtype='a' AND confdeltype='a' AND confmatchtype='s') OR (conname='chk_e2ee_group_session_member_values' AND contype='c' AND conkey=ARRAY[1,3,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND user_id > 0 AND generation_no > 0 AND generation_start_seq >= 1)'))) = 3 AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='e2ee_group_session_member' AND indexname='idx_e2ee_group_session_member_grant' AND indexdef LIKE '%(group_id, user_id, generation_no, session_id)%')"
 SALES_RELEASE="${IMBOY_DEPLOY_SALES_RELEASE:-true}"
-E2EE_MODE="${IMBOY_DEPLOY_E2EE_MODE:-disabled}"
+if [ "$SALES_RELEASE" = "true" ]; then
+  E2EE_MODE="${IMBOY_DEPLOY_E2EE_MODE:-required}"
+else
+  E2EE_MODE="${IMBOY_DEPLOY_E2EE_MODE:-disabled}"
+fi
 # --local 模式：从本地 rsync 源码到远端，跳过 git pull
 # --local mode: rsync local source to remote, skip git pull
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOCAL_SRC_DIR="${IMBOY_LOCAL_SRC_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 OLD_NODE_STOPPED=0
+OLD_DIR=""
+TRAFFIC_SWITCHED=0
+FAIL_RECOVERY_ATTEMPTED=0
 BOUNDARY_BOOTSTRAP=0
 BOUNDARY_CUTOVER_PENDING=0
 BOUNDARY_SCHEMA_REQUIRED=0
@@ -144,10 +151,16 @@ RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
   || { echo "PROJECT_DIR 必须是无 .. 的安全绝对路径 / unsafe PROJECT_DIR" >&2; exit 1; }
 [[ "$NGINX_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$NGINX_CONF" != *..* ]] \
   || { echo "NGINX_CONF 必须是无 .. 的安全绝对路径 / unsafe NGINX_CONF" >&2; exit 1; }
+[[ "$PRODADM_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$PRODADM_CONF" != "/" && "$PRODADM_CONF" != *..* ]] \
+  || { echo "PRODADM_CONF 必须是无 .. 的安全绝对路径 / unsafe PRODADM_CONF" >&2; exit 1; }
 [[ "$LOCAL_SRC_DIR" == /* && -d "$LOCAL_SRC_DIR" ]] \
   || { echo "LOCAL_SRC_DIR 必须是存在的绝对目录 / invalid LOCAL_SRC_DIR" >&2; exit 1; }
 case "$SALES_RELEASE" in true|false) ;; *) echo "IMBOY_DEPLOY_SALES_RELEASE 只能为 true/false" >&2; exit 1 ;; esac
 case "$E2EE_MODE" in disabled|optional|required|compliance) ;; *) echo "IMBOY_DEPLOY_E2EE_MODE 非法" >&2; exit 1 ;; esac
+if [ "$SALES_RELEASE" = "true" ] && [ "$E2EE_MODE" != "required" ] && [ "$E2EE_MODE" != "compliance" ]; then
+  echo "销售版 IMBOY_DEPLOY_E2EE_MODE 必须为 required/compliance" >&2
+  exit 1
+fi
 [[ "$RELEASE_DIR" == /usr/local/imboy-?* ]] || { echo "RELEASE_DIR 路径异常 / anomalous RELEASE_DIR: $RELEASE_DIR" >&2; exit 1; }
 if [[ -n "$DB_CONTAINER" && ! "$DB_CONTAINER" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
   echo "IMBOY_DEPLOY_DB_CONTAINER 含非法字符 / invalid DB container" >&2
@@ -169,7 +182,15 @@ case "$(echo "$STOP_OLD" | tr '[:upper:]' '[:lower:]')" in true|1|yes) STOP_OLD=
 # ---------- 日志函数 / Log helpers ----------
 log()  { echo -e "\033[36m[$(date '+%H:%M:%S')] $*\033[0m"; }
 ok()   { echo -e "\033[32m✓ $*\033[0m"; }
-fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
+fail() {
+  local message="$*"
+  trap - ERR
+  if declare -F recover_old_node_before_cutover >/dev/null 2>&1; then
+    recover_old_node_before_cutover || true
+  fi
+  echo -e "\033[31m✗ $message\033[0m" >&2
+  exit 1
+}
 
 if [ "$SKIP_MIGRATE" -eq 1 ] && [ "$STOP_OLD" = "true" ]; then
   STOP_OLD=false
@@ -243,6 +264,48 @@ wait_for_health() {
   "
 }
 
+wait_for_health_status() {
+  local port=$1
+  ssh_exec "
+    RECOVERY_HEALTH=1
+    for i in \$(seq 1 20); do
+      BODY=\$(curl -fsS --max-time 3 \"http://127.0.0.1:$port/healthz\" 2>/dev/null || true)
+      case \"\$BODY\" in
+        *'\"status\":\"ok\"'*) exit 0 ;;
+      esac
+      sleep 2
+    done
+    exit 1
+  "
+}
+
+probe_nginx_color() {
+  ssh_capture "
+    [ -r '$NGINX_CONF' ] || exit 2
+    BLUE_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$BLUE_PORT;/{n++} END{print n+0}' '$NGINX_CONF') || exit 3
+    GREEN_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$GREEN_PORT;/{n++} END{print n+0}' '$NGINX_CONF') || exit 4
+    if [ \"\$BLUE_UPSTREAM\" -eq 1 ] && [ \"\$GREEN_UPSTREAM\" -eq 0 ]; then echo blue
+    elif [ \"\$GREEN_UPSTREAM\" -eq 1 ] && [ \"\$BLUE_UPSTREAM\" -eq 0 ]; then echo green
+    elif [ \"\$BLUE_UPSTREAM\" -eq 0 ] && [ \"\$GREEN_UPSTREAM\" -eq 0 ]; then echo none
+    else echo conflict
+    fi
+  "
+}
+
+find_release_for_port() {
+  local port=$1
+  ssh_capture "
+    for DIR in \$(ls -dt /usr/local/imboy-* 2>/dev/null); do
+      [ -x \"\$DIR/bin/imboy\" ] || continue
+      if grep -qsE '\\{http_port,[[:space:]]*$port\\}' \"\$DIR\"/releases/*/sys.config; then
+        printf '%s\\n' \"\$DIR\"
+        exit 0
+      fi
+    done
+    exit 1
+  "
+}
+
 # 保留端口探测供"旧节点是否还活着"这类不关心版本的判断使用。
 # ⚠️ 不要再拿它当**部署就绪**判据 —— 那正是 C-51 修掉的坑。
 wait_for_port() {
@@ -281,10 +344,35 @@ stop_old_node() {
     || fail "旧节点 release 目录不符合安全模板，拒绝拼入远端命令: $OLD_DIR"
   ssh_exec "command -v timeout >/dev/null 2>&1 && timeout 20s '$OLD_DIR/bin/imboy' stop" \
     || fail "旧节点停止失败或 20s 超时，拒绝执行完整迁移"
+  OLD_NODE_STOPPED=1
   wait_for_port_closed "$OLD_PORT" \
     || fail "旧节点端口在 20s 后仍开放，拒绝执行完整迁移"
-  OLD_NODE_STOPPED=1
   ok "旧节点已停止，既有 WebSocket 已断开并将重连到新节点"
+}
+
+recover_old_node_before_cutover() {
+  [ "$OLD_NODE_STOPPED" -eq 1 ] || return 0
+  [ "$TRAFFIC_SWITCHED" -eq 0 ] || return 0
+  [ "$FAIL_RECOVERY_ATTEMPTED" -eq 0 ] || return 0
+  [ -n "$OLD_PORT" ] && [ -n "$OLD_DIR" ] || return 0
+  FAIL_RECOVERY_ATTEMPTED=1
+
+  log "自动恢复 Nginx 当前指向的原节点 (port=$OLD_PORT)..."
+  ssh_exec "
+    if [ -x '$RELEASE_DIR/bin/imboy' ]; then
+      command -v timeout >/dev/null 2>&1 && timeout 10s '$RELEASE_DIR/bin/imboy' stop >/dev/null 2>&1 || true
+    fi
+    cd '$OLD_DIR'
+    IMBOYENV=pro IMBOY_AUTO_MIGRATE=false HTTP_PORT='$OLD_PORT' IMBOY_HTTP_PORT='$OLD_PORT' ./bin/imboy daemon || true
+  " || true
+  if wait_for_health_status "$OLD_PORT"; then
+    OLD_NODE_STOPPED=0
+    ok "原节点已恢复且 /healthz 正常，Nginx 未切流"
+    return 0
+  fi
+
+  echo "✗ 自动恢复原节点失败，服务仍可能不可用: $OLD_DIR (port=$OLD_PORT)" >&2
+  return 1
 }
 
 # =============================================================================
@@ -298,7 +386,17 @@ stop_old_node() {
 # 由 db migrate 执行并登记版本。这样不会把未知的 contract 迁移整体提前。
 # =============================================================================
 probe_boundary_schema() {
-  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version >= 112 AND dirty = false) AND to_regclass('public.msg_c2g_recipient_snapshot') IS NOT NULL AND to_regclass('public.msg_c2g_request_ledger') IS NOT NULL AND $E2EE_ATTESTATION_SCHEMA_PREDICATE AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_timeline' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g' AND column_name='sender_did') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_request_ledger' AND column_name='request_hash' AND is_nullable='NO') AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_recipient_snapshot'::regclass AND conname IN ('chk_msg_c2g_recipient_snapshot_msg_id','chk_msg_c2g_recipient_snapshot_size','chk_msg_c2g_recipient_snapshot_shape','chk_msg_c2g_recipient_snapshot_positive')) = 4 AND (SELECT count(*) FROM pg_constraint WHERE conrelid='public.msg_c2g_request_ledger'::regclass AND conname IN ('chk_msg_c2g_request_ledger_msg_id','chk_msg_c2g_request_ledger_hash')) = 2 AND NOT EXISTS (SELECT 1 FROM public.msg_store_staging s WHERE s.type='c2g' AND (s.to_id IS NULL OR s.conv_seq IS NULL OR s.conv_seq < 1 OR jsonb_typeof(s.payload) IS DISTINCT FROM 'object' OR pg_input_is_valid(s.payload ->> 'to', 'bigint') IS NOT TRUE OR (s.payload ->> 'to')::bigint IS DISTINCT FROM s.to_id)) THEN 1 ELSE 0 END\""
+  local structure_ready
+
+  structure_ready="$(ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN to_regclass('public.schema_migrations') IS NOT NULL AND EXISTS (SELECT 1 FROM public.schema_migrations WHERE version >= 112 AND dirty = false) AND to_regclass('public.msg_c2g_recipient_snapshot') IS NOT NULL AND to_regclass('public.msg_c2g_request_ledger') IS NOT NULL AND $E2EE_ATTESTATION_SCHEMA_PREDICATE AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_store_staging' AND column_name='type') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_store_staging' AND column_name='to_id') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_store_staging' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_store_staging' AND column_name='payload') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_timeline' AND column_name='conv_seq') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g' AND column_name='sender_did') AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='msg_c2g_request_ledger' AND column_name='request_hash' AND is_nullable='NO') AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.msg_c2g_recipient_snapshot') AND conname IN ('chk_msg_c2g_recipient_snapshot_msg_id','chk_msg_c2g_recipient_snapshot_size','chk_msg_c2g_recipient_snapshot_shape','chk_msg_c2g_recipient_snapshot_positive')) = 4 AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.msg_c2g_request_ledger') AND conname IN ('chk_msg_c2g_request_ledger_msg_id','chk_msg_c2g_request_ledger_hash')) = 2 THEN 1 ELSE 0 END\"")" || return
+
+  case "$structure_ready" in
+    0) printf '%s\n' 0; return 0 ;;
+    1) ;;
+    *) printf '%s\n' "$structure_ready"; return 0 ;;
+  esac
+
+  ssh_capture "docker exec '$DB_CONTAINER' psql -Atq -U '$DB_USER' -d '$DB_NAME' -c \"SELECT CASE WHEN NOT EXISTS (SELECT 1 FROM public.msg_store_staging s WHERE s.type='c2g' AND (s.to_id IS NULL OR s.conv_seq IS NULL OR s.conv_seq < 1 OR jsonb_typeof(s.payload) IS DISTINCT FROM 'object' OR pg_input_is_valid(s.payload ->> 'to', 'bigint') IS NOT TRUE OR (s.payload ->> 'to')::bigint IS DISTINCT FROM s.to_id)) THEN 1 ELSE 0 END\""
 }
 
 probe_boundary_dirty() {
@@ -445,13 +543,7 @@ run_expand_migrations() {
 # =============================================================================
 if [ "$ROLLBACK" -eq 1 ]; then
   log "回滚模式 / Rollback mode"
-  if ! CUR="$(ssh_capture "
-    BLUE_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$BLUE_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
-    GREEN_UPSTREAM=\$(awk '/^[[:space:]]*server[[:space:]]+127\\.0\\.0\\.1:$GREEN_PORT;/{n++} END{print n+0}' '$NGINX_CONF')
-    if [ \"\$BLUE_UPSTREAM\" -eq 1 ] && [ \"\$GREEN_UPSTREAM\" -eq 0 ]; then echo blue
-    elif [ \"\$GREEN_UPSTREAM\" -eq 1 ] && [ \"\$BLUE_UPSTREAM\" -eq 0 ]; then echo green
-    else exit 2
-    fi")"; then
+  if ! CUR="$(probe_nginx_color)"; then
     fail "Nginx 当前 upstream 不是唯一蓝/绿色，拒绝猜测回滚方向"
   fi
   case "$CUR" in
@@ -511,6 +603,30 @@ case "$CURRENT_COLOR" in
   *) fail "蓝绿监听状态返回未知结果 / unknown active-slot state: $CURRENT_COLOR" ;;
 esac
 
+if [ "$CURRENT_COLOR" = "none" ]; then
+  NGINX_COLOR="$(probe_nginx_color)" \
+    || fail "两个应用端口均未监听，且无法可靠探测 Nginx upstream；拒绝误判为首次安装"
+  case "$NGINX_COLOR" in
+    blue)  CURRENT_COLOR=blue;  OLD_PORT=$BLUE_PORT ;;
+    green) CURRENT_COLOR=green; OLD_PORT=$GREEN_PORT ;;
+    none)  ;;
+    conflict) fail "两个应用端口均未监听，但 Nginx upstream 不是唯一蓝/绿色；拒绝猜测恢复目标" ;;
+    *) fail "Nginx upstream 状态未知，拒绝误判为首次安装: $NGINX_COLOR" ;;
+  esac
+
+  if [ "$CURRENT_COLOR" != "none" ]; then
+    OLD_DIR="$(find_release_for_port "$OLD_PORT")" \
+      || fail "检测到现有部署停机，但找不到配置 port=$OLD_PORT 的历史 release；拒绝继续发布"
+    [[ "$OLD_DIR" =~ ^/usr/local/imboy-[a-zA-Z0-9._-]+-[a-zA-Z0-9_-]+$ ]] \
+      || fail "历史 release 目录不符合安全模板，拒绝恢复: $OLD_DIR"
+    log "检测到现有部署停机，先恢复 Nginx 当前指向的 $CURRENT_COLOR 节点"
+    OLD_NODE_STOPPED=1
+    recover_old_node_before_cutover \
+      || fail "现有 $CURRENT_COLOR 节点恢复失败，拒绝在服务不可用时继续发布"
+    FAIL_RECOVERY_ATTEMPTED=0
+  fi
+fi
+
 if [ "$CURRENT_COLOR" = "none" ] && [ "$SKIP_MIGRATE" -eq 1 ]; then
   fail "首次安装不能使用 --no-migrate；空库必须完成 bootstrap 迁移"
 fi
@@ -559,7 +675,7 @@ if [ "$LOCAL_MODE" -eq 1 ]; then
     --exclude='config/sys.runtime.config' \
     --exclude='config/sys.dev.config' \
     --exclude='config/sys.local.config' \
-    --exclude='scripts/.env.deploy' \
+    --exclude='.env.deploy*' \
     --exclude='docker/' \
     -e "ssh -p $SERVER_PORT -o ControlPath=$SSH_CTRL -o StrictHostKeyChecking=accept-new" \
     "$LOCAL_SRC_DIR/" \
@@ -705,6 +821,7 @@ if [ -n "$OLD_PORT" ]; then
     fi
     nginx -t && nginx -s reload
   "
+  TRAFFIC_SWITCHED=1
   ok "Nginx 已切换至 $TARGET_COLOR / Nginx switched to $TARGET_COLOR"
 else
   echo "ℹ️  首次部署：请手动将 Nginx upstream 设为 127.0.0.1:${APP_PORT}，然后执行 nginx -s reload"

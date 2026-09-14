@@ -173,7 +173,7 @@ check_ops_scripts() {
   local root="${1:-$IMBOY_ROOT}"
   local rc=0
   local f p
-  for f in backup_pg.sh restore_pg.sh restore_smoke.sh deploy.sh backup_garage.sh; do
+  for f in backup_pg.sh restore_pg.sh restore_smoke.sh imboy-deploy.sh lib/blue_green_deploy.sh backup_garage.sh; do
     p="${root}/scripts/${f}"
     if [ ! -f "$p" ]; then
       crc_bad "运维脚本缺失：scripts/${f}"

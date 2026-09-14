@@ -61,7 +61,9 @@ public_info() ->
 ERL
 
   local f
-  for f in backup_pg.sh restore_pg.sh restore_smoke.sh deploy.sh backup_garage.sh; do
+  mkdir -p "$d/scripts/lib"
+  for f in backup_pg.sh restore_pg.sh restore_smoke.sh imboy-deploy.sh lib/blue_green_deploy.sh backup_garage.sh; do
+    mkdir -p "$(dirname "$d/scripts/$f")"
     printf '#!/usr/bin/env bash\necho ok\n' >"$d/scripts/$f"
   done
   cp "$ROOT/scripts/verify_wallet_constraint_clone.sh" "$d/scripts/"

@@ -565,32 +565,19 @@ assignment_detail_run(Exec, AssignmentId) ->
         {error, Reason} -> {error, Reason}
     end.
 
+%% 队列附加筛选键（顺序 = 占位符顺序）。加筛选只改这里 + queue_cond_sql/2。
+%% 时间边界为 RFC3339 binary（handler 已白名单校验），::timestamptz 由 PG 解析。
+-define(QUEUE_FILTER_KEYS, [assignment_id, task_id, learner_id, submitted_from, submitted_to]).
+
 %% @doc 老师待评队列：submitted 状态即时可见，withdrawn 恒过滤；
-%% ai_status 来自有效 AI 草稿（queued/running/succeeded/failed，无则 none）
+%% ai_status 来自有效 AI 草稿（queued/running/succeeded/failed，无则 none）。
+%% 支持按作业/提交人/提交时间范围收窄（老师「待点评」页快速检索）。
 -spec queue([integer()], map(), integer(), integer()) ->
     {ok, [map()], integer()} | {error, term()}.
 queue(GroupIds, Filters, Page, Size) when is_list(GroupIds), GroupIds =/= [] ->
     Offset = (Page - 1) * Size,
-    AssignmentId = maps:get(assignment_id, Filters, undefined),
-    AiStatus = maps:get(ai_status, Filters, undefined),
-    Params0 = [GroupIds, Size, Offset],
-    {ACond, Params1} =
-        case AssignmentId of
-            undefined -> {<<"">>, Params0};
-            Aid -> {<<" AND a.id = $4">>, Params0 ++ [Aid]}
-        end,
-    {AiCond, Params2} =
-        case AiStatus of
-            undefined ->
-                {<<"">>, Params1};
-            none ->
-                {<<" AND crd.id IS NULL">>, Params1};
-            St when is_binary(St) ->
-                N = integer_to_binary(length(Params1) + 1),
-                {<<" AND crd.status = $", N/binary>>, Params1 ++ [St]};
-            _ ->
-                {<<"">>, Params1}
-        end,
+    {Conds, ExtraParams} = queue_conds(Filters),
+    Params = [GroupIds, Size, Offset | ExtraParams],
     Sql =
         <<
             "SELECT hs.id AS submission_id, hs.assignment_id, hs.attempt_no, "
@@ -620,19 +607,64 @@ queue(GroupIds, Filters, Page, Size) when is_list(GroupIds), GroupIds =/= [] ->
             "  WHERE submission_id = hs.id AND status IN ('queued','running','succeeded','failed') "
             "  ORDER BY created_at DESC LIMIT 1) crd ON true "
             "WHERE hs.status = 'submitted' AND g.id = ANY($1)",
-            ACond/binary,
-            AiCond/binary,
+            Conds/binary,
             " "
             "ORDER BY hs.submitted_at ASC LIMIT $2 OFFSET $3"
         >>,
-    case elib_pg:query(Sql, Params2) of
+    case elib_pg:query(Sql, Params) of
         {ok, Rows} ->
-            {ok, Rows, count_queue(GroupIds, AiCond, Params2)};
+            {ok, Rows, count_queue(GroupIds, Conds, ExtraParams)};
         {error, Reason} ->
             {error, Reason}
     end;
 queue([], _Filters, _Page, _Size) ->
     {ok, [], 0}.
+
+%% 队列附加筛选 → {SQL 片段, 参数}（占位符自 $4 起连续编号）。
+%% 键缺失 = 不过滤；值合法性由 logic/handler 层白名单把关，此处只拼装。
+-spec queue_conds(map()) -> {binary(), [term()]}.
+queue_conds(Filters) ->
+    {Conds, Params, Next} =
+        lists:foldl(
+            fun(Key, {Cs, Ps, N}) ->
+                case maps:get(Key, Filters, undefined) of
+                    undefined ->
+                        {Cs, Ps, N};
+                    Value ->
+                        {[queue_cond_sql(Key, N) | Cs], Ps ++ [Value], N + 1}
+                end
+            end,
+            {[], [], 4},
+            ?QUEUE_FILTER_KEYS
+        ),
+    {AiCond, AiParams} = queue_ai_cond(maps:get(ai_status, Filters, undefined), Next),
+    {iolist_to_binary(lists:reverse([AiCond | Conds])), Params ++ AiParams}.
+
+%% task_id 过滤落在 gt.id（= group_task.id）而非 a.task_id：
+%% group_task_assignment.task_id 指向底层 IMBoy 群作业，/moya/tasks 下发的
+%% task_id 是 group_task.id —— 写成 a.task_id 会恒空（静默过滤失效）。
+-spec queue_cond_sql(atom(), pos_integer()) -> iodata().
+queue_cond_sql(assignment_id, N) ->
+    [" AND a.id = $", integer_to_binary(N)];
+queue_cond_sql(task_id, N) ->
+    [" AND gt.id = $", integer_to_binary(N)];
+queue_cond_sql(learner_id, N) ->
+    [" AND l.id = $", integer_to_binary(N)];
+queue_cond_sql(submitted_from, N) ->
+    [" AND hs.submitted_at >= $", integer_to_binary(N), "::timestamptz"];
+queue_cond_sql(submitted_to, N) ->
+    [" AND hs.submitted_at < $", integer_to_binary(N), "::timestamptz"].
+
+%% ai_status：none → 无有效草稿（无参数）；binary → 状态等值（带参数）
+-spec queue_ai_cond(term(), pos_integer()) -> {iodata(), [term()]}.
+queue_ai_cond(undefined, _N) ->
+    {<<>>, []};
+queue_ai_cond(none, _N) ->
+    {<<" AND crd.id IS NULL">>, []};
+queue_ai_cond(St, N) when is_binary(St) ->
+    {[" AND crd.status = $", integer_to_binary(N)], [St]};
+queue_ai_cond(_Other, _N) ->
+    {<<>>, []}.
 
 %% @doc 学员历史：全部 submission（withdrawn 标记可见）+ 已发布回评引用
 -spec history(integer(), integer(), integer()) -> {ok, [map()], integer()} | {error, term()}.
@@ -757,12 +789,15 @@ count_assignments_run(Exec, LearnerId, StatusOpt) ->
     end.
 
 -spec count_queue([integer()], binary(), [term()]) -> integer().
-count_queue(_GroupIds, AiCond, [GroupIds | Rest]) ->
+count_queue(GroupIds, Conds, ExtraParams) ->
+    %% join 集合必须与 queue/4 主查询一致（含 learner —— learner_id 条件引用 l.id）
     Base =
         <<"SELECT count(*) AS c FROM ", (tb(homework_submission))/binary,
             " hs "
             "JOIN ", (tb(group_task_assignment))/binary,
             " a ON a.id = hs.assignment_id "
+            "JOIN ", (tb(learner))/binary,
+            " l ON l.id = hs.learner_id "
             "JOIN ", (tb(group_task))/binary,
             " gt ON gt.task_id = a.task_id "
             "JOIN ", (tb(group))/binary,
@@ -770,15 +805,8 @@ count_queue(_GroupIds, AiCond, [GroupIds | Rest]) ->
             "LEFT JOIN LATERAL (SELECT id, status FROM ", (tb(calligraphy_review_draft))/binary,
             "  WHERE submission_id = hs.id AND status IN ('queued','running','succeeded','failed') "
             "  ORDER BY created_at DESC LIMIT 1) crd ON true "
-            "WHERE hs.status = 'submitted' AND g.id = ANY($1)", AiCond/binary>>,
-    %% 计数参数 = [GroupIds] + 附加筛选（去掉第 2/3 位 LIMIT/OFFSET）
-    CountParams =
-        [GroupIds] ++
-            case Rest of
-                [_Limit, _Offset | Extra] -> Extra;
-                _ -> []
-            end,
-    case elib_pg:query(Base, CountParams) of
+            "WHERE hs.status = 'submitted' AND g.id = ANY($1)", Conds/binary>>,
+    case elib_pg:query(Base, [GroupIds | ExtraParams]) of
         {ok, [#{<<"c">> := C} | _]} -> C;
         _ -> 0
     end.

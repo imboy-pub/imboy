@@ -60,5 +60,5 @@
 
 - 迁移由 `erlang_migrate` 驱动，序号为时间戳式递增；每个 `*.up.sql` 必须配套 `*.down.sql`
   （由 `scripts/check_release_consistency.sh` 校验）。
-- 升级顺序：备份 → 迁移 → 滚动重启（蓝绿见 `scripts/deploy.sh`）。
+- 蓝绿升级统一使用 `bash scripts/imboy-deploy.sh api -v`；内部脚本会按 expand → 启动 → 切流 → 停旧节点 → 完整迁移编排。
 - 破坏性 API 变更通过 `/v2` 路径前缀发布，`1.0.x` 期间路径签名向后兼容。

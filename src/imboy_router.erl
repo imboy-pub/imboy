@@ -536,6 +536,10 @@ get_routes() ->
                 {"/api/v1/moya/submissions/:id/review-workbench", moya_review_handler, #{
                     action => workbench
                 }},
+                %% 老师手动触发 AI 整理（此前 AI 草稿只在家长提交时入队，老师端无入口）
+                {"/api/v1/moya/submissions/:id/ai-draft", moya_review_handler, #{
+                    action => ai_draft
+                }},
                 {"/api/v1/moya/submissions/:id/review-draft", moya_review_handler, #{
                     action => save_draft
                 }},

@@ -8,7 +8,7 @@
 
 **构建**:后端 `make rel`(relx 组装,`dev_mode=false` 自包含 ERTS);Flutter `build_play_aab.sh`;Admin `vite build`。三仓 Dockerfile 多阶段。
 
-**CD**(`imboy/deploy/`):`scripts/deploy.sh`(蓝绿,`-l` HOST=生产)、`preflight.sh`(部署前校验)、`certbot`(TLS)。生产 systemd nginx(非 docker)。
+**CD**(`imboy/deploy/`):`scripts/imboy-deploy.sh api -v`(统一蓝绿入口)、`preflight.sh`(部署前校验)、`certbot`(TLS)。生产 systemd nginx(非 docker)。
 
 **制品**:`sbom-diff.yml`(SBOM 追踪);工作区根有 `releases/` 目录。
 
@@ -30,7 +30,7 @@
 
 ## 相关模块
 
-`imboy/VERSION`、`imboy/relx.config`、`imboy/scripts/deploy.sh`、`imboy/deploy/preflight.sh`、`imboy/lefthook.yml`、`imboy/CHANGELOG.md`、`imboyapp/scripts/build_play_aab.sh`、`.github/workflows/sbom-diff.yml`
+`imboy/VERSION`、`imboy/relx.config`、`imboy/scripts/imboy-deploy.sh`、`imboy/scripts/lib/blue_green_deploy.sh`（内部实现）、`imboy/deploy/preflight.sh`、`imboy/lefthook.yml`、`imboy/CHANGELOG.md`、`imboyapp/scripts/build_play_aab.sh`、`.github/workflows/sbom-diff.yml`
 
 ## 优先级
 

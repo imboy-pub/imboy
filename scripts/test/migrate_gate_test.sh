@@ -16,11 +16,18 @@ cleanup() {
 trap cleanup EXIT
 
 cp scripts/imboy-deploy.sh "$TMP_ROOT/imboy-deploy.sh"
+mkdir -p "$TMP_ROOT/lib"
+cat >"$TMP_ROOT/lib/blue_green_deploy.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >"$BLUE_GREEN_LOG"
+printf 'internal=%s\n' "${IMBOY_DEPLOY_INTERNAL:-}" >>"$BLUE_GREEN_LOG"
+MOCK
 
 write_env() {
   local nginx_conf="${1:-/etc/nginx/imboy.conf}"
   local admin_remote="${2:-/www/wwwroot/admin}"
   local server_user="${3:-tester}"
+  local prodadm_conf="${4:-/etc/nginx/imboy-admin.conf}"
   printf '%s\n' \
   'SERVER_HOST=example.invalid' \
   'SERVER_PORT=2222' \
@@ -36,8 +43,8 @@ write_env() {
   'DB_USER=postgres' \
   'DEPLOY_EXPAND_MIGRATIONS="00000064_msg_store_sender_did.up.sql 00000108_group_attachment_anchor.up.sql 00000109_c2g_timeline_generation_boundary.up.sql 00000111_c2g_request_recipient_boundary.up.sql 00000112_e2ee_group_session_attestation.up.sql"' \
   >"$TMP_ROOT/.env.deploy"
-  printf 'SERVER_USER=%q\nNGINX_CONF=%q\nADMIN_REMOTE_DIR=%q\n' \
-    "$server_user" "$nginx_conf" "$admin_remote" >>"$TMP_ROOT/.env.deploy"
+  printf 'SERVER_USER=%q\nNGINX_CONF=%q\nPRODADM_CONF=%q\nADMIN_REMOTE_DIR=%q\n' \
+    "$server_user" "$nginx_conf" "$prodadm_conf" "$admin_remote" >>"$TMP_ROOT/.env.deploy"
 }
 
 write_env
@@ -62,6 +69,8 @@ esac
 exit 0
 MOCK
 chmod +x "$MOCK_BIN/ssh"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$MOCK_BIN/rsync"
+chmod +x "$MOCK_BIN/rsync" "$TMP_ROOT/lib/blue_green_deploy.sh"
 
 PASS=0
 FAIL=0
@@ -77,18 +86,59 @@ bad() {
 }
 
 run_migrate() {
+  local gate_state="${1:-ok}"
+  local ctl_node="${2:-08171234@127.0.0.1}"
+  shift 2
   : >"$MOCK_LOG"
   : >"$MOCK_CALLS"
   env PATH="$MOCK_BIN:$PATH" \
     MOCK_LOG="$MOCK_LOG" \
     MOCK_CALLS="$MOCK_CALLS" \
-    MOCK_GATE_STATE="${1:-ok}" \
-    MOCK_CTL_NODE="${2:-08171234@127.0.0.1}" \
-    bash "$TMP_ROOT/imboy-deploy.sh" migrate \
+    MOCK_GATE_STATE="$gate_state" \
+    MOCK_CTL_NODE="$ctl_node" \
+    bash "$TMP_ROOT/imboy-deploy.sh" migrate "$@" \
     >"$TMP_ROOT/output.log" 2>&1
 }
 
 echo "== 独立 migrate Gate（全离线 mock） =="
+
+if bash -c '
+  set -u
+  source scripts/.env.deploy.example
+  read -r -a migrations <<< "$DEPLOY_EXPAND_MIGRATIONS"
+  [ "${#migrations[@]}" -eq 5 ]
+  [ "$DEPLOY_SALES_RELEASE" = true ]
+  [ "$DEPLOY_E2EE_MODE" = required ]
+'; then
+  ok ".env.deploy.example 可加载完整 expand 清单"
+else
+  bad ".env.deploy.example 无法加载完整 expand 清单" ""
+fi
+
+CUSTOM_ENV="$TMP_ROOT/customers/acme.env"
+mkdir -p "$(dirname "$CUSTOM_ENV")"
+cp "$TMP_ROOT/.env.deploy" "$CUSTOM_ENV"
+CUSTOM_ENV_REAL="$(cd "$(dirname "$CUSTOM_ENV")" && pwd -P)/$(basename "$CUSTOM_ENV")"
+if run_migrate ok '08171234@127.0.0.1' --env-file "$CUSTOM_ENV" \
+   && grep -q "配置源: $CUSTOM_ENV_REAL" "$TMP_ROOT/output.log"; then
+  ok "--env-file 使用指定客户配置"
+else
+  bad "--env-file 未使用指定客户配置" "$(<"$TMP_ROOT/output.log")"
+fi
+
+BLUE_GREEN_LOG="$TMP_ROOT/blue-green.log"
+: >"$MOCK_CALLS"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" \
+   bash "$TMP_ROOT/imboy-deploy.sh" api -v -l --env-file "$CUSTOM_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1 \
+   && grep -qE '^-v -l example\.invalid 1\.0\.0 [0-9]{8}$' "$BLUE_GREEN_LOG" \
+   && grep -qx 'internal=1' "$BLUE_GREEN_LOG" \
+   && grep -q 'source=local-rsync' "$TMP_ROOT/output.log"; then
+  ok "api -v -l 将本地上传模式透传给私有蓝绿实现"
+else
+  bad "api -v -l 未正确透传" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
 
 if run_migrate ok '08171234@127.0.0.1' \
    && grep -q "CTL_NODE='08171234@127.0.0.1'" "$MOCK_LOG"; then
@@ -134,6 +184,19 @@ elif grep -q 'SERVER_USER 非法' "$TMP_ROOT/output.log" \
   ok "恶意 SERVER_USER 未触发 SSH"
 else
   bad "恶意 SERVER_USER 未命中预期 allowlist" "$(<"$TMP_ROOT/output.log")"
+fi
+
+PRODADM_PWN="$TMP_ROOT/prodadm_pwn"
+write_env /etc/nginx/imboy.conf /www/wwwroot/admin tester "/tmp/x';touch $PRODADM_PWN;#"
+: >"$MOCK_CALLS"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   bash "$TMP_ROOT/imboy-deploy.sh" rollback >"$TMP_ROOT/output.log" 2>&1; then
+  bad "恶意 PRODADM_CONF 应在 SSH 前被拒绝" ""
+elif grep -q 'PRODADM_CONF 必须是' "$TMP_ROOT/output.log" \
+     && [ ! -s "$MOCK_CALLS" ] && [ ! -e "$PRODADM_PWN" ]; then
+  ok "恶意 PRODADM_CONF 未触发 SSH"
+else
+  bad "恶意 PRODADM_CONF 未命中预期 allowlist" "$(<"$TMP_ROOT/output.log")"
 fi
 
 write_env

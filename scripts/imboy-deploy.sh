@@ -3,24 +3,25 @@
 # imboy 统一部署入口 / Unified deploy entry point
 #
 # 用法 / Usage:
-#   bash scripts/imboy-deploy.sh <component> [options]
+#   bash scripts/imboy-deploy.sh <component> [-v] [-l] [--env-file PATH]
 #
 # Component:
 #   all       全量部署：api（内含 migrate）→ admin
-#   api       部署 Erlang 后端（HTTP 无停机，WebSocket 短暂重连）
+#   api       部署 Erlang 后端（首次边界迁移可能进入维护窗口）
 #   admin     仅部署 React 管理后台（本地构建 + 上传）
 #   migrate   仅在另一蓝绿节点已停止后执行数据库迁移
 #   rollback  回滚：将 Nginx 切回旧节点端口
 #
 # 前置条件 / Prerequisites:
 #   1. cp scripts/.env.deploy.example scripts/.env.deploy
-#   2. 编辑 scripts/.env.deploy 填写服务器地址和各项 key
+#   2. 编辑默认配置，或通过 --env-file 指定某套客户配置
 #   3. 确保本机已配置 SSH 免密登录（ssh-copy-id）
 #
 # 示例 / Examples:
 #
 #   bash scripts/imboy-deploy.sh all
-#   bash scripts/imboy-deploy.sh api
+#   bash scripts/imboy-deploy.sh api -v -l
+#   bash scripts/imboy-deploy.sh api -v -l --env-file ~/.config/imboy/acme.env
 #   bash scripts/imboy-deploy.sh admin
 #   bash scripts/imboy-deploy.sh migrate
 #   bash scripts/imboy-deploy.sh rollback
@@ -29,27 +30,58 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env.deploy"
+COMPONENT="${1:-all}"
+
+usage() {
+  echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|migrate|rollback> [-v|--verbose] [-l|--local] [--env-file PATH]"
+}
+
+case "$COMPONENT" in
+  all|api|admin|migrate|rollback) ;;
+  *) usage; exit 1 ;;
+esac
+
+shift || true
+DEPLOY_ARGS=()
+LOCAL_MODE=0
+VERBOSE=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -v|--verbose) DEPLOY_ARGS+=(-v); VERBOSE=1; shift ;;
+    -l|--local) DEPLOY_ARGS+=(-l); LOCAL_MODE=1; shift ;;
+    --env-file)
+      [[ $# -ge 2 && -n "$2" ]] || { echo "--env-file 缺少路径" >&2; usage; exit 1; }
+      ENV_FILE="$2"; shift 2 ;;
+    --env-file=*)
+      ENV_FILE="${1#*=}"
+      [[ -n "$ENV_FILE" ]] || { echo "--env-file 缺少路径" >&2; usage; exit 1; }
+      shift ;;
+    *) usage; exit 1 ;;
+  esac
+done
+
+if [[ "$ENV_FILE" != /* ]]; then
+  ENV_FILE="$PWD/$ENV_FILE"
+fi
 
 # ---------- 加载配置 / Load config ----------
-if [[ ! -f "$ENV_FILE" ]]; then
+if [[ ! -f "$ENV_FILE" || ! -r "$ENV_FILE" ]]; then
   echo "❌ 未找到 $ENV_FILE"
-  echo "   请先执行: cp scripts/.env.deploy.example scripts/.env.deploy"
-  echo "   并填写服务器 IP、Cookie 等配置"
+  echo "   请创建可读配置文件，或使用 --env-file PATH 指定"
   exit 1
 fi
+ENV_FILE="$(cd "$(dirname "$ENV_FILE")" && pwd -P)/$(basename "$ENV_FILE")"
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 
 # 必填项校验
 for var in SERVER_HOST SERVER_PORT SERVER_USER \
            DEPLOY_VSN DEPLOY_PROJECT_DIR DEPLOY_BRANCH \
-           DEPLOY_BLUE_PORT DEPLOY_GREEN_PORT DEPLOY_COOKIE NGINX_CONF \
+           DEPLOY_BLUE_PORT DEPLOY_GREEN_PORT DEPLOY_COOKIE NGINX_CONF PRODADM_CONF \
            ADMIN_BUILD_DIR ADMIN_REMOTE_DIR \
            DB_CONTAINER DB_NAME DB_USER DEPLOY_EXPAND_MIGRATIONS; do
   [[ -n "${!var:-}" ]] || { echo "❌ .env.deploy 缺少必填项: $var"; exit 1; }
 done
-
-COMPONENT="${1:-all}"
 
 # ---------- 颜色日志 ----------
 log()  { echo -e "\033[36m[$(date '+%H:%M:%S')] $*\033[0m"; }
@@ -58,7 +90,7 @@ warn() { echo -e "\033[33m⚠ $*\033[0m"; }
 fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
 
 # 所有 component 都在建立 SSH 前共享同一组 allowlist，避免 admin/rollback
-# 绕过 deploy.sh 内的校验后把 .env.deploy 内容拼进远端 shell。
+# 绕过私有蓝绿实现内的校验后把配置内容拼进远端 shell。
 [[ "$SERVER_HOST" =~ ^[a-zA-Z0-9._-]+$ ]] \
   || fail "SERVER_HOST 非法，拒绝建立 SSH"
 [[ "$SERVER_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] \
@@ -79,16 +111,21 @@ fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
 [[ "$NGINX_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$NGINX_CONF" != "/" \
    && "$NGINX_CONF" != *..* ]] \
   || fail "NGINX_CONF 必须是无 .. 的安全绝对路径"
+[[ "$PRODADM_CONF" =~ ^/[a-zA-Z0-9._/-]+$ && "$PRODADM_CONF" != "/" \
+   && "$PRODADM_CONF" != *..* ]] \
+  || fail "PRODADM_CONF 必须是无 .. 的安全绝对路径"
 [[ "$ADMIN_REMOTE_DIR" =~ ^/www/wwwroot/[a-zA-Z0-9._/-]+$ \
    && "$ADMIN_REMOTE_DIR" != *..* ]] \
   || fail "ADMIN_REMOTE_DIR 必须位于 /www/wwwroot/<站点>"
 [[ "$DEPLOY_COOKIE" =~ ^[a-zA-Z0-9_-]+$ ]] \
   || fail "DEPLOY_COOKIE 非法，拒绝建立 SSH"
 
-case "$COMPONENT" in
-  all|api|admin|migrate|rollback) ;;
-  *) echo "用法: bash scripts/imboy-deploy.sh <all|api|admin|migrate|rollback>"; exit 1 ;;
-esac
+if [[ "$LOCAL_MODE" -eq 1 && "$COMPONENT" != api && "$COMPONENT" != all ]]; then
+  fail "-l/--local 仅支持 api 或 all"
+fi
+if [[ "$LOCAL_MODE" -eq 1 ]] && ! command -v rsync >/dev/null 2>&1; then
+  fail "本地源码上传需要 rsync"
+fi
 
 if [[ "$COMPONENT" == all || "$COMPONENT" == admin ]]; then
   ADMIN_BUILD_PATH="$(cd "$SCRIPT_DIR/$ADMIN_BUILD_DIR" 2>/dev/null && pwd -P)" \
@@ -115,20 +152,21 @@ ssh_exec() { ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1"; }
 ssh_cap()  { ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" | tr -d '\r'; }
 
 # =============================================================================
-# deploy_api — 蓝绿部署 Erlang 后端（HTTP 连续可用，WebSocket 短暂重连）
+# deploy_api — 蓝绿部署 Erlang 后端（首次边界迁移可能进入维护窗口）
 # =============================================================================
 deploy_api() {
-  log "▶ 部署 Erlang 后端 (蓝绿) — 委托 deploy.sh ..."
+  log "▶ 部署 Erlang 后端 (蓝绿) ..."
 
-  # deploy.sh 负责完整的「expand → 启动 → 切流 → 停旧节点 → migrate」时序。
+  # 私有实现负责完整的「expand → 启动 → 切流 → 停旧节点 → migrate」时序。
   # 不在本层拆开 migrate，否则两个入口可能在旧 WebSocket 尚存活时误跑完整迁移。
   NODE_ID="$(date '+%m%d%H%M')"
 
-  # 将 .env.deploy 变量映射为 deploy.sh 的 IMBOY_DEPLOY_* 环境变量。
+  # 将客户配置映射为私有蓝绿实现的 IMBOY_DEPLOY_* 环境变量。
   IMBOY_DEPLOY_PORT="$SERVER_PORT" \
   IMBOY_DEPLOY_USER="$SERVER_USER" \
   IMBOY_DEPLOY_PROJECT_DIR="$DEPLOY_PROJECT_DIR" \
   IMBOY_DEPLOY_NGINX_CONF="$NGINX_CONF" \
+  IMBOY_DEPLOY_PRODADM_CONF="$PRODADM_CONF" \
   IMBOY_DEPLOY_BLUE_PORT="$DEPLOY_BLUE_PORT" \
   IMBOY_DEPLOY_GREEN_PORT="$DEPLOY_GREEN_PORT" \
   IMBOY_DEPLOY_COOKIE="$DEPLOY_COOKIE" \
@@ -139,8 +177,9 @@ deploy_api() {
   IMBOY_DEPLOY_DB_USER="$DB_USER" \
   IMBOY_DEPLOY_EXPAND_MIGRATIONS="$DEPLOY_EXPAND_MIGRATIONS" \
   IMBOY_DEPLOY_SALES_RELEASE="${DEPLOY_SALES_RELEASE:-true}" \
-  IMBOY_DEPLOY_E2EE_MODE="${DEPLOY_E2EE_MODE:-disabled}" \
-    bash "$SCRIPT_DIR/deploy.sh" \
+  IMBOY_DEPLOY_E2EE_MODE="${DEPLOY_E2EE_MODE:-}" \
+  IMBOY_DEPLOY_INTERNAL=1 \
+    bash "$SCRIPT_DIR/lib/blue_green_deploy.sh" "${DEPLOY_ARGS[@]}" \
       "$SERVER_HOST" "$DEPLOY_VSN" "$NODE_ID"
 
   ok "▶ Erlang 后端部署完成"
@@ -260,21 +299,29 @@ deploy_migrate() {
 # rollback — 将 Nginx 切回旧节点端口
 # =============================================================================
 rollback() {
-  log "▶ 回滚委托 deploy.sh 的唯一 upstream + health 门禁 ..."
+  log "▶ 回滚使用统一的 upstream + health 门禁 ..."
   IMBOY_DEPLOY_PORT="$SERVER_PORT" \
   IMBOY_DEPLOY_USER="$SERVER_USER" \
   IMBOY_DEPLOY_PROJECT_DIR="$DEPLOY_PROJECT_DIR" \
   IMBOY_DEPLOY_NGINX_CONF="$NGINX_CONF" \
+  IMBOY_DEPLOY_PRODADM_CONF="$PRODADM_CONF" \
   IMBOY_DEPLOY_BLUE_PORT="$DEPLOY_BLUE_PORT" \
   IMBOY_DEPLOY_GREEN_PORT="$DEPLOY_GREEN_PORT" \
   IMBOY_DEPLOY_COOKIE="$DEPLOY_COOKIE" \
   IMBOY_DEPLOY_BRANCH="$DEPLOY_BRANCH" \
-    bash "$SCRIPT_DIR/deploy.sh" --rollback "$SERVER_HOST" "$DEPLOY_VSN" rollback
+  IMBOY_DEPLOY_INTERNAL=1 \
+    bash "$SCRIPT_DIR/lib/blue_green_deploy.sh" "${DEPLOY_ARGS[@]}" --rollback "$SERVER_HOST" "$DEPLOY_VSN" rollback
 }
 
 # =============================================================================
 # 主入口 / Main
 # =============================================================================
+read -r -a CONFIGURED_EXPAND_MIGRATIONS <<< "$DEPLOY_EXPAND_MIGRATIONS"
+log "配置源: $ENV_FILE"
+log "目标: $SERVER_USER@$SERVER_HOST:$SERVER_PORT | branch=$DEPLOY_BRANCH | version=$DEPLOY_VSN"
+log "运行: project=$DEPLOY_PROJECT_DIR | blue=$DEPLOY_BLUE_PORT | green=$DEPLOY_GREEN_PORT"
+log "数据库: container=$DB_CONTAINER | database=$DB_NAME | user=$DB_USER"
+log "策略: sales=${DEPLOY_SALES_RELEASE:-true} | e2ee=${DEPLOY_E2EE_MODE:-auto} | expand=${#CONFIGURED_EXPAND_MIGRATIONS[@]} | stop_old=${DEPLOY_STOP_OLD:-true} | source=$([[ "$LOCAL_MODE" -eq 1 ]] && echo local-rsync || echo remote-git) | verbose=$([[ "$VERBOSE" -eq 1 ]] && echo true || echo false)"
 _ssh_connect
 
 case "$COMPONENT" in

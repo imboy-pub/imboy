@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-# 墨芽 AI 回课：启用前置条件检查 / Teaching AI review readiness
+# 墨芽 AI 回课：启用前置条件检查 / Moya AI review readiness
 # ------------------------------------------------------------
 # 为什么需要它：
 #   AI 回课有 **三处使能条件只存在于模板、真实环境里没有**，且都不会编译失败、
@@ -19,9 +19,9 @@
 # 只读：只打印条目名与模块名；**不读取、不打印任何 api_key 值**。
 #
 # 用法 / Usage：
-#   bash scripts/check_teaching_ai_config.sh              # 扫全部存在的配置
-#   bash scripts/check_teaching_ai_config.sh <config>     # 只查指定文件
-#   bash scripts/check_teaching_ai_config.sh --self-test
+#   bash scripts/check_moya_ai_config.sh              # 扫全部存在的配置
+#   bash scripts/check_moya_ai_config.sh <config>     # 只查指定文件
+#   bash scripts/check_moya_ai_config.sh --self-test
 # 退出码：0=无硬失败；1=存在硬失败
 # ============================================================
 set -uo pipefail
@@ -121,11 +121,10 @@ tai_check_file() {
 
   if [ -z "$name" ]; then
     # 未启用态：报告「本文件若要启用，有没有可用的 vision provider」
-    local candidates="" blk n m
+    local candidates="" blk n
     while IFS= read -r blk; do
       [ -n "$blk" ] || continue
       n="$(tai_entry_name "$blk")"
-      m="$(tai_entry_module "$blk")"
       if [ -n "$n" ] && tai_entry_has_vision "$blk"; then
         candidates="${candidates} ${n}"
       fi
@@ -331,9 +330,9 @@ CFG
   if IMBOY_ROOT="$tmp" bash "$0" >/dev/null 2>&1; then tai_ok "self-test 反例3（未启用态无 vision 候选 = 告警不失败）放行"; else echo "  ✗ self-test 反例3 未启用态被误判失败"; rc=1; fi
 
   if [ "$rc" -eq 0 ]; then
-    echo "TEACHING_AI_CONFIG_SELF_TEST=PASS"
+    echo "MOYA_AI_CONFIG_SELF_TEST=PASS"
   else
-    echo "TEACHING_AI_CONFIG_SELF_TEST=FAIL"
+    echo "MOYA_AI_CONFIG_SELF_TEST=FAIL"
   fi
   return $rc
 }

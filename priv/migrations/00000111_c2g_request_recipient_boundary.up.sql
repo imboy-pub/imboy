@@ -141,6 +141,11 @@ COMMENT ON TABLE public.msg_c2g_recipient_snapshot
 COMMENT ON TABLE public.msg_c2g_request_ledger
     IS 'Durable C2G message-id and canonical request-identity ledger';
 
+-- 101 may have run before this runtime-created table existed. Repair that
+-- legitimate schema drift before any statement below references conv_seq.
+ALTER TABLE IF EXISTS public.msg_store_staging
+    ADD COLUMN IF NOT EXISTS conv_seq bigint;
+
 -- 首次启用 111 的发布门会先停止旧节点。旧代码只写 to_id_list，先从服务端已
 -- 接受的 C2G 信封恢复 GID，再按每群 staging id 顺序原子分配 conv_seq。
 DO $legacy_boundary$

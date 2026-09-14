@@ -278,7 +278,7 @@ docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml up 
 docker compose -f docker-compose.prod.yml -f docker-compose-sales-policy.yml logs -f imboy_backend
 ```
 
-零停机蓝绿升级用 `scripts/deploy.sh`（HTTP 持续可用；迁移时序与普通重启不同，
+蓝绿升级用 `bash scripts/imboy-deploy.sh api`（私有实现不接受直接调用；迁移时序与普通重启不同，
 详见 [scripts/README.md](../scripts/README.md)）。
 
 ### 备份

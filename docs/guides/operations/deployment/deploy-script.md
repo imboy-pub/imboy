@@ -15,7 +15,8 @@
 | **全量部署** | `bash scripts/imboy-deploy.sh all` | 编译→上传→重启→迁移→前端，一步到位 |
 | **增量部署** | `bash scripts/imboy-deploy.sh <组件>` | 按需只部署某个组件 |
 
-所有服务器地址、端口、Key 统一写在 `scripts/.env.deploy`，脚本读取后执行，**不在命令行传参**。
+服务器地址、端口和 Key 写在默认的 `scripts/.env.deploy`，也可用 `--env-file PATH`
+选择一套独立客户配置，敏感配置不在命令行逐项传递。
 
 ---
 
@@ -24,9 +25,8 @@
 ### 1. 生成配置文件
 
 ```bash
-cd imboy/scripts
-cp .env.deploy.example .env.deploy
-$EDITOR .env.deploy   # 填写真实值
+cp scripts/.env.deploy.example scripts/.env.deploy
+$EDITOR scripts/.env.deploy   # 填写真实值
 ```
 
 ### 2. 配置项说明
@@ -45,6 +45,7 @@ DEPLOY_BLUE_PORT=9800                              # 蓝节点端口（当前生
 DEPLOY_GREEN_PORT=9801                             # 绿节点端口（备用）
 DEPLOY_COOKIE=imboycookie                          # Erlang 节点 cookie
 NGINX_CONF=/path/to/nginx/pro.conf                 # nginx 配置文件路径
+PRODADM_CONF=/path/to/nginx/admin.conf             # Admin API vhost 配置路径
 DEPLOY_STOP_OLD=true                               # 部署后是否停旧节点
 
 # ── 管理后台 ─────────────────────────────────────────────
@@ -59,6 +60,17 @@ DB_PORT=5182                   # 宿主机映射端口
 ```
 
 > `.env.deploy` 已加入 `.gitignore`，不会提交到仓库。
+
+旧命令中的服务器地址和版本号分别迁移为 `SERVER_HOST`、`DEPLOY_VSN`；
+节点名由统一入口按时间自动生成，不再手工传入。旧 `-v` 对应统一入口末尾的 `-v`。
+
+多客户部署建议把配置放在仓库外并限制读取权限：
+
+```bash
+mkdir -p ~/.config/imboy/deploy
+cp scripts/.env.deploy.example ~/.config/imboy/deploy/customer-a.env
+chmod 600 ~/.config/imboy/deploy/customer-a.env
+```
 
 ### 3. 配置 SSH 免密登录
 
@@ -83,8 +95,11 @@ bash scripts/imboy-deploy.sh all
 ### 增量部署
 
 ```bash
-# 只部署 Erlang 后端（蓝绿零停机）
-bash scripts/imboy-deploy.sh api
+# 远端 Git 模式：服务器拉取配置中的 DEPLOY_BRANCH
+bash scripts/imboy-deploy.sh api -v
+
+# 本地源码模式：rsync over SSH 上传当前工作树后执行同一套蓝绿流程
+bash scripts/imboy-deploy.sh api -v -l --env-file ~/.config/imboy/deploy/customer-a.env
 
 # 只部署 React 管理后台（本地 bun build → rsync 上传）
 bash scripts/imboy-deploy.sh admin
@@ -224,7 +239,7 @@ bash scripts/imboy-deploy.sh rollback
 | 脚本 | 用途 |
 |------|------|
 | `scripts/imboy-deploy.sh` | **本文档**：统一入口，全量/增量部署 |
-| `scripts/deploy.sh` | 原蓝绿部署脚本（命令行传参版，保留兼容） |
+| `scripts/lib/blue_green_deploy.sh` | 蓝绿部署内部实现，仅由统一入口调用，不接受人工直接运行 |
 | `scripts/start_node.sh` | 手动启动单个节点 |
 | `scripts/stop_node.sh` | 手动停止节点 |
 | `scripts/backup_pg.sh` | 数据库备份 |

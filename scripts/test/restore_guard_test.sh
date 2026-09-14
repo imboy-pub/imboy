@@ -147,18 +147,36 @@ done
 echo
 echo "== C-51/C-52 部署脚本 =="
 
-DEPLOY="scripts/deploy.sh"
+DEPLOY="scripts/lib/blue_green_deploy.sh"
+UNIFIED_DEPLOY="scripts/imboy-deploy.sh"
 TEST_VSN="$(tr -d '[:space:]' < VERSION)"
+
+assert_rejects "私有蓝绿实现拒绝直接调用" "内部实现" \
+  bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
+assert_rejects "统一部署入口拒绝未知选项" "用法:" \
+  bash "$UNIFIED_DEPLOY" api --unknown
+
+if [ ! -e scripts/deploy.sh ]; then
+  ok "旧 scripts/deploy.sh 路径已删除"
+else
+  bad "旧 scripts/deploy.sh 路径仍存在" ""
+fi
+
+if grep -q -- "--exclude='.env.deploy\*'" "$DEPLOY"; then
+  ok "本地源码同步排除所有客户部署配置"
+else
+  bad "本地源码同步可能泄漏客户部署配置" ""
+fi
 
 # 所有用例必须在建立 SSH 前被参数 allowlist 拒绝，不触达第三方。
 assert_rejects "E2EE mode 单引号注入被拒绝" "IMBOY_DEPLOY_E2EE_MODE 非法" \
-  env "IMBOY_DEPLOY_E2EE_MODE=disabled';touch /tmp/pwn" \
+  env IMBOY_DEPLOY_INTERNAL=1 "IMBOY_DEPLOY_E2EE_MODE=disabled';touch /tmp/pwn" \
   bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
 assert_rejects "蓝端口命令注入被拒绝" "无效 BLUE_PORT" \
-  env "IMBOY_DEPLOY_BLUE_PORT=9800;touch /tmp/pwn" \
+  env IMBOY_DEPLOY_INTERNAL=1 "IMBOY_DEPLOY_BLUE_PORT=9800;touch /tmp/pwn" \
   bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
 assert_rejects "远端项目路径命令注入被拒绝" "unsafe PROJECT_DIR" \
-  env "IMBOY_DEPLOY_PROJECT_DIR=/tmp/x';touch /tmp/pwn;'" \
+  env IMBOY_DEPLOY_INTERNAL=1 "IMBOY_DEPLOY_PROJECT_DIR=/tmp/x';touch /tmp/pwn;'" \
   bash "$DEPLOY" example.invalid "$TEST_VSN" testnode
 
 # C-51：就绪判断必须探 /healthz 并校验版本，不能只看端口
@@ -192,6 +210,24 @@ else
   bad "旧节点 stop 缺少可执行的 20s 超时门禁" ""
 fi
 
+RECOVERY_BODY="$(sed -n '/^recover_old_node_before_cutover()/,/^}/p' "$DEPLOY")"
+if printf '%s' "$RECOVERY_BODY" | grep -q 'TRAFFIC_SWITCHED.*-eq 0' \
+   && printf '%s' "$RECOVERY_BODY" | grep -q "IMBOY_AUTO_MIGRATE=false" \
+   && printf '%s' "$RECOVERY_BODY" | grep -q 'wait_for_health_status'; then
+  ok "切流前停旧节点后的失败会自动恢复原节点并验证健康"
+else
+  bad "切流前失败可能遗留 Nginx 指向已停止节点" "$RECOVERY_BODY"
+fi
+
+if grep -q 'NGINX_COLOR="$(probe_nginx_color)"' "$DEPLOY" \
+   && grep -q 'find_release_for_port "$OLD_PORT"' "$DEPLOY" \
+   && grep -q '检测到现有部署停机，先恢复' "$DEPLOY" \
+   && grep -q 'FAIL_RECOVERY_ATTEMPTED=0' "$DEPLOY"; then
+  ok "双端口均停时依据 Nginx upstream 恢复既有服务，不误判为首次安装"
+else
+  bad "重复部署仍可能把既有停机状态误判为首次安装" ""
+fi
+
 # 本轮 E2EE 归档改动：00000064 是新代码切流前必需的 additive schema。
 # 它必须在切流前执行，但完整 migrate 仍保留在切流之后。
 EXPAND_DEF_LINE="$(grep -n '^run_expand_migrations()' "$DEPLOY" | head -1 | cut -d: -f1)"
@@ -223,12 +259,12 @@ DEPLOY_API_BODY="$(sed -n '/^deploy_api()/,/^}/p' "$UNIFIED_DEPLOY")"
 DEPLOY_API_EXEC="$(printf '%s' "$DEPLOY_API_BODY" | sed 's/[[:space:]]*#.*$//')"
 ALL_BODY="$(sed -n '/^  all)/,/^    ;;/p' "$UNIFIED_DEPLOY")"
 if ! printf '%s' "$DEPLOY_API_EXEC" | grep -qE \
-    '^[[:space:]]*bash .*deploy\.sh'; then
-  bad "统一 api 入口缺少 deploy.sh 执行命令" ""
+    '^[[:space:]]*bash .*lib/blue_green_deploy\.sh'; then
+  bad "统一 api 入口缺少私有蓝绿实现执行命令" ""
 elif printf '%s' "$DEPLOY_API_EXEC" | grep -q -- '--no-migrate'; then
-  bad "统一 api 入口仍绕过 deploy.sh 的迁移阶段" "--no-migrate"
+  bad "统一 api 入口仍绕过私有蓝绿实现的迁移阶段" "--no-migrate"
 else
-  ok "统一 api 入口由 deploy.sh 原子编排切流、迁移与停旧节点"
+  ok "统一 api 入口由私有实现原子编排切流、迁移与停旧节点"
 fi
 
 SKIP_GUARD="$(sed -n '/if \[ "$SKIP_MIGRATE" -eq 1 \].*STOP_OLD/,/^fi$/p' "$DEPLOY")"
@@ -263,6 +299,26 @@ else
   bad "00000064 sender_did 未纳入切流前 schema 门禁" ""
 fi
 
+BOUNDARY_PROBE="$(sed -n '/^probe_boundary_schema()/,/^}/p' "$DEPLOY")"
+if printf '%s' "$BOUNDARY_PROBE" | grep -q "conrelid=to_regclass('public.msg_c2g_recipient_snapshot')" \
+   && printf '%s' "$BOUNDARY_PROBE" | grep -q "conrelid=to_regclass('public.msg_c2g_request_ledger')" \
+   && ! printf '%s' "$BOUNDARY_PROBE" | grep -q -- '::regclass'; then
+  ok "boundary schema 探测允许目标表尚不存在"
+else
+  bad "boundary schema 探测仍会在目标表不存在时抛错" "$BOUNDARY_PROBE"
+fi
+
+STRUCTURE_LINE="$(printf '%s\n' "$BOUNDARY_PROBE" | grep -n "table_name='msg_store_staging'.*column_name='conv_seq'" | head -1 | cut -d: -f1)"
+BACKLOG_LINE="$(printf '%s\n' "$BOUNDARY_PROBE" | grep -n 'FROM public.msg_store_staging s' | head -1 | cut -d: -f1)"
+SHORT_CIRCUIT_LINE="$(printf '%s\n' "$BOUNDARY_PROBE" | grep -nF "0) printf '%s\\n' 0; return 0" | head -1 | cut -d: -f1)"
+if [ -n "$STRUCTURE_LINE" ] && [ -n "$SHORT_CIRCUIT_LINE" ] && [ -n "$BACKLOG_LINE" ] \
+   && [ "$STRUCTURE_LINE" -lt "$SHORT_CIRCUIT_LINE" ] \
+   && [ "$SHORT_CIRCUIT_LINE" -lt "$BACKLOG_LINE" ]; then
+  ok "boundary 先确认 staging.conv_seq 结构，未就绪时不执行 backlog SQL"
+else
+  bad "boundary backlog SQL 可能在 staging.conv_seq 创建前被解析" "$BOUNDARY_PROBE"
+fi
+
 # C-52：回滚入口存在，且切之前会探目标色健康
 if grep -q -- '--rollback)' "$DEPLOY"; then
   ok "存在 --rollback 子命令"
@@ -277,8 +333,8 @@ else
 fi
 
 ROLLBACK_BODY="$(sed -n '/^rollback()/,/^}/p' "$UNIFIED_DEPLOY")"
-if printf '%s' "$ROLLBACK_BODY" | grep -q 'deploy.sh.*--rollback'; then
-  ok "统一入口复用 deploy.sh 的 fail-closed 回滚实现"
+if printf '%s' "$ROLLBACK_BODY" | grep -q 'blue_green_deploy.sh.*--rollback'; then
+  ok "统一入口复用私有 fail-closed 回滚实现"
 else
   bad "统一入口仍维护独立且可能漂移的回滚逻辑" ""
 fi

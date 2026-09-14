@@ -512,7 +512,7 @@ fi
 cat <<EOF
 
    升级 / Upgrade   : 版本历史与每版升级说明见仓库 RELEASES.md；
-                      蓝绿升级用 scripts/deploy.sh（零停机切换）
+                      蓝绿升级用 bash scripts/imboy-deploy.sh api
 
    服务状态 : $COMPOSE_DISPLAY ps
    后端日志 : $COMPOSE_DISPLAY logs -f imboy_backend

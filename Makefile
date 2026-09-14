@@ -49,7 +49,7 @@ DEPS += erlang_pay
 # DEPS 会被 erlang.mk 写进 ebin/imboy.app 的 applications，随 release 发布
 # 并在节点启动时自动 start —— 生产机上任意 .erl 写入即升级为任意代码执行。
 # 全仓零代码引用 sync:*，因此只在本地开发挂载；
-# 生产打包走 scripts/deploy.sh 的 `IMBOYENV=pro make rel`，天然不含。
+# 生产打包走 scripts/imboy-deploy.sh 的 `IMBOYENV=pro make rel`，天然不含。
 ifeq ($(IMBOYENV),local)
 DEPS += sync
 endif
@@ -289,10 +289,10 @@ cron-check: ## 校验 ecron 定时作业配置（模板真源硬门 + 逐机漂�
 # 墨芽 AI 回课启用前置：指定的 teaching_ai_llm_provider 在本环境 llm_providers
 # 里是否存在、是否满足 vision、key 是否可用（四类可证明「开了也一定不工作」
 # 的配置为硬门）；视频开关配对与 ecron worker 为告警。
-# 不带参数扫全部存在的 config；也可 `bash scripts/check_teaching_ai_config.sh <config>`。
-.PHONY: teaching-ai-check
-teaching-ai-check: ## 校验 AI 回课启用前置（provider 名/vision/key 硬门 + 配对告警）
-	@bash scripts/check_teaching_ai_config.sh
+# 不带参数扫全部存在的 config；也可 `bash scripts/check_moya_ai_config.sh <config>`。
+.PHONY: moya-ai-check
+moya-ai-check: ## 校验墨芽 AI 回课启用前置（provider 名/vision/key 硬门 + 配对告警）
+	@bash scripts/check_moya_ai_config.sh
 
 # P3-C2 API 契约门禁（Golden Gates §2.3 C2 / §2.2 契约变更流程）
 # 真源：src/imboy_router.erl + priv/migrations CHECK 约束 + include/error_code.hrl

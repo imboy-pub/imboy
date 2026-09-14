@@ -12,9 +12,11 @@
 -export([upsert_draft_tx/3, find_draft/2, find_published/1, find_published_tx/2, publish_tx/3]).
 -export([validate_assets_tx/3, replace_assets_tx/4, assets/1, assets_tx/2]).
 -export([review_for_asset_path/1, review_for_asset_path_tx/2]).
--export([ai_draft/1]).
+-export([ai_draft/1, ai_draft_tx/2]).
 -export([
     claim_next_queued_tx/1,
+    claim_queued_by_id_tx/2,
+    requeue_succeeded_tx/2,
     ai_finish_success_tx/4,
     ai_finish_failed_tx/3,
     ai_requeue_tx/3
@@ -224,20 +226,31 @@ review_for_asset_path_tx(Conn, Path) ->
 %% @doc AI 草稿（老师视角）：有效草稿行 + result_json
 -spec ai_draft(integer()) -> {ok, map() | undefined} | {error, term()}.
 ai_draft(SubmissionId) ->
-    Sql =
-        <<
-            "SELECT id, submission_id, status, model_profile, prompt_version, rubric_version, "
-            "input_digest, result_json, error_code, created_at, completed_at "
-            "FROM ",
-            (tb(calligraphy_review_draft))/binary,
-            " WHERE submission_id = $1 AND status IN ('queued','running','succeeded','failed') "
-            " ORDER BY created_at DESC LIMIT 1"
-        >>,
-    case elib_pg:query(Sql, [SubmissionId]) of
+    case elib_pg:query(ai_draft_sql(), [SubmissionId]) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {ok, undefined};
         {error, Reason} -> {error, Reason}
     end.
+
+%% @doc 同 ai_draft/1，事务内版本（手动触发 AI 整理时先读后写，须与写同事务）
+-spec ai_draft_tx(any(), integer()) -> {ok, map() | undefined} | {error, term()}.
+ai_draft_tx(Conn, SubmissionId) ->
+    case elib_pg:query(Conn, ai_draft_sql(), [SubmissionId]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
+    end.
+
+-spec ai_draft_sql() -> binary().
+ai_draft_sql() ->
+    <<
+        "SELECT id, submission_id, status, model_profile, prompt_version, rubric_version, "
+        "input_digest, result_json, error_code, created_at, completed_at "
+        "FROM ",
+        (tb(calligraphy_review_draft))/binary,
+        " WHERE submission_id = $1 AND status IN ('queued','running','succeeded','failed') "
+        " ORDER BY created_at DESC LIMIT 1"
+    >>.
 
 %% ------------------------------------------------------------------
 %% AI Worker 队列操作（Step 11）：
@@ -259,6 +272,43 @@ claim_next_queued_tx(Conn) ->
     case elib_pg:query(Conn, Sql, []) of
         {ok, [Row | _]} -> {ok, Row};
         {ok, []} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 抢占指定 queued 草稿（老师手动触发的定点执行）。
+%% 与 claim_next_queued_tx/1 的差别：只认这一行（不抢全局最老的），
+%% 手动请求绝不去处理别人的草稿；0 行更新 = 该行已被 worker 抢走或已非 queued。
+-spec claim_queued_by_id_tx(any(), integer()) -> {ok, map() | undefined} | {error, term()}.
+claim_queued_by_id_tx(Conn, DraftId) ->
+    Sql =
+        <<"UPDATE ", (tb(calligraphy_review_draft))/binary,
+            " SET status = 'running' "
+            " WHERE id = $1 AND status = 'queued' "
+            " RETURNING id, submission_id, ai_task_id">>,
+    case elib_pg:query(Conn, Sql, [DraftId]) of
+        {ok, [Row | _]} -> {ok, Row};
+        {ok, []} -> {ok, undefined};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 重跑：把已成功草稿原地重置回 queued（老师点「重新整理」）。
+%% 为何不新插入一行：uk_crd_active_per_submission 把 succeeded 也算作"有效草稿"，
+%% 新插入会被 ON CONFLICT DO NOTHING 静默吞掉（老师点了没反应）。
+%% 该行从此承载**新一轮**整理任务：result_json/error_code/completed_at/ai_task_id
+%% 一并清空（ai_task_id = 重试计数归零），created_at 也重置为本轮入队时刻——
+%% 读侧（moya_review_repo:ai_draft/1 与队列 LATERAL）都按 created_at DESC 取
+%% 「最新有效草稿」，不重置会让已有的旧 failed 行可能排在前面（界面显示错态）。
+%% ck_crd_completed 只约束 succeeded/failed，回落 queued 时 completed_at 必须为空。
+-spec requeue_succeeded_tx(any(), integer()) -> ok | {error, term()}.
+requeue_succeeded_tx(Conn, DraftId) ->
+    Sql =
+        <<"UPDATE ", (tb(calligraphy_review_draft))/binary,
+            " SET status = 'queued', result_json = NULL, error_code = NULL, "
+            " ai_task_id = NULL, completed_at = NULL, created_at = now() "
+            " WHERE id = $1 AND status = 'succeeded'">>,
+    case elib_pg:execute(Conn, Sql, [DraftId]) of
+        {ok, 1} -> ok;
+        {ok, _} -> {error, not_succeeded};
         {error, Reason} -> {error, Reason}
     end.
 
