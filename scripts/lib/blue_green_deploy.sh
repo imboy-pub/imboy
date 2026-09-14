@@ -47,6 +47,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 #   IMBOY_DEPLOY_EXPAND_MIGRATIONS 切流前执行的可加性迁移文件（空格分隔）
 #   IMBOY_DEPLOY_SALES_RELEASE 销售版门禁（default: true）
 #   IMBOY_DEPLOY_E2EE_MODE     节点 E2EE 模式（销售版 default: required；其他: disabled）
+#   IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE 本地 32 字节 Ed25519 公钥
 # =============================================================================
 
 # ---------- 静默控制 / Verbosity control ----------
@@ -108,6 +109,7 @@ DB_CONTAINER="${IMBOY_DEPLOY_DB_CONTAINER:-}"
 DB_NAME="${IMBOY_DEPLOY_DB_NAME:-}"
 DB_USER="${IMBOY_DEPLOY_DB_USER:-}"
 EXPAND_MIGRATIONS="${IMBOY_DEPLOY_EXPAND_MIGRATIONS:-}"
+PLUGIN_TRUSTED_PUBLIC_KEY_FILE="${IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}"
 BOUNDARY_CUTOVER_MARKER="$PROJECT_DIR/.deploy-c2g-boundary-v109-ready"
 E2EE_ATTESTATION_SCHEMA_PREDICATE="to_regclass('public.e2ee_group_session_attestation') IS NOT NULL AND to_regclass('public.e2ee_group_session_member') IS NOT NULL AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:sender_uid:int8','4:sender_did:varchar','5:room_key_msg_id:varchar','6:recipient_uids:_int8','7:start_seq:int8','8:end_seq:int8','9:created_at:timestamptz','10:updated_at:timestamptz')) = 10 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_attestation' AND (column_name, character_maximum_length) IN (('session_id',256),('sender_did',128),('room_key_msg_id',40))) = 3 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND is_nullable='NO' AND (ordinal_position || ':' || column_name || ':' || udt_name) IN ('1:group_id:int8','2:session_id:varchar','3:user_id:int8','4:generation_no:int4','5:generation_start_seq:int8')) = 5 AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='e2ee_group_session_member' AND column_name='session_id' AND character_maximum_length=256) AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_attestation') AND convalidated AND ((conname='e2ee_group_session_attestation_pkey' AND contype='p' AND conkey=ARRAY[1,2]::smallint[]) OR (conname='e2ee_group_session_attestation_session_id_key' AND contype='u' AND conkey=ARRAY[2]::smallint[]) OR (conname='e2ee_group_session_attestation_room_key_msg_id_key' AND contype='u' AND conkey=ARRAY[5]::smallint[]) OR (conname='chk_e2ee_group_session_ids' AND contype='c' AND conkey=ARRAY[1,3,2,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND sender_uid > 0 AND octet_length(session_id::text) >= 1 AND octet_length(session_id::text) <= 256 AND octet_length(sender_did::text) >= 1 AND octet_length(sender_did::text) <= 128 AND octet_length(room_key_msg_id::text) >= 1 AND octet_length(room_key_msg_id::text) <= 40)') OR (conname='chk_e2ee_group_session_range' AND contype='c' AND conkey=ARRAY[7,8]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (start_seq >= 1 AND end_seq >= start_seq)') OR (conname='chk_e2ee_group_session_recipients' AND contype='c' AND conkey=ARRAY[6]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (array_ndims(recipient_uids) = 1 AND cardinality(recipient_uids) >= 1 AND cardinality(recipient_uids) <= 5000 AND array_position(recipient_uids, NULL::bigint) IS NULL AND (0 < ALL (recipient_uids)))'))) = 6 AND (SELECT count(*) FROM pg_constraint WHERE conrelid=to_regclass('public.e2ee_group_session_member') AND convalidated AND ((conname='e2ee_group_session_member_pkey' AND contype='p' AND conkey=ARRAY[1,2,3]::smallint[]) OR (conname='fk_e2ee_group_session_member_session' AND contype='f' AND conkey=ARRAY[1,2]::smallint[] AND confrelid=to_regclass('public.e2ee_group_session_attestation') AND confkey=ARRAY[1,2]::smallint[] AND confupdtype='a' AND confdeltype='a' AND confmatchtype='s') OR (conname='chk_e2ee_group_session_member_values' AND contype='c' AND conkey=ARRAY[1,3,4,5]::smallint[] AND pg_get_constraintdef(oid,true)='CHECK (group_id > 0 AND user_id > 0 AND generation_no > 0 AND generation_start_seq >= 1)'))) = 3 AND EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname='public' AND tablename='e2ee_group_session_member' AND indexname='idx_e2ee_group_session_member_grant' AND indexdef LIKE '%(group_id, user_id, generation_no, session_id)%')"
 SALES_RELEASE="${IMBOY_DEPLOY_SALES_RELEASE:-true}"
@@ -129,6 +131,7 @@ BOUNDARY_SCHEMA_REQUIRED=0
 
 RELEASE_DIR="/usr/local/imboy-${VSN}-${NODE_NAME}"
 RELEASE_TARBALL="${PROJECT_DIR}/_rel/imboy/imboy-${VSN}.tar.gz"
+PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE="$RELEASE_DIR/etc/plugin_trusted_ed25519.pub"
 
 # 校验参数格式，防止注入 vm.args 或 rm -rf 路径
 # Validate inputs to prevent vm.args injection and path anomalies
@@ -160,6 +163,13 @@ case "$E2EE_MODE" in disabled|optional|required|compliance) ;; *) echo "IMBOY_DE
 if [ "$SALES_RELEASE" = "true" ] && [ "$E2EE_MODE" != "required" ] && [ "$E2EE_MODE" != "compliance" ]; then
   echo "销售版 IMBOY_DEPLOY_E2EE_MODE 必须为 required/compliance" >&2
   exit 1
+fi
+if [ "$ROLLBACK" -eq 0 ] && [ "$SALES_RELEASE" = "true" ]; then
+  [[ "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" == /* && -f "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" \
+     && -r "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" ]] \
+    || { echo "销售版缺少可读的本地 Ed25519 插件签名公钥" >&2; exit 1; }
+  [[ "$(wc -c <"$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" | tr -d '[:space:]')" == 32 ]] \
+    || { echo "插件签名可信公钥必须是 32 字节 raw public key" >&2; exit 1; }
 fi
 [[ "$RELEASE_DIR" == /usr/local/imboy-?* ]] || { echo "RELEASE_DIR 路径异常 / anomalous RELEASE_DIR: $RELEASE_DIR" >&2; exit 1; }
 if [[ -n "$DB_CONTAINER" && ! "$DB_CONTAINER" =~ ^[a-zA-Z0-9_.-]+$ ]]; then
@@ -232,6 +242,12 @@ ssh_exec() {
 # Capture remote stdout — bypass ssh_exec to avoid silent-mode discard
 ssh_capture() {
   ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" "$1" | tr -d '\r'
+}
+
+ssh_upload() {
+  local source_file=$1 target_file=$2
+  ssh "${SSH_OPTS[@]}" "$SERVER_USER@$SERVER_HOST" \
+    "umask 022; cat > '$target_file'" <"$source_file"
 }
 
 # 轮询端口，最多等 40s（每 2s 一次，共 20 次）
@@ -363,6 +379,10 @@ recover_old_node_before_cutover() {
       command -v timeout >/dev/null 2>&1 && timeout 10s '$RELEASE_DIR/bin/imboy' stop >/dev/null 2>&1 || true
     fi
     cd '$OLD_DIR'
+    if [ -f '$OLD_DIR/etc/plugin_trusted_ed25519.pub' ] \
+       && find '$OLD_DIR/etc/plugin_trusted_ed25519.pub' -prune -size 32c | grep -q .; then
+      export IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$OLD_DIR/etc/plugin_trusted_ed25519.pub'
+    fi
     IMBOYENV=pro IMBOY_AUTO_MIGRATE=false HTTP_PORT='$OLD_PORT' IMBOY_HTTP_PORT='$OLD_PORT' ./bin/imboy daemon || true
   " || true
   if wait_for_health_status "$OLD_PORT"; then
@@ -645,15 +665,32 @@ ok "当前: $CURRENT_COLOR → 目标: $TARGET_COLOR (port=$APP_PORT) / Current:
 # 2️⃣ 安全确认目标目录 / Confirm target dir is safe to overwrite
 # =============================================================================
 if ssh_exec "[ -d '$RELEASE_DIR' ]"; then
-  echo "⚠️  远端目录已存在: $RELEASE_DIR / Remote dir exists: $RELEASE_DIR"
-  if [[ ! -t 0 ]]; then
-    fail "非交互环境，请先手动删除目标目录 / Non-interactive: delete $RELEASE_DIR manually first"
+  ACTIVE_DIR=""
+  if [ "$CURRENT_COLOR" != "none" ]; then
+    ACTIVE_DIR="$(find_release_for_port "$OLD_PORT")" \
+      || fail "目标目录已存在，但无法确认当前活动 release，拒绝覆盖"
   fi
-  if ! read -r -t 30 -p "删除并继续部署？(y/N) / Delete and continue? (y/N): " answer; then
-    fail "确认超时（30s），已中止 / Confirmation timed out after 30s"
+  if [ "$ACTIVE_DIR" = "$RELEASE_DIR" ]; then
+    wait_for_health "$OLD_PORT" "$VSN" \
+      || fail "同版本 release 正在活动端口运行但健康或版本不符，拒绝覆盖"
+    ok "目标 release 已在活动端口健康运行，重复部署直接成功 (port=$OLD_PORT, vsn=$VSN)"
+    exit 0
   fi
-  [[ "${answer:-N}" =~ ^[yY]$ ]] || fail "用户取消 / Cancelled"
-  ssh_exec "rm -rf '$RELEASE_DIR'"
+
+  log "清理同版本上次失败的非活动 release: $RELEASE_DIR"
+  ssh_exec "
+    if [ -x '$RELEASE_DIR/bin/imboy' ]; then
+      command -v timeout >/dev/null 2>&1 || exit 2
+      timeout 10s '$RELEASE_DIR/bin/imboy' stop >/dev/null 2>&1 || true
+    fi
+  "
+  ssh_exec "
+    command -v pgrep >/dev/null 2>&1 || exit 2
+    ! { pgrep -a beam.smp 2>/dev/null || true; pgrep -a heart 2>/dev/null || true; } \
+      | grep -F -- '$RELEASE_DIR'
+  " || fail "上次失败 release 仍有残留进程，拒绝删除其运行目录"
+  ssh_exec "rm -rf -- '$RELEASE_DIR'"
+  ok "失败残留已安全清理，可重复发布"
 fi
 
 # =============================================================================
@@ -765,6 +802,12 @@ ssh_exec "
 +zdbbl 81920
 VMARGS
 "
+if [ "$SALES_RELEASE" = "true" ]; then
+  ssh_exec "install -d -m 0755 '$RELEASE_DIR/etc'"
+  ssh_upload "$PLUGIN_TRUSTED_PUBLIC_KEY_FILE" "$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE"
+  ssh_exec "[ \"\$(wc -c < '$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE')\" -eq 32 ] && chmod 0644 '$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE'"
+  ok "插件签名可信公钥已安装到新 release"
+fi
 ok "release 已解包，vm.args 已写入 / Release extracted, vm.args written"
 
 # =============================================================================
@@ -783,7 +826,7 @@ fi
 # 5️⃣ 启动新节点 + 轮询确认就绪 / Start new node + poll for readiness
 # =============================================================================
 log "启动新节点 (port=$APP_PORT)... / Starting new node..."
-ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' ./bin/imboy daemon"
+ssh_exec "cd '$RELEASE_DIR' && IMBOYENV=pro IMBOY_AUTO_MIGRATE='$START_AUTO_MIGRATE' HTTP_PORT='$APP_PORT' IMBOY_HTTP_PORT='$APP_PORT' IMBOY_E2EE_MODE='$E2EE_MODE' IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES='$PLUGIN_TRUSTED_PUBLIC_KEY_REMOTE' ./bin/imboy daemon"
 
 # 轮询取代原来的固定 sleep 5，在慢服务器上不会误报失败
 # Polling replaces fixed sleep 5; won't false-fail on slow servers

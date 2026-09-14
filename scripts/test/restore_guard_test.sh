@@ -186,6 +186,21 @@ else
   bad "部署仍用端口探测判就绪（残留进程会被误判成功）" "$(grep -n 'wait_for_port "\$APP_PORT"' "$DEPLOY" || true)"
 fi
 
+if grep -q 'IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES=' "$DEPLOY" \
+   && grep -q '插件签名可信公钥必须是 32 字节' "$UNIFIED_DEPLOY"; then
+  ok "销售版可信插件公钥在 SSH 前校验并显式传给新节点"
+else
+  bad "销售版可能在停旧节点后才发现插件签名公钥缺失" ""
+fi
+
+if grep -q '重复部署直接成功' "$DEPLOY" \
+   && grep -q '清理同版本上次失败的非活动 release' "$DEPLOY" \
+   && ! grep -q '删除并继续部署' "$DEPLOY"; then
+  ok "相同 release 重复执行具备幂等成功和失败残留恢复路径"
+else
+  bad "重复发布仍依赖人工删除或缺少幂等路径" ""
+fi
+
 if grep -qE '^\s*BODY=.*healthz' "$DEPLOY"; then
   ok "wait_for_health 真的探 /healthz"
 else
@@ -213,8 +228,10 @@ fi
 RECOVERY_BODY="$(sed -n '/^recover_old_node_before_cutover()/,/^}/p' "$DEPLOY")"
 if printf '%s' "$RECOVERY_BODY" | grep -q 'TRAFFIC_SWITCHED.*-eq 0' \
    && printf '%s' "$RECOVERY_BODY" | grep -q "IMBOY_AUTO_MIGRATE=false" \
+   && printf '%s' "$RECOVERY_BODY" | grep -q 'plugin_trusted_ed25519.pub' \
+   && printf '%s' "$RECOVERY_BODY" | grep -q 'IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES=' \
    && printf '%s' "$RECOVERY_BODY" | grep -q 'wait_for_health_status'; then
-  ok "切流前停旧节点后的失败会自动恢复原节点并验证健康"
+  ok "切流前失败会带原 release 公钥恢复旧节点并验证健康"
 else
   bad "切流前失败可能遗留 Nginx 指向已停止节点" "$RECOVERY_BODY"
 fi

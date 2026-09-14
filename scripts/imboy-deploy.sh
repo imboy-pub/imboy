@@ -89,6 +89,63 @@ ok()   { echo -e "\033[32m✓ $*\033[0m"; }
 warn() { echo -e "\033[33m⚠ $*\033[0m"; }
 fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
 
+sync_local_release_version() {
+  local repo_root version_file version_tmp configured_relx relx_file relx_tmp tmp changed
+  local -a relx_files relx_tmps
+  repo_root="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+  version_file="$repo_root/VERSION"
+  version_tmp="$version_file.tmp.$$"
+  configured_relx="${DEPLOY_RELX_CONFIG:-relxpro.config}"
+
+  [[ "$configured_relx" =~ ^[a-zA-Z0-9._-]+$ ]] \
+    || fail "DEPLOY_RELX_CONFIG 必须是仓库根目录下的安全文件名"
+  relx_files=("$repo_root/relx.config")
+  if [[ "$configured_relx" != "relx.config" ]]; then
+    relx_files+=("$repo_root/$configured_relx")
+  fi
+
+  [[ -f "$version_file" ]] || fail "本地发布缺少 VERSION"
+  for relx_file in "${relx_files[@]}"; do
+    [[ -f "$relx_file" ]] || fail "本地发布缺少 ${relx_file#"$repo_root"/}"
+  done
+  printf '%s\n' "$DEPLOY_VSN" >"$version_tmp"
+
+  for relx_file in "${relx_files[@]}"; do
+    relx_tmp="$relx_file.tmp.$$"
+    relx_tmps+=("$relx_tmp")
+    if awk -v vsn="$DEPLOY_VSN" '
+      BEGIN { matches = 0 }
+      /^\{release, \{imboy, "[^"]+"\}, \[$/ {
+        print "{release, {imboy, \"" vsn "\"}, ["
+        matches++
+        next
+      }
+      { print }
+      END { if (matches != 1) exit 1 }
+    ' "$relx_file" >"$relx_tmp"; then
+      continue
+    fi
+    for tmp in "$version_tmp" "${relx_tmps[@]}"; do rm -f -- "$tmp"; done
+    fail "${relx_file#"$repo_root"/} 未找到唯一 imboy release 版本定义"
+  done
+
+  changed=0
+  cmp -s "$version_tmp" "$version_file" || changed=1
+  for relx_file in "${relx_files[@]}"; do
+    cmp -s "$relx_file.tmp.$$" "$relx_file" || changed=1
+  done
+  if [[ "$changed" -eq 0 ]]; then
+    for tmp in "$version_tmp" "${relx_tmps[@]}"; do rm -f -- "$tmp"; done
+    return 0
+  fi
+
+  mv -f -- "$version_tmp" "$version_file"
+  for relx_file in "${relx_files[@]}"; do
+    mv -f -- "$relx_file.tmp.$$" "$relx_file"
+  done
+  ok "本地 VERSION、relx.config 与 $configured_relx 已同步为 $DEPLOY_VSN"
+}
+
 # 所有 component 都在建立 SSH 前共享同一组 allowlist，避免 admin/rollback
 # 绕过私有蓝绿实现内的校验后把配置内容拼进远端 shell。
 [[ "$SERVER_HOST" =~ ^[a-zA-Z0-9._-]+$ ]] \
@@ -119,12 +176,33 @@ fail() { echo -e "\033[31m✗ $*\033[0m" >&2; exit 1; }
   || fail "ADMIN_REMOTE_DIR 必须位于 /www/wwwroot/<站点>"
 [[ "$DEPLOY_COOKIE" =~ ^[a-zA-Z0-9_-]+$ ]] \
   || fail "DEPLOY_COOKIE 非法，拒绝建立 SSH"
+[[ "$DEPLOY_VSN" =~ ^[a-zA-Z0-9._-]+$ ]] \
+  || fail "DEPLOY_VSN 非法，拒绝建立 SSH"
+if [[ -n "${DEPLOY_NODE_NAME:-}" && ! "$DEPLOY_NODE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  fail "DEPLOY_NODE_NAME 非法，拒绝建立 SSH"
+fi
+
+if [[ ("$COMPONENT" == api || "$COMPONENT" == all) && "${DEPLOY_SALES_RELEASE:-true}" == true ]]; then
+  [[ -n "${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}" ]] \
+    || fail "销售版缺少 DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE"
+  if [[ "$DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE" != /* ]]; then
+    DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE="$(dirname "$ENV_FILE")/$DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE"
+  fi
+  [[ -f "$DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE" && -r "$DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE" ]] \
+    || fail "插件签名可信公钥文件不存在或不可读"
+  DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE="$(cd "$(dirname "$DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE")" && pwd -P)/$(basename "$DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE")"
+  [[ "$(wc -c <"$DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE" | tr -d '[:space:]')" == 32 ]] \
+    || fail "插件签名可信公钥必须是 32 字节 Ed25519 raw public key"
+fi
 
 if [[ "$LOCAL_MODE" -eq 1 && "$COMPONENT" != api && "$COMPONENT" != all ]]; then
   fail "-l/--local 仅支持 api 或 all"
 fi
 if [[ "$LOCAL_MODE" -eq 1 ]] && ! command -v rsync >/dev/null 2>&1; then
   fail "本地源码上传需要 rsync"
+fi
+if [[ "$LOCAL_MODE" -eq 1 && ("$COMPONENT" == api || "$COMPONENT" == all) ]]; then
+  sync_local_release_version
 fi
 
 if [[ "$COMPONENT" == all || "$COMPONENT" == admin ]]; then
@@ -159,7 +237,7 @@ deploy_api() {
 
   # 私有实现负责完整的「expand → 启动 → 切流 → 停旧节点 → migrate」时序。
   # 不在本层拆开 migrate，否则两个入口可能在旧 WebSocket 尚存活时误跑完整迁移。
-  NODE_ID="$(date '+%m%d%H%M')"
+  NODE_ID="${DEPLOY_NODE_NAME:-$(date '+%m%d%H%M')}"
 
   # 将客户配置映射为私有蓝绿实现的 IMBOY_DEPLOY_* 环境变量。
   IMBOY_DEPLOY_PORT="$SERVER_PORT" \
@@ -178,6 +256,7 @@ deploy_api() {
   IMBOY_DEPLOY_EXPAND_MIGRATIONS="$DEPLOY_EXPAND_MIGRATIONS" \
   IMBOY_DEPLOY_SALES_RELEASE="${DEPLOY_SALES_RELEASE:-true}" \
   IMBOY_DEPLOY_E2EE_MODE="${DEPLOY_E2EE_MODE:-}" \
+  IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE="${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}" \
   IMBOY_DEPLOY_INTERNAL=1 \
     bash "$SCRIPT_DIR/lib/blue_green_deploy.sh" "${DEPLOY_ARGS[@]}" \
       "$SERVER_HOST" "$DEPLOY_VSN" "$NODE_ID"
@@ -318,7 +397,7 @@ rollback() {
 # =============================================================================
 read -r -a CONFIGURED_EXPAND_MIGRATIONS <<< "$DEPLOY_EXPAND_MIGRATIONS"
 log "配置源: $ENV_FILE"
-log "目标: $SERVER_USER@$SERVER_HOST:$SERVER_PORT | branch=$DEPLOY_BRANCH | version=$DEPLOY_VSN"
+log "目标: $SERVER_USER@$SERVER_HOST:$SERVER_PORT | branch=$DEPLOY_BRANCH | version=$DEPLOY_VSN | node=${DEPLOY_NODE_NAME:-auto}"
 log "运行: project=$DEPLOY_PROJECT_DIR | blue=$DEPLOY_BLUE_PORT | green=$DEPLOY_GREEN_PORT"
 log "数据库: container=$DB_CONTAINER | database=$DB_NAME | user=$DB_USER"
 log "策略: sales=${DEPLOY_SALES_RELEASE:-true} | e2ee=${DEPLOY_E2EE_MODE:-auto} | expand=${#CONFIGURED_EXPAND_MIGRATIONS[@]} | stop_old=${DEPLOY_STOP_OLD:-true} | source=$([[ "$LOCAL_MODE" -eq 1 ]] && echo local-rsync || echo remote-git) | verbose=$([[ "$VERBOSE" -eq 1 ]] && echo true || echo false)"

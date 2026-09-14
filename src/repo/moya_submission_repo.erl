@@ -22,7 +22,10 @@
 -export([assignments_for_learner/3, assignments_for_learner_tx/4]).
 -export([assignments_for_learner/4, assignments_for_learner_tx/5]).
 -export([assignment_detail/1, assignment_detail_tx/2]).
--export([queue/4, history/3]).
+-export([queue/4, queue_tx/5, history/3]).
+%% queue_conds/2 仅为回归测试导出（test/repo/moya_queue_filter_tests.erl）：
+%% 「占位符编号偏移」与「时间边界形态」两个坑都在这两个纯函数上，必须钉住。
+-export([queue_conds/2, queue_cond_sql/2]).
 -export([history_unread_count/2]).
 -export([
     submission_for_asset_path/1,
@@ -574,9 +577,33 @@ assignment_detail_run(Exec, AssignmentId) ->
 %% 支持按作业/提交人/提交时间范围收窄（老师「待点评」页快速检索）。
 -spec queue([integer()], map(), integer(), integer()) ->
     {ok, [map()], integer()} | {error, term()}.
-queue(GroupIds, Filters, Page, Size) when is_list(GroupIds), GroupIds =/= [] ->
+queue(GroupIds, Filters, Page, Size) ->
+    queue_run(fun elib_pg:query/2, GroupIds, Filters, Page, Size).
+
+%% @doc 只读队列经既有连接执行：集成测试直连 epgsql 连接，跑与生产**同一份 SQL
+%% 与同一套参数**（不是把 SQL 抄一份到测试里 —— 抄一份就测不到拼装错误）。
+-spec queue_tx(epgsql:connection(), [integer()], map(), integer(), integer()) ->
+    {ok, [map()], integer()} | {error, term()}.
+queue_tx(Conn, GroupIds, Filters, Page, Size) ->
+    queue_run(
+        fun(Sql, Params) -> elib_pg:query(Conn, Sql, Params) end,
+        GroupIds,
+        Filters,
+        Page,
+        Size
+    ).
+
+-spec queue_run(
+    fun((iodata(), [term()]) -> {ok, [map()]} | {error, term()}),
+    [integer()],
+    map(),
+    integer(),
+    integer()
+) -> {ok, [map()], integer()} | {error, term()}.
+queue_run(Exec, GroupIds, Filters, Page, Size) when is_list(GroupIds), GroupIds =/= [] ->
     Offset = (Page - 1) * Size,
-    {Conds, ExtraParams} = queue_conds(Filters),
+    %% 主查询先占 $1/$2/$3（GroupIds/Size/Offset），筛选条件自 $4 起
+    {Conds, ExtraParams} = queue_conds(Filters, 4),
     Params = [GroupIds, Size, Offset | ExtraParams],
     Sql =
         <<
@@ -611,19 +638,25 @@ queue(GroupIds, Filters, Page, Size) when is_list(GroupIds), GroupIds =/= [] ->
             " "
             "ORDER BY hs.submitted_at ASC LIMIT $2 OFFSET $3"
         >>,
-    case elib_pg:query(Sql, Params) of
+    case Exec(Sql, Params) of
         {ok, Rows} ->
-            {ok, Rows, count_queue(GroupIds, Conds, ExtraParams)};
+            {ok, Rows, count_queue_run(Exec, GroupIds, Filters)};
         {error, Reason} ->
             {error, Reason}
     end;
-queue([], _Filters, _Page, _Size) ->
+queue_run(_Exec, [], _Filters, _Page, _Size) ->
     {ok, [], 0}.
 
-%% 队列附加筛选 → {SQL 片段, 参数}（占位符自 $4 起连续编号）。
+%% 队列附加筛选 → {SQL 片段, 参数}。
+%%
+%% ⚠️ StartIndex 必须由调用方按「本查询里 $1..$n 已被占用到几」传入：
+%%   主查询 queue_run/5 的 Params = [GroupIds, Size, Offset | Extra]，故传 4；
+%%   计数查询 count_queue_run/3 只有 $1，故传 2。
+%%   写死 4 会让计数 SQL 引用不存在的 $4 → PG 报错 → count_queue 回落 0，
+%%   表现为「列表有数据、total 恒 0」（筛选一开就空列表）——已踩过一次。
 %% 键缺失 = 不过滤；值合法性由 logic/handler 层白名单把关，此处只拼装。
--spec queue_conds(map()) -> {binary(), [term()]}.
-queue_conds(Filters) ->
+-spec queue_conds(map(), pos_integer()) -> {binary(), [term()]}.
+queue_conds(Filters, StartIndex) ->
     {Conds, Params, Next} =
         lists:foldl(
             fun(Key, {Cs, Ps, N}) ->
@@ -634,7 +667,7 @@ queue_conds(Filters) ->
                         {[queue_cond_sql(Key, N) | Cs], Ps ++ [Value], N + 1}
                 end
             end,
-            {[], [], 4},
+            {[], [], StartIndex},
             ?QUEUE_FILTER_KEYS
         ),
     {AiCond, AiParams} = queue_ai_cond(maps:get(ai_status, Filters, undefined), Next),
@@ -643,6 +676,27 @@ queue_conds(Filters) ->
 %% task_id 过滤落在 gt.id（= group_task.id）而非 a.task_id：
 %% group_task_assignment.task_id 指向底层 IMBoy 群作业，/moya/tasks 下发的
 %% task_id 是 group_task.id —— 写成 a.task_id 会恒空（静默过滤失效）。
+%%
+%% ⚠️ 时间边界必须写成 `($N::text)::timestamptz`（两道转换），**不能**直接 `$N::timestamptz`。
+%%
+%% 原因（真库实测，非推断）：本仓 pg_conf 为 timestamptz 注册了自定义 codec
+%% epgsql_codec_rfc3339_bin，其 encode/3 用 elib_dt:rfc3339_to/2 解析入参；而该解析器
+%% **要求字符串带时区**，否则返回 {error, empty_input}，codec 随即退化为 <<0:64>>，
+%% 即 PG 纪元 2000-01-01。于是 `submitted_at >= 2000-01-01` 恒真 —— 时间条件静默失效、
+%% 返回全量数据，且**不报错、不 500**，最难查。
+%%
+%% 而 handler/logic 的 ?TIME_PARAM_RE 恰好放行三种「无时区」形态：
+%%     2026-09-15 / 2026-09-15T00:00 / 2026-09-15T00:00:00
+%% 实测（2026-09-15 为未来日期，正确结果应为 0 条）：
+%%     入参                        $N::timestamptz          ($N::text)::timestamptz
+%%     2026-09-15                  2000-01-01（失效）        2026-09-15 00:00:00+08
+%%     2026-09-15T00:00            2000-01-01（失效）        2026-09-15 00:00:00+08
+%%     2026-09-15T00:00:00         2000-01-01（失效）        2026-09-15 00:00:00+08
+%%     2026-09-15T00:00:00+08:00   2026-09-15 00:00:00+08    2026-09-15 00:00:00+08
+%%     2026-09-15T00:00:00Z        2026-09-15 08:00:00+08    2026-09-15 08:00:00+08
+%% 先钉成 text 让 epgsql 走文本编码、绕开 codec，再由 PG 自己解析（语义等同 psql 字面量），
+%% 五种形态全部正确。回归守卫：test/repo/moya_queue_filter_tests.erl。
+%% 注意：其它 `::timestamptz` 形参凡入参可能无时区者，同样有此静默坑。
 -spec queue_cond_sql(atom(), pos_integer()) -> iodata().
 queue_cond_sql(assignment_id, N) ->
     [" AND a.id = $", integer_to_binary(N)];
@@ -651,9 +705,9 @@ queue_cond_sql(task_id, N) ->
 queue_cond_sql(learner_id, N) ->
     [" AND l.id = $", integer_to_binary(N)];
 queue_cond_sql(submitted_from, N) ->
-    [" AND hs.submitted_at >= $", integer_to_binary(N), "::timestamptz"];
+    [" AND hs.submitted_at >= ($", integer_to_binary(N), "::text)::timestamptz"];
 queue_cond_sql(submitted_to, N) ->
-    [" AND hs.submitted_at < $", integer_to_binary(N), "::timestamptz"].
+    [" AND hs.submitted_at < ($", integer_to_binary(N), "::text)::timestamptz"].
 
 %% ai_status：none → 无有效草稿（无参数）；binary → 状态等值（带参数）
 -spec queue_ai_cond(term(), pos_integer()) -> {iodata(), [term()]}.
@@ -716,6 +770,13 @@ history(LearnerId, Page, Size) ->
 %% @doc 家长未读点评数：learner 的 published 回评中 published_at > Since 的条数。
 %% Since 为 RFC3339 binary（客户端原样回传上一响应的 published_at 值域）；
 %% undefined/<<>> 计全部已发布。join/状态口径与 history/3 一致。
+%%
+%% 注：此处 `$2::timestamptz` 用**裸 cast** 是安全的，不要照着 queue_cond_sql/2
+%% 改成 text 双转换 —— 因为 Since 不是客户端拼的，而是上一响应里 published_at
+%% 的原样回传，值域由本仓 codec 自己产出，**必带时区偏移**（如
+%% `2026-09-13T09:28:23.467976+08:00`），elib_dt:rfc3339_to/2 能正常解析。
+%% 与之相反，review-queue 的时间筛选是客户端自由输入（白名单还放行无时区形态），
+%% 才需要双转换。实测两种带偏移形态（含 6 位小数秒）在该 codec 下均正常。
 -spec history_unread_count(integer(), binary() | undefined) ->
     {ok, non_neg_integer()} | {error, term()}.
 history_unread_count(LearnerId, Since) ->
@@ -788,8 +849,19 @@ count_assignments_run(Exec, LearnerId, StatusOpt) ->
         _ -> 0
     end.
 
--spec count_queue([integer()], binary(), [term()]) -> integer().
-count_queue(GroupIds, Conds, ExtraParams) ->
+%% @doc 同筛选条件下的总数（分页必需）。
+%%
+%% ⚠️ 这里用 `queue_conds(Filters, 2)` 重新编号，而**不是**复用主查询的片段：
+%% 主查询的 $1/$2/$3 是 GroupIds/Size/Offset，本查询只有 $1。
+%% 曾经图省事把主查询的片段直接塞进来 → 计数 SQL 引用不存在的 $4 → PG 报错 →
+%% 回落 0，表现为「列表有数据、total 恒 0 → 一筛选就空」。两处必须各自编号。
+-spec count_queue_run(
+    fun((iodata(), [term()]) -> {ok, [map()]} | {error, term()}),
+    [integer()],
+    map()
+) -> integer().
+count_queue_run(Exec, GroupIds, Filters) ->
+    {Conds, CountParams} = queue_conds(Filters, 2),
     %% join 集合必须与 queue/4 主查询一致（含 learner —— learner_id 条件引用 l.id）
     Base =
         <<"SELECT count(*) AS c FROM ", (tb(homework_submission))/binary,
@@ -806,7 +878,7 @@ count_queue(GroupIds, Conds, ExtraParams) ->
             "  WHERE submission_id = hs.id AND status IN ('queued','running','succeeded','failed') "
             "  ORDER BY created_at DESC LIMIT 1) crd ON true "
             "WHERE hs.status = 'submitted' AND g.id = ANY($1)", Conds/binary>>,
-    case elib_pg:query(Base, [GroupIds | ExtraParams]) of
+    case Exec(Base, [GroupIds | CountParams]) of
         {ok, [#{<<"c">> := C} | _]} -> C;
         _ -> 0
     end.

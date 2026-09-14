@@ -9,7 +9,9 @@ TEST_VSN="$(tr -d '[:space:]' < VERSION)"
 TMP_ROOT="$(mktemp -d /tmp/imboy_deploy_sequence.XXXXXX)"
 MOCK_BIN="$TMP_ROOT/bin"
 MOCK_LOG="$TMP_ROOT/events.log"
+TEST_PLUGIN_KEY="$TMP_ROOT/plugin-signing-public.raw"
 mkdir -p "$MOCK_BIN"
+printf '0123456789abcdef0123456789abcdef' >"$TEST_PLUGIN_KEY"
 
 cleanup() {
   rm -rf -- "$TMP_ROOT"
@@ -35,11 +37,16 @@ case "$cmd" in
     exit 0
     ;;
   *"for DIR in "*"/usr/local/imboy-"*)
-    printf '%s\n' "/usr/local/imboy-0.9.0-oldnode"
+    printf '%s\n' "${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}"
     exit 0
     ;;
   *"[ -d '/usr/local/imboy-"*)
-    exit 1
+    [ "${MOCK_RELEASE_EXISTS:-0}" = 1 ]
+    exit
+    ;;
+  *"rm -rf -- '/usr/local/imboy-"*)
+    printf '%s\n' CLEAN_FAILED_RELEASE >>"$MOCK_LOG"
+    exit 0
     ;;
   *"OLD_PID="*)
     printf '%s\n' "/usr/local/imboy-0.9.0-oldnode"
@@ -102,6 +109,9 @@ case "$cmd" in
     case "$cmd" in
       *"IMBOY_E2EE_MODE='required'"*) printf '%s\n' E2EE_REQUIRED >>"$MOCK_LOG" ;;
       *"IMBOY_E2EE_MODE='disabled'"*) printf '%s\n' E2EE_DISABLED >>"$MOCK_LOG" ;;
+    esac
+    case "$cmd" in
+      *"IMBOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILES="*) printf '%s\n' PLUGIN_KEY_CONFIGURED >>"$MOCK_LOG" ;;
     esac
     exit 0
     ;;
@@ -196,6 +206,8 @@ run_deploy() {
     MOCK_BOUNDARY_DIRTY="${MOCK_BOUNDARY_DIRTY:-0}" \
     MOCK_ATTESTATION_SCHEMA_READY="${MOCK_ATTESTATION_SCHEMA_READY:-1}" \
     MOCK_MARKER_READY="${MOCK_MARKER_READY:-1}" \
+    MOCK_RELEASE_EXISTS="${MOCK_RELEASE_EXISTS:-0}" \
+    MOCK_ACTIVE_RELEASE_DIR="${MOCK_ACTIVE_RELEASE_DIR:-/usr/local/imboy-0.9.0-oldnode}" \
     IMBOY_DEPLOY_USER=tester \
     IMBOY_DEPLOY_PORT=2222 \
     IMBOY_DEPLOY_PROJECT_DIR=/srv/imboy \
@@ -211,6 +223,7 @@ run_deploy() {
     IMBOY_DEPLOY_DB_USER=postgres \
     IMBOY_DEPLOY_SALES_RELEASE="${TEST_SALES_RELEASE:-true}" \
     IMBOY_DEPLOY_E2EE_MODE="${TEST_E2EE_MODE:-}" \
+    IMBOY_DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE="$TEST_PLUGIN_KEY" \
     IMBOY_DEPLOY_INTERNAL=1 \
     bash "$DEPLOY" "$@" example.invalid "$TEST_VSN" testnode \
     >"$TMP_ROOT/output.log" 2>&1
@@ -276,8 +289,36 @@ if run_deploy "" blue; then
   else
     bad "销售版门禁通过后未以 required E2EE 启动" "$(tr '\n' ',' <"$MOCK_LOG")"
   fi
+  if grep -q -x PLUGIN_KEY_CONFIGURED "$MOCK_LOG"; then
+    ok "销售版新节点显式加载 release 内可信插件公钥"
+  else
+    bad "销售版新节点未加载可信插件公钥" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
 else
   bad "成功路径应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_RELEASE_EXISTS=1 \
+   MOCK_ACTIVE_RELEASE_DIR="/usr/local/imboy-${TEST_VSN}-testnode" \
+   run_deploy "" blue; then
+  if grep -q '重复部署直接成功' "$TMP_ROOT/output.log" \
+     && ! grep -qE '^(EXPAND|DAEMON|SWITCH|STOP|MIGRATE)$' "$MOCK_LOG"; then
+    ok "相同版本和节点已健康时重复部署幂等成功"
+  else
+    bad "幂等成功路径仍执行了发布副作用" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "相同健康 release 重复部署应退出 0" "$(<"$TMP_ROOT/output.log")"
+fi
+
+if MOCK_RELEASE_EXISTS=1 run_deploy "" blue; then
+  if grep -q -x CLEAN_FAILED_RELEASE "$MOCK_LOG"; then
+    ok "上次失败的非活动 release 自动清理后可重试"
+  else
+    bad "失败残留未自动清理" "$(tr '\n' ',' <"$MOCK_LOG")"
+  fi
+else
+  bad "失败残留重试路径应继续部署" "$(<"$TMP_ROOT/output.log")"
 fi
 
 if TEST_SALES_RELEASE=false run_deploy "" blue; then

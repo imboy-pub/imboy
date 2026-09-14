@@ -39,6 +39,9 @@ SERVER_USER=root             # SSH 用户
 
 # ── Erlang 后端 ───────────────────────────────────────────
 DEPLOY_VSN=1.0.0-rc.1                              # 版本号（与 VERSION 文件一致）
+DEPLOY_RELX_CONFIG=relxpro.config                  # 第二份生产 relx 配置
+DEPLOY_NODE_NAME=prod-release001                   # 节点名（不含 @host）
+DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE=~/.config/imboy/customer/plugin-signing-public.raw
 DEPLOY_PROJECT_DIR=/www/wwwroot/imboy-api          # 服务器上项目工作目录
 DEPLOY_BRANCH=main                                 # 部署分支
 DEPLOY_BLUE_PORT=9800                              # 蓝节点端口（当前生产）
@@ -62,7 +65,11 @@ DB_PORT=5182                   # 宿主机映射端口
 > `.env.deploy` 已加入 `.gitignore`，不会提交到仓库。
 
 旧命令中的服务器地址和版本号分别迁移为 `SERVER_HOST`、`DEPLOY_VSN`；
-节点名由统一入口按时间自动生成，不再手工传入。旧 `-v` 对应统一入口末尾的 `-v`。
+节点名优先读取 `DEPLOY_NODE_NAME`；留空时由统一入口按时间自动生成。旧 `-v` 对应统一入口末尾的 `-v`。
+`api/all --local` 会在 SSH 前把本地 `VERSION`、`relx.config` 和
+`DEPLOY_RELX_CONFIG`（默认 `relxpro.config`）同步为 `DEPLOY_VSN`，再上传同一版本源码。
+销售版还必须为每套客户配置独立的 `DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE`：
+它是 32 字节 Ed25519 raw 公钥，脚本只把公钥安装进新 release，私钥不得进入仓库或服务器。
 
 多客户部署建议把配置放在仓库外并限制读取权限：
 
@@ -164,7 +171,7 @@ ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST \
 |------|------|
 | SSH ControlMaster | 整个部署只握手一次，所有命令复用同一 TCP 连接 |
 | 远端编译 | `git pull` + `make rel` 在服务器上执行，避免本地环境差异 |
-| 自动节点命名 | 节点名格式 `MMDDHHmm@127.0.0.1`，每次部署唯一 |
+| 节点命名 | `DEPLOY_NODE_NAME@127.0.0.1`；留空时使用 `MMDDHHmm@127.0.0.1` |
 | 端口轮询 | 新节点就绪检测用 40s 轮询替代固定 sleep，慢服务器不误报 |
 | 输入校验 | `SERVER_HOST`、`VSN`、`COOKIE` 等均有正则校验，防注入 |
 | 错误中止 | `set -Eeuo pipefail`，任意步骤失败立即终止 |
