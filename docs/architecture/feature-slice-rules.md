@@ -272,11 +272,11 @@ Plugin ──→ Feature
 
 **判据（可静态检查，减少人工判断）**：
 
-> 扩展点模块必须声明 `-callback(...)`，并由所属单元在 `manifest.extension_points` 中显式登记。
+> 扩展点模块必须声明 `-callback`，并由所属单元在 `manifest.extension_points` 中显式登记。
 
 Erlang 中 `-callback` 仅用于**定义** behaviour（用 `-behaviour(X)` 是**使用** behaviour），二者语法上不会混淆。但 `-callback` 只能证明模块的语法形态，不能单独证明它是有意开放、承诺稳定的 Plugin 契约；Feature 扩展点还要由 manifest 登记表达。
 
-**Plugin 的 `-behaviour(X)` 目标必须含 `-callback(`；若 X 来自 Feature，还必须登记于该 Feature 的 `manifest.extension_points`。Plugin 不得调用 Feature 的其他模块。** 普通 Core 公共能力允许依赖，不要求都声明 callback；否则日志、配置、HTTP 等基础依赖也会被误杀。
+**Plugin 的 `-behaviour(X)` 目标必须含 `-callback`；若 X 来自 Feature，还必须登记于该 Feature 的 `manifest.extension_points`。Plugin 不得调用 Feature 的其他模块。** 普通 Core 公共能力允许依赖，不要求都声明 callback；否则日志、配置、HTTP 等基础依赖也会被误杀。
 
 - 这条把"behaviour vs 普通公共函数"变成**语法事实**；
 - Feature 新扩展点还**必须**在该单元的 manifest 中登记（`extension_points` 字段，见 `<bc>_feature:manifest/0`），使其成为**有意声明**的契约而非偶然的 behaviour（登记先作软告警，收敛后转硬门）。
@@ -308,7 +308,8 @@ Erlang 中 `-callback` 仅用于**定义** behaviour（用 `-behaviour(X)` 是**
 
 ## 3. 强制矩阵：规则 → 检查项 → 工具
 
-**未接线的规则视为不存在。** 全部落在 `make arch-check`（扩展 `scripts/check_module_boundaries.sh`，沿用其既有 perl+rg 抽取风格）：
+**未接线的规则视为不存在。** 全部落在 `make arch-check`，实现为 `scripts/check_feature_architecture.sh`。
+它与 `scripts/check_module_boundaries.sh` **职责分离、互补**：后者管旧四层（handler→logic→ds→repo）边界，本脚本管纵切九铁律；二者均由 `make security-gate` 串联执行。
 
 | 铁律 | 检查项 | 实现 |
 |---|---|---|
@@ -323,17 +324,17 @@ Erlang 中 `-callback` 仅用于**定义** behaviour（用 `-behaviour(X)` 是**
 | 8 | Feature → Product、Product A → Product B | 边检查增列 |
 | 8 | Feature 仅被单一 product 引用 | 软告警（非阻断） |
 | **9** | `src/plugins/**` 只引用扩展点与 Core，无 Feature/Product 内部模块 | 边检查（plugins 专属可见集） |
-| **9** | Plugin 的 `-behaviour(X)` 目标必须含 `-callback(`；Feature 扩展点还须登记于其 manifest | behaviour 语法断言 + manifest 登记 |
+| **9** | Plugin 对 Feature 单元的**任意引用目标**必须声明 `-callback`（不限于 `-behaviour(X)`，以拦截"偷偷调用内部函数"）；Feature 扩展点还须登记于该单元 manifest | 语法断言（硬）+ manifest 登记（**软告警**，收敛后转硬门） |
 | **9** | Core/Feature 不得静态引用具体 Plugin 实现模块 | 模块引用边检查 |
 | **9** | `src/plugins/**` 无业务符号（org/session/领域状态机） | 符号禁用 |
 | 反模式 | 纵切单元出现疑似通用能力命名（见 §4.5） | 软告警 + 人工归属审查 |
 
-**接线位置（三处，缺一即视为未接线）**：
-1. `Makefile` 新目标 `arch-check`，并入既有 `make security-gate`（`Makefile:249-255`）；
-2. `lefthook.yml`（已有 `check_migrations.sh` 挂钩）同款追加；
-3. `.github/workflows/backend-ci.yml`（已装 ripgrep）加同一步骤。
+**接线位置（三处，已于 2026-09-14 落地）**：
+1. `Makefile`：新增 `arch-check` 与 `arch-check-self-test`，并已并入 `make security-gate`；
+2. `lefthook.yml`：pre-commit 增 `arch-check`，`glob` 收窄为 `src/{features,products,plugins,lib}/**/*.erl` （全仓扫描，避免每次提交都付全代价）；
+3. CI：`e2ee-verify: security-gate` 传递执行，故 `.github/workflows/backend-ci.yml` 已覆盖（ripgrep 步骤已同步说明）。
 
-**验收金丝雀**：接线后故意注入四条违规 —— ①facade 调 repo；②`src/lib/` 出现 `moya_`；③Feature 静态引用具体 Plugin 实现模块；④Plugin 的 `-behaviour(X)` 指向不含 `-callback` 或未登记于 `manifest.extension_points` 的 Feature 模块 —— `make arch-check` **必须全部变红**；任一不变红即接线失败。
+**验收金丝雀（已落地，可复跑）**：`make arch-check-self-test` 在临时目录构造合规基线 + 逐条注入违规，**共 10 条**。4 条核心：①facade 绕层直达 repo；②core 出现外部产品名；③Feature 静态引用具体 Plugin 实现模块；④**假 Plugin**（引用未声明 `-callback` 的模块）。另含：application 直连 repo、domain 依赖 cowboy、repo SQL 缺 org 约束、白名单外层目录、domain 测试用 meck，以及一条**反向金丝雀**（真 Plugin 依赖 `-callback` 扩展点必须**不被**误判）。另有 **advisory 可触发性验证**：真 Plugin 未在该单元 manifest 登记 `extension_points` 时须出软告警且**不**阻断。任一项未按预期表现即门禁失效（脚本 exit 1）。
 
 ---
 
@@ -428,3 +429,4 @@ Erlang 中 `-callback` 仅用于**定义** behaviour（用 `-behaviour(X)` 是**
 | v1.3 | 2026-09-14 | **§0 重构为四层概念模型**（Core/Feature/Product/Plugin + 四问口诀 + Port≡扩展点 统一词汇 + Runtime/Plugin 辨析）；**新增铁律 9（Plugin = 可插拔实现机制）**；§1 增 `src/plugins/`；§3 增铁律 9 三项检查与三金丝雀；§4.4 第 2 步补"需替换实现时加 Plugin" |
 | v1.4 | 2026-09-14 | §0 改述为"**三个业务分类 + 一条横切扩展机制**"（Plugin 非第四种分类，两条栈正交）；铁律 9 补**「假 Plugin」边界**：Plugin 只可依赖**含 `-callback` 的模块**（扩展点），不得依赖 Feature 普通公共函数——判据由主观变**语法事实**；§3 增该检查行与第 4 条金丝雀 |
 | v1.5 | 2026-09-14 | 四层与 facade/manifest/sup 改为按需创建；租户与 CAS 规则改为条件约束；`-callback` 明确为必要非充分条件并结合 manifest 登记；澄清既有 Capability/Plugin 旧称 |
+| v1.6 | 2026-09-14 | **门禁实现落地并与文档对齐**：`scripts/check_feature_architecture.sh` 建成；`make arch-check` / `make arch-check-self-test`（10 条金丝雀全触发、基线零违规、真 Plugin 不误判）；本仓空态实跑 PASS；接线三处（Makefile+security-gate、lefthook pre-commit、CI 经 security-gate 传递）落地；铁律 9 的引用检查口径更正为"**任意引用边**"（不止 `-behaviour(X)`），manifest 登记明确为**软告警**；§3 引言更正为"独立脚本、与 check_module_boundaries.sh 职责分离"。 |

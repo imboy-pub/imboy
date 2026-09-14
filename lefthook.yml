@@ -17,6 +17,11 @@ pre-commit:
     migrations:
       glob: "priv/migrations/*.sql"
       run: bash scripts/check_migrations.sh
+    # 纵切架构门禁（ADR-0007 / feature-slice-rules 九铁律）：全仓扫描，故用 glob
+    # 收窄为仅在涉及纵切单元或核心层时才跑，避免每次提交都付全仓代价。
+    arch-check:
+      glob: "{src/features,src/products,src/plugins,src/lib}/**/*.erl"
+      run: bash scripts/check_feature_architecture.sh
 
 commit-msg:
   commands:

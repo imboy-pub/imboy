@@ -42,7 +42,7 @@
    - 提供稳定的平台能力 → Core（`src/lib/`）；判据是职责，不是当前消费者数量。
 4. 铁律 1-7 约束 Feature 与 Product 中实际存在的代码；铁律 8 规定二者的区分与**提升路径**（默认先落 Product，第二个真实消费方出现时才提升为 Feature，禁止提前抽象）；铁律 9 约束 Plugin 只能实现显式扩展点。
 5. 扩展点沿用既有 `behaviour + registry/config`。Plugin 的 `-behaviour(X)` 目标必须声明 `-callback`；若 X 属于 Feature，还必须登记于该 Feature 的 `manifest.extension_points`。前者立即硬门，后者在存量收敛期先告警、完成登记后转硬门；普通 Core 公共能力不受 callback 要求限制。
-6. 强制手段：`make arch-check`（扩展既有 `scripts/check_module_boundaries.sh` 为"模块→层索引 + 边检查"矩阵，并增产品名、Plugin 边界扫描和单一消费方软告警），接入 `make security-gate`、`lefthook`、CI 三处。**未接线的规则视为不存在**。
+6. 强制手段：`make arch-check`，实现为 `scripts/check_feature_architecture.sh`（模块→(单元,层) 索引 + 引用边矩阵 + 产品名扫描 + Plugin 边界扫描 + **假 Plugin 检测** + 单一消费方软告警）。它**独立于** `check_module_boundaries.sh`（后者管旧四层 handler→logic→ds→repo 边界），二者由 `make security-gate` 串联。接入三处：`make security-gate`、`lefthook` pre-commit、CI（经 `e2ee-verify: security-gate` 传递）；并配 `make arch-check-self-test` 金丝雀自检（10 条），另对 manifest 登记项**软告警**。**未接线的规则视为不存在**。
 7. 术语对齐：Core = Kernel；Feature Slice 是代码边界形态；Product = `product_id` 轴（**与 `profile` 交付档位是两个轴，勿混用**）。既有速查表中把 channel/moment 等可开关业务功能称为 Plugin 的用法视为旧称，在本 ADR 中归入 Feature；`imboy_plugin_*` 仍专指已冻结的动态装载运行时。
 8. 存量不迁移：`src/api|logic|ds|repo|domain/` 既有代码原地保留，**新增一律进 `src/features/`、`src/products/` 或 `src/plugins/`**；旧域（group/channel/project/moya）迁移须独立提案。
 9. 修复两处构建盲区（`Makefile` glob 递归化），使纵切深层代码同样受裁剪与类型门约束。

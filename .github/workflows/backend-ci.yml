@@ -283,7 +283,8 @@ jobs:
 
   # ----------------------------------------------------------------
   # E2EE Verify — 安全门禁（阻塞）
-  # security-gate（服务端零密码学守护 + 模块边界守护）+ 38 个 E2EE eunit 模块。
+  # security-gate（服务端零密码学守护 + 模块边界守护 + 纵切架构守护 arch-check）
+  # + 38 个 E2EE eunit 模块。arch-check 经 security-gate 传递执行（e2ee-verify: security-gate）。
   # 本地基线 2026-08-02：387/387 绿。Critical 套件：cancelled 测试=失败（禁止 skip 降级）。
   # ----------------------------------------------------------------
   e2ee-verify:
@@ -315,7 +316,7 @@ jobs:
       - name: Compile
         run: IMBOYENV=local make test-build
 
-      - name: Install ripgrep (check_module_boundaries.sh 依赖)
+      - name: Install ripgrep (check_module_boundaries.sh / check_feature_architecture.sh 依赖)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
 

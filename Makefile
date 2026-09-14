@@ -251,7 +251,21 @@ security-gate:
 	@bash scripts/check_server_zero_crypto.sh
 	@echo "=== 模块边界守护 (Handler→Logic→DS→Repo 单向依赖) ==="
 	@bash scripts/check_module_boundaries.sh
+	@echo "=== 纵切架构守护 (Feature Slice 九铁律 / ADR-0007) ==="
+	@bash scripts/check_feature_architecture.sh
 	@echo "=== 安全门禁全部通过 ==="
+
+# 纵切架构门禁（ADR-0007 / docs/architecture/feature-slice-rules.md）：
+# 纵切单元结构、facade 只进 application、domain 纯净、Org 贯穿、跨单元依赖方向、
+# Product/Plugin 隔离、假 Plugin 检测。与 check_module_boundaries.sh 互补——
+# 后者管旧四层（handler→logic→ds→repo）边界，本目标管 Feature Slice 纵切纪律。
+# 管辖 src/features|products|plugins 及对 src/lib 的反向检查；存量 legacy 不迁。
+.PHONY: arch-check arch-check-self-test
+arch-check: ## 校验 Feature Slice 九铁律（ADR-0007）
+	@bash scripts/check_feature_architecture.sh
+
+arch-check-self-test: ## 门禁自身金丝雀自检（10 条必须全触发）
+	@bash scripts/check_feature_architecture.sh --self-test
 
 # 迁移文件门禁（ADR-0002）：命名格式 / up-down 成对 / 版本号唯一 / up 非空 /
 # 注释头版本自洽；编号断档仅告警不阻断。
