@@ -204,6 +204,6 @@ docker compose -f docker-compose.demo.yml up -d
 | `imboy-admin-frontend`（管理后台） | BSL 1.1 | 源码公开，但限制竞争性商业使用 |
 | `imboy-flutter`（移动客户端） | 木兰宽松许可证第 2 版（MulanPSL-2.0） | 真正意义上的开源 |
 
-2026-09-14 之前发布的版本按[木兰宽松许可证第 2 版](./LICENSE-MulanPSL-2.0)授权，不受本次变更影响；该文件作为历史授权文本保留。
+2026-09-14 之前发布的版本按[木兰宽松许可证第 2 版](./docs/legal/MulanPSL-2.0.txt)授权，不受本次变更影响；该文件作为历史授权文本保留。
 
 商业授权、白标与商标使用请联系维护者。完整说明见 [docs/legal/licensing.md](./docs/legal/licensing.md)。

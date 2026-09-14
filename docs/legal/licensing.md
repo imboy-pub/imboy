@@ -2,7 +2,7 @@
 
 > 生效日期：2026-09-14
 > 适用范围：2026-09-14 及之后首次公开发布的版本
-> 相关：根 [`LICENSE`](../../LICENSE) ｜ [`LICENSE-MulanPSL-2.0`](../../LICENSE-MulanPSL-2.0)（历史授权文本）｜ [CONTRIBUTING.md](../../CONTRIBUTING.md)
+> 相关：根 [`LICENSE`](../../LICENSE) ｜ [`MulanPSL-2.0.txt`](./MulanPSL-2.0.txt)（历史授权文本）｜ [CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ---
 
@@ -51,7 +51,9 @@ BSL 1.1 的默认授予是"复制、修改、创作演绎作品、再分发，�
 
 ## 版本分界 / Version boundary
 
-**2026-09-14 之前**公开发布的版本按 [木兰宽松许可证第 2 版](../../LICENSE-MulanPSL-2.0)（MulanPSL-2.0）授权。该文件作为历史授权文本保留在本仓根目录。
+**2026-09-14 之前**公开发布的版本按 [木兰宽松许可证第 2 版](./MulanPSL-2.0.txt)（MulanPSL-2.0）授权。该文件作为历史授权文本保留在 `docs/legal/`。
+
+> ⚠️ **不要把该文件移回仓库根目录，也不要改回 `LICENSE-*` 一类的名字。** 代码托管平台的许可证扫描会把根目录下任何 `LICENSE*` / `COPYING*` 文件识别为一个独立许可证。由于这类平台普遍**识别不出 BSL 1.1**（会被归入 "Other"），一旦历史文本出现在根目录，仓库侧边栏里**唯一被具名的许可证就会变成最宽松的那个**，可能被误读为"双授权、可择一适用"。
 
 **2026-09-14 及之后**首次公开发布的版本按 [BSL 1.1](../../LICENSE) 授权。
 
@@ -83,4 +85,4 @@ BSL 1.1 的正文明确**不授予**许可方及其关联方的商标、服务�
 
 | 日期 | 变更 |
 |------|------|
-| 2026-09-14 | 后端 `imboy` 与管理后台 `imboy-admin-frontend` 由 MulanPSL-2.0 切换为 BSL 1.1（Change License: MPL 2.0）；移动客户端 `imboy-flutter` 保持 MulanPSL-2.0。旧许可文本保留为 `LICENSE-MulanPSL-2.0`。 |
+| 2026-09-14 | 后端 `imboy` 与管理后台 `imboy-admin-frontend` 由 MulanPSL-2.0 切换为 BSL 1.1（Change License: MPL 2.0）；移动客户端 `imboy-flutter` 保持 MulanPSL-2.0。旧许可文本保留为 `docs/legal/MulanPSL-2.0.txt`（不放根目录：避免被托管平台的许可证扫描识别为第二个许可证）。 |

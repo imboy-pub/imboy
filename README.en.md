@@ -211,6 +211,6 @@ The three independently released sub-projects carry different licenses:
 | `imboy-admin-frontend` (admin console) | BSL 1.1 | Source-available, competitive commercial use restricted |
 | `imboy-flutter` (mobile client) | MulanPSL-2.0 | Fully open source |
 
-Versions published before 2026-09-14 remain licensed under the [Mulan Permissive Software License, version 2](./LICENSE-MulanPSL-2.0) and are unaffected by this change; that file is retained as the historical license text.
+Versions published before 2026-09-14 remain licensed under the [Mulan Permissive Software License, version 2](./docs/legal/MulanPSL-2.0.txt) and are unaffected by this change; that file is retained as the historical license text.
 
 For commercial licensing, white-labeling, or trademark use, contact the maintainer. See [docs/legal/licensing.md](./docs/legal/licensing.md) for details.

@@ -16,7 +16,7 @@
 **许可协议 / Licensing（全仓）**
 - 后端 `imboy` 与管理后台 `imboy-admin-frontend` 的许可证由木兰宽松许可证第 2 版（MulanPSL-2.0）切换为 **Business Source License 1.1（BSL 1.1）**：源码公开；Additional Use Grant 覆盖组织内部生产使用、单客户私有部署、集成进自有产品；多租户托管（SaaS）与竞争性付费产品或服务需要商业授权；每个版本自首次公开发布满四年后自动转为 MPL 2.0
 - 移动客户端 `imboy-flutter` 保持 MulanPSL-2.0 不变
-- 旧许可文本保留为 `LICENSE-MulanPSL-2.0`。**许可证变更不具追溯力**：2026-09-14 之前发布的版本仍按 MulanPSL-2.0 授权，不受本次变更影响
+- 旧许可文本保留为 `docs/legal/MulanPSL-2.0.txt`。**许可证变更不具追溯力**：2026-09-14 之前发布的版本仍按 MulanPSL-2.0 授权，不受本次变更影响
 - 新增许可策略说明 [`docs/legal/licensing.md`](./docs/legal/licensing.md)
 
 ---
