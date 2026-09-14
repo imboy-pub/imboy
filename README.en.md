@@ -198,4 +198,19 @@ product evaluation and live demos.
 
 ## License
 
-[MulanPSL-2.0](./LICENSE)
+**Business Source License 1.1 (BSL 1.1)** — source-available, converting automatically to MPL 2.0 after four years.
+
+- **Permitted**: copy, modify, redistribute; free for non-production use; production use that is internal to your organization, a dedicated deployment for a single end-customer, or embedded in your own product is free within the Additional Use Grant in [LICENSE](./LICENSE).
+- **Commercial license required**: offering the software to third parties as a hosted, multi-tenant service (SaaS), or as a paid product or service that competes with the Licensor's paid version.
+
+The three independently released sub-projects carry different licenses:
+
+| Project | License | In short |
+|---------|---------|----------|
+| `imboy` (backend, this repository) | BSL 1.1 | Source-available, competitive commercial use restricted |
+| `imboy-admin-frontend` (admin console) | BSL 1.1 | Source-available, competitive commercial use restricted |
+| `imboy-flutter` (mobile client) | MulanPSL-2.0 | Fully open source |
+
+Versions published before 2026-09-14 remain licensed under the [Mulan Permissive Software License, version 2](./LICENSE-MulanPSL-2.0) and are unaffected by this change; that file is retained as the historical license text.
+
+For commercial licensing, white-labeling, or trademark use, contact the maintainer. See [docs/legal/licensing.md](./docs/legal/licensing.md) for details.

@@ -33,8 +33,8 @@ info:
 
     **版本策略**：1.0.x 期间保证路径签名向后兼容，破坏性变更通过 `/v2` 路径前缀发布。
   license:
-    name: MulanPSL-2.0
-    url: https://license.coscl.org.cn/MulanPSL2
+    name: BUSL-1.1
+    url: https://mariadb.com/bsl11/
   contact:
     name: IMBoy Maintainers
     url: https://github.com/imboy-pub/imboy

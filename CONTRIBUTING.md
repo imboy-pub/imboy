@@ -41,8 +41,8 @@ The sign-off appends the following line to the commit message:
 Signed-off-by: Your Name <your@email.example>
 ```
 
-这表示你确认：你有权提交此代码，并同意以 [MulanPSL-2.0](./LICENSE) 授权给本项目。
-This confirms: you have the right to submit this code, and you agree to license it to this project under [MulanPSL-2.0](./LICENSE).
+这表示你确认：你有权提交此代码，并同意以 [BSL 1.1](./LICENSE) 授权给本项目。
+This confirms: you have the right to submit this code, and you agree to license it to this project under [BSL 1.1](./LICENSE).
 
 > **CI 强制执行**：`.github/workflows/backend-ci.yml` 中的 `dco-check` job 会检查 PR 中的每一个 commit。
 > **CI enforcement**: The `dco-check` job in `.github/workflows/backend-ci.yml` checks every commit in the PR.
@@ -420,12 +420,15 @@ dart run scripts/generate_error_code.dart --check
 
 ## 许可协议 / License
 
-本项目采用 [木兰宽松许可证第 2 版（MulanPSL-2.0）](./LICENSE)。
+本项目采用 [Business Source License 1.1（BSL 1.1）](./LICENSE)。这**不是**一个开源许可证：源码公开，但生产使用限于许可中 Additional Use Grant 允许的范围，四年后自动转为 MPL 2.0。
 
 **贡献即表示你同意：**
 - 你有权提交该代码
-- 你的贡献将以 MulanPSL-2.0 授权给项目及其所有用户
+- 你的贡献以 BSL 1.1 授权给项目及其所有用户
 - 你以 [DCO](https://developercertificate.org/) 形式确认以上两点
+
+> BSL 1.1 要求许可方向所有接收者承诺：全部代码（含你的贡献）在 Change Date 自动转为 MPL 2.0 授权。该承诺已写入本项目的 `LICENSE`，DCO 即可满足，无需额外授权动作。
+> 若维护者日后需要变更 Change License 或增加商业双授权，则需另行取得贡献者同意——**引入外部贡献之前，应先引入 CLA**。
 
 ---
 

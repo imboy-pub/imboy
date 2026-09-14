@@ -35,8 +35,8 @@ info:
 
     **HTTP 升级入口**：见 api/openapi.yaml#paths/~1ws + ~1v1~1ws。
   license:
-    name: MulanPSL-2.0
-    url: https://license.coscl.org.cn/MulanPSL2
+    name: BUSL-1.1
+    url: https://mariadb.com/bsl11/
 
 servers:
   production:

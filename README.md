@@ -191,4 +191,19 @@ docker compose -f docker-compose.demo.yml up -d
 
 ## 许可证
 
-[MulanPSL-2.0](./LICENSE)
+**Business Source License 1.1（BSL 1.1）** —— 源码公开，四年后自动转为 MPL 2.0。
+
+- **可以**：复制、修改、再分发；非生产用途免费；生产环境中的组织内部使用、单客户私有部署、集成进自有产品，均在 [LICENSE](./LICENSE) 的 Additional Use Grant 范围内免费。
+- **需要商业授权**：向第三方提供多租户托管服务（SaaS），或提供与官方付费版竞争的付费产品或服务。
+
+本工作区包含三个可独立发布的子项目，三者许可并不相同：
+
+| 项目 | 许可证 | 简单理解 |
+|------|--------|----------|
+| `imboy`（后端，本仓） | BSL 1.1 | 源码公开，但限制竞争性商业使用 |
+| `imboy-admin-frontend`（管理后台） | BSL 1.1 | 源码公开，但限制竞争性商业使用 |
+| `imboy-flutter`（移动客户端） | 木兰宽松许可证第 2 版（MulanPSL-2.0） | 真正意义上的开源 |
+
+2026-09-14 之前发布的版本按[木兰宽松许可证第 2 版](./LICENSE-MulanPSL-2.0)授权，不受本次变更影响；该文件作为历史授权文本保留。
+
+商业授权、白标与商标使用请联系维护者。完整说明见 [docs/legal/licensing.md](./docs/legal/licensing.md)。
