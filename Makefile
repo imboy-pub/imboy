@@ -28,6 +28,39 @@ RELX_CONFIG = $(CURDIR)/$(_RELX_SRC)
 
 $(shell mkdir -p config && cp $(_SYS_RUNTIME_SRC) config/sys.runtime.config)
 
+# --- LLM 密钥注入（补齐 `IMBOYENV=local make run` 这条路径） ---
+# 背景：LLM 密钥不写进 config，而是以 {env, <<"VAR">>} 占位，由
+# imboy_llm_registry:resolve_env/1 在**运行时**经 os:getenv/1 取值
+# （见 src/lib/imboy_llm_registry.erl）。所以密钥必须在**节点进程的环境里**。
+# scripts/start_node.sh 会加载 .env/.env.local，但 erlang.mk 的 `run` 目标
+# （`run:: all` → relx console）**不经过那个脚本** —— 于是按 AGENTS.md 里最常写的
+# `IMBOYENV=local make run` 起服务时，密钥永远不到位。症状极隐蔽：
+# 服务起得来、ecron 作业也在跑，但每次 AI 都落 failed/provider_unavailable，
+# 没有任何一处报「密钥没读到」。
+# 这里把三个已知的 LLM 密钥名从 .env.local（优先）/ .env 导出。
+# 只导出这三个具名变量，**不**整体 include .env —— 后者会把 .env 里可能含 $ 的
+# 密钥值交给 make 展开，有把密钥改写的风险。
+# 值为空时不导出，避免用空值覆盖调用方已 export 的密钥。
+_LLM_ENV_SRCS := .env.local .env
+# 取第一个非空定义（.env.local 优先于 .env）
+_llm_key = $(shell for f in $(_LLM_ENV_SRCS); do \
+    [ -f $$f ] || continue; \
+    v=$$(grep -h '^$(1)=' $$f 2>/dev/null | head -1 | cut -d= -f2-); \
+    if [ -n "$$v" ]; then printf '%s' "$$v"; break; fi; \
+  done)
+_BIGMODEL_KEY := $(call _llm_key,BIGMODEL_API_KEY)
+_ARK_KEY := $(call _llm_key,ARK_API_KEY)
+_BAILIAN_KEY := $(call _llm_key,BAILIAN_API_KEY)
+ifneq ($(_BIGMODEL_KEY),)
+export BIGMODEL_API_KEY := $(_BIGMODEL_KEY)
+endif
+ifneq ($(_ARK_KEY),)
+export ARK_API_KEY := $(_ARK_KEY)
+endif
+ifneq ($(_BAILIAN_KEY),)
+export BAILIAN_API_KEY := $(_BAILIAN_KEY)
+endif
+
 include include/deps.mk
 
 # Web / HTTP
@@ -293,6 +326,14 @@ cron-check: ## 校验 ecron 定时作业配置（模板真源硬门 + 逐机漂�
 .PHONY: moya-ai-check
 moya-ai-check: ## 校验墨芽 AI 回课启用前置（provider 名/vision/key 硬门 + 配对告警）
 	@bash scripts/check_moya_ai_config.sh
+
+# 密钥可用性体检：上面的 config 门禁对 api_key 只能告警（密钥走 {env, Var}，
+# 只存在于进程环境里，配置文件里看不到值）。本目标另起独立临时节点、加载
+# .env.local 后真的发一次纯文本 ping，把「配置全绿但一触发就 provider_unavailable」
+# 这一类漏检补上。不重启、不动运行中的服务；`--no-ping` 可离线只验被读到。
+.PHONY: moya-ai-key-check
+moya-ai-key-check: ## 校验墨芽 AI 密钥真能认证（独立临时节点 + 纯文本 ping）
+	@bash scripts/check_moya_ai_key.sh
 
 # P3-C2 API 契约门禁（Golden Gates §2.3 C2 / §2.2 契约变更流程）
 # 真源：src/imboy_router.erl + priv/migrations CHECK 约束 + include/error_code.hrl

@@ -85,6 +85,157 @@ tai_entry_key_form() {
 }
 
 # ------------------------------------------------------------
+# 单次请求超时 × 重试次数  vs  客户端轮询预算（跨仓配对检查）
+#
+# 背景（2026-09-15 事故）：服务端最坏路径与前端预算**恰好相等**
+#（30s × 2 次尝试 = 60s vs 3s × 20 次 = 60s）→ 两边同时到点，轮询永远看
+# 不见终态。它不编译失败、不抛异常、不落任何 error_code —— 老师看到的就是
+# 一屏不变的「AI 正在看这份作业」，而这正是本脚本存在的理由。
+#
+# 难点是这两个常量**分处两个仓库**（imboy 的 config + moya_ai_worker，
+# 与 moya 的 workbench.ts），没有任何编译期或运行期依赖能把它们绑住，
+# 唯一能把它们放在一起比较的地方就是这个脚本。改任一侧请务必跑一次。
+# ------------------------------------------------------------
+
+# 取 provider 条目的 timeout（毫秒）；未配返回空
+tai_entry_timeout() {
+  printf '%s' "${1:-}" | sed -nE 's/.*timeout[[:space:]]*=>[[:space:]]*([0-9]+).*/\1/p'
+}
+
+# 最大尝试次数：moya_ai_worker 的 ?DEFAULT_MAX_RETRIES；读不到时按 2（与代码一致）
+tai_default_max_retries() {
+  local f="${1}/src/logic/moya_ai_worker.erl"
+  local n=""
+  if [ -f "$f" ]; then
+    n="$(sed -nE 's/^-define\(DEFAULT_MAX_RETRIES,[[:space:]]*([0-9]+)\).*/\1/p' "$f" | head -1)"
+  fi
+  echo "${n:-2}"
+}
+
+# 客户端轮询预算："<间隔毫秒> <次数>"；moya 不在约定位置时返回空（跳过）
+tai_client_poll_budget() {
+  local f="${1}/../moya/src/packages/teacher/workbench/workbench.ts"
+  [ -f "$f" ] || return 0
+  local iv att
+  iv="$(sed -nE 's/^const AI_POLL_INTERVAL_MS = ([0-9]+);.*/\1/p' "$f" | head -1)"
+  att="$(sed -nE 's/^const AI_POLL_MAX_ATTEMPTS = ([0-9]+);.*/\1/p' "$f" | head -1)"
+  [ -n "$iv" ] && [ -n "$att" ] && echo "$iv $att"
+  return 0
+}
+
+tai_check_poll_budget() {
+  local root="$1" name="$2" blk="$3"
+  local timeout retries budget interval attempts worst budget_ms need
+
+  timeout="$(tai_entry_timeout "$blk")"
+  retries="$(tai_default_max_retries "$root")"
+  budget="$(tai_client_poll_budget "$root")"
+
+  if [ -z "$budget" ]; then
+    tai_warn "读不到 moya 侧轮询常量（workbench.ts 的 AI_POLL_*）—— 跳过预算配对检查"
+    return 0
+  fi
+  set -- $budget
+  interval="$1"
+  attempts="$2"
+
+  if [ -z "$timeout" ]; then
+    # 未配 → 运行时用 imboy_llm_openai 的 ?DEFAULT_TIMEOUT_MS
+    timeout=30000
+    tai_warn "条目 <<\"${name}\">> 未配 timeout → 运行时取缺省 30s（纯文本够用；视频理解的长尾会偶发 error_code=timeout）"
+  else
+    tai_ok "条目 <<\"${name}\">> 单次请求超时 timeout = $((timeout / 1000))s"
+  fi
+
+  worst=$((timeout * retries))
+  budget_ms=$((interval * attempts))
+
+  if [ "$budget_ms" -lt "$worst" ]; then
+    need=$((worst / interval + 1))
+    tai_bad "轮询预算 ${budget_ms}ms < 服务端最坏 ${worst}ms（timeout $((timeout / 1000))s × ${retries} 次尝试）→ 前端必然先放弃而后端还在跑，页面就是一屏不变的「正在整理」"
+    echo "        修：把 moya 侧 AI_POLL_MAX_ATTEMPTS 从 ${attempts} 提到 ≥ ${need}，或调小 timeout"
+    return 1
+  elif [ "$budget_ms" -lt $((worst * 3 / 2)) ]; then
+    tai_warn "轮询预算 ${budget_ms}ms 仅比服务端最坏 ${worst}ms 多 $((budget_ms - worst))ms（不足 1.5 倍）→ 边界抖动仍能重现「前端先放弃」"
+  else
+    tai_ok "轮询预算 ${budget_ms}ms ≥ 1.5 × 服务端最坏 ${worst}ms（timeout $((timeout / 1000))s × ${retries} 次尝试）"
+  fi
+  return 0
+}
+
+# ------------------------------------------------------------
+# 对象存储 public_endpoint 是否「模型侧可抓」
+# ------------------------------------------------------------
+# presign 出来的 URL 是交给**第三方多模态模型**抓的，不是给浏览器。
+# 内网端点（127 / 192.168 / 10 / 172.16-31）在模型侧必然抓不到，表现为
+# provider_error 或两次各烧满 timeout，**日志里没有任何线索** —— 这个坑
+# 实测踩过两次，第二次还误判成「素材不合格」。故用静态判据钉死。
+#
+# 不在这里做 curl 实测：本机 DNS 被本地代理的 fake-ip 劫持（s3.imboy.pub
+# 解析成 198.18.x.x），实测会给出与真实情况相反的结论。
+tai_public_endpoint_of() {
+  grep -vE '^[[:space:]]*%' "$1" |
+    sed -nE 's/.*public_endpoint[[:space:]]*=>[[:space:]]*<<"([^"]+)".*/\1/p' | head -1
+}
+
+tai_is_private_host() {
+  case "$1" in
+  127.* | localhost | 10.* | 192.168.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[01].*)
+    return 0
+    ;;
+  *.local | *.internal)
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+tai_check_public_endpoint() {
+  local f="$1" video="$2"
+  local ep host
+
+  ep="$(tai_public_endpoint_of "$f")"
+
+  if [ -z "$ep" ]; then
+    if [ "$video" = "true" ]; then
+      tai_warn "未配 garage.public_endpoint → 运行时回落到 endpoint()（本地即 127.0.0.1:3900），presign 出去的是内网地址，模型抓不到"
+    else
+      tai_ok "未配 garage.public_endpoint（attach_video_url=false，当前不影响）"
+    fi
+    return 0
+  fi
+
+  host="${ep#*://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
+
+  # 内网先判：本地 garage 本来就没有 https，内网属**开发态**而非配置错误，
+  # 给 warn + 明确动作，不硬失败（否则本地常态红，门禁就失去信号了）。
+  if tai_is_private_host "$host"; then
+    tai_warn "garage.public_endpoint = ${ep} 是内网地址 → 第三方模型抓不到视频，回课必然 provider_error / 超时（日志无痕）"
+    echo "        修：bash scripts/dev_garage_tunnel.sh start（临时公网 https 隧道），或把本地指向公网真桶（永久）"
+    return 0
+  fi
+
+  case "$ep" in
+  https://*)
+    tai_ok "garage.public_endpoint = ${ep}（公网 https，模型侧可抓）"
+    return 0
+    ;;
+  http://*)
+    tai_bad "garage.public_endpoint = ${ep} 是明文 http → 多数模型网关拒抓（且即便肯抓也是裸流传未成年人媒体）；必须用 https"
+    return 1
+    ;;
+  *)
+    tai_bad "garage.public_endpoint = ${ep} 不是合法 URL"
+    return 1
+    ;;
+  esac
+}
+
+# ------------------------------------------------------------
 # 单文件检查
 # ------------------------------------------------------------
 tai_check_file() {
@@ -149,6 +300,7 @@ EOF
 
   # 已启用态：四种可证明的失败，全部硬门
   echo "  · teaching_ai_llm_provider = <<\"${name}\">>, attach_video_url = ${video}"
+  [ "$video" = "true" ] && tai_check_public_endpoint "$f" "$video"
 
   local target="" blk
   while IFS= read -r blk; do
@@ -222,6 +374,9 @@ EOF
   else
     tai_warn "ecron 无 teaching_ai_worker 作业 → 即使 provider 就绪，worker 也不会跑"
   fi
+
+  # 超时 vs 客户端轮询预算（跨仓配对，见 tai_check_poll_budget 上方说明）
+  tai_check_poll_budget "$root" "$name" "$target"
 
   echo ""
   return 0

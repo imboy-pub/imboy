@@ -18,26 +18,41 @@ DIST_INTERFACE="${IMBOY_DIST_INTERFACE:-{127,0,0,1}}"
   echo "Environment:"
   echo "  IMBOY_NODE_HOST       节点 host，默认 127.0.0.1"
   echo "  IMBOY_DIST_INTERFACE  分布式监听地址，默认 {127,0,0,1}"
+  echo "  .env                  仓根基础变量文件（gitignored，可选）：启动前自动加载"
   echo "  .env.local            仓根本地变量文件（gitignored，可选）：启动前自动加载，"
-  echo "                        用于注入 BIGMODEL_API_KEY 等以 {env, Var} 解析的密钥"
+  echo "                        同名变量**覆盖** .env（用于注入 BIGMODEL_API_KEY 等"
+  echo "                        以 {env, Var} 在运行时解析的密钥）"
   exit 1
 }
 
 cd "$(dirname "$0")/.." || exit 1
 
-# 本地变量注入（可选）：仓根 .env.local 不入仓（.gitignore），放本地开发所需密钥，
+# 本地变量注入（可选）：仓根 .env / .env.local 不入仓（.gitignore），放本地开发所需密钥，
 # 例如 BIGMODEL_API_KEY —— config/sys.local.config 以 {env, <<"BIGMODEL_API_KEY">>}
-# 在**启动时**从 OS 环境变量解析，故密钥必须在本进程环境里（不写进 config 文件）。
-# IMBOYENV / HTTP_PORT 由脚本参数与调用方环境决定，.env.local 不得覆盖：
+# 在**运行时**从 OS 环境变量解析（imboy_llm_registry:resolve_env/1 → os:getenv/1），
+# 故密钥必须在本进程环境里（不写进 config 文件）。
+#
+# 两个文件都加载，顺序：.env 在前、.env.local 在后 —— 后者同名覆盖前者，
+# 与 dotenv 系（Vite/Next 等）的「.env.local 优先级更高」约定一致。
+# 为什么要收 .env：这是本仓 docker/生产模板的对应文件，也是使用者最自然会去填的文件；
+# 只认 .env.local 会让「明明填了密钥却 provider_unavailable」变成一个静默陷阱
+# （实测踩过：密钥在 .env 里、节点却读不到，全程无任何报错）。
+# 安全性：sys.local.config 只以 {env, ...} 引用 ARK_API_KEY / BAILIAN_API_KEY /
+# BIGMODEL_API_KEY 三个变量，因此 .env 里其余 IMBOY_* 项不会改变本地库连接或密钥体系。
+# IMBOYENV / HTTP_PORT 由脚本参数与调用方环境决定，两个文件都不得覆盖：
 # 先留存现场值，加载后原样恢复。
 _SavedIMBOYENV="${IMBOYENV-}"
 _SavedHTTPPORT="${HTTP_PORT-}"
-if [ -f .env.local ]; then
-  set -a
-  # shellcheck disable=SC1091
-  . ./.env.local
-  set +a
-fi
+for _envfile in .env .env.local; do
+  if [ -f "$_envfile" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "./$_envfile"
+    set +a
+    echo "已加载 $_envfile"
+  fi
+done
+unset _envfile
 export IMBOYENV="$_SavedIMBOYENV"
 export HTTP_PORT="$_SavedHTTPPORT"
 
