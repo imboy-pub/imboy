@@ -195,7 +195,11 @@ ccc_check_template() {
     f="$(find "${root}/src" -name "${mod}.erl" 2>/dev/null | head -1)"
     if [ -z "$f" ]; then
       bad_mod="${bad_mod} ${name}->${mod}"
-    elif ! grep -q "\b${fun}\b" "$f" 2>/dev/null; then
+    # 用 -w（POSIX 整词匹配）而非 "\b${fun}\b"：\b 是 GNU grep 扩展，
+    # macOS 自带 grep / toybox grep 不支持，会把 8/8 作业全部误判为
+    # "入口函数找不到"，使本硬门在任何 macOS 上恒红（实测 toybox 0.8.13：
+    # "\brun_once\b" 无匹配、-w "run_once" 命中）。
+    elif ! grep -qw -- "${fun}" "$f" 2>/dev/null; then
       bad_fun="${bad_fun} ${name}->${mod}:${fun}"
     fi
   done <<EOF
