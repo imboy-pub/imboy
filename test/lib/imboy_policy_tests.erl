@@ -697,7 +697,15 @@ meta_view_returns_profiles_defaults_and_edit_options_test_() ->
                 <<"channel_order">>,
                 <<"group_vote">>,
                 <<"group_schedule">>,
-                <<"group_task">>
+                <<"group_task">>,
+                %% 平台内建（非插件）特性：来源 = src/lib/imboy_feature.erl 的
+                %% Builtin 列表。此断言是**字面量契约**，不派生自实现
+                %% （否则测试会用被测实现证明自己）。后续每新增一个内建键，
+                %% 必须在此显式追加 —— 这正是这条契约要拦住的事。
+                <<"bot_webhook">>,
+                <<"appeal">>,
+                <<"enterprise_business">>,
+                <<"customer_service">>
             ],
             maps:get(<<"features">>, EditorOrder)
         ),

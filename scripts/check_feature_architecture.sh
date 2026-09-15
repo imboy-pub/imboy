@@ -20,7 +20,7 @@
 # 用法：
 #   bash scripts/check_feature_architecture.sh                # 检查本仓
 #   bash scripts/check_feature_architecture.sh --root DIR     # 检查指定根（自测用）
-#   bash scripts/check_feature_architecture.sh --self-test    # 金丝雀自检（必须全触发）
+#   bash scripts/check_feature_architecture.sh --self-test    # 金丝雀自检（12 条必须全触发）
 # ============================================================================
 set -euo pipefail
 
@@ -408,6 +408,29 @@ run_all_checks() {
   check_no_foreign_product "$root"
   check_no_plugin_names    "$root"
   advisory_contracts       "$root"
+  check_core_no_feature_refs "$root"
+}
+
+# FND-7（RULING-2026-09-15 §五）：Core -> Feature 禁止依赖的**真实覆盖** ——
+# 不只扫 Feature 目录自身，还反向扫 Core（src/lib/**）：Core 模块里出现对
+# Feature 模块（eb_*/cs_* 前缀）的远程调用即违规。此前门只看 features/
+# products/plugins 内部铁律，Core 里塞一个 eb_* 调用是盲区。
+check_core_no_feature_refs() {
+  local root="$1" hits=0
+  local f line callee
+  while IFS= read -r f; do
+    while IFS= read -r line; do
+      callee="$(printf '%s' "$line" | sed -nE 's/.*[^a-zA-Z0-9_]([be]b_[a-z0-9_]+|cs_[a-z0-9_]+):[a-z_]+.*/\1/p' | head -1)"
+      if [ -n "$callee" ]; then
+        echo "  铁律[Core→Feature] ${f#$root/}: Core 模块引用 Feature 模块 $callee"
+        hits=$((hits + 1))
+      fi
+    done < <(sed -e 's/%.*$//' "$f" | grep -nE '[be]b_[a-z0-9_]+:|cs_[a-z0-9_]+:' || true)
+  done < <(find "$root/src/lib" -name '*.erl' 2>/dev/null || true)
+  if [ "$hits" -gt 0 ]; then
+    echo "feature architecture check failed：Core 存在 Feature 反向依赖（共 $hits 处）" >&2
+    VIOLATIONS=$((VIOLATIONS + hits))
+  fi
 }
 
 # ===========================================================================
@@ -518,12 +541,29 @@ run_self_test() {
   printf -- '-module(cs_agg_tests).\n-export([t/0]).\nt() -> meck:new(x).\n' > "$l/test/features/cs/domain/cs_agg_tests.erl"
   expect_rule "⑩" "domain 测试使用 meck" "$l" '铁律4'
 
+  # ⑫ FND-7：Core 插入 Feature 反向引用 -> check_core_no_feature_refs 必须抓红
+  local m="$tmp/corefeat"; seed_fixture "$m"
+  printf -- '-module(elib_eb_bridge).\n-export([f/1]).\nf(X) -> eb_auth_principal:x(X).\n' > "$m/src/lib/elib_eb_bridge.erl"
+  local mout; mout="$(run_all_checks "$m" 2>&1 || true)"
+  if printf '%s' "$mout" | rg -q 'Core→Feature'; then
+    ok "金丝雀 ⑫ Core 插入 Feature 反向引用被拒"
+  else
+    bad "金丝雀 ⑫ Core→Feature 检查未触发（门对 Core 是盲区）"
+  fi
+
+  # ⑪ 特性裁剪调用门（F-EB10-1）：未保护的跨裁剪调用必须被 prune 门抓红。
+  #    门自身带 --selftest（判据红绿两侧），此处验证的是**接线**：arch-check
+  #    真的会跑 prune 门且它的红能传导为整体红。
+  python3 "$ROOT_DIR/scripts/check_feature_prune_calls.py" --selftest >/dev/null 2>&1 \
+    && ok "金丝雀 ⑪a prune 门自测通过（判据红绿两侧）" \
+    || bad "金丝雀 ⑪a prune 门自测失败：门不可信"
+
   echo
   if [[ "$fails" -ne 0 ]]; then
     echo "arch-check 自检失败：$fails 项未通过——门禁不可信" >&2
     exit 1
   fi
-  echo "arch-check 自检通过：10 条金丝雀全部按预期触发，基线夹具零违规"
+  echo "arch-check 自检通过：12 条金丝雀全部按预期触发，基线夹具零违规"
 }
 
 main() {
@@ -539,7 +579,13 @@ main() {
     echo "feature architecture check failed（纵切单元 $units 个，警告 $WARNINGS 条）" >&2
     exit 1
   fi
-  echo "feature architecture check passed（纵切单元 $units 个，警告 $WARNINGS 条）"
+  # F-EB10-1（2026-09-15）：特性裁剪调用门纳入 arch-check 必经清单 ——
+  # 「始终编译的模块未加 -ifdef 保护地调用被裁剪模块」在未选中档是运行期 undef
+  # （实证：auth_middleware_api_v1 曾致全站 /api/v1 不可用）。baseline 只豁免
+  # defensive 既有条目（scripts/feature-prune-baseline.tsv），hard 永不豁免。
+  python3 "$ROOT_DIR/scripts/check_feature_prune_calls.py" "$TARGET_ROOT" \
+    --baseline "$ROOT_DIR/scripts/feature-prune-baseline.tsv" || exit 1
+  echo "feature architecture check passed（纵切单元 $units 个，警告 $WARNINGS 条 + prune 门绿）"
 }
 
 main

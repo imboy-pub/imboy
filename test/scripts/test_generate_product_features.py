@@ -1,4 +1,5 @@
 import importlib.util
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -101,7 +102,21 @@ class ProductFeatureManifestTest(unittest.TestCase):
             MODULE.validate(self.manifest(["moment"]), moment_catalog)
         )[mk_path]
         self.assertNotIn("moment_ds", selected)
-        self.assertEqual("IMBOY_FEATURE_ERLC_EXCLUDE :=", selected.splitlines()[-1])
+        # 本测试 catalog 不含 enterprise_business ⇒ EB-10 的企业映射行仍会出现在
+        # ERLC_EXCLUDE 里，故「整行为空」不再是 selected 的判据（EB-10 前它靠
+        # 「只有 moment 一个 feature 有模块映射」这个假前提成立）。改为：
+        # ① selected 的模块逐个不在排除集合里；② 在**完整 catalog**（moment +
+        # enterprise_business 都被选中）下，排除行恢复为空 —— 保住原来那条
+        # 「无未选中 feature 时排除行为空」的检查。
+        self.assertNotIn("moment_ds", selected.splitlines()[-1].split(":=")[1].split())
+        full_catalog = {
+            "features": [*self.catalog["features"], "moment", "enterprise_business"],
+            "dependencies": self.catalog["dependencies"],
+        }
+        all_selected = MODULE.render(
+            MODULE.validate(self.manifest(["moment", "enterprise_business"]), full_catalog)
+        )[mk_path]
+        self.assertEqual("IMBOY_FEATURE_ERLC_EXCLUDE :=", all_selected.splitlines()[-1])
 
     def test_backend_per_feature_defines_follow_compiled_features(self):
         hrl_path = next(
@@ -305,6 +320,67 @@ class ProductFeatureManifestTest(unittest.TestCase):
         self.assertEqual("core", catalog["features"][0])
         self.assertIn("channel", catalog["features"])
         self.assertEqual(["channel"], catalog["dependencies"]["channel_order"])
+
+    # ------------------------------------------------------------------
+    # EB-10：enterprise_business / customer_service 入册（catalog + 生成器 + 依赖边）
+    # ------------------------------------------------------------------
+
+    def test_source_catalog_bootstraps_builtin_features(self):
+        """无 beam 的新 checkout（disposable worktree）里，Builtin 键也必须可见。
+
+        生成器在 `ebin/imboy_feature.beam` 缺失时回退到 source_catalog；它按
+        `Builtin = [...]` 解析平台内建键。企业业务/客服正是挂在 Builtin 上，
+        漏解析会让三档矩阵在**新树**上被 validate 判成 unknown feature。
+        """
+        catalog = MODULE.source_catalog(SCRIPT.parents[1])
+        for feature in ("bot_webhook", "appeal", "enterprise_business", "customer_service"):
+            with self.subTest(feature=feature):
+                self.assertIn(feature, catalog["features"])
+        self.assertEqual(
+            ["enterprise_business"], catalog["dependencies"]["customer_service"]
+        )
+
+    def test_enterprise_backend_modules_cover_feature_directory(self):
+        """物理裁剪清单必须与目录**逐项相等**（否则漏排的模块会被静默编译）。"""
+        feature_dir = SCRIPT.parents[1] / "src/features/enterprise_business"
+        modules = set()
+        for path in feature_dir.rglob("*.erl"):
+            match = re.search(r"^-module\(([a-z][a-z0-9_]*)\)", path.read_text(), re.M)
+            self.assertIsNotNone(match, f"no -module attribute in {path}")
+            modules.add(match.group(1))
+        self.assertTrue(modules, "enterprise feature directory must not be empty")
+        self.assertEqual(modules, set(MODULE.FEATURE_BACKEND_MODULES["enterprise_business"]))
+
+    def test_enterprise_selection_drives_erlc_exclude_and_defines(self):
+        catalog = MODULE.source_catalog(SCRIPT.parents[1])
+        selected = MODULE.render(MODULE.validate(self.manifest(["enterprise_business"]), catalog))
+        mk_path = next(
+            path for path in selected if path.name == "imboy_product_features_erlc.mk"
+        )
+        hrl_path = next(
+            path for path in selected if path.name == "imboy_product_features.hrl"
+        )
+        for module in MODULE.FEATURE_BACKEND_MODULES["enterprise_business"]:
+            self.assertNotIn(module, selected[mk_path])
+        self.assertIn("-define(IMBOY_FEATURE_ENTERPRISE_BUSINESS, true).", selected[hrl_path])
+
+        base = MODULE.render(MODULE.validate(self.manifest(), catalog))
+        base_mk = base[mk_path]
+        for module in MODULE.FEATURE_BACKEND_MODULES["enterprise_business"]:
+            self.assertIn(module, base_mk)
+        self.assertNotIn("IMBOY_FEATURE_ENTERPRISE_BUSINESS", base[hrl_path])
+
+    def test_customer_service_requires_enterprise_business(self):
+        """EB-10-A03：selected_features 里 customer_service 而无 enterprise_business
+        ⇒ 生成期即失败（依赖边来自 imboy_policy_catalog:dependencies/1）。"""
+        catalog = MODULE.source_catalog(SCRIPT.parents[1])
+        with self.assertRaisesRegex(
+            MODULE.ManifestError,
+            "missing dependency for customer_service: enterprise_business",
+        ):
+            MODULE.validate(self.manifest(["customer_service"]), catalog)
+        # 正例对照：同一 manifest 加上 enterprise_business 即通过（失败不是环境伪影）
+        MODULE.validate(self.manifest(["enterprise_business", "customer_service"]), catalog)
 
     def test_stale_check(self):
         with tempfile.TemporaryDirectory() as directory:

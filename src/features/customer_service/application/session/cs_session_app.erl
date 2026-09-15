@@ -1,0 +1,602 @@
+%%% @doc 客服会话（queued/active/closed）的应用层用例。
+%%%
+%%% 依据：plan v4.1 §4.2、§5.2、CS-01-A01..A05、EB-D03/EB-D05/EB-D08。
+%%%
+%%% 职责边界：
+%%%   * 状态机的**语义唯一真源**是 domain `cs_session`；本模块做参数收敛 →
+%%%     domain 判定 → 经 `cs_store_port` 的 CAS 用例写库（状态推进与审计事件
+%%%     同事务，恰好一次）。
+%%%   * claim 的**并发裁决点**在 DB（`claim_session/7` 的 seat 行锁内 CAS）；
+%%%     `cs_dispatch` 是同一容量判定的 domain 真源（A02）。
+%%%   * **消息真源是 enterprise**（A03 / EB-D08）：`append_session_message/2`
+%%%     只把客服会话上下文映射进 `enterprise_business_facade:append_message/2`
+%%%     的参数面——本 feature 不建消息副本、不直接引用 enterprise 内层模块。
+%%%   * session 绑定 `business_identity_id`（不是 user_id）：transfer/rebind
+%%%     只换 identity，主体字段零迁移；每次改绑后用 domain
+%%%     `assert_rebind_continuity/2` 自检（A04）。
+%%%
+%%% 授权（seat actor / tenant admin / cs_visit）由 CS-02 的认证分流判定；
+%%% 本模块只判业务前提（会话归属、状态、坐席绑定）。
+-module(cs_session_app).
+
+-include("generated/imboy_product_features.hrl").
+
+-export([
+    open_session/2,
+    fetch_session/2,
+    claim/2,
+    transfer/2,
+    close/2,
+    rate/2,
+    append_session_message/2,
+    list_contact_sessions/2
+]).
+
+%% ===================================================================
+%% 开会话（queued）
+%% ===================================================================
+
+%% @doc 为 (Org, workspace, contact, conversation) 建立排队会话。
+%% 同一会话上已有未关闭客服 session 时 conflict（DB 部分唯一索引裁决）。
+%%
+%% Params：workspace_id / contact_id / conversation_id 必填；visit_token_id、
+%% created_by_user_id、at 可选；store / id 可注入。
+-spec open_session(integer(), map()) -> {ok, map()} | {error, term()}.
+open_session(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            open_session_in(OrgId, WorkspaceId, Params)
+    end;
+open_session(_OrgId, _Params) ->
+    {error, {invalid_argument, open_session}}.
+
+open_session_in(OrgId, WorkspaceId, Params) ->
+    ContactId = maps:get(contact_id, Params, undefined),
+    ConversationId = maps:get(conversation_id, Params, undefined),
+    At = maps:get(at, Params, undefined),
+    case pos_int(ContactId) andalso pos_int(ConversationId) of
+        false ->
+            {error, {invalid_argument, open_session}};
+        true ->
+            insert_session(OrgId, WorkspaceId, ContactId, ConversationId, At, Params)
+    end.
+
+insert_session(OrgId, WorkspaceId, ContactId, ConversationId, At, Params) ->
+    case cs_app_support:new_id(cs_session, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, SessionId} ->
+            Draft = #{
+                id => SessionId,
+                organization_id => OrgId,
+                workspace_id => WorkspaceId,
+                contact_id => ContactId,
+                conversation_id => ConversationId,
+                visit_token_id => maps:get(visit_token_id, Params, undefined),
+                queued_at => At,
+                created_by_user_id => maps:get(created_by_user_id, Params, undefined)
+            },
+            case
+                with_store(Params, fun(Store) ->
+                    Store:insert_session(OrgId, WorkspaceId, Draft)
+                end)
+            of
+                {error, _} = Err ->
+                    Err;
+                {ok, Stored} ->
+                    case
+                        append_event(Params, OrgId, #{
+                            session_id => SessionId,
+                            actor_user_id => maps:get(created_by_user_id, Params, undefined),
+                            actor_kind => <<"visitor">>,
+                            action => <<"session.opened">>,
+                            detail => #{<<"contact_id">> => ContactId},
+                            workspace_id => WorkspaceId
+                        })
+                    of
+                        ok -> {ok, Stored};
+                        {error, _} = AuditErr -> AuditErr
+                    end
+            end
+    end.
+
+%% ===================================================================
+%% 读取
+%% ===================================================================
+
+%% @doc 会话详情（租户作用域由 store 同语句裁决；跨 Org 一律 not_found）。
+-spec fetch_session(integer(), map()) -> {ok, map()} | {error, term()}.
+fetch_session(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            SessionId = maps:get(session_id, Params, undefined),
+            fetch_by(Params, OrgId, WorkspaceId, SessionId)
+    end;
+fetch_session(_OrgId, _Params) ->
+    {error, {invalid_argument, fetch_session}}.
+
+fetch_by(Params, OrgId, WorkspaceId, SessionId) ->
+    case pos_int(SessionId) of
+        false ->
+            {error, {invalid_session_id, SessionId}};
+        true ->
+            with_store(Params, fun(Store) ->
+                Store:fetch_session(OrgId, WorkspaceId, SessionId)
+            end)
+    end.
+
+%% @doc 访客视角：只列**自己的** (Org, contact) 会话（A05 读取边界；
+%% 访客 token 绑定的 contact 之外一律空列表，与 store 同语句过滤一致）。
+-spec list_contact_sessions(integer(), map()) -> {ok, [map()]} | {error, term()}.
+list_contact_sessions(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            ContactId = maps:get(contact_id, Params, undefined),
+            case pos_int(ContactId) of
+                false ->
+                    {error, {invalid_contact_id, ContactId}};
+                true ->
+                    with_store(Params, fun(Store) ->
+                        Store:list_sessions_for_contact(OrgId, WorkspaceId, ContactId)
+                    end)
+            end
+    end;
+list_contact_sessions(_OrgId, _Params) ->
+    {error, {invalid_argument, list_contact_sessions}}.
+
+%% ===================================================================
+%% claim（A02：并发恰好一个成功，且不超 max_concurrent）
+%% ===================================================================
+
+%% @doc 接单：把 queued 会话推进为 active 并绑定坐席 identity。
+%%
+%% Params：workspace_id / session_id / expected_version / at 必填；
+%% `business_identity_id` 可选——给出则显式 claim 该坐席（坐席停用即拒），
+%% 缺省则经 `list_dispatchable_seats` + `cs_dispatch:select_seat` 做 least-active 派单。
+%%
+%% 并发裁决：最终以 `cs_store_port:claim_session/7` 的 DB CAS 为准；
+%% domain `cs_session:assert_cas_expectation/3` 是进入 DB 前的同一判定。
+-spec claim(integer(), map()) -> {ok, map()} | {error, term()}.
+claim(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            claim_in(OrgId, WorkspaceId, Params)
+    end;
+claim(_OrgId, _Params) ->
+    {error, {invalid_argument, claim}}.
+
+claim_in(OrgId, WorkspaceId, Params) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    ExpectedVersion = maps:get(expected_version, Params, undefined),
+    At = maps:get(at, Params, undefined),
+    case pos_int(SessionId) andalso pos_int(ExpectedVersion) andalso pos_int(At) of
+        false ->
+            {error, {invalid_argument, claim}};
+        true ->
+            case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Session} ->
+                    claim_session(OrgId, WorkspaceId, Session, ExpectedVersion, At, Params)
+            end
+    end.
+
+claim_session(OrgId, WorkspaceId, Session, ExpectedVersion, At, Params) ->
+    IdentityId = maps:get(business_identity_id, Params, undefined),
+    case pick_seat(OrgId, IdentityId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, SeatIdentityId} ->
+            do_claim(OrgId, WorkspaceId, Session, SeatIdentityId, ExpectedVersion, At, Params)
+    end.
+
+do_claim(OrgId, WorkspaceId, Session, IdentityId, ExpectedVersion, At, Params) ->
+    case cs_session:assert_cas_expectation(Session, queued, ExpectedVersion) of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            Event = claim_event(Session, IdentityId, At, Params),
+            with_store(Params, fun(Store) ->
+                Store:claim_session(
+                    OrgId,
+                    WorkspaceId,
+                    maps:get(id, Session),
+                    IdentityId,
+                    ExpectedVersion,
+                    At,
+                    Event
+                )
+            end)
+    end.
+
+claim_event(Session, IdentityId, At, Params) ->
+    #{
+        session_id => maps:get(id, Session),
+        business_identity_id => IdentityId,
+        actor_user_id => maps:get(actor_user_id, Params, undefined),
+        actor_kind => <<"seat">>,
+        action => <<"session.claimed">>,
+        detail => #{<<"at">> => At},
+        workspace_id => maps:get(workspace_id, Session)
+    }.
+
+%% 显式 claim：坐席必须存在；停用由 DB CAS 拒（这里先给可读错误）。
+pick_seat(OrgId, undefined, Params) ->
+    case with_store(Params, fun(Store) -> Store:list_dispatchable_seats(OrgId) end) of
+        {error, _} = Err -> Err;
+        {ok, Seats} -> cs_dispatch:select_seat(OrgId, Seats)
+    end;
+pick_seat(OrgId, IdentityId, Params) ->
+    case with_store(Params, fun(Store) -> Store:fetch_seat(OrgId, IdentityId) end) of
+        {error, not_found} ->
+            {error, {seat_not_found, IdentityId}};
+        {error, _} = Err ->
+            Err;
+        {ok, Seat} ->
+            case maps:get(enabled, Seat, false) of
+                false -> {error, seat_disabled};
+                true -> {ok, IdentityId}
+            end
+    end.
+
+%% ===================================================================
+%% transfer（A04：改绑 identity，主体字段零迁移）
+%% ===================================================================
+
+%% @doc 把 active 会话改绑给另一坐席 identity（owner/主体字段不变）。
+%% Params：workspace_id / session_id / to_identity_id / expected_version / at 必填。
+-spec transfer(integer(), map()) -> {ok, map()} | {error, term()}.
+transfer(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            transfer_in(OrgId, WorkspaceId, Params)
+    end;
+transfer(_OrgId, _Params) ->
+    {error, {invalid_argument, transfer}}.
+
+transfer_in(OrgId, WorkspaceId, Params) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    ToIdentityId = maps:get(to_identity_id, Params, undefined),
+    ExpectedVersion = maps:get(expected_version, Params, undefined),
+    At = maps:get(at, Params, undefined),
+    case pos_int(SessionId) andalso pos_int(ToIdentityId) andalso pos_int(At) of
+        false ->
+            {error, {invalid_argument, transfer}};
+        true ->
+            do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Params)
+    end.
+
+do_transfer(OrgId, WorkspaceId, SessionId, ToIdentityId, ExpectedVersion, At, Params) ->
+    case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Session} ->
+            case cs_session:transfer(Session, ToIdentityId, At) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Transferred} ->
+                    Event = #{
+                        session_id => SessionId,
+                        business_identity_id => ToIdentityId,
+                        actor_user_id => maps:get(actor_user_id, Params, undefined),
+                        actor_kind => <<"seat">>,
+                        action => <<"session.transferred">>,
+                        detail => #{<<"from">> => maps:get(business_identity_id, Session)},
+                        workspace_id => WorkspaceId
+                    },
+                    cas_write(
+                        Params,
+                        OrgId,
+                        WorkspaceId,
+                        fun(Store) ->
+                            Store:transfer_session(
+                                OrgId,
+                                WorkspaceId,
+                                SessionId,
+                                ToIdentityId,
+                                ExpectedVersion,
+                                At,
+                                Event
+                            )
+                        end,
+                        Session,
+                        Transferred
+                    )
+            end
+    end.
+
+%% ===================================================================
+%% close
+%% ===================================================================
+
+%% @doc 关闭会话（queued|active → closed）。Params：workspace_id / session_id /
+%% expected_version / at 必填；reason 可选（审计文本）。
+-spec close(integer(), map()) -> {ok, map()} | {error, term()}.
+close(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            close_in(OrgId, WorkspaceId, Params)
+    end;
+close(_OrgId, _Params) ->
+    {error, {invalid_argument, close}}.
+
+close_in(OrgId, WorkspaceId, Params) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    ExpectedVersion = maps:get(expected_version, Params, undefined),
+    At = maps:get(at, Params, undefined),
+    case pos_int(SessionId) andalso pos_int(At) of
+        false ->
+            {error, {invalid_argument, close}};
+        true ->
+            do_close(OrgId, WorkspaceId, SessionId, ExpectedVersion, At, Params)
+    end.
+
+do_close(OrgId, WorkspaceId, SessionId, ExpectedVersion, At, Params) ->
+    Reason = maps:get(reason, Params, undefined),
+    case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Session} ->
+            case cs_session:transition(Session, closed, #{at => At, reason => Reason}) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Closed} ->
+                    Event = #{
+                        session_id => SessionId,
+                        business_identity_id => maps:get(business_identity_id, Session),
+                        actor_user_id => maps:get(actor_user_id, Params, undefined),
+                        actor_kind => actor_kind(Params),
+                        action => <<"session.closed">>,
+                        detail => #{<<"reason">> => Reason},
+                        workspace_id => WorkspaceId
+                    },
+                    cas_write(
+                        Params,
+                        OrgId,
+                        WorkspaceId,
+                        fun(Store) ->
+                            Store:close_session(
+                                OrgId,
+                                WorkspaceId,
+                                SessionId,
+                                Reason,
+                                ExpectedVersion,
+                                At,
+                                Event
+                            )
+                        end,
+                        Session,
+                        Closed
+                    )
+            end
+    end.
+
+%% ===================================================================
+%% rating（1..5；仅 closed；不可重复）
+%% ===================================================================
+
+%% @doc 给 closed 会话评分。Params：workspace_id / session_id / rating /
+%% expected_version / at 必填。
+-spec rate(integer(), map()) -> {ok, map()} | {error, term()}.
+rate(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            rate_in(OrgId, WorkspaceId, Params)
+    end;
+rate(_OrgId, _Params) ->
+    {error, {invalid_argument, rate}}.
+
+rate_in(OrgId, WorkspaceId, Params) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    Rating = maps:get(rating, Params, undefined),
+    ExpectedVersion = maps:get(expected_version, Params, undefined),
+    At = maps:get(at, Params, undefined),
+    case pos_int(SessionId) andalso pos_int(At) of
+        false ->
+            {error, {invalid_argument, rate}};
+        true ->
+            do_rate(OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Params)
+    end.
+
+do_rate(OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Params) ->
+    case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Session} ->
+            case cs_session:rate(Session, Rating, At) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Rated} ->
+                    Event = #{
+                        session_id => SessionId,
+                        business_identity_id => maps:get(business_identity_id, Session),
+                        actor_user_id => maps:get(actor_user_id, Params, undefined),
+                        actor_kind => actor_kind(Params),
+                        action => <<"session.rated">>,
+                        detail => #{<<"rating">> => Rating},
+                        workspace_id => WorkspaceId
+                    },
+                    cas_write(
+                        Params,
+                        OrgId,
+                        WorkspaceId,
+                        fun(Store) ->
+                            Store:rate_session(
+                                OrgId,
+                                WorkspaceId,
+                                SessionId,
+                                Rating,
+                                ExpectedVersion,
+                                At,
+                                Event
+                            )
+                        end,
+                        Session,
+                        Rated
+                    )
+            end
+    end.
+
+%% ===================================================================
+%% A03：客服消息只经 enterprise_business_facade 写 enterprise 真源
+%% ===================================================================
+
+%% @doc 在客服会话上发一条消息——**唯一**写入路径是
+%% `enterprise_business_facade:append_message/2`（canonical message + policy
+%% snapshot + audit 同事务，由 enterprise 侧裁决）。本 feature 不建
+%% `customer_service_message` 等副本，也不引用 enterprise 的内层模块。
+%%
+%% 发送者二选一（与会话绑定一致，否则拒绝）：
+%%   * 坐席出站：`business_identity_id`（必须等于会话当前经办）+ `actor_user_id`
+%%     → `sender_type=business_identity`；
+%%   * 访客入站：`contact_id`（必须等于会话绑定的 contact）→ `sender_type=contact`。
+%%
+%% Params：workspace_id / session_id / body / client_msg_id / key_ref 必填；
+%% `canonical_tx` / `store` / `clock` / `id` / `notify` / `accepted_at` 等键
+%% 原样透传给 facade（测试注入面）。
+-spec append_session_message(integer(), map()) -> {ok, map()} | {error, term()}.
+append_session_message(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            append_message_in(OrgId, WorkspaceId, Params)
+    end;
+append_session_message(_OrgId, _Params) ->
+    {error, {invalid_argument, append_session_message}}.
+
+append_message_in(OrgId, WorkspaceId, Params) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    case fetch_session_for(Params, OrgId, WorkspaceId, SessionId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Session} ->
+            case sender_shape(Session, Params) of
+                {error, _} = Err ->
+                    Err;
+                {ok, SenderType} ->
+                    FacadeParams = facade_message_params(Session, SenderType, WorkspaceId, Params),
+                    dispatch_message(OrgId, FacadeParams)
+            end
+    end.
+
+%% A03：客服消息的唯一写入路径是 `enterprise_business_facade:append_message`。
+%% 跨裁剪调用按 F-EB10-1 加 `-ifdef` 保护：enterprise_business 未被选中的档位里
+%% 本用例 fail-closed（显式不可用），不做任何客服侧消息副本兜底。
+-ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS).
+dispatch_message(OrgId, FacadeParams) ->
+    enterprise_business_facade:append_message(OrgId, FacadeParams).
+-else.
+dispatch_message(_OrgId, _FacadeParams) ->
+    {error, {enterprise_business_feature_not_selected, append_session_message}}.
+-endif.
+
+%% 坐席必须active且是当前经办；访客必须等于会话 contact。
+sender_shape(Session, Params) ->
+    SessionIdentity = maps:get(business_identity_id, Session, undefined),
+    SessionContact = maps:get(contact_id, Session, undefined),
+    case maps:get(business_identity_id, Params, undefined) of
+        undefined ->
+            case maps:get(contact_id, Params, undefined) of
+                SessionContact when is_integer(SessionContact) -> {ok, contact};
+                VisitorContact -> {error, {not_session_contact, VisitorContact, SessionContact}}
+            end;
+        ParamIdentity when is_integer(ParamIdentity) ->
+            Active = maps:get(status, Session) =:= active,
+            case Active andalso ParamIdentity =:= SessionIdentity of
+                true -> {ok, business_identity};
+                false -> {error, {not_session_seat, ParamIdentity, SessionIdentity}}
+            end;
+        BadIdentity ->
+            {error, {invalid_identity_id, BadIdentity}}
+    end.
+
+facade_message_params(Session, SenderType, WorkspaceId, Params) ->
+    Base = #{
+        workspace_id => WorkspaceId,
+        conversation_id => maps:get(conversation_id, Session),
+        client_msg_id => maps:get(client_msg_id, Params),
+        sender_type => sender_type_bin(SenderType),
+        body => maps:get(body, Params),
+        key_ref => maps:get(key_ref, Params)
+    },
+    WithSender =
+        case SenderType of
+            business_identity ->
+                Base#{
+                    identity_id => maps:get(business_identity_id, Session),
+                    actor_user_id => maps:get(actor_user_id, Params, undefined)
+                };
+            contact ->
+                Base#{contact_id => maps:get(contact_id, Session)}
+        end,
+    %% 注入面与可选键原样透传（facade/application 侧按需消费）。
+    PassKeys = [canonical_tx, store, clock, id, notify, accepted_at, audit_action],
+    maps:merge(WithSender, passthrough(Params, PassKeys)).
+
+passthrough(Params, Keys) ->
+    lists:foldl(
+        fun(Key, Acc) ->
+            case maps:get(Key, Params, undefined) of
+                undefined -> Acc;
+                Value -> Acc#{Key => Value}
+            end
+        end,
+        #{},
+        Keys
+    ).
+
+sender_type_bin(business_identity) -> <<"business_identity">>;
+sender_type_bin(contact) -> <<"contact">>.
+
+%% ===================================================================
+%% 内部辅助
+%% ===================================================================
+
+%% CAS 写入统一出口：写库后用 domain 断言主体字段零迁移（A04 自检）。
+cas_write(Params, OrgId, WorkspaceId, StoreFun, Before, _ExpectedNext) ->
+    case with_store(Params, StoreFun) of
+        {error, _} = Err ->
+            Err;
+        {ok, After} ->
+            ok = cs_session:assert_rebind_continuity(Before, After),
+            _ = OrgId,
+            _ = WorkspaceId,
+            {ok, After}
+    end.
+
+fetch_session_for(Params, OrgId, WorkspaceId, SessionId) ->
+    case pos_int(SessionId) of
+        false ->
+            {error, {invalid_session_id, SessionId}};
+        true ->
+            with_store(Params, fun(Store) ->
+                Store:fetch_session(OrgId, WorkspaceId, SessionId)
+            end)
+    end.
+
+actor_kind(Params) ->
+    maps:get(actor_kind, Params, <<"tenant_admin">>).
+
+append_event(Params, OrgId, Event) ->
+    cs_app_support:append_event(Params, OrgId, Event).
+
+with_store(Params, Fun) ->
+    cs_app_support:with_store(Params, Fun).
+
+pos_int(V) ->
+    cs_app_support:pos_int(V).

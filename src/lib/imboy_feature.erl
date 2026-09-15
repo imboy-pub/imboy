@@ -127,6 +127,23 @@ route_feature(admin, adm_channel_handler, Action) when
     Action =:= set_price
 ->
     channel_order;
+%% EB-10：企业业务两张面（租户 /api/v1/enterprise/*、平台
+%% /api/adm/enterprise-business/*）的**运行时** feature 门。
+%% 路由段的编译期物理裁剪在 src/imboy_router.erl
+%% （-ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS)），本处供 compiled_routes/2
+%% 过滤，两者是双保险而不是替代。
+route_feature(api, eb_tenant_handler, _Action) ->
+    enterprise_business;
+route_feature(admin, eb_platform_handler, _Action) ->
+    enterprise_business;
+%% CS-02：客服两张面（租户 /api/v1/cs/*、平台 /api/adm/customer-service/*）的
+%% **运行时** feature 门。路由段的编译期物理裁剪在 src/imboy_router.erl
+%% （-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE)），本处供 compiled_routes/2 过滤，
+%% 两者是双保险而不是替代。
+route_feature(api, cs_tenant_handler, _Action) ->
+    customer_service;
+route_feature(admin, cs_platform_handler, _Action) ->
+    customer_service;
 route_feature(admin, adm_report_handler, Action) when
     Action =:= channel_list;
     Action =:= channel_resolve;
@@ -185,7 +202,13 @@ feature_names() ->
     %%   关闭；community/enterprise 无显式覆盖时保持开放）。
     %% - appeal：处置申诉链（R-04 operational baseline，默认开放；
     %%   是否对用户开放由 profile/runtime 配置决定，法务结论后可关闭）。
-    Builtin = [bot_webhook, appeal],
+    %% - enterprise_business / customer_service：企业业务与客服（plan v4.1
+    %%   §5；EB-10 接入现成 feature 机制，物理裁剪见 FEATURE_BACKEND_MODULES
+    %%   与 imboy_router 的 -ifdef 段）。两者**是 Feature 而非 Plugin**：
+    %%   enterprise_business 是独立纵切单元 src/features/enterprise_business/，
+    %%   不注册为插件 feature_keys；依赖边 customer_service ->
+    %%   enterprise_business 声明在 imboy_policy_catalog:dependencies/1。
+    Builtin = [bot_webhook, appeal, enterprise_business, customer_service],
     CoreFixed ++ Ordered ++ Extra ++ Builtin.
 
 -spec normalize_feature_key(feature()) -> atom() | undefined.

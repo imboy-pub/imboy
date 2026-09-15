@@ -149,6 +149,31 @@ def extract_routes(router_src: str) -> dict:
     seg_test = _slice_between(
         router_src, re.compile(r"^test_routes_v1\(\)\s*->", re.M),
         re.compile(r"^-spec\s+test_open_routes", re.M))
+    # EB-10（精确 enterprise 行）：企业两张面的路由段不在上面三个文本窗口内 ——
+    # 它们被搬进 `imboy_router.erl` 底部的编译期裁剪 helper
+    # （`-ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS)` 分支，未选中时整段被预处理
+    # 剔除、路径字符串不进 beam）。不放宽窗口（那会把 moment 等其它 helper 一并
+    # 摄入、改变既有契约），只把这两段显式并入各自面。注意两段同处**一个**
+    # ifdef 分支内，故 tenant 段的切分终点是 platform 段起点，而不是 `-else.`。
+    seg_v1 += _slice_between(
+        router_src,
+        re.compile(r"^-spec enterprise_tenant_routes\(\) ->", re.M),
+        re.compile(r"^-spec enterprise_platform_routes\(\) ->", re.M))
+    seg_adm += _slice_between(
+        router_src,
+        re.compile(r"^-spec enterprise_platform_routes\(\) ->", re.M),
+        re.compile(r"^-else\.", re.M))
+    # CS-02（精确 customer_service 行）：客服两张面的路由段同样在 imboy_router.erl
+    # 底部的编译期裁剪 helper（-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE) 分支）里，
+    # 不放宽窗口，只把这两段显式并入各自面（与上方 enterprise 行同款机制）。
+    seg_v1 += _slice_between(
+        router_src,
+        re.compile(r"^-spec customer_service_tenant_routes\(\) ->", re.M),
+        re.compile(r"^-spec customer_service_platform_routes\(\) ->", re.M))
+    seg_adm += _slice_between(
+        router_src,
+        re.compile(r"^-spec customer_service_platform_routes\(\) ->", re.M),
+        re.compile(r"^-endif\.", re.M))
     scopes = {
         "main": seg_main, "api_v1": seg_v1, "adm": seg_adm,
         "test_dev_only": seg_test,

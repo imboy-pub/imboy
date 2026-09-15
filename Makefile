@@ -127,8 +127,19 @@ include erlang.mk
 # 本仓源码位于 src/<子目录>/*.erl（erlang.mk 递归 find），erlang.mk 默认的
 # ERLC_EXCLUDE_PATHS 只生成平铺 src/<mod>.erl，filter-out 永不命中——按本仓
 # 实际布局覆写为递归解析（BUILD-00R）。递归定义：ERLC_EXCLUDE 由 .mk 注入。
-# glob 模式必须内嵌 $(m)：裸 src/*/*.erl 会把整个两级子目录树滤出编译清单。
-ERLC_EXCLUDE_PATHS = $(foreach m,$(ERLC_EXCLUDE),$(wildcard src/$(m).erl src/*/$(m).erl src/*/*/$(m).erl))
+#
+# EB-10 修掉 ADR-0007 §Decision 登记的那处**深度盲区**：原覆写是
+# `src/$(m).erl src/*/$(m).erl src/*/*/$(m).erl`——只到 3 层，而纵切单元的
+# 实际深度是 4 层（src/features/<bc>/<layer>/<sub>/<mod>.erl，如
+# src/features/enterprise_business/application/asset/eb_asset_app.erl）。
+# 后果**不是**「多编译几个模块」而是 release 组装期硬失败：深层模块逃过本
+# filter ⇒ 仍进 .app modules；而 prune 钩子按 `$(ERLC_EXCLUDE)`（模块名）删
+# ebin/*.beam ⇒ .app 声明的模块没有 beam ⇒ relx/systools 报
+# `{module_not_found,imboy,eb_asset_app}`（2026-09-14 EB-10 三档矩阵实证，
+# 见 scripts/enterprise_business_feature_matrix.sh 的 neither 档）。
+# 改为在 erlang.mk 自己的**递归** ERL_FILES 上按 basename 过滤，与目录深度解耦：
+# 模块名在 Erlang 里全局唯一，`%/$(m).erl` 不会误伤其他模块。
+ERLC_EXCLUDE_PATHS = $(foreach m,$(ERLC_EXCLUDE),$(filter %/$(m).erl,$(ERL_FILES)))
 
 # BUILD-00R 物理裁剪装配钩子：erlang.mk 的 ERLC_EXCLUDE 只保证被排除模块
 # 不进 .app modules（relx 按整目录拷贝 ebin，不读 modules），因此必须在

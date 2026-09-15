@@ -68,6 +68,9 @@ regexes = [
     '''(?i)(00000000|11111111|deadbeef|cafebabe|abcdef00)[a-f0-9]{8,}''',
     # README / 文档中的 base64 演示串（< 32 字符的视为示例）
     '''^[A-Za-z0-9+/]{8,31}={0,2}$''',
+    # Erlang 测试模块原子（generic-api-key 误报）：eb09_facts_probe 是
+    # eb_tenant_handler_tests 的装配口径模块名，非密钥（CS-04 轮 A0）。
+    '\beb09_facts_probe\b',
 ]
 
 # ---------------------------------------------------------------------------

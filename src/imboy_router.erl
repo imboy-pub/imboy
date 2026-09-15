@@ -550,10 +550,9 @@ get_routes() ->
                 {"/api/v1/moya/learners/:id/history", moya_assignment_handler, #{
                     action => history
                 }},
-                {"/api/v1/moya/learners/:id/history/unread-count", moya_assignment_handler,
-                    #{
-                        action => history_unread_count
-                    }},
+                {"/api/v1/moya/learners/:id/history/unread-count", moya_assignment_handler, #{
+                    action => history_unread_count
+                }},
                 %% 教学学员账号绑定（Step 16：管理侧最小动作；JWT；logic/repo 由 D 泳道
                 %% 就绪，错误映射与码段决定见 STEP-16/notes.md「B 接线完成」）
                 {"/api/v1/moya/learners/:id/bind", moya_learner_bind_handler, #{
@@ -785,7 +784,15 @@ get_routes() ->
                     #{
                         action => related_posts
                     }}
-            ],
+            ] ++
+            %% EB-10：企业租户面 16 条（编译期物理裁剪；
+            %% 未选中 enterprise_business 时 helper 体被预处理剔除，helper 见文件底部）
+            enterprise_tenant_routes() ++
+            %% CS-02：客服租户面 15 条（同款编译期物理裁剪，helper 见文件底部）
+            customer_service_tenant_routes(),
+
+    %% ---------------------------------------------------------------------------
+    %% EB-10 / BUILD-00R：enterprise_business 路由段的**编译期物理裁剪** helper
 
     % Admin routes (原 imadm)
     AdmRoutes =
@@ -1169,9 +1176,20 @@ get_routes() ->
                 {"/api/adm/stats/finance/report", adm_stats_handler, #{action => finance_report}},
                 {"/static/admin/[...]", cowboy_static,
                     {priv_dir, imboy, "static/admin", [{mimetypes, cow_mimetypes, all}]}}
-            ],
-    CompiledApiRoutes = imboy_feature:compiled_routes(api, ApiV1Routes),
-    CompiledAdmRoutes = imboy_feature:compiled_routes(admin, AdmRoutes),
+            ] ++
+            %% EB-10：企业平台运营面 10 条（同上：编译期物理裁剪，helper 见文件底部）
+            enterprise_platform_routes() ++
+            %% CS-02：客服平台运营面 6 条（同款编译期物理裁剪，helper 见文件底部）
+            customer_service_platform_routes(),
+    %% ---------------------------------------------------------------------------
+    %% EB-10 / BUILD-00R：enterprise_business 路由段的**编译期物理裁剪** helper
+
+    CompiledApiRoutes = customer_service_wire(
+        enterprise_wire(imboy_feature:compiled_routes(api, ApiV1Routes))
+    ),
+    CompiledAdmRoutes = customer_service_wire(
+        enterprise_wire(imboy_feature:compiled_routes(admin, AdmRoutes))
+    ),
     CompiledPluginRoutes = imboy_feature:compiled_routes(api, plugin_routes()),
     CoreRoutes = MainRoutes ++ CompiledApiRoutes ++ CompiledAdmRoutes,
     %% 源路由已统一在 /api 命名空间下（双路过渡已撤，无存量老客户端）。
@@ -1378,5 +1396,406 @@ moment_api_routes() ->
 
 -spec moment_admin_routes() -> list().
 moment_admin_routes() ->
+    [].
+-endif.
+
+%% ===================================================================
+%% EB-09：企业面 route 装配
+%% ===================================================================
+
+%% @doc 给企业面的路由注入三个**面级**不变量键。
+%%
+%% 为什么集中注入而不是逐路由手写：`surface`（由 handler 决定）、`feature`
+%% （恒为 enterprise_business）与 `auth_facts`（本面的只读事实装配：租户面
+%% `eb_pg_auth_facts`、平台面 `eb_platform_auth_facts`）在同一个面上**恒等**，
+%% 30 条路由逐条手写只会制造漂移面。逐条**可变**的键（path / handler / action /
+%% auth_context / required_*）仍全部字面登记在路由表里，可直接机械核对
+%% （EB-09-A01 的核对套件读的是 `imboy_router:get_routes/0` 的运行时结果）。
+-spec enterprise_wire(list()) -> list().
+enterprise_wire(Routes) ->
+    [enterprise_wire_route(Route) || Route <- Routes].
+
+enterprise_wire_route({Path, eb_tenant_handler, Opts}) when is_map(Opts) ->
+    {Path, eb_tenant_handler, Opts#{
+        surface => tenant,
+        feature => enterprise_business,
+        auth_facts => eb_pg_auth_facts
+    }};
+enterprise_wire_route({Path, eb_platform_handler, Opts}) when is_map(Opts) ->
+    {Path, eb_platform_handler, Opts#{
+        surface => platform,
+        feature => enterprise_business,
+        auth_facts => eb_platform_auth_facts
+    }};
+enterprise_wire_route(Route) ->
+    Route.
+
+%% @doc 给客服面的路由注入三个**面级**不变量键（CS-02，模式照 enterprise_wire/1）。
+%%
+%% `surface`（由 handler 决定）、`feature`（恒为 customer_service）与 `auth_facts`
+%% （本面的只读事实装配：租户成员事实 `eb_pg_auth_facts`、平台事实
+%% `eb_platform_auth_facts`；访客/门店凭证类不用事实，注入无害）在同一个面上
+%% 恒等，21 条路由逐条手写只会制造漂移面。逐条**可变**的键（path / handler /
+%% action / auth_context / required_*）仍全部字面登记在路由表里。
+-spec customer_service_wire(list()) -> list().
+customer_service_wire(Routes) ->
+    [customer_service_wire_route(Route) || Route <- Routes].
+
+customer_service_wire_route({Path, cs_tenant_handler, Opts}) when is_map(Opts) ->
+    {Path, cs_tenant_handler, Opts#{
+        surface => tenant,
+        feature => customer_service,
+        auth_facts => eb_pg_auth_facts
+    }};
+customer_service_wire_route({Path, cs_platform_handler, Opts}) when is_map(Opts) ->
+    {Path, cs_platform_handler, Opts#{
+        surface => platform,
+        feature => customer_service,
+        auth_facts => eb_platform_auth_facts
+    }};
+customer_service_wire_route(Route) ->
+    Route.
+
+%% ===================================================================
+%% EB-10 / BUILD-00R：enterprise_business 路由段的**编译期物理裁剪** helper
+%% ===================================================================
+%% 为什么另开 helper 而不是把 16+10 条直接写在 ApiV1Routes/AdmRoutes 里：
+%% 未选中 enterprise_business 时，`-ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS)`
+%% 让整个函数体在预处理阶段被剔除 —— 企业路由的**路径字符串不进
+%% imboy_router.beam**（物理裁剪，不是运行时开关），与
+%% imboy_feature:route_feature/3 + compiled_routes/2 的运行时过滤构成双保险。
+%% 依据：plan §8 EB-10、docs/adr/0007-feature-slice-architecture.md、
+%% docs/architecture/feature-slice-rules.md；与 moment_api_routes/0 同款。
+%% 注意：路由条目本身（path/handler/action/auth_context/required_*）与 EB-09
+%% 逐字一致，仅位置与缩进变化（契约核对仍读 imboy_router:get_routes/0）。
+%% 契约侧：`scripts/contract_gate.py:extract_routes/1` 用 SCOPE_MARKERS 做文本
+%% 窗口切片，窗口不含本段 —— 故同批加了 2 条**精确 enterprise 行**把本段并入
+%% tenant/platform 两面，否则 `.contract/api_contract.json` 会丢掉这 26 条路由。
+%% ===================================================================
+-ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS).
+
+-spec enterprise_tenant_routes() -> list().
+enterprise_tenant_routes() ->
+    [
+        %% FND-1（RULING-2026-09-15 §五）：业务身份的创建/列举/绑定是**治理动作**，
+        %% 走 governance auth（active owner/admin），不得要求调用者预先持有 sales
+        %% assignment —— 旧配置（member+sales+org.manage）把「建身份」的资格挂在
+        %% 「已有身份」上，空 Org 无法自举（owner 也过不了 identity_assignment_missing）。
+        {"/api/v1/enterprise/organizations/:org_id/business-identities", eb_tenant_handler, #{
+            action => business_identities,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/business-identities/:id/assign",
+            eb_tenant_handler, #{
+                action => assign_identity,
+                auth_context => enterprise_owner_admin,
+                required_governance => [<<"owner">>, <<"admin">>]
+            }},
+        {"/api/v1/enterprise/organizations/:org_id/contacts", eb_tenant_handler, #{
+            action => contacts,
+            auth_context => enterprise_member,
+            required_function => <<"sales">>,
+            required_permission => <<"contact.read">>
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/contacts/:id", eb_tenant_handler, #{
+            action => contact_detail,
+            auth_context => enterprise_member,
+            required_function => <<"sales">>,
+            required_permission => <<"contact.read">>
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/contacts/:id/notes", eb_tenant_handler, #{
+            action => append_note,
+            auth_context => enterprise_member,
+            required_function => <<"sales">>,
+            required_permission => <<"note.write">>
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/conversations", eb_tenant_handler, #{
+            action => open_conversation,
+            auth_context => enterprise_member,
+            required_function => <<"sales">>,
+            required_permission => <<"conversation.write">>
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/conversations/:id/messages", eb_tenant_handler,
+            #{
+                action => conversation_messages,
+                auth_context => enterprise_member,
+                required_function => <<"sales">>,
+                required_permission => <<"conversation.read">>
+            }},
+        % ACK 是 delivery-only 动作（eb_enterprise_actions:ack_delivery 的
+        % delivery_only=true）：响应不含删除/归档语义（EB-09-A06）
+        {"/api/v1/enterprise/organizations/:org_id/conversations/:id/messages/:message_id/ack",
+            eb_tenant_handler, #{
+                action => ack_delivery,
+                auth_context => enterprise_member,
+                required_function => <<"sales">>,
+                required_permission => <<"message.write">>
+            }},
+        {"/api/v1/enterprise/organizations/:org_id/assets/presign", eb_tenant_handler, #{
+            action => presign,
+            auth_context => enterprise_member,
+            required_function => <<"sales">>,
+            required_permission => <<"asset.write">>
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/assets/confirm", eb_tenant_handler, #{
+            action => confirm_asset,
+            auth_context => enterprise_member,
+            required_function => <<"sales">>,
+            required_permission => <<"asset.write">>
+        }},
+        % content 经 facade 取流并流式返回，不签发任何 URL（EB-09-A05）
+        {"/api/v1/enterprise/organizations/:org_id/assets/:id/content", eb_tenant_handler, #{
+            action => asset_content,
+            auth_context => enterprise_member,
+            required_function => <<"sales">>,
+            required_permission => <<"asset.read">>
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/members/:uid/suspend", eb_tenant_handler, #{
+            action => suspend_member,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/offboarding", eb_tenant_handler, #{
+            action => offboarding_open,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/offboarding/:id/execute", eb_tenant_handler, #{
+            action => offboarding_execute,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/offboarding/:id/verify", eb_tenant_handler, #{
+            action => offboarding_verify,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/offboarding/:id/finalize", eb_tenant_handler, #{
+            action => offboarding_finalize,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }}
+    ].
+
+-spec enterprise_platform_routes() -> list().
+enterprise_platform_routes() ->
+    [
+        {"/api/adm/enterprise-business/organizations/:org_id/identities", eb_platform_handler, #{
+            action => p_identities,
+            auth_context => platform_admin,
+            required_permission => <<"enterprise_business:read">>
+        }},
+        {"/api/adm/enterprise-business/organizations/:org_id/contacts", eb_platform_handler, #{
+            action => p_contacts,
+            auth_context => platform_admin,
+            required_permission => <<"enterprise_business:read">>
+        }},
+        {"/api/adm/enterprise-business/organizations/:org_id/contacts/:id", eb_platform_handler, #{
+            action => p_contact_detail,
+            auth_context => platform_admin,
+            required_permission => <<"enterprise_business:read">>
+        }},
+        {"/api/adm/enterprise-business/organizations/:org_id/conversations/:id/messages",
+            eb_platform_handler, #{
+                action => p_conversation_messages,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:read">>
+            }},
+        {"/api/adm/enterprise-business/organizations/:org_id/messages/:message_id",
+            eb_platform_handler, #{
+                action => p_message_detail,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:read">>
+            }},
+        {"/api/adm/enterprise-business/organizations/:org_id/assets/:id/content",
+            eb_platform_handler, #{
+                action => p_asset_content,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:read">>
+            }},
+        {"/api/adm/enterprise-business/organizations/:org_id/members/:uid/suspend",
+            eb_platform_handler, #{
+                action => p_suspend_member,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:write">>
+            }},
+        {"/api/adm/enterprise-business/organizations/:org_id/offboarding/:id/execute",
+            eb_platform_handler, #{
+                action => p_offboarding_execute,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:write">>
+            }},
+        {"/api/adm/enterprise-business/organizations/:org_id/offboarding/:id/verify",
+            eb_platform_handler, #{
+                action => p_offboarding_verify,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:write">>
+            }},
+        {"/api/adm/enterprise-business/organizations/:org_id/offboarding/:id/finalize",
+            eb_platform_handler, #{
+                action => p_offboarding_finalize,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:write">>
+            }}
+    ].
+
+-else.
+%% 未选中 enterprise_business：两张面都不注册，路径字符串不进 beam。
+-spec enterprise_tenant_routes() -> list().
+enterprise_tenant_routes() ->
+    [].
+
+-spec enterprise_platform_routes() -> list().
+enterprise_platform_routes() ->
+    [].
+-endif.
+
+%% ===================================================================
+%% CS-02：customer_service 路由段的**编译期物理裁剪** helper
+%% ===================================================================
+%% 模式照 enterprise_tenant_routes()/enterprise_platform_routes()：未选中
+%% customer_service 时，`-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE)` 让整个函数体在
+%% 预处理阶段被剔除 —— 客服路由的**路径字符串不进 imboy_router.beam**（物理裁剪，
+%% 不是运行时开关），与 imboy_feature:route_feature/3 + compiled_routes/2 的运行时
+%% 过滤构成双保险。运行时 feature 归属见 src/lib/imboy_feature.erl 的
+%% route_feature(api, cs_tenant_handler, _) / route_feature(admin, cs_platform_handler, _)。
+%% 契约侧：`scripts/contract_gate.py` 同批加了 2 条**精确 customer_service 行**把本段
+%% 并入 api_v1/adm 两面（否则 `.contract/api_contract.json` 会丢这 21 条路由）。
+%% ===================================================================
+-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE).
+
+-spec customer_service_tenant_routes() -> list().
+customer_service_tenant_routes() ->
+    [
+        %% —— A0 客户端契约基准（与 imboyapp A4 纵切对齐）——
+        %% 门店开会话：shop key 主体（org 为申报值，cs_auth 用 digest 同语句证明）。
+        {"/api/v1/cs/sessions/queue", cs_tenant_handler, #{
+            action => session_queue,
+            auth_context => cs_shop_key
+        }},
+        %% 坐席会话生命周期（claim/transfer/close）：cs_seat 主体。
+        {"/api/v1/cs/sessions/:id/claim", cs_tenant_handler, #{
+            action => session_claim,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.write">>
+        }},
+        {"/api/v1/cs/sessions/:id/transfer", cs_tenant_handler, #{
+            action => session_transfer,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.write">>
+        }},
+        {"/api/v1/cs/sessions/:id/close", cs_tenant_handler, #{
+            action => session_close,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.write">>
+        }},
+        %% 访客面：visit token 主体（列自己的会话 / 入站消息 / 评分）。
+        {"/api/v1/cs/sessions", cs_tenant_handler, #{
+            action => visitor_sessions,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/sessions/:id/messages", cs_tenant_handler, #{
+            action => session_messages,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/sessions/:id/rating", cs_tenant_handler, #{
+            action => session_rating,
+            auth_context => cs_visit
+        }},
+        %% A0 客户端契约基准：客服端企业消息列表（游标 after_id，TSID string）。
+        {"/api/v1/enterprise/conversations/:conversation_id/messages", cs_tenant_handler, #{
+            action => conversation_messages,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
+        %% —— 租户治理面（owner/admin）：seat / shop key / visit token 管理 ——
+        {"/api/v1/cs/organizations/:org_id/seats", cs_tenant_handler, #{
+            action => seats,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/cs/organizations/:org_id/seats/:id/suspend", cs_tenant_handler, #{
+            action => seat_suspend,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/cs/organizations/:org_id/seats/:id/resume", cs_tenant_handler, #{
+            action => seat_resume,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/cs/organizations/:org_id/shop-keys", cs_tenant_handler, #{
+            action => shop_key_create,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/cs/organizations/:org_id/shop-keys/:id/revoke", cs_tenant_handler, #{
+            action => shop_key_revoke,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/cs/organizations/:org_id/visit-tokens", cs_tenant_handler, #{
+            action => visit_token_issue,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/cs/organizations/:org_id/visit-tokens/:id/revoke", cs_tenant_handler, #{
+            action => visit_token_revoke,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }}
+    ].
+
+-spec customer_service_platform_routes() -> list().
+customer_service_platform_routes() ->
+    [
+        {"/api/adm/customer-service/organizations/:org_id/seats", cs_platform_handler, #{
+            action => p_seats,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
+        {"/api/adm/customer-service/organizations/:org_id/sessions/:id", cs_platform_handler, #{
+            action => p_session,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
+        {"/api/adm/customer-service/organizations/:org_id/seats/:id/suspend", cs_platform_handler,
+            #{
+                action => p_seat_suspend,
+                auth_context => platform_admin,
+                required_permission => <<"customer_service:write">>
+            }},
+        {"/api/adm/customer-service/organizations/:org_id/seats/:id/resume", cs_platform_handler, #{
+                action => p_seat_resume,
+                auth_context => platform_admin,
+                required_permission => <<"customer_service:write">>
+            }},
+        {"/api/adm/customer-service/organizations/:org_id/sessions/:id/transfer",
+            cs_platform_handler, #{
+                action => p_session_transfer,
+                auth_context => platform_admin,
+                required_permission => <<"customer_service:write">>
+            }},
+        {"/api/adm/customer-service/organizations/:org_id/sessions/:id/close", cs_platform_handler,
+            #{
+                action => p_session_close,
+                auth_context => platform_admin,
+                required_permission => <<"customer_service:write">>
+            }}
+    ].
+
+-else.
+%% 未选中 customer_service：两张面都不注册，路径字符串不进 beam。
+-spec customer_service_tenant_routes() -> list().
+customer_service_tenant_routes() ->
+    [].
+
+-spec customer_service_platform_routes() -> list().
+customer_service_platform_routes() ->
     [].
 -endif.

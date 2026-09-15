@@ -1,8 +1,25 @@
 -module(organization_member_logic).
 
 %% Organization 治理成员。该关系不派生 Workspace 或 Group 成员资格。
+%%
+%% `suspend/3` 与 `remove/3` 的**依赖资源守卫**（EB-08 租约内的精确 removal/suspend
+%% 段）：两者都是 `organization_member` 这一张 Core 表的**通用**状态迁移——
+%%   * `suspend/3` 把 active 成员置为 suspended（可恢复的撤权第一步，不删个人账号）；
+%%   * `remove/3` 在数据库守卫（同语句 BEFORE 触发器）拒绝「仍被依赖资源引用」的
+%%     移除时，把该拒绝**翻译**成 409（`dependent_resources_conflict/1`）。
+%% 本模块不引用任何纵切单元模块（`*_feature` / `customer_service_*` 一律不出现）：
+%% 反向依赖由 `make arch-check` 的铁律 5 与 `organization_member_logic_tests` 的
+%% A06 静态判定共同看守。
 
--export([list/4, invite/4, change_role/4, remove/3, transfer_owner/3]).
+-export([
+    list/4,
+    invite/4,
+    change_role/4,
+    remove/3,
+    transfer_owner/3,
+    suspend/3,
+    dependent_resources_conflict/1
+]).
 
 -include("log.hrl").
 
@@ -260,19 +277,19 @@ change_role_tx(Conn, OrgId, TargetUid, Role) ->
             throw({abort_tx, {internal, Reason}})
     end.
 
+%% 可被移除的在册状态：active（直接移除）与 suspended（EB-08 的两步离场：
+%% 先撤权再移除）。两者都必须先过数据库守卫（active 经办关系存在即 23514）。
+%% removed / 非成员不在其列 —— 仍然 409，fail-closed 不变。
+-define(REMOVABLE_SOURCE(Status), (Status =:= <<"active">> orelse Status =:= <<"suspended">>)).
+
 remove_tx(Conn, Uid, Org, OrgId, TargetUid) ->
     case
         organization_member_repo:find_for_update_tx(
             Conn, OrgId, TargetUid, <<"role,status">>
         )
     of
-        {ok, #{<<"status">> := <<"active">>, <<"role">> := <<"owner">>}} ->
-            abort(409, <<"主 Owner 不能被移除，请先转移 Owner"/utf8>>);
-        {ok, #{<<"status">> := <<"active">>, <<"role">> := <<"admin">>}} ->
-            ensure_primary_owner(Uid, Org),
-            remove_active_tx(Conn, OrgId, TargetUid);
-        {ok, #{<<"status">> := <<"active">>}} ->
-            remove_active_tx(Conn, OrgId, TargetUid);
+        {ok, #{<<"status">> := Status} = Member} when ?REMOVABLE_SOURCE(Status) ->
+            remove_by_role_tx(Conn, Uid, Org, OrgId, TargetUid, Status, Member);
         {ok, _} ->
             member_not_active();
         {error, not_found} ->
@@ -281,13 +298,174 @@ remove_tx(Conn, Uid, Org, OrgId, TargetUid) ->
             throw({abort_tx, {internal, Reason}})
     end.
 
-remove_active_tx(Conn, OrgId, TargetUid) ->
-    case organization_member_repo:remove_tx(Conn, OrgId, TargetUid) of
+%% 角色规则逐条保持原样（主 Owner 一律 409；Admin 需主 Owner 执行；其余直接移除）。
+remove_by_role_tx(Conn, Uid, Org, OrgId, TargetUid, Status, Member) ->
+    case maps:get(<<"role">>, Member, undefined) of
+        <<"owner">> ->
+            abort(409, <<"主 Owner 不能被移除，请先转移 Owner"/utf8>>);
+        <<"admin">> ->
+            ensure_primary_owner(Uid, Org),
+            remove_active_tx(Conn, OrgId, TargetUid, Status);
+        _MemberLike ->
+            remove_active_tx(Conn, OrgId, TargetUid, Status)
+    end.
+
+remove_active_tx(Conn, OrgId, TargetUid, <<"active">>) ->
+    remove_row_tx(
+        Conn, OrgId, TargetUid, organization_member_repo:remove_tx(Conn, OrgId, TargetUid)
+    );
+remove_active_tx(Conn, OrgId, TargetUid, _Suspended) ->
+    remove_row_tx(Conn, OrgId, TargetUid, remove_member_row_tx(Conn, OrgId, TargetUid)).
+
+remove_row_tx(_Conn, OrgId, TargetUid, Result) ->
+    case Result of
         ok ->
             {ok, member_result(OrgId, TargetUid, undefined, <<"removed">>)};
         {error, Reason} ->
+            case dependent_resources_conflict(Reason) of
+                {conflict, Message} -> abort(409, Message);
+                none -> throw({abort_tx, {internal, Reason}})
+            end
+    end.
+
+%% 从**非 active**（即 suspended）出发的精确移除：唯一一条写语句，org 作用域显式
+%% 贯穿，且只接受在册状态（active|suspended）——`removed` / 非成员的行不匹配 ⇒
+%% 影响行数不为 1 即显式失败（并发重复移除不静默成功）。
+%% 为什么需要它：`organization_member_repo:remove_tx/3` 的 WHERE 只匹配
+%% `status = 'active'`，而 EB-08 的离场是两步（S1 suspend -> S3 removed）。
+remove_member_row_tx(Conn, OrgId, Uid) ->
+    Sql =
+        <<
+            "UPDATE organization_member SET status = 'removed', updated_at = CURRENT_TIMESTAMP"
+            " WHERE organization_id = $1 AND user_id = $2 AND status IN ('active','suspended')"
+        >>,
+    case elib_pg:execute(Conn, Sql, [OrgId, Uid]) of
+        {ok, 1} -> ok;
+        {ok, _} -> {error, member_not_active};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 暂停（suspend）Org 成员的通用能力：立即撤权，但**不**删个人账号。
+%%
+%% 判定顺序（与 remove/3 同规，锁顺序也是「组织行先、成员行后」）：
+%%   1. 参数形状；2. 组织存在且 active；3. 操作人必须是 Owner/Admin；
+%%   4. 目标必须是 active 成员，且主 Owner 不可被暂停；5. 精确单列状态迁移。
+%%
+%% 语义要点：
+%%   * suspended 是**可恢复**的撤权第一步（EB-D07）：不动 `workspace_member`、
+%%     不动经办关系、不动个人账号；「企业业务授权立即失败」由授权路径逐请求读事实
+%%     实现（本函数只负责把事实改成 suspended）。
+%%   * `remove/3` 会因「仍被依赖资源引用」被数据库拒绝并映射为 409；suspend 不会
+%%     （暂停不破坏任何引用）——两者语义由 `dependent_resources_conflict/1` 的
+%%     窄映射保持一致：**只有真被依赖挡住时才说 409**。
+-spec suspend(integer(), integer(), integer()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+suspend(Uid, OrgId, TargetUid) when
+    is_integer(OrgId), OrgId > 0, is_integer(TargetUid), TargetUid > 0
+->
+    Result = write_tx(
+        Uid,
+        OrgId,
+        fun(Conn, _Org, _ActorRole) -> suspend_tx(Conn, OrgId, TargetUid) end,
+        <<"暂停失败，请稍后重试"/utf8>>
+    ),
+    case Result of
+        {ok, _} -> ?INFO_LOG([organization_member_suspended, OrgId, Uid, TargetUid]);
+        _ -> ok
+    end,
+    Result;
+suspend(_, _, _) ->
+    {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
+
+suspend_tx(Conn, OrgId, TargetUid) ->
+    case
+        organization_member_repo:find_for_update_tx(
+            Conn, OrgId, TargetUid, <<"role,status">>
+        )
+    of
+        {ok, #{<<"status">> := <<"active">>, <<"role">> := <<"owner">>}} ->
+            abort(409, <<"主 Owner 不能被暂停，请先转移 Owner"/utf8>>);
+        {ok, #{<<"status">> := <<"active">>, <<"role">> := Role}} ->
+            case set_member_status_tx(Conn, OrgId, TargetUid, <<"suspended">>) of
+                ok ->
+                    {ok, member_result(OrgId, TargetUid, Role, <<"suspended">>)};
+                {error, Reason} ->
+                    throw({abort_tx, {internal, Reason}})
+            end;
+        {ok, _NotActive} ->
+            member_not_active();
+        {error, not_found} ->
+            member_not_active();
+        {error, Reason} ->
             throw({abort_tx, {internal, Reason}})
     end.
+
+%% 主 Owner 的成员行受数据库守卫保护（00000113 的 trg_organization_primary_owner_member_guard，
+%% 任何 status <> 'active' 的变更都是 23514）；`suspend_tx/4` 的第一条子句先判
+%% `role = owner` ⇒ 409，避免把 DB 的 23514 当成普通内部错误上报。
+%% 精确的单列状态迁移：org 作用域显式贯穿，且只接受仍然 active 的行
+%% （并发重复迁移由该条件裁决 —— 影响行数不为 1 即显式失败，不静默成功）。
+set_member_status_tx(Conn, OrgId, Uid, Status) ->
+    Sql =
+        <<
+            "UPDATE organization_member SET status = $3, updated_at = CURRENT_TIMESTAMP"
+            " WHERE organization_id = $1 AND user_id = $2 AND status = 'active'"
+        >>,
+    case elib_pg:execute(Conn, Sql, [OrgId, Uid, Status]) of
+        {ok, 1} -> ok;
+        {ok, _} -> {error, member_not_active};
+        {error, Reason} -> {error, Reason}
+    end.
+
+%% @doc 把「仍被依赖资源引用」的数据库拒绝映射成 409（**通用**、窄口径）。
+%%
+%% 依赖关系由数据库在**同一语句内**裁决（BEFORE 触发器），本函数只做错误翻译：
+%%   * 只有 SQLSTATE `23514`（check violation）**且**约束名在 Core 的依赖守卫表里
+%%     才映射；其它约束、其它错误码、非数据库错误一律 `none`（不把失败都说成 409）；
+%%   * 表里只有**约束名**（数据库对象名），没有任何纵切单元模块名——依赖方向保持不变。
+%%
+%% 返回 `{conflict, Message}` 供调用方 `abort(409, Message)`；`none` 表示按原错误上报。
+-spec dependent_resources_conflict(term()) -> {conflict, binary()} | none.
+dependent_resources_conflict(Reason) ->
+    case {sqlstate(Reason), constraint_name(Reason)} of
+        {<<"23514">>, Constraint} when is_binary(Constraint) ->
+            case dependent_resource_guard(Constraint) of
+                {ok, Resource} -> {conflict, dependent_resources_message(Resource)};
+                error -> none
+            end;
+        _NotADependencyRejection ->
+            none
+    end.
+
+%% Core 侧的「被依赖资源挡住」守卫表：约束名 → 依赖资源类别。
+%% 新守卫只在这里加一行（判定因此是「表驱动」而不是给某一个用例写的特例）。
+dependent_resource_guard(<<"trg_organization_member_offboarding_guard">>) ->
+    {ok, <<"active 经办关系"/utf8>>};
+dependent_resource_guard(_Other) ->
+    error.
+
+dependent_resources_message(Resource) ->
+    iolist_to_binary([
+        <<"该成员仍被依赖资源引用（"/utf8>>,
+        Resource,
+        <<"），直接移除被拒绝：请先完成交接"/utf8>>
+    ]).
+
+%% epgsql 的错误项形态：#error{code, extra}。为避免在 Core 引入驱动头文件依赖，
+%% 这里按记录形状宽松提取（`{error, Severity, Code, Codename, Message, Extra}`），
+%% 非该形状一律 `undefined`（调用方据此走原有错误分支）。
+sqlstate({error, _Severity, Code, _Codename, _Message, _Extra}) when is_binary(Code) ->
+    Code;
+sqlstate(_Other) ->
+    undefined.
+
+constraint_name({error, _Severity, _Code, _Codename, _Message, Extra}) when is_list(Extra) ->
+    case lists:keyfind(constraint_name, 1, Extra) of
+        {constraint_name, Name} when is_binary(Name) -> Name;
+        _ -> undefined
+    end;
+constraint_name(_Other) ->
+    undefined.
 
 %% 组织行先锁、成员行后锁，所有治理写保持同一锁顺序。
 write_tx(Uid, OrgId, Fun, ErrorMsg) when is_integer(Uid), Uid > 0, is_integer(OrgId), OrgId > 0 ->
