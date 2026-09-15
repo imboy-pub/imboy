@@ -126,9 +126,18 @@ finish_ai_request(Other) ->
     ?LOG_ERROR("request ai draft unexpected ~p", [Other]),
     {error, db_error}.
 
-%% 事务内决策：返回 {requested, DraftId, Status} | {rollback, atom()}
+%% 事务内决策：返回 {ok, {requested, DraftId, Status}} | {rollback, atom()}
+%%
+%% ⚠️ 成功值必须包成 {ok, ...}：`elib_pg:with_tx/2` 的契约是 **原样透传 fun 的返回值**
+%% （spec: `R | {rollback, term()}`，见 elib_pg.erl:217），它**不会**替调用方包
+%% {ok, _}。本文件其余三处 with_tx 调用点（:235 / :880 / :905）都按这个口径匹配
+%% {ok, ...}。2026-09-14 修复：本函数此前返回裸 {requested, _, _}，导致
+%% finish_ai_request/1 全部落到兜底分支 —— 事务其实已提交成功，却被判成 db_error，
+%% **且 maybe_run_ai_draft/2 从未被调用**（老师点「让 AI 看一遍」静默空转，
+%% 前端只看到一屏不动的「整理中…」）。现场铁证（运行节点日志）：
+%%     request ai draft unexpected {requested,112572346124208128,<<"queued">>}
 -spec request_ai_draft_tx(any(), integer()) ->
-    {requested, integer(), binary()} | {rollback, atom()}.
+    {ok, {requested, integer(), binary()}} | {rollback, atom()}.
 request_ai_draft_tx(Conn, SubmissionId) ->
     case moya_review_repo:ai_draft_tx(Conn, SubmissionId) of
         {ok, Existing} ->
@@ -139,15 +148,15 @@ request_ai_draft_tx(Conn, SubmissionId) ->
     end.
 
 -spec request_ai_draft_existing_tx(any(), integer(), map() | undefined) ->
-    {requested, integer(), binary()} | {rollback, atom()}.
+    {ok, {requested, integer(), binary()}} | {rollback, atom()}.
 request_ai_draft_existing_tx(_Conn, _Sid, #{<<"status">> := <<"queued">>, <<"id">> := Id}) ->
-    {requested, Id, <<"queued">>};
+    {ok, {requested, Id, <<"queued">>}};
 request_ai_draft_existing_tx(_Conn, _Sid, #{<<"status">> := <<"running">>, <<"id">> := Id}) ->
-    {requested, Id, <<"running">>};
+    {ok, {requested, Id, <<"running">>}};
 request_ai_draft_existing_tx(Conn, _Sid, #{<<"status">> := <<"succeeded">>, <<"id">> := Id}) ->
     case moya_review_repo:requeue_succeeded_tx(Conn, Id) of
         ok ->
-            {requested, Id, <<"queued">>};
+            {ok, {requested, Id, <<"queued">>}};
         {error, Reason} ->
             ?LOG_ERROR("request ai draft requeue error ~p", [Reason]),
             {rollback, db_error}
@@ -158,7 +167,7 @@ request_ai_draft_existing_tx(Conn, Sid, _NoneOrFailed) ->
         ok ->
             case moya_review_repo:ai_draft_tx(Conn, Sid) of
                 {ok, #{<<"id">> := NewId, <<"status">> := St}} ->
-                    {requested, NewId, St};
+                    {ok, {requested, NewId, St}};
                 Other ->
                     ?LOG_ERROR("request ai draft reread ~p", [Other]),
                     {rollback, db_error}

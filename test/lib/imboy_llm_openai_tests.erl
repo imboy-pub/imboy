@@ -23,7 +23,7 @@
 
 setup_req_mock() ->
     meck:new(elib_req, [no_link, passthrough]),
-    meck:expect(elib_req, post, 3, fun(_URL, _Data, _Headers) ->
+    meck:expect(elib_req, post, 4, fun(_URL, _Data, _Headers, _TimeoutMs) ->
         {ok, #{
             <<"choices">> => [
                 #{<<"message">> => #{<<"role">> => <<"assistant">>, <<"content">> => <<"回复"/utf8>>}}
@@ -47,6 +47,7 @@ chat_builds_request_and_parses_choices_test_() ->
             Messages = user_msg(<<"你好"/utf8>>),
             Result = imboy_llm_openai:chat(1, Messages, ?OPTS),
             ?assertEqual({ok, #{<<"result">> => <<"回复"/utf8>>}}, Result),
+            %% 第 4 参是单次请求超时：未配 timeout 时必须仍是 30000（默认不变）
             ?assert(
                 meck:called(elib_req, post, [
                     <<"https://api.deepseek.com/v1/chat/completions">>,
@@ -54,7 +55,8 @@ chat_builds_request_and_parses_choices_test_() ->
                     [
                         {"Content-Type", "application/json"},
                         {"Authorization", "Bearer sk-test"}
-                    ]
+                    ],
+                    30000
                 ])
             )
         end)
@@ -81,7 +83,7 @@ chat_empty_messages_returns_error_test() ->
 chat_resp_without_choices_returns_error_test_() ->
     {setup, fun setup_req_mock/0, fun cleanup_req_mock/1, fun(_) ->
         ?_test(begin
-            meck:expect(elib_req, post, 3, fun(_, _, _) ->
+            meck:expect(elib_req, post, 4, fun(_, _, _, _) ->
                 {ok, #{<<"error">> => #{<<"message">> => <<"model not found">>}}}
             end),
             ?assertMatch(
@@ -94,9 +96,9 @@ chat_resp_without_choices_returns_error_test_() ->
 chat_http_error_returns_error_test_() ->
     {setup, fun setup_req_mock/0, fun cleanup_req_mock/1, fun(_) ->
         ?_test(begin
-            meck:expect(elib_req, post, 3, fun(_, _, _) -> {error, timeout} end),
+            meck:expect(elib_req, post, 4, fun(_, _, _, _) -> {error, timeout} end),
             ?assertEqual({error, timeout}, imboy_llm_openai:chat(1, user_msg(<<"hi">>), ?OPTS)),
-            meck:expect(elib_req, post, 3, fun(_, _, _) ->
+            meck:expect(elib_req, post, 4, fun(_, _, _, _) ->
                 {error, 401, #{<<"error">> => <<"invalid api key">>}}
             end),
             ?assertMatch({error, {401, _}}, imboy_llm_openai:chat(1, user_msg(<<"hi">>), ?OPTS))
@@ -259,6 +261,7 @@ chat_merges_extra_body_test_() ->
                         <<"messages">> => Messages,
                         <<"thinking">> => #{<<"type">> => <<"disabled">>}
                     },
+                    '_',
                     '_'
                 ])
             )
@@ -275,8 +278,62 @@ chat_without_extra_body_unchanged_test_() ->
                 meck:called(elib_req, post, [
                     <<"https://api.deepseek.com/v1/chat/completions">>,
                     #{<<"model">> => <<"deepseek-chat">>, <<"messages">> => Messages},
+                    '_',
                     '_'
                 ])
             )
+        end)
+    end}.
+
+%% ===================================================================
+%% 单次请求超时可配（Opts.timeout → elib_req:post/4 第 4 参）
+%%
+%% 背景：elib_req 的 30s 固定默认对纯文本够用，但对「视频理解 + 始终思考」
+%% 的多模态模型会在长尾偶发截断（error_code=timeout）。放开为 provider 级可配
+%% 之后，这个测试锁死「配了就用、没配就还是 30000」两件事。
+%% ===================================================================
+
+%% 配了 timeout → 原样透传给 elib_req（第 4 参），且不影响 body/headers
+chat_honors_configured_timeout_test_() ->
+    {setup, fun setup_req_mock/0, fun cleanup_req_mock/1, fun(_) ->
+        ?_test(begin
+            Messages = user_msg(<<"看视频"/utf8>>),
+            Opts = ?OPTS#{timeout => 60000},
+            ?assertEqual(
+                {ok, #{<<"result">> => <<"回复"/utf8>>}},
+                imboy_llm_openai:chat(1, Messages, Opts)
+            ),
+            ?assert(
+                meck:called(elib_req, post, [
+                    <<"https://api.deepseek.com/v1/chat/completions">>,
+                    #{<<"model">> => <<"deepseek-chat">>, <<"messages">> => Messages},
+                    [
+                        {"Content-Type", "application/json"},
+                        {"Authorization", "Bearer sk-test"}
+                    ],
+                    60000
+                ])
+            ),
+            %% timeout 是**传输层参数**，绝不能混进请求体
+            %%（否则被模型网关当未知字段，可能直接 400）
+            [{_, {elib_req, post, [_, Body, _, _]}, _}] = meck:history(elib_req),
+            ?assertNot(maps:is_key(<<"timeout">>, Body))
+        end)
+    end}.
+
+%% 非法 timeout（0 / 负数 / 非整型 / undefined）→ 一律回落 30000。
+%% 要点：配置写错必须退化成「安全的默认超时」，而不是退化成「无超时」
+%%（无超时 = 调用进程可能被挂死的对端长期占住，比超时更糟）。
+chat_invalid_timeout_falls_back_to_default_test_() ->
+    {setup, fun setup_req_mock/0, fun cleanup_req_mock/1, fun(_) ->
+        ?_test(begin
+            Messages = user_msg(<<"hi">>),
+            _ = imboy_llm_openai:chat(1, Messages, ?OPTS#{timeout => 0}),
+            _ = imboy_llm_openai:chat(1, Messages, ?OPTS#{timeout => -1}),
+            _ = imboy_llm_openai:chat(1, Messages, ?OPTS#{timeout => <<"60s">>}),
+            _ = imboy_llm_openai:chat(1, Messages, ?OPTS#{timeout => undefined}),
+            Applied = [T || {_, {elib_req, post, [_, _, _, T]}, _} <- meck:history(elib_req)],
+            %% 四次都取默认值（meck:history 为倒序，但四个值相同，与顺序无关）
+            ?assertEqual([30000, 30000, 30000, 30000], Applied)
         end)
     end}.

@@ -62,19 +62,25 @@ analyze_video_with_profile(DraftMeta, Attachment) ->
     end.
 
 %% @doc 结构化结果校验 + 白名单重建（半成品/思维链不落库）
+%%
+%% 严格模式下任何缺失字段都判 `bad_output`（→ error_code `bad_schema`）。
+%% 本地/联调可开 `teaching_ai_relaxed_schema` 走宽松模式：见 relaxed_schema/0。
 -spec validate_result(term()) -> {ok, map()} | {error, bad_output}.
 validate_result(Result) when is_map(Result) ->
+    Relaxed = relaxed_schema(),
     try
-        Positive = req_text(Result, <<"positive_point">>, 300),
-        Focus = req_text(Result, <<"focus_problem">>, 300),
-        Practice = req_text(Result, <<"practice_action">>, 300),
-        Moments = req_moments(Result),
-        Outline = req_outline(Result),
-        NeedsCheck =
-            case maps:get(<<"needs_human_check">>, Result) of
-                B when is_boolean(B) -> B;
-                _ -> throw(bad)
-            end,
+        Positive = text_field(
+            Result,
+            <<"positive_point">>,
+            300,
+            Relaxed,
+            <<"（模型未给出亮点，需老师补充）"/utf8>>
+        ),
+        Focus = text_field(Result, <<"focus_problem">>, 300, Relaxed, <<>>),
+        Practice = text_field(Result, <<"practice_action">>, 300, Relaxed, <<>>),
+        Moments = moments_field(Result, Relaxed),
+        Outline = outline_field(Result, Relaxed),
+        NeedsCheck = needs_check_field(Result, Relaxed),
         Whitelist = #{
             <<"positive_point">> => Positive,
             <<"focus_problem">> => Focus,
@@ -324,6 +330,60 @@ build_messages(DraftMeta, Attachment) ->
     [System, User].
 
 %% ---- Schema 校验小工具 ----
+
+%% @doc 是否走宽松校验（只为本地联调存在，**生产恒定关闭**）。
+%%
+%% 为什么需要：素材不合格时（如测试视频是桌面场景而非书写过程）模型会**诚实
+%% 拒答**（`positive_point:null` + `needs_human_check:true`），严格校验下必然
+%% `bad_output` → 整条回课链路在开发环境**永远看不到终态**，UI 状态机、轮询、
+%% 终态渲染都无从验证。
+%%
+%% 宽松模式把缺失字段回落为占位值并保留 `needs_human_check`，草稿可落地、老师
+%% 侧看到「需人工复核」。它**不提升模型质量**，只用于跑通流程。
+%% 因此这里用 `imboy_env:current()` 兜底：即使配置被误带到生产，prod 下恒为 false。
+-spec relaxed_schema() -> boolean().
+relaxed_schema() ->
+    config_ds:env(teaching_ai_relaxed_schema, false) =:= true andalso
+        imboy_env:current() =/= <<"prod">>.
+
+-spec text_field(map(), binary(), integer(), boolean(), binary()) -> binary().
+text_field(Result, Key, Max, true, Placeholder) ->
+    try req_text(Result, Key, Max) of
+        B -> B
+    catch
+        _:_ -> Placeholder
+    end;
+text_field(Result, Key, Max, false, _) ->
+    req_text(Result, Key, Max).
+
+-spec moments_field(map(), boolean()) -> [number()].
+moments_field(Result, true) ->
+    try req_moments(Result) of
+        L -> L
+    catch
+        _:_ -> []
+    end;
+moments_field(Result, false) ->
+    req_moments(Result).
+
+-spec outline_field(map(), boolean()) -> [binary()].
+outline_field(Result, true) ->
+    try req_outline(Result) of
+        L -> L
+    catch
+        _:_ -> []
+    end;
+outline_field(Result, false) ->
+    req_outline(Result).
+
+%% 缺失/畸形势必无法判断「能不能自动发」⇒ 宽松模式下保守取 true（要人工看）。
+-spec needs_check_field(map(), boolean()) -> boolean().
+needs_check_field(Result, Relaxed) ->
+    case maps:get(<<"needs_human_check">>, Result, undefined) of
+        B when is_boolean(B) -> B;
+        _ when Relaxed -> true;
+        _ -> throw(bad)
+    end.
 
 -spec req_text(map(), binary(), integer()) -> binary().
 req_text(Result, Key, Max) ->

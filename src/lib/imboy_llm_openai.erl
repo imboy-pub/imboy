@@ -24,10 +24,14 @@
 %% SSE 缓冲 / 累积全文的字节上限（防恶意/故障 provider 无界内存）
 -define(STREAM_MAX_BYTES, 262144).
 
+%% 非流式 chat/3 的单次请求超时缺省值（毫秒），与 elib_req 的全局默认一致。
+%% provider 可用 Opts.timeout 覆盖（见 llm_providers 配置的 timeout 键）。
+-define(DEFAULT_TIMEOUT_MS, 30000).
+
 %% @doc 发起对话：POST {base_url}/chat/completions
 %% @param Uid 用户ID（OpenAI 兼容通路暂未使用）
 %% @param Messages OpenAI 兼容消息列表
-%% @param Opts 必含 base_url、api_key、model
+%% @param Opts 必含 base_url、api_key、model；可选 timeout（毫秒）
 -spec chat(integer(), [map()], map()) ->
     {ok, #{binary() => term()}} | {error, term()}.
 chat(_Uid, [], _Opts) ->
@@ -80,7 +84,7 @@ do_chat(_Uid, Messages, Opts) ->
             EB when is_map(EB) -> maps:merge(Data0, EB);
             _ -> Data0
         end,
-    case elib_req:post(url(BaseUrl), Data, Headers) of
+    case elib_req:post(url(BaseUrl), Data, Headers, timeout_ms(Opts)) of
         {ok, #{<<"choices">> := [#{<<"message">> := #{<<"content">> := Content}} | _]}} ->
             {ok, #{<<"result">> => Content}};
         {ok, RespMap} ->
@@ -90,6 +94,25 @@ do_chat(_Uid, Messages, Opts) ->
             {error, {Code, RespMap}};
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% @doc 单次请求超时（毫秒）：provider 配置的 Opts.timeout 优先，回落 30s。
+%%
+%% 为什么必须可配：elib_req 的 30s 是**对所有 HTTP 调用**都成立的保守默认，
+%% 对纯文本接口够用，但对「视频理解 + 始终思考」的多模态模型会在长尾上偶发
+%% 截断（-> dispatch_failure(timeout) -> 前端 error_code=timeout）。实测
+%% glm-5.3-flash 跑完一段回课视频耗时 21.7s，30s 只余不到 1.4x 余量。
+%%
+%% ⚠️ 调大本值时务必同步改前端轮询预算，两侧是**同一个最坏路径**的两半：
+%%     服务端最坏 = Opts.timeout × moya_ai_worker 的最大尝试次数
+%%     前端预算（moya/src/packages/teacher/workbench/workbench.ts）
+%% 只看一侧会重现「前端先放弃、后端还在跑」——老师看到的是一屏不变的
+%% 「AI 正在看这份作业」，而任务其实成了。
+-spec timeout_ms(map()) -> pos_integer().
+timeout_ms(Opts) when is_map(Opts) ->
+    case maps:get(timeout, Opts, undefined) of
+        T when is_integer(T), T > 0 -> T;
+        _ -> ?DEFAULT_TIMEOUT_MS
     end.
 
 url(BaseUrl) ->

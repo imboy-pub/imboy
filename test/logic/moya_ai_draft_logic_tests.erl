@@ -679,6 +679,66 @@ validate_non_map_test() ->
     ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result([valid_result()])),
     ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result(<<"json string">>)).
 
+%%%===================================================================
+%%% 宽松校验 relaxed_schema（仅非生产环境生效）
+%%%===================================================================
+
+%% 素材不合格（如测试视频是桌面场景）时模型会**诚实拒答**：
+%% positive_point:null + needs_human_check:true + 空 evidence_moments。
+%% 严格校验下这必然 bad_output，开发环境因此永远看不到终态。
+%% relaxed 让草稿落地并保留「需人工复核」标记——流程可跑通，不假装质量达标。
+relaxed_accepts_honest_refusal_test() ->
+    Refusal = (valid_result())#{
+        <<"positive_point">> => null,
+        <<"needs_human_check">> => true,
+        <<"evidence_moments">> => []
+    },
+    %% 基线：不开开关时仍严格判负（默认行为不变）
+    ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result(Refusal)),
+    with_relaxed(fun() ->
+        {ok, W} = moya_ai_draft_logic:validate_result(Refusal),
+        ?assertEqual(true, maps:get(<<"needs_human_check">>, W)),
+        ?assertEqual([], maps:get(<<"evidence_moments">>, W)),
+        %% 占位文本而非空串：老师侧要能看出「这项 AI 没给出来」
+        ?assert(byte_size(maps:get(<<"positive_point">>, W)) > 0)
+    end).
+
+%% 缺 / 畸形的 needs_human_check 在 relaxed 下保守取 true（要人工看），
+%% 绝不能默认成 false 让不合格草稿被当成可信产出。
+relaxed_missing_check_flag_is_conservative_test() ->
+    Base = valid_result(),
+    [
+        begin
+            Input = maps:remove(<<"needs_human_check">>, Base#{Key => Bad}),
+            with_relaxed(fun() ->
+                {ok, W} = moya_ai_draft_logic:validate_result(Input),
+                ?assertEqual(true, maps:get(<<"needs_human_check">>, W))
+            end)
+        end
+     || {Key, Bad} <- [{<<"positive_point">>, null}, {<<"evidence_moments">>, []}]
+    ].
+
+%% 最重要的守卫：配置被误带到生产时，prod 环境恒走严格校验。
+relaxed_never_applies_in_prod_test() ->
+    Refusal = (valid_result())#{
+        <<"positive_point">> => null,
+        <<"evidence_moments">> => []
+    },
+    with_relaxed(fun() ->
+        with_env(<<"prod">>, fun() ->
+            ?assertEqual(
+                {error, bad_output},
+                moya_ai_draft_logic:validate_result(Refusal)
+            )
+        end)
+    end),
+    %% 反向自证：非 prod 下同一份输入确实被放宽（否则上面那条可能是假绿）
+    with_relaxed(fun() ->
+        with_env(<<"local">>, fun() ->
+            ?assertMatch({ok, _}, moya_ai_draft_logic:validate_result(Refusal))
+        end)
+    end).
+
 validate_test_() ->
     [
         {"validate rebuilds whitelist dropping chain-of-thought", fun validate_ok_whitelist_test/0},
@@ -687,12 +747,49 @@ validate_test_() ->
         {"validate script_outline bounds", fun validate_outline_bounds_test/0},
         {"validate text field bounds", fun validate_text_fields_test/0},
         {"validate needs_human_check must be boolean", fun validate_needs_human_check_test/0},
-        {"validate rejects non-map", fun validate_non_map_test/0}
+        {"validate rejects non-map", fun validate_non_map_test/0},
+        {"relaxed accepts honest refusal with placeholder",
+            fun relaxed_accepts_honest_refusal_test/0},
+        {"relaxed missing check flag is conservative",
+            fun relaxed_missing_check_flag_is_conservative_test/0},
+        {"relaxed never applies in prod", fun relaxed_never_applies_in_prod_test/0}
     ].
 
 %%%===================================================================
 %%% Internal
 %%%===================================================================
+
+with_relaxed(Fun) ->
+    Old = application:get_env(imboy, teaching_ai_relaxed_schema),
+    application:set_env(imboy, teaching_ai_relaxed_schema, true),
+    try
+        Fun()
+    after
+        case Old of
+            undefined -> application:unset_env(imboy, teaching_ai_relaxed_schema);
+            {ok, V} -> application:set_env(imboy, teaching_ai_relaxed_schema, V)
+        end
+    end.
+
+%% imboy_env:current/0 优先读 OS env IMBOYENV，故两侧都要设，
+%% 否则「设了 app env 却不生效」会让 prod 守卫的测试变成假绿。
+with_env(Bin, Fun) when is_binary(Bin) ->
+    OldOs = os:getenv("IMBOYENV"),
+    OldApp = application:get_env(imboy, env),
+    os:putenv("IMBOYENV", binary_to_list(Bin)),
+    application:set_env(imboy, env, Bin),
+    try
+        Fun()
+    after
+        case OldOs of
+            false -> os:unsetenv("IMBOYENV");
+            V -> os:putenv("IMBOYENV", V)
+        end,
+        case OldApp of
+            undefined -> application:unset_env(imboy, env);
+            {ok, A} -> application:set_env(imboy, env, A)
+        end
+    end.
 
 meta() ->
     #{

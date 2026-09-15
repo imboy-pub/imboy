@@ -108,13 +108,20 @@
             %% 密钥 export BIGMODEL_API_KEY=<id.secret>；模型 export BIGMODEL_MODEL 覆盖。
             %% ⚠️ glm-5.3-flash 始终思考，勿配 thinking 开关：disabled/low/high/max
             %% 一律被 400 拒绝（「该模型始终思考，不支持关闭思考」）；思考 token 计入输出计费。
+            %%
+            %% timeout（毫秒，可选）：单次请求超时。缺省 30s（imboy_llm_openai 的
+            %% ?DEFAULT_TIMEOUT_MS，与 elib_req 全局默认一致）。视频理解类请求会把
+            %% 30s 顶满甚至超时，需要放开到 60s 量级。
+            %% ⚠️ 服务端最坏路径 = timeout × 尝试次数（teaching_ai_max_retries，默认 2）；
+            %% 客户端轮询预算必须大于它，两侧要成对修改。
             #{
                 name => <<"bigmodel">>,
                 module => imboy_llm_openai,
                 base_url => <<"https://open.bigmodel.cn/api/paas/v4">>,
                 api_key => {env, <<"BIGMODEL_API_KEY">>},
                 model => {env, <<"BIGMODEL_MODEL">>, <<"glm-5.3-flash">>},
-                vision => true
+                vision => true,
+                timeout => 60000
             }
         ]},
 
