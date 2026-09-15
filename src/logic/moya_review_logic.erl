@@ -1116,10 +1116,31 @@ ai_draft_payload(D) ->
         <<"model_profile">> => maps:get(<<"model_profile">>, D, <<>>),
         <<"prompt_version">> => maps:get(<<"prompt_version">>, D, <<>>),
         <<"rubric_version">> => maps:get(<<"rubric_version">>, D, <<>>),
-        <<"result">> => maps:get(<<"result_json">>, D, null),
+        <<"result">> => ai_result_payload(maps:get(<<"result_json">>, D, null)),
         <<"created_at">> => elib_dt:rfc3339_or_null(maps:get(<<"created_at">>, D, null)),
         <<"completed_at">> => elib_dt:rfc3339_or_null(maps:get(<<"completed_at">>, D, null))
     }.
+
+%% AI 建议正文：DB jsonb 列经 elib_pg 读回是 JSON 文本 binary；契约要求输出
+%% 已解码对象——前端 parseDraftResult 只收 object，收到字符串会判 null，
+%% 连带 needs_human_check 的强制人工复核提示被吞。解码失败降级 null 不炸接口
+%% （char_reviews_payload 同款兜底；连接未来配上 json codec 时 map 分支直通）。
+-spec ai_result_payload(term()) -> map() | [term()] | null.
+ai_result_payload(null) ->
+    null;
+ai_result_payload(undefined) ->
+    null;
+ai_result_payload(Bin) when is_binary(Bin) ->
+    try jsone:decode(Bin, [{object_format, map}]) of
+        Term when is_map(Term); is_list(Term) -> Term;
+        _ -> null
+    catch
+        _:_ -> null
+    end;
+ai_result_payload(Term) when is_map(Term); is_list(Term) ->
+    Term;
+ai_result_payload(_) ->
+    null.
 
 -spec draft_ref(map() | undefined, [map()]) -> map() | null.
 draft_ref(undefined, _Assets) ->
