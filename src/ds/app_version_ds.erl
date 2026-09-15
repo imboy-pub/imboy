@@ -101,7 +101,22 @@ delete_by_id(Id) when is_integer(Id), Id > 0 ->
 
 %% G3: app_version_logic 不应直调 app_version_repo
 -spec find(binary(), binary()) -> map().
-find(Cos, RegionCode) -> app_version_repo:find(Cos, RegionCode).
+find(Cos, RegionCode) -> decode_changelog(app_version_repo:find(Cos, RegionCode)).
+
+%% changelog 是 jsonb 列：epgsql 未配 json codec 时读回 JSON 文本 binary，
+%% 而客户端 AppVersionInfo.fromJson 只解析 List 形态，binary 会被当缺失
+%% 静默丢掉更新日志（降级展示 description）。DS 出口统一解码；admin 编辑
+%% 链路走 page/5 不经此函数，不受影响。
+-spec decode_changelog(map()) -> map().
+decode_changelog(#{<<"changelog">> := Bin} = Info) when is_binary(Bin) ->
+    try jsone:decode(Bin, [{object_format, map}]) of
+        List when is_list(List) -> Info#{<<"changelog">> => List};
+        _ -> Info
+    catch
+        _:_ -> Info
+    end;
+decode_changelog(Info) ->
+    Info.
 
 -spec page(binary(), map(), binary(), pos_integer(), pos_integer()) ->
     {ok, map()} | {error, term()}.
