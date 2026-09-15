@@ -153,12 +153,15 @@ main() {
     local rc=0
     if (( new_cnt > 0 )); then
         echo "DIALYZER BASELINE GATE: RED —— 新增 $new_cnt 条告警（基线外，必须修复或经 review 后收紧基线）:"
-        comm -23 "$current" "$baseline_cmp" | head -50 | sed 's/^/  NEW /'
+        # 限行必须用 awk（消费完全部输入才退出）：head 读满即关管道，comm 写
+        # 剩余行时被 SIGPIPE 杀死，set -o pipefail 下脚本以 141 代替预期 rc=1
+        # 退出，GONE 报告与真实退出码全部丢失（新增 > 限量时必现）。
+        comm -23 "$current" "$baseline_cmp" | awk 'NR<=50{print "  NEW "$0}'
         rc=1
     fi
     if (( removed_cnt > 0 )); then
         echo "DIALYZER BASELINE: $removed_cnt 条指纹已消失（可收紧基线，不影响本轮红绿）:"
-        comm -13 "$current" "$baseline_cmp" | head -20 | sed 's/^/  GONE /'
+        comm -13 "$current" "$baseline_cmp" | awk 'NR<=20{print "  GONE "$0}'
     fi
     if (( rc == 0 )); then
         echo "DIALYZER BASELINE GATE: GREEN —— 告警 $n_cur 条，全部在基线内，无新增。"
