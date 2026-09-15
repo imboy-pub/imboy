@@ -182,6 +182,21 @@ if [[ -n "${DEPLOY_NODE_NAME:-}" && ! "$DEPLOY_NODE_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]
   fail "DEPLOY_NODE_NAME 非法，拒绝建立 SSH"
 fi
 
+if [[ "$COMPONENT" == api || "$COMPONENT" == all ]]; then
+  CHANGELOG_FILE="$SCRIPT_DIR/../CHANGELOG.md"
+  [[ -f "$CHANGELOG_FILE" ]] || fail "本地发布缺少 CHANGELOG.md"
+  if awk -v version="$DEPLOY_VSN" '
+    $0 == "## [" version "]" || index($0, "## [" version "] - ") == 1 { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$CHANGELOG_FILE"; then
+    ok "CHANGELOG.md 已包含发布版本 $DEPLOY_VSN"
+  elif [[ "$LOCAL_MODE" -eq 1 ]]; then
+    warn "CHANGELOG.md 缺少发布版本标题：## [$DEPLOY_VSN]（-l 本地发布继续）"
+  else
+    fail "CHANGELOG.md 缺少发布版本标题：## [$DEPLOY_VSN]"
+  fi
+fi
+
 if [[ ("$COMPONENT" == api || "$COMPONENT" == all) && "${DEPLOY_SALES_RELEASE:-true}" == true ]]; then
   [[ -n "${DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE:-}" ]] \
     || fail "销售版缺少 DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE"

@@ -46,6 +46,14 @@ done
 title "2) 版本物（alpha.71 定版材料）"
 vsn=$(cat "$ROOT/VERSION" 2>/dev/null || echo "")
 if [ -z "$vsn" ]; then fail "VERSION 文件缺失"; fi
+if [ -n "$vsn" ] && awk -v version="$vsn" '
+    $0 == "## [" version "]" || index($0, "## [" version "] - ") == 1 { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$ROOT/CHANGELOG.md"; then
+    ok "CHANGELOG 已包含 VERSION=$vsn 的发布版本标题"
+else
+    fail "CHANGELOG 缺少 VERSION=$vsn 的发布版本标题"
+fi
 if grep -q '^## \[Unreleased\]' "$ROOT/CHANGELOG.md"; then
     manual "VERSION=${vsn}，CHANGELOG 有 [Unreleased] 待转正——定版时同步改 VERSION + CHANGELOG + 三仓 tag"
 else

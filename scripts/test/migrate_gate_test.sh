@@ -21,6 +21,7 @@ trap cleanup EXIT
 
 cp scripts/imboy-deploy.sh "$TEST_DEPLOY"
 printf '%s\n' 0.0.0 >"$TMP_ROOT/VERSION"
+printf '%s\n' '## [1.0.0] - 2026-09-14' >"$TMP_ROOT/CHANGELOG.md"
 printf '%s\n' \
   '{release, {imboy, "0.0.0"}, [' \
   '    imboy' \
@@ -155,6 +156,34 @@ if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
 else
   bad "api -v -l 未正确透传" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
 fi
+
+printf '%s\n' 0.0.0 >"$TMP_ROOT/VERSION"
+printf '%s\n' '## [0.9.0] - 2026-09-01' >"$TMP_ROOT/CHANGELOG.md"
+: >"$MOCK_CALLS"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   bash "$TEST_DEPLOY" api --env-file "$CUSTOM_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1; then
+  bad "非本地发布缺少 CHANGELOG 目标版本时应拒绝" ""
+elif grep -q 'CHANGELOG.md 缺少发布版本标题' "$TMP_ROOT/output.log" \
+     && grep -Fxq '0.0.0' "$TMP_ROOT/VERSION" && [ ! -s "$MOCK_CALLS" ]; then
+  ok "非本地发布的 CHANGELOG 门禁早于 SSH"
+else
+  bad "非本地发布的 CHANGELOG 门禁未在 SSH 前失败" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
+
+: >"$MOCK_CALLS"
+if env PATH="$MOCK_BIN:$PATH" MOCK_CALLS="$MOCK_CALLS" MOCK_LOG="$MOCK_LOG" \
+   BLUE_GREEN_LOG="$BLUE_GREEN_LOG" \
+   bash "$TEST_DEPLOY" api -l --env-file "$CUSTOM_ENV" \
+   >"$TMP_ROOT/output.log" 2>&1 \
+   && grep -q 'CHANGELOG.md 缺少发布版本标题.*-l 本地发布继续' "$TMP_ROOT/output.log" \
+   && grep -Fxq '1.0.0' "$TMP_ROOT/VERSION" \
+   && grep -Fxq -- '-l example.invalid 1.0.0 prod-test123' "$BLUE_GREEN_LOG"; then
+  ok "-l 本地发布缺少 CHANGELOG 目标版本时警告并继续"
+else
+  bad "-l 本地发布未按警告模式继续" "$(tr '\n' ',' <"$TMP_ROOT/output.log")"
+fi
+printf '%s\n' '## [1.0.0] - 2026-09-14' >"$TMP_ROOT/CHANGELOG.md"
 
 write_env
 printf '%s\n' 'DEPLOY_PLUGIN_TRUSTED_PUBLIC_KEY_FILE=/definitely/missing/plugin.raw' >>"$TEST_ENV"
