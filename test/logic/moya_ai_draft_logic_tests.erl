@@ -687,36 +687,43 @@ validate_non_map_test() ->
 %% positive_point:null + needs_human_check:true + 空 evidence_moments。
 %% 严格校验下这必然 bad_output，开发环境因此永远看不到终态。
 %% relaxed 让草稿落地并保留「需人工复核」标记——流程可跑通，不假装质量达标。
+%% 整体包 with_env(<<"local">>)：imboy_env:current() 在 IMBOYENV 未设时
+%% fail-safe 默认 <<"prod">>，不显式钉住环境的话，裸 shell / CI 跑 eunit
+%% 会让宽松守卫恒为 false，本用例假红成 {error, bad_output}。
 relaxed_accepts_honest_refusal_test() ->
     Refusal = (valid_result())#{
         <<"positive_point">> => null,
         <<"needs_human_check">> => true,
         <<"evidence_moments">> => []
     },
-    %% 基线：不开开关时仍严格判负（默认行为不变）
-    ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result(Refusal)),
-    with_relaxed(fun() ->
-        {ok, W} = moya_ai_draft_logic:validate_result(Refusal),
-        ?assertEqual(true, maps:get(<<"needs_human_check">>, W)),
-        ?assertEqual([], maps:get(<<"evidence_moments">>, W)),
-        %% 占位文本而非空串：老师侧要能看出「这项 AI 没给出来」
-        ?assert(byte_size(maps:get(<<"positive_point">>, W)) > 0)
+    with_env(<<"local">>, fun() ->
+        %% 基线：不开开关时仍严格判负（默认行为不变）
+        ?assertEqual({error, bad_output}, moya_ai_draft_logic:validate_result(Refusal)),
+        with_relaxed(fun() ->
+            {ok, W} = moya_ai_draft_logic:validate_result(Refusal),
+            ?assertEqual(true, maps:get(<<"needs_human_check">>, W)),
+            ?assertEqual([], maps:get(<<"evidence_moments">>, W)),
+            %% 占位文本而非空串：老师侧要能看出「这项 AI 没给出来」
+            ?assert(byte_size(maps:get(<<"positive_point">>, W)) > 0)
+        end)
     end).
 
 %% 缺 / 畸形的 needs_human_check 在 relaxed 下保守取 true（要人工看），
 %% 绝不能默认成 false 让不合格草稿被当成可信产出。
 relaxed_missing_check_flag_is_conservative_test() ->
     Base = valid_result(),
-    [
-        begin
-            Input = maps:remove(<<"needs_human_check">>, Base#{Key => Bad}),
-            with_relaxed(fun() ->
-                {ok, W} = moya_ai_draft_logic:validate_result(Input),
-                ?assertEqual(true, maps:get(<<"needs_human_check">>, W))
-            end)
-        end
-     || {Key, Bad} <- [{<<"positive_point">>, null}, {<<"evidence_moments">>, []}]
-    ].
+    with_env(<<"local">>, fun() ->
+        [
+            begin
+                Input = maps:remove(<<"needs_human_check">>, Base#{Key => Bad}),
+                with_relaxed(fun() ->
+                    {ok, W} = moya_ai_draft_logic:validate_result(Input),
+                    ?assertEqual(true, maps:get(<<"needs_human_check">>, W))
+                end)
+            end
+         || {Key, Bad} <- [{<<"positive_point">>, null}, {<<"evidence_moments">>, []}]
+        ]
+    end).
 
 %% 最重要的守卫：配置被误带到生产时，prod 环境恒走严格校验。
 relaxed_never_applies_in_prod_test() ->
