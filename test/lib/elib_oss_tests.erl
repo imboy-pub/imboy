@@ -691,3 +691,115 @@ put_object_httpc_error_returns_error_test_() ->
             )
         end
     ).
+
+%% ===================================================================
+%% key_prefix（多环境共用同一 bucket 时的命名空间隔离）
+%% ===================================================================
+%%
+%% 背景：本地开发共用生产的 `imboy` 桶，但不能让测试对象污染生产数据，
+%% 于是给本地的全部 object key 加一个根前缀 `moya/`。
+%%
+%% ⚠ 关键不变量：前缀只在**生成** key 处拼一次。读取类函数
+%% （presign_get_for_key / head_object / put_object）收到的 key 已含前缀，
+%% 若再拼一次就会变成 `moya/moya/...`，表现为「对象 404」且极难定位。
+
+with_garage_cfg(Cfg, Fun) ->
+    Old = application:get_env(imboy, garage),
+    application:set_env(imboy, garage, Cfg),
+    try
+        Fun()
+    after
+        case Old of
+            undefined -> application:unset_env(imboy, garage);
+            {ok, V} -> application:set_env(imboy, garage, V)
+        end
+    end.
+
+base_cfg() ->
+    #{
+        endpoint => <<"http://127.0.0.1:3900">>,
+        public_endpoint => <<"http://127.0.0.1:3900">>,
+        bucket => <<"imboy">>,
+        region => <<"garage">>,
+        access_key => <<"AK">>,
+        secret_key => <<"SK">>
+    }.
+
+key_prefix_default_is_empty_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        with_garage_cfg(base_cfg(), fun() ->
+            %% 不配 key_prefix ⇒ 与历史行为完全一致（第一段恒为 u<Uid>/）
+            Key = elib_oss:build_object_key(7, <<"private">>, undefined, <<"a.jpg">>),
+            ?assertMatch(<<"u7/", _/binary>>, Key)
+        end)
+    end).
+
+key_prefix_applies_to_build_object_key_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        lists:foreach(
+            fun(P) ->
+                Cfg = (base_cfg())#{key_prefix => P},
+                with_garage_cfg(Cfg, fun() ->
+                    Key = elib_oss:build_object_key(7, <<"private">>, undefined, <<"a.jpg">>),
+                    ?assertMatch(<<"moya/u7/", _/binary>>, Key),
+                    %% 公开资源（头像）同样带前缀
+                    Pub = elib_oss:build_object_key(7, <<"public">>, undefined, <<"a.jpg">>),
+                    ?assertMatch(<<"moya/u7/", _/binary>>, Pub)
+                end)
+            end,
+            %% 带不带结尾斜杠都要正确（自动补 /，避免拼出 moyau7/ 这种怪物）
+            [<<"moya">>, <<"moya/">>]
+        )
+    end).
+
+key_prefix_applies_to_presign_put_test_() ->
+    ?WITH_MECKS(
+        [{elib_s3_sign, [{'presign_put', 5, fun(_E, _B, Key, _M, _X) -> Key end}]}],
+        fun() ->
+            Cfg = (base_cfg())#{key_prefix => <<"moya/">>},
+            with_garage_cfg(Cfg, fun() ->
+                Key = elib_oss:presign_put(<<"a.jpg">>, <<"image/jpeg">>, 60),
+                ?assertMatch(<<"moya/file_", _/binary>>, Key)
+            end)
+        end
+    ).
+
+%% 读取类函数绝不重复拼前缀 —— 这条守的是「对象莫名 404」
+key_prefix_not_applied_twice_on_read_test_() ->
+    ?WITH_MECKS(
+        [{elib_s3_sign, [{'presign_get', 4, fun(_E, _B, Key, _X) -> Key end}]}],
+        fun() ->
+            Cfg = (base_cfg())#{key_prefix => <<"moya/">>},
+            with_garage_cfg(Cfg, fun() ->
+                %% 传入的 key 已含前缀，返回值必须原样
+                ?assertEqual(
+                    <<"moya/file_1/a.jpg">>,
+                    elib_oss:presign_get_for_key(<<"imboy">>, <<"moya/file_1/a.jpg">>, 60)
+                )
+            end)
+        end
+    ).
+
+%% 敏感值可配 {env, VAR}：避免密钥明文落进配置文件
+garage_config_resolves_env_placeholders_test_() ->
+    ?TEST_SIMPLE(fun() ->
+        Var = "ELIB_OSS_TEST_SECRET",
+        os:putenv(Var, "s3cret"),
+        Cfg = (base_cfg())#{
+            secret_key => {env, <<"ELIB_OSS_TEST_SECRET">>},
+            access_key => {env, <<"ELIB_OSS_TEST_MISSING">>, <<"fallback">>}
+        },
+        try
+            with_garage_cfg(Cfg, fun() ->
+                Key = elib_oss:build_object_key(7, <<"private">>, undefined, <<"a.jpg">>),
+                ?assertMatch(<<"u7/", _/binary>>, Key)
+            end),
+            %% 直接验证解析结果（key_prefix 走同一份配置）
+            with_garage_cfg(Cfg, fun() ->
+                ?assertEqual(<<"s3cret">>, maps:get(secret_key, elib_oss:garage_config())),
+                ?assertEqual(<<"fallback">>, maps:get(access_key, elib_oss:garage_config()))
+            end)
+        after
+            os:unsetenv(Var)
+        end
+    end).

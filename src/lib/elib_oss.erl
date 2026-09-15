@@ -26,6 +26,7 @@
 -export([build_object_key/2, build_object_key/4, owner_of_key/1]).
 -export([get_bucket/1, public_base_url/0, public_url_for_key/1]).
 -export([endpoint/0, public_endpoint/0]).
+-export([garage_config/0, key_prefix/0]).
 -export([delete_object/1, delete_object/2, head_object/1, head_object/2, parse_head_response/1]).
 -export([max_file_size/0]).
 -export([generate_file_id/0]).
@@ -135,7 +136,7 @@ presign_put(FileName, MimeType, ExpiresSeconds) ->
     Bucket = maps:get(bucket, Cfg, <<"imboy">>),
     FileId = generate_file_id(),
     SafeName = filename:basename(FileName),
-    ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
+    ObjectKey = <<(key_prefix())/binary, FileId/binary, "/", SafeName/binary>>,
     elib_s3_sign:presign_put(Endpoint, Bucket, ObjectKey, MimeType, ExpiresSeconds).
 
 %% @doc 用指定 ObjectKey 生成 presigned PUT URL（默认私桶，向后兼容入口）
@@ -166,19 +167,21 @@ build_object_key(Uid, Scope, ScopeRef, FileName) ->
     UidBin = to_bin(Uid),
     Ymd = ymd(),
     Seg = scope_segment(Scope, ScopeRef),
+    Prefix = key_prefix(),
     case Scope of
         <<"public">> ->
             %% 头像等公开资源：随机名 + 原扩展名，无内层 FileId 目录
             Ext = to_bin(filename:extension(filename:basename(FileName))),
             Hex = binary:encode_hex(crypto:strong_rand_bytes(8)),
-            <<"u", UidBin/binary, "/", Seg/binary, "/", Ymd/binary, "/", Hex/binary, Ext/binary>>;
+            <<Prefix/binary, "u", UidBin/binary, "/", Seg/binary, "/", Ymd/binary, "/", Hex/binary,
+                Ext/binary>>;
         _ ->
             Ts = integer_to_binary(erlang:system_time(millisecond)),
             Rand = binary:encode_hex(crypto:strong_rand_bytes(8)),
             FileId = <<?FILE_ID_PREFIX, "_", Ts/binary, "_", Rand/binary>>,
             SafeName = filename:basename(FileName),
-            <<"u", UidBin/binary, "/", Seg/binary, "/", Ymd/binary, "/", FileId/binary, "/",
-                SafeName/binary>>
+            <<Prefix/binary, "u", UidBin/binary, "/", Seg/binary, "/", Ymd/binary, "/",
+                FileId/binary, "/", SafeName/binary>>
     end.
 
 %% @doc scope → object_key 第二段。group 用 g<Gid> 实体段（Gid 取自 ScopeRef）。
@@ -422,7 +425,7 @@ upload_to_storage(FileId, FileName, FileBinary, MimeType) ->
     SecretKey = maps:get(secret_key, Cfg, <<>>),
 
     SafeName = filename:basename(FileName),
-    ObjectKey = <<FileId/binary, "/", SafeName/binary>>,
+    ObjectKey = <<(key_prefix())/binary, FileId/binary, "/", SafeName/binary>>,
     %% 请求 URL 的对象路径必须与签名 Canonical URI 编码方式一致
     Url =
         <<Endpoint/binary, "/", Bucket/binary, "/",
@@ -464,9 +467,58 @@ upload_to_storage(FileId, FileName, FileBinary, MimeType) ->
 public_url(Endpoint, Bucket, ObjectKey) ->
     <<Endpoint/binary, "/", Bucket/binary, "/", ObjectKey/binary>>.
 
+%% @doc garage 配置（已解析环境变量占位）。
+%%
+%% 敏感值（access_key / secret_key）可配 `{env, <<"VAR">>}` 或
+%% `{env, <<"VAR">>, Default}`，运行时从 os:getenv 取 —— 与
+%% imboy_llm_registry:resolve_env/1 同语义。**不要把密钥明文写进配置文件**，
+%% 即使该文件被 gitignore：轮换和扩散风险都由 env 承担。
 -spec garage_config() -> map().
 garage_config() ->
-    application:get_env(imboy, garage, #{}).
+    resolve_env(application:get_env(imboy, garage, #{})).
+
+resolve_env(Cfg) ->
+    maps:map(fun(_K, V) -> resolve_val(V) end, Cfg).
+
+resolve_val({env, Var}) when is_binary(Var) ->
+    env_get(Var, <<>>);
+resolve_val({env, Var, Default}) when is_binary(Var) ->
+    env_get(Var, Default);
+resolve_val(V) ->
+    V.
+
+env_get(Var, Default) ->
+    case os:getenv(binary_to_list(Var)) of
+        false -> Default;
+        [] -> Default;
+        S -> unicode:characters_to_binary(S)
+    end.
+
+%% @doc object key 的**根前缀**（可配，默认无前缀）。
+%%
+%% 用途：多个环境共用同一个 bucket 时做命名空间隔离（如本地开发共用生产的
+%% `imboy` 桶，全部 key 落在 `moya/` 下，避免测试对象污染生产数据）。
+%%
+%% ⚠ 只作用于**生成** key 的三处（presign_put/3、build_object_key/4、
+%% upload_to_storage/4）；读取类函数（presign_get_for_key/head_object/
+%% put_object）收到的 key 已含前缀，绝不能再拼一次。
+%% ⚠ 生产保持空前缀：`owner_of_key/1` 的不变量是「第一段恒为 u<Uid>/」，
+%% 一旦加前缀该判定就失效（当前 owner_of_key 是 stub，但仍不应依赖这点）。
+-spec key_prefix() -> binary().
+key_prefix() ->
+    case maps:get(key_prefix, garage_config(), <<>>) of
+        <<>> -> <<>>;
+        P when is_binary(P) -> ensure_trailing_slash(P);
+        _ -> <<>>
+    end.
+
+ensure_trailing_slash(<<>>) ->
+    <<>>;
+ensure_trailing_slash(P) ->
+    case binary:part(P, byte_size(P) - 1, 1) of
+        <<"/">> -> P;
+        _ -> <<P/binary, "/">>
+    end.
 
 %% @doc Garage S3 内部端点（服务端自身 httpc 调用：put_object/head_object/
 %% delete_object/upload_to_storage 的请求 URL 与签名 host）。
