@@ -3155,6 +3155,12 @@
         "static": false
       },
       {
+        "action": "ai_draft",
+        "handler": "moya_review_handler",
+        "path": "/api/v1/moya/submissions/:id/ai-draft",
+        "static": false
+      },
+      {
         "action": "save_draft",
         "handler": "moya_review_handler",
         "path": "/api/v1/moya/submissions/:id/review-draft",
