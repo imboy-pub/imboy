@@ -1,0 +1,6 @@
+# 特性裁剪调用门 baseline（scripts/check_feature_prune_calls.py --baseline）
+# 格式: caller <TAB> callee <TAB> protection <TAB> reason
+# 规则: 仅 defensive（catch 包住的静默降级）可豁免；hard 永不豁免；
+#       条目改成 hard（catch 被删）时自动重新计入违规。
+caller	callee	protection	reason
+adm_moderation_logic	moment_ds	defensive	冻结 Base 既有行为：Admin 拒绝处置里 moment 帖删除走 case catch，未选中 moment 时静默跳过并记 ERROR_LOG；非 enterprise run 引入（F-EB10-1 修复时登记，2026-09-15）

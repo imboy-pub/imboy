@@ -519,6 +519,102 @@
         "static": false
       },
       {
+        "action": "p_seats",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/seats",
+        "static": false
+      },
+      {
+        "action": "p_seat_resume",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/seats/:id/resume",
+        "static": false
+      },
+      {
+        "action": "p_seat_suspend",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/seats/:id/suspend",
+        "static": false
+      },
+      {
+        "action": "p_session",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/sessions/:id",
+        "static": false
+      },
+      {
+        "action": "p_session_close",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/sessions/:id/close",
+        "static": false
+      },
+      {
+        "action": "p_session_transfer",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/sessions/:id/transfer",
+        "static": false
+      },
+      {
+        "action": "p_asset_content",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/assets/:id/content",
+        "static": false
+      },
+      {
+        "action": "p_contacts",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/contacts",
+        "static": false
+      },
+      {
+        "action": "p_contact_detail",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/contacts/:id",
+        "static": false
+      },
+      {
+        "action": "p_conversation_messages",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/conversations/:id/messages",
+        "static": false
+      },
+      {
+        "action": "p_identities",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/identities",
+        "static": false
+      },
+      {
+        "action": "p_suspend_member",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/members/:uid/suspend",
+        "static": false
+      },
+      {
+        "action": "p_message_detail",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/messages/:message_id",
+        "static": false
+      },
+      {
+        "action": "p_offboarding_execute",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/offboarding/:id/execute",
+        "static": false
+      },
+      {
+        "action": "p_offboarding_finalize",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/offboarding/:id/finalize",
+        "static": false
+      },
+      {
+        "action": "p_offboarding_verify",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/offboarding/:id/verify",
+        "static": false
+      },
+      {
         "action": "delete",
         "handler": "adm_feedback_handler",
         "path": "/api/adm/feedback/delete",
@@ -2159,6 +2255,90 @@
         "static": false
       },
       {
+        "action": "seats",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats",
+        "static": false
+      },
+      {
+        "action": "seat_resume",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats/:id/resume",
+        "static": false
+      },
+      {
+        "action": "seat_suspend",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/seats/:id/suspend",
+        "static": false
+      },
+      {
+        "action": "shop_key_create",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/shop-keys",
+        "static": false
+      },
+      {
+        "action": "shop_key_revoke",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/shop-keys/:id/revoke",
+        "static": false
+      },
+      {
+        "action": "visit_token_issue",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/visit-tokens",
+        "static": false
+      },
+      {
+        "action": "visit_token_revoke",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/organizations/:org_id/visit-tokens/:id/revoke",
+        "static": false
+      },
+      {
+        "action": "visitor_sessions",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions",
+        "static": false
+      },
+      {
+        "action": "session_claim",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions/:id/claim",
+        "static": false
+      },
+      {
+        "action": "session_close",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions/:id/close",
+        "static": false
+      },
+      {
+        "action": "session_messages",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions/:id/messages",
+        "static": false
+      },
+      {
+        "action": "session_rating",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions/:id/rating",
+        "static": false
+      },
+      {
+        "action": "session_transfer",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions/:id/transfer",
+        "static": false
+      },
+      {
+        "action": "session_queue",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions/queue",
+        "static": false
+      },
+      {
         "action": "delete",
         "handler": "e2ee_backup_handler",
         "path": "/api/v1/e2ee/backup/delete",
@@ -2282,6 +2462,108 @@
         "action": "user_keys",
         "handler": "e2ee_handler",
         "path": "/api/v1/e2ee/user_keys",
+        "static": false
+      },
+      {
+        "action": "conversation_messages",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/enterprise/conversations/:conversation_id/messages",
+        "static": false
+      },
+      {
+        "action": "asset_content",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/assets/:id/content",
+        "static": false
+      },
+      {
+        "action": "confirm_asset",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/assets/confirm",
+        "static": false
+      },
+      {
+        "action": "presign",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/assets/presign",
+        "static": false
+      },
+      {
+        "action": "business_identities",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/business-identities",
+        "static": false
+      },
+      {
+        "action": "assign_identity",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/business-identities/:id/assign",
+        "static": false
+      },
+      {
+        "action": "contacts",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/contacts",
+        "static": false
+      },
+      {
+        "action": "contact_detail",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/contacts/:id",
+        "static": false
+      },
+      {
+        "action": "append_note",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/contacts/:id/notes",
+        "static": false
+      },
+      {
+        "action": "open_conversation",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/conversations",
+        "static": false
+      },
+      {
+        "action": "conversation_messages",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/conversations/:id/messages",
+        "static": false
+      },
+      {
+        "action": "ack_delivery",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/conversations/:id/messages/:message_id/ack",
+        "static": false
+      },
+      {
+        "action": "suspend_member",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/members/:uid/suspend",
+        "static": false
+      },
+      {
+        "action": "offboarding_open",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/offboarding",
+        "static": false
+      },
+      {
+        "action": "offboarding_execute",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/offboarding/:id/execute",
+        "static": false
+      },
+      {
+        "action": "offboarding_finalize",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/offboarding/:id/finalize",
+        "static": false
+      },
+      {
+        "action": "offboarding_verify",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/offboarding/:id/verify",
         "static": false
       },
       {

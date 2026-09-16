@@ -1,12 +1,16 @@
 -module(organization_member_logic_tests).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 -include("eunit_setup.hrl").
 
 -define(ORG_ID, 101).
 -define(OWNER, 201).
 -define(ADMIN, 202).
 -define(MEMBER, 203).
+
+%% EB-08 的通用 suspend 与依赖资源 409 映射：被测的 Core 文件。
+-define(CORE_REL, "src/logic/organization_member_logic.erl").
 
 admin_can_invite_and_remove_member_test_() ->
     ?WITH_MECKS(
@@ -304,4 +308,249 @@ run_tx(Tx) ->
         Result -> Result
     catch
         throw:{abort_tx, Reason} -> {error, Reason}
+    end.
+
+%% ===================================================================
+%% EB-08：通用 suspend（Core 能力，S1 Gate）
+%% ===================================================================
+
+%% @doc suspend 只做一件事：把 organization_member.status 从 active 置为
+%% suspended（**唯一**一条写语句，org 作用域显式），不动个人账号、不动经办关系。
+suspend_marks_member_suspended_with_a_single_scoped_statement_test_() ->
+    ?WITH_MECKS(
+        suspend_mocks(),
+        fun() ->
+            ?assertMatch(
+                {ok, #{
+                    organization_id := ?ORG_ID,
+                    user_id := ?MEMBER,
+                    status := <<"suspended">>
+                }},
+                organization_member_logic:suspend(?OWNER, ?ORG_ID, ?MEMBER)
+            ),
+            Sqls = lists:reverse(get(t_sqls)),
+            ?assertEqual(1, length(Sqls)),
+            [Sql] = Sqls,
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE organization_member">>)),
+            %% 唯一的目标状态来自参数（$3），SQL 里没有第二个状态字面量可被篡改
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"SET status = $3">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"organization_id = $1">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"user_id = $2">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"status = 'active'">>)),
+            ?assertEqual([?ORG_ID, ?MEMBER, <<"suspended">>], get(t_params))
+        end
+    ).
+
+%% @doc 主 Owner 不能被暂停（409，且零写入）；非 Owner/Admin 不得暂停（403，零写入）。
+suspend_protects_primary_owner_and_requires_governance_test_() ->
+    ?WITH_MECKS(
+        suspend_mocks(),
+        fun() ->
+            ?assertMatch(
+                {error, {409, _}},
+                organization_member_logic:suspend(?OWNER, ?ORG_ID, ?OWNER)
+            ),
+            ?assertEqual(undefined, erase(t_sqls)),
+            ?assertMatch(
+                {error, {403, _}},
+                organization_member_logic:suspend(?MEMBER, ?ORG_ID, ?ADMIN)
+            ),
+            ?assertEqual(undefined, erase(t_sqls))
+        end
+    ).
+
+%% @doc 已 suspended / removed 的成员再次撤权 ⇒ 409（明确拒绝，不静默成功）。
+suspend_is_not_idempotent_silently_test_() ->
+    ?WITH_MECKS(
+        suspend_mocks(),
+        fun() ->
+            put(t_target_status, <<"suspended">>),
+            ?assertMatch(
+                {error, {409, _}},
+                organization_member_logic:suspend(?OWNER, ?ORG_ID, ?MEMBER)
+            ),
+            ?assertEqual(undefined, erase(t_sqls)),
+            erase(t_target_status)
+        end
+    ).
+
+%% @doc 参数形状：非法 target 直接 400，不触库。
+suspend_validates_arguments_test() ->
+    ?assertMatch(
+        {error, {400, _}},
+        organization_member_logic:suspend(?OWNER, ?ORG_ID, 0)
+    ).
+
+%% suspend 的 meck 期望：只读查找走 repo，唯一写语句走 elib_pg:execute/3。
+suspend_mocks() ->
+    [
+        {elib_pg, [
+            {'with_tx', 1, fun run_tx/1},
+            {'execute', 3, fun(_Conn, Sql, Params) ->
+                put(t_sqls, [iolist_to_binary(Sql) | sqls_so_far()]),
+                put(t_params, Params),
+                {ok, 1}
+            end}
+        ]},
+        {organization_member_repo, [
+            {'find_organization_for_share_tx', 3, fun(_, ?ORG_ID, <<"id,owner_id,status">>) ->
+                {ok, #{
+                    <<"id">> => ?ORG_ID,
+                    <<"owner_id">> => ?OWNER,
+                    <<"status">> => <<"active">>
+                }}
+            end},
+            {'find_active_for_share_tx', 4, fun(_, ?ORG_ID, ActorUid, <<"role">>) ->
+                case ActorUid of
+                    ?MEMBER -> {ok, #{<<"role">> => <<"member">>}};
+                    _ -> {ok, #{<<"role">> => <<"owner">>}}
+                end
+            end},
+            {'find_for_update_tx', 4, fun(_, ?ORG_ID, TargetUid, <<"role,status">>) ->
+                Status =
+                    case TargetUid of
+                        ?OWNER -> <<"active">>;
+                        _ -> target_status()
+                    end,
+                Role =
+                    case TargetUid of
+                        ?OWNER -> <<"owner">>;
+                        ?ADMIN -> <<"admin">>;
+                        _ -> <<"member">>
+                    end,
+                {ok, #{<<"role">> => Role, <<"status">> => Status}}
+            end}
+        ]}
+    ].
+
+%% 进程字典读默认值（`erlang:get/1` 无 /2 版本）。
+sqls_so_far() ->
+    case get(t_sqls) of
+        undefined -> [];
+        Sqls -> Sqls
+    end.
+
+target_status() ->
+    case get(t_target_status) of
+        undefined -> <<"active">>;
+        Status -> Status
+    end.
+
+%% ===================================================================
+%% EB-08：dependent_resources 的 409 映射（Core 能力，S3 Gate）
+%% ===================================================================
+
+%% @doc 纯函数：只有「已知的 Core 依赖守卫 + 23514」才映射为 409；其余一律不映射。
+dependent_resources_mapping_is_narrow_and_generic_test() ->
+    Guard = <<"trg_organization_member_offboarding_guard">>,
+    {conflict, Message} = organization_member_logic:dependent_resources_conflict(
+        db_error(<<"23514">>, Guard)
+    ),
+    ?assert(is_binary(Message)),
+    ?assertNotEqual(nomatch, binary:match(Message, <<"依赖资源"/utf8>>)),
+    %% 负例：别的 23514 约束、别的错误码、非错误项都不映射（不是「一律 409」）
+    ?assertEqual(
+        none,
+        organization_member_logic:dependent_resources_conflict(
+            db_error(<<"23514">>, <<"ck_organization_member_status">>)
+        )
+    ),
+    ?assertEqual(
+        none,
+        organization_member_logic:dependent_resources_conflict(
+            db_error(<<"23503">>, Guard)
+        )
+    ),
+    ?assertEqual(none, organization_member_logic:dependent_resources_conflict(unavailable)),
+    ?assertEqual(none, organization_member_logic:dependent_resources_conflict(undefined)).
+
+%% @doc 接线：DB 守卫拒绝移除时，remove/3 返回 409（可区分），而不是被压成 500。
+dependent_resources_rejection_reaches_caller_as_409_test_() ->
+    Guard = <<"trg_organization_member_offboarding_guard">>,
+    ?WITH_MECKS(
+        remove_mocks(fun(_, ?ORG_ID, ?MEMBER) -> {error, db_error(<<"23514">>, Guard)} end),
+        fun() ->
+            ?assertMatch(
+                {error, {409, _}},
+                organization_member_logic:remove(?OWNER, ?ORG_ID, ?MEMBER)
+            )
+        end
+    ).
+
+%% @doc 负例（有牙齿）：同一个 remove 路径上的**其它**数据库错误仍是 500，
+%% 说明 409 是窄映射而不是「把任何失败都说成被依赖资源引用」。
+other_db_errors_stay_internal_test_() ->
+    ?WITH_MECKS(
+        remove_mocks(fun(_, ?ORG_ID, ?MEMBER) ->
+            {error, db_error(<<"23503">>, <<"fk_something">>)}
+        end),
+        fun() ->
+            ?assertMatch(
+                {error, {500, _}},
+                organization_member_logic:remove(?OWNER, ?ORG_ID, ?MEMBER)
+            )
+        end
+    ).
+
+remove_mocks(RemoveTxFun) ->
+    [
+        {elib_pg, [
+            {'with_tx', 1, fun run_tx/1}
+        ]},
+        {organization_member_repo, [
+            {'find_organization_for_share_tx', 3, fun(_, ?ORG_ID, <<"id,owner_id,status">>) ->
+                {ok, #{
+                    <<"id">> => ?ORG_ID,
+                    <<"owner_id">> => ?OWNER,
+                    <<"status">> => <<"active">>
+                }}
+            end},
+            {'find_active_for_share_tx', 4, fun(_, ?ORG_ID, _ActorUid, <<"role">>) ->
+                {ok, #{<<"role">> => <<"owner">>}}
+            end},
+            {'find_for_update_tx', 4, fun(_, ?ORG_ID, _TargetUid, <<"role,status">>) ->
+                {ok, #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}}
+            end},
+            {'remove_tx', 3, RemoveTxFun}
+        ]}
+    ].
+db_error(Code, Constraint) ->
+    #error{
+        severity = error,
+        code = Code,
+        codename = check_violation,
+        message = <<"synthetic">>,
+        extra = [{constraint_name, Constraint}]
+    }.
+
+%% ===================================================================
+%% EB-08-A06：依赖方向（Feature -> Core），零反向引用
+%% ===================================================================
+
+%% @doc Core 的离职/暂停段只依赖通用能力：文件里不得出现任何纵切单元的模块名。
+%% 判定函数本身带负例（对含反向引用的夹具必判红），故不是恒真断言。
+core_has_zero_feature_module_references_test() ->
+    {ok, Src} = file:read_file(?CORE_REL),
+    ?assertEqual([], feature_refs(Src)),
+    ?assertNotEqual(
+        [],
+        feature_refs(<<"f() -> enterprise_business_facade:open_offboarding(1, #{}).">>)
+    ),
+    ?assertNotEqual(
+        [],
+        feature_refs(<<"f() -> customer_service_logic:handover(1).">>)
+    ),
+    ?assertEqual(
+        [],
+        feature_refs(<<"f() -> organization_member_repo:remove_tx(C, 1, 2).">>)
+    ).
+
+feature_refs(Bin) ->
+    case
+        re:run(Bin, "\\b(enterprise_[a-z0-9_]+|customer_service_[a-z0-9_]+)", [
+            global, {capture, first, binary}
+        ])
+    of
+        {match, Matches} -> Matches;
+        nomatch -> []
     end.

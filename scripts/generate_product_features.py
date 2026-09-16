@@ -22,6 +22,108 @@ FIELDS = {"schema_version", "product_id", "profile", "base_ref", "selected_featu
 # 编译期宏 -ifdef(IMBOY_FEATURE_*) 是双保险，不是替代。
 # 映射只需逐步覆盖有物理裁剪意义的模块；其余 feature 由 BUILD-01 补齐。
 FEATURE_BACKEND_MODULES = {
+    "enterprise_business": (
+        # EB-10：src/features/enterprise_business/** 的 60 个模块（含 facade）。
+        # 未选中 enterprise_business 时按 ERLC_EXCLUDE 不参与编译，并自动退出
+        # .app modules 与 release 包；路由段的编译期剔除另见 src/imboy_router.erl
+        # 的 -ifdef(IMBOY_FEATURE_ENTERPRISE_BUSINESS) helper。清单与目录的
+        # 逐项一致性由 test/scripts/test_generate_product_features.py 的
+        # test_enterprise_backend_modules_cover_feature_directory 机械核对。
+        "eb_asset_app",
+        "eb_asset_content",
+        "eb_asset_object_stub",
+        "eb_asset_port",
+        "eb_asset_scope",
+        "eb_asset_store",
+        "eb_asset_upload_ref",
+        "eb_audit_port",
+        "eb_auth_app",
+        "eb_auth_permission",
+        "eb_auth_port",
+        "eb_auth_principal",
+        "eb_clock_port",
+        "eb_consent",
+        "eb_consent_app",
+        "eb_contact_app",
+        "eb_conversation",
+        "eb_conversation_app",
+        "eb_crypto_port",
+        "eb_enterprise_actions",
+        "eb_enterprise_facade_call",
+        "eb_enterprise_http",
+        "eb_id_port",
+        "eb_identity",
+        "eb_identity_app",
+        "eb_env_keyring",
+        "eb_infra_ports",
+        "eb_managed_crypto",
+        "eb_member_fact_pg",
+        "eb_member_fact_port",
+        "eb_message",
+        "eb_message_app",
+        "eb_offboarding",
+        "eb_offboarding_app",
+        "eb_offboarding_flow",
+        "eb_pg_asset_meta",
+        "eb_pg_audit",
+        "eb_pg_auth_facts",
+        "eb_pg_canonical_tx",
+        "eb_pg_consent_evidence",
+        "eb_pg_contact_ext",
+        "eb_pg_exec",
+        "eb_pg_identity_ext",
+        "eb_pg_message_ext",
+        "eb_pg_offboarding_ext",
+        "eb_pg_purge",
+        "eb_pg_purge_port",
+        "eb_pg_store",
+        "eb_pg_store_sql",
+        "eb_pg_tx",
+        "eb_platform_auth_facts",
+        "eb_platform_handler",
+        "eb_ports",
+        "eb_purge_port",
+        "eb_retention",
+        "eb_retention_app",
+        "eb_store_port",
+        "eb_system_clock",
+        "eb_tenant_handler",
+        "eb_tsid",
+        "eb_tx_port",
+        "enterprise_business_facade",
+    ),
+    "customer_service": (
+        # CS-02：src/features/customer_service/** 的 23 个模块（含 facade 与
+        # interfaces 六模块）。未选中 customer_service 时按 ERLC_EXCLUDE 不参与
+        # 编译，并自动退出 .app modules 与 release 包；路由段的编译期剔除另见
+        # src/imboy_router.erl 的 -ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE) helper、
+        # auth_middleware_api_v1 的 is_cs_credential_path/1 ifdef 保护。依赖边
+        # customer_service -> enterprise_business 由 imboy_policy_catalog 声明
+        # （customer_service 无 enterprise 生成即失败）。
+        "cs_access_app",
+        "cs_actions",
+        "cs_app_support",
+        "cs_auth",
+        "cs_dispatch",
+        "cs_facade_call",
+        "cs_http",
+        "cs_id_port",
+        "cs_infra_ports",
+        "cs_pg_common",
+        "cs_pg_seat",
+        "cs_pg_session",
+        "cs_pg_store",
+        "cs_pg_token",
+        "cs_platform_handler",
+        "cs_ports",
+        "cs_seat_app",
+        "cs_session",
+        "cs_session_app",
+        "cs_store_port",
+        "cs_tenant_handler",
+        "cs_tsid",
+        "customer_service_facade",
+    ),
     "moment": (
         "adm_moment_handler",
         "moment_comment_repo",
@@ -84,7 +186,17 @@ def source_catalog(repo: Path) -> dict:
     registry_source = (repo / "src/lib/imboy_plugin_registry.erl").read_text()
     dependency_source = (repo / "src/lib/imboy_policy_catalog.erl").read_text()
     plugin_features = re.findall(r"feature_keys\s*=>\s*\[([^]]*)\]", registry_source)
-    features = {"core", "e2ee", "bot_webhook"}
+    # EB-10：feature_names/0 的 Builtin（平台内建、非插件）键在 imboy_feature.erl
+    # 里以字面量 `Builtin = [...]` 声明。**必须解析它**：全新 checkout（含
+    # disposable worktree）里没有 ebin/imboy_feature.beam，source_catalog 是
+    # 唯一真源；遗漏会让内建特性（bot_webhook/appeal/enterprise_business/
+    # customer_service）被 validate 判成 unknown feature —— 三档矩阵正是在
+    # 这种无 beam 的新树上生成 manifest。
+    builtin_match = re.search(r"Builtin\s*=\s*\[([^\]]*)\]", feature_source)
+    if builtin_match is None:
+        raise ManifestError("cannot bootstrap builtin feature keys from imboy_feature.erl")
+    features = {"core", "e2ee"}
+    features.update(re.findall(r"\b[a-z][a-z0-9_]*\b", builtin_match.group(1)))
     for values in plugin_features:
         features.update(re.findall(r"\b[a-z][a-z0-9_]*\b", values))
     order_match = re.search(r"Ordered\s*=\s*\[(.*?)\],\s*Extra", feature_source, re.S)

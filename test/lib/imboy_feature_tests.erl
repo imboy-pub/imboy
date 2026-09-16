@@ -75,6 +75,13 @@ ensure_enabled_returns_uniform_error_when_flag_off_test_() ->
     ).
 
 all_returns_binary_key_view_for_known_features_test_() ->
+    %% EB-10：企业业务 / 客服也是内建键。它们的 enabled 值经
+    %% `compiled/1 andalso effective_features` 两级判定，其中 compiled 来自
+    %% **编译期**宏集合（当前 manifest 选 enterprise_business、未选
+    %% customer_service），故按同一真源取值，避免把测试绑死在某个 preset 上。
+    EnterpriseCompiled = lists:member(enterprise_business, imboy_feature:compiled_features()),
+    CustomerServiceCompiled =
+        lists:member(customer_service, imboy_feature:compiled_features()),
     FeatureMap = #{
         core => true,
         e2ee => false,
@@ -87,9 +94,12 @@ all_returns_binary_key_view_for_known_features_test_() ->
         group_vote => true,
         group_schedule => false,
         group_task => true,
-        %% 平台内建键（Builtin）：L-01 bot_webhook / R-04 appeal
+        %% 平台内建键（Builtin）：L-01 bot_webhook / R-04 appeal /
+        %% EB-10 enterprise_business / customer_service
         bot_webhook => true,
-        appeal => false
+        appeal => false,
+        enterprise_business => EnterpriseCompiled,
+        customer_service => CustomerServiceCompiled
     },
     ?WITH_MECKS(
         [
@@ -124,10 +134,34 @@ feature_names_contract_test() ->
             group_schedule,
             group_task,
             %% 平台内建（Builtin）键排在插件键之后
+            %% （EB-10 追加 enterprise_business / customer_service，与
+            %%   src/lib/imboy_feature.erl 的 Builtin 字面量同序）
             bot_webhook,
-            appeal
+            appeal,
+            enterprise_business,
+            customer_service
         ],
         imboy_feature:feature_names()
+    ).
+
+%% --- EB-10: 企业业务依赖边 + 裁剪门 ---
+
+customer_service_depends_on_enterprise_business_test() ->
+    ?assertEqual(
+        [enterprise_business],
+        imboy_policy_catalog:dependencies(customer_service)
+    ).
+
+enterprise_routes_gated_by_feature_test() ->
+    %% 路由门：企业两张面的 Handler 必须映射到 enterprise_business，
+    %% 否则 compiled_routes/2 会漏掉企业路由（运行时门失效）。
+    ?assertEqual(
+        enterprise_business,
+        imboy_feature:route_feature(api, eb_tenant_handler, business_identities)
+    ),
+    ?assertEqual(
+        enterprise_business,
+        imboy_feature:route_feature(admin, eb_platform_handler, p_identities)
     ).
 
 %% --- B1: feature_names 以 registry 为单一数据源 ---

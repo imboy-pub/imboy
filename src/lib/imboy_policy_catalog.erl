@@ -240,4 +240,10 @@ request_shape_meta_catalog() ->
 dependencies(channel_discover) -> [channel];
 dependencies(channel_invitation) -> [channel];
 dependencies(channel_order) -> [channel];
+%% EB-10：客服（customer_service）复用企业业务的所有权与真源
+%% （enterprise_business_facade 的客户/会话/消息/附件），不得「先有客服、
+%% 后补企业底座」。生成器 validate/3 据此在**生成期**拒绝「选了
+%% customer_service 却没选 enterprise_business」的 manifest（EB-10-A03）。
+%% 本行是该依赖边的生成期真源。
+dependencies(customer_service) -> [enterprise_business];
 dependencies(_) -> [].
