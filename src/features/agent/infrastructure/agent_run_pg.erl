@@ -289,7 +289,7 @@ lease_take_over(Conn, RunId, Worker, ExpiresAt, Now) ->
 %% UNIQUE(tool_id, external_idempotency_key) 冲突还原为
 %% {error, {duplicate_effect, ConstraintName}}（§14 duplicate effect 不重发）。
 -spec insert_effect_tx(
-    conn(), map(), none | {cas_run, integer(), atom(), integer(), atom() | undefined, map()}
+    conn(), map(), none | {cas_run, integer(), atom(), atom(), integer(), atom() | undefined, map()}
 ) ->
     {ok, pos_integer(), pos_integer() | undefined}
     | {error, {duplicate_effect, binary()}}

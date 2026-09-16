@@ -732,10 +732,17 @@ decide_effect(Conn, Run, Ctx, GrantVersion, Now) ->
     EffectBase = effect_base(Run, Ctx, Now),
     case Decision of
         deny ->
-            insert_decided(
-                Conn, EffectBase#{decided_status => denied, denial_reason => denied_by_policy}, none
-            ),
-            {error, denied_by_policy};
+            %% §14：授权/审计持久化失败必须暴露（fail closed），不得静默吞掉
+            case
+                insert_decided(
+                    Conn,
+                    EffectBase#{decided_status => denied, denial_reason => denied_by_policy},
+                    none
+                )
+            of
+                {ok, _EffectId, _RV} -> {error, denied_by_policy};
+                {error, _} = Err -> Err
+            end;
         approval_required ->
             RunV = maps:get(version, Run),
             Event = transition_event(
