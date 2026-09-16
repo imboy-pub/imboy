@@ -133,75 +133,23 @@ transfer_owner(Uid, OrgId, TargetUid) when
 transfer_owner(_, _, _) ->
     {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
 
+%% Owner Source-of-Truth 迁移（Enterprise Organization V1 / ORG-01）：
+%% transfer command 下沉到 src/lib/organization/application/organization_owner_transfer
+%% （单事务、组织行锁、先降旧 → 再升新 → 最后改 owner_id 投影，提交时双侧
+%% deferred invariant 终检）。本函数仅保留 legacy 入口兼容：日志与错误归口不变。
 transfer_owner_validated(Uid, OrgId, TargetUid) ->
-    Tx = fun(Conn) -> transfer_owner_tx(Conn, Uid, OrgId, TargetUid) end,
-    case elib_pg:with_tx(Tx) of
+    case organization_owner_transfer:transfer(Uid, OrgId, TargetUid) of
         {error, {Code, Msg}} when is_integer(Code), is_binary(Msg) ->
-            {error, {Code, Msg}};
-        {error, Reason} ->
-            ?ERROR_LOG([organization_owner_transfer_failed, OrgId, Uid, TargetUid, Reason]),
-            internal_error(<<"Owner 转移失败，请稍后重试"/utf8>>);
-        Result when is_map(Result) ->
+            case Code of
+                500 ->
+                    ?ERROR_LOG([organization_owner_transfer_failed, OrgId, Uid, TargetUid]),
+                    {error, {Code, Msg}};
+                _ ->
+                    {error, {Code, Msg}}
+            end;
+        {ok, Result} when is_map(Result) ->
             ?INFO_LOG([organization_owner_transferred, OrgId, Uid, TargetUid]),
             {ok, Result}
-    end.
-
-transfer_owner_tx(Conn, Uid, OrgId, TargetUid) ->
-    Org =
-        case organization_repo:find_for_update_tx(Conn, OrgId) of
-            {ok, #{<<"status">> := <<"active">>} = Row} -> Row;
-            {ok, _} -> abort(409, <<"Organization 已归档，不能转移 Owner"/utf8>>);
-            {error, not_found} -> abort(404, <<"Organization 不存在"/utf8>>);
-            {error, Reason1} -> throw({abort_tx, {internal, Reason1}})
-        end,
-    case maps:get(<<"owner_id">>, Org, 0) of
-        Uid -> ok;
-        _ -> abort(403, <<"仅当前主 Owner 可转移 Owner"/utf8>>)
-    end,
-    case organization_member_repo:find_for_update_tx(Conn, OrgId, Uid, <<"role,status">>) of
-        {ok, #{<<"role">> := <<"owner">>, <<"status">> := <<"active">>}} -> ok;
-        {ok, _} -> abort(403, <<"当前主 Owner 成员状态无效"/utf8>>);
-        {error, not_found} -> abort(403, <<"当前主 Owner 成员状态无效"/utf8>>);
-        {error, Reason2} -> throw({abort_tx, {internal, Reason2}})
-    end,
-    case
-        organization_member_repo:find_for_update_tx(
-            Conn, OrgId, TargetUid, <<"role,status">>
-        )
-    of
-        {ok, #{<<"status">> := <<"active">>, <<"role">> := Role}} when
-            Role =:= <<"admin">>; Role =:= <<"member">>
-        ->
-            ok;
-        {ok, #{<<"status">> := <<"active">>, <<"role">> := <<"owner">>}} ->
-            abort(409, <<"目标用户已是 Owner"/utf8>>);
-        {ok, _} ->
-            member_not_active();
-        {error, not_found} ->
-            member_not_active();
-        {error, Reason3} ->
-            throw({abort_tx, {internal, Reason3}})
-    end,
-    case organization_repo:update_owner_tx(Conn, OrgId, TargetUid) of
-        {ok, _} -> ok;
-        {error, Reason4} -> throw({abort_tx, {internal, Reason4}})
-    end,
-    case organization_member_repo:update_role_tx(Conn, OrgId, Uid, <<"admin">>) of
-        ok -> ok;
-        {error, Reason5} -> throw({abort_tx, {internal, Reason5}})
-    end,
-    case organization_member_repo:find_active_tx(Conn, OrgId, TargetUid, <<"role">>) of
-        {ok, #{<<"role">> := <<"owner">>}} ->
-            #{
-                organization_id => OrgId,
-                owner_id => TargetUid,
-                previous_owner_id => Uid,
-                previous_owner_role => <<"admin">>
-            };
-        {ok, _} ->
-            throw({abort_tx, owner_membership_not_synchronized});
-        {error, Reason6} ->
-            throw({abort_tx, {owner_membership_not_synchronized, Reason6}})
     end.
 
 invite_registered_user(Uid, OrgId, TargetUid, Role) ->

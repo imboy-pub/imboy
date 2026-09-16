@@ -114,38 +114,48 @@ ordinary_member_cannot_list_test_() ->
         end
     ).
 
+%% ORG-01：transfer command 下沉到 organization_owner_transfer（src/lib/organization），
+%% logic 入口仅作兼容委托；以下用例的 mock 目标由旧 repo 切换到 organization_owner_store。
 primary_owner_can_transfer_to_active_member_test_() ->
     ?WITH_MECKS(
         [
             {elib_pg, [
                 {'with_tx', 1, fun run_tx/1}
             ]},
-            {organization_repo, [
-                {'find_for_update_tx', 2, fun(fake_conn, ?ORG_ID) ->
+            {organization_owner_store, [
+                {'lock_organization_tx', 2, fun(fake_conn, ?ORG_ID) ->
                     {ok, #{
                         <<"id">> => ?ORG_ID,
                         <<"owner_id">> => ?OWNER,
                         <<"status">> => <<"active">>
                     }}
                 end},
-                {'update_owner_tx', 3, fun(fake_conn, ?ORG_ID, ?MEMBER) ->
-                    put(t_org_owner_updated, true),
-                    {ok, #{<<"id">> => ?ORG_ID, <<"owner_id">> => ?MEMBER}}
-                end}
-            ]},
-            {organization_member_repo, [
-                {'find_for_update_tx', 4, fun
-                    (fake_conn, ?ORG_ID, ?OWNER, <<"role,status">>) ->
-                        {ok, #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}};
-                    (fake_conn, ?ORG_ID, ?MEMBER, <<"role,status">>) ->
-                        {ok, #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}}
+                {'lock_member_with_account_tx', 3, fun
+                    (fake_conn, ?ORG_ID, ?OWNER) ->
+                        {ok, #{
+                            <<"role">> => <<"owner">>,
+                            <<"status">> => <<"active">>,
+                            <<"account_type">> => 0
+                        }};
+                    (fake_conn, ?ORG_ID, ?MEMBER) ->
+                        {ok, #{
+                            <<"role">> => <<"member">>,
+                            <<"status">> => <<"active">>,
+                            <<"account_type">> => 0
+                        }}
                 end},
-                {'update_role_tx', 4, fun(fake_conn, ?ORG_ID, ?OWNER, <<"admin">>) ->
+                {'demote_previous_owner_tx', 3, fun(fake_conn, ?ORG_ID, ?OWNER) ->
                     put(t_previous_owner_demoted, true),
                     ok
                 end},
-                {'find_active_tx', 4, fun(fake_conn, ?ORG_ID, ?MEMBER, <<"role">>) ->
-                    {ok, #{<<"role">> => <<"owner">>}}
+                {'promote_target_tx', 3, fun(fake_conn, ?ORG_ID, ?MEMBER) -> ok end},
+                {'update_owner_projection_tx', 3, fun(fake_conn, ?ORG_ID, ?MEMBER) ->
+                    put(t_org_owner_updated, true),
+                    {ok, #{
+                        <<"id">> => ?ORG_ID,
+                        <<"owner_id">> => ?MEMBER,
+                        <<"status">> => <<"active">>
+                    }}
                 end}
             ]}
         ],
@@ -170,8 +180,8 @@ non_owner_cannot_transfer_owner_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun run_tx/1}
             ]},
-            {organization_repo, [
-                {'find_for_update_tx', 2, fun(fake_conn, ?ORG_ID) ->
+            {organization_owner_store, [
+                {'lock_organization_tx', 2, fun(fake_conn, ?ORG_ID) ->
                     {ok, #{
                         <<"id">> => ?ORG_ID,
                         <<"owner_id">> => ?OWNER,
@@ -194,8 +204,8 @@ transfer_owner_validation_and_sync_failures_test_() ->
             {elib_pg, [
                 {'with_tx', 1, fun run_tx/1}
             ]},
-            {organization_repo, [
-                {'find_for_update_tx', 2, fun(fake_conn, ?ORG_ID) ->
+            {organization_owner_store, [
+                {'lock_organization_tx', 2, fun(fake_conn, ?ORG_ID) ->
                     Status =
                         case get(t_owner_transfer_case) of
                             archived -> <<"archived">>;
@@ -207,26 +217,44 @@ transfer_owner_validation_and_sync_failures_test_() ->
                         <<"status">> => Status
                     }}
                 end},
-                {'update_owner_tx', 3, fun(fake_conn, ?ORG_ID, ?MEMBER) ->
-                    put(t_owner_transfer_updated, true),
-                    {ok, #{<<"id">> => ?ORG_ID, <<"owner_id">> => ?MEMBER}}
-                end}
-            ]},
-            {organization_member_repo, [
-                {'find_for_update_tx', 4, fun
-                    (fake_conn, ?ORG_ID, ?OWNER, <<"role,status">>) ->
-                        {ok, #{<<"role">> => <<"owner">>, <<"status">> => <<"active">>}};
-                    (fake_conn, ?ORG_ID, ?MEMBER, <<"role,status">>) ->
+                {'lock_member_with_account_tx', 3, fun
+                    (fake_conn, ?ORG_ID, ?OWNER) ->
+                        {ok, #{
+                            <<"role">> => <<"owner">>,
+                            <<"status">> => <<"active">>,
+                            <<"account_type">> => 0
+                        }};
+                    (fake_conn, ?ORG_ID, ?MEMBER) ->
                         case get(t_owner_transfer_case) of
                             inactive_target ->
-                                {ok, #{<<"role">> => <<"member">>, <<"status">> => <<"removed">>}};
+                                {ok, #{
+                                    <<"role">> => <<"member">>,
+                                    <<"status">> => <<"removed">>,
+                                    <<"account_type">> => 0
+                                }};
                             _ ->
-                                {ok, #{<<"role">> => <<"member">>, <<"status">> => <<"active">>}}
+                                {ok, #{
+                                    <<"role">> => <<"member">>,
+                                    <<"status">> => <<"active">>,
+                                    <<"account_type">> => 0
+                                }}
                         end
                 end},
-                {'update_role_tx', 4, fun(fake_conn, ?ORG_ID, ?OWNER, <<"admin">>) -> ok end},
-                {'find_active_tx', 4, fun(fake_conn, ?ORG_ID, ?MEMBER, <<"role">>) ->
-                    {ok, #{<<"role">> => <<"member">>}}
+                {'demote_previous_owner_tx', 3, fun(fake_conn, ?ORG_ID, ?OWNER) -> ok end},
+                {'promote_target_tx', 3, fun(fake_conn, ?ORG_ID, ?MEMBER) -> ok end},
+                {'update_owner_projection_tx', 3, fun(fake_conn, ?ORG_ID, ?MEMBER) ->
+                    put(t_owner_transfer_updated, true),
+                    case get(t_owner_transfer_case) of
+                        %% 投影更新失败（原用例的 sync failure 语义等价映射）
+                        sync_failure ->
+                            {error, projection_update_failed};
+                        _ ->
+                            {ok, #{
+                                <<"id">> => ?ORG_ID,
+                                <<"owner_id">> => ?MEMBER,
+                                <<"status">> => <<"active">>
+                            }}
+                    end
                 end}
             ]}
         ],
