@@ -79,6 +79,11 @@ get_routes() ->
                 action => wechat_mini_login
             }},
 
+            % 墨芽习字：微信小程序「消息推送」接收端点（免 Bearer，见 open/0）
+            % GET  = 保存配置时的验签（原样回 echostr）
+            % POST = 客服消息 / 进入会话等事件（兼容/安全模式 + JSON）
+            {"/api/v1/wechat/mini/events", moya_wechat_msg_handler, #{}},
+
             % QR 码登录（WhatsApp Web 风格）
             {"/api/v1/passport/qr_login/create", qr_login_handler, #{action => create}},
             {"/api/v1/passport/qr_login/status", qr_login_handler, #{action => status}},
@@ -1295,6 +1300,12 @@ open() ->
         %% 墨芽习字：微信小程序登录——wx.login 一次性 code 换 token，握手前无
         %% sign/did 头；code 本身即凭证（AUTH-01：code 消费后重放必失败）
         <<"/api/v1/auth/wechat-mini/login">>,
+
+        %% 墨芽习字：微信「消息推送」——微信侧不带任何 IMBoy 凭证，唯一凭证是
+        %% URL 上的签名（GET 校验 signature / POST 校验 msg_signature，均由
+        %% moya_wechat_msg_logic 逐条 fail-closed 裁决）。同理不带 sign/did 头，
+        %% 必须免 902 签名门，否则微信保存配置时恒 403、后台报「Token 验证失败」。
+        <<"/api/v1/wechat/mini/events">>,
 
         %% Bot 发消息：Bot 服务器无用户 JWT，凭证是 api_token
         %% （Authorization: Bearer <api_token>，校验在 bot_handler:authenticate/1，
