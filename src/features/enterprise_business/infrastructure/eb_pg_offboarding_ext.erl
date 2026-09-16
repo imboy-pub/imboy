@@ -33,7 +33,7 @@
 -define(CASE_COLUMNS,
     "c.id, c.organization_id, c.leaver_user_id, c.successor_user_id, c.status, c.version,"
     " c.item_total, c.item_success, c.item_failed, c.created_by_user_id, c.reason,"
-    " c.created_at, c.completed_at"
+    " c.created_at, c.updated_at, c.completed_at"
 ).
 
 -define(ITEM_COLUMNS,

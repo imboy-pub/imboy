@@ -13,6 +13,7 @@
     insert_seat/2,
     fetch_seat/2,
     list_dispatchable_seats/1,
+    list_dispatchable_seats_page/3,
     set_seat_enabled/4,
     %% session
     insert_session/3,
@@ -22,14 +23,17 @@
     close_session/7,
     rate_session/7,
     list_sessions_for_contact/3,
+    list_sessions_page/5,
     %% shop key / visit token
     insert_shop_key/2,
     fetch_shop_key/2,
     fetch_shop_key_by_digest/2,
+    list_shop_keys_page/3,
     revoke_shop_key/3,
     insert_visit_token/2,
     fetch_visit_token/2,
     fetch_visit_token_by_digest/2,
+    list_visit_tokens_page/3,
     revoke_visit_token/3,
     %% event
     append_event/2
@@ -43,6 +47,8 @@ fetch_identity_function(OrgId, IdentityId) ->
 insert_seat(OrgId, Seat) -> cs_pg_seat:insert_seat(OrgId, Seat).
 fetch_seat(OrgId, IdentityId) -> cs_pg_seat:fetch_seat(OrgId, IdentityId).
 list_dispatchable_seats(OrgId) -> cs_pg_seat:list_dispatchable_seats(OrgId).
+list_dispatchable_seats_page(OrgId, AfterId, Limit) ->
+    cs_pg_seat:list_dispatchable_seats_page(OrgId, AfterId, Limit).
 set_seat_enabled(OrgId, IdentityId, Enabled, At) ->
     cs_pg_seat:set_seat_enabled(OrgId, IdentityId, Enabled, At).
 
@@ -69,16 +75,22 @@ rate_session(OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Event) 
     ).
 list_sessions_for_contact(OrgId, WorkspaceId, ContactId) ->
     cs_pg_session:list_sessions_for_contact(OrgId, WorkspaceId, ContactId).
+list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit) ->
+    cs_pg_session:list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit).
 
 %% shop key / visit token
 insert_shop_key(OrgId, Key) -> cs_pg_token:insert_shop_key(OrgId, Key).
 fetch_shop_key(OrgId, KeyId) -> cs_pg_token:fetch_shop_key(OrgId, KeyId).
 fetch_shop_key_by_digest(OrgId, Digest) -> cs_pg_token:fetch_shop_key_by_digest(OrgId, Digest).
+list_shop_keys_page(OrgId, AfterId, Limit) ->
+    cs_pg_token:list_shop_keys_page(OrgId, AfterId, Limit).
 revoke_shop_key(OrgId, KeyId, At) -> cs_pg_token:revoke_shop_key(OrgId, KeyId, At).
 insert_visit_token(OrgId, Token) -> cs_pg_token:insert_visit_token(OrgId, Token).
 fetch_visit_token(OrgId, TokenId) -> cs_pg_token:fetch_visit_token(OrgId, TokenId).
 fetch_visit_token_by_digest(OrgId, Digest) ->
     cs_pg_token:fetch_visit_token_by_digest(OrgId, Digest).
+list_visit_tokens_page(OrgId, AfterId, Limit) ->
+    cs_pg_token:list_visit_tokens_page(OrgId, AfterId, Limit).
 revoke_visit_token(OrgId, TokenId, At) -> cs_pg_token:revoke_visit_token(OrgId, TokenId, At).
 
 %% event（append-only 审计）

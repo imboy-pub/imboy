@@ -54,7 +54,7 @@ dispatch(Entry, Case, Req0, State0) ->
             eb_enterprise_http:reply_error(Req0, Reason);
         {ok, OrgId} ->
             State = State0#{organization_id => OrgId},
-            case eb_enterprise_http:authorize(Entry, Req0, State) of
+            case eb_enterprise_http:authorize(Entry, Case, Req0, State) of
                 {error, Reason} ->
                     eb_enterprise_http:reply_error(Req0, Reason);
                 {ok, AuthContext} ->
@@ -74,7 +74,9 @@ invoke(Entry, Case, Req0, OrgId, AuthContext) ->
                     Ctx = #{
                         organization_id => OrgId,
                         workspace_id => WorkspaceId,
-                        actor_user_id => actor_user_id(Entry, AuthContext)
+                        actor_user_id => actor_user_id(Entry, AuthContext),
+                        %% F-SEC-01：调用者自己的业务身份（认证事实派生，客户端不可报）。
+                        caller_identity_id => caller_identity_id(AuthContext)
                     },
                     case eb_enterprise_http:build_params(Entry, Case, Req0, Body, Ctx) of
                         {error, Reason} ->
@@ -92,3 +94,8 @@ invoke(Entry, Case, Req0, OrgId, AuthContext) ->
 %% 客户端无法自报（动作表把 `actor_user_id` 列为禁止的客户端键）。
 actor_user_id(_Entry, #{user_id := Uid}) when is_integer(Uid) -> Uid;
 actor_user_id(_Entry, _AuthContext) -> undefined.
+
+%% F-SEC-01：调用者本人的业务身份（active assignment 派生）。发送者归属的
+%% 权威来源：application 层用它覆盖/校验客户端自报的 identity_id。
+caller_identity_id(#{business_identity_id := Bid}) when is_integer(Bid) -> Bid;
+caller_identity_id(_AuthContext) -> undefined.

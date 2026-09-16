@@ -18,11 +18,20 @@
     create_shop_key/2,
     revoke_shop_key/2,
     verify_shop_key/2,
+    list_shop_keys/2,
     issue_visit_token/2,
     revoke_visit_token/2,
     verify_visit_token/2,
+    list_visit_tokens/2,
     default_digest/1
 ]).
+
+%% C2（contracts-w2）投影白名单：**逐字**；key_digest / secret 永不进响应
+%%（cs_app_support:page_view 唯一出口裁剪）。
+-define(SHOP_KEY_LIST_PROJECTION, [id, display_hint, status, created_at, updated_at]).
+
+%% C3（contracts-w2）投影白名单：**逐字**；token_digest 永不进响应。
+-define(VISIT_TOKEN_LIST_PROJECTION, [id, contact_id, expires_at, revoked_at, created_at]).
 
 %% ===================================================================
 %% shop key
@@ -119,6 +128,27 @@ verify_shop_key(OrgId, Params) when is_map(Params) ->
     end;
 verify_shop_key(_OrgId, _Params) ->
     {error, {invalid_argument, verify_shop_key}}.
+
+%% @doc C2（contracts-w2）shop key 治理列表（owner/admin 门由 HTTP 面裁决）。
+%%
+%% Params：workspace_id 必填；after_id / limit 可选（C1 同口径：TSID 游标、
+%% limit 1..200 缺省 50，越界即 422 原子）。投影白名单由
+%% `cs_app_support:page_view` 唯一出口裁剪——key_digest / secret 绝不出本用例。
+-spec list_shop_keys(integer(), map()) -> {ok, map()} | {error, term()}.
+list_shop_keys(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            case cs_app_support:page_cursor(Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, AfterId, Limit} ->
+                    list_page(shop_keys, ?SHOP_KEY_LIST_PROJECTION, OrgId, AfterId, Limit, Params)
+            end
+    end;
+list_shop_keys(_OrgId, _Params) ->
+    {error, {invalid_argument, list_shop_keys}}.
 
 %% ===================================================================
 %% visit token（A05：访客 key 单独不能换权）
@@ -243,9 +273,46 @@ verify_token_digest(OrgId, Digest, Now, Params) ->
             end
     end.
 
+%% @doc C3（contracts-w2）visit token 治理列表。after_id / limit 同 C2 口径；
+%% 投影白名单由 `cs_app_support:page_view` 唯一出口裁剪——token_digest
+%% 绝不出本用例。
+-spec list_visit_tokens(integer(), map()) -> {ok, map()} | {error, term()}.
+list_visit_tokens(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            case cs_app_support:page_cursor(Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, AfterId, Limit} ->
+                    list_page(
+                        visit_tokens, ?VISIT_TOKEN_LIST_PROJECTION, OrgId, AfterId, Limit, Params
+                    )
+            end
+    end;
+list_visit_tokens(_OrgId, _Params) ->
+    {error, {invalid_argument, list_visit_tokens}}.
+
 %% ===================================================================
 %% 内部辅助
 %% ===================================================================
+
+%% C2/C3 列表共用：Org 级资源键集分页读取 + 白名单投影。
+list_page(ListKey, Projection, OrgId, AfterId, Limit, Params) ->
+    Read =
+        fun(Store) ->
+            case ListKey of
+                shop_keys -> Store:list_shop_keys_page(OrgId, AfterId, Limit);
+                visit_tokens -> Store:list_visit_tokens_page(OrgId, AfterId, Limit)
+            end
+        end,
+    case with_store(Params, Read) of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            cs_app_support:page_view(ListKey, Projection, Rows, Limit, id)
+    end.
 
 revoke_in(Kind, OrgId, WorkspaceId, Params, Action) ->
     Id = maps:get(id, Params, undefined),

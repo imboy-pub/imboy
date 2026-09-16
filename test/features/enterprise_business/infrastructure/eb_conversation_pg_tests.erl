@@ -38,6 +38,10 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a03_inbound_message_uses_explicit_contact_sender/0},
         {timeout, 60, fun a03_outbound_message_requires_identity_and_actor/0},
         {timeout, 60, fun a03_sender_contract_violations_insert_no_row/0},
+        %% F-SEC-01：发送者归属权威校验（canonical tx 门）。
+        {timeout, 60, fun a03_sender_forgery_identity_is_rejected/0},
+        {timeout, 60, fun a03_sender_forgery_contact_is_rejected/0},
+        {timeout, 60, fun a03_caller_identity_is_authoritative_when_client_omits/0},
         {timeout, 60, fun a03_cross_org_sender_is_rejected_by_composite_fk/0},
         {timeout, 60, fun a03_policy_snapshot_is_frozen_on_the_message/0},
         {timeout, 60, fun a03_atomic_tx_has_no_half_commit/0},
@@ -174,6 +178,74 @@ a03_outbound_message_requires_identity_and_actor() ->
         eb_pg_test_fixture:cleanup(Scope)
     end.
 
+%% F-SEC-01：调用者身份与自报 identity_id 不符 → 403 级拒绝，零写入。
+a03_sender_forgery_identity_is_rejected() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        {Org, Ws, Conv, _Contact} = scope_ids(Scope),
+        Sales = maps:get(sales_identity_id, Scope),
+        Impostor = eb_pg_test_fixture:id(),
+        Result = eb_pg_canonical_tx:accept_message(Org, Ws, #{
+            conversation_id => Conv,
+            client_msg_id => <<"eb03-forgery-identity">>,
+            body => <<"forged">>,
+            sender_type => business_identity,
+            identity_id => Sales,
+            caller_identity_id => Impostor,
+            key_ref => eb_pg_test_fixture:key_ref(1)
+        }),
+        ?assertMatch({error, {sender_identity_unauthorized, Sales, Impostor}}, Result),
+        ?assertEqual(0, eb_pg_test_fixture:count(Org, Ws, messages))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% F-SEC-01：contact 声明与会话绑定不符 → 403 级拒绝，零写入。
+a03_sender_forgery_contact_is_rejected() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        {Org, Ws, Conv, Contact} = scope_ids(Scope),
+        ForgedContact = eb_pg_test_fixture:id(),
+        true = ForgedContact =/= Contact,
+        Result = eb_pg_canonical_tx:accept_message(Org, Ws, #{
+            conversation_id => Conv,
+            client_msg_id => <<"eb03-forgery-contact">>,
+            body => <<"forged inbound">>,
+            sender_type => contact,
+            contact_id => ForgedContact,
+            key_ref => eb_pg_test_fixture:key_ref(1)
+        }),
+        ?assertMatch(
+            {error, {sender_contact_mismatch, ForgedContact, Contact}}, Result
+        ),
+        ?assertEqual(0, eb_pg_test_fixture:count(Org, Ws, messages))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% F-SEC-01：客户端省略 identity_id 时由认证事实补齐（覆盖而非拒绝）。
+a03_caller_identity_is_authoritative_when_client_omits() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        {Org, Ws, Conv, _Contact} = scope_ids(Scope),
+        Sales = maps:get(sales_identity_id, Scope),
+        Actor = maps:get(actor_user_id, Scope),
+        {ok, Result} = eb_pg_canonical_tx:accept_message(Org, Ws, #{
+            conversation_id => Conv,
+            client_msg_id => <<"eb03-caller-authority">>,
+            body => <<"caller-authored">>,
+            sender_type => business_identity,
+            caller_identity_id => Sales,
+            actor_user_id => Actor,
+            key_ref => eb_pg_test_fixture:key_ref(1)
+        }),
+        Row = maps:get(message, Result),
+        ?assertEqual(Sales, maps:get(sender_business_identity_id, Row)),
+        ?assertEqual(ok, eb_message:validate_sender(Row))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
 a03_sender_contract_violations_insert_no_row() ->
     Scope = eb_pg_test_fixture:new_scope(),
     try
@@ -276,10 +348,12 @@ a03_cross_org_sender_is_rejected_by_composite_fk() ->
             key_ref => eb_pg_test_fixture:key_ref(1),
             accepted_at => now_secs()
         }),
-        ?assertMatch({error, {sql, _, _}}, Result),
-        {error, {sql, Code, Constraint}} = Result,
-        ?assertEqual(<<"23503">>, Code),
-        ?assertEqual(<<"fk_em_sender_contact">>, Constraint),
+        %% F-SEC-01：跨 Org contact 在 canonical tx 归属门即被拒（早于 FK）；
+        %% DB 复合 FK `fk_em_sender_contact` 仍是 schema 层兜底（迁移 116），
+        %% 其 business_identity 姊妹约束的 23503 兜底见 eb_message_app_tests ④b。
+        ?assertMatch(
+            {error, {sender_contact_mismatch, ForeignContact, _}}, Result
+        ),
         ?assertEqual(0, eb_pg_test_fixture:count(Org, Ws, messages))
     after
         eb_pg_test_fixture:cleanup(Scope)

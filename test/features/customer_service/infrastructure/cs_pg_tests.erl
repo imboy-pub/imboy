@@ -52,7 +52,12 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a05_visit_token_expiry_and_revocation_at_db/0},
         {timeout, 60, fun a03_messages_land_only_in_enterprise_tables/0},
         {timeout, 60, fun cross_org_session_is_not_found/0},
-        {timeout, 60, fun event_table_is_append_only/0}
+        {timeout, 60, fun event_table_is_append_only/0},
+        %% C1~C4（contracts-w2）：键集分页下推 + 租户隔离（真库）。
+        {timeout, 60, fun c1_sessions_page_desc_keyset_and_cross_org/0},
+        {timeout, 60, fun c2_shop_keys_page_and_cross_org/0},
+        {timeout, 60, fun c3_visit_tokens_page_and_cross_org/0},
+        {timeout, 60, fun c4_seats_page_keyset/0}
     ];
 cases({error, Reason}) ->
     erlang:error({cs01_pg_suite_db_unavailable, Reason}).
@@ -602,6 +607,161 @@ event_table_is_append_only() ->
             [Org, EventId]
         ),
         ?assertEqual(<<"23514">>, error_code(ErrD))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+%% ===================================================================
+%% C1~C4（contracts-w2）：键集分页下推（真库边界：空 / 不足一页 / 翻页游标）
+%% ===================================================================
+
+c1_sessions_page_desc_keyset_and_cross_org() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    Ws = ws(Scope),
+    try
+        S1 = open_session_via_app(Scope),
+        S2 = open_session_via_app(Scope, #{conversation_id => second_conversation(Scope)}),
+        S3 = open_session_via_app(Scope, #{conversation_id => second_conversation(Scope)}),
+        %% 空租户：空列表（跨 Org 隔离：别的 Org 行命中不了）。
+        {ok, []} = cs_pg_store:list_sessions_page(999999, Ws, undefined, 0, 5),
+        %% status 过滤（queued 全命中）。
+        {ok, All} = cs_pg_store:list_sessions_page(Org, Ws, <<"queued">>, 0, 50),
+        ?assertEqual(lists:sort([S1, S2, S3]), lists:sort([maps:get(id, R) || R <- All])),
+        %% DESC 键集：首页 2 行（id 大者在前）。
+        {ok, Page1} = cs_pg_store:list_sessions_page(Org, Ws, undefined, 0, 2),
+        ?assertEqual(2, length(Page1)),
+        ?assertEqual(S3, maps:get(id, hd(Page1))),
+        Cursor = maps:get(id, lists:last(Page1)),
+        %% 翻页：after_id=上页尾 → 剩余行。
+        {ok, Page2} = cs_pg_store:list_sessions_page(Org, Ws, undefined, Cursor, 2),
+        ?assertEqual(1, length(Page2)),
+        %% 游标不重复：两页 id 集合恰好覆盖全部。
+        Ids = [maps:get(id, R) || R <- Page1] ++ [maps:get(id, R) || R <- Page2],
+        ?assertEqual(lists:sort([S1, S2, S3]), lists:sort(Ids)),
+        %% LIMIT 下推：limit=1 只回 1 行。
+        {ok, One} = cs_pg_store:list_sessions_page(Org, Ws, undefined, 0, 1),
+        ?assertEqual(1, length(One)),
+        %% application 视图组装：满页 → next_after_id=本页尾；不足一页 → 结束。
+        {ok, #{sessions := VRows1, next_after_id := Next1}} =
+            cs_session_app:list_sessions(Org, #{workspace_id => Ws, limit => 2}),
+        ?assertEqual([S3, Cursor], [maps:get(id, R) || R <- VRows1]),
+        ?assertEqual(Cursor, Next1),
+        {ok, #{sessions := VRows2, next_after_id := undefined}} =
+            cs_session_app:list_sessions(Org, #{workspace_id => Ws, limit => 2, after_id => Cursor}),
+        ?assertEqual(1, length(VRows2))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+c2_shop_keys_page_and_cross_org() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    try
+        K1 = ?FIX:id(),
+        K2 = ?FIX:id(),
+        lists:foreach(
+            fun(Id) ->
+                {ok, _} = cs_pg_store:insert_shop_key(Org, #{
+                    id => Id,
+                    organization_id => Org,
+                    key_digest => <<"cs01-key-digest-", (integer_to_binary(Id))/binary>>,
+                    display_hint => <<"shop-", (integer_to_binary(Id))/binary>>
+                })
+            end,
+            [K1, K2]
+        ),
+        %% 空租户（跨 Org 隔离：别的 Org 的行命中不了）。
+        {ok, []} = cs_pg_store:list_shop_keys_page(999999, 0, 10),
+        %% DESC 键集 + 不足一页。
+        {ok, Rows} = cs_pg_store:list_shop_keys_page(Org, 0, 10),
+        ?assertEqual([K2, K1], [maps:get(id, R) || R <- Rows]),
+        %% 翻页游标。
+        {ok, Rows2} = cs_pg_store:list_shop_keys_page(Org, K2, 10),
+        ?assertEqual([K1], [maps:get(id, R) || R <- Rows2]),
+        %% LIMIT 下推 + 满页。
+        {ok, Rows3} = cs_pg_store:list_shop_keys_page(Org, 0, 1),
+        ?assertEqual([K2], [maps:get(id, R) || R <- Rows3]),
+        %% application 视图：白名单投影 + next_after_id。
+        {ok, #{shop_keys := VRows, next_after_id := Next}} =
+            cs_access_app:list_shop_keys(Org, #{workspace_id => ws(Scope), limit => 1}),
+        ?assertEqual([K2], [maps:get(id, R) || R <- VRows]),
+        ?assertEqual(K2, Next),
+        ?assertNot(is_map_key(key_digest, hd(VRows)))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+c3_visit_tokens_page_and_cross_org() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    Contact = maps:get(contact_id, Scope),
+    try
+        T1 = ?FIX:id(),
+        T2 = ?FIX:id(),
+        lists:foreach(
+            fun(Id) ->
+                {ok, _} = cs_pg_store:insert_visit_token(Org, #{
+                    id => Id,
+                    organization_id => Org,
+                    contact_id => Contact,
+                    token_digest => <<"cs01-token-digest-", (integer_to_binary(Id))/binary>>,
+                    expires_at => 1800000000
+                })
+            end,
+            [T1, T2]
+        ),
+        {ok, []} = cs_pg_store:list_visit_tokens_page(999999, 0, 10),
+        {ok, Rows} = cs_pg_store:list_visit_tokens_page(Org, 0, 10),
+        ?assertEqual([T2, T1], [maps:get(id, R) || R <- Rows]),
+        {ok, Rows2} = cs_pg_store:list_visit_tokens_page(Org, T2, 1),
+        ?assertEqual([T1], [maps:get(id, R) || R <- Rows2]),
+        %% application 视图：白名单投影不含 token_digest。
+        {ok, #{visit_tokens := VRows, next_after_id := Next}} =
+            cs_access_app:list_visit_tokens(Org, #{workspace_id => ws(Scope), limit => 10}),
+        ?assertEqual([T2, T1], [maps:get(id, R) || R <- VRows]),
+        ?assertEqual(undefined, Next),
+        ?assertNot(is_map_key(token_digest, hd(VRows)))
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+c4_seats_page_keyset() ->
+    Scope = ?FIX:new_scope(),
+    Org = org(Scope),
+    try
+        Base = maps:get(service_identity_id, Scope),
+        Extra1 = insert_service_identity(Scope, 31),
+        Extra2 = insert_service_identity(Scope, 32),
+        lists:foreach(
+            fun(IdentityId) ->
+                {ok, _} = cs_pg_store:insert_seat(Org, #{
+                    organization_id => Org,
+                    business_identity_id => IdentityId,
+                    function_key => <<"customer_service">>,
+                    enabled => true,
+                    max_concurrent => 1
+                })
+            end,
+            [Extra1, Extra2]
+        ),
+        %% ASC 键集（business_identity_id），模板口径；enabled=true 才出现在列表。
+        {ok, All} = cs_pg_store:list_dispatchable_seats_page(Org, 0, 200),
+        Ids = [maps:get(business_identity_id, R) || R <- All],
+        ?assertEqual(lists:sort([Base, Extra1, Extra2]), Ids),
+        %% 翻页：after_id=最小坐席 → 剩两行。
+        {ok, Page2} = cs_pg_store:list_dispatchable_seats_page(Org, Base, 200),
+        ?assertEqual(lists:sort([Extra1, Extra2]), [maps:get(business_identity_id, R) || R <- Page2]),
+        %% LIMIT 下推：limit=1 只回首行。
+        {ok, Page1} = cs_pg_store:list_dispatchable_seats_page(Org, 0, 1),
+        ?assertEqual([Base], [maps:get(business_identity_id, R) || R <- Page1]),
+        %% active_count 真实计数仍在（既有投影字段不变）。
+        ?assert(is_map_key(active_count, hd(All))),
+        %% application 视图：{seats, next_after_id}，满页游标=本页最大 identity。
+        {ok, #{seats := VRows, next_after_id := Next}} =
+            cs_seat_app:list_dispatchable_seats(Org, #{workspace_id => ws(Scope), limit => 1}),
+        ?assertEqual([Base], [maps:get(business_identity_id, R) || R <- VRows]),
+        ?assertEqual(Base, Next)
     after
         ?FIX:cleanup(Scope)
     end.

@@ -177,6 +177,18 @@
 -callback list_identities(OrgId :: integer(), WorkspaceId :: integer()) ->
     {ok, [identity()]} | {error, term()}.
 
+%% @doc 业务身份列举的**键集分页 + active assignment 投影**（C5）。
+%%
+%% `Query`：
+%%   after_id  可选；倒序键集游标（严格 `id < AfterId`；缺省 = 首页）
+%%   limit     可选（缺省 50，1..200；越界 `{error, {invalid_limit, _}}`）
+%%
+%% 每行附 `active_assignment`：C5 白名单七键对象（无 active 经办时 `undefined`，
+%% HTTP 面由 application 层投影为 JSON null）。键集语义下删除/新增不产生漂移，
+%% 故不得退化为 `OFFSET`。`list_identities/2` 是本 callback 的默认页兼容形状。
+-callback list_identities_page(OrgId :: integer(), WorkspaceId :: integer(), Query :: page_query()) ->
+    {ok, [identity()]} | {error, term()}.
+
 %% -- retention policy / hold ----------------------------------------------
 
 %% @doc 保留策略新版本（不可变快照；只增不减由 DB 守卫裁决）。

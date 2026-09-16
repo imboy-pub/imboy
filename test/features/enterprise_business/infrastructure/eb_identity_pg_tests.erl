@@ -43,7 +43,11 @@ cases({ok, _Conn}) ->
         {timeout, 60, fun a02_cas_active_to_ended_succeeds_once/0},
         {timeout, 60, fun a02_cas_second_attempt_conflicts/0},
         {timeout, 60, fun a02_illegal_transitions_are_rejected_without_writing/0},
-        {timeout, 120, fun a02_concurrent_cas_has_exactly_one_winner/0}
+        {timeout, 120, fun a02_concurrent_cas_has_exactly_one_winner/0},
+        {timeout, 60, fun c5_page_joins_active_assignment/0},
+        {timeout, 60, fun c5_page_projection_follows_rebind/0},
+        {timeout, 60, fun c5_page_desc_keyset_cursor/0},
+        {timeout, 60, fun c5_page_rejects_bad_limit_and_after_id/0}
     ];
 cases(_Skipped) ->
     {skip, "identity store suite requires the scratch database connection"}.
@@ -320,6 +324,157 @@ a02_concurrent_cas_has_exactly_one_winner() ->
                 [Org, Sales]
             )
         )
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% ===================================================================
+%% C5：键集分页下推 + active assignment JOIN 投影（store/ext 级）
+%% ===================================================================
+
+%% JOIN 正确性：/3 每行附 active_assignment，且与库中 active assignment 行逐键
+%% 一致；无 active 的行投影为 undefined（store 的 NULL 约定，HTTP 面再转 null）。
+c5_page_joins_active_assignment() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
+        Actor = maps:get(actor_user_id, Scope),
+        Sales = maps:get(sales_identity_id, Scope),
+        Service = maps:get(service_identity_id, Scope),
+        Assignment = maps:get(assignment_id, Scope),
+        {ok, Rows} = eb_pg_store:list_identities_page(Org, Ws, #{}),
+        ById = maps:from_list([{maps:get(id, R), R} || R <- Rows]),
+        ?assertEqual(lists:sort([Sales, Service]), lists:sort(maps:keys(ById))),
+        SalesRow = maps:get(Sales, ById),
+        AA = maps:get(active_assignment, SalesRow),
+        ?assertMatch(AA when is_map(AA), AA),
+        ?assertEqual(Assignment, maps:get(assignment_id, AA)),
+        ?assertEqual(Sales, maps:get(business_identity_id, AA)),
+        ?assertEqual(Actor, maps:get(user_id, AA)),
+        ?assertEqual(<<"sales">>, maps:get(function_key, AA)),
+        ?assertEqual(active, maps:get(status, AA)),
+        ?assert(is_integer(maps:get(assigned_at, AA))),
+        ?assertEqual(1, maps:get(version, AA)),
+        %% identity 自身字段不被 JOIN 列覆盖（别名隔离的判据）
+        ?assertEqual(<<"sales">>, maps:get(function_key, SalesRow)),
+        ?assertEqual(active, maps:get(status, SalesRow)),
+        ?assertEqual(1, maps:get(version, SalesRow)),
+        %% 无 active 经办的行 ⇒ undefined（不残留扁平 aa_* 键）
+        ServiceRow = maps:get(Service, ById),
+        ?assertEqual(undefined, maps:get(active_assignment, ServiceRow, present)),
+        ?assertEqual(
+            [],
+            lists:filter(
+                fun(K) -> is_atom(K) andalso lists:prefix("aa_", atom_to_list(K)) end,
+                maps:keys(ServiceRow)
+            )
+        )
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% rebind 后投影切换（pg 级）：CAS active→ended 后旧行消失；
+%% insert_assignment 新建行后投影跟随切换。
+c5_page_projection_follows_rebind() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
+        Owner = maps:get(owner_user_id, Scope),
+        Sales = maps:get(sales_identity_id, Scope),
+        Service = maps:get(service_identity_id, Scope),
+        %% end 掉 fixture 的 active（CAS），Sales 的投影应消失
+        ok = eb_pg_store:advance_assignment(Org, Ws, Sales, active, ended),
+        {ok, Rows1} = eb_pg_store:list_identities_page(Org, Ws, #{}),
+        ById1 = maps:from_list([{maps:get(id, R), R} || R <- Rows1]),
+        ?assertEqual(undefined, maps:get(active_assignment, maps:get(Sales, ById1))),
+        %% 新建 active（首次绑定 Service）⇒ 投影切到 Service
+        NewAssignment = eb_pg_test_fixture:id(),
+        {ok, _} = eb_pg_store:insert_assignment(Org, Ws, #{
+            id => NewAssignment,
+            business_identity_id => Service,
+            function_key => <<"customer_service">>,
+            user_id => Owner,
+            assigned_by => Owner
+        }),
+        {ok, Rows2} = eb_pg_store:list_identities_page(Org, Ws, #{}),
+        ById2 = maps:from_list([{maps:get(id, R), R} || R <- Rows2]),
+        AA = maps:get(active_assignment, maps:get(Service, ById2)),
+        ?assertMatch(AA when is_map(AA), AA),
+        ?assertEqual(NewAssignment, maps:get(assignment_id, AA)),
+        ?assertEqual(Owner, maps:get(user_id, AA))
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% 倒序键集游标：默认首页 = 最大 id 起、DESC；`after_id` 严格 `id < 游标`；
+%% LIMIT 是绑定参数（满页截断生效），游标续页无重无漏。
+c5_page_desc_keyset_cursor() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
+        %% 追加 3 行 ⇒ 共 5 行
+        lists:foreach(
+            fun(N) ->
+                {ok, _} = eb_pg_store:insert_identity(Org, Ws, #{
+                    id => eb_pg_test_fixture:id(),
+                    function_key => <<"customer_service">>,
+                    display_name => <<"eb03-c5-page-", (integer_to_binary(N))/binary>>
+                })
+            end,
+            lists:seq(1, 3)
+        ),
+        {ok, All} = eb_pg_store:list_identities_page(Org, Ws, #{}),
+        AllIds = [maps:get(id, R) || R <- All],
+        ?assertEqual(5, length(AllIds)),
+        ?assertEqual(lists:reverse(lists:sort(AllIds)), AllIds),
+        {ok, Page1} = eb_pg_store:list_identities_page(Org, Ws, #{limit => 2}),
+        Page1Ids = [maps:get(id, R) || R <- Page1],
+        ?assertEqual(lists:sublist(AllIds, 2), Page1Ids),
+        {ok, Page2} =
+            eb_pg_store:list_identities_page(Org, Ws, #{
+                limit => 2, after_id => lists:last(Page1Ids)
+            }),
+        Page2Ids = [maps:get(id, R) || R <- Page2],
+        ?assertEqual(lists:sublist(AllIds, 3, 2), Page2Ids),
+        {ok, Page3} = eb_pg_store:list_identities_page(Org, Ws, #{
+            limit => 2, after_id => lists:last(Page2Ids)
+        }),
+        ?assertEqual([lists:last(AllIds)], [maps:get(id, R) || R <- Page3]),
+        %% 越过游标末端 ⇒ 空页
+        {ok, []} = eb_pg_store:list_identities_page(Org, Ws, #{
+            limit => 2, after_id => lists:last(AllIds)
+        })
+    after
+        eb_pg_test_fixture:cleanup(Scope)
+    end.
+
+%% 参数门（store 层防御）：limit 越界 / after_id 非法一律结构化错误，不触库。
+c5_page_rejects_bad_limit_and_after_id() ->
+    Scope = eb_pg_test_fixture:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
+        ?assertEqual(
+            {error, {invalid_limit, 0}},
+            eb_pg_store:list_identities_page(Org, Ws, #{limit => 0})
+        ),
+        ?assertEqual(
+            {error, {invalid_limit, 201}},
+            eb_pg_store:list_identities_page(Org, Ws, #{limit => 201})
+        ),
+        ?assertEqual(
+            {error, {invalid_after_id, 0}},
+            eb_pg_store:list_identities_page(Org, Ws, #{after_id => 0})
+        ),
+        ?assertEqual(
+            {error, {invalid_after_id, -1}},
+            eb_pg_store:list_identities_page(Org, Ws, #{after_id => -1})
+        ),
+        %% 非 map Query 同样拒绝（不猜测）
+        ?assertEqual({error, invalid_query}, eb_pg_store:list_identities_page(Org, Ws, nope))
     after
         eb_pg_test_fixture:cleanup(Scope)
     end.

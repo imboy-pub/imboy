@@ -29,7 +29,24 @@
     close/2,
     rate/2,
     append_session_message/2,
-    list_contact_sessions/2
+    list_contact_sessions/2,
+    list_sessions/2
+]).
+
+%% C1（contracts-w2）投影白名单：**逐字**；visit_token_id / close_reason /
+%% 任何 digest/secret/cipher 永不进响应（page_view 唯一出口裁剪）。
+-define(SESSION_LIST_PROJECTION, [
+    id,
+    organization_id,
+    workspace_id,
+    contact_id,
+    business_identity_id,
+    status,
+    rating,
+    queued_at,
+    claimed_at,
+    closed_at,
+    version
 ]).
 
 %% ===================================================================
@@ -149,6 +166,48 @@ list_contact_sessions(OrgId, Params) when is_map(Params) ->
     end;
 list_contact_sessions(_OrgId, _Params) ->
     {error, {invalid_argument, list_contact_sessions}}.
+
+%% @doc C1（contracts-w2）平台 session 列表（只读；租户/平台共用同一用例）。
+%%
+%% Params：workspace_id 必填；status 白名单 queued|active|closed（非法
+%% `{invalid_status,_}` 422）；after_id TSID（非法 `{invalid_after_id,_}` 422）；
+%% limit 1..200 缺省 50（越界 `{invalid_limit,_}` 422）。
+%%
+%% 读取是键集下推（store 同语句 `id > after ORDER BY id DESC LIMIT n`，
+%% OrgId+WorkspaceId 前两个业务参数）；投影白名单由 `cs_app_support:page_view`
+%% 唯一出口裁剪——visit_token_id / close_reason / digest 绝不出本用例。
+-spec list_sessions(integer(), map()) -> {ok, map()} | {error, term()}.
+list_sessions(OrgId, Params) when is_map(Params) ->
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            case cs_app_support:page_cursor(Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, AfterId, Limit} ->
+                    case cs_app_support:session_status(maps:get(status, Params, undefined)) of
+                        {error, _} = Err3 ->
+                            Err3;
+                        {ok, Status} ->
+                            list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit, Params)
+                    end
+            end
+    end;
+list_sessions(_OrgId, _Params) ->
+    {error, {invalid_argument, list_sessions}}.
+
+list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit, Params) ->
+    case
+        with_store(Params, fun(Store) ->
+            Store:list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            cs_app_support:page_view(sessions, ?SESSION_LIST_PROJECTION, Rows, Limit, id)
+    end.
 
 %% ===================================================================
 %% claim（A02：并发恰好一个成功，且不超 max_concurrent）
@@ -465,7 +524,9 @@ do_rate(OrgId, WorkspaceId, SessionId, Rating, ExpectedVersion, At, Params) ->
 %%     → `sender_type=business_identity`；
 %%   * 访客入站：`contact_id`（必须等于会话绑定的 contact）→ `sender_type=contact`。
 %%
-%% Params：workspace_id / session_id / body / client_msg_id / key_ref 必填；
+%% Params：workspace_id / session_id / body / client_msg_id 必填；
+%% `key_ref` 可选（显式注入优先；缺省由 enterprise 侧经 `imboy.eb_enterprise_keyring`
+%% 装配——F6/RULING-2026-09-15 §七，密钥材料不经 HTTP 面）；
 %% `canonical_tx` / `store` / `clock` / `id` / `notify` / `accepted_at` 等键
 %% 原样透传给 facade（测试注入面）。
 -spec append_session_message(integer(), map()) -> {ok, map()} | {error, term()}.
@@ -532,7 +593,12 @@ facade_message_params(Session, SenderType, WorkspaceId, Params) ->
         client_msg_id => maps:get(client_msg_id, Params),
         sender_type => sender_type_bin(SenderType),
         body => maps:get(body, Params),
-        key_ref => maps:get(key_ref, Params)
+        %% F6（RULING-2026-09-15 §七）：key_ref 不再是调用方必填——HTTP 面已删除
+        %% 该参数（显式提交即 422）。这里只透传**显式注入**（测试/内部合同），
+        %% 缺省为 undefined；主密钥的**装配**统一在 enterprise 侧 application 层
+        %% 进行（eb_message_app 经 eb_env_keyring 解析 env keyring），跨 feature
+        %% 不新增 facade 之外的直接引用。
+        key_ref => maps:get(key_ref, Params, undefined)
     },
     WithSender =
         case SenderType of

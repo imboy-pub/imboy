@@ -262,7 +262,8 @@ a04_sender_xor_and_composite_fk_are_enforced() ->
             Violations
         ),
         ?assertEqual(RowsBefore, ?FIX:count(Org, Ws, messages)),
-        %% ④ 跨 Org sender 被复合 FK 拒绝（应用层放行也会被 DB 23503 拦下）
+        %% ④a 跨 Org contact 声明在 canonical tx 归属门即被拒（F-SEC-01：
+        %% contact 必须等于会话绑定 contact，早于 DB FK 拦截）
         ForeignContact = foreign_contact(Scope),
         Result = eb_message_app:append_message(Org, #{
             workspace_id => Ws,
@@ -274,10 +275,28 @@ a04_sender_xor_and_composite_fk_are_enforced() ->
             key_ref => ?FIX:key_ref(1),
             accepted_at => now_secs()
         }),
-        ?assertMatch({error, {sql, _, _}}, Result),
-        {error, {sql, Code, Constraint}} = Result,
-        ?assertEqual(<<"23503">>, Code),
-        ?assertEqual(<<"fk_em_sender_contact">>, Constraint),
+        ?assertMatch(
+            {error, {sender_contact_mismatch, ForeignContact, _}}, Result
+        ),
+        ?assertEqual(RowsBefore, ?FIX:count(Org, Ws, messages)),
+        %% ④b 跨 Org business_identity：归属门不覆盖内部注入合同（无
+        %% caller_identity_id），仍由 DB 复合 FK 23503 兜底
+        ForeignIdentity = foreign_identity(Scope),
+        Result2 = eb_message_app:append_message(Org, #{
+            workspace_id => Ws,
+            conversation_id => Conv,
+            client_msg_id => <<"eb06-cross-org-identity">>,
+            body => <<"eb06-cross-org-body-2">>,
+            sender_type => business_identity,
+            identity_id => ForeignIdentity,
+            actor_user_id => Actor,
+            key_ref => ?FIX:key_ref(1),
+            accepted_at => now_secs()
+        }),
+        ?assertMatch({error, {sql, _, _}}, Result2),
+        {error, {sql, Code2, Constraint2}} = Result2,
+        ?assertEqual(<<"23503">>, Code2),
+        ?assertEqual(<<"fk_em_sender_identity">>, Constraint2),
         ?assertEqual(RowsBefore, ?FIX:count(Org, Ws, messages)),
         %% ⑤ 非法参数在触库前就被拒（零副作用）
         ?assertEqual(
@@ -773,6 +792,11 @@ canonical_hash(Row) ->
     Fields = [{K, maps:get(K, Row, undefined)} || K <- ?CANONICAL_HASH_FIELDS],
     binary:encode_hex(crypto:hash(sha256, term_to_binary(Fields)), lowercase).
 
+foreign_identity(Scope) ->
+    %% 造一个**不存在**的他 Org business_identity id：FK 23503（无匹配行）
+    %% 与「行属于他 Org」对复合 FK (organization_id, id) 是同一拒绝。
+    ?FIX:id().
+
 foreign_contact(Scope) ->
     OtherOrg = maps:get(other_org_id, Scope),
     ContactId = ?FIX:id(),
@@ -828,13 +852,24 @@ begin_personal_trace(Modules) ->
     ok.
 
 collect_personal_trace_hits(Modules) ->
+    %% 只统计**测试自身进程**的调用：「本 ACK 的调用链」＝测试进程内同步
+    %% 发出的调用。后台 msg_store_worker 是独立 gen_statem 进程，每秒 tick
+    %% 调 msg_store_repo:claim_pending/2（并把 staging 存量写 msg_c2c_ds/
+    %% msg_c2c_repo 正式表），其调用与本测试判定无关，却会按发生顺序污染
+    %% meck history——曾把负例校准的 [{msg_c2c_repo,tablename,0}] 顶出列表
+    %% 头部导致校准必红（全量/单跑结果随机）。按 CallerPid 过滤使判定
+    %% 确定化；断言语义（ACK 链路对个人模块零触碰）不变。
+    Self = self(),
     lists:append(
         lists:map(
             fun(M) ->
                 case catch meck:history(M) of
                     L when is_list(L) ->
                         %% meck>=0.9 形状：[{CallerPid, {Mod, Fun, Args}, Result}]
-                        [{M, F, length(Args)} || {_Caller, {M, F, Args}, _Result} <- L];
+                        [
+                            {M, F, length(Args)}
+                         || {Caller, {M, F, Args}, _Result} <- L, Caller =:= Self
+                        ];
                     _Other ->
                         erlang:error({personal_trace_history_failed, M})
                 end

@@ -98,7 +98,7 @@ create_contact_args(OrgId, WorkspaceId, Params) ->
 create_contact_keys(OrgId, WorkspaceId, Channel, Subject, Params) ->
     case
         crypto_port(Params, fun(Crypto) ->
-            Crypto:subject_hmac(OrgId, Channel, Subject, maps:get(key_ref, Params, undefined))
+            Crypto:subject_hmac(OrgId, Channel, Subject, key_ref(Params))
         end)
     of
         {error, _} = Err ->
@@ -202,15 +202,17 @@ contact_audit(OrgId, Channel, ChannelIdentity, Stored, Params) ->
 %% 已经是密文时要求 key_version 成对出现（与 DB CHECK 同口径）。
 profile_fields(OrgId, WorkspaceId, ContactId, Params) ->
     Plaintext = maps:get(profile_plaintext, Params, undefined),
-    KeyVersion = maps:get(profile_key_version, Params, undefined),
     case Plaintext of
         undefined ->
-            profile_cipher_only(KeyVersion, Params);
+            %% F-SEC-03（FND-5 贯彻到 contact 域）：无明文 = 不更新 profile。
+            %% 客户端密文入口（profile_cipher/profile_key_version）已从动作表
+            %% 删除并由 HTTP 守卫 422——profile 只经服务端托管密钥封装。
+            {ok, #{}};
         Value when is_binary(Value) ->
             Aad = scope(OrgId, WorkspaceId, <<"enterprise_contact">>, ContactId),
             case
                 crypto_port(Params, fun(Crypto) ->
-                    Crypto:seal_scoped(Aad, Value, maps:get(key_ref, Params, undefined))
+                    Crypto:seal_scoped(Aad, Value, key_ref(Params))
                 end)
             of
                 {ok, Sealed} ->
@@ -223,18 +225,6 @@ profile_fields(OrgId, WorkspaceId, ContactId, Params) ->
             end;
         Other ->
             {error, {invalid_profile_plaintext, Other}}
-    end.
-
-%% 已是密文时 key_version 必须成对（与 DB CHECK 同口径，早失败）。
-profile_cipher_only(undefined, Params) ->
-    {ok, #{
-        profile_cipher => maps:get(profile_cipher, Params, undefined),
-        profile_key_version => undefined
-    }};
-profile_cipher_only(KeyVersion, Params) ->
-    case maps:get(profile_cipher, Params, undefined) of
-        undefined -> {error, missing_profile_cipher};
-        Cipher -> {ok, #{profile_cipher => Cipher, profile_key_version => KeyVersion}}
     end.
 
 %% ===================================================================
@@ -396,7 +386,7 @@ note_cipher(OrgId, WorkspaceId, NoteId, #{mode := plaintext, plaintext := Plaint
 seal_scoped(OrgId, WorkspaceId, ResourceType, ResourceId, Plaintext, Params) ->
     Aad = scope(OrgId, WorkspaceId, ResourceType, ResourceId),
     crypto_port(Params, fun(Crypto) ->
-        Crypto:seal_scoped(Aad, Plaintext, maps:get(key_ref, Params, undefined))
+        Crypto:seal_scoped(Aad, Plaintext, key_ref(Params))
     end).
 
 %% @doc 用企业托管加密封装备注正文（AAD 绑定 Org/Workspace/`enterprise_note`/资源 ID），
@@ -425,7 +415,7 @@ seal_note_body_in(OrgId, WorkspaceId, Params) ->
                     Aad = scope(OrgId, WorkspaceId, <<"enterprise_note">>, NoteId),
                     case
                         crypto_port(Params, fun(Crypto) ->
-                            Crypto:seal_scoped(Aad, Plaintext, maps:get(key_ref, Params, undefined))
+                            Crypto:seal_scoped(Aad, Plaintext, key_ref(Params))
                         end)
                     of
                         {ok, Sealed} ->
@@ -758,6 +748,12 @@ crypto_port(Params, Fun) ->
         {ok, Crypto} -> Fun(Crypto);
         {error, _} = Err -> Err
     end.
+
+%% F6（RULING-2026-09-15 §七）主密钥装配：显式注入（map 形态的测试/内部合同）
+%% 原样优先；缺省经 `eb_env_keyring` 从服务端 env 解析 active key_ref。env 缺失
+%% 时得 undefined，Crypto 面照旧 `{error, missing_key}` fail-closed（500 面）。
+key_ref(Params) ->
+    eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)).
 
 new_id(Kind, Params) ->
     case port(id, Params) of

@@ -5,7 +5,11 @@
 %%%   * `with_store/2` / `new_id/2`：端口解析——`Params` 里同键（`store` / `id`）
 %%%     可注入覆盖（测试用），未给则用 `cs_infra_ports` 装配默认；
 %%%   * `append_event/3`：客服域 append-only 审计；失败显式返回
-%%%     `{error, {audit_append_failed, _}}`（审计丢失不得静默）。
+%%%     `{error, {audit_append_failed, _}}`（审计丢失不得静默）；
+%%%   * `page_cursor/1` / `page_view/4`（C1~C4 contracts-w2）：列表键集分页的
+%%%     机械口径——limit 1..200 缺省 50（越界 `{invalid_limit,_}`）、after_id
+%%%     TSID（非法 `{invalid_after_id,_}`）、投影白名单 + `next_after_id`
+%%%     （满页 = 本页尾行游标键，否则结束）。
 -module(cs_app_support).
 
 -export([
@@ -15,8 +19,107 @@
     new_id/2,
     append_event/3,
     pos_int/1,
-    non_empty_binary/1
+    non_empty_binary/1,
+    page_cursor/1,
+    page_view/5,
+    session_status/1,
+    default_page_limit/0,
+    max_page_limit/0
 ]).
+
+-define(DEFAULT_PAGE_LIMIT, 50).
+-define(MAX_PAGE_LIMIT, 200).
+
+%% @doc 列表分页缺省 limit（C1~C4 冻结口径）。
+-spec default_page_limit() -> pos_integer().
+default_page_limit() -> ?DEFAULT_PAGE_LIMIT.
+
+%% @doc 列表分页 limit 上界（越界即 `{error, {invalid_limit, _}}`）。
+-spec max_page_limit() -> pos_integer().
+max_page_limit() -> ?MAX_PAGE_LIMIT.
+
+%% @doc 解析 C1~C4 冻结口径的 after_id / limit 查询参数。
+%%
+%% `after_id` 缺省 0（首页）；binary 十进制 TSID 或正整数；其余
+%% `{error, {invalid_after_id, V}}`。`limit` 缺省 50；1..200；越界/非整数
+%% `{error, {invalid_limit, V}}`。
+-spec page_cursor(map()) ->
+    {ok, AfterId :: non_neg_integer(), Limit :: pos_integer()}
+    | {error, term()}.
+page_cursor(Params) ->
+    case parse_limit(maps:get(limit, Params, undefined)) of
+        {error, _} = Err ->
+            Err;
+        {ok, Limit} ->
+            case parse_after_id(maps:get(after_id, Params, undefined)) of
+                {error, _} = Err2 -> Err2;
+                {ok, AfterId} -> {ok, AfterId, Limit}
+            end
+    end.
+
+parse_limit(undefined) ->
+    {ok, ?DEFAULT_PAGE_LIMIT};
+parse_limit(V) when is_integer(V), V >= 1, V =< ?MAX_PAGE_LIMIT ->
+    {ok, V};
+parse_limit(V) when is_integer(V) ->
+    {error, {invalid_limit, V}};
+parse_limit(V) when is_binary(V) ->
+    try binary_to_integer(V) of
+        %% 越界时错误值保留**原始入参**（binary），不换成形整数——对外只看
+        %% {invalid_limit, _} 原子，但测试/日志里的取值应可对应回请求原文。
+        N when N >= 1, N =< ?MAX_PAGE_LIMIT -> {ok, N};
+        _Other -> {error, {invalid_limit, V}}
+    catch
+        _:_ -> {error, {invalid_limit, V}}
+    end;
+parse_limit(V) ->
+    {error, {invalid_limit, V}}.
+
+parse_after_id(undefined) ->
+    {ok, 0};
+parse_after_id(V) when is_integer(V), V >= 0 ->
+    {ok, V};
+parse_after_id(V) when is_binary(V) ->
+    case elib_tsid:from_binary(V) of
+        {ok, N} -> {ok, N};
+        error -> {error, {invalid_after_id, V}}
+    end;
+parse_after_id(V) ->
+    {error, {invalid_after_id, V}}.
+
+%% @doc C1 平台 session 列表的 status 白名单（queued|active|closed；缺省不过滤）。
+%% 归一为 binary（SQL text 参数形态）；非法值 `{error, {invalid_status, V}}`。
+-spec session_status(term()) -> {ok, binary() | undefined} | {error, term()}.
+session_status(undefined) ->
+    {ok, undefined};
+session_status(<<"queued">>) ->
+    {ok, <<"queued">>};
+session_status(<<"active">>) ->
+    {ok, <<"active">>};
+session_status(<<"closed">>) ->
+    {ok, <<"closed">>};
+session_status(Atom) when Atom =:= queued orelse Atom =:= active orelse Atom =:= closed ->
+    {ok, atom_to_binary(Atom, utf8)};
+session_status(Other) ->
+    {error, {invalid_status, Other}}.
+
+%% @doc 列表视图组装（防泄漏的唯一出口）：按白名单投影逐行裁剪，满页时
+%% `next_after_id` = 本页最后一行的游标键（DESC 页即最小 id，ASC 页即最大
+%% 游标键），不足一页为 `undefined`（出站经 cs_http:encode_entity 编为 null）。
+%% 返回 `{ok, #{ListKey => [投影行], next_after_id => Cursor | undefined}}`。
+-spec page_view(atom(), [atom()], [map()], pos_integer(), atom()) ->
+    {ok, #{atom() => term(), next_after_id => term()}}.
+page_view(ListKey, Projection, Rows, Limit, CursorKey) ->
+    Projected = [project(Projection, Row) || Row <- Rows],
+    Next =
+        case length(Rows) =:= Limit andalso Rows =/= [] of
+            true -> maps:get(CursorKey, lists:last(Rows), undefined);
+            false -> undefined
+        end,
+    {ok, #{ListKey => Projected, next_after_id => Next}}.
+
+project(Projection, Row) ->
+    maps:with(Projection, Row).
 
 %% @doc 租户门：OrgId / workspace_id 必须都是正整数。
 -spec tenant(term(), map()) -> {ok, integer()} | {error, term()}.

@@ -55,12 +55,14 @@ tenant_literal_routes() ->
             enterprise_owner_admin},
         {<<"/api/v1/cs/organizations/:org_id/seats/:id/resume">>, seat_resume, [<<"POST">>],
             enterprise_owner_admin},
-        {<<"/api/v1/cs/organizations/:org_id/shop-keys">>, shop_key_create, [<<"POST">>],
+        %% C2/C3（contracts-w2）：治理面列表 GET 与既有 POST 同路径动作（cowboy
+        %% 只按 path 匹配，一行 = 一条路径动作，按方法分派用例——seats 同款先例）。
+        {<<"/api/v1/cs/organizations/:org_id/shop-keys">>, shop_key_list, [<<"GET">>, <<"POST">>],
             enterprise_owner_admin},
         {<<"/api/v1/cs/organizations/:org_id/shop-keys/:id/revoke">>, shop_key_revoke, [<<"POST">>],
             enterprise_owner_admin},
-        {<<"/api/v1/cs/organizations/:org_id/visit-tokens">>, visit_token_issue, [<<"POST">>],
-            enterprise_owner_admin},
+        {<<"/api/v1/cs/organizations/:org_id/visit-tokens">>, visit_token_list,
+            [<<"GET">>, <<"POST">>], enterprise_owner_admin},
         {<<"/api/v1/cs/organizations/:org_id/visit-tokens/:id/revoke">>, visit_token_revoke,
             [<<"POST">>], enterprise_owner_admin}
     ].
@@ -69,6 +71,8 @@ platform_literal_routes() ->
     P = <<"/api/adm/customer-service/organizations/:org_id">>,
     [
         {<<P/binary, "/seats">>, p_seats, [<<"GET">>], platform_admin},
+        %% C1（contracts-w2）：平台 session 列表（只读）。
+        {<<P/binary, "/sessions">>, p_session_list, [<<"GET">>], platform_admin},
         {<<P/binary, "/sessions/:id">>, p_session, [<<"GET">>], platform_admin},
         {<<P/binary, "/seats/:id/suspend">>, p_seat_suspend, [<<"POST">>], platform_admin},
         {<<P/binary, "/seats/:id/resume">>, p_seat_resume, [<<"POST">>], platform_admin},
@@ -211,7 +215,9 @@ literal_for(platform) ->
 %% 审计必须逐条报红。
 a01_audit_is_not_vacuous_test() ->
     Real = ?S:cs_routes(all),
-    ?assert(length(Real) >= 21),
+    %% 22 = 既有 21 条 + C1 平台 session 列表新路径；C2/C3 治理列表与既有 POST
+    %% 同路径（动作名按 contracts-w2 冻结为 shop_key_list/visit_token_list）。
+    ?assert(length(Real) >= 22),
     MutatedAuth = lists:map(
         fun({Path, H, Opts}) ->
             case maps:get(action, Opts) of
@@ -502,7 +508,7 @@ tsid_outbound_is_string_test() ->
         contact_id => 43,
         status => queued,
         client_msg_id => <<"cmid">>,
-        key_ref => <<"kr">>,
+        device_id => <<"dev-1">>,
         nested => [#{business_identity_id => 7}]
     },
     Out = cs_http:encode_entity(View),
@@ -511,7 +517,7 @@ tsid_outbound_is_string_test() ->
     ?assertEqual(<<"43">>, maps:get(contact_id, Out)),
     ?assertEqual(queued, maps:get(status, Out)),
     ?assertEqual(<<"cmid">>, maps:get(client_msg_id, Out)),
-    ?assertEqual(<<"kr">>, maps:get(key_ref, Out)),
+    ?assertEqual(<<"dev-1">>, maps:get(device_id, Out)),
     ?assertEqual([#{business_identity_id => <<"7">>}], maps:get(nested, Out)).
 
 %% 错误映射：400/401/403/404/405/409/422 每类至少一条显式登记。
@@ -524,9 +530,20 @@ error_status_mapping_is_explicit_test() ->
     ?assertEqual(404, cs_http:status({not_found, any})),
     ?assertEqual(405, cs_http:status(method_not_allowed)),
     ?assertEqual(409, cs_http:status({stale_version, 1})),
-    ?assertEqual(422, cs_http:status({missing_param, key_ref})),
+    %% F6（RULING-2026-09-15 §七）：key_ref 不再是参数——提交即结构化 422；
+    %% 密钥装配是服务端职责，env 缺失是服务端配置问题 ⇒ 500（不伪装成 4xx）。
+    ?assertEqual(422, cs_http:status({unexpected_argument, key_ref})),
+    ?assertEqual(500, cs_http:status(missing_key)),
+    ?assertEqual(500, cs_http:status({seal_failed, missing_key})),
     ?assertEqual(500, cs_http:status({audit_append_failed, x})),
     ?assertEqual(500, cs_http:status(some_unmapped_reason)),
+    %% F-LAY-01：seat 绑定身份的两类错误此前 500，显式登记。
+    ?assertEqual(404, cs_http:status({identity_not_found, 1})),
+    ?assertEqual(422, cs_http:status({identity_not_customer_service, 1, <<"sales">>})),
+    %% F-LAY-03：CS 域真原子（死 EB 条目 visit_token_revoked 等已删）。
+    ?assertEqual(401, cs_http:status(contact_mismatch)),
+    %% F-SEC-05：路由缺权限声明 = 配置错误，fail-closed。
+    ?assertEqual(403, cs_http:status({missing_required_permission, platform_admin})),
     %% A0 客户端契约：offboarding 降级 = 409 + envelope offboarding_required。
     ?assertEqual(409, cs_http:status({assignee_change_requires_offboarding, 1})),
     ?assertEqual(

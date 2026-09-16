@@ -55,7 +55,9 @@
     method := binary(),
     facade := atom(),
     params := [param()],
-    path_params := [{atom(), atom()}]
+    path_params := [{atom(), atom()}],
+    %% F-SEC-02：case 级权限覆盖（undefined = 沿用路径级 auth）。
+    required_permission => binary() | undefined
 }.
 -type entry() :: #{
     action := atom(),
@@ -145,18 +147,26 @@ table(tenant) ->
         %% FND-1（RULING-2026-09-15 §五）：member_auth(org.manage) 会把「建身份」
         %% 挂在「已有 sales assignment」上（owner 也过不了 assignment 门，空 Org
         %% 自举死锁）—— 改为 governance_auth()，与路由侧同一定义。
+        %% F-LAY-10 消缺（C5 触碰条目）：workspace_id 是面级必填参数，本表此前
+        %% 未显式登记——现在逐 case 登记为 required，使「表即契约」恢复完整。
         {business_identities,
             entry(
                 tenant,
                 [
                     {<<"POST">>, create_identity,
                         [
+                            {workspace_id, tsid, required},
                             {function_key, binary, required},
                             {display_name, binary, required}
                         ],
                         []},
                     {<<"GET">>, list_identities,
-                        [{after_id, tsid, optional}, {limit, int, optional}], []}
+                        [
+                            {workspace_id, tsid, required},
+                            {after_id, tsid, optional},
+                            {limit, int, optional}
+                        ],
+                        []}
                 ],
                 governance_auth(),
                 false,
@@ -197,12 +207,13 @@ table(tenant) ->
                 tenant,
                 [
                     {<<"GET">>, get_contact, [], [{id, contact_id}]},
+                    %% F-SEC-03（FND-5 同款）：profile 密文只由服务端封装——
+                    %% 客户端提交 profile_cipher/profile_key_version 即 422
+                    %% （forbidden_crypto_keys 守卫），明文经托管密钥装配落库。
                     {<<"PATCH">>, update_contact,
                         [
                             {display_name, binary, optional},
-                            {profile_plaintext, binary, optional},
-                            {profile_cipher, binary, optional},
-                            {profile_key_version, int, optional}
+                            {profile_plaintext, binary, optional}
                         ],
                         [{id, contact_id}]}
                 ],
@@ -243,6 +254,7 @@ table(tenant) ->
                 [
                     {<<"GET">>, list_messages, [{after_id, tsid, optional}, {limit, int, optional}],
                         [{id, conversation_id}]},
+                    %% F-SEC-02：写真源的动作需要写权限（路径级 read 只服务 GET 列表）。
                     {<<"POST">>, append_message,
                         [
                             {client_msg_id, binary, required},
@@ -251,7 +263,7 @@ table(tenant) ->
                             {contact_id, tsid, optional},
                             {identity_id, tsid, optional}
                         ],
-                        [{id, conversation_id}]}
+                        [{id, conversation_id}], <<"conversation.write">>}
                 ],
                 member_auth(<<"conversation.read">>),
                 false,
@@ -363,6 +375,37 @@ table(tenant) ->
                 governance_auth(),
                 false,
                 false
+            )},
+        %% offboarding 读取面（closure §8）：与写面同门（governance_auth）。
+        %% 分页参数与既有先例同形（after_id=TSID / limit=int，均 optional）；
+        %% status 是 case 级可选过滤。读面入参白名单里没有任何密钥材料键。
+        {offboarding_list,
+            entry(
+                tenant,
+                [
+                    {<<"GET">>, list_offboarding,
+                        [
+                            {status, binary, optional},
+                            {after_id, tsid, optional},
+                            {limit, int, optional}
+                        ],
+                        []}
+                ],
+                governance_auth(),
+                false,
+                false
+            )},
+        {offboarding_detail,
+            entry(
+                tenant,
+                [
+                    {<<"GET">>, offboarding_detail, [{items_status, binary, optional}], [
+                        {id, case_id}
+                    ]}
+                ],
+                governance_auth(),
+                false,
+                false
             )}
     ];
 table(platform) ->
@@ -375,7 +418,13 @@ table(platform) ->
                 p_identities,
                 [
                     {<<"GET">>, list_identities,
-                        [{after_id, tsid, optional}, {limit, int, optional}], []}
+                        [
+                            %% F-LAY-10 消缺（C5 触碰条目）：workspace_id 必填显式登记。
+                            {workspace_id, tsid, required},
+                            {after_id, tsid, optional},
+                            {limit, int, optional}
+                        ],
+                        []}
                 ],
                 read_auth(),
                 false
@@ -472,6 +521,34 @@ table(platform) ->
                 ],
                 write_auth(),
                 false
+            )},
+        %% offboarding 读取面（closure §8）：只读端点走 read_auth（*:read），
+        %% 与租户面共用同一对只读用例；路径显式带 :org_id，workspace_id 必填（A04）。
+        {p_offboarding_list,
+            platform_entry(
+                p_offboarding_list,
+                [
+                    {<<"GET">>, list_offboarding,
+                        [
+                            {status, binary, optional},
+                            {after_id, tsid, optional},
+                            {limit, int, optional}
+                        ],
+                        []}
+                ],
+                read_auth(),
+                false
+            )},
+        {p_offboarding_detail,
+            platform_entry(
+                p_offboarding_detail,
+                [
+                    {<<"GET">>, offboarding_detail, [{items_status, binary, optional}], [
+                        {id, case_id}
+                    ]}
+                ],
+                read_auth(),
+                false
             )}
     ].
 
@@ -490,7 +567,18 @@ kase({Method, Facade, Params, PathParams}) ->
         method => Method,
         facade => Facade,
         params => Params,
-        path_params => PathParams
+        path_params => PathParams,
+        required_permission => undefined
+    };
+%% F-SEC-02：case 级权限覆盖——路径级 auth 之外的逐方法收紧（如 POST 需要
+%% conversation.write 而路径级是 conversation.read）。
+kase({Method, Facade, Params, PathParams, Permission}) ->
+    #{
+        method => Method,
+        facade => Facade,
+        params => Params,
+        path_params => PathParams,
+        required_permission => Permission
     }.
 
 platform_entry(Action, Cases, Auth, ProxyContent) ->

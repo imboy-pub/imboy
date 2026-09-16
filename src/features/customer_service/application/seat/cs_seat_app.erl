@@ -173,11 +173,42 @@ fetch_seat(_OrgId, _Params) ->
     {error, {invalid_argument, fetch_seat}}.
 
 %% @doc 派单快照（enabled 坐席 + active 计数；least-active 的输入）。
--spec list_dispatchable_seats(integer(), map()) -> {ok, [map()]} | {error, term()}.
+%%
+%% C4（contracts-w2）：HTTP 面列表支持键集分页——after_id（TSID，按
+%% business_identity_id 游标）/ limit（1..200，缺省 50，越界
+%% `{invalid_limit,_}`）；SQL LIMIT 由 `cs_pg_seat:list_dispatchable_seats_page/3`
+%% 下推。返回 `{ok, #{seats := Rows, next_after_id := Cursor | undefined}}`；
+%% 既有投影字段不变。内部派单（claim 的 least-active）仍走
+%% `cs_store_port:list_dispatchable_seats/1` 原快照，不受分页影响。
+-spec list_dispatchable_seats(integer(), map()) -> {ok, map()} | {error, term()}.
 list_dispatchable_seats(OrgId, Params) when is_map(Params) ->
-    with_store(Params, fun(Store) -> Store:list_dispatchable_seats(OrgId) end);
+    case cs_app_support:page_cursor(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, AfterId, Limit} ->
+            case
+                with_store(Params, fun(Store) ->
+                    Store:list_dispatchable_seats_page(OrgId, AfterId, Limit)
+                end)
+            of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Rows} ->
+                    cs_app_support:page_view(
+                        seats,
+                        identity_projection(),
+                        Rows,
+                        Limit,
+                        business_identity_id
+                    )
+            end
+    end;
 list_dispatchable_seats(_OrgId, _Params) ->
     {error, {invalid_argument, list_dispatchable_seats}}.
+
+%% 既有投影字段（contracts-w2 C4：不变）。
+identity_projection() ->
+    [business_identity_id, function_key, enabled, max_concurrent, active_count].
 
 %% ===================================================================
 %% 内部辅助

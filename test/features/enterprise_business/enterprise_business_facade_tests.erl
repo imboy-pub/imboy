@@ -150,13 +150,15 @@ identity_list_entrypoint_delegates() ->
         Ws = ws(Scope),
         Sales = maps:get(sales_identity_id, Scope),
         Service = maps:get(service_identity_id, Scope),
-        {ok, Rows} = ?FACADE:list_identities(Org, #{workspace_id => Ws}),
+        {ok, #{business_identities := Rows}} =
+            ?FACADE:list_identities(Org, #{workspace_id => Ws}),
         ?assertEqual(
             lists:sort([Sales, Service]),
             lists:sort([maps:get(id, R) || R <- Rows])
         ),
-        %% 键集参数原样透传（facade 不解释分页）
-        {ok, Page} = ?FACADE:list_identities(Org, #{workspace_id => Ws, limit => 1}),
+        %% 键集参数原样透传（facade 不解释分页）；页形状由 application 层给出
+        {ok, #{business_identities := Page}} =
+            ?FACADE:list_identities(Org, #{workspace_id => Ws, limit => 1}),
         ?assertEqual(1, length(Page))
     after
         ?FIX:cleanup(Scope)

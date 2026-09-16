@@ -3,8 +3,11 @@
 %%%
 %%% 覆盖（CS-02-A01/A02/A03 的 HTTP 面 + CS-01 审查观察项的回归）：
 %%%   * 五类 principal 的**真请求**正例与负例（401/403 的逐类拒绝面）；
-%%%   * **必填键前置结构化校验**：缺 `client_msg_id`/`key_ref`/`expected_version`
+%%%   * **必填键前置结构化校验**：缺 `client_msg_id`/`expected_version`
 %%%     → 422 结构化错误，绝不把 application 的无默认 maps:get badarg 泄漏成 500；
+%%%   * F6（RULING-2026-09-15 §七）：主密钥材料不经 HTTP 面——客户端提交
+%%%     `key_ref` 即 422（unexpected_argument.key_ref）；缺 key_ref 正常放行，
+%%%     密钥由服务端装配；
 %%%   * 服务端派生键（actor_user_id/at/business_identity_id/contact_id）客户端
 %%%     提供即 400；
 %%%   * offboarding 降级双通道：HTTP **409** + envelope `offboarding_required`
@@ -194,14 +197,17 @@ visitor_flow_tests(_) ->
             end)
         end},
 
-        %% CS-01 审查观察项回归：application 对 client_msg_id/key_ref 用无默认
-        %% maps:get——handler 必须前置结构化校验，缺失是 422 不是 500。
-        {"missing key_ref is a structured 422, never a 500 badarg", fun() ->
+        %% F6（RULING-2026-09-15 §七）：主密钥材料不得经 HTTP/JSON 面出现。
+        %% 动作表已删除 `key_ref` 参数——客户端显式提交是结构化 422
+        %% （unexpected_argument.key_ref，FND-5 body_cipher 同款先例），
+        %% 且请求不抵达 application；不带 key_ref 的请求正常抵达 application，
+        %% 密钥由服务端经 `imboy.eb_enterprise_keyring` 装配。
+        {"client-submitted key_ref is a structured 422 and never reaches the use case", fun() ->
             meck:expect(customer_service_facade, verify_visit_token, fun(_O, _P) ->
                 {ok, #{organization_id => ?ORG, contact_id => ?CONTACT, scope => visit}}
             end),
             meck:expect(customer_service_facade, append_session_message, fun(_O, _P) ->
-                erlang:error(badarg_leaked_to_application)
+                erlang:error(key_ref_leaked_to_application)
             end),
             ?S:with_listener(tenant, session_messages, #{auth_facts => cs_fake_facts}, fun(Port) ->
                 Resp = ?S:request(
@@ -211,20 +217,51 @@ visitor_flow_tests(_) ->
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
-                        <<"client_msg_id">> => <<"cmid-1">>,
-                        <<"body">> => <<"hi">>
+                        <<"client_msg_id">> => <<"cmid-keyref">>,
+                        <<"body">> => <<"hi">>,
+                        <<"key_ref">> => <<"attacker-chosen-key-ref">>
                     },
                     #{<<"x-cs-visit-token">> => <<"tok">>}
                 ),
                 ?assertEqual(422, ?S:status(Resp)),
-                ?assertEqual(
-                    <<"missing_param.key_ref">>, ?S:msg(Resp)
-                ),
+                ?assertEqual(<<"unexpected_argument.key_ref">>, ?S:msg(Resp)),
                 ?assertNot(
                     meck:called(customer_service_facade, append_session_message, '_')
                 )
             end)
         end},
+
+        {"session_messages without key_ref reaches the use case (server-side key assembly)",
+            fun() ->
+                meck:expect(customer_service_facade, verify_visit_token, fun(_O, _P) ->
+                    {ok, #{organization_id => ?ORG, contact_id => ?CONTACT, scope => visit}}
+                end),
+                meck:expect(customer_service_facade, append_session_message, fun(Org, Params) ->
+                    %% HTTP 面不再承载 key_ref：facade 收到的 Params 里没有它。
+                    ?assertNot(is_map_key(key_ref, Params)),
+                    {ok, #{id => 88, organization_id => Org}}
+                end),
+                ?S:with_listener(tenant, session_messages, #{auth_facts => cs_fake_facts}, fun(
+                    Port
+                ) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"POST">>,
+                        <<"/api/v1/cs/sessions/", (int_bin(?SESSION))/binary, "/messages">>,
+                        #{
+                            <<"organization_id">> => ?ORG,
+                            <<"workspace_id">> => ?WS,
+                            <<"client_msg_id">> => <<"cmid-no-keyref">>,
+                            <<"body">> => <<"hi">>
+                        },
+                        #{<<"x-cs-visit-token">> => <<"tok">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp)),
+                    ?assert(
+                        meck:called(customer_service_facade, append_session_message, '_')
+                    )
+                end)
+            end},
 
         {"missing client_msg_id is a structured 422", fun() ->
             meck:expect(customer_service_facade, verify_visit_token, fun(_O, _P) ->
@@ -238,7 +275,6 @@ visitor_flow_tests(_) ->
                     #{
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
-                        <<"key_ref">> => <<"kr-1">>,
                         <<"body">> => <<"hi">>
                     },
                     #{<<"x-cs-visit-token">> => <<"tok">>}
@@ -261,7 +297,6 @@ visitor_flow_tests(_) ->
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
                         <<"client_msg_id">> => <<"cmid-2">>,
-                        <<"key_ref">> => <<"kr-2">>,
                         <<"body">> => <<"hi">>,
                         <<"contact_id">> => 999999
                     },
@@ -288,7 +323,6 @@ visitor_flow_tests(_) ->
                         <<"organization_id">> => ?ORG,
                         <<"workspace_id">> => ?WS,
                         <<"client_msg_id">> => <<"cmid-3">>,
-                        <<"key_ref">> => <<"kr-3">>,
                         <<"body">> => <<"hi">>
                     },
                     #{<<"x-cs-visit-token">> => <<"tok">>}
@@ -542,10 +576,10 @@ governance_flow_tests(_) ->
             end),
             ?S:with_listener(
                 tenant,
-                shop_key_create,
+                shop_key_list,
                 #{auth_facts => cs_fake_facts, current_uid => ?UID},
                 fun(Port) ->
-                    Path = ?S:path(tenant, shop_key_create, #{org_id => ?ORG}),
+                    Path = ?S:path(tenant, shop_key_list, #{org_id => ?ORG}),
                     Resp = ?S:request(
                         Port,
                         <<"POST">>,
@@ -559,6 +593,154 @@ governance_flow_tests(_) ->
                     ),
                     ?assertEqual(200, ?S:status(Resp)),
                     ?assertEqual(<<"88">>, maps:get(<<"id">>, ?S:payload(Resp)))
+                end
+            )
+        end},
+
+        {"C2: governance lists shop keys via GET (200; digest never in payload)", fun() ->
+            cs_fake_facts:set(owner_facts()),
+            meck:expect(customer_service_facade, list_shop_keys, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                {ok, #{
+                    shop_keys => [
+                        #{
+                            id => 88,
+                            display_hint => <<"shop-12">>,
+                            status => active,
+                            created_at => 1700000000,
+                            updated_at => 1700000000
+                        }
+                    ],
+                    next_after_id => undefined
+                }}
+            end),
+            ?S:with_listener(
+                tenant,
+                shop_key_list,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path =
+                        <<
+                            (?S:path(tenant, shop_key_list, #{org_id => ?ORG}))/binary,
+                            "?workspace_id=",
+                            (int_bin(?WS))/binary
+                        >>,
+                    Resp = ?S:request(
+                        Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp)),
+                    Payload = ?S:payload(Resp),
+                    Row = hd(maps:get(<<"shop_keys">>, Payload)),
+                    ?assertEqual(<<"88">>, maps:get(<<"id">>, Row)),
+                    %% 红线：digest/secret 永不进响应。
+                    ?assertNot(is_map_key(<<"key_digest">>, Row)),
+                    ?assertNot(is_map_key(<<"secret">>, Row)),
+                    ?assertEqual(null, maps:get(<<"next_after_id">>, Payload))
+                end
+            )
+        end},
+
+        {"C3: governance lists visit tokens (200; token_digest never in payload)", fun() ->
+            cs_fake_facts:set(owner_facts()),
+            meck:expect(customer_service_facade, list_visit_tokens, fun(Org, _Params) ->
+                ?assertEqual(?ORG, Org),
+                {ok, #{
+                    visit_tokens => [
+                        #{
+                            id => 91,
+                            contact_id => ?CONTACT,
+                            expires_at => 1800000000,
+                            revoked_at => undefined,
+                            created_at => 1700000000
+                        }
+                    ],
+                    next_after_id => undefined
+                }}
+            end),
+            ?S:with_listener(
+                tenant,
+                visit_token_list,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path =
+                        <<
+                            (?S:path(tenant, visit_token_list, #{org_id => ?ORG}))/binary,
+                            "?workspace_id=",
+                            (int_bin(?WS))/binary
+                        >>,
+                    Resp = ?S:request(
+                        Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp)),
+                    Row = hd(maps:get(<<"visit_tokens">>, ?S:payload(Resp))),
+                    ?assertEqual(<<"91">>, maps:get(<<"id">>, Row)),
+                    ?assertEqual(integer_to_binary(?CONTACT), maps:get(<<"contact_id">>, Row)),
+                    ?assertNot(is_map_key(<<"token_digest">>, Row))
+                end
+            )
+        end},
+
+        {"C4: tenant seats list pushes after_id/limit through (200, paged shape)", fun() ->
+            cs_fake_facts:set(owner_facts()),
+            meck:expect(customer_service_facade, list_dispatchable_seats, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(<<"123456789012345">>, maps:get(after_id, Params)),
+                ?assertEqual(<<"2">>, maps:get(limit, Params)),
+                {ok, #{
+                    seats => [
+                        #{
+                            business_identity_id => 515151,
+                            function_key => customer_service,
+                            enabled => true,
+                            max_concurrent => 1,
+                            active_count => 0
+                        }
+                    ],
+                    next_after_id => 515151
+                }}
+            end),
+            ?S:with_listener(
+                tenant,
+                seats,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path =
+                        <<
+                            (?S:path(tenant, seats, #{org_id => ?ORG}))/binary,
+                            "?workspace_id=",
+                            (int_bin(?WS))/binary,
+                            "&after_id=123456789012345&limit=2"
+                        >>,
+                    Resp = ?S:request(
+                        Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(200, ?S:status(Resp)),
+                    Payload = ?S:payload(Resp),
+                    Row = hd(maps:get(<<"seats">>, Payload)),
+                    ?assertEqual(<<"515151">>, maps:get(<<"business_identity_id">>, Row)),
+                    ?assertEqual(<<"515151">>, maps:get(<<"next_after_id">>, Payload))
+                end
+            )
+        end},
+
+        {"C2 list requires owner/admin (member is 403)", fun() ->
+            cs_fake_facts:set(member_facts()),
+            ?S:with_listener(
+                tenant,
+                shop_key_list,
+                #{auth_facts => cs_fake_facts, current_uid => ?UID},
+                fun(Port) ->
+                    Path =
+                        <<
+                            (?S:path(tenant, shop_key_list, #{org_id => ?ORG}))/binary,
+                            "?workspace_id=",
+                            (int_bin(?WS))/binary
+                        >>,
+                    Resp = ?S:request(
+                        Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                    ),
+                    ?assertEqual(403, ?S:status(Resp))
                 end
             )
         end}
@@ -648,6 +830,96 @@ platform_flow_tests(_) ->
                     org_id => ?ORG, id => ?SESSION
                 }),
                 Resp = ?S:request(Port, <<"GET">>, Path, <<>>),
+                ?assertEqual(422, ?S:status(Resp))
+            end)
+        end},
+
+        {"C1: platform lists sessions (200; whitelist payload; params reach the facade)", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:read">>]
+            }),
+            meck:expect(customer_service_facade, list_sessions, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                %% 查询参数按冻结口径抵达 application：status/after_id/limit
+                %% 均为 binary 原文（白名单/TSID/范围校验在 application，非法
+                %% 取值 422 原子）。
+                ?assertEqual(<<"active">>, maps:get(status, Params)),
+                ?assertEqual(<<"123456789012345">>, maps:get(after_id, Params)),
+                ?assertEqual(<<"2">>, maps:get(limit, Params)),
+                %% meck 模拟的是 application 的**输出合同**：投影白名单
+                %% 由 cs_session_app 裁剪（防泄漏键集断言在
+                %% cs_list_contract_tests），handler 只负责出站编码。
+                {ok, #{
+                    sessions => [
+                        #{
+                            id => ?SESSION,
+                            organization_id => ?ORG,
+                            workspace_id => ?WS,
+                            contact_id => ?CONTACT,
+                            business_identity_id => undefined,
+                            status => active,
+                            rating => undefined,
+                            queued_at => 1700000000,
+                            claimed_at => 1700000001,
+                            closed_at => undefined,
+                            version => 2
+                        }
+                    ],
+                    next_after_id => undefined
+                }}
+            end),
+            ?S:with_listener(platform, p_session_list, platform_inject(), fun(Port) ->
+                Path =
+                    <<
+                        (?S:path(platform, p_session_list, #{org_id => ?ORG}))/binary,
+                        "?workspace_id=",
+                        (int_bin(?WS))/binary,
+                        "&status=active"
+                        "&after_id=123456789012345&limit=2"
+                    >>,
+                Resp = ?S:request(
+                    Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                Payload = ?S:payload(Resp),
+                Row = hd(maps:get(<<"sessions">>, Payload)),
+                ?assertEqual(integer_to_binary(?SESSION), maps:get(<<"id">>, Row)),
+                ?assertEqual(<<"active">>, maps:get(<<"status">>, Row)),
+                %% 红线：visit_token_id / close_reason 永不进投影。
+                ?assertNot(is_map_key(<<"visit_token_id">>, Row)),
+                ?assertNot(is_map_key(<<"close_reason">>, Row)),
+                ?assertEqual(null, maps:get(<<"next_after_id">>, Payload))
+            end)
+        end},
+
+        {"C1: platform session list requires customer_service:read (403)", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
+            }),
+            ?S:with_listener(platform, p_session_list, platform_inject(), fun(Port) ->
+                Path =
+                    <<
+                        (?S:path(platform, p_session_list, #{org_id => ?ORG}))/binary,
+                        "?workspace_id=",
+                        (int_bin(?WS))/binary
+                    >>,
+                Resp = ?S:request(
+                    Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(403, ?S:status(Resp))
+            end)
+        end},
+
+        {"C1: platform session list without workspace_id is 422", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:read">>]
+            }),
+            ?S:with_listener(platform, p_session_list, platform_inject(), fun(Port) ->
+                Path = ?S:path(platform, p_session_list, #{org_id => ?ORG}),
+                Resp = ?S:request(
+                    Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                ),
                 ?assertEqual(422, ?S:status(Resp))
             end)
         end}
@@ -742,13 +1014,13 @@ contract_tests(_) ->
                 session_id => 12,
                 contact_id => 13,
                 client_msg_id => <<"cmid">>,
-                key_ref => <<"kr">>,
+                device_id => <<"dev-1">>,
                 rating => 5
             }),
             ?assertEqual(<<"12">>, maps:get(session_id, Out)),
             ?assertEqual(<<"13">>, maps:get(contact_id, Out)),
             ?assertEqual(<<"cmid">>, maps:get(client_msg_id, Out)),
-            ?assertEqual(<<"kr">>, maps:get(key_ref, Out)),
+            ?assertEqual(<<"dev-1">>, maps:get(device_id, Out)),
             ?assertEqual(5, maps:get(rating, Out))
         end},
 

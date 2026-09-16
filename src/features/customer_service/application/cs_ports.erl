@@ -69,6 +69,7 @@ contracts() ->
             {insert_seat, 2},
             {fetch_seat, 2},
             {list_dispatchable_seats, 1},
+            {list_dispatchable_seats_page, 3},
             {set_seat_enabled, 4},
             %% session
             {insert_session, 3},
@@ -78,14 +79,17 @@ contracts() ->
             {close_session, 7},
             {rate_session, 7},
             {list_sessions_for_contact, 3},
+            {list_sessions_page, 5},
             %% shop key / visit token
             {insert_shop_key, 2},
             {fetch_shop_key, 2},
             {fetch_shop_key_by_digest, 2},
+            {list_shop_keys_page, 3},
             {revoke_shop_key, 3},
             {insert_visit_token, 2},
             {fetch_visit_token, 2},
             {fetch_visit_token_by_digest, 2},
+            {list_visit_tokens_page, 3},
             {revoke_visit_token, 3},
             %% event（append-only 状态审计）
             {append_event, 2}

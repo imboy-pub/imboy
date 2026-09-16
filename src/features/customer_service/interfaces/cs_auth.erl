@@ -253,29 +253,35 @@ decide_in(cs_shop_key, _Route, Credential, OrgId, _State) ->
     end.
 
 %% 平台判定：事实的 adm_user_id 必须与凭证一致（防串身），再查权限。
+%% F-SEC-05（closure 安全面）：`required_permission` 缺省一律 fail-closed——
+%% 与 EB 侧 `eb_auth_app` 的无默认 `maps:get/2` 同口径；未来新增路由漏登记
+%% 权限时是 403 拒绝而非静默放行。
 platform_decide(Route, Credential, _OrgId, Facts) ->
     CredentialAdm = maps:get(adm_user_id, Credential, undefined),
     case maps:get(adm_user_id, Facts, undefined) of
         Adm when is_integer(Adm), Adm =:= CredentialAdm ->
-            Required = maps:get(required_permission, Route, undefined),
-            Granted = [P || P <- maps:get(permissions, Facts, []), is_binary(P)],
-            case Required =/= undefined andalso lists:member(Required, Granted) of
-                true ->
-                    {ok, #{auth_context => platform_admin, adm_user_id => Adm}};
-                false when Required =:= undefined ->
-                    {ok, #{auth_context => platform_admin, adm_user_id => Adm}};
-                false ->
-                    {error, {permission_missing, Required}}
+            case maps:get(required_permission, Route, undefined) of
+                undefined ->
+                    {error, {missing_required_permission, platform_admin}};
+                Required ->
+                    Granted = [P || P <- maps:get(permissions, Facts, []), is_binary(P)],
+                    case lists:member(Required, Granted) of
+                        true ->
+                            {ok, #{auth_context => platform_admin, adm_user_id => Adm}};
+                        false ->
+                            {error, {permission_missing, Required}}
+                    end
             end;
         _ ->
             {error, platform_identity_mismatch}
     end.
 
 %% 坐席独立权限（职能不替代权限；facts 的 permissions 已由 active-member 门守卫）。
+%% F-SEC-05：缺省 fail-closed，同 platform_decide。
 seat_permission(Route, Facts) ->
     case maps:get(required_permission, Route, undefined) of
         undefined ->
-            ok;
+            {error, {missing_required_permission, seat}};
         Required ->
             Granted = [P || P <- maps:get(permissions, Facts, []), is_binary(P)],
             case lists:member(Required, Granted) of

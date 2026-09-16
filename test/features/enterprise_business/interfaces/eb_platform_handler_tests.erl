@@ -40,6 +40,7 @@ cases({ok, _Conn}) ->
         {timeout, ?TIMEOUT_S, fun a03_403_without_platform_permission_real/0},
         {timeout, ?TIMEOUT_S, fun a04_workspace_id_is_mandatory_probe/0},
         {timeout, ?TIMEOUT_S, fun a04_cross_org_isolation_probe/0},
+        {timeout, ?TIMEOUT_S, fun c5_p_identities_projection_and_pagination_probe/0},
         {timeout, ?TIMEOUT_S, fun a02_platform_read_returns_tsid_strings_probe/0},
         {timeout, ?TIMEOUT_S, fun a03_405_method_not_allowed_probe/0},
         {timeout, ?TIMEOUT_S, fun a04_write_requires_explicit_actor_probe/0},
@@ -133,8 +134,10 @@ a04_cross_org_isolation_probe() ->
                 ])
             ),
             ?assertEqual(200, maps:get(status, InA)),
-            ?assert(length(?S:payload(InA)) >= 2),
-            %% B Org 用**它自己的** Workspace 读：只见 B 自己的数据（空）
+            %% C5 页形状：{business_identities, next_after_id}
+            RowsA = maps:get(<<"business_identities">>, ?S:payload(InA)),
+            ?assert(length(RowsA) >= 2),
+            %% B Org 用**它自己的** Workspace 读：只见 B 自己的数据（空页 + null 游标）
             InB = ?S:request(
                 Port,
                 <<"GET">>,
@@ -143,7 +146,10 @@ a04_cross_org_isolation_probe() ->
                 ])
             ),
             ?assertEqual(200, maps:get(status, InB)),
-            ?assertEqual([], ?S:payload(InB)),
+            ?assertEqual(
+                #{<<"business_identities">> => [], <<"next_after_id">> => null},
+                ?S:payload(InB)
+            ),
             %% A 的 Org + B 的 Workspace 组合（伪造成对）：空，而不是 A 的数据
             Mismatch = ?S:request(
                 Port,
@@ -153,7 +159,10 @@ a04_cross_org_isolation_probe() ->
                 ])
             ),
             ?assertEqual(200, maps:get(status, Mismatch)),
-            ?assertEqual([], ?S:payload(Mismatch)),
+            ?assertEqual(
+                #{<<"business_identities">> => [], <<"next_after_id">> => null},
+                ?S:payload(Mismatch)
+            ),
             %% 反向：B Org 路径下拿 A 的会话 id 读消息 ⇒ 404（**不**返回 A 的数据，
             %% 也不区分「不存在」与「跨租户」）
             CrossConv = ?S:request(
@@ -199,6 +208,93 @@ a02_platform_read_returns_tsid_strings_probe() ->
                 re:run(?S:raw(Resp), <<"\"(id|organization_id)\":[0-9]">>, [
                     {capture, none}
                 ])
+            )
+        end)
+    after
+        ok = eb09_platform_facts_probe:clear(),
+        ?FIX:cleanup(Scope)
+    end.
+
+%% ===================================================================
+%% C5：平台 identities 的 active_assignment 投影 + 键集分页（真链路）
+%% ===================================================================
+
+%% 平台面与租户面共用同一 facade：每行附 active_assignment（对象或 null，TSID
+%% 一律 string）；limit=1 满页携带 next_after_id 游标，用它翻页无重无漏。
+c5_p_identities_projection_and_pagination_probe() ->
+    Scope = ?FIX:new_scope(),
+    ok = eb09_platform_facts_probe:grant([<<"enterprise_business:read">>]),
+    try
+        Org = maps:get(org_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
+        Assignment = maps:get(assignment_id, Scope),
+        Sales = maps:get(sales_identity_id, Scope),
+        Service = maps:get(service_identity_id, Scope),
+        ?S:with_listener(platform, p_identities, session(probe_read, 1), fun(Port) ->
+            All = ?S:request(
+                Port,
+                <<"GET">>,
+                qs(?S:path(platform, p_identities, #{org_id => Org}), [
+                    {<<"workspace_id">>, Ws}
+                ])
+            ),
+            ?assertEqual(200, maps:get(status, All)),
+            Payload = ?S:payload(All),
+            Rows = maps:get(<<"business_identities">>, Payload),
+            ?assertEqual(2, length(Rows)),
+            ?assertEqual(null, maps:get(<<"next_after_id">>, Payload)),
+            ById = maps:from_list([{maps:get(<<"id">>, R), R} || R <- Rows]),
+            %% sales：active_assignment = 七键对象；TSID 键都是 string
+            SalesAA = maps:get(<<"active_assignment">>, maps:get(integer_to_binary(Sales), ById)),
+            ?assert(is_map(SalesAA)),
+            ?assertEqual(
+                lists:sort([
+                    <<"assignment_id">>,
+                    <<"business_identity_id">>,
+                    <<"user_id">>,
+                    <<"function_key">>,
+                    <<"status">>,
+                    <<"assigned_at">>,
+                    <<"version">>
+                ]),
+                lists:sort(maps:keys(SalesAA))
+            ),
+            ?assertEqual(
+                integer_to_binary(Assignment), maps:get(<<"assignment_id">>, SalesAA)
+            ),
+            ?assertEqual(integer_to_binary(Sales), maps:get(<<"business_identity_id">>, SalesAA)),
+            ?assertEqual(<<"active">>, maps:get(<<"status">>, SalesAA)),
+            %% service：无 active 经办 ⇒ null（不是缺键、不是空对象）
+            ?assertEqual(
+                null,
+                maps:get(<<"active_assignment">>, maps:get(integer_to_binary(Service), ById))
+            ),
+            %% 分页：limit=1 满页 ⇒ next_after_id 为 string 游标；续读取到另一行
+            Page1 = ?S:request(
+                Port,
+                <<"GET">>,
+                qs(?S:path(platform, p_identities, #{org_id => Org}), [
+                    {<<"workspace_id">>, Ws}, {<<"limit">>, <<"1">>}
+                ])
+            ),
+            ?assertEqual(200, maps:get(status, Page1)),
+            Payload1 = ?S:payload(Page1),
+            Cursor = maps:get(<<"next_after_id">>, Payload1),
+            ?assert(is_binary(Cursor)),
+            Page2 = ?S:request(
+                Port,
+                <<"GET">>,
+                qs(?S:path(platform, p_identities, #{org_id => Org}), [
+                    {<<"workspace_id">>, Ws},
+                    {<<"limit">>, <<"1">>},
+                    {<<"after_id">>, Cursor}
+                ])
+            ),
+            ?assertEqual(200, maps:get(status, Page2)),
+            Rows2 = maps:get(<<"business_identities">>, ?S:payload(Page2)),
+            AllIds = [maps:get(<<"id">>, R) || R <- Rows],
+            ?assertEqual(
+                AllIds -- [Cursor], [maps:get(<<"id">>, R) || R <- Rows2]
             )
         end)
     after

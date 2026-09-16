@@ -187,12 +187,15 @@ seat_tests(_) ->
             )
         end},
 
-        %% 无 customer_service assignment（不带权限门，专测 assignment 解析）。
+        %% 无 customer_service assignment（显式声明所需权限以穿过权限门，
+        %% 专测 assignment 解析；F-SEC-05 后缺权限声明是 fail-closed 的
+        %% 配置错误，不会走到 assignment 门）。
         {"member without any assignment is rejected", fun() ->
             cs_fake_facts:set(facts_with_assignment_none()),
             MetadataNoPerm = #{
                 auth_context => cs_seat,
-                required_function => <<"customer_service">>
+                required_function => <<"customer_service">>,
+                required_permission => <<"conversation.read">>
             },
             ?assertEqual(
                 {error, identity_assignment_missing},
@@ -531,7 +534,9 @@ facts_with_assignment_none() ->
         organization_id => ?ORG,
         member => #{user_id => ?UID, status => active, governance_roles => []},
         assignments => [],
-        permissions => []
+        %% F-SEC-05：权限门在 assignment 门之前；此处显式放行被测权限，
+        %% 使用例聚焦 assignment 解析。
+        permissions => [<<"conversation.read">>]
     }.
 
 assignment(BusinessIdentityId) ->

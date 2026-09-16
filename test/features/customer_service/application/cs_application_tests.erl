@@ -40,6 +40,8 @@ setup() ->
 cleanup(_) ->
     ?FAKE:destroy(),
     cs_fake_canonical_tx:reset(),
+    %% F6 装配用例注入的 env keyring 不外泄到其他套件（application env 是 VM 级）。
+    _ = application:unset_env(imboy, eb_enterprise_keyring),
     ok.
 
 cases(_State) ->
@@ -54,7 +56,9 @@ cases(_State) ->
         {timeout, 30, fun a04_rebind_keeps_session_and_history_continuous/0},
         {timeout, 30, fun a05_visit_token_scope_and_revocation/0},
         {timeout, 30, fun close_then_rate_then_double_actions_rejected/0},
-        {timeout, 30, fun facade_delegates_and_validates_shape/0}
+        {timeout, 30, fun facade_delegates_and_validates_shape/0},
+        %% F6：主密钥服务端装配（显式注入优先；无注入经 env keyring）。
+        {timeout, 30, fun a03_env_keyring_assembly/0}
     ].
 
 %% ===================================================================
@@ -592,6 +596,64 @@ facade_delegates_and_validates_shape() ->
             })
         )
     ).
+
+%% ===================================================================
+%% F6：主密钥服务端装配（RULING-2026-09-15 §七）
+%% ===================================================================
+
+%% 调用方不带 key_ref 时，cs_session_app 在参数归一化处经
+%% `imboy.eb_enterprise_keyring` 解析当前 active key_ref（服务端装配）；
+%% 显式注入（测试/内部合同）优先于 env。env 缺失时不降级——下游
+%% canonical tx 的 seal fail-closed（500 面，由 handler/契约套件覆盖）。
+a03_env_keyring_assembly() ->
+    reset_all(),
+    Ctx = claimed_session(?SEAT_A),
+    #{session_id := SessionId, conversation_id := Conv, identity := Identity} = Ctx,
+    Key = crypto:strong_rand_bytes(32),
+    Env = #{active_version => 1, keys => #{1 => binary:encode_hex(Key, lowercase)}},
+    ok = application:set_env(imboy, eb_enterprise_keyring, Env),
+    try
+        %% (1) 不带 key_ref：装配层注入 env 解析出的 active key_ref。
+        {ok, _} = cs_session_app:append_session_message(
+            ?ORG,
+            params(#{
+                session_id => SessionId,
+                business_identity_id => Identity,
+                actor_user_id => ?USER_A,
+                client_msg_id => <<"cmsg-env-1">>,
+                body => <<"assembled server-side">>,
+                accepted_at => ?T0 + 40,
+                canonical_tx => cs_fake_canonical_tx
+            })
+        ),
+        [{_, _, TxParams}] = cs_fake_canonical_tx:calls(),
+        KeyRef = maps:get(key_ref, TxParams),
+        ?assertEqual(1, maps:get(key_version, KeyRef)),
+        ?assertEqual(#{1 => Key}, maps:get(keys, KeyRef)),
+        %% (2) 显式注入优先于 env（既有测试/内部调用合同不破坏）。
+        Explicit = #{key => crypto:strong_rand_bytes(32), key_version => 3},
+        ok = cs_fake_canonical_tx:reset(),
+        {ok, _} = cs_session_app:append_session_message(
+            ?ORG,
+            params(#{
+                session_id => SessionId,
+                business_identity_id => Identity,
+                actor_user_id => ?USER_A,
+                client_msg_id => <<"cmsg-env-2">>,
+                body => <<"explicit wins">>,
+                key_ref => Explicit,
+                accepted_at => ?T0 + 41,
+                canonical_tx => cs_fake_canonical_tx
+            })
+        ),
+        [{_, _, TxParams2}] = cs_fake_canonical_tx:calls(),
+        ?assertEqual(Explicit, maps:get(key_ref, TxParams2))
+    after
+        %% env 是 VM 级：用例内即清理，不让后续用例看见本 keyring。
+        _ = application:unset_env(imboy, eb_enterprise_keyring)
+    end,
+    _ = Conv,
+    ok.
 
 %% ===================================================================
 %% 构造辅助

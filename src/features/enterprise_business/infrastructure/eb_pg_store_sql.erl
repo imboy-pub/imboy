@@ -30,6 +30,7 @@
     conversation_fields/0,
     message_fields/0,
     assignment_fields/0,
+    active_assignment_fields/0,
     contact_fields/0,
     contact_identity_fields/0,
     policy_fields/0,
@@ -513,6 +514,23 @@ assignment_fields() ->
         {assigned_at, <<"assigned_at">>, ts},
         {ended_at, <<"ended_at">>, ts},
         {version, <<"version">>, int}
+    ].
+
+%% C5（closure run 冻结合同）：identity 列表投影里的 `active_assignment` 对象字段
+%% 规格。键集 = `assignment_fields/0` 去掉 organization_id（租户键已在 identity 行上，
+%% 不重复进对象）与 ended_at（active 行恒为 NULL，由 ck_obia_ended_at_consistency
+%% 保证）——即「字段 = 既有 assignment 白名单、勿扩」。列别名加 `aa_` 前缀：与
+%% identity 行同语句 JOIN 时，function_key/status/version 与 identity 自身列同名，
+%% 别名既避免 SQL 列歧义，也避免归一化后的原子键互相覆盖。
+active_assignment_fields() ->
+    [
+        {assignment_id, <<"aa_assignment_id">>, int},
+        {business_identity_id, <<"aa_business_identity_id">>, int},
+        {user_id, <<"aa_user_id">>, int},
+        {function_key, <<"aa_function_key">>, bin},
+        {status, <<"aa_status">>, atom},
+        {assigned_at, <<"aa_assigned_at">>, ts},
+        {version, <<"aa_version">>, int}
     ].
 
 contact_fields() ->

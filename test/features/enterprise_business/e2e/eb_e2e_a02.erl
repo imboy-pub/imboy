@@ -283,7 +283,8 @@ run(Ctx) ->
     WrongMethod = eb_e2e_lib:get(BTok, eb_e2e_lib:tenant_path(Org1, <<"/offboarding">>, Ws1)),
     a02(<<"EB-11-A02.22">>, "未登记方法（GET /offboarding）405", [405], WrongMethod),
 
-    %% 10) F6：客户端提供的 key_ref 不被采信（企业托管密钥不可由调用方指定）
+    %% 10) F6（RULING-2026-09-15 §七）：主密钥材料不经 HTTP/JSON 面——客户端
+    %% 提交 key_ref 即结构化 422；密钥只由服务端 `imboy.eb_enterprise_keyring` 装配。
     KeyRefIgnored = eb_e2e_lib:post(
         BTok,
         eb_e2e_lib:tenant_path(Org1, <<"/contacts">>, Ws1),
@@ -296,10 +297,11 @@ run(Ctx) ->
     eb_e2e_lib:assert(
         <<"EB-11-A02.23">>,
         io_lib:format(
-            "客户端自报 key_ref 不被采信：仍以服务端装配为准（HTTP 层无该键 ⇒ 500 missing_key）；实测 status=~p msg=~ts",
+            "客户端提交 key_ref 被结构化拒绝（422 unexpected_argument.key_ref，"
+            "密钥只由服务端装配）；实测 status=~p msg=~ts",
             [eb_e2e_lib:status(KeyRefIgnored), eb_e2e_lib:msg(KeyRefIgnored)]
         ),
-        eb_e2e_lib:status(KeyRefIgnored) =:= 500
+        eb_e2e_lib:status(KeyRefIgnored) =:= 422
     ),
 
     %% 11) 下载代理响应面：不含存储能力（object key / URL / endpoint / presign）

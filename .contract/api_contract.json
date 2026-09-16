@@ -29,6 +29,7 @@
     "/api/v1/passport/signup",
     "/api/v1/refreshtoken",
     "/api/v1/user/show",
+    "/api/v1/wechat/mini/events",
     "/api/v1/ws",
     "/brand",
     "/healthz",
@@ -537,6 +538,12 @@
         "static": false
       },
       {
+        "action": "p_session_list",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/organizations/:org_id/sessions",
+        "static": false
+      },
+      {
         "action": "p_session",
         "handler": "cs_platform_handler",
         "path": "/api/adm/customer-service/organizations/:org_id/sessions/:id",
@@ -612,6 +619,18 @@
         "action": "p_offboarding_verify",
         "handler": "eb_platform_handler",
         "path": "/api/adm/enterprise-business/organizations/:org_id/offboarding/:id/verify",
+        "static": false
+      },
+      {
+        "action": "p_offboarding_list",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/offboarding/cases",
+        "static": false
+      },
+      {
+        "action": "p_offboarding_detail",
+        "handler": "eb_platform_handler",
+        "path": "/api/adm/enterprise-business/organizations/:org_id/offboarding/cases/:id",
         "static": false
       },
       {
@@ -2273,7 +2292,7 @@
         "static": false
       },
       {
-        "action": "shop_key_create",
+        "action": "shop_key_list",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/shop-keys",
         "static": false
@@ -2285,7 +2304,7 @@
         "static": false
       },
       {
-        "action": "visit_token_issue",
+        "action": "visit_token_list",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/organizations/:org_id/visit-tokens",
         "static": false
@@ -2564,6 +2583,18 @@
         "action": "offboarding_verify",
         "handler": "eb_tenant_handler",
         "path": "/api/v1/enterprise/organizations/:org_id/offboarding/:id/verify",
+        "static": false
+      },
+      {
+        "action": "offboarding_list",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/offboarding/cases",
+        "static": false
+      },
+      {
+        "action": "offboarding_detail",
+        "handler": "eb_tenant_handler",
+        "path": "/api/v1/enterprise/organizations/:org_id/offboarding/cases/:id",
         "static": false
       },
       {
@@ -4082,6 +4113,12 @@
         "action": "incoming",
         "handler": "channel_webhook_handler",
         "path": "/api/v1/webhook/channel/:token",
+        "static": false
+      },
+      {
+        "action": null,
+        "handler": "moya_wechat_msg_handler",
+        "path": "/api/v1/wechat/mini/events",
         "static": false
       },
       {

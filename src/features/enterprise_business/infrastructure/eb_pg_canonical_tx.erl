@@ -67,19 +67,74 @@ do_accept(Conn, OrgId, WorkspaceId, Params) ->
             Err
     end.
 
-accept_in_conversation(Conn, OrgId, WorkspaceId, Conversation, Params) ->
-    case consent_gate(Conversation, Params) of
-        ok ->
-            case latest_policy(Conn, OrgId, WorkspaceId) of
-                {ok, Policy} ->
-                    accept_with_policy(Conn, OrgId, WorkspaceId, Policy, Params);
-                {error, not_found} ->
-                    {error, missing_retention_policy};
+accept_in_conversation(Conn, OrgId, WorkspaceId, Conversation, Params0) ->
+    case sender_attribution_gate(Conversation, Params0) of
+        {error, _} = Err ->
+            Err;
+        {ok, Params} ->
+            case consent_gate(Conversation, Params) of
+                ok ->
+                    case latest_policy(Conn, OrgId, WorkspaceId) of
+                        {ok, Policy} ->
+                            accept_with_policy(Conn, OrgId, WorkspaceId, Policy, Params);
+                        {error, not_found} ->
+                            {error, missing_retention_policy};
+                        {error, _} = Err ->
+                            Err
+                    end;
                 {error, _} = Err ->
                     Err
-            end;
-        {error, _} = Err ->
-            Err
+            end
+    end.
+
+%% F-SEC-01：发送者归属权威校验。canonical tx 是唯一同时握有「会话事实 +
+%% 全部 sender 声明」的位置，两类声明在此锚定：
+%%   * business_identity：HTTP 租户面由 handler 注入 caller_identity_id（认证
+%%     事实派生，客户端不可报）——自报 identity_id 与之不符即
+%%     `{sender_identity_unauthorized, _, _}`（403），不写 canonical 真源；
+%%     无 caller_identity_id 的内部/测试显式注入合同原样放行（domain XOR 与
+%%     DB 复合 FK 仍兜底）。
+%%   * contact：contact_id 必须等于会话绑定的 contact——防持有读权限的成员
+%%     指认本 Org 任意 contact 伪造入站（`{sender_contact_mismatch, _, _}`，
+%%     403）。CS 访客入站的 contact 与会话天然一致，不受影响。
+sender_attribution_gate(Conversation, Params) ->
+    case maps:get(sender_type, Params, undefined) of
+        business_identity ->
+            authorize_business_sender(Params);
+        contact ->
+            authorize_contact_sender(Conversation, Params);
+        _ ->
+            %% 未知 sender_type 交给 domain validate_sender 报错，不在重复判。
+            {ok, Params}
+    end.
+
+authorize_business_sender(Params) ->
+    case maps:get(caller_identity_id, Params, undefined) of
+        undefined ->
+            {ok, Params};
+        CallerId ->
+            case maps:get(identity_id, Params, undefined) of
+                Requested when Requested =:= undefined; Requested =:= CallerId ->
+                    %% `=>`：客户端可省略 identity_id，由认证事实补齐。
+                    {ok, Params#{identity_id => CallerId}};
+                Requested ->
+                    {error, {sender_identity_unauthorized, Requested, CallerId}}
+            end
+    end.
+
+authorize_contact_sender(Conversation, Params) ->
+    case maps:get(contact_id, Params, undefined) of
+        undefined ->
+            %% 缺 contact 是形状错误，交 domain validate_sender 报 contact_required。
+            {ok, Params};
+        ContactId ->
+            ConversationContact = maps:get(contact_id, Conversation, undefined),
+            case is_integer(ContactId) andalso ContactId =:= ConversationContact of
+                true ->
+                    {ok, Params};
+                false ->
+                    {error, {sender_contact_mismatch, ContactId, ConversationContact}}
+            end
     end.
 
 consent_gate(Conversation, Params) ->

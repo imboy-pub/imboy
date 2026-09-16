@@ -182,7 +182,8 @@ presign_mint(OrgId, Args, Retain, Params) ->
     Crypto = port(Params, crypto),
     Clock = port(Params, clock),
     Id = port(Params, id),
-    KeyRef = maps:get(key_ref, Params, undefined),
+    %% F6（RULING-2026-09-15 §七）：显式注入优先；缺省经 eb_env_keyring 服务端装配。
+    KeyRef = key_ref(Params),
     Now = Clock:now(),
     case upload_ttl(Params) of
         {error, _} = Err ->
@@ -218,6 +219,12 @@ msg_or_undefined(Params) ->
         Id when is_integer(Id) -> Id;
         _Other -> undefined
     end.
+
+%% F6（RULING-2026-09-15 §七）主密钥装配：显式注入（map 形态的测试/内部合同）
+%% 原样优先；缺省经 `eb_env_keyring` 从服务端 env 解析 active key_ref。env 缺失
+%% 时得 undefined，`eb_asset_upload_ref` 的 mint/open 照旧 fail-closed（500 面）。
+key_ref(Params) ->
+    eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)).
 
 %% 凭证时限：只设**上界**（`?MAX_UPLOAD_TTL_SEC`）。0 与负值被允许，因为那只会让凭证
 %% **立即过期**（fail-closed，不产生任何放行风险），同时让过期路径可在不伪造时钟的前提下
@@ -281,7 +288,8 @@ put_args(Params) ->
 open_ref(OrgId, Ws, Token, Actor, Params) ->
     Crypto = port(Params, crypto),
     Clock = port(Params, clock),
-    KeyRef = maps:get(key_ref, Params, undefined),
+    %% F6（RULING-2026-09-15 §七）：显式注入优先；缺省经 eb_env_keyring 服务端装配。
+    KeyRef = key_ref(Params),
     case eb_asset_upload_ref:open(Token, OrgId, Ws, Crypto, KeyRef, Clock:now()) of
         {ok, #{claims := Claims}} ->
             case maps:get(actor_user_id, Claims, undefined) of

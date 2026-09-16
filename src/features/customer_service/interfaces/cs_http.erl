@@ -10,9 +10,12 @@
 %%%   * TSID 以 JSON string 传输，投影成 integer 交给 application，出站编回 string；
 %%%   * 服务端派生键（动作表 `client_forbidden`：操作人/时钟/坐席与访客身份）客户端
 %%%     **提供即 400**；
-%%%   * **必填键前置结构化校验**（CS-01 审查观察项：application 对 `client_msg_id`/
-%%%     `key_ref` 用无默认 maps:get）——缺失/类型错在 handler 返回 4xx，绝不把
-%%%     badarg 泄漏成 500；
+%%%   * **必填键前置结构化校验**（CS-01 审查观察项：application 对 `client_msg_id`
+%%%     用无默认 maps:get）——缺失/类型错在 handler 返回 4xx，绝不把 badarg 泄漏
+%%%     成 500；
+%%%   * F6（RULING-2026-09-15 §七）：主密钥材料不经 HTTP/JSON 面——`key_ref` 等
+%%%     密钥键客户端提交即 422（unexpected_argument.*）；缺 key_ref 正常放行，
+%%%     密钥由服务端 env 装配；
 %%%   * 错误映射默认 **500 fail-closed**；offboarding 降级 = **HTTP 409 + envelope
 %%%     `offboarding_required`**（A0 客户端契约基准，双通道语义）；
 %%%   * credential 面（visit/shop key 凭证路径）由 `is_credential_surface_path/1`
@@ -223,12 +226,20 @@ build_params(Entry, Case, Req, Body, Derived) ->
         {error, _} = Err ->
             Err;
         ok ->
-            case path_params(Case, Req) of
+            %% F6：密钥材料键统一守卫（见 check_forbidden_crypto_keys/2）。
+            case check_forbidden_crypto_keys(Req, Body) of
                 {error, _} = Err ->
                     Err;
-                {ok, PathParams} ->
-                    Base = maps:merge(server_derived(), PathParams),
-                    collect(maps:get(params, Case), Req, Body, maps:merge(Base, Derived))
+                ok ->
+                    case path_params(Case, Req) of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, PathParams} ->
+                            Base = maps:merge(server_derived(), PathParams),
+                            collect(
+                                maps:get(params, Case), Req, Body, maps:merge(Base, Derived)
+                            )
+                    end
             end
     end.
 
@@ -246,6 +257,27 @@ check_forbidden(Body, Keys) ->
     case [K || K <- Keys, is_map_key(K, Body)] of
         [] -> ok;
         [Key | _] -> {error, {forbidden_client_key, Key}}
+    end.
+
+%% F6（RULING-2026-09-15 §七）：主密钥材料键在任何动作的 HTTP/JSON 面（正文与
+%% 查询串）都不被接受——动作表不声明它们，这里再统一守卫：客户端显式提交即
+%% 结构化 422（`unexpected_argument.key_ref`；FND-5 body_cipher 同款先例），
+%% 请求不抵达 application。密钥只由服务端经 `imboy.eb_enterprise_keyring` 装配。
+forbidden_crypto_keys() ->
+    [key_ref, key, key_version, keyring, key_material, master_key].
+
+check_forbidden_crypto_keys(Req, Body) ->
+    Qs = cowboy_req:parse_qs(Req),
+    case
+        [
+            K
+         || K <- forbidden_crypto_keys(),
+            Bin <- [key_bin(K)],
+            is_map_key(Bin, Body) orelse proplists:is_defined(Bin, Qs)
+        ]
+    of
+        [] -> ok;
+        [Key | _] -> {error, {unexpected_argument, Key}}
     end.
 
 collect([], _Req, _Body, Acc) ->
@@ -376,17 +408,16 @@ classify({invalid_secret, _}) ->
     ?ERR_UNAUTHORIZED;
 classify(credential_invalid) ->
     ?ERR_UNAUTHORIZED;
-classify(visit_token_revoked) ->
-    ?ERR_UNAUTHORIZED;
-classify(visit_token_expired) ->
+%% F-LAY-03：CS 域真原子（cs_session:assert_visitor_scope 产出）；下列 EB 侧
+%% 词汇（visit_token_revoked/visit_token_expired/shop_key_revoked/cross_contact）
+%% 是从 eb_auth_app 抄来的死条目，CS 链路永不产出，已删除。
+classify(contact_mismatch) ->
     ?ERR_UNAUTHORIZED;
 classify(token_expired) ->
     ?ERR_UNAUTHORIZED;
 classify(revoked) ->
     ?ERR_UNAUTHORIZED;
 classify(token_revoked) ->
-    ?ERR_UNAUTHORIZED;
-classify(shop_key_revoked) ->
     ?ERR_UNAUTHORIZED;
 classify({unknown_action, _}) ->
     ?ERR_UNAUTHORIZED;
@@ -407,13 +438,14 @@ classify({multiple_active_assignment, _}) ->
     ?ERR_FORBIDDEN;
 classify({permission_missing, _}) ->
     ?ERR_FORBIDDEN;
+%% F-SEC-05：路由元数据缺权限声明 = 配置错误，fail-closed（403 而非静默放行）。
+classify({missing_required_permission, _}) ->
+    ?ERR_FORBIDDEN;
 classify({governance_insufficient, _}) ->
     ?ERR_FORBIDDEN;
 classify(platform_identity_mismatch) ->
     ?ERR_FORBIDDEN;
 classify(cross_org) ->
-    ?ERR_FORBIDDEN;
-classify(cross_contact) ->
     ?ERR_FORBIDDEN;
 classify({function_mismatch, _, _}) ->
     ?ERR_FORBIDDEN;
@@ -423,6 +455,9 @@ classify(not_found) ->
 classify({not_found, _}) ->
     ?ERR_NOT_FOUND;
 classify({session_not_found, _}) ->
+    ?ERR_NOT_FOUND;
+%% F-LAY-01：seat 绑定不存在的业务身份 → 与 EB 面 404 同口径（此前 500）。
+classify({identity_not_found, _}) ->
     ?ERR_NOT_FOUND;
 %% --- 409：并发/状态竞争 + offboarding 降级（双通道：状态码 + envelope 标签）---
 classify(conflict) ->
@@ -470,6 +505,9 @@ classify({invalid_session_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_identity_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
+%% F-LAY-01：身份存在但职能不是 customer_service → 形状合法取值不成立（此前 500）。
+classify({identity_not_customer_service, _, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_contact_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_rating, _}) ->
@@ -477,6 +515,13 @@ classify({invalid_rating, _}) ->
 classify({invalid_organization_id, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({not_session_contact, _, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+%% C1~C4（contracts-w2）：列表查询参数的取值不成立——显式登记，无兜底。
+classify({invalid_after_id, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_limit, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_status, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({not_session_seat, _, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
@@ -537,6 +582,11 @@ encode_entity(List) when is_list(List) ->
 encode_entity(Other) ->
     Other.
 
+encode_value(_Key, undefined) ->
+    %% contracts-w2 C1~C4：`next_after_id: string|null` 等可空出站键——undefined
+    %% 统一编为 JSON null（jsx 默认把 undefined atom 写成字符串 "undefined"，
+    %% 语义错误；JSON 惯例空值是 null）。
+    null;
 encode_value(Key, Value) when is_integer(Value) ->
     case is_tsid_key(Key) of
         true -> integer_to_binary(Value);
@@ -550,7 +600,7 @@ encode_value(_Key, Value) ->
     Value.
 
 %% @doc 该键承载的是 TSID 吗：`id` 或 `*_id`。排除长得像但不是 TSID 的键
-%% （device_id/client_msg_id/key_ref 是字符串语义）。
+%% （device_id/client_msg_id 是字符串语义；key_ref 已从 HTTP 面整体删除，F6）。
 -spec is_tsid_key(term()) -> boolean().
 is_tsid_key(Key) when is_atom(Key) ->
     is_tsid_key(atom_to_binary(Key, utf8));
@@ -568,4 +618,5 @@ has_tsid_suffix(Key) ->
     end.
 
 non_tsid_id_keys() ->
-    [<<"trace_id">>, <<"device_id">>, <<"client_msg_id">>, <<"key_ref">>].
+    %% F6：key_ref 已从 HTTP 面整体删除（提交即 422），不再是出站键候选。
+    [<<"trace_id">>, <<"device_id">>, <<"client_msg_id">>].

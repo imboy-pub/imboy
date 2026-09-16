@@ -39,7 +39,10 @@
     open_offboarding/2,
     execute_offboarding/2,
     verify_offboarding/2,
-    finalize_offboarding/2
+    finalize_offboarding/2,
+    %% 读取面（closure §8：查询交接 case；零写零审计）
+    list_cases/2,
+    case_detail/2
 ]).
 
 -define(ACTION_SUSPEND, <<"offboarding.member.suspend">>).
@@ -49,7 +52,250 @@
 -define(ACTION_FINALIZE, <<"offboarding.finalize">>).
 
 %% ===================================================================
-%% 成员撤权（A08：本卡拥有的写路径）
+%% 读取面（closure §8：创建/查询交接 case 的「查询」半边）
+%% ===================================================================
+%%
+%% 合同（与 `eb_offboarding_http_tests` 的投影断言逐字同口径）：
+%%   * **零写零审计**：纯读取用例，不触任何写 callback、不追加审计事件；
+%%   * **投影白名单**：只回显标识符 / 状态 / 计数 / 时间戳——**没有任何** cipher、
+%%     密钥材料或个人域 PII 字段（offboarding 表本身无密文列，读面再把键集收窄到
+%%     白名单：多一个键都不出站）；
+%%   * **键集分页**（message 先例同口径）：按 id 倒序（= 创建时间倒序，TSID 时间有序），
+%%     `after_id` 语义为**严格 `id < after_id`**（倒序游标），`limit` 缺省 50、上限 200，
+%%     越界 `{error, {invalid_limit, _}}`（不静默钳制）；未用的键集窗口不漂移；
+%%   * **status 过滤**：case 状态白名单 draft/frozen/transferring/verifying/completed/failed；
+%%     失败项查询 = 详情的 `items_status=failed`（item 白名单 pending/success/failed）。
+%%
+%% 租户作用域：store 的 `list_offboarding_cases` / `fetch_offboarding_case` /
+%% `list_offboarding_items` 均是 `(OrgId, WorkspaceId)` 同语句约束（铁律 6），
+%% 跨 Org / Workspace 不匹配只可能得到空集或 not_found。
+
+%% case 列表行的出站键（白名单；不含 reason——审计自由文本只在详情给治理角色）。
+-define(CASE_LIST_KEYS, [
+    id,
+    status,
+    leaver_user_id,
+    successor_user_id,
+    version,
+    item_total,
+    item_success,
+    item_failed,
+    created_at,
+    updated_at,
+    completed_at
+]).
+
+%% case 详情键（全字段白名单 + items 子表）。
+-define(CASE_DETAIL_KEYS, [
+    id,
+    organization_id,
+    leaver_user_id,
+    successor_user_id,
+    status,
+    version,
+    item_total,
+    item_success,
+    item_failed,
+    created_by_user_id,
+    reason,
+    created_at,
+    updated_at,
+    completed_at
+]).
+
+%% item 出站键（含 status/failure_reason/attempt/idempotency_key；无 cipher 材料）。
+-define(ITEM_KEYS, [
+    id,
+    case_id,
+    business_identity_id,
+    function_key,
+    from_user_id,
+    to_user_id,
+    status,
+    idempotency_key,
+    attempt,
+    failure_reason,
+    created_at
+]).
+
+%% 分页边界：与 `eb_message_app` 逐字同口径（缺省 50、1..200）。
+-define(DEFAULT_PAGE_LIMIT, 50).
+-define(MAX_PAGE_LIMIT, 200).
+
+%% @doc 列举本 Org 的离职交接 case（§8 `GET /offboarding/cases`）。
+%%
+%% Params：
+%%   workspace_id  必填整数（租户操作范围）
+%%   status        可选 case 状态白名单过滤（未知值 fail-closed 422）
+%%   after_id      可选键集游标（严格 id < after_id；倒序分页）
+%%   limit         可选页大小（缺省 50，1..200）
+-spec list_cases(integer(), map()) -> {ok, [map()]} | {error, term()}.
+list_cases(OrgId, Params) when is_map(Params) ->
+    case tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            list_cases_in(OrgId, WorkspaceId, Params)
+    end;
+list_cases(_OrgId, _Params) ->
+    {error, {invalid_argument, list_cases}}.
+
+list_cases_in(OrgId, WorkspaceId, Params) ->
+    case status_filter(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Status} ->
+            case page_limit(Params) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Limit} ->
+                    case
+                        with_store(Params, fun(Store) ->
+                            Store:list_offboarding_cases(OrgId, WorkspaceId)
+                        end)
+                    of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Rows} ->
+                            {ok, page_cases(Rows, Params, Limit, Status)}
+                    end
+            end
+    end.
+
+%% @doc 交接 case 详情（§8 `GET /offboarding/cases/:id`）+ items 子表。
+%%
+%% Params：
+%%   workspace_id  必填整数
+%%   case_id       必填整数（路径 :id）
+%%   items_status  可选 item 状态白名单过滤（`failed` 即失败项查询；未知值 422）
+%%
+%% 不存在 / 跨 Org / Workspace 不匹配 ⇒ `{error, {case_not_found, _}}`（不区分，
+%% 避免租户枚举）。
+-spec case_detail(integer(), map()) -> {ok, map()} | {error, term()}.
+case_detail(OrgId, Params) when is_map(Params) ->
+    case tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            case_detail_in(OrgId, WorkspaceId, Params)
+    end;
+case_detail(_OrgId, _Params) ->
+    {error, {invalid_argument, case_detail}}.
+
+case_detail_in(OrgId, WorkspaceId, Params) ->
+    case items_status_filter(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, ItemStatus} ->
+            CaseId = maps:get(case_id, Params, undefined),
+            case fetch_case(OrgId, WorkspaceId, CaseId, Params) of
+                {error, _} = Err ->
+                    Err;
+                {ok, Case} ->
+                    case list_items(OrgId, WorkspaceId, CaseId, Params) of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, Items} ->
+                            {ok, project_case_detail(Case, Items, ItemStatus)}
+                    end
+            end
+    end.
+
+%% 顺序固定：倒序排序 → status 过滤 → 游标切割（严格 id < after_id）→ limit 截断。
+%% 页内行全部满足 status，且「下一页」永远从上一页最后一行的 id 继续（键集不漂移）。
+page_cases(Rows, Params, Limit, Status) ->
+    Desc = lists:sort(fun(A, B) -> maps:get(id, A, 0) > maps:get(id, B, 0) end, Rows),
+    Matched =
+        case Status of
+            undefined ->
+                Desc;
+            _ ->
+                [R || R <- Desc, maps:get(status, R, undefined) =:= Status]
+        end,
+    After = maps:get(after_id, Params, undefined),
+    Cut =
+        case is_pos_int(After) of
+            true -> [R || R <- Matched, maps:get(id, R, 0) < After];
+            false -> Matched
+        end,
+    [project_case_list(R) || R <- lists:sublist(Cut, Limit)].
+
+%% case 状态白名单（domain `eb_offboarding` 的全集；未知值 fail-closed）。
+status_filter(Params) ->
+    case maps:get(status, Params, undefined) of
+        undefined ->
+            {ok, undefined};
+        Status when is_binary(Status) ->
+            case
+                lists:member(
+                    Status,
+                    [
+                        <<"draft">>,
+                        <<"frozen">>,
+                        <<"transferring">>,
+                        <<"verifying">>,
+                        <<"completed">>,
+                        <<"failed">>
+                    ]
+                )
+            of
+                true -> {ok, binary_to_atom(Status, utf8)};
+                false -> {error, {invalid_status, Status}}
+            end;
+        Other ->
+            {error, {invalid_status, Other}}
+    end.
+
+%% item 状态白名单（失败项查询 = items_status=failed）。
+items_status_filter(Params) ->
+    case maps:get(items_status, Params, undefined) of
+        undefined ->
+            {ok, undefined};
+        Status when is_binary(Status) ->
+            case lists:member(Status, [<<"pending">>, <<"success">>, <<"failed">>]) of
+                true -> {ok, binary_to_atom(Status, utf8)};
+                false -> {error, {invalid_items_status, Status}}
+            end;
+        Other ->
+            {error, {invalid_items_status, Other}}
+    end.
+
+%% 缺省 50、1..200（message 先例）；越界报 {invalid_limit, _}，不静默钳制。
+page_limit(Params) ->
+    case maps:get(limit, Params, ?DEFAULT_PAGE_LIMIT) of
+        Limit when is_integer(Limit), Limit >= 1, Limit =< ?MAX_PAGE_LIMIT -> {ok, Limit};
+        Other -> {error, {invalid_limit, Other}}
+    end.
+
+%% 白名单投影：白名单键恒出现（未填值出站为 `null`），白名单外的键一个不出站。
+project_case_list(Case) ->
+    project(?CASE_LIST_KEYS, Case).
+
+project_case_detail(Case, Items, ItemStatus) ->
+    Matched =
+        case ItemStatus of
+            undefined ->
+                Items;
+            _ ->
+                [I || I <- Items, maps:get(status, I, undefined) =:= ItemStatus]
+        end,
+    (project(?CASE_DETAIL_KEYS, Case))#{
+        items => [project_item(I) || I <- Matched]
+    }.
+
+project_item(Item) ->
+    project(?ITEM_KEYS, Item).
+
+project(Keys, Row) ->
+    maps:from_list([{K, present(maps:get(K, Row, undefined))} || K <- Keys]).
+
+present(undefined) ->
+    null;
+present(Value) ->
+    Value.
+
+%% ===================================================================
+%% 内部辅助：端口 / 租户 / 事实 / 审计
 %% ===================================================================
 
 %% @doc 立即撤销该成员的全部企业业务授权（个人 IM 能力不变，可恢复）。

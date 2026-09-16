@@ -53,7 +53,9 @@ tenant_literal_routes() ->
         {<<P/binary, "/offboarding">>, offboarding_open, [<<"POST">>]},
         {<<P/binary, "/offboarding/:id/execute">>, offboarding_execute, [<<"POST">>]},
         {<<P/binary, "/offboarding/:id/verify">>, offboarding_verify, [<<"POST">>]},
-        {<<P/binary, "/offboarding/:id/finalize">>, offboarding_finalize, [<<"POST">>]}
+        {<<P/binary, "/offboarding/:id/finalize">>, offboarding_finalize, [<<"POST">>]},
+        {<<P/binary, "/offboarding/cases">>, offboarding_list, [<<"GET">>]},
+        {<<P/binary, "/offboarding/cases/:id">>, offboarding_detail, [<<"GET">>]}
     ].
 
 platform_literal_routes() ->
@@ -68,7 +70,9 @@ platform_literal_routes() ->
         {<<P/binary, "/members/:uid/suspend">>, p_suspend_member, [<<"POST">>]},
         {<<P/binary, "/offboarding/:id/execute">>, p_offboarding_execute, [<<"POST">>]},
         {<<P/binary, "/offboarding/:id/verify">>, p_offboarding_verify, [<<"POST">>]},
-        {<<P/binary, "/offboarding/:id/finalize">>, p_offboarding_finalize, [<<"POST">>]}
+        {<<P/binary, "/offboarding/:id/finalize">>, p_offboarding_finalize, [<<"POST">>]},
+        {<<P/binary, "/offboarding/cases">>, p_offboarding_list, [<<"GET">>]},
+        {<<P/binary, "/offboarding/cases/:id">>, p_offboarding_detail, [<<"GET">>]}
     ].
 
 %% ===================================================================
@@ -409,6 +413,12 @@ a03_status_mapping_covers_required_statuses_test() ->
         {403, {permission_missing, <<"note.write">>}},
         {404, not_found},
         {404, {contact_not_found, 1}},
+        %% F-LAY-02：作用域错配/可重试冲突此前 500，显式登记。
+        {404, {workspace_not_in_org, 2}},
+        {409, expired_upload_ref},
+        %% F-SEC-01：发送者归属权威校验失败。
+        {403, {sender_identity_unauthorized, 9, 8}},
+        {403, {sender_contact_mismatch, 9, 8}},
         {405, method_not_allowed},
         {409, conflict},
         {409, duplicate_occupation},
@@ -418,12 +428,16 @@ a03_status_mapping_covers_required_statuses_test() ->
         {409, {successor_not_active, suspended}},
         {422, {missing_param, subject}},
         {422, missing_workspace_id},
+        %% C5 分页参数门：键集游标 / 页大小非法是显式登记的 422（无兜底）。
+        {422, {invalid_after_id, 0}},
+        {422, {invalid_limit, 201}},
         {422, empty_patch},
         {422, {invalid_argument, create_identity}},
         %% 服务端侧失败一律 500：**不得**伪装成 4xx（否则调用方以为「只是参数问题」）。
-        %% `missing_key` 是接口层能观测到的真实值：企业写路径需要企业托管主密钥，
-        %% 而本树没有生产侧提供者（findings EB-09-F6），HTTP 层正确地不接收客户端
-        %% 提交的密钥 ⇒ 用例层 fail-closed。实测：POST assets/presign → 500 missing_key。
+        %% `missing_key` 是接口层能观测到的真实值：企业托管主密钥由服务端
+        %% `imboy.eb_enterprise_keyring` 装配（F6/RULING-2026-09-15 §七）；
+        %% HTTP 面不接受客户端提交的密钥（提交即 422），部署未配置 keyring 时
+        %% 写路径 fail-closed ⇒ 500 missing_key（绝不降级明文/伪装 4xx）。
         {500, missing_key},
         {500, missing_key_version},
         {500, invalid_key_length},

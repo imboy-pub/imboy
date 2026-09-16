@@ -12,6 +12,7 @@
     insert_seat/2,
     fetch_seat/2,
     list_dispatchable_seats/1,
+    list_dispatchable_seats_page/3,
     set_seat_enabled/4,
     insert_event/2,
     insert_event_in/3,
@@ -64,6 +65,22 @@
     " ORDER BY s.business_identity_id"
 >>).
 
+%% C4（contracts-w2）键集下推（eb_pg_message_ext 模板口径：`游标 > $2` 升序 +
+%% `LIMIT $3`），同语句带 Org 且仅 enabled 坐席；绝无 OFFSET。
+-define(SQL_LIST_DISPATCHABLE_PAGE, <<
+    "SELECT s.organization_id, s.business_identity_id, s.function_key, s.enabled,"
+    "       s.max_concurrent,"
+    "       (SELECT count(*) FROM customer_service_session x"
+    "         WHERE x.organization_id = s.organization_id"
+    "           AND x.business_identity_id = s.business_identity_id"
+    "           AND x.status = 'active') AS active_count"
+    "  FROM customer_service_seat s"
+    " WHERE s.organization_id = $1 AND s.enabled = true"
+    "   AND s.business_identity_id > $2"
+    " ORDER BY s.business_identity_id"
+    " LIMIT $3"
+>>).
+
 -define(SQL_SET_ENABLED, <<
     "UPDATE customer_service_seat"
     "   SET enabled = $3, version = version + 1, updated_at = to_timestamp($4)"
@@ -86,6 +103,7 @@ sql_statements() ->
         ?SQL_INSERT_SEAT,
         ?SQL_FETCH_SEAT,
         ?SQL_LIST_DISPATCHABLE,
+        ?SQL_LIST_DISPATCHABLE_PAGE,
         ?SQL_SET_ENABLED,
         ?SQL_INSERT_EVENT
     ].
@@ -135,6 +153,29 @@ fetch_seat(OrgId, IdentityId) ->
 -spec list_dispatchable_seats(integer()) -> {ok, [map()]} | {error, term()}.
 list_dispatchable_seats(OrgId) ->
     case cs_pg_common:fetch_many(?SQL_LIST_DISPATCHABLE, [OrgId], ?SEAT_KEYS ++ [active_count]) of
+        {ok, Rows} ->
+            {ok, [
+                Row#{function_key => cs_pg_common:to_status(maps:get(function_key, Row))}
+             || Row <- Rows
+            ]};
+        {error, _} = Err ->
+            Err
+    end.
+
+%% @doc C4（contracts-w2）：seat 键集分页（business_identity_id 升序；
+%% 同语句带 Org，仅 enabled）。行投影字段与派单快照一致（active_count 同语句计数）。
+-spec list_dispatchable_seats_page(integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_dispatchable_seats_page(OrgId, AfterId, Limit) ->
+    PageKeys = [
+        organization_id,
+        business_identity_id,
+        function_key,
+        enabled,
+        max_concurrent,
+        active_count
+    ],
+    case cs_pg_common:fetch_many(?SQL_LIST_DISPATCHABLE_PAGE, [OrgId, AfterId, Limit], PageKeys) of
         {ok, Rows} ->
             {ok, [
                 Row#{function_key => cs_pg_common:to_status(maps:get(function_key, Row))}

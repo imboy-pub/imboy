@@ -22,9 +22,10 @@
 %%% 的装配默认值。生产路径不需要注入。
 %%%
 %%% **EB-03R 补齐后的正向能力（本卡 E5-1 / E5-2 / E5-10 消费）**
-%%%   * `list_identities/2`：走 `eb_store_port:list_identities/2`（P2）真列举，
-%%%     只返回本 Org 行（SQL 同语句带 Org；Workspace 归属由 join 裁决）；
-%%%     支持**键集**分页（`after_id` 严格 `id > 游标`、`limit`），不用 OFFSET。
+%%%   * `list_identities/2`：走 `eb_store_port:list_identities_page/3`（P2 + C5）
+%%%     真落库回读，只返回本 Org 行（SQL 同语句带 Org；Workspace 归属由 join 裁决）；
+%%%     支持**键集**分页且**下推 SQL**（`after_id` 严格 `id < 游标`、`limit`
+%%%     1..200 缺省 50），不用 OFFSET；每行附 `active_assignment` 投影（C5）。
 %%%   * `bind_assignment/2` 在**需要新建 assignment 行**时走
 %%%     `eb_store_port:insert_assignment/3`（P1）真 INSERT：这是「首次绑定」的
 %%%     唯一可达路径（CAS `advance_assignment/5` 只能改既有行）。
@@ -41,6 +42,11 @@
     bind_assignment/2,
     end_assignment/2
 ]).
+
+%% 分页窗口（C5）：缺省 50、1..200——与 message / offboarding 同口径。
+%% 截断已下推 SQL（`eb_pg_identity_ext`），application 只做参数收敛与视图整形。
+-define(DEFAULT_PAGE_LIMIT, 50).
+-define(MAX_PAGE_LIMIT, 200).
 
 %% ===================================================================
 %% identity：创建
@@ -126,23 +132,35 @@ insert_identity(OrgId, WorkspaceId, Draft, IdentityId, Params) ->
     end.
 
 %% ===================================================================
-%% identity：列举（E5-1）
+%% identity：列举（E5-1 + C5 下推）
 %% ===================================================================
 
-%% @doc 列举 Org 下的业务身份（§5.1 GET /business-identities）。
+%% @doc 列举 Org 下的业务身份（§5.1 GET /business-identities；平台 p_identities
+%% 共用同一用例，租户条件在 path org_id + workspace_id）。
 %%
-%% 经 `eb_store_port:list_identities/2` 真落库回读：SQL 同语句带
+%% 经 `eb_store_port:list_identities_page/3` 真落库回读：SQL 同语句带
 %% `organization_id`，并用 `workspace` 做归属校验，因此**只可能返回本 Org 行**；
-%% 跨 Org / Workspace 不匹配一律空列表（不是内部错误，也不报能力缺失）。
+%% 跨 Org / Workspace 不匹配一律空页（不是内部错误，也不报能力缺失）。
 %%
-%% 分页为**键集**语义：`after_id` 严格 `id > 游标`、`limit` 截断；
-%% 不使用 OFFSET（键集下删除/插入不产生窗口漂移）。
+%% 分页为**键集**语义且**下推 SQL**（C5：不再内存截断）：`after_id` 严格
+%% `id < 游标`（倒序）、`limit` 缺省 50、1..200（越界 `{error, {invalid_limit, _}}`、
+%% 游标非法 `{error, {invalid_after_id, _}}`，均不静默钳制）；不使用 OFFSET
+%% （键集下删除/插入不产生窗口漂移）。
+%%
+%% 返回页形状（C5）：
+%%   `#{business_identities := [Identity], next_after_id := integer() | null}`
+%% 其中每个 Identity 附 `active_assignment`（对象或 `null`）；对象字段 = 既有
+%% assignment 白名单七键（assignment_id / business_identity_id / user_id /
+%% function_key / status / assigned_at / version），无 active 经办时为 `null`。
+%% `next_after_id` 取本页最后一行 id（本页不满 limit 时为 `null`——已无下一页）。
 %%
 %% Params：
 %%   workspace_id  必填整数
-%%   after_id      可选整数（键集游标；严格 id > after_id）
-%%   limit         可选非负整数
--spec list_identities(integer(), map()) -> {ok, [map()]} | {error, term()}.
+%%   after_id      可选正整数（倒序键集游标）
+%%   limit         可选 1..200（缺省 50）
+-spec list_identities(integer(), map()) ->
+    {ok, #{business_identities := [map()], next_after_id := integer() | null}}
+    | {error, term()}.
 list_identities(OrgId, Params) when is_map(Params) ->
     case tenant(OrgId, Params) of
         {error, _} = Err ->
@@ -154,16 +172,64 @@ list_identities(_OrgId, _Params) ->
     {error, {invalid_argument, list_identities}}.
 
 list_identities_in(OrgId, WorkspaceId, Params) ->
-    case
-        with_store(Params, fun(Store) ->
-            Store:list_identities(OrgId, WorkspaceId)
-        end)
-    of
+    case page_query(Params) of
         {error, _} = Err ->
             Err;
-        {ok, Rows} ->
-            {ok, keyset_page(Rows, Params)}
+        {ok, Query} ->
+            case
+                with_store(Params, fun(Store) ->
+                    Store:list_identities_page(OrgId, WorkspaceId, Query)
+                end)
+            of
+                {error, _} = Err ->
+                    Err;
+                {ok, Rows} ->
+                    {ok, page_view(Rows, maps:get(limit, Query))}
+            end
     end.
+
+%% 分页参数收敛：limit 1..200 缺省 50；after_id 正整数或缺省。越界即结构化错误
+%% （HTTP 面显式映射 422），绝不静默钳制——调用方必须知道窗口被谁裁过。
+page_query(Params) ->
+    case page_limit(Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, Limit} ->
+            case maps:get(after_id, Params, undefined) of
+                undefined ->
+                    {ok, #{after_id => undefined, limit => Limit}};
+                Id when is_integer(Id), Id > 0 ->
+                    {ok, #{after_id => Id, limit => Limit}};
+                Other ->
+                    {error, {invalid_after_id, Other}}
+            end
+    end.
+
+page_limit(Params) ->
+    case maps:get(limit, Params, ?DEFAULT_PAGE_LIMIT) of
+        Limit when is_integer(Limit), Limit >= 1, Limit =< ?MAX_PAGE_LIMIT -> {ok, Limit};
+        Other -> {error, {invalid_limit, Other}}
+    end.
+
+%% 页视图：`next_after_id` = 本页最后一行 id（仅当本页满 limit——还有下一页时）；
+%% 否则 `null`（空页 / 尾页）。`active_assignment` 缺省（store 的 NULL 约定是
+%% `undefined`）在出口处投影为 `null` 原子，使 JSON 面严格呈现 null 而非报错。
+page_view(Rows, Limit) ->
+    NextAfterId =
+        case Rows =/= [] andalso length(Rows) =:= Limit of
+            true -> maps:get(id, lists:last(Rows));
+            false -> null
+        end,
+    #{
+        business_identities => [identity_view(Row) || Row <- Rows],
+        next_after_id => NextAfterId
+    }.
+
+identity_view(#{active_assignment := undefined} = Row) ->
+    Base = maps:remove(active_assignment, Row),
+    Base#{active_assignment => null};
+identity_view(Row) ->
+    Row.
 
 %% ===================================================================
 %% assignment：绑定 / 结束
@@ -635,24 +701,6 @@ has_active_for_user_function(Rows, UserId, FunctionKey) ->
         end,
         Rows
     ).
-
-%% 键集分页（非 offset）：按 id 升序 → 严格 `id > after_id` → `limit` 截断。
-%% 键集语义下分页之间插入/删除行不会让窗口漂移（offset 会）。
-keyset_page(Rows, Params) ->
-    Sorted = lists:sort(
-        fun(A, B) -> maps:get(id, A, 0) =< maps:get(id, B, 0) end,
-        Rows
-    ),
-    After = maps:get(after_id, Params, undefined),
-    Filtered =
-        case is_pos_int(After) of
-            true -> [Row || Row <- Sorted, maps:get(id, Row, 0) > After];
-            false -> Sorted
-        end,
-    case maps:get(limit, Params, undefined) of
-        Limit when is_integer(Limit), Limit >= 0 -> lists:sublist(Filtered, Limit);
-        _NoLimit -> Filtered
-    end.
 
 is_pos_int(Value) ->
     is_integer(Value) andalso Value > 0.

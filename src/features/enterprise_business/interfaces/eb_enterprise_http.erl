@@ -19,7 +19,7 @@
 -module(eb_enterprise_http).
 
 -export([
-    authorize/3,
+    authorize/4,
     org_id/1,
     tsid/1,
     workspace_id/2,
@@ -57,9 +57,14 @@
 %% `auth_facts`，以及 handler 解析出的 `organization_id`。
 %%
 %% 缺装配（无 `auth_facts`）一律 fail-closed（500，不降级为「不要求企业授权」）。
--spec authorize(eb_enterprise_actions:entry(), cowboy_req:req(), map()) ->
+-spec authorize(
+    eb_enterprise_actions:entry(), eb_enterprise_actions:kase(), cowboy_req:req(), map()
+) ->
     {ok, map()} | {error, term()}.
-authorize(Entry, Req, State) ->
+%% F-SEC-02：Case（已匹配 method 的用例）可声明逐用例权限覆盖——路径级
+%% required_permission 只描述最宽方法（如 GET 列表的 read），写动作在 case
+%% 上收紧为 write。覆盖发生在进入 eb_auth_app 之前，判定口径不变。
+authorize(Entry, Case, Req, State) ->
     case {metadata(State, Req), facts_module(State), credential(Entry, State)} of
         {{error, _} = Err, _, _} ->
             Err;
@@ -75,7 +80,13 @@ authorize(Entry, Req, State) ->
                 credential => Credential,
                 facts => {load, fun() -> FactsModule:load_request_facts(FactsRequest) end}
             },
-            eb_auth_app:authorize(RouteMetadata, Request)
+            eb_auth_app:authorize(case_requirement(RouteMetadata, Case), Request)
+    end.
+
+case_requirement(RouteMetadata, Case) ->
+    case maps:get(required_permission, Case, undefined) of
+        undefined -> RouteMetadata;
+        Permission -> RouteMetadata#{required_permission => Permission}
     end.
 
 %% 只读事实源收到的请求形状（租户类 / 平台类两类事实源共同的最小键集）。
@@ -253,13 +264,50 @@ build_params(Entry, Case, Req, Body, Ctx) ->
         {error, _} = Err ->
             Err;
         ok ->
-            case path_params(Case, Req) of
+            %% F6（RULING-2026-09-15 §七）：密钥材料键统一守卫（见下）。
+            case check_forbidden_crypto_keys(Req, Body) of
                 {error, _} = Err ->
                     Err;
-                {ok, PathParams} ->
-                    Base = maps:merge(server_derived(Ctx), PathParams),
-                    collect(maps:get(params, Case), Req, Body, Base)
+                ok ->
+                    case path_params(Case, Req) of
+                        {error, _} = Err ->
+                            Err;
+                        {ok, PathParams} ->
+                            Base = maps:merge(server_derived(Ctx), PathParams),
+                            collect(maps:get(params, Case), Req, Body, Base)
+                    end
             end
+    end.
+
+%% F6（RULING-2026-09-15 §七）：主密钥材料键在任何动作的 HTTP/JSON 面（正文与
+%% 查询串）都不被接受——动作表不声明它们，这里再统一守卫：客户端显式提交即
+%% 结构化 422（`unexpected_argument.key_ref`）。密钥只由服务端经
+%% `imboy.eb_enterprise_keyring` 装配（eb_env_keyring → application 层）。
+forbidden_crypto_keys() ->
+    [
+        key_ref,
+        key,
+        key_version,
+        keyring,
+        key_material,
+        master_key,
+        %% F-SEC-03（FND-5 贯彻到 contact 域）：profile 密文只由服务端封装。
+        profile_cipher,
+        profile_key_version
+    ].
+
+check_forbidden_crypto_keys(Req, Body) ->
+    Qs = cowboy_req:parse_qs(Req),
+    case
+        [
+            K
+         || K <- forbidden_crypto_keys(),
+            Bin <- [key_bin(K)],
+            is_map_key(Bin, Body) orelse proplists:is_defined(Bin, Qs)
+        ]
+    of
+        [] -> ok;
+        [Key | _] -> {error, {unexpected_argument, Key}}
     end.
 
 %% 租户面：客户端不得提供 OrgId / Workspace 归属，也不得自报操作人。
@@ -436,6 +484,12 @@ classify(invalid_workspace_id) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({missing_param, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
+%% C5 分页参数门（显式登记，无兜底）：键集游标/页大小非法是「形状合法但取值
+%% 不成立」——与 CS 面 `{invalid_after_id,_}` / `{invalid_limit,_}` → 422 同口径。
+classify({invalid_after_id, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
+classify({invalid_limit, _}) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 classify(empty_patch) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({invalid_argument, _}) ->
@@ -465,6 +519,10 @@ classify({hold_not_found, _}) ->
 classify({message_not_in_scope, _}) ->
     ?ERR_NOT_FOUND;
 classify({case_not_found, _}) ->
+    ?ERR_NOT_FOUND;
+%% F-LAY-02：workspace 不属于本 Org（infrastructure 有意返回的 9 处原子）——
+%% 作用域错配是 404 语义，此前落 500 兜底。
+classify({workspace_not_in_org, _}) ->
     ?ERR_NOT_FOUND;
 %% --- 409：并发/状态竞争（CAS、重复占用、幂等冲突） ---
 classify(conflict) ->
@@ -497,6 +555,14 @@ classify({multiple_active_identity, _}) ->
     ?ERR_CONFLICT;
 classify({multiple_active_user_function, _}) ->
     ?ERR_CONFLICT;
+%% F-LAY-02：上传引用过期是客户端可重试的冲突语义（此前 500）。
+classify(expired_upload_ref) ->
+    ?ERR_CONFLICT;
+%% F-SEC-01：发送者归属权威校验失败——认证事实与请求声明不一致。
+classify({sender_identity_unauthorized, _, _}) ->
+    ?ERR_FORBIDDEN;
+classify({sender_contact_mismatch, _, _}) ->
+    ?ERR_FORBIDDEN;
 %% --- 500：**服务端**自身不可用 / 配置缺失 / 完整性失败（绝不伪装成 4xx，
 %%      否则调用方会以为「只是参数问题」而重试或改参数）---
 classify(Reason) ->

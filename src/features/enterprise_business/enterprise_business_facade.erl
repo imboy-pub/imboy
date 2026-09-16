@@ -52,6 +52,9 @@
     execute_offboarding/2,
     verify_offboarding/2,
     finalize_offboarding/2,
+    %% offboarding 读（closure §8：查询交接 case —— 列表 / 详情；零写零审计）
+    list_offboarding/2,
+    offboarding_detail/2,
     %% retention / hold
     open_retention_policy/2,
     create_hold/2,
@@ -382,6 +385,27 @@ finalize_offboarding(OrgId, #{case_id := CaseId} = Params) when
 finalize_offboarding(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, finalize_offboarding}};
 finalize_offboarding(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 离职交接 case 列表（closure §8，`GET /offboarding/cases`）。**零写零审计**：
+%% 纯读取用例；分页（`after_id` / `limit`）与 `status` 过滤的语义由 application 层
+%% 实现，facade 不解释分页。平台面与租户面共用本函数（租户条件在 path org_id）。
+-spec list_offboarding(integer(), map()) -> term().
+list_offboarding(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    eb_offboarding_app:list_cases(OrgId, Params);
+list_offboarding(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 离职交接 case 详情（closure §8，`GET /offboarding/cases/:id`）。
+%% 含 items 子表（`items_status` 可选过滤失败项）；同样零写零审计。
+-spec offboarding_detail(integer(), map()) -> term().
+offboarding_detail(OrgId, #{case_id := CaseId} = Params) when
+    is_integer(OrgId), is_integer(CaseId), is_map(Params)
+->
+    eb_offboarding_app:case_detail(OrgId, Params);
+offboarding_detail(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, offboarding_detail}};
+offboarding_detail(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% ===================================================================

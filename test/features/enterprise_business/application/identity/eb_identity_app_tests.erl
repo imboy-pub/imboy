@@ -684,7 +684,8 @@ a05_list_identities_returns_only_own_org_rows() ->
             >>,
             [Foreign, OtherOrg, <<"eb05-foreign-", (integer_to_binary(Foreign))/binary>>]
         ),
-        {ok, Rows} = eb_identity_app:list_identities(Org, #{workspace_id => Ws}),
+        {ok, #{business_identities := Rows}} =
+            eb_identity_app:list_identities(Org, #{workspace_id => Ws}),
         Ids = [maps:get(id, Row) || Row <- Rows],
         ?assertEqual(lists:sort([Sales, Service]), lists:sort(Ids)),
         %% 负例：他 Org 的任一行出现即红
@@ -708,25 +709,33 @@ a05_list_identities_cross_org_is_empty_not_error() ->
         Ws = ws(Scope),
         OtherOrg = maps:get(other_org_id, Scope),
         OtherWs = maps:get(other_workspace_id, Scope),
-        %% 他 Org（配自己的 Workspace）→ 空列表，且是 ok 而非内部错误
+        %% 他 Org（配自己的 Workspace）→ 空页，且是 ok 而非内部错误
         ?assertEqual(
-            {ok, []},
+            {ok, #{business_identities => [], next_after_id => null}},
             eb_identity_app:list_identities(OtherOrg, #{workspace_id => OtherWs})
         ),
         %% 本 Org 配他 Org 的 Workspace：租户键不成立 ⇒ 空（不是报错）
-        ?assertEqual({ok, []}, eb_identity_app:list_identities(Org, #{workspace_id => OtherWs})),
+        ?assertEqual(
+            {ok, #{business_identities => [], next_after_id => null}},
+            eb_identity_app:list_identities(Org, #{workspace_id => OtherWs})
+        ),
         %% 他 Org 配本 Org 的 Workspace ⇒ 空
-        ?assertEqual({ok, []}, eb_identity_app:list_identities(OtherOrg, #{workspace_id => Ws})),
+        ?assertEqual(
+            {ok, #{business_identities => [], next_after_id => null}},
+            eb_identity_app:list_identities(OtherOrg, #{workspace_id => Ws})
+        ),
         %% 明确不得再出现旧的能力缺口错误（E5-1 的判据：非 capability_missing）
-        {ok, Rows} = eb_identity_app:list_identities(Org, #{workspace_id => Ws}),
+        {ok, #{business_identities := Rows}} =
+            eb_identity_app:list_identities(Org, #{workspace_id => Ws}),
         ?assert(length(Rows) >= 2)
     after
         ?FIX:cleanup(Scope)
     end.
 
-%% A07 的 identity 侧孪生：**键集**分页（非 offset）。
-%% 判据：分页之间插入一条 **id 小于游标** 的行 —— 键集结果不受影响；
-%% 若实现成 `OFFSET 2`，该行会把窗口整体后移，`Page2` 首元素将 ≤ 游标 ⇒ 必红。
+%% A07 的 identity 侧孪生：**键集**分页（非 offset）且已下推 SQL（C5）。
+%% 判据：分页之间插入一条 **id 大于全页最大 id** 的行 —— 倒序键集（id < 游标）
+%% 结果不受影响；若实现成 `OFFSET 2`，该行会把窗口整体后移，`Page2` 首元素将
+%% ≥ 游标 ⇒ 必红。
 a05_list_identities_keyset_is_not_offset() ->
     Scope = ?FIX:new_scope(),
     try
@@ -742,38 +751,44 @@ a05_list_identities_keyset_is_not_offset() ->
             end,
             lists:seq(1, 3)
         ),
-        {ok, All} = eb_identity_app:list_identities(Org, #{workspace_id => Ws}),
+        {ok, #{business_identities := All}} =
+            eb_identity_app:list_identities(Org, #{workspace_id => Ws}),
         AllIds = [maps:get(id, Row) || Row <- All],
         ?assertEqual(5, length(AllIds)),
-        %% 契约：按键升序返回（键集分页的前提）
-        ?assertEqual(lists:sort(AllIds), AllIds),
+        %% C5 契约：按 id **倒序**返回（next_after_id = 本页最后一行 = 本页最小 id）
+        ?assertEqual(lists:reverse(lists:sort(AllIds)), AllIds),
         [First, Second | _] = AllIds,
-        {ok, Page1} = eb_identity_app:list_identities(Org, #{workspace_id => Ws, limit => 2}),
+        {ok, #{business_identities := Page1, next_after_id := Next1}} =
+            eb_identity_app:list_identities(Org, #{workspace_id => Ws, limit => 2}),
         ?assertEqual([First, Second], [maps:get(id, Row) || Row <- Page1]),
-        %% 分页之间插入一条 id < 游标 的行
-        SmallId = First - 1,
+        %% 满页 ⇒ 游标 = 本页最后一行 id
+        ?assertEqual(Second, Next1),
+        %% 分页之间插入一条 id > 全页最大 的行（倒序键集下不漂移）
+        BigId = First + 1,
         ok = ?FIX:exec(
             <<
                 "INSERT INTO organization_business_identity"
                 " (id,organization_id,function_key,display_name,status,version)"
                 " VALUES ($1,$2,'sales',$3,'active',1)"
             >>,
-            [SmallId, Org, <<"eb05-small-", (integer_to_binary(SmallId))/binary>>]
+            [BigId, Org, <<"eb05-big-", (integer_to_binary(BigId))/binary>>]
         ),
-        {ok, Page2} = eb_identity_app:list_identities(Org, #{
+        {ok, #{business_identities := Page2}} = eb_identity_app:list_identities(Org, #{
             workspace_id => Ws, after_id => Second
         }),
         Page2Ids = [maps:get(id, Row) || Row <- Page2],
-        Expected = [Id || Id <- AllIds, Id > Second],
+        Expected = [Id || Id <- AllIds, Id < Second],
         ?assertEqual(Expected, Page2Ids),
-        %% 键集语义：结果严格大于游标；offset 实现会在这里带回 ≤ 游标的行
-        ?assert(lists:all(fun(Id) -> Id > Second end, Page2Ids)),
-        ?assertNot(lists:member(SmallId, Page2Ids)),
-        %% 游标之后无行 ⇒ 空（不得因 offset 语义返回尾部）
-        {ok, Tail} = eb_identity_app:list_identities(Org, #{
-            workspace_id => Ws, after_id => lists:last(AllIds)
-        }),
-        ?assertEqual([], [maps:get(id, Row) || Row <- Tail])
+        %% 键集语义：结果严格小于游标；offset 实现会在这里带回 ≥ 游标的行
+        ?assert(lists:all(fun(Id) -> Id < Second end, Page2Ids)),
+        ?assertNot(lists:member(BigId, Page2Ids)),
+        %% 游标之后无行 ⇒ 空页（不得因 offset 语义返回头部）
+        {ok, #{business_identities := Tail, next_after_id := TailNext}} =
+            eb_identity_app:list_identities(Org, #{
+                workspace_id => Ws, after_id => lists:last(AllIds)
+            }),
+        ?assertEqual([], [maps:get(id, Row) || Row <- Tail]),
+        ?assertEqual(null, TailNext)
     after
         ?FIX:cleanup(Scope)
     end.

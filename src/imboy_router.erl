@@ -1586,6 +1586,20 @@ enterprise_tenant_routes() ->
             action => offboarding_finalize,
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        %% offboarding 读取面（closure §8：查询交接 case）。固定段 `cases` 与既有
+        %% `:id` 动作路径互斥，cowboy 顺序匹配无遮蔽：`/offboarding/cases/123` 只命中
+        %% detail（execute/verify/finalize 是字面段）；`/offboarding/123/execute`
+        %% 不命中 detail（字面段 cases ≠ 123）。
+        {"/api/v1/enterprise/organizations/:org_id/offboarding/cases", eb_tenant_handler, #{
+            action => offboarding_list,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        {"/api/v1/enterprise/organizations/:org_id/offboarding/cases/:id", eb_tenant_handler, #{
+            action => offboarding_detail,
+            auth_context => enterprise_owner_admin,
+            required_governance => [<<"owner">>, <<"admin">>]
         }}
     ].
 
@@ -1648,6 +1662,20 @@ enterprise_platform_routes() ->
                 action => p_offboarding_finalize,
                 auth_context => platform_admin,
                 required_permission => <<"enterprise_business:write">>
+            }},
+        %% offboarding 读取面（closure §8）：与租户面同款 `cases` 固定段设计；
+        %% 平台读是只读端点（enterprise_business:read），跨 Org 必须显式带 :org_id。
+        {"/api/adm/enterprise-business/organizations/:org_id/offboarding/cases",
+            eb_platform_handler, #{
+                action => p_offboarding_list,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:read">>
+            }},
+        {"/api/adm/enterprise-business/organizations/:org_id/offboarding/cases/:id",
+            eb_platform_handler, #{
+                action => p_offboarding_detail,
+                auth_context => platform_admin,
+                required_permission => <<"enterprise_business:read">>
             }}
     ].
 
@@ -1725,6 +1753,7 @@ customer_service_tenant_routes() ->
             required_permission => <<"conversation.read">>
         }},
         %% —— 租户治理面（owner/admin）：seat / shop key / visit token 管理 ——
+        %% C4（contracts-w2）：seats 列表 GET 支持 after_id/limit 键集分页。
         {"/api/v1/cs/organizations/:org_id/seats", cs_tenant_handler, #{
             action => seats,
             auth_context => enterprise_owner_admin,
@@ -1740,8 +1769,10 @@ customer_service_tenant_routes() ->
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
         }},
+        %% C2（contracts-w2）：shop key 治理面（列表 GET + 创建 POST 同路径动作，
+        %% 动作键冻结为 shop_key_list；cowboy 只按 path 匹配——seats 同款先例）。
         {"/api/v1/cs/organizations/:org_id/shop-keys", cs_tenant_handler, #{
-            action => shop_key_create,
+            action => shop_key_list,
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
         }},
@@ -1750,8 +1781,9 @@ customer_service_tenant_routes() ->
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
         }},
+        %% C3（contracts-w2）：visit token 治理面（列表 GET + 签发 POST 同路径动作）。
         {"/api/v1/cs/organizations/:org_id/visit-tokens", cs_tenant_handler, #{
-            action => visit_token_issue,
+            action => visit_token_list,
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
         }},
@@ -1767,6 +1799,13 @@ customer_service_platform_routes() ->
     [
         {"/api/adm/customer-service/organizations/:org_id/seats", cs_platform_handler, #{
             action => p_seats,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
+        %% C1（contracts-w2）：平台 session 列表（只读；workspace_id 为 face 级
+        %% 必填参数——不存在「不带 workspace 的全局列举」）。
+        {"/api/adm/customer-service/organizations/:org_id/sessions", cs_platform_handler, #{
+            action => p_session_list,
             auth_context => platform_admin,
             required_permission => <<"customer_service:read">>
         }},

@@ -83,7 +83,7 @@
 %%   contact_id        入站必填；出站必须缺省
 %%   identity_id       出站必填；入站必须缺省
 %%   actor_user_id     出站必填；入站必须缺省
-%%   key_ref           必填（企业托管主密钥引用）
+%%   key_ref           可选（显式注入优先；缺省经 eb_env_keyring 服务端装配，F6）
 %%   accepted_at       可选（Unix 秒；缺省经注入时钟端口）
 %%   audit_action      可选（缺省 `message.accept`）
 %%   notify            可选 fun/1（realtime 发布器；缺省显式报告未装配）
@@ -187,13 +187,18 @@ append_tx(OrgId, WorkspaceId, SenderType, ClientMsgId, AcceptedAt, Params) ->
     end.
 
 %% 事务参数**显式白名单**构造：调用方给的 `enforce_consent` 等旁路键一律不转发。
+%%
+%% F6（RULING-2026-09-15 §七）主密钥装配点：显式注入（map 形态的测试/内部合同）
+%% 原样优先；缺省经 `eb_env_keyring` 从服务端 env 解析 active key_ref。env 缺失
+%% 时 resolve 返回 undefined，canonical tx 的 seal 照旧 `{error, missing_key}`
+%% fail-closed（500 面），不降级、不造默认密钥。
 tx_params(Params, SenderType, ClientMsgId, AcceptedAt) ->
     Base = #{
         conversation_id => maps:get(conversation_id, Params, undefined),
         client_msg_id => ClientMsgId,
         body => maps:get(body, Params, undefined),
         sender_type => SenderType,
-        key_ref => maps:get(key_ref, Params, undefined),
+        key_ref => eb_env_keyring:resolve_key_ref(maps:get(key_ref, Params, undefined)),
         accepted_at => AcceptedAt,
         enforce_consent => true
     },

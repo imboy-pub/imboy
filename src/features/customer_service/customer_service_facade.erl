@@ -30,13 +30,16 @@
     rate/2,
     append_session_message/2,
     list_contact_sessions/2,
+    list_sessions/2,
     %% shop key / visit token
     create_shop_key/2,
     revoke_shop_key/2,
     verify_shop_key/2,
+    list_shop_keys/2,
     issue_visit_token/2,
     revoke_visit_token/2,
-    verify_visit_token/2
+    verify_visit_token/2,
+    list_visit_tokens/2
 ]).
 
 %% ===================================================================
@@ -221,6 +224,19 @@ list_contact_sessions(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
 list_contact_sessions(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
+%% @doc C1（contracts-w2）：平台 session 列表（只读；租户/平台共用同一用例，
+%% CS-02-A02）。Params：workspace_id 必填（handler 强制的 face 级参数）；
+%% status / after_id / limit 可选（application 白名单与范围校验）。
+-spec list_sessions(integer(), map()) -> term().
+list_sessions(OrgId, #{workspace_id := WorkspaceId} = Params) when
+    is_integer(OrgId), is_integer(WorkspaceId), is_map(Params)
+->
+    cs_session_app:list_sessions(OrgId, Params);
+list_sessions(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, list_sessions}};
+list_sessions(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
 %% ===================================================================
 %% shop key / visit token
 %% ===================================================================
@@ -253,6 +269,14 @@ verify_shop_key(OrgId, #{secret := Secret} = Params) when
 verify_shop_key(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, verify_shop_key}};
 verify_shop_key(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc C2（contracts-w2）：shop key 治理列表（投影白名单由 application 裁剪，
+%% digest 绝不出 facade）。
+-spec list_shop_keys(integer(), map()) -> term().
+list_shop_keys(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_access_app:list_shop_keys(OrgId, Params);
+list_shop_keys(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 -spec issue_visit_token(integer(), map()) -> term().
@@ -289,4 +313,12 @@ verify_visit_token(OrgId, #{secret := Secret} = Params) when
 verify_visit_token(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, verify_visit_token}};
 verify_visit_token(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc C3（contracts-w2）：visit token 治理列表（投影白名单由 application
+%% 裁剪，token_digest 绝不出 facade）。
+-spec list_visit_tokens(integer(), map()) -> term().
+list_visit_tokens(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_access_app:list_visit_tokens(OrgId, Params);
+list_visit_tokens(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.

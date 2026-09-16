@@ -343,10 +343,11 @@ assert_layer_routes() {
   platform="${probe##*platform=}"
   platform="${platform%% *}"
   if [ "$expect" = selected ]; then
-    if [ "$tenant" = 15 ] && [ "$platform" = 6 ]; then
-      ok "路由表：get_routes/0 客服路由租户 15 + 平台 6"
+    # closure run：平台面新增 GET /api/adm/customer-service/organizations/:org_id/sessions（p_session_list）
+    if [ "$tenant" = 15 ] && [ "$platform" = 7 ]; then
+      ok "路由表：get_routes/0 客服路由租户 15 + 平台 7"
     else
-      fail "路由表：selected 期望租户 15/平台 6，实得 $probe"
+      fail "路由表：selected 期望租户 15/平台 7，实得 $probe"
     fi
   else
     if [ "$tenant" = 0 ] && [ "$platform" = 0 ]; then

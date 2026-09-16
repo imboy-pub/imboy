@@ -47,6 +47,13 @@
 %% @doc 派单快照：本 Org 的 enabled 坐席及各自 active 会话计数（least-active 输入）。
 -callback list_dispatchable_seats(OrgId :: integer()) ->
     {ok, [seat()]} | {error, term()}.
+%% @doc C4（contracts-w2）seat 列表分页：键集下推（`business_identity_id > after`
+%% + `ORDER BY business_identity_id ASC LIMIT n`，eb_pg_message_ext 模板口径），
+%% 同语句带 Org 且仅 enabled 坐席。
+-callback list_dispatchable_seats_page(
+    OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+) ->
+    {ok, [seat()]} | {error, term()}.
 %% @doc 坐席开关（suspend/resume）；`enabled=false` 后新 claim 立即被拒。
 -callback set_seat_enabled(
     OrgId :: integer(), IdentityId :: integer(), Enabled :: boolean(), At :: integer()
@@ -111,6 +118,18 @@
     OrgId :: integer(), WorkspaceId :: integer(), ContactId :: integer()
 ) ->
     {ok, [session()]} | {error, term()}.
+%% @doc C1（contracts-w2）平台 session 列表：键集下推（`id > after` +
+%% `ORDER BY id DESC LIMIT n`），OrgId+WorkspaceId 同语句；`Status` 为
+%% binary 白名单值（<<"queued">>|<<"active">>|<<"closed">>）或 undefined
+%% （不过滤）。行原样返回（投影由 application 白名单裁剪）。
+-callback list_sessions_page(
+    OrgId :: integer(),
+    WorkspaceId :: integer(),
+    Status :: binary() | undefined,
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer()
+) ->
+    {ok, [session()]} | {error, term()}.
 
 %% -- shop key / visit token（digest 存储；明文不落库）------------------------
 
@@ -122,6 +141,13 @@
     {ok, shop_key()} | {error, not_found | term()}.
 -callback revoke_shop_key(OrgId :: integer(), KeyId :: integer(), At :: integer()) ->
     ok | {error, not_found | term()}.
+%% @doc C2（contracts-w2）shop key 列表：键集下推（`id > after` +
+%% `ORDER BY id DESC LIMIT n`），同语句带 Org。行含 digest——投影由
+%% application 白名单裁剪（绝不外泄）。
+-callback list_shop_keys_page(
+    OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+) ->
+    {ok, [shop_key()]} | {error, term()}.
 
 -callback insert_visit_token(OrgId :: integer(), Token :: visit_token()) ->
     {ok, visit_token()} | {error, conflict | term()}.
@@ -131,6 +157,13 @@
     {ok, visit_token()} | {error, not_found | term()}.
 -callback revoke_visit_token(OrgId :: integer(), TokenId :: integer(), At :: integer()) ->
     ok | {error, not_found | term()}.
+%% @doc C3（contracts-w2）visit token 列表：键集下推（`id > after` +
+%% `ORDER BY id DESC LIMIT n`），同语句带 Org。行含 digest——投影由
+%% application 白名单裁剪（绝不外泄）。
+-callback list_visit_tokens_page(
+    OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+) ->
+    {ok, [visit_token()]} | {error, term()}.
 
 %% -- event（客服域 append-only 状态审计）------------------------------------
 

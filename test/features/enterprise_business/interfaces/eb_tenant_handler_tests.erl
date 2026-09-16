@@ -48,6 +48,7 @@ cleanup(Other) ->
 cases({ok, _Conn}) ->
     [
         {timeout, ?TIMEOUT_S, fun a02_identity_list_returns_tsid_strings_real/0},
+        {timeout, ?TIMEOUT_S, fun c5_identity_list_pagination_real/0},
         {timeout, ?TIMEOUT_S, fun a03_401_without_credential_real/0},
         {timeout, ?TIMEOUT_S, fun a03_403_cross_org_real/0},
         {timeout, ?TIMEOUT_S, fun a03_403_suspended_member_real/0},
@@ -67,6 +68,8 @@ cases({ok, _Conn}) ->
         {timeout, ?TIMEOUT_S, fun a05_asset_content_end_to_end_through_http/0},
         {timeout, ?TIMEOUT_S, fun a05_asset_content_negative_cases_through_http/0},
         {timeout, ?TIMEOUT_S, fun a05_asset_download_writes_no_personal_attachment/0},
+        %% F6：服务端经 `imboy.eb_enterprise_keyring` 装配主密钥（两面）。
+        {timeout, ?TIMEOUT_S, fun a05_presign_resolves_server_side_keyring/0},
         {timeout, ?TIMEOUT_S, fun a05_presign_fails_closed_without_server_key/0}
     ];
 cases(Other) ->
@@ -98,9 +101,12 @@ a02_identity_list_returns_tsid_strings_real() ->
             ),
             ?assertEqual(200, maps:get(status, Resp)),
             ?assertEqual(0, ?S:code(Resp)),
+            %% C5 页形状：payload = {business_identities, next_after_id}
             Payload = ?S:payload(Resp),
-            ?assert(is_list(Payload)),
-            ?assert(length(Payload) >= 1),
+            ?assert(is_map(Payload)),
+            Rows = maps:get(<<"business_identities">>, Payload),
+            ?assert(is_list(Rows)),
+            ?assert(length(Rows) >= 1),
 
             %% 每个 TSID 字段都是 **string**（不是 number）。解码后的 JSON 对象键是
             %% binary（jsx），故这里按 binary 键取。
@@ -108,7 +114,7 @@ a02_identity_list_returns_tsid_strings_real() ->
                 [],
                 [
                     {K, maps:get(K, Row)}
-                 || Row <- Payload,
+                 || Row <- Rows,
                     K <- [<<"id">>, <<"organization_id">>, <<"workspace_id">>],
                     maps:is_key(K, Row),
                     not is_binary(maps:get(K, Row))
@@ -117,16 +123,34 @@ a02_identity_list_returns_tsid_strings_real() ->
             %% 至少 id 一个字段真的在每一行上存在（避免上面的空集恒真）
             ?assertEqual(
                 [],
-                [Row || Row <- Payload, not maps:is_key(<<"id">>, Row)]
+                [Row || Row <- Rows, not maps:is_key(<<"id">>, Row)]
             ),
             ?assertEqual(
                 [],
-                [Row || Row <- Payload, not is_binary(maps:get(<<"id">>, Row, undefined))]
+                [Row || Row <- Rows, not is_binary(maps:get(<<"id">>, Row, undefined))]
             ),
+            %% C5：active_assignment 投影（对象或 null），TSID 键同样是 string
+            ?assertEqual(
+                [],
+                [
+                    Row
+                 || Row <- Rows,
+                    begin
+                        AA = maps:get(<<"active_assignment">>, Row, missing),
+                        AA =/= null andalso
+                            not (is_map(AA) andalso is_binary(maps:get(<<"assignment_id">>, AA)) andalso
+                                is_binary(maps:get(<<"user_id">>, AA)) andalso
+                                maps:get(<<"status">>, AA) =:= <<"active">>)
+                    end
+                ]
+            ),
+            %% C5：next_after_id 为 null 或十进制 string
+            Next = maps:get(<<"next_after_id">>, Payload, missing),
+            ?assert(Next =:= null orelse is_binary(Next)),
             %% 原始 JSON 文本层面也不得出现数字形态的 TSID
             ?assertEqual(
                 nomatch,
-                re:run(?S:raw(Resp), <<"\"(id|organization_id)\":[0-9]">>, [
+                re:run(?S:raw(Resp), <<"\"(id|organization_id|next_after_id)\":[0-9]">>, [
                     {capture, none}
                 ])
             ),
@@ -138,6 +162,77 @@ a02_identity_list_returns_tsid_strings_real() ->
                     {capture, none}
                 ])
             )
+        end)
+    after
+        ?FIX:cleanup(Scope)
+    end.
+
+%% C5：分页参数门与投影形状（真 HTTP）。
+%%   * limit 越界（0 / 201）⇒ 422 invalid_limit（显式登记，无兜底）；
+%%   * 满页响应携带 next_after_id（string），用它翻页取到余下行。
+c5_identity_list_pagination_real() ->
+    Scope = ?FIX:new_scope(),
+    try
+        Org = maps:get(org_id, Scope),
+        Ws = maps:get(workspace_id, Scope),
+        Actor = maps:get(actor_user_id, Scope),
+        ok = sql(
+            <<"UPDATE organization_member SET role='owner' WHERE organization_id=$1 AND user_id=$2">>,
+            [Org, Actor]
+        ),
+        ?S:with_listener(tenant, business_identities, session(real, Actor), fun(Port) ->
+            Path = qs(?S:path(tenant, business_identities, #{org_id => Org}), [
+                {<<"workspace_id">>, Ws}
+            ]),
+            %% limit 越界 ⇒ 422（不静默钳制、不 500）
+            lists:foreach(
+                fun(BadLimit) ->
+                    Resp = ?S:request(
+                        Port,
+                        <<"GET">>,
+                        qs(?S:path(tenant, business_identities, #{org_id => Org}), [
+                            {<<"workspace_id">>, Ws}, {<<"limit">>, BadLimit}
+                        ])
+                    ),
+                    ?assertEqual(422, maps:get(status, Resp)),
+                    ?assertEqual(<<"invalid_limit">>, ?S:msg(Resp))
+                end,
+                [<<"0">>, <<"201">>]
+            ),
+            %% 全量（fixture 2 行 < 默认 50）⇒ 尾页 next_after_id = null
+            All = ?S:request(Port, <<"GET">>, Path),
+            ?assertEqual(200, maps:get(status, All)),
+            AllRows = maps:get(<<"business_identities">>, ?S:payload(All)),
+            ?assertEqual(null, maps:get(<<"next_after_id">>, ?S:payload(All))),
+            ?assertEqual(2, length(AllRows)),
+            AllIds = [maps:get(<<"id">>, R) || R <- AllRows],
+            %% limit=1 翻页：页1 满页 ⇒ next_after_id 为 string 游标
+            Page1 = ?S:request(
+                Port,
+                <<"GET">>,
+                qs(?S:path(tenant, business_identities, #{org_id => Org}), [
+                    {<<"workspace_id">>, Ws}, {<<"limit">>, <<"1">>}
+                ])
+            ),
+            ?assertEqual(200, maps:get(status, Page1)),
+            Payload1 = ?S:payload(Page1),
+            Cursor = maps:get(<<"next_after_id">>, Payload1),
+            ?assert(is_binary(Cursor)),
+            [First | _] = AllIds,
+            ?assertEqual(First, Cursor),
+            %% 游标续读取到余下行（倒序键集）
+            Page2 = ?S:request(
+                Port,
+                <<"GET">>,
+                qs(?S:path(tenant, business_identities, #{org_id => Org}), [
+                    {<<"workspace_id">>, Ws},
+                    {<<"limit">>, <<"1">>},
+                    {<<"after_id">>, Cursor}
+                ])
+            ),
+            ?assertEqual(200, maps:get(status, Page2)),
+            Page2Rows = maps:get(<<"business_identities">>, ?S:payload(Page2)),
+            ?assertEqual([lists:last(AllIds)], [maps:get(<<"id">>, R) || R <- Page2Rows])
         end)
     after
         ?FIX:cleanup(Scope)
@@ -769,18 +864,70 @@ a05_asset_download_writes_no_personal_attachment() ->
         ?FIX:cleanup(Scope)
     end.
 
-%% @doc presign 经 HTTP 的**真实**行为（如实登记，不粉饰）：企业写路径需要
-%% `key_ref`（企业托管主密钥），而本树**没有任何生产侧提供者**（密钥只由调用方注入，
-%% 见 findings EB-09-F6）。HTTP 层正确地**不**接受客户端提交的密钥，于是 presign
-%% 在用例层 fail-closed。本用例断言的是：**500（服务端配置缺失，不得伪装成 4xx）
-% **零副作用**（不落 enterprise_asset 行、不产生凭证）。
+%% @doc F6（RULING-2026-09-15 §七）presign 的**两面**合同。
 %%
-%% 权限口径：本用例用测试装配补 `asset.write`（F1 的权限授予缺口），使请求能抵达
-%% 用例层；否则会在授权门 403 而观测不到密钥问题。密钥缺口本身与权限无关。
+%% 生产装配：主密钥只来自服务端 application 配置 `imboy.eb_enterprise_keyring`
+%% （`eb_env_keyring` 严格解码）；HTTP 面不接收、动作表也不声明任何密钥参数。
+%%   * 正面：env 注入有效 keyring ⇒ presign **服务端解析成功**（200 + 不透明
+%%     upload_ref；响应仍无 URL/endpoint/object key）；
+%%   * 负面：env 无 keyring（部署缺陷/未配置）⇒ **500 missing_key** fail-closed，
+%%     绝不降级为明文、绝不伪装成 4xx，零副作用。
+%% 权限口径：两面都用测试装配补 `asset.write`（F1 的权限授予缺口），使请求能抵达
+%% 用例层；否则会在授权门 403 而观测不到密钥装配语义。密钥面与权限无关。
+a05_presign_resolves_server_side_keyring() ->
+    Scope = eb_asset_it_lib:new_scope(),
+    ok = eb09_facts_probe:grant([<<"asset.write">>]),
+    try
+        #{key := Key, key_version := V} = eb_asset_it_lib:key_ref(Scope),
+        ok = application:set_env(imboy, eb_enterprise_keyring, #{
+            active_version => V,
+            keys => #{V => binary:encode_hex(Key, lowercase)}
+        }),
+        Actor = maps:get(actor_user_id, Scope),
+        {Org, Ws} = eb_asset_it_lib:tenant(Scope),
+        Conv = maps:get(conversation_id, Scope),
+        Payload = <<"EB09-A05-PRESIGN-OK">>,
+        ?S:with_listener(tenant, presign, session(probe, Actor), fun(Port) ->
+            Resp = ?S:request(
+                Port,
+                <<"POST">>,
+                qs(?S:path(tenant, presign, #{org_id => Org}), [{<<"workspace_id">>, Ws}]),
+                #{
+                    conversation_id => integer_to_binary(Conv),
+                    mime => <<"text/plain">>,
+                    size_bytes => byte_size(Payload),
+                    object_hash => eb_asset_content:sha256_hex(Payload)
+                }
+            ),
+            %% 服务端装配成功 ⇒ 200 + 不透明上传凭证
+            ?assertEqual(200, maps:get(status, Resp)),
+            ?assertEqual(0, ?S:code(Resp)),
+            View = ?S:payload(Resp),
+            ?assert(is_binary(maps:get(<<"upload_ref">>, View, undefined))),
+            %% 响应面纪律不变：无 URL / endpoint / bucket / 签名串等真实存储能力
+            %% （storage_leak_scan 全量 needle 会误撞 A05 契约声明文本
+            %% `opaque_token_no_url_no_object_key`，故这里扫真实泄露标志）。
+            Raw = ?S:raw(Resp),
+            lists:foreach(
+                fun(Needle) ->
+                    ?assertEqual({Needle, nomatch}, {Needle, binary:match(Raw, Needle)})
+                end,
+                [<<"://">>, <<"X-Amz-">>, <<"endpoint">>, <<"bucket">>]
+            )
+        end)
+    after
+        %% env 是 VM 级：两面互不污染，也不外泄到其他用例/套件。
+        _ = application:unset_env(imboy, eb_enterprise_keyring),
+        ok = eb09_facts_probe:clear(),
+        ?FIX:cleanup(Scope)
+    end.
+
 a05_presign_fails_closed_without_server_key() ->
     Scope = eb_asset_it_lib:new_scope(),
     ok = eb09_facts_probe:grant([<<"asset.write">>]),
     try
+        %% 显式保证「无 keyring」前提（前序用例/套件的 env 已在 after 清理）。
+        _ = application:unset_env(imboy, eb_enterprise_keyring),
         Actor = maps:get(actor_user_id, Scope),
         {Org, Ws} = eb_asset_it_lib:tenant(Scope),
         Conv = maps:get(conversation_id, Scope),

@@ -291,8 +291,25 @@ delete_spec() ->
     ].
 
 delete_any_of(Conn, Table, Cols, Uid) ->
-    %% 归属列有 bigint 也有 varchar：统一按列::text = 文本比较，
-    %% 一次性的账号删除场景无索引性能压力
+    case table_present(Conn, Table) of
+        true ->
+            do_delete_any_of(Conn, Table, Cols, Uid);
+        false ->
+            %% 处置清单条目对应的表在当前库不存在（42P01 undefined_table 的
+            %% 预防式等价判定，且避免 DELETE 失败后事务 aborted 的连锁）：
+            %% 按「零行已处置」成功——表不存在 ⇒ 该用户在此清单项下不可能
+            %% 有行，删除语义已满足。但必须留 WARN 审计事件（**不静默**）：
+            %% 清单与实际 schema 的漂移（如 doc_draft_sections 只有 D-02
+            %% delete 决策、无任何建表迁移）必须可追溯。
+            _ = ?WARN_LOG(
+                [user_deletion_absent_table, Uid, Table, zero_rows_disposed]
+            ),
+            ok
+    end.
+
+%% 归属列有 bigint 也有 varchar：统一按列::text = 文本比较，
+%% 一次性的账号删除场景无索引性能压力
+do_delete_any_of(Conn, Table, Cols, Uid) ->
     Conds = [<<"(", Col/binary, "::text = $1)">> || Col <- Cols],
     Where = iolist_to_binary(lists:join(<<" OR ">>, Conds)),
     Sql = <<"DELETE FROM public.", Table/binary, " WHERE ", Where/binary>>,
@@ -301,4 +318,26 @@ delete_any_of(Conn, Table, Cols, Uid) ->
         {ok, _} -> ok;
         {ok, _, _} -> ok;
         {error, Reason} -> erlang:error({delete_failed, Table, Reason})
+    end.
+
+%% 表存在性探测：与 user_ds:table_exists/2 同源（to_regclass），但探测
+%% 自身失败（连接异常等）时 fail-loud——不得把「查不了」误判为「不存在」
+%% 而静默跳过真实删除。
+table_present(Conn, Table) ->
+    Qualified =
+        case binary:match(Table, <<".">>) of
+            nomatch -> <<"public.", Table/binary>>;
+            _ -> Table
+        end,
+    case
+        elib_pg:query(
+            Conn, <<"SELECT to_regclass($1) IS NOT NULL AS present">>, [Qualified]
+        )
+    of
+        {ok, [#{<<"present">> := Present}]} when is_boolean(Present) ->
+            Present;
+        {ok, _Other} ->
+            erlang:error({table_probe_failed, Table, bad_shape});
+        {error, Reason} ->
+            erlang:error({table_probe_failed, Table, Reason})
     end.

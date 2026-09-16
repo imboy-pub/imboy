@@ -61,6 +61,7 @@
     list_messages_after/3,
     insert_assignment/3,
     list_identities/2,
+    list_identities_page/3,
     insert_note/3,
     insert_contact_assignment/3,
     update_conversation_assignee/4,
@@ -651,6 +652,11 @@ insert_assignment(OrgId, WorkspaceId, Assignment) ->
 -spec list_identities(integer(), integer()) -> {ok, [map()]} | {error, term()}.
 list_identities(OrgId, WorkspaceId) ->
     eb_pg_identity_ext:list_identities(OrgId, WorkspaceId).
+
+%% -- C5：键集分页 + active assignment 投影（语句下推到 eb_pg_identity_ext）--
+-spec list_identities_page(integer(), integer(), map()) -> {ok, [map()]} | {error, term()}.
+list_identities_page(OrgId, WorkspaceId, Query) ->
+    eb_pg_identity_ext:list_identities(OrgId, WorkspaceId, Query).
 
 -spec update_conversation_assignee(integer(), integer(), integer(), integer()) ->
     {ok, map()} | {error, term()}.

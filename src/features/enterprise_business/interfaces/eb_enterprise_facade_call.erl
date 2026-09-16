@@ -61,6 +61,10 @@ call(verify_offboarding, OrgId, Params) ->
     enterprise_business_facade:verify_offboarding(OrgId, Params);
 call(finalize_offboarding, OrgId, Params) ->
     enterprise_business_facade:finalize_offboarding(OrgId, Params);
+call(list_offboarding, OrgId, Params) ->
+    enterprise_business_facade:list_offboarding(OrgId, Params);
+call(offboarding_detail, OrgId, Params) ->
+    enterprise_business_facade:offboarding_detail(OrgId, Params);
 call(fetch_message, OrgId, Params) ->
     enterprise_business_facade:fetch_message(OrgId, Params);
 call(Action, _OrgId, _Params) ->
@@ -90,5 +94,7 @@ actions() ->
         execute_offboarding,
         verify_offboarding,
         finalize_offboarding,
+        list_offboarding,
+        offboarding_detail,
         fetch_message
     ].

@@ -173,6 +173,7 @@ contracts() ->
             %% ---- EB-03R 追加：P1..P9 / P11 的正向能力 ----
             {insert_assignment, 3},
             {list_identities, 2},
+            {list_identities_page, 3},
             {insert_note, 3},
             {insert_contact_assignment, 3},
             {update_conversation_assignee, 4},

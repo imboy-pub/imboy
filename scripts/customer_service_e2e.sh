@@ -225,8 +225,12 @@ PRE_FAIL=0
 for bin in curl jq python3 psql; do
     command -v "$bin" >/dev/null 2>&1 || { say "[E2E-PRE] 缺少依赖 $bin"; PRE_FAIL=$((PRE_FAIL + 1)); }
 done
-HZ="$(http GET "$BASE/healthz")"
-[ "$HZ" = "200" ] || { say "[E2E-PRE] 后端不可达：GET $BASE/healthz -> $HZ"; PRE_FAIL=$((PRE_FAIL + 1)); }
+# closure 修正：healthz 预检只对 remote 模式有意义——local 模式此时自含节点
+# 尚未启动（BASE 会在节点起来后重指到隔离端口），旧顺序会误杀 local 复跑。
+if [ "$MODE" != "local" ]; then
+    HZ="$(http GET "$BASE/healthz")"
+    [ "$HZ" = "200" ] || { say "[E2E-PRE] 后端不可达：GET $BASE/healthz -> $HZ"; PRE_FAIL=$((PRE_FAIL + 1)); }
+fi
 # 库名护栏：绝不允许脚本指向共享/系统库
 case "$EXPECT_DB" in
     imboy_v1|postgres|template*) say "[E2E-PRE] 拒绝共享/系统库 $EXPECT_DB"; PRE_FAIL=$((PRE_FAIL + 1)) ;;
@@ -304,18 +308,18 @@ main([PortStr, CompIn, CompOut, ConfigBase]) ->
     {ok, KR} = eb_env_keyring:key_ref(),
     T0 = erlang:system_time(millisecond),
     MkId = fun() -> 930000000000000000 + ((T0 - 1789000000000) * 100000) + (erlang:unique_integer([positive, monotonic]) rem 100000) end,
-    [O, A, B, ORG, WS] = [MkId(), MkId(), MkId(), MkId(), MkId()],
+    [O, A, B, C, D, ORG, WS] = [MkId(), MkId(), MkId(), MkId(), MkId(), MkId(), MkId()],
     lists:foreach(fun(U) ->
         {ok, _} = elib_pg:query(<<"INSERT INTO \"user\"(id,password,account,reg_ip,reg_cosv) VALUES ($1,'x',$2,'127.0.0.1','x')">>,
             [U, iolist_to_binary([<<"cs04local-">>, integer_to_binary(U)])])
-    end, [O, A, B]),
+    end, [O, A, B, C, D]),
     {ok, _} = elib_pg:query(<<"INSERT INTO organization(id,name,owner_id,status) VALUES ($1,$2,$3,'active')">>,
         [ORG, iolist_to_binary([<<"cs04local-org-">>, integer_to_binary(ORG)]), O]),
     {ok, _} = elib_pg:query(<<"INSERT INTO workspace(id,name,owner_id,status,type,organization_id) VALUES ($1,$2,$3,'active','project',$4)">>,
         [WS, iolist_to_binary([<<"cs04local-ws-">>, integer_to_binary(WS)]), O, ORG]),
     lists:foreach(fun(U) ->
         {ok, _} = elib_pg:query(<<"INSERT INTO organization_member(organization_id,user_id,role,status) VALUES ($1,$2,'member','active')">>, [ORG, U])
-    end, [A, B]),
+    end, [A, B, C, D]),
     At = T0 div 1000,
     MkIdn = fun(Fk, Dn) ->
         {ok, I} = enterprise_business_facade:create_identity(ORG, #{function_key => Fk,
@@ -327,11 +331,15 @@ main([PortStr, CompIn, CompOut, ConfigBase]) ->
     ICA = MkIdn(<<"customer_service">>, <<"ca">>),
     ISB = MkIdn(<<"sales">>, <<"sb">>),
     ICB = MkIdn(<<"customer_service">>, <<"cb">>),
+    %% S3.7/S3.8 真并发 claim 的两个无负荷坐席（不参与 suspend/rebind 叙事，
+    %% 与 A/B 的交接链零交集）。
+    ICC = MkIdn(<<"customer_service">>, <<"cc">>),
+    ICD = MkIdn(<<"customer_service">>, <<"cd">>),
     Bind = fun(I, U) ->
         {ok, _} = enterprise_business_facade:bind_assignment(ORG, #{identity_id => maps:get(id, I),
             user_id => U, workspace_id => WS, actor_user_id => O, at => At, created_by_user_id => O})
     end,
-    Bind(ISA, A), Bind(ICA, A),
+    Bind(ISA, A), Bind(ICA, A), Bind(ICC, C), Bind(ICD, D),
     %% 注意：B 不预绑 —— offboarding rebind 会把 A 的 identity 经办转给 B；
     %% B 预绑同职能会在交接 items 上撞 duplicate_active_user_function（实证）。
     {ok, Contact} = enterprise_business_facade:create_contact(ORG, #{workspace_id => WS, channel => <<"other">>,
@@ -343,6 +351,18 @@ main([PortStr, CompIn, CompOut, ConfigBase]) ->
         business_identity_id => maps:get(id, ISA), actor_user_id => A, key_ref => KR, at => At}),
     {ok, VRows} = elib_pg:query(<<"SELECT id FROM enterprise_conversation WHERE organization_id = $1 ORDER BY id DESC LIMIT 1">>, [ORG]),
     ConvId = maps:get(<<"id">>, hd(VRows)),
+    %% 并发 claim 夹具：第二条 contact+conversation（同 contact 二次开会话会
+    %% conversation_exists 409，故经种子通道建独立 contact2/conversation2；
+    %% 与上方 contact/conversation 同一 F6 补偿口径）。
+    {ok, Contact2} = enterprise_business_facade:create_contact(ORG, #{workspace_id => WS, channel => <<"other">>,
+        subject => iolist_to_binary([<<"cs04-visitor2-">>, integer_to_binary(T0)]),
+        key_ref => KR, display_name => <<"cs04-contact2">>,
+        created_by_business_identity_id => maps:get(id, ISA), actor_user_id => A, at => At}),
+    Contact2Id = maps:get(id, maps:get(contact, Contact2)),
+    {ok, _Conv2} = enterprise_business_facade:open_conversation(ORG, #{workspace_id => WS, contact_id => Contact2Id,
+        business_identity_id => maps:get(id, ISA), actor_user_id => A, key_ref => KR, at => At}),
+    {ok, V2Rows} = elib_pg:query(<<"SELECT id FROM enterprise_conversation WHERE organization_id = $1 ORDER BY id DESC LIMIT 1">>, [ORG]),
+    Conv2Id = maps:get(<<"id">>, hd(V2Rows)),
     %% F6 补偿：消息写链（HTTP 无法携带 key_ref）——先开合成 1095d 保留策略
     %% （无策略 fail-closed missing_retention_policy；EB-11 门 A01.9 同款）
     {ok, _} = enterprise_business_facade:open_retention_policy(ORG, #{workspace_id => WS,
@@ -361,12 +381,15 @@ main([PortStr, CompIn, CompOut, ConfigBase]) ->
     {ok, MRows} = elib_pg:query(<<"SELECT id, client_msg_id FROM enterprise_message WHERE organization_id = $1 ORDER BY id">>, [ORG]),
     [M1, M2] = [maps:get(<<"id">>, R) || R <- MRows],
     TO = token_ds:encrypt_token(O), TA = token_ds:encrypt_token(A), TB = token_ds:encrypt_token(B),
+    TC = token_ds:encrypt_token(C), TD = token_ds:encrypt_token(D),
     io:format("SEED_UID owner ~p~nSEED_UID a ~p~nSEED_UID b ~p~n", [O, A, B]),
     io:format("SEED_ORG ~p~nSEED_WS ~p~n", [ORG, WS]),
-    io:format("SEED_IDS sales_a ~p cs_a ~p sales_b ~p cs_b ~p~n", [maps:get(id, ISA), maps:get(id, ICA), maps:get(id, ISB), maps:get(id, ICB)]),
+    io:format("SEED_IDS sales_a ~p cs_a ~p sales_b ~p cs_b ~p cs_c ~p cs_d ~p~n", [maps:get(id, ISA), maps:get(id, ICA), maps:get(id, ISB), maps:get(id, ICB), maps:get(id, ICC), maps:get(id, ICD)]),
     io:format("SEED_CONTACT ~p~nSEED_CONV ~p~n", [ContactId, ConvId]),
+    io:format("SEED_CONV2 ~p~nSEED_CONTACT2 ~p~n", [Conv2Id, Contact2Id]),
     io:format("SEED_MSG1 ~p~nSEED_MSG2 ~p~n", [M1, M2]),
     io:format("SEED_TOKEN owner ~ts~nSEED_TOKEN a ~ts~nSEED_TOKEN b ~ts~n", [TO, TA, TB]),
+    io:format("SEED_TOKEN c ~ts~nSEED_TOKEN d ~ts~n", [TC, TD]),
     io:format("SEED_READY~n"),
     file:make_dir(CompIn),
     file:make_dir(CompOut),
@@ -434,12 +457,16 @@ ERLEOF
     JWT_OWNER="$(grep -a '^SEED_TOKEN owner ' "$SEED_LOG" | tail -1 | awk '{print $3}')"
     JWT_A="$(grep -a '^SEED_TOKEN a ' "$SEED_LOG" | tail -1 | awk '{print $3}')"
     JWT_B="$(grep -a '^SEED_TOKEN b ' "$SEED_LOG" | tail -1 | awk '{print $3}')"
+    JWT_C="$(grep -a '^SEED_TOKEN c ' "$SEED_LOG" | tail -1 | awk '{print $3}')"
+    JWT_D="$(grep -a '^SEED_TOKEN d ' "$SEED_LOG" | tail -1 | awk '{print $3}')"
     CONTACT_ID="$(grep -a '^SEED_CONTACT ' "$SEED_LOG" | tail -1 | awk '{print $2}')"
     CONV_ID="$(grep -a '^SEED_CONV ' "$SEED_LOG" | tail -1 | awk '{print $2}')"
     MSG1_ID="$(grep -a '^SEED_MSG1 ' "$SEED_LOG" | tail -1 | awk '{print $2}')"
     MSG2_ID="$(grep -a '^SEED_MSG2 ' "$SEED_LOG" | tail -1 | awk '{print $2}')"
     ID_SALES_A="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $3}')"
     ID_CS_A="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $5}')"
+    ID_CS_C="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $11}')"
+    ID_CS_D="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $13}')"
     ID_SALES_B=""; ID_CS_B=""
     LINE="seed-ok"
     if [ -n "$UID_OWNER" ] && [ -n "$JWT_OWNER" ] && [ -n "$JWT_A" ] && [ -n "$JWT_B" ]; then
@@ -574,6 +601,8 @@ if [ "$MODE" = "local" ]; then
     assert_eq "S1.1 种子身份经 HTTP 可读（governance 读链）" "$C" 200
     ID_SALES_A="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $3}')"
     ID_CS_A="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $5}')"
+    ID_CS_C="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $11}')"
+    ID_CS_D="$(grep -a '^SEED_IDS ' "$SEED_LOG" | tail -1 | awk '{print $13}')"
     ID_SALES_B=""; ID_CS_B=""
     assert_tsid "S1.1 identity TSID string" "$ID_SALES_A"
     PASS=$((PASS + 1)); say "[ASSERT-PASS] S1.2/S1.3 cs_a 身份（种子）；B 的身份由 S4 交接 rebind 获得（预绑会 duplicate）"
@@ -622,6 +651,16 @@ else
 CS04_JSON="{\"business_identity_id\":\"$ID_CS_B\",\"max_concurrent\":1,\"workspace_id\":\"$WS_ID\"}" \
     C=$(cs POST "/api/v1/cs/organizations/$ORG_ID/seats" "jwt:$JWT_OWNER")
 assert_eq "S1.11 owner 建坐席 B 的 seat" "$C" 200
+fi
+
+if [ "$MODE" = "local" ]; then
+    # S3.7/S3.8 真并发 claim 的两个无负荷坐席行（seat 绑 identity；C/D 不参与交接叙事）
+    CS04_JSON="{\"business_identity_id\":\"$ID_CS_C\",\"max_concurrent\":1,\"workspace_id\":\"$WS_ID\"}" \
+        C=$(cs POST "/api/v1/cs/organizations/$ORG_ID/seats" "jwt:$JWT_OWNER")
+    assert_eq "S1.10b owner 建坐席 C 的 seat" "$C" 200
+    CS04_JSON="{\"business_identity_id\":\"$ID_CS_D\",\"max_concurrent\":1,\"workspace_id\":\"$WS_ID\"}" \
+        C=$(cs POST "/api/v1/cs/organizations/$ORG_ID/seats" "jwt:$JWT_OWNER")
+    assert_eq "S1.10c owner 建坐席 D 的 seat" "$C" 200
 fi
 
 # shop key / visit token
@@ -777,19 +816,15 @@ VSEEN="$(jsonget "$(cat "$BODY")" '[.payload[] | select(.id == "'"$SESSION_ID"'"
 [ -z "$VSEEN" ] && VSEEN="$(jsonget "$(cat "$BODY")" '.payload | length // empty')"
 assert_eq "S3.2 访客列自己的会话（visit 作用域=本 contact）" "$C" 200
 
-CS04_JSON="{\"organization_id\":\"$ORG_ID\",\"workspace_id\":\"$WS_ID\",\"body\":\"visitor-question-$TS\",\"client_msg_id\":\"v-in-$TS-1\",\"key_ref\":\"kr-$TS\"}" \
+# F6 合同翻转（closure run）：HTTP 面不再接受 key_ref——服务端经
+# imboy.eb_enterprise_keyring 装配；客户端提交 key_ref 即 422
+# unexpected_argument.key_ref（旧 DEFECT-2 的 500 形态已由 F6 卡修复）。
+CS04_JSON="{\"organization_id\":\"$ORG_ID\",\"workspace_id\":\"$WS_ID\",\"body\":\"visitor-question-$TS\",\"client_msg_id\":\"v-in-$TS-1\"}" \
     C=$(cs POST "/api/v1/cs/sessions/$SESSION_ID/messages" "visit:$VISIT_SECRET")
-if [ "$C" = "500" ]; then
-    # F6 关联缺口（DEFECT-2）：append_session_message 把客户端 key_ref（字符串）透传给
-    # enterprise append_message 的密钥引用位（需 keyring map）⇒ 500 missing_key。
-    # fail-closed 形态正确（未明文落库），但功能被装配缺口阻断 —— 如实记 FAIL/DEFECT-2。
-    FAIL=$((FAIL + 1))
-    say "[DEFECT-2] 访客入站消息 500（missing_key）：cs_session_app 将客户端 key_ref 透传至企业加密密钥引用位（F6 缝隙），fail-closed 形态正确、功能被阻断"
-    say "E2E: 记录 DEFECT-2 于 ${EVID}"
-    cp "$BODY" "${EVID}/defect2-visit-msg-missing-key.json" 2>/dev/null || true
-else
-    assert_eq "S3.3 访客入站消息（visit token 主体）" "$C" 200
-fi
+assert_eq "S3.3 访客入站消息（visit token 主体，服务端装配）" "$C" 200
+CS04_JSON="{\"organization_id\":\"$ORG_ID\",\"workspace_id\":\"$WS_ID\",\"body\":\"x-$TS\",\"client_msg_id\":\"v-in-$TS-kr\",\"key_ref\":\"kr-$TS\"}" \
+    C=$(cs POST "/api/v1/cs/sessions/$SESSION_ID/messages" "visit:$VISIT_SECRET")
+assert_eq "S3.3b 客户端提交 key_ref 即 422（F6 合同翻转负例）" "$C" 422
 
 # claim（expected_version CAS；business_identity_id 服务端派生）
 CS04_JSON="{\"organization_id\":\"$ORG_ID\",\"workspace_id\":\"$WS_ID\",\"expected_version\":1}" \
@@ -806,27 +841,34 @@ assert_eq "S3.6 坐席经 enterprise facade 读消息真源" "$C" 200
 NBODY="$(jsonget "$(cat "$BODY")" '.payload | length' 2>/dev/null)"
 assert_ne "S3.6 真源列表非空（含 visit 消息与 EB 双向消息）" "x$NBODY" "x0"
 
-# 并发 claim：A 与 B 同时 claim 第二条 queued 会话，恰好一个成功
+# S3.6b 同 conversation 二次 queue = 409 业务冲突（原 DEFECT-3「500 sql 未映射」
+# 的修复证明：唯一约束命中现映射为 409 conflict）
 CS04_JSON="{\"organization_id\":\"$ORG_ID\",\"workspace_id\":\"$WS_ID\",\"contact_id\":\"$CONTACT_ID\",\"conversation_id\":\"$CONV_ID\"}" \
+    C=$(cs POST "/api/v1/cs/sessions/queue" "shopkey:$SHOP_SECRET")
+assert_eq "S3.6b 同 conversation 二次 queue=409（冲突映射）" "$C" 409
+
+# 并发 claim：A 与 B 同时 claim 第二条 queued 会话（conversation2+contact2 来自
+# 种子通道：同 contact 二次开会话会 conversation_exists 409，见种子脚本注释）
+CONV2_ID="$(grep -a '^SEED_CONV2 ' "$SEED_LOG" | tail -1 | awk '{print $2}')"
+CONTACT2_ID="$(grep -a '^SEED_CONTACT2 ' "$SEED_LOG" | tail -1 | awk '{print $2}')"
+assert_tsid "S3.7 会话2 conversation TSID string" "$CONV2_ID"
+CS04_JSON="{\"organization_id\":\"$ORG_ID\",\"workspace_id\":\"$WS_ID\",\"contact_id\":\"$CONTACT2_ID\",\"conversation_id\":\"$CONV2_ID\"}" \
     C=$(cs POST "/api/v1/cs/sessions/queue" "shopkey:$SHOP_SECRET")
 SESSION2_ID="$(jsonget "$(cat "$BODY")" '.payload.id // empty')"
 say "[INFO]   session2=$SESSION2_ID body=$(head -c 120 "$BODY")"
 if [ -z "$SESSION2_ID" ]; then
     FAIL=$((FAIL + 1))
-    say "[DEFECT-3] 同 conversation 二次 queue 返回 $(head -c 120 "$BODY") —— 期望 409 业务冲突而非 500 sql（唯一约束未映射）；并发 claim 断言随之 SKIP"
+    say "[ASSERT-FAIL] S3.7 会话2 queue 未成功（并发 claim 无法构造）"
 fi
 # 真并发：两个 seat 同时 claim 同一条 queued 会话，请求体相同，落盘收集 HTTP 码
 CLAIM_JSON="{\"organization_id\":\"$ORG_ID\",\"workspace_id\":\"$WS_ID\",\"expected_version\":1}"
 TMPD="$(mktemp -d)"
-( CS04_JSON="$CLAIM_JSON" cs POST "/api/v1/cs/sessions/$SESSION2_ID/claim" "jwt:$JWT_A" > "$TMPD/a" ) &
+( CS04_JSON="$CLAIM_JSON" cs POST "/api/v1/cs/sessions/$SESSION2_ID/claim" "jwt:$JWT_C" > "$TMPD/a" ) &
 PA=$!
-( CS04_JSON="$CLAIM_JSON" cs POST "/api/v1/cs/sessions/$SESSION2_ID/claim" "jwt:$JWT_B" > "$TMPD/b" ) &
+( CS04_JSON="$CLAIM_JSON" cs POST "/api/v1/cs/sessions/$SESSION2_ID/claim" "jwt:$JWT_D" > "$TMPD/b" ) &
 PB=$!
 wait $PA; wait $PB
 CA=$(head -1 "$TMPD/a"); CB=$(head -1 "$TMPD/b")
-if [ -z "$SESSION2_ID" ] && grep -aq "DEFECT-3" /dev/null 2>&1; then
-    PASS=$((PASS + 1)); say "[ASSERT-PASS] S3.7/S3.8 并发 claim 因 DEFECT-3 无法构造第二条 queued 会话（观察项待缺陷修复后复测）"
-fi
 OK_CNT=0
 [ "$CA" = "200" ] && OK_CNT=$((OK_CNT + 1))
 [ "$CB" = "200" ] && OK_CNT=$((OK_CNT + 1))
@@ -838,12 +880,7 @@ fi
 rm -rf "$TMPD"
 
 # 第二会话 B 胜出时记 assignee；供后续 transfer/close 用例选用
-if [ "$CB" = "200" ]; then
-    S2_ASSIGNEE_IS_B=1
-else
-    S2_ASSIGNEE_IS_B=0
-fi
-say "[INFO]   session2 并发 claim 胜者：$([ "$CA" = 200 ] && echo A || echo B)"
+say "[INFO]   session2 并发 claim 胜者：$([ "$CA" = 200 ] && echo C || echo D)"
 say ""
 
 # --------------------------------- S4：suspend → offboarding rebind → B 续会话 --

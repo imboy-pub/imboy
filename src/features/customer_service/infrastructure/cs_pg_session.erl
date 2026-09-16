@@ -19,6 +19,7 @@
     close_session/7,
     rate_session/7,
     list_sessions_for_contact/3,
+    list_sessions_page/5,
     sql_statements/0
 ]).
 
@@ -121,6 +122,31 @@
     " ORDER BY s.id"
 >>).
 
+%% C1（contracts-w2）键集下推：`ORDER BY id DESC LIMIT $5`（模板
+%% eb_pg_message_ext.erl:25-34 的 DESC 形态），前两业务参数 OrgId+WorkspaceId
+%% 同语句（JOIN workspace 同时证明 workspace 归属）。status 可选过滤：
+%% `COALESCE($3, s.status)` 缺省恒真；游标 `$4`（bigint cast 防 int4
+%% 溢出——TSID 是 64-bit）：0=首页，否则 `id < $4`
+%% 取更早一页（DESC 键集的不重不漏方向——`id >` 在 DESC 排序下无法构造
+%% 单调翻页游标）。绝无 OFFSET。
+-define(SQL_LIST_SESSIONS_PAGE, <<
+    "SELECT s.id, s.organization_id, s.workspace_id, s.contact_id, s.conversation_id,"
+    "       s.business_identity_id, s.visit_token_id, s.status, s.rating,"
+    "       extract(epoch from s.rating_at)::bigint AS rating_at,"
+    "       extract(epoch from s.queued_at)::bigint AS queued_at,"
+    "       extract(epoch from s.claimed_at)::bigint AS claimed_at,"
+    "       extract(epoch from s.closed_at)::bigint AS closed_at,"
+    "       s.close_reason, s.version,"
+    "       extract(epoch from s.updated_at)::bigint AS updated_at"
+    "  FROM customer_service_session s"
+    "  JOIN workspace w ON w.organization_id = $1 AND w.id = $2"
+    " WHERE s.organization_id = $1 AND s.workspace_id = $2"
+    "   AND s.status = COALESCE($3, s.status)"
+    "   AND ($4::bigint = 0 OR s.id < $4)"
+    " ORDER BY s.id DESC"
+    " LIMIT $5"
+>>).
+
 %% @doc 冻结语句（供 cs_pg_tests 的租户键机械断言）。
 -spec sql_statements() -> [binary()].
 sql_statements() ->
@@ -133,7 +159,8 @@ sql_statements() ->
         ?SQL_TRANSFER_UPDATE,
         ?SQL_CLOSE_UPDATE,
         ?SQL_RATE_UPDATE,
-        ?SQL_LIST_FOR_CONTACT
+        ?SQL_LIST_FOR_CONTACT,
+        ?SQL_LIST_SESSIONS_PAGE
     ].
 
 %% ===================================================================
@@ -183,6 +210,28 @@ list_sessions_for_contact(OrgId, WorkspaceId, ContactId) ->
             ?SQL_LIST_FOR_CONTACT, [OrgId, WorkspaceId, ContactId], ?SESSION_KEYS
         )
     of
+        {ok, Rows} -> {ok, [to_status_value(Row) || Row <- Rows]};
+        {error, _} = Err -> Err
+    end.
+
+%% @doc C1（contracts-w2）键集分页读取。`Status` 为 binary 白名单值或
+%% undefined（nullify 成 NULL，COALESCE 恒真）；行按 id DESC。
+-spec list_sessions_page(
+    integer(),
+    integer(),
+    binary() | undefined,
+    non_neg_integer(),
+    pos_integer()
+) -> {ok, [map()]} | {error, term()}.
+list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit) ->
+    Params = [
+        OrgId,
+        WorkspaceId,
+        cs_pg_common:nullify(Status),
+        AfterId,
+        Limit
+    ],
+    case cs_pg_common:fetch_many(?SQL_LIST_SESSIONS_PAGE, Params, ?SESSION_KEYS) of
         {ok, Rows} -> {ok, [to_status_value(Row) || Row <- Rows]};
         {error, _} = Err -> Err
     end.

@@ -132,6 +132,7 @@ ports_have_explicit_frozen_contracts_test() ->
             {list_contacts, 2},
             {list_conversations, 2},
             {list_identities, 2},
+            {list_identities_page, 3},
             {list_messages_after, 3},
             {list_offboarding_cases, 2},
             {list_offboarding_items, 3},

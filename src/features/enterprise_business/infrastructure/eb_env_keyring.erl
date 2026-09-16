@@ -22,6 +22,7 @@
 
 -export([
     key_ref/0,
+    resolve_key_ref/1,
     decode/1
 ]).
 -ifdef(TEST).
@@ -45,6 +46,28 @@
 -spec key_ref() -> {ok, map()} | {error, term()}.
 key_ref() ->
     decode(application:get_env(?ENV_APP, ?ENV_KEY, undefined)).
+
+%% @doc F6 装配入口（RULING-2026-09-15 §七）：**显式注入优先，env 兜底**。
+%%
+%%   * `KeyRef` 已是 map（测试/内部调用的显式注入合同，如 `#{key, key_version}`
+%%     或 `#{keys, key_version}`）→ **原样返回**，不读 env、不改写——既有注入
+%%     方（cs_application_tests / eb_*_app_tests / facade 内部调用）零破坏；
+%%   * 其余（undefined / 客户端形态的 binary 等任何非 map）→ 从服务端
+%%     application env 解析当前 active key_ref；env 缺失/形状非法时返回
+%%     `undefined`——**不降级、不造默认密钥**，下游 `eb_managed_crypto`
+%%     收到 undefined 照旧 `{error, missing_key}` fail-closed（500 面）。
+%%
+%% 非法显式值（非 map）被静默丢弃而非报错，是刻意的 fail-safe：HTTP 面已把
+%% key_ref 提交挡成 422，能流到这里的外部值只有被裁剪面遗漏的调用——丢弃
+%% 后走 env 或 fail-closed，绝不让请求方指定的"密钥"被采信。
+-spec resolve_key_ref(term()) -> map() | undefined.
+resolve_key_ref(KeyRef) when is_map(KeyRef) ->
+    KeyRef;
+resolve_key_ref(_NotExplicit) ->
+    case key_ref() of
+        {ok, Resolved} -> Resolved;
+        {error, _AssemblyUnavailable} -> undefined
+    end.
 
 %% @doc 严格解码。独立导出供单测与装配自检（不重复实现两遍判据）。
 -spec decode(term()) -> {ok, map()} | {error, term()}.

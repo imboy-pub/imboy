@@ -39,6 +39,9 @@ call(list_messages, OrgId, Params) ->
     enterprise_business_facade:list_messages(OrgId, Params);
 call(fetch_session, OrgId, Params) ->
     customer_service_facade:fetch_session(OrgId, Params);
+%% C1（contracts-w2）：平台 session 列表（只读，租户/平台共用同一用例）。
+call(list_sessions, OrgId, Params) ->
+    customer_service_facade:list_sessions(OrgId, Params);
 call(create_seat, OrgId, Params) ->
     customer_service_facade:create_seat(OrgId, Params);
 call(list_dispatchable_seats, OrgId, Params) ->
@@ -47,10 +50,16 @@ call(suspend_seat, OrgId, Params) ->
     customer_service_facade:suspend_seat(OrgId, Params);
 call(resume_seat, OrgId, Params) ->
     customer_service_facade:resume_seat(OrgId, Params);
+%% C2（contracts-w2）：shop key 治理列表（与创建同路径动作的两个用例之一）。
+call(list_shop_keys, OrgId, Params) ->
+    customer_service_facade:list_shop_keys(OrgId, Params);
 call(create_shop_key, OrgId, Params) ->
     customer_service_facade:create_shop_key(OrgId, Params);
 call(revoke_shop_key, OrgId, Params) ->
     customer_service_facade:revoke_shop_key(OrgId, Params);
+%% C3（contracts-w2）：visit token 治理列表。
+call(list_visit_tokens, OrgId, Params) ->
+    customer_service_facade:list_visit_tokens(OrgId, Params);
 call(issue_visit_token, OrgId, Params) ->
     customer_service_facade:issue_visit_token(OrgId, Params);
 call(revoke_visit_token, OrgId, Params) ->
@@ -71,12 +80,15 @@ actions() ->
         close,
         list_messages,
         fetch_session,
+        list_sessions,
         create_seat,
         list_dispatchable_seats,
         suspend_seat,
         resume_seat,
+        list_shop_keys,
         create_shop_key,
         revoke_shop_key,
+        list_visit_tokens,
         issue_visit_token,
         revoke_visit_token
     ].

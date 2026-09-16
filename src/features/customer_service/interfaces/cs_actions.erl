@@ -184,17 +184,19 @@ table(tenant) ->
                 server_common() ++ [contact_id],
                 param
             )},
-        %% 访客入站消息：client_msg_id/key_ref 是 application 的无默认
-        %% maps:get 键（CS-01 审查观察项）——handler 必须前置结构化校验，
-        %% 缺失返回 422 而不是 500（cs_handler_tests 逐条覆盖）。
+        %% 访客入站消息：client_msg_id 是 application 的无默认 maps:get 键——
+        %% handler 必须前置结构化校验，缺失返回 422 而不是 500。
+        %% F6（RULING-2026-09-15 §七）：主密钥材料不经 HTTP/JSON 面——`key_ref`
+        %% 参数已删除；客户端显式提交即 422（cs_http 的密钥材料键守卫，
+        %% FND-5 body_cipher 同款先例）。密钥由服务端经 `imboy.eb_enterprise_keyring`
+        %% 装配（eb_message_app → eb_env_keyring）。
         {session_messages,
             entry(
                 [
                     {<<"POST">>, append_session_message,
                         [
                             {body, binary, required},
-                            {client_msg_id, binary, required},
-                            {key_ref, binary, required}
+                            {client_msg_id, binary, required}
                         ],
                         [{id, session_id}]}
                 ],
@@ -259,10 +261,13 @@ table(tenant) ->
                 param
             )},
         %% —— 以下为租户治理面（owner/admin）：seat / shop key / visit token ——
+        %% C4（contracts-w2）：seats 列表 GET 支持 after_id/limit 键集分页
+        %%（binary 形态透传给 application 校验——非法取值 422，而非 400）。
         {seats,
             entry(
                 [
-                    {<<"GET">>, list_dispatchable_seats, [], []},
+                    {<<"GET">>, list_dispatchable_seats,
+                        [{after_id, binary, optional}, {limit, binary, optional}], []},
                     {<<"POST">>, create_seat,
                         [
                             {business_identity_id, tsid, required},
@@ -292,9 +297,13 @@ table(tenant) ->
                 server_common(),
                 path
             )},
-        {shop_key_create,
+        %% C2（contracts-w2）：shop key 治理面。cowboy 只按 path 匹配——列表 GET
+        %% 与创建 POST 同路径动作（seats 同款先例），动作键按冻结契约命名。
+        {shop_key_list,
             entry(
                 [
+                    {<<"GET">>, list_shop_keys,
+                        [{after_id, binary, optional}, {limit, binary, optional}], []},
                     {<<"POST">>, create_shop_key,
                         [{secret, binary, required}, {display_hint, binary, optional}], []}
                 ],
@@ -309,9 +318,12 @@ table(tenant) ->
                 server_common(),
                 path
             )},
-        {visit_token_issue,
+        %% C3（contracts-w2）：visit token 治理面（列表 GET + 签发 POST 同路径动作）。
+        {visit_token_list,
             entry(
                 [
+                    {<<"GET">>, list_visit_tokens,
+                        [{after_id, binary, optional}, {limit, binary, optional}], []},
                     {<<"POST">>, issue_visit_token,
                         [
                             {contact_id, tsid, required},
@@ -340,7 +352,26 @@ table(platform) ->
     [
         {p_seats,
             platform_entry(
-                [{<<"GET">>, list_dispatchable_seats, [], []}],
+                [
+                    {<<"GET">>, list_dispatchable_seats,
+                        [{after_id, binary, optional}, {limit, binary, optional}], []}
+                ],
+                platform_auth(<<"customer_service:read">>)
+            )},
+        %% C1（contracts-w2）：平台 session 列表（只读）。workspace_id 是 handler
+        %% 强制的 face 级必填（Derived 注入）；status 白名单 / after_id / limit 由
+        %% application 校验（非法取值 422 原子）。
+        {p_session_list,
+            platform_entry(
+                [
+                    {<<"GET">>, list_sessions,
+                        [
+                            {status, binary, optional},
+                            {after_id, binary, optional},
+                            {limit, binary, optional}
+                        ],
+                        []}
+                ],
                 platform_auth(<<"customer_service:read">>)
             )},
         {p_seat_suspend,

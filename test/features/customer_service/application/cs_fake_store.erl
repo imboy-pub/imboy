@@ -19,11 +19,18 @@
     next_seq/0,
     events/0,
     events_with_action/1,
+    %% C1~C4 列表测试注入/读取面
+    put_session_for_list/1,
+    put_shop_key_for_list/1,
+    put_visit_token_for_list/1,
+    put_seat_for_list/2,
+    last_page_limit/0,
     %% cs_store_port callbacks
     fetch_identity_function/2,
     insert_seat/2,
     fetch_seat/2,
     list_dispatchable_seats/1,
+    list_dispatchable_seats_page/3,
     set_seat_enabled/4,
     insert_session/3,
     fetch_session/3,
@@ -32,13 +39,16 @@
     close_session/7,
     rate_session/7,
     list_sessions_for_contact/3,
+    list_sessions_page/5,
     insert_shop_key/2,
     fetch_shop_key/2,
     fetch_shop_key_by_digest/2,
+    list_shop_keys_page/3,
     revoke_shop_key/3,
     insert_visit_token/2,
     fetch_visit_token/2,
     fetch_visit_token_by_digest/2,
+    list_visit_tokens_page/3,
     revoke_visit_token/3,
     append_event/2
 ]).
@@ -128,6 +138,120 @@ list_dispatchable_seats(OrgId) ->
             end,
             Rows
         )}.
+
+%% ===================================================================
+%% C1~C4 列表 callbacks（镜像 cs_pg_* 的键集语义：排序 + after 过滤 + LIMIT）
+%% ===================================================================
+
+list_dispatchable_seats_page(OrgId, AfterId, Limit) ->
+    note_limit(Limit),
+    {seats, Seats} = hd(ets:lookup(?TAB, seats)),
+    Rows = [
+        project_page_seat(with_active_count(OrgId, Row))
+     || {{Org, _Id}, Row} <- maps:to_list(Seats),
+        Org =:= OrgId,
+        maps:get(enabled, Row, false) =:= true,
+        maps:get(business_identity_id, Row) > AfterId
+    ],
+    {ok, take(Rows, Limit)}.
+
+%% 列表页行只含列表 SQL 的列（镜像 SQL_LIST_DISPATCHABLE_PAGE 的 SELECT 列表）。
+project_page_seat(Row) ->
+    maps:with(
+        [
+            organization_id,
+            business_identity_id,
+            function_key,
+            enabled,
+            max_concurrent,
+            active_count
+        ],
+        Row
+    ).
+
+list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit) ->
+    note_limit(Limit),
+    {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
+    Rows = [
+        S
+     || S <- maps:values(Sessions),
+        maps:get(organization_id, S) =:= OrgId,
+        maps:get(workspace_id, S) =:= WorkspaceId,
+        status_matches(S, Status),
+        cursor_pass(maps:get(id, S), AfterId)
+    ],
+    Ordered = lists:sort(fun(A, B) -> maps:get(id, A) >= maps:get(id, B) end, Rows),
+    {ok, take(Ordered, Limit)}.
+
+status_matches(_S, undefined) ->
+    true;
+status_matches(S, StatusBin) when is_binary(StatusBin) ->
+    %% SQL text 参数与行的 status 同为文本形态比较。
+    maps:get(status, S) =:= StatusBin orelse
+        atom_to_binary(maps:get(status, S), utf8) =:= StatusBin;
+status_matches(_S, _Other) ->
+    false.
+
+list_shop_keys_page(OrgId, AfterId, Limit) ->
+    note_limit(Limit),
+    {shop_keys, Keys} = hd(ets:lookup(?TAB, shop_keys)),
+    Rows = [
+        K
+     || K <- maps:values(Keys),
+        maps:get(organization_id, K) =:= OrgId,
+        cursor_pass(maps:get(id, K), AfterId)
+    ],
+    Ordered = lists:sort(fun(A, B) -> maps:get(id, A) >= maps:get(id, B) end, Rows),
+    {ok, take(Ordered, Limit)}.
+
+list_visit_tokens_page(OrgId, AfterId, Limit) ->
+    note_limit(Limit),
+    {visit_tokens, Tokens} = hd(ets:lookup(?TAB, visit_tokens)),
+    Rows = [
+        T
+     || T <- maps:values(Tokens),
+        maps:get(organization_id, T) =:= OrgId,
+        cursor_pass(maps:get(id, T), AfterId)
+    ],
+    Ordered = lists:sort(fun(A, B) -> maps:get(id, A) >= maps:get(id, B) end, Rows),
+    {ok, take(Ordered, Limit)}.
+
+%% DESC 键集镜像：after=0 首页，否则取比游标更小的 id。
+cursor_pass(Id, AfterId) -> AfterId =:= 0 orelse Id < AfterId.
+
+take(Rows, Limit) ->
+    {Taken, _} = lists:split(min(Limit, length(Rows)), Rows),
+    Taken.
+
+note_limit(Limit) ->
+    ets:insert(?TAB, {last_page_limit, Limit}),
+    ok.
+
+%% @doc 最近一次分页读取收到的 limit（application 缺省值/边界断言用）。
+last_page_limit() ->
+    case ets:lookup(?TAB, last_page_limit) of
+        [{last_page_limit, L}] -> L;
+        [] -> undefined
+    end.
+
+%% —— 列表测试注入面（绕过 insert 语义直接置行，测试专用）——
+
+put_session_for_list(Row) ->
+    update(sessions, fun(M) -> M#{maps:get(id, Row) => Row} end),
+    ok.
+
+put_shop_key_for_list(Row) ->
+    update(shop_keys, fun(M) -> M#{maps:get(id, Row) => Row} end),
+    ok.
+
+put_visit_token_for_list(Row) ->
+    update(visit_tokens, fun(M) -> M#{maps:get(id, Row) => Row} end),
+    ok.
+
+put_seat_for_list(OrgId, Row) ->
+    IdentityId = maps:get(business_identity_id, Row),
+    update(seats, fun(M) -> M#{{OrgId, IdentityId} => Row} end),
+    ok.
 
 with_active_count(OrgId, Row) ->
     {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),

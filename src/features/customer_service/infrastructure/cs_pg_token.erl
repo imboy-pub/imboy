@@ -10,10 +10,12 @@
     insert_shop_key/2,
     fetch_shop_key/2,
     fetch_shop_key_by_digest/2,
+    list_shop_keys_page/3,
     revoke_shop_key/3,
     insert_visit_token/2,
     fetch_visit_token/2,
     fetch_visit_token_by_digest/2,
+    list_visit_tokens_page/3,
     revoke_visit_token/3,
     sql_statements/0
 ]).
@@ -75,6 +77,19 @@
     " WHERE organization_id = $1 AND id = $2 AND status = 'active'"
 >>).
 
+%% C2（contracts-w2）键集下推：`ORDER BY id DESC LIMIT $3`，同语句带 Org
+%%（铁律 6）。游标 `$2`：0=首页，否则 `id < $2` 取更早一页（DESC 键集的
+%% 不重不漏方向）。行含 key_digest——投影由 application 白名单裁剪。
+-define(SQL_LIST_SHOP_KEYS_PAGE, <<
+    "SELECT id, organization_id, key_digest, display_hint, status,"
+    "       extract(epoch from created_at)::bigint AS created_at,"
+    "       extract(epoch from updated_at)::bigint AS updated_at"
+    "  FROM customer_service_shop_key"
+    " WHERE organization_id = $1 AND ($2::bigint = 0 OR id < $2)"
+    " ORDER BY id DESC"
+    " LIMIT $3"
+>>).
+
 -define(SQL_INSERT_VISIT_TOKEN, <<
     "INSERT INTO customer_service_visit_token"
     " (id, organization_id, contact_id, token_digest, expires_at,"
@@ -111,6 +126,20 @@
     " WHERE organization_id = $1 AND id = $2 AND revoked_at IS NULL"
 >>).
 
+%% C3（contracts-w2）键集下推：`ORDER BY id DESC LIMIT $3`，同语句带 Org。
+%% 游标 `$2` 同 C2（0=首页，否则 id < 游标）。行含 token_digest——投影由
+%% application 白名单裁剪。
+-define(SQL_LIST_VISIT_TOKENS_PAGE, <<
+    "SELECT id, organization_id, contact_id,"
+    "       extract(epoch from expires_at)::bigint AS expires_at,"
+    "       extract(epoch from revoked_at)::bigint AS revoked_at,"
+    "       extract(epoch from created_at)::bigint AS created_at"
+    "  FROM customer_service_visit_token"
+    " WHERE organization_id = $1 AND ($2::bigint = 0 OR id < $2)"
+    " ORDER BY id DESC"
+    " LIMIT $3"
+>>).
+
 %% @doc 冻结语句（供 cs_pg_tests 的租户键机械断言）。
 -spec sql_statements() -> [binary()].
 sql_statements() ->
@@ -118,10 +147,12 @@ sql_statements() ->
         ?SQL_INSERT_SHOP_KEY,
         ?SQL_FETCH_SHOP_KEY,
         ?SQL_FETCH_SHOP_KEY_BY_DIGEST,
+        ?SQL_LIST_SHOP_KEYS_PAGE,
         ?SQL_REVOKE_SHOP_KEY,
         ?SQL_INSERT_VISIT_TOKEN,
         ?SQL_FETCH_VISIT_TOKEN,
         ?SQL_FETCH_VISIT_TOKEN_BY_DIGEST,
+        ?SQL_LIST_VISIT_TOKENS_PAGE,
         ?SQL_REVOKE_VISIT_TOKEN
     ].
 
@@ -157,11 +188,26 @@ fetch_shop_key_by_digest(OrgId, Digest) ->
         cs_pg_common:fetch_one(?SQL_FETCH_SHOP_KEY_BY_DIGEST, [OrgId, Digest], ?SHOP_KEY_KEYS)
     ).
 
+%% @doc C2（contracts-w2）：shop key 键集分页（id DESC；同语句带 Org）。
+%% 行含 key_digest（永不外泄——application 投影唯一出口裁剪）。
+-spec list_shop_keys_page(integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_shop_keys_page(OrgId, AfterId, Limit) ->
+    case
+        cs_pg_common:fetch_many(?SQL_LIST_SHOP_KEYS_PAGE, [OrgId, AfterId, Limit], ?SHOP_KEY_KEYS)
+    of
+        {ok, Rows} -> {ok, [to_status_value(Row) || Row <- Rows]};
+        {error, _} = Err -> Err
+    end.
+
 %% fetch_one/fetch_many 只做行归一化（atom 键），status 列按 cs_pg_common 契约
 %% 由调用方转 atom；cs_access_app:verify_shop_key/2 以 atom `active` 判定，
 %% 漏转会让所有有效 shop key 被误判 revoked（DEFECT-1，CS-04 E2E 发现）。
 to_status_row({ok, Row}) -> {ok, maps:update_with(status, fun cs_pg_common:to_status/1, Row)};
 to_status_row({error, _} = Err) -> Err.
+
+to_status_value(Row) ->
+    maps:update_with(status, fun cs_pg_common:to_status/1, Row).
 
 -spec revoke_shop_key(integer(), integer(), integer()) -> ok | {error, term()}.
 revoke_shop_key(OrgId, KeyId, At) ->
@@ -199,6 +245,15 @@ fetch_visit_token(OrgId, TokenId) ->
 fetch_visit_token_by_digest(OrgId, Digest) ->
     cs_pg_common:fetch_one(
         ?SQL_FETCH_VISIT_TOKEN_BY_DIGEST, [OrgId, Digest], ?VISIT_TOKEN_KEYS
+    ).
+
+%% @doc C3（contracts-w2）：visit token 键集分页（id DESC；同语句带 Org）。
+%% 行含 token_digest（永不外泄——application 投影唯一出口裁剪）。
+-spec list_visit_tokens_page(integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_visit_tokens_page(OrgId, AfterId, Limit) ->
+    cs_pg_common:fetch_many(
+        ?SQL_LIST_VISIT_TOKENS_PAGE, [OrgId, AfterId, Limit], ?VISIT_TOKEN_KEYS
     ).
 
 -spec revoke_visit_token(integer(), integer(), integer()) -> ok | {error, term()}.

@@ -366,7 +366,9 @@ assert_layer_router_strings() {
 }
 
 assert_layer_routes() {
-  local wt="$1" expect="$2" want_tenant="${3:-16}" probe tenant platform
+  # closure run：offboarding 读取面新增 4 条路由（租户 GET cases[/:id] ×2、
+  # 平台 p_offboarding_list/detail ×2）⇒ 企业租户 16→18、平台 10→12。
+  local wt="$1" expect="$2" want_tenant="${3:-18}" want_platform="${4:-12}" probe tenant platform
   probe="$(route_probe "$wt")"
   if [ -z "$probe" ]; then
     fail "路由表：route_probe 无输出（erl 探针失败）"
@@ -376,10 +378,10 @@ assert_layer_routes() {
   tenant="${tenant%% *}"
   platform="${probe##*platform=}"
   if [ "$expect" = selected ]; then
-    if [ "$tenant" = "$want_tenant" ] && [ "$platform" = 10 ]; then
-      ok "路由表：get_routes/0 企业路由租户 $want_tenant + 平台 10"
+    if [ "$tenant" = "$want_tenant" ] && [ "$platform" = "$want_platform" ]; then
+      ok "路由表：get_routes/0 企业路由租户 $want_tenant + 平台 $want_platform"
     else
-      fail "路由表：selected 期望租户 $want_tenant/平台 10，实得 $probe"
+      fail "路由表：selected 期望租户 $want_tenant/平台 $want_platform，实得 $probe"
     fi
   else
     if [ "$tenant" = 0 ] && [ "$platform" = 0 ]; then
@@ -484,9 +486,10 @@ probe_assertion_sensitivity() {   # $1 = 已构建的 selected 副本
 assert_all_layers() {   # $1 = 副本, $2 = expect(selected|unselected), $3 = 档名
   # 叠加档租户路由多 1 条：customer_service 条件段的
   # /api/v1/enterprise/conversations/:conversation_id/messages 借用 enterprise
-  # 前缀，随 customer_service 选中出现（16 企业 + 1 客服 = 17；平台侧不受影响）。
-  local want_tenant=16
-  case "$3" in enterprise-customer-service*) want_tenant=17 ;; esac
+  # 前缀，随 customer_service 选中出现（18 企业 + 1 客服 = 19；平台侧不受影响，
+  # closure run：offboarding 读取面已计入 18/12 基数）。
+  local want_tenant=18
+  case "$3" in enterprise-customer-service*) want_tenant=19 ;; esac
   log "  断言 [$3 / $2]"
   assert_layer_macro "$1" "$2"
   assert_layer_erlc_exclude "$1" "$2"

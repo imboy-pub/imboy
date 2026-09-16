@@ -49,7 +49,7 @@ dispatch(Entry, Case, Req0, State0) ->
             eb_enterprise_http:reply_error(Req0, Reason);
         {ok, OrgId} ->
             State = State0#{organization_id => OrgId},
-            case eb_enterprise_http:authorize(Entry, Req0, State) of
+            case eb_enterprise_http:authorize(Entry, Case, Req0, State) of
                 {error, Reason} ->
                     eb_enterprise_http:reply_error(Req0, Reason);
                 {ok, _AuthContext} ->
