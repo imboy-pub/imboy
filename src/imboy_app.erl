@@ -37,6 +37,9 @@ start(_Type, _Args) ->
     %% 加载并校验 License（规模/配额授权）：无 license=社区版，无效=降级社区版
     ok = imboy_license:load_and_validate(),
     ok = maybe_migrate(),
+    %% OpenTelemetry 遥测（Uptrace 对接）：未配 IMBOY_UPTRACE_DSN 则完全跳过，
+    %% 内部异常自吞，不阻断主启动链
+    ok = imboy_telemetry:init(),
     _ = imboy_syn:init(),
     % 初始化 TSID 分布式ID生成器
     TsidDcId = application:get_env(imboy, tsid_dc_id, 1),

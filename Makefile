@@ -73,6 +73,8 @@ DEPS += jsx  # jwerl transitive dep, pin to gitee git (deps.mk) instead of hex t
 DEPS += epgsql pooler erlang_migrate depcache syn ecron uid
 # Ops / Observability
 DEPS += telemetry lager observer_cli recon redbug
+## OpenTelemetry（对接 Uptrace trace.imboy.pub；版本与传递依赖定义见 include/deps.mk）
+DEPS += opentelemetry_api opentelemetry opentelemetry_exporter grpcbox tls_certificate_check chatterbox ctx acceptor_pool gproc ssl_verify_fun
 # Template / Captcha
 DEPS += simple_captcha erlydtl
 # Payment（同工作区本地纯 Erlang 第三方支付库）

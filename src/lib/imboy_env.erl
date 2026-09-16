@@ -62,6 +62,10 @@
 %   IMBOY_FEATURE_E2EE      -> {imboy, features.e2ee.enabled}
 %   IMBOY_FEATURE_CHANNEL   -> {imboy, features.channel.enabled}
 %   IMBOY_FEATURE_CHANNEL_ORDER -> {imboy, features.channel_order.enabled}
+%   IMBOY_UPTRACE_DSN       -> {imboy, uptrace_dsn}  (Uptrace DSN, e.g.
+%                              http://<token>@trace.imboy.pub/1；未设置则遥测关闭)
+%   IMBOY_UPTRACE_OTLP_ENDPOINT -> {imboy, uptrace_otlp_endpoint}
+%                              (OTLP/HTTP 上报地址，默认 http://127.0.0.1:14318)
 %%%
 
 -export([override_from_env/0]).
@@ -109,6 +113,10 @@ override_from_env() ->
     %% URL 配置覆盖（生产环境必须通过这两个变量消除 sys.config 中的 dev URL）
     ok = override_binary_key("IMBOY_BASE_URL", base_url),
     ok = override_binary_key("IMBOY_WS_URL", ws_url),
+
+    %% OpenTelemetry 遥测（Uptrace）：DSN 含项目 token 属敏感凭据，只走 env
+    ok = override_binary_key("IMBOY_UPTRACE_DSN", uptrace_dsn),
+    ok = override_binary_key("IMBOY_UPTRACE_OTLP_ENDPOINT", uptrace_otlp_endpoint),
 
     %% 蓝绿部署关闭启动期迁移，切流后由显式 db migrate 统一执行。
     ok = override_boolean_key("IMBOY_AUTO_MIGRATE", auto_migrate),

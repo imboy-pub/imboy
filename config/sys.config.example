@@ -357,6 +357,13 @@
         %% 正常运行必须留空，轮换完成后立即从环境和密管移除。
         {postgre_aes_key_old, <<>>},
 
+        %% OpenTelemetry 遥测对接 Uptrace（trace.imboy.pub），见 src/lib/imboy_telemetry.erl
+        %% uptrace_dsn 含项目 token，属敏感凭据：只经 IMBOY_UPTRACE_DSN 环境变量注入
+        %% （格式 http://<token>@trace.imboy.pub/<project_id>），此处刻意无默认键。
+        %% uptrace_otlp_endpoint：OTLP/HTTP 上报地址，默认 http://127.0.0.1:14318
+        %% （prod/dev 与 Uptrace 同机）；可经 IMBOY_UPTRACE_OTLP_ENDPOINT 覆盖。
+        %% 两个变量都未设置时遥测完全关闭，节点行为与未对接时一致。
+
         %% 客户端 init 响应加密 + HMAC 签名密钥
         %% solidified_key : AES-256-CBC / HMAC-SHA512，必须 32 字节
         %% solidified_key_iv: AES-256-CBC IV，必须 16 字节
@@ -410,6 +417,26 @@
         {yjsms_url, <<>>},
         {jsms_temp_id, <<>>},
         {jsms_sign_id, <<>>},
+
+        %% ====================================================================
+        %% 企业托管主密钥环 / Enterprise managed keyring（F6，RULING-2026-09-15 §七）
+        %% 消费方：src/features/enterprise_business/infrastructure/eb_env_keyring.erl
+        %%   * 企业消息 / 客户资料 / 备注 / 附件凭证的企业托管加密（AES-256-GCM）
+        %%     全部经此密钥环装配；**HTTP/JSON 面不接受任何密钥参数**（客户端提交
+        %%     key_ref 等 → 422），密钥只来自本配置。
+        %%   * 缺配置 = 部署缺陷：相关写路径 fail-closed（HTTP 500 missing_key），
+        %%     绝不降级明文、绝不使用默认密钥。
+        %%   * 形状：#{active_version := 正整数, keys := #{版本 => 64 位 hex（32 字节）}}；
+        %%     轮换 = 追加新版本并把 active_version 指向它（旧版本保留可解历史密文）。
+        %%   * ⚠️ 真实密钥字节**永不入仓**：生产经部署环境（IMBOY_* 变量 / 密管渲染）
+        %%     注入后覆盖本键；下方仅形状示意（注释态，勿在此填真实值）。
+        %% {eb_enterprise_keyring, #{
+        %%     active_version => 1,
+        %%     keys => #{
+        %%         1 => <<"64-hex-chars-from-secret-manager-not-from-git">>
+        %%     }
+        %% }},
+        %% ====================================================================
 
         %% ====================================================================
         %% 支付网关 / Payment gateways

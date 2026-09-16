@@ -213,3 +213,23 @@ dep_rtps = git https://gitee.com/imboy-tripartite-deps/rtps.git master
 # gpb - Google Protocol Buffers compiler for Erlang
 # https://github.com/tomas-abrahamsson/gpb
 dep_gpb = git https://github.com/tomas-abrahamsson/gpb.git 4.21.7
+
+# --- OpenTelemetry（OTLP/HTTP 上报 Uptrace，见 src/lib/imboy_telemetry.erl）---
+# opentelemetry-erlang 是 rebar3 umbrella 仓库（apps/ 布局），无法走 git dep，
+# 只能取 hex 包（hex 包带预生成的 OTLP pb 模块）。erlang.mk 不解析 rebar3
+# 依赖树，exporter 的传递依赖（grpcbox 及其子依赖、tls_certificate_check）
+# 必须在此全部显式声明，否则编译期 undefined function。
+# 运行时走 OTLP/HTTP（httpc），grpcbox 仅编译期在位、不启动。
+# https://github.com/open-telemetry/opentelemetry-erlang
+dep_opentelemetry_api = hex 1.5.0
+dep_opentelemetry = hex 1.7.0
+dep_opentelemetry_exporter = hex 1.10.0
+dep_grpcbox = hex 0.18.0
+dep_tls_certificate_check = hex 1.35.0
+# grpcbox 传递依赖
+dep_chatterbox = hex 0.16.0 ts_chatterbox
+dep_ctx = hex 0.6.0
+dep_acceptor_pool = hex 1.0.1
+dep_gproc = hex 1.3.0
+# tls_certificate_check 传递依赖
+dep_ssl_verify_fun = hex 1.1.7
