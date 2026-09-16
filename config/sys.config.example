@@ -522,7 +522,21 @@
         {stripe_webhook_secret, <<>>},
         %% 充值限额（单位：分）：默认最小 0.01 元、最大 50000 元
         {recharge_min_amount, 1},
-        {recharge_max_amount, 5000000}
+        {recharge_max_amount, 5000000},
+        %% =========================================================
+        %% CSB-02R：customer_service widget 接入装配（缺配置时 widget 写路径
+        %% fail-closed，装配齐全后真链路可通；secret 一律经环境变量注入，
+        %% 严禁入仓）
+        %% =========================================================
+        %% 匿名 subject HMAC 材料（IMBOY_CS_WIDGET_SUBJECT_KEY；空 = bootstrap
+        %% 等写路径 fail-closed 422）。digest 不落库，本材料只驻服务端内存。
+        {cs_widget_subject_key, <<>>},
+        %% 签名身份断言验签材料（IMBOY_CS_WIDGET_IDENTITY_KEYS，形如 "1:k1,2:k2"；
+        %% DB identity key 行只存 sha256(key) digest，此处按 key_version 供真材料）
+        {cs_widget_identity_keys, []},
+        %% 接待 identity 覆写（0 = 由 store 派生：本 Org enabled 且
+        %% customer_service 职能的派单快照最小 business_identity_id）
+        {cs_widget_intake_business_identity_id, 0}
     ]},
 
     %% =============================================================

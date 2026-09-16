@@ -183,7 +183,10 @@ otp_lib_whitelist() ->
         persistent_term,
         proplists,
         %% CSB-03：cs_widget_handler 的 SSE 轮询节奏（timer:sleep/1）。
-        timer
+        timer,
+        %% CSB-02R：cs_widget_env / cs_identity_assertion 的 env 事实读取
+        %% （config_ds:env/1,2 只读装配面）。
+        config_ds
     ].
 
 remote_calls_in_module(Mod) ->

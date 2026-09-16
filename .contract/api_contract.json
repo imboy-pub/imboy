@@ -2316,6 +2316,12 @@
         "static": false
       },
       {
+        "action": "seat_session_list",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/seats/sessions",
+        "static": false
+      },
+      {
         "action": "visitor_sessions",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/sessions",

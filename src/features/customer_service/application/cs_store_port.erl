@@ -137,6 +137,29 @@
 ) ->
     {ok, [session()]} | {error, term()}.
 
+%% @doc CSB-02R 坐席工作台分页（org-wide；WorkspaceId=0 表示不限 workspace）。
+%% 返回同作用域的稳定计数（列表页 + status 全量分布）；行含 contact 掩码
+%% 原料（display_name / subject_mask）与末条消息安全摘要（id / sender_type /
+%% created_at——密文与密钥列不出 store）。
+-callback seat_session_page(
+    OrgId :: integer(),
+    Status :: binary(),
+    AfterId :: non_neg_integer(),
+    Limit :: pos_integer(),
+    WorkspaceId :: non_neg_integer()
+) ->
+    {ok, #{
+        rows := [map()],
+        total := non_neg_integer(),
+        total_by_status := map()
+    }}
+    | {error, term()}.
+
+%% @doc CSB-02R widget 装配：本 Org 缺省 Workspace 解析（org 作用域 active 且
+%% id 最小——访客无 membership，不做成员连接；EB 同款确定性规则）。
+-callback default_workspace(OrgId :: integer()) ->
+    {ok, integer()} | {error, not_found | term()}.
+
 %% -- shop key / visit token（digest 存储；明文不落库）------------------------
 
 -callback insert_shop_key(OrgId :: integer(), Key :: shop_key()) ->

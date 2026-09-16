@@ -24,6 +24,9 @@
     rate_session/7,
     list_sessions_for_contact/3,
     list_sessions_page/5,
+    %% CSB-02R：坐席工作台分页 / widget 装配缺省 Workspace
+    seat_session_page/5,
+    default_workspace/1,
     %% shop key / visit token
     insert_shop_key/2,
     fetch_shop_key/2,
@@ -90,6 +93,14 @@ list_sessions_for_contact(OrgId, WorkspaceId, ContactId) ->
     cs_pg_session:list_sessions_for_contact(OrgId, WorkspaceId, ContactId).
 list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit) ->
     cs_pg_session:list_sessions_page(OrgId, WorkspaceId, Status, AfterId, Limit).
+
+%% CSB-02R：坐席工作台分页（含稳定计数）。
+seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
+    cs_pg_session:seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId).
+
+%% CSB-02R：widget 装配的本 Org 缺省 Workspace 解析。
+default_workspace(OrgId) ->
+    cs_pg_widget:default_workspace(OrgId).
 
 %% shop key / visit token
 insert_shop_key(OrgId, Key) -> cs_pg_token:insert_shop_key(OrgId, Key).

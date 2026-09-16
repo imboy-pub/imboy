@@ -62,7 +62,10 @@
     method := binary(),
     facade := atom(),
     params := [param()],
-    path_params := [{atom(), atom()}]
+    path_params := [{atom(), atom()}],
+    %% CSB-02R：workspace 门放宽（缺省 required；optional = 缺失不 422，
+    %% application 自行决定作用域——坐席 org-wide 列表）。
+    workspace => optional
 }.
 -type entry() :: #{
     owner := owner(),
@@ -70,7 +73,11 @@
     auth := map(),
     %% 服务端派生键：客户端**提供即 400**（操作人/时钟/坐席与访客身份一律不可自报）。
     client_forbidden := [atom()],
-    org_source := org_source()
+    org_source := org_source(),
+    %% CSB-02R：同路径 method+auth_context 分流（route metadata 的 auth_context
+    %% 冻结为 POST/默认主体；此表按 HTTP 方法覆盖认证声明——同一 cowboy 路径
+    %% 的 GET 坐席语义）。cs_route_contract_tests 审计其方法/主体合法性。
+    case_auth => #{binary() => map()}
 }.
 %% OrgId 的来源：path 绑定 / 请求参数（客户端申报 + 授权证明）。
 -type org_source() :: path | param.
@@ -217,14 +224,24 @@ table(tenant) ->
         %% 门店开会话（A0 冻结路径）：shop key 主体；contact/conversation 由门店
         %% 集成方给出，session 只挂同一个 enterprise conversation（§5.2）。
         {session_queue,
-            entry(
-                [
-                    {<<"POST">>, open_session,
-                        [{contact_id, tsid, required}, {conversation_id, tsid, required}], []}
-                ],
-                shop_key_auth(),
-                server_common() ++ [created_by_user_id],
-                param
+            with_case_auth(
+                entry(
+                    [
+                        {<<"POST">>, open_session,
+                            [{contact_id, tsid, required}, {conversation_id, tsid, required}], []},
+                        %% CSB-02R：坐席队列视图（GET）——与 POST 门店开会话同路径
+                        %% 按 method+auth_context 分流；workspace 可选（org-wide，
+                        %% 显式给出则收窄）。坐席作用域由 cs_auth 在进用例前裁决。
+                        {<<"GET">>, seat_session_queue,
+                            [{after_id, binary, optional}, {limit, binary, optional}], [], #{
+                                workspace => optional
+                            }}
+                    ],
+                    shop_key_auth(),
+                    server_common() ++ [created_by_user_id],
+                    param
+                ),
+                #{<<"GET">> => seat_auth(<<"conversation.read">>)}
             )},
         %% 访客视角：只列**自己的**会话（contact 取自 token 作用域，不可自报）。
         {visitor_sessions,
@@ -315,6 +332,27 @@ table(tenant) ->
         {session_detail,
             entry(
                 [{<<"GET">>, seat_session_detail, [], [{id, session_id}]}],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [business_identity_id],
+                param
+            )},
+        %% CSB-02R：坐席 active/closed 两视图（GET /api/v1/cs/seats/sessions）。
+        %% 独立路径的理由：GET /api/v1/cs/sessions 已冻结为访客面（cs_visit，
+        %% route metadata 是 principal 的唯一分流依据，同方法双主体必须换路径）；
+        %% `seats/sessions` 与既有 cs_seat/seats 命名族一致。queued 视图冻结在
+        %% /sessions/queue（GET，case_auth 分流），此处 status 显式必填且仅
+        %% 接受 active|closed（application 复核）。
+        {seat_session_list,
+            entry(
+                [
+                    {<<"GET">>, seat_session_list,
+                        [
+                            {status, binary, required},
+                            {after_id, binary, optional},
+                            {limit, binary, optional}
+                        ],
+                        [], #{workspace => optional}}
+                ],
                 seat_auth(<<"conversation.read">>),
                 server_common() ++ [business_identity_id],
                 param
@@ -619,7 +657,13 @@ kase({Method, Facade, Params, PathParams}) ->
         facade => Facade,
         params => Params,
         path_params => PathParams
-    }.
+    };
+kase({Method, Facade, Params, PathParams, Opts}) when is_map(Opts) ->
+    maps:merge(kase({Method, Facade, Params, PathParams}), Opts).
+
+%% CSB-02R：entry 级 case_auth 覆盖（同路径 method+auth_context 分流）。
+with_case_auth(Entry, CaseAuth) when is_map(CaseAuth) ->
+    Entry#{case_auth => CaseAuth}.
 
 %% widget 面路径动作构造（owner=widget；其余形状与租户面一致）。
 widget_entry(Cases, Auth, ClientForbidden, OrgSource) ->

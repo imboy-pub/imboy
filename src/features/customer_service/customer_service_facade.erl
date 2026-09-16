@@ -51,7 +51,10 @@
     widget_asset_upload/2,
     widget_asset_confirm/2,
     %% seat 会话详情（§12.4 表 2 补缺）
-    seat_session_detail/2
+    seat_session_detail/2,
+    %% CSB-02R：坐席工作台（队列 GET + active/closed 列表，共用 seat_session_page）
+    seat_session_queue/2,
+    seat_session_list/2
 ]).
 
 %% ===================================================================
@@ -345,7 +348,10 @@ list_visit_tokens(OrgId, _Params) ->
 widget_bootstrap(OrgId, #{public_widget_id := PublicId, origin := Origin} = Params) when
     is_integer(OrgId), is_binary(PublicId), is_binary(Origin), is_map(Params)
 ->
-    cs_widget_app:bootstrap(OrgId, Params);
+    case cs_widget_env:merge_bootstrap(OrgId, Params) of
+        {ok, Merged} -> cs_widget_app:bootstrap(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_bootstrap(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_bootstrap}};
 widget_bootstrap(OrgId, _Params) ->
@@ -357,7 +363,10 @@ widget_identity_exchange(
 ) when
     is_integer(OrgId), is_integer(InstallationId), is_map(Assertion), is_map(Params)
 ->
-    cs_widget_app:identity_exchange(OrgId, Params);
+    case cs_widget_env:merge_identity_exchange(OrgId, Params) of
+        {ok, Merged} -> cs_widget_app:identity_exchange(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_identity_exchange(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_identity_exchange}};
 widget_identity_exchange(OrgId, _Params) ->
@@ -367,7 +376,10 @@ widget_identity_exchange(OrgId, _Params) ->
 widget_create_session(OrgId, #{installation_id := InstallationId, secret := Secret} = Params) when
     is_integer(OrgId), is_integer(InstallationId), is_binary(Secret), is_map(Params)
 ->
-    cs_widget_session_app:create_session(OrgId, Params);
+    case cs_widget_env:merge_session(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:create_session(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_create_session(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_create_session}};
 widget_create_session(OrgId, _Params) ->
@@ -377,7 +389,10 @@ widget_create_session(OrgId, _Params) ->
 widget_list_sessions(OrgId, #{installation_id := InstallationId, secret := Secret} = Params) when
     is_integer(OrgId), is_integer(InstallationId), is_binary(Secret), is_map(Params)
 ->
-    cs_widget_session_app:list_sessions(OrgId, Params);
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:list_sessions(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_list_sessions(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_list_sessions}};
 widget_list_sessions(OrgId, _Params) ->
@@ -393,7 +408,10 @@ widget_history_after(
     is_integer(SessionId),
     is_map(Params)
 ->
-    cs_widget_session_app:history_after(OrgId, Params);
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:history_after(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_history_after(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_history_after}};
 widget_history_after(OrgId, _Params) ->
@@ -418,7 +436,10 @@ widget_visitor_message(
     is_binary(Body),
     is_map(Params)
 ->
-    cs_widget_session_app:visitor_message(OrgId, Params);
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:visitor_message(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_visitor_message(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_visitor_message}};
 widget_visitor_message(OrgId, _Params) ->
@@ -443,7 +464,10 @@ widget_rate(
     is_integer(ExpectedVersion),
     is_map(Params)
 ->
-    cs_widget_session_app:rate(OrgId, Params);
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:rate(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_rate(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_rate}};
 widget_rate(OrgId, _Params) ->
@@ -468,7 +492,10 @@ widget_asset_upload(
     is_integer(SizeBytes),
     is_map(Params)
 ->
-    cs_widget_session_app:asset_presign(OrgId, Params);
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:asset_presign(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_asset_upload(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_asset_upload}};
 widget_asset_upload(OrgId, _Params) ->
@@ -484,7 +511,10 @@ widget_asset_confirm(
     is_binary(UploadRef),
     is_map(Params)
 ->
-    cs_widget_session_app:asset_confirm(OrgId, Params);
+    case cs_widget_env:merge_visitor(OrgId, Params) of
+        {ok, Merged} -> cs_widget_session_app:asset_confirm(OrgId, Merged);
+        {error, _} = Err -> Err
+    end;
 widget_asset_confirm(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, widget_asset_confirm}};
 widget_asset_confirm(OrgId, _Params) ->
@@ -502,4 +532,36 @@ seat_session_detail(
 seat_session_detail(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     {error, {invalid_argument, seat_session_detail}};
 seat_session_detail(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% ===================================================================
+%% CSB-02R：坐席工作台（队列 GET + active/closed 列表）
+%% ===================================================================
+
+%% @doc 坐席队列视图（GET /api/v1/cs/sessions/queue）：status 冻结 queued，
+%% 与平台面 list_sessions 共用 `cs_session_app:seat_session_page`（业务规则
+%% 零复制）。坐席作用域（Org + customer_service 职能 assignment）由 cs_auth
+%% 在进用例之前裁决。
+-spec seat_session_queue(integer(), map()) -> term().
+seat_session_queue(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_session_app:seat_session_page(OrgId, Params#{status => <<"queued">>});
+seat_session_queue(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 坐席 active/closed 两视图（GET /api/v1/cs/seats/sessions）。queued
+%% 视图冻结在队列端点——本入口显式拒绝（`{invalid_status,*}` 422），两视图
+%% 语义不漂移。
+-spec seat_session_list(integer(), map()) -> term().
+seat_session_list(OrgId, #{status := Status} = Params) when
+    is_integer(OrgId), is_map(Params)
+->
+    case Status of
+        S when S =:= <<"active">>; S =:= <<"closed">>; S =:= active; S =:= closed ->
+            cs_session_app:seat_session_page(OrgId, Params);
+        Other ->
+            {error, {invalid_status, Other}}
+    end;
+seat_session_list(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, seat_session_list}};
+seat_session_list(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.

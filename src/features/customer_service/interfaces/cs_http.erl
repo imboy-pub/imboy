@@ -480,6 +480,9 @@ classify(subject_mismatch) ->
     ?ERR_UNAUTHORIZED;
 classify(identity_key_expired) ->
     ?ERR_UNAUTHORIZED;
+%% CSB-02R：签名断言 HMAC 复核失败（凭证语义）。
+classify(assertion_signature_mismatch) ->
+    ?ERR_UNAUTHORIZED;
 classify({unknown_action, _}) ->
     ?ERR_UNAUTHORIZED;
 %% --- 403：授权不足 / 状态性拒绝（含 A04：suspended seat actor 即时拒绝）---
@@ -623,6 +626,8 @@ server_side(auth_assembly_missing) -> true;
 %% 绝不伪装成 4xx。
 server_side({missing_injection, _}) -> true;
 server_side(default_workspace_unresolved) -> true;
+%% CSB-02R：provisioned 验签材料与 DB 行 digest 不符 = 服务端配置漂移。
+server_side(identity_key_digest_mismatch) -> true;
 server_side({unimplemented_port, _}) -> true;
 server_side({unknown_port, _}) -> true;
 server_side({missing_config, _}) -> true;

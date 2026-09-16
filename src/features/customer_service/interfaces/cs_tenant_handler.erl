@@ -59,7 +59,7 @@ dispatch(Entry, Case, Req0, State0) ->
     end.
 
 authorize(Entry, Case, Req0, Body, State, OrgId) ->
-    Metadata = metadata(State),
+    Metadata = authorize_metadata(Entry, Case, State),
     case cs_auth:authorize(Metadata, Req0, State) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
@@ -67,8 +67,22 @@ authorize(Entry, Case, Req0, Body, State, OrgId) ->
             invoke(Entry, Case, Req0, Body, OrgId, AuthContext)
     end.
 
+%% route metadata（auth_context 等）+ 动作表 case_auth 覆盖：同一 cowboy 路径
+%% 的 method+auth_context 分流（CSB-02R：GET /sessions/queue 的坐席语义）。
+%% case_auth 只能**收窄**到五类 principal 内的声明（cs_route_contract_tests
+%% 审计其方法/主体合法性）；未覆盖的方法沿用 route metadata 主体。
+authorize_metadata(Entry, Case, State) ->
+    Base = metadata(State),
+    case maps:get(case_auth, Entry, undefined) of
+        CaseAuth when is_map(CaseAuth) ->
+            Override = maps:get(maps:get(method, Case), CaseAuth, #{}),
+            maps:merge(Base, Override);
+        _ ->
+            Base
+    end.
+
 invoke(Entry, Case, Req0, Body, OrgId, AuthContext) ->
-    case cs_http:workspace_id(Req0, Body) of
+    case workspace_gate(Case, Req0, Body) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, WorkspaceId} ->
@@ -82,6 +96,20 @@ invoke(Entry, Case, Req0, Body, OrgId, AuthContext) ->
             end
     end.
 
+%% workspace 门（CSB-02R）：缺省 required（既有口径不变）；动作表声明
+%% `workspace => optional` 的用例缺失不 422（坐席 org-wide 列表的作用域由
+%% Org/assignment 决定，显式给出才收窄）。
+workspace_gate(Case, Req, Body) ->
+    case maps:get(workspace, Case, required) of
+        optional ->
+            case cs_http:workspace_id(Req, Body) of
+                {error, missing_workspace_id} -> {ok, undefined};
+                Other -> Other
+            end;
+        required ->
+            cs_http:workspace_id(Req, Body)
+    end.
+
 %% route metadata：只取白名单键 + 认证需要的装配/会话键走 State 本体。
 metadata(State) ->
     Keys = [auth_context, surface, required_function, required_permission, required_governance],
@@ -90,11 +118,18 @@ metadata(State) ->
 %% 服务端派生参数：操作人/时钟/主体身份全部来自认证上下文与服务端时钟，
 %% 客户端无法自报（动作表已把这些键列为 client_forbidden，400 兜底）。
 derived_params(AuthContext, WorkspaceId) ->
-    Base = #{
-        workspace_id => WorkspaceId,
+    %% CSB-02R：optional workspace **缺省时键不存在**（不是值为 undefined 的
+    %% 键）——「未提供」与「提供了 undefined」是两种形状，facade/application
+    %% 与消费方只见前者；此处是 optional 派生键的唯一归一点。
+    Base0 = #{
         at => cs_http:now_ms(),
         actor_user_id => actor_user_id(AuthContext)
     },
+    Base =
+        case WorkspaceId of
+            Ws when is_integer(Ws), Ws > 0 -> Base0#{workspace_id => Ws};
+            _ -> Base0
+        end,
     maps:merge(Base, identity_derived(AuthContext)).
 
 actor_user_id(#{user_id := Uid}) when is_integer(Uid) -> Uid;

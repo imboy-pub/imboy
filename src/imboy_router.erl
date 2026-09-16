@@ -1810,6 +1810,18 @@ customer_service_tenant_routes() ->
             required_function => <<"customer_service">>,
             required_permission => <<"conversation.read">>
         }},
+        %% CSB-02R：坐席工作台 active/closed 两视图。独立路径而非
+        %% /sessions?scope=seat 的理由：GET /api/v1/cs/sessions 已冻结为访客面，
+        %% route metadata 是 principal 的唯一分流依据，同方法双主体必须换路径；
+        %% `seats/sessions` 与 cs_seat/seats 命名族一致。队列视图走
+        %% GET /api/v1/cs/sessions/queue（同路径 method+auth_context 分流，
+        %% 见 cs_actions 的 case_auth）。
+        {"/api/v1/cs/seats/sessions", cs_tenant_handler, #{
+            action => seat_session_list,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
         %% —— CSB-03：widget 接入面（浏览器访客；凭证 = bootstrap 令牌专用头
         %% x-cs-visit-token，查询串携带即 400；中间件免签/免 JWT 直通面由
         %% cs_http:is_credential_surface_path/1 声明，handler 侧 fail-closed；

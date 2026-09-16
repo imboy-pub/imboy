@@ -399,7 +399,10 @@ port_contract_has_new_callbacks() ->
             {list_sessions_page, 5},
             {list_shop_keys_page, 3},
             {list_visit_tokens_page, 3},
-            {list_dispatchable_seats_page, 3}
+            {list_dispatchable_seats_page, 3},
+            %% CSB-02R：坐席工作台分页 + widget 装配缺省 Workspace 解析。
+            {seat_session_page, 5},
+            {default_workspace, 1}
         ]
     ),
     BehaviourCallbacks = cs_store_port:behaviour_info(callbacks),
@@ -407,11 +410,15 @@ port_contract_has_new_callbacks() ->
     ?assert(lists:member({list_shop_keys_page, 3}, BehaviourCallbacks)),
     ?assert(lists:member({list_visit_tokens_page, 3}, BehaviourCallbacks)),
     ?assert(lists:member({list_dispatchable_seats_page, 3}, BehaviourCallbacks)),
+    ?assert(lists:member({seat_session_page, 5}, BehaviourCallbacks)),
+    ?assert(lists:member({default_workspace, 1}, BehaviourCallbacks)),
     %% PG 装配与 fake 都实现新 callback（behaviour 编译期已查；这里对导出再取证）。
     PgExports = cs_pg_store:module_info(exports),
     lists:foreach(
         fun({F, A}) -> ?assert(lists:member({F, A}, PgExports)) end,
         [
+            {seat_session_page, 5},
+            {default_workspace, 1},
             {list_sessions_page, 5},
             {list_shop_keys_page, 3},
             {list_visit_tokens_page, 3},

@@ -14,6 +14,7 @@
     init/0,
     destroy/0,
     seed_identity_function/3,
+    seed_workspace/2,
     seed_assignment_user/3,
     assignment_user/2,
     next_seq/0,
@@ -40,6 +41,8 @@
     rate_session/7,
     list_sessions_for_contact/3,
     list_sessions_page/5,
+    seat_session_page/5,
+    default_workspace/1,
     insert_shop_key/2,
     fetch_shop_key/2,
     fetch_shop_key_by_digest/2,
@@ -86,7 +89,8 @@ init() ->
         {widget_nonces, #{}},
         {events, []},
         {identity_functions, #{}},
-        {assignment_users, #{}}
+        {assignment_users, #{}},
+        {workspaces, #{}}
     ]),
     ok.
 
@@ -96,6 +100,12 @@ destroy() ->
 
 seed_identity_function(OrgId, IdentityId, FunctionKey) ->
     update(identity_functions, fun(M) -> M#{{OrgId, IdentityId} => FunctionKey} end).
+
+%% CSB-02R：default_workspace 解析种子（Org → 最小 workspace id 的行）。
+seed_workspace(OrgId, WorkspaceId) ->
+    update(workspaces, fun(M) ->
+        M#{WorkspaceId => #{id => WorkspaceId, organization_id => OrgId, status => active}}
+    end).
 
 %% rebind 模拟：identity ↔ user 的经办映射（cs 代码从不读它——这正是 A04）。
 seed_assignment_user(OrgId, IdentityId, UserId) ->
@@ -207,6 +217,54 @@ status_matches(S, StatusBin) when is_binary(StatusBin) ->
         atom_to_binary(maps:get(status, S), utf8) =:= StatusBin;
 status_matches(_S, _Other) ->
     false.
+
+%% CSB-02R：坐席工作台分页（同作用域稳定计数；掩码/末条摘要原料列由
+%% 行直接携带——store 行外无第二真相源）。
+seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
+    note_limit(Limit),
+    {sessions, Sessions} = hd(ets:lookup(?TAB, sessions)),
+    %% 同作用域（Org + workspace 收窄）全集：计数与列表同口径。
+    InScopeAll = [
+        S
+     || S <- maps:values(Sessions),
+        maps:get(organization_id, S) =:= OrgId,
+        WorkspaceId =:= 0 orelse maps:get(workspace_id, S) =:= WorkspaceId
+    ],
+    InScope = [
+        S
+     || S <- InScopeAll,
+        status_matches(S, Status),
+        cursor_pass(maps:get(id, S), AfterId)
+    ],
+    Ordered = lists:sort(fun(A, B) -> maps:get(id, A) >= maps:get(id, B) end, InScope),
+    TotalByStatus =
+        lists:foldl(
+            fun(S, Acc) ->
+                K = atom_to_binary(maps:get(status, S), utf8),
+                Acc#{K => maps:get(K, Acc, 0) + 1}
+            end,
+            #{},
+            InScopeAll
+        ),
+    Total = maps:get(binary_status(Status), TotalByStatus, 0),
+    {ok, #{rows => take(Ordered, Limit), total => Total, total_by_status => TotalByStatus}}.
+
+binary_status(StatusBin) when is_binary(StatusBin) -> StatusBin;
+binary_status(Status) when is_atom(Status) -> atom_to_binary(Status, utf8).
+
+%% CSB-02R：widget 装配缺省 Workspace 解析（fake = 该 Org 最小 workspace 行）。
+default_workspace(OrgId) ->
+    {workspaces, Workspaces} = hd(ets:lookup(?TAB, workspaces)),
+    case
+        lists:sort([
+            maps:get(id, W)
+         || W <- maps:values(Workspaces),
+            maps:get(organization_id, W, undefined) =:= OrgId
+        ])
+    of
+        [Min | _] -> {ok, Min};
+        [] -> {error, not_found}
+    end.
 
 list_shop_keys_page(OrgId, AfterId, Limit) ->
     note_limit(Limit),

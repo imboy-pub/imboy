@@ -129,6 +129,8 @@ FEATURE_BACKEND_MODULES = {
         "cs_tenant_handler",
         "cs_tsid",
         "cs_widget_handler",
+        "cs_widget_env",
+        "cs_identity_assertion",
         "customer_service_facade",
     ),
     "moment": (

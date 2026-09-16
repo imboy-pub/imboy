@@ -86,6 +86,11 @@ call(widget_asset_confirm, OrgId, Params) ->
     customer_service_facade:widget_asset_confirm(OrgId, Params);
 call(seat_session_detail, OrgId, Params) ->
     customer_service_facade:seat_session_detail(OrgId, Params);
+%% CSB-02R：坐席工作台（队列 GET + active/closed 列表）。
+call(seat_session_queue, OrgId, Params) ->
+    customer_service_facade:seat_session_queue(OrgId, Params);
+call(seat_session_list, OrgId, Params) ->
+    customer_service_facade:seat_session_list(OrgId, Params);
 call(Action, _OrgId, _Params) ->
     {error, {unknown_action, Action}}.
 
@@ -123,5 +128,8 @@ actions() ->
         widget_rate,
         widget_asset_upload,
         widget_asset_confirm,
-        seat_session_detail
+        seat_session_detail,
+        %% CSB-02R：坐席工作台
+        seat_session_queue,
+        seat_session_list
     ].

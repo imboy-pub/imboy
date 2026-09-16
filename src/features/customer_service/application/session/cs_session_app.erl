@@ -30,7 +30,8 @@
     rate/2,
     append_session_message/2,
     list_contact_sessions/2,
-    list_sessions/2
+    list_sessions/2,
+    seat_session_page/2
 ]).
 
 %% C1（contracts-w2）投影白名单：**逐字**；visit_token_id / close_reason /
@@ -666,3 +667,165 @@ with_store(Params, Fun) ->
 
 pos_int(V) ->
     cs_app_support:pos_int(V).
+
+%% ===================================================================
+%% 坐席工作台列表（CSB-02R §12.4）：队列 GET / active / closed 三视图共用。
+%% 与平台面 list_sessions/2 同源（同一 store 分页原语 + 键集口径），不复制
+%% 业务规则；本用例只补坐席面投影（来源 / contact 掩码名 / 末条安全摘要 /
+%% 稳定计数）。
+%% ===================================================================
+
+%% @doc 坐席作用域的会话分页（org-wide；`workspace_id` 可选收窄到 0=不限）。
+%%
+%% Params：status 必填（queued | active | closed；坐席面无「全状态页」——
+%% 三视图各自冻结）；after_id / limit 走 C1~C4 冻结键集口径（DESC、`id <` 游标、
+%% 满页 = 尾行游标）；workspace_id / store 可选。
+%%
+%% 返回：`{ok, #{sessions, total, total_by_status, next_after_id}}`。计数与
+%% 列表同作用域（同 Org + 同 workspace 收窄），稳定可对账。
+-spec seat_session_page(integer(), map()) -> {ok, map()} | {error, term()}.
+seat_session_page(OrgId, Params) when is_map(Params) ->
+    case pos_int(OrgId) of
+        false ->
+            {error, {invalid_organization_id, OrgId}};
+        true ->
+            case cs_app_support:page_cursor(Params) of
+                {error, _} = Err ->
+                    Err;
+                {ok, AfterId, Limit} ->
+                    seat_session_page_status(OrgId, Params, AfterId, Limit)
+            end
+    end;
+seat_session_page(_OrgId, _Params) ->
+    {error, {invalid_argument, seat_session_page}}.
+
+seat_session_page_status(OrgId, Params, AfterId, Limit) ->
+    case cs_app_support:session_status(maps:get(status, Params, undefined)) of
+        {error, _} = Err ->
+            Err;
+        {ok, undefined} ->
+            %% 坐席面必须显式选视图；无「全部会话」页（队列语义 = status=queued）。
+            {error, {invalid_status, undefined}};
+        {ok, Status} ->
+            seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params)
+    end.
+
+seat_session_page_fetch(OrgId, Status, AfterId, Limit, Params) ->
+    WorkspaceId = workspace_scope(Params),
+    case
+        with_store(Params, fun(Store) ->
+            Store:seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, #{rows := Rows, total := Total, total_by_status := ByStatus}} ->
+            Views = [seat_session_view(Row) || Row <- Rows],
+            Next = next_cursor(Rows, Limit),
+            {ok, #{
+                sessions => Views,
+                total => Total,
+                total_by_status => ByStatus,
+                next_after_id => Next
+            }}
+    end.
+
+%% workspace 收窄：显式正整数生效；缺省/0 = org-wide（坐席作用域以 Org +
+%% customer_service 职能 assignment 为界，cs_auth 已裁决）。
+workspace_scope(Params) ->
+    case maps:get(workspace_id, Params, 0) of
+        Ws when is_integer(Ws), Ws > 0 -> Ws;
+        _ -> 0
+    end.
+
+%% DESC 键集：满页 = 本页尾行（最小 id）游标；不足一页 = undefined。
+next_cursor(Rows, Limit) ->
+    case length(Rows) =:= Limit andalso Rows =/= [] of
+        true -> maps:get(id, lists:last(Rows));
+        false -> undefined
+    end.
+
+%% 坐席面行投影白名单（内部审计列 visit_token_id / close_reason /
+%% created_by_user_id 不直接出站——created_by_user_id 只参与来源推导）。
+seat_session_view(Row) ->
+    Base = maps:with(
+        [
+            id,
+            organization_id,
+            workspace_id,
+            contact_id,
+            conversation_id,
+            business_identity_id,
+            status,
+            version,
+            queued_at,
+            claimed_at,
+            closed_at
+        ],
+        Row
+    ),
+    Base#{
+        source => source_of(Row),
+        contact => #{masked_name => masked_name(Row)},
+        last_message => last_message_view(Row)
+    }.
+
+%% 来源推导（存储派生事实，浏览器不可申报）：
+%%   * visit_token_id 非空   → widget（访客经 widget/visit 令牌开会话）；
+%%   * created_by_user_id 非空 → seat（坐席在建会话时创建）；
+%%   * 其余                   → shop_key（门店接入 POST /sessions/queue）。
+source_of(#{visit_token_id := V}) when V =/= undefined -> <<"widget">>;
+source_of(#{created_by_user_id := U}) when U =/= undefined -> <<"seat">>;
+source_of(_Row) -> <<"shop_key">>.
+
+%% contact 掩码名：优先 enterprise 侧既有 subject_mask（本就是掩码），
+%% 其次 display_name 打码（保留首尾各一字符，中间 ***），二者皆缺 →
+%% 稳定匿名柄 `guest#NNNNN`（contact_id 低五位，零 PII）。
+masked_name(Row) ->
+    Mask = maps:get(contact_subject_mask, Row, undefined),
+    Name = maps:get(contact_display_name, Row, undefined),
+    case {is_binary(Mask), Mask =/= <<>>, Mask =/= undefined} of
+        {true, true, true} ->
+            Mask;
+        _ ->
+            case is_binary(Name) andalso Name =/= <<>> of
+                true -> mask_display_name(Name);
+                false -> default_masked_name(maps:get(contact_id, Row, 0))
+            end
+    end.
+
+mask_display_name(Name) ->
+    Chars = unicode:characters_to_list(Name, utf8),
+    Masked =
+        case length(Chars) of
+            0 -> [];
+            1 -> "*";
+            2 -> [hd(Chars), $*];
+            _ -> [hd(Chars), $*, $*, $*, lists:last(Chars)]
+        end,
+    unicode:characters_to_binary(Masked, utf8).
+
+default_masked_name(ContactId) when is_integer(ContactId), ContactId > 0 ->
+    <<"guest#", (pad5(integer_to_binary(ContactId rem 100000)))/binary>>;
+default_masked_name(_ContactId) ->
+    <<"guest#00000">>.
+
+pad5(Bin) when byte_size(Bin) >= 5 ->
+    Bin;
+pad5(Bin) ->
+    pad5(<<"0", Bin/binary>>).
+
+%% 末条消息**安全摘要**：只含 id / sender_type / created_at——body_cipher、
+%% key_version、client_msg_id 等（密文与密钥面）不进本投影，workbench 未解锁
+%% E2EE 前不透出任何消息内容。
+last_message_view(Row) ->
+    case maps:get(last_message_id, Row, undefined) of
+        undefined ->
+            undefined;
+        Id ->
+            #{
+                id => Id,
+                sender_type => maps:get(last_message_sender_type, Row, undefined),
+                created_at => maps:get(last_message_created_at, Row, undefined)
+            }
+    end.

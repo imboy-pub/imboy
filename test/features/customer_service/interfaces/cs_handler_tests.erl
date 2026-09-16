@@ -174,9 +174,16 @@ visitor_flow_tests(_) ->
             end)
         end},
 
+        %% CSB-02R：/sessions/queue 已按 method 分流（GET=坐席队列），
+        %% 「POST-only 405」样本改用 claim 路径（仍是 POST-only）。
         {"GET on a POST-only path is 405", fun() ->
-            ?S:with_listener(tenant, session_queue, #{auth_facts => cs_fake_facts}, fun(Port) ->
-                Resp = ?S:request(Port, <<"GET">>, <<"/api/v1/cs/sessions/queue">>, <<>>),
+            ?S:with_listener(tenant, session_claim, #{auth_facts => cs_fake_facts}, fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/v1/cs/sessions/", (integer_to_binary(555000111))/binary, "/claim">>,
+                    <<>>
+                ),
                 ?assertEqual(405, ?S:status(Resp))
             end)
         end},

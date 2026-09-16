@@ -20,6 +20,7 @@
     rate_session/7,
     list_sessions_for_contact/3,
     list_sessions_page/5,
+    seat_session_page/5,
     sql_statements/0
 ]).
 
@@ -148,6 +149,138 @@
 >>).
 
 %% @doc 冻结语句（供 cs_pg_tests 的租户键机械断言）。
+%% CSB-02R 坐席工作台页（org-wide，workspace 可选收窄）。行含 contact 掩码
+%% 原料（display_name / subject_mask——已是掩码，不是原文）与末条消息**安全
+%% 摘要**（id / sender_type / created_at）：密文（body_cipher）、密钥版本、
+%% client_msg_id 一概不进本语句，workbench 未解锁 E2EE 前零消息内容出站。
+-define(SQL_SEAT_SESSION_PAGE, <<
+    "SELECT s.id, s.organization_id, s.workspace_id, s.contact_id, s.conversation_id,"
+    "       s.business_identity_id, s.visit_token_id, s.created_by_user_id, s.status,"
+    "       s.version,"
+    "       extract(epoch from s.queued_at)::bigint AS queued_at,"
+    "       extract(epoch from s.claimed_at)::bigint AS claimed_at,"
+    "       extract(epoch from s.closed_at)::bigint AS closed_at,"
+    "       c.display_name AS contact_display_name,"
+    "       ci.subject_mask AS contact_subject_mask,"
+    "       lm.last_message_id, lm.last_message_sender_type, lm.last_message_created_at"
+    "  FROM customer_service_session s"
+    "  JOIN enterprise_contact c"
+    "    ON c.organization_id = s.organization_id AND c.id = s.contact_id"
+    "  LEFT JOIN LATERAL ("
+    "       SELECT i.subject_mask FROM enterprise_contact_identity i"
+    "        WHERE i.organization_id = s.organization_id AND i.contact_id = s.contact_id"
+    "        ORDER BY i.id LIMIT 1"
+    "  ) ci ON true"
+    "  LEFT JOIN LATERAL ("
+    "       SELECT m.id AS last_message_id,"
+    "              m.sender_type AS last_message_sender_type,"
+    "              extract(epoch from m.created_at)::bigint AS last_message_created_at"
+    "         FROM enterprise_message m"
+    "        WHERE m.organization_id = s.organization_id"
+    "          AND m.conversation_id = s.conversation_id"
+    "        ORDER BY m.id DESC LIMIT 1"
+    "  ) lm ON true"
+    " WHERE s.organization_id = $1 AND s.status = $2"
+    "   AND ($3::bigint = 0 OR s.id < $3)"
+    "   AND ($4::bigint = 0 OR s.workspace_id = $4)"
+    " ORDER BY s.id DESC"
+    " LIMIT $5"
+>>).
+
+%% 同作用域 status 计数（与列表页同 Org/workspace 收窄，稳定可对账）。
+-define(SQL_SEAT_SESSION_TOTAL, <<
+    "SELECT count(*) AS total FROM customer_service_session s"
+    " WHERE s.organization_id = $1 AND s.status = $2"
+    "   AND ($3::bigint = 0 OR s.workspace_id = $3)"
+>>).
+
+-define(SQL_SEAT_SESSION_TOTAL_BY_STATUS, <<
+    "SELECT s.status, count(*) AS total FROM customer_service_session s"
+    " WHERE s.organization_id = $1"
+    "   AND ($2::bigint = 0 OR s.workspace_id = $2)"
+    " GROUP BY s.status"
+>>).
+
+-define(SEAT_SESSION_KEYS, [
+    id,
+    organization_id,
+    workspace_id,
+    contact_id,
+    conversation_id,
+    business_identity_id,
+    visit_token_id,
+    created_by_user_id,
+    status,
+    version,
+    queued_at,
+    claimed_at,
+    closed_at,
+    contact_display_name,
+    contact_subject_mask,
+    last_message_id,
+    last_message_sender_type,
+    last_message_created_at
+]).
+
+-spec seat_session_page(
+    integer(),
+    binary(),
+    non_neg_integer(),
+    pos_integer(),
+    non_neg_integer()
+) ->
+    {ok, #{rows := [map()], total := non_neg_integer(), total_by_status := map()}}
+    | {error, term()}.
+seat_session_page(OrgId, Status, AfterId, Limit, WorkspaceId) ->
+    case
+        cs_pg_common:fetch_many(
+            ?SQL_SEAT_SESSION_PAGE,
+            [OrgId, Status, AfterId, WorkspaceId, Limit],
+            ?SEAT_SESSION_KEYS
+        )
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            case seat_session_total(OrgId, Status, WorkspaceId) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Total} ->
+                    case seat_session_total_by_status(OrgId, WorkspaceId) of
+                        {error, _} = Err3 ->
+                            Err3;
+                        {ok, ByStatus} ->
+                            {ok, #{rows => Rows, total => Total, total_by_status => ByStatus}}
+                    end
+            end
+    end.
+
+seat_session_total(OrgId, Status, WorkspaceId) ->
+    case
+        cs_pg_common:fetch_one(
+            ?SQL_SEAT_SESSION_TOTAL, [OrgId, Status, WorkspaceId], [total]
+        )
+    of
+        {ok, #{total := Total}} when is_integer(Total) -> {ok, Total};
+        {error, _} = Err -> Err
+    end.
+
+seat_session_total_by_status(OrgId, WorkspaceId) ->
+    case
+        cs_pg_common:fetch_many(
+            ?SQL_SEAT_SESSION_TOTAL_BY_STATUS, [OrgId, WorkspaceId], [status, total]
+        )
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            {ok,
+                #{
+                    cs_pg_common:to_status(maps:get(status, Row)) => maps:get(total, Row)
+                 || Row <- Rows
+                }}
+    end.
+
 -spec sql_statements() -> [binary()].
 sql_statements() ->
     [
@@ -160,7 +293,10 @@ sql_statements() ->
         ?SQL_CLOSE_UPDATE,
         ?SQL_RATE_UPDATE,
         ?SQL_LIST_FOR_CONTACT,
-        ?SQL_LIST_SESSIONS_PAGE
+        ?SQL_LIST_SESSIONS_PAGE,
+        ?SQL_SEAT_SESSION_PAGE,
+        ?SQL_SEAT_SESSION_TOTAL,
+        ?SQL_SEAT_SESSION_TOTAL_BY_STATUS
     ].
 
 %% ===================================================================

@@ -86,8 +86,18 @@ execute(Req, Env) ->
             %% CS credential 面：无 Authorization 头也放行（凭证在专用头），
             %% handler 侧 fail-closed；带 JWT 的误用请求会在 cs_auth 处
             %% credential_missing（principal 只认专用头，不混淆）。
+            %% CSB-02R：CS credential 面改走 option 语义——无 Authorization 的
+            %% 访客/门店请求照旧直通（凭证在专用头）；**带** Authorization 的
+            %% 请求照常过 JWT 门并注入会话键（current_uid），支撑同路径
+            %% method+auth_context 分流（GET /sessions/queue 的坐席主体）。
+            %% 主体混淆仍由 cs_auth 按 route metadata/case_auth 裁决：JWT 在场
+            %% 不采信为 visit/shop_key，反之亦然。
             auth_ds:condition(
-                InOptionLi, InOpenLi orelse IsCsCredentialPath, Authorization, Req, Env
+                InOptionLi orelse IsCsCredentialPath,
+                InOpenLi andalso not IsCsCredentialPath,
+                Authorization,
+                Req,
+                Env
             );
         Res2 ->
             Res2

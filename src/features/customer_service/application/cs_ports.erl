@@ -80,6 +80,8 @@ contracts() ->
             {rate_session, 7},
             {list_sessions_for_contact, 3},
             {list_sessions_page, 5},
+            {seat_session_page, 5},
+            {default_workspace, 1},
             %% shop key / visit token
             {insert_shop_key, 2},
             {fetch_shop_key, 2},
@@ -121,7 +123,16 @@ contracts() ->
 %% @doc `customer_service_facade` 允许委派的 application 用例模块（铁律 3）。
 -spec facade_targets() -> [module()].
 facade_targets() ->
-    [cs_seat_app, cs_session_app, cs_access_app, cs_widget_app, cs_widget_session_app].
+    [
+        cs_seat_app,
+        cs_session_app,
+        cs_access_app,
+        cs_widget_app,
+        cs_widget_session_app,
+        %% CSB-02R：widget env 装配（subject_key/default_workspace/intake/
+        %% assertion_verifier 的解析与合并——facade 参数收敛职责的一部分）。
+        cs_widget_env
+    ].
 
 %% @doc facade 可引用的非 application 模块白名单：空集（纯「参数收敛 + 委派」）。
 -spec facade_reference_whitelist() -> [module()].

@@ -41,7 +41,9 @@
 
 tenant_literal_routes() ->
     [
-        {<<"/api/v1/cs/sessions/queue">>, session_queue, [<<"POST">>], cs_shop_key},
+        %% CSB-02R：同路径 method+auth_context 分流——POST=门店（route metadata
+        %% 冻结主体），GET=坐席队列（case_auth 覆盖，审计见 entry_violations）。
+        {<<"/api/v1/cs/sessions/queue">>, session_queue, [<<"GET">>, <<"POST">>], cs_shop_key},
         {<<"/api/v1/cs/sessions">>, visitor_sessions, [<<"GET">>], cs_visit},
         {<<"/api/v1/cs/sessions/:id/messages">>, session_messages, [<<"POST">>], cs_visit},
         {<<"/api/v1/cs/sessions/:id/rating">>, session_rating, [<<"POST">>], cs_visit},
@@ -52,6 +54,9 @@ tenant_literal_routes() ->
             [<<"GET">>], cs_seat},
         %% CSB-03：坐席会话详情（GET；坐席 JWT + conversation.read）。
         {<<"/api/v1/cs/sessions/:id">>, session_detail, [<<"GET">>], cs_seat},
+        %% CSB-02R：坐席工作台 active/closed 两视图（独立路径——GET /sessions
+        %% 已冻结为访客面，route metadata 是 principal 唯一分流依据）。
+        {<<"/api/v1/cs/seats/sessions">>, seat_session_list, [<<"GET">>], cs_seat},
         {<<"/api/v1/cs/organizations/:org_id/seats">>, seats, [<<"GET">>, <<"POST">>],
             enterprise_owner_admin},
         {<<"/api/v1/cs/organizations/:org_id/seats/:id/suspend">>, seat_suspend, [<<"POST">>],
@@ -211,7 +216,35 @@ entry_violations(Path, Action, Opts, {ok, Entry}) ->
         [
             {undeclared_action_for_path, Path, Action}
          || not lists:member({Path, Action}, path_actions())
-        ].
+        ] ++
+        case_auth_violations(Path, Action, Entry).
+
+%% CSB-02R：case_auth（同路径 method+auth_context 分流）的机械审计——
+%% 覆盖方法必须已在该动作表登记、principal 必属五类、且**不得**与 entry
+%% 默认主体相同（相同即无谓漂移面）。
+case_auth_violations(Path, Action, Entry) ->
+    CaseAuth = maps:get(case_auth, Entry, #{}),
+    Methods = entry_methods(Entry),
+    DefaultPrincipal = maps:get(auth_context, maps:get(auth, Entry), undefined),
+    lists:append([
+        [
+            {case_auth_method_not_declared, Path, Action, M}
+         || M <- maps:keys(CaseAuth), not lists:member(M, Methods)
+        ],
+        [
+            {case_auth_principal_invalid, Path, Action, M}
+         || M <- maps:keys(CaseAuth),
+            not lists:member(
+                maps:get(auth_context, maps:get(M, CaseAuth), undefined),
+                cs_auth:principals()
+            )
+        ],
+        [
+            {case_auth_same_as_default, Path, Action, M}
+         || M <- maps:keys(CaseAuth),
+            maps:get(auth_context, maps:get(M, CaseAuth), undefined) =:= DefaultPrincipal
+        ]
+    ]).
 
 entry_methods(Entry) ->
     [maps:get(method, Case) || Case <- maps:get(cases, Entry)].
@@ -254,10 +287,11 @@ literal_for(platform) ->
 %% 审计必须逐条报红。
 a01_audit_is_not_vacuous_test() ->
     Real = ?S:cs_routes(all),
-    %% 31 = 租户 16（含 CSB-03 坐席会话详情）+ widget 8（CSB-03）+ 平台 7；
+    %% 32 = 租户 17（CSB-03 详情 + CSB-02R seats/sessions；queue 计 1 条路径）+
+    %% widget 8（CSB-03）+ 平台 7；
     %% C2/C3 治理列表与既有 POST 同路径（动作名按 contracts-w2 冻结为
     %% shop_key_list/visit_token_list）。
-    ?assert(length(Real) >= 31),
+    ?assert(length(Real) >= 32),
     MutatedAuth = lists:map(
         fun({Path, H, Opts}) ->
             case maps:get(action, Opts) of

@@ -27,6 +27,7 @@
     touch_widget_bootstrap_token/4,
     revoke_widget_bootstrap_token/4,
     record_widget_nonce/4,
+    default_workspace/1,
     sql_statements/0
 ]).
 
@@ -174,6 +175,26 @@
     " VALUES ($1, $2, $3, $4, to_timestamp($5))"
 >>).
 
+%% CSB-02R：widget 装配的本 Org 缺省 Workspace 解析——org 作用域 active 且
+%% id 最小（确定性规则，与 EB 成员面同口径但**不做成员连接**：访客没有
+%% membership）。规则冻结于 SQL，调用方不可指定或切换。
+-define(SQL_DEFAULT_WORKSPACE, <<
+    "SELECT w.id AS workspace_id"
+    "  FROM workspace w"
+    " WHERE w.organization_id = $1 AND w.status = 'active'"
+    " ORDER BY w.id"
+    " LIMIT 1"
+>>).
+
+-spec default_workspace(integer()) -> {ok, integer()} | {error, not_found | term()}.
+default_workspace(OrgId) when is_integer(OrgId) ->
+    case cs_pg_common:fetch_one(?SQL_DEFAULT_WORKSPACE, [OrgId], [workspace_id]) of
+        {ok, #{workspace_id := Ws}} when is_integer(Ws) -> {ok, Ws};
+        {error, _} = Err -> Err
+    end;
+default_workspace(_OrgId) ->
+    {error, {invalid_argument, default_workspace}}.
+
 %% @doc 冻结语句（供租户键机械断言：每条都同语句带 organization_id）。
 -spec sql_statements() -> [binary()].
 sql_statements() ->
@@ -189,7 +210,8 @@ sql_statements() ->
         ?SQL_FETCH_BOOTSTRAP_BY_DIGEST,
         ?SQL_TOUCH_BOOTSTRAP_TOKEN,
         ?SQL_REVOKE_BOOTSTRAP_TOKEN,
-        ?SQL_INSERT_NONCE
+        ?SQL_INSERT_NONCE,
+        ?SQL_DEFAULT_WORKSPACE
     ].
 
 %% ===================================================================
