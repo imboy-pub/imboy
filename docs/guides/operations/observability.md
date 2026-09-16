@@ -13,8 +13,13 @@
 |---|---|---|
 | **Logs** | ✅ 已具备：`imboy/log/*.log`（lager + OTP logger） | 1.1 结构化 JSON 输出 |
 | **Metrics** | ⚠️ 部分：PG `pg_stat_*`、Erlang VM observer | 1.1 Prometheus exporter |
-| **Traces / Errors** | ⚠️ 预留：`SENTRY_DSN` 环境变量已贯通，SDK 未默认开启 | 1.0 正式版默认启用 |
+| **Traces** | ✅ 已具备：Uptrace（trace.imboy.pub）OTel 上报，prod/dev 分项目 | 业务关键路径埋点铺开 |
+| **Errors** | ⚠️ 预留：`SENTRY_DSN` 环境变量已贯通，SDK 未默认开启 | 1.0 正式版默认启用 |
 | **Healthcheck** | ✅ 已具备：`GET /healthcheck`（HTTP 200 即健康） | — |
+
+> 🔗 链路追踪（Uptrace）的安装、域名/HTTPS 配置、超管账号与后端对接步骤，
+> 见 **[Uptrace 安装与后端对接指南](deployment/uptrace-install.md)**。
+> 业务代码埋点使用 `imboy_telemetry:with_span/2,3`（见 `src/lib/imboy_telemetry.erl`）。
 
 ---
 
