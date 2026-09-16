@@ -2322,6 +2322,12 @@
         "static": false
       },
       {
+        "action": "session_detail",
+        "handler": "cs_tenant_handler",
+        "path": "/api/v1/cs/sessions/:id",
+        "static": false
+      },
+      {
         "action": "session_claim",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/sessions/:id/claim",
@@ -2355,6 +2361,54 @@
         "action": "session_queue",
         "handler": "cs_tenant_handler",
         "path": "/api/v1/cs/sessions/queue",
+        "static": false
+      },
+      {
+        "action": "widget_bootstrap",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/bootstrap",
+        "static": false
+      },
+      {
+        "action": "widget_identity_exchange",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/identity/exchange",
+        "static": false
+      },
+      {
+        "action": "widget_sessions",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions",
+        "static": false
+      },
+      {
+        "action": "widget_asset_confirm",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions/:id/assets/confirm",
+        "static": false
+      },
+      {
+        "action": "widget_asset_upload",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions/:id/assets/presign",
+        "static": false
+      },
+      {
+        "action": "widget_session_events",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions/:id/events",
+        "static": false
+      },
+      {
+        "action": "widget_session_messages",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions/:id/messages",
+        "static": false
+      },
+      {
+        "action": "widget_session_rating",
+        "handler": "cs_widget_handler",
+        "path": "/api/v1/cs/widget/sessions/:id/rating",
         "static": false
       },
       {

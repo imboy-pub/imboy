@@ -38,8 +38,10 @@
 -export([
     tenant/1,
     platform/1,
+    widget/1,
     tenant_actions/0,
     platform_actions/0,
+    widget_actions/0,
     find/2,
     case_for/2,
     param_keys/1,
@@ -50,10 +52,11 @@
 
 -export_type([owner/0, ptype/0, param/0, kase/0, entry/0, org_source/0]).
 
--type owner() :: tenant | platform.
+-type owner() :: tenant | platform | widget.
 %% `tsid` = 64-bit TSID：传输层是 JSON/path **字符串**，投影成 integer 交给 application
-%% （出站再编回 string，见 cs_http:encode_entity/1）。
--type ptype() :: tsid | int | binary.
+%% （出站再编回 string，见 cs_http:encode_entity/1）。`map` = 嵌套 JSON 对象
+%% （widget 断言 `assertion`，形状判定由 application 的 claims 全查承担）。
+-type ptype() :: tsid | int | binary | map.
 -type param() :: {atom(), ptype(), required | optional}.
 -type kase() :: #{
     method := binary(),
@@ -96,6 +99,9 @@ tenant(Action) ->
 platform(Action) ->
     find(platform, Action).
 
+widget(Action) ->
+    find(widget, Action).
+
 find(Owner, Action) ->
     case lists:keyfind(Action, 1, table(Owner)) of
         {Action, Entry} -> {ok, Entry#{action => Action}};
@@ -107,6 +113,9 @@ tenant_actions() ->
 
 platform_actions() ->
     [A || {A, _} <- table(platform)].
+
+widget_actions() ->
+    [A || {A, _} <- table(widget)].
 
 %% @doc 路径级动作 + HTTP 方法 → 用例。未登记方法返回 `{error, method_not_allowed}`。
 case_for(Entry, Method) ->
@@ -146,6 +155,16 @@ seat_auth(Permission) ->
 visit_auth() ->
     #{auth_context => cs_visit}.
 
+%% CSB-03：widget 接入面（principal 与访客同类：visit token 头
+%% `x-cs-visit-token` 携带的 bootstrap 令牌）。与既有 visit token 的差别只在
+%% 存储行的绑定列（installation + contact）：令牌校验（digest 命中
+%% (Org, installation) + 未吊销 + 未过期）在 application 用例内逐请求裁决
+%% （`cs_widget_support:verify_bootstrap_token/2`）。`widget_bootstrap` 是
+%% 签发点本身，令牌**可选**（重放心跳）；其余 widget 动作令牌必填
+%% （缺头即 401，由 cs_widget_handler 执行）。
+widget_auth() ->
+    #{auth_context => cs_visit}.
+
 %% 门店接入：shop key（digest + 未吊销）。
 shop_key_auth() ->
     #{auth_context => cs_shop_key}.
@@ -157,6 +176,37 @@ platform_auth(Permission) ->
 %% 服务端派生键的公共集：操作人与时钟永远不来自客户端。
 server_common() ->
     [actor_user_id, at].
+
+%% CSB-03：widget 面的服务端派生/注入键全集。除公共时钟外：contact 与
+%% workspace 由令牌行与默认 Workspace 事实服务端解析；`origin` 只来自
+%% Origin 头（handler 归一化后注入）；`secret` 只来自专用头；其余键是
+%% application 的 Ctx 注入面（HMAC 材料 / 事实 fun / 端口 / 摘要 fun /
+%% 断言验证器 / TTL）——浏览器可写即等于把服务端事实交给客户端，
+%% 一律「提供即 400」。
+widget_server_derived() ->
+    server_common() ++
+        [
+            contact_id,
+            business_identity_id,
+            created_by_user_id,
+            workspace_id,
+            origin,
+            secret,
+            subject_key,
+            default_workspace,
+            assertion_verifier,
+            intake_business_identity_id,
+            store,
+            id,
+            digest,
+            new_secret,
+            bootstrap_token_ttl,
+            eb_store,
+            eb_audit,
+            eb_id,
+            eb_clock,
+            eb_crypto
+        ].
 
 %% ===================================================================
 %% 租户面（§5.2 + A0 客户端契约基准）
@@ -260,6 +310,15 @@ table(tenant) ->
                 server_common() ++ [business_identity_id],
                 param
             )},
+        %% CSB-03：坐席会话详情（GET /api/v1/cs/sessions/:id）——坐席侧单会话读，
+        %% 与平台面 p_session 共用同一 fetch_session 用例（不复制逻辑）。
+        {session_detail,
+            entry(
+                [{<<"GET">>, seat_session_detail, [], [{id, session_id}]}],
+                seat_auth(<<"conversation.read">>),
+                server_common() ++ [business_identity_id],
+                param
+            )},
         %% —— 以下为租户治理面（owner/admin）：seat / shop key / visit token ——
         %% C4（contracts-w2）：seats 列表 GET 支持 after_id/limit 键集分页
         %%（binary 形态透传给 application 校验——非法取值 422，而非 400）。
@@ -345,6 +404,140 @@ table(tenant) ->
             )}
     ];
 %% ===================================================================
+%% widget 接入面（CSB-03，plan §12.4 的 HTTP 落地）：浏览器访客，凭证是
+%% bootstrap 令牌专用头（查询串携带凭证即 400，见 cs_http）；令牌校验在
+%% application 用例内逐请求裁决。bootstrap 无令牌可验（它就是签发点，
+%% 令牌可选 = 重放心跳）；会话生命周期用例复用 `cs_widget_session_app`。
+%% Org 恒为申报参数（path 无 org 段），由令牌 digest 的同语句命中证明。
+%% ===================================================================
+table(widget) ->
+    [
+        {widget_bootstrap,
+            widget_entry(
+                [
+                    {<<"POST">>, widget_bootstrap,
+                        [
+                            {public_widget_id, binary, required},
+                            {subject_id, binary, required}
+                        ],
+                        []}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        {widget_identity_exchange,
+            widget_entry(
+                [
+                    {<<"POST">>, widget_identity_exchange,
+                        [
+                            {installation_id, tsid, required},
+                            {assertion, map, required}
+                        ],
+                        []}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        %% 会话建立（POST）与访客会话列表（GET）同路径动作（cowboy 只按 path
+        %% 匹配——seats/shop-keys 同款先例）。
+        {widget_sessions,
+            widget_entry(
+                [
+                    {<<"POST">>, widget_create_session, [{installation_id, tsid, required}], []},
+                    {<<"GET">>, widget_list_sessions, [{installation_id, tsid, required}], []}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        {widget_session_messages,
+            widget_entry(
+                [
+                    {<<"GET">>, widget_history_after,
+                        [
+                            {installation_id, tsid, required},
+                            {after_id, tsid, optional},
+                            {limit, int, optional}
+                        ],
+                        [{id, session_id}]},
+                    {<<"POST">>, widget_visitor_message,
+                        [
+                            {installation_id, tsid, required},
+                            {body, binary, required},
+                            {client_msg_id, binary, required}
+                        ],
+                        [{id, session_id}]}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        %% SSE 事件流（GET）：流式响应由 cs_widget_handler 专用分支承担；
+        %% 动作表声明的是补偿读语义（Last-Event-ID / after_id → 历史 after 游标），
+        %% facade 与普通历史同源（widget_history_after）。
+        {widget_session_events,
+            widget_entry(
+                [
+                    {<<"GET">>, widget_history_after,
+                        [
+                            {installation_id, tsid, required},
+                            {after_id, tsid, optional},
+                            {limit, int, optional}
+                        ],
+                        [{id, session_id}]}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        {widget_asset_upload,
+            widget_entry(
+                [
+                    {<<"POST">>, widget_asset_upload,
+                        [
+                            {installation_id, tsid, required},
+                            {mime, binary, required},
+                            {size_bytes, int, required}
+                        ],
+                        [{id, session_id}]}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        {widget_asset_confirm,
+            widget_entry(
+                [
+                    {<<"POST">>, widget_asset_confirm,
+                        [
+                            {installation_id, tsid, required},
+                            {upload_ref, binary, required}
+                        ],
+                        [{id, session_id}]}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )},
+        {widget_session_rating,
+            widget_entry(
+                [
+                    {<<"POST">>, widget_rate,
+                        [
+                            {installation_id, tsid, required},
+                            {rating, int, required},
+                            {expected_version, int, required}
+                        ],
+                        [{id, session_id}]}
+                ],
+                widget_auth(),
+                widget_server_derived(),
+                param
+            )}
+    ];
+%% ===================================================================
 %% 平台运营面（§5.3）：每条路径显式带 :org_id + workspace_id 必填；
 %% 与租户面共用同一 application（CS-02-A02：不复制业务逻辑）。
 %% ===================================================================
@@ -427,6 +620,10 @@ kase({Method, Facade, Params, PathParams}) ->
         params => Params,
         path_params => PathParams
     }.
+
+%% widget 面路径动作构造（owner=widget；其余形状与租户面一致）。
+widget_entry(Cases, Auth, ClientForbidden, OrgSource) ->
+    (entry(Cases, Auth, ClientForbidden, OrgSource))#{owner => widget}.
 
 %% 平台面路径动作构造：org 恒来自 path；服务端派生键 = 公共集。
 platform_entry(Cases, Auth) ->

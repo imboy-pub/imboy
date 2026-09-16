@@ -29,6 +29,7 @@
 
 -define(S, cs_test_support).
 -define(TENANT_HANDLER, "src/features/customer_service/interfaces/cs_tenant_handler.erl").
+-define(WIDGET_HANDLER, "src/features/customer_service/interfaces/cs_widget_handler.erl").
 -define(PLATFORM_HANDLER, "src/features/customer_service/interfaces/cs_platform_handler.erl").
 -define(HTTP_MODULE, "src/features/customer_service/interfaces/cs_http.erl").
 -define(AUTH_MODULE, "src/features/customer_service/interfaces/cs_auth.erl").
@@ -49,6 +50,8 @@ tenant_literal_routes() ->
         {<<"/api/v1/cs/sessions/:id/close">>, session_close, [<<"POST">>], cs_seat},
         {<<"/api/v1/enterprise/conversations/:conversation_id/messages">>, conversation_messages,
             [<<"GET">>], cs_seat},
+        %% CSB-03：坐席会话详情（GET；坐席 JWT + conversation.read）。
+        {<<"/api/v1/cs/sessions/:id">>, session_detail, [<<"GET">>], cs_seat},
         {<<"/api/v1/cs/organizations/:org_id/seats">>, seats, [<<"GET">>, <<"POST">>],
             enterprise_owner_admin},
         {<<"/api/v1/cs/organizations/:org_id/seats/:id/suspend">>, seat_suspend, [<<"POST">>],
@@ -80,6 +83,30 @@ platform_literal_routes() ->
         {<<P/binary, "/sessions/:id/close">>, p_session_close, [<<"POST">>], platform_admin}
     ].
 
+%% CSB-03：widget 接入面（浏览器访客；principal 与访客同类——visit token 头）。
+widget_literal_routes() ->
+    W = <<"/api/v1/cs/widget">>,
+    [
+        {<<W/binary, "/bootstrap">>, widget_bootstrap, [<<"POST">>], cs_visit},
+        {<<W/binary, "/identity/exchange">>, widget_identity_exchange, [<<"POST">>], cs_visit},
+        {<<W/binary, "/sessions">>, widget_sessions, [<<"GET">>, <<"POST">>], cs_visit},
+        {
+            <<W/binary, "/sessions/:id/messages">>,
+            widget_session_messages,
+            [<<"GET">>, <<"POST">>],
+            cs_visit
+        },
+        {<<W/binary, "/sessions/:id/events">>, widget_session_events, [<<"GET">>], cs_visit},
+        {<<W/binary, "/sessions/:id/assets/presign">>, widget_asset_upload, [<<"POST">>], cs_visit},
+        {
+            <<W/binary, "/sessions/:id/assets/confirm">>,
+            widget_asset_confirm,
+            [<<"POST">>],
+            cs_visit
+        },
+        {<<W/binary, "/sessions/:id/rating">>, widget_session_rating, [<<"POST">>], cs_visit}
+    ].
+
 %% ===================================================================
 %% A01：method/path/action/auth_context/feature 一致 + 五类无混淆
 %% ===================================================================
@@ -92,6 +119,10 @@ violations(Routes) ->
         [
             {tenant, Path, Action, Methods, Principal}
          || {Path, Action, Methods, Principal} <- tenant_literal_routes()
+        ],
+        [
+            {widget, Path, Action, Methods, Principal}
+         || {Path, Action, Methods, Principal} <- widget_literal_routes()
         ],
         [
             {platform, Path, Action, Methods, Principal}
@@ -119,6 +150,8 @@ find_entry(_Surface, undefined) ->
     {error, {unknown_action, undefined}};
 find_entry(tenant, Action) ->
     cs_actions:tenant(Action);
+find_entry(widget, Action) ->
+    cs_actions:widget(Action);
 find_entry(platform, Action) ->
     cs_actions:platform(Action);
 find_entry(_Surface, Action) ->
@@ -130,6 +163,7 @@ route_violations(Path, Handler, Opts, Known, EntryResult) ->
     ExpectedHandler =
         case Surface of
             platform -> cs_platform_handler;
+            widget -> cs_widget_handler;
             _ -> cs_tenant_handler
         end,
     Base = [{path_not_frozen, Path} || not lists:keymember(Path, 2, Known)],
@@ -192,12 +226,15 @@ path_actions() ->
 all_literal_routes() ->
     lists:append([
         [{tenant, P, A, M, Pr} || {P, A, M, Pr} <- tenant_literal_routes()],
+        [{widget, P, A, M, Pr} || {P, A, M, Pr} <- widget_literal_routes()],
         [{platform, P, A, M, Pr} || {P, A, M, Pr} <- platform_literal_routes()]
     ]).
 
 route_methods(Opts) ->
     case {maps:get(surface, Opts, undefined), maps:get(action, Opts, undefined)} of
-        {Surface, Action} when Surface =:= tenant; Surface =:= platform ->
+        {Surface, Action} when
+            Surface =:= tenant; Surface =:= widget; Surface =:= platform
+        ->
             case lists:keyfind(Action, 2, literal_for(Surface)) of
                 {_Path, Action, Methods, _Pr} -> Methods;
                 false -> []
@@ -208,6 +245,8 @@ route_methods(Opts) ->
 
 literal_for(tenant) ->
     [{P, A, M, Pr} || {P, A, M, Pr} <- tenant_literal_routes()];
+literal_for(widget) ->
+    [{P, A, M, Pr} || {P, A, M, Pr} <- widget_literal_routes()];
 literal_for(platform) ->
     [{P, A, M, Pr} || {P, A, M, Pr} <- platform_literal_routes()].
 
@@ -215,9 +254,10 @@ literal_for(platform) ->
 %% 审计必须逐条报红。
 a01_audit_is_not_vacuous_test() ->
     Real = ?S:cs_routes(all),
-    %% 22 = 既有 21 条 + C1 平台 session 列表新路径；C2/C3 治理列表与既有 POST
-    %% 同路径（动作名按 contracts-w2 冻结为 shop_key_list/visit_token_list）。
-    ?assert(length(Real) >= 22),
+    %% 31 = 租户 16（含 CSB-03 坐席会话详情）+ widget 8（CSB-03）+ 平台 7；
+    %% C2/C3 治理列表与既有 POST 同路径（动作名按 contracts-w2 冻结为
+    %% shop_key_list/visit_token_list）。
+    ?assert(length(Real) >= 31),
     MutatedAuth = lists:map(
         fun({Path, H, Opts}) ->
             case maps:get(action, Opts) of
@@ -238,10 +278,13 @@ a01_audit_is_not_vacuous_test() ->
 a01_action_table_covers_frozen_paths_test() ->
     TenantActions = sets:from_list(cs_actions:tenant_actions()),
     PlatformActions = sets:from_list(cs_actions:platform_actions()),
+    WidgetActions = sets:from_list(cs_actions:widget_actions()),
     FrozenTenant = sets:from_list([A || {_P, A, _M, _Pr} <- tenant_literal_routes()]),
     FrozenPlatform = sets:from_list([A || {_P, A, _M, _Pr} <- platform_literal_routes()]),
+    FrozenWidget = sets:from_list([A || {_P, A, _M, _Pr} <- widget_literal_routes()]),
     ?assertEqual(sets:to_list(FrozenTenant), sets:to_list(TenantActions)),
     ?assertEqual(sets:to_list(FrozenPlatform), sets:to_list(PlatformActions)),
+    ?assertEqual(sets:to_list(FrozenWidget), sets:to_list(WidgetActions)),
     lists:foreach(
         fun({Path, Action, Methods, Principal}) ->
             {ok, Entry} = cs_actions:tenant(Action),
@@ -263,6 +306,17 @@ a01_action_table_covers_frozen_paths_test() ->
             )
         end,
         platform_literal_routes()
+    ),
+    lists:foreach(
+        fun({Path, Action, Methods, Principal}) ->
+            {ok, Entry} = cs_actions:widget(Action),
+            Auth = maps:get(auth, Entry),
+            ?assertEqual(
+                {Path, lists:sort(Methods), Principal},
+                {Path, lists:sort(entry_methods(Entry)), maps:get(auth_context, Auth)}
+            )
+        end,
+        widget_literal_routes()
     ).
 
 %% A01：五类 principal 各自的凭证类别互不相同（机制上的「无混淆」）。
@@ -354,6 +408,7 @@ a02_both_surfaces_share_facade_use_cases_test() ->
             {ok, Entry} =
                 case Owner of
                     tenant -> cs_actions:tenant(Action);
+                    widget -> cs_actions:widget(Action);
                     platform -> cs_actions:platform(Action)
                 end,
             lists:foreach(
@@ -365,10 +420,11 @@ a02_both_surfaces_share_facade_use_cases_test() ->
         end,
         [
             {Owner, Action}
-         || Owner <- [tenant, platform],
+         || Owner <- [tenant, widget, platform],
             Action <-
                 case Owner of
                     tenant -> cs_actions:tenant_actions();
+                    widget -> cs_actions:widget_actions();
                     platform -> cs_actions:platform_actions()
                 end
         ]
@@ -409,6 +465,19 @@ credential_surface_matches_principal_declaration_test() ->
             end
         end,
         tenant_literal_routes()
+    ),
+    %% CSB-03：widget 面（全部令牌/引导动作，凭证在专用头——bootstrap 是签发
+    %% 点本身，令牌可选，同样免签名 + 免 JWT 直通）。
+    lists:foreach(
+        fun({_Path, Action, _Methods, Principal}) ->
+            {ok, Entry} = cs_actions:widget(Action),
+            PathBin = path_of(widget, Action),
+            ?assert(lists:member(Principal, [cs_visit, cs_shop_key])),
+            ?assert(cs_http:is_credential_surface_path(PathBin)),
+            ?assertEqual(param, cs_actions:org_source(Entry)),
+            ?assertNot(is_map_key(org_id, path_bindings(PathBin)))
+        end,
+        widget_literal_routes()
     ),
     lists:foreach(
         fun({_Path, Action, _Methods, _Principal}) ->
@@ -462,6 +531,7 @@ a03_middleware_credential_surface_is_ifdef_guarded_test() ->
 interface_sources_have_no_db_or_dynamic_dispatch_test() ->
     Files = [
         ?TENANT_HANDLER,
+        ?WIDGET_HANDLER,
         ?PLATFORM_HANDLER,
         ?HTTP_MODULE,
         ?AUTH_MODULE,
@@ -548,6 +618,58 @@ error_status_mapping_is_explicit_test() ->
     ?assertEqual(409, cs_http:status({assignee_change_requires_offboarding, 1})),
     ?assertEqual(
         <<"offboarding_required">>, cs_http:tag({assignee_change_requires_offboarding, 1})
+    ),
+    %% CSB-03：widget 接入面错误分类（400/401/403/409/422/500 显式登记）。
+    ?assertEqual(400, cs_http:status({invalid_origin, <<"x">>})),
+    ?assertEqual(400, cs_http:status(credential_in_query_string)),
+    ?assertEqual(401, cs_http:status({invalid_claim, iss})),
+    ?assertEqual(401, cs_http:status(assertion_expired)),
+    ?assertEqual(401, cs_http:status(subject_mismatch)),
+    ?assertEqual(401, cs_http:status(identity_key_expired)),
+    ?assertEqual(403, cs_http:status(origin_not_allowed)),
+    ?assertEqual(403, cs_http:status(installation_revoked)),
+    ?assertEqual(403, cs_http:status(identity_key_revoked)),
+    ?assertEqual(409, cs_http:status({session_already_open, 1})),
+    ?assertEqual(409, cs_http:status(replay)),
+    ?assertEqual(422, cs_http:status(identity_key_not_configured)),
+    %% 服务端注入事实缺失/默认 Workspace 解析失败是配置问题 ⇒ 500（不伪装 4xx）。
+    ?assertEqual(500, cs_http:status({missing_injection, default_workspace})),
+    ?assertEqual(500, cs_http:status(default_workspace_unresolved)).
+
+%% CSB-03：widget 面凭证传输纪律——专用头合法、查询串即 400；Origin 归一化
+%% 复用 domain cs_widget（接口层只做归一与形状门，allowlist 匹配在 application）。
+widget_transport_discipline_test() ->
+    %% 凭证面：widget 全部路径免签名 + 免 JWT 直通（中间件口径）。
+    lists:foreach(
+        fun({Path, _A, _M, _P}) ->
+            ?assert(cs_http:is_credential_surface_path(Path))
+        end,
+        widget_literal_routes()
+    ),
+    %% Origin 归一化：同源 sibling 折叠（缺省端口/大小写）、形状非法 fail-closed。
+    ?assertEqual(
+        {ok, <<"https://shop.example.com">>},
+        cs_widget:normalize_origin(<<"HTTPS://Shop.Example.COM">>)
+    ),
+    ?assertEqual(
+        {ok, <<"https://shop.example.com">>},
+        cs_widget:normalize_origin(<<"https://shop.example.com:443">>)
+    ),
+    ?assertMatch(
+        {error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"https://x.example.com/path">>)
+    ),
+    ?assertMatch({error, {invalid_origin, _}}, cs_widget:normalize_origin(<<"not-an-origin">>)),
+    %% allowlist 精确匹配（无子域通融；空 allowlist 全拒）。
+    ?assertEqual(
+        ok,
+        cs_widget:origin_allowed(<<"https://shop.example.com">>, [<<"https://shop.example.com">>])
+    ),
+    ?assertEqual(
+        {error, origin_not_allowed},
+        cs_widget:origin_allowed(<<"https://evil.example.com">>, [<<"https://shop.example.com">>])
+    ),
+    ?assertEqual(
+        {error, origin_not_allowed}, cs_widget:origin_allowed(<<"https://shop.example.com">>, [])
     ).
 
 %% ===================================================================

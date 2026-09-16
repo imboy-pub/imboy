@@ -181,7 +181,9 @@ otp_lib_whitelist() ->
         elib_response,
         os,
         persistent_term,
-        proplists
+        proplists,
+        %% CSB-03：cs_widget_handler 的 SSE 轮询节奏（timer:sleep/1）。
+        timer
     ].
 
 remote_calls_in_module(Mod) ->

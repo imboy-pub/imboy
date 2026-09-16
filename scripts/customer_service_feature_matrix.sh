@@ -10,7 +10,8 @@
 #     1. neither           既不选 enterprise_business 也不选 customer_service
 #     2. customer-service  enterprise_business + customer_service（依赖前者）
 #
-#   逐档断言五层资产（对象 = customer_service 的 23 个模块 + 21 条路由）：
+#   逐档断言五层资产（对象 = customer_service 的全部模块（29，含 CSB-03 的
+#   cs_widget_handler）+ 31 条路由 = 租户 16 + widget 8 + 平台 7）：
 #     A-selected    宏 / 路由 / beam / .app modules / release 都在
 #     A-unselected  宏 / 路由 / beam / .app modules / release 都不在
 #     A03-负例      customer_service 无 enterprise_business ⇒ 生成即失败
@@ -261,13 +262,15 @@ route_probe() {   # $1 = 副本；stdout = "tenant=<n> platform=<n>"
       erl -noshell -pa "$wt/ebin" $pa -eval '
         Routes = lists:append([Rs || {_H, Rs} <- imboy_router:get_routes()]),
         CS = [P || {P, H, _} <- Routes,
-                   (H =:= cs_tenant_handler orelse H =:= cs_platform_handler),
+                   (H =:= cs_tenant_handler orelse H =:= cs_widget_handler orelse
+                    H =:= cs_platform_handler),
                    is_list(P)],
         T = [P || {P, H, _} <- Routes, H =:= cs_tenant_handler, is_list(P)],
+        W = [P || {P, H, _} <- Routes, H =:= cs_widget_handler, is_list(P)],
         A = [P || {P, H, _} <- Routes, H =:= cs_platform_handler, is_list(P)],
-        io:format("ROUTE_PROBE tenant=~p platform=~p total=~p~n",
-                  [length(T), length(A), length(CS)]),
-        halt().' 2>/dev/null ) | tr -d '\r' | grep -o 'tenant=[0-9]* platform=[0-9]* total=[0-9]*' | tail -1
+        io:format("ROUTE_PROBE tenant=~p widget=~p platform=~p total=~p~n",
+                  [length(T), length(W), length(A), length(CS)]),
+        halt().' 2>/dev/null ) | tr -d '\r' | grep -o 'tenant=[0-9]* widget=[0-9]* platform=[0-9]* total=[0-9]*' | tail -1
 }
 
 # ---------------------------------------------------------------------------
@@ -332,7 +335,7 @@ assert_layer_router_strings() {
 }
 
 assert_layer_routes() {
-  local wt="$1" expect="$2" probe tenant platform
+  local wt="$1" expect="$2" probe tenant widget platform
   probe="$(route_probe "$wt")"
   if [ -z "$probe" ]; then
     fail "路由表：route_probe 无输出（erl 探针失败）"
@@ -340,20 +343,23 @@ assert_layer_routes() {
   fi
   tenant="${probe#tenant=}"
   tenant="${tenant%% *}"
+  widget="${probe#*widget=}"
+  widget="${widget%% *}"
   platform="${probe##*platform=}"
   platform="${platform%% *}"
   if [ "$expect" = selected ]; then
-    # closure run：平台面新增 GET /api/adm/customer-service/organizations/:org_id/sessions（p_session_list）
-    if [ "$tenant" = 15 ] && [ "$platform" = 7 ]; then
-      ok "路由表：get_routes/0 客服路由租户 15 + 平台 7"
+    # CSB-03：租户面 16（含坐席会话详情 GET /api/v1/cs/sessions/:id）+
+    # widget 接入面 8 + 平台面 7。
+    if [ "$tenant" = 16 ] && [ "$widget" = 8 ] && [ "$platform" = 7 ]; then
+      ok "路由表：get_routes/0 客服路由租户 16 + widget 8 + 平台 7"
     else
-      fail "路由表：selected 期望租户 15/平台 7，实得 $probe"
+      fail "路由表：selected 期望租户 16/widget 8/平台 7，实得 $probe"
     fi
   else
-    if [ "$tenant" = 0 ] && [ "$platform" = 0 ]; then
+    if [ "$tenant" = 0 ] && [ "$widget" = 0 ] && [ "$platform" = 0 ]; then
       ok "路由表：get_routes/0 零客服路由（${probe}）"
     else
-      fail "路由表：unselected 期望 0/0，实得 $probe"
+      fail "路由表：unselected 期望 0/0/0，实得 $probe"
     fi
   fi
 }
@@ -595,7 +601,7 @@ fi
 
 log ""
 if [ "$FAILED" -eq 0 ]; then
-  log "=== customer_service feature matrix: PASS（$CS_MODULE_COUNT 模块 / 21 路由，两档五层全绿） ==="
+  log "=== customer_service feature matrix: PASS（$CS_MODULE_COUNT 模块 / 31 路由，两档五层全绿） ==="
 else
   log "=== customer_service feature matrix: FAIL（$FAILED 条断言红） ===" >&2
 fi

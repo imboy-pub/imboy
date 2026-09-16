@@ -793,7 +793,8 @@ get_routes() ->
             %% EB-10：企业租户面 16 条（编译期物理裁剪；
             %% 未选中 enterprise_business 时 helper 体被预处理剔除，helper 见文件底部）
             enterprise_tenant_routes() ++
-            %% CS-02：客服租户面 15 条（同款编译期物理裁剪，helper 见文件底部）
+            %% CS-02/CSB-03：客服租户面 16 条 + widget 接入面 8 条（同款编译期
+            %% 物理裁剪，helper 见文件底部；widget 动作由 cs_widget_handler 承接）
             customer_service_tenant_routes(),
 
     %% ---------------------------------------------------------------------------
@@ -1458,6 +1459,14 @@ customer_service_wire_route({Path, cs_tenant_handler, Opts}) when is_map(Opts) -
         feature => customer_service,
         auth_facts => eb_pg_auth_facts
     }};
+customer_service_wire_route({Path, cs_widget_handler, Opts}) when is_map(Opts) ->
+    {Path, cs_widget_handler, Opts#{
+        surface => widget,
+        feature => customer_service,
+        %% widget 面的凭证校验在 application 用例内（bootstrap 令牌 digest），
+        %% 不用事实装配；注入与租户面同键保持面级不变量一致（无害）。
+        auth_facts => eb_pg_auth_facts
+    }};
 customer_service_wire_route({Path, cs_platform_handler, Opts}) when is_map(Opts) ->
     {Path, cs_platform_handler, Opts#{
         surface => platform,
@@ -1791,6 +1800,53 @@ customer_service_tenant_routes() ->
             action => visit_token_revoke,
             auth_context => enterprise_owner_admin,
             required_governance => [<<"owner">>, <<"admin">>]
+        }},
+        %% CSB-03：坐席会话详情（GET；坐席 JWT + conversation.read；登记在
+        %% 全部字面路径之后——cowboy 按注册序匹配，:id 不得抢在 queue 等字面
+        %% 段之前）。
+        {"/api/v1/cs/sessions/:id", cs_tenant_handler, #{
+            action => session_detail,
+            auth_context => cs_seat,
+            required_function => <<"customer_service">>,
+            required_permission => <<"conversation.read">>
+        }},
+        %% —— CSB-03：widget 接入面（浏览器访客；凭证 = bootstrap 令牌专用头
+        %% x-cs-visit-token，查询串携带即 400；中间件免签/免 JWT 直通面由
+        %% cs_http:is_credential_surface_path/1 声明，handler 侧 fail-closed；
+        %% bootstrap 的 Origin 头经 cs_widget:normalize_origin/1 归一后进
+        %% application 与 installation allowlist 精确匹配——Origin 不是唯一
+        %% 认证，令牌/限流/租户 scope 照常生效；SSE 见 cs_widget_handler）——
+        {"/api/v1/cs/widget/bootstrap", cs_widget_handler, #{
+            action => widget_bootstrap,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/widget/identity/exchange", cs_widget_handler, #{
+            action => widget_identity_exchange,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/widget/sessions", cs_widget_handler, #{
+            action => widget_sessions,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/widget/sessions/:id/messages", cs_widget_handler, #{
+            action => widget_session_messages,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/widget/sessions/:id/events", cs_widget_handler, #{
+            action => widget_session_events,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/widget/sessions/:id/assets/presign", cs_widget_handler, #{
+            action => widget_asset_upload,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/widget/sessions/:id/assets/confirm", cs_widget_handler, #{
+            action => widget_asset_confirm,
+            auth_context => cs_visit
+        }},
+        {"/api/v1/cs/widget/sessions/:id/rating", cs_widget_handler, #{
+            action => widget_session_rating,
+            auth_context => cs_visit
         }}
     ].
 

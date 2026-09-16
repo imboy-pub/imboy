@@ -51,7 +51,8 @@ execute(Req0, Env) ->
             "cos, vsn, pkg, terminology-profile, did, tz_offset, method, sk, sign, token, x-refresh-token, "
             "imboy-refreshtoken, "
             "device-type, device-type-vsn, device-id, device-name, device-name-vsn, "
-            "platform, user-agent, content-length, X-Auth-Token, referer, Referrer-Policy"
+            "platform, user-agent, content-length, X-Auth-Token, referer, Referrer-Policy, "
+            "x-cs-visit-token, x-cs-shop-key, Last-Event-ID"
         >>,
         Req2
     ),

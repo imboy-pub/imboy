@@ -93,8 +93,9 @@ FEATURE_BACKEND_MODULES = {
         "enterprise_business_facade",
     ),
     "customer_service": (
-        # CS-02：src/features/customer_service/** 的 23 个模块（含 facade 与
-        # interfaces 六模块）。未选中 customer_service 时按 ERLC_EXCLUDE 不参与
+        # CS-02/CSB-03：src/features/customer_service/** 的全部模块（含 facade
+        # 与 interfaces 七模块——cs_widget_handler 为 CSB-03 widget 接入面）。
+        # 未选中 customer_service 时按 ERLC_EXCLUDE 不参与
         # 编译，并自动退出 .app modules 与 release 包；路由段的编译期剔除另见
         # src/imboy_router.erl 的 -ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE) helper、
         # auth_middleware_api_v1 的 is_cs_credential_path/1 ifdef 保护。依赖边
@@ -127,6 +128,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_store_port",
         "cs_tenant_handler",
         "cs_tsid",
+        "cs_widget_handler",
         "customer_service_facade",
     ),
     "moment": (

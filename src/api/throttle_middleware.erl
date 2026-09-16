@@ -24,6 +24,10 @@ execute(Req, Env) ->
         passport ->
             % GAP-09: passport 路径使用专用宽松限流（5 req/min/IP），不再完全豁免
             do_throttle_passport(Req, Env);
+        cs_widget ->
+            % CSB-03: widget 接入面专用限流（访客无 UID，恒按 IP；bootstrap/
+            % 消息/SSE 共享一只桶），不再混入通用 api_per_ip 桶
+            do_throttle_cs_widget(Req, Env);
         false ->
             do_throttle(Req, Env)
     end.
@@ -53,6 +57,35 @@ do_throttle_passport(Req, Env) ->
             %% 此时 login_attempt_ds 暴力破解保护仍有效
             ?WARN_LOG([
                 throttle_rate_not_set, #{scope => passport_per_ip, path => cowboy_req:path(Req)}
+            ]),
+            {ok, Req, Env}
+    end.
+
+%% @doc widget 接入面专用限流（CSB-03）：cs_widget_per_ip 规则，按 IP。
+%% 与 passport 同款纪律：规则未初始化时 fail-open 并告警（代码级缺省在
+%% imboy_app:init_throttle_rates/0 注册，正常不会 rate_not_set）。
+%% @private
+-spec do_throttle_cs_widget(cowboy_req:req(), map()) ->
+    {ok, cowboy_req:req(), map()} | {stop, cowboy_req:req()}.
+do_throttle_cs_widget(Req, Env) ->
+    Ip = elib_req:get_client_ip(Req),
+    case throttle:check(cs_widget_per_ip, Ip) of
+        {ok, _Remaining, _RetryAfter} ->
+            {ok, Req, Env};
+        {limit_exceeded, _, _} ->
+            ?WARN_LOG([
+                rate_limited,
+                #{
+                    key_type => ip,
+                    key => Ip,
+                    scope => cs_widget_per_ip,
+                    path => cowboy_req:path(Req)
+                }
+            ]),
+            reply_429(Req);
+        rate_not_set ->
+            ?WARN_LOG([
+                throttle_rate_not_set, #{scope => cs_widget_per_ip, path => cowboy_req:path(Req)}
             ]),
             {ok, Req, Env}
     end.
@@ -128,12 +161,16 @@ reply_429(Req) ->
     {stop, Req1}.
 
 %% @doc 判断路径的限流策略
-%% 返回 true（完全豁免）| passport（专用宽松限流）| false（通用限流）
+%% 返回 true（完全豁免）| passport（专用宽松限流）| cs_widget（widget 接入面
+%% 专用限流）| false（通用限流）
 %% GAP-09: /v1/passport/ 从完全豁免改为专用宽松限流
+%% CSB-03: /v1/cs/widget/ 专用限流（访客无 UID，恒按 IP）
 %% @private
--spec is_whitelisted(binary()) -> true | passport | false.
+-spec is_whitelisted(binary()) -> true | passport | cs_widget | false.
 %% 2026-07-08：v0 裸 /api/* 业务路由已下架，只保留 /api/v1/* 形态。
 is_whitelisted(<<"/api/v1/passport/", _/binary>>) -> passport;
+is_whitelisted(<<"/api/v1/cs/widget/", _/binary>>) -> cs_widget;
+is_whitelisted(<<"/api/v1/cs/widget">>) -> cs_widget;
 is_whitelisted(<<"/api/v1/init">>) -> true;
 is_whitelisted(<<"/api/v1/ws">>) -> true;
 is_whitelisted(<<"/health">>) -> true;

@@ -39,6 +39,7 @@
     encode_entity/1,
     is_tsid_key/1,
     is_credential_surface_path/1,
+    credential_in_query_string/1,
     now_ms/0
 ]).
 
@@ -75,11 +76,47 @@ is_credential_surface_path(Path) when is_binary(Path) ->
             Last =:= <<"messages">>; Last =:= <<"rating">>
         ->
             true;
+        %% CSB-03：POST /api/v1/cs/widget/bootstrap（widget 引导，签发点本身）
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"bootstrap">>] ->
+            true;
+        %% CSB-03：POST /api/v1/cs/widget/identity/exchange（签名身份换绑）
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"identity">>, <<"exchange">>] ->
+            true;
+        %% CSB-03：GET+POST /api/v1/cs/widget/sessions（访客会话建立/列表）
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>] ->
+            true;
+        %% CSB-03：GET+POST .../sessions/:id/messages、GET .../:id/events（SSE）、
+        %% POST .../:id/rating（访客消息/事件流/评分——令牌在专用头）
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, Last] when
+            Last =:= <<"messages">>; Last =:= <<"events">>; Last =:= <<"rating">>
+        ->
+            true;
+        %% CSB-03：POST .../sessions/:id/assets/presign | /confirm（访客附件面）
+        [<<"api">>, <<"v1">>, <<"cs">>, <<"widget">>, <<"sessions">>, _Id, <<"assets">>, _Last] ->
+            true;
         _ ->
             false
     end;
 is_credential_surface_path(_Path) ->
     false.
+
+%% @doc 查询串里出现凭证样式的键即 true（widget 面凭证只准走专用头，
+%% 查询串会进访问日志/代理日志——发现即 400，绝不解析其值）。
+-spec credential_in_query_string(cowboy_req:req()) -> boolean().
+credential_in_query_string(Req) ->
+    Qs = cowboy_req:parse_qs(Req),
+    lists:any(fun(K) -> proplists:is_defined(K, Qs) end, credential_qs_keys()).
+
+credential_qs_keys() ->
+    [
+        <<"token">>,
+        <<"secret">>,
+        <<"access_token">>,
+        <<"visit_token">>,
+        <<"shop_key">>,
+        <<"x-cs-visit-token">>,
+        <<"x-cs-shop-key">>
+    ].
 
 segments(Path) ->
     [S || S <- binary:split(Path, <<"/">>, [global]), S =/= <<>>].
@@ -134,9 +171,7 @@ known_keys() ->
     end.
 
 param_keys() ->
-    Tables =
-        [cs_actions:tenant(A) || A <- cs_actions:tenant_actions()] ++
-            [cs_actions:platform(A) || A <- cs_actions:platform_actions()],
+    Tables = action_tables(),
     lists:usort([
         K
      || {ok, Entry} <- Tables,
@@ -144,10 +179,13 @@ param_keys() ->
         {K, _Type, _Req} <- maps:get(params, Case)
     ]).
 
-%% @doc OrgId 解析（cs_actions:org_source/1 决定来源）：
-%%   * `path` —— cowboy 绑定 `org_id`（治理/平台面）；
-%%   * `param` —— A0 冻结路径（path 无 org 段）取查询/正文的必填 `organization_id`，
-%%     作为**申报值**交由 cs_auth 用凭证/事实证明。
+%% 三张动作表（租户/平台/widget）的统一读取点——新增面漏改这里会在
+%% cs_route_contract_tests 的白名单核对处显式红。
+action_tables() ->
+    [cs_actions:tenant(A) || A <- cs_actions:tenant_actions()] ++
+        [cs_actions:platform(A) || A <- cs_actions:platform_actions()] ++
+        [cs_actions:widget(A) || A <- cs_actions:widget_actions()].
+
 %% @doc OrgId 解析（cs_actions:org_source/1 决定来源）：
 %%   * `path` —— cowboy 绑定 `org_id`（治理/平台面）；
 %%   * `param` —— A0 冻结路径（path 无 org 段）取查询/正文的必填 `organization_id`，
@@ -245,10 +283,7 @@ build_params(Entry, Case, Req, Body, Derived) ->
 
 %% 服务端派生键全集（动作表 client_forbidden 的并集 + 面级归属键）。
 server_derived_keys() ->
-    Tables =
-        [cs_actions:tenant(A) || A <- cs_actions:tenant_actions()] ++
-            [cs_actions:platform(A) || A <- cs_actions:platform_actions()],
-    lists:usort(lists:append([maps:get(client_forbidden, E, []) || {ok, E} <- Tables])).
+    lists:usort(lists:append([maps:get(client_forbidden, E, []) || {ok, E} <- action_tables()])).
 
 server_derived() ->
     #{}.
@@ -329,6 +364,10 @@ coerce(int, Raw) when is_binary(Raw) ->
     end;
 coerce(binary, Raw) when is_binary(Raw), Raw =/= <<>> ->
     {ok, Raw};
+%% 嵌套 JSON 对象（widget 断言 assertion 等）原样透传；形状/取值由
+%% application 的 claims 全查承担（缺键/类型错在 claims 判定处结构化失败）。
+coerce(map, Raw) when is_map(Raw) ->
+    {ok, Raw};
 coerce(_Type, _Raw) ->
     {error, invalid_value}.
 
@@ -393,6 +432,12 @@ classify(malformed_json) ->
     ?ERR_BAD_REQUEST;
 classify(body_not_object) ->
     ?ERR_BAD_REQUEST;
+%% CSB-03：widget 面凭证只准走专用头——查询串携带凭证样式键即 400（值不读）。
+classify(credential_in_query_string) ->
+    ?ERR_BAD_REQUEST;
+%% CSB-03：Origin 头形状非法（含 path/userinfo/非法端口等）——fail-closed 400。
+classify({invalid_origin, _}) ->
+    ?ERR_BAD_REQUEST;
 classify(method_not_allowed) ->
     ?ERR_METHOD_NOT_ALLOWED;
 %% --- 401：凭证缺失/无效（访客与门店凭证也是凭证）---
@@ -418,6 +463,22 @@ classify(token_expired) ->
 classify(revoked) ->
     ?ERR_UNAUTHORIZED;
 classify(token_revoked) ->
+    ?ERR_UNAUTHORIZED;
+%% CSB-03：widget 签名身份断言 / 令牌重放面的 401 词汇（claims 值不符、
+%% subject 不符、identity key 过期——凭证语义，不是资源错误）。
+classify({invalid_claim, _}) ->
+    ?ERR_UNAUTHORIZED;
+classify(assertion_aud_mismatch) ->
+    ?ERR_UNAUTHORIZED;
+classify(assertion_widget_mismatch) ->
+    ?ERR_UNAUTHORIZED;
+classify(assertion_expired) ->
+    ?ERR_UNAUTHORIZED;
+classify(assertion_iat_in_future) ->
+    ?ERR_UNAUTHORIZED;
+classify(subject_mismatch) ->
+    ?ERR_UNAUTHORIZED;
+classify(identity_key_expired) ->
     ?ERR_UNAUTHORIZED;
 classify({unknown_action, _}) ->
     ?ERR_UNAUTHORIZED;
@@ -449,6 +510,14 @@ classify(cross_org) ->
     ?ERR_FORBIDDEN;
 classify({function_mismatch, _, _}) ->
     ?ERR_FORBIDDEN;
+%% CSB-03：widget 接入面的 403 词汇——Origin 不在 installation allowlist、
+%% installation 已吊销（kill switch）、identity key 已吊销。
+classify(origin_not_allowed) ->
+    ?ERR_FORBIDDEN;
+classify(installation_revoked) ->
+    ?ERR_FORBIDDEN;
+classify(identity_key_revoked) ->
+    ?ERR_FORBIDDEN;
 %% --- 404：资源不在本租户作用域（不区分不存在与跨 Org，避免枚举）---
 classify(not_found) ->
     ?ERR_NOT_FOUND;
@@ -475,6 +544,11 @@ classify({invalid_transition, _}) ->
 classify({not_claimable, _}) ->
     ?ERR_CONFLICT;
 classify(session_already_closed) ->
+    ?ERR_CONFLICT;
+%% CSB-03：widget 会话侧幂等（同一 contact 已有未关闭会话）与 nonce 重放。
+classify({session_already_open, _}) ->
+    ?ERR_CONFLICT;
+classify(replay) ->
     ?ERR_CONFLICT;
 classify(already_rated) ->
     ?ERR_CONFLICT;
@@ -525,6 +599,10 @@ classify({invalid_status, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
 classify({not_session_seat, _, _}) ->
     ?ERR_UNPROCESSABLE_ENTITY;
+%% CSB-03：installation 未配置 identity key（形状合法但取值不成立——
+%% 租户未启用签名身份换绑）。
+classify(identity_key_not_configured) ->
+    ?ERR_UNPROCESSABLE_ENTITY;
 %% --- 500：服务端自身不可用/配置缺失（绝不伪装成 4xx）---
 classify(Reason) ->
     case server_side(Reason) of
@@ -540,6 +618,11 @@ server_side({id_generation_failed, _, _}) -> true;
 server_side({facts_unavailable, _}) -> true;
 server_side({member_fact_query_failed, _}) -> true;
 server_side(auth_assembly_missing) -> true;
+%% CSB-03：widget 用例的服务端注入事实缺失（HMAC 材料 / 默认 Workspace /
+%% 接待 identity / 断言验证器）与默认 Workspace 解析失败——配置问题，
+%% 绝不伪装成 4xx。
+server_side({missing_injection, _}) -> true;
+server_side(default_workspace_unresolved) -> true;
 server_side({unimplemented_port, _}) -> true;
 server_side({unknown_port, _}) -> true;
 server_side({missing_config, _}) -> true;

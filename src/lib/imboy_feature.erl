@@ -136,11 +136,13 @@ route_feature(api, eb_tenant_handler, _Action) ->
     enterprise_business;
 route_feature(admin, eb_platform_handler, _Action) ->
     enterprise_business;
-%% CS-02：客服两张面（租户 /api/v1/cs/*、平台 /api/adm/customer-service/*）的
-%% **运行时** feature 门。路由段的编译期物理裁剪在 src/imboy_router.erl
-%% （-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE)），本处供 compiled_routes/2 过滤，
-%% 两者是双保险而不是替代。
-route_feature(api, cs_tenant_handler, _Action) ->
+%% CS-02/CSB-03：客服三面（租户 /api/v1/cs/*、widget /api/v1/cs/widget/*、
+%% 平台 /api/adm/customer-service/*）的**运行时** feature 门。路由段的编译期
+%% 物理裁剪在 src/imboy_router.erl（-ifdef(IMBOY_FEATURE_CUSTOMER_SERVICE)），
+%% 本处供 compiled_routes/2 过滤，两者是双保险而不是替代。
+route_feature(api, Handler, _Action) when
+    Handler =:= cs_tenant_handler; Handler =:= cs_widget_handler
+->
     customer_service;
 route_feature(admin, cs_platform_handler, _Action) ->
     customer_service;

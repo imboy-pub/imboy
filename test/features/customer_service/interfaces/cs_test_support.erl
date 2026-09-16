@@ -12,11 +12,13 @@
 -module(cs_test_support).
 
 -export([
+    handler_of/1,
     listener_for/3,
     with_listener/4,
     stop/1,
     request/4,
     request/5,
+    stream_request/6,
     parse/1,
     status/1,
     json/1,
@@ -38,17 +40,19 @@
 %% 监听器
 %% ===================================================================
 
+%% @doc 面 → handler 映射（三面：租户 / widget / 平台）。
+-spec handler_of(atom()) -> module().
+handler_of(platform) -> cs_platform_handler;
+handler_of(widget) -> cs_widget_handler;
+handler_of(_Tenant) -> cs_tenant_handler.
+
 %% @doc 按面 + 动作起监听器：从真路由表取该动作的 path 与 Opts，叠加注入
 %% （auth_facts 换成 cs_fake_facts；current_uid/adm_user_id 扮演中间件）。
 -spec listener_for(atom(), atom(), map()) -> {ok, atom(), integer()}.
 listener_for(Surface, Action, Inject) ->
     {Pattern, Opts} = route_opt(Surface, Action),
     PatternBin = to_bin(Pattern),
-    Handler =
-        case Surface of
-            platform -> cs_platform_handler;
-            _ -> cs_tenant_handler
-        end,
+    Handler = handler_of(Surface),
     Name = list_to_atom("cs02_http_" ++ integer_to_list(erlang:unique_integer([positive]))),
     Dispatch = cowboy_router:compile([
         {'_', [{binary_to_list(PatternBin), Handler, maps:merge(Opts, Inject)}]}
@@ -79,11 +83,7 @@ stop(Name) ->
 
 -spec route_opt(atom(), atom()) -> {binary(), map()}.
 route_opt(Surface, Action) ->
-    Handler =
-        case Surface of
-            platform -> cs_platform_handler;
-            _ -> cs_tenant_handler
-        end,
+    Handler = handler_of(Surface),
     Matches = [
         {b(Path), Opts}
      || {Path, H, Opts} <- cs_routes(all),
@@ -113,14 +113,14 @@ path(Surface, Action, Bindings) ->
         Bindings
     ).
 
-%% @doc 客服面路由（租户 + 平台），从真路由表筛出。
+%% @doc 客服面路由（租户 + widget + 平台），从真路由表筛出。
 -spec cs_routes(atom()) -> [{binary(), module(), map()}].
 cs_routes(_Scope) ->
     [{_Host, Routes}] = imboy_router:get_routes(),
     [
         {b(Path), H, Opts}
      || {Path, H, Opts} <- Routes,
-        H =:= cs_tenant_handler orelse H =:= cs_platform_handler
+        H =:= cs_tenant_handler orelse H =:= cs_platform_handler orelse H =:= cs_widget_handler
     ].
 
 %% ===================================================================
@@ -173,6 +173,45 @@ request(Port, Method, Path0, Body, Headers0) ->
 
 encode_body(Body) when is_binary(Body) -> Body;
 encode_body(Body) when is_map(Body) -> jsx:encode(Body).
+
+%% @doc 流式响应读取（SSE）：发请求后**限时**收字节，超时或对端关闭即返回
+%% 已收内容（原始 binary）——绝不等到连接关闭（SSE 不关）。
+-spec stream_request(integer(), binary(), binary(), term(), map(), integer()) -> binary().
+stream_request(Port, Method, Path0, Body, Headers0, ReadMs) ->
+    BodyBin = encode_body(Body),
+    Headers = maps:merge(
+        #{
+            <<"host">> => <<"localhost">>,
+            <<"connection">> => <<"close">>,
+            <<"content-length">> => integer_to_binary(byte_size(BodyBin))
+        },
+        Headers0
+    ),
+    HeaderBin = iolist_to_binary([
+        [K, <<": ">>, V, <<"\r\n">>]
+     || {K, V} <- maps:to_list(Headers)
+    ]),
+    Req = iolist_to_binary([
+        Method, <<" ">>, Path0, <<" HTTP/1.1\r\n">>, HeaderBin, <<"\r\n">>, BodyBin
+    ]),
+    {ok, Socket} = gen_tcp:connect({127, 0, 0, 1}, Port, [binary, {active, false}], ?TIMEOUT),
+    ok = gen_tcp:send(Socket, Req),
+    Raw = recv_until(Socket, <<>>, erlang:monotonic_time(millisecond) + ReadMs),
+    ok = gen_tcp:close(Socket),
+    Raw.
+
+recv_until(Socket, Acc, Deadline) ->
+    Now = erlang:monotonic_time(millisecond),
+    case Now >= Deadline of
+        true ->
+            Acc;
+        false ->
+            case gen_tcp:recv(Socket, 0, max(1, Deadline - Now)) of
+                {ok, Data} -> recv_until(Socket, <<Acc/binary, Data/binary>>, Deadline);
+                {error, closed} -> Acc;
+                {error, _} -> Acc
+            end
+    end.
 
 recv_all(Socket, Acc) ->
     case gen_tcp:recv(Socket, 0, ?TIMEOUT) of

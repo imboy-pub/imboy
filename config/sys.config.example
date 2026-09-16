@@ -544,6 +544,9 @@
             {api_per_user, 120, per_minute},
             % 每 IP 每分钟 API 调用上限
             {api_per_ip, 60, per_minute},
+            % Widget 接入面：每 IP 每分钟请求上限（bootstrap/消息/SSE 共享；
+            % 访客无 UID 恒按 IP；代码级缺省同值，CSB-03）
+            {cs_widget_per_ip, 30, per_minute},
             % 每用户每分钟消息发送上限
             {msg_per_user, 60, per_minute},
             % 密钥上报：每用户每小时最多 10 次
