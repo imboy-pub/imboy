@@ -7,7 +7,8 @@
 %% 「业务裁决」而不是「密码学是否正确」：
 %%   - 未配置 → provider_unconfigured（fail-closed，不静默降级为「不验签」）
 %%   - 密文必须验 msg_signature，且解密出的 appid 必须等于本环境 wechat_mini_appid
-%%   - 明文模式微信不给签名 ⇒ 该分支无法验签（模式固有取舍，锁住行为以防误改）
+%%   - 明文模式（body 无 Encrypt）**同样验 URL 上的 signature**：官方文档
+%%     「解密方式为明文模式」第 4 步要求用它判断请求是否来自微信服务器
 %%   - 被动回复默认关闭
 
 -module(moya_wechat_msg_tests).
@@ -162,6 +163,19 @@ handle_push_appid_mismatch_test_() ->
         end
     ).
 
+%% appid 未配置（漏配 wechat_mini_appid）→ provider_unconfigured，而不是 appid_mismatch。
+%% 两者都拒绝，但归因方向完全不同：前者查「配置漏了」，后者查「AESKey 是否被复用/泄漏」。
+handle_push_appid_unconfigured_test_() ->
+    ?WITH_MECKS(
+        [cfg(?TOKEN, ?AES_KEY_TEXT, <<>>)],
+        fun() ->
+            ?assertEqual(
+                {error, provider_unconfigured},
+                moya_wechat_msg_logic:handle_push(encrypted_query(), event_body())
+            )
+        end
+    ).
+
 %% 能解密、appid 也对，但报文不是 JSON 对象 → malformed_event
 handle_push_non_json_payload_test_() ->
     {ok, Enc} = elib_wechat_msg:encrypt(<<"not-a-json-payload">>, ?AES_KEY_TEXT, ?APPID),
@@ -205,24 +219,45 @@ handle_push_json_array_payload_test_() ->
     ).
 
 %%%===================================================================
-%%% POST 明文模式（锁行为，防止误改成「明文也当已经验签」）
+%%% POST 明文模式（body 无 Encrypt）：仍必须验 URL 上的 signature
 %%%===================================================================
 
-%% 明文模式下微信**不提供任何签名**，因此这一支无法验签 —— 是该模式自身的
-%% 取舍。用一条明显伪造的 signature 证明「确实没有在验」：如果哪天有人把
-%% 验签逻辑挪进这一支、却用错了签名元素，这条会红。
-handle_push_plaintext_mode_test_() ->
+%% 明文模式消息体不加密，但微信在 URL 上给了 signature/timestamp/nonce，
+%% 官方《消息推送》「解密方式为明文模式」第 4 步要求据此判断请求是否来自微信。
+%% 带正确签名 → 放行（?SIG_PLAIN 即 signature(TOKEN, TIMESTAMP, NONCE)）。
+handle_push_plaintext_ok_test_() ->
     ?WITH_MECKS(
         [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID)],
         fun() ->
-            Body = #{
-                <<"MsgType">> => <<"text">>,
-                <<"FromUserName">> => <<"oABCDEFGHIJKLMNOP">>,
-                <<"ToUserName">> => ?APPID
-            },
             ?assertEqual(
                 {ok, <<>>},
-                moya_wechat_msg_logic:handle_push(#{<<"signature">> => <<"bogus">>}, Body)
+                moya_wechat_msg_logic:handle_push(plain_query(?SIG_PLAIN), plain_body())
+            )
+        end
+    ).
+
+%% 签名不符 → 拒绝。这一条是防「退化成不验签」的守卫：
+%% 早前版本正是直接放行这一支，等于任何人 POST 都能让服务端处理并记录事件。
+handle_push_plaintext_bad_signature_test_() ->
+    ?WITH_MECKS(
+        [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID)],
+        fun() ->
+            ?assertEqual(
+                {error, bad_signature},
+                moya_wechat_msg_logic:handle_push(plain_query(<<"bogus">>), plain_body())
+            )
+        end
+    ).
+
+%% 完全不签名（URL 少参数 / 参数名写错）→ 与「签名不符」分开报，便于定位
+handle_push_plaintext_missing_signature_test_() ->
+    ?WITH_MECKS(
+        [cfg(?TOKEN, ?AES_KEY_TEXT, ?APPID)],
+        fun() ->
+            Query = maps:remove(<<"signature">>, plain_query(?SIG_PLAIN)),
+            ?assertEqual(
+                {error, missing_signature},
+                moya_wechat_msg_logic:handle_push(Query, plain_body())
             )
         end
     ).
@@ -305,6 +340,21 @@ valid_query(EchoStr) ->
         <<"timestamp">> => ?TIMESTAMP,
         <<"nonce">> => ?NONCE,
         <<"echostr">> => EchoStr
+    }.
+
+%% 明文模式事件的 query：签名参数名是 `signature`（密文分支才是 `msg_signature`）
+plain_query(Signature) ->
+    #{
+        <<"signature">> => Signature,
+        <<"timestamp">> => ?TIMESTAMP,
+        <<"nonce">> => ?NONCE
+    }.
+
+plain_body() ->
+    #{
+        <<"MsgType">> => <<"text">>,
+        <<"FromUserName">> => <<"oABCDEFGHIJKLMNOP">>,
+        <<"ToUserName">> => ?APPID
     }.
 
 %% OpenSSL 侧固定向量（与 elib_wechat_msg_tests 同一份）

@@ -26,10 +26,18 @@
 %%%   - 被动回复默认**关闭**（wechat_mini_msg_push_reply 为空即回空串）。
 %%%     回复体形状一旦不对，微信会当作没收到而重试，反而放大日志；
 %%%     需要时再显式开
+%%%   - ⚠️ 回复体目前回的是**明文**，仅「明文模式 / 兼容模式」下有效。若把后台切到
+%%%     「安全模式」，除空串/success 外**必须加密回包**（官方文档原文：「其他回包
+%%%     内容需加密处理」，格式 `{Encrypt, MsgSignature, TimeStamp, Nonce}`）；
+%%%     那时 `reply/1` 需改走 `elib_wechat_msg:encrypt/3`（原语与交叉验证向量已就绪）。
+%%%     当前生产是兼容模式且回复关闭，故不影响；**切模式前必须先改这里**。
 %%%
-%%% ⚠️ 明文模式下的取舍：若请求体没有 `Encrypt`（即后台选了「明文模式」），
-%%% 微信**不提供任何签名**，因此这一支无法验签 —— 这是该模式自身的取舍，不是
-%%% 本模块的疏漏。当前生产选的是「兼容模式」，请求带 Encrypt，走严格验签分支。
+%%% ⚠️ 明文模式（请求体没有 `Encrypt`）：消息体不加密，但微信**仍然**在 URL 上给
+%%% `signature`/`timestamp`/`nonce`，官方《消息推送》「解密方式为明文模式」第 4 步
+%%% 明确要求「校验 signature 签名是否正确，以判断请求是否来自微信服务器」。
+%%% ⇒ 本模块对这一支**同样验签**，缺签或签名不符一律拒绝（fail-closed）。
+%%% （本文件早前版本注释写作「微信不提供任何签名、这一支无法验签」并直接放行，
+%%%  那等于开了一个无需任何凭据就能让服务端处理并记录事件的入口，已纠正。）
 %%% @end
 %%%===================================================================
 
@@ -114,8 +122,7 @@ reply_text() ->
 decode_event(Token, AesKey, Query, Body) ->
     case maps:get(<<"Encrypt">>, Body, <<>>) of
         <<>> ->
-            %% 明文模式：微信不提供签名，无可校验项（见模块头注的取舍说明）
-            {ok, Body, plain};
+            verify_plain(Token, Query, Body);
         Encrypt ->
             Timestamp = qget(Query, <<"timestamp">>),
             Nonce = qget(Query, <<"nonce">>),
@@ -128,6 +135,24 @@ decode_event(Token, AesKey, Query, Body) ->
             end
     end.
 
+%% @doc 明文模式：body 不加密，但 URL 上仍有 `signature`/`timestamp`/`nonce`，
+%% 官方文档要求校验 `signature`（见模块头注）。缺签与签名不符分开报原因 ——
+%% 前者是「参数名写错/模式理解错」，后者是「Token 不对或有人在伪造」，
+%% 两者的排查方向完全不同。
+-spec verify_plain(binary(), map(), map()) -> {ok, map(), atom()} | {error, atom()}.
+verify_plain(Token, Query, Body) ->
+    Timestamp = qget(Query, <<"timestamp">>),
+    Nonce = qget(Query, <<"nonce">>),
+    case qget(Query, <<"signature">>) of
+        <<>> ->
+            {error, missing_signature};
+        Signature ->
+            case elib_wechat_msg:verify(Token, Timestamp, Nonce, Signature) of
+                true -> {ok, Body, plain};
+                false -> {error, bad_signature}
+            end
+    end.
+
 -spec decrypt_event(binary(), binary()) -> {ok, map(), atom()} | {error, atom()}.
 decrypt_event(Encrypt, AesKey) ->
     case elib_wechat_msg:decrypt(Encrypt, AesKey) of
@@ -136,9 +161,15 @@ decrypt_event(Encrypt, AesKey) ->
             {error, decrypt_failed};
         {ok, #{msg := Msg, appid := AppId}} ->
             case expected_appid() of
+                <<>> ->
+                    %% appid 未配置 ⇒ 无从裁决「这条本来发给谁」。若沿用 appid_mismatch，
+                    %% 排查方向会被带向「AESKey 是否被多应用复用」，与真实原因（漏配
+                    %% wechat_mini_appid）相距甚远 ⇒ 与 provider_config/0 同口径 fail-closed。
+                    ?LOG_ERROR("moya_wechat_msg appid unconfigured"),
+                    {error, provider_unconfigured};
                 AppId ->
                     decode_payload(Msg);
-                _ ->
+                _Configured ->
                     %% 不把拿到的 appid 写进日志：它可能是别人的应用标识
                     ?LOG_ERROR("moya_wechat_msg appid mismatch"),
                     {error, appid_mismatch}
