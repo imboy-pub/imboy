@@ -50,6 +50,19 @@
     fetch_visit_token_by_digest/2,
     list_visit_tokens_page/3,
     revoke_visit_token/3,
+    %% widget installation / identity key / bootstrap token / nonce（CSB-01/02）
+    insert_widget_installation/2,
+    fetch_widget_installation/2,
+    fetch_widget_installation_by_public_id/2,
+    revoke_widget_installation/3,
+    insert_widget_identity_key/3,
+    fetch_widget_identity_key/3,
+    revoke_widget_identity_key/4,
+    insert_widget_bootstrap_token/2,
+    fetch_widget_bootstrap_token_by_digest/3,
+    touch_widget_bootstrap_token/4,
+    revoke_widget_bootstrap_token/4,
+    record_widget_nonce/4,
     append_event/2
 ]).
 
@@ -68,6 +81,9 @@ init() ->
         {sessions, #{}},
         {shop_keys, #{}},
         {visit_tokens, #{}},
+        {widget_installations, #{}},
+        {widget_identity_keys, #{}},
+        {widget_nonces, #{}},
         {events, []},
         {identity_functions, #{}},
         {assignment_users, #{}}
@@ -598,6 +614,247 @@ revoke_visit_token(OrgId, TokenId, At) ->
                 _ ->
                     {error, not_found}
             end
+    end.
+
+%% ===================================================================
+%% widget installation / identity key / bootstrap token / nonce callbacks
+%% （镜像 cs_pg_widget 的决策语义；digest-only、Org 同语句裁决、23505=replay）
+%% ===================================================================
+
+insert_widget_installation(OrgId, Installation) ->
+    PublicId = maps:get(public_widget_id, Installation),
+    {widget_installations, Insts} = hd(ets:lookup(?TAB, widget_installations)),
+    %% uq_cswi_public_widget_id 是**全局**唯一（不分 Org）。
+    Dup = [I || I <- maps:values(Insts), maps:get(public_widget_id, I) =:= PublicId],
+    case Dup of
+        [_ | _] ->
+            {error, conflict};
+        [] ->
+            Id = maps:get(id, Installation),
+            Row = Installation#{
+                organization_id => OrgId,
+                status => active,
+                revoked_at => undefined,
+                version => 1,
+                created_at => 1700000000,
+                updated_at => 1700000000
+            },
+            update(widget_installations, fun(M) -> M#{Id => Row} end),
+            {ok, Row}
+    end.
+
+fetch_widget_installation(OrgId, InstallationId) ->
+    {widget_installations, Insts} = hd(ets:lookup(?TAB, widget_installations)),
+    case maps:get(InstallationId, Insts, undefined) of
+        undefined ->
+            {error, not_found};
+        Row ->
+            case same_org(Row, OrgId) of
+                true -> {ok, Row};
+                false -> {error, not_found}
+            end
+    end.
+
+fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
+    {widget_installations, Insts} = hd(ets:lookup(?TAB, widget_installations)),
+    Match = [
+        I
+     || I <- maps:values(Insts),
+        maps:get(organization_id, I) =:= OrgId,
+        maps:get(public_widget_id, I) =:= PublicWidgetId
+    ],
+    case Match of
+        [Row | _] -> {ok, Row};
+        [] -> {error, not_found}
+    end.
+
+revoke_widget_installation(OrgId, InstallationId, At) ->
+    case fetch_widget_installation(OrgId, InstallationId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            case maps:get(status, Row) of
+                active ->
+                    NewRow = Row#{
+                        status => revoked,
+                        revoked_at => At,
+                        version => maps:get(version, Row) + 1,
+                        updated_at => At
+                    },
+                    update(widget_installations, fun(M) ->
+                        M#{InstallationId => NewRow}
+                    end),
+                    ok;
+                _ ->
+                    {error, not_found}
+            end
+    end.
+
+insert_widget_identity_key(OrgId, InstallationId, Key) ->
+    KeyVersion = maps:get(key_version, Key),
+    {widget_identity_keys, Keys} = hd(ets:lookup(?TAB, widget_identity_keys)),
+    Dup = [
+        K
+     || K <- maps:values(Keys),
+        maps:get(organization_id, K) =:= OrgId,
+        maps:get(installation_id, K) =:= InstallationId,
+        maps:get(key_version, K) =:= KeyVersion
+    ],
+    case Dup of
+        [_ | _] ->
+            {error, conflict};
+        [] ->
+            Id = maps:get(id, Key),
+            Row = Key#{
+                organization_id => OrgId,
+                installation_id => InstallationId,
+                status => active,
+                revoked_at => undefined,
+                created_at => 1700000000,
+                updated_at => 1700000000
+            },
+            update(widget_identity_keys, fun(M) -> M#{Id => Row} end),
+            {ok, Row}
+    end.
+
+fetch_widget_identity_key(OrgId, InstallationId, KeyVersion) ->
+    {widget_identity_keys, Keys} = hd(ets:lookup(?TAB, widget_identity_keys)),
+    Match = [
+        K
+     || K <- maps:values(Keys),
+        maps:get(organization_id, K) =:= OrgId,
+        maps:get(installation_id, K) =:= InstallationId,
+        maps:get(key_version, K) =:= KeyVersion
+    ],
+    case Match of
+        [Row | _] -> {ok, Row};
+        [] -> {error, not_found}
+    end.
+
+revoke_widget_identity_key(OrgId, InstallationId, KeyVersion, At) ->
+    case fetch_widget_identity_key(OrgId, InstallationId, KeyVersion) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            case maps:get(status, Row) of
+                active ->
+                    NewRow = Row#{
+                        status => revoked,
+                        revoked_at => At,
+                        updated_at => At
+                    },
+                    update(widget_identity_keys, fun(M) ->
+                        M#{maps:get(id, Row) => NewRow}
+                    end),
+                    ok;
+                _ ->
+                    {error, not_found}
+            end
+    end.
+
+%% bootstrap 令牌落 visit_tokens（复用存储，镜像 cs_pg_widget：只带 widget 列）。
+insert_widget_bootstrap_token(OrgId, Token) ->
+    Digest = maps:get(token_digest, Token),
+    {visit_tokens, Tokens} = hd(ets:lookup(?TAB, visit_tokens)),
+    %% uq_csvt_org_digest：同 Org 内 digest 唯一。
+    Dup = [
+        T
+     || T <- maps:values(Tokens),
+        maps:get(organization_id, T) =:= OrgId,
+        maps:get(token_digest, T) =:= Digest
+    ],
+    case Dup of
+        [_ | _] ->
+            {error, conflict};
+        [] ->
+            Id = maps:get(id, Token),
+            Row = Token#{
+                organization_id => OrgId,
+                revoked_at => undefined,
+                last_seen_at => undefined,
+                display_hint => undefined,
+                version => 1,
+                created_at => 1700000000,
+                updated_at => 1700000000
+            },
+            update(visit_tokens, fun(M) -> M#{Id => Row} end),
+            {ok, Row}
+    end.
+
+fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest) ->
+    {visit_tokens, Tokens} = hd(ets:lookup(?TAB, visit_tokens)),
+    Match = [
+        T
+     || T <- maps:values(Tokens),
+        maps:get(organization_id, T) =:= OrgId,
+        maps:get(widget_installation_id, T, undefined) =:= InstallationId,
+        maps:get(token_digest, T) =:= Digest
+    ],
+    case Match of
+        [Row | _] -> {ok, Row};
+        [] -> {error, not_found}
+    end.
+
+touch_widget_bootstrap_token(OrgId, InstallationId, TokenId, At) ->
+    case fetch_widget_bootstrap_token_row(OrgId, InstallationId, TokenId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            case maps:get(revoked_at, Row) of
+                undefined ->
+                    NewRow = Row#{last_seen_at => At},
+                    update(visit_tokens, fun(M) -> M#{TokenId => NewRow} end),
+                    ok;
+                _ ->
+                    {error, not_found}
+            end
+    end.
+
+revoke_widget_bootstrap_token(OrgId, InstallationId, TokenId, At) ->
+    case fetch_widget_bootstrap_token_row(OrgId, InstallationId, TokenId) of
+        {error, _} = Err ->
+            Err;
+        {ok, Row} ->
+            case maps:get(revoked_at, Row) of
+                undefined ->
+                    NewRow = Row#{
+                        revoked_at => At,
+                        version => maps:get(version, Row) + 1,
+                        updated_at => At
+                    },
+                    update(visit_tokens, fun(M) -> M#{TokenId => NewRow} end),
+                    ok;
+                _ ->
+                    {error, not_found}
+            end
+    end.
+
+fetch_widget_bootstrap_token_row(OrgId, InstallationId, TokenId) ->
+    {visit_tokens, Tokens} = hd(ets:lookup(?TAB, visit_tokens)),
+    case maps:get(TokenId, Tokens, undefined) of
+        undefined ->
+            {error, not_found};
+        Row ->
+            case
+                maps:get(organization_id, Row) =:= OrgId andalso
+                    maps:get(widget_installation_id, Row, undefined) =:= InstallationId
+            of
+                true -> {ok, Row};
+                false -> {error, not_found}
+            end
+    end.
+
+record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt) ->
+    {widget_nonces, Nonces} = hd(ets:lookup(?TAB, widget_nonces)),
+    Key = {OrgId, InstallationId, JtiDigest},
+    case maps:is_key(Key, Nonces) of
+        true ->
+            {error, replay};
+        false ->
+            update(widget_nonces, fun(M) ->
+                M#{Key => #{expires_at => ExpiresAt}}
+            end),
+            ok
     end.
 
 append_event(OrgId, Event) ->

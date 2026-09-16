@@ -39,7 +39,19 @@
     issue_visit_token/2,
     revoke_visit_token/2,
     verify_visit_token/2,
-    list_visit_tokens/2
+    list_visit_tokens/2,
+    %% widget（CSB-02：application 合同；HTTP 面归 CSB-03）
+    widget_bootstrap/2,
+    widget_identity_exchange/2,
+    widget_create_session/2,
+    widget_list_sessions/2,
+    widget_history_after/2,
+    widget_visitor_message/2,
+    widget_rate/2,
+    widget_asset_upload/2,
+    widget_asset_confirm/2,
+    %% seat 会话详情（§12.4 表 2 补缺）
+    seat_session_detail/2
 ]).
 
 %% ===================================================================
@@ -321,4 +333,173 @@ verify_visit_token(OrgId, _Params) ->
 list_visit_tokens(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     cs_access_app:list_visit_tokens(OrgId, Params);
 list_visit_tokens(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% ===================================================================
+%% widget（CSB-02）：参数收敛只做形状判定；服务端派生事实（contact /
+%% conversation / workspace / identity / 时钟 / HMAC key）由 application 从
+%% Ctx 注入项与令牌作用域取得，浏览器申报值一律不成为授权事实。
+%% ===================================================================
+
+-spec widget_bootstrap(integer(), map()) -> term().
+widget_bootstrap(OrgId, #{public_widget_id := PublicId, origin := Origin} = Params) when
+    is_integer(OrgId), is_binary(PublicId), is_binary(Origin), is_map(Params)
+->
+    cs_widget_app:bootstrap(OrgId, Params);
+widget_bootstrap(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_bootstrap}};
+widget_bootstrap(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_identity_exchange(integer(), map()) -> term().
+widget_identity_exchange(
+    OrgId, #{installation_id := InstallationId, assertion := Assertion} = Params
+) when
+    is_integer(OrgId), is_integer(InstallationId), is_map(Assertion), is_map(Params)
+->
+    cs_widget_app:identity_exchange(OrgId, Params);
+widget_identity_exchange(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_identity_exchange}};
+widget_identity_exchange(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_create_session(integer(), map()) -> term().
+widget_create_session(OrgId, #{installation_id := InstallationId, secret := Secret} = Params) when
+    is_integer(OrgId), is_integer(InstallationId), is_binary(Secret), is_map(Params)
+->
+    cs_widget_session_app:create_session(OrgId, Params);
+widget_create_session(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_create_session}};
+widget_create_session(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_list_sessions(integer(), map()) -> term().
+widget_list_sessions(OrgId, #{installation_id := InstallationId, secret := Secret} = Params) when
+    is_integer(OrgId), is_integer(InstallationId), is_binary(Secret), is_map(Params)
+->
+    cs_widget_session_app:list_sessions(OrgId, Params);
+widget_list_sessions(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_list_sessions}};
+widget_list_sessions(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_history_after(integer(), map()) -> term().
+widget_history_after(
+    OrgId, #{installation_id := InstallationId, secret := Secret, session_id := SessionId} = Params
+) when
+    is_integer(OrgId),
+    is_integer(InstallationId),
+    is_binary(Secret),
+    is_integer(SessionId),
+    is_map(Params)
+->
+    cs_widget_session_app:history_after(OrgId, Params);
+widget_history_after(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_history_after}};
+widget_history_after(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_visitor_message(integer(), map()) -> term().
+widget_visitor_message(
+    OrgId,
+    #{
+        installation_id := InstallationId,
+        secret := Secret,
+        session_id := SessionId,
+        client_msg_id := ClientMsgId,
+        body := Body
+    } = Params
+) when
+    is_integer(OrgId),
+    is_integer(InstallationId),
+    is_binary(Secret),
+    is_integer(SessionId),
+    is_binary(ClientMsgId),
+    is_binary(Body),
+    is_map(Params)
+->
+    cs_widget_session_app:visitor_message(OrgId, Params);
+widget_visitor_message(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_visitor_message}};
+widget_visitor_message(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_rate(integer(), map()) -> term().
+widget_rate(
+    OrgId,
+    #{
+        installation_id := InstallationId,
+        secret := Secret,
+        session_id := SessionId,
+        rating := Rating,
+        expected_version := ExpectedVersion
+    } = Params
+) when
+    is_integer(OrgId),
+    is_integer(InstallationId),
+    is_binary(Secret),
+    is_integer(SessionId),
+    is_integer(Rating),
+    is_integer(ExpectedVersion),
+    is_map(Params)
+->
+    cs_widget_session_app:rate(OrgId, Params);
+widget_rate(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_rate}};
+widget_rate(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_asset_upload(integer(), map()) -> term().
+widget_asset_upload(
+    OrgId,
+    #{
+        installation_id := InstallationId,
+        secret := Secret,
+        session_id := SessionId,
+        mime := Mime,
+        size_bytes := SizeBytes
+    } = Params
+) when
+    is_integer(OrgId),
+    is_integer(InstallationId),
+    is_binary(Secret),
+    is_integer(SessionId),
+    is_binary(Mime),
+    is_integer(SizeBytes),
+    is_map(Params)
+->
+    cs_widget_session_app:asset_presign(OrgId, Params);
+widget_asset_upload(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_asset_upload}};
+widget_asset_upload(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec widget_asset_confirm(integer(), map()) -> term().
+widget_asset_confirm(
+    OrgId, #{installation_id := InstallationId, secret := Secret, upload_ref := UploadRef} = Params
+) when
+    is_integer(OrgId),
+    is_integer(InstallationId),
+    is_binary(Secret),
+    is_binary(UploadRef),
+    is_map(Params)
+->
+    cs_widget_session_app:asset_confirm(OrgId, Params);
+widget_asset_confirm(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, widget_asset_confirm}};
+widget_asset_confirm(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% @doc 坐席会话详情（§12.4 表 2 补缺）：business_identity_id 是认证事实
+%% 派生键（HTTP 面服务端注入），queue 列表沿用既有 list_sessions。
+-spec seat_session_detail(integer(), map()) -> term().
+seat_session_detail(
+    OrgId, #{business_identity_id := IdentityId, session_id := SessionId} = Params
+) when
+    is_integer(OrgId), is_integer(IdentityId), is_integer(SessionId), is_map(Params)
+->
+    cs_seat_app:session_detail(OrgId, Params);
+seat_session_detail(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, seat_session_detail}};
+seat_session_detail(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.

@@ -121,7 +121,7 @@ contracts() ->
 %% @doc `customer_service_facade` 允许委派的 application 用例模块（铁律 3）。
 -spec facade_targets() -> [module()].
 facade_targets() ->
-    [cs_seat_app, cs_session_app, cs_access_app].
+    [cs_seat_app, cs_session_app, cs_access_app, cs_widget_app, cs_widget_session_app].
 
 %% @doc facade 可引用的非 application 模块白名单：空集（纯「参数收敛 + 委派」）。
 -spec facade_reference_whitelist() -> [module()].

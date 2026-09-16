@@ -35,6 +35,19 @@
     fetch_visit_token_by_digest/2,
     list_visit_tokens_page/3,
     revoke_visit_token/3,
+    %% widget installation / identity key / bootstrap token / nonce（CSB-01）
+    insert_widget_installation/2,
+    fetch_widget_installation/2,
+    fetch_widget_installation_by_public_id/2,
+    revoke_widget_installation/3,
+    insert_widget_identity_key/3,
+    fetch_widget_identity_key/3,
+    revoke_widget_identity_key/4,
+    insert_widget_bootstrap_token/2,
+    fetch_widget_bootstrap_token_by_digest/3,
+    touch_widget_bootstrap_token/4,
+    revoke_widget_bootstrap_token/4,
+    record_widget_nonce/4,
     %% event
     append_event/2
 ]).
@@ -92,6 +105,32 @@ fetch_visit_token_by_digest(OrgId, Digest) ->
 list_visit_tokens_page(OrgId, AfterId, Limit) ->
     cs_pg_token:list_visit_tokens_page(OrgId, AfterId, Limit).
 revoke_visit_token(OrgId, TokenId, At) -> cs_pg_token:revoke_visit_token(OrgId, TokenId, At).
+
+%% widget installation / identity key / bootstrap token / nonce（CSB-01/02）
+insert_widget_installation(OrgId, Installation) ->
+    cs_pg_widget:insert_widget_installation(OrgId, Installation).
+fetch_widget_installation(OrgId, InstallationId) ->
+    cs_pg_widget:fetch_widget_installation(OrgId, InstallationId).
+fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
+    cs_pg_widget:fetch_widget_installation_by_public_id(OrgId, PublicWidgetId).
+revoke_widget_installation(OrgId, InstallationId, At) ->
+    cs_pg_widget:revoke_widget_installation(OrgId, InstallationId, At).
+insert_widget_identity_key(OrgId, InstallationId, Key) ->
+    cs_pg_widget:insert_widget_identity_key(OrgId, InstallationId, Key).
+fetch_widget_identity_key(OrgId, InstallationId, KeyVersion) ->
+    cs_pg_widget:fetch_widget_identity_key(OrgId, InstallationId, KeyVersion).
+revoke_widget_identity_key(OrgId, InstallationId, KeyVersion, At) ->
+    cs_pg_widget:revoke_widget_identity_key(OrgId, InstallationId, KeyVersion, At).
+insert_widget_bootstrap_token(OrgId, Token) ->
+    cs_pg_widget:insert_widget_bootstrap_token(OrgId, Token).
+fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest) ->
+    cs_pg_widget:fetch_widget_bootstrap_token_by_digest(OrgId, InstallationId, Digest).
+touch_widget_bootstrap_token(OrgId, InstallationId, TokenId, At) ->
+    cs_pg_widget:touch_widget_bootstrap_token(OrgId, InstallationId, TokenId, At).
+revoke_widget_bootstrap_token(OrgId, InstallationId, TokenId, At) ->
+    cs_pg_widget:revoke_widget_bootstrap_token(OrgId, InstallationId, TokenId, At).
+record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt) ->
+    cs_pg_widget:record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt).
 
 %% event（append-only 审计）
 append_event(OrgId, Event) -> cs_pg_seat:insert_event(OrgId, Event).

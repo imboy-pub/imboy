@@ -20,7 +20,8 @@
     suspend_seat/2,
     resume_seat/2,
     fetch_seat/2,
-    list_dispatchable_seats/2
+    list_dispatchable_seats/2,
+    session_detail/2
 ]).
 
 %% ===================================================================
@@ -209,6 +210,48 @@ list_dispatchable_seats(_OrgId, _Params) ->
 %% 既有投影字段（contracts-w2 C4：不变）。
 identity_projection() ->
     [business_identity_id, function_key, enabled, max_concurrent, active_count].
+
+%% ===================================================================
+%% 坐席会话详情（§12.4 表 2：GET /cs/sessions/:id 的应用用例）
+%% ===================================================================
+
+%% @doc 坐席取会话详情（queue 列表已冻结于 `cs_session_app:list_sessions/2`，
+%% 本用例只补 detail；业务规则零复制——读取复用既有 fetch 路径）。
+%%
+%% 业务前提（授权由认证分流判定）：请求者 `business_identity_id`（认证事实
+%% 派生，浏览器不可申报）必须是本 Org 的 enabled customer_service 坐席；
+%% 会话租户作用域由 store 同语句裁决（跨 Org 一律 not_found）。
+-spec session_detail(integer(), map()) -> {ok, map()} | {error, term()}.
+session_detail(OrgId, Params) when is_map(Params) ->
+    IdentityId = maps:get(business_identity_id, Params, undefined),
+    case pos_int(IdentityId) of
+        false ->
+            {error, {invalid_identity_id, IdentityId}};
+        true ->
+            case with_store(Params, fun(Store) -> Store:fetch_seat(OrgId, IdentityId) end) of
+                {error, not_found} ->
+                    {error, {seat_not_found, IdentityId}};
+                {error, _} = Err ->
+                    Err;
+                {ok, Seat} ->
+                    case maps:get(enabled, Seat, false) of
+                        false -> {error, seat_disabled};
+                        true -> fetch_detail(OrgId, Params)
+                    end
+            end
+    end;
+session_detail(_OrgId, _Params) ->
+    {error, {invalid_argument, session_detail}}.
+
+fetch_detail(OrgId, Params) ->
+    SessionId = maps:get(session_id, Params, undefined),
+    case pos_int(SessionId) of
+        false ->
+            {error, {invalid_session_id, SessionId}};
+        true ->
+            Clean = maps:with([store, id, workspace_id], Params),
+            cs_session_app:fetch_session(OrgId, Clean#{session_id => SessionId})
+    end.
 
 %% ===================================================================
 %% 内部辅助

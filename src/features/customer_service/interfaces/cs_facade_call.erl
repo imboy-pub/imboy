@@ -64,6 +64,28 @@ call(issue_visit_token, OrgId, Params) ->
     customer_service_facade:issue_visit_token(OrgId, Params);
 call(revoke_visit_token, OrgId, Params) ->
     customer_service_facade:revoke_visit_token(OrgId, Params);
+%% CSB-02：Widget 与 Seat 补缺用例（HTTP 动作行归 CSB-03；这里只登记
+%% facade 调用点，保证「有 facade 函数必有调用点」的机械核对闭合）。
+call(widget_bootstrap, OrgId, Params) ->
+    customer_service_facade:widget_bootstrap(OrgId, Params);
+call(widget_identity_exchange, OrgId, Params) ->
+    customer_service_facade:widget_identity_exchange(OrgId, Params);
+call(widget_create_session, OrgId, Params) ->
+    customer_service_facade:widget_create_session(OrgId, Params);
+call(widget_list_sessions, OrgId, Params) ->
+    customer_service_facade:widget_list_sessions(OrgId, Params);
+call(widget_history_after, OrgId, Params) ->
+    customer_service_facade:widget_history_after(OrgId, Params);
+call(widget_visitor_message, OrgId, Params) ->
+    customer_service_facade:widget_visitor_message(OrgId, Params);
+call(widget_rate, OrgId, Params) ->
+    customer_service_facade:widget_rate(OrgId, Params);
+call(widget_asset_upload, OrgId, Params) ->
+    customer_service_facade:widget_asset_upload(OrgId, Params);
+call(widget_asset_confirm, OrgId, Params) ->
+    customer_service_facade:widget_asset_confirm(OrgId, Params);
+call(seat_session_detail, OrgId, Params) ->
+    customer_service_facade:seat_session_detail(OrgId, Params);
 call(Action, _OrgId, _Params) ->
     {error, {unknown_action, Action}}.
 
@@ -90,5 +112,16 @@ actions() ->
         revoke_shop_key,
         list_visit_tokens,
         issue_visit_token,
-        revoke_visit_token
+        revoke_visit_token,
+        %% CSB-02：Widget 与 Seat 补缺用例
+        widget_bootstrap,
+        widget_identity_exchange,
+        widget_create_session,
+        widget_list_sessions,
+        widget_history_after,
+        widget_visitor_message,
+        widget_rate,
+        widget_asset_upload,
+        widget_asset_confirm,
+        seat_session_detail
     ].
