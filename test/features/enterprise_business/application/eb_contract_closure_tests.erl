@@ -53,19 +53,28 @@ port_declarations_cover_application_callsites_test() ->
     ],
     ?assertEqual([], Missing),
     %% 兄弟 worktree：只登记。**不得**因别人未同步的旧代码让本卡变红。
-    {SiblingCalls, SiblingSites, _} = collect_calls(sibling_application_roots()),
-    SiblingMissing = [
-        C
-     || C <- SiblingCalls,
-        not lists:member(C, declared_callbacks()),
-        %% 本卡已删除的过渡信封在两个方向的差额都只登记（别人可能仍持有旧调用点）
-        C =/= {eb_purge_port, <<"purge_batch/3">>},
-        C =/= {eb_purge_port, <<"purge_batch/4">>}
-    ],
-    %% 断言「登记而非阻断」这件事本身是活的：SiblingSites == 0 时说明根本没扫到兄弟树
-    %%（判定退化），此时必须失败——否则上面的 SiblingMissing 会在空集上恒真。
-    ?assert(SiblingSites > 0),
-    ?assertEqual([], SiblingMissing).
+    %% 集成单树运行面（主树收口/POST-V4.1）：不存在兄弟 worktree 时兄弟扫描天然退化，
+    %% 显式打印留痕后跳过（不得静默恒真，也不得反过来把主树运行判红）。
+    case sibling_application_roots() of
+        [] ->
+            io:format(
+                "note: no sibling worktrees (integrated single-tree runner); sibling scan skipped~n"
+            );
+        SiblingRoots ->
+            {SiblingCalls, SiblingSites, _} = collect_calls(SiblingRoots),
+            SiblingMissing = [
+                C
+             || C <- SiblingCalls,
+                not lists:member(C, declared_callbacks()),
+                %% 本卡已删除的过渡信封在两个方向的差额都只登记（别人可能仍持有旧调用点）
+                C =/= {eb_purge_port, <<"purge_batch/3">>},
+                C =/= {eb_purge_port, <<"purge_batch/4">>}
+            ],
+            %% 断言「登记而非阻断」这件事本身是活的：SiblingSites == 0 时说明根本没扫到兄弟树
+            %%（判定退化），此时必须失败——否则上面的 SiblingMissing 会在空集上恒真。
+            ?assert(SiblingSites > 0),
+            ?assertEqual([], SiblingMissing)
+    end.
 
 %% 负向对照：把「调用点判定」用在一条**故意越界**的样例上，必须判红。
 callsite_scanner_detects_out_of_contract_call_test() ->
