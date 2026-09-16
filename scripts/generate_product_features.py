@@ -109,6 +109,7 @@ FEATURE_BACKEND_MODULES = {
         "cs_http",
         "cs_id_port",
         "cs_infra_ports",
+        "cs_pg_widget",
         "cs_pg_common",
         "cs_pg_seat",
         "cs_pg_session",

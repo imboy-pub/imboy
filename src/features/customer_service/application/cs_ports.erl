@@ -91,6 +91,21 @@ contracts() ->
             {fetch_visit_token_by_digest, 2},
             {list_visit_tokens_page, 3},
             {revoke_visit_token, 3},
+            %% widget installation / identity key（CSB-01）
+            {insert_widget_installation, 2},
+            {fetch_widget_installation, 2},
+            {fetch_widget_installation_by_public_id, 2},
+            {revoke_widget_installation, 3},
+            {insert_widget_identity_key, 3},
+            {fetch_widget_identity_key, 3},
+            {revoke_widget_identity_key, 4},
+            %% widget bootstrap token（复用 visit_token 存储）
+            {insert_widget_bootstrap_token, 2},
+            {fetch_widget_bootstrap_token_by_digest, 3},
+            {touch_widget_bootstrap_token, 4},
+            {revoke_widget_bootstrap_token, 4},
+            %% widget JTI nonce（重放防护）
+            {record_widget_nonce, 4},
             %% event（append-only 状态审计）
             {append_event, 2}
         ],

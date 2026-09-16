@@ -23,7 +23,10 @@
     session/0,
     shop_key/0,
     visit_token/0,
-    event/0
+    event/0,
+    widget_installation/0,
+    widget_identity_key/0,
+    widget_bootstrap_token/0
 ]).
 
 -type seat() :: map().
@@ -31,6 +34,9 @@
 -type shop_key() :: map().
 -type visit_token() :: map().
 -type event() :: map().
+-type widget_installation() :: map().
+-type widget_identity_key() :: map().
+-type widget_bootstrap_token() :: map().
 
 %% -- identity 事实（A01 的应用侧前置校验数据源）----------------------------
 
@@ -164,6 +170,73 @@
     OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
 ) ->
     {ok, [visit_token()]} | {error, term()}.
+
+%% -- widget installation / identity key（CSB-01；digest 存储，明文不落库）----
+
+%% @doc 创建 Widget 安装：public_widget_id 全局唯一，冲突归一为 conflict。
+-callback insert_widget_installation(OrgId :: integer(), Installation :: widget_installation()) ->
+    {ok, widget_installation()} | {error, conflict | term()}.
+%% @doc 按 id 读取（同语句带 Org；跨 Org 命中不了行）。
+-callback fetch_widget_installation(OrgId :: integer(), InstallationId :: integer()) ->
+    {ok, widget_installation()} | {error, not_found | term()}.
+%% @doc 按公开标识读取：public_widget_id 可公开分发，但解析必须同语句携带
+%% OrgId——错 Org 的查询拿到 not_found（CSB-01-A02 的 store 裁决点）。
+-callback fetch_widget_installation_by_public_id(OrgId :: integer(), PublicWidgetId :: binary()) ->
+    {ok, widget_installation()} | {error, not_found | term()}.
+%% @doc 吊销安装（status='revoked' + revoked_at；行保留以审计）。
+-callback revoke_widget_installation(
+    OrgId :: integer(), InstallationId :: integer(), At :: integer()
+) ->
+    ok | {error, not_found | term()}.
+
+%% @doc 登记 signing key：只存 key_digest（sha256 hex），明文密钥绝不落库；
+%% (org, installation, key_version) 复合唯一，并发同版本归一为 conflict。
+-callback insert_widget_identity_key(
+    OrgId :: integer(), InstallationId :: integer(), Key :: widget_identity_key()
+) ->
+    {ok, widget_identity_key()} | {error, conflict | term()}.
+%% @doc 按 key_version 读取密钥行（含 key_digest，投影由 application 裁剪）。
+-callback fetch_widget_identity_key(
+    OrgId :: integer(), InstallationId :: integer(), KeyVersion :: pos_integer()
+) ->
+    {ok, widget_identity_key()} | {error, not_found | term()}.
+%% @doc 吊销指定版本密钥（status='revoked' + revoked_at）。
+-callback revoke_widget_identity_key(
+    OrgId :: integer(), InstallationId :: integer(), KeyVersion :: pos_integer(), At :: integer()
+) ->
+    ok | {error, not_found | term()}.
+
+%% @doc 签发 Widget bootstrap 令牌：复用 customer_service_visit_token（追加
+%% widget_installation_id / anonymous_subject_hmac 列），不复制新表；digest 与
+%% expiry 口径与既有 visit token 完全一致。
+-callback insert_widget_bootstrap_token(OrgId :: integer(), Token :: widget_bootstrap_token()) ->
+    {ok, widget_bootstrap_token()} | {error, conflict | term()}.
+%% @doc 按 digest 校验 bootstrap 令牌：同语句绑定 (Org, installation)——
+%% 跨 Org / 跨安装命中不了行（not_found，不做存在性枚举）。
+-callback fetch_widget_bootstrap_token_by_digest(
+    OrgId :: integer(), InstallationId :: integer(), Digest :: binary()
+) ->
+    {ok, widget_bootstrap_token()} | {error, not_found | term()}.
+%% @doc 活跃心跳：更新 last_seen_at（不改 digest / 不动 version 语义）。
+-callback touch_widget_bootstrap_token(
+    OrgId :: integer(), InstallationId :: integer(), TokenId :: integer(), At :: integer()
+) ->
+    ok | {error, not_found | term()}.
+%% @doc 吊销 bootstrap 令牌（revoked_at 口径同 revoke_visit_token）。
+-callback revoke_widget_bootstrap_token(
+    OrgId :: integer(), InstallationId :: integer(), TokenId :: integer(), At :: integer()
+) ->
+    ok | {error, not_found | term()}.
+
+%% @doc 记录请求 JTI（重放防护的 DB 裁决点）：(org, installation, jti_digest)
+%% 复合唯一——并发/重放同 jti 恰好一个 `ok`，其余 `{error, replay}`（23505）。
+-callback record_widget_nonce(
+    OrgId :: integer(),
+    InstallationId :: integer(),
+    JtiDigest :: binary(),
+    ExpiresAt :: integer()
+) ->
+    ok | {error, replay | term()}.
 
 %% -- event（客服域 append-only 状态审计）------------------------------------
 
