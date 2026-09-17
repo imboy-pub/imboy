@@ -298,7 +298,12 @@ role_acl(1) ->
         <<"plugins:upgrade">>,
         <<"plugins:uninstall">>,
         <<"plugins:reset">>,
-        <<"plugins:force_uninstall">>
+        <<"plugins:force_uninstall">>,
+        %% 企业业务与平台客服（widget-installations 等平台端点授权）
+        <<"enterprise_business:read">>,
+        <<"enterprise_business:write">>,
+        <<"customer_service:read">>,
+        <<"customer_service:write">>
     ],
     MenuPaths = [
         <<"/dashboard">>,
@@ -402,7 +407,10 @@ role_acl(2) ->
         <<"plugins:upgrade">>,
         <<"plugins:uninstall">>,
         <<"plugins:reset">>,
-        <<"plugins:force_uninstall">>
+        <<"plugins:force_uninstall">>,
+        %% 企业业务与平台客服（只读）
+        <<"enterprise_business:read">>,
+        <<"customer_service:read">>
     ],
     MenuPaths = [
         <<"/dashboard">>,
