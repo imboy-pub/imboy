@@ -217,7 +217,11 @@ orchestrator_aggregates_with_real_eb_cs_providers() ->
         ?FIX:cleanup(Scope)
     end.
 
-%% 未注册域 = facts 不可得 = 拒（合同明文；默认注册表缺 EB/CS/Agent 即拒）。
+%% 未注册域 = facts 不可得 = 拒（合同明文）。
+%% 期望演进（ORG-12 集成门基线重建时修正）：A0 合并（ORG-08 BLOCKED_INT-2）
+%% 已把 EB/CS provider 登记进默认注册表（4/5 域 staged 语义），缺域只剩 agent
+%% ——见 control/ruling-agent-provider-defer.md（第 5 域推迟登记至 Agent track）。
+%% 冻结语义不变：缺域照拒，本断言验证的正是「缺什么拒什么」的如实上报。
 orchestrator_fail_closed_without_registration() ->
     application:unset_env(imboy, deletion_preflight_providers),
     {error, #{
@@ -225,10 +229,7 @@ orchestrator_fail_closed_without_registration() ->
         reason := provider_unregistered,
         detail := Missing
     }} = organization_deletion_preflight:run(424242),
-    ?assertEqual(
-        lists:sort([enterprise_business, customer_service, agent]),
-        lists:sort(Missing)
-    ).
+    ?assertEqual([agent], lists:sort(Missing)).
 
 %% ===================================================================
 %% 内部辅助（与 cs_org_compat_tests 同一容器口径）
