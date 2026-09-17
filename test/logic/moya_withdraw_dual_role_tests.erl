@@ -67,3 +67,113 @@ cross_org_dual_role_is_denied_test_() ->
             ?assertEqual({error, not_guardian}, moya_review_logic:withdraw(?UID, ?SUBMISSION))
         end
     ).
+
+%%%===================================================================
+%%% A1-D04：withdrawn 提交的日常读路径收口（workbench / submission_detail
+%%% 的 staff 视角）。先例：view_url 对 withdrawn 一律拒绝（T17——
+%%% moya_attach_logic:authorize 对已绑 submission 但 status/=submitted
+%%% 返回 false → attach_logic:view_url {error, forbidden}）；写路径
+%%% request_ai_draft/save_draft/publish 也均有 withdrawn 守卫。
+%%% 此前读路径只走 submission_access（不查 status），撤回后 staff 打开
+%%% 旧 workbench URL 仍 200 拿到 AI 草稿 + 学员元数据。
+%%%===================================================================
+
+-define(ASSIGNMENT_D4, 986401).
+
+sub_row(Status) ->
+    #{
+        <<"id">> => ?SUBMISSION,
+        <<"assignment_id">> => ?ASSIGNMENT_D4,
+        <<"learner_id">> => ?LEARNER,
+        <<"attempt_no">> => 1,
+        <<"status">> => Status,
+        <<"submitted_at">> => <<"2026-09-17T10:00:00+08:00">>
+    }.
+
+%% 读路径依赖全 mock：ACL 放行 + bundle 数据源（find/assets/ai_draft/
+%% published/draft）+ learner_name/task_title 兜底查询。
+read_mocks(Perspective, Status) ->
+    [
+        {moya_acl, [
+            {'submission_access', 2, fun(?UID, ?SUBMISSION) ->
+                {ok, Perspective, scope()}
+            end}
+        ]},
+        {moya_context_repo, [
+            {'submission_scope', 1, fun(?SUBMISSION) -> {ok, scope()} end}
+        ]},
+        {moya_submission_repo, [
+            {'find', 1, fun(?SUBMISSION) -> {ok, sub_row(Status)} end},
+            {'assets', 1, fun(?SUBMISSION) -> {ok, []} end}
+        ]},
+        {moya_review_repo, [
+            {'ai_draft', 1, fun(?SUBMISSION) -> {ok, undefined} end},
+            {'find_published', 1, fun(?SUBMISSION) -> {ok, undefined} end},
+            {'find_draft', 2, fun(?SUBMISSION, ?UID) -> {ok, undefined} end},
+            {'assets', 1, fun(_) -> {ok, []} end}
+        ]},
+        {elib_pg, [
+            {'query', 2, fun(_Sql, _P) -> {ok, []} end}
+        ]}
+    ].
+
+%% 主断言：撤回后 staff 打开 workbench → forbidden（不得再吐 AI 草稿/学员名）
+workbench_withdrawn_denied_test_() ->
+    ?WITH_MECKS(
+        read_mocks(staff, <<"withdrawn">>),
+        fun() ->
+            ?assertEqual(
+                {error, forbidden},
+                moya_review_logic:workbench(?UID, ?SUBMISSION)
+            )
+        end
+    ).
+
+%% 主断言：撤回后 staff 查 submission_detail → forbidden（teacher_view 不外泄）
+submission_detail_staff_withdrawn_denied_test_() ->
+    ?WITH_MECKS(
+        read_mocks(staff, <<"withdrawn">>),
+        fun() ->
+            ?assertEqual(
+                {error, forbidden},
+                moya_review_logic:submission_detail(?UID, ?SUBMISSION)
+            )
+        end
+    ).
+
+%% 回归：未撤回（submitted）时 workbench 照常聚合
+workbench_submitted_still_served_test_() ->
+    ?WITH_MECKS(
+        read_mocks(staff, <<"submitted">>),
+        fun() ->
+            ?assertMatch(
+                {ok, _},
+                moya_review_logic:workbench(?UID, ?SUBMISSION)
+            )
+        end
+    ).
+
+%% 回归：未撤回时 staff detail 照常返回 teacher_view
+submission_detail_staff_submitted_still_served_test_() ->
+    ?WITH_MECKS(
+        read_mocks(staff, <<"submitted">>),
+        fun() ->
+            ?assertMatch(
+                {ok, _},
+                moya_review_logic:submission_detail(?UID, ?SUBMISSION)
+            )
+        end
+    ).
+
+%% 回归：guardian 视角保留本人可见语义（parent_view 带 status=withdrawn，
+%% 本人不经此路径泄漏 AI 草稿——parent_view 白名单本就无 AI 字段，D-10）
+submission_detail_guardian_withdrawn_still_visible_test_() ->
+    ?WITH_MECKS(
+        read_mocks(guardian, <<"withdrawn">>),
+        fun() ->
+            ?assertMatch(
+                {ok, #{<<"status">> := <<"withdrawn">>}},
+                moya_review_logic:submission_detail(?UID, ?SUBMISSION)
+            )
+        end
+    ).

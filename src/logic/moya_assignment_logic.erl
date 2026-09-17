@@ -6,7 +6,7 @@
 % 守卫链（全部服务端解析，客户端自报字段一律忽略）：
 %   列表：resolve_guardian(Uid, LearnerId)（active）
 %   提交：assignment_scope → learner_id 匹配 + resolve_guardian(_, _, submit)
-%         + 附件归属 + task 开放（status=1 进行中）
+%         + 附件归属 + task 开放（status=1 进行中且未过 deadline，A1-D01）
 %%%
 
 %% list/4 = CM-F4 status 过滤（真 HTTP undef 根因：函数在而导出漏加）
@@ -144,7 +144,9 @@ check_create_guards(Uid, LearnerId, TaskStatus, Scope, Body) ->
         [
             {claimed_learner_mismatch, ClaimedLearner =:= {ok, LearnerId}},
             {not_guardian, guard_can_submit(Uid, LearnerId)},
-            {assignment_closed, TaskStatus =:= 1}
+            %% A1-D01：开放 = status=1 且 deadline 未过（assignment_scope 注释与
+            %% group_task 先例的完整语义；此前只查 status，截止后仍可提交）
+            {assignment_closed, TaskStatus =:= 1 andalso not deadline_passed(Scope)}
         ],
     case lists:keyfind(false, 2, BooleanGuards) of
         {Reason, false} ->
@@ -168,6 +170,22 @@ guard_can_submit(Uid, LearnerId) ->
     case moya_acl:resolve_guardian(Uid, LearnerId, submit) of
         {ok, _} -> true;
         _ -> false
+    end.
+
+%% A1-D01：截止判定，语义照抄 group_task_logic:check_deadline/1 先例——
+%% Now > Deadline 严格大于（恰等于 deadline 时刻未过期，仍可提交）；
+%% 无 deadline（null/缺失）或不可解析 → 不视为过期。
+-spec deadline_passed(map()) -> boolean().
+deadline_passed(Scope) ->
+    case maps:get(<<"task_deadline">>, Scope, undefined) of
+        Deadline when is_binary(Deadline), Deadline =/= <<>> ->
+            try
+                elib_dt:millisecond() > elib_dt:rfc3339_to(Deadline)
+            catch
+                _:_ -> false
+            end;
+        _ ->
+            false
     end.
 
 %% 附件规则：恰好 1 个 practice_video，0..3 个 final_photo（契约 minItems/maxItems）。
