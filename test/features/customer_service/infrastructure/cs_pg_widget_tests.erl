@@ -243,7 +243,11 @@ a02_allowed_origins_jsonb_roundtrip() ->
                 [InstallationId],
                 <<>>
             )
-        )
+        ),
+        %% 回读：读侧 jsonb_read 归一后必须是等价列表（origin 校验只认 list）
+        {ok, Back} = cs_pg_widget:fetch_widget_installation(Org, InstallationId),
+        ?assertEqual([<<"https://shop.example.com">>], maps:get(allowed_origins, Back)),
+        ?assertEqual(#{}, maps:get(branding, Back))
     after
         cleanup_widget(Scope)
     end.

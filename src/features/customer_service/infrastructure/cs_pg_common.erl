@@ -21,6 +21,7 @@
     error_code/1,
     nullify/1,
     jsonb/1,
+    jsonb_read/1,
     to_status/1
 ]).
 
@@ -103,3 +104,19 @@ jsonb(Bin) when is_binary(Bin) ->
     Bin;
 jsonb(_Other) ->
     <<"{}">>.
+
+%% @doc jsonb 列读归一（codec 无关）：
+%%   * 带 {epgsql_codec_json, jsone} 的池已解码为 Erlang term → 原样；
+%%   * 无 json codec 的池（eunit/既有部署惯例：写侧预编码 binary 文本）
+%%     读回 JSON 文本 binary → jsone:decode 还原 term；
+%%   * 解码失败/其他形态原样返回（fail-closed 由调用方判型）。
+%%     与 `jsonb/1`（写侧预编码）配套，两池口径一致。
+-spec jsonb_read(term()) -> term().
+jsonb_read(Bin) when is_binary(Bin) ->
+    try
+        jsone:decode(Bin)
+    catch
+        _:_ -> Bin
+    end;
+jsonb_read(Term) ->
+    Term.

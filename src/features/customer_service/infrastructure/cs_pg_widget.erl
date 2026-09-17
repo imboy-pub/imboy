@@ -255,8 +255,10 @@ insert_widget_installation(_OrgId, _Installation) ->
 -spec fetch_widget_installation(integer(), integer()) -> {ok, map()} | {error, term()}.
 fetch_widget_installation(OrgId, InstallationId) ->
     to_status_row(
-        cs_pg_common:fetch_one(
-            ?SQL_FETCH_INSTALLATION, [OrgId, InstallationId], ?INSTALLATION_KEYS
+        decode_installation_jsonb(
+            cs_pg_common:fetch_one(
+                ?SQL_FETCH_INSTALLATION, [OrgId, InstallationId], ?INSTALLATION_KEYS
+            )
         )
     ).
 
@@ -265,8 +267,10 @@ fetch_widget_installation(OrgId, InstallationId) ->
     {ok, map()} | {error, term()}.
 fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
     to_status_row(
-        cs_pg_common:fetch_one(
-            ?SQL_FETCH_INSTALLATION_BY_PUBLIC_ID, [OrgId, PublicWidgetId], ?INSTALLATION_KEYS
+        decode_installation_jsonb(
+            cs_pg_common:fetch_one(
+                ?SQL_FETCH_INSTALLATION_BY_PUBLIC_ID, [OrgId, PublicWidgetId], ?INSTALLATION_KEYS
+            )
         )
     ).
 
@@ -279,7 +283,7 @@ list_widget_installations_page(OrgId, AfterId, Limit) ->
         )
     of
         {ok, Rows} ->
-            {ok, [maps:update_with(status, fun cs_pg_common:to_status/1, Row) || Row <- Rows]};
+            {ok, [finish_installation_row(Row) || Row <- Rows]};
         {error, _} = Err ->
             Err
     end.
@@ -410,6 +414,21 @@ record_widget_nonce(OrgId, InstallationId, JtiDigest, ExpiresAt) ->
 to_status_row({ok, Row}) ->
     {ok, maps:update_with(status, fun cs_pg_common:to_status/1, Row)};
 to_status_row({error, _} = Err) ->
+    Err.
+
+%% installation 行终处理：status 归一 + jsonb 列读归一。
+%% jsonb 读归一（codec 无关，见 cs_pg_common:jsonb_read/1）：无 json codec 的池
+%% 读回文本 binary，须还原为 term（origin 校验只认 list）。
+finish_installation_row(Row0) ->
+    Row = maps:update_with(status, fun cs_pg_common:to_status/1, Row0),
+    Row#{
+        allowed_origins := cs_pg_common:jsonb_read(maps:get(allowed_origins, Row, [])),
+        branding := cs_pg_common:jsonb_read(maps:get(branding, Row, #{}))
+    }.
+
+decode_installation_jsonb({ok, Row}) ->
+    {ok, finish_installation_row(Row)};
+decode_installation_jsonb({error, _} = Err) ->
     Err.
 
 %% 恰写入 1 行才 ok；0 行 = 目标不在本 Org / 不存在 / 已终态 → not_found。
