@@ -54,6 +54,34 @@ rest_actions_parse_and_delegate_test_() ->
             receive
                 {transfer_owner, ?UID, ?ORG_ID, ?TARGET} -> ok
             after 0 -> ?assert(false)
+            end,
+
+            SuspendRes = organization_member_handler:handle_action(
+                member_suspend, transfer_req, #{current_uid => ?UID}
+            ),
+            ?assertEqual(200, maps:get(response_status, SuspendRes)),
+            receive
+                {suspend, ?UID, ?ORG_ID, ?TARGET} -> ok
+            after 0 -> ?assert(false)
+            end,
+
+            RestoreRes = organization_member_handler:handle_action(
+                member_restore, transfer_req, #{current_uid => ?UID}
+            ),
+            ?assertEqual(200, maps:get(response_status, RestoreRes)),
+            receive
+                {restore, ?UID, ?ORG_ID, ?TARGET} -> ok
+            after 0 -> ?assert(false)
+            end,
+
+            OffboardRes = organization_member_handler:handle_action(
+                member_offboard, transfer_req, #{current_uid => ?UID}
+            ),
+            ?assertEqual(200, maps:get(response_status, OffboardRes)),
+            %% offboard 与 legacy remove 共用 logic remove/3，同一消息标签
+            receive
+                {remove, ?UID, ?ORG_ID, ?TARGET} -> ok
+            after 0 -> ?assert(false)
             end
         end
     ).
@@ -66,7 +94,13 @@ unsupported_method_returns_real_405_test_() ->
                 collection, put_req, #{current_uid => ?UID}
             ),
             ?assertEqual(405, maps:get(response_status, Result)),
-            ?assertEqual(<<"GET, POST">>, maps:get(allow, Result))
+            ?assertEqual(<<"GET, POST">>, maps:get(allow, Result)),
+            %% 成员生命周期命令是 POST-only 命令面
+            SuspendResult = organization_member_handler:handle_action(
+                member_suspend, put_req, #{current_uid => ?UID}
+            ),
+            ?assertEqual(405, maps:get(response_status, SuspendResult)),
+            ?assertEqual(<<"POST">>, maps:get(allow, SuspendResult))
         end
     ).
 
@@ -96,6 +130,19 @@ router_registers_specific_role_before_member_route_test() ->
     {MemberOffset, _} = Member,
     ?assert(TransferOffset < RoleOffset),
     ?assert(RoleOffset < MemberOffset).
+
+%% 成员生命周期命令面（EB-D07/EB-08）：suspend/restore/offboard 三条子资源路由
+%% 必须在册（多一段路径，与 legacy direct-add 的 :user_id 不互相遮蔽）。
+router_registers_member_lifecycle_routes_test() ->
+    {ok, Router} = file:read_file("src/imboy_router.erl"),
+    lists:foreach(
+        fun(Segment) ->
+            Path =
+                <<"organizations/:organization_id/members/:user_id/", Segment/binary>>,
+            ?assertNotEqual(nomatch, binary:match(Router, Path))
+        end,
+        [<<"suspend">>, <<"restore">>, <<"offboard">>]
+    ).
 
 handler_mocks() ->
     [
@@ -152,6 +199,14 @@ handler_mocks() ->
             {'transfer_owner', 3, fun(Uid, OrgId, TargetUid) ->
                 self() ! {transfer_owner, Uid, OrgId, TargetUid},
                 {ok, #{organization_id => OrgId, owner_id => TargetUid}}
+            end},
+            {'suspend', 3, fun(Uid, OrgId, TargetUid) ->
+                self() ! {suspend, Uid, OrgId, TargetUid},
+                {ok, #{user_id => TargetUid, status => <<"suspended">>}}
+            end},
+            {'restore', 3, fun(Uid, OrgId, TargetUid) ->
+                self() ! {restore, Uid, OrgId, TargetUid},
+                {ok, #{user_id => TargetUid, status => <<"active">>}}
             end}
         ]}
     ].

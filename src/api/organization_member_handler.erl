@@ -31,6 +31,22 @@ handle_action(member, Req0, State) ->
     case cowboy_req:method(Req0) of
         <<"DELETE">> -> remove(Req0, State);
         _ -> method_not_allowed(Req0, <<"DELETE">>)
+    end;
+%% —— 成员生命周期命令（EB-D07/EB-08）：suspend / restore / offboard ——
+handle_action(member_suspend, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> member_command(suspend, Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
+    end;
+handle_action(member_restore, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> member_command(restore, Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
+    end;
+handle_action(member_offboard, Req0, State) ->
+    case cowboy_req:method(Req0) of
+        <<"POST">> -> member_command(offboard, Req0, State);
+        _ -> method_not_allowed(Req0, <<"POST">>)
     end.
 
 list(Req0, State) ->
@@ -68,6 +84,28 @@ change_role(Req0, State) ->
     end).
 
 remove(Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_ids(Req0, fun(OrgId, TargetUid) ->
+        respond(Req0, organization_member_logic:remove(Uid, OrgId, TargetUid))
+    end).
+
+%% 成员生命周期命令共用形状（organization_id + user_id 绑定，POST 命令语义）：
+%%   * suspend  → logic suspend/3（active → suspended，可逆撤权第一步）；
+%%   * restore  → logic restore/3（suspended → active，EB-D07 复位端）；
+%%   * offboard → logic remove/3（active|suspended → removed 终态，EB-08 两步
+%%     离场的 S3；「offboard」与 DB 守卫 trg_organization_member_offboarding_guard
+%%     同名同义，不另发明语义）。
+member_command(suspend, Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_ids(Req0, fun(OrgId, TargetUid) ->
+        respond(Req0, organization_member_logic:suspend(Uid, OrgId, TargetUid))
+    end);
+member_command(restore, Req0, State) ->
+    Uid = auth_ds:current_uid(State),
+    with_ids(Req0, fun(OrgId, TargetUid) ->
+        respond(Req0, organization_member_logic:restore(Uid, OrgId, TargetUid))
+    end);
+member_command(offboard, Req0, State) ->
     Uid = auth_ds:current_uid(State),
     with_ids(Req0, fun(OrgId, TargetUid) ->
         respond(Req0, organization_member_logic:remove(Uid, OrgId, TargetUid))

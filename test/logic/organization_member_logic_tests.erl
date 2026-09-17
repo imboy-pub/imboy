@@ -360,12 +360,15 @@ suspend_marks_member_suspended_with_a_single_scoped_statement_test_() ->
             ?assertEqual(1, length(Sqls)),
             [Sql] = Sqls,
             ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE organization_member">>)),
-            %% 唯一的目标状态来自参数（$3），SQL 里没有第二个状态字面量可被篡改
-            ?assertNotEqual(nomatch, binary:match(Sql, <<"SET status = $3">>)),
+            %% 唯一的目标状态来自参数（$4），来源态同样参数化（$3）——SQL 里没有
+            %% 任何状态字面量可被篡改
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"SET status = $4">>)),
             ?assertNotEqual(nomatch, binary:match(Sql, <<"organization_id = $1">>)),
             ?assertNotEqual(nomatch, binary:match(Sql, <<"user_id = $2">>)),
-            ?assertNotEqual(nomatch, binary:match(Sql, <<"status = 'active'">>)),
-            ?assertEqual([?ORG_ID, ?MEMBER, <<"suspended">>], get(t_params))
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"status = $3">>)),
+            ?assertEqual(
+                [?ORG_ID, ?MEMBER, <<"active">>, <<"suspended">>], get(t_params)
+            )
         end
     ).
 
@@ -463,6 +466,67 @@ target_status() ->
         undefined -> <<"active">>;
         Status -> Status
     end.
+
+%% ===================================================================
+%% EB-D07：通用 restore（suspended → active 复位端）
+%% ===================================================================
+
+%% @doc restore 只做一件事：把 organization_member.status 从 suspended 置回
+%% active（**唯一**一条写语句，org 作用域显式），与 suspend 共用同一迁移通道。
+restore_marks_suspended_member_active_with_a_single_scoped_statement_test_() ->
+    ?WITH_MECKS(
+        suspend_mocks(),
+        fun() ->
+            put(t_target_status, <<"suspended">>),
+            ?assertMatch(
+                {ok, #{
+                    organization_id := ?ORG_ID,
+                    user_id := ?MEMBER,
+                    role := <<"member">>,
+                    status := <<"active">>
+                }},
+                organization_member_logic:restore(?OWNER, ?ORG_ID, ?MEMBER)
+            ),
+            Sqls = lists:reverse(get(t_sqls)),
+            ?assertEqual(1, length(Sqls)),
+            [Sql] = Sqls,
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"UPDATE organization_member">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"SET status = $4">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"organization_id = $1">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"user_id = $2">>)),
+            ?assertNotEqual(nomatch, binary:match(Sql, <<"status = $3">>)),
+            ?assertEqual(
+                [?ORG_ID, ?MEMBER, <<"suspended">>, <<"active">>], get(t_params)
+            )
+        end
+    ).
+
+%% @doc 非 suspended 来源（active / removed）恢复 ⇒ 409 明确拒绝，零写入；
+%% 非成员（not_found）同样 409。removed 是终态：恢复走重新邀请，不静默复活。
+restore_rejects_non_suspended_member_test_() ->
+    ?WITH_MECKS(
+        suspend_mocks(),
+        fun() ->
+            ?assertMatch(
+                {error, {409, _}},
+                organization_member_logic:restore(?OWNER, ?ORG_ID, ?MEMBER)
+            ),
+            ?assertEqual(undefined, erase(t_sqls)),
+            put(t_target_status, <<"removed">>),
+            ?assertMatch(
+                {error, {409, _}},
+                organization_member_logic:restore(?OWNER, ?ORG_ID, ?MEMBER)
+            ),
+            ?assertEqual(undefined, erase(t_sqls))
+        end
+    ).
+
+%% @doc 参数形状：非法 target 直接 400，不触库。
+restore_validates_arguments_test() ->
+    ?assertMatch(
+        {error, {400, _}},
+        organization_member_logic:restore(?OWNER, ?ORG_ID, 0)
+    ).
 
 %% ===================================================================
 %% EB-08：dependent_resources 的 409 映射（Core 能力，S3 Gate）

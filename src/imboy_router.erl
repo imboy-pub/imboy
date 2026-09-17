@@ -689,6 +689,14 @@ get_routes() ->
                     organization_member_handler, #{action => owner_transfer}},
                 {"/api/v1/organizations/:organization_id/members/:user_id/role",
                     organization_member_handler, #{action => role}},
+                %% 成员生命周期命令（EB-D07/EB-08）：suspend/restore/offboard
+                %% （offboard 复用既有 remove 终态语义，两步离场 S3）
+                {"/api/v1/organizations/:organization_id/members/:user_id/suspend",
+                    organization_member_handler, #{action => member_suspend}},
+                {"/api/v1/organizations/:organization_id/members/:user_id/restore",
+                    organization_member_handler, #{action => member_restore}},
+                {"/api/v1/organizations/:organization_id/members/:user_id/offboard",
+                    organization_member_handler, #{action => member_offboard}},
                 {"/api/v1/organizations/:organization_id/members/:user_id",
                     organization_member_handler, #{action => member}},
                 %% —— ORG-10 集中注册（续）：org 域内 v2 面 ——

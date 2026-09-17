@@ -18,6 +18,7 @@
     remove/3,
     transfer_owner/3,
     suspend/3,
+    restore/3,
     dependent_resources_conflict/1
 ]).
 
@@ -325,6 +326,60 @@ suspend(Uid, OrgId, TargetUid) when
 suspend(_, _, _) ->
     {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
 
+%% @doc 恢复（restore）suspended 的 Org 成员：EB-D07「suspended 是可恢复的撤权
+%% 第一步」的复位端。与 suspend/3 同规（锁顺序「组织行先、成员行后」）：
+%%   1. 参数形状；2. 组织存在且 active；3. 操作人必须是 Owner/Admin；
+%%   4. 目标必须是 suspended 成员；5. 精确单列状态迁移（suspended → active）。
+%%
+%% 语义要点：
+%%   * 只接受 suspended 来源：active（无需恢复）与 removed（终态，恢复走重新
+%%     邀请）都 409 明确拒绝——与 suspend 的「不静默成功」同一纪律；
+%%   * 主 Owner 的成员行不可能处于 suspended（DB 守卫
+%%     trg_organization_primary_owner_member_guard 23514），故无需 owner 特判。
+-spec restore(integer(), integer(), integer()) ->
+    {ok, map()} | {error, {integer(), binary()}}.
+restore(Uid, OrgId, TargetUid) when
+    is_integer(OrgId), OrgId > 0, is_integer(TargetUid), TargetUid > 0
+->
+    Result = write_tx(
+        Uid,
+        OrgId,
+        fun(Conn, _Org, _ActorRole) -> restore_tx(Conn, OrgId, TargetUid) end,
+        <<"恢复失败，请稍后重试"/utf8>>
+    ),
+    case Result of
+        {ok, _} -> ?INFO_LOG([organization_member_restored, OrgId, Uid, TargetUid]);
+        _ -> ok
+    end,
+    Result;
+restore(_, _, _) ->
+    {error, {400, <<"organization_id 和 user_id 必须是正整数"/utf8>>}}.
+
+restore_tx(Conn, OrgId, TargetUid) ->
+    case
+        organization_member_repo:find_for_update_tx(
+            Conn, OrgId, TargetUid, <<"role,status">>
+        )
+    of
+        {ok, #{<<"status">> := <<"suspended">>, <<"role">> := Role}} ->
+            case
+                set_member_status_tx(
+                    Conn, OrgId, TargetUid, <<"suspended">>, <<"active">>
+                )
+            of
+                ok ->
+                    {ok, member_result(OrgId, TargetUid, Role, <<"active">>)};
+                {error, Reason} ->
+                    throw({abort_tx, {internal, Reason}})
+            end;
+        {ok, _NotSuspended} ->
+            abort(409, <<"该成员不在暂停状态，无法恢复"/utf8>>);
+        {error, not_found} ->
+            member_not_active();
+        {error, Reason} ->
+            throw({abort_tx, {internal, Reason}})
+    end.
+
 suspend_tx(Conn, OrgId, TargetUid) ->
     case
         organization_member_repo:find_for_update_tx(
@@ -334,7 +389,7 @@ suspend_tx(Conn, OrgId, TargetUid) ->
         {ok, #{<<"status">> := <<"active">>, <<"role">> := <<"owner">>}} ->
             abort(409, <<"主 Owner 不能被暂停，请先转移 Owner"/utf8>>);
         {ok, #{<<"status">> := <<"active">>, <<"role">> := Role}} ->
-            case set_member_status_tx(Conn, OrgId, TargetUid, <<"suspended">>) of
+            case set_member_status_tx(Conn, OrgId, TargetUid, <<"active">>, <<"suspended">>) of
                 ok ->
                     {ok, member_result(OrgId, TargetUid, Role, <<"suspended">>)};
                 {error, Reason} ->
@@ -351,15 +406,16 @@ suspend_tx(Conn, OrgId, TargetUid) ->
 %% 主 Owner 的成员行受数据库守卫保护（00000113 的 trg_organization_primary_owner_member_guard，
 %% 任何 status <> 'active' 的变更都是 23514）；`suspend_tx/4` 的第一条子句先判
 %% `role = owner` ⇒ 409，避免把 DB 的 23514 当成普通内部错误上报。
-%% 精确的单列状态迁移：org 作用域显式贯穿，且只接受仍然 active 的行
-%% （并发重复迁移由该条件裁决 —— 影响行数不为 1 即显式失败，不静默成功）。
-set_member_status_tx(Conn, OrgId, Uid, Status) ->
+%% 精确的单列状态迁移（suspend: active→suspended；restore: suspended→active）：
+%% org 作用域显式贯穿，且只接受仍处于来源态的行（并发重复迁移由该条件裁决 ——
+%% 影响行数不为 1 即显式失败，不静默成功）。
+set_member_status_tx(Conn, OrgId, Uid, FromStatus, Status) ->
     Sql =
         <<
-            "UPDATE organization_member SET status = $3, updated_at = CURRENT_TIMESTAMP"
-            " WHERE organization_id = $1 AND user_id = $2 AND status = 'active'"
+            "UPDATE organization_member SET status = $4, updated_at = CURRENT_TIMESTAMP"
+            " WHERE organization_id = $1 AND user_id = $2 AND status = $3"
         >>,
-    case elib_pg:execute(Conn, Sql, [OrgId, Uid, Status]) of
+    case elib_pg:execute(Conn, Sql, [OrgId, Uid, FromStatus, Status]) of
         {ok, 1} -> ok;
         {ok, _} -> {error, member_not_active};
         {error, Reason} -> {error, Reason}

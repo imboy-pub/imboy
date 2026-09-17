@@ -340,6 +340,11 @@ map_dept_error({cycle, _, _}) ->
     {409, <<"部门层级禁止成环"/utf8>>};
 map_dept_error({invalid_transition, _, _}) ->
     {409, <<"部门状态迁移非法"/utf8>>};
+%% 并发冲突（expected-version CAS 不符）：organization_department_pg 的乐观锁
+%% 拒绝（UPDATE 影响行数 0）经应用层透传为 {error, conflict}。必须稳定映射 409
+%% （else 兜底 400 会把「并发写碰撞」伪装成客户端参数错误）。
+map_dept_error(conflict) ->
+    {409, <<"部门已被并发修改，请刷新版本后重试"/utf8>>};
 map_dept_error(_) ->
     {400, <<"请求参数非法"/utf8>>}.
 

@@ -3,7 +3,9 @@
 %% ORG-10（API Contract and Router Integration）路由契约测试。
 %%
 %% 守护面（对照派工卡契约门）：
-%%   * Organization V1 v2 面 16 条路由一次性集中注册且 handler/action 正确；
+%%   * Organization V1 v2 面 19 条路由一次性集中注册且 handler/action 正确
+%%     （16 条 ORG-10 原有 + ORG-BACKEND-GAP 补齐的成员生命周期
+%%     suspend/restore/offboard 3 条）；
 %%   * 固定路径（deletion-preflight / invitations/mine）必须注册在
 %%     :organization_id 通配之前防遮蔽（同 channel/qrcode 先例）；
 %%   * 全路由表零重复路径（一次性集中注册不产生双 OWNER）；
@@ -108,6 +110,12 @@ org_v2_expected_routes() ->
                 "/api/v1/organizations/:organization_id/departments/:department_id/members/:user_id/admin"
             >>,
             organization_api_handler, A(department_member_admin)},
+        {<<"/api/v1/organizations/:organization_id/members/:user_id/suspend">>,
+            organization_member_handler, A(member_suspend)},
+        {<<"/api/v1/organizations/:organization_id/members/:user_id/restore">>,
+            organization_member_handler, A(member_restore)},
+        {<<"/api/v1/organizations/:organization_id/members/:user_id/offboard">>,
+            organization_member_handler, A(member_offboard)},
         {<<"/api/v1/organizations/:organization_id/default-workspace">>, organization_api_handler,
             A(default_workspace)}
     ].
@@ -125,7 +133,12 @@ org_routes_only_v2() ->
         is_org_path(P),
         H =:= organization_api_handler orelse
             lists:member(S, [
-                #{action => deletion_preflight}, #{action => archive}, #{action => restore}
+                #{action => deletion_preflight},
+                #{action => archive},
+                #{action => restore},
+                #{action => member_suspend},
+                #{action => member_restore},
+                #{action => member_offboard}
             ])
     ].
 

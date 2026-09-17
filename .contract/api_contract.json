@@ -3660,9 +3660,27 @@
         "static": false
       },
       {
+        "action": "member_offboard",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members/:user_id/offboard",
+        "static": false
+      },
+      {
+        "action": "member_restore",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members/:user_id/restore",
+        "static": false
+      },
+      {
         "action": "role",
         "handler": "organization_member_handler",
         "path": "/api/v1/organizations/:organization_id/members/:user_id/role",
+        "static": false
+      },
+      {
+        "action": "member_suspend",
+        "handler": "organization_member_handler",
+        "path": "/api/v1/organizations/:organization_id/members/:user_id/suspend",
         "static": false
       },
       {
