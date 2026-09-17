@@ -1906,7 +1906,17 @@ customer_service_platform_routes() ->
                 action => p_session_close,
                 auth_context => platform_admin,
                 required_permission => <<"customer_service:write">>
-            }}
+            }},
+        {"/api/adm/customer-service/widget-installations", cs_platform_handler, #{
+            action => p_widget_installations,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:read">>
+        }},
+        {"/api/adm/customer-service/widget-installations/:id/revoke", cs_platform_handler, #{
+            action => p_widget_installation_revoke,
+            auth_context => platform_admin,
+            required_permission => <<"customer_service:write">>
+        }}
     ].
 
 -else.

@@ -57,6 +57,7 @@
     insert_widget_installation/2,
     fetch_widget_installation/2,
     fetch_widget_installation_by_public_id/2,
+    list_widget_installations_page/3,
     revoke_widget_installation/3,
     insert_widget_identity_key/3,
     fetch_widget_identity_key/3,
@@ -725,6 +726,19 @@ fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
         [Row | _] -> {ok, Row};
         [] -> {error, not_found}
     end.
+
+list_widget_installations_page(OrgId, AfterId, Limit) ->
+    {widget_installations, Insts} = hd(ets:lookup(?TAB, widget_installations)),
+    Rows0 = [
+        Row
+     || Row <- maps:values(Insts),
+        maps:get(organization_id, Row) =:= OrgId,
+        AfterId =:= 0 orelse maps:get(id, Row) < AfterId
+    ],
+    Rows = lists:sublist(
+        lists:sort(fun(A, B) -> maps:get(id, A) > maps:get(id, B) end, Rows0), Limit
+    ),
+    {ok, Rows}.
 
 revoke_widget_installation(OrgId, InstallationId, At) ->
     case fetch_widget_installation(OrgId, InstallationId) of

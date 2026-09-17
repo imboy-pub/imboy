@@ -7,9 +7,9 @@
 %%%   1. **principal 是 `platform_admin`**：凭证是 Admin session（`adm_user_id`，
 %%%      adm_auth_middleware 注入），权限是 `customer_service:read|write`（由
 %%%      route metadata 决定）；
-%%%   2. **租户条件显式且强制**：每条平台路径都带 `:org_id`，且 `workspace_id`
-%%%      是必填参数——不存在「不带 Org 的全局列举」；用例调用与租户面共用同一
-%%%      facade/application（CS-02-A02：**不复制业务逻辑**），SQL 侧仍是
+%%%   2. **租户条件显式且强制**：Org 来自 `:org_id` 或冻结动作声明的显式参数，
+%%%      `workspace_id` 是必填参数——不存在「不带 Org 的全局列举」；用例调用与
+%%%      租户面共用同一 facade/application（CS-02-A02：**不复制业务逻辑**），SQL 侧仍是
 %%%      「第一、二个业务参数 = OrgId/WorkspaceId」。
 %%%
 %%% **本模块不做**：不读库、不写 SQL、不做业务判定、不缓存事实、不签发任何 URL。
@@ -53,7 +53,7 @@ dispatch(Entry, Case, Req0, State0) ->
     end.
 
 authorize(Entry, Case, Req0, Body, State, OrgId) ->
-    Metadata = metadata(State),
+    Metadata = authorize_metadata(Entry, Case, State),
     case cs_auth:authorize(Metadata, Req0, State) of
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
@@ -66,7 +66,7 @@ invoke(Entry, Case, Req0, Body, OrgId) ->
         {error, Reason} ->
             cs_http:reply_error(Req0, Reason);
         {ok, WorkspaceId} ->
-            Derived = #{workspace_id => WorkspaceId, at => cs_http:now_ms()},
+            Derived = #{workspace_id => WorkspaceId, at => now(Case)},
             case cs_http:build_params(Entry, Case, Req0, Body, Derived) of
                 {error, Reason} ->
                     cs_http:reply_error(Req0, Reason);
@@ -79,3 +79,18 @@ invoke(Entry, Case, Req0, Body, OrgId) ->
 metadata(State) ->
     Keys = [auth_context, surface, required_function, required_permission, required_governance],
     maps:from_list([{K, maps:get(K, State, undefined)} || K <- Keys, maps:is_key(K, State)]).
+
+authorize_metadata(Entry, Case, State) ->
+    Base = metadata(State),
+    case maps:get(case_auth, Entry, undefined) of
+        CaseAuth when is_map(CaseAuth) ->
+            maps:merge(Base, maps:get(maps:get(method, Case), CaseAuth, #{}));
+        _ ->
+            Base
+    end.
+
+now(Case) ->
+    case maps:get(clock_unit, Case, millisecond) of
+        second -> cs_http:now_sec();
+        millisecond -> cs_http:now_ms()
+    end.

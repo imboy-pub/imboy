@@ -18,6 +18,7 @@
     insert_widget_installation/2,
     fetch_widget_installation/2,
     fetch_widget_installation_by_public_id/2,
+    list_widget_installations_page/3,
     revoke_widget_installation/3,
     insert_widget_identity_key/3,
     fetch_widget_identity_key/3,
@@ -100,6 +101,17 @@
     "       extract(epoch from updated_at)::bigint AS updated_at"
     "  FROM customer_service_widget_installation"
     " WHERE organization_id = $1 AND public_widget_id = $2"
+>>).
+
+-define(SQL_LIST_INSTALLATIONS_PAGE, <<
+    "SELECT id, organization_id, public_widget_id, display_name,"
+    "       allowed_origins, branding, consent_version, status,"
+    "       extract(epoch from revoked_at)::bigint AS revoked_at, version,"
+    "       extract(epoch from created_at)::bigint AS created_at,"
+    "       extract(epoch from updated_at)::bigint AS updated_at"
+    "  FROM customer_service_widget_installation"
+    " WHERE organization_id = $1 AND ($2::bigint = 0 OR id < $2)"
+    " ORDER BY id DESC LIMIT $3"
 >>).
 
 -define(SQL_REVOKE_INSTALLATION, <<
@@ -202,6 +214,7 @@ sql_statements() ->
         ?SQL_INSERT_INSTALLATION,
         ?SQL_FETCH_INSTALLATION,
         ?SQL_FETCH_INSTALLATION_BY_PUBLIC_ID,
+        ?SQL_LIST_INSTALLATIONS_PAGE,
         ?SQL_REVOKE_INSTALLATION,
         ?SQL_INSERT_IDENTITY_KEY,
         ?SQL_FETCH_IDENTITY_KEY,
@@ -256,6 +269,20 @@ fetch_widget_installation_by_public_id(OrgId, PublicWidgetId) ->
             ?SQL_FETCH_INSTALLATION_BY_PUBLIC_ID, [OrgId, PublicWidgetId], ?INSTALLATION_KEYS
         )
     ).
+
+-spec list_widget_installations_page(integer(), non_neg_integer(), pos_integer()) ->
+    {ok, [map()]} | {error, term()}.
+list_widget_installations_page(OrgId, AfterId, Limit) ->
+    case
+        cs_pg_common:fetch_many(
+            ?SQL_LIST_INSTALLATIONS_PAGE, [OrgId, AfterId, Limit], ?INSTALLATION_KEYS
+        )
+    of
+        {ok, Rows} ->
+            {ok, [maps:update_with(status, fun cs_pg_common:to_status/1, Row) || Row <- Rows]};
+        {error, _} = Err ->
+            Err
+    end.
 
 -spec revoke_widget_installation(integer(), integer(), integer()) -> ok | {error, term()}.
 revoke_widget_installation(OrgId, InstallationId, At) ->

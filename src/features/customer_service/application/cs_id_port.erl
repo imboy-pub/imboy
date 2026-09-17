@@ -7,6 +7,6 @@
 -export_type([kind/0]).
 
 %% 命名生成器按资源类型分域（不同 Kind 在不同表，主键不冲突）。
--type kind() :: cs_session | cs_shop_key | cs_visit_token | cs_event.
+-type kind() :: cs_session | cs_shop_key | cs_visit_token | cs_widget_installation | cs_event.
 
 -callback new_id(Kind :: kind()) -> integer().

@@ -929,6 +929,157 @@ platform_flow_tests(_) ->
                 ),
                 ?assertEqual(422, ?S:status(Resp))
             end)
+        end},
+
+        {"widget installations list uses explicit org/workspace and read permission", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:read">>]
+            }),
+            meck:expect(customer_service_facade, list_widget_installations, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                {ok, #{
+                    installations => [
+                        #{
+                            id => 91,
+                            public_widget_id => <<"wgt_pub_test">>,
+                            status => active
+                        }
+                    ],
+                    next_after_id => undefined
+                }}
+            end),
+            ?S:with_listener(platform, p_widget_installations, platform_inject(), fun(Port) ->
+                Path =
+                    <<
+                        "/api/adm/customer-service/widget-installations?organization_id=",
+                        (int_bin(?ORG))/binary,
+                        "&workspace_id=",
+                        (int_bin(?WS))/binary
+                    >>,
+                Resp = ?S:request(
+                    Port, <<"GET">>, Path, <<>>, #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                [Installation] = maps:get(<<"installations">>, ?S:payload(Resp)),
+                ?assertEqual(<<"wgt_pub_test">>, maps:get(<<"public_widget_id">>, Installation)),
+                ?assertNot(is_map_key(<<"shop_key">>, Installation)),
+                ?assertNot(is_map_key(<<"secret">>, Installation))
+            end)
+        end},
+
+        {"widget installation create requires write permission", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:read">>]
+            }),
+            meck:expect(customer_service_facade, create_widget_installation, fun(_Org, _Params) ->
+                erlang:error(write_use_case_reached_with_read_permission)
+            end),
+            ?S:with_listener(platform, p_widget_installations, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/adm/customer-service/widget-installations">>,
+                    widget_installation_body(),
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(403, ?S:status(Resp)),
+                ?assertNot(
+                    meck:called(customer_service_facade, create_widget_installation, '_')
+                )
+            end)
+        end},
+
+        {"widget installation create returns public metadata without a shop secret", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
+            }),
+            meck:expect(customer_service_facade, create_widget_installation, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                ?assert(is_integer(maps:get(at, Params))),
+                {ok, #{
+                    installation => #{
+                        id => 91,
+                        public_widget_id => <<"wgt_pub_test">>,
+                        status => active
+                    }
+                }}
+            end),
+            ?S:with_listener(platform, p_widget_installations, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/adm/customer-service/widget-installations">>,
+                    widget_installation_body(),
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                Installation = maps:get(<<"installation">>, ?S:payload(Resp)),
+                ?assertEqual(<<"wgt_pub_test">>, maps:get(<<"public_widget_id">>, Installation)),
+                ?assertNot(is_map_key(<<"shop_key">>, Installation)),
+                ?assertNot(is_map_key(<<"secret">>, Installation))
+            end)
+        end},
+
+        {"widget installation revoke uses write permission and explicit scope", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:write">>]
+            }),
+            meck:expect(customer_service_facade, revoke_widget_installation, fun(Org, Params) ->
+                ?assertEqual(?ORG, Org),
+                ?assertEqual(?WS, maps:get(workspace_id, Params)),
+                ?assertEqual(91, maps:get(id, Params)),
+                {ok, #{installation => #{id => 91, status => revoked}}}
+            end),
+            ?S:with_listener(platform, p_widget_installation_revoke, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"POST">>,
+                    <<"/api/adm/customer-service/widget-installations/91/revoke">>,
+                    #{<<"organization_id">> => ?ORG, <<"workspace_id">> => ?WS},
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(200, ?S:status(Resp)),
+                ?assertEqual(
+                    <<"revoked">>,
+                    maps:get(<<"status">>, maps:get(<<"installation">>, ?S:payload(Resp)))
+                )
+            end)
+        end},
+
+        {"widget installation list without organization_id is 400", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:read">>]
+            }),
+            ?S:with_listener(platform, p_widget_installations, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/adm/customer-service/widget-installations?workspace_id=",
+                        (int_bin(?WS))/binary>>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(400, ?S:status(Resp))
+            end)
+        end},
+
+        {"widget installation list without workspace_id is 422", fun() ->
+            cs_fake_facts:set(#{
+                adm_user_id => ?ADM, permissions => [<<"customer_service:read">>]
+            }),
+            ?S:with_listener(platform, p_widget_installations, platform_inject(), fun(Port) ->
+                Resp = ?S:request(
+                    Port,
+                    <<"GET">>,
+                    <<"/api/adm/customer-service/widget-installations?organization_id=",
+                        (int_bin(?ORG))/binary>>,
+                    <<>>,
+                    #{<<"authorization">> => <<"Bearer x">>}
+                ),
+                ?assertEqual(422, ?S:status(Resp))
+            end)
         end}
     ].
 
@@ -1119,6 +1270,16 @@ member_facts() ->
 
 platform_inject() ->
     #{auth_facts => cs_fake_facts, adm_user_id => ?ADM}.
+
+widget_installation_body() ->
+    #{
+        <<"organization_id">> => ?ORG,
+        <<"workspace_id">> => ?WS,
+        <<"display_name">> => <<"Store support">>,
+        <<"allowed_origins">> => [<<"https://shop.example.com">>],
+        <<"branding">> => #{<<"display_name">> => <<"Store">>},
+        <<"consent_version">> => <<"v1">>
+    }.
 
 int_bin(N) when is_integer(N) ->
     integer_to_binary(N).

@@ -206,6 +206,11 @@
 %% OrgId——错 Org 的查询拿到 not_found（CSB-01-A02 的 store 裁决点）。
 -callback fetch_widget_installation_by_public_id(OrgId :: integer(), PublicWidgetId :: binary()) ->
     {ok, widget_installation()} | {error, not_found | term()}.
+%% @doc 管理面列表：DESC 键集分页，同语句绑定 Org。
+-callback list_widget_installations_page(
+    OrgId :: integer(), AfterId :: non_neg_integer(), Limit :: pos_integer()
+) ->
+    {ok, [widget_installation()]} | {error, term()}.
 %% @doc 吊销安装（status='revoked' + revoked_at；行保留以审计）。
 -callback revoke_widget_installation(
     OrgId :: integer(), InstallationId :: integer(), At :: integer()

@@ -40,6 +40,10 @@
     revoke_visit_token/2,
     verify_visit_token/2,
     list_visit_tokens/2,
+    %% widget installation 管理
+    list_widget_installations/2,
+    create_widget_installation/2,
+    revoke_widget_installation/2,
     %% widget（CSB-02：application 合同；HTTP 面归 CSB-03）
     widget_bootstrap/2,
     widget_identity_exchange/2,
@@ -336,6 +340,44 @@ verify_visit_token(OrgId, _Params) ->
 list_visit_tokens(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
     cs_access_app:list_visit_tokens(OrgId, Params);
 list_visit_tokens(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+%% ===================================================================
+%% widget installation 管理
+%% ===================================================================
+
+-spec list_widget_installations(integer(), map()) -> term().
+list_widget_installations(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    cs_widget_app:list_installations(OrgId, Params);
+list_widget_installations(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec create_widget_installation(integer(), map()) -> term().
+create_widget_installation(
+    OrgId,
+    #{display_name := DisplayName, allowed_origins := AllowedOrigins, consent_version := Consent} =
+        Params
+) when
+    is_integer(OrgId),
+    is_binary(DisplayName),
+    is_list(AllowedOrigins),
+    is_binary(Consent),
+    is_map(Params)
+->
+    cs_widget_app:create_installation(OrgId, Params);
+create_widget_installation(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, create_widget_installation}};
+create_widget_installation(OrgId, _Params) ->
+    {error, {invalid_argument, {organization_id, OrgId}}}.
+
+-spec revoke_widget_installation(integer(), map()) -> term().
+revoke_widget_installation(OrgId, #{id := Id, at := At} = Params) when
+    is_integer(OrgId), is_integer(Id), is_integer(At), is_map(Params)
+->
+    cs_widget_app:revoke_installation(OrgId, Params);
+revoke_widget_installation(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    {error, {invalid_argument, revoke_widget_installation}};
+revoke_widget_installation(OrgId, _Params) ->
     {error, {invalid_argument, {organization_id, OrgId}}}.
 
 %% ===================================================================

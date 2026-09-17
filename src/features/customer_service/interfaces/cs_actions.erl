@@ -56,7 +56,7 @@
 %% `tsid` = 64-bit TSID：传输层是 JSON/path **字符串**，投影成 integer 交给 application
 %% （出站再编回 string，见 cs_http:encode_entity/1）。`map` = 嵌套 JSON 对象
 %% （widget 断言 `assertion`，形状判定由 application 的 claims 全查承担）。
--type ptype() :: tsid | int | binary | map.
+-type ptype() :: tsid | int | binary | list | map.
 -type param() :: {atom(), ptype(), required | optional}.
 -type kase() :: #{
     method := binary(),
@@ -643,6 +643,36 @@ table(platform) ->
             platform_entry(
                 [{<<"POST">>, close, [{expected_version, int, required}], [{id, session_id}]}],
                 platform_auth(<<"customer_service:write">>)
+            )},
+        {p_widget_installations,
+            with_case_auth(
+                platform_param_entry(
+                    [
+                        {<<"GET">>, list_widget_installations,
+                            [{after_id, binary, optional}, {limit, binary, optional}], []},
+                        {<<"POST">>, create_widget_installation,
+                            [
+                                {display_name, binary, required},
+                                {allowed_origins, list, required},
+                                {branding, map, required},
+                                {consent_version, binary, required}
+                            ],
+                            [], #{clock_unit => second}}
+                    ],
+                    platform_auth(<<"customer_service:read">>),
+                    [id, store, new_public_widget_id]
+                ),
+                #{<<"POST">> => platform_auth(<<"customer_service:write">>)}
+            )},
+        {p_widget_installation_revoke,
+            platform_param_entry(
+                [
+                    {<<"POST">>, revoke_widget_installation, [], [{id, id}], #{
+                        clock_unit => second
+                    }}
+                ],
+                platform_auth(<<"customer_service:write">>),
+                [store]
             )}
     ].
 
@@ -674,7 +704,7 @@ with_case_auth(Entry, CaseAuth) when is_map(CaseAuth) ->
 widget_entry(Cases, Auth, ClientForbidden, OrgSource) ->
     (entry(Cases, Auth, ClientForbidden, OrgSource))#{owner => widget}.
 
-%% 平台面路径动作构造：org 恒来自 path；服务端派生键 = 公共集。
+%% 平台面路径动作构造：org 默认来自 path；服务端派生键 = 公共集。
 platform_entry(Cases, Auth) ->
     #{
         owner => platform,
@@ -682,4 +712,10 @@ platform_entry(Cases, Auth) ->
         auth => Auth,
         client_forbidden => server_common(),
         org_source => path
+    }.
+
+platform_param_entry(Cases, Auth, ExtraForbidden) ->
+    (platform_entry(Cases, Auth))#{
+        client_forbidden => server_common() ++ ExtraForbidden,
+        org_source => param
     }.

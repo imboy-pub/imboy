@@ -27,9 +27,219 @@
 -module(cs_widget_app).
 
 -export([
+    list_installations/2,
+    create_installation/2,
+    revoke_installation/2,
     bootstrap/2,
     identity_exchange/2
 ]).
+
+-define(INSTALLATION_PROJECTION, [
+    id,
+    organization_id,
+    public_widget_id,
+    display_name,
+    allowed_origins,
+    branding,
+    consent_version,
+    status,
+    revoked_at,
+    version,
+    created_at,
+    updated_at
+]).
+
+%% ===================================================================
+%% Admin installation 管理（公开 id，不签发或返回任何 shop_key）
+%% ===================================================================
+
+-spec list_installations(integer(), map()) -> {ok, map()} | {error, term()}.
+list_installations(OrgId, Params) when is_map(Params) ->
+    %% installation 是 Org 级资源；workspace_id 仅是平台管理接口的显式请求上下文。
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _WorkspaceId} ->
+            case cs_app_support:page_cursor(Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, AfterId, Limit} ->
+                    list_installations_page(OrgId, AfterId, Limit, Params)
+            end
+    end;
+list_installations(_OrgId, _Params) ->
+    {error, {invalid_argument, list_installations}}.
+
+list_installations_page(OrgId, AfterId, Limit, Params) ->
+    case
+        cs_widget_support:with_store(Params, fun(Store) ->
+            Store:list_widget_installations_page(OrgId, AfterId, Limit)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Rows} ->
+            Views = [installation_view(Row) || Row <- Rows],
+            cs_app_support:page_view(
+                installations, ?INSTALLATION_PROJECTION, Views, Limit, id
+            )
+    end.
+
+-spec create_installation(integer(), map()) -> {ok, map()} | {error, term()}.
+create_installation(OrgId, Params) when is_map(Params) ->
+    case installation_draft(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId, Draft} ->
+            insert_installation(OrgId, WorkspaceId, Draft, Params)
+    end;
+create_installation(_OrgId, _Params) ->
+    {error, {invalid_argument, create_installation}}.
+
+installation_draft(OrgId, Params) ->
+    DisplayName = maps:get(display_name, Params, undefined),
+    ConsentVersion = maps:get(consent_version, Params, undefined),
+    Branding = maps:get(branding, Params, undefined),
+    case cs_app_support:tenant(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, WorkspaceId} ->
+            case
+                cs_widget_support:non_empty_binary(DisplayName) andalso
+                    cs_widget_support:non_empty_binary(ConsentVersion) andalso is_map(Branding)
+            of
+                false ->
+                    {error, {invalid_argument, create_installation}};
+                true ->
+                    installation_origins(WorkspaceId, DisplayName, ConsentVersion, Branding, Params)
+            end
+    end.
+
+installation_origins(WorkspaceId, DisplayName, ConsentVersion, Branding, Params) ->
+    case normalize_origins(maps:get(allowed_origins, Params, undefined), []) of
+        {error, _} = Err ->
+            Err;
+        {ok, []} ->
+            {error, {invalid_argument, allowed_origins}};
+        {ok, AllowedOrigins} ->
+            case cs_widget_support:new_id(cs_widget_installation, Params) of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, InstallationId} ->
+                    {ok, WorkspaceId, #{
+                        id => InstallationId,
+                        public_widget_id => new_public_widget_id(Params),
+                        display_name => DisplayName,
+                        allowed_origins => AllowedOrigins,
+                        branding => cs_widget:branding_view(Branding),
+                        consent_version => ConsentVersion,
+                        created_by_user_id => maps:get(actor_user_id, Params, undefined)
+                    }}
+            end
+    end.
+
+insert_installation(OrgId, WorkspaceId, Draft, Params) ->
+    case
+        cs_widget_support:with_store(Params, fun(Store) ->
+            Store:insert_widget_installation(OrgId, Draft)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        {ok, Stored} ->
+            case
+                installation_event(
+                    Params, OrgId, WorkspaceId, <<"widget.installation.created">>, Stored
+                )
+            of
+                ok -> {ok, #{installation => installation_view(Stored)}};
+                {error, _} = AuditErr -> AuditErr
+            end
+    end.
+
+-spec revoke_installation(integer(), map()) -> {ok, map()} | {error, term()}.
+revoke_installation(OrgId, Params) when is_map(Params) ->
+    Id = maps:get(id, Params, undefined),
+    At = maps:get(at, Params, undefined),
+    case
+        {
+            cs_app_support:tenant(OrgId, Params),
+            cs_widget_support:pos_int(Id),
+            cs_widget_support:pos_int(At)
+        }
+    of
+        {{error, _} = Err, _, _} ->
+            Err;
+        {{ok, _WorkspaceId}, false, _} ->
+            {error, {invalid_argument, revoke_installation}};
+        {{ok, _WorkspaceId}, _, false} ->
+            {error, {invalid_argument, revoke_installation}};
+        {{ok, WorkspaceId}, true, true} ->
+            revoke_installation_in(OrgId, WorkspaceId, Id, At, Params)
+    end;
+revoke_installation(_OrgId, _Params) ->
+    {error, {invalid_argument, revoke_installation}}.
+
+revoke_installation_in(OrgId, WorkspaceId, Id, At, Params) ->
+    case
+        cs_widget_support:with_store(Params, fun(Store) ->
+            Store:revoke_widget_installation(OrgId, Id, At)
+        end)
+    of
+        {error, _} = Err ->
+            Err;
+        ok ->
+            case
+                cs_widget_support:with_store(Params, fun(Store) ->
+                    Store:fetch_widget_installation(OrgId, Id)
+                end)
+            of
+                {error, _} = Err2 ->
+                    Err2;
+                {ok, Stored} ->
+                    case
+                        installation_event(
+                            Params, OrgId, WorkspaceId, <<"widget.installation.revoked">>, Stored
+                        )
+                    of
+                        ok -> {ok, #{installation => installation_view(Stored)}};
+                        {error, _} = AuditErr -> AuditErr
+                    end
+            end
+    end.
+
+installation_event(Params, OrgId, WorkspaceId, Action, Installation) ->
+    cs_widget_support:append_event(Params, OrgId, WorkspaceId, #{
+        actor_user_id => maps:get(actor_user_id, Params, undefined),
+        actor_kind => <<"platform_admin">>,
+        action => Action,
+        detail => #{<<"installation_id">> => maps:get(id, Installation)}
+    }).
+
+installation_view(Installation) ->
+    maps:with(
+        ?INSTALLATION_PROJECTION,
+        Installation#{branding => cs_widget:branding_view(maps:get(branding, Installation, #{}))}
+    ).
+
+normalize_origins(Origins, Acc) when is_list(Origins) ->
+    normalize_origins_in(Origins, Acc);
+normalize_origins(_Origins, _Acc) ->
+    {error, {invalid_argument, allowed_origins}}.
+
+normalize_origins_in([], Acc) ->
+    {ok, lists:usort(Acc)};
+normalize_origins_in([Origin | Rest], Acc) ->
+    case cs_widget:normalize_origin(Origin) of
+        {ok, Normalized} -> normalize_origins_in(Rest, [Normalized | Acc]);
+        {error, _} = Err -> Err
+    end.
+
+new_public_widget_id(Params) ->
+    case maps:get(new_public_widget_id, Params, undefined) of
+        Fun when is_function(Fun, 0) -> Fun();
+        _ -> <<"wgt_pub_", (binary:encode_hex(crypto:strong_rand_bytes(16)))/binary>>
+    end.
 
 %% ===================================================================
 %% bootstrap（安装校验 → Origin 精确匹配 → 匿名 contact 幂等映射 → 签发令牌）

@@ -85,7 +85,11 @@ platform_literal_routes() ->
         {<<P/binary, "/seats/:id/suspend">>, p_seat_suspend, [<<"POST">>], platform_admin},
         {<<P/binary, "/seats/:id/resume">>, p_seat_resume, [<<"POST">>], platform_admin},
         {<<P/binary, "/sessions/:id/transfer">>, p_session_transfer, [<<"POST">>], platform_admin},
-        {<<P/binary, "/sessions/:id/close">>, p_session_close, [<<"POST">>], platform_admin}
+        {<<P/binary, "/sessions/:id/close">>, p_session_close, [<<"POST">>], platform_admin},
+        {<<"/api/adm/customer-service/widget-installations">>, p_widget_installations,
+            [<<"GET">>, <<"POST">>], platform_admin},
+        {<<"/api/adm/customer-service/widget-installations/:id/revoke">>,
+            p_widget_installation_revoke, [<<"POST">>], platform_admin}
     ].
 
 %% CSB-03：widget 接入面（浏览器访客；principal 与访客同类——visit token 头）。
@@ -220,12 +224,13 @@ entry_violations(Path, Action, Opts, {ok, Entry}) ->
         case_auth_violations(Path, Action, Entry).
 
 %% CSB-02R：case_auth（同路径 method+auth_context 分流）的机械审计——
-%% 覆盖方法必须已在该动作表登记、principal 必属五类、且**不得**与 entry
-%% 默认主体相同（相同即无谓漂移面）。
+%% 覆盖方法必须已在该动作表登记、principal 必属五类、且完整 auth 配置
+%% **不得**与 entry 默认值相同（完全相同才是无谓漂移面；同主体可按 method
+%% 收窄为不同 permission）。
 case_auth_violations(Path, Action, Entry) ->
     CaseAuth = maps:get(case_auth, Entry, #{}),
     Methods = entry_methods(Entry),
-    DefaultPrincipal = maps:get(auth_context, maps:get(auth, Entry), undefined),
+    DefaultAuth = maps:get(auth, Entry),
     lists:append([
         [
             {case_auth_method_not_declared, Path, Action, M}
@@ -242,9 +247,18 @@ case_auth_violations(Path, Action, Entry) ->
         [
             {case_auth_same_as_default, Path, Action, M}
          || M <- maps:keys(CaseAuth),
-            maps:get(auth_context, maps:get(M, CaseAuth), undefined) =:= DefaultPrincipal
+            maps:get(M, CaseAuth) =:= DefaultAuth
         ]
     ]).
+
+a01_widget_installation_permissions_split_by_method_test() ->
+    {ok, Entry} = cs_actions:platform(p_widget_installations),
+    DefaultAuth = maps:get(auth, Entry),
+    PostAuth = maps:get(<<"POST">>, maps:get(case_auth, Entry)),
+    ?assertEqual(platform_admin, maps:get(auth_context, DefaultAuth)),
+    ?assertEqual(platform_admin, maps:get(auth_context, PostAuth)),
+    ?assertEqual(<<"customer_service:read">>, maps:get(required_permission, DefaultAuth)),
+    ?assertEqual(<<"customer_service:write">>, maps:get(required_permission, PostAuth)).
 
 entry_methods(Entry) ->
     [maps:get(method, Case) || Case <- maps:get(cases, Entry)].
@@ -287,11 +301,11 @@ literal_for(platform) ->
 %% 审计必须逐条报红。
 a01_audit_is_not_vacuous_test() ->
     Real = ?S:cs_routes(all),
-    %% 32 = 租户 17（CSB-03 详情 + CSB-02R seats/sessions；queue 计 1 条路径）+
-    %% widget 8（CSB-03）+ 平台 7；
+    %% 34 = 租户 17（CSB-03 详情 + CSB-02R seats/sessions；queue 计 1 条路径）+
+    %% widget 8（CSB-03）+ 平台 9；
     %% C2/C3 治理列表与既有 POST 同路径（动作名按 contracts-w2 冻结为
     %% shop_key_list/visit_token_list）。
-    ?assert(length(Real) >= 32),
+    ?assert(length(Real) >= 34),
     MutatedAuth = lists:map(
         fun({Path, H, Opts}) ->
             case maps:get(action, Opts) of
@@ -514,9 +528,12 @@ credential_surface_matches_principal_declaration_test() ->
         widget_literal_routes()
     ),
     lists:foreach(
-        fun({_Path, Action, _Methods, _Principal}) ->
+        fun({Path, Action, _Methods, _Principal}) ->
             {ok, Entry} = cs_actions:platform(Action),
-            ?assertEqual(path, cs_actions:org_source(Entry))
+            case cs_actions:org_source(Entry) of
+                path -> ?assert(is_map_key(org_id, path_bindings(Path)));
+                param -> ?assertNot(is_map_key(org_id, path_bindings(Path)))
+            end
         end,
         platform_literal_routes()
     ).

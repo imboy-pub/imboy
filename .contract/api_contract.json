@@ -562,6 +562,18 @@
         "static": false
       },
       {
+        "action": "p_widget_installations",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/widget-installations",
+        "static": false
+      },
+      {
+        "action": "p_widget_installation_revoke",
+        "handler": "cs_platform_handler",
+        "path": "/api/adm/customer-service/widget-installations/:id/revoke",
+        "static": false
+      },
+      {
         "action": "p_asset_content",
         "handler": "eb_platform_handler",
         "path": "/api/adm/enterprise-business/organizations/:org_id/assets/:id/content",

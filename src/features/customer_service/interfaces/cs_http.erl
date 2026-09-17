@@ -365,6 +365,8 @@ coerce(int, Raw) when is_binary(Raw) ->
     end;
 coerce(binary, Raw) when is_binary(Raw), Raw =/= <<>> ->
     {ok, Raw};
+coerce(list, Raw) when is_list(Raw) ->
+    {ok, Raw};
 %% 嵌套 JSON 对象（widget 断言 assertion 等）原样透传；形状/取值由
 %% application 的 claims 全查承担（缺键/类型错在 claims 判定处结构化失败）。
 coerce(map, Raw) when is_map(Raw) ->

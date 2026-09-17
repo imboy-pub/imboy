@@ -97,6 +97,7 @@ contracts() ->
             {insert_widget_installation, 2},
             {fetch_widget_installation, 2},
             {fetch_widget_installation_by_public_id, 2},
+            {list_widget_installations_page, 3},
             {revoke_widget_installation, 3},
             {insert_widget_identity_key, 3},
             {fetch_widget_identity_key, 3},

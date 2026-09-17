@@ -64,6 +64,12 @@ call(issue_visit_token, OrgId, Params) ->
     customer_service_facade:issue_visit_token(OrgId, Params);
 call(revoke_visit_token, OrgId, Params) ->
     customer_service_facade:revoke_visit_token(OrgId, Params);
+call(list_widget_installations, OrgId, Params) ->
+    customer_service_facade:list_widget_installations(OrgId, Params);
+call(create_widget_installation, OrgId, Params) ->
+    customer_service_facade:create_widget_installation(OrgId, Params);
+call(revoke_widget_installation, OrgId, Params) ->
+    customer_service_facade:revoke_widget_installation(OrgId, Params);
 %% CSB-02：Widget 与 Seat 补缺用例（HTTP 动作行归 CSB-03；这里只登记
 %% facade 调用点，保证「有 facade 函数必有调用点」的机械核对闭合）。
 call(widget_bootstrap, OrgId, Params) ->
@@ -118,6 +124,9 @@ actions() ->
         list_visit_tokens,
         issue_visit_token,
         revoke_visit_token,
+        list_widget_installations,
+        create_widget_installation,
+        revoke_widget_installation,
         %% CSB-02：Widget 与 Seat 补缺用例
         widget_bootstrap,
         widget_identity_exchange,
