@@ -3570,6 +3570,84 @@
         "static": false
       },
       {
+        "action": "archive",
+        "handler": "organization_handler",
+        "path": "/api/v1/organizations/:organization_id/archive",
+        "static": false
+      },
+      {
+        "action": "default_workspace",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/default-workspace",
+        "static": false
+      },
+      {
+        "action": "department_collection",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/departments",
+        "static": false
+      },
+      {
+        "action": "department_item",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/departments/:department_id",
+        "static": false
+      },
+      {
+        "action": "department_archive",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/departments/:department_id/archive",
+        "static": false
+      },
+      {
+        "action": "department_member_collection",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/departments/:department_id/members",
+        "static": false
+      },
+      {
+        "action": "department_member_item",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/departments/:department_id/members/:user_id",
+        "static": false
+      },
+      {
+        "action": "department_member_admin",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/departments/:department_id/members/:user_id/admin",
+        "static": false
+      },
+      {
+        "action": "department_move",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/departments/:department_id/move",
+        "static": false
+      },
+      {
+        "action": "invitation_collection",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/invitations",
+        "static": false
+      },
+      {
+        "action": "invitation_reject",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/invitations/:invitation_id/reject",
+        "static": false
+      },
+      {
+        "action": "invitation_revoke",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/invitations/:invitation_id/revoke",
+        "static": false
+      },
+      {
+        "action": "invitation_accept",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/:organization_id/invitations/accept",
+        "static": false
+      },
+      {
         "action": "collection",
         "handler": "organization_member_handler",
         "path": "/api/v1/organizations/:organization_id/members",
@@ -3591,6 +3669,24 @@
         "action": "owner_transfer",
         "handler": "organization_member_handler",
         "path": "/api/v1/organizations/:organization_id/members/transfer_owner",
+        "static": false
+      },
+      {
+        "action": "restore",
+        "handler": "organization_handler",
+        "path": "/api/v1/organizations/:organization_id/restore",
+        "static": false
+      },
+      {
+        "action": "deletion_preflight",
+        "handler": "organization_handler",
+        "path": "/api/v1/organizations/deletion-preflight",
+        "static": false
+      },
+      {
+        "action": "invitation_mine",
+        "handler": "organization_api_handler",
+        "path": "/api/v1/organizations/invitations/mine",
         "static": false
       },
       {
