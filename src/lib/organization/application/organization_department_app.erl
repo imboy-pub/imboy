@@ -1,7 +1,8 @@
 %%% @doc Organization Department 用例层（Core Contract C10/C15；ORG-04）。
 %%%
 %%% 职责：部门 create/update/move/archive/list、部门成员 add/remove、
-%%% 部门管理员 set/remove。所有写操作的授权基线 = **同 Org active membership**
+%%% 部门管理员 set/remove。所有操作（目录读与写）的授权基线 =
+%%% **同 Org active membership**
 %%% （ORG-04 卡 IMPLEMENTATION 冻结口径）；成员级操作额外放行**该部门**的
 %%% 局部目录管理员（department_admin，department_member.is_admin 标记）。
 %%%
@@ -228,8 +229,19 @@ archive_result(OrgId, DeptId, Row) ->
 %% ===================================================================
 
 %% @doc 列部门。Params：status（可选 all 缺省|active|archived）。
+%% 授权基线与其余操作一致 = 同 Org active member（门先于一切读，含 not_found）。
 -spec list_departments(integer(), map()) -> {ok, [map()]} | {error, term()}.
 list_departments(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    case require_actor(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _ActorId} ->
+            do_list_departments(OrgId, Params)
+    end;
+list_departments(_OrgId, _Params) ->
+    {error, {invalid_argument, list_departments}}.
+
+do_list_departments(OrgId, Params) ->
     Status =
         case maps:get(status, Params, all) of
             all -> all;
@@ -245,13 +257,22 @@ list_departments(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
                 {ok, Rows} -> {ok, [project_dept(R) || R <- Rows]};
                 {error, _} = Err -> Err
             end
-    end;
-list_departments(_OrgId, _Params) ->
-    {error, {invalid_argument, list_departments}}.
+    end.
 
-%% @doc 部门详情（含成员列表）。跨 Org / 不存在 ⇒ not_found（不做租户枚举）。
+%% @doc 部门详情（含成员列表）。授权基线同 list_departments；
+%% 门先于存在性判定（非成员探测部门 id 一律 403，不做租户枚举）。
 -spec get_department(integer(), map()) -> {ok, map()} | {error, term()}.
 get_department(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    case require_actor(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _ActorId} ->
+            do_get_department(OrgId, Params)
+    end;
+get_department(_OrgId, _Params) ->
+    {error, {invalid_argument, get_department}}.
+
+do_get_department(OrgId, Params) ->
     DeptId = maps:get(department_id, Params, undefined),
     case is_pos_int(DeptId) of
         false ->
@@ -272,9 +293,7 @@ get_department(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
                 {error, _} = Err ->
                     Err
             end
-    end;
-get_department(_OrgId, _Params) ->
-    {error, {invalid_argument, get_department}}.
+    end.
 
 %% ===================================================================
 %% member add / remove
@@ -457,9 +476,20 @@ admin_op_gate(OrgId, DeptId, Params) ->
 %% list members
 %% ===================================================================
 
-%% @doc 列部门成员。部门须存在于本 Org（archived 也可读：目录事实可审计）。
+%% @doc 列部门成员。授权基线同 list_departments；部门须存在于本 Org
+%% （archived 也可读：目录事实可审计）。
 -spec list_members(integer(), map()) -> {ok, [map()]} | {error, term()}.
 list_members(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
+    case require_actor(OrgId, Params) of
+        {error, _} = Err ->
+            Err;
+        {ok, _ActorId} ->
+            do_list_members(OrgId, Params)
+    end;
+list_members(_OrgId, _Params) ->
+    {error, {invalid_argument, list_members}}.
+
+do_list_members(OrgId, Params) ->
     DeptId = maps:get(department_id, Params, undefined),
     case is_pos_int(DeptId) of
         false ->
@@ -474,9 +504,7 @@ list_members(OrgId, Params) when is_integer(OrgId), is_map(Params) ->
                         {error, _} = Err -> Err
                     end
             end
-    end;
-list_members(_OrgId, _Params) ->
-    {error, {invalid_argument, list_members}}.
+    end.
 
 %% ===================================================================
 %% 内部：授权基线 / 事实查询 / 投影

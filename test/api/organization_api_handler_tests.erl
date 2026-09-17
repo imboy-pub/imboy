@@ -62,6 +62,21 @@ dept_shape_error_still_maps_to_400_test_() ->
         end
     ).
 
+%% GAP3：读路径授权门错误（actor_not_member 等）稳定映射 403——
+%% 非成员探测部门一律 403，不得伪装成 400 参数错误或借 404 泄露存在性。
+dept_gate_error_maps_to_403_test_() ->
+    ?WITH_MECKS(
+        dept_error_mocks(),
+        fun() ->
+            put(t_dept_error, {actor_not_member, 9}),
+            Result = organization_api_handler:handle_action(
+                department_item, patch_req, #{current_uid => ?UID}
+            ),
+            ?assertEqual(403, maps:get(response_status, Result)),
+            erase(t_dept_error)
+        end
+    ).
+
 %% 非 PATCH/GET 方法仍是 405（映射测试不放松 method 门）。
 dept_update_rejects_non_patch_with_405_test_() ->
     ?WITH_MECKS(
