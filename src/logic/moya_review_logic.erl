@@ -518,33 +518,65 @@ run_queue(GroupIds, Filters, Page, Size) ->
 build_workbench(Uid, SubmissionId) ->
     case load_submission_bundle(SubmissionId) of
         {ok, Bundle} ->
-            %% DC-1：顶层 my_review_draft 复用 teacher_view 已算好的草稿
-            %% （find_draft(Sid,Uid) + assets，不二次查库）——load_submission_bundle
-            %% 构造的 Bundle 无 draft 键，直读恒 null（v1 引入缺陷，挡死老师
-            %% 重开工作台的草稿恢复）。submission 内嵌值保持不动（兼容窗口）。
-            TView = teacher_view(Uid, Bundle),
-            {ok, #{
-                <<"submission">> => TView,
-                <<"my_review_draft">> => maps:get(<<"my_review_draft">>, TView, null),
-                <<"learner_display_name">> => maps:get(<<"display_name">>, Bundle, <<>>),
-                <<"assignment_title">> => maps:get(<<"title">>, Bundle, <<>>)
-            }};
+            %% A1-D04：撤回提交的日常读路径收口（T17）——对齐 view_url 先例
+            %% （moya_attach_logic:authorize 对 withdrawn 一律 false）：
+            %% staff 不再从 workbench 拿到 AI 草稿与学员元数据
+            case withdrawn_submission(Bundle) of
+                true ->
+                    {error, forbidden};
+                false ->
+                    workbench_payload(Uid, Bundle)
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
+
+-spec workbench_payload(integer(), map()) -> {ok, map()}.
+workbench_payload(Uid, Bundle) ->
+    %% DC-1：顶层 my_review_draft 复用 teacher_view 已算好的草稿
+    %% （find_draft(Sid,Uid) + assets，不二次查库）——load_submission_bundle
+    %% 构造的 Bundle 无 draft 键，直读恒 null（v1 引入缺陷，挡死老师
+    %% 重开工作台的草稿恢复）。submission 内嵌值保持不动（兼容窗口）。
+    TView = teacher_view(Uid, Bundle),
+    {ok, #{
+        <<"submission">> => TView,
+        <<"my_review_draft">> => maps:get(<<"my_review_draft">>, TView, null),
+        <<"learner_display_name">> => maps:get(<<"display_name">>, Bundle, <<>>),
+        <<"assignment_title">> => maps:get(<<"title">>, Bundle, <<>>)
+    }}.
 
 -spec build_detail(integer(), integer(), staff | guardian, map()) ->
     {ok, map()} | {error, atom()}.
 build_detail(_Uid, SubmissionId, Perspective, _Scope) ->
     case load_submission_bundle(SubmissionId) of
         {ok, Bundle} ->
-            case Perspective of
-                staff -> {ok, teacher_view(_Uid, Bundle)};
-                guardian -> {ok, parent_view(Bundle)}
+            case {Perspective, withdrawn_submission(Bundle)} of
+                %% A1-D04：staff 视角撤回后不再返回 teacher_view（含 AI 草稿），
+                %% 与 view_url 的 T17 拒绝同口径；guardian 保留本人可见语义
+                %% （parent_view 白名单本就无 AI 字段，D-10）
+                {staff, true} ->
+                    {error, forbidden};
+                _ ->
+                    detail_payload_by_perspective(_Uid, Bundle, Perspective)
             end;
         {error, Reason} ->
             {error, Reason}
     end.
+
+-spec detail_payload_by_perspective(integer(), map(), staff | guardian) ->
+    {ok, map()}.
+detail_payload_by_perspective(Uid, Bundle, Perspective) ->
+    case Perspective of
+        staff -> {ok, teacher_view(Uid, Bundle)};
+        guardian -> {ok, parent_view(Bundle)}
+    end.
+
+%% A1-D04：submission 行是否已撤回（bundle 内行真值判定）
+-spec withdrawn_submission(map()) -> boolean().
+withdrawn_submission(#{submission := #{<<"status">> := <<"withdrawn">>}}) ->
+    true;
+withdrawn_submission(_) ->
+    false.
 
 %% bundle: submission row + assets + learner/task names + ai draft + published review
 %% （P0-4：+ published review 的 review_asset 集合，家长侧 DTO 数据源）
@@ -946,12 +978,16 @@ history_access(Uid, LearnerId) ->
                 true ->
                     ok;
                 false ->
-                    %% staff 路径：学员所在班级（同机构）的任课老师
+                    %% staff 路径：学员所在班级（同机构）的任课老师。
+                    %% A1-D02 补钉：learner.organization_id 必须与班级机构一致——
+                    %% 跨机构脏 enrollment（seed/后台写入）不构成 staff 入口
+                    %% （fail-closed，对照 roster SQL 的 l.organization_id=$2、
+                    %% task readiness 的 learner_org==OrgId 先例）
                     case learner_group_ids(LearnerId) of
                         {ok, []} ->
                             {error, not_guardian};
                         {ok, GroupIds} ->
-                            staff_in_any(Uid, GroupIds);
+                            staff_in_same_org(Uid, GroupIds, LearnerId);
                         {error, _} ->
                             {error, db_error}
                     end
@@ -979,21 +1015,46 @@ learner_group_ids(LearnerId) ->
         {error, Reason} -> {error, Reason}
     end.
 
--spec staff_in_any(integer(), [integer()]) -> ok | {error, atom()}.
-staff_in_any(Uid, GroupIds) ->
+%% A1-D02：staff 入口必须钉死学员与班级同机构。learner 无机构/机构解析
+%% 查询失败 → 无任何 staff 入口（fail-closed：deny 或 db_error，不静默放行）
+-spec staff_in_same_org(integer(), [integer()], integer()) -> ok | {error, atom()}.
+staff_in_same_org(Uid, GroupIds, LearnerId) ->
+    case moya_context_repo:learner_org(LearnerId) of
+        {ok, LearnerOrg} when is_integer(LearnerOrg) ->
+            staff_in_any_same_org(Uid, GroupIds, LearnerOrg);
+        {error, _} ->
+            {error, db_error};
+        _ ->
+            %% learner 不存在或 organization NULL（脏数据）：拒绝
+            {error, not_guardian}
+    end.
+
+-spec staff_in_any_same_org(integer(), [integer()], integer()) -> ok | {error, atom()}.
+staff_in_any_same_org(Uid, GroupIds, LearnerOrg) ->
     ListsAny =
         lists:any(
             fun(Gid) ->
-                case moya_acl:resolve_staff(Uid, Gid) of
-                    {ok, _} -> true;
-                    _ -> false
-                end
+                staff_and_same_org(Uid, Gid, LearnerOrg)
             end,
             GroupIds
         ),
     case ListsAny of
         true -> ok;
         false -> {error, not_guardian}
+    end.
+
+%% 单班判定：本人是该班 active staff 且班级机构 == 学员机构；
+%% 班级机构解析失败按不命中处理（fail-closed）
+-spec staff_and_same_org(integer(), integer(), integer()) -> boolean().
+staff_and_same_org(Uid, Gid, LearnerOrg) ->
+    case moya_acl:resolve_staff(Uid, Gid) of
+        {ok, _} ->
+            case moya_context_repo:group_org(Gid) of
+                {ok, LearnerOrg} -> true;
+                _ -> false
+            end;
+        _ ->
+            false
     end.
 
 %% ---- payload ----
