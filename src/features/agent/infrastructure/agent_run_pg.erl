@@ -24,6 +24,7 @@
     count_run_events/2,
     get_agent_identity/2,
     next_effect_sequence/2,
+    list_run_effects/2,
     insert_run_tx/3,
     cas_transition_tx/8,
     lease_acquire_tx/7,
@@ -156,6 +157,15 @@ get_agent_identity(Conn, UserId) ->
         {ok, _, []} ->
             {error, not_found}
     end.
+
+%% AG31-09：recovery 遍历 run 下全部 effect（按 sequence 升序）。
+%% 既有行为的纯附加读，不改任何既有函数（result.md 披露）。
+-spec list_run_effects(conn(), non_neg_integer()) -> [map()].
+list_run_effects(Conn, RunId) ->
+    Sql =
+        "SELECT " ?EFFECT_COLS " FROM agent_effect WHERE run_id = $1 ORDER BY sequence ASC",
+    {ok, _Cols, Rows} = epgsql:equery(Conn, Sql, [RunId]),
+    [effect_row_to_map(R) || R <- Rows].
 
 %% AG31-05：authorize/3 自持 effect 单调序号（UNIQUE(run_id,sequence) 兜底
 %% 并发碰撞为 23505）。既有行为的纯附加读，不改任何既有函数。
